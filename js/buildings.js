@@ -112,8 +112,25 @@ const Bld = {
     const d = this.def(b.key);
     this.pay(d.levels[b.level].cost, b.owner === 'P' ? S.res : S.ai.res);
     b.upgrading = d.levels[b.level].time;
-    if (b.owner === 'P') G.log(`${d.name} upgrading to Lv ${b.level + 1}`);
+    if (b.owner === 'P') {
+      // upgrades need a villager on site, same as construction
+      const v = this.hasWorker(b) ? null : Units.nearestIdleVillager(b.x, b.y);
+      if (v && Units.assignBuild(v, b)) G.log(`${d.name} upgrading to Lv ${b.level + 1} — a villager heads over`);
+      else if (this.hasWorker(b)) G.log(`${d.name} upgrading to Lv ${b.level + 1}`);
+      else G.log(`${d.name} upgrade needs a builder — tap a villager, then the building`, true);
+    }
     return true;
+  },
+
+  finishUpgrade(b) {
+    b.upgrading = 0;
+    b.level++;
+    const lv = this.lv(b);
+    b.maxhp = lv.hp; b.hp = lv.hp;
+    if (b.owner === 'P') {
+      G.log(`${this.def(b.key).name} reached Lv ${b.level}!`);
+      if (lv.vision) G.reveal(b.x, b.y, lv.vision);
+    }
   },
 
   /* training queue: entries { unit, t } (days remaining) */
@@ -169,18 +186,10 @@ const Bld = {
         }
         continue;
       }
-      if (b.upgrading > 0) {
+      if (b.upgrading > 0 && b.owner === 'A') {
+        // the rival's crews upgrade off-screen; player upgrades need a villager
         b.upgrading -= dtDays;
-        if (b.upgrading <= 0) {
-          b.upgrading = 0;
-          b.level++;
-          const lv = this.lv(b);
-          b.maxhp = lv.hp; b.hp = lv.hp;
-          if (b.owner === 'P') {
-            G.log(`${this.def(b.key).name} reached Lv ${b.level}!`);
-            if (lv.vision) G.reveal(b.x, b.y, lv.vision);
-          }
-        }
+        if (b.upgrading <= 0) this.finishUpgrade(b);
       }
       if (b.queue.length) {
         b.queue[0].t -= dtDays;

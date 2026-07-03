@@ -6,6 +6,8 @@ const Units = {
 
   spawn(kind, owner, x, y, opts) {
     opts = opts || {};
+    x = Math.max(0, Math.min(CFG.W - 1, x));
+    y = Math.max(0, Math.min(CFG.H - 1, y));
     const base = CFG.UNITS[kind];
     const scale = opts.scale || 1;
     const u = {
@@ -27,6 +29,7 @@ const Units = {
   isMilitary(u) { return u.kind === 'defender' || u.kind === 'elite'; },
   isVillager(u) { return u.kind === 'villager'; },
   isWild(u) { return u.owner === 'W'; },
+  isPassive(u) { return u.kind === 'deer' || u.kind === 'cow'; },
   isRaider(u) { return u.owner === 'R'; },
 
   popUsed(owner) {
@@ -154,7 +157,7 @@ const Units = {
         }
       } else if (t.type === 'build') {
         const b = Bld.get(t.id);
-        if (!b || b.owner !== 'P' || (b.construction <= 0 && b.hp >= b.maxhp)) {
+        if (!b || b.owner !== 'P' || (b.construction <= 0 && b.upgrading <= 0 && b.hp >= b.maxhp)) {
           u.task = null;   // done (or site gone) — villager is free again
           continue;
         }
@@ -168,6 +171,9 @@ const Units = {
           if (b.construction > 0) {
             b.construction -= dtDays;
             if (b.construction <= 0) { Bld.finish(b); u.task = null; }
+          } else if (b.upgrading > 0) {
+            b.upgrading -= dtDays;
+            if (b.upgrading <= 0) { Bld.finishUpgrade(b); u.task = null; }
           } else {
             b.hp = Math.min(b.maxhp, b.hp + b.maxhp * CFG.REPAIR_RATE * dtDays);
             if (b.hp >= b.maxhp) { u.task = null; G.log(`${Bld.def(b.key).name} repaired`); }
@@ -191,18 +197,35 @@ const Units = {
     }
   },
 
-  damage(u, amt, attackerId) {
+  damage(u, amt, attackerId, attackerOwner) {
     u.hp -= Math.max(1, amt);
+    const attacker = attackerId ? this.get(attackerId) : null;
     if (u.hp <= 0) {
       S.units.splice(S.units.indexOf(u), 1);
       for (const o of S.units) if (o.tUnit === u.id) o.tUnit = 0;
       if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
       if (u.owner === 'P') G.log(`${CFG.UNITS[u.kind].name} was killed`, true);
+      // any wild animal killed by a tribe yields meat
+      if (this.isWild(u)) {
+        const owner = (attacker && attacker.owner) || attackerOwner;
+        if (owner === 'P') {
+          S.res.food += CFG.MEAT_DROP;
+          R.float(u.x, u.y - 0.5, '+' + CFG.MEAT_DROP + ' food', '#d8e8b0');
+        } else if (owner === 'A') S.ai.res.food += CFG.MEAT_DROP;
+      }
       return;
     }
     // retaliation / flee
     if (u.tUnit || u.tBld) return;
-    const attacker = attackerId ? this.get(attackerId) : null;
+    if (this.isPassive(u)) {
+      // game animals bolt away from whatever hurt them
+      const ax = attacker ? attacker.x : u.x + 1, ay = attacker ? attacker.y : u.y;
+      const d = Math.hypot(u.x - ax, u.y - ay) || 1;
+      const tx = Math.round(u.x + (u.x - ax) / d * 6), ty = Math.round(u.y + (u.y - ay) / d * 6);
+      const spot = MapGen.findNear(tx, ty, 4, (x, y) => Path.passable(x, y));
+      if (spot) this.setPath(u, spot.x, spot.y);
+      return;
+    }
     if (!attacker) return;
     if (this.isVillager(u) && u.owner === 'P' && !this.villagerArmed()) {
       const tc = Bld.tcOf('P');
@@ -212,21 +235,30 @@ const Units = {
     }
   },
 
-  // daily upkeep: wild animal spawning near forests
+  // daily upkeep: wildlife spawning
   dailySpawns() {
     const m = G.modeCfg();
+    // grazing game animals (harmless, huntable) — kept around in small numbers
+    if (this.count('W', u => this.isPassive(u)) < CFG.PASSIVE_MAX && G.rand() < 0.4)
+      this.spawnWild(G.rand() < 0.5 ? 'deer' : 'cow', 8);
+    // predators
     if (S.day < CFG.ANIMALS.graceDays) return;   // early grace period — get established first
-    if (this.count('W') >= m.animalMax) return;
+    if (this.count('W', u => !this.isPassive(u)) >= m.animalMax) return;
     if (G.rand() > m.animalChance) return;
-    // pick a random forest tile away from the player TC
+    this.spawnWild(G.rand() < 0.6 ? 'wolf' : 'boar', CFG.ANIMALS.minDistTC);
+  },
+
+  spawnWild(kind, minDistTC) {
+    const passive = kind === 'deer' || kind === 'cow';
     const tc = Bld.tcOf('P');
     for (let tries = 0; tries < 40; tries++) {
       const x = (G.rand() * CFG.W) | 0, y = (G.rand() * CFG.H) | 0;
-      if (S.map.terrain[MapGen.idx(x, y)] !== T.FOREST) continue;
-      if (tc && Math.hypot(x - tc.x, y - tc.y) < CFG.ANIMALS.minDistTC) continue;
-      const kind = G.rand() < 0.6 ? 'wolf' : 'boar';
-      this.spawn(kind, 'W', x, y);
-      return;
+      const t = S.map.terrain[MapGen.idx(x, y)];
+      if (t !== T.FOREST && !(passive && t === T.GRASS)) continue;
+      if (Bld.at(x, y)) continue;
+      if (tc && Math.hypot(x - tc.x, y - tc.y) < minDistTC) continue;
+      return this.spawn(kind, 'W', x, y);
     }
+    return null;
   },
 };

@@ -177,9 +177,10 @@ const UI = {
         return;
       }
       if (hitBld && hitBld.owner === 'P' && Units.isVillager(sel) &&
-          (hitBld.construction > 0 || hitBld.hp < hitBld.maxhp)) {
+          (hitBld.construction > 0 || hitBld.upgrading > 0 || hitBld.hp < hitBld.maxhp)) {
         Units.assignBuild(sel, hitBld);
-        this.toast(hitBld.construction > 0 ? 'Villager sent to build' : 'Villager sent to repair');
+        this.toast(hitBld.hp < hitBld.maxhp && !hitBld.construction && !hitBld.upgrading
+          ? 'Villager sent to repair' : 'Villager sent to build');
         return;
       }
       if (!hitUnit && (!hitBld || hitBld.owner !== 'P')) {
@@ -233,7 +234,15 @@ const UI = {
       return sig;
     }
     const u = Units.get(this.sel.id);
-    return u ? 'u|' + u.id : 'gone';
+    if (!u) return 'gone';
+    return ['u', u.id, u.hp < u.maxhp,
+      !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u)].join('|');
+  },
+
+  healCost(u) {
+    const base = CFG.HEAL_FOOD[u.kind];
+    if (!base) return 0;
+    return Math.max(1, Math.ceil((1 - u.hp / u.maxhp) * base));
   },
   // cheap periodic update: rewrite the sub-line only, rebuild DOM when structure changes
   refreshPanel() {
@@ -243,6 +252,11 @@ const UI = {
     if (sig !== this._panelSig) { this.renderPanel(); return; }
     const el = document.querySelector('#panel .phead .psub');
     if (el) el.textContent = this.panelSub();
+    const hc = document.getElementById('healCost');
+    if (hc && this.sel.type === 'unit') {
+      const u = Units.get(this.sel.id);
+      if (u) hc.textContent = this.healCost(u) + ' 🍖';
+    }
   },
   panelSub() {
     if (this.sel.type === 'bld') {
@@ -252,7 +266,8 @@ const UI = {
       let sub = `HP ${Math.ceil(b.hp)}/${b.maxhp}`;
       if (b.construction > 0)
         sub += ` — ${Math.ceil(b.construction)}d of work left${Bld.hasWorker(b) ? '' : ' (awaiting builder)'}`;
-      else if (b.upgrading > 0) sub += ` — upgrading ${Math.ceil(b.upgrading)}d left`;
+      else if (b.upgrading > 0)
+        sub += ` — upgrading ${Math.ceil(b.upgrading)}d left${Bld.hasWorker(b) ? '' : ' (awaiting builder)'}`;
       else if (b.hp < b.maxhp && Bld.hasWorker(b)) sub += ' — under repair';
       else if (lv.out) sub += ' — ' + Object.entries(lv.out).map(([k, v]) => `+${Math.round(v * Bld.nearBonus(b) * 10) / 10} ${k}/day`).join(', ');
       if (lv.pop) sub += ` — +${lv.pop} pop`;
@@ -279,7 +294,7 @@ const UI = {
       html += '<div class="pactions">';
       if (b.owner === 'P') {
         const worker = Bld.hasWorker(b);
-        if (b.construction > 0 && !worker)
+        if ((b.construction > 0 || b.upgrading > 0) && !worker)
           html += `<button class="abtn" data-act="sendworker">👷 Send builder<small>needs an idle villager</small></button>`;
         if (!b.construction && !b.upgrading && b.hp < b.maxhp && !worker)
           html += `<button class="abtn" data-act="sendworker">🔨 Repair<small>a villager does the work</small></button>`;
@@ -321,14 +336,21 @@ const UI = {
       if (!u) { this.deselect(); return; }
       const nm = CFG.UNITS[u.kind].name;
       const own = u.owner === 'P';
-      const hint = !own ? (u.owner === 'W' ? 'Wild beast' : u.owner === 'R' ? 'Raider!' : 'Rival tribe')
-        : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / fertile soil to gather, a construction site or damaged building to work on it, or a tile to walk.'
+      const hint = !own ? (
+          Units.isPassive(u) ? `Wild game — send a villager or defender to hunt it (+${CFG.MEAT_DROP} food).`
+          : u.owner === 'W' ? `Wild beast — dangerous, but worth +${CFG.MEAT_DROP} food.`
+          : u.owner === 'R' ? 'Raider!' : 'Rival tribe')
+        : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / fertile soil to gather, a work site to build, or a tile to walk.'
         : 'Tap a tile to move, or an enemy to attack.';
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : '☠ '}${nm}</div>
         <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Units.effAtk(u)} · DEF ${u.def}</div></div>
         <button class="abtn" id="panelClose">✕</button></div>
         <div class="pactions"><span class="psub">${hint}</span>`;
+      if (own && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind]) {
+        const hc = this.healCost(u);
+        html += `<button class="abtn ${S.res.food >= hc ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${hc} 🍖</small></button>`;
+      }
       if (own && Units.isVillager(u)) html += `<button class="abtn" data-act="gobuild">🔨 Build…</button>`;
       if (own) html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
       html += '</div>';
@@ -340,6 +362,18 @@ const UI = {
       if (stop) stop.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
         if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; }
+      });
+      const heal = panel.querySelector('[data-act="heal"]');
+      if (heal) heal.addEventListener('click', () => {
+        const u2 = Units.get(this.sel.id);
+        if (!u2 || u2.hp >= u2.maxhp) return;
+        const cost = this.healCost(u2);
+        if (S.res.food < cost) { this.toast('Not enough food', true); return; }
+        S.res.food -= cost;
+        u2.hp = u2.maxhp;
+        R.float(u2.x, u2.y - 0.5, '❤', '#8ae08a');
+        this.toast(`Healed for ${cost} food`);
+        this.renderPanel();
       });
       const gobuild = panel.querySelector('[data-act="gobuild"]');
       if (gobuild) gobuild.addEventListener('click', () => {

@@ -40,18 +40,24 @@ on desktop too.
 - **Repair**: damaged buildings can be repaired the same way — tap the building
   and hit *Repair* (or tap a villager, then the building). Repairs cost only a
   villager's working time.
-- **Upgrades**: tap a building → *Upgrade*. Levels 2–3 need a matching Town Center
+- **Upgrades**: tap a building → *Upgrade*. Like construction, upgrades need a
+  villager working the site. Levels 2–3 need a matching Town Center
   level and unlock bigger output or passive bonuses (level-3 Hunter's Lodge arms
   your villagers; level-3 Watchtower buffs nearby defenders; level-3 Barracks
   unlocks Elite Defenders).
 - **Town Center** trains villagers; **Barracks** trains defenders. Houses raise the
   population cap. Tap a defender, then a tile to move or an enemy to attack.
+- **Healing**: tap a hurt villager or defender → *Heal*. It costs food in
+  proportion to their training cost and how badly they're hurt.
 - **Saving**: ☰ → *Save game* downloads a JSON save; *Load game* imports it.
   Maps are seeded — share a seed to share a map.
 
 ## Threats
 
-- **Wild animals** — wolves and boars roam the forests and go after villagers.
+- **Wild animals** — wolves and boars roam the forests and go after villagers,
+  while harmless deer and wild cows graze the map. Any wild animal killed by
+  your tribe yields **+10 food** — tap a villager or defender, then the animal,
+  to hunt it.
 - **Raiders** — war parties arrive from map edges and camps — rarely on Calm, regularly on Hard —
   growing bigger and tougher; they attack your nearest buildings. Watchtowers and
   defenders are your answer.

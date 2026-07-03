@@ -45,6 +45,8 @@ const G = {
     for (let i = 0; i < CFG.START_VILLAGERS; i++)
       Units.spawn('villager', 'P', p.x - 1 + i, p.y + 2);
     AI.init(gen.spawns.ai);
+    Units.spawnWild('deer', 8);
+    Units.spawnWild('cow', 8);
 
     R.onNewGame();
     UI.deselect();

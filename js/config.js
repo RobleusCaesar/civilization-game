@@ -112,7 +112,13 @@ const CFG = {
     boar:     { name: 'Boar',           hp: 48,  atk: 6,  def: 1, speed: 1.8, aggro: 2 },
     raider:   { name: 'Raider',         hp: 45,  atk: 6,  def: 1, speed: 2.3, aggro: 2.5 },
     brute:    { name: 'Raider Brute',   hp: 95,  atk: 12, def: 2, speed: 1.9, aggro: 2.5 },
+    deer:     { name: 'Deer',           hp: 20,  atk: 0,  def: 0, speed: 2.0, aggro: 0 },
+    cow:      { name: 'Wild Cow',       hp: 35,  atk: 0,  def: 0, speed: 1.2, aggro: 0 },
   },
+
+  MEAT_DROP: 10,               // food gained when a wild animal is killed
+  PASSIVE_MAX: 2,              // grazing animals (deer/cow) kept on the map
+  HEAL_FOOD: { villager: 50, defender: 40, elite: 80 },  // full-heal cost scales with missing hp
 
   WAVES: { minGap: 10, maxGap: 14, scaleHp: 0.07, scaleAtk: 0.05 },
   ANIMALS: { graceDays: 8, minDistTC: 12, leash: 7 },

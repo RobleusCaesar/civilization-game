@@ -262,6 +262,9 @@ const Sprites = {
       if (opts.ears) { p(3 + w - 1, y0 - 2, 1, 1, bodyD); p(3 + w + 1, y0 - 2, 1, 1, bodyD); }
       if (opts.tusk) p(3 + w + 2, y0 + h - 2, 1, 1, PAL.white);
       if (opts.tail) p(2, y0, 1, 2, bodyD);
+      if (opts.antlers) { p(3 + w, y0 - 4, 1, 3, '#e8dcc0'); p(3 + w + 2, y0 - 4, 1, 3, '#e8dcc0'); p(3 + w + 1, y0 - 3, 1, 1, '#e8dcc0'); }
+      if (opts.horns) { p(3 + w - 1, y0 - 3, 1, 2, PAL.white); p(3 + w + 2, y0 - 3, 1, 2, PAL.white); }
+      if (opts.spots) { p(4, y0, 2, 2, opts.spots); p(8, y0 + 1, 2, 2, opts.spots); }
       if (attacking) p(3 + w + 2, y0 + 1, 1, 1, PAL.red);     // open maw
       // legs
       const l1 = f === 0 ? 2 : 3, l2 = f === 0 ? 3 : 2;
@@ -275,6 +278,8 @@ const Sprites = {
   }
   beast('wolf', PAL.wolf, PAL.wolfD, { w: 7, h: 3, ears: true, tail: true });
   beast('boar', PAL.boar, PAL.boarD, { w: 8, h: 4, tusk: true, tail: true });
+  beast('deer', '#a87848', '#7a5430', { w: 6, h: 3, ears: true, tail: true, antlers: true });
+  beast('cow', '#e8e0d0', '#8a8078', { w: 8, h: 4, ears: true, tail: true, horns: true, spots: '#5a4a3a' });
 
   /* ---------------- icons (16px) ---------------- */
   function icon(draw) {

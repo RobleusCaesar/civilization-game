@@ -45,9 +45,11 @@ const Combat = {
         const v = this.nearestUnit(u.x, u.y, base.aggro, o => o.owner === 'P' || o.owner === 'A');
         if (v) u.tUnit = v.id;
       } else if (Units.isMilitary(u) && !(u.task && u.task.type === 'raid')) {
-        // guards: engage hostiles near them (but don't stray while following an order)
+        // guards: engage hostiles near them (but don't stray while following an order,
+        // and never auto-hunt harmless game — that's the player's call)
         if (u.task && u.task.type === 'move') continue;
-        const e = this.nearestUnit(u.x, u.y, base.aggro, o => this.hostile(u.owner, o.owner));
+        const e = this.nearestUnit(u.x, u.y, base.aggro,
+          o => this.hostile(u.owner, o.owner) && !Units.isPassive(o));
         if (e && Math.hypot(e.x - u.anchor.x, e.y - u.anchor.y) < 9) u.tUnit = e.id;
       }
     }
@@ -84,6 +86,8 @@ const Combat = {
         const tgt = Units.get(u.tUnit);
         if (!tgt) { u.tUnit = 0; continue; }
         const d = Math.hypot(tgt.x - u.x, tgt.y - u.y);
+        // hunting harmless game is a deliberate order — the hunter follows the prey
+        if (Units.isPassive(tgt)) u.anchor = { x: u.x, y: u.y };
         // guards give up long chases and go home; wild animals lose interest even sooner
         const leash = Units.isWild(u) ? CFG.ANIMALS.leash
           : (Units.isMilitary(u) && !(u.task && u.task.type === 'raid')) ? 10 : 0;
@@ -94,8 +98,16 @@ const Combat = {
           continue;
         }
         if (d > CFG.MELEE_RANGE) {
-          if (u.repathT <= 0) { u.repathT = 0.5; Units.setPath(u, tgt.x | 0, tgt.y | 0); }
-          Units.followPath(u, dt);
+          // at close range steer straight at the target — grid waypoints can't
+          // corner moving prey; fall back to pathfinding around water
+          const step = u.speed * dt;
+          const nx = u.x + (tgt.x - u.x) / d * step, ny = u.y + (tgt.y - u.y) / d * step;
+          if (d < 3 && Path.passable(nx | 0, ny | 0)) {
+            u.x = nx; u.y = ny; u.path = null;
+          } else {
+            if (u.repathT <= 0) { u.repathT = 0.5; Units.setPath(u, tgt.x | 0, tgt.y | 0); }
+            Units.followPath(u, dt);
+          }
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN;
           const dmg = Math.max(1, Units.effAtk(u) - tgt.def);
@@ -131,13 +143,14 @@ const Combat = {
       if (b.cd > 0) { b.cd -= dt; continue; }
       const lv = Bld.lv(b);
       const cx = b.x + 0.5, cy = b.y + 0.5;
-      const tgt = this.nearestUnit(cx, cy, lv.range, o => this.hostile(b.owner, o.owner));
+      const tgt = this.nearestUnit(cx, cy, lv.range,
+        o => this.hostile(b.owner, o.owner) && !Units.isPassive(o));
       if (tgt) {
         b.cd = 1.4;
         const dmg = Math.max(1, lv.atk - tgt.def);
         this.shots.push({ x1: cx, y1: cy - 0.6, x2: tgt.x, y2: tgt.y, t: 0.18 });
         R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f0d27a');
-        Units.damage(tgt, dmg, 0);
+        Units.damage(tgt, dmg, 0, b.owner);
       } else b.cd = 0.3;
     }
     for (let i = this.shots.length - 1; i >= 0; i--) {
