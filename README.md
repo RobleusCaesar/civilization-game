@@ -24,7 +24,8 @@ on desktop too.
 - **Difficulty**: pick 🌿 Calm, ⚔️ Moderate, or 💀 Hard when starting a new game
   (☰ menu). Calm has very few enemies; Hard gathers ~15% slower with earlier,
   bigger, more frequent raids and bolder wildlife.
-- **Time**: each turn is one in-game day and auto-advances every 3 seconds.
+- **Time**: each turn is one in-game day and auto-advances every 6 seconds;
+  a full playthrough runs about 20 minutes.
   ⏸ pauses; ☰ opens the menu (save / load / new game / seed / event log).
 - **Camera**: drag to pan, pinch (or mouse wheel) to zoom, tap the minimap to jump.
 - **Gathering**: tap a villager, then tap a **forest** (wood), **hills** (stone), or
@@ -49,7 +50,7 @@ on desktop too.
 ## Threats
 
 - **Wild animals** — wolves and boars roam the forests and go after villagers.
-- **Raiders** — war parties arrive every 5–8 days from map edges and raider camps,
+- **Raiders** — war parties arrive every 10–18 days (by difficulty) from map edges and camps,
   growing bigger and tougher; they attack your nearest buildings. Watchtowers and
   defenders are your answer.
 - **The rival tribe** — an AI settlement across the valley builds, upgrades, trains
@@ -60,9 +61,9 @@ on desktop too.
 
 Any one of these wins the game:
 
-1. **Economic** — stockpile **3000 total resources** while holding **20 population**.
+1. **Economic** — stockpile **4000 total resources** while holding **20 population**.
 2. **Military** — destroy the rival tribe's Town Center.
-3. **Survival** — reach **day 60** with your Town Center standing.
+3. **Survival** — reach **day 200** (~20 minutes) with your Town Center standing.
 
 You lose if your Town Center is destroyed — or if the rival tribe hits the
 economic target first.

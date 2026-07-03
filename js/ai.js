@@ -52,20 +52,20 @@ const AI = {
         }
       }
     } else {
-      // late game: keep upgrading things
+      // late game: keep upgrading things (also drains the AI hoard)
       const up = S.buildings.find(b => b.owner === 'A' && Bld.canUpgrade(b).ok);
-      if (up && G.rand() < 0.5) Bld.upgrade(up);
+      if (up && G.rand() < 0.8) Bld.upgrade(up);
     }
 
     // upgrade the town center on a schedule
     const tc = Bld.tcOf('A');
-    if (tc && ((S.day > 16 && tc.level === 1) || (S.day > 36 && tc.level === 2))) {
+    if (tc && ((S.day > 40 && tc.level === 1) || (S.day > 90 && tc.level === 2))) {
       if (Bld.canUpgrade(tc).ok) Bld.upgrade(tc);
     }
 
     // keep a standing force
     const barracks = S.buildings.find(b => b.owner === 'A' && b.key === 'barracks' && Bld.done(b));
-    const want = Math.min(2 + Math.floor(S.day / 8), 9);
+    const want = Math.min(2 + Math.floor(S.day / 12), 10);
     if (barracks && Units.count('A', Units.isMilitary.bind(Units)) < want && barracks.queue.length === 0) {
       const kind = barracks.level >= 3 && ai.res.gold >= 20 ? 'elite' : 'defender';
       Bld.train(barracks, kind);
@@ -84,14 +84,15 @@ const AI = {
       }
     }
 
-    // rival economic victory pressure
+    // rival economic victory pressure — needs a decisive lead over the player's target
+    const aiTarget = CFG.WIN.econTotal * 1.25;
     const total = ai.res.food + ai.res.wood + ai.res.stone + ai.res.gold;
     const aiPop = Bld.popCap('A');
-    if (!ai.warned && total > CFG.WIN.econTotal * 0.75) {
+    if (!ai.warned && total > aiTarget * 0.75) {
       ai.warned = true;
       G.log('The rival tribe is prospering — outpace them or raze them!', true);
     }
-    if (total >= CFG.WIN.econTotal && aiPop >= CFG.WIN.econPop)
+    if (total >= aiTarget && aiPop >= CFG.WIN.econPop)
       G.end(false, 'The rival tribe amassed great wealth first. The valley follows them now.');
   },
 };

@@ -153,7 +153,7 @@ const Combat = {
     S.wave.count++;
     const gap = CFG.WAVES.minGap + Math.floor(G.rand() * (CFG.WAVES.maxGap - CFG.WAVES.minGap + 1));
     S.wave.next = S.day + Math.max(4, Math.round(gap * m.waveGapMult));
-    const n = Math.max(1, 1 + S.wave.count + m.waveSizeAdd);
+    const n = Math.max(1, Math.min(10, 1 + Math.ceil(S.wave.count * 0.8) + m.waveSizeAdd));
     const scale = 1 + S.wave.count * CFG.WAVES.scaleHp;
 
     // spawn near a raider camp if any, else map edge
