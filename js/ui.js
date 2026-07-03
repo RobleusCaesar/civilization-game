@@ -174,6 +174,12 @@ const UI = {
         this.toast('Attacking ' + Bld.def(hitBld.key).name);
         return;
       }
+      if (hitBld && hitBld.owner === 'P' && Units.isVillager(sel) &&
+          (hitBld.construction > 0 || hitBld.hp < hitBld.maxhp)) {
+        Units.assignBuild(sel, hitBld);
+        this.toast(hitBld.construction > 0 ? 'Villager sent to build' : 'Villager sent to repair');
+        return;
+      }
       if (!hitUnit && (!hitBld || hitBld.owner !== 'P')) {
         if (!explored) { this.toast('Unexplored', true); return; }
         if (Units.isVillager(sel) && CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]]) {
@@ -219,7 +225,7 @@ const UI = {
       if (!b) return 'gone';
       const d = Bld.def(b.key);
       let sig = ['b', b.id, b.level, b.construction > 0, b.upgrading > 0, b.queue.length,
-        b.level < 3 && Bld.canUpgrade(b).ok].join('|');
+        b.level < 3 && Bld.canUpgrade(b).ok, b.hp < b.maxhp, Bld.hasWorker(b)].join('|');
       if (d.train) for (const uk in d.train) sig += '|' + Bld.canTrain(b, uk).ok;
       return sig;
     }
@@ -241,8 +247,10 @@ const UI = {
       if (!b) return '';
       const lv = Bld.lv(b);
       let sub = `HP ${Math.ceil(b.hp)}/${b.maxhp}`;
-      if (b.construction > 0) sub += ` — building ${Math.ceil(b.construction)}d left`;
+      if (b.construction > 0)
+        sub += ` — ${Math.ceil(b.construction)}d of work left${Bld.hasWorker(b) ? '' : ' (awaiting builder)'}`;
       else if (b.upgrading > 0) sub += ` — upgrading ${Math.ceil(b.upgrading)}d left`;
+      else if (b.hp < b.maxhp && Bld.hasWorker(b)) sub += ' — under repair';
       else if (lv.out) sub += ' — ' + Object.entries(lv.out).map(([k, v]) => `+${Math.round(v * Bld.nearBonus(b) * 10) / 10} ${k}/day`).join(', ');
       if (lv.pop) sub += ` — +${lv.pop} pop`;
       if (lv.bonus) sub += ` — ${lv.bonus}`;
@@ -267,15 +275,20 @@ const UI = {
         <button class="abtn" id="panelClose">✕</button></div>`;
       html += '<div class="pactions">';
       if (b.owner === 'P') {
-        if (b.level < 3) {
+        const worker = Bld.hasWorker(b);
+        if (b.construction > 0 && !worker)
+          html += `<button class="abtn" data-act="sendworker">👷 Send builder<small>needs an idle villager</small></button>`;
+        if (!b.construction && !b.upgrading && b.hp < b.maxhp && !worker)
+          html += `<button class="abtn" data-act="sendworker">🔨 Repair<small>a villager does the work</small></button>`;
+        if (b.level < 3 && !b.construction) {
           const up = Bld.canUpgrade(b);
           const cost = d.levels[b.level].cost;
-          html += `<button class="abtn ${up.ok ? '' : 'cant'}" data-act="upgrade">⬆ Upgrade to Lv ${b.level + 1}<small>${up.ok ? Bld.costStr(cost) : up.why}</small></button>`;
+          html += `<button class="abtn ${up.ok ? '' : 'cant'}" data-act="upgrade">⬆ Upgrade to Lv ${b.level + 1}<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;
         }
         if (d.train && !b.construction) {
           for (const [uk, spec] of Object.entries(d.train)) {
             const ct = Bld.canTrain(b, uk);
-            html += `<button class="abtn ${ct.ok ? '' : 'cant'}" data-act="train" data-unit="${uk}">Train ${CFG.UNITS[uk].name}<small>${ct.ok ? Bld.costStr(spec.cost) : ct.why}</small></button>`;
+            html += `<button class="abtn ${ct.ok ? '' : 'cant'}" data-act="train" data-unit="${uk}">Train ${CFG.UNITS[uk].name}<small>${Bld.costStr(spec.cost)}${ct.ok ? '' : ' — ' + ct.why}</small></button>`;
           }
           if (b.queue.length) html += `<span class="psub" style="align-self:center">Queue: ${b.queue.length}</span>`;
         }
@@ -292,6 +305,11 @@ const UI = {
         if (!b2) return;
         if (btn.dataset.act === 'upgrade') { if (!Bld.upgrade(b2)) this.toast(Bld.canUpgrade(b2).why, true); }
         else if (btn.dataset.act === 'train') { if (!Bld.train(b2, btn.dataset.unit)) this.toast(Bld.canTrain(b2, btn.dataset.unit).why, true); }
+        else if (btn.dataset.act === 'sendworker') {
+          const v = Units.nearestIdleVillager(b2.x, b2.y);
+          if (!v) this.toast('No idle villager — free one up first', true);
+          else if (Units.assignBuild(v, b2)) this.toast('Villager on the way');
+        }
         this.renderPanel();
         this.refreshMenu();
       }));
@@ -301,7 +319,7 @@ const UI = {
       const nm = CFG.UNITS[u.kind].name;
       const own = u.owner === 'P';
       const hint = !own ? (u.owner === 'W' ? 'Wild beast' : u.owner === 'R' ? 'Raider!' : 'Rival tribe')
-        : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / fertile soil to gather, or a tile to walk.'
+        : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / fertile soil to gather, a construction site or damaged building to work on it, or a tile to walk.'
         : 'Tap a tile to move, or an enemy to attack.';
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : '☠ '}${nm}</div>

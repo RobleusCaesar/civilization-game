@@ -64,9 +64,27 @@ const Bld = {
     S.buildings.push(b);
     if (owner === 'P') {
       G.reveal(x, y, d.levels[0].vision || 4);
-      if (!opts.instant) G.log(`${d.name} under construction`);
+      if (!opts.instant) {
+        const v = Units.nearestIdleVillager(x, y);
+        if (v && Units.assignBuild(v, b)) G.log(`${d.name} site laid out — a villager heads over`);
+        else G.log(`${d.name} needs a builder — tap a villager, then the site`, true);
+      }
     }
     return b;
+  },
+
+  finish(b) {
+    b.construction = 0;
+    if (b.owner === 'P') {
+      G.log(`${this.def(b.key).name} complete`);
+      const lv = this.lv(b);
+      if (lv.vision) G.reveal(b.x, b.y, lv.vision);
+    }
+  },
+
+  // any player villager currently working this site?
+  hasWorker(b) {
+    return S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'build' && u.task.id === b.id);
   },
 
   canUpgrade(b) {
@@ -140,14 +158,10 @@ const Bld = {
   update(dtDays) {
     for (const b of S.buildings) {
       if (b.construction > 0) {
-        b.construction -= dtDays;
-        if (b.construction <= 0) {
-          b.construction = 0;
-          if (b.owner === 'P') {
-            G.log(`${this.def(b.key).name} complete`);
-            const lv = this.lv(b);
-            if (lv.vision) G.reveal(b.x, b.y, lv.vision);
-          }
+        // the rival's crews work off-screen; player sites need a villager builder
+        if (b.owner === 'A') {
+          b.construction -= dtDays;
+          if (b.construction <= 0) this.finish(b);
         }
         continue;
       }

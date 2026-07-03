@@ -28,7 +28,12 @@ on desktop too.
   **fertile soil** (food) tile — they gather automatically. Tapping a resource tile
   with nothing selected sends an idle villager.
 - **Building**: tap a button in the bottom bar, then tap a clear tile near your
-  village. Buildings finish after a few days, then produce every day.
+  village. Construction needs a villager on site — the nearest idle villager is
+  sent automatically (or tap a villager, then the site). Once done they're free
+  again, and the building produces every day.
+- **Repair**: damaged buildings can be repaired the same way — tap the building
+  and hit *Repair* (or tap a villager, then the building). Repairs cost only a
+  villager's working time.
 - **Upgrades**: tap a building → *Upgrade*. Levels 2–3 need a matching Town Center
   level and unlock bigger output or passive bonuses (level-3 Hunter's Lodge arms
   your villagers; level-3 Watchtower buffs nearby defenders; level-3 Barracks

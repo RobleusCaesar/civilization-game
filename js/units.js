@@ -74,6 +74,23 @@ const Units = {
     return this.setPath(u, tx, ty);
   },
 
+  nearestIdleVillager(x, y) {
+    let best = null, bd = 1e9;
+    for (const u of S.units) {
+      if (u.owner !== 'P' || !this.isVillager(u) || u.task || u.tUnit) continue;
+      const d = Math.hypot(u.x - x - 0.5, u.y - y - 0.5);
+      if (d < bd) { bd = d; best = u; }
+    }
+    return best;
+  },
+
+  // send a villager to construct or repair a building; frees up when done
+  assignBuild(u, b) {
+    u.task = { type: 'build', id: b.id };
+    u.tUnit = 0; u.tBld = 0;
+    return this.setPath(u, b.x, b.y);
+  },
+
   orderAttackBuilding(u, b) {
     u.task = { type: 'attackBld' };
     u.tBld = b.id; u.tUnit = 0;
@@ -134,6 +151,27 @@ const Units = {
           S.res[g.res] += g.rate * dt;
           if ((before | 0) !== (S.res[g.res] | 0) && Math.random() < 0.3)
             R.float(u.x, u.y - 0.5, '+' + g.res, '#d8e8b0');
+        }
+      } else if (t.type === 'build') {
+        const b = Bld.get(t.id);
+        if (!b || b.owner !== 'P' || (b.construction <= 0 && b.hp >= b.maxhp)) {
+          u.task = null;   // done (or site gone) — villager is free again
+          continue;
+        }
+        const d = Math.hypot(b.x + 0.5 - u.x, b.y + 0.5 - u.y);
+        if (d > 1.25) {
+          if (this.moving(u)) this.followPath(u, dt);
+          else if (!this.setPath(u, b.x, b.y)) u.task = null;
+        } else {
+          u.path = null;
+          const dtDays = dt * 1000 / CFG.DAY_MS;
+          if (b.construction > 0) {
+            b.construction -= dtDays;
+            if (b.construction <= 0) { Bld.finish(b); u.task = null; }
+          } else {
+            b.hp = Math.min(b.maxhp, b.hp + b.maxhp * CFG.REPAIR_RATE * dtDays);
+            if (b.hp >= b.maxhp) { u.task = null; G.log(`${Bld.def(b.key).name} repaired`); }
+          }
         }
       } else if (t.type === 'attackBld') {
         // target destroyed while en route

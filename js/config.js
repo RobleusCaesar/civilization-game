@@ -121,4 +121,5 @@ const CFG = {
 
   ATTACK_COOLDOWN: 1.0,        // seconds between melee hits
   MELEE_RANGE: 1.15,           // tiles
+  REPAIR_RATE: 0.4,            // fraction of max hp restored per day of villager work
 };

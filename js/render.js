@@ -92,7 +92,7 @@ const R = {
   unitPose(u) {
     if (u.tUnit || (u.tBld && Math.hypot((Bld.get(u.tBld) || u).x + 0.5 - u.x, (Bld.get(u.tBld) || u).y + 0.5 - u.y) < 1.5)) return 'fight';
     if (Units.moving(u)) return 'walk';
-    if (u.task && u.task.type === 'gather') return 'gather';
+    if (u.task && (u.task.type === 'gather' || u.task.type === 'build')) return 'gather';
     return 'idle';
   },
   unitSprite(u) {
