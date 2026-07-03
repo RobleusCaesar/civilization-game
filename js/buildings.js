@@ -65,7 +65,11 @@ const Bld = {
     if (owner === 'P') {
       G.reveal(x, y, d.levels[0].vision || 4);
       if (!opts.instant) {
-        const v = Units.nearestIdleVillager(x, y);
+        // an explicitly chosen builder is pulled off whatever it was doing
+        let v = opts.builderId
+          ? S.units.find(u => u.id === opts.builderId && u.owner === 'P' && Units.isVillager(u))
+          : null;
+        if (!v) v = Units.nearestIdleVillager(x, y);
         if (v && Units.assignBuild(v, b)) G.log(`${d.name} site laid out — a villager heads over`);
         else G.log(`${d.name} needs a builder — tap a villager, then the site`, true);
       }

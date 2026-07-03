@@ -7,7 +7,7 @@ const CFG = {
   TILE: 32,
   W: 40,
   H: 40,
-  DAY_MS: 6000,               // one in-game day
+  DAY_MS: 10000,              // one in-game day
   START_RES: { food: 200, wood: 150, stone: 60, gold: 0 },
   START_VILLAGERS: 3,
   UNIT_VISION: 3,
@@ -29,9 +29,9 @@ const CFG = {
       desc: 'Heart of the village. Trains villagers, stores goods.',
       train: { villager: { cost: { food: 50 }, time: 1 } },
       levels: [
-        { cost: {},                                time: 0, hp: 500,  pop: 5,  out: { gold: 3 }, vision: 6 },
-        { cost: { wood: 200, stone: 150 },         time: 3, hp: 800,  pop: 8,  out: { gold: 6 }, vision: 7 },
-        { cost: { wood: 400, stone: 300, gold: 80 }, time: 4, hp: 1200, pop: 12, out: { gold: 9 }, vision: 8,
+        { cost: {},                                time: 0, hp: 500,  pop: 5,  out: { gold: 5 }, vision: 6 },
+        { cost: { wood: 200, stone: 150 },         time: 3, hp: 800,  pop: 8,  out: { gold: 10 }, vision: 7 },
+        { cost: { wood: 400, stone: 300, gold: 80 }, time: 4, hp: 1200, pop: 12, out: { gold: 15 }, vision: 8,
           bonus: '+10% production to all buildings' },
       ],
     },
@@ -39,18 +39,18 @@ const CFG = {
       name: 'Farm', desc: 'Steady food. Thrives on fertile soil.',
       near: { terrain: T.FERTILE, mult: 1.5, radius: 0 },
       levels: [
-        { cost: { wood: 60 },              time: 1, hp: 100, out: { food: 9 } },
-        { cost: { wood: 120, stone: 40 },  time: 2, hp: 140, out: { food: 18 } },
-        { cost: { wood: 240, stone: 100 }, time: 2, hp: 180, out: { food: 30 } },
+        { cost: { wood: 60 },              time: 1, hp: 100, out: { food: 15 } },
+        { cost: { wood: 120, stone: 40 },  time: 2, hp: 140, out: { food: 30 } },
+        { cost: { wood: 240, stone: 100 }, time: 2, hp: 180, out: { food: 50 } },
       ],
     },
     lodge: {
       name: "Hunter's Lodge", desc: 'Food from the wild. Build near forest.',
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
       levels: [
-        { cost: { wood: 50 },             time: 1, hp: 120, out: { food: 8 } },
-        { cost: { wood: 100, stone: 30 }, time: 2, hp: 160, out: { food: 15 } },
-        { cost: { wood: 200, stone: 80 }, time: 2, hp: 200, out: { food: 24 },
+        { cost: { wood: 50 },             time: 1, hp: 120, out: { food: 13 } },
+        { cost: { wood: 100, stone: 30 }, time: 2, hp: 160, out: { food: 25 } },
+        { cost: { wood: 200, stone: 80 }, time: 2, hp: 200, out: { food: 40 },
           bonus: 'Villagers armed with spears (+4 attack)' },
       ],
     },
@@ -58,18 +58,18 @@ const CFG = {
       name: 'Lumber Camp', desc: 'Wood income. Build near forest.',
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
       levels: [
-        { cost: { wood: 40 },             time: 1, hp: 120, out: { wood: 9 } },
-        { cost: { wood: 80, stone: 30 },  time: 2, hp: 160, out: { wood: 18 } },
-        { cost: { wood: 160, stone: 80 }, time: 2, hp: 200, out: { wood: 30 } },
+        { cost: { wood: 40 },             time: 1, hp: 120, out: { wood: 15 } },
+        { cost: { wood: 80, stone: 30 },  time: 2, hp: 160, out: { wood: 30 } },
+        { cost: { wood: 160, stone: 80 }, time: 2, hp: 200, out: { wood: 50 } },
       ],
     },
     quarry: {
       name: 'Quarry', desc: 'Stone income. Build near hills.',
       near: { terrain: T.HILLS, mult: 1.5, radius: 2 },
       levels: [
-        { cost: { wood: 80 },             time: 1, hp: 120, out: { stone: 8 } },
-        { cost: { wood: 140, stone: 20 }, time: 2, hp: 170, out: { stone: 15 } },
-        { cost: { wood: 260, stone: 60 }, time: 2, hp: 220, out: { stone: 24 } },
+        { cost: { wood: 80 },             time: 1, hp: 120, out: { stone: 13 } },
+        { cost: { wood: 140, stone: 20 }, time: 2, hp: 170, out: { stone: 25 } },
+        { cost: { wood: 260, stone: 60 }, time: 2, hp: 220, out: { stone: 40 } },
       ],
     },
     house: {
@@ -114,35 +114,35 @@ const CFG = {
     brute:    { name: 'Raider Brute',   hp: 95,  atk: 12, def: 2, speed: 1.9, aggro: 2.5 },
   },
 
-  WAVES: { minGap: 12, maxGap: 16, scaleHp: 0.07, scaleAtk: 0.05 },
-  ANIMALS: { graceDays: 10, minDistTC: 12, leash: 7 },
+  WAVES: { minGap: 10, maxGap: 14, scaleHp: 0.07, scaleAtk: 0.05 },
+  ANIMALS: { graceDays: 8, minDistTC: 12, leash: 7 },
 
   /* Difficulty modes. gather/output scale player income; wave* shape raider
      pressure; animal* cap wildlife; aiRaidDay is the rival's earliest attack. */
   MODES: {
     calm: {
-      name: 'Calm', icon: '🌿', desc: 'Very few enemies — build in peace.',
+      name: 'Calm', icon: '🌿', desc: 'Nearly peaceful — the odd wild animal keeps you sharp; raids are rare.',
       gather: 1, output: 1,
-      waveFirst: 40, waveGapMult: 1.6, waveSizeAdd: -1,
-      animalMax: 2, animalChance: 0.1, aiRaidDay: 120,
+      waveFirst: 60, waveGapMult: 2.2, waveSizeAdd: -1,
+      animalMax: 2, animalChance: 0.15, aiRaidDay: 999,
     },
     moderate: {
       name: 'Moderate', icon: '⚔️', desc: 'The intended experience.',
       gather: 1, output: 1,
-      waveFirst: 30, waveGapMult: 1.15, waveSizeAdd: 0,
-      animalMax: 3, animalChance: 0.2, aiRaidDay: 80,
+      waveFirst: 30, waveGapMult: 1.3, waveSizeAdd: 0,
+      animalMax: 3, animalChance: 0.2, aiRaidDay: 70,
     },
     hard: {
       name: 'Hard', icon: '💀', desc: 'Slower gathering, relentless enemies.',
       gather: 0.85, output: 0.85,
-      waveFirst: 22, waveGapMult: 0.85, waveSizeAdd: 1,
-      animalMax: 5, animalChance: 0.35, aiRaidDay: 60,
+      waveFirst: 20, waveGapMult: 0.9, waveSizeAdd: 1,
+      animalMax: 4, animalChance: 0.3, aiRaidDay: 50,
     },
   },
 
-  WIN: { econTotal: 4000, econPop: 20, surviveDay: 200 },
+  WIN: { econTotal: 4000, econPop: 20, surviveDay: 120 },
 
   ATTACK_COOLDOWN: 1.0,        // seconds between melee hits
   MELEE_RANGE: 1.15,           // tiles
-  REPAIR_RATE: 0.4,            // fraction of max hp restored per day of villager work
+  REPAIR_RATE: 0.5,            // fraction of max hp restored per day of villager work
 };

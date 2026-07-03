@@ -59,13 +59,13 @@ const AI = {
 
     // upgrade the town center on a schedule
     const tc = Bld.tcOf('A');
-    if (tc && ((S.day > 40 && tc.level === 1) || (S.day > 90 && tc.level === 2))) {
+    if (tc && ((S.day > 25 && tc.level === 1) || (S.day > 60 && tc.level === 2))) {
       if (Bld.canUpgrade(tc).ok) Bld.upgrade(tc);
     }
 
     // keep a standing force
     const barracks = S.buildings.find(b => b.owner === 'A' && b.key === 'barracks' && Bld.done(b));
-    const want = Math.min(2 + Math.floor(S.day / 12), 10);
+    const want = Math.min(2 + Math.floor(S.day / 8), 10);
     if (barracks && Units.count('A', Units.isMilitary.bind(Units)) < want && barracks.queue.length === 0) {
       const kind = barracks.level >= 3 && ai.res.gold >= 20 ? 'elite' : 'defender';
       Bld.train(barracks, kind);

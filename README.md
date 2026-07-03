@@ -22,9 +22,10 @@ on desktop too.
 ## How to play
 
 - **Difficulty**: pick 🌿 Calm, ⚔️ Moderate, or 💀 Hard when starting a new game
-  (☰ menu). Calm has very few enemies; Hard gathers ~15% slower with earlier,
-  bigger, more frequent raids and bolder wildlife.
-- **Time**: each turn is one in-game day and auto-advances every 6 seconds;
+  (☰ menu). Calm is nearly peaceful — the occasional wild animal, with only a
+  couple of small raids late; Hard gathers ~15% slower with earlier, bigger,
+  more frequent raids and bolder wildlife.
+- **Time**: each turn is one in-game day and auto-advances every 10 seconds;
   a full playthrough runs about 20 minutes.
   ⏸ pauses; ☰ opens the menu (save / load / new game / seed / event log).
 - **Camera**: drag to pan, pinch (or mouse wheel) to zoom, tap the minimap to jump.
@@ -32,9 +33,10 @@ on desktop too.
   **fertile soil** (food) tile — they gather automatically. Tapping a resource tile
   with nothing selected sends an idle villager.
 - **Building**: tap a button in the bottom bar, then tap a clear tile near your
-  village. Construction needs a villager on site — the nearest idle villager is
-  sent automatically (or tap a villager, then the site). Once done they're free
-  again, and the building produces every day.
+  village — the nearest idle villager is sent to work the site. Or start from the
+  villager: tap them, hit *Build…*, pick a building, tap a site, and that villager
+  goes to build it. Once done they're free again, and the building produces every
+  day.
 - **Repair**: damaged buildings can be repaired the same way — tap the building
   and hit *Repair* (or tap a villager, then the building). Repairs cost only a
   villager's working time.
@@ -50,7 +52,7 @@ on desktop too.
 ## Threats
 
 - **Wild animals** — wolves and boars roam the forests and go after villagers.
-- **Raiders** — war parties arrive every 10–18 days (by difficulty) from map edges and camps,
+- **Raiders** — war parties arrive from map edges and camps — rarely on Calm, regularly on Hard —
   growing bigger and tougher; they attack your nearest buildings. Watchtowers and
   defenders are your answer.
 - **The rival tribe** — an AI settlement across the valley builds, upgrades, trains
@@ -63,7 +65,7 @@ Any one of these wins the game:
 
 1. **Economic** — stockpile **4000 total resources** while holding **20 population**.
 2. **Military** — destroy the rival tribe's Town Center.
-3. **Survival** — reach **day 200** (~20 minutes) with your Town Center standing.
+3. **Survival** — reach **day 120** (~20 minutes) with your Town Center standing.
 
 You lose if your Town Center is destroyed — or if the rival tribe hits the
 economic target first.

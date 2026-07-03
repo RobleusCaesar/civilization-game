@@ -10,6 +10,7 @@ const UI = {
   downAt: null,
   refreshT: 0,
   newMode: 'moderate',   // difficulty picked for the next game
+  builderFor: null,      // villager id that will build the next placed building
   MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks'],
 
   init() {
@@ -40,7 +41,7 @@ const UI = {
       const co = document.createElement('div'); co.className = 'bcost'; co.textContent = Bld.costStr(d.levels[0].cost);
       btn.appendChild(nm); btn.appendChild(co);
       btn.addEventListener('click', () => {
-        if (this.placing === key) { this.placing = null; }
+        if (this.placing === key) { this.placing = null; this.builderFor = null; }
         else {
           const can = Bld.canAfford(d.levels[0].cost);
           if (!can) { this.toast('Not enough resources', true); return; }
@@ -144,8 +145,8 @@ const UI = {
     if (this.placing) {
       const can = Bld.canPlace('P', this.placing, tile.x, tile.y);
       if (can.ok) {
-        Bld.place('P', this.placing, tile.x, tile.y);
-        this.placing = null; this.placeTile = null;
+        Bld.place('P', this.placing, tile.x, tile.y, { builderId: this.builderFor });
+        this.placing = null; this.placeTile = null; this.builderFor = null;
       } else this.toast(can.why, true);
       this.refreshMenu();
       return;
@@ -209,6 +210,7 @@ const UI = {
 
   select(type, id) {
     this.sel = { type, id };
+    this.builderFor = null;
     this.renderPanel();
   },
   deselect() {
@@ -327,6 +329,7 @@ const UI = {
         <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Units.effAtk(u)} · DEF ${u.def}</div></div>
         <button class="abtn" id="panelClose">✕</button></div>
         <div class="pactions"><span class="psub">${hint}</span>`;
+      if (own && Units.isVillager(u)) html += `<button class="abtn" data-act="gobuild">🔨 Build…</button>`;
       if (own) html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
       html += '</div>';
       panel.innerHTML = html;
@@ -337,6 +340,13 @@ const UI = {
       if (stop) stop.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
         if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; }
+      });
+      const gobuild = panel.querySelector('[data-act="gobuild"]');
+      if (gobuild) gobuild.addEventListener('click', () => {
+        const vid = this.sel.id;
+        this.deselect();          // brings the build menu back
+        this.builderFor = vid;    // after deselect/select bookkeeping
+        this.toast('Pick a building, then tap a site — this villager will build it');
       });
     }
     panel.querySelector('#panelClose').addEventListener('click', () => this.deselect());

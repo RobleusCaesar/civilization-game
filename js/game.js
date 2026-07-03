@@ -49,6 +49,7 @@ const G = {
     R.onNewGame();
     UI.deselect();
     UI.placing = null;
+    UI.builderFor = null;
     document.getElementById('btnPause').textContent = '⏸';
     document.getElementById('endModal').classList.remove('show');
     this.log(`A new tribe settles the valley (${this.modeCfg().name}). Gather, build, survive.`);
