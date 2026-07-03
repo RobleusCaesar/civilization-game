@@ -195,11 +195,12 @@ const Bld = {
     const res = owner === 'P' ? S.res : S.ai.res;
     const tc = this.tcOf(owner);
     const tcBoost = tc && tc.level >= 3 && this.done(tc) ? 1.1 : 1;
+    const modeMult = owner === 'P' ? G.modeCfg().output : 1;
     for (const b of this.list(owner)) {
       if (!this.done(b) || b.upgrading) continue;
       const out = this.lv(b).out;
       if (!out) continue;
-      const mult = this.nearBonus(b) * tcBoost;
+      const mult = this.nearBonus(b) * tcBoost * modeMult;
       for (const k in out) res[k] += out[k] * mult;
     }
   },

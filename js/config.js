@@ -117,6 +117,29 @@ const CFG = {
   WAVES: { first: 16, minGap: 7, maxGap: 10, scaleHp: 0.07, scaleAtk: 0.05 },
   ANIMALS: { max: 4, spawnChance: 0.25, graceDays: 6, minDistTC: 12, leash: 7 },
 
+  /* Difficulty modes. gather/output scale player income; wave* shape raider
+     pressure; animal* cap wildlife; aiRaidDay is the rival's earliest attack. */
+  MODES: {
+    calm: {
+      name: 'Calm', icon: '🌿', desc: 'Very few enemies — build in peace.',
+      gather: 1, output: 1,
+      waveFirst: 24, waveGapMult: 1.6, waveSizeAdd: -1,
+      animalMax: 2, animalChance: 0.1, aiRaidDay: 45,
+    },
+    moderate: {
+      name: 'Moderate', icon: '⚔️', desc: 'The intended experience.',
+      gather: 1, output: 1,
+      waveFirst: 18, waveGapMult: 1.15, waveSizeAdd: 0,
+      animalMax: 3, animalChance: 0.2, aiRaidDay: 32,
+    },
+    hard: {
+      name: 'Hard', icon: '💀', desc: 'Slower gathering, relentless enemies.',
+      gather: 0.85, output: 0.85,
+      waveFirst: 13, waveGapMult: 0.85, waveSizeAdd: 1,
+      animalMax: 5, animalChance: 0.35, aiRaidDay: 26,
+    },
+  },
+
   WIN: { econTotal: 3000, econPop: 20, surviveDay: 60 },
 
   ATTACK_COOLDOWN: 1.0,        // seconds between melee hits

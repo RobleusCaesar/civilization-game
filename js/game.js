@@ -16,10 +16,14 @@ const G = {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   },
 
-  newGame(seed) {
+  modeCfg() { return CFG.MODES[S && S.mode] || CFG.MODES.moderate; },
+
+  newGame(seed, modeKey) {
+    const mode = CFG.MODES[modeKey] ? modeKey : 'moderate';
     const gen = MapGen.generate(seed);
     S = {
       seed: String(seed),
+      mode,
       rngState: hashSeed(String(seed)) | 0,
       day: 1, dayT: 0,
       paused: false, over: null,
@@ -31,7 +35,7 @@ const G = {
       },
       buildings: [], units: [],
       nextId: 1,
-      wave: { next: CFG.WAVES.first, count: 0 },
+      wave: { next: CFG.MODES[mode].waveFirst, count: 0 },
       ai: null,
       log: [],
     };
@@ -47,8 +51,8 @@ const G = {
     UI.placing = null;
     document.getElementById('btnPause').textContent = '⏸';
     document.getElementById('endModal').classList.remove('show');
-    this.log('A new tribe settles the valley. Gather, build, survive.');
-    this.log('First raiders expected around day ' + CFG.WAVES.first);
+    this.log(`A new tribe settles the valley (${this.modeCfg().name}). Gather, build, survive.`);
+    this.log('First raiders expected around day ' + S.wave.next);
   },
 
   log(msg, warn) {

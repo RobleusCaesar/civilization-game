@@ -148,7 +148,7 @@ const Units = {
           const g = CFG.GATHER[S.map.terrain[MapGen.idx(t.x, t.y)]];
           if (!g) { u.task = null; continue; }
           const before = S.res[g.res];
-          S.res[g.res] += g.rate * dt;
+          S.res[g.res] += g.rate * dt * G.modeCfg().gather;
           if ((before | 0) !== (S.res[g.res] | 0) && Math.random() < 0.3)
             R.float(u.x, u.y - 0.5, '+' + g.res, '#d8e8b0');
         }
@@ -214,9 +214,10 @@ const Units = {
 
   // daily upkeep: wild animal spawning near forests
   dailySpawns() {
+    const m = G.modeCfg();
     if (S.day < CFG.ANIMALS.graceDays) return;   // early grace period — get established first
-    if (this.count('W') >= CFG.ANIMALS.max) return;
-    if (G.rand() > CFG.ANIMALS.spawnChance) return;
+    if (this.count('W') >= m.animalMax) return;
+    if (G.rand() > m.animalChance) return;
     // pick a random forest tile away from the player TC
     const tc = Bld.tcOf('P');
     for (let tries = 0; tries < 40; tries++) {

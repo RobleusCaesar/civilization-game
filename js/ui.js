@@ -9,6 +9,7 @@ const UI = {
   pinchD: 0,
   downAt: null,
   refreshT: 0,
+  newMode: 'moderate',   // difficulty picked for the next game
   MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks'],
 
   init() {
@@ -372,10 +373,16 @@ const UI = {
   /* ---------------- menus / save / load ---------------- */
   bindButtons() {
     const menu = document.getElementById('menuModal');
+    document.querySelectorAll('#modeRow .mode').forEach(btn => btn.addEventListener('click', () => {
+      this.newMode = btn.dataset.mode;
+      document.querySelectorAll('#modeRow .mode').forEach(b => b.classList.toggle('sel', b === btn));
+      document.getElementById('modeDesc').textContent = CFG.MODES[this.newMode].desc;
+    }));
     document.getElementById('btnMenu').addEventListener('click', () => {
       S.paused = true;
       document.getElementById('btnPause').textContent = '▶';
-      document.getElementById('seedShow').textContent = 'Current map seed: ' + S.seed;
+      document.getElementById('seedShow').textContent =
+        `Current game: ${G.modeCfg().icon} ${G.modeCfg().name} — seed ${S.seed}`;
       const log = document.getElementById('logList');
       log.innerHTML = S.log.slice(0, 30).map(l => `<div>Day ${l.day}: ${l.msg}</div>`).join('');
       menu.classList.add('show');
@@ -392,11 +399,11 @@ const UI = {
     document.getElementById('btnNew').addEventListener('click', () => {
       const seed = document.getElementById('seedInput').value.trim() || String((Math.random() * 1e9) | 0);
       menu.classList.remove('show');
-      G.newGame(seed);
+      G.newGame(seed, this.newMode);
     });
     document.getElementById('btnEndNew').addEventListener('click', () => {
       document.getElementById('endModal').classList.remove('show');
-      G.newGame(String((Math.random() * 1e9) | 0));
+      G.newGame(String((Math.random() * 1e9) | 0), S.mode);
     });
     document.getElementById('btnSave').addEventListener('click', () => {
       const blob = new Blob([G.saveJSON()], { type: 'application/json' });
@@ -427,7 +434,7 @@ const UI = {
   showEnd(win, msg) {
     document.getElementById('endTitle').textContent = win ? '🏆 Victory!' : '💀 Defeat';
     document.getElementById('endTitle').style.color = win ? 'var(--gold)' : 'var(--danger)';
-    document.getElementById('endMsg').textContent = msg + ` (Day ${S.day}, seed ${S.seed})`;
+    document.getElementById('endMsg').textContent = msg + ` (${G.modeCfg().name}, day ${S.day}, seed ${S.seed})`;
     document.getElementById('endModal').classList.add('show');
   },
 };

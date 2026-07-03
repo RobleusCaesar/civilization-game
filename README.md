@@ -21,6 +21,9 @@ on desktop too.
 
 ## How to play
 
+- **Difficulty**: pick 🌿 Calm, ⚔️ Moderate, or 💀 Hard when starting a new game
+  (☰ menu). Calm has very few enemies; Hard gathers ~15% slower with earlier,
+  bigger, more frequent raids and bolder wildlife.
 - **Time**: each turn is one in-game day and auto-advances every 3 seconds.
   ⏸ pauses; ☰ opens the menu (save / load / new game / seed / event log).
 - **Camera**: drag to pan, pinch (or mouse wheel) to zoom, tap the minimap to jump.

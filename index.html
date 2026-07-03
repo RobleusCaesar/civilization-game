@@ -107,6 +107,7 @@
   .abtn:active { background: var(--btn-hi); }
   .abtn.cant { opacity: 0.45; }
   .abtn.danger { border-color: var(--danger); }
+  .abtn.sel { border-color: var(--gold); background: #514627; }
   #panelClose { position: absolute; right: 10px; margin-top: -2px; }
 
   /* ---- modal ---- */
@@ -164,6 +165,13 @@
     <div class="mrow"><button class="abtn" id="btnSave">💾 Save game (download)</button>
       <button class="abtn" id="btnLoad">📂 Load game</button>
       <input type="file" id="fileLoad" accept=".json,application/json" style="display:none"></div>
+    <p class="hint" style="margin-bottom:2px"><b>New game difficulty:</b></p>
+    <div class="mrow" id="modeRow">
+      <button class="abtn mode" data-mode="calm">🌿 Calm</button>
+      <button class="abtn mode sel" data-mode="moderate">⚔️ Moderate</button>
+      <button class="abtn mode" data-mode="hard">💀 Hard</button>
+    </div>
+    <p class="hint" id="modeDesc" style="margin-top:0">The intended experience.</p>
     <div class="mrow"><input id="seedInput" placeholder="seed (optional)" inputmode="text">
       <button class="abtn" id="btnNew">New game</button></div>
     <p id="seedShow"></p>

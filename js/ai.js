@@ -74,7 +74,7 @@ const AI = {
     // raid the player when clearly ahead militarily
     if (ai.raidCd > 0) ai.raidCd--;
     const mine = this.power('A'), theirs = this.power('P');
-    if (S.day >= 30 && ai.raidCd <= 0 && mine >= 4 && mine > theirs * 1.3) {
+    if (S.day >= G.modeCfg().aiRaidDay && ai.raidCd <= 0 && mine >= 4 && mine > theirs * 1.3) {
       const troops = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) && !(u.task && u.task.type === 'raid'));
       const party = troops.slice(0, Math.ceil(troops.length * 0.6));
       if (party.length >= 3) {
