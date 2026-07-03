@@ -84,12 +84,13 @@ const Combat = {
         const tgt = Units.get(u.tUnit);
         if (!tgt) { u.tUnit = 0; continue; }
         const d = Math.hypot(tgt.x - u.x, tgt.y - u.y);
-        // guards give up long chases and go home
-        if (Units.isMilitary(u) && !(u.task && u.task.type === 'raid') &&
-            Math.hypot(u.x - u.anchor.x, u.y - u.anchor.y) > 10) {
+        // guards give up long chases and go home; wild animals lose interest even sooner
+        const leash = Units.isWild(u) ? CFG.ANIMALS.leash
+          : (Units.isMilitary(u) && !(u.task && u.task.type === 'raid')) ? 10 : 0;
+        if (leash && Math.hypot(u.x - u.anchor.x, u.y - u.anchor.y) > leash) {
           u.tUnit = 0;
           Units.setPath(u, u.anchor.x | 0, u.anchor.y | 0);
-          u.task = { type: 'move', x: u.anchor.x | 0, y: u.anchor.y | 0 };
+          if (!Units.isWild(u)) u.task = { type: 'move', x: u.anchor.x | 0, y: u.anchor.y | 0 };
           continue;
         }
         if (d > CFG.MELEE_RANGE) {

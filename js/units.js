@@ -176,6 +176,7 @@ const Units = {
 
   // daily upkeep: wild animal spawning near forests
   dailySpawns() {
+    if (S.day < CFG.ANIMALS.graceDays) return;   // early grace period — get established first
     if (this.count('W') >= CFG.ANIMALS.max) return;
     if (G.rand() > CFG.ANIMALS.spawnChance) return;
     // pick a random forest tile away from the player TC
@@ -183,7 +184,7 @@ const Units = {
     for (let tries = 0; tries < 40; tries++) {
       const x = (G.rand() * CFG.W) | 0, y = (G.rand() * CFG.H) | 0;
       if (S.map.terrain[MapGen.idx(x, y)] !== T.FOREST) continue;
-      if (tc && Math.hypot(x - tc.x, y - tc.y) < 8) continue;
+      if (tc && Math.hypot(x - tc.x, y - tc.y) < CFG.ANIMALS.minDistTC) continue;
       const kind = G.rand() < 0.6 ? 'wolf' : 'boar';
       this.spawn(kind, 'W', x, y);
       return;

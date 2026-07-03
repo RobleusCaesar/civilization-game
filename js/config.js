@@ -105,17 +105,17 @@ const CFG = {
   },
 
   UNITS: {
-    villager: { name: 'Villager',       hp: 30,  atk: 2,  def: 0, speed: 2.2, aggro: 0 },
+    villager: { name: 'Villager',       hp: 40,  atk: 2,  def: 0, speed: 2.2, aggro: 0 },
     defender: { name: 'Defender',       hp: 60,  atk: 8,  def: 2, speed: 2.4, aggro: 5 },
     elite:    { name: 'Elite Defender', hp: 110, atk: 14, def: 4, speed: 2.4, aggro: 5 },
-    wolf:     { name: 'Wolf',           hp: 26,  atk: 5,  def: 0, speed: 3.0, aggro: 5 },
-    boar:     { name: 'Boar',           hp: 48,  atk: 8,  def: 1, speed: 2.0, aggro: 2 },
-    raider:   { name: 'Raider',         hp: 45,  atk: 7,  def: 1, speed: 2.3, aggro: 2.5 },
-    brute:    { name: 'Raider Brute',   hp: 95,  atk: 13, def: 2, speed: 1.9, aggro: 2.5 },
+    wolf:     { name: 'Wolf',           hp: 24,  atk: 4,  def: 0, speed: 2.4, aggro: 4 },
+    boar:     { name: 'Boar',           hp: 48,  atk: 6,  def: 1, speed: 1.8, aggro: 2 },
+    raider:   { name: 'Raider',         hp: 45,  atk: 6,  def: 1, speed: 2.3, aggro: 2.5 },
+    brute:    { name: 'Raider Brute',   hp: 95,  atk: 12, def: 2, speed: 1.9, aggro: 2.5 },
   },
 
-  WAVES: { first: 10, minGap: 5, maxGap: 8, scaleHp: 0.08, scaleAtk: 0.06 },
-  ANIMALS: { max: 6, spawnChance: 0.35 },   // per-day spawn roll while under cap
+  WAVES: { first: 16, minGap: 7, maxGap: 10, scaleHp: 0.07, scaleAtk: 0.05 },
+  ANIMALS: { max: 4, spawnChance: 0.25, graceDays: 6, minDistTC: 12, leash: 7 },
 
   WIN: { econTotal: 3000, econPop: 20, surviveDay: 60 },
 
