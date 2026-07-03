@@ -1,7 +1,10 @@
 "use strict";
 /* Neolithic — static game configuration (stat tables). */
 
-const T = { GRASS: 0, FOREST: 1, WATER: 2, HILLS: 3, FERTILE: 4, CAMP: 5 };
+const T = {
+  GRASS: 0, FOREST: 1, WATER: 2, HILLS: 3, FERTILE: 4, CAMP: 5,
+  STUMPS: 6, PEBBLES: 7, BARREN: 8, RUIN: 9,   // depleted / destroyed variants
+};
 
 const CFG = {
   TILE: 32,
@@ -17,6 +20,17 @@ const CFG = {
     [T.HILLS]:   { res: 'stone', rate: 0.6 },
     [T.FERTILE]: { res: 'food',  rate: 1.0 },
   },
+  RES_AMOUNT: {               // starting stock per resource tile [min, max]
+    [T.FOREST]:  [80, 140],
+    [T.HILLS]:   [70, 130],
+    [T.FERTILE]: [80, 140],
+  },
+  DEPLETED: {                 // what a tile becomes once gathered out
+    [T.FOREST]:  T.STUMPS,
+    [T.HILLS]:   T.PEBBLES,
+    [T.FERTILE]: T.BARREN,
+  },
+  DEMOLISH_REFUND: 0.4,       // fraction of spent resources returned on demolish
 
   /* ---- Buildings: 8 types x 3 levels. Level index = level-1. ----
      cost: resources to build/upgrade to this level

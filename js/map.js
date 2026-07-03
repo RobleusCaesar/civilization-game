@@ -85,7 +85,14 @@ const MapGen = {
       if (dP > 14 && dA > 14 && t[id(x, y)] !== T.WATER) { t[id(x, y)] = T.CAMP; camps.push({ x, y }); }
     }
 
-    return { terrain: t, spawns: { player, ai, camps } };
+    // every resource tile carries a finite, randomized stock
+    const resAmount = new Array(W * H).fill(0);
+    for (let i = 0; i < W * H; i++) {
+      const range = CFG.RES_AMOUNT[t[i]];
+      if (range) resAmount[i] = Math.round(range[0] + rnd() * (range[1] - range[0]));
+    }
+
+    return { terrain: t, resAmount, spawns: { player, ai, camps } };
   },
 
   // nearest tile matching pred, spiraling out from (cx,cy)

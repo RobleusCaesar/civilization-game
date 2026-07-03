@@ -11,6 +11,7 @@ const UI = {
   refreshT: 0,
   newMode: 'moderate',   // difficulty picked for the next game
   builderFor: null,      // villager id that will build the next placed building
+  confirmDemolish: 0,    // building id awaiting demolish confirmation
   MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks'],
 
   init() {
@@ -212,10 +213,12 @@ const UI = {
   select(type, id) {
     this.sel = { type, id };
     this.builderFor = null;
+    this.confirmDemolish = 0;
     this.renderPanel();
   },
   deselect() {
     this.sel = null;
+    this.confirmDemolish = 0;
     document.getElementById('panel').classList.remove('show');
     document.getElementById('buildmenu').style.display = 'flex';
   },
@@ -229,7 +232,8 @@ const UI = {
       if (!b) return 'gone';
       const d = Bld.def(b.key);
       let sig = ['b', b.id, b.level, b.construction > 0, b.upgrading > 0, b.queue.length,
-        b.level < 3 && Bld.canUpgrade(b).ok, b.hp < b.maxhp, Bld.hasWorker(b)].join('|');
+        b.level < 3 && Bld.canUpgrade(b).ok, b.hp < b.maxhp, Bld.hasWorker(b),
+        this.confirmDemolish === b.id].join('|');
       if (d.train) for (const uk in d.train) sig += '|' + Bld.canTrain(b, uk).ok;
       return sig;
     }
@@ -310,6 +314,12 @@ const UI = {
           }
           if (b.queue.length) html += `<span class="psub" style="align-self:center">Queue: ${b.queue.length}</span>`;
         }
+        if (b.key !== 'tc') {
+          const refund = Bld.costStr(Bld.demolishRefund(b));
+          html += this.confirmDemolish === b.id
+            ? `<button class="abtn danger" data-act="demolish">⚠️ Confirm demolish<small>get back ${refund}</small></button>`
+            : `<button class="abtn" data-act="demolish">💥 Demolish<small>refund ${refund}</small></button>`;
+        }
       } else {
         html += `<span class="psub">Enemy structure — order defenders to attack it.</span>`;
       }
@@ -327,6 +337,11 @@ const UI = {
           const v = Units.nearestIdleVillager(b2.x, b2.y);
           if (!v) this.toast('No idle villager — free one up first', true);
           else if (Units.assignBuild(v, b2)) this.toast('Villager on the way');
+        }
+        else if (btn.dataset.act === 'demolish') {
+          if (this.confirmDemolish !== b2.id) { this.confirmDemolish = b2.id; this.renderPanel(); return; }
+          this.confirmDemolish = 0;
+          if (Bld.demolish(b2)) return;   // demolish deselects via removeToRuin
         }
         this.renderPanel();
         this.refreshMenu();

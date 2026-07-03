@@ -30,7 +30,10 @@ const Bld = {
   tileFree(x, y) {
     if (!MapGen.inB(x, y)) return false;
     const t = S.map.terrain[MapGen.idx(x, y)];
-    if (t === T.WATER || t === T.FOREST || t === T.HILLS || t === T.CAMP) return false;
+    // grass, fertile soil, and anything depleted or ruined is fair ground to build on
+    const buildable = t === T.GRASS || t === T.FERTILE ||
+      t === T.STUMPS || t === T.PEBBLES || t === T.BARREN || t === T.RUIN;
+    if (!buildable) return false;
     if (this.at(x, y)) return false;
     return true;
   },
@@ -218,20 +221,51 @@ const Bld = {
     }
   },
 
+  // remove a building and leave rubble behind (buildable like any depleted tile)
+  removeToRuin(b) {
+    S.buildings.splice(S.buildings.indexOf(b), 1);
+    const idx = MapGen.idx(b.x, b.y);
+    S.map.terrain[idx] = T.RUIN;
+    if (S.map.resAmount) S.map.resAmount[idx] = 0;
+    R.updateTile(b.x, b.y);
+    for (const u of S.units) if (u.tBld === b.id) u.tBld = 0;
+    if (UI.sel && UI.sel.type === 'bld' && UI.sel.id === b.id) UI.deselect();
+  },
+
   damage(b, amt) {
     b.hp -= amt;
     if (b.hp <= 0) {
-      S.buildings.splice(S.buildings.indexOf(b), 1);
-      const name = this.def(b.key).name;
-      if (b.owner === 'P') {
+      const name = this.def(b.key).name, owner = b.owner, key = b.key;
+      this.removeToRuin(b);
+      if (owner === 'P') {
         G.log(`${name} destroyed!`, true);
-        if (b.key === 'tc') G.end(false, 'Your Town Center was destroyed.');
-      } else if (b.owner === 'A') {
+        if (key === 'tc') G.end(false, 'Your Town Center was destroyed.');
+      } else if (owner === 'A') {
         G.log(`Rival ${name} destroyed!`);
-        if (b.key === 'tc') G.end(true, 'You razed the rival Town Center. The valley is yours!');
+        if (key === 'tc') G.end(true, 'You razed the rival Town Center. The valley is yours!');
       }
-      // clear attackers targeting it
-      for (const u of S.units) if (u.tBld === b.id) u.tBld = 0;
     }
+  },
+
+  demolishRefund(b) {
+    const d = this.def(b.key);
+    const paidLevels = b.level + (b.upgrading > 0 ? 1 : 0);
+    const out = {};
+    for (let i = 0; i < paidLevels; i++)
+      for (const k in d.levels[i].cost) {
+        const back = Math.floor(d.levels[i].cost[k] * CFG.DEMOLISH_REFUND);
+        if (back) out[k] = (out[k] || 0) + back;
+      }
+    return out;
+  },
+
+  demolish(b) {
+    if (b.owner !== 'P' || b.key === 'tc') return false;   // the Town Center stays
+    const refund = this.demolishRefund(b);
+    for (const k in refund) S.res[k] += refund[k];
+    const name = this.def(b.key).name;
+    this.removeToRuin(b);
+    G.log(`${name} demolished — recovered ${this.costStr(refund)}`);
+    return true;
   },
 };

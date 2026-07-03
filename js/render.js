@@ -27,18 +27,24 @@ const R = {
     this.cv.height = Math.round(innerHeight * this.dpr);
   },
 
+  drawTile(g, x, y) {
+    const t = S.map.terrain[MapGen.idx(x, y)];
+    const variants = Sprites.terrain[t];
+    g.drawImage(variants[(x * 7 + y * 13) % variants.length], x * CFG.TILE, y * CFG.TILE);
+  },
+
+  // redraw one tile of the cached terrain layer (depletion, ruins)
+  updateTile(x, y) {
+    if (this.terrainCache) this.drawTile(this.terrainCache.getContext('2d'), x, y);
+  },
+
   onNewGame() {
     // pre-render the full terrain layer once
     const px = CFG.W * CFG.TILE;
     this.terrainCache = document.createElement('canvas');
     this.terrainCache.width = px; this.terrainCache.height = px;
     const g = this.terrainCache.getContext('2d');
-    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) {
-      const t = S.map.terrain[MapGen.idx(x, y)];
-      const variants = Sprites.terrain[t];
-      const v = variants[(x * 7 + y * 13) % variants.length];
-      g.drawImage(v, x * CFG.TILE, y * CFG.TILE);
-    }
+    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) this.drawTile(g, x, y);
     this.fogCv = document.createElement('canvas');
     this.fogCv.width = CFG.W; this.fogCv.height = CFG.H;
     this.fogG = this.fogCv.getContext('2d');
@@ -208,7 +214,8 @@ const R = {
   },
 
   drawMini() {
-    const g = this.mg, COLORS = ['#5a8f3c', '#2e5c25', '#2e6b8a', '#8f8f86', '#6b5433', '#3d3833'];
+    const g = this.mg, COLORS = ['#5a8f3c', '#2e5c25', '#2e6b8a', '#8f8f86', '#6b5433', '#3d3833',
+      '#6f8a4c', '#7d8a72', '#8a7a58', '#57503f'];   // stumps, pebbles, barren, ruin
     for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) {
       g.fillStyle = S.map.explored[MapGen.idx(x, y)] ? COLORS[S.map.terrain[MapGen.idx(x, y)]] : '#060504';
       g.fillRect(x * 2, y * 2, 2, 2);

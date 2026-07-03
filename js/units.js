@@ -148,12 +148,26 @@ const Units = {
             u.task = null;
           }
         } else {
-          const g = CFG.GATHER[S.map.terrain[MapGen.idx(t.x, t.y)]];
+          const idx = MapGen.idx(t.x, t.y);
+          const terr = S.map.terrain[idx];
+          const g = CFG.GATHER[terr];
           if (!g) { u.task = null; continue; }
           const before = S.res[g.res];
-          S.res[g.res] += g.rate * dt * G.modeCfg().gather;
+          const take = Math.min(S.map.resAmount[idx], g.rate * dt * G.modeCfg().gather);
+          S.res[g.res] += take;
+          S.map.resAmount[idx] -= take;
           if ((before | 0) !== (S.res[g.res] | 0) && Math.random() < 0.3)
             R.float(u.x, u.y - 0.5, '+' + g.res, '#d8e8b0');
+          if (S.map.resAmount[idx] <= 0.001) {
+            // tile exhausted — it turns to stumps/pebbles/spent soil and frees the villager
+            S.map.resAmount[idx] = 0;
+            S.map.terrain[idx] = CFG.DEPLETED[terr];
+            R.updateTile(t.x, t.y);
+            const what = terr === T.FOREST ? 'The forest here is felled'
+              : terr === T.HILLS ? 'The stone here is quarried out' : 'The soil here is spent';
+            G.log(`${what} — villager idle`, true);
+            u.task = null;
+          }
         }
       } else if (t.type === 'build') {
         const b = Bld.get(t.id);

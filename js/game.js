@@ -30,6 +30,7 @@ const G = {
       res: Object.assign({}, CFG.START_RES),
       map: {
         terrain: gen.terrain,
+        resAmount: gen.resAmount,
         explored: new Array(CFG.W * CFG.H).fill(0),
         spawns: gen.spawns,
       },
@@ -120,6 +121,13 @@ const G = {
     if (!data || !data.map || !Array.isArray(data.map.terrain) ||
         data.map.terrain.length !== CFG.W * CFG.H)
       throw new Error('not a Neolithic save file');
+    if (!data.map.resAmount) {
+      // older save: give surviving resource tiles an average stock
+      data.map.resAmount = data.map.terrain.map(t => {
+        const r = CFG.RES_AMOUNT[t];
+        return r ? Math.round((r[0] + r[1]) / 2) : 0;
+      });
+    }
     S = data;
     S.paused = true;
     document.getElementById('btnPause').textContent = '▶';

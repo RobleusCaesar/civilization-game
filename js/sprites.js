@@ -98,6 +98,43 @@ const Sprites = {
       p(4, 12, 1, 2, PAL.sprout); p(12, 11, 1, 2, PAL.sprout); p(9, 13, 1, 2, PAL.sprout);
     }),
   ];
+  // depleted terrain: felled forest, quarried-out hills, spent soil, building ruins
+  function drawStump(p, x, y) {
+    p(x, y + 1, 3, 2, PAL.trunk);
+    p(x, y, 3, 1, PAL.thatch);
+    p(x + 1, y, 1, 1, PAL.thatchD);
+  }
+  Sprites.terrain[T.STUMPS] = [
+    tile(p => { grassBase(p, 51); drawStump(p, 2, 3); drawStump(p, 9, 8); drawStump(p, 4, 11); }),
+    tile(p => { grassBase(p, 63); drawStump(p, 8, 2); drawStump(p, 3, 7); drawStump(p, 11, 11); }),
+  ];
+  Sprites.terrain[T.PEBBLES] = [
+    tile(p => {
+      grassBase(p, 57);
+      p(3, 5, 2, 1, PAL.rock); p(9, 8, 2, 1, PAL.rockD); p(6, 12, 2, 1, PAL.rock);
+      p(12, 4, 1, 1, PAL.rockL); p(4, 9, 1, 1, PAL.rockL); p(10, 12, 1, 1, PAL.rockD);
+      p(2, 12, 3, 2, PAL.rockD); p(2, 12, 3, 1, PAL.rock);   // one spent slab
+    }),
+  ];
+  Sprites.terrain[T.BARREN] = [
+    tile(p => {
+      p(0, 0, 16, 16, '#8a7a58');
+      speckle(p, 71, 8, '#7a6a48');
+      p(2, 4, 5, 1, '#6a5a3c'); p(6, 5, 1, 3, '#6a5a3c');     // cracks
+      p(10, 9, 4, 1, '#6a5a3c'); p(9, 11, 1, 3, '#6a5a3c');
+      p(12, 2, 2, 1, '#6a5a3c');
+    }),
+  ];
+  Sprites.terrain[T.RUIN] = [
+    tile(p => {
+      p(0, 0, 16, 16, '#57503f');
+      speckle(p, 83, 8, '#463f30');
+      p(2, 9, 5, 3, PAL.rockD); p(2, 8, 3, 1, PAL.rock);      // collapsed wall
+      p(9, 4, 4, 2, PAL.rockD); p(12, 6, 2, 2, PAL.rock);
+      p(6, 3, 2, 2, PAL.trunk); p(5, 13, 4, 1, PAL.woodD);    // charred beams
+      p(10, 11, 3, 1, PAL.dark); p(4, 5, 1, 1, PAL.dark);
+    }),
+  ];
   Sprites.terrain[T.CAMP] = [
     tile(p => {
       grassBase(p, 41);

@@ -31,7 +31,10 @@ on desktop too.
 - **Camera**: drag to pan, pinch (or mouse wheel) to zoom, tap the minimap to jump.
 - **Gathering**: tap a villager, then tap a **forest** (wood), **hills** (stone), or
   **fertile soil** (food) tile — they gather automatically. Tapping a resource tile
-  with nothing selected sends an idle villager.
+  with nothing selected sends an idle villager. Every tile holds a finite stock:
+  once gathered out it turns to stumps / pebbles / spent soil, the villager goes
+  idle, and you'll need farms, lumber camps, and quarries for steady income.
+  Depleted tiles (and ruins) are open ground — build right on top of them.
 - **Building**: tap a button in the bottom bar, then tap a clear tile near your
   village — the nearest idle villager is sent to work the site. Or start from the
   villager: tap them, hit *Build…*, pick a building, tap a site, and that villager
@@ -40,6 +43,10 @@ on desktop too.
 - **Repair**: damaged buildings can be repaired the same way — tap the building
   and hit *Repair* (or tap a villager, then the building). Repairs cost only a
   villager's working time.
+- **Demolish**: tap a building → *Demolish* (tap twice to confirm) to reclaim 40%
+  of everything spent on it — handy for moving your layout around. Destroyed or
+  demolished buildings leave ruins you can build over. The Town Center can't be
+  demolished.
 - **Upgrades**: tap a building → *Upgrade*. Like construction, upgrades need a
   villager working the site. Levels 2–3 need a matching Town Center
   level and unlock bigger output or passive bonuses (level-3 Hunter's Lodge arms
