@@ -358,7 +358,7 @@ const R = {
     }
     for (const u of S.units) {
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
-      g.fillStyle = u.owner === 'P' ? '#c0e8ff' : u.owner === 'A' ? '#ffb0a8' : u.owner === 'R' ? '#ff5040' : '#e8d8a0';
+      g.fillStyle = u.owner === 'P' ? '#c0e8ff' : u.owner === 'A' ? '#ffb0a8' : u.owner === 'R' ? '#3fd0b0' : '#e8d8a0';
       g.fillRect((u.x * 2) | 0, (u.y * 2) | 0, 2, 2);
     }
     // camera rect

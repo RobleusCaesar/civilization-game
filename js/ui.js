@@ -666,7 +666,7 @@ const UI = {
       let hint = !own ? (
           Units.isPassive(u) ? `Wild game — send a villager or defender to hunt it (+${CFG.MEAT_DROP} food).`
           : u.owner === 'W' ? `Wild beast — dangerous, but worth +${CFG.MEAT_DROP} food.`
-          : u.owner === 'R' ? 'Raider!' : 'Rival tribe')
+          : u.owner === 'R' ? 'Barbarian!' : 'Rival tribe')
         : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / fertile soil to gather, a work site to build, or a tile to walk.'
         : 'Tap a tile to move, or an enemy to attack.';
       if (!own && !Units.isPassive(u)) {

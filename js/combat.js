@@ -176,15 +176,16 @@ const Combat = {
     }
   },
 
-  /* raider wave spawning, called from the day tick */
+  /* barbarian war-band spawning, called from the day tick */
   maybeWave() {
     if (S.day < S.wave.next) return;
     const m = G.modeCfg();
     S.wave.count++;
     const gap = CFG.WAVES.minGap + Math.floor(G.rand() * (CFG.WAVES.maxGap - CFG.WAVES.minGap + 1));
     S.wave.next = S.day + Math.max(4, Math.round(gap * m.waveGapMult));
-    const n = Math.max(1, Math.min(10, 1 + Math.ceil(S.wave.count * 0.8) + m.waveSizeAdd));
-    const scale = 1 + S.wave.count * CFG.WAVES.scaleHp;
+    const n = Math.max(1, Math.min(8, 1 + Math.ceil(S.wave.count * 0.7) + m.waveSizeAdd));
+    // waves toughen over time; barbMult sets the mode baseline (Hard ≈ rival defenders)
+    const scale = (1 + S.wave.count * CFG.WAVES.scaleHp) * (m.barbMult || 1);
 
     // spawn near a raider camp if any, else map edge
     let sx, sy;
@@ -230,6 +231,6 @@ const Combat = {
                 MapGen.findNear(spot.x, spot.y, 4, inNet) || spot;
       Units.spawn(kind, 'R', p.x, p.y, { scale });
     }
-    G.log(`⚔ Raider war party sighted (${n})!`, true);
+    G.log(`⚔ Barbarian war band sighted (${n})!`, true);
   },
 };

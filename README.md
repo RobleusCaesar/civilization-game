@@ -134,11 +134,15 @@ on desktop too.
   while harmless deer and wild cows graze the map. Any wild animal killed by
   your tribe yields **+10 food** — tap a villager or defender, then the animal,
   to hunt it.
-- **Raiders** — war parties arrive from map edges and camps — rarely on Calm, regularly on Hard —
-  growing bigger and tougher; they attack your nearest buildings. Watchtowers and
-  defenders are your answer. They always muster in the open wilds, well away
-  from your territory — never on your shores or inside your walls — and march
-  in from there, so chokepoints and island walkways truly hold.
+- **Barbarians** — wildling war bands in furs, bone, and teal war paint (their
+  own colour, so they never read as the red rival tribe) arrive from map edges
+  and camps — rarely on Calm, regularly on Hard — growing bigger and tougher
+  over time; they attack your nearest buildings. On Moderate they're tougher
+  than any animal but weaker than the rival's soldiers; on Hard they match the
+  rival's fighters and come a little more often. Watchtowers and defenders are
+  your answer. They always muster in the open wilds, well away from your
+  territory — never on your shores or inside your walls — and march in from
+  there, so chokepoints and island walkways truly hold.
 - **The rival tribe** — an AI settlement across the valley builds, upgrades, trains
   defenders, and will march on you if it out-scales your military. Scout it through
   the fog of war.
@@ -160,8 +164,8 @@ js/sprites.js       procedural pixel-art sprite generation (terrain, 24 building
                     sprites, animated unit sheets, icons)
 js/map.js           seeded map generation (sizes + landforms) + BFS pathfinding
 js/buildings.js     placement, construction, upgrades, training, production
-js/units.js         villagers/defenders/animals/raiders: movement & tasks
-js/combat.js        target acquisition, melee/tower combat, raider waves
+js/units.js         villagers/defenders/animals/barbarians: movement & tasks
+js/combat.js        target acquisition, melee/tower combat, barbarian waves
 js/ai.js            rival civilization brain
 js/render.js        camera, cached terrain layer, fog of war, minimap
 js/ui.js            touch input, build menu, selection panel, save/load

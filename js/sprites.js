@@ -414,10 +414,23 @@ const Sprites = {
     (p, f) => { p(4, 6, 1, 3, PAL.rockL); p(11, 2, 1, 5, PAL.trunk); p(11, 1, 1, 1, PAL.gold); }); // shield
   Sprites.unit.defenderA = unitSheet({ body: '#7a5242', accent: PAL.A, pants: '#4a2a24', hair: PAL.hair, spear: PAL.trunk },
     (p, f) => { p(11, 2, 1, 5, PAL.trunk); p(11, 1, 1, 1, PAL.rockL); });
-  Sprites.unit.raider = unitSheet({ body: PAL.R, accent: PAL.red, pants: PAL.RD, hair: '#1a1208', spear: PAL.RD },
-    (p, f) => { p(7, 1, 2, 1, PAL.red); });                                       // warpaint band
-  Sprites.unit.brute = unitSheet({ body: PAL.RD, accent: PAL.red, pants: PAL.R, hair: '#1a1208', spear: PAL.RD },
-    (p, f) => { p(5, 5, 6, 1, PAL.red); p(6, 0, 4, 1, '#c9b18a'); });             // bone crown
+  // barbarians / wildlings: shaggy furs, bone trinkets, teal war paint — a
+  // colour family all their own so they never read as the (red) rival tribe
+  const BARB = { paint: '#3fb094', fur: '#6e5b40', furD: '#4a3d2c', bone: '#d8cfae' };
+  Sprites.unit.raider = unitSheet({ body: BARB.fur, accent: BARB.furD, pants: BARB.furD, hair: '#7a5a30', spear: BARB.bone },
+    (p, f) => {
+      p(7, 1, 2, 1, BARB.paint);                    // teal face paint
+      p(6, 6, 4, 1, BARB.paint);                    // painted chest stripe
+      p(5, 5, 1, 2, BARB.furD); p(10, 5, 1, 2, BARB.furD);   // shaggy fur shoulders
+      p(6, 2, 1, 1, '#7a5a30'); p(9, 2, 1, 1, '#7a5a30');    // wild hair spills down
+    });
+  Sprites.unit.brute = unitSheet({ body: BARB.furD, accent: BARB.fur, pants: BARB.fur, hair: '#3a2c1a', spear: BARB.bone },
+    (p, f) => {
+      p(5, 5, 6, 1, BARB.paint);                    // broad teal war stripe
+      p(6, 0, 4, 1, BARB.bone);                     // bone crown
+      p(5, 7, 1, 1, BARB.bone); p(10, 7, 1, 1, BARB.bone);   // bone trinkets
+      p(4, 6, 1, 3, BARB.furD);                     // hulking fur bulk
+    });
 
   // mounted unit: horse + rider with spear
   function riderSheet(c) {

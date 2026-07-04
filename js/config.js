@@ -173,8 +173,8 @@ const CFG = {
     marksman: { name: 'Marksman',       hp: 60,  atk: 11, def: 1, speed: 2.3, aggro: 6,   rng: 4.5 },
     wolf:     { name: 'Wolf',           hp: 24,  atk: 4,  def: 0, speed: 2.4, aggro: 4 },
     boar:     { name: 'Boar',           hp: 48,  atk: 6,  def: 1, speed: 1.8, aggro: 2 },
-    raider:   { name: 'Raider',         hp: 45,  atk: 6,  def: 1, speed: 2.3, aggro: 2.5 },
-    brute:    { name: 'Raider Brute',   hp: 95,  atk: 12, def: 2, speed: 1.9, aggro: 2.5 },
+    raider:   { name: 'Barbarian',       hp: 50,  atk: 7,  def: 1, speed: 2.3, aggro: 2.5 },
+    brute:    { name: 'Barbarian Brute', hp: 95,  atk: 12, def: 2, speed: 1.9, aggro: 2.5 },
     deer:     { name: 'Deer',           hp: 20,  atk: 0,  def: 0, speed: 2.0, aggro: 0 },
     cow:      { name: 'Wild Cow',       hp: 35,  atk: 0,  def: 0, speed: 1.2, aggro: 0 },
   },
@@ -187,27 +187,28 @@ const CFG = {
   WAVES: { minGap: 10, maxGap: 14, scaleHp: 0.07, scaleAtk: 0.05 },
   ANIMALS: { graceDays: 8, minDistTC: 12, leash: 7 },
 
-  /* Difficulty modes. gather/output scale player income; wave* shape raider
-     pressure; animal* cap wildlife; aiRaidDay is the rival's earliest attack. */
+  /* Difficulty modes. gather/output scale player income; wave* shape barbarian
+     pressure; barbMult scales barbarian hp/atk (1.2 on Hard ≈ rival defenders);
+     animal* cap wildlife; aiRaidDay is the rival's earliest attack. */
   MODES: {
     calm: {
       name: 'Calm', icon: '🌿', desc: 'Nearly peaceful — the odd wild animal keeps you sharp; raids are rare.',
       gather: 1, output: 1,
-      waveFirst: 60, waveGapMult: 2.2, waveSizeAdd: -1,
+      waveFirst: 60, waveGapMult: 2.2, waveSizeAdd: -1, barbMult: 0.9,
       animalMax: 2, animalChance: 0.15, aiRaidDay: 999,
       aiBuildEvery: 4, aiOutput: 0.6, aiArmyCap: 5, aiArmyDiv: 14,
     },
     moderate: {
       name: 'Moderate', icon: '⚔️', desc: 'The intended experience.',
       gather: 1, output: 1,
-      waveFirst: 30, waveGapMult: 1.3, waveSizeAdd: 0,
+      waveFirst: 30, waveGapMult: 1.5, waveSizeAdd: 0, barbMult: 1,
       animalMax: 3, animalChance: 0.2, aiRaidDay: 70,
       aiBuildEvery: 2, aiOutput: 1, aiArmyCap: 10, aiArmyDiv: 8,
     },
     hard: {
       name: 'Hard', icon: '💀', desc: 'Slower gathering, relentless enemies.',
       gather: 0.85, output: 0.85,
-      waveFirst: 20, waveGapMult: 0.9, waveSizeAdd: 1,
+      waveFirst: 20, waveGapMult: 0.8, waveSizeAdd: 1, barbMult: 1.2,
       animalMax: 4, animalChance: 0.3, aiRaidDay: 50,
       aiBuildEvery: 1, aiOutput: 1.15, aiArmyCap: 12, aiArmyDiv: 6,
     },
