@@ -197,10 +197,13 @@ const Combat = {
       sx = side === 0 ? 0 : side === 1 ? CFG.W - 1 : (G.rand() * CFG.W) | 0;
       sy = side === 2 ? 0 : side === 3 ? CFG.H - 1 : (G.rand() * CFG.H) | 0;
     }
-    const spot = MapGen.findNear(sx, sy, 6, (x, y) => Path.passable(x, y)) || { x: sx, y: sy };
+    // island/mountain maps: edge tiles can be water, so widen the search before giving up
+    const spot = MapGen.findNear(sx, sy, 6, (x, y) => Path.passable(x, y)) ||
+                 MapGen.findNear(sx, sy, Math.max(CFG.W, CFG.H), (x, y) => Path.passable(x, y));
+    if (!spot) return;
     for (let i = 0; i < n; i++) {
       const kind = (S.wave.count >= 4 && i % 3 === 2) ? 'brute' : 'raider';
-      const p = MapGen.findNear(spot.x, spot.y, 4, (x, y) => Path.passable(x, y));
+      const p = MapGen.findNear(spot.x, spot.y, 4, (x, y) => Path.passable(x, y)) || spot;
       Units.spawn(kind, 'R', p.x, p.y, { scale });
     }
     G.log(`⚔ Raider war party sighted (${n})!`, true);

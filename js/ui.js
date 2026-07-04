@@ -10,6 +10,7 @@ const UI = {
   downAt: null,
   refreshT: 0,
   newMode: 'moderate',   // difficulty picked for the next game
+  newSize: 'medium',     // map size picked for the next game
   builderFor: null,      // villager id that will build the next placed building
   confirmDemolish: 0,    // building id awaiting demolish confirmation
   wallDrag: null,        // tile chain while dragging a wall line
@@ -42,12 +43,12 @@ const UI = {
       ic.getContext('2d').drawImage(Sprites.building[key][0], 0, 0);
       btn.appendChild(ic);
       const nm = document.createElement('div'); nm.className = 'bname'; nm.textContent = d.name;
-      const co = document.createElement('div'); co.className = 'bcost'; co.textContent = Bld.costStr(d.levels[0].cost);
+      const co = document.createElement('div'); co.className = 'bcost'; co.textContent = Bld.costStr(Bld.buildSpec(key).lv.cost);
       btn.appendChild(nm); btn.appendChild(co);
       btn.addEventListener('click', () => {
         if (this.placing === key) { this.placing = null; this.builderFor = null; }
         else {
-          const can = Bld.canAfford(d.levels[0].cost);
+          const can = Bld.canAfford(Bld.buildSpec(key).lv.cost);
           if (!can) { this.toast('Not enough resources', true); return; }
           this.placing = key;
           this.deselect();
@@ -61,9 +62,14 @@ const UI = {
 
   refreshMenu() {
     document.querySelectorAll('.bbtn').forEach(b => {
-      const d = CFG.BUILDINGS[b.dataset.key];
+      const spec = Bld.buildSpec(b.dataset.key);
       b.classList.toggle('sel', this.placing === b.dataset.key);
-      b.classList.toggle('cant', !Bld.canAfford(d.levels[0].cost));
+      b.classList.toggle('cant', !Bld.canAfford(spec.lv.cost));
+      const co = b.querySelector('.bcost');
+      if (co) {
+        const txt = Bld.costStr(spec.lv.cost);
+        if (co.textContent !== txt) co.textContent = txt;
+      }
     });
   },
 
@@ -176,7 +182,7 @@ const UI = {
 
   updateWallGhost() {
     const chain = this.wallDrag || [];
-    const cost = CFG.BUILDINGS.wall.levels[0].cost;
+    const cost = Bld.buildSpec('wall').lv.cost;
     const budget = Object.assign({}, S.res);
     const chainSet = new Set(chain.map(c => c.x + ',' + c.y));
     const okTiles = [];
@@ -377,7 +383,8 @@ const UI = {
         d.needsWorker ? !!Bld.stationedWorker(b) : '-',
         !!b.rally, this.confirmDemolish === b.id].join('|');
       if (b.key === 'tc') sig += '|' + S.garrison.length + '|' +
-        S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
+        S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length + '|' +
+        (S.wallLevel || 1) + '|' + Bld.forts().length + '|' + Bld.canUpgradeWalls().ok;
       if (d.train) for (const uk in d.train) sig += '|' + Bld.canTrain(b, uk).ok;
       return sig;
     }
@@ -403,7 +410,7 @@ const UI = {
 
   // gate price for replacing a wall section, with the wall's demolish refund credited
   gateConvertCost(b) {
-    const gcost = CFG.BUILDINGS.gate.levels[0].cost;
+    const gcost = Bld.buildSpec('gate').lv.cost;
     const refund = Bld.demolishRefund(b);
     const net = {};
     for (const k in gcost) net[k] = Math.max(0, gcost[k] - (refund[k] || 0));
@@ -476,11 +483,13 @@ const UI = {
           html += `<button class="abtn" data-act="staff">🧑‍🌾 Station worker<small>keeps it producing</small></button>`;
         if (!b.construction && !b.upgrading && b.hp < b.maxhp && !worker)
           html += `<button class="abtn" data-act="sendworker">🔨 Repair<small>a villager does the work</small></button>`;
-        if (b.level < 3 && !b.construction) {
+        if (b.level < 3 && !b.construction && b.key !== 'wall' && b.key !== 'gate') {
           const up = Bld.canUpgrade(b);
           const cost = d.levels[b.level].cost;
           html += `<button class="abtn ${up.ok ? '' : 'cant'}" data-act="upgrade">⬆ Upgrade to Lv ${b.level + 1}<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;
         }
+        if ((b.key === 'wall' || b.key === 'gate') && !b.construction && b.level < 3)
+          html += `<span class="psub">Walls upgrade together — use the Town Center.</span>`;
         if (d.train && !b.construction) {
           for (const [uk, spec] of Object.entries(d.train)) {
             const ct = Bld.canTrain(b, uk);
@@ -498,6 +507,10 @@ const UI = {
           if (S.garrison.length)
             html += `<button class="abtn" data-act="release">🚪 Release all<small>${S.garrison.length} sheltered inside</small></button>`;
           html += `<button class="abtn" data-act="callidle">📣 Call idle<small>muster at the Town Center</small></button>`;
+          if ((S.wallLevel || 1) < 3 && Bld.forts().length) {
+            const upw = Bld.canUpgradeWalls();
+            html += `<button class="abtn ${upw.ok ? '' : 'cant'}" data-act="upwalls">🧱 Upgrade all walls to Lv ${(S.wallLevel || 1) + 1}<small>${Bld.costStr(Bld.wallUpgradeCost())}${upw.ok ? ' — every wall & gate' : ' — ' + upw.why}</small></button>`;
+          }
         }
         if (b.key === 'wall' && !b.construction && !b.upgrading) {
           const net = this.gateConvertCost(b);
@@ -578,8 +591,9 @@ const UI = {
           const net = this.gateConvertCost(b2);
           if (!Bld.canAfford(net)) { this.toast('Not enough resources', true); return; }
           Bld.pay(net, S.res);
-          const lv = CFG.BUILDINGS.gate.levels[0];
-          b2.key = 'gate'; b2.level = 1; b2.upgrading = 0;
+          const spec = Bld.buildSpec('gate');
+          const lv = spec.lv;
+          b2.key = 'gate'; b2.level = spec.level; b2.upgrading = 0;
           b2.maxhp = lv.hp;
           b2.hp = Math.max(30, Math.round(lv.hp * 0.4));
           b2.construction = lv.time;
@@ -588,6 +602,9 @@ const UI = {
           if (v) Units.assignBuild(v, b2);
           G.log('Wall section being rebuilt as a gate' + (v ? ' — a villager heads over' : ' — needs a builder'));
           this.renderPanel();
+        }
+        else if (btn.dataset.act === 'upwalls') {
+          if (!Bld.upgradeWalls()) this.toast(Bld.canUpgradeWalls().why, true);
         }
         else if (btn.dataset.act === 'demolish') {
           if (this.confirmDemolish !== b2.id) { this.confirmDemolish = b2.id; this.renderPanel(); return; }
@@ -723,6 +740,10 @@ const UI = {
       document.querySelectorAll('#modeRow .mode').forEach(b => b.classList.toggle('sel', b === btn));
       document.getElementById('modeDesc').textContent = CFG.MODES[this.newMode].desc;
     }));
+    document.querySelectorAll('#sizeRow .mode').forEach(btn => btn.addEventListener('click', () => {
+      this.newSize = btn.dataset.size;
+      document.querySelectorAll('#sizeRow .mode').forEach(b => b.classList.toggle('sel', b === btn));
+    }));
     document.getElementById('btnMenu').addEventListener('click', () => {
       S.paused = true;
       document.getElementById('btnPause').textContent = '▶';
@@ -744,11 +765,11 @@ const UI = {
     document.getElementById('btnNew').addEventListener('click', () => {
       const seed = document.getElementById('seedInput').value.trim() || String((Math.random() * 1e9) | 0);
       menu.classList.remove('show');
-      G.newGame(seed, this.newMode);
+      G.newGame(seed, this.newMode, this.newSize);
     });
     document.getElementById('btnEndNew').addEventListener('click', () => {
       document.getElementById('endModal').classList.remove('show');
-      G.newGame(String((Math.random() * 1e9) | 0), S.mode);
+      G.newGame(String((Math.random() * 1e9) | 0), S.mode, S.sizeKey);
     });
     document.getElementById('btnSave').addEventListener('click', () => {
       const blob = new Blob([G.saveJSON()], { type: 'application/json' });

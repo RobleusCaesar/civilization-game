@@ -16,7 +16,6 @@ const R = {
     this.g = this.cv.getContext('2d');
     this.mini = document.getElementById('mini');
     this.mg = this.mini.getContext('2d');
-    this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;
     window.addEventListener('resize', () => this.resize());
     this.resize();
   },
@@ -45,6 +44,7 @@ const R = {
   },
 
   onNewGame() {
+    this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
     // pre-render the full terrain layer once
     const px = CFG.W * CFG.TILE;
     this.terrainCache = document.createElement('canvas');
@@ -174,7 +174,7 @@ const R = {
         if (b.key === 'wall' || b.key === 'gate') {
           g.globalAlpha = 0.55; g.drawImage(this.bldSprite(b), bx, by); g.globalAlpha = 1;
         } else g.drawImage(Sprites.misc.construction, bx, by);
-        const total = Bld.def(b.key).levels[0].time;
+        const total = Bld.def(b.key).levels[b.level - 1].time;
         this.bar(g, bx + 4, by + TL - 4, TL - 8, 3, 1 - b.construction / total, '#e8c15a');
       } else {
         g.drawImage(this.bldSprite(b), bx, by);
@@ -300,7 +300,7 @@ const R = {
 
   drawMini() {
     const g = this.mg, COLORS = ['#5a8f3c', '#2e5c25', '#2e6b8a', '#8f8f86', '#6b5433', '#3d3833',
-      '#6f8a4c', '#7d8a72', '#8a7a58', '#57503f'];   // stumps, pebbles, barren, ruin
+      '#6f8a4c', '#7d8a72', '#8a7a58', '#57503f', '#5d5a52'];   // ... ruin, mountain
     const shadeCache = {};
     const shade = c => shadeCache[c] || (shadeCache[c] = c.replace(/[0-9a-f]{2}/gi,
       h => Math.max(0, (parseInt(h, 16) * 0.55) | 0).toString(16).padStart(2, '0')));

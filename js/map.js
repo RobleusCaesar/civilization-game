@@ -22,16 +22,19 @@ const MapGen = {
   generate(seedStr) {
     const rnd = mulberry32(hashSeed(String(seedStr)));
     const W = CFG.W, H = CFG.H;
+    const f = (W * H) / 1600;               // area factor vs the classic 40x40
     const t = new Array(W * H).fill(T.GRASS);
     const id = this.idx;
 
-    // random-walk blob painter
-    function blob(cx, cy, size, type, avoid) {
-      let x = cx, y = cy;
+    // random-walk blob painter; `only` restricts which terrain it may replace
+    function blob(cx, cy, size, type, avoid, only) {
+      let x = cx | 0, y = cy | 0;
       for (let i = 0; i < size; i++) {
         for (let dy = 0; dy <= 1; dy++) for (let dx = 0; dx <= 1; dx++) {
           const nx = x + dx, ny = y + dy;
-          if (MapGen.inB(nx, ny) && !(avoid && avoid(nx, ny))) t[id(nx, ny)] = type;
+          if (!MapGen.inB(nx, ny) || (avoid && avoid(nx, ny))) continue;
+          if (only && !only.includes(t[id(nx, ny)])) continue;
+          t[id(nx, ny)] = type;
         }
         x += (rnd() * 3 | 0) - 1; y += (rnd() * 3 | 0) - 1;
         x = Math.max(1, Math.min(W - 2, x)); y = Math.max(1, Math.min(H - 2, y));
@@ -39,7 +42,8 @@ const MapGen = {
     }
 
     // starting corners vary per seed; the rival always settles the opposite one
-    const corners = [{ x: 7, y: 7 }, { x: 32, y: 7 }, { x: 7, y: 32 }, { x: 32, y: 32 }];
+    const m = 7;
+    const corners = [{ x: m, y: m }, { x: W - 1 - m, y: m }, { x: m, y: H - 1 - m }, { x: W - 1 - m, y: H - 1 - m }];
     const pi = (rnd() * 4) | 0;
     const player = corners[pi], ai = corners[3 - pi];
     const nearStart = (x, y) =>
@@ -54,19 +58,70 @@ const MapGen = {
     ];
     const scarce = SCARCE[(rnd() * 3) | 0];
 
-    // lakes
-    const lakes = 3 + (rnd() * 2 | 0);
-    for (let i = 0; i < lakes; i++)
-      blob(4 + rnd() * (W - 8) | 0, 4 + rnd() * (H - 8) | 0, 14 + rnd() * 14 | 0, T.WATER, nearStart);
-    // resource fields: the scarce one gets a single small pocket
+    // landform shapes the bones of the map
+    const lfRoll = rnd();
+    const landform = lfRoll < 0.4 ? 'valley' : lfRoll < 0.6 ? 'lakeland'
+      : lfRoll < 0.8 ? 'highlands' : 'islands';
+
+    if (landform === 'islands') {
+      t.fill(T.WATER);
+      // land masses on every corner plus the middle, joined by causeways
+      for (const c of corners)
+        blob(c.x, c.y, Math.round(46 * f), T.GRASS, null, [T.WATER]);
+      blob(W / 2, H / 2, Math.round(60 * f), T.GRASS, null, [T.WATER]);
+      const causeway = (a, b) => {
+        let x = a.x, y = a.y;
+        let guard = 0;
+        while ((x !== b.x || y !== b.y) && guard++ < W * H) {
+          for (const [ox, oy] of [[0, 0], [1, 0], [0, 1]]) {
+            const nx = x + ox, ny = y + oy;
+            if (MapGen.inB(nx, ny) && t[id(nx, ny)] === T.WATER) t[id(nx, ny)] = T.GRASS;
+          }
+          if (x !== b.x && (y === b.y || rnd() < 0.5)) x += x < b.x ? 1 : -1;
+          else if (y !== b.y) y += y < b.y ? 1 : -1;
+        }
+      };
+      const mid = { x: (W / 2) | 0, y: (H / 2) | 0 };
+      causeway(player, mid);
+      causeway(mid, ai);
+    } else {
+      const lakes = landform === 'lakeland'
+        ? Math.round((7 + rnd() * 3) * f)
+        : Math.round((3 + rnd() * 2) * f);
+      const lakeSize = landform === 'lakeland' ? 18 : 14;
+      for (let i = 0; i < lakes; i++)
+        blob(4 + rnd() * (W - 8) | 0, 4 + rnd() * (H - 8) | 0, (lakeSize + rnd() * 14) | 0, T.WATER, nearStart);
+      if (landform === 'highlands') {
+        // impassable mountain ridges wander across the land
+        const ridges = Math.max(3, Math.round(4 * f));
+        for (let r = 0; r < ridges; r++) {
+          let x = (2 + rnd() * (W - 4)) | 0, y = (2 + rnd() * (H - 4)) | 0;
+          let dir = rnd() * Math.PI * 2;
+          const len = (W * (0.5 + rnd() * 0.4)) | 0;
+          for (let i = 0; i < len; i++) {
+            for (const [ox, oy] of [[0, 0], [1, 0], [0, 1]]) {
+              const nx = (x | 0) + ox, ny = (y | 0) + oy;
+              if (MapGen.inB(nx, ny) && !nearStart(nx, ny) && t[id(nx, ny)] === T.GRASS)
+                t[id(nx, ny)] = T.MOUNTAIN;
+            }
+            dir += (rnd() - 0.5) * 0.5;
+            x += Math.cos(dir); y += Math.sin(dir);
+            if (!MapGen.inB(x | 0, y | 0)) break;
+          }
+        }
+      }
+    }
+
+    // resource fields: normal kinds scale with map area, the scarce one stays
+    // a single small pocket no matter the size
     const paint = (type, normalN, sizeMin, sizeVar) => {
       const isScarce = scarce.terrain === type;
-      const n = isScarce ? 1 : normalN;
+      const n = isScarce ? 1 : Math.max(2, Math.round(normalN * f));
       for (let i = 0; i < n; i++) {
         const size = isScarce
           ? Math.max(4, ((sizeMin + rnd() * sizeVar) * 0.5) | 0)
           : (sizeMin + rnd() * sizeVar) | 0;
-        blob(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0, size, type, nearStart);
+        blob(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0, size, type, nearStart, [T.GRASS]);
       }
     };
     paint(T.FOREST, 9, 16, 18);
@@ -92,13 +147,47 @@ const MapGen = {
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++)
         t[id(s.x + dx, s.y + dy)] = T.GRASS;
 
-    // raider camps, far from both starts
+    // raider camps, far from both starts (more on bigger maps)
     const camps = [];
+    const wantCamps = Math.max(2, Math.round(2 * f));
     let guard = 0;
-    while (camps.length < 2 && guard++ < 400) {
+    while (camps.length < wantCamps && guard++ < 600) {
       const x = 3 + rnd() * (W - 6) | 0, y = 3 + rnd() * (H - 6) | 0;
       const dP = Math.hypot(x - player.x, y - player.y), dA = Math.hypot(x - ai.x, y - ai.y);
-      if (dP > 14 && dA > 14 && t[id(x, y)] !== T.WATER) { t[id(x, y)] = T.CAMP; camps.push({ x, y }); }
+      if (dP > 14 && dA > 14 && t[id(x, y)] === T.GRASS) { t[id(x, y)] = T.CAMP; camps.push({ x, y }); }
+    }
+
+    // guarantee the two tribes can reach each other — carve a causeway if not
+    {
+      const pass = i => t[i] !== T.WATER && t[i] !== T.MOUNTAIN;
+      const seen = new Uint8Array(W * H);
+      const q = [id(player.x, player.y)];
+      seen[q[0]] = 1;
+      let head = 0;
+      while (head < q.length) {
+        const cur = q[head++];
+        const cx = cur % W, cy = (cur / W) | 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = cx + dx, ny = cy + dy;
+          if (!MapGen.inB(nx, ny)) continue;
+          const ni = id(nx, ny);
+          if (seen[ni] || !pass(ni)) continue;
+          seen[ni] = 1; q.push(ni);
+        }
+      }
+      if (!seen[id(ai.x, ai.y)]) {
+        let x = player.x, y = player.y, guard2 = 0;
+        while ((x !== ai.x || y !== ai.y) && guard2++ < W * H) {
+          for (const [ox, oy] of [[0, 0], [1, 0], [0, 1]]) {
+            const nx = x + ox, ny = y + oy;
+            if (!MapGen.inB(nx, ny)) continue;
+            const v = t[id(nx, ny)];
+            if (v === T.WATER || v === T.MOUNTAIN) t[id(nx, ny)] = T.GRASS;
+          }
+          if (x !== ai.x && (y === ai.y || rnd() < 0.5)) x += x < ai.x ? 1 : -1;
+          else if (y !== ai.y) y += y < ai.y ? 1 : -1;
+        }
+      }
     }
 
     // every resource tile carries a finite, randomized stock; scarce tiles run leaner
@@ -112,7 +201,7 @@ const MapGen = {
       }
     }
 
-    return { terrain: t, resAmount, scarce: scarce.name, spawns: { player, ai, camps } };
+    return { terrain: t, resAmount, scarce: scarce.name, landform, spawns: { player, ai, camps } };
   },
 
   // nearest tile matching pred, spiraling out from (cx,cy)
@@ -135,7 +224,8 @@ const MapGen = {
 const Path = {
   passable(x, y, owner) {
     if (!MapGen.inB(x, y)) return false;
-    if (S.map.terrain[MapGen.idx(x, y)] === T.WATER) return false;
+    const terr = S.map.terrain[MapGen.idx(x, y)];
+    if (terr === T.WATER || terr === T.MOUNTAIN) return false;
     const blk = Bld.blockAt(x, y);
     if (blk === 0) return true;
     if (blk === 1) return false;                 // wall

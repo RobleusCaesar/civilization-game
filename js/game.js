@@ -18,20 +18,26 @@ const G = {
 
   modeCfg() { return CFG.MODES[S && S.mode] || CFG.MODES.moderate; },
 
-  newGame(seed, modeKey) {
+  newGame(seed, modeKey, sizeKey) {
     const mode = CFG.MODES[modeKey] ? modeKey : 'moderate';
+    const size = CFG.SIZES[sizeKey] ? sizeKey : 'medium';
+    CFG.W = CFG.H = CFG.SIZES[size];
     const gen = MapGen.generate(seed);
     S = {
       seed: String(seed),
       mode,
+      sizeKey: size,
       rngState: hashSeed(String(seed)) | 0,
       day: 1, dayT: 0,
       paused: false, over: null,
       res: Object.assign({}, CFG.START_RES),
+      wallLevel: 1,                         // village-wide fortification tier (all walls & gates)
       map: {
+        W: CFG.W, H: CFG.H,
         terrain: gen.terrain,
         resAmount: gen.resAmount,
         scarce: gen.scarce,
+        landform: gen.landform,
         explored: new Array(CFG.W * CFG.H).fill(0),
         seenTerrain: gen.terrain.slice(),   // what the player last saw, per tile
         seenB: {},                          // last-seen buildings: idx -> {key, level, owner}
@@ -63,7 +69,8 @@ const G = {
     UI.settingRally = null;
     document.getElementById('btnPause').textContent = '⏸';
     document.getElementById('endModal').classList.remove('show');
-    this.log(`A new tribe settles the valley (${this.modeCfg().name}). Destroy the rival Town Center to win.`);
+    const LAND = { valley: 'a green valley', lakeland: 'a land of lakes', highlands: 'rugged highlands', islands: 'a chain of islands' };
+    this.log(`A new tribe settles ${LAND[gen.landform] || 'the wilds'} (${this.modeCfg().name}). Destroy the rival Town Center to win.`);
     this.log(`Scouts report: ${gen.scarce} is scarce in this valley — claim it before the rival does.`, true);
     this.log('First raiders expected around day ' + S.wave.next);
   },
@@ -152,9 +159,14 @@ const G = {
   saveJSON() { return JSON.stringify(S); },
   loadJSON(json) {
     const data = JSON.parse(json);
-    if (!data || !data.map || !Array.isArray(data.map.terrain) ||
-        data.map.terrain.length !== CFG.W * CFG.H)
+    if (!data || !data.map || !Array.isArray(data.map.terrain))
       throw new Error('not a Neolithic save file');
+    const w = data.map.W || 40, h = data.map.H || 40;
+    if (data.map.terrain.length !== w * h)
+      throw new Error('not a Neolithic save file');
+    CFG.W = w; CFG.H = h;
+    if (!data.sizeKey) data.sizeKey = 'medium';
+    if (!data.wallLevel) data.wallLevel = 1;
     if (!data.map.resAmount) {
       // older save: give surviving resource tiles an average stock
       data.map.resAmount = data.map.terrain.map(t => {

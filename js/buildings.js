@@ -17,6 +17,13 @@ const Bld = {
   },
 
   def(key) { return CFG.BUILDINGS[key]; },
+  // what a new building of this type costs/produces right now — walls and
+  // gates are built at the village-wide wall level
+  buildSpec(key, owner) {
+    const d = CFG.BUILDINGS[key];
+    const lvN = (owner !== 'A' && (key === 'wall' || key === 'gate')) ? ((S && S.wallLevel) || 1) : 1;
+    return { level: lvN, lv: d.levels[lvN - 1] };
+  },
   lv(b) { return CFG.BUILDINGS[b.key].levels[b.level - 1]; },
   get(id) { return S.buildings.find(b => b.id === id); },
   at(x, y) { return S.buildings.find(b => b.x === x && b.y === y); },
@@ -62,25 +69,34 @@ const Bld = {
     if (mine.length && !mine.some(b => Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE))
       return { ok: false, why: 'Too far from your buildings' };
     const res = owner === 'P' ? S.res : S.ai.res;
-    if (!this.canAfford(d.levels[0].cost, res)) return { ok: false, why: 'Not enough resources' };
+    if (!this.canAfford(this.buildSpec(key, owner).lv.cost, res)) return { ok: false, why: 'Not enough resources' };
     return { ok: true };
   },
 
   place(owner, key, x, y, opts) {
     opts = opts || {};
     const d = this.def(key);
+    const spec = this.buildSpec(key, owner);
     const res = owner === 'P' ? S.res : S.ai.res;
-    if (!opts.free) this.pay(d.levels[0].cost, res);
+    if (!opts.free) this.pay(spec.lv.cost, res);
     const b = {
-      id: S.nextId++, key, owner, x, y, level: 1,
+      id: S.nextId++, key, owner, x, y, level: spec.level,
       // construction sites are fragile until finished
-      hp: opts.instant ? d.levels[0].hp : Math.max(30, Math.round(d.levels[0].hp * 0.4)),
-      maxhp: d.levels[0].hp,
-      construction: opts.instant ? 0 : d.levels[0].time,   // days left
+      hp: opts.instant ? spec.lv.hp : Math.max(30, Math.round(spec.lv.hp * 0.4)),
+      maxhp: spec.lv.hp,
+      construction: opts.instant ? 0 : spec.lv.time,   // days left
       upgrading: 0, queue: [], cd: 0,
     };
     S.buildings.push(b);
     this._block = null;
+    // fresh construction clears old stumps/rubble — only the new building shows
+    const ti = MapGen.idx(x, y);
+    const t0 = S.map.terrain[ti];
+    if (t0 === T.STUMPS || t0 === T.PEBBLES || t0 === T.BARREN || t0 === T.RUIN) {
+      S.map.terrain[ti] = T.GRASS;
+      if (S.map.resAmount) S.map.resAmount[ti] = 0;
+      R.updateTile(x, y);
+    }
     if (owner === 'P') {
       G.reveal(x, y, d.levels[0].vision || 4);
       if (!opts.instant && !opts.noAutoAssign) {
@@ -127,6 +143,8 @@ const Bld = {
 
   canUpgrade(b) {
     const d = this.def(b.key);
+    if (b.key === 'wall' || b.key === 'gate')
+      return { ok: false, why: 'Walls upgrade together — see the Town Center' };
     if (b.level >= 3) return { ok: false, why: 'Max level' };
     if (b.construction || b.upgrading) return { ok: false, why: 'Busy' };
     const next = d.levels[b.level];
@@ -290,14 +308,60 @@ const Bld = {
 
   demolishRefund(b) {
     const d = this.def(b.key);
-    const paidLevels = b.level + (b.upgrading > 0 ? 1 : 0);
     const out = {};
+    if (b.key === 'wall' || b.key === 'gate') {
+      // fortifications refund on their current level only (village-wide upgrades)
+      for (const k in d.levels[b.level - 1].cost) {
+        const back = Math.floor(d.levels[b.level - 1].cost[k] * CFG.DEMOLISH_REFUND);
+        if (back) out[k] = (out[k] || 0) + back;
+      }
+      return out;
+    }
+    const paidLevels = b.level + (b.upgrading > 0 ? 1 : 0);
     for (let i = 0; i < paidLevels; i++)
       for (const k in d.levels[i].cost) {
         const back = Math.floor(d.levels[i].cost[k] * CFG.DEMOLISH_REFUND);
         if (back) out[k] = (out[k] || 0) + back;
       }
     return out;
+  },
+
+  /* ---- village-wide wall level (walls + gates upgrade together via the TC) ---- */
+  forts() {
+    return S.buildings.filter(b => b.owner === 'P' && (b.key === 'wall' || b.key === 'gate'));
+  },
+  wallUpgradeCost() {
+    const nextI = (S.wallLevel || 1);          // index of next level
+    const out = {};
+    for (const b of this.forts()) {
+      const cost = CFG.BUILDINGS[b.key].levels[nextI].cost;
+      for (const k in cost) out[k] = (out[k] || 0) + cost[k];
+    }
+    return out;
+  },
+  canUpgradeWalls() {
+    if ((S.wallLevel || 1) >= 3) return { ok: false, why: 'Max level' };
+    if (!this.forts().length) return { ok: false, why: 'No walls built' };
+    const tc = this.tcOf('P');
+    if (!tc || tc.level < S.wallLevel + 1)
+      return { ok: false, why: `Needs Town Center Lv ${S.wallLevel + 1}` };
+    const cost = this.wallUpgradeCost();
+    if (!this.canAfford(cost)) return { ok: false, why: 'Not enough resources' };
+    return { ok: true, cost };
+  },
+  upgradeWalls() {
+    const c = this.canUpgradeWalls();
+    if (!c.ok) return false;
+    this.pay(c.cost, S.res);
+    S.wallLevel++;
+    for (const b of this.forts()) {
+      const lv = CFG.BUILDINGS[b.key].levels[S.wallLevel - 1];
+      b.hp = Math.max(1, Math.round(lv.hp * (b.hp / b.maxhp)));
+      b.maxhp = lv.hp;
+      b.level = S.wallLevel;
+    }
+    G.log(`⚒ Every wall and gate reinforced to Lv ${S.wallLevel}!`);
+    return true;
   },
 
   demolish(b) {

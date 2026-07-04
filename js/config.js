@@ -4,12 +4,14 @@
 const T = {
   GRASS: 0, FOREST: 1, WATER: 2, HILLS: 3, FERTILE: 4, CAMP: 5,
   STUMPS: 6, PEBBLES: 7, BARREN: 8, RUIN: 9,   // depleted / destroyed variants
+  MOUNTAIN: 10,                                 // impassable, unbuildable
 };
 
 const CFG = {
   TILE: 32,
-  W: 40,
+  W: 40,               // current map size — set per game from SIZES
   H: 40,
+  SIZES: { small: 30, medium: 40, large: 52 },
   DAY_MS: 10000,              // one in-game day
   START_RES: { food: 200, wood: 150, stone: 60, gold: 15 },
   START_VILLAGERS: 3,

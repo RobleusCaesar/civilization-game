@@ -25,9 +25,14 @@ on desktop too.
   (☰ menu). Calm is nearly peaceful — the occasional wild animal, rare raids, and
   a slow, compact rival tribe; Hard gathers ~15% slower with earlier, bigger,
   more frequent raids, bolder wildlife, and a rival that builds and arms fast.
-- **The map**: starting corners vary each game, and every valley is critically
-  short on one resource (wood, stone, or food) — scouting and holding what little
-  there is becomes the strategic heart of the match.
+- **The map**: pick 🏕 Small, 🏞 Medium, or 🗺 Large when starting a new game.
+  Each map rolls a landform — green valleys, lake-dotted lakelands, rugged
+  highlands with impassable mountain ridges, or island chains linked by
+  causeways (mountains and water can't be crossed or built on, so terrain
+  shapes your defenses). Starting corners vary each game, and every map is
+  critically short on one resource (wood, stone, or food) — even on Large the
+  scarce resource stays a single small pocket, so scouting and holding it
+  remains the strategic heart of the match.
 - **Time**: each turn is one in-game day and auto-advances every 10 seconds;
   a full playthrough runs about 20 minutes.
   ⏸ pauses; ☰ opens the menu (save / load / new game / seed / event log).
@@ -37,7 +42,8 @@ on desktop too.
   with nothing selected sends an idle villager. Every tile holds a finite stock:
   once gathered out it turns to stumps / pebbles / spent soil, the villager goes
   idle, and you'll need farms, lumber camps, and quarries for steady income.
-  Depleted tiles (and ruins) are open ground — build right on top of them.
+  Depleted tiles (and ruins) are open ground — build right on top of them and
+  the old stumps/rubble vanish, leaving only the clean new building.
 - **Building**: tap a button in the bottom bar, then tap a clear tile near your
   village — the nearest idle villager is sent to work the site. Or start from the
   villager: tap them, hit *Build…*, pick a building, tap a site, and that villager
@@ -87,7 +93,12 @@ on desktop too.
   Release to start construction (placement mode ends so stray taps are safe): one
   villager builds the line section by section, and you can tap more villagers onto
   the wall to speed it up. Level-1 walls are stick-and-grass palisades (wood);
-  upgrading brings stone. Walls block *all* movement — yours included — so add a
+  upgrading brings stone. Fortifications level up **village-wide**: the Town
+  Center's *Upgrade all walls* button raises every wall **and gate** to the next
+  level at once (it needs a matching TC level and the summed cost of every
+  section — individual sections have no upgrade button). New walls and gates are
+  then built straight at your current wall level. Walls block *all* movement —
+  yours included — so add a
   **Town Gate**: tap any finished wall section → *Build Gate* to convert it in
   place (crediting the wall's salvage), or place one from the menu. Gates auto-fit
   the wall direction — north-south gates read as a thicker span flanked by twin
@@ -126,7 +137,7 @@ index.html          shell, UI chrome, styles
 js/config.js        all stat tables (buildings ×3 levels, units, waves, win rules)
 js/sprites.js       procedural pixel-art sprite generation (terrain, 24 building
                     sprites, animated unit sheets, icons)
-js/map.js           seeded 40×40 map generation + BFS pathfinding
+js/map.js           seeded map generation (sizes + landforms) + BFS pathfinding
 js/buildings.js     placement, construction, upgrades, training, production
 js/units.js         villagers/defenders/animals/raiders: movement & tasks
 js/combat.js        target acquisition, melee/tower combat, raider waves
