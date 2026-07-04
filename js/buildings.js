@@ -93,10 +93,13 @@ const Bld = {
     if (key === 'dock') {
       const site = this.dockSiteOk(x, y);
       if (!site.ok) return site;
-      const tc = this.tcOf(owner);
-      if (d.reqTC && (!tc || tc.level < d.reqTC))
-        return { ok: false, why: `Needs Town Center Lv ${d.reqTC}` };
     } else if (!this.tileFree(x, y)) return { ok: false, why: 'Blocked tile' };
+    // TC-level gate (player only — the rival's scripted build order sets its own pace)
+    if (owner === 'P' && d.reqTC) {
+      const tc = this.tcOf('P');
+      if (!tc || tc.level < d.reqTC)
+        return { ok: false, why: `Needs Town Center Lv ${d.reqTC}` };
+    }
     if (owner === 'P' && !S.map.explored[MapGen.idx(x, y)]) return { ok: false, why: 'Unexplored' };
     if (d.unique && this.list(owner).some(b => b.key === key)) return { ok: false, why: 'Already built' };
     const mine = this.list(owner);
@@ -170,10 +173,15 @@ const Bld = {
     return S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'build' && u.task.id === b.id);
   },
 
-  // a villager stationed at a production building keeps it running
-  stationedWorker(b) {
-    return S.units.find(u => u.owner === 'P' && u.task && u.task.type === 'work' &&
-      u.task.id === b.id && Math.hypot(u.x - b.x - 0.5, u.y - b.y - 0.5) <= 1.4);
+  maxWorkers(b) { return this.def(b.key).maxWorkers || 1; },
+  // assigned = headed here or on site (caps staffing); active = on site (drives production)
+  workersAssigned(b) {
+    return S.units.filter(u => u.owner === 'P' && u.task && u.task.type === 'work' &&
+      u.task.id === b.id).length;
+  },
+  workersActive(b) {
+    return S.units.filter(u => u.owner === 'P' && u.task && u.task.type === 'work' &&
+      u.task.id === b.id && Math.hypot(u.x - b.x - 0.5, u.y - b.y - 0.5) <= 1.4).length;
   },
 
   canUpgrade(b) {
@@ -226,6 +234,7 @@ const Bld = {
     const spec = d.train && d.train[unitKey];
     if (!spec) return { ok: false, why: '?' };
     if (b.construction) return { ok: false, why: 'Under construction' };
+    if (b.upgrading) return { ok: false, why: 'Upgrading — training paused' };
     if (spec.reqLevel && b.level < spec.reqLevel) return { ok: false, why: `Needs Lv ${spec.reqLevel}` };
     if (b.queue.length >= 3) return { ok: false, why: 'Queue full' };
     if (b.owner === 'P' && Units.popUsed('P') + b.queue.length >= Bld.popCap('P'))
@@ -278,7 +287,7 @@ const Bld = {
         b.upgrading -= dtDays;
         if (b.upgrading <= 0) this.finishUpgrade(b);
       }
-      if (b.queue.length) {
+      if (b.queue.length && !b.upgrading) {   // level-up works pause the training yard
         b.queue[0].t -= dtDays;
         if (b.queue[0].t <= 0) {
           const item = b.queue.shift();
@@ -313,9 +322,15 @@ const Bld = {
       if (!this.done(b) || b.upgrading) continue;
       const out = this.lv(b).out;
       if (!out) continue;
-      // player production buildings only run with a villager stationed there
-      if (owner === 'P' && this.def(b.key).needsWorker && !this.stationedWorker(b)) continue;
-      const mult = this.nearBonus(b) * tcBoost * modeMult;
+      // worker buildings produce PER STATIONED VILLAGER, up to their crew cap;
+      // the AI has no worker mechanic, so it's treated as fully crewed
+      let crew = 1;
+      if (this.def(b.key).needsWorker) {
+        crew = owner === 'P' ? Math.min(this.workersActive(b), this.maxWorkers(b))
+                             : this.maxWorkers(b);
+        if (!crew) continue;
+      }
+      const mult = crew * this.nearBonus(b) * tcBoost * modeMult;
       for (const k in out) res[k] += out[k] * mult;
     }
   },

@@ -15,6 +15,11 @@ const Combat = {
     return false;
   },
 
+  // a melee land unit has no way to fight a ship — don't let it try
+  canEngage(u, o) {
+    return !(Units.isNaval(o) && !Units.isNaval(u) && !CFG.UNITS[u.kind].rng);
+  },
+
   nearestUnit(x, y, maxD, pred) {
     let best = null, bd = maxD;
     for (const u of S.units) {
@@ -43,14 +48,15 @@ const Combat = {
         const v = this.nearestUnit(u.x, u.y, base.aggro, o => Units.isVillager(o));
         if (v) u.tUnit = v.id;
       } else if (u.kind === 'boar') {
-        const v = this.nearestUnit(u.x, u.y, base.aggro, o => o.owner === 'P' || o.owner === 'A');
+        const v = this.nearestUnit(u.x, u.y, base.aggro,
+          o => (o.owner === 'P' || o.owner === 'A') && this.canEngage(u, o));
         if (v) u.tUnit = v.id;
       } else if (Units.isMilitary(u) && !(u.task && u.task.type === 'raid')) {
         // guards: engage hostiles near them (but don't stray while following an order,
         // and never auto-hunt harmless game — that's the player's call)
         if (u.task && u.task.type === 'move') continue;
         const e = this.nearestUnit(u.x, u.y, base.aggro,
-          o => this.hostile(u.owner, o.owner) && !Units.isPassive(o));
+          o => this.hostile(u.owner, o.owner) && !Units.isPassive(o) && this.canEngage(u, o));
         if (e && Math.hypot(e.x - u.anchor.x, e.y - u.anchor.y) < 9) u.tUnit = e.id;
       }
     }
@@ -59,7 +65,7 @@ const Combat = {
   // raiders + AI raid parties pick their objective
   raiderSeek(u) {
     const foe = this.nearestUnit(u.x, u.y, CFG.UNITS[u.kind].aggro || 2.5,
-      o => o.owner === 'P' && (Units.isMilitary(o) || Units.isVillager(o)));
+      o => o.owner === 'P' && (Units.isMilitary(o) || Units.isVillager(o)) && this.canEngage(u, o));
     if (foe && Units.isMilitary(foe)) { u.tUnit = foe.id; return; }
     const b = this.nearestBuilding(u.x, u.y, 'P');
     if (b) {
@@ -135,7 +141,8 @@ const Combat = {
         const b = Bld.get(u.tBld);
         if (!b) { u.tBld = 0; continue; }
         // fight back defenders that get close while sieging
-        const foe = this.nearestUnit(u.x, u.y, 2.2, o => this.hostile(u.owner, o.owner) && Units.isMilitary(o));
+        const foe = this.nearestUnit(u.x, u.y, 2.2,
+          o => this.hostile(u.owner, o.owner) && Units.isMilitary(o) && this.canEngage(u, o));
         if (foe) { u.tUnit = foe.id; continue; }
         const d = Math.hypot(b.x + 0.5 - u.x, b.y + 0.5 - u.y);
         const bReach = Math.max(1.3, CFG.UNITS[u.kind].rng || 0);
@@ -156,7 +163,7 @@ const Combat = {
 
     // watchtowers
     for (const b of S.buildings) {
-      if (b.key !== 'tower' || !Bld.done(b)) continue;
+      if (b.key !== 'tower' || !Bld.done(b) || b.upgrading > 0) continue;
       if (b.cd > 0) { b.cd -= dt; continue; }
       const lv = Bld.lv(b);
       const cx = b.x + 0.5, cy = b.y + 0.5;

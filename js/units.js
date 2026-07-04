@@ -197,7 +197,8 @@ const Units = {
 
       if (this.isWild(u)) { this.wildIdle(u, dt); continue; }
 
-      if (this.isRaider(u) || (u.owner === 'A' && u.task && u.task.type === 'raid')) {
+      if ((this.isRaider(u) && !(u.task && u.task.type === 'flee')) ||
+          (u.owner === 'A' && u.task && u.task.type === 'raid')) {
         Combat.raiderSeek(u);
         continue;
       }
@@ -354,6 +355,21 @@ const Units = {
         } else if (owner === 'A') S.ai.res.food += CFG.MEAT_DROP;
       }
       return;
+    }
+    // shot by a ship it has no way to answer — break off and retreat inland,
+    // out of the warship's reach, instead of standing on the shore taking fire
+    if (attacker && this.isNaval(attacker) && !this.isNaval(u) && !CFG.UNITS[u.kind].rng) {
+      const d = Math.hypot(u.x - attacker.x, u.y - attacker.y) || 1;
+      const reach = (CFG.UNITS[attacker.kind].rng || 4) + 2.5;
+      const tx = Math.round(attacker.x + (u.x - attacker.x) / d * reach);
+      const ty = Math.round(attacker.y + (u.y - attacker.y) / d * reach);
+      const spot = MapGen.findNear(tx, ty, 5, (x, y) => Path.passable(x, y, u.owner));
+      if (spot) {
+        u.tUnit = 0; u.tBld = 0;
+        u.task = { type: 'flee' };
+        this.setPath(u, spot.x, spot.y);
+        return;
+      }
     }
     // retaliation / flee
     if (u.tUnit || u.tBld) return;

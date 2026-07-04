@@ -28,7 +28,7 @@ const CFG = {
     [T.FERTILE]: [80, 140],
     [T.WATER]:   [45, 85],    // fish — harvested by boats, not villagers
   },
-  FISH: { res: 'food', rate: 1.1 },   // fishing-boat harvest per second
+  FISH: { res: 'food', rate: 1.2 },   // fishing-boat harvest per second (12/day — a notch under a Lv1 farm's 15)
   DOCK_MIN_WATER: 6,          // a dock needs a water body at least this big
   DEPLETED: {                 // what a tile becomes once gathered out
     [T.FOREST]:  T.STUMPS,
@@ -65,31 +65,34 @@ const CFG = {
       ],
     },
     lodge: {
-      name: "Hunter's Lodge", desc: 'Food while a villager works it. Build near forest.', needsWorker: true,
+      name: "Hunter's Lodge", desc: 'Food per worker (up to 2). Build near forest.', needsWorker: true,
+      maxWorkers: 2,
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
-      levels: [
-        { cost: { wood: 50, gold: 5 },    time: 1, hp: 120, out: { food: 13 } },
-        { cost: { wood: 100, stone: 30, gold: 10 }, time: 2, hp: 160, out: { food: 25 } },
-        { cost: { wood: 200, stone: 80, gold: 25 }, time: 2, hp: 200, out: { food: 40 },
+      levels: [    // out is PER WORKER — a lone hand yields less than raw foraging
+        { cost: { wood: 50, gold: 5 },    time: 1, hp: 120, out: { food: 4.5 } },
+        { cost: { wood: 100, stone: 30, gold: 10 }, time: 2, hp: 160, out: { food: 9 } },
+        { cost: { wood: 200, stone: 80, gold: 25 }, time: 2, hp: 200, out: { food: 14 },
           bonus: 'Villagers armed with spears (+4 attack)' },
       ],
     },
     lumber: {
-      name: 'Lumber Camp', desc: 'Wood while a villager works it. Build near forest.', needsWorker: true,
+      name: 'Lumber Camp', desc: 'Wood per worker (up to 2). Build near forest.', needsWorker: true,
+      maxWorkers: 2, reqTC: 2,
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
-      levels: [
-        { cost: { wood: 40, gold: 5 },    time: 1, hp: 120, out: { wood: 15 } },
-        { cost: { wood: 80, stone: 30, gold: 10 }, time: 2, hp: 160, out: { wood: 30 } },
-        { cost: { wood: 160, stone: 80, gold: 25 }, time: 2, hp: 200, out: { wood: 50 } },
+      levels: [    // out is PER WORKER — a lone hand yields less than chopping forest
+        { cost: { wood: 40, gold: 5 },    time: 1, hp: 120, out: { wood: 5 } },
+        { cost: { wood: 80, stone: 30, gold: 10 }, time: 2, hp: 160, out: { wood: 10 } },
+        { cost: { wood: 160, stone: 80, gold: 25 }, time: 2, hp: 200, out: { wood: 16 } },
       ],
     },
     quarry: {
-      name: 'Quarry', desc: 'Stone while a villager works it. Build near hills.', needsWorker: true,
+      name: 'Quarry', desc: 'Stone per worker (up to 2). Build near hills.', needsWorker: true,
+      maxWorkers: 2, reqTC: 2,
       near: { terrain: T.HILLS, mult: 1.5, radius: 2 },
-      levels: [
-        { cost: { wood: 80, gold: 5 },    time: 1, hp: 120, out: { stone: 13 } },
-        { cost: { wood: 140, stone: 20, gold: 10 }, time: 2, hp: 170, out: { stone: 25 } },
-        { cost: { wood: 260, stone: 60, gold: 25 }, time: 2, hp: 220, out: { stone: 40 } },
+      levels: [    // out is PER WORKER — a lone hand yields less than mining hills
+        { cost: { wood: 80, gold: 5 },    time: 1, hp: 120, out: { stone: 3.5 } },
+        { cost: { wood: 140, stone: 20, gold: 10 }, time: 2, hp: 170, out: { stone: 7 } },
+        { cost: { wood: 260, stone: 60, gold: 25 }, time: 2, hp: 220, out: { stone: 12 } },
       ],
     },
     house: {
@@ -123,7 +126,7 @@ const CFG = {
       ],
     },
     stable: {
-      name: 'Horse Stable', desc: 'Trains fast riders to run down raiders.',
+      name: 'Horse Stable', desc: 'Trains fast riders to run down raiders.', reqTC: 2,
       train: {
         rider:  { cost: { food: 60, wood: 20 }, time: 1 },
         lancer: { cost: { food: 100, gold: 25 }, time: 2, reqLevel: 3 },
@@ -136,7 +139,7 @@ const CFG = {
       ],
     },
     range: {
-      name: 'Archery Range', desc: 'Trains archers who fight from a distance.',
+      name: 'Archery Range', desc: 'Trains archers who fight from a distance.', reqTC: 2,
       train: {
         archer:   { cost: { food: 40, wood: 40 }, time: 1 },
         marksman: { cost: { food: 70, wood: 60, gold: 15 }, time: 2, reqLevel: 3 },

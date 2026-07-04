@@ -62,7 +62,13 @@ on desktop too.
   while a villager is **stationed** there — the builder stays on automatically
   when construction finishes, and you can re-staff any time (tap the building →
   *Station worker*, or tap a villager then the building). Pull the worker away
-  and production stops.
+  and production stops. Lumber camps, quarries, and hunter's lodges take **up
+  to 2 workers** and produce per worker — but each hand yields a bit less than
+  a villager gathering straight from forest, hills, or fertile soil, so raw
+  terrain is the better bet early and buildings win once tiles run dry.
+- **Town Center level 2 unlocks** the Lumber Camp, Quarry, Archery Range,
+  Horse Stable, and Dock — early game is houses, farms, the lodge, towers,
+  barracks, and hand-gathering.
 - **Gold**: the Town Center mints a little gold each day, and almost everything
   beyond houses and watchtowers costs some — budget it.
 - **Repair**: damaged buildings can be repaired the same way — tap the building
@@ -73,7 +79,10 @@ on desktop too.
   demolished buildings leave ruins you can build over. The Town Center can't be
   demolished.
 - **Upgrades**: tap a building → *Upgrade*. Like construction, upgrades need a
-  villager working the site. Levels 2–3 need a matching Town Center
+  villager working the site. While a building is leveling up it's out of
+  action: training yards (Town Center, Barracks, Stable, Range, Dock) pause
+  their queues, and Watchtowers hold their fire (they also can't shoot while
+  first being built). Levels 2–3 need a matching Town Center
   level and unlock bigger output or passive bonuses (level-3 Hunter's Lodge arms
   your villagers; level-3 Watchtower buffs nearby defenders; level-3 Barracks
   unlocks Elite Defenders).
@@ -90,8 +99,12 @@ on desktop too.
   A level-2 dock unlocks the **Warship** — a sailed vessel whose archers hit
   enemies and buildings within a few tiles of the water — and level 3 unlocks
   the **Fire Warship**, tougher, longer-ranged, and shooting flaming arrows.
-  Ships never leave the water (and land raiders can't touch them); a destroyed
-  dock washes away to open water.
+  Fishing is a touch slower than a farm, but fish don't need fertile ground.
+  Ships never leave the water (and land units can't touch them) — and enemies
+  know it: melee troops with no way to shoot back break off and retreat out of
+  a warship's range instead of standing on the shore taking arrows; only
+  archers will trade fire with your ships. A destroyed dock washes away to
+  open water.
 - **Shelter & muster**: the Town Center can *Shelter villagers* — everyone runs
   inside and vanishes from the map until you *Release all* after the threat
   passes. *Call idle* musters idle villagers outside the TC.
