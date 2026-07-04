@@ -109,7 +109,10 @@ any new field. `CFG.W`/`CFG.H` are **mutable** and must be set from the save
   stocked water tiles against `R.fishClock`.
 - **Barbarians (ex-"raiders"):** owner `'R'`, keys still `raider`/`brute` (save
   compat) but named Barbarian / Barbarian Brute, **teal** identity
-  (`#3fb094` war paint, teal minimap dots) vs the red rival tribe. Per-mode
+  (`#3fb094` war paint, teal minimap dots) vs the red rival tribe. Each band
+  rolls `u.hostileTo` ('P' | 'A' | 'ALL') on spawn; `Combat.hostileUnits(u,o)`
+  / `hostileToBld(b,o)` are the unit-level hostility checks (guards/towers only
+  engage bands that threaten their tribe; barbs retaliate when struck). Per-mode
   strength `barbMult` (calm 0.9 / moderate 1.0 / hard 1.2 — hard ≈ rival
   defenders), waves scale `(1 + count*0.07) * barbMult`, party size
   `1 + ceil(count*0.7) + waveSizeAdd`, cap 8.

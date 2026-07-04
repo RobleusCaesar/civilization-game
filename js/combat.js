@@ -20,6 +20,20 @@ const Combat = {
     return !(Units.isNaval(o) && !Units.isNaval(u) && !CFG.UNITS[u.kind].rng);
   },
 
+  // unit-level hostility: barbarian bands roll a disposition on spawn
+  // (u.hostileTo: 'P' = hunt the player, 'A' = march on the rival, 'ALL' = anyone)
+  hostileUnits(u, o) {
+    if (u.owner === o.owner) return false;
+    if (u.owner === 'R' && o.owner === 'R') return false;
+    if (u.owner === 'R')
+      return o.owner !== 'W' && ((u.hostileTo || 'P') === 'ALL' || (u.hostileTo || 'P') === o.owner);
+    if (o.owner === 'R')
+      return u.owner !== 'W' && ((o.hostileTo || 'P') === 'ALL' || (o.hostileTo || 'P') === u.owner);
+    return this.hostile(u.owner, o.owner);
+  },
+  // building vs unit (towers): does this unit threaten the building's tribe?
+  hostileToBld(b, o) { return this.hostileUnits({ owner: b.owner }, o); },
+
   nearestUnit(x, y, maxD, pred) {
     let best = null, bd = maxD;
     for (const u of S.units) {
@@ -56,25 +70,33 @@ const Combat = {
         // and never auto-hunt harmless game — that's the player's call)
         if (u.task && u.task.type === 'move') continue;
         const e = this.nearestUnit(u.x, u.y, base.aggro,
-          o => this.hostile(u.owner, o.owner) && !Units.isPassive(o) && this.canEngage(u, o));
+          o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
         if (e && Math.hypot(e.x - u.anchor.x, e.y - u.anchor.y) < 9) u.tUnit = e.id;
       }
     }
   },
 
-  // raiders + AI raid parties pick their objective
+  // raiders + AI raid parties pick their objective. Barbarian bands follow
+  // their spawn disposition: the player, the rival tribe, or whoever is nearest.
   raiderSeek(u) {
+    const disp = u.owner === 'R' ? (u.hostileTo || 'P') : 'P';
+    const owners = disp === 'ALL' ? ['P', 'A'] : [disp];
     const foe = this.nearestUnit(u.x, u.y, CFG.UNITS[u.kind].aggro || 2.5,
-      o => o.owner === 'P' && (Units.isMilitary(o) || Units.isVillager(o)) && this.canEngage(u, o));
+      o => owners.includes(o.owner) && (Units.isMilitary(o) || Units.isVillager(o)) && this.canEngage(u, o));
     if (foe && Units.isMilitary(foe)) { u.tUnit = foe.id; return; }
-    const b = this.nearestBuilding(u.x, u.y, 'P');
+    let b = null;
+    for (const ow of owners) {
+      const cand = this.nearestBuilding(u.x, u.y, ow);
+      if (cand && (!b || Math.hypot(cand.x - u.x, cand.y - u.y) < Math.hypot(b.x - u.x, b.y - u.y)))
+        b = cand;
+    }
     if (b) {
       // try to reach the target; if walls are in the way the path stops short —
       // then batter the closest wall or gate instead
       Units.setPath(u, b.x, b.y);
       const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x, y: u.y };
       if (Math.hypot(end.x - b.x, end.y - b.y) <= 1.6) { u.tBld = b.id; return; }
-      const wall = this.nearestBuilding(u.x, u.y, 'P', bb => bb.key === 'wall' || bb.key === 'gate');
+      const wall = this.nearestBuilding(u.x, u.y, b.owner, bb => bb.key === 'wall' || bb.key === 'gate');
       if (wall) { u.tBld = wall.id; Units.setPath(u, wall.x, wall.y); return; }
       u.tBld = b.id;   // no wall found — press on regardless
       return;
@@ -142,7 +164,7 @@ const Combat = {
         if (!b) { u.tBld = 0; continue; }
         // fight back defenders that get close while sieging
         const foe = this.nearestUnit(u.x, u.y, 2.2,
-          o => this.hostile(u.owner, o.owner) && Units.isMilitary(o) && this.canEngage(u, o));
+          o => this.hostileUnits(u, o) && Units.isMilitary(o) && this.canEngage(u, o));
         if (foe) { u.tUnit = foe.id; continue; }
         const d = Math.hypot(b.x + 0.5 - u.x, b.y + 0.5 - u.y);
         const bReach = Math.max(1.3, CFG.UNITS[u.kind].rng || 0);
@@ -168,7 +190,7 @@ const Combat = {
       const lv = Bld.lv(b);
       const cx = b.x + 0.5, cy = b.y + 0.5;
       const tgt = this.nearestUnit(cx, cy, lv.range,
-        o => this.hostile(b.owner, o.owner) && !Units.isPassive(o));
+        o => this.hostileToBld(b, o) && !Units.isPassive(o));
       if (tgt) {
         b.cd = 1.4;
         const dmg = Math.max(1, lv.atk - tgt.def);
@@ -232,12 +254,16 @@ const Combat = {
                  MapGen.findNear(sx, sy, max, inNet) ||
                  MapGen.findNear(sx, sy, max, (x, y) => Path.passable(x, y));
     if (!spot) return;
+    // every band rolls a temper: hunt the player, march on the rival, or anyone
+    const disp = ['P', 'A', 'ALL'][(G.rand() * 3) | 0];
     for (let i = 0; i < n; i++) {
       const kind = (S.wave.count >= 4 && i % 3 === 2) ? 'brute' : 'raider';
       const p = MapGen.findNear(spot.x, spot.y, 4, farOk) ||
                 MapGen.findNear(spot.x, spot.y, 4, inNet) || spot;
-      Units.spawn(kind, 'R', p.x, p.y, { scale });
+      Units.spawn(kind, 'R', p.x, p.y, { scale }).hostileTo = disp;
     }
-    G.log(`⚔ Barbarian war band sighted (${n})!`, true);
+    G.log(disp === 'P' ? `⚔ Barbarian war band sighted (${n}) — they're coming for you!`
+      : disp === 'A' ? `⚔ Barbarian war band sighted (${n}) — they march on the rival tribe!`
+      : `⚔ Barbarian war band sighted (${n}) — they'll attack anyone they find!`, true);
   },
 };

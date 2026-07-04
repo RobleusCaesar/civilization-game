@@ -290,7 +290,7 @@ const UI = {
       const ids = this.sel.ids.filter(id => Units.get(id));
       if (!ids.length) { this.deselect(); return; }
       this.sel.ids = ids;
-      if (hitUnit && hitUnit.owner !== 'P' && Combat.hostile('P', hitUnit.owner)) {
+      if (hitUnit && hitUnit.owner !== 'P') {
         for (const id of ids) { const u = Units.get(id); u.task = null; u.tUnit = hitUnit.id; u.tBld = 0; }
         this.toast('⚔️ War party attacks!');
         return;
@@ -312,7 +312,7 @@ const UI = {
     // orders for a selected player unit
     const sel = this.sel && this.sel.type === 'unit' ? Units.get(this.sel.id) : null;
     if (sel && sel.owner === 'P') {
-      if (hitUnit && hitUnit.owner !== 'P' && Combat.hostile('P', hitUnit.owner)) {
+      if (hitUnit && hitUnit.owner !== 'P') {
         sel.task = null; sel.tUnit = hitUnit.id; sel.tBld = 0;
         this.toast('Attack!');
         return;
@@ -713,7 +713,9 @@ const UI = {
       let hint = !own ? (
           Units.isPassive(u) ? `Wild game — send a villager or defender to hunt it (+${CFG.MEAT_DROP} food).`
           : u.owner === 'W' ? `Wild beast — dangerous, but worth +${CFG.MEAT_DROP} food.`
-          : u.owner === 'R' ? 'Barbarian!' : 'Rival tribe')
+          : u.owner === 'R' ? ((u.hostileTo || 'P') === 'A' ? 'Barbarian — marching on the rival tribe.'
+            : (u.hostileTo || 'P') === 'ALL' ? 'Barbarian — hostile to everyone.'
+            : 'Barbarian — coming for your village!') : 'Rival tribe')
         : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / fertile soil to gather, a work site to build, or a tile to walk.'
         : u.kind === 'fishboat' ? 'Tap water where fish jump 🐟 to fish, or open water to row there.'
         : Units.isNaval(u) ? 'Tap an enemy or rival building near the shore to attack, or water to sail.'

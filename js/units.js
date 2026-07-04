@@ -386,8 +386,8 @@ const Units = {
     if (this.isVillager(u) && u.owner === 'P' && !this.villagerArmed()) {
       const tc = Bld.tcOf('P');
       if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + 1); }
-    } else if (this.isMilitary(u) || this.isWild(u) || this.isVillager(u)) {
-      u.tUnit = attacker.id;
+    } else if (this.isMilitary(u) || this.isWild(u) || this.isVillager(u) || this.isRaider(u)) {
+      u.tUnit = attacker.id;   // barbarians hit back no matter whom they came for
     }
   },
 
