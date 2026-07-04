@@ -556,14 +556,17 @@ const Sprites = {
     // arms + tool
     if (pose === 'gather') {
       const ay = f === 0 ? y + 3 : y + 5;
-      p(10, ay, 3, 1, PAL.skin);
-      p(12, ay - 1, 1, 1, PAL.rockL);          // tool head
+      p(10, ay, 3, 1, PAL.skin);               // swinging arm
+      p(12, ay - 2, 1, 3, PAL.trunk);          // wooden haft
+      p(12, ay - 3, 2, 1, PAL.rockL);          // lashed stone head
+      if (f === 1) p(14, ay, 1, 1, APx.thatch[3]);   // chips fly on the strike
       p(5, y + 4, 1, 2, PAL.skin);
     } else if (pose === 'fight') {
       const ax = f === 0 ? 10 : 12;
       p(10, y + 4, ax - 7, 1, PAL.skin);
       p(ax, y + 2, 1, 4, c.spear || PAL.trunk); // spear
       p(ax, y + 1, 1, 1, PAL.rockL);
+      if (f === 1) { p(ax + 1, y + 1, 1, 1, APx.bone[2]); p(ax + 1, y + 3, 1, 1, APx.fire[2]); } // strike flash
       p(5, y + 4, 1, 2, PAL.skin);
     } else {
       p(5, y + 4, 1, 2, PAL.skin);
@@ -729,6 +732,12 @@ const Sprites = {
   beast('cow', '#e8e0d0', '#8a8078', { w: 8, h: 4, ears: true, tail: true, horns: true, spots: '#5a4a3a' });
 
   /* ---------------- icons (16px) ---------------- */
+
+  // ARTSTYLE: every unit frame gets its 1px ink outline at build time
+  for (const kind in Sprites.unit)
+    for (const pose in Sprites.unit[kind])
+      Sprites.unit[kind][pose] = Sprites.unit[kind][pose].map(c => ART.outline(c));
+
   function icon(draw) {
     const c = mk(16, 16), g = c.getContext('2d');
     const p = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * 2, y * 2, (w || 1) * 2, (h || 1) * 2); };
