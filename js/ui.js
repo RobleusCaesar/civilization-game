@@ -21,6 +21,27 @@ const UI = {
   MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'dock', 'wall', 'gate'],
 
   init() {
+    // procedural UI chrome (ARTSTYLE): a dark plank texture generated once and
+    // handed to CSS — panels, bars, and cards all share it. No image files.
+    {
+      const AP = ART.PALETTE;
+      const tex = document.createElement('canvas');
+      tex.width = tex.height = 64;
+      const g = tex.getContext('2d');
+      g.fillStyle = AP.ink[1]; g.fillRect(0, 0, 64, 64);
+      const r = ART.rng(97);
+      for (let x = 0; x < 64; x += 16) {                 // plank strips
+        g.fillStyle = 'rgba(62,44,20,' + (0.22 + r() * 0.10).toFixed(2) + ')';   // wood[0] tone
+        g.fillRect(x + 1, 0, 14, 64);
+        g.fillStyle = 'rgba(20,16,10,0.8)';
+        g.fillRect(x, 0, 1, 64);
+      }
+      g.fillStyle = 'rgba(165,133,77,0.05)';             // faint grain highlights
+      for (let i = 0; i < 26; i++) g.fillRect((r() * 64) | 0, (r() * 64) | 0, 1, 3 + (r() * 6) | 0);
+      g.fillStyle = 'rgba(20,16,10,0.5)';                // knots
+      for (let i = 0; i < 5; i++) g.fillRect((r() * 62) | 0, (r() * 62) | 0, 2, 2);
+      document.documentElement.style.setProperty('--wood-tex', 'url(' + tex.toDataURL() + ')');
+    }
     // resource icons in the top bar
     document.querySelectorAll('.ric').forEach(c => {
       c.width = 16; c.height = 16;

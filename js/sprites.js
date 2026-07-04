@@ -744,11 +744,28 @@ const Sprites = {
     draw(p);
     return c;
   }
-  Sprites.icons.food = icon(p => { p(2, 3, 4, 4, '#c23a2e'); p(3, 2, 2, 1, '#c23a2e'); p(5, 1, 2, 2, PAL.sprout); p(4, 4, 1, 1, '#e8887a'); });
-  Sprites.icons.wood = icon(p => { p(1, 3, 6, 3, PAL.wood); p(1, 3, 1, 3, PAL.thatch); p(2, 4, 4, 1, PAL.woodD); });
-  Sprites.icons.stone = icon(p => { p(2, 3, 4, 3, PAL.rock); p(3, 2, 2, 1, PAL.rock); p(2, 5, 4, 1, PAL.rockD); p(3, 3, 1, 1, PAL.rockL); });
-  Sprites.icons.gold = icon(p => { p(2, 4, 4, 2, PAL.gold); p(3, 3, 2, 1, PAL.gold); p(3, 4, 1, 1, '#fff2c0'); });
-  Sprites.icons.pop = icon(p => { p(3, 1, 2, 2, PAL.skin); p(2, 3, 4, 3, PAL.P); });
+  // resource icons: shaded, outlined, palette-only (top-left light like all art)
+  Sprites.icons.food = ART.outline(icon(p => {     // meat joint on the bone
+    p(2, 3, 4, 3, AP.red[1]); p(2, 3, 3, 1, AP.red[2]); p(2, 3, 1, 2, AP.red[2]);
+    p(3, 6, 2, 1, AP.red[0]);
+    p(5, 2, 2, 2, AP.bone[2]); p(6, 1, 1, 1, AP.bone[1]);
+  }));
+  Sprites.icons.wood = ART.outline(icon(p => {     // stacked logs, ring ends lit
+    p(1, 2, 6, 2, AP.wood[3]); p(1, 2, 6, 1, AP.wood[4]); p(1, 2, 1, 2, AP.thatch[2]);
+    p(1, 5, 6, 2, AP.wood[2]); p(1, 5, 6, 1, AP.wood[3]); p(6, 5, 1, 2, AP.thatch[1]);
+  }));
+  Sprites.icons.stone = ART.outline(icon(p => {    // shaded boulder
+    p(2, 3, 4, 3, AP.stone[2]); p(3, 2, 2, 1, AP.stone[3]);
+    p(2, 3, 1, 1, AP.stone[3]); p(2, 5, 4, 1, AP.stone[1]); p(5, 3, 1, 3, AP.stone[1]);
+  }));
+  Sprites.icons.gold = ART.outline(icon(p => {     // nugget pile with a glint
+    p(2, 4, 4, 2, AP.gold[1]); p(2, 4, 4, 1, AP.gold[2]); p(3, 3, 2, 1, AP.gold[2]);
+    p(3, 3, 1, 1, AP.gold[3]);
+  }));
+  Sprites.icons.pop = ART.outline(icon(p => {      // villager in player blue
+    p(3, 1, 2, 2, AP.skin[2]); p(3, 1, 2, 1, AP.hair[1]);
+    p(2, 3, 4, 3, AP.blue[2]); p(2, 3, 4, 1, AP.blue[3]);
+  }));
 
   Sprites.iconFor = (key) => Sprites.icons[key];
 })();
