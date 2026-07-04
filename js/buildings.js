@@ -230,8 +230,15 @@ const Bld = {
         if (b.queue[0].t <= 0) {
           const item = b.queue.shift();
           const spot = MapGen.findNear(b.x, b.y + 1, 3, (x, y) => Path.passable(x, y) && !Bld.at(x, y)) || { x: b.x, y: b.y + 1 };
-          Units.spawn(item.unit, b.owner, spot.x, spot.y);
+          const nu = Units.spawn(item.unit, b.owner, spot.x, spot.y);
           if (b.owner === 'P') G.log(`${CFG.UNITS[item.unit].name} ready`);
+          // rally point: fresh units head there; villagers rallied onto a
+          // resource tile start gathering immediately
+          if (b.owner === 'P' && b.rally) {
+            if (Units.isVillager(nu) && CFG.GATHER[S.map.terrain[MapGen.idx(b.rally.x, b.rally.y)]])
+              Units.assignGather(nu, b.rally.x, b.rally.y);
+            else Units.moveTo(nu, b.rally.x, b.rally.y);
+          }
         }
       }
     }

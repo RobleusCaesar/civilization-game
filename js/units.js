@@ -36,7 +36,7 @@ const Units = {
   isRaider(u) { return u.owner === 'R'; },
 
   popUsed(owner) {
-    let n = 0;
+    let n = owner === 'P' && S.garrison ? S.garrison.length : 0;
     for (const u of S.units) if (u.owner === owner && (this.isVillager(u) || this.isMilitary(u))) n++;
     return n;
   },
@@ -50,14 +50,21 @@ const Units = {
     return S.buildings.some(b => b.owner === 'P' && b.key === 'lodge' && b.level >= 3 && Bld.done(b));
   },
   effAtk(u) {
-    if (u.owner === 'P' && this.isVillager(u) && this.villagerArmed()) return u.atk + 4;
+    let atk = u.atk;
+    if (u.owner === 'P' && this.isVillager(u) && this.villagerArmed()) atk += 4;
     if (u.owner === 'P' && this.isMilitary(u)) {
       // Watchtower L3 signal fire aura
       for (const b of S.buildings)
         if (b.owner === 'P' && b.key === 'tower' && b.level >= 3 && Bld.done(b) &&
-            Math.hypot(b.x + 0.5 - u.x, b.y + 0.5 - u.y) < 6) return u.atk + 2;
+            Math.hypot(b.x + 0.5 - u.x, b.y + 0.5 - u.y) < 6) { atk += 2; break; }
     }
-    return u.atk;
+    // home turf: fighting near your own Town Center favors the defender (+10%)
+    if (u.owner === 'P' || u.owner === 'A') {
+      const tc = Bld.tcOf(u.owner);
+      if (tc && Math.hypot(tc.x + 0.5 - u.x, tc.y + 0.5 - u.y) <= CFG.HOME_TURF.range)
+        atk *= CFG.HOME_TURF.mult;
+    }
+    return atk;
   },
 
   setPath(u, tx, ty) {
@@ -233,6 +240,19 @@ const Units = {
             b.hp = Math.min(b.maxhp, b.hp + b.maxhp * CFG.REPAIR_RATE * dtDays);
             if (b.hp >= b.maxhp) { u.task = null; G.log(`${Bld.def(b.key).name} repaired`); }
           }
+        }
+      } else if (t.type === 'garrison') {
+        // heading into the Town Center for shelter
+        const tc = Bld.tcOf('P');
+        if (!tc) { u.task = null; continue; }
+        const d = Math.hypot(tc.x + 0.5 - u.x, tc.y + 0.5 - u.y);
+        if (d > 1.4) {
+          if (this.moving(u)) this.followPath(u, dt);
+          else if (!this.setPath(u, tc.x, tc.y)) u.task = null;
+        } else {
+          S.garrison.push({ hp: u.hp, maxhp: u.maxhp });
+          if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
+          S.units.splice(i, 1);
         }
       } else if (t.type === 'work') {
         // stationed at a production building — stand there and keep it running

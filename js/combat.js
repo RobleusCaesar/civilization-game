@@ -124,7 +124,7 @@ const Combat = {
           u.cd = CFG.ATTACK_COOLDOWN;
           if (CFG.UNITS[u.kind].rng)
             this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: tgt.x, y2: tgt.y, t: 0.15 });
-          const dmg = Math.max(1, Units.effAtk(u) - tgt.def);
+          const dmg = Math.max(1, Math.round(Units.effAtk(u) - tgt.def));
           R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f08a7a');
           Units.damage(tgt, dmg, u.id);
         }
@@ -146,7 +146,7 @@ const Combat = {
           u.cd = CFG.ATTACK_COOLDOWN;
           if (CFG.UNITS[u.kind].rng)
             this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: b.x + 0.5, y2: b.y + 0.5, t: 0.15 });
-          const dmg = Math.max(1, Units.effAtk(u));
+          const dmg = Math.max(1, Math.round(Units.effAtk(u)));
           Bld.damage(b, dmg);
           if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
             G.log(`${Bld.def(b.key).name} under attack!`, true);

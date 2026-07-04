@@ -14,6 +14,7 @@ const UI = {
   confirmDemolish: 0,    // building id awaiting demolish confirmation
   wallDrag: null,        // tile chain while dragging a wall line
   wallGhost: null,       // [{x,y,ok,mask}] preview of the dragged line
+  settingRally: null,    // building id waiting for a rally-point tap
   MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'wall', 'gate'],
 
   init() {
@@ -234,6 +235,21 @@ const UI = {
     const w = R.screenToWorld(sx, sy);
     const wx = w.x / CFG.TILE, wy = w.y / CFG.TILE;
 
+    // rally-point placement
+    if (this.settingRally) {
+      const rb = Bld.get(this.settingRally);
+      this.settingRally = null;
+      if (rb && Math.hypot(rb.x - tile.x, rb.y - tile.y) <= CFG.RALLY_RANGE) {
+        rb.rally = { x: tile.x, y: tile.y };
+        const gatherable = !!CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]];
+        this.toast(gatherable && rb.key === 'tc'
+          ? 'Rally set — new villagers will gather here'
+          : 'Rally point set — new units will head here');
+      } else this.toast(`Too far — rally must be within ${CFG.RALLY_RANGE} tiles`, true);
+      if (this.sel) this.renderPanel();
+      return;
+    }
+
     // placement mode
     if (this.placing) {
       const can = Bld.canPlace('P', this.placing, tile.x, tile.y);
@@ -247,15 +263,15 @@ const UI = {
     }
 
     const explored = S.map.explored[MapGen.idx(tile.x, tile.y)];
-    // hit-test a unit near the tap point
+    // hit-test a unit near the tap point (only what we can actually see)
     let hitUnit = null, hd = 0.7;
     for (const u of S.units) {
-      if (!S.map.explored[MapGen.idx(u.x | 0, u.y | 0)]) continue;
+      if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
       const d = Math.hypot(u.x - wx, u.y - wy);
       const dd = d - (u.owner === 'P' ? 0.15 : 0); // bias towards own units
       if (dd < hd) { hd = dd; hitUnit = u; }
     }
-    const hitBld = explored ? Bld.at(tile.x, tile.y) : null;
+    const hitBld = G.visibleAt(tile.x, tile.y) ? Bld.at(tile.x, tile.y) : null;
 
     // orders for a selected war party
     if (this.sel && this.sel.type === 'group') {
@@ -343,6 +359,7 @@ const UI = {
   deselect() {
     this.sel = null;
     this.confirmDemolish = 0;
+    this.settingRally = null;
     document.getElementById('panel').classList.remove('show');
     document.getElementById('buildmenu').style.display = 'flex';
   },
@@ -358,7 +375,9 @@ const UI = {
       let sig = ['b', b.id, b.level, b.construction > 0, b.upgrading > 0, b.queue.length,
         b.level < 3 && Bld.canUpgrade(b).ok, b.hp < b.maxhp, Bld.hasWorker(b),
         d.needsWorker ? !!Bld.stationedWorker(b) : '-',
-        this.confirmDemolish === b.id].join('|');
+        !!b.rally, this.confirmDemolish === b.id].join('|');
+      if (b.key === 'tc') sig += '|' + S.garrison.length + '|' +
+        S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
       if (d.train) for (const uk in d.train) sig += '|' + Bld.canTrain(b, uk).ok;
       return sig;
     }
@@ -423,6 +442,8 @@ const UI = {
       else if (b.hp < b.maxhp && Bld.hasWorker(b)) sub += ' — under repair';
       if (b.owner === 'P' && !b.construction && Bld.def(b.key).needsWorker)
         sub += Bld.stationedWorker(b) ? ' — 🧑‍🌾 worker on duty' : ' — ⚠️ NO WORKER, no production';
+      if (b.key === 'tc' && b.owner === 'P' && S.garrison.length)
+        sub += ` — 🛖 ${S.garrison.length} sheltered`;
       else if (lv.out) sub += ' — ' + Object.entries(lv.out).map(([k, v]) => `+${Math.round(v * Bld.nearBonus(b) * 10) / 10} ${k}/day`).join(', ');
       if (lv.pop) sub += ` — +${lv.pop} pop`;
       if (lv.bonus) sub += ` — ${lv.bonus}`;
@@ -430,7 +451,7 @@ const UI = {
     }
     if (this.sel.type === 'group') return this.groupComposition(this.sel.ids);
     const u = Units.get(this.sel.id);
-    return u ? `HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Units.effAtk(u)} · DEF ${u.def}` : '';
+    return u ? `HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${u.def}` : '';
   },
   renderPanel() {
     const panel = document.getElementById('panel');
@@ -466,6 +487,17 @@ const UI = {
             html += `<button class="abtn ${ct.ok ? '' : 'cant'}" data-act="train" data-unit="${uk}">Train ${CFG.UNITS[uk].name}<small>${Bld.costStr(spec.cost)}${ct.ok ? '' : ' — ' + ct.why}</small></button>`;
           }
           if (b.queue.length) html += `<span class="psub" style="align-self:center">Queue: ${b.queue.length}</span>`;
+          html += b.rally
+            ? `<button class="abtn" data-act="rally">🚩 Rally set<small>tap to clear</small></button>`
+            : `<button class="abtn" data-act="rally">🚩 Set rally<small>tap ground within ${CFG.RALLY_RANGE} tiles</small></button>`;
+        }
+        if (b.key === 'tc' && !b.construction) {
+          const vills = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
+          if (vills)
+            html += `<button class="abtn" data-act="shelter">🛖 Shelter villagers<small>${vills} head inside to safety</small></button>`;
+          if (S.garrison.length)
+            html += `<button class="abtn" data-act="release">🚪 Release all<small>${S.garrison.length} sheltered inside</small></button>`;
+          html += `<button class="abtn" data-act="callidle">📣 Call idle<small>muster at the Town Center</small></button>`;
         }
         if (b.key === 'wall' && !b.construction && !b.upgrading) {
           const net = this.gateConvertCost(b);
@@ -503,6 +535,44 @@ const UI = {
             Units.setPath(v, b2.x, b2.y);
             this.toast('Worker heading to the ' + Bld.def(b2.key).name);
           }
+        }
+        else if (btn.dataset.act === 'rally') {
+          if (b2.rally) { b2.rally = null; this.toast('Rally point cleared'); this.renderPanel(); }
+          else {
+            this.settingRally = b2.id;
+            this.toast('Tap a spot near the building — new units will head there (a resource tile sends villagers gathering)');
+          }
+        }
+        else if (btn.dataset.act === 'shelter') {
+          let n = 0;
+          for (const u of S.units)
+            if (u.owner === 'P' && Units.isVillager(u)) {
+              u.task = { type: 'garrison' }; u.tUnit = 0; u.tBld = 0;
+              Units.setPath(u, b2.x, b2.y);
+              n++;
+            }
+          this.toast(n ? `${n} villager${n > 1 ? 's' : ''} heading to shelter` : 'No villagers on the map', !n);
+        }
+        else if (btn.dataset.act === 'release') {
+          const n = S.garrison.length;
+          for (const gv of S.garrison) {
+            const spot = MapGen.findNear(b2.x, b2.y + 1, 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: b2.x, y: b2.y + 1 };
+            const v = Units.spawn('villager', 'P', spot.x, spot.y);
+            v.hp = Math.min(gv.hp, v.maxhp);
+          }
+          S.garrison = [];
+          this.toast(`${n} villager${n > 1 ? 's' : ''} back outside`);
+          this.renderPanel();
+        }
+        else if (btn.dataset.act === 'callidle') {
+          let n = 0;
+          for (const u of S.units)
+            if (u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit) {
+              const spot = MapGen.findNear(b2.x, b2.y + 2, 3, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: b2.x, y: b2.y + 2 };
+              Units.moveTo(u, spot.x, spot.y);
+              n++;
+            }
+          this.toast(n ? `${n} idle villager${n > 1 ? 's' : ''} called in` : 'Nobody is idle', !n);
         }
         else if (btn.dataset.act === 'togate') {
           const net = this.gateConvertCost(b2);
@@ -562,7 +632,7 @@ const UI = {
         : 'Tap a tile to move, or an enemy to attack.';
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : '☠ '}${nm}</div>
-        <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Units.effAtk(u)} · DEF ${u.def}</div></div>
+        <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${u.def}</div></div>
         <button class="abtn" id="panelClose">✕</button></div>
         <div class="pactions"><span class="psub">${hint}</span>`;
       if (own && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind]) {

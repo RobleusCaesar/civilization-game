@@ -213,4 +213,6 @@ const CFG = {
   ATTACK_COOLDOWN: 1.0,        // seconds between melee hits
   MELEE_RANGE: 1.15,           // tiles
   REPAIR_RATE: 0.5,            // fraction of max hp restored per day of villager work
+  HOME_TURF: { range: 10, mult: 1.1 },  // +10% attack near your own Town Center
+  RALLY_RANGE: 10,             // max distance for a building's rally point
 };

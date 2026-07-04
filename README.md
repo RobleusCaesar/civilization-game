@@ -66,6 +66,17 @@ on desktop too.
   archers who shoot from a distance (level 3: marksmen). The **Town Center** trains
   villagers; houses raise the population cap. Tap a soldier, then a tile to move or
   an enemy to attack.
+- **Shelter & muster**: the Town Center can *Shelter villagers* — everyone runs
+  inside and vanishes from the map until you *Release all* after the threat
+  passes. *Call idle* musters idle villagers outside the TC.
+- **Rally points**: every training building (Town Center, Barracks, Stable,
+  Range) has *Set rally* — tap ground within 10 tiles and new units head there
+  on completion. Rally the TC onto a forest/hills/fertile tile and fresh
+  villagers start gathering immediately; rally the barracks at the front line
+  to reinforce a war party.
+- **Home turf**: units within 10 tiles of their own Town Center hit 10% harder,
+  so equal fights near your walls tip to the defender (the rival gets the same
+  bonus at home).
 - **War parties**: tap a soldier → *Group nearby* to gather every soldier within
   6 tiles into one selection. One tap then marches them together (melee form the
   front line, archers hold a rank behind) or throws them all at an enemy unit or
@@ -99,6 +110,9 @@ on desktop too.
 - **The rival tribe** — an AI settlement across the valley builds, upgrades, trains
   defenders, and will march on you if it out-scales your military. Scout it through
   the fog of war.
+- **Fog of war** — unexplored land is black; places you've visited but left turn
+  grey and show only what you last saw there: buildings frozen at their old state,
+  no units, no new construction, upgrades, or terrain changes until you scout again.
 
 ## Win / lose
 

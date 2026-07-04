@@ -33,9 +33,12 @@ const G = {
         resAmount: gen.resAmount,
         scarce: gen.scarce,
         explored: new Array(CFG.W * CFG.H).fill(0),
+        seenTerrain: gen.terrain.slice(),   // what the player last saw, per tile
+        seenB: {},                          // last-seen buildings: idx -> {key, level, owner}
         spawns: gen.spawns,
       },
       buildings: [], units: [],
+      garrison: [],                         // villagers sheltered inside the Town Center
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0 },
       ai: null,
@@ -51,10 +54,13 @@ const G = {
     Units.spawnWild('deer', 8);
     Units.spawnWild('cow', 8);
 
+    this.vis = null;
     R.onNewGame();
+    this.updateVisibility();
     UI.deselect();
     UI.placing = null;
     UI.builderFor = null;
+    UI.settingRally = null;
     document.getElementById('btnPause').textContent = '⏸';
     document.getElementById('endModal').classList.remove('show');
     this.log(`A new tribe settles the valley (${this.modeCfg().name}). Destroy the rival Town Center to win.`);
@@ -79,13 +85,51 @@ const G = {
     }
   },
 
-  revealT: 0,
-  revealAroundUnits(dt) {
-    this.revealT -= dt;
-    if (this.revealT > 0) return;
-    this.revealT = 0.4;
+  /* ---- three-state fog: black (unexplored), grey (remembered), clear (visible).
+     Visibility comes from player buildings and units; while a tile is visible its
+     last-seen memory (terrain + buildings) is kept in sync. ---- */
+  vis: null,
+  visT: 0,
+  visibleAt(x, y) {
+    const i = MapGen.idx(x, y);
+    return this.vis ? !!this.vis[i] : !!S.map.explored[i];
+  },
+  updateVisibility() {
+    const W = CFG.W, H = CFG.H;
+    if (!this.vis || this.vis.length !== W * H) this.vis = new Uint8Array(W * H);
+    else this.vis.fill(0);
+    const vis = this.vis, expl = S.map.explored;
+    const mark = (cx, cy, r) => {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r * r + r) continue;
+        const x = cx + dx, y = cy + dy;
+        if (!MapGen.inB(x, y)) continue;
+        const i = MapGen.idx(x, y);
+        vis[i] = 1;
+        if (!expl[i]) { expl[i] = 1; }
+      }
+    };
+    for (const b of S.buildings)
+      if (b.owner === 'P') mark(b.x, b.y, Bld.done(b) ? (Bld.lv(b).vision || 4) : 2);
     for (const u of S.units)
-      if (u.owner === 'P') this.reveal(u.x | 0, u.y | 0, CFG.UNIT_VISION);
+      if (u.owner === 'P') mark(u.x | 0, u.y | 0, CFG.UNIT_VISION);
+    // sync last-seen memory on every visible tile
+    const liveB = new Map();
+    for (const b of S.buildings) liveB.set(MapGen.idx(b.x, b.y), b);
+    for (let i = 0; i < W * H; i++) {
+      if (!vis[i]) continue;
+      if (S.map.seenTerrain[i] !== S.map.terrain[i]) {
+        S.map.seenTerrain[i] = S.map.terrain[i];
+        R.drawTileAt(i % W, (i / W) | 0);
+      }
+      const b = liveB.get(i);
+      if (b) {
+        const sb = S.map.seenB[i];
+        if (!sb || sb.key !== b.key || sb.level !== b.level)
+          S.map.seenB[i] = { key: b.key, level: b.level, owner: b.owner };
+      } else if (S.map.seenB[i]) delete S.map.seenB[i];
+    }
+    R.fogDirty = true;
   },
 
   dayTick() {
@@ -118,13 +162,18 @@ const G = {
         return r ? Math.round((r[0] + r[1]) / 2) : 0;
       });
     }
+    if (!data.garrison) data.garrison = [];
+    if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
+    if (!data.map.seenB) data.map.seenB = {};
     S = data;
     Bld._block = null;
     S.paused = true;
     document.getElementById('btnPause').textContent = '▶';
     UI.deselect();
     UI.placing = null;
+    this.vis = null;
     R.onNewGame();
+    this.updateVisibility();
     if (S.over) UI.showEnd(S.over.win, S.over.msg);
   },
 
@@ -145,7 +194,8 @@ const G = {
         Bld.update(dtDays);
         Units.update(dt);
         Combat.update(dt);
-        G.revealAroundUnits(dt);
+        G.visT -= dt;
+        if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
         G.autosaveT -= dt;
         if (G.autosaveT <= 0) { G.autosaveT = 10; G.autosave = G.saveJSON(); }
       }

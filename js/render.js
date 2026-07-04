@@ -28,13 +28,19 @@ const R = {
   },
 
   drawTile(g, x, y) {
-    const t = S.map.terrain[MapGen.idx(x, y)];
+    // render from last-seen memory, not live truth — grey fog shows the past
+    const t = (S.map.seenTerrain || S.map.terrain)[MapGen.idx(x, y)];
     const variants = Sprites.terrain[t];
     g.drawImage(variants[(x * 7 + y * 13) % variants.length], x * CFG.TILE, y * CFG.TILE);
   },
 
-  // redraw one tile of the cached terrain layer (depletion, ruins)
+  // live terrain changed (depletion, ruins) — only players watching see it
   updateTile(x, y) {
+    if (!G.visibleAt(x, y)) return;   // hidden changes stay hidden until revisited
+    S.map.seenTerrain[MapGen.idx(x, y)] = S.map.terrain[MapGen.idx(x, y)];
+    this.drawTileAt(x, y);
+  },
+  drawTileAt(x, y) {
     if (this.terrainCache) this.drawTile(this.terrainCache.getContext('2d'), x, y);
   },
 
@@ -57,9 +63,16 @@ const R = {
   redrawFog() {
     const g = this.fogG;
     g.clearRect(0, 0, CFG.W, CFG.H);
-    g.fillStyle = '#0d0b08';
-    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++)
-      if (!S.map.explored[MapGen.idx(x, y)]) g.fillRect(x, y, 1, 1);
+    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) {
+      const i = MapGen.idx(x, y);
+      if (!S.map.explored[i]) {
+        g.fillStyle = '#0d0b08';               // never seen: black
+        g.fillRect(x, y, 1, 1);
+      } else if (!(G.vis && G.vis[i])) {
+        g.fillStyle = 'rgba(16,16,22,0.45)';   // remembered but out of sight: grey
+        g.fillRect(x, y, 1, 1);
+      }
+    }
     this.fogDirty = false;
   },
 
@@ -140,10 +153,21 @@ const R = {
     // terrain
     g.drawImage(this.terrainCache, 0, 0);
 
+    // remembered buildings (ghosts in the grey fog) — drawn as last seen
+    for (const k in S.map.seenB) {
+      const i = +k, gx = i % CFG.W, gy = (i / CFG.W) | 0;
+      if ((G.vis && G.vis[i]) || !S.map.explored[i]) continue;
+      const snap = S.map.seenB[k];
+      const spr = snap.key === 'wall' ? Sprites.wallMask[snap.level - 1][this.wallMaskAt(gx, gy)]
+        : snap.key === 'gate' ? Sprites.gateMask[snap.level - 1][this.gateVerticalAt(gx, gy) ? 1 : 0]
+        : Sprites.building[snap.key][snap.level - 1];
+      g.drawImage(spr, gx * TL, gy * TL);
+    }
+
     // buildings (y-sorted)
     const blds = S.buildings.slice().sort((a, b) => a.y - b.y);
     for (const b of blds) {
-      if (!this.explored(b.x, b.y)) continue;
+      if (!G.visibleAt(b.x, b.y)) continue;
       const bx = b.x * TL, by = b.y * TL;
       if (b.construction > 0) {
         // fortifications show their oriented shape while going up
@@ -176,7 +200,7 @@ const R = {
       : UI.sel.type === 'group' ? new Set(UI.sel.ids) : null;
     const units = S.units.slice().sort((a, b) => a.y - b.y);
     for (const u of units) {
-      if (!this.explored(u.x | 0, u.y | 0)) continue;
+      if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
       const ux = u.x * TL - TL / 2, uy = u.y * TL - TL / 2 - 4;
       if (selIds && selIds.has(u.id)) {
         g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;
@@ -221,6 +245,29 @@ const R = {
       }
     }
 
+    // rally point flag / rally-setting range ring
+    if (UI.settingRally) {
+      const rb = Bld.get(UI.settingRally);
+      if (rb) {
+        g.strokeStyle = 'rgba(232,193,90,0.6)'; g.lineWidth = 2;
+        g.beginPath();
+        g.arc((rb.x + 0.5) * TL, (rb.y + 0.5) * TL, CFG.RALLY_RANGE * TL, 0, Math.PI * 2);
+        g.stroke();
+      }
+    }
+    if (UI.sel && UI.sel.type === 'bld') {
+      const rb = Bld.get(UI.sel.id);
+      if (rb && rb.rally) {
+        const fx = (rb.rally.x + 0.5) * TL, fy = (rb.rally.y + 0.5) * TL;
+        g.strokeStyle = 'rgba(232,193,90,0.5)'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo((rb.x + 0.5) * TL, (rb.y + 0.5) * TL); g.lineTo(fx, fy); g.stroke();
+        g.strokeStyle = '#e8c15a'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(fx, fy + 6); g.lineTo(fx, fy - 8); g.stroke();
+        g.fillStyle = '#e8c15a';
+        g.beginPath(); g.moveTo(fx, fy - 8); g.lineTo(fx + 8, fy - 5); g.lineTo(fx, fy - 2); g.fill();
+      }
+    }
+
     // fog of war
     if (this.fogDirty) this.redrawFog();
     g.imageSmoothingEnabled = true;
@@ -254,17 +301,29 @@ const R = {
   drawMini() {
     const g = this.mg, COLORS = ['#5a8f3c', '#2e5c25', '#2e6b8a', '#8f8f86', '#6b5433', '#3d3833',
       '#6f8a4c', '#7d8a72', '#8a7a58', '#57503f'];   // stumps, pebbles, barren, ruin
+    const shadeCache = {};
+    const shade = c => shadeCache[c] || (shadeCache[c] = c.replace(/[0-9a-f]{2}/gi,
+      h => Math.max(0, (parseInt(h, 16) * 0.55) | 0).toString(16).padStart(2, '0')));
     for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) {
-      g.fillStyle = S.map.explored[MapGen.idx(x, y)] ? COLORS[S.map.terrain[MapGen.idx(x, y)]] : '#060504';
+      const i = MapGen.idx(x, y);
+      g.fillStyle = !S.map.explored[i] ? '#060504'
+        : (G.vis && G.vis[i]) ? COLORS[S.map.seenTerrain[i]]
+        : shade(COLORS[S.map.seenTerrain[i]]);
       g.fillRect(x * 2, y * 2, 2, 2);
     }
     for (const b of S.buildings) {
-      if (!this.explored(b.x, b.y)) continue;
+      if (!G.visibleAt(b.x, b.y)) continue;
       g.fillStyle = b.owner === 'P' ? '#5ab4f0' : '#f0645a';
       g.fillRect(b.x * 2 - 1, b.y * 2 - 1, 4, 4);
     }
+    for (const k in S.map.seenB) {
+      const i = +k;
+      if ((G.vis && G.vis[i]) || !S.map.explored[i]) continue;
+      g.fillStyle = S.map.seenB[k].owner === 'P' ? '#3a6a8a' : '#8a4a44';
+      g.fillRect((i % CFG.W) * 2 - 1, ((i / CFG.W) | 0) * 2 - 1, 4, 4);
+    }
     for (const u of S.units) {
-      if (!this.explored(u.x | 0, u.y | 0)) continue;
+      if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
       g.fillStyle = u.owner === 'P' ? '#c0e8ff' : u.owner === 'A' ? '#ffb0a8' : u.owner === 'R' ? '#ff5040' : '#e8d8a0';
       g.fillRect((u.x * 2) | 0, (u.y * 2) | 0, 2, 2);
     }
