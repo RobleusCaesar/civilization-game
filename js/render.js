@@ -175,7 +175,7 @@ const R = {
   bldSprite(b) {
     if (b.key === 'wall') return Sprites.wallMask[b.level - 1][this.wallMaskAt(b.x, b.y)];
     if (b.key === 'gate') return Sprites.gateMask[b.level - 1][this.gateVerticalAt(b.x, b.y) ? 1 : 0];
-    return Sprites.building[b.key][b.level - 1];
+    return (b.owner === 'A' ? Sprites.buildingA : Sprites.building)[b.key][b.level - 1];
   },
 
   unitPose(u) {
@@ -212,7 +212,7 @@ const R = {
       const snap = S.map.seenB[k];
       const spr = snap.key === 'wall' ? Sprites.wallMask[snap.level - 1][this.wallMaskAt(gx, gy)]
         : snap.key === 'gate' ? Sprites.gateMask[snap.level - 1][this.gateVerticalAt(gx, gy) ? 1 : 0]
-        : Sprites.building[snap.key][snap.level - 1];
+        : (snap.owner === 'A' ? Sprites.buildingA : Sprites.building)[snap.key][snap.level - 1];
       g.drawImage(spr, gx * TL, gy * TL);
     }
 
@@ -261,6 +261,36 @@ const R = {
       g.drawImage(this.unitSprite(u), ux, uy);
       if (u.hp < u.maxhp) this.bar(g, ux + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');
+    }
+
+    // hearth smoke drifting from settled buildings, embers over camp fires —
+    // transient render-side particles, bounded, visible tiles only
+    this.smoke = this.smoke || [];
+    this.smokeT = (this.smokeT || 0) - dt;
+    if (this.smokeT <= 0) {
+      this.smokeT = 0.45;
+      if (this.smoke.length < 36) {
+        for (const b of S.buildings) {
+          if (b.construction > 0) continue;
+          const rate = b.key === 'tc' ? 0.9 : (b.key === 'house' || b.key === 'lodge') ? 0.2 : 0;
+          if (!rate || Math.random() > rate) continue;
+          if (!G.visibleAt(b.x, b.y)) continue;
+          this.smoke.push({ x: b.x + 0.5 + (Math.random() - 0.5) * 0.15, y: b.y + 0.18,
+                            t: 0, ttl: 2 + Math.random() * 1.2, ember: false });
+          if (this.smoke.length >= 36) break;
+        }
+      }
+    }
+    for (let i = this.smoke.length - 1; i >= 0; i--) {
+      const s = this.smoke[i];
+      s.t += dt;
+      if (s.t > s.ttl) { this.smoke.splice(i, 1); continue; }
+      const k = s.t / s.ttl;
+      const sx = (s.x + Math.sin((s.t + s.x * 7) * 1.6) * 0.06 + s.t * 0.03) * TL;
+      const sy = (s.y - s.t * 0.28) * TL;
+      const size = 2 + k * 5;
+      g.fillStyle = 'rgba(206,200,190,' + (0.30 * (1 - k)).toFixed(3) + ')';
+      g.fillRect(sx - size / 2, sy - size / 2, size, size);
     }
 
     // hostiles piled on one tile: a head-count badge so the stack is readable

@@ -11,22 +11,25 @@ const Sprites = {
 };
 
 (function () {
+  // Legacy alias table — every entry references the ART master palette, so
+  // older drawing code stays palette-compliant. New art should use ART directly.
+  const APx = ART.PALETTE;
   const PAL = {
-    grass: '#5a8f3c', grassD: '#4d7c33', grassL: '#6da04a',
-    soil: '#6b5433', soilD: '#57431f', sprout: '#8fbf4d',
-    water: '#2e6b8a', waterL: '#4589ab',
-    rock: '#8f8f86', rockD: '#6f6f66', rockL: '#adada2',
-    trunk: '#6e4f27', leaf: '#2e5c25', leafL: '#417a33',
-    wood: '#8a6b3a', woodD: '#6e5024', thatch: '#c9a84c', thatchD: '#ab8c38',
-    stone: '#9a9a92', stoneD: '#77776e',
-    gold: '#e8c15a', fire: '#e88a3a', fireL: '#f2c14a',
-    skin: '#d9a066', hair: '#4a3620',
-    P: '#4a90c2', PD: '#356a92',        // player accent (blue)
-    A: '#c2564a', AD: '#8f3d34',        // rival accent (red)
-    R: '#3d3833', RD: '#2a2622',        // raider (dark)
-    wolf: '#7d7d84', wolfD: '#5d5d64',
-    boar: '#7a5230', boarD: '#5c3c20',
-    white: '#e8e8e0', red: '#c23a2e', dark: '#1a160f',
+    grass: APx.grass[3], grassD: APx.grass[2], grassL: APx.grass[4],
+    soil: APx.soil[2], soilD: APx.soil[1], sprout: APx.grass[4],
+    water: APx.water[2], waterL: APx.water[3],
+    rock: APx.stone[2], rockD: APx.stone[1], rockL: APx.stone[3],
+    trunk: APx.wood[1], leaf: APx.leaf[1], leafL: APx.leaf[3],
+    wood: APx.wood[3], woodD: APx.wood[2], thatch: APx.thatch[2], thatchD: APx.thatch[1],
+    stone: APx.stone[2], stoneD: APx.stone[1],
+    gold: APx.gold[2], fire: APx.fire[1], fireL: APx.fire[2],
+    skin: APx.skin[2], hair: APx.hair[1],
+    P: APx.blue[2], PD: APx.blue[1],        // player accent (blue)
+    A: APx.red[2], AD: APx.red[1],          // rival accent (red)
+    R: APx.rust[1], RD: APx.rust[0],        // barbarian (dark)
+    wolf: APx.pelt[2], wolfD: APx.pelt[1],
+    boar: APx.hide[2], boarD: APx.hide[1],
+    white: APx.bone[2], red: APx.red[2], dark: APx.ink[0],
   };
 
   function mk(w, h) {
@@ -235,10 +238,10 @@ const Sprites = {
   // fortification materials by level: 1 = stick-and-grass palisade, 2 = stone, 3 = dressed stone
   function wallPal(lv) {
     return lv === 1
-      ? { base: PAL.woodD, top: PAL.thatch, seam: '#4a3820', stick: PAL.wood }
+      ? { base: PAL.woodD, top: PAL.thatch, seam: APx.wood[0], stick: PAL.wood }
       : lv === 2
         ? { base: PAL.stone, top: PAL.rockL, seam: PAL.stoneD }
-        : { base: PAL.stoneD, top: PAL.stone, seam: '#514d42', gold: true };
+        : { base: PAL.stoneD, top: PAL.stone, seam: APx.stone[0], gold: true };
   }
   // directional wall piece for a 4-bit neighbor mask (N=1, E=2, S=4, W=8)
   function drawWallMask(p, lv, mask) {
@@ -302,139 +305,219 @@ const Sprites = {
   function roofStrips(p, x, y, w, rows, colA, colB) {
     for (let i = 0; i < rows; i++) p(x + i, y + i, w - i * 2, 1, i % 2 ? colB : colA);
   }
+  /* ---- material helpers driven by ART.tierDress ---- */
+  function roof(p, x, y, w, h, dress, seed) {
+    if (dress.mat === 'stonefoot') {
+      ART.shadedRect(p, x, y, w, h, AP.wood, 2);                    // wood shingles
+      for (let yy = y + 1; yy < y + h; yy += 2) p(x, yy, w, 1, AP.wood[1]);
+      for (let xx = x + 2; xx < x + w - 1; xx += 3) p(xx, y + 1, 1, h - 2, AP.wood[3]);
+      p(x, y, w, 1, AP.wood[4]);                                    // lit ridge
+    } else {
+      ART.thatchTexture(p, x, y, w, h, seed);
+      if (dress.mat === 'timber') p(x, y, w, 1, AP.wood[3]);        // ridge beam
+    }
+  }
+  function wallBody(p, x, y, w, h, dress, seed) {
+    if (dress.mat === 'wattle') ART.wattleTexture(p, x, y, w, h, seed);
+    else if (dress.mat === 'timber') ART.woodPlankTexture(p, x, y, w, h, seed);
+    else ART.stoneTexture(p, x, y, w, h, seed);
+  }
+  function banner(p, x, y, fac) {
+    p(x, y, 1, 4, AP.wood[2]);
+    p(x + 1, y, 3, 2, fac[2]); p(x + 1, y + 2, 2, 1, fac[1]);
+  }
+
+  /* ---- the 8+ buildings. Each receives (p, lv, fac) where fac is the owning
+     faction's cloth ramp — the rival's set is generated in red. Silhouette
+     identifies the building; tierDress drives materials and decoration. ---- */
   const B_DRAW = {
-    tc(p, lv) {
-      shadow(p);
-      const base = lv >= 2 ? PAL.stone : PAL.wood, baseD = lv >= 2 ? PAL.stoneD : PAL.woodD;
-      p(2, 8, 12, 6, base); p(2, 8, 12, 1, baseD);
-      p(7, 10, 2, 4, PAL.dark);                                  // door
-      roofStrips(p, 1, 4, 14, 4, PAL.thatch, PAL.thatchD);
-      p(7, 2, 1, 3, PAL.trunk);                                  // banner pole
-      p(8, 2, 3, 2, lv >= 3 ? PAL.gold : PAL.P);
-      if (lv >= 2) { p(3, 10, 2, 2, PAL.dark); p(11, 10, 2, 2, PAL.dark); } // windows
-      if (lv >= 3) { p(0, 9, 2, 5, PAL.stoneD); p(14, 9, 2, 5, PAL.stoneD); } // wings
+    // ============ TOWN CENTER — the hero asset ============
+    tc(p, lv, fac) {
+      const d = ART.tierDress(lv);
+      ART.dropShadow(p, 8, 14, 14);
+      if (lv === 1) {
+        // great thatched roundhouse on a wattle ring
+        ART.shadedCircle(p, 8, 9, 6, AP.soil, 1);                   // wattle ring wall
+        ART.shadedCircle(p, 8, 8, 6, AP.thatch, 2);                 // conical thatch
+        ART.shadedCircle(p, 8, 7, 3, AP.thatch, 1);                 // upper cone
+        p(7, 5, 2, 2, AP.ink[1]);                                   // smoke hole
+        p(7, 12, 2, 3, AP.ink[0]);                                  // doorway
+        p(6, 12, 1, 3, AP.wood[2]); p(9, 12, 1, 3, AP.wood[2]);     // door posts
+        p(4, 13, 1, 1, AP.grass[4]); p(11, 13, 1, 1, AP.grass[4]);  // trodden grass edge
+      } else if (lv === 2) {
+        // timber longhouse with carved posts and a drying rack
+        wallBody(p, 2, 8, 12, 6, d, 5);
+        roof(p, 1, 3, 14, 5, d, 6);
+        p(1, 2, 1, 12, AP.wood[1]); p(14, 2, 1, 12, AP.wood[1]);    // carved end posts
+        p(1, 1, 1, 1, AP.bone[2]); p(14, 1, 1, 1, AP.bone[2]);      // bone finials
+        p(7, 10, 2, 4, AP.ink[0]);                                  // door
+        p(4, 10, 2, 2, AP.ink[1]); p(10, 10, 2, 2, AP.ink[1]);      // windows
+        p(7, 2, 2, 1, AP.ink[1]);                                   // smoke hole
+        p(0, 12, 1, 3, AP.wood[2]); p(0, 12, 3, 1, AP.wood[3]);     // drying rack
+        p(1, 13, 1, 1, AP.red[2]); p(2, 13, 1, 1, AP.hide[2]);      // hung meat
+      } else {
+        // stone-footed great hall: banner, fire-lit doorway, dooryard fence
+        ART.stoneTexture(p, 1, 9, 14, 5, 21);                       // stone footing
+        roof(p, 0, 3, 16, 6, d, 9);
+        p(0, 3, 16, 1, AP.wood[4]);                                 // gable trim
+        p(7, 11, 2, 3, AP.ink[0]);                                  // doorway…
+        p(7, 13, 2, 1, AP.fire[1]); p(7, 12, 1, 1, AP.fire[2]);     // …glowing with firelight
+        p(3, 11, 2, 2, AP.ink[1]); p(11, 11, 2, 2, AP.ink[1]);      // windows
+        banner(p, 12, 0, fac);                                      // faction banner
+        p(1, 15, 2, 1, AP.wood[2]); p(6, 15, 2, 1, AP.wood[2]); p(12, 15, 2, 1, AP.wood[2]); // fence
+        p(1, 2, 2, 1, AP.ink[1]);                                   // smoke hole
+      }
     },
     farm(p, lv) {
-      const crop = lv >= 3 ? PAL.gold : PAL.sprout;
-      p(1, 1, 14, 14, PAL.soil);
-      for (let i = 0; i < 5; i++) { p(2, 2 + i * 3, 12, 1, PAL.soilD); p(2, 3 + i * 3, 12, 1, crop); }
-      p(10, 1, 5, 5, PAL.wood); roofStrips(p, 10, 0, 5, 2, PAL.thatch, PAL.thatchD); // hut
-      if (lv >= 2) { p(0, 0, 16, 1, PAL.trunk); p(0, 15, 16, 1, PAL.trunk); p(0, 0, 1, 16, PAL.trunk); p(15, 0, 1, 16, PAL.trunk); }
+      const d = ART.tierDress(lv);
+      const crop = lv >= 3 ? AP.gold[2] : AP.grass[4];
+      ART.shadedRect(p, 0, 0, 16, 16, AP.soil, 2);
+      for (let i = 0; i < 5; i++) {                                 // tilled crop rows
+        p(1, 2 + i * 3, 14, 1, AP.soil[1]);
+        for (let x = 1 + (i & 1); x < 15; x += 2) p(x, 3 + i * 3, 1, 1, crop);
+        if (lv >= 2) for (let x = 2 - (i & 1); x < 15; x += 4) p(x, 2 + i * 3, 1, 1, lv >= 3 ? AP.gold[3] : AP.grass[2]);
+      }
+      wallBody(p, 11, 1, 5, 4, d, 3); roof(p, 10, 0, 6, 2, d, 4);   // shed
+      if (d.decor >= 1) { p(0, 0, 1, 16, AP.wood[2]); p(15, 0, 1, 16, AP.wood[2]); }  // fence
+      if (d.decor >= 2) { p(3, 8, 1, 3, AP.wood[2]); p(2, 8, 3, 1, AP.thatch[2]); p(3, 7, 1, 1, AP.ink[1]); } // scarecrow
     },
     lodge(p, lv) {
-      shadow(p);
-      p(4, 6, 8, 7, PAL.woodD);                                   // tent body
-      p(5, 5, 6, 1, PAL.woodD); p(6, 4, 4, 1, PAL.wood); p(7, 3, 2, 1, PAL.wood);
-      p(7, 9, 2, 4, PAL.dark);                                    // entrance
-      p(5, 2, 1, 2, PAL.white); p(4, 1, 1, 1, PAL.white);         // antlers
-      p(10, 2, 1, 2, PAL.white); p(11, 1, 1, 1, PAL.white);
-      if (lv >= 2) { p(13, 10, 2, 2, PAL.fire); p(13, 9, 1, 1, PAL.fireL); }
-      if (lv >= 3) { p(0, 8, 3, 5, PAL.wood); p(0, 7, 3, 1, PAL.thatchD); } // smoke hut
+      const d = ART.tierDress(lv);
+      ART.dropShadow(p, 8, 14, 11);
+      ART.shadedRect(p, 4, 6, 8, 7, AP.hide, 1);                    // hide tent
+      p(5, 5, 6, 1, AP.hide[1]); p(6, 4, 4, 1, AP.hide[2]); p(7, 3, 2, 1, AP.hide[3]);
+      p(7, 9, 2, 4, AP.ink[0]);                                     // entrance
+      p(5, 2, 1, 2, AP.bone[2]); p(4, 1, 1, 1, AP.bone[2]);         // antlers
+      p(10, 2, 1, 2, AP.bone[2]); p(11, 1, 1, 1, AP.bone[2]);
+      if (d.decor >= 1) {                                           // drying rack with catch
+        p(13, 8, 1, 5, AP.wood[2]); p(15, 8, 1, 5, AP.wood[2]); p(13, 8, 3, 1, AP.wood[3]);
+        p(13, 9, 1, 2, AP.red[1]); p(15, 9, 1, 2, AP.hide[2]);
+      }
+      if (d.decor >= 2) { wallBody(p, 0, 8, 3, 5, d, 8); roof(p, 0, 7, 3, 2, d, 8); } // smokehouse
     },
     lumber(p, lv) {
-      shadow(p);
-      for (let i = 0; i < 3; i++) { p(2, 10 - i * 2, 8, 2, i % 2 ? PAL.wood : PAL.woodD); p(2, 10 - i * 2, 1, 2, PAL.thatch); } // log pile
-      p(11, 9, 4, 4, PAL.trunk);                                  // stump
-      p(12, 6, 1, 3, PAL.woodD); p(11, 5, 3, 1, PAL.rockL);       // axe
-      if (lv >= 2) roofStrips(p, 1, 2, 10, 2, PAL.thatch, PAL.thatchD);
-      if (lv >= 3) { p(11, 2, 4, 3, PAL.stone); p(11, 2, 4, 1, PAL.stoneD); }
+      const d = ART.tierDress(lv);
+      ART.dropShadow(p, 6, 13, 10);
+      for (let i = 0; i < 3; i++) {                                 // stacked logs with ring ends
+        const y = 10 - i * 2;
+        p(2, y, 8, 2, i % 2 ? AP.wood[3] : AP.wood[2]);
+        p(2, y, 8, 1, i % 2 ? AP.wood[4] : AP.wood[3]);
+        p(2, y, 1, 2, AP.thatch[2]); p(9, y, 1, 2, AP.thatch[1]);
+      }
+      ART.shadedCircle(p, 12, 11, 2, AP.wood, 2);                   // chopping stump
+      p(12, 6, 1, 4, AP.wood[2]); p(11, 5, 3, 1, AP.stone[3]);      // axe
+      if (d.decor >= 1) roof(p, 1, 2, 10, 2, d, 5);                 // lean-to over the pile
+      if (d.decor >= 2) { ART.stoneTexture(p, 11, 1, 5, 3, 7); p(11, 1, 5, 1, AP.stone[3]); } // stone store
     },
     quarry(p, lv) {
-      p(1, 1, 14, 14, PAL.rockD);
-      p(3, 3, 10, 10, PAL.rock);
-      p(5, 5, 6, 6, PAL.rockD);                                   // pit
-      p(2, 12, 3, 2, PAL.rockL); p(11, 3, 3, 2, PAL.rockL);       // cut blocks
-      if (lv >= 2) { p(7, 2, 1, 6, PAL.trunk); p(7, 2, 5, 1, PAL.trunk); p(11, 3, 1, 3, PAL.woodD); } // crane
-      if (lv >= 3) { p(1, 1, 14, 1, PAL.gold); }
+      const d = ART.tierDress(lv);
+      ART.stoneTexture(p, 0, 0, 16, 16, 11);
+      ART.shadedRect(p, 3, 3, 10, 10, AP.stone, 1);                 // stepped pit
+      p(5, 5, 6, 6, AP.stone[0]);
+      p(6, 6, 4, 4, AP.ink[1]);                                     // deep cut
+      p(2, 12, 3, 2, AP.stone[3]); p(2, 12, 3, 1, AP.stone[4]);     // cut blocks
+      p(11, 2, 3, 2, AP.stone[3]); p(11, 2, 3, 1, AP.stone[4]);
+      if (d.decor >= 1) {                                           // crane pole + rope
+        p(7, 1, 1, 7, AP.wood[2]); p(7, 1, 6, 1, AP.wood[2]);
+        p(12, 2, 1, 3, AP.thatch[1]); p(11, 5, 3, 1, AP.wood[3]);
+      }
+      if (d.decor >= 2) { p(0, 0, 16, 1, AP.wood[2]); p(0, 15, 16, 1, AP.wood[2]); } // timber shoring
     },
     house(p, lv) {
-      shadow(p);
-      const h = lv >= 3 ? 8 : 6, y = 13 - h;
-      p(4, y, 8, h, PAL.wood); p(4, y, 8, 1, PAL.woodD);
-      p(7, 13 - 3, 2, 3, PAL.dark);
-      roofStrips(p, 3, y - 3, 10, 3, PAL.thatch, PAL.thatchD);
-      if (lv >= 2) p(5, y + 2, 2, 2, PAL.dark);
-      if (lv >= 3) p(9, y + 2, 2, 2, PAL.dark);
+      const d = ART.tierDress(lv);
+      ART.dropShadow(p, 8, 14, 10);
+      const h = 5 + Math.min(2, lv - 1), y = 13 - h;
+      wallBody(p, 4, y, 8, h, d, lv * 3);
+      roof(p, 3, y - 3, 10, 3, d, lv * 5);
+      p(7, 13 - 3, 2, 3, AP.ink[0]);                                // door
+      if (d.decor >= 1) p(5, y + 1, 2, 2, AP.ink[1]);               // window
+      if (d.decor >= 2) { p(9, y + 1, 2, 2, AP.ink[1]); p(12, 13, 2, 1, AP.bloom[1]); } // flowers
     },
     tower(p, lv) {
-      shadow(p);
-      const mat = lv >= 2 ? PAL.stone : PAL.wood, matD = lv >= 2 ? PAL.stoneD : PAL.woodD;
-      p(5, 5, 6, 9, mat); p(5, 5, 6, 1, matD); p(5, 9, 6, 1, matD);
-      p(4, 3, 8, 3, matD); p(3, 2, 10, 1, mat);                  // platform
-      p(5, 1, 1, 1, mat); p(10, 1, 1, 1, mat);                   // crenels
-      p(7, 11, 2, 3, PAL.dark);
-      if (lv >= 3) { p(7, 0, 2, 2, PAL.fire); p(7, 0, 1, 1, PAL.fireL); }
-      else p(7, 0, 1, 2, PAL.P);
+      const d = ART.tierDress(lv);
+      p(4, 13, 10, 2, ART.STYLE.SHADOW); p(6, 15, 8, 1, ART.STYLE.SHADOW);  // long shadow = height
+      wallBody(p, 5, 5, 6, 9, d, 17);                               // shaft
+      p(5, 13, 6, 1, AP.stone[0]);                                  // footing rim
+      ART.shadedRect(p, 3, 2, 10, 3, d.mat === 'wattle' ? AP.wood : AP.stone, 2); // platform
+      p(4, 1, 1, 1, AP.stone[3]); p(7, 1, 1, 1, AP.stone[3]); p(11, 1, 1, 1, AP.stone[3]); // crenels
+      p(7, 11, 2, 3, AP.ink[0]);                                    // door
+      if (d.glow) { p(7, 0, 2, 2, AP.fire[1]); p(7, 0, 1, 1, AP.fire[2]); }  // signal fire
+      else p(7, 0, 1, 2, AP.blue[2]);
     },
-    barracks(p, lv) {
-      shadow(p);
-      p(1, 7, 14, 7, PAL.woodD); p(1, 7, 14, 1, PAL.dark);
-      roofStrips(p, 0, 4, 16, 3, PAL.RD, PAL.dark);
-      p(3, 9, 2, 3, PAL.dark); p(11, 9, 2, 3, PAL.dark);
-      p(7, 8, 2, 3, PAL.rockL); p(7, 8, 2, 1, PAL.red);           // shield
-      if (lv >= 2) { p(1, 3, 1, 4, PAL.trunk); p(2, 3, 2, 2, PAL.red); }
-      if (lv >= 3) { p(14, 3, 1, 4, PAL.trunk); p(12, 3, 2, 2, PAL.gold); }
+    barracks(p, lv, fac) {
+      const d = ART.tierDress(lv);
+      ART.dropShadow(p, 8, 14, 14);
+      wallBody(p, 1, 7, 14, 7, d, 13);
+      roof(p, 0, 4, 16, 3, d, 14);
+      p(3, 9, 2, 3, AP.ink[0]); p(11, 9, 2, 3, AP.ink[0]);          // twin doors
+      p(7, 8, 2, 3, AP.bone[2]); p(7, 8, 2, 1, fac[2]);             // faction shield
+      if (d.decor >= 1) { p(1, 3, 1, 4, AP.wood[2]); p(2, 3, 2, 2, fac[2]); }  // pennant
+      if (d.banner) banner(p, 14, 1, fac);
     },
-    stable(p, lv) {
-      shadow(p);
-      p(1, 7, 14, 7, PAL.wood); p(1, 7, 14, 1, PAL.woodD);        // barn
-      roofStrips(p, 0, 4, 16, 3, PAL.thatch, PAL.thatchD);
-      p(6, 9, 4, 5, PAL.dark);                                    // big stall door
-      p(2, 9, 2, 2, '#a87848'); p(3, 8, 2, 1, '#a87848');         // horse head at window
-      p(12, 9, 1, 4, PAL.trunk); p(13, 10, 2, 1, PAL.trunk);      // hitching post
-      if (lv >= 2) { p(0, 10, 1, 4, PAL.trunk); p(15, 10, 1, 4, PAL.trunk); }
-      if (lv >= 3) p(7, 2, 2, 2, PAL.gold);                       // gold horseshoe
+    stable(p, lv, fac) {
+      const d = ART.tierDress(lv);
+      ART.dropShadow(p, 8, 14, 14);
+      wallBody(p, 1, 7, 14, 7, d, 15);
+      roof(p, 0, 4, 16, 3, d, 16);
+      p(6, 9, 4, 5, AP.ink[0]);                                     // big stall door
+      p(2, 9, 2, 2, AP.hide[3]); p(3, 8, 2, 1, AP.hide[3]); p(3, 9, 1, 1, AP.ink[0]); // horse at window
+      p(12, 9, 1, 4, AP.wood[2]); p(13, 10, 2, 1, AP.wood[2]);      // hitching post
+      if (d.decor >= 1) { p(0, 12, 1, 3, AP.wood[2]); p(15, 12, 1, 3, AP.wood[2]); } // paddock posts
+      if (d.banner) banner(p, 0, 0, fac);
     },
-    range(p, lv) {
-      shadow(p);
-      p(1, 4, 5, 5, PAL.white); p(2, 5, 3, 3, PAL.red); p(3, 6, 1, 1, PAL.white); // target
-      p(3, 9, 1, 5, PAL.trunk);                                   // target post
-      p(9, 6, 5, 8, PAL.wood); p(9, 6, 5, 1, PAL.woodD);          // hut
-      roofStrips(p, 8, 4, 7, 2, PAL.thatch, PAL.thatchD);
-      p(11, 10, 1, 4, PAL.dark);
-      p(6, 12, 1, 3, PAL.trunk); p(7, 11, 1, 1, PAL.trunk);       // bow on rack
-      if (lv >= 2) { p(0, 12, 8, 1, PAL.trunk); }                 // fence
-      if (lv >= 3) { p(2, 5, 3, 3, PAL.gold); }                   // gold target
+    range(p, lv, fac) {
+      const d = ART.tierDress(lv);
+      ART.dropShadow(p, 11, 14, 8);
+      ART.shadedCircle(p, 3, 6, 2, AP.bone, 1);                     // straw target
+      p(2, 5, 3, 3, AP.red[2]); p(3, 6, 1, 1, AP.bone[2]);          // rings
+      p(3, 9, 1, 5, AP.wood[2]);                                    // target post
+      wallBody(p, 9, 6, 5, 8, d, 19);
+      roof(p, 8, 4, 7, 2, d, 20);
+      p(11, 10, 1, 4, AP.ink[0]);                                   // door
+      p(6, 11, 1, 4, AP.wood[2]); p(7, 11, 1, 1, AP.wood[3]);       // bow rack
+      if (d.decor >= 1) p(0, 12, 8, 1, AP.wood[2]);                 // shooting-lane fence
+      if (d.banner) banner(p, 13, 0, fac);
     },
-    dock(p, lv) {
-      // wooden pier standing on posts over open water (tile beneath stays water)
-      p(0, 0, 16, 16, PAL.water);
-      p(2, 1, 3, 3, PAL.waterL); p(11, 11, 3, 2, PAL.waterL);     // ripples
-      p(3, 12, 1, 3, PAL.trunk); p(12, 12, 1, 3, PAL.trunk);      // pilings
-      p(6, 13, 1, 2, PAL.trunk); p(9, 13, 1, 2, PAL.trunk);
-      p(2, 6, 12, 6, PAL.wood);                                   // deck
-      p(2, 8, 12, 1, PAL.woodD); p(2, 10, 12, 1, PAL.woodD);      // plank seams
-      p(2, 6, 12, 1, PAL.woodD);
-      p(6, 2, 4, 4, PAL.woodD); p(6, 2, 4, 1, PAL.wood);          // walkway to shore
-      if (lv >= 2) {
-        p(3, 3, 3, 3, PAL.thatch); p(3, 3, 3, 1, PAL.thatchD);    // crates of catch
-        p(11, 3, 2, 3, PAL.trunk);                                // mooring post
-        p(11, 2, 2, 1, PAL.rockL);
+    dock(p, lv, fac) {
+      const d = ART.tierDress(lv);
+      p(0, 0, 16, 16, AP.water[2]);                                 // open water beneath
+      p(2, 1, 3, 3, AP.water[3]); p(11, 11, 3, 2, AP.water[3]);     // ripples
+      p(3, 12, 1, 3, AP.wood[1]); p(12, 12, 1, 3, AP.wood[1]);      // pilings
+      p(6, 13, 1, 2, AP.wood[1]); p(9, 13, 1, 2, AP.wood[1]);
+      ART.woodPlankTexture(p, 2, 6, 12, 6, 23);                     // deck
+      p(6, 2, 4, 4, AP.wood[2]); p(6, 2, 4, 1, AP.wood[3]);         // walkway to shore
+      if (d.decor >= 1) {
+        ART.shadedRect(p, 3, 3, 3, 3, AP.thatch, 2);                // crates of catch
+        p(11, 3, 2, 3, AP.wood[2]); p(11, 2, 2, 1, AP.stone[3]);    // mooring post
       }
-      if (lv >= 3) {
-        p(13, 1, 1, 6, PAL.trunk);                                // banner mast
-        p(11, 1, 2, 2, PAL.gold);
-        p(2, 12, 2, 1, PAL.gold);                                 // gilded trim
-      }
+      if (d.decor >= 2) { banner(p, 13, 0, fac); p(2, 12, 2, 1, AP.gold[2]); }
     },
     wall(p, lv) { drawWallMask(p, lv, 2 | 8); },   // menu/panel icon: an east-west run
     gate(p, lv) {
       const c = wallPal(lv);
       p(0, 5, 16, 9, c.base);
       p(0, 5, 16, 1, c.top);
-      // twin towers flanking the doorway
-      p(0, 2, 4, 12, c.base); p(0, 2, 4, 1, c.top);
+      p(0, 2, 4, 12, c.base); p(0, 2, 4, 1, c.top);   // twin towers
       p(12, 2, 4, 12, c.base); p(12, 2, 4, 1, c.top);
-      p(5, 7, 6, 7, PAL.dark);                                    // arch
-      p(5, 8, 3, 6, PAL.trunk); p(8, 8, 3, 6, PAL.woodD);         // double doors
-      p(7, 10, 1, 1, PAL.dark);                                   // seam
+      p(5, 7, 6, 7, PAL.dark);
+      p(5, 8, 3, 6, PAL.trunk); p(8, 8, 3, 6, PAL.woodD);
+      p(7, 10, 1, 1, PAL.dark);
       p(1, 6, 2, 1, c.seam); p(13, 10, 2, 1, c.seam);
       if (c.stick) { p(1, 3, 1, 4, c.stick); p(14, 3, 1, 4, c.stick); }
       if (c.gold) { p(0, 2, 4, 1, PAL.gold); p(12, 2, 4, 1, PAL.gold); }
     },
   };
+  // build the player (blue) set and a rival (red) set; full-tile and
+  // auto-tiling sprites skip the outline pass so they keep tiling seamlessly
+  const NO_OUTLINE = new Set(['farm', 'quarry', 'dock', 'wall', 'gate']);
+  Sprites.buildingA = {};
   for (const key of Object.keys(B_DRAW)) {
-    Sprites.building[key] = [1, 2, 3].map(lv => tile(p => B_DRAW[key](p, lv)));
+    const build = (fac) => [1, 2, 3].map(lv => {
+      const c = tile(p => B_DRAW[key](p, lv, fac));
+      return NO_OUTLINE.has(key) ? c : ART.outline(c);
+    });
+    Sprites.building[key] = build(AP.blue);
+    Sprites.buildingA[key] = build(AP.red);
   }
   // auto-tiling atlases: wallMask[level-1][mask 0..15], gateMask[level-1][0=horizontal,1=vertical]
   Sprites.wallMask = [1, 2, 3].map(lv =>
@@ -442,12 +525,16 @@ const Sprites = {
   Sprites.gateMask = [0, 1, 2].map(li =>
     [Sprites.building.gate[li], tile(p => drawGateVertical(p, li + 1))]);
 
-  Sprites.misc.construction = tile(p => {
-    p(2, 12, 12, 2, PAL.woodD);
-    p(3, 4, 1, 10, PAL.trunk); p(12, 4, 1, 10, PAL.trunk);
-    p(3, 4, 10, 1, PAL.trunk); p(3, 8, 10, 1, PAL.trunk);
-    p(5, 10, 3, 2, PAL.rockL);
-  });
+  Sprites.misc.construction = ART.outline(tile(p => {
+    ART.dropShadow(p, 8, 14, 12);
+    p(2, 13, 12, 2, AP.soil[2]);                                  // cleared ground
+    p(3, 2, 1, 12, AP.wood[2]); p(12, 2, 1, 12, AP.wood[2]);      // scaffold poles
+    p(3, 2, 10, 1, AP.wood[3]); p(3, 6, 10, 1, AP.wood[3]);       // cross beams
+    p(4, 3, 1, 1, AP.thatch[1]); p(11, 5, 1, 1, AP.thatch[1]);    // lashings
+    ART.shadedRect(p, 5, 9, 6, 5, AP.wood, 1);                    // partial frame
+    p(6, 4, 3, 2, AP.stone[2]); p(6, 4, 3, 1, AP.stone[3]);       // materials pile
+    p(10, 11, 3, 2, AP.thatch[2]);
+  }));
 
   /* ---------------- units ---------------- */
   // pose: idle | walk | gather | fight ; c = colour set
