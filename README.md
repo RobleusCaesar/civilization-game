@@ -53,10 +53,11 @@ on desktop too.
   idle, and you'll need farms, lumber camps, and quarries for steady income.
   Depleted tiles (and ruins) are open ground — build right on top of them and
   the old stumps/rubble vanish, leaving only the clean new building. Left
-  alone, nature recovers: after ~20 days stumps regrow into forest, pebbles
+  alone, nature recovers: after ~60 days stumps regrow into forest, pebbles
   back into stony hills, and spent soil into fertile ground — at about half
   their original stock — so no resource is ever gone for good, even the
-  scarce one; grinding it back is just slow. Ruins simply fade to grass.
+  scarce one; grinding it back is just slow, and cleared land stays cleared
+  a good long while. Ruins simply fade to grass.
 - **Building**: tap a button in the bottom bar, then tap a clear tile near your
   village — the nearest idle villager is sent to work the site. Or start from the
   villager: tap them, hit *Build…*, pick a building, tap a site, and that villager
@@ -94,9 +95,11 @@ on desktop too.
 - **Military**: the **Barracks** trains defenders (level 3: elites), the **Horse
   Stable** trains fast riders (level 3: lancers), and the **Archery Range** trains
   archers who shoot from a distance (level 3: marksmen). The **Town Center** trains
-  villagers; houses raise the population cap. Training queues grow with the
-  building: 3 slots at level 1, 4 at level 2, 5 at level 3. Tap a soldier, then
-  a tile to move or an enemy to attack.
+  villagers; houses raise the population cap — up to a hard ceiling set by
+  your Town Center: 20 at level 1, 40 at level 2, 60 at level 3, so growing a
+  big tribe means growing the town's heart first. Training queues grow with
+  the building: 3 slots at level 1, 4 at level 2, 5 at level 3. Tap a soldier,
+  then a tile to move or an enemy to attack.
 - **The Dock** (needs Town Center level 2): built **on open water** — any lake or
   sea at least 6 tiles big with a walkable shore beside it. Water tiles hold a
   finite stock of fish (watch for the occasional fish jumping — that means

@@ -408,14 +408,15 @@ const UI = {
       const b = Bld.get(this.sel.id);
       if (!b) return 'gone';
       const d = Bld.def(b.key);
-      let sig = ['b', b.id, b.level, b.construction > 0, b.upgrading > 0, b.queue.length,
+      // NOTE: queue length, per-unit affordability, garrison and villager
+      // counts are deliberately NOT in the signature — refreshPanel updates
+      // those in place so the layout doesn't jump every time you queue a unit
+      let sig = ['b', b.id, b.level, b.construction > 0, b.upgrading > 0,
         b.level < 3 && Bld.canUpgrade(b).ok, b.hp < b.maxhp, Bld.hasWorker(b),
         d.needsWorker ? Bld.workersAssigned(b) + '/' + Bld.workersActive(b) : '-',
         !!b.rally, this.confirmDemolish === b.id].join('|');
-      if (b.key === 'tc') sig += '|' + S.garrison.length + '|' +
-        S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length + '|' +
-        (S.wallLevel || 1) + '|' + Bld.forts().length + '|' + Bld.canUpgradeWalls().ok;
-      if (d.train) for (const uk in d.train) sig += '|' + Bld.canTrain(b, uk).ok;
+      if (b.key === 'tc')
+        sig += '|' + (S.wallLevel || 1) + '|' + Bld.forts().length;
       return sig;
     }
     if (this.sel.type === 'group') {
@@ -468,6 +469,28 @@ const UI = {
     if (hc && this.sel.type === 'unit') {
       const u = Units.get(this.sel.id);
       if (u) hc.textContent = this.healCost(u) + ' 🍖';
+    }
+    if (this.sel.type === 'bld') {
+      const b = Bld.get(this.sel.id);
+      if (!b) return;
+      const panel = document.getElementById('panel');
+      const q = document.getElementById('qLine');
+      if (q) q.textContent = `Queue: ${b.queue.length}/${Bld.queueCap(b)}`;
+      panel.querySelectorAll('[data-act="train"]').forEach(btn =>
+        btn.classList.toggle('cant', !Bld.canTrain(b, btn.dataset.unit).ok));
+      const shN = document.getElementById('shelterN');
+      if (shN) {
+        const vills = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
+        shN.textContent = vills + ' outside';
+        shN.closest('.abtn').classList.toggle('cant', !vills);
+      }
+      const rlN = document.getElementById('releaseN');
+      if (rlN) {
+        rlN.textContent = S.garrison.length + ' sheltered';
+        rlN.closest('.abtn').classList.toggle('cant', !S.garrison.length);
+      }
+      const upw = panel.querySelector('[data-act="upwalls"]');
+      if (upw) upw.classList.toggle('cant', !Bld.canUpgradeWalls().ok);
     }
   },
   panelSub() {
@@ -534,23 +557,21 @@ const UI = {
         if (d.train && !b.construction) {
           for (const [uk, spec] of Object.entries(d.train)) {
             const ct = Bld.canTrain(b, uk);
-            html += `<button class="abtn ${ct.ok ? '' : 'cant'}" data-act="train" data-unit="${uk}">Train ${CFG.UNITS[uk].name}<small>${Bld.costStr(spec.cost)}${ct.ok ? '' : ' — ' + ct.why}</small></button>`;
+            html += `<button class="abtn ${ct.ok ? '' : 'cant'}" data-act="train" data-unit="${uk}">Train ${CFG.UNITS[uk].name}<small>${Bld.costStr(spec.cost)}</small></button>`;
           }
-          if (b.queue.length) html += `<span class="psub">Training queue: ${b.queue.length}/${Bld.queueCap(b)}</span>`;
+          html += `<span class="psub" id="qLine">Queue: ${b.queue.length}/${Bld.queueCap(b)}</span>`;
           html += b.rally
             ? `<button class="abtn" data-act="rally">🚩 Rally set<small>tap to clear</small></button>`
             : `<button class="abtn" data-act="rally">🚩 Set rally<small>tap ground within ${CFG.RALLY_RANGE} tiles</small></button>`;
         }
         if (b.key === 'tc' && !b.construction) {
           const vills = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
-          if (vills)
-            html += `<button class="abtn" data-act="shelter">🛖 Shelter villagers<small>${vills} head inside to safety</small></button>`;
-          if (S.garrison.length)
-            html += `<button class="abtn" data-act="release">🚪 Release all<small>${S.garrison.length} sheltered inside</small></button>`;
+          html += `<button class="abtn ${vills ? '' : 'cant'}" data-act="shelter">🛖 Shelter villagers<small id="shelterN">${vills} outside</small></button>`;
+          html += `<button class="abtn ${S.garrison.length ? '' : 'cant'}" data-act="release">🚪 Release all<small id="releaseN">${S.garrison.length} sheltered</small></button>`;
           html += `<button class="abtn" data-act="callidle">📣 Call idle<small>muster at the Town Center</small></button>`;
           if ((S.wallLevel || 1) < 3 && Bld.forts().length) {
             const upw = Bld.canUpgradeWalls();
-            html += `<button class="abtn wide ${upw.ok ? '' : 'cant'}" data-act="upwalls">🧱 Upgrade all walls to Lv ${(S.wallLevel || 1) + 1}<small>${Bld.costStr(Bld.wallUpgradeCost())}${upw.ok ? ' — every wall & gate' : ' — ' + upw.why}</small></button>`;
+            html += `<button class="abtn wide ${upw.ok ? '' : 'cant'}" data-act="upwalls">🧱 Upgrade all walls to Lv ${(S.wallLevel || 1) + 1}<small>${Bld.costStr(Bld.wallUpgradeCost())} — every wall & gate</small></button>`;
           }
         }
         if (b.key === 'wall' && !b.construction && !b.upgrading) {
@@ -575,7 +596,12 @@ const UI = {
         const b2 = Bld.get(this.sel.id);
         if (!b2) return;
         if (btn.dataset.act === 'upgrade') { if (!Bld.upgrade(b2)) this.toast(Bld.canUpgrade(b2).why, true); }
-        else if (btn.dataset.act === 'train') { if (!Bld.train(b2, btn.dataset.unit)) this.toast(Bld.canTrain(b2, btn.dataset.unit).why, true); }
+        else if (btn.dataset.act === 'train') {
+          if (!Bld.train(b2, btn.dataset.unit)) this.toast(Bld.canTrain(b2, btn.dataset.unit).why, true);
+          this.refreshMenu();
+          this.refreshPanel();   // in-place queue/affordability update — no rebuild, no layout jump
+          return;
+        }
         else if (btn.dataset.act === 'sendworker') {
           const v = Units.nearestIdleVillager(b2.x, b2.y);
           if (!v) this.toast('No idle villager — free one up first', true);
@@ -610,6 +636,7 @@ const UI = {
         }
         else if (btn.dataset.act === 'release') {
           const n = S.garrison.length;
+          if (!n) { this.toast('Nobody is sheltered inside', true); return; }
           for (const gv of S.garrison) {
             const spot = MapGen.findNear(b2.x, b2.y + 1, 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: b2.x, y: b2.y + 1 };
             const v = Units.spawn('villager', 'P', spot.x, spot.y);

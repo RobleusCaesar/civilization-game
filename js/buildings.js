@@ -259,7 +259,10 @@ const Bld = {
     let cap = 0;
     for (const b of this.list(owner))
       if (this.done(b)) cap += this.lv(b).pop || 0;
-    return cap;
+    // the Town Center sets a hard ceiling — houses only help up to it
+    const tc = this.tcOf(owner);
+    const ceil = tc ? CFG.TC_POP_CAP[tc.level - 1] : CFG.TC_POP_CAP[0];
+    return Math.min(cap, ceil);
   },
 
   nearBonus(b) {
