@@ -18,6 +18,12 @@ Hard constraints that have shaped everything:
   `<script>` tags with globals; saves are JSON files the player downloads/uploads.
 - Optimized for portrait phones (390×844, mobile Safari); mouse works too.
 - All art is generated procedurally at load in `js/sprites.js` — no image assets.
+- **Visual layer is governed by `js/artstyle.js` + `ARTSTYLE.md` (binding).**
+  Master palette ramps, top-left light, build-time outlines, drop shadows,
+  material textures, `tierDress(level)` progression, `Sprites.buildingA` red
+  faction set, animated overlays (water sparkle/foam, hearth smoke, ambient
+  butterflies/birds, ~12-day dusk cycle) — all viewport-bounded, ~0.1ms/frame.
+  No sprite may be added without complying with ARTSTYLE.md.
 
 ## Architecture
 

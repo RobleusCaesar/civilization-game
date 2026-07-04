@@ -2,8 +2,13 @@
 
 A single-era, mobile-first civilization builder that runs entirely in the browser.
 Vanilla HTML/CSS/JS + Canvas 2D — **no build step, no dependencies, no backend**.
-All sprites are generated procedurally at load, so the whole game works offline
-from a static file server.
+All art is elevated 16-bit-style pixel work generated procedurally at load from
+a single style system (`js/artstyle.js`, rules in `ARTSTYLE.md`) — master
+palette, locked top-left lighting, outlines, drop shadows, material textures,
+and a level-tier visual language. The whole game works offline from a static
+file server. Expect living touches: animated water with foam shorelines,
+hearth smoke, jumping fish, butterflies and birds, and a gentle dusk that
+drifts through every ~12 days.
 
 ## Play it
 
@@ -203,6 +208,7 @@ yours falls, you lose.** Nothing else ends the game.
 ```
 index.html          shell, UI chrome, styles
 js/config.js        all stat tables (buildings ×3 levels, units, waves, win rules)
+js/artstyle.js      the style system: palette, lighting, textures, tier language
 js/sprites.js       procedural pixel-art sprite generation (terrain, 24 building
                     sprites, animated unit sheets, icons)
 js/map.js           seeded map generation (sizes + landforms) + BFS pathfinding
