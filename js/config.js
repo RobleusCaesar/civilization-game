@@ -145,15 +145,15 @@ const CFG = {
     wall: {
       name: 'Wall', desc: 'Blocks all movement — friend and foe. Enemies must break it.',
       levels: [
-        { cost: { stone: 20, gold: 2 },  time: 1, hp: 350 },
-        { cost: { stone: 50, gold: 5 },  time: 1, hp: 650 },
-        { cost: { stone: 110, gold: 10 }, time: 2, hp: 1000 },
+        { cost: { wood: 15 },             time: 1, hp: 250 },   // stick-and-grass palisade
+        { cost: { stone: 50, gold: 5 },   time: 1, hp: 650 },   // stone wall
+        { cost: { stone: 110, gold: 10 }, time: 2, hp: 1000 },  // dressed stone
       ],
     },
     gate: {
       name: 'Town Gate', desc: 'Your people pass through; enemies must break it.',
       levels: [
-        { cost: { wood: 30, stone: 20, gold: 10 },  time: 1, hp: 300 },
+        { cost: { wood: 45, gold: 10 },             time: 1, hp: 300 },
         { cost: { wood: 60, stone: 50, gold: 20 },  time: 1, hp: 550 },
         { cost: { wood: 100, stone: 110, gold: 40 }, time: 2, hp: 850 },
       ],

@@ -73,12 +73,15 @@ on desktop too.
 - **Walls & Gates**: pick Wall, then **drag** across the map — a ghost line follows
   your finger (green where buildable and affordable, red where not), snakes around
   corners, and connects automatically with the right straight/corner/T/cross pieces.
-  Release to start construction: one villager builds the line section by section,
-  and you can tap more villagers onto the wall to speed it up. Walls block *all*
-  movement — yours included — so leave a **Town Gate** in the line (it auto-faces
-  to match the wall, horizontal or vertical): your people pass through it, enemies
-  can't. Attackers who can't find a way around batter the nearest wall or gate and
-  pour through once it falls.
+  Release to start construction (placement mode ends so stray taps are safe): one
+  villager builds the line section by section, and you can tap more villagers onto
+  the wall to speed it up. Level-1 walls are stick-and-grass palisades (wood);
+  upgrading brings stone. Walls block *all* movement — yours included — so add a
+  **Town Gate**: tap any finished wall section → *Build Gate* to convert it in
+  place (crediting the wall's salvage), or place one from the menu. Gates auto-fit
+  the wall direction — north-south gates read as a thicker span flanked by twin
+  towers. Your people pass through gates, enemies can't; attackers who can't find
+  a way around batter the nearest wall or gate and pour through once it falls.
 - **Healing**: tap a hurt villager or defender → *Heal*. It costs food in
   proportion to their training cost and how badly they're hurt.
 - **Saving**: ☰ → *Save game* downloads a JSON save; *Load game* imports it.

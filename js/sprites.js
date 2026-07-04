@@ -150,45 +150,72 @@ const Sprites = {
   /* ---------------- buildings ---------------- */
   function shadow(p) { p(2, 13, 12, 2, 'rgba(0,0,0,0.25)'); }
 
+  // fortification materials by level: 1 = stick-and-grass palisade, 2 = stone, 3 = dressed stone
+  function wallPal(lv) {
+    return lv === 1
+      ? { base: PAL.woodD, top: PAL.thatch, seam: '#4a3820', stick: PAL.wood }
+      : lv === 2
+        ? { base: PAL.stone, top: PAL.rockL, seam: PAL.stoneD }
+        : { base: PAL.stoneD, top: PAL.stone, seam: '#514d42', gold: true };
+  }
   // directional wall piece for a 4-bit neighbor mask (N=1, E=2, S=4, W=8)
   function drawWallMask(p, lv, mask) {
-    const base = lv >= 2 ? PAL.stoneD : PAL.stone;
-    const top = lv >= 2 ? PAL.stone : PAL.rockL;
-    const seam = lv >= 2 ? '#514d42' : PAL.stoneD;
+    const c = wallPal(lv);
     const N = mask & 1, E = mask & 2, S = mask & 4, W = mask & 8;
-    if (!mask) {                       // lone pillar
-      p(4, 3, 8, 10, base); p(4, 3, 8, 1, top); p(3, 2, 10, 2, base); p(3, 2, 10, 1, top);
-      p(6, 7, 2, 1, seam); p(8, 10, 3, 1, seam);
-      if (lv >= 3) p(3, 1, 10, 1, PAL.gold);
+    if (!mask) {                       // lone pillar / stake cluster
+      p(4, 3, 8, 10, c.base); p(4, 3, 8, 1, c.top); p(3, 2, 10, 2, c.base); p(3, 2, 10, 1, c.top);
+      p(6, 7, 2, 1, c.seam); p(8, 10, 3, 1, c.seam);
+      if (c.stick) { p(5, 4, 1, 8, c.stick); p(9, 4, 1, 8, c.stick); }
+      if (c.gold) p(3, 1, 10, 1, PAL.gold);
       return;
     }
-    if (N) p(5, 0, 6, 5, base);
-    if (S) p(5, 11, 6, 5, base);
-    if (E) p(11, 5, 5, 6, base);
-    if (W) p(0, 5, 5, 6, base);
-    p(5, 5, 6, 6, base);               // hub
-    // sunlit edges
-    p(5, 5, 6, 1, top);
-    if (W) p(0, 5, 5, 1, top);
-    if (E) p(11, 5, 5, 1, top);
-    if (N) p(5, 0, 1, 5, top);
-    if (S) p(5, 11, 1, 5, top);
-    // crenels along horizontal tops
-    if (W) p(1, 3, 2, 2, base);
-    if (E) p(12, 3, 2, 2, base);
-    if (!N) p(6, 3, 2, 2, base);
-    // masonry seams
-    p(7, 8, 2, 1, seam);
-    if (W) p(1, 8, 3, 1, seam);
-    if (E) p(12, 8, 3, 1, seam);
-    if (N) p(6, 2, 2, 1, seam);
-    if (S) p(8, 13, 2, 1, seam);
-    if (lv >= 3) p(5, 4, 6, 1, PAL.gold);
+    if (N) p(5, 0, 6, 5, c.base);
+    if (S) p(5, 11, 6, 5, c.base);
+    if (E) p(11, 5, 5, 6, c.base);
+    if (W) p(0, 5, 5, 6, c.base);
+    p(5, 5, 6, 6, c.base);             // hub
+    // sunlit edges (grass binding on the palisade)
+    p(5, 5, 6, 1, c.top);
+    if (W) p(0, 5, 5, 1, c.top);
+    if (E) p(11, 5, 5, 1, c.top);
+    if (N) p(5, 0, 1, 5, c.top);
+    if (S) p(5, 11, 1, 5, c.top);
+    if (c.stick) {
+      // upright sticks along every run + grass tufts at the footing
+      if (W) { p(1, 6, 1, 5, c.stick); p(3, 6, 1, 5, c.stick); }
+      if (E) { p(12, 6, 1, 5, c.stick); p(14, 6, 1, 5, c.stick); }
+      if (N) { p(7, 0, 1, 5, c.stick); p(9, 1, 1, 4, c.stick); }
+      if (S) { p(7, 11, 1, 5, c.stick); p(9, 11, 1, 4, c.stick); }
+      p(6, 6, 1, 5, c.stick); p(8, 6, 1, 5, c.stick); p(10, 7, 1, 4, c.stick);
+      if (W || E) { p(2, 11, 1, 1, PAL.sprout); p(13, 11, 1, 1, PAL.sprout); }
+      if (N || S) p(4, 9, 1, 1, PAL.sprout);
+    } else {
+      // crenels along horizontal stone tops
+      if (W) p(1, 3, 2, 2, c.base);
+      if (E) p(12, 3, 2, 2, c.base);
+      if (!N) p(6, 3, 2, 2, c.base);
+      // masonry seams
+      p(7, 8, 2, 1, c.seam);
+      if (W) p(1, 8, 3, 1, c.seam);
+      if (E) p(12, 8, 3, 1, c.seam);
+      if (N) p(6, 2, 2, 1, c.seam);
+      if (S) p(8, 13, 2, 1, c.seam);
+    }
+    if (c.gold) p(5, 4, 6, 1, PAL.gold);
   }
-  function rotate90(src) {
-    const c = mk(32, 32), g = c.getContext('2d');
-    g.translate(16, 16); g.rotate(Math.PI / 2); g.drawImage(src, -16, -16);
-    return c;
+  // north-south gate: no visible door from this angle — a thicker wall span
+  // flanked by two small towers marks the passage
+  function drawGateVertical(p, lv) {
+    const c = wallPal(lv);
+    p(5, 0, 6, 16, c.base);                     // wall run
+    p(4, 5, 8, 6, c.base);                      // thickened waist
+    p(4, 5, 8, 1, c.top);
+    // twin towers flanking the passage
+    p(2, 0, 12, 4, c.base); p(2, 0, 12, 1, c.top);
+    p(2, 12, 12, 4, c.base); p(2, 12, 12, 1, c.top);
+    p(3, 2, 2, 1, c.seam); p(11, 14, 2, 1, c.seam);
+    if (c.stick) { p(3, 1, 1, 3, c.stick); p(12, 1, 1, 3, c.stick); p(3, 13, 1, 3, c.stick); p(12, 13, 1, 3, c.stick); }
+    if (c.gold) { p(2, 0, 12, 1, PAL.gold); p(2, 12, 12, 1, PAL.gold); }
   }
   function roofStrips(p, x, y, w, rows, colA, colB) {
     for (let i = 0; i < rows; i++) p(x + i, y + i, w - i * 2, 1, i % 2 ? colB : colA);
@@ -289,14 +316,18 @@ const Sprites = {
     },
     wall(p, lv) { drawWallMask(p, lv, 2 | 8); },   // menu/panel icon: an east-west run
     gate(p, lv) {
-      const base = lv >= 2 ? PAL.stoneD : PAL.stone;
-      p(0, 5, 16, 9, base);
-      for (let i = 0; i < 4; i++) p(i * 4, 3, 2, 2, base);
-      p(0, 5, 16, 1, lv >= 2 ? PAL.stone : PAL.rockL);
+      const c = wallPal(lv);
+      p(0, 5, 16, 9, c.base);
+      p(0, 5, 16, 1, c.top);
+      // twin towers flanking the doorway
+      p(0, 2, 4, 12, c.base); p(0, 2, 4, 1, c.top);
+      p(12, 2, 4, 12, c.base); p(12, 2, 4, 1, c.top);
       p(5, 7, 6, 7, PAL.dark);                                    // arch
       p(5, 8, 3, 6, PAL.trunk); p(8, 8, 3, 6, PAL.woodD);         // double doors
       p(7, 10, 1, 1, PAL.dark);                                   // seam
-      if (lv >= 3) p(6, 6, 4, 1, PAL.gold);
+      p(1, 6, 2, 1, c.seam); p(13, 10, 2, 1, c.seam);
+      if (c.stick) { p(1, 3, 1, 4, c.stick); p(14, 3, 1, 4, c.stick); }
+      if (c.gold) { p(0, 2, 4, 1, PAL.gold); p(12, 2, 4, 1, PAL.gold); }
     },
   };
   for (const key of Object.keys(B_DRAW)) {
@@ -306,7 +337,7 @@ const Sprites = {
   Sprites.wallMask = [1, 2, 3].map(lv =>
     Array.from({ length: 16 }, (_, m) => tile(p => drawWallMask(p, lv, m))));
   Sprites.gateMask = [0, 1, 2].map(li =>
-    [Sprites.building.gate[li], rotate90(Sprites.building.gate[li])]);
+    [Sprites.building.gate[li], tile(p => drawGateVertical(p, li + 1))]);
 
   Sprites.misc.construction = tile(p => {
     p(2, 12, 12, 2, PAL.woodD);

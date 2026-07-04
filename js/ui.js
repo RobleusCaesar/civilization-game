@@ -210,6 +210,9 @@ const UI = {
       if (v && Units.assignBuild(v, first))
         this.toast(`Wall line: ${placed} section${placed > 1 ? 's' : ''} — builder en route. Tap villagers → wall to add hands.`);
       else this.toast(`Wall line placed (${placed}) — needs a builder`, true);
+      // done drawing — drop out of placement so stray taps don't add walls
+      this.placing = null;
+      this.placeTile = null;
     } else if (ghost.length) {
       this.toast('No valid ground (or resources) for that line', true);
     }
@@ -237,8 +240,7 @@ const UI = {
       if (can.ok) {
         Bld.place('P', this.placing, tile.x, tile.y, { builderId: this.builderFor });
         this.builderFor = null;
-        // walls chain: stay in placement mode to lay several segments quickly
-        if (this.placing !== 'wall' && this.placing !== 'gate') { this.placing = null; this.placeTile = null; }
+        this.placing = null; this.placeTile = null;
       } else this.toast(can.why, true);
       this.refreshMenu();
       return;
@@ -380,6 +382,15 @@ const UI = {
       .map(([k, n]) => `${n} ${CFG.UNITS[k].name}${n > 1 ? 's' : ''}`).join(', ');
   },
 
+  // gate price for replacing a wall section, with the wall's demolish refund credited
+  gateConvertCost(b) {
+    const gcost = CFG.BUILDINGS.gate.levels[0].cost;
+    const refund = Bld.demolishRefund(b);
+    const net = {};
+    for (const k in gcost) net[k] = Math.max(0, gcost[k] - (refund[k] || 0));
+    return net;
+  },
+
   healCost(u) {
     const base = CFG.HEAL_FOOD[u.kind];
     if (!base) return 0;
@@ -456,6 +467,10 @@ const UI = {
           }
           if (b.queue.length) html += `<span class="psub" style="align-self:center">Queue: ${b.queue.length}</span>`;
         }
+        if (b.key === 'wall' && !b.construction && !b.upgrading) {
+          const net = this.gateConvertCost(b);
+          html += `<button class="abtn ${Bld.canAfford(net) ? '' : 'cant'}" data-act="togate">🚪 Build Gate<small>${Bld.costStr(net)} — replaces this section</small></button>`;
+        }
         if (b.key !== 'tc') {
           const refund = Bld.costStr(Bld.demolishRefund(b));
           html += this.confirmDemolish === b.id
@@ -488,6 +503,21 @@ const UI = {
             Units.setPath(v, b2.x, b2.y);
             this.toast('Worker heading to the ' + Bld.def(b2.key).name);
           }
+        }
+        else if (btn.dataset.act === 'togate') {
+          const net = this.gateConvertCost(b2);
+          if (!Bld.canAfford(net)) { this.toast('Not enough resources', true); return; }
+          Bld.pay(net, S.res);
+          const lv = CFG.BUILDINGS.gate.levels[0];
+          b2.key = 'gate'; b2.level = 1; b2.upgrading = 0;
+          b2.maxhp = lv.hp;
+          b2.hp = Math.max(30, Math.round(lv.hp * 0.4));
+          b2.construction = lv.time;
+          Bld._block = null;
+          const v = Units.nearestIdleVillager(b2.x, b2.y);
+          if (v) Units.assignBuild(v, b2);
+          G.log('Wall section being rebuilt as a gate' + (v ? ' — a villager heads over' : ' — needs a builder'));
+          this.renderPanel();
         }
         else if (btn.dataset.act === 'demolish') {
           if (this.confirmDemolish !== b2.id) { this.confirmDemolish = b2.id; this.renderPanel(); return; }
