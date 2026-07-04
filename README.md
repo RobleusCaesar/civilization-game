@@ -170,7 +170,9 @@ on desktop too.
   territory — never on your shores or inside your walls — and march in from
   there, so chokepoints and island walkways truly hold.
 - **The rival tribe** — an AI settlement across the valley builds, upgrades, trains
-  defenders, and will march on you if it out-scales your military. Scout it through
+  defenders, and will march on you if it out-scales your military. Its army size
+  and elite share scale with difficulty: on Moderate it fields a mostly-defender
+  force with a few elites; only Hard goes elite-heavy. Scout it through
   the fog of war.
 - **Fog of war** — unexplored land is black; places you've visited but left turn
   grey and show only what you last saw there: buildings frozen at their old state,

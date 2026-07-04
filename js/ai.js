@@ -71,8 +71,12 @@ const AI = {
     const barracks = S.buildings.find(b => b.owner === 'A' && b.key === 'barracks' && Bld.done(b));
     const want = Math.min(2 + Math.floor(S.day / (m.aiArmyDiv || 8)), m.aiArmyCap || 10);
     if (barracks && Units.count('A', Units.isMilitary.bind(Units)) < want && barracks.queue.length === 0) {
-      const kind = barracks.level >= 3 && ai.res.gold >= 20 ? 'elite' : 'defender';
-      Bld.train(barracks, kind);
+      // elites are rationed by difficulty — Moderate fields a mostly-defender
+      // army with a few elites; only Hard goes elite-heavy
+      const elites = Units.count('A', u => u.kind === 'elite');
+      const eliteOk = barracks.level >= 3 && ai.res.gold >= 20 &&
+        elites < Math.floor((m.aiEliteShare || 0) * want);
+      Bld.train(barracks, eliteOk ? 'elite' : 'defender');
     }
 
     // raid the player when clearly ahead militarily
