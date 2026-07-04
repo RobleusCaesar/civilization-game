@@ -527,7 +527,7 @@ const UI = {
         if (b.level < 3 && !b.construction && b.key !== 'wall' && b.key !== 'gate') {
           const up = Bld.canUpgrade(b);
           const cost = d.levels[b.level].cost;
-          html += `<button class="abtn ${up.ok ? '' : 'cant'}" data-act="upgrade">⬆ Upgrade to Lv ${b.level + 1}<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;
+          html += `<button class="abtn wide ${up.ok ? '' : 'cant'}" data-act="upgrade">⬆ Upgrade to Lv ${b.level + 1}<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;
         }
         if ((b.key === 'wall' || b.key === 'gate') && !b.construction && b.level < 3)
           html += `<span class="psub">Walls upgrade together — use the Town Center.</span>`;
@@ -536,7 +536,7 @@ const UI = {
             const ct = Bld.canTrain(b, uk);
             html += `<button class="abtn ${ct.ok ? '' : 'cant'}" data-act="train" data-unit="${uk}">Train ${CFG.UNITS[uk].name}<small>${Bld.costStr(spec.cost)}${ct.ok ? '' : ' — ' + ct.why}</small></button>`;
           }
-          if (b.queue.length) html += `<span class="psub" style="align-self:center">Queue: ${b.queue.length}</span>`;
+          if (b.queue.length) html += `<span class="psub">Training queue: ${b.queue.length}/${Bld.queueCap(b)}</span>`;
           html += b.rally
             ? `<button class="abtn" data-act="rally">🚩 Rally set<small>tap to clear</small></button>`
             : `<button class="abtn" data-act="rally">🚩 Set rally<small>tap ground within ${CFG.RALLY_RANGE} tiles</small></button>`;
@@ -550,12 +550,12 @@ const UI = {
           html += `<button class="abtn" data-act="callidle">📣 Call idle<small>muster at the Town Center</small></button>`;
           if ((S.wallLevel || 1) < 3 && Bld.forts().length) {
             const upw = Bld.canUpgradeWalls();
-            html += `<button class="abtn ${upw.ok ? '' : 'cant'}" data-act="upwalls">🧱 Upgrade all walls to Lv ${(S.wallLevel || 1) + 1}<small>${Bld.costStr(Bld.wallUpgradeCost())}${upw.ok ? ' — every wall & gate' : ' — ' + upw.why}</small></button>`;
+            html += `<button class="abtn wide ${upw.ok ? '' : 'cant'}" data-act="upwalls">🧱 Upgrade all walls to Lv ${(S.wallLevel || 1) + 1}<small>${Bld.costStr(Bld.wallUpgradeCost())}${upw.ok ? ' — every wall & gate' : ' — ' + upw.why}</small></button>`;
           }
         }
         if (b.key === 'wall' && !b.construction && !b.upgrading) {
           const net = this.gateConvertCost(b);
-          html += `<button class="abtn ${Bld.canAfford(net) ? '' : 'cant'}" data-act="togate">🚪 Build Gate<small>${Bld.costStr(net)} — replaces this section</small></button>`;
+          html += `<button class="abtn wide ${Bld.canAfford(net) ? '' : 'cant'}" data-act="togate">🚪 Build Gate<small>${Bld.costStr(net)} — replaces this section</small></button>`;
         }
         if (b.key !== 'tc') {
           const refund = Bld.costStr(Bld.demolishRefund(b));
@@ -761,14 +761,18 @@ const UI = {
   },
 
   /* ---------------- top bar / periodic refresh ---------------- */
+  fmtRes(n) {
+    n |= 0;
+    return n >= 10000 ? (Math.round(n / 100) / 10 + '').replace(/\.0$/, '') + 'k' : String(n);
+  },
   refresh(dt) {
     this.refreshT -= dt;
     if (this.refreshT > 0) return;
     this.refreshT = 0.25;
-    document.getElementById('rFood').textContent = S.res.food | 0;
-    document.getElementById('rWood').textContent = S.res.wood | 0;
-    document.getElementById('rStone').textContent = S.res.stone | 0;
-    document.getElementById('rGold').textContent = S.res.gold | 0;
+    document.getElementById('rFood').textContent = this.fmtRes(S.res.food);
+    document.getElementById('rWood').textContent = this.fmtRes(S.res.wood);
+    document.getElementById('rStone').textContent = this.fmtRes(S.res.stone);
+    document.getElementById('rGold').textContent = this.fmtRes(S.res.gold);
     document.getElementById('rPop').textContent = Units.popUsed('P') + '/' + Bld.popCap('P');
     document.getElementById('rDay').textContent = 'Day ' + S.day;
     this.refreshMenu();

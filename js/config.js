@@ -49,9 +49,9 @@ const CFG = {
       desc: 'Heart of the village. Trains villagers, stores goods.',
       train: { villager: { cost: { food: 50 }, time: 1 } },
       levels: [
-        { cost: {},                                time: 0, hp: 500,  pop: 5,  out: { gold: 5 }, vision: 6 },
-        { cost: { wood: 200, stone: 150, gold: 30 }, time: 3, hp: 800,  pop: 8,  out: { gold: 10 }, vision: 7 },
-        { cost: { wood: 400, stone: 300, gold: 80 }, time: 4, hp: 1200, pop: 12, out: { gold: 15 }, vision: 8,
+        { cost: {},                                time: 0, hp: 500,  pop: 5,  out: { gold: 4 }, vision: 6 },
+        { cost: { wood: 200, stone: 150, gold: 30 }, time: 3, hp: 800,  pop: 8,  out: { gold: 8 }, vision: 7 },
+        { cost: { wood: 400, stone: 300, gold: 80 }, time: 4, hp: 1200, pop: 12, out: { gold: 12 }, vision: 8,
           bonus: '+10% production to all buildings' },
       ],
     },
@@ -115,7 +115,7 @@ const CFG = {
     barracks: {
       name: 'Barracks', desc: 'Trains defenders to protect the village.',
       train: {
-        defender: { cost: { food: 40, wood: 30 }, time: 1 },
+        defender: { cost: { food: 40, wood: 30, gold: 5 }, time: 1 },
         elite:    { cost: { food: 80, wood: 40, gold: 20 }, time: 2, reqLevel: 3 },
       },
       levels: [
@@ -128,7 +128,7 @@ const CFG = {
     stable: {
       name: 'Horse Stable', desc: 'Trains fast riders to run down raiders.', reqTC: 2,
       train: {
-        rider:  { cost: { food: 60, wood: 20 }, time: 1 },
+        rider:  { cost: { food: 60, wood: 20, gold: 8 }, time: 1 },
         lancer: { cost: { food: 100, gold: 25 }, time: 2, reqLevel: 3 },
       },
       levels: [
@@ -141,7 +141,7 @@ const CFG = {
     range: {
       name: 'Archery Range', desc: 'Trains archers who fight from a distance.', reqTC: 2,
       train: {
-        archer:   { cost: { food: 40, wood: 40 }, time: 1 },
+        archer:   { cost: { food: 40, wood: 40, gold: 6 }, time: 1 },
         marksman: { cost: { food: 70, wood: 60, gold: 15 }, time: 2, reqLevel: 3 },
       },
       levels: [

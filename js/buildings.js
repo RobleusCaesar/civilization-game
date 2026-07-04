@@ -229,6 +229,8 @@ const Bld = {
   },
 
   /* training queue: entries { unit, t } (days remaining) */
+  // higher-level training buildings hold a longer queue: 3 / 4 / 5
+  queueCap(b) { return 2 + b.level; },
   canTrain(b, unitKey) {
     const d = this.def(b.key);
     const spec = d.train && d.train[unitKey];
@@ -236,7 +238,7 @@ const Bld = {
     if (b.construction) return { ok: false, why: 'Under construction' };
     if (b.upgrading) return { ok: false, why: 'Upgrading — training paused' };
     if (spec.reqLevel && b.level < spec.reqLevel) return { ok: false, why: `Needs Lv ${spec.reqLevel}` };
-    if (b.queue.length >= 3) return { ok: false, why: 'Queue full' };
+    if (b.queue.length >= this.queueCap(b)) return { ok: false, why: 'Queue full' };
     if (b.owner === 'P' && Units.popUsed('P') + b.queue.length >= Bld.popCap('P'))
       return { ok: false, why: 'Population cap — build houses' };
     const res = b.owner === 'P' ? S.res : S.ai.res;

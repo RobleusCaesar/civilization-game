@@ -69,8 +69,10 @@ on desktop too.
 - **Town Center level 2 unlocks** the Lumber Camp, Quarry, Archery Range,
   Horse Stable, and Dock — early game is houses, farms, the lodge, towers,
   barracks, and hand-gathering.
-- **Gold**: the Town Center mints a little gold each day, and almost everything
-  beyond houses and watchtowers costs some — budget it.
+- **Gold**: the Town Center mints a little gold each day. Almost every building
+  beyond houses and watchtowers costs some — and so does every soldier, from
+  defenders to fire warships — so a standing army keeps draining the treasury.
+  Budget it.
 - **Repair**: damaged buildings can be repaired the same way — tap the building
   and hit *Repair* (or tap a villager, then the building). Repairs cost only a
   villager's working time.
@@ -89,8 +91,9 @@ on desktop too.
 - **Military**: the **Barracks** trains defenders (level 3: elites), the **Horse
   Stable** trains fast riders (level 3: lancers), and the **Archery Range** trains
   archers who shoot from a distance (level 3: marksmen). The **Town Center** trains
-  villagers; houses raise the population cap. Tap a soldier, then a tile to move or
-  an enemy to attack.
+  villagers; houses raise the population cap. Training queues grow with the
+  building: 3 slots at level 1, 4 at level 2, 5 at level 3. Tap a soldier, then
+  a tile to move or an enemy to attack.
 - **The Dock** (needs Town Center level 2): built **on open water** — any lake or
   sea at least 6 tiles big with a walkable shore beside it. Water tiles hold a
   finite stock of fish (watch for the occasional fish jumping — that means

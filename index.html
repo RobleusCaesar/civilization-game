@@ -32,14 +32,21 @@
   /* ---- top resource bar ---- */
   #topbar {
     position: absolute; top: 0; left: 0; right: 0; z-index: 10;
-    display: flex; align-items: center; gap: 4px;
-    padding: calc(env(safe-area-inset-top) + 4px) 6px 4px 6px;
+    padding: calc(env(safe-area-inset-top) + 5px) 6px 5px 6px;
     background: var(--bar-bg); backdrop-filter: blur(4px);
-    font-size: 13px; font-weight: 600; white-space: nowrap;
+    font-size: 12.5px; font-weight: 700; white-space: nowrap;
+    font-variant-numeric: tabular-nums;
   }
-  .res { display: flex; align-items: center; gap: 3px; padding: 2px 4px; }
-  .res canvas { width: 16px; height: 16px; image-rendering: pixelated; }
-  #rDay { margin-left: auto; color: var(--gold); }
+  .trow { display: flex; align-items: center; gap: 5px; }
+  .trow + .trow { margin-top: 4px; }
+  .res {
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+    padding: 4px 6px; background: rgba(255,255,255,0.07); border-radius: 8px;
+    flex: 1 1 0; min-width: 0;
+  }
+  .res canvas { width: 15px; height: 15px; image-rendering: pixelated; flex: 0 0 auto; }
+  #rPopChip { flex: 0 0 auto; padding: 4px 9px; }
+  #rDay { margin-left: auto; color: var(--gold); padding-right: 4px; }
   .iconbtn {
     min-width: 44px; min-height: 34px; border: none; border-radius: 8px;
     background: var(--btn); color: var(--text); font-size: 15px; font-weight: 700;
@@ -48,7 +55,7 @@
 
   /* ---- toasts / event log ---- */
   #toasts {
-    position: absolute; left: 8px; top: calc(env(safe-area-inset-top) + 44px);
+    position: absolute; left: 8px; top: calc(env(safe-area-inset-top) + 82px);
     z-index: 9; display: flex; flex-direction: column; gap: 4px; pointer-events: none;
     max-width: 75%;
   }
@@ -106,17 +113,25 @@
   /* ---- context panel ---- */
   #panel { display: none; }
   #panel.show { display: block; }
-  #panel .phead { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-  #panel .phead canvas { width: 40px; height: 40px; image-rendering: pixelated; }
+  #panel .phead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  #panel .phead canvas { width: 40px; height: 40px; image-rendering: pixelated; flex: 0 0 auto; }
+  #panel .phead > div { flex: 1; min-width: 0; padding-right: 48px; }  /* clear the ✕ */
   #panel .ptitle { font-size: 14px; font-weight: 800; }
   #panel .psub { font-size: 11px; color: var(--dim); }
-  #panel .pactions { display: flex; gap: 6px; flex-wrap: wrap; }
+  /* actions sit on an even two-column grid — tidy rows, equal-width buttons */
+  #panel .pactions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  #panel .pactions .psub { grid-column: 1 / -1; padding: 0 2px; }
+  #panel .pactions .abtn { width: 100%; min-height: 50px; padding: 5px 8px; }
+  #panel .pactions .abtn.wide { grid-column: 1 / -1; }
   .abtn {
     min-height: 44px; padding: 4px 12px; border: 1px solid #55492f; border-radius: 10px;
     background: var(--btn); color: var(--text); font-size: 12px; font-weight: 700;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
   }
-  .abtn small { font-weight: 400; color: var(--dim); font-size: 10px; }
+  .abtn small {
+    font-weight: 400; color: var(--dim); font-size: 10px;
+    white-space: normal; text-align: center; line-height: 1.3;
+  }
   .abtn:active { background: var(--btn-hi); }
   .abtn.cant { opacity: 0.45; }
   .abtn.danger { border-color: var(--danger); }
@@ -162,14 +177,18 @@
 <canvas id="c"></canvas>
 
 <div id="topbar">
-  <span class="res"><canvas class="ric" data-ic="food"></canvas><span id="rFood">0</span></span>
-  <span class="res"><canvas class="ric" data-ic="wood"></canvas><span id="rWood">0</span></span>
-  <span class="res"><canvas class="ric" data-ic="stone"></canvas><span id="rStone">0</span></span>
-  <span class="res"><canvas class="ric" data-ic="gold"></canvas><span id="rGold">0</span></span>
-  <span class="res"><canvas class="ric" data-ic="pop"></canvas><span id="rPop">0/0</span></span>
-  <span id="rDay">Day 1</span>
-  <button class="iconbtn" id="btnPause">⏸</button>
-  <button class="iconbtn" id="btnMenu">☰</button>
+  <div class="trow">
+    <span class="res"><canvas class="ric" data-ic="food"></canvas><span id="rFood">0</span></span>
+    <span class="res"><canvas class="ric" data-ic="wood"></canvas><span id="rWood">0</span></span>
+    <span class="res"><canvas class="ric" data-ic="stone"></canvas><span id="rStone">0</span></span>
+    <span class="res"><canvas class="ric" data-ic="gold"></canvas><span id="rGold">0</span></span>
+  </div>
+  <div class="trow">
+    <span class="res" id="rPopChip"><canvas class="ric" data-ic="pop"></canvas><span id="rPop">0/0</span></span>
+    <span id="rDay">Day 1</span>
+    <button class="iconbtn" id="btnPause">⏸</button>
+    <button class="iconbtn" id="btnMenu">☰</button>
+  </div>
 </div>
 
 <div id="toasts"></div>
