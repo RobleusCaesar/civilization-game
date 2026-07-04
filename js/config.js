@@ -26,7 +26,10 @@ const CFG = {
     [T.FOREST]:  [80, 140],
     [T.HILLS]:   [70, 130],
     [T.FERTILE]: [80, 140],
+    [T.WATER]:   [45, 85],    // fish — harvested by boats, not villagers
   },
+  FISH: { res: 'food', rate: 1.1 },   // fishing-boat harvest per second
+  DOCK_MIN_WATER: 6,          // a dock needs a water body at least this big
   DEPLETED: {                 // what a tile becomes once gathered out
     [T.FOREST]:  T.STUMPS,
     [T.HILLS]:   T.PEBBLES,
@@ -145,6 +148,22 @@ const CFG = {
           bonus: 'Unlocks Marksman' },
       ],
     },
+    dock: {
+      name: 'Dock', desc: 'Built on open water (6+ tiles). Fishing boats harvest fish; warships defend the coast.',
+      reqTC: 2,   // needs Town Center level 2 before it can be placed
+      train: {
+        fishboat: { cost: { wood: 40, gold: 5 }, time: 1 },
+        warship:  { cost: { wood: 80, gold: 20 }, time: 2, reqLevel: 2 },
+        fireship: { cost: { wood: 130, gold: 45 }, time: 2.5, reqLevel: 3 },
+      },
+      levels: [
+        { cost: { wood: 60, gold: 5 },              time: 2, hp: 220, vision: 5 },
+        { cost: { wood: 100, stone: 40, gold: 15 }, time: 2, hp: 340, vision: 6,
+          bonus: 'Unlocks Warship' },
+        { cost: { wood: 160, stone: 90, gold: 30 }, time: 3, hp: 480, vision: 7,
+          bonus: 'Unlocks Fire Warship' },
+      ],
+    },
     wall: {
       name: 'Wall', desc: 'Blocks all movement — friend and foe. Enemies must break it.',
       levels: [
@@ -177,12 +196,17 @@ const CFG = {
     brute:    { name: 'Barbarian Brute', hp: 95,  atk: 12, def: 2, speed: 1.9, aggro: 2.5 },
     deer:     { name: 'Deer',           hp: 20,  atk: 0,  def: 0, speed: 2.0, aggro: 0 },
     cow:      { name: 'Wild Cow',       hp: 35,  atk: 0,  def: 0, speed: 1.2, aggro: 0 },
+    // naval — these move only on water
+    fishboat: { name: 'Fishing Boat',   hp: 35,  atk: 0,  def: 0, speed: 2.4, aggro: 0,   naval: true },
+    warship:  { name: 'Warship',        hp: 95,  atk: 9,  def: 1, speed: 2.6, aggro: 5,   naval: true, rng: 4 },
+    fireship: { name: 'Fire Warship',   hp: 140, atk: 14, def: 2, speed: 2.6, aggro: 5.5, naval: true, rng: 4.5, fire: true },
   },
 
   MEAT_DROP: 10,               // food gained when a wild animal is killed
   PASSIVE_MAX: 2,              // grazing animals (deer/cow) kept on the map
   HEAL_FOOD: { villager: 50, defender: 40, elite: 80,
-               rider: 60, lancer: 100, archer: 40, marksman: 70 },  // full-heal cost scales with missing hp
+               rider: 60, lancer: 100, archer: 40, marksman: 70,
+               fishboat: 30, warship: 70, fireship: 110 },  // full-heal cost scales with missing hp
 
   WAVES: { minGap: 10, maxGap: 14, scaleHp: 0.07, scaleAtk: 0.05 },
   ANIMALS: { graceDays: 8, minDistTC: 12, leash: 7 },

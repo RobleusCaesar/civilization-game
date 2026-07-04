@@ -28,16 +28,20 @@ const Units = {
 
   isMilitary(u) {
     return u.kind === 'defender' || u.kind === 'elite' || u.kind === 'rider' ||
-           u.kind === 'lancer' || u.kind === 'archer' || u.kind === 'marksman';
+           u.kind === 'lancer' || u.kind === 'archer' || u.kind === 'marksman' ||
+           u.kind === 'warship' || u.kind === 'fireship';
   },
   isVillager(u) { return u.kind === 'villager'; },
+  isNaval(u) { return !!CFG.UNITS[u.kind].naval; },
+  domain(u) { return CFG.UNITS[u.kind].naval ? 'water' : 'land'; },
   isWild(u) { return u.owner === 'W'; },
   isPassive(u) { return u.kind === 'deer' || u.kind === 'cow'; },
   isRaider(u) { return u.owner === 'R'; },
 
   popUsed(owner) {
     let n = owner === 'P' && S.garrison ? S.garrison.length : 0;
-    for (const u of S.units) if (u.owner === owner && (this.isVillager(u) || this.isMilitary(u))) n++;
+    for (const u of S.units)
+      if (u.owner === owner && (this.isVillager(u) || this.isMilitary(u) || u.kind === 'fishboat')) n++;
     return n;
   },
   count(owner, pred) {
@@ -68,7 +72,7 @@ const Units = {
   },
 
   setPath(u, tx, ty) {
-    const p = Path.find(u.x | 0, u.y | 0, tx, ty, u.owner);
+    const p = Path.find(u.x | 0, u.y | 0, tx, ty, u.owner, this.domain(u));
     if (p) { u.path = p; u.pathI = 0; }
     return !!p;
   },
@@ -83,6 +87,18 @@ const Units = {
     const g = CFG.GATHER[S.map.terrain[MapGen.idx(tx, ty)]];
     if (!g) return false;
     u.task = { type: 'gather', x: tx, y: ty, res: g.res };
+    u.tUnit = 0; u.tBld = 0;
+    return this.setPath(u, tx, ty);
+  },
+
+  // fishing boats harvest fish from stocked water tiles
+  canFish(tx, ty) {
+    const i = MapGen.idx(tx, ty);
+    return S.map.terrain[i] === T.WATER && S.map.resAmount[i] > 0 && !Bld.at(tx, ty);
+  },
+  assignFish(u, tx, ty) {
+    if (u.kind !== 'fishboat' || !this.canFish(tx, ty)) return false;
+    u.task = { type: 'fish', x: tx, y: ty };
     u.tUnit = 0; u.tBld = 0;
     return this.setPath(u, tx, ty);
   },
@@ -110,7 +126,10 @@ const Units = {
   // wanders off to a "nearby" tile that's actually across a lake or ridge.
   // Melee take the spots toward the approach front, ranged fill in behind.
   groupMove(ids, tx, ty) {
-    const units = ids.map(id => this.get(id)).filter(Boolean);
+    let units = ids.map(id => this.get(id)).filter(Boolean);
+    // ships can't hold a land formation — they just steam toward the tap
+    for (const u of units.filter(o => this.isNaval(o))) this.moveTo(u, tx, ty);
+    units = units.filter(o => !this.isNaval(o));
     if (!units.length) return;
     const cx = units.reduce((s, u) => s + u.x, 0) / units.length;
     const cy = units.reduce((s, u) => s + u.y, 0) / units.length;
@@ -216,6 +235,28 @@ const Units = {
             const what = terr === T.FOREST ? 'The forest here is felled'
               : terr === T.HILLS ? 'The stone here is quarried out' : 'The soil here is spent';
             G.log(`${what} — villager idle`, true);
+            u.task = null;
+          }
+        }
+      } else if (t.type === 'fish') {
+        const onTile = (u.x | 0) === t.x && (u.y | 0) === t.y;
+        if (!onTile) {
+          if (this.followPath(u, dt) && !((u.x | 0) === t.x && (u.y | 0) === t.y)) u.task = null;
+        } else {
+          const idx = MapGen.idx(t.x, t.y);
+          if (S.map.terrain[idx] !== T.WATER) { u.task = null; continue; }
+          const before = S.res.food;
+          const take = Math.min(S.map.resAmount[idx], CFG.FISH.rate * dt * G.modeCfg().gather);
+          S.res.food += take;
+          S.map.resAmount[idx] -= take;
+          if ((before | 0) !== (S.res.food | 0) && Math.random() < 0.3)
+            R.float(u.x, u.y - 0.5, '+food', '#d8e8b0');
+          if (S.map.resAmount[idx] <= 0.001) {
+            S.map.resAmount[idx] = 0;
+            // drift to the next stocked water tile nearby, or go idle
+            const next = MapGen.findNear(t.x, t.y, 4, (x, y) => this.canFish(x, y));
+            if (next && this.assignFish(u, next.x, next.y)) continue;
+            G.log('These waters are fished out — boat idle', true);
             u.task = null;
           }
         }

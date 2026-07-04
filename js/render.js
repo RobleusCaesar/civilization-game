@@ -136,7 +136,7 @@ const R = {
   unitPose(u) {
     if (u.tUnit || (u.tBld && Math.hypot((Bld.get(u.tBld) || u).x + 0.5 - u.x, (Bld.get(u.tBld) || u).y + 0.5 - u.y) < 1.5)) return 'fight';
     if (Units.moving(u)) return 'walk';
-    if (u.task && (u.task.type === 'gather' || u.task.type === 'build' || u.task.type === 'work')) return 'gather';
+    if (u.task && (u.task.type === 'gather' || u.task.type === 'fish' || u.task.type === 'build' || u.task.type === 'work')) return 'gather';
     return 'idle';
   },
   unitSprite(u) {
@@ -245,11 +245,37 @@ const R = {
     }
     g.textAlign = 'left'; g.textBaseline = 'alphabetic';
 
-    // tower shots
+    // arrows in flight (flaming ones burn orange with an ember at the head)
     g.lineWidth = 1.5;
     for (const s of Combat.shots) {
-      g.strokeStyle = 'rgba(240,210,122,' + Math.min(1, s.t * 6) + ')';
+      const a = Math.min(1, s.t * 6);
+      g.strokeStyle = s.fire ? 'rgba(242,150,58,' + a + ')' : 'rgba(240,210,122,' + a + ')';
       g.beginPath(); g.moveTo(s.x1 * TL, s.y1 * TL); g.lineTo(s.x2 * TL, s.y2 * TL); g.stroke();
+      if (s.fire) {
+        g.fillStyle = 'rgba(255,200,80,' + a + ')';
+        g.fillRect(s.x2 * TL - 2, s.y2 * TL - 2, 4, 4);
+        g.fillStyle = 'rgba(232,138,58,' + a + ')';
+        g.fillRect(s.x2 * TL - 1, s.y2 * TL - 1, 2, 2);
+      }
+    }
+
+    // the occasional fish jumping on stocked water — a hint of what's fishable
+    this.fishClock = (this.fishClock || 0) + dt;
+    {
+      const cyc = (this.fishClock / 2.4) | 0, phase = (this.fishClock / 2.4) % 1;
+      if (phase < 0.55) {
+        const fr = Sprites.misc.fish[phase < 0.3 ? 0 : 1];
+        const x0 = Math.max(0, (this.cam.x / TL) | 0), y0 = Math.max(0, (this.cam.y / TL) | 0);
+        const x1 = Math.min(CFG.W - 1, ((this.cam.x + this.viewW() / this.cam.z) / TL) | 0);
+        const y1 = Math.min(CFG.H - 1, ((this.cam.y + this.viewH() / this.cam.z) / TL) | 0);
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+          const i = MapGen.idx(x, y);
+          if (S.map.terrain[i] !== T.WATER || !S.map.resAmount[i]) continue;
+          if (!G.visibleAt(x, y)) continue;
+          const h = (x * 73856093 ^ y * 19349663 ^ cyc * 83492791) >>> 0;
+          if (h % 31 === 0) g.drawImage(fr, x * TL, y * TL);
+        }
+      }
     }
 
     // placement ghost

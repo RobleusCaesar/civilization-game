@@ -82,6 +82,16 @@ on desktop too.
   archers who shoot from a distance (level 3: marksmen). The **Town Center** trains
   villagers; houses raise the population cap. Tap a soldier, then a tile to move or
   an enemy to attack.
+- **The Dock** (needs Town Center level 2): built **on open water** — any lake or
+  sea at least 6 tiles big with a walkable shore beside it. Water tiles hold a
+  finite stock of fish (watch for the occasional fish jumping — that means
+  there's still something to catch). The dock trains **Fishing Boats** that
+  harvest fish for food, drifting to nearby stocked water when a tile runs dry.
+  A level-2 dock unlocks the **Warship** — a sailed vessel whose archers hit
+  enemies and buildings within a few tiles of the water — and level 3 unlocks
+  the **Fire Warship**, tougher, longer-ranged, and shooting flaming arrows.
+  Ships never leave the water (and land raiders can't touch them); a destroyed
+  dock washes away to open water.
 - **Shelter & muster**: the Town Center can *Shelter villagers* — everyone runs
   inside and vanishes from the map until you *Release all* after the threat
   passes. *Call idle* musters idle villagers outside the TC.

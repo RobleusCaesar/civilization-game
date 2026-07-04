@@ -333,6 +333,27 @@ const Sprites = {
       if (lv >= 2) { p(0, 12, 8, 1, PAL.trunk); }                 // fence
       if (lv >= 3) { p(2, 5, 3, 3, PAL.gold); }                   // gold target
     },
+    dock(p, lv) {
+      // wooden pier standing on posts over open water (tile beneath stays water)
+      p(0, 0, 16, 16, PAL.water);
+      p(2, 1, 3, 3, PAL.waterL); p(11, 11, 3, 2, PAL.waterL);     // ripples
+      p(3, 12, 1, 3, PAL.trunk); p(12, 12, 1, 3, PAL.trunk);      // pilings
+      p(6, 13, 1, 2, PAL.trunk); p(9, 13, 1, 2, PAL.trunk);
+      p(2, 6, 12, 6, PAL.wood);                                   // deck
+      p(2, 8, 12, 1, PAL.woodD); p(2, 10, 12, 1, PAL.woodD);      // plank seams
+      p(2, 6, 12, 1, PAL.woodD);
+      p(6, 2, 4, 4, PAL.woodD); p(6, 2, 4, 1, PAL.wood);          // walkway to shore
+      if (lv >= 2) {
+        p(3, 3, 3, 3, PAL.thatch); p(3, 3, 3, 1, PAL.thatchD);    // crates of catch
+        p(11, 3, 2, 3, PAL.trunk);                                // mooring post
+        p(11, 2, 2, 1, PAL.rockL);
+      }
+      if (lv >= 3) {
+        p(13, 1, 1, 6, PAL.trunk);                                // banner mast
+        p(11, 1, 2, 2, PAL.gold);
+        p(2, 12, 2, 1, PAL.gold);                                 // gilded trim
+      }
+    },
     wall(p, lv) { drawWallMask(p, lv, 2 | 8); },   // menu/panel icon: an east-west run
     gate(p, lv) {
       const c = wallPal(lv);
@@ -460,6 +481,74 @@ const Sprites = {
     (p, f) => { p(12, 2, 1, 6, PAL.trunk); p(11, 2, 1, 1, PAL.trunk); p(11, 7, 1, 1, PAL.trunk); });
   Sprites.unit.marksman = unitSheet({ body: '#5a6a3a', accent: PAL.gold, pants: '#3a4224', hair: PAL.hair, spear: PAL.trunk },
     (p, f) => { p(12, 1, 1, 7, PAL.trunk); p(11, 1, 1, 1, PAL.gold); p(11, 8, 1, 1, PAL.trunk); });
+
+  /* ---------------- boats ---------------- */
+  // rowing-boat sheet: hull low in the water, crew figure, bobbing animation
+  function fishboatSheet() {
+    const draw = (p, f, pose) => {
+      const y = 8 + (f === 1 ? 1 : 0);
+      p(3, y + 4, 10, 1, 'rgba(0,0,0,0.25)');
+      p(3, y + 1, 10, 2, PAL.wood); p(4, y + 3, 8, 1, PAL.woodD);   // hull
+      p(2, y + 1, 1, 1, PAL.woodD); p(13, y + 1, 1, 1, PAL.woodD);  // prow / stern
+      p(6, y - 2, 2, 3, '#6e5b40');                                 // fisher
+      p(6, y - 4, 2, 2, PAL.skin); p(6, y - 5, 2, 1, PAL.hair);
+      if (pose === 'gather') {
+        p(8, y - 2, 3, 1, PAL.skin); p(11, y - 3, 1, 1, PAL.trunk); // rod
+        p(12, y - 2, 1, 4, '#c8d8e0');                              // line to water
+      } else {
+        p(4, y, 1, 2, PAL.trunk); p(11, y, 1, 2, PAL.trunk);        // oars
+      }
+    };
+    return {
+      idle: frames(2, (p, g, f) => draw(p, f, 'idle')),
+      walk: frames(2, (p, g, f) => draw(p, f, 'walk')),
+      gather: frames(2, (p, g, f) => draw(p, f, 'gather')),
+    };
+  }
+  // warship sheet: bigger hull, mast and sail, archer on deck
+  function warshipSheet(c) {
+    const draw = (p, f, pose) => {
+      const y = 10 + (f === 1 ? 1 : 0);
+      p(2, y + 3, 12, 1, 'rgba(0,0,0,0.25)');
+      p(2, y, 12, 3, c.hull); p(3, y + 2, 10, 1, c.hullD);          // hull
+      p(1, y, 1, 2, c.hullD); p(14, y, 1, 2, c.hullD);
+      p(8, y - 9, 1, 9, PAL.trunk);                                 // mast
+      p(9, y - 8, 5, 6, c.sail);                                    // sail
+      p(9, y - 6, 5, 1, c.stripe);                                  // painted stripe
+      p(9, y - 8, 5, 1, c.sailD);
+      p(4, y - 2, 2, 2, c.crew);                                    // archer on deck
+      p(4, y - 4, 2, 2, PAL.skin); p(4, y - 5, 2, 1, PAL.hair);
+      if (pose === 'fight') {
+        p(2, y - 4, 1, 4, PAL.trunk); p(1, y - 3, 1, 1, PAL.trunk); // bow
+        p(3, y - 3, 2, 1, c.arrow);                                 // nocked arrow
+        if (c.flame) { p(2, y - 5, 1, 1, PAL.fireL); p(3, y - 4, 1, 1, PAL.fire); }
+      }
+      if (c.flame) { p(11, y - 1, 2, 2, PAL.fire); p(11, y - 2, 1, 1, PAL.fireL); } // fire brazier
+    };
+    return {
+      idle: frames(2, (p, g, f) => draw(p, f, 'idle')),
+      walk: frames(2, (p, g, f) => draw(p, f, 'walk')),
+      fight: frames(2, (p, g, f) => draw(p, f, 'fight')),
+    };
+  }
+  Sprites.unit.fishboat = fishboatSheet();
+  Sprites.unit.warship = warshipSheet({ hull: PAL.wood, hullD: PAL.woodD, sail: '#e8e8e0', sailD: '#c9c9c0',
+    stripe: PAL.P, crew: '#7a6242', arrow: PAL.rockL });
+  Sprites.unit.fireship = warshipSheet({ hull: '#5d4a30', hullD: '#453722', sail: '#b8b0a0', sailD: '#98907e',
+    stripe: PAL.fire, crew: '#5d4a30', arrow: PAL.fire, flame: true });
+
+  // fish breaking the surface — two frames used as an occasional flourish
+  Sprites.misc.fish = [
+    tile(p => {
+      p(6, 7, 3, 2, '#c8d8e0'); p(9, 6, 1, 2, '#c8d8e0');   // arcing body + tail
+      p(6, 6, 1, 1, '#e8f4ff');                             // glint
+      p(4, 10, 1, 1, '#e8f4ff'); p(10, 10, 1, 1, '#e8f4ff'); // droplets
+    }),
+    tile(p => {
+      p(5, 9, 6, 1, '#e8f4ff'); p(4, 10, 8, 1, PAL.waterL);  // splash ring
+      p(7, 8, 2, 1, '#c8d8e0');
+    }),
+  ];
 
   function beast(name, body, bodyD, opts) {
     const w = opts.w, h = opts.h, y0 = 12 - h;

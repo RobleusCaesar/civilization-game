@@ -36,6 +36,8 @@ const G = {
         W: CFG.W, H: CFG.H,
         terrain: gen.terrain,
         resAmount: gen.resAmount,
+        fishStocked: true,                  // water tiles carry fish from generation
+
         scarce: gen.scarce,
         landform: gen.landform,
         decay: {},                          // idx -> day the depleted/ruined tile regrows to grass
@@ -194,6 +196,14 @@ const G = {
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};
+    if (!data.map.fishStocked) {
+      // pre-dock save: stock its waters so fishing works after loading
+      const fr = CFG.RES_AMOUNT[T.WATER];
+      for (let i = 0; i < data.map.terrain.length; i++)
+        if (data.map.terrain[i] === T.WATER && !data.map.resAmount[i])
+          data.map.resAmount[i] = Math.round((fr[0] + fr[1]) / 2);
+      data.map.fishStocked = true;
+    }
     S = data;
     Bld._block = null;
     S.paused = true;

@@ -18,7 +18,7 @@ const UI = {
   wallDrag: null,        // tile chain while dragging a wall line
   wallGhost: null,       // [{x,y,ok,mask}] preview of the dragged line
   settingRally: null,    // building id waiting for a rally-point tap
-  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'wall', 'gate'],
+  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'dock', 'wall', 'gate'],
 
   init() {
     // resource icons in the top bar
@@ -336,6 +336,10 @@ const UI = {
         if (!explored) { this.toast('Unexplored', true); return; }
         if (Units.isVillager(sel) && CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]]) {
           if (Units.assignGather(sel, tile.x, tile.y)) this.toast('Gathering ' + sel.task.res);
+          return;
+        }
+        if (sel.kind === 'fishboat' && Units.canFish(tile.x, tile.y)) {
+          if (Units.assignFish(sel, tile.x, tile.y)) this.toast('Nets out — fishing 🐟');
           return;
         }
         Units.moveTo(sel, tile.x, tile.y);
@@ -668,6 +672,8 @@ const UI = {
           : u.owner === 'W' ? `Wild beast — dangerous, but worth +${CFG.MEAT_DROP} food.`
           : u.owner === 'R' ? 'Barbarian!' : 'Rival tribe')
         : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / fertile soil to gather, a work site to build, or a tile to walk.'
+        : u.kind === 'fishboat' ? 'Tap water where fish jump 🐟 to fish, or open water to row there.'
+        : Units.isNaval(u) ? 'Tap an enemy or rival building near the shore to attack, or water to sail.'
         : 'Tap a tile to move, or an enemy to attack.';
       if (!own && !Units.isPassive(u)) {
         const stack = S.units.filter(o => o.owner !== 'P' && !Units.isPassive(o) &&
@@ -688,7 +694,7 @@ const UI = {
         html += `<button class="abtn ${S.res.food >= hc ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${hc} 🍖</small></button>`;
       }
       if (own && Units.isVillager(u)) html += `<button class="abtn" data-act="gobuild">🔨 Build…</button>`;
-      if (own && Units.isMilitary(u)) html += `<button class="abtn" data-act="group">👥 Group nearby</button>`;
+      if (own && Units.isMilitary(u) && !Units.isNaval(u)) html += `<button class="abtn" data-act="group">👥 Group nearby</button>`;
       if (own) html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
       html += '</div>';
       panel.innerHTML = html;
@@ -725,7 +731,7 @@ const UI = {
         const u2 = Units.get(this.sel.id);
         if (!u2) return;
         const ids = S.units
-          .filter(o => o.owner === 'P' && Units.isMilitary(o) && Math.hypot(o.x - u2.x, o.y - u2.y) <= 6)
+          .filter(o => o.owner === 'P' && Units.isMilitary(o) && !Units.isNaval(o) && Math.hypot(o.x - u2.x, o.y - u2.y) <= 6)
           .map(o => o.id);
         if (ids.length < 2) { this.toast('No other soldiers within reach', true); return; }
         this.sel = { type: 'group', ids };

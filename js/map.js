@@ -222,9 +222,10 @@ const MapGen = {
    target can't be reached, returns a best-effort path to the closest
    reachable tile (so besiegers walk up to the walls). */
 const Path = {
-  passable(x, y, owner) {
+  passable(x, y, owner, domain) {
     if (!MapGen.inB(x, y)) return false;
     const terr = S.map.terrain[MapGen.idx(x, y)];
+    if (domain === 'water') return terr === T.WATER;   // boats: open water only (docks don't block hulls)
     if (terr === T.WATER || terr === T.MOUNTAIN) return false;
     const blk = Bld.blockAt(x, y);
     if (blk === 0) return true;
@@ -238,11 +239,11 @@ const Path = {
   // destination tile must be open, and a diagonal tile change may not cut the
   // corner of a blocked tile. Without this, chasing units could slip through
   // the corner point where a wall meets water/mountain/another wall diagonally.
-  canStep(x0, y0, x1, y1, owner) {
+  canStep(x0, y0, x1, y1, owner, domain) {
     const cx = x0 | 0, cy = y0 | 0, nx = x1 | 0, ny = y1 | 0;
-    if (!this.passable(nx, ny, owner)) return false;
+    if (!this.passable(nx, ny, owner, domain)) return false;
     if (nx !== cx && ny !== cy &&
-        (!this.passable(nx, cy, owner) || !this.passable(cx, ny, owner))) return false;
+        (!this.passable(nx, cy, owner, domain) || !this.passable(cx, ny, owner, domain))) return false;
     return true;
   },
 
@@ -278,7 +279,7 @@ const Path = {
     return open;
   },
 
-  find(sx, sy, tx, ty, owner) {
+  find(sx, sy, tx, ty, owner, domain) {
     sx |= 0; sy |= 0; tx |= 0; ty |= 0;
     if (!MapGen.inB(tx, ty)) return null;
     const W = CFG.W, H = CFG.H, id = MapGen.idx;
@@ -297,9 +298,9 @@ const Path = {
       for (let d = 0; d < 8; d++) {
         const dx = dirs[d * 2], dy = dirs[d * 2 + 1];
         const nx = cx + dx, ny = cy + dy;
-        if (!this.passable(nx, ny, owner)) continue;
+        if (!this.passable(nx, ny, owner, domain)) continue;
         // no diagonal squeezing between blocked tiles
-        if (dx && dy && (!this.passable(cx + dx, cy, owner) || !this.passable(cx, cy + dy, owner))) continue;
+        if (dx && dy && (!this.passable(cx + dx, cy, owner, domain) || !this.passable(cx, cy + dy, owner, domain))) continue;
         const ni = id(nx, ny);
         if (prev[ni] !== -1) continue;
         prev[ni] = cur;

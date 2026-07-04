@@ -59,10 +59,44 @@ const Bld = {
     return true;
   },
 
+  // docks stand on open water: the body must be big enough to work, and the
+  // pier needs a walkable shore tile beside it so villagers can build/repair it
+  dockSiteOk(x, y) {
+    if (!MapGen.inB(x, y) || S.map.terrain[MapGen.idx(x, y)] !== T.WATER || this.at(x, y))
+      return { ok: false, why: 'Docks are built on open water' };
+    let shore = false;
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+      if (MapGen.inB(x + ox, y + oy) && Path.passable(x + ox, y + oy, 'P')) { shore = true; break; }
+    if (!shore) return { ok: false, why: 'Needs a walkable shore beside it' };
+    // flood the water body up to the required size
+    const seen = new Set([x + ',' + y]);
+    const q = [{ x, y }];
+    let n = 0;
+    while (q.length && n < CFG.DOCK_MIN_WATER) {
+      const c = q.shift();
+      n++;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = c.x + ox, ny = c.y + oy, k = nx + ',' + ny;
+        if (seen.has(k) || !MapGen.inB(nx, ny) || S.map.terrain[MapGen.idx(nx, ny)] !== T.WATER) continue;
+        seen.add(k);
+        q.push({ x: nx, y: ny });
+      }
+    }
+    if (n < CFG.DOCK_MIN_WATER)
+      return { ok: false, why: `This water is too small (needs ${CFG.DOCK_MIN_WATER}+ tiles)` };
+    return { ok: true };
+  },
+
   canPlace(owner, key, x, y) {
     const d = this.def(key);
     if (!d) return { ok: false, why: '?' };
-    if (!this.tileFree(x, y)) return { ok: false, why: 'Blocked tile' };
+    if (key === 'dock') {
+      const site = this.dockSiteOk(x, y);
+      if (!site.ok) return site;
+      const tc = this.tcOf(owner);
+      if (d.reqTC && (!tc || tc.level < d.reqTC))
+        return { ok: false, why: `Needs Town Center Lv ${d.reqTC}` };
+    } else if (!this.tileFree(x, y)) return { ok: false, why: 'Blocked tile' };
     if (owner === 'P' && !S.map.explored[MapGen.idx(x, y)]) return { ok: false, why: 'Unexplored' };
     if (d.unique && this.list(owner).some(b => b.key === key)) return { ok: false, why: 'Already built' };
     const mine = this.list(owner);
@@ -248,14 +282,20 @@ const Bld = {
         b.queue[0].t -= dtDays;
         if (b.queue[0].t <= 0) {
           const item = b.queue.shift();
-          const spot = MapGen.findNear(b.x, b.y + 1, 3, (x, y) => Path.passable(x, y) && !Bld.at(x, y)) || { x: b.x, y: b.y + 1 };
+          const naval = !!CFG.UNITS[item.unit].naval;
+          const spot = (naval
+            ? MapGen.findNear(b.x, b.y, 3, (x, y) => Path.passable(x, y, b.owner, 'water') && !Bld.at(x, y))
+            : MapGen.findNear(b.x, b.y + 1, 3, (x, y) => Path.passable(x, y) && !Bld.at(x, y)))
+            || { x: b.x, y: b.y + 1 };
           const nu = Units.spawn(item.unit, b.owner, spot.x, spot.y);
           if (b.owner === 'P') G.log(`${CFG.UNITS[item.unit].name} ready`);
           // rally point: fresh units head there; villagers rallied onto a
-          // resource tile start gathering immediately
+          // resource tile (or boats onto stocked water) start gathering immediately
           if (b.owner === 'P' && b.rally) {
             if (Units.isVillager(nu) && CFG.GATHER[S.map.terrain[MapGen.idx(b.rally.x, b.rally.y)]])
               Units.assignGather(nu, b.rally.x, b.rally.y);
+            else if (nu.kind === 'fishboat' && Units.canFish(b.rally.x, b.rally.y))
+              Units.assignFish(nu, b.rally.x, b.rally.y);
             else Units.moveTo(nu, b.rally.x, b.rally.y);
           }
         }
@@ -285,10 +325,15 @@ const Bld = {
     S.buildings.splice(S.buildings.indexOf(b), 1);
     this._block = null;
     const idx = MapGen.idx(b.x, b.y);
-    S.map.terrain[idx] = T.RUIN;
-    if (S.map.resAmount) S.map.resAmount[idx] = 0;
-    G.scheduleRevert(idx);
-    R.updateTile(b.x, b.y);
+    if (S.map.terrain[idx] === T.WATER) {
+      // a broken dock washes away — open water again, no rubble
+      R.updateTile(b.x, b.y);
+    } else {
+      S.map.terrain[idx] = T.RUIN;
+      if (S.map.resAmount) S.map.resAmount[idx] = 0;
+      G.scheduleRevert(idx);
+      R.updateTile(b.x, b.y);
+    }
     for (const u of S.units) if (u.tBld === b.id) u.tBld = 0;
     if (UI.sel && UI.sel.type === 'bld' && UI.sel.id === b.id) UI.deselect();
   },
