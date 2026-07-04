@@ -150,11 +150,14 @@ const R = {
     }
 
     // units (y-sorted)
+    const selIds = !UI.sel ? null
+      : UI.sel.type === 'unit' ? new Set([UI.sel.id])
+      : UI.sel.type === 'group' ? new Set(UI.sel.ids) : null;
     const units = S.units.slice().sort((a, b) => a.y - b.y);
     for (const u of units) {
       if (!this.explored(u.x | 0, u.y | 0)) continue;
       const ux = u.x * TL - TL / 2, uy = u.y * TL - TL / 2 - 4;
-      if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) {
+      if (selIds && selIds.has(u.id)) {
         g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;
         g.beginPath(); g.ellipse(u.x * TL, u.y * TL + 10, 10, 5, 0, 0, Math.PI * 2); g.stroke();
       }

@@ -57,6 +57,10 @@ on desktop too.
   archers who shoot from a distance (level 3: marksmen). The **Town Center** trains
   villagers; houses raise the population cap. Tap a soldier, then a tile to move or
   an enemy to attack.
+- **War parties**: tap a soldier → *Group nearby* to gather every soldier within
+  6 tiles into one selection. One tap then marches them together (melee form the
+  front line, archers hold a rank behind) or throws them all at an enemy unit or
+  rival building. *Halt* stops everyone.
 - **Walls & Gates**: wall segments block *all* movement — yours included — so leave
   a **Town Gate** in the line: your people pass through it, enemies can't. Attackers
   who can't find a way around batter the nearest wall or gate and pour through once

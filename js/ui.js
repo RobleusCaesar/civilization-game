@@ -166,6 +166,30 @@ const UI = {
     }
     const hitBld = explored ? Bld.at(tile.x, tile.y) : null;
 
+    // orders for a selected war party
+    if (this.sel && this.sel.type === 'group') {
+      const ids = this.sel.ids.filter(id => Units.get(id));
+      if (!ids.length) { this.deselect(); return; }
+      this.sel.ids = ids;
+      if (hitUnit && hitUnit.owner !== 'P' && Combat.hostile('P', hitUnit.owner)) {
+        for (const id of ids) { const u = Units.get(id); u.task = null; u.tUnit = hitUnit.id; u.tBld = 0; }
+        this.toast('⚔️ War party attacks!');
+        return;
+      }
+      if (hitBld && hitBld.owner === 'A') {
+        for (const id of ids) Units.orderAttackBuilding(Units.get(id), hitBld);
+        this.toast('⚔️ War party attacks ' + Bld.def(hitBld.key).name);
+        return;
+      }
+      if (!hitUnit && !hitBld) {
+        if (!explored) { this.toast('Unexplored', true); return; }
+        Units.groupMove(ids, tile.x, tile.y);
+        this.toast('War party moving — melee front, archers behind');
+        return;
+      }
+      // tapped one of our own units/buildings: fall through and reselect it
+    }
+
     // orders for a selected player unit
     const sel = this.sel && this.sel.type === 'unit' ? Units.get(this.sel.id) : null;
     if (sel && sel.owner === 'P') {
@@ -239,10 +263,24 @@ const UI = {
       if (d.train) for (const uk in d.train) sig += '|' + Bld.canTrain(b, uk).ok;
       return sig;
     }
+    if (this.sel.type === 'group') {
+      const alive = this.sel.ids.filter(id => Units.get(id)).length;
+      return alive ? 'g|' + alive : 'gone';
+    }
     const u = Units.get(this.sel.id);
     if (!u) return 'gone';
     return ['u', u.id, u.hp < u.maxhp,
       !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u)].join('|');
+  },
+
+  groupComposition(ids) {
+    const byKind = {};
+    for (const id of ids) {
+      const u = Units.get(id);
+      if (u) byKind[u.kind] = (byKind[u.kind] || 0) + 1;
+    }
+    return Object.entries(byKind)
+      .map(([k, n]) => `${n} ${CFG.UNITS[k].name}${n > 1 ? 's' : ''}`).join(', ');
   },
 
   healCost(u) {
@@ -280,6 +318,7 @@ const UI = {
       if (lv.bonus) sub += ` — ${lv.bonus}`;
       return sub;
     }
+    if (this.sel.type === 'group') return this.groupComposition(this.sel.ids);
     const u = Units.get(this.sel.id);
     return u ? `HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Units.effAtk(u)} · DEF ${u.def}` : '';
   },
@@ -348,6 +387,28 @@ const UI = {
         this.renderPanel();
         this.refreshMenu();
       }));
+    } else if (this.sel.type === 'group') {
+      this.sel.ids = this.sel.ids.filter(id => Units.get(id));
+      if (this.sel.ids.length === 0) { this.deselect(); return; }
+      if (this.sel.ids.length === 1) { this.sel = { type: 'unit', id: this.sel.ids[0] }; this.renderPanel(); return; }
+      const first = Units.get(this.sel.ids[0]);
+      html += `<div class="phead"><canvas id="pIcon"></canvas><div>
+        <div class="ptitle">⚔️ War Party <span style="color:var(--gold)">(${this.sel.ids.length})</span></div>
+        <div class="psub">${this.groupComposition(this.sel.ids)}</div></div>
+        <button class="abtn" id="panelClose">✕</button></div>
+        <div class="pactions"><span class="psub">Tap a tile to march (melee front, archers behind), or an enemy / rival building to attack together.</span>
+        <button class="abtn" data-act="stop">✋ Halt</button></div>`;
+      panel.innerHTML = html;
+      const ic = panel.querySelector('#pIcon');
+      ic.width = 32; ic.height = 32;
+      ic.getContext('2d').drawImage(R.unitSprite(first), 0, 0);
+      panel.querySelector('[data-act="stop"]').addEventListener('click', () => {
+        for (const id of this.sel.ids) {
+          const u2 = Units.get(id);
+          if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; }
+        }
+        this.toast('War party halted');
+      });
     } else {
       const u = Units.get(this.sel.id);
       if (!u) { this.deselect(); return; }
@@ -369,6 +430,7 @@ const UI = {
         html += `<button class="abtn ${S.res.food >= hc ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${hc} 🍖</small></button>`;
       }
       if (own && Units.isVillager(u)) html += `<button class="abtn" data-act="gobuild">🔨 Build…</button>`;
+      if (own && Units.isMilitary(u)) html += `<button class="abtn" data-act="group">👥 Group nearby</button>`;
       if (own) html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
       html += '</div>';
       panel.innerHTML = html;
@@ -398,6 +460,18 @@ const UI = {
         this.deselect();          // brings the build menu back
         this.builderFor = vid;    // after deselect/select bookkeeping
         this.toast('Pick a building, then tap a site — this villager will build it');
+      });
+      const grp = panel.querySelector('[data-act="group"]');
+      if (grp) grp.addEventListener('click', () => {
+        const u2 = Units.get(this.sel.id);
+        if (!u2) return;
+        const ids = S.units
+          .filter(o => o.owner === 'P' && Units.isMilitary(o) && Math.hypot(o.x - u2.x, o.y - u2.y) <= 6)
+          .map(o => o.id);
+        if (ids.length < 2) { this.toast('No other soldiers within reach', true); return; }
+        this.sel = { type: 'group', ids };
+        this.renderPanel();
+        this.toast(`War party formed: ${this.groupComposition(ids)}`);
       });
     }
     panel.querySelector('#panelClose').addEventListener('click', () => this.deselect());

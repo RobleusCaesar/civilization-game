@@ -97,6 +97,31 @@ const Units = {
     return this.setPath(u, b.x, b.y);
   },
 
+  // formation move: melee line up at the destination, ranged hold a rank behind
+  groupMove(ids, tx, ty) {
+    const units = ids.map(id => this.get(id)).filter(Boolean);
+    if (!units.length) return;
+    const cx = units.reduce((s, u) => s + u.x, 0) / units.length;
+    const cy = units.reduce((s, u) => s + u.y, 0) / units.length;
+    let dx = tx + 0.5 - cx, dy = ty + 0.5 - cy;
+    const dl = Math.hypot(dx, dy) || 1;
+    dx /= dl; dy /= dl;
+    const px = -dy, py = dx;                       // perpendicular = line abreast
+    const melee = units.filter(u => !CFG.UNITS[u.kind].rng);
+    const ranged = units.filter(u => CFG.UNITS[u.kind].rng);
+    const placeRank = (list, backOff) => list.forEach((u, i) => {
+      const lane = (i - (list.length - 1) / 2) * 1.3;
+      let gx = Math.round(tx + px * lane - dx * backOff);
+      let gy = Math.round(ty + py * lane - dy * backOff);
+      gx = Math.max(0, Math.min(CFG.W - 1, gx));
+      gy = Math.max(0, Math.min(CFG.H - 1, gy));
+      const spot = MapGen.findNear(gx, gy, 2, (x, y) => Path.passable(x, y, 'P')) || { x: tx, y: ty };
+      this.moveTo(u, spot.x, spot.y);
+    });
+    placeRank(melee, 0);
+    placeRank(ranged, 2);
+  },
+
   orderAttackBuilding(u, b) {
     u.task = { type: 'attackBld' };
     u.tBld = b.id; u.tUnit = 0;
