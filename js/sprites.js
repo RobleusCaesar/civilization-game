@@ -225,6 +225,47 @@ const Sprites = {
       if (lv >= 2) { p(1, 3, 1, 4, PAL.trunk); p(2, 3, 2, 2, PAL.red); }
       if (lv >= 3) { p(14, 3, 1, 4, PAL.trunk); p(12, 3, 2, 2, PAL.gold); }
     },
+    stable(p, lv) {
+      shadow(p);
+      p(1, 7, 14, 7, PAL.wood); p(1, 7, 14, 1, PAL.woodD);        // barn
+      roofStrips(p, 0, 4, 16, 3, PAL.thatch, PAL.thatchD);
+      p(6, 9, 4, 5, PAL.dark);                                    // big stall door
+      p(2, 9, 2, 2, '#a87848'); p(3, 8, 2, 1, '#a87848');         // horse head at window
+      p(12, 9, 1, 4, PAL.trunk); p(13, 10, 2, 1, PAL.trunk);      // hitching post
+      if (lv >= 2) { p(0, 10, 1, 4, PAL.trunk); p(15, 10, 1, 4, PAL.trunk); }
+      if (lv >= 3) p(7, 2, 2, 2, PAL.gold);                       // gold horseshoe
+    },
+    range(p, lv) {
+      shadow(p);
+      p(1, 4, 5, 5, PAL.white); p(2, 5, 3, 3, PAL.red); p(3, 6, 1, 1, PAL.white); // target
+      p(3, 9, 1, 5, PAL.trunk);                                   // target post
+      p(9, 6, 5, 8, PAL.wood); p(9, 6, 5, 1, PAL.woodD);          // hut
+      roofStrips(p, 8, 4, 7, 2, PAL.thatch, PAL.thatchD);
+      p(11, 10, 1, 4, PAL.dark);
+      p(6, 12, 1, 3, PAL.trunk); p(7, 11, 1, 1, PAL.trunk);       // bow on rack
+      if (lv >= 2) { p(0, 12, 8, 1, PAL.trunk); }                 // fence
+      if (lv >= 3) { p(2, 5, 3, 3, PAL.gold); }                   // gold target
+    },
+    wall(p, lv) {
+      const base = lv >= 2 ? PAL.stoneD : PAL.stone;
+      const top = lv >= 2 ? PAL.stone : PAL.rockL;
+      p(0, 5, 16, 9, base);
+      for (let i = 0; i < 4; i++) p(i * 4, 3, 2, 2, base);        // crenellation
+      p(0, 5, 16, 1, top);
+      p(2, 8, 3, 1, PAL.stoneD); p(9, 10, 4, 1, PAL.stoneD);      // masonry lines
+      p(5, 12, 4, 1, PAL.stoneD);
+      if (lv >= 3) p(0, 3, 16, 1, PAL.gold);
+    },
+    gate(p, lv) {
+      const base = lv >= 2 ? PAL.stoneD : PAL.stone;
+      p(0, 5, 16, 9, base);
+      for (let i = 0; i < 4; i++) p(i * 4, 3, 2, 2, base);
+      p(0, 5, 16, 1, lv >= 2 ? PAL.stone : PAL.rockL);
+      p(5, 7, 6, 7, PAL.dark);                                    // arch
+      p(5, 8, 3, 6, PAL.trunk); p(8, 8, 3, 6, PAL.woodD);         // double doors
+      p(7, 10, 1, 1, PAL.dark);                                   // seam
+      if (lv >= 3) p(6, 6, 4, 1, PAL.gold);
+    },
   };
   for (const key of Object.keys(B_DRAW)) {
     Sprites.building[key] = [1, 2, 3].map(lv => tile(p => B_DRAW[key](p, lv)));
@@ -289,6 +330,35 @@ const Sprites = {
     (p, f) => { p(7, 1, 2, 1, PAL.red); });                                       // warpaint band
   Sprites.unit.brute = unitSheet({ body: PAL.RD, accent: PAL.red, pants: PAL.R, hair: '#1a1208', spear: PAL.RD },
     (p, f) => { p(5, 5, 6, 1, PAL.red); p(6, 0, 4, 1, '#c9b18a'); });             // bone crown
+
+  // mounted unit: horse + rider with spear
+  function riderSheet(c) {
+    const draw = (p, f, pose) => {
+      p(4, 14, 9, 1, 'rgba(0,0,0,0.3)');
+      p(3, 8, 9, 3, c.horse);                                   // horse body
+      p(11, 6, 3, 3, c.horse); p(12, 5, 1, 1, c.horseD);        // head + ear
+      p(2, 8, 1, 2, c.horseD);                                  // tail
+      const l1 = (pose === 'walk' || pose === 'fight') && f === 1 ? 2 : 3;
+      const l2 = (pose === 'walk' || pose === 'fight') && f === 1 ? 3 : 2;
+      p(4, 11, 1, l1, c.horseD); p(10, 11, 1, l2, c.horseD);    // legs
+      p(6, 3, 3, 4, c.body); p(6, 3, 3, 1, c.accent);           // rider torso
+      p(7, 1, 2, 2, PAL.skin); p(7, 0, 2, 1, PAL.hair);         // head
+      if (pose === 'fight') { p(9, 4, f === 0 ? 4 : 6, 1, PAL.trunk); p(f === 0 ? 13 : 15, 4, 1, 1, PAL.rockL); }
+      else { p(10, 0, 1, 7, PAL.trunk); p(10, 0, 1, 1, c.tip || PAL.rockL); }
+    };
+    return {
+      idle: frames(2, (p, g, f) => draw(p, 0, 'idle')),
+      walk: frames(2, (p, g, f) => draw(p, f, 'walk')),
+      fight: frames(2, (p, g, f) => draw(p, f, 'fight')),
+    };
+  }
+  Sprites.unit.rider = riderSheet({ horse: '#a87848', horseD: '#7a5430', body: '#7a6242', accent: PAL.P });
+  Sprites.unit.lancer = riderSheet({ horse: '#8a8078', horseD: '#5d5d64', body: '#8a7248', accent: PAL.gold, tip: PAL.gold });
+  // archers: humanoid with a bow at the side
+  Sprites.unit.archer = unitSheet({ body: '#6a7a4a', accent: PAL.P, pants: '#4a5230', hair: PAL.hair, spear: PAL.trunk },
+    (p, f) => { p(12, 2, 1, 6, PAL.trunk); p(11, 2, 1, 1, PAL.trunk); p(11, 7, 1, 1, PAL.trunk); });
+  Sprites.unit.marksman = unitSheet({ body: '#5a6a3a', accent: PAL.gold, pants: '#3a4224', hair: PAL.hair, spear: PAL.trunk },
+    (p, f) => { p(12, 1, 1, 7, PAL.trunk); p(11, 1, 1, 1, PAL.gold); p(11, 8, 1, 1, PAL.trunk); });
 
   function beast(name, body, bodyD, opts) {
     const w = opts.w, h = opts.h, y0 = 12 - h;

@@ -116,12 +116,58 @@ const CFG = {
           bonus: 'Unlocks Elite Defender' },
       ],
     },
+    stable: {
+      name: 'Horse Stable', desc: 'Trains fast riders to run down raiders.',
+      train: {
+        rider:  { cost: { food: 60, wood: 20 }, time: 1 },
+        lancer: { cost: { food: 100, gold: 25 }, time: 2, reqLevel: 3 },
+      },
+      levels: [
+        { cost: { wood: 120, stone: 30 },            time: 2, hp: 320 },
+        { cost: { wood: 200, stone: 100 },           time: 2, hp: 450 },
+        { cost: { wood: 320, stone: 200, gold: 40 }, time: 3, hp: 600,
+          bonus: 'Unlocks Lancer' },
+      ],
+    },
+    range: {
+      name: 'Archery Range', desc: 'Trains archers who fight from a distance.',
+      train: {
+        archer:   { cost: { food: 40, wood: 40 }, time: 1 },
+        marksman: { cost: { food: 70, wood: 60, gold: 15 }, time: 2, reqLevel: 3 },
+      },
+      levels: [
+        { cost: { wood: 90, stone: 20 },             time: 2, hp: 280 },
+        { cost: { wood: 160, stone: 80 },            time: 2, hp: 400 },
+        { cost: { wood: 280, stone: 160, gold: 40 }, time: 3, hp: 520,
+          bonus: 'Unlocks Marksman' },
+      ],
+    },
+    wall: {
+      name: 'Wall', desc: 'Blocks all movement — friend and foe. Enemies must break it.',
+      levels: [
+        { cost: { stone: 20 },  time: 1, hp: 350 },
+        { cost: { stone: 50 },  time: 1, hp: 650 },
+        { cost: { stone: 110 }, time: 2, hp: 1000 },
+      ],
+    },
+    gate: {
+      name: 'Town Gate', desc: 'Your people pass through; enemies must break it.',
+      levels: [
+        { cost: { wood: 30, stone: 20 },   time: 1, hp: 300 },
+        { cost: { wood: 60, stone: 50 },   time: 1, hp: 550 },
+        { cost: { wood: 100, stone: 110 }, time: 2, hp: 850 },
+      ],
+    },
   },
 
   UNITS: {
     villager: { name: 'Villager',       hp: 40,  atk: 2,  def: 0, speed: 2.2, aggro: 0 },
     defender: { name: 'Defender',       hp: 60,  atk: 8,  def: 2, speed: 2.4, aggro: 5 },
     elite:    { name: 'Elite Defender', hp: 110, atk: 14, def: 4, speed: 2.4, aggro: 5 },
+    rider:    { name: 'Rider',          hp: 70,  atk: 9,  def: 1, speed: 3.4, aggro: 5 },
+    lancer:   { name: 'Lancer',         hp: 120, atk: 15, def: 3, speed: 3.2, aggro: 5 },
+    archer:   { name: 'Archer',         hp: 45,  atk: 7,  def: 0, speed: 2.3, aggro: 5.5, rng: 3.5 },
+    marksman: { name: 'Marksman',       hp: 60,  atk: 11, def: 1, speed: 2.3, aggro: 6,   rng: 4.5 },
     wolf:     { name: 'Wolf',           hp: 24,  atk: 4,  def: 0, speed: 2.4, aggro: 4 },
     boar:     { name: 'Boar',           hp: 48,  atk: 6,  def: 1, speed: 1.8, aggro: 2 },
     raider:   { name: 'Raider',         hp: 45,  atk: 6,  def: 1, speed: 2.3, aggro: 2.5 },
@@ -132,7 +178,8 @@ const CFG = {
 
   MEAT_DROP: 10,               // food gained when a wild animal is killed
   PASSIVE_MAX: 2,              // grazing animals (deer/cow) kept on the map
-  HEAL_FOOD: { villager: 50, defender: 40, elite: 80 },  // full-heal cost scales with missing hp
+  HEAL_FOOD: { villager: 50, defender: 40, elite: 80,
+               rider: 60, lancer: 100, archer: 40, marksman: 70 },  // full-heal cost scales with missing hp
 
   WAVES: { minGap: 10, maxGap: 14, scaleHp: 0.07, scaleAtk: 0.05 },
   ANIMALS: { graceDays: 8, minDistTC: 12, leash: 7 },

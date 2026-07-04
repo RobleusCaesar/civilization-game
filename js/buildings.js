@@ -2,6 +2,20 @@
 /* Building placement, construction, upgrades, training, daily production. */
 
 const Bld = {
+  _block: null,    // transient movement-blocking grid (walls/gates)
+
+  rebuildBlock() {
+    this._block = new Uint8Array(CFG.W * CFG.H);
+    for (const b of S.buildings) {
+      if (b.key === 'wall') this._block[MapGen.idx(b.x, b.y)] = 1;
+      else if (b.key === 'gate') this._block[MapGen.idx(b.x, b.y)] = b.owner === 'P' ? 2 : 3;
+    }
+  },
+  blockAt(x, y) {
+    if (!this._block) this.rebuildBlock();
+    return this._block[MapGen.idx(x, y)];
+  },
+
   def(key) { return CFG.BUILDINGS[key]; },
   lv(b) { return CFG.BUILDINGS[b.key].levels[b.level - 1]; },
   get(id) { return S.buildings.find(b => b.id === id); },
@@ -59,12 +73,14 @@ const Bld = {
     if (!opts.free) this.pay(d.levels[0].cost, res);
     const b = {
       id: S.nextId++, key, owner, x, y, level: 1,
-      hp: d.levels[0].hp, maxhp: d.levels[0].hp,
+      // construction sites are fragile until finished
+      hp: opts.instant ? d.levels[0].hp : Math.max(30, Math.round(d.levels[0].hp * 0.4)),
+      maxhp: d.levels[0].hp,
       construction: opts.instant ? 0 : d.levels[0].time,   // days left
       upgrading: 0, queue: [], cd: 0,
     };
-    if (opts.instant) b.construction = 0;
     S.buildings.push(b);
+    this._block = null;
     if (owner === 'P') {
       G.reveal(x, y, d.levels[0].vision || 4);
       if (!opts.instant) {
@@ -82,6 +98,7 @@ const Bld = {
 
   finish(b) {
     b.construction = 0;
+    b.hp = b.maxhp;
     if (b.owner === 'P') {
       G.log(`${this.def(b.key).name} complete`);
       const lv = this.lv(b);
@@ -224,6 +241,7 @@ const Bld = {
   // remove a building and leave rubble behind (buildable like any depleted tile)
   removeToRuin(b) {
     S.buildings.splice(S.buildings.indexOf(b), 1);
+    this._block = null;
     const idx = MapGen.idx(b.x, b.y);
     S.map.terrain[idx] = T.RUIN;
     if (S.map.resAmount) S.map.resAmount[idx] = 0;

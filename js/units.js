@@ -26,7 +26,10 @@ const Units = {
     return u;
   },
 
-  isMilitary(u) { return u.kind === 'defender' || u.kind === 'elite'; },
+  isMilitary(u) {
+    return u.kind === 'defender' || u.kind === 'elite' || u.kind === 'rider' ||
+           u.kind === 'lancer' || u.kind === 'archer' || u.kind === 'marksman';
+  },
   isVillager(u) { return u.kind === 'villager'; },
   isWild(u) { return u.owner === 'W'; },
   isPassive(u) { return u.kind === 'deer' || u.kind === 'cow'; },
@@ -58,7 +61,7 @@ const Units = {
   },
 
   setPath(u, tx, ty) {
-    const p = Path.find(u.x | 0, u.y | 0, tx, ty);
+    const p = Path.find(u.x | 0, u.y | 0, tx, ty, u.owner);
     if (p) { u.path = p; u.pathI = 0; }
     return !!p;
   },

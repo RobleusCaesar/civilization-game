@@ -108,45 +108,57 @@ const MapGen = {
   },
 };
 
-/* BFS pathfinding over the tile grid (water is impassable). */
+/* BFS pathfinding over the tile grid. Water is impassable to everyone; walls
+   block all units and gates open only for the tribe that built them. When the
+   target can't be reached, returns a best-effort path to the closest
+   reachable tile (so besiegers walk up to the walls). */
 const Path = {
-  passable(x, y) { return MapGen.inB(x, y) && S.map.terrain[MapGen.idx(x, y)] !== T.WATER; },
+  passable(x, y, owner) {
+    if (!MapGen.inB(x, y)) return false;
+    if (S.map.terrain[MapGen.idx(x, y)] === T.WATER) return false;
+    const blk = Bld.blockAt(x, y);
+    if (blk === 0) return true;
+    if (blk === 1) return false;                 // wall
+    if (blk === 2) return owner === 'P';         // player gate
+    if (blk === 3) return owner === 'A';         // rival gate
+    return true;
+  },
 
-  find(sx, sy, tx, ty) {
+  find(sx, sy, tx, ty, owner) {
     sx |= 0; sy |= 0; tx |= 0; ty |= 0;
     if (!MapGen.inB(tx, ty)) return null;
-    if (!this.passable(tx, ty)) {
-      const n = MapGen.findNear(tx, ty, 3, (x, y) => this.passable(x, y));
-      if (!n) return null;
-      tx = n.x; ty = n.y;
-    }
-    if (sx === tx && sy === ty) return [{ x: tx, y: ty }];
     const W = CFG.W, H = CFG.H, id = MapGen.idx;
+    const start = id(sx, sy), target = id(tx, ty);
+    if (start === target) return [{ x: tx, y: ty }];
     const prev = new Int16Array(W * H).fill(-1);
-    const q = [id(sx, sy)];
-    prev[id(sx, sy)] = id(sx, sy);
-    const target = id(tx, ty);
+    prev[start] = start;
+    const q = [start];
     const dirs = [1, 0, -1, 0, 0, 1, 0, -1, 1, 1, -1, -1, 1, -1, -1, 1];
     let head = 0, found = false;
+    let best = start, bestD = Math.hypot(sx - tx, sy - ty);
     while (head < q.length) {
       const cur = q[head++];
       if (cur === target) { found = true; break; }
       const cx = cur % W, cy = (cur / W) | 0;
       for (let d = 0; d < 8; d++) {
-        const nx = cx + dirs[d * 2], ny = cy + dirs[d * 2 + 1];
-        if (!this.passable(nx, ny)) continue;
-        // no diagonal squeezing between water tiles
-        if (dirs[d * 2] && dirs[d * 2 + 1] && (!this.passable(cx + dirs[d * 2], cy) || !this.passable(cx, cy + dirs[d * 2 + 1]))) continue;
+        const dx = dirs[d * 2], dy = dirs[d * 2 + 1];
+        const nx = cx + dx, ny = cy + dy;
+        if (!this.passable(nx, ny, owner)) continue;
+        // no diagonal squeezing between blocked tiles
+        if (dx && dy && (!this.passable(cx + dx, cy, owner) || !this.passable(cx, cy + dy, owner))) continue;
         const ni = id(nx, ny);
         if (prev[ni] !== -1) continue;
         prev[ni] = cur;
         q.push(ni);
+        const dd = Math.hypot(nx - tx, ny - ty);
+        if (dd < bestD) { bestD = dd; best = ni; }
       }
     }
-    if (!found) return null;
+    const goal = found ? target : best;
+    if (goal === start) return null;
     const path = [];
-    let cur = target;
-    while (cur !== id(sx, sy)) {
+    let cur = goal;
+    while (cur !== start) {
       path.push({ x: cur % W, y: (cur / W) | 0 });
       cur = prev[cur];
     }

@@ -12,7 +12,7 @@ const UI = {
   newMode: 'moderate',   // difficulty picked for the next game
   builderFor: null,      // villager id that will build the next placed building
   confirmDemolish: 0,    // building id awaiting demolish confirmation
-  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks'],
+  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'wall', 'gate'],
 
   init() {
     // resource icons in the top bar
@@ -147,7 +147,9 @@ const UI = {
       const can = Bld.canPlace('P', this.placing, tile.x, tile.y);
       if (can.ok) {
         Bld.place('P', this.placing, tile.x, tile.y, { builderId: this.builderFor });
-        this.placing = null; this.placeTile = null; this.builderFor = null;
+        this.builderFor = null;
+        // walls chain: stay in placement mode to lay several segments quickly
+        if (this.placing !== 'wall' && this.placing !== 'gate') { this.placing = null; this.placeTile = null; }
       } else this.toast(can.why, true);
       this.refreshMenu();
       return;

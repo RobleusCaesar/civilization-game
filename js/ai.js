@@ -26,7 +26,8 @@ const AI = {
   power(owner) {
     let p = 0;
     for (const u of S.units)
-      if (u.owner === owner && Units.isMilitary(u)) p += u.kind === 'elite' ? 2 : 1;
+      if (u.owner === owner && Units.isMilitary(u))
+        p += (u.kind === 'elite' || u.kind === 'lancer' || u.kind === 'marksman') ? 2 : 1;
     for (const b of S.buildings)
       if (b.owner === owner && b.key === 'tower' && Bld.done(b)) p += 1;
     return p;

@@ -52,8 +52,15 @@ on desktop too.
   level and unlock bigger output or passive bonuses (level-3 Hunter's Lodge arms
   your villagers; level-3 Watchtower buffs nearby defenders; level-3 Barracks
   unlocks Elite Defenders).
-- **Town Center** trains villagers; **Barracks** trains defenders. Houses raise the
-  population cap. Tap a defender, then a tile to move or an enemy to attack.
+- **Military**: the **Barracks** trains defenders (level 3: elites), the **Horse
+  Stable** trains fast riders (level 3: lancers), and the **Archery Range** trains
+  archers who shoot from a distance (level 3: marksmen). The **Town Center** trains
+  villagers; houses raise the population cap. Tap a soldier, then a tile to move or
+  an enemy to attack.
+- **Walls & Gates**: wall segments block *all* movement — yours included — so leave
+  a **Town Gate** in the line: your people pass through it, enemies can't. Attackers
+  who can't find a way around batter the nearest wall or gate and pour through once
+  it falls. Wall placement stays active so you can lay a line quickly.
 - **Healing**: tap a hurt villager or defender → *Heal*. It costs food in
   proportion to their training cost and how badly they're hurt.
 - **Saving**: ☰ → *Save game* downloads a JSON save; *Load game* imports it.

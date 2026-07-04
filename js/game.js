@@ -40,6 +40,7 @@ const G = {
       ai: null,
       log: [],
     };
+    Bld._block = null;
     const p = gen.spawns.player;
     Bld.place('P', 'tc', p.x, p.y, { free: true, instant: true });
     this.reveal(p.x, p.y, 6);
@@ -129,6 +130,7 @@ const G = {
       });
     }
     S = data;
+    Bld._block = null;
     S.paused = true;
     document.getElementById('btnPause').textContent = '▶';
     UI.deselect();
