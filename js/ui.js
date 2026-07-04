@@ -210,6 +210,13 @@ const UI = {
           ? 'Villager sent to repair' : 'Villager sent to build');
         return;
       }
+      if (hitBld && hitBld.owner === 'P' && Units.isVillager(sel) &&
+          Bld.def(hitBld.key).needsWorker && !hitBld.construction) {
+        sel.task = { type: 'work', id: hitBld.id }; sel.tUnit = 0; sel.tBld = 0;
+        Units.setPath(sel, hitBld.x, hitBld.y);
+        this.toast('Villager stationed at the ' + Bld.def(hitBld.key).name);
+        return;
+      }
       if (!hitUnit && (!hitBld || hitBld.owner !== 'P')) {
         if (!explored) { this.toast('Unexplored', true); return; }
         if (Units.isVillager(sel) && CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]]) {
@@ -259,6 +266,7 @@ const UI = {
       const d = Bld.def(b.key);
       let sig = ['b', b.id, b.level, b.construction > 0, b.upgrading > 0, b.queue.length,
         b.level < 3 && Bld.canUpgrade(b).ok, b.hp < b.maxhp, Bld.hasWorker(b),
+        d.needsWorker ? !!Bld.stationedWorker(b) : '-',
         this.confirmDemolish === b.id].join('|');
       if (d.train) for (const uk in d.train) sig += '|' + Bld.canTrain(b, uk).ok;
       return sig;
@@ -313,6 +321,8 @@ const UI = {
       else if (b.upgrading > 0)
         sub += ` — upgrading ${Math.ceil(b.upgrading)}d left${Bld.hasWorker(b) ? '' : ' (awaiting builder)'}`;
       else if (b.hp < b.maxhp && Bld.hasWorker(b)) sub += ' — under repair';
+      if (b.owner === 'P' && !b.construction && Bld.def(b.key).needsWorker)
+        sub += Bld.stationedWorker(b) ? ' — 🧑‍🌾 worker on duty' : ' — ⚠️ NO WORKER, no production';
       else if (lv.out) sub += ' — ' + Object.entries(lv.out).map(([k, v]) => `+${Math.round(v * Bld.nearBonus(b) * 10) / 10} ${k}/day`).join(', ');
       if (lv.pop) sub += ` — +${lv.pop} pop`;
       if (lv.bonus) sub += ` — ${lv.bonus}`;
@@ -341,6 +351,8 @@ const UI = {
         const worker = Bld.hasWorker(b);
         if ((b.construction > 0 || b.upgrading > 0) && !worker)
           html += `<button class="abtn" data-act="sendworker">👷 Send builder<small>needs an idle villager</small></button>`;
+        if (!b.construction && d.needsWorker && !Bld.stationedWorker(b))
+          html += `<button class="abtn" data-act="staff">🧑‍🌾 Station worker<small>keeps it producing</small></button>`;
         if (!b.construction && !b.upgrading && b.hp < b.maxhp && !worker)
           html += `<button class="abtn" data-act="sendworker">🔨 Repair<small>a villager does the work</small></button>`;
         if (b.level < 3 && !b.construction) {
@@ -378,6 +390,15 @@ const UI = {
           const v = Units.nearestIdleVillager(b2.x, b2.y);
           if (!v) this.toast('No idle villager — free one up first', true);
           else if (Units.assignBuild(v, b2)) this.toast('Villager on the way');
+        }
+        else if (btn.dataset.act === 'staff') {
+          const v = Units.nearestIdleVillager(b2.x, b2.y);
+          if (!v) this.toast('No idle villager — free one up first', true);
+          else {
+            v.task = { type: 'work', id: b2.id }; v.tUnit = 0; v.tBld = 0;
+            Units.setPath(v, b2.x, b2.y);
+            this.toast('Worker heading to the ' + Bld.def(b2.key).name);
+          }
         }
         else if (btn.dataset.act === 'demolish') {
           if (this.confirmDemolish !== b2.id) { this.confirmDemolish = b2.id; this.renderPanel(); return; }

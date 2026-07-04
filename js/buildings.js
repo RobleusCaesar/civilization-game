@@ -96,19 +96,33 @@ const Bld = {
     return b;
   },
 
-  finish(b) {
+  finish(b, builder) {
     b.construction = 0;
     b.hp = b.maxhp;
     if (b.owner === 'P') {
-      G.log(`${this.def(b.key).name} complete`);
       const lv = this.lv(b);
       if (lv.vision) G.reveal(b.x, b.y, lv.vision);
+      // production buildings need a hand on deck — the builder stays to work it
+      if (this.def(b.key).needsWorker && builder && Units.isVillager(builder)) {
+        builder.task = { type: 'work', id: b.id };
+        G.log(`${this.def(b.key).name} complete — the builder stays on to work it`);
+      } else if (this.def(b.key).needsWorker) {
+        G.log(`${this.def(b.key).name} complete — needs a villager to work it`, true);
+      } else {
+        G.log(`${this.def(b.key).name} complete`);
+      }
     }
   },
 
-  // any player villager currently working this site?
+  // any player villager currently working this site (construction/upgrade/repair)?
   hasWorker(b) {
     return S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'build' && u.task.id === b.id);
+  },
+
+  // a villager stationed at a production building keeps it running
+  stationedWorker(b) {
+    return S.units.find(u => u.owner === 'P' && u.task && u.task.type === 'work' &&
+      u.task.id === b.id && Math.hypot(u.x - b.x - 0.5, u.y - b.y - 0.5) <= 1.4);
   },
 
   canUpgrade(b) {
@@ -228,11 +242,13 @@ const Bld = {
     const res = owner === 'P' ? S.res : S.ai.res;
     const tc = this.tcOf(owner);
     const tcBoost = tc && tc.level >= 3 && this.done(tc) ? 1.1 : 1;
-    const modeMult = owner === 'P' ? G.modeCfg().output : 1;
+    const modeMult = owner === 'P' ? G.modeCfg().output : (G.modeCfg().aiOutput || 1);
     for (const b of this.list(owner)) {
       if (!this.done(b) || b.upgrading) continue;
       const out = this.lv(b).out;
       if (!out) continue;
+      // player production buildings only run with a villager stationed there
+      if (owner === 'P' && this.def(b.key).needsWorker && !this.stationedWorker(b)) continue;
       const mult = this.nearBonus(b) * tcBoost * modeMult;
       for (const k in out) res[k] += out[k] * mult;
     }

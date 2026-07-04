@@ -212,7 +212,10 @@ const Units = {
           const dtDays = dt * 1000 / CFG.DAY_MS;
           if (b.construction > 0) {
             b.construction -= dtDays;
-            if (b.construction <= 0) { Bld.finish(b); u.task = null; }
+            if (b.construction <= 0) {
+              Bld.finish(b, u);   // may station the builder as the worker
+              if (u.task && u.task.type === 'build') u.task = null;
+            }
           } else if (b.upgrading > 0) {
             b.upgrading -= dtDays;
             if (b.upgrading <= 0) { Bld.finishUpgrade(b); u.task = null; }
@@ -221,6 +224,15 @@ const Units = {
             if (b.hp >= b.maxhp) { u.task = null; G.log(`${Bld.def(b.key).name} repaired`); }
           }
         }
+      } else if (t.type === 'work') {
+        // stationed at a production building — stand there and keep it running
+        const b = Bld.get(t.id);
+        if (!b || b.owner !== 'P' || !Bld.def(b.key).needsWorker) { u.task = null; continue; }
+        const d = Math.hypot(b.x + 0.5 - u.x, b.y + 0.5 - u.y);
+        if (d > 1.25) {
+          if (this.moving(u)) this.followPath(u, dt);
+          else if (!this.setPath(u, b.x, b.y)) u.task = null;
+        } else u.path = null;
       } else if (t.type === 'attackBld') {
         // target destroyed while en route
         u.task = null;

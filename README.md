@@ -22,9 +22,12 @@ on desktop too.
 ## How to play
 
 - **Difficulty**: pick 🌿 Calm, ⚔️ Moderate, or 💀 Hard when starting a new game
-  (☰ menu). Calm is nearly peaceful — the occasional wild animal, with only a
-  couple of small raids late; Hard gathers ~15% slower with earlier, bigger,
-  more frequent raids and bolder wildlife.
+  (☰ menu). Calm is nearly peaceful — the occasional wild animal, rare raids, and
+  a slow, compact rival tribe; Hard gathers ~15% slower with earlier, bigger,
+  more frequent raids, bolder wildlife, and a rival that builds and arms fast.
+- **The map**: starting corners vary each game, and every valley is critically
+  short on one resource (wood, stone, or food) — scouting and holding what little
+  there is becomes the strategic heart of the match.
 - **Time**: each turn is one in-game day and auto-advances every 10 seconds;
   a full playthrough runs about 20 minutes.
   ⏸ pauses; ☰ opens the menu (save / load / new game / seed / event log).
@@ -38,8 +41,14 @@ on desktop too.
 - **Building**: tap a button in the bottom bar, then tap a clear tile near your
   village — the nearest idle villager is sent to work the site. Or start from the
   villager: tap them, hit *Build…*, pick a building, tap a site, and that villager
-  goes to build it. Once done they're free again, and the building produces every
-  day.
+  goes to build it.
+- **Workers**: farms, hunter's lodges, lumber camps, and quarries only produce
+  while a villager is **stationed** there — the builder stays on automatically
+  when construction finishes, and you can re-staff any time (tap the building →
+  *Station worker*, or tap a villager then the building). Pull the worker away
+  and production stops.
+- **Gold**: the Town Center mints a little gold each day, and almost everything
+  beyond houses and watchtowers costs some — budget it.
 - **Repair**: damaged buildings can be repaired the same way — tap the building
   and hit *Repair* (or tap a villager, then the building). Repairs cost only a
   villager's working time.
@@ -85,14 +94,8 @@ on desktop too.
 
 ## Win / lose
 
-Any one of these wins the game:
-
-1. **Economic** — stockpile **4000 total resources** while holding **20 population**.
-2. **Military** — destroy the rival tribe's Town Center.
-3. **Survival** — reach **day 120** (~20 minutes) with your Town Center standing.
-
-You lose if your Town Center is destroyed — or if the rival tribe hits the
-economic target first.
+One way in, one way out: **destroy the rival tribe's Town Center to win; if
+yours falls, you lose.** Nothing else ends the game.
 
 ## Code layout
 

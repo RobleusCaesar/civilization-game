@@ -38,24 +38,40 @@ const MapGen = {
       }
     }
 
-    const player = { x: 32, y: 32 }, ai = { x: 7, y: 7 };
+    // starting corners vary per seed; the rival always settles the opposite one
+    const corners = [{ x: 7, y: 7 }, { x: 32, y: 7 }, { x: 7, y: 32 }, { x: 32, y: 32 }];
+    const pi = (rnd() * 4) | 0;
+    const player = corners[pi], ai = corners[3 - pi];
     const nearStart = (x, y) =>
       (Math.abs(x - player.x) < 5 && Math.abs(y - player.y) < 5) ||
       (Math.abs(x - ai.x) < 5 && Math.abs(y - ai.y) < 5);
+
+    // every valley is short on one resource — finding it matters
+    const SCARCE = [
+      { name: 'wood', terrain: T.FOREST },
+      { name: 'stone', terrain: T.HILLS },
+      { name: 'food', terrain: T.FERTILE },
+    ];
+    const scarce = SCARCE[(rnd() * 3) | 0];
 
     // lakes
     const lakes = 3 + (rnd() * 2 | 0);
     for (let i = 0; i < lakes; i++)
       blob(4 + rnd() * (W - 8) | 0, 4 + rnd() * (H - 8) | 0, 14 + rnd() * 14 | 0, T.WATER, nearStart);
-    // forests
-    for (let i = 0; i < 9; i++)
-      blob(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0, 16 + rnd() * 18 | 0, T.FOREST, nearStart);
-    // hills
-    for (let i = 0; i < 5; i++)
-      blob(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0, 8 + rnd() * 10 | 0, T.HILLS, nearStart);
-    // fertile soil patches
-    for (let i = 0; i < 6; i++)
-      blob(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0, 6 + rnd() * 8 | 0, T.FERTILE, nearStart);
+    // resource fields: the scarce one gets a single small pocket
+    const paint = (type, normalN, sizeMin, sizeVar) => {
+      const isScarce = scarce.terrain === type;
+      const n = isScarce ? 1 : normalN;
+      for (let i = 0; i < n; i++) {
+        const size = isScarce
+          ? Math.max(4, ((sizeMin + rnd() * sizeVar) * 0.5) | 0)
+          : (sizeMin + rnd() * sizeVar) | 0;
+        blob(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0, size, type, nearStart);
+      }
+    };
+    paint(T.FOREST, 9, 16, 18);
+    paint(T.HILLS, 5, 8, 10);
+    paint(T.FERTILE, 6, 6, 8);
 
     // guarantee some of each resource near both starts
     function seedNear(cx, cy, type, n) {
@@ -67,9 +83,9 @@ const MapGen = {
       }
     }
     for (const s of [player, ai]) {
-      seedNear(s.x, s.y, T.FOREST, 6);
-      seedNear(s.x, s.y, T.HILLS, 3);
-      seedNear(s.x, s.y, T.FERTILE, 4);
+      seedNear(s.x, s.y, T.FOREST, scarce.terrain === T.FOREST ? 1 : 6);
+      seedNear(s.x, s.y, T.HILLS, scarce.terrain === T.HILLS ? 1 : 3);
+      seedNear(s.x, s.y, T.FERTILE, scarce.terrain === T.FERTILE ? 1 : 4);
     }
     // clear the immediate start plots
     for (const s of [player, ai])
@@ -85,14 +101,18 @@ const MapGen = {
       if (dP > 14 && dA > 14 && t[id(x, y)] !== T.WATER) { t[id(x, y)] = T.CAMP; camps.push({ x, y }); }
     }
 
-    // every resource tile carries a finite, randomized stock
+    // every resource tile carries a finite, randomized stock; scarce tiles run leaner
     const resAmount = new Array(W * H).fill(0);
     for (let i = 0; i < W * H; i++) {
       const range = CFG.RES_AMOUNT[t[i]];
-      if (range) resAmount[i] = Math.round(range[0] + rnd() * (range[1] - range[0]));
+      if (range) {
+        let amt = Math.round(range[0] + rnd() * (range[1] - range[0]));
+        if (t[i] === scarce.terrain) amt = Math.round(amt * 0.6);
+        resAmount[i] = amt;
+      }
     }
 
-    return { terrain: t, resAmount, spawns: { player, ai, camps } };
+    return { terrain: t, resAmount, scarce: scarce.name, spawns: { player, ai, camps } };
   },
 
   // nearest tile matching pred, spiraling out from (cx,cy)

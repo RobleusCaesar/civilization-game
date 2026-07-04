@@ -31,6 +31,7 @@ const G = {
       map: {
         terrain: gen.terrain,
         resAmount: gen.resAmount,
+        scarce: gen.scarce,
         explored: new Array(CFG.W * CFG.H).fill(0),
         spawns: gen.spawns,
       },
@@ -56,7 +57,8 @@ const G = {
     UI.builderFor = null;
     document.getElementById('btnPause').textContent = '⏸';
     document.getElementById('endModal').classList.remove('show');
-    this.log(`A new tribe settles the valley (${this.modeCfg().name}). Gather, build, survive.`);
+    this.log(`A new tribe settles the valley (${this.modeCfg().name}). Destroy the rival Town Center to win.`);
+    this.log(`Scouts report: ${gen.scarce} is scarce in this valley — claim it before the rival does.`, true);
     this.log('First raiders expected around day ' + S.wave.next);
   },
 
@@ -87,25 +89,12 @@ const G = {
   },
 
   dayTick() {
+    // victory and defeat come only through Town Centers falling (see Bld.damage)
     S.day++;
     Bld.dailyProduction('P');
     Units.dailySpawns();
     Combat.maybeWave();
     AI.daily();
-    this.checkWin();
-  },
-
-  checkWin() {
-    if (S.over) return;
-    const total = S.res.food + S.res.wood + S.res.stone + S.res.gold;
-    const pop = Units.popUsed('P');
-    if (total >= CFG.WIN.econTotal && pop >= CFG.WIN.econPop) {
-      this.end(true, `Your tribe prospers: ${total | 0} resources and ${pop} people. The valley follows you!`);
-      return;
-    }
-    if (S.day >= CFG.WIN.surviveDay && Bld.tcOf('P')) {
-      this.end(true, `You survived ${CFG.WIN.surviveDay} days of beasts and raiders. Your legend endures!`);
-    }
   },
 
   end(win, msg) {

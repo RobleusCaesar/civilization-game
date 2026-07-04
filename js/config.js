@@ -11,7 +11,7 @@ const CFG = {
   W: 40,
   H: 40,
   DAY_MS: 10000,              // one in-game day
-  START_RES: { food: 200, wood: 150, stone: 60, gold: 0 },
+  START_RES: { food: 200, wood: 150, stone: 60, gold: 15 },
   START_VILLAGERS: 3,
   UNIT_VISION: 3,
   BUILD_RANGE: 8,             // new buildings must be this close to an existing one
@@ -44,46 +44,46 @@ const CFG = {
       train: { villager: { cost: { food: 50 }, time: 1 } },
       levels: [
         { cost: {},                                time: 0, hp: 500,  pop: 5,  out: { gold: 5 }, vision: 6 },
-        { cost: { wood: 200, stone: 150 },         time: 3, hp: 800,  pop: 8,  out: { gold: 10 }, vision: 7 },
+        { cost: { wood: 200, stone: 150, gold: 30 }, time: 3, hp: 800,  pop: 8,  out: { gold: 10 }, vision: 7 },
         { cost: { wood: 400, stone: 300, gold: 80 }, time: 4, hp: 1200, pop: 12, out: { gold: 15 }, vision: 8,
           bonus: '+10% production to all buildings' },
       ],
     },
     farm: {
-      name: 'Farm', desc: 'Steady food. Thrives on fertile soil.',
+      name: 'Farm', desc: 'Steady food while a villager works it. Thrives on fertile soil.', needsWorker: true,
       near: { terrain: T.FERTILE, mult: 1.5, radius: 0 },
       levels: [
-        { cost: { wood: 60 },              time: 1, hp: 100, out: { food: 15 } },
-        { cost: { wood: 120, stone: 40 },  time: 2, hp: 140, out: { food: 30 } },
-        { cost: { wood: 240, stone: 100 }, time: 2, hp: 180, out: { food: 50 } },
+        { cost: { wood: 60, gold: 5 },     time: 1, hp: 100, out: { food: 15 } },
+        { cost: { wood: 120, stone: 40, gold: 10 }, time: 2, hp: 140, out: { food: 30 } },
+        { cost: { wood: 240, stone: 100, gold: 25 }, time: 2, hp: 180, out: { food: 50 } },
       ],
     },
     lodge: {
-      name: "Hunter's Lodge", desc: 'Food from the wild. Build near forest.',
+      name: "Hunter's Lodge", desc: 'Food while a villager works it. Build near forest.', needsWorker: true,
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
       levels: [
-        { cost: { wood: 50 },             time: 1, hp: 120, out: { food: 13 } },
-        { cost: { wood: 100, stone: 30 }, time: 2, hp: 160, out: { food: 25 } },
-        { cost: { wood: 200, stone: 80 }, time: 2, hp: 200, out: { food: 40 },
+        { cost: { wood: 50, gold: 5 },    time: 1, hp: 120, out: { food: 13 } },
+        { cost: { wood: 100, stone: 30, gold: 10 }, time: 2, hp: 160, out: { food: 25 } },
+        { cost: { wood: 200, stone: 80, gold: 25 }, time: 2, hp: 200, out: { food: 40 },
           bonus: 'Villagers armed with spears (+4 attack)' },
       ],
     },
     lumber: {
-      name: 'Lumber Camp', desc: 'Wood income. Build near forest.',
+      name: 'Lumber Camp', desc: 'Wood while a villager works it. Build near forest.', needsWorker: true,
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
       levels: [
-        { cost: { wood: 40 },             time: 1, hp: 120, out: { wood: 15 } },
-        { cost: { wood: 80, stone: 30 },  time: 2, hp: 160, out: { wood: 30 } },
-        { cost: { wood: 160, stone: 80 }, time: 2, hp: 200, out: { wood: 50 } },
+        { cost: { wood: 40, gold: 5 },    time: 1, hp: 120, out: { wood: 15 } },
+        { cost: { wood: 80, stone: 30, gold: 10 }, time: 2, hp: 160, out: { wood: 30 } },
+        { cost: { wood: 160, stone: 80, gold: 25 }, time: 2, hp: 200, out: { wood: 50 } },
       ],
     },
     quarry: {
-      name: 'Quarry', desc: 'Stone income. Build near hills.',
+      name: 'Quarry', desc: 'Stone while a villager works it. Build near hills.', needsWorker: true,
       near: { terrain: T.HILLS, mult: 1.5, radius: 2 },
       levels: [
-        { cost: { wood: 80 },             time: 1, hp: 120, out: { stone: 13 } },
-        { cost: { wood: 140, stone: 20 }, time: 2, hp: 170, out: { stone: 25 } },
-        { cost: { wood: 260, stone: 60 }, time: 2, hp: 220, out: { stone: 40 } },
+        { cost: { wood: 80, gold: 5 },    time: 1, hp: 120, out: { stone: 13 } },
+        { cost: { wood: 140, stone: 20, gold: 10 }, time: 2, hp: 170, out: { stone: 25 } },
+        { cost: { wood: 260, stone: 60, gold: 25 }, time: 2, hp: 220, out: { stone: 40 } },
       ],
     },
     house: {
@@ -110,8 +110,8 @@ const CFG = {
         elite:    { cost: { food: 80, wood: 40, gold: 20 }, time: 2, reqLevel: 3 },
       },
       levels: [
-        { cost: { wood: 100, stone: 50 },            time: 2, hp: 300 },
-        { cost: { wood: 180, stone: 120 },           time: 2, hp: 420 },
+        { cost: { wood: 100, stone: 50, gold: 15 },  time: 2, hp: 300 },
+        { cost: { wood: 180, stone: 120, gold: 30 }, time: 2, hp: 420 },
         { cost: { wood: 300, stone: 220, gold: 50 }, time: 3, hp: 560,
           bonus: 'Unlocks Elite Defender' },
       ],
@@ -123,8 +123,8 @@ const CFG = {
         lancer: { cost: { food: 100, gold: 25 }, time: 2, reqLevel: 3 },
       },
       levels: [
-        { cost: { wood: 120, stone: 30 },            time: 2, hp: 320 },
-        { cost: { wood: 200, stone: 100 },           time: 2, hp: 450 },
+        { cost: { wood: 120, stone: 30, gold: 20 },  time: 2, hp: 320 },
+        { cost: { wood: 200, stone: 100, gold: 35 }, time: 2, hp: 450 },
         { cost: { wood: 320, stone: 200, gold: 40 }, time: 3, hp: 600,
           bonus: 'Unlocks Lancer' },
       ],
@@ -136,8 +136,8 @@ const CFG = {
         marksman: { cost: { food: 70, wood: 60, gold: 15 }, time: 2, reqLevel: 3 },
       },
       levels: [
-        { cost: { wood: 90, stone: 20 },             time: 2, hp: 280 },
-        { cost: { wood: 160, stone: 80 },            time: 2, hp: 400 },
+        { cost: { wood: 90, stone: 20, gold: 15 },   time: 2, hp: 280 },
+        { cost: { wood: 160, stone: 80, gold: 30 },  time: 2, hp: 400 },
         { cost: { wood: 280, stone: 160, gold: 40 }, time: 3, hp: 520,
           bonus: 'Unlocks Marksman' },
       ],
@@ -145,17 +145,17 @@ const CFG = {
     wall: {
       name: 'Wall', desc: 'Blocks all movement — friend and foe. Enemies must break it.',
       levels: [
-        { cost: { stone: 20 },  time: 1, hp: 350 },
-        { cost: { stone: 50 },  time: 1, hp: 650 },
-        { cost: { stone: 110 }, time: 2, hp: 1000 },
+        { cost: { stone: 20, gold: 2 },  time: 1, hp: 350 },
+        { cost: { stone: 50, gold: 5 },  time: 1, hp: 650 },
+        { cost: { stone: 110, gold: 10 }, time: 2, hp: 1000 },
       ],
     },
     gate: {
       name: 'Town Gate', desc: 'Your people pass through; enemies must break it.',
       levels: [
-        { cost: { wood: 30, stone: 20 },   time: 1, hp: 300 },
-        { cost: { wood: 60, stone: 50 },   time: 1, hp: 550 },
-        { cost: { wood: 100, stone: 110 }, time: 2, hp: 850 },
+        { cost: { wood: 30, stone: 20, gold: 10 },  time: 1, hp: 300 },
+        { cost: { wood: 60, stone: 50, gold: 20 },  time: 1, hp: 550 },
+        { cost: { wood: 100, stone: 110, gold: 40 }, time: 2, hp: 850 },
       ],
     },
   },
@@ -192,22 +192,23 @@ const CFG = {
       gather: 1, output: 1,
       waveFirst: 60, waveGapMult: 2.2, waveSizeAdd: -1,
       animalMax: 2, animalChance: 0.15, aiRaidDay: 999,
+      aiBuildEvery: 4, aiOutput: 0.6, aiArmyCap: 5, aiArmyDiv: 14,
     },
     moderate: {
       name: 'Moderate', icon: '⚔️', desc: 'The intended experience.',
       gather: 1, output: 1,
       waveFirst: 30, waveGapMult: 1.3, waveSizeAdd: 0,
       animalMax: 3, animalChance: 0.2, aiRaidDay: 70,
+      aiBuildEvery: 2, aiOutput: 1, aiArmyCap: 10, aiArmyDiv: 8,
     },
     hard: {
       name: 'Hard', icon: '💀', desc: 'Slower gathering, relentless enemies.',
       gather: 0.85, output: 0.85,
       waveFirst: 20, waveGapMult: 0.9, waveSizeAdd: 1,
       animalMax: 4, animalChance: 0.3, aiRaidDay: 50,
+      aiBuildEvery: 1, aiOutput: 1.15, aiArmyCap: 12, aiArmyDiv: 6,
     },
   },
-
-  WIN: { econTotal: 4000, econPop: 20, surviveDay: 120 },
 
   ATTACK_COOLDOWN: 1.0,        // seconds between melee hits
   MELEE_RANGE: 1.15,           // tiles
