@@ -53,56 +53,112 @@ const Sprites = {
     for (let i = 0; i < n; i++) p(1 + (r() * 14) | 0, 1 + (r() * 14) | 0, 1, 1, col);
   }
 
-  /* ---------------- terrain ---------------- */
+  /* ---------------- terrain (built on ART — see ARTSTYLE.md) ---------------- */
+  const AP = ART.PALETTE;
+
   function grassBase(p, seed) {
-    p(0, 0, 16, 16, PAL.grass);
-    speckle(p, seed, 9, PAL.grassD);
-    speckle(p, seed + 5, 6, PAL.grassL);
+    p(0, 0, 16, 16, AP.grass[3]);
+    const r = ART.rng(seed);
+    for (let i = 0; i < 10; i++) p((r() * 16) | 0, (r() * 16) | 0, 1, 1, AP.grass[2]);
+    for (let i = 0; i < 6; i++) p((r() * 16) | 0, (r() * 16) | 0, 1, 1, AP.grass[4]);
+    for (let i = 0; i < 4; i++) {                       // blade tufts
+      const x = 1 + (r() * 14) | 0, y = 2 + (r() * 13) | 0;
+      p(x, y, 1, 2, AP.grass[1]); p(x + 1, y + 1, 1, 1, AP.grass[4]);
+    }
+    for (let i = 0; i < 3; i++) p((r() * 16) | 0, (r() * 16) | 0, 1, 1, AP.grass[1]);
   }
   Sprites.terrain[T.GRASS] = [
-    tile(p => grassBase(p, 3)),
-    tile(p => grassBase(p, 77)),
+    tile(p => grassBase(p, 3)), tile(p => grassBase(p, 77)),
+    tile(p => grassBase(p, 129)), tile(p => grassBase(p, 211)),
   ];
-  function drawTree(p, x, y) {
-    p(x + 1, y + 4, 1, 2, PAL.trunk);
-    p(x, y + 1, 3, 3, PAL.leaf);
-    p(x + 1, y, 1, 1, PAL.leaf);
-    p(x, y + 1, 1, 1, PAL.leafL);
-    p(x + 1, y + 1, 1, 1, PAL.leafL);
+  // rare flower meadows — drawTile rolls these on ~3% of grass tiles
+  function flowers(p, seed) {
+    grassBase(p, seed);
+    const r = ART.rng(seed + 1);
+    for (let i = 0; i < 4; i++) {
+      const x = 1 + (r() * 13) | 0, y = 1 + (r() * 13) | 0;
+      const col = AP.bloom[(r() * 3) | 0];
+      p(x, y, 1, 1, col); p(x + 1, y, 1, 1, col === AP.bloom[2] ? AP.bloom[1] : col);
+      p(x, y + 1, 1, 1, AP.grass[1]);
+    }
+  }
+  Sprites.terrainRare = { [T.GRASS]: [tile(p => flowers(p, 301)), tile(p => flowers(p, 407))] };
+
+  // forest: overlapping canopy crowns that overhang the tile edge, trunk shadows
+  function forestTile(p, seed, log) {
+    grassBase(p, seed);
+    const r = ART.rng(seed + 2);
+    p(4, 6, 2, 1, AP.leaf[0]); p(11, 11, 2, 1, AP.leaf[0]);        // trunk shadows
+    ART.foliageCluster(p, 3 + (r() * 3) | 0, 3, 4, seed);
+    ART.foliageCluster(p, 11 + (r() * 3) | 0, 8 + (r() * 2) | 0, 4, seed + 9);
+    ART.foliageCluster(p, 4, 12, 3, seed + 17);
+    if (log) {                                                      // fallen log
+      p(8, 14, 6, 1, AP.wood[1]); p(8, 13, 6, 1, AP.wood[3]); p(13, 13, 1, 1, AP.wood[4]);
+    }
   }
   Sprites.terrain[T.FOREST] = [
-    tile(p => { grassBase(p, 11); drawTree(p, 2, 2); drawTree(p, 9, 7); drawTree(p, 3, 10); }),
-    tile(p => { grassBase(p, 23); drawTree(p, 8, 2); drawTree(p, 2, 6); drawTree(p, 10, 10); }),
+    tile(p => forestTile(p, 11)), tile(p => forestTile(p, 23)),
+    tile(p => forestTile(p, 149, true)),
   ];
+
+  // water: [0] = shallow (near land, lighter), [1] = deep interior
+  function waterTile(p, seed, deep) {
+    const base = deep ? AP.water[1] : AP.water[2];
+    p(0, 0, 16, 16, base);
+    const r = ART.rng(seed);
+    for (let i = 0; i < 5; i++) p((r() * 16) | 0, (r() * 16) | 0, 1, 1, deep ? AP.water[0] : AP.water[1]);
+    for (let i = 0; i < 3; i++) {                                   // static wave dashes
+      const x = (r() * 12) | 0, y = 2 + (r() * 12) | 0;
+      p(x, y, 3, 1, deep ? AP.water[2] : AP.water[3]);
+    }
+  }
   Sprites.terrain[T.WATER] = [
-    tile(p => {
-      p(0, 0, 16, 16, PAL.water);
-      speckle(p, 9, 5, PAL.waterL);
-      p(3, 4, 4, 1, PAL.waterL); p(9, 9, 4, 1, PAL.waterL); p(5, 13, 3, 1, PAL.waterL);
-    }),
+    tile(p => waterTile(p, 9, false)),
+    tile(p => waterTile(p, 57, true)),
   ];
+
+  // hills: clustered shaded boulders, grass poking between, dark base rim
   Sprites.terrain[T.HILLS] = [
     tile(p => {
       grassBase(p, 31);
-      p(2, 6, 7, 5, PAL.rock); p(3, 5, 5, 1, PAL.rock);
-      p(9, 9, 5, 4, PAL.rockD); p(10, 8, 3, 1, PAL.rockD);
-      p(3, 6, 2, 1, PAL.rockL); p(10, 9, 2, 1, PAL.rockL);
-      p(2, 10, 7, 1, PAL.rockD);
+      p(2, 11, 8, 1, AP.stone[0]);                                  // elevation rim
+      ART.shadedCircle(p, 5, 8, 3, AP.stone, 2);
+      ART.shadedCircle(p, 11, 11, 2, AP.stone, 1);
+      ART.shadedCircle(p, 12, 5, 2, AP.stone, 2);
+      p(8, 12, 1, 1, AP.grass[4]); p(3, 5, 1, 1, AP.grass[4]);      // grass pokes through
+      p(4, 7, 1, 1, AP.stone[4]); p(11, 4, 1, 1, AP.stone[4]);      // glints
+    }),
+    tile(p => {
+      grassBase(p, 87);
+      p(6, 13, 8, 1, AP.stone[0]);
+      ART.shadedCircle(p, 10, 9, 3, AP.stone, 2);
+      ART.shadedCircle(p, 4, 5, 2, AP.stone, 2);
+      ART.shadedCircle(p, 4, 11, 2, AP.stone, 1);
+      p(7, 6, 1, 1, AP.grass[4]); p(13, 12, 1, 1, AP.grass[4]);
+      p(9, 8, 1, 1, AP.stone[4]);
     }),
   ];
+
+  // fertile soil: rich tilled rows with sprout dots and a slight sheen
   Sprites.terrain[T.FERTILE] = [
     tile(p => {
-      p(0, 0, 16, 16, PAL.soil);
-      speckle(p, 17, 8, PAL.soilD);
-      p(2, 3, 1, 2, PAL.sprout); p(6, 7, 1, 2, PAL.sprout); p(11, 4, 1, 2, PAL.sprout);
-      p(4, 12, 1, 2, PAL.sprout); p(12, 11, 1, 2, PAL.sprout); p(9, 13, 1, 2, PAL.sprout);
+      p(0, 0, 16, 16, AP.soil[2]);
+      for (let y = 1; y < 16; y += 3) { p(0, y, 16, 1, AP.soil[1]); p(0, y + 1, 16, 1, AP.soil[3]); }
+      const r = ART.rng(17);
+      for (let i = 0; i < 7; i++) {
+        const x = 1 + (r() * 14) | 0, y = 1 + 3 * ((r() * 5) | 0);
+        p(x, y, 1, 1, AP.grass[4]); p(x, y + 1, 1, 1, AP.grass[2]);
+      }
+      p(3, 0, 2, 1, AP.soil[3]); p(11, 6, 2, 1, AP.soil[3]);        // sheen
     }),
   ];
-  // depleted terrain: felled forest, quarried-out hills, spent soil, building ruins
+
+  // depleted terrain: felled forest, quarried-out hills, spent soil, ruins
   function drawStump(p, x, y) {
-    p(x, y + 1, 3, 2, PAL.trunk);
-    p(x, y, 3, 1, PAL.thatch);
-    p(x + 1, y, 1, 1, PAL.thatchD);
+    p(x, y + 1, 3, 2, AP.wood[1]);
+    p(x, y, 3, 1, AP.thatch[2]);
+    p(x + 1, y, 1, 1, AP.thatch[1]);
+    p(x + 2, y + 2, 1, 1, AP.wood[0]);
   }
   Sprites.terrain[T.STUMPS] = [
     tile(p => { grassBase(p, 51); drawStump(p, 2, 3); drawStump(p, 9, 8); drawStump(p, 4, 11); }),
@@ -111,60 +167,67 @@ const Sprites = {
   Sprites.terrain[T.PEBBLES] = [
     tile(p => {
       grassBase(p, 57);
-      p(3, 5, 2, 1, PAL.rock); p(9, 8, 2, 1, PAL.rockD); p(6, 12, 2, 1, PAL.rock);
-      p(12, 4, 1, 1, PAL.rockL); p(4, 9, 1, 1, PAL.rockL); p(10, 12, 1, 1, PAL.rockD);
-      p(2, 12, 3, 2, PAL.rockD); p(2, 12, 3, 1, PAL.rock);   // one spent slab
+      ART.shadedCircle(p, 4, 6, 1, AP.stone, 2);
+      ART.shadedCircle(p, 10, 9, 1, AP.stone, 1);
+      p(6, 12, 2, 1, AP.stone[2]); p(12, 4, 1, 1, AP.stone[3]);
+      p(2, 12, 3, 2, AP.stone[1]); p(2, 12, 3, 1, AP.stone[2]);     // spent slab
     }),
   ];
   Sprites.terrain[T.BARREN] = [
     tile(p => {
-      p(0, 0, 16, 16, '#8a7a58');
-      speckle(p, 71, 8, '#7a6a48');
-      p(2, 4, 5, 1, '#6a5a3c'); p(6, 5, 1, 3, '#6a5a3c');     // cracks
-      p(10, 9, 4, 1, '#6a5a3c'); p(9, 11, 1, 3, '#6a5a3c');
-      p(12, 2, 2, 1, '#6a5a3c');
+      ART.dither(p, 0, 0, 16, 16, AP.soil[3], AP.soil[2]);
+      const r = ART.rng(71);
+      for (let i = 0; i < 8; i++) p((r() * 16) | 0, (r() * 16) | 0, 1, 1, AP.soil[1]);
+      p(2, 4, 5, 1, AP.soil[0]); p(6, 5, 1, 3, AP.soil[0]);         // cracks
+      p(10, 9, 4, 1, AP.soil[0]); p(9, 11, 1, 3, AP.soil[0]);
     }),
   ];
   Sprites.terrain[T.RUIN] = [
     tile(p => {
-      p(0, 0, 16, 16, '#57503f');
-      speckle(p, 83, 8, '#463f30');
-      p(2, 9, 5, 3, PAL.rockD); p(2, 8, 3, 1, PAL.rock);      // collapsed wall
-      p(9, 4, 4, 2, PAL.rockD); p(12, 6, 2, 2, PAL.rock);
-      p(6, 3, 2, 2, PAL.trunk); p(5, 13, 4, 1, PAL.woodD);    // charred beams
-      p(10, 11, 3, 1, PAL.dark); p(4, 5, 1, 1, PAL.dark);
+      ART.dither(p, 0, 0, 16, 16, AP.soil[1], AP.stone[1]);
+      p(2, 9, 5, 3, AP.stone[1]); p(2, 8, 3, 1, AP.stone[2]);       // collapsed wall
+      p(9, 4, 4, 2, AP.stone[1]); p(12, 6, 2, 2, AP.stone[2]);
+      p(6, 3, 2, 2, AP.wood[1]); p(5, 13, 4, 1, AP.wood[0]);        // charred beams
+      p(10, 11, 3, 1, AP.ink[0]); p(4, 5, 1, 1, AP.ink[0]);
     }),
   ];
   Sprites.terrain[T.MOUNTAIN] = [
     tile(p => {
-      p(0, 0, 16, 16, '#5d5a52');
-      speckle(p, 91, 8, '#4a4840');
-      // twin peaks with snow caps
-      p(2, 9, 8, 5, '#6d6a60'); p(3, 7, 6, 2, '#6d6a60'); p(4, 5, 4, 2, '#7d7a70');
-      p(5, 3, 2, 2, '#e8e8e4'); p(4, 5, 1, 1, '#e8e8e4');
-      p(9, 10, 6, 4, '#66635a'); p(10, 8, 4, 2, '#76736a');
-      p(11, 6, 2, 2, '#e8e8e4');
-      p(3, 12, 3, 1, '#4a4840'); p(10, 12, 3, 1, '#4a4840');
+      ART.dither(p, 0, 0, 16, 16, AP.stone[1], AP.stone[0]);
+      ART.shadedCircle(p, 5, 9, 4, AP.stone, 1);
+      p(4, 5, 4, 2, AP.stone[3]); p(5, 3, 2, 2, AP.bone[2]); p(4, 5, 1, 1, AP.bone[2]);  // snow cap
+      ART.shadedCircle(p, 12, 11, 3, AP.stone, 1);
+      p(11, 6, 2, 2, AP.bone[2]);
+      p(3, 13, 4, 1, AP.stone[0]); p(10, 14, 4, 1, AP.stone[0]);
     }),
     tile(p => {
-      p(0, 0, 16, 16, '#5d5a52');
-      speckle(p, 97, 8, '#4a4840');
-      p(6, 8, 8, 6, '#6d6a60'); p(8, 6, 5, 2, '#76736a'); p(9, 4, 3, 2, '#7d7a70');
-      p(10, 2, 2, 2, '#e8e8e4');
-      p(1, 11, 5, 3, '#66635a'); p(2, 9, 3, 2, '#76736a'); p(3, 8, 1, 1, '#e8e8e4');
+      ART.dither(p, 0, 0, 16, 16, AP.stone[1], AP.stone[0]);
+      ART.shadedCircle(p, 10, 9, 4, AP.stone, 1);
+      p(9, 4, 3, 2, AP.stone[3]); p(10, 2, 2, 2, AP.bone[2]);
+      ART.shadedCircle(p, 3, 11, 3, AP.stone, 1);
+      p(3, 8, 1, 1, AP.bone[2]);
     }),
   ];
   Sprites.terrain[T.CAMP] = [
     tile(p => {
-      grassBase(p, 41);
-      p(4, 12, 8, 1, PAL.dark);                     // scorched ground
-      p(5, 6, 6, 5, PAL.RD); p(6, 5, 4, 1, PAL.RD); // dark tent
-      p(7, 4, 2, 1, PAL.R);
-      p(7, 8, 2, 3, PAL.dark);                      // entrance
-      p(2, 9, 1, 3, PAL.trunk); p(1, 8, 3, 1, PAL.white); p(2, 7, 1, 1, PAL.white); // skull totem
-      p(12, 10, 2, 2, PAL.fire); p(12, 9, 1, 1, PAL.fireL);
+      ART.dither(p, 0, 0, 16, 16, AP.soil[3], AP.grass[2]);          // trampled dirt
+      const r = ART.rng(41);
+      for (let i = 0; i < 6; i++) p((r() * 16) | 0, (r() * 16) | 0, 1, 1, AP.soil[1]);
+      p(1, 2, 1, 3, AP.wood[1]); p(4, 1, 1, 3, AP.wood[1]);          // crude spike palisade
+      p(13, 2, 1, 3, AP.wood[1]); p(1, 1, 1, 1, AP.wood[3]); p(13, 1, 1, 1, AP.wood[3]);
+      ART.shadedRect(p, 5, 5, 6, 5, AP.rust, 1);                      // hide tent
+      p(6, 4, 4, 1, AP.rust[2]);
+      p(7, 7, 2, 3, AP.ink[0]);                                       // entrance
+      p(2, 9, 1, 3, AP.wood[1]); p(1, 8, 3, 1, AP.bone[2]); p(2, 7, 1, 1, AP.bone[2]);  // skull totem
+      p(11, 11, 3, 1, AP.ink[1]); p(12, 10, 2, 2, AP.fire[1]); p(12, 9, 1, 1, AP.fire[2]);  // fire pit
     }),
   ];
+  // ground color per terrain — render.js dithers these along biome borders
+  Sprites.blendCol = {
+    [T.GRASS]: AP.grass[3], [T.FOREST]: AP.grass[2], [T.HILLS]: AP.grass[3],
+    [T.FERTILE]: AP.soil[2], [T.STUMPS]: AP.grass[3], [T.PEBBLES]: AP.grass[3],
+    [T.BARREN]: AP.soil[3], [T.RUIN]: AP.stone[1], [T.CAMP]: AP.soil[3],
+  };
 
   /* ---------------- buildings ---------------- */
   function shadow(p) { p(2, 13, 12, 2, 'rgba(0,0,0,0.25)'); }
