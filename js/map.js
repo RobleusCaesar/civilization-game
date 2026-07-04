@@ -114,15 +114,37 @@ const MapGen = {
 
     // resource fields: normal kinds scale with map area, the scarce one stays
     // a single small pocket no matter the size
+    // Painted tiles must actually land — mountains, lakes and bad rolls can eat
+    // blobs, and a map starved of a resource is an unwinnable map (seen live:
+    // 2 stone tiles = 112 stone where Town Center Lv2 alone costs 150). So the
+    // scarce pocket is pinned to 6–8 tiles and every normal resource gets a
+    // floor comfortably above it, keeping the scarce one genuinely the rarest.
+    const countType = (type) => { let c = 0; for (let i = 0; i < W * H; i++) if (t[i] === type) c++; return c; };
     const paint = (type, normalN, sizeMin, sizeVar) => {
-      const isScarce = scarce.terrain === type;
-      const n = isScarce ? 1 : Math.max(2, Math.round(normalN * f));
-      for (let i = 0; i < n; i++) {
-        const size = isScarce
-          ? Math.max(4, ((sizeMin + rnd() * sizeVar) * 0.5) | 0)
-          : (sizeMin + rnd() * sizeVar) | 0;
-        blob(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0, size, type, nearStart, [T.GRASS]);
+      if (scarce.terrain === type) {
+        // one lean pocket, exactly 6–8 tiles, grown one tile at a time so
+        // terrain can't eat it down to nothing (and it can't balloon either)
+        const want = 6 + ((rnd() * 3) | 0);
+        let guard = 0;
+        while (countType(type) < want && guard++ < 800) {
+          const cells = [];
+          for (let i = 0; i < W * H; i++) if (t[i] === type) cells.push(i);
+          let x, y;
+          if (cells.length) {
+            const c = cells[(rnd() * cells.length) | 0];
+            x = c % W + ((rnd() * 3 | 0) - 1); y = (c / W | 0) + ((rnd() * 3 | 0) - 1);
+          } else { x = 2 + rnd() * (W - 4) | 0; y = 2 + rnd() * (H - 4) | 0; }
+          if (MapGen.inB(x, y) && !nearStart(x, y) && t[id(x, y)] === T.GRASS) t[id(x, y)] = type;
+        }
+        return;
       }
+      const n = Math.max(2, Math.round(normalN * f));
+      for (let i = 0; i < n; i++)
+        blob(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0, (sizeMin + rnd() * sizeVar) | 0, type, nearStart, [T.GRASS]);
+      // floor: never let mountains/lakes starve a normal resource either
+      let guard = 0;
+      while (countType(type) < 12 && guard++ < 40)
+        blob(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0, 6, type, nearStart, [T.GRASS]);
     };
     paint(T.FOREST, 9, 16, 18);
     paint(T.HILLS, 5, 8, 10);

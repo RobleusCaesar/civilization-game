@@ -91,10 +91,13 @@ any new field. `CFG.W`/`CFG.H` are **mutable** and must be set from the save
   ≥ 8 from TC + network check. The rival tribe trains units at its own
   buildings via the same code as the player.
 - **Resources:** finite per-tile stock (`S.map.resAmount`); depleted tiles turn
-  to stumps/pebbles/spent soil, ruins come from destroyed buildings, and all of
-  those **regrow to grass after `CFG.RUIN_DECAY_DAYS` (20)** via `S.map.decay`
-  (idx → revert day, swept in `G.dayTick`; building on top cancels the timer
-  and clears the tile immediately). Water tiles hold fish (food) — see Dock.
+  to stumps/pebbles/spent soil, ruins come from destroyed buildings. After
+  `CFG.RUIN_DECAY_DAYS` (20) via `S.map.decay`, depleted tiles **regrow into
+  their source terrain at `REGROW_FRACTION` (50%) stock** (scarce keeps its
+  0.6 lean) so no resource can permanently zero out; ruins fade to grass.
+  Building on top cancels the timer. The scarce pocket is generated as exactly
+  6-8 tiles (single-tile growth, immune to mountain/lake blob-eating) and
+  normal resources have a 12-tile floor. Water tiles hold fish — see Dock.
 - **Dock & navy (newest system):** Dock requires TC L2, is placed *on* water
   (body ≥ `CFG.DOCK_MIN_WATER` = 6 tiles, walkable shore orthogonally adjacent
   for builders), 3 levels. Trains `fishboat` (L1), `warship` (L2, rng 4),
@@ -212,7 +215,7 @@ mid-game.
   explicitly floated to the owner as an option, no answer yet.
 - The rival AI has no docks/navy and never will until taught (`ai.js` ignores
   water entirely).
-- Fish never regrow (deliberate for now); land tiles regrow in 20 days.
+- Fish never regrow (deliberate for now); land regrows to source terrain in 20 days at half stock.
 - Warship pathing to distant coastal targets is best-effort BFS — fine on
   lakes, untested on huge island maps.
 

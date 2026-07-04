@@ -151,14 +151,36 @@ const G = {
   dayTick() {
     // victory and defeat come only through Town Centers falling (see Bld.damage)
     S.day++;
-    if (S.map.decay) for (const k in S.map.decay) {
-      if (S.day < S.map.decay[k]) continue;
-      const i = +k, t = S.map.terrain[i];
-      if (t === T.STUMPS || t === T.PEBBLES || t === T.BARREN || t === T.RUIN) {
-        S.map.terrain[i] = T.GRASS;
-        R.updateTile(i % CFG.W, (i / CFG.W) | 0);
+    // worked-out land recovers: stumps, pebbles and spent soil regrow into
+    // their source terrain with a lean restock, so no resource is ever gone
+    // for good — a starved player can always grind back, just slowly.
+    // Ruins simply fade to grass.
+    if (S.map.decay) {
+      const SOURCE = { [T.STUMPS]: T.FOREST, [T.PEBBLES]: T.HILLS, [T.BARREN]: T.FERTILE };
+      const scarceTerr = { wood: T.FOREST, stone: T.HILLS, food: T.FERTILE }[S.map.scarce];
+      let regrown = false;
+      for (const k in S.map.decay) {
+        if (S.day < S.map.decay[k]) continue;
+        const i = +k, t = S.map.terrain[i];
+        if (SOURCE[t] !== undefined) {
+          const src = SOURCE[t];
+          const r = CFG.RES_AMOUNT[src];
+          let amt = (r[0] + r[1]) / 2 * CFG.REGROW_FRACTION;
+          if (src === scarceTerr) amt *= 0.6;      // the scarce resource stays lean
+          S.map.terrain[i] = src;
+          S.map.resAmount[i] = Math.round(amt);
+          R.updateTile(i % CFG.W, (i / CFG.W) | 0);
+          regrown = true;
+        } else if (t === T.RUIN) {
+          S.map.terrain[i] = T.GRASS;
+          R.updateTile(i % CFG.W, (i / CFG.W) | 0);
+        }
+        delete S.map.decay[k];
       }
-      delete S.map.decay[k];
+      if (regrown && !S.regrowSeen) {
+        S.regrowSeen = true;
+        this.log('🌱 Worked-out land recovers in time — old clearings and pits are worth working again');
+      }
     }
     Bld.dailyProduction('P');
     Units.dailySpawns();

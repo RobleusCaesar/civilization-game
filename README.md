@@ -31,7 +31,8 @@ on desktop too.
   causeways (mountains and water can't be crossed or built on, so terrain
   shapes your defenses). Starting corners vary each game, and every map is
   critically short on one resource (wood, stone, or food) — even on Large the
-  scarce resource stays a single small pocket, so scouting and holding it
+  scarce resource stays a single small pocket (always at least 6–8 workable
+  tiles, so the map is never unwinnable), and scouting and holding it
   remains the strategic heart of the match.
 - **Time**: each turn is one in-game day and auto-advances every 10 seconds;
   a full playthrough runs about 20 minutes.
@@ -52,8 +53,10 @@ on desktop too.
   idle, and you'll need farms, lumber camps, and quarries for steady income.
   Depleted tiles (and ruins) are open ground — build right on top of them and
   the old stumps/rubble vanish, leaving only the clean new building. Left
-  alone, stumps, pebbles, spent soil, and ruins green back over into grass
-  after 20 days.
+  alone, nature recovers: after ~20 days stumps regrow into forest, pebbles
+  back into stony hills, and spent soil into fertile ground — at about half
+  their original stock — so no resource is ever gone for good, even the
+  scarce one; grinding it back is just slow. Ruins simply fade to grass.
 - **Building**: tap a button in the bottom bar, then tap a clear tile near your
   village — the nearest idle villager is sent to work the site. Or start from the
   villager: tap them, hit *Build…*, pick a building, tap a site, and that villager
