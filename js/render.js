@@ -108,10 +108,17 @@ const R = {
 
   explored(x, y) { return S.map.explored[MapGen.idx(x, y)]; },
 
-  // fortification auto-tiling: connect to any adjacent wall/gate
+  // fortification auto-tiling: connect to any adjacent wall/gate — and brace
+  // flush against water, mountains, and the map edge, so a wall anchored on an
+  // obstacle reads as a stout, sealed junction instead of an open end-cap
   wallMaskAt(x, y, extra) {
-    const conn = (xx, yy) => (MapGen.inB(xx, yy) && Bld.blockAt(xx, yy) !== 0) ||
-      (extra && extra.has(xx + ',' + yy));
+    const conn = (xx, yy) => {
+      if (!MapGen.inB(xx, yy)) return true;                 // map edge
+      if (Bld.blockAt(xx, yy) !== 0) return true;           // wall / gate
+      const t = S.map.terrain[MapGen.idx(xx, yy)];
+      if (t === T.WATER || t === T.MOUNTAIN) return true;   // natural barrier
+      return !!(extra && extra.has(xx + ',' + yy));
+    };
     return (conn(x, y - 1) ? 1 : 0) | (conn(x + 1, y) ? 2 : 0) |
            (conn(x, y + 1) ? 4 : 0) | (conn(x - 1, y) ? 8 : 0);
   },

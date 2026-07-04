@@ -234,6 +234,42 @@ const Path = {
     return true;
   },
 
+  // guard for continuous (non-grid) steering: same rules as find() — the
+  // destination tile must be open, and a diagonal tile change may not cut the
+  // corner of a blocked tile. Without this, chasing units could slip through
+  // the corner point where a wall meets water/mountain/another wall diagonally.
+  canStep(x0, y0, x1, y1, owner) {
+    const cx = x0 | 0, cy = y0 | 0, nx = x1 | 0, ny = y1 | 0;
+    if (!this.passable(nx, ny, owner)) return false;
+    if (nx !== cx && ny !== cy &&
+        (!this.passable(nx, cy, owner) || !this.passable(cx, ny, owner))) return false;
+    return true;
+  },
+
+  // tiles reachable from the open map border (4-dir; sealed walls stay sealed).
+  // Used to keep hostile spawns out of walled-off pockets. Returns null when
+  // no border tile is passable (island maps) — treat as "no filter".
+  borderReach() {
+    const W = CFG.W, H = CFG.H;
+    const open = new Uint8Array(W * H);
+    const q = [];
+    const push = (x, y) => {
+      if (!this.passable(x, y)) return;
+      const i = MapGen.idx(x, y);
+      if (!open[i]) { open[i] = 1; q.push(i); }
+    };
+    for (let x = 0; x < W; x++) { push(x, 0); push(x, H - 1); }
+    for (let y = 0; y < H; y++) { push(0, y); push(W - 1, y); }
+    if (!q.length) return null;
+    let head = 0;
+    while (head < q.length) {
+      const cur = q[head++];
+      const cx = cur % W, cy = (cur / W) | 0;
+      push(cx + 1, cy); push(cx - 1, cy); push(cx, cy + 1); push(cx, cy - 1);
+    }
+    return open;
+  },
+
   find(sx, sy, tx, ty, owner) {
     sx |= 0; sy |= 0; tx |= 0; ty |= 0;
     if (!MapGen.inB(tx, ty)) return null;

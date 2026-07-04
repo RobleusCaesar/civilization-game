@@ -350,12 +350,14 @@ const Units = {
   spawnWild(kind, minDistTC) {
     const passive = kind === 'deer' || kind === 'cow';
     const tc = Bld.tcOf('P');
+    const open = Path.borderReach();   // keep beasts from popping up inside sealed walls
     for (let tries = 0; tries < 40; tries++) {
       const x = (G.rand() * CFG.W) | 0, y = (G.rand() * CFG.H) | 0;
       const t = S.map.terrain[MapGen.idx(x, y)];
       if (t !== T.FOREST && !(passive && t === T.GRASS)) continue;
       if (Bld.at(x, y)) continue;
       if (tc && Math.hypot(x - tc.x, y - tc.y) < minDistTC) continue;
+      if (open && !open[MapGen.idx(x, y)]) continue;
       return this.spawn(kind, 'W', x, y);
     }
     return null;

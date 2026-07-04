@@ -113,6 +113,11 @@ on desktop too.
   the wall direction — north-south gates read as a thicker span flanked by twin
   towers. Your people pass through gates, enemies can't; attackers who can't find
   a way around batter the nearest wall or gate and pour through once it falls.
+  Walls anchored on a lake, mountain, or the map edge brace flush against the
+  obstacle — a stout, sealed junction — and those seams really are sealed:
+  nothing can slip through the corner where a wall meets water, rock, or
+  another wall diagonally, and raiding parties never materialize inside a
+  fully walled-off area.
 - **Healing**: tap a hurt villager or defender → *Heal*. It costs food in
   proportion to their training cost and how badly they're hurt.
 - **Saving**: ☰ → *Save game* downloads a JSON save; *Load game* imports it.

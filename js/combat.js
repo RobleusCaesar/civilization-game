@@ -114,7 +114,7 @@ const Combat = {
           // corner moving prey; fall back to pathfinding around water/walls
           const step = u.speed * dt;
           const nx = u.x + (tgt.x - u.x) / d * step, ny = u.y + (tgt.y - u.y) / d * step;
-          if (d < 3 && Path.passable(nx | 0, ny | 0, u.owner)) {
+          if (d < 3 && Path.canStep(u.x, u.y, nx, ny, u.owner)) {
             u.x = nx; u.y = ny; u.path = null;
           } else {
             if (u.repathT <= 0) { u.repathT = 0.5; Units.setPath(u, tgt.x | 0, tgt.y | 0); }
@@ -197,13 +197,18 @@ const Combat = {
       sx = side === 0 ? 0 : side === 1 ? CFG.W - 1 : (G.rand() * CFG.W) | 0;
       sy = side === 2 ? 0 : side === 3 ? CFG.H - 1 : (G.rand() * CFG.H) | 0;
     }
-    // island/mountain maps: edge tiles can be water, so widen the search before giving up
-    const spot = MapGen.findNear(sx, sy, 6, (x, y) => Path.passable(x, y)) ||
+    // never drop a war party inside somebody's sealed walls: spawn tiles must be
+    // reachable from the open map border. Island maps (all-water border) skip the
+    // filter, and edge tiles can be water, so widen the search before giving up.
+    const open = Path.borderReach();
+    const ok = (x, y) => Path.passable(x, y) && (!open || open[MapGen.idx(x, y)]);
+    const spot = MapGen.findNear(sx, sy, 6, ok) ||
+                 MapGen.findNear(sx, sy, Math.max(CFG.W, CFG.H), ok) ||
                  MapGen.findNear(sx, sy, Math.max(CFG.W, CFG.H), (x, y) => Path.passable(x, y));
     if (!spot) return;
     for (let i = 0; i < n; i++) {
       const kind = (S.wave.count >= 4 && i % 3 === 2) ? 'brute' : 'raider';
-      const p = MapGen.findNear(spot.x, spot.y, 4, (x, y) => Path.passable(x, y)) || spot;
+      const p = MapGen.findNear(spot.x, spot.y, 4, ok) || spot;
       Units.spawn(kind, 'R', p.x, p.y, { scale });
     }
     G.log(`⚔ Raider war party sighted (${n})!`, true);
