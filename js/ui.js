@@ -11,6 +11,8 @@ const UI = {
   refreshT: 0,
   newMode: 'moderate',   // difficulty picked for the next game
   newSize: 'medium',     // map size picked for the next game
+  menuCollapsed: false,  // build menu tucked away for a bigger view
+  miniCollapsed: false,  // minimap hidden
   builderFor: null,      // villager id that will build the next placed building
   confirmDemolish: 0,    // building id awaiting demolish confirmation
   wallDrag: null,        // tile chain while dragging a wall line
@@ -367,7 +369,23 @@ const UI = {
     this.confirmDemolish = 0;
     this.settingRally = null;
     document.getElementById('panel').classList.remove('show');
-    document.getElementById('buildmenu').style.display = 'flex';
+    document.getElementById('buildmenu').style.display = this.menuCollapsed ? 'none' : 'flex';
+  },
+
+  setMenuCollapsed(v) {
+    this.menuCollapsed = v;
+    const t = document.getElementById('bmToggle');
+    t.textContent = v ? '🔨 Build ▴' : '▾';
+    if (!document.getElementById('panel').classList.contains('show'))
+      document.getElementById('buildmenu').style.display = v ? 'none' : 'flex';
+    if (v && this.placing) { this.placing = null; this.builderFor = null; this.refreshMenu(); }
+  },
+  setMiniCollapsed(v) {
+    this.miniCollapsed = v;
+    document.getElementById('miniWrap').style.display = v ? 'none' : '';
+    const t = document.getElementById('miniToggle');
+    t.textContent = v ? '🗺' : '▾';
+    t.classList.toggle('collapsed', v);
   },
 
   /* ---------------- selection panel ---------------- */
@@ -394,7 +412,11 @@ const UI = {
     }
     const u = Units.get(this.sel.id);
     if (!u) return 'gone';
-    return ['u', u.id, u.hp < u.maxhp,
+    let stack = 0;
+    if (u.owner !== 'P' && !Units.isPassive(u))
+      stack = S.units.filter(o => o.owner !== 'P' && !Units.isPassive(o) &&
+        (o.x | 0) === (u.x | 0) && (o.y | 0) === (u.y | 0)).length;
+    return ['u', u.id, u.hp < u.maxhp, stack,
       !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u)].join('|');
   },
 
@@ -641,12 +663,21 @@ const UI = {
       if (!u) { this.deselect(); return; }
       const nm = CFG.UNITS[u.kind].name;
       const own = u.owner === 'P';
-      const hint = !own ? (
+      let hint = !own ? (
           Units.isPassive(u) ? `Wild game — send a villager or defender to hunt it (+${CFG.MEAT_DROP} food).`
           : u.owner === 'W' ? `Wild beast — dangerous, but worth +${CFG.MEAT_DROP} food.`
           : u.owner === 'R' ? 'Raider!' : 'Rival tribe')
         : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / fertile soil to gather, a work site to build, or a tile to walk.'
         : 'Tap a tile to move, or an enemy to attack.';
+      if (!own && !Units.isPassive(u)) {
+        const stack = S.units.filter(o => o.owner !== 'P' && !Units.isPassive(o) &&
+          (o.x | 0) === (u.x | 0) && (o.y | 0) === (u.y | 0));
+        if (stack.length > 1) {
+          const atk = Math.round(stack.reduce((s, o) => s + Units.effAtk(o), 0));
+          const hp = Math.ceil(stack.reduce((s, o) => s + o.hp, 0));
+          hint += ` ⚠️ ${stack.length} enemies stacked here — combined ATK ${atk}, HP ${hp}.`;
+        }
+      }
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : '☠ '}${nm}</div>
         <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${u.def}</div></div>
@@ -684,6 +715,7 @@ const UI = {
       const gobuild = panel.querySelector('[data-act="gobuild"]');
       if (gobuild) gobuild.addEventListener('click', () => {
         const vid = this.sel.id;
+        if (this.menuCollapsed) this.setMenuCollapsed(false);
         this.deselect();          // brings the build menu back
         this.builderFor = vid;    // after deselect/select bookkeeping
         this.toast('Pick a building, then tap a site — this villager will build it');
@@ -740,6 +772,10 @@ const UI = {
       document.querySelectorAll('#modeRow .mode').forEach(b => b.classList.toggle('sel', b === btn));
       document.getElementById('modeDesc').textContent = CFG.MODES[this.newMode].desc;
     }));
+    document.getElementById('bmToggle').addEventListener('click', () =>
+      this.setMenuCollapsed(!this.menuCollapsed));
+    document.getElementById('miniToggle').addEventListener('click', () =>
+      this.setMiniCollapsed(!this.miniCollapsed));
     document.querySelectorAll('#sizeRow .mode').forEach(btn => btn.addEventListener('click', () => {
       this.newSize = btn.dataset.size;
       document.querySelectorAll('#sizeRow .mode').forEach(b => b.classList.toggle('sel', b === btn));

@@ -104,7 +104,11 @@ const Units = {
     return this.setPath(u, b.x, b.y);
   },
 
-  // formation move: melee line up at the destination, ranged hold a rank behind
+  // formation move: everyone converges on the clicked tile. Goals are picked by
+  // flood-filling walkable ground outward from the click, so every spot is
+  // guaranteed reachable and clustered where the player tapped — no unit ever
+  // wanders off to a "nearby" tile that's actually across a lake or ridge.
+  // Melee take the spots toward the approach front, ranged fill in behind.
   groupMove(ids, tx, ty) {
     const units = ids.map(id => this.get(id)).filter(Boolean);
     if (!units.length) return;
@@ -113,20 +117,30 @@ const Units = {
     let dx = tx + 0.5 - cx, dy = ty + 0.5 - cy;
     const dl = Math.hypot(dx, dy) || 1;
     dx /= dl; dy /= dl;
-    const px = -dy, py = dx;                       // perpendicular = line abreast
+    const start = Path.passable(tx, ty, 'P') ? { x: tx, y: ty }
+      : MapGen.findNear(tx, ty, 6, (x, y) => Path.passable(x, y, 'P'));
+    if (!start) { for (const u of units) this.moveTo(u, tx, ty); return; }
+    const spots = [];
+    const seen = new Set([start.x + ',' + start.y]);
+    const q = [start];
+    while (q.length && spots.length < units.length) {
+      const c = q.shift();
+      spots.push(c);
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = c.x + ox, ny = c.y + oy, k = nx + ',' + ny;
+        if (seen.has(k) || !Path.passable(nx, ny, 'P')) continue;
+        seen.add(k);
+        q.push({ x: nx, y: ny });
+      }
+    }
+    // frontmost spots (furthest along the direction of travel) first
+    spots.sort((a, b) => (b.x * dx + b.y * dy) - (a.x * dx + a.y * dy));
     const melee = units.filter(u => !CFG.UNITS[u.kind].rng);
     const ranged = units.filter(u => CFG.UNITS[u.kind].rng);
-    const placeRank = (list, backOff) => list.forEach((u, i) => {
-      const lane = (i - (list.length - 1) / 2) * 1.3;
-      let gx = Math.round(tx + px * lane - dx * backOff);
-      let gy = Math.round(ty + py * lane - dy * backOff);
-      gx = Math.max(0, Math.min(CFG.W - 1, gx));
-      gy = Math.max(0, Math.min(CFG.H - 1, gy));
-      const spot = MapGen.findNear(gx, gy, 2, (x, y) => Path.passable(x, y, 'P')) || { x: tx, y: ty };
+    melee.concat(ranged).forEach((u, i) => {
+      const spot = spots[i % spots.length];
       this.moveTo(u, spot.x, spot.y);
     });
-    placeRank(melee, 0);
-    placeRank(ranged, 2);
   },
 
   orderAttackBuilding(u, b) {
@@ -197,6 +211,7 @@ const Units = {
             // tile exhausted — it turns to stumps/pebbles/spent soil and frees the villager
             S.map.resAmount[idx] = 0;
             S.map.terrain[idx] = CFG.DEPLETED[terr];
+            G.scheduleRevert(idx);
             R.updateTile(t.x, t.y);
             const what = terr === T.FOREST ? 'The forest here is felled'
               : terr === T.HILLS ? 'The stone here is quarried out' : 'The soil here is spent';

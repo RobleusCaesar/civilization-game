@@ -33,6 +33,7 @@ const CFG = {
     [T.FERTILE]: T.BARREN,
   },
   DEMOLISH_REFUND: 0.4,       // fraction of spent resources returned on demolish
+  RUIN_DECAY_DAYS: 20,        // stumps / pebbles / spent soil / ruins regrow to grass after this many days
 
   /* ---- Buildings: 8 types x 3 levels. Level index = level-1. ----
      cost: resources to build/upgrade to this level

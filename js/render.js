@@ -211,6 +211,33 @@ const R = {
         u.owner === 'P' ? '#7dbb5e' : '#e06550');
     }
 
+    // hostiles piled on one tile: a head-count badge so the stack is readable
+    const stacks = new Map();
+    for (const u of S.units) {
+      if (u.owner === 'P' || Units.isPassive(u)) continue;
+      if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
+      const k = (u.x | 0) * 4096 + (u.y | 0);
+      const s = stacks.get(k);
+      if (s) { s.n++; if (u.y < s.y) { s.x = u.x; s.y = u.y; } }
+      else stacks.set(k, { x: u.x, y: u.y, n: 1 });
+    }
+    g.font = '700 9px -apple-system, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (const s of stacks.values()) {
+      if (s.n < 2) continue;
+      const bx = s.x * TL, by = s.y * TL - TL / 2 - 11;
+      const w = g.measureText('×' + s.n).width + 8;
+      g.fillStyle = 'rgba(20,15,11,0.85)';
+      g.beginPath();
+      if (g.roundRect) g.roundRect(bx - w / 2, by - 6.5, w, 13, 4);
+      else g.rect(bx - w / 2, by - 6.5, w, 13);
+      g.fill();
+      g.strokeStyle = 'rgba(224,101,80,0.9)'; g.lineWidth = 1; g.stroke();
+      g.fillStyle = '#ffb0a0';
+      g.fillText('×' + s.n, bx, by + 0.5);
+    }
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+
     // tower shots
     g.lineWidth = 1.5;
     for (const s of Combat.shots) {

@@ -37,13 +37,18 @@ on desktop too.
   a full playthrough runs about 20 minutes.
   ⏸ pauses; ☰ opens the menu (save / load / new game / seed / event log).
 - **Camera**: drag to pan, pinch (or mouse wheel) to zoom, tap the minimap to jump.
+- **Decluttering**: the ▾ tab on the build menu tucks it away for a bigger view
+  (🔨 Build brings it back — a villager's *Build…* button reopens it too), and
+  the ▾ tab over the minimap collapses the map to a small 🗺 button.
 - **Gathering**: tap a villager, then tap a **forest** (wood), **hills** (stone), or
   **fertile soil** (food) tile — they gather automatically. Tapping a resource tile
   with nothing selected sends an idle villager. Every tile holds a finite stock:
   once gathered out it turns to stumps / pebbles / spent soil, the villager goes
   idle, and you'll need farms, lumber camps, and quarries for steady income.
   Depleted tiles (and ruins) are open ground — build right on top of them and
-  the old stumps/rubble vanish, leaving only the clean new building.
+  the old stumps/rubble vanish, leaving only the clean new building. Left
+  alone, stumps, pebbles, spent soil, and ruins green back over into grass
+  after 20 days.
 - **Building**: tap a button in the bottom bar, then tap a clear tile near your
   village — the nearest idle villager is sent to work the site. Or start from the
   villager: tap them, hit *Build…*, pick a building, tap a site, and that villager
@@ -84,9 +89,13 @@ on desktop too.
   so equal fights near your walls tip to the defender (the rival gets the same
   bonus at home).
 - **War parties**: tap a soldier → *Group nearby* to gather every soldier within
-  6 tiles into one selection. One tap then marches them together (melee form the
-  front line, archers hold a rank behind) or throws them all at an enemy unit or
-  rival building. *Halt* stops everyone.
+  6 tiles into one selection. One tap then marches them together — everyone
+  converges tightly on the tapped tile by the shortest route (melee take the
+  front spots, archers settle in behind) — or throws them all at an enemy unit
+  or rival building. *Halt* stops everyone.
+- **Enemy stacks**: when several hostiles pile onto one tile, a red ×N badge
+  floats over the pile, and tapping one shows the stack's combined attack and
+  hit points in the panel.
 - **Walls & Gates**: pick Wall, then **drag** across the map — a ghost line follows
   your finger (green where buildable and affordable, red where not), snakes around
   corners, and connects automatically with the right straight/corner/T/cross pieces.

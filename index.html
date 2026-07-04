@@ -67,12 +67,28 @@
     background: #000; line-height: 0;
   }
   #mini { width: 96px; height: 96px; image-rendering: pixelated; }
+  #miniToggle {
+    position: absolute; right: 6px; z-index: 9;
+    bottom: calc(env(safe-area-inset-bottom) + 96px + 100px);
+    min-width: 36px; min-height: 22px; border: 1px solid #4a4232; border-radius: 8px 8px 0 0;
+    background: var(--bar-bg); color: var(--dim); font-size: 11px; font-weight: 700;
+  }
+  #miniToggle.collapsed {
+    bottom: calc(env(safe-area-inset-bottom) + 96px);
+    min-height: 36px; border-radius: 8px; font-size: 15px;
+  }
 
   /* ---- bottom bar ---- */
   #bottombar {
     position: absolute; left: 0; right: 0; bottom: 0; z-index: 10;
     background: var(--panel-bg); backdrop-filter: blur(4px);
     padding: 6px 6px calc(env(safe-area-inset-bottom) + 6px) 6px;
+  }
+  #bmToggle {
+    position: absolute; top: -22px; right: 8px;
+    min-width: 44px; height: 22px; border: 1px solid #4a4232; border-bottom: none;
+    border-radius: 8px 8px 0 0; background: var(--panel-bg); color: var(--dim);
+    font-size: 11px; font-weight: 700; padding: 0 10px;
   }
   #buildmenu {
     display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch;
@@ -152,8 +168,10 @@
 <div id="toasts"></div>
 
 <div id="miniWrap"><canvas id="mini" width="80" height="80"></canvas></div>
+<button id="miniToggle">▾</button>
 
 <div id="bottombar">
+  <button id="bmToggle">▾</button>
   <div id="buildmenu"></div>
   <div id="panel"></div>
 </div>

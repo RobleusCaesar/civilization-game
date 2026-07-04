@@ -95,6 +95,7 @@ const Bld = {
     if (t0 === T.STUMPS || t0 === T.PEBBLES || t0 === T.BARREN || t0 === T.RUIN) {
       S.map.terrain[ti] = T.GRASS;
       if (S.map.resAmount) S.map.resAmount[ti] = 0;
+      if (S.map.decay) delete S.map.decay[ti];
       R.updateTile(x, y);
     }
     if (owner === 'P') {
@@ -286,6 +287,7 @@ const Bld = {
     const idx = MapGen.idx(b.x, b.y);
     S.map.terrain[idx] = T.RUIN;
     if (S.map.resAmount) S.map.resAmount[idx] = 0;
+    G.scheduleRevert(idx);
     R.updateTile(b.x, b.y);
     for (const u of S.units) if (u.tBld === b.id) u.tBld = 0;
     if (UI.sel && UI.sel.type === 'bld' && UI.sel.id === b.id) UI.deselect();

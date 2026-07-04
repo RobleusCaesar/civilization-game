@@ -38,6 +38,7 @@ const G = {
         resAmount: gen.resAmount,
         scarce: gen.scarce,
         landform: gen.landform,
+        decay: {},                          // idx -> day the depleted/ruined tile regrows to grass
         explored: new Array(CFG.W * CFG.H).fill(0),
         seenTerrain: gen.terrain.slice(),   // what the player last saw, per tile
         seenB: {},                          // last-seen buildings: idx -> {key, level, owner}
@@ -139,9 +140,24 @@ const G = {
     R.fogDirty = true;
   },
 
+  // a freshly depleted or ruined tile greens over after RUIN_DECAY_DAYS
+  scheduleRevert(idx) {
+    if (!S.map.decay) S.map.decay = {};
+    S.map.decay[idx] = S.day + CFG.RUIN_DECAY_DAYS;
+  },
+
   dayTick() {
     // victory and defeat come only through Town Centers falling (see Bld.damage)
     S.day++;
+    if (S.map.decay) for (const k in S.map.decay) {
+      if (S.day < S.map.decay[k]) continue;
+      const i = +k, t = S.map.terrain[i];
+      if (t === T.STUMPS || t === T.PEBBLES || t === T.BARREN || t === T.RUIN) {
+        S.map.terrain[i] = T.GRASS;
+        R.updateTile(i % CFG.W, (i / CFG.W) | 0);
+      }
+      delete S.map.decay[k];
+    }
     Bld.dailyProduction('P');
     Units.dailySpawns();
     Combat.maybeWave();
@@ -177,6 +193,7 @@ const G = {
     if (!data.garrison) data.garrison = [];
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
+    if (!data.map.decay) data.map.decay = {};
     S = data;
     Bld._block = null;
     S.paused = true;
