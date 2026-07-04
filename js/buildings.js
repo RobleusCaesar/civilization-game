@@ -83,7 +83,7 @@ const Bld = {
     this._block = null;
     if (owner === 'P') {
       G.reveal(x, y, d.levels[0].vision || 4);
-      if (!opts.instant) {
+      if (!opts.instant && !opts.noAutoAssign) {
         // an explicitly chosen builder is pulled off whatever it was doing
         let v = opts.builderId
           ? S.units.find(u => u.id === opts.builderId && u.owner === 'P' && Units.isVillager(u))

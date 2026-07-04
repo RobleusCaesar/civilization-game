@@ -70,10 +70,15 @@ on desktop too.
   6 tiles into one selection. One tap then marches them together (melee form the
   front line, archers hold a rank behind) or throws them all at an enemy unit or
   rival building. *Halt* stops everyone.
-- **Walls & Gates**: wall segments block *all* movement — yours included — so leave
-  a **Town Gate** in the line: your people pass through it, enemies can't. Attackers
-  who can't find a way around batter the nearest wall or gate and pour through once
-  it falls. Wall placement stays active so you can lay a line quickly.
+- **Walls & Gates**: pick Wall, then **drag** across the map — a ghost line follows
+  your finger (green where buildable and affordable, red where not), snakes around
+  corners, and connects automatically with the right straight/corner/T/cross pieces.
+  Release to start construction: one villager builds the line section by section,
+  and you can tap more villagers onto the wall to speed it up. Walls block *all*
+  movement — yours included — so leave a **Town Gate** in the line (it auto-faces
+  to match the wall, horizontal or vertical): your people pass through it, enemies
+  can't. Attackers who can't find a way around batter the nearest wall or gate and
+  pour through once it falls.
 - **Healing**: tap a hurt villager or defender → *Heal*. It costs food in
   proportion to their training cost and how badly they're hurt.
 - **Saving**: ☰ → *Save game* downloads a JSON save; *Load game* imports it.

@@ -95,6 +95,24 @@ const R = {
 
   explored(x, y) { return S.map.explored[MapGen.idx(x, y)]; },
 
+  // fortification auto-tiling: connect to any adjacent wall/gate
+  wallMaskAt(x, y, extra) {
+    const conn = (xx, yy) => (MapGen.inB(xx, yy) && Bld.blockAt(xx, yy) !== 0) ||
+      (extra && extra.has(xx + ',' + yy));
+    return (conn(x, y - 1) ? 1 : 0) | (conn(x + 1, y) ? 2 : 0) |
+           (conn(x, y + 1) ? 4 : 0) | (conn(x - 1, y) ? 8 : 0);
+  },
+  gateVerticalAt(x, y) {
+    const conn = (xx, yy) => MapGen.inB(xx, yy) && Bld.blockAt(xx, yy) !== 0;
+    const ns = conn(x, y - 1) || conn(x, y + 1), ew = conn(x + 1, y) || conn(x - 1, y);
+    return ns && !ew;
+  },
+  bldSprite(b) {
+    if (b.key === 'wall') return Sprites.wallMask[b.level - 1][this.wallMaskAt(b.x, b.y)];
+    if (b.key === 'gate') return Sprites.gateMask[b.level - 1][this.gateVerticalAt(b.x, b.y) ? 1 : 0];
+    return Sprites.building[b.key][b.level - 1];
+  },
+
   unitPose(u) {
     if (u.tUnit || (u.tBld && Math.hypot((Bld.get(u.tBld) || u).x + 0.5 - u.x, (Bld.get(u.tBld) || u).y + 0.5 - u.y) < 1.5)) return 'fight';
     if (Units.moving(u)) return 'walk';
@@ -128,11 +146,14 @@ const R = {
       if (!this.explored(b.x, b.y)) continue;
       const bx = b.x * TL, by = b.y * TL;
       if (b.construction > 0) {
-        g.drawImage(Sprites.misc.construction, bx, by);
+        // fortifications show their oriented shape while going up
+        if (b.key === 'wall' || b.key === 'gate') {
+          g.globalAlpha = 0.55; g.drawImage(this.bldSprite(b), bx, by); g.globalAlpha = 1;
+        } else g.drawImage(Sprites.misc.construction, bx, by);
         const total = Bld.def(b.key).levels[0].time;
         this.bar(g, bx + 4, by + TL - 4, TL - 8, 3, 1 - b.construction / total, '#e8c15a');
       } else {
-        g.drawImage(Sprites.building[b.key][b.level - 1], bx, by);
+        g.drawImage(this.bldSprite(b), bx, by);
         if (b.upgrading > 0) {
           g.fillStyle = 'rgba(232,193,90,0.25)'; g.fillRect(bx, by, TL, TL);
           const total = Bld.def(b.key).levels[b.level].time;
@@ -174,12 +195,26 @@ const R = {
     }
 
     // placement ghost
-    if (UI.placing) {
+    if (UI.placing === 'wall' && UI.wallGhost && UI.wallGhost.length) {
+      // dragged wall line: oriented pieces, green when buildable+affordable
+      for (const t of UI.wallGhost) {
+        g.globalAlpha = 0.65;
+        g.drawImage(Sprites.wallMask[0][t.mask], t.x * TL, t.y * TL);
+        g.globalAlpha = 1;
+        g.fillStyle = t.ok ? 'rgba(125,187,94,0.35)' : 'rgba(224,101,80,0.45)';
+        g.fillRect(t.x * TL, t.y * TL, TL, TL);
+      }
+    } else if (UI.placing) {
       const t = UI.placeTile;
       if (t) {
         const ok = Bld.canPlace('P', UI.placing, t.x, t.y).ok;
+        const spr = UI.placing === 'gate'
+          ? Sprites.gateMask[0][this.gateVerticalAt(t.x, t.y) ? 1 : 0]
+          : UI.placing === 'wall'
+            ? Sprites.wallMask[0][this.wallMaskAt(t.x, t.y)]
+            : Sprites.building[UI.placing][0];
         g.globalAlpha = 0.6;
-        g.drawImage(Sprites.building[UI.placing][0], t.x * TL, t.y * TL);
+        g.drawImage(spr, t.x * TL, t.y * TL);
         g.globalAlpha = 1;
         g.fillStyle = ok ? 'rgba(125,187,94,0.35)' : 'rgba(224,101,80,0.4)';
         g.fillRect(t.x * TL, t.y * TL, TL, TL);

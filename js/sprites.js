@@ -149,6 +149,47 @@ const Sprites = {
 
   /* ---------------- buildings ---------------- */
   function shadow(p) { p(2, 13, 12, 2, 'rgba(0,0,0,0.25)'); }
+
+  // directional wall piece for a 4-bit neighbor mask (N=1, E=2, S=4, W=8)
+  function drawWallMask(p, lv, mask) {
+    const base = lv >= 2 ? PAL.stoneD : PAL.stone;
+    const top = lv >= 2 ? PAL.stone : PAL.rockL;
+    const seam = lv >= 2 ? '#514d42' : PAL.stoneD;
+    const N = mask & 1, E = mask & 2, S = mask & 4, W = mask & 8;
+    if (!mask) {                       // lone pillar
+      p(4, 3, 8, 10, base); p(4, 3, 8, 1, top); p(3, 2, 10, 2, base); p(3, 2, 10, 1, top);
+      p(6, 7, 2, 1, seam); p(8, 10, 3, 1, seam);
+      if (lv >= 3) p(3, 1, 10, 1, PAL.gold);
+      return;
+    }
+    if (N) p(5, 0, 6, 5, base);
+    if (S) p(5, 11, 6, 5, base);
+    if (E) p(11, 5, 5, 6, base);
+    if (W) p(0, 5, 5, 6, base);
+    p(5, 5, 6, 6, base);               // hub
+    // sunlit edges
+    p(5, 5, 6, 1, top);
+    if (W) p(0, 5, 5, 1, top);
+    if (E) p(11, 5, 5, 1, top);
+    if (N) p(5, 0, 1, 5, top);
+    if (S) p(5, 11, 1, 5, top);
+    // crenels along horizontal tops
+    if (W) p(1, 3, 2, 2, base);
+    if (E) p(12, 3, 2, 2, base);
+    if (!N) p(6, 3, 2, 2, base);
+    // masonry seams
+    p(7, 8, 2, 1, seam);
+    if (W) p(1, 8, 3, 1, seam);
+    if (E) p(12, 8, 3, 1, seam);
+    if (N) p(6, 2, 2, 1, seam);
+    if (S) p(8, 13, 2, 1, seam);
+    if (lv >= 3) p(5, 4, 6, 1, PAL.gold);
+  }
+  function rotate90(src) {
+    const c = mk(32, 32), g = c.getContext('2d');
+    g.translate(16, 16); g.rotate(Math.PI / 2); g.drawImage(src, -16, -16);
+    return c;
+  }
   function roofStrips(p, x, y, w, rows, colA, colB) {
     for (let i = 0; i < rows; i++) p(x + i, y + i, w - i * 2, 1, i % 2 ? colB : colA);
   }
@@ -246,16 +287,7 @@ const Sprites = {
       if (lv >= 2) { p(0, 12, 8, 1, PAL.trunk); }                 // fence
       if (lv >= 3) { p(2, 5, 3, 3, PAL.gold); }                   // gold target
     },
-    wall(p, lv) {
-      const base = lv >= 2 ? PAL.stoneD : PAL.stone;
-      const top = lv >= 2 ? PAL.stone : PAL.rockL;
-      p(0, 5, 16, 9, base);
-      for (let i = 0; i < 4; i++) p(i * 4, 3, 2, 2, base);        // crenellation
-      p(0, 5, 16, 1, top);
-      p(2, 8, 3, 1, PAL.stoneD); p(9, 10, 4, 1, PAL.stoneD);      // masonry lines
-      p(5, 12, 4, 1, PAL.stoneD);
-      if (lv >= 3) p(0, 3, 16, 1, PAL.gold);
-    },
+    wall(p, lv) { drawWallMask(p, lv, 2 | 8); },   // menu/panel icon: an east-west run
     gate(p, lv) {
       const base = lv >= 2 ? PAL.stoneD : PAL.stone;
       p(0, 5, 16, 9, base);
@@ -270,6 +302,12 @@ const Sprites = {
   for (const key of Object.keys(B_DRAW)) {
     Sprites.building[key] = [1, 2, 3].map(lv => tile(p => B_DRAW[key](p, lv)));
   }
+  // auto-tiling atlases: wallMask[level-1][mask 0..15], gateMask[level-1][0=horizontal,1=vertical]
+  Sprites.wallMask = [1, 2, 3].map(lv =>
+    Array.from({ length: 16 }, (_, m) => tile(p => drawWallMask(p, lv, m))));
+  Sprites.gateMask = [0, 1, 2].map(li =>
+    [Sprites.building.gate[li], rotate90(Sprites.building.gate[li])]);
+
   Sprites.misc.construction = tile(p => {
     p(2, 12, 12, 2, PAL.woodD);
     p(3, 4, 1, 10, PAL.trunk); p(12, 4, 1, 10, PAL.trunk);

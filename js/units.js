@@ -214,7 +214,17 @@ const Units = {
             b.construction -= dtDays;
             if (b.construction <= 0) {
               Bld.finish(b, u);   // may station the builder as the worker
-              if (u.task && u.task.type === 'build') u.task = null;
+              if (u.task && u.task.type === 'build') {
+                u.task = null;
+                // walk the wall line: continue to the nearest unmanned site
+                let best = null, bd = 6;
+                for (const nb of S.buildings) {
+                  if (nb.owner !== 'P' || nb.construction <= 0 || Bld.hasWorker(nb)) continue;
+                  const dd = Math.hypot(nb.x + 0.5 - u.x, nb.y + 0.5 - u.y);
+                  if (dd < bd) { bd = dd; best = nb; }
+                }
+                if (best) this.assignBuild(u, best);
+              }
             }
           } else if (b.upgrading > 0) {
             b.upgrading -= dtDays;

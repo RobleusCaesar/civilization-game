@@ -12,6 +12,8 @@ const UI = {
   newMode: 'moderate',   // difficulty picked for the next game
   builderFor: null,      // villager id that will build the next placed building
   confirmDemolish: 0,    // building id awaiting demolish confirmation
+  wallDrag: null,        // tile chain while dragging a wall line
+  wallGhost: null,       // [{x,y,ok,mask}] preview of the dragged line
   MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'wall', 'gate'],
 
   init() {
@@ -70,12 +72,20 @@ const UI = {
     cv.addEventListener('pointerdown', e => {
       cv.setPointerCapture(e.pointerId);
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (this.pointers.size === 1)
-        this.downAt = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false };
-      else if (this.pointers.size === 2) {
+      if (this.pointers.size === 1) {
+        if (this.placing === 'wall') {
+          // drag paints a wall line instead of panning
+          this.wallDrag = [R.screenToTile(e.clientX, e.clientY)];
+          this.updateWallGhost();
+          this.downAt = null;
+        } else {
+          this.downAt = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false };
+        }
+      } else if (this.pointers.size === 2) {
         const [a, b] = [...this.pointers.values()];
         this.pinchD = Math.hypot(a.x - b.x, a.y - b.y);
         this.downAt = null;
+        this.wallDrag = null; this.wallGhost = null;   // pinch cancels the line
       }
       e.preventDefault();
     });
@@ -85,11 +95,15 @@ const UI = {
       if (!p) return;
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
       if (this.pointers.size === 1) {
-        if (this.downAt && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 8)
-          this.downAt.moved = true;
-        if (this.downAt && this.downAt.moved) {
-          R.cam.x -= dx / R.cam.z; R.cam.y -= dy / R.cam.z;
-          R.clampCam();
+        if (this.wallDrag) {
+          this.extendWallDrag(R.screenToTile(e.clientX, e.clientY));
+        } else {
+          if (this.downAt && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 8)
+            this.downAt.moved = true;
+          if (this.downAt && this.downAt.moved) {
+            R.cam.x -= dx / R.cam.z; R.cam.y -= dy / R.cam.z;
+            R.clampCam();
+          }
         }
       } else if (this.pointers.size === 2) {
         p.x = e.clientX; p.y = e.clientY;
@@ -106,13 +120,21 @@ const UI = {
     });
     const up = e => {
       this.pointers.delete(e.pointerId);
-      if (this.downAt && !this.downAt.moved && performance.now() - this.downAt.t < 400)
+      if (this.wallDrag) {
+        this.commitWallDrag();
+        this.wallDrag = null; this.wallGhost = null;
+      } else if (this.downAt && !this.downAt.moved && performance.now() - this.downAt.t < 400) {
         this.handleTap(e.clientX, e.clientY);
+      }
       if (this.pointers.size < 2) this.pinchD = 0;
       if (this.pointers.size === 0) this.downAt = null;
     };
     cv.addEventListener('pointerup', up);
-    cv.addEventListener('pointercancel', e => { this.pointers.delete(e.pointerId); this.downAt = null; });
+    cv.addEventListener('pointercancel', e => {
+      this.pointers.delete(e.pointerId);
+      this.downAt = null;
+      this.wallDrag = null; this.wallGhost = null;
+    });
     cv.addEventListener('wheel', e => {
       this.zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 0.89);
       e.preventDefault();
@@ -125,6 +147,73 @@ const UI = {
       R.centerOn(tx, ty);
       e.preventDefault(); e.stopPropagation();
     });
+  },
+
+  /* ---------------- wall line dragging ---------------- */
+  extendWallDrag(t) {
+    const chain = this.wallDrag;
+    const keyOf = (x, y) => x + ',' + y;
+    const seen = new Set(chain.map(c => keyOf(c.x, c.y)));
+    let { x: x0, y: y0 } = chain[chain.length - 1];
+    if (x0 === t.x && y0 === t.y) return;
+    // orthogonally-stepped Bresenham so the chain stays connected (no diagonal gaps)
+    const dx = Math.abs(t.x - x0), dy = -Math.abs(t.y - y0);
+    const sx = x0 < t.x ? 1 : -1, sy = y0 < t.y ? 1 : -1;
+    let err = dx + dy, guard = 0;
+    const push = () => {
+      if (!MapGen.inB(x0, y0)) return;
+      const k = keyOf(x0, y0);
+      if (!seen.has(k)) { seen.add(k); chain.push({ x: x0, y: y0 }); }
+    };
+    while (!(x0 === t.x && y0 === t.y) && guard++ < 200) {
+      const e2 = 2 * err;
+      if (e2 >= dy && x0 !== t.x) { err += dy; x0 += sx; push(); }
+      if (e2 <= dx && y0 !== t.y) { err += dx; y0 += sy; push(); }
+    }
+    this.updateWallGhost();
+  },
+
+  updateWallGhost() {
+    const chain = this.wallDrag || [];
+    const cost = CFG.BUILDINGS.wall.levels[0].cost;
+    const budget = Object.assign({}, S.res);
+    const chainSet = new Set(chain.map(c => c.x + ',' + c.y));
+    const okTiles = [];
+    this.wallGhost = chain.map(t => {
+      let ok = Bld.tileFree(t.x, t.y) && !!S.map.explored[MapGen.idx(t.x, t.y)];
+      if (ok) {
+        // reach: near an existing building, or chained off an already-valid tile
+        ok = S.buildings.some(b => b.owner === 'P' && Math.hypot(b.x - t.x, b.y - t.y) <= CFG.BUILD_RANGE) ||
+             okTiles.some(o => Math.hypot(o.x - t.x, o.y - t.y) <= CFG.BUILD_RANGE);
+      }
+      if (ok) {
+        for (const k in cost) if ((budget[k] || 0) < cost[k]) { ok = false; break; }
+        if (ok) for (const k in cost) budget[k] -= cost[k];
+      }
+      if (ok) okTiles.push(t);
+      return { x: t.x, y: t.y, ok, mask: R.wallMaskAt(t.x, t.y, chainSet) };
+    });
+  },
+
+  commitWallDrag() {
+    const ghost = this.wallGhost || [];
+    let placed = 0, first = null;
+    for (const t of ghost) {
+      if (!t.ok) continue;
+      if (!Bld.canPlace('P', 'wall', t.x, t.y).ok) continue;   // re-check with live resources
+      const b = Bld.place('P', 'wall', t.x, t.y, { noAutoAssign: true });
+      if (!first) first = b;
+      placed++;
+    }
+    if (placed) {
+      const v = Units.nearestIdleVillager(first.x, first.y);
+      if (v && Units.assignBuild(v, first))
+        this.toast(`Wall line: ${placed} section${placed > 1 ? 's' : ''} — builder en route. Tap villagers → wall to add hands.`);
+      else this.toast(`Wall line placed (${placed}) — needs a builder`, true);
+    } else if (ghost.length) {
+      this.toast('No valid ground (or resources) for that line', true);
+    }
+    this.refreshMenu();
   },
 
   zoomAt(sx, sy, factor) {
