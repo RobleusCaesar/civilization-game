@@ -783,8 +783,15 @@ const UI = {
     document.getElementById('btnMenu').addEventListener('click', () => {
       S.paused = true;
       document.getElementById('btnPause').textContent = '▶';
+      const SIZE_LABEL = { small: '🏕 Small', medium: '🏞 Medium', large: '🗺 Large' };
       document.getElementById('seedShow').textContent =
-        `Current game: ${G.modeCfg().icon} ${G.modeCfg().name} — seed ${S.seed}`;
+        `Current game: ${G.modeCfg().icon} ${G.modeCfg().name} · ${SIZE_LABEL[S.sizeKey] || '🏞 Medium'} map · day ${S.day} · seed ${S.seed}`;
+      // pickers preset to the running game's setup — they only apply to a new game
+      this.newMode = CFG.MODES[S.mode] ? S.mode : 'moderate';
+      this.newSize = CFG.SIZES[S.sizeKey] ? S.sizeKey : 'medium';
+      document.querySelectorAll('#modeRow .mode').forEach(b => b.classList.toggle('sel', b.dataset.mode === this.newMode));
+      document.getElementById('modeDesc').textContent = CFG.MODES[this.newMode].desc;
+      document.querySelectorAll('#sizeRow .mode').forEach(b => b.classList.toggle('sel', b.dataset.size === this.newSize));
       const log = document.getElementById('logList');
       log.innerHTML = S.log.slice(0, 30).map(l => `<div>Day ${l.day}: ${l.msg}</div>`).join('');
       menu.classList.add('show');

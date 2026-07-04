@@ -37,9 +37,14 @@ on desktop too.
   a full playthrough runs about 20 minutes.
   ⏸ pauses; ☰ opens the menu (save / load / new game / seed / event log).
 - **Camera**: drag to pan, pinch (or mouse wheel) to zoom, tap the minimap to jump.
-- **Decluttering**: the ▾ tab on the build menu tucks it away for a bigger view
-  (🔨 Build brings it back — a villager's *Build…* button reopens it too), and
-  the ▾ tab over the minimap collapses the map to a small 🗺 button.
+- **Decluttering**: the ▾ tab at the bottom-left tucks the build menu away for
+  a bigger view (🔨 Build brings it back — a villager's *Build…* button reopens
+  it too), and the ▾ button beside the minimap collapses the map to a small 🗺
+  button.
+- **Menu**: ☰ shows the essentials — Resume, save/load, and the current game's
+  difficulty, map size, day, and seed (setup is fixed once a game starts).
+  *Start a new game…*, *How to play*, and the *Event log* live in collapsible
+  sections; the new-game pickers come preset to the running game's setup.
 - **Gathering**: tap a villager, then tap a **forest** (wood), **hills** (stone), or
   **fertile soil** (food) tile — they gather automatically. Tapping a resource tile
   with nothing selected sends an idle villager. Every tile holds a finite stock:
@@ -131,7 +136,9 @@ on desktop too.
   to hunt it.
 - **Raiders** — war parties arrive from map edges and camps — rarely on Calm, regularly on Hard —
   growing bigger and tougher; they attack your nearest buildings. Watchtowers and
-  defenders are your answer.
+  defenders are your answer. They always muster in the open wilds, well away
+  from your territory — never on your shores or inside your walls — and march
+  in from there, so chokepoints and island walkways truly hold.
 - **The rival tribe** — an AI settlement across the valley builds, upgrades, trains
   defenders, and will march on you if it out-scales your military. Scout it through
   the fog of war.

@@ -250,6 +250,15 @@ const Path = {
   // Used to keep hostile spawns out of walled-off pockets. Returns null when
   // no border tile is passable (island maps) — treat as "no filter".
   borderReach() {
+    const spots = [];
+    for (let x = 0; x < CFG.W; x++) spots.push({ x, y: 0 }, { x, y: CFG.H - 1 });
+    for (let y = 0; y < CFG.H; y++) spots.push({ x: 0, y }, { x: CFG.W - 1, y });
+    return this.reachFrom(spots);
+  },
+
+  // walkable tiles reachable (4-dir) from any of the given spots; null if none
+  // of the seed spots are passable
+  reachFrom(spots) {
     const W = CFG.W, H = CFG.H;
     const open = new Uint8Array(W * H);
     const q = [];
@@ -258,8 +267,7 @@ const Path = {
       const i = MapGen.idx(x, y);
       if (!open[i]) { open[i] = 1; q.push(i); }
     };
-    for (let x = 0; x < W; x++) { push(x, 0); push(x, H - 1); }
-    for (let y = 0; y < H; y++) { push(0, y); push(W - 1, y); }
+    for (const s of spots || []) push(s.x, s.y);
     if (!q.length) return null;
     let head = 0;
     while (head < q.length) {

@@ -68,15 +68,12 @@
   }
   #mini { width: 96px; height: 96px; image-rendering: pixelated; }
   #miniToggle {
-    position: absolute; right: 6px; z-index: 9;
-    bottom: calc(env(safe-area-inset-bottom) + 96px + 100px);
-    min-width: 36px; min-height: 22px; border: 1px solid #4a4232; border-radius: 8px 8px 0 0;
-    background: var(--bar-bg); color: var(--dim); font-size: 11px; font-weight: 700;
-  }
-  #miniToggle.collapsed {
+    position: absolute; right: 112px; z-index: 9;
     bottom: calc(env(safe-area-inset-bottom) + 96px);
-    min-height: 36px; border-radius: 8px; font-size: 15px;
+    min-width: 30px; min-height: 30px; border: 1px solid #4a4232; border-radius: 8px;
+    background: var(--bar-bg); color: var(--dim); font-size: 12px; font-weight: 700;
   }
+  #miniToggle.collapsed { right: 6px; min-width: 38px; min-height: 36px; font-size: 15px; }
 
   /* ---- bottom bar ---- */
   #bottombar {
@@ -85,7 +82,7 @@
     padding: 6px 6px calc(env(safe-area-inset-bottom) + 6px) 6px;
   }
   #bmToggle {
-    position: absolute; top: -22px; right: 8px;
+    position: absolute; top: -22px; left: 8px;
     min-width: 44px; height: 22px; border: 1px solid #4a4232; border-bottom: none;
     border-radius: 8px 8px 0 0; background: var(--panel-bg); color: var(--dim);
     font-size: 11px; font-weight: 700; padding: 0 10px;
@@ -139,6 +136,16 @@
   }
   .mbox h2 { font-size: 18px; color: var(--gold); margin-bottom: 10px; }
   .mbox p { font-size: 12px; color: var(--dim); line-height: 1.5; margin: 6px 0; }
+  .mbox details { margin: 8px 0; border: 1px solid #4a4232; border-radius: 10px; padding: 0 10px; }
+  .mbox summary {
+    list-style: none; cursor: pointer; min-height: 42px;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 700; color: var(--text);
+  }
+  .mbox summary::-webkit-details-marker { display: none; }
+  .mbox summary::before { content: '▸'; color: var(--dim); transition: transform .15s; }
+  .mbox details[open] summary::before { transform: rotate(90deg); }
+  .mbox details > :last-child { margin-bottom: 10px; }
   .mrow { display: flex; gap: 8px; margin: 8px 0; align-items: center; }
   .mrow .abtn { flex: 1; }
   #seedInput {
@@ -183,33 +190,42 @@
     <div class="mrow"><button class="abtn" id="btnSave">💾 Save game (download)</button>
       <button class="abtn" id="btnLoad">📂 Load game</button>
       <input type="file" id="fileLoad" accept=".json,application/json" style="display:none"></div>
-    <p class="hint" style="margin-bottom:2px"><b>New game difficulty:</b></p>
-    <div class="mrow" id="modeRow">
-      <button class="abtn mode" data-mode="calm">🌿 Calm</button>
-      <button class="abtn mode sel" data-mode="moderate">⚔️ Moderate</button>
-      <button class="abtn mode" data-mode="hard">💀 Hard</button>
-    </div>
-    <p class="hint" id="modeDesc" style="margin-top:0">The intended experience.</p>
-    <p class="hint" style="margin-bottom:2px"><b>Map size:</b></p>
-    <div class="mrow" id="sizeRow">
-      <button class="abtn mode" data-size="small">🏕 Small</button>
-      <button class="abtn mode sel" data-size="medium">🏞 Medium</button>
-      <button class="abtn mode" data-size="large">🗺 Large</button>
-    </div>
-    <div class="mrow"><input id="seedInput" placeholder="seed (optional)" inputmode="text">
-      <button class="abtn" id="btnNew">New game</button></div>
     <p id="seedShow"></p>
-    <p class="hint"><b>How to play:</b> Drag to pan, pinch to zoom, tap to select.
-      Tap a build button then a tile to place. Construction and repairs need a villager —
-      an idle one is sent automatically, or tap a villager then the site. Tap a villager,
-      then a forest / hill / fertile tile to gather — tiles run dry and turn to stumps or
-      pebbles, so build farms, camps and quarries for steady income. Train defenders at the Barracks to
-      fight wolves and raiders.</p>
-    <p class="hint"><b>Win:</b> destroy the rival tribe's Town Center. <b>Lose:</b> yours falls.
-      Nothing else ends the game — build up, then go get them.</p>
-    <p class="hint">Farms, lodges, lumber camps and quarries only produce while a villager is
-      stationed there. Every valley is short on one resource — scout for it and hold it.</p>
-    <div id="logList"></div>
+    <details id="dNew">
+      <summary>🏕 Start a new game…</summary>
+      <p class="hint" style="margin-bottom:2px"><b>Difficulty:</b></p>
+      <div class="mrow" id="modeRow">
+        <button class="abtn mode" data-mode="calm">🌿 Calm</button>
+        <button class="abtn mode sel" data-mode="moderate">⚔️ Moderate</button>
+        <button class="abtn mode" data-mode="hard">💀 Hard</button>
+      </div>
+      <p class="hint" id="modeDesc" style="margin-top:0">The intended experience.</p>
+      <p class="hint" style="margin-bottom:2px"><b>Map size:</b></p>
+      <div class="mrow" id="sizeRow">
+        <button class="abtn mode" data-size="small">🏕 Small</button>
+        <button class="abtn mode sel" data-size="medium">🏞 Medium</button>
+        <button class="abtn mode" data-size="large">🗺 Large</button>
+      </div>
+      <div class="mrow"><input id="seedInput" placeholder="seed (optional)" inputmode="text">
+        <button class="abtn" id="btnNew">New game</button></div>
+    </details>
+    <details id="dHelp">
+      <summary>📖 How to play</summary>
+      <p class="hint"><b>Basics:</b> Drag to pan, pinch to zoom, tap to select.
+        Tap a build button then a tile to place. Construction and repairs need a villager —
+        an idle one is sent automatically, or tap a villager then the site. Tap a villager,
+        then a forest / hill / fertile tile to gather — tiles run dry and turn to stumps or
+        pebbles, so build farms, camps and quarries for steady income. Train defenders at the Barracks to
+        fight wolves and raiders.</p>
+      <p class="hint"><b>Win:</b> destroy the rival tribe's Town Center. <b>Lose:</b> yours falls.
+        Nothing else ends the game — build up, then go get them.</p>
+      <p class="hint">Farms, lodges, lumber camps and quarries only produce while a villager is
+        stationed there. Every valley is short on one resource — scout for it and hold it.</p>
+    </details>
+    <details id="dLog">
+      <summary>📜 Event log</summary>
+      <div id="logList"></div>
+    </details>
   </div>
 </div>
 

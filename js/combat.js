@@ -197,18 +197,37 @@ const Combat = {
       sx = side === 0 ? 0 : side === 1 ? CFG.W - 1 : (G.rand() * CFG.W) | 0;
       sy = side === 2 ? 0 : side === 3 ? CFG.H - 1 : (G.rand() * CFG.H) | 0;
     }
-    // never drop a war party inside somebody's sealed walls: spawn tiles must be
-    // reachable from the open map border. Island maps (all-water border) skip the
-    // filter, and edge tiles can be water, so widen the search before giving up.
-    const open = Path.borderReach();
-    const ok = (x, y) => Path.passable(x, y) && (!open || open[MapGen.idx(x, y)]);
-    const spot = MapGen.findNear(sx, sy, 6, ok) ||
-                 MapGen.findNear(sx, sy, Math.max(CFG.W, CFG.H), ok) ||
-                 MapGen.findNear(sx, sy, Math.max(CFG.W, CFG.H), (x, y) => Path.passable(x, y));
+    // War parties march in — they never materialize on the player's doorstep.
+    // Spawn tiles must be (a) in the open wilderness network: reachable from the
+    // map border, or on all-water-border island maps from a raider camp / the
+    // rival's town (this also keeps them out of sealed wall rings), and (b) at
+    // least CLEAR tiles from every player building, so on island maps a wave
+    // rolled near the player's shore relocates across the water instead of
+    // landing on their beach.
+    let open = Path.borderReach();
+    if (!open) {
+      const seeds = (S.map.spawns.camps || []).slice();
+      const atc = Bld.tcOf('A');
+      if (atc) seeds.push({ x: atc.x, y: atc.y + 2 });
+      open = Path.reachFrom(seeds);
+    }
+    const inNet = (x, y) => Path.passable(x, y) && (!open || open[MapGen.idx(x, y)]);
+    const CLEAR = 10;
+    const farOk = (x, y) => {
+      if (!inNet(x, y)) return false;
+      for (const b of S.buildings)
+        if (b.owner === 'P' && Math.hypot(b.x - x, b.y - y) < CLEAR) return false;
+      return true;
+    };
+    const max = Math.max(CFG.W, CFG.H);
+    const spot = MapGen.findNear(sx, sy, 6, farOk) || MapGen.findNear(sx, sy, max, farOk) ||
+                 MapGen.findNear(sx, sy, max, inNet) ||
+                 MapGen.findNear(sx, sy, max, (x, y) => Path.passable(x, y));
     if (!spot) return;
     for (let i = 0; i < n; i++) {
       const kind = (S.wave.count >= 4 && i % 3 === 2) ? 'brute' : 'raider';
-      const p = MapGen.findNear(spot.x, spot.y, 4, ok) || spot;
+      const p = MapGen.findNear(spot.x, spot.y, 4, farOk) ||
+                MapGen.findNear(spot.x, spot.y, 4, inNet) || spot;
       Units.spawn(kind, 'R', p.x, p.y, { scale });
     }
     G.log(`⚔ Raider war party sighted (${n})!`, true);
