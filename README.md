@@ -169,12 +169,16 @@ on desktop too.
 - **Barbarians** — wildling war bands in furs, bone, and teal war paint (their
   own colour, so they never read as the red rival tribe) arrive from map edges
   and camps — rarely on Calm, regularly on Hard — growing bigger and tougher
-  over time. Every band rolls a temper when it appears: some hunt **you**, some
-  march on the **rival tribe**, and some attack **anyone** they find — the
+  over time. Every band rolls a temper when it appears: a quarter hunt **you**,
+  a quarter march on the **rival tribe**, and half attack **anyone** — the
   sighting message hints at it, tapping a barbarian tells you outright, and
   each side's guards and towers only engage bands that actually threaten them
   (though everyone defends themselves when struck, and you can always order an
-  attack on any band — even one conveniently headed for your rival). On Moderate they're tougher
+  attack on any band — even one conveniently headed for your rival). Raiders
+  strike **whatever is closest** — a villager caught in the open dies before
+  the wall behind them — and while barbarians will sack the rival's town, they
+  only manage half damage against its Town Center, so finishing a tribe off
+  stays your job. On Moderate they're tougher
   than any animal but weaker than the rival's soldiers; on Hard they match the
   rival's fighters and come a little more often. Watchtowers and defenders are
   your answer. They always muster in the open wilds, well away from your

@@ -81,15 +81,18 @@ const Combat = {
   raiderSeek(u) {
     const disp = u.owner === 'R' ? (u.hostileTo || 'P') : 'P';
     const owners = disp === 'ALL' ? ['P', 'A'] : [disp];
-    const foe = this.nearestUnit(u.x, u.y, CFG.UNITS[u.kind].aggro || 2.5,
+    // whatever is closest gets hit — a villager beside the wall dies before
+    // the wall does, soldiers and buildings alike are just targets by distance
+    const foe = this.nearestUnit(u.x, u.y, 4,
       o => owners.includes(o.owner) && (Units.isMilitary(o) || Units.isVillager(o)) && this.canEngage(u, o));
-    if (foe && Units.isMilitary(foe)) { u.tUnit = foe.id; return; }
     let b = null;
     for (const ow of owners) {
       const cand = this.nearestBuilding(u.x, u.y, ow);
       if (cand && (!b || Math.hypot(cand.x - u.x, cand.y - u.y) < Math.hypot(b.x - u.x, b.y - u.y)))
         b = cand;
     }
+    if (foe && (!b || Math.hypot(foe.x - u.x, foe.y - u.y) <= Math.hypot(b.x + 0.5 - u.x, b.y + 0.5 - u.y)))
+      { u.tUnit = foe.id; return; }
     if (b) {
       // try to reach the target; if walls are in the way the path stops short —
       // then batter the closest wall or gate instead
@@ -175,7 +178,11 @@ const Combat = {
           u.cd = CFG.ATTACK_COOLDOWN;
           if (CFG.UNITS[u.kind].rng)
             this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: b.x + 0.5, y2: b.y + 0.5, t: 0.15, fire: !!CFG.UNITS[u.kind].fire });
-          const dmg = Math.max(1, Math.round(Units.effAtk(u)));
+          let dmg = Math.max(1, Math.round(Units.effAtk(u)));
+          // barbarians loot and burn, but razing the rival's Town Center is
+          // beyond them — half damage there, so they rarely finish the job
+          if (u.owner === 'R' && b.owner === 'A' && b.key === 'tc')
+            dmg = Math.max(1, Math.round(dmg * 0.5));
           Bld.damage(b, dmg);
           if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
             G.log(`${Bld.def(b.key).name} under attack!`, true);
@@ -254,8 +261,10 @@ const Combat = {
                  MapGen.findNear(sx, sy, max, inNet) ||
                  MapGen.findNear(sx, sy, max, (x, y) => Path.passable(x, y));
     if (!spot) return;
-    // every band rolls a temper: hunt the player, march on the rival, or anyone
-    const disp = ['P', 'A', 'ALL'][(G.rand() * 3) | 0];
+    // every band rolls a temper: 25% hunt the player, 25% march on the rival,
+    // 50% attack anyone they find
+    const dr = G.rand();
+    const disp = dr < 0.25 ? 'P' : dr < 0.5 ? 'A' : 'ALL';
     for (let i = 0; i < n; i++) {
       const kind = (S.wave.count >= 4 && i % 3 === 2) ? 'brute' : 'raider';
       const p = MapGen.findNear(spot.x, spot.y, 4, farOk) ||
