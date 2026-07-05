@@ -77,22 +77,26 @@ const Combat = {
   },
 
   // raiders + AI raid parties pick their objective. Barbarian bands follow
-  // their spawn disposition: the player, the rival tribe, or whoever is nearest.
+  // their spawn disposition: the player, the rival tribe, or whoever they find.
   raiderSeek(u) {
     const disp = u.owner === 'R' ? (u.hostileTo || 'P') : 'P';
     const owners = disp === 'ALL' ? ['P', 'A'] : [disp];
-    // whatever is closest gets hit — a villager beside the wall dies before
-    // the wall does, soldiers and buildings alike are just targets by distance
-    const foe = this.nearestUnit(u.x, u.y, 4,
-      o => owners.includes(o.owner) && (Units.isMilitary(o) || Units.isVillager(o)) && this.canEngage(u, o));
+    // priority of prey: soldiers first, then villagers, then buildings. The
+    // hostileUnits check means an anyone-hating band that reaches the gates
+    // mid-siege wades into the rival's raiders too — three-way brawls happen
+    // (barbarian warriors count as soldiers for everyone hunting them).
+    const fighter = o => Units.isMilitary(o) || (o.owner === 'R' && !Units.isTransport(o));
+    const foe = this.nearestUnit(u.x, u.y, 6,
+        o => this.hostileUnits(u, o) && fighter(o) && this.canEngage(u, o))
+      || this.nearestUnit(u.x, u.y, 6,
+        o => this.hostileUnits(u, o) && Units.isVillager(o) && this.canEngage(u, o));
+    if (foe) { u.tUnit = foe.id; return; }
     let b = null;
     for (const ow of owners) {
       const cand = this.nearestBuilding(u.x, u.y, ow);
       if (cand && (!b || Math.hypot(cand.x - u.x, cand.y - u.y) < Math.hypot(b.x - u.x, b.y - u.y)))
         b = cand;
     }
-    if (foe && (!b || Math.hypot(foe.x - u.x, foe.y - u.y) <= Math.hypot(b.x + 0.5 - u.x, b.y + 0.5 - u.y)))
-      { u.tUnit = foe.id; return; }
     if (b) {
       // try to reach the target; if walls are in the way the path stops short —
       // then batter the closest wall or gate instead
@@ -104,7 +108,6 @@ const Combat = {
       u.tBld = b.id;   // no wall found — press on regardless
       return;
     }
-    if (foe) { u.tUnit = foe.id; return; }
     // nothing left to attack — raiders leave, AI parties go home
     if (u.owner === 'R') {
       const ex = u.x < CFG.W / 2 ? 0 : CFG.W - 1;
@@ -219,9 +222,68 @@ const Combat = {
     S.wave.count++;
     const gap = CFG.WAVES.minGap + Math.floor(G.rand() * (CFG.WAVES.maxGap - CFG.WAVES.minGap + 1));
     S.wave.next = S.day + Math.max(4, Math.round(gap * m.waveGapMult));
-    const n = Math.max(1, Math.min(8, 1 + Math.ceil(S.wave.count * 0.7) + m.waveSizeAdd));
+    // bands stay small — barbarians season a fight, they don't decide the war
+    const n = Math.max(1, Math.min(6, 1 + Math.ceil(S.wave.count * 0.5) + m.waveSizeAdd));
     // waves toughen over time; barbMult sets the mode baseline (Hard ≈ rival defenders)
     const scale = (1 + S.wave.count * CFG.WAVES.scaleHp) * (m.barbMult || 1);
+
+    // every band rolls a temper — 10% hunt the player, 10% march on the rival,
+    // 80% attack whomever they find. The village never learns which: the only
+    // warning anyone gets is that barbarians are on the move.
+    const dr = G.rand();
+    const disp = dr < 0.10 ? 'P' : dr < 0.20 ? 'A' : 'ALL';
+    const brute = i => (S.wave.count >= 4 && i % 3 === 2) ? 'brute' : 'raider';
+
+    // the open wilderness network (see below) — also gates beach landings so
+    // sea raiders can't step off inside someone's sealed walls
+    let open = Path.borderReach();
+    if (!open) {
+      const seeds = (S.map.spawns.camps || []).slice();
+      const atc0 = Bld.tcOf('A');
+      if (atc0) seeds.push({ x: atc0.x, y: atc0.y + 2 });
+      open = Path.reachFrom(seeds);
+    }
+
+    // seaborne raid: when open water touches the map edge, some bands arrive
+    // by boat like viking raiders — sails first, then a landing on the beach
+    // nearest their prey. Later waves come in the big war transports.
+    if (G.rand() < 0.35) {
+      const edges = [];
+      const water = (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.WATER && !Bld.at(x, y);
+      for (let x = 0; x < CFG.W; x++) { if (water(x, 0)) edges.push({ x, y: 0 }); if (water(x, CFG.H - 1)) edges.push({ x, y: CFG.H - 1 }); }
+      for (let y = 1; y < CFG.H - 1; y++) { if (water(0, y)) edges.push({ x: 0, y }); if (water(CFG.W - 1, y)) edges.push({ x: CFG.W - 1, y }); }
+      const ptc = Bld.tcOf('P'), atc = Bld.tcOf('A');
+      const tgt = disp === 'P' ? ptc : disp === 'A' ? atc : (G.rand() < 0.5 && atc ? atc : ptc) || atc;
+      if (edges.length && tgt) {
+        const start = edges[(G.rand() * edges.length) | 0];
+        const route = Path.find(start.x, start.y, tgt.x, tgt.y, 'R', 'water') || [];
+        // walk back from the water tile nearest the target to the first open beach
+        const cells = [{ x: start.x, y: start.y }].concat(route);
+        let landing = null;
+        for (let ci = cells.length - 1; ci >= 0 && !landing; ci--) {
+          for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const lx = cells[ci].x + ox, ly = cells[ci].y + oy;
+            if (Path.passable(lx, ly) && (!open || open[MapGen.idx(lx, ly)])) { landing = { x: lx, y: ly }; break; }
+          }
+        }
+        if (landing) {
+          const kindT = S.wave.count >= 5 ? 'bigtransport' : 'transport';
+          const tr = Units.spawn(kindT, 'R', start.x, start.y);
+          tr.hostileTo = disp;
+          tr.cargo = [];
+          const aboard = Math.min(n, CFG.UNITS[kindT].cap);
+          for (let i = 0; i < aboard; i++) {
+            const ru = Units.spawn(brute(i), 'R', start.x, start.y, { scale });
+            ru.hostileTo = disp;
+            S.units.splice(S.units.indexOf(ru), 1);   // they ride in the hull
+            tr.cargo.push(ru);
+          }
+          Units.orderUnload(tr, landing.x, landing.y);
+          G.log('⛵ Sails on the horizon — a barbarian longboat makes for the shore!', true);
+          return;
+        }
+      }
+    }
 
     // spawn near a raider camp if any, else map edge
     let sx, sy;
@@ -241,13 +303,6 @@ const Combat = {
     // least CLEAR tiles from every player building, so on island maps a wave
     // rolled near the player's shore relocates across the water instead of
     // landing on their beach.
-    let open = Path.borderReach();
-    if (!open) {
-      const seeds = (S.map.spawns.camps || []).slice();
-      const atc = Bld.tcOf('A');
-      if (atc) seeds.push({ x: atc.x, y: atc.y + 2 });
-      open = Path.reachFrom(seeds);
-    }
     const inNet = (x, y) => Path.passable(x, y) && (!open || open[MapGen.idx(x, y)]);
     const CLEAR = 10;
     const farOk = (x, y) => {
@@ -261,18 +316,11 @@ const Combat = {
                  MapGen.findNear(sx, sy, max, inNet) ||
                  MapGen.findNear(sx, sy, max, (x, y) => Path.passable(x, y));
     if (!spot) return;
-    // every band rolls a temper: 25% hunt the player, 25% march on the rival,
-    // 50% attack anyone they find
-    const dr = G.rand();
-    const disp = dr < 0.25 ? 'P' : dr < 0.5 ? 'A' : 'ALL';
     for (let i = 0; i < n; i++) {
-      const kind = (S.wave.count >= 4 && i % 3 === 2) ? 'brute' : 'raider';
       const p = MapGen.findNear(spot.x, spot.y, 4, farOk) ||
                 MapGen.findNear(spot.x, spot.y, 4, inNet) || spot;
-      Units.spawn(kind, 'R', p.x, p.y, { scale }).hostileTo = disp;
+      Units.spawn(brute(i), 'R', p.x, p.y, { scale }).hostileTo = disp;
     }
-    G.log(disp === 'P' ? `⚔ Barbarian war band sighted (${n}) — they're coming for you!`
-      : disp === 'A' ? `⚔ Barbarian war band sighted (${n}) — they march on the rival tribe!`
-      : `⚔ Barbarian war band sighted (${n}) — they'll attack anyone they find!`, true);
+    G.log(`⚔ A barbarian war band is on the move (${n})!`, true);
   },
 };

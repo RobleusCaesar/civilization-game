@@ -259,6 +259,11 @@ const R = {
         g.beginPath(); g.ellipse(u.x * TL, u.y * TL + 10, 10, 5, 0, 0, Math.PI * 2); g.stroke();
       }
       g.drawImage(this.unitSprite(u), ux, uy);
+      if (u.cargo && u.cargo.length) {                 // one pip per soldier aboard
+        g.fillStyle = u.owner === 'P' ? '#c0e8ff' : '#ffb0a0';
+        for (let ci = 0; ci < u.cargo.length; ci++)
+          g.fillRect(ux + 7 + ci * 4, uy - 1, 3, 3);
+      }
       if (u.hp < u.maxhp) this.bar(g, ux + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');
     }

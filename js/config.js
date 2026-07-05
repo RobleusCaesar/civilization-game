@@ -161,7 +161,9 @@ const CFG = {
       reqTC: 2,   // needs Town Center level 2 before it can be placed
       train: {
         fishboat: { cost: { wood: 40, gold: 5 }, time: 1 },
+        transport: { cost: { wood: 60, gold: 10 }, time: 1.5 },
         warship:  { cost: { wood: 80, gold: 20 }, time: 2, reqLevel: 2 },
+        bigtransport: { cost: { wood: 120, gold: 30 }, time: 2, reqLevel: 3 },
         fireship: { cost: { wood: 130, gold: 45 }, time: 2.5, reqLevel: 3 },
       },
       levels: [
@@ -169,7 +171,7 @@ const CFG = {
         { cost: { wood: 100, stone: 40, gold: 15 }, time: 2, hp: 340, vision: 6,
           bonus: 'Unlocks Warship' },
         { cost: { wood: 160, stone: 90, gold: 30 }, time: 3, hp: 480, vision: 7,
-          bonus: 'Unlocks Fire Warship' },
+          bonus: 'Unlocks Fire Warship & War Transport' },
       ],
     },
     wall: {
@@ -209,15 +211,21 @@ const CFG = {
     fishboat: { name: 'Fishing Boat',   hp: 35,  atk: 0,  def: 0, speed: 2.4, aggro: 0,   naval: true },
     warship:  { name: 'Warship',        hp: 95,  atk: 9,  def: 1, speed: 2.6, aggro: 5,   naval: true, rng: 4 },
     fireship: { name: 'Fire Warship',   hp: 140, atk: 14, def: 2, speed: 2.6, aggro: 5.5, naval: true, rng: 4.5, fire: true },
+    // troop transports: no weapons, just a hull — cap = soldiers carried
+    transport:    { name: 'Transport Raft', hp: 80,  atk: 0, def: 1, speed: 2.2, aggro: 0, naval: true, cap: 3 },
+    bigtransport: { name: 'War Transport',  hp: 130, atk: 0, def: 2, speed: 2.4, aggro: 0, naval: true, cap: 5 },
   },
 
   MEAT_DROP: 10,               // food gained when a wild animal is killed
   PASSIVE_MAX: 2,              // grazing animals (deer/cow) kept on the map
   HEAL_FOOD: { villager: 50, defender: 40, elite: 80,
                rider: 60, lancer: 100, archer: 40, marksman: 70,
-               fishboat: 30, warship: 70, fireship: 110 },  // full-heal cost scales with missing hp
+               fishboat: 30, warship: 70, fireship: 110,
+               transport: 50, bigtransport: 90 },  // full-heal cost scales with missing hp
 
-  WAVES: { minGap: 10, maxGap: 14, scaleHp: 0.07, scaleAtk: 0.05 },
+  // barbarian pressure: a spice, not a kingmaker — bands come less often and
+  // smaller than they used to, tipping fights without deciding them
+  WAVES: { minGap: 14, maxGap: 20, scaleHp: 0.07, scaleAtk: 0.05 },
   ANIMALS: { graceDays: 8, minDistTC: 12, leash: 7 },
 
   /* Difficulty modes. gather/output scale player income; wave* shape barbarian

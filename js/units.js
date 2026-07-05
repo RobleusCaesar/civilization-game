@@ -33,6 +33,7 @@ const Units = {
   },
   isVillager(u) { return u.kind === 'villager'; },
   isNaval(u) { return !!CFG.UNITS[u.kind].naval; },
+  isTransport(u) { return u.kind === 'transport' || u.kind === 'bigtransport'; },
   domain(u) { return CFG.UNITS[u.kind].naval ? 'water' : 'land'; },
   isWild(u) { return u.owner === 'W'; },
   isPassive(u) { return u.kind === 'deer' || u.kind === 'cow'; },
@@ -41,7 +42,11 @@ const Units = {
   popUsed(owner) {
     let n = owner === 'P' && S.garrison ? S.garrison.length : 0;
     for (const u of S.units)
-      if (u.owner === owner && (this.isVillager(u) || this.isMilitary(u) || u.kind === 'fishboat')) n++;
+      if (u.owner === owner && (this.isVillager(u) || this.isMilitary(u) ||
+          u.kind === 'fishboat' || this.isTransport(u))) {
+        n++;
+        if (this.isTransport(u) && u.cargo) n += u.cargo.length;   // soldiers below deck still eat
+      }
     return n;
   },
   count(owner, pred) {
@@ -168,6 +173,53 @@ const Units = {
     this.setPath(u, b.x, b.y);
   },
 
+  /* ---- troop transports: board, sail, land ---- */
+  cargoCap(tr) { return CFG.UNITS[tr.kind].cap || 0; },
+  // soldiers already aboard plus those marching to the pier
+  cargoClaimed(tr) {
+    let n = (tr.cargo || []).length;
+    for (const o of S.units) if (o.task && o.task.type === 'board' && o.task.id === tr.id) n++;
+    return n;
+  },
+  orderBoard(u, tr) {
+    if (!this.isTransport(tr) || tr.owner !== u.owner) return false;
+    if (this.cargoClaimed(tr) >= this.cargoCap(tr)) return false;
+    const spot = MapGen.findNear(tr.x | 0, tr.y | 0, 2, (x, y) => Path.passable(x, y, u.owner));
+    if (!spot) return false;   // the hull is out at sea — bring it to shore first
+    u.task = { type: 'board', id: tr.id };
+    u.tUnit = 0; u.tBld = 0;
+    this.setPath(u, spot.x, spot.y);
+    return true;
+  },
+  // sail to the water beside the marked shore tile, then put everyone ashore
+  orderUnload(u, tx, ty) {
+    u.task = { type: 'unload', x: tx, y: ty };
+    u.tUnit = 0; u.tBld = 0;
+    this.setPath(u, tx, ty);   // water-domain path ends at the closest water tile
+  },
+  disembark(u) {
+    u.task = null;
+    const cargo = u.cargo || [];
+    let landed = 0;
+    while (cargo.length) {
+      const spot = MapGen.findNear(u.x | 0, u.y | 0, 2, (x, y) => Path.passable(x, y, u.owner));
+      if (!spot) break;   // no beach beside the hull
+      const c = cargo.pop();
+      c.x = spot.x + 0.5; c.y = spot.y + 0.5;
+      c.anchor = { x: c.x, y: c.y };
+      c.path = null; c.pathI = 0; c.task = null; c.tUnit = 0; c.tBld = 0; c.cd = 0;
+      S.units.push(c);
+      landed++;
+    }
+    if (u.owner === 'P') {
+      if (landed) G.log(`${landed} soldier${landed > 1 ? 's' : ''} ashore`);
+      else if (cargo.length) G.log('No open shore beside the hull — sail closer to land', true);
+    } else if (u.owner === 'R' && !cargo.length) {
+      // the raiders beach the boat and leave it — the hull's job is done
+      S.units.splice(S.units.indexOf(u), 1);
+    }
+  },
+
   // advance along path; returns true when path finished
   followPath(u, dt) {
     if (!u.path || u.pathI >= u.path.length) return true;
@@ -197,7 +249,9 @@ const Units = {
 
       if (this.isWild(u)) { this.wildIdle(u, dt); continue; }
 
-      if ((this.isRaider(u) && !(u.task && u.task.type === 'flee')) ||
+      // barbarian transports run their landing orders like any other unit;
+      // every other barbarian is driven by raiderSeek
+      if ((this.isRaider(u) && !this.isTransport(u) && !(u.task && u.task.type === 'flee')) ||
           (u.owner === 'A' && u.task && u.task.type === 'raid')) {
         Combat.raiderSeek(u);
         continue;
@@ -246,18 +300,20 @@ const Units = {
         } else {
           const idx = MapGen.idx(t.x, t.y);
           if (S.map.terrain[idx] !== T.WATER) { u.task = null; continue; }
-          const before = S.res.food;
+          // fish feed whichever tribe cast the nets — the rival runs boats too
+          const bag = u.owner === 'P' ? S.res : S.ai.res;
+          const before = bag.food;
           const take = Math.min(S.map.resAmount[idx], CFG.FISH.rate * dt * G.modeCfg().gather);
-          S.res.food += take;
+          bag.food += take;
           S.map.resAmount[idx] -= take;
-          if ((before | 0) !== (S.res.food | 0) && Math.random() < 0.3)
+          if (u.owner === 'P' && (before | 0) !== (bag.food | 0) && Math.random() < 0.3)
             R.float(u.x, u.y - 0.5, '+food', '#d8e8b0');
           if (S.map.resAmount[idx] <= 0.001) {
             S.map.resAmount[idx] = 0;
             // drift to the next stocked water tile nearby, or go idle
             const next = MapGen.findNear(t.x, t.y, 4, (x, y) => this.canFish(x, y));
             if (next && this.assignFish(u, next.x, next.y)) continue;
-            G.log('These waters are fished out — boat idle', true);
+            if (u.owner === 'P') G.log('These waters are fished out — boat idle', true);
             u.task = null;
           }
         }
@@ -320,6 +376,29 @@ const Units = {
           if (this.moving(u)) this.followPath(u, dt);
           else if (!this.setPath(u, b.x, b.y)) u.task = null;
         } else u.path = null;
+      } else if (t.type === 'board') {
+        // march to the pier and step aboard the transport
+        const tr = this.get(t.id);
+        if (!tr || !this.isTransport(tr) || tr.owner !== u.owner) { u.task = null; continue; }
+        if (Math.hypot(tr.x - u.x, tr.y - u.y) <= 1.6) {
+          if (!tr.cargo) tr.cargo = [];
+          if (tr.cargo.length >= this.cargoCap(tr)) { u.task = null; continue; }
+          u.task = null; u.path = null; u.pathI = 0; u.tUnit = 0; u.tBld = 0;
+          for (const o of S.units) if (o.tUnit === u.id) o.tUnit = 0;
+          if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
+          tr.cargo.push(u);
+          S.units.splice(i, 1);
+        } else if (this.moving(u)) {
+          this.followPath(u, dt);
+        } else if (u.repathT <= 0) {
+          // the hull may have drifted — walk to the shore beside where it is now
+          u.repathT = 0.8;
+          const spot = MapGen.findNear(tr.x | 0, tr.y | 0, 2, (x, y) => Path.passable(x, y, u.owner));
+          if (!spot || !this.setPath(u, spot.x, spot.y)) u.task = null;
+        }
+      } else if (t.type === 'unload') {
+        if (this.moving(u)) { if (this.followPath(u, dt)) this.disembark(u); }
+        else this.disembark(u);
       } else if (t.type === 'attackBld') {
         // target destroyed while en route
         u.task = null;
@@ -346,6 +425,8 @@ const Units = {
       for (const o of S.units) if (o.tUnit === u.id) o.tUnit = 0;
       if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
       if (u.owner === 'P') G.log(`${CFG.UNITS[u.kind].name} was killed`, true);
+      if (u.owner === 'P' && this.isTransport(u) && u.cargo && u.cargo.length)
+        G.log(`💀 ${u.cargo.length} soldier${u.cargo.length > 1 ? 's' : ''} lost with the hull`, true);
       // any wild animal killed by a tribe yields meat
       if (this.isWild(u)) {
         const owner = (attacker && attacker.owner) || attackerOwner;

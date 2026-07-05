@@ -115,6 +115,12 @@ on desktop too.
   A level-2 dock unlocks the **Warship** — a sailed vessel whose archers hit
   enemies and buildings within a few tiles of the water — and level 3 unlocks
   the **Fire Warship**, tougher, longer-ranged, and shooting flaming arrows.
+  The dock also builds **troop transports**: the Transport Raft carries **3
+  soldiers**, and a level-3 dock's War Transport carries **5**. Select soldiers
+  (or a war party) and tap the hull to board; select the transport and tap a
+  shore tile to land them — that's how you cross water and take the fight to
+  an island. The rival tribe runs the same playbook: expect its fishing boats
+  on the water and warships guarding its coast once its town matures.
   Fishing is a touch slower than a farm, but fish don't need fertile ground.
   Ships never leave the water (and land units can't touch them) — and enemies
   know it: melee troops with no way to shoot back break off and retreat out of
@@ -177,22 +183,20 @@ on desktop too.
   to hunt it.
 - **Barbarians** — wildling war bands in furs, bone, and teal war paint (their
   own colour, so they never read as the red rival tribe) arrive from map edges
-  and camps — rarely on Calm, regularly on Hard — growing bigger and tougher
-  over time. Every band rolls a temper when it appears: a quarter hunt **you**,
-  a quarter march on the **rival tribe**, and half attack **anyone** — the
-  sighting message hints at it, tapping a barbarian tells you outright, and
-  each side's guards and towers only engage bands that actually threaten them
-  (though everyone defends themselves when struck, and you can always order an
-  attack on any band — even one conveniently headed for your rival). Raiders
-  strike **whatever is closest** — a villager caught in the open dies before
-  the wall behind them — and while barbarians will sack the rival's town, they
-  only manage half damage against its Town Center, so finishing a tribe off
-  stays your job. On Moderate they're tougher
-  than any animal but weaker than the rival's soldiers; on Hard they match the
-  rival's fighters and come a little more often. Watchtowers and defenders are
-  your answer. They always muster in the open wilds, well away from your
-  territory — never on your shores or inside your walls — and march in from
-  there, so chokepoints and island walkways truly hold.
+  and camps — rarely on Calm, more often on Hard — in small bands meant to tip
+  a fight, never to win the war for either side. Every band rolls a hidden
+  temper when it appears: **10%** hunt you, **10%** march on the rival, and
+  **80%** attack whomever they find first — and nothing tells you which; the
+  only warning is that barbarians are on the move. Anyone-hating bands that
+  arrive mid-battle wade in on their own account, so barbarians and rival
+  raiders will happily fight each other at your gates. Raiders prioritize
+  **soldiers first, villagers second, buildings third**, and while they'll sack
+  the rival's town, they only manage half damage against its Town Center, so
+  finishing a tribe off stays your job. Where open water touches the map edge,
+  some bands arrive **by sea** like viking raiders — a longboat (a big war
+  transport in later waves) makes for the beach nearest its prey and puts its
+  warriors ashore; sink it before it lands if you can. Land-marching bands
+  still muster in the open wilds, never on your shores or inside your walls.
 - **The rival tribe** — an AI settlement across the valley builds, upgrades, trains
   defenders, and will march on you if it out-scales your military. Its army size
   and elite share scale with difficulty: on Moderate it fields a mostly-defender

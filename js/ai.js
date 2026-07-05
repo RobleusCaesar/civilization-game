@@ -67,6 +67,24 @@ const AI = {
       if (Bld.canUpgrade(tc).ok) Bld.upgrade(tc);
     }
 
+    // put to sea: once the town matures, a dock goes up on any suitable water,
+    // then fishing boats work the shallows and warships patrol the coast
+    if (tc && tc.level >= 2 && !S.buildings.some(b => b.owner === 'A' && b.key === 'dock')) {
+      if (Bld.canAfford(CFG.BUILDINGS.dock.levels[0].cost, ai.res)) {
+        const site = MapGen.findNear(tc.x, tc.y, 8, (x, y) => Bld.dockSiteOk(x, y, 'A').ok);
+        if (site && Bld.canPlace('A', 'dock', site.x, site.y).ok)
+          Bld.place('A', 'dock', site.x, site.y);
+      }
+    }
+    const dock = S.buildings.find(b => b.owner === 'A' && b.key === 'dock' && Bld.done(b));
+    if (dock && !dock.upgrading && dock.queue.length === 0) {
+      const boats = Units.count('A', u => u.kind === 'fishboat');
+      const ships = Units.count('A', u => u.kind === 'warship' || u.kind === 'fireship');
+      if (boats < 2) Bld.train(dock, 'fishboat');
+      else if (dock.level >= 2 && ships < Math.max(1, Math.floor((m.aiArmyCap || 8) / 4)))
+        Bld.train(dock, dock.level >= 3 && ai.res.gold >= 45 ? 'fireship' : 'warship');
+    }
+
     // keep a standing force
     const barracks = S.buildings.find(b => b.owner === 'A' && b.key === 'barracks' && Bld.done(b));
     const want = Math.min(2 + Math.floor(S.day / (m.aiArmyDiv || 8)), m.aiArmyCap || 10);

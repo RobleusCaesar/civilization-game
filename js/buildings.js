@@ -61,12 +61,13 @@ const Bld = {
 
   // docks stand on open water: the body must be big enough to work, and the
   // pier needs a walkable shore tile beside it so villagers can build/repair it
-  dockSiteOk(x, y) {
+  dockSiteOk(x, y, owner) {
+    owner = owner || 'P';
     if (!MapGen.inB(x, y) || S.map.terrain[MapGen.idx(x, y)] !== T.WATER || this.at(x, y))
       return { ok: false, why: 'Docks are built on open water' };
     let shore = false;
     for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
-      if (MapGen.inB(x + ox, y + oy) && Path.passable(x + ox, y + oy, 'P')) { shore = true; break; }
+      if (MapGen.inB(x + ox, y + oy) && Path.passable(x + ox, y + oy, owner)) { shore = true; break; }
     if (!shore) return { ok: false, why: 'Needs a walkable shore beside it' };
     // flood the water body up to the required size
     const seen = new Set([x + ',' + y]);
@@ -91,7 +92,7 @@ const Bld = {
     const d = this.def(key);
     if (!d) return { ok: false, why: '?' };
     if (key === 'dock') {
-      const site = this.dockSiteOk(x, y);
+      const site = this.dockSiteOk(x, y, owner);
       if (!site.ok) return site;
     } else if (!this.tileFree(x, y)) return { ok: false, why: 'Blocked tile' };
     // TC-level gate (player only — the rival's scripted build order sets its own pace)
@@ -303,6 +304,11 @@ const Bld = {
             || { x: b.x, y: b.y + 1 };
           const nu = Units.spawn(item.unit, b.owner, spot.x, spot.y);
           if (b.owner === 'P') G.log(`${CFG.UNITS[item.unit].name} ready`);
+          // the rival's fresh fishing boats put their nets straight out
+          if (b.owner === 'A' && nu.kind === 'fishboat') {
+            const fs = MapGen.findNear(b.x, b.y, 5, (x, y) => Units.canFish(x, y));
+            if (fs) Units.assignFish(nu, fs.x, fs.y);
+          }
           // rally point: fresh units head there; villagers rallied onto a
           // resource tile (or boats onto stocked water) start gathering immediately
           if (b.owner === 'P' && b.rally) {

@@ -316,6 +316,16 @@ const UI = {
         this.toast('⚔️ War party attacks!');
         return;
       }
+      if (hitUnit && hitUnit.owner === 'P' && Units.isTransport(hitUnit)) {
+        let n = 0;
+        for (const id of ids) {
+          const u = Units.get(id);
+          if (u && Units.isMilitary(u) && !Units.isNaval(u) && Units.orderBoard(u, hitUnit)) n++;
+        }
+        this.toast(n ? `${n} boarding — the ${CFG.UNITS[hitUnit.kind].name} holds ${CFG.UNITS[hitUnit.kind].cap}`
+          : 'Transport is full (or away from shore)', !n);
+        return;
+      }
       if (hitBld && hitBld.owner === 'A') {
         for (const id of ids) Units.orderAttackBuilding(Units.get(id), hitBld);
         this.toast('⚔️ War party attacks ' + Bld.def(hitBld.key).name);
@@ -336,6 +346,12 @@ const UI = {
       if (hitUnit && hitUnit.owner !== 'P') {
         sel.task = null; sel.tUnit = hitUnit.id; sel.tBld = 0;
         this.toast('Attack!');
+        return;
+      }
+      if (hitUnit && hitUnit.owner === 'P' && Units.isTransport(hitUnit) &&
+          Units.isMilitary(sel) && !Units.isNaval(sel)) {
+        if (Units.orderBoard(sel, hitUnit)) this.toast('Boarding the ' + CFG.UNITS[hitUnit.kind].name);
+        else this.toast('Transport is full (or away from shore)', true);
         return;
       }
       if (hitBld && hitBld.owner === 'A' && Units.isMilitary(sel)) {
@@ -369,6 +385,11 @@ const UI = {
         }
         if (sel.kind === 'fishboat' && Units.canFish(tile.x, tile.y)) {
           if (Units.assignFish(sel, tile.x, tile.y)) this.toast('Nets out — fishing 🐟');
+          return;
+        }
+        if (Units.isTransport(sel) && sel.cargo && sel.cargo.length && Path.passable(tile.x, tile.y)) {
+          Units.orderUnload(sel, tile.x, tile.y);
+          this.toast('Making for that shore — soldiers will land there');
           return;
         }
         Units.moveTo(sel, tile.x, tile.y);
@@ -450,7 +471,7 @@ const UI = {
     if (u.owner !== 'P' && !Units.isPassive(u))
       stack = S.units.filter(o => o.owner !== 'P' && !Units.isPassive(o) &&
         (o.x | 0) === (u.x | 0) && (o.y | 0) === (u.y | 0)).length;
-    return ['u', u.id, u.hp < u.maxhp, stack,
+    return ['u', u.id, u.hp < u.maxhp, stack, u.cargo ? u.cargo.length : 0,
       !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u)].join('|');
   },
 
@@ -734,11 +755,13 @@ const UI = {
       let hint = !own ? (
           Units.isPassive(u) ? `Wild game — send a villager or defender to hunt it (+${CFG.MEAT_DROP} food).`
           : u.owner === 'W' ? `Wild beast — dangerous, but worth +${CFG.MEAT_DROP} food.`
-          : u.owner === 'R' ? ((u.hostileTo || 'P') === 'A' ? 'Barbarian — marching on the rival tribe.'
-            : (u.hostileTo || 'P') === 'ALL' ? 'Barbarian — hostile to everyone.'
-            : 'Barbarian — coming for your village!') : 'Rival tribe')
-        : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / fertile soil to gather, a work site to build, or a tile to walk.'
+          // barbarian tempers stay hidden — you find out who they're after
+          // the same way everyone else does
+          : u.owner === 'R' ? 'Barbarian — nothing but trouble. Who they strike at, only they know.'
+          : 'Rival tribe')
+        : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / an orchard to gather, a work site to build, or a tile to walk.'
         : u.kind === 'fishboat' ? 'Tap water where fish jump 🐟 to fish, or open water to row there.'
+        : Units.isTransport(u) ? 'Select soldiers and tap this hull to board. Tap a shore tile to land them, or water to row.'
         : Units.isNaval(u) ? 'Tap an enemy or rival building near the shore to attack, or water to sail.'
         : 'Tap a tile to move, or an enemy to attack.';
       if (!own && !Units.isPassive(u)) {
@@ -759,6 +782,10 @@ const UI = {
         const hc = this.healCost(u);
         html += `<button class="abtn ${S.res.food >= hc ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${hc} 🍖</small></button>`;
       }
+      if (own && Units.isTransport(u)) {
+        const cap = CFG.UNITS[u.kind].cap, aboard = (u.cargo || []).length;
+        html += `<button class="abtn ${aboard ? '' : 'cant'}" data-act="unload">⚓ Unload here<small>${aboard}/${cap} aboard</small></button>`;
+      }
       if (own && Units.isVillager(u)) html += `<button class="abtn" data-act="gobuild">🔨 Build…</button>`;
       if (own && Units.isMilitary(u) && !Units.isNaval(u)) html += `<button class="abtn" data-act="group">👥 Group nearby</button>`;
       if (own) html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
@@ -771,6 +798,13 @@ const UI = {
       if (stop) stop.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
         if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; }
+      });
+      const unload = panel.querySelector('[data-act="unload"]');
+      if (unload) unload.addEventListener('click', () => {
+        const u2 = Units.get(this.sel.id);
+        if (!u2 || !u2.cargo || !u2.cargo.length) { this.toast('Nobody aboard', true); return; }
+        Units.disembark(u2);   // logs the outcome either way
+        this.renderPanel();
       });
       const heal = panel.querySelector('[data-act="heal"]');
       if (heal) heal.addEventListener('click', () => {

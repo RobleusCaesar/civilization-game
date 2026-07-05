@@ -104,24 +104,45 @@ any new field. `CFG.W`/`CFG.H` are **mutable** and must be set from the save
   Building on top cancels the timer. The scarce pocket is generated as exactly
   6-8 tiles (single-tile growth, immune to mountain/lake blob-eating) and
   normal resources have a 12-tile floor. Water tiles hold fish — see Dock.
-- **Dock & navy (newest system):** Dock requires TC L2, is placed *on* water
+- **Dock & navy:** Dock requires TC L2, is placed *on* water
   (body ≥ `CFG.DOCK_MIN_WATER` = 6 tiles, walkable shore orthogonally adjacent
-  for builders), 3 levels. Trains `fishboat` (L1), `warship` (L2, rng 4),
-  `fireship` (L3, rng 4.5, `fire: true` → flaming arrow rendering). Fishing =
-  task `{type:'fish'}`, drains `resAmount`, auto-drifts ≤ 4 tiles to the next
-  stocked tile, else idles. Naval units spawn onto water beside the dock, are
-  excluded from land war-party grouping, count toward pop. Destroyed docks
-  revert to water (no ruin). Jumping-fish flourish: `R.draw` hashes visible
-  stocked water tiles against `R.fishClock`.
+  for builders — `Bld.dockSiteOk(x,y,owner)` is owner-aware), 3 levels. Trains
+  `fishboat` (L1), `transport` (L1, carries 3), `warship` (L2, rng 4),
+  `bigtransport` (L3, carries 5), `fireship` (L3, rng 4.5, `fire: true`).
+  Fishing = task `{type:'fish'}`, credits `S.res` or `S.ai.res` by owner,
+  auto-drifts ≤ 4 tiles to the next stocked tile, else idles. Naval units spawn
+  onto water beside the dock, are excluded from land war-party grouping, count
+  toward pop. Destroyed docks revert to water (no ruin).
+- **Troop transports:** `u.cargo` = array of whole unit objects (spliced out of
+  `S.units`, JSON-serializable, counted by `popUsed`). Board: soldier task
+  `{type:'board', id}` walks to shore within 1.6 of the hull, then rides;
+  `Units.orderBoard` refuses past capacity (counting boarders en route).
+  Land: `Units.orderUnload(tr, x, y)` water-paths toward the shore tile
+  (best-effort BFS stops at the nearest water), then `Units.disembark` beaches
+  everyone on adjacent passable land. UI: select soldiers/war party → tap hull
+  to board; select hull → tap shore to land, panel has ⚓ Unload; cargo pips
+  render over the hull. A sunk transport drowns its cargo.
+- **AI navy:** in `AI.daily` — dock placed near the rival TC once it hits L2
+  (needs affordable cost + valid site), keeps ~2 fishboats (auto-assigned to
+  fish on spawn in `Bld.update`) and up to `aiArmyCap/4` warships/fireships.
 - **Barbarians (ex-"raiders"):** owner `'R'`, keys still `raider`/`brute` (save
   compat) but named Barbarian / Barbarian Brute, **teal** identity
   (`#3fb094` war paint, teal minimap dots) vs the red rival tribe. Each band
-  rolls `u.hostileTo` ('P' | 'A' | 'ALL') on spawn; `Combat.hostileUnits(u,o)`
-  / `hostileToBld(b,o)` are the unit-level hostility checks (guards/towers only
-  engage bands that threaten their tribe; barbs retaliate when struck). Per-mode
-  strength `barbMult` (calm 0.9 / moderate 1.0 / hard 1.2 — hard ≈ rival
-  defenders), waves scale `(1 + count*0.07) * barbMult`, party size
-  `1 + ceil(count*0.7) + waveSizeAdd`, cap 8.
+  rolls `u.hostileTo` on spawn — **10% 'P', 10% 'A', 80% 'ALL'** — and the roll
+  is deliberately never surfaced (neutral wave log, neutral panel hint).
+  `Combat.hostileUnits(u,o)` / `hostileToBld(b,o)` are the unit-level hostility
+  checks (guards/towers only engage bands that threaten their tribe; barbs
+  retaliate when struck). `raiderSeek` targets **soldiers first (barbarian
+  warriors count as soldiers to their enemies), villagers second, buildings
+  third** — so 'ALL' bands and rival raid parties brawl at the player's gates.
+  Per-mode strength `barbMult` (calm 0.9 / moderate 1.0 / hard 1.2), waves
+  scale `(1 + count*0.07) * barbMult`, party size `1 + ceil(count*0.5) +
+  waveSizeAdd` (cap 6), gaps 14–20 days × `waveGapMult`. **Sea raids:** 35% of
+  waves where water touches the map edge spawn a barbarian transport there
+  (wave ≥ 5 uses `bigtransport`), route via water-domain path toward the target
+  town, beach on the nearest open shore (never inside sealed walls — landing
+  tile must be in the wilderness network), raiders disembark, empty hull is
+  removed.
 - **Combat conventions:** damage = `max(1, atk − def)`; home-turf +10 % attack
   within 10 tiles of your own TC (both tribes); tower L3 aura +2; melee front /
   archers behind on group moves (flood-fill goals from the tapped tile —

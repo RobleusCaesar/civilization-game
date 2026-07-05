@@ -741,6 +741,37 @@ const Sprites = {
   Sprites.unit.fireship = warshipSheet({ hull: '#5d4a30', hullD: '#453722', sail: '#b8b0a0', sailD: '#98907e',
     stripe: PAL.fire, crew: '#5d4a30', arrow: PAL.fire, flame: true });
 
+  // troop transports: broad open hulls built to carry soldiers, not fight.
+  // The war transport is longer, with a hide canopy and a shield row.
+  function transportSheet(big) {
+    const draw = (p, f) => {
+      const y = 10 + (f === 1 ? 1 : 0);
+      const x0 = big ? 1 : 2, w = big ? 14 : 12;
+      p(x0, y + 3, w, 1, 'rgba(0,0,0,0.25)');                       // waterline shadow
+      p(x0, y, w, 3, APx.wood[2]);                                  // hull
+      p(x0, y, w, 1, APx.wood[3]);                                  // lit gunwale
+      p(x0 + 1, y + 2, w - 2, 1, APx.wood[1]);                      // wet strake
+      p(x0 - 0, y, 1, 2, APx.wood[1]); p(x0 + w - 1, y, 1, 2, APx.wood[1]);  // prow / stern posts
+      p(x0 + 1, y - 1, w - 2, 1, APx.wood[3]);                      // deck rail
+      p(x0 + 2, y + 1, 1, 1, APx.wood[4]); p(x0 + w - 3, y + 1, 1, 1, APx.wood[0]);  // plank glint / knot
+      if (big) {
+        ART.shadedRect(p, 5, y - 4, 6, 3, AP.hide, 1);              // hide canopy amidships
+        p(6, y - 5, 4, 1, AP.hide[2]);
+        for (let i = 0; i < 4; i++) p(2 + i * 3, y, 1, 1, AP.bone[2]);  // shield row on the gunwale
+      }
+      p(x0 + w - 3, y - 2, 2, 2, '#6e5b40');                        // steersman
+      p(x0 + w - 3, y - 3, 2, 1, PAL.skin);
+      p(x0 + w - 1, y - 3, 1, 3, APx.wood[1]);                      // steering oar
+      if (f === 1) { p(x0 - 1, y + 1, 1, 1, AP.water[4]); p(x0 + w, y + 2, 1, 1, AP.water[4]); }  // bow spray
+    };
+    return {
+      idle: frames(2, (p, g, f) => draw(p, f)),
+      walk: frames(2, (p, g, f) => draw(p, f)),
+    };
+  }
+  Sprites.unit.transport = transportSheet(false);
+  Sprites.unit.bigtransport = transportSheet(true);
+
   // fish breaking the surface — two frames used as an occasional flourish
   Sprites.misc.fish = [
     tile(p => {
