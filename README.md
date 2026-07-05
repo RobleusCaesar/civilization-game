@@ -52,7 +52,8 @@ on desktop too.
   *Start a new game…*, *How to play*, and the *Event log* live in collapsible
   sections; the new-game pickers come preset to the running game's setup.
 - **Gathering**: tap a villager, then tap a **forest** (wood), **hills** (stone), or
-  **fertile soil** (food) tile — they gather automatically. Tapping a resource tile
+  **orchard / berry thicket** (food) tile — they gather automatically; the village
+  forages long before it farms. Tapping a resource tile
   with nothing selected sends an idle villager. Every tile holds a finite stock:
   once gathered out it turns to stumps / pebbles / spent soil, the villager goes
   idle, and you'll need farms, lumber camps, and quarries for steady income.
@@ -73,11 +74,12 @@ on desktop too.
   *Station worker*, or tap a villager then the building). Pull the worker away
   and production stops. Lumber camps, quarries, and hunter's lodges take **up
   to 2 workers** and produce per worker — but each hand yields a bit less than
-  a villager gathering straight from forest, hills, or fertile soil, so raw
+  a villager gathering straight from forest, hills, or wild orchards, so raw
   terrain is the better bet early and buildings win once tiles run dry.
-- **Town Center level 2 unlocks** the Lumber Camp, Quarry, Archery Range,
-  Horse Stable, and Dock — early game is houses, farms, the lodge, towers,
-  barracks, and hand-gathering.
+- **Town Center level 2 unlocks** the Archery Range, Horse Stable, and Dock.
+  The Lumber Camp and Quarry are available from the start, and they're
+  deliberately cross-costed — the quarry never costs stone and the camp never
+  costs wood — so a map starved of one resource always leaves a road back to it.
 - **Gold**: the Town Center mints a little gold each day. Almost every building
   beyond houses and watchtowers costs some — and so does every soldier, from
   defenders to fire warships — so a standing army keeps draining the treasury.
@@ -168,7 +170,9 @@ on desktop too.
 ## Threats
 
 - **Wild animals** — wolves and boars roam the forests and go after villagers,
-  while harmless deer and wild cows graze the map. Any wild animal killed by
+  while harmless deer and wild cows graze the map. Very rarely a **bear** pads
+  out of the deep woods — one at a time, far stronger than any wolf, worth
+  triple meat to the tribe that brings it down. Any other wild animal killed by
   your tribe yields **+10 food** — tap a villager or defender, then the animal,
   to hunt it.
 - **Barbarians** — wildling war bands in furs, bone, and teal war paint (their

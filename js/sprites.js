@@ -142,18 +142,42 @@ const Sprites = {
     }),
   ];
 
-  // fertile soil: rich tilled rows with sprout dots and a slight sheen
+  // wild fertile ground: fruit orchards and berry thickets, mixed across the
+  // map — the village forages these long before it tills its first farm
+  function orchardTile(p, seed) {
+    grassBase(p, seed);
+    const r = ART.rng(seed + 5);
+    const fruitTree = (cx, cy, s2) => {
+      p(cx, cy + 2, 1, 3, AP.wood[1]);                              // trunk
+      p(cx - 1, cy + 4, 3, 1, AP.leaf[0]);                          // canopy shadow
+      ART.foliageCluster(p, cx, cy, 2, s2);
+      const fr = ART.rng(s2 + 1);
+      for (let i = 0; i < 3; i++)                                   // ripe fruit in the crown
+        p(cx - 1 + ((fr() * 3) | 0), cy - 1 + ((fr() * 3) | 0), 1, 1, AP.red[2]);
+    };
+    fruitTree(4, 3 + ((r() * 2) | 0), seed + 11);
+    fruitTree(11, 9 + ((r() * 2) | 0), seed + 23);
+    p(6, 12, 1, 1, AP.red[1]); p(13, 5, 1, 1, AP.red[2]);           // windfall fruit
+  }
+  function berryTile(p, seed) {
+    grassBase(p, seed);
+    const r = ART.rng(seed + 7);
+    const bush = (cx, cy, s2) => {
+      p(cx - 1, cy + 2, 4, 1, AP.leaf[0]);                          // ground shadow
+      ART.shadedCircle(p, cx, cy, 2, AP.leaf, 1);
+      const br = ART.rng(s2);
+      for (let i = 0; i < 4; i++)                                   // clustered berries
+        p(cx - 1 + ((br() * 4) | 0), cy - 1 + ((br() * 3) | 0), 1, 1,
+          br() < 0.5 ? AP.bloom[0] : AP.bloom[1]);
+    };
+    bush(4, 4 + ((r() * 2) | 0), seed + 13);
+    bush(11, 7, seed + 29);
+    bush(5, 11 + ((r() * 2) | 0), seed + 41);
+    p(13, 13, 1, 1, AP.bloom[0]); p(2, 8, 1, 1, AP.bloom[1]);       // dropped berries
+  }
   Sprites.terrain[T.FERTILE] = [
-    tile(p => {
-      p(0, 0, 16, 16, AP.soil[2]);
-      for (let y = 1; y < 16; y += 3) { p(0, y, 16, 1, AP.soil[1]); p(0, y + 1, 16, 1, AP.soil[3]); }
-      const r = ART.rng(17);
-      for (let i = 0; i < 7; i++) {
-        const x = 1 + (r() * 14) | 0, y = 1 + 3 * ((r() * 5) | 0);
-        p(x, y, 1, 1, AP.grass[4]); p(x, y + 1, 1, 1, AP.grass[2]);
-      }
-      p(3, 0, 2, 1, AP.soil[3]); p(11, 6, 2, 1, AP.soil[3]);        // sheen
-    }),
+    tile(p => orchardTile(p, 17)), tile(p => berryTile(p, 53)),
+    tile(p => orchardTile(p, 91)), tile(p => berryTile(p, 133)),
   ];
 
   // depleted terrain: felled forest, quarried-out hills, spent soil, ruins
@@ -228,7 +252,7 @@ const Sprites = {
   // ground color per terrain — render.js dithers these along biome borders
   Sprites.blendCol = {
     [T.GRASS]: AP.grass[3], [T.FOREST]: AP.grass[2], [T.HILLS]: AP.grass[3],
-    [T.FERTILE]: AP.soil[2], [T.STUMPS]: AP.grass[3], [T.PEBBLES]: AP.grass[3],
+    [T.FERTILE]: AP.grass[3], [T.STUMPS]: AP.grass[3], [T.PEBBLES]: AP.grass[3],
     [T.BARREN]: AP.soil[3], [T.RUIN]: AP.stone[1], [T.CAMP]: AP.soil[3],
   };
 
@@ -336,14 +360,41 @@ const Sprites = {
       const d = ART.tierDress(lv);
       ART.dropShadow(p, 8, 14, 14);
       if (lv === 1) {
-        // great thatched roundhouse on a wattle ring
-        ART.shadedCircle(p, 8, 9, 6, AP.soil, 1);                   // wattle ring wall
-        ART.shadedCircle(p, 8, 8, 6, AP.thatch, 2);                 // conical thatch
-        ART.shadedCircle(p, 8, 7, 3, AP.thatch, 1);                 // upper cone
-        p(7, 5, 2, 2, AP.ink[1]);                                   // smoke hole
-        p(7, 12, 2, 3, AP.ink[0]);                                  // doorway
-        p(6, 12, 1, 3, AP.wood[2]); p(9, 12, 1, 3, AP.wood[2]);     // door posts
-        p(4, 13, 1, 1, AP.grass[4]); p(11, 13, 1, 1, AP.grass[4]);  // trodden grass edge
+        // great thatched roundhouse: a true cone of combed reed courses over a
+        // wattle-and-daub ring, crossed ridge poles at the crown, and a stone
+        // fire pit smouldering in the dooryard
+        p(4, 11, 8, 2, AP.soil[2]);                                 // daub ring wall
+        p(4, 11, 1, 2, AP.soil[3]); p(11, 11, 1, 2, AP.soil[1]);    // lit / shaded rim
+        p(5, 11, 1, 2, AP.wood[1]); p(10, 11, 1, 2, AP.wood[1]);    // wattle stakes
+        const rows = [[7, 2], [6, 4], [5, 6], [4, 8], [3, 10], [2, 12], [2, 12], [1, 14]];
+        const rr = ART.rng(83);
+        for (let i = 0; i < rows.length; i++) {                     // stacked thatch courses
+          const ry = 3 + i, rx = rows[i][0], rw = rows[i][1];
+          p(rx, ry, rw, 1, AP.thatch[2]);
+          const edge = Math.max(1, rw >> 2);
+          p(rx, ry, edge, 1, AP.thatch[3]);                         // lit left face
+          p(rx + rw - edge, ry, edge, 1, AP.thatch[1]);             // shaded right face
+          for (let s2 = 0; s2 < rw >> 1; s2++) {                    // loose reed strands
+            p(rx + ((rr() * rw) | 0), ry, 1, 1, rr() < 0.5 ? AP.thatch[1] : AP.thatch[3]);
+          }
+        }
+        p(5, 8, 1, 3, AP.thatch[1]); p(10, 7, 1, 3, AP.thatch[1]);  // combed reed lines
+        p(1, 11, 1, 1, AP.thatch[1]); p(13, 11, 1, 1, AP.thatch[1]); // ragged eave fringe
+        p(3, 11, 1, 1, AP.thatch[2]);
+        p(7, 1, 1, 2, AP.wood[2]); p(9, 1, 1, 1, AP.wood[2]);       // crossed ridge poles
+        p(8, 2, 1, 1, AP.wood[3]); p(6, 1, 1, 1, AP.wood[1]);
+        p(7, 3, 2, 1, AP.ink[1]);                                   // smoke hole
+        p(6, 9, 4, 1, AP.wood[3]);                                  // door lintel
+        p(7, 10, 2, 3, AP.ink[0]);                                  // doorway
+        p(6, 10, 1, 3, AP.wood[2]); p(9, 10, 1, 3, AP.wood[2]);     // door posts
+        p(7, 13, 2, 1, AP.soil[3]);                                 // trodden threshold
+        p(3, 13, 1, 1, AP.grass[4]);                                // dooryard grass
+        p(12, 12, 1, 1, AP.stone[1]); p(14, 12, 1, 1, AP.stone[2]); // fire-pit stone ring
+        p(12, 14, 1, 1, AP.stone[0]); p(14, 14, 1, 1, AP.stone[1]);
+        p(13, 12, 1, 1, AP.stone[2]); p(13, 14, 1, 1, AP.stone[1]);
+        p(12, 13, 1, 1, AP.stone[1]); p(14, 13, 1, 1, AP.stone[2]);
+        p(13, 13, 1, 1, AP.fire[2]);                                // bright ember heart
+        p(11, 14, 1, 1, AP.wood[0]);                                // charred log end
       } else if (lv === 2) {
         // timber longhouse with carved posts and a drying rack
         wallBody(p, 2, 8, 12, 6, d, 5);
@@ -710,6 +761,8 @@ const Sprites = {
       p(3, y0, w, h, body);                                   // body
       p(3 + w - 1, y0 - 1, 3, h, bodyD);                      // head
       if (opts.ears) { p(3 + w - 1, y0 - 2, 1, 1, bodyD); p(3 + w + 1, y0 - 2, 1, 1, bodyD); }
+      if (opts.hump) { p(4, y0 - 1, 4, 1, body); p(4, y0 - 1, 2, 1, bodyD); }   // massive shoulder
+      if (opts.snout) p(3 + w + 2, y0, 1, 1, opts.snout);                        // pale muzzle
       if (opts.tusk) p(3 + w + 2, y0 + h - 2, 1, 1, PAL.white);
       if (opts.tail) p(2, y0, 1, 2, bodyD);
       if (opts.antlers) { p(3 + w, y0 - 4, 1, 3, '#e8dcc0'); p(3 + w + 2, y0 - 4, 1, 3, '#e8dcc0'); p(3 + w + 1, y0 - 3, 1, 1, '#e8dcc0'); }
@@ -728,6 +781,8 @@ const Sprites = {
   }
   beast('wolf', PAL.wolf, PAL.wolfD, { w: 7, h: 3, ears: true, tail: true });
   beast('boar', PAL.boar, PAL.boarD, { w: 8, h: 4, tusk: true, tail: true });
+  // the bear: rare, huge, dark — a humped silhouette a head taller than a boar
+  beast('bear', APx.hide[1], APx.hide[0], { w: 9, h: 5, ears: true, hump: true, snout: APx.hide[2] });
   beast('deer', '#a87848', '#7a5430', { w: 6, h: 3, ears: true, tail: true, antlers: true });
   beast('cow', '#e8e0d0', '#8a8078', { w: 8, h: 4, ears: true, tail: true, horns: true, spots: '#5a4a3a' });
 

@@ -275,8 +275,13 @@ const R = {
           const rate = b.key === 'tc' ? 0.9 : (b.key === 'house' || b.key === 'lodge') ? 0.2 : 0;
           if (!rate || Math.random() > rate) continue;
           if (!G.visibleAt(b.x, b.y)) continue;
-          this.smoke.push({ x: b.x + 0.5 + (Math.random() - 0.5) * 0.15, y: b.y + 0.18,
-                            t: 0, ttl: 2 + Math.random() * 1.2, ember: false });
+          // the L1 roundhouse hearth is the fire pit in the dooryard — a very
+          // faint wisp curls up from it; every other hearth smokes from the roof
+          const pit = b.key === 'tc' && b.level === 1;
+          this.smoke.push({ x: b.x + (pit ? 0.84 : 0.5) + (Math.random() - 0.5) * 0.12,
+                            y: b.y + (pit ? 0.80 : 0.18),
+                            t: 0, ttl: (pit ? 1.6 : 2) + Math.random() * 1.2,
+                            a: pit ? 0.15 : 0.30 });
           if (this.smoke.length >= 36) break;
         }
       }
@@ -288,8 +293,9 @@ const R = {
       const k = s.t / s.ttl;
       const sx = (s.x + Math.sin((s.t + s.x * 7) * 1.6) * 0.06 + s.t * 0.03) * TL;
       const sy = (s.y - s.t * 0.28) * TL;
-      const size = 2 + k * 5;
-      g.fillStyle = 'rgba(206,200,190,' + (0.30 * (1 - k)).toFixed(3) + ')';
+      const a0 = s.a || 0.30;
+      const size = (a0 < 0.2 ? 1.5 : 2) + k * (a0 < 0.2 ? 4 : 5);
+      g.fillStyle = 'rgba(206,200,190,' + (a0 * (1 - k)).toFixed(3) + ')';
       g.fillRect(sx - size / 2, sy - size / 2, size, size);
     }
 

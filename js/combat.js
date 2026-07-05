@@ -61,7 +61,7 @@ const Combat = {
       if (u.kind === 'wolf') {
         const v = this.nearestUnit(u.x, u.y, base.aggro, o => Units.isVillager(o));
         if (v) u.tUnit = v.id;
-      } else if (u.kind === 'boar') {
+      } else if (u.kind === 'boar' || u.kind === 'bear') {
         const v = this.nearestUnit(u.x, u.y, base.aggro,
           o => (o.owner === 'P' || o.owner === 'A') && this.canEngage(u, o));
         if (v) u.tUnit = v.id;

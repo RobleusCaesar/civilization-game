@@ -77,24 +77,27 @@ const CFG = {
           bonus: 'Villagers armed with spears (+4 attack)' },
       ],
     },
+    /* Lumber camp and quarry are deliberately cross-costed and available from
+       TC 1: the quarry never costs stone and the camp never costs wood, so a
+       map starved of one resource always leaves a road back to it. */
     lumber: {
       name: 'Lumber Camp', desc: 'Wood per worker (up to 2). Build near forest.', needsWorker: true,
-      maxWorkers: 2, reqTC: 2,
+      maxWorkers: 2,
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
       levels: [    // out is PER WORKER — a lone hand yields less than chopping forest
-        { cost: { wood: 40, gold: 5 },    time: 1, hp: 120, out: { wood: 5 } },
-        { cost: { wood: 80, stone: 30, gold: 10 }, time: 2, hp: 160, out: { wood: 10 } },
-        { cost: { wood: 160, stone: 80, gold: 25 }, time: 2, hp: 200, out: { wood: 16 } },
+        { cost: { stone: 25, gold: 5 },   time: 1, hp: 120, out: { wood: 5 } },
+        { cost: { stone: 60, gold: 10 },  time: 2, hp: 160, out: { wood: 10 } },
+        { cost: { stone: 130, gold: 25 }, time: 2, hp: 200, out: { wood: 16 } },
       ],
     },
     quarry: {
       name: 'Quarry', desc: 'Stone per worker (up to 2). Build near hills.', needsWorker: true,
-      maxWorkers: 2, reqTC: 2,
+      maxWorkers: 2,
       near: { terrain: T.HILLS, mult: 1.5, radius: 2 },
       levels: [    // out is PER WORKER — a lone hand yields less than mining hills
         { cost: { wood: 80, gold: 5 },    time: 1, hp: 120, out: { stone: 3.5 } },
-        { cost: { wood: 140, stone: 20, gold: 10 }, time: 2, hp: 170, out: { stone: 7 } },
-        { cost: { wood: 260, stone: 60, gold: 25 }, time: 2, hp: 220, out: { stone: 12 } },
+        { cost: { wood: 170, gold: 10 },  time: 2, hp: 170, out: { stone: 7 } },
+        { cost: { wood: 320, gold: 25 },  time: 2, hp: 220, out: { stone: 12 } },
       ],
     },
     house: {
@@ -197,6 +200,7 @@ const CFG = {
     marksman: { name: 'Marksman',       hp: 60,  atk: 10, def: 1, speed: 2.3, aggro: 6,   rng: 4.5 },
     wolf:     { name: 'Wolf',           hp: 24,  atk: 4,  def: 0, speed: 2.4, aggro: 4 },
     boar:     { name: 'Boar',           hp: 48,  atk: 6,  def: 1, speed: 1.8, aggro: 2 },
+    bear:     { name: 'Bear',           hp: 110, atk: 13, def: 2, speed: 2.2, aggro: 3.5 },  // very rare forest terror
     raider:   { name: 'Barbarian',       hp: 50,  atk: 7,  def: 1, speed: 2.3, aggro: 2.5 },
     brute:    { name: 'Barbarian Brute', hp: 95,  atk: 12, def: 2, speed: 1.9, aggro: 2.5 },
     deer:     { name: 'Deer',           hp: 20,  atk: 0,  def: 0, speed: 2.0, aggro: 0 },

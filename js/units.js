@@ -349,10 +349,11 @@ const Units = {
       // any wild animal killed by a tribe yields meat
       if (this.isWild(u)) {
         const owner = (attacker && attacker.owner) || attackerOwner;
+        const meat = u.kind === 'bear' ? CFG.MEAT_DROP * 3 : CFG.MEAT_DROP;   // a bear feeds the village
         if (owner === 'P') {
-          S.res.food += CFG.MEAT_DROP;
-          R.float(u.x, u.y - 0.5, '+' + CFG.MEAT_DROP + ' food', '#d8e8b0');
-        } else if (owner === 'A') S.ai.res.food += CFG.MEAT_DROP;
+          S.res.food += meat;
+          R.float(u.x, u.y - 0.5, '+' + meat + ' food', '#d8e8b0');
+        } else if (owner === 'A') S.ai.res.food += meat;
       }
       return;
     }
@@ -399,6 +400,10 @@ const Units = {
       this.spawnWild(G.rand() < 0.5 ? 'deer' : 'cow', 8);
     // predators
     if (S.day < CFG.ANIMALS.graceDays) return;   // early grace period — get established first
+    // a lone bear pads out of the deep woods on rare occasion — one at a time,
+    // and far more dangerous than any wolf pack
+    if (this.count('W', u => u.kind === 'bear') === 0 && G.rand() < m.animalChance * 0.2)
+      this.spawnWild('bear', CFG.ANIMALS.minDistTC);
     if (this.count('W', u => !this.isPassive(u)) >= m.animalMax) return;
     if (G.rand() > m.animalChance) return;
     this.spawnWild(G.rand() < 0.6 ? 'wolf' : 'boar', CFG.ANIMALS.minDistTC);
