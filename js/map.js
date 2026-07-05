@@ -41,11 +41,29 @@ const MapGen = {
       }
     }
 
-    // starting corners vary per seed; the rival always settles the opposite one
+    // starts land anywhere along the map's outer band — never the middle —
+    // and the rival settles far away, so openings vary game to game instead
+    // of always being corner vs corner
     const m = 7;
-    const corners = [{ x: m, y: m }, { x: W - 1 - m, y: m }, { x: m, y: H - 1 - m }, { x: W - 1 - m, y: H - 1 - m }];
-    const pi = (rnd() * 4) | 0;
-    const player = corners[pi], ai = corners[3 - pi];
+    const band = Math.min(W * 0.28, W / 2 - m - 1);   // how far from center a start must sit
+    const ringSpot = () => {
+      for (let i = 0; i < 200; i++) {
+        const x = m + ((rnd() * (W - 2 * m)) | 0), y = m + ((rnd() * (H - 2 * m)) | 0);
+        if (Math.max(Math.abs(x - (W - 1) / 2), Math.abs(y - (H - 1) / 2)) >= band) return { x, y };
+      }
+      return { x: m, y: m };
+    };
+    const player = ringSpot();
+    let ai = { x: W - 1 - player.x, y: H - 1 - player.y };   // fallback: dead opposite
+    {
+      const minD = Math.hypot(W, H) * 0.5;
+      const far = [];
+      for (let i = 0; i < 60; i++) {
+        const c = ringSpot();
+        if (Math.hypot(c.x - player.x, c.y - player.y) >= minD) far.push(c);
+      }
+      if (far.length) ai = far[(rnd() * far.length) | 0];
+    }
     const nearStart = (x, y) =>
       (Math.abs(x - player.x) < 5 && Math.abs(y - player.y) < 5) ||
       (Math.abs(x - ai.x) < 5 && Math.abs(y - ai.y) < 5);
@@ -65,8 +83,10 @@ const MapGen = {
 
     if (landform === 'islands') {
       t.fill(T.WATER);
-      // land masses on every corner plus the middle, joined by causeways
-      for (const c of corners)
+      // land masses under both towns, a big one mid-map, plus a few wild
+      // isles scattered along the outer band, joined by causeways
+      const isles = [player, ai, ringSpot(), ringSpot()];
+      for (const c of isles)
         blob(c.x, c.y, Math.round(46 * f), T.GRASS, null, [T.WATER]);
       blob(W / 2, H / 2, Math.round(60 * f), T.GRASS, null, [T.WATER]);
       const causeway = (a, b) => {

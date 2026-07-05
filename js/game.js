@@ -205,7 +205,12 @@ const G = {
     if (data.map.terrain.length !== w * h)
       throw new Error('not a Neolithic save file');
     CFG.W = w; CFG.H = h;
-    if (!data.sizeKey) data.sizeKey = 'medium';
+    // size labels shifted a tier (old small/medium/large → medium/large/xlarge):
+    // re-key old saves by their actual map width so the menu reads true
+    if (!CFG.SIZES[data.sizeKey] || CFG.SIZES[data.sizeKey] !== w) {
+      const match = Object.keys(CFG.SIZES).find(k => CFG.SIZES[k] === w);
+      data.sizeKey = match || (w <= 34 ? 'medium' : w <= 45 ? 'large' : 'xlarge');
+    }
     if (!data.wallLevel) data.wallLevel = 1;
     if (!data.map.resAmount) {
       // older save: give surviving resource tiles an average stock

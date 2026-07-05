@@ -30,15 +30,16 @@ on desktop too.
   (☰ menu). Calm is nearly peaceful — the occasional wild animal, rare raids, and
   a slow, compact rival tribe; Hard gathers ~15% slower with earlier, bigger,
   more frequent raids, bolder wildlife, and a rival that builds and arms fast.
-- **The map**: pick 🏕 Small, 🏞 Medium, or 🗺 Large when starting a new game.
-  Each map rolls a landform — green valleys, lake-dotted lakelands, rugged
+- **The map**: pick 🏞 Medium, 🗺 Large, or 🌍 Extra Large when starting a new
+  game. Each map rolls a landform — green valleys, lake-dotted lakelands, rugged
   highlands with impassable mountain ridges, or island chains linked by
   causeways (mountains and water can't be crossed or built on, so terrain
-  shapes your defenses). Starting corners vary each game, and every map is
-  critically short on one resource (wood, stone, or food) — even on Large the
-  scarce resource stays a single small pocket (always at least 6–8 workable
-  tiles, so the map is never unwinnable), and scouting and holding it
-  remains the strategic heart of the match.
+  shapes your defenses). Both tribes settle somewhere along the map's outer
+  band — never the middle, never predictable corners, always far apart — and
+  every map is critically short on one resource (wood, stone, or food) — even
+  on Extra Large the scarce resource stays a single small pocket (always at
+  least 6–8 workable tiles, so the map is never unwinnable), and scouting and
+  holding it remains the strategic heart of the match.
 - **Time**: each turn is one in-game day and auto-advances every 10 seconds;
   a full playthrough runs about 20 minutes.
   ⏸ pauses; ☰ opens the menu (save / load / new game / seed / event log).

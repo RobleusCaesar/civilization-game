@@ -12,6 +12,7 @@ const UI = {
   newMode: 'moderate',   // difficulty picked for the next game
   newSize: 'medium',     // map size picked for the next game
   menuCollapsed: false,  // build menu tucked away for a bigger view
+  panelHidden: false,    // selection panel tucked away — the selection itself survives
   miniCollapsed: false,  // minimap hidden
   builderFor: null,      // villager id that will build the next placed building
   confirmDemolish: 0,    // building id awaiting demolish confirmation
@@ -301,7 +302,9 @@ const UI = {
     for (const u of S.units) {
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
       const d = Math.hypot(u.x - wx, u.y - wy);
-      const dd = d - (u.owner === 'P' ? 0.15 : 0); // bias towards own units
+      let dd = d - (u.owner === 'P' ? 0.15 : 0); // bias towards own units
+      // a worker standing on their plot yields the tap to the building unless hit dead-on
+      if (u.task && u.task.type === 'work') dd += 0.3;
       if (dd < hd) { hd = dd; hitUnit = u; }
     }
     const hitBld = G.visibleAt(tile.x, tile.y) ? Bld.at(tile.x, tile.y) : null;
@@ -312,7 +315,12 @@ const UI = {
       if (!ids.length) { this.deselect(); return; }
       this.sel.ids = ids;
       if (hitUnit && hitUnit.owner !== 'P') {
-        for (const id of ids) { const u = Units.get(id); u.task = null; u.tUnit = hitUnit.id; u.tBld = 0; }
+        for (const id of ids) {
+          const u = Units.get(id);
+          // an explicit attack order: no guard leash yanking stragglers home mid-charge
+          u.task = { type: 'attack' }; u.tUnit = hitUnit.id; u.tBld = 0;
+          u.anchor = { x: hitUnit.x, y: hitUnit.y };
+        }
         this.toast('⚔️ War party attacks!');
         return;
       }
@@ -344,7 +352,8 @@ const UI = {
     const sel = this.sel && this.sel.type === 'unit' ? Units.get(this.sel.id) : null;
     if (sel && sel.owner === 'P') {
       if (hitUnit && hitUnit.owner !== 'P') {
-        sel.task = null; sel.tUnit = hitUnit.id; sel.tBld = 0;
+        sel.task = { type: 'attack' }; sel.tUnit = hitUnit.id; sel.tBld = 0;
+        sel.anchor = { x: hitUnit.x, y: hitUnit.y };
         this.toast('Attack!');
         return;
       }
@@ -416,12 +425,14 @@ const UI = {
     this.sel = { type, id };
     this.builderFor = null;
     this.confirmDemolish = 0;
+    this.panelHidden = false;   // a fresh selection brings its panel back
     this.renderPanel();
   },
   deselect() {
     this.sel = null;
     this.confirmDemolish = 0;
     this.settingRally = null;
+    this.panelHidden = false;
     document.getElementById('panel').classList.remove('show');
     document.getElementById('buildmenu').style.display = this.menuCollapsed ? 'none' : 'flex';
   },
@@ -430,8 +441,15 @@ const UI = {
     this.menuCollapsed = v;
     const t = document.getElementById('bmToggle');
     t.textContent = v ? '🔨 Build ▴' : '▾';
-    if (!document.getElementById('panel').classList.contains('show'))
+    if (this.sel) {
+      // the ▾ tucks the selection panel away but KEEPS the selection — the
+      // villager/soldier still answers taps on the open ground below
+      this.panelHidden = v;
+      document.getElementById('panel').classList.toggle('show', !v);
+      document.getElementById('buildmenu').style.display = 'none';
+    } else {
       document.getElementById('buildmenu').style.display = v ? 'none' : 'flex';
+    }
     if (v && this.placing) { this.placing = null; this.builderFor = null; this.refreshMenu(); }
   },
   setMiniCollapsed(v) {
@@ -840,7 +858,7 @@ const UI = {
       });
     }
     panel.querySelector('#panelClose').addEventListener('click', () => this.deselect());
-    panel.classList.add('show');
+    panel.classList.toggle('show', !this.panelHidden);   // a tucked-away panel stays tucked
     document.getElementById('buildmenu').style.display = 'none';
   },
 
@@ -893,7 +911,7 @@ const UI = {
     document.getElementById('btnMenu').addEventListener('click', () => {
       S.paused = true;
       document.getElementById('btnPause').textContent = '▶';
-      const SIZE_LABEL = { small: '🏕 Small', medium: '🏞 Medium', large: '🗺 Large' };
+      const SIZE_LABEL = { medium: '🏞 Medium', large: '🗺 Large', xlarge: '🌍 Extra Large' };
       document.getElementById('seedShow').textContent =
         `Current game: ${G.modeCfg().icon} ${G.modeCfg().name} · ${SIZE_LABEL[S.sizeKey] || '🏞 Medium'} map · day ${S.day} · seed ${S.seed}`;
       // pickers preset to the running game's setup — they only apply to a new game

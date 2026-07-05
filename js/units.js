@@ -170,6 +170,7 @@ const Units = {
   orderAttackBuilding(u, b) {
     u.task = { type: 'attackBld' };
     u.tBld = b.id; u.tUnit = 0;
+    u.anchor = { x: b.x + 0.5, y: b.y + 0.5 };   // the siege line is home now
     this.setPath(u, b.x, b.y);
   },
 
@@ -368,14 +369,22 @@ const Units = {
           S.units.splice(i, 1);
         }
       } else if (t.type === 'work') {
-        // stationed at a production building — stand there and keep it running
+        // stationed at a production building — stand ON the plot itself and
+        // keep it running (workers idling beside the field just cluttered the ground)
         const b = Bld.get(t.id);
         if (!b || b.owner !== 'P' || !Bld.def(b.key).needsWorker) { u.task = null; continue; }
-        const d = Math.hypot(b.x + 0.5 - u.x, b.y + 0.5 - u.y);
-        if (d > 1.25) {
+        if ((u.x | 0) !== b.x || (u.y | 0) !== b.y) {
           if (this.moving(u)) this.followPath(u, dt);
           else if (!this.setPath(u, b.x, b.y)) u.task = null;
-        } else u.path = null;
+        } else {
+          u.path = null;
+          // a two-hand crew shares the plot side by side
+          const twin = S.units.find(o => o !== u && o.task && o.task.type === 'work' &&
+            o.task.id === b.id && (o.x | 0) === b.x && (o.y | 0) === b.y);
+          const tx2 = b.x + (twin ? (twin.x <= b.x + 0.5 ? 0.75 : 0.25) : 0.5);
+          u.x += (tx2 - u.x) * Math.min(1, dt * 4);
+          u.y += (b.y + 0.62 - u.y) * Math.min(1, dt * 4);
+        }
       } else if (t.type === 'board') {
         // march to the pier and step aboard the transport
         const tr = this.get(t.id);

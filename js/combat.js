@@ -129,13 +129,20 @@ const Combat = {
 
       if (u.tUnit) {
         const tgt = Units.get(u.tUnit);
-        if (!tgt) { u.tUnit = 0; continue; }
+        if (!tgt) {
+          u.tUnit = 0;
+          // an ordered attack ends where the fight ended — hold this ground
+          if (u.task && u.task.type === 'attack') { u.task = null; u.anchor = { x: u.x, y: u.y }; }
+          continue;
+        }
         const d = Math.hypot(tgt.x - u.x, tgt.y - u.y);
         // hunting harmless game is a deliberate order — the hunter follows the prey
         if (Units.isPassive(tgt)) u.anchor = { x: u.x, y: u.y };
-        // guards give up long chases and go home; wild animals lose interest even sooner
+        // guards give up long chases and go home; wild animals lose interest even
+        // sooner. Player-ordered attacks are exempt — no leash yanks a soldier
+        // back home mid-charge while the rest of the party fights.
         const leash = Units.isWild(u) ? CFG.ANIMALS.leash
-          : (Units.isMilitary(u) && !(u.task && u.task.type === 'raid')) ? 10 : 0;
+          : (Units.isMilitary(u) && !(u.task && (u.task.type === 'raid' || u.task.type === 'attack'))) ? 10 : 0;
         if (leash && Math.hypot(u.x - u.anchor.x, u.y - u.anchor.y) > leash) {
           u.tUnit = 0;
           Units.setPath(u, u.anchor.x | 0, u.anchor.y | 0);
