@@ -246,6 +246,18 @@ const MapGen = {
     return { terrain: t, resAmount, scarce: scarce.name, landform, spawns: { player, ai, camps } };
   },
 
+  // a shoal: shore water where fish school close enough to catch from land.
+  // Hash-derived (~1/3 of shore tiles), so it needs no save data and matches
+  // the renderer's jumping-fish tell exactly — watch the water to find them.
+  shoal(x, y) {
+    if (!this.inB(x, y) || S.map.terrain[this.idx(x, y)] !== T.WATER) return false;
+    let shore = false;
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+      if (this.inB(x + ox, y + oy) && S.map.terrain[this.idx(x + ox, y + oy)] !== T.WATER) { shore = true; break; }
+    if (!shore) return false;
+    return ((x * 73856093 ^ y * 19349663) >>> 0) % 3 === 0;
+  },
+
   // nearest tile matching pred, spiraling out from (cx,cy)
   findNear(cx, cy, maxR, pred) {
     for (let r = 0; r <= maxR; r++) {

@@ -54,7 +54,12 @@ on desktop too.
   sections; the new-game pickers come preset to the running game's setup.
 - **Gathering**: tap a villager, then tap a **forest** (wood), **hills** (stone), or
   **orchard / berry thicket** (food) tile — they gather automatically; the village
-  forages long before it farms. Tapping a resource tile
+  forages long before it farms. Villagers can also **fish from the shore**:
+  about a third of shore water is a *shoal*, and the tell is fish jumping
+  there often — tap a villager, then the jumping fish, and they'll cast a
+  line from the beach (same pace as berry-picking, and the shoal depletes
+  like any tile). Tap water with no fish and you'll hear about it — watch
+  the surface first. Tapping a resource tile
   with nothing selected sends an idle villager. Every tile holds a finite stock:
   once gathered out it turns to stumps / pebbles / spent soil, the villager goes
   idle, and you'll need farms, lumber camps, and quarries for steady income.
@@ -198,11 +203,19 @@ on desktop too.
   transport in later waves) makes for the beach nearest its prey and puts its
   warriors ashore; sink it before it lands if you can. Land-marching bands
   still muster in the open wilds, never on your shores or inside your walls.
-- **The rival tribe** — an AI settlement across the valley builds, upgrades, trains
-  defenders, and will march on you if it out-scales your military. Its army size
-  and elite share scale with difficulty: on Moderate it fields a mostly-defender
-  force with a few elites; only Hard goes elite-heavy. Scout it through
-  the fog of war.
+- **The rival tribe** — an AI settlement across the valley builds, upgrades,
+  trains, and will march on you when it feels strong enough. Every game its
+  chief rolls one of **six personalities** — your scouts whisper a hint at
+  first light: the patient **Homesteader**, the spear-happy **Warlord**, the
+  cavalry-mad **Horselord**, the fleet-building **Mariner**, the walled-in
+  **Mason**, and the fast-growing **Forager**. Each shapes the whole tribe:
+  the build order, an organic village layout (terrain-hunting farms and
+  camps, watchtowers facing *you*), the army mix (riders, archers, or walls
+  of spears), how early and often it raids, and how hard it takes to the
+  water. The Mason really does ring its town in palisades and gates; the
+  Horselord really will run you down with lancers. Army size and elite share
+  still scale with difficulty. Scout early — knowing who you're up against
+  changes everything.
 - **Fog of war** — unexplored land is black; places you've visited but left turn
   grey and show only what you last saw there: buildings frozen at their old state,
   no units, no new construction, upgrades, or terrain changes until you scout again.

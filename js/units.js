@@ -108,6 +108,23 @@ const Units = {
     return this.setPath(u, tx, ty);
   },
 
+  // villagers can line-fish a shoal from the beach beside it
+  assignShoreFish(u, tx, ty) {
+    if (!this.isVillager(u) || !MapGen.shoal(tx, ty) || S.map.resAmount[MapGen.idx(tx, ty)] <= 0)
+      return false;
+    let best = null, bd = 1e9;
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const x = tx + ox, y = ty + oy;
+      if (!Path.passable(x, y, u.owner) || Bld.at(x, y)) continue;
+      const dd = Math.hypot(u.x - x, u.y - y);
+      if (dd < bd) { bd = dd; best = { x, y }; }
+    }
+    if (!best) return false;
+    u.task = { type: 'shorefish', x: tx, y: ty, sx: best.x, sy: best.y };
+    u.tUnit = 0; u.tBld = 0;
+    return this.setPath(u, best.x, best.y);
+  },
+
   nearestIdleVillager(x, y) {
     let best = null, bd = 1e9;
     for (const u of S.units) {
@@ -315,6 +332,26 @@ const Units = {
             const next = MapGen.findNear(t.x, t.y, 4, (x, y) => this.canFish(x, y));
             if (next && this.assignFish(u, next.x, next.y)) continue;
             if (u.owner === 'P') G.log('These waters are fished out — boat idle', true);
+            u.task = null;
+          }
+        }
+      } else if (t.type === 'shorefish') {
+        // stand on the beach and work the shoal beside it
+        if ((u.x | 0) !== t.sx || (u.y | 0) !== t.sy) {
+          if (this.followPath(u, dt) && !((u.x | 0) === t.sx && (u.y | 0) === t.sy)) u.task = null;
+        } else {
+          const idx = MapGen.idx(t.x, t.y);
+          if (S.map.terrain[idx] !== T.WATER) { u.task = null; continue; }
+          const bag = u.owner === 'P' ? S.res : S.ai.res;
+          const before = bag.food;
+          const take = Math.min(S.map.resAmount[idx], CFG.SHORE_FISH.rate * dt * G.modeCfg().gather);
+          bag.food += take;
+          S.map.resAmount[idx] -= take;
+          if (u.owner === 'P' && (before | 0) !== (bag.food | 0) && Math.random() < 0.3)
+            R.float(u.x, u.y - 0.5, '+food', '#d8e8b0');
+          if (S.map.resAmount[idx] <= 0.001) {
+            S.map.resAmount[idx] = 0;
+            if (u.owner === 'P') G.log('This shoal is fished out — villager idle', true);
             u.task = null;
           }
         }

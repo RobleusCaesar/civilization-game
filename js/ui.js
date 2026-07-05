@@ -392,6 +392,14 @@ const UI = {
           if (Units.assignGather(sel, tile.x, tile.y)) this.toast('Gathering ' + sel.task.res);
           return;
         }
+        if (Units.isVillager(sel) && S.map.terrain[MapGen.idx(tile.x, tile.y)] === T.WATER) {
+          // shore fishing — but only where the fish actually are
+          if (MapGen.shoal(tile.x, tile.y) && S.map.resAmount[MapGen.idx(tile.x, tile.y)] > 0) {
+            if (Units.assignShoreFish(sel, tile.x, tile.y)) this.toast('Line out — fishing from the shore 🎣');
+            else this.toast('No clear shore to fish from', true);
+          } else this.toast('No fish here — watch for fish breaking the surface', true);
+          return;
+        }
         if (sel.kind === 'fishboat' && Units.canFish(tile.x, tile.y)) {
           if (Units.assignFish(sel, tile.x, tile.y)) this.toast('Nets out — fishing 🐟');
           return;
@@ -410,11 +418,19 @@ const UI = {
     if (hitUnit) { this.select('unit', hitUnit.id); return; }
     if (hitBld) { this.select('bld', hitBld.id); return; }
 
-    // convenience: tap a resource tile with nothing selected → send an idle villager
+    // convenience: tap a resource tile (or a jumping-fish shoal) with nothing
+    // selected → send an idle villager
     if (explored && CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]] && !this.sel) {
       const idle = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
       if (idle && Units.assignGather(idle, tile.x, tile.y)) {
         this.toast('Idle villager sent to gather');
+        return;
+      }
+    }
+    if (explored && !this.sel && MapGen.shoal(tile.x, tile.y) && S.map.resAmount[MapGen.idx(tile.x, tile.y)] > 0) {
+      const idle = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
+      if (idle && Units.assignShoreFish(idle, tile.x, tile.y)) {
+        this.toast('Idle villager sent to fish the shoal 🎣');
         return;
       }
     }
@@ -777,7 +793,7 @@ const UI = {
           // the same way everyone else does
           : u.owner === 'R' ? 'Barbarian — nothing but trouble. Who they strike at, only they know.'
           : 'Rival tribe')
-        : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / an orchard to gather, a work site to build, or a tile to walk.'
+        : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / an orchard to gather, jumping fish 🐟 to fish off the shore, a work site to build, or a tile to walk.'
         : u.kind === 'fishboat' ? 'Tap water where fish jump 🐟 to fish, or open water to row there.'
         : Units.isTransport(u) ? 'Select soldiers and tap this hull to board. Tap a shore tile to land them, or water to row.'
         : Units.isNaval(u) ? 'Tap an enemy or rival building near the shore to attack, or water to sail.'

@@ -181,7 +181,8 @@ const R = {
   unitPose(u) {
     if (u.tUnit || (u.tBld && Math.hypot((Bld.get(u.tBld) || u).x + 0.5 - u.x, (Bld.get(u.tBld) || u).y + 0.5 - u.y) < 1.5)) return 'fight';
     if (Units.moving(u)) return 'walk';
-    if (u.task && (u.task.type === 'gather' || u.task.type === 'fish' || u.task.type === 'build' || u.task.type === 'work')) return 'gather';
+    if (u.task && (u.task.type === 'gather' || u.task.type === 'fish' || u.task.type === 'shorefish' ||
+        u.task.type === 'build' || u.task.type === 'work')) return 'gather';
     return 'idle';
   },
   unitSprite(u) {
@@ -382,8 +383,13 @@ const R = {
           else { g.fillRect(x * TL + TL - 4, y * TL + o1, 2, 2); g.fillRect(x * TL + TL - 5, y * TL + o2, 2, 2); }
         }
         if (fishFr && S.map.resAmount[i]) {
+          // shoals (h % 3 shore tiles — the ones villagers can line-fish)
+          // show jumping fish often: that's the tell to watch for. Open deep
+          // water keeps only the rare splash; barren shore water shows none.
           const hf = (h ^ cyc * 83492791) >>> 0;
-          if (hf % 31 === 0) g.drawImage(fishFr, x * TL, y * TL);
+          const nearLand = landN || landS || landW || landE;
+          if (nearLand ? (h % 3 === 0 && hf % 5 < 2) : hf % 31 === 0)
+            g.drawImage(fishFr, x * TL, y * TL);
         }
       }
     }

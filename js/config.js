@@ -29,6 +29,8 @@ const CFG = {
     [T.WATER]:   [45, 85],    // fish — harvested by boats, not villagers
   },
   FISH: { res: 'food', rate: 1.2 },   // fishing-boat harvest per second (12/day — a notch under a Lv1 farm's 15)
+  SHORE_FISH: { rate: 1.0 },  // villager line-fishing off the shore — same pace as picking berries;
+                              // only works on shoals (about a third of shore water, where fish jump)
   DOCK_MIN_WATER: 6,          // a dock needs a water body at least this big
   DEPLETED: {                 // what a tile becomes once gathered out
     [T.FOREST]:  T.STUMPS,

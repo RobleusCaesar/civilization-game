@@ -220,6 +220,7 @@ const G = {
       });
     }
     if (!data.garrison) data.garrison = [];
+    if (data.ai && !data.ai.persona) data.ai.persona = 'homesteader';   // pre-persona save: the classic temperament
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};
