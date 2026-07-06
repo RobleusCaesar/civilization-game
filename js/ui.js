@@ -9,8 +9,6 @@ const UI = {
   pinchD: 0,
   downAt: null,
   refreshT: 0,
-  newMode: 'moderate',   // difficulty picked for the next game
-  newSize: 'medium',     // map size picked for the next game
   menuCollapsed: false,  // build menu tucked away for a bigger view
   panelHidden: false,    // selection panel tucked away — the selection itself survives
   miniCollapsed: false,  // minimap hidden
@@ -945,90 +943,18 @@ const UI = {
     setTimeout(() => { el.remove(); }, hold + 700);
   },
 
-  /* ---------------- menus / save / load ---------------- */
+  /* ---------------- HUD buttons (menus live in the Screens shell) ---------------- */
   bindButtons() {
-    const menu = document.getElementById('menuModal');
-    document.querySelectorAll('#modeRow .mode').forEach(btn => btn.addEventListener('click', () => {
-      this.newMode = btn.dataset.mode;
-      document.querySelectorAll('#modeRow .mode').forEach(b => b.classList.toggle('sel', b === btn));
-      document.getElementById('modeDesc').textContent = CFG.MODES[this.newMode].desc;
-    }));
     document.getElementById('bmToggle').addEventListener('click', () =>
       this.setMenuCollapsed(!this.menuCollapsed));
     document.getElementById('miniToggle').addEventListener('click', () =>
       this.setMiniCollapsed(!this.miniCollapsed));
-    document.querySelectorAll('#sizeRow .mode').forEach(btn => btn.addEventListener('click', () => {
-      this.newSize = btn.dataset.size;
-      document.querySelectorAll('#sizeRow .mode').forEach(b => b.classList.toggle('sel', b === btn));
-    }));
-    document.getElementById('btnMenu').addEventListener('click', () => {
-      S.paused = true;
-      document.getElementById('btnPause').textContent = '▶';
-      const SIZE_LABEL = { medium: '🏞 Medium', large: '🗺 Large', xlarge: '🌍 Extra Large' };
-      document.getElementById('seedShow').textContent =
-        `Current game: ${G.modeCfg().icon} ${G.modeCfg().name} · ${SIZE_LABEL[S.sizeKey] || '🏞 Medium'} map · day ${S.day} · seed ${S.seed}`;
-      // pickers preset to the running game's setup — they only apply to a new game
-      this.newMode = CFG.MODES[S.mode] ? S.mode : 'moderate';
-      this.newSize = CFG.SIZES[S.sizeKey] ? S.sizeKey : 'medium';
-      document.querySelectorAll('#modeRow .mode').forEach(b => b.classList.toggle('sel', b.dataset.mode === this.newMode));
-      document.getElementById('modeDesc').textContent = CFG.MODES[this.newMode].desc;
-      document.querySelectorAll('#sizeRow .mode').forEach(b => b.classList.toggle('sel', b.dataset.size === this.newSize));
-      const log = document.getElementById('logList');
-      log.innerHTML = S.log.slice(0, 30).map(l => `<div>Day ${l.day}: ${l.msg}</div>`).join('');
-      menu.classList.add('show');
-    });
-    document.getElementById('btnResume').addEventListener('click', () => {
-      menu.classList.remove('show');
-      S.paused = false;
-      document.getElementById('btnPause').textContent = '⏸';
-    });
+    document.getElementById('btnMenu').addEventListener('click', () => Screens.show('paused'));
     document.getElementById('btnPause').addEventListener('click', e => {
       S.paused = !S.paused;
       e.target.textContent = S.paused ? '▶' : '⏸';
     });
-    document.getElementById('btnNew').addEventListener('click', () => {
-      const seed = document.getElementById('seedInput').value.trim() || String((Math.random() * 1e9) | 0);
-      menu.classList.remove('show');
-      G.newGame(seed, this.newMode, this.newSize);
-    });
-    document.getElementById('btnEndNew').addEventListener('click', () => {
-      // the end of a game is the moment to choose the next one — open the
-      // menu with the new-game pickers ready instead of instantly rerolling
-      document.getElementById('endModal').classList.remove('show');
-      document.getElementById('btnMenu').click();
-      const dn = document.getElementById('dNew');
-      if (dn) dn.open = true;
-    });
-    document.getElementById('btnSave').addEventListener('click', () => {
-      const blob = new Blob([G.saveJSON()], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'neolithic-day' + S.day + '.json';
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-      this.toast('Game saved');
-    });
-    document.getElementById('btnLoad').addEventListener('click', () => document.getElementById('fileLoad').click());
-    document.getElementById('fileLoad').addEventListener('change', e => {
-      const f = e.target.files[0];
-      if (!f) return;
-      const rd = new FileReader();
-      rd.onload = () => {
-        try {
-          G.loadJSON(rd.result);
-          menu.classList.remove('show');
-          this.toast('Game loaded');
-        } catch (err) { this.toast('Could not load save: ' + err.message, true); }
-      };
-      rd.readAsText(f);
-      e.target.value = '';
-    });
   },
 
-  showEnd(win, msg) {
-    document.getElementById('endTitle').textContent = win ? '🏆 Victory!' : '💀 Defeat';
-    document.getElementById('endTitle').style.color = win ? 'var(--gold)' : 'var(--danger)';
-    document.getElementById('endMsg').textContent = msg + ` (${G.modeCfg().name}, day ${S.day}, seed ${S.seed})`;
-    document.getElementById('endModal').classList.add('show');
-  },
+  showEnd(win, msg) { Screens.showEnd(win, msg); },
 };

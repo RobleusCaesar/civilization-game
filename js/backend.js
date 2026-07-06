@@ -300,3 +300,6 @@ const Backend = {
     return last || this._err('network', 'Request failed');
   },
 };
+
+// classic-script global: guards elsewhere test window.Backend
+window.Backend = Backend;

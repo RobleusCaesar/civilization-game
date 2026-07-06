@@ -80,13 +80,15 @@ const AI = {
 
   persona() { return this.PERSONAS[S.ai && S.ai.persona] || this.PERSONAS.homesteader; },
 
-  init(spawn) {
+  init(spawn, persona) {
+    // the new-game screen can request a specific rival temperament; the
+    // default is still a fresh roll every game
     const keys = Object.keys(this.PERSONAS);
     S.ai = {
       res: { food: 200, wood: 150, stone: 60, gold: 0 },
       orderI: 0,
       raidCd: 0,
-      persona: keys[(G.rand() * keys.length) | 0],
+      persona: this.PERSONAS[persona] ? persona : keys[(G.rand() * keys.length) | 0],
     };
     Bld.place('A', 'tc', spawn.x, spawn.y, { free: true, instant: true });
     G.log('🕵 Scouts whisper of the rival chief: ' + this.persona().blurb, false, 6400);

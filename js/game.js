@@ -18,7 +18,7 @@ const G = {
 
   modeCfg() { return CFG.MODES[S && S.mode] || CFG.MODES.moderate; },
 
-  newGame(seed, modeKey, sizeKey) {
+  newGame(seed, modeKey, sizeKey, persona) {
     const mode = CFG.MODES[modeKey] ? modeKey : 'moderate';
     const size = CFG.SIZES[sizeKey] ? sizeKey : 'medium';
     CFG.W = CFG.H = CFG.SIZES[size];
@@ -61,7 +61,7 @@ const G = {
     this.reveal(p.x, p.y, 6);
     for (let i = 0; i < CFG.START_VILLAGERS; i++)
       Units.spawn('villager', 'P', p.x - 1 + i, p.y + 2);
-    AI.init(gen.spawns.ai);
+    AI.init(gen.spawns.ai, persona);
     Units.spawnWild('deer', 8);
     Units.spawnWild('cow', 8);
     // the kraken's clock: each village is owed at most one visit, on a day
@@ -74,6 +74,7 @@ const G = {
     };
     S.kraken = { day: { P: kd(), A: kd() }, done: {}, ev: null };
 
+    this.freeVis = false;   // every real game starts fogged; the title demo re-enables it
     this.vis = null;
     R.onNewGame();
     this.updateVisibility();
@@ -82,7 +83,6 @@ const G = {
     UI.builderFor = null;
     UI.settingRally = null;
     document.getElementById('btnPause').textContent = '⏸';
-    document.getElementById('endModal').classList.remove('show');
     // opening notes linger twice as long — there's a lot to take in on day 1
     const LAND = { valley: 'a green valley', lakeland: 'a land of lakes', highlands: 'rugged highlands', islands: 'a chain of islands' };
     this.log(`A new tribe settles ${LAND[gen.landform] || 'the wilds'} (${this.modeCfg().name}). Destroy the rival Town Center to win.`, false, 6400);
@@ -114,6 +114,7 @@ const G = {
      last-seen memory (terrain + buildings) is kept in sync. ---- */
   vis: null,
   visT: 0,
+  freeVis: false,   // title-screen demo world: no fog, the whole map on show
   visibleAt(x, y) {
     const i = MapGen.idx(x, y);
     return this.vis ? !!this.vis[i] : !!S.map.explored[i];
@@ -133,10 +134,15 @@ const G = {
         if (!expl[i]) { expl[i] = 1; }
       }
     };
-    for (const b of S.buildings)
-      if (b.owner === 'P') mark(b.x, b.y, Bld.done(b) ? (Bld.lv(b).vision || 4) : 2);
-    for (const u of S.units)
-      if (u.owner === 'P') mark(u.x | 0, u.y | 0, CFG.UNIT_VISION);
+    if (this.freeVis) {
+      vis.fill(1);
+      for (let i = 0; i < expl.length; i++) expl[i] = 1;
+    } else {
+      for (const b of S.buildings)
+        if (b.owner === 'P') mark(b.x, b.y, Bld.done(b) ? (Bld.lv(b).vision || 4) : 2);
+      for (const u of S.units)
+        if (u.owner === 'P') mark(u.x | 0, u.y | 0, CFG.UNIT_VISION);
+    }
     // sync last-seen memory on every visible tile
     const liveB = new Map();
     for (const b of S.buildings) liveB.set(MapGen.idx(b.x, b.y), b);
@@ -238,8 +244,10 @@ const G = {
       }
     }
 
-    // cloud autosave cadence (Backend also drops a local crash-net snapshot)
+    // cloud autosave cadence (Backend also drops a local crash-net snapshot);
+    // the title demo never saves — it must not clobber a real crash net or slot
     if (window.Backend && Backend.autosaveDays > 0 &&
+        !(window.Screens && Screens._demo) &&
         S.day - (Backend._lastAutosaveDay || 0) >= Backend.autosaveDays)
       Backend.autosaveNow('cadence');
   },
@@ -281,6 +289,8 @@ const G = {
   end(win, msg) {
     if (S.over) return;
     S.over = { win, msg };
+    // the title screen's demo world ends quietly — the shell rolls a new one
+    if (window.Screens && Screens._demo) return;
     S.paused = false;
     UI.showEnd(win, msg);
   },
@@ -336,6 +346,7 @@ const G = {
     document.getElementById('btnPause').textContent = '▶';
     UI.deselect();
     UI.placing = null;
+    this.freeVis = false;
     this.vis = null;
     R.onNewGame();
     this.updateVisibility();
@@ -381,9 +392,11 @@ window.addEventListener('load', () => {
   if (window.Backend) {
     Backend.init();   // async; the game never waits on the network
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden && window.S && !S.over) Backend.autosaveNow('hide');
+      if (document.hidden && window.S && !S.over &&
+          !(window.Screens && Screens._demo)) Backend.autosaveNow('hide');
     });
   }
-  G.newGame(String((Math.random() * 1e9) | 0));
+  Screens.init();
+  Screens.show('title');   // builds the demo world behind the logo
   requestAnimationFrame(t => { G.lastT = t; requestAnimationFrame(G.frame); });
 });

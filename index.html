@@ -157,41 +157,110 @@
   .abtn.sel { border-color: var(--gold); background: #514627; }
   #panelClose { position: absolute; right: 10px; margin-top: -2px; }
 
-  /* ---- modal ---- */
-  .modal {
-    position: absolute; inset: 0; z-index: 20; display: none;
-    align-items: center; justify-content: center; background: rgba(0,0,0,0.6);
-  }
-  .modal.show { display: flex; }
-  .mbox {
-    background: var(--panel-bg); background-image: var(--wood-tex);
-    border: 1px solid #241d15; border-radius: 14px;
-    box-shadow: inset 0 1px 0 var(--edge), 0 8px 30px rgba(0,0,0,0.55);
-    padding: 18px; width: min(340px, 92vw); max-height: 84vh; overflow-y: auto;
-    -webkit-overflow-scrolling: touch; touch-action: pan-y;
-  }
-  .mbox h2 { font-size: 18px; color: var(--gold); margin-bottom: 10px; }
-  .mbox p { font-size: 12px; color: var(--dim); line-height: 1.5; margin: 6px 0; }
-  .mbox details { margin: 8px 0; border: 1px solid #4a4232; border-radius: 10px; padding: 0 10px; }
-  .mbox summary {
-    list-style: none; cursor: pointer; min-height: 42px;
-    display: flex; align-items: center; gap: 8px;
-    font-size: 13px; font-weight: 700; color: var(--text);
-  }
-  .mbox summary::-webkit-details-marker { display: none; }
-  .mbox summary::before { content: '▸'; color: var(--dim); transition: transform .15s; }
-  .mbox details[open] summary::before { transform: rotate(90deg); }
-  .mbox details > :last-child { margin-bottom: 10px; }
   .mrow { display: flex; gap: 8px; margin: 8px 0; align-items: center; }
   .mrow .abtn { flex: 1; }
-  #seedInput {
-    flex: 1; min-height: 40px; border-radius: 8px; border: 1px solid #55492f;
+  #seedInput, #chiefInput, #setCadence {
+    flex: 1; min-height: 44px; border-radius: 8px; border: 1px solid #55492f;
     background: #201b12; color: var(--text); padding: 0 10px; font-size: 14px;
+    -webkit-user-select: text; user-select: text;
   }
-  #endTitle { font-size: 24px; }
-  #logList { font-size: 11px; color: var(--dim); max-height: 30vh; overflow-y: auto; touch-action: pan-y; margin-top: 8px; }
+  #logList { font-size: 11px; color: var(--dim); touch-action: pan-y; margin-top: 8px; }
   #logList div { padding: 3px 0; border-bottom: 1px solid #2e2a1e; }
-  .hint { font-size: 11px !important; }
+  .hint { font-size: 11px !important; color: var(--dim); line-height: 1.5; }
+
+  /* ---- game shell: full-viewport screens over the canvas ---- */
+  #shell { position: absolute; inset: 0; z-index: 30; display: none; }
+  #shell.show { display: block; }
+  body.shell #topbar, body.shell #bottombar, body.shell #miniWrap,
+  body.shell #miniToggle, body.shell #toasts { display: none; }
+  .screen {
+    position: absolute; inset: 0; display: none; flex-direction: column;
+    background: linear-gradient(rgba(13,11,8,0.66), rgba(13,11,8,0.9));
+  }
+  .screen.show { display: flex; }
+  .shead {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    max-width: 560px; margin: 0 auto; flex: 0 0 auto;
+    padding: calc(env(safe-area-inset-top) + 12px) 14px 10px 14px;
+  }
+  .shead h2 { color: var(--gold); font-size: 19px; flex: 1; }
+  .abtn.back { min-width: 48px; min-height: 44px; font-size: 20px; flex: 0 0 auto; }
+  .sbody {
+    flex: 1 1 0; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y;
+    width: 100%; max-width: 560px; margin: 0 auto;
+    padding: 4px 16px calc(env(safe-area-inset-bottom) + 20px) 16px;
+  }
+  .sbody.center { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; }
+  .lbl { font-size: 12px; font-weight: 800; color: var(--gold); margin: 14px 0 6px; }
+  .abtn.big { width: 100%; min-height: 56px; font-size: 15px; margin: 0; }
+  .abtn.gold { border-color: var(--gold); background: #514627; }
+  .trow2 { display: flex; gap: 10px; width: 100%; }
+  .trow2 .abtn { flex: 1; }
+
+  /* title */
+  #scrTitle {
+    align-items: center; justify-content: flex-end;
+    background: linear-gradient(rgba(13,11,8,0.15) 30%, rgba(13,11,8,0.82) 78%);
+    padding-bottom: calc(env(safe-area-inset-bottom) + 22px);
+  }
+  .logo {
+    font-size: 42px; font-weight: 900; letter-spacing: 7px; color: var(--gold);
+    text-shadow: 0 3px 0 #241d15, 0 8px 22px rgba(0,0,0,0.85);
+  }
+  .tagline { font-size: 12px; color: var(--text); letter-spacing: 3px; margin: 4px 0 0;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+  .tspacer { flex: 1 1 0; }
+  .tmenu { width: min(330px, 88vw); display: flex; flex-direction: column; gap: 10px; }
+  #cloudChip { margin-top: 14px; font-size: 11px; color: var(--dim);
+    background: rgba(0,0,0,0.4); padding: 5px 12px; border-radius: 999px; }
+
+  /* new-game option rows */
+  .orow { display: flex; flex-wrap: wrap; gap: 8px; }
+  .orow .abtn { flex: 1 1 28%; min-height: 54px; font-size: 16px; }
+  .orow .abtn small { font-size: 10px; }
+
+  /* save-slot cards */
+  .scard {
+    display: flex; gap: 10px; align-items: center;
+    background: rgba(0,0,0,0.32); border: 1px solid #241d15; border-radius: 12px;
+    box-shadow: inset 0 1px 0 var(--edge);
+    padding: 9px; margin-bottom: 9px;
+  }
+  .sthumb {
+    width: 58px; height: 58px; border-radius: 8px; flex: 0 0 auto;
+    background: #14100a; border: 1px solid #3a2f1c; image-rendering: pixelated;
+  }
+  div.sthumb.empty { display: flex; align-items: center; justify-content: center; color: var(--dim); }
+  .smeta { flex: 1 1 0; min-width: 0; }
+  .smeta b { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .smeta small { color: var(--dim); font-size: 10.5px; }
+  .sacts { display: flex; flex-direction: column; gap: 5px; flex: 0 0 auto; }
+  .sacts .abtn { min-height: 36px; padding: 2px 10px; font-size: 11px; }
+
+  /* endgame */
+  #endTitle { font-size: 30px; }
+  #endStats { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 8px 0 14px; }
+  #endStats div {
+    background: rgba(0,0,0,0.35); border: 1px solid #241d15; border-radius: 10px;
+    padding: 10px 12px; min-width: 88px;
+  }
+  #endStats b { display: block; font-size: 20px; color: var(--gold); }
+  #endStats small { color: var(--dim); font-size: 10px; }
+
+  /* how-to-play swipe panels */
+  #howPanels {
+    flex: 1 1 0; display: flex; overflow-x: auto; overflow-y: hidden;
+    scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; touch-action: pan-x;
+  }
+  #howPanels section {
+    flex: 0 0 100%; scroll-snap-align: center; overflow-y: auto; touch-action: pan-x pan-y;
+    padding: 8px 24px calc(env(safe-area-inset-bottom) + 30px);
+  }
+  #howPanels h3 { color: var(--gold); font-size: 15px; margin-bottom: 8px; }
+  #howPanels p { font-size: 12.5px; color: var(--text); line-height: 1.55; margin: 7px 0; }
+  #howPanels p b { color: var(--gold); }
+  .swipeHint { text-align: center; color: var(--dim); font-size: 11px;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 10px); }
 </style>
 </head>
 <body>
@@ -223,58 +292,180 @@
   <div id="panel"></div>
 </div>
 
-<div class="modal" id="menuModal">
-  <div class="mbox">
-    <h2>Neolithic</h2>
-    <div class="mrow"><button class="abtn" id="btnResume">Resume</button></div>
-    <div class="mrow"><button class="abtn" id="btnSave">💾 Save game (download)</button>
-      <button class="abtn" id="btnLoad">📂 Load game</button>
-      <input type="file" id="fileLoad" accept=".json,application/json" style="display:none"></div>
-    <p id="seedShow"></p>
-    <details id="dNew">
-      <summary>🏕 Start a new game…</summary>
-      <p class="hint" style="margin-bottom:2px"><b>Difficulty:</b></p>
-      <div class="mrow" id="modeRow">
-        <button class="abtn mode" data-mode="calm">🌿 Calm</button>
-        <button class="abtn mode sel" data-mode="moderate">⚔️ Moderate</button>
-        <button class="abtn mode" data-mode="hard">💀 Hard</button>
-      </div>
-      <p class="hint" id="modeDesc" style="margin-top:0">The intended experience.</p>
-      <p class="hint" style="margin-bottom:2px"><b>Map size:</b></p>
-      <div class="mrow" id="sizeRow">
-        <button class="abtn mode sel" data-size="medium">🏞 Medium</button>
-        <button class="abtn mode" data-size="large">🗺 Large</button>
-        <button class="abtn mode" data-size="xlarge">🌍 Extra Large</button>
-      </div>
-      <div class="mrow"><input id="seedInput" placeholder="seed (optional)" inputmode="text">
-        <button class="abtn" id="btnNew">New game</button></div>
-    </details>
-    <details id="dHelp">
-      <summary>📖 How to play</summary>
-      <p class="hint"><b>Basics:</b> Drag to pan, pinch to zoom, tap to select.
-        Tap a build button then a tile to place. Construction and repairs need a villager —
-        an idle one is sent automatically, or tap a villager then the site. Tap a villager,
-        then a forest / hill / orchard / berry tile to gather — tiles run dry and turn to stumps or
-        pebbles, so build farms, camps and quarries for steady income. Train defenders at the Barracks to
-        fight wolves, bears and barbarians.</p>
-      <p class="hint"><b>Win:</b> destroy the rival tribe's Town Center. <b>Lose:</b> yours falls.
-        Nothing else ends the game — build up, then go get them.</p>
-      <p class="hint">Farms, lodges, lumber camps and quarries only produce while a villager is
-        stationed there. Every valley is short on one resource — scout for it and hold it.</p>
-    </details>
-    <details id="dLog">
-      <summary>📜 Event log</summary>
-      <div id="logList"></div>
-    </details>
-  </div>
-</div>
+<div id="shell">
 
-<div class="modal" id="endModal">
-  <div class="mbox" style="text-align:center">
-    <h2 id="endTitle">Victory</h2>
-    <p id="endMsg"></p>
-    <div class="mrow"><button class="abtn" id="btnEndNew">Play again</button></div>
+  <div class="screen" id="scrTitle">
+    <div class="tspacer"></div>
+    <h1 class="logo">NEOLITHIC</h1>
+    <p class="tagline">SETTLE · GATHER · ENDURE</p>
+    <div class="tspacer"></div>
+    <div class="tmenu">
+      <button class="abtn big gold" id="btnContinue">▶ Continue<small>looking for saves…</small></button>
+      <button class="abtn big" id="btnTitleNew">🏕 New game</button>
+      <button class="abtn big" id="btnTitleLoad">📂 Load game</button>
+      <div class="trow2">
+        <button class="abtn big" id="btnTitleSettings">⚙ Settings</button>
+        <button class="abtn big" id="btnTitleHow">📖 How to play</button>
+      </div>
+    </div>
+    <div id="cloudChip">☁ …</div>
   </div>
+
+  <div class="screen" id="scrNewgame">
+    <header class="shead"><button class="abtn back" id="ngBack">‹</button><h2>New game</h2></header>
+    <div class="sbody">
+      <p class="lbl">Difficulty</p>
+      <div class="orow" id="ngMode">
+        <button class="abtn" data-v="calm">🌿<small>Calm</small></button>
+        <button class="abtn" data-v="moderate">⚔️<small>Moderate</small></button>
+        <button class="abtn" data-v="hard">💀<small>Hard</small></button>
+      </div>
+      <p class="lbl">Map size</p>
+      <div class="orow" id="ngSize">
+        <button class="abtn" data-v="medium">🏞<small>Medium</small></button>
+        <button class="abtn" data-v="large">🗺<small>Large</small></button>
+        <button class="abtn" data-v="xlarge">🌍<small>Extra Large</small></button>
+      </div>
+      <p class="lbl">Landform</p>
+      <div class="orow" id="ngLand">
+        <button class="abtn" data-v="random">🎲<small>Any</small></button>
+        <button class="abtn" data-v="valley">🌄<small>Valley</small></button>
+        <button class="abtn" data-v="lakeland">💧<small>Lakes</small></button>
+        <button class="abtn" data-v="highlands">⛰<small>Highlands</small></button>
+        <button class="abtn" data-v="islands">🏝<small>Islands</small></button>
+      </div>
+      <p class="lbl">Rival chief</p>
+      <div class="orow" id="ngPersona">
+        <button class="abtn" data-v="random">🎲<small>Any</small></button>
+        <button class="abtn" data-v="homesteader">🌾<small>Homesteader</small></button>
+        <button class="abtn" data-v="warlord">⚔️<small>Warlord</small></button>
+        <button class="abtn" data-v="horselord">🐎<small>Horselord</small></button>
+        <button class="abtn" data-v="mariner">⛵<small>Mariner</small></button>
+        <button class="abtn" data-v="mason">🧱<small>Mason</small></button>
+        <button class="abtn" data-v="forager">🪓<small>Forager</small></button>
+      </div>
+      <p class="lbl">Seed <span class="hint">(optional — same seed, same map)</span></p>
+      <div class="mrow"><input id="seedInput" placeholder="leave blank for random" inputmode="text">
+        <button class="abtn" id="btnSeedRandom" style="flex:0 0 52px">🎲</button></div>
+      <div class="mrow"><button class="abtn big gold" id="btnStart">🏕 Begin</button></div>
+    </div>
+  </div>
+
+  <div class="screen" id="scrLoad">
+    <header class="shead"><button class="abtn back" id="loadBack">‹</button><h2 id="loadTitle">Load game</h2></header>
+    <div class="sbody">
+      <div id="slotList"></div>
+      <p class="lbl">Save file</p>
+      <div class="mrow"><button class="abtn" id="btnImportFile">📁 Import a save file</button></div>
+      <input type="file" id="fileLoad" accept=".json,application/json" style="display:none">
+    </div>
+  </div>
+
+  <div class="screen" id="scrSettings">
+    <header class="shead"><button class="abtn back" id="setBack">‹</button><h2>Settings</h2></header>
+    <div class="sbody">
+      <p class="lbl">Cloud autosave</p>
+      <div class="mrow">
+        <select id="setCadence">
+          <option value="0">Off</option>
+          <option value="1">Every day</option>
+          <option value="2">Every 2 days</option>
+          <option value="5">Every 5 days</option>
+        </select>
+      </div>
+      <p class="hint">Autosaves go to the slot this game was saved to or loaded from,
+        plus a local emergency snapshot on this device.</p>
+      <p class="lbl">Your village</p>
+      <p class="hint" id="setIdentity">…</p>
+      <div class="mrow"><input id="chiefInput" placeholder="name your chief (optional)"></div>
+      <div class="mrow">
+        <button class="abtn" id="btnExportId">🔑 Copy recovery token</button>
+        <button class="abtn" id="btnImportId">📥 Restore identity</button>
+      </div>
+      <p class="hint">The recovery token brings your cloud saves to another device.
+        Treat it like a password — anyone holding it can play as you.</p>
+      <p class="lbl">Save file</p>
+      <div class="mrow"><button class="abtn" id="btnExportFile">💾 Download current game as a file</button></div>
+    </div>
+  </div>
+
+  <div class="screen" id="scrPaused">
+    <header class="shead"><h2>⏸ Paused</h2></header>
+    <div class="sbody">
+      <p class="hint" id="pauseSeed"></p>
+      <div class="mrow"><button class="abtn big gold" id="btnPauseResume">▶ Resume</button></div>
+      <div class="trow2">
+        <button class="abtn big" id="btnPauseSave">💾 Save</button>
+        <button class="abtn big" id="btnPauseLoad">📂 Load</button>
+      </div>
+      <div class="trow2" style="margin-top:10px">
+        <button class="abtn big" id="btnPauseSettings">⚙ Settings</button>
+        <button class="abtn big" id="btnPauseHow">📖 How to play</button>
+      </div>
+      <div class="mrow"><button class="abtn big" id="btnQuitTitle">🏕 Quit to title</button></div>
+      <p class="lbl">📜 Event log</p>
+      <div id="logList"></div>
+    </div>
+  </div>
+
+  <div class="screen" id="scrEndgame">
+    <div class="sbody center">
+      <h1 id="endTitle">Victory</h1>
+      <p class="hint" id="endMsg"></p>
+      <div id="endStats"></div>
+      <button class="abtn big gold" id="btnEndNew">🏕 Play again</button>
+      <button class="abtn big" id="btnEndTitle">🏔 Title screen</button>
+    </div>
+  </div>
+
+  <div class="screen" id="scrHowto">
+    <header class="shead"><button class="abtn back" id="howBack">‹</button><h2>How to play</h2></header>
+    <div id="howPanels">
+      <section>
+        <h3>🏕 The basics</h3>
+        <p>Drag to pan, pinch to zoom, tap to select.</p>
+        <p>Tap a build button, then a tile, to place a building. Construction needs a
+          villager — an idle one is sent automatically, or tap a villager and then the site.</p>
+        <p>Tap a villager, then a <b>forest</b>, <b>hill</b>, <b>orchard</b> or <b>berry</b>
+          tile to gather. Tiles run dry and turn to stumps or pebbles — worked-out land
+          regrows in time, but slowly.</p>
+      </section>
+      <section>
+        <h3>🌾 Feeding the tribe</h3>
+        <p>Farms, hunting lodges, lumber camps and quarries only produce while a villager
+          is <b>stationed</b> there — tap the building, then "station a villager".</p>
+        <p>Villagers can also fish from the shore — but only where fish jump. Watch the
+          water, or build fishing boats at the <b>Dock</b> for deeper waters.</p>
+        <p>Every valley is short on one resource. Scouts tell you which on day one —
+          claim it before the rival does.</p>
+      </section>
+      <section>
+        <h3>⚔️ Keeping it</h3>
+        <p>Wolves, bears and barbarian raiders roam the wilds. Barbarians land in boats,
+          burn what they find, and leave — they fight <b>everyone</b>, including your rival.</p>
+        <p>Train defenders at the <b>Barracks</b>, archers at the <b>Range</b>, riders at
+          the <b>Stable</b>, siege at the <b>Workshop</b>. Each hall unlocks a new unit at
+          every level — mix strengths to cover weaknesses.</p>
+        <p>Villagers shelter inside the Town Center when raiders come knocking.</p>
+      </section>
+      <section>
+        <h3>⛵ The water</h3>
+        <p>The <b>Dock</b> builds fishing boats, warships and troop transports. Transports
+          carry your soldiers across water to distant shores — and enemy shores.</p>
+        <p>Old sailors speak of something vast beneath open water. Keep your fishing
+          boats close to home... or send two warships as escort.</p>
+      </section>
+      <section>
+        <h3>🏆 Winning</h3>
+        <p><b>Win:</b> destroy the rival tribe's Town Center.
+          <b>Lose:</b> yours falls. Nothing else ends the game — build up, then go get them.</p>
+        <p>Saves live in the cloud automatically (see Settings), and you can always
+          download a save file as a backup.</p>
+      </section>
+    </div>
+    <p class="swipeHint">‹ swipe for more ›</p>
+  </div>
+
 </div>
 
 <script src="js/config.js"></script>
@@ -290,6 +481,7 @@
 <script src="js/ai.js"></script>
 <script src="js/render.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/screens.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>
