@@ -133,7 +133,10 @@ const AI = {
                                    Math.round(tc.y + Math.sin(ang) * dist), 2, free);
       if (spot) return spot;
     }
-    return MapGen.findNear(tc.x, tc.y, rMax, free);
+    // crowded town (a full wall ring, a tight peninsula): spill outward
+    // rather than never building again
+    return MapGen.findNear(tc.x, tc.y, rMax, free) ||
+           MapGen.findNear(tc.x, tc.y, rMax + 4, free);
   },
 
   power(owner) {
@@ -178,11 +181,11 @@ const AI = {
       if (Units.count('A', u => u.kind === 'catapult') < wantCats) {
         const ws = S.buildings.find(bb => bb.owner === 'A' && bb.key === 'siege' &&
           Bld.done(bb) && !bb.upgrading && bb.queue.length === 0);
-        if (ws && Bld.train(ws, 'catapult')) return;
+        if (ws && Bld.train(ws, 'catapult')) return true;
       }
     }
     const count = Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u) && !Units.isSiege(u));
-    if (count >= want) return;
+    if (count >= want) return false;
     const roll = G.rand();
     let acc = 0, kind = P.mix[0][0];
     for (const [k, w] of P.mix) { acc += w; if (roll < acc + 1e-9) { kind = k; break; } }
@@ -194,48 +197,119 @@ const AI = {
     if (!b) {
       // rolled a unit whose hall isn't up yet — fall back to any open hall
       for (const [k] of P.mix) { const alt = hallOf(k); if (alt) { kind = k; b = alt; break; } }
-      if (!b) return;
+      if (!b) return false;
     }
     const ADV = { defender: 'elite', archer: 'marksman', rider: 'lancer' };
     const advN = Units.count('A', u => u.kind === 'elite' || u.kind === 'lancer' || u.kind === 'marksman');
     const adv = ADV[kind] && b.level >= 3 && S.ai.res.gold >= 25 &&
       advN < Math.floor((m.aiEliteShare || 0) * want);
-    Bld.train(b, adv ? ADV[kind] : kind);
+    return Bld.train(b, adv ? ADV[kind] : kind);
+  },
+
+  // afford a cost AND keep the current savings goal intact — big projects
+  // (the next Town Center) are saved for like a human would, instead of the
+  // treasury forever leaking into huts
+  affordFree(cost) {
+    const ai = S.ai;
+    for (const k in cost) {
+      const reserve = (ai.goal && ai.goal.cost[k]) || 0;
+      if ((ai.res[k] || 0) - cost[k] < reserve) return false;
+    }
+    return Bld.canAfford(cost, ai.res);
+  },
+
+  tryBuild(key, ignoreGoal) {
+    const cost = CFG.BUILDINGS[key].levels[0].cost;
+    if (ignoreGoal ? !Bld.canAfford(cost, S.ai.res) : !this.affordFree(cost)) return false;
+    const spot = this.plot(key);
+    if (!spot || !Bld.canPlace('A', key, spot.x, spot.y).ok) return false;
+    Bld.place('A', key, spot.x, spot.y);
+    return true;
   },
 
   daily() {
     const ai = S.ai;
     const m = G.modeCfg();
     const P = this.persona();
-    if (!Bld.tcOf('A')) return;   // rival destroyed
+    const tc = Bld.tcOf('A');
+    if (!tc) return;   // rival destroyed
 
     // small base income so the AI never fully stalls (scaled by difficulty)
     ai.res.food += 3 * m.aiOutput; ai.res.wood += 3 * m.aiOutput; ai.res.stone += 1 * m.aiOutput;
     ai.res.gold += 4 * m.aiOutput;   // the AI has no worker mechanic, so gold trickles here
     Bld.dailyProduction('A');
 
-    // build & upgrade at a difficulty-dependent tempo. Two hard lessons are
-    // encoded here: (a) one unaffordable entry must never stall the whole
-    // order — a poor tribe skips it and circles back; (b) anything the order
-    // prescribes that no longer stands (barbarians razed it, or it was
-    // skipped while broke) is REBUILT by the backfill pass, so a sacked
-    // rival recovers instead of sitting out the rest of the game.
-    if (S.day % (m.aiBuildEvery || 2) === 0) {
+    /* ---- repair crews: chip damage must not accumulate forever. Any
+       damaged building heals slowly once no enemy stands over it ---- */
+    for (const b of Bld.list('A')) {
+      if (!Bld.done(b) || b.hp >= b.maxhp) continue;
+      const foe = Combat.nearestUnit(b.x + 0.5, b.y + 0.5, 6,
+        o => Combat.hostileToBld(b, o) && !Units.isPassive(o));
+      if (!foe) b.hp = Math.min(b.maxhp, b.hp + b.maxhp * 0.05);
+    }
+
+    /* ---- the town alarm: when buildings burn, idle soldiers converge on
+       the fight instead of holding posts across town, and a tribe caught
+       with NO army rushes spears into hands, savings be damned ---- */
+    if (ai.alarm && S.day - ai.alarm.day <= 1) {
+      for (const u of S.units) {
+        if (u.owner !== 'A' || !Units.isMilitary(u) || Units.isNaval(u) || u.kind === 'siegetower') continue;
+        if (u.tUnit || u.tBld || (u.task && u.task.type === 'raid')) continue;
+        if (Math.hypot(u.x - ai.alarm.x, u.y - ai.alarm.y) <= 4) continue;
+        u.task = { type: 'move', x: ai.alarm.x, y: ai.alarm.y };
+        u.anchor = { x: ai.alarm.x + 0.5, y: ai.alarm.y + 0.5 };
+        Units.setPath(u, ai.alarm.x, ai.alarm.y);
+      }
+      if (Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u)) === 0) {
+        const hall = S.buildings.find(b => b.owner === 'A' && !b.upgrading && Bld.done(b) &&
+          (b.key === 'barracks' || b.key === 'stable' || b.key === 'range'));
+        if (hall) {
+          const kind = hall.key === 'stable' ? 'rider' : hall.key === 'range' ? 'archer' : 'defender';
+          Bld.train(hall, kind); Bld.train(hall, kind);
+        }
+      }
+    }
+
+    /* ---- savings goals: when the Town Center is due, the chief SAVES for
+       it (other construction pauses) instead of the treasury dribbling away
+       into huts forever. A goal that can't be met in 15 days is shelved so
+       a broken economy never deadlocks on a dream. ---- */
+    if (ai.goal) {
+      if (tc.level >= 3 || tc.upgrading) ai.goal = null;
+      else if (Bld.canUpgrade(tc).ok) { Bld.upgrade(tc); ai.goal = null; }
+      else if (S.day > ai.goal.until) { ai.goal = null; ai.goalCd = S.day + 12; }
+    }
+    if (!ai.goal && tc.level < 3 && !tc.upgrading &&
+        S.day > P.tcDays[tc.level - 1] && S.day >= (ai.goalCd || 0)) {
+      ai.goal = { cost: CFG.BUILDINGS.tc.levels[tc.level].cost, until: S.day + 15 };
+    }
+
+    /* ---- bottleneck economy: a chief starved of one resource for days
+       digs out FIRST — builds the matching income building even if the
+       persona's script never called for it (warlords learn to log too) ---- */
+    ai.broke = ai.broke || {};
+    let dugOut = false;
+    for (const k of ['wood', 'stone', 'food']) {
+      ai.broke[k] = ai.res[k] < 40 ? (ai.broke[k] || 0) + 1 : 0;
+      if (ai.broke[k] >= 6 && !dugOut) {
+        const bk = { wood: 'lumber', stone: 'quarry', food: 'farm' }[k];
+        if (this.tryBuild(bk, true)) { ai.broke[k] = 0; dugOut = true; }
+      }
+    }
+
+    /* ---- build at a difficulty-dependent tempo. Hard lessons encoded:
+       (a) one unaffordable entry never stalls the order — skip and circle
+       back; (b) anything prescribed but not standing (razed or skipped) is
+       rebuilt by the backfill pass, so a sacked town recovers ---- */
+    if (S.day % (m.aiBuildEvery || 2) === 0 && !dugOut) {
       let built = false;
       if (ai.orderI < P.order.length) {
         let key = P.order[ai.orderI];
         // the workshop waits for a great hall, same rule the player lives by
-        const tcNow = Bld.tcOf('A');
-        if (key === 'siege' && (!tcNow || tcNow.level < 3)) key = null;
+        if (key === 'siege' && tc.level < 3) key = null;
         if (key) {
-          if (Bld.canAfford(CFG.BUILDINGS[key].levels[0].cost, ai.res)) {
-            const spot = this.plot(key);
-            if (spot && Bld.canPlace('A', key, spot.x, spot.y).ok) {
-              Bld.place('A', key, spot.x, spot.y);
-              ai.orderI++; ai.stuck = 0; built = true;
-            }
-          }
-          if (!built) {
+          if (this.tryBuild(key)) { ai.orderI++; ai.stuck = 0; built = true; }
+          else {
             ai.stuck = (ai.stuck || 0) + 1;
             if (ai.stuck >= 4) { ai.orderI++; ai.stuck = 0; }   // move on — backfill returns to it
           }
@@ -250,35 +324,35 @@ const AI = {
           want[P.order[i2]] = (want[P.order[i2]] || 0) + 1;
         for (const k in want) {
           if ((have[k] || 0) >= want[k]) continue;
-          if (k === 'siege' && (!Bld.tcOf('A') || Bld.tcOf('A').level < 3)) continue;
-          if (!Bld.canAfford(CFG.BUILDINGS[k].levels[0].cost, ai.res)) continue;
-          const spot = this.plot(k);
-          if (spot && Bld.canPlace('A', k, spot.x, spot.y).ok) {
-            Bld.place('A', k, spot.x, spot.y);
-            built = true;
-            break;
-          }
+          if (k === 'siege' && tc.level < 3) continue;
+          if (this.tryBuild(k)) { built = true; break; }
         }
       }
-      if (!built && ai.orderI >= P.order.length) {
-        // late game, nothing missing: keep upgrading things
-        const up = S.buildings.find(b => b.owner === 'A' && Bld.canUpgrade(b).ok);
-        if (up && G.rand() < 0.8) Bld.upgrade(up);
+      if (!built && ai.orderI >= P.order.length && !ai.goal) {
+        // late game, nothing missing, nothing being saved for: upgrade —
+        // weighted toward what wins fights, random enough to vary
+        const ups = S.buildings.filter(b => b.owner === 'A' && b.key !== 'tc' && Bld.canUpgrade(b).ok);
+        if (ups.length && G.rand() < 0.8) {
+          const prio = { barracks: 3, range: 3, stable: 3, tower: 2, siege: 2, dock: 2 };
+          ups.sort((a, b2) => ((prio[b2.key] || 1) - (prio[a.key] || 1)) + (G.rand() - 0.5));
+          Bld.upgrade(ups[0]);
+        }
       }
     }
 
-    // upgrade the town center on the persona's schedule
-    const tc = Bld.tcOf('A');
-    if (tc && ((S.day > P.tcDays[0] && tc.level === 1) || (S.day > P.tcDays[1] && tc.level === 2))) {
-      if (Bld.canUpgrade(tc).ok) Bld.upgrade(tc);
+    // the town center upgrades the moment its savings goal is met (handled
+    // above) — but also opportunistically whenever it's simply affordable
+    if (tc.level < 3 && !tc.upgrading && S.day > P.tcDays[tc.level - 1] && Bld.canUpgrade(tc).ok) {
+      Bld.upgrade(tc);
+      ai.goal = null;
     }
 
-    // the mason walls the town in
-    if (P.walls && tc) this.maybeWalls(tc);
+    // the mason walls the town in (never out of the savings jar)
+    if (P.walls && !ai.goal) this.maybeWalls(tc);
 
-    // put to sea: a dock when water allows, then boats and warships. The
-    // mariner goes early, keeps a bigger fleet, and loves fire on the water.
-    if (tc && tc.level >= P.dockTC && !S.buildings.some(b => b.owner === 'A' && b.key === 'dock')) {
+    // put to sea: a dock when water allows, then boats and warships. Boats
+    // are income and always allowed; warships wait their turn behind savings.
+    if (tc.level >= P.dockTC && !S.buildings.some(b => b.owner === 'A' && b.key === 'dock')) {
       if (Bld.canAfford(CFG.BUILDINGS.dock.levels[0].cost, ai.res)) {
         const site = MapGen.findNear(tc.x, tc.y, 8, (x, y) => Bld.dockSiteOk(x, y, 'A').ok);
         if (site && Bld.canPlace('A', 'dock', site.x, site.y).ok)
@@ -290,25 +364,50 @@ const AI = {
       const boats = Units.count('A', u => u.kind === 'fishboat');
       const ships = Units.count('A', u => u.kind === 'warship' || u.kind === 'fireship');
       if (boats < P.boats) Bld.train(dock, 'fishboat');
-      else if (dock.level >= 2 && ships < Math.max(1, Math.floor((m.aiArmyCap || 8) / P.shipDiv)))
+      else if (dock.level >= 2 && ships < Math.max(1, Math.floor((m.aiArmyCap || 8) / P.shipDiv)) &&
+               this.affordFree(CFG.BUILDINGS.dock.train.warship.cost))
         Bld.train(dock, dock.level >= 3 && ai.res.gold >= 45 ? 'fireship' : 'warship');
     }
 
-    // keep a standing force shaped by the persona
+    // keep a standing force shaped by the persona; a rich tribe drills two
+    // recruits a day instead of always one
     const want = Math.min(2 + Math.floor(S.day / (m.aiArmyDiv || 8)), m.aiArmyCap || 10);
-    this.trainArmy(m, want);
+    if (this.trainArmy(m, want) && ai.res.food > 400 && ai.res.gold > 80) this.trainArmy(m, want);
 
-    // raid the player when the persona feels strong enough
+    /* ---- raids: launch when strong, RETREAT when it goes wrong. A party
+       cut below a third of its strength (or bogged down for 8+ days) breaks
+       off and marches home to fight another day. And a long stalemate makes
+       any chief bolder — the power bar to raid decays slowly after day 90,
+       so a turtled game still ends in fire and iron. ---- */
+    const raiders = S.units.filter(u => u.owner === 'A' && u.task && u.task.type === 'raid');
+    if (raiders.length) {
+      const tooFew = ai.raidN && raiders.length <= Math.max(1, Math.floor(ai.raidN * 0.35));
+      const tooLong = ai.raidDay && S.day - ai.raidDay > 8;
+      if (tooFew || tooLong) {
+        for (const u of raiders) {
+          u.task = { type: 'move', x: tc.x, y: tc.y + 2 };
+          u.tUnit = 0; u.tBld = 0;
+          u.anchor = { x: tc.x + 0.5, y: tc.y + 2.5 };
+          Units.setPath(u, tc.x, tc.y + 2);
+        }
+        ai.raidN = 0;
+        if (tooFew) G.log('The rival war party breaks off and retreats!');
+      }
+    } else ai.raidN = 0;
+
     if (ai.raidCd > 0) ai.raidCd--;
     const mine = this.power('A'), theirs = this.power('P');
     const raidDay = Math.max(20, m.aiRaidDay + P.raidDayAdd);
-    if (S.day >= raidDay && ai.raidCd <= 0 && mine >= 4 && mine > theirs * P.raidPower) {
+    const boldness = Math.max(1.0, P.raidPower - Math.max(0, S.day - 90) * 0.005);
+    if (S.day >= raidDay && ai.raidCd <= 0 && mine >= 4 && mine > theirs * boldness && !raiders.length) {
       const troops = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
-        !Units.isNaval(u) && !(u.task && u.task.type === 'raid'));
+        !Units.isNaval(u) && u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
       const party = troops.slice(0, Math.ceil(troops.length * P.raidShare));
       if (party.length >= 3) {
         for (const u of party) { u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; }
         ai.raidCd = P.raidCd;
+        ai.raidN = party.length;
+        ai.raidDay = S.day;
         G.log('⚔ The rival tribe marches on your village!', true);
       }
     }

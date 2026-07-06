@@ -236,7 +236,15 @@ on desktop too.
   of watchtowers early — basic protection isn't a personality trait. The Mason
   really does ring its town in palisades and gates; the
   Horselord really will run you down with lancers. Army size and elite share
-  still scale with difficulty. Scout early — knowing who you're up against
+  still scale with difficulty. And the chief thinks on its feet: it **saves
+  up** for its next Town Center instead of dribbling the treasury into huts,
+  **digs out of poverty** by building whatever income it's starved of (even
+  off-script), **rebuilds** anything barbarians or you raze, **repairs** chip
+  damage between fights, rings a **town alarm** that pulls its soldiers to
+  wherever you strike (rushing emergency recruits if you catch it armyless),
+  and **retreats** a mauled raid party to fight another day. Turtle too long
+  and it grows bolder — after day 90 its bar to march drops steadily, so a
+  stalemate always breaks. Scout early — knowing who you're up against
   changes everything.
 - **Fog of war** — unexplored land is black; places you've visited but left turn
   grey and show only what you last saw there: buildings frozen at their old state,

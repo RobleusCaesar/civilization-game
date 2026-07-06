@@ -366,6 +366,8 @@ const Bld = {
 
   damage(b, amt) {
     b.hp -= amt;
+    // ring the rival's town alarm — idle soldiers converge (see AI.daily)
+    if (b.owner === 'A' && S.ai) S.ai.alarm = { x: b.x, y: b.y, day: S.day };
     if (b.hp <= 0) {
       const name = this.def(b.key).name, owner = b.owner, key = b.key;
       this.removeToRuin(b);
