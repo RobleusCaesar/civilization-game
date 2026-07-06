@@ -19,14 +19,42 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.retry.outputs.page_url || steps.retry2.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
         with:
           enablement: true
+      # Unique artifact name per attempt. GitHub keeps every attempt's
+      # artifact attached to the run, and deploy-pages refuses to proceed
+      # when several share one name — which is why "Re-run all jobs" on a
+      # failed deploy could never succeed ("Multiple artifacts named
+      # 'github-pages'"). With unique names, re-runs work again.
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
+          name: pages-${{ github.run_id }}-${{ github.run_attempt }}
+      # GitHub's Pages backend intermittently answers "Deployment failed,
+      # try again later" with nothing wrong on our side. Rather than fail
+      # the run on the first such hiccup, try up to three times with
+      # growing pauses — only a triple failure marks the run red.
       - id: deployment
+        continue-on-error: true
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: pages-${{ github.run_id }}-${{ github.run_attempt }}
+      - if: steps.deployment.outcome == 'failure'
+        run: sleep 45
+      - id: retry
+        if: steps.deployment.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: pages-${{ github.run_id }}-${{ github.run_attempt }}
+      - if: steps.deployment.outcome == 'failure' && steps.retry.outcome == 'failure'
+        run: sleep 90
+      - id: retry2
+        if: steps.deployment.outcome == 'failure' && steps.retry.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: pages-${{ github.run_id }}-${{ github.run_attempt }}
