@@ -177,7 +177,7 @@ const AI = {
     const P = this.persona();
     // siege-minded chiefs keep a catapult battery on top of the standing force
     if (P.mix.some(([k]) => k === 'catapult')) {
-      const wantCats = Math.max(1, Math.floor((m.aiArmyCap || 8) / 6));
+      const wantCats = Math.max(1, Math.floor(want / 6));
       if (Units.count('A', u => u.kind === 'catapult') < wantCats) {
         const ws = S.buildings.find(bb => bb.owner === 'A' && bb.key === 'siege' &&
           Bld.done(bb) && !bb.upgrading && bb.queue.length === 0);
@@ -204,6 +204,31 @@ const AI = {
     const adv = ADV[kind] && b.level >= 3 && S.ai.res.gold >= 25 &&
       advN < Math.floor((m.aiEliteShare || 0) * want);
     return Bld.train(b, adv ? ADV[kind] : kind);
+  },
+
+  /* the build order is an OPENING, not a life plan — after it's done the
+     town keeps developing forever: more farms, houses, towers, camps and
+     halls on a clock, capped only by a sane town size. This is what makes
+     the rival still feel like a player at day 150 instead of a museum. */
+  growthKey() {
+    const have = {};
+    let total = 0;
+    for (const b of Bld.list('A')) {
+      if (b.key === 'wall' || b.key === 'gate') continue;
+      have[b.key] = (have[b.key] || 0) + 1;
+      total++;
+    }
+    if (total >= 34) return null;
+    const wish = [
+      ['farm',     2 + Math.floor(S.day / 45)],
+      ['house',    2 + Math.floor(S.day / 40)],
+      ['tower',    2 + Math.floor(S.day / 50)],
+      ['lumber',   1 + Math.floor(S.day / 80)],
+      ['quarry',   1 + Math.floor(S.day / 80)],
+      ['barracks', 1 + Math.floor(S.day / 90)],
+    ];
+    for (const [k, n] of wish) if ((have[k] || 0) < n) return k;
+    return null;
   },
 
   // afford a cost AND keep the current savings goal intact — big projects
@@ -329,7 +354,11 @@ const AI = {
         }
       }
       if (!built && ai.orderI >= P.order.length && !ai.goal) {
-        // late game, nothing missing, nothing being saved for: upgrade —
+        const gk = this.growthKey();
+        if (gk) built = this.tryBuild(gk);
+      }
+      if (!built && ai.orderI >= P.order.length && !ai.goal) {
+        // town's grown for the day: upgrade —
         // weighted toward what wins fights, random enough to vary
         const ups = S.buildings.filter(b => b.owner === 'A' && b.key !== 'tc' && Bld.canUpgrade(b).ok);
         if (ups.length && G.rand() < 0.8) {
@@ -370,9 +399,22 @@ const AI = {
     }
 
     // keep a standing force shaped by the persona; a rich tribe drills two
-    // recruits a day instead of always one
-    const want = Math.min(2 + Math.floor(S.day / (m.aiArmyDiv || 8)), m.aiArmyCap || 10);
+    // recruits a day instead of always one. The cap is a starting line, not
+    // a ceiling: it grows with the game clock so a day-150 rival fields a
+    // day-150 army, not a day-30 one.
+    const capNow = Math.min(Math.round((m.aiArmyCap || 8) * 2.5),
+      (m.aiArmyCap || 8) + Math.floor(Math.max(0, S.day - 60) / 15));
+    const want = Math.min(2 + Math.floor(S.day / (m.aiArmyDiv || 8)), capNow);
     if (this.trainArmy(m, want) && ai.res.food > 400 && ai.res.gold > 80) this.trainArmy(m, want);
+
+    /* ---- townsfolk: a living village. A few villagers walk the lanes,
+       staffing the town in spirit — killable, worth raiding, and slowly
+       replaced. No more empty ghost towns. ---- */
+    if (Units.count('A', u => Units.isVillager(u)) < 2 + tc.level &&
+        ai.res.food >= 60 && G.rand() < 0.5) {
+      const spot = MapGen.findNear(tc.x, tc.y + 1, 4, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+      if (spot) { ai.res.food -= 50; Units.spawn('villager', 'A', spot.x, spot.y); }
+    }
 
     /* ---- raids: launch when strong, RETREAT when it goes wrong. A party
        cut below a third of its strength (or bogged down for 8+ days) breaks

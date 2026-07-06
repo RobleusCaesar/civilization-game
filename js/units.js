@@ -294,6 +294,22 @@ const Units = {
 
       if (this.isWild(u)) { this.wildIdle(u, dt); continue; }
 
+      // the rival's townsfolk drift between the huts when idle — a village
+      // that looks lived-in, and something for raiders to menace
+      if (u.owner === 'A' && this.isVillager(u) && !u.task) {
+        if (this.moving(u)) { this.followPath(u, dt); continue; }
+        u.wanderT -= dt;
+        if (u.wanderT <= 0) {
+          u.wanderT = 3 + Math.random() * 5;
+          const tc = Bld.tcOf('A');
+          if (tc) {
+            const tx = tc.x + ((Math.random() * 9) | 0) - 4, ty = tc.y + ((Math.random() * 9) | 0) - 4;
+            if (Path.passable(tx, ty, 'A')) this.setPath(u, tx, ty);
+          }
+        }
+        continue;
+      }
+
       // barbarian transports run their landing orders like any other unit;
       // every other barbarian is driven by raiderSeek. Any march it ordered
       // (closing on a target, or trudging off the map when the looting's
@@ -543,6 +559,10 @@ const Units = {
     if (!attacker) return;
     if (this.isVillager(u) && u.owner === 'P' && !this.villagerArmed()) {
       const tc = Bld.tcOf('P');
+      if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + 1); }
+    } else if (this.isVillager(u) && u.owner === 'A') {
+      // rival townsfolk run for their hall when struck
+      const tc = Bld.tcOf('A');
       if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + 1); }
     } else if (this.isMilitary(u) || this.isWild(u) || this.isVillager(u) || this.isRaider(u)) {
       u.tUnit = attacker.id;   // barbarians hit back no matter whom they came for

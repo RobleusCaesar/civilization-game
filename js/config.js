@@ -273,14 +273,14 @@ const CFG = {
       gather: 1, output: 1,
       waveFirst: 40, waveGapMult: 1.5, waveSizeAdd: 0, barbMult: 1,
       animalMax: 3, animalChance: 0.2, aiRaidDay: 70,
-      aiBuildEvery: 2, aiOutput: 1, aiArmyCap: 8, aiArmyDiv: 8, aiEliteShare: 0.4,
+      aiBuildEvery: 2, aiOutput: 1.1, aiArmyCap: 8, aiArmyDiv: 8, aiEliteShare: 0.4,
     },
     hard: {
       name: 'Hard', icon: '💀', desc: 'Slower gathering, relentless enemies.',
       gather: 0.85, output: 0.85,
       waveFirst: 30, waveGapMult: 0.8, waveSizeAdd: 1, barbMult: 1.2,
       animalMax: 4, animalChance: 0.3, aiRaidDay: 50,
-      aiBuildEvery: 1, aiOutput: 1.15, aiArmyCap: 12, aiArmyDiv: 6, aiEliteShare: 0.75,
+      aiBuildEvery: 1, aiOutput: 1.25, aiArmyCap: 12, aiArmyDiv: 6, aiEliteShare: 0.75,
     },
   },
 
