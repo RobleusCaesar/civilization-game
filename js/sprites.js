@@ -543,6 +543,23 @@ const Sprites = {
       }
       if (d.decor >= 2) { banner(p, 13, 0, fac); p(2, 12, 2, 1, AP.gold[2]); }
     },
+    // siege workshop: an open work-yard where a catapult takes shape beside the hut
+    siege(p, lv, fac) {
+      const d = ART.tierDress(lv);
+      ART.dropShadow(p, 8, 14, 14);
+      wallBody(p, 0, 8, 6, 6, d, 25);                               // workshop hut
+      roof(p, 0, 5, 7, 3, d, 26);
+      p(2, 10, 2, 4, AP.ink[0]);                                    // doorway
+      p(8, 12, 7, 2, AP.wood[1]); p(8, 12, 7, 1, AP.wood[2]);       // engine sled
+      ART.shadedCircle(p, 9, 13, 1, AP.wood, 1);                    // wheels
+      ART.shadedCircle(p, 13, 13, 1, AP.wood, 1);
+      p(10, 7, 1, 5, AP.wood[3]);                                   // upright
+      p(10, 7, 4, 1, AP.wood[2]); p(14, 6, 1, 2, AP.stone[2]);      // throwing arm + cup stone
+      p(11, 10, 2, 2, AP.wood[0]);                                  // winch drum
+      if (d.decor >= 1) { p(7, 14, 3, 1, AP.wood[2]); p(7, 13, 3, 1, AP.wood[3]); }  // seasoned timber
+      if (d.decor >= 2) { ART.shadedCircle(p, 8, 4, 1, AP.stone, 2); p(10, 4, 1, 1, AP.stone[2]); }  // shot pile
+      if (d.banner) banner(p, 0, 0, fac);
+    },
     wall(p, lv) { drawWallMask(p, lv, 2 | 8); },   // menu/panel icon: an east-west run
     gate(p, lv) {
       const c = wallPal(lv);
@@ -771,6 +788,61 @@ const Sprites = {
   }
   Sprites.unit.transport = transportSheet(false);
   Sprites.unit.bigtransport = transportSheet(true);
+
+  /* ---------------- siege engines ---------------- */
+  // catapult (onager): timber frame on wheels, winch, long throwing arm.
+  // fight frame 1 snaps the arm upright and the boulder leaves the cup.
+  function catapultSheet() {
+    const draw = (p, f, pose) => {
+      p(2, 14, 12, 1, 'rgba(0,0,0,0.3)');
+      p(2, 11, 12, 2, APx.wood[2]); p(2, 11, 12, 1, APx.wood[3]);   // frame rails
+      p(3, 10, 1, 2, APx.wood[1]); p(12, 10, 1, 2, APx.wood[1]);    // cross braces
+      ART.shadedCircle(p, 3, 13, 1, AP.wood, 1);                    // wheels
+      ART.shadedCircle(p, 12, 13, 1, AP.wood, 1);
+      p(8, 7, 1, 4, APx.wood[1]); p(10, 7, 1, 4, APx.wood[1]);      // A-frame uprights
+      p(8, 7, 3, 1, APx.wood[3]);
+      p(11, 10, 2, 1, APx.wood[0]); p(13, 9, 1, 1, APx.wood[2]);    // winch + handle
+      const thrown = pose === 'fight' && f === 1;
+      if (thrown) {
+        p(9, 3, 1, 5, APx.wood[3]);                                 // arm snapped upright
+        p(8, 2, 2, 1, APx.wood[2]);                                 // empty cup
+        p(6, 1, 2, 2, AP.stone[3]); p(6, 1, 1, 1, AP.stone[4]);     // boulder away!
+      } else {
+        p(3, 5, 1, 1, APx.wood[3]); p(4, 6, 1, 1, APx.wood[3]);     // arm cocked back
+        p(5, 7, 1, 1, APx.wood[3]); p(6, 8, 1, 1, APx.wood[3]); p(7, 9, 1, 1, APx.wood[3]);
+        p(2, 3, 2, 2, APx.wood[2]);                                 // cup…
+        p(2, 3, 2, 1, AP.stone[2]);                                 // …loaded with stone
+      }
+    };
+    return {
+      idle: frames(2, (p, g, f) => draw(p, 0, 'idle')),
+      walk: frames(2, (p, g, f) => draw(p, f, 'walk')),
+      fight: frames(2, (p, g, f) => draw(p, f, 'fight')),
+    };
+  }
+  // siege tower: a tall plank tower on wheels, ladder up the face, crenellated
+  // top — rolled against a wall, soldiers stream over it
+  function siegetowerSheet() {
+    const draw = (p, f) => {
+      const bob = f === 1 ? 1 : 0;
+      p(3, 14, 10, 1, 'rgba(0,0,0,0.3)');
+      ART.shadedCircle(p, 5, 13, 1, AP.wood, 1);                    // wheels
+      ART.shadedCircle(p, 10, 13, 1, AP.wood, 1);
+      ART.woodPlankTexture(p, 5, 3 + bob, 6, 10 - bob, 27);         // tower body
+      p(4, 2 + bob, 8, 1, APx.wood[3]);                             // fighting-top floor
+      p(4, 1 + bob, 1, 1, APx.wood[2]); p(7, 1 + bob, 1, 1, APx.wood[2]);  // crenels
+      p(11, 1 + bob, 1, 1, APx.wood[2]);
+      p(5, 3 + bob, 1, 10 - bob, APx.wood[1]); p(10, 3 + bob, 1, 10 - bob, APx.wood[1]);  // corner posts
+      for (let y = 4 + bob; y < 13; y += 2) p(7, y, 2, 1, APx.thatch[1]);   // ladder rungs
+      p(6, 12, 4, 2, APx.wood[0]);                                  // dark base carriage
+    };
+    return {
+      idle: frames(2, (p, g, f) => draw(p, 0)),
+      walk: frames(2, (p, g, f) => draw(p, f)),
+    };
+  }
+  Sprites.unit.catapult = catapultSheet();
+  Sprites.unit.siegetower = siegetowerSheet();
 
   // fish breaking the surface — two frames used as an occasional flourish
   Sprites.misc.fish = [

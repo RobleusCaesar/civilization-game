@@ -332,9 +332,20 @@ const R = {
     }
     g.textAlign = 'left'; g.textBaseline = 'alphabetic';
 
-    // arrows in flight (flaming ones burn orange with an ember at the head)
+    // arrows in flight (flaming ones burn orange with an ember at the head);
+    // catapult stones arc high and land hard
     g.lineWidth = 1.5;
     for (const s of Combat.shots) {
+      if (s.rock) {
+        const k = Math.max(0, 1 - s.t / 0.35);
+        const px = (s.x1 + (s.x2 - s.x1) * k) * TL;
+        const py = (s.y1 + (s.y2 - s.y1) * k - Math.sin(k * Math.PI) * 1.1) * TL;
+        g.fillStyle = ART.PALETTE.stone[1];
+        g.fillRect(px - 3, py - 3, 6, 6);
+        g.fillStyle = ART.PALETTE.stone[3];
+        g.fillRect(px - 3, py - 3, 3, 3);
+        continue;
+      }
       const a = Math.min(1, s.t * 6);
       g.strokeStyle = s.fire ? 'rgba(242,150,58,' + a + ')' : 'rgba(240,210,122,' + a + ')';
       g.beginPath(); g.moveTo(s.x1 * TL, s.y1 * TL); g.lineTo(s.x2 * TL, s.y2 * TL); g.stroke();

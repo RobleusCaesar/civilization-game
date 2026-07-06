@@ -19,7 +19,7 @@ const UI = {
   wallDrag: null,        // tile chain while dragging a wall line
   wallGhost: null,       // [{x,y,ok,mask}] preview of the dragged line
   settingRally: null,    // building id waiting for a rally-point tap
-  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'dock', 'wall', 'gate'],
+  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'wall', 'gate'],
 
   init() {
     // procedural UI chrome (ARTSTYLE): a dark plank texture generated once and
@@ -795,6 +795,8 @@ const UI = {
           : 'Rival tribe')
         : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / an orchard to gather, jumping fish 🐟 to fish off the shore, a work site to build, or a tile to walk.'
         : u.kind === 'fishboat' ? 'Tap water where fish jump 🐟 to fish, or open water to row there.'
+        : u.kind === 'catapult' ? 'Slow, but stone breaks stone — tap a rival wall, tower, or building to bombard it.'
+        : u.kind === 'siegetower' ? 'Roll it flush against an enemy wall — nearby soldiers climb over, one per second. Only melee and marksmen can harm it.'
         : Units.isTransport(u) ? 'Select soldiers and tap this hull to board. Tap a shore tile to land them, or water to row.'
         : Units.isNaval(u) ? 'Tap an enemy or rival building near the shore to attack, or water to sail.'
         : 'Tap a tile to move, or an enemy to attack.';

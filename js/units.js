@@ -29,8 +29,10 @@ const Units = {
   isMilitary(u) {
     return u.kind === 'defender' || u.kind === 'elite' || u.kind === 'rider' ||
            u.kind === 'lancer' || u.kind === 'archer' || u.kind === 'marksman' ||
-           u.kind === 'warship' || u.kind === 'fireship';
+           u.kind === 'warship' || u.kind === 'fireship' ||
+           u.kind === 'catapult' || u.kind === 'siegetower';
   },
+  isSiege(u) { return u.kind === 'catapult' || u.kind === 'siegetower'; },
   isVillager(u) { return u.kind === 'villager'; },
   isNaval(u) { return !!CFG.UNITS[u.kind].naval; },
   isTransport(u) { return u.kind === 'transport' || u.kind === 'bigtransport'; },
@@ -261,6 +263,31 @@ const Units = {
       const u = S.units[i];
       u.animT += dt;
       if (u.cd > 0) u.cd -= dt;
+
+      // a siege tower parked against an enemy wall ferries one nearby soldier
+      // per second up, over, and down the far side
+      if (u.kind === 'siegetower' && !this.moving(u)) {
+        u.ladderT = (u.ladderT || 0) - dt;
+        if (u.ladderT <= 0) {
+          u.ladderT = 1;
+          const ux = u.x | 0, uy = u.y | 0;
+          for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const wb = Bld.at(ux + ox, uy + oy);
+            if (!wb || (wb.key !== 'wall' && wb.key !== 'gate') || wb.owner === u.owner) continue;
+            const fx = ux + ox * 2, fy = uy + oy * 2;
+            if (!Path.passable(fx, fy, u.owner) || Bld.at(fx, fy)) continue;
+            const s = S.units.find(o => o.owner === u.owner && this.isMilitary(o) &&
+              !this.isNaval(o) && !this.isSiege(o) && !o.tUnit &&
+              Math.hypot(o.x - u.x, o.y - u.y) <= 1.7);
+            if (!s) break;
+            s.x = fx + 0.5; s.y = fy + 0.5;
+            s.path = null; s.pathI = 0; s.task = null;
+            s.anchor = { x: s.x, y: s.y };   // the far side is home now — no leash pullback
+            R.float(u.x, u.y - 0.8, '⬆ over the top!', '#f0d27a');
+            break;
+          }
+        }
+      }
 
       // combat engagement (chasing/attacking) is driven by combat.js
       if (u.tUnit || u.tBld) continue;

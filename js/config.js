@@ -111,12 +111,28 @@ const CFG = {
       ],
     },
     tower: {
+      // fortifications got a real HP curve (siege engines exist now) — and a
+      // matching price curve. L1 stays affordable: it's the early-game shield.
       name: 'Watchtower', desc: 'Shoots raiders and beasts. Extends vision.', vision: true,
       levels: [
-        { cost: { wood: 40, stone: 40 },   time: 2, hp: 250, atk: 8,  range: 4.5, vision: 6 },
-        { cost: { wood: 80, stone: 90 },   time: 2, hp: 400, atk: 13, range: 5,   vision: 7 },
-        { cost: { wood: 150, stone: 180 }, time: 3, hp: 600, atk: 19, range: 5.5, vision: 8,
+        { cost: { wood: 45, stone: 45 },              time: 2, hp: 420,  atk: 8,  range: 4.5, vision: 6 },
+        { cost: { wood: 110, stone: 130, gold: 10 },  time: 2, hp: 950,  atk: 13, range: 5,   vision: 7 },
+        { cost: { wood: 220, stone: 260, gold: 25 },  time: 3, hp: 1900, atk: 19, range: 5.5, vision: 8,
           bonus: 'Signal fire: nearby defenders +2 attack' },
+      ],
+    },
+    siege: {
+      name: 'Siege Workshop', reqTC: 3,
+      desc: 'Engines of war — catapults that crush stone, and towers that top walls.',
+      train: {
+        catapult:   { cost: { wood: 180, stone: 50, gold: 30 }, time: 3 },
+        siegetower: { cost: { wood: 220, stone: 40, gold: 40 }, time: 3.5, reqLevel: 3 },
+      },
+      levels: [
+        { cost: { wood: 200, stone: 80, gold: 30 },   time: 3, hp: 380 },
+        { cost: { wood: 300, stone: 160, gold: 50 },  time: 3, hp: 520 },
+        { cost: { wood: 450, stone: 280, gold: 80 },  time: 4, hp: 700,
+          bonus: 'Unlocks Siege Tower' },
       ],
     },
     barracks: {
@@ -176,20 +192,24 @@ const CFG = {
           bonus: 'Unlocks Fire Warship & War Transport' },
       ],
     },
+    /* Wall HP is tuned against soldier dps (defender ≈ 8/s vs buildings):
+       L1 falls to a couple of soldiers in ~20s, L2 needs a real party working
+       at it, L3 is effectively siege-engine territory (10 soldiers ≈ 30s+).
+       Costs rose to match the stronger stone. */
     wall: {
       name: 'Wall', desc: 'Blocks all movement — friend and foe. Enemies must break it.',
       levels: [
-        { cost: { wood: 15 },             time: 1, hp: 250 },   // stick-and-grass palisade
-        { cost: { stone: 50, gold: 5 },   time: 1, hp: 650 },   // stone wall
-        { cost: { stone: 110, gold: 10 }, time: 2, hp: 1000 },  // dressed stone
+        { cost: { wood: 20 },             time: 1, hp: 300 },   // stick-and-grass palisade
+        { cost: { stone: 70, gold: 8 },   time: 1, hp: 900 },   // stone wall
+        { cost: { stone: 150, gold: 15 }, time: 2, hp: 2600 },  // dressed stone
       ],
     },
     gate: {
       name: 'Town Gate', desc: 'Your people pass through; enemies must break it.',
       levels: [
-        { cost: { wood: 45, gold: 10 },             time: 1, hp: 300 },
-        { cost: { wood: 60, stone: 50, gold: 20 },  time: 1, hp: 550 },
-        { cost: { wood: 100, stone: 110, gold: 40 }, time: 2, hp: 850 },
+        { cost: { wood: 55, gold: 12 },              time: 1, hp: 350 },
+        { cost: { wood: 80, stone: 70, gold: 25 },   time: 1, hp: 800 },
+        { cost: { wood: 130, stone: 150, gold: 50 }, time: 2, hp: 2200 },
       ],
     },
   },
@@ -216,6 +236,12 @@ const CFG = {
     // troop transports: no weapons, just a hull — cap = soldiers carried
     transport:    { name: 'Transport Raft', hp: 80,  atk: 0, def: 1, speed: 2.2, aggro: 0, naval: true, cap: 3 },
     bigtransport: { name: 'War Transport',  hp: 130, atk: 0, def: 2, speed: 2.4, aggro: 0, naval: true, cap: 5 },
+    // siege engines: slow, deliberate, decisive. The catapult lobs boulders
+    // (bldAtk vs structures, cdMult stretches its reload); the siege tower
+    // carries no weapon — parked on an enemy wall it ferries one nearby
+    // soldier per second over the top.
+    catapult:   { name: 'Catapult',    hp: 180, atk: 8, def: 1, speed: 1.0, aggro: 0, rng: 5.5, cdMult: 2.5, bldAtk: 110 },
+    siegetower: { name: 'Siege Tower', hp: 170, atk: 0, def: 0, speed: 1.0, aggro: 0 },
   },
 
   MEAT_DROP: 10,               // food gained when a wild animal is killed
@@ -223,7 +249,8 @@ const CFG = {
   HEAL_FOOD: { villager: 50, defender: 40, elite: 80,
                rider: 60, lancer: 100, archer: 40, marksman: 70,
                fishboat: 30, warship: 70, fireship: 110,
-               transport: 50, bigtransport: 90 },  // full-heal cost scales with missing hp
+               transport: 50, bigtransport: 90,
+               catapult: 90, siegetower: 80 },  // full-heal cost scales with missing hp
 
   // barbarian pressure: a spice, not a kingmaker — bands come less often and
   // smaller than they used to, tipping fights without deciding them

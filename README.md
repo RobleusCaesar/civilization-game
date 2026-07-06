@@ -113,6 +113,16 @@ on desktop too.
   big tribe means growing the town's heart first. Training queues grow with
   the building: 3 slots at level 1, 4 at level 2, 5 at level 3. Tap a soldier,
   then a tile to move or an enemy to attack.
+- **The Siege Workshop** (needs Town Center level 3): engines of war for
+  cracking a fortified town. The **Catapult** (workshop level 1) is slow and
+  soft in a brawl but lobs boulders that crush walls, towers, and buildings —
+  it even slightly outranges watchtowers. The **Siege Tower** (workshop level
+  3) carries no weapon at all: roll it flush against an enemy wall and nearby
+  soldiers climb up and over, **one per second**, dropping down inside with
+  the wall still standing. It's armored against arrows — watchtowers and
+  ordinary archers can't touch it; only **melee troops** (necessarily outside
+  the wall with it) and the heavy **marksman** class can bring one down, so
+  kill it before it docks or pay in blood inside.
 - **The Dock** (needs Town Center level 2): built **on open water** — any lake or
   sea at least 6 tiles big with a walkable shore beside it. Water tiles hold a
   finite stock of fish (watch for the occasional fish jumping — that means
@@ -173,7 +183,12 @@ on desktop too.
   obstacle — a stout, sealed junction — and those seams really are sealed:
   nothing can slip through the corner where a wall meets water, rock, or
   another wall diagonally, and raiding parties never materialize inside a
-  fully walled-off area.
+  fully walled-off area. Fortifications are genuinely tough now (and priced
+  accordingly): a palisade falls to a couple of soldiers in about twenty
+  seconds, a stone wall needs a real war party working at it, and dressed
+  stone (level 3) is siege-engine territory — ten soldiers hammering for half
+  a minute, or catapults. Towers follow the same curve, though the level-1
+  watchtower stays cheap: it's your early-game shield.
 - **Healing**: tap a hurt villager or defender → *Heal*. It costs food in
   proportion to their training cost and how badly they're hurt.
 - **Saving**: ☰ → *Save game* downloads a JSON save; *Load game* imports it.

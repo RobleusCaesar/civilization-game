@@ -15,9 +15,13 @@ const Combat = {
     return false;
   },
 
-  // a melee land unit has no way to fight a ship — don't let it try
+  // a melee land unit has no way to fight a ship — don't let it try.
+  // Siege towers are armored against arrows: only melee (necessarily outside
+  // the wall with it) and the heavy marksman class can bring one down.
   canEngage(u, o) {
-    return !(Units.isNaval(o) && !Units.isNaval(u) && !CFG.UNITS[u.kind].rng);
+    if (Units.isNaval(o) && !Units.isNaval(u) && !CFG.UNITS[u.kind].rng) return false;
+    if (o.kind === 'siegetower' && CFG.UNITS[u.kind].rng && u.kind !== 'marksman') return false;
+    return true;
   },
 
   // unit-level hostility: barbarian bands roll a disposition on spawn
@@ -149,6 +153,7 @@ const Combat = {
           if (!Units.isWild(u)) u.task = { type: 'move', x: u.anchor.x | 0, y: u.anchor.y | 0 };
           continue;
         }
+        if (!this.canEngage(u, tgt)) { u.tUnit = 0; continue; }
         const reach = CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE;
         if (d > reach) {
           // at close range steer straight at the target — grid waypoints can't
@@ -162,9 +167,10 @@ const Combat = {
             Units.followPath(u, dt);
           }
         } else if (u.cd <= 0) {
-          u.cd = CFG.ATTACK_COOLDOWN;
+          u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
           if (CFG.UNITS[u.kind].rng)
-            this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: tgt.x, y2: tgt.y, t: 0.15, fire: !!CFG.UNITS[u.kind].fire });
+            this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: tgt.x, y2: tgt.y, t: u.kind === 'catapult' ? 0.35 : 0.15,
+              fire: !!CFG.UNITS[u.kind].fire, rock: u.kind === 'catapult' });
           const dmg = Math.max(1, Math.round(Units.effAtk(u) - tgt.def));
           R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f08a7a');
           Units.damage(tgt, dmg, u.id);
@@ -185,10 +191,12 @@ const Combat = {
           if (u.repathT <= 0) { u.repathT = 0.8; Units.setPath(u, b.x, b.y); }
           Units.followPath(u, dt);
         } else if (u.cd <= 0) {
-          u.cd = CFG.ATTACK_COOLDOWN;
+          u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
           if (CFG.UNITS[u.kind].rng)
-            this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: b.x + 0.5, y2: b.y + 0.5, t: 0.15, fire: !!CFG.UNITS[u.kind].fire });
-          let dmg = Math.max(1, Math.round(Units.effAtk(u)));
+            this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: b.x + 0.5, y2: b.y + 0.5, t: u.kind === 'catapult' ? 0.35 : 0.15,
+              fire: !!CFG.UNITS[u.kind].fire, rock: u.kind === 'catapult' });
+          // catapults exist to break stone — boulders, not spear-pokes
+          let dmg = CFG.UNITS[u.kind].bldAtk || Math.max(1, Math.round(Units.effAtk(u)));
           // barbarians loot and burn, but razing the rival's Town Center is
           // beyond them — half damage there, so they rarely finish the job
           if (u.owner === 'R' && b.owner === 'A' && b.key === 'tc')
@@ -207,7 +215,7 @@ const Combat = {
       const lv = Bld.lv(b);
       const cx = b.x + 0.5, cy = b.y + 0.5;
       const tgt = this.nearestUnit(cx, cy, lv.range,
-        o => this.hostileToBld(b, o) && !Units.isPassive(o));
+        o => this.hostileToBld(b, o) && !Units.isPassive(o) && o.kind !== 'siegetower');
       if (tgt) {
         b.cd = 1.4;
         const dmg = Math.max(1, lv.atk - tgt.def);

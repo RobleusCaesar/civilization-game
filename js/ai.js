@@ -31,8 +31,8 @@ const AI = {
     warlord: {
       name: 'Warlord',
       order: ['barracks', 'house', 'farm', 'range', 'farm', 'house', 'stable', 'tower',
-              'farm', 'barracks', 'house', 'farm', 'house', 'tower'],
-      mix: [['defender', 0.45], ['archer', 0.3], ['rider', 0.25]],
+              'farm', 'barracks', 'house', 'farm', 'house', 'tower', 'siege'],
+      mix: [['defender', 0.4], ['archer', 0.3], ['rider', 0.2], ['catapult', 0.1]],
       raidPower: 1.1, raidDayAdd: -15, raidShare: 0.7, raidCd: 10,
       walls: false, dockTC: 2, boats: 1, shipDiv: 4, tcDays: [30, 70],
       blurb: 'a warmonger who prizes the spear over the plough.',
@@ -58,8 +58,8 @@ const AI = {
     mason: {
       name: 'Mason',
       order: ['quarry', 'house', 'farm', 'tower', 'lumber', 'house', 'farm', 'tower',
-              'barracks', 'house', 'range', 'farm', 'tower', 'house'],
-      mix: [['defender', 0.5], ['archer', 0.5]],
+              'barracks', 'house', 'range', 'farm', 'tower', 'house', 'siege'],
+      mix: [['defender', 0.45], ['archer', 0.45], ['catapult', 0.1]],
       raidPower: 1.9, raidDayAdd: 30, raidShare: 0.5, raidCd: 18,
       walls: true, dockTC: 2, boats: 2, shipDiv: 5, tcDays: [24, 58],
       blurb: 'a cautious mason — stone towers, and walls going up.',
@@ -137,7 +137,8 @@ const AI = {
     let p = 0;
     for (const u of S.units)
       if (u.owner === owner && Units.isMilitary(u))
-        p += (u.kind === 'elite' || u.kind === 'lancer' || u.kind === 'marksman') ? 2 : 1;
+        p += (u.kind === 'elite' || u.kind === 'lancer' || u.kind === 'marksman' ||
+              u.kind === 'catapult') ? 2 : 1;
     for (const b of S.buildings)
       if (b.owner === owner && b.key === 'tower' && Bld.done(b)) p += 1;
     return p;
@@ -167,14 +168,23 @@ const AI = {
 
   // train toward the persona's army mix; advanced lines come with L3 halls
   trainArmy(m, want) {
-    const count = Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u));
-    if (count >= want) return;
     const P = this.persona();
+    // siege-minded chiefs keep a catapult battery on top of the standing force
+    if (P.mix.some(([k]) => k === 'catapult')) {
+      const wantCats = Math.max(1, Math.floor((m.aiArmyCap || 8) / 6));
+      if (Units.count('A', u => u.kind === 'catapult') < wantCats) {
+        const ws = S.buildings.find(bb => bb.owner === 'A' && bb.key === 'siege' &&
+          Bld.done(bb) && !bb.upgrading && bb.queue.length === 0);
+        if (ws && Bld.train(ws, 'catapult')) return;
+      }
+    }
+    const count = Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u) && !Units.isSiege(u));
+    if (count >= want) return;
     const roll = G.rand();
     let acc = 0, kind = P.mix[0][0];
     for (const [k, w] of P.mix) { acc += w; if (roll < acc + 1e-9) { kind = k; break; } }
     const HALL = { defender: 'barracks', elite: 'barracks', archer: 'range',
-                   marksman: 'range', rider: 'stable', lancer: 'stable' };
+                   marksman: 'range', rider: 'stable', lancer: 'stable', catapult: 'siege' };
     const hallOf = k => S.buildings.find(bb => bb.owner === 'A' && bb.key === HALL[k] &&
       Bld.done(bb) && !bb.upgrading && bb.queue.length === 0);
     let b = hallOf(kind);
@@ -206,7 +216,10 @@ const AI = {
       if (ai.orderI < P.order.length) {
         const key = P.order[ai.orderI];
         const d = CFG.BUILDINGS[key];
-        if (Bld.canAfford(d.levels[0].cost, ai.res)) {
+        // the workshop waits for a great hall, same rule the player lives by
+        const tcNow = Bld.tcOf('A');
+        if (key === 'siege' && (!tcNow || tcNow.level < 3)) { /* not yet — try again another day */ }
+        else if (Bld.canAfford(d.levels[0].cost, ai.res)) {
           const spot = this.plot(key);
           if (spot && Bld.canPlace('A', key, spot.x, spot.y).ok) {
             Bld.place('A', key, spot.x, spot.y);
