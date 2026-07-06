@@ -1,8 +1,8 @@
 # Neolithic — Developer Handoff
 
 Everything you need to pick this project up cold (e.g. in Claude Code on a laptop).
-Last updated after commit `c495ad1` ("Add the Dock"). The game is fully shipped and
-live; there is **no uncommitted work**.
+Last updated after Phase 3 (cloud saves + game shell + asset pipeline). The game
+is fully shipped and live; there is **no uncommitted work**.
 
 - **Live game:** https://robleuscaesar.github.io/civilization-game/
 - **Repo:** `RobleusCaesar/civilization-game`, default branch `main`
@@ -14,10 +14,18 @@ live; there is **no uncommitted work**.
 A single-era, mobile-first civ-builder in **vanilla HTML/CSS/JS + Canvas 2D**.
 Hard constraints that have shaped everything:
 
-- **No build step, no dependencies, no backend, no localStorage.** Classic
-  `<script>` tags with globals; saves are JSON files the player downloads/uploads.
+- **No build step, no bundler.** Classic `<script>` tags with globals; the
+  vendored supabase-js UMD is the only third-party file (no CDN at runtime).
+- **One optional backend, one touchpoint.** Supabase (anonymous auth + RLS)
+  powers five cloud save slots, autosave, and recovery tokens — all through
+  `js/backend.js` and nothing else (contract in `BACKEND.md`). With
+  placeholder credentials in `js/config.supabase.js` the game runs fully
+  offline with file export/import. localStorage holds only the Supabase
+  session, the crash-net snapshot, and small prefs — never the real save.
 - Optimized for portrait phones (390×844, mobile Safari); mouse works too.
-- All art is generated procedurally at load in `js/sprites.js` — no image assets.
+- All art is generated procedurally at load in `js/sprites.js`; PNG atlases
+  can replace any sprite per key via `assets/manifest.js` + `js/assets.js`
+  with automatic procedural fallback (`ASSET_SPEC.md`).
 - **Visual layer is governed by `js/artstyle.js` + `ARTSTYLE.md` (binding).**
   Master palette ramps, top-left light, build-time outlines, drop shadows,
   material textures, `tierDress(level)` progression, `Sprites.buildingA` red
@@ -28,7 +36,9 @@ Hard constraints that have shaped everything:
 ## Architecture
 
 Script load order matters (globals, no modules):
-`config.js → sprites.js → map.js → buildings.js → units.js → combat.js → ai.js → render.js → ui.js → game.js`
+`config.js → config.supabase.js → vendor/supabase.js → backend.js → artstyle.js
+→ sprites.js → assets/manifest.js → assets.js → map.js → buildings.js →
+units.js → combat.js → ai.js → render.js → ui.js → screens.js → game.js`
 
 | File | Owns |
 |---|---|
@@ -40,7 +50,10 @@ Script load order matters (globals, no modules):
 | `js/combat.js` | `Combat`: target acquisition, chase/attack, towers, barbarian wave spawning |
 | `js/ai.js` | `AI`: the rival tribe — builds, upgrades, trains, raids when ahead |
 | `js/render.js` | `R`: camera, cached terrain layer, three-state fog, minimap, unit/building draw, badges, fish jumps |
-| `js/ui.js` | `UI`: touch input, build menu, selection panel (signature-based refresh), menu modal, save/load |
+| `js/ui.js` | `UI`: touch input, build menu, selection panel (signature-based refresh), HUD buttons |
+| `js/screens.js` | `Screens`: the shell state machine — title (live demo world), new game, load/save slots, settings, pause, endgame, how-to |
+| `js/backend.js` | `Backend`: the only Supabase touchpoint — anonymous auth, slots, autosave, crash net, recovery tokens; typed `{ok, data/error}` results, mockable via `window.__NEO_BACKEND_MOCK` |
+| `js/assets.js` | `Assets`: manifest-driven PNG atlases overlaid onto the Sprites tables, per-key procedural fallback, `drawSprite()` |
 | `js/game.js` | `G` + global `var S`: state, main loop, day ticks, decay, visibility, save/load, boot |
 
 ### State model — the one rule that matters
@@ -207,14 +220,23 @@ Hard-won pitfalls (each cost a debugging session):
    pre-existing since upgrades started needing villager builders; harmless.
 7. `smoke12b`'s `allTargeting` assertion is flaky (target dies mid-sample) —
    also pre-existing.
+8. Since the shell landed, boot creates a **self-playing demo world** and lands
+   on the title screen. `G.newGame(...)` inside `evaluate` still works for
+   gameplay tests (it resets the demo's free-vision fog itself), but UI-level
+   tests should drive `Screens` and real clicks. Mock the backend by setting
+   `window.__NEO_BACKEND_MOCK = { auth, rest }` in an `addInitScript` BEFORE
+   `goto` — never let a test reach the network.
 
 ### Deploying
 
 Push to `main` → Pages workflow. **`actions/deploy-pages` fails transiently**
 ("Deployment failed, try again later") maybe 1 run in 5 — the tell is checkout/
-upload green, only the deploy step red after ~6 s. Fix: re-run the workflow
-(`workflow_dispatch` on `pages.yml`, ref `main`); the retry always succeeded.
-One-time setup already done: repo public, Pages source = GitHub Actions.
+upload green, only the deploy step red after ~6 s. The workflow now self-heals:
+three in-run deploy retries with pauses, and artifact names unique per
+run/attempt (a bare "Re-run all jobs" used to die on duplicate `github-pages`
+artifacts). If all three retries fail, re-trigger via `workflow_dispatch` on
+`pages.yml`, ref `main`. One-time setup already done: repo public, Pages
+source = GitHub Actions.
 
 Commit style used throughout: imperative summary + wrapped body explaining
 what/why.
@@ -243,9 +265,13 @@ mid-game.
 
 - Destructible barbarian camps ("raze the camp to stop that spawn point") —
   explicitly floated to the owner as an option, no answer yet.
-- The rival AI has no docks/navy and never will until taught (`ai.js` ignores
-  water entirely).
-- Fish never regrow (deliberate for now); land regrows to source terrain in 20 days at half stock.
+- Fish never regrow (deliberate for now); land regrows to source terrain at
+  half stock after a long fallow.
+- Real PNG art: the pipeline is live (`ASSET_SPEC.md`) but only the
+  placeholder TC atlas ships — every other sprite is still procedural.
+- Supabase credentials: `js/config.supabase.js` still holds placeholders;
+  filling them (plus running `supabase/migrations/0001_init.sql` and enabling
+  anonymous sign-ins) turns cloud saves on with no other changes.
 - Warship pathing to distant coastal targets is best-effort BFS — fine on
   lakes, untested on huge island maps.
 

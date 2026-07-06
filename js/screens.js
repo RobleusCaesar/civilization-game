@@ -17,7 +17,12 @@ const Screens = {
 
   init() {
     this.bind();
-    window.addEventListener('backend-status', e => this.renderChip(e.detail));
+    window.addEventListener('backend-status', e => {
+      this.renderChip(e.detail);
+      // the backend often comes up after the title first renders — re-resolve
+      // the Continue button so cloud saves win over the local crash net
+      if (this.current === 'title') this.onTitle();
+    });
     // title camera drift
     const pan = () => {
       if (this.current === 'title' && window.S && R.terrainCache) {

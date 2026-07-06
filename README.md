@@ -1,7 +1,10 @@
 # Neolithic — Browser Civ-Builder
 
 A single-era, mobile-first civilization builder that runs entirely in the browser.
-Vanilla HTML/CSS/JS + Canvas 2D — **no build step, no dependencies, no backend**.
+Vanilla HTML/CSS/JS + Canvas 2D — **no build step, no bundler, a static site**.
+Cloud saves are optional: point `js/config.supabase.js` at a Supabase project
+(see `BACKEND.md`) and every player gets an anonymous identity with five named
+save slots; without it the game still plays fully, with file export/import.
 All art is elevated 16-bit-style pixel work generated procedurally at load from
 a single style system (`js/artstyle.js`, rules in `ARTSTYLE.md`) — master
 palette, locked top-left lighting, outlines, drop shadows, material textures,
@@ -42,16 +45,18 @@ on desktop too.
   holding it remains the strategic heart of the match.
 - **Time**: each turn is one in-game day and auto-advances every 10 seconds;
   a full playthrough runs about 20 minutes.
-  ⏸ pauses; ☰ opens the menu (save / load / new game / seed / event log).
+  ⏸ pauses; ☰ opens the pause menu (save / load / settings / event log /
+  quit to title — quitting warns about unsaved progress).
 - **Camera**: drag to pan, pinch (or mouse wheel) to zoom, tap the minimap to jump.
 - **Decluttering**: the ▾ tab at the bottom-left tucks the build menu away for
   a bigger view (🔨 Build brings it back — a villager's *Build…* button reopens
   it too), and the ▾ button beside the minimap collapses the map to a small 🗺
   button.
-- **Menu**: ☰ shows the essentials — Resume, save/load, and the current game's
-  difficulty, map size, day, and seed (setup is fixed once a game starts).
-  *Start a new game…*, *How to play*, and the *Event log* live in collapsible
-  sections; the new-game pickers come preset to the running game's setup.
+- **The shell**: the game opens on a title screen over a live, self-playing
+  world — Continue (newest cloud save, or a crash-recovery snapshot), New game
+  (difficulty / map size / landform / rival persona / seed pickers), Load,
+  Settings, and a swipeable How-to-play. Setup is fixed once a game starts;
+  win or lose, the end screen shows the run's stats and offers the next game.
 - **Gathering**: tap a villager, then tap a **forest** (wood), **hills** (stone), or
   **orchard / berry thicket** (food) tile — they gather automatically; the village
   forages long before it farms. Villagers can also **fish from the shore**:
@@ -213,8 +218,12 @@ on desktop too.
   watchtower stays cheap: it's your early-game shield.
 - **Healing**: tap a hurt villager or defender → *Heal*. It costs food in
   proportion to their training cost and how badly they're hurt.
-- **Saving**: ☰ → *Save game* downloads a JSON save; *Load game* imports it.
-  Maps are seeded — share a seed to share a map.
+- **Saving**: five named cloud slots with minimap thumbnails (pause → *Save*),
+  autosaved every 2 in-game days and on tab-hide, plus a local crash-recovery
+  snapshot; Settings → *Download current game* still exports a JSON save file
+  and the Load screen imports one. A recovery token (Settings) moves your
+  cloud identity to another device. Maps are seeded — share a seed to share
+  a map.
 
 ## Threats
 
@@ -277,20 +286,30 @@ yours falls, you lose.** Nothing else ends the game.
 ## Code layout
 
 ```
-index.html          shell, UI chrome, styles
-js/config.js        all stat tables (buildings ×3 levels, units, waves, win rules)
-js/artstyle.js      the style system: palette, lighting, textures, tier language
-js/sprites.js       procedural pixel-art sprite generation (terrain, 24 building
-                    sprites, animated unit sheets, icons)
-js/map.js           seeded map generation (sizes + landforms) + BFS pathfinding
-js/buildings.js     placement, construction, upgrades, training, production
-js/units.js         villagers/defenders/animals/barbarians: movement & tasks
-js/combat.js        target acquisition, melee/tower combat, barbarian waves
-js/ai.js            rival civilization brain
-js/render.js        camera, cached terrain layer, fog of war, minimap
-js/ui.js            touch input, build menu, selection panel, save/load
-js/game.js          state, main loop, day ticks, win/loss
+index.html            HUD chrome + the shell's screens, all styles
+js/config.js          all stat tables (buildings ×3 levels, units, waves, win rules)
+js/config.supabase.js Supabase project URL + anon key (placeholders = cloud off)
+js/vendor/supabase.js vendored supabase-js v2 UMD (auth only, no CDN at runtime)
+js/backend.js         the ONLY Supabase touchpoint: anonymous auth, 5 save slots,
+                      autosave, crash net, recovery tokens (contract: BACKEND.md)
+js/artstyle.js        the style system: palette, lighting, textures, tier language
+js/sprites.js         procedural pixel-art sprite generation (terrain, buildings,
+                      animated unit sheets, icons)
+assets/manifest.js    which PNG atlases replace which sprites (spec: ASSET_SPEC.md)
+js/assets.js          image-asset pipeline: atlas loader + per-key procedural fallback
+js/map.js             seeded map generation (sizes + landforms) + BFS pathfinding
+js/buildings.js       placement, construction, upgrades, training, production
+js/units.js           villagers/defenders/animals/barbarians: movement & tasks
+js/combat.js          target acquisition, melee/tower combat, barbarian waves
+js/ai.js              rival civilization brain (six personas)
+js/render.js          camera, cached terrain layer, fog of war, minimap
+js/ui.js              touch input, build menu, selection panel, HUD
+js/screens.js         the game shell: title / new game / load / settings /
+                      pause / endgame / how-to-play state machine
+js/game.js            state, main loop, day ticks, win/loss, boot
+supabase/migrations/  SQL schema + RLS policies for the cloud-save tables
 ```
 
 State is one plain JSON-serializable object (`S`), which is what save files
-contain. No localStorage is used.
+contain. localStorage holds only the Supabase session, the emergency
+crash-net snapshot, and small preferences — never the authoritative save.
