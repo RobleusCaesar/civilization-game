@@ -389,6 +389,7 @@ const G = {
 window.addEventListener('load', () => {
   R.init();
   UI.init();
+  if (window.Assets) Assets.init();   // async; image art swaps in as it decodes
   if (window.Backend) {
     Backend.init();   // async; the game never waits on the network
     document.addEventListener('visibilitychange', () => {

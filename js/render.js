@@ -227,7 +227,7 @@ const R = {
         // fortifications show their oriented shape while going up
         if (b.key === 'wall' || b.key === 'gate') {
           g.globalAlpha = 0.55; g.drawImage(this.bldSprite(b), bx, by); g.globalAlpha = 1;
-        } else g.drawImage(Sprites.misc.construction, bx, by);
+        } else Assets.drawSprite(g, 'misc/construction', bx, by);
         const total = Bld.def(b.key).levels[b.level - 1].time;
         this.bar(g, bx + 4, by + TL - 4, TL - 8, 3, 1 - b.construction / total, '#e8c15a');
       } else {
