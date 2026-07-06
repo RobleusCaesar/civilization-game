@@ -62,6 +62,15 @@ const G = {
     AI.init(gen.spawns.ai);
     Units.spawnWild('deer', 8);
     Units.spawnWild('cow', 8);
+    // the kraken's clock: each village is owed at most one visit, on a day
+    // rolled from an early, middle, or late band — if its waters ever reach
+    // the map's edge and its boats are out
+    const kd = () => {
+      const band = G.rand();
+      return Math.round(band < 0.34 ? 20 + G.rand() * 30
+        : band < 0.67 ? 60 + G.rand() * 40 : 100 + G.rand() * 50);
+    };
+    S.kraken = { day: { P: kd(), A: kd() }, done: {}, ev: null };
 
     this.vis = null;
     R.onNewGame();
@@ -190,6 +199,26 @@ const G = {
     Combat.maybeWave();
     AI.daily();
 
+    // the kraken stirs: only where open water touches the map's edge, only
+    // against a village with a fishing boat out, and only once per village
+    if (S.kraken && !S.kraken.ev) {
+      for (const ow of ['P', 'A']) {
+        if (S.kraken.done[ow] || S.day < S.kraken.day[ow]) continue;
+        let edge = false;
+        for (let x = 0; x < CFG.W && !edge; x++)
+          edge = S.map.terrain[MapGen.idx(x, 0)] === T.WATER || S.map.terrain[MapGen.idx(x, CFG.H - 1)] === T.WATER;
+        for (let y = 0; y < CFG.H && !edge; y++)
+          edge = S.map.terrain[MapGen.idx(0, y)] === T.WATER || S.map.terrain[MapGen.idx(CFG.W - 1, y)] === T.WATER;
+        if (!edge) { S.kraken.done[ow] = true; continue; }   // landlocked waters — safe forever
+        const boat = S.units.find(u => u.owner === ow && u.kind === 'fishboat');
+        if (!boat) continue;                                  // it waits for a boat
+        S.kraken.done[ow] = true;
+        S.kraken.ev = { x: boat.x, y: boat.y, boatId: boat.id, owner: ow, phase: 'rise', t: 0 };
+        if (ow === 'P') this.log('🐙 Something vast stirs beneath the water…', true);
+        break;
+      }
+    }
+
     // the tribe endures: if every villager is dead (none on the map, none
     // sheltering, none in training), two survivors step out of the Town
     // Center — a wiped workforce is a setback, never a soft game-over
@@ -205,6 +234,40 @@ const G = {
         }
         this.log('🛖 Two villagers emerge from the Town Center — the tribe endures', true);
       }
+    }
+  },
+
+  // the kraken's three acts: rise under the boat, thrash (the fleet answers,
+  // or doesn't), sink back into the deep. Real-time, a few seconds in all.
+  krakenTick(dt) {
+    const ev = S.kraken && S.kraken.ev;
+    if (!ev) return;
+    ev.t += dt;
+    if (ev.phase === 'rise' && ev.t > 1.6) {
+      const boat = Units.get(ev.boatId);
+      if (boat) {
+        Units.damage(boat, 99999, 0, 'K');
+        if (ev.owner === 'P') this.log('🐙 A kraken drags your fishing boat under!', true);
+        else if (G.visibleAt(ev.x | 0, ev.y | 0)) this.log('🐙 A kraken takes one of the rival\'s boats!');
+      }
+      ev.phase = 'thrash'; ev.t = 0;
+    } else if (ev.phase === 'thrash' && ev.t > 2.2) {
+      const ships = S.units.filter(u => u.owner === ev.owner &&
+        (u.kind === 'warship' || u.kind === 'fireship') &&
+        Math.hypot(u.x - ev.x, u.y - ev.y) <= 4.5);
+      if (ships.length >= 2) {
+        // two hulls together can beat it back — one barely stays afloat
+        ships[0].hp = Math.max(8, Math.round(ships[0].maxhp * 0.15));
+        if (ev.owner === 'P') this.log('⚔ Your warships drive the kraken back into the deep — one barely afloat!');
+      } else if (ships.length === 1) {
+        Units.damage(ships[0], 99999, 0, 'K');
+        if (ev.owner === 'P') this.log('🐙 The kraken wrecks your lone warship and slips beneath the waves!', true);
+      } else if (ev.owner === 'P') {
+        this.log('🐙 The kraken sinks back into the deep…', true);
+      }
+      ev.phase = 'sink'; ev.t = 0;
+    } else if (ev.phase === 'sink' && ev.t > 1.6) {
+      S.kraken.ev = null;
     }
   },
 
@@ -241,6 +304,7 @@ const G = {
     }
     if (!data.garrison) data.garrison = [];
     if (data.ai && !data.ai.persona) data.ai.persona = 'homesteader';   // pre-persona save: the classic temperament
+    if (!data.kraken) data.kraken = { day: { P: 60, A: 90 }, done: {}, ev: null };   // older saves owe the deep a visit too
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};
@@ -281,6 +345,7 @@ const G = {
         Bld.update(dtDays);
         Units.update(dt);
         Combat.update(dt);
+        G.krakenTick(dt);
         G.visT -= dt;
         if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
         G.autosaveT -= dt;

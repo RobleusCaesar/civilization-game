@@ -148,7 +148,15 @@ on desktop too.
   shore tile to land them — that's how you cross water and take the fight to
   an island. The rival tribe runs the same playbook: expect its fishing boats
   on the water and warships guarding its coast once its town matures.
-  Fishing is a touch slower than a farm, but fish don't need fertile ground.
+  Fishing is a touch slower than a farm, but fish don't need fertile ground —
+  though when **food** is the valley's scarce resource, the waters run lean
+  too (fish are food; a dock must not quietly cancel the scarcity). And
+  beware: where open water touches the map's edge, the deep is not empty.
+  **Once per game, per village**, a kraken may breach — early, mid, or late,
+  you never know — and drag a fishing boat under. A lone warship nearby is
+  outmatched and follows it down; two warships together can drive the beast
+  back into the deep, though one will barely stay afloat. Landlocked lakes
+  are safe forever.
   Ships never leave the water (and land units can't touch them) — and enemies
   know it: melee troops with no way to shoot back break off and retreat out of
   a warship's range instead of standing on the shore taking arrows; only

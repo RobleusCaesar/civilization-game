@@ -387,6 +387,13 @@ const Units = {
         if ((u.x | 0) !== t.sx || (u.y | 0) !== t.sy) {
           if (this.followPath(u, dt) && !((u.x | 0) === t.sx && (u.y | 0) === t.sy)) u.task = null;
         } else {
+          u.path = null;
+          // ease right up to the water line — toes at the shoal's edge, so the
+          // fisher visibly stands ON the shore instead of a half-tile inland
+          const ex = t.sx + 0.5 + (t.x - t.sx) * 0.42;
+          const ey = t.sy + 0.5 + (t.y - t.sy) * 0.42;
+          u.x += (ex - u.x) * Math.min(1, dt * 4);
+          u.y += (ey - u.y) * Math.min(1, dt * 4);
           const idx = MapGen.idx(t.x, t.y);
           if (S.map.terrain[idx] !== T.WATER) { u.task = null; continue; }
           const bag = u.owner === 'P' ? S.res : S.ai.res;

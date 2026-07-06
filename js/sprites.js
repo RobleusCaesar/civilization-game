@@ -892,6 +892,23 @@ const Sprites = {
   Sprites.unit.ballista = ballistaSheet();
   Sprites.unit.siegetower = siegetowerSheet();
 
+  // the kraken — a once-a-game terror. Two writhing frames, drawn big.
+  Sprites.misc.kraken = [0, 1].map(f => ART.outline(tile(p => {
+    const t = f ? 1 : 0;
+    p(1, 12, 3, 1, AP.water[4]); p(12, 13, 3, 1, AP.water[4]);      // churned foam
+    // tentacles, curling opposite ways each frame
+    p(1, 8 - t, 1, 5, AP.ink[1]); p(1, 7 - t, 1, 1, AP.teal[1]);
+    p(3, 6 + t, 1, 7, AP.ink[1]); p(3, 5 + t, 1, 1, AP.teal[1]);
+    p(12, 6 - t, 1, 7, AP.ink[1]); p(12, 5 - t, 1, 1, AP.teal[1]);
+    p(14, 8 + t, 1, 5, AP.ink[1]); p(14, 7 + t, 1, 1, AP.teal[1]);
+    p(5, 4 + t, 1, 4, AP.ink[1]); p(10, 4 - t, 1, 4, AP.ink[1]);    // inner arms
+    p(1, 10, 1, 1, AP.teal[2]); p(3, 9, 1, 1, AP.teal[2]);          // suckers
+    p(12, 9, 1, 1, AP.teal[2]); p(14, 10, 1, 1, AP.teal[2]);
+    ART.shadedCircle(p, 8, 9, 3, [AP.ink[0], AP.ink[1], AP.teal[0], AP.teal[1]], 2);  // mantle
+    p(6, 8, 1, 1, AP.fire[2]); p(9, 8, 1, 1, AP.fire[2]);           // burning eyes
+    p(8, 11, 1, 1, AP.bone[2]);                                     // beak
+  })));
+
   // fish breaking the surface — two frames used as an occasional flourish
   Sprites.misc.fish = [
     tile(p => {

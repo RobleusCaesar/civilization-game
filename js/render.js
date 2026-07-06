@@ -181,7 +181,8 @@ const R = {
   unitPose(u) {
     if (u.tUnit || (u.tBld && Math.hypot((Bld.get(u.tBld) || u).x + 0.5 - u.x, (Bld.get(u.tBld) || u).y + 0.5 - u.y) < 1.5)) return 'fight';
     if (Units.moving(u)) return 'walk';
-    if (u.task && (u.task.type === 'gather' || u.task.type === 'fish' || u.task.type === 'shorefish' ||
+    if (u.task && u.task.type === 'shorefish') return 'idle';   // the rod overlay tells the story
+    if (u.task && (u.task.type === 'gather' || u.task.type === 'fish' ||
         u.task.type === 'build' || u.task.type === 'work')) return 'gather';
     return 'idle';
   },
@@ -267,6 +268,49 @@ const R = {
       }
       if (u.hp < u.maxhp) this.bar(g, ux + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');
+    }
+
+    // cast lines: every settled shore-fisher shows a rod, a line, and a
+    // bobbing float out on the shoal — unmistakably fishing
+    for (const u of S.units) {
+      if (!u.task || u.task.type !== 'shorefish') continue;
+      if ((u.x | 0) !== u.task.sx || (u.y | 0) !== u.task.sy) continue;
+      if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
+      const dirx = u.task.x - u.task.sx, diry = u.task.y - u.task.sy;
+      const tipX = (u.x + dirx * 0.38) * TL, tipY = (u.y + diry * 0.30) * TL - 9;
+      const bobX = (u.task.x + 0.5) * TL + Math.sin(u.animT * 1.3) * 3;
+      const bobY = (u.task.y + 0.5) * TL + Math.sin(u.animT * 2.1) * 2;
+      g.lineWidth = 1.5;
+      g.strokeStyle = 'rgba(110,80,36,0.95)';                      // wood rod
+      g.beginPath(); g.moveTo(u.x * TL + dirx * 2, u.y * TL - 2); g.lineTo(tipX, tipY); g.stroke();
+      g.lineWidth = 1;
+      g.strokeStyle = 'rgba(216,207,174,0.55)';                    // gut line
+      g.beginPath(); g.moveTo(tipX, tipY); g.lineTo(bobX, bobY); g.stroke();
+      g.fillStyle = ART.PALETTE.fire[2];                           // bright float
+      g.fillRect(bobX - 1.5, bobY - 1.5, 3, 3);
+      if (Math.sin(u.animT * 2.1) > 0.75) {                        // nibble ripple
+        g.strokeStyle = 'rgba(235,244,248,0.35)';
+        g.beginPath(); g.ellipse(bobX, bobY + 1, 5, 2.5, 0, 0, Math.PI * 2); g.stroke();
+      }
+    }
+
+    // the kraken: a once-a-game terror breaking the surface
+    if (S.kraken && S.kraken.ev) {
+      const ev = S.kraken.ev;
+      if (G.visibleAt(ev.x | 0, ev.y | 0)) {
+        const k = ev.phase === 'rise' ? Math.min(1, ev.t / 1.0)
+          : ev.phase === 'sink' ? Math.max(0, 1 - ev.t / 1.2) : 1;
+        const fr = Sprites.misc.kraken[((ev.t * 3) | 0) % 2];
+        const size = TL * 1.7;
+        g.globalAlpha = k;
+        g.drawImage(fr, ev.x * TL - size / 2, ev.y * TL - size / 2 - k * 5, size, size);
+        g.globalAlpha = 1;
+        g.strokeStyle = 'rgba(235,244,248,' + (0.4 * k).toFixed(2) + ')';
+        g.lineWidth = 1.5;
+        g.beginPath();
+        g.ellipse(ev.x * TL, ev.y * TL + 9, 16 + Math.sin(ev.t * 5) * 4, 7, 0, 0, Math.PI * 2);
+        g.stroke();
+      }
     }
 
     // hearth smoke drifting from settled buildings, embers over camp fires —

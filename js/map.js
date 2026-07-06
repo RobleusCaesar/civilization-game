@@ -239,6 +239,9 @@ const MapGen = {
       if (range) {
         let amt = Math.round(range[0] + rnd() * (range[1] - range[0]));
         if (t[i] === scarce.terrain) amt = Math.round(amt * 0.6);
+        // fish ARE food: on a food-scarce map the waters run lean too, or a
+        // dock and a few shoals would quietly cancel the whole scarcity
+        if (scarce.terrain === T.FERTILE && t[i] === T.WATER) amt = Math.round(amt * 0.5);
         resAmount[i] = amt;
       }
     }
