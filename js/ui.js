@@ -491,8 +491,13 @@ const UI = {
         b.level < 3 && Bld.canUpgrade(b).ok, b.hp < b.maxhp, Bld.hasWorker(b),
         d.needsWorker ? Bld.workersAssigned(b) + '/' + Bld.workersActive(b) : '-',
         !!b.rally, this.confirmDemolish === b.id].join('|');
-      if (b.key === 'tc')
-        sig += '|' + (S.wallLevel || 1) + '|' + Bld.forts().length;
+      if (b.key === 'tc') {
+        // visibility bits: pointless buttons unrender the moment they empty
+        const vills = S.units.some(u => u.owner === 'P' && Units.isVillager(u));
+        const idle = S.units.some(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
+        sig += '|' + (S.wallLevel || 1) + '|' + Bld.forts().length +
+               '|' + vills + '|' + (S.garrison.length > 0) + '|' + idle;
+      }
       return sig;
     }
     if (this.sel.type === 'group') {
@@ -555,16 +560,13 @@ const UI = {
       panel.querySelectorAll('[data-act="train"]').forEach(btn =>
         btn.classList.toggle('cant', !Bld.canTrain(b, btn.dataset.unit).ok));
       const shN = document.getElementById('shelterN');
-      if (shN) {
-        const vills = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
-        shN.textContent = vills + ' outside';
-        shN.closest('.abtn').classList.toggle('cant', !vills);
-      }
+      if (shN) shN.textContent =
+        S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length + ' outside';
       const rlN = document.getElementById('releaseN');
-      if (rlN) {
-        rlN.textContent = S.garrison.length + ' sheltered';
-        rlN.closest('.abtn').classList.toggle('cant', !S.garrison.length);
-      }
+      if (rlN) rlN.textContent = S.garrison.length + ' sheltered';
+      const idN = document.getElementById('idleN');
+      if (idN) idN.textContent =
+        S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit).length + ' idle — muster here';
       const upw = panel.querySelector('[data-act="upwalls"]');
       if (upw) upw.classList.toggle('cant', !Bld.canUpgradeWalls().ok);
     }
@@ -635,16 +637,23 @@ const UI = {
             const ct = Bld.canTrain(b, uk);
             html += `<button class="abtn ${ct.ok ? '' : 'cant'}" data-act="train" data-unit="${uk}">Train ${CFG.UNITS[uk].name}<small>${Bld.costStr(spec.cost)}</small></button>`;
           }
+          // the TC's shelter button rides beside Train Villager so the grid
+          // stays packed — pointless buttons below simply don't render
+          if (b.key === 'tc') {
+            const vills = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
+            if (vills) html += `<button class="abtn" data-act="shelter">🛖 Shelter villagers<small id="shelterN">${vills} outside</small></button>`;
+          }
           html += `<span class="psub" id="qLine">Queue: ${b.queue.length}/${Bld.queueCap(b)}</span>`;
           html += b.rally
             ? `<button class="abtn" data-act="rally">🚩 Rally set<small>tap to clear</small></button>`
             : `<button class="abtn" data-act="rally">🚩 Set rally<small>tap ground within ${CFG.RALLY_RANGE} tiles</small></button>`;
         }
         if (b.key === 'tc' && !b.construction) {
-          const vills = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
-          html += `<button class="abtn ${vills ? '' : 'cant'}" data-act="shelter">🛖 Shelter villagers<small id="shelterN">${vills} outside</small></button>`;
-          html += `<button class="abtn ${S.garrison.length ? '' : 'cant'}" data-act="release">🚪 Release all<small id="releaseN">${S.garrison.length} sheltered</small></button>`;
-          html += `<button class="abtn" data-act="callidle">📣 Call idle<small>muster at the Town Center</small></button>`;
+          if (S.garrison.length)
+            html += `<button class="abtn" data-act="release">🚪 Release all<small id="releaseN">${S.garrison.length} sheltered</small></button>`;
+          const idle = S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit).length;
+          if (idle)
+            html += `<button class="abtn" data-act="callidle">📣 Call idle<small id="idleN">${idle} idle — muster here</small></button>`;
           if ((S.wallLevel || 1) < 3 && Bld.forts().length) {
             const upw = Bld.canUpgradeWalls();
             html += `<button class="abtn wide ${upw.ok ? '' : 'cant'}" data-act="upwalls">🧱 Upgrade all walls to Lv ${(S.wallLevel || 1) + 1}<small>${Bld.costStr(Bld.wallUpgradeCost())} — every wall & gate</small></button>`;
