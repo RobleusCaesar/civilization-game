@@ -186,6 +186,23 @@ const G = {
     Units.dailySpawns();
     Combat.maybeWave();
     AI.daily();
+
+    // the tribe endures: if every villager is dead (none on the map, none
+    // sheltering, none in training), two survivors step out of the Town
+    // Center — a wiped workforce is a setback, never a soft game-over
+    {
+      const tc = Bld.tcOf('P');
+      if (tc && Bld.done(tc) &&
+          !S.units.some(u => u.owner === 'P' && Units.isVillager(u)) &&
+          S.garrison.length === 0 &&
+          !tc.queue.some(q => q.unit === 'villager')) {
+        for (let i = 0; i < 2; i++) {
+          const spot = MapGen.findNear(tc.x, tc.y + 1, 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: tc.x, y: tc.y + 1 };
+          Units.spawn('villager', 'P', spot.x, spot.y);
+        }
+        this.log('🛖 Two villagers emerge from the Town Center — the tribe endures', true);
+      }
+    }
   },
 
   end(win, msg) {

@@ -145,7 +145,10 @@ on desktop too.
   open water.
 - **Shelter & muster**: the Town Center can *Shelter villagers* — everyone runs
   inside and vanishes from the map until you *Release all* after the threat
-  passes. *Call idle* musters idle villagers outside the TC.
+  passes. *Call idle* musters idle villagers outside the TC. And if the worst
+  happens — every villager dead, none sheltered, none in training — two
+  survivors step out of the Town Center the next day: a wiped workforce is a
+  setback, never a stalemate.
 - **Rally points**: every training building (Town Center, Barracks, Stable,
   Range) has *Set rally* — tap ground within 10 tiles and new units head there
   on completion. Rally the TC onto a forest/hills/fertile tile and fresh
@@ -211,9 +214,11 @@ on desktop too.
   only warning is that barbarians are on the move. Anyone-hating bands that
   arrive mid-battle wade in on their own account, so barbarians and rival
   raiders will happily fight each other at your gates. Raiders prioritize
-  **soldiers first, villagers second, buildings third**, and while they'll sack
-  the rival's town, they only manage half damage against its Town Center, so
-  finishing a tribe off stays your job. Where open water touches the map edge,
+  **soldiers first, villagers second, buildings third** — but **Town Centers
+  are beyond them entirely**: a band that runs out of people to fight razes
+  every other building, then trudges off the map for good in search of easier
+  prey. Barbarians can therefore never win (or lose) the game for anyone —
+  finishing a tribe off is always your job. Where open water touches the map edge,
   some bands arrive **by sea** like viking raiders — a longboat (a big war
   transport in later waves) makes for the beach nearest its prey and puts its
   warriors ashore; sink it before it lands if you can. Land-marching bands
@@ -227,7 +232,9 @@ on desktop too.
   the build order, an organic village layout (terrain-hunting farms and
   camps, watchtowers facing *you*), the army mix (riders, archers, or walls
   of spears), how early and often it raids, and how hard it takes to the
-  water. The Mason really does ring its town in palisades and gates; the
+  water. Whatever the temperament, every chief raises a barracks and a couple
+  of watchtowers early — basic protection isn't a personality trait. The Mason
+  really does ring its town in palisades and gates; the
   Horselord really will run you down with lancers. Army size and elite share
   still scale with difficulty. Scout early — knowing who you're up against
   changes everything.

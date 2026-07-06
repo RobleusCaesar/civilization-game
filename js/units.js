@@ -295,10 +295,13 @@ const Units = {
       if (this.isWild(u)) { this.wildIdle(u, dt); continue; }
 
       // barbarian transports run their landing orders like any other unit;
-      // every other barbarian is driven by raiderSeek
+      // every other barbarian is driven by raiderSeek. Any march it ordered
+      // (closing on a target, or trudging off the map when the looting's
+      // done) is advanced here — raiders skip normal task processing.
       if ((this.isRaider(u) && !this.isTransport(u) && !(u.task && u.task.type === 'flee')) ||
           (u.owner === 'A' && u.task && u.task.type === 'raid')) {
         Combat.raiderSeek(u);
+        if (S.units[i] === u && !u.tUnit && !u.tBld && this.moving(u)) this.followPath(u, dt);
         continue;
       }
 

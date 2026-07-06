@@ -6,7 +6,10 @@
 
 const AI = {
   /* Each persona:
-     order      — build order (keys from CFG.BUILDINGS; duplicates allowed)
+     order      — build order (keys from CFG.BUILDINGS; duplicates allowed).
+                  Every chief, whatever their temper, raises a barracks and a
+                  couple of watchtowers early — basic protection is not a
+                  personality trait
      mix        — army composition weights [kind, share]; kinds map to their
                   training building, advanced lines unlock at building L3
      raidPower  — attack when my power > theirs × this (lower = bolder)
@@ -21,8 +24,8 @@ const AI = {
   PERSONAS: {
     homesteader: {
       name: 'Homesteader',
-      order: ['farm', 'house', 'lodge', 'farm', 'house', 'lumber', 'barracks', 'farm',
-              'quarry', 'house', 'tower', 'farm', 'house', 'range', 'farm', 'house'],
+      order: ['farm', 'house', 'barracks', 'lodge', 'tower', 'farm', 'house', 'lumber',
+              'tower', 'quarry', 'house', 'farm', 'range', 'farm', 'house'],
       mix: [['defender', 0.6], ['archer', 0.4]],
       raidPower: 1.7, raidDayAdd: 25, raidShare: 0.5, raidCd: 16,
       walls: false, dockTC: 2, boats: 2, shipDiv: 4, tcDays: [22, 55],
@@ -39,8 +42,8 @@ const AI = {
     },
     horselord: {
       name: 'Horselord',
-      order: ['farm', 'house', 'stable', 'farm', 'lumber', 'house', 'barracks', 'farm',
-              'stable', 'house', 'tower', 'farm', 'house', 'farm'],
+      order: ['farm', 'house', 'barracks', 'stable', 'tower', 'farm', 'lumber', 'house',
+              'tower', 'farm', 'stable', 'house', 'farm'],
       mix: [['rider', 0.6], ['defender', 0.25], ['archer', 0.15]],
       raidPower: 1.15, raidDayAdd: -8, raidShare: 0.6, raidCd: 8,
       walls: false, dockTC: 2, boats: 1, shipDiv: 4, tcDays: [26, 62],
@@ -48,8 +51,8 @@ const AI = {
     },
     mariner: {
       name: 'Mariner',
-      order: ['farm', 'house', 'lumber', 'barracks', 'house', 'farm', 'range', 'house',
-              'farm', 'tower', 'house', 'farm'],
+      order: ['farm', 'house', 'barracks', 'lumber', 'tower', 'house', 'farm', 'range',
+              'tower', 'house', 'farm'],
       mix: [['archer', 0.5], ['defender', 0.5]],
       raidPower: 1.3, raidDayAdd: 5, raidShare: 0.6, raidCd: 14,
       walls: false, dockTC: 1, boats: 3, shipDiv: 3, tcDays: [25, 58],
@@ -57,8 +60,8 @@ const AI = {
     },
     mason: {
       name: 'Mason',
-      order: ['quarry', 'house', 'farm', 'tower', 'lumber', 'house', 'farm', 'tower',
-              'barracks', 'house', 'range', 'farm', 'tower', 'house', 'siege'],
+      order: ['quarry', 'house', 'barracks', 'tower', 'farm', 'lumber', 'house', 'tower',
+              'farm', 'range', 'tower', 'house', 'siege'],
       mix: [['defender', 0.45], ['archer', 0.45], ['catapult', 0.1]],
       raidPower: 1.9, raidDayAdd: 30, raidShare: 0.5, raidCd: 18,
       walls: true, dockTC: 2, boats: 2, shipDiv: 5, tcDays: [24, 58],
@@ -66,8 +69,8 @@ const AI = {
     },
     forager: {
       name: 'Forager',
-      order: ['lodge', 'farm', 'lumber', 'house', 'quarry', 'farm', 'house', 'lumber',
-              'quarry', 'farm', 'house', 'barracks', 'tower', 'range', 'house'],
+      order: ['lodge', 'farm', 'barracks', 'lumber', 'house', 'tower', 'quarry', 'farm',
+              'house', 'tower', 'lumber', 'quarry', 'farm', 'house', 'range'],
       mix: [['defender', 0.4], ['archer', 0.4], ['rider', 0.2]],
       raidPower: 1.4, raidDayAdd: 15, raidShare: 0.6, raidCd: 14,
       walls: false, dockTC: 2, boats: 2, shipDiv: 4, tcDays: [18, 45],

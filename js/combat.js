@@ -95,9 +95,13 @@ const Combat = {
       || this.nearestUnit(u.x, u.y, 6,
         o => this.hostileUnits(u, o) && Units.isVillager(o) && this.canEngage(u, o));
     if (foe) { u.tUnit = foe.id; return; }
+    // barbarians loot and burn everything EXCEPT Town Centers — razing a
+    // tribe's heart is beyond them, so they can never win the game for
+    // anyone. Once the rest is ash they wander off the map for good.
+    const bldPred = u.owner === 'R' ? (bb => bb.key !== 'tc') : null;
     let b = null;
     for (const ow of owners) {
-      const cand = this.nearestBuilding(u.x, u.y, ow);
+      const cand = this.nearestBuilding(u.x, u.y, ow, bldPred);
       if (cand && (!b || Math.hypot(cand.x - u.x, cand.y - u.y) < Math.hypot(b.x - u.x, b.y - u.y)))
         b = cand;
     }
@@ -114,10 +118,18 @@ const Combat = {
     }
     // nothing left to attack — raiders leave, AI parties go home
     if (u.owner === 'R') {
+      // trudge to the nearest map edge and vanish into the wilds; if the way
+      // out is blocked (islands), they simply slip away
+      if (u.x < 1.5 || u.y < 1.5 || u.x > CFG.W - 1.5 || u.y > CFG.H - 1.5) {
+        S.units.splice(S.units.indexOf(u), 1);
+        return;
+      }
       const ex = u.x < CFG.W / 2 ? 0 : CFG.W - 1;
-      if (Math.abs(u.x - ex) < 1.5) { S.units.splice(S.units.indexOf(u), 1); return; }
-      if (!Units.moving(u)) Units.setPath(u, ex, u.y | 0);
-      } else if (u.owner === 'A') {
+      if (!Units.moving(u) && !Units.setPath(u, ex, u.y | 0)) {
+        S.units.splice(S.units.indexOf(u), 1);
+        return;
+      }
+    } else if (u.owner === 'A') {
       u.task = null;
       const tc = Bld.tcOf('A');
       if (tc) { u.anchor = { x: tc.x + 0.5, y: tc.y + 2.5 }; Units.setPath(u, tc.x, tc.y + 2); }
@@ -196,11 +208,7 @@ const Combat = {
             this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: b.x + 0.5, y2: b.y + 0.5, t: u.kind === 'catapult' ? 0.35 : 0.15,
               fire: !!CFG.UNITS[u.kind].fire, rock: u.kind === 'catapult' });
           // catapults exist to break stone — boulders, not spear-pokes
-          let dmg = CFG.UNITS[u.kind].bldAtk || Math.max(1, Math.round(Units.effAtk(u)));
-          // barbarians loot and burn, but razing the rival's Town Center is
-          // beyond them — half damage there, so they rarely finish the job
-          if (u.owner === 'R' && b.owner === 'A' && b.key === 'tc')
-            dmg = Math.max(1, Math.round(dmg * 0.5));
+          const dmg = CFG.UNITS[u.kind].bldAtk || Math.max(1, Math.round(Units.effAtk(u)));
           Bld.damage(b, dmg);
           if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
             G.log(`${Bld.def(b.key).name} under attack!`, true);
