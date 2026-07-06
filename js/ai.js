@@ -214,23 +214,54 @@ const AI = {
     ai.res.gold += 4 * m.aiOutput;   // the AI has no worker mechanic, so gold trickles here
     Bld.dailyProduction('A');
 
-    // build & upgrade at a difficulty-dependent tempo
+    // build & upgrade at a difficulty-dependent tempo. Two hard lessons are
+    // encoded here: (a) one unaffordable entry must never stall the whole
+    // order — a poor tribe skips it and circles back; (b) anything the order
+    // prescribes that no longer stands (barbarians razed it, or it was
+    // skipped while broke) is REBUILT by the backfill pass, so a sacked
+    // rival recovers instead of sitting out the rest of the game.
     if (S.day % (m.aiBuildEvery || 2) === 0) {
+      let built = false;
       if (ai.orderI < P.order.length) {
-        const key = P.order[ai.orderI];
-        const d = CFG.BUILDINGS[key];
+        let key = P.order[ai.orderI];
         // the workshop waits for a great hall, same rule the player lives by
         const tcNow = Bld.tcOf('A');
-        if (key === 'siege' && (!tcNow || tcNow.level < 3)) { /* not yet — try again another day */ }
-        else if (Bld.canAfford(d.levels[0].cost, ai.res)) {
-          const spot = this.plot(key);
-          if (spot && Bld.canPlace('A', key, spot.x, spot.y).ok) {
-            Bld.place('A', key, spot.x, spot.y);
-            ai.orderI++;
+        if (key === 'siege' && (!tcNow || tcNow.level < 3)) key = null;
+        if (key) {
+          if (Bld.canAfford(CFG.BUILDINGS[key].levels[0].cost, ai.res)) {
+            const spot = this.plot(key);
+            if (spot && Bld.canPlace('A', key, spot.x, spot.y).ok) {
+              Bld.place('A', key, spot.x, spot.y);
+              ai.orderI++; ai.stuck = 0; built = true;
+            }
+          }
+          if (!built) {
+            ai.stuck = (ai.stuck || 0) + 1;
+            if (ai.stuck >= 4) { ai.orderI++; ai.stuck = 0; }   // move on — backfill returns to it
           }
         }
-      } else {
-        // late game: keep upgrading things
+      }
+      if (!built) {
+        // backfill: first prescribed-but-missing building it can afford
+        const have = {};
+        for (const b of S.buildings) if (b.owner === 'A') have[b.key] = (have[b.key] || 0) + 1;
+        const want = {};
+        for (let i2 = 0; i2 < Math.min(ai.orderI, P.order.length); i2++)
+          want[P.order[i2]] = (want[P.order[i2]] || 0) + 1;
+        for (const k in want) {
+          if ((have[k] || 0) >= want[k]) continue;
+          if (k === 'siege' && (!Bld.tcOf('A') || Bld.tcOf('A').level < 3)) continue;
+          if (!Bld.canAfford(CFG.BUILDINGS[k].levels[0].cost, ai.res)) continue;
+          const spot = this.plot(k);
+          if (spot && Bld.canPlace('A', k, spot.x, spot.y).ok) {
+            Bld.place('A', k, spot.x, spot.y);
+            built = true;
+            break;
+          }
+        }
+      }
+      if (!built && ai.orderI >= P.order.length) {
+        // late game, nothing missing: keep upgrading things
         const up = S.buildings.find(b => b.owner === 'A' && Bld.canUpgrade(b).ok);
         if (up && G.rand() < 0.8) Bld.upgrade(up);
       }
