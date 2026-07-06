@@ -72,16 +72,19 @@ const G = {
     UI.settingRally = null;
     document.getElementById('btnPause').textContent = '⏸';
     document.getElementById('endModal').classList.remove('show');
+    // opening notes linger twice as long — there's a lot to take in on day 1
     const LAND = { valley: 'a green valley', lakeland: 'a land of lakes', highlands: 'rugged highlands', islands: 'a chain of islands' };
-    this.log(`A new tribe settles ${LAND[gen.landform] || 'the wilds'} (${this.modeCfg().name}). Destroy the rival Town Center to win.`);
-    this.log(`Scouts report: ${gen.scarce} is scarce in this valley — claim it before the rival does.`, true);
-    this.log('First barbarian raids expected around day ' + S.wave.next);
+    this.log(`A new tribe settles ${LAND[gen.landform] || 'the wilds'} (${this.modeCfg().name}). Destroy the rival Town Center to win.`, false, 6400);
+    this.log(`Scouts report: ${gen.scarce} is scarce in this valley — claim it before the rival does.`, true, 6400);
+    this.log('First barbarian raids expected around day ' + S.wave.next, false, 6400);
   },
 
-  log(msg, warn) {
+  log(msg, warn, ms) {
     S.log.unshift({ day: S.day, msg });
     if (S.log.length > 60) S.log.pop();
-    UI.toast(msg, warn);
+    // game-event notes dedupe (repeat "under attack" spam collapses); the
+    // full history always lands in the event log above
+    UI.toast(msg, warn, ms, true);
   },
 
   reveal(cx, cy, r) {

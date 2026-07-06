@@ -89,7 +89,7 @@ const AI = {
       persona: keys[(G.rand() * keys.length) | 0],
     };
     Bld.place('A', 'tc', spawn.x, spawn.y, { free: true, instant: true });
-    G.log('🕵 Scouts whisper of the rival chief: ' + this.persona().blurb);
+    G.log('🕵 Scouts whisper of the rival chief: ' + this.persona().blurb, false, 6400);
   },
 
   /* find a plot with some character instead of spiral-filling a square:

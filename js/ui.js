@@ -885,6 +885,21 @@ const UI = {
       });
     }
     panel.querySelector('#panelClose').addEventListener('click', () => this.deselect());
+    // pack the grid: any button left alone in its two-column row stretches to
+    // full width — no half-empty rows, no ragged stacking
+    {
+      const kids = [...panel.querySelectorAll('.pactions > *')];
+      let col = 0;
+      kids.forEach((el, i) => {
+        const spans = c => c.classList.contains('wide') || c.classList.contains('psub');
+        if (spans(el)) { col = 0; return; }
+        if (col === 0) {
+          const next = kids[i + 1];
+          if (!next || spans(next)) el.classList.add('wide');
+          else col = 1;
+        } else col = 0;
+      });
+    }
     panel.classList.toggle('show', !this.panelHidden);   // a tucked-away panel stays tucked
     document.getElementById('buildmenu').style.display = 'none';
   },
@@ -908,15 +923,26 @@ const UI = {
     if (this.sel) this.refreshPanel();
   },
 
-  toast(msg, warn) {
+  _toastAt: {},
+  // ms stretches how long the note lingers; dedupe (used by game-event logs,
+  // never by direct tap feedback) drops a near-identical note shown in the
+  // last few seconds — "House under attack!" ×9 becomes one note
+  toast(msg, warn, ms, dedupe) {
+    if (dedupe) {
+      const key = msg.replace(/\d+/g, '#');
+      const now = performance.now();
+      if (now - (this._toastAt[key] || -1e9) < 6000) return;
+      this._toastAt[key] = now;
+    }
+    const hold = ms || 3200;
     const box = document.getElementById('toasts');
     const el = document.createElement('div');
     el.className = 'toast' + (warn ? ' warn' : '');
     el.textContent = msg;
     box.appendChild(el);
     while (box.children.length > 5) box.removeChild(box.firstChild);
-    setTimeout(() => { el.style.opacity = '0'; }, 3200);
-    setTimeout(() => { el.remove(); }, 3900);
+    setTimeout(() => { el.style.opacity = '0'; }, hold);
+    setTimeout(() => { el.remove(); }, hold + 700);
   },
 
   /* ---------------- menus / save / load ---------------- */
@@ -966,8 +992,12 @@ const UI = {
       G.newGame(seed, this.newMode, this.newSize);
     });
     document.getElementById('btnEndNew').addEventListener('click', () => {
+      // the end of a game is the moment to choose the next one — open the
+      // menu with the new-game pickers ready instead of instantly rerolling
       document.getElementById('endModal').classList.remove('show');
-      G.newGame(String((Math.random() * 1e9) | 0), S.mode, S.sizeKey);
+      document.getElementById('btnMenu').click();
+      const dn = document.getElementById('dNew');
+      if (dn) dn.open = true;
     });
     document.getElementById('btnSave').addEventListener('click', () => {
       const blob = new Blob([G.saveJSON()], { type: 'application/json' });
