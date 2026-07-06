@@ -105,9 +105,20 @@ on desktop too.
   level and unlock bigger output or passive bonuses (level-3 Hunter's Lodge arms
   your villagers; level-3 Watchtower buffs nearby defenders; level-3 Barracks
   unlocks Elite Defenders).
-- **Military**: the **Barracks** trains defenders (level 3: elites), the **Horse
-  Stable** trains fast riders (level 3: lancers), and the **Archery Range** trains
-  archers who shoot from a distance (level 3: marksmen). The **Town Center** trains
+- **Military**: every war building now unlocks a unit at **every level**, and
+  each level-2 unit is a specialist with real trade-offs:
+  - **Barracks**: defender → **Axeman** (L2: brutal attack, chops buildings
+    1.6× harder — but unarmored; archers shred him) → Elite Defender (L3)
+  - **Archery Range**: archer → **Longbowman** (L2: 5-tile reach, outranges
+    level-1/2 watchtowers — but weak per shot, slow to reload, paper-thin up
+    close) → Marksman (L3)
+  - **Horse Stable**: rider → **Horse Archer** (L2: a bow at full gallop for
+    hit-and-run — but light damage and fragile for the price) → Lancer (L3)
+  - **Siege Workshop**: catapult → **Ballista** (L2: a bolt-thrower that
+    deletes *units* at long range, the anti-army twin of the anti-building
+    catapult — but crawls, costs plenty, and dies to anything that reaches
+    it) → Siege Tower (L3)
+  The **Town Center** trains
   villagers; houses raise the population cap — up to a hard ceiling set by
   your Town Center: 20 at level 1, 40 at level 2, 60 at level 3, so growing a
   big tribe means growing the town's heart first. Training queues grow with

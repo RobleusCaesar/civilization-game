@@ -207,8 +207,10 @@ const Combat = {
           if (CFG.UNITS[u.kind].rng)
             this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: b.x + 0.5, y2: b.y + 0.5, t: u.kind === 'catapult' ? 0.35 : 0.15,
               fire: !!CFG.UNITS[u.kind].fire, rock: u.kind === 'catapult' });
-          // catapults exist to break stone — boulders, not spear-pokes
-          const dmg = CFG.UNITS[u.kind].bldAtk || Math.max(1, Math.round(Units.effAtk(u)));
+          // catapults exist to break stone — boulders, not spear-pokes; the
+          // axeman's heavy blade also bites deeper into timber and thatch
+          const dmg = CFG.UNITS[u.kind].bldAtk ||
+            Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
           Bld.damage(b, dmg);
           if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
             G.log(`${Bld.def(b.key).name} under attack!`, true);

@@ -126,11 +126,13 @@ const CFG = {
       desc: 'Engines of war — catapults that crush stone, and towers that top walls.',
       train: {
         catapult:   { cost: { wood: 180, stone: 50, gold: 30 }, time: 3 },
+        ballista:   { cost: { wood: 160, stone: 30, gold: 25 }, time: 2.5, reqLevel: 2 },
         siegetower: { cost: { wood: 220, stone: 40, gold: 40 }, time: 3.5, reqLevel: 3 },
       },
       levels: [
         { cost: { wood: 200, stone: 80, gold: 30 },   time: 3, hp: 380 },
-        { cost: { wood: 300, stone: 160, gold: 50 },  time: 3, hp: 520 },
+        { cost: { wood: 300, stone: 160, gold: 50 },  time: 3, hp: 520,
+          bonus: 'Unlocks Ballista' },
         { cost: { wood: 450, stone: 280, gold: 80 },  time: 4, hp: 700,
           bonus: 'Unlocks Siege Tower' },
       ],
@@ -139,11 +141,13 @@ const CFG = {
       name: 'Barracks', desc: 'Trains defenders to protect the village.',
       train: {
         defender: { cost: { food: 40, wood: 30, gold: 5 }, time: 1 },
+        axeman:   { cost: { food: 50, wood: 40, gold: 8 }, time: 1.2, reqLevel: 2 },
         elite:    { cost: { food: 80, wood: 40, gold: 20 }, time: 2, reqLevel: 3 },
       },
       levels: [
         { cost: { wood: 100, stone: 50, gold: 15 },  time: 2, hp: 300 },
-        { cost: { wood: 180, stone: 120, gold: 30 }, time: 2, hp: 420 },
+        { cost: { wood: 180, stone: 120, gold: 30 }, time: 2, hp: 420,
+          bonus: 'Unlocks Axeman' },
         { cost: { wood: 300, stone: 220, gold: 50 }, time: 3, hp: 560,
           bonus: 'Unlocks Elite Defender' },
       ],
@@ -152,11 +156,13 @@ const CFG = {
       name: 'Horse Stable', desc: 'Trains fast riders to run down raiders.', reqTC: 2,
       train: {
         rider:  { cost: { food: 60, wood: 20, gold: 8 }, time: 1 },
+        horsearcher: { cost: { food: 70, wood: 30, gold: 15 }, time: 1.5, reqLevel: 2 },
         lancer: { cost: { food: 100, gold: 25 }, time: 2, reqLevel: 3 },
       },
       levels: [
         { cost: { wood: 120, stone: 30, gold: 20 },  time: 2, hp: 320 },
-        { cost: { wood: 200, stone: 100, gold: 35 }, time: 2, hp: 450 },
+        { cost: { wood: 200, stone: 100, gold: 35 }, time: 2, hp: 450,
+          bonus: 'Unlocks Horse Archer' },
         { cost: { wood: 320, stone: 200, gold: 40 }, time: 3, hp: 600,
           bonus: 'Unlocks Lancer' },
       ],
@@ -165,11 +171,13 @@ const CFG = {
       name: 'Archery Range', desc: 'Trains archers who fight from a distance.', reqTC: 2,
       train: {
         archer:   { cost: { food: 40, wood: 40, gold: 6 }, time: 1 },
+        longbow:  { cost: { food: 40, wood: 60, gold: 10 }, time: 1.2, reqLevel: 2 },
         marksman: { cost: { food: 70, wood: 60, gold: 15 }, time: 2, reqLevel: 3 },
       },
       levels: [
         { cost: { wood: 90, stone: 20, gold: 15 },   time: 2, hp: 280 },
-        { cost: { wood: 160, stone: 80, gold: 30 },  time: 2, hp: 400 },
+        { cost: { wood: 160, stone: 80, gold: 30 },  time: 2, hp: 400,
+          bonus: 'Unlocks Longbowman' },
         { cost: { wood: 280, stone: 160, gold: 40 }, time: 3, hp: 520,
           bonus: 'Unlocks Marksman' },
       ],
@@ -217,6 +225,12 @@ const CFG = {
   UNITS: {
     villager: { name: 'Villager',       hp: 40,  atk: 2,  def: 0, speed: 2.2, aggro: 0 },
     defender: { name: 'Defender',       hp: 60,  atk: 8,  def: 2, speed: 2.4, aggro: 5 },
+    // level-2 unlocks: sharper tools with sharper edges — each trades
+    // something real for its specialty
+    axeman:   { name: 'Axeman',         hp: 55,  atk: 11, def: 0, speed: 2.3, aggro: 5,   bldMult: 1.6 },  // shock troop, chews buildings; no armor
+    longbow:  { name: 'Longbowman',     hp: 40,  atk: 6,  def: 0, speed: 2.2, aggro: 6,   rng: 5, cdMult: 1.4 },  // longest human reach; slow, frail
+    horsearcher: { name: 'Horse Archer', hp: 55, atk: 6,  def: 0, speed: 3.4, aggro: 5.5, rng: 3 },  // bow at full gallop; light and pricey
+    ballista: { name: 'Ballista',       hp: 140, atk: 18, def: 1, speed: 1.0, aggro: 5.5, rng: 5.5, cdMult: 2.0 },  // unit-killer bolt thrower; crawls
     elite:    { name: 'Elite Defender', hp: 100, atk: 12, def: 3, speed: 2.4, aggro: 5 },
     rider:    { name: 'Rider',          hp: 70,  atk: 9,  def: 1, speed: 3.4, aggro: 5 },
     lancer:   { name: 'Lancer',         hp: 110, atk: 13, def: 3, speed: 3.2, aggro: 5 },
@@ -250,7 +264,8 @@ const CFG = {
                rider: 60, lancer: 100, archer: 40, marksman: 70,
                fishboat: 30, warship: 70, fireship: 110,
                transport: 50, bigtransport: 90,
-               catapult: 90, siegetower: 80 },  // full-heal cost scales with missing hp
+               catapult: 90, siegetower: 80,
+               axeman: 45, longbow: 45, horsearcher: 65, ballista: 85 },  // full-heal cost scales with missing hp
 
   // barbarian pressure: a spice, not a kingmaker — bands come less often and
   // smaller than they used to, tipping fights without deciding them

@@ -27,10 +27,11 @@ const Units = {
   },
 
   isMilitary(u) {
-    return u.kind === 'defender' || u.kind === 'elite' || u.kind === 'rider' ||
-           u.kind === 'lancer' || u.kind === 'archer' || u.kind === 'marksman' ||
+    return u.kind === 'defender' || u.kind === 'axeman' || u.kind === 'elite' ||
+           u.kind === 'rider' || u.kind === 'horsearcher' || u.kind === 'lancer' ||
+           u.kind === 'archer' || u.kind === 'longbow' || u.kind === 'marksman' ||
            u.kind === 'warship' || u.kind === 'fireship' ||
-           u.kind === 'catapult' || u.kind === 'siegetower';
+           u.kind === 'catapult' || u.kind === 'ballista' || u.kind === 'siegetower';
   },
   isSiege(u) { return u.kind === 'catapult' || u.kind === 'siegetower'; },
   isVillager(u) { return u.kind === 'villager'; },

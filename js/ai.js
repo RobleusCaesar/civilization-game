@@ -26,7 +26,7 @@ const AI = {
       name: 'Homesteader',
       order: ['farm', 'house', 'barracks', 'lodge', 'tower', 'farm', 'house', 'lumber',
               'tower', 'quarry', 'house', 'farm', 'range', 'farm', 'house'],
-      mix: [['defender', 0.6], ['archer', 0.4]],
+      mix: [['defender', 0.45], ['archer', 0.3], ['longbow', 0.25]],
       raidPower: 1.7, raidDayAdd: 25, raidShare: 0.5, raidCd: 16,
       walls: false, dockTC: 2, boats: 2, shipDiv: 4, tcDays: [22, 55],
       blurb: 'a patient farmer-chief, slow to anger, rich in grain.',
@@ -35,7 +35,7 @@ const AI = {
       name: 'Warlord',
       order: ['barracks', 'house', 'farm', 'range', 'farm', 'house', 'stable', 'tower',
               'farm', 'barracks', 'house', 'farm', 'house', 'tower', 'siege'],
-      mix: [['defender', 0.4], ['archer', 0.3], ['rider', 0.2], ['catapult', 0.1]],
+      mix: [['defender', 0.3], ['axeman', 0.2], ['archer', 0.2], ['rider', 0.2], ['catapult', 0.1]],
       raidPower: 1.1, raidDayAdd: -15, raidShare: 0.7, raidCd: 10,
       walls: false, dockTC: 2, boats: 1, shipDiv: 4, tcDays: [30, 70],
       blurb: 'a warmonger who prizes the spear over the plough.',
@@ -44,7 +44,7 @@ const AI = {
       name: 'Horselord',
       order: ['farm', 'house', 'barracks', 'stable', 'tower', 'farm', 'lumber', 'house',
               'tower', 'farm', 'stable', 'house', 'farm'],
-      mix: [['rider', 0.6], ['defender', 0.25], ['archer', 0.15]],
+      mix: [['rider', 0.45], ['horsearcher', 0.25], ['defender', 0.15], ['archer', 0.15]],
       raidPower: 1.15, raidDayAdd: -8, raidShare: 0.6, raidCd: 8,
       walls: false, dockTC: 2, boats: 1, shipDiv: 4, tcDays: [26, 62],
       blurb: 'a horselord — swift riders strike and are gone.',
@@ -53,7 +53,7 @@ const AI = {
       name: 'Mariner',
       order: ['farm', 'house', 'barracks', 'lumber', 'tower', 'house', 'farm', 'range',
               'tower', 'house', 'farm'],
-      mix: [['archer', 0.5], ['defender', 0.5]],
+      mix: [['archer', 0.35], ['longbow', 0.25], ['defender', 0.4]],
       raidPower: 1.3, raidDayAdd: 5, raidShare: 0.6, raidCd: 14,
       walls: false, dockTC: 1, boats: 3, shipDiv: 3, tcDays: [25, 58],
       blurb: 'a mariner-chief — nets in the shallows, warships off the coast.',
@@ -62,7 +62,7 @@ const AI = {
       name: 'Mason',
       order: ['quarry', 'house', 'barracks', 'tower', 'farm', 'lumber', 'house', 'tower',
               'farm', 'range', 'tower', 'house', 'siege'],
-      mix: [['defender', 0.45], ['archer', 0.45], ['catapult', 0.1]],
+      mix: [['defender', 0.3], ['archer', 0.3], ['longbow', 0.2], ['ballista', 0.1], ['catapult', 0.1]],
       raidPower: 1.9, raidDayAdd: 30, raidShare: 0.5, raidCd: 18,
       walls: true, dockTC: 2, boats: 2, shipDiv: 5, tcDays: [24, 58],
       blurb: 'a cautious mason — stone towers, and walls going up.',
@@ -71,7 +71,7 @@ const AI = {
       name: 'Forager',
       order: ['lodge', 'farm', 'barracks', 'lumber', 'house', 'tower', 'quarry', 'farm',
               'house', 'tower', 'lumber', 'quarry', 'farm', 'house', 'range'],
-      mix: [['defender', 0.4], ['archer', 0.4], ['rider', 0.2]],
+      mix: [['defender', 0.3], ['axeman', 0.15], ['archer', 0.35], ['rider', 0.2]],
       raidPower: 1.4, raidDayAdd: 15, raidShare: 0.6, raidCd: 14,
       walls: false, dockTC: 2, boats: 2, shipDiv: 4, tcDays: [18, 45],
       blurb: 'a hoarder of timber and stone — weak now, but growing fast.',
@@ -144,7 +144,7 @@ const AI = {
     for (const u of S.units)
       if (u.owner === owner && Units.isMilitary(u))
         p += (u.kind === 'elite' || u.kind === 'lancer' || u.kind === 'marksman' ||
-              u.kind === 'catapult') ? 2 : 1;
+              u.kind === 'catapult' || u.kind === 'ballista') ? 2 : 1;
     for (const b of S.buildings)
       if (b.owner === owner && b.key === 'tower' && Bld.done(b)) p += 1;
     return p;
@@ -189,8 +189,10 @@ const AI = {
     const roll = G.rand();
     let acc = 0, kind = P.mix[0][0];
     for (const [k, w] of P.mix) { acc += w; if (roll < acc + 1e-9) { kind = k; break; } }
-    const HALL = { defender: 'barracks', elite: 'barracks', archer: 'range',
-                   marksman: 'range', rider: 'stable', lancer: 'stable', catapult: 'siege' };
+    const HALL = { defender: 'barracks', axeman: 'barracks', elite: 'barracks',
+                   archer: 'range', longbow: 'range', marksman: 'range',
+                   rider: 'stable', horsearcher: 'stable', lancer: 'stable',
+                   catapult: 'siege', ballista: 'siege' };
     const hallOf = k => S.buildings.find(bb => bb.owner === 'A' && bb.key === HALL[k] &&
       Bld.done(bb) && !bb.upgrading && bb.queue.length === 0);
     let b = hallOf(kind);
@@ -203,7 +205,10 @@ const AI = {
     const advN = Units.count('A', u => u.kind === 'elite' || u.kind === 'lancer' || u.kind === 'marksman');
     const adv = ADV[kind] && b.level >= 3 && S.ai.res.gold >= 25 &&
       advN < Math.floor((m.aiEliteShare || 0) * want);
-    return Bld.train(b, adv ? ADV[kind] : kind);
+    if (Bld.train(b, adv ? ADV[kind] : kind)) return true;
+    // rolled a unit the hall can't make yet (still level 1) — drill the basic line
+    const BASIC = { barracks: 'defender', range: 'archer', stable: 'rider', siege: 'catapult' };
+    return Bld.train(b, BASIC[b.key]);
   },
 
   /* the build order is an OPENING, not a life plan — after it's done the

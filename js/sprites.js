@@ -674,7 +674,22 @@ const Sprites = {
       p(4, 6, 1, 3, BARB.furD);                     // hulking fur bulk
     });
 
-  // mounted unit: horse + rider with spear
+  // axeman: bare-armed shock troop, broad stone axe over the shoulder
+  Sprites.unit.axeman = unitSheet({ body: APx.hide[2], accent: PAL.P, pants: APx.hide[1], hair: PAL.hair, spear: PAL.trunk },
+    (p, f) => {
+      p(11, 2, 1, 5, PAL.trunk);                               // heavy haft
+      p(10, 1, 3, 1, APx.stone[3]); p(10, 2, 2, 1, APx.stone[2]);  // broad axe head
+      p(5, 5, 1, 1, APx.skin[2]); p(10, 5, 1, 1, APx.skin[2]); // bare shoulders
+    });
+  // longbowman: a bow as tall as the archer, quiver on the hip
+  Sprites.unit.longbow = unitSheet({ body: APx.leaf[2], accent: PAL.P, pants: APx.leaf[1], hair: PAL.hair, spear: PAL.trunk },
+    (p, f) => {
+      p(12, 0, 1, 9, PAL.trunk);                               // man-tall stave
+      p(11, 0, 1, 1, PAL.trunk); p(11, 8, 1, 1, PAL.trunk);    // curved tips
+      p(4, 6, 1, 3, APx.hide[1]); p(4, 5, 1, 1, APx.thatch[2]); // quiver + fletching
+    });
+
+  // mounted unit: horse + rider with spear (or bow, for the horse archer)
   function riderSheet(c) {
     const draw = (p, f, pose) => {
       p(4, 14, 9, 1, 'rgba(0,0,0,0.3)');
@@ -686,8 +701,13 @@ const Sprites = {
       p(4, 11, 1, l1, c.horseD); p(10, 11, 1, l2, c.horseD);    // legs
       p(6, 3, 3, 4, c.body); p(6, 3, 3, 1, c.accent);           // rider torso
       p(7, 1, 2, 2, PAL.skin); p(7, 0, 2, 1, PAL.hair);         // head
-      if (pose === 'fight') { p(9, 4, f === 0 ? 4 : 6, 1, PAL.trunk); p(f === 0 ? 13 : 15, 4, 1, 1, PAL.rockL); }
-      else { p(10, 0, 1, 7, PAL.trunk); p(10, 0, 1, 1, c.tip || PAL.rockL); }
+      if (c.bow) {
+        // bow drawn from the saddle; loosing frame shows the arrow away
+        p(10, 1, 1, 5, PAL.trunk); p(9, 1, 1, 1, PAL.trunk); p(9, 5, 1, 1, PAL.trunk);
+        if (pose === 'fight' && f === 1) p(12, 2, 3, 1, APx.bone[2]);
+      } else if (pose === 'fight') {
+        p(9, 4, f === 0 ? 4 : 6, 1, PAL.trunk); p(f === 0 ? 13 : 15, 4, 1, 1, PAL.rockL);
+      } else { p(10, 0, 1, 7, PAL.trunk); p(10, 0, 1, 1, c.tip || PAL.rockL); }
     };
     return {
       idle: frames(2, (p, g, f) => draw(p, 0, 'idle')),
@@ -696,6 +716,7 @@ const Sprites = {
     };
   }
   Sprites.unit.rider = riderSheet({ horse: '#a87848', horseD: '#7a5430', body: '#7a6242', accent: PAL.P });
+  Sprites.unit.horsearcher = riderSheet({ horse: APx.hide[3], horseD: APx.hide[1], body: APx.leaf[2], accent: PAL.P, bow: true });
   Sprites.unit.lancer = riderSheet({ horse: '#8a8078', horseD: '#5d5d64', body: '#8a7248', accent: PAL.gold, tip: PAL.gold });
   // archers: humanoid with a bow at the side
   Sprites.unit.archer = unitSheet({ body: '#6a7a4a', accent: PAL.P, pants: '#4a5230', hair: PAL.hair, spear: PAL.trunk },
@@ -841,7 +862,34 @@ const Sprites = {
       walk: frames(2, (p, g, f) => draw(p, f)),
     };
   }
+  // ballista: a giant crossbow on a wheeled frame — the unit-killer
+  function ballistaSheet() {
+    const draw = (p, f, pose) => {
+      p(2, 14, 12, 1, 'rgba(0,0,0,0.3)');
+      p(3, 11, 10, 2, APx.wood[2]); p(3, 11, 10, 1, APx.wood[3]);   // carriage
+      ART.shadedCircle(p, 4, 13, 1, AP.wood, 1);                    // wheels
+      ART.shadedCircle(p, 11, 13, 1, AP.wood, 1);
+      p(7, 6, 2, 5, APx.wood[1]);                                   // stock riser
+      p(2, 5, 5, 1, APx.wood[3]); p(9, 5, 5, 1, APx.wood[3]);       // bow arms
+      p(2, 4, 1, 1, APx.wood[2]); p(13, 4, 1, 1, APx.wood[2]);      // arm tips
+      const loosed = pose === 'fight' && f === 1;
+      if (loosed) {
+        p(3, 6, 10, 1, APx.thatch[1]);                              // string slack forward
+        p(6, 1, 4, 1, AP.bone[2]); p(10, 1, 1, 1, AP.stone[3]);     // bolt away!
+      } else {
+        p(3, 7, 4, 1, APx.thatch[1]); p(9, 7, 4, 1, APx.thatch[1]); // string drawn
+        p(5, 6, 6, 1, AP.bone[2]); p(11, 6, 1, 1, AP.stone[3]);     // bolt nocked
+      }
+      p(10, 9, 2, 2, APx.wood[0]);                                  // windlass
+    };
+    return {
+      idle: frames(2, (p, g, f) => draw(p, 0, 'idle')),
+      walk: frames(2, (p, g, f) => draw(p, f, 'walk')),
+      fight: frames(2, (p, g, f) => draw(p, f, 'fight')),
+    };
+  }
   Sprites.unit.catapult = catapultSheet();
+  Sprites.unit.ballista = ballistaSheet();
   Sprites.unit.siegetower = siegetowerSheet();
 
   // fish breaking the surface — two frames used as an occasional flourish
