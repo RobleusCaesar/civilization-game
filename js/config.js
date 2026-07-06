@@ -8,6 +8,7 @@ const T = {
 };
 
 const CFG = {
+  SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
   TILE: 32,
   W: 40,               // current map size — set per game from SIZES
   H: 40,

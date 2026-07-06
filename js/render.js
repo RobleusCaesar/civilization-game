@@ -597,6 +597,18 @@ const R = {
     g.fillRect(x, y, w * Math.max(0, Math.min(1, frac)), h);
   },
 
+  // small minimap snapshot for cloud-save slot cards
+  thumb() {
+    try {
+      const c = document.createElement('canvas');
+      c.width = 72; c.height = 72;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.drawImage(this.mini, 0, 0, 72, 72);
+      return c.toDataURL('image/png');
+    } catch (e) { return null; }
+  },
+
   drawMini() {
     const AP = ART.PALETTE;
     const g = this.mg, COLORS = [AP.grass[3], AP.leaf[1], AP.water[2], AP.stone[2], AP.soil[2], AP.rust[1],

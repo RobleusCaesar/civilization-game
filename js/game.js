@@ -48,6 +48,8 @@ const G = {
       },
       buildings: [], units: [],
       garrison: [],                         // villagers sheltered inside the Town Center
+      playtime: 0,                          // unpaused seconds, for save metadata
+      stats: { trained: 0, razed: 0, gathered: 0 },   // run stats for the end screen
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0 },
       ai: null,
@@ -235,6 +237,11 @@ const G = {
         this.log('🛖 Two villagers emerge from the Town Center — the tribe endures', true);
       }
     }
+
+    // cloud autosave cadence (Backend also drops a local crash-net snapshot)
+    if (window.Backend && Backend.autosaveDays > 0 &&
+        S.day - (Backend._lastAutosaveDay || 0) >= Backend.autosaveDays)
+      Backend.autosaveNow('cadence');
   },
 
   // the kraken's three acts: rise under the boat, thrash (the fleet answers,
@@ -279,11 +286,16 @@ const G = {
   },
 
   /* ---------------- save / load ---------------- */
-  saveJSON() { return JSON.stringify(S); },
+  saveJSON() { S.v = CFG.SAVE_VERSION; return JSON.stringify(S); },
   loadJSON(json) {
     const data = JSON.parse(json);
     if (!data || !data.map || !Array.isArray(data.map.terrain))
       throw new Error('not a Neolithic save file');
+    // version gate: anything below the current version flows through the
+    // field-backfill migration below (that IS the migration path — every
+    // legacy field gets a default), then plays on the current engine
+    if ((data.v || 1) > CFG.SAVE_VERSION)
+      throw new Error('save is from a newer version of the game');
     const w = data.map.W || 40, h = data.map.H || 40;
     if (data.map.terrain.length !== w * h)
       throw new Error('not a Neolithic save file');
@@ -305,6 +317,8 @@ const G = {
     if (!data.garrison) data.garrison = [];
     if (data.ai && !data.ai.persona) data.ai.persona = 'homesteader';   // pre-persona save: the classic temperament
     if (!data.kraken) data.kraken = { day: { P: 60, A: 90 }, done: {}, ev: null };   // older saves owe the deep a visit too
+    if (!data.playtime) data.playtime = 0;
+    if (!data.stats) data.stats = { trained: 0, razed: 0, gathered: 0 };
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};
@@ -333,6 +347,7 @@ const G = {
     const dt = Math.min(0.1, (t - G.lastT) / 1000 || 0.016);
     G.lastT = t;
     if (S && !S.paused && !S.over) {
+      S.playtime = (S.playtime || 0) + dt;
       const dtDays = dt * 1000 / CFG.DAY_MS;
       S.dayT += dt * 1000;
       let guard = 0;
@@ -363,6 +378,12 @@ const G = {
 window.addEventListener('load', () => {
   R.init();
   UI.init();
+  if (window.Backend) {
+    Backend.init();   // async; the game never waits on the network
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && window.S && !S.over) Backend.autosaveNow('hide');
+    });
+  }
   G.newGame(String((Math.random() * 1e9) | 0));
   requestAnimationFrame(t => { G.lastT = t; requestAnimationFrame(G.frame); });
 });

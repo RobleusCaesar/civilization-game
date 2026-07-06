@@ -343,6 +343,7 @@ const Units = {
           const before = S.res[g.res];
           const take = Math.min(S.map.resAmount[idx], g.rate * dt * G.modeCfg().gather);
           S.res[g.res] += take;
+          if (S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
           if ((before | 0) !== (S.res[g.res] | 0) && Math.random() < 0.3)
             R.float(u.x, u.y - 0.5, '+' + g.res, '#d8e8b0');
@@ -370,6 +371,7 @@ const Units = {
           const before = bag.food;
           const take = Math.min(S.map.resAmount[idx], CFG.FISH.rate * dt * G.modeCfg().gather);
           bag.food += take;
+          if (u.owner === 'P' && S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
           if (u.owner === 'P' && (before | 0) !== (bag.food | 0) && Math.random() < 0.3)
             R.float(u.x, u.y - 0.5, '+food', '#d8e8b0');
@@ -400,6 +402,7 @@ const Units = {
           const before = bag.food;
           const take = Math.min(S.map.resAmount[idx], CFG.SHORE_FISH.rate * dt * G.modeCfg().gather);
           bag.food += take;
+          if (u.owner === 'P' && S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
           if (u.owner === 'P' && (before | 0) !== (bag.food | 0) && Math.random() < 0.3)
             R.float(u.x, u.y - 0.5, '+food', '#d8e8b0');

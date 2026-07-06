@@ -303,7 +303,10 @@ const Bld = {
             : MapGen.findNear(b.x, b.y + 1, 3, (x, y) => Path.passable(x, y) && !Bld.at(x, y)))
             || { x: b.x, y: b.y + 1 };
           const nu = Units.spawn(item.unit, b.owner, spot.x, spot.y);
-          if (b.owner === 'P') G.log(`${CFG.UNITS[item.unit].name} ready`);
+          if (b.owner === 'P') {
+            G.log(`${CFG.UNITS[item.unit].name} ready`);
+            if (S.stats) S.stats.trained++;
+          }
           // the rival's fresh fishing boats put their nets straight out
           if (b.owner === 'A' && nu.kind === 'fishboat') {
             const fs = MapGen.findNear(b.x, b.y, 5, (x, y) => Units.canFish(x, y));
@@ -376,6 +379,7 @@ const Bld = {
         if (key === 'tc') G.end(false, 'Your Town Center was destroyed.');
       } else if (owner === 'A') {
         G.log(`Rival ${name} destroyed!`);
+        if (S.stats) S.stats.razed++;
         if (key === 'tc') G.end(true, 'You razed the rival Town Center. The valley is yours!');
       }
     }
