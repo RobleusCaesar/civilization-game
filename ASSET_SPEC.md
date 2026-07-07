@@ -55,6 +55,9 @@ window.ASSET_MANIFEST = {
       sprites: {
         'unit/villager/idle/0': { x: 0,  y: 0, w: 32, h: 32 },
         'unit/villager/idle/1': { x: 32, y: 0, w: 32, h: 32 },
+        // supersampled master: authored at 4×, downscaled to the slot's
+        // native size once at decode (high-quality resample via dw/dh)
+        'building/tc/1':        { x: 64, y: 0, w: 128, h: 128, dw: 32, dh: 32 },
       },
     },
     // more atlases; later entries win if a key repeats
@@ -64,9 +67,13 @@ window.ASSET_MANIFEST = {
 
 ## Authoring rules
 
-- **Canvas size:** world sprites are 32×32 px (a 16×16 logical grid at
-  2 px per cell). Icons are 16×16. Draw at native size — no upscaling;
-  the renderer scales with `image-rendering: pixelated` semantics.
+- **Canvas size:** world sprite slots are 32×32 px (a 16×16 logical grid at
+  2 px per cell). Icons are 16×16. Author either at native size, or at
+  **4× (128×128) and let the pipeline supersample down** — declare
+  `dw`/`dh` on the manifest rect and the decode step does one high-quality
+  resize into the slot. The 4× route is how the hand-detailed building
+  masters are made; their generators live under `assets/src/` (one
+  self-contained HTML page per asset, deterministic, palette-locked).
 - **Palette:** use the master palette ramps in `js/artstyle.js`
   (`ART.PALETTE`) — see `ARTSTYLE.md`. Player accents use the `blue`
   ramp, the rival uses `red`, barbarians use `rust`.

@@ -53,8 +53,14 @@ const Assets = {
     for (const key of Object.keys(atlas.sprites || {})) {
       const r = atlas.sprites[key];
       try {
-        // one pre-decoded bitmap per sprite: cheap to blit, no atlas math at draw time
-        const bmp = await createImageBitmap(img, r.x, r.y, r.w, r.h);
+        // one pre-decoded bitmap per sprite: cheap to blit, no atlas math at
+        // draw time. dw/dh downscale a supersampled master to the slot's
+        // native size here, once, with high-quality resampling — art is
+        // authored at 4× and this is the in-engine downscale that keeps it crisp
+        const opt = (r.dw || r.dh)
+          ? { resizeWidth: r.dw || r.w, resizeHeight: r.dh || r.h, resizeQuality: 'high' }
+          : undefined;
+        const bmp = await createImageBitmap(img, r.x, r.y, r.w, r.h, opt);
         if (this._place(key, bmp)) this.loaded[key] = true;
         else this.failed.push({ key, error: 'key does not match any sprite slot' });
       } catch (e) {
