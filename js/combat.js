@@ -52,7 +52,8 @@ const Combat = {
     for (const b of S.buildings) {
       if (b.owner !== owner) continue;
       if (pred && !pred(b)) continue;
-      const d = Math.hypot(b.x + 0.5 - x, b.y + 0.5 - y);
+      // big footprints measure from their edge, not just their center
+      const d = Math.hypot(Bld.cx(b) - x, Bld.cy(b) - y) - Bld.reach(b);
       if (d < bd) { bd = d; best = b; }
     }
     return best;
@@ -110,7 +111,7 @@ const Combat = {
       // then batter the closest wall or gate instead
       Units.setPath(u, b.x, b.y);
       const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x, y: u.y };
-      if (Math.hypot(end.x - b.x, end.y - b.y) <= 1.6) { u.tBld = b.id; return; }
+      if (Math.hypot(end.x + 0.5 - Bld.cx(b), end.y + 0.5 - Bld.cy(b)) <= 1.6 + Bld.reach(b)) { u.tBld = b.id; return; }
       const wall = this.nearestBuilding(u.x, u.y, b.owner, bb => bb.key === 'wall' || bb.key === 'gate');
       if (wall) { u.tBld = wall.id; Units.setPath(u, wall.x, wall.y); return; }
       u.tBld = b.id;   // no wall found — press on regardless
@@ -197,15 +198,15 @@ const Combat = {
         const foe = this.nearestUnit(u.x, u.y, 2.2,
           o => this.hostileUnits(u, o) && Units.isMilitary(o) && this.canEngage(u, o));
         if (foe) { u.tUnit = foe.id; continue; }
-        const d = Math.hypot(b.x + 0.5 - u.x, b.y + 0.5 - u.y);
-        const bReach = Math.max(1.3, CFG.UNITS[u.kind].rng || 0);
+        const d = Math.hypot(Bld.cx(b) - u.x, Bld.cy(b) - u.y);
+        const bReach = Math.max(1.3, CFG.UNITS[u.kind].rng || 0) + Bld.reach(b);
         if (d > bReach) {
           if (u.repathT <= 0) { u.repathT = 0.8; Units.setPath(u, b.x, b.y); }
           Units.followPath(u, dt);
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
           if (CFG.UNITS[u.kind].rng)
-            this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: b.x + 0.5, y2: b.y + 0.5, t: u.kind === 'catapult' ? 0.35 : 0.15,
+            this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: Bld.cx(b), y2: Bld.cy(b), t: u.kind === 'catapult' ? 0.35 : 0.15,
               fire: !!CFG.UNITS[u.kind].fire, rock: u.kind === 'catapult' });
           // catapults exist to break stone — boulders, not spear-pokes; the
           // axeman's heavy blade also bites deeper into timber and thatch

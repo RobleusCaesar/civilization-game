@@ -18,6 +18,20 @@ const G = {
 
   modeCfg() { return CFG.MODES[S && S.mode] || CFG.MODES.moderate; },
 
+  // game-start guarantee: the ground under a founding Town Center is made
+  // buildable whatever the map rolled there — both tribes must always stand up
+  clearFootprint(x, y, key) {
+    const s = Bld.size(key);
+    for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) {
+      const i = MapGen.idx(x + dx, y + dy);
+      if (!Bld.tileFree(x + dx, y + dy)) {
+        S.map.terrain[i] = T.GRASS;
+        if (S.map.resAmount) S.map.resAmount[i] = 0;
+        S.map.seenTerrain[i] = T.GRASS;
+      }
+    }
+  },
+
   newGame(seed, modeKey, sizeKey, persona) {
     const mode = CFG.MODES[modeKey] ? modeKey : 'moderate';
     const size = CFG.SIZES[sizeKey] ? sizeKey : 'medium';
@@ -57,6 +71,7 @@ const G = {
     };
     Bld._block = null;
     const p = gen.spawns.player;
+    G.clearFootprint(p.x, p.y, 'tc');
     Bld.place('P', 'tc', p.x, p.y, { free: true, instant: true });
     this.reveal(p.x, p.y, 6);
     for (let i = 0; i < CFG.START_VILLAGERS; i++)
@@ -145,7 +160,11 @@ const G = {
     }
     // sync last-seen memory on every visible tile
     const liveB = new Map();
-    for (const b of S.buildings) liveB.set(MapGen.idx(b.x, b.y), b);
+    for (const b of S.buildings) {
+      const bs = Bld.size(b.key);
+      for (let dy = 0; dy < bs; dy++) for (let dx = 0; dx < bs; dx++)
+        liveB.set(MapGen.idx(b.x + dx, b.y + dy), b);
+    }
     for (let i = 0; i < W * H; i++) {
       if (!vis[i]) continue;
       if (S.map.seenTerrain[i] !== S.map.terrain[i]) {
@@ -154,9 +173,12 @@ const G = {
       }
       const b = liveB.get(i);
       if (b) {
-        const sb = S.map.seenB[i];
+        // the memory ghost lives at the footprint's top-left tile
+        const ti = MapGen.idx(b.x, b.y);
+        const sb = S.map.seenB[ti];
         if (!sb || sb.key !== b.key || sb.level !== b.level)
-          S.map.seenB[i] = { key: b.key, level: b.level, owner: b.owner };
+          S.map.seenB[ti] = { key: b.key, level: b.level, owner: b.owner };
+        if (i !== ti && S.map.seenB[i]) delete S.map.seenB[i];
       } else if (S.map.seenB[i]) delete S.map.seenB[i];
     }
     R.fogDirty = true;
@@ -237,7 +259,7 @@ const G = {
           S.garrison.length === 0 &&
           !tc.queue.some(q => q.unit === 'villager')) {
         for (let i = 0; i < 2; i++) {
-          const spot = MapGen.findNear(tc.x, tc.y + 1, 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: tc.x, y: tc.y + 1 };
+          const spot = MapGen.findNear(tc.x, tc.y + Bld.size(tc.key), 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: tc.x, y: tc.y + Bld.size(tc.key) };
           Units.spawn('villager', 'P', spot.x, spot.y);
         }
         this.log('🛖 Two villagers emerge from the Town Center — the tribe endures', true);
@@ -341,6 +363,32 @@ const G = {
       data.map.fishStocked = true;
     }
     S = data;
+    Bld._block = null;
+    // pre-2×2 saves: the Town Center now claims a 2×2 footprint — pull it
+    // inside the map, nudge any building the grown footprint swallows, and
+    // make the ground under it buildable
+    for (const tc of S.buildings.filter(b => b.key === 'tc')) {
+      const sz = Bld.size('tc');
+      tc.x = Math.max(0, Math.min(tc.x, CFG.W - sz));
+      tc.y = Math.max(0, Math.min(tc.y, CFG.H - sz));
+      for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) {
+        const x = tc.x + dx, y = tc.y + dy, i = MapGen.idx(x, y);
+        const other = S.buildings.find(o => o !== tc && Bld.covers(o, x, y));
+        if (other) {
+          const spot = MapGen.findNear(x, y, 5, (nx, ny) => Bld.tileFree(nx, ny));
+          if (spot) { other.x = spot.x; other.y = spot.y; }
+          else S.buildings.splice(S.buildings.indexOf(other), 1);
+        }
+        const t = S.map.terrain[i];
+        const buildable = t === T.GRASS || t === T.FERTILE || t === T.STUMPS ||
+          t === T.PEBBLES || t === T.BARREN || t === T.RUIN;
+        if (!buildable) {
+          S.map.terrain[i] = T.GRASS;
+          if (S.map.resAmount) S.map.resAmount[i] = 0;
+          S.map.seenTerrain[i] = T.GRASS;
+        }
+      }
+    }
     Bld._block = null;
     S.paused = true;
     document.getElementById('btnPause').textContent = '▶';

@@ -26,7 +26,18 @@ const Bld = {
   },
   lv(b) { return CFG.BUILDINGS[b.key].levels[b.level - 1]; },
   get(id) { return S.buildings.find(b => b.id === id); },
-  at(x, y) { return S.buildings.find(b => b.x === x && b.y === y); },
+  /* ---- footprints: b.x/b.y is the top-left tile; most buildings are 1×1,
+     the Town Center claims size×size. All hit-testing, placement and
+     distance math flows through these helpers. ---- */
+  size(key) { const d = this.def(key); return (d && d.size) || 1; },
+  cx(b) { return b.x + this.size(b.key) / 2; },       // footprint center (world units)
+  cy(b) { return b.y + this.size(b.key) / 2; },
+  reach(b) { return (this.size(b.key) - 1) * 0.5; },  // extra radius past the 1×1 norm
+  covers(b, x, y) {
+    const s = this.size(b.key);
+    return x >= b.x && x < b.x + s && y >= b.y && y < b.y + s;
+  },
+  at(x, y) { return S.buildings.find(b => this.covers(b, x, y)); },
 
   list(owner) { return S.buildings.filter(b => b.owner === owner); },
   tcOf(owner) { return S.buildings.find(b => b.owner === owner && b.key === 'tc'); },
@@ -94,7 +105,12 @@ const Bld = {
     if (key === 'dock') {
       const site = this.dockSiteOk(x, y, owner);
       if (!site.ok) return site;
-    } else if (!this.tileFree(x, y)) return { ok: false, why: 'Blocked tile' };
+    } else {
+      // every tile of the footprint must be buildable ground
+      const s = this.size(key);
+      for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++)
+        if (!this.tileFree(x + dx, y + dy)) return { ok: false, why: 'Blocked tile' };
+    }
     // TC-level gate (player only — the rival's scripted build order sets its own pace)
     if (owner === 'P' && d.reqTC) {
       const tc = this.tcOf('P');
@@ -102,6 +118,11 @@ const Bld = {
         return { ok: false, why: `Needs Town Center Lv ${d.reqTC}` };
     }
     if (owner === 'P' && !S.map.explored[MapGen.idx(x, y)]) return { ok: false, why: 'Unexplored' };
+    if (owner === 'P' && this.size(key) > 1) {
+      const s = this.size(key);
+      for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++)
+        if (!S.map.explored[MapGen.idx(x + dx, y + dy)]) return { ok: false, why: 'Unexplored' };
+    }
     if (d.unique && this.list(owner).some(b => b.key === key)) return { ok: false, why: 'Already built' };
     const mine = this.list(owner);
     if (mine.length && !mine.some(b => Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE))
@@ -128,16 +149,19 @@ const Bld = {
     S.buildings.push(b);
     this._block = null;
     // fresh construction clears old stumps/rubble — only the new building shows
-    const ti = MapGen.idx(x, y);
-    const t0 = S.map.terrain[ti];
-    if (t0 === T.STUMPS || t0 === T.PEBBLES || t0 === T.BARREN || t0 === T.RUIN) {
-      S.map.terrain[ti] = T.GRASS;
-      if (S.map.resAmount) S.map.resAmount[ti] = 0;
-      if (S.map.decay) delete S.map.decay[ti];
-      R.updateTile(x, y);
+    const sz = this.size(key);
+    for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) {
+      const ti = MapGen.idx(x + dx, y + dy);
+      const t0 = S.map.terrain[ti];
+      if (t0 === T.STUMPS || t0 === T.PEBBLES || t0 === T.BARREN || t0 === T.RUIN) {
+        S.map.terrain[ti] = T.GRASS;
+        if (S.map.resAmount) S.map.resAmount[ti] = 0;
+        if (S.map.decay) delete S.map.decay[ti];
+        R.updateTile(x + dx, y + dy);
+      }
     }
     if (owner === 'P') {
-      G.reveal(x, y, d.levels[0].vision || 4);
+      G.reveal(x + (this.size(key) >> 1), y + (this.size(key) >> 1), d.levels[0].vision || 4);
       if (!opts.instant && !opts.noAutoAssign) {
         // an explicitly chosen builder is pulled off whatever it was doing
         let v = opts.builderId
@@ -300,7 +324,7 @@ const Bld = {
           const naval = !!CFG.UNITS[item.unit].naval;
           const spot = (naval
             ? MapGen.findNear(b.x, b.y, 3, (x, y) => Path.passable(x, y, b.owner, 'water') && !Bld.at(x, y))
-            : MapGen.findNear(b.x, b.y + 1, 3, (x, y) => Path.passable(x, y) && !Bld.at(x, y)))
+            : MapGen.findNear(b.x, b.y + Bld.size(b.key), 3, (x, y) => Path.passable(x, y) && !Bld.at(x, y)))
             || { x: b.x, y: b.y + 1 };
           const nu = Units.spawn(item.unit, b.owner, spot.x, spot.y);
           if (b.owner === 'P') {
@@ -353,15 +377,18 @@ const Bld = {
   removeToRuin(b) {
     S.buildings.splice(S.buildings.indexOf(b), 1);
     this._block = null;
-    const idx = MapGen.idx(b.x, b.y);
-    if (S.map.terrain[idx] === T.WATER) {
-      // a broken dock washes away — open water again, no rubble
-      R.updateTile(b.x, b.y);
-    } else {
-      S.map.terrain[idx] = T.RUIN;
-      if (S.map.resAmount) S.map.resAmount[idx] = 0;
-      G.scheduleRevert(idx);
-      R.updateTile(b.x, b.y);
+    const sz = this.size(b.key);
+    for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) {
+      const idx = MapGen.idx(b.x + dx, b.y + dy);
+      if (S.map.terrain[idx] === T.WATER) {
+        // a broken dock washes away — open water again, no rubble
+        R.updateTile(b.x + dx, b.y + dy);
+      } else {
+        S.map.terrain[idx] = T.RUIN;
+        if (S.map.resAmount) S.map.resAmount[idx] = 0;
+        G.scheduleRevert(idx);
+        R.updateTile(b.x + dx, b.y + dy);
+      }
     }
     for (const u of S.units) if (u.tBld === b.id) u.tBld = 0;
     if (UI.sel && UI.sel.type === 'bld' && UI.sel.id === b.id) UI.deselect();

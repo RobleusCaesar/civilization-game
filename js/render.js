@@ -179,7 +179,9 @@ const R = {
   },
 
   unitPose(u) {
-    if (u.tUnit || (u.tBld && Math.hypot((Bld.get(u.tBld) || u).x + 0.5 - u.x, (Bld.get(u.tBld) || u).y + 0.5 - u.y) < 1.5)) return 'fight';
+    if (u.tUnit) return 'fight';
+    const fb = u.tBld && Bld.get(u.tBld);
+    if (fb && Math.hypot(Bld.cx(fb) - u.x, Bld.cy(fb) - u.y) < 1.5 + Bld.reach(fb)) return 'fight';
     if (Units.moving(u)) return 'walk';
     if (u.task && u.task.type === 'shorefish') return 'idle';   // the rod overlay tells the story
     if (u.task && (u.task.type === 'gather' || u.task.type === 'fish' ||
@@ -215,36 +217,51 @@ const R = {
       const spr = snap.key === 'wall' ? Sprites.wallMask[snap.level - 1][this.wallMaskAt(gx, gy)]
         : snap.key === 'gate' ? Sprites.gateMask[snap.level - 1][this.gateVerticalAt(gx, gy) ? 1 : 0]
         : (snap.owner === 'A' ? Sprites.buildingA : Sprites.building)[snap.key][snap.level - 1];
-      g.drawImage(spr, gx * TL, gy * TL);
+      const gs = Bld.size(snap.key) * TL;
+      g.drawImage(spr, gx * TL, gy * TL, gs, gs);
     }
 
-    // buildings (y-sorted)
-    const blds = S.buildings.slice().sort((a, b) => a.y - b.y);
+    // buildings (sorted by footprint bottom edge)
+    const blds = S.buildings.slice().sort((a, b) =>
+      (a.y + Bld.size(a.key)) - (b.y + Bld.size(b.key)));
     for (const b of blds) {
-      if (!G.visibleAt(b.x, b.y)) continue;
-      const bx = b.x * TL, by = b.y * TL;
+      const bs = Bld.size(b.key);
+      let seen = false;
+      for (let vy = 0; vy < bs && !seen; vy++) for (let vx = 0; vx < bs; vx++)
+        if (G.visibleAt(b.x + vx, b.y + vy)) { seen = true; break; }
+      if (!seen) continue;
+      const bx = b.x * TL, by = b.y * TL, bw = bs * TL;
       if (b.construction > 0) {
         // fortifications show their oriented shape while going up
         if (b.key === 'wall' || b.key === 'gate') {
-          g.globalAlpha = 0.55; g.drawImage(this.bldSprite(b), bx, by); g.globalAlpha = 1;
-        } else Assets.drawSprite(g, 'misc/construction', bx, by);
+          g.globalAlpha = 0.55; g.drawImage(this.bldSprite(b), bx, by, bw, bw); g.globalAlpha = 1;
+        } else Assets.drawSprite(g, 'misc/construction', bx, by, { w: bw, h: bw });
         const total = Bld.def(b.key).levels[b.level - 1].time;
-        this.bar(g, bx + 4, by + TL - 4, TL - 8, 3, 1 - b.construction / total, '#e8c15a');
+        this.bar(g, bx + 4, by + bw - 4, bw - 8, 3, 1 - b.construction / total, '#e8c15a');
       } else {
-        g.drawImage(this.bldSprite(b), bx, by);
+        g.drawImage(this.bldSprite(b), bx, by, bw, bw);
         if (b.upgrading > 0) {
-          g.fillStyle = 'rgba(232,193,90,0.25)'; g.fillRect(bx, by, TL, TL);
+          g.fillStyle = 'rgba(232,193,90,0.25)'; g.fillRect(bx, by, bw, bw);
           const total = Bld.def(b.key).levels[b.level].time;
-          this.bar(g, bx + 4, by + TL - 4, TL - 8, 3, 1 - b.upgrading / total, '#e8c15a');
+          this.bar(g, bx + 4, by + bw - 4, bw - 8, 3, 1 - b.upgrading / total, '#e8c15a');
         }
         // owner tag
         g.fillStyle = b.owner === 'P' ? '#4a90c2' : '#c2564a';
         g.fillRect(bx + 1, by + 1, 4, 4);
+        if (b.key === 'tc' && b.level === 1) {
+          // the camp's heart: a small live flame flickering over the baked embers
+          const F = ART.PALETTE.fire;
+          const fx2 = bx + 1.06 * TL, fy2 = by + 1.30 * TL;
+          const ph = ((performance.now() / 150) | 0) % 2;
+          g.fillStyle = F[2]; g.fillRect(fx2 - 2, fy2 - 2 - ph, 4, 2 + ph);
+          g.fillStyle = F[3]; g.fillRect(fx2 - 1, fy2 - 4 - ph, 2, 3);
+          g.fillStyle = F[1]; g.fillRect(fx2 + (ph ? 1 : -2), fy2 - 5, 1, 2);
+        }
       }
-      if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, TL - 6, 3, b.hp / b.maxhp, '#7dbb5e');
+      if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, bw - 6, 3, b.hp / b.maxhp, '#7dbb5e');
       if (UI.sel && UI.sel.type === 'bld' && UI.sel.id === b.id) {
         g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;
-        g.strokeRect(bx + 0.5, by + 0.5, TL - 1, TL - 1);
+        g.strokeRect(bx + 0.5, by + 0.5, bw - 1, bw - 1);
       }
     }
 
@@ -328,8 +345,9 @@ const R = {
           // the L1 roundhouse hearth is the fire pit in the dooryard — a very
           // faint wisp curls up from it; every other hearth smokes from the roof
           const pit = b.key === 'tc' && b.level === 1;
-          this.smoke.push({ x: b.x + (pit ? 0.84 : 0.5) + (Math.random() - 0.5) * 0.12,
-                            y: b.y + (pit ? 0.80 : 0.18),
+          // the founding camp's hearth is the central campfire (2x2 footprint)
+          this.smoke.push({ x: b.x + (pit ? 1.06 : 0.5) + (Math.random() - 0.5) * 0.12,
+                            y: b.y + (pit ? 1.28 : 0.18),
                             t: 0, ttl: (pit ? 1.6 : 2) + Math.random() * 1.2,
                             a: pit ? 0.15 : 0.30 });
           if (this.smoke.length >= 36) break;
@@ -540,7 +558,7 @@ const R = {
       if (rb && rb.rally) {
         const fx = (rb.rally.x + 0.5) * TL, fy = (rb.rally.y + 0.5) * TL;
         g.strokeStyle = 'rgba(232,193,90,0.5)'; g.lineWidth = 1;
-        g.beginPath(); g.moveTo((rb.x + 0.5) * TL, (rb.y + 0.5) * TL); g.lineTo(fx, fy); g.stroke();
+        g.beginPath(); g.moveTo(Bld.cx(rb) * TL, Bld.cy(rb) * TL); g.lineTo(fx, fy); g.stroke();
         g.strokeStyle = '#e8c15a'; g.lineWidth = 2;
         g.beginPath(); g.moveTo(fx, fy + 6); g.lineTo(fx, fy - 8); g.stroke();
         g.fillStyle = '#e8c15a';
@@ -625,6 +643,11 @@ const R = {
     }
     for (const b of S.buildings) {
       if (!G.visibleAt(b.x, b.y)) continue;
+      if (Bld.size(b.key) > 1) {
+        g.fillStyle = b.owner === 'P' ? '#7ab4dc' : '#d98a80';
+        g.fillRect(b.x * 2 - 1, b.y * 2 - 1, Bld.size(b.key) * 2 + 2, Bld.size(b.key) * 2 + 2);
+        continue;
+      }
       g.fillStyle = b.owner === 'P' ? '#5ab4f0' : '#f0645a';
       g.fillRect(b.x * 2 - 1, b.y * 2 - 1, 4, 4);
     }

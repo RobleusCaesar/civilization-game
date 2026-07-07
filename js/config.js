@@ -51,6 +51,7 @@ const CFG = {
   BUILDINGS: {
     tc: {
       name: 'Town Center', unique: true, vision: true,
+      size: 2,   // the founding camp claims a 2×2 footprint (every other building is 1×1)
       desc: 'Heart of the village. Trains villagers, stores goods.',
       train: { villager: { cost: { food: 50 }, time: 1 } },
       levels: [

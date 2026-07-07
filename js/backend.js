@@ -40,7 +40,23 @@ const Backend = {
 
   /* ---------------- boot ---------------- */
   async init() {
+    try { return await this._init(); }
+    catch (e) {   // nothing in boot may ever throw into game code
+      this.emit();
+      return this._err('network', (e && e.message) || 'Backend boot failed');
+    }
+  },
+  async _init() {
     this.mock = (typeof window !== 'undefined' && window.__NEO_BACKEND_MOCK) || null;
+    // supabase-js can leak a detached fetch rejection when the network is
+    // unreachable — that is just "offline" to us, not a crash
+    if (!this._rejGuard) {
+      this._rejGuard = true;
+      window.addEventListener('unhandledrejection', e => {
+        const m = String((e.reason && e.reason.message) || e.reason || '');
+        if (/fetch|network|load failed/i.test(m)) { e.preventDefault(); this.online = false; this.emit(); }
+      });
+    }
     this.configured = this.mock ? true :
       (typeof SUPA_CFG !== 'undefined' && SUPA_CFG.url && SUPA_CFG.anonKey &&
        !SUPA_CFG.url.includes('PASTE_') && !SUPA_CFG.anonKey.includes('PASTE_'));

@@ -721,7 +721,7 @@ const UI = {
           const n = S.garrison.length;
           if (!n) { this.toast('Nobody is sheltered inside', true); return; }
           for (const gv of S.garrison) {
-            const spot = MapGen.findNear(b2.x, b2.y + 1, 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: b2.x, y: b2.y + 1 };
+            const spot = MapGen.findNear(b2.x, b2.y + Bld.size(b2.key), 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: b2.x, y: b2.y + Bld.size(b2.key) };
             const v = Units.spawn('villager', 'P', spot.x, spot.y);
             v.hp = Math.min(gv.hp, v.maxhp);
           }
@@ -733,7 +733,7 @@ const UI = {
           let n = 0;
           for (const u of S.units)
             if (u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit) {
-              const spot = MapGen.findNear(b2.x, b2.y + 2, 3, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: b2.x, y: b2.y + 2 };
+              const spot = MapGen.findNear(b2.x, b2.y + Bld.size(b2.key) + 1, 3, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: b2.x, y: b2.y + Bld.size(b2.key) + 1 };
               Units.moveTo(u, spot.x, spot.y);
               n++;
             }

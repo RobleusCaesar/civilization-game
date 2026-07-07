@@ -90,6 +90,7 @@ const AI = {
       raidCd: 0,
       persona: this.PERSONAS[persona] ? persona : keys[(G.rand() * keys.length) | 0],
     };
+    G.clearFootprint(spawn.x, spawn.y, 'tc');
     Bld.place('A', 'tc', spawn.x, spawn.y, { free: true, instant: true });
     G.log('🕵 Scouts whisper of the rival chief: ' + this.persona().blurb, false, 6400);
   },
@@ -275,7 +276,7 @@ const AI = {
        damaged building heals slowly once no enemy stands over it ---- */
     for (const b of Bld.list('A')) {
       if (!Bld.done(b) || b.hp >= b.maxhp) continue;
-      const foe = Combat.nearestUnit(b.x + 0.5, b.y + 0.5, 6,
+      const foe = Combat.nearestUnit(Bld.cx(b), Bld.cy(b), 6 + Bld.reach(b),
         o => Combat.hostileToBld(b, o) && !Units.isPassive(o));
       if (!foe) b.hp = Math.min(b.maxhp, b.hp + b.maxhp * 0.05);
     }
@@ -419,7 +420,7 @@ const AI = {
        replaced. No more empty ghost towns. ---- */
     if (Units.count('A', u => Units.isVillager(u)) < 2 + tc.level &&
         ai.res.food >= 60 && G.rand() < 0.5) {
-      const spot = MapGen.findNear(tc.x, tc.y + 1, 4, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+      const spot = MapGen.findNear(tc.x, tc.y + Bld.size(tc.key), 4, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
       if (spot) { ai.res.food -= 50; Units.spawn('villager', 'A', spot.x, spot.y); }
     }
 

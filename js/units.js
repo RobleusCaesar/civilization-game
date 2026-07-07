@@ -73,7 +73,7 @@ const Units = {
     // home turf: fighting near your own Town Center favors the defender (+10%)
     if (u.owner === 'P' || u.owner === 'A') {
       const tc = Bld.tcOf(u.owner);
-      if (tc && Math.hypot(tc.x + 0.5 - u.x, tc.y + 0.5 - u.y) <= CFG.HOME_TURF.range)
+      if (tc && Math.hypot(Bld.cx(tc) - u.x, Bld.cy(tc) - u.y) <= CFG.HOME_TURF.range + Bld.reach(tc))
         atk *= CFG.HOME_TURF.mult;
     }
     return atk;
@@ -418,8 +418,8 @@ const Units = {
           u.task = null;   // done (or site gone) — villager is free again
           continue;
         }
-        const d = Math.hypot(b.x + 0.5 - u.x, b.y + 0.5 - u.y);
-        if (d > 1.25) {
+        const d = Math.hypot(Bld.cx(b) - u.x, Bld.cy(b) - u.y);
+        if (d > 1.25 + Bld.reach(b)) {
           if (this.moving(u)) this.followPath(u, dt);
           else if (!this.setPath(u, b.x, b.y)) u.task = null;
         } else {
@@ -435,7 +435,7 @@ const Units = {
                 let best = null, bd = 6;
                 for (const nb of S.buildings) {
                   if (nb.owner !== 'P' || nb.construction <= 0 || Bld.hasWorker(nb)) continue;
-                  const dd = Math.hypot(nb.x + 0.5 - u.x, nb.y + 0.5 - u.y);
+                  const dd = Math.hypot(Bld.cx(nb) - u.x, Bld.cy(nb) - u.y);
                   if (dd < bd) { bd = dd; best = nb; }
                 }
                 if (best) this.assignBuild(u, best);
@@ -453,8 +453,8 @@ const Units = {
         // heading into the Town Center for shelter
         const tc = Bld.tcOf('P');
         if (!tc) { u.task = null; continue; }
-        const d = Math.hypot(tc.x + 0.5 - u.x, tc.y + 0.5 - u.y);
-        if (d > 1.4) {
+        const d = Math.hypot(Bld.cx(tc) - u.x, Bld.cy(tc) - u.y);
+        if (d > 1.4 + Bld.reach(tc)) {
           if (this.moving(u)) this.followPath(u, dt);
           else if (!this.setPath(u, tc.x, tc.y)) u.task = null;
         } else {
@@ -570,11 +570,11 @@ const Units = {
     if (!attacker) return;
     if (this.isVillager(u) && u.owner === 'P' && !this.villagerArmed()) {
       const tc = Bld.tcOf('P');
-      if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + 1); }
+      if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + Bld.size(tc.key)); }
     } else if (this.isVillager(u) && u.owner === 'A') {
       // rival townsfolk run for their hall when struck
       const tc = Bld.tcOf('A');
-      if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + 1); }
+      if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + Bld.size(tc.key)); }
     } else if (this.isMilitary(u) || this.isWild(u) || this.isVillager(u) || this.isRaider(u)) {
       u.tUnit = attacker.id;   // barbarians hit back no matter whom they came for
     }
