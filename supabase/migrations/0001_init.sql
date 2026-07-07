@@ -1,4 +1,4 @@
--- Neolithic cloud saves — initial schema.
+-- Clanfire cloud saves — initial schema.
 -- Apply via the Supabase SQL editor (paste this whole file) or `supabase db push`.
 -- Requires: Authentication → Sign In / Up → "Allow anonymous sign-ins" ENABLED.
 

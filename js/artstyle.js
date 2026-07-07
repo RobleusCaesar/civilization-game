@@ -1,5 +1,5 @@
 "use strict";
-/* ARTSTYLE — the single source of visual truth for Neolithic.
+/* ARTSTYLE — the single source of visual truth for Clanfire.
    Every sprite, icon, and UI texture is built from this module. No raw hex
    colors anywhere else. Read ARTSTYLE.md before adding or changing any art. */
 

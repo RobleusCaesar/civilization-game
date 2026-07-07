@@ -1,4 +1,4 @@
-# BACKEND.md — Neolithic Cloud Saves
+# BACKEND.md — Clanfire Cloud Saves
 
 How the game talks to Supabase. **Rule zero: `js/backend.js` is the only file
 that may touch the Supabase client, our REST endpoints, or auth state.** Game

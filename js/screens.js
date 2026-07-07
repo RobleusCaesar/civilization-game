@@ -360,7 +360,7 @@ const Screens = {
       const blob = new Blob([G.saveJSON()], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'neolithic-day' + S.day + '.json';
+      a.download = 'clanfire-day' + S.day + '.json';
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);
       UI.toast('Save file downloaded');

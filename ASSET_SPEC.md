@@ -1,4 +1,4 @@
-# ASSET_SPEC.md — Neolithic image-asset pipeline
+# ASSET_SPEC.md — Clanfire image-asset pipeline
 
 How to replace the game's procedural pixel art with real PNG files, one
 sprite at a time. The pipeline is **infrastructure only**: shipping zero

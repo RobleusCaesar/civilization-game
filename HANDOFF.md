@@ -1,4 +1,4 @@
-# Neolithic — Developer Handoff
+# Clanfire — Developer Handoff
 
 Everything you need to pick this project up cold (e.g. in Claude Code on a laptop).
 Last updated after Phase 3 (cloud saves + game shell + asset pipeline). The game

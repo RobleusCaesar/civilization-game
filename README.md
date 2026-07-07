@@ -1,4 +1,4 @@
-# Neolithic — Browser Civ-Builder
+# Clanfire — Browser Civ-Builder
 
 A single-era, mobile-first civilization builder that runs entirely in the browser.
 Vanilla HTML/CSS/JS + Canvas 2D — **no build step, no bundler, a static site**.

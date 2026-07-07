@@ -1,4 +1,4 @@
-# ARTSTYLE.md — Neolithic Visual Style Guide
+# ARTSTYLE.md — Clanfire Visual Style Guide
 
 > **Binding rule: every sprite, icon, or UI element added or changed in this
 > repo MUST be built from `js/artstyle.js` and comply with this document.

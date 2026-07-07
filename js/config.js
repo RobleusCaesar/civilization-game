@@ -1,5 +1,5 @@
 "use strict";
-/* Neolithic — static game configuration (stat tables). */
+/* Clanfire — static game configuration (stat tables). */
 
 const T = {
   GRASS: 0, FOREST: 1, WATER: 2, HILLS: 3, FERTILE: 4, CAMP: 5,

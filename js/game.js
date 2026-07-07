@@ -300,7 +300,7 @@ const G = {
   loadJSON(json) {
     const data = JSON.parse(json);
     if (!data || !data.map || !Array.isArray(data.map.terrain))
-      throw new Error('not a Neolithic save file');
+      throw new Error('not a Clanfire save file');
     // version gate: anything below the current version flows through the
     // field-backfill migration below (that IS the migration path — every
     // legacy field gets a default), then plays on the current engine
@@ -308,7 +308,7 @@ const G = {
       throw new Error('save is from a newer version of the game');
     const w = data.map.W || 40, h = data.map.H || 40;
     if (data.map.terrain.length !== w * h)
-      throw new Error('not a Neolithic save file');
+      throw new Error('not a Clanfire save file');
     CFG.W = w; CFG.H = h;
     // size labels shifted a tier (old small/medium/large → medium/large/xlarge):
     // re-key old saves by their actual map width so the menu reads true
