@@ -264,11 +264,14 @@ const Backend = {
         const res = await fetch(SUPA_CFG.url + '/rest/v1' + path, {
           method,
           signal: ctrl.signal,
-          headers: Object.assign({
-            apikey: SUPA_CFG.anonKey,
-            Authorization: 'Bearer ' + (this.session ? this.session.access_token : SUPA_CFG.anonKey),
-            'Content-Type': 'application/json',
-          }, headers || {}),
+          // apikey identifies the project; Authorization carries the user's
+          // JWT. New-format sb_publishable_ keys are not JWTs, so with no
+          // session we send apikey alone (legacy anon-JWT keys also accept
+          // that) — in practice every call here runs signed-in anyway.
+          headers: Object.assign(
+            { apikey: SUPA_CFG.anonKey, 'Content-Type': 'application/json' },
+            this.session ? { Authorization: 'Bearer ' + this.session.access_token } : {},
+            headers || {}),
           body: body == null ? undefined : JSON.stringify(body),
         });
         clearTimeout(timer);
