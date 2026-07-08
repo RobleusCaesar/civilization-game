@@ -470,7 +470,7 @@ const UI = {
     this.miniCollapsed = v;
     document.getElementById('miniWrap').style.display = v ? 'none' : '';
     const t = document.getElementById('miniToggle');
-    t.textContent = v ? '🗺' : '▾';
+    t.textContent = v ? '🗺' : '▴';
     t.classList.toggle('collapsed', v);
   },
 

@@ -237,9 +237,23 @@ const Bld = {
     this.pay(d.levels[b.level].cost, b.owner === 'P' ? S.res : S.ai.res);
     b.upgrading = d.levels[b.level].time;
     if (b.owner === 'P') {
-      // upgrades need a villager on site, same as construction
-      const v = this.hasWorker(b) ? null : Units.nearestIdleVillager(b.x, b.y);
-      if (v && Units.assignBuild(v, b)) G.log(`${d.name} upgrading to Lv ${b.level + 1} — a villager heads over`);
+      // upgrades need a villager on site, same as construction. A stationed
+      // hand does it themselves: they step off the job, raise the upgrade,
+      // and go straight back to work when it's done — no shuffling villagers
+      let v = null, wasWorker = false;
+      if (!this.hasWorker(b)) {
+        const crew = S.units.filter(u => u.owner === 'P' && u.task &&
+          u.task.type === 'work' && u.task.id === b.id);
+        if (crew.length) { v = crew[0]; wasWorker = true; }
+        else v = Units.nearestIdleVillager(b.x, b.y);
+      }
+      if (v) Units.assignBuild(v, b);   // a hand already on site "paths" nowhere — still a builder
+      if (v && v.task && v.task.type === 'build') {
+        if (wasWorker) {
+          v.task.resumeWork = true;   // back to the same post afterwards
+          G.log(`${d.name} upgrading to Lv ${b.level + 1} — the worker downs tools to build it`);
+        } else G.log(`${d.name} upgrading to Lv ${b.level + 1} — a villager heads over`);
+      }
       else if (this.hasWorker(b)) G.log(`${d.name} upgrading to Lv ${b.level + 1}`);
       else G.log(`${d.name} upgrade needs a builder — tap a villager, then the building`, true);
     }

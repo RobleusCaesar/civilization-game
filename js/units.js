@@ -443,7 +443,15 @@ const Units = {
             }
           } else if (b.upgrading > 0) {
             b.upgrading -= dtDays;
-            if (b.upgrading <= 0) { Bld.finishUpgrade(b); u.task = null; }
+            if (b.upgrading <= 0) {
+              const resume = u.task && u.task.resumeWork;
+              Bld.finishUpgrade(b);
+              // a stationed hand goes straight back to their post
+              if (resume && Bld.def(b.key).needsWorker &&
+                  Bld.workersAssigned(b) < Bld.maxWorkers(b))
+                u.task = { type: 'work', id: b.id };
+              else u.task = null;
+            }
           } else {
             b.hp = Math.min(b.maxhp, b.hp + b.maxhp * CFG.REPAIR_RATE * dtDays);
             if (b.hp >= b.maxhp) { u.task = null; G.log(`${Bld.def(b.key).name} repaired`); }
