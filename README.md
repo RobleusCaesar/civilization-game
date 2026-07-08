@@ -318,11 +318,15 @@ bonus and a **swift-conquest bonus that drains as the days pass**. The subtotal 
 ×1.0, 💀 **Hard ×1.75** — the board is meant to belong to Hard players. An
 average Moderate victory lands around 5,000–10,000.
 
-Win, and you can put your name on the **global top-10** (🏆 on the title
-screen): up to 7 characters, arcade-style, saved to your cloud profile for
-next time (kept family-friendly — rude names are refused). The board shows
-name, score, and the difficulty it was earned on. Defeats show your tally
-too, but only victories reach the board.
+Win, and your run goes to the **global top-10** (🏆 on the title screen)
+**automatically** — the moment the tally lands, under the name saved to your
+cloud profile. The only time you're asked to type anything is the very first
+victory on a device, when there's no name on file yet: pick one (up to 7
+characters, arcade-style, kept family-friendly — rude names are refused) and
+hit Save, and every win after that posts on its own. Reopening a finished
+victory re-posts it too, so a score is never lost. The board shows name,
+score, and the difficulty it was earned on. Defeats show your tally too, but
+only victories reach the board.
 
 ## Code layout
 

@@ -389,6 +389,7 @@ const Screens = {
     this.el('hsBanner').style.display = 'none';
     this.el('nameRow').style.display = 'none';
     this.el('savedNote').style.display = 'none';
+    this.el('savedNote').textContent = '';   // never let a prior run's note linger
     this.el('endBoard').innerHTML = '';
     this._score = Score.compute(opts.win);
     this._submitted = false;
@@ -422,31 +423,64 @@ const Screens = {
     this._tallyT = setInterval(step, 150);
   },
 
-  // victories go to the global board — up to 7 characters, kept clean
+  /* victories go to the global board AUTOMATICALLY — no button press. The
+     chief's saved arcade name posts the run the moment the tally lands. The
+     name row only surfaces when there's no name on file yet (the one time a
+     Save is still needed), or if the auto-post can't reach the board. */
   _offerSubmit() {
     if (!window.Backend || !Backend.isReady() || this._submitted) return;
-    this.el('nameRow').style.display = 'flex';
     const inp = this.el('arcadeName');
-    if (!inp.value) Backend.getProfile().then(r => {
-      if (r.ok && r.data && r.data.arcade_name && !inp.value) inp.value = r.data.arcade_name;
-    });
+    Backend.getProfile().then(r => {
+      const saved = r.ok && r.data && r.data.arcade_name;
+      if (saved) { if (!inp.value) inp.value = saved; this.submitScore(saved); }
+      else this._promptName('Name your chief to put this score on the board');
+    }).catch(() => this._promptName('Name your chief to put this score on the board'));
   },
 
-  async submitScore() {
-    if (this._submitted || !this._score) return;
-    const chk = Score.cleanName(this.el('arcadeName').value);
-    if (!chk.ok) { UI.toast(chk.why, true); return; }
+  // reveal the name + Save row (prefilled name kept), with a one-line note
+  _promptName(msg) {
+    this.el('nameRow').style.display = 'flex';
     const btn = this.el('btnSubmitScore');
-    btn.textContent = '…'; btn.classList.add('cant');
-    const sub = await Backend.submitScore(chk.name, {
-      score: this._score.total, mode: S.mode, day: S.day, seed: S.seed,
-    });
-    btn.textContent = '🏆 Submit'; btn.classList.remove('cant');
-    if (!sub.ok) { UI.toast('Could not reach the board: ' + sub.error.message, true); return; }
+    btn.textContent = '💾 Save score'; btn.classList.remove('cant');
+    if (msg) {
+      const note = this.el('savedNote');
+      note.textContent = msg; note.style.color = 'var(--dim)'; note.style.display = 'block';
+    }
+  },
+
+  // auto === the saved name for the automatic post; a manual Save reads the box
+  async submitScore(auto) {
+    if (this._submitted || !this._score) return;
+    const chk = Score.cleanName(auto || this.el('arcadeName').value);
+    if (!chk.ok) {
+      if (auto) this._promptName('Name your chief to put this score on the board');
+      else UI.toast(chk.why, true);
+      return;
+    }
+    const btn = this.el('btnSubmitScore');
+    if (!auto) { btn.textContent = '…'; btn.classList.add('cant'); }
+    // idempotent: never double-post the same run — reopening a finished
+    // victory, or an auto-post that already landed, just shows the board
+    let already = false;
+    const pre = await Backend.topScores(50);
+    if (pre.ok) already = pre.data.some(x =>
+      x.name === chk.name && x.score === this._score.total && x.mode === S.mode);
+    if (!already) {
+      const sub = await Backend.submitScore(chk.name, {
+        score: this._score.total, mode: S.mode, day: S.day, seed: S.seed,
+      });
+      if (!sub.ok) {
+        if (auto) this._promptName('Couldn’t reach the board — tap Save to try again');
+        else { btn.textContent = '💾 Save score'; btn.classList.remove('cant');
+          UI.toast('Could not reach the board: ' + sub.error.message, true); }
+        return;
+      }
+    }
     this._submitted = true;
     this.el('nameRow').style.display = 'none';
     const note = this.el('savedNote');
-    note.textContent = `✓ Saved to the board as ${chk.name.toUpperCase()} — safe to leave`;
+    note.style.color = '';
+    note.textContent = `✓ On the board as ${chk.name.toUpperCase()} — safe to leave`;
     note.style.display = 'block';
     const top = await Backend.topScores(10);
     if (top.ok) {
@@ -459,8 +493,8 @@ const Screens = {
       this.renderBoard(rows, this.el('endBoard'), meIdx, mine >= 3 ? mine + 1 : 0);
       if (mine === 0) { this.el('hsBanner').textContent = '★ NEW HIGH SCORE ★'; this.el('hsBanner').style.display = 'block'; }
       else if (mine > 0) { this.el('hsBanner').textContent = `★ GLOBAL RANK #${mine + 1} ★`; this.el('hsBanner').style.display = 'block'; }
-      UI.toast(mine >= 0 ? 'You made the board, chief!' : 'Score submitted');
-    } else UI.toast('Score submitted');
+      UI.toast(mine >= 0 ? 'You made the board, chief!' : 'Score on the board');
+    }
   },
 
   /* ---------------- leaderboard ---------------- */
@@ -529,7 +563,7 @@ const Screens = {
       if (this._score && this._score.win && !this._submitted &&
           window.Backend && Backend.isReady() && !this._leaveWarned) {
         this._leaveWarned = true;
-        UI.toast('Your score is NOT on the board yet — save it first, or tap again to leave', true, 4200);
+        UI.toast('Name your chief to put this score on the board — or tap again to leave', true, 4200);
         return;
       }
       go();
