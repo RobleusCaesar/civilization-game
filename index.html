@@ -200,6 +200,7 @@
   .abtn.gold { border-color: var(--gold); background: #514627; }
   .trow2 { display: flex; gap: 10px; width: 100%; }
   .trow2 .abtn { flex: 1; }
+  .trow3 .abtn { min-height: 48px; font-size: 12px; padding: 4px 6px; }
 
   /* title */
   #scrTitle {
@@ -333,16 +334,16 @@
   <div class="screen" id="scrTitle">
     <div class="tspacer"></div>
     <h1 class="logo">CLANFIRE</h1>
-    <p class="tagline">SETTLE · GATHER · ENDURE</p>
+    <p class="tagline">GATHER · EXPAND · CONQUER</p>
     <div class="tspacer"></div>
     <div class="tmenu">
       <button class="abtn big gold" id="btnContinue">▶ Continue<small>looking for saves…</small></button>
       <button class="abtn big" id="btnTitleNew">🏕 New game</button>
-      <button class="abtn big" id="btnTitleLoad">📂 Load game</button>
       <button class="abtn big" id="btnTitleBoard">🏆 Leaderboard</button>
-      <div class="trow2">
-        <button class="abtn big" id="btnTitleSettings">⚙ Settings</button>
-        <button class="abtn big" id="btnTitleHow">📖 How to play</button>
+      <div class="trow2 trow3">
+        <button class="abtn" id="btnTitleSettings">⚙ Settings</button>
+        <button class="abtn" id="btnTitleHow">📖 How Play</button>
+        <button class="abtn" id="btnTitleLoad">📂 Load</button>
       </div>
     </div>
     <div id="cloudChip">☁ …</div>
@@ -371,19 +372,8 @@
         <button class="abtn" data-v="highlands">⛰<small>Highlands</small></button>
         <button class="abtn" data-v="islands">🏝<small>Islands</small></button>
       </div>
-      <p class="lbl">Rival chief</p>
-      <div class="orow" id="ngPersona">
-        <button class="abtn" data-v="random">🎲<small>Any</small></button>
-        <button class="abtn" data-v="homesteader">🌾<small>Homesteader</small></button>
-        <button class="abtn" data-v="warlord">⚔️<small>Warlord</small></button>
-        <button class="abtn" data-v="horselord">🐎<small>Horselord</small></button>
-        <button class="abtn" data-v="mariner">⛵<small>Mariner</small></button>
-        <button class="abtn" data-v="mason">🧱<small>Mason</small></button>
-        <button class="abtn" data-v="forager">🪓<small>Forager</small></button>
-      </div>
-      <p class="lbl">Seed <span class="hint">(optional — same seed, same map)</span></p>
-      <div class="mrow"><input id="seedInput" placeholder="leave blank for random" inputmode="text">
-        <button class="abtn" id="btnSeedRandom" style="flex:0 0 52px">🎲</button></div>
+      <p class="hint" style="margin-top:14px">Every game rolls a fresh map and a rival
+        chief with their own temperament — scouts will size them up on day one.</p>
       <div class="mrow"><button class="abtn big gold" id="btnStart">🏕 Begin</button></div>
     </div>
   </div>

@@ -11,7 +11,7 @@ const Screens = {
   lastSavedDay: 0,          // quit-guard: unsaved progress since this day
   _demo: false,             // S currently holds the title's demo world
   _confirmQuit: false,
-  newPrefs: { mode: 'moderate', size: 'medium', landform: 'random', persona: 'random' },
+  newPrefs: { mode: 'moderate', size: 'large', landform: 'random' },
 
   el(id) { return document.getElementById(id); },
 
@@ -140,8 +140,8 @@ const Screens = {
 
   /* ---------------- new game ---------------- */
   onNewgame() {
-    for (const row of ['ngMode', 'ngSize', 'ngLand', 'ngPersona']) {
-      const key = { ngMode: 'mode', ngSize: 'size', ngLand: 'landform', ngPersona: 'persona' }[row];
+    for (const row of ['ngMode', 'ngSize', 'ngLand']) {
+      const key = { ngMode: 'mode', ngSize: 'size', ngLand: 'landform' }[row];
       this.el(row).querySelectorAll('.abtn').forEach(b =>
         b.classList.toggle('sel', b.dataset.v === this.newPrefs[key]));
     }
@@ -149,8 +149,8 @@ const Screens = {
 
   startNewGame() {
     const p = this.newPrefs;
-    let seed = this.el('seedInput').value.trim();
-    if (!seed && p.landform !== 'random') {
+    let seed = '';
+    if (p.landform !== 'random') {
       // roll seeds until the wished landform comes up (generation is cheap)
       for (let i = 0; i < 90; i++) {
         const s = String((Math.random() * 1e9) | 0);
@@ -161,7 +161,7 @@ const Screens = {
     if (!seed) seed = String((Math.random() * 1e9) | 0);
     this._demo = false;
     G.freeVis = false;
-    G.newGame(seed, p.mode, p.size, p.persona === 'random' ? null : p.persona);
+    G.newGame(seed, p.mode, p.size);   // the rival chief is always a fresh roll
     Backend.markActiveSlot(null);          // fresh run: no cloud slot until first save
     Backend.activeName = null;
     this.lastSavedDay = 1;
@@ -407,12 +407,11 @@ const Screens = {
     for (const id of ['ngBack', 'loadBack', 'setBack', 'howBack'])
       on(id, () => this.show(this.backTo === 'paused' ? 'paused' : 'title'));
     // new-game option rows
-    for (const [rowId, key] of [['ngMode', 'mode'], ['ngSize', 'size'], ['ngLand', 'landform'], ['ngPersona', 'persona']])
+    for (const [rowId, key] of [['ngMode', 'mode'], ['ngSize', 'size'], ['ngLand', 'landform']])
       this.el(rowId).querySelectorAll('.abtn').forEach(b => b.addEventListener('click', () => {
         this.newPrefs[key] = b.dataset.v;
         this.onNewgame();
       }));
-    on('btnSeedRandom', () => { this.el('seedInput').value = String((Math.random() * 1e9) | 0); });
     on('btnStart', () => this.startNewGame());
     // pause
     on('btnPauseResume', () => this.enterGame());
