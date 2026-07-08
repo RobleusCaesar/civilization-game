@@ -273,7 +273,10 @@ on desktop too.
   off-script), **rebuilds** anything barbarians or you raze, **repairs** chip
   damage between fights, rings a **town alarm** that pulls its soldiers to
   wherever you strike (rushing emergency recruits if you catch it armyless),
-  and **retreats** a mauled raid party to fight another day. Turtle too long
+  and **retreats** a mauled raid party to fight another day. Catch its hall
+  undefended and its **townsfolk take up tools** — a handful of villagers
+  will pile onto a lone attacker rather than watch their heart fall, so a
+  one-soldier rush at an empty-looking town is no free win. Turtle too long
   and it grows bolder — after day 90 its bar to march drops steadily, so a
   stalemate always breaks. Scout early — knowing who you're up against
   changes everything.

@@ -591,9 +591,13 @@ const Units = {
       const tc = Bld.tcOf('P');
       if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + Bld.size(tc.key)); }
     } else if (this.isVillager(u) && u.owner === 'A') {
-      // rival townsfolk run for their hall when struck
-      const tc = Bld.tcOf('A');
-      if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + Bld.size(tc.key)); }
+      // a townsfolk militiaman stands and fights (see Combat.acquire);
+      // otherwise the rival's people run for their hall when struck
+      if (u.militia) { u.tUnit = attacker.id; }
+      else {
+        const tc = Bld.tcOf('A');
+        if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + Bld.size(tc.key)); }
+      }
     } else if (this.isMilitary(u) || this.isWild(u) || this.isVillager(u) || this.isRaider(u)) {
       u.tUnit = attacker.id;   // barbarians hit back no matter whom they came for
     }

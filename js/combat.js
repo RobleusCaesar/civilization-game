@@ -59,7 +59,29 @@ const Combat = {
     return best;
   },
 
+  // is the rival town on the line with too few soldiers to hold it? When an
+  // enemy force reaches the hall and the guard can't clearly match it, the
+  // townsfolk grab tools and pile on — four or five villagers can drag down a
+  // lone attacker, and a tribe should never watch its heart fall without a
+  // fight. Computed once per scan (drives the villager-militia branch below).
+  MILITIA_RANGE: 9,
+  townUnderSiege() {
+    const tc = Bld.tcOf('A');
+    if (!tc) return false;
+    const cx = Bld.cx(tc), cy = Bld.cy(tc), R = this.MILITIA_RANGE;
+    const isAttacker = o => (o.owner === 'P' && Units.isMilitary(o)) ||
+      (o.owner === 'R' && !Units.isTransport(o));
+    let foes = 0, guards = 0;
+    for (const o of S.units) {
+      if (Units.isNaval(o) || Math.hypot(o.x - cx, o.y - cy) > R) continue;
+      if (isAttacker(o)) foes++;
+      else if (o.owner === 'A' && Units.isMilitary(o)) guards++;
+    }
+    return foes > 0 && guards < foes;
+  },
+
   acquire() {
+    this._militiaOn = this.townUnderSiege();
     for (const u of S.units) {
       if (u.tUnit || u.tBld) continue;
       const base = CFG.UNITS[u.kind];
@@ -87,6 +109,20 @@ const Combat = {
         const e = this.nearestUnit(u.x, u.y, base.aggro,
           o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
         if (e && Math.hypot(e.x - u.anchor.x, e.y - u.anchor.y) < 9) u.tUnit = e.id;
+      } else if (u.owner === 'A' && Units.isVillager(u)) {
+        // rival townsfolk militia: when the town is under siege and
+        // undermanned, whoever's near the hall picks up the nearest attacker
+        if (this._militiaOn) {
+          const tc = Bld.tcOf('A');
+          if (tc && Math.hypot(u.x - Bld.cx(tc), u.y - Bld.cy(tc)) <= this.MILITIA_RANGE + 1) {
+            const e = this.nearestUnit(u.x, u.y, this.MILITIA_RANGE,
+              o => ((o.owner === 'P' && Units.isMilitary(o)) ||
+                    (o.owner === 'R' && !Units.isTransport(o))) && this.canEngage(u, o));
+            if (e) { u.tUnit = e.id; u.militia = true; }
+          }
+        } else if (u.militia) {
+          u.militia = false;   // the siege has lifted — back to the lanes
+        }
       }
     }
   },
