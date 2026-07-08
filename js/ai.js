@@ -191,11 +191,13 @@ const AI = {
     }
   },
 
-  // train toward the persona's army mix; advanced lines come with L3 halls
-  trainArmy(m, want) {
+  // train toward a mix (defaults to the persona's; Layer 3 passes a
+  // counter-weighted one); advanced lines come with L3 halls
+  trainArmy(m, want, mix) {
     const P = this.persona();
+    mix = mix || P.mix;
     // siege-minded chiefs keep a catapult battery on top of the standing force
-    if (P.mix.some(([k]) => k === 'catapult')) {
+    if (mix.some(([k]) => k === 'catapult')) {
       const wantCats = Math.max(1, Math.floor(want / 6));
       if (Units.count('A', u => u.kind === 'catapult') < wantCats) {
         const ws = S.buildings.find(bb => bb.owner === 'A' && bb.key === 'siege' &&
@@ -206,18 +208,15 @@ const AI = {
     const count = Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u) && !Units.isSiege(u));
     if (count >= want) return false;
     const roll = G.rand();
-    let acc = 0, kind = P.mix[0][0];
-    for (const [k, w] of P.mix) { acc += w; if (roll < acc + 1e-9) { kind = k; break; } }
-    const HALL = { defender: 'barracks', axeman: 'barracks', elite: 'barracks',
-                   archer: 'range', longbow: 'range', marksman: 'range',
-                   rider: 'stable', horsearcher: 'stable', lancer: 'stable',
-                   catapult: 'siege', ballista: 'siege' };
+    let acc = 0, kind = mix[0][0];
+    for (const [k, w] of mix) { acc += w; if (roll < acc + 1e-9) { kind = k; break; } }
+    const HALL = this.HALL_OF;
     const hallOf = k => S.buildings.find(bb => bb.owner === 'A' && bb.key === HALL[k] &&
       Bld.done(bb) && !bb.upgrading && bb.queue.length === 0);
     let b = hallOf(kind);
     if (!b) {
       // rolled a unit whose hall isn't up yet — fall back to any open hall
-      for (const [k] of P.mix) { const alt = hallOf(k); if (alt) { kind = k; b = alt; break; } }
+      for (const [k] of mix) { const alt = hallOf(k); if (alt) { kind = k; b = alt; break; } }
       if (!b) return false;
     }
     const ADV = { defender: 'elite', archer: 'marksman', rider: 'lancer' };
@@ -449,6 +448,173 @@ const AI = {
     return ai.posture;
   },
 
+  /* ===================================================================
+     LAYER 3 — UTILITY-SCORED ACTIONS.  The old daily pipeline ran ~10
+     construction rules in a FIXED ORDER, each firing on a hard edge —
+     which read as mechanical. Now the chief enumerates candidate actions
+     and scores each as f(posture × read × persona × resources × timing),
+     then spends the day on the best. The old safety nets aren't
+     pre-empting steps anymore — they're just very high-utility candidates
+     that COMPOSE. Utilities are continuous, so behavior shifts smoothly.
+     =================================================================== */
+  HALL_OF: { defender: 'barracks', axeman: 'barracks', elite: 'barracks',
+    archer: 'range', longbow: 'range', marksman: 'range',
+    rider: 'stable', horsearcher: 'stable', lancer: 'stable',
+    catapult: 'siege', ballista: 'siege' },
+
+  // re-weight the army mix toward the hard counters the read calls for
+  counterMix(mix, read) {
+    const out = mix.map(([k, w]) => {
+      let x = w;
+      if (read.foeCavHeavy && (k === 'defender' || k === 'archer' || k === 'longbow' || k === 'elite')) x *= 1.9;
+      if (read.foeArchHeavy && (k === 'rider' || k === 'horsearcher' || k === 'lancer')) x *= 1.9;
+      if (read.foeSiegeSeen && (k === 'rider' || k === 'horsearcher' || k === 'lancer')) x *= 1.4;
+      return [k, x];
+    });
+    const tot = out.reduce((a, [, w]) => a + w, 0) || 1;
+    return out.map(([k, w]) => [k, w / tot]);
+  },
+
+  // the standing-army target, shaped by difficulty AND posture appetite
+  armyWant(m, post) {
+    const cap = Math.min(Math.round((m.aiArmyCap || 8) * 2.5),
+      (m.aiArmyCap || 8) + Math.floor(Math.max(0, S.day - 60) / 15));
+    let want = Math.min(2 + Math.floor(S.day / (m.aiArmyDiv || 8)), cap);
+    if (post === 'EXPAND') want = Math.min(want, 4);          // boom: keep a token guard
+    else if (post === 'PUSH') want = cap;                     // mass for the kill
+    else if (post === 'DEFEND') want = Math.min(cap, want + 2);
+    return want;
+  },
+
+  // SAFETY actions — high utility, allowed to fire on ANY day. They
+  // compose with the rest instead of pre-empting a fixed pipeline slot.
+  digAndProtect(read) {
+    const ai = S.ai, tc = Bld.tcOf('A'), P = this.persona();
+    ai.broke = ai.broke || {};
+    for (const k of ['wood', 'stone', 'food']) {   // starved for days → dig out now
+      ai.broke[k] = ai.res[k] < 40 ? (ai.broke[k] || 0) + 1 : 0;
+      if (ai.broke[k] >= 5) {
+        const bk = { wood: 'lumber', stone: 'quarry', food: 'farm' }[k];
+        if (this.tryBuild(bk, true)) { ai.broke[k] = 0; return true; }
+      }
+    }
+    /* A town needs an ARMY HALL before it fortifies — an army is not a
+       personality trait. Past a few days with no hall, build the persona's
+       core hall the moment it's affordable; and if a resource is blocking
+       it, dig THAT out first so it becomes affordable (this fixed a real
+       failure: a wall-happy Mason spent its wood on towers and never
+       afforded a 100-wood barracks, fielding no army at all). ---- */
+    const ML = ['barracks', 'range', 'stable'];
+    if (S.day >= 8 && !S.buildings.some(b => b.owner === 'A' && ML.includes(b.key))) {
+      const want = P.mix.map(([k]) => this.HALL_OF[k]).find(h => ML.includes(h)) || 'barracks';
+      if (this.tryBuild(want, true)) return true;
+      const cost = CFG.BUILDINGS[want].levels[0].cost;   // dig toward the blocking resource
+      for (const [res, key] of [['wood', 'lumber'], ['stone', 'quarry'], ['food', 'farm']])
+        if ((cost[res] || 0) > (ai.res[res] || 0) && this.tryBuild(key, true)) return true;
+    }
+    // under attack with thin walls → raise a tower now (savings jar be damned)
+    if (read.underThreat && Bld.list('A').filter(b => b.key === 'tower').length < 2 + tc.level &&
+        this.tryBuild('tower', true)) return true;
+    return false;
+  },
+
+  _buildDock() {
+    const tc = Bld.tcOf('A');
+    if (!Bld.canAfford(CFG.BUILDINGS.dock.levels[0].cost, S.ai.res)) return false;
+    const site = MapGen.findNear(tc.x, tc.y, 8, (x, y) => Bld.dockSiteOk(x, y, 'A').ok);
+    if (site && Bld.canPlace('A', 'dock', site.x, site.y).ok) { Bld.place('A', 'dock', site.x, site.y); return true; }
+    return false;
+  },
+
+  // score every construction/upgrade candidate; act on the best affordable one
+  bestBuild(read) {
+    const ai = S.ai, P = this.persona(), pl = this.plan(), post = ai.posture, tc = Bld.tcOf('A');
+    const have = {}; for (const b of Bld.list('A')) have[b.key] = (have[b.key] || 0) + 1;
+    const C = [];
+    const add = (util, run) => { if (util > 0) C.push({ util, run }); };
+
+    // income buildings
+    for (const [res, key] of [['wood', 'lumber'], ['stone', 'quarry'], ['food', 'farm']]) {
+      let u = 26 - (have[key] || 0) * 7 + Math.max(0, (60 - ai.res[res]) * 0.4);
+      if (post === 'EXPAND') u += 24;
+      if (pl.win === 'economy' || pl.win === 'timing') u += 6;
+      add(u, () => this.tryBuild(key));
+    }
+    add(14 - (have.lodge || 0) * 8 + (P.name === 'Forager' ? 12 : 0), () => this.tryBuild('lodge'));
+
+    // military halls for the mix, plus counters the read demands
+    const wantHalls = new Set();
+    for (const [k] of P.mix) wantHalls.add(this.HALL_OF[k]);
+    if (read.foeCavHeavy) wantHalls.add('range');
+    if (read.foeArchHeavy) wantHalls.add('stable');
+    for (const hall of wantHalls) {
+      if (!hall || have[hall]) continue;
+      if (hall === 'siege' && tc.level < 3) continue;
+      let u = 48;
+      if (post === 'CONSOLIDATE' || post === 'PUSH' || post === 'PRESSURE') u += 28;
+      if (hall === 'range' && read.foeCavHeavy) u += 40;   // massed arrows/spears beat horse
+      if (hall === 'stable' && read.foeArchHeavy) u += 40; // cavalry closes on archers
+      add(u, () => this.tryBuild(hall));
+    }
+
+    // tower / walls (defense)
+    add(16 + (P.walls ? 18 : 0) + (post === 'DEFEND' ? 40 : 0) - (have.tower || 0) * 5,
+      () => this.tryBuild('tower'));
+    if ((P.walls || post === 'DEFEND') && S.day >= 20)
+      add((P.walls ? 30 : 12) + (post === 'DEFEND' ? 30 : 0), () => { this.maybeWalls(tc); return true; });
+
+    // dock (naval)
+    if (tc.level >= P.dockTC && !have.dock) add(pl.win === 'naval' ? 55 : 14, () => this._buildDock());
+
+    // houses (AI ignores pop cap — just a lived-in look)
+    add(9 + (post === 'EXPAND' ? 5 : 0) - (have.house || 0) * 2, () => this.tryBuild('house'));
+
+    // Town Center upgrade
+    if (tc.level < 3 && !tc.upgrading && Bld.canUpgrade(tc).ok) {
+      let u = S.day > P.tcDays[tc.level - 1] ? 66 : 18;
+      if (post === 'EXPAND') u += 18;
+      if (read.underThreat) u -= 45;
+      add(u, () => { Bld.upgrade(tc); return true; });
+    }
+
+    // upgrade a standing building (stronger units / stouter defense)
+    const ups = Bld.list('A').filter(b => b.key !== 'tc' && Bld.canUpgrade(b).ok);
+    if (ups.length) {
+      const prio = { barracks: 3, range: 3, stable: 3, siege: 2, tower: 2, dock: 2 };
+      ups.sort((a, b2) => (prio[b2.key] || 1) - (prio[a.key] || 1));
+      const b = ups[0];
+      add(24 + (prio[b.key] || 1) * 6 + (post === 'PUSH' ? 18 : 0) - (post === 'EXPAND' ? 10 : 0),
+        () => Bld.upgrade(b));
+    }
+
+    // endless growth backfill
+    const gk = this.growthKey();
+    if (gk) add(18, () => this.tryBuild(gk));
+
+    C.sort((a, b) => b.util - a.util);
+    for (const a of C) if (a.run()) return true;   // best affordable action wins the day
+    return false;
+  },
+
+  // posture- and counter-weighted training toward the army target, plus navy
+  trainForces(m, read) {
+    const ai = S.ai, P = this.persona();
+    const want = this.armyWant(m, ai.posture);
+    const mix = this.counterMix(P.mix, read);
+    if (this.trainArmy(m, want, mix) && ai.res.food > 400 && ai.res.gold > 80)
+      this.trainArmy(m, want, mix);
+    const dock = S.buildings.find(b => b.owner === 'A' && b.key === 'dock' && Bld.done(b));
+    if (dock && !dock.upgrading && dock.queue.length === 0) {
+      const boats = Units.count('A', u => u.kind === 'fishboat');
+      const ships = Units.count('A', u => u.kind === 'warship' || u.kind === 'fireship');
+      const seaLean = ai.opening && ai.opening.bias === 'sea' && ai.opening.fired && S.day < 45 ? 1 : 0;
+      if (boats < P.boats + seaLean) Bld.train(dock, 'fishboat');
+      else if (dock.level >= 2 && ships < Math.max(1, Math.floor((m.aiArmyCap || 8) / P.shipDiv)) &&
+               this.affordFree(CFG.BUILDINGS.dock.train.warship.cost))
+        Bld.train(dock, dock.level >= 3 && ai.res.gold >= 45 ? 'fireship' : 'warship');
+    }
+  },
+
   // debug overlay (window.DEBUG_AI = true): a compact dump of the world read,
   // so QA can see what the chief perceives before any behavior depends on it
   _drawRead() {
@@ -545,131 +711,19 @@ const AI = {
       }
     }
 
-    /* ---- savings goals: when the Town Center is due, the chief SAVES for
-       it (other construction pauses) instead of the treasury dribbling away
-       into huts forever. A goal that can't be met in 15 days is shelved so
-       a broken economy never deadlocks on a dream. ---- */
-    if (ai.goal) {
-      if (tc.level >= 3 || tc.upgrading) ai.goal = null;
-      else if (Bld.canUpgrade(tc).ok) { Bld.upgrade(tc); ai.goal = null; }
-      else if (S.day > ai.goal.until) { ai.goal = null; ai.goalCd = S.day + 12; }
-    }
-    if (!ai.goal && tc.level < 3 && !tc.upgrading &&
-        S.day > P.tcDays[tc.level - 1] && S.day >= (ai.goalCd || 0)) {
-      ai.goal = { cost: CFG.BUILDINGS.tc.levels[tc.level].cost, until: S.day + 15 };
-    }
-
-    /* ---- protection floor with teeth: basic defense is not a personality
-       trait, and it never loses the argument with the savings jar. A tribe
-       past day 16 with no barracks builds one before anything else — the
-       hall-upgrade reserve is suspended for the attempt (this was a real
-       failure: wood-tight foragers saved for TC2 forever and fielded no
-       army at all) ---- */
-    if (S.day >= 16 && !S.buildings.some(b => b.owner === 'A' && b.key === 'barracks')) {
-      const held = ai.goal;
-      ai.goal = null;
-      this.tryBuild('barracks');
-      ai.goal = held;
-    }
-
-    /* ---- bottleneck economy: a chief starved of one resource for days
-       digs out FIRST — builds the matching income building even if the
-       persona's script never called for it (warlords learn to log too) ---- */
-    ai.broke = ai.broke || {};
-    let dugOut = false;
-    for (const k of ['wood', 'stone', 'food']) {
-      ai.broke[k] = ai.res[k] < 40 ? (ai.broke[k] || 0) + 1 : 0;
-      if (ai.broke[k] >= 6 && !dugOut) {
-        const bk = { wood: 'lumber', stone: 'quarry', food: 'farm' }[k];
-        if (this.tryBuild(bk, true)) { ai.broke[k] = 0; dugOut = true; }
-      }
-    }
-
-    /* ---- build at a difficulty-dependent tempo. Hard lessons encoded:
-       (a) one unaffordable entry never stalls the order — skip and circle
-       back; (b) anything prescribed but not standing (razed or skipped) is
-       rebuilt by the backfill pass, so a sacked town recovers ---- */
-    if (S.day % (m.aiBuildEvery || 2) === 0 && !dugOut) {
-      let built = false;
-      if (ai.orderI < P.order.length) {
-        let key = P.order[ai.orderI];
-        // the workshop waits for a great hall, same rule the player lives by
-        if (key === 'siege' && tc.level < 3) key = null;
-        if (key) {
-          if (this.tryBuild(key)) { ai.orderI++; ai.stuck = 0; built = true; }
-          else {
-            ai.stuck = (ai.stuck || 0) + 1;
-            if (ai.stuck >= 4) { ai.orderI++; ai.stuck = 0; }   // move on — backfill returns to it
-          }
-        }
-      }
-      if (!built) {
-        // backfill: first prescribed-but-missing building it can afford
-        const have = {};
-        for (const b of S.buildings) if (b.owner === 'A') have[b.key] = (have[b.key] || 0) + 1;
-        const want = {};
-        for (let i2 = 0; i2 < Math.min(ai.orderI, P.order.length); i2++)
-          want[P.order[i2]] = (want[P.order[i2]] || 0) + 1;
-        for (const k in want) {
-          if ((have[k] || 0) >= want[k]) continue;
-          if (k === 'siege' && tc.level < 3) continue;
-          if (this.tryBuild(k)) { built = true; break; }
-        }
-      }
-      if (!built && ai.orderI >= P.order.length && !ai.goal) {
-        const gk = this.growthKey();
-        if (gk) built = this.tryBuild(gk);
-      }
-      if (!built && ai.orderI >= P.order.length && !ai.goal) {
-        // town's grown for the day: upgrade —
-        // weighted toward what wins fights, random enough to vary
-        const ups = S.buildings.filter(b => b.owner === 'A' && b.key !== 'tc' && Bld.canUpgrade(b).ok);
-        if (ups.length && G.rand() < 0.8) {
-          const prio = { barracks: 3, range: 3, stable: 3, tower: 2, siege: 2, dock: 2 };
-          ups.sort((a, b2) => ((prio[b2.key] || 1) - (prio[a.key] || 1)) + (G.rand() - 0.5));
-          Bld.upgrade(ups[0]);
-        }
-      }
-    }
-
-    // the town center upgrades the moment its savings goal is met (handled
-    // above) — but also opportunistically whenever it's simply affordable
-    if (tc.level < 3 && !tc.upgrading && S.day > P.tcDays[tc.level - 1] && Bld.canUpgrade(tc).ok) {
-      Bld.upgrade(tc);
-      ai.goal = null;
-    }
-
-    // the mason walls the town in (never out of the savings jar)
-    if (P.walls && !ai.goal) this.maybeWalls(tc);
-
-    // put to sea: a dock when water allows, then boats and warships. Boats
-    // are income and always allowed; warships wait their turn behind savings.
-    if (tc.level >= P.dockTC && !S.buildings.some(b => b.owner === 'A' && b.key === 'dock')) {
-      if (Bld.canAfford(CFG.BUILDINGS.dock.levels[0].cost, ai.res)) {
-        const site = MapGen.findNear(tc.x, tc.y, 8, (x, y) => Bld.dockSiteOk(x, y, 'A').ok);
-        if (site && Bld.canPlace('A', 'dock', site.x, site.y).ok)
-          Bld.place('A', 'dock', site.x, site.y);
-      }
-    }
-    const dock = S.buildings.find(b => b.owner === 'A' && b.key === 'dock' && Bld.done(b));
-    if (dock && !dock.upgrading && dock.queue.length === 0) {
-      const boats = Units.count('A', u => u.kind === 'fishboat');
-      const ships = Units.count('A', u => u.kind === 'warship' || u.kind === 'fireship');
-      const seaLean = ai.opening && ai.opening.bias === 'sea' && ai.opening.fired && S.day < 45 ? 1 : 0;
-      if (boats < P.boats + seaLean) Bld.train(dock, 'fishboat');
-      else if (dock.level >= 2 && ships < Math.max(1, Math.floor((m.aiArmyCap || 8) / P.shipDiv)) &&
-               this.affordFree(CFG.BUILDINGS.dock.train.warship.cost))
-        Bld.train(dock, dock.level >= 3 && ai.res.gold >= 45 ? 'fireship' : 'warship');
-    }
-
-    // keep a standing force shaped by the persona; a rich tribe drills two
-    // recruits a day instead of always one. The cap is a starting line, not
-    // a ceiling: it grows with the game clock so a day-150 rival fields a
-    // day-150 army, not a day-30 one.
-    const capNow = Math.min(Math.round((m.aiArmyCap || 8) * 2.5),
-      (m.aiArmyCap || 8) + Math.floor(Math.max(0, S.day - 60) / 15));
-    const want = Math.min(2 + Math.floor(S.day / (m.aiArmyDiv || 8)), capNow);
-    if (this.trainArmy(m, want) && ai.res.food > 400 && ai.res.gold > 80) this.trainArmy(m, want);
+    /* ---- LAYER 3: utility-scored economy, defense, construction & army.
+       (a) reserve the next Town Center's cost so cheap builds don't drain
+       the jar (utility still decides WHAT to build with the surplus);
+       (b) safety actions may fire any day; (c) on the build cadence, the
+       single best-scored construction/upgrade; (d) posture- and
+       counter-weighted training plus navy. No fixed order — the choice is
+       continuous, so behavior shifts smoothly instead of on cliff edges. ---- */
+    if (ai.goal && (tc.level >= 3 || tc.upgrading || S.day > ai.goal.until)) ai.goal = null;
+    if (!ai.goal && tc.level < 3 && !tc.upgrading && S.day > P.tcDays[tc.level - 1])
+      ai.goal = { cost: CFG.BUILDINGS.tc.levels[tc.level].cost, until: S.day + 20 };
+    const didSafety = this.digAndProtect(read);
+    if (!didSafety && S.day % (m.aiBuildEvery || 2) === 0) this.bestBuild(read);
+    this.trainForces(m, read);
 
     /* ---- townsfolk: a living village. A few villagers walk the lanes,
        staffing the town in spirit — killable, worth raiding, and slowly
