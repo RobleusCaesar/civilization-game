@@ -65,7 +65,7 @@ const G = {
       playtime: 0,                          // unpaused seconds, for save metadata
       // run stats — the raw material of the arcade score (js/score.js)
       stats: { trained: 0, razed: 0, gathered: 0, kills: 0, built: 0,
-               walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0 },
+               walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0 },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0 },
       ai: null,
@@ -90,6 +90,10 @@ const G = {
         : band < 0.67 ? 60 + G.rand() * 40 : 100 + G.rand() * 50);
     };
     S.kraken = { day: { P: kd(), A: kd() }, done: {}, ev: null };
+    // SPECIAL EVENT: the black dragon — Moderate/Hard only, most games never
+    // roll it, and it waits for a dark hour at the player's gates
+    S.dragon = { avail: mode !== 'calm' && G.rand() < CFG.DRAGON.chance,
+                 done: false, ev: null, ash: [] };
 
     this.freeVis = false;   // every real game starts fogged; the title demo re-enables it
     this.vis = null;
@@ -318,6 +322,76 @@ const G = {
     }
   },
 
+  /* ---- SPECIAL EVENT: the black dragon ----
+     It owes the player nothing; it just likes fire. When an enemy army masses
+     at the gates and the odds are stacked, it sweeps in from the horizon,
+     burns the line to ash, and leaves. Once per game, if the game rolled it
+     at all (Moderate/Hard, ~1 in 3.5). */
+  maybeDragon() {
+    const D = S.dragon;
+    if (!D || !D.avail || D.done || D.ev || S.over) return;
+    if (S.day < CFG.DRAGON.minDay) return;
+    const tc = Bld.tcOf('P');
+    if (!tc) return;
+    const cx = Bld.cx(tc), cy = Bld.cy(tc);
+    // "the army": rival soldiers and barbarian raiders alike
+    const foes = S.units.filter(u => (u.owner === 'A' || u.owner === 'R') &&
+      (Units.isMilitary(u) || u.owner === 'R') && !Units.isNaval(u) &&
+      Math.hypot(u.x - cx, u.y - cy) < CFG.DRAGON.radius);
+    if (foes.length < CFG.DRAGON.foesMin) return;
+    const mine = S.units.reduce((n, u) => n + (u.owner === 'P' && Units.isMilitary(u) &&
+      Math.hypot(u.x - cx, u.y - cy) < CFG.DRAGON.radius + 3 ? 1 : 0), 0);
+    if (mine * 2 > foes.length) return;          // only when the hour is dark
+    D.done = true;
+    const mx = foes.reduce((a, u) => a + u.x, 0) / foes.length;
+    const my = foes.reduce((a, u) => a + u.y, 0) / foes.length;
+    const fromLeft = mx < CFG.W / 2;
+    D.ev = { phase: 'fly', t: 0, x: fromLeft ? -3 : CFG.W + 3, y: my - 5,
+             tx: mx, ty: my, dir: fromLeft ? 1 : -1,
+             victims: foes.map(u => u.id) };
+    this.log('🐉 A vast black shape crests the horizon…', true, 5200);
+  },
+
+  dragonTick(dt) {
+    const D = S.dragon;
+    if (!D) return;
+    for (let i = (D.ash || []).length - 1; i >= 0; i--) {   // ash blows away
+      D.ash[i].ttl -= dt;
+      if (D.ash[i].ttl <= 0) D.ash.splice(i, 1);
+    }
+    const ev = D.ev;
+    if (!ev) return;
+    ev.t += dt;
+    if (ev.phase === 'fly') {
+      ev.x += ev.dir * 9 * dt;
+      ev.y += (ev.ty - ev.y) * Math.min(1, dt * 1.6);
+      if ((ev.dir > 0 && ev.x >= ev.tx - 2.5) || (ev.dir < 0 && ev.x <= ev.tx + 2.5)) {
+        ev.phase = 'burn'; ev.t = 0;
+        for (const id of ev.victims) { const u = Units.get(id); if (u) u.burnT = 1.6; }
+        this.log('🐉 The dragon banks and BREATHES — the enemy line is a wall of fire!', true, 5200);
+      }
+    } else if (ev.phase === 'burn') {
+      ev.x += ev.dir * 3.2 * dt;                  // a slow strafe along the line
+      if (ev.t > 1.7) {
+        for (const id of ev.victims) {
+          const u = Units.get(id);
+          if (!u) continue;
+          D.ash.push({ x: u.x, y: u.y, ttl: 3 + G.rand() * 2 });
+          S.units.splice(S.units.indexOf(u), 1);
+          for (const o of S.units) if (o.tUnit === u.id) o.tUnit = 0;
+          if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
+        }
+        S.stats.dragonSeen = 1;                   // worth points — and a story
+        ev.phase = 'leave'; ev.t = 0;
+        this.log('🐉 Where an army stood: piles of ash. It owes you nothing — it just likes fire.', false, 6400);
+      }
+    } else if (ev.phase === 'leave') {
+      ev.x += ev.dir * 10 * dt;
+      ev.y -= dt * 1.4;
+      if (ev.x < -4 || ev.x > CFG.W + 4) D.ev = null;
+    }
+  },
+
   end(win, msg) {
     if (S.over) return;
     S.over = { win, msg };
@@ -359,10 +433,11 @@ const G = {
     if (!data.garrison) data.garrison = [];
     if (data.ai && !data.ai.persona) data.ai.persona = 'homesteader';   // pre-persona save: the classic temperament
     if (!data.kraken) data.kraken = { day: { P: 60, A: 90 }, done: {}, ev: null };   // older saves owe the deep a visit too
+    if (!data.dragon) data.dragon = { avail: false, done: true, ev: null, ash: [] };  // legacy runs: no dragon this time
     if (!data.playtime) data.playtime = 0;
     if (!data.stats) data.stats = {};
     for (const k of ['trained', 'razed', 'gathered', 'kills', 'built', 'walls',
-                     'upgrades', 'peakPop', 'krakenSlain'])
+                     'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen'])
       if (!data.stats[k]) data.stats[k] = 0;
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
@@ -433,6 +508,9 @@ const G = {
         Units.update(dt);
         Combat.update(dt);
         G.krakenTick(dt);
+        G.dragonTick(dt);
+        G.dragonT = (G.dragonT || 0) - dt;
+        if (G.dragonT <= 0) { G.dragonT = 1.3; G.maybeDragon(); }
         G.visT -= dt;
         if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
         G.autosaveT -= dt;

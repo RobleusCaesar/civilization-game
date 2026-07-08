@@ -909,6 +909,42 @@ const Sprites = {
     p(8, 11, 1, 1, AP.bone[2]);                                     // beak
   })));
 
+  // the black dragon (SPECIAL EVENT — see G.maybeDragon): a wide dark
+  // silhouette, wings beating between two frames, one burning eye. 96x48 px
+  // = 3x1.5 tiles when it sweeps over an army.
+  Sprites.misc.dragon = [0, 1].map(f => {
+    const c = mk(96, 48), g2 = c.getContext('2d');
+    const p = (x, y, w, h, col) => { g2.fillStyle = col; g2.fillRect(x * 2, y * 2, (w || 1) * 2, (h || 1) * 2); };
+    const B = AP.ink[1], D = AP.ink[0], HL = AP.pelt[1];
+    // tail, kinked, with a spade tip
+    p(2, 15 - f, 6, 1, B); p(7, 14 - f, 5, 1, B); p(1, 14 - f, 1, 1, D); p(1, 13 - f, 1, 1, D);
+    // long body, belly catching a little light
+    p(12, 12, 18, 4, B); p(12, 15, 18, 1, D); p(14, 12, 14, 1, HL);
+    // spine ridges
+    for (let i = 0; i < 5; i++) p(14 + i * 3, 11, 1, 1, D);
+    // neck rising to the head
+    p(30, 10, 4, 4, B); p(34, 8, 4, 4, B);
+    // head: brow, jaw, horns swept back, ember eye
+    p(38, 8, 6, 3, B); p(42, 11, 3, 1, D);                       // muzzle + jaw
+    p(37, 6, 2, 2, D); p(39, 5, 2, 2, D);                        // horns
+    p(41, 9, 1, 1, AP.fire[2]);                                  // the eye
+    p(44, 10, 1, 1, AP.fire[1]);                                 // heat at the nostril
+    // wings: great bat sails, up-beat and down-beat
+    if (f === 0) {
+      p(16, 2, 12, 2, B); p(14, 1, 4, 2, D);                     // leading edge up
+      for (let i = 0; i < 5; i++) p(17 + i * 2, 4, 1, 8 - i, B); // membrane fingers
+      p(27, 4, 1, 3, B);
+      p(20, 3, 8, 3, B); p(24, 6, 5, 2, B);                      // membrane fill
+    } else {
+      p(16, 18, 12, 2, B); p(14, 20, 4, 2, D);                   // swept down
+      for (let i = 0; i < 5; i++) p(17 + i * 2, 16 - (4 - i), 1, 6, B);
+      p(20, 16, 8, 3, B); p(24, 14, 5, 2, B);
+    }
+    // hind leg tucked
+    p(26, 16, 2, 2, D);
+    return ART.outline(c);
+  });
+
   // fish breaking the surface — two frames used as an occasional flourish
   Sprites.misc.fish = [
     tile(p => {

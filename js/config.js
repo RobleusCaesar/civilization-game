@@ -286,9 +286,16 @@ const CFG = {
     perKill: 9, perRazed: 40,
     perBuilt: 30, perWall: 4, perUpgrade: 70, perTrained: 15,
     perPeakPop: 8, perGathered: 0.15, perExploredPct: 14,
-    kraken: 500,
+    kraken: 500, dragon: 250,
     mult: { calm: 0.5, moderate: 1.0, hard: 1.75 },
   },
+
+  /* SPECIAL EVENTS — rare, once-a-game spectacles (the kraken shares this
+     category; its tuning lives with the kraken code in game.js). The black
+     dragon: Moderate/Hard only, roughly 1 game in 3.5 rolls the chance at
+     all, and it only spends it when an enemy army masses at the player's
+     gates with the odds stacked against them. */
+  DRAGON: { chance: 0.28, minDay: 25, foesMin: 6, radius: 9 },
 
   MODES: {
     calm: {

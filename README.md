@@ -283,6 +283,12 @@ on desktop too.
 One way in, one way out: **destroy the rival tribe's Town Center to win; if
 yours falls, you lose.** Nothing else ends the game.
 
+## Whispers
+
+Old sailors and older shepherds tell stories — of something vast beneath open
+water, and of a shadow that crosses the sun when a battle is already lost.
+Most games, nothing happens. Keep watch.
+
 ## Score & the global leaderboard
 
 Every run is tallied like an arcade cabinet when it ends: kills, razed rival

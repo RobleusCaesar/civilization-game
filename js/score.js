@@ -38,6 +38,7 @@ const Score = {
       add('🗺', `Map explored — ${pct}%`, pct * C.perExploredPct);
     }
     if (st.krakenSlain) add('🐙', 'Drove off the kraken', C.kraken);
+    if (st.dragonSeen) add('🐉', 'Saved by the black dragon', C.dragon);
 
     const subtotal = lines.reduce((a, l) => a + l.pts, 0);
     const mult = C.mult[S.mode] || 1;

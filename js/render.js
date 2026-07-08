@@ -251,7 +251,7 @@ const R = {
         if (b.key === 'tc' && b.level === 1) {
           // the camp's heart: a small live flame flickering over the baked embers
           const F = ART.PALETTE.fire;
-          const fx2 = bx + 1.06 * TL, fy2 = by + 1.30 * TL;
+          const fx2 = bx + 0.78 * TL, fy2 = by + 1.64 * TL;
           const ph = ((performance.now() / 150) | 0) % 2;
           g.fillStyle = F[2]; g.fillRect(fx2 - 2, fy2 - 2 - ph, 4, 2 + ph);
           g.fillStyle = F[3]; g.fillRect(fx2 - 1, fy2 - 4 - ph, 2, 3);
@@ -263,6 +263,21 @@ const R = {
         g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;
         g.strokeRect(bx + 0.5, by + 0.5, bw - 1, bw - 1);
       }
+    }
+
+    // dragonfire ash: what is left of an army, blowing away
+    if (S.dragon && S.dragon.ash) for (const a of S.dragon.ash) {
+      const al = Math.min(1, a.ttl / 1.4);
+      const ax = a.x * TL, ay = a.y * TL;
+      g.globalAlpha = al;
+      g.fillStyle = ART.PALETTE.stone[1];
+      g.fillRect(ax - 4, ay - 1, 8, 3);
+      g.fillRect(ax - 2, ay - 3, 5, 2);
+      g.fillStyle = ART.PALETTE.ink[2];
+      g.fillRect(ax - 3, ay, 3, 2); g.fillRect(ax + 1, ay - 2, 2, 2);
+      g.fillStyle = ART.PALETTE.stone[2];
+      g.fillRect(ax - 1, ay - 4, 2, 1);
+      g.globalAlpha = 1;
     }
 
     // units (y-sorted)
@@ -278,6 +293,13 @@ const R = {
         g.beginPath(); g.ellipse(u.x * TL, u.y * TL + 10, 10, 5, 0, 0, Math.PI * 2); g.stroke();
       }
       g.drawImage(this.unitSprite(u), ux, uy);
+      if (u.burnT > 0) {                                  // wreathed in dragonfire
+        const F = ART.PALETTE.fire, ph = ((u.animT * 9) | 0) % 2;
+        g.fillStyle = F[2]; g.fillRect(u.x * TL - 3, u.y * TL - 12 - ph, 3, 5);
+        g.fillStyle = F[1]; g.fillRect(u.x * TL + 1, u.y * TL - 10 + ph, 3, 4);
+        g.fillStyle = F[3]; g.fillRect(u.x * TL - 1, u.y * TL - 14 - ph, 2, 3);
+        g.fillStyle = F[0]; g.fillRect(u.x * TL - 4 + ph * 6, u.y * TL - 6, 2, 3);
+      }
       if (u.cargo && u.cargo.length) {                 // one pip per soldier aboard
         g.fillStyle = u.owner === 'P' ? '#c0e8ff' : '#ffb0a0';
         for (let ci = 0; ci < u.cargo.length; ci++)
@@ -345,9 +367,9 @@ const R = {
           // the L1 roundhouse hearth is the fire pit in the dooryard — a very
           // faint wisp curls up from it; every other hearth smokes from the roof
           const pit = b.key === 'tc' && b.level === 1;
-          // the founding camp's hearth is the central campfire (2x2 footprint)
-          this.smoke.push({ x: b.x + (pit ? 1.06 : 0.5) + (Math.random() - 0.5) * 0.12,
-                            y: b.y + (pit ? 1.28 : 0.18),
+          // the grand hall's hearth is the dooryard campfire (2x2 footprint)
+          this.smoke.push({ x: b.x + (pit ? 0.78 : 0.5) + (Math.random() - 0.5) * 0.12,
+                            y: b.y + (pit ? 1.62 : 0.18),
                             t: 0, ttl: (pit ? 1.6 : 2) + Math.random() * 1.2,
                             a: pit ? 0.15 : 0.30 });
           if (this.smoke.length >= 36) break;
@@ -571,6 +593,38 @@ const R = {
     g.imageSmoothingEnabled = true;
     g.drawImage(this.fogCv, 0, 0, CFG.W, CFG.H, 0, 0, CFG.W * TL, CFG.H * TL);
     g.imageSmoothingEnabled = false;
+
+    // SPECIAL EVENT — the black dragon, drawn over the fog: nothing hides it
+    if (S.dragon && S.dragon.ev) {
+      const ev = S.dragon.ev;
+      const dx2 = ev.x * TL, dy2 = ev.y * TL;
+      const spr = Sprites.misc.dragon[((ev.t * 5) | 0) % 2];
+      // its shadow races along the ground below
+      g.fillStyle = 'rgba(10,8,5,0.30)';
+      g.beginPath(); g.ellipse(dx2, dy2 + 8, 22, 7, 0, 0, Math.PI * 2); g.fill();
+      // fire breath during the strafe: a cone from the jaws to the ground line
+      if (ev.phase === 'burn') {
+        const F = ART.PALETTE.fire;
+        const mx = dx2 + ev.dir * 26, my = dy2 - 26;
+        for (let i = 0; i < 12; i++) {
+          const t2 = i / 12;
+          const bx2 = mx + ev.dir * t2 * 18 + Math.sin(ev.t * 22 + i * 2.4) * 3;
+          const by2 = my + t2 * 34;
+          const sz = 2 + t2 * 6;
+          g.fillStyle = F[t2 < 0.35 ? 3 : t2 < 0.7 ? 2 : 1];
+          g.fillRect(bx2 - sz / 2, by2 - sz / 2, sz, sz);
+        }
+        for (let i = 0; i < 5; i++) {                     // embers skittering on the ground
+          g.fillStyle = F[i % 2 ? 0 : 1];
+          g.fillRect(dx2 + ev.dir * (10 + i * 9) + Math.sin(ev.t * 17 + i * 3) * 4, dy2 + 6 + (i % 3), 3, 3);
+        }
+      }
+      g.save();
+      g.translate(dx2, dy2 - 30);
+      if (ev.dir < 0) g.scale(-1, 1);
+      g.drawImage(spr, -48, -24);
+      g.restore();
+    }
 
     // floating text
     g.textAlign = 'center';

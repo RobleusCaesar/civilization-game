@@ -244,6 +244,13 @@ what/why.
 
 ### Conventions
 
+- **SPECIAL EVENTS (a design category):** rare, once-per-game spectacles
+  meant to make a player laugh out loud — currently the kraken (S.kraken,
+  G.krakenTick) and the black dragon (S.dragon, G.maybeDragon/dragonTick;
+  Moderate/Hard, ~1 game in 3.5, fires only when an enemy army masses at the
+  player's gates with the odds stacked). New events follow the same shape:
+  availability rolled at newGame, plain-data event state in S, a tick
+  function, a G.log narration, a score line. Do not spoil them in README.
 - **THE SCORING RULE (binding):** every new gameplay feature must feed the
   arcade score — either through an existing `S.stats` counter or a new one
   (add it to `newGame`'s stats init, `loadJSON`'s backfill list, a line in

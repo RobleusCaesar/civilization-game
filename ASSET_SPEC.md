@@ -130,6 +130,7 @@ water 3). `terrain_rare/grass/<0|1>` are the rare flower meadows.
 ### `misc/<name>[/<frame>]`
 `misc/construction` — the scaffold shown while any building goes up.
 `misc/kraken/0..1` — the kraken's two animation frames.
+`misc/dragon/0..1` — the black dragon's wing beats (96×48).
 `misc/fish/0..1` — the jumping shore-fish frames.
 
 ## Adding art, step by step
