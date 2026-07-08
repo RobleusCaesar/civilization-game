@@ -305,6 +305,7 @@ const CFG = {
     perBuilt: 30, perWall: 4, perUpgrade: 70, perTrained: 15,
     perPeakPop: 8, perGathered: 0.15, perExploredPct: 14,
     kraken: 500, dragon: 250,   // (originBonus for hard beginnings is computed at roll time)
+    leanIn: 120,                // ORIGIN CARDS: kept the card that leans into your roll
     mult: { calm: 0.5, moderate: 1.0, hard: 1.75 },
   },
 

@@ -128,8 +128,15 @@ const Bld = {
     if (mine.length && !mine.some(b => Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE))
       return { ok: false, why: 'Too far from your buildings' };
     const res = owner === 'P' ? S.res : S.ai.res;
-    if (!this.canAfford(this.buildSpec(key, owner).lv.cost, res)) return { ok: false, why: 'Not enough resources' };
+    if (!this.canAfford(this.effCost(owner, key), res)) return { ok: false, why: 'Not enough resources' };
     return { ok: true };
+  },
+
+  // what a placement really costs — ORIGIN CARDS discounts (Mason forts,
+  // Nomad first-buildings) apply on top of the base spec
+  effCost(owner, key) {
+    const cost = this.buildSpec(key, owner).lv.cost;
+    return window.Cards ? Cards.buildCost(owner, key, cost) : cost;
   },
 
   place(owner, key, x, y, opts) {
@@ -137,13 +144,18 @@ const Bld = {
     const d = this.def(key);
     const spec = this.buildSpec(key, owner);
     const res = owner === 'P' ? S.res : S.ai.res;
-    if (!opts.free) this.pay(spec.lv.cost, res);
+    // ORIGIN CARDS: discounts and haste read BEFORE the Nomad charge burns
+    const tMult = window.Cards ? Cards.buildTimeMult(owner) : 1;
+    if (!opts.free) {
+      this.pay(this.effCost(owner, key), res);
+      if (window.Cards) Cards.notePlaced(owner);
+    }
     const b = {
       id: S.nextId++, key, owner, x, y, level: spec.level,
       // construction sites are fragile until finished
       hp: opts.instant ? spec.lv.hp : Math.max(30, Math.round(spec.lv.hp * 0.4)),
       maxhp: spec.lv.hp,
-      construction: opts.instant ? 0 : spec.lv.time,   // days left
+      construction: opts.instant ? 0 : spec.lv.time * tMult,   // days left
       upgrading: 0, queue: [], cd: 0,
     };
     S.buildings.push(b);
@@ -286,15 +298,17 @@ const Bld = {
     if (b.owner === 'P' && Units.popUsed('P') + b.queue.length >= Bld.popCap('P'))
       return { ok: false, why: 'Population cap — build houses' };
     const res = b.owner === 'P' ? S.res : S.ai.res;
-    if (!this.canAfford(spec.cost, res)) return { ok: false, why: 'Not enough resources' };
-    return { ok: true, cost: spec.cost };
+    // ORIGIN CARDS: the Ironhand's soldiers come cheaper
+    const cost = window.Cards ? Cards.trainCost(b.owner, unitKey, spec.cost) : spec.cost;
+    if (!this.canAfford(cost, res)) return { ok: false, why: 'Not enough resources' };
+    return { ok: true, cost };
   },
 
   train(b, unitKey) {
     const c = this.canTrain(b, unitKey);
     if (!c.ok) return false;
     const spec = this.def(b.key).train[unitKey];
-    this.pay(spec.cost, b.owner === 'P' ? S.res : S.ai.res);
+    this.pay(c.cost, b.owner === 'P' ? S.res : S.ai.res);
     b.queue.push({ unit: unitKey, t: spec.time });
     return true;
   },
@@ -387,9 +401,11 @@ const Bld = {
                              : this.maxWorkers(b);
         if (!crew) continue;
       }
-      const mult = crew * this.nearBonus(b) * tcBoost * modeMult;
+      const mult = crew * this.nearBonus(b) * tcBoost * modeMult *
+        (window.Cards ? Cards.prodMult(owner, b) : 1);   // ORIGIN CARDS: Harvest Lord farms
       for (const k in out) res[k] += out[k] * mult;
     }
+    if (window.Cards) Cards.dailyExtras(owner, res);      // ORIGIN CARDS: Tradewind trickle
   },
 
   // remove a building and leave rubble behind (buildable like any depleted tile)

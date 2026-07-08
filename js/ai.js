@@ -21,15 +21,15 @@ const AI = {
      boats/ships— fishing fleet size / warship cap divisor of aiArmyCap
      tcDays     — [day for TC2, day for TC3]
      blurb      — what your scouts whisper at first light
-     opening    — VARIABLE OPENINGS (optional, consumed generically by init).
-                  { p, units, res, bias, needsWater, whisperOn, whisperOff }:
-                  p = chance the themed nudge fires (units spawn + res bonus
-                  roll); bias keys an early behavior lean ('scout' | 'raid' |
-                  'boom' | 'sea' | 'turtle' | 'spread'), probabilistic in the
-                  first minutes; the whisper is tied to what actually rolled
-                  THIS game. THE RULE: any future persona gets all of this by
-                  adding an opening block — no new code. A persona without
-                  one simply opens quietly. */
+
+     ORIGIN CARDS (js/cards.js) sit on top of these profiles: the rival is
+     dealt 3 cards and keeps 1, and the kept card sets BOTH its starting boon
+     and its persona (each card's `lean` names one of these profiles — the
+     card IS the persona now). The card also sets S.ai.opening = { bias,
+     fired: true, until, card }, which drives the early behavior leans in
+     daily() ('scout' | 'raid' | 'boom' | 'sea' | 'turtle' | 'spread').
+     THE RULE: a new rival temperament is added as a CARD with a `lean`
+     (and, if needed, a new persona profile here) — no new wiring. */
   PERSONAS: {
     homesteader: {
       name: 'Homesteader',
@@ -39,9 +39,6 @@ const AI = {
       raidPower: 1.7, raidDayAdd: 25, raidShare: 0.5, raidCd: 16,
       walls: false, dockTC: 2, boats: 2, shipDiv: 4, tcDays: [22, 55],
       blurb: 'a patient farmer-chief, slow to anger, rich in grain.',
-      opening: { p: 0.6, res: { food: [40, 80] }, bias: 'boom',
-        whisperOn: 'Their granaries were full before the first frost.',
-        whisperOff: 'Their fields are still being cleared.' },
     },
     warlord: {
       name: 'Warlord',
@@ -51,9 +48,6 @@ const AI = {
       raidPower: 1.1, raidDayAdd: -15, raidShare: 0.7, raidCd: 10,
       walls: false, dockTC: 2, boats: 1, shipDiv: 4, tcDays: [30, 70],
       blurb: 'a warmonger who prizes the spear over the plough.',
-      opening: { p: 0.6, units: ['defender'], bias: 'raid',
-        whisperOn: 'A spearman already drills outside their hall.',
-        whisperOff: 'For now, their spears stay racked.' },
     },
     horselord: {
       name: 'Horselord',
@@ -63,9 +57,6 @@ const AI = {
       raidPower: 1.15, raidDayAdd: -8, raidShare: 0.6, raidCd: 8,
       walls: false, dockTC: 2, boats: 1, shipDiv: 4, tcDays: [26, 62],
       blurb: 'a horselord — swift riders strike and are gone.',
-      opening: { p: 0.65, units: ['rider'], bias: 'scout',
-        whisperOn: 'A rider saddled before dawn — expect eyes on your camp.',
-        whisperOff: 'Their herds still graze far afield.' },
     },
     mariner: {
       name: 'Mariner',
@@ -75,9 +66,6 @@ const AI = {
       raidPower: 1.3, raidDayAdd: 5, raidShare: 0.6, raidCd: 14,
       walls: false, dockTC: 1, boats: 3, shipDiv: 3, tcDays: [25, 58],
       blurb: 'a mariner-chief — nets in the shallows, warships off the coast.',
-      opening: { p: 0.65, res: { wood: [30, 70] }, bias: 'sea', needsWater: true,
-        whisperOn: 'Fresh-cut hulls already dry on their shore.',
-        whisperOff: 'Their boats are still promises.' },
     },
     mason: {
       name: 'Mason',
@@ -87,9 +75,6 @@ const AI = {
       raidPower: 1.9, raidDayAdd: 30, raidShare: 0.5, raidCd: 18,
       walls: true, dockTC: 2, boats: 2, shipDiv: 5, tcDays: [24, 58],
       blurb: 'a cautious mason — stone towers, and walls going up.',
-      opening: { p: 0.6, res: { stone: [40, 80] }, bias: 'turtle',
-        whisperOn: 'Their quarry rang all night — stone is moving early.',
-        whisperOff: 'Their masons still sharpen chisels.' },
     },
     forager: {
       name: 'Forager',
@@ -99,47 +84,31 @@ const AI = {
       raidPower: 1.4, raidDayAdd: 15, raidShare: 0.6, raidCd: 14,
       walls: false, dockTC: 2, boats: 2, shipDiv: 4, tcDays: [18, 45],
       blurb: 'a hoarder of timber and stone — weak now, but growing fast.',
-      opening: { p: 0.6, res: { food: [15, 40], wood: [15, 40], stone: [10, 30] }, bias: 'spread',
-        whisperOn: 'Their gatherers fan out in every direction at once.',
-        whisperOff: 'They still pick over the ground by their hall.' },
     },
   },
 
   persona() { return this.PERSONAS[S.ai && S.ai.persona] || this.PERSONAS.homesteader; },
 
-  init(spawn, persona) {
-    // the new-game screen can request a specific rival temperament; the
-    // default is still a fresh roll every game
-    const keys = Object.keys(this.PERSONAS);
+  init(spawn, pk) {
+    /* VARIABLE OPENINGS: the rival opens on its own rolled package (same
+       bands as the player's — see G.rollStart). Its persona, opening bias
+       and starting boon are set by the ORIGIN CARDS draft (Cards.deal),
+       which newGame runs immediately after this. */
     S.ai = {
-      res: { food: 200, wood: 150, stone: 60, gold: 0 },
+      res: Object.assign({}, pk ? pk.res : { food: 200, wood: 150, stone: 60, gold: 0 }),
       orderI: 0,
       raidCd: 0,
-      persona: this.PERSONAS[persona] ? persona : keys[(G.rand() * keys.length) | 0],
+      persona: 'homesteader',   // provisional — the kept card names the persona
     };
     G.clearFootprint(spawn.x, spawn.y, 'tc');
     Bld.place('A', 'tc', spawn.x, spawn.y, { free: true, instant: true });
-    /* VARIABLE OPENINGS — consumed generically from persona.opening (THE
-       RULE above): probabilistic nudge, bounded like the player's roll,
-       whisper tied to what actually happened this game */
-    const P = this.persona();
-    const op = P.opening || {};
-    let fired = !!(op.p && G.rand() < op.p);
-    if (op.needsWater && !S.map.terrain.includes(T.WATER)) fired = false;
-    S.ai.opening = { bias: op.bias || null, fired, until: 13 + ((G.rand() * 8) | 0) };
-    if (fired) {
-      for (const kind of (op.units || []).slice(0, 1)) {   // bound: one extra unit at most
-        const spot = MapGen.findNear(spawn.x, spawn.y + Bld.size('tc'), 4,
-          (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y)) || { x: spawn.x, y: spawn.y + 2 };
-        Units.spawn(kind, 'A', spot.x, spot.y);
-      }
-      for (const k in (op.res || {})) {
-        const [lo, hi] = op.res[k];
-        S.ai.res[k] += Math.min(90, Math.round(lo + G.rand() * (hi - lo)));   // bound: player-band parity
-      }
+    // the rolled crew walks the lanes — a village that starts lived-in
+    const n = Math.min(3, (pk && pk.villagers) || 2);
+    for (let i = 0; i < n; i++) {
+      const spot = MapGen.findNear(spawn.x + 1, spawn.y + Bld.size('tc'), 4,
+        (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y)) || { x: spawn.x, y: spawn.y + 2 };
+      Units.spawn('villager', 'A', spot.x, spot.y);
     }
-    const w = fired ? op.whisperOn : op.whisperOff;
-    G.log('🕵 Scouts whisper of the rival chief: ' + P.blurb + (w ? ' ' + w : ''), false, 6400);
   },
 
   /* find a plot with some character instead of spiral-filling a square:

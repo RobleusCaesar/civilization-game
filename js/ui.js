@@ -65,14 +65,14 @@ const UI = {
       ic.getContext('2d').drawImage(Sprites.building[key][0], 0, 0);
       btn.appendChild(ic);
       const nm = document.createElement('div'); nm.className = 'bname'; nm.textContent = d.name;
-      const co = document.createElement('div'); co.className = 'bcost'; co.textContent = Bld.costStr(Bld.buildSpec(key).lv.cost);
+      const co = document.createElement('div'); co.className = 'bcost'; co.textContent = Bld.costStr(Bld.effCost('P', key));
       btn.appendChild(nm); btn.appendChild(co);
       btn.addEventListener('click', () => {
         if (this.placing === key) { this.placing = null; this.builderFor = null; }
         else {
           const tc = Bld.tcOf('P');
           if (d.reqTC && (!tc || tc.level < d.reqTC)) { this.toast(`Needs Town Center Lv ${d.reqTC}`, true); return; }
-          const can = Bld.canAfford(Bld.buildSpec(key).lv.cost);
+          const can = Bld.canAfford(Bld.effCost('P', key));   // card discounts count
           if (!can) { this.toast('Not enough resources', true); return; }
           this.placing = key;
           this.deselect();
@@ -87,13 +87,13 @@ const UI = {
   refreshMenu() {
     const tc = Bld.tcOf('P');
     document.querySelectorAll('.bbtn').forEach(b => {
-      const spec = Bld.buildSpec(b.dataset.key);
+      const cost = Bld.effCost('P', b.dataset.key);   // card discounts show true prices
       const gated = CFG.BUILDINGS[b.dataset.key].reqTC && (!tc || tc.level < CFG.BUILDINGS[b.dataset.key].reqTC);
       b.classList.toggle('sel', this.placing === b.dataset.key);
-      b.classList.toggle('cant', gated || !Bld.canAfford(spec.lv.cost));
+      b.classList.toggle('cant', gated || !Bld.canAfford(cost));
       const co = b.querySelector('.bcost');
       if (co) {
-        const txt = Bld.costStr(spec.lv.cost);
+        const txt = Bld.costStr(cost);
         if (co.textContent !== txt) co.textContent = txt;
       }
     });
@@ -633,7 +633,8 @@ const UI = {
         if (d.train && !b.construction) {
           for (const [uk, spec] of Object.entries(d.train)) {
             const ct = Bld.canTrain(b, uk);
-            html += `<button class="abtn ${ct.ok ? '' : 'cant'}" data-act="train" data-unit="${uk}">Train ${CFG.UNITS[uk].name}<small>${Bld.costStr(spec.cost)}</small></button>`;
+            const tCost = window.Cards ? Cards.trainCost('P', uk, spec.cost) : spec.cost;
+            html += `<button class="abtn ${ct.ok ? '' : 'cant'}" data-act="train" data-unit="${uk}">Train ${CFG.UNITS[uk].name}<small>${Bld.costStr(tCost)}</small></button>`;
           }
           // the TC's shelter button rides beside Train Villager so the grid
           // stays packed — pointless buttons below simply don't render

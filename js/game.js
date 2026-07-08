@@ -36,7 +36,7 @@ const G = {
      Weighted tendencies inside CFG.OPENING's bands — anti-correlated wealth
      (rich in one thing, lean in another), leaning AGAINST the map's scarce
      resource, rare extras, and a hard clamp so no roll is unwinnable. */
-  rollStart(gen, mode) {
+  rollStart(gen, mode, sp) {
     const O = CFG.OPENING;
     const keys = ['food', 'wood', 'stone', 'gold'];
     // villagers: band by difficulty, weighted toward the middle
@@ -58,7 +58,7 @@ const G = {
     if (res[gen.scarce] !== undefined) res[gen.scarce] += O.scarceLean;
     // a dry start (no water within reach) carries extra food
     let nearWater = false;
-    const sp = gen.spawns.player;
+    sp = sp || gen.spawns.player;   // ORIGIN CARDS: the rival rolls a package too
     for (let dy = -8; dy <= 8 && !nearWater; dy++) for (let dx = -8; dx <= 8; dx++) {
       const x = sp.x + dx, y = sp.y + dy;
       if (MapGen.inB(x, y) && gen.terrain[MapGen.idx(x, y)] === T.WATER) { nearWater = true; break; }
@@ -158,6 +158,7 @@ const G = {
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0 },
       ai: null,
+      boons: { P: {}, A: {} },   // ORIGIN CARDS: each side's kept-card modifiers
       log: [],
     };
     Bld._block = null;
@@ -166,16 +167,24 @@ const G = {
     Bld.place('P', 'tc', p.x, p.y, { free: true, instant: true });
     this.reveal(p.x, p.y, 6);
     // VARIABLE OPENINGS: roll the start package (seeded — a seed reproduces it)
-    const pk = this.rollStart(gen, mode);
+    const pk = this.rollStart(gen, mode, gen.spawns.player);
     S.res = pk.res;
     S.stats.originBonus = pk.originBonus;
     S.origin = pk.origin;
     for (let i = 0; i < pk.villagers; i++)
       Units.spawn('villager', 'P', p.x - 1 + (i % 4), p.y + 2 + (i / 4 | 0));
     for (const ex of pk.extras) this.applyStartExtra(ex, p, gen);
-    AI.init(gen.spawns.ai, persona);
-    S.opening = { player: pk, rival: S.ai.opening };
-    if (window.DEBUG_OPENINGS) console.log('[openings]', JSON.stringify(S.opening));
+    // the rival rolls its own package (same bands), then ORIGIN CARDS deals
+    // both hands: the rival keeps a card at once (the card IS its persona);
+    // the player's hand waits in S.draft for the draft screen / Cards.pick
+    const pkA = this.rollStart(gen, mode, gen.spawns.ai);
+    AI.init(gen.spawns.ai, pkA);
+    Cards.deal(pk, pkA, persona);
+    S.opening = { player: pk,
+      rival: { villagers: pkA.villagers, res: pkA.res, rich: pkA.rich, poor: pkA.poor,
+               econ: pkA.econ, card: S.draft.rival.pick.key } };
+    if (window.DEBUG_OPENINGS)
+      console.log('[openings]', JSON.stringify(S.opening), '[draft]', JSON.stringify(S.draft));
     Units.spawnWild('deer', 8);
     Units.spawnWild('cow', 8);
     // the kraken's clock: each village is owed at most one visit, on a day
@@ -284,6 +293,9 @@ const G = {
         if (b.owner === 'P') mark(b.x, b.y, Bld.done(b) ? (Bld.lv(b).vision || 4) : 2);
       for (const u of S.units)
         if (u.owner === 'P') mark(u.x | 0, u.y | 0, CFG.UNIT_VISION);
+      // ORIGIN CARDS: the Seer's far-seeing eye never closes
+      const sn = S.boons && S.boons.P && S.boons.P.seer;
+      if (sn) mark(sn.x, sn.y, 3);
     }
     // sync last-seen memory on every visible tile
     const liveB = new Map();
@@ -353,6 +365,7 @@ const G = {
     }
     Bld.dailyProduction('P');
     Units.dailySpawns();
+    if (window.Cards) Cards.seerWatch();   // ORIGIN CARDS: the Seer's forewarning
     Combat.maybeWave();
     AI.daily();
     // arcade tally: the tribe at its greatest
@@ -560,10 +573,13 @@ const G = {
     if (!data.dragon) data.dragon = { avail: false, done: true, ev: null, ash: [] };  // legacy runs: no dragon this time
     if (!data.origin) data.origin = 'An old tribe, from before the tellers kept count.';
     if (data.ai && !data.ai.opening) data.ai.opening = { bias: null, fired: false, until: 0 };
+    if (!data.boons) data.boons = { P: {}, A: {} };   // pre-cards save: no boons in play
+    if (!data.draft)                                   // pre-cards save: the draft is history
+      data.draft = { hand: [], leanKeys: [], rival: { hand: [], pick: null }, intel: 'none', done: true, pickI: null };
     if (!data.playtime) data.playtime = 0;
     if (!data.stats) data.stats = {};
     for (const k of ['trained', 'razed', 'gathered', 'kills', 'built', 'walls',
-                     'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus'])
+                     'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus', 'leanIn'])
       if (!data.stats[k]) data.stats[k] = 0;
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
@@ -578,6 +594,9 @@ const G = {
     }
     S = data;
     Bld._block = null;
+    // a save caught mid-draft (belt and braces): the first card is kept
+    if (S.draft && !S.draft.done && S.draft.hand && S.draft.hand.length && window.Cards)
+      Cards.pick(0);
     // pre-2×2 saves: the Town Center now claims a 2×2 footprint — pull it
     // inside the map, nudge any building the grown footprint swallows, and
     // make the ground under it buildable

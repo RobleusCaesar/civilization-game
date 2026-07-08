@@ -22,6 +22,7 @@ const Units = {
       cd: 0, animT: Math.random() * 10, wanderT: 1 + Math.random() * 3,
       repathT: 0,
     };
+    if (window.Cards) Cards.onSpawn(u);   // ORIGIN CARDS: Ironhand toughness
     S.units.push(u);
     return u;
   },
@@ -342,7 +343,8 @@ const Units = {
           const g = CFG.GATHER[terr];
           if (!g) { u.task = null; continue; }
           const before = S.res[g.res];
-          const take = Math.min(S.map.resAmount[idx], g.rate * dt * G.modeCfg().gather);
+          const take = Math.min(S.map.resAmount[idx], g.rate * dt * G.modeCfg().gather *
+            (window.Cards ? Cards.gatherMult(u.owner, g.res) : 1));   // ORIGIN CARDS pace
           S.res[g.res] += take;
           if (S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
@@ -370,7 +372,8 @@ const Units = {
           // fish feed whichever tribe cast the nets — the rival runs boats too
           const bag = u.owner === 'P' ? S.res : S.ai.res;
           const before = bag.food;
-          const take = Math.min(S.map.resAmount[idx], CFG.FISH.rate * dt * G.modeCfg().gather);
+          const take = Math.min(S.map.resAmount[idx], CFG.FISH.rate * dt * G.modeCfg().gather *
+            (window.Cards ? Cards.fishMult(u.owner) : 1));   // ORIGIN CARDS: Riverborn nets
           bag.food += take;
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
@@ -401,7 +404,8 @@ const Units = {
           if (S.map.terrain[idx] !== T.WATER) { u.task = null; continue; }
           const bag = u.owner === 'P' ? S.res : S.ai.res;
           const before = bag.food;
-          const take = Math.min(S.map.resAmount[idx], CFG.SHORE_FISH.rate * dt * G.modeCfg().gather);
+          const take = Math.min(S.map.resAmount[idx], CFG.SHORE_FISH.rate * dt * G.modeCfg().gather *
+            (window.Cards ? Cards.fishMult(u.owner) : 1));   // ORIGIN CARDS: Riverborn lines
           bag.food += take;
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
@@ -547,7 +551,8 @@ const Units = {
       // any wild animal killed by a tribe yields meat
       if (this.isWild(u)) {
         const owner = (attacker && attacker.owner) || attackerOwner;
-        const meat = u.kind === 'bear' ? CFG.MEAT_DROP * 3 : CFG.MEAT_DROP;   // a bear feeds the village
+        const meat = Math.round((u.kind === 'bear' ? CFG.MEAT_DROP * 3 : CFG.MEAT_DROP) *   // a bear feeds the village
+          (window.Cards ? Cards.huntMult(owner) : 1));   // ORIGIN CARDS: Beastward hunts
         if (owner === 'P') {
           S.res.food += meat;
           R.float(u.x, u.y - 0.5, '+' + meat + ' food', '#d8e8b0');

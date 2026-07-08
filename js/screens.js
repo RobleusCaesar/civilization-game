@@ -70,6 +70,7 @@ const Screens = {
     if (window.S && this._demo) return;
     this._demo = true;
     G.newGame(String((Math.random() * 1e9) | 0), 'moderate', 'large');
+    Cards.pick((Math.random() * 3) | 0);   // the demo world drafts for itself
     G.freeVis = true;         // newGame resets fog; the demo shows the whole map
     G.updateVisibility();
     S.paused = false;                       // the world lives behind the logo

@@ -63,13 +63,23 @@ const Combat = {
     for (const u of S.units) {
       if (u.tUnit || u.tBld) continue;
       const base = CFG.UNITS[u.kind];
-      if (u.kind === 'wolf') {
-        const v = this.nearestUnit(u.x, u.y, base.aggro, o => Units.isVillager(o));
+      if (u.kind === 'wolf' && Units.isWild(u)) {
+        // ORIGIN CARDS: a Beastward tribe's people are passed over
+        const v = this.nearestUnit(u.x, u.y, base.aggro, o => Units.isVillager(o) &&
+          !(window.Cards && Cards.atPeace(o.owner)));
         if (v) u.tUnit = v.id;
-      } else if (u.kind === 'boar' || u.kind === 'bear') {
+      } else if ((u.kind === 'boar' || u.kind === 'bear') && Units.isWild(u)) {
         const v = this.nearestUnit(u.x, u.y, base.aggro,
-          o => (o.owner === 'P' || o.owner === 'A') && this.canEngage(u, o));
+          o => (o.owner === 'P' || o.owner === 'A') && this.canEngage(u, o) &&
+            !(window.Cards && Cards.atPeace(o.owner)));
         if (v) u.tUnit = v.id;
+      } else if ((u.kind === 'bear' || u.kind === 'wolf' || u.kind === 'boar') &&
+                 (u.owner === 'P' || u.owner === 'A')) {
+        // ORIGIN CARDS (Houndmaster): a kept guard-beast patrols its home
+        // ground — wild predators and enemy soldiers alike answer to it
+        const e = this.nearestUnit(u.x, u.y, base.aggro + 1,
+          o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
+        if (e && Math.hypot(e.x - u.anchor.x, e.y - u.anchor.y) < 8) u.tUnit = e.id;
       } else if (Units.isMilitary(u) && !(u.task && u.task.type === 'raid')) {
         // guards: engage hostiles near them (but don't stray while following an order,
         // and never auto-hunt harmless game — that's the player's call)
