@@ -99,6 +99,8 @@ const AI = {
       orderI: 0,
       raidCd: 0,
       persona: 'homesteader',   // provisional — the kept card names the persona
+      // LAYER 5: within-game memory — what it has learned about this opponent
+      memory: { wallStop: false, wallHit: 0, lastRaidRazed: false },
     };
     G.clearFootprint(spawn.x, spawn.y, 'tc');
     Bld.place('A', 'tc', spawn.x, spawn.y, { free: true, instant: true });
@@ -596,6 +598,32 @@ const AI = {
     return false;
   },
 
+  /* LAYER 4 (planning half) — pick the raid's OBJECTIVE at launch, so the
+     party fights as one toward a real aim instead of dribbling at whatever's
+     nearest. PRESSURE goes for the juiciest soft target (cripple economy,
+     then leave); PUSH marches on the hall — but if the player is walled and
+     the chief either remembers a wall-stall (memory) or brings no siege, it
+     comes in through the WEAKEST FLANK instead of battering the front gate. */
+  chooseRaidObj(read, push) {
+    const ai = S.ai, atc = Bld.tcOf('A'), ptc = Bld.tcOf('P');
+    const mem = ai.memory || {};
+    if (!push && read.exposed && read.exposed.length) {
+      let best = null, bd = 1e9;
+      for (const e of read.exposed) {
+        const d = atc ? Math.hypot(e.x - atc.x, e.y - atc.y) : 0;
+        if (d < bd) { bd = d; best = e; }
+      }
+      if (best) return { type: 'econ', x: Math.round(best.x), y: Math.round(best.y) };
+    }
+    if (ptc) {
+      const carrySiege = S.units.some(u => u.owner === 'A' && u.task && u.task.type === 'raid' && Units.isSiege(u));
+      const wf = read.weakFlank;
+      const flank = read.foeWall > 0 && wf && (mem.wallStop || !carrySiege);
+      return { type: 'tc', x: flank ? wf.x : ptc.x, y: flank ? wf.y : ptc.y, flank: !!flank };
+    }
+    return null;
+  },
+
   // posture- and counter-weighted training toward the army target, plus navy
   trainForces(m, read) {
     const ai = S.ai, P = this.persona();
@@ -739,21 +767,28 @@ const AI = {
        off and marches home to fight another day. And a long stalemate makes
        any chief bolder — the power bar to raid decays slowly after day 90,
        so a turtled game still ends in fire and iron. ---- */
+    const mem = ai.memory || (ai.memory = { wallStop: false, wallHit: 0 });
     const raiders = S.units.filter(u => u.owner === 'A' && u.task && u.task.type === 'raid');
     if (raiders.length) {
       const tooFew = ai.raidN && raiders.length <= Math.max(1, Math.floor(ai.raidN * 0.35));
       const tooLong = ai.raidDay && S.day - ai.raidDay > 8;
       if (tooFew || tooLong) {
+        // LAYER 5: learn from how this raid went. Razing something means the
+        // approach worked; stalling on walls means try the flank next time —
+        // so the chief never suicides into the same wall twice.
+        const razed = Bld.list('P').length < (ai.raidFoeBld || 1e9);
+        if (razed) mem.wallStop = false;
+        else if ((mem.wallHit || 0) > 0) mem.wallStop = true;
         for (const u of raiders) {
           u.task = { type: 'move', x: tc.x, y: tc.y + 2 };
           u.tUnit = 0; u.tBld = 0;
           u.anchor = { x: tc.x + 0.5, y: tc.y + 2.5 };
           Units.setPath(u, tc.x, tc.y + 2);
         }
-        ai.raidN = 0;
+        ai.raidN = 0; ai.raidObj = null;
         if (tooFew) G.log('The rival war party breaks off and retreats!');
       }
-    } else ai.raidN = 0;
+    } else { ai.raidN = 0; ai.raidObj = null; }
 
     if (ai.raidCd > 0) ai.raidCd--;
     /* ---- LAYER 2 drives IF we attack; the read drives WHEN. Only the
@@ -778,6 +813,10 @@ const AI = {
       if (strong && troops.length >= need) {
         const party = troops.slice(0, Math.max(need, Math.ceil(troops.length * share)));
         for (const u of party) { u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; }
+        // LAYER 4: give the party a shared objective and start fresh memory
+        ai.raidObj = this.chooseRaidObj(read, push);
+        ai.raidFoeBld = Bld.list('P').length;
+        mem.wallHit = 0;
         ai.raidCd = push ? P.raidCd : Math.max(6, P.raidCd - 4);
         ai.raidN = party.length;
         ai.raidDay = S.day;

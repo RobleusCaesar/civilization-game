@@ -127,9 +127,64 @@ const Combat = {
     }
   },
 
+  /* LAYER 4 (execution half) — a rival raid party fights as one toward the
+     objective the chief chose (Combat delegates 'A' raiders here). It reads
+     the board for expected value: a hostile soldier in its face gets dealt
+     with; a SOFT target on the way (an isolated villager, an undefended
+     workplace) is worth more than the death-ball — burning economy cripples
+     the player; otherwise it marches on the shared objective and only the
+     wall-breakers batter walls (combined arms), recording the contact so the
+     chief learns to route around next time. */
+  aiRaidSeek(u) {
+    const ai = S.ai;
+    const obj = (ai && ai.raidObj) || null;
+    const canWall = Units.isSiege(u) || u.kind === 'axeman' || !!CFG.UNITS[u.kind].bldAtk;
+    // 1) a hostile fighter right in our face — engage (don't get picked apart)
+    const foe = this.nearestUnit(u.x, u.y, 5, o => this.hostileUnits(u, o) &&
+      (Units.isMilitary(o) || (o.owner === 'R' && !Units.isTransport(o))) && this.canEngage(u, o));
+    if (foe) { u.tUnit = foe.id; return; }
+    // 2) soft targets on the way — isolated villagers first, then undefended workplaces
+    const soft = this.nearestUnit(u.x, u.y, 7, o => o.owner === 'P' && Units.isVillager(o) && this.canEngage(u, o));
+    if (soft) { u.tUnit = soft.id; return; }
+    const econ = this.nearestBuilding(u.x, u.y, 'P',
+      bb => bb.key !== 'tc' && Bld.def(bb.key).needsWorker && Bld.done(bb));
+    if (econ && Math.hypot(Bld.cx(econ) - u.x, Bld.cy(econ) - u.y) < 7) {
+      Units.setPath(u, econ.x, econ.y);
+      const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x, y: u.y };
+      if (Math.hypot(end.x + 0.5 - Bld.cx(econ), end.y + 0.5 - Bld.cy(econ)) <= 1.6 + Bld.reach(econ)) { u.tBld = econ.id; return; }
+    }
+    // 3) march on the shared objective (massing + focus)
+    const ptc = Bld.tcOf('P');
+    const goal = obj || (ptc ? { type: 'tc', x: ptc.x, y: ptc.y } : null);
+    if (goal) {
+      Units.setPath(u, goal.x | 0, goal.y | 0);
+      const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x, y: u.y };
+      if (ptc && Math.hypot(end.x + 0.5 - Bld.cx(ptc), end.y + 0.5 - Bld.cy(ptc)) <= 2.6 + Bld.reach(ptc)) { u.tBld = ptc.id; return; }
+      // a wall in the way: the breakers smash it (others follow the gap); memory learns
+      const wall = this.nearestBuilding(u.x, u.y, 'P', bb => bb.key === 'wall' || bb.key === 'gate');
+      if (wall && Math.hypot(Bld.cx(wall) - u.x, Bld.cy(wall) - u.y) <= 2.2) {
+        if (ai && ai.memory) ai.memory.wallHit = (ai.memory.wallHit || 0) + 1;
+        u.tBld = wall.id; Units.setPath(u, wall.x, wall.y); return;
+      }
+      // reachable non-wall building near us (econ/house on the way)
+      const b = this.nearestBuilding(u.x, u.y, 'P', bb => bb.key !== 'wall' && bb.key !== 'gate');
+      if (b && Math.hypot(Bld.cx(b) - u.x, Bld.cy(b) - u.y) < 4) {
+        Units.setPath(u, b.x, b.y);
+        const e2 = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x, y: u.y };
+        if (Math.hypot(e2.x + 0.5 - Bld.cx(b), e2.y + 0.5 - Bld.cy(b)) <= 1.6 + Bld.reach(b)) { u.tBld = b.id; return; }
+      }
+      return;   // keep marching toward the objective
+    }
+    // 4) nothing left to hit — go home
+    u.task = null;
+    const atc = Bld.tcOf('A');
+    if (atc) { u.anchor = { x: atc.x + 0.5, y: atc.y + 2.5 }; Units.setPath(u, atc.x, atc.y + 2); }
+  },
+
   // raiders + AI raid parties pick their objective. Barbarian bands follow
   // their spawn disposition: the player, the rival tribe, or whoever they find.
   raiderSeek(u) {
+    if (u.owner === 'A') return this.aiRaidSeek(u);   // rival parties think tactically
     const disp = u.owner === 'R' ? (u.hostileTo || 'P') : 'P';
     const owners = disp === 'ALL' ? ['P', 'A'] : [disp];
     // priority of prey: soldiers first, then villagers, then buildings. The
