@@ -207,6 +207,8 @@ const Bld = {
         G.log(`${this.def(b.key).name} complete`);
       }
     }
+    // ORIGIN CARDS: "N free units when you first build X" kickers fire here
+    if (window.Cards) Cards.onBuildFinish(b.owner, b);
   },
 
   // any player villager currently working this site (construction/upgrade/repair)?

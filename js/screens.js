@@ -199,7 +199,7 @@ const Screens = {
       el.innerHTML =
         `<div class="ocardIn">
            <div class="oface oback">❂</div>
-           <div class="oface ofront"><canvas width="96" height="96"></canvas>
+           <div class="oface ofront"><canvas width="128" height="128"></canvas>
              <div class="oname">${this.esc(d.name)}</div>
              <div class="oboon">${this.esc(d.text(c.roll))}</div>
              <div class="oflavor">${this.esc(d.flavor)}</div></div>
@@ -232,6 +232,12 @@ const Screens = {
       o.classList.remove('lift');
       o.classList.add(j === i ? 'chosen' : 'burn');
     });
+    // the unchosen two burn up over ~1s, then give up their slot so the
+    // kept card slides to the centre
+    setTimeout(() => {
+      if (this.current !== 'draft') return;
+      kids.forEach((o, j) => { if (j !== i) o.classList.add('gone'); });
+    }, 1000);
     this.el('draftHint').textContent = '';
     this.revealRival();
     this.el('btnDraftGo').style.display = '';

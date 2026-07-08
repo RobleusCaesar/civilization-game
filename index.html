@@ -295,24 +295,26 @@
   #draftTitle { color: var(--gold); font-size: 21px; letter-spacing: 1px; }
   #draftSub { margin: 0; max-width: 340px; }
   #draftCards {
-    display: flex; gap: 9px; justify-content: center; width: 100%;
+    display: flex; justify-content: center; width: 100%;
     perspective: 900px; margin: 6px 0;
   }
   .ocard {
-    width: min(29vw, 116px); aspect-ratio: 5 / 8; position: relative;
+    width: min(29vw, 118px); margin: 0 5px; aspect-ratio: 5 / 8; position: relative;
     opacity: 0; transform: translateY(38px);
     transition: transform .3s ease, opacity .3s ease, filter .5s ease,
-      width .45s ease .25s;   /* burned cards give up their slot — the keeper slides to center */
+      width .5s ease .5s, margin .5s ease .5s;   /* the collapse the keeper slides into */
   }
   .ocard.dealt { opacity: 1; transform: none; }
   .ocard.lift { transform: translateY(-10px) scale(1.05); z-index: 2; }
   .ocard.chosen { transform: translateY(-6px) scale(1.1); z-index: 3; }
-  .ocard.burn {
-    opacity: 0; transform: translateY(20px) rotate(5deg);
-    filter: sepia(1) brightness(0.4);
-    width: 0; pointer-events: none;
+  /* the unchosen cards catch fire and burn upward over one second */
+  .ocard.burn { animation: burnUp 1s ease-in forwards; pointer-events: none; z-index: 1; }
+  @keyframes burnUp {
+    0%   { clip-path: inset(0 0 0 0);      filter: none;                                    opacity: 1; transform: none; }
+    18%  {                                 filter: brightness(1.4) sepia(.7) saturate(4) hue-rotate(-18deg); }
+    100% { clip-path: inset(0 0 100% 0);   filter: brightness(.24) sepia(1) saturate(2);    opacity: 0; transform: translateY(-7px) rotate(2deg); }
   }
-  .ocard.burn:first-child { transform: translateY(20px) rotate(-5deg); }
+  .ocard.gone { width: 0; margin: 0; pointer-events: none; }
   .ocardIn {
     position: absolute; inset: 0; transform-style: preserve-3d;
     transition: transform .38s ease;

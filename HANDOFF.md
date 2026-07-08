@@ -304,9 +304,20 @@ what/why.
   rival card name + rolled benefit, Moderate = name only, Hard = nothing
   (the whispers are the only early read). The rival picks from its 3 by a
   rolled temperament (aggro/econ/def/explore ×2.4 weight on matching `cat`).
-  Boon modifiers live in plain-data `S.boons.{P,A}` read by one-line hooks
-  (build cost/time, train cost/hp, gather/fish/hunt pace, farm yield, gold
-  trickle, wildlife truce, seer). Draft state is `S.draft` (hand rolls,
+  **Difficulty tilt (binding):** every roll reads `Cards.diff()` —
+  `Cards.DIFF` = {calm:{mag 1.35, kick 2}, moderate:{mag 1.10, kick 1},
+  hard:{mag 0.72, kick 0}}. `mag` scales magnitudes; `kick` sets a one-time
+  "kicker" — so a card is lush on Calm and marginal on Hard (e.g. Ironhand:
+  Calm soldiers ~17% cheaper + **2 free at the first barracks**, Moderate
+  ~14% + 1 free, Hard ~9% + none). The tilt is uniform, so the power band
+  WITHIN a mode stays tight (smoke46 checks per-mode band ≤3.6 AND
+  calm>mod>hard for all 20). Kickers: free units when you first build a
+  hall (`S.boons[side].onBuild = {barracks:{kind,n}}`, fired in `Bld.finish`
+  → `Cards.onBuildFinish`), extra starting crew/boats, near-instant first
+  builds (`haste.fast`), prebuilt-farm-with-a-worker, tougher guard-beasts,
+  etc. Boon modifiers live in plain-data `S.boons.{P,A}` read by one-line
+  hooks (build cost/time+instant charges, train cost/hp, gather/fish/hunt
+  pace, farm yield, gold trickle, wildlife truce, seer lead). Draft state is `S.draft` (hand rolls,
   rival hand/pick, intel, done/pickI); `Cards.pick(i)` applies the player's
   card (the draft screen, the title demo, and loadJSON's mid-draft backfill
   all call it). THE RULE: a new rival temperament = a new CARD with a

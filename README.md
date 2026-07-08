@@ -295,6 +295,13 @@ start you rolled: it never just refills whatever your village happens to be
 short of — but one card always **leans into** your situation, and reading
 which one is worth points at the tally.
 
+Cards pull their weight — a military card doesn't just make soldiers
+cheaper, it musters a couple **free** at your first barracks; a farming
+card hands you a worked field, hands and all. And the gifts are **most
+generous on 🌿 Calm and only marginal on 💀 Hard** (Moderate sits between):
+that free-soldiers card gives two on Calm, one on Moderate, and just a
+discount on Hard.
+
 **Your rival drafts too.** How much you learn of their pick depends on the
 difficulty: on 🌿 Calm you see their card and exactly what it gave them; on
 ⚔️ Moderate only its name; on 💀 Hard nothing at all — watch how they move,
