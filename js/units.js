@@ -526,6 +526,11 @@ const Units = {
     if (u.hp <= 0) {
       S.units.splice(S.units.indexOf(u), 1);
       for (const o of S.units) if (o.tUnit === u.id) o.tUnit = 0;
+      {   // arcade tally: rival and barbarian kills score
+        const ko = (attackerId && this.get(attackerId) && this.get(attackerId).owner) || attackerOwner;
+        if (ko === 'P' && (u.owner === 'A' || u.owner === 'R') && S.stats)
+          S.stats.kills = (S.stats.kills || 0) + 1;
+      }
       if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
       if (u.owner === 'P') G.log(`${CFG.UNITS[u.kind].name} was killed`, true);
       if (u.owner === 'P' && this.isTransport(u) && u.cargo && u.cargo.length)

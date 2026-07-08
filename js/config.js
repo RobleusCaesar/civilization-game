@@ -277,6 +277,19 @@ const CFG = {
   /* Difficulty modes. gather/output scale player income; wave* shape barbarian
      pressure; barbMult scales barbarian hp/atk (1.2 on Hard ≈ rival defenders);
      animal* cap wildlife; aiRaidDay is the rival's earliest attack. */
+  /* Arcade scoring (see js/score.js — THE RULE: every new feature feeds a
+     line here). Tuned so an average Moderate victory lands 5,000–10,000;
+     Calm halves it, Hard nearly doubles it. */
+  SCORE: {
+    victory: 1500,
+    speedBase: 2400, speedPerDay: 14,      // long games bleed the speed bonus dry
+    perKill: 9, perRazed: 40,
+    perBuilt: 30, perWall: 4, perUpgrade: 70, perTrained: 15,
+    perPeakPop: 8, perGathered: 0.15, perExploredPct: 14,
+    kraken: 500,
+    mult: { calm: 0.5, moderate: 1.0, hard: 1.75 },
+  },
+
   MODES: {
     calm: {
       name: 'Calm', icon: '🌿', desc: 'Nearly peaceful — the odd wild animal keeps you sharp; raids are rare.',

@@ -52,7 +52,8 @@ units.js → combat.js → ai.js → render.js → ui.js → screens.js → game
 | `js/render.js` | `R`: camera, cached terrain layer, three-state fog, minimap, unit/building draw, badges, fish jumps |
 | `js/ui.js` | `UI`: touch input, build menu, selection panel (signature-based refresh), HUD buttons |
 | `js/screens.js` | `Screens`: the shell state machine — title (live demo world), new game, load/save slots, settings, pause, endgame, how-to |
-| `js/backend.js` | `Backend`: the only Supabase touchpoint — anonymous auth, slots, autosave, crash net, recovery tokens; typed `{ok, data/error}` results, mockable via `window.__NEO_BACKEND_MOCK` |
+| `js/backend.js` | `Backend`: the only Supabase touchpoint — anonymous auth, slots, autosave, crash net, recovery tokens, leaderboard reads/inserts; typed `{ok, data/error}` results, mockable via `window.__NEO_BACKEND_MOCK` |
+| `js/score.js` | `Score`: the arcade tally (`CFG.SCORE` table) + arcade-name validation/profanity filter |
 | `js/assets.js` | `Assets`: manifest-driven PNG atlases overlaid onto the Sprites tables, per-key procedural fallback, `drawSprite()` |
 | `js/game.js` | `G` + global `var S`: state, main loop, day ticks, decay, visibility, save/load, boot |
 
@@ -243,6 +244,10 @@ what/why.
 
 ### Conventions
 
+- **THE SCORING RULE (binding):** every new gameplay feature must feed the
+  arcade score — either through an existing `S.stats` counter or a new one
+  (add it to `newGame`'s stats init, `loadJSON`'s backfill list, a line in
+  `Score.compute`, and a constant in `CFG.SCORE`). No silent features.
 - Match the existing code style: 2-space indent, single quotes, comments only
   for non-obvious *why*, small flat objects, no classes.
 - Every user-visible change gets: implementation → headless test → (visual

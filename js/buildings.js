@@ -178,6 +178,10 @@ const Bld = {
   finish(b, builder) {
     b.construction = 0;
     b.hp = b.maxhp;
+    if (b.owner === 'P' && S.stats) {   // arcade tally: every raising scores
+      if (b.key === 'wall' || b.key === 'gate') S.stats.walls = (S.stats.walls || 0) + 1;
+      else S.stats.built = (S.stats.built || 0) + 1;
+    }
     if (b.owner === 'P') {
       const lv = this.lv(b);
       if (lv.vision) G.reveal(b.x, b.y, lv.vision);
@@ -245,6 +249,7 @@ const Bld = {
   finishUpgrade(b) {
     b.upgrading = 0;
     b.level++;
+    if (b.owner === 'P' && S.stats) S.stats.upgrades = (S.stats.upgrades || 0) + 1;
     const lv = this.lv(b);
     b.maxhp = lv.hp; b.hp = lv.hp;
     if (b.owner === 'P') {
@@ -460,6 +465,7 @@ const Bld = {
     if (!c.ok) return false;
     this.pay(c.cost, S.res);
     S.wallLevel++;
+    if (S.stats) S.stats.upgrades = (S.stats.upgrades || 0) + 1;   // village-wide, still one feat
     for (const b of this.forts()) {
       const lv = CFG.BUILDINGS[b.key].levels[S.wallLevel - 1];
       b.hp = Math.max(1, Math.round(lv.hp * (b.hp / b.maxhp)));

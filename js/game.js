@@ -63,7 +63,9 @@ const G = {
       buildings: [], units: [],
       garrison: [],                         // villagers sheltered inside the Town Center
       playtime: 0,                          // unpaused seconds, for save metadata
-      stats: { trained: 0, razed: 0, gathered: 0 },   // run stats for the end screen
+      // run stats — the raw material of the arcade score (js/score.js)
+      stats: { trained: 0, razed: 0, gathered: 0, kills: 0, built: 0,
+               walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0 },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0 },
       ai: null,
@@ -228,6 +230,11 @@ const G = {
     Units.dailySpawns();
     Combat.maybeWave();
     AI.daily();
+    // arcade tally: the tribe at its greatest
+    if (S.stats) {
+      const pop = S.units.reduce((n, u) => n + (u.owner === 'P' ? 1 : 0), 0) + S.garrison.length;
+      if (pop > (S.stats.peakPop || 0)) S.stats.peakPop = pop;
+    }
 
     // the kraken stirs: only where open water touches the map's edge, only
     // against a village with a fishing boat out, and only once per village
@@ -295,7 +302,10 @@ const G = {
       if (ships.length >= 2) {
         // two hulls together can beat it back — one barely stays afloat
         ships[0].hp = Math.max(8, Math.round(ships[0].maxhp * 0.15));
-        if (ev.owner === 'P') this.log('⚔ Your warships drive the kraken back into the deep — one barely afloat!');
+        if (ev.owner === 'P') {
+          this.log('⚔ Your warships drive the kraken back into the deep — one barely afloat!');
+          if (S.stats) S.stats.krakenSlain = 1;   // a tale worth 500 points
+        }
       } else if (ships.length === 1) {
         Units.damage(ships[0], 99999, 0, 'K');
         if (ev.owner === 'P') this.log('🐙 The kraken wrecks your lone warship and slips beneath the waves!', true);
@@ -350,7 +360,10 @@ const G = {
     if (data.ai && !data.ai.persona) data.ai.persona = 'homesteader';   // pre-persona save: the classic temperament
     if (!data.kraken) data.kraken = { day: { P: 60, A: 90 }, done: {}, ev: null };   // older saves owe the deep a visit too
     if (!data.playtime) data.playtime = 0;
-    if (!data.stats) data.stats = { trained: 0, razed: 0, gathered: 0 };
+    if (!data.stats) data.stats = {};
+    for (const k of ['trained', 'razed', 'gathered', 'kills', 'built', 'walls',
+                     'upgrades', 'peakPop', 'krakenSlain'])
+      if (!data.stats[k]) data.stats[k] = 0;
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};

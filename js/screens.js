@@ -59,6 +59,7 @@ const Screens = {
     else if (name === 'load') this.onLoad(opts);
     else if (name === 'settings') this.onSettings();
     else if (name === 'paused') this.onPaused();
+    else if (name === 'leaders') this.onLeaders();
     else if (name === 'endgame') this.onEndgame(opts);
     else if (name === 'playing') { if (window.S) S.paused = false; }
     if (name !== 'playing' && window.S && !this._demo) S.paused = true;
@@ -285,7 +286,7 @@ const Screens = {
     this.show('title');
   },
 
-  /* ---------------- endgame ---------------- */
+  /* ---------------- endgame: the arcade tally ---------------- */
   showEnd(win, msg) {
     this.show('endgame', { win, msg });
   },
@@ -293,15 +294,101 @@ const Screens = {
     this.el('endTitle').textContent = opts.win ? '🏆 Victory!' : '💀 Defeat';
     this.el('endTitle').style.color = opts.win ? 'var(--gold)' : 'var(--danger)';
     this.el('endMsg').textContent = (opts.msg || '') +
-      ` (${G.modeCfg().name}, seed ${S.seed})`;
-    const st = S.stats || {};
-    const mins = Math.round((S.playtime || 0) / 60);
-    this.el('endStats').innerHTML =
-      `<div><b>${S.day}</b><small>days</small></div>
-       <div><b>${mins}m</b><small>played</small></div>
-       <div><b>${st.trained || 0}</b><small>units trained</small></div>
-       <div><b>${st.razed || 0}</b><small>rival buildings razed</small></div>
-       <div><b>${Math.round(st.gathered || 0)}</b><small>resources gathered</small></div>`;
+      ` (${G.modeCfg().name} · day ${S.day} · seed ${S.seed})`;
+    // reset the stage
+    this.el('scoreLines').innerHTML = '';
+    this.el('scoreMult').textContent = '';
+    this.el('hsBanner').style.display = 'none';
+    this.el('nameRow').style.display = 'none';
+    this.el('endBoard').innerHTML = '';
+    this._score = Score.compute(opts.win);
+    this._submitted = false;
+    this._tally(this._score, opts.win);
+  },
+
+  // the cabinet ritual: lines land one by one while the total ticks up
+  _tally(sc, win) {
+    clearInterval(this._tallyT);
+    const box = this.el('scoreLines'), totalEl = this.el('scoreTotal');
+    let i = 0, run = 0;
+    totalEl.textContent = 'SCORE 0';
+    const step = () => {
+      if (this.current !== 'endgame') { clearInterval(this._tallyT); return; }
+      if (i < sc.lines.length) {
+        const l = sc.lines[i++];
+        run += l.pts;
+        box.insertAdjacentHTML('beforeend',
+          `<div class="srow"><span>${l.icon} ${this.esc(l.label)}</span><span class="dots"></span><b>+${l.pts.toLocaleString()}</b></div>`);
+        totalEl.textContent = 'SCORE ' + Math.round(run * sc.mult).toLocaleString();
+      } else {
+        clearInterval(this._tallyT);
+        this.el('scoreMult').textContent =
+          `${G.modeCfg().icon} ${G.modeCfg().name} difficulty × ${sc.mult}`;
+        totalEl.textContent = 'SCORE ' + sc.total.toLocaleString();
+        if (win) this._offerSubmit();
+      }
+    };
+    step();
+    this._tallyT = setInterval(step, 150);
+  },
+
+  // victories go to the global board — up to 7 characters, kept clean
+  _offerSubmit() {
+    if (!window.Backend || !Backend.isReady() || this._submitted) return;
+    this.el('nameRow').style.display = 'flex';
+    const inp = this.el('arcadeName');
+    if (!inp.value) Backend.getProfile().then(r => {
+      if (r.ok && r.data && r.data.arcade_name && !inp.value) inp.value = r.data.arcade_name;
+    });
+  },
+
+  async submitScore() {
+    if (this._submitted || !this._score) return;
+    const chk = Score.cleanName(this.el('arcadeName').value);
+    if (!chk.ok) { UI.toast(chk.why, true); return; }
+    const btn = this.el('btnSubmitScore');
+    btn.textContent = '…'; btn.classList.add('cant');
+    const sub = await Backend.submitScore(chk.name, {
+      score: this._score.total, mode: S.mode, day: S.day, seed: S.seed,
+    });
+    btn.textContent = '🏆 Submit'; btn.classList.remove('cant');
+    if (!sub.ok) { UI.toast('Could not reach the board: ' + sub.error.message, true); return; }
+    this._submitted = true;
+    this.el('nameRow').style.display = 'none';
+    const top = await Backend.topScores(10);
+    if (top.ok) {
+      const mine = top.data.findIndex(r =>
+        r.name === chk.name && r.score === this._score.total);
+      this.renderBoard(top.data, this.el('endBoard'), mine);
+      if (mine === 0) { this.el('hsBanner').textContent = '★ NEW HIGH SCORE ★'; this.el('hsBanner').style.display = 'block'; }
+      else if (mine > 0) { this.el('hsBanner').textContent = `★ GLOBAL RANK #${mine + 1} ★`; this.el('hsBanner').style.display = 'block'; }
+      UI.toast(mine >= 0 ? 'You made the board, chief!' : 'Score submitted');
+    } else UI.toast('Score submitted');
+  },
+
+  /* ---------------- leaderboard ---------------- */
+  MODE_ICON: { calm: '🌿', moderate: '⚔️', hard: '💀' },
+  renderBoard(rows, into, meIdx) {
+    if (!rows.length) { into.innerHTML = '<p class="hint">No chiefs on the board yet — be the first.</p>'; return; }
+    into.innerHTML = rows.map((r, i) =>
+      `<div class="ldr${i === 0 ? ' top1' : ''}${i === meIdx ? ' me' : ''}">
+         <span class="rank">${i === 0 ? '👑' : '#' + (i + 1)}</span>
+         <span class="nm">${this.esc(r.name)}</span>
+         <span class="pts">${(r.score || 0).toLocaleString()}</span>
+         <span class="md">${this.MODE_ICON[r.mode] || ''}</span>
+       </div>`).join('');
+  },
+  async onLeaders() {
+    const box = this.el('ldrList');
+    box.innerHTML = '<p class="hint">Fetching…</p>';
+    if (!window.Backend || !Backend.isReady()) {
+      box.innerHTML = '<p class="hint">The board lives in the cloud — ' +
+        (window.Backend && Backend.configured ? 'still connecting…' : 'cloud saves are not configured.') + '</p>';
+      return;
+    }
+    const r = await Backend.topScores(10);
+    if (!r.ok) { box.innerHTML = '<p class="hint">Could not reach the board: ' + this.esc(r.error.message) + '</p>'; return; }
+    this.renderBoard(r.data, box, -1);
   },
 
   esc(s) { const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; },
@@ -312,6 +399,9 @@ const Screens = {
     on('btnContinue', () => this.continueGame());
     on('btnTitleNew', () => { this.backTo = 'title'; this.show('newgame'); });
     on('btnTitleLoad', () => { this.backTo = 'title'; this.show('load'); });
+    on('btnTitleBoard', () => { this.backTo = 'title'; this.show('leaders'); });
+    on('ldrBack', () => this.show(this.backTo === 'paused' ? 'paused' : 'title'));
+    on('btnSubmitScore', () => this.submitScore());
     on('btnTitleSettings', () => { this.backTo = 'title'; this.show('settings'); });
     on('btnTitleHow', () => { this.backTo = 'title'; this.show('howto'); });
     for (const id of ['ngBack', 'loadBack', 'setBack', 'howBack'])

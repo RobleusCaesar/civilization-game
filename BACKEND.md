@@ -101,6 +101,18 @@ The anon key ships in the client on purpose; it only grants the ability to
 - **File export/import** (Settings → Export save) remains as the manual
   backup path, unchanged.
 
+## Arcade leaderboard
+
+`/supabase/migrations/0002_leaderboard.sql` adds `profiles.arcade_name`
+(≤ 7 chars) and a `leaderboard` table (name, score, mode, day, seed,
+version). RLS: **select for everyone** (it is a global board), **insert only
+as yourself**, and no update/delete at all — scores are history. The client
+is the score authority (this is a fully client-side game; the board is for
+friendly competition, not anti-cheat). `Backend.topScores(n)` reads the top
+N; `Backend.submitScore(name, entry)` inserts one victory row and stamps the
+arcade name onto the profile. Name validation (length, charset, profanity)
+lives in `Score.cleanName` and runs before submission.
+
 ## Error-handling contract
 
 Every public method resolves (never rejects) to:

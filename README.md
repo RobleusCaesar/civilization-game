@@ -283,6 +283,22 @@ on desktop too.
 One way in, one way out: **destroy the rival tribe's Town Center to win; if
 yours falls, you lose.** Nothing else ends the game.
 
+## Score & the global leaderboard
+
+Every run is tallied like an arcade cabinet when it ends: kills, razed rival
+buildings, buildings raised, fortifications, upgrades, units trained, your
+greatest population, resources gathered, map explored, the kraken driven off —
+plus a victory bonus and a **swift-conquest bonus that drains as the days
+pass**. The subtotal is multiplied by difficulty: 🌿 Calm ×0.5, ⚔️ Moderate
+×1.0, 💀 **Hard ×1.75** — the board is meant to belong to Hard players. An
+average Moderate victory lands around 5,000–10,000.
+
+Win, and you can put your name on the **global top-10** (🏆 on the title
+screen): up to 7 characters, arcade-style, saved to your cloud profile for
+next time (kept family-friendly — rude names are refused). The board shows
+name, score, and the difficulty it was earned on. Defeats show your tally
+too, but only victories reach the board.
+
 ## Code layout
 
 ```

@@ -146,6 +146,33 @@ const Backend = {
     return { ok: true, data: { uid: this.uid } };
   },
 
+  /* ---------------- arcade leaderboard ---------------- */
+  async topScores(limit) {
+    if (!this.isReady()) return this._err('not_ready', 'Not signed in');
+    const r = await this._rest('GET', '/leaderboard?select=name,score,mode,day,created_at' +
+      '&order=score.desc&limit=' + (limit || 10));
+    return r.ok ? { ok: true, data: r.data } : r;
+  },
+
+  // one victory → one row; the arcade name also lands on the profile so the
+  // next victory pre-fills it. Validation (7 chars, profanity) happens in
+  // Score.cleanName before this is ever called.
+  async submitScore(name, entry) {
+    if (!this.isReady()) return this._err('not_ready', 'Not signed in');
+    const nm = String(name || '').slice(0, 7);
+    const r = await this._rest('POST', '/leaderboard', [{
+      user_id: this.uid, name: nm,
+      score: Math.max(0, Math.min(1000000, Math.round(entry.score || 0))),
+      mode: entry.mode || 'moderate',
+      day: entry.day || null, map_seed: entry.seed || null,
+      game_version: String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1),
+    }], { Prefer: 'return=minimal' });
+    if (!r.ok) return r;
+    this._rest('PATCH', '/profiles?id=eq.' + this.uid,
+      { arcade_name: nm }, { Prefer: 'return=minimal' });   // best-effort, don't block on it
+    return { ok: true, data: { name: nm } };
+  },
+
   /* ---------------- save slots ---------------- */
   async listSaves() {
     if (!this.isReady()) return this._err('not_ready', 'Not signed in');
