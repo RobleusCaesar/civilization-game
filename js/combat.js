@@ -153,12 +153,16 @@ const Combat = {
       const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x, y: u.y };
       if (Math.hypot(end.x + 0.5 - Bld.cx(econ), end.y + 0.5 - Bld.cy(econ)) <= 1.6 + Bld.reach(econ)) { u.tBld = econ.id; return; }
     }
-    // 3) march on the shared objective (massing + focus)
+    // 3) march on the shared objective the chief set at launch (massing +
+    //    focus). No objective means the chief hasn't found a target — the
+    //    party engages only what it can physically see, it does NOT home in
+    //    on a town across the fog it was never told about.
+    const goal = obj || null;
     const ptc = Bld.tcOf('P');
-    const goal = obj || (ptc ? { type: 'tc', x: ptc.x, y: ptc.y } : null);
     if (goal) {
       Units.setPath(u, goal.x | 0, goal.y | 0);
       const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x, y: u.y };
+      // arrived next to the hall (physically adjacent, so we can see it) → hit it
       if (ptc && Math.hypot(end.x + 0.5 - Bld.cx(ptc), end.y + 0.5 - Bld.cy(ptc)) <= 2.6 + Bld.reach(ptc)) { u.tBld = ptc.id; return; }
       // a wall in the way: the breakers smash it (others follow the gap); memory learns
       const wall = this.nearestBuilding(u.x, u.y, 'P', bb => bb.key === 'wall' || bb.key === 'gate');

@@ -2,10 +2,12 @@
 
 A code-accurate overview of the rival tribe's brain. The AI is the `AI` object
 in **`js/ai.js`**; its tactical combat (raid execution, the villager last
-stand) lives in **`js/combat.js`**. Everything it knows comes from the shared
-game state `S` — the same state the player's village uses. The rival plays
-**without fog** (full map knowledge), which the brain uses as *cognition*, not
-as a cheat: it reads the true board the way a person reads a screen.
+stand) lives in **`js/combat.js`**. The rival is bound by the **same fog of war
+as the player**: it knows only what it has seen. Each day it refreshes its own
+vision from its buildings and units, *remembers* the player structures it has
+laid eyes on (with staleness), and reasons from that partial picture — not from
+the true board. It cannot read your treasury, count an army across the map, or
+march on a town it has never found. To learn more, it must **scout**.
 
 The AI is built as **five layers over the base village systems**. It thinks
 **once per in-game day** in `AI.daily()` (called from `G.dayTick()`); its
@@ -15,19 +17,25 @@ player's.
 
 ---
 
-## Layer 1 — Perception (`AI.assess()` → `S.ai.read`)
+## Layer 1 — Perception, under fog of war (`AI.assess()` → `S.ai.read`)
 
-Each day the chief takes stock of the whole board and writes a compact
-**world-read** the rest of the brain reasons about (perception decoupled from
-action). The read includes:
+Each day the chief first refreshes what it can **see** (`updateVision()`): a
+vision grid lit by its own buildings' sight radius and its units' `UNIT_VISION`.
+It marks that ground **explored** (`S.ai.seen`) and updates its **memory of
+player buildings** (`S.ai.knownB`) — anything currently in sight is recorded
+with the day it was seen; a remembered building it now sees is *gone* (razed) is
+forgotten. From that partial picture it writes a compact **world-read** the rest
+of the brain reasons about (perception decoupled from action). The read
+includes:
 
-- **Power** — its own vs the player's, the ratio, and the player's power **trend** (rising/falling).
-- **Player army disposition** — how much is **home** vs **away**, and the resulting **vulnerability window** (`foeVuln`: the home guard is thin, or two-plus soft targets sit undefended).
-- **Player defenses** — wall/tower strength around the hall, and the **weakest flank** (the least-defended approach, sampled over 8 directions).
-- **Economic exposure** — undefended resource buildings and **isolated, unescorted gatherers** far from home (`exposed[]`) — prime raid targets.
-- **Composition** — cavalry / archer / melee / siege counts, with `foeCavHeavy` / `foeArchHeavy` / `foeSiegeSeen` flags for counter-building.
-- **Own standing** — economy (its treasury vs the player's, read directly from `S.res`), building tempo, what's under construction, whether it's been **sacked**.
-- **Immediate threat** — enemy force strength on its own hall right now (`threat` / `underThreat`).
+- **The player's home** — `knownTC`: the remembered location of the player's town center, or `null` if it hasn't been found yet. Almost every offensive decision keys off this: no known hall, no attack.
+- **Power** — its own vs the player's **visible** military only (units it can see this moment), the ratio, and the power **trend**. An army hidden in the fog doesn't count against it.
+- **Player army disposition** — how much of the *seen* force is **home** vs **away**, and the resulting **vulnerability window** (`foeVuln`, valid only once `knownTC` exists: the home guard is thin, or two-plus soft targets sit exposed).
+- **Player defenses** — wall/tower strength around the *remembered* hall, and the **weakest flank** (least-defended approach over 8 directions), computed from the walls and towers it has actually seen.
+- **Economic exposure** — remembered undefended workplaces and **visible** isolated, unescorted gatherers (`exposed[]`) — prime raid targets it can actually point at.
+- **Composition** — cavalry / archer / melee / siege counts among the units it can see, with `foeCavHeavy` / `foeArchHeavy` / `foeSiegeSeen` flags for counter-building.
+- **Enemy economy — an ESTIMATE, not a reading** (`foeEcon`): it values the player buildings it *remembers* (`VIS_EST`) and adds them up. It never touches the player's treasury. A fat, hidden war chest is invisible to it.
+- **Immediate threat** — enemy force strength on its own hall right now (`threat` / `underThreat`). It always sees its own ground.
 
 Toggle `window.DEBUG_AI = true` for an on-screen overlay dumping the read (and posture) each day.
 
@@ -63,6 +71,14 @@ window flips it to PUSH/PRESSURE (take the opening); being clearly ahead ends
 it; being behind or under threat digs in to DEFEND; a sacking triggers REBUILD.
 **Hysteresis** (minimum dwell times per posture, with emergencies exempt) makes
 the chief **commit** to a plan instead of flip-flopping.
+
+**You cannot attack what you have not found.** If the player's town is unknown
+(`knownTC === null`), any attack posture falls back to **CONSOLIDATE** — the
+chief keeps massing while its **scouts go looking** (see the scouting behavior
+in `daily()`: when it hasn't found the player, or its memory has gone stale, it
+sends a spare rider — else a villager — toward the far unknown or the last place
+it saw them, without stripping its home guard). Only once it has laid eyes on
+your hall does it commit to a march.
 
 ---
 
@@ -109,12 +125,17 @@ Retreat still applies: a party cut below a third of strength, or bogged down
 
 ---
 
-## Layer 5 — Within-game memory (`S.ai.memory`)
+## Layer 5 — Within-game memory (`S.ai.memory` + `S.ai.knownB`)
 
-Cheap counters that let it adapt to *you* over a match. Chiefly: a raid that
-**stalls on walls without razing** sets `wallStop`, and the **next** push routes
-in through the weakest flank instead of the front gate — so the chief **never
-suicides into the same wall twice**. A productive raid clears the flag.
+Two kinds of memory. **Building memory** (`S.ai.knownB`, Layer 1) is the map of
+the player's town the rival carries between sightings — the reason a raid can
+march on a hall it scouted twenty days ago and now can't see, and the reason it
+stops believing in a workplace it watched burn. **Tactical memory**
+(`S.ai.memory`) is cheap counters that let it adapt to *you* over a match:
+chiefly, a raid that **stalls on walls without razing** sets `wallStop`, and the
+**next** push routes in through the weakest flank instead of the front gate — so
+the chief **never suicides into the same wall twice**. A productive raid clears
+the flag.
 
 ---
 
@@ -146,6 +167,7 @@ aggression.
 
 ## Fairness / limitations (unchanged design)
 
+- **Symmetric fog** — the rival sees only what it has explored, remembers what it once saw (with staleness), and scouts to learn more. No omniscience: it can't read your treasury, count a hidden army, or attack a town it hasn't found. The one thing it always sees is its **own** ground (home threat).
 - **No worker micro** — income is a daily trickle (scaled by `aiOutput`) plus its buildings' output (auto-crewed). Its villagers wander (flavor + raid bait) and, under siege, fight (the **townsfolk militia**, `js/combat.js`).
 - **No amphibious assault** — it builds boats/warships for coastal economy and defense, but its raids march overland.
 - **One card, one identity** — its strategic personality is fixed at the draft; it doesn't switch personas, but its *posture*, *aggression*, and *army scale* all shift with the board and the clock.
@@ -155,8 +177,10 @@ aggression.
 ## Verification
 
 Headless Playwright suites in the session scratchpad cover each layer:
-`aiperc` (perception read), `aipost` (posture divergence / exploitation /
-hysteresis), `aiutil` (utility town-building / counter-building / conquest),
+`aiperc` (fog-limited perception — blind without vision, sees within it,
+remembers unseen buildings, forgets razed ones, estimates economy, scouts),
+`aipost` (posture divergence / exploitation / hysteresis), `aiutil` (utility
+town-building / counter-building / conquest),
 `aitac` (objectives / soft targets / wall memory), and `aibench` (beats a
 passive player at every difficulty; smart-not-hard — no blunders on Calm, Hard
 is bigger and more aggressive). `smoke45` / `smoke46` guard persona coherence

@@ -139,8 +139,9 @@ const AI = {
       return best;
     }
     if (key === 'tower') {
-      // watchtowers face the likely threat — the player's town
-      const ptc = Bld.tcOf('P');
+      // watchtowers face the likely threat — but only toward the player's town
+      // if we've actually FOUND it; otherwise they face outward at random
+      const ptc = this.knownPlayerTC();
       const ang = ptc ? Math.atan2(ptc.y - tc.y, ptc.x - tc.x) + (G.rand() - 0.5) * 1.2
                       : G.rand() * Math.PI * 2;
       const dist = 3 + G.rand() * Math.max(1, rMax - 3);
@@ -278,29 +279,100 @@ const AI = {
   },
 
   /* ===================================================================
-     LAYER 1 — PERCEPTION.  Once a day the chief takes stock of the whole
-     board and writes a compact "world read" into S.ai.read. The rest of
-     the brain reasons about this read instead of re-scanning the map. The
-     rival plays without fog, so reading the true board is cognition, not
-     cheating. Everything here is pure measurement — no actions, no side
-     effects beyond S.ai.read (and the optional debug overlay).
+     LAYER 1 — PERCEPTION, UNDER FOG OF WAR.  The rival is bound by the
+     same fog as the player: it knows ONLY what it has seen. Each day it
+     refreshes its own vision (from its buildings and units), remembers the
+     player buildings it has laid eyes on (S.ai.knownB, with staleness),
+     and writes a world-read from that — currently-visible player units +
+     remembered player structures. It cannot read the player's treasury;
+     it ESTIMATES the enemy economy from the buildings it has seen. If it
+     hasn't found the player at all, it simply doesn't know they're there,
+     and must SCOUT (see daily) to learn more. Pure measurement — the only
+     side effects are S.ai.read / S.ai.seen / S.ai.knownB.
      =================================================================== */
   ECON_W: { food: 1, wood: 1, stone: 0.8, gold: 0.5 },
   econOf(res) {
     let e = 0; for (const k in this.ECON_W) e += (res[k] || 0) * this.ECON_W[k]; return e;
   },
+  // rough worth of a seen player building, for estimating their economy
+  VIS_EST: { tc: 130, farm: 40, lodge: 35, lumber: 35, quarry: 35, house: 18,
+    tower: 32, barracks: 55, range: 48, stable: 55, siege: 75, dock: 42, wall: 6, gate: 9 },
+
+  // refresh what the rival can see this day, and remember player buildings seen
+  updateVision() {
+    const W = CFG.W, H = CFG.H, N = W * H;
+    if (!this._vis || this._vis.length !== N) this._vis = new Uint8Array(N); else this._vis.fill(0);
+    if (!S.ai.seen || S.ai.seen.length !== N) S.ai.seen = new Array(N).fill(0);
+    if (!S.ai.knownB) S.ai.knownB = {};
+    const vis = this._vis, seen = S.ai.seen;
+    const mark = (cx, cy, r) => {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r * r + r) continue;
+        const x = cx + dx, y = cy + dy;
+        if (!MapGen.inB(x, y)) continue;
+        const i = MapGen.idx(x, y); vis[i] = 1; seen[i] = 1;
+      }
+    };
+    for (const b of Bld.list('A')) {
+      if (b.key === 'wall' || b.key === 'gate') continue;
+      mark(Bld.cx(b) | 0, Bld.cy(b) | 0, Bld.done(b) ? (Bld.lv(b).vision || 4) : 2);
+    }
+    for (const u of S.units) if (u.owner === 'A') mark(u.x | 0, u.y | 0, CFG.UNIT_VISION);
+    // remember player buildings we can currently see; forget razed ones we can see are gone
+    const kb = S.ai.knownB, liveTL = new Set();
+    for (const b of S.buildings) {
+      if (b.owner !== 'P') continue;
+      const s = Bld.size(b.key), tl = MapGen.idx(b.x, b.y);
+      liveTL.add(tl);
+      let visible = false;
+      for (let dy = 0; dy < s && !visible; dy++) for (let dx = 0; dx < s; dx++)
+        if (vis[MapGen.idx(b.x + dx, b.y + dy)]) { visible = true; break; }
+      if (visible) kb[tl] = { key: b.key, level: b.level, owner: 'P', x: b.x, y: b.y, seen: S.day };
+    }
+    for (const k in kb) if (vis[+k] && !liveTL.has(+k)) delete kb[k];   // seen it, it's gone
+  },
+  canSee(u) {
+    if (!this._vis) return false;
+    const x = u.x | 0, y = u.y | 0;
+    return MapGen.inB(x, y) && !!this._vis[MapGen.idx(x, y)];
+  },
+  knownPlayerTC() {
+    const kb = S.ai.knownB || {};
+    for (const k in kb) if (kb[k].key === 'tc') return kb[k];
+    return null;
+  },
+  // a far, still-unexplored tile to probe toward (never reads the player's spot)
+  scoutTarget() {
+    const tc = Bld.tcOf('A'); if (!tc) return null;
+    const seen = S.ai.seen || [];
+    let best = null, bs = -1;
+    for (let t = 0; t < 60; t++) {
+      const x = (G.rand() * CFG.W) | 0, y = (G.rand() * CFG.H) | 0;
+      if (seen[MapGen.idx(x, y)] || !Path.passable(x, y, 'A')) continue;
+      const d = Math.hypot(x - tc.x, y - tc.y);
+      if (d > bs) { bs = d; best = { x, y }; }
+    }
+    return best;
+  },
+
   assess() {
     const ai = S.ai;
-    const tc = Bld.tcOf('A'), ptc = Bld.tcOf('P');
+    this.updateVision();
+    const tc = Bld.tcOf('A');
+    const kb = ai.knownB || {};
+    const knownTC = this.knownPlayerTC();
+    const pcx = knownTC ? knownTC.x + Bld.size('tc') / 2 : CFG.W / 2;
+    const pcy = knownTC ? knownTC.y + Bld.size('tc') / 2 : CFG.H / 2;
     const prevFoe = (ai.read && ai.read.foePower) || 0;
-    const myPower = this.power('A'), foePower = this.power('P');
+    const myPower = this.power('A');
 
-    // --- player army & where it is (the vulnerability read) ---
-    let foeHome = 0, foeAway = 0, foeCav = 0, foeArch = 0, foeSiege = 0, foeMelee = 0;
-    const pcx = ptc ? Bld.cx(ptc) : CFG.W / 2, pcy = ptc ? Bld.cy(ptc) : CFG.H / 2;
+    // --- player military we can SEE right now (fog-limited) ---
+    let foePower = 0, foeHome = 0, foeAway = 0, foeCav = 0, foeArch = 0, foeSiege = 0, foeMelee = 0;
     for (const u of S.units) {
-      if (u.owner !== 'P' || !Units.isMilitary(u) || Units.isNaval(u)) continue;
-      (Math.hypot(u.x - pcx, u.y - pcy) <= 12 ? foeHome++ : foeAway++, 0);
+      if (u.owner !== 'P' || !Units.isMilitary(u) || Units.isNaval(u) || !this.canSee(u)) continue;
+      foePower += (u.kind === 'elite' || u.kind === 'lancer' || u.kind === 'marksman' ||
+        u.kind === 'catapult' || u.kind === 'ballista') ? 2 : 1;
+      if (knownTC && Math.hypot(u.x - pcx, u.y - pcy) <= 12) foeHome++; else foeAway++;
       const k = u.kind;
       if (k === 'rider' || k === 'horsearcher' || k === 'lancer') foeCav++;
       else if (k === 'archer' || k === 'longbow' || k === 'marksman') foeArch++;
@@ -308,23 +380,25 @@ const AI = {
       else foeMelee++;
     }
 
-    // --- player defenses around the hall, and the weakest flank ---
-    let foeWall = 0, foeTower = 0, weakFlank = null;
-    if (ptc) {
-      let worst = 1e9;
-      for (const b of S.buildings) {
-        if (b.owner !== 'P' || !Bld.done(b)) continue;
-        const dd = Math.hypot(Bld.cx(b) - pcx, Bld.cy(b) - pcy);
-        if (dd > 14) continue;
+    // --- player buildings we REMEMBER: defenses, weak flank, economy estimate ---
+    const known = [];
+    for (const key in kb) { const b = kb[key]; if (b.owner === 'P') known.push(b); }
+    let foeWall = 0, foeTower = 0, weakFlank = null, foeEconEst = 0;
+    for (const b of known) {
+      foeEconEst += (this.VIS_EST[b.key] || 12) * (b.level || 1);
+      if (knownTC && Math.hypot(b.x - knownTC.x, b.y - knownTC.y) <= 14) {
         if (b.key === 'wall' || b.key === 'gate') foeWall++;
-        else if (b.key === 'tower') foeTower += Bld.lv(b).atk || 0;
+        else if (b.key === 'tower') foeTower += (CFG.BUILDINGS.tower.levels[(b.level || 1) - 1].atk) || 0;
       }
+    }
+    if (knownTC) {
+      let worst = 1e9;
       for (let a = 0; a < 8; a++) {
         const ang = a / 8 * Math.PI * 2, dx = Math.cos(ang), dy = Math.sin(ang);
         let def = 0;
-        for (const b of S.buildings) {
-          if (b.owner !== 'P' || (b.key !== 'wall' && b.key !== 'gate' && b.key !== 'tower')) continue;
-          const bx = Bld.cx(b) - pcx, by = Bld.cy(b) - pcy, dist = Math.hypot(bx, by);
+        for (const b of known) {
+          if (b.key !== 'wall' && b.key !== 'gate' && b.key !== 'tower') continue;
+          const bx = (b.x + 0.5) - pcx, by = (b.y + 0.5) - pcy, dist = Math.hypot(bx, by);
           if (dist < 2 || dist > 12) continue;
           if ((bx * dx + by * dy) / dist > 0.45) def += b.key === 'tower' ? 2 : 1;
         }
@@ -332,23 +406,22 @@ const AI = {
       }
     }
 
-    // --- player economic exposure: soft, undefended targets worth raiding ---
+    // --- exposure: remembered undefended workplaces + VISIBLE isolated gatherers ---
     const exposed = [];
-    const guarded = (x, y) => S.buildings.some(t => t.owner === 'P' && t.key === 'tower' &&
-      Bld.done(t) && Math.hypot(Bld.cx(t) - x, Bld.cy(t) - y) <= 6);
-    for (const b of S.buildings) {
-      if (b.owner !== 'P' || !Bld.done(b) || !Bld.def(b.key).needsWorker) continue;
-      if (!guarded(Bld.cx(b), Bld.cy(b)))
-        exposed.push({ x: Bld.cx(b), y: Bld.cy(b), id: b.id, kind: b.key, bld: true });
+    const knownTowers = known.filter(b => b.key === 'tower');
+    const guarded = (x, y) => knownTowers.some(t => Math.hypot(t.x + 0.5 - x, t.y + 0.5 - y) <= 6);
+    for (const b of known) {
+      if (!(b.key === 'farm' || b.key === 'lodge' || b.key === 'lumber' || b.key === 'quarry')) continue;
+      if (!guarded(b.x + 0.5, b.y + 0.5)) exposed.push({ x: b.x + 0.5, y: b.y + 0.5, kind: b.key, bld: true });
     }
     for (const u of S.units) {
-      if (u.owner !== 'P' || !Units.isVillager(u)) continue;
-      if (Math.hypot(u.x - pcx, u.y - pcy) < 8) continue;                     // homebodies aren't exposed
-      if (S.units.some(s => s.owner === 'P' && Units.isMilitary(s) && Math.hypot(s.x - u.x, s.y - u.y) < 6)) continue;   // escorted
+      if (u.owner !== 'P' || !Units.isVillager(u) || !this.canSee(u)) continue;
+      if (knownTC && Math.hypot(u.x - pcx, u.y - pcy) < 8) continue;
+      if (S.units.some(s => s.owner === 'P' && Units.isMilitary(s) && this.canSee(s) && Math.hypot(s.x - u.x, s.y - u.y) < 6)) continue;
       exposed.push({ x: u.x, y: u.y, id: u.id, kind: 'villager', villager: true });
     }
 
-    // --- threat at my own hall right now ---
+    // --- threat at my own hall — I can always see my own ground ---
     let threat = 0;
     if (tc) {
       const mcx = Bld.cx(tc), mcy = Bld.cy(tc);
@@ -359,18 +432,18 @@ const AI = {
       }
     }
 
-    // --- economies (full-knowledge: the player's treasury is in S.res) ---
-    const myEcon = this.econOf(ai.res), foeEcon = this.econOf(S.res);
-    const myBld = Bld.list('A').length, foeBld = Bld.list('P').length;
+    const myEcon = this.econOf(ai.res);
+    const myBld = Bld.list('A').length;
     const underCon = Bld.list('A').filter(b => !Bld.done(b)).length;
-    ai.peakBld = Math.max(ai.peakBld || 0, myBld);   // to notice a sacking (→ REBUILD)
+    ai.peakBld = Math.max(ai.peakBld || 0, myBld);
 
-    // vulnerability window: the player's home is thin (army committed away or
-    // tiny) OR two-plus soft targets sit undefended
-    const foeVuln = (foePower >= 2 && foeHome * 1.5 < foePower) || exposed.length >= 2;
+    // a vulnerability window is only real if we've FOUND the player and can
+    // see their home is thin (or their gatherers are out unguarded)
+    const foeVuln = !!knownTC && ((foePower >= 2 && foeHome * 1.5 < foePower) || exposed.length >= 2);
 
     ai.read = {
       day: S.day,
+      knownTC: knownTC ? { x: knownTC.x, y: knownTC.y, seen: knownTC.seen } : null, scouted: !!knownTC,
       myPower, foePower, powerRatio: myPower / Math.max(1, foePower),
       foeTrend: foePower > prevFoe + 1 ? 1 : foePower < prevFoe - 1 ? -1 : 0,
       foeHome, foeAway, foeVuln,
@@ -380,10 +453,9 @@ const AI = {
       foeArchHeavy: foeArch >= 2 && foeArch > foeCav && foeArch >= foeMelee,
       foeSiegeSeen: foeSiege > 0,
       exposed, softCount: exposed.length,
-      myEcon, foeEcon, econEdge: myEcon - foeEcon,
-      myBld, foeBld, underCon,
-      aheadPower: myPower - foePower,
-      aheadTempo: myBld - foeBld,
+      myEcon, foeEcon: foeEconEst, econEdge: myEcon - foeEconEst,
+      myBld, foeBld: known.length, underCon,
+      aheadPower: myPower - foePower, aheadTempo: myBld - known.length,
       threat, underThreat: threat >= 3,
       sacked: ai.peakBld >= 5 && myBld < ai.peakBld * 0.5,
     };
@@ -444,6 +516,10 @@ const AI = {
     else if (r.powerRatio >= 1.7 / app && r.myPower >= 4) want = 'PUSH';   // ahead enough to end it
     else if (r.powerRatio < 0.65 && r.foePower >= 4) want = 'DEFEND'; // clearly behind, dig in
     else if (r.econEdge < -180 && r.threat === 0 && !r.foeVuln && pl.win === 'economy') want = 'EXPAND';
+    // you cannot commit to an attack on a town you have not FOUND: with no
+    // known enemy home, an attack plan falls back to massing (CONSOLIDATE)
+    // while the scouts go looking. DEFEND still holds against what's on us.
+    if (!r.knownTC && (want === 'PUSH' || want === 'PRESSURE')) want = 'CONSOLIDATE';
     // --- hysteresis: commit to a plan unless an emergency forces a change ---
     const emergency = (want === 'DEFEND' && r.underThreat) || want === 'REBUILD';
     if (!ai.posture) { ai.posture = want; ai.postureSince = S.day; }
@@ -609,7 +685,7 @@ const AI = {
      the chief either remembers a wall-stall (memory) or brings no siege, it
      comes in through the WEAKEST FLANK instead of battering the front gate. */
   chooseRaidObj(read, push) {
-    const ai = S.ai, atc = Bld.tcOf('A'), ptc = Bld.tcOf('P');
+    const ai = S.ai, atc = Bld.tcOf('A'), ptc = read.knownTC;   // only what we've found
     const mem = ai.memory || {};
     if (!push && read.exposed && read.exposed.length) {
       let best = null, bd = 1e9;
@@ -696,14 +772,17 @@ const AI = {
 
     /* ---- VARIABLE OPENINGS, early behaviors (first minutes only) ---- */
     if (op.bias === 'scout' && op.fired && !op.scoutDone && S.day >= 2) {
-      // the horselord's rider goes to look at YOUR camp — eyes, then hooves
+      // the horselord's rider rides out to LOOK for the player — eyes under
+      // fog, not a homing beacon. It probes toward the far unknown and the
+      // memory of where the player was last seen guides later hooves.
       const rider = S.units.find(u => u.owner === 'A' &&
         (u.kind === 'rider' || u.kind === 'horsearcher') && !u.tUnit && !u.tBld);
-      const ptc = Bld.tcOf('P');
-      if (rider && ptc) {
+      const dst = this.knownPlayerTC() || this.scoutTarget();
+      if (rider && dst) {
         op.scoutDone = true;
-        const spot = MapGen.findNear(ptc.x, ptc.y + 4, 5, (x, y) => Path.passable(x, y, 'A'));
-        if (spot) { rider.task = { type: 'move', x: spot.x, y: spot.y }; Units.setPath(rider, spot.x, spot.y); }
+        const spot = MapGen.findNear(dst.x, dst.y, 5, (x, y) => Path.passable(x, y, 'A')) || dst;
+        rider.task = { type: 'move', x: spot.x, y: spot.y }; Units.setPath(rider, spot.x, spot.y);
+        ai.scoutId = rider.id;
       } else if (S.day > 10) op.scoutDone = true;   // no horse this life — let it go
     }
     if (op.bias === 'turtle' && op.fired && !op.towerDone && S.day <= (op.until || 0)) {
@@ -766,6 +845,33 @@ const AI = {
       if (spot) { ai.res.food -= 50; Units.spawn('villager', 'A', spot.x, spot.y); }
     }
 
+    /* ---- SCOUTING: the rival is blind beyond its own eyes, so it must go
+       LOOK. When it hasn't found the player's town — or its memory of it has
+       gone stale — it dispatches a probe toward the far unknown (or toward
+       where the player was last seen) to refresh what it knows. It won't
+       strip its home guard to do it: a spare rider goes first, else a
+       villager, and only a spare soldier if there are several to spare. ---- */
+    const scout = ai.scoutId && S.units.find(u => u.id === ai.scoutId);
+    if (!scout || !(scout.task && scout.task.type === 'move')) ai.scoutId = 0;
+    const kTC = read.knownTC;
+    const needScout = !kTC || (S.day - (kTC.seen || 0) > 40);
+    if (needScout && !ai.scoutId && !read.underThreat) {
+      const dst = kTC || this.scoutTarget();
+      const busy = u => u.tUnit || u.tBld || (u.task && (u.task.type === 'raid' || u.task.type === 'move'));
+      const spares = S.units.filter(u => u.owner === 'A' && !Units.isNaval(u) && !busy(u));
+      const soldiers = spares.filter(u => Units.isMilitary(u) && u.kind !== 'siegetower');
+      const pick = soldiers.find(u => u.kind === 'rider' || u.kind === 'horsearcher')
+        || spares.find(u => Units.isVillager(u))
+        || (soldiers.length >= 3 ? soldiers[0] : null);
+      if (dst && pick) {
+        const spot = MapGen.findNear(dst.x, dst.y, 5, (x, y) => Path.passable(x, y, 'A')) || dst;
+        pick.task = { type: 'move', x: spot.x, y: spot.y };
+        pick.anchor = { x: spot.x + 0.5, y: spot.y + 0.5 };
+        Units.setPath(pick, spot.x, spot.y);
+        ai.scoutId = pick.id;
+      }
+    }
+
     /* ---- raids: launch when strong, RETREAT when it goes wrong. A party
        cut below a third of its strength (or bogged down for 8+ days) breaks
        off and marches home to fight another day. And a long stalemate makes
@@ -800,7 +906,9 @@ const AI = {
        timer — so the rival strikes an undefended player on the state of
        the board, not the calendar. PUSH masses a decisive force; PRESSURE
        sends a smaller party to pick off soft targets and retreat. ---- */
-    const mine = this.power('A'), theirs = this.power('P');
+    // it can only march on a town it has FOUND, and it sizes the enemy by what
+    // it has SEEN (read.foePower), not the true roster — fog binds the chief
+    const mine = this.power('A'), theirs = read.foePower;
     const pl = this.plan();
     const attackPosture = ai.posture === 'PUSH' || ai.posture === 'PRESSURE';
     // exploitation appetite (difficulty) sets how much of an edge it needs
@@ -808,7 +916,7 @@ const AI = {
     const boldness = Math.max(0.8,
       P.raidPower - aggro * 0.5 - (read.foeVuln ? 0.35 : 0) - Math.max(0, S.day - 90) * 0.005);
     const dayFloor = read.foeVuln ? 12 : Math.max(16, m.aiRaidDay + P.raidDayAdd);
-    if (attackPosture && ai.raidCd <= 0 && !raiders.length && S.day >= dayFloor && mine >= 3) {
+    if (read.knownTC && attackPosture && ai.raidCd <= 0 && !raiders.length && S.day >= dayFloor && mine >= 3) {
       const troops = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
         !Units.isNaval(u) && u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
       const push = ai.posture === 'PUSH';
