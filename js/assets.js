@@ -23,6 +23,7 @@ const Assets = {
   ready: false,      // init finished (with or without image assets)
   loaded: {},        // key -> true where an image replaced the procedural art
   failed: [],        // atlas/sprite load problems, for diagnostics
+  ui: { card: {} },  // ui/card/<key> drawables (Origin Cards art; see ASSET_SPEC.md)
 
   async init() {
     const man = (typeof window !== 'undefined' && window.ASSET_MANIFEST) || null;
@@ -90,6 +91,14 @@ const Assets = {
         return t === undefined ? null : at((Sprites.terrainRare[t] || {}), +p[2]);
       }
       case 'icon':       return at(Sprites.icons, p[1]);
+      case 'ui': {
+        // ui/card/<cardKey> — Origin Card art. No procedural slot backs
+        // these: the draft screen falls back to Cards.drawMotif until a
+        // manifest image lands, so real art drops in with zero code change.
+        if (p[1] !== 'card' || !p[2] || !window.Cards || !Cards.DEFS[p[2]]) return null;
+        const o = this.ui.card;
+        return { get: () => o[p[2]], set: v => { o[p[2]] = v; } };
+      }
       case 'misc':       return p.length > 2
         ? at((Sprites.misc[p[1]] || {}), +p[2])   // animated misc: misc/kraken/0
         : at(Sprites.misc, p[1]);

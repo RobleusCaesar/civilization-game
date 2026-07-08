@@ -20,5 +20,8 @@ window.ASSET_MANIFEST = {
         'building_a/tc/1': { x: 0, y: 0, w: 256, h: 256, dw: 64, dh: 64 },
       },
     },
+    /* ORIGIN CARDS art goes here when it lands — one `ui/card/<cardKey>`
+       entry per card (keys and art briefs: ASSET_SPEC.md). Until then the
+       draft screen draws placeholder motifs procedurally (Cards.drawMotif). */
   ],
 };

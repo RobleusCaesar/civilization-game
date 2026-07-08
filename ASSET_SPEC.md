@@ -133,6 +133,22 @@ water 3). `terrain_rare/grass/<0|1>` are the rare flower meadows.
 `misc/dragon/0..1` — the black dragon's wing beats (96×48).
 `misc/fish/0..1` — the jumping shore-fish frames.
 
+### `ui/card/<cardKey>`
+Origin Card art (the draft screen). One square image per card, drawn at
+~52 CSS px on the card face — author at 96×96 or a 4× master with
+`dw`/`dh`. Card keys (see `Cards.DEFS` in `js/cards.js`):
+`homesteader` `warlord` `horselord` `mariner` `mason` `forager`
+`timberwright` `grainkeeper` `stoneheart` `tradewind` `houndmaster`
+`pathfinder` `firekeeper` `beastward` `refugeehost` `riverborn` `seer`
+`ironhand` `harvestlord` `nomad`.
+Until an image lands, each card falls back to a **placeholder** procedural
+motif (`Cards.drawMotif`) — supplying real art here requires zero code
+change. The motif column in the card table (hearth, crossed spears, rider
+silhouette, longboat, stone block + chisel, berry basket, axe in log,
+wheat sheaf, boulder, coin pouch, hound, footprints, campfire, antlers,
+crowd of figures, reeds, eye + stars, anvil, sickle, tent) is the art
+brief per card.
+
 ## Adding art, step by step
 
 1. Draw your PNG atlas (any packing; rects don't need to align to a grid).
