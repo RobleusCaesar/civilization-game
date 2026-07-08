@@ -54,9 +54,10 @@ on desktop too.
   button.
 - **The shell**: the game opens on a title screen over a live, self-playing
   world — Continue (newest cloud save, or a crash-recovery snapshot), New game
-  (difficulty / map size / landform / rival persona / seed pickers), Load,
-  Settings, and a swipeable How-to-play. Setup is fixed once a game starts;
-  win or lose, the end screen shows the run's stats and offers the next game.
+  (difficulty / map size / landform), Load, Settings, and a swipeable
+  How-to-play. After New game comes the **Origin draft** (below); setup is
+  fixed once a game starts. Win or lose, the end screen shows the run's
+  arcade tally and offers the next game.
 - **Gathering**: tap a villager, then tap a **forest** (wood), **hills** (stone), or
   **orchard / berry thicket** (food) tile — they gather automatically; the village
   forages long before it farms. Villagers can also **fish from the shore**:
@@ -253,10 +254,12 @@ on desktop too.
   still muster in the open wilds, never on your shores or inside your walls.
 - **The rival tribe** — an AI settlement across the valley builds, upgrades,
   trains, and will march on you when it feels strong enough. Every game its
-  chief rolls one of **six personalities** — your scouts whisper a hint at
-  first light: the patient **Homesteader**, the spear-happy **Warlord**, the
-  cavalry-mad **Horselord**, the fleet-building **Mariner**, the walled-in
-  **Mason**, and the fast-growing **Forager**. Each shapes the whole tribe:
+  chief keeps an **Origin card** of its own (see below), and that card sets
+  its whole temperament — your scouts whisper a hint at first light. The
+  classic natures are all in the deck: the patient **Homesteader**, the
+  spear-happy **Warlord**, the cavalry-mad **Horselord**, the fleet-building
+  **Mariner**, the walled-in **Mason**, the fast-growing **Forager** — and
+  fourteen more besides. Each shapes the whole tribe:
   the build order, an organic village layout (terrain-hunting farms and
   camps, watchtowers facing *you*), the army mix (riders, archers, or walls
   of spears), how early and often it raids, and how hard it takes to the
@@ -278,6 +281,22 @@ on desktop too.
   grey and show only what you last saw there: buildings frozen at their old state,
   no units, no new construction, upgrades, or terrain changes until you scout again.
 
+## Origin Cards
+
+Every game opens with a draft: **you're dealt three Origin cards and keep
+one** — the gift your people begin with. A card might be extra hands at the
+hall, spearmen standing guard, a finished farm or dock, faster building,
+richer hunts, a tamed guard-beast, or a seer who reads the raids before they
+come. Magnitudes roll fresh each game, and the offer is dealt to fit the
+start you rolled: it never just refills whatever your village happens to be
+short of — but one card always **leans into** your situation, and reading
+which one is worth points at the tally.
+
+**Your rival drafts too.** How much you learn of their pick depends on the
+difficulty: on 🌿 Calm you see their card and exactly what it gave them; on
+⚔️ Moderate only its name; on 💀 Hard nothing at all — watch how they move,
+or go and scout it.
+
 ## Win / lose
 
 One way in, one way out: **destroy the rival tribe's Town Center to win; if
@@ -293,9 +312,9 @@ Most games, nothing happens. Keep watch.
 
 Every run is tallied like an arcade cabinet when it ends: kills, razed rival
 buildings, buildings raised, fortifications, upgrades, units trained, your
-greatest population, resources gathered, map explored, the kraken driven off —
-plus a victory bonus and a **swift-conquest bonus that drains as the days
-pass**. The subtotal is multiplied by difficulty: 🌿 Calm ×0.5, ⚔️ Moderate
+greatest population, resources gathered, map explored, the kraken driven off,
+a hard beginning overcome, an Origin chosen with a canny eye — plus a victory
+bonus and a **swift-conquest bonus that drains as the days pass**. The subtotal is multiplied by difficulty: 🌿 Calm ×0.5, ⚔️ Moderate
 ×1.0, 💀 **Hard ×1.75** — the board is meant to belong to Hard players. An
 average Moderate victory lands around 5,000–10,000.
 
@@ -323,11 +342,12 @@ js/map.js             seeded map generation (sizes + landforms) + BFS pathfindin
 js/buildings.js       placement, construction, upgrades, training, production
 js/units.js           villagers/defenders/animals/barbarians: movement & tasks
 js/combat.js          target acquisition, melee/tower combat, barbarian waves
-js/ai.js              rival civilization brain (six personas)
+js/ai.js              rival civilization brain (persona profiles the cards lean on)
+js/cards.js           Origin Cards: the 20-card draft, boons, placeholder card art
 js/render.js          camera, cached terrain layer, fog of war, minimap
 js/ui.js              touch input, build menu, selection panel, HUD
-js/screens.js         the game shell: title / new game / load / settings /
-                      pause / endgame / how-to-play state machine
+js/screens.js         the game shell: title / new game / origin draft / load /
+                      settings / pause / endgame / how-to-play state machine
 js/game.js            state, main loop, day ticks, win/loss, boot
 supabase/migrations/  SQL schema + RLS policies for the cloud-save tables
 ```

@@ -36,9 +36,10 @@ Hard constraints that have shaped everything:
 ## Architecture
 
 Script load order matters (globals, no modules):
-`config.js → config.supabase.js → vendor/supabase.js → backend.js → artstyle.js
-→ sprites.js → assets/manifest.js → assets.js → map.js → buildings.js →
-units.js → combat.js → ai.js → render.js → ui.js → screens.js → game.js`
+`config.js → config.supabase.js → vendor/supabase.js → backend.js → score.js
+→ cards.js → artstyle.js → sprites.js → assets/manifest.js → assets.js →
+map.js → buildings.js → units.js → combat.js → ai.js → render.js → ui.js →
+screens.js → game.js`
 
 | File | Owns |
 |---|---|
@@ -54,6 +55,7 @@ units.js → combat.js → ai.js → render.js → ui.js → screens.js → game
 | `js/screens.js` | `Screens`: the shell state machine — title (live demo world), new game, load/save slots, settings, pause, endgame, how-to |
 | `js/backend.js` | `Backend`: the only Supabase touchpoint — anonymous auth, slots, autosave, crash net, recovery tokens, leaderboard reads/inserts; typed `{ok, data/error}` results, mockable via `window.__NEO_BACKEND_MOCK` |
 | `js/score.js` | `Score`: the arcade tally (`CFG.SCORE` table) + arcade-name validation/profanity filter |
+| `js/cards.js` | `Cards`: ORIGIN CARDS — the 20-card draft (player + rival), offer filters, boon application, engine-hook modifiers (`S.boons`), placeholder motif painter |
 | `js/assets.js` | `Assets`: manifest-driven PNG atlases overlaid onto the Sprites tables, per-key procedural fallback, `drawSprite()` |
 | `js/game.js` | `G` + global `var S`: state, main loop, day ticks, decay, visibility, save/load, boot |
 
@@ -227,6 +229,12 @@ Hard-won pitfalls (each cost a debugging session):
    tests should drive `Screens` and real clicks. Mock the backend by setting
    `window.__NEO_BACKEND_MOCK = { auth, rest }` in an `addInitScript` BEFORE
    `goto` — never let a test reach the network.
+9. Since ORIGIN CARDS, the New-game button lands on the **draft screen**, not
+   `playing` — UI tests must wait for `Screens.current === 'draft'`, hide
+   `#draftOverlay`, wait for three `.ocard.flip`, double-click a card, then
+   click `#btnDraftGo`. Direct `G.newGame(...)` calls leave `S.draft` pending
+   (fine for AI/engine tests — no player card is applied); call
+   `Cards.pick(i)` when the test needs the player's boon.
 
 ### Deploying
 
@@ -258,15 +266,55 @@ what/why.
   score `stats.originBonus` (≤300), and `window.DEBUG_OPENINGS = true`
   console-logs every roll (`S.opening` holds it either way). Spawn
   surroundings also roll (seedNear counts in map.js).
-  (2) *Rival openings* — each persona carries an `opening` block
-  ({p, units, res, bias, needsWater, whisperOn/Off}) consumed GENERICALLY by
-  `AI.init` — THE RULE: future personas get all of this by adding the block,
-  no new code. Nudges fire with probability p (~0.6-0.65), bounded to one
-  unit / ≤90 res; biases (scout/raid/boom/sea/turtle/spread) lean the first
-  ~13-20 days probabilistically; the scout whisper is tied to what actually
-  rolled. Protection floor with teeth: past day 16 a barracks outranks the
+  (2) *Rival openings* — the rival rolls its own package too
+  (`G.rollStart(gen, mode, gen.spawns.ai)` → `S.ai.res` + cosmetic
+  townsfolk), and its persona, opening bias and starting boon all come from
+  its ORIGIN CARD (below). Biases (scout/raid/boom/sea/turtle/spread) lean
+  the first ~13-20 days; the scout whisper carries the card's behavior
+  hint. Protection floor with teeth: past day 16 a barracks outranks the
   TC savings reserve (wood-tight tribes used to save forever and field no
   army).
+- **ORIGIN CARDS (`js/cards.js` — one draft, both tribes):** at game start
+  each side is dealt 3 cards from a 20-card pool and keeps 1. A card is a
+  clean single-sided boon whose magnitude ROLLS from a band every game
+  (`Cards.DEFS[key].roll()`, seeded); the rival's kept card also sets its
+  persona (`lean` → `AI.PERSONAS`) and early bias — **the card IS the
+  persona now** (`S.ai.opening = {bias, fired: true, until, card}`).
+  The 20 frameworks (axis → no-cancel axis; all values roll in bands):
+  Homesteader (+1-2 villagers, crew), Warlord (+2-3 defenders), Horselord
+  (scout + vision 10-13), Mariner (dock + boat, water), Mason (+25-45 stone,
+  forts 18-28% off), Forager (mixed stores + gather ×1.10-1.18 early),
+  Timberwright (+30-60 wood + wood pace ×1.2-1.3 early, wood), Grainkeeper
+  (prebuilt farm, food), Stoneheart (prebuilt quarry or +50-80 stone,
+  stone), Tradewind (+30-50 gold + 3-4/day early, gold), Houndmaster (tame
+  guard-bear), Pathfinder (wide reveal + far patches), Firekeeper (build
+  20-30% faster early), Beastward (wildlife truce + hunts ×1.8-2.2 early),
+  Refugee Host (+2-3 villagers, small food tithe, crew), Riverborn (fishing
+  ×1.35-1.6 persistent, water), Seer (wave forewarnings + vision node),
+  Ironhand (soldiers 10-18% cheaper, 8-15% tougher), Harvest Lord (farms
+  +20-35% persistent, food), Nomad (first 3-5 buildings ~half cost & fast).
+  **The coordination rule (binding):** each side's offer is built from ITS
+  rolled start — a card whose `axis` matches the roll's rich OR poor axis
+  is excluded (no-cancel: cards never flatten System 1's variance);
+  axis-less transformative cards weigh more; at least one offered card is a
+  *lean-in* (its `syn` lists the roll's rich axis — kept lean-ins score
+  `CFG.SCORE.leanIn` via `stats.leanIn`); water/island/scarce-terrain gates
+  apply; and rolled econ + worst-case card delta must clear
+  `CFG.OPENING.minEcon`. **Difficulty intel (`S.draft.intel`):** Calm =
+  rival card name + rolled benefit, Moderate = name only, Hard = nothing
+  (the whispers are the only early read). The rival picks from its 3 by a
+  rolled temperament (aggro/econ/def/explore ×2.4 weight on matching `cat`).
+  Boon modifiers live in plain-data `S.boons.{P,A}` read by one-line hooks
+  (build cost/time, train cost/hp, gather/fish/hunt pace, farm yield, gold
+  trickle, wildlife truce, seer). Draft state is `S.draft` (hand rolls,
+  rival hand/pick, intel, done/pickI); `Cards.pick(i)` applies the player's
+  card (the draft screen, the title demo, and loadJSON's mid-draft backfill
+  all call it). THE RULE: a new rival temperament = a new CARD with a
+  `lean` (plus a persona profile if none fits) — no new wiring. Balance:
+  keep every card's `val(roll)` proxy inside roughly a 2× band (smoke46
+  sweeps it) so no card is an auto-pick. Real card art lands via manifest
+  keys `ui/card/<key>` (ASSET_SPEC.md) — placeholder motifs are procedural
+  (`Cards.drawMotif`).
 - **SPECIAL EVENTS (a design category):** rare, once-per-game spectacles
   meant to make a player laugh out loud — currently the kraken (S.kraken,
   G.krakenTick) and the black dragon (S.dragon, G.maybeDragon/dragonTick;
