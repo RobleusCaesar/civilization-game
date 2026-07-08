@@ -55,6 +55,7 @@ const Screens = {
     if (scr) scr.classList.add('show');
     this._confirmQuit = false;
     if (name === 'title') this.onTitle();
+    else if (name === 'draft') this.onDraft();
     else if (name === 'newgame') this.onNewgame();
     else if (name === 'load') this.onLoad(opts);
     else if (name === 'settings') this.onSettings();
@@ -175,7 +176,83 @@ const Screens = {
     Backend.markActiveSlot(null);          // fresh run: no cloud slot until first save
     Backend.activeName = null;
     this.lastSavedDay = 1;
-    this.enterGame();
+    this.show('draft');                    // ORIGIN CARDS: pick before the world moves
+  },
+
+  /* ---------------- ORIGIN CARDS: the draft ----------------
+     Three face-down cards deal in, flip staggered, tap to lift, tap again
+     to keep. The chosen card steps forward, the rest burn away; the rival's
+     card is revealed per difficulty (full / name / face-down). */
+  onDraft() {
+    const D = window.S && S.draft;
+    if (!D || D.done || !D.hand.length) { this.enterGame(); return; }   // nothing to draft
+    const box = this.el('draftCards');
+    box.innerHTML = '';
+    this.el('draftRival').style.display = 'none';
+    this.el('btnDraftGo').style.display = 'none';
+    this.el('draftHint').textContent = 'Tap a card to look it over';
+    this._draftSel = -1;
+    D.hand.forEach((c, i) => {
+      const d = Cards.DEFS[c.key];
+      const el = document.createElement('div');
+      el.className = 'ocard';
+      el.innerHTML =
+        `<div class="ocardIn">
+           <div class="oface oback">❂</div>
+           <div class="oface ofront"><canvas width="96" height="96"></canvas>
+             <div class="oname">${this.esc(d.name)}</div>
+             <div class="oboon">${this.esc(d.text(c.roll))}</div>
+             <div class="oflavor">${this.esc(d.flavor)}</div></div>
+         </div>`;
+      Cards.drawMotif(el.querySelector('canvas'), c.key);
+      el.addEventListener('click', () => this.draftTap(i, el));
+      box.appendChild(el);
+      setTimeout(() => el.classList.add('dealt'), 60 + i * 130);        // deal in…
+      setTimeout(() => el.classList.add('flip'), 560 + i * 150);        // …then flip
+    });
+    let seen = false;
+    try { seen = !!localStorage.getItem('neo-draft-help'); } catch (e) {}
+    this.el('draftOverlay').style.display = seen ? 'none' : 'flex';
+  },
+
+  draftTap(i, el) {
+    const D = window.S && S.draft;
+    if (!D || D.done || !el.classList.contains('flip')) return;
+    if (this._draftSel !== i) {                    // first tap: lift and consider
+      this._draftSel = i;
+      for (const o of this.el('draftCards').children) o.classList.remove('lift');
+      el.classList.add('lift');
+      this.el('draftHint').textContent =
+        'Tap again to keep ' + Cards.DEFS[D.hand[i].key].name;
+      return;
+    }
+    Cards.pick(i);                                 // second tap: kept
+    const kids = Array.from(this.el('draftCards').children);
+    kids.forEach((o, j) => {
+      o.classList.remove('lift');
+      o.classList.add(j === i ? 'chosen' : 'burn');
+    });
+    this.el('draftHint').textContent = '';
+    this.revealRival();
+    this.el('btnDraftGo').style.display = '';
+  },
+
+  revealRival() {
+    const D = S.draft, box = this.el('draftRival');
+    const cd = Cards.DEFS[D.rival.pick.key];
+    if (D.intel === 'none') {
+      box.innerHTML = `<div class="omini hid">❂</div>
+        <div>The rival's Origin is <b>hidden</b>. Watch how they move —
+        your scouts will whisper what they see.</div>`;
+    } else {
+      const known = D.intel === 'full';
+      box.innerHTML = `<div class="omini"><canvas width="96" height="96"></canvas></div>
+        <div>Rival origin: <b>${this.esc(cd.name)}</b>${known
+          ? ' — ' + this.esc(cd.text(D.rival.pick.roll))
+          : '. What gift it carries, no one knows.'}</div>`;
+      Cards.drawMotif(box.querySelector('canvas'), D.rival.pick.key);
+    }
+    box.style.display = 'flex';
   },
 
   /* ---------------- load / save slots ---------------- */
@@ -433,6 +510,13 @@ const Screens = {
         this.onNewgame();
       }));
     on('btnStart', () => this.startNewGame());
+    // the origin draft
+    on('btnDraftGo', () => this.enterGame());
+    on('btnDraftHelp', () => { this.el('draftOverlay').style.display = 'flex'; });
+    on('btnDraftGotIt', () => {
+      this.el('draftOverlay').style.display = 'none';
+      try { localStorage.setItem('neo-draft-help', '1'); } catch (e) {}
+    });
     // pause
     on('btnPauseResume', () => this.enterGame());
     on('btnPauseSave', () => { this.backTo = 'paused'; this.show('load', { saveMode: true }); });

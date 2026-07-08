@@ -538,6 +538,158 @@ const Cards = {
       G.log('🔮 The Seer casts the bones: barbarians will move within two days', true, 5200);
     }
   },
+
+  /* ---------------- placeholder card art ----------------
+     PLACEHOLDER: simple procedural motifs in the house palette (ART ramps,
+     top-left light, chunky 16-bit shapes) until real card art lands. Real
+     art drops in through the manifest as `ui/card/<key>` (see ASSET_SPEC.md)
+     with zero code change — drawMotif prefers the image when it exists. */
+  drawMotif(canvas, key) {
+    if (window.Assets && Assets.isImage && Assets.isImage('ui/card/' + key)) {
+      const g0 = canvas.getContext('2d');
+      g0.imageSmoothingEnabled = false;
+      g0.clearRect(0, 0, canvas.width, canvas.height);
+      Assets.drawSprite(g0, 'ui/card/' + key, 0, 0, { w: canvas.width, h: canvas.height });
+      return;
+    }
+    const PAL = ART.PALETTE;
+    const g = canvas.getContext('2d');
+    const s = canvas.width / 24;   // 24-cell logical grid
+    g.clearRect(0, 0, canvas.width, canvas.height);
+    const p = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x * s, y * s, w * s, h * s); };
+    const M = this._MOTIFS[this.DEFS[key] ? this.DEFS[key].motif : 'hearth'] || this._MOTIFS.hearth;
+    M(p, PAL);
+  },
+  _MOTIFS: {
+    hearth(p, C) {
+      ART.shadedRect(p, 5, 16, 14, 4, C.stone, 1);
+      p(8, 15, 8, 1, C.wood[1]);
+      ART.shadedCircle(p, 12, 11, 4, C.fire, 1);
+      p(10, 8, 4, 4, C.fire[2]); p(11, 6, 2, 3, C.fire[3]);
+    },
+    spears(p, C) {
+      for (let i = 0; i < 12; i++) { p(6 + i, 18 - i, 1, 1, C.wood[3]); p(17 - i, 18 - i, 1, 1, C.wood[2]); }
+      p(17, 5, 2, 3, C.stone[3]); p(5, 5, 2, 3, C.stone[3]);
+      p(16, 4, 2, 2, C.bone[2]); p(6, 4, 2, 2, C.bone[2]);
+    },
+    rider(p, C) {
+      ART.shadedRect(p, 6, 12, 12, 4, C.hide, 2);       // horse body
+      p(16, 9, 3, 4, C.hide[2]); p(17, 7, 2, 3, C.hide[3]);   // neck+head
+      p(7, 16, 2, 5, C.hide[1]); p(15, 16, 2, 5, C.hide[1]);  // legs
+      p(10, 8, 3, 4, C.skin[2]); p(10, 6, 3, 2, C.hair[1]);   // rider
+      p(4, 11, 2, 4, C.hide[3]);                               // tail
+    },
+    longboat(p, C) {
+      for (let i = 0; i < 14; i++) p(5 + i, 16 + ((i / 3) | 0) % 2, 1, 1, C.water[3]);
+      ART.shadedRect(p, 6, 12, 12, 3, C.wood, 2);
+      p(5, 11, 2, 2, C.wood[3]); p(17, 11, 2, 2, C.wood[3]);
+      p(11, 4, 1, 8, C.wood[1]); p(12, 5, 5, 5, C.bone[2]);
+    },
+    chisel(p, C) {
+      ART.shadedRect(p, 6, 12, 10, 8, C.stone, 2);
+      p(7, 13, 3, 2, C.stone[4]);
+      for (let i = 0; i < 6; i++) p(13 + i, 10 - i, 1, 1, C.wood[3]);
+      p(12, 11, 2, 2, C.stone[4]);
+    },
+    basket(p, C) {
+      ART.shadedRect(p, 7, 13, 10, 6, C.thatch, 1);
+      p(7, 12, 10, 1, C.wood[2]);
+      ART.shadedCircle(p, 9, 11, 1, C.bloom, 0);
+      ART.shadedCircle(p, 12, 10, 1, [C.leaf[1], C.leaf[2], C.leaf[3]], 1);
+      ART.shadedCircle(p, 15, 11, 1, C.fire, 1);
+    },
+    axe(p, C) {
+      ART.shadedRect(p, 5, 15, 14, 5, C.wood, 2);
+      p(6, 16, 12, 1, C.wood[4]);
+      for (let i = 0; i < 7; i++) p(12 + i, 12 - i, 1, 1, C.wood[3]);
+      p(10, 11, 4, 4, C.stone[3]); p(10, 11, 2, 2, C.stone[4]);
+    },
+    wheat(p, C) {
+      for (const dx of [7, 12, 17]) {
+        p(dx, 8, 1, 12, C.thatch[1]);
+        for (let i = 0; i < 4; i++) { p(dx - 1, 7 + i * 2, 1, 1, C.thatch[3]); p(dx + 1, 8 + i * 2, 1, 1, C.thatch[2]); }
+        p(dx, 5, 1, 3, C.thatch[3]);
+      }
+    },
+    boulder(p, C) {
+      ART.shadedCircle(p, 12, 13, 6, C.stone, 2);
+      p(9, 10, 3, 2, C.stone[4]);
+      p(14, 15, 3, 2, C.stone[1]);
+    },
+    coins(p, C) {
+      ART.shadedRect(p, 8, 10, 8, 9, C.hide, 1);
+      p(9, 9, 6, 2, C.wood[1]);
+      ART.shadedCircle(p, 8, 18, 2, C.gold, 1);
+      ART.shadedCircle(p, 15, 19, 2, C.gold, 2);
+      ART.shadedCircle(p, 12, 6, 2, C.gold, 2);
+    },
+    hound(p, C) {
+      ART.shadedRect(p, 6, 12, 11, 4, C.pelt, 1);       // body
+      p(15, 8, 4, 5, C.pelt[1]); p(17, 7, 3, 3, C.pelt[2]);   // neck+head
+      p(19, 6, 1, 2, C.pelt[0]);                               // ear
+      p(7, 16, 2, 4, C.pelt[0]); p(14, 16, 2, 4, C.pelt[0]);  // legs
+      p(4, 10, 2, 3, C.pelt[2]);                               // tail up
+      p(18, 9, 1, 1, C.fire[2]);                               // eye
+    },
+    tracks(p, C) {
+      for (let i = 0; i < 4; i++) {
+        p(6 + i * 4, 18 - i * 4, 2, 3, C.soil[1]);
+        p(9 + i * 4, 16 - i * 4, 2, 3, C.soil[2]);
+      }
+    },
+    campfire(p, C) {
+      p(6, 18, 12, 2, C.wood[1]); p(8, 17, 8, 1, C.wood[2]);
+      ART.shadedCircle(p, 12, 12, 4, C.fire, 1);
+      p(10, 7, 4, 4, C.fire[2]); p(11, 5, 2, 3, C.fire[3]);
+    },
+    antlers(p, C) {
+      for (const [ox, dir] of [[9, -1], [15, 1]]) {
+        p(ox, 8, 1, 10, C.bone[1]);
+        p(ox + dir, 8, 1, 2, C.bone[2]); p(ox + dir * 2, 6, 1, 3, C.bone[2]);
+        p(ox + dir, 12, 1, 2, C.bone[2]); p(ox + dir * 2, 10, 1, 3, C.bone[1]);
+      }
+      p(10, 18, 5, 2, C.hide[2]);
+    },
+    crowd(p, C) {
+      for (const [ox, oy, sk] of [[7, 10, 2], [12, 8, 1], [17, 10, 3]]) {
+        p(ox, oy, 3, 3, C.skin[sk]); p(ox, oy - 2, 3, 2, C.hair[1]);
+        p(ox - 1, oy + 3, 5, 6, C.hide[sk]);
+      }
+    },
+    reeds(p, C) {
+      for (let i = 0; i < 14; i++) p(5 + i, 18 + (i % 3 === 0 ? 1 : 0), 1, 1, C.water[3]);
+      for (const dx of [8, 11, 14, 16]) {
+        p(dx, 7, 1, 11, C.leaf[2]);
+        p(dx, 5, 1, 3, C.soil[2]);
+      }
+    },
+    eye(p, C) {
+      for (let i = 0; i < 7; i++) { p(5 + i, 12 - (i < 4 ? i : 6 - i), 1, 1, C.bone[2]); p(18 - i, 12 - (i < 4 ? i : 6 - i), 1, 1, C.bone[2]); }
+      for (let i = 0; i < 7; i++) { p(5 + i, 12 + (i < 4 ? i : 6 - i), 1, 1, C.bone[1]); p(18 - i, 12 + (i < 4 ? i : 6 - i), 1, 1, C.bone[1]); }
+      ART.shadedCircle(p, 12, 12, 3, C.water, 2);
+      p(11, 11, 2, 2, C.ink[0]);
+      p(12, 4, 1, 2, C.gold[2]); p(7, 6, 1, 2, C.gold[1]); p(17, 6, 1, 2, C.gold[1]);
+    },
+    anvil(p, C) {
+      ART.shadedRect(p, 6, 10, 13, 3, C.stone, 1);
+      p(4, 10, 3, 2, C.stone[2]);
+      p(10, 13, 4, 4, C.stone[0]);
+      ART.shadedRect(p, 8, 17, 8, 3, C.wood, 1);
+      p(7, 8, 2, 2, C.fire[2]);
+    },
+    sickle(p, C) {
+      for (let i = 0; i < 8; i++) p(8 + i, 6 + ((i * i) / 8 | 0), 1, 2, C.stone[3]);
+      p(15, 12, 2, 2, C.stone[3]);
+      for (let i = 0; i < 6; i++) p(14 - i, 14 + i, 1, 1, C.wood[3]);
+      p(6, 19, 3, 2, C.thatch[2]);
+    },
+    tent(p, C) {
+      for (let i = 0; i < 8; i++) { p(12 - i, 6 + i * 2, 1, 2, C.hide[2]); p(12 + i, 6 + i * 2, 1, 2, C.hide[1]); }
+      for (let i = 1; i < 8; i++) p(12 - i + 1, 6 + i * 2, i * 2 - 1, 2, C.hide[2]);
+      p(11, 16, 3, 4, C.ink[0]);
+      p(12, 3, 1, 4, C.wood[2]);
+    },
+  },
 };
 
 // classic-script global (const declarations are not window properties)

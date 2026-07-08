@@ -290,6 +290,88 @@
   #endBoard { width: 100%; max-width: 330px; margin: 2px 0 4px; }
   #endBoard .ldr { padding: 6px 10px; margin-bottom: 5px; font-size: 12.5px; }
 
+  /* ---- ORIGIN CARDS: the draft ---- */
+  #scrDraft .sbody.center { justify-content: center; gap: 10px; }
+  #draftTitle { color: var(--gold); font-size: 21px; letter-spacing: 1px; }
+  #draftSub { margin: 0; max-width: 340px; }
+  #draftCards {
+    display: flex; gap: 9px; justify-content: center; width: 100%;
+    perspective: 900px; margin: 6px 0;
+  }
+  .ocard {
+    width: min(29vw, 116px); aspect-ratio: 5 / 8; position: relative;
+    opacity: 0; transform: translateY(38px);
+    transition: transform .3s ease, opacity .3s ease, filter .5s ease,
+      width .45s ease .25s;   /* burned cards give up their slot — the keeper slides to center */
+  }
+  .ocard.dealt { opacity: 1; transform: none; }
+  .ocard.lift { transform: translateY(-10px) scale(1.05); z-index: 2; }
+  .ocard.chosen { transform: translateY(-6px) scale(1.1); z-index: 3; }
+  .ocard.burn {
+    opacity: 0; transform: translateY(20px) rotate(5deg);
+    filter: sepia(1) brightness(0.4);
+    width: 0; pointer-events: none;
+  }
+  .ocard.burn:first-child { transform: translateY(20px) rotate(-5deg); }
+  .ocardIn {
+    position: absolute; inset: 0; transform-style: preserve-3d;
+    transition: transform .38s ease;
+  }
+  .ocard.flip .ocardIn { transform: rotateY(180deg); }
+  .oface {
+    position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    border: 2px solid #5c421f; border-radius: 12px; overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(232,200,140,0.22), 0 3px 10px rgba(0,0,0,0.55);
+  }
+  .oback {
+    background: #241d15 repeating-linear-gradient(45deg,
+      rgba(232,200,140,0.07) 0 6px, transparent 6px 12px);
+    display: flex; align-items: center; justify-content: center;
+    color: #6e5024; font-size: 30px;
+  }
+  .ofront {
+    transform: rotateY(180deg);
+    background: var(--panel-bg); background-image: var(--wood-tex);
+    display: flex; flex-direction: column; align-items: center;
+    gap: 3px; padding: 8px 5px 6px;
+  }
+  .ofront canvas { width: 52px; height: 52px; image-rendering: pixelated; flex: 0 0 auto; }
+  .oname { font-size: 12px; font-weight: 900; color: var(--gold); text-align: center; line-height: 1.1; }
+  .oboon { font-size: 9.5px; font-weight: 700; text-align: center; line-height: 1.3; }
+  .oflavor { font-size: 8.5px; color: var(--dim); font-style: italic; text-align: center;
+    line-height: 1.25; margin-top: auto; }
+  #draftHint { min-height: 16px; margin: 0; }
+  #draftRival {
+    display: none; align-items: center; gap: 10px; max-width: 340px;
+    background: rgba(0,0,0,0.32); border: 1px solid #241d15; border-radius: 12px;
+    box-shadow: inset 0 1px 0 var(--edge); padding: 8px 12px;
+    text-align: left; font-size: 12px; line-height: 1.4;
+  }
+  #draftRival .omini {
+    flex: 0 0 auto; width: 40px; height: 62px; border: 2px solid #5c421f; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+    background: #241d15;
+  }
+  #draftRival .omini.hid {
+    background: #241d15 repeating-linear-gradient(45deg,
+      rgba(232,200,140,0.07) 0 4px, transparent 4px 8px);
+    color: #6e5024; font-size: 18px;
+  }
+  #draftRival .omini canvas { width: 34px; height: 34px; image-rendering: pixelated; }
+  #draftRival b { color: var(--gold); }
+  #scrDraft .abtn.big { max-width: 330px; }
+  #btnDraftHelp {
+    position: absolute; right: 12px; top: calc(env(safe-area-inset-top) + 12px);
+    min-width: 44px; min-height: 44px; font-size: 17px;
+  }
+  #draftOverlay {
+    position: absolute; inset: 0; z-index: 5; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: rgba(13,11,8,0.88); padding: 30px; text-align: center;
+  }
+  #draftOverlay p { font-size: 14px; line-height: 1.6; max-width: 330px; }
+  #draftOverlay b { color: var(--gold); }
+
   /* how-to-play swipe panels */
   #howPanels {
     flex: 1 1 0; display: flex; overflow-x: auto; overflow-y: hidden;
@@ -381,6 +463,26 @@
       <p class="hint" style="margin-top:14px">Every game rolls a fresh map and a rival
         chief with their own temperament — scouts will size them up on day one.</p>
       <div class="mrow"><button class="abtn big gold" id="btnStart">🏕 Begin</button></div>
+    </div>
+  </div>
+
+  <div class="screen" id="scrDraft">
+    <div class="sbody center">
+      <h2 id="draftTitle">🃏 Choose your Origin</h2>
+      <p class="hint" id="draftSub">The gift your people begin with. Your rival is choosing too.</p>
+      <div id="draftCards"></div>
+      <p class="hint" id="draftHint"></p>
+      <div id="draftRival"></div>
+      <button class="abtn big gold" id="btnDraftGo" style="display:none">🏕 Begin</button>
+    </div>
+    <button class="abtn" id="btnDraftHelp">?</button>
+    <div id="draftOverlay">
+      <p><b>Choose your Origin</b> — the gift your people begin with.
+        Each game deals three cards from twenty; you keep one.</p>
+      <p>Your rival is choosing too. On <b>Calm</b> you'll see their card;
+        on <b>Moderate</b> only its name; on <b>Hard</b> nothing — read their
+        behavior, or scout it out.</p>
+      <button class="abtn big gold" id="btnDraftGotIt" style="max-width:200px">Got it</button>
     </div>
   </div>
 
