@@ -231,20 +231,21 @@ const R = {
         if (G.visibleAt(b.x + vx, b.y + vy)) { seen = true; break; }
       if (!seen) continue;
       const bx = b.x * TL, by = b.y * TL, bw = bs * TL;
-      if (b.construction > 0) {
-        // fortifications show their oriented shape while going up
-        if (b.key === 'wall' || b.key === 'gate') {
+      if (b.construction > 0 || b.upgrading > 0) {
+        // a work site — going up for the first time OR being upgraded. Both
+        // wear the scaffold so it's plainly unusable until the work is done.
+        const up = b.upgrading > 0;
+        if (!up && (b.key === 'wall' || b.key === 'gate')) {
+          // fortifications show their oriented shape while first going up
           g.globalAlpha = 0.55; g.drawImage(this.bldSprite(b), bx, by, bw, bw); g.globalAlpha = 1;
         } else Assets.drawSprite(g, 'misc/construction', bx, by, { w: bw, h: bw });
-        const total = Bld.def(b.key).levels[b.level - 1].time;
-        this.bar(g, bx + 4, by + bw - 4, bw - 8, 3, 1 - b.construction / total, '#e8c15a');
+        const total = up ? Bld.def(b.key).levels[b.level].time : Bld.def(b.key).levels[b.level - 1].time;
+        this.bar(g, bx + 4, by + bw - 4, bw - 8, 3, 1 - (up ? b.upgrading : b.construction) / total, '#e8c15a');
+        // still tag the owner so a work site reads as friend or foe
+        g.fillStyle = b.owner === 'P' ? '#4a90c2' : '#c2564a';
+        g.fillRect(bx + 1, by + 1, 4, 4);
       } else {
         g.drawImage(this.bldSprite(b), bx, by, bw, bw);
-        if (b.upgrading > 0) {
-          g.fillStyle = 'rgba(232,193,90,0.25)'; g.fillRect(bx, by, bw, bw);
-          const total = Bld.def(b.key).levels[b.level].time;
-          this.bar(g, bx + 4, by + bw - 4, bw - 8, 3, 1 - b.upgrading / total, '#e8c15a');
-        }
         // owner tag
         g.fillStyle = b.owner === 'P' ? '#4a90c2' : '#c2564a';
         g.fillRect(bx + 1, by + 1, 4, 4);

@@ -289,8 +289,11 @@ const G = {
       vis.fill(1);
       for (let i = 0; i < expl.length; i++) expl[i] = 1;
     } else {
+      // a building lights up the land only once it's FINISHED — while a site
+      // goes up the fog stays close, lit by the builder alone (the reward for
+      // finishing is the wider view). Upgrades keep their current sight.
       for (const b of S.buildings)
-        if (b.owner === 'P') mark(b.x, b.y, Bld.done(b) ? (Bld.lv(b).vision || 4) : 2);
+        if (b.owner === 'P' && Bld.done(b)) mark(b.x, b.y, Bld.lv(b).vision || 4);
       for (const u of S.units)
         if (u.owner === 'P') mark(u.x | 0, u.y | 0, CFG.UNIT_VISION);
       // ORIGIN CARDS: the Seer's far-seeing eye never closes

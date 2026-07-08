@@ -173,7 +173,9 @@ const Bld = {
       }
     }
     if (owner === 'P') {
-      G.reveal(x + (this.size(key) >> 1), y + (this.size(key) >> 1), d.levels[0].vision || 4);
+      // a work site reveals nothing while it goes up — only a finished
+      // building (or one placed already-built) expands the view
+      if (opts.instant) G.reveal(x + (this.size(key) >> 1), y + (this.size(key) >> 1), d.levels[0].vision || 4);
       if (!opts.instant && !opts.noAutoAssign) {
         // an explicitly chosen builder is pulled off whatever it was doing
         let v = opts.builderId
@@ -196,7 +198,7 @@ const Bld = {
     }
     if (b.owner === 'P') {
       const lv = this.lv(b);
-      if (lv.vision) G.reveal(b.x, b.y, lv.vision);
+      G.reveal(b.x, b.y, lv.vision || 4);   // finished at last — the view opens up
       // production buildings need a hand on deck — the builder stays to work it
       if (this.def(b.key).needsWorker && builder && Units.isVillager(builder)) {
         builder.task = { type: 'work', id: b.id };
