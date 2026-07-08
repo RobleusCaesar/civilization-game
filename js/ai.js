@@ -362,6 +362,7 @@ const AI = {
     const myEcon = this.econOf(ai.res), foeEcon = this.econOf(S.res);
     const myBld = Bld.list('A').length, foeBld = Bld.list('P').length;
     const underCon = Bld.list('A').filter(b => !Bld.done(b)).length;
+    ai.peakBld = Math.max(ai.peakBld || 0, myBld);   // to notice a sacking (→ REBUILD)
 
     // vulnerability window: the player's home is thin (army committed away or
     // tiny) OR two-plus soft targets sit undefended
@@ -383,9 +384,69 @@ const AI = {
       aheadPower: myPower - foePower,
       aheadTempo: myBld - foeBld,
       threat, underThreat: threat >= 3,
+      sacked: ai.peakBld >= 5 && myBld < ai.peakBld * 0.5,
     };
     if (window.DEBUG_AI) this._drawRead();
     return ai.read;
+  },
+
+  /* ===================================================================
+     LAYER 2 — STRATEGIC POSTURE.  The card is the tribe's PERSONALITY;
+     posture is its CURRENT PLAN, chosen from the read and allowed to
+     change as the game turns. Each persona has a game-plan: a preferred
+     posture arc (its identity played well) and an aggression appetite.
+     The read can override the arc when the board demands (a boom chief
+     getting rushed drops to DEFEND). Hysteresis (minimum dwell times)
+     makes the chief COMMIT to a plan instead of flip-flopping.
+
+       EXPAND      — boom economy, minimal army (safe + behind on econ)
+       CONSOLIDATE — build army + defenses toward a target (default)
+       PRESSURE    — harass exposed targets, deny expansion, retreat
+       PUSH        — mass a force and commit to end it
+       DEFEND      — rally, wall the flank, turtle (behind / under threat)
+       REBUILD     — recover after a sacking
+     =================================================================== */
+  PLANS: {
+    homesteader: { aggression: 0.30, win: 'economy',   arc: [[0, 'EXPAND'], [50, 'CONSOLIDATE'], [120, 'PUSH']] },
+    warlord:     { aggression: 0.92, win: 'military',   arc: [[0, 'CONSOLIDATE'], [16, 'PRESSURE'], [38, 'PUSH']] },
+    horselord:   { aggression: 0.72, win: 'attrition', harass: true, arc: [[0, 'CONSOLIDATE'], [18, 'PRESSURE']] },
+    mariner:     { aggression: 0.52, win: 'naval',      arc: [[0, 'CONSOLIDATE'], [55, 'PRESSURE']] },
+    mason:       { aggression: 0.38, win: 'defense',    arc: [[0, 'DEFEND'], [38, 'CONSOLIDATE'], [85, 'PUSH']] },
+    forager:     { aggression: 0.48, win: 'timing',     arc: [[0, 'EXPAND'], [38, 'CONSOLIDATE'], [78, 'PUSH']] },
+  },
+  plan() { return this.PLANS[S.ai && S.ai.persona] || this.PLANS.homesteader; },
+  arcPosture(pl, day) { let p = pl.arc[0][1]; for (const [d, post] of pl.arc) if (day >= d) p = post; return p; },
+  DWELL: { DEFEND: 3, REBUILD: 4, PUSH: 5, PRESSURE: 5, CONSOLIDATE: 6, EXPAND: 7 },
+
+  // soldiers standing near my own hall (my ability to hold a defense)
+  _homeGuard() {
+    const tc = Bld.tcOf('A'); if (!tc) return 0;
+    const cx = Bld.cx(tc), cy = Bld.cy(tc); let g = 0;
+    for (const u of S.units)
+      if (u.owner === 'A' && Units.isMilitary(u) && !Units.isNaval(u) && Math.hypot(u.x - cx, u.y - cy) <= 11)
+        g += (u.kind === 'elite' || u.kind === 'lancer' || u.kind === 'marksman') ? 2 : 1;
+    return g;
+  },
+
+  choosePosture() {
+    const ai = S.ai, r = ai.read, pl = this.plan();
+    let want = this.arcPosture(pl, S.day);          // the persona's game-plan by default
+    // --- the read overrides the plan when the board demands ---
+    if (r.sacked) want = 'REBUILD';
+    else if (r.underThreat && r.threat > this._homeGuard()) want = 'DEFEND';
+    else if (r.foeVuln && r.myPower >= 3 && r.powerRatio >= 1.05 - pl.aggression * 0.35)
+      want = pl.aggression >= 0.6 ? 'PUSH' : 'PRESSURE';     // a real opening — take it
+    else if (r.powerRatio >= 1.7 && r.myPower >= 5) want = 'PUSH';    // clearly ahead, end it
+    else if (r.powerRatio < 0.65 && r.foePower >= 4) want = 'DEFEND'; // clearly behind, dig in
+    else if (r.econEdge < -180 && r.threat === 0 && !r.foeVuln && pl.win === 'economy') want = 'EXPAND';
+    // --- hysteresis: commit to a plan unless an emergency forces a change ---
+    const emergency = (want === 'DEFEND' && r.underThreat) || want === 'REBUILD';
+    if (!ai.posture) { ai.posture = want; ai.postureSince = S.day; }
+    else if (want !== ai.posture &&
+             (emergency || (S.day - (ai.postureSince || 0)) >= (this.DWELL[ai.posture] || 6))) {
+      ai.posture = want; ai.postureSince = S.day;
+    }
+    return ai.posture;
   },
 
   // debug overlay (window.DEBUG_AI = true): a compact dump of the world read,
@@ -418,9 +479,11 @@ const AI = {
     const ai = S.ai;
     const m = G.modeCfg();
     const P = this.persona();
-    this.assess();     // LAYER 1: read the board before deciding anything
+    this.assess();          // LAYER 1: read the board before deciding anything
     const tc = Bld.tcOf('A');
-    if (!tc) return;   // rival destroyed
+    if (!tc) return;        // rival destroyed
+    this.choosePosture();   // LAYER 2: pick / hold the current plan
+    const read = ai.read;
 
     // small base income so the AI never fully stalls (scaled by difficulty).
     // A boom-opening chief works the fields harder in the first minutes.
@@ -639,21 +702,33 @@ const AI = {
     } else ai.raidN = 0;
 
     if (ai.raidCd > 0) ai.raidCd--;
+    /* ---- LAYER 2 drives IF we attack; the read drives WHEN. Only the
+       attack postures march, and a real opening (foeVuln) beats any day
+       timer — so the rival strikes an undefended player on the state of
+       the board, not the calendar. PUSH masses a decisive force; PRESSURE
+       sends a smaller party to pick off soft targets and retreat. ---- */
     const mine = this.power('A'), theirs = this.power('P');
-    const openRaid = ai.opening && ai.opening.bias === 'raid' && ai.opening.fired;
-    const raidDay = Math.max(16, m.aiRaidDay + P.raidDayAdd - (openRaid ? 6 : 0));
-    const boldness = Math.max(1.0,
-      P.raidPower - (openRaid ? 0.12 : 0) - Math.max(0, S.day - 90) * 0.005);
-    if (S.day >= raidDay && ai.raidCd <= 0 && mine >= 4 && mine > theirs * boldness && !raiders.length) {
+    const pl = this.plan();
+    const attackPosture = ai.posture === 'PUSH' || ai.posture === 'PRESSURE';
+    const boldness = Math.max(0.85,
+      P.raidPower - pl.aggression * 0.45 - (read.foeVuln ? 0.35 : 0) - Math.max(0, S.day - 90) * 0.005);
+    const dayFloor = read.foeVuln ? 12 : Math.max(16, m.aiRaidDay + P.raidDayAdd);
+    if (attackPosture && ai.raidCd <= 0 && !raiders.length && S.day >= dayFloor && mine >= 3) {
       const troops = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
         !Units.isNaval(u) && u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
-      const party = troops.slice(0, Math.ceil(troops.length * P.raidShare));
-      if (party.length >= 3) {
+      const push = ai.posture === 'PUSH';
+      const share = push ? Math.max(0.66, P.raidShare) : Math.min(0.5, P.raidShare);
+      const need = push ? Math.max(4, Math.ceil(theirs * boldness) + 1) : 3;
+      const strong = push ? (mine >= 4 && mine > theirs * boldness)
+        : (read.foeVuln || read.softCount > 0 || mine > theirs * boldness);
+      if (strong && troops.length >= need) {
+        const party = troops.slice(0, Math.max(need, Math.ceil(troops.length * share)));
         for (const u of party) { u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; }
-        ai.raidCd = P.raidCd;
+        ai.raidCd = push ? P.raidCd : Math.max(6, P.raidCd - 4);
         ai.raidN = party.length;
         ai.raidDay = S.day;
-        G.log('⚔ The rival tribe marches on your village!', true);
+        G.log(push ? '⚔ The rival tribe masses and marches on your village!'
+          : '⚔ A rival raiding party rides out!', true);
       }
     }
   },
