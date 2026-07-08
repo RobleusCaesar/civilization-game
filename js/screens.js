@@ -230,17 +230,110 @@ const Screens = {
     const kids = Array.from(this.el('draftCards').children);
     kids.forEach((o, j) => {
       o.classList.remove('lift');
-      o.classList.add(j === i ? 'chosen' : 'burn');
+      if (j === i) { o.classList.add('chosen'); return; }
+      o.classList.add('burn');
+      this._burnCard(o, j);                         // real pixel fire eats it away
     });
-    // the unchosen two burn up over ~1s, then give up their slot so the
-    // kept card slides to the centre
-    setTimeout(() => {
-      if (this.current !== 'draft') return;
-      kids.forEach((o, j) => { if (j !== i) o.classList.add('gone'); });
-    }, 1000);
     this.el('draftHint').textContent = '';
     this.revealRival();
     this.el('btnDraftGo').style.display = '';
+  },
+
+  /* an unchosen card is consumed by a pixel fire that climbs it and throws
+     ash into the wind. Each card gets its own seed + wind (outward from the
+     centre) so the two never look like the same animation. */
+  _burnCard(card, idx) {
+    const box = this.el('draftCards');
+    const W = Math.round(card.offsetWidth), H = Math.round(card.offsetHeight);
+    if (!W || !H) { card.classList.add('gone'); return; }   // not laid out — just drop it
+
+    const cvs = document.createElement('canvas');
+    cvs.width = W; cvs.height = H;
+    cvs.style.cssText = `position:absolute;left:${card.offsetLeft}px;top:${card.offsetTop}px;` +
+      `width:${W}px;height:${H}px;z-index:2;pointer-events:none;image-rendering:pixelated;`;
+    box.appendChild(cvs);
+    const g = cvs.getContext('2d'); g.imageSmoothingEnabled = false;
+
+    // chunky offscreen fire buffer, scaled up hard for that big-pixel look
+    const FW = 46, FH = 62, MAXH = 36;
+    const off = document.createElement('canvas'); off.width = FW; off.height = FH;
+    const og = off.getContext('2d');
+    const imgData = og.createImageData(FW, FH), d = imgData.data;
+    const buf = new Uint8Array(FW * FH);
+    const PAL = [];
+    for (let h = 0; h <= MAXH; h++) {
+      const t = h / MAXH; let r, gg, b, a;
+      if (t < 0.03) { r = 0; gg = 0; b = 0; a = 0; }
+      else if (t < 0.35) { r = 70 + t * 360; gg = 12 + t * 60; b = 8; a = 90 + t * 340; }
+      else if (t < 0.70) { r = 235; gg = 70 + (t - 0.35) * 400; b = 18; a = 250; }
+      else { r = 255; gg = 205 + (t - 0.70) * 150; b = 70 + (t - 0.70) * 560; a = 255; }
+      PAL.push([Math.min(255, r | 0), Math.min(255, gg | 0), Math.min(255, b | 0), Math.min(255, a | 0)]);
+    }
+    // seeded rng → a distinct fire per card
+    let sd = (0x1234 + idx * 0x9e3779b1) >>> 0;
+    const rnd = () => { sd = (sd + 0x6d2b79f5) | 0; let t = Math.imul(sd ^ (sd >>> 15), 1 | sd);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const cardMid = card.offsetLeft + W / 2;
+    const wind = cardMid < box.offsetWidth / 2 ? -1 : 1;    // ash blows outward from centre
+    const decayBias = 0.55 + rnd() * 0.9, flick = 0.6 + rnd() * 0.7, gust = 0.4 + rnd() * 0.5;
+    const ash = [];
+    const DUR = 1150, t0 = performance.now(), ease = x => 1 - (1 - x) * (1 - x);
+
+    const drawAsh = dt => {
+      for (let k = ash.length - 1; k >= 0; k--) {
+        const p = ash[k]; p.age += dt;
+        if (p.age >= p.life) { ash.splice(k, 1); continue; }
+        p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 26 * dt; p.vx *= 0.99;
+        const lf = 1 - p.age / p.life;
+        if (p.ember) g.fillStyle = `rgba(255,${(150 + lf * 90) | 0},50,${lf.toFixed(2)})`;
+        else { const v = (44 + lf * 70) | 0; g.fillStyle = `rgba(${v},${v - 8},${v - 14},${(lf * 0.75).toFixed(2)})`; }
+        g.fillRect(p.x | 0, p.y | 0, p.sz, p.sz);
+      }
+    };
+
+    const step = now => {
+      if (this.current !== 'draft') { cvs.remove(); card.classList.add('gone'); return; }
+      const t = Math.min(1, (now - t0) / DUR), front = ease(t);
+      const frontRow = Math.round((1 - front) * (FH - 1));
+      card.style.clipPath = `inset(0 0 ${(front * 100).toFixed(1)}% 0)`;   // the card body dissolves upward
+      // the burn front is the fire source
+      for (let x = 0; x < FW; x++)
+        for (let y = frontRow; y < Math.min(FH, frontRow + 3); y++) buf[y * FW + x] = MAXH;
+      // propagate heat upward with per-card wind + decay (classic fire spread)
+      for (let x = 0; x < FW; x++) for (let y = 1; y < FH; y++) {
+        const src = y * FW + x, px = buf[src];
+        if (px === 0) { buf[src - FW] = 0; continue; }
+        const spread = (rnd() * 3) | 0;
+        const dec = (rnd() < flick ? (spread & 1) : 0) + (rnd() < decayBias ? 1 : 0);
+        let dx = x - spread + 1 + (rnd() < gust ? wind : 0);
+        dx = dx < 0 ? 0 : dx >= FW ? FW - 1 : dx;
+        buf[(y - 1) * FW + dx] = Math.max(0, px - dec);
+      }
+      for (let i2 = 0; i2 < FW * FH; i2++) {
+        const c = PAL[buf[i2]], o = i2 * 4;
+        d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = c[3];
+      }
+      og.putImageData(imgData, 0, 0);
+      g.clearRect(0, 0, W, H);
+      g.drawImage(off, 0, 0, W, H);
+      // throw ash + embers off the burning front, into the wind
+      const frontPx = (1 - front) * H;
+      if (t < 0.94) for (let s = 0, n = 3 + ((rnd() * 4) | 0); s < n; s++)
+        ash.push({ x: rnd() * W, y: frontPx + rnd() * 8 - 4,
+          vx: wind * (16 + rnd() * 48) + (rnd() * 12 - 6), vy: -(22 + rnd() * 60),
+          life: 0.55 + rnd() * 0.7, age: 0, sz: 2 + ((rnd() * 3) | 0), ember: rnd() < 0.3 });
+      drawAsh(1 / 60);
+      if (t < 1) { requestAnimationFrame(step); return; }
+      // the card is ash now — collapse its slot, let the last embers drift, then clean up
+      if (this.current === 'draft') card.classList.add('gone');
+      let extra = 0;
+      const drift = () => {
+        g.clearRect(0, 0, W, H); extra += 1 / 60; drawAsh(1 / 60);
+        if (ash.length && extra < 0.8) requestAnimationFrame(drift); else cvs.remove();
+      };
+      requestAnimationFrame(drift);
+    };
+    requestAnimationFrame(step);
   },
 
   revealRival() {
@@ -254,8 +347,7 @@ const Screens = {
       const known = D.intel === 'full';
       box.innerHTML = `<div class="omini"><canvas width="96" height="96"></canvas></div>
         <div>Rival origin: <b>${this.esc(cd.name)}</b>${known
-          ? ' — ' + this.esc(cd.text(D.rival.pick.roll))
-          : '. What gift it carries, no one knows.'}</div>`;
+          ? ' — ' + this.esc(cd.text(D.rival.pick.roll)) : ''}</div>`;
       Cards.drawMotif(box.querySelector('canvas'), D.rival.pick.key);
     }
     box.style.display = 'flex';

@@ -452,7 +452,7 @@ const Cards = {
     if (S.draft.intel === 'full')
       G.log(`🃏 Rival origin: ${cd.name} — ${cd.text(pickA.roll)}`, false, 6400);
     else if (S.draft.intel === 'name')
-      G.log(`🃏 Rival origin: ${cd.name}. What gift it carries, no one knows.`, false, 6400);
+      G.log(`🃏 Rival origin: ${cd.name}.`, false, 6400);
     G.log('🕵 Scouts whisper of the rival chief: ' + AI.persona().blurb + ' ' + cd.whisper, false, 6400);
   },
 
