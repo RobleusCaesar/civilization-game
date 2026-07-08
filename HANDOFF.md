@@ -244,6 +244,29 @@ what/why.
 
 ### Conventions
 
+- **VARIABLE OPENINGS (two systems, both weighted tendencies in bounds —
+  never fixed rules, never unwinnable):**
+  (1) *Player start package* — `G.rollStart` (bands in `CFG.OPENING`):
+  villagers 3-5/2-4/1-3 by calm/moderate/hard weighted to the middle;
+  food/wood/stone/gold each roll a band with one axis rich and one lean
+  (anti-correlated); the package leans AGAINST the map (+90 of the scarce
+  resource, +45 food on dry spawns); rare extras (~10% each, almost never
+  two): spearman, scout rider, standing workplace, rich cache tile. Clamps:
+  scarce pocket must be walkable from spawn (else the package carries +60),
+  and effective economy ≥ `minEcon` (nudge villagers, then food). The roll
+  surfaces as the one-line "village origin" note (`S.origin`), lean starts
+  score `stats.originBonus` (≤300), and `window.DEBUG_OPENINGS = true`
+  console-logs every roll (`S.opening` holds it either way). Spawn
+  surroundings also roll (seedNear counts in map.js).
+  (2) *Rival openings* — each persona carries an `opening` block
+  ({p, units, res, bias, needsWater, whisperOn/Off}) consumed GENERICALLY by
+  `AI.init` — THE RULE: future personas get all of this by adding the block,
+  no new code. Nudges fire with probability p (~0.6-0.65), bounded to one
+  unit / ≤90 res; biases (scout/raid/boom/sea/turtle/spread) lean the first
+  ~13-20 days probabilistically; the scout whisper is tied to what actually
+  rolled. Protection floor with teeth: past day 16 a barracks outranks the
+  TC savings reserve (wood-tight tribes used to save forever and field no
+  army).
 - **SPECIAL EVENTS (a design category):** rare, once-per-game spectacles
   meant to make a player laugh out loud — currently the kraken (S.kraken,
   G.krakenTick) and the black dragon (S.dragon, G.maybeDragon/dragonTick;

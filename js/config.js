@@ -14,8 +14,26 @@ const CFG = {
   H: 40,
   SIZES: { medium: 30, large: 40, xlarge: 52 },   // labels shifted up a tier; xlarge is the old large
   DAY_MS: 10000,              // one in-game day
-  START_RES: { food: 200, wood: 150, stone: 60, gold: 15 },
-  START_VILLAGERS: 3,
+  START_RES: { food: 200, wood: 150, stone: 60, gold: 15 },   // baseline (openings roll around it)
+  START_VILLAGERS: 3,                                          // baseline (openings roll around it)
+
+  /* VARIABLE OPENINGS — every game rolls the player's start package from
+     these bands (see G.rollStart). Core principle: weighted tendencies
+     within bounds, never fixed rules. All rolls use the seeded RNG, so a
+     seed reproduces its opening exactly. */
+  OPENING: {
+    villagers: { calm: [3, 5], moderate: [2, 4], hard: [1, 3] },
+    res: { food: [90, 330], wood: [60, 260], stone: [15, 110], gold: [0, 45] },
+    scarceLean: 90,      // the package leans AGAINST the map: scarce res gets this much back
+    dryLean: 45,         // spawned far from water → a little extra food
+    extras: [            // low odds each; almost never more than one
+      { key: 'defender', p: 0.10 },
+      { key: 'scout',    p: 0.08 },
+      { key: 'building', p: 0.08 },
+      { key: 'cache',    p: 0.10 },
+    ],
+    minEcon: 480,        // clamp floor: food + wood + .8*stone + .5*gold + 90/villager
+  },
   UNIT_VISION: 3,
   BUILD_RANGE: 8,             // new buildings must be this close to an existing one
   GATHER: {                   // villager gather rate per second, by terrain
@@ -286,7 +304,7 @@ const CFG = {
     perKill: 9, perRazed: 40,
     perBuilt: 30, perWall: 4, perUpgrade: 70, perTrained: 15,
     perPeakPop: 8, perGathered: 0.15, perExploredPct: 14,
-    kraken: 500, dragon: 250,
+    kraken: 500, dragon: 250,   // (originBonus for hard beginnings is computed at roll time)
     mult: { calm: 0.5, moderate: 1.0, hard: 1.75 },
   },
 

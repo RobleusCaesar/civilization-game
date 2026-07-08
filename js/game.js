@@ -32,6 +32,95 @@ const G = {
     }
   },
 
+  /* ---- VARIABLE OPENINGS: the player's start package, rolled per game ----
+     Weighted tendencies inside CFG.OPENING's bands — anti-correlated wealth
+     (rich in one thing, lean in another), leaning AGAINST the map's scarce
+     resource, rare extras, and a hard clamp so no roll is unwinnable. */
+  rollStart(gen, mode) {
+    const O = CFG.OPENING;
+    const keys = ['food', 'wood', 'stone', 'gold'];
+    // villagers: band by difficulty, weighted toward the middle
+    const [vLo, vHi] = O.villagers[mode] || O.villagers.moderate;
+    let villagers = vLo + Math.round(((G.rand() + G.rand()) / 2) * (vHi - vLo));
+    // resources: one axis runs rich, one runs lean — never all-high or all-low
+    const rich = keys[(G.rand() * 4) | 0];
+    let poor = keys[(G.rand() * 4) | 0];
+    while (poor === rich) poor = keys[(G.rand() * 4) | 0];
+    const res = {};
+    for (const k of keys) {
+      const [lo, hi] = O.res[k];
+      const t = k === rich ? 0.62 + G.rand() * 0.38
+        : k === poor ? G.rand() * 0.35
+        : 0.2 + G.rand() * 0.6;
+      res[k] = Math.round(lo + t * (hi - lo));
+    }
+    // lean AGAINST the map: the scarce resource gets a head start back
+    if (res[gen.scarce] !== undefined) res[gen.scarce] += O.scarceLean;
+    // a dry start (no water within reach) carries extra food
+    let nearWater = false;
+    const sp = gen.spawns.player;
+    for (let dy = -8; dy <= 8 && !nearWater; dy++) for (let dx = -8; dx <= 8; dx++) {
+      const x = sp.x + dx, y = sp.y + dy;
+      if (MapGen.inB(x, y) && gen.terrain[MapGen.idx(x, y)] === T.WATER) { nearWater = true; break; }
+    }
+    if (!nearWater) res.food += O.dryLean;
+    // extras: low odds each, almost never two
+    const extras = [];
+    for (const ex of O.extras) {
+      if (G.rand() >= ex.p) continue;
+      if (extras.length === 0) extras.push(ex.key);
+      else if (extras.length === 1 && G.rand() < 0.2) extras.push(ex.key);
+    }
+    // CLAMP 1: the scarce pocket must be reachable on foot — else the package
+    // carries the difference (a soft nudge, never a dead map)
+    const scarceTerr = { wood: T.FOREST, stone: T.HILLS, food: T.FERTILE }[gen.scarce];
+    let scarceReached = false;
+    {
+      const seen = new Uint8Array(CFG.W * CFG.H);
+      const q = [MapGen.idx(sp.x, sp.y)];
+      seen[q[0]] = 1;
+      let head = 0;
+      while (head < q.length && !scarceReached) {
+        const cur = q[head++], cx = cur % CFG.W, cy = (cur / CFG.W) | 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = cx + dx, ny = cy + dy;
+          if (!MapGen.inB(nx, ny)) continue;
+          const ni = MapGen.idx(nx, ny);
+          if (seen[ni]) continue;
+          const tt = gen.terrain[ni];
+          if (tt === T.WATER || tt === T.MOUNTAIN) continue;
+          if (tt === scarceTerr) { scarceReached = true; break; }
+          seen[ni] = 1; q.push(ni);
+        }
+      }
+      if (!scarceReached) res[gen.scarce] = (res[gen.scarce] || 0) + 60;
+    }
+    // CLAMP 2: a minimum effective economy — nudge the weakest axis up
+    const econOf = () => res.food + res.wood + 0.8 * res.stone + 0.5 * res.gold +
+      villagers * 90 + extras.length * 70;
+    let nudged = false;
+    if (econOf() < O.minEcon) {
+      nudged = true;
+      if (villagers < vHi) villagers++;
+      if (econOf() < O.minEcon) res.food += Math.round(O.minEcon - econOf());
+    }
+    // arcade: a lean start is worth points at the end (see Score.compute)
+    const B = CFG.START_RES;
+    const baseline = B.food + B.wood + 0.8 * B.stone + 0.5 * B.gold + CFG.START_VILLAGERS * 90;
+    const originBonus = Math.min(300, Math.max(0, Math.round((baseline - econOf()) / 20) * 10));
+    // the one-line village origin, so the roll is legible
+    const RICH = { food: 'well-fed', wood: 'timber-rich', stone: 'stone-laden', gold: 'gold-heavy' };
+    const POOR = { food: 'hungry', wood: 'timber-poor', stone: 'stone-poor', gold: 'penniless' };
+    const CREW = villagers <= 1 ? 'A lone family arrives' : villagers === 2 ? 'A small band arrives'
+      : villagers >= 4 ? 'A strong caravan arrives' : 'Your people arrive';
+    const EXTRA = { defender: ' — an old spearman walks with them', scout: ' — a rider scouts ahead',
+      building: ' — earlier settlers left a workplace standing', cache: ' — and the land nearby is unusually rich' };
+    const origin = `${CREW} ${RICH[rich]} but ${POOR[poor]}` +
+      extras.map(e => EXTRA[e] || '').join('') + '.';
+    return { villagers, res, extras, rich, poor, origin, originBonus,
+             econ: Math.round(econOf()), nudged, scarceReached, nearWater };
+  },
+
   newGame(seed, modeKey, sizeKey, persona) {
     const mode = CFG.MODES[modeKey] ? modeKey : 'moderate';
     const size = CFG.SIZES[sizeKey] ? sizeKey : 'medium';
@@ -65,7 +154,7 @@ const G = {
       playtime: 0,                          // unpaused seconds, for save metadata
       // run stats — the raw material of the arcade score (js/score.js)
       stats: { trained: 0, razed: 0, gathered: 0, kills: 0, built: 0,
-               walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0 },
+               walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0, originBonus: 0 },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0 },
       ai: null,
@@ -76,9 +165,17 @@ const G = {
     G.clearFootprint(p.x, p.y, 'tc');
     Bld.place('P', 'tc', p.x, p.y, { free: true, instant: true });
     this.reveal(p.x, p.y, 6);
-    for (let i = 0; i < CFG.START_VILLAGERS; i++)
-      Units.spawn('villager', 'P', p.x - 1 + i, p.y + 2);
+    // VARIABLE OPENINGS: roll the start package (seeded — a seed reproduces it)
+    const pk = this.rollStart(gen, mode);
+    S.res = pk.res;
+    S.stats.originBonus = pk.originBonus;
+    S.origin = pk.origin;
+    for (let i = 0; i < pk.villagers; i++)
+      Units.spawn('villager', 'P', p.x - 1 + (i % 4), p.y + 2 + (i / 4 | 0));
+    for (const ex of pk.extras) this.applyStartExtra(ex, p, gen);
     AI.init(gen.spawns.ai, persona);
+    S.opening = { player: pk, rival: S.ai.opening };
+    if (window.DEBUG_OPENINGS) console.log('[openings]', JSON.stringify(S.opening));
     Units.spawnWild('deer', 8);
     Units.spawnWild('cow', 8);
     // the kraken's clock: each village is owed at most one visit, on a day
@@ -107,8 +204,32 @@ const G = {
     // opening notes linger twice as long — there's a lot to take in on day 1
     const LAND = { valley: 'a green valley', lakeland: 'a land of lakes', highlands: 'rugged highlands', islands: 'a chain of islands' };
     this.log(`A new tribe settles ${LAND[gen.landform] || 'the wilds'} (${this.modeCfg().name}). Destroy the rival Town Center to win.`, false, 6400);
+    this.log('🏕 ' + S.origin, false, 6400);
     this.log(`Scouts report: ${gen.scarce} is scarce in this valley — claim it before the rival does.`, true, 6400);
     this.log('First barbarian raids expected around day ' + S.wave.next, false, 6400);
+  },
+
+  // the rare start extras: a spearman, a scout, a standing workplace, a rich cache
+  applyStartExtra(ex, p, gen) {
+    const below = MapGen.findNear(p.x + 2, p.y + Bld.size('tc'), 4,
+      (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: p.x, y: p.y + 3 };
+    if (ex === 'defender') Units.spawn('defender', 'P', below.x, below.y);
+    else if (ex === 'scout') Units.spawn('rider', 'P', below.x, below.y);
+    else if (ex === 'building') {
+      const key = gen.scarce === 'wood' ? 'lumber' : gen.scarce === 'stone' ? 'quarry' : 'farm';
+      const spot = MapGen.findNear(p.x + 3, p.y + 1, 5, (x, y) => Bld.tileFree(x, y));
+      if (spot) Bld.place('P', key, spot.x, spot.y, { free: true, instant: true, noAutoAssign: true });
+    } else if (ex === 'cache') {
+      const terr = { wood: T.FOREST, stone: T.HILLS, food: T.FERTILE }[gen.scarce] || T.FERTILE;
+      const spot = MapGen.findNear(p.x - 3, p.y + 3, 5, (x, y) =>
+        S.map.terrain[MapGen.idx(x, y)] === T.GRASS && !Bld.at(x, y));
+      if (spot) {
+        const i = MapGen.idx(spot.x, spot.y);
+        S.map.terrain[i] = terr;
+        S.map.resAmount[i] = 170;                  // heavy with fruit / timber / stone
+        S.map.seenTerrain[i] = terr;
+      }
+    }
   },
 
   log(msg, warn, ms) {
@@ -437,10 +558,12 @@ const G = {
     if (data.ai && !data.ai.persona) data.ai.persona = 'homesteader';   // pre-persona save: the classic temperament
     if (!data.kraken) data.kraken = { day: { P: 60, A: 90 }, done: {}, ev: null };   // older saves owe the deep a visit too
     if (!data.dragon) data.dragon = { avail: false, done: true, ev: null, ash: [] };  // legacy runs: no dragon this time
+    if (!data.origin) data.origin = 'An old tribe, from before the tellers kept count.';
+    if (data.ai && !data.ai.opening) data.ai.opening = { bias: null, fired: false, until: 0 };
     if (!data.playtime) data.playtime = 0;
     if (!data.stats) data.stats = {};
     for (const k of ['trained', 'razed', 'gathered', 'kills', 'built', 'walls',
-                     'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen'])
+                     'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus'])
       if (!data.stats[k]) data.stats[k] = 0;
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};

@@ -20,7 +20,16 @@ const AI = {
      dockTC     — TC level needed before it goes to sea (0 = never bothers)
      boats/ships— fishing fleet size / warship cap divisor of aiArmyCap
      tcDays     — [day for TC2, day for TC3]
-     blurb      — what your scouts whisper at first light */
+     blurb      — what your scouts whisper at first light
+     opening    — VARIABLE OPENINGS (optional, consumed generically by init).
+                  { p, units, res, bias, needsWater, whisperOn, whisperOff }:
+                  p = chance the themed nudge fires (units spawn + res bonus
+                  roll); bias keys an early behavior lean ('scout' | 'raid' |
+                  'boom' | 'sea' | 'turtle' | 'spread'), probabilistic in the
+                  first minutes; the whisper is tied to what actually rolled
+                  THIS game. THE RULE: any future persona gets all of this by
+                  adding an opening block — no new code. A persona without
+                  one simply opens quietly. */
   PERSONAS: {
     homesteader: {
       name: 'Homesteader',
@@ -30,6 +39,9 @@ const AI = {
       raidPower: 1.7, raidDayAdd: 25, raidShare: 0.5, raidCd: 16,
       walls: false, dockTC: 2, boats: 2, shipDiv: 4, tcDays: [22, 55],
       blurb: 'a patient farmer-chief, slow to anger, rich in grain.',
+      opening: { p: 0.6, res: { food: [40, 80] }, bias: 'boom',
+        whisperOn: 'Their granaries were full before the first frost.',
+        whisperOff: 'Their fields are still being cleared.' },
     },
     warlord: {
       name: 'Warlord',
@@ -39,6 +51,9 @@ const AI = {
       raidPower: 1.1, raidDayAdd: -15, raidShare: 0.7, raidCd: 10,
       walls: false, dockTC: 2, boats: 1, shipDiv: 4, tcDays: [30, 70],
       blurb: 'a warmonger who prizes the spear over the plough.',
+      opening: { p: 0.6, units: ['defender'], bias: 'raid',
+        whisperOn: 'A spearman already drills outside their hall.',
+        whisperOff: 'For now, their spears stay racked.' },
     },
     horselord: {
       name: 'Horselord',
@@ -48,6 +63,9 @@ const AI = {
       raidPower: 1.15, raidDayAdd: -8, raidShare: 0.6, raidCd: 8,
       walls: false, dockTC: 2, boats: 1, shipDiv: 4, tcDays: [26, 62],
       blurb: 'a horselord — swift riders strike and are gone.',
+      opening: { p: 0.65, units: ['rider'], bias: 'scout',
+        whisperOn: 'A rider saddled before dawn — expect eyes on your camp.',
+        whisperOff: 'Their herds still graze far afield.' },
     },
     mariner: {
       name: 'Mariner',
@@ -57,6 +75,9 @@ const AI = {
       raidPower: 1.3, raidDayAdd: 5, raidShare: 0.6, raidCd: 14,
       walls: false, dockTC: 1, boats: 3, shipDiv: 3, tcDays: [25, 58],
       blurb: 'a mariner-chief — nets in the shallows, warships off the coast.',
+      opening: { p: 0.65, res: { wood: [30, 70] }, bias: 'sea', needsWater: true,
+        whisperOn: 'Fresh-cut hulls already dry on their shore.',
+        whisperOff: 'Their boats are still promises.' },
     },
     mason: {
       name: 'Mason',
@@ -66,6 +87,9 @@ const AI = {
       raidPower: 1.9, raidDayAdd: 30, raidShare: 0.5, raidCd: 18,
       walls: true, dockTC: 2, boats: 2, shipDiv: 5, tcDays: [24, 58],
       blurb: 'a cautious mason — stone towers, and walls going up.',
+      opening: { p: 0.6, res: { stone: [40, 80] }, bias: 'turtle',
+        whisperOn: 'Their quarry rang all night — stone is moving early.',
+        whisperOff: 'Their masons still sharpen chisels.' },
     },
     forager: {
       name: 'Forager',
@@ -75,6 +99,9 @@ const AI = {
       raidPower: 1.4, raidDayAdd: 15, raidShare: 0.6, raidCd: 14,
       walls: false, dockTC: 2, boats: 2, shipDiv: 4, tcDays: [18, 45],
       blurb: 'a hoarder of timber and stone — weak now, but growing fast.',
+      opening: { p: 0.6, res: { food: [15, 40], wood: [15, 40], stone: [10, 30] }, bias: 'spread',
+        whisperOn: 'Their gatherers fan out in every direction at once.',
+        whisperOff: 'They still pick over the ground by their hall.' },
     },
   },
 
@@ -92,7 +119,27 @@ const AI = {
     };
     G.clearFootprint(spawn.x, spawn.y, 'tc');
     Bld.place('A', 'tc', spawn.x, spawn.y, { free: true, instant: true });
-    G.log('🕵 Scouts whisper of the rival chief: ' + this.persona().blurb, false, 6400);
+    /* VARIABLE OPENINGS — consumed generically from persona.opening (THE
+       RULE above): probabilistic nudge, bounded like the player's roll,
+       whisper tied to what actually happened this game */
+    const P = this.persona();
+    const op = P.opening || {};
+    let fired = !!(op.p && G.rand() < op.p);
+    if (op.needsWater && !S.map.terrain.includes(T.WATER)) fired = false;
+    S.ai.opening = { bias: op.bias || null, fired, until: 13 + ((G.rand() * 8) | 0) };
+    if (fired) {
+      for (const kind of (op.units || []).slice(0, 1)) {   // bound: one extra unit at most
+        const spot = MapGen.findNear(spawn.x, spawn.y + Bld.size('tc'), 4,
+          (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y)) || { x: spawn.x, y: spawn.y + 2 };
+        Units.spawn(kind, 'A', spot.x, spot.y);
+      }
+      for (const k in (op.res || {})) {
+        const [lo, hi] = op.res[k];
+        S.ai.res[k] += Math.min(90, Math.round(lo + G.rand() * (hi - lo)));   // bound: player-band parity
+      }
+    }
+    const w = fired ? op.whisperOn : op.whisperOff;
+    G.log('🕵 Scouts whisper of the rival chief: ' + P.blurb + (w ? ' ' + w : ''), false, 6400);
   },
 
   /* find a plot with some character instead of spiral-filling a square:
@@ -267,10 +314,34 @@ const AI = {
     const tc = Bld.tcOf('A');
     if (!tc) return;   // rival destroyed
 
-    // small base income so the AI never fully stalls (scaled by difficulty)
-    ai.res.food += 3 * m.aiOutput; ai.res.wood += 3 * m.aiOutput; ai.res.stone += 1 * m.aiOutput;
+    // small base income so the AI never fully stalls (scaled by difficulty).
+    // A boom-opening chief works the fields harder in the first minutes.
+    const op = ai.opening || {};
+    const boomMult = op.bias === 'boom' && S.day <= (op.until || 0)
+      ? (op.fired ? 1.2 : 1.08) : 1;
+    ai.res.food += 3 * m.aiOutput * boomMult;
+    ai.res.wood += 3 * m.aiOutput * boomMult;
+    ai.res.stone += 1 * m.aiOutput * boomMult;
     ai.res.gold += 4 * m.aiOutput;   // the AI has no worker mechanic, so gold trickles here
     Bld.dailyProduction('A');
+
+    /* ---- VARIABLE OPENINGS, early behaviors (first minutes only) ---- */
+    if (op.bias === 'scout' && op.fired && !op.scoutDone && S.day >= 2) {
+      // the horselord's rider goes to look at YOUR camp — eyes, then hooves
+      const rider = S.units.find(u => u.owner === 'A' &&
+        (u.kind === 'rider' || u.kind === 'horsearcher') && !u.tUnit && !u.tBld);
+      const ptc = Bld.tcOf('P');
+      if (rider && ptc) {
+        op.scoutDone = true;
+        const spot = MapGen.findNear(ptc.x, ptc.y + 4, 5, (x, y) => Path.passable(x, y, 'A'));
+        if (spot) { rider.task = { type: 'move', x: spot.x, y: spot.y }; Units.setPath(rider, spot.x, spot.y); }
+      } else if (S.day > 10) op.scoutDone = true;   // no horse this life — let it go
+    }
+    if (op.bias === 'turtle' && op.fired && !op.towerDone && S.day <= (op.until || 0)) {
+      // the mason raises a watchtower before almost anything else
+      if (Bld.list('A').some(b => b.key === 'tower')) op.towerDone = true;
+      else if (this.tryBuild('tower')) op.towerDone = true;
+    }
 
     /* ---- repair crews: chip damage must not accumulate forever. Any
        damaged building heals slowly once no enemy stands over it ---- */
@@ -315,6 +386,19 @@ const AI = {
     if (!ai.goal && tc.level < 3 && !tc.upgrading &&
         S.day > P.tcDays[tc.level - 1] && S.day >= (ai.goalCd || 0)) {
       ai.goal = { cost: CFG.BUILDINGS.tc.levels[tc.level].cost, until: S.day + 15 };
+    }
+
+    /* ---- protection floor with teeth: basic defense is not a personality
+       trait, and it never loses the argument with the savings jar. A tribe
+       past day 16 with no barracks builds one before anything else — the
+       hall-upgrade reserve is suspended for the attempt (this was a real
+       failure: wood-tight foragers saved for TC2 forever and fielded no
+       army at all) ---- */
+    if (S.day >= 16 && !S.buildings.some(b => b.owner === 'A' && b.key === 'barracks')) {
+      const held = ai.goal;
+      ai.goal = null;
+      this.tryBuild('barracks');
+      ai.goal = held;
     }
 
     /* ---- bottleneck economy: a chief starved of one resource for days
@@ -400,7 +484,8 @@ const AI = {
     if (dock && !dock.upgrading && dock.queue.length === 0) {
       const boats = Units.count('A', u => u.kind === 'fishboat');
       const ships = Units.count('A', u => u.kind === 'warship' || u.kind === 'fireship');
-      if (boats < P.boats) Bld.train(dock, 'fishboat');
+      const seaLean = ai.opening && ai.opening.bias === 'sea' && ai.opening.fired && S.day < 45 ? 1 : 0;
+      if (boats < P.boats + seaLean) Bld.train(dock, 'fishboat');
       else if (dock.level >= 2 && ships < Math.max(1, Math.floor((m.aiArmyCap || 8) / P.shipDiv)) &&
                this.affordFree(CFG.BUILDINGS.dock.train.warship.cost))
         Bld.train(dock, dock.level >= 3 && ai.res.gold >= 45 ? 'fireship' : 'warship');
@@ -447,8 +532,10 @@ const AI = {
 
     if (ai.raidCd > 0) ai.raidCd--;
     const mine = this.power('A'), theirs = this.power('P');
-    const raidDay = Math.max(20, m.aiRaidDay + P.raidDayAdd);
-    const boldness = Math.max(1.0, P.raidPower - Math.max(0, S.day - 90) * 0.005);
+    const openRaid = ai.opening && ai.opening.bias === 'raid' && ai.opening.fired;
+    const raidDay = Math.max(16, m.aiRaidDay + P.raidDayAdd - (openRaid ? 6 : 0));
+    const boldness = Math.max(1.0,
+      P.raidPower - (openRaid ? 0.12 : 0) - Math.max(0, S.day - 90) * 0.005);
     if (S.day >= raidDay && ai.raidCd <= 0 && mine >= 4 && mine > theirs * boldness && !raiders.length) {
       const troops = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
         !Units.isNaval(u) && u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));

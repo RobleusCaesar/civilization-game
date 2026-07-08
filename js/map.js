@@ -179,10 +179,13 @@ const MapGen = {
         if (MapGen.inB(x, y) && t[id(x, y)] === T.GRASS && !nearStart(x, y)) { t[id(x, y)] = type; placed++; }
       }
     }
+    // VARIABLE OPENINGS: how much of each resource sits within walking
+    // distance rolls per game — some starts are forest-hugged, some must
+    // range for everything. The scarce resource always stays a single tile.
     for (const s of [player, ai]) {
-      seedNear(s.x, s.y, T.FOREST, scarce.terrain === T.FOREST ? 1 : 6);
-      seedNear(s.x, s.y, T.HILLS, scarce.terrain === T.HILLS ? 1 : 3);
-      seedNear(s.x, s.y, T.FERTILE, scarce.terrain === T.FERTILE ? 1 : 4);
+      seedNear(s.x, s.y, T.FOREST, scarce.terrain === T.FOREST ? 1 : 4 + (rnd() * 5 | 0));
+      seedNear(s.x, s.y, T.HILLS, scarce.terrain === T.HILLS ? 1 : 2 + (rnd() * 4 | 0));
+      seedNear(s.x, s.y, T.FERTILE, scarce.terrain === T.FERTILE ? 1 : 2 + (rnd() * 5 | 0));
     }
     // clear the immediate start plots
     for (const s of [player, ai])
