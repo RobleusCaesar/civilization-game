@@ -316,27 +316,36 @@ const CFG = {
      gates with the odds stacked against them. */
   DRAGON: { chance: 0.28, minDay: 25, foesMin: 6, radius: 9 },
 
+  /* Difficulty gates the rival's APPETITE and SCALE, never its decision
+     quality — the perception → posture → utility → tactics brain runs at
+     every level (see js/ai.js). aiAggro is the exploitation appetite
+     (higher = commits to pushes on a smaller edge, all-ins more readily);
+     aiOutput/aiArmyCap/aiArmyDiv/aiEliteShare scale its economy and army;
+     aiRaidDay is only the non-vulnerability raid floor (a real opening
+     beats it at all levels). So Calm is smart-but-gentle, Hard is
+     smart-and-ruthless — the difference is aggression and scale, not
+     blunders. */
   MODES: {
     calm: {
       name: 'Calm', icon: '🌿', desc: 'Nearly peaceful — the odd wild animal keeps you sharp; raids are rare.',
       gather: 1, output: 1,
       waveFirst: 70, waveGapMult: 2.2, waveSizeAdd: -1, barbMult: 0.9,
-      animalMax: 2, animalChance: 0.15, aiRaidDay: 999,
-      aiBuildEvery: 4, aiOutput: 0.6, aiArmyCap: 5, aiArmyDiv: 14, aiEliteShare: 0,
+      animalMax: 2, animalChance: 0.15, aiRaidDay: 80,
+      aiBuildEvery: 3, aiOutput: 0.85, aiArmyCap: 6, aiArmyDiv: 11, aiEliteShare: 0.15, aiAggro: 0.55,
     },
     moderate: {
       name: 'Moderate', icon: '⚔️', desc: 'The intended experience.',
       gather: 1, output: 1,
       waveFirst: 40, waveGapMult: 1.5, waveSizeAdd: 0, barbMult: 1,
-      animalMax: 3, animalChance: 0.2, aiRaidDay: 70,
-      aiBuildEvery: 2, aiOutput: 1.1, aiArmyCap: 8, aiArmyDiv: 8, aiEliteShare: 0.4,
+      animalMax: 3, animalChance: 0.2, aiRaidDay: 50,
+      aiBuildEvery: 2, aiOutput: 1.1, aiArmyCap: 9, aiArmyDiv: 8, aiEliteShare: 0.45, aiAggro: 0.9,
     },
     hard: {
       name: 'Hard', icon: '💀', desc: 'Slower gathering, relentless enemies.',
       gather: 0.85, output: 0.85,
       waveFirst: 30, waveGapMult: 0.8, waveSizeAdd: 1, barbMult: 1.2,
-      animalMax: 4, animalChance: 0.3, aiRaidDay: 50,
-      aiBuildEvery: 1, aiOutput: 1.25, aiArmyCap: 12, aiArmyDiv: 6, aiEliteShare: 0.75,
+      animalMax: 4, animalChance: 0.3, aiRaidDay: 32,
+      aiBuildEvery: 1, aiOutput: 1.3, aiArmyCap: 13, aiArmyDiv: 6, aiEliteShare: 0.8, aiAggro: 1.2,
     },
   },
 

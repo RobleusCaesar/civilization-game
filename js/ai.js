@@ -430,14 +430,18 @@ const AI = {
   },
 
   choosePosture() {
-    const ai = S.ai, r = ai.read, pl = this.plan();
+    const ai = S.ai, r = ai.read, pl = this.plan(), m = G.modeCfg();
+    // difficulty is APPETITE, not decision quality: it scales how readily the
+    // chief commits, never whether it reads the board (which it always does)
+    const app = m.aiAggro || 1;
+    const aggro = Math.min(1.25, pl.aggression * (0.5 + 0.6 * app));
     let want = this.arcPosture(pl, S.day);          // the persona's game-plan by default
     // --- the read overrides the plan when the board demands ---
     if (r.sacked) want = 'REBUILD';
     else if (r.underThreat && r.threat > this._homeGuard()) want = 'DEFEND';
-    else if (r.foeVuln && r.myPower >= 3 && r.powerRatio >= 1.05 - pl.aggression * 0.35)
-      want = pl.aggression >= 0.6 ? 'PUSH' : 'PRESSURE';     // a real opening — take it
-    else if (r.powerRatio >= 1.7 && r.myPower >= 5) want = 'PUSH';    // clearly ahead, end it
+    else if (r.foeVuln && r.myPower >= 3 && r.powerRatio >= 1.05 - aggro * 0.35)
+      want = aggro >= 0.6 ? 'PUSH' : 'PRESSURE';     // a real opening — take it
+    else if (r.powerRatio >= 1.7 / app && r.myPower >= 4) want = 'PUSH';   // ahead enough to end it
     else if (r.powerRatio < 0.65 && r.foePower >= 4) want = 'DEFEND'; // clearly behind, dig in
     else if (r.econEdge < -180 && r.threat === 0 && !r.foeVuln && pl.win === 'economy') want = 'EXPAND';
     // --- hysteresis: commit to a plan unless an emergency forces a change ---
@@ -799,8 +803,10 @@ const AI = {
     const mine = this.power('A'), theirs = this.power('P');
     const pl = this.plan();
     const attackPosture = ai.posture === 'PUSH' || ai.posture === 'PRESSURE';
-    const boldness = Math.max(0.85,
-      P.raidPower - pl.aggression * 0.45 - (read.foeVuln ? 0.35 : 0) - Math.max(0, S.day - 90) * 0.005);
+    // exploitation appetite (difficulty) sets how much of an edge it needs
+    const aggro = Math.min(1.25, pl.aggression * (0.5 + 0.6 * (m.aiAggro || 1)));
+    const boldness = Math.max(0.8,
+      P.raidPower - aggro * 0.5 - (read.foeVuln ? 0.35 : 0) - Math.max(0, S.day - 90) * 0.005);
     const dayFloor = read.foeVuln ? 12 : Math.max(16, m.aiRaidDay + P.raidDayAdd);
     if (attackPosture && ai.raidCd <= 0 && !raiders.length && S.day >= dayFloor && mine >= 3) {
       const troops = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
