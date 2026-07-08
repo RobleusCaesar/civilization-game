@@ -276,10 +276,149 @@ const AI = {
     return true;
   },
 
+  /* ===================================================================
+     LAYER 1 — PERCEPTION.  Once a day the chief takes stock of the whole
+     board and writes a compact "world read" into S.ai.read. The rest of
+     the brain reasons about this read instead of re-scanning the map. The
+     rival plays without fog, so reading the true board is cognition, not
+     cheating. Everything here is pure measurement — no actions, no side
+     effects beyond S.ai.read (and the optional debug overlay).
+     =================================================================== */
+  ECON_W: { food: 1, wood: 1, stone: 0.8, gold: 0.5 },
+  econOf(res) {
+    let e = 0; for (const k in this.ECON_W) e += (res[k] || 0) * this.ECON_W[k]; return e;
+  },
+  assess() {
+    const ai = S.ai;
+    const tc = Bld.tcOf('A'), ptc = Bld.tcOf('P');
+    const prevFoe = (ai.read && ai.read.foePower) || 0;
+    const myPower = this.power('A'), foePower = this.power('P');
+
+    // --- player army & where it is (the vulnerability read) ---
+    let foeHome = 0, foeAway = 0, foeCav = 0, foeArch = 0, foeSiege = 0, foeMelee = 0;
+    const pcx = ptc ? Bld.cx(ptc) : CFG.W / 2, pcy = ptc ? Bld.cy(ptc) : CFG.H / 2;
+    for (const u of S.units) {
+      if (u.owner !== 'P' || !Units.isMilitary(u) || Units.isNaval(u)) continue;
+      (Math.hypot(u.x - pcx, u.y - pcy) <= 12 ? foeHome++ : foeAway++, 0);
+      const k = u.kind;
+      if (k === 'rider' || k === 'horsearcher' || k === 'lancer') foeCav++;
+      else if (k === 'archer' || k === 'longbow' || k === 'marksman') foeArch++;
+      else if (Units.isSiege(u) || k === 'ballista') foeSiege++;
+      else foeMelee++;
+    }
+
+    // --- player defenses around the hall, and the weakest flank ---
+    let foeWall = 0, foeTower = 0, weakFlank = null;
+    if (ptc) {
+      let worst = 1e9;
+      for (const b of S.buildings) {
+        if (b.owner !== 'P' || !Bld.done(b)) continue;
+        const dd = Math.hypot(Bld.cx(b) - pcx, Bld.cy(b) - pcy);
+        if (dd > 14) continue;
+        if (b.key === 'wall' || b.key === 'gate') foeWall++;
+        else if (b.key === 'tower') foeTower += Bld.lv(b).atk || 0;
+      }
+      for (let a = 0; a < 8; a++) {
+        const ang = a / 8 * Math.PI * 2, dx = Math.cos(ang), dy = Math.sin(ang);
+        let def = 0;
+        for (const b of S.buildings) {
+          if (b.owner !== 'P' || (b.key !== 'wall' && b.key !== 'gate' && b.key !== 'tower')) continue;
+          const bx = Bld.cx(b) - pcx, by = Bld.cy(b) - pcy, dist = Math.hypot(bx, by);
+          if (dist < 2 || dist > 12) continue;
+          if ((bx * dx + by * dy) / dist > 0.45) def += b.key === 'tower' ? 2 : 1;
+        }
+        if (def < worst) { worst = def; weakFlank = { x: Math.round(pcx + dx * 8), y: Math.round(pcy + dy * 8), dx, dy, def }; }
+      }
+    }
+
+    // --- player economic exposure: soft, undefended targets worth raiding ---
+    const exposed = [];
+    const guarded = (x, y) => S.buildings.some(t => t.owner === 'P' && t.key === 'tower' &&
+      Bld.done(t) && Math.hypot(Bld.cx(t) - x, Bld.cy(t) - y) <= 6);
+    for (const b of S.buildings) {
+      if (b.owner !== 'P' || !Bld.done(b) || !Bld.def(b.key).needsWorker) continue;
+      if (!guarded(Bld.cx(b), Bld.cy(b)))
+        exposed.push({ x: Bld.cx(b), y: Bld.cy(b), id: b.id, kind: b.key, bld: true });
+    }
+    for (const u of S.units) {
+      if (u.owner !== 'P' || !Units.isVillager(u)) continue;
+      if (Math.hypot(u.x - pcx, u.y - pcy) < 8) continue;                     // homebodies aren't exposed
+      if (S.units.some(s => s.owner === 'P' && Units.isMilitary(s) && Math.hypot(s.x - u.x, s.y - u.y) < 6)) continue;   // escorted
+      exposed.push({ x: u.x, y: u.y, id: u.id, kind: 'villager', villager: true });
+    }
+
+    // --- threat at my own hall right now ---
+    let threat = 0;
+    if (tc) {
+      const mcx = Bld.cx(tc), mcy = Bld.cy(tc);
+      for (const u of S.units) {
+        if (Units.isNaval(u) || Math.hypot(u.x - mcx, u.y - mcy) > 11) continue;
+        if ((u.owner === 'P' && Units.isMilitary(u)) || (u.owner === 'R' && !Units.isTransport(u)))
+          threat += (u.kind === 'elite' || u.kind === 'lancer' || u.kind === 'brute') ? 2 : 1;
+      }
+    }
+
+    // --- economies (full-knowledge: the player's treasury is in S.res) ---
+    const myEcon = this.econOf(ai.res), foeEcon = this.econOf(S.res);
+    const myBld = Bld.list('A').length, foeBld = Bld.list('P').length;
+    const underCon = Bld.list('A').filter(b => !Bld.done(b)).length;
+
+    // vulnerability window: the player's home is thin (army committed away or
+    // tiny) OR two-plus soft targets sit undefended
+    const foeVuln = (foePower >= 2 && foeHome * 1.5 < foePower) || exposed.length >= 2;
+
+    ai.read = {
+      day: S.day,
+      myPower, foePower, powerRatio: myPower / Math.max(1, foePower),
+      foeTrend: foePower > prevFoe + 1 ? 1 : foePower < prevFoe - 1 ? -1 : 0,
+      foeHome, foeAway, foeVuln,
+      foeWall, foeTower, weakFlank,
+      foeCav, foeArch, foeSiege, foeMelee,
+      foeCavHeavy: foeCav >= 2 && foeCav >= foeArch && foeCav >= foeMelee,
+      foeArchHeavy: foeArch >= 2 && foeArch > foeCav && foeArch >= foeMelee,
+      foeSiegeSeen: foeSiege > 0,
+      exposed, softCount: exposed.length,
+      myEcon, foeEcon, econEdge: myEcon - foeEcon,
+      myBld, foeBld, underCon,
+      aheadPower: myPower - foePower,
+      aheadTempo: myBld - foeBld,
+      threat, underThreat: threat >= 3,
+    };
+    if (window.DEBUG_AI) this._drawRead();
+    return ai.read;
+  },
+
+  // debug overlay (window.DEBUG_AI = true): a compact dump of the world read,
+  // so QA can see what the chief perceives before any behavior depends on it
+  _drawRead() {
+    let el = document.getElementById('aiDebug');
+    if (!el) {
+      el = document.createElement('pre');
+      el.id = 'aiDebug';
+      el.style.cssText = 'position:fixed;left:6px;top:calc(env(safe-area-inset-top) + 92px);z-index:40;' +
+        'margin:0;padding:6px 8px;background:rgba(10,8,5,0.82);color:#8fe08f;font:10px/1.35 monospace;' +
+        'border:1px solid #3a3324;border-radius:6px;pointer-events:none;white-space:pre;max-width:60vw;';
+      document.body.appendChild(el);
+    }
+    const r = S.ai.read, P = this.persona();
+    el.textContent = [
+      `RIVAL ${P.name}${S.ai.posture ? ' · ' + S.ai.posture : ''}  day ${r.day}`,
+      `power  me ${r.myPower} vs ${r.foePower}  ratio ${r.powerRatio.toFixed(2)}  trend ${r.foeTrend > 0 ? '↑' : r.foeTrend < 0 ? '↓' : '–'}`,
+      `foe army  home ${r.foeHome} away ${r.foeAway}  ${r.foeVuln ? 'VULN!' : ''}`,
+      `foe comp  cav ${r.foeCav} arch ${r.foeArch} melee ${r.foeMelee} siege ${r.foeSiege}` +
+        `${r.foeCavHeavy ? ' [CAV]' : ''}${r.foeArchHeavy ? ' [ARCH]' : ''}`,
+      `foe def  walls ${r.foeWall} towers ${r.foeTower}  weakFlank def ${r.weakFlank ? r.weakFlank.def : '-'}`,
+      `soft targets ${r.softCount}`,
+      `econ  me ${r.myEcon | 0} vs ${r.foeEcon | 0}  edge ${r.econEdge | 0}  tempo ${r.aheadTempo}`,
+      `home threat ${r.threat}${r.underThreat ? ' UNDER ATTACK' : ''}  building ${r.underCon}`,
+    ].join('\n');
+  },
+
   daily() {
     const ai = S.ai;
     const m = G.modeCfg();
     const P = this.persona();
+    this.assess();     // LAYER 1: read the board before deciding anything
     const tc = Bld.tcOf('A');
     if (!tc) return;   // rival destroyed
 
