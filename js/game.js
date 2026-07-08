@@ -398,6 +398,9 @@ const G = {
     // the title screen's demo world ends quietly — the shell rolls a new one
     if (window.Screens && Screens._demo) return;
     S.paused = false;
+    // the run is over: its save slot is stamped finished and the crash net
+    // cleared — the title's Continue will not walk back into a told story
+    if (window.Backend) Backend.finalizeRun();
     UI.showEnd(win, msg);
   },
 

@@ -87,19 +87,24 @@ const Screens = {
     btn.classList.add('cant');
     btn.querySelector('small').textContent = 'looking for saves…';
     this._newestSlot = null;
-    const snap = window.Backend ? Backend.readLocalSnapshot() : null;
+    let snap = window.Backend ? Backend.readLocalSnapshot() : null;
+    try {   // a finished run in the crash net is a told story, not a Continue
+      if (snap && snap.json && JSON.parse(snap.json).over) snap = null;
+    } catch (e) { snap = null; }
     const finish = (label, ok) => {
       btn.querySelector('small').textContent = label;
       btn.classList.toggle('cant', !ok);
     };
     if (window.Backend && Backend.isReady()) {
       Backend.listSaves().then(r => {
-        const rows = (r.ok && r.data) || [];
-        rows.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
-        if (rows[0]) {
-          this._newestSlot = rows[0].slot;
-          finish(`${rows[0].name} — day ${rows[0].day}`, true);
+        const rows = ((r.ok && r.data) || []).slice()
+          .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+        const live = rows.find(row => !row.over);   // finished runs are greyed out
+        if (live) {
+          this._newestSlot = live.slot;
+          finish(`${live.name} — day ${live.day}`, true);
         } else if (snap && snap.json) { this._newestSlot = 'local'; finish('recover last session (day ' + snap.day + ')', true); }
+        else if (rows.length) finish('last run complete — start a new game', false);
         else finish('no saves yet', false);
       });
     } else if (snap && snap.json) { this._newestSlot = 'local'; finish('recover last session (day ' + snap.day + ')', true); }
@@ -127,6 +132,10 @@ const Screens = {
     Backend.markActiveSlot(row.slot);
     Backend.activeName = row.name;
     this.lastSavedDay = S.day;
+    this._demo = false;
+    // a finished run reopens at its tally (loadJSON already raised it) —
+    // the score can still be saved to the board from there
+    if (S.over) { G.freeVis = false; return; }
     this.enterGame();
   },
 
@@ -191,10 +200,11 @@ const Screens = {
       card.className = 'scard';
       if (row) {
         const mins = Math.round((row.playtime_seconds || 0) / 60);
+        const fin = row.over ? (row.over.win ? ' · 🏆 won' : ' · 💀 lost') : '';
         card.innerHTML =
           `<img class="sthumb" ${row.thumbnail ? 'src="' + row.thumbnail + '"' : ''} alt="">
            <div class="smeta"><b>${this.esc(row.name)}</b>
-             <small>Day ${row.day} · ${row.landform || '?'} · ${mins}m · ${String(row.updated_at || '').slice(0, 10)}</small></div>
+             <small>Day ${row.day} · ${row.landform || '?'} · ${mins}m${fin}</small></div>
            <div class="sacts"></div>`;
         const acts = card.querySelector('.sacts');
         if (this.saveMode) this.act(acts, '💾 Overwrite', () => this.saveToSlot(slot, row.name));
@@ -300,9 +310,11 @@ const Screens = {
     this.el('scoreMult').textContent = '';
     this.el('hsBanner').style.display = 'none';
     this.el('nameRow').style.display = 'none';
+    this.el('savedNote').style.display = 'none';
     this.el('endBoard').innerHTML = '';
     this._score = Score.compute(opts.win);
     this._submitted = false;
+    this._leaveWarned = false;
     this._tally(this._score, opts.win);
   },
 
@@ -355,11 +367,18 @@ const Screens = {
     if (!sub.ok) { UI.toast('Could not reach the board: ' + sub.error.message, true); return; }
     this._submitted = true;
     this.el('nameRow').style.display = 'none';
+    const note = this.el('savedNote');
+    note.textContent = `✓ Saved to the board as ${chk.name.toUpperCase()} — safe to leave`;
+    note.style.display = 'block';
     const top = await Backend.topScores(10);
     if (top.ok) {
       const mine = top.data.findIndex(r =>
         r.name === chk.name && r.score === this._score.total);
-      this.renderBoard(top.data, this.el('endBoard'), mine);
+      // stay compact: top three, plus your row wherever it landed
+      const rows = top.data.slice(0, 3);
+      let meIdx = mine >= 0 && mine < 3 ? mine : -1;
+      if (mine >= 3) { rows.push(top.data[mine]); meIdx = rows.length - 1; }
+      this.renderBoard(rows, this.el('endBoard'), meIdx, mine >= 3 ? mine + 1 : 0);
       if (mine === 0) { this.el('hsBanner').textContent = '★ NEW HIGH SCORE ★'; this.el('hsBanner').style.display = 'block'; }
       else if (mine > 0) { this.el('hsBanner').textContent = `★ GLOBAL RANK #${mine + 1} ★`; this.el('hsBanner').style.display = 'block'; }
       UI.toast(mine >= 0 ? 'You made the board, chief!' : 'Score submitted');
@@ -368,11 +387,11 @@ const Screens = {
 
   /* ---------------- leaderboard ---------------- */
   MODE_ICON: { calm: '🌿', moderate: '⚔️', hard: '💀' },
-  renderBoard(rows, into, meIdx) {
+  renderBoard(rows, into, meIdx, lastRank) {
     if (!rows.length) { into.innerHTML = '<p class="hint">No chiefs on the board yet — be the first.</p>'; return; }
     into.innerHTML = rows.map((r, i) =>
       `<div class="ldr${i === 0 ? ' top1' : ''}${i === meIdx ? ' me' : ''}">
-         <span class="rank">${i === 0 ? '👑' : '#' + (i + 1)}</span>
+         <span class="rank">${i === 0 ? '👑' : '#' + (lastRank && i === rows.length - 1 ? lastRank : i + 1)}</span>
          <span class="nm">${this.esc(r.name)}</span>
          <span class="pts">${(r.score || 0).toLocaleString()}</span>
          <span class="md">${this.MODE_ICON[r.mode] || ''}</span>
@@ -421,8 +440,17 @@ const Screens = {
     on('btnPauseHow', () => { this.backTo = 'paused'; this.show('howto'); });
     on('btnQuitTitle', () => this.quitToTitle());
     // endgame
-    on('btnEndNew', () => { this.backTo = 'title'; this.show('newgame'); });
-    on('btnEndTitle', () => { this._demo = false; this.show('title'); });
+    const leaveEnd = (go) => {
+      if (this._score && this._score.win && !this._submitted &&
+          window.Backend && Backend.isReady() && !this._leaveWarned) {
+        this._leaveWarned = true;
+        UI.toast('Your score is NOT on the board yet — save it first, or tap again to leave', true, 4200);
+        return;
+      }
+      go();
+    };
+    on('btnEndNew', () => leaveEnd(() => { this.backTo = 'title'; this.show('newgame'); }));
+    on('btnEndTitle', () => leaveEnd(() => { this._demo = false; this.show('title'); }));
     // settings
     this.el('setCadence').addEventListener('change', e => {
       Backend.autosaveDays = +e.target.value;

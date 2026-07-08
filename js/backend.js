@@ -176,7 +176,8 @@ const Backend = {
   /* ---------------- save slots ---------------- */
   async listSaves() {
     if (!this.isReady()) return this._err('not_ready', 'Not signed in');
-    const cols = 'slot,name,game_version,day,map_seed,landform,playtime_seconds,thumbnail,updated_at';
+    // over:state->over pulls just the finished-run marker out of the state jsonb
+    const cols = 'slot,name,game_version,day,map_seed,landform,playtime_seconds,thumbnail,updated_at,over:state->over';
     const r = await this._rest('GET', '/saves?user_id=eq.' + this.uid + '&select=' + cols + '&order=slot.asc');
     return r.ok ? { ok: true, data: r.data } : r;
   },
@@ -248,6 +249,21 @@ const Backend = {
       if (r.ok) this._lastAutosaveDay = S.day;
       return r;
     } finally { this._busy = false; }
+  },
+
+  // a run just ended: stamp its final (finished) state into the active slot so
+  // Continue knows this story is told, drop the crash net, unbind the slot
+  async finalizeRun() {
+    this.clearLocalSnapshot();
+    if (!this.isReady() || !this.activeSlot || !window.S) { this.markActiveSlot(null); return this._err('no_slot', 'No cloud slot bound'); }
+    const slot = this.activeSlot, name = this.activeName || 'Village';
+    this.markActiveSlot(null);
+    const json = G.saveJSON();
+    return this.saveSlot(slot, name, JSON.parse(json), {
+      day: S.day, seed: S.seed, landform: S.map.landform,
+      playtime: S.playtime || 0, thumbnail: R.thumb ? R.thumb() : null,
+      version: CFG.SAVE_VERSION,
+    });
   },
 
   snapshotLocal(json) {
