@@ -709,40 +709,47 @@ const Sprites = {
   // its daub-and-footing wall half-raised, the conical roof frame with the first
   // thatch courses laid, a scaffold ring, a gin-pole hoisting a block, materials
   // and a ladder. Reads clearly as a large building being raised.
+  // the great roundhouse being RAISED. 128px canvas authored on its fine 32-grid
+  // (`q`, 4px/cell → 2px on screen at the 2×2 footprint) so it matches the
+  // finished TC's density. A half-laid stone footing ring, a daub wall going up
+  // with a door gap, a conical roof frame thatched on the lit side and bare
+  // rafters on the other, a scaffold ring with lashings, a gin-pole hoisting a
+  // block, stacked materials and a leaning ladder. Distinct from the 1×1 site.
   Sprites.misc.constructionBig = ART.outline(tileB(p => {
-    const W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil;
-    ART.dropShadow(p, 8, 15, 15);
-    // dug foundation platform
-    p(2, 12, 12, 3, SO[2]); p(2, 12, 12, 1, SO[3]); p(2, 14, 12, 1, SO[1]);
-    for (let i = 0; i < 8; i++) p(4 + i, 11, 1, 1, ST[i < 5 ? 2 : 1]);   // stone footing course
-    // ring WALL (daub) half-raised, with a doorway
-    ART.wattleTexture(p, 4, 8, 8, 3, 41); p(4, 8, 8, 1, SO[3]);
-    p(7, 9, 2, 3, AP.ink[0]);
-    // PARTIAL CONE ROOF — the tell of a building going up: thatched on the left,
-    // bare rafters still open on the right
-    for (let ry = 3; ry <= 8; ry++) {
-      const half = ry - 3;
-      for (let rx = 8 - half; rx <= 8 + half; rx++) p(rx, ry, 1, 1, rx <= 8 ? TH[2] : W[1]);
+    const q = p.hi, W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil;
+    q(6, 27, 21, 2, ART.STYLE.SHADOW); q(9, 29, 14, 1, ART.STYLE.SHADOW);       // broad contact shadow
+    q(4, 24, 24, 4, SO[2]); q(4, 24, 24, 1, SO[3]); q(4, 27, 24, 1, SO[1]);     // dug foundation pad
+    for (let i = 0; i < 10; i++) { q(5 + i * 2, 22, 2, 2, ST[i < 6 ? 2 : 1]); q(5 + i * 2, 22, 2, 1, ST[3]); } // stone footing (tapers off)
+    ART.wattleTexture(q, 7, 18, 18, 5, 41); q(7, 18, 18, 1, SO[3]);             // daub wall half-raised
+    q(14, 19, 4, 4, AP.ink[0]);                                                 // doorway gap
+    for (let sx = 8; sx < 25; sx += 3) q(sx, 19, 1, 4, W[1]);                   // wall stakes
+    // conical roof FRAME — thatch laid on the lit (left) bays, bare rafters right
+    for (let ry = 4; ry <= 13; ry++) {
+      const rw = (ry - 4) + 2, lx = 16 - rw;
+      q(lx, ry, rw, 1, ry % 2 ? TH[1] : TH[2]);                                 // thatched left
+      q(lx, ry, Math.max(1, rw >> 1), 1, TH[3]);                               // lit
+      for (let rx = 16; rx < 16 + rw; rx += 2) q(rx, ry, 1, 1, W[2]);           // bare rafters right
     }
-    for (let ry = 4; ry <= 8; ry += 2) p(8 - (ry - 3), ry, ry - 3, 1, TH[1]);   // combed courses
-    for (let ry = 4; ry <= 8; ry++) p(8 + (ry - 3), ry, 1, 1, W[2]);            // exposed rafter edge
-    p(8, 3, 1, 5, W[3]); p(8, 3, 1, 1, TH[3]);                                  // ridge king-post + lit crown
-    // SCAFFOLD — outer + inner uprights, two rails, a plank platform
-    for (const px of [1, 14]) { p(px, 3, 1, 11, W[2]); p(px, 3, 1, 1, W[3]); }
-    p(4, 2, 1, 6, W[2]); p(11, 2, 1, 6, W[2]);
-    p(1, 4, 13, 1, W[3]); p(1, 9, 13, 1, W[3]);
-    p(1, 9, 5, 1, W[3]);
-    for (const [lx, ly] of [[1, 4], [14, 4], [1, 9], [14, 9]]) p.hi(lx * 2, ly * 2 + 1, 3, 1, TH[1]);
-    // gin-pole crane hoisting a dressed block
-    p(13, 0, 1, 4, W[1]); p(11, 0, 3, 1, W[2]); p.hi(23, 2, 1, 5, TH[1]);
-    ART.shadedRect(p, 10, 4, 2, 2, ST, 2);
-    // materials, ladder, sawdust
-    p(0, 12, 2, 1, W[3]); p(0, 13, 2, 1, W[2]);
-    ART.shadedRect(p, 13, 12, 3, 2, ST, 2); p.hi(28, 25, 1, 1, ST[0]);
-    p.hi(9, 20, 1, 10, W[1]); p.hi(12, 20, 1, 10, W[1]);
-    for (let r = 0; r < 4; r++) p.hi(9, 22 + r * 2, 4, 1, W[2]);
+    q(16, 3, 1, 11, W[3]); q(16, 3, 1, 1, TH[3]);                              // king-post + lit crown
+    q(6, 12, 10, 2, TH[0]);                                                    // eave shadow under laid thatch
+    // scaffold ring: outer + inner uprights, two rails, a plank platform, lashings
+    for (const px of [2, 29]) { q(px, 4, 1, 21, W[2]); q(px, 4, 1, 1, W[3]); }
+    q(9, 3, 1, 11, W[2]); q(23, 3, 1, 11, W[2]);
+    q(2, 8, 28, 1, W[3]); q(2, 17, 28, 1, W[3]); q(2, 17, 11, 1, W[3]);
+    for (const [lx, ly] of [[2, 8], [29, 8], [2, 17], [29, 17], [9, 8], [23, 8]]) { q(lx, ly, 1, 1, TH[1]); q(lx, ly + 1, 1, 1, TH[3]); }
+    // gin-pole crane hoisting a dressed block on a rope
+    q(27, 0, 1, 8, W[1]); q(22, 0, 6, 1, W[2]); q(22, 1, 1, 6, TH[1]);
+    ART.shadedRect(q, 20, 6, 3, 3, ST, 2);
+    // materials: timber stack (left), dressed stone blocks (right), reed bundle
+    q(0, 22, 4, 1, W[3]); q(0, 23, 4, 1, W[2]); q(0, 24, 4, 1, W[3]);
+    q(1, 22, 1, 1, TH[2]); q(3, 23, 1, 1, TH[2]);
+    ART.shadedRect(q, 26, 23, 4, 3, ST, 2); q(28, 25, 1, 1, ST[0]);
+    q(11, 22, 3, 2, TH[2]); q(11, 22, 3, 1, TH[3]);
+    // a ladder leaning on the frame
+    q(19, 14, 1, 13, W[1]); q(22, 14, 1, 13, W[1]);
+    for (let r = 0; r < 6; r++) q(19, 16 + r * 2, 4, 1, W[2]);
     const rr = ART.rng(93);
-    for (let i = 0; i < 10; i++) p.hi(6 + (rr() * 20) | 0, 28 + (rr() * 4) | 0, 1, 1, i % 2 ? TH[1] : W[3]);
+    for (let i = 0; i < 12; i++) q(6 + (rr() * 22) | 0, 25 + (rr() * 4) | 0, 1, 1, i % 2 ? TH[1] : W[3]);  // sawdust
   }, 128), 4);
 
   /* ---------------- units ---------------- */
