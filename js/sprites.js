@@ -53,11 +53,13 @@ const Sprites = {
   // coarse plotter `p` still works on the 16-grid (4px/cell) so every existing
   // building draw renders unchanged — just crisper — while `p.hi` exposes a
   // 32-grid (2px/half-cell) for the finer detail L2/L3 and the work-site carry.
-  function tileB(draw) {
-    const c = mk(64, 64), g = c.getContext('2d');
+  function tileB(draw, size) {
+    size = size || 64;
+    const cell = size / 16, half = size / 32;   // 16-grid coarse / 32-grid fine
+    const c = mk(size, size), g = c.getContext('2d');
     g.imageSmoothingEnabled = false;
-    const p = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * 4, y * 4, (w || 1) * 4, (h || 1) * 4); };
-    p.hi = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * 2, y * 2, (w || 1) * 2, (h || 1) * 2); };
+    const p = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * cell, y * cell, (w || 1) * cell, (h || 1) * cell); };
+    p.hi = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * half, y * half, (w || 1) * half, (h || 1) * half); };
     p.g = g;
     draw(p, g);
     return c;
@@ -669,6 +671,47 @@ const Sprites = {
     const rr = ART.rng(51);
     for (let i = 0; i < 9; i++) p.hi(5 + (rr() * 22) | 0, 25 + (rr() * 4) | 0, 1, 1, i % 2 ? TH[1] : W[3]);
   }), 2);
+
+  // the 2×2 Town Center going up — a great roundhouse under construction, drawn
+  // at 128px so it stays crisp across the big footprint: a ring foundation with
+  // its daub-and-footing wall half-raised, the conical roof frame with the first
+  // thatch courses laid, a scaffold ring, a gin-pole hoisting a block, materials
+  // and a ladder. Reads clearly as a large building being raised.
+  Sprites.misc.constructionBig = ART.outline(tileB(p => {
+    const W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil;
+    ART.dropShadow(p, 8, 15, 15);
+    // dug foundation platform
+    p(2, 12, 12, 3, SO[2]); p(2, 12, 12, 1, SO[3]); p(2, 14, 12, 1, SO[1]);
+    for (let i = 0; i < 8; i++) p(4 + i, 11, 1, 1, ST[i < 5 ? 2 : 1]);   // stone footing course
+    // ring WALL (daub) half-raised, with a doorway
+    ART.wattleTexture(p, 4, 8, 8, 3, 41); p(4, 8, 8, 1, SO[3]);
+    p(7, 9, 2, 3, AP.ink[0]);
+    // PARTIAL CONE ROOF — the tell of a building going up: thatched on the left,
+    // bare rafters still open on the right
+    for (let ry = 3; ry <= 8; ry++) {
+      const half = ry - 3;
+      for (let rx = 8 - half; rx <= 8 + half; rx++) p(rx, ry, 1, 1, rx <= 8 ? TH[2] : W[1]);
+    }
+    for (let ry = 4; ry <= 8; ry += 2) p(8 - (ry - 3), ry, ry - 3, 1, TH[1]);   // combed courses
+    for (let ry = 4; ry <= 8; ry++) p(8 + (ry - 3), ry, 1, 1, W[2]);            // exposed rafter edge
+    p(8, 3, 1, 5, W[3]); p(8, 3, 1, 1, TH[3]);                                  // ridge king-post + lit crown
+    // SCAFFOLD — outer + inner uprights, two rails, a plank platform
+    for (const px of [1, 14]) { p(px, 3, 1, 11, W[2]); p(px, 3, 1, 1, W[3]); }
+    p(4, 2, 1, 6, W[2]); p(11, 2, 1, 6, W[2]);
+    p(1, 4, 13, 1, W[3]); p(1, 9, 13, 1, W[3]);
+    p(1, 9, 5, 1, W[3]);
+    for (const [lx, ly] of [[1, 4], [14, 4], [1, 9], [14, 9]]) p.hi(lx * 2, ly * 2 + 1, 3, 1, TH[1]);
+    // gin-pole crane hoisting a dressed block
+    p(13, 0, 1, 4, W[1]); p(11, 0, 3, 1, W[2]); p.hi(23, 2, 1, 5, TH[1]);
+    ART.shadedRect(p, 10, 4, 2, 2, ST, 2);
+    // materials, ladder, sawdust
+    p(0, 12, 2, 1, W[3]); p(0, 13, 2, 1, W[2]);
+    ART.shadedRect(p, 13, 12, 3, 2, ST, 2); p.hi(28, 25, 1, 1, ST[0]);
+    p.hi(9, 20, 1, 10, W[1]); p.hi(12, 20, 1, 10, W[1]);
+    for (let r = 0; r < 4; r++) p.hi(9, 22 + r * 2, 4, 1, W[2]);
+    const rr = ART.rng(93);
+    for (let i = 0; i < 10; i++) p.hi(6 + (rr() * 20) | 0, 28 + (rr() * 4) | 0, 1, 1, i % 2 ? TH[1] : W[3]);
+  }, 128), 4);
 
   /* ---------------- units ---------------- */
   // pose: idle | walk | gather | fight ; c = colour set

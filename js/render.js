@@ -238,7 +238,7 @@ const R = {
         if (!up && (b.key === 'wall' || b.key === 'gate')) {
           // fortifications show their oriented shape while first going up
           g.globalAlpha = 0.55; g.drawImage(this.bldSprite(b), bx, by, bw, bw); g.globalAlpha = 1;
-        } else Assets.drawSprite(g, 'misc/construction', bx, by, { w: bw, h: bw });
+        } else Assets.drawSprite(g, bs >= 2 ? 'misc/constructionBig' : 'misc/construction', bx, by, { w: bw, h: bw });
         const total = up ? Bld.def(b.key).levels[b.level].time : Bld.def(b.key).levels[b.level - 1].time;
         this.bar(g, bx + 4, by + bw - 4, bw - 8, 3, 1 - (up ? b.upgrading : b.construction) / total, '#e8c15a');
         // still tag the owner so a work site reads as friend or foe

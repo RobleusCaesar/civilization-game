@@ -19,6 +19,17 @@ const UI = {
   settingRally: null,    // building id waiting for a rally-point tap
   MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'wall', 'gate'],
 
+  // paint a sprite into an icon canvas: back it at 64px and scale the WHOLE
+  // sprite in (sprites are now 64px — a naive drawImage would clip to a corner),
+  // so menu/panel thumbnails read clearly whatever the source resolution.
+  iconInto(ic, spr) {
+    if (!spr) return;
+    ic.width = 64; ic.height = 64;
+    const g = ic.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(spr, 0, 0, spr.width, spr.height, 0, 0, 64, 64);
+  },
+
   init() {
     // procedural UI chrome (ARTSTYLE): a dark plank texture generated once and
     // handed to CSS — panels, bars, and cards all share it. No image files.
@@ -61,8 +72,7 @@ const UI = {
       const btn = document.createElement('button');
       btn.className = 'bbtn'; btn.dataset.key = key;
       const ic = document.createElement('canvas');
-      ic.width = 32; ic.height = 32;
-      ic.getContext('2d').drawImage(Sprites.building[key][0], 0, 0);
+      this.iconInto(ic, Sprites.building[key][0]);
       btn.appendChild(ic);
       const nm = document.createElement('div'); nm.className = 'bname'; nm.textContent = d.name;
       const co = document.createElement('div'); co.className = 'bcost'; co.textContent = Bld.costStr(Bld.effCost('P', key));
@@ -674,8 +684,9 @@ const UI = {
       html += '</div>';
       panel.innerHTML = html;
       const ic = panel.querySelector('#pIcon');
-      ic.width = 32; ic.height = 32;
-      ic.getContext('2d').drawImage(b.construction > 0 ? Sprites.misc.construction : Sprites.building[b.key][b.level - 1], 0, 0);
+      this.iconInto(ic, b.construction > 0
+        ? (Bld.size(b.key) >= 2 ? Sprites.misc.constructionBig : Sprites.misc.construction)
+        : Sprites.building[b.key][b.level - 1]);
       panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => {
         const b2 = Bld.get(this.sel.id);
         if (!b2) return;
@@ -780,8 +791,7 @@ const UI = {
         <button class="abtn" data-act="stop">✋ Halt</button></div>`;
       panel.innerHTML = html;
       const ic = panel.querySelector('#pIcon');
-      ic.width = 32; ic.height = 32;
-      ic.getContext('2d').drawImage(R.unitSprite(first), 0, 0);
+      this.iconInto(ic, R.unitSprite(first));
       panel.querySelector('[data-act="stop"]').addEventListener('click', () => {
         for (const id of this.sel.ids) {
           const u2 = Units.get(id);
@@ -836,8 +846,7 @@ const UI = {
       html += '</div>';
       panel.innerHTML = html;
       const ic = panel.querySelector('#pIcon');
-      ic.width = 32; ic.height = 32;
-      ic.getContext('2d').drawImage(R.unitSprite(u), 0, 0);
+      this.iconInto(ic, R.unitSprite(u));
       const stop = panel.querySelector('[data-act="stop"]');
       if (stop) stop.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
