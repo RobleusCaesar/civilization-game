@@ -102,11 +102,21 @@ const Units = {
     for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const x = tx + ox, y = ty + oy;
       if (!Path.passable(x, y, u.owner) || Bld.at(x, y)) continue;
-      const dd = Math.hypot(u.x - x, u.y - y);
+      // prefer an edge no one else is already working this node from, so a crew
+      // spreads around the resource instead of stacking on one side
+      const taken = S.units.some(o => o !== u && o.task && o.task.type === 'gather' &&
+        o.task.x === tx && o.task.y === ty && o.task.sx === x && o.task.sy === y);
+      const dd = Math.hypot(u.x - x, u.y - y) + (taken ? 100 : 0);
       if (dd < bd) { bd = dd; best = { x, y }; }
     }
     if (!best) return false;
-    u.task = { type: 'gather', x: tx, y: ty, sx: best.x, sy: best.y, res: g.res };
+    // stand at the NEAR edge of the chosen tile, hard up against the resource
+    // (offset the resting point toward the node, but stay within the tile)
+    const STAND = 0.4;
+    u.task = {
+      type: 'gather', x: tx, y: ty, sx: best.x, sy: best.y, res: g.res,
+      stx: best.x + 0.5 + (tx - best.x) * STAND, sty: best.y + 0.5 + (ty - best.y) * STAND,
+    };
     u.tUnit = 0; u.tBld = 0;
     return this.setPath(u, best.x, best.y);
   },
@@ -351,6 +361,13 @@ const Units = {
           }
         } else {
           u.path = null;
+          // ease right up to the resource edge so the villager touches what it
+          // harvests, instead of resting at the middle of the adjacent tile
+          if (t.stx != null) {
+            const dx = t.stx - u.x, dy = t.sty - u.y, dd = Math.hypot(dx, dy), step = u.speed * dt;
+            if (dd > step) { u.x += dx / dd * step; u.y += dy / dd * step; }
+            else { u.x = t.stx; u.y = t.sty; }
+          }
           const idx = MapGen.idx(t.x, t.y);
           const terr = S.map.terrain[idx];
           const g = CFG.GATHER[terr];
