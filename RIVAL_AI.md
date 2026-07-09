@@ -36,6 +36,7 @@ includes:
 - **Composition** — cavalry / archer / melee / siege counts among the units it can see, with `foeCavHeavy` / `foeArchHeavy` / `foeSiegeSeen` flags for counter-building.
 - **Enemy economy — an ESTIMATE, not a reading** (`foeEcon`): it values the player buildings it *remembers* (`VIS_EST`) and adds them up. It never touches the player's treasury. A fat, hidden war chest is invisible to it.
 - **Immediate threat** — enemy force strength on its own hall right now (`threat` / `underThreat`). It always sees its own ground.
+- **Terrain geometry — chokepoints & lanes.** Now that forest/rock/orchard ground blocks movement, terrain *is* tactics. `AI.perimeterGaps(cx,cy,R)` finds the open **seams** on a town's perimeter ring — the contiguous runs of passable ring tiles an attacker must come through (impassable terrain walls the rest), sorted widest-first with a facing direction. The read carries the rival's OWN seams (`homeGapCount` / `homeGapWidest` / `homeExposed`) so it knows which gaps to close; `AI.playerLanes()` does the same for the **remembered player town**, ranking the approach lanes **least-defended first** (remembered towers/walls on the seam + memory of where past raids were beaten back).
 
 Toggle `window.DEBUG_AI = true` for an on-screen overlay dumping the read (and posture) each day.
 
@@ -102,6 +103,14 @@ shifts smoothly instead of on cliff edges.
   masses for the kill), and the mix re-weights toward hard counters the read
   calls for — massed spears/archers vs a cavalry player, cavalry vs an archer
   player, fast units vs siege — and it builds the matching counter-hall.
+- **Chokepoint defense — plug the seams, don't ring open ground.** Terrain now
+  does most of the walling, so `maybeWalls` closes only the **open seams** on the
+  perimeter (`perimeterGaps`) and gates the widest so its own parties can still
+  sortie — a fraction of the old full-ring cost. The wall utility scales with
+  `homeExposed` and fires for *any* threatened chief (not just wall-happy
+  personas). **Towers are plotted onto the approach seam** (biased to the one
+  facing the player's town), covering the real lane instead of "toward the
+  player." This is what makes Mason-type turtling both smarter and cheaper.
 
 ---
 
@@ -119,6 +128,25 @@ launch, instead of dribbling at whatever's nearest:
   follow the gap — **combined arms**, not everyone poking stone.
 - If the player is walled and the party carries **no siege**, it comes in
   through the **weakest flank** instead of the front gate.
+- Raid parties **route along real passable lanes** (pathfinding enforces it), so
+  they follow the terrain and automatically pick up **harvest-opened routes** — a
+  border you clear-cut becomes a road the rival will use.
+
+**Multi-lane probing (difficulty-scaled).** The rival doesn't commit to one
+predictable approach. From `AI.playerLanes()` (approach seams into your town,
+least-defended first) it launches:
+
+- **Calm** — one telegraphed column down a single lane.
+- **Moderate** — occasionally peels off a **feint** down a second lane.
+- **Hard** — **splits the host**: two harass/probe parties on alternate lanes to
+  find the undefended gap and pull your defenders, while the **main force commits
+  to the lane memory says is softest**. Probe parties carry their own objective
+  (`u.raidObj` / `u.raidLane`); the main force shares `ai.raidObj`.
+
+**Lane memory** (`S.ai.memory.laneDef`): a push that stalls or is beaten back
+marks *that lane* as defended, so the next commit routes elsewhere; a productive
+one softens it; all decay slowly. Probes that hit a defended lane **retreat and
+re-route** rather than feed themselves in.
 
 Retreat still applies: a party cut below a third of strength, or bogged down
 8+ days, breaks off and marches home.
@@ -160,8 +188,14 @@ keeps a smaller army, rarely all-ins, and won't punish every minor opening;
 **Hard is smart-and-ruthless** — it exploits every vulnerability window, builds
 optimal counters, and commits decisive pushes. The difference is aggression and
 scale, not blunders. In the benchmark, a passive player is conquered on **Calm
-(~day 82), Moderate (~day 48), and Hard (~day 35)** — same competence, rising
-aggression.
+(~day 88), Moderate (~day 51), and Hard (~day 43)** — same competence, rising
+aggression (the maze geometry and multi-lane splits add a few days over the
+open-map figures, but every difficulty still lands the kill).
+
+Difficulty also shapes the **terrain game** (Phases above): easier games hand the
+player a more naturally fortified spawn (Calm ~2 approach lanes, Hard exposed),
+and the rival probes more lanes the harder it gets (Calm one column, Hard splits
+its host across 2+ lanes and commits to the softest).
 
 ---
 
@@ -181,10 +215,14 @@ Headless Playwright suites in the session scratchpad cover each layer:
 remembers unseen buildings, forgets razed ones, estimates economy, scouts),
 `aipost` (posture divergence / exploitation / hysteresis), `aiutil` (utility
 town-building / counter-building / conquest),
-`aitac` (objectives / soft targets / wall memory), and `aibench` (beats a
-passive player at every difficulty; smart-not-hard — no blunders on Calm, Hard
-is bigger and more aggressive). `smoke45` / `smoke46` guard persona coherence
-and the Origin-Card sweep.
+`aitac` (objectives / soft targets / wall memory),
+`aiterrain` (chokepoint perception, seam-plugging defense, towers on the
+approach), `aiprobe` (multi-lane probing / lane memory / main-force commits to
+the softest lane), and `aibench` (beats a passive player at every difficulty;
+smart-not-hard). Terrain itself is covered by `terrain` (impassable tiles,
+adjacent gathering opens routes, reachability, trap-guard) and `defensibility`
+(difficulty-scaled spawn fortification). `smoke45` / `smoke46` guard persona
+coherence and the Origin-Card sweep.
 
 ## File map
 

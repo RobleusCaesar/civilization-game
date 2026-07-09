@@ -79,11 +79,24 @@ any new field. `CFG.W`/`CFG.H` are **mutable** and must be set from the save
 ### Key systems and their invariants
 
 - **Map sizes & landforms:** `CFG.SIZES` {small 30, medium 40, large 52}, set in
-  `G.newGame(seed, modeKey, sizeKey)`. `MapGen.generate` rolls a landform:
-  valley / lakeland / highlands (impassable `T.MOUNTAIN` ridges) / islands
-  (causeway-linked). A BFS safeguard carves a causeway if player↔AI aren't
-  connected. Resource density scales with area (`f = W*H/1600`) but the **scarce
-  resource is always exactly one half-size pocket** regardless of size.
+  `G.newGame(seed, modeKey, sizeKey)`. `MapGen.generate(seed, mode)` rolls a
+  landform: valley / lakeland / highlands (impassable `T.MOUNTAIN` ridges) /
+  islands (causeway-linked). Resource density scales with area
+  (`f = W*H/1600`) but the **scarce resource is always exactly one half-size
+  pocket** regardless of size.
+- **Reachability clamp (now that resources block):** at map-gen a flood-fill
+  over open land guarantees (a) player↔rival are connected and (b) every
+  resource TYPE has a HARVESTABLE tile (open-adjacent) reachable from each spawn,
+  carving a minimal lane otherwise. The connectivity carve **preserves the
+  scarce resource** (clears the abundant obstacles instead of bulldozing the
+  wood); the resource-lane carve preserves the target resource and stops beside
+  it. No sealed spawns, no soft-locked resources.
+- **Difficulty defensibility (`mode` → player spawn):** a treeline/rocky rise is
+  filled into the "closed" sectors of the ring just outside the player's start
+  plot — **Calm** keeps 2 open approach lanes (a fortified seat), **Moderate** 3,
+  **Hard** none added (exposed, the map's natural approaches). The rival-facing
+  sector always stays open and the reachability clamp still runs after, so the
+  player is never sealed in.
 - **Fog of war (3 states):** black = unexplored, grey = explored-but-not-visible
   (renders `S.map.seenTerrain` + `S.map.seenB` ghosts frozen at last sight),
   clear = currently visible. `G.updateVisibility()` syncs the memory for visible
@@ -99,27 +112,39 @@ any new field. `CFG.W`/`CFG.H` are **mutable** and must be set from the save
   walls/gates build at the current level (`Bld.buildSpec`). L1 is a
   stick-and-grass palisade, L2 stone, L3 dressed stone. Vertical gates render as
   thick wall + twin towers (no visible door).
-- **Movement domains:** `Path.passable(x, y, owner, domain)` — `'land'`
-  (default; water+mountain block, walls block, own gates open) vs `'water'`
-  (T.WATER only). `Path.find` and `Path.canStep` take the domain;
-  `Units.domain(u)` derives it from `CFG.UNITS[kind].naval`. **`Path.canStep`
-  exists because close-range chase steering once slipped through the corner
-  where a wall meets water diagonally** — any new continuous movement code must
-  use it, not just check the destination tile.
+- **Movement domains & impassable terrain:** `Path.passable(x, y, owner, domain)`
+  — `'land'` (default) blocks **water, mountain, AND the standing resource tiles
+  — forest, hills (rock), fertile (orchard/berry)**; walls block, own gates open.
+  `'water'` = T.WATER only. The land-block set is the flat lookup `BLOCK_TERR`
+  (map.js), exposed as `Path.blocksLand(terr)`; depleted variants
+  (stumps/pebbles/spent soil), grass, camp and ruin are open. **Resource tiles
+  are obstacles you clear, not walk through** — see Resources. `Path.find` /
+  `Path.canStep` take the domain; `Units.domain(u)` derives it from
+  `CFG.UNITS[kind].naval`. **`Path.canStep` exists because close-range chase
+  steering once slipped through the corner where a wall meets water diagonally**
+  — any new continuous movement code must use it, not just the destination tile.
 - **Hostile spawning (fairness rules):** barbarian waves must spawn (a) in the
   "open wilderness network" — `Path.borderReach()`, or `Path.reachFrom(camps ∪
   AI town)` on all-water-border island maps (this also keeps them out of sealed
   wall rings) — and (b) ≥ 10 tiles from every player building. Wild animals:
   ≥ 8 from TC + network check. The rival tribe trains units at its own
   buildings via the same code as the player.
-- **Resources:** finite per-tile stock (`S.map.resAmount`); depleted tiles turn
-  to stumps/pebbles/spent soil, ruins come from destroyed buildings. After
-  `CFG.RUIN_DECAY_DAYS` (20) via `S.map.decay`, depleted tiles **regrow into
-  their source terrain at `REGROW_FRACTION` (50%) stock** (scarce keeps its
-  0.6 lean) so no resource can permanently zero out; ruins fade to grass.
-  Building on top cancels the timer. The scarce pocket is generated as exactly
-  6-8 tiles (single-tile growth, immune to mountain/lake blob-eating) and
-  normal resources have a 12-tile floor. Water tiles hold fish — see Dock.
+- **Resources (impassable; harvest opens the ground):** forest/hills/fertile
+  tiles **block movement** — a villager stands on the OPEN tile *beside* the
+  resource and works it (`assignGather` finds an adjacent stand tile; the gather
+  task carries `sx,sy`, mirroring shore-fishing). Finite per-tile stock
+  (`S.map.resAmount`); when a tile is worked out it turns to stumps/pebbles/spent
+  soil — which is **passable**, so felling the wood / quarrying the rock **opens
+  a new route through it**. The map physically changes as it's played. Resource
+  *buildings* (lumber/quarry/lodge/farm) sit on grass and draw a proximity
+  bonus (`nearBonus`); the farm's fertile bonus is radius 1 (adjacent) since it
+  can't sit on the now-impassable soil. After `CFG.RUIN_DECAY_DAYS` (20) via
+  `S.map.decay`, depleted tiles **regrow into their source terrain at
+  `REGROW_FRACTION` (50%) stock** (scarce keeps its 0.6 lean) — this **re-blocks**
+  the tile, so regrowth is skipped under a building and `G.pushOffBlocked` shoves
+  any unit off so nothing is trapped. Building on top cancels the timer. Scarce
+  pocket = exactly 6-8 tiles; normal resources have a 12-tile floor. Water tiles
+  hold fish — see Dock.
 - **Dock & navy:** Dock requires TC L2, is placed *on* water
   (body ≥ `CFG.DOCK_MIN_WATER` = 6 tiles, walkable shore orthogonally adjacent
   for builders — `Bld.dockSiteOk(x,y,owner)` is owner-aware), 3 levels. Trains
