@@ -87,6 +87,9 @@ const UI = {
           this.placing = key;
           this.deselect();
           this.toast(`Tap a clear tile to place the ${d.name}`);
+          // tuck the build menu away so the whole map is visible to pick a site
+          // (keepPlacing: don't cancel the building we just chose)
+          this.setMenuCollapsed(true, true);
         }
         this.refreshMenu();
       });
@@ -461,7 +464,7 @@ const UI = {
     document.getElementById('buildmenu').style.display = this.menuCollapsed ? 'none' : 'flex';
   },
 
-  setMenuCollapsed(v) {
+  setMenuCollapsed(v, keepPlacing) {
     this.menuCollapsed = v;
     const t = document.getElementById('bmToggle');
     t.textContent = v ? '🔨 Build ▴' : '▾';
@@ -474,7 +477,7 @@ const UI = {
     } else {
       document.getElementById('buildmenu').style.display = v ? 'none' : 'flex';
     }
-    if (v && this.placing) { this.placing = null; this.builderFor = null; this.refreshMenu(); }
+    if (v && !keepPlacing && this.placing) { this.placing = null; this.builderFor = null; this.refreshMenu(); }
   },
   setMiniCollapsed(v) {
     this.miniCollapsed = v;
