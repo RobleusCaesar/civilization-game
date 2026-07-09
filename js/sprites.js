@@ -567,15 +567,21 @@ const Sprites = {
       if (d.glow) { p(7, 0, 2, 2, AP.fire[1]); p(7, 0, 1, 1, AP.fire[2]); }  // signal fire
       else p(7, 0, 1, 2, AP.blue[2]);
     },
+    // martial hall — read at a glance from the weapon rack (spears + round
+    // shields) and the big training-hall door; sturdier reinforced posts
     barracks(p, lv, fac) {
-      const d = ART.tierDress(lv);
+      const d = ART.tierDress(lv), q = p.hi;
       ART.dropShadow(p, 8, 14, 14);
-      wallBody(p, 1, 7, 14, 7, d, 13);
-      roof(p, 0, 4, 16, 3, d, 14);
-      p(3, 9, 2, 3, AP.ink[0]); p(11, 9, 2, 3, AP.ink[0]);          // twin doors
-      p(7, 8, 2, 3, AP.bone[2]); p(7, 8, 2, 1, fac[2]);             // faction shield
-      if (d.decor >= 1) { p(1, 3, 1, 4, AP.wood[2]); p(2, 3, 2, 2, fac[2]); }  // pennant
-      if (d.banner) banner(p, 14, 1, fac);
+      wallBody(p, 2, 7, 12, 7, d, 13);
+      roof(p, 1, 4, 14, 3, d, 14);
+      q(5, 14, 2, 13, AP.wood[0]); q(25, 14, 2, 13, AP.wood[0]);    // reinforced corner posts
+      q(12, 18, 6, 9, AP.ink[0]);                                   // training-hall door
+      q(11, 17, 8, 1, AP.wood[3]); q(11, 18, 1, 9, AP.wood[2]); q(18, 18, 1, 9, AP.wood[2]); // lintel + jambs
+      q(8, 15, 15, 1, AP.wood[1]);                                  // weapon-rack beam
+      for (const sx of [9, 12, 20, 23]) { q(sx, 11, 1, 5, AP.wood[2]); q(sx, 10, 1, 1, AP.stone[4]); } // racked spears + steel heads
+      ART.shadedCircle(q, 8, 22, 3, AP.wood, 2); q(7, 22, 2, 1, fac[2]); q(8, 22, 1, 1, fac[1]); // faction shield
+      ART.shadedCircle(q, 23, 22, 3, AP.hide, 2); q(23, 22, 1, 1, AP.bone[2]);                   // hide shield
+      if (d.banner) banner(q, 28, 1, fac);
     },
     stable(p, lv, fac) {
       const d = ART.tierDress(lv);
@@ -588,17 +594,26 @@ const Sprites = {
       if (d.decor >= 1) { p(0, 12, 1, 3, AP.wood[2]); p(15, 12, 1, 3, AP.wood[2]); } // paddock posts
       if (d.banner) banner(p, 0, 0, fac);
     },
+    // open archery yard — read from the ringed target butt (left), a shooting-
+    // line rail, a quiver, and a small fletcher's shelter with a bow rack (right)
     range(p, lv, fac) {
-      const d = ART.tierDress(lv);
-      ART.dropShadow(p, 11, 14, 8);
-      ART.shadedCircle(p, 3, 6, 2, AP.bone, 1);                     // straw target
-      p(2, 5, 3, 3, AP.red[2]); p(3, 6, 1, 1, AP.bone[2]);          // rings
-      p(3, 9, 1, 5, AP.wood[2]);                                    // target post
-      wallBody(p, 9, 6, 5, 8, d, 19);
-      roof(p, 8, 4, 7, 2, d, 20);
-      p(11, 10, 1, 4, AP.ink[0]);                                   // door
-      p(6, 11, 1, 4, AP.wood[2]); p(7, 11, 1, 1, AP.wood[3]);       // bow rack
-      if (d.decor >= 1) p(0, 12, 8, 1, AP.wood[2]);                 // shooting-lane fence
+      const d = ART.tierDress(lv), q = p.hi;
+      ART.dropShadow(p, 10, 14, 12);
+      wallBody(p, 9, 7, 6, 6, d, 19);                               // fletcher's shelter
+      roof(p, 8, 5, 8, 2, d, 20);
+      q(24, 19, 3, 6, AP.ink[0]);                                   // shelter door
+      q(19, 14, 1, 9, AP.wood[2]);                                  // bow-rack post
+      q(20, 15, 1, 3, AP.wood[3]); q(20, 19, 1, 3, AP.wood[3]);     // stacked bows
+      q(17, 16, 1, 6, AP.bone[2]);                                  // arrow bundle
+      // ringed straw target butt on a post — the identity
+      q(6, 17, 1, 11, AP.wood[1]); q(5, 17, 3, 1, AP.wood[2]);      // butt post
+      ART.shadedCircle(q, 6, 11, 4, AP.bone, 1);
+      ART.shadedCircle(q, 6, 11, 3, AP.red, 1);
+      ART.shadedCircle(q, 6, 11, 2, AP.bone, 1);
+      q(6, 11, 1, 1, AP.red[2]);                                    // bullseye
+      q(7, 10, 3, 1, AP.bone[2]); q(10, 9, 1, 1, AP.wood[0]);       // an arrow struck in the butt
+      for (let fx = 1; fx < 29; fx += 5) { q(fx, 27, 1, 2, AP.wood[2]); q(fx, 27, 4, 1, AP.wood[1]); } // shooting-line rail
+      q(14, 23, 2, 4, AP.hide[2]); q(14, 22, 1, 3, AP.bone[2]); q(16, 22, 1, 2, AP.bone[2]); // quiver of arrows
       if (d.banner) banner(p, 13, 0, fac);
     },
     dock(p, lv, fac) {
