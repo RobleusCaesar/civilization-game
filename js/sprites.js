@@ -49,6 +49,19 @@ const Sprites = {
     for (let f = 0; f < n; f++) out.push(tile((p, g) => draw(p, g, f)));
     return out;
   }
+  // HIGH-RES building canvas: 64×64 (double the pixels of a normal tile). The
+  // coarse plotter `p` still works on the 16-grid (4px/cell) so every existing
+  // building draw renders unchanged — just crisper — while `p.hi` exposes a
+  // 32-grid (2px/half-cell) for the finer detail L2/L3 and the work-site carry.
+  function tileB(draw) {
+    const c = mk(64, 64), g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    const p = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * 4, y * 4, (w || 1) * 4, (h || 1) * 4); };
+    p.hi = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * 2, y * 2, (w || 1) * 2, (h || 1) * 2); };
+    p.g = g;
+    draw(p, g);
+    return c;
+  }
   // deterministic speckle
   function speckle(p, seed, n, col) {
     let s = seed;
@@ -336,15 +349,30 @@ const Sprites = {
       for (let yy = y + 1; yy < y + h; yy += 2) p(x, yy, w, 1, AP.wood[1]);
       for (let xx = x + 2; xx < x + w - 1; xx += 3) p(xx, y + 1, 1, h - 2, AP.wood[3]);
       p(x, y, w, 1, AP.wood[4]);                                    // lit ridge
+      if (p.hi) for (let xx = x; xx < x + w; xx += 1)               // staggered shingle butts
+        p.hi(xx * 2 + (xx & 1), (y + h - 1) * 2 + 1, 1, 1, AP.wood[0]);
     } else {
       ART.thatchTexture(p, x, y, w, h, seed);
       if (dress.mat === 'timber') p(x, y, w, 1, AP.wood[3]);        // ridge beam
+      if (p.hi) p.hi(x * 2, (y + h) * 2 - 1, w * 2, 1, AP.thatch[0]);  // shaded eave lip
     }
+    if (p.hi) p.hi(x * 2 - 1, (y + h) * 2, w * 2 + 2, 1, ART.STYLE.SHADOW);  // eave shadow on the wall below
   }
   function wallBody(p, x, y, w, h, dress, seed) {
     if (dress.mat === 'wattle') ART.wattleTexture(p, x, y, w, h, seed);
-    else if (dress.mat === 'timber') ART.woodPlankTexture(p, x, y, w, h, seed);
-    else ART.stoneTexture(p, x, y, w, h, seed);
+    else if (dress.mat === 'timber') {
+      ART.woodPlankTexture(p, x, y, w, h, seed);
+      if (p.hi) { p.hi(x * 2, y * 2, 1, h * 2, AP.wood[3]); p.hi((x + w) * 2 - 1, y * 2, 1, h * 2, AP.wood[1]); }  // corner posts
+    } else {
+      ART.stoneTexture(p, x, y, w, h, seed);
+      if (p.hi && w > 2 && h > 2) {                                // dressed-stone corner QUOINS at L3
+        for (let i = 0; i < h; i += 2) {
+          const lit = (i & 2) ? AP.stone[4] : AP.stone[3], sh = (i & 2) ? AP.stone[1] : AP.stone[0];
+          p.hi(x * 2, (y + i) * 2, 2, 2, lit); p.hi(x * 2, (y + i) * 2, 2, 1, AP.stone[4]);          // left quoins
+          p.hi((x + w) * 2 - 2, (y + i) * 2, 2, 2, sh);                                               // right quoins (shaded)
+        }
+      }
+    }
   }
   function banner(p, x, y, fac) {
     p(x, y, 1, 4, AP.wood[2]);
@@ -579,10 +607,14 @@ const Sprites = {
   // auto-tiling sprites skip the outline pass so they keep tiling seamlessly
   const NO_OUTLINE = new Set(['farm', 'quarry', 'dock', 'wall', 'gate']);
   Sprites.buildingA = {};
+  // walls & gates stay full-tile (32px) so they auto-tile seamlessly; every
+  // other building is drawn at HIGH RES (64px) with a proportional 2px outline
+  const LORES_BLD = new Set(['wall', 'gate']);
   for (const key of Object.keys(B_DRAW)) {
+    const hi = !LORES_BLD.has(key);
     const build = (fac) => [1, 2, 3].map(lv => {
-      const c = tile(p => B_DRAW[key](p, lv, fac));
-      return NO_OUTLINE.has(key) ? c : ART.outline(c);
+      const c = (hi ? tileB : tile)(p => B_DRAW[key](p, lv, fac));
+      return NO_OUTLINE.has(key) ? c : ART.outline(c, hi ? 2 : 1);
     });
     Sprites.building[key] = build(AP.blue);
     Sprites.buildingA[key] = build(AP.red);
@@ -593,16 +625,50 @@ const Sprites = {
   Sprites.gateMask = [0, 1, 2].map(li =>
     [Sprites.building.gate[li], tile(p => drawGateVertical(p, li + 1))]);
 
-  Sprites.misc.construction = ART.outline(tile(p => {
-    ART.dropShadow(p, 8, 14, 12);
-    p(2, 13, 12, 2, AP.soil[2]);                                  // cleared ground
-    p(3, 2, 1, 12, AP.wood[2]); p(12, 2, 1, 12, AP.wood[2]);      // scaffold poles
-    p(3, 2, 10, 1, AP.wood[3]); p(3, 6, 10, 1, AP.wood[3]);       // cross beams
-    p(4, 3, 1, 1, AP.thatch[1]); p(11, 5, 1, 1, AP.thatch[1]);    // lashings
-    ART.shadedRect(p, 5, 9, 6, 5, AP.wood, 1);                    // partial frame
-    p(6, 4, 3, 2, AP.stone[2]); p(6, 4, 3, 1, AP.stone[3]);       // materials pile
-    p(10, 11, 3, 2, AP.thatch[2]);
-  }));
+  // a proper work-site: a lashed timber scaffold over a dug foundation with a
+  // half-laid stone footing, stacked materials, and a leaning ladder. Drawn at
+  // high res with rope lashings, plank grain and mortar seams in the fine grid.
+  Sprites.misc.construction = ART.outline(tileB(p => {
+    const W = AP.wood, ST = AP.stone, TH = AP.thatch;
+    ART.dropShadow(p, 8, 14, 13);
+    // cleared, dug foundation pad
+    p(2, 12, 12, 3, AP.soil[2]);
+    p(2, 12, 12, 1, AP.soil[3]);                                  // lit lip
+    p(2, 14, 12, 1, AP.soil[1]);                                  // shaded far edge
+    // a STONE FOOTING going in along the back — tapering off where work stopped
+    for (let i = 0; i < 5; i++) {
+      const bx = 3 + i * 2;
+      p(bx, 10, 2, 2, ST[i < 3 ? 2 : 1]);                         // laid blocks (unfinished run)
+      p(bx, 10, 2, 1, ST[3]);
+      p.hi(bx * 2, 21, 2, 1, ST[0]);                             // mortar seam
+    }
+    // TIMBER SCAFFOLD — three uprights, two working platforms, a diagonal brace
+    p(3, 2, 1, 11, W[2]); p(3, 2, 1, 1, W[3]);                    // left upright
+    p(8, 1, 1, 12, W[2]); p(8, 1, 1, 1, W[3]);                    // centre upright
+    p(12, 2, 1, 11, W[2]);
+    p(3, 3, 10, 1, W[3]); p(3, 7, 10, 1, W[3]);                   // lift beams
+    for (let i = 0; i < 5; i++) p(4 + i, 7 - i, 1, 1, W[1]);      // cross-brace
+    // plank walkway on the lower platform, with grain
+    p(4, 8, 8, 1, W[3]);
+    for (let x = 4; x < 12; x += 2) p.hi(x * 2 + 1, 17, 1, 1, W[1]);
+    // rope lashings at the frame joints
+    for (const [lx, ly] of [[3, 3], [8, 3], [12, 3], [3, 7], [8, 7], [12, 7]]) {
+      p.hi(lx * 2 - 1, ly * 2, 3, 1, TH[1]); p.hi(lx * 2, ly * 2 + 1, 1, 1, TH[3]);
+    }
+    // MATERIALS — a stack of timber logs (left), dressed stone blocks (right),
+    // a reed bundle waiting to be laid
+    p(0, 10, 3, 1, W[3]); p(0, 11, 3, 1, W[2]); p(0, 12, 3, 1, W[3]);
+    p.hi(1, 21, 1, 1, TH[2]); p.hi(1, 23, 1, 1, TH[2]);          // log ring-ends
+    ART.shadedRect(p, 13, 11, 3, 2, ST, 2);
+    p.hi(28, 23, 1, 1, ST[0]); p.hi(30, 23, 1, 1, ST[0]);        // block seams
+    p(6, 11, 2, 2, TH[2]); p(6, 11, 2, 1, TH[3]);               // reed bundle
+    // a ladder leaning on the frame
+    p.hi(20, 6, 1, 13, W[1]); p.hi(23, 6, 1, 13, W[1]);
+    for (let r = 0; r < 6; r++) p.hi(20, 8 + r * 2, 4, 1, W[2]);
+    // sawdust / wood shavings scattered on the ground
+    const rr = ART.rng(51);
+    for (let i = 0; i < 9; i++) p.hi(5 + (rr() * 22) | 0, 25 + (rr() * 4) | 0, 1, 1, i % 2 ? TH[1] : W[3]);
+  }), 2);
 
   /* ---------------- units ---------------- */
   // pose: idle | walk | gather | fight ; c = colour set

@@ -115,12 +115,22 @@ const ART = (function () {
     for (let i = 0; i < w * h * 0.25; i++)
       p(x + (r() * w) | 0, y + (r() * h) | 0, 1, 1, r() < 0.5 ? PALETTE.thatch[1] : PALETTE.thatch[3]);
     for (let yy = y + 1; yy < y + h; yy += 2) p(x, yy, w, 1, PALETTE.thatch[1]);   // combed rows
+    if (p.hi) {                                                                     // loose reed strands between courses
+      const r2 = rng((seed || 7) * 7 + 5);
+      for (let i = 0; i < w * h * 0.5; i++)
+        p.hi(x * 2 + (r2() * w * 2) | 0, y * 2 + (r2() * h * 2) | 0, 1, 1, r2() < 0.5 ? PALETTE.thatch[0] : PALETTE.thatch[3]);
+    }
   }
   function woodPlankTexture(p, x, y, w, h, seed) {
     shadedRect(p, x, y, w, h, PALETTE.wood, 2);
     for (let yy = y + 1; yy < y + h; yy += 2) p(x, yy, w, 1, PALETTE.wood[1]);
     const r = rng(seed || 13);
     for (let i = 0; i < w * 0.6; i++) p(x + (r() * w) | 0, y + (r() * h) | 0, 1, 1, PALETTE.wood[0]);  // knots
+    if (p.hi) {                                                                     // fine grain + plank shadow lines
+      for (let yy = y + 1; yy < y + h; yy += 2) p.hi(x * 2, yy * 2 + 1, w * 2, 1, PALETTE.wood[3]);   // lit under-plank
+      const r2 = rng((seed || 13) * 3 + 1);
+      for (let i = 0; i < w * 1.2; i++) p.hi(x * 2 + (r2() * w * 2) | 0, y * 2 + (r2() * h * 2) | 0, 1, 2, PALETTE.wood[1]);  // grain streaks
+    }
   }
   function stoneTexture(p, x, y, w, h, seed) {
     shadedRect(p, x, y, w, h, PALETTE.stone, 2);
@@ -130,6 +140,12 @@ const ART = (function () {
         p(xx, yy, 1, 1, PALETTE.stone[1]);                                          // mortar joints
     for (let i = 0; i < w * h * 0.12; i++)
       p(x + (r() * w) | 0, y + (r() * h) | 0, 1, 1, PALETTE.stone[3]);
+    if (p.hi) {                                                                     // crisp ashlar: thin courses + lit/shaded block faces
+      for (let yy = y + 2; yy < y + h; yy += 2) p.hi(x * 2, yy * 2, w * 2, 1, PALETTE.stone[0]);       // recessed course line
+      const r2 = rng((seed || 29) * 5 + 3);
+      for (let i = 0; i < w * h * 0.5; i++)
+        p.hi(x * 2 + (r2() * w * 2) | 0, y * 2 + (r2() * h * 2) | 0, 1, 1, r2() < 0.5 ? PALETTE.stone[3] : PALETTE.stone[0]);
+    }
   }
   function wattleTexture(p, x, y, w, h, seed) {
     shadedRect(p, x, y, w, h, PALETTE.soil, 2);
@@ -158,7 +174,8 @@ const ART = (function () {
   /* ---- 1px outline post-process ----
      Draws the darkest ink shade into transparent pixels adjacent to opaque
      ones. Run ONCE at sprite build time (cheap at 32×32), never per frame. */
-  function outline(canvas) {
+  function outline(canvas, width) {
+    width = width || 1;                                  // 2 for high-res (64px) building canvases
     const g = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;
     const img = g.getImageData(0, 0, w, h), d = img.data;
@@ -166,7 +183,12 @@ const ART = (function () {
     const edges = [];
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       if (solid(x, y)) continue;
-      if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) edges.push([x, y]);
+      let near = false;
+      for (let dy = -width; dy <= width && !near; dy++) for (let dx = -width; dx <= width; dx++) {
+        if ((!dx && !dy) || Math.abs(dx) + Math.abs(dy) > width) continue;
+        if (solid(x + dx, y + dy)) { near = true; break; }
+      }
+      if (near) edges.push([x, y]);
     }
     g.fillStyle = 'rgba(20,16,10,' + STYLE.OUTLINE_ALPHA + ')';
     for (const [x, y] of edges) g.fillRect(x, y, 1, 1);
