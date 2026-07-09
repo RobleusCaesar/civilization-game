@@ -32,6 +32,15 @@ Hard constraints that have shaped everything:
   faction set, animated overlays (water sparkle/foam, hearth smoke, ambient
   butterflies/birds, ~12-day dusk cycle) — all viewport-bounded, ~0.1ms/frame.
   No sprite may be added without complying with ARTSTYLE.md.
+- **Buildings render at 64px** (`tileB`, `p.hi` fine grid); the 2×2 TC work-site
+  uses a 128px `misc/constructionBig`. Icon thumbnails must scale the whole
+  sprite in (`UI.iconInto`) — a naive `drawImage` clips the 64px source.
+- **Villager sprites** carry task-specific work poses — `gather` (axe/wood),
+  `mine` (pickaxe/stone), `farm` (hoe/food), `build` (mallet), `guard` (defend
+  with a pickaxe) — chosen in `R.unitPose` from the task type/resource. Tunic
+  colour is per-village: `Sprites.villager[color]` sheets (`Sprites.villagerTunics`),
+  picked by `G.tunicOf(owner)` from **`S.tunic = {P, A}`** (set at new-game from
+  the tunic picker; rival auto-contrasts; legacy saves backfill blue/red).
 
 ## Architecture
 

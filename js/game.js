@@ -124,15 +124,20 @@ const G = {
              econ: Math.round(econOf()), nudged, scarceReached, nearWater };
   },
 
-  newGame(seed, modeKey, sizeKey, persona) {
+  newGame(seed, modeKey, sizeKey, persona, tunic) {
     const mode = CFG.MODES[modeKey] ? modeKey : 'moderate';
     const size = CFG.SIZES[sizeKey] ? sizeKey : 'medium';
     CFG.W = CFG.H = CFG.SIZES[size];
     const gen = MapGen.generate(seed, mode);
+    // village tunic colours — your people vs the rival's, at a glance. The rival
+    // always takes a contrasting colour so the two never blur together.
+    const pTunic = (Sprites.villager && Sprites.villager[tunic]) ? tunic : 'blue';
+    const aTunic = pTunic === 'red' ? 'yellow' : 'red';
     S = {
       seed: String(seed),
       mode,
       sizeKey: size,
+      tunic: { P: pTunic, A: aTunic },
       rngState: hashSeed(String(seed)) | 0,
       day: 1, dayT: 0,
       paused: false, over: null,
@@ -327,6 +332,11 @@ const G = {
       } else if (S.map.seenB[i]) delete S.map.seenB[i];
     }
     R.fogDirty = true;
+  },
+
+  // which tunic colour a village wears (defaults keep player blue / rival red)
+  tunicOf(owner) {
+    return (S && S.tunic && S.tunic[owner]) || (owner === 'A' ? 'red' : 'blue');
   },
 
   // a freshly depleted or ruined tile greens over after RUIN_DECAY_DAYS, scaled
@@ -590,6 +600,7 @@ const G = {
       data.sizeKey = match || (w <= 34 ? 'medium' : w <= 45 ? 'large' : 'xlarge');
     }
     if (!data.wallLevel) data.wallLevel = 1;
+    if (!data.tunic) data.tunic = { P: 'blue', A: 'red' };   // pre-tunic save: classic blue vs red
     if (!data.map.resAmount) {
       // older save: give surviving resource tiles an average stock
       data.map.resAmount = data.map.terrain.map(t => {

@@ -730,15 +730,47 @@ const Sprites = {
     // head
     p(7, y, 2, 2, PAL.skin);
     p(7, y - 1, 2, 1, c.hair);
-    // arms + tool
-    if (pose === 'gather') {
+    // arms + tool — the pose IS the villager's task, each with its own tool and
+    // a two-frame swing (raised → struck, with debris flying on the strike)
+    if (pose === 'gather') {                    // fell timber: lashed stone axe
       const ay = f === 0 ? y + 3 : y + 5;
       p(10, ay, 3, 1, PAL.skin);               // swinging arm
       p(12, ay - 2, 1, 3, PAL.trunk);          // wooden haft
       p(12, ay - 3, 2, 1, PAL.rockL);          // lashed stone head
-      if (f === 1) p(14, ay, 1, 1, APx.thatch[3]);   // chips fly on the strike
+      if (f === 1) { p(14, ay, 1, 1, APx.thatch[3]); p(14, ay + 1, 1, 1, APx.wood[3]); }  // wood chips fly
       p(5, y + 4, 1, 2, PAL.skin);
-    } else if (pose === 'fight') {
+    } else if (pose === 'mine') {               // quarry stone: pickaxe
+      const ay = f === 0 ? y + 2 : y + 5;
+      p(10, ay, 3, 1, PAL.skin);               // arm
+      p(12, ay - 3, 1, 4, PAL.trunk);          // long haft
+      p(11, ay - 3, 3, 1, APx.stone[3]);       // pick head bar
+      p(11, ay - 2, 1, 1, APx.stone[2]); p(13, ay - 2, 1, 1, APx.stone[2]);  // down-curved points
+      if (f === 1) { p(12, ay + 1, 1, 1, APx.stone[4]); p(13, ay + 1, 1, 1, APx.fire[2]); }  // spark off rock
+      p(5, y + 4, 1, 2, PAL.skin);
+    } else if (pose === 'farm') {               // till the soil: hoe
+      const ay = f === 0 ? y + 2 : y + 4;
+      p(10, ay, 3, 1, PAL.skin);               // arm
+      p(12, ay - 1, 1, 1, PAL.trunk); p(13, ay, 1, 2, PAL.trunk);   // angled haft
+      p(13, ay + 2, 2, 1, APx.stone[3]);       // hoe blade
+      if (f === 1) { p(14, ay + 3, 1, 1, APx.soil[2]); p(13, ay + 3, 1, 1, APx.soil[1]); }  // turned earth
+      p(5, y + 4, 1, 2, PAL.skin);
+    } else if (pose === 'build') {              // raise a building: mallet
+      const ay = f === 0 ? y + 2 : y + 4;
+      p(10, ay, 3, 1, PAL.skin);               // arm
+      p(12, ay - 1, 1, 3, PAL.trunk);          // handle
+      p(11, ay - 2, 3, 2, PAL.woodD);          // mallet head
+      p(11, ay - 2, 3, 1, PAL.wood);           // lit top face
+      if (f === 1) { p(13, ay + 2, 1, 1, APx.bone[2]); p(11, ay + 2, 1, 1, APx.thatch[3]); }  // impact spark
+      p(5, y + 4, 1, 2, PAL.skin);
+    } else if (pose === 'guard') {              // defend the village: pickaxe in anger
+      const ax = f === 0 ? 10 : 12;
+      p(10, y + 4, Math.max(1, ax - 9), 1, PAL.skin);   // reaching arm
+      p(ax, y + 1, 1, 4, PAL.trunk);           // raised haft
+      p(ax - 1, y, 3, 1, APx.stone[3]);        // pick head
+      p(ax - 1, y + 1, 1, 1, APx.stone[2]); p(ax + 1, y + 1, 1, 1, APx.stone[2]);
+      if (f === 1) { p(ax + 1, y + 1, 1, 1, APx.bone[2]); p(ax + 1, y + 3, 1, 1, APx.fire[2]); }  // strike flash
+      p(5, y + 4, 1, 2, PAL.skin);
+    } else if (pose === 'fight') {              // soldiers: spear thrust
       const ax = f === 0 ? 10 : 12;
       p(10, y + 4, ax - 7, 1, PAL.skin);
       p(ax, y + 2, 1, 4, c.spear || PAL.trunk); // spear
@@ -758,7 +790,33 @@ const Sprites = {
       fight: frames(2, (p, g, f) => { humanoid(p, f, 'fight', c); if (extra) extra(p, f); }),
     };
   }
-  Sprites.unit.villager = unitSheet({ body: '#b08a4f', accent: '#8a6b3a', pants: '#6e5024', hair: PAL.hair });
+  // villagers carry the full working repertoire: chop (wood), mine (stone),
+  // farm (food), build (hammer) and guard (defend with a pickaxe)
+  function villagerSheet(c) {
+    const mk = (pose) => frames(2, (p, g, f) => humanoid(p, f, pose, c));
+    return {
+      idle: mk('idle'), walk: mk('walk'), gather: mk('gather'),
+      mine: mk('mine'), farm: mk('farm'), build: mk('build'), guard: mk('guard'),
+    };
+  }
+  // TUNIC COLOURS — a villager's tunic (body + collar) is dyed by village, so
+  // your people read at a glance against the enemy's. Extend freely.
+  const TUNICS = {
+    blue:   { body: '#3f6d99', accent: '#2c4e70' },
+    red:    { body: '#a8443a', accent: '#7a2c26' },
+    yellow: { body: '#c6a638', accent: '#8a7018' },
+    green:  { body: '#4d8a46', accent: '#356030' },
+    purple: { body: '#7a4a8f', accent: '#553066' },
+    teal:   { body: '#2f9a8f', accent: '#1e6a62' },
+    orange: { body: '#c07a2a', accent: '#8a5216' },
+  };
+  Sprites.villager = {};
+  for (const name in TUNICS) {
+    const t = TUNICS[name];
+    Sprites.villager[name] = villagerSheet({ body: t.body, accent: t.accent, pants: '#6e5024', hair: PAL.hair });
+  }
+  Sprites.villagerTunics = Object.keys(TUNICS);            // exposed for the tunic picker
+  Sprites.unit.villager = Sprites.villager.blue;           // default + fallback sheet
   Sprites.unit.defender = unitSheet({ body: '#7a6242', accent: PAL.P, pants: '#4a3a24', hair: PAL.hair, spear: PAL.trunk },
     (p, f) => { p(11, 2, 1, 5, PAL.trunk); p(11, 1, 1, 1, PAL.rockL); });        // idle spear
   Sprites.unit.elite = unitSheet({ body: '#8a7248', accent: PAL.gold, pants: '#4a3a24', hair: PAL.hair, spear: PAL.trunk },

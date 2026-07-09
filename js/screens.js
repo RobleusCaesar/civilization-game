@@ -11,7 +11,7 @@ const Screens = {
   lastSavedDay: 0,          // quit-guard: unsaved progress since this day
   _demo: false,             // S currently holds the title's demo world
   _confirmQuit: false,
-  newPrefs: { mode: 'moderate', size: 'large', landform: 'random' },
+  newPrefs: { mode: 'moderate', size: 'large', landform: 'random', tunic: 'blue' },
 
   el(id) { return document.getElementById(id); },
 
@@ -151,8 +151,8 @@ const Screens = {
 
   /* ---------------- new game ---------------- */
   onNewgame() {
-    for (const row of ['ngMode', 'ngSize', 'ngLand']) {
-      const key = { ngMode: 'mode', ngSize: 'size', ngLand: 'landform' }[row];
+    for (const row of ['ngMode', 'ngSize', 'ngLand', 'ngTunic']) {
+      const key = { ngMode: 'mode', ngSize: 'size', ngLand: 'landform', ngTunic: 'tunic' }[row];
       this.el(row).querySelectorAll('.abtn').forEach(b =>
         b.classList.toggle('sel', b.dataset.v === this.newPrefs[key]));
     }
@@ -172,7 +172,7 @@ const Screens = {
     if (!seed) seed = String((Math.random() * 1e9) | 0);
     this._demo = false;
     G.freeVis = false;
-    G.newGame(seed, p.mode, p.size);   // the rival chief is always a fresh roll
+    G.newGame(seed, p.mode, p.size, undefined, p.tunic);   // the rival chief is always a fresh roll
     Backend.markActiveSlot(null);          // fresh run: no cloud slot until first save
     Backend.activeName = null;
     this.lastSavedDay = 1;
@@ -652,7 +652,7 @@ const Screens = {
     for (const id of ['ngBack', 'loadBack', 'setBack', 'howBack'])
       on(id, () => this.show(this.backTo === 'paused' ? 'paused' : 'title'));
     // new-game option rows
-    for (const [rowId, key] of [['ngMode', 'mode'], ['ngSize', 'size'], ['ngLand', 'landform']])
+    for (const [rowId, key] of [['ngMode', 'mode'], ['ngSize', 'size'], ['ngLand', 'landform'], ['ngTunic', 'tunic']])
       this.el(rowId).querySelectorAll('.abtn').forEach(b => b.addEventListener('click', () => {
         this.newPrefs[key] = b.dataset.v;
         this.onNewgame();

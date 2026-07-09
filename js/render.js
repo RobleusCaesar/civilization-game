@@ -179,20 +179,37 @@ const R = {
   },
 
   unitPose(u) {
-    if (u.tUnit) return 'fight';
+    const vil = u.kind === 'villager';
+    // in a fight: villagers swing a pickaxe (guard), soldiers thrust a spear
+    if (u.tUnit) return vil ? 'guard' : 'fight';
     const fb = u.tBld && Bld.get(u.tBld);
-    if (fb && Math.hypot(Bld.cx(fb) - u.x, Bld.cy(fb) - u.y) < 1.5 + Bld.reach(fb)) return 'fight';
+    if (fb && Math.hypot(Bld.cx(fb) - u.x, Bld.cy(fb) - u.y) < 1.5 + Bld.reach(fb)) return vil ? 'guard' : 'fight';
     if (Units.moving(u)) return 'walk';
-    if (u.task && u.task.type === 'shorefish') return 'idle';   // the rod overlay tells the story
-    if (u.task && (u.task.type === 'gather' || u.task.type === 'fish' ||
-        u.task.type === 'build' || u.task.type === 'work')) return 'gather';
+    const t = u.task;
+    if (t) {
+      if (t.type === 'shorefish') return 'idle';                 // the rod overlay tells the story
+      if (t.type === 'gather')                                   // tool by resource
+        return t.res === 'stone' ? 'mine' : t.res === 'food' ? 'farm' : 'gather';  // wood → axe (gather)
+      if (t.type === 'build') return 'build';
+      if (t.type === 'work') {                                   // stationed at a workplace → its craft
+        const wb = Bld.get(t.id), k = wb && wb.key;
+        return k === 'quarry' ? 'mine' : k === 'farm' ? 'farm'
+          : (k === 'lumber' || k === 'lodge') ? 'gather' : 'build';
+      }
+      if (t.type === 'fish') return 'gather';
+    }
     return 'idle';
   },
   unitSprite(u) {
-    let key = u.kind;
-    if ((u.kind === 'defender' || u.kind === 'elite') && u.owner === 'A') key = 'defenderA';
-    const sheet = Sprites.unit[key] || Sprites.unit.villager;
-    const pose = sheet[this.unitPose(u)] ? this.unitPose(u) : 'walk';
+    let sheet;
+    if (u.kind === 'villager') {
+      sheet = Sprites.villager[G.tunicOf(u.owner)] || Sprites.unit.villager;
+    } else {
+      let key = u.kind;
+      if ((u.kind === 'defender' || u.kind === 'elite') && u.owner === 'A') key = 'defenderA';
+      sheet = Sprites.unit[key] || Sprites.unit.villager;
+    }
+    const pose = sheet[this.unitPose(u)] ? this.unitPose(u) : (sheet.walk ? 'walk' : 'idle');
     const fr = sheet[pose];
     return fr[((u.animT * 4) | 0) % fr.length];
   },
