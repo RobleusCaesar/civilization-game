@@ -887,12 +887,39 @@ const Sprites = {
   }
   Sprites.villagerTunics = Object.keys(TUNICS);            // exposed for the tunic picker
   Sprites.unit.villager = Sprites.villager.blue;           // default + fallback sheet
-  Sprites.unit.defender = unitSheet({ body: '#7a6242', accent: PAL.P, pants: '#4a3a24', hair: PAL.hair, spear: PAL.trunk },
-    (p, f) => { p(11, 2, 1, 5, PAL.trunk); p(11, 1, 1, 1, PAL.rockL); });        // idle spear
-  Sprites.unit.elite = unitSheet({ body: '#8a7248', accent: PAL.gold, pants: '#4a3a24', hair: PAL.hair, spear: PAL.trunk },
-    (p, f) => { p(4, 6, 1, 3, PAL.rockL); p(11, 2, 1, 5, PAL.trunk); p(11, 1, 1, 1, PAL.gold); }); // shield
-  Sprites.unit.defenderA = unitSheet({ body: '#7a5242', accent: PAL.A, pants: '#4a2a24', hair: PAL.hair, spear: PAL.trunk },
-    (p, f) => { p(11, 2, 1, 5, PAL.trunk); p(11, 1, 1, 1, PAL.rockL); });
+
+  // ---- MILITARY units. The silhouette + tools identify the unit TYPE; the
+  // collar / torso stripe (accent) is dyed the VILLAGE colour so friendly and
+  // enemy soldiers read apart at a glance — exactly like the villager tunics.
+  // Built once per tunic and cached (see Sprites.militaryFor), so only the two
+  // colours actually in play cost anything. Gold spear/bow tips stay as rank
+  // markers on the elite/marksman/lancer; only the faction collar recolours.
+  const FOOT = {
+    defender: { body: '#7a6242', pants: '#4a3a24', extra: (p, f) => { p(11, 2, 1, 5, PAL.trunk); p(11, 1, 1, 1, PAL.rockL); } },
+    elite:    { body: '#8a7248', pants: '#4a3a24', extra: (p, f) => { p(4, 6, 1, 3, PAL.rockL); p(11, 2, 1, 5, PAL.trunk); p(11, 1, 1, 1, PAL.gold); } },
+    axeman:   { body: APx.hide[2], pants: APx.hide[1], extra: (p, f) => { p(11, 2, 1, 5, PAL.trunk); p(10, 1, 3, 1, APx.stone[3]); p(10, 2, 2, 1, APx.stone[2]); p(5, 5, 1, 1, APx.skin[2]); p(10, 5, 1, 1, APx.skin[2]); } },
+    longbow:  { body: APx.leaf[2], pants: APx.leaf[1], extra: (p, f) => { p(12, 0, 1, 9, PAL.trunk); p(11, 0, 1, 1, PAL.trunk); p(11, 8, 1, 1, PAL.trunk); p(4, 6, 1, 3, APx.hide[1]); p(4, 5, 1, 1, APx.thatch[2]); } },
+    archer:   { body: '#6a7a4a', pants: '#4a5230', extra: (p, f) => { p(12, 2, 1, 6, PAL.trunk); p(11, 2, 1, 1, PAL.trunk); p(11, 7, 1, 1, PAL.trunk); } },
+    marksman: { body: '#5a6a3a', pants: '#3a4224', extra: (p, f) => { p(12, 1, 1, 7, PAL.trunk); p(11, 1, 1, 1, PAL.gold); p(11, 8, 1, 1, PAL.trunk); } },
+  };
+  const RIDERS = {
+    rider:       { horse: '#a87848', horseD: '#7a5430', body: '#7a6242' },
+    horsearcher: { horse: APx.hide[3], horseD: APx.hide[1], body: APx.leaf[2], bow: true },
+    lancer:      { horse: '#8a8078', horseD: '#5d5d64', body: '#8a7248', tip: PAL.gold },
+  };
+  Sprites.military = {};                                    // tunic -> { defender, elite, …, warship }
+  Sprites.militaryFor = function (tunic) {
+    if (Sprites.military[tunic]) return Sprites.military[tunic];
+    const acc = (TUNICS[tunic] || TUNICS.blue).body;        // the bright tunic hue = the identifying collar
+    const set = {};
+    for (const k in FOOT) set[k] = unitSheet({ body: FOOT[k].body, accent: acc, pants: FOOT[k].pants, hair: PAL.hair, spear: PAL.trunk }, FOOT[k].extra);
+    for (const k in RIDERS) set[k] = riderSheet({ horse: RIDERS[k].horse, horseD: RIDERS[k].horseD, body: RIDERS[k].body, accent: acc, bow: RIDERS[k].bow, tip: RIDERS[k].tip });
+    set.warship = warshipSheet({ hull: PAL.wood, hullD: PAL.woodD, sail: '#e8e8e0', sailD: '#c9c9c0', stripe: acc, crew: '#7a6242', arrow: PAL.rockL });
+    Sprites.military[tunic] = set;
+    return set;
+  };
+  // the blue set is the default/fallback surfaced on Sprites.unit.*
+  { const blue = Sprites.militaryFor('blue'); for (const k in blue) Sprites.unit[k] = blue[k]; }
   // barbarians / wildlings: shaggy furs, bone trinkets, teal war paint — a
   // colour family all their own so they never read as the (red) rival tribe
   const BARB = { paint: '#3fb094', fur: '#6e5b40', furD: '#4a3d2c', bone: '#d8cfae' };
@@ -911,20 +938,7 @@ const Sprites = {
       p(4, 6, 1, 3, BARB.furD);                     // hulking fur bulk
     });
 
-  // axeman: bare-armed shock troop, broad stone axe over the shoulder
-  Sprites.unit.axeman = unitSheet({ body: APx.hide[2], accent: PAL.P, pants: APx.hide[1], hair: PAL.hair, spear: PAL.trunk },
-    (p, f) => {
-      p(11, 2, 1, 5, PAL.trunk);                               // heavy haft
-      p(10, 1, 3, 1, APx.stone[3]); p(10, 2, 2, 1, APx.stone[2]);  // broad axe head
-      p(5, 5, 1, 1, APx.skin[2]); p(10, 5, 1, 1, APx.skin[2]); // bare shoulders
-    });
-  // longbowman: a bow as tall as the archer, quiver on the hip
-  Sprites.unit.longbow = unitSheet({ body: APx.leaf[2], accent: PAL.P, pants: APx.leaf[1], hair: PAL.hair, spear: PAL.trunk },
-    (p, f) => {
-      p(12, 0, 1, 9, PAL.trunk);                               // man-tall stave
-      p(11, 0, 1, 1, PAL.trunk); p(11, 8, 1, 1, PAL.trunk);    // curved tips
-      p(4, 6, 1, 3, APx.hide[1]); p(4, 5, 1, 1, APx.thatch[2]); // quiver + fletching
-    });
+  // (axeman & longbow silhouettes are defined in FOOT above, dyed per village)
 
   // mounted unit: horse + rider with spear (or bow, for the horse archer)
   function riderSheet(c) {
@@ -952,14 +966,8 @@ const Sprites = {
       fight: frames(2, (p, g, f) => draw(p, f, 'fight')),
     };
   }
-  Sprites.unit.rider = riderSheet({ horse: '#a87848', horseD: '#7a5430', body: '#7a6242', accent: PAL.P });
-  Sprites.unit.horsearcher = riderSheet({ horse: APx.hide[3], horseD: APx.hide[1], body: APx.leaf[2], accent: PAL.P, bow: true });
-  Sprites.unit.lancer = riderSheet({ horse: '#8a8078', horseD: '#5d5d64', body: '#8a7248', accent: PAL.gold, tip: PAL.gold });
-  // archers: humanoid with a bow at the side
-  Sprites.unit.archer = unitSheet({ body: '#6a7a4a', accent: PAL.P, pants: '#4a5230', hair: PAL.hair, spear: PAL.trunk },
-    (p, f) => { p(12, 2, 1, 6, PAL.trunk); p(11, 2, 1, 1, PAL.trunk); p(11, 7, 1, 1, PAL.trunk); });
-  Sprites.unit.marksman = unitSheet({ body: '#5a6a3a', accent: PAL.gold, pants: '#3a4224', hair: PAL.hair, spear: PAL.trunk },
-    (p, f) => { p(12, 1, 1, 7, PAL.trunk); p(11, 1, 1, 1, PAL.gold); p(11, 8, 1, 1, PAL.trunk); });
+  // (rider, horsearcher, lancer, archer & marksman are defined in FOOT/RIDERS
+  // above, their collars dyed the village colour)
 
   /* ---------------- boats ---------------- */
   // rowing-boat sheet: hull low in the water, crew figure, bobbing animation
@@ -1011,8 +1019,8 @@ const Sprites = {
     };
   }
   Sprites.unit.fishboat = fishboatSheet();
-  Sprites.unit.warship = warshipSheet({ hull: PAL.wood, hullD: PAL.woodD, sail: '#e8e8e0', sailD: '#c9c9c0',
-    stripe: PAL.P, crew: '#7a6242', arrow: PAL.rockL });
+  // warship's sail stripe is dyed per village (built in Sprites.militaryFor);
+  // Sprites.unit.warship holds the blue fallback set there
   Sprites.unit.fireship = warshipSheet({ hull: '#5d4a30', hullD: '#453722', sail: '#b8b0a0', sailD: '#98907e',
     stripe: PAL.fire, crew: '#5d4a30', arrow: PAL.fire, flame: true });
 

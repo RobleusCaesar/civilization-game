@@ -205,9 +205,10 @@ const R = {
     if (u.kind === 'villager') {
       sheet = Sprites.villager[G.tunicOf(u.owner)] || Sprites.unit.villager;
     } else {
-      let key = u.kind;
-      if ((u.kind === 'defender' || u.kind === 'elite') && u.owner === 'A') key = 'defenderA';
-      sheet = Sprites.unit[key] || Sprites.unit.villager;
+      // military units wear the village colour on their collar/stripe; barbarians,
+      // siege engines and civilian boats fall through to their single sheet
+      const mil = Sprites.militaryFor && Sprites.militaryFor(G.tunicOf(u.owner));
+      sheet = (mil && mil[u.kind]) || Sprites.unit[u.kind] || Sprites.unit.villager;
     }
     const pose = sheet[this.unitPose(u)] ? this.unitPose(u) : (sheet.walk ? 'walk' : 'idle');
     const fr = sheet[pose];

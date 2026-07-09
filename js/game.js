@@ -133,6 +133,9 @@ const G = {
     // always takes a contrasting colour so the two never blur together.
     const pTunic = (Sprites.villager && Sprites.villager[tunic]) ? tunic : 'blue';
     const aTunic = pTunic === 'red' ? 'yellow' : 'red';
+    // pre-build both sides' military sprite sets now so the first soldier on
+    // screen never causes a mid-game hitch
+    if (Sprites.militaryFor) { Sprites.militaryFor(pTunic); Sprites.militaryFor(aTunic); }
     S = {
       seed: String(seed),
       mode,
