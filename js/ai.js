@@ -139,14 +139,22 @@ const AI = {
       return best;
     }
     if (key === 'tower') {
-      // watchtowers face the likely threat — but only toward the player's town
-      // if we've actually FOUND it; otherwise they face outward at random
+      // watchtowers cover the APPROACH SEAMS — the open gaps attackers must come
+      // through — biased toward the gap facing the player's town if we've found
+      // it. Terrain covers the rest; guns go where the lanes are.
+      const gaps = this.perimeterGaps(Bld.cx(tc) | 0, Bld.cy(tc) | 0, 5);
       const ptc = this.knownPlayerTC();
-      const ang = ptc ? Math.atan2(ptc.y - tc.y, ptc.x - tc.x) + (G.rand() - 0.5) * 1.2
-                      : G.rand() * Math.PI * 2;
-      const dist = 3 + G.rand() * Math.max(1, rMax - 3);
-      const spot = MapGen.findNear(Math.round(tc.x + Math.cos(ang) * dist),
-                                   Math.round(tc.y + Math.sin(ang) * dist), 3, free);
+      let target = null;
+      if (gaps.length) {
+        if (ptc) gaps.sort((a, b) => (b.width - Math.hypot(b.mid.x - ptc.x, b.mid.y - ptc.y) * 0.4)
+                                    - (a.width - Math.hypot(a.mid.x - ptc.x, a.mid.y - ptc.y) * 0.4));
+        target = gaps[0].mid;   // cover the widest / most-threatened seam
+      }
+      if (!target) {
+        const ang = ptc ? Math.atan2(ptc.y - tc.y, ptc.x - tc.x) + (G.rand() - 0.5) * 1.2 : G.rand() * Math.PI * 2;
+        target = { x: Math.round(tc.x + Math.cos(ang) * 5), y: Math.round(tc.y + Math.sin(ang) * 5) };
+      }
+      const spot = MapGen.findNear(target.x, target.y, 3, free);
       if (spot) return spot;
     }
     for (let tries = 0; tries < 12; tries++) {
@@ -172,25 +180,54 @@ const AI = {
     return p;
   },
 
-  // the mason rings the town in walls, two gates, a few sections a day
-  maybeWalls(tc) {
-    if (S.day < 22 || S.ai.res.wood < 80) return;
-    if (!S.ai.wallPlan) {
-      const R = 5, plan = [];
-      for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== R) continue;
-        plan.push({ x: tc.x + dx, y: tc.y + dy, gate: dx === 0 && Math.abs(dy) === R });
-      }
-      S.ai.wallPlan = plan;
+  /* CHOKEPOINTS — the open seams on a town's perimeter ring. Impassable terrain
+     (wood/rock/orchard/water/mountain) already walls most of the ring; the gaps
+     are where an attacker gets in. Returns each contiguous run of open ring
+     tiles as a seam {tiles, width, mid, dir}, sorted widest-first. This is the
+     map's tactical geometry: you plug seams, not open ground. */
+  perimeterGaps(cx, cy, R) {
+    const ring = [];
+    for (let dx = -R; dx <= R; dx++) ring.push([cx + dx, cy - R]);
+    for (let dy = -R + 1; dy <= R; dy++) ring.push([cx + R, cy + dy]);
+    for (let dx = R - 1; dx >= -R; dx--) ring.push([cx + dx, cy + R]);
+    for (let dy = R - 1; dy >= -R + 1; dy--) ring.push([cx - R, cy + dy]);
+    const n = ring.length;
+    const open = ring.map(([x, y]) => MapGen.inB(x, y) && Path.passable(x, y, 'A') && Bld.blockAt(x, y) === 0);
+    let start = open.findIndex(o => !o); if (start < 0) start = 0;   // anchor on a closed tile (cyclic)
+    const runs = []; let cur = null;
+    for (let k = 0; k < n; k++) {
+      const idx = (start + k) % n;
+      if (open[idx]) { (cur || (cur = { tiles: [] })).tiles.push(ring[idx]); }
+      else if (cur) { runs.push(cur); cur = null; }
     }
+    if (cur) runs.push(cur);
+    return runs.map(r => {
+      const mid = r.tiles[r.tiles.length >> 1];
+      return { tiles: r.tiles, width: r.tiles.length, mid: { x: mid[0], y: mid[1] },
+        dir: { x: Math.sign(mid[0] - cx), y: Math.sign(mid[1] - cy) } };
+    }).sort((a, b) => b.width - a.width);
+  },
+
+  /* Turtling done right: PLUG THE SEAMS. Terrain does most of the walling — the
+     chief only closes the open gaps on its perimeter (far cheaper than ringing
+     open ground), gating the widest seam so its own parties can still sortie. */
+  maybeWalls(tc) {
+    if (S.day < 22 || S.ai.res.wood < 60) return;
+    const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0;
+    const gaps = this.perimeterGaps(cx, cy, 5);
+    if (!gaps.length) return;                       // terrain already seals the town
+    const gateMid = gaps[0].mid;                    // one gate on the main (widest) seam
     let placed = 0;
-    for (const t of S.ai.wallPlan) {
-      if (placed >= 2) break;
-      if (!MapGen.inB(t.x, t.y) || Bld.at(t.x, t.y)) continue;
-      const key = t.gate ? 'gate' : 'wall';
-      if (!Bld.canPlace('A', key, t.x, t.y).ok) continue;
-      Bld.place('A', key, t.x, t.y);
-      placed++;
+    for (const g of gaps) {
+      for (const [x, y] of g.tiles) {
+        if (placed >= 3) return;
+        if (!MapGen.inB(x, y) || Bld.at(x, y)) continue;
+        const isGate = x === gateMid.x && y === gateMid.y;
+        const key = isGate ? 'gate' : 'wall';
+        if (!Bld.canPlace('A', key, x, y).ok) continue;
+        Bld.place('A', key, x, y);
+        placed++;
+      }
     }
   },
 
@@ -437,6 +474,12 @@ const AI = {
     const underCon = Bld.list('A').filter(b => !Bld.done(b)).length;
     ai.peakBld = Math.max(ai.peakBld || 0, myBld);
 
+    // --- MY OWN terrain: how many open seams does my town still have, and how
+    //     wide is the main one? Fewer/narrower seams = terrain is doing the
+    //     walling; the chief only needs to close what's left (see maybeWalls) ---
+    const homeGaps = tc ? this.perimeterGaps(Bld.cx(tc) | 0, Bld.cy(tc) | 0, 5) : [];
+    const homeExposed = homeGaps.reduce((s, g) => s + g.width, 0);
+
     // a vulnerability window is only real if we've FOUND the player and can
     // see their home is thin (or their gatherers are out unguarded)
     const foeVuln = !!knownTC && ((foePower >= 2 && foeHome * 1.5 < foePower) || exposed.length >= 2);
@@ -457,6 +500,7 @@ const AI = {
       myBld, foeBld: known.length, underCon,
       aheadPower: myPower - foePower, aheadTempo: myBld - known.length,
       threat, underThreat: threat >= 3,
+      homeGapCount: homeGaps.length, homeGapWidest: homeGaps[0] ? homeGaps[0].width : 0, homeExposed,
       sacked: ai.peakBld >= 5 && myBld < ai.peakBld * 0.5,
     };
     if (window.DEBUG_AI) this._drawRead();
@@ -639,11 +683,16 @@ const AI = {
       add(u, () => this.tryBuild(hall));
     }
 
-    // tower / walls (defense)
+    // tower / walls (defense). Plugging the perimeter SEAMS is cheap now that
+    // terrain does most of the walling, so any threatened chief closes its gaps
+    // — utility scales with how exposed the open seams are, not blanket-ringing.
     add(16 + (P.walls ? 18 : 0) + (post === 'DEFEND' ? 40 : 0) - (have.tower || 0) * 5,
       () => this.tryBuild('tower'));
-    if ((P.walls || post === 'DEFEND') && S.day >= 20)
-      add((P.walls ? 30 : 12) + (post === 'DEFEND' ? 30 : 0), () => { this.maybeWalls(tc); return true; });
+    if (S.day >= 20 && read.homeGapCount > 0 && (P.walls || post === 'DEFEND' || read.underThreat)) {
+      const wu = (P.walls ? 26 : 8) + (post === 'DEFEND' ? 32 : 0) + (read.underThreat ? 22 : 0) +
+        Math.min(22, read.homeExposed * 2);
+      add(wu, () => { this.maybeWalls(tc); return true; });
+    }
 
     // dock (naval)
     if (tc.level >= P.dockTC && !have.dock) add(pl.win === 'naval' ? 55 : 14, () => this._buildDock());
