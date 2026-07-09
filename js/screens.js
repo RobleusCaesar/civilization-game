@@ -244,21 +244,33 @@ const Screens = {
      centre) so the two never look like the same animation. */
   _burnCard(card, idx) {
     const box = this.el('draftCards');
+    // GUARANTEED cleanup. However the fancy fire fares — a rAF the browser
+    // throttles to a crawl, a canvas iOS Safari refuses to allocate — the card
+    // MUST collapse. This failsafe fires no matter what the animation does, so
+    // an unchosen card can never be left standing under the flames.
+    const failsafe = setTimeout(() => card.classList.add('gone'), 1500);
     const W = Math.round(card.offsetWidth), H = Math.round(card.offsetHeight);
-    if (!W || !H) { card.classList.add('gone'); return; }   // not laid out — just drop it
+    if (!W || !H) { clearTimeout(failsafe); card.classList.add('gone'); return; }   // not laid out — just drop it
 
-    const cvs = document.createElement('canvas');
-    cvs.width = W; cvs.height = H;
-    cvs.style.cssText = `position:absolute;left:${card.offsetLeft}px;top:${card.offsetTop}px;` +
-      `width:${W}px;height:${H}px;z-index:2;pointer-events:none;image-rendering:pixelated;`;
-    box.appendChild(cvs);
-    const g = cvs.getContext('2d'); g.imageSmoothingEnabled = false;
-
-    // chunky offscreen fire buffer, scaled up hard for that big-pixel look
-    const FW = 46, FH = 62, MAXH = 36;
-    const off = document.createElement('canvas'); off.width = FW; off.height = FH;
-    const og = off.getContext('2d');
-    const imgData = og.createImageData(FW, FH), d = imgData.data;
+    // Canvas allocation can fail on memory-tight mobile browsers; if it does,
+    // skip the fire but still remove the card (via the failsafe) — never throw.
+    let cvs, g, off, og, imgData, d;
+    const FW = 46, FH = 62, MAXH = 36;   // chunky offscreen fire buffer, scaled up hard
+    try {
+      cvs = document.createElement('canvas');
+      cvs.width = W; cvs.height = H;
+      cvs.style.cssText = `position:absolute;left:${card.offsetLeft}px;top:${card.offsetTop}px;` +
+        `width:${W}px;height:${H}px;z-index:2;pointer-events:none;image-rendering:pixelated;`;
+      box.appendChild(cvs);
+      g = cvs.getContext('2d'); g.imageSmoothingEnabled = false;
+      off = document.createElement('canvas'); off.width = FW; off.height = FH;
+      og = off.getContext('2d');
+      imgData = og.createImageData(FW, FH); d = imgData.data;
+      if (!g || !og) throw new Error('no 2d context');
+    } catch (e) {
+      if (cvs) cvs.remove();
+      return;   // failsafe still collapses the card a beat later
+    }
     const buf = new Uint8Array(FW * FH);
     const PAL = [];
     for (let h = 0; h <= MAXH; h++) {
@@ -292,10 +304,13 @@ const Screens = {
     };
 
     const step = now => {
-      if (this.current !== 'draft') { cvs.remove(); card.classList.add('gone'); return; }
+      if (this.current !== 'draft') { clearTimeout(failsafe); cvs.remove(); card.classList.add('gone'); return; }
       const t = Math.min(1, (now - t0) / DUR), front = ease(t);
       const frontRow = Math.round((1 - front) * (FH - 1));
-      card.style.clipPath = `inset(0 0 ${(front * 100).toFixed(1)}% 0)`;   // the card body dissolves upward
+      // the card body dissolves upward (—webkit— prefix for older iOS Safari,
+      // which ignores the unprefixed clip-path and would leave the card whole)
+      const clip = `inset(0 0 ${(front * 100).toFixed(1)}% 0)`;
+      card.style.webkitClipPath = clip; card.style.clipPath = clip;
       // the burn front is the fire source
       for (let x = 0; x < FW; x++)
         for (let y = frontRow; y < Math.min(FH, frontRow + 3); y++) buf[y * FW + x] = MAXH;
@@ -325,6 +340,7 @@ const Screens = {
       drawAsh(1 / 60);
       if (t < 1) { requestAnimationFrame(step); return; }
       // the card is ash now — collapse its slot, let the last embers drift, then clean up
+      clearTimeout(failsafe);
       if (this.current === 'draft') card.classList.add('gone');
       let extra = 0;
       const drift = () => {

@@ -311,7 +311,9 @@
      screens.js _burnCard); the card body is clipped away from the bottom up
      in step with the flames, then the slot collapses */
   .ocard.burn { pointer-events: none; z-index: 1; }
-  .ocard.gone { width: 0; margin: 0; pointer-events: none; }
+  /* a burnt-away card: collapse the slot AND fully hide it. opacity + overflow
+     make the disappearance hold even where clip-path isn't honored (iOS) */
+  .ocard.gone { width: 0; margin: 0; opacity: 0; overflow: hidden; pointer-events: none; }
   .ocardIn {
     position: absolute; inset: 0; transform-style: preserve-3d;
     transition: transform .38s ease;
