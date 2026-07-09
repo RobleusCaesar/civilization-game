@@ -386,67 +386,99 @@ const Sprites = {
      identifies the building; tierDress drives materials and decoration. ---- */
   const B_DRAW = {
     // ============ TOWN CENTER — the hero asset ============
+    // ============ TOWN CENTER — the 2×2 hero, authored on the fine 32-grid ============
+    // `q` = p.hi (32-grid, 2px/cell). Every mass and detail is drawn at fine
+    // density so nothing is a coarse blob across the big footprint. Coords 0..31.
     tc(p, lv, fac) {
-      const d = ART.tierDress(lv);
-      ART.dropShadow(p, 8, 14, 14);
+      const q = p.hi;
+      // broad soft contact shadow for the large footprint
+      q(6, 27, 21, 2, ART.STYLE.SHADOW); q(9, 29, 14, 1, ART.STYLE.SHADOW);
+      const rr = ART.rng(83);
       if (lv === 1) {
-        // great thatched roundhouse: a true cone of combed reed courses over a
-        // wattle-and-daub ring, crossed ridge poles at the crown, and a stone
-        // fire pit smouldering in the dooryard
-        p(4, 11, 8, 2, AP.soil[2]);                                 // daub ring wall
-        p(4, 11, 1, 2, AP.soil[3]); p(11, 11, 1, 2, AP.soil[1]);    // lit / shaded rim
-        p(5, 11, 1, 2, AP.wood[1]); p(10, 11, 1, 2, AP.wood[1]);    // wattle stakes
-        const rows = [[7, 2], [6, 4], [5, 6], [4, 8], [3, 10], [2, 12], [2, 12], [1, 14]];
-        const rr = ART.rng(83);
-        for (let i = 0; i < rows.length; i++) {                     // stacked thatch courses
-          const ry = 3 + i, rx = rows[i][0], rw = rows[i][1];
-          p(rx, ry, rw, 1, AP.thatch[2]);
-          const edge = Math.max(1, rw >> 2);
-          p(rx, ry, edge, 1, AP.thatch[3]);                         // lit left face
-          p(rx + rw - edge, ry, edge, 1, AP.thatch[1]);             // shaded right face
-          for (let s2 = 0; s2 < rw >> 1; s2++) {                    // loose reed strands
-            p(rx + ((rr() * rw) | 0), ry, 1, 1, rr() < 0.5 ? AP.thatch[1] : AP.thatch[3]);
-          }
+        // great thatched roundhouse: a combed-reed cone over a wattle-and-daub
+        // ring wall, crossed ridge poles at the crown, a deep doorway, and a
+        // stone fire pit smouldering in the dooryard (render.js adds the flame)
+        ART.wattleTexture(q, 7, 19, 18, 8, 41);                     // daub ring wall (tall, visible)
+        q(7, 19, 18, 1, AP.soil[3]); q(7, 26, 18, 1, AP.soil[1]);   // lit top / shaded base
+        for (let sx = 8; sx < 25; sx += 3) q(sx, 20, 1, 6, AP.wood[1]); // wattle stakes
+        // conical thatch roof — a cone (peak top-left of centre) over the ring,
+        // built from stacked courses that widen downward to a ragged eave
+        for (let ry = 2; ry <= 20; ry++) {
+          const rw = Math.round((ry - 2) * 0.95) + 1;               // widens toward the base
+          const rx = 16 - rw, w2 = rw * 2;
+          q(rx, ry, w2, 1, AP.thatch[2]);
+          const edge = Math.max(1, w2 >> 2);
+          q(rx, ry, edge, 1, AP.thatch[3]);                         // lit left face
+          q(rx + w2 - edge, ry, edge, 1, AP.thatch[1]);             // shaded right face
+          if (ry % 2 === 0) q(rx + 1, ry, w2 - 2, 1, AP.thatch[1]); // combed course line
         }
-        p(5, 8, 1, 3, AP.thatch[1]); p(10, 7, 1, 3, AP.thatch[1]);  // combed reed lines
-        p(1, 11, 1, 1, AP.thatch[1]); p(13, 11, 1, 1, AP.thatch[1]); // ragged eave fringe
-        p(3, 11, 1, 1, AP.thatch[2]);
-        p(7, 1, 1, 2, AP.wood[2]); p(9, 1, 1, 1, AP.wood[2]);       // crossed ridge poles
-        p(8, 2, 1, 1, AP.wood[3]); p(6, 1, 1, 1, AP.wood[1]);
-        p(7, 3, 2, 1, AP.ink[1]);                                   // smoke hole
-        p(6, 9, 4, 1, AP.wood[3]);                                  // door lintel
-        p(7, 10, 2, 3, AP.ink[0]);                                  // doorway
-        p(6, 10, 1, 3, AP.wood[2]); p(9, 10, 1, 3, AP.wood[2]);     // door posts
-        p(7, 13, 2, 1, AP.soil[3]);                                 // trodden threshold
-        p(3, 13, 1, 1, AP.grass[4]);                                // dooryard grass
-        p(12, 12, 1, 1, AP.stone[1]); p(14, 12, 1, 1, AP.stone[2]); // fire-pit stone ring
-        p(12, 14, 1, 1, AP.stone[0]); p(14, 14, 1, 1, AP.stone[1]);
-        p(13, 12, 1, 1, AP.stone[2]); p(13, 14, 1, 1, AP.stone[1]);
-        p(12, 13, 1, 1, AP.stone[1]); p(14, 13, 1, 1, AP.stone[2]);
-        p(13, 13, 1, 1, AP.fire[2]);                                // bright ember heart
-        p(11, 14, 1, 1, AP.wood[0]);                                // charred log end
+        q(11, 18, 11, 2, AP.thatch[0]);                             // deep eave shadow over the wall
+        q(13, 4, 5, 4, AP.thatch[3]);                               // sunlit crown
+        for (let i = 0; i < 20; i++) { const yy = 4 + (rr() * 15) | 0, xw = 16 - ((yy - 2) * 0.95 + 1); q((16 - xw + rr() * xw * 2) | 0, yy, 1, 1, rr() < 0.5 ? AP.thatch[0] : AP.thatch[3]); }  // loose reed strands
+        q(14, 2, 2, 5, AP.wood[2]); q(17, 3, 2, 4, AP.wood[2]);     // crossed ridge poles at the crown
+        q(15, 2, 1, 1, AP.wood[3]); q(18, 3, 1, 1, AP.wood[1]);
+        q(15, 7, 3, 1, AP.ink[1]);                                  // smoke hole
+        q(13, 19, 6, 1, AP.wood[3]);                                // door lintel
+        q(14, 20, 4, 6, AP.ink[0]);                                 // deep doorway
+        q(13, 20, 1, 6, AP.wood[2]); q(18, 20, 1, 6, AP.wood[2]);   // door posts
+        q(14, 25, 4, 1, AP.soil[3]);                                // trodden threshold
+        // stone fire-pit ring in the dooryard (bottom-right — flame drawn over it)
+        for (const [dx, dy, s] of [[24, 24, 1], [27, 24, 2], [24, 27, 0], [27, 27, 1], [24, 25, 1], [27, 25, 2], [25, 24, 2], [26, 27, 1]])
+          q(dx, dy, 1, 1, AP.stone[s]);
+        q(25, 25, 2, 2, AP.fire[1]); q(25, 25, 1, 1, AP.fire[2]);   // banked embers
+        q(23, 27, 1, 1, AP.wood[0]);                                // charred log end
       } else if (lv === 2) {
-        // timber longhouse with carved posts and a drying rack
-        wallBody(p, 2, 8, 12, 6, d, 5);
-        roof(p, 1, 3, 14, 5, d, 6);
-        p(1, 2, 1, 12, AP.wood[1]); p(14, 2, 1, 12, AP.wood[1]);    // carved end posts
-        p(1, 1, 1, 1, AP.bone[2]); p(14, 1, 1, 1, AP.bone[2]);      // bone finials
-        p(7, 10, 2, 4, AP.ink[0]);                                  // door
-        p(4, 10, 2, 2, AP.ink[1]); p(10, 10, 2, 2, AP.ink[1]);      // windows
-        p(7, 2, 2, 1, AP.ink[1]);                                   // smoke hole
-        p(0, 12, 1, 3, AP.wood[2]); p(0, 12, 3, 1, AP.wood[3]);     // drying rack
-        p(1, 13, 1, 1, AP.red[2]); p(2, 13, 1, 1, AP.hide[2]);      // hung meat
+        // timber longhouse: a thatched gable over a post-and-beam plank wall on a
+        // stone footing, deep-set doorway, shuttered windows, a drying rack
+        ART.woodPlankTexture(q, 5, 16, 22, 11, 5);                  // plank front wall
+        ART.stoneTexture(q, 4, 25, 24, 3, 21);                      // stone footing course
+        q(4, 25, 24, 1, AP.stone[4]);
+        for (const px of [5, 10, 16, 22, 26]) {                     // post-and-beam framing
+          q(px, 16, 1, 10, AP.wood[1]); q(px, 16, 1, 1, AP.wood[3]);
+        }
+        q(5, 16, 22, 1, AP.wood[3]); q(5, 20, 22, 1, AP.wood[2]);   // lit head + mid rail
+        // thatch gable roof, overhanging the walls, ridge across the middle
+        ART.thatchTexture(q, 3, 4, 26, 13, 6);
+        q(2, 15, 28, 2, AP.thatch[1]); q(2, 15, 28, 1, AP.thatch[2]); // eave overhang
+        q(3, 4, 26, 1, AP.thatch[3]);                              // lit top edge
+        q(4, 9, 24, 1, AP.wood[3]); q(4, 10, 24, 1, AP.wood[1]);   // ridge beam
+        for (let sx = 5; sx < 28; sx += 4) q(sx, 4, 1, 11, rr() < 0.5 ? AP.thatch[1] : AP.thatch[3]); // combed strands
+        q(3, 3, 1, 14, AP.wood[1]); q(28, 3, 1, 14, AP.wood[1]);   // carved gable-end posts
+        q(2, 2, 2, 2, AP.bone[2]); q(28, 2, 2, 2, AP.bone[2]);     // bone finials
+        q(15, 6, 3, 2, AP.ink[1]);                                 // smoke hole
+        q(13, 18, 6, 1, AP.wood[3]);                               // door lintel
+        q(14, 19, 4, 7, AP.ink[0]);                                // deep doorway
+        q(13, 19, 1, 7, AP.wood[2]); q(18, 19, 1, 7, AP.wood[2]);  // jambs
+        q(14, 25, 4, 1, AP.soil[3]);                               // threshold
+        q(8, 20, 3, 3, AP.ink[1]); q(8, 20, 3, 1, AP.wood[3]);     // shuttered windows
+        q(21, 20, 3, 3, AP.ink[1]); q(21, 20, 3, 1, AP.wood[3]);
+        q(1, 20, 1, 7, AP.wood[2]); q(1, 20, 4, 1, AP.wood[3]);    // drying rack
+        q(1, 22, 1, 2, AP.red[2]); q(3, 22, 1, 3, AP.hide[2]);     // hung meat
       } else {
-        // stone-footed great hall: banner, fire-lit doorway, dooryard fence
-        ART.stoneTexture(p, 1, 9, 14, 5, 21);                       // stone footing
-        roof(p, 0, 3, 16, 6, d, 9);
-        p(0, 3, 16, 1, AP.wood[4]);                                 // gable trim
-        p(7, 11, 2, 3, AP.ink[0]);                                  // doorway…
-        p(7, 13, 2, 1, AP.fire[1]); p(7, 12, 1, 1, AP.fire[2]);     // …glowing with firelight
-        p(3, 11, 2, 2, AP.ink[1]); p(11, 11, 2, 2, AP.ink[1]);      // windows
-        banner(p, 12, 0, fac);                                      // faction banner
-        p(1, 15, 2, 1, AP.wood[2]); p(6, 15, 2, 1, AP.wood[2]); p(12, 15, 2, 1, AP.wood[2]); // fence
-        p(1, 2, 2, 1, AP.ink[1]);                                   // smoke hole
+        // stone great hall: coursed-masonry walls with dressed quoins, a
+        // wood-shingle roof, faction banner, fire-lit formal entrance, dooryard fence
+        ART.stoneTexture(q, 4, 15, 24, 12, 21);                    // coursed-stone walls
+        for (let i = 0; i < 12; i += 2) {                          // dressed corner quoins
+          const lit = (i & 2) ? AP.stone[4] : AP.stone[3], sh = (i & 2) ? AP.stone[1] : AP.stone[0];
+          q(4, 15 + i, 2, 2, lit); q(26, 15 + i, 2, 2, sh);
+        }
+        // wood-shingle roof
+        ART.shadedRect(q, 3, 3, 26, 13, AP.wood, 2);
+        for (let yy = 5; yy < 16; yy += 2) q(3, yy, 26, 1, AP.wood[1]);      // shingle courses
+        for (let xx = 5; xx < 28; xx += 3) q(xx, 4, 1, 11, AP.wood[3]);      // shingle seams
+        q(3, 3, 26, 1, AP.wood[4]);                               // lit ridge
+        q(2, 14, 28, 2, AP.wood[1]); q(2, 14, 28, 1, AP.wood[2]); // eave
+        q(15, 5, 3, 2, AP.ink[1]);                                // smoke hole
+        // formal fire-lit entrance
+        q(12, 17, 8, 1, AP.stone[4]);                             // stone lintel
+        q(13, 18, 6, 8, AP.ink[0]);                               // deep doorway
+        q(13, 18, 1, 8, AP.stone[3]); q(18, 18, 1, 8, AP.stone[3]); // jambs
+        q(14, 24, 4, 2, AP.fire[1]); q(15, 23, 2, 2, AP.fire[2]); // firelight within
+        q(7, 19, 3, 3, AP.ink[1]); q(7, 19, 3, 1, AP.stone[4]);   // windows
+        q(22, 19, 3, 3, AP.ink[1]); q(22, 19, 3, 1, AP.stone[4]);
+        q(24, 2, 1, 9, AP.wood[2]);                               // banner pole
+        q(25, 2, 5, 3, fac[2]); q(25, 5, 4, 1, fac[1]); q(25, 2, 5, 1, fac[3]); // faction banner
+        for (let fx = 3; fx < 28; fx += 5) { q(fx, 28, 1, 2, AP.wood[2]); q(fx, 28, 4, 1, AP.wood[1]); } // dooryard fence
       }
     },
     farm(p, lv) {
