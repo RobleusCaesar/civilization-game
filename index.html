@@ -103,7 +103,9 @@
     border-top: 1px solid var(--edge-dark);
     box-shadow: inset 0 1px 0 var(--edge);
     backdrop-filter: blur(4px);
-    padding: 6px 6px calc(env(safe-area-inset-bottom) + 6px) 6px;
+    /* hug the buttons: keep just enough home-indicator clearance, not a full
+       safe-area gap of blank wood below the build menu */
+    padding: 6px 6px calc(env(safe-area-inset-bottom) / 2 + 4px) 6px;
   }
   #bmToggle {
     position: absolute; top: -22px; left: 8px;
