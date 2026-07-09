@@ -92,12 +92,23 @@ const Units = {
     return this.setPath(u, tx, ty);
   },
 
+  // stand on an OPEN tile beside the resource and work it — the wood/rock/
+  // orchard tile itself is impassable now, so the villager harvests from the
+  // edge (and felling it opens the ground). Returns false if it's fully walled.
   assignGather(u, tx, ty) {
     const g = CFG.GATHER[S.map.terrain[MapGen.idx(tx, ty)]];
     if (!g) return false;
-    u.task = { type: 'gather', x: tx, y: ty, res: g.res };
+    let best = null, bd = 1e9;
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const x = tx + ox, y = ty + oy;
+      if (!Path.passable(x, y, u.owner) || Bld.at(x, y)) continue;
+      const dd = Math.hypot(u.x - x, u.y - y);
+      if (dd < bd) { bd = dd; best = { x, y }; }
+    }
+    if (!best) return false;
+    u.task = { type: 'gather', x: tx, y: ty, sx: best.x, sy: best.y, res: g.res };
     u.tUnit = 0; u.tBld = 0;
-    return this.setPath(u, tx, ty);
+    return this.setPath(u, best.x, best.y);
   },
 
   // fishing boats harvest fish from stocked water tiles
@@ -331,17 +342,19 @@ const Units = {
       } else if (t.type === 'flee') {
         if (this.followPath(u, dt)) u.task = null;
       } else if (t.type === 'gather') {
-        const onTile = (u.x | 0) === t.x && (u.y | 0) === t.y;
-        if (!onTile) {
-          if (this.followPath(u, dt) && !onTile && !((u.x | 0) === t.x && (u.y | 0) === t.y)) {
-            // path ended but not on the tile (blocked) — give up
+        // walk to the open tile beside the resource, then harvest it from there
+        const sx = t.sx == null ? t.x : t.sx, sy = t.sy == null ? t.y : t.sy;
+        if ((u.x | 0) !== sx || (u.y | 0) !== sy) {
+          if (this.followPath(u, dt) && !((u.x | 0) === sx && (u.y | 0) === sy)) {
+            // path ended but not beside the tile (blocked) — give up
             u.task = null;
           }
         } else {
+          u.path = null;
           const idx = MapGen.idx(t.x, t.y);
           const terr = S.map.terrain[idx];
           const g = CFG.GATHER[terr];
-          if (!g) { u.task = null; continue; }
+          if (!g) { u.task = null; continue; }   // already felled/cleared by someone
           const before = S.res[g.res];
           const take = Math.min(S.map.resAmount[idx], g.rate * dt * G.modeCfg().gather *
             (window.Cards ? Cards.gatherMult(u.owner, g.res) : 1));   // ORIGIN CARDS pace
@@ -351,13 +364,14 @@ const Units = {
           if ((before | 0) !== (S.res[g.res] | 0) && Math.random() < 0.3)
             R.float(u.x, u.y - 0.5, '+' + g.res, '#d8e8b0');
           if (S.map.resAmount[idx] <= 0.001) {
-            // tile exhausted — it turns to stumps/pebbles/spent soil and frees the villager
+            // tile exhausted — it turns to stumps/pebbles/spent soil, which is
+            // now PASSABLE: felling the wood opens a new route through it
             S.map.resAmount[idx] = 0;
             S.map.terrain[idx] = CFG.DEPLETED[terr];
             G.scheduleRevert(idx);
             R.updateTile(t.x, t.y);
-            const what = terr === T.FOREST ? 'The forest here is felled'
-              : terr === T.HILLS ? 'The stone here is quarried out' : 'The soil here is spent';
+            const what = terr === T.FOREST ? 'The forest here is felled — a path opens'
+              : terr === T.HILLS ? 'The stone here is quarried out — a path opens' : 'The soil here is spent';
             G.log(`${what} — villager idle`, true);
             u.task = null;
           }

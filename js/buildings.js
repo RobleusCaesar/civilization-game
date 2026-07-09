@@ -62,8 +62,10 @@ const Bld = {
   tileFree(x, y) {
     if (!MapGen.inB(x, y)) return false;
     const t = S.map.terrain[MapGen.idx(x, y)];
-    // grass, fertile soil, and anything depleted or ruined is fair ground to build on
-    const buildable = t === T.GRASS || t === T.FERTILE ||
+    // grass and anything depleted or ruined is fair ground to build on. Fertile
+    // soil (orchard/berry ground) is now a standing obstacle — clear it first,
+    // or build on the grass beside it (a farm still draws its bonus from nearby)
+    const buildable = t === T.GRASS ||
       t === T.STUMPS || t === T.PEBBLES || t === T.BARREN || t === T.RUIN;
     if (!buildable) return false;
     if (this.at(x, y)) return false;

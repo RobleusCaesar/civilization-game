@@ -80,8 +80,8 @@ const CFG = {
       ],
     },
     farm: {
-      name: 'Farm', desc: 'Steady food while a villager works it. Thrives on fertile soil.', needsWorker: true,
-      near: { terrain: T.FERTILE, mult: 1.5, radius: 0 },
+      name: 'Farm', desc: 'Steady food while a villager works it. Thrives beside fertile soil.', needsWorker: true,
+      near: { terrain: T.FERTILE, mult: 1.5, radius: 1 },
       levels: [
         { cost: { wood: 60, gold: 5 },     time: 1, hp: 100, out: { food: 15 } },
         { cost: { wood: 120, stone: 40, gold: 10 }, time: 2, hp: 140, out: { food: 30 } },

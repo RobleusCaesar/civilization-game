@@ -71,11 +71,15 @@ const G = {
       if (extras.length === 0) extras.push(ex.key);
       else if (extras.length === 1 && G.rand() < 0.2) extras.push(ex.key);
     }
-    // CLAMP 1: the scarce pocket must be reachable on foot — else the package
-    // carries the difference (a soft nudge, never a dead map)
+    // CLAMP 1: the scarce pocket must be HARVESTABLE on foot — a flooded open
+    // tile sitting next to it (the scarce terrain itself is now impassable, so
+    // "reached" means "reachable to stand beside and work"). Else the package
+    // carries the difference (a soft nudge, never a dead map).
     const scarceTerr = { wood: T.FOREST, stone: T.HILLS, food: T.FERTILE }[gen.scarce];
     let scarceReached = false;
     {
+      const blocks = tt => tt === T.WATER || tt === T.MOUNTAIN ||
+        tt === T.FOREST || tt === T.HILLS || tt === T.FERTILE;
       const seen = new Uint8Array(CFG.W * CFG.H);
       const q = [MapGen.idx(sp.x, sp.y)];
       seen[q[0]] = 1;
@@ -86,10 +90,9 @@ const G = {
           const nx = cx + dx, ny = cy + dy;
           if (!MapGen.inB(nx, ny)) continue;
           const ni = MapGen.idx(nx, ny);
-          if (seen[ni]) continue;
           const tt = gen.terrain[ni];
-          if (tt === T.WATER || tt === T.MOUNTAIN) continue;
-          if (tt === scarceTerr) { scarceReached = true; break; }
+          if (tt === scarceTerr) { scarceReached = true; break; }   // adjacent → harvestable
+          if (seen[ni] || blocks(tt)) continue;                     // don't flood through obstacles
           seen[ni] = 1; q.push(ni);
         }
       }
@@ -332,6 +335,21 @@ const G = {
     S.map.decay[idx] = S.day + CFG.RUIN_DECAY_DAYS;
   },
 
+  // a tile just became impassable (regrowth) — shove any unit standing on it to
+  // the nearest open ground so nothing is ever trapped inside solid terrain
+  pushOffBlocked(rx, ry) {
+    for (const u of S.units) {
+      if ((u.x | 0) !== rx || (u.y | 0) !== ry) continue;
+      if (Units.isNaval(u)) continue;   // boats live on water; terrain regrowth is a land thing
+      const spot = MapGen.findNear(rx, ry, 6, (x, y) => Path.passable(x, y, u.owner) && !Bld.blockAt(x, y));
+      if (spot) {
+        u.x = spot.x + 0.5; u.y = spot.y + 0.5;
+        u.path = null; u.pathI = 0; u.task = null; u.tUnit = 0; u.tBld = 0;
+        if (u.anchor) u.anchor = { x: u.x, y: u.y };
+      }
+    }
+  },
+
   dayTick() {
     // victory and defeat come only through Town Centers falling (see Bld.damage)
     S.day++;
@@ -346,14 +364,20 @@ const G = {
       for (const k in S.map.decay) {
         if (S.day < S.map.decay[k]) continue;
         const i = +k, t = S.map.terrain[i];
+        const rx = i % CFG.W, ry = (i / CFG.W) | 0;
         if (SOURCE[t] !== undefined) {
+          // regrowth RE-BLOCKS the tile. Never do it under a building (would trap
+          // impassable terrain beneath it) — hold it a while longer. And if a unit
+          // stands there, push it to the nearest open tile so nothing gets sealed in.
+          if (Bld.at(rx, ry)) { S.map.decay[k] = S.day + 20; continue; }
           const src = SOURCE[t];
           const r = CFG.RES_AMOUNT[src];
           let amt = (r[0] + r[1]) / 2 * CFG.REGROW_FRACTION;
           if (src === scarceTerr) amt *= 0.6;      // the scarce resource stays lean
           S.map.terrain[i] = src;
           S.map.resAmount[i] = Math.round(amt);
-          R.updateTile(i % CFG.W, (i / CFG.W) | 0);
+          R.updateTile(rx, ry);
+          this.pushOffBlocked(rx, ry);
           regrown = true;
         } else if (t === T.RUIN) {
           S.map.terrain[i] = T.GRASS;
@@ -616,7 +640,7 @@ const G = {
           else S.buildings.splice(S.buildings.indexOf(other), 1);
         }
         const t = S.map.terrain[i];
-        const buildable = t === T.GRASS || t === T.FERTILE || t === T.STUMPS ||
+        const buildable = t === T.GRASS || t === T.STUMPS ||
           t === T.PEBBLES || t === T.BARREN || t === T.RUIN;
         if (!buildable) {
           S.map.terrain[i] = T.GRASS;

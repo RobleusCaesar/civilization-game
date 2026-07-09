@@ -202,35 +202,81 @@ const MapGen = {
       if (dP > 14 && dA > 14 && t[id(x, y)] === T.GRASS) { t[id(x, y)] = T.CAMP; camps.push({ x, y }); }
     }
 
-    // guarantee the two tribes can reach each other — carve a causeway if not
+    /* REACHABILITY CLAMP — no sealed spawns, no soft-locked resources. Now that
+       forest/hills/fertile block movement too, a bad roll could wall a tribe in
+       or ring a needed resource behind impassable ground. So: flood-fill the
+       open land from a spawn; if the rival can't be reached, carve a causeway;
+       and make sure every resource TYPE has at least one HARVESTABLE tile (a
+       resource tile with an open neighbour to stand on) reachable from each
+       spawn — carving a minimal seam to the nearest one if not. Harvesting is
+       what opens terrain, so a route to the wood is a route through it. */
     {
-      const pass = i => t[i] !== T.WATER && t[i] !== T.MOUNTAIN;
-      const seen = new Uint8Array(W * H);
-      const q = [id(player.x, player.y)];
-      seen[q[0]] = 1;
-      let head = 0;
-      while (head < q.length) {
-        const cur = q[head++];
-        const cx = cur % W, cy = (cur / W) | 0;
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const nx = cx + dx, ny = cy + dy;
-          if (!MapGen.inB(nx, ny)) continue;
-          const ni = id(nx, ny);
-          if (seen[ni] || !pass(ni)) continue;
-          seen[ni] = 1; q.push(ni);
-        }
-      }
-      if (!seen[id(ai.x, ai.y)]) {
-        let x = player.x, y = player.y, guard2 = 0;
-        while ((x !== ai.x || y !== ai.y) && guard2++ < W * H) {
-          for (const [ox, oy] of [[0, 0], [1, 0], [0, 1]]) {
-            const nx = x + ox, ny = y + oy;
+      const BLOCKS = v => v === T.WATER || v === T.MOUNTAIN || v === T.FOREST || v === T.HILLS || v === T.FERTILE;
+      const open4 = i => !BLOCKS(t[i]);
+      const flood = (sx, sy) => {
+        const seen = new Uint8Array(W * H);
+        const si = id(sx, sy); const q = [si]; seen[si] = 1; let head = 0;
+        while (head < q.length) {
+          const cur = q[head++], cx = cur % W, cy = (cur / W) | 0;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = cx + dx, ny = cy + dy;
             if (!MapGen.inB(nx, ny)) continue;
-            const v = t[id(nx, ny)];
-            if (v === T.WATER || v === T.MOUNTAIN) t[id(nx, ny)] = T.GRASS;
+            const ni = id(nx, ny);
+            if (seen[ni] || !open4(ni)) continue;
+            seen[ni] = 1; q.push(ni);
           }
-          if (x !== ai.x && (y === ai.y || rnd() < 0.5)) x += x < ai.x ? 1 : -1;
-          else if (y !== ai.y) y += y < ai.y ? 1 : -1;
+        }
+        return seen;
+      };
+      // walk a→b clearing blockers into a lane. `preserve` (optional) spares a
+      // terrain type: when opening a route TO a scarce resource we clear the
+      // rock/orchard in the way but NEVER bulldoze the very wood we're carving
+      // to (that would "reach" it by destroying it). `stopAdj` halts one tile
+      // short of b — stand beside the resource, don't consume it.
+      const carve = (a, b, preserve, stopAdj) => {
+        let x = a.x, y = a.y, guard2 = 0;
+        const clear = (cx, cy) => {
+          if (!MapGen.inB(cx, cy)) return;
+          const v = t[id(cx, cy)];
+          if (BLOCKS(v) && v !== preserve) t[id(cx, cy)] = T.GRASS;
+        };
+        while (guard2++ < W * H) {
+          clear(x, y); clear(x + 1, y); clear(x, y + 1);
+          if (x === b.x && y === b.y) break;
+          if (stopAdj && Math.abs(x - b.x) + Math.abs(y - b.y) <= 1) break;   // beside it → done
+          if (x !== b.x && (y === b.y || rnd() < 0.5)) x += x < b.x ? 1 : -1;
+          else if (y !== b.y) y += y < b.y ? 1 : -1;
+        }
+      };
+      // (a) the two tribes must be able to reach each other. Spare the precious
+      //     SCARCE resource first (clear the abundant obstacles instead); only
+      //     bulldoze through it as a last resort if that still won't connect.
+      let reach = flood(player.x, player.y);
+      if (!reach[id(ai.x, ai.y)]) {
+        carve(player, ai, scarce.terrain);
+        reach = flood(player.x, player.y);
+        if (!reach[id(ai.x, ai.y)]) { carve(player, ai); reach = flood(player.x, player.y); }
+      }
+      // (b) every resource type harvestable + reachable for each tribe. If none
+      //     of a type is reachable, open a lane to STAND BESIDE the nearest one,
+      //     clearing other obstacles but preserving that resource itself.
+      for (const s of [player, ai]) {
+        for (const rt of [T.FOREST, T.HILLS, T.FERTILE]) {
+          const sreach = flood(s.x, s.y);   // fresh each type — a prior carve may already connect it
+          let ok = false, near = null, nearD = 1e9;
+          for (let i = 0; i < W * H && !ok; i++) {
+            if (t[i] !== rt) continue;
+            const rx = i % W, ry = (i / W) | 0;
+            let harvestable = false;
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+              const nx = rx + dx, ny = ry + dy;
+              if (MapGen.inB(nx, ny) && sreach[id(nx, ny)]) { harvestable = true; break; }
+            }
+            if (harvestable) { ok = true; break; }
+            const d = Math.hypot(rx - s.x, ry - s.y);
+            if (d < nearD) { nearD = d; near = { x: rx, y: ry }; }
+          }
+          if (!ok && near) carve(s, near, rt, true);
         }
       }
     }
@@ -277,16 +323,32 @@ const MapGen = {
   },
 };
 
-/* BFS pathfinding over the tile grid. Water is impassable to everyone; walls
-   block all units and gates open only for the tribe that built them. When the
-   target can't be reached, returns a best-effort path to the closest
-   reachable tile (so besiegers walk up to the walls). */
+/* Hard terrain obstacles for land units: water, mountains, AND the standing
+   resource tiles — forest, rock (hills) and orchard/berry ground (fertile).
+   You cannot walk through a wood or a boulder field; you fell/quarry/clear it
+   (which reverts the tile to passable ground) or you go around. Depleted
+   variants (stumps/pebbles/spent soil) and grass are open. This lookup is read
+   in the pathfinding hot loop, so it's a flat array indexed by terrain id. */
+const BLOCK_TERR = (() => {
+  const a = new Uint8Array(16);
+  for (const t of [T.WATER, T.MOUNTAIN, T.FOREST, T.HILLS, T.FERTILE]) a[t] = 1;
+  return a;
+})();
+
+/* BFS pathfinding over the tile grid. Water, mountains and standing resource
+   fields are impassable to everyone; walls block all units and gates open only
+   for the tribe that built them. When the target can't be reached, returns a
+   best-effort path to the closest reachable tile (so besiegers walk up to the
+   walls, harvesters walk up to the wood). */
 const Path = {
+  // does this terrain id block a land unit? (water/mountain/forest/hills/fertile)
+  blocksLand(terr) { return BLOCK_TERR[terr] === 1; },
+
   passable(x, y, owner, domain) {
     if (!MapGen.inB(x, y)) return false;
     const terr = S.map.terrain[MapGen.idx(x, y)];
     if (domain === 'water') return terr === T.WATER;   // boats: open water only (docks don't block hulls)
-    if (terr === T.WATER || terr === T.MOUNTAIN) return false;
+    if (BLOCK_TERR[terr]) return false;                // water, mountain, forest, hills, fertile
     const blk = Bld.blockAt(x, y);
     if (blk === 0) return true;
     if (blk === 1) return false;                 // wall
