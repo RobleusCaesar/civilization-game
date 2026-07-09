@@ -536,15 +536,25 @@ const Sprites = {
       }
       if (d.decor >= 2) { p(0, 0, 16, 1, AP.wood[2]); p(0, 15, 16, 1, AP.wood[2]); } // timber shoring
     },
+    // small dwelling — 1×1, but crafted: fine-grid doorway with depth, footing
+    // stones, framed windows, a clay pot and grass at the base
     house(p, lv) {
-      const d = ART.tierDress(lv);
+      const d = ART.tierDress(lv), q = p.hi;
       ART.dropShadow(p, 8, 14, 10);
       const h = 5 + Math.min(2, lv - 1), y = 13 - h;
-      wallBody(p, 4, y, 8, h, d, lv * 3);
-      roof(p, 3, y - 3, 10, 3, d, lv * 5);
-      p(7, 13 - 3, 2, 3, AP.ink[0]);                                // door
-      if (d.decor >= 1) p(5, y + 1, 2, 2, AP.ink[1]);               // window
-      if (d.decor >= 2) { p(9, y + 1, 2, 2, AP.ink[1]); p(12, 13, 2, 1, AP.bloom[1]); } // flowers
+      wallBody(p, 4, y, 8, h, d, lv * 3);                           // walls (fine posts/quoins via helper)
+      roof(p, 3, y - 3, 10, 3, d, lv * 5);                          // roof (fine eave via helper)
+      q(6, (y - 3) * 2, 20, 1, d.mat === 'stonefoot' ? AP.wood[4] : AP.thatch[3]); // lit ridge line
+      for (let sx = 9; sx < 23; sx += 3) { q(sx, 24, 2, 2, AP.stone[(sx & 2) ? 2 : 1]); q(sx, 24, 2, 1, AP.stone[3]); } // footing stones
+      q(13, 19, 6, 1, AP.wood[3]);                                  // door lintel
+      q(14, 20, 4, 6, AP.ink[0]);                                  // deep doorway
+      q(13, 20, 1, 6, AP.wood[2]); q(18, 20, 1, 6, AP.wood[2]);    // jambs
+      q(14, 25, 4, 1, AP.soil[3]);                                 // threshold
+      if (d.decor >= 1) { q(9, y * 2 + 2, 3, 3, AP.ink[1]); q(9, y * 2 + 2, 3, 1, AP.wood[3]); q(10, y * 2 + 2, 1, 3, AP.wood[2]); } // framed window
+      if (d.decor >= 2) { q(20, y * 2 + 2, 3, 3, AP.ink[1]); q(20, y * 2 + 2, 3, 1, AP.wood[3]); q(21, y * 2 + 2, 1, 3, AP.wood[2]); } // second window
+      q(21, 23, 2, 3, AP.hide[1]); q(21, 23, 2, 1, AP.hide[2]); q(21, 22, 2, 1, AP.ink[1]);  // clay pot by the door
+      q(7, 25, 1, 2, AP.grass[4]); q(6, 26, 1, 1, AP.grass[3]);    // grass tuft at the base
+      if (d.decor >= 2) { q(24, 25, 2, 1, AP.bloom[1]); q(25, 24, 1, 1, AP.bloom[0]); } // flowers
     },
     tower(p, lv) {
       const d = ART.tierDress(lv);
