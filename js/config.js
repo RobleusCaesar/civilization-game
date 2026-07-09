@@ -57,7 +57,12 @@ const CFG = {
     [T.FERTILE]: T.BARREN,
   },
   DEMOLISH_REFUND: 0.4,       // fraction of spent resources returned on demolish
-  RUIN_DECAY_DAYS: 60,        // days before stumps/pebbles/spent soil regrow (ruins fade to grass) — cleared land stays cleared a good while
+  RUIN_DECAY_DAYS: 60,        // base days before stumps/pebbles/spent soil regrow (ruins fade to grass) — cleared land stays cleared a good while
+  REGROW_MULT: {              // per-terrain regrowth-time multiplier over the base
+    [T.STUMPS]:  2,           // felled forest — twice as slow to grow back
+    [T.BARREN]:  2,           // spent orchard/berry soil — twice as slow
+    [T.PEBBLES]: 3,           // quarried stone — three times as slow (rock is slowest)
+  },
   REGROW_FRACTION: 0.5,       // regrown resource tiles come back at half a fresh stock — slow but never zero
   TC_POP_CAP: [20, 40, 60],   // hard population ceiling by Town Center level — houses only help up to this
 

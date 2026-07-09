@@ -329,10 +329,13 @@ const G = {
     R.fogDirty = true;
   },
 
-  // a freshly depleted or ruined tile greens over after RUIN_DECAY_DAYS
+  // a freshly depleted or ruined tile greens over after RUIN_DECAY_DAYS, scaled
+  // by what it is: felled forest / spent orchard take twice as long to come
+  // back, quarried stone three times (rock is slowest of all); ruins as base.
   scheduleRevert(idx) {
     if (!S.map.decay) S.map.decay = {};
-    S.map.decay[idx] = S.day + CFG.RUIN_DECAY_DAYS;
+    const mult = CFG.REGROW_MULT[S.map.terrain[idx]] || 1;
+    S.map.decay[idx] = S.day + CFG.RUIN_DECAY_DAYS * mult;
   },
 
   // a tile just became impassable (regrowth) — shove any unit standing on it to
