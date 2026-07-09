@@ -128,7 +128,7 @@ const G = {
     const mode = CFG.MODES[modeKey] ? modeKey : 'moderate';
     const size = CFG.SIZES[sizeKey] ? sizeKey : 'medium';
     CFG.W = CFG.H = CFG.SIZES[size];
-    const gen = MapGen.generate(seed);
+    const gen = MapGen.generate(seed, mode);
     S = {
       seed: String(seed),
       mode,

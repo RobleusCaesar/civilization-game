@@ -19,7 +19,7 @@ const MapGen = {
   idx(x, y) { return y * CFG.W + x; },
   inB(x, y) { return x >= 0 && y >= 0 && x < CFG.W && y < CFG.H; },
 
-  generate(seedStr) {
+  generate(seedStr, mode) {
     const rnd = mulberry32(hashSeed(String(seedStr)));
     const W = CFG.W, H = CFG.H;
     const f = (W * H) / 1600;               // area factor vs the classic 40x40
@@ -200,6 +200,36 @@ const MapGen = {
       const x = 3 + rnd() * (W - 6) | 0, y = 3 + rnd() * (H - 6) | 0;
       const dP = Math.hypot(x - player.x, y - player.y), dA = Math.hypot(x - ai.x, y - ai.y);
       if (dP > 14 && dA > 14 && t[id(x, y)] === T.GRASS) { t[id(x, y)] = T.CAMP; camps.push({ x, y }); }
+    }
+
+    /* DIFFICULTY DEFENSIBILITY — bias the PLAYER's seat by difficulty. Calm
+       hands them a naturally fortified spot (a treeline/rocky rise closes most
+       approaches, leaving 1–2 chokepoints to hold); Moderate leaves more open;
+       Hard is exposed — many approach lanes the player must fortify themselves.
+       We only ADD barriers to open ground in the "closed" sectors (never touch
+       water/mountain or seed resources), always keeping the sector facing the
+       rival open, and the reachability clamp below still guarantees a way out. */
+    {
+      const keep = mode === 'calm' ? 2 : mode === 'moderate' ? 3 : 8;   // open sectors (of 8)
+      if (keep < 8) {
+        const rf = ((Math.round(Math.atan2(ai.y - player.y, ai.x - player.x) / (Math.PI / 4)) % 8) + 8) % 8;
+        const openSec = new Set();
+        for (let i = 0; i < keep; i++) openSec.add((rf + Math.round(i * 8 / keep)) % 8);
+        const barrier = () => (rnd() < 0.6 ? T.FOREST : T.HILLS);   // woods or a rocky rise
+        // a treeline just outside the start plot: Chebyshev ring R0..R1 round the
+        // seat, filled SOLID in the closed sectors so the open sectors read as
+        // clean, holdable chokepoints (calm gets a slightly thicker band)
+        const R0 = 5, R1 = mode === 'calm' ? 7 : 6;
+        for (let dy = -R1; dy <= R1; dy++) for (let dx = -R1; dx <= R1; dx++) {
+          const ch = Math.max(Math.abs(dx), Math.abs(dy));
+          if (ch < R0 || ch > R1) continue;
+          const x = player.x + dx, y = player.y + dy;
+          if (!MapGen.inB(x, y) || t[id(x, y)] !== T.GRASS) continue;   // only close open ground
+          const sec = ((Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) % 8) + 8) % 8;
+          if (openSec.has(sec)) continue;                              // leave the kept lanes open
+          t[id(x, y)] = barrier();
+        }
+      }
     }
 
     /* REACHABILITY CLAMP — no sealed spawns, no soft-locked resources. Now that
