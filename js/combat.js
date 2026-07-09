@@ -137,7 +137,8 @@ const Combat = {
      chief learns to route around next time. */
   aiRaidSeek(u) {
     const ai = S.ai;
-    const obj = (ai && ai.raidObj) || null;
+    // a probe party carries its OWN lane objective; the main force shares ai.raidObj
+    const obj = u.raidObj || (ai && ai.raidObj) || null;
     const canWall = Units.isSiege(u) || u.kind === 'axeman' || !!CFG.UNITS[u.kind].bldAtk;
     // 1) a hostile fighter right in our face — engage (don't get picked apart)
     const foe = this.nearestUnit(u.x, u.y, 5, o => this.hostileUnits(u, o) &&

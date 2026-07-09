@@ -208,6 +208,30 @@ const AI = {
     }).sort((a, b) => b.width - a.width);
   },
 
+  /* APPROACH LANES into the player's KNOWN town — the open seams an attacker
+     can come through, ranked LEAST-DEFENDED first. Defense = remembered towers/
+     walls covering that seam PLUS within-game memory of where past raids were
+     beaten back (mem.laneDef). This is what lets the chief feint one lane and
+     commit to the one the player left open. */
+  playerLanes() {
+    const tc = this.knownPlayerTC(); if (!tc) return [];
+    const cx = Math.round(tc.x + Bld.size('tc') / 2), cy = Math.round(tc.y + Bld.size('tc') / 2);
+    const gaps = this.perimeterGaps(cx, cy, 6);
+    const kb = S.ai.knownB || {}, ld = (S.ai.memory && S.ai.memory.laneDef) || {};
+    return gaps.map(g => {
+      const key = g.dir.x + ',' + g.dir.y;
+      let staticDef = 0;
+      for (const k in kb) {
+        const b = kb[k];
+        if (b.key !== 'tower' && b.key !== 'wall' && b.key !== 'gate') continue;
+        const bx = b.x + 0.5 - cx, by = b.y + 0.5 - cy, dist = Math.hypot(bx, by) || 1;
+        if (dist < 2 || dist > 11) continue;
+        if ((bx * g.dir.x + by * g.dir.y) / dist > 0.45) staticDef += b.key === 'tower' ? 2 : 1;
+      }
+      return { mid: g.mid, dir: g.dir, width: g.width, key, def: staticDef + (ld[key] || 0) * 2 };
+    }).sort((a, b) => a.def - b.def);
+  },
+
   /* Turtling done right: PLUG THE SEAMS. Terrain does most of the walling — the
      chief only closes the open gaps on its perimeter (far cheaper than ringing
      open ground), gating the widest seam so its own parties can still sortie. */
@@ -927,6 +951,7 @@ const AI = {
        any chief bolder — the power bar to raid decays slowly after day 90,
        so a turtled game still ends in fire and iron. ---- */
     const mem = ai.memory || (ai.memory = { wallStop: false, wallHit: 0 });
+    if (!mem.laneDef) mem.laneDef = {};
     const raiders = S.units.filter(u => u.owner === 'A' && u.task && u.task.type === 'raid');
     if (raiders.length) {
       const tooFew = ai.raidN && raiders.length <= Math.max(1, Math.floor(ai.raidN * 0.35));
@@ -938,16 +963,23 @@ const AI = {
         const razed = Bld.list('P').length < (ai.raidFoeBld || 1e9);
         if (razed) mem.wallStop = false;
         else if ((mem.wallHit || 0) > 0) mem.wallStop = true;
+        // remember which LANE this was: a stalled/beaten push marks its lane as
+        // defended (next time commit elsewhere); a productive one softens it
+        if (ai.raidLane) {
+          const cur = mem.laneDef[ai.raidLane] || 0;
+          mem.laneDef[ai.raidLane] = razed ? Math.max(0, cur - 1) : Math.min(6, cur + (tooFew ? 2 : 1));
+        }
+        for (const k in mem.laneDef) mem.laneDef[k] = Math.max(0, mem.laneDef[k] - 0.15);   // slow decay
         for (const u of raiders) {
           u.task = { type: 'move', x: tc.x, y: tc.y + 2 };
-          u.tUnit = 0; u.tBld = 0;
+          u.tUnit = 0; u.tBld = 0; u.probe = false; u.raidObj = null;
           u.anchor = { x: tc.x + 0.5, y: tc.y + 2.5 };
           Units.setPath(u, tc.x, tc.y + 2);
         }
-        ai.raidN = 0; ai.raidObj = null;
+        ai.raidN = 0; ai.raidObj = null; ai.raidLane = null;
         if (tooFew) G.log('The rival war party breaks off and retreats!');
       }
-    } else { ai.raidN = 0; ai.raidObj = null; }
+    } else { ai.raidN = 0; ai.raidObj = null; ai.raidLane = null; }
 
     if (ai.raidCd > 0) ai.raidCd--;
     /* ---- LAYER 2 drives IF we attack; the read drives WHEN. Only the
@@ -975,15 +1007,53 @@ const AI = {
         : (read.foeVuln || read.softCount > 0 || mine > theirs * boldness);
       if (strong && troops.length >= need) {
         const party = troops.slice(0, Math.max(need, Math.ceil(troops.length * share)));
-        for (const u of party) { u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; }
-        // LAYER 4: give the party a shared objective and start fresh memory
-        ai.raidObj = this.chooseRaidObj(read, push);
+        // LAYER 4: pick the main objective. Prefer the LEAST-DEFENDED approach
+        // lane (memory + remembered towers) when committing a PUSH.
+        const lanes = this.playerLanes();
+        const mainObj = this.chooseRaidObj(read, push);
+        const mainLane = lanes[0] || null;
+        if (push && mainLane && mainObj && mainObj.type === 'tc' && !mainObj.flank) {
+          mainObj.x = mainLane.mid.x; mainObj.y = mainLane.mid.y; mainObj.lane = mainLane.key;
+        }
+        /* MULTI-LANE PROBING (difficulty-scaled). Calm marches one telegraphed
+           column. Moderate occasionally peels off a feint down a second lane.
+           Hard actively probes 2+ lanes — harass parties on alternate routes to
+           find the undefended gap and pull the player's defenders — then the
+           main force commits to the lane memory says is softest. Probes are
+           small; if they meet a defended lane the retreat logic pulls them
+           home (no suicidal dribbles), and that lane is remembered as defended. */
+        let probes = 0;
+        if (lanes.length >= 2) {
+          if (m.aiRaidDay <= 32) probes = 2;                                   // hard
+          else if (m.aiRaidDay <= 50) probes = G.rand() < 0.4 * (m.aiAggro || 1) ? 1 : 0;  // moderate feint
+          // calm (aiRaidDay ~80): single telegraphed approach, no probes
+        }
+        const spare = party.length - Math.max(3, need);
+        probes = Math.max(0, Math.min(probes, lanes.length - 1, Math.floor(spare / 2)));
+
+        let cut = 0;
+        for (let pI = 0; pI < probes; pI++) {
+          const lane = lanes[1 + pI];
+          const pp = party.slice(cut, cut + 2); cut += 2;
+          for (const u of pp) {
+            u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.probe = true; u.raidLane = lane.key;
+            u.raidObj = { type: 'tc', x: lane.mid.x, y: lane.mid.y };
+          }
+        }
+        const mainForce = party.slice(cut);
+        for (const u of mainForce) {
+          u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.probe = false;
+          u.raidLane = mainLane ? mainLane.key : 'main'; u.raidObj = null;   // shares ai.raidObj
+        }
+        ai.raidObj = mainObj;
+        ai.raidLane = mainLane ? mainLane.key : null;
         ai.raidFoeBld = Bld.list('P').length;
         mem.wallHit = 0;
         ai.raidCd = push ? P.raidCd : Math.max(6, P.raidCd - 4);
         ai.raidN = party.length;
         ai.raidDay = S.day;
-        G.log(push ? '⚔ The rival tribe masses and marches on your village!'
+        G.log(push ? (probes ? '⚔ The rival splits its host — probes on the flanks, the main column marching in!'
+                             : '⚔ The rival tribe masses and marches on your village!')
           : '⚔ A rival raiding party rides out!', true);
       }
     }
