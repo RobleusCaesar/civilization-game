@@ -952,12 +952,16 @@ const Sprites = {
       if (f === 1) { p(ax + 1, y + 1, 1, 1, APx.bone[2]); p(ax + 1, y + 3, 1, 1, APx.fire[2]); }  // strike flash
       p(5, y + 4, 1, 2, PAL.skin);
     } else if (pose === 'fight') {              // soldiers: spear thrust
-      const ax = f === 0 ? 10 : 12;
-      p(10, y + 4, ax - 7, 1, PAL.skin);
-      p(ax, y + 2, 1, 4, c.spear || PAL.trunk); // spear
-      p(ax, y + 1, 1, 1, PAL.rockL);
-      if (f === 1) { p(ax + 1, y + 1, 1, 1, APx.bone[2]); p(ax + 1, y + 3, 1, 1, APx.fire[2]); } // strike flash
-      p(5, y + 4, 1, 2, PAL.skin);
+      if (c.noThrust) {                         // unit draws its OWN weapon (sword, bow…) in its overlay
+        p(5, y + 4, 1, 2, PAL.skin); p(10, y + 4, 1, 2, PAL.skin);   // both hands at the ready
+      } else {
+        const ax = f === 0 ? 10 : 12;
+        p(10, y + 4, ax - 7, 1, PAL.skin);
+        p(ax, y + 2, 1, 4, c.spear || PAL.trunk); // spear
+        p(ax, y + 1, 1, 1, PAL.rockL);
+        if (f === 1) { p(ax + 1, y + 1, 1, 1, APx.bone[2]); p(ax + 1, y + 3, 1, 1, APx.fire[2]); } // strike flash
+        p(5, y + 4, 1, 2, PAL.skin);
+      }
     } else {
       p(5, y + 4, 1, 2, PAL.skin);
       p(10, y + 4, 1, 2, PAL.skin);
@@ -965,10 +969,10 @@ const Sprites = {
   }
   function unitSheet(c, extra) {
     return {
-      idle: frames(2, (p, g, f) => { humanoid(p, f, 'idle', c); if (extra) extra(p, f); }),
-      walk: frames(2, (p, g, f) => { humanoid(p, f, 'walk', c); if (extra) extra(p, f); }),
-      gather: frames(2, (p, g, f) => { humanoid(p, f, 'gather', c); if (extra) extra(p, f); }),
-      fight: frames(2, (p, g, f) => { humanoid(p, f, 'fight', c); if (extra) extra(p, f); }),
+      idle: frames(2, (p, g, f) => { humanoid(p, f, 'idle', c); if (extra) extra(p, f, 'idle'); }),
+      walk: frames(2, (p, g, f) => { humanoid(p, f, 'walk', c); if (extra) extra(p, f, 'walk'); }),
+      gather: frames(2, (p, g, f) => { humanoid(p, f, 'gather', c); if (extra) extra(p, f, 'gather'); }),
+      fight: frames(2, (p, g, f) => { humanoid(p, f, 'fight', c); if (extra) extra(p, f, 'fight'); }),
     };
   }
   // villagers carry the full working repertoire: chop (wood), mine (stone),
@@ -1007,11 +1011,37 @@ const Sprites = {
   // markers on the elite/marksman/lancer; only the faction collar recolours.
   const FOOT = {
     defender: { body: '#7a6242', pants: '#4a3a24', extra: (p, f) => { p(11, 2, 1, 5, PAL.trunk); p(11, 1, 1, 1, PAL.rockL); } },
-    elite:    { body: '#8a7248', pants: '#4a3a24', extra: (p, f) => { p(4, 6, 1, 3, PAL.rockL); p(11, 2, 1, 5, PAL.trunk); p(11, 1, 1, 1, PAL.gold); } },
+    // Bronze Champion — a bronze-age heavy: crested helm, muscled cuirass, big
+    // round shield and a bronze sword (thrust in the fight pose, raised at rest)
+    elite:    { body: APx.gold[1], pants: '#4a3a24', noThrust: true, extra: (p, f, pose) => {
+      const G = APx.gold, W = APx.wood, R = APx.red;
+      p(6, 2, 4, 1, G[1]); p(7, 1, 2, 1, G[2]); p(6, 3, 1, 1, G[0]); p(9, 3, 1, 1, G[0]);   // crested bronze helmet + cheek guards
+      p(7, 0, 2, 1, R[2]); p(8, 0, 1, 1, R[3]);                                              // red horsehair crest
+      p(6, 9, 4, 1, G[0]); p(6, 7, 1, 2, G[2]); p(9, 7, 1, 2, G[2]);                         // cuirass belt + pauldron edges
+      ART.shadedCircle(p, 4, 8, 2, G, 1); p(4, 8, 1, 1, G[3]); p(3, 8, 1, 1, W[1]);          // big round hoplite shield + boss
+      if (pose === 'fight') {
+        const ax = f === 0 ? 11 : 13;
+        p(10, 7, Math.max(1, ax - 9), 1, PAL.skin); p(ax - 1, 7, 3, 1, W[1]);                // thrusting arm + crossguard
+        p(ax, 3, 1, 4, G[2]); p(ax, 2, 1, 1, G[3]);                                          // bronze blade + tip
+        if (f === 1) { p(ax + 1, 2, 1, 1, APx.fire[2]); p(ax - 1, 4, 1, 1, APx.bone[2]); }   // strike gleam
+      } else { p(11, 3, 1, 5, G[2]); p(11, 2, 1, 1, G[3]); p(10, 8, 3, 1, W[1]); p(11, 9, 1, 1, W[0]); }  // sword raised at rest
+    } },
     axeman:   { body: APx.hide[2], pants: APx.hide[1], extra: (p, f) => { p(11, 2, 1, 5, PAL.trunk); p(10, 1, 3, 1, APx.stone[3]); p(10, 2, 2, 1, APx.stone[2]); p(5, 5, 1, 1, APx.skin[2]); p(10, 5, 1, 1, APx.skin[2]); } },
     longbow:  { body: APx.leaf[2], pants: APx.leaf[1], extra: (p, f) => { p(12, 0, 1, 9, PAL.trunk); p(11, 0, 1, 1, PAL.trunk); p(11, 8, 1, 1, PAL.trunk); p(4, 6, 1, 3, APx.hide[1]); p(4, 5, 1, 1, APx.thatch[2]); } },
     archer:   { body: '#6a7a4a', pants: '#4a5230', extra: (p, f) => { p(12, 2, 1, 6, PAL.trunk); p(11, 2, 1, 1, PAL.trunk); p(11, 7, 1, 1, PAL.trunk); } },
-    marksman: { body: '#5a6a3a', pants: '#3a4224', extra: (p, f) => { p(12, 1, 1, 7, PAL.trunk); p(11, 1, 1, 1, PAL.gold); p(11, 8, 1, 1, PAL.trunk); } },
+    // Fire Archer — dark leather, a recurve bow with FLAMING tips, a quiver of
+    // fire arrows, and a burning arrow loosed in the fight pose
+    marksman: { body: APx.hide[2], pants: '#3a2c1a', noThrust: true, extra: (p, f, pose) => {
+      const W = APx.wood, F = APx.fire, B = APx.bone;
+      p(12, 1, 1, 7, W[1]); p(11, 1, 1, 1, W[2]); p(11, 7, 1, 1, W[2]); p(13, 3, 1, 3, W[0]);   // recurve bow stave + tips
+      p(12, 0, 1, 1, F[3]); p(f ? 11 : 13, 0, 1, 1, F[1]);                                       // top flaming tip (flickers)
+      p(12, 8, 1, 1, F[3]); p(f ? 13 : 11, 8, 1, 1, F[1]);                                       // bottom flaming tip
+      p(5, 5, 1, 4, W[0]); p(5, 4, 1, 1, B[2]); p(4, 4, 1, 1, F[2]);                             // quiver of fire arrows on the back
+      if (pose === 'fight') {
+        if (f === 0) { p(9, 5, 3, 1, B[2]); p(8, 5, 1, 1, F[3]); }                               // arrow nocked, drawn back, flaming head
+        else { p(13, 5, 3, 1, B[2]); p(15, 5, 1, 1, F[3]); p(14, 4, 1, 1, F[1]); }               // loosed — streaking fire
+      }
+    } },
   };
   const RIDERS = {
     rider:       { horse: '#a87848', horseD: '#7a5430', body: '#7a6242' },
@@ -1023,7 +1053,7 @@ const Sprites = {
     if (Sprites.military[tunic]) return Sprites.military[tunic];
     const acc = (TUNICS[tunic] || TUNICS.blue).body;        // the bright tunic hue = the identifying collar
     const set = {};
-    for (const k in FOOT) set[k] = unitSheet({ body: FOOT[k].body, accent: acc, pants: FOOT[k].pants, hair: PAL.hair, spear: PAL.trunk }, FOOT[k].extra);
+    for (const k in FOOT) set[k] = unitSheet({ body: FOOT[k].body, accent: acc, pants: FOOT[k].pants, hair: PAL.hair, spear: PAL.trunk, noThrust: FOOT[k].noThrust }, FOOT[k].extra);
     for (const k in RIDERS) set[k] = riderSheet({ horse: RIDERS[k].horse, horseD: RIDERS[k].horseD, body: RIDERS[k].body, accent: acc, bow: RIDERS[k].bow, tip: RIDERS[k].tip });
     set.warship = warshipSheet({ hull: PAL.wood, hullD: PAL.woodD, sail: '#e8e8e0', sailD: '#c9c9c0', stripe: acc, crew: '#7a6242', arrow: PAL.rockL });
     set.trebuchet = trebuchetSheet(acc);   // siege engine, but faction-draped so friend/foe reads

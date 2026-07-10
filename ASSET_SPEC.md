@@ -222,12 +222,12 @@ key backs the **blue/default** tunic only.
 |---|---|---|---|---|
 | `villager` | Villager | idle, walk, **gather, mine, farm, build, guard** | tunic sheets (blue addressable) | see §5.1 |
 | `defender` | Defender | idle, walk, gather, fight | player sheet | spear + faction accent; idle spear overlay |
-| `elite` | Elite Defender | idle, walk, gather, fight | player sheet | gold accent + shield |
+| `elite` | Bronze Champion | idle, walk, gather, fight | player sheet | bronze cuirass + crested helm, big round shield, bronze **sword** (thrust in fight, raised at rest) |
 | `defenderA` | (rival defender/elite) | idle, walk, gather, fight | **rival red sheet** (serves both) | red accent |
 | `axeman` | Axeman | idle, walk, gather, fight | shared | bare-armed, broad stone axe over shoulder |
 | `longbow` | Longbowman | idle, walk, gather, fight | shared | tall bow, quiver on hip |
 | `archer` | Archer | idle, walk, gather, fight | shared | short bow |
-| `marksman` | Marksman | idle, walk, gather, fight | shared | elite archer |
+| `marksman` | Fire Archer | idle, walk, gather, fight | shared | recurve bow with **flaming tips**, fire-arrow quiver; looses a burning arrow (`fire: true` → orange shot tracer) |
 | `rider` | Rider | idle, walk, fight | shared | mounted; no gather |
 | `horsearcher` | Horse Archer | idle, walk, fight | shared | mounted bow |
 | `lancer` | Lancer | idle, walk, fight | shared | mounted lance |

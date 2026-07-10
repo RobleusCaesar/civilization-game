@@ -168,14 +168,14 @@ const CFG = {
       train: {
         defender: { cost: { food: 40, wood: 30, gold: 5 }, time: 1 },
         axeman:   { cost: { food: 50, wood: 40, gold: 8 }, time: 1.2, reqLevel: 2 },
-        elite:    { cost: { food: 80, wood: 40, gold: 20 }, time: 2, reqLevel: 3 },
+        elite:    { cost: { food: 90, wood: 30, gold: 35 }, time: 2.4, reqLevel: 3 },
       },
       levels: [
         { cost: { wood: 100, stone: 50, gold: 15 },  time: 2, hp: 300 },
         { cost: { wood: 180, stone: 120, gold: 30 }, time: 2, hp: 420,
           bonus: 'Unlocks Axeman' },
         { cost: { wood: 300, stone: 220, gold: 50 }, time: 3, hp: 560,
-          bonus: 'Unlocks Elite Defender' },
+          bonus: 'Unlocks Bronze Champion' },
       ],
     },
     stable: {
@@ -198,14 +198,14 @@ const CFG = {
       train: {
         archer:   { cost: { food: 40, wood: 40, gold: 6 }, time: 1 },
         longbow:  { cost: { food: 40, wood: 60, gold: 10 }, time: 1.2, reqLevel: 2 },
-        marksman: { cost: { food: 70, wood: 60, gold: 15 }, time: 2, reqLevel: 3 },
+        marksman: { cost: { food: 70, wood: 45, gold: 30 }, time: 2.2, reqLevel: 3 },
       },
       levels: [
         { cost: { wood: 90, stone: 20, gold: 15 },   time: 2, hp: 280 },
         { cost: { wood: 160, stone: 80, gold: 30 },  time: 2, hp: 400,
           bonus: 'Unlocks Longbowman' },
         { cost: { wood: 280, stone: 160, gold: 40 }, time: 3, hp: 520,
-          bonus: 'Unlocks Marksman' },
+          bonus: 'Unlocks Fire Archer' },
       ],
     },
     dock: {
@@ -257,11 +257,11 @@ const CFG = {
     longbow:  { name: 'Longbowman',     hp: 40,  atk: 6,  def: 0, speed: 2.2, aggro: 6,   rng: 5, cdMult: 1.4 },  // longest human reach; slow, frail
     horsearcher: { name: 'Horse Archer', hp: 55, atk: 6,  def: 0, speed: 3.4, aggro: 5.5, rng: 3 },  // bow at full gallop; light and pricey
     ballista: { name: 'Ballista',       hp: 140, atk: 18, def: 1, speed: 1.0, aggro: 5.5, rng: 5.5, cdMult: 2.0, proj: 'bolt' },  // unit-killer bolt thrower; crawls
-    elite:    { name: 'Elite Defender', hp: 100, atk: 12, def: 3, speed: 2.4, aggro: 5 },
+    elite:    { name: 'Bronze Champion', hp: 125, atk: 15, def: 4, speed: 2.3, aggro: 5 },  // bronze-age heavy: sword, round shield, cuirass — the premier defender
     rider:    { name: 'Rider',          hp: 70,  atk: 9,  def: 1, speed: 3.4, aggro: 5 },
     lancer:   { name: 'Lancer',         hp: 110, atk: 13, def: 3, speed: 3.2, aggro: 5 },
     archer:   { name: 'Archer',         hp: 45,  atk: 7,  def: 0, speed: 2.3, aggro: 5.5, rng: 3.5 },
-    marksman: { name: 'Marksman',       hp: 60,  atk: 10, def: 1, speed: 2.3, aggro: 6,   rng: 4.5 },
+    marksman: { name: 'Fire Archer',    hp: 60,  atk: 11, def: 1, speed: 2.3, aggro: 6,   rng: 5, fire: true },  // flaming arrows: longest human reach, fire-tipped shots
     wolf:     { name: 'Wolf',           hp: 24,  atk: 4,  def: 0, speed: 2.4, aggro: 4 },
     boar:     { name: 'Boar',           hp: 48,  atk: 6,  def: 1, speed: 1.8, aggro: 2 },
     bear:     { name: 'Bear',           hp: 110, atk: 13, def: 2, speed: 2.2, aggro: 3.5 },  // very rare forest terror
@@ -290,7 +290,7 @@ const CFG = {
 
   MEAT_DROP: 10,               // food gained when a wild animal is killed
   PASSIVE_MAX: 2,              // grazing animals (deer/cow) kept on the map
-  HEAL_FOOD: { villager: 50, defender: 40, elite: 80,
+  HEAL_FOOD: { villager: 50, defender: 40, elite: 110,
                rider: 60, lancer: 100, archer: 40, marksman: 70,
                fishboat: 30, warship: 70, fireship: 110,
                transport: 50, bigtransport: 90,
