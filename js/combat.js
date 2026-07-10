@@ -319,6 +319,10 @@ const Combat = {
           const dmg = CFG.UNITS[u.kind].bldAtk ||
             Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
           Bld.damage(b, dmg);
+          // SHOW the hit landing — a floating number over the struck building, on
+          // BOTH sides (previously only your own buildings even logged it, so a
+          // barrage on an enemy tower looked like nothing was happening)
+          R.float(Bld.cx(b), b.y - 0.15, '-' + dmg, CFG.UNITS[u.kind].fire ? '#f2963a' : '#e8d2a0');
           if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
             G.log(`${Bld.def(b.key).name} under attack!`, true);
         }
