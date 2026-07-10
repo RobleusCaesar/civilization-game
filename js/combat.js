@@ -3,8 +3,42 @@
    Simple resolution: damage = max(1, attack - defense) per hit. */
 
 const Combat = {
-  shots: [],        // tower arrows for rendering: {x1,y1,x2,y2,t}
+  shots: [],        // thin-line shots (tower arrows, human archers): {x1,y1,x2,y2,t}
+  projectiles: [],  // siege engine shots that carry their damage and land it on impact
   scanT: 0,
+
+  // fire a siege engine's projectile: it flies to (tx,ty) over a short arc and
+  // applies its damage at IMPACT (so seeing the hit == the damage registering),
+  // spawning a dust/fire burst there. tgt = { kind:'bld'|'unit', id, dmg, srcId }.
+  launch(u, tx, ty, tgt) {
+    const kind = CFG.UNITS[u.kind].proj;
+    this.projectiles.push({
+      kind, tgt, owner: u.owner,
+      x1: u.x, y1: u.y - 0.35, x2: tx, y2: ty, t: 0,
+      dur: kind === 'bolt' ? 0.26 : kind === 'flame' ? 0.72 : 0.5,   // flight time
+      arc: kind === 'bolt' ? 0.4 : kind === 'flame' ? 3.0 : 1.6,      // peak height (tiles)
+    });
+  },
+  // a projectile reaches its mark: land the damage and throw a burst
+  impact(p) {
+    const t = p.tgt, flame = p.kind === 'flame';
+    if (t.kind === 'bld') {
+      const b = Bld.get(t.id);
+      if (b) this.hitBuilding(b, t.dmg, flame);
+    } else {
+      const tu = Units.get(t.id);
+      if (tu) { R.float(tu.x, tu.y - 0.4, '-' + t.dmg, '#f08a7a'); Units.damage(tu, t.dmg, t.srcId || 0, p.owner); }
+    }
+    R.impact(p.x2, p.y2, p.kind);
+  },
+  // apply damage to a building + show it landing (shared by instant melee hits
+  // and projectile impacts, so buildings always read the hit)
+  hitBuilding(b, dmg, flame) {
+    Bld.damage(b, dmg);
+    R.float(Bld.cx(b), b.y - 0.15, '-' + dmg, flame ? '#f2963a' : '#e8d2a0');
+    if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
+      G.log(`${Bld.def(b.key).name} under attack!`, true);
+  },
 
   // hostility matrix: P<->A, P<->R, P<->W, A<->W
   hostile(a, b) {
@@ -287,12 +321,15 @@ const Combat = {
           }
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
-          if (CFG.UNITS[u.kind].rng)
-            this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: tgt.x, y2: tgt.y, t: u.kind === 'catapult' ? 0.35 : 0.15,
-              fire: !!CFG.UNITS[u.kind].fire, rock: u.kind === 'catapult' });
           const dmg = Math.max(1, Math.round(Units.effAtk(u) - tgt.def));
-          R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f08a7a');
-          Units.damage(tgt, dmg, u.id);
+          if (CFG.UNITS[u.kind].proj) {
+            this.launch(u, tgt.x, tgt.y, { kind: 'unit', id: tgt.id, dmg, srcId: u.id });
+          } else {
+            if (CFG.UNITS[u.kind].rng)
+              this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: tgt.x, y2: tgt.y, t: 0.15, fire: !!CFG.UNITS[u.kind].fire });
+            R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f08a7a');
+            Units.damage(tgt, dmg, u.id);
+          }
         }
         continue;
       }
@@ -311,20 +348,19 @@ const Combat = {
           Units.followPath(u, dt);
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
-          if (CFG.UNITS[u.kind].rng)
-            this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: Bld.cx(b), y2: Bld.cy(b), t: u.kind === 'catapult' ? 0.35 : 0.15,
-              fire: !!CFG.UNITS[u.kind].fire, rock: u.kind === 'catapult' });
-          // catapults exist to break stone — boulders, not spear-pokes; the
+          // catapults/trebuchets break stone — boulders, not spear-pokes; the
           // axeman's heavy blade also bites deeper into timber and thatch
           const dmg = CFG.UNITS[u.kind].bldAtk ||
             Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
-          Bld.damage(b, dmg);
-          // SHOW the hit landing — a floating number over the struck building, on
-          // BOTH sides (previously only your own buildings even logged it, so a
-          // barrage on an enemy tower looked like nothing was happening)
-          R.float(Bld.cx(b), b.y - 0.15, '-' + dmg, CFG.UNITS[u.kind].fire ? '#f2963a' : '#e8d2a0');
-          if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
-            G.log(`${Bld.def(b.key).name} under attack!`, true);
+          if (CFG.UNITS[u.kind].proj) {
+            // siege engine: the boulder/bolt/flaming ball flies and lands the
+            // damage on impact (with a dust or fire burst — see R.impact)
+            this.launch(u, Bld.cx(b), Bld.cy(b), { kind: 'bld', id: b.id, dmg });
+          } else {
+            if (CFG.UNITS[u.kind].rng)
+              this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: Bld.cx(b), y2: Bld.cy(b), t: 0.15, fire: !!CFG.UNITS[u.kind].fire });
+            this.hitBuilding(b, dmg, !!CFG.UNITS[u.kind].fire);
+          }
         }
       }
     }
@@ -348,6 +384,12 @@ const Combat = {
     for (let i = this.shots.length - 1; i >= 0; i--) {
       this.shots[i].t -= dt;
       if (this.shots[i].t <= 0) this.shots.splice(i, 1);
+    }
+    // advance siege projectiles; when one lands, apply its damage + burst
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
+      p.t += dt;
+      if (p.t >= p.dur) { this.impact(p); this.projectiles.splice(i, 1); }
     }
   },
 

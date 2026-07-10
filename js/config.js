@@ -255,7 +255,7 @@ const CFG = {
     axeman:   { name: 'Axeman',         hp: 55,  atk: 11, def: 0, speed: 2.3, aggro: 5,   bldMult: 1.6 },  // shock troop, chews buildings; no armor
     longbow:  { name: 'Longbowman',     hp: 40,  atk: 6,  def: 0, speed: 2.2, aggro: 6,   rng: 5, cdMult: 1.4 },  // longest human reach; slow, frail
     horsearcher: { name: 'Horse Archer', hp: 55, atk: 6,  def: 0, speed: 3.4, aggro: 5.5, rng: 3 },  // bow at full gallop; light and pricey
-    ballista: { name: 'Ballista',       hp: 140, atk: 18, def: 1, speed: 1.0, aggro: 5.5, rng: 5.5, cdMult: 2.0 },  // unit-killer bolt thrower; crawls
+    ballista: { name: 'Ballista',       hp: 140, atk: 18, def: 1, speed: 1.0, aggro: 5.5, rng: 5.5, cdMult: 2.0, proj: 'bolt' },  // unit-killer bolt thrower; crawls
     elite:    { name: 'Elite Defender', hp: 100, atk: 12, def: 3, speed: 2.4, aggro: 5 },
     rider:    { name: 'Rider',          hp: 70,  atk: 9,  def: 1, speed: 3.4, aggro: 5 },
     lancer:   { name: 'Lancer',         hp: 110, atk: 13, def: 3, speed: 3.2, aggro: 5 },
@@ -279,7 +279,7 @@ const CFG = {
     // (bldAtk vs structures, cdMult stretches its reload); the siege tower
     // carries no weapon — parked on an enemy wall it ferries one nearby
     // soldier per second over the top.
-    catapult:   { name: 'Catapult',    hp: 180, atk: 8, def: 1, speed: 1.0, aggro: 0, rng: 5.5, cdMult: 2.5, bldAtk: 110 },
+    catapult:   { name: 'Catapult',    hp: 180, atk: 8, def: 1, speed: 1.0, aggro: 0, rng: 5.5, cdMult: 2.5, bldAtk: 110, proj: 'stone' },
     siegetower: { name: 'Siege Tower', hp: 170, atk: 0, def: 0, speed: 1.0, aggro: 0 },
   },
 

@@ -9,6 +9,7 @@ const R = {
   terrainCache: null,
   fogCv: null, fogG: null, fogDirty: true,
   floats: [],                    // {x,y,txt,col,t}
+  particles: [],                 // transient impact debris/fire/smoke {x,y,vx,vy,t,life,col,sz,g}
   miniT: 0,
 
   init() {
@@ -101,6 +102,8 @@ const R = {
     this.fogG = this.fogCv.getContext('2d');
     this.fogDirty = true;
     this.floats = [];
+    this.particles = [];
+    Combat.shots.length = 0; Combat.projectiles.length = 0;
     const tc = Bld.tcOf('P');
     if (tc) this.centerOn(tc.x + 0.5, tc.y + 0.5);
   },
@@ -149,6 +152,37 @@ const R = {
   float(x, y, txt, col) {
     if (this.floats.length > 40) this.floats.shift();
     this.floats.push({ x, y, txt, col, t: 1.0 });
+  },
+
+  // impact burst at (x,y): 'stone'/'bolt' throw pale dust + dark debris that
+  // fall and fade; 'flame' throws rising fire embers + a puff of grey smoke.
+  // Particles are spawned once per hit (not per frame) and capped, so no
+  // allocation storms — the draw loop only mutates them in place.
+  impact(x, y, kind) {
+    const P = this.particles, AP = ART.PALETTE, add = (o) => { if (P.length < 220) P.push(o); };
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    if (kind === 'flame') {
+      for (let i = 0; i < 12; i++) {                       // fire embers, rising
+        const a = rnd(-Math.PI, 0), s = rnd(1.2, 3.4);
+        add({ x, y, vx: Math.cos(a) * s * 0.5, vy: Math.sin(a) * s - 1.2, t: 1, life: rnd(0.4, 0.8),
+              col: AP.fire[(Math.random() * 3 + 1) | 0], sz: rnd(1.5, 3), g: -1.6 });
+      }
+      for (let i = 0; i < 5; i++)                           // smoke puff, drifts up
+        add({ x, y: y - 0.2, vx: rnd(-0.6, 0.6), vy: rnd(-1.6, -0.7), t: 1, life: rnd(0.7, 1.1),
+              col: i & 1 ? '#5a5248' : '#7a7268', sz: rnd(2.5, 4.5), g: -0.5, smoke: 1 });
+    } else {
+      const dust = kind === 'bolt' ? 6 : 10, deb = kind === 'bolt' ? 3 : 6;
+      for (let i = 0; i < dust; i++) {                      // pale dust cloud
+        const a = rnd(-Math.PI, 0), s = rnd(1, 3);
+        add({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.8 - 0.6, t: 1, life: rnd(0.3, 0.6),
+              col: i & 1 ? AP.stone[3] : AP.bone[1], sz: rnd(1.5, 3), g: 4 });
+      }
+      for (let i = 0; i < deb; i++) {                       // dark chunks, thrown + falling
+        const a = rnd(-Math.PI, 0), s = rnd(2, 4.5);
+        add({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 1, t: 1, life: rnd(0.35, 0.7),
+              col: kind === 'bolt' ? AP.wood[1] : AP.stone[1], sz: rnd(1.5, 2.5), g: 7 });
+      }
+    }
   },
 
   explored(x, y) { return S.map.explored[MapGen.idx(x, y)]; },
@@ -459,6 +493,53 @@ const R = {
         g.fillRect(s.x2 * TL - 1, s.y2 * TL - 1, 2, 2);
       }
     }
+
+    // ---- siege projectiles in flight: boulder / bolt / flaming ball on an arc,
+    // each trailing a ground shadow that tightens as it nears the target ----
+    for (const p of Combat.projectiles) {
+      const k = p.t / p.dur;
+      const wx = p.x1 + (p.x2 - p.x1) * k;
+      const wy = p.y1 + (p.y2 - p.y1) * k - Math.sin(k * Math.PI) * p.arc;
+      const px = wx * TL, py = wy * TL;
+      const sh = 2 + 2 * k;
+      g.fillStyle = 'rgba(20,16,10,0.28)';
+      g.fillRect(wx * TL - sh, p.y2 * TL - 1, sh * 2, 2);            // shadow on the ground line
+      if (p.kind === 'flame') {
+        for (let j = 1; j <= 3; j++) {                              // ember trail
+          const kk = Math.max(0, k - j * 0.06);
+          const tx = (p.x1 + (p.x2 - p.x1) * kk) * TL;
+          const ty = (p.y1 + (p.y2 - p.y1) * kk - Math.sin(kk * Math.PI) * p.arc) * TL;
+          g.fillStyle = 'rgba(232,138,58,' + (0.5 - j * 0.13) + ')';
+          g.fillRect(tx - 2, ty - 2, 4, 4);
+        }
+        g.fillStyle = ART.PALETTE.fire[1]; g.fillRect(px - 4, py - 4, 8, 8);   // outer glow
+        g.fillStyle = ART.PALETTE.fire[2]; g.fillRect(px - 3, py - 3, 6, 6);
+        g.fillStyle = ART.PALETTE.fire[3]; g.fillRect(px - 2, py - 3, 3, 3);   // hot core
+      } else if (p.kind === 'bolt') {
+        const dx = p.x2 - p.x1, dy = p.y2 - p.y1, dl = Math.hypot(dx, dy) || 1;
+        g.strokeStyle = ART.PALETTE.wood[2]; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(px - dx / dl * 7, py - dy / dl * 7); g.lineTo(px, py); g.stroke();
+        g.fillStyle = ART.PALETTE.stone[4]; g.fillRect(px - 1.5, py - 1.5, 3, 3);   // iron head
+      } else {                                                       // stone boulder
+        g.fillStyle = ART.PALETTE.stone[1]; g.fillRect(px - 3, py - 3, 6, 6);
+        g.fillStyle = ART.PALETTE.stone[3]; g.fillRect(px - 3, py - 3, 3, 3);       // lit top-left
+        g.fillStyle = ART.PALETTE.stone[0]; g.fillRect(px + 1, py + 1, 2, 2);       // shaded
+      }
+    }
+
+    // ---- impact particles: dust/debris fall & shrink, embers & smoke rise ----
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const pt = this.particles[i];
+      pt.t -= dt / pt.life;
+      if (pt.t <= 0) { this.particles.splice(i, 1); continue; }
+      pt.vy += pt.g * dt;
+      pt.x += pt.vx * dt; pt.y += pt.vy * dt;
+      g.globalAlpha = pt.smoke ? Math.min(0.55, pt.t * 0.55) : Math.min(1, pt.t * 1.4);
+      g.fillStyle = pt.col;
+      const s = pt.sz * (pt.smoke ? (1.4 - pt.t) + 0.6 : pt.t);      // smoke expands, debris shrinks
+      g.fillRect(pt.x * TL - s / 2, pt.y * TL - s / 2, s, s);
+    }
+    g.globalAlpha = 1; g.lineWidth = 1.5;
 
     // living water: drifting sparkles, blinking shoreline foam, jumping fish.
     // Viewport-only, a few fillRects per water tile — stays well inside budget.
