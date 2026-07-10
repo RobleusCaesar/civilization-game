@@ -915,6 +915,7 @@ const Sprites = {
     for (const k in FOOT) set[k] = unitSheet({ body: FOOT[k].body, accent: acc, pants: FOOT[k].pants, hair: PAL.hair, spear: PAL.trunk }, FOOT[k].extra);
     for (const k in RIDERS) set[k] = riderSheet({ horse: RIDERS[k].horse, horseD: RIDERS[k].horseD, body: RIDERS[k].body, accent: acc, bow: RIDERS[k].bow, tip: RIDERS[k].tip });
     set.warship = warshipSheet({ hull: PAL.wood, hullD: PAL.woodD, sail: '#e8e8e0', sailD: '#c9c9c0', stripe: acc, crew: '#7a6242', arrow: PAL.rockL });
+    set.trebuchet = trebuchetSheet(acc);   // siege engine, but faction-draped so friend/foe reads
     Sprites.military[tunic] = set;
     return set;
   };
@@ -1126,6 +1127,40 @@ const Sprites = {
         p(5, 6, 6, 1, AP.bone[2]); p(11, 6, 1, 1, AP.stone[3]);     // bolt nocked
       }
       p(10, 9, 2, 2, APx.wood[0]);                                  // windlass
+    };
+    return {
+      idle: frames(2, (p, g, f) => draw(p, 0, 'idle')),
+      walk: frames(2, (p, g, f) => draw(p, f, 'walk')),
+      fight: frames(2, (p, g, f) => draw(p, f, 'fight')),
+    };
+  }
+  // trebuchet: the tall counterweight engine. Two A-frame pivot towers straddle
+  // a long throwing arm; a heavy weighted box (draped in the village colour)
+  // hangs at the short end, a sling with a flaming ball at the long end. Fight
+  // frame 1 whips the arm over — the flaming ball leaves and the weight drops.
+  function trebuchetSheet(accent) {
+    const draw = (p, f, pose) => {
+      p(2, 15, 12, 1, 'rgba(0,0,0,0.3)');                            // long ground shadow
+      p(2, 12, 12, 2, APx.wood[2]); p(2, 12, 12, 1, APx.wood[3]);    // heavy base beam
+      p(3, 11, 1, 3, APx.wood[1]); p(12, 11, 1, 3, APx.wood[1]);     // outriggers
+      ART.shadedCircle(p, 3, 14, 1, AP.wood, 1);                     // wheels
+      ART.shadedCircle(p, 12, 14, 1, AP.wood, 1);
+      p(6, 4, 1, 8, APx.wood[1]); p(9, 4, 1, 8, APx.wood[1]);        // tall A-frame uprights
+      p(5, 5, 2, 1, APx.wood[2]); p(9, 5, 2, 1, APx.wood[2]);        // angled braces
+      p(6, 4, 4, 1, APx.wood[3]);                                    // pivot crossbeam
+      const thrown = pose === 'fight' && f === 1;
+      if (thrown) {
+        // arm whipped over: long end up-left, counterweight box slammed down right
+        p(3, 1, 1, 4, APx.wood[3]); p(4, 4, 3, 1, APx.wood[3]);      // long arm swung up-left
+        p(1, 0, 3, 3, AP.fire[2]); p(2, 0, 1, 1, AP.fire[3]); p(1, 1, 1, 1, AP.fire[1]);  // flaming ball away!
+        p(10, 10, 3, 3, APx.wood[0]); p(10, 10, 3, 1, accent);      // weight box dropped, faction drape
+      } else {
+        // cocked: counterweight box hauled UP (left), long arm down-right, ball loaded
+        p(4, 2, 3, 3, APx.wood[0]); p(4, 2, 3, 1, accent);          // raised weight box + faction drape
+        p(9, 5, 1, 6, APx.wood[3]); p(9, 10, 3, 1, APx.wood[2]);    // long arm down to the sling
+        p(12, 10, 2, 2, AP.fire[1]); p(12, 10, 1, 1, AP.fire[2]);   // loaded flaming ball, glowing
+      }
+      p(7, 0, 1, 4, APx.wood[2]); p(8, 0, 2, 1, accent); p(8, 1, 1, 1, accent);  // faction pennant on the mast
     };
     return {
       idle: frames(2, (p, g, f) => draw(p, 0, 'idle')),

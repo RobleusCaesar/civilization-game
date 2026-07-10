@@ -34,7 +34,7 @@ const Units = {
            u.kind === 'warship' || u.kind === 'fireship' ||
            u.kind === 'catapult' || u.kind === 'ballista' || u.kind === 'siegetower';
   },
-  isSiege(u) { return u.kind === 'catapult' || u.kind === 'siegetower'; },
+  isSiege(u) { return u.kind === 'catapult' || u.kind === 'siegetower' || u.kind === 'trebuchet'; },
   isVillager(u) { return u.kind === 'villager'; },
   isNaval(u) { return !!CFG.UNITS[u.kind].naval; },
   isTransport(u) { return u.kind === 'transport' || u.kind === 'bigtransport'; },

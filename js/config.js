@@ -153,6 +153,7 @@ const CFG = {
         catapult:   { cost: { wood: 180, stone: 50, gold: 30 }, time: 3 },
         ballista:   { cost: { wood: 160, stone: 30, gold: 25 }, time: 2.5, reqLevel: 2 },
         siegetower: { cost: { wood: 220, stone: 40, gold: 40 }, time: 3.5, reqLevel: 3 },
+        trebuchet:  { cost: { wood: 280, stone: 140, gold: 70 }, time: 4.5, reqLevel: 3 },
       },
       levels: [
         { cost: { wood: 200, stone: 80, gold: 30 },   time: 3, hp: 380 },
@@ -281,6 +282,10 @@ const CFG = {
     // soldier per second over the top.
     catapult:   { name: 'Catapult',    hp: 180, atk: 8, def: 1, speed: 1.0, aggro: 0, rng: 5.5, cdMult: 2.5, bldAtk: 110, proj: 'stone' },
     siegetower: { name: 'Siege Tower', hp: 170, atk: 0, def: 0, speed: 1.0, aggro: 0 },
+    // trebuchet: the endgame engine — hurls a flaming counterweight ball the
+    // FARTHEST (outranges towers), hits HARDEST vs stone, but crawls and reloads
+    // slowest; fragile and pricey, so it's a payoff, not an auto-win
+    trebuchet:  { name: 'Trebuchet',   hp: 160, atk: 6, def: 1, speed: 0.85, aggro: 0, rng: 8, cdMult: 4.0, bldAtk: 200, proj: 'flame', fire: true },
   },
 
   MEAT_DROP: 10,               // food gained when a wild animal is killed

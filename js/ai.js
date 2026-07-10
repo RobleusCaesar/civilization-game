@@ -260,13 +260,16 @@ const AI = {
   trainArmy(m, want, mix) {
     const P = this.persona();
     mix = mix || P.mix;
-    // siege-minded chiefs keep a catapult battery on top of the standing force
+    // siege-minded chiefs keep a siege battery on top of the standing force
     if (mix.some(([k]) => k === 'catapult')) {
-      const wantCats = Math.max(1, Math.floor(want / 6));
-      if (Units.count('A', u => u.kind === 'catapult') < wantCats) {
-        const ws = S.buildings.find(bb => bb.owner === 'A' && bb.key === 'siege' &&
-          Bld.done(bb) && !bb.upgrading && bb.queue.length === 0);
-        if (ws && Bld.train(ws, 'catapult')) return true;
+      const ws = S.buildings.find(bb => bb.owner === 'A' && bb.key === 'siege' &&
+        Bld.done(bb) && !bb.upgrading && bb.queue.length === 0);
+      if (ws) {
+        // the endgame payoff: a trebuchet or two once the workshop is fully raised
+        if (ws.level >= 3 && Units.count('A', u => u.kind === 'trebuchet') < Math.max(1, Math.floor(want / 10)) &&
+          Bld.train(ws, 'trebuchet')) return true;
+        const wantCats = Math.max(1, Math.floor(want / 6));
+        if (Units.count('A', u => u.kind === 'catapult') < wantCats && Bld.train(ws, 'catapult')) return true;
       }
     }
     const count = Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u) && !Units.isSiege(u));
@@ -610,7 +613,7 @@ const AI = {
   HALL_OF: { defender: 'barracks', axeman: 'barracks', elite: 'barracks',
     archer: 'range', longbow: 'range', marksman: 'range',
     rider: 'stable', horsearcher: 'stable', lancer: 'stable',
-    catapult: 'siege', ballista: 'siege' },
+    catapult: 'siege', ballista: 'siege', trebuchet: 'siege' },
 
   // re-weight the army mix toward the hard counters the read calls for
   counterMix(mix, read) {
