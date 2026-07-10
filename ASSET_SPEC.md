@@ -133,12 +133,18 @@ Walls & gates are a special case (full-tile, auto-tiling, neutral) — see §4.3
 > `building/siege/3`, `building_a/siege/3`.
 > **Count:** 12 types × 3 levels × 2 factions = **72 sprite keys.**
 
-### 4.2 Construction / upgrade scaffold (shared, not per-building)
+### 4.2 Construction / upgrade scaffold (1×1 shared; 2×2 TC keyed by target level)
 
 | Key | Used for | Source→Render | Frames | Notes |
 |---|---|---|---|---|
 | `misc/construction` | any **1×1** building being built or upgraded | 64→32 (→128) | 1 | Lashed timber scaffold, half-laid stone footing, materials, ladder. Drawn at the building's footprint; owner tag + progress bar are code. |
-| `misc/constructionBig` | the **2×2 TC** being built/upgraded | 128→64 (→256) | 1 | Roundhouse-going-up: half-raised ring wall, **partial cone roof (one side thatched, one bare rafters)**, scaffold, gin-pole crane. |
+| `misc/constructionBig` | the **2×2 TC** being raised toward **L2** (first build, and the L1→L2 upgrade) | 128→64 (→256) | 1 | **Timber long-hall going up**: laid stone footing, post-and-beam frame (front bays planked, right bays open), the long gable roof half-raised (thatch on the lit slope, bare rafters on the other), scaffold, gin-pole crane, stacked timber/thatch/stone. |
+| `misc/constructionBig3` | the **2×2 TC** being raised toward **L3** (the L2→L3 upgrade) | 128→64 (→256) | 1 | **Stone keep going up**: stepped dressed-stone plinth, coursed walls rising (front-left near full height with quoins, the right run stepping down), a corner tower stub with merlons + arrow-slit, first roof timbers, a gin-pole crane hoisting a dressed block, cut-stone stacks, a mortar tub. |
+
+> The renderer picks the 2×2 work-site by **target level** (`render.js`): the
+> level the TC will be once the work finishes — `constructionBig` for →L1/L2,
+> `constructionBig3` for →L3 — so the scaffold always matches the shape being
+> raised.
 
 > Walls & gates **under construction** show a **55%-alpha ghost of their own
 > oriented sprite** (no separate asset).
@@ -313,12 +319,13 @@ completeness so nothing is assumed missing.)
 | Key | Meaning | Source→Render | Frames | Cadence | Notes |
 |---|---|---|---|---|---|
 | `misc/construction` | 1×1 work-site scaffold | 64→footprint (→128) | 1 | — | see §4.2 |
-| `misc/constructionBig` | 2×2 TC work-site | 128→footprint (→256) | 1 | — | see §4.2 |
+| `misc/constructionBig` | 2×2 TC work-site, →L2 (timber long-hall) | 128→footprint (→256) | 1 | — | see §4.2 |
+| `misc/constructionBig3` | 2×2 TC work-site, →L3 (stone keep) | 128→footprint (→256) | 1 | — | see §4.2 |
 | `misc/kraken/0..1` | sea kraken (special event) | 32→32 | **2** | slow | tentacled sea beast |
 | `misc/dragon/0..1` | black dragon (special event) | **96×48**→96×48 | **2** | wingbeat (~4 fps) | the two wing-beat frames |
 | `misc/fish/0..1` | jumping shore-fish | 32→32 | **2** | ~6–7 fps | breaches over shoals so the player can spot fishing spots |
 
-> **Count: 5 names / 8 addressable slots.**
+> **Count: 6 names / 9 addressable slots.**
 
 ### 7.5 Effects — procedural-only (drawn in code; **no manifest key today**)
 
@@ -416,7 +423,7 @@ sprite key → its rect (with `dw`/`dh` to downscale 4× masters).
 | `assets/fortifications.png` | `wall/<lv>/<mask>` (48) + `gate/<lv>/<h\|v>` (6) + menu `building[_a]/wall\|gate/<lv>` (12) @32 | 66 | ~512² |
 | `assets/units.png` | all `unit/<kind>/<pose>/<n>` @32 (from 128 masters via dw/dh) | 176 | ~768² |
 | `assets/terrain.png` | `terrain/<name>/<v>` + `terrain_rare/grass/<v>` @32 (or 64) | 25 | ~256²–512² |
-| `assets/effects.png` | `misc/construction`(128) `misc/constructionBig`(256) `misc/kraken`(2) `misc/dragon`(2×96×48) `misc/fish`(2) | 8 | ~512² |
+| `assets/effects.png` | `misc/construction`(128) `misc/constructionBig`(256) `misc/constructionBig3`(256) `misc/kraken`(2) `misc/dragon`(2×96×48) `misc/fish`(2) | 9 | ~512² |
 | `assets/icons.png` | `icon/<name>` @64 | 5 | ~192² |
 | `assets/cards.png` | `ui/card/<key>` @128 (20) | 20 | ~640² |
 
@@ -518,9 +525,9 @@ terrain/<name>/<variant>          <name> = grass forest water hills fertile camp
 terrain_rare/grass/<0|1>          rare flower meadows
 icon/<name>                       food wood stone gold pop
 ui/card/<cardKey>                 20 Origin Cards (§8)
-misc/<name>                       construction, constructionBig
+misc/<name>                       construction, constructionBig, constructionBig3
 misc/<name>/<frame>               kraken/0..1, dragon/0..1, fish/0..1
 ```
 
 **Grand totals (current addressable keys):** buildings 72 + fortifications 66 +
-units 176 + terrain 25 + icons 5 + cards 20 + effects 8 = **372 sprite keys.**
+units 176 + terrain 25 + icons 5 + cards 20 + effects 9 = **373 sprite keys.**

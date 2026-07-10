@@ -290,7 +290,13 @@ const R = {
         if (!up && (b.key === 'wall' || b.key === 'gate')) {
           // fortifications show their oriented shape while first going up
           g.globalAlpha = 0.55; g.drawImage(this.bldSprite(b), bx, by, bw, bw); g.globalAlpha = 1;
-        } else Assets.drawSprite(g, bs >= 2 ? 'misc/constructionBig' : 'misc/construction', bx, by, { w: bw, h: bw });
+        } else {
+          // 2×2 (TC) work-sites match the shape being raised: the timber
+          // long-hall (→L2) or the stone keep (→L3). target = the level once done
+          const tgt = up ? b.level + 1 : b.level;
+          const key = bs >= 2 ? (tgt >= 3 ? 'misc/constructionBig3' : 'misc/constructionBig') : 'misc/construction';
+          Assets.drawSprite(g, key, bx, by, { w: bw, h: bw });
+        }
         const total = up ? Bld.def(b.key).levels[b.level].time : Bld.def(b.key).levels[b.level - 1].time;
         this.bar(g, bx + 4, by + bw - 4, bw - 8, 3, 1 - (up ? b.upgrading : b.construction) / total, '#e8c15a');
         // still tag the owner so a work site reads as friend or foe

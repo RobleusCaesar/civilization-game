@@ -455,30 +455,54 @@ const Sprites = {
         q(1, 20, 1, 7, AP.wood[2]); q(1, 20, 4, 1, AP.wood[3]);    // drying rack
         q(1, 22, 1, 2, AP.red[2]); q(3, 22, 1, 3, AP.hide[2]);     // hung meat
       } else {
-        // stone great hall: coursed-masonry walls with dressed quoins, a
-        // wood-shingle roof, faction banner, fire-lit formal entrance, dooryard fence
-        ART.stoneTexture(q, 4, 15, 24, 12, 21);                    // coursed-stone walls
-        for (let i = 0; i < 12; i += 2) {                          // dressed corner quoins
-          const lit = (i & 2) ? AP.stone[4] : AP.stone[3], sh = (i & 2) ? AP.stone[1] : AP.stone[0];
-          q(4, 15 + i, 2, 2, lit); q(26, 15 + i, 2, 2, sh);
+        // GRAND STONE GREAT HALL — a coursed-masonry keep flanked by two
+        // crenellated corner towers under a hipped, gold-crested shingle roof.
+        // A projecting gabled porch frames a deep fire-lit doorway between
+        // glowing braziers; twin faction banners fly from the towers and arched
+        // windows glow within. Built to dominate the skyline at the refined tier.
+        // stepped stone plinth the whole hall stands on
+        ART.stoneTexture(q, 3, 26, 26, 3, 27); q(3, 26, 26, 1, AP.stone[4]); q(2, 28, 28, 1, AP.stone[1]);
+        // central hall — coursed stone with a run of dressed quoins up the front
+        ART.stoneTexture(q, 6, 14, 20, 13, 21);
+        for (let i = 0; i < 13; i += 2) { q(6, 14 + i, 2, 2, (i & 2) ? AP.stone[4] : AP.stone[3]); q(24, 14 + i, 2, 2, (i & 2) ? AP.stone[1] : AP.stone[0]); }
+        // hipped wood-shingle roof over the hall, bevelled top corners so it
+        // reads as a hip roof, with a gilded ridge and cresting finials
+        ART.shadedRect(q, 5, 5, 22, 10, AP.wood, 2);
+        for (let yy = 7; yy < 15; yy += 2) q(5, yy, 22, 1, AP.wood[1]);            // shingle courses
+        for (let xx = 7; xx < 26; xx += 3) q(xx, 6, 1, 9, AP.wood[3]);             // shingle seams
+        q(5, 5, 3, 2, AP.ink[1]); q(24, 5, 3, 2, AP.ink[1]);                       // bevelled hip corners
+        q(8, 5, 1, 1, AP.wood[0]); q(23, 5, 1, 1, AP.wood[0]);
+        q(6, 4, 20, 1, AP.gold[1]); q(6, 3, 20, 1, AP.gold[2]);                    // gilded ridge
+        for (let cx = 8; cx < 25; cx += 4) { q(cx, 2, 1, 1, AP.wood[2]); q(cx, 1, 1, 1, AP.gold[2]); }  // ridge cresting
+        q(4, 14, 24, 2, AP.wood[1]); q(4, 14, 24, 1, AP.wood[2]);                  // eave overhang
+        // two crenellated corner towers flanking the hall
+        for (const tx of [1, 27]) {
+          ART.stoneTexture(q, tx, 6, 4, 21, tx * 5 + 9);
+          q(tx, 6, 4, 1, AP.stone[4]);                                             // lit tower crown
+          q(tx, 5, 1, 1, AP.stone[3]); q(tx + 2, 5, 1, 1, AP.stone[3]);            // merlons
+          for (let ty = 10; ty < 26; ty += 3) q(tx, ty, 4, 1, AP.stone[1]);        // course lines
+          q(tx + 1, 11, 2, 3, AP.ink[0]); q(tx + 1, 11, 2, 1, AP.stone[4]);        // arrow-slit
+          q(tx + 1, 12, 1, 1, AP.fire[1]);                                         // faint glow within
         }
-        // wood-shingle roof
-        ART.shadedRect(q, 3, 3, 26, 13, AP.wood, 2);
-        for (let yy = 5; yy < 16; yy += 2) q(3, yy, 26, 1, AP.wood[1]);      // shingle courses
-        for (let xx = 5; xx < 28; xx += 3) q(xx, 4, 1, 11, AP.wood[3]);      // shingle seams
-        q(3, 3, 26, 1, AP.wood[4]);                               // lit ridge
-        q(2, 14, 28, 2, AP.wood[1]); q(2, 14, 28, 1, AP.wood[2]); // eave
-        q(15, 5, 3, 2, AP.ink[1]);                                // smoke hole
-        // formal fire-lit entrance
-        q(12, 17, 8, 1, AP.stone[4]);                             // stone lintel
-        q(13, 18, 6, 8, AP.ink[0]);                               // deep doorway
-        q(13, 18, 1, 8, AP.stone[3]); q(18, 18, 1, 8, AP.stone[3]); // jambs
-        q(14, 24, 4, 2, AP.fire[1]); q(15, 23, 2, 2, AP.fire[2]); // firelight within
-        q(7, 19, 3, 3, AP.ink[1]); q(7, 19, 3, 1, AP.stone[4]);   // windows
-        q(22, 19, 3, 3, AP.ink[1]); q(22, 19, 3, 1, AP.stone[4]);
-        q(24, 2, 1, 9, AP.wood[2]);                               // banner pole
-        q(25, 2, 5, 3, fac[2]); q(25, 5, 4, 1, fac[1]); q(25, 2, 5, 1, fac[3]); // faction banner
-        for (let fx = 3; fx < 28; fx += 5) { q(fx, 28, 1, 2, AP.wood[2]); q(fx, 28, 4, 1, AP.wood[1]); } // dooryard fence
+        // projecting gabled entrance porch
+        roofStrips(q, 11, 11, 10, 4, AP.wood[3], AP.wood[2]);                      // little gable roof
+        q(15, 10, 2, 1, AP.gold[2]);                                              // gilded porch peak
+        q(11, 15, 10, 1, AP.wood[3]); q(11, 16, 10, 1, AP.wood[1]);               // porch lintel beam
+        q(11, 16, 1, 11, AP.wood[1]); q(20, 16, 1, 11, AP.wood[1]);               // porch posts
+        // deep fire-lit arched doorway
+        q(13, 17, 6, 1, AP.stone[4]); q(14, 18, 4, 9, AP.ink[0]);                 // arch lintel + deep doorway
+        q(13, 18, 1, 9, AP.stone[3]); q(18, 18, 1, 9, AP.stone[3]);               // jambs
+        q(14, 24, 4, 3, AP.fire[1]); q(15, 23, 2, 2, AP.fire[2]); q(15, 25, 2, 1, AP.fire[3]);  // firelight within
+        // glowing braziers flanking the entrance
+        for (const bx of [10, 21]) {
+          q(bx, 22, 1, 5, AP.wood[1]); q(bx - 1, 20, 3, 2, AP.stone[2]); q(bx - 1, 20, 3, 1, AP.stone[3]);
+          q(bx, 19, 1, 1, AP.fire[2]); q(bx, 18, 1, 1, AP.fire[3]);
+        }
+        // arched glowing windows in the hall
+        for (const wx of [7, 22]) { q(wx, 18, 3, 4, AP.ink[0]); q(wx, 18, 3, 1, AP.stone[4]); q(wx + 1, 19, 1, 2, AP.fire[1]); }
+        // twin faction banners flying from the towers
+        q(4, 3, 1, 8, AP.wood[2]); q(5, 3, 4, 3, fac[2]); q(5, 6, 3, 1, fac[1]); q(5, 3, 4, 1, fac[3]);
+        q(27, 3, 1, 8, AP.wood[2]); q(23, 3, 4, 3, fac[2]); q(23, 6, 3, 1, fac[1]); q(23, 3, 4, 1, fac[3]);
       }
     },
     farm(p, lv) {
@@ -583,37 +607,71 @@ const Sprites = {
       ART.shadedCircle(q, 23, 22, 3, AP.hide, 2); q(23, 22, 1, 1, AP.bone[2]);                   // hide shield
       if (d.banner) banner(q, 28, 1, fac);
     },
+    // horse stable — read from the big Dutch stall door with a horse looking out
+    // over the shut lower leaf, a hay-loft in the gable, a water trough and a
+    // paddock rail. Fine-grid detail on the door, horse and tack.
     stable(p, lv, fac) {
-      const d = ART.tierDress(lv);
+      const d = ART.tierDress(lv), q = p.hi;
       ART.dropShadow(p, 8, 14, 14);
-      wallBody(p, 1, 7, 14, 7, d, 15);
-      roof(p, 0, 4, 16, 3, d, 16);
-      p(6, 9, 4, 5, AP.ink[0]);                                     // big stall door
-      p(2, 9, 2, 2, AP.hide[3]); p(3, 8, 2, 1, AP.hide[3]); p(3, 9, 1, 1, AP.ink[0]); // horse at window
-      p(12, 9, 1, 4, AP.wood[2]); p(13, 10, 2, 1, AP.wood[2]);      // hitching post
-      if (d.decor >= 1) { p(0, 12, 1, 3, AP.wood[2]); p(15, 12, 1, 3, AP.wood[2]); } // paddock posts
+      wallBody(p, 2, 7, 12, 7, d, 15);                              // stable block
+      roof(p, 1, 4, 14, 3, d, 16);                                 // gabled roof
+      // hay-loft opening in the gable with a bale poking out under a hoist beam
+      q(13, 7, 4, 3, AP.ink[0]); q(13, 7, 4, 1, AP.wood[3]);
+      q(14, 8, 3, 2, AP.thatch[2]); q(14, 8, 3, 1, AP.thatch[3]);  // hay bale
+      q(15, 5, 3, 1, AP.wood[2]); q(17, 5, 1, 2, AP.wood[1]); q(17, 4, 1, 1, AP.wood[0]);  // hoist beam + pulley
+      // big timber STALL DOOR — a Dutch door: upper leaf open, lower leaf shut
+      q(9, 15, 8, 12, AP.wood[3]); q(10, 16, 6, 10, AP.wood[1]);   // door frame recess
+      q(10, 16, 6, 5, AP.ink[0]);                                  // upper leaf open — dark stall within
+      q(10, 21, 6, 5, AP.wood[2]);                                 // lower leaf shut
+      for (let dx = 11; dx < 16; dx += 2) q(dx, 21, 1, 5, AP.wood[1]);  // plank seams
+      q(10, 25, 6, 1, AP.wood[3]); q(15, 22, 1, 1, AP.stone[3]);   // kick-board + latch
+      // a HORSE peering out over the shut lower leaf, lit against the dark stall
+      q(12, 14, 1, 2, AP.hide[2]); q(14, 14, 1, 2, AP.hide[2]);    // ears
+      q(12, 13, 1, 1, AP.ink[1]); q(14, 13, 1, 1, AP.ink[1]);      // ear tips
+      q(11, 16, 5, 3, AP.hide[3]);                                 // broad lit forehead/cheek
+      q(11, 19, 3, 2, AP.hide[2]); q(11, 21, 2, 1, AP.hide[1]);    // face tapering to the muzzle over the door
+      q(15, 16, 1, 5, AP.hair[2]); q(13, 15, 3, 1, AP.hair[1]);    // mane down the neck + forelock
+      q(13, 17, 1, 1, AP.ink[0]); q(11, 20, 1, 1, AP.bone[1]);     // eye + nostril highlight
+      // hitching post + water trough in the dooryard
+      q(5, 19, 1, 7, AP.wood[2]); q(4, 19, 3, 1, AP.wood[3]); q(3, 22, 3, 1, AP.hide[2]);  // post with a slung bridle
+      q(21, 23, 7, 3, AP.wood[1]); q(21, 23, 7, 1, AP.wood[2]); q(22, 24, 5, 1, AP.water[3]);  // water trough
+      if (d.decor >= 1) {                                          // paddock rail to the side
+        for (let fx = 24; fx < 31; fx += 3) q(fx, 17, 1, 4, AP.wood[2]);
+        q(24, 17, 7, 1, AP.wood[3]); q(24, 19, 7, 1, AP.wood[1]);
+      }
+      if (d.decor >= 2) { q(18, 16, 2, 2, AP.stone[3]); q(18, 16, 2, 1, AP.stone[4]); q(18, 18, 2, 1, AP.stone[1]); }  // hung horseshoe
       if (d.banner) banner(p, 0, 0, fac);
     },
-    // open archery yard — read from the ringed target butt (left), a shooting-
-    // line rail, a quiver, and a small fletcher's shelter with a bow rack (right)
+    // archery range — read from the big ringed straw target butt (right) peppered
+    // with fletched arrows, a fletcher's open-front shelter with a bow rack and
+    // arrow barrel (left), a straw practice pell, and a shooting-line rail
     range(p, lv, fac) {
       const d = ART.tierDress(lv), q = p.hi;
-      ART.dropShadow(p, 10, 14, 12);
-      wallBody(p, 9, 7, 6, 6, d, 19);                               // fletcher's shelter
-      roof(p, 8, 5, 8, 2, d, 20);
-      q(24, 19, 3, 6, AP.ink[0]);                                   // shelter door
-      q(19, 14, 1, 9, AP.wood[2]);                                  // bow-rack post
-      q(20, 15, 1, 3, AP.wood[3]); q(20, 19, 1, 3, AP.wood[3]);     // stacked bows
-      q(17, 16, 1, 6, AP.bone[2]);                                  // arrow bundle
-      // ringed straw target butt on a post — the identity
-      q(6, 17, 1, 11, AP.wood[1]); q(5, 17, 3, 1, AP.wood[2]);      // butt post
-      ART.shadedCircle(q, 6, 11, 4, AP.bone, 1);
-      ART.shadedCircle(q, 6, 11, 3, AP.red, 1);
-      ART.shadedCircle(q, 6, 11, 2, AP.bone, 1);
-      q(6, 11, 1, 1, AP.red[2]);                                    // bullseye
-      q(7, 10, 3, 1, AP.bone[2]); q(10, 9, 1, 1, AP.wood[0]);       // an arrow struck in the butt
-      for (let fx = 1; fx < 29; fx += 5) { q(fx, 27, 1, 2, AP.wood[2]); q(fx, 27, 4, 1, AP.wood[1]); } // shooting-line rail
-      q(14, 23, 2, 4, AP.hide[2]); q(14, 22, 1, 3, AP.bone[2]); q(16, 22, 1, 2, AP.bone[2]); // quiver of arrows
+      ART.dropShadow(p, 8, 14, 13);
+      // fletcher's open-front shelter (left) — bows on a rack, an arrow barrel
+      wallBody(p, 1, 7, 6, 6, d, 19);
+      roof(p, 0, 5, 8, 2, d, 20);
+      q(3, 15, 6, 11, AP.ink[1]); q(3, 15, 6, 1, AP.wood[3]);       // open-front recess (shaded interior)
+      q(4, 16, 1, 9, AP.wood[2]); q(7, 16, 1, 9, AP.wood[2]);       // bow-rack posts
+      q(4, 17, 1, 3, AP.wood[3]); q(4, 21, 1, 3, AP.wood[3]);       // stacked bows (curved staves)
+      q(3, 17, 1, 1, AP.bone[1]); q(3, 21, 1, 1, AP.bone[1]);       // bow tips
+      ART.shadedRect(q, 8, 22, 4, 4, AP.wood, 1); q(9, 21, 2, 1, AP.bone[2]); q(9, 20, 1, 2, AP.bone[2]); q(11, 20, 1, 3, AP.bone[1]);  // arrow barrel bristling with shafts
+      // a straw practice pell (centre) — a bound-straw post man
+      q(15, 15, 3, 11, AP.thatch[2]); q(15, 15, 1, 11, AP.thatch[3]); q(17, 15, 1, 11, AP.thatch[1]);
+      for (let ry = 17; ry < 26; ry += 3) q(15, ry, 3, 1, AP.wood[1]);  // binding cords
+      q(19, 18, 3, 1, AP.bone[2]); q(21, 17, 1, 1, AP.wood[0]);     // an arrow struck into the pell
+      // big ringed straw target butt on legs (right) — the identity
+      ART.shadedCircle(q, 25, 12, 6, AP.thatch, 1);                 // straw disc
+      ART.shadedCircle(q, 25, 12, 5, AP.bone, 1);
+      ART.shadedCircle(q, 25, 12, 4, AP.red, 1);
+      ART.shadedCircle(q, 25, 12, 3, AP.bone, 1);
+      ART.shadedCircle(q, 25, 12, 2, AP.red, 1);
+      q(25, 12, 1, 1, AP.gold[2]);                                  // gilded bullseye
+      q(23, 21, 1, 5, AP.wood[1]); q(27, 21, 1, 5, AP.wood[1]); q(23, 24, 5, 1, AP.wood[2]);  // trestle legs
+      // arrows peppered into the butt, each with a pale fletch
+      for (const [ax, ay] of [[24, 10], [27, 13], [23, 14], [26, 9]]) { q(ax, ay, 2, 1, AP.bone[2]); q(ax + 2, ay - 1, 1, 1, AP.bone[1]); q(ax - 1, ay, 1, 1, AP.wood[0]); }
+      // shooting-line rail across the yard
+      for (let fx = 1; fx < 22; fx += 5) { q(fx, 27, 1, 2, AP.wood[2]); q(fx, 27, 4, 1, AP.wood[1]); }
       if (d.banner) banner(p, 13, 0, fac);
     },
     dock(p, lv, fac) {
@@ -786,6 +844,54 @@ const Sprites = {
     for (let r = 0; r < 5; r++) q(6, 15 + r * 2, 4, 1, W[2]);
     q(19, 24, 3, 1, W[1]); q(21, 23, 1, 2, ST[3]);                                  // dropped adze (handle + head)
     for (let i = 0; i < 14; i++) q(5 + (rr() * 22) | 0, 25 + (rr() * 4) | 0, 1, 1, i % 2 ? TH[1] : W[3]);  // sawdust
+  }, 128), 4);
+
+  // the 2×2 Town Center going up to LEVEL 3 — the great STONE HALL under
+  // construction (the keep the TC becomes at the refined tier). A masons' work
+  // site, distinct from the timber long-hall raising: a stepped dressed-stone
+  // plinth, coursed walls rising with dressed quoins (front-left near full
+  // height, the right run stepping down where the masons stopped), a corner
+  // tower stub with its first merlons and arrow-slit, the first roof timbers
+  // laid over the finished bay, a gin-pole crane hoisting a dressed block, stacks
+  // of cut stone, a mortar tub and trowel, a scaffold and a ladder. Reads as the
+  // grand keep going up — the level-3 town center.
+  Sprites.misc.constructionBig3 = ART.outline(tileB(p => {
+    const q = p.hi, W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil;
+    const rr = ART.rng(53);
+    q(6, 27, 21, 2, ART.STYLE.SHADOW); q(9, 29, 14, 1, ART.STYLE.SHADOW);            // broad contact shadow
+    q(4, 25, 24, 3, SO[2]); q(4, 25, 24, 1, SO[3]); q(4, 27, 24, 1, SO[1]);          // dug foundation pad
+    for (let i = 0; i < 12; i++) { q(4 + i * 2, 23, 2, 2, ST[(i & 1) ? 3 : 2]); q(4 + i * 2, 23, 2, 1, ST[4]); } // stepped dressed-stone plinth
+    // COURSED STONE WALLS rising — front-left near full height with dressed
+    // quoins, the right run stepping down course by course where work stopped
+    ART.stoneTexture(q, 5, 11, 12, 12, 21); q(5, 11, 12, 1, ST[4]);
+    for (let i = 0; i < 11; i += 2) q(5, 11 + i, 2, 2, (i & 2) ? ST[4] : ST[3]);     // dressed quoins up the finished corner
+    for (let i = 0; i < 5; i++) { const cx = 17 + i * 2, top = 12 + i * 2; q(cx, top, 2, 23 - top, ST[2]); q(cx, top, 2, 1, ST[4]); q(cx, top, 1, 23 - top, ST[3]); } // stepped-down unfinished right run
+    q(16, 10, 1, 13, ST[0]);                                                          // strong corner at the raised/unfinished seam
+    q(9, 15, 6, 1, ST[4]); q(10, 16, 4, 7, AP.ink[0]); q(9, 16, 1, 7, ST[3]); q(14, 16, 1, 7, ST[3]);  // doorway going in
+    // a corner TOWER stub rising at the left — first merlons, an arrow-slit
+    ART.stoneTexture(q, 1, 5, 4, 18, 33); q(1, 5, 4, 1, ST[4]);
+    q(1, 4, 1, 1, ST[3]); q(3, 4, 1, 1, ST[3]);                                       // first merlons
+    for (let ty = 8; ty < 22; ty += 3) q(1, ty, 4, 1, ST[1]);                         // course lines
+    q(2, 9, 2, 3, AP.ink[1]); q(2, 9, 2, 1, ST[4]);                                   // arrow-slit
+    // the first ROOF timbers over the finished bay — a ridge beam + bare rafters
+    q(6, 7, 11, 1, W[3]); q(6, 8, 11, 1, W[1]);
+    for (let rx = 7; rx <= 15; rx += 2) { q(rx, 8, 1, 3, W[2]); q(rx, 8, 1, 1, W[3]); }
+    // GIN-POLE crane (top-right) hoisting a dressed stone block on a rope
+    q(29, 0, 1, 12, W[1]); q(21, 0, 8, 1, W[2]); q(22, 1, 1, 8, TH[1]);
+    ART.shadedRect(q, 20, 9, 4, 3, ST, 3); q(20, 9, 4, 1, ST[4]); q(22, 11, 1, 1, ST[0]);  // dressed block on the hook
+    // scaffold poles + a lower rail + a plank platform + lashings
+    for (const px of [0, 30]) { q(px, 5, 1, 20, W[2]); q(px, 5, 1, 1, W[3]); }
+    q(0, 19, 31, 1, W[2]); q(0, 12, 6, 1, W[2]); q(0, 11, 6, 1, W[3]);
+    for (const [lx, ly] of [[0, 12], [30, 12], [0, 19], [30, 19]]) { q(lx, ly, 1, 1, TH[1]); q(lx, ly + 1, 1, 1, TH[3]); }
+    // stacked materials: cut-stone blocks (both sides), a mortar tub + trowel
+    ART.shadedRect(q, 26, 22, 5, 4, ST, 3); q(26, 22, 5, 1, ST[4]); q(28, 24, 1, 1, ST[0]); q(30, 25, 1, 1, ST[0]);
+    q(0, 21, 4, 4, ST[2]); q(0, 21, 4, 1, ST[3]); q(1, 22, 1, 1, ST[0]); q(3, 23, 1, 1, ST[0]);
+    q(9, 25, 5, 3, W[1]); q(9, 25, 5, 1, W[2]); q(10, 26, 3, 1, SO[2]);              // mortar tub with grey mortar
+    q(13, 24, 3, 1, W[2]); q(15, 23, 1, 2, ST[3]);                                    // dropped trowel
+    // a ladder to the wall-head + scattered stone chips and dust
+    q(19, 13, 1, 10, W[1]); q(22, 13, 1, 10, W[1]);
+    for (let r = 0; r < 5; r++) q(19, 14 + r * 2, 4, 1, W[2]);
+    for (let i = 0; i < 14; i++) q(5 + (rr() * 22) | 0, 25 + (rr() * 4) | 0, 1, 1, i % 2 ? ST[3] : ST[1]);  // stone chips
   }, 128), 4);
 
   /* ---------------- units ---------------- */
