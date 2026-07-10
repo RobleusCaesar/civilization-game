@@ -389,7 +389,7 @@ const Units = {
             R.updateTile(t.x, t.y);
             const what = terr === T.FOREST ? 'The forest here is felled — a path opens'
               : terr === T.HILLS ? 'The stone here is quarried out — a path opens' : 'The soil here is spent';
-            G.log(`${what} — villager idle`, true);
+            G.log(`${what} — villager idle`);
             u.task = null;
           }
         }
@@ -415,7 +415,7 @@ const Units = {
             // drift to the next stocked water tile nearby, or go idle
             const next = MapGen.findNear(t.x, t.y, 4, (x, y) => this.canFish(x, y));
             if (next && this.assignFish(u, next.x, next.y)) continue;
-            if (u.owner === 'P') G.log('These waters are fished out — boat idle', true);
+            if (u.owner === 'P') G.log('These waters are fished out — boat idle');
             u.task = null;
           }
         }
@@ -444,7 +444,7 @@ const Units = {
             R.float(u.x, u.y - 0.5, '+food', '#d8e8b0');
           if (S.map.resAmount[idx] <= 0.001) {
             S.map.resAmount[idx] = 0;
-            if (u.owner === 'P') G.log('This shoal is fished out — villager idle', true);
+            if (u.owner === 'P') G.log('This shoal is fished out — villager idle');
             u.task = null;
           }
         }

@@ -225,7 +225,7 @@ const G = {
     const LAND = { valley: 'a green valley', lakeland: 'a land of lakes', highlands: 'rugged highlands', islands: 'a chain of islands' };
     this.log(`A new tribe settles ${LAND[gen.landform] || 'the wilds'} (${this.modeCfg().name}). Destroy the rival Town Center to win.`, false, 6400);
     this.log('🏕 ' + S.origin, false, 6400);
-    this.log(`Scouts report: ${gen.scarce} is scarce in this valley — claim it before the rival does.`, true, 6400);
+    this.log(`Scouts report: ${gen.scarce} is scarce in this valley — claim it before the rival does.`, false, 6400);
     this.log('First barbarian raids expected around day ' + S.wave.next, false, 6400);
   },
 

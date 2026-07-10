@@ -224,19 +224,14 @@ const UI = {
     const cost = Bld.buildSpec('wall').lv.cost;
     const budget = Object.assign({}, S.res);
     const chainSet = new Set(chain.map(c => c.x + ',' + c.y));
-    const okTiles = [];
     this.wallGhost = chain.map(t => {
+      // walls raise anywhere explored (no build-range gate) — just clear ground
+      // you can afford; canPlace re-checks on commit
       let ok = Bld.tileFree(t.x, t.y) && !!S.map.explored[MapGen.idx(t.x, t.y)];
-      if (ok) {
-        // reach: near an existing building, or chained off an already-valid tile
-        ok = S.buildings.some(b => b.owner === 'P' && Math.hypot(b.x - t.x, b.y - t.y) <= CFG.BUILD_RANGE) ||
-             okTiles.some(o => Math.hypot(o.x - t.x, o.y - t.y) <= CFG.BUILD_RANGE);
-      }
       if (ok) {
         for (const k in cost) if ((budget[k] || 0) < cost[k]) { ok = false; break; }
         if (ok) for (const k in cost) budget[k] -= cost[k];
       }
-      if (ok) okTiles.push(t);
       return { x: t.x, y: t.y, ok, mask: R.wallMaskAt(t.x, t.y, chainSet) };
     });
   },
@@ -935,16 +930,18 @@ const UI = {
   },
 
   _toastAt: {},
-  // ms stretches how long the note lingers; dedupe (used by game-event logs,
-  // never by direct tap feedback) drops a near-identical note shown in the
-  // last few seconds — "House under attack!" ×9 becomes one note
-  toast(msg, warn, ms, dedupe) {
-    if (dedupe) {
-      const key = msg.replace(/\d+/g, '#');
-      const now = performance.now();
-      if (now - (this._toastAt[key] || -1e9) < 6000) return;
-      this._toastAt[key] = now;
-    }
+  // Popups are reserved for things that need attention NOW: danger alerts and
+  // "why that didn't work" errors — both flagged `warn`. Everything else (build
+  // confirmations, orders, routine events, enemy micro-actions) is quietly
+  // recorded in the event log instead of popping a toast, so the screen stays
+  // calm. A near-identical note within a few seconds is also collapsed
+  // ("House under attack!" ×9 → one), so even alerts never spam.
+  toast(msg, warn, ms) {
+    if (!warn) return;                       // routine notes live only in the event log
+    const key = msg.replace(/\d+/g, '#');
+    const now = performance.now();
+    if (now - (this._toastAt[key] || -1e9) < 6000) return;
+    this._toastAt[key] = now;
     const hold = ms || 3200;
     const box = document.getElementById('toasts');
     const el = document.createElement('div');

@@ -126,8 +126,12 @@ const Bld = {
         if (!S.map.explored[MapGen.idx(x + dx, y + dy)]) return { ok: false, why: 'Unexplored' };
     }
     if (d.unique && this.list(owner).some(b => b.key === key)) return { ok: false, why: 'Already built' };
+    // fortifications (walls/gates) may be raised anywhere explored — you seal
+    // chokepoints and the map edge, which are usually far from your buildings;
+    // everything else must stay within reach of your settlement
     const mine = this.list(owner);
-    if (mine.length && !mine.some(b => Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE))
+    if (key !== 'wall' && key !== 'gate' && mine.length &&
+        !mine.some(b => Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE))
       return { ok: false, why: 'Too far from your buildings' };
     const res = owner === 'P' ? S.res : S.ai.res;
     if (!this.canAfford(this.effCost(owner, key), res)) return { ok: false, why: 'Not enough resources' };
