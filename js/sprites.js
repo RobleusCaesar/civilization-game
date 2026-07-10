@@ -729,57 +729,62 @@ const Sprites = {
     for (let i = 0; i < 9; i++) p.hi(5 + (rr() * 22) | 0, 25 + (rr() * 4) | 0, 1, 1, i % 2 ? TH[1] : W[3]);
   }), 2);
 
-  // the 2×2 Town Center going up — a great roundhouse under construction, drawn
-  // at 128px so it stays crisp across the big footprint: a ring foundation with
-  // its daub-and-footing wall half-raised, the conical roof frame with the first
-  // thatch courses laid, a scaffold ring, a gin-pole hoisting a block, materials
-  // and a ladder. Reads clearly as a large building being raised.
-  // the great roundhouse being RAISED — a SUBSTANTIAL half-built hall, not a bare
-  // frame. 128px canvas on the fine 32-grid (`q`) matching the finished TC's mass
-  // and density: a solid wall ring (full-height left, half-raised right with
-  // proud post-tops), a big conical roof thatched on the lit side and open bare
-  // rafters on the other, laid footing stones, a scaffold ring, a gin-pole crane
-  // hoisting a block, stacked timber/thatch/stone, a ladder and a dropped tool.
+  // the 2×2 Town Center going up — the great TIMBER LONG-HALL under construction
+  // (the shape the TC takes from level 2 on), drawn at 128px so it stays crisp
+  // across the big footprint. A SUBSTANTIAL half-built hall, not a bare frame,
+  // on the fine 32-grid (`q`) matching the finished L2 TC's mass and density: a
+  // laid stone footing course, a post-and-beam timber frame with the front bays
+  // planked and the right bays still open, a deep-set doorway being framed, and
+  // the long GABLE roof half-raised — thatch courses combed onto the lit slope,
+  // open bare rafters with purlins on the other, carved gable-end posts (the
+  // left bone finial set, the right not yet). A scaffold, a gin-pole crane
+  // hoisting a roof beam, stacked timber/thatch/stone, a ladder to the roof and
+  // a dropped adze. Reads clearly as the long-hall being raised — the level-2
+  // town center taking shape, not the old roundhouse.
   Sprites.misc.constructionBig = ART.outline(tileB(p => {
-    const q = p.hi, W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil;
-    q(6, 27, 21, 2, ART.STYLE.SHADOW); q(9, 29, 14, 1, ART.STYLE.SHADOW);       // broad contact shadow
-    q(4, 25, 24, 3, SO[2]); q(4, 25, 24, 1, SO[3]); q(4, 27, 24, 1, SO[1]);     // dug foundation pad
-    for (let i = 0; i < 11; i++) { q(5 + i * 2, 23, 2, 2, ST[(i & 1) ? 2 : 1]); q(5 + i * 2, 23, 2, 1, ST[3]); } // full laid footing course
-    // SUBSTANTIAL wall ring — full-height finished front-left, half-raised right
-    ART.wattleTexture(q, 5, 14, 15, 11, 41); q(5, 14, 15, 1, SO[3]);            // finished wall (front-left)
-    ART.wattleTexture(q, 20, 20, 7, 5, 43); q(20, 20, 7, 1, SO[3]);             // half-raised wall (right)
-    for (const px of [5, 9, 13, 19, 23, 26]) { q(px, 13, 1, 12, W[1]); q(px, 13, 1, 1, W[3]); } // upright timbers standing proud
-    q(19, 12, 1, 13, W[0]);                                                     // corner post at the finished/unfinished seam
-    q(13, 17, 6, 1, W[3]); q(14, 18, 4, 7, AP.ink[0]);                          // door lintel + deep doorway
-    q(13, 18, 1, 7, W[2]); q(18, 18, 1, 7, W[2]);                               // jambs
-    // BIG conical roof resting on the wall — laid thatch courses (left), open
-    // bare rafters with ring-purlins (right)
-    q(16, 2, 1, 12, W[3]); q(16, 2, 1, 1, TH[3]);                              // king-post + lit crown
-    for (let ry = 4; ry <= 14; ry++) {
-      const rw = ry - 3;
-      q(16 - rw, ry, rw, 1, ry % 2 ? TH[1] : TH[2]);                            // laid thatch (left)
-      q(16 - rw, ry, Math.max(1, rw >> 1), 1, TH[3]);                          // lit
-      for (let rx = 17; rx < 16 + rw; rx += 3) q(rx, ry, 1, 1, W[2]);           // bare rafters (right)
-      if (ry % 3 === 0) for (let rx = 18; rx < 16 + rw; rx += 2) q(rx, ry, 1, 1, W[1]); // ring-purlins
-    }
-    q(5, 13, 12, 2, TH[0]);                                                     // deep eave shadow where thatch meets wall
-    // scaffold ring — poles + two rails + a plank platform + lashings (secondary)
-    for (const px of [2, 29]) { q(px, 5, 1, 20, W[2]); q(px, 5, 1, 1, W[3]); }
-    q(2, 9, 28, 1, W[2]); q(2, 18, 28, 1, W[2]); q(2, 9, 9, 1, W[3]);           // rails + platform
-    for (const [lx, ly] of [[2, 9], [29, 9], [2, 18], [29, 18]]) { q(lx, ly, 1, 1, TH[1]); q(lx, ly + 1, 1, 1, TH[3]); }
-    // gin-pole crane (top-right) hoisting a dressed stone block on a rope
-    q(28, 0, 1, 9, W[1]); q(23, 0, 6, 1, W[2]); q(24, 1, 1, 7, TH[1]);
-    ART.shadedRect(q, 22, 8, 3, 3, ST, 2); q(22, 8, 3, 1, ST[3]);
-    // stacked materials: timber bundle (left), thatch pile (front), stone (right)
-    q(0, 21, 5, 1, W[3]); q(0, 22, 5, 1, W[2]); q(0, 23, 5, 1, W[3]); q(0, 24, 5, 1, W[2]);
-    q(1, 21, 1, 1, TH[2]); q(3, 22, 1, 1, TH[2]); q(1, 23, 1, 1, TH[2]);        // log ring-ends
-    q(9, 26, 5, 2, TH[2]); q(9, 26, 5, 1, TH[3]); q(10, 27, 3, 1, TH[1]);       // thatch/reed pile
-    ART.shadedRect(q, 27, 24, 4, 3, ST, 2); q(29, 26, 1, 1, ST[0]);            // dressed stone blocks
-    // a ladder leaning on the frame + a dropped adze + sawdust
-    q(20, 15, 1, 12, W[1]); q(23, 15, 1, 12, W[1]);
-    for (let r = 0; r < 6; r++) q(20, 17 + r * 2, 4, 1, W[2]);
-    q(6, 25, 3, 1, W[1]); q(8, 24, 1, 2, ST[3]);                                // dropped adze (handle + head)
-    const rr = ART.rng(93);
+    const q = p.hi, W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil, BO = AP.bone;
+    const rr = ART.rng(71);
+    q(6, 27, 21, 2, ART.STYLE.SHADOW); q(9, 29, 14, 1, ART.STYLE.SHADOW);          // broad contact shadow
+    q(4, 25, 24, 3, SO[2]); q(4, 25, 24, 1, SO[3]); q(4, 27, 24, 1, SO[1]);        // dug foundation pad
+    for (let i = 0; i < 12; i++) { q(4 + i * 2, 23, 2, 2, ST[(i & 1) ? 2 : 1]); q(4 + i * 2, 23, 2, 1, ST[3]); } // full laid stone footing course
+    // POST-AND-BEAM timber frame of the long-hall — uprights on the footing, a
+    // top plate and a mid rail; the right bays stand proud as bare, open frame
+    for (const px of [5, 10, 16, 22, 26]) { q(px, 14, 1, 9, W[1]); q(px, 14, 1, 1, W[3]); }
+    q(22, 11, 1, 3, W[1]); q(26, 11, 1, 3, W[1]);                                   // proud post-tops (unfinished right bays)
+    q(16, 11, 1, 12, W[0]);                                                          // strong corner post at the planked/open seam
+    q(5, 14, 22, 1, W[3]); q(5, 19, 22, 1, W[2]);                                   // top plate + mid rail
+    // WALLS going in — front-left bays fully planked, right bays only half-planked
+    ART.woodPlankTexture(q, 5, 15, 11, 8, 5); q(5, 15, 11, 1, W[3]);                // finished plank wall (front-left)
+    ART.woodPlankTexture(q, 16, 19, 11, 4, 7); q(16, 19, 11, 1, W[3]);             // half-raised plank wall (right)
+    q(13, 17, 6, 1, W[3]); q(14, 18, 4, 5, AP.ink[0]);                              // door lintel + deep-set doorway being framed
+    q(13, 18, 1, 5, W[2]); q(18, 18, 1, 5, W[2]);                                   // jambs
+    // long GABLE ROOF being raised — carved gable-end posts (left finial set), a
+    // ridge beam across, thatch courses laid on the lit slope, open bare rafters
+    // + purlins on the other
+    q(3, 4, 1, 10, W[1]); q(3, 4, 1, 1, W[3]); q(28, 4, 1, 10, W[1]);              // gable-end posts
+    q(2, 3, 2, 2, BO[1]); q(2, 3, 1, 1, BO[2]);                                     // left bone finial (set)
+    q(4, 8, 24, 1, W[3]); q(4, 9, 24, 1, W[1]);                                     // ridge beam
+    ART.thatchTexture(q, 3, 5, 13, 8, 6); q(3, 5, 13, 1, TH[3]);                    // laid thatch (lit left slope)
+    for (let sx = 5; sx < 15; sx += 3) q(sx, 5, 1, 7, rr() < 0.5 ? TH[1] : TH[3]); // combed strands
+    q(2, 13, 14, 1, TH[1]); q(4, 13, 12, 1, TH[0]);                                 // eave overhang + deep eave shadow onto the wall (left)
+    for (let rx = 17; rx <= 27; rx += 2) { q(rx, 9, 1, 5, W[2]); q(rx, 9, 1, 1, W[3]); } // open bare rafters (right slope)
+    q(16, 9, 12, 1, W[1]); q(17, 11, 11, 1, W[0]);                                  // ridge purlin + mid purlin over the bare rafters
+    // scaffold — poles framing the work, a lower rail + left platform, lashings
+    for (const px of [1, 30]) { q(px, 5, 1, 20, W[2]); q(px, 5, 1, 1, W[3]); }
+    q(1, 20, 29, 1, W[2]); q(1, 11, 6, 1, W[2]); q(1, 10, 6, 1, W[3]);             // lower rail + left platform
+    for (const [lx, ly] of [[1, 11], [30, 11], [1, 20], [30, 20]]) { q(lx, ly, 1, 1, TH[1]); q(lx, ly + 1, 1, 1, TH[3]); }
+    // gin-pole crane (top-right) hoisting a roof beam on a rope
+    q(29, 0, 1, 9, W[1]); q(24, 0, 6, 1, W[2]); q(25, 1, 1, 6, TH[1]);
+    q(22, 7, 5, 1, W[3]); q(22, 8, 5, 1, W[2]);                                     // beam swinging on the hoist
+    // stacked materials: timber bundle (left), thatch/reed pile (front), stone (right)
+    q(0, 21, 4, 1, W[3]); q(0, 22, 4, 1, W[2]); q(0, 23, 4, 1, W[3]); q(0, 24, 4, 1, W[2]);
+    q(1, 21, 1, 1, TH[2]); q(3, 22, 1, 1, TH[2]); q(1, 23, 1, 1, TH[2]);            // log ring-ends
+    q(9, 26, 6, 2, TH[2]); q(9, 26, 6, 1, TH[3]); q(10, 27, 4, 1, TH[1]);          // thatch/reed pile
+    ART.shadedRect(q, 27, 24, 4, 3, ST, 2); q(29, 26, 1, 1, ST[0]);                // dressed stone blocks
+    // a ladder leaning up to the roof work + a dropped adze + scattered sawdust
+    q(6, 14, 1, 10, W[1]); q(9, 14, 1, 10, W[1]);
+    for (let r = 0; r < 5; r++) q(6, 15 + r * 2, 4, 1, W[2]);
+    q(19, 24, 3, 1, W[1]); q(21, 23, 1, 2, ST[3]);                                  // dropped adze (handle + head)
     for (let i = 0; i < 14; i++) q(5 + (rr() * 22) | 0, 25 + (rr() * 4) | 0, 1, 1, i % 2 ? TH[1] : W[3]);  // sawdust
   }, 128), 4);
 
