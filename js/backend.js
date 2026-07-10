@@ -160,13 +160,18 @@ const Backend = {
   async submitScore(name, entry) {
     if (!this.isReady()) return this._err('not_ready', 'Not signed in');
     const nm = String(name || '').slice(0, 7);
-    const r = await this._rest('POST', '/leaderboard', [{
-      user_id: this.uid, name: nm,
-      score: Math.max(0, Math.min(1000000, Math.round(entry.score || 0))),
-      mode: entry.mode || 'moderate',
-      day: entry.day || null, map_seed: entry.seed || null,
-      game_version: String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1),
-    }], { Prefer: 'return=minimal' });
+    // Scores are written ONLY through the submit_score RPC (a SECURITY DEFINER
+    // Postgres function): it forces user_id = auth.uid() server-side and rejects
+    // implausible / duplicate / spammed scores. Direct INSERT on the leaderboard
+    // table is revoked, so this RPC is the sole write path.
+    const r = await this._rest('POST', '/rpc/submit_score', {
+      p_name: nm,
+      p_score: Math.max(0, Math.min(1000000, Math.round(entry.score || 0))),
+      p_mode: entry.mode || 'moderate',
+      p_day: entry.day || null,
+      p_map_seed: entry.seed || null,
+      p_game_version: String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1),
+    });
     if (!r.ok) return r;
     this._rest('PATCH', '/profiles?id=eq.' + this.uid,
       { arcade_name: nm }, { Prefer: 'return=minimal' });   // best-effort, don't block on it
