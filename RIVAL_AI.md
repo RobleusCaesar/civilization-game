@@ -103,14 +103,28 @@ shifts smoothly instead of on cliff edges.
   masses for the kill), and the mix re-weights toward hard counters the read
   calls for — massed spears/archers vs a cavalry player, cavalry vs an archer
   player, fast units vs siege — and it builds the matching counter-hall.
-- **Chokepoint defense — plug the seams, don't ring open ground.** Terrain now
-  does most of the walling, so `maybeWalls` closes only the **open seams** on the
-  perimeter (`perimeterGaps`) and gates the widest so its own parties can still
-  sortie — a fraction of the old full-ring cost. The wall utility scales with
-  `homeExposed` and fires for *any* threatened chief (not just wall-happy
-  personas). **Towers are plotted onto the approach seam** (biased to the one
-  facing the player's town), covering the real lane instead of "toward the
-  player." This is what makes Mason-type turtling both smarter and cheaper.
+- **Techs to siege to crack a turtle.** When the player **walls up**
+  (`read.foeWall` high), *any* persona will build a siege workshop (once TC 3) and
+  keep a **wall-breaker** (catapult, or a trebuchet at workshop L3) on hand — so a
+  PUSH batters the wall with engines while the rest pour through the gap, instead
+  of stalling on stone. A capable rival reaches for the tool the matchup needs.
+- **Coverage-aware towers — cover, don't cluster.** `AI.towerSpot()` scores every
+  candidate tile by the **marginal new coverage** it adds over the towers already
+  standing: guarding an otherwise-uncovered approach seam scores high, merely
+  duplicating an existing tower's range is penalised, and a **pure-duplicate tower
+  is rejected outright**. Towers therefore spread to cover the town's whole
+  frontage instead of piling onto the single widest seam (the old, readable tell).
+  Placement is biased toward the player-facing frontage and, via Layer-5 memory,
+  the **flank the player keeps attacking from**.
+- **Real fortification — plug the seams, and invest.** `maybeWalls` closes the
+  **open seams** on the perimeter (`perimeterGaps`), sealing the **shortest seams
+  first** (a narrow gap is cheap to close completely and removes a whole route),
+  **gating the widest** as the sortie lane, and **reinforcing the attacked flank**
+  first (`mem.hitFlank`). Its per-call budget and the `bestBuild` wall utility both
+  **scale with threat and posture** — a wall-persona or a threatened/turtling chief
+  fortifies heavily and early; a safe chief doesn't burn wood ringing open ground
+  against nobody. This is what makes Mason-type turtling smart *and* keeps the
+  offence funded when there's no threat to wall against.
 
 ---
 
@@ -132,16 +146,26 @@ launch, instead of dribbling at whatever's nearest:
   they follow the terrain and automatically pick up **harvest-opened routes** — a
   border you clear-cut becomes a road the rival will use.
 
-**Multi-lane probing (difficulty-scaled).** The rival doesn't commit to one
-predictable approach. From `AI.playerLanes()` (approach seams into your town,
-least-defended first) it launches:
+**Creativity dial — unpredictable, never self-defeating.** `AI.creativity()`
+returns a 0..1 value from the persona (aggressive/harassing chiefs are craftier)
+**scaled by difficulty** (Calm plays it straighter, Hard is unpredictable). It
+drives *controlled* variation so two games with the same posture don't play the
+same: the **committed party fraction** is jittered within sound bounds, the **raid
+cadence** is jittered off its fixed metronome, and the **feint/split likelihood**
+is creativity-driven at *every* difficulty (not a hard-coded per-mode count). All
+variation stays tactically sound — hard to memorise, never random or suicidal.
 
-- **Calm** — one telegraphed column down a single lane.
-- **Moderate** — occasionally peels off a **feint** down a second lane.
-- **Hard** — **splits the host**: two harass/probe parties on alternate lanes to
-  find the undefended gap and pull your defenders, while the **main force commits
-  to the lane memory says is softest**. Probe parties carry their own objective
-  (`u.raidObj` / `u.raidLane`); the main force shares `ai.raidObj`.
+**Multi-lane probing (creativity- & difficulty-scaled).** The rival doesn't commit
+to one predictable approach. From `AI.playerLanes()` (approach seams into your
+town, least-defended first) it launches, in rough order of creativity:
+
+- **Straight** — one telegraphed column down a single lane.
+- **Feinting** — peels off a **feint** down a second lane to pull your defenders.
+- **Splitting** — **splits the host**: harass/probe parties on alternate lanes to
+  find the undefended gap, while the **main force commits to the lane memory says
+  is softest**. Probe parties carry their own objective (`u.raidObj` /
+  `u.raidLane`); the main force shares `ai.raidObj`. A creative Hard chief splits
+  most pushes; a straight Calm chief rarely does.
 
 **Lane memory** (`S.ai.memory.laneDef`): a push that stalls or is beaten back
 marks *that lane* as defended, so the next commit routes elsewhere; a productive
@@ -159,11 +183,25 @@ Two kinds of memory. **Building memory** (`S.ai.knownB`, Layer 1) is the map of
 the player's town the rival carries between sightings — the reason a raid can
 march on a hall it scouted twenty days ago and now can't see, and the reason it
 stops believing in a workplace it watched burn. **Tactical memory**
-(`S.ai.memory`) is cheap counters that let it adapt to *you* over a match:
-chiefly, a raid that **stalls on walls without razing** sets `wallStop`, and the
-**next** push routes in through the weakest flank instead of the front gate — so
-the chief **never suicides into the same wall twice**. A productive raid clears
-the flag.
+(`S.ai.memory`) is cheap adaptation that makes the chief **harder to read the
+longer you play**. `AI.learn()` folds each day's observations into a decaying
+store and feeds it back into placement, production and tactics:
+
+- **`wallStop`** — a raid that stalls on walls without razing routes the **next**
+  push through the weakest flank instead of the front gate (never suicides into
+  the same wall twice; a productive raid clears it).
+- **`laneDef`** — per-lane defended-ness: a beaten push marks *its* lane defended
+  so the next commit routes elsewhere; probes retreat off defended lanes (Layer 4).
+- **`hitFlank`** — the direction the player keeps **attacking from**. `maybeWalls`
+  reinforces that seam first and `towerSpot` biases coverage toward it.
+- **`foeMassed`** — a decaying tally of what the player keeps **fielding**;
+  `counterMix` and the counter-hall picker key off this *trend*, so the chief
+  keeps building the right counter after the enemy army leaves its sight.
+- **`foeRush`** — hit at home early flags a rusher, so tower/wall utility rises
+  and it fortifies **pre-emptively** thereafter.
+
+Everything decays, so stale reads fade — and legacy saves (older `memory` shape)
+load and upgrade in place without breaking.
 
 ---
 

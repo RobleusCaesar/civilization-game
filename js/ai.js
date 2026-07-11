@@ -797,10 +797,12 @@ const AI = {
     for (const [k] of P.mix) wantHalls.add(this.HALL_OF[k]);
     if (read.foeCavHeavy || read.foeMassed === 'cav') wantHalls.add('range');   // counter the trend, not one glimpse
     if (read.foeArchHeavy || read.foeMassed === 'arch') wantHalls.add('stable');
+    if (read.foeWall >= 3 && tc.level >= 3) wantHalls.add('siege');             // player turtled → tech to siege to crack it
     for (const hall of wantHalls) {
       if (!hall || have[hall]) continue;
       if (hall === 'siege' && tc.level < 3) continue;
       let u = 48;
+      if (hall === 'siege' && read.foeWall >= 3) u += 30;   // a walled foe makes a workshop worth the wood
       if (post === 'CONSOLIDATE' || post === 'PUSH' || post === 'PRESSURE') u += 28;
       if (hall === 'range' && read.foeCavHeavy) u += 40;   // massed arrows/spears beat horse
       if (hall === 'stable' && read.foeArchHeavy) u += 40; // cavalry closes on archers
@@ -811,13 +813,20 @@ const AI = {
     // are a real investment, not a token. Tower utility rises with uncovered
     // frontage so the chief keeps building until its approaches are guarded, then
     // tapers; walls fire for any chief with open seams, heavier when threatened.
+    // a safe chief keeps a couple of watchtowers (vision + a deterrent); a
+    // threatened one builds toward covering its whole frontage. Coverage-aware
+    // placement (towerSpot) means each new tower earns its keep.
+    const threatened = read.underThreat || read.foeRush || read.threat > 0 || post === 'DEFEND';
     add(14 + (P.walls ? 14 : 0) + (post === 'DEFEND' ? 38 : 0) + (read.underThreat ? 20 : 0) +
-        (read.foeRush ? 16 : 0) +                                  // learned: this player rushes → guard sooner
-        Math.min(20, (read.homeExposed || 0) * 1.6) - (have.tower || 0) * 6,
+        (read.foeRush ? 16 : 0) + (threatened ? Math.min(18, (read.homeExposed || 0) * 1.4) : 0) -
+        (have.tower || 0) * 7,
       () => this.tryBuild('tower'));
-    if ((S.day >= 18 || read.foeRush) && read.homeGapCount > 0) {
-      const wu = (P.walls ? 30 : 14) + (post === 'DEFEND' ? 34 : 0) + (read.underThreat ? 26 : 0) +
-        (read.foeRush ? 18 : 0) + (post === 'CONSOLIDATE' ? 10 : 0) + Math.min(26, read.homeExposed * 2.5);
+    // WALLS scale with THREAT and posture — a wall-persona or a threatened chief
+    // fortifies; a safe non-wall chief doesn't burn wood ringing open ground
+    // against nobody (that starves the offence against a passive foe).
+    if ((S.day >= 18 || read.foeRush) && read.homeGapCount > 0 && (P.walls || threatened)) {
+      const wu = (P.walls ? 26 : 10) + (post === 'DEFEND' ? 34 : 0) + (read.underThreat ? 26 : 0) +
+        (read.foeRush ? 18 : 0) + (threatened ? Math.min(22, read.homeExposed * 2) : 0);
       add(wu, () => { this.maybeWalls(tc); return true; });
     }
 
@@ -887,6 +896,21 @@ const AI = {
     const mix = this.counterMix(P.mix, read);
     if (this.trainArmy(m, want, mix) && ai.res.food > 400 && ai.res.gold > 80)
       this.trainArmy(m, want, mix);
+    // WALL-BREAKERS: a walled player needs siege to crack, whatever the persona.
+    // With a workshop up, keep a catapult (or a trebuchet once L3) on hand so a
+    // PUSH doesn't stall poking stone — combat already routes the rest through
+    // the gap while the engines batter the wall.
+    if (read.foeWall >= 2) {
+      const ws = S.buildings.find(b => b.owner === 'A' && b.key === 'siege' &&
+        Bld.done(b) && !b.upgrading && b.queue.length === 0);
+      if (ws) {
+        const breakers = Units.count('A', u => u.kind === 'catapult' || u.kind === 'trebuchet');
+        if (breakers < (read.foeWall >= 5 ? 2 : 1)) {
+          if (ws.level >= 3 && ai.res.gold >= 70) Bld.train(ws, 'trebuchet');
+          else Bld.train(ws, 'catapult');
+        }
+      }
+    }
     const dock = S.buildings.find(b => b.owner === 'A' && b.key === 'dock' && Bld.done(b));
     if (dock && !dock.upgrading && dock.queue.length === 0) {
       const boats = Units.count('A', u => u.kind === 'fishboat');
