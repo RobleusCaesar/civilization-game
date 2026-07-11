@@ -101,8 +101,15 @@ const Screens = {
       Backend.listSaves().then(r => {
         const rows = ((r.ok && r.data) || []).slice()
           .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
-        const live = rows.find(row => !row.over);   // finished runs are greyed out
-        if (live) {
+        const live = rows.find(row => !row.over);   // newest live cloud slot (finished runs greyed out)
+        // Continue = the MOST RECENT playable game. An unfinished run that was
+        // never saved to a slot lives only in the crash net, and can be newer
+        // than any cloud slot — don't let a stale cloud save shadow it.
+        const liveAt = live ? (Date.parse(live.updated_at) || 0) : 0;
+        if (snap && snap.json && (snap.at || 0) > liveAt) {
+          this._newestSlot = 'local';
+          finish('recover last session (day ' + snap.day + ')', true);
+        } else if (live) {
           this._newestSlot = live.slot;
           finish(`${live.name} — day ${live.day}`, true);
         } else if (snap && snap.json) { this._newestSlot = 'local'; finish('recover last session (day ' + snap.day + ')', true); }
