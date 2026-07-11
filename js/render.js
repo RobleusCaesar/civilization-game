@@ -343,6 +343,17 @@ const R = {
     const selIds = !UI.sel ? null
       : UI.sel.type === 'unit' ? new Set([UI.sel.id])
       : UI.sel.type === 'group' ? new Set(UI.sel.ids) : null;
+    // heal-zone ring: when a hurt, healable friendly unit is selected, show the
+    // town-center grounds — the only place it can be healed
+    if (selIds && [...selIds].some(id => { const u = Units.get(id); return u && u.owner === 'P' && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind]; })) {
+      const z = Bld.healZone('P');
+      if (z) {
+        g.save();
+        g.strokeStyle = 'rgba(138,224,138,0.45)'; g.lineWidth = 1.5; g.setLineDash([6, 5]);
+        g.beginPath(); g.ellipse(z.x * TL, z.y * TL, z.r * TL, z.r * TL, 0, 0, Math.PI * 2); g.stroke();
+        g.restore();
+      }
+    }
     const units = S.units.slice().sort((a, b) => a.y - b.y);
     for (const u of units) {
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;

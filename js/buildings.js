@@ -42,6 +42,17 @@ const Bld = {
   list(owner) { return S.buildings.filter(b => b.owner === owner); },
   tcOf(owner) { return S.buildings.find(b => b.owner === owner && b.key === 'tc'); },
   done(b) { return !b.construction; },
+  // the town-center "grounds": the only place a unit can be healed. The radius
+  // grows 15% per TC level (L2 15% wider, L3 another 15%). Null with no TC.
+  healZone(owner) {
+    const tc = this.tcOf(owner);
+    if (!tc) return null;
+    return { x: this.cx(tc), y: this.cy(tc), r: CFG.HEAL_RADIUS * Math.pow(1 + CFG.HEAL_RADIUS_STEP, (tc.level || 1) - 1) };
+  },
+  inHealZone(u) {
+    const z = this.healZone(u.owner);
+    return !!z && Math.hypot(u.x - z.x, u.y - z.y) <= z.r;
+  },
 
   canAfford(cost, res) {
     res = res || S.res;

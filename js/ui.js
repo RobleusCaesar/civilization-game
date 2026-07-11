@@ -517,7 +517,7 @@ const UI = {
       stack = S.units.filter(o => o.owner !== 'P' && !Units.isPassive(o) &&
         (o.x | 0) === (u.x | 0) && (o.y | 0) === (u.y | 0)).length;
     return ['u', u.id, u.hp < u.maxhp, stack, u.cargo ? u.cargo.length : 0,
-      !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u)].join('|');
+      !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u), Bld.inHealZone(u)].join('|');
   },
 
   groupComposition(ids) {
@@ -555,7 +555,7 @@ const UI = {
     const hc = document.getElementById('healCost');
     if (hc && this.sel.type === 'unit') {
       const u = Units.get(this.sel.id);
-      if (u) hc.textContent = this.healCost(u) + ' 🍖';
+      if (u) hc.textContent = Bld.inHealZone(u) ? this.healCost(u) + ' 🍖' : 'near Town Center';
     }
     if (this.sel.type === 'bld') {
       const b = Bld.get(this.sel.id);
@@ -832,7 +832,9 @@ const UI = {
         <div class="pactions"><span class="psub">${hint}</span>`;
       if (own && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind]) {
         const hc = this.healCost(u);
-        html += `<button class="abtn ${S.res.food >= hc ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${hc} 🍖</small></button>`;
+        const inZone = Bld.inHealZone(u);
+        const ok = inZone && S.res.food >= hc;
+        html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${inZone ? hc + ' 🍖' : 'near Town Center'}</small></button>`;
       }
       if (own && Units.isTransport(u)) {
         const cap = CFG.UNITS[u.kind].cap, aboard = (u.cargo || []).length;
@@ -861,6 +863,7 @@ const UI = {
       if (heal) heal.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
         if (!u2 || u2.hp >= u2.maxhp) return;
+        if (!Bld.inHealZone(u2)) { this.toast('Can only heal within the Town Center grounds', true); return; }
         const cost = this.healCost(u2);
         if (S.res.food < cost) { this.toast('Not enough food', true); return; }
         S.res.food -= cost;
