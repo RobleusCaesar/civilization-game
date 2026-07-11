@@ -42,15 +42,26 @@ const Bld = {
   list(owner) { return S.buildings.filter(b => b.owner === owner); },
   tcOf(owner) { return S.buildings.find(b => b.owner === owner && b.key === 'tc'); },
   done(b) { return !b.construction; },
-  // the town-center "grounds": the only place a unit can be healed. The radius
-  // grows 15% per TC level (L2 15% wider, L3 another 15%). Null with no TC.
-  healZone(owner) {
-    const tc = this.tcOf(owner);
+  // the healing grounds for a unit — the only place it can be healed. Land units
+  // heal at the Town Center; ships heal at the nearest owned Dock. The radius
+  // grows 15% per building level (L2 15% wider, L3 another 15%). Null if there's
+  // no home building to heal at.
+  healZoneFor(u) {
+    if (window.Units && Units.isNaval(u)) {
+      let best = null, bd = Infinity;                          // nearest owned, finished dock
+      for (const b of S.buildings) {
+        if (b.owner !== u.owner || b.key !== 'dock' || !this.done(b)) continue;
+        const d = Math.hypot(u.x - this.cx(b), u.y - this.cy(b));
+        if (d < bd) { bd = d; best = b; }
+      }
+      return best ? { x: this.cx(best), y: this.cy(best), r: CFG.HEAL_RADIUS_DOCK * Math.pow(1 + CFG.HEAL_RADIUS_STEP, best.level - 1) } : null;
+    }
+    const tc = this.tcOf(u.owner);
     if (!tc) return null;
     return { x: this.cx(tc), y: this.cy(tc), r: CFG.HEAL_RADIUS * Math.pow(1 + CFG.HEAL_RADIUS_STEP, (tc.level || 1) - 1) };
   },
   inHealZone(u) {
-    const z = this.healZone(u.owner);
+    const z = this.healZoneFor(u);
     return !!z && Math.hypot(u.x - z.x, u.y - z.y) <= z.r;
   },
 

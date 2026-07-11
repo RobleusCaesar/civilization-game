@@ -297,9 +297,11 @@ const CFG = {
                catapult: 90, siegetower: 80,
                axeman: 45, longbow: 45, horsearcher: 65, ballista: 85 },  // full-heal cost scales with missing hp
 
-  // units may only be healed inside the town-center grounds — no patching up in
-  // an enemy camp. The boundary grows 15% per TC level (L2 ×1.15, L3 ×1.15²).
+  // units may only be healed on home ground — no patching up in an enemy camp.
+  // Land units heal in the town-center grounds; ships heal by a dock. The
+  // boundary grows 15% per building level (L2 ×1.15, L3 ×1.15²).
   HEAL_RADIUS: 5,          // tiles from the TC centre at level 1
+  HEAL_RADIUS_DOCK: 4,     // tiles from a dock centre at level 1 (ships)
   HEAL_RADIUS_STEP: 0.15,
 
   // barbarian pressure: a spice, not a kingmaker — bands come less often and

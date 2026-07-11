@@ -555,7 +555,7 @@ const UI = {
     const hc = document.getElementById('healCost');
     if (hc && this.sel.type === 'unit') {
       const u = Units.get(this.sel.id);
-      if (u) hc.textContent = Bld.inHealZone(u) ? this.healCost(u) + ' 🍖' : 'near Town Center';
+      if (u) hc.textContent = Bld.inHealZone(u) ? this.healCost(u) + ' 🍖' : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center');
     }
     if (this.sel.type === 'bld') {
       const b = Bld.get(this.sel.id);
@@ -834,7 +834,7 @@ const UI = {
         const hc = this.healCost(u);
         const inZone = Bld.inHealZone(u);
         const ok = inZone && S.res.food >= hc;
-        html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${inZone ? hc + ' 🍖' : 'near Town Center'}</small></button>`;
+        html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${inZone ? hc + ' 🍖' : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center')}</small></button>`;
       }
       if (own && Units.isTransport(u)) {
         const cap = CFG.UNITS[u.kind].cap, aboard = (u.cargo || []).length;
@@ -863,7 +863,7 @@ const UI = {
       if (heal) heal.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
         if (!u2 || u2.hp >= u2.maxhp) return;
-        if (!Bld.inHealZone(u2)) { this.toast('Can only heal within the Town Center grounds', true); return; }
+        if (!Bld.inHealZone(u2)) { this.toast(Units.isNaval(u2) ? 'Ships heal at a Dock — move closer' : 'Can only heal within the Town Center grounds', true); return; }
         const cost = this.healCost(u2);
         if (S.res.food < cost) { this.toast('Not enough food', true); return; }
         S.res.food -= cost;
