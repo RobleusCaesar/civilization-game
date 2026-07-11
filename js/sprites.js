@@ -990,10 +990,12 @@ const Sprites = {
     blue:   { body: '#3f6d99', accent: '#2c4e70' },
     red:    { body: '#a8443a', accent: '#7a2c26' },
     yellow: { body: '#c6a638', accent: '#8a7018' },
-    green:  { body: '#4d8a46', accent: '#356030' },
+    green:  { body: '#2c5a2e', accent: '#193d1a' },   // dark green — reads against the grass
     purple: { body: '#7a4a8f', accent: '#553066' },
     teal:   { body: '#2f9a8f', accent: '#1e6a62' },
     orange: { body: '#c07a2a', accent: '#8a5216' },
+    black:  { body: '#37373f', accent: '#212127' },
+    white:  { body: '#e2e2da', accent: '#b2b2a8' },
   };
   Sprites.villager = {};
   for (const name in TUNICS) {

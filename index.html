@@ -225,10 +225,6 @@
   .orow { display: flex; flex-wrap: wrap; gap: 8px; }
   .orow .abtn { flex: 1 1 28%; min-height: 54px; font-size: 16px; }
   .orow .abtn small { font-size: 10px; }
-  /* tunic colour swatch inside a new-game option button */
-  .tsw { display: block; width: 20px; height: 20px; margin: 0 auto 3px;
-    border-radius: 4px; border: 1px solid rgba(0,0,0,0.4);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.25); }
 
   /* save-slot cards */
   .scard {
@@ -467,18 +463,9 @@
         <button class="abtn" data-v="highlands">⛰<small>Highlands</small></button>
         <button class="abtn" data-v="islands">🏝<small>Islands</small></button>
       </div>
-      <p class="lbl">Villager tunic <span class="hint" style="font-weight:400">— your people's colour (the rival takes a contrasting one)</span></p>
-      <div class="orow" id="ngTunic">
-        <button class="abtn" data-v="blue"><span class="tsw" style="background:#3f6d99"></span><small>Blue</small></button>
-        <button class="abtn" data-v="red"><span class="tsw" style="background:#a8443a"></span><small>Red</small></button>
-        <button class="abtn" data-v="yellow"><span class="tsw" style="background:#c6a638"></span><small>Yellow</small></button>
-        <button class="abtn" data-v="green"><span class="tsw" style="background:#4d8a46"></span><small>Green</small></button>
-        <button class="abtn" data-v="purple"><span class="tsw" style="background:#7a4a8f"></span><small>Purple</small></button>
-        <button class="abtn" data-v="teal"><span class="tsw" style="background:#2f9a8f"></span><small>Teal</small></button>
-        <button class="abtn" data-v="orange"><span class="tsw" style="background:#c07a2a"></span><small>Orange</small></button>
-      </div>
-      <p class="hint" style="margin-top:14px">Every game rolls a fresh map and a rival
-        chief with their own temperament — scouts will size them up on day one.</p>
+      <p class="hint" style="margin-top:14px">Every game rolls a fresh map, a random
+        villager tunic for your people, and a rival chief with their own temperament —
+        scouts will size them up on day one.</p>
       <div class="mrow"><button class="abtn big gold" id="btnStart">🏕 Begin</button></div>
     </div>
   </div>
