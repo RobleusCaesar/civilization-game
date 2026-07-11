@@ -322,10 +322,25 @@ const Units = {
       // that looks lived-in, and something for raiders to menace
       if (u.owner === 'A' && this.isVillager(u) && !u.task) {
         if (this.moving(u)) { this.followPath(u, dt); continue; }
+        const tc = Bld.tcOf('A');
+        // THREAT REACTION: a soldier close by sends the villager scurrying home
+        // instead of wandering into it — the town pulls back from a raided flank
+        // and drifts out again once it's safe (throttled scan, cheap).
+        u.fleeT = (u.fleeT || 0) - dt;
+        if (u.fleeT <= 0) {
+          u.fleeT = 0.4;
+          const foe = Combat.nearestUnit(u.x, u.y, 5,
+            o => (o.owner === 'P' && this.isMilitary(o)) || (o.owner === 'R' && !this.isTransport(o)));
+          if (foe && tc && Math.hypot(u.x - Bld.cx(tc), u.y - Bld.cy(tc)) > 2.5) {
+            const sx = tc.x + ((Math.random() * 5) | 0) - 2, sy = tc.y + Bld.size('tc') + ((Math.random() * 3) | 0) - 1;
+            if (Path.passable(sx, sy, 'A')) this.setPath(u, sx, sy);
+            u.wanderT = 2 + Math.random() * 2;
+            continue;
+          }
+        }
         u.wanderT -= dt;
         if (u.wanderT <= 0) {
           u.wanderT = 3 + Math.random() * 5;
-          const tc = Bld.tcOf('A');
           if (tc) {
             const tx = tc.x + ((Math.random() * 9) | 0) - 4, ty = tc.y + ((Math.random() * 9) | 0) - 4;
             if (Path.passable(tx, ty, 'A')) this.setPath(u, tx, ty);

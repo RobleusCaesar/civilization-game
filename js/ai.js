@@ -597,6 +597,19 @@ const AI = {
   },
   plan() { return this.PLANS[S.ai && S.ai.persona] || this.PLANS.homesteader; },
   arcPosture(pl, day) { let p = pl.arc[0][1]; for (const [d, post] of pl.arc) if (day >= d) p = post; return p; },
+
+  /* CREATIVITY dial (0..1) — how much the chief varies its execution: feints,
+     split forces, unexpected timing, opportunistic plays. Derived from the
+     persona (aggressive/harassing chiefs are craftier) and SCALED BY DIFFICULTY
+     (Calm plays it straighter, Hard is unpredictable). All variation it drives
+     stays inside tactically-sound bounds — this makes behaviour hard to memorise,
+     never self-defeating. */
+  creativity() {
+    const pl = this.plan(), m = G.modeCfg();
+    let c = 0.22 + pl.aggression * 0.42 + (pl.harass ? 0.16 : 0);
+    c *= 0.55 + 0.5 * (m.aiAggro || 1);   // difficulty: Calm ~0.83×, Hard ~1.15×
+    return Math.max(0.05, Math.min(1, c));
+  },
   DWELL: { DEFEND: 3, REBUILD: 4, PUSH: 5, PRESSURE: 5, CONSOLIDATE: 6, EXPAND: 7 },
 
   // soldiers standing near my own hall (my ability to hold a defense)
@@ -850,7 +863,7 @@ const AI = {
         'border:1px solid #3a3324;border-radius:6px;pointer-events:none;white-space:pre;max-width:60vw;';
       document.body.appendChild(el);
     }
-    const r = S.ai.read, P = this.persona();
+    const r = S.ai.read, P = this.persona(), mem = S.ai.memory || {};
     el.textContent = [
       `RIVAL ${P.name}${S.ai.posture ? ' · ' + S.ai.posture : ''}  day ${r.day}`,
       `power  me ${r.myPower} vs ${r.foePower}  ratio ${r.powerRatio.toFixed(2)}  trend ${r.foeTrend > 0 ? '↑' : r.foeTrend < 0 ? '↓' : '–'}`,
@@ -861,6 +874,9 @@ const AI = {
       `soft targets ${r.softCount}`,
       `econ  me ${r.myEcon | 0} vs ${r.foeEcon | 0}  edge ${r.econEdge | 0}  tempo ${r.aheadTempo}`,
       `home threat ${r.threat}${r.underThreat ? ' UNDER ATTACK' : ''}  building ${r.underCon}`,
+      `creativity ${this.creativity().toFixed(2)}  gaps ${r.homeGapCount}(w${r.homeGapWidest})` +
+        `${mem && mem.hitFlank ? '  hitFlank ' + mem.hitFlank.x + ',' + mem.hitFlank.y : ''}` +
+        `${mem && mem.foeMassed ? '  foeMassed ' + mem.foeMassed : ''}`,
     ].join('\n');
   },
 
@@ -1043,7 +1059,11 @@ const AI = {
       const troops = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
         !Units.isNaval(u) && u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
       const push = ai.posture === 'PUSH';
-      const share = push ? Math.max(0.66, P.raidShare) : Math.min(0.5, P.raidShare);
+      const cr = this.creativity();
+      // vary the committed fraction within sound bounds so two games with the
+      // same posture don't send the same-sized party every time
+      const shareJit = 1 + (G.rand() - 0.5) * 0.5 * cr;
+      const share = Math.max(0.4, Math.min(1, (push ? Math.max(0.66, P.raidShare) : Math.min(0.5, P.raidShare)) * shareJit));
       const need = push ? Math.max(4, Math.ceil(theirs * boldness) + 1) : 3;
       const strong = push ? (mine >= 4 && mine > theirs * boldness)
         : (read.foeVuln || read.softCount > 0 || mine > theirs * boldness);
@@ -1064,11 +1084,13 @@ const AI = {
            main force commits to the lane memory says is softest. Probes are
            small; if they meet a defended lane the retreat logic pulls them
            home (no suicidal dribbles), and that lane is remembered as defended. */
+        // feint/split likelihood is driven by CREATIVITY (which scales with
+        // difficulty): a straight chief marches one column, a creative one peels
+        // off probes on alternate lanes — so the approach isn't memorisable.
         let probes = 0;
         if (lanes.length >= 2) {
-          if (m.aiRaidDay <= 32) probes = 2;                                   // hard
-          else if (m.aiRaidDay <= 50) probes = G.rand() < 0.4 * (m.aiAggro || 1) ? 1 : 0;  // moderate feint
-          // calm (aiRaidDay ~80): single telegraphed approach, no probes
+          if (m.aiRaidDay <= 32) probes = G.rand() < 0.45 + 0.45 * cr ? 2 : 1;  // hard: mostly splits
+          else probes = G.rand() < cr ? (G.rand() < cr * 0.5 ? 2 : 1) : 0;      // others feint when feeling crafty
         }
         const spare = party.length - Math.max(3, need);
         probes = Math.max(0, Math.min(probes, lanes.length - 1, Math.floor(spare / 2)));
@@ -1091,7 +1113,8 @@ const AI = {
         ai.raidLane = mainLane ? mainLane.key : null;
         ai.raidFoeBld = Bld.list('P').length;
         mem.wallHit = 0;
-        ai.raidCd = push ? P.raidCd : Math.max(6, P.raidCd - 4);
+        // jitter the cooldown so raids don't arrive on a fixed metronome
+        ai.raidCd = Math.max(3, Math.round((push ? P.raidCd : Math.max(6, P.raidCd - 4)) * (1 + (G.rand() - 0.5) * 0.6 * cr)));
         ai.raidN = party.length;
         ai.raidDay = S.day;
         G.log(push ? (probes ? '⚔ The rival splits its host — probes on the flanks, the main column marching in!'
