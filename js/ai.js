@@ -184,6 +184,8 @@ const AI = {
       if (towers.length && fresh === 0) continue;             // rejects a pure-duplicate tower
       let s = fresh * 3 - dupe * 1.4 - Math.hypot(dx, dy) * 0.12;
       if (ptc && ((x - tc.x) * (ptc.x - tc.x) + (y - tc.y) * (ptc.y - tc.y)) > 0) s += 1.5;  // slight bias to the player-facing frontage
+      const hf = S.ai.memory && S.ai.memory.hitFlank;                                         // reinforce the flank the player keeps hitting
+      if (hf && ((x - tc.x) * hf.x + (y - tc.y) * hf.y) > 0) s += 2.2;
       s += G.rand() * 0.6;                                    // break ties differently game-to-game
       if (s > bs) { bs = s; best = { x, y }; }
     }
@@ -667,15 +669,60 @@ const AI = {
 
   // re-weight the army mix toward the hard counters the read calls for
   counterMix(mix, read) {
+    // counters key off BOTH the current sighting AND the persistent read of what
+    // the player keeps massing (memory) — so the chief counter-builds on the
+    // trend, not a single lucky glimpse
+    const cav = read.foeCavHeavy || read.foeMassed === 'cav';
+    const arch = read.foeArchHeavy || read.foeMassed === 'arch';
+    const siege = read.foeSiegeSeen || read.foeMassed === 'siege';
     const out = mix.map(([k, w]) => {
       let x = w;
-      if (read.foeCavHeavy && (k === 'defender' || k === 'archer' || k === 'longbow' || k === 'elite')) x *= 1.9;
-      if (read.foeArchHeavy && (k === 'rider' || k === 'horsearcher' || k === 'lancer')) x *= 1.9;
-      if (read.foeSiegeSeen && (k === 'rider' || k === 'horsearcher' || k === 'lancer')) x *= 1.4;
+      if (cav && (k === 'defender' || k === 'archer' || k === 'longbow' || k === 'elite')) x *= 1.9;
+      if (arch && (k === 'rider' || k === 'horsearcher' || k === 'lancer')) x *= 1.9;
+      if (siege && (k === 'rider' || k === 'horsearcher' || k === 'lancer')) x *= 1.4;
       return [k, x];
     });
     const tot = out.reduce((a, [, w]) => a + w, 0) || 1;
     return out.map(([k, w]) => [k, w / tot]);
+  },
+
+  /* LAYER 5 — LEARN & ADAPT within the match. Folds fresh observations into a
+     decaying memory so the chief gets harder to read the longer you play:
+       · hitFlank  — the direction the player keeps attacking FROM (reinforce it:
+                     towerSpot and maybeWalls bias toward this flank)
+       · foeMassed — what the player keeps fielding, over time (counterMix keys
+                     off the trend, not one sighting)
+       · foeRush   — got hit at home early → a rusher, so fortify sooner
+     laneDef / wallStop (Layer 4) already adapt the OFFENSE; this adapts defence
+     and production. Everything decays, so stale reads fade. */
+  learn(read) {
+    const ai = S.ai, tc = Bld.tcOf('A'), mem = ai.memory || (ai.memory = {});
+    if (!mem.hitDir) mem.hitDir = {};
+    if (!mem.comp) mem.comp = { cav: 0, arch: 0, melee: 0, siege: 0 };
+    // where are we being hit? use the last alarm, else the closest hostile at home
+    if (tc) {
+      const cx = Bld.cx(tc), cy = Bld.cy(tc);
+      let src = (ai.alarm && S.day - ai.alarm.day <= 2) ? { x: ai.alarm.x + 0.5, y: ai.alarm.y + 0.5 } : null;
+      if (!src) { let bd = 11; for (const u of S.units) { if (!(u.owner === 'P' && Units.isMilitary(u)) || Units.isNaval(u)) continue; const d = Math.hypot(u.x - cx, u.y - cy); if (d < bd) { bd = d; src = { x: u.x, y: u.y }; } } }
+      if (src) {
+        const ddx = src.x - cx, ddy = src.y - cy;   // zero out near-axis components so a due-E hit reads {1,0}, not {1,1}
+        const dx = Math.abs(ddx) < 1 ? 0 : Math.sign(ddx), dy = Math.abs(ddy) < 1 ? 0 : Math.sign(ddy);
+        if (dx || dy) mem.hitDir[dx + ',' + dy] = Math.min(10, (mem.hitDir[dx + ',' + dy] || 0) + 1);
+        if (S.day <= 35) mem.foeRush = true;   // attacked at home early → a rusher
+      }
+    }
+    let bk = null, bw = 0.8;
+    for (const k in mem.hitDir) { mem.hitDir[k] *= 0.93; if (mem.hitDir[k] > bw) { bw = mem.hitDir[k]; bk = k; } if (mem.hitDir[k] < 0.2) delete mem.hitDir[k]; }
+    mem.hitFlank = bk ? { x: +bk.split(',')[0], y: +bk.split(',')[1] } : null;
+    // what is the player massing? decaying tally of the seen composition
+    mem.comp.cav = mem.comp.cav * 0.9 + read.foeCav;
+    mem.comp.arch = mem.comp.arch * 0.9 + read.foeArch;
+    mem.comp.melee = mem.comp.melee * 0.9 + read.foeMelee;
+    mem.comp.siege = mem.comp.siege * 0.9 + read.foeSiege;
+    const dom = Object.entries(mem.comp).sort((a, b) => b[1] - a[1])[0];
+    mem.foeMassed = dom && dom[1] >= 1.5 ? dom[0] : null;
+    read.foeMassed = mem.foeMassed;   // expose to counterMix / bestBuild this day
+    read.foeRush = !!mem.foeRush;
   },
 
   // the standing-army target, shaped by difficulty AND posture appetite
@@ -748,8 +795,8 @@ const AI = {
     // military halls for the mix, plus counters the read demands
     const wantHalls = new Set();
     for (const [k] of P.mix) wantHalls.add(this.HALL_OF[k]);
-    if (read.foeCavHeavy) wantHalls.add('range');
-    if (read.foeArchHeavy) wantHalls.add('stable');
+    if (read.foeCavHeavy || read.foeMassed === 'cav') wantHalls.add('range');   // counter the trend, not one glimpse
+    if (read.foeArchHeavy || read.foeMassed === 'arch') wantHalls.add('stable');
     for (const hall of wantHalls) {
       if (!hall || have[hall]) continue;
       if (hall === 'siege' && tc.level < 3) continue;
@@ -765,11 +812,12 @@ const AI = {
     // frontage so the chief keeps building until its approaches are guarded, then
     // tapers; walls fire for any chief with open seams, heavier when threatened.
     add(14 + (P.walls ? 14 : 0) + (post === 'DEFEND' ? 38 : 0) + (read.underThreat ? 20 : 0) +
+        (read.foeRush ? 16 : 0) +                                  // learned: this player rushes → guard sooner
         Math.min(20, (read.homeExposed || 0) * 1.6) - (have.tower || 0) * 6,
       () => this.tryBuild('tower'));
-    if (S.day >= 18 && read.homeGapCount > 0) {
+    if ((S.day >= 18 || read.foeRush) && read.homeGapCount > 0) {
       const wu = (P.walls ? 30 : 14) + (post === 'DEFEND' ? 34 : 0) + (read.underThreat ? 26 : 0) +
-        (post === 'CONSOLIDATE' ? 10 : 0) + Math.min(26, read.homeExposed * 2.5);
+        (read.foeRush ? 18 : 0) + (post === 'CONSOLIDATE' ? 10 : 0) + Math.min(26, read.homeExposed * 2.5);
       add(wu, () => { this.maybeWalls(tc); return true; });
     }
 
@@ -889,6 +937,7 @@ const AI = {
     if (!tc) return;        // rival destroyed
     this.choosePosture();   // LAYER 2: pick / hold the current plan
     const read = ai.read;
+    this.learn(read);       // LAYER 5: fold observations into adaptive memory
 
     // small base income so the AI never fully stalls (scaled by difficulty).
     // A boom-opening chief works the fields harder in the first minutes.
