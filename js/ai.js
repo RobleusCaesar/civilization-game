@@ -138,25 +138,7 @@ const AI = {
       }
       return best;
     }
-    if (key === 'tower') {
-      // watchtowers cover the APPROACH SEAMS — the open gaps attackers must come
-      // through — biased toward the gap facing the player's town if we've found
-      // it. Terrain covers the rest; guns go where the lanes are.
-      const gaps = this.perimeterGaps(Bld.cx(tc) | 0, Bld.cy(tc) | 0, 5);
-      const ptc = this.knownPlayerTC();
-      let target = null;
-      if (gaps.length) {
-        if (ptc) gaps.sort((a, b) => (b.width - Math.hypot(b.mid.x - ptc.x, b.mid.y - ptc.y) * 0.4)
-                                    - (a.width - Math.hypot(a.mid.x - ptc.x, a.mid.y - ptc.y) * 0.4));
-        target = gaps[0].mid;   // cover the widest / most-threatened seam
-      }
-      if (!target) {
-        const ang = ptc ? Math.atan2(ptc.y - tc.y, ptc.x - tc.x) + (G.rand() - 0.5) * 1.2 : G.rand() * Math.PI * 2;
-        target = { x: Math.round(tc.x + Math.cos(ang) * 5), y: Math.round(tc.y + Math.sin(ang) * 5) };
-      }
-      const spot = MapGen.findNear(target.x, target.y, 3, free);
-      if (spot) return spot;
-    }
+    if (key === 'tower') { const s = this.towerSpot(tc); if (s) return s; }
     for (let tries = 0; tries < 12; tries++) {
       const ang = G.rand() * Math.PI * 2, dist = 2 + G.rand() * (rMax - 2);
       const spot = MapGen.findNear(Math.round(tc.x + Math.cos(ang) * dist),
@@ -167,6 +149,45 @@ const AI = {
     // rather than never building again
     return MapGen.findNear(tc.x, tc.y, rMax, free) ||
            MapGen.findNear(tc.x, tc.y, rMax + 4, free);
+  },
+
+  /* COVERAGE-AWARE tower placement. The old heuristic dropped every tower on the
+     single widest seam — redundant, clustered coverage with whole flanks left
+     open. Instead: score candidate tiles by the MARGINAL new coverage they add
+     over the towers already standing. A tile that guards an otherwise-uncovered
+     approach seam scores high; one whose range merely duplicates an existing
+     tower is penalised (and pure duplicates are rejected). Towers spread to
+     cover the town's whole frontage instead of piling up. */
+  towerSpot(tc) {
+    const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2;
+    const cov = (CFG.BUILDINGS.tower.levels[0].range || 4.5) + 0.6;   // effective guard radius
+    const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0;
+    // the approach tiles worth guarding: the open perimeter seams attackers must
+    // cross. If terrain seals the town, fall back to a coverage ring.
+    let seam = [];
+    for (const g of this.perimeterGaps(cx, cy, 5)) for (const t of g.tiles) seam.push(t);
+    for (const g of this.perimeterGaps(cx, cy, 7)) for (const t of g.tiles) seam.push(t);
+    if (!seam.length)
+      for (let a = 0; a < 12; a++) { const ang = a / 12 * Math.PI * 2; seam.push([Math.round(tc.x + Math.cos(ang) * 5), Math.round(tc.y + Math.sin(ang) * 5)]); }
+    const towers = Bld.list('A').filter(b => b.key === 'tower').map(b => ({ x: Bld.cx(b), y: Bld.cy(b) }));
+    const covered = (sx, sy) => towers.some(t => Math.hypot(sx - t.x, sy - t.y) <= cov);
+    const ptc = this.knownPlayerTC();
+    let best = null, bs = -1e9;
+    for (let dy = -7; dy <= 7; dy++) for (let dx = -7; dx <= 7; dx++) {
+      const x = tc.x + dx, y = tc.y + dy;
+      if (!MapGen.inB(x, y) || !free(x, y)) continue;
+      let fresh = 0, dupe = 0;
+      for (const [sx, sy] of seam) {
+        if (Math.hypot(sx - x, sy - y) > cov) continue;
+        if (covered(sx, sy)) dupe++; else fresh++;
+      }
+      if (towers.length && fresh === 0) continue;             // rejects a pure-duplicate tower
+      let s = fresh * 3 - dupe * 1.4 - Math.hypot(dx, dy) * 0.12;
+      if (ptc && ((x - tc.x) * (ptc.x - tc.x) + (y - tc.y) * (ptc.y - tc.y)) > 0) s += 1.5;  // slight bias to the player-facing frontage
+      s += G.rand() * 0.6;                                    // break ties differently game-to-game
+      if (s > bs) { bs = s; best = { x, y }; }
+    }
+    return best;
   },
 
   power(owner) {
@@ -232,19 +253,35 @@ const AI = {
     }).sort((a, b) => a.def - b.def);
   },
 
-  /* Turtling done right: PLUG THE SEAMS. Terrain does most of the walling — the
-     chief only closes the open gaps on its perimeter (far cheaper than ringing
-     open ground), gating the widest seam so its own parties can still sortie. */
+  /* Turtling done right: PLUG THE SEAMS, and actually invest in it. Terrain does
+     most of the walling; the chief closes the open gaps on its perimeter. It
+     seals the SHORTEST seams first (a narrow gap is cheap to close completely and
+     removes a whole attack route), gates the widest seam so its own parties can
+     still sortie, and reinforces the flank the player keeps attacking from
+     (Layer-5 memory). Wall investment per call scales with threat and posture, so
+     a threatened or turtling chief actually fortifies instead of dribbling. */
   maybeWalls(tc) {
-    if (S.day < 22 || S.ai.res.wood < 60) return;
+    const P = this.persona(), ai = S.ai, read = ai.read || {};
+    if (S.day < 16 || ai.res.wood < 45) return;
     const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0;
     const gaps = this.perimeterGaps(cx, cy, 5);
     if (!gaps.length) return;                       // terrain already seals the town
-    const gateMid = gaps[0].mid;                    // one gate on the main (widest) seam
+    // how many tiles to lay this call — a real budget, not a flat 3
+    let budget = 3 + (P.walls ? 2 : 0) + (ai.posture === 'DEFEND' ? 2 : 0) + (read.underThreat ? 2 : 0);
+    const gateSeam = gaps[0];                        // widest = the gated sortie lane
+    const gateMid = gateSeam.mid;
+    // order seams: the flank the player keeps hitting first, then narrowest
+    // (cheapest full seals) — reinforce where it hurts, seal what's quick to close
+    const hit = (ai.memory && ai.memory.hitFlank) || null;
+    const order = gaps.slice().sort((a, b) => {
+      const ha = hit ? (a.dir.x === hit.x && a.dir.y === hit.y ? -100 : 0) : 0;
+      const hb = hit ? (b.dir.x === hit.x && b.dir.y === hit.y ? -100 : 0) : 0;
+      return (ha + a.width) - (hb + b.width);
+    });
     let placed = 0;
-    for (const g of gaps) {
+    for (const g of order) {
       for (const [x, y] of g.tiles) {
-        if (placed >= 3) return;
+        if (placed >= budget) return;
         if (!MapGen.inB(x, y) || Bld.at(x, y)) continue;
         const isGate = x === gateMid.x && y === gateMid.y;
         const key = isGate ? 'gate' : 'wall';
@@ -710,14 +747,16 @@ const AI = {
       add(u, () => this.tryBuild(hall));
     }
 
-    // tower / walls (defense). Plugging the perimeter SEAMS is cheap now that
-    // terrain does most of the walling, so any threatened chief closes its gaps
-    // — utility scales with how exposed the open seams are, not blanket-ringing.
-    add(16 + (P.walls ? 18 : 0) + (post === 'DEFEND' ? 40 : 0) - (have.tower || 0) * 5,
+    // tower / walls (defense). Towers now COVER (spread across seams) and walls
+    // are a real investment, not a token. Tower utility rises with uncovered
+    // frontage so the chief keeps building until its approaches are guarded, then
+    // tapers; walls fire for any chief with open seams, heavier when threatened.
+    add(14 + (P.walls ? 14 : 0) + (post === 'DEFEND' ? 38 : 0) + (read.underThreat ? 20 : 0) +
+        Math.min(20, (read.homeExposed || 0) * 1.6) - (have.tower || 0) * 6,
       () => this.tryBuild('tower'));
-    if (S.day >= 20 && read.homeGapCount > 0 && (P.walls || post === 'DEFEND' || read.underThreat)) {
-      const wu = (P.walls ? 26 : 8) + (post === 'DEFEND' ? 32 : 0) + (read.underThreat ? 22 : 0) +
-        Math.min(22, read.homeExposed * 2);
+    if (S.day >= 18 && read.homeGapCount > 0) {
+      const wu = (P.walls ? 30 : 14) + (post === 'DEFEND' ? 34 : 0) + (read.underThreat ? 26 : 0) +
+        (post === 'CONSOLIDATE' ? 10 : 0) + Math.min(26, read.homeExposed * 2.5);
       add(wu, () => { this.maybeWalls(tc); return true; });
     }
 
