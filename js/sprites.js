@@ -705,6 +705,30 @@ const Sprites = {
       if (d.decor >= 2) { ART.shadedCircle(p, 8, 4, 1, AP.stone, 2); p(10, 4, 1, 1, AP.stone[2]); }  // shot pile
       if (d.banner) banner(p, 0, 0, fac);
     },
+    // sappers' camp: an earthworks yard — a dug pit with a spoil mound, a timber
+    // A-frame derrick, planks and racked tools (shovels/picks), a wheelbarrow
+    sapper(p, lv, fac) {
+      const d = ART.tierDress(lv), q = p.hi;
+      ART.dropShadow(p, 8, 14, 13);
+      wallBody(p, 1, 8, 6, 6, d, 31);                                // engineers' hut (left)
+      roof(p, 0, 5, 7, 3, d, 32);
+      p(2, 10, 2, 4, AP.ink[0]);                                     // doorway
+      // a dug pit with a spoil mound of turned earth (the earthworks)
+      ART.shadedRect(p, 8, 10, 7, 4, AP.soil, 1); q(16, 20, 14, 1, AP.soil[0]);   // pit floor + shadow lip
+      p(8, 10, 7, 1, AP.soil[3]);                                    // lit near rim
+      q(19, 15, 4, 2, AP.soil[3]); q(20, 14, 2, 1, AP.soil[3]);      // spoil mound (lit)
+      q(24, 21, 3, 1, AP.grass[2]); q(17, 21, 2, 1, AP.grass[2]);    // grass clods
+      // timber A-frame derrick over the pit with a hanging block
+      q(21, 7, 1, 8, AP.wood[1]); q(26, 8, 1, 7, AP.wood[1]); q(21, 7, 6, 1, AP.wood[2]);
+      q(23, 8, 1, 4, AP.thatch[1]); ART.shadedRect(q, 22, 12, 3, 2, AP.stone, 2);   // rope + slung block
+      // racked tools: a shovel and a pick leaning by the hut
+      q(6, 15, 1, 6, AP.wood[2]); q(5, 14, 3, 2, AP.stone[3]);       // shovel (haft + blade)
+      q(9, 15, 1, 6, AP.wood[2]); q(8, 14, 1, 1, AP.stone[3]); q(10, 14, 1, 1, AP.stone[3]);  // pick
+      // a wheelbarrow of earth
+      q(11, 24, 4, 2, AP.wood[1]); q(11, 24, 4, 1, AP.soil[2]); ART.shadedCircle(q, 12, 26, 1, AP.wood, 1);
+      if (d.decor >= 1) { q(3, 20, 4, 1, AP.wood[3]); q(3, 19, 4, 1, AP.wood[2]); }   // stacked planks
+      if (d.banner) banner(p, 0, 0, fac);
+    },
     wall(p, lv) { drawWallMask(p, lv, 2 | 8); },   // menu/panel icon: an east-west run
     gate(p, lv) {
       const c = wallPal(lv);
@@ -975,6 +999,18 @@ const Sprites = {
       fight: frames(2, (p, g, f) => { humanoid(p, f, 'fight', c); if (extra) extra(p, f, 'fight'); }),
     };
   }
+  // SAPPER — the terraforming engineer. Earth-toned worker with a slung shovel;
+  // its 'work' pose swings a pick (digging/breaching). Faction collar via accent,
+  // so friendly and rival sappers read apart like every other unit.
+  function sapperSheet(acc) {
+    const c = { body: '#7a6a44', accent: acc, pants: '#5a4a2c', hair: PAL.hair };
+    const slung = (p) => { p(11, 4, 1, 6, PAL.trunk); p(10, 3, 2, 2, APx.stone[3]); };   // shovel on the back at rest
+    return {
+      idle: frames(2, (p, g, f) => { humanoid(p, f, 'idle', c); slung(p); }),
+      walk: frames(2, (p, g, f) => { humanoid(p, f, 'walk', c); slung(p); }),
+      work: frames(2, (p, g, f) => humanoid(p, f, 'mine', c)),   // pick swing = dig / breach
+    };
+  }
   // villagers carry the full working repertoire: chop (wood), mine (stone),
   // farm (food), build (hammer) and guard (defend with a pickaxe)
   function villagerSheet(c) {
@@ -1059,6 +1095,7 @@ const Sprites = {
     for (const k in RIDERS) set[k] = riderSheet({ horse: RIDERS[k].horse, horseD: RIDERS[k].horseD, body: RIDERS[k].body, accent: acc, bow: RIDERS[k].bow, tip: RIDERS[k].tip });
     set.warship = warshipSheet({ hull: PAL.wood, hullD: PAL.woodD, sail: '#e8e8e0', sailD: '#c9c9c0', stripe: acc, crew: '#7a6242', arrow: PAL.rockL });
     set.trebuchet = trebuchetSheet(acc);   // siege engine, but faction-draped so friend/foe reads
+    set.sapper = sapperSheet(acc);         // earth-toned engineer, faction collar
     Sprites.military[tunic] = set;
     return set;
   };

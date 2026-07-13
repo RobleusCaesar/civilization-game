@@ -5,6 +5,8 @@ const T = {
   GRASS: 0, FOREST: 1, WATER: 2, HILLS: 3, FERTILE: 4, CAMP: 5,
   STUMPS: 6, PEBBLES: 7, BARREN: 8, RUIN: 9,   // depleted / destroyed variants
   MOUNTAIN: 10,                                 // impassable, unbuildable
+  TRENCH: 11,                                   // sapper-dug ditch — blocks land, not ranged fire
+  MOAT: 12,                                     // a trench that flooded from a water source — blocks land, boats can't cross either
 };
 
 const CFG = {
@@ -208,6 +210,21 @@ const CFG = {
           bonus: 'Unlocks Fire Archer' },
       ],
     },
+    // The terraforming corps. Trains Sappers who reshape the map: dig trenches
+    // (they flood into moats beside water), build bridges, and breach resource
+    // walls. The building's LEVEL gates the tiers — L1 trenches, L2 bridges,
+    // L3 clearing (Bld handles the tier gate in the work order).
+    sapper: {
+      name: "Sappers' Camp", desc: 'Trains sappers who reshape the land — dig trenches & moats, bridge water, breach resource walls.', reqTC: 2,
+      train: {
+        sapper: { cost: { food: 30, wood: 40, gold: 10 }, time: 1.4 },
+      },
+      levels: [
+        { cost: { wood: 120, stone: 60, gold: 15 },  time: 2, hp: 300, bonus: 'Sappers dig trenches & moats' },
+        { cost: { wood: 200, stone: 130, gold: 30 }, time: 2, hp: 420, bonus: 'Sappers build bridges over water' },
+        { cost: { wood: 320, stone: 220, gold: 50 }, time: 3, hp: 560, bonus: 'Sappers clear resource tiles (open ground)' },
+      ],
+    },
     dock: {
       name: 'Dock', desc: 'Built on open water (6+ tiles). Fishing boats harvest fish; warships defend the coast.',
       reqTC: 2,   // needs Town Center level 2 before it can be placed
@@ -250,6 +267,7 @@ const CFG = {
 
   UNITS: {
     villager: { name: 'Villager',       hp: 40,  atk: 2,  def: 0, speed: 2.2, aggro: 0 },
+    sapper:   { name: 'Sapper',         hp: 55,  atk: 3,  def: 1, speed: 2.2, aggro: 0, sapper: true },  // engineer: lightly defended, reshapes terrain — must be protected while it works
     defender: { name: 'Defender',       hp: 60,  atk: 8,  def: 2, speed: 2.4, aggro: 5 },
     // level-2 unlocks: sharper tools with sharper edges — each trades
     // something real for its specialty
@@ -286,6 +304,19 @@ const CFG = {
     // FARTHEST (outranges towers), hits HARDEST vs stone, but crawls and reloads
     // slowest; fragile and pricey, so it's a payoff, not an auto-win
     trebuchet:  { name: 'Trebuchet',   hp: 160, atk: 6, def: 1, speed: 0.85, aggro: 0, rng: 8, cdMult: 4.0, bldAtk: 200, proj: 'flame', fire: true },
+  },
+
+  /* SAPPER terraforming — deliberate tactical work, protected by an army. Work
+     times are seconds per tile: fast enough to reshape a lane in a fight, slow
+     enough that it's an investment (and far slower than a resource depletes by
+     gathering, ~120s+, yet clearing here is much FASTER than that — it's demolition,
+     not harvest). Tune here. */
+  TERRAFORM: {
+    dig: 5,          // dig a trench tile
+    bridge: 6,       // raise a bridge over water
+    clear: 4,        // breach a resource tile → open grass (demolition, not gathering)
+    bridgeHp: 200,   // bridge structure HP (attackable — protect your crossings)
+    clearYield: 0,   // resource returned when clearing (0 = mobility tool, not an economy exploit)
   },
 
   MEAT_DROP: 10,               // food gained when a wild animal is killed

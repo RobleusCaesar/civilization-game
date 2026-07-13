@@ -17,7 +17,7 @@ const UI = {
   wallDrag: null,        // tile chain while dragging a wall line
   wallGhost: null,       // [{x,y,ok,mask}] preview of the dragged line
   settingRally: null,    // building id waiting for a rally-point tap
-  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'wall', 'gate'],
+  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'wall', 'gate'],
 
   // paint a sprite into an icon canvas: back it at 64px and scale the WHOLE
   // sprite in (sprites are now 64px — a naive drawImage would clip to a corner),
