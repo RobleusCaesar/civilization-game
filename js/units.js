@@ -150,6 +150,46 @@ const Units = {
     return this.setPath(u, best.x, best.y);
   },
 
+  // highest finished Sappers' Camp level for a tribe — gates the tiers
+  // (1 trench/moat, 2 bridge, 3 clear)
+  sapperTier(owner) {
+    let lv = 0;
+    for (const b of S.buildings)
+      if (b.owner === owner && b.key === 'sapper' && Bld.done(b) && !b.upgrading) lv = Math.max(lv, b.level);
+    return lv;
+  },
+  // which terraform job (if any) a sapper of this tribe can do on a tile
+  terraformJob(owner, tx, ty) {
+    const tier = this.sapperTier(owner); if (tier < 1) return null;
+    if (Terraform.isDiggable(tx, ty)) return 'dig';
+    if (tier >= 2 && Terraform.bridgeable(tx, ty) && !(Bld.bridgeAt && Bld.bridgeAt(tx, ty))) return 'bridge';
+    if (tier >= 3 && Terraform.isClearable(tx, ty)) return 'clear';
+    return null;
+  },
+  // order a sapper to reshape a tile: path to the open edge beside it, then work
+  assignTerraform(u, tx, ty) {
+    if (u.kind !== 'sapper') return false;
+    const job = this.terraformJob(u.owner, tx, ty); if (!job) return false;
+    if (job === 'dig' && Terraform.digWouldSeal(tx, ty)) return false;   // reachability clamp, checked up front too
+    let best = null, bd = 1e9;
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const x = tx + ox, y = ty + oy;
+      if (!Path.passable(x, y, u.owner) || Bld.at(x, y)) continue;
+      const dd = Math.hypot(u.x - x, u.y - y);
+      if (dd < bd) { bd = dd; best = { x, y }; }
+    }
+    if (!best) return false;
+    const time = job === 'dig' ? CFG.TERRAFORM.dig : job === 'bridge' ? CFG.TERRAFORM.bridge : CFG.TERRAFORM.clear;
+    const STAND = 0.4;
+    u.task = {
+      type: 'terraform', job, x: tx, y: ty, sx: best.x, sy: best.y,
+      stx: best.x + 0.5 + (tx - best.x) * STAND, sty: best.y + 0.5 + (ty - best.y) * STAND,
+      t: time, total: time,
+    };
+    u.tUnit = 0; u.tBld = 0;
+    return this.setPath(u, best.x, best.y);
+  },
+
   nearestIdleVillager(x, y) {
     let best = null, bd = 1e9;
     for (const u of S.units) {
@@ -405,6 +445,36 @@ const Units = {
             const what = terr === T.FOREST ? 'The forest here is felled — a path opens'
               : terr === T.HILLS ? 'The stone here is quarried out — a path opens' : 'The soil here is spent';
             G.log(`${what} — villager idle`);
+            u.task = null;
+          }
+        }
+      } else if (t.type === 'terraform') {
+        // walk to the open tile beside the target, then work it over a dig time.
+        // The sapper is exposed here — it doesn't fight back; guard it.
+        const sx = t.sx, sy = t.sy;
+        if ((u.x | 0) !== sx || (u.y | 0) !== sy) {
+          if (this.followPath(u, dt) && !((u.x | 0) === sx && (u.y | 0) === sy)) u.task = null;
+        } else {
+          u.path = null;
+          if (t.stx != null) {
+            const dx = t.stx - u.x, dy = t.sty - u.y, dd = Math.hypot(dx, dy), step = u.speed * dt;
+            if (dd > step) { u.x += dx / dd * step; u.y += dy / dd * step; } else { u.x = t.stx; u.y = t.sty; }
+          }
+          const stillValid = t.job === 'dig' ? Terraform.isDiggable(t.x, t.y)
+            : t.job === 'clear' ? Terraform.isClearable(t.x, t.y) : Terraform.bridgeable(t.x, t.y);
+          if (!stillValid) { u.task = null; continue; }
+          t.t -= dt;
+          if (Math.random() < 0.16) R.float(u.x + (Math.random() - 0.5), u.y - 0.4, '·', '#cdbb90');   // spadefuls of earth
+          if (t.t <= 0) {
+            let done = false, moat = false;
+            if (t.job === 'dig') { done = Terraform.dig(t.x, t.y); moat = done && S.map.terrain[MapGen.idx(t.x, t.y)] === T.MOAT; }
+            else if (t.job === 'clear') { done = Terraform.clear(t.x, t.y); }
+            else if (t.job === 'bridge' && Bld.buildBridge) { done = Bld.buildBridge(u.owner, t.x, t.y); }
+            if (u.owner === 'P') {
+              if (done) G.log(t.job === 'dig' ? (moat ? 'Your sappers open a moat — the channel floods!' : 'Your sappers dig a trench')
+                : t.job === 'clear' ? 'Your sappers breach the ground — a path opens' : 'Your sappers raise a bridge');
+              else if (t.job === 'dig') UI.toast('Can’t dig there — it would seal the town in', true);
+            }
             u.task = null;
           }
         }

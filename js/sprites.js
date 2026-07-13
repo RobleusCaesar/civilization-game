@@ -250,6 +250,29 @@ const Sprites = {
       p(3, 8, 1, 1, AP.bone[2]);
     }),
   ];
+  // sapper-dug TRENCH — a ditch of turned earth with a dark shadowed floor and
+  // grass banks; MOAT — the same channel flooded from a water source. Both block
+  // land movement (drawn full-tile so a dug line reads as one continuous ditch).
+  Sprites.terrain[T.TRENCH] = [
+    tile(p => {
+      grassBase(p, 41);
+      p(2, 2, 12, 12, AP.soil[1]);                                   // dug earth
+      p(3, 3, 10, 10, AP.soil[0]);                                   // shadowed floor
+      p(2, 2, 12, 1, AP.soil[3]); p(2, 2, 1, 12, AP.soil[3]);        // lit near/left rim
+      p(2, 13, 12, 1, AP.ink[0]); p(13, 2, 1, 12, AP.ink[1]);        // deep far/right lip
+      const r = ART.rng(29); for (let i = 0; i < 6; i++) p(3 + (r() * 9 | 0), 3 + (r() * 9 | 0), 1, 1, AP.soil[2]);  // clods
+    }),
+  ];
+  Sprites.terrain[T.MOAT] = [
+    tile(p => {
+      p(1, 1, 14, 14, AP.soil[1]);                                   // earth banks
+      p(2, 2, 12, 12, AP.water[1]);                                  // dark ditch water
+      p(3, 3, 10, 9, AP.water[2]);
+      p(2, 2, 12, 1, AP.soil[3]);                                    // lit near bank
+      p(4, 4, 5, 1, AP.water[3]); p(9, 8, 3, 1, AP.water[3]);        // glints
+      p(2, 13, 12, 1, AP.ink[0]);                                   // deep far lip
+    }),
+  ];
   Sprites.terrain[T.CAMP] = [
     tile(p => {
       ART.dither(p, 0, 0, 16, 16, AP.soil[3], AP.grass[2]);          // trampled dirt

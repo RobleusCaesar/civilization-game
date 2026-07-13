@@ -410,6 +410,17 @@ const UI = {
           if (Units.assignFish(sel, tile.x, tile.y)) this.toast('Nets out — fishing 🐟');
           return;
         }
+        if (sel.kind === 'sapper') {
+          const job = Units.terraformJob(sel.owner, tile.x, tile.y);
+          if (job) {
+            if (Units.assignTerraform(sel, tile.x, tile.y))
+              this.toast(job === 'dig' ? 'Sapper digging — trench (moat beside water) ⛏'
+                : job === 'clear' ? 'Sapper breaching the ground ⛏' : 'Sapper raising a bridge 🌉');
+            else this.toast(job === 'dig' ? 'Can’t dig there — it would seal the town in' : 'Can’t reshape that tile', true);
+            return;
+          }
+          // no job on this tile → fall through to a plain move
+        }
         if (Units.isTransport(sel) && sel.cargo && sel.cargo.length && Path.passable(tile.x, tile.y)) {
           Units.orderUnload(sel, tile.x, tile.y);
           this.toast('Making for that shore — soldiers will land there');

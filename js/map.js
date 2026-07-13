@@ -361,7 +361,10 @@ const MapGen = {
    in the pathfinding hot loop, so it's a flat array indexed by terrain id. */
 const BLOCK_TERR = (() => {
   const a = new Uint8Array(16);
-  for (const t of [T.WATER, T.MOUNTAIN, T.FOREST, T.HILLS, T.FERTILE]) a[t] = 1;
+  // sapper-dug TRENCH/MOAT block land units too (a moat also stops boats — it's a
+  // ditch, not open water). Ranged fire is distance-based, so archers/siege still
+  // shoot over them: only movement is blocked.
+  for (const t of [T.WATER, T.MOUNTAIN, T.FOREST, T.HILLS, T.FERTILE, T.TRENCH, T.MOAT]) a[t] = 1;
   return a;
 })();
 
@@ -492,3 +495,93 @@ const Path = {
     return path;
   },
 };
+
+/* TERRAFORM — the Sapper's map surgery. Trenches (dry ditches that block land),
+   moats (trenches flooded from a connected water source — a channel dug from a
+   lake floods whole), and clearing (breach a resource wall to grass). Pathfinding
+   is computed per-request (no cache), so a terrain edit takes effect on the next
+   path with nothing to invalidate; R.updateTile repaints just the one tile. */
+const Terraform = {
+  DIGGABLE: { [T.GRASS]: 1, [T.STUMPS]: 1, [T.PEBBLES]: 1, [T.BARREN]: 1, [T.RUIN]: 1, [T.CAMP]: 1 },
+  CLEARABLE: { [T.FOREST]: 1, [T.HILLS]: 1, [T.FERTILE]: 1 },
+  isDiggable(x, y) { return MapGen.inB(x, y) && !Bld.at(x, y) && !!this.DIGGABLE[S.map.terrain[MapGen.idx(x, y)]]; },
+  isClearable(x, y) { return MapGen.inB(x, y) && !!this.CLEARABLE[S.map.terrain[MapGen.idx(x, y)]]; },
+  bridgeable(x, y) { if (!MapGen.inB(x, y)) return false; const t = S.map.terrain[MapGen.idx(x, y)]; return t === T.WATER || t === T.MOAT; },
+  waterAdj(x, y) {
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + ox, ny = y + oy;
+      if (MapGen.inB(nx, ny)) { const t = S.map.terrain[MapGen.idx(nx, ny)]; if (t === T.WATER || t === T.MOAT) return true; }
+    }
+    return false;
+  },
+
+  /* Reachability CLAMP: a dig may never pen a town into a tiny sealed pocket. A
+     tile touching water becomes a bridgeable moat (reversible) → always allowed;
+     otherwise, hypothetically block it and require each TC to keep a sizeable land
+     region reachable from just outside its footprint. */
+  digWouldSeal(x, y) {
+    if (this.waterAdj(x, y)) return false;
+    const i = MapGen.idx(x, y), save = S.map.terrain[i];
+    S.map.terrain[i] = T.TRENCH;
+    let sealed = false;
+    for (const owner of ['P', 'A']) {
+      const tc = Bld.tcOf(owner); if (!tc) continue;
+      const s = Bld.size('tc'), seeds = [];
+      for (let k = -1; k <= s; k++) seeds.push({ x: tc.x + k, y: tc.y - 1 }, { x: tc.x + k, y: tc.y + s }, { x: tc.x - 1, y: tc.y + k }, { x: tc.x + s, y: tc.y + k });
+      const open = Path.reachFrom(seeds.filter(sp => Path.passable(sp.x, sp.y)));
+      let cnt = 0; if (open) for (let j = 0; j < open.length; j++) cnt += open[j];
+      if (cnt < 24) { sealed = true; break; }   // penned in — refuse
+    }
+    S.map.terrain[i] = save;
+    return sealed;
+  },
+
+  dig(x, y) {
+    if (!this.isDiggable(x, y) || this.digWouldSeal(x, y)) return false;
+    const i = MapGen.idx(x, y);
+    S.map.terrain[i] = T.TRENCH;
+    if (S.map.resAmount) S.map.resAmount[i] = 0;
+    if (S.map.seenTerrain) S.map.seenTerrain[i] = T.TRENCH;
+    if (window.R && R.updateTile) R.updateTile(x, y);
+    this.floodMoats(x, y);
+    return true;
+  },
+
+  // any TRENCH connected (4-dir) to a water source floods to MOAT, and the flood
+  // spreads through the whole connected trench channel — dig from a lake and the
+  // channel fills.
+  floodMoats(x, y) {
+    const start = MapGen.idx(x, y);
+    if (S.map.terrain[start] !== T.TRENCH && S.map.terrain[start] !== T.MOAT) return;
+    const comp = [], seen = new Set([start]), q = [[x, y]]; let touches = false;
+    while (q.length) {
+      const [cx, cy] = q.pop(); comp.push([cx, cy]);
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + ox, ny = cy + oy; if (!MapGen.inB(nx, ny)) continue;
+        const ni = MapGen.idx(nx, ny), t = S.map.terrain[ni];
+        if (t === T.WATER || t === T.MOAT) touches = true;
+        else if (t === T.TRENCH && !seen.has(ni)) { seen.add(ni); q.push([nx, ny]); }
+      }
+    }
+    if (!touches) return;   // dry ditch, stays a trench
+    for (const [cx, cy] of comp) {
+      const ci = MapGen.idx(cx, cy);
+      if (S.map.terrain[ci] === T.MOAT) continue;
+      S.map.terrain[ci] = T.MOAT;
+      if (S.map.seenTerrain) S.map.seenTerrain[ci] = T.MOAT;
+      if (window.R && R.updateTile) R.updateTile(cx, cy);
+    }
+  },
+
+  clear(x, y) {
+    if (!this.isClearable(x, y)) return false;
+    const i = MapGen.idx(x, y);
+    S.map.terrain[i] = T.GRASS;
+    if (S.map.resAmount) S.map.resAmount[i] = 0;
+    if (S.map.seenTerrain) S.map.seenTerrain[i] = T.GRASS;
+    if (window.R && R.updateTile) R.updateTile(x, y);
+    if (CFG.TERRAFORM.clearYield > 0) { /* optional trickle — default 0 */ }
+    return true;
+  },
+};
+window.Terraform = Terraform;
