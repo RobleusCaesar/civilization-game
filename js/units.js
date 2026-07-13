@@ -167,10 +167,21 @@ const Units = {
     if (tier >= 3 && Terraform.isClearable(tx, ty)) return 'clear';
     return null;
   },
-  // order a sapper to reshape a tile: path to the open edge beside it, then work
-  assignTerraform(u, tx, ty) {
+  // can a sapper of this tribe do a SPECIFIC job on this tile? (tier + tile type)
+  canTerraform(owner, tx, ty, job) {
+    const tier = this.sapperTier(owner); if (tier < 1) return false;
+    if (job === 'dig') return Terraform.isDiggable(tx, ty);
+    if (job === 'bridge') return tier >= 2 && Terraform.bridgeable(tx, ty) && !(Bld.bridgeAt && Bld.bridgeAt(tx, ty));
+    if (job === 'clear') return tier >= 3 && Terraform.isClearable(tx, ty);
+    return false;
+  },
+  // order a sapper to reshape a tile: path to the open edge beside it, then work.
+  // forceJob (from a panel tool) picks the job explicitly; else it's auto-detected.
+  assignTerraform(u, tx, ty, forceJob) {
     if (u.kind !== 'sapper') return false;
-    const job = this.terraformJob(u.owner, tx, ty); if (!job) return false;
+    const job = forceJob ? (this.canTerraform(u.owner, tx, ty, forceJob) ? forceJob : null)
+                         : this.terraformJob(u.owner, tx, ty);
+    if (!job) return false;
     if (job === 'dig' && Terraform.digWouldSeal(tx, ty)) return false;   // reachability clamp, checked up front too
     let best = null, bd = 1e9;
     for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {

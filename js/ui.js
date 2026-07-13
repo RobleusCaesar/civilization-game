@@ -410,16 +410,18 @@ const UI = {
           if (Units.assignFish(sel, tile.x, tile.y)) this.toast('Nets out — fishing 🐟');
           return;
         }
-        if (sel.kind === 'sapper') {
-          const job = Units.terraformJob(sel.owner, tile.x, tile.y);
-          if (job) {
-            if (Units.assignTerraform(sel, tile.x, tile.y))
-              this.toast(job === 'dig' ? 'Sapper digging — trench (moat beside water) ⛏'
-                : job === 'clear' ? 'Sapper breaching the ground ⛏' : 'Sapper raising a bridge 🌉');
-            else this.toast(job === 'dig' ? 'Can’t dig there — it would seal the town in' : 'Can’t reshape that tile', true);
-            return;
-          }
-          // no job on this tile → fall through to a plain move
+        if (sel.kind === 'sapper' && this.terraMode) {
+          // a terraform tool is armed (from the panel): force that job, with a
+          // clear reason when the tile is the wrong type
+          const mode = this.terraMode, tier = Units.sapperTier(sel.owner);
+          if (mode === 'dig' && !Terraform.isDiggable(tile.x, tile.y)) { this.toast('Dig needs open ground — grass or cleared earth', true); return; }
+          if (mode === 'dig' && Terraform.digWouldSeal(tile.x, tile.y)) { this.toast('Can’t dig there — it would seal the town in', true); return; }
+          if (mode === 'bridge' && (tier < 2 || !Terraform.bridgeable(tile.x, tile.y) || Bld.bridgeAt(tile.x, tile.y))) { this.toast('Bridges span water or a moat', true); return; }
+          if (mode === 'clear' && (tier < 3 || !Terraform.isClearable(tile.x, tile.y))) { this.toast('Clear a forest 🌲 / rock 🪨 / orchard tile', true); return; }
+          if (Units.assignTerraform(sel, tile.x, tile.y, mode))
+            this.toast(mode === 'dig' ? 'Sapper digging ⛏' : mode === 'bridge' ? 'Sapper raising a bridge 🌉' : 'Sapper breaching ⛏');
+          else this.toast('Can’t reshape that tile', true);
+          return;   // tool stays armed — tap on to dig a whole channel
         }
         if (Units.isTransport(sel) && sel.cargo && sel.cargo.length && Path.passable(tile.x, tile.y)) {
           Units.orderUnload(sel, tile.x, tile.y);
@@ -458,6 +460,7 @@ const UI = {
     this.sel = { type, id };
     this.builderFor = null;
     this.confirmDemolish = 0;
+    this.terraMode = null;      // a fresh selection drops any armed sapper tool
     this.panelHidden = false;   // a fresh selection brings its panel back
     this.renderPanel();
   },
@@ -465,6 +468,7 @@ const UI = {
     this.sel = null;
     this.confirmDemolish = 0;
     this.settingRally = null;
+    this.terraMode = null;
     this.panelHidden = false;
     document.getElementById('panel').classList.remove('show');
     document.getElementById('buildmenu').style.display = this.menuCollapsed ? 'none' : 'flex';
@@ -820,6 +824,7 @@ const UI = {
           // the same way everyone else does
           : u.owner === 'R' ? 'Barbarian — nothing but trouble. Who they strike at, only they know.'
           : 'Rival tribe')
+        : u.kind === 'sapper' ? 'Pick a tool below, then tap a tile — dig a trench (a moat if it touches water), bridge water, or clear a resource. Tap a tile with no tool to walk. Sappers can’t fight — keep them guarded.'
         : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / an orchard to gather, jumping fish 🐟 to fish off the shore, a work site to build, or a tile to walk.'
         : u.kind === 'fishboat' ? 'Tap water where fish jump 🐟 to fish, or open water to row there.'
         : u.kind === 'catapult' ? 'Slow, but stone breaks stone — tap a rival wall, tower, or building to bombard it.'
@@ -851,6 +856,17 @@ const UI = {
         const cap = CFG.UNITS[u.kind].cap, aboard = (u.cargo || []).length;
         html += `<button class="abtn ${aboard ? '' : 'cant'}" data-act="unload">⚓ Unload here<small>${aboard}/${cap} aboard</small></button>`;
       }
+      if (own && u.kind === 'sapper') {
+        const tier = Units.sapperTier(u.owner);
+        const tool = (job, icon, label, minTier) => {
+          const locked = tier < minTier;
+          const active = this.terraMode === job && !locked;
+          return `<button class="abtn ${locked ? 'cant' : ''}${active ? ' sel' : ''}" data-act="terra" data-job="${job}">${icon} ${label}${locked ? `<small>Camp Lv ${minTier}</small>` : ''}</button>`;
+        };
+        html += tool('dig', '🕳', 'Trench / Moat', 1);
+        html += tool('bridge', '🌉', 'Bridge', 2);
+        html += tool('clear', '⛏', 'Clear', 3);
+      }
       if (own && Units.isVillager(u)) html += `<button class="abtn" data-act="gobuild">🔨 Build…</button>`;
       if (own && Units.isMilitary(u) && !Units.isNaval(u)) html += `<button class="abtn" data-act="group">👥 Group nearby</button>`;
       if (own) html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
@@ -862,7 +878,23 @@ const UI = {
       if (stop) stop.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
         if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; }
+        this.terraMode = null;   // downing tools stops the terraform tool too
+        this.renderPanel();
       });
+      // sapper terraform tools — arm a job; the next tile tap performs it
+      panel.querySelectorAll('[data-act="terra"]').forEach(btn => btn.addEventListener('click', () => {
+        const u2 = Units.get(this.sel.id); if (!u2) return;
+        const job = btn.dataset.job, tier = Units.sapperTier(u2.owner);
+        const minTier = job === 'clear' ? 3 : job === 'bridge' ? 2 : 1;
+        if (tier < minTier) { this.toast(`Needs a Sappers’ Camp Lv ${minTier}`, true); return; }
+        this.terraMode = this.terraMode === job ? null : job;   // toggle the tool
+        this.toast(this.terraMode
+          ? (job === 'dig' ? 'Dig tool — tap open ground (a moat forms beside water)'
+            : job === 'bridge' ? 'Bridge tool — tap water or a moat to span it'
+            : 'Clear tool — tap forest 🌲 / rock 🪨 / orchard to breach it')
+          : 'Tool down — tap a tile to walk');
+        this.renderPanel();
+      }));
       const unload = panel.querySelector('[data-act="unload"]');
       if (unload) unload.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
