@@ -158,9 +158,11 @@ const G = {
         explored: new Array(CFG.W * CFG.H).fill(0),
         seenTerrain: gen.terrain.slice(),   // what the player last saw, per tile
         seenB: {},                          // last-seen buildings: idx -> {key, level, owner}
+        bridge: new Array(CFG.W * CFG.H).fill(0),   // sapper bridges: 1 where a standing bridge crosses water/moat
         spawns: gen.spawns,
       },
       buildings: [], units: [],
+      bridges: [],                          // {x,y,owner,hp,maxhp} — attackable crossings (Sapper tier 2)
       garrison: [],                         // villagers sheltered inside the Town Center
       playtime: 0,                          // unpaused seconds, for save metadata
       // run stats — the raw material of the arcade score (js/score.js)
@@ -612,6 +614,10 @@ const G = {
       });
     }
     if (!data.garrison) data.garrison = [];
+    // pre-sapper saves: no bridges, and rebuild the fast passability mirror
+    if (!Array.isArray(data.bridges)) data.bridges = [];
+    if (!Array.isArray(data.map.bridge)) data.map.bridge = new Array(w * h).fill(0);
+    for (const br of data.bridges) if (br) data.map.bridge[br.y * w + br.x] = 1;
     if (data.ai && !data.ai.persona) data.ai.persona = 'homesteader';   // pre-persona save: the classic temperament
     if (!data.kraken) data.kraken = { day: { P: 60, A: 90 }, done: {}, ev: null };   // older saves owe the deep a visit too
     if (!data.dragon) data.dragon = { avail: false, done: true, ev: null, ash: [] };  // legacy runs: no dragon this time

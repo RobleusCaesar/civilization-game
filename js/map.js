@@ -388,9 +388,13 @@ const Path = {
 
   passable(x, y, owner, domain) {
     if (!MapGen.inB(x, y)) return false;
-    const terr = S.map.terrain[MapGen.idx(x, y)];
+    const i = MapGen.idx(x, y);
+    const terr = S.map.terrain[i];
     if (domain === 'water') return terr === T.WATER;   // boats: open water only (docks don't block hulls)
-    if (BLOCK_TERR[terr]) return false;                // water, mountain, forest, hills, fertile
+    if (BLOCK_TERR[terr]) {
+      // a standing bridge makes a water/moat tile crossable to land units
+      if (!((terr === T.WATER || terr === T.MOAT) && S.map.bridge && S.map.bridge[i])) return false;
+    }
     // close the sliver between a solid obstacle and the map edge: a border tile
     // whose inward (perpendicular) neighbour is a resource/mountain is sealed too
     const W = CFG.W, H = CFG.H;

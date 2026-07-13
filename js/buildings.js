@@ -42,6 +42,27 @@ const Bld = {
   list(owner) { return S.buildings.filter(b => b.owner === owner); },
   tcOf(owner) { return S.buildings.find(b => b.owner === owner && b.key === 'tc'); },
   done(b) { return !b.construction; },
+
+  /* BRIDGES (Sapper tier 2) — a crossing over a water/moat tile. A standing
+     bridge makes the tile passable to land (Path checks S.map.bridge); it has HP
+     and is attackable, so destroying it re-severs the crossing. Kept in S.bridges
+     with a fast 0/1 mirror in S.map.bridge for the pathfinding hot loop. */
+  bridgeAt(x, y) { if (!S.bridges) return null; for (const br of S.bridges) if (br.x === x && br.y === y) return br; return null; },
+  buildBridge(owner, x, y) {
+    if (!window.Terraform || !Terraform.bridgeable(x, y) || this.bridgeAt(x, y)) return false;
+    const br = { x, y, owner, hp: CFG.TERRAFORM.bridgeHp, maxhp: CFG.TERRAFORM.bridgeHp };
+    (S.bridges || (S.bridges = [])).push(br);
+    if (S.map.bridge) S.map.bridge[MapGen.idx(x, y)] = 1;
+    if (window.R && R.updateTile) R.updateTile(x, y);
+    return true;
+  },
+  damageBridge(br, dmg) { br.hp -= dmg; if (br.hp <= 0) this.removeBridge(br); },
+  removeBridge(br) {
+    const i = S.bridges ? S.bridges.indexOf(br) : -1; if (i >= 0) S.bridges.splice(i, 1);
+    if (S.map.bridge) S.map.bridge[MapGen.idx(br.x, br.y)] = 0;
+    if (window.R && R.updateTile) R.updateTile(br.x, br.y);
+    if (br.owner === 'P') G.log('A bridge is destroyed — the crossing is severed!', true);
+  },
   // the healing grounds for a unit — the only place it can be healed. Land units
   // heal at the Town Center; ships heal at the nearest owned Dock. The radius
   // grows 15% per building level (L2 15% wider, L3 another 15%). Null if there's

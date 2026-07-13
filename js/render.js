@@ -261,6 +261,23 @@ const R = {
     // terrain
     g.drawImage(this.terrainCache, 0, 0);
 
+    // sapper bridges: faction-trimmed plank decks over water/moat (above terrain,
+    // below units). Dynamic structures, so drawn per-frame, not baked into the cache.
+    if (S.bridges && S.bridges.length) {
+      const WP = ART.PALETTE.wood;
+      for (const br of S.bridges) {
+        if (!S.map.explored[MapGen.idx(br.x, br.y)]) continue;
+        const bx = br.x * TL, by = br.y * TL;
+        g.fillStyle = WP[2]; g.fillRect(bx, by + 5, TL, TL - 10);          // deck
+        g.fillStyle = WP[3]; g.fillRect(bx, by + 5, TL, 3);               // lit near edge
+        g.fillStyle = WP[1];
+        for (let px = 3; px < TL; px += 6) g.fillRect(bx + px, by + 5, 1, TL - 10);   // plank seams
+        const fac = br.owner === 'P' ? ART.PALETTE.blue[2] : ART.PALETTE.red[2];
+        g.fillStyle = fac; g.fillRect(bx, by + 4, TL, 2); g.fillRect(bx, by + TL - 6, TL, 2);  // faction rails
+        if (br.hp < br.maxhp) this.bar(g, bx + 3, by - 3, TL - 6, 3, br.hp / br.maxhp, '#c98a4a');
+      }
+    }
+
     // remembered buildings (ghosts in the grey fog) — drawn as last seen
     for (const k in S.map.seenB) {
       const i = +k, gx = i % CFG.W, gy = (i / CFG.W) | 0;
