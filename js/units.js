@@ -90,6 +90,7 @@ const Units = {
   moveTo(u, tx, ty) {
     u.task = { type: 'move', x: tx, y: ty };
     u.tUnit = 0; u.tBld = 0;
+    if (u.jobs) u.jobs = null;   // an explicit walk order cancels any queued sapper work
     return this.setPath(u, tx, ty);
   },
 
@@ -200,6 +201,38 @@ const Units = {
     };
     u.tUnit = 0; u.tBld = 0;
     return this.setPath(u, best.x, best.y);
+  },
+
+  // WORK QUEUE — a sapper can be handed a whole line of tiles to dig/clear (from
+  // a click-drag, like a wall line) and works them one after another. `u.jobs`
+  // holds the pending {x,y,job}; `u.task` is the one it's on right now.
+  queueTerraform(u, list) {
+    if (u.kind !== 'sapper' || !list || !list.length) return 0;
+    u.jobs = u.jobs || [];
+    const active = u.task && u.task.type === 'terraform' ? u.task : null;
+    let added = 0;
+    for (const it of list) {
+      if (u.jobs.some(j => j.x === it.x && j.y === it.y)) continue;      // already queued
+      if (active && active.x === it.x && active.y === it.y) continue;     // already digging it
+      u.jobs.push({ x: it.x, y: it.y, job: it.job });
+      added++;
+    }
+    if (added && !active) this.startNextTerraform(u);   // idle sapper: begin at once
+    return added;
+  },
+  // pull the next still-valid job off the queue and start it; clears the task
+  // (idle) when nothing workable remains.
+  startNextTerraform(u) {
+    u.jobs = u.jobs || [];
+    while (u.jobs.length) {
+      const it = u.jobs.shift();
+      if (this.canTerraform(u.owner, it.x, it.y, it.job) &&
+          !(it.job === 'dig' && Terraform.digWouldSeal(it.x, it.y)) &&
+          this.assignTerraform(u, it.x, it.y, it.job)) return true;
+      // else the tile was already reshaped / sealed / unreachable — skip it
+    }
+    u.task = null;
+    return false;
   },
 
   nearestIdleVillager(x, y) {
@@ -477,7 +510,7 @@ const Units = {
         // The sapper is exposed here — it doesn't fight back; guard it.
         const sx = t.sx, sy = t.sy;
         if ((u.x | 0) !== sx || (u.y | 0) !== sy) {
-          if (this.followPath(u, dt) && !((u.x | 0) === sx && (u.y | 0) === sy)) u.task = null;
+          if (this.followPath(u, dt) && !((u.x | 0) === sx && (u.y | 0) === sy)) this.startNextTerraform(u);   // couldn't reach — on to the next queued tile
         } else {
           u.path = null;
           if (t.stx != null) {
@@ -486,7 +519,7 @@ const Units = {
           }
           const stillValid = t.job === 'dig' ? Terraform.isDiggable(t.x, t.y)
             : t.job === 'clear' ? Terraform.isClearable(t.x, t.y) : Terraform.bridgeable(t.x, t.y);
-          if (!stillValid) { u.task = null; continue; }
+          if (!stillValid) { this.startNextTerraform(u); continue; }
           t.t -= dt;
           if (Math.random() < 0.16) R.float(u.x + (Math.random() - 0.5), u.y - 0.4, '·', '#cdbb90');   // spadefuls of earth
           if (t.t <= 0) {
@@ -499,7 +532,7 @@ const Units = {
                 : t.job === 'clear' ? 'Your sappers breach the ground — a path opens' : 'Your sappers raise a bridge');
               else if (t.job === 'dig') UI.toast('Can’t dig there — it would seal the town in', true);
             }
-            u.task = null;
+            this.startNextTerraform(u);   // tile done — walk the line to the next queued job
           }
         }
       } else if (t.type === 'fish') {

@@ -349,6 +349,32 @@ const R = {
       }
     }
 
+    // planned sapper work: a highlighted square on the tile being worked and on
+    // every tile still queued behind it, so it's plain where the sapper is headed
+    // and what it will do (persists like a wall's build marker until each is done)
+    for (const u of S.units) {
+      if (u.owner !== 'P' || u.kind !== 'sapper') continue;
+      const marks = [];
+      if (u.task && u.task.type === 'terraform') marks.push(u.task);
+      if (u.jobs) for (const j of u.jobs) marks.push(j);
+      for (let mi = 0; mi < marks.length; mi++) {
+        const m = marks[mi];
+        if (!S.map.explored[MapGen.idx(m.x, m.y)]) continue;
+        const mx = m.x * TL, my = m.y * TL, activeMark = mi === 0 && u.task;
+        g.fillStyle = activeMark ? 'rgba(244,222,150,0.18)' : 'rgba(244,222,150,0.10)';
+        g.fillRect(mx + 2, my + 2, TL - 4, TL - 4);
+        g.strokeStyle = 'rgba(244,222,150,' + (activeMark ? '0.9' : '0.6') + ')';
+        g.lineWidth = 2;
+        // dashed-look corner ticks so a queued run reads as a plan, not solid fill
+        const c = 7;
+        for (const [cx, cy, sxx, syy] of [[2, 2, 1, 1], [TL - 2, 2, -1, 1], [2, TL - 2, 1, -1], [TL - 2, TL - 2, -1, -1]]) {
+          g.beginPath();
+          g.moveTo(mx + cx, my + cy + syy * c); g.lineTo(mx + cx, my + cy); g.lineTo(mx + cx + sxx * c, my + cy);
+          g.stroke();
+        }
+      }
+    }
+
     // active sapper WORKSITES: turned earth, a stuck tool, flying dirt and a
     // progress bar, so a tile being reshaped plainly reads as under work
     for (const u of S.units) {
@@ -800,6 +826,17 @@ const R = {
         g.globalAlpha = 1;
         g.fillStyle = ok ? 'rgba(125,187,94,0.35)' : 'rgba(224,101,80,0.4)';
         g.fillRect(t.x * TL, t.y * TL, TL, TL);
+      }
+    }
+
+    // sapper dig/clear line being dragged: amber where workable, red where not
+    if (UI.terraDrag && UI.terraGhost && UI.terraGhost.length) {
+      for (const t of UI.terraGhost) {
+        g.fillStyle = t.ok ? 'rgba(210,168,86,0.38)' : 'rgba(224,101,80,0.42)';
+        g.fillRect(t.x * TL, t.y * TL, TL, TL);
+        g.strokeStyle = t.ok ? 'rgba(244,222,150,0.95)' : 'rgba(224,101,80,0.95)';
+        g.lineWidth = 2;
+        g.strokeRect(t.x * TL + 1, t.y * TL + 1, TL - 2, TL - 2);
       }
     }
 

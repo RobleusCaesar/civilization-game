@@ -16,6 +16,8 @@ const UI = {
   confirmDemolish: 0,    // building id awaiting demolish confirmation
   wallDrag: null,        // tile chain while dragging a wall line
   wallGhost: null,       // [{x,y,ok,mask}] preview of the dragged line
+  terraDrag: null,       // tile chain while dragging a sapper dig/clear line
+  terraGhost: null,      // [{x,y,ok}] preview of the dragged terraform line
   settingRally: null,    // building id waiting for a rally-point tap
   MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'wall', 'gate'],
 
@@ -124,6 +126,11 @@ const UI = {
           this.wallDrag = [R.screenToTile(e.clientX, e.clientY)];
           this.updateWallGhost();
           this.downAt = null;
+        } else if (this.armedSapper()) {
+          // a sapper tool is armed: drag paints a line of tiles to dig/clear
+          this.terraDrag = [R.screenToTile(e.clientX, e.clientY)];
+          this.updateTerraGhost();
+          this.downAt = null;
         } else {
           this.downAt = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false };
         }
@@ -132,6 +139,7 @@ const UI = {
         this.pinchD = Math.hypot(a.x - b.x, a.y - b.y);
         this.downAt = null;
         this.wallDrag = null; this.wallGhost = null;   // pinch cancels the line
+        this.terraDrag = null; this.terraGhost = null;
       }
       e.preventDefault();
     });
@@ -143,6 +151,8 @@ const UI = {
       if (this.pointers.size === 1) {
         if (this.wallDrag) {
           this.extendWallDrag(R.screenToTile(e.clientX, e.clientY));
+        } else if (this.terraDrag) {
+          this.extendTerraDrag(R.screenToTile(e.clientX, e.clientY));
         } else {
           if (this.downAt && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 8)
             this.downAt.moved = true;
@@ -169,6 +179,9 @@ const UI = {
       if (this.wallDrag) {
         this.commitWallDrag();
         this.wallDrag = null; this.wallGhost = null;
+      } else if (this.terraDrag) {
+        this.commitTerraDrag();
+        this.terraDrag = null; this.terraGhost = null;
       } else if (this.downAt && !this.downAt.moved && performance.now() - this.downAt.t < 400) {
         this.handleTap(e.clientX, e.clientY);
       }
@@ -180,6 +193,7 @@ const UI = {
       this.pointers.delete(e.pointerId);
       this.downAt = null;
       this.wallDrag = null; this.wallGhost = null;
+      this.terraDrag = null; this.terraGhost = null;
     });
     cv.addEventListener('wheel', e => {
       this.zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 0.89);
@@ -193,6 +207,60 @@ const UI = {
       R.centerOn(tx, ty);
       e.preventDefault(); e.stopPropagation();
     });
+  },
+
+  /* ---------------- sapper dig/clear line dragging ---------------- */
+  // the selected unit, if it's an OWN sapper with a dig/clear tool armed
+  armedSapper() {
+    if (!this.terraMode || this.terraMode === 'bridge' || !this.sel || this.sel.type !== 'unit') return null;
+    const u = Units.get(this.sel.id);
+    return (u && u.owner === 'P' && u.kind === 'sapper') ? u : null;
+  },
+  extendTerraDrag(t) {
+    const chain = this.terraDrag;
+    const keyOf = (x, y) => x + ',' + y;
+    const seen = new Set(chain.map(c => keyOf(c.x, c.y)));
+    let { x: x0, y: y0 } = chain[chain.length - 1];
+    if (x0 === t.x && y0 === t.y) return;
+    // orthogonally-stepped Bresenham (same as the wall line) so the chain is a
+    // connected run of tiles with no diagonal gaps
+    const dx = Math.abs(t.x - x0), dy = -Math.abs(t.y - y0);
+    const sx = x0 < t.x ? 1 : -1, sy = y0 < t.y ? 1 : -1;
+    let err = dx + dy, guard = 0;
+    const push = () => {
+      if (!MapGen.inB(x0, y0)) return;
+      const k = keyOf(x0, y0);
+      if (!seen.has(k)) { seen.add(k); chain.push({ x: x0, y: y0 }); }
+    };
+    while (!(x0 === t.x && y0 === t.y) && guard++ < 400) {
+      const e2 = 2 * err;
+      if (e2 >= dy && x0 !== t.x) { err += dy; x0 += sx; push(); }
+      if (e2 <= dx && y0 !== t.y) { err += dx; y0 += sy; push(); }
+    }
+    this.updateTerraGhost();
+  },
+  updateTerraGhost() {
+    const u = this.armedSapper(), job = this.terraMode, chain = this.terraDrag || [];
+    if (!u) { this.terraGhost = chain.map(t => ({ x: t.x, y: t.y, ok: false })); return; }
+    this.terraGhost = chain.map(t => {
+      let ok = !!S.map.explored[MapGen.idx(t.x, t.y)] && Units.canTerraform(u.owner, t.x, t.y, job);
+      if (ok && job === 'dig' && Terraform.digWouldSeal(t.x, t.y)) ok = false;
+      return { x: t.x, y: t.y, ok };
+    });
+  },
+  commitTerraDrag() {
+    const u = this.armedSapper(), job = this.terraMode;
+    const list = (this.terraGhost || []).filter(t => t.ok).map(t => ({ x: t.x, y: t.y, job }));
+    if (u && list.length) {
+      const n = Units.queueTerraform(u, list);
+      this.toast(n
+        ? `${job === 'dig' ? 'Trench' : 'Clear'} line: ${n} tile${n > 1 ? 's' : ''} — the sapper works them in order`
+        : 'Those tiles are already queued');
+      this.terraMode = null;   // planning done — disarm so the next tap walks (no accidental digs)
+      this.renderPanel();
+    } else if ((this.terraGhost || []).length) {
+      this.toast(job === 'dig' ? 'No open ground to dig there' : 'Nothing to clear there', true);
+    }
   },
 
   /* ---------------- wall line dragging ---------------- */
@@ -884,7 +952,7 @@ const UI = {
           // the same way everyone else does
           : u.owner === 'R' ? 'Barbarian — nothing but trouble. Who they strike at, only they know.'
           : 'Rival tribe')
-        : u.kind === 'sapper' ? 'Pick a tool below, then tap a tile — dig a trench (a moat if it touches water), bridge water, or clear a resource. Tap a tile with no tool to walk. Sappers can’t fight — keep them guarded.'
+        : u.kind === 'sapper' ? 'Pick a tool below, then tap or drag a line of tiles — dig trenches (a moat where it touches water) or clear resources, and the sapper works them in order. Bridge spans water. Tool down = tap to walk. Sappers can’t fight — keep them guarded.'
         : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / an orchard to gather, jumping fish 🐟 to fish off the shore, a work site to build, or a tile to walk.'
         : u.kind === 'fishboat' ? 'Tap water where fish jump 🐟 to fish, or open water to row there.'
         : u.kind === 'catapult' ? 'Slow, but stone breaks stone — tap a rival wall, tower, or building to bombard it.'
@@ -937,7 +1005,7 @@ const UI = {
       const stop = panel.querySelector('[data-act="stop"]');
       if (stop) stop.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
-        if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; }
+        if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; u2.jobs = null; }   // drop any queued sapper line too
         this.terraMode = null;   // downing tools stops the terraform tool too
         this.renderPanel();
       });
@@ -949,9 +1017,9 @@ const UI = {
         if (tier < minTier) { this.toast(`Needs a Sappers’ Camp Lv ${minTier}`, true); return; }
         this.terraMode = this.terraMode === job ? null : job;   // toggle the tool
         this.toast(this.terraMode
-          ? (job === 'dig' ? 'Dig tool — tap open ground (a moat forms beside water)'
+          ? (job === 'dig' ? 'Dig tool — tap or drag a line of ground (a moat forms beside water)'
             : job === 'bridge' ? 'Bridge tool — tap water or a moat to span it'
-            : 'Clear tool — tap forest 🌲 / rock 🪨 / orchard to breach it')
+            : 'Clear tool — tap or drag across forest 🌲 / rock 🪨 / orchard')
           : 'Tool down — tap a tile to walk');
         this.renderPanel();
       }));
