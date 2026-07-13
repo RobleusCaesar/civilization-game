@@ -36,20 +36,25 @@ const R = {
     const h = (x * 73856093 ^ y * 19349663) >>> 0;
     const variants = Sprites.terrain[t];
     let img;
+    // a sapper MOAT is just water filling a ditch — it renders exactly like the
+    // lake (same blue, same shore treatment) so a dug channel reads as one body
+    // of water with no per-tile seams
+    const wet = v => v === T.WATER || v === T.MOAT;
     if (t === T.GRASS && h % 31 === 0)
       img = Sprites.terrainRare[T.GRASS][h % Sprites.terrainRare[T.GRASS].length];   // rare flower meadow
-    else if (t === T.WATER) {
-      const shore = at(x + 1, y) !== T.WATER || at(x - 1, y) !== T.WATER ||
-                    at(x, y + 1) !== T.WATER || at(x, y - 1) !== T.WATER;
-      img = variants[shore ? 0 : 1];                    // lighter shallows, darker interior
+    else if (wet(t)) {
+      const shore = !wet(at(x + 1, y)) || !wet(at(x - 1, y)) ||
+                    !wet(at(x, y + 1)) || !wet(at(x, y - 1));
+      img = Sprites.terrain[T.WATER][shore ? 0 : 1];    // lighter shallows, darker interior
     } else img = variants[(x * 7 + y * 13) % variants.length];
     g.drawImage(img, x * TL, y * TL);
 
-    if (t === T.WATER) {
-      // wet-sand rim + pale foam line along every land-facing edge
+    if (wet(t)) {
+      // wet-sand rim + pale foam line along every LAND-facing edge (never between
+      // water and a moat, or between two moats — those blend seamlessly)
       for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const tt = at(x + ox, y + oy);
-        if (tt === T.WATER) continue;
+        if (wet(tt)) continue;
         const band = (col, off) => {
           g.fillStyle = col;
           if (ox === 1) g.fillRect(x * TL + TL - (off + 1) * px, y * TL, px, TL);
@@ -645,9 +650,10 @@ const R = {
       const x0 = Math.max(0, (this.cam.x / TL) | 0), y0 = Math.max(0, (this.cam.y / TL) | 0);
       const x1 = Math.min(CFG.W - 1, ((this.cam.x + this.viewW() / this.cam.z) / TL) | 0);
       const y1 = Math.min(CFG.H - 1, ((this.cam.y + this.viewH() / this.cam.z) / TL) | 0);
+      const wet = v => v === T.WATER || v === T.MOAT;   // moats animate like the lake
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
         const i = MapGen.idx(x, y);
-        if (terr[i] !== T.WATER) continue;
+        if (!wet(terr[i])) continue;
         if (!G.visibleAt(x, y)) continue;
         const h = (x * 73856093 ^ y * 19349663) >>> 0;
         if (h % 3 === 0) {                                  // slow drifting sparkle dash
@@ -657,10 +663,10 @@ const R = {
           g.fillStyle = 'rgba(190,224,238,0.45)';
           g.fillRect(sx | 0, sy | 0, 5, 2);
         }
-        const landN = terr[MapGen.idx(x, Math.max(0, y - 1))] !== T.WATER;
-        const landS = y + 1 < CFG.H && terr[MapGen.idx(x, y + 1)] !== T.WATER;
-        const landW = terr[MapGen.idx(Math.max(0, x - 1), y)] !== T.WATER;
-        const landE = x + 1 < CFG.W && terr[MapGen.idx(x + 1, y)] !== T.WATER;
+        const landN = !wet(terr[MapGen.idx(x, Math.max(0, y - 1))]);
+        const landS = y + 1 < CFG.H && !wet(terr[MapGen.idx(x, y + 1)]);
+        const landW = !wet(terr[MapGen.idx(Math.max(0, x - 1), y)]);
+        const landE = x + 1 < CFG.W && !wet(terr[MapGen.idx(x + 1, y)]);
         if (landN || landS || landW || landE) {             // blinking foam dots on the shore side
           const a = 0.22 + 0.2 * Math.sin(t0 * 1.7 + (h % 7));
           g.fillStyle = 'rgba(235,244,248,' + Math.max(0, a).toFixed(2) + ')';
