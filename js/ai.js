@@ -833,6 +833,16 @@ const AI = {
     // dock (naval)
     if (tc.level >= P.dockTC && !have.dock) add(pl.win === 'naval' ? 55 : 14, () => this._buildDock());
 
+    // sappers' camp — the terraforming corps. A turtling/threatened chief moats
+    // its approaches; a wall-persona especially loves it (layers with walls).
+    if (tc.level >= 2 && !have.sapper) {
+      const nearWater = S.buildings.some(b => b.owner === 'A' && b.key === 'dock') ||
+        (read.homeGapCount > 0);   // cheap proxy; the dig routine checks real water adjacency
+      add(8 + (P.walls ? 24 : 0) + (post === 'DEFEND' ? 22 : 0) + (read.underThreat ? 14 : 0) +
+          (read.homeExposed > 4 ? 10 : 0) + (nearWater ? 4 : 0),
+        () => this.tryBuild('sapper'));
+    }
+
     // houses (AI ignores pop cap — just a lived-in look)
     add(9 + (post === 'EXPAND' ? 5 : 0) - (have.house || 0) * 2, () => this.tryBuild('house'));
 
@@ -911,6 +921,13 @@ const AI = {
         }
       }
     }
+    // keep a sapper or two if the camp is up — the terraforming crew
+    const camp = S.buildings.find(b => b.owner === 'A' && b.key === 'sapper' && Bld.done(b) && !b.upgrading && b.queue.length === 0);
+    if (camp) {
+      const have = Units.count('A', u => u.kind === 'sapper');
+      const want = (this.persona().walls || ai.posture === 'DEFEND') ? 2 : 1;
+      if (have < want && this.affordFree(CFG.BUILDINGS.sapper.train.sapper.cost)) Bld.train(camp, 'sapper');
+    }
     const dock = S.buildings.find(b => b.owner === 'A' && b.key === 'dock' && Bld.done(b));
     if (dock && !dock.upgrading && dock.queue.length === 0) {
       const boats = Units.count('A', u => u.kind === 'fishboat');
@@ -921,6 +938,47 @@ const AI = {
                this.affordFree(CFG.BUILDINGS.dock.train.warship.cost))
         Bld.train(dock, dock.level >= 3 && ai.res.gold >= 45 ? 'fireship' : 'warship');
     }
+  },
+
+  /* SAPPER employment — the rival terraforms too. DEFENSIVELY: a threatened or
+     turtling chief digs its perimeter seams into MOATS where they touch water
+     (layering with towers/walls), so approaches flood shut. Its sappers work
+     near home under the town guard; the reachability clamp keeps it from sealing
+     itself in. Offensive breaching/bridging is a later extension. Scaled by
+     creativity so a Hard rival moats cleverly and a Calm one sparingly. */
+  terraform(read) {
+    if (!window.Terraform) return;
+    const ai = S.ai, tc = Bld.tcOf('A'); if (!tc) return;
+    if (Units.sapperTier('A') < 1) return;
+    const idle = S.units.find(u => u.owner === 'A' && u.kind === 'sapper' && (!u.task || u.task.type === 'move'));
+    if (!idle) return;
+    const P = this.persona();
+    const defensive = ai.posture === 'DEFEND' || P.walls || read.underThreat || read.homeExposed > 3;
+    if (!defensive) return;
+    // Calm chiefs terraform sparingly; craft rises with creativity/difficulty
+    if (G.rand() > 0.35 + 0.6 * this.creativity()) return;
+    const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0, ptc = this.knownPlayerTC();
+    const dryOK = P.walls || ai.posture === 'DEFEND';   // only turtles bother with dry trenches
+    // scan a defensive BAND around town for the best dig — a water-adjacent tile
+    // (floods to a moat) beats a dry trench, the player-facing side beats the
+    // rear, and the clamp keeps us from sealing ourselves in. Walls sit ON the
+    // seams, so the moat layer forms just outside them.
+    const cand = [];
+    for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
+      const d = Math.hypot(dx, dy); if (d < 2.5 || d > 6) continue;
+      const x = cx + dx, y = cy + dy;
+      if (!Terraform.isDiggable(x, y)) continue;
+      const water = Terraform.waterAdj(x, y);
+      if (!water && !dryOK) continue;
+      if (Terraform.digWouldSeal(x, y)) continue;
+      let s = (water ? 6 : 1) - Math.abs(d - 4) * 0.3;
+      if (ptc && (dx * (ptc.x - cx) + dy * (ptc.y - cy)) > 0) s += 2;   // moat the threatened flank
+      s += G.rand() * 0.5;
+      cand.push({ x, y, s });
+    }
+    cand.sort((a, b) => b.s - a.s);
+    for (let k = 0; k < Math.min(6, cand.length); k++)
+      if (Units.assignTerraform(idle, cand[k].x, cand[k].y)) return;
   },
 
   // debug overlay (window.DEBUG_AI = true): a compact dump of the world read,
@@ -1039,6 +1097,7 @@ const AI = {
     const didSafety = this.digAndProtect(read);
     if (!didSafety && S.day % (m.aiBuildEvery || 2) === 0) this.bestBuild(read);
     this.trainForces(m, read);
+    this.terraform(read);   // SAPPERS: dig defensive moats on the perimeter seams
 
     /* ---- townsfolk: a living village. A few villagers walk the lanes,
        staffing the town in spirit — killable, worth raiding, and slowly
