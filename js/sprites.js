@@ -694,19 +694,37 @@ const Sprites = {
       for (let fx = 1; fx < 22; fx += 5) { q(fx, 27, 1, 2, AP.wood[2]); q(fx, 27, 4, 1, AP.wood[1]); }
       if (d.banner) banner(p, 13, 0, fac);
     },
+    // a timber jetty raised on pilings over a boat slip, joined to a sandy shore.
+    // Drawn on a TRANSPARENT ground (like the other buildings) so the real water
+    // and shore show around it in-game — and so the menu icon has no blue tile
+    // clashing with the rest. Fine detail (planks, rails, rope, boat) on the q-grid.
     dock(p, lv, fac) {
-      const d = ART.tierDress(lv);
-      p(0, 0, 16, 16, AP.water[2]);                                 // open water beneath
-      p(2, 1, 3, 3, AP.water[3]); p(11, 11, 3, 2, AP.water[3]);     // ripples
-      p(3, 12, 1, 3, AP.wood[1]); p(12, 12, 1, 3, AP.wood[1]);      // pilings
-      p(6, 13, 1, 2, AP.wood[1]); p(9, 13, 1, 2, AP.wood[1]);
-      ART.woodPlankTexture(p, 2, 6, 12, 6, 23);                     // deck
-      p(6, 2, 4, 4, AP.wood[2]); p(6, 2, 4, 1, AP.wood[3]);         // walkway to shore
-      if (d.decor >= 1) {
-        ART.shadedRect(p, 3, 3, 3, 3, AP.thatch, 2);                // crates of catch
-        p(11, 3, 2, 3, AP.wood[2]); p(11, 2, 2, 1, AP.stone[3]);    // mooring post
+      const d = ART.tierDress(lv), q = p.hi, W = AP.water, WD = AP.wood, SD = AP.bone;
+      // --- the boat slip: a compact patch of water the pier stands over ---
+      p(3, 7, 12, 8, W[2]); p(3, 12, 12, 3, W[1]);                  // slip, deeper toward the front
+      q(6, 15, 24, 1, W[0]);                                        // dark far lip
+      q(8, 26, 4, 1, W[4]); q(20, 23, 3, 1, W[3]); q(24, 28, 3, 1, W[4]);   // foam + drifting ripples
+      // --- sandy shore footing on the left, where the pier joins land ---
+      p(0, 4, 3, 8, SD[2]); p(0, 4, 3, 1, AP.grass[2]); p(0, 3, 2, 1, AP.grass[3]);
+      p(0, 11, 3, 1, SD[1]); q(0, 24, 6, 1, W[4]);                  // wet-sand waterline + foam
+      { const r = ART.rng(23); for (let i = 0; i < 6; i++) q((r() * 6) | 0, 9 + (r() * 6 | 0), 1, 1, r() < 0.5 ? SD[0] : SD[2]); }
+      // --- pilings driven into the slip (dark posts, lit collar, shadow on the water) ---
+      for (const px of [5, 9, 13]) { p(px, 10, 1, 5, WD[0]); q(px * 2, 19, 2, 1, WD[3]); q(px * 2 + 1, 29, 2, 1, W[0]); }
+      // --- the plank deck: a jetty running from the shore out over the slip ---
+      ART.woodPlankTexture(p, 2, 6, 12, 4, 23);                     // deck boards, rows 6–9
+      p(2, 6, 12, 1, WD[3]);                                        // sunlit front edge
+      for (let bx = 4; bx <= 12; bx += 2) q(bx * 2, 13, 1, 6, WD[1]);   // seams between the cross-boards
+      // rail along the seaward edge: posts + a top rail
+      for (let rx = 3; rx <= 13; rx += 3) q(rx * 2, 8, 1, 4, WD[3]);
+      q(6, 8, 22, 1, WD[3]);
+      // mooring bollard with a looped rope at the deck's end
+      q(27, 13, 2, 4, WD[2]); q(27, 12, 2, 1, AP.stone[3]); q(24, 15, 3, 1, AP.thatch[1]);
+      if (d.decor >= 1) ART.shadedRect(p, 4, 6, 2, 2, AP.thatch, 2);        // a crate of catch on the deck
+      if (d.decor >= 2) {                                                   // a rowboat moored in the slip
+        ART.shadedRect(p, 9, 11, 4, 2, AP.hide, 1);
+        q(18, 23, 8, 1, AP.hide[3]); q(19, 26, 6, 1, WD[2]); q(24, 21, 1, 3, WD[2]);   // gunwale, thwart, oar
       }
-      if (d.decor >= 2) { banner(p, 13, 0, fac); p(2, 12, 2, 1, AP.gold[2]); }
+      if (d.banner) banner(q, 3, 3, fac);                          // faction pennant on the shore post
     },
     // siege workshop: an open work-yard where a catapult takes shape beside the hut
     siege(p, lv, fac) {
@@ -766,7 +784,7 @@ const Sprites = {
   };
   // build the player (blue) set and a rival (red) set; full-tile and
   // auto-tiling sprites skip the outline pass so they keep tiling seamlessly
-  const NO_OUTLINE = new Set(['farm', 'quarry', 'dock', 'wall', 'gate']);
+  const NO_OUTLINE = new Set(['farm', 'quarry', 'wall', 'gate']);
   Sprites.buildingA = {};
   // walls & gates stay full-tile (32px) so they auto-tile seamlessly; every
   // other building is drawn at HIGH RES (64px) with a proportional 2px outline
