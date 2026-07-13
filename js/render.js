@@ -118,11 +118,15 @@ const R = {
     this.drawTileAt(x, y);
     // a tile's edge art (trench/ditch walls, water foam, biome blends) is computed
     // from its 4 neighbours, so a change here can leave a stale seam on each of
-    // them (e.g. a ditch wall that should vanish once the next tile is dug).
-    // Repaint the visible neighbours so those edges re-evaluate against the change.
+    // them (e.g. a ditch wall that should vanish once the next tile is dug, or a
+    // foam rim between two moat tiles). Repaint every EXPLORED neighbour — gating on
+    // current visibility left seams on tiles that were dug next to an already-fogged
+    // neighbour (the moat "squares" that only a reload rebuild cleared). The cache
+    // holds remembered terrain and fog is a separate overlay, so baking a fogged-
+    // but-seen neighbour is safe and correct.
     for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const nx = x + ox, ny = y + oy;
-      if (MapGen.inB(nx, ny) && G.visibleAt(nx, ny)) this.drawTileAt(nx, ny);
+      if (MapGen.inB(nx, ny) && S.map.explored[MapGen.idx(nx, ny)]) this.drawTileAt(nx, ny);
     }
   },
   drawTileAt(x, y) {

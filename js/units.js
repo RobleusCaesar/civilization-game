@@ -325,6 +325,12 @@ const Units = {
   followPath(u, dt) {
     if (!u.path || u.pathI >= u.path.length) return true;
     const wp = u.path[u.pathI];
+    // the ground can change under a walking unit — a sapper digs a moat straight
+    // across its route. A precomputed path isn't re-planned, so without this a
+    // unit strides onto open water. If the next step is no longer passable (and
+    // isn't a bridged crossing, which Path.passable allows), drop the stale path
+    // so the unit re-plans from where it stands instead of walking on the water.
+    if (!Path.passable(wp.x, wp.y, u.owner)) { u.path = null; u.pathI = 0; return true; }
     const tx = wp.x + 0.5, ty = wp.y + 0.5;
     const dx = tx - u.x, dy = ty - u.y;
     const d = Math.hypot(dx, dy);
