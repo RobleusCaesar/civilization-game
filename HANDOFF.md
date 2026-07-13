@@ -389,6 +389,54 @@ identity distinct from the red rival; hostiles never materialize on shores,
 inside walls, or near player buildings; menu stays compact with setup fixed
 mid-game.
 
+## Sappers — the terraforming corps
+
+A **Sappers' Camp** (`CFG.BUILDINGS.sapper`, reqTC 2, 3 levels) trains **Sapper**
+units (`CFG.UNITS.sapper`, `sapper:true`) — a distinct engineer type: lightly
+defended, `aggro 0` (never fights back), so it must be **protected while it works**.
+The camp's level gates the tiers. Tuning lives in `CFG.TERRAFORM` (dig 5s, bridge
+6s, clear 4s, bridgeHp 200, clearYield 0 — clearing is demolition, not harvest,
+and far faster than gathering a node out).
+
+**How it works (files):**
+- **Terrain surgery** — `Terraform` (end of `js/map.js`). `dig()` → `TRENCH`
+  (id 11, blocks land); `floodMoats()` floods any trench connected to water into a
+  `MOAT` (id 12) and cascades down the channel (moats block land *and* boats);
+  `clear()` reverts a resource tile to grass to open a route; `digWouldSeal()` is
+  the reachability **clamp** (a dig that would pen a town in is refused; water-adjacent
+  tiles become bridgeable moats and are always allowed). `BLOCK_TERR` gains
+  TRENCH/MOAT; `Path.passable` treats them as impassable to land.
+- **Bridges** — `Bld.buildBridge/bridgeAt/damageBridge/removeBridge`
+  (`js/buildings.js`). A bridge over water/moat sets `S.map.bridge[i]=1`; `Path.passable`
+  makes that tile land-crossable while the span stands. HP'd + attackable →
+  `removeBridge` re-severs it. Stored in `S.bridges`; rendered per-frame in
+  `render.js` (faction plank deck + damage bar). Pathfinding is per-request, so
+  edits are live with a single-tile repaint (`R.updateTile`) — no cache thrash.
+- **Orders** — `Units.assignTerraform` / `terraformJob` / `sapperTier`
+  (`js/units.js`); a `terraform` task type works the tile from the adjacent edge
+  (reuses gather-adjacency). Player: tap a tile with a sapper selected (`js/ui.js`).
+- **Rival** — `AI.terraform()` (`js/ai.js`) builds the camp, trains sappers, and
+  digs a **defensive moat/trench layer** (posture/persona-gated, creativity-scaled,
+  clamp-checked). See RIVAL_AI.md.
+- **Saves:** `S.bridges` + `S.map.bridge` persist; pre-sapper saves default to
+  empty and rebuild the mirror on load (`G.loadJSON`). New terrain ids/kinds simply
+  don't appear in legacy games.
+
+**Shipped:** phases 1 (building+unit), 2 (trenches/moats/clearing + clamp),
+3 (bridges), 5-partial (rival **defensive** moating). Each pushed to `main`,
+Pages green.
+
+**Follow-ups (NOT yet done):**
+- **Enemy combat-targeting** of exposed player **Sappers** and **bridges** as
+  high-value objectives (Combat currently targets units/buildings, not bridges).
+  `Bld.damageBridge` exists; wire an attack path to it.
+- **Offensive AI terraforming** — Tier-3 **clearing** to breach the player's
+  resource/chokepoint walls for a surprise lane, and Tier-2 **bridges** for
+  amphibious/flanking assaults on water maps (Mariner). `AI.terraform` only does
+  defence today; extend with an offensive branch keyed off `playerLanes()` + read.
+- **Escort behaviour** for the rival's working sappers (they dig near home under
+  the town guard today; explicit escorts would let them work forward).
+
 ## Backlog ideas (discussed or natural next steps — NOT committed to)
 
 - Destructible barbarian camps ("raze the camp to stop that spawn point") —
