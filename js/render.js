@@ -65,6 +65,33 @@ const R = {
         band(AP.bone[2], 0);
         band(AP.water[4], 1);
       }
+    } else if (t === T.TRENCH) {
+      // scattered clods of overturned soil, placed from the tile's own map hash so
+      // no two ditch tiles share a pattern — a wide floor never shows a grid
+      let hh = h;
+      for (let k = 0; k < 5; k++) {
+        hh = (hh * 1103515245 + 12345) >>> 0;
+        g.fillStyle = (hh & 1) ? AP.ink[0] : AP.soil[1];
+        g.fillRect(x * TL + (1 + (hh >> 4) % 13) * px, y * TL + (1 + (hh >> 12) % 13) * px, px, px);
+      }
+      // dry ditch: raise a sloped earth wall only on edges facing solid ground, so
+      // a dug line of tiles merges into ONE continuous channel (no per-tile borders
+      // between neighbouring ditches). Near walls (N/W) catch light and far walls
+      // (S/E) drop into shadow, so the uniform floor reads as a sunken divot.
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const tt = at(x + ox, y + oy);
+        if (tt === T.TRENCH || tt === T.MOAT) continue;   // same channel — floor runs straight through
+        const band = (col, off) => {
+          g.fillStyle = col;
+          if (ox === 1) g.fillRect(x * TL + TL - (off + 1) * px, y * TL, px, TL);
+          else if (ox === -1) g.fillRect(x * TL + off * px, y * TL, px, TL);
+          else if (oy === 1) g.fillRect(x * TL, y * TL + TL - (off + 1) * px, TL, px);
+          else g.fillRect(x * TL, y * TL + off * px, TL, px);
+        };
+        const lit = ox === -1 || oy === -1;               // top & left walls face the light
+        band(lit ? AP.soil[3] : AP.soil[1], 0);           // ground-level lip at the rim
+        band(lit ? AP.soil[2] : AP.ink[0], 1);            // slope wall dropping toward the floor
+      }
     } else if (Sprites.blendCol[t]) {
       // dithered checker where a differently-grounded biome touches — no hard seams
       const own = Sprites.blendCol[t];
@@ -84,11 +111,19 @@ const R = {
     }
   },
 
-  // live terrain changed (depletion, ruins) — only players watching see it
+  // live terrain changed (depletion, ruins, terraforming) — only players watching see it
   updateTile(x, y) {
     if (!G.visibleAt(x, y)) return;   // hidden changes stay hidden until revisited
     S.map.seenTerrain[MapGen.idx(x, y)] = S.map.terrain[MapGen.idx(x, y)];
     this.drawTileAt(x, y);
+    // a tile's edge art (trench/ditch walls, water foam, biome blends) is computed
+    // from its 4 neighbours, so a change here can leave a stale seam on each of
+    // them (e.g. a ditch wall that should vanish once the next tile is dug).
+    // Repaint the visible neighbours so those edges re-evaluate against the change.
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + ox, ny = y + oy;
+      if (MapGen.inB(nx, ny) && G.visibleAt(nx, ny)) this.drawTileAt(nx, ny);
+    }
   },
   drawTileAt(x, y) {
     if (this.terrainCache) this.drawTile(this.terrainCache.getContext('2d'), x, y);

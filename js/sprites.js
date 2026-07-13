@@ -254,14 +254,11 @@ const Sprites = {
   // grass banks; MOAT — the same channel flooded from a water source. Both block
   // land movement (drawn full-tile so a dug line reads as one continuous ditch).
   Sprites.terrain[T.TRENCH] = [
-    tile(p => {
-      grassBase(p, 41);
-      p(2, 2, 12, 12, AP.soil[1]);                                   // dug earth
-      p(3, 3, 10, 10, AP.soil[0]);                                   // shadowed floor
-      p(2, 2, 12, 1, AP.soil[3]); p(2, 2, 1, 12, AP.soil[3]);        // lit near/left rim
-      p(2, 13, 12, 1, AP.ink[0]); p(13, 2, 1, 12, AP.ink[1]);        // deep far/right lip
-      const r = ART.rng(29); for (let i = 0; i < 6; i++) p(3 + (r() * 9 | 0), 3 + (r() * 9 | 0), 1, 1, AP.soil[2]);  // clods
-    }),
+    // flat, uniform dug floor filling the WHOLE tile (edge to edge) so a line of
+    // dug tiles reads as one continuous ditch. Sloped walls (per land-facing edge)
+    // and scattered clods (per-tile from the map hash) are painted in render.js —
+    // baking them here would make every tile identical and print a repeating grid.
+    tile(p => { p(0, 0, 16, 16, AP.soil[0]); }),
   ];
   Sprites.terrain[T.MOAT] = [
     tile(p => {
