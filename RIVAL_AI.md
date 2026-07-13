@@ -108,15 +108,25 @@ shifts smoothly instead of on cliff edges.
   keep a **wall-breaker** (catapult, or a trebuchet at workshop L3) on hand — so a
   PUSH batters the wall with engines while the rest pour through the gap, instead
   of stalling on stone. A capable rival reaches for the tool the matchup needs.
-- **Terraforms its defence (Sappers).** A turtling/threatened or wall-persona chief
-  builds a **Sappers' Camp**, trains sappers, and `AI.terraform()` digs a
-  **defensive moat/trench layer** around its town — flooding a channel into a moat
-  where the perimeter touches water (layering *outside* its walls), trenching the
-  threatened flank where it doesn't. Gated by posture/persona and **scaled by the
-  creativity dial** (Hard moats readily and cleverly; Calm sparingly), and always
-  run through the reachability clamp so it never seals itself in. *Follow-ups (see
-  HANDOFF.md): offensive Tier-3 breaching / Tier-2 bridging for surprise lanes, and
-  targeting the player's exposed sappers and bridges as high-value objectives.*
+- **Terraforms both ways (Sappers).** A chief builds a **Sappers' Camp**, trains
+  sappers (escorted while they work — `AI._escort`), and `AI.terraform()` uses them:
+  - **Defensively** — a turtling/threatened/wall-persona chief digs a **moat/trench
+    layer** around its town: flooding a channel into a moat where the perimeter
+    touches water (layering *outside* its walls), trenching the threatened flank
+    where it doesn't.
+  - **Offensively** — a **PUSH/PRESSURE** chief that has found the player walks the
+    line to their hall and **breaches the first resource wall (tier 3 clear) or
+    bridges the first water (tier 2)** that blocks it, opening a shorter/surprise
+    attack lane the army then routes through (`AI.offensiveBreach`).
+
+  Gated by posture/persona and **scaled by the creativity dial** (Hard terraforms
+  readily and cleverly; Calm sparingly), and always run through the reachability
+  clamp so it never seals itself in.
+- **Hunts sappers and bridges.** A rival raid party treats an exposed player
+  **Sapper** as its juiciest soft target (defenceless, mid-work) — above villagers
+  — and will peel off to **hack down a nearby player bridge** (`u.tBridge`),
+  severing the crossing (`Combat` + `Bld.damageBridge`). The player must escort its
+  sappers and guard its spans.
 - **Coverage-aware towers — cover, don't cluster.** `AI.towerSpot()` scores every
   candidate tile by the **marginal new coverage** it adds over the towers already
   standing: guarding an otherwise-uncovered approach seam scores high, merely

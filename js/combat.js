@@ -81,6 +81,12 @@ const Combat = {
     }
     return best;
   },
+  // an open land tile beside (x,y) to stand on — for hacking down a bridge
+  tileAdjOpen(x, y, owner) {
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+      if (Path.passable(x + ox, y + oy, owner) && !Bld.at(x + ox, y + oy)) return { x: x + ox, y: y + oy };
+    return null;
+  },
   nearestBuilding(x, y, owner, pred) {
     let best = null, bd = 1e9;
     for (const b of S.buildings) {
@@ -178,9 +184,23 @@ const Combat = {
     const foe = this.nearestUnit(u.x, u.y, 5, o => this.hostileUnits(u, o) &&
       (Units.isMilitary(o) || (o.owner === 'R' && !Units.isTransport(o))) && this.canEngage(u, o));
     if (foe) { u.tUnit = foe.id; return; }
-    // 2) soft targets on the way — isolated villagers first, then undefended workplaces
+    // 2) soft targets on the way — an enemy SAPPER (defenceless, mid-work, high
+    //    value) is the juiciest, then isolated villagers, then undefended workplaces
+    const sap = this.nearestUnit(u.x, u.y, 8, o => o.owner === 'P' && Units.isSapper(o) && this.canEngage(u, o));
+    if (sap) { u.tUnit = sap.id; return; }
     const soft = this.nearestUnit(u.x, u.y, 7, o => o.owner === 'P' && Units.isVillager(o) && this.canEngage(u, o));
     if (soft) { u.tUnit = soft.id; return; }
+    // a player BRIDGE within reach — cutting the crossing severs an expansion or
+    // flanking route. Only worth it if we can actually stand beside it.
+    if (S.bridges && S.bridges.length) {
+      let bb = null, bd = 6;
+      for (const br of S.bridges) {
+        if (br.owner !== 'P') continue;
+        const dd = Math.hypot(br.x + 0.5 - u.x, br.y + 0.5 - u.y);
+        if (dd < bd && this.tileAdjOpen(br.x, br.y, u.owner)) { bd = dd; bb = br; }
+      }
+      if (bb) { u.tBridge = { x: bb.x, y: bb.y }; u.tUnit = 0; u.tBld = 0; return; }
+    }
     const econ = this.nearestBuilding(u.x, u.y, 'P',
       bb => bb.key !== 'tc' && Bld.def(bb.key).needsWorker && Bld.done(bb));
     if (econ && Math.hypot(Bld.cx(econ) - u.x, Bld.cy(econ) - u.y) < 7) {
@@ -361,6 +381,27 @@ const Combat = {
               this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: Bld.cx(b), y2: Bld.cy(b), t: 0.15, fire: !!CFG.UNITS[u.kind].fire });
             this.hitBuilding(b, dmg, !!CFG.UNITS[u.kind].fire);
           }
+        }
+        continue;
+      }
+
+      if (u.tBridge) {
+        // sever a crossing: walk beside the bridge tile and hack it down
+        const br = Bld.bridgeAt ? Bld.bridgeAt(u.tBridge.x, u.tBridge.y) : null;
+        if (!br) { u.tBridge = null; continue; }
+        const foe = this.nearestUnit(u.x, u.y, 2.2, o => this.hostileUnits(u, o) && Units.isMilitary(o) && this.canEngage(u, o));
+        if (foe) { u.tUnit = foe.id; continue; }
+        const bx = br.x + 0.5, by = br.y + 0.5, d = Math.hypot(bx - u.x, by - u.y);
+        const reach = Math.max(1.3, CFG.UNITS[u.kind].rng || 0);
+        if (d > reach) {
+          if (u.repathT <= 0) { u.repathT = 0.8; const s = this.tileAdjOpen(br.x, br.y, u.owner); if (s) Units.setPath(u, s.x, s.y); else { u.tBridge = null; continue; } }
+          Units.followPath(u, dt);
+        } else if (u.cd <= 0) {
+          u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
+          const dmg = CFG.UNITS[u.kind].bldAtk || Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
+          if (CFG.UNITS[u.kind].rng) this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: bx, y2: by, t: 0.15, fire: !!CFG.UNITS[u.kind].fire });
+          R.float(bx, by - 0.3, '-' + dmg, '#e8d2a0');
+          Bld.damageBridge(br, dmg);   // removes the span (and re-severs the crossing) at 0 hp
         }
       }
     }

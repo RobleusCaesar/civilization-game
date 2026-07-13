@@ -940,12 +940,41 @@ const AI = {
     }
   },
 
-  /* SAPPER employment — the rival terraforms too. DEFENSIVELY: a threatened or
-     turtling chief digs its perimeter seams into MOATS where they touch water
-     (layering with towers/walls), so approaches flood shut. Its sappers work
-     near home under the town guard; the reachability clamp keeps it from sealing
-     itself in. Offensive breaching/bridging is a later extension. Scaled by
-     creativity so a Hard rival moats cleverly and a Calm one sparingly. */
+  // send an idle nearby soldier to guard a working sapper (they don't fight back)
+  _escort(sapper) {
+    if (!sapper.task) return;
+    const gx = sapper.task.sx, gy = sapper.task.sy;
+    const guard = S.units.find(u => u.owner === 'A' && Units.isMilitary(u) && !Units.isNaval(u) &&
+      u.kind !== 'siegetower' && !u.tUnit && !u.tBld &&
+      !(u.task && (u.task.type === 'raid' || u.task.type === 'attack')) &&
+      Math.hypot(u.x - sapper.x, u.y - sapper.y) < 16);
+    if (guard) { guard.task = { type: 'move', x: gx, y: gy }; guard.anchor = { x: gx + 0.5, y: gy + 0.5 }; Units.setPath(guard, gx, gy); }
+  },
+
+  /* OFFENSIVE breach — walk the line from our hall toward the player's and clear
+     the first resource wall (tier 3) or bridge the first water (tier 2) that
+     blocks it, opening a shorter/surprise attack lane the army then routes
+     through. The sapper is escorted (it can't defend itself). */
+  offensiveBreach(idle, read) {
+    const atc = Bld.tcOf('A'), ptc = read.knownTC; if (!atc || !ptc) return false;
+    const tier = Units.sapperTier('A');
+    const dx = ptc.x - atc.x, dy = ptc.y - atc.y, len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    for (let s = 3; s < len - 2; s++) {
+      const x = Math.round(atc.x + ux * s), y = Math.round(atc.y + uy * s);
+      if (!MapGen.inB(x, y)) continue;
+      if (tier >= 3 && Terraform.isClearable(x, y) && Units.assignTerraform(idle, x, y)) { this._escort(idle); return true; }
+      if (tier >= 2 && Terraform.bridgeable(x, y) && !Bld.bridgeAt(x, y) && Units.assignTerraform(idle, x, y)) { this._escort(idle); return true; }
+    }
+    return false;
+  },
+
+  /* SAPPER employment — the rival terraforms too. DEFENSIVELY a threatened or
+     turtling chief moats its perimeter seams (layering with towers/walls);
+     OFFENSIVELY a pusher breaches a resource wall or bridges water to open a lane
+     to the player. Its sappers are escorted and the reachability clamp keeps it
+     from sealing itself in. Scaled by the creativity dial (Hard terraforms
+     cleverly, Calm sparingly). */
   terraform(read) {
     if (!window.Terraform) return;
     const ai = S.ai, tc = Bld.tcOf('A'); if (!tc) return;
@@ -953,6 +982,10 @@ const AI = {
     const idle = S.units.find(u => u.owner === 'A' && u.kind === 'sapper' && (!u.task || u.task.type === 'move'));
     if (!idle) return;
     const P = this.persona();
+    // OFFENSIVE first when pushing and we've found the player — open a lane in
+    if ((ai.posture === 'PUSH' || ai.posture === 'PRESSURE') && read.knownTC &&
+        Units.sapperTier('A') >= 2 && G.rand() < 0.55 * this.creativity() &&
+        this.offensiveBreach(idle, read)) return;
     const defensive = ai.posture === 'DEFEND' || P.walls || read.underThreat || read.homeExposed > 3;
     if (!defensive) return;
     // Calm chiefs terraform sparingly; craft rises with creativity/difficulty
@@ -978,7 +1011,7 @@ const AI = {
     }
     cand.sort((a, b) => b.s - a.s);
     for (let k = 0; k < Math.min(6, cand.length); k++)
-      if (Units.assignTerraform(idle, cand[k].x, cand[k].y)) return;
+      if (Units.assignTerraform(idle, cand[k].x, cand[k].y)) { this._escort(idle); return; }
   },
 
   // debug overlay (window.DEBUG_AI = true): a compact dump of the world read,
@@ -1162,7 +1195,7 @@ const AI = {
         for (const k in mem.laneDef) mem.laneDef[k] = Math.max(0, mem.laneDef[k] - 0.15);   // slow decay
         for (const u of raiders) {
           u.task = { type: 'move', x: tc.x, y: tc.y + 2 };
-          u.tUnit = 0; u.tBld = 0; u.probe = false; u.raidObj = null;
+          u.tUnit = 0; u.tBld = 0; u.tBridge = null; u.probe = false; u.raidObj = null;
           u.anchor = { x: tc.x + 0.5, y: tc.y + 2.5 };
           Units.setPath(u, tc.x, tc.y + 2);
         }

@@ -423,19 +423,25 @@ and far faster than gathering a node out).
   don't appear in legacy games.
 
 **Shipped:** phases 1 (building+unit), 2 (trenches/moats/clearing + clamp),
-3 (bridges), 5-partial (rival **defensive** moating). Each pushed to `main`,
-Pages green.
+3 (bridges), 5 (rival **defensive** moating), 6 (enemy combat-targeting of
+sappers + bridges), 7 (rival **offensive** breach/bridge + sapper escorts). Each
+pushed to `main`, Pages green.
 
-**Follow-ups (NOT yet done):**
-- **Enemy combat-targeting** of exposed player **Sappers** and **bridges** as
-  high-value objectives (Combat currently targets units/buildings, not bridges).
-  `Bld.damageBridge` exists; wire an attack path to it.
-- **Offensive AI terraforming** — Tier-3 **clearing** to breach the player's
-  resource/chokepoint walls for a surprise lane, and Tier-2 **bridges** for
-  amphibious/flanking assaults on water maps (Mariner). `AI.terraform` only does
-  defence today; extend with an offensive branch keyed off `playerLanes()` + read.
-- **Escort behaviour** for the rival's working sappers (they dig near home under
-  the town guard today; explicit escorts would let them work forward).
+- **Enemy combat-targeting** — `Combat.aiRaidSeek` targets an exposed player
+  **Sapper** as the top soft target (above villagers) and peels off to hack down a
+  nearby player **bridge** via `u.tBridge` (new attack branch in `Combat.update`
+  → `Bld.damageBridge`; destruction re-severs the crossing live).
+- **Offensive AI terraforming** — `AI.offensiveBreach` walks the AI→player line and
+  clears the first resource wall (tier 3) or bridges the first water (tier 2) that
+  blocks it; wired into `AI.terraform` for PUSH/PRESSURE, creativity-gated.
+- **Escorts** — `AI._escort` sends a nearby idle soldier to guard a working sapper.
+
+**Possible further polish (NOT done):** coordinating the breach with the timing of
+the raid party (the sapper breaches independently today); rival **bridging for a
+genuine amphibious landing** (it bridges water on the direct line, but doesn't yet
+plan a sea-flank on island maps); player UI affordance to explicitly order an
+attack on an enemy bridge (today a raid/attack near it will engage it via AI, and
+the player can attack across it, but there's no dedicated "attack bridge" tap).
 
 ## Backlog ideas (discussed or natural next steps — NOT committed to)
 
