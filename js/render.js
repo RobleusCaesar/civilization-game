@@ -922,3 +922,8 @@ const R = {
       this.viewW() / this.cam.z / TL * 2, this.viewH() / this.cam.z / TL * 2);
   },
 };
+// classic-script top-level `const` bindings are NOT global-object properties,
+// so map.js / buildings.js / assets.js guards like `if (window.R && ...)` were
+// silently false — terrain never repainted after a dig, flood, clear or bridge.
+// Mirror R onto window (as game.js does for S) so those guards fire.
+window.R = R;
