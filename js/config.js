@@ -315,8 +315,17 @@ const CFG = {
     dig: 5,          // dig a trench tile
     bridge: 6,       // raise a bridge over water
     clear: 4,        // breach a resource tile → open grass (demolition, not gathering)
-    bridgeHp: 200,   // bridge structure HP (attackable — protect your crossings)
     clearYield: 0,   // resource returned when clearing (0 = mobility tool, not an economy exploit)
+  },
+  /* BRIDGES — a sapper raises a level-1 timber crossing; it can then be upgraded
+     to L2/L3 (stone piers, then a stone arch), each stouter and costing a bit
+     MORE than the matching tower upgrade. Attackable — protect your crossings. */
+  BRIDGE: {
+    levels: [
+      { hp: 220 },                                              // L1 timber (sapper-built)
+      { hp: 480, cost: { wood: 120, stone: 140, gold: 15 } },   // L2 stone piers
+      { hp: 900, cost: { wood: 240, stone: 300, gold: 35 } },   // L3 stone arch
+    ],
   },
 
   MEAT_DROP: 10,               // food gained when a wild animal is killed

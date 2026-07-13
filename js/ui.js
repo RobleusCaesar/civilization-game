@@ -314,6 +314,7 @@ const UI = {
       if (dd < hd) { hd = dd; hitUnit = u; }
     }
     const hitBld = G.visibleAt(tile.x, tile.y) ? Bld.at(tile.x, tile.y) : null;
+    const hitBridge = (explored && Bld.bridgeAt) ? Bld.bridgeAt(tile.x, tile.y) : null;
 
     // orders for a selected war party
     if (this.sel && this.sel.type === 'group') {
@@ -345,6 +346,11 @@ const UI = {
         this.toast('⚔️ War party attacks ' + Bld.def(hitBld.key).name);
         return;
       }
+      if (hitBridge && hitBridge.owner !== 'P') {
+        for (const id of ids) { const u = Units.get(id); if (u && Units.isMilitary(u)) Units.orderAttackBridge(u, hitBridge); }
+        this.toast('⚔️ War party moves to sever the bridge');
+        return;
+      }
       if (!hitUnit && !hitBld) {
         if (!explored) { this.toast('Unexplored', true); return; }
         Units.groupMove(ids, tile.x, tile.y);
@@ -372,6 +378,11 @@ const UI = {
       if (hitBld && hitBld.owner === 'A' && Units.isMilitary(sel)) {
         Units.orderAttackBuilding(sel, hitBld);
         this.toast('Attacking ' + Bld.def(hitBld.key).name);
+        return;
+      }
+      if (hitBridge && hitBridge.owner !== 'P' && Units.isMilitary(sel)) {
+        Units.orderAttackBridge(sel, hitBridge);
+        this.toast('Moving to sever the bridge');
         return;
       }
       if (hitBld && hitBld.owner === 'P' && Units.isVillager(sel) &&
@@ -436,6 +447,7 @@ const UI = {
     // (re)selection
     if (hitUnit) { this.select('unit', hitUnit.id); return; }
     if (hitBld) { this.select('bld', hitBld.id); return; }
+    if (hitBridge) { this.selectBridge(hitBridge.x, hitBridge.y); return; }
 
     // convenience: tap a resource tile (or a jumping-fish shoal) with nothing
     // selected → send an idle villager
@@ -462,6 +474,11 @@ const UI = {
     this.confirmDemolish = 0;
     this.terraMode = null;      // a fresh selection drops any armed sapper tool
     this.panelHidden = false;   // a fresh selection brings its panel back
+    this.renderPanel();
+  },
+  selectBridge(x, y) {
+    this.sel = { type: 'bridge', x, y };
+    this.builderFor = null; this.confirmDemolish = 0; this.terraMode = null; this.panelHidden = false;
     this.renderPanel();
   },
   deselect() {
@@ -524,6 +541,11 @@ const UI = {
     if (this.sel.type === 'group') {
       const alive = this.sel.ids.filter(id => Units.get(id)).length;
       return alive ? 'g|' + alive : 'gone';
+    }
+    if (this.sel.type === 'bridge') {
+      const br = Bld.bridgeAt(this.sel.x, this.sel.y);
+      if (!br) return 'gone';
+      return ['br', br.owner, br.level, br.hp < br.maxhp, Bld.canUpgradeBridge(br), this.confirmDemolish === 'bridge'].join('|');
     }
     const u = Units.get(this.sel.id);
     if (!u) return 'gone';
@@ -620,6 +642,7 @@ const UI = {
       return sub;
     }
     if (this.sel.type === 'group') return this.groupComposition(this.sel.ids);
+    if (this.sel.type === 'bridge') { const br = Bld.bridgeAt(this.sel.x, this.sel.y); return br ? `HP ${Math.ceil(br.hp)}/${br.maxhp} · a crossing over water` : ''; }
     const u = Units.get(this.sel.id);
     return u ? `HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${u.def}` : '';
   },
@@ -791,6 +814,43 @@ const UI = {
         this.renderPanel();
         this.refreshMenu();
       }));
+    } else if (this.sel.type === 'bridge') {
+      const br = Bld.bridgeAt(this.sel.x, this.sel.y);
+      if (!br) { this.deselect(); return; }
+      const own = br.owner === 'P', lv = br.level || 1;
+      const names = ['Timber Bridge', 'Stone-Pier Bridge', 'Stone Arch Bridge'];
+      html += `<div class="phead"><canvas id="pIcon"></canvas><div>
+        <div class="ptitle">${own ? '' : 'Rival '}${names[lv - 1]} <span style="color:var(--gold)">Lv ${lv}</span></div>
+        <div class="psub">HP ${Math.ceil(br.hp)}/${br.maxhp} · a crossing over water</div></div>
+        <button class="abtn" id="panelClose">✕</button></div>
+        <div class="pactions"><span class="psub">${own ? 'Reinforce for more stone and HP, or demolish to sever the crossing. Guard it — the enemy can hack it down.' : 'A rival crossing. Send soldiers here to sever it.'}</span>`;
+      if (own && lv < 3) {
+        const cost = CFG.BRIDGE.levels[lv].cost, ok = Bld.canUpgradeBridge(br);
+        html += `<button class="abtn wide ${ok ? '' : 'cant'}" data-act="brup">⬆ Reinforce to Lv ${lv + 1}<small>${Bld.costStr(cost)}${ok ? '' : ' — need resources'}</small></button>`;
+      }
+      if (own) html += `<button class="abtn ${this.confirmDemolish === 'bridge' ? 'danger' : ''}" data-act="brdemo">💥 ${this.confirmDemolish === 'bridge' ? 'Confirm — sever it' : 'Demolish'}</button>`;
+      html += '</div>';
+      panel.innerHTML = html;
+      const ic = panel.querySelector('#pIcon');
+      if (ic) { ic.width = ic.height = 44; const g2 = ic.getContext('2d'); g2.imageSmoothingEnabled = false;
+        g2.fillStyle = lv >= 3 ? '#8f8f86' : '#6e5024'; g2.fillRect(4, 15, 36, 14);
+        g2.fillStyle = lv >= 3 ? '#adada2' : '#8a6b3a'; g2.fillRect(4, 15, 36, 3);
+        if (lv >= 2) { g2.fillStyle = '#6f6f66'; g2.fillRect(4, 14, 5, 16); g2.fillRect(35, 14, 5, 16); }
+        g2.fillStyle = own ? '#4a90c2' : '#c2564a'; g2.fillRect(4, 13, 36, 2); g2.fillRect(4, 29, 36, 2); }
+      const close = panel.querySelector('#panelClose'); if (close) close.addEventListener('click', () => this.deselect());
+      const up = panel.querySelector('[data-act="brup"]');
+      if (up) up.addEventListener('click', () => {
+        const b2 = Bld.bridgeAt(this.sel.x, this.sel.y); if (!b2) return;
+        if (Bld.upgradeBridge(b2)) { this.toast('Bridge reinforced — Lv ' + b2.level); this.renderPanel(); this.refreshMenu(); }
+        else this.toast('Not enough resources', true);
+      });
+      const demo = panel.querySelector('[data-act="brdemo"]');
+      if (demo) demo.addEventListener('click', () => {
+        if (this.confirmDemolish !== 'bridge') { this.confirmDemolish = 'bridge'; this.renderPanel(); return; }
+        this.confirmDemolish = 0;
+        const b2 = Bld.bridgeAt(this.sel.x, this.sel.y); if (b2) Bld.removeBridge(b2);
+        this.deselect();
+      });
     } else if (this.sel.type === 'group') {
       this.sel.ids = this.sel.ids.filter(id => Units.get(id));
       if (this.sel.ids.length === 0) { this.deselect(); return; }

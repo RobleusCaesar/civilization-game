@@ -225,6 +225,7 @@ const R = {
       if (t.type === 'gather')                                   // tool by resource
         return t.res === 'stone' ? 'mine' : t.res === 'food' ? 'farm' : 'gather';  // wood → axe (gather)
       if (t.type === 'build') return 'build';
+      if (t.type === 'terraform') return u.kind === 'sapper' ? 'work' : 'build';   // pick swing at the dig
       if (t.type === 'work') {                                   // stationed at a workplace → its craft
         const wb = Bld.get(t.id), k = wb && wb.key;
         return k === 'quarry' ? 'mine' : k === 'farm' ? 'farm'
@@ -264,18 +265,70 @@ const R = {
     // sapper bridges: faction-trimmed plank decks over water/moat (above terrain,
     // below units). Dynamic structures, so drawn per-frame, not baked into the cache.
     if (S.bridges && S.bridges.length) {
-      const WP = ART.PALETTE.wood;
+      const WP = ART.PALETTE.wood, ST = ART.PALETTE.stone;
       for (const br of S.bridges) {
         if (!S.map.explored[MapGen.idx(br.x, br.y)]) continue;
-        const bx = br.x * TL, by = br.y * TL;
-        g.fillStyle = WP[2]; g.fillRect(bx, by + 5, TL, TL - 10);          // deck
-        g.fillStyle = WP[3]; g.fillRect(bx, by + 5, TL, 3);               // lit near edge
-        g.fillStyle = WP[1];
-        for (let px = 3; px < TL; px += 6) g.fillRect(bx + px, by + 5, 1, TL - 10);   // plank seams
+        const bx = br.x * TL, by = br.y * TL, lv = br.level || 1, dir = br.dir || 'h';
+        const stone = lv >= 3;                                            // L3 deck is dressed stone
+        const deck = stone ? ST[2] : WP[2], lit = stone ? ST[3] : WP[3], seam = stone ? ST[1] : WP[1];
         const fac = br.owner === 'P' ? ART.PALETTE.blue[2] : ART.PALETTE.red[2];
-        g.fillStyle = fac; g.fillRect(bx, by + 4, TL, 2); g.fillRect(bx, by + TL - 6, TL, 2);  // faction rails
+        if (dir === 'v') {   // deck spans N–S: planks run N–S (horizontal seams), rails E/W
+          g.fillStyle = deck; g.fillRect(bx + 5, by, TL - 10, TL);
+          g.fillStyle = lit; g.fillRect(bx + 5, by, 3, TL);
+          g.fillStyle = seam; for (let py = 3; py < TL; py += 6) g.fillRect(bx + 5, by + py, TL - 10, 1);
+          if (lv >= 2) { g.fillStyle = ST[1]; g.fillRect(bx + 4, by, TL - 8, 4); g.fillRect(bx + 4, by + TL - 4, TL - 8, 4); g.fillStyle = ST[3]; g.fillRect(bx + 4, by, 3, 4); g.fillRect(bx + 4, by + TL - 4, 3, 4); }  // stone piers
+          g.fillStyle = fac; g.fillRect(bx + 4, by, 2, TL); g.fillRect(bx + TL - 6, by, 2, TL);
+        } else {             // deck spans E–W: planks run E–W (vertical seams), rails N/S
+          g.fillStyle = deck; g.fillRect(bx, by + 5, TL, TL - 10);
+          g.fillStyle = lit; g.fillRect(bx, by + 5, TL, 3);
+          g.fillStyle = seam; for (let px = 3; px < TL; px += 6) g.fillRect(bx + px, by + 5, 1, TL - 10);
+          if (lv >= 2) { g.fillStyle = ST[1]; g.fillRect(bx, by + 4, 4, TL - 8); g.fillRect(bx + TL - 4, by + 4, 4, TL - 8); g.fillStyle = ST[3]; g.fillRect(bx, by + 4, 4, 3); g.fillRect(bx + TL - 4, by + 4, 4, 3); }  // stone piers
+          g.fillStyle = fac; g.fillRect(bx, by + 4, TL, 2); g.fillRect(bx, by + TL - 6, TL, 2);
+        }
+        if (lv > 1) { g.fillStyle = ART.PALETTE.gold[2]; for (let i = 0; i < lv; i++) g.fillRect(bx + 4 + i * 4, by + TL / 2 - 1, 2, 2); }  // level pips
         if (br.hp < br.maxhp) this.bar(g, bx + 3, by - 3, TL - 6, 3, br.hp / br.maxhp, '#c98a4a');
       }
+    }
+    // BRIDGE PLACEMENT PREVIEW: with the bridge tool armed, tint nearby water
+    // green where a bridge can span land-to-land, red where it can't
+    if (window.UI && UI.terraMode === 'bridge' && UI.sel && UI.sel.type === 'unit') {
+      const su = Units.get(UI.sel.id);
+      if (su && su.kind === 'sapper') {
+        for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) {
+          const x = (su.x | 0) + dx, y = (su.y | 0) + dy;
+          if (!MapGen.inB(x, y)) continue;
+          const i = MapGen.idx(x, y), terr = S.map.terrain[i];
+          if ((terr !== T.WATER && terr !== T.MOAT) || !S.map.explored[i] || Bld.bridgeAt(x, y)) continue;
+          g.fillStyle = Terraform.bridgeCrossing(x, y, 'P') ? 'rgba(120,224,120,0.42)' : 'rgba(220,92,80,0.38)';
+          g.fillRect(x * TL, y * TL, TL, TL);
+        }
+      }
+    }
+
+    // active sapper WORKSITES: turned earth, a stuck tool, flying dirt and a
+    // progress bar, so a tile being reshaped plainly reads as under work
+    for (const u of S.units) {
+      if (u.kind !== 'sapper' || !u.task || u.task.type !== 'terraform') continue;
+      const t = u.task;
+      const ex = t.stx != null ? t.stx : t.sx + 0.5, ey = t.sty != null ? t.sty : t.sy + 0.5;
+      if (Math.hypot(u.x - ex, u.y - ey) > 1.4) continue;               // only once at the edge, actually working
+      if (!S.map.explored[MapGen.idx(t.x, t.y)]) continue;
+      const wx = t.x * TL, wy = t.y * TL, SO = ART.PALETTE.soil, WO = ART.PALETTE.wood;
+      const prog = t.total ? 1 - t.t / t.total : 0.5;
+      if (t.job === 'bridge') {
+        g.fillStyle = WO[1];
+        for (let px = 4; px < TL; px += 8) g.fillRect(wx + px, wy + 8, 3, (TL - 16) * (0.4 + prog * 0.6));   // planks going down
+      } else {
+        const r = Math.round((TL * 0.32) * (0.6 + prog * 0.4));         // a growing patch of turned soil
+        g.fillStyle = SO[1]; g.fillRect(wx + TL / 2 - r, wy + TL / 2 - r, r * 2, r * 2);
+        g.fillStyle = SO[0]; g.fillRect(wx + TL / 2 - r + 2, wy + TL / 2 - r + 2, Math.max(0, r * 2 - 4), Math.max(0, r * 2 - 4));
+        g.fillStyle = SO[3]; g.fillRect(wx + 6, wy + 8, 3, 2); g.fillRect(wx + TL - 11, wy + TL - 13, 3, 2);  // clods
+      }
+      const ph = ((u.animT * 6) | 0) % 3;
+      g.fillStyle = WO[1]; g.fillRect(wx + TL - 10, wy + 4, 2, 9);      // stuck tool haft
+      g.fillStyle = ART.PALETTE.stone[3]; g.fillRect(wx + TL - 12, wy + 3, 4, 3);  // tool head
+      g.fillStyle = SO[2]; g.fillRect(wx + TL / 2 + ph * 2 - 2, wy + 5 - ph, 2, 2);  // flying earth
+      if (t.total) this.bar(g, wx + 3, wy - 3, TL - 6, 3, prog, '#c9a84c');
     }
 
     // remembered buildings (ghosts in the grey fog) — drawn as last seen

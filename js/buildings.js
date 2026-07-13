@@ -49,11 +49,24 @@ const Bld = {
      with a fast 0/1 mirror in S.map.bridge for the pathfinding hot loop. */
   bridgeAt(x, y) { if (!S.bridges) return null; for (const br of S.bridges) if (br.x === x && br.y === y) return br; return null; },
   buildBridge(owner, x, y) {
-    if (!window.Terraform || !Terraform.bridgeable(x, y) || this.bridgeAt(x, y)) return false;
-    const br = { x, y, owner, hp: CFG.TERRAFORM.bridgeHp, maxhp: CFG.TERRAFORM.bridgeHp };
+    if (!window.Terraform || this.bridgeAt(x, y)) return false;
+    const dir = Terraform.bridgeCrossing(x, y, owner);   // must span water land-to-land
+    if (!dir) return false;
+    const hp = CFG.BRIDGE.levels[0].hp;
+    const br = { x, y, owner, level: 1, dir, hp, maxhp: hp };
     (S.bridges || (S.bridges = [])).push(br);
     if (S.map.bridge) S.map.bridge[MapGen.idx(x, y)] = 1;
     if (window.R && R.updateTile) R.updateTile(x, y);
+    return true;
+  },
+  canUpgradeBridge(br) { return !!br && (br.level || 1) < 3 && this.canAfford(CFG.BRIDGE.levels[br.level || 1].cost, S.res); },
+  upgradeBridge(br) {
+    if (!this.canUpgradeBridge(br)) return false;
+    this.pay(CFG.BRIDGE.levels[br.level].cost, S.res);   // player-only (UI); AI doesn't upgrade spans
+    br.level++;
+    br.maxhp = CFG.BRIDGE.levels[br.level - 1].hp;
+    br.hp = br.maxhp;   // upgrading re-plates and fully restores the span
+    if (window.R && R.updateTile) R.updateTile(br.x, br.y);
     return true;
   },
   damageBridge(br, dmg) { br.hp -= dmg; if (br.hp <= 0) this.removeBridge(br); },

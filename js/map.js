@@ -511,6 +511,24 @@ const Terraform = {
   isDiggable(x, y) { return MapGen.inB(x, y) && !Bld.at(x, y) && !!this.DIGGABLE[S.map.terrain[MapGen.idx(x, y)]]; },
   isClearable(x, y) { return MapGen.inB(x, y) && !!this.CLEARABLE[S.map.terrain[MapGen.idx(x, y)]]; },
   bridgeable(x, y) { if (!MapGen.inB(x, y)) return false; const t = S.map.terrain[MapGen.idx(x, y)]; return t === T.WATER || t === T.MOAT; },
+  // a bridge must SPAN water: land (or an existing bridge) on both OPPOSITE sides.
+  // Returns the deck orientation ('h' = spans E–W, 'v' = spans N–S) perpendicular
+  // to the water, or null (middle of a lake / no crossing → can't place).
+  bridgeCrossing(x, y, owner) {
+    if (!this.bridgeable(x, y)) return null;
+    const land = (nx, ny) => {
+      if (!MapGen.inB(nx, ny)) return false;
+      const t = S.map.terrain[MapGen.idx(nx, ny)];
+      if (t === T.WATER || t === T.MOAT) return !!(S.map.bridge && S.map.bridge[MapGen.idx(nx, ny)]);  // an existing bridge counts (extend a span)
+      return Path.passable(nx, ny, owner);   // walkable land (grass/cleared/etc.)
+    };
+    const ew = land(x - 1, y) && land(x + 1, y);   // land east & west → deck runs E–W
+    const ns = land(x, y - 1) && land(x, y + 1);   // land north & south → deck runs N–S
+    if (ew && ns) return 'h';   // land all round (a pinch) — pick one
+    if (ew) return 'h';
+    if (ns) return 'v';
+    return null;
+  },
   waterAdj(x, y) {
     for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const nx = x + ox, ny = y + oy;

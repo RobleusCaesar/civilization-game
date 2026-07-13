@@ -163,7 +163,7 @@ const Units = {
   terraformJob(owner, tx, ty) {
     const tier = this.sapperTier(owner); if (tier < 1) return null;
     if (Terraform.isDiggable(tx, ty)) return 'dig';
-    if (tier >= 2 && Terraform.bridgeable(tx, ty) && !(Bld.bridgeAt && Bld.bridgeAt(tx, ty))) return 'bridge';
+    if (tier >= 2 && Terraform.bridgeCrossing(tx, ty, owner) && !(Bld.bridgeAt && Bld.bridgeAt(tx, ty))) return 'bridge';
     if (tier >= 3 && Terraform.isClearable(tx, ty)) return 'clear';
     return null;
   },
@@ -171,7 +171,7 @@ const Units = {
   canTerraform(owner, tx, ty, job) {
     const tier = this.sapperTier(owner); if (tier < 1) return false;
     if (job === 'dig') return Terraform.isDiggable(tx, ty);
-    if (job === 'bridge') return tier >= 2 && Terraform.bridgeable(tx, ty) && !(Bld.bridgeAt && Bld.bridgeAt(tx, ty));
+    if (job === 'bridge') return tier >= 2 && !!Terraform.bridgeCrossing(tx, ty, owner) && !(Bld.bridgeAt && Bld.bridgeAt(tx, ty));
     if (job === 'clear') return tier >= 3 && Terraform.isClearable(tx, ty);
     return false;
   },
@@ -266,6 +266,12 @@ const Units = {
     u.tBld = b.id; u.tUnit = 0;
     u.anchor = { x: b.x + 0.5, y: b.y + 0.5 };   // the siege line is home now
     this.setPath(u, b.x, b.y);
+  },
+  // send a unit to hack down a bridge (own or enemy — demolishing your own is a
+  // valid defensive move); Combat's tBridge branch does the pathing + damage
+  orderAttackBridge(u, br) {
+    u.task = { type: 'attack' }; u.tBridge = { x: br.x, y: br.y }; u.tUnit = 0; u.tBld = 0;
+    const s = Combat.tileAdjOpen(br.x, br.y, u.owner); if (s) this.setPath(u, s.x, s.y);
   },
 
   /* ---- troop transports: board, sail, land ---- */

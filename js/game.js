@@ -617,7 +617,12 @@ const G = {
     // pre-sapper saves: no bridges, and rebuild the fast passability mirror
     if (!Array.isArray(data.bridges)) data.bridges = [];
     if (!Array.isArray(data.map.bridge)) data.map.bridge = new Array(w * h).fill(0);
-    for (const br of data.bridges) if (br) data.map.bridge[br.y * w + br.x] = 1;
+    for (const br of data.bridges) if (br) {
+      data.map.bridge[br.y * w + br.x] = 1;
+      if (br.level == null) br.level = 1;                 // pre-level saves: default L1 timber
+      if (!br.dir) br.dir = 'h';
+      if (br.maxhp == null) br.maxhp = (CFG.BRIDGE.levels[(br.level || 1) - 1] || CFG.BRIDGE.levels[0]).hp;
+    }
     if (data.ai && !data.ai.persona) data.ai.persona = 'homesteader';   // pre-persona save: the classic temperament
     if (!data.kraken) data.kraken = { day: { P: 60, A: 90 }, done: {}, ev: null };   // older saves owe the deep a visit too
     if (!data.dragon) data.dragon = { avail: false, done: true, ev: null, ash: [] };  // legacy runs: no dragon this time
