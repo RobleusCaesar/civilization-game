@@ -437,7 +437,7 @@ const R = {
           const key = bs >= 2 ? (tgt >= 3 ? 'misc/constructionBig3' : 'misc/constructionBig') : 'misc/construction';
           Assets.drawSprite(g, key, bx, by, { w: bw, h: bw });
         }
-        const total = up ? Bld.def(b.key).levels[b.level].time : Bld.def(b.key).levels[b.level - 1].time;
+        const total = up ? (b.upgTotal || Bld.def(b.key).levels[b.level].time) : Bld.def(b.key).levels[b.level - 1].time;
         this.bar(g, bx + 4, by + bw - 4, bw - 8, 3, 1 - (up ? b.upgrading : b.construction) / total, '#e8c15a');
         // still tag the owner so a work site reads as friend or foe
         g.fillStyle = b.owner === 'P' ? '#4a90c2' : '#c2564a';

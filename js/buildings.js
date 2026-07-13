@@ -308,12 +308,22 @@ const Bld = {
     return { ok: true, cost: next.cost };
   },
 
+  // upgrade time for a building going from its current level to the next. Resource
+  // stations (farm/lodge/lumber/quarry) take deliberately longer to level while a
+  // villager works it: DOUBLE the base time L1→L2, and DOUBLE AGAIN L2→L3.
+  upgradeTime(b) {
+    const d = this.def(b.key);
+    let t = d.levels[b.level].time;
+    if (d.needsWorker) t *= (b.level >= 2 ? 4 : 2);
+    return t;
+  },
   upgrade(b) {
     const c = this.canUpgrade(b);
     if (!c.ok) return false;
     const d = this.def(b.key);
     this.pay(d.levels[b.level].cost, b.owner === 'P' ? S.res : S.ai.res);
-    b.upgrading = d.levels[b.level].time;
+    b.upgrading = this.upgradeTime(b);
+    b.upgTotal = b.upgrading;   // remembered so the progress bar knows the full span
     if (b.owner === 'P') {
       // upgrades need a villager on site, same as construction. A stationed
       // hand does it themselves: they step off the job, raise the upgrade,

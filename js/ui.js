@@ -621,8 +621,14 @@ const UI = {
     if (u.owner !== 'P' && !Units.isPassive(u))
       stack = S.units.filter(o => o.owner !== 'P' && !Units.isPassive(o) &&
         (o.x | 0) === (u.x | 0) && (o.y | 0) === (u.y | 0)).length;
-    return ['u', u.id, u.hp < u.maxhp, stack, u.cargo ? u.cargo.length : 0,
-      !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u), Bld.inHealZone(u)].join('|');
+    const sig = ['u', u.id, u.hp < u.maxhp, stack, u.cargo ? u.cargo.length : 0,
+      !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u), Bld.inHealZone(u)];
+    // villager resource-station upgrade state (level, phase, affordability) — the
+    // continuously-shrinking day count is NOT here; refreshPanel ticks it in place
+    const wb = this.villagerResBld(u);
+    if (wb) sig.push('r' + wb.id + ':' + wb.level + ':' +
+      (wb.upgrading > 0 ? 'up' : wb.level >= 3 ? 'max' : Bld.canUpgrade(wb).ok ? 'can' : 'no'));
+    return sig.join('|');
   },
 
   groupComposition(ids) {
@@ -649,6 +655,14 @@ const UI = {
     if (!base) return 0;
     return Math.max(1, Math.ceil((1 - u.hp / u.maxhp) * base));
   },
+  // the OWN resource-station a villager is stationed at (or building an upgrade
+  // for) — so its Upgrade control can live on the villager's own panel
+  villagerResBld(u) {
+    if (!u || u.owner !== 'P' || !Units.isVillager(u) || !u.task) return null;
+    if (u.task.type !== 'work' && u.task.type !== 'build') return null;
+    const b = Bld.get(u.task.id);
+    return (b && b.owner === 'P' && Bld.def(b.key).needsWorker && !b.construction) ? b : null;
+  },
   // cheap periodic update: rewrite the sub-line only, rebuild DOM when structure changes
   refreshPanel() {
     if (!this.sel) return;
@@ -661,6 +675,18 @@ const UI = {
     if (hc && this.sel.type === 'unit') {
       const u = Units.get(this.sel.id);
       if (u) hc.textContent = Bld.inHealZone(u) ? this.healCost(u) + ' 🍖' : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center');
+    }
+    // tick the resource-station upgrade progress in place (no relayout)
+    if (this.sel.type === 'unit') {
+      const left = document.getElementById('upresLeft');
+      if (left) {
+        const u = Units.get(this.sel.id), wb = u && this.villagerResBld(u);
+        if (wb && wb.upgrading > 0) {
+          left.textContent = Math.ceil(wb.upgrading) + 'd';
+          const bar = document.getElementById('upresBar');
+          if (bar) bar.style.width = Math.round(Math.max(0, Math.min(1, 1 - wb.upgrading / (wb.upgTotal || wb.upgrading))) * 100) + '%';
+        }
+      }
     }
     if (this.sel.type === 'bld') {
       const b = Bld.get(this.sel.id);
@@ -996,8 +1022,27 @@ const UI = {
         html += tool('clear', '⛏', 'Clear', 3);
       }
       if (own && Units.isVillager(u)) html += `<button class="abtn" data-act="gobuild">🔨 Build…</button>`;
+      // resource-station upgrade, right on the worker's panel
+      const wb = own ? this.villagerResBld(u) : null;
+      if (wb) {
+        const rn = Bld.def(wb.key).name;
+        if (wb.upgrading > 0) {
+          const frac = Math.max(0, Math.min(1, 1 - wb.upgrading / (wb.upgTotal || wb.upgrading)));
+          html += `<div class="abtn cant" style="pointer-events:none">🏗 Upgrading ${rn} → Lv ${wb.level + 1}` +
+            `<small><span id="upresLeft">${Math.ceil(wb.upgrading)}d</span> left</small>` +
+            `<div style="height:4px;margin-top:5px;background:rgba(0,0,0,0.4);border-radius:2px;overflow:hidden">` +
+            `<div id="upresBar" style="height:100%;width:${Math.round(frac * 100)}%;background:var(--gold)"></div></div></div>`;
+        } else if (wb.level >= 3) {
+          html += `<button class="abtn cant" disabled>⭐ ${rn} — Max level</button>`;
+        } else {
+          const up = Bld.canUpgrade(wb), cost = CFG.BUILDINGS[wb.key].levels[wb.level].cost;
+          html += `<button class="abtn wide ${up.ok ? '' : 'cant'}" data-act="upres">⬆ Upgrade ${rn} to Lv ${wb.level + 1}` +
+            `<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;
+        }
+      }
       if (own && Units.isMilitary(u) && !Units.isNaval(u)) html += `<button class="abtn" data-act="group">👥 Group nearby</button>`;
-      if (own) html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
+      // Stop is gone for villagers — you just tap them somewhere else to redirect
+      if (own && !Units.isVillager(u)) html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
       html += '</div>';
       panel.innerHTML = html;
       const ic = panel.querySelector('#pIcon');
@@ -1007,6 +1052,15 @@ const UI = {
         const u2 = Units.get(this.sel.id);
         if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; u2.jobs = null; }   // drop any queued sapper line too
         this.terraMode = null;   // downing tools stops the terraform tool too
+        this.renderPanel();
+      });
+      const upres = panel.querySelector('[data-act="upres"]');
+      if (upres) upres.addEventListener('click', () => {
+        const u2 = Units.get(this.sel.id); if (!u2) return;
+        const b2 = this.villagerResBld(u2); if (!b2) return;
+        const c = Bld.canUpgrade(b2);
+        if (!c.ok) { this.toast(c.why, true); return; }
+        if (Bld.upgrade(b2)) this.toast(`${Bld.def(b2.key).name} upgrading to Lv ${b2.level + 1} — the crew builds it, then back to work`);
         this.renderPanel();
       });
       // sapper terraform tools — arm a job; the next tile tap performs it
