@@ -41,11 +41,16 @@ const R = {
     // lake (same blue, same shore treatment) so a dug channel reads as one body
     // of water with no per-tile seams
     const wet = v => v === T.WATER || v === T.MOAT;
+    // only NATURAL land makes a shore (shallows + foam). Reclaimed land — where a
+    // sapper filled water into ground — must NOT shallow the deep water it abuts:
+    // the sea beyond a man-made isthmus reads exactly as it did before it was built.
+    const shoreLand = (xx, yy) => MapGen.inB(xx, yy) && !wet(at(xx, yy)) &&
+      !(S.map.reclaimed && S.map.reclaimed[MapGen.idx(xx, yy)]);
     if (t === T.GRASS && h % 31 === 0)
       img = Sprites.terrainRare[T.GRASS][h % Sprites.terrainRare[T.GRASS].length];   // rare flower meadow
     else if (wet(t)) {
-      const shore = !wet(at(x + 1, y)) || !wet(at(x - 1, y)) ||
-                    !wet(at(x, y + 1)) || !wet(at(x, y - 1));
+      const shore = shoreLand(x + 1, y) || shoreLand(x - 1, y) ||
+                    shoreLand(x, y + 1) || shoreLand(x, y - 1);
       img = Sprites.terrain[T.WATER][shore ? 0 : 1];    // lighter shallows, darker interior
     } else if (t === T.MOUND) {
       const gr = Sprites.terrain[T.GRASS];               // a berm sits on a grass base
@@ -57,8 +62,7 @@ const R = {
       // wet-sand rim + pale foam line along every LAND-facing edge (never between
       // water and a moat, or between two moats — those blend seamlessly)
       for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const tt = at(x + ox, y + oy);
-        if (wet(tt)) continue;
+        if (!shoreLand(x + ox, y + oy)) continue;   // natural coast only — reclaimed land grows no beach
         const band = (col, off) => {
           g.fillStyle = col;
           if (ox === 1) g.fillRect(x * TL + TL - (off + 1) * px, y * TL, px, TL);
