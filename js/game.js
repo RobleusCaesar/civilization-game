@@ -690,36 +690,58 @@ const G = {
   },
 
   /* ---------------- main loop ---------------- */
+  // run one subsystem for the frame, but NEVER let a thrown error escape and
+  // kill the animation loop — a single unhandled exception used to leave the
+  // game frozen solid (loop dead, only the DOM menu still alive). Each step is
+  // isolated so a fault in one (say combat) can't stop the others or rendering;
+  // the error is recorded (G.lastFrameError) and logged once so the true cause
+  // is diagnosable, and the game keeps running.
+  _safe(fn, tag) {
+    try { fn(); }
+    catch (e) {
+      G.lastFrameError = tag + ' — ' + ((e && e.stack) || String(e));
+      const key = tag + '|' + String(e);
+      if (G._lastErrKey !== key) {
+        G._lastErrKey = key;
+        try { console.error('[Clanfire] recovered from a ' + tag + ' error (loop continues):', e); } catch (_) {}
+        if (window.UI && UI.toast) { try { UI.toast('⚠️ Hit a ' + tag + ' glitch but recovered — game continues', true); } catch (_) {} }
+      }
+    }
+  },
   frame(t) {
     const dt = Math.min(0.1, (t - G.lastT) / 1000 || 0.016);
     G.lastT = t;
     if (S && !S.paused && !S.over) {
-      S.playtime = (S.playtime || 0) + dt;
       const dtDays = dt * 1000 / CFG.DAY_MS;
-      S.dayT += dt * 1000;
-      let guard = 0;
-      while (S.dayT >= CFG.DAY_MS && guard++ < 4) {
-        S.dayT -= CFG.DAY_MS;
-        G.dayTick();
-        if (!S || S.over) break;
-      }
+      S.playtime = (S.playtime || 0) + dt;
+      G._safe(() => {
+        S.dayT += dt * 1000;
+        let guard = 0;
+        while (S.dayT >= CFG.DAY_MS && guard++ < 4) {
+          S.dayT -= CFG.DAY_MS;
+          G.dayTick();
+          if (!S || S.over) break;
+        }
+      }, 'day');
       if (S && !S.over) {
-        Bld.update(dtDays);
-        Units.update(dt);
-        Combat.update(dt);
-        G.krakenTick(dt);
-        G.dragonTick(dt);
-        G.dragonT = (G.dragonT || 0) - dt;
-        if (G.dragonT <= 0) { G.dragonT = 1.3; G.maybeDragon(); }
-        G.visT -= dt;
-        if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
-        G.autosaveT -= dt;
-        if (G.autosaveT <= 0) { G.autosaveT = 10; G.autosave = G.saveJSON(); }
+        G._safe(() => Bld.update(dtDays), 'buildings');
+        G._safe(() => Units.update(dt), 'units');
+        G._safe(() => Combat.update(dt), 'combat');
+        G._safe(() => {
+          G.krakenTick(dt);
+          G.dragonTick(dt);
+          G.dragonT = (G.dragonT || 0) - dt;
+          if (G.dragonT <= 0) { G.dragonT = 1.3; G.maybeDragon(); }
+          G.visT -= dt;
+          if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
+          G.autosaveT -= dt;
+          if (G.autosaveT <= 0) { G.autosaveT = 10; G.autosave = G.saveJSON(); }
+        }, 'world');
       }
     }
     if (S) {
-      R.draw(dt);
-      UI.refresh(dt);
+      G._safe(() => R.draw(dt), 'render');
+      G._safe(() => UI.refresh(dt), 'ui');
     }
     requestAnimationFrame(G.frame);
   },

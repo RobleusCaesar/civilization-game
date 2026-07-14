@@ -363,7 +363,8 @@ const Units = {
     // unit strides onto open water. If the next step is no longer passable (and
     // isn't a bridged crossing, which Path.passable allows), drop the stale path
     // so the unit re-plans from where it stands instead of walking on the water.
-    if (!Path.passable(wp.x, wp.y, u.owner)) { u.path = null; u.pathI = 0; return true; }
+    // Pass the unit's DOMAIN so a boat's water waypoints aren't read as blocked.
+    if (!Path.passable(wp.x, wp.y, u.owner, this.domain(u))) { u.path = null; u.pathI = 0; return true; }
     const tx = wp.x + 0.5, ty = wp.y + 0.5;
     const dx = tx - u.x, dy = ty - u.y;
     const d = Math.hypot(dx, dy);

@@ -475,9 +475,15 @@ const Screens = {
     this.backTo = 'paused';
     if (window.S) S.paused = true;
     this.el('pauseSeed').textContent =
-      `${G.modeCfg().icon} ${G.modeCfg().name} · ${S.sizeKey} map · day ${S.day} · seed ${S.seed}`;
+      `${G.modeCfg().icon} ${G.modeCfg().name} · ${S.sizeKey} map · day ${S.day} · seed ${S.seed}` +
+      (G.lastFrameError ? '  ·  ⚠️ recovered a glitch (details in log)' : '');
     const log = this.el('logList');
-    log.innerHTML = S.log.slice(0, 30).map(l => `<div>Day ${l.day}: ${this.esc(l.msg)}</div>`).join('');
+    // if the loop caught and recovered from an error, surface its first line at
+    // the top of the log so it can be reported (the game kept running past it)
+    const errLine = G.lastFrameError
+      ? `<div style="color:#e8a04a">⚠️ ${this.esc(String(G.lastFrameError).split('\n')[0]).slice(0, 160)}</div>`
+      : '';
+    log.innerHTML = errLine + S.log.slice(0, 30).map(l => `<div>Day ${l.day}: ${this.esc(l.msg)}</div>`).join('');
     const q = this.el('btnQuitTitle');
     q.textContent = '🏕 Quit to title';
     q.classList.remove('danger');
