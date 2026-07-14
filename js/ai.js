@@ -399,7 +399,7 @@ const AI = {
   },
   // rough worth of a seen player building, for estimating their economy
   VIS_EST: { tc: 130, farm: 40, lodge: 35, lumber: 35, quarry: 35, house: 18,
-    tower: 32, barracks: 55, range: 48, stable: 55, siege: 75, dock: 42, wall: 6, gate: 9 },
+    tower: 32, barracks: 55, range: 48, stable: 55, siege: 75, dock: 42, trade: 60, wall: 6, gate: 9 },
 
   // refresh what the rival can see this day, and remember player buildings seen
   updateVision() {
@@ -843,6 +843,15 @@ const AI = {
         () => this.tryBuild('sapper'));
     }
 
+    // trading post — a late-game coin sink. The rival raises one once it's TC3
+    // and sitting on a resource surplus it could turn into gold. Low priority so
+    // it never crowds out army or defense; affordFree keeps it from raiding the
+    // savings goal (and it's expensive), so it only appears when genuinely rich.
+    if (tc.level >= 3 && !have.trade) {
+      const surplus = Math.max(ai.res.wood, ai.res.stone, ai.res.food) > 320;
+      add(13 + (surplus ? 18 : 0) + (pl.win === 'economy' ? 6 : 0), () => this.tryBuild('trade'));
+    }
+
     // houses (AI ignores pop cap — just a lived-in look)
     add(9 + (post === 'EXPAND' ? 5 : 0) - (have.house || 0) * 2, () => this.tryBuild('house'));
 
@@ -1064,6 +1073,22 @@ const AI = {
     ai.res.stone += 1 * m.aiOutput * boomMult;
     ai.res.gold += 4 * m.aiOutput;   // the AI has no worker mechanic, so gold trickles here
     Bld.dailyProduction('A');
+
+    // run any Trading Posts: send a caravan out with a genuine surplus good,
+    // like a player would. Stingy — keeps a reserve, one caravan per post, and
+    // doesn't bother once the treasury is already flush with gold.
+    if ((ai.res.gold || 0) < 400) {
+      for (const b of Bld.list('A')) {
+        if (b.key !== 'trade' || !Bld.done(b) || b.upgrading || b.caravan) continue;
+        const need = Bld.tradeSpec(b).input;
+        let best = null, bestAmt = 0;
+        for (const res of CFG.TRADE.goods) {
+          const amt = ai.res[res] || 0;
+          if (amt >= need + 150 && amt > bestAmt) { bestAmt = amt; best = res; }   // trade only a real surplus
+        }
+        if (best) Bld.startTrade(b, best);
+      }
+    }
 
     /* ---- VARIABLE OPENINGS, early behaviors (first minutes only) ---- */
     if (op.bias === 'scout' && op.fired && !op.scoutDone && S.day >= 2) {
