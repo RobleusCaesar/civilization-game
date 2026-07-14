@@ -23,15 +23,24 @@ const Screens = {
       // the Continue button so cloud saves win over the local crash net
       if (this.current === 'title') this.onTitle();
     });
-    // title camera drift
-    const pan = () => {
+    // title camera: a gentle drift + slow zoom-breath that keeps the village
+    // framed (a cozy vignette), instead of scrolling the whole map away
+    const pan = (t) => {
       if (this.current === 'title' && window.S && R.terrainCache) {
         // a demo world that plays itself to a finish quietly rolls a new one
         if (S.over && this._demo) { this._demo = false; this.ensureDemo(); }
-        R.cam.x += 0.22; R.cam.y += 0.09;
-        const world = CFG.W * CFG.TILE;
-        if (R.cam.x > world - R.viewW() / R.cam.z) { R.cam.x = -40; R.cam.y = 40 + Math.random() * world * 0.3; }
-        R.clampCam();
+        const b = this._demoCam;
+        if (b) {
+          const s = (t || 0) / 1000;
+          R.cam.z = b.z * (1 + 0.022 * Math.sin(s * 0.16));
+          R.centerOn(b.tx + Math.sin(s * 0.10) * 1.2, b.ty + Math.cos(s * 0.075) * 0.8);
+          this.clampTitleCam();   // never reveal the void past the map edge
+        } else {
+          R.cam.x += 0.22; R.cam.y += 0.09;
+          const world = CFG.W * CFG.TILE;
+          if (R.cam.x > world - R.viewW() / R.cam.z) { R.cam.x = -40; R.cam.y = 40 + Math.random() * world * 0.3; }
+          R.clampCam();
+        }
       }
       requestAnimationFrame(pan);
     };
@@ -74,15 +83,53 @@ const Screens = {
     Cards.pick((Math.random() * 3) | 0);   // the demo world drafts for itself
     G.freeVis = true;         // newGame resets fog; the demo shows the whole map
     G.updateVisibility();
+    this.seedDemoVillage();                 // dress it as a thriving settlement
     S.paused = false;                       // the world lives behind the logo
     document.getElementById('toasts').innerHTML = '';
-    R.cam.z = 1.7;
-    const tc = Bld.tcOf('P');            // open on the village, drift from there
-    if (tc) R.centerOn(tc.x, tc.y); else { R.cam.x = 0; R.cam.y = CFG.W * CFG.TILE * 0.3; }
+    const tc = Bld.tcOf('P');            // frame the village; pan() drifts around it
+    if (tc) {
+      this._demoCam = { tx: tc.x + 0.5, ty: tc.y + 1.0, z: 1.7 };
+      R.cam.z = this._demoCam.z; R.centerOn(this._demoCam.tx, this._demoCam.ty);
+      this.clampTitleCam();   // strict-clamp the very first frame too (no edge peek)
+    } else {
+      this._demoCam = null; R.cam.z = 1.7; R.cam.x = 0; R.cam.y = CFG.W * CFG.TILE * 0.3;
+    }
+  },
+
+  // the title camera must stay wholly inside the map — no 10% overscan margin
+  // (that margin is an in-game affordance; on the title it would reveal the void)
+  clampTitleCam() {
+    const world = CFG.W * CFG.TILE;
+    const vw = R.viewW() / R.cam.z, vh = R.viewH() / R.cam.z;
+    if (vw < world) R.cam.x = Math.max(0, Math.min(world - vw, R.cam.x));
+    if (vh < world) R.cam.y = Math.max(0, Math.min(world - vh, R.cam.y));
+  },
+
+  // Dress the title's demo world as a lived-in settlement — a few huts, a
+  // lodge, a watchtower and extra villagers around the hearth. Purely cosmetic
+  // and fully guarded, so a bad map roll can never keep the title from coming up.
+  seedDemoVillage() {
+    try {
+      const tc = Bld.tcOf('P'); if (!tc) return;
+      for (const k in S.res) S.res[k] = 9999;   // so canPlace's affordability gate always passes
+      const cx = tc.x, cy = tc.y;
+      const plan = [['house', -3, -1], ['house', -4, 2], ['lodge', 3, -2],
+        ['lumber', 4, 2], ['tower', 5, 4], ['house', 2, 4], ['quarry', -5, 3]];
+      for (const [key, dx, dy] of plan) {
+        const spot = MapGen.findNear(cx + dx, cy + dy, 3, (x, y) => Bld.canPlace('P', key, x, y).ok);
+        if (spot) Bld.place('P', key, spot.x, spot.y, { free: true, instant: true, noAutoAssign: true });
+      }
+      for (let i = 0; i < 4; i++) {
+        const s = MapGen.findNear(cx, cy, 5, (x, y) => Path.passable(x, y) && !Bld.at(x, y));
+        if (s) Units.spawn('villager', 'P', s.x, s.y);
+      }
+      G.updateVisibility();
+    } catch (e) { /* the demo village is cosmetic — never let it break the title */ }
   },
 
   onTitle() {
     this.ensureDemo();
+    if (window.TitleArt) TitleArt.start();   // pixel logo + campfire + button icons
     this.backTo = 'title';
     // Continue = newest cloud slot (or the crash-net snapshot if it's all we have)
     const btn = this.el('btnContinue');
