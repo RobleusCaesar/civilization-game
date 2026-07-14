@@ -174,9 +174,11 @@ const R = {
   clampCam() {
     const world = CFG.W * CFG.TILE;
     const vw = this.viewW() / this.cam.z, vh = this.viewH() / this.cam.z;
-    const pad = 80 / this.cam.z;
-    this.cam.x = Math.max(-pad, Math.min(world - vw + pad, this.cam.x));
-    this.cam.y = Math.max(-pad, Math.min(world - vh + pad, this.cam.y));
+    // allow panning ~10% of the viewport PAST each board edge, so the very edge
+    // of the map clears the top bar / build menu and can be seen unobstructed
+    const padX = vw * 0.10, padY = vh * 0.10;
+    this.cam.x = Math.max(-padX, Math.min(world - vw + padX, this.cam.x));
+    this.cam.y = Math.max(-padY, Math.min(world - vh + padY, this.cam.y));
   },
 
   centerOn(tx, ty) {

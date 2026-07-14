@@ -14,7 +14,7 @@ const CFG = {
   TILE: 32,
   W: 40,               // current map size — set per game from SIZES
   H: 40,
-  SIZES: { medium: 30, large: 40, xlarge: 52 },   // labels shifted up a tier; xlarge is the old large
+  SIZES: { medium: 38, large: 50, xlarge: 65 },   // ~25% bigger boards (was 30/40/52)
   DAY_MS: 10000,              // one in-game day
   START_RES: { food: 200, wood: 150, stone: 60, gold: 15 },   // baseline (openings roll around it)
   START_VILLAGERS: 3,                                          // baseline (openings roll around it)
