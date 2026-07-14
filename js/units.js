@@ -332,26 +332,45 @@ const Units = {
     this.setPath(u, tx, ty);   // water-domain path ends at the closest water tile
   },
   disembark(u) {
-    u.task = null;
     const cargo = u.cargo || [];
     let landed = 0;
-    while (cargo.length) {
-      const spot = MapGen.findNear(u.x | 0, u.y | 0, 2, (x, y) => Path.passable(x, y, u.owner));
-      if (!spot) break;   // no beach beside the hull
+    // put each soldier on its OWN open tile near the hull (used-set = no stacking).
+    const used = new Set();
+    const place = (radius) => {
+      const spot = MapGen.findNear(u.x | 0, u.y | 0, radius,
+        (x, y) => !used.has(x + ',' + y) && Path.passable(x, y, u.owner) && !Bld.at(x, y));
+      if (!spot) return false;
+      used.add(spot.x + ',' + spot.y);
       const c = cargo.pop();
       c.x = spot.x + 0.5; c.y = spot.y + 0.5;
       c.anchor = { x: c.x, y: c.y };
       c.path = null; c.pathI = 0; c.task = null; c.tUnit = 0; c.tBld = 0; c.cd = 0;
       S.units.push(c);
       landed++;
+      return true;
+    };
+    // radius 5 covers a hull that beached a couple tiles off (the old radius-2 left
+    // troops stranded aboard when the exact water tile it stopped on had no open
+    // neighbour — a resource- or wall-lined shore, or stopping a hair short).
+    while (cargo.length && place(5)) { /* land them */ }
+    if (cargo.length) {
+      // nobody could land right here — nose the hull toward the nearest coast and
+      // retry; after a few tries just wade them ashore from further out, so a
+      // loaded raider can never sit offshore forever with its troops trapped.
+      const tries = (u.task && u.task.unloadTries) || 0;
+      const beach = MapGen.findNear(u.x | 0, u.y | 0, 16, (x, y) => Path.passable(x, y, u.owner) && !Bld.at(x, y));
+      const wnear = beach && MapGen.findNear(beach.x, beach.y, 4, (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.WATER && !Bld.at(x, y));
+      if (tries < 3 && wnear && !(wnear.x === (u.x | 0) && wnear.y === (u.y | 0)) && this.setPath(u, wnear.x, wnear.y)) {
+        u.task = { type: 'unload', x: beach.x, y: beach.y, unloadTries: tries + 1 };
+        return;   // sail closer, then disembark again
+      }
+      while (cargo.length && place(10)) { /* last resort: wade ashore */ }
     }
-    if (u.owner === 'P') {
-      if (landed) G.log(`${landed} soldier${landed > 1 ? 's' : ''} ashore`);
-      else if (cargo.length) G.log('No open shore beside the hull — sail closer to land', true);
-    } else if (u.owner === 'R' && !cargo.length) {
-      // the raiders beach the boat and leave it — the hull's job is done
-      S.units.splice(S.units.indexOf(u), 1);
-    }
+    u.task = null;
+    if (u.owner === 'P' && landed) G.log(`${landed} soldier${landed > 1 ? 's' : ''} ashore`);
+    else if (u.owner === 'P' && cargo.length) G.log('No open shore beside the hull — sail closer to land', true);
+    // an emptied raider / rival hull has done its job — beach and abandon it
+    if ((u.owner === 'R' || u.owner === 'A') && !cargo.length && S.units.includes(u)) S.units.splice(S.units.indexOf(u), 1);
   },
 
   // advance along path; returns true when path finished

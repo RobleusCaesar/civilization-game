@@ -970,15 +970,17 @@ const R = {
   drawMini() {
     const AP = ART.PALETTE;
     const g = this.mg, COLORS = [AP.grass[3], AP.leaf[1], AP.water[2], AP.stone[2], AP.soil[2], AP.rust[1],
-      AP.grass[2], AP.stone[3], AP.soil[3], AP.stone[1], AP.stone[0]];   // ... ruin, mountain
+      AP.grass[2], AP.stone[3], AP.soil[3], AP.stone[1], AP.stone[0], AP.soil[0], AP.water[1]];
+      // grass forest water hills fertile camp stumps pebbles barren ruin mountain trench moat
     const shadeCache = {};
     const shade = c => shadeCache[c] || (shadeCache[c] = c.replace(/[0-9a-f]{2}/gi,
       h => Math.max(0, (parseInt(h, 16) * 0.55) | 0).toString(16).padStart(2, '0')));
     for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) {
       const i = MapGen.idx(x, y);
+      const col = COLORS[S.map.seenTerrain[i]] || AP.grass[3];   // any unmapped terrain id falls back, never undefined
       g.fillStyle = !S.map.explored[i] ? '#060504'
-        : (G.vis && G.vis[i]) ? COLORS[S.map.seenTerrain[i]]
-        : shade(COLORS[S.map.seenTerrain[i]]);
+        : (G.vis && G.vis[i]) ? col
+        : shade(col);
       g.fillRect(x * 2, y * 2, 2, 2);
     }
     for (const b of S.buildings) {
