@@ -7,6 +7,7 @@ const T = {
   MOUNTAIN: 10,                                 // impassable, unbuildable
   TRENCH: 11,                                   // sapper-dug ditch — blocks land, not ranged fire
   MOAT: 12,                                     // a trench that flooded from a water source — blocks land, boats can't cross either
+  MOUND: 13,                                    // sapper-raised earthwork — passable but 4x slower to cross; or reclaimed land where water was
 };
 
 const CFG = {
@@ -363,6 +364,20 @@ const CFG = {
     bridge: 6,       // raise a bridge over water
     clear: 4,        // breach a resource tile → open grass (demolition, not gathering)
     clearYield: 0,   // resource returned when clearing (0 = mobility tool, not an economy exploit)
+    /* MOUND (Sappers' Camp Lv 3) — raise an earth berm on open ground (passable
+       but 4x slower to cross, friend and foe) or RECLAIM land from water. The one
+       terraform that costs resources: quarry-heavy + some wood, so paving is a
+       real commitment. Reclamation is deliberately slow and hard-capped so short
+       land-bridges are fine but nobody fills an ocean (see Terraform.reclaimDepth):
+         • only within `reclaimReach` tiles of the ORIGINAL shoreline
+         • the far (deep) tile takes `reclaimDeep`, twice the shallow time
+       Deep water stays the domain of transports and warships. */
+    mound: 6,          // raise a berm on open land (seconds/tile)
+    reclaim: 10,       // fill a shallow water tile (1 from shore)
+    reclaimDeep: 20,   // fill the deep tile (2 from shore) — twice as slow
+    reclaimReach: 2,   // max tiles from natural land you may reclaim (2 = shallow + one deep)
+    moundCost: { stone: 35, wood: 10 },   // per tile — lots of quarry, some wood
+    moundCross: 0.25,  // a unit crosses a mound at 1/4 speed (4x longer)
   },
   /* BRIDGES — a sapper raises a level-1 timber crossing; it can then be upgraded
      to L2/L3 (stone piers, then a stone arch), each stouter and costing a bit

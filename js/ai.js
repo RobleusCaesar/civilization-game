@@ -974,6 +974,12 @@ const AI = {
       if (!MapGen.inB(x, y)) continue;
       if (tier >= 3 && Terraform.isClearable(x, y) && Units.assignTerraform(idle, x, y)) { this._escort(idle); return true; }
       if (tier >= 2 && Terraform.bridgeable(x, y) && !Bld.bridgeAt(x, y) && Units.assignTerraform(idle, x, y)) { this._escort(idle); return true; }
+      // no plank crossing here? a Lv-3 corps can reclaim a short land-bridge across
+      // the near-shore shallows instead (costs stone/wood — only if it can pay)
+      if (tier >= 3 && Terraform.isMoundable(x, y, 'A') &&
+          (S.map.terrain[MapGen.idx(x, y)] === T.WATER || S.map.terrain[MapGen.idx(x, y)] === T.MOAT) &&
+          Bld.canAfford(CFG.TERRAFORM.moundCost, S.ai.res) &&
+          Units.assignTerraform(idle, x, y, 'mound')) { this._escort(idle); return true; }
     }
     return false;
   },
@@ -1000,6 +1006,25 @@ const AI = {
     // Calm chiefs terraform sparingly; craft rises with creativity/difficulty
     if (G.rand() > 0.35 + 0.6 * this.creativity()) return;
     const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0, ptc = this.knownPlayerTC();
+    // A Lv-3 corps also raises earth berms on the threatened flank: passable but
+    // 4x slower to cross, so an assault crawls through the wall/tower killzone.
+    // Quarry-heavy, so only when the treasury can bear it.
+    if (Units.sapperTier('A') >= 3 && ptc && Bld.canAfford(CFG.TERRAFORM.moundCost, ai.res) &&
+        G.rand() < 0.4 * this.creativity()) {
+      const mc = [];
+      for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
+        const d = Math.hypot(dx, dy); if (d < 2.5 || d > 6) continue;
+        const x = cx + dx, y = cy + dy;
+        if (!Terraform.isMoundable(x, y, 'A')) continue;
+        const terr = S.map.terrain[MapGen.idx(x, y)];
+        if (terr === T.WATER || terr === T.MOAT) continue;              // berms on land, not reclamation here
+        if ((dx * (ptc.x - cx) + dy * (ptc.y - cy)) <= 0) continue;     // the player-facing side only
+        mc.push({ x, y, s: (6 - Math.abs(d - 4) * 0.3) + G.rand() * 0.5 });
+      }
+      mc.sort((a, b) => b.s - a.s);
+      for (let k = 0; k < Math.min(4, mc.length); k++)
+        if (Units.assignTerraform(idle, mc[k].x, mc[k].y, 'mound')) { this._escort(idle); return; }
+    }
     const dryOK = P.walls || ai.posture === 'DEFEND';   // only turtles bother with dry trenches
     // scan a defensive BAND around town for the best dig — a water-adjacent tile
     // (floods to a moat) beats a dry trench, the player-facing side beats the

@@ -506,8 +506,11 @@ const Path = {
    is computed per-request (no cache), so a terrain edit takes effect on the next
    path with nothing to invalidate; R.updateTile repaints just the one tile. */
 const Terraform = {
-  DIGGABLE: { [T.GRASS]: 1, [T.STUMPS]: 1, [T.PEBBLES]: 1, [T.BARREN]: 1, [T.RUIN]: 1, [T.CAMP]: 1 },
+  // MOUND is diggable so the Trench tool can flatten it back to grass (see dig())
+  DIGGABLE: { [T.GRASS]: 1, [T.STUMPS]: 1, [T.PEBBLES]: 1, [T.BARREN]: 1, [T.RUIN]: 1, [T.CAMP]: 1, [T.MOUND]: 1 },
   CLEARABLE: { [T.FOREST]: 1, [T.HILLS]: 1, [T.FERTILE]: 1 },
+  // open ground a berm may be raised on (NOT a mound already, NOT the founding camp)
+  MOUNDABLE_LAND: { [T.GRASS]: 1, [T.STUMPS]: 1, [T.PEBBLES]: 1, [T.BARREN]: 1, [T.RUIN]: 1 },
   isDiggable(x, y) { return MapGen.inB(x, y) && !Bld.at(x, y) && !!this.DIGGABLE[S.map.terrain[MapGen.idx(x, y)]]; },
   isClearable(x, y) { return MapGen.inB(x, y) && !!this.CLEARABLE[S.map.terrain[MapGen.idx(x, y)]]; },
   bridgeable(x, y) { if (!MapGen.inB(x, y)) return false; const t = S.map.terrain[MapGen.idx(x, y)]; return t === T.WATER || t === T.MOAT; },
@@ -537,11 +540,61 @@ const Terraform = {
     return false;
   },
 
+  /* ---- MOUND: raise a berm on open ground, or reclaim land from water ---- */
+  // how deep from the ORIGINAL shore a water tile sits: 1 = shallow (natural land
+  // within a tile), up to reclaimReach = the deepest that may ever be reclaimed,
+  // 0 = too far out to fill (open water — stays the sea's, transports & warships
+  // only). Reclaimed tiles are marked (S.map.reclaimed) so they never count as
+  // shore again — that hard-caps reclamation to short stretches, never oceans.
+  reclaimDepth(x, y) {
+    const reach = (CFG.TERRAFORM && CFG.TERRAFORM.reclaimReach) || 2;
+    const natural = (nx, ny) => {
+      if (!MapGen.inB(nx, ny)) return false;
+      const t = S.map.terrain[MapGen.idx(nx, ny)];
+      if (t === T.WATER || t === T.MOAT) return false;                 // water isn't shore
+      return !(S.map.reclaimed && S.map.reclaimed[MapGen.idx(nx, ny)]); // reclaimed land isn't shore either
+    };
+    for (let r = 1; r <= reach; r++)
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        if (natural(x + dx, y + dy)) return r;    // nearest natural-shore ring = depth
+      }
+    return 0;
+  },
+  isMoundable(x, y, owner) {
+    if (!MapGen.inB(x, y) || Bld.at(x, y)) return false;
+    const t = S.map.terrain[MapGen.idx(x, y)];
+    if (this.MOUNDABLE_LAND[t]) return true;                            // berm on open ground
+    if (t === T.WATER || t === T.MOAT) return this.reclaimDepth(x, y) > 0;  // fill near-shore water
+    return false;
+  },
+  // seconds to work this mound tile: berm on land, or shallow/deep reclamation
+  moundTime(x, y) {
+    const T2 = CFG.TERRAFORM, t = S.map.terrain[MapGen.idx(x, y)];
+    if (t === T.WATER || t === T.MOAT) return this.reclaimDepth(x, y) >= 2 ? T2.reclaimDeep : T2.reclaim;
+    return T2.mound;
+  },
+  // do the earthwork: open ground → raised MOUND; water/moat → reclaimed GRASS
+  mound(x, y) {
+    const i = MapGen.idx(x, y), t = S.map.terrain[i];
+    if (this.MOUNDABLE_LAND[t]) S.map.terrain[i] = T.MOUND;
+    else if (t === T.WATER || t === T.MOAT) {
+      S.map.terrain[i] = T.GRASS;
+      if (S.map.reclaimed) S.map.reclaimed[i] = 1;
+    } else return false;
+    if (S.map.resAmount) S.map.resAmount[i] = 0;
+    // seenTerrain is left to updateTile/updateVisibility (see dig) so an edit in
+    // the player's fog can't silently rewrite their memory
+    if (window.R && R.updateTile) R.updateTile(x, y);
+    return true;
+  },
+
   /* Reachability CLAMP: a dig may never pen a town into a tiny sealed pocket. A
      tile touching water becomes a bridgeable moat (reversible) → always allowed;
      otherwise, hypothetically block it and require each TC to keep a sizeable land
      region reachable from just outside its footprint. */
   digWouldSeal(x, y) {
+    if (S.map.terrain[MapGen.idx(x, y)] === T.MOUND) return false;   // flattening a mound keeps the tile passable
     if (this.waterAdj(x, y)) return false;
     const i = MapGen.idx(x, y), save = S.map.terrain[i];
     S.map.terrain[i] = T.TRENCH;
@@ -559,6 +612,12 @@ const Terraform = {
   },
 
   dig(x, y) {
+    const i0 = MapGen.idx(x, y);
+    if (S.map.terrain[i0] === T.MOUND) {   // the Trench tool levels a mound back to grass
+      S.map.terrain[i0] = T.GRASS;
+      if (window.R && R.updateTile) R.updateTile(x, y);
+      return true;
+    }
     if (!this.isDiggable(x, y) || this.digWouldSeal(x, y)) return false;
     const i = MapGen.idx(x, y);
     S.map.terrain[i] = T.TRENCH;

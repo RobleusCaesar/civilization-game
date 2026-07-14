@@ -47,6 +47,9 @@ const R = {
       const shore = !wet(at(x + 1, y)) || !wet(at(x - 1, y)) ||
                     !wet(at(x, y + 1)) || !wet(at(x, y - 1));
       img = Sprites.terrain[T.WATER][shore ? 0 : 1];    // lighter shallows, darker interior
+    } else if (t === T.MOUND) {
+      const gr = Sprites.terrain[T.GRASS];               // a berm sits on a grass base
+      img = gr[(x * 7 + y * 13) % gr.length];
     } else img = variants[(x * 7 + y * 13) % variants.length];
     g.drawImage(img, x * TL, y * TL);
 
@@ -93,6 +96,27 @@ const R = {
         band(lit ? AP.soil[3] : AP.soil[1], 0);           // ground-level lip at the rim
         band(lit ? AP.soil[2] : AP.ink[0], 1);            // slope wall dropping toward the floor
       }
+    } else if (t === T.MOUND) {
+      // a raised grassy earthwork — brighter than the surrounding turf, with a lit
+      // top-left crown and a shadowed lower-right that sell the elevation; a line of
+      // them merges into one continuous embankment (shared edges, no seams)
+      const mnd = v => v === T.MOUND;
+      const li = mnd(at(x - 1, y)) ? 0 : 2, ri = mnd(at(x + 1, y)) ? 0 : 2;
+      const ti = mnd(at(x, y - 1)) ? 0 : 2, bi = mnd(at(x, y + 1)) ? 0 : 2;
+      const bx = x * TL, by = y * TL, w = TL - (li + ri) * px, hgt = TL - (ti + bi) * px;
+      g.fillStyle = AP.grass[3]; g.fillRect(bx + li * px, by + ti * px, w, hgt);            // raised grassy body
+      g.fillStyle = AP.grass[4];                                                            // sunlit crown
+      g.fillRect(bx + li * px, by + ti * px, w, 2 * px);
+      if (!mnd(at(x - 1, y))) g.fillRect(bx + li * px, by + ti * px, px, hgt);              // lit left face
+      let hh = h;   // a scrape of bare earth + a few stones so it reads as heaped-up ground
+      for (let k = 0; k < 6; k++) {
+        hh = (hh * 1103515245 + 12345) >>> 0;
+        const r3 = hh & 3;
+        g.fillStyle = r3 === 0 ? AP.soil[2] : r3 === 1 ? AP.stone[2] : AP.grass[2];
+        g.fillRect(bx + (3 + (hh >> 4) % 10) * px, by + (5 + (hh >> 12) % 6) * px, px, px);
+      }
+      if (!mnd(at(x + 1, y))) { g.fillStyle = AP.leaf[1]; g.fillRect(bx + TL - (ri + 2) * px, by + ti * px, 2 * px, hgt); g.fillStyle = AP.ink[0]; g.fillRect(bx + TL - (ri + 1) * px, by + ti * px, px, hgt); }   // shaded right slope + dark edge
+      if (!mnd(at(x, y + 1))) { g.fillStyle = AP.leaf[1]; g.fillRect(bx + li * px, by + TL - (bi + 2) * px, w, 2 * px); g.fillStyle = AP.ink[0]; g.fillRect(bx + li * px, by + TL - bi * px, w, px); }            // shaded foot
     } else if (Sprites.blendCol[t]) {
       // dithered checker where a differently-grounded biome touches — no hard seams
       const own = Sprites.blendCol[t];
@@ -970,8 +994,8 @@ const R = {
   drawMini() {
     const AP = ART.PALETTE;
     const g = this.mg, COLORS = [AP.grass[3], AP.leaf[1], AP.water[2], AP.stone[2], AP.soil[2], AP.rust[1],
-      AP.grass[2], AP.stone[3], AP.soil[3], AP.stone[1], AP.stone[0], AP.soil[0], AP.water[1]];
-      // grass forest water hills fertile camp stumps pebbles barren ruin mountain trench moat
+      AP.grass[2], AP.stone[3], AP.soil[3], AP.stone[1], AP.stone[0], AP.soil[0], AP.water[1], AP.soil[3]];
+      // grass forest water hills fertile camp stumps pebbles barren ruin mountain trench moat mound
     const shadeCache = {};
     const shade = c => shadeCache[c] || (shadeCache[c] = c.replace(/[0-9a-f]{2}/gi,
       h => Math.max(0, (parseInt(h, 16) * 0.55) | 0).toString(16).padStart(2, '0')));

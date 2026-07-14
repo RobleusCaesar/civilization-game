@@ -231,6 +231,7 @@ const Units = {
     if (job === 'dig') return Terraform.isDiggable(tx, ty);
     if (job === 'bridge') return tier >= 2 && !!Terraform.bridgeCrossing(tx, ty, owner) && !(Bld.bridgeAt && Bld.bridgeAt(tx, ty));
     if (job === 'clear') return tier >= 3 && Terraform.isClearable(tx, ty);
+    if (job === 'mound') return tier >= 3 && Terraform.isMoundable(tx, ty, owner);
     return false;
   },
   // order a sapper to reshape a tile: path to the open edge beside it, then work.
@@ -249,7 +250,8 @@ const Units = {
       if (dd < bd) { bd = dd; best = { x, y }; }
     }
     if (!best) return false;
-    const time = job === 'dig' ? CFG.TERRAFORM.dig : job === 'bridge' ? CFG.TERRAFORM.bridge : CFG.TERRAFORM.clear;
+    const time = job === 'dig' ? CFG.TERRAFORM.dig : job === 'bridge' ? CFG.TERRAFORM.bridge
+      : job === 'mound' ? Terraform.moundTime(tx, ty) : CFG.TERRAFORM.clear;
     const STAND = 0.4;
     u.task = {
       type: 'terraform', job, x: tx, y: ty, sx: best.x, sy: best.y,
@@ -444,7 +446,15 @@ const Units = {
     const tx = wp.x + 0.5, ty = wp.y + 0.5;
     const dx = tx - u.x, dy = ty - u.y;
     const d = Math.hypot(dx, dy);
-    const step = u.speed * dt;
+    // a raised mound is passable but slow going — crossing one (or stepping onto
+    // it) drags every land unit to a quarter speed, friend and foe alike
+    let sp = u.speed;
+    if (this.domain(u) !== 'water') {
+      const here = S.map.terrain[MapGen.idx(u.x | 0, u.y | 0)];
+      const next = S.map.terrain[MapGen.idx(wp.x, wp.y)];
+      if (here === T.MOUND || next === T.MOUND) sp *= (CFG.TERRAFORM.moundCross || 0.25);
+    }
+    const step = sp * dt;
     if (d <= step) {
       u.x = tx; u.y = ty; u.pathI++;
       return u.pathI >= u.path.length;
@@ -595,19 +605,29 @@ const Units = {
             if (dd > step) { u.x += dx / dd * step; u.y += dy / dd * step; } else { u.x = t.stx; u.y = t.sty; }
           }
           const stillValid = t.job === 'dig' ? Terraform.isDiggable(t.x, t.y)
-            : t.job === 'clear' ? Terraform.isClearable(t.x, t.y) : Terraform.bridgeable(t.x, t.y);
+            : t.job === 'clear' ? Terraform.isClearable(t.x, t.y)
+            : t.job === 'mound' ? Terraform.isMoundable(t.x, t.y, u.owner) : Terraform.bridgeable(t.x, t.y);
           if (!stillValid) { this.startNextTerraform(u); continue; }
           t.t -= dt;
           if (Math.random() < 0.16) R.float(u.x + (Math.random() - 0.5), u.y - 0.4, '·', '#cdbb90');   // spadefuls of earth
           if (t.t <= 0) {
-            let done = false, moat = false;
+            let done = false, moat = false, berm = false, cost = false;
             if (t.job === 'dig') { done = Terraform.dig(t.x, t.y); moat = done && S.map.terrain[MapGen.idx(t.x, t.y)] === T.MOAT; }
             else if (t.job === 'clear') { done = Terraform.clear(t.x, t.y); }
+            else if (t.job === 'mound') {
+              // the one paid earthwork — quarry-heavy; skip (and warn) if broke
+              const res = u.owner === 'P' ? S.res : S.ai.res, mc = CFG.TERRAFORM.moundCost;
+              if (Bld.canAfford(mc, res)) { Bld.pay(mc, res); done = Terraform.mound(t.x, t.y); berm = done && S.map.terrain[MapGen.idx(t.x, t.y)] === T.MOUND; }
+              else cost = true;
+            }
             else if (t.job === 'bridge' && Bld.buildBridge) { done = Bld.buildBridge(u.owner, t.x, t.y); }
             if (u.owner === 'P') {
               if (done) G.log(t.job === 'dig' ? (moat ? 'Your sappers open a moat — the channel floods!' : 'Your sappers dig a trench')
-                : t.job === 'clear' ? 'Your sappers breach the ground — a path opens' : 'Your sappers raise a bridge');
+                : t.job === 'clear' ? 'Your sappers breach the ground — a path opens'
+                : t.job === 'mound' ? (berm ? 'Your sappers raise an earth mound — slow to cross' : 'Your sappers reclaim solid ground from the water')
+                : 'Your sappers raise a bridge');
               else if (t.job === 'dig') UI.toast('Can’t dig there — it would seal the town in', true);
+              else if (cost) UI.toast('Not enough stone & wood to raise a mound', true);
             }
             this.startNextTerraform(u);   // tile done — walk the line to the next queued job
           }

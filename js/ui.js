@@ -251,15 +251,20 @@ const UI = {
   commitTerraDrag() {
     const u = this.armedSapper(), job = this.terraMode;
     const list = (this.terraGhost || []).filter(t => t.ok).map(t => ({ x: t.x, y: t.y, job }));
+    // reclamation must work SHORE-FIRST: a deep tile needs the shallow one ahead of
+    // it filled so the sapper has ground to stand on. Order the line by depth.
+    if (job === 'mound') list.sort((a, b) => Terraform.reclaimDepth(a.x, a.y) - Terraform.reclaimDepth(b.x, b.y));
     if (u && list.length) {
       const n = Units.queueTerraform(u, list);
+      const noun = job === 'dig' ? 'Trench' : job === 'mound' ? 'Mound' : 'Clear';
       this.toast(n
-        ? `${job === 'dig' ? 'Trench' : 'Clear'} line: ${n} tile${n > 1 ? 's' : ''} — the sapper works them in order`
+        ? `${noun} line: ${n} tile${n > 1 ? 's' : ''} — the sapper works them in order`
         : 'Those tiles are already queued');
       this.terraMode = null;   // planning done — disarm so the next tap walks (no accidental digs)
       this.renderPanel();
     } else if ((this.terraGhost || []).length) {
-      this.toast(job === 'dig' ? 'No open ground to dig there' : 'Nothing to clear there', true);
+      this.toast(job === 'dig' ? 'No open ground to dig there'
+        : job === 'mound' ? 'Nothing to mound there — open ground or near-shore water' : 'Nothing to clear there', true);
     }
   },
 
@@ -497,8 +502,10 @@ const UI = {
           if (mode === 'dig' && Terraform.digWouldSeal(tile.x, tile.y)) { this.toast('Can’t dig there — it would seal the town in', true); return; }
           if (mode === 'bridge' && (tier < 2 || !Terraform.bridgeable(tile.x, tile.y) || Bld.bridgeAt(tile.x, tile.y))) { this.toast('Bridges span water or a moat', true); return; }
           if (mode === 'clear' && (tier < 3 || !Terraform.isClearable(tile.x, tile.y))) { this.toast('Clear a forest 🌲 / rock 🪨 / orchard tile', true); return; }
+          if (mode === 'mound' && (tier < 3 || !Terraform.isMoundable(tile.x, tile.y, sel.owner))) { this.toast('Mound: raise open ground, or fill water within 2 tiles of shore', true); return; }
           if (Units.assignTerraform(sel, tile.x, tile.y, mode))
-            this.toast(mode === 'dig' ? 'Sapper digging ⛏' : mode === 'bridge' ? 'Sapper raising a bridge 🌉' : 'Sapper breaching ⛏');
+            this.toast(mode === 'dig' ? 'Sapper digging ⛏' : mode === 'bridge' ? 'Sapper raising a bridge 🌉'
+              : mode === 'mound' ? 'Sapper raising a mound ⛰' : 'Sapper breaching ⛏');
           else this.toast('Can’t reshape that tile', true);
           return;   // tool stays armed — tap on to dig a whole channel
         }
@@ -1034,7 +1041,7 @@ const UI = {
           // the same way everyone else does
           : u.owner === 'R' ? 'Barbarian — nothing but trouble. Who they strike at, only they know.'
           : 'Rival tribe')
-        : u.kind === 'sapper' ? 'Pick a tool below, then tap or drag a line of tiles — dig trenches (a moat where it touches water) or clear resources, and the sapper works them in order. Bridge spans water. Tool down = tap to walk. Sappers can’t fight — keep them guarded.'
+        : u.kind === 'sapper' ? 'Pick a tool below, then tap or drag a line of tiles — dig trenches (a moat where it touches water), clear resources, or (Camp Lv 3) raise mounds — slow-to-cross berms, or reclaim near-shore water into land (costs stone & wood). The sapper works the line in order. Bridge spans water. Tool down = tap to walk. Sappers can’t fight — keep them guarded.'
         : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / an orchard to gather, jumping fish 🐟 to fish off the shore, a work site to build, or a tile to walk.'
         : u.kind === 'fishboat' ? 'Tap water where fish jump 🐟 to fish, or open water to row there.'
         : u.kind === 'catapult' ? 'Slow, but stone breaks stone — tap a rival wall, tower, or building to bombard it.'
@@ -1076,6 +1083,7 @@ const UI = {
         html += tool('dig', '🕳', 'Trench / Moat', 1);
         html += tool('bridge', '🌉', 'Bridge', 2);
         html += tool('clear', '⛏', 'Clear', 3);
+        html += tool('mound', '⛰', 'Mound', 3);
       }
       if (own && Units.isVillager(u)) html += `<button class="abtn" data-act="gobuild">🔨 Build…</button>`;
       // resource-station upgrade, right on the worker's panel
@@ -1097,8 +1105,12 @@ const UI = {
         }
       }
       if (own && Units.isMilitary(u) && !Units.isNaval(u)) html += `<button class="abtn" data-act="group">👥 Group nearby</button>`;
-      // Stop is gone for villagers — you just tap them somewhere else to redirect
-      if (own && !Units.isVillager(u)) html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
+      // Stop is gone for villagers — you just tap them somewhere else to redirect.
+      // For sappers it appears only while they're actually working (a task or a
+      // queued line) — the freed slot belongs to the Mound tool above.
+      const sapperWorking = u.kind === 'sapper' && !!(u.task || (u.jobs && u.jobs.length));
+      if (own && !Units.isVillager(u) && (u.kind !== 'sapper' || sapperWorking))
+        html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
       html += '</div>';
       panel.innerHTML = html;
       const ic = panel.querySelector('#pIcon');
@@ -1123,12 +1135,13 @@ const UI = {
       panel.querySelectorAll('[data-act="terra"]').forEach(btn => btn.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id); if (!u2) return;
         const job = btn.dataset.job, tier = Units.sapperTier(u2.owner);
-        const minTier = job === 'clear' ? 3 : job === 'bridge' ? 2 : 1;
+        const minTier = (job === 'clear' || job === 'mound') ? 3 : job === 'bridge' ? 2 : 1;
         if (tier < minTier) { this.toast(`Needs a Sappers’ Camp Lv ${minTier}`, true); return; }
         this.terraMode = this.terraMode === job ? null : job;   // toggle the tool
         this.toast(this.terraMode
           ? (job === 'dig' ? 'Dig tool — tap or drag a line of ground (a moat forms beside water)'
             : job === 'bridge' ? 'Bridge tool — tap water or a moat to span it'
+            : job === 'mound' ? 'Mound tool — raise slow-to-cross berms, or reclaim near-shore water (costs stone & wood)'
             : 'Clear tool — tap or drag across forest 🌲 / rock 🪨 / orchard')
           : 'Tool down — tap a tile to walk');
         this.renderPanel();

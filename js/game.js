@@ -155,6 +155,7 @@ const G = {
         scarce: gen.scarce,
         landform: gen.landform,
         decay: {},                          // idx -> day the depleted/ruined tile regrows to grass
+        reclaimed: {},                      // idx -> 1 where a sapper filled water into land (never counts as shore again)
         explored: new Array(CFG.W * CFG.H).fill(0),
         seenTerrain: gen.terrain.slice(),   // what the player last saw, per tile
         seenB: {},                          // last-seen buildings: idx -> {key, level, owner}
@@ -672,6 +673,7 @@ const G = {
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};
+    if (!data.map.reclaimed) data.map.reclaimed = {};
     if (!data.map.fishStocked) {
       // pre-dock save: stock its waters so fishing works after loading
       const fr = CFG.RES_AMOUNT[T.WATER];
