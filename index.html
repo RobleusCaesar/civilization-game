@@ -52,6 +52,8 @@
     flex: 1 1 0; min-width: 0;
   }
   .res canvas { width: 15px; height: 15px; image-rendering: pixelated; flex: 0 0 auto; }
+  .fnet { font-size: 10px; font-weight: 700; opacity: 0.72; margin-left: 1px; }
+  .fnet.bad { color: #ff8a80; opacity: 1; }
   #rPopChip { flex: 0 0 auto; padding: 4px 9px; }
   #rDay { margin-left: auto; color: var(--gold); padding-right: 4px; }
   .iconbtn {
@@ -396,7 +398,7 @@
 
 <div id="topbar">
   <div class="trow">
-    <span class="res"><canvas class="ric" data-ic="food"></canvas><span id="rFood">0</span></span>
+    <span class="res"><canvas class="ric" data-ic="food"></canvas><span id="rFood">0</span><span id="rFoodNet" class="fnet"></span></span>
     <span class="res"><canvas class="ric" data-ic="wood"></canvas><span id="rWood">0</span></span>
     <span class="res"><canvas class="ric" data-ic="stone"></canvas><span id="rStone">0</span></span>
     <span class="res"><canvas class="ric" data-ic="gold"></canvas><span id="rGold">0</span></span>

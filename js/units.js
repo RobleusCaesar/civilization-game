@@ -60,6 +60,63 @@ const Units = {
     return n;
   },
 
+  // total food eaten PER DAY by everything an owner keeps — villagers, soldiers,
+  // ships and the troops riding them (see CFG.FOOD_UPKEEP / G.applyFoodUpkeep).
+  foodUpkeep(owner) {
+    const U = CFG.FOOD_UPKEEP; if (!U) return 0;
+    let f = 0;
+    // garrisoned player defenders still eat
+    if (owner === 'P' && S.garrison) f += S.garrison.length * U.military;
+    for (const u of S.units) {
+      if (u.owner !== owner) continue;
+      if (this.isVillager(u) || this.isSapper(u)) f += U.villager;
+      else if (u.kind === 'rider' || u.kind === 'horsearcher' || u.kind === 'lancer') f += U.cavalry;
+      else if (this.isSiege(u) || u.kind === 'ballista') f += U.siege;
+      else if (u.kind === 'fishboat' || this.isTransport(u)) {
+        f += U.boat;
+        if (u.cargo) f += u.cargo.length * U.cargo;   // soldiers below deck still eat
+      }
+      else if (u.kind === 'warship' || u.kind === 'fireship') f += U.warship;
+      else if (this.isMilitary(u)) f += U.military;
+    }
+    return f;
+  },
+  // famine: a soldier walks off in search of food. Villagers NEVER desert — the
+  // town must survive to farm its way back — so only fighters (hungriest first:
+  // cavalry, then engines, then foot) leave. Field troops go before the garrison.
+  desertHungry(owner) {
+    const rank = u => (u.kind === 'rider' || u.kind === 'horsearcher' || u.kind === 'lancer') ? 3
+                    : (this.isSiege(u) || u.kind === 'ballista') ? 2
+                    : this.isMilitary(u) ? 1 : 0;
+    let victim = null, best = 0;
+    for (const u of S.units) {
+      if (u.owner !== owner) continue;
+      const r = rank(u);
+      if (r > best) { best = r; victim = u; }
+    }
+    if (victim) {
+      const name = CFG.UNITS[victim.kind].name;
+      this.despawn(victim);
+      if (owner === 'P') G.log(`🥀 A hungry ${name} deserts — there was no food to give.`, true);
+      return true;
+    }
+    // no field soldiers left — a garrisoned defender slips away instead
+    if (owner === 'P' && S.garrison && S.garrison.length) {
+      S.garrison.pop();
+      G.log('🥀 A hungry defender abandons the garrison — the stores are empty.', true);
+      return true;
+    }
+    return false;   // only villagers remain; the town simply tightens its belt
+  },
+  // cleanly pull a unit off the map (used by desertion)
+  despawn(u) {
+    const i = S.units.indexOf(u);
+    if (i < 0) return;
+    S.units.splice(i, 1);
+    for (const o of S.units) if (o.tUnit === u.id) o.tUnit = 0;
+    if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
+  },
+
   villagerArmed() {
     return S.buildings.some(b => b.owner === 'P' && b.key === 'lodge' && b.level >= 3 && Bld.done(b));
   },

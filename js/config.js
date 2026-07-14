@@ -82,6 +82,28 @@ const CFG = {
   REGROW_FRACTION: 0.5,       // regrown resource tiles come back at half a fresh stock — slow but never zero
   TC_POP_CAP: [20, 40, 60],   // hard population ceiling by Town Center level — houses only help up to this
 
+  /* WALL UPGRADES aren't instant — masons take days, and the Town Center is
+     tied up managing the works (no training / no other upgrades) until done.
+     Days to raise EVERY wall & gate one level, indexed by current wall level
+     (L1→L2, then L2→L3 a little longer). */
+  WALL_UPGRADE_DAYS: [2, 3.5],
+
+  /* FOOD UPKEEP — every mouth eats, every day (see Units.foodUpkeep +
+     G.applyFoodUpkeep). Food was a constant constraint through all of ancient
+     history: an army you can't feed melts away. Per-unit food/day by role;
+     when the granary runs dry, soldiers desert (villagers never do — the town
+     must survive to farm its way back). Tune here. */
+  FOOD_UPKEEP: {
+    villager: 1.0,   // villagers & sappers — the working mouths
+    military: 1.5,   // foot soldiers & archers
+    cavalry: 2.0,    // riders eat for horse and man both
+    siege: 1.5,      // engine crews
+    boat: 0.5,       // a hull's small crew (fishing boat / transport)
+    warship: 1.0,    // a fighting ship's crew
+    cargo: 1.5,      // each soldier riding a transport still eats
+  },
+  FAMINE_DESERT_DAYS: 1.5,    // days of unbroken famine between desertions
+
   /* ---- Buildings: 8 types x 3 levels. Level index = level-1. ----
      cost: resources to build/upgrade to this level
      time: build/upgrade time in days

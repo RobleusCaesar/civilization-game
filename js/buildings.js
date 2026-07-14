@@ -297,6 +297,7 @@ const Bld = {
       return { ok: false, why: 'Walls upgrade together — see the Town Center' };
     if (b.level >= 3) return { ok: false, why: 'Max level' };
     if (b.construction || b.upgrading) return { ok: false, why: 'Busy' };
+    if (b.wallUp > 0) return { ok: false, why: 'Reinforcing walls — Town Center busy' };
     const next = d.levels[b.level];
     if (b.key !== 'tc') {
       const tc = this.tcOf(b.owner);
@@ -369,6 +370,7 @@ const Bld = {
     if (!spec) return { ok: false, why: '?' };
     if (b.construction) return { ok: false, why: 'Under construction' };
     if (b.upgrading) return { ok: false, why: 'Upgrading — training paused' };
+    if (b.wallUp > 0) return { ok: false, why: 'Reinforcing walls — Town Center busy' };
     if (spec.reqLevel && b.level < spec.reqLevel) return { ok: false, why: `Needs Lv ${spec.reqLevel}` };
     if (b.queue.length >= this.queueCap(b)) return { ok: false, why: 'Queue full' };
     if (b.owner === 'P' && Units.popUsed('P') + b.queue.length >= Bld.popCap('P'))
@@ -461,7 +463,12 @@ const Bld = {
         b.upgrading -= dtDays;
         if (b.upgrading <= 0) this.finishUpgrade(b);
       }
-      if (b.queue.length && !b.upgrading) {   // level-up works pause the training yard
+      // village-wide wall reinforcement ties up the Town Center until it's done
+      if (b.wallUp > 0) {
+        b.wallUp -= dtDays;
+        if (b.wallUp <= 0) this.finishWallUpgrade(b);
+      }
+      if (b.queue.length && !b.upgrading && !(b.wallUp > 0)) {   // level-up / wall works pause the training yard
         b.queue[0].t -= dtDays;
         if (b.queue[0].t <= 0) {
           const item = b.queue.shift();
@@ -593,19 +600,38 @@ const Bld = {
   },
   canUpgradeWalls() {
     if ((S.wallLevel || 1) >= 3) return { ok: false, why: 'Max level' };
-    if (!this.forts().length) return { ok: false, why: 'No walls built' };
     const tc = this.tcOf('P');
+    if (tc && tc.wallUp > 0) return { ok: false, why: 'Walls already reinforcing' };
+    if (!this.forts().length) return { ok: false, why: 'No walls built' };
     if (!tc || tc.level < S.wallLevel + 1)
       return { ok: false, why: `Needs Town Center Lv ${S.wallLevel + 1}` };
     const cost = this.wallUpgradeCost();
     if (!this.canAfford(cost)) return { ok: false, why: 'Not enough resources' };
     return { ok: true, cost };
   },
+  // village-wide reinforcement isn't instant — the masons work for days while
+  // the Town Center manages the effort (no training / no upgrades until done).
+  wallUpgradeDays() {
+    const i = (S.wallLevel || 1) - 1;
+    return (CFG.WALL_UPGRADE_DAYS && CFG.WALL_UPGRADE_DAYS[i]) || 2;
+  },
   upgradeWalls() {
     const c = this.canUpgradeWalls();
     if (!c.ok) return false;
+    const tc = this.tcOf('P');
+    if (!tc) return false;
     this.pay(c.cost, S.res);
-    S.wallLevel++;
+    const days = this.wallUpgradeDays();
+    tc.wallUp = days;
+    tc.wallUpTotal = days;                       // progress bar span
+    tc.wallUpTarget = (S.wallLevel || 1) + 1;    // the level being built toward
+    G.log(`⚒ Masons set to work — every wall & gate reinforcing to Lv ${tc.wallUpTarget}. The Town Center is busy (${Math.ceil(days)}d).`);
+    return true;
+  },
+  finishWallUpgrade(tc) {
+    const target = tc.wallUpTarget || (S.wallLevel || 1) + 1;
+    tc.wallUp = 0; tc.wallUpTotal = 0; tc.wallUpTarget = 0;
+    S.wallLevel = target;
     if (S.stats) S.stats.upgrades = (S.stats.upgrades || 0) + 1;   // village-wide, still one feat
     for (const b of this.forts()) {
       const lv = CFG.BUILDINGS[b.key].levels[S.wallLevel - 1];
@@ -614,7 +640,6 @@ const Bld = {
       b.level = S.wallLevel;
     }
     G.log(`⚒ Every wall and gate reinforced to Lv ${S.wallLevel}!`);
-    return true;
   },
 
   demolish(b) {

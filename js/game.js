@@ -368,6 +368,36 @@ const G = {
     }
   },
 
+  // FOOD UPKEEP — deduct the day's rations. A surplus is fine; running dry is a
+  // famine: food clamps to zero and, if it drags on, a soldier deserts each
+  // FAMINE_DESERT_DAYS (see Units.desertHungry). Symmetric — the rival eats too,
+  // and its economy brain answers a shortfall by building farms (see AI.daily).
+  applyFoodUpkeep(owner) {
+    const store = owner === 'P' ? S : S.ai;
+    if (!store || !store.res) return;
+    const res = store.res;
+    res.food -= Units.foodUpkeep(owner);
+    if (res.food >= 0) {
+      store._famineT = 0;
+      if (owner === 'P' && store._famineWarned) {
+        store._famineWarned = false;
+        this.log('🌾 The granaries fill again — the village eats its fill.');
+      }
+      return;
+    }
+    // the stores are empty
+    res.food = 0;
+    store._famineT = (store._famineT || 0) + 1;
+    if (owner === 'P' && !store._famineWarned) {
+      store._famineWarned = true;
+      this.log('⚠️ Famine! Food has run out — raise farms, lodges or fishing boats before your soldiers desert.', true);
+    }
+    if (store._famineT >= (CFG.FAMINE_DESERT_DAYS || 1.5)) {
+      store._famineT -= (CFG.FAMINE_DESERT_DAYS || 1.5);
+      Units.desertHungry(owner);
+    }
+  },
+
   dayTick() {
     // victory and defeat come only through Town Centers falling (see Bld.damage)
     S.day++;
@@ -413,6 +443,9 @@ const G = {
     if (window.Cards) Cards.seerWatch();   // ORIGIN CARDS: the Seer's forewarning
     Combat.maybeWave();
     AI.daily();
+    // every mouth eats — food is a standing cost, not a one-time price at training
+    this.applyFoodUpkeep('P');
+    this.applyFoodUpkeep('A');
     // arcade tally: the tribe at its greatest
     if (S.stats) {
       const pop = S.units.reduce((n, u) => n + (u.owner === 'P' ? 1 : 0), 0) + S.garrison.length;

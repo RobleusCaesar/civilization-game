@@ -610,7 +610,8 @@ const UI = {
         const vills = S.units.some(u => u.owner === 'P' && Units.isVillager(u));
         const idle = S.units.some(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
         sig += '|' + (S.wallLevel || 1) + '|' + Bld.forts().length +
-               '|' + vills + '|' + (S.garrison.length > 0) + '|' + idle;
+               '|' + vills + '|' + (S.garrison.length > 0) + '|' + idle +
+               '|' + (b.wallUp > 0 ? 'w' + b.wallUpTarget : '-');
       }
       // Trading Post: caravan out/in flips the whole panel; per-good affordability
       // greys the buttons. (The countdown itself ticks in place via refreshPanel.)
@@ -725,6 +726,13 @@ const UI = {
         const cb = document.getElementById('carBar');
         if (cb) cb.style.width = Math.round(Math.max(0, Math.min(1, 1 - b.caravan.t / (b.caravan.total || 1))) * 100) + '%';
       }
+      // tick the wall-reinforcement countdown in place
+      const wallLeft = document.getElementById('wallLeft');
+      if (wallLeft && b.wallUp > 0) {
+        wallLeft.textContent = Math.ceil(b.wallUp) + 'd';
+        const wb = document.getElementById('wallBar');
+        if (wb) wb.style.width = Math.round(Math.max(0, Math.min(1, 1 - b.wallUp / (b.wallUpTotal || 1))) * 100) + '%';
+      }
     }
   },
   panelSub() {
@@ -812,7 +820,13 @@ const UI = {
           const idle = S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit).length;
           if (idle)
             html += `<button class="abtn" data-act="callidle">📣 Call idle<small id="idleN">${idle} idle — muster here</small></button>`;
-          if ((S.wallLevel || 1) < 3 && Bld.forts().length) {
+          if (b.wallUp > 0) {
+            const frac = Math.max(0, Math.min(1, 1 - b.wallUp / (b.wallUpTotal || 1)));
+            html += `<div class="abtn cant wide" style="pointer-events:none">🧱 Reinforcing walls → Lv ${b.wallUpTarget}` +
+              `<small>Town Center busy — <span id="wallLeft">${Math.ceil(b.wallUp)}d</span> left</small>` +
+              `<div style="height:4px;margin-top:5px;background:rgba(0,0,0,0.4);border-radius:2px;overflow:hidden">` +
+              `<div id="wallBar" style="height:100%;width:${Math.round(frac * 100)}%;background:var(--gold)"></div></div></div>`;
+          } else if ((S.wallLevel || 1) < 3 && Bld.forts().length) {
             const upw = Bld.canUpgradeWalls();
             html += `<button class="abtn wide ${upw.ok ? '' : 'cant'}" data-act="upwalls">🧱 Upgrade all walls to Lv ${(S.wallLevel || 1) + 1}<small>${Bld.costStr(Bld.wallUpgradeCost())} — every wall & gate</small></button>`;
           }
@@ -1190,6 +1204,12 @@ const UI = {
     if (this.refreshT > 0) return;
     this.refreshT = 0.25;
     document.getElementById('rFood').textContent = this.fmtRes(S.res.food);
+    const fnet = document.getElementById('rFoodNet');
+    if (fnet) {
+      const eat = Units.foodUpkeep('P');
+      fnet.textContent = eat > 0 ? '−' + Math.round(eat) + '/d' : '';
+      fnet.classList.toggle('bad', !!S._famineWarned || (eat > 0 && S.res.food <= 0));
+    }
     document.getElementById('rWood').textContent = this.fmtRes(S.res.wood);
     document.getElementById('rStone').textContent = this.fmtRes(S.res.stone);
     document.getElementById('rGold').textContent = this.fmtRes(S.res.gold);
