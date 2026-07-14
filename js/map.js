@@ -563,7 +563,12 @@ const Terraform = {
     const i = MapGen.idx(x, y);
     S.map.terrain[i] = T.TRENCH;
     if (S.map.resAmount) S.map.resAmount[i] = 0;
-    if (S.map.seenTerrain) S.map.seenTerrain[i] = T.TRENCH;
+    // NB: do NOT touch seenTerrain here. It is the PLAYER's last-seen memory —
+    // updateTile writes it only when the tile is actually visible, and
+    // updateVisibility reconciles it on re-sight. Writing it unconditionally let
+    // an AI sapper clearing a resource in the player's FOG mark the tile "grass"
+    // in memory while the cache still drew the old rock/bush — so the perimeter
+    // looked solid but was passable, and enemies walked straight through it.
     if (window.R && R.updateTile) R.updateTile(x, y);
     this.floodMoats(x, y);
     return true;
@@ -590,8 +595,7 @@ const Terraform = {
       const ci = MapGen.idx(cx, cy);
       if (S.map.terrain[ci] === T.MOAT) continue;
       S.map.terrain[ci] = T.MOAT;
-      if (S.map.seenTerrain) S.map.seenTerrain[ci] = T.MOAT;
-      if (window.R && R.updateTile) R.updateTile(cx, cy);
+      if (window.R && R.updateTile) R.updateTile(cx, cy);   // updateTile writes seenTerrain only when visible (see dig)
     }
   },
 
@@ -600,7 +604,9 @@ const Terraform = {
     const i = MapGen.idx(x, y);
     S.map.terrain[i] = T.GRASS;
     if (S.map.resAmount) S.map.resAmount[i] = 0;
-    if (S.map.seenTerrain) S.map.seenTerrain[i] = T.GRASS;
+    // seenTerrain left to updateTile/updateVisibility (see dig) — a rival sapper
+    // clearing this in the player's fog must not silently rewrite their memory,
+    // or the cleared lane keeps drawing as a solid resource they can't see through
     if (window.R && R.updateTile) R.updateTile(x, y);
     if (CFG.TERRAFORM.clearYield > 0) { /* optional trickle — default 0 */ }
     return true;
