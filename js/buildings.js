@@ -410,9 +410,44 @@ const Bld = {
     return 1;
   },
 
+  /* ---- Trading Post: resource → gold caravans (see CFG.TRADE) ---- */
+  tradeSpec(b) { return CFG.TRADE.levels[Math.min(b.level, CFG.TRADE.levels.length) - 1]; },
+  tradeGold(b) { return Math.floor(this.tradeSpec(b).input * this.tradeSpec(b).rate); },
+  // can this Trading Post send a caravan of `res` right now?
+  canTrade(b, res) {
+    if (!b || b.key !== 'trade' || !this.done(b) || b.upgrading) return { ok: false, why: 'Not ready' };
+    if (CFG.TRADE.goods.indexOf(res) < 0) return { ok: false, why: 'Not tradeable' };
+    if (b.caravan) return { ok: false, why: 'A caravan is already out' };
+    const bag = b.owner === 'P' ? S.res : S.ai.res;
+    const need = this.tradeSpec(b).input;
+    if ((bag[res] || 0) < need) return { ok: false, why: `Needs ${need} ${res}` };
+    return { ok: true };
+  },
+  // spend the load now; the gold arrives when the caravan returns (Bld.update)
+  startTrade(b, res) {
+    if (!this.canTrade(b, res).ok) return false;
+    const spec = this.tradeSpec(b), bag = b.owner === 'P' ? S.res : S.ai.res;
+    bag[res] -= spec.input;
+    b.caravan = { res, gold: this.tradeGold(b), t: spec.delay, total: spec.delay };
+    return true;
+  },
+
   /* continuous updates: construction/upgrade progress + training (measured in days) */
   update(dtDays) {
     for (const b of S.buildings) {
+      // a Trading Post caravan is out — count it down and pay out on return
+      if (b.caravan) {
+        b.caravan.t -= dtDays;
+        if (b.caravan.t <= 0) {
+          const bag = b.owner === 'P' ? S.res : S.ai.res;
+          bag.gold += b.caravan.gold;
+          if (b.owner === 'P') {
+            G.log(`Caravan returns — +${b.caravan.gold} ✨ gold from the ${this.def(b.key).name}`);
+            if (S.stats) S.stats.traded = (S.stats.traded || 0) + b.caravan.gold;
+          }
+          b.caravan = null;
+        }
+      }
       if (b.construction > 0) {
         // the rival's crews work off-screen; player sites need a villager builder
         if (b.owner === 'A') {

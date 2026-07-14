@@ -726,6 +726,34 @@ const Sprites = {
       }
       if (d.banner) banner(q, 3, 3, fac);                          // faction pennant on the shore post
     },
+    // trading post: an open market stall — a striped faction awning on timber
+    // posts over a plank counter piled with clay pots, a grain basket, bundled
+    // furs and a little stack of trade coin. Reads as "market" at a glance.
+    trade(p, lv, fac) {
+      const d = ART.tierDress(lv), q = p.hi, WD = AP.wood, SD = AP.bone, CLAY = AP.soil, TH = AP.thatch, HD = AP.hide;
+      ART.dropShadow(p, 8, 14, 13);
+      // stall frame: two posts and a ridge beam
+      p(1, 5, 1, 9, WD[1]); p(14, 5, 1, 9, WD[1]);
+      p(1, 4, 14, 1, WD[2]); q(2, 27, 2, 1, WD[0]); q(28, 27, 2, 1, WD[0]);
+      // striped awning canopy — faction cloth alternating with cream
+      for (let ax = 1; ax < 15; ax++) p(ax, 1, 1, 4, (ax & 1) ? fac[2] : SD[2]);
+      p(1, 1, 14, 1, SD[2]); p(1, 4, 14, 1, fac[0]);               // sun-lit top + shaded valance
+      for (let vx = 2; vx < 30; vx += 4) { q(vx, 10, 2, 1, fac[1]); q(vx + 1, 11, 1, 1, fac[0]); }  // scalloped tabs
+      // plank counter across the open front
+      ART.woodPlankTexture(p, 2, 11, 12, 2, 19); p(2, 11, 12, 1, WD[3]);
+      // --- WARES ---
+      p(6, 6, 1, 4, CLAY[2]); p(6, 6, 1, 1, CLAY[3]); q(11, 12, 2, 1, CLAY[1]);   // tall amphora (neck highlight)
+      ART.shadedCircle(p, 4, 9, 1, CLAY, 2); q(6, 15, 3, 1, CLAY[3]);             // round clay pot
+      ART.shadedCircle(p, 8, 9, 1, TH, 2);  q(15, 15, 3, 1, TH[3]);              // woven grain basket
+      ART.shadedRect(p, 9, 8, 2, 2, HD, 2); q(19, 15, 3, 1, HD[3]);             // bundled furs
+      ART.shadedRect(p, 2, 8, 2, 2, SD, 1); q(5, 15, 2, 1, SD[2]);              // grain sack at the post
+      // a little stack of TRADE COIN on the counter (the gold accent)
+      q(24, 21, 4, 1, AP.gold[1]); q(24, 20, 4, 1, AP.gold[2]); q(25, 19, 3, 1, AP.gold[2]); q(25, 18, 2, 1, AP.gold[3]);
+      // level dressing
+      if (d.decor >= 1) { ART.shadedRect(p, 11, 9, 2, 2, TH, 2); q(24, 13, 2, 3, HD[2]); q(25, 12, 1, 1, WD[1]); }  // extra crate + a hung pelt
+      if (d.decor >= 2) { ART.shadedCircle(p, 12, 8, 1, CLAY, 2); q(6, 5, 3, 1, AP.bloom[2]); q(9, 5, 2, 1, AP.bloom[1]); }  // more pottery + a dyed-cloth bolt
+      if (d.banner) banner(p, 14, 0, fac);                          // trader's pennant
+    },
     // siege workshop: an open work-yard where a catapult takes shape beside the hut
     siege(p, lv, fac) {
       const d = ART.tierDress(lv);

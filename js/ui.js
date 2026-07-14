@@ -19,7 +19,7 @@ const UI = {
   terraDrag: null,       // tile chain while dragging a sapper dig/clear line
   terraGhost: null,      // [{x,y,ok}] preview of the dragged terraform line
   settingRally: null,    // building id waiting for a rally-point tap
-  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'wall', 'gate'],
+  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'trade', 'wall', 'gate'],
 
   // paint a sprite into an icon canvas: back it at 64px and scale the WHOLE
   // sprite in (sprites are now 64px — a naive drawImage would clip to a corner),
@@ -604,6 +604,10 @@ const UI = {
         sig += '|' + (S.wallLevel || 1) + '|' + Bld.forts().length +
                '|' + vills + '|' + (S.garrison.length > 0) + '|' + idle;
       }
+      // Trading Post: caravan out/in flips the whole panel; per-good affordability
+      // greys the buttons. (The countdown itself ticks in place via refreshPanel.)
+      if (b.key === 'trade')
+        sig += '|' + (b.caravan ? 'car' : CFG.TRADE.goods.map(r => (S.res[r] || 0) >= Bld.tradeSpec(b).input ? '1' : '0').join(''));
       return sig;
     }
     if (this.sel.type === 'group') {
@@ -706,6 +710,13 @@ const UI = {
         S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit).length + ' idle — muster here';
       const upw = panel.querySelector('[data-act="upwalls"]');
       if (upw) upw.classList.toggle('cant', !Bld.canUpgradeWalls().ok);
+      // tick a Trading Post caravan's return countdown in place
+      const carLeft = document.getElementById('carLeft');
+      if (carLeft && b.caravan) {
+        carLeft.textContent = Math.ceil(b.caravan.t) + 'd';
+        const cb = document.getElementById('carBar');
+        if (cb) cb.style.width = Math.round(Math.max(0, Math.min(1, 1 - b.caravan.t / (b.caravan.total || 1))) * 100) + '%';
+      }
     }
   },
   panelSub() {
@@ -802,6 +813,22 @@ const UI = {
           const net = this.gateConvertCost(b);
           html += `<button class="abtn wide ${Bld.canAfford(net) ? '' : 'cant'}" data-act="togate">🚪 Build Gate<small>${Bld.costStr(net)} — replaces this section</small></button>`;
         }
+        if (b.key === 'trade' && !b.construction && !b.upgrading) {
+          const spec = Bld.tradeSpec(b), gold = Bld.tradeGold(b), ic = { food: '🍖', wood: '🪵', stone: '🪨' };
+          if (b.caravan) {
+            const frac = Math.max(0, Math.min(1, 1 - b.caravan.t / (b.caravan.total || 1)));
+            html += `<div class="abtn cant" style="pointer-events:none">🐫 Caravan out — ${ic[b.caravan.res] || ''} for +${b.caravan.gold} ✨` +
+              `<small><span id="carLeft">${Math.ceil(b.caravan.t)}d</span> to return</small>` +
+              `<div style="height:4px;margin-top:5px;background:rgba(0,0,0,0.4);border-radius:2px;overflow:hidden">` +
+              `<div id="carBar" style="height:100%;width:${Math.round(frac * 100)}%;background:var(--gold)"></div></div></div>`;
+          } else {
+            html += `<span class="psub">Send a load out → +${gold} ✨ back in ${spec.delay}d (Lv ${b.level} rate). Gold stays scarce — trade sparingly.</span>`;
+            for (const res of CFG.TRADE.goods) {
+              const can = Bld.canTrade(b, res).ok;
+              html += `<button class="abtn ${can ? '' : 'cant'}" data-act="trade" data-res="${res}">🐫 Sell ${ic[res] || res}<small>${spec.input} ${ic[res] || res} → +${gold} ✨</small></button>`;
+            }
+          }
+        }
         if (b.key !== 'tc') {
           const refund = Bld.costStr(Bld.demolishRefund(b));
           html += this.confirmDemolish === b.id
@@ -825,6 +852,13 @@ const UI = {
           if (!Bld.train(b2, btn.dataset.unit)) this.toast(Bld.canTrain(b2, btn.dataset.unit).why, true);
           this.refreshMenu();
           this.refreshPanel();   // in-place queue/affordability update — no rebuild, no layout jump
+          return;
+        }
+        else if (btn.dataset.act === 'trade') {
+          const res = btn.dataset.res, c = Bld.canTrade(b2, res);
+          if (!c.ok) { this.toast(c.why, true); return; }
+          if (Bld.startTrade(b2, res)) this.toast(`Caravan sets out with the ${res} — gold on its return`);
+          this.renderPanel(); this.refreshMenu();
           return;
         }
         else if (btn.dataset.act === 'sendworker') {

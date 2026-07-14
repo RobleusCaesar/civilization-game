@@ -53,6 +53,20 @@ const CFG = {
   SHORE_FISH: { rate: 1.0 },  // villager line-fishing off the shore — same pace as picking berries;
                               // only works on shoals (about a third of shore water, where fish jump)
   DOCK_MIN_WATER: 6,          // a dock needs a water body at least this big
+  /* TRADING POST exchange — resource → gold, tuned to be a stingy relief valve.
+     Per Trading-Post level: `input` resource units are consumed per caravan,
+     `rate` gold is minted per input unit (better at higher levels, still poor),
+     and `delay` game-days pass before the caravan returns with the gold. Higher
+     levels trade at a better rate but demand a far larger load per run, so gold
+     never becomes cheap. gold per trade = floor(input * rate). Tune freely. */
+  TRADE: {
+    goods: ['food', 'wood', 'stone'],   // which surpluses may be sold
+    levels: [
+      { input: 40,  rate: 0.10, delay: 1.5 },   // L1: 40 goods → 4 gold  (worst rate, small load)
+      { input: 90,  rate: 0.14, delay: 2.0 },   // L2: 90 goods → 12 gold (better rate, bigger load)
+      { input: 180, rate: 0.18, delay: 2.5 },   // L3: 180 goods → 32 gold (best rate, largest load)
+    ],
+  },
   DEPLETED: {                 // what a tile becomes once gathered out
     [T.FOREST]:  T.STUMPS,
     [T.HILLS]:   T.PEBBLES,
@@ -241,6 +255,17 @@ const CFG = {
           bonus: 'Unlocks Warship' },
         { cost: { wood: 160, stone: 90, gold: 30 }, time: 3, hp: 480, vision: 7,
           bonus: 'Unlocks Fire Warship & War Transport' },
+      ],
+    },
+    /* Trading Post — a late-game relief valve: turn a surplus of food/wood/stone
+       into a trickle of gold. Deliberately expensive to raise and stingy to run
+       (see CFG.TRADE), so gold stays precious. TC-3 gated. */
+    trade: {
+      name: 'Trading Post', desc: 'Send caravans out to trade surplus food, wood or stone for gold. Costly to run — gold stays precious.', reqTC: 3,
+      levels: [
+        { cost: { wood: 260, stone: 180, gold: 40 },  time: 3, hp: 300, bonus: 'Trade goods → gold (small loads, poor rate)' },
+        { cost: { wood: 420, stone: 320, gold: 80 },  time: 3, hp: 420, bonus: 'Better rate — but each caravan hauls more' },
+        { cost: { wood: 640, stone: 500, gold: 140 }, time: 4, hp: 560, bonus: 'Best rate — largest caravan loads' },
       ],
     },
     /* Wall HP is tuned against soldier dps (defender ≈ 8/s vs buildings):
