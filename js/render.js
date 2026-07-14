@@ -6,6 +6,7 @@ const R = {
   mini: null, mg: null,
   cam: { x: 0, y: 0, z: 1.5 },   // world px offset + zoom
   dpr: 1,
+  bottomReserve: 0,              // measured open build-menu bar height (CSS px) to keep clear at the bottom
   terrainCache: null,
   fogCv: null, fogG: null, fogDirty: true,
   floats: [],                    // {x,y,txt,col,t}
@@ -174,11 +175,19 @@ const R = {
   clampCam() {
     const world = CFG.W * CFG.TILE;
     const vw = this.viewW() / this.cam.z, vh = this.viewH() / this.cam.z;
-    // allow panning ~10% of the viewport PAST each board edge, so the very edge
-    // of the map clears the top bar / build menu and can be seen unobstructed
-    const padX = vw * 0.10, padY = vh * 0.10;
+    // lazily learn the open build-menu bar's true height (once), so we can reserve
+    // exactly that much at the bottom — measured, so it's right on any device/safe-area
+    if (!this.bottomReserve) {
+      const bar = document.getElementById('bottombar'), bm = document.getElementById('buildmenu');
+      if (bar && bm && bm.style.display !== 'none' && bar.offsetHeight > 40) this.bottomReserve = bar.offsetHeight;
+    }
+    // sides & top pan ~10% of the viewport past the edge; the BOTTOM reserves the
+    // full build-menu height so a fully-down pan seats the map's bottom edge right
+    // at the menu's top — the menu never covers the map (and leaves no black gap)
+    const padX = vw * 0.10, padTop = vh * 0.10;
+    const padBottom = Math.max(vh * 0.10, (this.bottomReserve || 0) / this.cam.z);
     this.cam.x = Math.max(-padX, Math.min(world - vw + padX, this.cam.x));
-    this.cam.y = Math.max(-padY, Math.min(world - vh + padY, this.cam.y));
+    this.cam.y = Math.max(-padTop, Math.min(world - vh + padBottom, this.cam.y));
   },
 
   centerOn(tx, ty) {

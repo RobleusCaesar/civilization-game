@@ -573,6 +573,14 @@ const UI = {
       document.getElementById('buildmenu').style.display = v ? 'none' : 'flex';
     }
     if (v && !keepPlacing && this.placing) { this.placing = null; this.builderFor = null; this.refreshMenu(); }
+    // opening the build menu: capture its bar height so the camera reserves that
+    // much clear space at the bottom (see R.clampCam), then re-clamp to apply it
+    if (window.R) {
+      const bar = document.getElementById('bottombar');
+      if (!v && !this.sel && bar && document.getElementById('buildmenu').style.display !== 'none' && bar.offsetHeight > 40)
+        R.bottomReserve = bar.offsetHeight;
+      if (R.clampCam) R.clampCam();
+    }
   },
   setMiniCollapsed(v) {
     this.miniCollapsed = v;
