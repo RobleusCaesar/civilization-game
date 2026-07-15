@@ -368,15 +368,6 @@ const BLOCK_TERR = (() => {
   return a;
 })();
 
-/* Solid obstacles (resources + mountains, NOT water) that should SEAL the
-   one-tile lane between them and the map edge — so a wood/boulder/orchard field
-   that runs up against the border can't be squeezed past along the very edge. */
-const SEAL_TERR = (() => {
-  const a = new Uint8Array(16);
-  for (const t of [T.MOUNTAIN, T.FOREST, T.HILLS, T.FERTILE]) a[t] = 1;
-  return a;
-})();
-
 /* BFS pathfinding over the tile grid. Water, mountains and standing resource
    fields are impassable to everyone; walls block all units and gates open only
    for the tribe that built them. When the target can't be reached, returns a
@@ -391,19 +382,13 @@ const Path = {
     const i = MapGen.idx(x, y);
     const terr = S.map.terrain[i];
     if (domain === 'water') return terr === T.WATER;   // boats: open water only (docks don't block hulls)
+    // THE MAP EDGE IS A HARD BORDER — land units may never set foot on the
+    // outermost ring, so neither the player nor the rival can use the rim to slip
+    // around a wall. (Boats are handled above; the water border stays navigable.)
+    if (x === 0 || y === 0 || x === CFG.W - 1 || y === CFG.H - 1) return false;
     if (BLOCK_TERR[terr]) {
       // a standing bridge makes a water/moat tile crossable to land units
       if (!((terr === T.WATER || terr === T.MOAT) && S.map.bridge && S.map.bridge[i])) return false;
-    }
-    // close the sliver between a solid obstacle and the map edge: a border tile
-    // whose inward (perpendicular) neighbour is a resource/mountain is sealed too
-    const W = CFG.W, H = CFG.H;
-    if (x === 0 || x === W - 1 || y === 0 || y === H - 1) {
-      const t = S.map.terrain, ix = MapGen.idx;
-      if ((x === 0 && SEAL_TERR[t[ix(1, y)]]) ||
-          (x === W - 1 && SEAL_TERR[t[ix(W - 2, y)]]) ||
-          (y === 0 && SEAL_TERR[t[ix(x, 1)]]) ||
-          (y === H - 1 && SEAL_TERR[t[ix(x, H - 2)]])) return false;
     }
     const blk = Bld.blockAt(x, y);
     if (blk === 0) return true;
@@ -425,13 +410,15 @@ const Path = {
     return true;
   },
 
-  // tiles reachable from the open map border (4-dir; sealed walls stay sealed).
-  // Used to keep hostile spawns out of walled-off pockets. Returns null when
-  // no border tile is passable (island maps) — treat as "no filter".
+  // tiles reachable from the open map margin (4-dir; sealed walls stay sealed).
+  // Used to keep hostile spawns out of walled-off pockets. Seeds from the
+  // OUTERMOST WALKABLE ring (just inside the impassable rim — see passable), so
+  // the wilderness network is still found. Returns null on all-water margins.
   borderReach() {
     const spots = [];
-    for (let x = 0; x < CFG.W; x++) spots.push({ x, y: 0 }, { x, y: CFG.H - 1 });
-    for (let y = 0; y < CFG.H; y++) spots.push({ x: 0, y }, { x: CFG.W - 1, y });
+    const W = CFG.W, H = CFG.H;
+    for (let x = 1; x < W - 1; x++) spots.push({ x, y: 1 }, { x, y: H - 2 });
+    for (let y = 1; y < H - 1; y++) spots.push({ x: 1, y }, { x: W - 2, y });
     return this.reachFrom(spots);
   },
 

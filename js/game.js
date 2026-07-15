@@ -217,6 +217,7 @@ const G = {
 
     this.freeVis = false;   // every real game starts fogged; the title demo re-enables it
     this.vis = null;
+    Units.clampToBoard();   // nobody stands on the impassable map rim
     R.onNewGame();
     this.updateVisibility();
     UI.deselect();
@@ -729,6 +730,7 @@ const G = {
     UI.placing = null;
     this.freeVis = false;
     this.vis = null;
+    Units.clampToBoard();   // pull any unit off the (now impassable) map rim — e.g. a pre-border save
     R.onNewGame();
     this.updateVisibility();
     if (S.over) UI.showEnd(S.over.win, S.over.msg);

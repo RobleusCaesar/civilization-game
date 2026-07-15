@@ -318,6 +318,25 @@ const Units = {
   // guaranteed reachable and clustered where the player tapped — no unit ever
   // wanders off to a "nearby" tile that's actually across a lake or ridge.
   // Melee take the spots toward the approach front, ranged fill in behind.
+  // keep every land unit off the impassable map rim — after loading a save made
+  // before the hard border existed, or one that ended a move on the very edge, a
+  // unit could be sitting on the outermost ring. Nudge it to the nearest open tile.
+  clampToBoard() {
+    const W = CFG.W, H = CFG.H;
+    for (const u of S.units) {
+      if (this.isNaval(u)) continue;   // boats live on the water rim quite legally
+      const x = u.x | 0, y = u.y | 0;
+      if (x > 0 && y > 0 && x < W - 1 && y < H - 1) continue;
+      const sx = Math.max(1, Math.min(W - 2, x)), sy = Math.max(1, Math.min(H - 2, y));
+      const spot = MapGen.findNear(sx, sy, 8, (px, py) => Path.passable(px, py, u.owner) && !Bld.at(px, py));
+      if (spot) {
+        u.x = spot.x + 0.5; u.y = spot.y + 0.5;
+        u.path = null; u.pathI = 0;
+        if (u.anchor) u.anchor = { x: u.x, y: u.y };
+      }
+    }
+  },
+
   groupMove(ids, tx, ty) {
     // ships and land troops can't share a formation (different domains), so each
     // half forms up on its own — a fleet spreads over water, a war party over land
