@@ -838,8 +838,10 @@ const AI = {
     if (tc.level >= 2 && !have.sapper) {
       const nearWater = S.buildings.some(b => b.owner === 'A' && b.key === 'dock') ||
         (read.homeGapCount > 0);   // cheap proxy; the dig routine checks real water adjacency
+      // a raid party stuck at a crossing badly wants a bridging corps
+      const stalled = ai.stall && S.day - (ai.stall.t || 0) <= 6;
       add(8 + (P.walls ? 24 : 0) + (post === 'DEFEND' ? 22 : 0) + (read.underThreat ? 14 : 0) +
-          (read.homeExposed > 4 ? 10 : 0) + (nearWater ? 4 : 0),
+          (read.homeExposed > 4 ? 10 : 0) + (nearWater ? 4 : 0) + (stalled ? 26 : 0),
         () => this.tryBuild('sapper'));
     }
 
@@ -980,6 +982,28 @@ const AI = {
           (S.map.terrain[MapGen.idx(x, y)] === T.WATER || S.map.terrain[MapGen.idx(x, y)] === T.MOAT) &&
           Bld.canAfford(CFG.TERRAFORM.moundCost, S.ai.res) &&
           Units.assignTerraform(idle, x, y, 'mound')) { this._escort(idle); return true; }
+    }
+    return false;
+  },
+
+  /* A raid party bogged down at a crossing (combat.js records ai.stall when a
+     party can't reach its objective across water). Rush an idle sapper to bridge
+     the water right there so the assault isn't left standing in the towers' teeth,
+     spanning outward from the stall point toward the objective. This is what turns
+     "soldiers chilling by the shore" into "sappers bridge, then the army pours in". */
+  bridgeStall(read) {
+    const ai = S.ai, st = ai.stall;
+    if (!st || S.day - (st.t || 0) > 3) return false;      // no fresh stall on record
+    if (Units.sapperTier('A') < 2) return false;           // needs a bridging corps
+    const idle = S.units.find(u => u.owner === 'A' && u.kind === 'sapper' && (!u.task || u.task.type === 'move'));
+    if (!idle) return false;
+    const aim = read.knownTC || Bld.tcOf('P') || st;
+    const dx = aim.x - st.x, dy = aim.y - st.y, len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    for (let s = 0; s <= 6; s++) {
+      const x = Math.round(st.x + ux * s), y = Math.round(st.y + uy * s);
+      if (!MapGen.inB(x, y)) continue;
+      if (Terraform.bridgeable(x, y) && !Bld.bridgeAt(x, y) && Units.assignTerraform(idle, x, y)) { this._escort(idle); return true; }
     }
     return false;
   },
@@ -1180,7 +1204,10 @@ const AI = {
     const didSafety = this.digAndProtect(read);
     if (!didSafety && S.day % (m.aiBuildEvery || 2) === 0) this.bestBuild(read);
     this.trainForces(m, read);
-    this.terraform(read);   // SAPPERS: dig defensive moats on the perimeter seams
+    // SAPPERS: first priority is bridging a crossing where a raid party is stuck
+    // (so the assault gets across), then defensive moats / offensive breaches
+    this.bridgeStall(read);
+    this.terraform(read);
 
     /* ---- townsfolk: a living village. A few villagers walk the lanes,
        staffing the town in spirit — killable, worth raiding, and slowly

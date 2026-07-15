@@ -235,6 +235,21 @@ const Combat = {
      the player; otherwise it marches on the shared objective and only the
      wall-breakers batter walls (combined arms), recording the contact so the
      chief learns to route around next time. */
+  // pull a water-blocked MELEE rival raider back out of the enemy towers' range
+  // and hold it there — it waits for the chief to bridge the crossing instead of
+  // dying on the bank for nothing. Returns quietly once already in the clear.
+  aiStandoff(u) {
+    const nb = this.nearestBuilding(u.x, u.y, 'P', bb => Bld.done(bb));
+    if (!nb) { u.path = null; return; }
+    const bx = Bld.cx(nb), by = Bld.cy(nb), d = Math.hypot(bx - u.x, by - u.y);
+    const SAFE = 8;                                  // clear of tower range (≈4.5–6)
+    if (d >= SAFE) { u.path = null; return; }        // already out of the killzone — hold
+    const ux = (u.x - bx) / (d || 1), uy = (u.y - by) / (d || 1);
+    const spot = MapGen.findNear(Math.round(bx + ux * SAFE), Math.round(by + uy * SAFE), 5,
+      (x, y) => Path.passable(x, y, 'A'));
+    if (spot) Units.setPath(u, spot.x, spot.y); else u.path = null;
+  },
+
   aiRaidSeek(u) {
     const ai = S.ai;
     // a probe party carries its OWN lane objective; the main force shares ai.raidObj
@@ -284,6 +299,24 @@ const Combat = {
       if (wall && Math.hypot(Bld.cx(wall) - u.x, Bld.cy(wall) - u.y) <= 2.2) {
         if (ai && ai.memory) ai.memory.wallHit = (ai.memory.wallHit || 0) + 1;
         u.tBld = wall.id; Units.setPath(u, wall.x, wall.y); return;
+      }
+      // BLOCKED BY A GAP: the route bogged down well short of the aim and there's
+      // no wall to batter — water (or terrain) severs the approach. Don't shuffle
+      // into the towers' teeth and die. Flag the crossing so the chief bridges it,
+      // then act by arm: bowmen/engines volley across, footmen fall back and wait.
+      if (Math.hypot(end.x + 0.5 - goal.x, end.y + 0.5 - goal.y) > 3.5) {
+        if (ai) ai.stall = { x: end.x, y: end.y, t: S.day };
+        if (CFG.UNITS[u.kind].rng || CFG.UNITS[u.kind].proj) {
+          // shell what's shooting us: the nearest tower (then any building) in range
+          const tb = this.nearestBuilding(u.x, u.y, 'P', bb => bb.key === 'tower' && Bld.done(bb))
+                  || this.nearestBuilding(u.x, u.y, 'P', bb => Bld.done(bb));
+          if (tb && Math.hypot(Bld.cx(tb) - u.x, Bld.cy(tb) - u.y) <= (CFG.UNITS[u.kind].rng || 0) + Bld.reach(tb) + 0.5) {
+            u.tBld = tb.id; return;
+          }
+          return;   // out of range — the forward path walks us up to loose from the bank
+        }
+        this.aiStandoff(u);   // melee: retreat out of range and hold for a bridge
+        return;
       }
       // reachable non-wall building near us (econ/house on the way)
       const b = this.nearestBuilding(u.x, u.y, 'P', bb => bb.key !== 'wall' && bb.key !== 'gate');
