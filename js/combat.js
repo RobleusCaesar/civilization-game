@@ -353,9 +353,15 @@ const Combat = {
     // severed crossing would freeze staring at a foe it can never close with
     if (foe && this.canReach(u, foe.x, foe.y, 1.6)) { u.tUnit = foe.id; return; }
     // barbarians loot and burn everything EXCEPT Town Centers — razing a
-    // tribe's heart is beyond them, so they can never win the game for
-    // anyone. Once the rest is ash they wander off the map for good.
-    const bldPred = u.owner === 'R' ? (bb => bb.key !== 'tc') : null;
+    // tribe's heart is normally beyond them, so they can't win the game for
+    // anyone; once the rest is ash they wander off the map for good.
+    // THE EXCEPTION: a COLLAPSED player (workforce gone for good, Moderate/Hard —
+    // see game.js S.collapse) is finished off. Bands hunting the player march on
+    // the player's OWN hall to end a lost game cleanly — never the rival's.
+    const finishTC = S.collapse && (disp === 'P' || disp === 'ALL');
+    const bldPred = u.owner === 'R'
+      ? (bb => bb.key !== 'tc' || (finishTC && bb.owner === 'P'))
+      : null;
     let b = null;
     for (const ow of owners) {
       const cand = this.nearestBuilding(u.x, u.y, ow, bldPred);

@@ -165,6 +165,8 @@ const G = {
       buildings: [], units: [],
       bridges: [],                          // {x,y,owner,hp,maxhp} — attackable crossings (Sapper tier 2)
       garrison: [],                         // villagers sheltered inside the Town Center
+      reprieveUsed: false,                  // the one-time "two survivors emerge" reprieve (competitive modes)
+      collapse: false,                      // player's clan is finished — barbarians push the hall (Moderate/Hard)
       playtime: 0,                          // unpaused seconds, for save metadata
       // run stats — the raw material of the arcade score (js/score.js)
       stats: { trained: 0, razed: 0, gathered: 0, kills: 0, built: 0,
@@ -484,21 +486,33 @@ const G = {
       }
     }
 
-    // the tribe endures: if every villager is dead (none on the map, none
-    // sheltering, none in training), two survivors step out of the Town
-    // Center — a wiped workforce is a setback, never a soft game-over
+    // the tribe endures — but only so far. If every villager is dead (none on
+    // the map, none sheltering, none in training), two survivors step out of the
+    // Town Center. On the competitive modes this reprieve comes ONCE: a first
+    // wipe is a setback, a second means the clan is genuinely finished. On Calm
+    // the hall keeps sending out survivors, so a gentle game never hard-stops.
     {
       const tc = Bld.tcOf('P');
-      if (tc && Bld.done(tc) &&
-          !S.units.some(u => u.owner === 'P' && Units.isVillager(u)) &&
-          S.garrison.length === 0 &&
-          !tc.queue.some(q => q.unit === 'villager')) {
+      const m = this.modeCfg();
+      const noVills = tc && Bld.done(tc) &&
+        !S.units.some(u => u.owner === 'P' && Units.isVillager(u)) &&
+        S.garrison.length === 0 &&
+        !tc.queue.some(q => q.unit === 'villager');
+      const gaveReprieve = noVills && !(m.finishTC && S.reprieveUsed);
+      if (gaveReprieve) {
         for (let i = 0; i < 2; i++) {
           const spot = MapGen.findNear(tc.x, tc.y + Bld.size(tc.key), 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: tc.x, y: tc.y + Bld.size(tc.key) };
           Units.spawn('villager', 'P', spot.x, spot.y);
         }
+        S.reprieveUsed = true;
         this.log('🛖 Two villagers emerge from the Town Center — the tribe endures', true);
       }
+      // COLLAPSE: on Moderate/Hard, once the reprieve is spent and the workforce
+      // is gone for good, the clan is done. Barbarians hunting the player stop
+      // sparing the hall and march to raze it — a clean, timely end instead of a
+      // slow bleed-out (see Combat.raiderSeek). Never on Calm, never the rival's,
+      // and never on the very tick the reprieve just refilled the village.
+      S.collapse = !!(m.finishTC && S.reprieveUsed && noVills && !gaveReprieve);
     }
 
     // cloud autosave cadence (Backend also drops a local crash-net snapshot);

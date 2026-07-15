@@ -454,14 +454,14 @@ const CFG = {
     },
     moderate: {
       name: 'Moderate', icon: '⚔️', desc: 'The intended experience.',
-      gather: 1, output: 1,
+      gather: 1, output: 1, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
       waveFirst: 40, waveGapMult: 1.5, waveSizeAdd: 0, barbMult: 1,
       animalMax: 3, animalChance: 0.2, aiRaidDay: 50,
       aiBuildEvery: 2, aiOutput: 1.1, aiArmyCap: 9, aiArmyDiv: 8, aiEliteShare: 0.45, aiAggro: 0.9,
     },
     hard: {
       name: 'Hard', icon: '💀', desc: 'Slower gathering, relentless enemies.',
-      gather: 0.85, output: 0.85,
+      gather: 0.85, output: 0.85, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
       waveFirst: 30, waveGapMult: 0.8, waveSizeAdd: 1, barbMult: 1.2,
       animalMax: 4, animalChance: 0.3, aiRaidDay: 32,
       aiBuildEvery: 1, aiOutput: 1.3, aiArmyCap: 13, aiArmyDiv: 6, aiEliteShare: 0.8, aiAggro: 1.2,
