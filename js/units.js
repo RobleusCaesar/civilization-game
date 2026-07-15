@@ -39,6 +39,8 @@ const Units = {
   isSapper(u) { return u.kind === 'sapper'; },
   isNaval(u) { return !!CFG.UNITS[u.kind].naval; },
   isTransport(u) { return u.kind === 'transport' || u.kind === 'bigtransport'; },
+  // groups up as a fleet: any war/transport hull, but NOT a working fishing boat
+  isFleetable(u) { return this.isNaval(u) && u.kind !== 'fishboat'; },
   domain(u) { return CFG.UNITS[u.kind].naval ? 'water' : 'land'; },
   isWild(u) { return u.owner === 'W'; },
   isPassive(u) { return u.kind === 'deer' || u.kind === 'cow'; },
@@ -398,13 +400,40 @@ const Units = {
     u.tUnit = 0; u.tBld = 0;
     this.setPath(u, tx, ty);   // water-domain path ends at the closest water tile
   },
+  // an open LAND tile orthogonally beside a water tile — i.e. the hull is beached
+  // against the shore there. null if this water tile isn't touching walkable land.
+  _shoreBeside(wx, wy, owner) {
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const lx = wx + ox, ly = wy + oy;
+      if (MapGen.inB(lx, ly) && Path.passable(lx, ly, owner) && !Bld.at(lx, ly)) return { x: lx, y: ly };
+    }
+    return null;
+  },
   disembark(u) {
     const cargo = u.cargo || [];
-    let landed = 0;
-    // put each soldier on its OWN open tile near the hull (used-set = no stacking).
+    if (!cargo.length) { u.task = null; return; }
+    const hx = u.x | 0, hy = u.y | 0;
+    const tries = (u.task && u.task.unloadTries) || 0;
+    // TROOPS ONLY LAND WHEN THE HULL TOUCHES SHORE. If we're still out in the
+    // water, nose up to the nearest water tile that abuts open land and try again
+    // — no more dropping soldiers several tiles out on the surf.
+    if (!this._shoreBeside(hx, hy, u.owner)) {
+      const dock = MapGen.findNear(hx, hy, 24, (x, y) =>
+        S.map.terrain[MapGen.idx(x, y)] === T.WATER && !Bld.at(x, y) && this._shoreBeside(x, y, u.owner));
+      if (tries < 10 && dock && !(dock.x === hx && dock.y === hy) && this.setPath(u, dock.x, dock.y)) {
+        u.task = { type: 'unload', x: dock.x, y: dock.y, unloadTries: tries + 1 };
+        return;   // sail up against the coast, then land
+      }
+      u.task = null;
+      if (u.owner === 'P') G.log('No shore to land on — sail the transport up against the coast', true);
+      return;
+    }
+    // beached — put each soldier on its own open shore tile right beside the hull
+    // (used-set = no stacking; radius 2 keeps them at the waterline, never far out)
     const used = new Set();
-    const place = (radius) => {
-      const spot = MapGen.findNear(u.x | 0, u.y | 0, radius,
+    let landed = 0;
+    const place = () => {
+      const spot = MapGen.findNear(hx, hy, 2,
         (x, y) => !used.has(x + ',' + y) && Path.passable(x, y, u.owner) && !Bld.at(x, y));
       if (!spot) return false;
       used.add(spot.x + ',' + spot.y);
@@ -416,22 +445,17 @@ const Units = {
       landed++;
       return true;
     };
-    // radius 5 covers a hull that beached a couple tiles off (the old radius-2 left
-    // troops stranded aboard when the exact water tile it stopped on had no open
-    // neighbour — a resource- or wall-lined shore, or stopping a hair short).
-    while (cargo.length && place(5)) { /* land them */ }
+    while (cargo.length && place()) { /* land them at the waterline */ }
+    // this stretch of beach filled up — coast along to the next landing for the rest
     if (cargo.length) {
-      // nobody could land right here — nose the hull toward the nearest coast and
-      // retry; after a few tries just wade them ashore from further out, so a
-      // loaded raider can never sit offshore forever with its troops trapped.
-      const tries = (u.task && u.task.unloadTries) || 0;
-      const beach = MapGen.findNear(u.x | 0, u.y | 0, 16, (x, y) => Path.passable(x, y, u.owner) && !Bld.at(x, y));
-      const wnear = beach && MapGen.findNear(beach.x, beach.y, 4, (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.WATER && !Bld.at(x, y));
-      if (tries < 3 && wnear && !(wnear.x === (u.x | 0) && wnear.y === (u.y | 0)) && this.setPath(u, wnear.x, wnear.y)) {
-        u.task = { type: 'unload', x: beach.x, y: beach.y, unloadTries: tries + 1 };
-        return;   // sail closer, then disembark again
+      const next = MapGen.findNear(hx, hy, 14, (x, y) =>
+        S.map.terrain[MapGen.idx(x, y)] === T.WATER && !Bld.at(x, y) &&
+        !(x === hx && y === hy) && this._shoreBeside(x, y, u.owner));
+      if (tries < 10 && next && this.setPath(u, next.x, next.y)) {
+        u.task = { type: 'unload', x: next.x, y: next.y, unloadTries: tries + 1 };
+        if (u.owner === 'P' && landed) G.log(`${landed} ashore — coasting along to land the rest`);
+        return;
       }
-      while (cargo.length && place(10)) { /* last resort: wade ashore */ }
     }
     u.task = null;
     if (u.owner === 'P' && landed) G.log(`${landed} soldier${landed > 1 ? 's' : ''} ashore`);

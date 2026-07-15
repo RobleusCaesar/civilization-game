@@ -398,6 +398,7 @@ const UI = {
       if (hitUnit && hitUnit.owner !== 'P') {
         for (const id of ids) {
           const u = Units.get(id);
+          if (Units.isTransport(u)) continue;   // troop hulls hold back — they don't charge with their cargo aboard
           // an explicit attack order: no guard leash yanking stragglers home mid-charge
           u.task = { type: 'attack' }; u.tUnit = hitUnit.id; u.tBld = 0;
           u.anchor = { x: hitUnit.x, y: hitUnit.y };
@@ -416,8 +417,8 @@ const UI = {
         return;
       }
       if (hitBld && hitBld.owner === 'A') {
-        for (const id of ids) Units.orderAttackBuilding(Units.get(id), hitBld);
-        this.toast('⚔️ War party attacks ' + Bld.def(hitBld.key).name);
+        for (const id of ids) { const u = Units.get(id); if (u && !Units.isTransport(u)) Units.orderAttackBuilding(u, hitBld); }
+        this.toast('⚔️ ' + (fleet ? 'Fleet bombards ' : 'War party attacks ') + Bld.def(hitBld.key).name);
         return;
       }
       if (hitBridge && hitBridge.owner !== 'P') {
@@ -1106,7 +1107,8 @@ const UI = {
             `<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;
         }
       }
-      if (own && Units.isMilitary(u)) html += `<button class="abtn" data-act="group">${Units.isNaval(u) ? '⚓ Group fleet' : '👥 Group nearby'}</button>`;
+      if (own && (Units.isFleetable(u) || (Units.isMilitary(u) && !Units.isNaval(u))))
+        html += `<button class="abtn" data-act="group">${Units.isNaval(u) ? '⚓ Group fleet' : '👥 Group nearby'}</button>`;
       // Stop is gone for villagers — you just tap them somewhere else to redirect.
       // For sappers it appears only while they're actually working (a task or a
       // queued line) — the freed slot belongs to the Mound tool above.
@@ -1180,13 +1182,15 @@ const UI = {
       if (grp) grp.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
         if (!u2) return;
-        // gather nearby fighters of the SAME domain — a fleet forms from ships,
-        // a war party from land troops (they can't march/sail together)
+        // gather nearby craft/fighters of the SAME domain — a fleet forms from any
+        // war or transport hull (never fishing boats), a war party from land
+        // troops; the two can't march/sail together
         const naval = Units.isNaval(u2);
         const ids = S.units
-          .filter(o => o.owner === 'P' && Units.isMilitary(o) && Units.isNaval(o) === naval && Math.hypot(o.x - u2.x, o.y - u2.y) <= 6)
+          .filter(o => o.owner === 'P' && (naval ? Units.isFleetable(o) : (Units.isMilitary(o) && !Units.isNaval(o))) &&
+            Math.hypot(o.x - u2.x, o.y - u2.y) <= 6)
           .map(o => o.id);
-        if (ids.length < 2) { this.toast(naval ? 'No other warships within reach' : 'No other soldiers within reach', true); return; }
+        if (ids.length < 2) { this.toast(naval ? 'No other ships within reach' : 'No other soldiers within reach', true); return; }
         this.sel = { type: 'group', ids };
         this.renderPanel();
         this.toast(`${naval ? 'Fleet' : 'War party'} formed: ${this.groupComposition(ids)}`);
