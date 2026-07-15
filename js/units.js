@@ -317,18 +317,26 @@ const Units = {
   // wanders off to a "nearby" tile that's actually across a lake or ridge.
   // Melee take the spots toward the approach front, ranged fill in behind.
   groupMove(ids, tx, ty) {
-    let units = ids.map(id => this.get(id)).filter(Boolean);
-    // ships can't hold a land formation — they just steam toward the tap
-    for (const u of units.filter(o => this.isNaval(o))) this.moveTo(u, tx, ty);
-    units = units.filter(o => !this.isNaval(o));
+    // ships and land troops can't share a formation (different domains), so each
+    // half forms up on its own — a fleet spreads over water, a war party over land
+    const all = ids.map(id => this.get(id)).filter(Boolean);
+    const navy = all.filter(o => this.isNaval(o));
+    const land = all.filter(o => !this.isNaval(o));
+    if (navy.length) this.formationMove(navy, tx, ty, 'water');
+    if (land.length) this.formationMove(land, tx, ty);
+  },
+
+  // spread a same-domain group into a block of open tiles around the target, the
+  // front ranks (melee) leading. domain 'water' routes ships over water tiles.
+  formationMove(units, tx, ty, domain) {
     if (!units.length) return;
     const cx = units.reduce((s, u) => s + u.x, 0) / units.length;
     const cy = units.reduce((s, u) => s + u.y, 0) / units.length;
     let dx = tx + 0.5 - cx, dy = ty + 0.5 - cy;
     const dl = Math.hypot(dx, dy) || 1;
     dx /= dl; dy /= dl;
-    const start = Path.passable(tx, ty, 'P') ? { x: tx, y: ty }
-      : MapGen.findNear(tx, ty, 6, (x, y) => Path.passable(x, y, 'P'));
+    const start = Path.passable(tx, ty, 'P', domain) ? { x: tx, y: ty }
+      : MapGen.findNear(tx, ty, 6, (x, y) => Path.passable(x, y, 'P', domain));
     if (!start) { for (const u of units) this.moveTo(u, tx, ty); return; }
     const spots = [];
     const seen = new Set([start.x + ',' + start.y]);
@@ -338,7 +346,7 @@ const Units = {
       spots.push(c);
       for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const nx = c.x + ox, ny = c.y + oy, k = nx + ',' + ny;
-        if (seen.has(k) || !Path.passable(nx, ny, 'P')) continue;
+        if (seen.has(k) || !Path.passable(nx, ny, 'P', domain)) continue;
         seen.add(k);
         q.push({ x: nx, y: ny });
       }

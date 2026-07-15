@@ -394,6 +394,7 @@ const UI = {
       const ids = this.sel.ids.filter(id => Units.get(id));
       if (!ids.length) { this.deselect(); return; }
       this.sel.ids = ids;
+      const fleet = ids.every(id => { const o = Units.get(id); return o && Units.isNaval(o); });
       if (hitUnit && hitUnit.owner !== 'P') {
         for (const id of ids) {
           const u = Units.get(id);
@@ -401,7 +402,7 @@ const UI = {
           u.task = { type: 'attack' }; u.tUnit = hitUnit.id; u.tBld = 0;
           u.anchor = { x: hitUnit.x, y: hitUnit.y };
         }
-        this.toast('⚔️ War party attacks!');
+        this.toast(fleet ? '⚓ Fleet attacks!' : '⚔️ War party attacks!');
         return;
       }
       if (hitUnit && hitUnit.owner === 'P' && Units.isTransport(hitUnit)) {
@@ -427,7 +428,7 @@ const UI = {
       if (!hitUnit && !hitBld) {
         if (!explored) { this.toast('Unexplored', true); return; }
         Units.groupMove(ids, tile.x, tile.y);
-        this.toast('War party moving — melee front, archers behind');
+        this.toast(fleet ? '⚓ Fleet sailing out' : 'War party moving — melee front, archers behind');
         return;
       }
       // tapped one of our own units/buildings: fall through and reselect it
@@ -1013,11 +1014,12 @@ const UI = {
       if (this.sel.ids.length === 0) { this.deselect(); return; }
       if (this.sel.ids.length === 1) { this.sel = { type: 'unit', id: this.sel.ids[0] }; this.renderPanel(); return; }
       const first = Units.get(this.sel.ids[0]);
+      const fleet = this.sel.ids.every(id => { const o = Units.get(id); return o && Units.isNaval(o); });
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
-        <div class="ptitle">⚔️ War Party <span style="color:var(--gold)">(${this.sel.ids.length})</span></div>
+        <div class="ptitle">${fleet ? '⚓ Fleet' : '⚔️ War Party'} <span style="color:var(--gold)">(${this.sel.ids.length})</span></div>
         <div class="psub">${this.groupComposition(this.sel.ids)}</div></div>
         <button class="abtn" id="panelClose">✕</button></div>
-        <div class="pactions"><span class="psub">Tap a tile to march (melee front, archers behind), or an enemy / rival building to attack together.</span>
+        <div class="pactions"><span class="psub">${fleet ? 'Tap water to sail together, or an enemy ship / coastal target to attack.' : 'Tap a tile to march (melee front, archers behind), or an enemy / rival building to attack together.'}</span>
         <button class="abtn" data-act="stop">✋ Halt</button></div>`;
       panel.innerHTML = html;
       const ic = panel.querySelector('#pIcon');
@@ -1104,7 +1106,7 @@ const UI = {
             `<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;
         }
       }
-      if (own && Units.isMilitary(u) && !Units.isNaval(u)) html += `<button class="abtn" data-act="group">👥 Group nearby</button>`;
+      if (own && Units.isMilitary(u)) html += `<button class="abtn" data-act="group">${Units.isNaval(u) ? '⚓ Group fleet' : '👥 Group nearby'}</button>`;
       // Stop is gone for villagers — you just tap them somewhere else to redirect.
       // For sappers it appears only while they're actually working (a task or a
       // queued line) — the freed slot belongs to the Mound tool above.
@@ -1178,13 +1180,16 @@ const UI = {
       if (grp) grp.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
         if (!u2) return;
+        // gather nearby fighters of the SAME domain — a fleet forms from ships,
+        // a war party from land troops (they can't march/sail together)
+        const naval = Units.isNaval(u2);
         const ids = S.units
-          .filter(o => o.owner === 'P' && Units.isMilitary(o) && !Units.isNaval(o) && Math.hypot(o.x - u2.x, o.y - u2.y) <= 6)
+          .filter(o => o.owner === 'P' && Units.isMilitary(o) && Units.isNaval(o) === naval && Math.hypot(o.x - u2.x, o.y - u2.y) <= 6)
           .map(o => o.id);
-        if (ids.length < 2) { this.toast('No other soldiers within reach', true); return; }
+        if (ids.length < 2) { this.toast(naval ? 'No other warships within reach' : 'No other soldiers within reach', true); return; }
         this.sel = { type: 'group', ids };
         this.renderPanel();
-        this.toast(`War party formed: ${this.groupComposition(ids)}`);
+        this.toast(`${naval ? 'Fleet' : 'War party'} formed: ${this.groupComposition(ids)}`);
       });
     }
     panel.querySelector('#panelClose').addEventListener('click', () => this.deselect());
