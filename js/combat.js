@@ -143,6 +143,23 @@ const Combat = {
           o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
         if (e && Math.hypot(e.x - u.anchor.x, e.y - u.anchor.y) < 8) u.tUnit = e.id;
       } else if (Units.isMilitary(u) && !(u.task && u.task.type === 'raid')) {
+        // DEFEND: hold a perimeter round the Town Center / Dock — engage only foes
+        // that reach the sortie bound of the POST (not just near the unit), and
+        // never chase a provocation across the map (the leash lives in update()).
+        if (u.defend) {
+          const g = Units.guardCenter(u);
+          if (g) {
+            if (u.task && u.task.type === 'move') continue;   // still walking back to post
+            const dc = Math.hypot(u.x - g.x, u.y - g.y);
+            if (dc > g.r2) { Units.returnToGuard(u, g); continue; }
+            const e = this.nearestUnit(g.x, g.y, g.r2,
+              o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
+            if (e) u.tUnit = e.id;
+            else if (dc > g.r1 && !Units.moving(u)) Units.returnToGuard(u, g);   // no foe → drift home
+            continue;
+          }
+          // no Town Center / Dock to guard — fall through to the ordinary leash
+        }
         // guards: engage hostiles near them (but don't stray while following an order,
         // and never auto-hunt harmless game — that's the player's call)
         if (u.task && u.task.type === 'move') continue;
@@ -308,23 +325,32 @@ const Combat = {
         const tgt = Units.get(u.tUnit);
         if (!tgt) {
           u.tUnit = 0;
+          // a defender falls back to its perimeter the moment its target drops;
           // an ordered attack ends where the fight ended — hold this ground
-          if (u.task && u.task.type === 'attack') { u.task = null; u.anchor = { x: u.x, y: u.y }; }
+          if (u.defend) Units.returnToGuard(u);
+          else if (u.task && u.task.type === 'attack') { u.task = null; u.anchor = { x: u.x, y: u.y }; }
           continue;
         }
         const d = Math.hypot(tgt.x - u.x, tgt.y - u.y);
         // hunting harmless game is a deliberate order — the hunter follows the prey
         if (Units.isPassive(tgt)) u.anchor = { x: u.x, y: u.y };
-        // guards give up long chases and go home; wild animals lose interest even
-        // sooner. Player-ordered attacks are exempt — no leash yanks a soldier
-        // back home mid-charge while the rest of the party fights.
-        const leash = Units.isWild(u) ? CFG.ANIMALS.leash
-          : (Units.isMilitary(u) && !(u.task && (u.task.type === 'raid' || u.task.type === 'attack'))) ? 10 : 0;
-        if (leash && Math.hypot(u.x - u.anchor.x, u.y - u.anchor.y) > leash) {
-          u.tUnit = 0;
-          Units.setPath(u, u.anchor.x | 0, u.anchor.y | 0);
-          if (!Units.isWild(u)) u.task = { type: 'move', x: u.anchor.x | 0, y: u.anchor.y | 0 };
-          continue;
+        // DEFEND overrides the ordinary leash: a guard that has chased a foe past
+        // its sortie bound (r2) breaks off and heads back to its perimeter.
+        if (u.defend) {
+          const g = Units.guardCenter(u);
+          if (g && Math.hypot(u.x - g.x, u.y - g.y) > g.r2) { u.tUnit = 0; Units.returnToGuard(u, g); continue; }
+        } else {
+          // guards give up long chases and go home; wild animals lose interest even
+          // sooner. Player-ordered attacks are exempt — no leash yanks a soldier
+          // back home mid-charge while the rest of the party fights.
+          const leash = Units.isWild(u) ? CFG.ANIMALS.leash
+            : (Units.isMilitary(u) && !(u.task && (u.task.type === 'raid' || u.task.type === 'attack'))) ? 10 : 0;
+          if (leash && Math.hypot(u.x - u.anchor.x, u.y - u.anchor.y) > leash) {
+            u.tUnit = 0;
+            Units.setPath(u, u.anchor.x | 0, u.anchor.y | 0);
+            if (!Units.isWild(u)) u.task = { type: 'move', x: u.anchor.x | 0, y: u.anchor.y | 0 };
+            continue;
+          }
         }
         if (!this.canEngage(u, tgt)) { u.tUnit = 0; continue; }
         const reach = CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE;

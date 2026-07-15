@@ -410,6 +410,7 @@ const UI = {
           // an explicit attack order: no guard leash yanking stragglers home mid-charge
           u.task = { type: 'attack' }; u.tUnit = hitUnit.id; u.tBld = 0;
           u.anchor = { x: hitUnit.x, y: hitUnit.y };
+          u.defend = false;   // direct command ends the guard stance
         }
         this.toast(fleet ? '⚓ Fleet attacks!' : '⚔️ War party attacks!');
         return;
@@ -425,17 +426,18 @@ const UI = {
         return;
       }
       if (hitBld && hitBld.owner === 'A') {
-        for (const id of ids) { const u = Units.get(id); if (u && !Units.isTransport(u)) Units.orderAttackBuilding(u, hitBld); }
+        for (const id of ids) { const u = Units.get(id); if (u && !Units.isTransport(u)) { u.defend = false; Units.orderAttackBuilding(u, hitBld); } }
         this.toast('⚔️ ' + (fleet ? 'Fleet bombards ' : 'War party attacks ') + Bld.def(hitBld.key).name);
         return;
       }
       if (hitBridge && hitBridge.owner !== 'P') {
-        for (const id of ids) { const u = Units.get(id); if (u && Units.isMilitary(u)) Units.orderAttackBridge(u, hitBridge); }
+        for (const id of ids) { const u = Units.get(id); if (u && Units.isMilitary(u)) { u.defend = false; Units.orderAttackBridge(u, hitBridge); } }
         this.toast('⚔️ War party moves to sever the bridge');
         return;
       }
       if (!hitUnit && !hitBld) {
         if (!explored) { this.toast('Unexplored', true); return; }
+        for (const id of ids) { const u = Units.get(id); if (u) u.defend = false; }
         Units.groupMove(ids, tile.x, tile.y);
         this.toast(fleet ? '⚓ Fleet sailing out' : 'War party moving — melee front, archers behind');
         return;
@@ -449,6 +451,7 @@ const UI = {
       if (hitUnit && hitUnit.owner !== 'P') {
         sel.task = { type: 'attack' }; sel.tUnit = hitUnit.id; sel.tBld = 0;
         sel.anchor = { x: hitUnit.x, y: hitUnit.y };
+        sel.defend = false;   // taking direct control ends the guard stance
         this.toast('Attack!');
         return;
       }
@@ -459,11 +462,13 @@ const UI = {
         return;
       }
       if (hitBld && hitBld.owner === 'A' && Units.isMilitary(sel)) {
+        sel.defend = false;
         Units.orderAttackBuilding(sel, hitBld);
         this.toast('Attacking ' + Bld.def(hitBld.key).name);
         return;
       }
       if (hitBridge && hitBridge.owner !== 'P' && Units.isMilitary(sel)) {
+        sel.defend = false;
         Units.orderAttackBridge(sel, hitBridge);
         this.toast('Moving to sever the bridge');
         return;
@@ -524,6 +529,7 @@ const UI = {
           this.toast('Making for that shore — soldiers will land there');
           return;
         }
+        sel.defend = false;   // a walk order overrides the guard stance
         Units.moveTo(sel, tile.x, tile.y);
         return;
       }
@@ -1026,21 +1032,32 @@ const UI = {
       if (this.sel.ids.length === 1) { this.sel = { type: 'unit', id: this.sel.ids[0] }; this.renderPanel(); return; }
       const first = Units.get(this.sel.ids[0]);
       const fleet = this.sel.ids.every(id => { const o = Units.get(id); return o && Units.isNaval(o); });
+      const gMil = this.sel.ids.map(id => Units.get(id)).filter(o => o && Units.canDefend(o));
+      const gAllDef = gMil.length > 0 && gMil.every(o => o.defend);
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${fleet ? '⚓ Fleet' : '⚔️ War Party'} <span style="color:var(--gold)">(${this.sel.ids.length})</span></div>
         <div class="psub">${this.groupComposition(this.sel.ids)}</div></div>
         <button class="abtn" id="panelClose">✕</button></div>
-        <div class="pactions"><span class="psub">${fleet ? 'Tap water to sail together, or an enemy ship / coastal target to attack.' : 'Tap a tile to march (melee front, archers behind), or an enemy / rival building to attack together.'}</span>
-        <button class="abtn" data-act="stop">✋ Halt</button></div>`;
+        <div class="pactions"><span class="psub">${fleet ? 'Tap water to sail together, or an enemy ship / coastal target to attack.' : 'Tap a tile to march (melee front, archers behind), or an enemy / rival building to attack together.'}</span>` +
+        (gMil.length ? `<button class="abtn ${gAllDef ? 'sel' : ''}" data-act="gdefend">${gAllDef ? '🛡 Stand Down' : '🛡 Defend'}</button>` : '') +
+        `<button class="abtn" data-act="stop">✋ Halt</button></div>`;
       panel.innerHTML = html;
       const ic = panel.querySelector('#pIcon');
       this.iconInto(ic, R.unitSprite(first));
       panel.querySelector('[data-act="stop"]').addEventListener('click', () => {
         for (const id of this.sel.ids) {
           const u2 = Units.get(id);
-          if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; }
+          if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; u2.defend = false; }
         }
         this.toast('War party halted');
+      });
+      const gdef = panel.querySelector('[data-act="gdefend"]');
+      if (gdef) gdef.addEventListener('click', () => {
+        const mem = this.sel.ids.map(id => Units.get(id)).filter(o => o && Units.canDefend(o));
+        const turnOn = !mem.every(o => o.defend);
+        for (const o of mem) Units.setDefend(o, turnOn);
+        this.toast(turnOn ? 'Holding the line — guarding home' : 'Standing down');
+        this.renderPanel();
       });
     } else {
       const u = Units.get(this.sel.id);
@@ -1119,11 +1136,13 @@ const UI = {
       }
       if (own && (Units.isFleetable(u) || (Units.isMilitary(u) && !Units.isNaval(u))))
         html += `<button class="abtn" data-act="group">${Units.isNaval(u) ? '⚓ Group fleet' : '👥 Group nearby'}</button>`;
-      // Stop is gone for villagers — you just tap them somewhere else to redirect.
-      // For sappers it appears only while they're actually working (a task or a
-      // queued line) — the freed slot belongs to the Mound tool above.
+      // Military units (land soldiers + warships) get DEFEND in place of Stop — a
+      // held perimeter round the Town Center / Dock. Stop remains for villagers'
+      // absence, transports, and working sappers.
       const sapperWorking = u.kind === 'sapper' && !!(u.task || (u.jobs && u.jobs.length));
-      if (own && !Units.isVillager(u) && (u.kind !== 'sapper' || sapperWorking))
+      if (own && Units.canDefend(u))
+        html += `<button class="abtn ${u.defend ? 'sel' : ''}" data-act="defend">${u.defend ? '🛡 Stand Down' : '🛡 Defend'}</button>`;
+      else if (own && !Units.isVillager(u) && (u.kind !== 'sapper' || sapperWorking))
         html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
       html += '</div>';
       panel.innerHTML = html;
@@ -1134,6 +1153,15 @@ const UI = {
         const u2 = Units.get(this.sel.id);
         if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; u2.jobs = null; }   // drop any queued sapper line too
         this.terraMode = null;   // downing tools stops the terraform tool too
+        this.renderPanel();
+      });
+      const defBtn = panel.querySelector('[data-act="defend"]');
+      if (defBtn) defBtn.addEventListener('click', () => {
+        const u2 = Units.get(this.sel.id); if (!u2) return;
+        Units.setDefend(u2, !u2.defend);
+        this.toast(u2.defend
+          ? (Units.isNaval(u2) ? 'Holding station — guarding the Dock' : 'Holding the line — guarding the Town Center')
+          : 'Standing down');
         this.renderPanel();
       });
       const upres = panel.querySelector('[data-act="upres"]');

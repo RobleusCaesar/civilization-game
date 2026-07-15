@@ -153,6 +153,48 @@ const Units = {
     return this.setPath(u, tx, ty);
   },
 
+  /* ---- DEFEND stance: hold a perimeter around the Town Center / Dock ---- */
+  // which units can be told to Defend — every land soldier and every warship
+  canDefend(u) { return this.isMilitary(u); },
+  // the guard post for a defending unit: {x,y, r1 (hold radius), r2 (sortie/leash)}
+  // centred on its own Town Center (land) or nearest Dock (warships). null = no home.
+  guardCenter(u) {
+    const naval = this.isNaval(u);
+    let b = null;
+    if (naval) {
+      let bd = 1e9;
+      for (const o of S.buildings)
+        if (o.owner === u.owner && o.key === 'dock' && Bld.done(o)) {
+          const d = Math.hypot(Bld.cx(o) - u.x, Bld.cy(o) - u.y);
+          if (d < bd) { bd = d; b = o; }
+        }
+    } else b = Bld.tcOf(u.owner);
+    if (!b) return null;
+    const G2 = CFG.GUARD;
+    const r1 = (naval ? G2.navalRadius : G2.radius) * (1 + G2.levelStep * ((b.level || 1) - 1));
+    return { x: Bld.cx(b), y: Bld.cy(b), r1, r2: r1 * (1 + G2.sortie) };
+  },
+  // walk back to just inside the perimeter (a 'guard' move task, which acquire()
+  // leaves alone until it lands — that's the hysteresis that stops jittering)
+  returnToGuard(u, g) {
+    g = g || this.guardCenter(u);
+    if (!g) return;
+    const d = Math.hypot(u.x - g.x, u.y - g.y) || 1, rr = g.r1 * 0.82;
+    const tx = (g.x + (u.x - g.x) / d * rr) | 0, ty = (g.y + (u.y - g.y) / d * rr) | 0;
+    u.tUnit = 0; u.tBld = 0; u.tBridge = null;
+    u.task = { type: 'move', x: tx, y: ty, guard: true };
+    if (!this.setPath(u, tx, ty)) u.task = null;
+  },
+  // toggle the stance; turning it on pulls a strayed unit back to its perimeter
+  setDefend(u, on) {
+    if (!this.canDefend(u)) return;
+    u.defend = !!on;
+    if (!on) return;
+    const g = this.guardCenter(u);
+    if (g && Math.hypot(u.x - g.x, u.y - g.y) > g.r1) this.returnToGuard(u, g);
+    else { u.task = null; u.tUnit = 0; u.tBld = 0; u.tBridge = null; u.path = null; }
+  },
+
   // stand on an OPEN tile beside the resource and work it — the wood/rock/
   // orchard tile itself is impassable now, so the villager harvests from the
   // edge (and felling it opens the ground). Returns false if it's fully walled.

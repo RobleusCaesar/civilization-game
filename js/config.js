@@ -473,4 +473,17 @@ const CFG = {
   REPAIR_RATE: 0.5,            // fraction of max hp restored per day of villager work
   HOME_TURF: { range: 10, mult: 1.1 },  // +10% attack near your own Town Center
   RALLY_RANGE: 10,             // max distance for a building's rally point
+
+  /* DEFEND stance (see Units.guardCenter / Combat). A soldier told to Defend
+     holds a perimeter around its Town Center (warships around the nearest Dock)
+     and won't be lured across the map: it engages only foes that reach the
+     perimeter, may sortie `sortie` beyond it to strike, and returns the moment
+     its target falls or it's dragged past the second bound. The perimeter grows
+     `levelStep` per building level (TC for land, Dock for ships). */
+  GUARD: {
+    radius: 9,        // base hold radius around the Town Center (level 1), tiles
+    navalRadius: 12,  // base hold radius for warships around a Dock (level 1)
+    levelStep: 0.15,  // +15% per building level above 1 (linear)
+    sortie: 0.15,     // may reach/pursue 15% past the hold radius, then must return
+  },
 };

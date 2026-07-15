@@ -1337,5 +1337,10 @@ const AI = {
           : '⚔ A rival raiding party rides out!', true);
       }
     }
+    // Home guards hold their perimeter — the rival's Defend stance (Combat.acquire).
+    // Only a committed raider marches free; everyone else defends the Town Center,
+    // so the garrison can't be lured off across the map (as the player's can't).
+    for (const u of S.units)
+      if (u.owner === 'A' && Units.isMilitary(u)) u.defend = !(u.task && u.task.type === 'raid');
   },
 };
