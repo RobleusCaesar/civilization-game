@@ -363,7 +363,9 @@ const UI = {
         this.toast(gatherable && rb.key === 'tc'
           ? 'Rally set — new villagers will gather here'
           : 'Rally point set — new units will head here');
-        if (this.sel) this.renderPanel();
+        // the order's placed — deselect the building so its rally button (and the
+        // armed action) drop away, leaving the board clear for the next move
+        this.deselect();
       } else {
         // out of range — keep the tool armed so a second tap can still land it
         this.toast(`Too far — rally must be within ${CFG.RALLY_RANGE} tiles`, true);
