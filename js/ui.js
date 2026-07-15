@@ -351,15 +351,23 @@ const UI = {
     // rally-point placement
     if (this.settingRally) {
       const rb = Bld.get(this.settingRally);
-      this.settingRally = null;
-      if (rb && Math.hypot(rb.x - tile.x, rb.y - tile.y) <= CFG.RALLY_RANGE) {
+      if (!rb) { this.settingRally = null; return; }
+      if (Bld.covers(rb, tile.x, tile.y)) {              // tapped the building itself → clear / cancel
+        rb.rally = null; this.settingRally = null;
+        this.toast('Rally cleared — new units stay by the building');
+        if (this.sel) this.renderPanel();
+      } else if (Math.hypot(rb.x - tile.x, rb.y - tile.y) <= CFG.RALLY_RANGE) {
         rb.rally = { x: tile.x, y: tile.y };
+        this.settingRally = null;
         const gatherable = !!CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]];
         this.toast(gatherable && rb.key === 'tc'
           ? 'Rally set — new villagers will gather here'
           : 'Rally point set — new units will head here');
-      } else this.toast(`Too far — rally must be within ${CFG.RALLY_RANGE} tiles`, true);
-      if (this.sel) this.renderPanel();
+        if (this.sel) this.renderPanel();
+      } else {
+        // out of range — keep the tool armed so a second tap can still land it
+        this.toast(`Too far — rally must be within ${CFG.RALLY_RANGE} tiles`, true);
+      }
       return;
     }
 
@@ -820,7 +828,7 @@ const UI = {
           }
           html += `<span class="psub" id="qLine">Queue: ${b.queue.length}/${Bld.queueCap(b)}</span>`;
           html += b.rally
-            ? `<button class="abtn" data-act="rally">🚩 Rally set<small>tap to clear</small></button>`
+            ? `<button class="abtn" data-act="rally">🚩 Move rally<small>tap a new spot, or the building to clear</small></button>`
             : `<button class="abtn" data-act="rally">🚩 Set rally<small>tap ground within ${CFG.RALLY_RANGE} tiles</small></button>`;
         }
         if (b.key === 'tc' && !b.construction) {
@@ -908,11 +916,13 @@ const UI = {
           }
         }
         else if (btn.dataset.act === 'rally') {
-          if (b2.rally) { b2.rally = null; this.toast('Rally point cleared'); this.renderPanel(); }
-          else {
-            this.settingRally = b2.id;
-            this.toast('Tap a spot near the building — new units will head there (a resource tile sends villagers gathering)');
-          }
+          // arm placement straight away — even when a rally is already set, no
+          // clear-first click — and tuck the menu away for a full view of the board
+          this.settingRally = b2.id;
+          this.setMenuCollapsed(true, true);
+          this.toast(b2.rally
+            ? 'Tap a new spot to move the rally — or tap the building to clear it'
+            : 'Tap a spot to rally — new units head there (tap the building to cancel)');
         }
         else if (btn.dataset.act === 'shelter') {
           let n = 0;
