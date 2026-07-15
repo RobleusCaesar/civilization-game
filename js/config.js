@@ -461,8 +461,14 @@ const CFG = {
     },
     hard: {
       name: 'Hard', icon: '💀', desc: 'Slower gathering, relentless enemies.',
-      gather: 0.85, output: 0.85, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
-      waveFirst: 30, waveGapMult: 0.8, waveSizeAdd: 1, barbMult: 1.2,
+      // Difficulty lives on the enemy side (more, smarter, better-paced foes),
+      // not in stacked player penalties. A single mild gathering tax keeps the
+      // "slower gathering" identity without double-dipping production too, and
+      // enemy stats are only lightly inflated (1.1×) — the pressure is VOLUME +
+      // competence + timing, not stat sponges. barbSpacing keeps a barbarian
+      // wave and a rival raid from landing in the same window (see AI.daily).
+      gather: 0.90, output: 1.0, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
+      waveFirst: 33, waveGapMult: 0.9, waveSizeAdd: 1, barbMult: 1.1, barbSpacing: true, bandCap: 8,
       animalMax: 4, animalChance: 0.3, aiRaidDay: 32,
       aiBuildEvery: 1, aiOutput: 1.3, aiArmyCap: 13, aiArmyDiv: 6, aiEliteShare: 0.8, aiAggro: 1.2,
     },

@@ -172,7 +172,7 @@ const G = {
       stats: { trained: 0, razed: 0, gathered: 0, kills: 0, built: 0,
                walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0, originBonus: 0 },
       nextId: 1,
-      wave: { next: CFG.MODES[mode].waveFirst, count: 0 },
+      wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
       ai: null,
       boons: { P: {}, A: {} },   // ORIGIN CARDS: each side's kept-card modifiers
       log: [],

@@ -51,7 +51,11 @@ const Cards = {
   DIFF: {
     calm:     { mag: 1.35, kick: 2 },
     moderate: { mag: 1.10, kick: 1 },
-    hard:     { mag: 0.72, kick: 0 },
+    // Hard's opening was gutted (half-strength boons AND no free units) right as
+    // the first wave lands — the hardest turn to survive. It still draws the
+    // weakest hand (mag below Moderate), but now gets the one-unit kicker so a
+    // "start with defenders" card actually fields a defender or two.
+    hard:     { mag: 0.82, kick: 1 },
   },
   diff() { return this.DIFF[(S && S.mode)] || this.DIFF.moderate; },
 

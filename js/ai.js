@@ -1322,7 +1322,14 @@ const AI = {
     const boldness = Math.max(0.8,
       P.raidPower - aggro * 0.5 - (read.foeVuln ? 0.35 : 0) - Math.max(0, S.day - 90) * 0.005);
     const dayFloor = read.foeVuln ? 12 : Math.max(16, m.aiRaidDay + P.raidDayAdd);
-    if (read.knownTC && attackPosture && ai.raidCd <= 0 && !raiders.length && S.day >= dayFloor && mine >= 3) {
+    // TWO-FRONT SPACING: on Hard, the chief won't march while a barbarian wave is
+    // imminent or still fresh on the field — piling a rival raid onto a raider
+    // wave stacks into an unsurvivable window. It HOLDS (this cycle only), then
+    // strikes on the next clear day, so it's no less aggressive, just better
+    // timed. A wide-open player (foeVuln) is still too tempting to pass up.
+    const waveNear = m.barbSpacing && !read.foeVuln &&
+      ((S.wave.next - S.day) <= 3 || (S.day - (S.wave.lastDay || -99)) <= 4);
+    if (read.knownTC && attackPosture && ai.raidCd <= 0 && !raiders.length && S.day >= dayFloor && mine >= 3 && !waveNear) {
       const troops = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
         !Units.isNaval(u) && u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
       const push = ai.posture === 'PUSH';

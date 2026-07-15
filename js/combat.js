@@ -556,10 +556,14 @@ const Combat = {
     if (S.day < S.wave.next) return;
     const m = G.modeCfg();
     S.wave.count++;
+    S.wave.lastDay = S.day;   // so the rival can avoid piling a raid onto a fresh wave
     const gap = CFG.WAVES.minGap + Math.floor(G.rand() * (CFG.WAVES.maxGap - CFG.WAVES.minGap + 1));
     S.wave.next = S.day + Math.max(4, Math.round(gap * m.waveGapMult));
-    // bands stay small — barbarians season a fight, they don't decide the war
-    const n = Math.max(1, Math.min(6, 1 + Math.ceil(S.wave.count * 0.5) + m.waveSizeAdd));
+    // bands stay small — barbarians season a fight, they don't decide the war.
+    // Hard lifts the LATE-game cap (bandCap) so the climax comes in numbers, not
+    // in stat-inflated sponges; early bands are unaffected (the +count ramp hasn't
+    // reached the cap yet), so the opening stays fair while the late game bites.
+    const n = Math.max(1, Math.min(m.bandCap || 6, 1 + Math.ceil(S.wave.count * 0.5) + m.waveSizeAdd));
     // waves toughen over time; barbMult sets the mode baseline (Hard ≈ rival defenders)
     const scale = (1 + S.wave.count * CFG.WAVES.scaleHp) * (m.barbMult || 1);
 
