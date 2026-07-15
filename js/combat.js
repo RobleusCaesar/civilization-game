@@ -99,6 +99,49 @@ const Combat = {
     return best;
   },
 
+  // Can u actually walk to within `within` tiles of (tx,ty)? Path.find always
+  // hands back a best-effort route to the CLOSEST reachable tile, so a truthy
+  // path proves nothing — we must check where that route actually ends. This is
+  // what keeps a band from fixating on prey across water a bridge no longer spans.
+  // Side effect: sets u.path to the computed route (reused by the caller).
+  canReach(u, tx, ty, within) {
+    Units.setPath(u, tx | 0, ty | 0);
+    const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x | 0, y: u.y | 0 };
+    return Math.hypot(end.x + 0.5 - tx, end.y + 0.5 - ty) <= within;
+  },
+
+  // The nearest reachable spot on the map's inner rim (the outer ring is a hard
+  // border land units can't stand on, so we aim one tile in). Returns null when
+  // every edge is cut off — the band is stranded on an island and must melt away.
+  nearestEdgeTile(u) {
+    const W = CFG.W, H = CFG.H;
+    const cands = [{ x: 1, y: u.y | 0 }, { x: W - 2, y: u.y | 0 }, { x: u.x | 0, y: 1 }, { x: u.x | 0, y: H - 2 }];
+    let best = null, bestD = Infinity;
+    for (const c of cands) {
+      Units.setPath(u, c.x, c.y);
+      const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x | 0, y: u.y | 0 };
+      if (end.x <= 1 || end.y <= 1 || end.x >= W - 2 || end.y >= H - 2) {
+        const d = Math.hypot(end.x - u.x, end.y - u.y);
+        if (d < bestD) { bestD = d; best = { x: end.x, y: end.y }; }
+      }
+    }
+    return best;
+  },
+
+  // A raider with nothing left it can reach heads for the wilds. At the rim it
+  // vanishes; if no rim is reachable (stranded across a severed crossing) it
+  // simply slips away rather than milling in place forever.
+  raiderLeave(u) {
+    if (u.x < 2 || u.y < 2 || u.x > CFG.W - 2 || u.y > CFG.H - 2) {
+      S.units.splice(S.units.indexOf(u), 1);
+      return;
+    }
+    if (Units.moving(u)) return;            // already trudging out — let it walk
+    const edge = this.nearestEdgeTile(u);
+    if (!edge) { S.units.splice(S.units.indexOf(u), 1); return; }
+    Units.setPath(u, edge.x, edge.y);
+  },
+
   // is the rival town on the line with too few soldiers to hold it? When an
   // enemy force reaches the hall and the guard can't clearly match it, the
   // townsfolk grab tools and pile on — four or five villagers can drag down a
@@ -272,7 +315,9 @@ const Combat = {
         o => this.hostileUnits(u, o) && fighter(o) && this.canEngage(u, o))
       || this.nearestUnit(u.x, u.y, 6,
         o => this.hostileUnits(u, o) && Units.isVillager(o) && this.canEngage(u, o));
-    if (foe) { u.tUnit = foe.id; return; }
+    // only lock on if the prey is actually reachable — otherwise a band across a
+    // severed crossing would freeze staring at a foe it can never close with
+    if (foe && this.canReach(u, foe.x, foe.y, 1.6)) { u.tUnit = foe.id; return; }
     // barbarians loot and burn everything EXCEPT Town Centers — razing a
     // tribe's heart is beyond them, so they can never win the game for
     // anyone. Once the rest is ash they wander off the map for good.
@@ -289,25 +334,15 @@ const Combat = {
       Units.setPath(u, b.x, b.y);
       const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x, y: u.y };
       if (Math.hypot(end.x + 0.5 - Bld.cx(b), end.y + 0.5 - Bld.cy(b)) <= 1.6 + Bld.reach(b)) { u.tBld = b.id; return; }
+      // target's out of reach — batter through a wall or gate ONLY if we can get
+      // to one; a wall we can't even reach means this pocket is sealed off from us
       const wall = this.nearestBuilding(u.x, u.y, b.owner, bb => bb.key === 'wall' || bb.key === 'gate');
-      if (wall) { u.tBld = wall.id; Units.setPath(u, wall.x, wall.y); return; }
-      u.tBld = b.id;   // no wall found — press on regardless
-      return;
+      if (wall && this.canReach(u, wall.x, wall.y, 1.6 + Bld.reach(wall))) { u.tBld = wall.id; return; }
+      // everything worth attacking is cut off — fall through and leave the board
     }
-    // nothing left to attack — raiders leave, AI parties go home
-    if (u.owner === 'R') {
-      // trudge to the nearest map edge and vanish into the wilds; if the way
-      // out is blocked (islands), they simply slip away
-      if (u.x < 1.5 || u.y < 1.5 || u.x > CFG.W - 1.5 || u.y > CFG.H - 1.5) {
-        S.units.splice(S.units.indexOf(u), 1);
-        return;
-      }
-      const ex = u.x < CFG.W / 2 ? 0 : CFG.W - 1;
-      if (!Units.moving(u) && !Units.setPath(u, ex, u.y | 0)) {
-        S.units.splice(S.units.indexOf(u), 1);
-        return;
-      }
-    } else if (u.owner === 'A') {
+    // nothing left to attack (or all of it unreachable) — raiders leave, AI goes home
+    if (u.owner === 'R') { this.raiderLeave(u); return; }
+    if (u.owner === 'A') {
       u.task = null;
       const tc = Bld.tcOf('A');
       if (tc) { u.anchor = { x: tc.x + 0.5, y: tc.y + 2.5 }; Units.setPath(u, tc.x, tc.y + 2); }
@@ -362,7 +397,15 @@ const Combat = {
           if (d < 3 && Path.canStep(u.x, u.y, nx, ny, u.owner, Units.domain(u))) {
             u.x = nx; u.y = ny; u.path = null;
           } else {
-            if (u.repathT <= 0) { u.repathT = 0.5; Units.setPath(u, tgt.x | 0, tgt.y | 0); }
+            if (u.repathT <= 0) {
+              u.repathT = 0.5; Units.setPath(u, tgt.x | 0, tgt.y | 0);
+              // a barbarian whose quarry slips beyond reach (a crossing fell
+              // behind it) abandons the chase so it can wander off the map
+              if (u.owner === 'R') {
+                const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x | 0, y: u.y | 0 };
+                if (Math.hypot(end.x + 0.5 - tgt.x, end.y + 0.5 - tgt.y) > reach + 1) { u.tUnit = 0; continue; }
+              }
+            }
             Units.followPath(u, dt);
           }
         } else if (u.cd <= 0) {
@@ -390,7 +433,15 @@ const Combat = {
         const d = Math.hypot(Bld.cx(b) - u.x, Bld.cy(b) - u.y);
         const bReach = Math.max(1.3, CFG.UNITS[u.kind].rng || 0) + Bld.reach(b);
         if (d > bReach) {
-          if (u.repathT <= 0) { u.repathT = 0.8; Units.setPath(u, b.x, b.y); }
+          if (u.repathT <= 0) {
+            u.repathT = 0.8; Units.setPath(u, b.x, b.y);
+            // barbarians that can no longer reach their mark (the bridge they
+            // crossed is gone) give up the siege and leave, not shuffle forever
+            if (u.owner === 'R') {
+              const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x | 0, y: u.y | 0 };
+              if (Math.hypot(end.x + 0.5 - Bld.cx(b), end.y + 0.5 - Bld.cy(b)) > bReach + 0.6) { u.tBld = 0; continue; }
+            }
+          }
           Units.followPath(u, dt);
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
@@ -530,10 +581,12 @@ const Combat = {
       }
     }
 
-    // spawn near a raider camp if any, else map edge
+    // Most waves march in from a randomized point along the map edge; only
+    // occasionally do they muster at an existing raider camp. Keeping the entry
+    // point varied stops bands from repeatedly funnelling into the same corner.
     let sx, sy;
     const camps = S.map.spawns.camps;
-    if (camps.length && G.rand() < 0.6) {
+    if (camps.length && G.rand() < 0.25) {
       const c = camps[(G.rand() * camps.length) | 0];
       sx = c.x; sy = c.y;
     } else {
