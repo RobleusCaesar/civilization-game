@@ -494,13 +494,13 @@ const UI = {
       if (!hitUnit && (!hitBld || hitBld.owner !== 'P')) {
         if (!explored) { this.toast('Unexplored', true); return; }
         if (Units.isVillager(sel) && CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]]) {
-          if (Units.assignGather(sel, tile.x, tile.y)) this.toast('Gathering ' + sel.task.res);
+          if (Units.assignGather(sel, tile.x, tile.y)) { this.toast('Gathering ' + sel.task.res); this.dispatchedVillager(); }
           return;
         }
         if (Units.isVillager(sel) && S.map.terrain[MapGen.idx(tile.x, tile.y)] === T.WATER) {
           // shore fishing — but only where the fish actually are
           if (MapGen.shoal(tile.x, tile.y) && S.map.resAmount[MapGen.idx(tile.x, tile.y)] > 0) {
-            if (Units.assignShoreFish(sel, tile.x, tile.y)) this.toast('Line out — fishing from the shore 🎣');
+            if (Units.assignShoreFish(sel, tile.x, tile.y)) { this.toast('Line out — fishing from the shore 🎣'); this.dispatchedVillager(); }
             else this.toast('No clear shore to fish from', true);
           } else this.toast('No fish here — watch for fish breaking the surface', true);
           return;
@@ -580,6 +580,13 @@ const UI = {
     this.panelHidden = false;
     document.getElementById('panel').classList.remove('show');
     document.getElementById('buildmenu').style.display = this.menuCollapsed ? 'none' : 'flex';
+  },
+
+  // a villager sent off to a resource job needs no further orders — drop the
+  // selection and tuck the menu away so the board is clear for the next pick
+  dispatchedVillager() {
+    this.deselect();
+    this.setMenuCollapsed(true, true);
   },
 
   setMenuCollapsed(v, keepPlacing) {
