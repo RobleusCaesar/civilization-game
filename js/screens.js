@@ -509,8 +509,31 @@ const Screens = {
     this.show('endgame', { win, msg });
   },
   onEndgame(opts) {
-    this.el('endTitle').textContent = opts.win ? '🏆 Victory!' : '💀 Defeat';
-    this.el('endTitle').style.color = opts.win ? 'var(--gold)' : 'var(--danger)';
+    const def = this.el('defeatScene'), vic = this.el('victoryPane'), scr = this.el('scrEndgame');
+    if (!opts.win) {
+      // DEFEAT — no score, no tally, no leaderboard. The clan simply fades into
+      // the depths of history: a quiet grave in the dark (see js/defeatart.js).
+      scr.classList.add('defeatMode');
+      vic.style.display = 'none';
+      def.style.display = 'block';
+      this._score = null; this._submitted = false; this._leaveWarned = false;
+      this.el('defeatTitle').textContent = window.Defeat ? Defeat.title() : 'YOUR CLAN IS NO MORE';
+      this.el('defeatEpitaph').textContent = window.Defeat ? Defeat.epitaph() : '';
+      const name = (window.Backend && Backend.uid) ? Backend.villageName(Backend.uid) : null;
+      this.el('defeatDetail').textContent =
+        (name ? name + ' — ' : '') + `fell on day ${S.day} · ${G.modeCfg().name} · seed ${S.seed}`;
+      // restart the fade-from-black each time we land here
+      def.style.animation = 'none'; void def.offsetWidth; def.style.animation = 'defeatIn 1.6s ease-out both';
+      if (window.Defeat) Defeat.start();
+      return;
+    }
+    // VICTORY — the arcade cabinet tally
+    if (window.Defeat) Defeat.stop();
+    scr.classList.remove('defeatMode');
+    def.style.display = 'none';
+    vic.style.display = 'block';
+    this.el('endTitle').textContent = '🏆 Victory!';
+    this.el('endTitle').style.color = 'var(--gold)';
     this.el('endMsg').textContent = (opts.msg || '') +
       ` (${G.modeCfg().name} · day ${S.day} · seed ${S.seed})`;
     // reset the stage
@@ -521,10 +544,10 @@ const Screens = {
     this.el('savedNote').style.display = 'none';
     this.el('savedNote').textContent = '';   // never let a prior run's note linger
     this.el('endBoard').innerHTML = '';
-    this._score = Score.compute(opts.win);
+    this._score = Score.compute(true);
     this._submitted = false;
     this._leaveWarned = false;
-    this._tally(this._score, opts.win);
+    this._tally(this._score, true);
   },
 
   // the cabinet ritual: lines land one by one while the total ticks up

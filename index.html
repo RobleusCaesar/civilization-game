@@ -248,6 +248,23 @@
 
   /* endgame — the arcade tally, sized to fit one phone screen */
   #scrEndgame .sbody.center { justify-content: flex-start; padding-top: calc(env(safe-area-inset-top) + 14px); gap: 6px; }
+  /* defeat: a somber Game Over scene that fades up from black. The whole screen
+     goes near-black so the paused world never shows through and undercuts it. */
+  #scrEndgame.defeatMode { background: radial-gradient(125% 80% at 50% 22%, #17131f 0%, #0a0810 55%, #050409 100%); }
+  #defeatScene { width: 100%; max-width: 460px; margin: 0 auto; }
+  @keyframes defeatIn { 0% { opacity: 0; } 40% { opacity: 0; } 100% { opacity: 1; } }
+  .defeatFrame { border: 2px solid #171310; border-radius: 8px; overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.6), 0 8px 26px rgba(0,0,0,0.75);
+    background: #0a0912; line-height: 0; }
+  #defeatCanvas { display: block; width: 100%; height: auto; aspect-ratio: 190 / 120;
+    image-rendering: pixelated; }
+  #defeatTitle { font-size: 22px; font-weight: 900; letter-spacing: 4px;
+    color: #cabfa4; margin: 16px 0 0; text-align: center;
+    text-shadow: 0 2px 0 #100c08, 0 4px 18px rgba(0,0,0,0.9); }
+  #defeatEpitaph { font-style: italic; color: #8f8676; font-size: 13.5px;
+    line-height: 1.5; margin: 9px auto 0; max-width: 340px; text-align: center; }
+  #defeatDetail { color: #5f5a4e; font-size: 11px; letter-spacing: 1px; margin: 12px 0 4px;
+    text-align: center; }
   #scrEndgame #endTitle { font-size: 23px; }
   #scrEndgame #endMsg { margin: 0; }
   #scoreLines { width: 100%; max-width: 330px; font-variant-numeric: tabular-nums; }
@@ -551,18 +568,28 @@
 
   <div class="screen" id="scrEndgame">
     <div class="sbody center">
-      <h1 id="endTitle">Victory</h1>
-      <p class="hint" id="endMsg"></p>
-      <div id="scoreLines"></div>
-      <p id="scoreMult"></p>
-      <div id="scoreTotal">SCORE 0</div>
-      <div id="hsBanner" class="blink" style="display:none">★ NEW HIGH SCORE ★</div>
-      <div class="mrow" id="nameRow" style="display:none">
-        <input id="arcadeName" maxlength="7" placeholder="YOUR NAME" autocomplete="off">
-        <button class="abtn gold" id="btnSubmitScore">💾 Save score</button>
+      <!-- DEFEAT — a quiet Game Over scene; no score, the clan fades into history -->
+      <div id="defeatScene" style="display:none">
+        <div class="defeatFrame"><canvas id="defeatCanvas" width="190" height="120" aria-label="Game Over"></canvas></div>
+        <h1 id="defeatTitle">YOUR CLAN IS NO MORE</h1>
+        <p id="defeatEpitaph"></p>
+        <p id="defeatDetail"></p>
       </div>
-      <p id="savedNote" style="display:none"></p>
-      <div id="endBoard"></div>
+      <!-- VICTORY — the arcade tally -->
+      <div id="victoryPane">
+        <h1 id="endTitle">Victory</h1>
+        <p class="hint" id="endMsg"></p>
+        <div id="scoreLines"></div>
+        <p id="scoreMult"></p>
+        <div id="scoreTotal">SCORE 0</div>
+        <div id="hsBanner" class="blink" style="display:none">★ NEW HIGH SCORE ★</div>
+        <div class="mrow" id="nameRow" style="display:none">
+          <input id="arcadeName" maxlength="7" placeholder="YOUR NAME" autocomplete="off">
+          <button class="abtn gold" id="btnSubmitScore">💾 Save score</button>
+        </div>
+        <p id="savedNote" style="display:none"></p>
+        <div id="endBoard"></div>
+      </div>
       <button class="abtn big gold" id="btnEndNew">🏕 Play again</button>
       <button class="abtn big" id="btnEndTitle">🏔 Title screen</button>
     </div>
@@ -643,6 +670,7 @@
 <script src="js/combat.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/render.js"></script>
+<script src="js/defeatart.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/screens.js"></script>
 <script src="js/game.js"></script>
