@@ -63,9 +63,9 @@ const CFG = {
   TRADE: {
     goods: ['food', 'wood', 'stone'],   // which surpluses may be sold
     levels: [
-      { input: 40,  rate: 0.10, delay: 1.5 },   // L1: 40 goods → 4 gold  (worst rate, small load)
-      { input: 90,  rate: 0.14, delay: 2.0 },   // L2: 90 goods → 12 gold (better rate, bigger load)
-      { input: 180, rate: 0.18, delay: 2.5 },   // L3: 180 goods → 32 gold (best rate, largest load)
+      { input: 80,  rate: 0.10, delay: 1.5 },   // L1: 80 goods → 8 gold  (worst rate, small load)
+      { input: 180, rate: 0.14, delay: 2.0 },   // L2: 180 goods → 25 gold (better rate, bigger load)
+      { input: 360, rate: 0.18, delay: 2.5 },   // L3: 360 goods → 64 gold (best rate, largest load)
     ],
   },
   DEPLETED: {                 // what a tile becomes once gathered out
