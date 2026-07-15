@@ -325,7 +325,17 @@ const G = {
       if (!vis[i]) continue;
       if (S.map.seenTerrain[i] !== S.map.terrain[i]) {
         S.map.seenTerrain[i] = S.map.terrain[i];
-        R.drawTileAt(i % W, (i / W) | 0);
+        const rx = i % W, ry = (i / W) | 0;
+        R.drawTileAt(rx, ry);
+        // a tile's edge art (water shore/foam, trench & mound walls, biome blends)
+        // is computed from its neighbours — so a change first revealed here leaves
+        // a stale seam on each of them. Repaint every explored neighbour too, or
+        // the rival's fog-hidden sapper work (moats / reclaimed land / mounds)
+        // reads as a grid of hard-edged squares the moment the player sees it.
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = rx + ox, ny = ry + oy;
+          if (MapGen.inB(nx, ny) && S.map.explored[MapGen.idx(nx, ny)]) R.drawTileAt(nx, ny);
+        }
       }
       const b = liveB.get(i);
       if (b) {
