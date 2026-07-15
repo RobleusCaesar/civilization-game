@@ -248,23 +248,111 @@
 
   /* endgame — the arcade tally, sized to fit one phone screen */
   #scrEndgame .sbody.center { justify-content: flex-start; padding-top: calc(env(safe-area-inset-top) + 14px); gap: 6px; }
-  /* defeat: a somber Game Over scene that fades up from black. The whole screen
-     goes near-black so the paused world never shows through and undercuts it. */
-  #scrEndgame.defeatMode { background: radial-gradient(125% 80% at 50% 22%, #17131f 0%, #0a0810 55%, #050409 100%); }
-  #defeatScene { width: 100%; max-width: 460px; margin: 0 auto; }
+  /* defeat: "The Last Fire" — a story-driven Game Over that fades up from black.
+     The whole screen goes deep navy so the paused world never shows through, and
+     an ornate frame + vignette give it a premium, handcrafted feel. */
+  #scrEndgame.defeatMode { background:
+      radial-gradient(130% 75% at 50% 18%, #141a2b 0%, #0b0f1c 52%, #060812 100%); }
+  #scrEndgame.defeatMode .sbody.center { padding: 0; }
+  #scrEndgame.defeatMode #btnEndNew, #scrEndgame.defeatMode #btnEndTitle { display: none; }
+  #defeatScene { width: 100%; max-width: 440px; margin: 0 auto; position: relative;
+    padding: 20px 20px calc(env(safe-area-inset-bottom) + 22px);
+    min-height: 100%;
+    /* the ornate double frame */
+    border: 1px solid rgba(200,168,92,0.28);
+    box-shadow: inset 0 0 0 3px rgba(10,12,22,0.9), inset 0 0 0 4px rgba(160,132,70,0.16),
+      inset 0 0 70px rgba(0,0,0,0.55);
+    background: radial-gradient(120% 60% at 50% 0%, rgba(30,38,58,0.25), transparent 60%); }
+  /* corner ticks on the frame */
+  #defeatScene::before, #defeatScene::after { content: ''; position: absolute; width: 16px; height: 16px;
+    border: 2px solid rgba(200,168,92,0.5); pointer-events: none; }
+  #defeatScene::before { top: 8px; left: 8px; border-right: none; border-bottom: none; }
+  #defeatScene::after  { top: 8px; right: 8px; border-left: none; border-bottom: none; }
   @keyframes defeatIn { 0% { opacity: 0; } 40% { opacity: 0; } 100% { opacity: 1; } }
-  .defeatFrame { border: 2px solid #171310; border-radius: 8px; overflow: hidden;
-    box-shadow: 0 0 0 1px rgba(0,0,0,0.6), 0 8px 26px rgba(0,0,0,0.75);
-    background: #0a0912; line-height: 0; }
-  #defeatCanvas { display: block; width: 100%; height: auto; aspect-ratio: 190 / 120;
-    image-rendering: pixelated; }
-  #defeatTitle { font-size: 22px; font-weight: 900; letter-spacing: 4px;
-    color: #cabfa4; margin: 16px 0 0; text-align: center;
-    text-shadow: 0 2px 0 #100c08, 0 4px 18px rgba(0,0,0,0.9); }
-  #defeatEpitaph { font-style: italic; color: #8f8676; font-size: 13.5px;
-    line-height: 1.5; margin: 9px auto 0; max-width: 340px; text-align: center; }
-  #defeatDetail { color: #5f5a4e; font-size: 11px; letter-spacing: 1px; margin: 12px 0 4px;
-    text-align: center; }
+
+  .defeatFrame { position: relative; border-radius: 7px; overflow: visible;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.7), 0 10px 30px rgba(0,0,0,0.7);
+    background: #0a0d18; line-height: 0; margin-top: 12px; }
+  #defeatCanvas { display: block; width: 100%; height: auto; aspect-ratio: 200 / 150;
+    image-rendering: pixelated; border-radius: 7px;
+    box-shadow: inset 0 0 0 2px rgba(8,10,18,0.9), inset 0 0 0 3px rgba(150,124,66,0.14); }
+  /* a hanging pennant crest over the scene, carrying the last flame */
+  .defeatPennant { position: absolute; top: -6px; left: 50%; transform: translateX(-50%);
+    width: 34px; height: 40px; background: linear-gradient(#2a2116, #1c150d);
+    clip-path: polygon(0 0, 100% 0, 100% 74%, 50% 100%, 0 74%);
+    border-left: 1px solid rgba(200,168,92,0.3); border-right: 1px solid rgba(0,0,0,0.5);
+    display: flex; align-items: flex-start; justify-content: center; padding-top: 6px; z-index: 2;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.6); }
+  .defeatPennant .dbIcon { width: 20px; height: 22px; }
+
+  #defeatTitle { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    font-size: 26px; font-weight: 700; letter-spacing: 3px; line-height: 1.1;
+    color: #ecdfc0; margin: 20px 0 0; text-align: center;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    text-shadow: 0 1px 0 #100c08, 0 3px 20px rgba(0,0,0,0.9); }
+  #defeatTitle .fl { color: rgba(200,168,92,0.55); font-size: 20px; font-weight: 400; }
+  #defeatTitleText { background: none; }
+  .defeatRule { display: flex; align-items: center; justify-content: center; gap: 10px;
+    margin: 12px auto 0; max-width: 260px; }
+  .defeatRule i { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, rgba(200,168,92,0.35), transparent); }
+  .defeatRule b { color: rgba(200,168,92,0.6); font-size: 9px; }
+  .defeatRule.sm { max-width: 150px; margin-top: 8px; }
+  #defeatEpitaph { font-family: Georgia, "Times New Roman", serif; font-style: italic;
+    color: #9aa0ac; font-size: 15px; line-height: 1.5; margin: 14px auto 0;
+    max-width: 340px; text-align: center; }
+
+  /* the three-column stat card */
+  #defeatStats { display: flex; align-items: stretch; justify-content: center; gap: 5px;
+    margin: 22px auto 0; padding: 14px 6px; max-width: 404px;
+    background: linear-gradient(#151a26, #0e121c);
+    border: 1px solid rgba(150,124,66,0.18); border-radius: 10px;
+    box-shadow: inset 0 1px 0 rgba(200,168,92,0.08), inset 0 0 24px rgba(0,0,0,0.45), 0 4px 14px rgba(0,0,0,0.4); }
+  #defeatStats .dstat { flex: 1 1 0; display: flex; align-items: center; justify-content: center;
+    gap: 7px; min-width: 0; }
+  #defeatStats .dstat.wide { flex: 1.35 1 0; }
+  #defeatStats .dsIcon { width: 18px; height: 18px; image-rendering: pixelated; flex: 0 0 auto; opacity: 0.92; }
+  #defeatStats .dsText { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  #defeatStats .dsLabel { font-size: 8.5px; letter-spacing: 1px; color: #6f7686; font-weight: 700; white-space: nowrap; }
+  #defeatStats .dsVal { font-family: Georgia, "Times New Roman", serif; font-size: 15px; font-weight: 700;
+    color: #ecdfc0; letter-spacing: 0; font-variant-numeric: tabular-nums;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #defeatStats .dsSep { flex: 0 0 1px; align-self: stretch; margin: 2px 0;
+    background: linear-gradient(rgba(150,124,66,0), rgba(150,124,66,0.22), rgba(150,124,66,0)); }
+
+  /* the two story buttons */
+  .dbtn { display: flex; align-items: center; gap: 14px; width: 100%; max-width: 380px;
+    margin: 14px auto 0; padding: 12px 16px; border-radius: 11px; cursor: pointer;
+    text-align: left; -webkit-appearance: none; appearance: none;
+    border: 1px solid rgba(0,0,0,0.5); transition: transform .06s ease, filter .1s ease; }
+  .dbtn:active { transform: translateY(1px); filter: brightness(1.12); }
+  .dbtn .dbIcon { width: 34px; height: 30px; image-rendering: pixelated; flex: 0 0 auto; }
+  .dbtn .dbBody { flex: 1 1 auto; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .dbtn .dbBody b { font-family: Georgia, "Times New Roman", serif; font-size: 19px; font-weight: 700;
+    letter-spacing: 2px; line-height: 1.1; }
+  .dbtn .dbBody small { font-size: 12px; letter-spacing: 0.3px; }
+  .dbtn .dbArrow { flex: 0 0 auto; font-size: 20px; opacity: 0.8; }
+  .dbtn.primary { background: linear-gradient(#2f4423, #223318);
+    border-color: rgba(140,190,110,0.35);
+    box-shadow: inset 0 1px 0 rgba(160,220,120,0.22), inset 0 -2px 6px rgba(0,0,0,0.4), 0 4px 14px rgba(0,0,0,0.45); }
+  .dbtn.primary b { color: #eaf3dc; text-shadow: 0 1px 0 rgba(0,0,0,0.5); }
+  .dbtn.primary small { color: #a9c295; }
+  .dbtn.primary .dbArrow { color: #cfe3b6; }
+  .dbtn:not(.primary) { background: linear-gradient(#1a1f2c, #12161f);
+    border-color: rgba(120,132,156,0.24);
+    box-shadow: inset 0 1px 0 rgba(150,168,200,0.12), inset 0 -2px 6px rgba(0,0,0,0.4), 0 3px 10px rgba(0,0,0,0.4); }
+  .dbtn:not(.primary) b { color: #cdd4e2; }
+  .dbtn:not(.primary) small { color: #7c8598; }
+  .dbtn:not(.primary) .dbArrow { color: #9aa4b6; }
+
+  /* footer epitaph card */
+  #defeatFooter { position: relative; max-width: 380px; margin: 22px auto 4px; padding: 16px 20px 12px;
+    border: 1px solid rgba(150,124,66,0.16); border-radius: 10px;
+    background: linear-gradient(#10141e, #0b0e17);
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.4); text-align: center; }
+  #defeatFooter .dfQuote { position: absolute; top: 2px; left: 10px;
+    font-family: Georgia, serif; font-size: 28px; color: rgba(200,168,92,0.28); line-height: 1; }
+  #defeatEpitaphFoot { font-family: Georgia, "Times New Roman", serif; font-style: italic;
+    color: #8b93a4; font-size: 14px; line-height: 1.55; margin: 0; }
   #scrEndgame #endTitle { font-size: 23px; }
   #scrEndgame #endMsg { margin: 0; }
   #scoreLines { width: 100%; max-width: 330px; font-variant-numeric: tabular-nums; }
@@ -568,12 +656,33 @@
 
   <div class="screen" id="scrEndgame">
     <div class="sbody center">
-      <!-- DEFEAT — a quiet Game Over scene; no score, the clan fades into history -->
+      <!-- DEFEAT — "The Last Fire": a quiet, story-driven Game Over. No score. -->
       <div id="defeatScene" style="display:none">
-        <div class="defeatFrame"><canvas id="defeatCanvas" width="190" height="120" aria-label="Game Over"></canvas></div>
-        <h1 id="defeatTitle">YOUR CLAN IS NO MORE</h1>
-        <p id="defeatEpitaph"></p>
-        <p id="defeatDetail"></p>
+        <div class="defeatFrame">
+          <canvas id="defeatCanvas" width="200" height="150" aria-label="Game Over"></canvas>
+          <div class="defeatPennant"><canvas class="dbIcon" id="defeatCrest" aria-hidden="true"></canvas></div>
+        </div>
+        <h1 id="defeatTitle"><span class="fl">&#8942;</span><span id="defeatTitleText">THE FIRE HAS GONE OUT</span><span class="fl">&#8942;</span></h1>
+        <div class="defeatRule"><i></i><b>&#9670;</b><i></i></div>
+        <p id="defeatEpitaph">The valley forgets. Grass grows over the ashes.</p>
+        <div id="defeatStats">
+          <div class="dstat"><canvas class="dsIcon" data-icon="calendar" aria-hidden="true"></canvas><div class="dsText"><span class="dsLabel">DAY SURVIVED</span><span class="dsVal" id="dsDay">0</span></div></div>
+          <span class="dsSep"></span>
+          <div class="dstat wide"><canvas class="dsIcon" data-icon="seed" aria-hidden="true"></canvas><div class="dsText"><span class="dsLabel">SEED</span><span class="dsVal" id="dsSeed">0</span></div></div>
+          <span class="dsSep"></span>
+          <div class="dstat"><canvas class="dsIcon" data-icon="mountain" aria-hidden="true"></canvas><div class="dsText"><span class="dsLabel">DIFFICULTY</span><span class="dsVal" id="dsDiff">—</span></div></div>
+        </div>
+        <button class="dbtn primary" id="btnDefeatAgain">
+          <canvas class="dbIcon" data-icon="camp" aria-hidden="true"></canvas>
+          <span class="dbBody"><b>PLAY AGAIN</b><small>Start a new civilization</small></span>
+          <span class="dbArrow">&#8594;</span>
+        </button>
+        <button class="dbtn" id="btnDefeatTitle">
+          <canvas class="dbIcon" data-icon="mountain" aria-hidden="true"></canvas>
+          <span class="dbBody"><b>TITLE SCREEN</b><small>Return to the main menu</small></span>
+          <span class="dbArrow">&#8594;</span>
+        </button>
+        <div id="defeatFooter"><span class="dfQuote">&#8220;</span><p id="defeatEpitaphFoot">From ash, we began. From memory, we return.</p><div class="defeatRule sm"><i></i><b>&#9670;</b><i></i></div></div>
       </div>
       <!-- VICTORY — the arcade tally -->
       <div id="victoryPane">

@@ -517,11 +517,19 @@ const Screens = {
       vic.style.display = 'none';
       def.style.display = 'block';
       this._score = null; this._submitted = false; this._leaveWarned = false;
-      this.el('defeatTitle').textContent = window.Defeat ? Defeat.title() : 'YOUR CLAN IS NO MORE';
-      this.el('defeatEpitaph').textContent = window.Defeat ? Defeat.epitaph() : '';
-      const name = (window.Backend && Backend.uid) ? Backend.villageName(Backend.uid) : null;
-      this.el('defeatDetail').textContent =
-        (name ? name + ' — ' : '') + `fell on day ${S.day} · ${G.modeCfg().name} · seed ${S.seed}`;
+      // three voices: the headline, the poetic subtitle, and a footer epitaph
+      this.el('defeatTitleText').textContent = window.Defeat ? Defeat.title() : 'THE FIRE HAS GONE OUT';
+      this.el('defeatEpitaph').textContent = window.Defeat ? Defeat.subtitle() : '';
+      this.el('defeatEpitaphFoot').textContent = window.Defeat ? Defeat.epitaph() : '';
+      // the story stats: day survived, seed, difficulty
+      this.el('dsDay').textContent = S.day;
+      this.el('dsSeed').textContent = S.seed;
+      this.el('dsDiff').textContent = (G.modeCfg().name || '').toUpperCase();
+      // render the pixel icons (banner crest + stat/button glyphs)
+      if (window.Defeat) {
+        Defeat.drawIcon(this.el('defeatCrest'), 'fire');
+        for (const c of def.querySelectorAll('canvas[data-icon]')) Defeat.drawIcon(c, c.dataset.icon);
+      }
       // restart the fade-from-black each time we land here
       def.style.animation = 'none'; void def.offsetWidth; def.style.animation = 'defeatIn 1.6s ease-out both';
       if (window.Defeat) Defeat.start();
@@ -721,8 +729,12 @@ const Screens = {
       }
       go();
     };
-    on('btnEndNew', () => leaveEnd(() => { this.backTo = 'title'; this.show('newgame'); }));
-    on('btnEndTitle', () => leaveEnd(() => { this._demo = false; this.show('title'); }));
+    const goNew = () => leaveEnd(() => { this.backTo = 'title'; this.show('newgame'); });
+    const goTitle = () => leaveEnd(() => { this._demo = false; this.show('title'); });
+    on('btnEndNew', goNew);
+    on('btnEndTitle', goTitle);
+    on('btnDefeatAgain', goNew);     // "The Last Fire" defeat buttons — same actions
+    on('btnDefeatTitle', goTitle);
     // settings
     this.el('setCadence').addEventListener('change', e => {
       Backend.autosaveDays = +e.target.value;
