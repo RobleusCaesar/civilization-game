@@ -300,11 +300,12 @@ const Combat = {
         if (ai && ai.memory) ai.memory.wallHit = (ai.memory.wallHit || 0) + 1;
         u.tBld = wall.id; Units.setPath(u, wall.x, wall.y); return;
       }
-      // BLOCKED BY A GAP: the route bogged down well short of the aim and there's
-      // no wall to batter — water (or terrain) severs the approach. Don't shuffle
-      // into the towers' teeth and die. Flag the crossing so the chief bridges it,
-      // then act by arm: bowmen/engines volley across, footmen fall back and wait.
-      if (Math.hypot(end.x + 0.5 - goal.x, end.y + 0.5 - goal.y) > 3.5) {
+      // BLOCKED BY A GAP: the route bogged down short of the aim and there's no
+      // wall to batter — water OR a belt of forest/rock/orchard severs the approach.
+      // Don't grind back and forth at the obstacle (or into the towers' teeth).
+      // Flag the crossing so the chief breaches it (clear-cut / bridge), then act
+      // by arm: bowmen/engines volley across, footmen fall back and wait.
+      if (Math.hypot(end.x + 0.5 - goal.x, end.y + 0.5 - goal.y) > 2.5) {
         if (ai) ai.stall = { x: end.x, y: end.y, t: S.day };
         if (CFG.UNITS[u.kind].rng || CFG.UNITS[u.kind].proj) {
           // shell what's shooting us: the nearest tower (then any building) in range

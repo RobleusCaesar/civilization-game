@@ -865,13 +865,19 @@ const AI = {
       add(u, () => { Bld.upgrade(tc); return true; });
     }
 
-    // upgrade a standing building (stronger units / stouter defense)
+    // upgrade a standing building (stronger units / stouter defense). A raid party
+    // stuck at woods it can't clear (needs a TIER-3 corps) makes upgrading the
+    // sapper camp the priority — a bridging corps that can also clear-cut breaks
+    // the deadlock.
+    const stalledClear = ai.stallClearT && S.day - ai.stallClearT <= 6;
     const ups = Bld.list('A').filter(b => b.key !== 'tc' && Bld.canUpgrade(b).ok);
     if (ups.length) {
       const prio = { barracks: 3, range: 3, stable: 3, siege: 2, tower: 2, dock: 2 };
       ups.sort((a, b2) => (prio[b2.key] || 1) - (prio[a.key] || 1));
-      const b = ups[0];
-      add(24 + (prio[b.key] || 1) * 6 + (post === 'PUSH' ? 18 : 0) - (post === 'EXPAND' ? 10 : 0),
+      const sapUp = stalledClear && ups.find(b => b.key === 'sapper');
+      const b = sapUp || ups[0];
+      add(24 + (prio[b.key] || 1) * 6 + (post === 'PUSH' ? 18 : 0) - (post === 'EXPAND' ? 10 : 0) +
+          (sapUp ? 40 : 0),
         () => Bld.upgrade(b));
     }
 
@@ -986,24 +992,42 @@ const AI = {
     return false;
   },
 
-  /* A raid party bogged down at a crossing (combat.js records ai.stall when a
-     party can't reach its objective across water). Rush an idle sapper to bridge
-     the water right there so the assault isn't left standing in the towers' teeth,
-     spanning outward from the stall point toward the objective. This is what turns
-     "soldiers chilling by the shore" into "sappers bridge, then the army pours in". */
-  bridgeStall(read) {
+  /* A raid party bogged down short of its objective (combat.js records ai.stall
+     whenever a party can't reach its aim — a river, a lake, or a belt of forest/
+     rock/orchard severs the approach). Rush an idle sapper to BREACH the obstacle
+     right where the assault stalled, spanning outward from the stall point toward
+     the objective: clear-cut the woods, bridge the water, or reclaim a land-bridge
+     across the shallows — whichever blocks the lane first. This is what turns
+     "soldiers chilling at the tree line" into "sappers open a gap, army pours in".
+     Records ai.stallClearT when the blocker is a resource wall it can't yet cut
+     (tier < 3) so the chief invests in a higher-tier engineering corps. */
+  breachStall(read) {
     const ai = S.ai, st = ai.stall;
     if (!st || S.day - (st.t || 0) > 3) return false;      // no fresh stall on record
-    if (Units.sapperTier('A') < 2) return false;           // needs a bridging corps
-    const idle = S.units.find(u => u.owner === 'A' && u.kind === 'sapper' && (!u.task || u.task.type === 'move'));
-    if (!idle) return false;
+    const tier = Units.sapperTier('A');
+    if (tier < 1) return false;                            // no engineering corps at all
     const aim = read.knownTC || Bld.tcOf('P') || st;
     const dx = aim.x - st.x, dy = aim.y - st.y, len = Math.hypot(dx, dy) || 1;
     const ux = dx / len, uy = dy / len;
-    for (let s = 0; s <= 6; s++) {
+    // first, learn what's actually blocking the lane so the chief can react even
+    // when it can't breach yet (needs a higher-tier corps). Persist the signal on
+    // `ai` (not ai.stall, which combat rebuilds each frame) so bestBuild sees it.
+    const idle = S.units.find(u => u.owner === 'A' && u.kind === 'sapper' && (!u.task || u.task.type === 'move'));
+    for (let s = 0; s <= 8; s++) {
       const x = Math.round(st.x + ux * s), y = Math.round(st.y + uy * s);
       if (!MapGen.inB(x, y)) continue;
-      if (Terraform.bridgeable(x, y) && !Bld.bridgeAt(x, y) && Units.assignTerraform(idle, x, y)) { this._escort(idle); return true; }
+      const terr = S.map.terrain[MapGen.idx(x, y)];
+      const clearable = Terraform.isClearable(x, y);
+      const water = terr === T.WATER || terr === T.MOAT;
+      if (clearable && tier < 3) ai.stallClearT = S.day;              // woods we can't cut yet
+      if (!idle) continue;                                            // note the blocker, but no sapper to send
+      // clear-cut a resource wall (forest / rock / orchard) that blocks the lane
+      if (tier >= 3 && clearable && Units.assignTerraform(idle, x, y, 'clear')) { this._escort(idle); return true; }
+      // bridge the open water / moat
+      if (tier >= 2 && water && Terraform.bridgeable(x, y) && !Bld.bridgeAt(x, y) && Units.assignTerraform(idle, x, y, 'bridge')) { this._escort(idle); return true; }
+      // reclaim a short land-bridge across near-shore shallows (costs stone/wood)
+      if (tier >= 3 && water && Terraform.isMoundable(x, y, 'A') &&
+          Bld.canAfford(CFG.TERRAFORM.moundCost, ai.res) && Units.assignTerraform(idle, x, y, 'mound')) { this._escort(idle); return true; }
     }
     return false;
   },
@@ -1204,9 +1228,10 @@ const AI = {
     const didSafety = this.digAndProtect(read);
     if (!didSafety && S.day % (m.aiBuildEvery || 2) === 0) this.bestBuild(read);
     this.trainForces(m, read);
-    // SAPPERS: first priority is bridging a crossing where a raid party is stuck
-    // (so the assault gets across), then defensive moats / offensive breaches
-    this.bridgeStall(read);
+    // SAPPERS: first priority is breaching where a raid party is stuck — clear the
+    // woods or bridge the water so the assault gets through — then defensive moats
+    // and offensive breaches
+    this.breachStall(read);
     this.terraform(read);
 
     /* ---- townsfolk: a living village. A few villagers walk the lanes,
