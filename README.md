@@ -373,3 +373,6 @@ crash-net snapshot, and small preferences — never the authoritative save.
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+Bundled third-party software (the Supabase JS client) is listed with its own
+license in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

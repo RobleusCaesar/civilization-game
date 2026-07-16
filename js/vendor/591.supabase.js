@@ -1,1 +1,2 @@
+/*! Bundled third-party code: @supabase/supabase-js (UMD build). MIT License, Copyright (c) 2020 Supabase. Full license text: THIRD_PARTY_NOTICES.md in the repo root. */
 "use strict";(self.webpackChunksupabase=self.webpackChunksupabase||[]).push([[591],{591:e=>{e.exports=function(){throw new Error("ws does not work in the browser. Browser clients must use the native WebSocket object")}}}]);
