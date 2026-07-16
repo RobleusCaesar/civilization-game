@@ -901,6 +901,33 @@ const R = {
         g.beginPath(); g.moveTo(fx, fy - 8); g.lineTo(fx + 8, fy - 5); g.lineTo(fx, fy - 2); g.fill();
       }
     }
+    // rally CONFIRM flourish: a placed rally auto-deselects, so flash the flag it
+    // dropped for a beat — an expanding pulse + a popped-in flag that fades out —
+    // so the player sees exactly where it landed before the panel closes.
+    if (UI.rallyFlash) {
+      const f = UI.rallyFlash;
+      f.t -= dt;
+      if (f.t <= 0) { UI.rallyFlash = null; }
+      else {
+        const k = f.t / f.life;                        // 1 → 0 over its life
+        const done = 1 - k;                            // 0 → 1
+        const fx = (f.x + 0.5) * TL, fy = (f.y + 0.5) * TL;
+        const a = k > 0.35 ? 1 : k / 0.35;             // hold, then fade in the last beat
+        const pop = Math.min(1, done / 0.14);          // quick scale-in on arrival
+        // tether from the building to the flag
+        g.strokeStyle = 'rgba(232,193,90,' + (0.5 * a) + ')'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(f.bx * TL, f.by * TL); g.lineTo(fx, fy); g.stroke();
+        // an expanding ring that fades as it grows — the "it landed" pulse
+        g.strokeStyle = 'rgba(232,193,90,' + (0.55 * k) + ')'; g.lineWidth = 2;
+        g.beginPath(); g.arc(fx, fy, 3 + done * 13, 0, Math.PI * 2); g.stroke();
+        // the flag itself, popping up from the ground
+        const h = 16 * pop;
+        g.strokeStyle = 'rgba(232,193,90,' + a + ')'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(fx, fy + 6); g.lineTo(fx, fy + 6 - h); g.stroke();
+        g.fillStyle = 'rgba(232,193,90,' + a + ')';
+        g.beginPath(); g.moveTo(fx, fy + 6 - h); g.lineTo(fx + 8 * pop, fy + 9 - h); g.lineTo(fx, fy + 12 - h); g.fill();
+      }
+    }
 
     // fog of war
     if (this.fogDirty) this.redrawFog();

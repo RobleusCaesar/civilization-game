@@ -363,8 +363,9 @@ const UI = {
         this.toast(gatherable && rb.key === 'tc'
           ? 'Rally set — new villagers will gather here'
           : 'Rally point set — new units will head here');
-        // the order's placed — deselect the building so its rally button (and the
-        // armed action) drop away, leaving the board clear for the next move
+        // leave a brief flag flourish where it landed so the player sees it took,
+        // then deselect — the marker plays on after the panel closes (see R.draw)
+        this.rallyFlash = { x: tile.x, y: tile.y, bx: Bld.cx(rb), by: Bld.cy(rb), t: 1.25, life: 1.25 };
         this.deselect();
       } else {
         // out of range — keep the tool armed so a second tap can still land it
