@@ -7,6 +7,7 @@ const R = {
   cam: { x: 0, y: 0, z: 1.5 },   // world px offset + zoom
   dpr: 1,
   bottomReserve: 0,              // measured open build-menu bar height (CSS px) to keep clear at the bottom
+  topReserve: 0,                 // measured top status-bar height (CSS px) so the map's top edge never hides behind it
   terrainCache: null,
   fogCv: null, fogG: null, fogDirty: true,
   floats: [],                    // {x,y,txt,col,t}
@@ -209,10 +210,19 @@ const R = {
       const bar = document.getElementById('bottombar'), bm = document.getElementById('buildmenu');
       if (bar && bm && bm.style.display !== 'none' && bar.offsetHeight > 40) this.bottomReserve = bar.offsetHeight;
     }
-    // sides & top pan ~10% of the viewport past the edge; the BOTTOM reserves the
-    // full build-menu height so a fully-down pan seats the map's bottom edge right
-    // at the menu's top — the menu never covers the map (and leaves no black gap)
-    const padX = vw * 0.10, padTop = vh * 0.10;
+    // the top status bar overlays the canvas — measure it once so a fully-up pan
+    // seats the map's TOP edge right below the bar. Without this, the outermost
+    // rows (where units legitimately route around walls) hide behind the bar and
+    // characters appear to "walk off the top of the map".
+    if (!this.topReserve) {
+      const tb = document.getElementById('topbar');
+      if (tb && tb.offsetHeight > 20) this.topReserve = tb.offsetHeight;
+    }
+    // sides pan ~10% past the edge; the TOP reserves the status-bar height and the
+    // BOTTOM the full build-menu height, so a fully-panned view seats that map edge
+    // right at the UI's inner border — neither bar ever covers the map.
+    const padX = vw * 0.10;
+    const padTop = Math.max(vh * 0.10, (this.topReserve || 0) / this.cam.z);
     const padBottom = Math.max(vh * 0.10, (this.bottomReserve || 0) / this.cam.z);
     this.cam.x = Math.max(-padX, Math.min(world - vw + padX, this.cam.x));
     this.cam.y = Math.max(-padTop, Math.min(world - vh + padBottom, this.cam.y));
