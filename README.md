@@ -369,3 +369,7 @@ supabase/migrations/  SQL schema + RLS policies for the cloud-save tables
 State is one plain JSON-serializable object (`S`), which is what save files
 contain. localStorage holds only the Supabase session, the emergency
 crash-net snapshot, and small preferences — never the authoritative save.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
