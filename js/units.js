@@ -883,6 +883,48 @@ const Units = {
         u.task = null;
       }
     }
+    this.separateIdle(dt);
+  },
+
+  /* DE-STACKING: units that come to rest on the exact same tile (a war party sent
+     to one spot, a rallied army, defenders converging on the hall) used to pile
+     invisibly — a stack of 18 looked like one sprite and only the top unit could
+     be tapped, so the rest were unselectable. Resting units now drift a little
+     apart until each has elbow room, then STOP: a dead-zone at MINSEP means once
+     they're ~half a tile apart nothing pushes, so there's no jitter and no
+     frenetic shuffling. Only truly idle land units move — anything with a job
+     (walking, gathering, fighting, en route to a post) is left exactly where it is. */
+  separateIdle(dt) {
+    const rest = [];
+    for (const u of S.units) {
+      if (u.tUnit || u.tBld || u.task || this.moving(u)) continue;      // busy or en route
+      if (this.isWild(u) || this.isPassive(u) || this.isNaval(u)) continue;   // animals wander; boats sit on water
+      rest.push(u);
+    }
+    const MIN = 0.55, MIN2 = MIN * MIN, MAXSTEP = Math.min(0.09, dt * 2.2);
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i];
+      for (let j = i + 1; j < rest.length; j++) {
+        const b = rest[j];
+        let dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
+        if (d2 >= MIN2) continue;                                        // far enough — dead zone, no push
+        let d = Math.sqrt(d2);
+        if (d < 1e-4) {                                                  // perfectly stacked — split on a stable, id-derived heading
+          const ang = ((a.id * 13 + b.id * 7) % 628) / 100;
+          dx = Math.cos(ang); dy = Math.sin(ang); d = 1;
+        }
+        const step = Math.min((MIN - d) / 2, MAXSTEP);
+        const nx = dx / d * step, ny = dy / d * step;
+        this._nudge(a, nx, ny);
+        this._nudge(b, -nx, -ny);
+      }
+    }
+  },
+  // shift a resting unit by (dx,dy), but never onto a tile it can't stand on
+  // (water/wall/resource/the map's hard border) — a de-stack must not strand it
+  _nudge(u, dx, dy) {
+    const tx = u.x + dx, ty = u.y + dy;
+    if (Path.passable(tx | 0, ty | 0, u.owner, this.domain(u))) { u.x = tx; u.y = ty; }
   },
 
   wildIdle(u, dt) {
