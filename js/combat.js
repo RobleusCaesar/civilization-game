@@ -237,7 +237,9 @@ const Combat = {
      chief learns to route around next time. */
   // pull a water-blocked MELEE rival raider back out of the enemy towers' range
   // and hold it there — it waits for the chief to bridge the crossing instead of
-  // dying on the bank for nothing. Returns quietly once already in the clear.
+  // dying on the bank for nothing. If it CAN'T reach safety (boxed into a pocket
+  // that's all inside the killzone — e.g. ringed by rock/water), it gives up and
+  // marches home rather than jittering in the towers' fire until it dies.
   aiStandoff(u) {
     const nb = this.nearestBuilding(u.x, u.y, 'P', bb => Bld.done(bb));
     if (!nb) { u.path = null; return; }
@@ -247,7 +249,30 @@ const Combat = {
     const ux = (u.x - bx) / (d || 1), uy = (u.y - by) / (d || 1);
     const spot = MapGen.findNear(Math.round(bx + ux * SAFE), Math.round(by + uy * SAFE), 5,
       (x, y) => Path.passable(x, y, 'A'));
-    if (spot) Units.setPath(u, spot.x, spot.y); else u.path = null;
+    if (spot && Units.setPath(u, spot.x, spot.y)) {
+      const end = u.path.length ? u.path[u.path.length - 1] : { x: u.x | 0, y: u.y | 0 };
+      // did the route actually get us meaningfully clear of the building? if the
+      // best-effort path stalls right back in the killzone, we're trapped
+      if (Math.hypot(end.x + 0.5 - bx, end.y + 0.5 - by) >= SAFE - 2) return;
+    }
+    this.aiRetreatHome(u);   // can't get clear — abandon the raid and head home
+  },
+
+  // a rival raider that's boxed in with nothing it can reach abandons the raid
+  // and marches home (escaping the pocket if any way out exists). If home is
+  // unreachable too, it's genuinely stranded — hold still instead of jittering.
+  aiRetreatHome(u) {
+    u.tUnit = 0; u.tBld = 0; u.tBridge = null; u.raidObj = null;
+    const atc = Bld.tcOf('A');
+    if (atc && Units.setPath(u, atc.x, atc.y + 2)) {
+      const end = u.path.length ? u.path[u.path.length - 1] : { x: u.x | 0, y: u.y | 0 };
+      if (Math.hypot(end.x - atc.x, end.y - (atc.y + 2)) <= 4) {   // home is reachable → march back
+        u.task = { type: 'move', x: atc.x, y: atc.y + 2 };
+        u.anchor = { x: atc.x + 0.5, y: atc.y + 2.5 };
+        return;
+      }
+    }
+    u.task = null; u.path = null;   // truly stranded — stop, don't thrash
   },
 
   aiRaidSeek(u) {
