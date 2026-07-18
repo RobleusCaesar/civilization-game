@@ -458,6 +458,30 @@ const AI = {
     return best;
   },
 
+  // where to sweep toward when hunting for a player we've never located. First
+  // choice: the farthest REACHABLE-but-unexplored tile — real new ground the
+  // column can actually march to (a reachable-but-hidden enemy is found there).
+  // If the whole reachable region is already explored, the enemy is walled off
+  // or across water: a strong, blind chief stops circling and commits to the
+  // player's stronghold, and breachStall carves a path to it on the way in.
+  huntTarget() {
+    const ai = S.ai, tc = Bld.tcOf('A'); if (!tc) return null;
+    const seen = ai.seen || [];
+    const reach = Path.reachFrom([{ x: tc.x, y: tc.y + 2 }]);
+    let best = null, bs = -1;
+    if (reach) {
+      for (let i = 0; i < reach.length; i++) {
+        if (!reach[i] || seen[i]) continue;
+        const x = i % CFG.W, y = (i / CFG.W) | 0;
+        const d = Math.hypot(x - tc.x, y - tc.y);
+        if (d > bs) { bs = d; best = { x, y }; }
+      }
+    }
+    if (best) return best;                       // reachable frontier to explore
+    const ptc = Bld.tcOf('P');                   // fully explored — go break the siege
+    return ptc ? { x: ptc.x, y: ptc.y + 3 } : this.scoutTarget();
+  },
+
   assess() {
     const ai = S.ai;
     this.updateVision();
@@ -1396,6 +1420,37 @@ const AI = {
           : '⚔ A rival raiding party rides out!', true);
       }
     }
+    /* ---- RECONNAISSANCE IN FORCE: a strong rival that has NEVER found the
+       player (blind — no knownTC) must not sit forever on a full army waiting
+       for the enemy to come to it. When it's genuinely strong and not itself
+       under attack, it marches the bulk of its host out to LOOK — sweeping
+       toward the deepest unexplored ground, where the enemy must be. A moving
+       column reveals the map as it goes; the moment it sights the player's hall
+       (or runs into their army/economy), aiRaidSeek engages it directly, and
+       assess() flips the posture to PUSH so the full siege logic commits next
+       day. A home guard stays back, and the raid retreat logic still pulls the
+       column home if a hunt turns up nothing after several days. ---- */
+    if (!read.knownTC && !read.underThreat && ai.raidCd <= 0 && !raiders.length &&
+        S.day >= Math.max(20, (m.aiRaidDay || 40) - 8)) {
+      const host = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
+        !Units.isNaval(u) && u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
+      if (host.length >= 6 && mine >= 5) {
+        const dest = this.huntTarget();
+        if (dest) {
+          const party = host.slice(0, Math.max(6, Math.ceil(host.length * 0.7)));   // leave a home guard
+          for (const u of party) {
+            u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.probe = false;
+            u.raidLane = 'hunt'; u.raidObj = { type: 'tc', x: dest.x, y: dest.y };
+          }
+          ai.raidObj = { type: 'tc', x: dest.x, y: dest.y };
+          ai.raidLane = 'hunt'; ai.raidN = party.length; ai.raidDay = S.day;
+          ai.raidFoeBld = Bld.list('P').length; mem.wallHit = 0;
+          ai.raidCd = Math.max(6, Math.round(P.raidCd));
+          G.log('⚔ The rival tribe marches out in force, hunting for your village!', true);
+        }
+      }
+    }
+
     // Home guards hold their perimeter — the rival's Defend stance (Combat.acquire).
     // Only a committed raider marches free; everyone else defends the Town Center,
     // so the garrison can't be lured off across the map (as the player's can't).

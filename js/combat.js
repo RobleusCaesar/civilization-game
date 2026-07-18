@@ -489,8 +489,13 @@ const Combat = {
       }
 
       if (u.tBld) {
-        const b = Bld.get(u.tBld);
-        if (!b) { u.tBld = 0; continue; }
+        let b = Bld.get(u.tBld);
+        if (!b) {
+          // the thing we were hitting fell. If it was a wall we broke to reach a
+          // real target beyond it, resume on that target now the breach is open.
+          if (u.task && u.task.finalBld) { const fb = Bld.get(u.task.finalBld); u.task.finalBld = 0; if (fb) { u.tBld = fb.id; b = fb; } }
+          if (!b) { u.tBld = 0; continue; }
+        }
         // fight back defenders that get close while sieging
         const foe = this.nearestUnit(u.x, u.y, 2.2,
           o => this.hostileUnits(u, o) && Units.isMilitary(o) && this.canEngage(u, o));
@@ -505,6 +510,20 @@ const Combat = {
             if (u.owner === 'R') {
               const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x | 0, y: u.y | 0 };
               if (Math.hypot(end.x + 0.5 - Bld.cx(b), end.y + 0.5 - Bld.cy(b)) > bReach + 0.6) { u.tBld = 0; continue; }
+            } else if (u.owner === 'P' && b.key !== 'wall' && b.key !== 'gate') {
+              // a PLAYER-ordered attack that stalls short of its mark is walled off:
+              // batter the blocking wall/gate open, remembering the real target so
+              // the unit resumes on it once the breach is made. Otherwise footmen
+              // just mill at the wall doing nothing.
+              const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x | 0, y: u.y | 0 };
+              if (Math.hypot(end.x + 0.5 - Bld.cx(b), end.y + 0.5 - Bld.cy(b)) > bReach + 0.6) {
+                const wall = this.nearestBuilding(u.x, u.y, b.owner, bb => bb.key === 'wall' || bb.key === 'gate');
+                if (wall && wall.id !== u.tBld && this.canReach(u, wall.x, wall.y, 1.6 + Bld.reach(wall))) {
+                  if (!u.task || u.task.type !== 'attackBld') u.task = { type: 'attackBld' };
+                  u.task.finalBld = b.id; u.tBld = wall.id;
+                  continue;   // canReach already set the path to the wall
+                }
+              }
             }
           }
           Units.followPath(u, dt);
