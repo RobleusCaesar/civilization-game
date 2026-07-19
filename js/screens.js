@@ -515,15 +515,16 @@ const Screens = {
       // the depths of history: a quiet grave in the dark (see js/defeatart.js).
       scr.classList.add('defeatMode');
       vic.style.display = 'none';
-      def.style.display = 'block';
+      def.style.display = 'flex';   // flex column (see CSS) — centres content vertically in the frame
       this._score = null; this._submitted = false; this._leaveWarned = false;
       // three voices: the headline, the poetic subtitle, and a footer epitaph
       this.el('defeatTitleText').textContent = window.Defeat ? Defeat.title() : 'THE FIRE HAS GONE OUT';
       this.el('defeatEpitaph').textContent = window.Defeat ? Defeat.subtitle() : '';
-      this.el('defeatEpitaphFoot').textContent = window.Defeat ? Defeat.epitaph() : '';
-      // the story stats: day survived, seed, difficulty
+      // the story stats: day survived, time played, difficulty
       this.el('dsDay').textContent = S.day;
-      this.el('dsSeed').textContent = S.seed;
+      const secs = Math.max(0, Math.round(S.playtime || 0));
+      const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
+      this.el('dsTime').textContent = h ? `${h}h ${m}m` : m ? `${m}m` : `${secs}s`;
       this.el('dsDiff').textContent = (G.modeCfg().name || '').toUpperCase();
       // render the pixel icons (banner crest + stat/button glyphs)
       if (window.Defeat) {
