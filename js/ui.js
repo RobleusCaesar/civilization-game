@@ -583,6 +583,39 @@ const UI = {
     this.panelHidden = false;
     document.getElementById('panel').classList.remove('show');
     document.getElementById('buildmenu').style.display = this.menuCollapsed ? 'none' : 'flex';
+    this.syncBottomToggle();
+  },
+
+  // Is the bottom-bar toggle a plain PANEL minimize right now (▾/▴), rather than
+  // the Build-menu toggle? True whenever a NON-VILLAGER is selected — a boat,
+  // soldier, sapper, siege engine, or a whole war party can't build, so offering
+  // "🔨 Build" there is meaningless and made minimizing take two taps. Villagers
+  // (who do build) and the no-selection state keep the Build toggle untouched.
+  panelMinMode() {
+    if (!this.sel) return false;
+    if (this.sel.type === 'group') return true;
+    if (this.sel.type === 'unit') {
+      const u = Units.get(this.sel.id);
+      return !!(u && u.owner === 'P' && !Units.isVillager(u));
+    }
+    return false;
+  },
+  // set the toggle's glyph to match the current mode/state (called on select,
+  // renderPanel, deselect, and after a minimize)
+  syncBottomToggle() {
+    const t = document.getElementById('bmToggle');
+    if (!t) return;
+    t.textContent = this.panelMinMode()
+      ? (this.panelHidden ? '▴' : '▾')                       // one panel minimize/restore
+      : (this.menuCollapsed ? '🔨 Build ▴' : '▾');           // the Build-menu toggle
+  },
+  // minimize/restore the selection panel for a non-villager (keeps the selection
+  // live so the unit still answers taps on the open board below)
+  togglePanelMin() {
+    this.panelHidden = !this.panelHidden;
+    document.getElementById('panel').classList.toggle('show', !this.panelHidden);
+    document.getElementById('buildmenu').style.display = 'none';
+    this.syncBottomToggle();
   },
 
   // a villager sent off to a resource job needs no further orders — drop the
@@ -1262,6 +1295,7 @@ const UI = {
     }
     panel.classList.toggle('show', !this.panelHidden);   // a tucked-away panel stays tucked
     document.getElementById('buildmenu').style.display = 'none';
+    this.syncBottomToggle();   // non-villagers get a single ▾ minimize, not "🔨 Build"
   },
 
   /* ---------------- top bar / periodic refresh ---------------- */
@@ -1315,8 +1349,12 @@ const UI = {
 
   /* ---------------- HUD buttons (menus live in the Screens shell) ---------------- */
   bindButtons() {
-    document.getElementById('bmToggle').addEventListener('click', () =>
-      this.setMenuCollapsed(!this.menuCollapsed));
+    document.getElementById('bmToggle').addEventListener('click', () => {
+      // a selected non-villager: the toggle is a single panel minimize, not the
+      // Build menu (which it can't use). Villagers / no-selection keep the Build toggle.
+      if (this.panelMinMode()) this.togglePanelMin();
+      else this.setMenuCollapsed(!this.menuCollapsed);
+    });
     document.getElementById('miniToggle').addEventListener('click', () =>
       this.setMiniCollapsed(!this.miniCollapsed));
     document.getElementById('btnMenu').addEventListener('click', () => Screens.show('paused'));
