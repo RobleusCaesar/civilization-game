@@ -202,33 +202,37 @@ const MapGen = {
       if (dP > 14 && dA > 14 && t[id(x, y)] === T.GRASS) { t[id(x, y)] = T.CAMP; camps.push({ x, y }); }
     }
 
-    /* DIFFICULTY DEFENSIBILITY — bias the PLAYER's seat by difficulty. Calm
-       hands them a naturally fortified spot (a treeline/rocky rise closes most
-       approaches, leaving 1–2 chokepoints to hold); Moderate leaves more open;
-       Hard is exposed — many approach lanes the player must fortify themselves.
-       We only ADD barriers to open ground in the "closed" sectors (never touch
-       water/mountain or seed resources), always keeping the sector facing the
-       rival open, and the reachability clamp below still guarantees a way out. */
-    {
-      const keep = mode === 'calm' ? 2 : mode === 'moderate' ? 3 : 8;   // open sectors (of 8)
-      if (keep < 8) {
-        const rf = ((Math.round(Math.atan2(ai.y - player.y, ai.x - player.x) / (Math.PI / 4)) % 8) + 8) % 8;
-        const openSec = new Set();
-        for (let i = 0; i < keep; i++) openSec.add((rf + Math.round(i * 8 / keep)) % 8);
-        const barrier = () => (rnd() < 0.6 ? T.FOREST : T.HILLS);   // woods or a rocky rise
-        // a treeline just outside the start plot: Chebyshev ring R0..R1 round the
-        // seat, filled SOLID in the closed sectors so the open sectors read as
-        // clean, holdable chokepoints (calm gets a slightly thicker band)
-        const R0 = 5, R1 = mode === 'calm' ? 7 : 6;
-        for (let dy = -R1; dy <= R1; dy++) for (let dx = -R1; dx <= R1; dx++) {
-          const ch = Math.max(Math.abs(dx), Math.abs(dy));
-          if (ch < R0 || ch > R1) continue;
-          const x = player.x + dx, y = player.y + dy;
-          if (!MapGen.inB(x, y) || t[id(x, y)] !== T.GRASS) continue;   // only close open ground
-          const sec = ((Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) % 8) + 8) % 8;
-          if (openSec.has(sec)) continue;                              // leave the kept lanes open
-          t[id(x, y)] = barrier();
-        }
+    /* DIFFICULTY DEFENSIBILITY — bias the PLAYER's seat by difficulty, but with
+       NATURAL terrain, not a fence. A scattered thicket of woods and rock gathers
+       around the seat — denser on the arcs AWAY from the rival, thinning toward
+       the sally lane — with a feathered, broken edge and gaps throughout, so it
+       reads as organic country the player can lean on, never a perfect square with
+       two doorways. Calm sits in heavier cover; Moderate is lightly sheltered;
+       Hard gets nothing and must fortify itself. The reachability clamp below still
+       guarantees a way out and to every resource. */
+    if (mode !== 'hard') {
+      const shelter = mode === 'calm' ? 0.85 : 0.5;      // how thick the cover rolls in
+      const barrier = () => (rnd() < 0.6 ? T.FOREST : T.HILLS);
+      const toRival = Math.atan2(ai.y - player.y, ai.x - player.x);   // the lane we keep clearest
+      const R0 = 4.5, R1 = mode === 'calm' ? 8.5 : 7.5, RMID = (R0 + R1) / 2, RHALF = (R1 - R0) / 2;
+      const lim = Math.ceil(R1) + 1;
+      for (let dy = -lim; dy <= lim; dy++) for (let dx = -lim; dx <= lim; dx++) {
+        if (!dx && !dy) continue;
+        const d = Math.hypot(dx, dy);
+        if (d < R0 - 1.2 || d > R1 + 1.2) continue;
+        const x = player.x + dx, y = player.y + dy;
+        if (!MapGen.inB(x, y) || t[id(x, y)] !== T.GRASS) continue;    // only close open ground
+        // direction weight: 0 straight at the rival (a clear lane to sally), rising
+        // smoothly to 1 on the far arc — no discrete sectors, so no geometric seams
+        let diff = Math.abs(((Math.atan2(dy, dx) - toRival + Math.PI) % (2 * Math.PI)) - Math.PI);
+        const facing = (1 - Math.cos(diff)) / 2;
+        // radial feather: thickest mid-band, fading to nothing at the inner/outer
+        // edge so the treeline has a soft, ragged boundary
+        const taper = Math.max(0, 1 - Math.abs(d - RMID) / (RHALF + 1.2));
+        // scattered placement: a low floor everywhere (the odd tree even in a lane)
+        // plus per-tile noise, so the cover breaks up into natural clumps and gaps
+        const dens = shelter * taper * (0.18 + 0.82 * facing);
+        if (rnd() < dens) t[id(x, y)] = barrier();
       }
     }
 
