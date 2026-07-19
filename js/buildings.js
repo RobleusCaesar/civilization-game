@@ -117,6 +117,12 @@ const Bld = {
 
   tileFree(x, y) {
     if (!MapGen.inB(x, y)) return false;
+    // the outermost ring is the map's HARD BORDER — land units can never stand on
+    // it (see Path.passable), so a wall or gate raised there would be permanently
+    // unusable: a border gate no soldier could ever walk through. Keep every
+    // building one tile in, on playable ground, so fortifications seal the edge
+    // from the rim that units can actually reach.
+    if (x === 0 || y === 0 || x === CFG.W - 1 || y === CFG.H - 1) return false;
     const t = S.map.terrain[MapGen.idx(x, y)];
     // grass and anything depleted or ruined is fair ground to build on. Fertile
     // soil (orchard/berry ground) is now a standing obstacle — clear it first,
