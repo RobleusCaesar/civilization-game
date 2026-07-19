@@ -280,16 +280,20 @@ const Combat = {
     // a probe party carries its OWN lane objective; the main force shares ai.raidObj
     const obj = u.raidObj || (ai && ai.raidObj) || null;
     const canWall = Units.isSiege(u) || u.kind === 'axeman' || !!CFG.UNITS[u.kind].bldAtk;
-    // 1) a hostile fighter right in our face — engage (don't get picked apart)
+    // 1) a hostile fighter right in our face — engage (don't get picked apart).
+    //    Only lock on if we can actually REACH it: a defender safe behind a wall
+    //    must not distract the column from battering its way in.
     const foe = this.nearestUnit(u.x, u.y, 5, o => this.hostileUnits(u, o) &&
       (Units.isMilitary(o) || (o.owner === 'R' && !Units.isTransport(o))) && this.canEngage(u, o));
-    if (foe) { u.tUnit = foe.id; return; }
+    if (foe && this.canReach(u, foe.x, foe.y, 1.6)) { u.tUnit = foe.id; return; }
     // 2) soft targets on the way — an enemy SAPPER (defenceless, mid-work, high
-    //    value) is the juiciest, then isolated villagers, then undefended workplaces
+    //    value) is the juiciest, then isolated villagers, then undefended workplaces.
+    //    Reachability again: villagers tucked behind the walls are NOT a target —
+    //    fixating on them is exactly what left raiders idling at the gate.
     const sap = this.nearestUnit(u.x, u.y, 8, o => o.owner === 'P' && Units.isSapper(o) && this.canEngage(u, o));
-    if (sap) { u.tUnit = sap.id; return; }
+    if (sap && this.canReach(u, sap.x, sap.y, 1.6)) { u.tUnit = sap.id; return; }
     const soft = this.nearestUnit(u.x, u.y, 7, o => o.owner === 'P' && Units.isVillager(o) && this.canEngage(u, o));
-    if (soft) { u.tUnit = soft.id; return; }
+    if (soft && this.canReach(u, soft.x, soft.y, 1.6)) { u.tUnit = soft.id; return; }
     // a player BRIDGE within reach — cutting the crossing severs an expansion or
     // flanking route. Only worth it if we can actually stand beside it.
     if (S.bridges && S.bridges.length) {
@@ -319,11 +323,15 @@ const Combat = {
       const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x, y: u.y };
       // arrived next to the hall (physically adjacent, so we can see it) → hit it
       if (ptc && Math.hypot(end.x + 0.5 - Bld.cx(ptc), end.y + 0.5 - Bld.cy(ptc)) <= 2.6 + Bld.reach(ptc)) { u.tBld = ptc.id; return; }
-      // a wall in the way: the breakers smash it (others follow the gap); memory learns
+      // a wall/gate in the way — batter it, exactly as barbarians do (raiderSeek).
+      // "Reachable" means we can path up beside it; if so it's an ATTACKABLE
+      // obstacle and MUST win over the "stand off" branch below (which is only for
+      // gaps we can't hit, like water). This is what stops a column from idling at
+      // the gate: whatever its angle of approach, it commits and marches up to smash.
       const wall = this.nearestBuilding(u.x, u.y, 'P', bb => bb.key === 'wall' || bb.key === 'gate');
-      if (wall && Math.hypot(Bld.cx(wall) - u.x, Bld.cy(wall) - u.y) <= 2.2) {
+      if (wall && this.canReach(u, wall.x, wall.y, 1.7 + Bld.reach(wall))) {
         if (ai && ai.memory) ai.memory.wallHit = (ai.memory.wallHit || 0) + 1;
-        u.tBld = wall.id; Units.setPath(u, wall.x, wall.y); return;
+        u.tBld = wall.id; return;   // combat's tBld branch paths the raider up and batters it
       }
       // BLOCKED BY A GAP: the route bogged down short of the aim and there's no
       // wall to batter — water OR a belt of forest/rock/orchard severs the approach.
@@ -501,7 +509,10 @@ const Combat = {
           o => this.hostileUnits(u, o) && Units.isMilitary(o) && this.canEngage(u, o));
         if (foe) { u.tUnit = foe.id; continue; }
         const d = Math.hypot(Bld.cx(b) - u.x, Bld.cy(b) - u.y);
-        const bReach = Math.max(1.3, CFG.UNITS[u.kind].rng || 0) + Bld.reach(b);
+        // 1.55 floor so a DIAGONALLY-adjacent attacker (√2 ≈ 1.41 from a 1×1 wall's
+        // centre) is still in range — at 1.3 a raider that walked up to a corner of
+        // a gate just sat there, forever a hair out of reach, never landing a blow.
+        const bReach = Math.max(1.55, CFG.UNITS[u.kind].rng || 0) + Bld.reach(b);
         if (d > bReach) {
           if (u.repathT <= 0) {
             u.repathT = 0.8; Units.setPath(u, b.x, b.y);
