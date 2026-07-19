@@ -388,7 +388,9 @@ const Path = {
     if (domain === 'water') return terr === T.WATER;   // boats: open water only (docks don't block hulls)
     // THE MAP EDGE IS A HARD BORDER — land units may never set foot on the
     // outermost ring, so neither the player nor the rival can use the rim to slip
-    // around a wall. (Boats are handled above; the water border stays navigable.)
+    // around a wall. The ring is rendered as black void and is unbuildable (see
+    // Bld.tileFree / R.draw), so to the player it simply reads as off-map exterior:
+    // they build up to the black edge on row 1, which is ordinary passable ground.
     if (x === 0 || y === 0 || x === CFG.W - 1 || y === CFG.H - 1) return false;
     if (BLOCK_TERR[terr]) {
       // a standing bridge makes a water/moat tile crossable to land units

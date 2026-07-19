@@ -30,6 +30,17 @@ const R = {
   },
 
   drawTile(g, x, y) {
+    // THE MAP EDGE — the outermost ring is the hard border no unit may enter and
+    // nothing may be built on (Path.passable / Bld.tileFree). Paint it as the same
+    // off-map black as the void beyond the map, so it reads as exterior: the player
+    // sees the world end at the black edge and raises walls/gates on row 1, the
+    // first passable ground, flush against it — none the wiser that a hidden rim
+    // lies underneath. Keeps the edge unusable without any movement-rule change.
+    if (x === 0 || y === 0 || x === CFG.W - 1 || y === CFG.H - 1) {
+      g.fillStyle = '#0d0b08';
+      g.fillRect(x * CFG.TILE, y * CFG.TILE, CFG.TILE, CFG.TILE);
+      return;
+    }
     // render from last-seen memory, not live truth — grey fog shows the past
     const terr = S.map.seenTerrain || S.map.terrain;
     const t = terr[MapGen.idx(x, y)];
@@ -1051,8 +1062,10 @@ const R = {
       h => Math.max(0, (parseInt(h, 16) * 0.55) | 0).toString(16).padStart(2, '0')));
     for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) {
       const i = MapGen.idx(x, y);
+      const edge = (x === 0 || y === 0 || x === CFG.W - 1 || y === CFG.H - 1);
       const col = COLORS[S.map.seenTerrain[i]] || AP.grass[3];   // any unmapped terrain id falls back, never undefined
-      g.fillStyle = !S.map.explored[i] ? '#060504'
+      g.fillStyle = edge ? '#0d0b08'                             // the black off-map rim (see drawTile)
+        : !S.map.explored[i] ? '#060504'
         : (G.vis && G.vis[i]) ? col
         : shade(col);
       g.fillRect(x * 2, y * 2, 2, 2);
