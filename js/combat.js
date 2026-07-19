@@ -208,7 +208,13 @@ const Combat = {
         if (u.task && u.task.type === 'move') continue;
         const e = this.nearestUnit(u.x, u.y, base.aggro,
           o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
-        if (e && Math.hypot(e.x - u.anchor.x, e.y - u.anchor.y) < 9) u.tUnit = e.id;
+        if (e && Math.hypot(e.x - u.anchor.x, e.y - u.anchor.y) < 9) { u.tUnit = e.id; continue; }
+        // ASSAULT autonomy: a unit committed to an attack (the order flagged
+        // u.assault) whose target has fallen presses on by itself — a fighter in
+        // reach first, then the nearest enemy structure, then the hall — so the
+        // player commands the assault, not every blow. Bounded to a radius so the
+        // army clears the objective it was sent to, never wandering off the map.
+        if (u.assault) this.assaultSeek(u);
       } else if (u.owner === 'A' && Units.isVillager(u)) {
         // rival townsfolk militia: when the town is under siege and
         // undermanned, whoever's near the hall picks up the nearest attacker
@@ -225,6 +231,58 @@ const Combat = {
         }
       }
     }
+  },
+
+  // how far a committed attacker will look for its next mark once its target
+  // falls. Big enough to clear a whole town's footprint, small enough that the
+  // army holds at the objective instead of marching on across the map.
+  ASSAULT_R: 15,
+
+  // the nearest enemy structure this unit could turn on — measured from its edge,
+  // completed only. No pathfind here: if a wall/orchard seals the target off the
+  // execution layer (Combat.update's tBld branch) batters the blocker open and
+  // resumes, so "nearest" naturally means the outer shell first, then what's within.
+  nearestReachableBld(u, owner, within, pred) {
+    let best = null, bd = within;
+    for (const b of S.buildings) {
+      if (b.owner !== owner || !Bld.done(b)) continue;
+      if (pred && !pred(b)) continue;
+      const d = Math.hypot(Bld.cx(b) - u.x, Bld.cy(b) - u.y) - Bld.reach(b);
+      if (d < bd) { bd = d; best = b; }
+    }
+    return best;
+  },
+
+  // autonomous target selection for a player unit in an assault. Priority mirrors
+  // the player's own instinct: kill what's fighting you, then tear down the walls
+  // and works, then the hall. Clears the stance when nothing hostile is left in
+  // reach so the army simply holds the ground it took.
+  assaultSeek(u) {
+    const R = this.ASSAULT_R, enemy = u.owner === 'P' ? 'A' : 'P';
+    const nextBld = () => this.nearestReachableBld(u, enemy, R, bb => bb.key !== 'tc')
+                       || this.nearestReachableBld(u, enemy, R, bb => bb.key === 'tc');
+    // siege engines are structure-killers: they seek the works first (walls before
+    // the hall) and only turn on troops if nothing's left standing to knock down —
+    // so they never trundle off to trade melee they can't win.
+    if (Units.isSiege(u)) {
+      const b = nextBld();
+      if (b) { Units.orderAttackBuilding(u, b); return; }
+    }
+    // 1) a hostile fighter close by — deal with it (protect the siege line, don't
+    //    get whittled down). Reachable only, so a defender safe behind the wall
+    //    doesn't distract the unit from battering its way in.
+    const e = this.nearestUnit(u.x, u.y, R,
+      o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
+    if (e && Math.hypot(e.x - u.x, e.y - u.y) <= R && this.canReach(u, e.x, e.y, 1.7)) {
+      u.task = { type: 'attack' }; u.tUnit = e.id; u.tBld = 0; u.anchor = { x: e.x, y: e.y }; return;
+    }
+    // 2) the nearest enemy structure — walls/works first (never the hall while
+    //    anything else stands), so it plays like a real siege from the outside in.
+    const b = nextBld();
+    if (b) { Units.orderAttackBuilding(u, b); return; }   // keeps u.assault set for the next cascade
+    // 3) nothing hostile within reach — the assault is spent. Stand down and hold
+    //    here (a fresh order re-arms it); don't trickle back home on a leash.
+    u.assault = false; u.task = null; u.tUnit = 0; u.tBld = 0; u.anchor = { x: u.x, y: u.y };
   },
 
   /* LAYER 4 (execution half) — a rival raid party fights as one toward the
@@ -504,10 +562,16 @@ const Combat = {
           if (u.task && u.task.finalBld) { const fb = Bld.get(u.task.finalBld); u.task.finalBld = 0; if (fb) { u.tBld = fb.id; b = fb; } }
           if (!b) { u.tBld = 0; continue; }
         }
-        // fight back defenders that get close while sieging
-        const foe = this.nearestUnit(u.x, u.y, 2.2,
-          o => this.hostileUnits(u, o) && Units.isMilitary(o) && this.canEngage(u, o));
-        if (foe) { u.tUnit = foe.id; continue; }
+        // fight back defenders that get close while sieging — but a bombard engine
+        // (catapult/trebuchet/siege tower: no melee to speak of) never abandons the
+        // wall to trade blows it can't win. It keeps hammering the structure and
+        // leans on its escort for cover; that's what kept the siege line from
+        // dissolving the moment a lone defender wandered up.
+        if (!Units.isSiege(u)) {
+          const foe = this.nearestUnit(u.x, u.y, 2.2,
+            o => this.hostileUnits(u, o) && Units.isMilitary(o) && this.canEngage(u, o));
+          if (foe) { u.tUnit = foe.id; continue; }
+        }
         const d = Math.hypot(Bld.cx(b) - u.x, Bld.cy(b) - u.y);
         // 1.55 floor so a DIAGONALLY-adjacent attacker (√2 ≈ 1.41 from a 1×1 wall's
         // centre) is still in range — at 1.3 a raider that walked up to a corner of

@@ -148,7 +148,7 @@ const Units = {
 
   moveTo(u, tx, ty) {
     u.task = { type: 'move', x: tx, y: ty };
-    u.tUnit = 0; u.tBld = 0;
+    u.tUnit = 0; u.tBld = 0; u.assault = false;   // a plain walk order stands the assault down
     if (u.jobs) u.jobs = null;   // an explicit walk order cancels any queued sapper work
     return this.setPath(u, tx, ty);
   },
@@ -189,6 +189,7 @@ const Units = {
   setDefend(u, on) {
     if (!this.canDefend(u)) return;
     u.defend = !!on;
+    if (on) u.assault = false;   // holding a perimeter ends any standing assault
     if (!on) return;
     const g = this.guardCenter(u);
     if (g && Math.hypot(u.x - g.x, u.y - g.y) > g.r1) this.returnToGuard(u, g);

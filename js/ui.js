@@ -414,6 +414,7 @@ const UI = {
           u.task = { type: 'attack' }; u.tUnit = hitUnit.id; u.tBld = 0;
           u.anchor = { x: hitUnit.x, y: hitUnit.y };
           u.defend = false;   // direct command ends the guard stance
+          u.assault = true;   // and commits them to press on once this target drops
         }
         this.toast(fleet ? '⚓ Fleet attacks!' : '⚔️ War party attacks!');
         return;
@@ -429,7 +430,7 @@ const UI = {
         return;
       }
       if (hitBld && hitBld.owner === 'A') {
-        for (const id of ids) { const u = Units.get(id); if (u && !Units.isTransport(u)) { u.defend = false; Units.orderAttackBuilding(u, hitBld); } }
+        for (const id of ids) { const u = Units.get(id); if (u && !Units.isTransport(u)) { u.defend = false; u.assault = true; Units.orderAttackBuilding(u, hitBld); } }
         this.toast('⚔️ ' + (fleet ? 'Fleet bombards ' : 'War party attacks ') + Bld.def(hitBld.key).name);
         return;
       }
@@ -455,6 +456,7 @@ const UI = {
         sel.task = { type: 'attack' }; sel.tUnit = hitUnit.id; sel.tBld = 0;
         sel.anchor = { x: hitUnit.x, y: hitUnit.y };
         sel.defend = false;   // taking direct control ends the guard stance
+        sel.assault = true;   // press on to the next mark once this one falls
         this.toast('Attack!');
         return;
       }
@@ -466,6 +468,7 @@ const UI = {
       }
       if (hitBld && hitBld.owner === 'A' && Units.isMilitary(sel)) {
         sel.defend = false;
+        sel.assault = true;
         Units.orderAttackBuilding(sel, hitBld);
         this.toast('Attacking ' + Bld.def(hitBld.key).name);
         return;
