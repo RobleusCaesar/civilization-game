@@ -788,7 +788,12 @@ const Units = {
           continue;
         }
         const d = Math.hypot(Bld.cx(b) - u.x, Bld.cy(b) - u.y);
-        if (d > 1.25 + Bld.reach(b)) {
+        // 1.55 floor so a DIAGONALLY-adjacent builder (√2 ≈ 1.41 from a 1×1 wall's
+        // centre) counts as "at the site" — at 1.25 a villager that could only stand
+        // on the diagonal (walls above/below in the line, a river or another wall on
+        // the flank) sat right beside the wall and never built it. Matches the same
+        // diagonal-reach floor combat uses for battering a wall.
+        if (d > 1.55 + Bld.reach(b)) {
           if (this.moving(u)) this.followPath(u, dt);
           else if (!this.setPath(u, b.x, b.y)) u.task = null;
         } else {

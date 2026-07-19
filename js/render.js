@@ -210,6 +210,11 @@ const R = {
       const bar = document.getElementById('bottombar'), bm = document.getElementById('buildmenu');
       if (bar && bm && bm.style.display !== 'none' && bar.offsetHeight > 40) this.bottomReserve = bar.offsetHeight;
     }
+    // whatever the bottom bar is showing RIGHT NOW (collapsed Build button, open
+    // menu, or a unit panel) is a live floor — so the last rows never hide behind
+    // it even before the build menu has been opened once this session
+    const barNowEl = document.getElementById('bottombar');
+    const barNow = barNowEl ? barNowEl.offsetHeight : 0;
     // the top status bar overlays the canvas — measure it once so a fully-up pan
     // seats the map's TOP edge right below the bar. Without this, the outermost
     // rows (where units legitimately route around walls) hide behind the bar and
@@ -223,7 +228,11 @@ const R = {
     // right at the UI's inner border — neither bar ever covers the map.
     const padX = vw * 0.10;
     const padTop = Math.max(vh * 0.10, (this.topReserve || 0) / this.cam.z);
-    const padBottom = Math.max(vh * 0.10, (this.bottomReserve || 0) / this.cam.z);
+    // reserve HALF AGAIN the bottom bar's height, so a comfortable band of open
+    // ground always sits below the last row and the menu/panel never crowds the
+    // bottom tiles — the map's last few rows were hiding behind the UI.
+    const bottomBar = Math.max(this.bottomReserve || 0, barNow) * 1.5;
+    const padBottom = Math.max(vh * 0.10, bottomBar / this.cam.z);
     this.cam.x = Math.max(-padX, Math.min(world - vw + padX, this.cam.x));
     this.cam.y = Math.max(-padTop, Math.min(world - vh + padBottom, this.cam.y));
   },
