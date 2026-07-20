@@ -194,17 +194,19 @@ const Combat = {
           if (g) {
             if (u.task && u.task.type === 'move') continue;   // still walking back to post
             const dc = Math.hypot(u.x - g.x, u.y - g.y);
-            if (dc > g.r2 + 0.6) { Units.returnToGuard(u, g); continue; }
+            if (dc > Units.holdRadius(g, u.x, u.y) + 1.8) { Units.returnToGuard(u, g); continue; }
             // engage only a foe we can STRIKE while holding the line: one within the
-            // bound plus this unit's own weapon reach of the hall. So an archer picks
-            // up an enemy still approaching the wall (rng past the ring) and volleys
-            // over it, while a melee waits for the foe to reach the perimeter — and
-            // neither goes chasing a provocation out across the countryside.
+            // bound (walls OR natural barriers) plus this unit's own weapon reach of
+            // the hall. So an archer picks up an enemy still approaching the shore/wall
+            // and volleys over it, a melee waits for the foe to reach the perimeter —
+            // and neither chases a provocation out past the defended land.
             const reach = CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE || 1.5;
-            const e = this.nearestUnit(g.x, g.y, g.r1 + reach + 0.5,
-              o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
+            const MAXR = CFG.GUARD.maxNatural || 14;
+            const e = this.nearestUnit(g.x, g.y, g.r1 + MAXR + reach,
+              o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o) &&
+                Math.hypot(o.x - g.x, o.y - g.y) <= Units.holdRadius(g, o.x, o.y) + reach + 0.5);
             if (e) u.tUnit = e.id;
-            else if (dc > g.r1 && !Units.moving(u)) Units.returnToGuard(u, g);   // no foe → drift home
+            else if (dc > Units.holdRadius(g, u.x, u.y) && !Units.moving(u)) Units.returnToGuard(u, g);   // no foe → drift home
             continue;
           }
           // no Town Center / Dock to guard — fall through to the ordinary leash
@@ -515,12 +517,13 @@ const Combat = {
         if (u.defend) {
           const gDef = Units.guardCenter(u);
           if (gDef) {
+            const hold = Units.holdRadius(gDef, tgt.x, tgt.y);   // the bound TOWARD this foe (out to walls / water / rock)
             const dTC = Math.hypot(u.x - gDef.x, u.y - gDef.y);
-            if (dTC > gDef.r2 + 0.6) { u.tUnit = 0; Units.returnToGuard(u, gDef); continue; }   // dragged past the leash — home
+            if (dTC > hold + 1.8) { u.tUnit = 0; Units.returnToGuard(u, gDef); continue; }   // dragged past the leash — home
             if (d > (CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE)) {   // out of range → about to move toward the foe
-              if (dTC > gDef.r1 + 0.6) { u.tUnit = 0; Units.returnToGuard(u, gDef); continue; }   // standing outside the ring — fall back in
+              if (dTC > hold + 0.6) { u.tUnit = 0; Units.returnToGuard(u, gDef); continue; }   // standing beyond the bound — fall back in
               const sx = u.x + (tgt.x - u.x) / (d || 1) * 0.5, sy = u.y + (tgt.y - u.y) / (d || 1) * 0.5;
-              if (Math.hypot(sx - gDef.x, sy - gDef.y) > gDef.r1) { u.path = null; continue; }    // the step would cross the ring — plant feet, wait/volley
+              if (Math.hypot(sx - gDef.x, sy - gDef.y) > hold) { u.path = null; continue; }    // the step would cross the bound — plant feet, wait/volley
             }
           }
         } else {

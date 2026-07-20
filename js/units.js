@@ -173,26 +173,29 @@ const Units = {
     if (!b) return null;
     const G2 = CFG.GUARD, cx = Bld.cx(b), cy = Bld.cy(b);
     let r1 = (naval ? G2.navalRadius : G2.radius) * (1 + G2.levelStep * ((b.level || 1) - 1));
-    if (!naval) r1 = Math.min(r1, G2.maxRadius || 8);
-    // CASTLE-AWARE: when a real wall ring encloses the town, hold the line AT the
-    // walls (stay inside the castle and shoot over them) rather than a fixed radius
-    if (!naval && G2.wallHug) {
-      const wr = this._wallRingRadius(u.owner, cx, cy);
-      if (wr > 0) r1 = Math.max(4, Math.min(wr + 0.5, 10));
-    }
-    return { x: cx, y: cy, r1, r2: r1 + Math.max(1.2, r1 * G2.sortie) };
+    if (!naval) r1 = Math.min(r1, G2.maxRadius || 8);   // the OPEN-GROUND base perimeter
+    return { x: cx, y: cy, r1, r2: r1 + Math.max(1.2, r1 * G2.sortie), naval: !!naval };
   },
-  // the radius of the town's own wall ring — the farthest wall/gate within the
-  // settlement's footprint. 0 unless there's a genuine ring (a few segments), so a
-  // lone stray wall doesn't move the whole perimeter.
-  _wallRingRadius(owner, cx, cy) {
-    let far = 0, n = 0;
-    for (const b of S.buildings) {
-      if (b.owner !== owner || (b.key !== 'wall' && b.key !== 'gate')) continue;
-      const d = Math.hypot(Bld.cx(b) - cx, Bld.cy(b) - cy);
-      if (d <= 11) { if (d > far) far = d; n++; }
-    }
-    return n >= 3 ? far : 0;
+  // is this tile part of the defensive SHELL — an edge the enclosure holds at? A
+  // wall/gate, or a natural barrier no land unit crosses (water, moat, mountain,
+  // forest, rock/hills, orchard). This is what lets the water be the wall.
+  _isDefBarrier(x, y) {
+    if (!MapGen.inB(x, y)) return true;
+    if (Path.blocksLand(S.map.terrain[MapGen.idx(x, y)])) return true;
+    const b = Bld.at(x, y);
+    return !!(b && (b.key === 'wall' || b.key === 'gate'));
+  },
+  // the max distance a defender may hold from its hall TOWARD a given point: cast a
+  // ray that way and the first shell tile (wall OR natural barrier) sets the bound,
+  // so the defended area follows the real shape of the enclosure — the whole island,
+  // the walls, the mountainside — while open directions stay at the tight base.
+  holdRadius(g, fx, fy) {
+    if (g.naval) return g.r1;                       // ships keep their fixed dock radius
+    const MAXR = CFG.GUARD.maxNatural || 14;
+    const dx = fx - g.x, dy = fy - g.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+    for (let s = 1; s <= MAXR; s++)
+      if (this._isDefBarrier(Math.round(g.x + ux * s), Math.round(g.y + uy * s))) return Math.max(g.r1, s);
+    return g.r1;                                    // open this way — hold the tight line
   },
   // walk back to just inside the perimeter (a 'guard' move task, which acquire()
   // leaves alone until it lands — that's the hysteresis that stops jittering)

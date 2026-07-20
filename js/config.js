@@ -492,9 +492,12 @@ const CFG = {
                       // go hunting across the map at the first provocation
     navalRadius: 12,  // base hold radius for warships around a Dock (level 1)
     levelStep: 0.12,  // +12% per building level above 1 (linear)
-    maxRadius: 8,     // hard cap so even a max-level TC keeps a compact perimeter
+    maxRadius: 8,     // hard cap on the OPEN-GROUND perimeter (no barrier near)
     sortie: 0.12,     // a slim leash past the hold radius before it's reined back in
-    wallHug: true,    // if a wall ring encloses the town, the bound follows the WALLS
-                      // (defenders stay inside the castle and volley over it)
+    // NATURAL BARRIERS define the defended area too: toward a threat, the bound
+    // extends out to whatever closes off the land there — a wall, water, a moat, a
+    // treeline/rock, a mountain — up to this reach. So an island town defends its
+    // whole island, a walled town its walls, but a town on open ground stays tight.
+    maxNatural: 14,
   },
 };
