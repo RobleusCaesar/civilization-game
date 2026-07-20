@@ -398,6 +398,17 @@ const UI = {
       if (dd < hd) { hd = dd; hitUnit = u; }
     }
     const hitBld = G.visibleAt(tile.x, tile.y) ? Bld.at(tile.x, tile.y) : null;
+    // When the tap lands squarely on a building's footprint, the building wins the
+    // tap — UNLESS a unit is sitting essentially dead-on the tap point. Without this,
+    // a villager stationed on its plot steals every tap and the building takes two or
+    // three tries plus a zoom to finally select. Two guards: a worker OF this building
+    // always yields to it (tap the plot, get the plot), and any other unit yields
+    // unless it's right under the finger. A unit you mean to grab is still one tap
+    // away — put your finger on its sprite (distance ~0 always wins).
+    if (hitBld && hitUnit) {
+      const worksHere = hitUnit.task && hitUnit.task.type === 'work' && hitUnit.task.id === hitBld.id;
+      if (worksHere || Math.hypot(hitUnit.x - wx, hitUnit.y - wy) > 0.42) hitUnit = null;
+    }
     const hitBridge = (explored && Bld.bridgeAt) ? Bld.bridgeAt(tile.x, tile.y) : null;
 
     // orders for a selected war party

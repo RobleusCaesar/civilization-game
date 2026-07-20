@@ -1451,14 +1451,29 @@ const AI = {
     let strat = null, best = -1e9;
     for (const k of pool) { const s = this._campScore(k, ctx) + G.rand() * 1.2; if (s > best) { best = s; strat = k; } }
     if (!strat) return;
-    // ESCAPE HATCH: already grinding — only break off for a GENUINE new opening
-    // (a different plan that now clears the threshold), else keep battering.
+    // GRIND re-evaluation. While the plan we're grinding can STILL hit its target,
+    // we keep battering and only break off for a GENUINE new opening (a different
+    // plan that now clears the threshold) — that's what stops it thrashing.
     if (ai.camp.strat && ai.camp.grind) {
-      if (best >= this.CAMP_OPENING && strat !== ai.camp.strat) {
-        ai.camp.strat = strat; ai.camp.grind = false; ai.camp.since = S.day; ai.camp.rounds = 0; ai.camp.baseBld = Bld.list('P').length;
-        G.log(this.CAMPAIGN_CRY[strat], true);
+      if (this._campViable(ai.camp.strat, ctx, tc)) {
+        if (best >= this.CAMP_OPENING && strat !== ai.camp.strat) {
+          ai.camp.strat = strat; ai.camp.grind = false; ai.camp.since = S.day; ai.camp.rounds = 0; ai.camp.baseBld = Bld.list('P').length;
+          G.log(this.CAMPAIGN_CRY[strat], true);
+        }
+        return;
       }
-      return;
+      // …but the grind's own plan has EVAPORATED — the wall it battered is razed, or
+      // the player just moated / forted us off so no wall is reachable to batter at
+      // all. Battering nothing is the "chief just sits there" bug: adapt now, and
+      // reconsider EVERY plan (even ones we'd shelved) so the best lane we can still
+      // force — a sapper cut through the treeline, a bridge, or a landing — is back
+      // on the table instead of an impossible siege we can never mount.
+      ai.camp.tried = [];
+      pool = this.CAMPAIGNS.filter(k => this._campViable(k, ctx, tc));
+      if (!pool.length) { ai.camp.strat = null; ai.camp.grind = false; return; }   // truly no way by land or sea → back to raids
+      best = -1e9; strat = null;
+      for (const k of pool) { const s = this._campScore(k, ctx) + G.rand() * 1.2; if (s > best) { best = s; strat = k; } }
+      // fall through to the commit below, which re-picks grind-vs-exploit for the new plan
     }
     // FRESH choice: a real opening → exploit it (rotate on failure); no soft spot
     // anywhere → COMMIT to the reliable grind and stop shopping (never thrash).
@@ -1490,6 +1505,15 @@ const AI = {
     if (!camp || !camp.strat) return false;
     const strat = camp.strat, ptc = read.knownTC;
     if (!ptc) return false;
+    // MUDLARK earns its keep by CARVING LAND, not razing buildings — so credit its
+    // progress before any give-up test: while the reachable lane is still growing
+    // toward the town, reset the abandon clock so a long belt of woods actually gets
+    // cut through instead of the dig being called a failure at a blind 30-day mark.
+    if (strat === 'MUDLARK') {
+      const rc = this._reachCount(this.aiLandReach());
+      if (camp.mudReach == null) camp.mudReach = rc;
+      else if (rc > camp.mudReach) { camp.mudReach = rc; camp.since = S.day; }
+    }
     // EVALUATE a finished round (its deadline has passed). PROGRESS = razed a
     // building OR knocked ≥10% off the player's walls/towers (so a siege line that's
     // steadily chewing stone counts as working). An OPPORTUNISTIC plan that made
@@ -1552,8 +1576,17 @@ const AI = {
     return true;
   },
 
-  // MUDLARK's spade: bridge the water / clear the woods / mound the shallows on the
-  // frontier tile nearest the player, so each day's work extends ONE connected lane.
+  // count of reachable land tiles — MUDLARK's progress yardstick (a growing figure
+  // means the lane is being carved), and a cheap connectivity probe elsewhere.
+  _reachCount(mask) { if (!mask) return 0; let n = 0; for (let i = 0; i < mask.length; i++) if (mask[i]) n++; return n; },
+
+  // MUDLARK's spade: carve a CONNECTED lane through the barrier toward the player.
+  // The old version nibbled a single frontier tile a day and, re-probing next dawn,
+  // often drifted to a different tile — so a belt of woods more than one tile deep
+  // never actually opened. Now it marches the thin barrier from the frontier tile
+  // straight at the town and QUEUES the whole connected run of breachable tiles, so
+  // the sapper cuts one lane end-to-end (clear woods / bridge water / mound shallows)
+  // and the reachable land genuinely grows through to the far side.
   breachToPlayer(read, reach) {
     const ai = S.ai;
     if (Units.sapperTier('A') < 2) return false;
@@ -1561,13 +1594,32 @@ const AI = {
     if (!idle) return false;
     const ctx = this.probeAssault(read, reach);
     const b = ctx && ctx.breach; if (!b) return false;
-    const t = S.map.terrain[MapGen.idx(b.x, b.y)], water = (t === T.WATER || t === T.MOAT), tier = Units.sapperTier('A');
-    let mode = null;
-    if (water && Terraform.bridgeable(b.x, b.y) && !Bld.bridgeAt(b.x, b.y)) mode = 'bridge';
-    else if (tier >= 3 && Terraform.isClearable(b.x, b.y)) mode = 'clear';
-    else if (tier >= 3 && water && Terraform.isMoundable(b.x, b.y, 'A') && Bld.canAfford(CFG.TERRAFORM.moundCost, ai.res)) mode = 'mound';
-    if (!mode) return false;
-    if (Units.assignTerraform(idle, b.x, b.y, mode)) { this._escort(idle); return true; }
+    const ptc = read.knownTC || this.knownPlayerTC(); if (!ptc) return false;
+    const tier = Units.sapperTier('A');
+    const modeFor = (x, y) => {
+      const t = S.map.terrain[MapGen.idx(x, y)], water = (t === T.WATER || t === T.MOAT);
+      if (water && Terraform.bridgeable(x, y) && !Bld.bridgeAt(x, y)) return 'bridge';
+      if (tier >= 3 && Terraform.isClearable(x, y)) return 'clear';
+      if (tier >= 3 && water && Terraform.isMoundable(x, y, 'A') && Bld.canAfford(CFG.TERRAFORM.moundCost, ai.res)) return 'mound';
+      return null;
+    };
+    // walk from the frontier tile straight toward the hall, collecting the connected
+    // run of tiles we must (and can) breach until open ground opens up on the far side
+    const dx = ptc.x - b.x, dy = ptc.y - b.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+    const line = [], seen = new Set();
+    for (let s = 0; s < 8; s++) {
+      const x = Math.round(b.x + ux * s), y = Math.round(b.y + uy * s);
+      if (!MapGen.inB(x, y)) break;
+      const k = x + ',' + y; if (seen.has(k)) continue; seen.add(k);
+      if (Path.passable(x, y, 'A')) { if (s >= 1) break; else continue; }   // reached open ground past the barrier
+      const mode = modeFor(x, y); if (!mode) break;                          // hit something we can't breach (deep water / mountain) → stop the lane here
+      line.push({ x, y, job: mode });
+    }
+    if (line.length && Units.queueTerraform(idle, line)) { this._escort(idle); return true; }
+    // couldn't line up a run (e.g. the frontier tile itself is all we can take): fall
+    // back to the single tile so the dig still inches forward
+    const mode = modeFor(b.x, b.y);
+    if (mode && Units.assignTerraform(idle, b.x, b.y, mode)) { this._escort(idle); return true; }
     return false;
   },
 
