@@ -32,7 +32,8 @@ const Units = {
            u.kind === 'rider' || u.kind === 'horsearcher' || u.kind === 'lancer' ||
            u.kind === 'archer' || u.kind === 'longbow' || u.kind === 'marksman' ||
            u.kind === 'warship' || u.kind === 'fireship' ||
-           u.kind === 'catapult' || u.kind === 'ballista' || u.kind === 'siegetower';
+           u.kind === 'catapult' || u.kind === 'ballista' || u.kind === 'siegetower' ||
+           u.kind === 'trebuchet';
   },
   isSiege(u) { return u.kind === 'catapult' || u.kind === 'siegetower' || u.kind === 'trebuchet'; },
   isVillager(u) { return u.kind === 'villager'; },
