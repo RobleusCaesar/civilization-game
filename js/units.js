@@ -228,6 +228,7 @@ const Units = {
 
   // fishing boats harvest fish from stocked water tiles
   canFish(tx, ty) {
+    if (tx <= 0 || ty <= 0 || tx >= CFG.W - 1 || ty >= CFG.H - 1) return false;   // off-map black rim — no fishing there
     const i = MapGen.idx(tx, ty);
     return S.map.terrain[i] === T.WATER && S.map.resAmount[i] > 0 && !Bld.at(tx, ty);
   },
@@ -368,11 +369,17 @@ const Units = {
   clampToBoard() {
     const W = CFG.W, H = CFG.H;
     for (const u of S.units) {
-      if (this.isNaval(u)) continue;   // boats live on the water rim quite legally
       const x = u.x | 0, y = u.y | 0;
       if (x > 0 && y > 0 && x < W - 1 && y < H - 1) continue;
       const sx = Math.max(1, Math.min(W - 2, x)), sy = Math.max(1, Math.min(H - 2, y));
-      const spot = MapGen.findNear(sx, sy, 8, (px, py) => Path.passable(px, py, u.owner) && !Bld.at(px, py));
+      // the outer ring is now off-map void — pull ANY unit off it, boats included
+      // (a hull left on the old navigable rim by a pre-lockdown save floats to the
+      // nearest real water), onto ground/water it can legally occupy
+      const naval = this.isNaval(u), dom = naval ? 'water' : this.domain(u);
+      const ok = naval
+        ? (px, py) => Path.passable(px, py, u.owner, 'water') && !Bld.at(px, py)
+        : (px, py) => Path.passable(px, py, u.owner, dom) && !Bld.at(px, py);
+      const spot = MapGen.findNear(sx, sy, 10, ok);
       if (spot) {
         u.x = spot.x + 0.5; u.y = spot.y + 0.5;
         u.path = null; u.pathI = 0;

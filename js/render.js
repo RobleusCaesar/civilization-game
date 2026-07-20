@@ -781,9 +781,11 @@ const R = {
       const cyc = (t0 / 2.4) | 0, phase = (t0 / 2.4) % 1;
       const fishFr = phase < 0.55 ? Sprites.misc.fish[phase < 0.3 ? 0 : 1] : null;
       const terr = S.map.terrain;
-      const x0 = Math.max(0, (this.cam.x / TL) | 0), y0 = Math.max(0, (this.cam.y / TL) | 0);
-      const x1 = Math.min(CFG.W - 1, ((this.cam.x + this.viewW() / this.cam.z) / TL) | 0);
-      const y1 = Math.min(CFG.H - 1, ((this.cam.y + this.viewH() / this.cam.z) / TL) | 0);
+      // clamp to the PLAYABLE interior (1 … W-2): the outer ring is off-map black
+      // void, so no fish jump, no sparkle, no foam is drawn on it (see R.drawTile)
+      const x0 = Math.max(1, (this.cam.x / TL) | 0), y0 = Math.max(1, (this.cam.y / TL) | 0);
+      const x1 = Math.min(CFG.W - 2, ((this.cam.x + this.viewW() / this.cam.z) / TL) | 0);
+      const y1 = Math.min(CFG.H - 2, ((this.cam.y + this.viewH() / this.cam.z) / TL) | 0);
       const wet = v => v === T.WATER || v === T.MOAT;   // moats animate like the lake
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
         const i = MapGen.idx(x, y);

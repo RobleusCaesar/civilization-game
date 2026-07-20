@@ -336,7 +336,8 @@ const MapGen = {
   // Hash-derived (~1/3 of shore tiles), so it needs no save data and matches
   // the renderer's jumping-fish tell exactly — watch the water to find them.
   shoal(x, y) {
-    if (!this.inB(x, y) || S.map.terrain[this.idx(x, y)] !== T.WATER) return false;
+    if (!this.inB(x, y) || x === 0 || y === 0 || x === CFG.W - 1 || y === CFG.H - 1) return false;   // off-map rim
+    if (S.map.terrain[this.idx(x, y)] !== T.WATER) return false;
     let shore = false;
     for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
       if (this.inB(x + ox, y + oy) && S.map.terrain[this.idx(x + ox, y + oy)] !== T.WATER) { shore = true; break; }
@@ -385,13 +386,14 @@ const Path = {
     if (!MapGen.inB(x, y)) return false;
     const i = MapGen.idx(x, y);
     const terr = S.map.terrain[i];
-    if (domain === 'water') return terr === T.WATER;   // boats: open water only (docks don't block hulls)
-    // THE MAP EDGE IS A HARD BORDER — land units may never set foot on the
-    // outermost ring, so neither the player nor the rival can use the rim to slip
-    // around a wall. The ring is rendered as black void and is unbuildable (see
-    // Bld.tileFree / R.draw), so to the player it simply reads as off-map exterior:
-    // they build up to the black edge on row 1, which is ordinary passable ground.
+    // THE MAP EDGE — the outermost ring is off-map black void: nothing walks,
+    // floats, fishes, or is built there, in ANY domain. Checked before the water
+    // branch so BOATS are kept off the rim too (they'd otherwise sail onto the
+    // black and fish jumped in it). The ring is rendered black and is unbuildable
+    // (Bld.tileFree / R.draw); the player builds up to it on row 1, which is
+    // ordinary passable ground.
     if (x === 0 || y === 0 || x === CFG.W - 1 || y === CFG.H - 1) return false;
+    if (domain === 'water') return terr === T.WATER;   // boats: open water only (docks don't block hulls)
     if (BLOCK_TERR[terr]) {
       // a standing bridge makes a water/moat tile crossable to land units
       if (!((terr === T.WATER || terr === T.MOAT) && S.map.bridge && S.map.bridge[i])) return false;

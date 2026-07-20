@@ -708,9 +708,11 @@ const Combat = {
     // nearest their prey. Later waves come in the big war transports.
     if (G.rand() < 0.35) {
       const edges = [];
-      const water = (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.WATER && !Bld.at(x, y);
-      for (let x = 0; x < CFG.W; x++) { if (water(x, 0)) edges.push({ x, y: 0 }); if (water(x, CFG.H - 1)) edges.push({ x, y: CFG.H - 1 }); }
-      for (let y = 1; y < CFG.H - 1; y++) { if (water(0, y)) edges.push({ x: 0, y }); if (water(CFG.W - 1, y)) edges.push({ x: CFG.W - 1, y }); }
+      // the outermost ring is off-map black void (impassable to hulls now), so the
+      // longboats muster on the FIRST NAVIGABLE water, one tile in — the true coast
+      const water = (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.WATER && !Bld.at(x, y) && Path.passable(x, y, null, 'water');
+      for (let x = 1; x < CFG.W - 1; x++) { if (water(x, 1)) edges.push({ x, y: 1 }); if (water(x, CFG.H - 2)) edges.push({ x, y: CFG.H - 2 }); }
+      for (let y = 2; y < CFG.H - 2; y++) { if (water(1, y)) edges.push({ x: 1, y }); if (water(CFG.W - 2, y)) edges.push({ x: CFG.W - 2, y }); }
       const ptc = Bld.tcOf('P'), atc = Bld.tcOf('A');
       const tgt = disp === 'P' ? ptc : disp === 'A' ? atc : (G.rand() < 0.5 && atc ? atc : ptc) || atc;
       if (edges.length && tgt) {
