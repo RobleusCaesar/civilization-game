@@ -21,7 +21,10 @@ const Bld = {
   // gates are built at the village-wide wall level
   buildSpec(key, owner) {
     const d = CFG.BUILDINGS[key];
-    const lvN = (owner !== 'A' && (key === 'wall' || key === 'gate')) ? ((S && S.wallLevel) || 1) : 1;
+    // walls & gates are built at their tribe's village-wide wall tier — the player's
+    // S.wallLevel, or the rival's own S.ai.wallLevel (so the AI can reinforce too)
+    const lvN = (key === 'wall' || key === 'gate')
+      ? ((owner === 'A' ? (S && S.ai && S.ai.wallLevel) : (S && S.wallLevel)) || 1) : 1;
     return { level: lvN, lv: d.levels[lvN - 1] };
   },
   lv(b) { return CFG.BUILDINGS[b.key].levels[b.level - 1]; },
@@ -592,8 +595,43 @@ const Bld = {
   },
 
   /* ---- village-wide wall level (walls + gates upgrade together via the TC) ---- */
-  forts() {
-    return S.buildings.filter(b => b.owner === 'P' && (b.key === 'wall' || b.key === 'gate'));
+  forts(owner) {
+    owner = owner || 'P';
+    return S.buildings.filter(b => b.owner === owner && (b.key === 'wall' || b.key === 'gate'));
+  },
+  // the rival reinforces its whole ring a tier at once (mirrors the player's, but
+  // the chief simply pays and it lands — no multi-day masons animation to track on
+  // the AI's hall). Gated by the same TC-tier requirement, so it can't outrun tech.
+  aiWallUpgradeCost() {
+    const lv = (S.ai.wallLevel || 1), out = {};
+    for (const b of this.forts('A')) {
+      const cost = CFG.BUILDINGS[b.key].levels[lv].cost;
+      for (const k in cost) out[k] = (out[k] || 0) + cost[k];
+    }
+    return out;
+  },
+  aiCanUpgradeWalls() {
+    const lv = (S.ai.wallLevel || 1);
+    if (lv >= 3) return false;
+    const tc = this.tcOf('A');
+    if (!tc || tc.level < lv + 1) return false;              // needs the next TC tier, like the player
+    if (!this.forts('A').length) return false;
+    const cost = this.aiWallUpgradeCost();
+    if (!this.canAfford(cost, S.ai.res)) return false;
+    return cost;
+  },
+  aiUpgradeWalls() {
+    const cost = this.aiCanUpgradeWalls();
+    if (!cost) return false;
+    this.pay(cost, S.ai.res);
+    S.ai.wallLevel = (S.ai.wallLevel || 1) + 1;
+    for (const b of this.forts('A')) {
+      const lv = CFG.BUILDINGS[b.key].levels[S.ai.wallLevel - 1];
+      b.hp = Math.max(1, Math.round(lv.hp * (b.hp / b.maxhp)));
+      b.maxhp = lv.hp;
+      b.level = S.ai.wallLevel;
+    }
+    return true;
   },
   wallUpgradeCost() {
     const nextI = (S.wallLevel || 1);          // index of next level

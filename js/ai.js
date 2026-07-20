@@ -120,35 +120,51 @@ const AI = {
     const tc = Bld.tcOf('A');
     if (!tc) return null;
     const P = this.persona();
-    const rMax = P.walls ? 4 : 7;   // wall-builders keep the town inside the ring
+    const rMax = P.walls ? 5 : 7;   // wall-builders keep the town inside the ring
+    const isWall = (key === 'wall' || key === 'gate');
     const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2;
+    // how many of the 8 neighbours are already built on (crowding) — real buildings
+    // want ELBOW ROOM so the town reads as a settlement, not a packed maze
+    const crowd = (x, y) => { let n = 0; for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) if (Bld.at(x + ox, y + oy)) n++; return n; };
+    const wetAdj = (x, y) => { for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + ox, ny = y + oy; if (MapGen.inB(nx, ny)) { const t = S.map.terrain[MapGen.idx(nx, ny)]; if (t === T.WATER || t === T.MOAT) return true; } } return false; };
+    // spacing/dryness score for a normal building (walls exempt — they belong on the seam)
+    const layout = (x, y, dx, dy) => {
+      let s = G.rand() * 0.8;
+      if (isWall) return s;
+      s -= crowd(x, y) * 1.4;                                          // keep a little air around each hut
+      if (wetAdj(x, y)) s -= 3;                                        // stay off the waterline (no huts in the future moat)
+      s -= Math.abs(Math.hypot(dx, dy) - Math.min(rMax - 0.6, 4)) * 0.35;   // settle on a loose ring, not on top of the hall
+      return s;
+    };
     const d = CFG.BUILDINGS[key];
     if (d && d.near) {
-      // hunt the bonus terrain: best-scoring free tile near town
-      let best = null, bs = -1;
+      // hunt the bonus terrain, but still with spacing + off the waterline
+      let best = null, bs = -1e9;
       for (let dy = -rMax; dy <= rMax; dy++) for (let dx = -rMax; dx <= rMax; dx++) {
         const x = tc.x + dx, y = tc.y + dy;
         if (!MapGen.inB(x, y) || !free(x, y)) continue;
-        let bonus = 0;
-        const r = d.near.radius;
+        let bonus = 0; const r = d.near.radius;
         for (let oy = -r; oy <= r && !bonus; oy++) for (let ox = -r; ox <= r; ox++)
           if (MapGen.inB(x + ox, y + oy) && S.map.terrain[MapGen.idx(x + ox, y + oy)] === d.near.terrain) { bonus = 1; break; }
-        const s = bonus * 10 - Math.hypot(dx, dy) * 0.4 + G.rand();
+        const s = bonus * 10 + layout(x, y, dx, dy);
         if (s > bs) { bs = s; best = { x, y }; }
       }
-      return best;
+      if (best) return best;
     }
     if (key === 'tower') { const s = this.towerSpot(tc); if (s) return s; }
-    for (let tries = 0; tries < 12; tries++) {
-      const ang = G.rand() * Math.PI * 2, dist = 2 + G.rand() * (rMax - 2);
-      const spot = MapGen.findNear(Math.round(tc.x + Math.cos(ang) * dist),
-                                   Math.round(tc.y + Math.sin(ang) * dist), 2, free);
-      if (spot) return spot;
+    // score every free tile in the ring for elbow room + dry ground, so the town
+    // grows as a spaced-out settlement instead of packing huts wall-to-wall (which
+    // is what left a crowded maze the AI then dug moats straight through)
+    let best = null, bs = -1e9;
+    for (let dy = -rMax; dy <= rMax; dy++) for (let dx = -rMax; dx <= rMax; dx++) {
+      const x = tc.x + dx, y = tc.y + dy;
+      if (!MapGen.inB(x, y) || !free(x, y)) continue;
+      const s = layout(x, y, dx, dy);
+      if (s > bs) { bs = s; best = { x, y }; }
     }
-    // crowded town (a full wall ring, a tight peninsula): spill outward
-    // rather than never building again
-    return MapGen.findNear(tc.x, tc.y, rMax, free) ||
-           MapGen.findNear(tc.x, tc.y, rMax + 4, free);
+    if (best) return best;
+    // crowded town (a full wall ring, a tight peninsula): spill outward rather than stall
+    return MapGen.findNear(tc.x, tc.y, rMax, free) || MapGen.findNear(tc.x, tc.y, rMax + 4, free);
   },
 
   /* COVERAGE-AWARE tower placement. The old heuristic dropped every tower on the
@@ -807,6 +823,14 @@ const AI = {
     const C = [];
     const add = (util, run) => { if (util > 0) C.push({ util, run }); };
 
+    // SIEGE-CAMPAIGN SUPPORT — the committed plan needs an enabling building; give
+    // it a commanding priority so the chief actually tools up for its chosen assault
+    // (a workshop for the engines, a dock for the landing, a sappers' camp to breach).
+    const camp = ai.camp && ai.camp.strat;
+    if (camp === 'IRONBELLY' || camp === 'HIGHREACH') { if (!have.siege && tc.level >= 3) add(95, () => this.tryBuild('siege')); }
+    if (camp === 'TIDEWRACK' && !have.dock && tc.level >= 2) add(95, () => this._buildDock());
+    if (camp === 'MUDLARK' && !have.sapper && tc.level >= 2) add(95, () => this.tryBuild('sapper'));
+
     // income buildings
     for (const [res, key] of [['wood', 'lumber'], ['stone', 'quarry'], ['food', 'farm']]) {
       let u = 26 - (have[key] || 0) * 7 + Math.max(0, (60 - ai.res[res]) * 0.4);
@@ -905,6 +929,16 @@ const AI = {
         () => Bld.upgrade(b));
     }
 
+    // reinforce the WHOLE wall ring a tier (the rival's equivalent of the player's
+    // Town-Center wall upgrade). A chief sitting on stone with a flimsy L1 ring and
+    // the TC tech to improve it should stiffen the walls — heavily so when it's
+    // turtling or under threat, and a wall-persona always values it.
+    if (Bld.aiCanUpgradeWalls()) {
+      const wallUp = 22 + (P.walls ? 18 : 0) + (post === 'DEFEND' ? 20 : 0) +
+        (read.underThreat ? 22 : 0) + (read.foeSiege > 0 ? 16 : 0);
+      add(wallUp, () => Bld.aiUpgradeWalls());
+    }
+
     // endless growth backfill
     const gk = this.growthKey();
     if (gk) add(18, () => this.tryBuild(gk));
@@ -978,6 +1012,21 @@ const AI = {
       else if (dock.level >= 2 && ships < Math.max(1, Math.floor((m.aiArmyCap || 8) / P.shipDiv)) &&
                this.affordFree(CFG.BUILDINGS.dock.train.warship.cost))
         Bld.train(dock, dock.level >= 3 && ai.res.gold >= 45 ? 'fireship' : 'warship');
+    }
+
+    // SIEGE-CAMPAIGN units — the engines the ordinary training never builds:
+    // siege towers for an escalade, transports (+ a warship screen) for a landing.
+    const campStrat = ai.camp && ai.camp.strat;
+    if (campStrat === 'HIGHREACH') {
+      const ws = S.buildings.find(b => b.owner === 'A' && b.key === 'siege' && Bld.done(b) && !b.upgrading && b.queue.length === 0);
+      if (ws && ws.level >= 3 && Units.count('A', u => u.kind === 'siegetower') < 2 &&
+          this.affordFree(CFG.BUILDINGS.siege.train.siegetower.cost)) Bld.train(ws, 'siegetower');
+    }
+    if (campStrat === 'TIDEWRACK' && dock && !dock.upgrading && dock.queue.length === 0) {
+      const trs = Units.count('A', u => Units.isTransport(u));
+      const big = dock.level >= 3;
+      const key = big ? 'bigtransport' : 'transport';
+      if (trs < 3 && this.affordFree(CFG.BUILDINGS.dock.train[key].cost)) Bld.train(dock, key);
     }
   },
 
@@ -1103,10 +1152,15 @@ const AI = {
     // rear, and the clamp keeps us from sealing ourselves in. Walls sit ON the
     // seams, so the moat layer forms just outside them.
     const cand = [];
+    const bldAdj = (x, y) => { for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) { const bb = Bld.at(x + ox, y + oy); if (bb && bb.owner === 'A') return true; } return false; };
     for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
       const d = Math.hypot(dx, dy); if (d < 2.5 || d > 6) continue;
       const x = cx + dx, y = cy + dy;
       if (!Terraform.isDiggable(x, y)) continue;
+      // NEVER dig among the huts — a moat/trench that touches a building threads a
+      // waterway straight through the town (houses stranded, ugly, impassable). The
+      // moat layer belongs on the OUTER perimeter, clear of the built-up ground.
+      if (bldAdj(x, y)) continue;
       const water = Terraform.waterAdj(x, y);
       if (!water && !dryOK) continue;
       if (Terraform.digWouldSeal(x, y)) continue;
@@ -1149,6 +1203,295 @@ const AI = {
     ].join('\n');
   },
 
+  /* ============================================================================
+     SIEGE CAMPAIGN — five named ways to crack a town the army can't just walk into.
+     When the chief knows where the player is but its raids can't get in (walled in,
+     or cut off by a lake / a belt of woods), it stops flinging bodies at the same
+     stone. It PROBES the defenses, PICKS one of five strategies (at random, among
+     the ones the ground and its tech actually allow), BUILDS the force that plan
+     needs, commits a round or two — and if it fails, ROTATES to a different plan it
+     hasn't tried yet. So the assault is intelligent AND never a memorisable script.
+
+       IRONBELLY — a siege train: catapults/trebuchets batter a wall segment open.
+       MUDLARK   — engineers bridge the water / clear-cut a NEW land lane in.
+       TIDEWRACK — an amphibious landing: transports ferry troops, warships screen.
+       HIGHREACH — siege towers roll to the wall and pour infantry over the top.
+       WARHORN   — a massed combined-arms rush at the single least-defended seam.
+     ========================================================================== */
+  CAMPAIGNS: ['IRONBELLY', 'MUDLARK', 'TIDEWRACK', 'HIGHREACH', 'WARHORN'],
+  CAMPAIGN_CRY: {
+    IRONBELLY: '⚔ The rival wheels up a siege train — stone will answer your walls!',
+    MUDLARK:   '⚔ Rival engineers move out to carve a new road to your gates!',
+    TIDEWRACK: '⛵ Sails on the water — the rival is mounting a landing on your shore!',
+    HIGHREACH: '⚔ Siege towers roll forward — the rival means to come over your walls!',
+    WARHORN:   '📯 A warhorn sounds — the rival hurls its whole host at your weakest gate!',
+  },
+
+  // owner-aware land reachability from the rival hall (passes ITS OWN gates, unlike
+  // the generic Path.reachFrom). The frontier of this mask is where a breach connects.
+  aiLandReach() {
+    const atc = Bld.tcOf('A'); if (!atc) return null;
+    const W = CFG.W, H = CFG.H, mask = new Uint8Array(W * H), q = [];
+    const seed = (x, y) => { if (MapGen.inB(x, y) && Path.passable(x, y, 'A')) { const i = MapGen.idx(x, y); if (!mask[i]) { mask[i] = 1; q.push(i); } } };
+    const s = Bld.size('tc');
+    for (let dy = -1; dy <= s; dy++) for (let dx = -1; dx <= s; dx++) seed(atc.x + dx, atc.y + dy);
+    let h = 0;
+    while (h < q.length) { const c = q[h++], cx = c % W, cy = (c / W) | 0; seed(cx + 1, cy); seed(cx - 1, cy); seed(cx, cy + 1); seed(cx, cy - 1); }
+    return mask;
+  },
+  // does our land touch the player's hall? (a plain raid can walk in — no campaign needed)
+  _reachesTown(reach, ptc) {
+    if (!reach || !ptc) return false;
+    const s = Bld.size('tc');
+    for (let dy = -1; dy <= s; dy++) for (let dx = -1; dx <= s; dx++) { const x = ptc.x + dx, y = ptc.y + dy; if (MapGen.inB(x, y) && reach[MapGen.idx(x, y)]) return true; }
+    return false;
+  },
+
+  // study the player's town + the ground to it, so a strategy is chosen on evidence
+  probeAssault(read, reach) {
+    const atc = Bld.tcOf('A'), ptc = read.knownTC || this.knownPlayerTC();
+    if (!atc || !ptc) return null;
+    reach = reach || this.aiLandReach();
+    const W = CFG.W, H = CFG.H, idx = MapGen.idx, tier = Units.sapperTier('A');
+    const rc = (x, y) => MapGen.inB(x, y) && reach[idx(x, y)];
+    const adjReach = (x, y) => rc(x + 1, y) || rc(x - 1, y) || rc(x, y + 1) || rc(x, y - 1);
+    const ctx = { ptc, tier, landToTown: false, meleeWall: null, siegeWall: null, breach: null, shore: null, wallSeam: null, lane: null };
+    // only what we've SEEN of their town (fog binds the chief)
+    const kb = S.ai.knownB || {}, blds = [], forts = [];
+    for (const k in kb) { const b = kb[k]; if (b.owner !== 'P') continue; blds.push(b); if (b.key === 'wall' || b.key === 'gate') forts.push(b); }
+    const targets = blds.length ? blds : [{ x: ptc.x, y: ptc.y, key: 'tc' }];
+    // can our land walk up to (melee/batter) any known structure?
+    let bestMelee = null, bmd = 1e9;
+    for (const b of targets) {
+      const bx = b.x + 0.5, by = b.y + 0.5;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const x = b.x + dx, y = b.y + dy;
+        if (rc(x, y)) { const d = Math.hypot(x + 0.5 - bx, y + 0.5 - by); if (d <= 1.6 && d < bmd) { bmd = d; bestMelee = b; } }
+      }
+    }
+    ctx.landToTown = !!bestMelee;
+    ctx.meleeWall = bestMelee && (bestMelee.key === 'wall' || bestMelee.key === 'gate') ? bestMelee : null;
+    // can our land stand within siege reach (~8) of a known wall to bombard it?
+    let bestSiege = null, bsd = 1e9;
+    for (const b of (forts.length ? forts : targets)) {
+      for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) {
+        const x = b.x + dx, y = b.y + dy; if (!rc(x, y)) continue;
+        const d = Math.hypot(dx, dy); if (d <= 8 && d < bsd) { bsd = d; bestSiege = b; }
+      }
+    }
+    ctx.siegeWall = bestSiege;
+    // MUDLARK: the breachable frontier tile (adjacent to our land) nearest the player
+    if (tier >= 2) {
+      let best = null, bs = 1e9;
+      for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+        const i = idx(x, y); if (reach[i] || Bld.at(x, y) || !adjReach(x, y)) continue;
+        const t = S.map.terrain[i], water = (t === T.WATER || t === T.MOAT);
+        const breachable = (water && Terraform.bridgeable(x, y) && !Bld.bridgeAt(x, y)) ||
+          (tier >= 3 && Terraform.isClearable(x, y)) || (tier >= 3 && water && Terraform.isMoundable(x, y, 'A'));
+        if (!breachable) continue;
+        const d = Math.hypot(x - ptc.x, y - ptc.y); if (d < bs) { bs = d; best = { x, y, water }; }
+      }
+      ctx.breach = best;
+    }
+    const lanes = this.playerLanes();
+    ctx.lane = lanes[0] || null;
+    ctx.wallSeam = read.weakFlank || (ctx.lane ? ctx.lane.mid : null);
+    ctx.shore = this._assaultShore(reach, ptc);
+    return ctx;
+  },
+
+  // a sea lane for a landing: navigable water joining OUR coast to the player's.
+  // Returns { embark (our shore tile), land (their shore tile) } or null.
+  _assaultShore(reach, ptc) {
+    const W = CFG.W, H = CFG.H, idx = MapGen.idx;
+    const water = (x, y) => MapGen.inB(x, y) && S.map.terrain[idx(x, y)] === T.WATER;
+    const rc = (x, y) => MapGen.inB(x, y) && reach[idx(x, y)];
+    const seeds = [];
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++)
+      if (water(x, y) && (rc(x + 1, y) || rc(x - 1, y) || rc(x, y + 1) || rc(x, y - 1))) seeds.push({ x, y });
+    if (!seeds.length) return null;
+    const wr = new Uint8Array(W * H), q = [];
+    for (const s of seeds) { const i = idx(s.x, s.y); if (!wr[i]) { wr[i] = 1; q.push(i); } }
+    let h = 0;
+    while (h < q.length) { const c = q[h++], cx = c % W, cy = (c / W) | 0; for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = cx + ox, ny = cy + oy; if (water(nx, ny) && !wr[idx(nx, ny)]) { wr[idx(nx, ny)] = 1; q.push(idx(nx, ny)); } } }
+    let land = null, best = 1e9;
+    for (let i = 0; i < wr.length; i++) {
+      if (!wr[i]) continue; const x = i % W, y = (i / W) | 0;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const lx = x + ox, ly = y + oy;
+        if (!MapGen.inB(lx, ly) || !Path.passable(lx, ly) || rc(lx, ly)) continue;   // the FAR (player) shore
+        const d = Math.hypot(lx - ptc.x, ly - ptc.y);
+        if (d < best && d < 20) { best = d; land = { x: lx, y: ly }; }
+      }
+    }
+    if (!land) return null;
+    let embark = null;
+    for (const s of seeds) for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const lx = s.x + ox, ly = s.y + oy; if (rc(lx, ly)) { embark = { x: lx, y: ly }; break; } }
+    return { land, embark };
+  },
+
+  _campViable(k, ctx, tc) {
+    switch (k) {
+      case 'IRONBELLY': return !!ctx.siegeWall && (tc.level >= 3 || Units.count('A', u => Units.isSiege(u) && u.kind !== 'siegetower'));
+      case 'HIGHREACH': return !!ctx.meleeWall && (tc.level >= 3 || Units.count('A', u => u.kind === 'siegetower'));
+      case 'WARHORN':   return ctx.landToTown;
+      case 'MUDLARK':   return !!ctx.breach && (tc.level >= 2 || Units.sapperTier('A') >= 1);
+      case 'TIDEWRACK': return !!ctx.shore && (tc.level >= 2 || S.buildings.some(b => b.owner === 'A' && b.key === 'dock'));
+    }
+    return false;
+  },
+
+  // choose (or hold) a siege-campaign strategy when a plain raid can't get in
+  campaignSelect(read) {
+    const ai = S.ai, ptc = read.knownTC;
+    const attack = ai.posture === 'PUSH' || ai.posture === 'PRESSURE';
+    ai.camp = ai.camp || { strat: null, since: 0, rounds: 0, tried: [], baseBld: 0 };
+    if (!ptc || !attack) { ai.camp.strat = null; return; }
+    if (ai.camp.strat) return;                          // already committed; evaluation rotates it
+    const reach = this.aiLandReach();
+    const routeToTown = this._reachesTown(reach, ptc);
+    const wallStalled = !!(ai.memory && ai.memory.wallStop);
+    if (routeToTown && !wallStalled) { ai.camp.tried = []; return; }   // ordinary raids will serve
+    const tc = Bld.tcOf('A'); if (!tc) return;
+    const ctx = this.probeAssault(read, reach); if (!ctx) return;
+    let pool = this.CAMPAIGNS.filter(k => this._campViable(k, ctx, tc) && ai.camp.tried.indexOf(k) < 0);
+    if (!pool.length) { ai.camp.tried = []; pool = this.CAMPAIGNS.filter(k => this._campViable(k, ctx, tc)); }
+    if (!pool.length) return;                           // nothing the ground allows — fall back to raids
+    const strat = pool[(G.rand() * pool.length) | 0];
+    ai.camp.strat = strat; ai.camp.since = S.day; ai.camp.rounds = 0; ai.camp.baseBld = Bld.list('P').length;
+    G.log(this.CAMPAIGN_CRY[strat], true);
+  },
+
+  // does the chosen campaign have the force it needs to launch its assault yet?
+  campaignReady(strat) {
+    const cnt = k => Units.count('A', u => u.kind === k);
+    const infantry = Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u) && u.kind !== 'siegetower' && !Units.isSiege(u));
+    switch (strat) {
+      case 'IRONBELLY': return (cnt('catapult') + cnt('trebuchet')) >= 1 && infantry >= 3;
+      case 'HIGHREACH': return cnt('siegetower') >= 1 && infantry >= 4;
+      case 'TIDEWRACK': return Units.count('A', u => Units.isTransport(u)) >= 1 && infantry >= 3;
+      case 'MUDLARK':   return Units.sapperTier('A') >= 2;
+      case 'WARHORN':   return infantry >= 6;
+    }
+    return false;
+  },
+
+  // EXECUTE the committed campaign when the raid window opens. Returns true when the
+  // campaign "owns" the attack this turn — launched, or deliberately HOLDING while it
+  // tools up — so the ordinary raid block stands down and the chief commits to its plan.
+  campaignLaunch(read, m) {
+    const ai = S.ai, camp = ai.camp;
+    if (!camp || !camp.strat) return false;
+    const strat = camp.strat, ptc = read.knownTC;
+    if (!ptc) return false;
+    // EVALUATE a finished round (its deadline has passed): razing something proves
+    // the plan works → stand the campaign down (the way is open). Two dry rounds →
+    // mark this plan tried and rotate to a fresh one. Otherwise, run another round.
+    if (camp.rounds > 0 && S.day >= (camp.roundEnd || 0)) {
+      const razed = Bld.list('P').length < (camp.roundBaseBld != null ? camp.roundBaseBld : 1e9);
+      if (razed) { camp.tried = []; camp.strat = null; return false; }
+      if (camp.rounds >= 2) { camp.tried.push(strat); camp.strat = null; return false; }
+    }
+    // abandon a plan that can never even assemble its force (kept us waiting too long)
+    if (!camp.rounds && S.day - camp.since > 30) { camp.tried.push(strat); camp.strat = null; return false; }
+    const startRound = () => { camp.rounds++; camp.roundBaseBld = Bld.list('P').length; camp.roundEnd = S.day + 12; };
+    // MUDLARK — carve the lane a tile a day; when the road finally reaches the town,
+    // stand the campaign down so an ordinary raid pours through the new gap.
+    if (strat === 'MUDLARK') {
+      const reach = this.aiLandReach();
+      if (this._reachesTown(reach, ptc)) { camp.tried = []; camp.strat = null; return false; }
+      this.breachToPlayer(read, reach);
+      return true;
+    }
+    if (ai.raidCd > 0) return true;
+    // TIDEWRACK — put to sea once a hull and a landing party are ready
+    if (strat === 'TIDEWRACK') {
+      if (!this.campaignReady('TIDEWRACK')) return true;
+      if (this._launchAmphib(read)) { startRound(); ai.raidDay = S.day; ai.raidFoeBld = Bld.list('P').length; ai.raidCd = Math.max(6, Math.round(this.persona().raidCd)); }
+      return true;
+    }
+    // land assaults — hold while the engines/host gather, then commit at the weak spot
+    if (S.units.some(u => u.owner === 'A' && u.task && u.task.type === 'raid')) return true;
+    if (!this.campaignReady(strat)) return true;
+    if (this._launchCampRaid(read, strat)) startRound();
+    return true;
+  },
+
+  // commit the relevant host (siege for IRONBELLY, towers for HIGHREACH, everyone for
+  // WARHORN) at the softest wall segment, via the ordinary raid machinery
+  _launchCampRaid(read, strat) {
+    const ai = S.ai, ctx = this.probeAssault(read) || {};
+    const seam = ctx.wallSeam || (ctx.siegeWall && { x: ctx.siegeWall.x, y: ctx.siegeWall.y }) || read.knownTC;
+    const withTowers = strat === 'HIGHREACH';
+    const party = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) && !Units.isNaval(u) &&
+      (withTowers || u.kind !== 'siegetower') && !(u.task && u.task.type === 'raid'));
+    if (party.length < 3) return false;
+    const laneKey = (ctx.lane && ctx.lane.key) || strat;
+    for (const u of party) { u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.probe = false; u.raidLane = laneKey; u.raidObj = null; u.defend = false; }
+    ai.raidObj = { type: 'tc', x: seam.x, y: seam.y, lane: laneKey };
+    ai.raidLane = laneKey; ai.raidN = party.length; ai.raidDay = S.day;
+    ai.raidFoeBld = Bld.list('P').length;
+    if (ai.memory) ai.memory.wallHit = 0;
+    ai.raidCd = Math.max(4, Math.round(this.persona().raidCd));
+    G.log(this.CAMPAIGN_CRY[strat], true);
+    return true;
+  },
+
+  // MUDLARK's spade: bridge the water / clear the woods / mound the shallows on the
+  // frontier tile nearest the player, so each day's work extends ONE connected lane.
+  breachToPlayer(read, reach) {
+    const ai = S.ai;
+    if (Units.sapperTier('A') < 2) return false;
+    const idle = S.units.find(u => u.owner === 'A' && u.kind === 'sapper' && (!u.task || u.task.type === 'move'));
+    if (!idle) return false;
+    const ctx = this.probeAssault(read, reach);
+    const b = ctx && ctx.breach; if (!b) return false;
+    const t = S.map.terrain[MapGen.idx(b.x, b.y)], water = (t === T.WATER || t === T.MOAT), tier = Units.sapperTier('A');
+    let mode = null;
+    if (water && Terraform.bridgeable(b.x, b.y) && !Bld.bridgeAt(b.x, b.y)) mode = 'bridge';
+    else if (tier >= 3 && Terraform.isClearable(b.x, b.y)) mode = 'clear';
+    else if (tier >= 3 && water && Terraform.isMoundable(b.x, b.y, 'A') && Bld.canAfford(CFG.TERRAFORM.moundCost, ai.res)) mode = 'mound';
+    if (!mode) return false;
+    if (Units.assignTerraform(idle, b.x, b.y, mode)) { this._escort(idle); return true; }
+    return false;
+  },
+
+  // TIDEWRACK's landing: load troops into the transports and sail for the player's
+  // shore (warships screen). Troops resume the assault the moment they hit the beach.
+  _launchAmphib(read) {
+    const ai = S.ai, ptc = read.knownTC, ctx = this.probeAssault(read);
+    if (!ptc || !ctx || !ctx.shore || !ctx.shore.land) return false;
+    const land = ctx.shore.land;
+    const transports = S.units.filter(u => u.owner === 'A' && Units.isTransport(u) && (!u.cargo || !u.cargo.length) && !(u.task && u.task.type === 'unload'));
+    if (!transports.length) return false;
+    const troops = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) && !Units.isNaval(u) &&
+      u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
+    if (troops.length < 3) return false;
+    let ti = 0, sailed = 0;
+    for (const tr of transports) {
+      const cap = Units.cargoCap(tr); tr.cargo = tr.cargo || [];
+      let n = 0;
+      while (n < cap && ti < troops.length) {
+        const u = troops[ti++];
+        u.raidObj = { type: 'tc', x: ptc.x, y: ptc.y };   // resume the assault when they land
+        u.task = null; u.tUnit = 0; u.tBld = 0; u.defend = false;
+        S.units.splice(S.units.indexOf(u), 1);            // aboard the hull
+        tr.cargo.push(u); n++;
+      }
+      if (n > 0) { Units.orderUnload(tr, land.x, land.y); sailed++; }
+      if (ti >= troops.length) break;
+    }
+    if (!sailed) return false;
+    // warship / fireship screen stands off the landing zone and covers the beach
+    for (const sh of S.units.filter(u => u.owner === 'A' && (u.kind === 'warship' || u.kind === 'fireship') && !(u.task && u.task.type === 'unload'))) {
+      const wspot = MapGen.findNear(land.x, land.y, 6, (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.WATER && !Bld.at(x, y));
+      if (wspot) { sh.task = { type: 'move', x: wspot.x, y: wspot.y }; sh.tUnit = 0; sh.tBld = 0; Units.setPath(sh, wspot.x, wspot.y); }
+    }
+    ai.raidObj = { type: 'tc', x: ptc.x, y: ptc.y }; ai.raidLane = 'TIDEWRACK'; ai.raidN = troops.length; ai.raidDay = S.day;
+    G.log(this.CAMPAIGN_CRY.TIDEWRACK, true);
+    return true;
+  },
+
   daily() {
     const ai = S.ai;
     const m = G.modeCfg();
@@ -1159,6 +1502,7 @@ const AI = {
     this.choosePosture();   // LAYER 2: pick / hold the current plan
     const read = ai.read;
     this.learn(read);       // LAYER 5: fold observations into adaptive memory
+    this.campaignSelect(read);   // SIEGE CAMPAIGN: if a plain raid can't get in, commit to a named plan (before we choose what to build, so support can bias it)
 
     // small base income so the AI never fully stalls (scaled by difficulty).
     // A boom-opening chief works the fields harder in the first minutes.
@@ -1331,6 +1675,11 @@ const AI = {
     } else { ai.raidN = 0; ai.raidObj = null; ai.raidLane = null; }
 
     if (ai.raidCd > 0) ai.raidCd--;
+    // SIEGE CAMPAIGN owns the attack decision when a named plan is live — it launches
+    // its tailored assault (siege train / landing / escalade / breach / storm) or
+    // deliberately HOLDS while it tools up, so the chief commits instead of throwing
+    // an ordinary doomed raid at the same wall. Falls through to normal raids otherwise.
+    const campOwns = this.campaignLaunch(read, m);
     /* ---- LAYER 2 drives IF we attack; the read drives WHEN. Only the
        attack postures march, and a real opening (foeVuln) beats any day
        timer — so the rival strikes an undefended player on the state of
@@ -1353,7 +1702,7 @@ const AI = {
     // timed. A wide-open player (foeVuln) is still too tempting to pass up.
     const waveNear = m.barbSpacing && !read.foeVuln &&
       ((S.wave.next - S.day) <= 3 || (S.day - (S.wave.lastDay || -99)) <= 4);
-    if (read.knownTC && attackPosture && ai.raidCd <= 0 && !raiders.length && S.day >= dayFloor && mine >= 3 && !waveNear) {
+    if (!campOwns && read.knownTC && attackPosture && ai.raidCd <= 0 && !raiders.length && S.day >= dayFloor && mine >= 3 && !waveNear) {
       const troops = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
         !Units.isNaval(u) && u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
       const push = ai.posture === 'PUSH';

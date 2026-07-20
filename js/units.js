@@ -503,7 +503,10 @@ const Units = {
       const c = cargo.pop();
       c.x = spot.x + 0.5; c.y = spot.y + 0.5;
       c.anchor = { x: c.x, y: c.y };
-      c.path = null; c.pathI = 0; c.task = null; c.tUnit = 0; c.tBld = 0; c.cd = 0;
+      c.path = null; c.pathI = 0; c.tUnit = 0; c.tBld = 0; c.cd = 0;
+      // a rival landing party resumes its assault the instant it hits the beach (its
+      // raidObj was stashed at embarkation) — otherwise it stands idle on the shore
+      c.task = (c.owner === 'A' && c.raidObj) ? { type: 'raid' } : null;
       S.units.push(c);
       landed++;
       return true;
