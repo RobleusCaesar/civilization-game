@@ -1405,29 +1405,65 @@ const AI = {
     return false;
   },
 
+  // a score at/above this means a GENUINE soft spot the chief should exploit; below
+  // it, no angle is really open, so it stops shopping and commits to the grind.
+  CAMP_OPENING: 7,
+  // total HP of the player's walls/gates/towers — the grind's progress yardstick, so
+  // a siege line steadily chipping stone isn't misjudged as "failing" for not yet
+  // razing a whole building.
+  _foeFortHp() {
+    let hp = 0;
+    for (const b of S.buildings) if (b.owner === 'P' && (b.key === 'wall' || b.key === 'gate' || b.key === 'tower')) hp += b.hp || 0;
+    return hp;
+  },
+  // the reliable GRIND when no soft spot exists: batter a reachable wall (siege
+  // outranges towers, so it breaks any ring given time); if no wall is even
+  // reachable, OPEN a lane first — bridge (Mudlark), then a landing (Tidewrack) —
+  // which then makes a wall reachable and Ironbelly takes over. `tried` demotes a
+  // fallback that couldn't assemble its force, cycling back to Ironbelly when spent.
+  _grindFallback(ctx, tc, best, tried) {
+    const order = ['IRONBELLY', 'MUDLARK', 'TIDEWRACK'];
+    return order.find(k => this._campViable(k, ctx, tc) && tried.indexOf(k) < 0)
+        || order.find(k => this._campViable(k, ctx, tc))
+        || best;
+  },
+
   // choose (or hold) a siege-campaign strategy when a plain raid can't get in
   campaignSelect(read) {
     const ai = S.ai, ptc = read.knownTC;
     const attack = ai.posture === 'PUSH' || ai.posture === 'PRESSURE';
-    ai.camp = ai.camp || { strat: null, since: 0, rounds: 0, tried: [], baseBld: 0 };
-    if (!ptc || !attack) { ai.camp.strat = null; return; }
-    if (ai.camp.strat) return;                          // already committed; evaluation rotates it
+    ai.camp = ai.camp || { strat: null, since: 0, rounds: 0, tried: [], baseBld: 0, grind: false };
+    if (!ptc || !attack) { ai.camp.strat = null; ai.camp.grind = false; return; }
+    // an OPPORTUNISTIC plan is left to run (its own evaluation rotates it); a GRIND
+    // is re-checked below so it can break off IF a real opening finally appears.
+    if (ai.camp.strat && !ai.camp.grind) return;
     const reach = this.aiLandReach();
     const routeToTown = this._reachesTown(reach, ptc);
     const wallStalled = !!(ai.memory && ai.memory.wallStop);
-    if (routeToTown && !wallStalled) { ai.camp.tried = []; return; }   // ordinary raids will serve
+    if (routeToTown && !wallStalled) { ai.camp.tried = []; ai.camp.strat = null; ai.camp.grind = false; return; }
     const tc = Bld.tcOf('A'); if (!tc) return;
     const ctx = this.probeAssault(read, reach); if (!ctx) return;
     let pool = this.CAMPAIGNS.filter(k => this._campViable(k, ctx, tc) && ai.camp.tried.indexOf(k) < 0);
     if (!pool.length) { ai.camp.tried = []; pool = this.CAMPAIGNS.filter(k => this._campViable(k, ctx, tc)); }
     if (!pool.length) return;                           // nothing the ground allows — fall back to raids
-    // EVIDENCE-DRIVEN CHOICE: pick the plan that best fits the scouted defenses, with
-    // only a light jitter so near-equal options still vary game to game (a clearly
-    // softer angle always wins). Rotation on failure then falls to the NEXT-best fit,
-    // because the beaten plan is in `tried` and excluded from the pool above.
+    // EVIDENCE-DRIVEN CHOICE: score every viable plan by fit to the scouted defenses;
+    // a light jitter only separates near-ties, so a clearly softer angle always wins.
     let strat = null, best = -1e9;
     for (const k of pool) { const s = this._campScore(k, ctx) + G.rand() * 1.2; if (s > best) { best = s; strat = k; } }
     if (!strat) return;
+    // ESCAPE HATCH: already grinding — only break off for a GENUINE new opening
+    // (a different plan that now clears the threshold), else keep battering.
+    if (ai.camp.strat && ai.camp.grind) {
+      if (best >= this.CAMP_OPENING && strat !== ai.camp.strat) {
+        ai.camp.strat = strat; ai.camp.grind = false; ai.camp.since = S.day; ai.camp.rounds = 0; ai.camp.baseBld = Bld.list('P').length;
+        G.log(this.CAMPAIGN_CRY[strat], true);
+      }
+      return;
+    }
+    // FRESH choice: a real opening → exploit it (rotate on failure); no soft spot
+    // anywhere → COMMIT to the reliable grind and stop shopping (never thrash).
+    if (best >= this.CAMP_OPENING) { ai.camp.grind = false; }
+    else { strat = this._grindFallback(ctx, tc, strat, ai.camp.tried); ai.camp.grind = true; }
     ai.camp.strat = strat; ai.camp.since = S.day; ai.camp.rounds = 0; ai.camp.baseBld = Bld.list('P').length;
     G.log(this.CAMPAIGN_CRY[strat], true);
   },
@@ -1454,17 +1490,26 @@ const AI = {
     if (!camp || !camp.strat) return false;
     const strat = camp.strat, ptc = read.knownTC;
     if (!ptc) return false;
-    // EVALUATE a finished round (its deadline has passed): razing something proves
-    // the plan works → stand the campaign down (the way is open). Two dry rounds →
-    // mark this plan tried and rotate to a fresh one. Otherwise, run another round.
+    // EVALUATE a finished round (its deadline has passed). PROGRESS = razed a
+    // building OR knocked ≥10% off the player's walls/towers (so a siege line that's
+    // steadily chewing stone counts as working). An OPPORTUNISTIC plan that made
+    // progress stands down (the way's proven); two dry rounds → rotate to the
+    // next-best fit. A GRIND never rotates — it keeps battering (campaignSelect's
+    // escape hatch is the only thing that pulls it off, and only for a real opening).
     if (camp.rounds > 0 && S.day >= (camp.roundEnd || 0)) {
-      const razed = Bld.list('P').length < (camp.roundBaseBld != null ? camp.roundBaseBld : 1e9);
-      if (razed) { camp.tried = []; camp.strat = null; return false; }
-      if (camp.rounds >= 2) { camp.tried.push(strat); camp.strat = null; return false; }
+      if (!camp.grind) {
+        const razed = Bld.list('P').length < (camp.roundBaseBld != null ? camp.roundBaseBld : 1e9);
+        const chipped = camp.roundBaseHp != null && this._foeFortHp() < camp.roundBaseHp * 0.9;
+        if (razed || chipped) { camp.tried = []; camp.strat = null; return false; }
+        if (camp.rounds >= 2) { camp.tried.push(strat); camp.strat = null; return false; }
+      }
+      // grind: fall through and mount another round
     }
-    // abandon a plan that can never even assemble its force (kept us waiting too long)
+    // abandon a plan that can never even assemble its force (kept us waiting too
+    // long). For a grind this DEMOTES the fallback (Ironbelly→Mudlark→Tidewrack) via
+    // `tried`, so a plan it can't build for gives way to one it can.
     if (!camp.rounds && S.day - camp.since > 30) { camp.tried.push(strat); camp.strat = null; return false; }
-    const startRound = () => { camp.rounds++; camp.roundBaseBld = Bld.list('P').length; camp.roundEnd = S.day + 12; };
+    const startRound = () => { camp.rounds++; camp.roundBaseBld = Bld.list('P').length; camp.roundBaseHp = this._foeFortHp(); camp.roundEnd = S.day + 12; };
     // MUDLARK — carve the lane a tile a day; when the road finally reaches the town,
     // stand the campaign down so an ordinary raid pours through the new gap.
     if (strat === 'MUDLARK') {
