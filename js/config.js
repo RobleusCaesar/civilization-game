@@ -487,9 +487,14 @@ const CFG = {
      its target falls or it's dragged past the second bound. The perimeter grows
      `levelStep` per building level (TC for land, Dock for ships). */
   GUARD: {
-    radius: 9,        // base hold radius around the Town Center (level 1), tiles
+    radius: 6,        // base hold radius around the Town Center (level 1), tiles — a
+                      // TIGHT ring (~4-7 tiles): defenders hold the line, they don't
+                      // go hunting across the map at the first provocation
     navalRadius: 12,  // base hold radius for warships around a Dock (level 1)
-    levelStep: 0.15,  // +15% per building level above 1 (linear)
-    sortie: 0.15,     // may reach/pursue 15% past the hold radius, then must return
+    levelStep: 0.12,  // +12% per building level above 1 (linear)
+    maxRadius: 8,     // hard cap so even a max-level TC keeps a compact perimeter
+    sortie: 0.12,     // a slim leash past the hold radius before it's reined back in
+    wallHug: true,    // if a wall ring encloses the town, the bound follows the WALLS
+                      // (defenders stay inside the castle and volley over it)
   },
 };

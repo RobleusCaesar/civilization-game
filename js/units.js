@@ -171,9 +171,28 @@ const Units = {
         }
     } else b = Bld.tcOf(u.owner);
     if (!b) return null;
-    const G2 = CFG.GUARD;
-    const r1 = (naval ? G2.navalRadius : G2.radius) * (1 + G2.levelStep * ((b.level || 1) - 1));
-    return { x: Bld.cx(b), y: Bld.cy(b), r1, r2: r1 * (1 + G2.sortie) };
+    const G2 = CFG.GUARD, cx = Bld.cx(b), cy = Bld.cy(b);
+    let r1 = (naval ? G2.navalRadius : G2.radius) * (1 + G2.levelStep * ((b.level || 1) - 1));
+    if (!naval) r1 = Math.min(r1, G2.maxRadius || 8);
+    // CASTLE-AWARE: when a real wall ring encloses the town, hold the line AT the
+    // walls (stay inside the castle and shoot over them) rather than a fixed radius
+    if (!naval && G2.wallHug) {
+      const wr = this._wallRingRadius(u.owner, cx, cy);
+      if (wr > 0) r1 = Math.max(4, Math.min(wr + 0.5, 10));
+    }
+    return { x: cx, y: cy, r1, r2: r1 + Math.max(1.2, r1 * G2.sortie) };
+  },
+  // the radius of the town's own wall ring — the farthest wall/gate within the
+  // settlement's footprint. 0 unless there's a genuine ring (a few segments), so a
+  // lone stray wall doesn't move the whole perimeter.
+  _wallRingRadius(owner, cx, cy) {
+    let far = 0, n = 0;
+    for (const b of S.buildings) {
+      if (b.owner !== owner || (b.key !== 'wall' && b.key !== 'gate')) continue;
+      const d = Math.hypot(Bld.cx(b) - cx, Bld.cy(b) - cy);
+      if (d <= 11) { if (d > far) far = d; n++; }
+    }
+    return n >= 3 ? far : 0;
   },
   // walk back to just inside the perimeter (a 'guard' move task, which acquire()
   // leaves alone until it lands — that's the hysteresis that stops jittering)

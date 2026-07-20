@@ -194,8 +194,14 @@ const Combat = {
           if (g) {
             if (u.task && u.task.type === 'move') continue;   // still walking back to post
             const dc = Math.hypot(u.x - g.x, u.y - g.y);
-            if (dc > g.r2) { Units.returnToGuard(u, g); continue; }
-            const e = this.nearestUnit(g.x, g.y, g.r2,
+            if (dc > g.r2 + 0.6) { Units.returnToGuard(u, g); continue; }
+            // engage only a foe we can STRIKE while holding the line: one within the
+            // bound plus this unit's own weapon reach of the hall. So an archer picks
+            // up an enemy still approaching the wall (rng past the ring) and volleys
+            // over it, while a melee waits for the foe to reach the perimeter — and
+            // neither goes chasing a provocation out across the countryside.
+            const reach = CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE || 1.5;
+            const e = this.nearestUnit(g.x, g.y, g.r1 + reach + 0.5,
               o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
             if (e) u.tUnit = e.id;
             else if (dc > g.r1 && !Units.moving(u)) Units.returnToGuard(u, g);   // no foe → drift home
@@ -500,11 +506,23 @@ const Combat = {
         const d = Math.hypot(tgt.x - u.x, tgt.y - u.y);
         // hunting harmless game is a deliberate order — the hunter follows the prey
         if (Units.isPassive(tgt)) u.anchor = { x: u.x, y: u.y };
-        // DEFEND overrides the ordinary leash: a guard that has chased a foe past
-        // its sortie bound (r2) breaks off and heads back to its perimeter.
+        // DEFEND — HOLD THE LINE. A guard never chases a foe out past its bound: it
+        // strikes from inside and no further. Beyond the bound it's reined home;
+        // inside it, if a step toward the foe would breach the ring it plants its
+        // feet (an archer volleys over the wall, a spearman waits at the perimeter)
+        // instead of running out to melee. When the foe BREACHES the ring it hunts
+        // it down freely inside — that's the "more intelligent up close" behaviour.
         if (u.defend) {
-          const g = Units.guardCenter(u);
-          if (g && Math.hypot(u.x - g.x, u.y - g.y) > g.r2) { u.tUnit = 0; Units.returnToGuard(u, g); continue; }
+          const gDef = Units.guardCenter(u);
+          if (gDef) {
+            const dTC = Math.hypot(u.x - gDef.x, u.y - gDef.y);
+            if (dTC > gDef.r2 + 0.6) { u.tUnit = 0; Units.returnToGuard(u, gDef); continue; }   // dragged past the leash — home
+            if (d > (CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE)) {   // out of range → about to move toward the foe
+              if (dTC > gDef.r1 + 0.6) { u.tUnit = 0; Units.returnToGuard(u, gDef); continue; }   // standing outside the ring — fall back in
+              const sx = u.x + (tgt.x - u.x) / (d || 1) * 0.5, sy = u.y + (tgt.y - u.y) / (d || 1) * 0.5;
+              if (Math.hypot(sx - gDef.x, sy - gDef.y) > gDef.r1) { u.path = null; continue; }    // the step would cross the ring — plant feet, wait/volley
+            }
+          }
         } else {
           // guards give up long chases and go home; wild animals lose interest even
           // sooner. Player-ordered attacks are exempt — no leash yanks a soldier
