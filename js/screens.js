@@ -517,7 +517,10 @@ const Screens = {
       vic.style.display = 'none';
       def.style.display = 'flex';   // flex column (see CSS) — centres content vertically in the frame
       this._score = null; this._submitted = false; this._leaveWarned = false;
-      // three voices: the headline, the poetic subtitle, and a footer epitaph
+      // the scene answers to the map you fell on (landform) and the difficulty
+      // (time of day): set that up BEFORE the subtitle, which is landform-flavoured
+      if (window.Defeat) Defeat.begin(S.map && S.map.landform, S.mode);
+      // two voices: the headline and the poetic, land-specific subtitle
       this.el('defeatTitleText').textContent = window.Defeat ? Defeat.title() : 'THE FIRE HAS GONE OUT';
       this.el('defeatEpitaph').textContent = window.Defeat ? Defeat.subtitle() : '';
       // the story stats: day survived, time played, difficulty
@@ -526,11 +529,9 @@ const Screens = {
       const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
       this.el('dsTime').textContent = h ? `${h}h ${m}m` : m ? `${m}m` : `${secs}s`;
       this.el('dsDiff').textContent = (G.modeCfg().name || '').toUpperCase();
-      // render the pixel icons (banner crest + stat/button glyphs)
-      if (window.Defeat) {
-        Defeat.drawIcon(this.el('defeatCrest'), 'fire');
+      // render the pixel icons (stat card + button glyphs)
+      if (window.Defeat)
         for (const c of def.querySelectorAll('canvas[data-icon]')) Defeat.drawIcon(c, c.dataset.icon);
-      }
       // restart the fade-from-black each time we land here
       def.style.animation = 'none'; void def.offsetWidth; def.style.animation = 'defeatIn 1.6s ease-out both';
       if (window.Defeat) Defeat.start();
