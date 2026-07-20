@@ -1256,9 +1256,11 @@ const AI = {
     const rc = (x, y) => MapGen.inB(x, y) && reach[idx(x, y)];
     const adjReach = (x, y) => rc(x + 1, y) || rc(x - 1, y) || rc(x, y + 1) || rc(x, y - 1);
     const ctx = { ptc, tier, landToTown: false, meleeWall: null, siegeWall: null, breach: null, shore: null, wallSeam: null, lane: null };
-    // only what we've SEEN of their town (fog binds the chief)
-    const kb = S.ai.knownB || {}, blds = [], forts = [];
-    for (const k in kb) { const b = kb[k]; if (b.owner !== 'P') continue; blds.push(b); if (b.key === 'wall' || b.key === 'gate') forts.push(b); }
+    // only what we've SEEN of their town (fog binds the chief) — this is exactly the
+    // recon its scouts/soldiers/villagers have gathered, and it's what the strategy
+    // score below reads, so probing a flank literally changes which plan gets picked
+    const kb = S.ai.knownB || {}, blds = [], forts = [], towersK = [];
+    for (const k in kb) { const b = kb[k]; if (b.owner !== 'P') continue; blds.push(b); if (b.key === 'wall' || b.key === 'gate') forts.push(b); else if (b.key === 'tower') towersK.push(b); }
     const targets = blds.length ? blds : [{ x: ptc.x, y: ptc.y, key: 'tc' }];
     // can our land walk up to (melee/batter) any known structure?
     let bestMelee = null, bmd = 1e9;
@@ -1297,7 +1299,69 @@ const AI = {
     ctx.lane = lanes[0] || null;
     ctx.wallSeam = read.weakFlank || (ctx.lane ? ctx.lane.mid : null);
     ctx.shore = this._assaultShore(reach, ptc);
+
+    /* ---- DISCRIMINATING SIGNALS — turn the recon into evidence each strategy is
+       scored on, so the plan fits the weakness the chief actually observed:
+         · an undefended far shore  → a landing (Tidewrack)
+         · a THIN treeline/water gap → one sapper cut opens it (Mudlark)
+         · a long, poorly-towered wall → climb over it (Highreach)
+         · an open, lightly-held seam → just storm it (Warhorn) ---- */
+    const towersNear = (x, y, r) => { let n = 0; for (const t of towersK) if (Math.hypot(t.x + 0.5 - x, t.y + 0.5 - y) <= r) n++; return n; };
+    ctx.towers = towersK.length;
+    // TIDEWRACK: how exposed is the beach we'd land on? (towers shred a beachhead)
+    ctx.shoreTowers = ctx.shore ? towersNear(ctx.shore.land.x + 0.5, ctx.shore.land.y + 0.5, 6) : 0;
+    // MUDLARK: how THICK is the barrier at the breach? march from it toward the player
+    // and count the impassable tiles — 1 means a single cut pours the army through.
+    if (ctx.breach) {
+      const dx = ptc.x - ctx.breach.x, dy = ptc.y - ctx.breach.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+      let n = 0;
+      for (let s = 0; s < 14; s++) { const x = Math.round(ctx.breach.x + ux * s), y = Math.round(ctx.breach.y + uy * s); if (!MapGen.inB(x, y)) break; if (Path.passable(x, y, 'A')) { if (s >= 1) break; else continue; } n++; }
+      ctx.breachThick = Math.max(1, n);
+    }
+    // HIGHREACH / IRONBELLY: how much wall can our land actually reach, and how well
+    // is the target segment towered? (a long wall the towers don't cover = climb it)
+    let wallLen = 0;
+    for (const f of forts) { for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (rc(f.x + ox, f.y + oy)) { wallLen++; break; } }
+    ctx.wallReachLen = wallLen;
+    const twTarget = ctx.meleeWall || ctx.siegeWall;
+    ctx.wallTowers = twTarget ? towersNear(twTarget.x + 0.5, twTarget.y + 0.5, 6) : 0;
+    // WARHORN: the least-defended OPEN seam (a real gap in the ring), if reachable
+    ctx.openSeam = (ctx.lane && ctx.landToTown) ? { width: ctx.lane.width, def: ctx.lane.def } : null;
     return ctx;
+  },
+
+  /* Evidence-based FIT of each strategy to the defenses the chief has scouted — a
+     higher score means "this is the smart way in HERE". This is what makes a large
+     undefended lake mean a landing, a one-tile treeline mean a sapper cut, and a
+     long open wall mean siege towers — instead of a blind dice roll. */
+  _campScore(k, ctx) {
+    switch (k) {
+      case 'MUDLARK': {   // thinner barrier = more decisive; cutting woods is cleaner than a long bridge
+        if (!ctx.breach) return 0;
+        let s = 13 - (ctx.breachThick || 4) * 3;
+        if (!ctx.breach.water) s += 2;
+        return Math.max(1, s);
+      }
+      case 'TIDEWRACK': { // a landing shines against an undefended shore, dies against towers
+        if (!ctx.shore) return 0;
+        return Math.max(0.5, 9 - (ctx.shoreTowers || 0) * 3);
+      }
+      case 'HIGHREACH': { // long wall, few towers → pour over the top where nothing shoots
+        if (!ctx.meleeWall) return 0;
+        return Math.max(0.5, 4 + Math.min(8, ctx.wallReachLen || 1) - (ctx.wallTowers || 0) * 2.5);
+      }
+      case 'IRONBELLY': { // battering answers ANY wall (engines outrange towers), so it's steady
+        if (!ctx.siegeWall) return 0;
+        return Math.max(0.5, 6 + Math.min(3, (ctx.wallReachLen || 1) * 0.5) - (ctx.wallTowers || 0) * 0.6);
+      }
+      case 'WARHORN': {   // a straight rush wants an OPEN, lightly held gap — worst vs a walled town
+        if (!ctx.landToTown) return 0;
+        const seam = ctx.openSeam;
+        if (!seam) return 1.5;
+        return Math.max(0.5, 3 + Math.min(5, seam.width) - (seam.def || 0) * 1.5);
+      }
+    }
+    return 0;
   },
 
   // a sea lane for a landing: navigable water joining OUR coast to the player's.
@@ -1357,7 +1421,13 @@ const AI = {
     let pool = this.CAMPAIGNS.filter(k => this._campViable(k, ctx, tc) && ai.camp.tried.indexOf(k) < 0);
     if (!pool.length) { ai.camp.tried = []; pool = this.CAMPAIGNS.filter(k => this._campViable(k, ctx, tc)); }
     if (!pool.length) return;                           // nothing the ground allows — fall back to raids
-    const strat = pool[(G.rand() * pool.length) | 0];
+    // EVIDENCE-DRIVEN CHOICE: pick the plan that best fits the scouted defenses, with
+    // only a light jitter so near-equal options still vary game to game (a clearly
+    // softer angle always wins). Rotation on failure then falls to the NEXT-best fit,
+    // because the beaten plan is in `tried` and excluded from the pool above.
+    let strat = null, best = -1e9;
+    for (const k of pool) { const s = this._campScore(k, ctx) + G.rand() * 1.2; if (s > best) { best = s; strat = k; } }
+    if (!strat) return;
     ai.camp.strat = strat; ai.camp.since = S.day; ai.camp.rounds = 0; ai.camp.baseBld = Bld.list('P').length;
     G.log(this.CAMPAIGN_CRY[strat], true);
   },
