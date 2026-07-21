@@ -99,28 +99,29 @@ const Sprites = {
   /* ---------------- terrain (built on ART — see ARTSTYLE.md) ---------------- */
   const AP = ART.PALETTE;
 
-  // Grass authored at the fine 32-grid (1px) so no two square-inches read alike —
-  // a per-pixel swell of three greens kills the stamped/tiled look, then soft
-  // sunlit humps, fine blade tufts, and pinpoint dew/shadow specks add life.
+  // A calm, carpet-like turf: a broad LOW-frequency drift between two close mid
+  // greens (grass[2] dominant, grass[3] on the gentle rises, a little grass[1] in
+  // the hollows) with only a whisper of blade texture. Deliberately low-contrast
+  // so it reads as an even lawn and the tile grid stops registering — the noisy,
+  // speckled version made the ground look quilted.
   function grassBase(p, seed) {
     const f = p.f, r = ART.rng(seed);
     for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
-      const n = Math.sin((x + seed * 3) * 0.6) + Math.cos((y + seed) * 0.55) + (r() - 0.5) * 1.7;
-      f(x, y, 1, 1, n > 0.8 ? AP.grass[3] : n < -0.9 ? AP.grass[1] : AP.grass[2]);
+      const n = Math.sin((x + seed * 3) * 0.34) + Math.cos((y + seed) * 0.31) + (r() - 0.5) * 0.7;
+      f(x, y, 1, 1, n > 1.0 ? AP.grass[3] : n < -1.15 ? AP.grass[1] : AP.grass[2]);
     }
-    for (let i = 0; i < 3; i++)                          // gentle rolling relief
-      ART.shadedCircle(f, 3 + (r() * 26) | 0, 3 + (r() * 26) | 0, 2 + (r() * 2 | 0), AP.grass, 3);
-    for (let i = 0; i < 15; i++) {                       // blade tufts: dark stem, lit tip
-      const x = 1 + (r() * 30) | 0, y = 3 + (r() * 26) | 0, hh = 2 + (r() * 2 | 0);
-      f(x, y, 1, hh, AP.grass[1]); f(x, y - 1, 1, 1, AP.grass[4]);
-      if (r() < 0.5) f(x + 1, y + 1, 1, hh - 1, AP.grass[2]);
+    for (let i = 0; i < 4; i++) {                        // a whisper of taller blades
+      const x = 2 + (r() * 28) | 0, y = 4 + (r() * 24) | 0;
+      f(x, y, 1, 2, AP.grass[3]);
     }
-    for (let i = 0; i < 12; i++) f((r() * 32) | 0, (r() * 32) | 0, 1, 1, r() < 0.7 ? AP.grass[4] : AP.grass[0]);
+    for (let i = 0; i < 6; i++)                          // faint micro-texture, no bright/dark specks
+      f(1 + (r() * 30) | 0, 1 + (r() * 30) | 0, 1, 1, r() < 0.5 ? AP.grass[3] : AP.grass[1]);
   }
   Sprites.terrain[T.GRASS] = [
     tile(p => grassBase(p, 3)), tile(p => grassBase(p, 77)),
     tile(p => grassBase(p, 129)), tile(p => grassBase(p, 211)),
     tile(p => grassBase(p, 258)), tile(p => grassBase(p, 344)),
+    tile(p => grassBase(p, 401)), tile(p => grassBase(p, 466)),
   ];
   // rare flower meadows — drawTile rolls these on ~3% of grass tiles
   function flowers(p, seed) {
