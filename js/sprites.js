@@ -1511,51 +1511,57 @@ const Sprites = {
 
   /* ---------------- boats ---------------- */
   // rowing-boat sheet: hull low in the water, crew figure, bobbing animation
+  // HI-RES FISHING BOAT (32-grid): a rowing skiff with a fisher; oars while rowing,
+  // a rod & line over the side when fishing. Bobs on the swell.
   function fishboatSheet() {
-    const draw = (p, f, pose) => {
-      const y = 8 + (f === 1 ? 1 : 0);
-      p(3, y + 4, 10, 1, 'rgba(0,0,0,0.25)');
-      p(3, y + 1, 10, 2, PAL.wood); p(4, y + 3, 8, 1, PAL.woodD);   // hull
-      p(2, y + 1, 1, 1, PAL.woodD); p(13, y + 1, 1, 1, PAL.woodD);  // prow / stern
-      p(6, y - 2, 2, 3, '#6e5b40');                                 // fisher
-      p(6, y - 4, 2, 2, PAL.skin); p(6, y - 5, 2, 1, PAL.hair);
+    const W = APx.wood;
+    const draw = (q, f, pose) => {
+      const y = 16 + (f === 1 ? 1 : 0);
+      q(6, y + 5, 20, 1, 'rgba(20,16,10,0.22)');
+      q(6, y + 1, 20, 4, W[2]); q(6, y + 1, 20, 1, W[3]); q(8, y + 4, 16, 1, W[1]);   // hull
+      q(5, y + 1, 1, 3, W[1]); q(26, y + 1, 1, 3, W[1]);                              // prow / stern
+      q(12, y - 3, 4, 5, '#6e5b40'); q(12, y - 3, 4, 1, '#8a7458');                   // fisher
+      q(12, y - 6, 4, 3, SKN[2]); q(12, y - 7, 4, 1, APx.hair[1]);                    // head + hair
       if (pose === 'gather') {
-        p(8, y - 2, 3, 1, PAL.skin); p(11, y - 3, 1, 1, PAL.trunk); // rod
-        p(12, y - 2, 1, 4, '#c8d8e0');                              // line to water
+        q(16, y - 3, 4, 1, SKN[2]); q(20, y - 6, 1, 4, W[1]);                         // arm + rod
+        q(21, y - 6, 1, 10, '#c8d8e0');                                               // line to the water
       } else {
-        p(4, y, 1, 2, PAL.trunk); p(11, y, 1, 2, PAL.trunk);        // oars
+        q(5, y + 1, 2, 4, W[1]); q(25, y + 1, 2, 4, W[1]); q(3, y + 2, 2, 1, W[1]); q(27, y + 2, 2, 1, W[1]);  // oars
       }
+      if (f === 1) { q(4, y + 3, 1, 1, AP.water[4]); q(27, y + 3, 1, 1, AP.water[4]); }   // wake
     };
     return {
-      idle: frames(2, (p, g, f) => draw(p, f, 'idle')),
-      walk: frames(2, (p, g, f) => draw(p, f, 'walk')),
-      gather: frames(2, (p, g, f) => draw(p, f, 'gather')),
+      idle: framesU(2, (q, g, f) => draw(q, f, 'idle'), 1),
+      walk: framesU(2, (q, g, f) => draw(q, f, 'walk'), 1),
+      gather: framesU(2, (q, g, f) => draw(q, f, 'gather'), 1),
     };
   }
-  // warship sheet: bigger hull, mast and sail, archer on deck
+  // HI-RES WARSHIP (32-grid): a bigger hull with a mast + sail (faction stripe) and a
+  // deck archer who looses over the bow in the fight pose. The fire warship adds a
+  // burning brazier aft and flaming arrows.
   function warshipSheet(c) {
-    const draw = (p, f, pose) => {
-      const y = 10 + (f === 1 ? 1 : 0);
-      p(2, y + 3, 12, 1, 'rgba(0,0,0,0.25)');
-      p(2, y, 12, 3, c.hull); p(3, y + 2, 10, 1, c.hullD);          // hull
-      p(1, y, 1, 2, c.hullD); p(14, y, 1, 2, c.hullD);
-      p(8, y - 9, 1, 9, PAL.trunk);                                 // mast
-      p(9, y - 8, 5, 6, c.sail);                                    // sail
-      p(9, y - 6, 5, 1, c.stripe);                                  // painted stripe
-      p(9, y - 8, 5, 1, c.sailD);
-      p(4, y - 2, 2, 2, c.crew);                                    // archer on deck
-      p(4, y - 4, 2, 2, PAL.skin); p(4, y - 5, 2, 1, PAL.hair);
+    const W = APx.wood;
+    const draw = (q, f, pose) => {
+      const y = 18 + (f === 1 ? 1 : 0);
+      q(4, y + 5, 24, 1, 'rgba(20,16,10,0.22)');
+      q(4, y, 24, 5, c.hull); q(4, y, 24, 1, W[3]); q(6, y + 3, 20, 1, c.hullD);      // hull
+      q(2, y, 2, 3, c.hullD); q(28, y, 2, 3, c.hullD);                                // prow / stern rise
+      q(15, y - 16, 2, 16, W[1]);                                                     // mast
+      q(17, y - 15, 11, 11, c.sail); q(17, y - 15, 11, 1, c.sailD); q(17, y - 15, 1, 11, c.sailD);   // sail
+      q(17, y - 10, 11, 2, c.stripe);                                                 // faction stripe
+      q(7, y - 4, 3, 4, c.crew); q(7, y - 7, 3, 3, SKN[2]); q(7, y - 8, 3, 1, APx.hair[1]);   // deck archer
       if (pose === 'fight') {
-        p(2, y - 4, 1, 4, PAL.trunk); p(1, y - 3, 1, 1, PAL.trunk); // bow
-        p(3, y - 3, 2, 1, c.arrow);                                 // nocked arrow
-        if (c.flame) { p(2, y - 5, 1, 1, PAL.fireL); p(3, y - 4, 1, 1, PAL.fire); }
+        q(3, y - 7, 1, 8, W[1]); q(2, y - 6, 1, 1, W[1]); q(2, y - 1, 1, 1, W[1]);    // bow
+        q(f === 1 ? 1 : 4, y - 4, 4, 1, c.arrow);                                     // arrow (loosed on f1)
+        if (c.flame) { q(3, y - 8, 1, 1, FIRE[2]); q(f === 1 ? 0 : 4, y - 5, 1, 1, FIRE[1]); }
       }
-      if (c.flame) { p(11, y - 1, 2, 2, PAL.fire); p(11, y - 2, 1, 1, PAL.fireL); } // fire brazier
+      if (c.flame) { q(23, y - 4, 3, 3, FIRE[1]); q(23, y - 5, 2, 1, FIRE[2]); q(24, y - 6, 1, 1, FIRE[3]); }  // fire brazier aft
+      if (f === 1) { q(2, y + 3, 1, 1, AP.water[4]); q(29, y + 3, 1, 1, AP.water[4]); }
     };
     return {
-      idle: frames(2, (p, g, f) => draw(p, f, 'idle')),
-      walk: frames(2, (p, g, f) => draw(p, f, 'walk')),
-      fight: frames(2, (p, g, f) => draw(p, f, 'fight')),
+      idle: framesU(2, (q, g, f) => draw(q, f, 'idle'), 1),
+      walk: framesU(2, (q, g, f) => draw(q, f, 'walk'), 1),
+      fight: framesU(2, (q, g, f) => draw(q, f, 'fight'), 1),
     };
   }
   Sprites.unit.fishboat = fishboatSheet();
@@ -1566,30 +1572,29 @@ const Sprites = {
 
   // troop transports: broad open hulls built to carry soldiers, not fight.
   // The war transport is longer, with a hide canopy and a shield row.
+  // HI-RES TROOP TRANSPORTS (32-grid): broad open hulls built to carry, not fight —
+  // a steersman at the stern oar. The War Transport is longer, with a hide canopy
+  // amidships and a row of shields along the gunwale.
   function transportSheet(big) {
-    const draw = (p, f) => {
-      const y = 10 + (f === 1 ? 1 : 0);
-      const x0 = big ? 1 : 2, w = big ? 14 : 12;
-      p(x0, y + 3, w, 1, 'rgba(0,0,0,0.25)');                       // waterline shadow
-      p(x0, y, w, 3, APx.wood[2]);                                  // hull
-      p(x0, y, w, 1, APx.wood[3]);                                  // lit gunwale
-      p(x0 + 1, y + 2, w - 2, 1, APx.wood[1]);                      // wet strake
-      p(x0 - 0, y, 1, 2, APx.wood[1]); p(x0 + w - 1, y, 1, 2, APx.wood[1]);  // prow / stern posts
-      p(x0 + 1, y - 1, w - 2, 1, APx.wood[3]);                      // deck rail
-      p(x0 + 2, y + 1, 1, 1, APx.wood[4]); p(x0 + w - 3, y + 1, 1, 1, APx.wood[0]);  // plank glint / knot
+    const W = APx.wood;
+    const draw = (q, f) => {
+      const y = 18 + (f === 1 ? 1 : 0);
+      const x0 = big ? 2 : 4, w = big ? 28 : 24;
+      q(x0, y + 5, w, 1, 'rgba(20,16,10,0.22)');
+      q(x0, y, w, 5, W[2]); q(x0, y, w, 1, W[3]); q(x0 + 2, y + 4, w - 4, 1, W[1]);   // hull + wet strake
+      q(x0, y, 1, 3, W[1]); q(x0 + w - 1, y, 1, 3, W[1]);                             // prow / stern posts
+      q(x0 + 1, y - 1, w - 2, 1, W[3]);                                               // deck rail
       if (big) {
-        ART.shadedRect(p, 5, y - 4, 6, 3, AP.hide, 1);              // hide canopy amidships
-        p(6, y - 5, 4, 1, AP.hide[2]);
-        for (let i = 0; i < 4; i++) p(2 + i * 3, y, 1, 1, AP.bone[2]);  // shield row on the gunwale
+        ART.shadedRect(q, x0 + 8, y - 6, 12, 5, AP.hide, 1); q(x0 + 9, y - 7, 10, 1, AP.hide[2]);   // hide canopy
+        for (let i = 0; i < 5; i++) q(x0 + 3 + i * 5, y, 2, 1, AP.bone[2]);           // shield row
       }
-      p(x0 + w - 3, y - 2, 2, 2, '#6e5b40');                        // steersman
-      p(x0 + w - 3, y - 3, 2, 1, PAL.skin);
-      p(x0 + w - 1, y - 3, 1, 3, APx.wood[1]);                      // steering oar
-      if (f === 1) { p(x0 - 1, y + 1, 1, 1, AP.water[4]); p(x0 + w, y + 2, 1, 1, AP.water[4]); }  // bow spray
+      q(x0 + w - 6, y - 4, 3, 4, '#6e5b40'); q(x0 + w - 6, y - 6, 3, 2, SKN[2]);      // steersman
+      q(x0 + w - 2, y - 5, 1, 7, W[1]);                                               // steering oar
+      if (f === 1) { q(x0 - 1, y + 2, 1, 1, AP.water[4]); q(x0 + w, y + 3, 1, 1, AP.water[4]); }  // bow spray
     };
     return {
-      idle: frames(2, (p, g, f) => draw(p, f)),
-      walk: frames(2, (p, g, f) => draw(p, f)),
+      idle: framesU(2, (q, g, f) => draw(q, f), 1),
+      walk: framesU(2, (q, g, f) => draw(q, f), 1),
     };
   }
   Sprites.unit.transport = transportSheet(false);
