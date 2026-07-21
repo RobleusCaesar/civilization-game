@@ -136,21 +136,27 @@ const Sprites = {
   }
   Sprites.terrainRare = { [T.GRASS]: [tile(p => flowers(p, 301)), tile(p => flowers(p, 407))] };
 
-  // forest: overlapping canopy crowns that overhang the tile edge, trunk shadows
+  // forest: big layered canopy crowns drawn on the fine grid, reaching the tile
+  // edges so neighbouring forest tiles fuse into one continuous overhanging
+  // canopy (no per-tile gaps), with a lit trunk and dappled sun-flecks
   function forestTile(p, seed, log) {
     grassBase(p, seed);
-    const r = ART.rng(seed + 2);
-    p(4, 6, 2, 1, AP.leaf[0]); p(11, 11, 2, 1, AP.leaf[0]);        // trunk shadows
-    ART.foliageCluster(p, 3 + (r() * 3) | 0, 3, 4, seed);
-    ART.foliageCluster(p, 11 + (r() * 3) | 0, 8 + (r() * 2) | 0, 4, seed + 9);
-    ART.foliageCluster(p, 4, 12, 3, seed + 17);
-    if (log) {                                                      // fallen log
-      p(8, 14, 6, 1, AP.wood[1]); p(8, 13, 6, 1, AP.wood[3]); p(13, 13, 1, 1, AP.wood[4]);
+    const f = p.f, r = ART.rng(seed + 2);
+    f(18, 24, 4, 2, AP.leaf[0]); f(9, 27, 3, 2, AP.leaf[0]);       // crown ground-shadows
+    f(11, 20, 3, 7, AP.wood[1]); f(11, 20, 1, 7, AP.wood[2]);      // a visible trunk
+    f(11, 20, 3, 1, AP.wood[3]);
+    ART.foliageCluster(f, 8 + (r() * 4 | 0), 9, 8, seed);          // three overlapping crowns
+    ART.foliageCluster(f, 22 + (r() * 3 | 0), 15 + (r() * 3 | 0), 8, seed + 9);
+    ART.foliageCluster(f, 9, 23, 6, seed + 17);
+    for (let i = 0; i < 5; i++) f((r() * 30) | 0, (r() * 30) | 0, 1, 1, AP.leaf[4]);   // sun-flecks
+    if (log) {                                                      // fallen mossy log
+      f(16, 28, 12, 2, AP.wood[1]); f(16, 27, 12, 1, AP.wood[3]);
+      f(26, 27, 2, 1, AP.wood[4]); f(19, 27, 1, 1, AP.leaf[3]); f(23, 27, 1, 1, AP.leaf[3]);
     }
   }
   Sprites.terrain[T.FOREST] = [
     tile(p => forestTile(p, 11)), tile(p => forestTile(p, 23)),
-    tile(p => forestTile(p, 149, true)),
+    tile(p => forestTile(p, 149, true)), tile(p => forestTile(p, 205)),
   ];
 
   // Water — the hero. [0] = shallow (near land, lighter), [1] = deep interior.
@@ -223,34 +229,33 @@ const Sprites = {
   // map — the village forages these long before it tills its first farm
   function orchardTile(p, seed) {
     grassBase(p, seed);
-    const r = ART.rng(seed + 5);
+    const f = p.f, r = ART.rng(seed + 5);
     const fruitTree = (cx, cy, s2) => {
-      p(cx, cy + 2, 1, 3, AP.wood[1]);                              // trunk
-      p(cx - 1, cy + 4, 3, 1, AP.leaf[0]);                          // canopy shadow
-      ART.foliageCluster(p, cx, cy, 2, s2);
+      f(cx - 4, cy + 8, 9, 1, AP.leaf[0]);                         // canopy ground shadow
+      f(cx, cy + 4, 2, 6, AP.wood[1]); f(cx, cy + 4, 1, 6, AP.wood[2]);   // trunk (lit left)
+      ART.foliageCluster(f, cx, cy, 5, s2);                        // round fruiting crown
       const fr = ART.rng(s2 + 1);
-      for (let i = 0; i < 3; i++)                                   // ripe fruit in the crown
-        p(cx - 1 + ((fr() * 3) | 0), cy - 1 + ((fr() * 3) | 0), 1, 1, AP.red[2]);
+      for (let i = 0; i < 7; i++)                                  // ripe fruit dotted in the crown
+        f(cx - 4 + ((fr() * 8) | 0), cy - 4 + ((fr() * 8) | 0), 1, 1, fr() < 0.5 ? AP.red[2] : AP.fire[2]);
     };
-    fruitTree(4, 3 + ((r() * 2) | 0), seed + 11);
-    fruitTree(11, 9 + ((r() * 2) | 0), seed + 23);
-    p(6, 12, 1, 1, AP.red[1]); p(13, 5, 1, 1, AP.red[2]);           // windfall fruit
+    fruitTree(9, 8 + ((r() * 3) | 0), seed + 11);
+    fruitTree(23, 18 + ((r() * 3) | 0), seed + 23);
+    f(13, 25, 1, 1, AP.red[1]); f(27, 10, 1, 1, AP.red[2]);        // windfall fruit
   }
   function berryTile(p, seed) {
     grassBase(p, seed);
-    const r = ART.rng(seed + 7);
+    const f = p.f, r = ART.rng(seed + 7);
     const bush = (cx, cy, s2) => {
-      p(cx - 1, cy + 2, 4, 1, AP.leaf[0]);                          // ground shadow
-      ART.shadedCircle(p, cx, cy, 2, AP.leaf, 1);
+      f(cx - 3, cy + 4, 8, 1, AP.leaf[0]);                         // ground shadow
+      ART.shadedCircle(f, cx, cy, 4, AP.leaf, 2);
       const br = ART.rng(s2);
-      for (let i = 0; i < 4; i++)                                   // clustered berries
-        p(cx - 1 + ((br() * 4) | 0), cy - 1 + ((br() * 3) | 0), 1, 1,
-          br() < 0.5 ? AP.bloom[0] : AP.bloom[1]);
+      for (let i = 0; i < 9; i++)                                  // clustered ripe berries
+        f(cx - 3 + ((br() * 7) | 0), cy - 3 + ((br() * 6) | 0), 1, 1, br() < 0.5 ? AP.bloom[0] : AP.bloom[1]);
     };
-    bush(4, 4 + ((r() * 2) | 0), seed + 13);
-    bush(11, 7, seed + 29);
-    bush(5, 11 + ((r() * 2) | 0), seed + 41);
-    p(13, 13, 1, 1, AP.bloom[0]); p(2, 8, 1, 1, AP.bloom[1]);       // dropped berries
+    bush(8, 9 + ((r() * 3) | 0), seed + 13);
+    bush(23, 13, seed + 29);
+    bush(11, 23 + ((r() * 3) | 0), seed + 41);
+    f(27, 26, 1, 1, AP.bloom[0]); f(4, 17, 1, 1, AP.bloom[1]);     // dropped berries
   }
   Sprites.terrain[T.FERTILE] = [
     tile(p => orchardTile(p, 17)), tile(p => berryTile(p, 53)),
@@ -258,15 +263,18 @@ const Sprites = {
   ];
 
   // depleted terrain: felled forest, quarried-out hills, spent soil, ruins
+  // a felled stump: lit ring-grain top, a bark rim, an axe notch, ground shadow
   function drawStump(p, x, y) {
-    p(x, y + 1, 3, 2, AP.wood[1]);
-    p(x, y, 3, 1, AP.thatch[2]);
-    p(x + 1, y, 1, 1, AP.thatch[1]);
-    p(x + 2, y + 2, 1, 1, AP.wood[0]);
+    const f = p.f;
+    f(x - 1, y + 6, 8, 1, AP.wood[0]);                            // ground shadow
+    f(x, y + 1, 6, 5, AP.wood[1]); f(x, y + 1, 1, 5, AP.wood[2]); // trunk side (lit left)
+    f(x, y, 6, 2, AP.thatch[2]);                                  // cut top face
+    f(x + 1, y, 4, 1, AP.thatch[3]); f(x + 2, y + 1, 2, 1, AP.wood[3]);   // rings
+    f(x + 4, y + 2, 1, 2, AP.wood[0]);                            // axe notch
   }
   Sprites.terrain[T.STUMPS] = [
-    tile(p => { grassBase(p, 51); drawStump(p, 2, 3); drawStump(p, 9, 8); drawStump(p, 4, 11); }),
-    tile(p => { grassBase(p, 63); drawStump(p, 8, 2); drawStump(p, 3, 7); drawStump(p, 11, 11); }),
+    tile(p => { grassBase(p, 51); drawStump(p, 5, 7); drawStump(p, 19, 17); drawStump(p, 9, 23); }),
+    tile(p => { grassBase(p, 63); drawStump(p, 17, 5); drawStump(p, 7, 15); drawStump(p, 23, 23); }),
   ];
   // spent quarry: a couple of leftover rocks, a cracked cut slab, loose scree
   Sprites.terrain[T.PEBBLES] = [
@@ -1922,50 +1930,94 @@ const Sprites = {
     return ART.outline(c);
   });
 
-  // fish breaking the surface — two frames used as an occasional flourish
+  // fish breaking the surface — two frames used as an occasional flourish.
+  // Fine-grid: an arcing silver body with a fin, dorsal shadow, eye and a spray
+  // of droplets, then the splash ring as it falls back.
   Sprites.misc.fish = [
     tile(p => {
-      p(6, 7, 3, 2, '#c8d8e0'); p(9, 6, 1, 2, '#c8d8e0');   // arcing body + tail
-      p(6, 6, 1, 1, '#e8f4ff');                             // glint
-      p(4, 10, 1, 1, '#e8f4ff'); p(10, 10, 1, 1, '#e8f4ff'); // droplets
+      const f = p.f, B = AP.water, S = AP.bone;
+      f(12, 13, 7, 3, S[1]); f(11, 14, 1, 2, S[1]);           // arcing body
+      f(12, 13, 6, 1, S[2]);                                  // lit back
+      f(18, 11, 2, 4, S[1]); f(19, 11, 1, 2, S[0]);           // tail fin
+      f(14, 15, 3, 1, B[2]);                                  // belly shadow
+      f(13, 14, 1, 1, AP.ink[0]);                             // eye
+      f(15, 13, 1, 1, S[2]);                                  // glint
+      f(9, 19, 1, 1, S[2]); f(21, 18, 1, 1, S[2]); f(16, 9, 1, 1, S[2]);   // droplets
     }),
     tile(p => {
-      p(5, 9, 6, 1, '#e8f4ff'); p(4, 10, 8, 1, PAL.waterL);  // splash ring
-      p(7, 8, 2, 1, '#c8d8e0');
+      const f = p.f, S = AP.bone;
+      f(10, 18, 12, 1, S[2]); f(9, 19, 14, 1, AP.water[4]);   // splash ring
+      f(13, 16, 4, 1, S[1]); f(11, 15, 1, 1, S[2]); f(20, 15, 1, 1, S[2]);
     }),
   ];
 
-  function beast(name, body, bodyD, opts) {
-    const w = opts.w, h = opts.h, y0 = 12 - h;
-    const draw = (p, f, attacking) => {
-      p(4, 14, w + 2, 1, 'rgba(0,0,0,0.3)');
-      p(3, y0, w, h, body);                                   // body
-      p(3 + w - 1, y0 - 1, 3, h, bodyD);                      // head
-      if (opts.ears) { p(3 + w - 1, y0 - 2, 1, 1, bodyD); p(3 + w + 1, y0 - 2, 1, 1, bodyD); }
-      if (opts.hump) { p(4, y0 - 1, 4, 1, body); p(4, y0 - 1, 2, 1, bodyD); }   // massive shoulder
-      if (opts.snout) p(3 + w + 2, y0, 1, 1, opts.snout);                        // pale muzzle
-      if (opts.tusk) p(3 + w + 2, y0 + h - 2, 1, 1, PAL.white);
-      if (opts.tail) p(2, y0, 1, 2, bodyD);
-      if (opts.antlers) { p(3 + w, y0 - 4, 1, 3, '#e8dcc0'); p(3 + w + 2, y0 - 4, 1, 3, '#e8dcc0'); p(3 + w + 1, y0 - 3, 1, 1, '#e8dcc0'); }
-      if (opts.horns) { p(3 + w - 1, y0 - 3, 1, 2, PAL.white); p(3 + w + 2, y0 - 3, 1, 2, PAL.white); }
-      if (opts.spots) { p(4, y0, 2, 2, opts.spots); p(8, y0 + 1, 2, 2, opts.spots); }
-      if (attacking) p(3 + w + 2, y0 + 1, 1, 1, PAL.red);     // open maw
-      // legs
-      const l1 = f === 0 ? 2 : 3, l2 = f === 0 ? 3 : 2;
-      p(4, y0 + h, 1, l1, bodyD); p(3 + w - 2, y0 + h, 1, l2, bodyD);
+  // HI-RES beasts (64px / 32-grid, 2× the old density) — a proper quadruped
+  // silhouette with a 3-shade body, a distinct head + muzzle, four animated
+  // legs (near pair in front, far pair behind & darker), and per-species
+  // features. Drawn without an outline here; the shared unit-outline pass below
+  // gives every frame its 1px ink edge, exactly like the villagers & soldiers.
+  function beastFrames(n, draw) {
+    const out = [];
+    for (let fr = 0; fr < n; fr++) out.push(tileU((q) => draw(q, fr)));
+    return out;
+  }
+  // ramp = [dark, mid, light]
+  function beast(name, ramp, opts) {
+    const w = opts.w, h = opts.h;
+    const bx = 6, byb = 24, byt = byb - h;                    // body box
+    const dark = ramp[0], mid = ramp[1], lite = ramp[2] || ramp[1];
+    const BN = AP.bone[2], INK = AP.ink[0];
+    const draw = (q, f, attacking) => {
+      q(bx - 1, byb + 6, w + 5, 2, 'rgba(20,16,10,0.26)');    // contact shadow
+      const gait = f === 0 ? 0 : 1;
+      const leg = (lx, fwd, shade) => {                       // a single animated leg
+        const ll = fwd ? 6 : 5, off = fwd ? 1 : 0;
+        q(lx + off, byb, 2, ll, shade); q(lx + off, byb + ll, 2, 1, INK);
+      };
+      // far (offside) legs first, one shade down
+      leg(bx + 2, gait, dark); leg(bx + w - 5, 1 - gait, dark);
+      // tail
+      if (opts.tail) {
+        if (opts.bushy) { q(bx - 2, byt + 1, 2, 5, mid); q(bx - 3, byt + 2, 1, 3, dark); q(bx - 2, byt + 1, 1, 2, lite); }
+        else q(bx - 1, byt + 1, 1, opts.longtail ? 6 : 3, dark);
+      }
+      // body
+      ART.shadedRect(q, bx, byt, w, h, ramp, 1);
+      if (opts.hump) { q(bx + 1, byt - 2, 5, 2, mid); q(bx + 1, byt - 2, 4, 1, lite); }   // shoulder hump
+      if (opts.spots) { q(bx + 2, byt + 1, 3, 2, opts.spots); q(bx + w - 6, byt + 2, 3, 2, opts.spots); q(bx + 5, byt + h - 2, 2, 1, opts.spots); }
+      // neck + head at the front (right)
+      const hx = bx + w - 1, hy = byt - 1;
+      q(hx - 1, byt, 3, 3, mid);                              // neck
+      q(hx, hy, 6, h - 1, mid); q(hx, hy, 6, 1, lite);        // head block, lit top
+      q(hx + 5, hy + 2, 2, 2, opts.snout || dark);            // muzzle
+      q(hx + 6, hy + 3, 1, 1, INK);                           // nostril
+      q(hx + 3, hy + 1, 1, 1, INK);                           // eye
+      // ears / horns / antlers / tusks
+      if (opts.ears) { q(hx, hy - 2, 1, 2, mid); q(hx + 3, hy - 2, 2, 2, mid); q(hx + 3, hy - 2, 1, 1, lite); }
+      if (opts.horns) { q(hx - 1, hy - 2, 1, 2, BN); q(hx + 5, hy - 2, 1, 2, BN); q(hx - 1, hy - 3, 3, 1, BN); }
+      if (opts.antlers) {
+        q(hx + 1, hy - 5, 1, 5, BN); q(hx + 4, hy - 5, 1, 5, BN);        // main beams
+        q(hx, hy - 4, 1, 2, BN); q(hx + 2, hy - 6, 1, 2, BN);            // tines
+        q(hx + 3, hy - 6, 1, 2, BN); q(hx + 5, hy - 4, 1, 2, BN);
+      }
+      if (opts.tusk) { q(hx + 5, hy + 4, 2, 1, BN); q(hx + 6, hy + 3, 1, 1, BN); }
+      if (opts.mane) { q(hx - 1, hy - 1, 2, h + 1, dark); }             // scruff at the neck
+      if (attacking) { q(hx + 5, hy + 3, 2, 1, AP.red[2]); q(hx + 6, hy + 2, 1, 1, BN); }   // open maw + fang
+      // near (onside) legs in front of the body
+      leg(bx + 3, 1 - gait, mid); leg(bx + w - 4, gait, mid);
     };
     Sprites.unit[name] = {
-      idle: frames(2, (p, g, f) => draw(p, 0, false)),
-      walk: frames(2, (p, g, f) => draw(p, f, false)),
-      fight: frames(2, (p, g, f) => draw(p, f, true)),
+      idle: beastFrames(2, (q, f) => draw(q, 0, false)),
+      walk: beastFrames(2, (q, f) => draw(q, f, false)),
+      fight: beastFrames(2, (q, f) => draw(q, f, true)),
     };
   }
-  beast('wolf', PAL.wolf, PAL.wolfD, { w: 7, h: 3, ears: true, tail: true });
-  beast('boar', PAL.boar, PAL.boarD, { w: 8, h: 4, tusk: true, tail: true });
+  beast('wolf', [AP.pelt[0], AP.pelt[1], AP.pelt[2]], { w: 15, h: 6, ears: true, tail: true, bushy: true, mane: true });
+  beast('boar', [AP.hide[0], AP.hide[1], AP.hide[2]], { w: 16, h: 8, tusk: true, tail: true, mane: true });
   // the bear: rare, huge, dark — a humped silhouette a head taller than a boar
-  beast('bear', APx.hide[1], APx.hide[0], { w: 9, h: 5, ears: true, hump: true, snout: APx.hide[2] });
-  beast('deer', '#a87848', '#7a5430', { w: 6, h: 3, ears: true, tail: true, antlers: true });
-  beast('cow', '#e8e0d0', '#8a8078', { w: 8, h: 4, ears: true, tail: true, horns: true, spots: '#5a4a3a' });
+  beast('bear', [AP.rust[0], AP.hide[0], AP.hide[1]], { w: 18, h: 10, ears: true, hump: true, snout: AP.hide[2] });
+  beast('deer', ['#7a5430', '#a87848', '#c89868'], { w: 13, h: 6, ears: true, tail: true, antlers: true });
+  beast('cow', ['#8a8078', '#d8d0c4', '#f0ece2'], { w: 16, h: 8, ears: true, tail: true, longtail: true, horns: true, spots: '#5a4a3a' });
 
   /* ---------------- icons (16px) ---------------- */
 
