@@ -40,6 +40,9 @@ const Units = {
   isSapper(u) { return u.kind === 'sapper'; },
   isNaval(u) { return !!CFG.UNITS[u.kind].naval; },
   isTransport(u) { return u.kind === 'transport' || u.kind === 'bigtransport'; },
+  // a land unit that can ride a transport hull: soldiers and siege, AND villagers
+  // (settlers ferried across to a new shore). A boat can't board a boat.
+  isBoardable(u) { return !this.isNaval(u) && (this.isMilitary(u) || this.isVillager(u)); },
   // groups up as a fleet: any war/transport hull, but NOT a working fishing boat
   isFleetable(u) { return this.isNaval(u) && u.kind !== 'fishboat'; },
   domain(u) { return CFG.UNITS[u.kind].naval ? 'water' : 'land'; },
@@ -553,7 +556,7 @@ const Units = {
       }
     }
     u.task = null;
-    if (u.owner === 'P' && landed) G.log(`${landed} soldier${landed > 1 ? 's' : ''} ashore`);
+    if (u.owner === 'P' && landed) G.log(`${landed} put ashore`);
     else if (u.owner === 'P' && cargo.length) G.log('No open shore beside the hull — sail closer to land', true);
     // an emptied raider / rival hull has done its job — beach and abandon it
     if ((u.owner === 'R' || u.owner === 'A') && !cargo.length && S.units.includes(u)) S.units.splice(S.units.indexOf(u), 1);

@@ -434,7 +434,7 @@ const UI = {
         let n = 0;
         for (const id of ids) {
           const u = Units.get(id);
-          if (u && Units.isMilitary(u) && !Units.isNaval(u) && Units.orderBoard(u, hitUnit)) n++;
+          if (u && Units.isBoardable(u) && Units.orderBoard(u, hitUnit)) n++;
         }
         this.toast(n ? `${n} boarding — the ${CFG.UNITS[hitUnit.kind].name} holds ${CFG.UNITS[hitUnit.kind].cap}`
           : 'Transport is full (or away from shore)', !n);
@@ -472,7 +472,7 @@ const UI = {
         return;
       }
       if (hitUnit && hitUnit.owner === 'P' && Units.isTransport(hitUnit) &&
-          Units.isMilitary(sel) && !Units.isNaval(sel)) {
+          Units.isBoardable(sel)) {
         if (Units.orderBoard(sel, hitUnit)) this.toast('Boarding the ' + CFG.UNITS[hitUnit.kind].name);
         else this.toast('Transport is full (or away from shore)', true);
         return;
@@ -1133,7 +1133,7 @@ const UI = {
         : u.kind === 'fishboat' ? 'Tap water where fish jump 🐟 to fish, or open water to row there.'
         : u.kind === 'catapult' ? 'Slow, but stone breaks stone — tap a rival wall, tower, or building to bombard it.'
         : u.kind === 'siegetower' ? 'Roll it flush against an enemy wall — nearby soldiers climb over, one per second. Only melee and marksmen can harm it.'
-        : Units.isTransport(u) ? 'Select soldiers and tap this hull to board. Tap a shore tile to land them, or water to row.'
+        : Units.isTransport(u) ? 'Select soldiers or villagers and tap this hull to board. Tap a shore tile to land them, or water to row.'
         : Units.isNaval(u) ? 'Tap an enemy or rival building near the shore to attack, or water to sail.'
         : 'Tap a tile to move, or an enemy to attack.';
       if (!own && !Units.isPassive(u)) {
