@@ -26,14 +26,21 @@ const MapGen = {
     const t = new Array(W * H).fill(T.GRASS);
     const id = this.idx;
 
-    // random-walk blob painter; `only` restricts which terrain it may replace
+    // random-walk blob painter; `only` restricts which terrain it may replace.
+    // Each step lays a small DENSE disc (not a thin 2×2 thread) with a feathered
+    // rim, so the walk builds one contiguous mass — a real wood / rock stand /
+    // grove — with a soft, broken edge, instead of a stringy scatter of dots.
     function blob(cx, cy, size, type, avoid, only) {
       let x = cx | 0, y = cy | 0;
       for (let i = 0; i < size; i++) {
-        for (let dy = 0; dy <= 1; dy++) for (let dx = 0; dx <= 1; dx++) {
+        const rad = 2 + (rnd() * 2 | 0);                 // 2 or 3: core thickness of the stand
+        for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
+          const dd = dx * dx + dy * dy;
+          if (dd > rad * rad + rad) continue;
           const nx = x + dx, ny = y + dy;
           if (!MapGen.inB(nx, ny) || (avoid && avoid(nx, ny))) continue;
           if (only && !only.includes(t[id(nx, ny)])) continue;
+          if (dd > (rad - 0.6) * (rad - 0.6) && rnd() < 0.35) continue;   // ragged rim only
           t[id(nx, ny)] = type;
         }
         x += (rnd() * 3 | 0) - 1; y += (rnd() * 3 | 0) - 1;
@@ -166,9 +173,9 @@ const MapGen = {
       while (countType(type) < 12 && guard++ < 40)
         blob(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0, 6, type, nearStart, [T.GRASS]);
     };
-    paint(T.FOREST, 9, 16, 18);
-    paint(T.HILLS, 5, 8, 10);
-    paint(T.FERTILE, 6, 6, 8);
+    paint(T.FOREST, 7, 5, 8);
+    paint(T.HILLS, 5, 4, 5);
+    paint(T.FERTILE, 6, 3, 5);
 
     // guarantee some of each resource near both starts
     function seedNear(cx, cy, type, n) {
