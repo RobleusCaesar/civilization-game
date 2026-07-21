@@ -97,7 +97,7 @@ const R = {
     // the sea beyond a man-made isthmus reads exactly as it did before it was built.
     const shoreLand = (xx, yy) => MapGen.inB(xx, yy) && !wet(at(xx, yy)) &&
       !(S.map.reclaimed && S.map.reclaimed[MapGen.idx(xx, yy)]);
-    if (t === T.GRASS && h % 31 === 0)
+    if (t === T.GRASS && h % 61 === 0)
       img = Sprites.terrainRare[T.GRASS][h % Sprites.terrainRare[T.GRASS].length];   // rare flower meadow
     else if (wet(t)) {
       const shore = shoreLand(x + 1, y) || shoreLand(x - 1, y) ||
@@ -108,6 +108,26 @@ const R = {
       img = gr[(x * 7 + y * 13) % gr.length];
     } else img = variants[(x * 7 + y * 13) % variants.length];
     g.drawImage(img, x * TL, y * TL);
+
+    if (t === T.GRASS && !(h % 61 === 0)) {
+      // The grass read as "tiled" because a few variant canvases repeated
+      // identically — the repetition, not the colour. The base is now a flat
+      // uniform green; the ONLY texture is a sparse, near-tone felt grain whose
+      // positions come from a fully-mixed hash of THIS tile's world (x,y). Each
+      // fleck's coordinates are avalanche-mixed so they decorrelate from x and y
+      // (a weak mix left faint vertical streaks) — no two grass tiles share a
+      // pattern, nothing lines up with the tile grid, and there's no directional
+      // bias to catch. Baked into the cache once — zero per-frame cost.
+      for (let k = 0; k < 6; k++) {
+        let hh = (h ^ Math.imul(k + 1, 0x9e3779b1)) >>> 0;
+        hh = Math.imul(hh ^ (hh >>> 15), 0x85ebca6b) >>> 0;
+        hh = Math.imul(hh ^ (hh >>> 13), 0xc2b2ae35) >>> 0;
+        hh = (hh ^ (hh >>> 16)) >>> 0;
+        const gx = hh & 15, gy = (hh >> 4) & 15;
+        g.fillStyle = (hh & 0x10000) ? AP.grass[3] : AP.grass[1];
+        g.fillRect(x * TL + gx * px, y * TL + gy * px, px, px);
+      }
+    }
 
     if (wet(t)) {
       // wet-sand rim + pale foam line along every LAND-facing edge (never between

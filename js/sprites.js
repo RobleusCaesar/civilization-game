@@ -99,30 +99,16 @@ const Sprites = {
   /* ---------------- terrain (built on ART — see ARTSTYLE.md) ---------------- */
   const AP = ART.PALETTE;
 
-  // A calm, carpet-like turf: a broad LOW-frequency drift between two close mid
-  // greens (grass[2] dominant, grass[3] on the gentle rises, a little grass[1] in
-  // the hollows) with only a whisper of blade texture. Deliberately low-contrast
-  // so it reads as an even lawn and the tile grid stops registering — the noisy,
-  // speckled version made the ground look quilted.
+  // A calm, even, carpet/felt turf. The base is a FLAT uniform mid-green — every
+  // grass tile carries the exact same average tone, so there is no per-tile tone
+  // step for the eye to read as a quilt. The only texture is a sparse, near-tone
+  // felt grain; the pattern that actually breaks the tile grid is driven from
+  // WORLD position in render.js (drawTile), so no two tiles share it. This just
+  // provides the flat bed and a whisper of baked grain.
   function grassBase(p, seed) {
-    const f = p.f, r = ART.rng(seed);
-    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
-      const n = Math.sin((x + seed * 3) * 0.34) + Math.cos((y + seed) * 0.31) + (r() - 0.5) * 0.7;
-      f(x, y, 1, 1, n > 1.0 ? AP.grass[3] : n < -1.15 ? AP.grass[1] : AP.grass[2]);
-    }
-    for (let i = 0; i < 4; i++) {                        // a whisper of taller blades
-      const x = 2 + (r() * 28) | 0, y = 4 + (r() * 24) | 0;
-      f(x, y, 1, 2, AP.grass[3]);
-    }
-    for (let i = 0; i < 6; i++)                          // faint micro-texture, no bright/dark specks
-      f(1 + (r() * 30) | 0, 1 + (r() * 30) | 0, 1, 1, r() < 0.5 ? AP.grass[3] : AP.grass[1]);
+    p.f(0, 0, 32, 32, AP.grass[2]);                      // flat, uniform felt — identical every tile
   }
-  Sprites.terrain[T.GRASS] = [
-    tile(p => grassBase(p, 3)), tile(p => grassBase(p, 77)),
-    tile(p => grassBase(p, 129)), tile(p => grassBase(p, 211)),
-    tile(p => grassBase(p, 258)), tile(p => grassBase(p, 344)),
-    tile(p => grassBase(p, 401)), tile(p => grassBase(p, 466)),
-  ];
+  Sprites.terrain[T.GRASS] = [tile(p => grassBase(p, 3))];
   // rare flower meadows — drawTile rolls these on ~3% of grass tiles
   function flowers(p, seed) {
     grassBase(p, seed);
