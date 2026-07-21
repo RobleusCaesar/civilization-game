@@ -111,21 +111,27 @@ const R = {
 
     if (t === T.GRASS && !(h % 61 === 0)) {
       // The grass read as "tiled" because a few variant canvases repeated
-      // identically — the repetition, not the colour. The base is now a flat
-      // uniform green; the ONLY texture is a sparse, near-tone felt grain whose
-      // positions come from a fully-mixed hash of THIS tile's world (x,y). Each
-      // fleck's coordinates are avalanche-mixed so they decorrelate from x and y
-      // (a weak mix left faint vertical streaks) — no two grass tiles share a
-      // pattern, nothing lines up with the tile grid, and there's no directional
-      // bias to catch. Baked into the cache once — zero per-frame cost.
-      for (let k = 0; k < 6; k++) {
+      // identically — the repetition, not the colour. The base is a flat uniform
+      // green; the ONLY texture is a sparse, near-tone felt grain whose positions
+      // come from a fully-mixed hash of THIS tile's world (x,y) — avalanche-mixed
+      // so they decorrelate from x and y (a weak mix left faint vertical streaks).
+      // No two grass tiles share a pattern and nothing lines up with the grid.
+      // A gentle DIAGONAL low-frequency field (mixes x AND y, so no axis-aligned
+      // banding) leans the grain lighter/darker for soft meadow undulation — a
+      // little life, still low-contrast so units/buildings pop. Baked once.
+      const lean = (Math.sin((x * 0.8 + y * 0.6) * 0.09) + Math.sin((x * 0.5 - y * 0.9) * 0.075)) * 0.2;
+      for (let k = 0; k < 10; k++) {
         let hh = (h ^ Math.imul(k + 1, 0x9e3779b1)) >>> 0;
         hh = Math.imul(hh ^ (hh >>> 15), 0x85ebca6b) >>> 0;
         hh = Math.imul(hh ^ (hh >>> 13), 0xc2b2ae35) >>> 0;
         hh = (hh ^ (hh >>> 16)) >>> 0;
         const gx = hh & 15, gy = (hh >> 4) & 15;
-        g.fillStyle = (hh & 0x10000) ? AP.grass[3] : AP.grass[1];
+        g.fillStyle = (((hh >> 8) & 255) / 255) < 0.5 + lean ? AP.grass[3] : AP.grass[1];
         g.fillRect(x * TL + gx * px, y * TL + gy * px, px, px);
+      }
+      if ((h & 3) === 0) {                       // a short blade on ~1/4 of tiles for texture
+        g.fillStyle = AP.grass[3];
+        g.fillRect(x * TL + ((h >> 6) & 15) * px, y * TL + ((h >> 10) & 15) * px, px, px * 2);
       }
     }
 
