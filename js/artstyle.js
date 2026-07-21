@@ -34,6 +34,7 @@ const ART = (function () {
     fire:    ['#a33f1c', '#e88a3a', '#f2c14a', '#ffe9a0'],
     gold:    ['#8a6a1e', '#c99b32', '#e8c15a', '#fff2c0'],
     bloom:   ['#b8496e', '#d96a8a', '#e8d24a', '#f2f2ea'],   // flowers / butterflies
+    berry:   ['#6a1030', '#c01f3a', '#e8657a', '#7a3a9e'],   // ripe forage berries: crimson → red → pink hi → purple
     ink:     ['#14100a', '#241d15', '#3a3324'],              // outlines / UI chrome
   };
 

@@ -123,27 +123,46 @@ const Sprites = {
   }
   Sprites.terrainRare = { [T.GRASS]: [tile(p => flowers(p, 301)), tile(p => flowers(p, 407))] };
 
-  // forest: big layered canopy crowns drawn on the fine grid, reaching the tile
-  // edges so neighbouring forest tiles fuse into one continuous overhanging
-  // canopy (no per-tile gaps), with a lit trunk and dappled sun-flecks
+  // a single tree crown with a chosen leaf sub-ramp (dark / normal / light), so a
+  // stand of trees is a mix of shades rather than identical stamps
+  const LEAF_D = [AP.leaf[0], AP.leaf[0], AP.leaf[1], AP.leaf[2], AP.leaf[3]];   // shade tree
+  const LEAF_L = [AP.leaf[1], AP.leaf[2], AP.leaf[3], AP.leaf[4], AP.leaf[4]];   // sunlit tree
+  function crown(f, cx, cy, rr, s2, ramp) {
+    f(cx - rr + 1, cy + rr, rr + 1, 1, AP.leaf[0]);               // ground shadow
+    ART.shadedCircle(f, cx + 1, cy + 1, rr, [AP.leaf[0], AP.leaf[0], AP.leaf[0]], 1);  // dark underside
+    ART.shadedCircle(f, cx, cy, rr, ramp, 3);                     // lit crown
+    const r = ART.rng(s2 | 1);
+    for (let i = 0; i < rr * 2; i++) {                            // dappled leaf highlights
+      const a = r() * 6.283, d = r() * rr * 0.8;
+      f((cx + Math.cos(a) * d) | 0, (cy + Math.sin(a) * d) | 0, 1, 1, r() < 0.6 ? ramp[4] : ramp[3]);
+    }
+  }
+  // forest: a stand of varied crowns (2-4 per tile, random size/position/shade)
+  // drawn back-to-front, crowns overhanging the edges so neighbouring tiles fuse
+  // into a continuous canopy — no two tiles are the same stamp, so it reads as a
+  // woodland, not a grid. A trunk peeks out under the frontmost crown on some.
   function forestTile(p, seed, log) {
     grassBase(p, seed);
     const f = p.f, r = ART.rng(seed + 2);
-    f(18, 24, 4, 2, AP.leaf[0]); f(9, 27, 3, 2, AP.leaf[0]);       // crown ground-shadows
-    f(11, 20, 3, 7, AP.wood[1]); f(11, 20, 1, 7, AP.wood[2]);      // a visible trunk
-    f(11, 20, 3, 1, AP.wood[3]);
-    ART.foliageCluster(f, 8 + (r() * 4 | 0), 9, 8, seed);          // three overlapping crowns
-    ART.foliageCluster(f, 22 + (r() * 3 | 0), 15 + (r() * 3 | 0), 8, seed + 9);
-    ART.foliageCluster(f, 9, 23, 6, seed + 17);
-    for (let i = 0; i < 5; i++) f((r() * 30) | 0, (r() * 30) | 0, 1, 1, AP.leaf[4]);   // sun-flecks
-    if (log) {                                                      // fallen mossy log
+    const n = 2 + (r() * 3 | 0), crowns = [];
+    for (let i = 0; i < n; i++)
+      crowns.push([5 + (r() * 22) | 0, 5 + (r() * 20) | 0, 6 + (r() * 4 | 0),
+        r() < 0.4 ? LEAF_D : r() < 0.75 ? AP.leaf : LEAF_L]);
+    crowns.sort((a, b) => a[1] - b[1]);                           // back-to-front
+    if (r() < 0.6) {
+      const t = crowns[crowns.length - 1];
+      f(t[0], t[1] + 2, 3, 6, AP.wood[1]); f(t[0], t[1] + 2, 1, 6, AP.wood[2]);
+    }
+    for (const [cx, cy, rr, ramp] of crowns) crown(f, cx, cy, rr, seed + cx * 7 + cy, ramp);
+    if (log) {                                                    // fallen mossy log
       f(16, 28, 12, 2, AP.wood[1]); f(16, 27, 12, 1, AP.wood[3]);
       f(26, 27, 2, 1, AP.wood[4]); f(19, 27, 1, 1, AP.leaf[3]); f(23, 27, 1, 1, AP.leaf[3]);
     }
   }
   Sprites.terrain[T.FOREST] = [
-    tile(p => forestTile(p, 11)), tile(p => forestTile(p, 23)),
-    tile(p => forestTile(p, 149, true)), tile(p => forestTile(p, 205)),
+    tile(p => forestTile(p, 11)), tile(p => forestTile(p, 23)), tile(p => forestTile(p, 149, true)),
+    tile(p => forestTile(p, 205)), tile(p => forestTile(p, 262)), tile(p => forestTile(p, 318)),
+    tile(p => forestTile(p, 377, true)), tile(p => forestTile(p, 431)),
   ];
 
   // Water — the hero. [0] = shallow (near land, lighter), [1] = deep interior.
@@ -189,6 +208,8 @@ const Sprites = {
   function boulderBody(f, cx, cy, rr, snow) {
     const St = AP.stone;
     ART.shadedCircle(f, cx, cy, rr, St, 2);
+    if (rr >= 4 && ((cx * 5 + cy * 3) & 3) === 0)           // ~1/4 of crags are lumpy/elongated
+      ART.shadedCircle(f, cx + rr - 1, cy + 1, (rr * 0.55) | 0, St, 2);
     f(cx, cy - rr + 1, 1, (rr * 1.3) | 0, St[0]);            // vertical fissure
     f(cx - rr + 1, cy, (rr * 0.9) | 0, 1, St[1]);            // facet break
     f(cx - 1, cy - rr + 2, 1, 1, St[4]);                     // crown glint
@@ -210,6 +231,7 @@ const Sprites = {
     tile(p => { grassBase(p, 31); rockField(p, 31, [[10, 16, 5], [20, 22, 4], [23, 9, 4], [6, 7, 3]]); }),
     tile(p => { grassBase(p, 87); rockField(p, 87, [[20, 18, 5], [8, 10, 4], [9, 23, 3], [25, 25, 3]]); }),
     tile(p => { grassBase(p, 143); rockField(p, 143, [[15, 13, 5], [24, 20, 4], [6, 22, 4], [27, 6, 3]]); }),
+    tile(p => { grassBase(p, 199); rockField(p, 199, [[9, 20, 5], [22, 11, 5], [26, 24, 3], [13, 6, 3]]); }),
   ];
 
   // wild fertile ground: fruit orchards and berry thickets, mixed across the
@@ -218,35 +240,44 @@ const Sprites = {
     grassBase(p, seed);
     const f = p.f, r = ART.rng(seed + 5);
     const fruitTree = (cx, cy, s2) => {
-      f(cx - 4, cy + 8, 9, 1, AP.leaf[0]);                         // canopy ground shadow
-      f(cx, cy + 4, 2, 6, AP.wood[1]); f(cx, cy + 4, 1, 6, AP.wood[2]);   // trunk (lit left)
-      ART.foliageCluster(f, cx, cy, 5, s2);                        // round fruiting crown
+      const rr = 4 + (r() * 2 | 0);
+      f(cx + 1, cy + rr + 2, 2, 5, AP.wood[1]); f(cx + 1, cy + rr + 2, 1, 5, AP.wood[2]);   // trunk
+      crown(f, cx, cy, rr, s2, r() < 0.5 ? AP.leaf : LEAF_L);       // varied fruiting crown
       const fr = ART.rng(s2 + 1);
-      for (let i = 0; i < 7; i++)                                  // ripe fruit dotted in the crown
-        f(cx - 4 + ((fr() * 8) | 0), cy - 4 + ((fr() * 8) | 0), 1, 1, fr() < 0.5 ? AP.red[2] : AP.fire[2]);
+      const fruit = fr() < 0.5 ? AP.red[2] : AP.fire[2];            // apples on some trees, golden on others
+      for (let i = 0; i < 8; i++)                                   // ripe fruit dotted in the crown
+        f(cx - rr + 1 + ((fr() * (rr * 2 - 1)) | 0), cy - rr + 1 + ((fr() * (rr * 2 - 1)) | 0), 1, 1,
+          fr() < 0.7 ? fruit : AP.fire[3]);
     };
-    fruitTree(9, 8 + ((r() * 3) | 0), seed + 11);
-    fruitTree(23, 18 + ((r() * 3) | 0), seed + 23);
-    f(13, 25, 1, 1, AP.red[1]); f(27, 10, 1, 1, AP.red[2]);        // windfall fruit
+    const nt = 2 + (r() * 2 | 0);
+    for (let i = 0; i < nt; i++) fruitTree(7 + (r() * 18) | 0, 8 + (r() * 13) | 0, seed + i * 23 + 11);
+    f(13, 27, 1, 1, AP.red[1]); f(27, 12, 1, 1, AP.red[2]);         // windfall fruit
   }
   function berryTile(p, seed) {
     grassBase(p, seed);
     const f = p.f, r = ART.rng(seed + 7);
     const bush = (cx, cy, s2) => {
-      f(cx - 3, cy + 4, 8, 1, AP.leaf[0]);                         // ground shadow
-      ART.shadedCircle(f, cx, cy, 4, AP.leaf, 2);
+      const rr = 3 + (r() * 2 | 0);                                 // varied size
+      f(cx - rr, cy + rr + 1, rr * 2 + 1, 1, AP.leaf[0]);           // ground shadow
+      ART.shadedCircle(f, cx + 1, cy + 1, rr, [AP.leaf[0], AP.leaf[0], AP.leaf[0]], 1);   // dark underside
+      ART.shadedCircle(f, cx, cy, rr, AP.leaf, 2);                  // green bush
+      ART.shadedCircle(f, cx - 1, cy - 1, (rr * 0.6) | 0, AP.leaf, 3);   // sunlit crown
       const br = ART.rng(s2);
-      for (let i = 0; i < 9; i++)                                  // clustered ripe berries
-        f(cx - 3 + ((br() * 7) | 0), cy - 3 + ((br() * 6) | 0), 1, 1, br() < 0.5 ? AP.bloom[0] : AP.bloom[1]);
+      const hue = br() < 0.5 ? AP.berry[1] : AP.berry[3];           // whole bush reads red OR purple
+      for (let i = 0; i < 12; i++) {                                // dense, vivid clustered berries
+        const bx = cx - rr + ((br() * (rr * 2)) | 0), by = cy - rr + 1 + ((br() * (rr * 2 - 1)) | 0);
+        f(bx, by, 1, 1, br() < 0.75 ? hue : AP.berry[0]);
+        if (br() < 0.3) f(bx, by - 1, 1, 1, AP.berry[2]);           // bright pink highlight
+      }
     };
-    bush(8, 9 + ((r() * 3) | 0), seed + 13);
-    bush(23, 13, seed + 29);
-    bush(11, 23 + ((r() * 3) | 0), seed + 41);
-    f(27, 26, 1, 1, AP.bloom[0]); f(4, 17, 1, 1, AP.bloom[1]);     // dropped berries
+    const nb = 3 + (r() * 2 | 0);
+    for (let i = 0; i < nb; i++) bush(5 + (r() * 22) | 0, 6 + (r() * 19) | 0, seed + i * 17 + 3);
+    f(27, 26, 1, 1, AP.berry[1]); f(4, 17, 1, 1, AP.berry[3]);      // dropped berries
   }
   Sprites.terrain[T.FERTILE] = [
     tile(p => orchardTile(p, 17)), tile(p => berryTile(p, 53)),
     tile(p => orchardTile(p, 91)), tile(p => berryTile(p, 133)),
+    tile(p => berryTile(p, 188)), tile(p => orchardTile(p, 241)),
   ];
 
   // depleted terrain: felled forest, quarried-out hills, spent soil, ruins
