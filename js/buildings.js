@@ -80,18 +80,21 @@ const Bld = {
     if (br.owner === 'P') G.log('A bridge is destroyed — the crossing is severed!', true);
   },
   // the healing grounds for a unit — the only place it can be healed. Land units
-  // heal at the Town Center; ships heal at the nearest owned Dock. The radius
-  // grows 15% per building level (L2 15% wider, L3 another 15%). Null if there's
-  // no home building to heal at.
+  // heal at the Town Center (a radius that grows 15% per level). Ships heal at ANY
+  // owned Dock — but they must be RIGHT ON it: touching the dock or at most a tile
+  // off its edge, not merely somewhere inside a wide radius. More places to mend,
+  // but the ship has to come in close. Null if there's no home building to heal at.
   healZoneFor(u) {
-    if (window.Units && Units.isNaval(u)) {
+    if (Units.isNaval(u)) {
       let best = null, bd = Infinity;                          // nearest owned, finished dock
       for (const b of S.buildings) {
         if (b.owner !== u.owner || b.key !== 'dock' || !this.done(b)) continue;
         const d = Math.hypot(u.x - this.cx(b), u.y - this.cy(b));
         if (d < bd) { bd = d; best = b; }
       }
-      return best ? { x: this.cx(best), y: this.cy(best), r: CFG.HEAL_RADIUS_DOCK * Math.pow(1 + CFG.HEAL_RADIUS_STEP, best.level - 1) } : null;
+      // radius measured from the dock's EDGE (reach) so the touch band is the same
+      // however big the footprint — no level scaling: closeness is the whole point.
+      return best ? { x: this.cx(best), y: this.cy(best), r: this.reach(best) + CFG.HEAL_DOCK_TOUCH } : null;
     }
     const tc = this.tcOf(u.owner);
     if (!tc) return null;
