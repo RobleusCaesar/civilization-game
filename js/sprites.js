@@ -1598,114 +1598,94 @@ const Sprites = {
   /* ---------------- siege engines ---------------- */
   // catapult (onager): timber frame on wheels, winch, long throwing arm.
   // fight frame 1 snaps the arm upright and the boulder leaves the cup.
+  // HI-RES siege engines (32-grid). Neutral timber machines — no faction dye except
+  // the trebuchet's counterweight drape + pennant. Thin (1px) outline.
+  function _wheel(q, cx, cy) { ART.shadedCircle(q, cx, cy, 3, AP.wood, 1); q(cx - 1, cy - 1, 1, 1, APx.wood[3]); q(cx, cy, 1, 1, APx.wood[0]); }
+  // CATAPULT (onager, siege T1): timber frame on wheels, A-frame, a throwing arm
+  // cocked back with a boulder — snaps upright on the strike, the stone away.
   function catapultSheet() {
-    const draw = (p, f, pose) => {
-      p(2, 14, 12, 1, 'rgba(0,0,0,0.3)');
-      p(2, 11, 12, 2, APx.wood[2]); p(2, 11, 12, 1, APx.wood[3]);   // frame rails
-      p(3, 10, 1, 2, APx.wood[1]); p(12, 10, 1, 2, APx.wood[1]);    // cross braces
-      ART.shadedCircle(p, 3, 13, 1, AP.wood, 1);                    // wheels
-      ART.shadedCircle(p, 12, 13, 1, AP.wood, 1);
-      p(8, 7, 1, 4, APx.wood[1]); p(10, 7, 1, 4, APx.wood[1]);      // A-frame uprights
-      p(8, 7, 3, 1, APx.wood[3]);
-      p(11, 10, 2, 1, APx.wood[0]); p(13, 9, 1, 1, APx.wood[2]);    // winch + handle
-      const thrown = pose === 'fight' && f === 1;
-      if (thrown) {
-        p(9, 3, 1, 5, APx.wood[3]);                                 // arm snapped upright
-        p(8, 2, 2, 1, APx.wood[2]);                                 // empty cup
-        p(6, 1, 2, 2, AP.stone[3]); p(6, 1, 1, 1, AP.stone[4]);     // boulder away!
+    const draw = (q, f, pose) => {
+      q(4, 29, 24, 1, 'rgba(20,16,10,0.28)');
+      _wheel(q, 7, 26); _wheel(q, 24, 26);
+      q(4, 22, 24, 3, WD[2]); q(4, 22, 24, 1, WD[3]); q(5, 23, 1, 3, WD[1]); q(26, 23, 1, 3, WD[1]);  // frame rails
+      q(8, 20, 2, 3, WD[1]); q(22, 20, 2, 3, WD[1]);                // cross braces
+      q(15, 12, 2, 10, WD[1]); q(19, 12, 2, 10, WD[1]); q(14, 11, 8, 1, WD[3]);   // A-frame + pivot
+      q(21, 19, 4, 2, WD[0]); q(24, 17, 2, 1, WD[2]);              // winch + handle
+      if (pose === 'fight' && f === 1) {
+        q(16, 3, 2, 10, WD[3]);                                    // arm snapped upright
+        q(13, 2, 5, 2, WD[2]);                                     // empty cup
+        q(8, 0, 3, 3, STN[3]); q(8, 0, 2, 1, STN[4]); q(7, 2, 1, 1, WD[1]);  // boulder away!
       } else {
-        p(3, 5, 1, 1, APx.wood[3]); p(4, 6, 1, 1, APx.wood[3]);     // arm cocked back
-        p(5, 7, 1, 1, APx.wood[3]); p(6, 8, 1, 1, APx.wood[3]); p(7, 9, 1, 1, APx.wood[3]);
-        p(2, 3, 2, 2, APx.wood[2]);                                 // cup…
-        p(2, 3, 2, 1, AP.stone[2]);                                 // …loaded with stone
+        for (let i = 0; i < 6; i++) q(14 - i * 2, 7 + i * 2, 2, 2, WD[3]);    // arm cocked back-left
+        q(2, 5, 4, 4, WD[2]); q(2, 5, 4, 1, WD[3]);                // cup…
+        q(3, 5, 3, 2, STN[2]); q(3, 5, 3, 1, STN[3]);             // …loaded with stone
       }
     };
-    return {
-      idle: frames(2, (p, g, f) => draw(p, 0, 'idle')),
-      walk: frames(2, (p, g, f) => draw(p, f, 'walk')),
-      fight: frames(2, (p, g, f) => draw(p, f, 'fight')),
-    };
+    return { idle: framesU(2, (q, g, f) => draw(q, 0, 'idle'), 1), walk: framesU(2, (q, g, f) => draw(q, f, 'walk'), 1), fight: framesU(2, (q, g, f) => draw(q, f, 'fight'), 1) };
   }
-  // siege tower: a tall plank tower on wheels, ladder up the face, crenellated
-  // top — rolled against a wall, soldiers stream over it
+  // SIEGE TOWER (siege T3): a tall plank tower on wheels, ladder up the face,
+  // crenellated fighting top — rolled to a wall, soldiers stream over. No fight pose.
   function siegetowerSheet() {
-    const draw = (p, f) => {
-      const bob = f === 1 ? 1 : 0;
-      p(3, 14, 10, 1, 'rgba(0,0,0,0.3)');
-      ART.shadedCircle(p, 5, 13, 1, AP.wood, 1);                    // wheels
-      ART.shadedCircle(p, 10, 13, 1, AP.wood, 1);
-      ART.woodPlankTexture(p, 5, 3 + bob, 6, 10 - bob, 27);         // tower body
-      p(4, 2 + bob, 8, 1, APx.wood[3]);                             // fighting-top floor
-      p(4, 1 + bob, 1, 1, APx.wood[2]); p(7, 1 + bob, 1, 1, APx.wood[2]);  // crenels
-      p(11, 1 + bob, 1, 1, APx.wood[2]);
-      p(5, 3 + bob, 1, 10 - bob, APx.wood[1]); p(10, 3 + bob, 1, 10 - bob, APx.wood[1]);  // corner posts
-      for (let y = 4 + bob; y < 13; y += 2) p(7, y, 2, 1, APx.thatch[1]);   // ladder rungs
-      p(6, 12, 4, 2, APx.wood[0]);                                  // dark base carriage
+    const draw = (q, f) => {
+      const bob = f === 1 ? 1 : 0, top = 6 + bob;
+      q(6, 29, 20, 1, 'rgba(20,16,10,0.3)');
+      _wheel(q, 10, 26); _wheel(q, 21, 26);
+      q(10, top, 12, 20 - bob, WD[2]);                             // tower body
+      for (let yy = top + 1; yy < 26; yy += 2) q(10, yy, 12, 1, WD[1]);   // plank courses
+      q(10, top, 2, 20 - bob, WD[1]); q(20, top, 2, 20 - bob, WD[1]);     // corner posts
+      q(8, top - 2, 16, 2, WD[3]);                                 // fighting-top floor
+      q(8, top - 4, 2, 2, WD[2]); q(14, top - 4, 2, 2, WD[2]); q(20, top - 4, 2, 2, WD[2]);  // crenels
+      for (let yy = top + 2; yy < 25; yy += 3) q(14, yy, 4, 1, APx.thatch[1]);  // ladder rungs
+      q(12, 24, 8, 3, WD[0]);                                      // dark base carriage
     };
-    return {
-      idle: frames(2, (p, g, f) => draw(p, 0)),
-      walk: frames(2, (p, g, f) => draw(p, f)),
-    };
+    return { idle: framesU(2, (q, g, f) => draw(q, 0), 1), walk: framesU(2, (q, g, f) => draw(q, f), 1) };
   }
-  // ballista: a giant crossbow on a wheeled frame — the unit-killer
+  // BALLISTA (siege T2): a giant crossbow on a wheeled frame — the unit-killer.
+  // String drawn with a bolt nocked; on the strike the string snaps and the bolt flies.
   function ballistaSheet() {
-    const draw = (p, f, pose) => {
-      p(2, 14, 12, 1, 'rgba(0,0,0,0.3)');
-      p(3, 11, 10, 2, APx.wood[2]); p(3, 11, 10, 1, APx.wood[3]);   // carriage
-      ART.shadedCircle(p, 4, 13, 1, AP.wood, 1);                    // wheels
-      ART.shadedCircle(p, 11, 13, 1, AP.wood, 1);
-      p(7, 6, 2, 5, APx.wood[1]);                                   // stock riser
-      p(2, 5, 5, 1, APx.wood[3]); p(9, 5, 5, 1, APx.wood[3]);       // bow arms
-      p(2, 4, 1, 1, APx.wood[2]); p(13, 4, 1, 1, APx.wood[2]);      // arm tips
-      const loosed = pose === 'fight' && f === 1;
-      if (loosed) {
-        p(3, 6, 10, 1, APx.thatch[1]);                              // string slack forward
-        p(6, 1, 4, 1, AP.bone[2]); p(10, 1, 1, 1, AP.stone[3]);     // bolt away!
+    const draw = (q, f, pose) => {
+      q(4, 29, 24, 1, 'rgba(20,16,10,0.28)');
+      _wheel(q, 8, 26); _wheel(q, 23, 26);
+      q(5, 22, 22, 3, WD[2]); q(5, 22, 22, 1, WD[3]);              // carriage
+      q(14, 12, 4, 10, WD[1]); q(14, 12, 4, 1, WD[3]);             // stock riser
+      q(4, 10, 10, 2, WD[3]); q(18, 10, 10, 2, WD[3]);             // bow arms
+      q(3, 9, 1, 3, WD[2]); q(28, 9, 1, 3, WD[2]);                 // arm tips
+      q(20, 18, 5, 3, WD[0]);                                      // windlass
+      if (pose === 'fight' && f === 1) {
+        q(5, 11, 22, 1, APx.thatch[1]);                            // string slack forward
+        q(12, 3, 8, 1, BONE[2]); q(20, 3, 2, 1, STN[3]);           // bolt away!
       } else {
-        p(3, 7, 4, 1, APx.thatch[1]); p(9, 7, 4, 1, APx.thatch[1]); // string drawn
-        p(5, 6, 6, 1, AP.bone[2]); p(11, 6, 1, 1, AP.stone[3]);     // bolt nocked
+        q(5, 13, 9, 1, APx.thatch[1]); q(18, 13, 9, 1, APx.thatch[1]);  // string drawn
+        q(10, 11, 10, 1, BONE[2]); q(20, 11, 2, 1, STN[3]);        // bolt nocked
       }
-      p(10, 9, 2, 2, APx.wood[0]);                                  // windlass
     };
-    return {
-      idle: frames(2, (p, g, f) => draw(p, 0, 'idle')),
-      walk: frames(2, (p, g, f) => draw(p, f, 'walk')),
-      fight: frames(2, (p, g, f) => draw(p, f, 'fight')),
-    };
+    return { idle: framesU(2, (q, g, f) => draw(q, 0, 'idle'), 1), walk: framesU(2, (q, g, f) => draw(q, f, 'walk'), 1), fight: framesU(2, (q, g, f) => draw(q, f, 'fight'), 1) };
   }
-  // trebuchet: the tall counterweight engine. Two A-frame pivot towers straddle
-  // a long throwing arm; a heavy weighted box (draped in the village colour)
-  // hangs at the short end, a sling with a flaming ball at the long end. Fight
-  // frame 1 whips the arm over — the flaming ball leaves and the weight drops.
+  // TREBUCHET (siege T3): the tall counterweight engine. A great A-frame straddles a
+  // long throwing arm; the weighted box (draped in the faction colour) hauls up while
+  // the sling loads a flaming ball. The strike whips the arm over — ball away, weight
+  // slammed down.
   function trebuchetSheet(accent) {
-    const draw = (p, f, pose) => {
-      p(2, 15, 12, 1, 'rgba(0,0,0,0.3)');                            // long ground shadow
-      p(2, 12, 12, 2, APx.wood[2]); p(2, 12, 12, 1, APx.wood[3]);    // heavy base beam
-      p(3, 11, 1, 3, APx.wood[1]); p(12, 11, 1, 3, APx.wood[1]);     // outriggers
-      ART.shadedCircle(p, 3, 14, 1, AP.wood, 1);                     // wheels
-      ART.shadedCircle(p, 12, 14, 1, AP.wood, 1);
-      p(6, 4, 1, 8, APx.wood[1]); p(9, 4, 1, 8, APx.wood[1]);        // tall A-frame uprights
-      p(5, 5, 2, 1, APx.wood[2]); p(9, 5, 2, 1, APx.wood[2]);        // angled braces
-      p(6, 4, 4, 1, APx.wood[3]);                                    // pivot crossbeam
-      const thrown = pose === 'fight' && f === 1;
-      if (thrown) {
-        // arm whipped over: long end up-left, counterweight box slammed down right
-        p(3, 1, 1, 4, APx.wood[3]); p(4, 4, 3, 1, APx.wood[3]);      // long arm swung up-left
-        p(1, 0, 3, 3, AP.fire[2]); p(2, 0, 1, 1, AP.fire[3]); p(1, 1, 1, 1, AP.fire[1]);  // flaming ball away!
-        p(10, 10, 3, 3, APx.wood[0]); p(10, 10, 3, 1, accent);      // weight box dropped, faction drape
+    const draw = (q, f, pose) => {
+      q(4, 30, 24, 1, 'rgba(20,16,10,0.3)');
+      q(4, 24, 24, 3, WD[2]); q(4, 24, 24, 1, WD[3]);              // heavy base beam
+      q(6, 22, 2, 5, WD[1]); q(24, 22, 2, 5, WD[1]);              // outriggers
+      _wheel(q, 6, 28); _wheel(q, 24, 28);
+      q(12, 8, 2, 16, WD[1]); q(18, 8, 2, 16, WD[1]);            // tall A-frame uprights
+      q(10, 10, 3, 2, WD[2]); q(19, 10, 3, 2, WD[2]);           // angled braces
+      q(12, 8, 8, 2, WD[3]);                                     // pivot crossbeam
+      q(14, 0, 2, 8, WD[2]); q(16, 0, 4, 2, accent); q(16, 2, 2, 1, accent);   // faction pennant on the mast
+      if (pose === 'fight' && f === 1) {
+        q(5, 1, 2, 8, WD[3]); q(7, 8, 7, 2, WD[3]);              // long arm swung up-left
+        q(1, 0, 5, 5, FIRE[2]); q(2, 0, 2, 2, FIRE[3]); q(1, 1, 2, 2, FIRE[1]);  // flaming ball away!
+        q(20, 20, 6, 6, WD[0]); q(20, 20, 6, 2, accent);        // weight box slammed down
       } else {
-        // cocked: counterweight box hauled UP (left), long arm down-right, ball loaded
-        p(4, 2, 3, 3, APx.wood[0]); p(4, 2, 3, 1, accent);          // raised weight box + faction drape
-        p(9, 5, 1, 6, APx.wood[3]); p(9, 10, 3, 1, APx.wood[2]);    // long arm down to the sling
-        p(12, 10, 2, 2, AP.fire[1]); p(12, 10, 1, 1, AP.fire[2]);   // loaded flaming ball, glowing
+        q(7, 3, 6, 6, WD[0]); q(7, 3, 6, 2, accent);            // weight box hauled up (faction drape)
+        q(18, 10, 2, 12, WD[3]); q(18, 20, 6, 2, WD[2]);        // long arm down to the sling
+        q(24, 19, 4, 4, FIRE[1]); q(24, 19, 2, 2, FIRE[2]);    // loaded flaming ball, glowing
       }
-      p(7, 0, 1, 4, APx.wood[2]); p(8, 0, 2, 1, accent); p(8, 1, 1, 1, accent);  // faction pennant on the mast
     };
-    return {
-      idle: frames(2, (p, g, f) => draw(p, 0, 'idle')),
-      walk: frames(2, (p, g, f) => draw(p, f, 'walk')),
-      fight: frames(2, (p, g, f) => draw(p, f, 'fight')),
-    };
+    return { idle: framesU(2, (q, g, f) => draw(q, 0, 'idle'), 1), walk: framesU(2, (q, g, f) => draw(q, f, 'walk'), 1), fight: framesU(2, (q, g, f) => draw(q, f, 'fight'), 1) };
   }
   Sprites.unit.catapult = catapultSheet();
   Sprites.unit.ballista = ballistaSheet();
