@@ -22,6 +22,7 @@ const Units = {
       cd: 0, animT: Math.random() * 10, wanderT: 1 + Math.random() * 3,
       repathT: 0,
     };
+    if (kind === 'villager') u.female = Math.random() < 0.5;   // ~50/50 men & women (stays with the unit through saves)
     if (window.Cards) Cards.onSpawn(u);   // ORIGIN CARDS: Ironhand toughness
     S.units.push(u);
     return u;

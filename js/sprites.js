@@ -1126,7 +1126,7 @@ const Sprites = {
      pose and its 2-frame swing timing match the old rig, and the figure sits at
      exactly 2× the old coordinates, so positioning, size and gameplay are unchanged
      — just far crisper. c = { body, accent, pants, hair } (village dye + earth tones). */
-  function villagerHi(q, f, pose, c) {
+  function villagerHi(q, f, pose, c, female) {
     const SK = APx.skin, HR = APx.hair, HD = APx.hide, INK = APx.ink;
     const body = c.body, accent = c.accent, pants = c.pants;
     const bob = (pose === 'idle' && f === 1) ? 2 : 0;
@@ -1135,35 +1135,63 @@ const Sprites = {
     // ---- contact shadow (faint — below the outline alpha threshold, so it's not ringed)
     q(12, 30, 9, 1, 'rgba(20,16,10,0.26)'); q(14, 31, 5, 1, 'rgba(20,16,10,0.15)');
 
-    // ---- legs: hide leggings, bare shins, simple feet. Walk alternates the lead leg
     const step = pose === 'walk';
     const upL = step && f === 1 ? 1 : 0, upR = step && f === 0 ? 1 : 0;
-    for (const [lx, up] of [[13, upL], [17, upR]]) {
-      q(lx, 22, 2, 4 - up, pants);                       // upper leg wrap
-      q(lx, 22, 1, 4 - up, HD[2]);                       // lit inner seam
-      q(lx, 26 - up, 2, 2, SK[1]);                       // bare shin (shaded)
-      q(lx, 26 - up, 1, 2, SK[2]);
-      q(lx, 28 - up, 2, 1, INK[1]);                      // foot
+
+    if (female) {
+      // ---- WOMAN: bare lower legs peek below a flared skirt; a long braid of hair.
+      // The skirt's A-line silhouette + long hair read as female at a glance, even at
+      // 32px, so the two sexes never blur together.
+      for (const [lx, up] of [[13, upL], [17, upR]]) {       // shins below the hem, stepping
+        q(lx, 25, 2, 3 - up, SK[1]); q(lx, 25, 1, 3 - up, SK[2]);
+        q(lx, 28 - up, 2, 1, INK[1]);
+      }
+      q(12, y + 6, 8, 8, body);                              // bodice
+      q(19, y + 6, 1, 8, accent);                            // right-side shade
+      q(12, y + 6, 8, 2, accent); q(14, y + 6, 4, 1, body);  // neckline yoke (faction trim)
+      q(13, y + 8, 1, 5, accent); q(16, y + 9, 1, 4, accent);// draped folds
+      q(12, y + 13, 8, 1, HD[1]);                            // waist sash
+      // flared skirt widening from the waist to the hem, with pleats
+      q(11, y + 14, 10, 2, body); q(10, y + 16, 12, 3, body);
+      q(10, y + 18, 12, 1, accent); q(10, y + 16, 1, 3, accent); q(21, y + 16, 1, 3, accent);
+      q(13, y + 15, 1, 4, accent); q(16, y + 15, 1, 4, accent); q(19, y + 15, 1, 4, accent);
+    } else {
+      // ---- MAN: hide leggings and separate legs, broad-shouldered tunic.
+      for (const [lx, up] of [[13, upL], [17, upR]]) {
+        q(lx, 22, 2, 4 - up, pants); q(lx, 22, 1, 4 - up, HD[2]);   // legging + lit seam
+        q(lx, 26 - up, 2, 2, SK[1]); q(lx, 26 - up, 1, 2, SK[2]);   // bare shin
+        q(lx, 28 - up, 2, 1, INK[1]);                              // foot
+      }
+      q(12, y + 6, 8, 10, body);
+      q(19, y + 6, 1, 10, accent); q(12, y + 14, 8, 2, accent);   // right & hem shade
+      q(12, y + 6, 6, 1, body);
+      q(13, y + 8, 1, 6, accent); q(16, y + 9, 1, 5, accent);     // draped folds
+      q(12, y + 6, 8, 2, accent); q(14, y + 6, 4, 1, body);       // neckline yoke (faction)
+      q(11, y + 6, 1, 3, body); q(20, y + 6, 1, 3, body);         // broader shoulders (male build)
+      q(11, y + 6, 1, 1, accent); q(20, y + 6, 1, 1, accent);
+      q(12, y + 13, 8, 2, HD[1]); q(12, y + 13, 8, 1, HD[2]);     // leather belt + lit edge
+      q(15, y + 13, 1, 2, INK[2]);                               // belt buckle
     }
 
-    // ---- torso: a dyed wrap, lit top-left / shaded lower-right, cinched by a belt
-    q(12, y + 6, 8, 10, body);
-    q(19, y + 6, 1, 10, accent); q(12, y + 14, 8, 2, accent);   // shade on the right & hem
-    q(12, y + 6, 6, 1, body);                                   // (kept flat-lit up top)
-    q(13, y + 8, 1, 6, accent); q(16, y + 9, 1, 5, accent);     // two draped folds
-    q(12, y + 6, 8, 2, accent);                                 // neckline yoke (trim = faction)
-    q(14, y + 6, 4, 1, body);
-    q(12, y + 13, 8, 2, HD[1]); q(12, y + 13, 8, 1, HD[2]);     // leather belt + lit top edge
-    q(15, y + 13, 1, 2, INK[2]);                                // belt buckle
-
-    // ---- head: rounded, hair over crown & nape, a suggested face
+    // ---- head + eyes (shared)
     q(14, y, 4, 5, SK[2]);                                      // face
     q(14, y, 3, 1, SK[3]); q(14, y, 1, 4, SK[3]);               // top-left highlight
     q(17, y + 1, 1, 4, SK[1]);                                  // right-cheek shade
-    q(13, y - 1, 6, 2, HR[1]); q(13, y - 1, 6, 1, HR[2]);       // hair crown
-    q(13, y + 1, 1, 3, HR[0]); q(18, y + 1, 1, 3, HR[0]);       // side locks / nape
     q(15, y + 2, 1, 1, INK[1]); q(17, y + 2, 1, 1, INK[1]);     // eyes
-    q(15, y + 3, 2, 1, SK[1]);                                  // brow/nose shadow
+    if (female) {
+      // long hair: crown + side locks flowing down past the shoulders, framing the face
+      q(13, y - 1, 6, 3, HR[1]); q(13, y - 1, 6, 1, HR[2]);      // full crown
+      q(12, y + 1, 1, 8, HR[1]); q(19, y + 1, 1, 8, HR[1]);      // long side locks
+      q(12, y + 1, 1, 8, HR[0]); q(19, y + 8, 1, 1, HR[0]);
+      q(13, y, 1, 1, HR[2]); q(18, y, 1, 1, HR[1]);             // temple wisps
+      q(15, y + 3, 2, 1, SK[3]);                                 // soft cheeks (highlight)
+    } else {
+      // short hair + a beard along the jaw (male)
+      q(13, y - 1, 6, 2, HR[1]); q(13, y - 1, 6, 1, HR[2]);      // hair crown
+      q(13, y + 1, 1, 2, HR[0]); q(18, y + 1, 1, 2, HR[0]);      // short sideburns
+      q(14, y + 4, 4, 1, HR[1]); q(14, y + 3, 1, 1, HR[1]); q(17, y + 3, 1, 1, HR[1]);  // beard on jaw + chin
+      q(15, y + 3, 2, 1, SK[1]);                                 // nose shadow above the beard
+    }
 
     // ---- arms + tool. A resting left arm; the right arm swings the tool (raised on
     // frame 0, struck on frame 1, with debris on the strike) — the pose IS the job.
@@ -1210,8 +1238,8 @@ const Sprites = {
   }
   // villagers carry the full working repertoire: chop (wood), mine (stone),
   // farm (food), build (hammer) and guard (defend with a pickaxe)
-  function villagerSheet(c) {
-    const mk = (pose) => framesU(2, (q, g, f) => villagerHi(q, f, pose, c));
+  function villagerSheet(c, female) {
+    const mk = (pose) => framesU(2, (q, g, f) => villagerHi(q, f, pose, c, female), 1);   // 1px outline, matching the soldiers
     return {
       idle: mk('idle'), walk: mk('walk'), gather: mk('gather'),
       mine: mk('mine'), farm: mk('farm'), build: mk('build'), guard: mk('guard'),
@@ -1414,10 +1442,14 @@ const Sprites = {
     black:  { body: '#37373f', accent: '#212127' },
     white:  { body: '#e2e2da', accent: '#b2b2a8' },
   };
-  Sprites.villager = {};
+  // two builds per village colour — men and women — so a settlement reads as a mixed
+  // populace. render picks by u.female; roughly half of spawned villagers are each.
+  Sprites.villager = {};                                   // men (also the default/fallback)
+  Sprites.villagerF = {};                                  // women
   for (const name in TUNICS) {
     const t = TUNICS[name];
-    Sprites.villager[name] = villagerSheet({ body: t.body, accent: t.accent, pants: '#6e5024', hair: PAL.hair });
+    Sprites.villager[name] = villagerSheet({ body: t.body, accent: t.accent, pants: '#6e5024', hair: PAL.hair }, false);
+    Sprites.villagerF[name] = villagerSheet({ body: t.body, accent: t.accent, pants: '#6e5024', hair: PAL.hair }, true);
   }
   Sprites.villagerTunics = Object.keys(TUNICS);            // exposed for the tunic picker
   Sprites.unit.villager = Sprites.villager.blue;           // default + fallback sheet

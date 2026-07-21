@@ -351,7 +351,8 @@ const R = {
   unitSprite(u) {
     let sheet;
     if (u.kind === 'villager') {
-      sheet = Sprites.villager[G.tunicOf(u.owner)] || Sprites.unit.villager;
+      const tunic = G.tunicOf(u.owner);
+      sheet = (u.female && Sprites.villagerF[tunic]) || Sprites.villager[tunic] || Sprites.unit.villager;
     } else {
       // military units wear the village colour on their collar/stripe; barbarians,
       // siege engines and civilian boats fall through to their single sheet
