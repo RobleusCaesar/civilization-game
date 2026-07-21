@@ -575,18 +575,23 @@ const Sprites = {
         q(27, 3, 1, 8, AP.wood[2]); q(23, 3, 4, 3, fac[2]); q(23, 6, 3, 1, fac[1]); q(23, 3, 4, 1, fac[3]);
       }
     },
+    // FARM — a tilled field of furrowed crop rows (green shoots ripening to gold at
+    // L3) with a rail fence, a small shed in the corner, and a scarecrow.
     farm(p, lv) {
-      const d = ART.tierDress(lv);
-      const crop = lv >= 3 ? AP.gold[2] : AP.grass[4];
-      ART.shadedRect(p, 0, 0, 16, 16, AP.soil, 2);
-      for (let i = 0; i < 5; i++) {                                 // tilled crop rows
-        p(1, 2 + i * 3, 14, 1, AP.soil[1]);
-        for (let x = 1 + (i & 1); x < 15; x += 2) p(x, 3 + i * 3, 1, 1, crop);
-        if (lv >= 2) for (let x = 2 - (i & 1); x < 15; x += 4) p(x, 2 + i * 3, 1, 1, lv >= 3 ? AP.gold[3] : AP.grass[2]);
+      const q = p.hi, tier = lv;
+      const crop = tier >= 3 ? AP.gold[2] : AP.grass[4], cropL = tier >= 3 ? AP.gold[3] : AP.grass[3];
+      ART.shadedRect(q, 0, 0, 32, 32, AP.soil, 2);                  // tilled soil, whole plot
+      for (let i = 0; i < 8; i++) {                                 // furrow rows with crops
+        const ry = (3 + i * 3.5) | 0;
+        q(1, ry, 30, 1, AP.soil[1]); q(1, ry - 1, 30, 1, AP.soil[3]);
+        for (let x = 2 + (i & 1) * 2; x < 30; x += 3) { q(x, ry - 1, 1, 1, crop); if (tier >= 2) q(x, ry - 2, 1, 1, cropL); }
       }
-      wallBody(p, 11, 1, 5, 4, d, 3); roof(p, 10, 0, 6, 2, d, 4);   // shed
-      if (d.decor >= 1) { p(0, 0, 1, 16, AP.wood[2]); p(15, 0, 1, 16, AP.wood[2]); }  // fence
-      if (d.decor >= 2) { p(3, 8, 1, 3, AP.wood[2]); p(2, 8, 3, 1, AP.thatch[2]); p(3, 7, 1, 1, AP.ink[1]); } // scarecrow
+      bWall(q, 22, 4, 8, 6, tier, 3); bRoof(q, 20, 0, 12, 4, tier, 4);   // shed, back-right
+      q(24, 6, 3, 4, AP.ink[0]);                                    // shed door
+      for (let fx = 1; fx < 31; fx += 4) q(fx, 30, 1, 2, AP.wood[2]);    // rail fence
+      q(0, 30, 32, 1, AP.wood[3]); q(0, 0, 1, 30, AP.wood[2]);
+      q(6, 13, 1, 6, AP.wood[2]); q(4, 15, 5, 1, AP.wood[2]);       // scarecrow: post + arms
+      q(5, 10, 3, 3, AP.thatch[2]); q(5, 10, 3, 1, AP.thatch[3]); q(6, 11, 1, 1, AP.ink[1]);   // straw head
     },
     // HUNTER'S LODGE — read from the great antlered skull mounted over the door, a
     // drying rack hung with pelts and meat, and a wolf pelt stretched on a frame.
@@ -635,19 +640,25 @@ const Sprites = {
       q(25, 24, 1, 5, AP.wood[2]); q(24, 23, 3, 2, AP.stone[3]); q(24, 23, 3, 1, AP.stone[4]);
       q(17, 28, 1, 1, AP.thatch[2]); q(30, 26, 1, 1, AP.wood[3]);   // wood chips
     },
+    // QUARRY — an open stepped stone pit with a dark deep cut, stacks of squared
+    // blocks, a timber crane hoisting a block, rubble and a pick. Timber shoring is
+    // added as the works deepen with each tier.
     quarry(p, lv) {
-      const d = ART.tierDress(lv);
-      ART.stoneTexture(p, 0, 0, 16, 16, 11);
-      ART.shadedRect(p, 3, 3, 10, 10, AP.stone, 1);                 // stepped pit
-      p(5, 5, 6, 6, AP.stone[0]);
-      p(6, 6, 4, 4, AP.ink[1]);                                     // deep cut
-      p(2, 12, 3, 2, AP.stone[3]); p(2, 12, 3, 1, AP.stone[4]);     // cut blocks
-      p(11, 2, 3, 2, AP.stone[3]); p(11, 2, 3, 1, AP.stone[4]);
-      if (d.decor >= 1) {                                           // crane pole + rope
-        p(7, 1, 1, 7, AP.wood[2]); p(7, 1, 6, 1, AP.wood[2]);
-        p(12, 2, 1, 3, AP.thatch[1]); p(11, 5, 3, 1, AP.wood[3]);
-      }
-      if (d.decor >= 2) { p(0, 0, 16, 1, AP.wood[2]); p(0, 15, 16, 1, AP.wood[2]); } // timber shoring
+      const q = p.hi, tier = lv;
+      ART.stoneTexture(q, 0, 0, 32, 32, 11);                        // rocky ground, whole plot
+      ART.shadedRect(q, 5, 6, 22, 21, AP.stone, 1);                 // stepped pit
+      ART.shadedRect(q, 9, 10, 14, 13, AP.stone, 0);
+      q(12, 13, 8, 7, AP.ink[1]);                                   // deep cut
+      for (const [bx, by] of [[2, 24], [6, 27], [2, 20]]) { q(bx, by, 4, 3, AP.stone[3]); q(bx, by, 4, 1, AP.stone[4]); q(bx, by + 2, 4, 1, AP.stone[1]); }  // squared blocks
+      q(26, 4, 4, 3, AP.stone[3]); q(26, 4, 4, 1, AP.stone[4]);
+      // timber crane hoisting a block over the pit
+      q(20, 2, 2, 12, AP.wood[1]); q(20, 2, 10, 2, AP.wood[2]); q(20, 2, 10, 1, AP.wood[3]);
+      q(28, 4, 1, 6, AP.thatch[1]); ART.shadedRect(q, 27, 10, 3, 3, AP.stone, 2);
+      // a pick + scattered rubble
+      q(15, 24, 1, 5, AP.wood[2]); q(14, 23, 3, 1, AP.stone[3]); q(14, 24, 1, 1, AP.stone[3]); q(16, 24, 1, 1, AP.stone[3]);
+      q(24, 24, 1, 1, AP.stone[1]); q(22, 27, 1, 1, AP.stone[2]); q(3, 15, 1, 1, AP.stone[1]);
+      if (tier >= 2) { q(0, 0, 1, 32, AP.wood[2]); q(31, 0, 1, 32, AP.wood[2]); q(0, 0, 32, 1, AP.wood[2]); }   // timber shoring
+      if (tier >= 3) { q(0, 31, 32, 1, AP.wood[3]); for (let sx = 4; sx < 30; sx += 6) q(sx, 29, 1, 3, AP.wood[1]); }
     },
     // small dwelling — 1×1, but crafted: fine-grid doorway with depth, footing
     // stones, framed windows, a clay pot and grass at the base
@@ -676,16 +687,26 @@ const Sprites = {
       q(6, 24, 2, 2, AP.grass[3]); q(6, 24, 1, 1, AP.grass[4]); q(7, 23, 1, 1, AP.bloom[1]);   // garden tuft + bloom
       q(26, 25, 2, 1, AP.grass[3]); q(25, 24, 1, 1, AP.bloom[0]);
     },
+    // WATCHTOWER — a tall, narrow vertical silhouette (a long cast shadow sells the
+    // height) with an overhanging lookout platform, arrow slits, and a beacon at the
+    // top: a blue watch-pennant that becomes a lit signal fire at the stone tier.
     tower(p, lv) {
-      const d = ART.tierDress(lv);
-      p(4, 13, 10, 2, ART.STYLE.SHADOW); p(6, 15, 8, 1, ART.STYLE.SHADOW);  // long shadow = height
-      wallBody(p, 5, 5, 6, 9, d, 17);                               // shaft
-      p(5, 13, 6, 1, AP.stone[0]);                                  // footing rim
-      ART.shadedRect(p, 3, 2, 10, 3, d.mat === 'wattle' ? AP.wood : AP.stone, 2); // platform
-      p(4, 1, 1, 1, AP.stone[3]); p(7, 1, 1, 1, AP.stone[3]); p(11, 1, 1, 1, AP.stone[3]); // crenels
-      p(7, 11, 2, 3, AP.ink[0]);                                    // door
-      if (d.glow) { p(7, 0, 2, 2, AP.fire[1]); p(7, 0, 1, 1, AP.fire[2]); }  // signal fire
-      else p(7, 0, 1, 2, AP.blue[2]);
+      const q = p.hi, tier = lv;
+      q(6, 27, 22, 2, ART.STYLE.SHADOW); q(11, 29, 13, 1, ART.STYLE.SHADOW);   // long shadow = height
+      bWall(q, 11, 9, 10, 17, tier, 17);                            // tall narrow shaft
+      q(11, 25, 10, 1, AP.stone[0]);                               // footing rim
+      // overhanging lookout platform (machicolation) at the top
+      ART.shadedRect(q, 8, 5, 16, 4, tier >= 3 ? AP.stone : AP.wood, 2);
+      q(8, 5, 16, 1, tier >= 3 ? AP.stone[4] : AP.wood[3]); q(8, 9, 16, 1, ART.STYLE.SHADOW);
+      if (tier >= 3) for (let cx = 8; cx < 24; cx += 3) q(cx, 3, 2, 2, AP.stone[3]);   // stone crenels
+      else for (let cx = 9; cx < 24; cx += 3) q(cx, 3, 1, 2, AP.wood[2]);              // timber railing
+      // arrow slits + a viewing gap in the shaft
+      q(14, 12, 1, 4, AP.ink[0]); q(17, 12, 1, 4, AP.ink[0]); q(14, 19, 4, 1, AP.ink[0]);
+      // door at the base
+      q(14, 21, 4, 5, AP.ink[0]); q(13, 20, 6, 1, AP.wood[3]); q(14, 21, 1, 5, AP.wood[2]); q(17, 21, 1, 5, AP.wood[2]);
+      // beacon at the top
+      if (tier >= 3) { q(14, 1, 4, 1, AP.fire[1]); q(15, 0, 2, 2, AP.fire[2]); q(15, 0, 1, 1, AP.fire[3]); }
+      else { q(15, 1, 1, 3, AP.wood[1]); q(16, 1, 3, 2, AP.blue[2]); q(16, 1, 3, 1, AP.blue[3]); }
     },
     // FORWARD CAMP — a peaked campaign tent with a war banner on a tall pole and a
     // stand of planted spears out front; reads instantly as a field encampment, not
@@ -866,22 +887,27 @@ const Sprites = {
       if (d.decor >= 2) { ART.shadedCircle(p, 12, 8, 1, CLAY, 2); q(6, 5, 3, 1, AP.bloom[2]); q(9, 5, 2, 1, AP.bloom[1]); }  // more pottery + a dyed-cloth bolt
       if (d.banner) banner(p, 14, 0, fac);                          // trader's pennant
     },
-    // siege workshop: an open work-yard where a catapult takes shape beside the hut
+    // SIEGE WORKSHOP — an open work-yard where a CATAPULT takes shape on the stocks
+    // beside the engineers' hut: timber frame on wheels, a throwing arm cocked with a
+    // stone in the cup, a winch, seasoned timber and a pile of shot.
     siege(p, lv, fac) {
-      const d = ART.tierDress(lv);
-      ART.dropShadow(p, 8, 14, 14);
-      wallBody(p, 0, 8, 6, 6, d, 25);                               // workshop hut
-      roof(p, 0, 5, 7, 3, d, 26);
-      p(2, 10, 2, 4, AP.ink[0]);                                    // doorway
-      p(8, 12, 7, 2, AP.wood[1]); p(8, 12, 7, 1, AP.wood[2]);       // engine sled
-      ART.shadedCircle(p, 9, 13, 1, AP.wood, 1);                    // wheels
-      ART.shadedCircle(p, 13, 13, 1, AP.wood, 1);
-      p(10, 7, 1, 5, AP.wood[3]);                                   // upright
-      p(10, 7, 4, 1, AP.wood[2]); p(14, 6, 1, 2, AP.stone[2]);      // throwing arm + cup stone
-      p(11, 10, 2, 2, AP.wood[0]);                                  // winch drum
-      if (d.decor >= 1) { p(7, 14, 3, 1, AP.wood[2]); p(7, 13, 3, 1, AP.wood[3]); }  // seasoned timber
-      if (d.decor >= 2) { ART.shadedCircle(p, 8, 4, 1, AP.stone, 2); p(10, 4, 1, 1, AP.stone[2]); }  // shot pile
-      if (d.banner) banner(p, 0, 0, fac);
+      const q = p.hi, tier = lv;
+      ART.dropShadow(p, 8, 14, 15);
+      // engineers' hut (left)
+      bWall(q, 2, 14, 10, 12, tier, 25);
+      bRoof(q, 0, 8, 14, 7, tier, 26);
+      q(5, 18, 4, 8, AP.ink[0]); q(4, 17, 6, 1, AP.wood[3]); q(5, 18, 1, 8, AP.wood[2]); q(8, 18, 1, 8, AP.wood[2]);  // doorway
+      // the CATAPULT on the stocks (right) — the identity
+      q(16, 22, 14, 2, AP.wood[2]); q(16, 22, 14, 1, AP.wood[3]); q(17, 21, 1, 2, AP.wood[1]); q(28, 21, 1, 2, AP.wood[1]);  // frame rails
+      ART.shadedCircle(q, 18, 25, 2, AP.wood, 1); ART.shadedCircle(q, 27, 25, 2, AP.wood, 1);   // wheels
+      q(20, 14, 2, 9, AP.wood[1]); q(24, 14, 2, 9, AP.wood[1]); q(20, 14, 6, 1, AP.wood[3]);     // A-frame uprights + pivot
+      for (let i = 0; i < 6; i++) q(19 - i, 15 + i * 1.2 | 0, 2, 1, AP.wood[3]);                 // throwing arm cocked back-left
+      q(14, 13, 3, 3, AP.wood[2]); q(14, 13, 3, 1, AP.stone[3]); q(15, 13, 2, 1, AP.stone[2]);   // cup loaded with a stone
+      q(21, 19, 3, 2, AP.wood[0]);                                  // winch drum
+      // seasoned timber stacked + a pile of shot
+      q(13, 27, 8, 1, AP.wood[2]); q(13, 26, 8, 1, AP.wood[3]);
+      ART.shadedCircle(q, 26, 29, 1, AP.stone, 2); q(28, 29, 1, 1, AP.stone[2]); q(24, 29, 1, 1, AP.stone[2]);
+      if (tier >= 3) banner(q, 2, 4, fac);
     },
     // sappers' camp: an earthworks yard — a dug pit with a spoil mound, a timber
     // A-frame derrick, planks and racked tools (shovels/picks), a wheelbarrow
