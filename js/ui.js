@@ -8,6 +8,7 @@ const UI = {
   pointers: new Map(),
   pinchD: 0,
   downAt: null,
+  lastTap: null,         // {x,y,t} of the last committed tap — for double-tap detection
   refreshT: 0,
   menuCollapsed: false,  // build menu tucked away for a bigger view
   panelHidden: false,    // selection panel tucked away — the selection itself survives
@@ -183,7 +184,14 @@ const UI = {
         this.commitTerraDrag();
         this.terraDrag = null; this.terraGhost = null;
       } else if (this.downAt && !this.downAt.moved && performance.now() - this.downAt.t < 400) {
-        this.handleTap(e.clientX, e.clientY);
+        // a second quick tap on (nearly) the same spot is a DOUBLE-TAP: select every
+        // like unit within the grouping sphere, so a whole trebuchet line / fleet of
+        // transports peels out of a mixed army in one gesture. Otherwise, a normal tap.
+        const now = performance.now(), lt = this.lastTap;
+        const dbl = lt && (now - lt.t) < 350 && Math.hypot(e.clientX - lt.x, e.clientY - lt.y) < 24;
+        this.lastTap = dbl ? null : { x: e.clientX, y: e.clientY, t: now };
+        if (dbl) this.handleDoubleTap(e.clientX, e.clientY);
+        else this.handleTap(e.clientX, e.clientY);
       }
       if (this.pointers.size < 2) this.pinchD = 0;
       if (this.pointers.size === 0) this.downAt = null;
@@ -574,6 +582,48 @@ const UI = {
       }
     }
     this.deselect();
+  },
+
+  // two units count as the SAME selection type when their kind matches — except the
+  // two transport hulls (Raft + War Transport), which group together as "transports"
+  // since they do the same job. A double-tap gathers everything that matches this.
+  sameSelType(a, b) {
+    if (Units.isTransport(a) && Units.isTransport(b)) return true;
+    return a.kind === b.kind;
+  },
+  // can a unit anchor a double-tap group? only army/fleet units — the same set the
+  // "Group nearby / Group fleet" button forms (soldiers & siege on land; warships,
+  // fireships & transports at sea). Villagers, sappers and fishing boats are left out.
+  groupable(u) { return Units.isMilitary(u) || Units.isFleetable(u); },
+
+  // DOUBLE-TAP: select every like unit (see sameSelType) within the grouping sphere
+  // of the tapped one — a trebuchet line, a wing of cavalry, a flotilla of transports
+  // pulled cleanly out of a mixed army so it can be ordered on its own.
+  handleDoubleTap(sx, sy) {
+    if (!S || S.over) return;
+    const w = R.screenToWorld(sx, sy);
+    const wx = w.x / CFG.TILE, wy = w.y / CFG.TILE;
+    // find the OWN unit under the tap (a touch more forgiving than a single tap,
+    // since a double-tap is deliberate)
+    let hit = null, hd = 0.9;
+    for (const u of S.units) {
+      if (u.owner !== 'P' || !G.visibleAt(u.x | 0, u.y | 0)) continue;
+      const d = Math.hypot(u.x - wx, u.y - wy);
+      if (d < hd) { hd = d; hit = u; }
+    }
+    // not on one of our army/fleet units → treat it as an ordinary tap so nothing is lost
+    if (!hit || !this.groupable(hit)) { this.handleTap(sx, sy); return; }
+    const R2 = CFG.GROUP_R;
+    const ids = S.units
+      .filter(o => o.owner === 'P' && this.groupable(o) && this.sameSelType(o, hit) &&
+        Math.hypot(o.x - hit.x, o.y - hit.y) <= R2)
+      .map(o => o.id);
+    if (ids.length <= 1) { this.select('unit', hit.id); return; }   // it's the only one — just select it
+    this.sel = { type: 'group', ids };
+    this.builderFor = null; this.confirmDemolish = 0; this.terraMode = null; this.panelHidden = false;
+    this.renderPanel();
+    const label = Units.isTransport(hit) ? 'transport' : CFG.UNITS[hit.kind].name.toLowerCase();
+    this.toast(`Selected ${ids.length} ${label}${ids.length > 1 ? 's' : ''} nearby`);
   },
 
   select(type, id) {
@@ -1091,11 +1141,16 @@ const UI = {
       const fleet = this.sel.ids.every(id => { const o = Units.get(id); return o && Units.isNaval(o); });
       const gMil = this.sel.ids.map(id => Units.get(id)).filter(o => o && Units.canDefend(o));
       const gAllDef = gMil.length > 0 && gMil.every(o => o.defend);
+      // troop-carrier count aboard the whole selection — a fleet of transports can
+      // put everyone ashore in one order (each hull lands beside wherever it sits)
+      const gLaden = this.sel.ids.map(id => Units.get(id)).filter(o => o && Units.isTransport(o) && o.cargo && o.cargo.length);
+      const gAboard = gLaden.reduce((n, o) => n + o.cargo.length, 0);
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${fleet ? '⚓ Fleet' : '⚔️ War Party'} <span style="color:var(--gold)">(${this.sel.ids.length})</span></div>
         <div class="psub">${this.groupComposition(this.sel.ids)}</div></div>
         <button class="abtn" id="panelClose">✕</button></div>
         <div class="pactions"><span class="psub">${fleet ? 'Tap water to sail together, or an enemy ship / coastal target to attack.' : 'Tap a tile to march (melee front, archers behind), or an enemy / rival building to attack together.'}</span>` +
+        (gLaden.length ? `<button class="abtn" data-act="gunload">⚓ Unload all<small>${gAboard} aboard</small></button>` : '') +
         (gMil.length ? `<button class="abtn ${gAllDef ? 'sel' : ''}" data-act="gdefend">${gAllDef ? '🛡 Stand Down' : '🛡 Defend'}</button>` : '') +
         `<button class="abtn" data-act="stop">✋ Halt</button></div>`;
       panel.innerHTML = html;
@@ -1107,6 +1162,16 @@ const UI = {
           if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; u2.defend = false; }
         }
         this.toast('War party halted');
+      });
+      const gunload = panel.querySelector('[data-act="gunload"]');
+      if (gunload) gunload.addEventListener('click', () => {
+        let n = 0;
+        for (const id of this.sel.ids) {
+          const o = Units.get(id);
+          if (o && Units.isTransport(o) && o.cargo && o.cargo.length) { n += o.cargo.length; Units.disembark(o); }
+        }
+        this.toast(n ? 'Landing everyone — hulls put their troops ashore' : 'Nobody aboard', !n);
+        this.renderPanel();
       });
       const gdef = panel.querySelector('[data-act="gdefend"]');
       if (gdef) gdef.addEventListener('click', () => {
@@ -1283,7 +1348,7 @@ const UI = {
         const naval = Units.isNaval(u2);
         const ids = S.units
           .filter(o => o.owner === 'P' && (naval ? Units.isFleetable(o) : (Units.isMilitary(o) && !Units.isNaval(o))) &&
-            Math.hypot(o.x - u2.x, o.y - u2.y) <= 6)
+            Math.hypot(o.x - u2.x, o.y - u2.y) <= CFG.GROUP_R)
           .map(o => o.id);
         if (ids.length < 2) { this.toast(naval ? 'No other ships within reach' : 'No other soldiers within reach', true); return; }
         this.sel = { type: 'group', ids };

@@ -406,6 +406,10 @@ const CFG = {
   HEAL_DOCK_TOUCH: 2,      // ships repair at ANY owned dock, but must be touching it or ≤1 tile off (from the dock's edge)
   HEAL_RADIUS_STEP: 0.15,
 
+  // "group nearby / group fleet" and double-tap-select-same-type both gather units
+  // within this radius (tiles) of the tapped one — one grouping sphere for both
+  GROUP_R: 6,
+
   // barbarian pressure: a spice, not a kingmaker — bands come less often and
   // smaller than they used to, tipping fights without deciding them
   WAVES: { minGap: 14, maxGap: 20, scaleHp: 0.07, scaleAtk: 0.05 },
