@@ -419,6 +419,37 @@ const Sprites = {
     p(x, y, 1, 4, AP.wood[2]);
     p(x + 1, y, 3, 2, fac[2]); p(x + 1, y + 2, 2, 1, fac[1]);
   }
+  /* ---- HI-RES building materials on the fine (32-grid) plotter, keyed to tier so
+     every building tells the SAME material story: L1 wattle-&-daub with stakes
+     (grass/sticks) → L2 timber planks on a stone footing course (sticks + a little
+     stone) → L3 coursed stone masonry with dressed quoins (mostly stone). ---- */
+  function bWall(q, x, y, w, h, tier, seed) {
+    if (tier <= 1) {                                             // wattle & daub, staked
+      ART.wattleTexture(q, x, y, w, h, seed);
+      q(x, y, w, 1, AP.soil[3]); q(x, y + h - 1, w, 1, AP.soil[1]);
+      for (let sx = x + 1; sx < x + w - 1; sx += 3) q(sx, y + 1, 1, h - 2, AP.wood[1]);
+    } else if (tier === 2) {                                     // timber planks on a stone footing
+      ART.woodPlankTexture(q, x, y, w, h - 2, seed);
+      q(x, y, 1, h - 2, AP.wood[3]); q(x + w - 1, y, 1, h - 2, AP.wood[1]);   // corner posts
+      ART.stoneTexture(q, x, y + h - 2, w, 2, seed + 7); q(x, y + h - 2, w, 1, AP.stone[4]);  // footing course
+    } else {                                                    // coursed stone + dressed quoins
+      ART.stoneTexture(q, x, y, w, h, seed);
+      for (let i = 0; i < h; i += 2) { q(x, y + i, 2, 2, (i & 2) ? AP.stone[4] : AP.stone[3]); q(x + w - 2, y + i, 2, 2, (i & 2) ? AP.stone[1] : AP.stone[0]); }
+      q(x, y, w, 1, AP.stone[4]);
+    }
+  }
+  function bRoof(q, x, y, w, h, tier, seed) {
+    if (tier <= 2) {                                            // thatch (looser L1, combed L2)
+      ART.thatchTexture(q, x, y, w, h, seed);
+      q(x, y, w, 1, AP.thatch[3]); q(x - 1, y + h, w + 2, 1, AP.thatch[0]);   // lit ridge + eave shadow
+      if (tier === 2) for (let sx = x + 1; sx < x + w; sx += 4) q(sx, y, 1, h, AP.thatch[1]);  // combed strands
+    } else {                                                    // finished wood shingles
+      ART.shadedRect(q, x, y, w, h, AP.wood, 2);
+      for (let yy = y + 1; yy < y + h; yy += 2) q(x, yy, w, 1, AP.wood[1]);
+      for (let xx = x + 2; xx < x + w - 1; xx += 3) q(xx, y + 1, 1, h - 1, AP.wood[3]);
+      q(x, y, w, 1, AP.wood[4]); q(x - 1, y + h, w + 2, 1, ART.STYLE.SHADOW);
+    }
+  }
 
   /* ---- the 8+ buildings. Each receives (p, lv, fac) where fac is the owning
      faction's cloth ramp — the rival's set is generated in red. Silhouette
@@ -601,23 +632,30 @@ const Sprites = {
     },
     // small dwelling — 1×1, but crafted: fine-grid doorway with depth, footing
     // stones, framed windows, a clay pot and grass at the base
+    // HOUSE — unmistakably RESIDENTIAL (never a barracks): a small, cosy cottage
+    // with a smoking chimney, a warm hearth-lit window, a plank door, a water barrel
+    // and a little flower garden. Compact and domestic.
     house(p, lv) {
-      const d = ART.tierDress(lv), q = p.hi;
-      ART.dropShadow(p, 8, 14, 10);
-      const h = 5 + Math.min(2, lv - 1), y = 13 - h;
-      wallBody(p, 4, y, 8, h, d, lv * 3);                           // walls (fine posts/quoins via helper)
-      roof(p, 3, y - 3, 10, 3, d, lv * 5);                          // roof (fine eave via helper)
-      q(6, (y - 3) * 2, 20, 1, d.mat === 'stonefoot' ? AP.wood[4] : AP.thatch[3]); // lit ridge line
-      for (let sx = 9; sx < 23; sx += 3) { q(sx, 24, 2, 2, AP.stone[(sx & 2) ? 2 : 1]); q(sx, 24, 2, 1, AP.stone[3]); } // footing stones
-      q(13, 19, 6, 1, AP.wood[3]);                                  // door lintel
-      q(14, 20, 4, 6, AP.ink[0]);                                  // deep doorway
-      q(13, 20, 1, 6, AP.wood[2]); q(18, 20, 1, 6, AP.wood[2]);    // jambs
-      q(14, 25, 4, 1, AP.soil[3]);                                 // threshold
-      if (d.decor >= 1) { q(9, y * 2 + 2, 3, 3, AP.ink[1]); q(9, y * 2 + 2, 3, 1, AP.wood[3]); q(10, y * 2 + 2, 1, 3, AP.wood[2]); } // framed window
-      if (d.decor >= 2) { q(20, y * 2 + 2, 3, 3, AP.ink[1]); q(20, y * 2 + 2, 3, 1, AP.wood[3]); q(21, y * 2 + 2, 1, 3, AP.wood[2]); } // second window
-      q(21, 23, 2, 3, AP.hide[1]); q(21, 23, 2, 1, AP.hide[2]); q(21, 22, 2, 1, AP.ink[1]);  // clay pot by the door
-      q(7, 25, 1, 2, AP.grass[4]); q(6, 26, 1, 1, AP.grass[3]);    // grass tuft at the base
-      if (d.decor >= 2) { q(24, 25, 2, 1, AP.bloom[1]); q(25, 24, 1, 1, AP.bloom[0]); } // flowers
+      const q = p.hi, tier = lv;
+      ART.dropShadow(p, 8, 14, 11);
+      // the cottage — a small peaked dwelling
+      bWall(q, 8, 16, 16, 10, tier, 9);
+      bRoof(q, 6, 8, 20, 8, tier, 10);
+      q(15, 6, 2, 3, AP.wood[3]);                                   // little gable-peak beam
+      // a chimney with a curl of smoke — the homely heart (stone once past L1)
+      q(20, 4, 3, 7, tier >= 2 ? AP.stone[2] : AP.soil[2]); q(20, 4, 3, 1, AP.stone[3]); q(20, 4, 1, 7, AP.stone[3]);
+      q(20, 3, 3, 1, AP.ink[1]);                                    // flue mouth
+      q(21, 1, 1, 2, 'rgba(214,207,196,0.55)'); q(20, 0, 2, 1, 'rgba(214,207,196,0.32)');  // smoke wisp
+      // plank door, left of centre
+      q(11, 19, 4, 7, AP.ink[0]); q(10, 18, 6, 1, AP.wood[3]); q(11, 19, 1, 7, AP.wood[2]); q(14, 19, 1, 7, AP.wood[2]);
+      q(13, 22, 1, 1, AP.stone[3]); q(11, 25, 4, 1, AP.soil[3]);    // latch + threshold
+      // a shuttered window with warm hearth-light within
+      q(17, 18, 4, 4, AP.ink[0]); q(17, 18, 4, 1, AP.wood[3]); q(17, 18, 1, 4, AP.wood[2]); q(19, 18, 1, 4, AP.wood[1]);
+      q(18, 20, 2, 1, AP.fire[1]); q(18, 20, 1, 1, AP.fire[2]);     // candle glow
+      // domestic clutter: a water barrel by the wall, a flower garden, grass
+      q(24, 21, 3, 5, AP.wood[1]); q(24, 21, 3, 1, AP.wood[3]); q(24, 23, 3, 1, AP.wood[2]); q(24, 20, 3, 1, AP.water[3]);
+      q(6, 24, 2, 2, AP.grass[3]); q(6, 24, 1, 1, AP.grass[4]); q(7, 23, 1, 1, AP.bloom[1]);   // garden tuft + bloom
+      q(26, 25, 2, 1, AP.grass[3]); q(25, 24, 1, 1, AP.bloom[0]);
     },
     tower(p, lv) {
       const d = ART.tierDress(lv);
@@ -655,19 +693,32 @@ const Sprites = {
     },
     // martial hall — read at a glance from the weapon rack (spears + round
     // shields) and the big training-hall door; sturdier reinforced posts
+    // BARRACKS — unmistakably MARTIAL (never a house): a broad, sturdy drill hall
+    // under a tall faction war-banner, a studded reinforced double door, a rack of
+    // spears, round shields mounted on the wall, and a sparring dummy in the yard.
     barracks(p, lv, fac) {
-      const d = ART.tierDress(lv), q = p.hi;
-      ART.dropShadow(p, 8, 14, 14);
-      wallBody(p, 2, 7, 12, 7, d, 13);
-      roof(p, 1, 4, 14, 3, d, 14);
-      q(5, 14, 2, 13, AP.wood[0]); q(25, 14, 2, 13, AP.wood[0]);    // reinforced corner posts
-      q(12, 18, 6, 9, AP.ink[0]);                                   // training-hall door
-      q(11, 17, 8, 1, AP.wood[3]); q(11, 18, 1, 9, AP.wood[2]); q(18, 18, 1, 9, AP.wood[2]); // lintel + jambs
-      q(8, 15, 15, 1, AP.wood[1]);                                  // weapon-rack beam
-      for (const sx of [9, 12, 20, 23]) { q(sx, 11, 1, 5, AP.wood[2]); q(sx, 10, 1, 1, AP.stone[4]); } // racked spears + steel heads
-      ART.shadedCircle(q, 8, 22, 3, AP.wood, 2); q(7, 22, 2, 1, fac[2]); q(8, 22, 1, 1, fac[1]); // faction shield
-      ART.shadedCircle(q, 23, 22, 3, AP.hide, 2); q(23, 22, 1, 1, AP.bone[2]);                   // hide shield
-      if (d.banner) banner(q, 28, 1, fac);
+      const q = p.hi, tier = lv;
+      ART.dropShadow(p, 8, 14, 15);
+      // tall faction war-banner on a pole (left) — the standard, at every tier
+      q(3, 1, 1, 24, AP.wood[1]); q(3, 0, 1, 1, AP.gold[2]);
+      q(4, 2, 6, 7, fac[2]); q(4, 2, 6, 1, fac[3]); q(4, 8, 5, 1, fac[1]); q(4, 5, 5, 1, fac[0]); q(4, 2, 1, 7, fac[3]);
+      // the hall — broad and sturdy, taller than a dwelling
+      bWall(q, 7, 15, 20, 11, tier, 13);
+      bRoof(q, 5, 6, 24, 9, tier, 14);
+      // reinforced studded double door, centre
+      q(14, 18, 7, 8, AP.ink[0]);
+      q(13, 17, 9, 1, AP.wood[3]); q(13, 18, 1, 8, AP.wood[2]); q(21, 18, 1, 8, AP.wood[2]); q(17, 18, 1, 8, AP.wood[1]);
+      q(15, 21, 1, 1, AP.stone[3]); q(19, 21, 1, 1, AP.stone[3]); q(16, 22, 1, 1, AP.stone[4]);   // studs + ring handle
+      // round shields mounted on the wall, left of the door
+      ART.shadedCircle(q, 10, 19, 2, AP.wood, 2); q(10, 19, 1, 1, fac[2]); q(9, 18, 1, 1, AP.stone[4]);
+      ART.shadedCircle(q, 10, 24, 2, AP.hide, 2); q(10, 24, 1, 1, AP.bone[2]);
+      // weapon rack: crossed spears with steel heads, right of the door
+      q(23, 16, 1, 9, AP.wood[2]); q(25, 16, 1, 9, AP.wood[2]);
+      q(22, 15, 2, 1, AP.stone[4]); q(24, 15, 2, 1, AP.stone[4]); q(22, 22, 4, 1, AP.wood[1]);
+      // a sparring DUMMY in the yard (right): cross-post, straw head, strapped shield
+      q(29, 19, 1, 9, AP.wood[1]); q(27, 20, 5, 1, AP.wood[2]);
+      ART.shadedCircle(q, 29, 18, 1, AP.thatch, 2);
+      ART.shadedCircle(q, 29, 23, 2, AP.wood, 1); q(29, 23, 1, 1, fac[1]);
     },
     // horse stable — read from the big Dutch stall door with a horse looking out
     // over the shut lower leaf, a hay-loft in the gable, a water trough and a
