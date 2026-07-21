@@ -577,7 +577,9 @@ const R = {
         g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;
         g.beginPath(); g.ellipse(u.x * TL, u.y * TL + 10, 10, 5, 0, 0, Math.PI * 2); g.stroke();
       }
-      g.drawImage(this.unitSprite(u), ux, uy);
+      // draw every unit into a TILE-sized box: 32px sheets render 1:1 (unchanged),
+      // while the hi-res 64px villager sheet shows at the SAME size but twice as crisp
+      g.drawImage(this.unitSprite(u), ux, uy, TL, TL);
       if (u.burnT > 0) {                                  // wreathed in dragonfire
         const F = ART.PALETTE.fire, ph = ((u.animT * 9) | 0) % 2;
         g.fillStyle = F[2]; g.fillRect(u.x * TL - 3, u.y * TL - 12 - ph, 3, 5);

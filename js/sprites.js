@@ -49,6 +49,23 @@ const Sprites = {
     for (let f = 0; f < n; f++) out.push(tile((p, g) => draw(p, g, f)));
     return out;
   }
+  // HI-RES unit canvas: 64×64 with a plotter on the 32-grid (2px/cell) — DOUBLE the
+  // density of the legacy 16-grid unit, the same fine-grid technique used for the
+  // buildings. render.js draws every unit into a 32px (TILE) box, so a 64px sheet
+  // shows at the SAME on-screen size as a 32px one — just with 2× the pixels.
+  function tileU(draw) {
+    const c = mk(64, 64), g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    const q = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * 2, y * 2, (w || 1) * 2, (h || 1) * 2); };
+    q.g = g;
+    draw(q, g);
+    return c;
+  }
+  function framesU(n, draw) {
+    const out = [];
+    for (let f = 0; f < n; f++) { const c = tileU((q, g) => draw(q, g, f)); ART.outline(c, 2); out.push(c); }
+    return out;
+  }
   // HIGH-RES building canvas: 64×64 (double the pixels of a normal tile). The
   // coarse plotter `p` still works on the 16-grid (4px/cell) so every existing
   // building draw renders unchanged — just crisper — while `p.hi` exposes a
@@ -1100,10 +1117,99 @@ const Sprites = {
       work: frames(2, (p, g, f) => humanoid(p, f, 'mine', c)),   // pick swing = dig / breach
     };
   }
+  /* HI-RES VILLAGER — authored natively on the 32-grid (2× the legacy 16-grid rig),
+     the same fine-grid technique the buildings use. A Neolithic worker: a hide-and-
+     woven-cloth wrap dyed the village colour with a leather belt, bare limbs, a
+     suggested face under a shock of hair, and a stone tool that IS the task. Every
+     pose and its 2-frame swing timing match the old rig, and the figure sits at
+     exactly 2× the old coordinates, so positioning, size and gameplay are unchanged
+     — just far crisper. c = { body, accent, pants, hair } (village dye + earth tones). */
+  function villagerHi(q, f, pose, c) {
+    const SK = APx.skin, HR = APx.hair, HD = APx.hide, INK = APx.ink;
+    const body = c.body, accent = c.accent, pants = c.pants;
+    const bob = (pose === 'idle' && f === 1) ? 2 : 0;
+    const y = 6 + bob;                                   // head-top row (32-grid)
+
+    // ---- contact shadow (faint — below the outline alpha threshold, so it's not ringed)
+    q(12, 30, 9, 1, 'rgba(20,16,10,0.26)'); q(14, 31, 5, 1, 'rgba(20,16,10,0.15)');
+
+    // ---- legs: hide leggings, bare shins, simple feet. Walk alternates the lead leg
+    const step = pose === 'walk';
+    const upL = step && f === 1 ? 1 : 0, upR = step && f === 0 ? 1 : 0;
+    for (const [lx, up] of [[13, upL], [17, upR]]) {
+      q(lx, 22, 2, 4 - up, pants);                       // upper leg wrap
+      q(lx, 22, 1, 4 - up, HD[2]);                       // lit inner seam
+      q(lx, 26 - up, 2, 2, SK[1]);                       // bare shin (shaded)
+      q(lx, 26 - up, 1, 2, SK[2]);
+      q(lx, 28 - up, 2, 1, INK[1]);                      // foot
+    }
+
+    // ---- torso: a dyed wrap, lit top-left / shaded lower-right, cinched by a belt
+    q(12, y + 6, 8, 10, body);
+    q(19, y + 6, 1, 10, accent); q(12, y + 14, 8, 2, accent);   // shade on the right & hem
+    q(12, y + 6, 6, 1, body);                                   // (kept flat-lit up top)
+    q(13, y + 8, 1, 6, accent); q(16, y + 9, 1, 5, accent);     // two draped folds
+    q(12, y + 6, 8, 2, accent);                                 // neckline yoke (trim = faction)
+    q(14, y + 6, 4, 1, body);
+    q(12, y + 13, 8, 2, HD[1]); q(12, y + 13, 8, 1, HD[2]);     // leather belt + lit top edge
+    q(15, y + 13, 1, 2, INK[2]);                                // belt buckle
+
+    // ---- head: rounded, hair over crown & nape, a suggested face
+    q(14, y, 4, 5, SK[2]);                                      // face
+    q(14, y, 3, 1, SK[3]); q(14, y, 1, 4, SK[3]);               // top-left highlight
+    q(17, y + 1, 1, 4, SK[1]);                                  // right-cheek shade
+    q(13, y - 1, 6, 2, HR[1]); q(13, y - 1, 6, 1, HR[2]);       // hair crown
+    q(13, y + 1, 1, 3, HR[0]); q(18, y + 1, 1, 3, HR[0]);       // side locks / nape
+    q(15, y + 2, 1, 1, INK[1]); q(17, y + 2, 1, 1, INK[1]);     // eyes
+    q(15, y + 3, 2, 1, SK[1]);                                  // brow/nose shadow
+
+    // ---- arms + tool. A resting left arm; the right arm swings the tool (raised on
+    // frame 0, struck on frame 1, with debris on the strike) — the pose IS the job.
+    const armL = () => { q(11, y + 8, 2, 4, SK[2]); q(11, y + 8, 1, 4, SK[3]); q(11, y + 11, 2, 1, SK[2]); };   // left arm at side
+    const spark = (x, yy, a, b) => { q(x, yy, 1, 1, a); q(x + 1, yy + 1, 1, 1, b); };
+    if (pose === 'gather') {                    // fell timber — lashed stone axe
+      armL(); const ay = f === 0 ? y + 7 : y + 11;
+      q(19, y + 8, 3, 1, SK[2]); q(21, ay - 1, 1, ay - y - 6, SK[2]);   // shoulder → forearm to the haft
+      q(22, ay - 4, 2, 6, PAL.trunk); q(22, ay - 4, 1, 6, APx.wood[3]);  // haft
+      q(21, ay - 5, 4, 2, APx.stone[3]); q(21, ay - 5, 4, 1, APx.stone[4]);  // stone axe-head
+      q(20, ay - 4, 1, 1, HD[1]);                                       // lashing
+      if (f === 1) { spark(25, ay, APx.thatch[3], APx.wood[3]); q(26, ay + 2, 1, 1, APx.wood[2]); }  // chips fly
+    } else if (pose === 'mine') {               // quarry stone — pickaxe
+      armL(); const ay = f === 0 ? y + 5 : y + 11;
+      q(19, y + 8, 3, 1, SK[2]); q(21, ay - 1, 1, ay - y - 6, SK[2]);
+      q(23, ay - 6, 1, 8, PAL.trunk); q(23, ay - 6, 1, 8, APx.wood[3]);  // long haft
+      q(21, ay - 6, 5, 1, APx.stone[3]);                                // pick bar
+      q(21, ay - 5, 1, 1, APx.stone[2]); q(25, ay - 5, 1, 1, APx.stone[2]);  // curved points
+      if (f === 1) spark(24, ay + 2, APx.stone[4], APx.fire[2]);        // spark off rock
+    } else if (pose === 'farm') {               // till the soil — hoe
+      armL(); const ay = f === 0 ? y + 5 : y + 9;
+      q(19, y + 8, 3, 1, SK[2]); q(21, ay - 1, 2, 2, SK[2]);
+      q(23, ay - 1, 1, 2, PAL.trunk); q(24, ay + 1, 1, 3, PAL.trunk); q(24, ay + 1, 1, 3, APx.wood[3]);  // bent haft
+      q(24, ay + 4, 3, 1, APx.stone[3]); q(24, ay + 4, 3, 1, APx.stone[4]);  // hoe blade
+      if (f === 1) { spark(26, ay + 6, APx.soil[2], APx.soil[1]); q(25, ay + 6, 1, 1, APx.soil[1]); }  // turned earth
+    } else if (pose === 'build') {              // raise a building — mallet
+      armL(); const ay = f === 0 ? y + 5 : y + 9;
+      q(19, y + 8, 3, 1, SK[2]); q(21, ay - 1, 1, 3, SK[2]);
+      q(23, ay - 2, 1, 5, PAL.trunk); q(23, ay - 2, 1, 5, APx.wood[3]);  // handle
+      q(21, ay - 4, 5, 3, PAL.woodD); q(21, ay - 4, 5, 1, PAL.wood);     // mallet head + lit face
+      q(21, ay - 4, 1, 3, APx.wood[1]);                                  // banding
+      if (f === 1) spark(23, ay + 4, APx.bone[2], APx.thatch[3]);        // impact
+    } else if (pose === 'guard') {              // defend — pickaxe raised in anger
+      armL(); const ax = f === 0 ? 20 : 23;
+      q(19, y + 8, Math.max(1, ax - 18), 1, SK[2]); q(ax, y + 2, 1, 8, SK[2]);   // reaching arm
+      q(ax, y + 1, 1, 8, PAL.trunk); q(ax, y + 1, 1, 8, APx.wood[3]);            // raised haft
+      q(ax - 2, y, 5, 1, APx.stone[3]); q(ax - 2, y, 5, 1, APx.stone[4]);        // pick head
+      q(ax - 2, y + 1, 1, 1, APx.stone[2]); q(ax + 2, y + 1, 1, 1, APx.stone[2]);
+      if (f === 1) spark(ax + 2, y + 2, APx.bone[2], APx.fire[2]);               // strike flash
+    } else {                                    // idle — both hands rest at the sides
+      armL();
+      q(19, y + 8, 2, 4, SK[2]); q(20, y + 8, 1, 4, SK[1]); q(19, y + 11, 2, 1, SK[2]);
+    }
+  }
   // villagers carry the full working repertoire: chop (wood), mine (stone),
   // farm (food), build (hammer) and guard (defend with a pickaxe)
   function villagerSheet(c) {
-    const mk = (pose) => frames(2, (p, g, f) => humanoid(p, f, pose, c));
+    const mk = (pose) => framesU(2, (q, g, f) => villagerHi(q, f, pose, c));
     return {
       idle: mk('idle'), walk: mk('walk'), gather: mk('gather'),
       mine: mk('mine'), farm: mk('farm'), build: mk('build'), guard: mk('guard'),
