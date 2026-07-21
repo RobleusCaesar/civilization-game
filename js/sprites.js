@@ -1352,6 +1352,55 @@ const Sprites = {
   // arrows, dark-leather hood — looses a burning arrow.
   const exMarksman = (q, f, pose, c) => { const y = _hy(pose, f); q(13, y - 2, 6, 2, INKp[2]); q(13, y - 2, 6, 1, HDE[1]); drawBow(q, f, pose, c, y, { tall: true, fire: true, recurve: true, stave: WD[1] }); };
 
+  /* HI-RES MOUNTED rig (32-grid): a side-view horse facing right with a seated rider.
+     The horse's legs gallop across the 2 frames; the rider (dyed body + faction collar)
+     carries a spear (thrust), a saddle bow (looses right), or a couched lance (gold
+     tip). c = { horse, horseD, body, accent, pants, bow, lance, tip }. */
+  function riderSheetHi(c) {
+    const HZ = c.horse, HD = c.horseD, mane = c.horseD;
+    const draw = (q, f, pose) => {
+      const gallop = (pose === 'walk' || pose === 'fight') && f === 1;
+      // ground shadow
+      q(8, 29, 18, 1, 'rgba(20,16,10,0.26)'); q(11, 30, 12, 1, 'rgba(20,16,10,0.15)');
+      // legs (back pair, front pair) — swap length on the gallop frame
+      const legs = [[8, gallop ? 4 : 6], [12, gallop ? 6 : 4], [20, gallop ? 6 : 4], [23, gallop ? 4 : 6]];
+      for (const [lx, ll] of legs) { q(lx, 23, 2, ll, HD); q(lx, 23 + ll - 1, 2, 1, INKp[1]); }
+      // tail, barrel, belly
+      q(5, 17, 2, 6, HD); q(6, 17, 1, 4, HZ);
+      q(7, 17, 18, 6, HZ); q(7, 17, 18, 1, HZ); q(8, 22, 16, 1, HD);
+      // neck + head rising to the right, with mane, ear and eye
+      q(22, 13, 3, 5, HZ); q(24, 11, 4, 4, HZ); q(27, 12, 2, 2, HD); q(26, 9, 2, 2, HZ); q(27, 8, 1, 1, HD);
+      q(21, 13, 2, 5, mane); q(28, 12, 1, 1, INKp[1]);
+      // ---- rider ----
+      const y = 3;
+      q(14, 18, 2, 4, c.pants || '#4a3a24'); q(18, 18, 2, 4, c.pants || '#4a3a24');   // straddling legs
+      q(13, y + 3, 7, 8, c.body); q(13, y + 3, 7, 2, c.accent); q(19, y + 3, 1, 8, c.accent);  // torso + faction
+      q(13, y + 9, 7, 1, HDE[1]);                                                     // belt
+      q(14, y, 4, 4, SKN[2]); q(14, y, 3, 1, SKN[3]); q(17, y + 1, 1, 3, SKN[1]);     // head
+      q(13, y - 1, 6, 2, APx.hair[1]); q(13, y - 1, 6, 1, APx.hair[2]);               // hair
+      q(15, y + 1, 1, 1, INKp[1]); q(17, y + 1, 1, 1, INKp[1]);                       // eyes
+      q(11, y + 6, 2, 4, SKN[2]);                                                     // rein arm
+      // ---- weapon ----
+      if (c.bow) {
+        q(21, y + 4, 1, 9, WD[2]); q(20, y + 4, 1, 1, WD[2]); q(20, y + 12, 1, 1, WD[2]);   // saddle bow
+        q(19, y + 8, 2, 1, SKN[2]);
+        if (pose === 'fight') { if (f === 0) q(17, y + 8, 4, 1, BONE[2]); else { q(23, y + 8, 7, 1, BONE[2]); q(30, y + 8, 1, 1, STN[3]); } }
+      } else if (c.lance) {
+        q(18, y + 6, 14, 1, WD[2]); q(18, y + 7, 13, 1, WD[1]);                        // long couched lance
+        q(31, y + 5, 1, 3, c.tip || PAL.gold); q(30, y + 6, 1, 1, c.tip || PAL.gold);  // gold lance-head
+        q(18, y + 6, 2, 2, SKN[2]);                                                    // couching hand
+      } else {                                                                          // spear
+        if (pose === 'fight') { const tx = f === 0 ? 25 : 29; q(20, y + 7, Math.max(1, tx - 20), 1, SKN[2]); q(tx - 7, y + 7, 8, 1, WD[2]); q(tx, y + 6, 1, 1, STN[3]); if (f === 1) q(tx + 1, y + 6, 1, 1, FIRE[2]); }
+        else { q(20, y + 6, 2, 1, SKN[2]); q(21, y - 3, 1, 13, WD[2]); q(21, y - 4, 1, 1, STN[3]); }
+      }
+    };
+    return {
+      idle: framesU(2, (q, g, f) => draw(q, 0, 'idle'), 1),
+      walk: framesU(2, (q, g, f) => draw(q, f, 'walk'), 1),
+      fight: framesU(2, (q, g, f) => draw(q, f, 'fight'), 1),
+    };
+  }
+
   // TUNIC COLOURS — a villager's tunic (body + collar) is dyed by village, so
   // your people read at a glance against the enemy's. Extend freely.
   const TUNICS = {
@@ -1392,7 +1441,7 @@ const Sprites = {
   const RIDERS = {
     rider:       { horse: '#a87848', horseD: '#7a5430', body: '#7a6242' },
     horsearcher: { horse: APx.hide[3], horseD: APx.hide[1], body: APx.leaf[2], bow: true },
-    lancer:      { horse: '#8a8078', horseD: '#5d5d64', body: '#8a7248', tip: PAL.gold },
+    lancer:      { horse: '#8a8078', horseD: '#5d5d64', body: '#8a7248', tip: PAL.gold, lance: true },
   };
   Sprites.military = {};                                    // tunic -> { defender, elite, …, warship }
   Sprites.militaryFor = function (tunic) {
@@ -1402,7 +1451,7 @@ const Sprites = {
     for (const k in FOOT) set[k] = FOOT[k].exHi
       ? footSheetHi({ body: FOOT[k].body, accent: acc, pants: FOOT[k].pants, spear: PAL.trunk, noThrust: FOOT[k].noThrust }, FOOT[k].exHi)
       : unitSheet({ body: FOOT[k].body, accent: acc, pants: FOOT[k].pants, hair: PAL.hair, spear: PAL.trunk, noThrust: FOOT[k].noThrust }, FOOT[k].extra);
-    for (const k in RIDERS) set[k] = riderSheet({ horse: RIDERS[k].horse, horseD: RIDERS[k].horseD, body: RIDERS[k].body, accent: acc, bow: RIDERS[k].bow, tip: RIDERS[k].tip });
+    for (const k in RIDERS) set[k] = riderSheetHi({ horse: RIDERS[k].horse, horseD: RIDERS[k].horseD, body: RIDERS[k].body, accent: acc, bow: RIDERS[k].bow, lance: RIDERS[k].lance, tip: RIDERS[k].tip });
     set.warship = warshipSheet({ hull: PAL.wood, hullD: PAL.woodD, sail: '#e8e8e0', sailD: '#c9c9c0', stripe: acc, crew: '#7a6242', arrow: PAL.rockL });
     set.trebuchet = trebuchetSheet(acc);   // siege engine, but faction-draped so friend/foe reads
     set.sapper = sapperSheet(acc);         // earth-toned engineer, faction collar
