@@ -37,10 +37,16 @@ const Sprites = {
     c.width = w; c.height = h;
     return c;
   }
-  // returns a canvas + a plot fn working on the 16-grid (2px per cell)
+  // returns a canvas + a plot fn working on the 16-grid (2px per cell). `p.f`
+  // exposes the FINE 32-grid (1px per cell) — the same fine-detail technique the
+  // buildings use via `p.hi`, giving terrain true 2× density with no memory cost
+  // (the tile stays a 32px canvas, so the pre-composited terrainCache is unchanged).
   function tile(draw) {
     const c = mk(32, 32), g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
     const p = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * 2, y * 2, (w || 1) * 2, (h || 1) * 2); };
+    p.f = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, (w || 1), (h || 1)); };
+    p.g = g;
     draw(p, g);
     return c;
   }
@@ -93,30 +99,39 @@ const Sprites = {
   /* ---------------- terrain (built on ART — see ARTSTYLE.md) ---------------- */
   const AP = ART.PALETTE;
 
+  // Grass authored at the fine 32-grid (1px) so no two square-inches read alike —
+  // a per-pixel swell of three greens kills the stamped/tiled look, then soft
+  // sunlit humps, fine blade tufts, and pinpoint dew/shadow specks add life.
   function grassBase(p, seed) {
-    p(0, 0, 16, 16, AP.grass[3]);
-    const r = ART.rng(seed);
-    for (let i = 0; i < 10; i++) p((r() * 16) | 0, (r() * 16) | 0, 1, 1, AP.grass[2]);
-    for (let i = 0; i < 6; i++) p((r() * 16) | 0, (r() * 16) | 0, 1, 1, AP.grass[4]);
-    for (let i = 0; i < 4; i++) {                       // blade tufts
-      const x = 1 + (r() * 14) | 0, y = 2 + (r() * 13) | 0;
-      p(x, y, 1, 2, AP.grass[1]); p(x + 1, y + 1, 1, 1, AP.grass[4]);
+    const f = p.f, r = ART.rng(seed);
+    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+      const n = Math.sin((x + seed * 3) * 0.6) + Math.cos((y + seed) * 0.55) + (r() - 0.5) * 1.7;
+      f(x, y, 1, 1, n > 0.8 ? AP.grass[3] : n < -0.9 ? AP.grass[1] : AP.grass[2]);
     }
-    for (let i = 0; i < 3; i++) p((r() * 16) | 0, (r() * 16) | 0, 1, 1, AP.grass[1]);
+    for (let i = 0; i < 3; i++)                          // gentle rolling relief
+      ART.shadedCircle(f, 3 + (r() * 26) | 0, 3 + (r() * 26) | 0, 2 + (r() * 2 | 0), AP.grass, 3);
+    for (let i = 0; i < 15; i++) {                       // blade tufts: dark stem, lit tip
+      const x = 1 + (r() * 30) | 0, y = 3 + (r() * 26) | 0, hh = 2 + (r() * 2 | 0);
+      f(x, y, 1, hh, AP.grass[1]); f(x, y - 1, 1, 1, AP.grass[4]);
+      if (r() < 0.5) f(x + 1, y + 1, 1, hh - 1, AP.grass[2]);
+    }
+    for (let i = 0; i < 12; i++) f((r() * 32) | 0, (r() * 32) | 0, 1, 1, r() < 0.7 ? AP.grass[4] : AP.grass[0]);
   }
   Sprites.terrain[T.GRASS] = [
     tile(p => grassBase(p, 3)), tile(p => grassBase(p, 77)),
     tile(p => grassBase(p, 129)), tile(p => grassBase(p, 211)),
+    tile(p => grassBase(p, 258)), tile(p => grassBase(p, 344)),
   ];
   // rare flower meadows — drawTile rolls these on ~3% of grass tiles
   function flowers(p, seed) {
     grassBase(p, seed);
-    const r = ART.rng(seed + 1);
-    for (let i = 0; i < 4; i++) {
-      const x = 1 + (r() * 13) | 0, y = 1 + (r() * 13) | 0;
+    const f = p.f, r = ART.rng(seed + 1);
+    for (let i = 0; i < 7; i++) {
+      const x = 2 + (r() * 27) | 0, y = 2 + (r() * 27) | 0;
       const col = AP.bloom[(r() * 3) | 0];
-      p(x, y, 1, 1, col); p(x + 1, y, 1, 1, col === AP.bloom[2] ? AP.bloom[1] : col);
-      p(x, y + 1, 1, 1, AP.grass[1]);
+      f(x, y - 2, 1, 2, AP.grass[1]);                    // stem
+      f(x, y, 1, 1, col); f(x - 1, y, 1, 1, col === AP.bloom[2] ? AP.bloom[1] : col);
+      f(x + 1, y, 1, 1, col); f(x, y - 1, 1, 1, AP.bloom[3]);   // petals + lit centre
     }
   }
   Sprites.terrainRare = { [T.GRASS]: [tile(p => flowers(p, 301)), tile(p => flowers(p, 407))] };
@@ -138,16 +153,30 @@ const Sprites = {
     tile(p => forestTile(p, 149, true)),
   ];
 
-  // water: [0] = shallow (near land, lighter), [1] = deep interior
+  // Water — the hero. [0] = shallow (near land, lighter), [1] = deep interior.
+  // A rolling swell of four blues drawn at the fine grid: darker troughs, lighter
+  // crests, crisp wave-dash highlights and pinpoint sun-glints. render.js layers
+  // the live animation (drifting sparkle, shoreline foam, jumping fish) on top.
   function waterTile(p, seed, deep) {
-    const base = deep ? AP.water[1] : AP.water[2];
-    p(0, 0, 16, 16, base);
-    const r = ART.rng(seed);
-    for (let i = 0; i < 5; i++) p((r() * 16) | 0, (r() * 16) | 0, 1, 1, deep ? AP.water[0] : AP.water[1]);
-    for (let i = 0; i < 3; i++) {                                   // static wave dashes
-      const x = (r() * 12) | 0, y = 2 + (r() * 12) | 0;
-      p(x, y, 3, 1, deep ? AP.water[2] : AP.water[3]);
+    const f = p.f, r = ART.rng(seed);
+    const d0 = deep ? AP.water[0] : AP.water[1];   // trough
+    const d1 = deep ? AP.water[1] : AP.water[2];   // body
+    const d2 = deep ? AP.water[2] : AP.water[3];   // crest
+    const d3 = deep ? AP.water[3] : AP.water[4];   // glint
+    f(0, 0, 32, 32, d1);
+    for (let y = 0; y < 32; y++) {
+      const s = Math.sin(y * 0.5 + seed * 0.7);
+      for (let x = 0; x < 32; x++) {
+        const w = Math.sin((x + y * 0.4) * 0.45 + seed) + s;
+        if (w < -1.1) f(x, y, 1, 1, d0);
+        else if (w > 1.15) f(x, y, 1, 1, d2);
+      }
     }
+    for (let i = 0; i < 11; i++) {                                  // crest wave-dashes
+      const x = (r() * 27) | 0, y = 2 + (r() * 28) | 0, ln = 2 + (r() * 3 | 0);
+      f(x, y, ln, 1, d2); f(x + 1, y + 1, ln - 1, 1, d1);
+    }
+    for (let i = 0; i < 6; i++) f(2 + (r() * 28) | 0, 2 + (r() * 28) | 0, 1, 1, d3);
   }
   Sprites.terrain[T.WATER] = [
     tile(p => waterTile(p, 9, false)),
@@ -234,13 +263,21 @@ const Sprites = {
       p(2, 12, 3, 2, AP.stone[1]); p(2, 12, 3, 1, AP.stone[2]);     // spent slab
     }),
   ];
+  // spent soil — dry tilled earth: fine ploughed furrows (lit crest / shadowed
+  // trough), scattered clods and dry cracks, drawn at the 32-grid
   Sprites.terrain[T.BARREN] = [
     tile(p => {
-      ART.dither(p, 0, 0, 16, 16, AP.soil[3], AP.soil[2]);
-      const r = ART.rng(71);
-      for (let i = 0; i < 8; i++) p((r() * 16) | 0, (r() * 16) | 0, 1, 1, AP.soil[1]);
-      p(2, 4, 5, 1, AP.soil[0]); p(6, 5, 1, 3, AP.soil[0]);         // cracks
-      p(10, 9, 4, 1, AP.soil[0]); p(9, 11, 1, 3, AP.soil[0]);
+      const f = p.f, r = ART.rng(71);
+      for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+        const n = Math.sin((x + y) * 0.7) + (r() - 0.5) * 1.2;
+        f(x, y, 1, 1, n > 0.5 ? AP.soil[3] : n < -0.6 ? AP.soil[1] : AP.soil[2]);
+      }
+      for (let y = 1; y < 32; y += 4) {                             // ploughed furrows
+        f(0, y, 32, 1, AP.soil[3]); f(0, y + 1, 32, 1, AP.soil[1]);
+      }
+      for (let i = 0; i < 14; i++) f((r() * 32) | 0, (r() * 32) | 0, 1, 1, r() < 0.5 ? AP.soil[0] : AP.soil[1]);
+      f(4, 8, 9, 1, AP.soil[0]); f(11, 9, 1, 5, AP.soil[0]);        // dry cracks
+      f(18, 20, 8, 1, AP.soil[0]); f(20, 12, 1, 6, AP.soil[0]);
     }),
   ];
   Sprites.terrain[T.RUIN] = [
