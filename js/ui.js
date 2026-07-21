@@ -20,7 +20,7 @@ const UI = {
   terraDrag: null,       // tile chain while dragging a sapper dig/clear line
   terraGhost: null,      // [{x,y,ok}] preview of the dragged terraform line
   settingRally: null,    // building id waiting for a rally-point tap
-  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'trade', 'wall', 'gate'],
+  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'warcamp', 'trade', 'wall', 'gate'],
 
   // paint a sprite into an icon canvas: back it at 64px and scale the WHOLE
   // sprite in (sprites are now 64px — a naive drawImage would clip to a corner),
@@ -920,7 +920,7 @@ const UI = {
           html += `<button class="abtn" data-act="staff">🧑‍🌾 Station worker<small>${Bld.workersAssigned(b)}/${Bld.maxWorkers(b)} assigned</small></button>`;
         if (!b.construction && !b.upgrading && b.hp < b.maxhp && !worker)
           html += `<button class="abtn" data-act="sendworker">🔨 Repair<small>a villager does the work</small></button>`;
-        if (b.level < 3 && !b.construction && b.key !== 'wall' && b.key !== 'gate') {
+        if (b.level < 3 && !b.construction && d.levels[b.level] && b.key !== 'wall' && b.key !== 'gate') {
           const up = Bld.canUpgrade(b);
           const cost = d.levels[b.level].cost;
           html += `<button class="abtn wide ${up.ok ? '' : 'cant'}" data-act="upgrade">⬆ Upgrade to Lv ${b.level + 1}<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;

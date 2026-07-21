@@ -262,6 +262,18 @@ const CFG = {
         { cost: { wood: 320, stone: 220, gold: 50 }, time: 3, hp: 560, bonus: 'Sappers clear resource tiles (open ground)' },
       ],
     },
+    // FORWARD OPERATING BASE — the only building you can plant away from your
+    // settlement. It anchors military construction around it (a mini Town Center for
+    // the front line), looses arrows like a Watchtower, and mends troops that stand
+    // beside it. No upgrades, and it falls fast — and it shows up on the enemy's map,
+    // so a forward camp is a bet, not a free win. Capped so it can't blanket the map.
+    warcamp: {
+      name: 'War Camp', reqTC: 3, max: 2, freePlace: true, staging: true,
+      desc: 'Forward base — raise it anywhere you have scouted, then build military structures around it. Shoots arrows, heals nearby soldiers. No upgrades; falls easily; the enemy sees it.',
+      levels: [
+        { cost: { wood: 350, stone: 250, gold: 150 }, time: 3, hp: 300, atk: 8, range: 4.5, vision: 6 },
+      ],
+    },
     dock: {
       name: 'Dock', desc: 'Built on open water (6+ tiles). Fishing boats harvest fish; warships defend the coast.',
       reqTC: 2,   // needs Town Center level 2 before it can be placed
@@ -409,6 +421,12 @@ const CFG = {
   // "group nearby / group fleet" and double-tap-select-same-type both gather units
   // within this radius (tiles) of the tapped one — one grouping sphere for both
   GROUP_R: 6,
+
+  // WAR CAMP: soldiers standing within this many tiles of a forward camp are mended
+  // (a field hospital), and the only structures you may raise at a forward camp are
+  // these military/support ones — no relocating your economy to the front line.
+  WARCAMP_HEAL: 1.5,
+  STAGING_BUILD: ['barracks', 'stable', 'range', 'siege', 'sapper', 'tower', 'wall', 'gate', 'warcamp'],
 
   // barbarian pressure: a spice, not a kingmaker — bands come less often and
   // smaller than they used to, tipping fights without deciding them

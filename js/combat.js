@@ -663,9 +663,9 @@ const Combat = {
       }
     }
 
-    // watchtowers
+    // watchtowers — and War Camps, which loose arrows like a Watchtower L1
     for (const b of S.buildings) {
-      if (b.key !== 'tower' || !Bld.done(b) || b.upgrading > 0) continue;
+      if ((b.key !== 'tower' && b.key !== 'warcamp') || !Bld.done(b) || b.upgrading > 0) continue;
       if (b.cd > 0) { b.cd -= dt; continue; }
       const lv = Bld.lv(b);
       const cx = b.x + 0.5, cy = b.y + 0.5;

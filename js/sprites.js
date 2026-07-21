@@ -611,6 +611,29 @@ const Sprites = {
       if (d.glow) { p(7, 0, 2, 2, AP.fire[1]); p(7, 0, 1, 1, AP.fire[2]); }  // signal fire
       else p(7, 0, 1, 2, AP.blue[2]);
     },
+    // FORWARD CAMP — a peaked campaign tent with a war banner on a tall pole and a
+    // stand of planted spears out front; reads instantly as a field encampment, not
+    // a permanent hall. Single tier, so it ignores lv.
+    warcamp(p, lv, fac) {
+      const q = p.hi, cv = AP.thatch;
+      ART.dropShadow(p, 8, 14, 13);
+      // peaked canvas tent: a triangle from the apex down to a wide hem
+      for (let y = 11; y <= 28; y++) {
+        const half = Math.round((y - 11) * 0.62) + 1;
+        q(16 - half, y, half * 2, 1, y < 19 ? cv[2] : cv[1]);
+      }
+      q(15, 11, 2, 18, cv[3]);                              // lit ridge seam
+      q(8, 28, 16, 1, cv[0]);                               // shaded hem
+      q(15, 9, 1, 3, AP.wood[3]);                           // ridge-pole finial
+      q(14, 21, 4, 7, AP.ink[0]);                           // dark doorway
+      q(13, 21, 1, 7, cv[3]); q(18, 21, 1, 7, cv[0]);       // pinned-back flaps
+      // war banner on a tall pole beside the tent
+      q(25, 8, 1, 20, AP.wood[2]); q(25, 6, 1, 2, AP.stone[4]);
+      q(21, 9, 4, 5, fac[2]); q(21, 9, 4, 1, fac[1]); q(21, 13, 3, 1, fac[0]);
+      // a stand of planted spears + a round shield out front (the staging ground)
+      for (const sx of [6, 8]) { q(sx, 19, 1, 9, AP.wood[2]); q(sx, 18, 1, 1, AP.stone[4]); }
+      ART.shadedCircle(q, 8, 26, 3, AP.hide, 2); q(8, 26, 1, 1, fac[1]);
+    },
     // martial hall — read at a glance from the weapon rack (spears + round
     // shields) and the big training-hall door; sturdier reinforced posts
     barracks(p, lv, fac) {

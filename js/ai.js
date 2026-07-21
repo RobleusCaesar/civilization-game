@@ -117,8 +117,16 @@ const AI = {
      terrain-hunters sit beside their bonus terrain, towers push toward the
      player, everything else scatters at a random angle from the hall */
   plot(key) {
-    const tc = Bld.tcOf('A');
+    let tc = Bld.tcOf('A');
     if (!tc) return null;
+    // FORWARD STAGING: while pushing, raise military halls around a standing War Camp
+    // (the mini-TC of the front) instead of back home, so the assault trains, spawns
+    // and mends at the front line rather than a long march away.
+    if ((key === 'barracks' || key === 'stable' || key === 'range' || key === 'siege') &&
+        (S.ai.posture === 'PUSH' || S.ai.posture === 'PRESSURE')) {
+      const camp = Bld.list('A').find(b => b.key === 'warcamp' && Bld.done(b));
+      if (camp) tc = camp;
+    }
     const P = this.persona();
     const rMax = P.walls ? 5 : 7;   // wall-builders keep the town inside the ring
     const isWall = (key === 'wall' || key === 'gate');
@@ -395,6 +403,43 @@ const AI = {
     if (!spot || !Bld.canPlace('A', key, spot.x, spot.y).ok) return false;
     Bld.place('A', key, spot.x, spot.y);
     return true;
+  },
+
+  // FORWARD OPERATING BASE — the rival plants a War Camp out toward the player when
+  // it commits to a push, so its assault stages, spawns and mends at the front. It
+  // stakes just ONE (the player's cap is 2), sites it on reachable ground near the
+  // foe but clear of their tower fire, and won't keep re-staking a lost camp (a long
+  // cooldown), so a razed camp is a real setback rather than a resource leak.
+  aiWarCamp(read) {
+    const ai = S.ai, tc = Bld.tcOf('A');
+    if (!tc || tc.level < 3) return;
+    if (ai.posture !== 'PUSH' && ai.posture !== 'PRESSURE') return;
+    const ptc = read.knownTC; if (!ptc) return;
+    if (Bld.list('A').some(b => b.key === 'warcamp')) return;                 // one forward camp is plenty
+    if (ai.memory && ai.memory.warCampAt && S.day - ai.memory.warCampAt < 40) return;   // don't re-stake a lost camp too soon
+    const def = CFG.BUILDINGS.warcamp;
+    if (!this.affordFree(def.levels[0].cost)) return;
+    const reach = this.aiLandReach(); if (!reach) return;
+    const towers = [], kb = ai.knownB || {};
+    for (const k in kb) if (kb[k].key === 'tower') towers.push(kb[k]);
+    const nearTower = (x, y) => towers.some(t => Math.hypot(t.x + 0.5 - x, t.y + 0.5 - y) <= 7);
+    // the reachable, buildable tile nearest the player that's genuinely FORWARD (out
+    // from home) and clear of their towers — a strongpoint to push from
+    let best = null, bd = 1e9;
+    for (let i = 0; i < reach.length; i++) {
+      if (!reach[i]) continue;
+      const x = i % CFG.W, y = (i / CFG.W) | 0;
+      if (Math.hypot(x - tc.x, y - tc.y) < 10) continue;                      // must be well out from the home hall
+      const dP = Math.hypot(x - ptc.x, y - ptc.y);
+      if (dP < 8 || dP > 24) continue;                                        // near the foe, not in the wall's teeth
+      if (!Bld.tileFree(x, y) || nearTower(x, y)) continue;
+      if (dP < bd) { bd = dP; best = { x, y }; }
+    }
+    if (best && Bld.canPlace('A', 'warcamp', best.x, best.y).ok) {
+      Bld.place('A', 'warcamp', best.x, best.y);
+      if (ai.memory) ai.memory.warCampAt = S.day;
+      G.log('⚔ The rival throws up a War Camp on your doorstep — a forward base for the assault!', true);
+    }
   },
 
   /* ===================================================================
@@ -1801,6 +1846,7 @@ const AI = {
       ai.goal = { cost: CFG.BUILDINGS.tc.levels[tc.level].cost, until: S.day + 20 };
     const didSafety = this.digAndProtect(read);
     if (!didSafety && S.day % (m.aiBuildEvery || 2) === 0) this.bestBuild(read);
+    if (!didSafety && S.day % 4 === 0) this.aiWarCamp(read);   // occasionally stake a forward base for a push
     this.trainForces(m, read);
     // SAPPERS: first priority is breaching where a raid party is stuck — clear the
     // woods or bridge the water so the assault gets through — then defensive moats

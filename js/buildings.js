@@ -96,9 +96,19 @@ const Bld = {
       // however big the footprint — no level scaling: closeness is the whole point.
       return best ? { x: this.cx(best), y: this.cy(best), r: this.reach(best) + CFG.HEAL_DOCK_TOUCH } : null;
     }
+    // land units mend at the Town Center — or beside a forward War Camp (a field
+    // hospital), whichever healing ground is nearer, so troops on campaign can patch
+    // up at the front instead of marching all the way home.
+    const cands = [];
     const tc = this.tcOf(u.owner);
-    if (!tc) return null;
-    return { x: this.cx(tc), y: this.cy(tc), r: CFG.HEAL_RADIUS * Math.pow(1 + CFG.HEAL_RADIUS_STEP, (tc.level || 1) - 1) };
+    if (tc) cands.push({ x: this.cx(tc), y: this.cy(tc), r: CFG.HEAL_RADIUS * Math.pow(1 + CFG.HEAL_RADIUS_STEP, (tc.level || 1) - 1) });
+    for (const b of S.buildings)
+      if (b.owner === u.owner && b.key === 'warcamp' && this.done(b))
+        cands.push({ x: this.cx(b), y: this.cy(b), r: this.reach(b) + CFG.WARCAMP_HEAL });
+    if (!cands.length) return null;
+    let best = cands[0], bd = Math.hypot(u.x - best.x, u.y - best.y);
+    for (const z of cands) { const d = Math.hypot(u.x - z.x, u.y - z.y); if (d < bd) { bd = d; best = z; } }
+    return best;
   },
   inHealZone(u) {
     const z = this.healZoneFor(u);
@@ -171,6 +181,28 @@ const Bld = {
     return { ok: true };
   },
 
+  // a would-be site whose ONLY anchor is a War Camp (out beyond the home settlement)
+  // — used to tag forward outposts, which don't themselves anchor further building.
+  _isOutpostSite(owner, x, y) {
+    const mine = this.list(owner);
+    const nearHome = mine.some(b => !b.outpost && b.key !== 'warcamp' &&
+      Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
+    if (nearHome) return false;
+    return mine.some(b => b.key === 'warcamp' && Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
+  },
+  // a forward camp shows up on the OTHER side's map — a bet, not a hidden win. A
+  // player's camp is remembered by the rival chief; a rival's camp is revealed on
+  // the player's map so it can be answered.
+  _revealCampToFoe(b) {
+    if (b.owner === 'P') {
+      if (S.ai) { S.ai.knownB = S.ai.knownB || {}; S.ai.knownB[MapGen.idx(b.x, b.y)] = { key: b.key, level: b.level, owner: 'P', x: b.x, y: b.y, seen: S.day }; }
+    } else if (b.owner === 'A') {
+      G.reveal(b.x, b.y, this.def(b.key).levels[0].vision || 4);
+      if (S.map.seenB) S.map.seenB[MapGen.idx(b.x, b.y)] = { key: b.key, level: b.level, owner: 'A' };
+      R.fogDirty = true;
+    }
+  },
+
   canPlace(owner, key, x, y) {
     const d = this.def(key);
     if (!d) return { ok: false, why: '?' };
@@ -196,13 +228,25 @@ const Bld = {
         if (!S.map.explored[MapGen.idx(x + dx, y + dy)]) return { ok: false, why: 'Unexplored' };
     }
     if (d.unique && this.list(owner).some(b => b.key === key)) return { ok: false, why: 'Already built' };
-    // fortifications (walls/gates) may be raised anywhere explored — you seal
-    // chokepoints and the map edge, which are usually far from your buildings;
-    // everything else must stay within reach of your settlement
+    // capped structures (War Camp) — only so many forward bases in the field at once
+    if (d.max && this.list(owner).filter(b => b.key === key).length >= d.max)
+      return { ok: false, why: `Only ${d.max} ${d.name}${d.max > 1 ? 's' : ''} at a time` };
+    // ANCHORS & the front line. Fortifications (walls/gates) and the freely-placed
+    // War Camp may be raised anywhere explored. Everything else must sit within reach
+    // of an ANCHOR: a home building (near the town) or a War Camp (the mini-TC of the
+    // front). A forward OUTPOST — a building anchored only by a camp — does NOT itself
+    // anchor, so the camp is a linchpin: raze it and the front-line base can't grow.
     const mine = this.list(owner);
-    if (key !== 'wall' && key !== 'gate' && mine.length &&
-        !mine.some(b => Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE))
-      return { ok: false, why: 'Too far from your buildings' };
+    const freePlace = d.freePlace || key === 'wall' || key === 'gate';
+    const homeAnchors = mine.filter(b => !b.outpost && b.key !== 'warcamp');
+    const nearHome = homeAnchors.some(b => Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
+    const nearCamp = mine.some(b => b.key === 'warcamp' && Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
+    if (!freePlace && mine.length && !nearHome && !nearCamp)
+      return { ok: false, why: mine.some(b => b.key === 'warcamp') || homeAnchors.length ? 'Too far — build by your town or a War Camp' : 'Too far from your buildings' };
+    // a forward camp is a MILITARY staging ground — no relocating farms/houses/economy
+    // to the front. (Near home, anything goes as normal.)
+    if (!freePlace && !nearHome && nearCamp && CFG.STAGING_BUILD.indexOf(key) < 0)
+      return { ok: false, why: 'Only military buildings at a War Camp' };
     const res = owner === 'P' ? S.res : S.ai.res;
     if (!this.canAfford(this.effCost(owner, key), res)) return { ok: false, why: 'Not enough resources' };
     return { ok: true };
@@ -226,15 +270,21 @@ const Bld = {
       this.pay(this.effCost(owner, key), res);
       if (window.Cards) Cards.notePlaced(owner);
     }
+    // is this a FORWARD OUTPOST — a structure whose only anchor is a War Camp, out
+    // beyond the home settlement? Such buildings don't themselves anchor further
+    // construction, so razing the camp stops the front-line base from growing. The
+    // camp itself is never an outpost (it's the anchor).
+    const outpost = key !== 'warcamp' && this._isOutpostSite(owner, x, y);
     const b = {
       id: S.nextId++, key, owner, x, y, level: spec.level,
       // construction sites are fragile until finished
       hp: opts.instant ? spec.lv.hp : Math.max(30, Math.round(spec.lv.hp * 0.4)),
       maxhp: spec.lv.hp,
       construction: opts.instant ? 0 : spec.lv.time * tMult,   // days left
-      upgrading: 0, queue: [], cd: 0,
+      upgrading: 0, queue: [], cd: 0, outpost,
     };
     S.buildings.push(b);
+    if (key === 'warcamp') this._revealCampToFoe(b);   // a forward camp shows on the enemy's map
     this._block = null;
     // fresh construction clears old stumps/rubble — only the new building shows
     const sz = this.size(key);
@@ -310,9 +360,10 @@ const Bld = {
     if (b.key === 'wall' || b.key === 'gate')
       return { ok: false, why: 'Walls upgrade together — see the Town Center' };
     if (b.level >= 3) return { ok: false, why: 'Max level' };
+    const next = d.levels[b.level];
+    if (!next) return { ok: false, why: 'No upgrades' };   // single-tier buildings (War Camp)
     if (b.construction || b.upgrading) return { ok: false, why: 'Busy' };
     if (b.wallUp > 0) return { ok: false, why: 'Reinforcing walls — Town Center busy' };
-    const next = d.levels[b.level];
     if (b.key !== 'tc') {
       const tc = this.tcOf(b.owner);
       if (!tc || tc.level < b.level + 1)
