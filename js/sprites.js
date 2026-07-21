@@ -183,26 +183,40 @@ const Sprites = {
     tile(p => waterTile(p, 57, true)),
   ];
 
-  // hills: clustered shaded boulders, grass poking between, dark base rim
+  // A shaded boulder on the fine grid: a soft cast shadow (down-right on the
+  // turf), a 3-shade rounded body, an angular fissure + facet break, a top-left
+  // crown glint, and an optional snow cap. Boulders are placed in CLUSTERS —
+  // some straddling the tile edge — so a field of hill/mountain tiles reads as
+  // one broken rocky massif rather than a repeating grid. Shadows are laid down
+  // first, then bodies, so overlapping rocks composite cleanly.
+  function boulderShadow(f, cx, cy, rr) {
+    for (let dy = -rr; dy <= rr; dy++) for (let dx = -rr; dx <= rr; dx++)
+      if (dx * dx + dy * dy <= rr * rr) f(cx + dx + 1, cy + dy + 2, 1, 1, AP.grass[0]);
+  }
+  function boulderBody(f, cx, cy, rr, snow) {
+    const St = AP.stone;
+    ART.shadedCircle(f, cx, cy, rr, St, 2);
+    f(cx, cy - rr + 1, 1, (rr * 1.3) | 0, St[0]);            // vertical fissure
+    f(cx - rr + 1, cy, (rr * 0.9) | 0, 1, St[1]);            // facet break
+    f(cx - 1, cy - rr + 2, 1, 1, St[4]);                     // crown glint
+    if (snow) {                                              // snow on the lit crown
+      for (let dx = -rr + 1; dx <= 0; dx++) f(cx + dx, cy - rr + 1, 1, 1, AP.bone[2]);
+      f(cx - rr + 1, cy - rr + 2, (rr * 0.7) | 0, 1, AP.bone[1]);
+      f(cx - ((rr * 0.3) | 0), cy - rr + 1, 1, 1, AP.bone[2]);
+    }
+  }
+  function rockField(p, seed, spec) {
+    const f = p.f, r = ART.rng(seed + 3);
+    for (const b of spec) boulderShadow(f, b[0], b[1], b[2]);
+    for (const b of spec) boulderBody(f, b[0], b[1], b[2], b[3]);
+    for (let i = 0; i < 6; i++)                              // scree + grass tufts in the gaps
+      f((r() * 30) | 0, (r() * 30) | 0, 1, 1, r() < 0.5 ? AP.stone[2] : AP.grass[4]);
+  }
+  // hills: a low scatter of boulders on turf, plenty of grass between them
   Sprites.terrain[T.HILLS] = [
-    tile(p => {
-      grassBase(p, 31);
-      p(2, 11, 8, 1, AP.stone[0]);                                  // elevation rim
-      ART.shadedCircle(p, 5, 8, 3, AP.stone, 2);
-      ART.shadedCircle(p, 11, 11, 2, AP.stone, 1);
-      ART.shadedCircle(p, 12, 5, 2, AP.stone, 2);
-      p(8, 12, 1, 1, AP.grass[4]); p(3, 5, 1, 1, AP.grass[4]);      // grass pokes through
-      p(4, 7, 1, 1, AP.stone[4]); p(11, 4, 1, 1, AP.stone[4]);      // glints
-    }),
-    tile(p => {
-      grassBase(p, 87);
-      p(6, 13, 8, 1, AP.stone[0]);
-      ART.shadedCircle(p, 10, 9, 3, AP.stone, 2);
-      ART.shadedCircle(p, 4, 5, 2, AP.stone, 2);
-      ART.shadedCircle(p, 4, 11, 2, AP.stone, 1);
-      p(7, 6, 1, 1, AP.grass[4]); p(13, 12, 1, 1, AP.grass[4]);
-      p(9, 8, 1, 1, AP.stone[4]);
-    }),
+    tile(p => { grassBase(p, 31); rockField(p, 31, [[10, 16, 5], [20, 22, 4], [23, 9, 4], [6, 7, 3]]); }),
+    tile(p => { grassBase(p, 87); rockField(p, 87, [[20, 18, 5], [8, 10, 4], [9, 23, 3], [25, 25, 3]]); }),
+    tile(p => { grassBase(p, 143); rockField(p, 143, [[15, 13, 5], [24, 20, 4], [6, 22, 4], [27, 6, 3]]); }),
   ];
 
   // wild fertile ground: fruit orchards and berry thickets, mixed across the
@@ -254,13 +268,16 @@ const Sprites = {
     tile(p => { grassBase(p, 51); drawStump(p, 2, 3); drawStump(p, 9, 8); drawStump(p, 4, 11); }),
     tile(p => { grassBase(p, 63); drawStump(p, 8, 2); drawStump(p, 3, 7); drawStump(p, 11, 11); }),
   ];
+  // spent quarry: a couple of leftover rocks, a cracked cut slab, loose scree
   Sprites.terrain[T.PEBBLES] = [
     tile(p => {
       grassBase(p, 57);
-      ART.shadedCircle(p, 4, 6, 1, AP.stone, 2);
-      ART.shadedCircle(p, 10, 9, 1, AP.stone, 1);
-      p(6, 12, 2, 1, AP.stone[2]); p(12, 4, 1, 1, AP.stone[3]);
-      p(2, 12, 3, 2, AP.stone[1]); p(2, 12, 3, 1, AP.stone[2]);     // spent slab
+      const f = p.f, r = ART.rng(57);
+      boulderShadow(f, 8, 13, 2); boulderBody(f, 8, 13, 2);
+      boulderShadow(f, 21, 19, 2); boulderBody(f, 21, 19, 2);
+      f(4, 22, 8, 5, AP.stone[1]); f(4, 22, 8, 1, AP.stone[3]); f(4, 22, 1, 5, AP.stone[2]);  // cut slab
+      f(7, 22, 1, 5, AP.stone[0]); f(4, 25, 8, 1, AP.stone[0]);                                // saw cracks
+      for (let i = 0; i < 11; i++) f((r() * 30) | 0, (r() * 30) | 0, 1, 1, r() < 0.5 ? AP.stone[2] : AP.stone[3]);
     }),
   ];
   // spent soil — dry tilled earth: fine ploughed furrows (lit crest / shadowed
@@ -289,22 +306,13 @@ const Sprites = {
       p(10, 11, 3, 1, AP.ink[0]); p(4, 5, 1, 1, AP.ink[0]);
     }),
   ];
+  // mountains: big snow-capped crags packed edge to edge (so a run of tiles
+  // fuses into one range), with dark grass shadows and scree filling the gaps —
+  // NOT the old flat grey checker. Peaks vary in size and position per variant.
   Sprites.terrain[T.MOUNTAIN] = [
-    tile(p => {
-      ART.dither(p, 0, 0, 16, 16, AP.stone[1], AP.stone[0]);
-      ART.shadedCircle(p, 5, 9, 4, AP.stone, 1);
-      p(4, 5, 4, 2, AP.stone[3]); p(5, 3, 2, 2, AP.bone[2]); p(4, 5, 1, 1, AP.bone[2]);  // snow cap
-      ART.shadedCircle(p, 12, 11, 3, AP.stone, 1);
-      p(11, 6, 2, 2, AP.bone[2]);
-      p(3, 13, 4, 1, AP.stone[0]); p(10, 14, 4, 1, AP.stone[0]);
-    }),
-    tile(p => {
-      ART.dither(p, 0, 0, 16, 16, AP.stone[1], AP.stone[0]);
-      ART.shadedCircle(p, 10, 9, 4, AP.stone, 1);
-      p(9, 4, 3, 2, AP.stone[3]); p(10, 2, 2, 2, AP.bone[2]);
-      ART.shadedCircle(p, 3, 11, 3, AP.stone, 1);
-      p(3, 8, 1, 1, AP.bone[2]);
-    }),
+    tile(p => { grassBase(p, 61); rockField(p, 61, [[12, 18, 7, true], [23, 23, 6, true], [24, 9, 5, false], [6, 26, 4, false], [4, 8, 4, true]]); }),
+    tile(p => { grassBase(p, 99); rockField(p, 99, [[20, 16, 7, true], [8, 22, 6, true], [26, 26, 5, false], [7, 7, 5, true], [15, 29, 4, false]]); }),
+    tile(p => { grassBase(p, 175); rockField(p, 175, [[16, 14, 8, true], [27, 22, 5, false], [6, 20, 5, true], [24, 6, 4, false], [10, 28, 4, false]]); }),
   ];
   // sapper-dug TRENCH — a ditch of turned earth with a dark shadowed floor and
   // grass banks; MOAT — the same channel flooded from a water source. Both block
