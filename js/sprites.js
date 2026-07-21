@@ -1326,6 +1326,32 @@ const Sprites = {
     }
   };
 
+  // shared bow overlay: a vertical bow on the right, gripped by the right hand, with
+  // a quiver on the back. In the fight pose it nocks & draws (f0) then looses an
+  // arrow streaking right (f1). tall = a longbow's reach; recurve/fire = the Fire
+  // Archer's flaming recurve. Ranged units are noThrust — the bow IS the attack.
+  const drawBow = (q, f, pose, c, y, o) => {
+    const stave = o.stave || WD[2];
+    const top = o.tall ? y - 2 : y + 2, bot = o.tall ? y + 17 : y + 15;
+    q(21, top, 1, bot - top, stave); q(20, top, 1, 1, stave); q(20, bot - 1, 1, 1, stave);     // stave + curled tips
+    if (o.recurve) { q(22, top + 1, 1, 1, stave); q(22, bot - 2, 1, 1, stave); }
+    if (o.fire) { q(20, top - 1, 1, 1, FIRE[3]); q(f ? 21 : 20, top - 2, 1, 1, FIRE[1]); q(20, bot, 1, 1, FIRE[3]); q(f ? 20 : 21, bot + 1, 1, 1, FIRE[1]); }
+    q(19, y + 9, 2, 1, SKN[2]);                                                                 // right hand grips the bow
+    q(10, y + 5, 1, 5, WD[0]); q(10, y + 4, 1, 1, o.fire ? FIRE[2] : BONE[2]);                  // quiver on the back
+    if (pose === 'fight') {
+      const head = o.fire ? FIRE[3] : BONE[2];
+      if (f === 0) { q(16, y + 9, 5, 1, BONE[2]); q(15, y + 9, 1, 1, head); q(18, y + 8, 1, 1, WD[0]); }   // nocked, drawn back
+      else { q(23, y + 9, 5, 1, BONE[2]); q(28, y + 9, 1, 1, head); if (o.fire) q(27, y + 8, 1, 1, FIRE[1]); }  // loosed, streaking right
+    }
+  };
+  // ARCHER (ranged T1): a plain self-bow, leather, a small quiver.
+  const exArcher = (q, f, pose, c) => { const y = _hy(pose, f); q(13, y - 2, 6, 2, HDE[1]); q(13, y - 2, 6, 1, HDE[2]); drawBow(q, f, pose, c, y, { stave: WD[2] }); };
+  // LONGBOWMAN (ranged T2): a taller stave for the longest human reach, green hood.
+  const exLongbow = (q, f, pose, c) => { const y = _hy(pose, f); q(13, y - 2, 6, 2, LEAF[1]); q(13, y - 2, 6, 1, LEAF[2]); drawBow(q, f, pose, c, y, { tall: true, stave: WD[1] }); };
+  // FIRE ARCHER / marksman (ranged T3): a flaming recurve bow, a quiver of fire
+  // arrows, dark-leather hood — looses a burning arrow.
+  const exMarksman = (q, f, pose, c) => { const y = _hy(pose, f); q(13, y - 2, 6, 2, INKp[2]); q(13, y - 2, 6, 1, HDE[1]); drawBow(q, f, pose, c, y, { tall: true, fire: true, recurve: true, stave: WD[1] }); };
+
   // TUNIC COLOURS — a villager's tunic (body + collar) is dyed by village, so
   // your people read at a glance against the enemy's. Extend freely.
   const TUNICS = {
@@ -1359,21 +1385,9 @@ const Sprites = {
     // shield and a bronze sword (thrust in the fight pose, shouldered at rest)
     elite:    { body: '#8a6a3a', pants: '#4a3a24', noThrust: true, exHi: exElite },
     axeman:   { body: APx.hide[2], pants: APx.hide[1], noThrust: true, exHi: exAxeman },
-    longbow:  { body: APx.leaf[2], pants: APx.leaf[1], extra: (p, f) => { p(12, 0, 1, 9, PAL.trunk); p(11, 0, 1, 1, PAL.trunk); p(11, 8, 1, 1, PAL.trunk); p(4, 6, 1, 3, APx.hide[1]); p(4, 5, 1, 1, APx.thatch[2]); } },
-    archer:   { body: '#6a7a4a', pants: '#4a5230', extra: (p, f) => { p(12, 2, 1, 6, PAL.trunk); p(11, 2, 1, 1, PAL.trunk); p(11, 7, 1, 1, PAL.trunk); } },
-    // Fire Archer — dark leather, a recurve bow with FLAMING tips, a quiver of
-    // fire arrows, and a burning arrow loosed in the fight pose
-    marksman: { body: APx.hide[2], pants: '#3a2c1a', noThrust: true, extra: (p, f, pose) => {
-      const W = APx.wood, F = APx.fire, B = APx.bone;
-      p(12, 1, 1, 7, W[1]); p(11, 1, 1, 1, W[2]); p(11, 7, 1, 1, W[2]); p(13, 3, 1, 3, W[0]);   // recurve bow stave + tips
-      p(12, 0, 1, 1, F[3]); p(f ? 11 : 13, 0, 1, 1, F[1]);                                       // top flaming tip (flickers)
-      p(12, 8, 1, 1, F[3]); p(f ? 13 : 11, 8, 1, 1, F[1]);                                       // bottom flaming tip
-      p(5, 5, 1, 4, W[0]); p(5, 4, 1, 1, B[2]); p(4, 4, 1, 1, F[2]);                             // quiver of fire arrows on the back
-      if (pose === 'fight') {
-        if (f === 0) { p(9, 5, 3, 1, B[2]); p(8, 5, 1, 1, F[3]); }                               // arrow nocked, drawn back, flaming head
-        else { p(13, 5, 3, 1, B[2]); p(15, 5, 1, 1, F[3]); p(14, 4, 1, 1, F[1]); }               // loosed — streaking fire
-      }
-    } },
+    longbow:  { body: APx.leaf[2], pants: APx.leaf[1], noThrust: true, exHi: exLongbow },
+    archer:   { body: '#6a7a4a', pants: '#4a5230', noThrust: true, exHi: exArcher },
+    marksman: { body: APx.hide[2], pants: '#3a2c1a', noThrust: true, exHi: exMarksman },
   };
   const RIDERS = {
     rider:       { horse: '#a87848', horseD: '#7a5430', body: '#7a6242' },
