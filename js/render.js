@@ -29,6 +29,45 @@ const R = {
     this.cv.height = Math.round(innerHeight * this.dpr);
   },
 
+  // a loose V of little seagull "M" silhouettes, wings flapping out of phase
+  _drawFlock(g, a, ax, ay) {
+    g.fillStyle = ART.PALETTE.ink[1];
+    for (let k = 0; k < a.n; k++) {
+      const bx = ax - a.dir * k * 4.5, by = ay + (k ? ((k & 1) ? 1 : -1) * ((k + 1) >> 1) * 3 : 0) - k * 1.2;
+      const flap = Math.sin(a.t * 9 + k * 1.3) > 0 ? 1.4 : 0;
+      g.fillRect(bx - 2.6, by - flap, 2.6, 1.4);
+      g.fillRect(bx + 0.5, by - flap, 2.6, 1.4);
+      g.fillRect(bx - 0.4, by + 0.4, 1, 1);   // body
+    }
+  },
+  // a tiny characterful animal, mirrored by facing; hops when it wanders
+  _drawCritter(g, a, ax, ay) {
+    const P = ART.PALETTE, f = a.face || 1;
+    const hop = a.state === 'wander' ? Math.max(0, Math.sin((a.t + a.ph) * 7)) * 2
+      : a.state === 'flee' ? 1.2 : 0;
+    const y = ay - hop;
+    const px = (dx, dy, w, h, c) => { g.fillStyle = c; g.fillRect(ax + f * dx - (f < 0 ? w : 0), y + dy, w, h); };
+    if (a.sub === 'rabbit') {
+      px(-2, 0, 4, 3, P.bone[1]);            // body
+      px(1, -2, 2, 3, P.bone[2]);            // head/haunch
+      px(0, -4, 1, 3, P.bone[1]); px(2, -4, 1, 3, P.bone[1]);   // ears
+      px(-3, -1, 1, 1, P.bone[2]);           // white tail puff
+      px(2, -1, 1, 1, P.ink[0]);             // eye
+    } else if (a.sub === 'fox') {
+      px(-3, 0, 5, 2, P.fire[1]);            // body
+      px(2, -2, 3, 3, P.fire[1]);            // head
+      px(3, -4, 1, 2, P.fire[0]);            // ear
+      px(-5, -1, 2, 2, P.fire[1]); px(-6, 0, 1, 1, P.bone[2]);  // bushy white-tipped tail
+      px(4, -1, 1, 1, P.ink[0]);             // eye/snout
+      px(-2, 2, 1, 1, P.ink[1]); px(1, 2, 1, 1, P.ink[1]);      // legs
+    } else {                                 // squirrel
+      px(-1, 0, 3, 3, P.hide[2]);            // body
+      px(1, -2, 2, 2, P.hide[3]);            // head
+      px(-4, -4, 2, 6, P.hide[1]); px(-3, -5, 2, 2, P.hide[2]); // big curled tail
+      px(2, -1, 1, 1, P.ink[0]);             // eye
+    }
+  },
+
   drawTile(g, x, y) {
     // THE MAP EDGE — the outermost ring is the hard border no unit may enter and
     // nothing may be built on (Path.passable / Bld.tileFree). Paint it as the same
@@ -827,51 +866,95 @@ const R = {
       }
     }
 
-    // ambient life: butterflies flutter over grass, birds glide over forest.
-    // Pure decoration — transient render-side particles, never in S.
+    // ambient life: bird flocks glide over the forest, butterflies flutter over
+    // open grass, and shy critters (rabbit/fox/squirrel) creep out of the forest
+    // edge, potter about, then dart back into cover and vanish. Pure decoration —
+    // transient, pooled render-side particles (never in S), a handful of fillRects
+    // each, viewport-only. No per-frame allocation beyond the entity objects.
     this.ambient = this.ambient || [];
     this.ambientT = (this.ambientT || 0) - dt;
-    if (this.ambientT <= 0 && this.ambient.length < 4) {
-      this.ambientT = 1.4 + Math.random() * 1.8;
-      const vx0 = Math.max(0, (this.cam.x / TL) | 0), vy0 = Math.max(0, (this.cam.y / TL) | 0);
-      const vw = Math.min(CFG.W - 1, ((this.cam.x + this.viewW() / this.cam.z) / TL) | 0) - vx0;
-      const vh = Math.min(CFG.H - 1, ((this.cam.y + this.viewH() / this.cam.z) / TL) | 0) - vy0;
-      for (let tries = 0; tries < 8; tries++) {
+    if (this.ambientT <= 0 && this.ambient.length < 7) {
+      this.ambientT = 0.8 + Math.random() * 1.5;
+      const vx0 = Math.max(1, (this.cam.x / TL) | 0), vy0 = Math.max(1, (this.cam.y / TL) | 0);
+      const vw = Math.min(CFG.W - 2, ((this.cam.x + this.viewW() / this.cam.z) / TL) | 0) - vx0;
+      const vh = Math.min(CFG.H - 2, ((this.cam.y + this.viewH() / this.cam.z) / TL) | 0) - vy0;
+      for (let tries = 0; tries < 10; tries++) {
         const tx = vx0 + (Math.random() * Math.max(1, vw)) | 0;
         const ty = vy0 + (Math.random() * Math.max(1, vh)) | 0;
+        if (!G.visibleAt(tx, ty)) continue;
         const tt = S.map.terrain[MapGen.idx(tx, ty)];
-        if ((tt !== T.GRASS && tt !== T.FOREST) || !G.visibleAt(tx, ty)) continue;
-        const bird = tt === T.FOREST && Math.random() < 0.5;
-        this.ambient.push({
-          x: tx + Math.random(), y: ty + Math.random(), bird,
-          vx: (Math.random() < 0.5 ? -1 : 1) * (bird ? 1.8 : 0.35),
-          vy: (Math.random() - 0.5) * (bird ? 0.5 : 0.3),
-          t: 0, ttl: bird ? 5 : 8 + Math.random() * 4, ph: Math.random() * 10,
-          col: ART.PALETTE.bloom[(Math.random() * 3) | 0],
-        });
+        if (tt === T.FOREST) {                              // a small gliding flock
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          this.ambient.push({
+            kind: 'flock', x: tx + Math.random(), y: ty + Math.random(), dir,
+            vx: dir * (1.3 + Math.random() * 0.7), vy: (Math.random() - 0.5) * 0.4,
+            t: 0, ttl: 5 + Math.random() * 3, ph: Math.random() * 10, n: 2 + (Math.random() * 3 | 0),
+          });
+          break;
+        }
+        if (tt !== T.GRASS) continue;
+        // is this a forest-edge grass tile? if so a critter can emerge from it
+        let fx = 0, fy = 0, edge = false;
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+          if (MapGen.inB(tx + ox, ty + oy) && S.map.terrain[MapGen.idx(tx + ox, ty + oy)] === T.FOREST) {
+            fx = ox; fy = oy; edge = true; break;
+          }
+        }
+        if (edge && Math.random() < 0.65) {
+          this.ambient.push({
+            kind: 'critter', sub: ['rabbit', 'fox', 'squirrel'][Math.random() * 3 | 0],
+            x: tx + 0.5 - fx * 0.35, y: ty + 0.5 - fy * 0.35,
+            homeX: tx + fx, homeY: ty + fy,                 // forest tile to bolt back to
+            vx: -fx * (0.45 + Math.random() * 0.3), vy: -fy * (0.45 + Math.random() * 0.3),
+            t: 0, ttl: 4 + Math.random() * 3, ph: Math.random() * 10, face: fx > 0 ? -1 : 1, state: 'emerge',
+          });
+        } else {
+          this.ambient.push({
+            kind: 'fly', x: tx + Math.random(), y: ty + Math.random(),
+            vx: (Math.random() - 0.5) * 0.5, vy: (Math.random() - 0.5) * 0.4,
+            t: 0, ttl: 8 + Math.random() * 4, ph: Math.random() * 10,
+            col: ART.PALETTE.bloom[(Math.random() * 3) | 0],
+          });
+        }
         break;
       }
     }
     for (let i = this.ambient.length - 1; i >= 0; i--) {
       const a = this.ambient[i];
-      a.t += dt; a.x += a.vx * dt; a.y += a.vy * dt;
-      if (!a.bird) a.y += Math.sin((a.t + a.ph) * 5) * 0.010;
+      a.t += dt;
+      if (a.kind === 'critter') {
+        if (a.state === 'emerge' && a.t > 0.8) a.state = 'wander';
+        if (a.state !== 'flee' && a.t > a.ttl - 1.6) a.state = 'flee';
+        if (a.state === 'wander') {
+          if (Math.sin((a.t + a.ph) * 3.1) > 0.985) { a.vx = (Math.random() - 0.5) * 0.6; a.vy = (Math.random() - 0.5) * 0.5; }
+          const hop = Math.max(0, Math.sin((a.t + a.ph) * 7));      // scurry between little pauses
+          a.x += a.vx * dt * hop; a.y += a.vy * dt * hop;
+        } else if (a.state === 'flee') {
+          const dx = (a.homeX + 0.5) - a.x, dy = (a.homeY + 0.5) - a.y, d = Math.hypot(dx, dy) || 1;
+          a.vx = dx / d * 2.3; a.vy = dy / d * 2.3;
+          a.x += a.vx * dt; a.y += a.vy * dt;
+          if (d < 0.4) { this.ambient.splice(i, 1); continue; }     // reached cover, gone
+        } else { a.x += a.vx * dt; a.y += a.vy * dt; }
+        if (a.vx) a.face = a.vx < 0 ? -1 : 1;
+      } else if (a.kind === 'flock') {
+        a.x += a.vx * dt; a.y += a.vy * dt + Math.sin((a.t + a.ph) * 1.5) * 0.006;
+      } else {
+        a.x += a.vx * dt; a.y += a.vy * dt + Math.sin((a.t + a.ph) * 5) * 0.010;
+        if (Math.sin((a.t + a.ph) * 2.3) > 0.97) { a.vx = (Math.random() - 0.5) * 0.5; a.vy = (Math.random() - 0.5) * 0.4; }
+      }
       if (a.t > a.ttl || !MapGen.inB(a.x | 0, a.y | 0)) { this.ambient.splice(i, 1); continue; }
       if (!G.visibleAt(a.x | 0, a.y | 0)) continue;
       const ax = a.x * TL, ay = a.y * TL;
       const fade = Math.min(1, Math.min(a.t, a.ttl - a.t) * 2);
       g.globalAlpha = Math.max(0, fade * 0.9);
-      if (a.bird) {
-        g.fillStyle = ART.PALETTE.ink[1];
-        const flap = Math.sin(a.t * 8) > 0 ? 1 : 0;
-        g.fillRect(ax - 3, ay - flap, 3, 1.6);
-        g.fillRect(ax, ay - 1 - flap, 2, 1.6);
-        g.fillRect(ax + 2, ay - flap, 3, 1.6);
-      } else {
+      if (a.kind === 'flock') this._drawFlock(g, a, ax, ay);
+      else if (a.kind === 'critter') this._drawCritter(g, a, ax, ay);
+      else {
         g.fillStyle = a.col;
         const open = Math.sin((a.t + a.ph) * 10) > 0;
         g.fillRect(ax - (open ? 2.5 : 1.5), ay, 2, 2);
         g.fillRect(ax + (open ? 0.5 : -0.5), ay, 2, 2);
+        g.fillStyle = ART.PALETTE.ink[1]; g.fillRect(ax - 0.5, ay, 1, 2);   // slim body
       }
       g.globalAlpha = 1;
     }
