@@ -588,33 +588,52 @@ const Sprites = {
       if (d.decor >= 1) { p(0, 0, 1, 16, AP.wood[2]); p(15, 0, 1, 16, AP.wood[2]); }  // fence
       if (d.decor >= 2) { p(3, 8, 1, 3, AP.wood[2]); p(2, 8, 3, 1, AP.thatch[2]); p(3, 7, 1, 1, AP.ink[1]); } // scarecrow
     },
+    // HUNTER'S LODGE — read from the great antlered skull mounted over the door, a
+    // drying rack hung with pelts and meat, and a wolf pelt stretched on a frame.
     lodge(p, lv) {
-      const d = ART.tierDress(lv);
-      ART.dropShadow(p, 8, 14, 11);
-      ART.shadedRect(p, 4, 6, 8, 7, AP.hide, 1);                    // hide tent
-      p(5, 5, 6, 1, AP.hide[1]); p(6, 4, 4, 1, AP.hide[2]); p(7, 3, 2, 1, AP.hide[3]);
-      p(7, 9, 2, 4, AP.ink[0]);                                     // entrance
-      p(5, 2, 1, 2, AP.bone[2]); p(4, 1, 1, 1, AP.bone[2]);         // antlers
-      p(10, 2, 1, 2, AP.bone[2]); p(11, 1, 1, 1, AP.bone[2]);
-      if (d.decor >= 1) {                                           // drying rack with catch
-        p(13, 8, 1, 5, AP.wood[2]); p(15, 8, 1, 5, AP.wood[2]); p(13, 8, 3, 1, AP.wood[3]);
-        p(13, 9, 1, 2, AP.red[1]); p(15, 9, 1, 2, AP.hide[2]);
-      }
-      if (d.decor >= 2) { wallBody(p, 0, 8, 3, 5, d, 8); roof(p, 0, 7, 3, 2, d, 8); } // smokehouse
+      const q = p.hi, tier = lv;
+      ART.dropShadow(p, 8, 14, 13);
+      // the lodge hut, with a hide slung along the eave
+      bWall(q, 9, 15, 13, 11, tier, 8);
+      bRoof(q, 7, 8, 17, 7, tier, 9);
+      q(10, 14, 11, 1, AP.hide[2]); q(10, 14, 11, 1, AP.hide[2]);
+      // a great ANTLERED SKULL trophy over the door — the hunter's mark
+      q(12, 10, 6, 3, AP.bone[2]); q(12, 10, 6, 1, AP.bone[1]); q(14, 13, 2, 1, AP.bone[1]);
+      q(13, 11, 1, 1, AP.ink[0]); q(16, 11, 1, 1, AP.ink[0]);       // eye sockets
+      q(11, 7, 1, 3, AP.bone[1]); q(10, 6, 1, 2, AP.bone[2]); q(9, 8, 1, 1, AP.bone[1]); q(12, 7, 1, 1, AP.bone[2]);   // left antler
+      q(18, 7, 1, 3, AP.bone[1]); q(19, 6, 1, 2, AP.bone[2]); q(20, 8, 1, 1, AP.bone[1]); q(17, 7, 1, 1, AP.bone[2]);  // right antler
+      // door
+      q(13, 19, 4, 7, AP.ink[0]); q(12, 18, 6, 1, AP.wood[3]); q(13, 19, 1, 7, AP.wood[2]); q(16, 19, 1, 7, AP.wood[2]);
+      // a DRYING RACK (right) hung with a pelt and a strip of meat
+      q(24, 13, 1, 13, AP.wood[2]); q(29, 13, 1, 13, AP.wood[2]); q(24, 13, 6, 1, AP.wood[3]);
+      q(25, 15, 2, 6, AP.hide[2]); q(25, 15, 2, 1, AP.hide[3]);     // hung pelt
+      q(28, 15, 1, 4, AP.red[1]); q(28, 15, 1, 1, AP.red[2]);       // strip of meat
+      // a WOLF PELT stretched on an A-frame out front (the wolf-handler theme)
+      q(2, 18, 5, 6, AP.pelt[2]); q(2, 18, 5, 1, AP.pelt[3]); q(2, 18, 1, 6, AP.pelt[1]);
+      q(1, 17, 1, 8, AP.wood[1]); q(7, 17, 1, 8, AP.wood[1]); q(3, 20, 1, 1, AP.ink[1]); q(5, 20, 1, 1, AP.ink[1]);
     },
+    // LUMBER CAMP — read from a lean-to shelter over a stack of cut logs (ring ends
+    // showing), a sawhorse with a log under a two-man saw, and a chopping stump with
+    // an axe buried in it.
     lumber(p, lv) {
-      const d = ART.tierDress(lv);
-      ART.dropShadow(p, 6, 13, 10);
-      for (let i = 0; i < 3; i++) {                                 // stacked logs with ring ends
-        const y = 10 - i * 2;
-        p(2, y, 8, 2, i % 2 ? AP.wood[3] : AP.wood[2]);
-        p(2, y, 8, 1, i % 2 ? AP.wood[4] : AP.wood[3]);
-        p(2, y, 1, 2, AP.thatch[2]); p(9, y, 1, 2, AP.thatch[1]);
+      const q = p.hi, tier = lv;
+      ART.dropShadow(p, 8, 14, 13);
+      // open LEAN-TO shelter (back) — its posts/base carry the material tier
+      bWall(q, 3, 13, 8, 7, tier, 5);
+      for (let i = 0; i < 9; i++) q(2 + i, 12 - (i >> 1), 2, 1, tier >= 3 ? AP.wood[2] : AP.thatch[2]);   // slanted lean-to roof
+      q(2, 12, 10, 1, tier >= 3 ? AP.wood[4] : AP.thatch[3]);
+      // a STACK of cut logs with pale ring ends (front-left)
+      for (let r = 0; r < 3; r++) { const ly = 26 - r * 3;
+        for (let lx = 5; lx < 15; lx += 4) { ART.shadedCircle(q, lx, ly, 2, AP.wood, 2); q(lx, ly, 1, 1, AP.thatch[2]); q(lx - 1, ly - 1, 1, 1, AP.wood[3]); }
       }
-      ART.shadedCircle(p, 12, 11, 2, AP.wood, 2);                   // chopping stump
-      p(12, 6, 1, 4, AP.wood[2]); p(11, 5, 3, 1, AP.stone[3]);      // axe
-      if (d.decor >= 1) roof(p, 1, 2, 10, 2, d, 5);                 // lean-to over the pile
-      if (d.decor >= 2) { ART.stoneTexture(p, 11, 1, 5, 3, 7); p(11, 1, 5, 1, AP.stone[3]); } // stone store
+      // a SAWHORSE with a log across it under a two-man saw (right)
+      q(20, 22, 1, 5, AP.wood[1]); q(27, 22, 1, 5, AP.wood[1]); q(19, 24, 10, 1, AP.wood[2]);   // trestle
+      q(18, 19, 12, 2, AP.wood[2]); q(18, 19, 12, 1, AP.wood[3]); q(18, 19, 1, 2, AP.thatch[2]); q(29, 19, 1, 2, AP.thatch[1]);  // log
+      q(22, 17, 6, 1, AP.stone[3]); q(22, 16, 1, 2, AP.wood[1]); q(27, 16, 1, 2, AP.wood[1]);   // saw blade + handles
+      // a chopping STUMP with an AXE sunk into it (front-right)
+      ART.shadedCircle(q, 23, 29, 2, AP.wood, 1); q(23, 29, 1, 1, AP.thatch[2]);
+      q(25, 24, 1, 5, AP.wood[2]); q(24, 23, 3, 2, AP.stone[3]); q(24, 23, 3, 1, AP.stone[4]);
+      q(17, 28, 1, 1, AP.thatch[2]); q(30, 26, 1, 1, AP.wood[3]);   // wood chips
     },
     quarry(p, lv) {
       const d = ART.tierDress(lv);
