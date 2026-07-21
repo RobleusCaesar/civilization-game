@@ -61,9 +61,11 @@ const Sprites = {
     draw(q, g);
     return c;
   }
-  function framesU(n, draw) {
+  // ow = outline width in canvas px (villager uses 2; military/naval use a slightly
+  // thinner 1 for a lighter dark edge, per the art direction).
+  function framesU(n, draw, ow) {
     const out = [];
-    for (let f = 0; f < n; f++) { const c = tileU((q, g) => draw(q, g, f)); ART.outline(c, 2); out.push(c); }
+    for (let f = 0; f < n; f++) { const c = tileU((q, g) => draw(q, g, f)); ART.outline(c, ow || 2); out.push(c); }
     return out;
   }
   // HIGH-RES building canvas: 64×64 (double the pixels of a normal tile). The
@@ -1215,6 +1217,115 @@ const Sprites = {
       mine: mk('mine'), farm: mk('farm'), build: mk('build'), guard: mk('guard'),
     };
   }
+  /* ===================== HI-RES MILITARY RIG =====================
+     Foot soldiers share the villager's 32-grid proportions (so the whole cast reads
+     at one scale) but stand to arms: the base draws the dyed body, head and a resting
+     left arm; each unit's `ex(q,f,pose,c)` overlays its identifying helm / armour /
+     shield / weapon. A plain spearman thrusts from the base in the fight pose; units
+     that carry their own weapon set c.noThrust and draw it themselves. c = { body
+     (unit material), accent (FACTION dye on collar/trim), pants, spear }. */
+  function humanoidHi(q, f, pose, c, ex) {
+    const SK = APx.skin, HR = APx.hair, HD = APx.hide, INK = APx.ink;
+    const body = c.body, accent = c.accent, pants = c.pants || '#4a3a24';
+    const bob = (pose === 'idle' && f === 1) ? 2 : 0;
+    const y = 6 + bob;
+    // contact shadow (faint — below the outline alpha threshold)
+    q(12, 30, 9, 1, 'rgba(20,16,10,0.26)'); q(14, 31, 5, 1, 'rgba(20,16,10,0.15)');
+    // legs — leggings, bare shins, feet; walk alternates the lead leg
+    const step = pose === 'walk';
+    const upL = step && f === 1 ? 1 : 0, upR = step && f === 0 ? 1 : 0;
+    for (const [lx, up] of [[13, upL], [17, upR]]) {
+      q(lx, 22, 2, 4 - up, pants); q(lx, 22, 1, 4 - up, HD[2]);
+      q(lx, 26 - up, 2, 2, SK[1]); q(lx, 26 - up, 1, 2, SK[2]);
+      q(lx, 28 - up, 2, 1, INK[1]);
+    }
+    // torso — unit material, dyed collar/trim = faction, cinched by a belt
+    q(12, y + 6, 8, 10, body);
+    q(19, y + 6, 1, 10, accent); q(12, y + 14, 8, 2, accent);
+    q(12, y + 6, 8, 2, accent); q(14, y + 6, 4, 1, body);        // shoulder yoke (faction)
+    q(12, y + 13, 8, 2, HD[1]); q(12, y + 13, 8, 1, HD[2]);      // belt
+    // head + face + hair (a helm from `ex` may cover this)
+    q(14, y, 4, 5, SK[2]); q(14, y, 3, 1, SK[3]); q(14, y, 1, 4, SK[3]); q(17, y + 1, 1, 4, SK[1]);
+    q(13, y - 1, 6, 2, HR[1]); q(13, y - 1, 6, 1, HR[2]);
+    q(15, y + 2, 1, 1, INK[1]); q(17, y + 2, 1, 1, INK[1]);
+    // resting left arm
+    q(11, y + 8, 2, 4, SK[2]); q(11, y + 8, 1, 4, SK[3]); q(11, y + 11, 2, 1, SK[2]);
+    // right arm — a plain spearman thrusts here; armed units handle it in `ex`
+    if (pose === 'fight' && !c.noThrust) {
+      const ax = f === 0 ? 20 : 23;
+      q(19, y + 8, Math.max(1, ax - 18), 1, SK[2]); q(ax, y + 4, 1, 4, SK[2]);
+      q(ax, y, 1, 9, c.spear || PAL.trunk); q(ax, y - 1, 1, 1, APx.stone[3]);
+      if (f === 1) { q(ax + 1, y - 1, 1, 1, APx.bone[2]); q(ax + 1, y + 3, 1, 1, APx.fire[2]); }
+    } else if (pose !== 'fight') {
+      q(19, y + 8, 2, 4, SK[2]); q(20, y + 8, 1, 4, SK[1]); q(19, y + 11, 2, 1, SK[2]);
+    }
+    if (ex) ex(q, f, pose, c);
+  }
+  // build a foot-soldier sheet at hi-res: idle / walk / fight (+ gather kept for
+  // parity, unused by combat units). Thinner (1px) outline than the villager.
+  function footSheetHi(c, ex) {
+    const mk = (pose) => framesU(2, (q, g, f) => humanoidHi(q, f, pose, c, ex), 1);
+    return { idle: mk('idle'), walk: mk('walk'), gather: mk('gather'), fight: mk('fight') };
+  }
+  // helper: the head-top row for the current pose (helms track the idle bob)
+  const _hy = (pose, f) => 6 + ((pose === 'idle' && f === 1) ? 2 : 0);
+
+  /* ---- HI-RES foot overlays. Silhouette + arms read the unit TYPE; the collar/trim
+     (already drawn by the base) reads the faction. Higher tiers wear better war-gear. */
+  const G = APx.gold, RED = APx.red, WD = APx.wood, STN = APx.stone, HDE = APx.hide,
+        BONE = APx.bone, LEAF = APx.leaf, FIRE = APx.fire, SKN = APx.skin, INKp = APx.ink;
+
+  // DEFENDER (infantry T1): leather cap, round wooden buckler, a spear (thrust in the
+  // fight pose by the base rig; shouldered at rest). The plain, reliable spearman.
+  const exDefender = (q, f, pose, c) => {
+    const y = _hy(pose, f);
+    q(13, y - 2, 6, 2, HDE[1]); q(13, y - 2, 6, 1, HDE[2]); q(13, y - 1, 1, 2, HDE[0]);   // leather cap
+    ART.shadedCircle(q, 11, y + 11, 3, WD, 2); q(11, y + 11, 1, 1, STN[3]); q(10, y + 9, 1, 1, c.accent);  // buckler + faction mark
+    if (pose !== 'fight') { q(20, y + 7, 3, 1, SKN[2]); q(22, y - 2, 1, 13, WD[1]); q(22, y - 3, 1, 1, STN[3]); }   // spear at rest
+  };
+  // AXEMAN (infantry T2): fur cap, bare arms (shock troop — no armour), a big stone-
+  // headed war-axe hefted over the shoulder, chopping down on the strike.
+  const exAxeman = (q, f, pose, c) => {
+    const y = _hy(pose, f);
+    q(13, y - 2, 6, 2, HDE[2]); q(13, y - 2, 6, 1, HDE[3] || HDE[2]); q(12, y - 1, 1, 2, HDE[1]);   // fur cap
+    const down = pose === 'fight' && f === 1;
+    if (!down) {                                            // axe raised over the shoulder
+      q(20, y + 7, 3, 1, SKN[2]); q(24, y - 3, 2, 12, WD[1]); q(24, y - 3, 1, 12, WD[2]);
+      q(21, y - 4, 6, 3, STN[3]); q(21, y - 4, 6, 1, STN[4]); q(21, y - 3, 1, 2, STN[2]); q(20, y - 3, 1, 1, HDE[1]);
+    } else {                                                // axe chopped down
+      q(20, y + 8, 4, 1, SKN[2]); q(25, y + 5, 2, 7, WD[1]); q(25, y + 5, 1, 7, WD[2]);
+      q(22, y + 11, 6, 3, STN[3]); q(22, y + 11, 6, 1, STN[4]);
+      q(25, y + 14, 1, 1, FIRE[2]); q(22, y + 14, 1, 1, BONE[2]);
+    }
+  };
+  // BRONZE CHAMPION / elite (infantry T3): the showpiece heavy — crested bronze helm,
+  // muscled cuirass with greave hints, a great round hoplite shield blazoned with the
+  // faction colour, and a bronze sword (shouldered at rest, thrust on the strike).
+  const exElite = (q, f, pose, c) => {
+    const y = _hy(pose, f);
+    // muscled bronze cuirass over the torso
+    q(12, y + 6, 8, 8, G[1]); q(12, y + 6, 8, 1, G[2]); q(19, y + 6, 1, 8, G[0]);
+    q(13, y + 9, 6, 1, G[0]); q(14, y + 8, 1, 3, G[2]); q(17, y + 8, 1, 3, G[2]);   // pectoral contours
+    q(12, y + 6, 8, 2, c.accent);                                                   // faction shoulder trim
+    q(12, y + 13, 7, 2, HDE[1]); q(12, y + 13, 7, 1, HDE[2]);                       // war belt
+    // crested bronze helm with a visor
+    q(13, y - 2, 6, 4, G[1]); q(13, y - 2, 6, 1, G[2]); q(13, y + 1, 6, 1, G[0]);
+    q(14, y, 1, 1, INKp[1]); q(16, y, 1, 1, INKp[1]);                               // eye slits
+    q(15, y - 4, 2, 2, RED[2]); q(15, y - 4, 2, 1, RED[3] || RED[2]); q(16, y - 2, 1, 2, RED[1]);   // red horsehair crest
+    // great round hoplite shield on the left
+    ART.shadedCircle(q, 10, y + 11, 4, G, 1); q(10, y + 11, 1, 1, G[3] || G[2]); q(9, y + 11, 1, 1, WD[1]);
+    q(10, y + 8, 2, 1, c.accent); q(10, y + 14, 2, 1, c.accent);                    // faction blazon
+    // bronze sword
+    if (pose === 'fight') {
+      const ax = f === 0 ? 21 : 25;
+      q(19, y + 8, Math.max(1, ax - 18), 1, SKN[2]); q(ax - 1, y + 7, 3, 1, WD[1]);
+      q(ax, y, 1, 9, G[2]); q(ax, y - 1, 1, 1, G[3] || G[2]);
+      if (f === 1) { q(ax + 1, y - 1, 1, 1, FIRE[2]); q(ax - 1, y + 3, 1, 1, BONE[2]); }
+    } else {
+      q(20, y + 8, 2, 1, SKN[2]); q(22, y - 3, 1, 12, G[2]); q(22, y - 3, 1, 1, G[3] || G[2]); q(21, y + 7, 3, 1, WD[1]);
+    }
+  };
+
   // TUNIC COLOURS — a villager's tunic (body + collar) is dyed by village, so
   // your people read at a glance against the enemy's. Extend freely.
   const TUNICS = {
@@ -1243,23 +1354,11 @@ const Sprites = {
   // colours actually in play cost anything. Gold spear/bow tips stay as rank
   // markers on the elite/marksman/lancer; only the faction collar recolours.
   const FOOT = {
-    defender: { body: '#7a6242', pants: '#4a3a24', extra: (p, f) => { p(11, 2, 1, 5, PAL.trunk); p(11, 1, 1, 1, PAL.rockL); } },
-    // Bronze Champion — a bronze-age heavy: crested helm, muscled cuirass, big
-    // round shield and a bronze sword (thrust in the fight pose, raised at rest)
-    elite:    { body: APx.gold[1], pants: '#4a3a24', noThrust: true, extra: (p, f, pose) => {
-      const G = APx.gold, W = APx.wood, R = APx.red;
-      p(6, 2, 4, 1, G[1]); p(7, 1, 2, 1, G[2]); p(6, 3, 1, 1, G[0]); p(9, 3, 1, 1, G[0]);   // crested bronze helmet + cheek guards
-      p(7, 0, 2, 1, R[2]); p(8, 0, 1, 1, R[3]);                                              // red horsehair crest
-      p(6, 9, 4, 1, G[0]); p(6, 7, 1, 2, G[2]); p(9, 7, 1, 2, G[2]);                         // cuirass belt + pauldron edges
-      ART.shadedCircle(p, 4, 8, 2, G, 1); p(4, 8, 1, 1, G[3]); p(3, 8, 1, 1, W[1]);          // big round hoplite shield + boss
-      if (pose === 'fight') {
-        const ax = f === 0 ? 11 : 13;
-        p(10, 7, Math.max(1, ax - 9), 1, PAL.skin); p(ax - 1, 7, 3, 1, W[1]);                // thrusting arm + crossguard
-        p(ax, 3, 1, 4, G[2]); p(ax, 2, 1, 1, G[3]);                                          // bronze blade + tip
-        if (f === 1) { p(ax + 1, 2, 1, 1, APx.fire[2]); p(ax - 1, 4, 1, 1, APx.bone[2]); }   // strike gleam
-      } else { p(11, 3, 1, 5, G[2]); p(11, 2, 1, 1, G[3]); p(10, 8, 3, 1, W[1]); p(11, 9, 1, 1, W[0]); }  // sword raised at rest
-    } },
-    axeman:   { body: APx.hide[2], pants: APx.hide[1], extra: (p, f) => { p(11, 2, 1, 5, PAL.trunk); p(10, 1, 3, 1, APx.stone[3]); p(10, 2, 2, 1, APx.stone[2]); p(5, 5, 1, 1, APx.skin[2]); p(10, 5, 1, 1, APx.skin[2]); } },
+    defender: { body: '#7a6242', pants: '#4a3a24', exHi: exDefender },
+    // Bronze Champion — a bronze-age heavy: crested helm, muscled cuirass, big round
+    // shield and a bronze sword (thrust in the fight pose, shouldered at rest)
+    elite:    { body: '#8a6a3a', pants: '#4a3a24', noThrust: true, exHi: exElite },
+    axeman:   { body: APx.hide[2], pants: APx.hide[1], noThrust: true, exHi: exAxeman },
     longbow:  { body: APx.leaf[2], pants: APx.leaf[1], extra: (p, f) => { p(12, 0, 1, 9, PAL.trunk); p(11, 0, 1, 1, PAL.trunk); p(11, 8, 1, 1, PAL.trunk); p(4, 6, 1, 3, APx.hide[1]); p(4, 5, 1, 1, APx.thatch[2]); } },
     archer:   { body: '#6a7a4a', pants: '#4a5230', extra: (p, f) => { p(12, 2, 1, 6, PAL.trunk); p(11, 2, 1, 1, PAL.trunk); p(11, 7, 1, 1, PAL.trunk); } },
     // Fire Archer — dark leather, a recurve bow with FLAMING tips, a quiver of
@@ -1286,7 +1385,9 @@ const Sprites = {
     if (Sprites.military[tunic]) return Sprites.military[tunic];
     const acc = (TUNICS[tunic] || TUNICS.blue).body;        // the bright tunic hue = the identifying collar
     const set = {};
-    for (const k in FOOT) set[k] = unitSheet({ body: FOOT[k].body, accent: acc, pants: FOOT[k].pants, hair: PAL.hair, spear: PAL.trunk, noThrust: FOOT[k].noThrust }, FOOT[k].extra);
+    for (const k in FOOT) set[k] = FOOT[k].exHi
+      ? footSheetHi({ body: FOOT[k].body, accent: acc, pants: FOOT[k].pants, spear: PAL.trunk, noThrust: FOOT[k].noThrust }, FOOT[k].exHi)
+      : unitSheet({ body: FOOT[k].body, accent: acc, pants: FOOT[k].pants, hair: PAL.hair, spear: PAL.trunk, noThrust: FOOT[k].noThrust }, FOOT[k].extra);
     for (const k in RIDERS) set[k] = riderSheet({ horse: RIDERS[k].horse, horseD: RIDERS[k].horseD, body: RIDERS[k].body, accent: acc, bow: RIDERS[k].bow, tip: RIDERS[k].tip });
     set.warship = warshipSheet({ hull: PAL.wood, hullD: PAL.woodD, sail: '#e8e8e0', sailD: '#c9c9c0', stripe: acc, crew: '#7a6242', arrow: PAL.rockL });
     set.trebuchet = trebuchetSheet(acc);   // siege engine, but faction-draped so friend/foe reads
