@@ -265,6 +265,21 @@ const R = {
         g.fillRect(x, y, 1, 1);
       }
     }
+    // Feather the reveal edge. The fog is one pixel per tile, so a straight
+    // upscale leaves a blocky per-tile staircase where lit meets unexplored —
+    // it reads as a hard rectangular outline around whatever sits at the vision
+    // edge (forests, resource nodes). Pre-blur an intermediate at 4px/tile so the
+    // edge dissolves into a soft gradient. Runs ONLY here (on fogDirty), never
+    // per frame; the frame loop just blits the result.
+    const scale = 4, bw = CFG.W * scale, bh = CFG.H * scale;
+    if (!this.fogBlurCv) this.fogBlurCv = document.createElement('canvas');
+    if (this.fogBlurCv.width !== bw) { this.fogBlurCv.width = bw; this.fogBlurCv.height = bh; }
+    const bg = this.fogBlurCv.getContext('2d');
+    bg.clearRect(0, 0, bw, bh);
+    bg.imageSmoothingEnabled = true;
+    bg.filter = 'blur(' + (scale * 0.9) + 'px)';   // ~1-tile feather
+    bg.drawImage(this.fogCv, 0, 0, CFG.W, CFG.H, 0, 0, bw, bh);
+    bg.filter = 'none';
     this.fogDirty = false;
   },
 
@@ -1067,10 +1082,10 @@ const R = {
       }
     }
 
-    // fog of war
-    if (this.fogDirty) this.redrawFog();
+    // fog of war — blit the pre-blurred, feathered fog (built in redrawFog)
+    if (this.fogDirty || !this.fogBlurCv) this.redrawFog();
     g.imageSmoothingEnabled = true;
-    g.drawImage(this.fogCv, 0, 0, CFG.W, CFG.H, 0, 0, CFG.W * TL, CFG.H * TL);
+    g.drawImage(this.fogBlurCv, 0, 0, this.fogBlurCv.width, this.fogBlurCv.height, 0, 0, CFG.W * TL, CFG.H * TL);
     g.imageSmoothingEnabled = false;
 
     // SPECIAL EVENT — the black dragon, drawn over the fog: nothing hides it
