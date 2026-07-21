@@ -142,8 +142,7 @@ const Sprites = {
   // into a continuous canopy — no two tiles are the same stamp, so it reads as a
   // woodland, not a grid. A trunk peeks out under the frontmost crown on some.
   function forestTile(p, seed, log) {
-    grassBase(p, seed);
-    const f = p.f, r = ART.rng(seed + 2);
+    const f = p.f, r = ART.rng(seed + 2);          // transparent floor — render paints the grass ground
     const n = 2 + (r() * 3 | 0), crowns = [];
     for (let i = 0; i < n; i++)
       crowns.push([5 + (r() * 22) | 0, 5 + (r() * 20) | 0, 6 + (r() * 4 | 0),
@@ -228,17 +227,16 @@ const Sprites = {
   }
   // hills: a low scatter of boulders on turf, plenty of grass between them
   Sprites.terrain[T.HILLS] = [
-    tile(p => { grassBase(p, 31); rockField(p, 31, [[10, 16, 5], [20, 22, 4], [23, 9, 4], [6, 7, 3]]); }),
-    tile(p => { grassBase(p, 87); rockField(p, 87, [[20, 18, 5], [8, 10, 4], [9, 23, 3], [25, 25, 3]]); }),
-    tile(p => { grassBase(p, 143); rockField(p, 143, [[15, 13, 5], [24, 20, 4], [6, 22, 4], [27, 6, 3]]); }),
-    tile(p => { grassBase(p, 199); rockField(p, 199, [[9, 20, 5], [22, 11, 5], [26, 24, 3], [13, 6, 3]]); }),
+    tile(p => rockField(p, 31, [[10, 16, 5], [20, 22, 4], [23, 9, 4], [6, 7, 3]])),
+    tile(p => rockField(p, 87, [[20, 18, 5], [8, 10, 4], [9, 23, 3], [25, 25, 3]])),
+    tile(p => rockField(p, 143, [[15, 13, 5], [24, 20, 4], [6, 22, 4], [27, 6, 3]])),
+    tile(p => rockField(p, 199, [[9, 20, 5], [22, 11, 5], [26, 24, 3], [13, 6, 3]])),
   ];
 
   // wild fertile ground: fruit orchards and berry thickets, mixed across the
   // map — the village forages these long before it tills its first farm
   function orchardTile(p, seed) {
-    grassBase(p, seed);
-    const f = p.f, r = ART.rng(seed + 5);
+    const f = p.f, r = ART.rng(seed + 5);          // transparent floor — render paints the grass ground
     const fruitTree = (cx, cy, s2) => {
       const rr = 4 + (r() * 2 | 0);
       f(cx + 1, cy + rr + 2, 2, 5, AP.wood[1]); f(cx + 1, cy + rr + 2, 1, 5, AP.wood[2]);   // trunk
@@ -254,8 +252,7 @@ const Sprites = {
     f(13, 27, 1, 1, AP.red[1]); f(27, 12, 1, 1, AP.red[2]);         // windfall fruit
   }
   function berryTile(p, seed) {
-    grassBase(p, seed);
-    const f = p.f, r = ART.rng(seed + 7);
+    const f = p.f, r = ART.rng(seed + 7);          // transparent floor — render paints the grass ground
     const bush = (cx, cy, s2) => {
       const rr = 3 + (r() * 2 | 0);                                 // varied size
       f(cx - rr, cy + rr + 1, rr * 2 + 1, 1, AP.leaf[0]);           // ground shadow
@@ -291,14 +288,13 @@ const Sprites = {
     f(x + 4, y + 2, 1, 2, AP.wood[0]);                            // axe notch
   }
   Sprites.terrain[T.STUMPS] = [
-    tile(p => { grassBase(p, 51); drawStump(p, 5, 7); drawStump(p, 19, 17); drawStump(p, 9, 23); }),
-    tile(p => { grassBase(p, 63); drawStump(p, 17, 5); drawStump(p, 7, 15); drawStump(p, 23, 23); }),
+    tile(p => { drawStump(p, 5, 7); drawStump(p, 19, 17); drawStump(p, 9, 23); }),
+    tile(p => { drawStump(p, 17, 5); drawStump(p, 7, 15); drawStump(p, 23, 23); }),
   ];
   // spent quarry: a couple of leftover rocks, a cracked cut slab, loose scree
   Sprites.terrain[T.PEBBLES] = [
     tile(p => {
-      grassBase(p, 57);
-      const f = p.f, r = ART.rng(57);
+      const f = p.f, r = ART.rng(57);            // transparent floor — render paints the grass ground
       boulderShadow(f, 8, 13, 2); boulderBody(f, 8, 13, 2);
       boulderShadow(f, 21, 19, 2); boulderBody(f, 21, 19, 2);
       f(4, 22, 8, 5, AP.stone[1]); f(4, 22, 8, 1, AP.stone[3]); f(4, 22, 1, 5, AP.stone[2]);  // cut slab
@@ -336,9 +332,9 @@ const Sprites = {
   // fuses into one range), with dark grass shadows and scree filling the gaps —
   // NOT the old flat grey checker. Peaks vary in size and position per variant.
   Sprites.terrain[T.MOUNTAIN] = [
-    tile(p => { grassBase(p, 61); rockField(p, 61, [[12, 18, 7, true], [23, 23, 6, true], [24, 9, 5, false], [6, 26, 4, false], [4, 8, 4, true]]); }),
-    tile(p => { grassBase(p, 99); rockField(p, 99, [[20, 16, 7, true], [8, 22, 6, true], [26, 26, 5, false], [7, 7, 5, true], [15, 29, 4, false]]); }),
-    tile(p => { grassBase(p, 175); rockField(p, 175, [[16, 14, 8, true], [27, 22, 5, false], [6, 20, 5, true], [24, 6, 4, false], [10, 28, 4, false]]); }),
+    tile(p => rockField(p, 61, [[12, 18, 7, true], [23, 23, 6, true], [24, 9, 5, false], [6, 26, 4, false], [4, 8, 4, true]])),
+    tile(p => rockField(p, 99, [[20, 16, 7, true], [8, 22, 6, true], [26, 26, 5, false], [7, 7, 5, true], [15, 29, 4, false]])),
+    tile(p => rockField(p, 175, [[16, 14, 8, true], [27, 22, 5, false], [6, 20, 5, true], [24, 6, 4, false], [10, 28, 4, false]])),
   ];
   // sapper-dug TRENCH — a ditch of turned earth with a dark shadowed floor and
   // grass banks; MOAT — the same channel flooded from a water source. Both block
@@ -374,10 +370,13 @@ const Sprites = {
       p(11, 11, 3, 1, AP.ink[1]); p(12, 10, 2, 2, AP.fire[1]); p(12, 9, 1, 1, AP.fire[2]);  // fire pit
     }),
   ];
-  // ground color per terrain — render.js dithers these along biome borders
+  // ground color per terrain — render.js dithers these along biome borders. Every
+  // grass-floored terrain shares grass[2] (the painted floor in R.paintGround) so
+  // they never dither against each other — only against soil/stone biomes.
   Sprites.blendCol = {
-    [T.GRASS]: AP.grass[3], [T.FOREST]: AP.grass[2], [T.HILLS]: AP.grass[3],
-    [T.FERTILE]: AP.grass[3], [T.STUMPS]: AP.grass[3], [T.PEBBLES]: AP.grass[3],
+    [T.GRASS]: AP.grass[2], [T.FOREST]: AP.grass[2], [T.HILLS]: AP.grass[2],
+    [T.FERTILE]: AP.grass[2], [T.STUMPS]: AP.grass[2], [T.PEBBLES]: AP.grass[2],
+    [T.MOUNTAIN]: AP.grass[2],
     [T.BARREN]: AP.soil[3], [T.RUIN]: AP.stone[1], [T.CAMP]: AP.soil[3],
   };
 

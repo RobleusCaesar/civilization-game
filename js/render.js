@@ -1,6 +1,10 @@
 "use strict";
 /* Canvas renderer: camera, cached terrain layer, fog of war, entities, minimap. */
 
+// grass-floored resources: drawn on a transparent floor over one continuous
+// painted grass ground (see drawTile/paintGround) so no seam shows at block edges
+const GROUND_GRAIN = new Set([T.FOREST, T.FERTILE, T.HILLS, T.MOUNTAIN, T.STUMPS, T.PEBBLES]);
+
 const R = {
   cv: null, g: null,
   mini: null, mg: null,
@@ -68,6 +72,33 @@ const R = {
     }
   },
 
+  // The shared grass floor: a flat green fill plus a sparse, near-tone felt grain
+  // whose positions come from a fully-mixed hash of the tile's world (x,y) —
+  // avalanche-mixed so they decorrelate from x and y (a weak mix left faint
+  // vertical streaks). No two tiles share a pattern and nothing lines up with the
+  // grid. A gentle DIAGONAL low-frequency field (mixes x AND y, so no axis-aligned
+  // banding) leans the grain lighter/darker for soft meadow undulation. Painted
+  // identically under open grass AND under every resource, so blocks never seam.
+  paintGround(g, x, y, h) {
+    const TL = CFG.TILE, px = TL / 16, AP = ART.PALETTE;
+    g.fillStyle = AP.grass[2];
+    g.fillRect(x * TL, y * TL, TL, TL);
+    const lean = (Math.sin((x * 0.8 + y * 0.6) * 0.09) + Math.sin((x * 0.5 - y * 0.9) * 0.075)) * 0.2;
+    for (let k = 0; k < 10; k++) {
+      let hh = (h ^ Math.imul(k + 1, 0x9e3779b1)) >>> 0;
+      hh = Math.imul(hh ^ (hh >>> 15), 0x85ebca6b) >>> 0;
+      hh = Math.imul(hh ^ (hh >>> 13), 0xc2b2ae35) >>> 0;
+      hh = (hh ^ (hh >>> 16)) >>> 0;
+      const gx = hh & 15, gy = (hh >> 4) & 15;
+      g.fillStyle = (((hh >> 8) & 255) / 255) < 0.5 + lean ? AP.grass[3] : AP.grass[1];
+      g.fillRect(x * TL + gx * px, y * TL + gy * px, px, px);
+    }
+    if ((h & 3) === 0) {                          // a short blade on ~1/4 of tiles for texture
+      g.fillStyle = AP.grass[3];
+      g.fillRect(x * TL + ((h >> 6) & 15) * px, y * TL + ((h >> 10) & 15) * px, px, px * 2);
+    }
+  },
+
   drawTile(g, x, y) {
     // THE MAP EDGE — the outermost ring is the hard border no unit may enter and
     // nothing may be built on (Path.passable / Bld.tileFree). Paint it as the same
@@ -107,32 +138,21 @@ const R = {
       const gr = Sprites.terrain[T.GRASS];               // a berm sits on a grass base
       img = gr[(x * 7 + y * 13) % gr.length];
     } else img = variants[(x * 7 + y * 13) % variants.length];
-    g.drawImage(img, x * TL, y * TL);
 
-    if (t === T.GRASS && !(h % 61 === 0)) {
-      // The grass read as "tiled" because a few variant canvases repeated
-      // identically — the repetition, not the colour. The base is a flat uniform
-      // green; the ONLY texture is a sparse, near-tone felt grain whose positions
-      // come from a fully-mixed hash of THIS tile's world (x,y) — avalanche-mixed
-      // so they decorrelate from x and y (a weak mix left faint vertical streaks).
-      // No two grass tiles share a pattern and nothing lines up with the grid.
-      // A gentle DIAGONAL low-frequency field (mixes x AND y, so no axis-aligned
-      // banding) leans the grain lighter/darker for soft meadow undulation — a
-      // little life, still low-contrast so units/buildings pop. Baked once.
-      const lean = (Math.sin((x * 0.8 + y * 0.6) * 0.09) + Math.sin((x * 0.5 - y * 0.9) * 0.075)) * 0.2;
-      for (let k = 0; k < 10; k++) {
-        let hh = (h ^ Math.imul(k + 1, 0x9e3779b1)) >>> 0;
-        hh = Math.imul(hh ^ (hh >>> 15), 0x85ebca6b) >>> 0;
-        hh = Math.imul(hh ^ (hh >>> 13), 0xc2b2ae35) >>> 0;
-        hh = (hh ^ (hh >>> 16)) >>> 0;
-        const gx = hh & 15, gy = (hh >> 4) & 15;
-        g.fillStyle = (((hh >> 8) & 255) / 255) < 0.5 + lean ? AP.grass[3] : AP.grass[1];
-        g.fillRect(x * TL + gx * px, y * TL + gy * px, px, px);
-      }
-      if ((h & 3) === 0) {                       // a short blade on ~1/4 of tiles for texture
-        g.fillStyle = AP.grass[3];
-        g.fillRect(x * TL + ((h >> 6) & 15) * px, y * TL + ((h >> 10) & 15) * px, px, px * 2);
-      }
+    // GROUND LAYER. Grass and every grass-floored resource (forest, fertile,
+    // hills, mountain, stumps, pebbles) share ONE continuous painted grass floor
+    // — flat green + a world-hash felt grain — so there is no shade mismatch and
+    // no seam where a forest/resource block meets open grass. The resource sprites
+    // are authored on a TRANSPARENT floor and drawn ON TOP of this ground.
+    if (t === T.GRASS && h % 61 === 0) {
+      g.drawImage(img, x * TL, y * TL);           // rare flower meadow (self-contained)
+    } else if (t === T.GRASS) {
+      this.paintGround(g, x, y, h);               // plain grass
+    } else if (GROUND_GRAIN.has(t)) {
+      this.paintGround(g, x, y, h);               // continuous floor...
+      g.drawImage(img, x * TL, y * TL);           // ...then the transparent-floored resource on top
+    } else {
+      g.drawImage(img, x * TL, y * TL);           // water / barren / ruin / camp / mound base
     }
 
     if (wet(t)) {
