@@ -990,7 +990,11 @@ const AI = {
         Bld.done(b) && !b.upgrading && b.queue.length === 0);
       if (ws) {
         const breakers = Units.count('A', u => u.kind === 'catapult' || u.kind === 'trebuchet');
-        if (breakers < (read.foeWall >= 5 ? 2 : 1)) {
+        // a lone engine only pecks at a fortress — scale the siege TRAIN to how much
+        // wall there is to break, and a full PUSH brings one more. So a heavily
+        // fortified hall meets three or four engines pounding a segment, not one.
+        const wantBreak = Math.min(4, 1 + Math.floor(read.foeWall / 2) + (ai.posture === 'PUSH' ? 1 : 0));
+        if (breakers < wantBreak) {
           if (ws.level >= 3 && ai.res.gold >= 70) Bld.train(ws, 'trebuchet');
           else Bld.train(ws, 'catapult');
         }
@@ -1022,11 +1026,30 @@ const AI = {
       if (ws && ws.level >= 3 && Units.count('A', u => u.kind === 'siegetower') < 2 &&
           this.affordFree(CFG.BUILDINGS.siege.train.siegetower.cost)) Bld.train(ws, 'siegetower');
     }
+    // IRONBELLY grinds a wall down with STONE — a lone catapult only pecks at a
+    // fortress, so a committed batter wants a real siege TRAIN (three or four
+    // engines pounding one segment). The generic wall-breaker rule above tops out
+    // at two; here, while the plan is to batter, keep building engines to four.
+    if (campStrat === 'IRONBELLY') {
+      const ws = S.buildings.find(b => b.owner === 'A' && b.key === 'siege' && Bld.done(b) && !b.upgrading && b.queue.length === 0);
+      if (ws) {
+        const breakers = Units.count('A', u => u.kind === 'catapult' || u.kind === 'trebuchet');
+        const heavy = ws.level >= 3 && ai.res.gold >= 70;
+        const key = heavy ? 'trebuchet' : 'catapult';
+        if (breakers < 4 && this.affordFree(CFG.BUILDINGS.siege.train[key].cost)) Bld.train(ws, key);
+      }
+    }
     if (campStrat === 'TIDEWRACK' && dock && !dock.upgrading && dock.queue.length === 0) {
-      const trs = Units.count('A', u => Units.isTransport(u));
       const big = dock.level >= 3;
       const key = big ? 'bigtransport' : 'transport';
-      if (trs < 3 && this.affordFree(CFG.BUILDINGS.dock.train[key].cost)) Bld.train(dock, key);
+      const cap = CFG.UNITS[big ? 'bigtransport' : 'transport'].cap || 3;
+      // enough hulls to put a DECISIVE wave ashore in a single crossing rather than
+      // trickling three troops at a time into the teeth of the defense: ferry the
+      // whole landing force (up to ~10) at once, fleet capped at five hulls.
+      const infantry = Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u) && u.kind !== 'siegetower' && !Units.isSiege(u));
+      const wantHulls = Math.max(2, Math.min(5, Math.ceil(Math.min(infantry, 10) / cap)));
+      const trs = Units.count('A', u => Units.isTransport(u));
+      if (trs < wantHulls && this.affordFree(CFG.BUILDINGS.dock.train[key].cost)) Bld.train(dock, key);
     }
   },
 
@@ -1490,7 +1513,12 @@ const AI = {
     switch (strat) {
       case 'IRONBELLY': return (cnt('catapult') + cnt('trebuchet')) >= 1 && infantry >= 3;
       case 'HIGHREACH': return cnt('siegetower') >= 1 && infantry >= 4;
-      case 'TIDEWRACK': return Units.count('A', u => Units.isTransport(u)) >= 1 && infantry >= 3;
+      case 'TIDEWRACK': {
+        // hold until enough hull capacity AND a real landing party have gathered, so
+        // the crossing puts a decisive wave on the beach instead of a doomed trickle.
+        let cap = 0; for (const u of S.units) if (u.owner === 'A' && Units.isTransport(u)) cap += Units.cargoCap(u);
+        return cap >= 5 && infantry >= 5;
+      }
       case 'MUDLARK':   return Units.sapperTier('A') >= 2;
       case 'WARHORN':   return infantry >= 6;
     }
@@ -1634,13 +1662,24 @@ const AI = {
     const troops = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) && !Units.isNaval(u) &&
       u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
     if (troops.length < 3) return false;
+    // BEACHHEAD OBJECTIVE: a light landing party can't crack a walled hall, but it
+    // CAN put the undefended economy behind the shore to the torch — which is how a
+    // sea raid actually hurts. Aim for the nearest exposed farm / lodge / camp the
+    // scouts have seen; only march on the hall itself if nothing softer is known.
+    let obj = { type: 'tc', x: ptc.x, y: ptc.y };
+    if (read.exposed && read.exposed.length) {
+      let best = null, bd = 1e9;
+      for (const e of read.exposed) { const d = Math.hypot(e.x - land.x, e.y - land.y); if (d < bd) { bd = d; best = e; } }
+      if (best) obj = { type: best.bld ? 'econ' : 'tc', x: Math.round(best.x), y: Math.round(best.y) };
+    }
     let ti = 0, sailed = 0;
     for (const tr of transports) {
       const cap = Units.cargoCap(tr); tr.cargo = tr.cargo || [];
       let n = 0;
       while (n < cap && ti < troops.length) {
         const u = troops[ti++];
-        u.raidObj = { type: 'tc', x: ptc.x, y: ptc.y };   // resume the assault when they land
+        u.raidObj = { type: obj.type, x: obj.x, y: obj.y };   // hit the beachhead objective on landing
+        u.assault = true;                                     // then cascade on to the next mark
         u.task = null; u.tUnit = 0; u.tBld = 0; u.defend = false;
         S.units.splice(S.units.indexOf(u), 1);            // aboard the hull
         tr.cargo.push(u); n++;
@@ -1654,7 +1693,7 @@ const AI = {
       const wspot = MapGen.findNear(land.x, land.y, 6, (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.WATER && !Bld.at(x, y));
       if (wspot) { sh.task = { type: 'move', x: wspot.x, y: wspot.y }; sh.tUnit = 0; sh.tBld = 0; Units.setPath(sh, wspot.x, wspot.y); }
     }
-    ai.raidObj = { type: 'tc', x: ptc.x, y: ptc.y }; ai.raidLane = 'TIDEWRACK'; ai.raidN = troops.length; ai.raidDay = S.day;
+    ai.raidObj = obj; ai.raidLane = 'TIDEWRACK'; ai.raidN = Math.min(troops.length, ti); ai.raidDay = S.day;
     G.log(this.CAMPAIGN_CRY.TIDEWRACK, true);
     return true;
   },
