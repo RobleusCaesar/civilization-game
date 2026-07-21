@@ -959,7 +959,7 @@ const Sprites = {
     const hi = !LORES_BLD.has(key);
     const build = (fac) => [1, 2, 3].map(lv => {
       const c = (hi ? tileB : tile)(p => B_DRAW[key](p, lv, fac));
-      return NO_OUTLINE.has(key) ? c : ART.outline(c, hi ? 2 : 1);
+      return NO_OUTLINE.has(key) ? c : ART.outline(c, 1);
     });
     Sprites.building[key] = build(AP.blue);
     Sprites.buildingA[key] = build(AP.red);
@@ -1013,7 +1013,7 @@ const Sprites = {
     // sawdust / wood shavings scattered on the ground
     const rr = ART.rng(51);
     for (let i = 0; i < 9; i++) p.hi(5 + (rr() * 22) | 0, 25 + (rr() * 4) | 0, 1, 1, i % 2 ? TH[1] : W[3]);
-  }), 2);
+  }), 1);
 
   // the 2×2 Town Center going up — the great TIMBER LONG-HALL under construction
   // (the shape the TC takes from level 2 on), drawn at 128px so it stays crisp
@@ -1072,7 +1072,7 @@ const Sprites = {
     for (let r = 0; r < 5; r++) q(6, 15 + r * 2, 4, 1, W[2]);
     q(19, 24, 3, 1, W[1]); q(21, 23, 1, 2, ST[3]);                                  // dropped adze (handle + head)
     for (let i = 0; i < 14; i++) q(5 + (rr() * 22) | 0, 25 + (rr() * 4) | 0, 1, 1, i % 2 ? TH[1] : W[3]);  // sawdust
-  }, 128), 4);
+  }, 128), 2);
 
   // the 2×2 Town Center going up to LEVEL 3 — the great STONE HALL under
   // construction (the keep the TC becomes at the refined tier). A masons' work
@@ -1120,7 +1120,7 @@ const Sprites = {
     q(19, 13, 1, 10, W[1]); q(22, 13, 1, 10, W[1]);
     for (let r = 0; r < 5; r++) q(19, 14 + r * 2, 4, 1, W[2]);
     for (let i = 0; i < 14; i++) q(5 + (rr() * 22) | 0, 25 + (rr() * 4) | 0, 1, 1, i % 2 ? ST[3] : ST[1]);  // stone chips
-  }, 128), 4);
+  }, 128), 2);
 
   /* ---------------- units ---------------- */
   // pose: idle | walk | gather | fight ; c = colour set
