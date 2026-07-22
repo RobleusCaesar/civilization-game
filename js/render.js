@@ -156,34 +156,36 @@ const R = {
     const E = 0.55, ce = 0.11;                        // macro / fine sampling offsets
     for (let jy = 0; jy < N; jy++) for (let jx = 0; jx < N; jx++) {
       const wx = x + (jx + 0.5) / N - 0.5, wy = y + (jy + 0.5) / N - 0.5;
-      const s0 = samp(wx, wy), c0 = crag(wx, wy), H = s0 + c0;      // full rock-surface height
-      if (H <= 0.5) {                                               // below footprint = grass fringe
-        if (H > 0.12) {
-          const uphill = samp(wx - 0.6, wy - 0.6);                  // mass sits up-left of this pixel?
-          if (uphill > 1.35) { g.fillStyle = 'rgba(22,17,12,0.24)'; g.fillRect(bx + jx * cell, by + jy * cell, cell, cell); }  // cast shadow on the shadow side
-          else if (rnd(x * N + jx, y * N + jy) < 0.28) { g.fillStyle = rnd(jx, jy + 7) < 0.5 ? R[1] : R[2]; g.fillRect(bx + jx * cell, by + jy * cell, cell, cell); }  // scree/rubble at the base
-        }
-        continue;
-      }
+      const s0 = samp(wx, wy);
+      // CLEAN organic footprint: the smooth dome + a LOW-frequency wobble (never the busy
+      // crag) defines the rock/grass boundary. That keeps the outer edge a clean wavy line
+      // (no dirty high-freq speckle fringe) and breaks any straight terrain edge into organic
+      // curves, so no tile ends in a hard half-cut line. Nothing is ever drawn on the grass.
+      const wob = (vnoise(wx * 0.8 + 40, wy * 0.8 + 40) - 0.5) * 0.9;
+      const edge = s0 + wob;
+      if (edge <= 0.6) continue;
+      const fade = Math.min(1, (edge - 0.6) / 0.55);              // 0 at the clean edge -> 1 just inside (detail returns fast so thin ridges keep their body)
+      const cc = crag(wx, wy), c0 = cc * fade;                     // crag detail fades out at the edge -> crisp boundary
+      const H = s0 + c0;
       // macro shading — coherent big lit face (top-left) vs dark shadow face, plus
       // ridgeline/hollow from the dome's curvature (negative laplacian = crest = bright)
       const sR = samp(wx + E, wy), sL = samp(wx - E, wy), sD = samp(wx, wy + E), sU = samp(wx, wy - E);
       const macroLit = (sR - sL) + (sD - sU);
       const macroCrest = 4 * s0 - sR - sL - sD - sU;
-      // fine shading — hard-edged facets + fine ridges/gullies from the crag surface
+      // fine shading — hard-edged facets + fine ridges/gullies (also calmed near the edge)
       const cR = crag(wx + ce, wy), cL = crag(wx - ce, wy), cD = crag(wx, wy + ce), cU = crag(wx, wy - ce);
-      const fineLit = (cR - cL) + (cD - cU);
-      const fineCrest = 4 * c0 - cR - cL - cD - cU;
+      const fineLit = ((cR - cL) + (cD - cU)) * fade;
+      const fineCrest = (4 * cc - cR - cL - cD - cU) * fade;
       const weather = vnoise(wx * 0.33 + 50, wy * 0.33 + 50) - 0.5;         // low-freq lighter/darker patches
-      const grain = rnd(x * N + jx + 3, y * N + jy + 3) - 0.5;              // per-pixel speckle
+      const grain = (rnd(x * N + jx + 3, y * N + jy + 3) - 0.5) * fade;     // per-pixel speckle (calm at the edge)
       let tone = 0.46 + macroLit * 0.72 + macroCrest * 0.5
         + fineLit * 0.9 + fineCrest * 0.5 + weather * 0.44 + grain * 0.2;
       // hard thresholds -> faceted planes with crisp edges between tonal steps (no smooth fills)
       let idx = tone < 0.15 ? 0 : tone < 0.31 ? 1 : tone < 0.49 ? 2 : tone < 0.66 ? 3 : tone < 0.82 ? 4 : 5;
       // cracks/fissures: short, higher-frequency ridged-noise streaks broken across the slopes
       const crk = vnoise(wx * 5.5 + wy * 1.4 + 13, wy * 5.5 - wx * 0.7 + 4);
-      if (1 - Math.abs(2 * crk - 1) > 0.84 && H > 0.9) idx = Math.max(0, idx - 2);
-      if (H < 0.78) idx = Math.min(idx, 1);                                // thin dark rim = 1px outline around the mass
+      if (1 - Math.abs(2 * crk - 1) > 0.84 && fade > 0.55) idx = Math.max(0, idx - 2);
+      if (fade < 0.14) idx = Math.min(idx, 1);                             // thin clean dark rim hugging the outer edge
       let col;
       if (s0 >= snowLine && macroLit > -0.12 && idx >= 4) col = idx >= 5 ? P[5] : P[4];  // snow only on the highest lit crests
       else col = R[idx];                                                                  // warm brown-grey rock
