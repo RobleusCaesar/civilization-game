@@ -141,7 +141,7 @@
   #panel.show { display: block; }
   #panel .phead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
   #panel .phead canvas { width: 44px; height: 44px; image-rendering: pixelated; flex: 0 0 auto; }
-  #panel .phead > div { flex: 1; min-width: 0; padding-right: 48px; }  /* clear the ✕ */
+  #panel .phead > div { flex: 1; min-width: 0; padding-right: 96px; }  /* clear the −/ℹ️ + ✕ */
   #panel .ptitle { font-size: 14px; font-weight: 800; }
   #panel .psub { font-size: 11px; color: var(--dim); }
   /* actions sit on an even two-column grid — tidy rows, equal-width buttons */
@@ -164,6 +164,7 @@
   .abtn.danger { border-color: var(--danger); }
   .abtn.sel { border-color: var(--gold); background: #514627; }
   #panelClose { position: absolute; right: 10px; margin-top: -2px; }
+  #helpToggle { position: absolute; right: 58px; margin-top: -2px; min-width: 40px; }
 
   .mrow { display: flex; gap: 8px; margin: 8px 0; align-items: center; }
   .mrow .abtn { flex: 1; }

@@ -34,6 +34,9 @@ const UI = {
   },
 
   init() {
+    // remembered preference: once the player knows the ropes they can tuck the
+    // unit help-text away (− button); ℹ️ brings it back. Persists across games.
+    try { this.helpHidden = localStorage.getItem('neo-unit-help') === '1'; } catch (e) { this.helpHidden = false; }
     // procedural UI chrome (ARTSTYLE): a dark plank texture generated once and
     // handed to CSS — panels, bars, and cards all share it. No image files.
     {
@@ -691,6 +694,14 @@ const UI = {
     this.setMenuCollapsed(true, true);
   },
 
+  // the − / ℹ️ button on unit panels: tuck the how-to text away (or bring it
+  // back), and remember the choice on this device across games
+  toggleUnitHelp() {
+    this.helpHidden = !this.helpHidden;
+    try { localStorage.setItem('neo-unit-help', this.helpHidden ? '1' : '0'); } catch (e) {}
+    this.renderPanel();
+  },
+
   setMenuCollapsed(v, keepPlacing) {
     this.menuCollapsed = v;
     const t = document.getElementById('bmToggle');
@@ -1150,8 +1161,8 @@ const UI = {
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${fleet ? '⚓ Fleet' : '⚔️ War Party'} <span style="color:var(--gold)">(${this.sel.ids.length})</span></div>
         <div class="psub">${this.groupComposition(this.sel.ids)}</div></div>
-        <button class="abtn" id="panelClose">✕</button></div>
-        <div class="pactions"><span class="psub">${fleet ? 'Tap water to sail together, or an enemy ship / coastal target to attack.' : 'Tap a tile to march (melee front, archers behind), or an enemy / rival building to attack together.'}</span>` +
+        <button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button><button class="abtn" id="panelClose">✕</button></div>
+        <div class="pactions">${this.helpHidden ? '' : `<span class="psub">${fleet ? 'Tap water to sail together, or an enemy ship / coastal target to attack.' : 'Tap a tile to march (melee front, archers behind), or an enemy / rival building to attack together.'}</span>`}` +
         (gLaden.length ? `<button class="abtn" data-act="gunload">⚓ Unload all<small>${gAboard} aboard</small></button>` : '') +
         (gMil.length ? `<button class="abtn ${gAllDef ? 'sel' : ''}" data-act="gdefend">${gAllDef ? '🛡 Stand Down' : '🛡 Defend'}</button>` : '') +
         `<button class="abtn" data-act="stop">✋ Halt</button></div>`;
@@ -1212,11 +1223,15 @@ const UI = {
           hint += ` ⚠️ ${stack.length} enemies stacked here — combined ATK ${atk}, HP ${hp}.`;
         }
       }
+      // the how-to text is collapsible for OWN units (enemy hints carry live
+      // tactical info like stacked-attack warnings, so those always show):
+      // − tucks it away, ℹ️ brings it back; the choice is remembered on-device
+      const helpBtn = own ? `<button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button>` : '';
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : '☠ '}${nm}</div>
         <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${u.def}</div></div>
-        <button class="abtn" id="panelClose">✕</button></div>
-        <div class="pactions"><span class="psub">${hint}</span>`;
+        ${helpBtn}<button class="abtn" id="panelClose">✕</button></div>
+        <div class="pactions">${own && this.helpHidden ? '' : `<span class="psub">${hint}</span>`}`;
       if (own && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind]) {
         const hc = this.healCost(u);
         const inZone = Bld.inHealZone(u);
@@ -1361,6 +1376,8 @@ const UI = {
       });
     }
     panel.querySelector('#panelClose').addEventListener('click', () => this.deselect());
+    const helpT = panel.querySelector('#helpToggle');
+    if (helpT) helpT.addEventListener('click', () => this.toggleUnitHelp());
     // pack the grid: any button left alone in its two-column row stretches to
     // full width — no half-empty rows, no ragged stacking
     {
