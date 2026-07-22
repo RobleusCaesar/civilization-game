@@ -398,50 +398,61 @@ const Sprites = {
   // into one tall peak; either kind that has open ground BELOW draws a `foot`
   // (scree + a cast shadow onto the grass). Strong lit LEFT face / dark RIGHT
   // face split by a wandering ridge sells the height; snow caps the summits.
-  function mtnTile(seed, peak, foot) {
+  // ONE snow-capped mountain PEAK per tile — a sharp cool-grey pyramid with a lit
+  // LEFT face, a dark RIGHT face, RADIATING ridge striations fanning down from the
+  // apex, and a jagged white snow cap (see the reference art). `openTop` tiles
+  // (grass above) leave the top corners transparent so the peak stands in
+  // silhouette against the grass; interior tiles (mountain above) first flood a
+  // dark shadowed-rock valley so the massif has no grass gaps between peaks. Tiles
+  // are composited top-to-bottom, so lower peaks overlap the ones behind them and a
+  // cluster reads as a receding range of overlapping summits.
+  function mtnTile(seed, openTop, foot) {
     return tile(p => {
-      const f = p.f, r = ART.rng(seed | 1), M = AP.mtn;
-      const apex = 10 + (r() * 12 | 0);          // summit column (peak tiles)
+      const f = p.f, r = ART.rng(seed | 1), P = AP.peak;
+      const apexX = 8 + (r() * 16 | 0), apexY = 1 + (r() * 4 | 0), baseHW = 15 + (r() * 5 | 0);
       const botRock = foot ? 27 : 32;
-      if (peak) {
-        // a snow-capped summit: a jagged skyline carves grass away above the peak
-        // (rock only below the slope line), lit LEFT face / shadow RIGHT face split
-        // at the crest — the classic top-down mountain silhouette.
-        for (let x = 0; x < 32; x++) {
-          let sky = (2 + Math.abs(x - apex) * 0.82) | 0;
-          if (r() < 0.35) sky += 2;                                   // jag the skyline
-          sky = Math.min(sky, botRock - 3);
-          for (let y = sky; y < botRock; y++) {
-            const near = y < sky + 11;
-            f(x, y, 1, 1, x < apex - 1 ? (near ? M[3] : M[2]) : x > apex + 1 ? (near ? M[1] : M[2]) : M[4]);
-          }
-          const dist = Math.abs(x - apex);                           // snow hugging the crest
-          if (dist < 7) { const sc = sky + 1 + ((7 - dist) * 0.5 | 0); for (let y = sky; y < sc; y++) f(x, y, 1, 1, x <= apex ? AP.bone[2] : AP.bone[1]); }
-          for (let i = 0; i < 1; i++) if (r() < 0.5) { const gy = sky + 3 + (r() * 8 | 0); f(x, gy, 1, 1, x < apex ? M[1] : M[0]); }   // gully fleck
+      const ridgeAt = y => apexX + Math.round(Math.sin(y * 0.28 + seed) * 1.2);
+      if (!openTop) {                                                // shadowed rock valley behind/around the peak
+        for (let y = 0; y < botRock; y++) for (let x = 0; x < 32; x++) f(x, y, 1, 1, P[1]);
+        for (let i = 0; i < 6; i++) { const gx = 1 + (r() * 30 | 0); for (let y = (r() * 4 | 0); y < botRock; y++) if ((y + gx) & 1) f(gx, y, 1, 1, P[0]); }
+      }
+      for (let y = apexY; y < botRock; y++) {                        // the pyramid: lit left, bright crest, dark right
+        const t = (y - apexY) / (31 - apexY), hw = 1 + t * baseHW, rx = ridgeAt(y);
+        const left = Math.max(0, (rx - hw) | 0), right = Math.min(32, (rx + hw) | 0);
+        for (let x = left; x < right; x++) {
+          const d = x - rx;
+          f(x, y, 1, 1, d < -2 ? P[3] : d < 1 ? P[4] : d > 3 ? P[1] : P[2]);
         }
-      } else {
-        // SOLID rock body (interior/side of the mass): a rough brown rock face with
-        // vertical gully streaks — no per-tile ridge line (that made vertical stripes)
-        for (let y = 0; y < botRock; y++) for (let x = 0; x < 32; x++) f(x, y, 1, 1, M[2]);
-        // vertical gully streaks that run the FULL tile height (start above the top
-        // edge, end below the bottom) so they flow across tile seams with no
-        // horizontal banding — a continuous rock face down the mass
-        for (let i = 0; i < 11; i++) { const gx = 1 + (r() * 30 | 0), dk = r() < 0.5 ? M[1] : M[0]; for (let y = -2 + (r() * 4 | 0); y < botRock; y++) if (((y * 7 + gx * 13) & 3)) f(gx, y < 0 ? 0 : y, 1, 1, dk); }
-        for (let i = 0; i < 7; i++) { const gx = 1 + (r() * 30 | 0); for (let y = -2 + (r() * 4 | 0); y < botRock; y++) if (((y * 5 + gx * 11) & 3)) f(gx, y < 0 ? 0 : y, 1, 1, M[3]); }
+      }
+      const nStri = 7 + (r() * 4 | 0);                               // radiating ridge striations (folds)
+      for (let i = 0; i < nStri; i++) {
+        const endX = apexX + Math.round((i / (nStri - 1) - 0.5) * baseHW * 2);
+        for (let y = apexY + 3; y < botRock; y++) {
+          const t = (y - apexY) / (31 - apexY), hw = 1 + t * baseHW;
+          const x = Math.round(apexX + (endX - apexX) * t);
+          if (Math.abs(x - apexX) < hw - 1) f(x, y, 1, 1, x < apexX ? P[2] : P[0]);
+        }
+      }
+      for (let y = apexY; y < apexY + 9; y++) {                      // jagged snow cap
+        const t = (y - apexY) / 9, hw = 1 + t * 5.5, rx = ridgeAt(y);
+        for (let x = (rx - hw) | 0; x <= rx + hw * 0.7; x++) {
+          if (r() < 0.16 && y > apexY + 3) continue;
+          f(x, y, 1, 1, x <= rx ? P[5] : P[4]);
+        }
       }
       if (foot) {                                                    // scree + cast shadow onto the grass below
-        for (let x = 1; x < 31; x++) { f(x, botRock - 1, 1, 1, M[0]); if (r() < 0.5) f(x, botRock + (r() * 2 | 0), 1, 1, r() < 0.5 ? M[1] : AP.grass[0]); }
+        for (let x = 1; x < 31; x++) { f(x, botRock - 1, 1, 1, P[0]); if (r() < 0.5) f(x, botRock + (r() * 2 | 0), 1, 1, r() < 0.5 ? P[1] : AP.grass[0]); }
       }
     });
   }
-  const mtnSet = (base, peak, foot) => { const a = []; for (let i = 0; i < 4; i++) a.push(mtnTile(base + i * 53, peak, foot)); return a; };
+  const mtnSet = (base, openTop, foot) => { const a = []; for (let i = 0; i < 5; i++) a.push(mtnTile(base + i * 47, openTop, foot)); return a; };
   Sprites.mountain = {
-    pm: mtnSet(61, true, false),    // peak, rock below (mid of a tall peak)
-    pf: mtnSet(140, true, true),    // peak with a foot (a short standalone summit)
-    sm: mtnSet(220, false, false),  // slope body, rock below
-    sf: mtnSet(300, false, true),   // slope body meeting the ground (foot)
+    of: mtnSet(61, true, true),     // open top + foot: a lone summit on grass
+    om: mtnSet(150, true, false),   // open top, rock below: a skyline summit
+    cf: mtnSet(240, false, true),   // covered top, foot: front rank of the massif
+    cm: mtnSet(330, false, false),  // covered top + rock below: deep interior peak
   };
-  Sprites.terrain[T.MOUNTAIN] = Sprites.mountain.pf;   // fallback / minimap
+  Sprites.terrain[T.MOUNTAIN] = Sprites.mountain.of;   // fallback / minimap
   // sapper-dug TRENCH — a ditch of turned earth with a dark shadowed floor and
   // grass banks; MOAT — the same channel flooded from a water source. Both block
   // land movement (drawn full-tile so a dug line reads as one continuous ditch).
