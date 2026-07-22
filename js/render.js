@@ -100,6 +100,22 @@ const R = {
     }
   },
 
+  // dark shadowed-rock floor under a mountain's flanks (behind/around the lit
+  // spine) so no grass shows through the interior of a range — a flat dark fill
+  // broken up by a world-hash dither so it never reads as a flat grey box.
+  paintValley(g, x, y, h) {
+    const TL = CFG.TILE, px = TL / 16, P = ART.PALETTE.peak;
+    g.fillStyle = P[1];
+    g.fillRect(x * TL, y * TL, TL, TL);
+    for (let k = 0; k < 12; k++) {
+      let hh = (h ^ Math.imul(k + 3, 0x9e3779b1)) >>> 0;
+      hh = Math.imul(hh ^ (hh >>> 15), 0x85ebca6b) >>> 0;
+      hh = (hh ^ (hh >>> 13)) >>> 0;
+      g.fillStyle = (hh & 0x10000) ? P[0] : P[2];
+      g.fillRect(x * TL + (hh & 15) * px, y * TL + ((hh >> 4) & 15) * px, px, px);
+    }
+  },
+
   drawTile(g, x, y) {
     // THE MAP EDGE — the outermost ring is the hard border no unit may enter and
     // nothing may be built on (Path.passable / Bld.tileFree). Paint it as the same
@@ -119,7 +135,7 @@ const R = {
     const TL = CFG.TILE, px = TL / 16, AP = ART.PALETTE;
     const h = (x * 73856093 ^ y * 19349663) >>> 0;
     const variants = Sprites.terrain[t];
-    let img;
+    let img, mtnGround = 'grass';   // for MOUNTAIN tiles: 'grass' floor (summit/edge) or 'valley' (dark flanks)
     // a sapper MOAT is just water filling a ditch — it renders exactly like the
     // lake (same blue, same shore treatment) so a dug channel reads as one body
     // of water with no per-tile seams
@@ -158,13 +174,33 @@ const R = {
         : cnt >= 4 ? Sprites.terrainMed[T.FOREST] : Sprites.terrain[T.FOREST];
       img = set[hp % set.length];
     } else if (t === T.MOUNTAIN) {
-      // each tile is a snow-capped peak; its role sets whether the top corners are
-      // open grass (peak in silhouette, no mountain above) or a filled shadow valley
-      // (mountain above), and whether its base foots onto grass (no mountain below).
-      // Composited top-to-bottom, so front peaks overlap those behind -> a range.
       const mN = (xx, yy) => MapGen.inB(xx, yy) && terr[MapGen.idx(xx, yy)] === T.MOUNTAIN;
-      const set = Sprites.mountain[(mN(x, y - 1) ? 'c' : 'o') + (mN(x, y + 1) ? 'm' : 'f')];
-      img = set[((h ^ (h >>> 13)) >>> 0) % set.length];
+      let vUp = 0; while (vUp < 12 && mN(x, y - 1 - vUp)) vUp++;
+      let vDown = 0; while (vDown < 12 && mN(x, y + 1 + vDown)) vDown++;
+      let hL = 0; while (hL < 12 && mN(x - 1 - hL, y)) hL++;
+      let hR = 0; while (hR < 12 && mN(x + 1 + hR, y)) hR++;
+      const vLen = vUp + vDown + 1, hLen = hL + hR + 1, hp = (h ^ (h >>> 13)) >>> 0;
+      if (hLen <= 2 && vLen >= 3 && vLen > hLen) {
+        // VERTICAL ridge: seamless top-to-bottom, skinny at the ends, thickest in
+        // the middle of the run. Dark flanks (paintValley) so no grass shows except
+        // the top summit tile, which opens to sky.
+        const posFrac = vLen > 1 ? vUp / (vLen - 1) : 0.5;
+        const widthT = Math.sin(Math.max(0, Math.min(1, posFrac)) * Math.PI);   // 0 ends -> 1 middle
+        let set;
+        if (vUp === 0) { set = Sprites.mountainV.top; mtnGround = 'grass'; }
+        else { set = vDown === 0 ? Sprites.mountainV.bot : widthT > 0.62 ? Sprites.mountainV.midT : widthT > 0.32 ? Sprites.mountainV.midM : Sprites.mountainV.midS; mtnGround = 'valley'; }
+        img = set[hp % set.length];
+      } else {
+        // HORIZONTAL / blob: density by enclosure — a lone/edge tile is a small
+        // snowless foothill, a perimeter tile a medium peak, a fully-surrounded core
+        // tile the biggest snowy summit. Interior tiles (mountain above) sit on a
+        // dark valley so no grass shows between the overlapping peaks.
+        let cnt = 0;
+        for (const [ox, oy] of NEIGH8) if (mN(x + ox, y + oy)) cnt++;
+        const set = cnt >= 7 ? Sprites.mountain.high : cnt >= 4 ? Sprites.mountain.med : Sprites.mountain.low;
+        img = set[hp % set.length];
+        mtnGround = mN(x, y - 1) ? 'valley' : 'grass';
+      }
     } else img = variants[(x * 7 + y * 13) % variants.length];
 
     // GROUND LAYER. Grass and every grass-floored resource (forest, fertile,
@@ -176,6 +212,10 @@ const R = {
       g.drawImage(img, x * TL, y * TL);           // rare flower meadow (self-contained)
     } else if (t === T.GRASS) {
       this.paintGround(g, x, y, h);               // plain grass
+    } else if (t === T.MOUNTAIN) {
+      if (mtnGround === 'valley') this.paintValley(g, x, y, h);   // dark shadowed-rock flanks (no grass)
+      else this.paintGround(g, x, y, h);                          // grass under a summit / edge silhouette
+      g.drawImage(img, x * TL, y * TL);
     } else if (GROUND_GRAIN.has(t)) {
       this.paintGround(g, x, y, h);               // continuous floor...
       g.drawImage(img, x * TL, y * TL);           // ...then the transparent-floored resource on top

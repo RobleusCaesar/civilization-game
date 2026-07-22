@@ -398,61 +398,105 @@ const Sprites = {
   // into one tall peak; either kind that has open ground BELOW draws a `foot`
   // (scree + a cast shadow onto the grass). Strong lit LEFT face / dark RIGHT
   // face split by a wandering ridge sells the height; snow caps the summits.
-  // ONE snow-capped mountain PEAK per tile — a sharp cool-grey pyramid with a lit
-  // LEFT face, a dark RIGHT face, RADIATING ridge striations fanning down from the
-  // apex, and a jagged white snow cap (see the reference art). `openTop` tiles
-  // (grass above) leave the top corners transparent so the peak stands in
-  // silhouette against the grass; interior tiles (mountain above) first flood a
-  // dark shadowed-rock valley so the massif has no grass gaps between peaks. Tiles
-  // are composited top-to-bottom, so lower peaks overlap the ones behind them and a
-  // cluster reads as a receding range of overlapping summits.
-  function mtnTile(seed, openTop, foot) {
+  // A single clean cool-grey mountain peak, fully shaded (NO dragged streaks): a
+  // lit LEFT face, a shadowed RIGHT face, short angled facet-folds for rock
+  // texture, sunlit sparkle dabs, a tight ground shadow and an optional jagged
+  // white snow cap sized by `snowFrac`. Drawn back-to-front by the caller.
+  function drawPeak(f, r, cx, apexY, height, hw, snowFrac) {
+    const P = AP.peak, baseY = apexY + height;
+    for (let dx = -hw + 1; dx < hw; dx++) { const yy = Math.min(31, baseY); f(cx + dx, yy, 1, 1, AP.grass[0]); }   // contact shadow
+    for (let y = apexY; y < baseY; y++) {                            // faces: lit left / shadow right, soft mid ridge
+      if (y < 0 || y > 31) continue;
+      const t = (y - apexY) / height, w = Math.max(1, Math.round(t * hw));
+      for (let x = cx - w; x <= cx + w; x++) {
+        if (x < 0 || x > 31) continue;
+        const d = x - cx;
+        f(x, y, 1, 1, d < -w * 0.14 ? P[3] : d > w * 0.14 ? P[1] : P[2]);
+      }
+    }
+    for (let i = 0, n = 5 + (r() * 4 | 0); i < n; i++) {             // short angled facet-folds (never full height)
+      const fy = apexY + 3 + (r() * (height - 6) | 0), t0 = (fy - apexY) / height, w0 = Math.max(1, Math.round(t0 * hw));
+      let fx = cx - w0 + 1 + (r() * (2 * w0 - 2) | 0); const dark = fx < cx ? P[2] : P[0], dir = fx < cx ? -1 : 1, len = 2 + (r() * 3 | 0);
+      for (let s = 0; s < len; s++) { const yy = fy + s, xx = fx + (dir * (s >> 1)); if (yy < 0 || yy > 31 || yy >= baseY) break; const ww = Math.max(1, Math.round((yy - apexY) / height * hw)); if (Math.abs(xx - cx) < ww && xx >= 0 && xx < 32) f(xx, yy, 1, 1, dark); }
+    }
+    for (let i = 0; i < 3; i++) { const fy = apexY + 3 + (r() * (height * 0.6) | 0); if (fy < 0 || fy > 31) continue; const w = Math.max(1, Math.round((fy - apexY) / height * hw)); const xx = cx - 1 - (r() * (w * 0.5) | 0); if (xx >= 0 && xx < 32) f(xx, fy, 1, 1, P[4]); }   // sunlit dabs
+    if (snowFrac > 0) {
+      const snowH = Math.max(3, Math.round(snowFrac * height));
+      for (let y = apexY; y < apexY + snowH; y++) {
+        if (y < 0 || y > 31) continue;
+        const w = Math.max(1, Math.round((y - apexY) / height * hw));
+        for (let x = cx - w; x <= cx + Math.round(w * 0.6); x++) {
+          if (x < 0 || x > 31) continue;
+          if (y > apexY + snowH - 3 && r() < 0.45) continue;         // jagged melt line
+          f(x, y, 1, 1, x <= cx ? P[5] : P[4]);
+        }
+      }
+      for (let i = 0; i < 3; i++) { const sy = apexY + snowH + (r() * 3 | 0); if (sy < 0 || sy > 31) continue; const w = Math.max(1, Math.round((sy - apexY) / height * hw)); const sx = cx - w + 1 + (r() * w | 0); if (sx >= 0 && sx < 32) f(sx, sy, 1, 1, P[5]); }
+    }
+  }
+  function tinyPine(f, x, y) { const L = AP.leaf; if (x < 1 || x > 30) return; f(x, y + 3, 1, 1, AP.wood[1]); f(x - 1, y + 1, 3, 1, L[0]); f(x - 1, y, 3, 1, L[1]); f(x, y - 1, 1, 1, L[2]); f(x, y + 2, 1, 1, L[1]); }
+  function miniBoulder(f, x, y) { const S = AP.stone; if (x < 2 || x > 29) return; f(x - 1, y, 3, 2, S[2]); f(x - 1, y, 3, 1, S[3]); f(x - 1, y + 2, 3, 1, S[0]); }
+  // MOUNTAIN density tiers (chosen in render.js from how enclosed the tile is, like
+  // the forest): LOW = small foothill peak tapering to the ground, NO snow, on the
+  // outer edge; MED = a bigger peak with a little snow, base mostly covered by the
+  // low peaks in front; HIGH = the biggest summit, sides cut off by the tile edge,
+  // lots of snow — the heart of the range. Each fully drawn with a small imperfection.
+  function mtnLow(seed) {
     return tile(p => {
-      const f = p.f, r = ART.rng(seed | 1), P = AP.peak;
-      const apexX = 8 + (r() * 16 | 0), apexY = 1 + (r() * 4 | 0), baseHW = 15 + (r() * 5 | 0);
-      const botRock = foot ? 27 : 32;
-      const ridgeAt = y => apexX + Math.round(Math.sin(y * 0.28 + seed) * 1.2);
-      if (!openTop) {                                                // shadowed rock valley behind/around the peak
-        for (let y = 0; y < botRock; y++) for (let x = 0; x < 32; x++) f(x, y, 1, 1, P[1]);
-        for (let i = 0; i < 6; i++) { const gx = 1 + (r() * 30 | 0); for (let y = (r() * 4 | 0); y < botRock; y++) if ((y + gx) & 1) f(gx, y, 1, 1, P[0]); }
-      }
-      for (let y = apexY; y < botRock; y++) {                        // the pyramid: lit left, bright crest, dark right
-        const t = (y - apexY) / (31 - apexY), hw = 1 + t * baseHW, rx = ridgeAt(y);
-        const left = Math.max(0, (rx - hw) | 0), right = Math.min(32, (rx + hw) | 0);
-        for (let x = left; x < right; x++) {
-          const d = x - rx;
-          f(x, y, 1, 1, d < -2 ? P[3] : d < 1 ? P[4] : d > 3 ? P[1] : P[2]);
-        }
-      }
-      const nStri = 7 + (r() * 4 | 0);                               // radiating ridge striations (folds)
-      for (let i = 0; i < nStri; i++) {
-        const endX = apexX + Math.round((i / (nStri - 1) - 0.5) * baseHW * 2);
-        for (let y = apexY + 3; y < botRock; y++) {
-          const t = (y - apexY) / (31 - apexY), hw = 1 + t * baseHW;
-          const x = Math.round(apexX + (endX - apexX) * t);
-          if (Math.abs(x - apexX) < hw - 1) f(x, y, 1, 1, x < apexX ? P[2] : P[0]);
-        }
-      }
-      for (let y = apexY; y < apexY + 9; y++) {                      // jagged snow cap
-        const t = (y - apexY) / 9, hw = 1 + t * 5.5, rx = ridgeAt(y);
-        for (let x = (rx - hw) | 0; x <= rx + hw * 0.7; x++) {
-          if (r() < 0.16 && y > apexY + 3) continue;
-          f(x, y, 1, 1, x <= rx ? P[5] : P[4]);
-        }
-      }
-      if (foot) {                                                    // scree + cast shadow onto the grass below
-        for (let x = 1; x < 31; x++) { f(x, botRock - 1, 1, 1, P[0]); if (r() < 0.5) f(x, botRock + (r() * 2 | 0), 1, 1, r() < 0.5 ? P[1] : AP.grass[0]); }
-      }
+      const f = p.f, r = ART.rng(seed | 1), cx = 10 + (r() * 12 | 0), h = 18 + (r() * 5 | 0), hw = 11 + (r() * 3 | 0);
+      drawPeak(f, r, cx, 30 - h, h, hw, 0);                              // small foothill, no snow, tapers to the ground
+      const im = r(); if (im < 0.4) tinyPine(f, cx - hw - 1 + (r() * 3 | 0), 30); else if (im < 0.7) miniBoulder(f, cx + hw, 29);
     });
   }
-  const mtnSet = (base, openTop, foot) => { const a = []; for (let i = 0; i < 5; i++) a.push(mtnTile(base + i * 47, openTop, foot)); return a; };
+  function mtnMed(seed) {
+    return tile(p => {
+      const f = p.f, r = ART.rng(seed | 1), cx = 9 + (r() * 14 | 0), h = 27 + (r() * 5 | 0), hw = 15 + (r() * 3 | 0);
+      drawPeak(f, r, cx, 32 - h, h, hw, 0.22);                           // bigger, a little snow, overlaps neighbours
+      const im = r(); if (im < 0.35) drawPeak(f, r, cx + (r() < 0.5 ? -1 : 1) * (hw - 2), 31 - 11, 11, 5, 0); else if (im < 0.55) tinyPine(f, cx - hw, 30);
+    });
+  }
+  function mtnHigh(seed) {
+    return tile(p => {
+      const f = p.f, r = ART.rng(seed | 1), cx = 11 + (r() * 10 | 0), h = 34 + (r() * 4 | 0), hw = 20 + (r() * 4 | 0);
+      drawPeak(f, r, cx, (r() * 2 | 0), h, hw, 0.5);                     // biggest, sides cut off, lots of snow
+      if (r() < 0.5) drawPeak(f, r, cx + (r() < 0.5 ? -1 : 1) * (hw - 5), 6 + (r() * 3 | 0), h - 14, 7, 0.4);   // secondary snowy spur
+    });
+  }
   Sprites.mountain = {
-    of: mtnSet(61, true, true),     // open top + foot: a lone summit on grass
-    om: mtnSet(150, true, false),   // open top, rock below: a skyline summit
-    cf: mtnSet(240, false, true),   // covered top, foot: front rank of the massif
-    cm: mtnSet(330, false, false),  // covered top + rock below: deep interior peak
+    low: [mtnLow(11), mtnLow(58), mtnLow(102), mtnLow(151)],
+    med: [mtnMed(210), mtnMed(263), mtnMed(319)],
+    high: [mtnHigh(380), mtnHigh(431), mtnHigh(488)],
   };
-  Sprites.terrain[T.MOUNTAIN] = Sprites.mountain.of;   // fallback / minimap
+  // VERTICAL ridge (N-S runs) — a chain of OVERLAPPING snow-capped peaks receding
+  // northward over a dark shadowed-rock ground (render paints it, so NO grass shows
+  // on the flanks — only the top summit tile opens to sky). Composited top-to-
+  // bottom, so each near (lower) peak overlaps the base of the one behind it, and
+  // you read a receding line of summits. render sizes each tile from its position
+  // along the run: skinny peaks at the two ends, biggest & snowiest in the middle.
+  function mtnVertMid(seed, hw, snow) {
+    return tile(p => {
+      const f = p.f, r = ART.rng(seed | 1);
+      drawPeak(f, r, 16, 0, 32, hw, snow);
+      if (r() < 0.5) drawPeak(f, r, 16 + (r() < 0.5 ? -1 : 1) * (hw - 3), 3 + (r() * 4 | 0), 22, 6, snow > 0.2 ? 0.35 : 0);   // secondary spur
+    });
+  }
+  function mtnVertTop(seed, hw) {
+    return tile(p => { const f = p.f, r = ART.rng(seed | 1); drawPeak(f, r, 16, 1 + (r() * 2 | 0), 30, hw, 0.5); });
+  }
+  function mtnVertBot(seed, hw) {
+    return tile(p => {
+      const f = p.f, r = ART.rng(seed | 1); drawPeak(f, r, 16, 0, 29, hw, 0.15);
+      for (let x = 16 - hw; x <= 16 + hw; x++) { if (x < 0 || x > 31) continue; f(x, 28, 1, 1, AP.peak[0]); if (r() < 0.5) f(x, 29 + (r() * 2 | 0), 1, 1, r() < 0.5 ? AP.peak[1] : AP.grass[0]); }
+    });
+  }
+  Sprites.mountainV = {
+    top: [mtnVertTop(520, 15), mtnVertTop(571, 16), mtnVertTop(622, 14)],
+    midS: [mtnVertMid(660, 11, 0.15), mtnVertMid(709, 11, 0.15)],
+    midM: [mtnVertMid(748, 14, 0.3), mtnVertMid(797, 14, 0.3)],
+    midT: [mtnVertMid(836, 17, 0.5), mtnVertMid(885, 18, 0.5), mtnVertMid(934, 17, 0.45)],
+    bot: [mtnVertBot(970, 13), mtnVertBot(1019, 14), mtnVertBot(1068, 12)],
+  };
+  Sprites.terrain[T.MOUNTAIN] = Sprites.mountain.high;   // fallback / minimap
   // sapper-dug TRENCH — a ditch of turned earth with a dark shadowed floor and
   // grass banks; MOAT — the same channel flooded from a water source. Both block
   // land movement (drawn full-tile so a dug line reads as one continuous ditch).
