@@ -249,38 +249,55 @@ const Sprites = {
     for (let dy = 0; dy <= ry; dy++) for (let dx = -rx; dx <= rx; dx++)
       if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1) f(cx + dx, cy + rr - 1 + dy, 1, 1, AP.grass[0]);
   }
-  // a faceted boulder: 3 clear planes (lit top-left, mid, shadowed lower-right)
-  // split by crack lines, a warm-grey mineral fleck or two for tonal variety
-  // (not flat grey), a bright crest glint and moss/grass creeping up the shaded
-  // base. Silhouette varies — some crags grow a second lobe.
-  // ORE boulder: a big chunky COOL-GREY mineral rock (distinct from the brown
-  // mountains) sitting on the grass — faceted lit/shadow planes, a crack, a crest
-  // glint and a couple of ore glints, grounded by a tight base shadow. Reads as
-  // "stone you can mine", not elevation.
+  // ORE boulder: an angular, chunky mineral rock in the world's dark muted
+  // grey-brown (AP.ore) — the pale near-white stone read as marble dropped on
+  // grass. Built per-pixel on an octagonal metric with per-facet radius jitter,
+  // so the silhouette is straight chunky edges and chipped corners, never a soft
+  // blob. Hard-edged facet planes (lit top-left / front / right / shadowed
+  // lower-right) split by dark crack lines, a crisp dark rim, speckle grain,
+  // a fissure, a crest glint, and grass creeping up the base. Reads as "stone
+  // you can mine", not elevation.
   function boulderBody(f, cx, cy, rr) {
-    const St = AP.stone, r = ART.rng((cx * 31 + cy * 17) | 1);    // COOL neutral grey
-    ART.shadedCircle(f, cx, cy, rr, St, 2);
-    if (rr >= 4 && ((cx * 5 + cy * 3) & 3) === 0)           // lumpy/elongated silhouette
-      ART.shadedCircle(f, cx + rr - 1, cy + 1, (rr * 0.55) | 0, St, 2);
-    for (let dy = -rr; dy <= rr; dy++) for (let dx = -rr; dx <= rr; dx++) {   // faceted planes
-      if (dx * dx + dy * dy > rr * rr) continue;
-      const s = dx + dy;
-      if (s < -rr * 0.55) f(cx + dx, cy + dy, 1, 1, St[3]);        // lit top-left plane
-      else if (s > rr * 0.7) f(cx + dx, cy + dy, 1, 1, St[0]);     // shadowed lower-right plane
+    const St = AP.ore, r = ART.rng((cx * 31 + cy * 17) | 1);
+    const oct = []; for (let i = 0; i < 8; i++) oct.push(0.76 + r() * 0.3);   // per-facet radius -> irregular chunk
+    const chipA = (r() * 8) | 0, chipB = (r() * 8) | 0;                       // chipped corners
+    const s1 = -(0.3 + r() * 0.25) * rr, s2 = (0.35 + r() * 0.25) * rr;       // facet split lines, jittered per rock
+    const radAt = (dx, dy) => {
+      const ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
+      const k = dx >= 0 ? (dy >= 0 ? (ax >= ay ? 0 : 1) : (ax >= ay ? 7 : 6)) : (dy >= 0 ? (ax >= ay ? 3 : 2) : (ax >= ay ? 4 : 5));
+      let rad = rr * oct[k];
+      if (k === chipA || k === chipB) rad *= 0.8;
+      return rad;
+    };
+    const inside = (dx, dy, m) => {                                           // octagonal metric -> flat angular edges
+      const ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
+      return (ax > ay ? ax + 0.41 * ay : ay + 0.41 * ax) <= radAt(dx, dy) - m;
+    };
+    for (let dy = -rr - 1; dy <= rr + 1; dy++) for (let dx = -rr - 1; dx <= rr + 1; dx++) {
+      if (!inside(dx, dy, 0)) continue;
+      const s = dx + dy, t = dx - dy;
+      let c;                                                                  // hard-edged facet planes, 5 tonal steps
+      if (s <= s1) c = s <= s1 - rr * 0.5 ? St[5] : St[4];                    // lit top-left plane (+ bright crest)
+      else if (s >= s2) c = s >= s2 + rr * 0.5 ? St[1] : St[2];               // shadowed lower-right plane
+      else c = t >= rr * 0.4 ? St[2] : St[3];                                 // right side-plane vs front plane
+      if (!inside(dx, dy, 1)) c = s < 0 ? St[1] : St[0];                      // crisp 1px dark rim
+      else if (Math.abs(s - s1) < 0.5 || Math.abs(s - s2) < 0.5) c = St[0];   // crack lines along the facet breaks
+      f(cx + dx, cy + dy, 1, 1, c);
     }
-    f(cx - (rr * 0.2 | 0), cy - rr + 2, 1, (rr * 1.25) | 0, St[0]);        // vertical crack
-    f(cx - rr + 2, cy + (rr * 0.2 | 0), (rr * 0.9) | 0, 1, St[1]);         // diagonal facet break
-    f(cx - 1, cy - rr + 1, 2, 1, St[4]); f(cx - 2, cy - rr + 2, 1, 1, St[4]);   // crest glint
-    for (let i = 0; i < rr; i++)                                            // cool grey tonal flecks + ore glint
-      f(cx - rr + 1 + (r() * (rr * 2 - 1) | 0), cy - rr + 1 + (r() * (rr * 2 - 1) | 0), 1, 1, r() < 0.5 ? St[1] : St[4]);
+    f(cx - (rr * 0.2 | 0), cy - (rr * 0.55 | 0), 1, (rr * 0.8) | 0, St[0]);   // vertical fissure
+    f(cx + (rr * 0.3 | 0), cy, 1, (rr * 0.6) | 0, St[1]);                     // secondary hairline crack
+    for (let i = 0, n = rr * 3; i < n; i++) {                                 // speckle grain (kept inside the rock)
+      const gx = -rr + 1 + (r() * (rr * 2 - 1) | 0), gy = -rr + 1 + (r() * (rr * 2 - 1) | 0);
+      if (inside(gx, gy, 1.4)) f(cx + gx, cy + gy, 1, 1, r() < 0.55 ? St[1] : St[4]);
+    }
     f(cx - 1, cy + rr - 1, 2, 1, AP.grass[1]); f(cx + 1, cy + rr, 1, 1, AP.grass[4]);   // grass creeping up the base
   }
   function rockField(p, seed, spec) {
     const f = p.f, r = ART.rng(seed + 3);
     for (const b of spec) boulderShadow(f, b[0], b[1], b[2]);
     for (const b of spec) boulderBody(f, b[0], b[1], b[2]);
-    for (let i = 0; i < 8; i++)                              // scree chips + grass tufts (workable-deposit rubble)
-      f((r() * 30) | 0, (r() * 30) | 0, 1, 1, r() < 0.6 ? AP.stone[2] : AP.grass[4]);
+    for (let i = 0; i < 6; i++)                              // a few scree chips + grass tufts (workable-deposit rubble)
+      f((r() * 30) | 0, (r() * 30) | 0, 1, 1, r() < 0.6 ? AP.ore[2] : AP.grass[4]);
   }
   // ORE (hills): a big chunky cluster of grey boulders on turf — 8 variants for
   // variety. Bigger anchor boulders (r 5-7) with smaller ones + rubble around.
