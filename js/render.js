@@ -127,42 +127,68 @@ const R = {
   // irregular rocky edge where it meets grass. Chunky 2px blocks keep the rough style.
   drawMountain(g, x, y) {
     if (!this.mtnH) this.computeMountainHeight();
-    const TL = CFG.TILE, px = TL / 16, R = ART.PALETTE.mrock, P = ART.PALETTE.peak, W = CFG.W, Hh = CFG.H, Hf = this.mtnH;
+    // Author on the FINE 1px grid (N=32) for crisp rock detail. The look is built from
+    // two scales: a smooth macro dome (the distance field) that carries the big lit/shadow
+    // volume + ridgelines, and a fine crag surface (value-noise octaves) that carves
+    // faceted planes, secondary ridges/spurs, cracks and grain on top of it.
+    const N = 32, R = ART.PALETTE.mrock, P = ART.PALETTE.peak, W = CFG.W, Hh = CFG.H, Hf = this.mtnH;
+    const TL = CFG.TILE, cell = TL / N, bx = x * TL, by = y * TL;
     const hAt = (xx, yy) => (xx < 0 || yy < 0 || xx >= W || yy >= Hh) ? 0 : Hf[yy * W + xx];
-    const samp = (wx, wy) => {                       // bilinear base height (the smooth dome)
+    const samp = (wx, wy) => {                       // bilinear macro height (the smooth dome)
       const x0 = Math.floor(wx), y0 = Math.floor(wy), fx = wx - x0, fy = wy - y0;
       return hAt(x0, y0) * (1 - fx) * (1 - fy) + hAt(x0 + 1, y0) * fx * (1 - fy)
         + hAt(x0, y0 + 1) * (1 - fx) * fy + hAt(x0 + 1, y0 + 1) * fx * fy;
     };
     const rnd = (a, b) => { let n = (Math.imul(a | 0, 73856093) ^ Math.imul(b | 0, 19349663)) >>> 0; n = Math.imul(n ^ (n >>> 13), 0x85ebca6b) >>> 0; return ((n ^ (n >>> 16)) >>> 0) / 4294967295; };
-    const vnoise = (wx, wy) => {                      // smooth value noise (for crag/ridge structure)
+    const vnoise = (wx, wy) => {                      // smooth value noise
       const x0 = Math.floor(wx), y0 = Math.floor(wy), fx = wx - x0, fy = wy - y0;
       const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
       const n0 = rnd(x0, y0) * (1 - sx) + rnd(x0 + 1, y0) * sx;
       const n1 = rnd(x0, y0 + 1) * (1 - sx) + rnd(x0 + 1, y0 + 1) * sx;
       return n0 * (1 - sy) + n1 * sy;
     };
-    // height = smooth dome + medium/fine crag octaves — the added structure is what
-    // the gradient turns into faceted crags, secondary ridges and gullies
-    const hgt = (wx, wy) => samp(wx, wy) + (vnoise(wx * 2.3, wy * 2.3) - 0.5) * 1.4 + (vnoise(wx * 5.7 + 9, wy * 5.7 + 9) - 0.5) * 0.7;
-    const snowLine = Math.max(2.8, this.mtnMax * 0.62), bx = x * TL, by = y * TL;
-    for (let jy = 0; jy < 16; jy++) for (let jx = 0; jx < 16; jx++) {
-      const wx = x + (jx + 0.5) / 16 - 0.5, wy = y + (jy + 0.5) / 16 - 0.5;
-      const sh = hgt(wx, wy);
-      if (sh <= 0.55) {                                            // below the footprint = grass, scattered scree
-        if (sh > 0.2 && rnd(x * 16 + jx, y * 16 + jy) < 0.3) { g.fillStyle = rnd(jx, jy + 7) < 0.5 ? R[1] : R[2]; g.fillRect(bx + jx * px, by + jy * px, px, px); }
+    // fine crag surface: medium octave = secondary ridges/spurs, finer octaves = facets/grain
+    const crag = (wx, wy) => (vnoise(wx * 1.7 + 2, wy * 1.7 + 2) - 0.5) * 1.2
+      + (vnoise(wx * 3.9 + 7, wy * 3.9 + 7) - 0.5) * 0.7
+      + (vnoise(wx * 8.3 + 31, wy * 8.3 + 31) - 0.5) * 0.36
+      + (vnoise(wx * 15.5 + 60, wy * 15.5 + 60) - 0.5) * 0.2;
+    const snowLine = Math.max(2.8, this.mtnMax * 0.62);
+    const E = 0.55, ce = 0.11;                        // macro / fine sampling offsets
+    for (let jy = 0; jy < N; jy++) for (let jx = 0; jx < N; jx++) {
+      const wx = x + (jx + 0.5) / N - 0.5, wy = y + (jy + 0.5) / N - 0.5;
+      const s0 = samp(wx, wy), c0 = crag(wx, wy), H = s0 + c0;      // full rock-surface height
+      if (H <= 0.5) {                                               // below footprint = grass fringe
+        if (H > 0.12) {
+          const uphill = samp(wx - 0.6, wy - 0.6);                  // mass sits up-left of this pixel?
+          if (uphill > 1.35) { g.fillStyle = 'rgba(22,17,12,0.24)'; g.fillRect(bx + jx * cell, by + jy * cell, cell, cell); }  // cast shadow on the shadow side
+          else if (rnd(x * N + jx, y * N + jy) < 0.28) { g.fillStyle = rnd(jx, jy + 7) < 0.5 ? R[1] : R[2]; g.fillRect(bx + jx * cell, by + jy * cell, cell, cell); }  // scree/rubble at the base
+        }
         continue;
       }
-      const e = 0.16, gx = hgt(wx + e, wy) - hgt(wx - e, wy), gy = hgt(wx, wy + e) - hgt(wx, wy - e);
-      const lit = gx + gy;                                         // top-left-facing crag faces are lit
-      let idx = lit > 0.45 ? 4 : lit > 0.12 ? 3 : lit < -0.45 ? 0 : lit < -0.12 ? 1 : 2;
-      const d = rnd(x * 16 + jx + 3, y * 16 + jy + 3);             // faint grain
-      if (d < 0.1) idx = Math.max(0, idx - 1); else if (d > 0.92) idx = Math.min(4, idx + 1);
+      // macro shading — coherent big lit face (top-left) vs dark shadow face, plus
+      // ridgeline/hollow from the dome's curvature (negative laplacian = crest = bright)
+      const sR = samp(wx + E, wy), sL = samp(wx - E, wy), sD = samp(wx, wy + E), sU = samp(wx, wy - E);
+      const macroLit = (sR - sL) + (sD - sU);
+      const macroCrest = 4 * s0 - sR - sL - sD - sU;
+      // fine shading — hard-edged facets + fine ridges/gullies from the crag surface
+      const cR = crag(wx + ce, wy), cL = crag(wx - ce, wy), cD = crag(wx, wy + ce), cU = crag(wx, wy - ce);
+      const fineLit = (cR - cL) + (cD - cU);
+      const fineCrest = 4 * c0 - cR - cL - cD - cU;
+      const weather = vnoise(wx * 0.33 + 50, wy * 0.33 + 50) - 0.5;         // low-freq lighter/darker patches
+      const grain = rnd(x * N + jx + 3, y * N + jy + 3) - 0.5;              // per-pixel speckle
+      let tone = 0.46 + macroLit * 0.72 + macroCrest * 0.5
+        + fineLit * 0.9 + fineCrest * 0.5 + weather * 0.44 + grain * 0.2;
+      // hard thresholds -> faceted planes with crisp edges between tonal steps (no smooth fills)
+      let idx = tone < 0.15 ? 0 : tone < 0.31 ? 1 : tone < 0.49 ? 2 : tone < 0.66 ? 3 : tone < 0.82 ? 4 : 5;
+      // cracks/fissures: short, higher-frequency ridged-noise streaks broken across the slopes
+      const crk = vnoise(wx * 5.5 + wy * 1.4 + 13, wy * 5.5 - wx * 0.7 + 4);
+      if (1 - Math.abs(2 * crk - 1) > 0.84 && H > 0.9) idx = Math.max(0, idx - 2);
+      if (H < 0.78) idx = Math.min(idx, 1);                                // thin dark rim = 1px outline around the mass
       let col;
-      if (sh >= snowLine && lit > -0.3) col = lit < -0.02 ? P[4] : P[5];   // snow (cool white) on the lit tops of the tallest crags
-      else col = R[idx];                                                   // warm brown-grey rock body
+      if (s0 >= snowLine && macroLit > -0.12 && idx >= 4) col = idx >= 5 ? P[5] : P[4];  // snow only on the highest lit crests
+      else col = R[idx];                                                                  // warm brown-grey rock
       g.fillStyle = col;
-      g.fillRect(bx + jx * px, by + jy * px, px, px);
+      g.fillRect(bx + jx * cell, by + jy * cell, cell, cell);
     }
   },
 
