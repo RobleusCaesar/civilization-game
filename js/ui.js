@@ -503,6 +503,7 @@ const UI = {
         Units.assignBuild(sel, hitBld);
         this.toast(hitBld.hp < hitBld.maxhp && !hitBld.construction && !hitBld.upgrading
           ? 'Villager sent to repair' : 'Villager sent to build');
+        this.dispatchedVillager();   // job handed off — clear the selection like any other dispatch
         return;
       }
       if (hitBld && hitBld.owner === 'P' && Units.isVillager(sel) &&
@@ -514,6 +515,7 @@ const UI = {
         sel.task = { type: 'work', id: hitBld.id }; sel.tUnit = 0; sel.tBld = 0;
         Units.setPath(sel, hitBld.x, hitBld.y);
         this.toast('Villager stationed at the ' + Bld.def(hitBld.key).name);
+        this.dispatchedVillager();   // stationed — no further orders needed
         return;
       }
       if (!hitUnit && (!hitBld || hitBld.owner !== 'P')) {
@@ -1292,8 +1294,10 @@ const UI = {
         const b2 = this.villagerResBld(u2); if (!b2) return;
         const c = Bld.canUpgrade(b2);
         if (!c.ok) { this.toast(c.why, true); return; }
-        if (Bld.upgrade(b2)) this.toast(`${Bld.def(b2.key).name} upgrading to Lv ${b2.level + 1} — the crew builds it, then back to work`);
-        this.renderPanel();
+        if (Bld.upgrade(b2)) {
+          this.toast(`${Bld.def(b2.key).name} upgrading to Lv ${b2.level + 1} — the crew builds it, then back to work`);
+          this.dispatchedVillager();   // the villager is off building the upgrade — deselect like any dispatch
+        } else this.renderPanel();
       });
       // sapper terraform tools — arm a job; the next tile tap performs it
       panel.querySelectorAll('[data-act="terra"]').forEach(btn => btn.addEventListener('click', () => {
