@@ -126,7 +126,9 @@ const MapGen = {
           let dir = rnd() * Math.PI * 2;
           const len = (W * (0.5 + rnd() * 0.4)) | 0;
           for (let i = 0; i < len; i++) {
-            for (const [ox, oy] of [[0, 0], [1, 0], [0, 1]]) {
+            // a chunkier brush (~3 tiles wide) so ridges read as substantial ranges,
+            // not thin spines — the reachability clamp below still guarantees a way through
+            for (const [ox, oy] of [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1]]) {
               const nx = (x | 0) + ox, ny = (y | 0) + oy;
               if (MapGen.inB(nx, ny) && !nearStart(nx, ny) && t[id(nx, ny)] === T.GRASS)
                 t[id(nx, ny)] = T.MOUNTAIN;

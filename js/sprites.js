@@ -253,42 +253,46 @@ const Sprites = {
   // split by crack lines, a warm-grey mineral fleck or two for tonal variety
   // (not flat grey), a bright crest glint and moss/grass creeping up the shaded
   // base. Silhouette varies — some crags grow a second lobe.
-  function boulderBody(f, cx, cy, rr, snow) {
-    const Rk = AP.rock, r = ART.rng((cx * 31 + cy * 17) | 1);     // WARM earthy stone, shares hue with soil
-    ART.shadedCircle(f, cx, cy, rr, Rk, 2);
+  // ORE boulder: a big chunky COOL-GREY mineral rock (distinct from the brown
+  // mountains) sitting on the grass — faceted lit/shadow planes, a crack, a crest
+  // glint and a couple of ore glints, grounded by a tight base shadow. Reads as
+  // "stone you can mine", not elevation.
+  function boulderBody(f, cx, cy, rr) {
+    const St = AP.stone, r = ART.rng((cx * 31 + cy * 17) | 1);    // COOL neutral grey
+    ART.shadedCircle(f, cx, cy, rr, St, 2);
     if (rr >= 4 && ((cx * 5 + cy * 3) & 3) === 0)           // lumpy/elongated silhouette
-      ART.shadedCircle(f, cx + rr - 1, cy + 1, (rr * 0.55) | 0, Rk, 2);
+      ART.shadedCircle(f, cx + rr - 1, cy + 1, (rr * 0.55) | 0, St, 2);
     for (let dy = -rr; dy <= rr; dy++) for (let dx = -rr; dx <= rr; dx++) {   // faceted planes
       if (dx * dx + dy * dy > rr * rr) continue;
       const s = dx + dy;
-      if (s < -rr * 0.55) f(cx + dx, cy + dy, 1, 1, Rk[3]);        // lit top-left plane
-      else if (s > rr * 0.7) f(cx + dx, cy + dy, 1, 1, Rk[0]);     // shadowed lower-right plane
+      if (s < -rr * 0.55) f(cx + dx, cy + dy, 1, 1, St[3]);        // lit top-left plane
+      else if (s > rr * 0.7) f(cx + dx, cy + dy, 1, 1, St[0]);     // shadowed lower-right plane
     }
-    f(cx - (rr * 0.2 | 0), cy - rr + 2, 1, (rr * 1.25) | 0, Rk[0]);        // vertical crack
-    f(cx - rr + 2, cy + (rr * 0.2 | 0), (rr * 0.9) | 0, 1, Rk[1]);         // diagonal facet break
-    f(cx - 1, cy - rr + 1, 2, 1, Rk[4]); f(cx - 2, cy - rr + 2, 1, 1, Rk[4]);   // crest glint
-    for (let i = 0; i < rr; i++)                                            // warm tonal flecks (browns/tans)
-      f(cx - rr + 1 + (r() * (rr * 2 - 1) | 0), cy - rr + 1 + (r() * (rr * 2 - 1) | 0), 1, 1, r() < 0.5 ? AP.soil[2] : Rk[3]);
-    f(cx - 1, cy + rr - 1, 2, 1, AP.leaf[2]); f(cx + 1, cy + rr, 1, 1, AP.grass[4]);   // moss + grass at the base
-    if (snow) {                                              // snow on the lit crown
-      for (let dx = -rr + 1; dx <= 0; dx++) f(cx + dx, cy - rr + 1, 1, 1, AP.bone[2]);
-      f(cx - rr + 1, cy - rr + 2, (rr * 0.7) | 0, 1, AP.bone[1]);
-      f(cx - ((rr * 0.3) | 0), cy - rr + 1, 1, 1, AP.bone[2]);
-    }
+    f(cx - (rr * 0.2 | 0), cy - rr + 2, 1, (rr * 1.25) | 0, St[0]);        // vertical crack
+    f(cx - rr + 2, cy + (rr * 0.2 | 0), (rr * 0.9) | 0, 1, St[1]);         // diagonal facet break
+    f(cx - 1, cy - rr + 1, 2, 1, St[4]); f(cx - 2, cy - rr + 2, 1, 1, St[4]);   // crest glint
+    for (let i = 0; i < rr; i++)                                            // cool grey tonal flecks + ore glint
+      f(cx - rr + 1 + (r() * (rr * 2 - 1) | 0), cy - rr + 1 + (r() * (rr * 2 - 1) | 0), 1, 1, r() < 0.5 ? St[1] : St[4]);
+    f(cx - 1, cy + rr - 1, 2, 1, AP.grass[1]); f(cx + 1, cy + rr, 1, 1, AP.grass[4]);   // grass creeping up the base
   }
   function rockField(p, seed, spec) {
     const f = p.f, r = ART.rng(seed + 3);
     for (const b of spec) boulderShadow(f, b[0], b[1], b[2]);
-    for (const b of spec) boulderBody(f, b[0], b[1], b[2], b[3]);
-    for (let i = 0; i < 6; i++)                              // scree + grass tufts in the gaps
-      f((r() * 30) | 0, (r() * 30) | 0, 1, 1, r() < 0.5 ? AP.rock[2] : AP.grass[4]);
+    for (const b of spec) boulderBody(f, b[0], b[1], b[2]);
+    for (let i = 0; i < 8; i++)                              // scree chips + grass tufts (workable-deposit rubble)
+      f((r() * 30) | 0, (r() * 30) | 0, 1, 1, r() < 0.6 ? AP.stone[2] : AP.grass[4]);
   }
-  // hills: a low scatter of boulders on turf, plenty of grass between them
+  // ORE (hills): a big chunky cluster of grey boulders on turf — 8 variants for
+  // variety. Bigger anchor boulders (r 5-7) with smaller ones + rubble around.
   Sprites.terrain[T.HILLS] = [
-    tile(p => rockField(p, 31, [[10, 16, 5], [20, 22, 4], [23, 9, 4], [6, 7, 3]])),
-    tile(p => rockField(p, 87, [[20, 18, 5], [8, 10, 4], [9, 23, 3], [25, 25, 3]])),
-    tile(p => rockField(p, 143, [[15, 13, 5], [24, 20, 4], [6, 22, 4], [27, 6, 3]])),
-    tile(p => rockField(p, 199, [[9, 20, 5], [22, 11, 5], [26, 24, 3], [13, 6, 3]])),
+    tile(p => rockField(p, 31, [[11, 17, 7], [22, 21, 5], [24, 9, 5], [7, 8, 4]])),
+    tile(p => rockField(p, 87, [[19, 18, 7], [8, 11, 5], [10, 24, 5], [26, 25, 4]])),
+    tile(p => rockField(p, 143, [[15, 14, 7], [25, 21, 5], [6, 22, 5], [27, 7, 4]])),
+    tile(p => rockField(p, 199, [[10, 20, 6], [22, 11, 6], [26, 25, 4], [13, 6, 5]])),
+    tile(p => rockField(p, 251, [[16, 16, 7], [8, 25, 5], [27, 12, 5], [23, 27, 4]])),
+    tile(p => rockField(p, 307, [[12, 12, 6], [24, 20, 6], [8, 23, 5], [20, 28, 4]])),
+    tile(p => rockField(p, 361, [[18, 22, 7], [9, 9, 6], [26, 9, 4], [13, 26, 4]])),
+    tile(p => rockField(p, 419, [[14, 19, 7], [23, 13, 5], [7, 24, 4], [27, 26, 5]])),
   ];
 
   // wild fertile ground: fruit orchards and berry thickets, mixed across the
@@ -386,14 +390,58 @@ const Sprites = {
       p(10, 11, 3, 1, AP.ink[0]); p(4, 5, 1, 1, AP.ink[0]);
     }),
   ];
-  // mountains: big snow-capped crags packed edge to edge (so a run of tiles
-  // fuses into one range), with dark grass shadows and scree filling the gaps —
-  // NOT the old flat grey checker. Peaks vary in size and position per variant.
-  Sprites.terrain[T.MOUNTAIN] = [
-    tile(p => rockField(p, 61, [[12, 18, 7, true], [23, 23, 6, true], [24, 9, 5, false], [6, 26, 4, false], [4, 8, 4, true]])),
-    tile(p => rockField(p, 99, [[20, 16, 7, true], [8, 22, 6, true], [26, 26, 5, false], [7, 7, 5, true], [15, 29, 4, false]])),
-    tile(p => rockField(p, 175, [[16, 14, 8, true], [27, 22, 5, false], [6, 20, 5, true], [24, 6, 4, false], [10, 28, 4, false]])),
-  ];
+  // MOUNTAINS — raised BROWN-GREY terrain that reads as ELEVATION, not scattered
+  // rock. A tile is drawn by its ROLE in the mass (render.js picks it from the
+  // mountain neighbours): a `peak` tile (nothing above it) draws a snow-capped
+  // triangular summit widening downward; a `slope` tile (mountain above) draws a
+  // full-width rock body of the same lit/shadow faces so a column of tiles stacks
+  // into one tall peak; either kind that has open ground BELOW draws a `foot`
+  // (scree + a cast shadow onto the grass). Strong lit LEFT face / dark RIGHT
+  // face split by a wandering ridge sells the height; snow caps the summits.
+  function mtnTile(seed, peak, foot) {
+    return tile(p => {
+      const f = p.f, r = ART.rng(seed | 1), M = AP.mtn;
+      const apex = 10 + (r() * 12 | 0);          // summit column (peak tiles)
+      const botRock = foot ? 27 : 32;
+      if (peak) {
+        // a snow-capped summit: a jagged skyline carves grass away above the peak
+        // (rock only below the slope line), lit LEFT face / shadow RIGHT face split
+        // at the crest — the classic top-down mountain silhouette.
+        for (let x = 0; x < 32; x++) {
+          let sky = (2 + Math.abs(x - apex) * 0.82) | 0;
+          if (r() < 0.35) sky += 2;                                   // jag the skyline
+          sky = Math.min(sky, botRock - 3);
+          for (let y = sky; y < botRock; y++) {
+            const near = y < sky + 11;
+            f(x, y, 1, 1, x < apex - 1 ? (near ? M[3] : M[2]) : x > apex + 1 ? (near ? M[1] : M[2]) : M[4]);
+          }
+          const dist = Math.abs(x - apex);                           // snow hugging the crest
+          if (dist < 7) { const sc = sky + 1 + ((7 - dist) * 0.5 | 0); for (let y = sky; y < sc; y++) f(x, y, 1, 1, x <= apex ? AP.bone[2] : AP.bone[1]); }
+          for (let i = 0; i < 1; i++) if (r() < 0.5) { const gy = sky + 3 + (r() * 8 | 0); f(x, gy, 1, 1, x < apex ? M[1] : M[0]); }   // gully fleck
+        }
+      } else {
+        // SOLID rock body (interior/side of the mass): a rough brown rock face with
+        // vertical gully streaks — no per-tile ridge line (that made vertical stripes)
+        for (let y = 0; y < botRock; y++) for (let x = 0; x < 32; x++) f(x, y, 1, 1, M[2]);
+        // vertical gully streaks that run the FULL tile height (start above the top
+        // edge, end below the bottom) so they flow across tile seams with no
+        // horizontal banding — a continuous rock face down the mass
+        for (let i = 0; i < 11; i++) { const gx = 1 + (r() * 30 | 0), dk = r() < 0.5 ? M[1] : M[0]; for (let y = -2 + (r() * 4 | 0); y < botRock; y++) if (((y * 7 + gx * 13) & 3)) f(gx, y < 0 ? 0 : y, 1, 1, dk); }
+        for (let i = 0; i < 7; i++) { const gx = 1 + (r() * 30 | 0); for (let y = -2 + (r() * 4 | 0); y < botRock; y++) if (((y * 5 + gx * 11) & 3)) f(gx, y < 0 ? 0 : y, 1, 1, M[3]); }
+      }
+      if (foot) {                                                    // scree + cast shadow onto the grass below
+        for (let x = 1; x < 31; x++) { f(x, botRock - 1, 1, 1, M[0]); if (r() < 0.5) f(x, botRock + (r() * 2 | 0), 1, 1, r() < 0.5 ? M[1] : AP.grass[0]); }
+      }
+    });
+  }
+  const mtnSet = (base, peak, foot) => { const a = []; for (let i = 0; i < 4; i++) a.push(mtnTile(base + i * 53, peak, foot)); return a; };
+  Sprites.mountain = {
+    pm: mtnSet(61, true, false),    // peak, rock below (mid of a tall peak)
+    pf: mtnSet(140, true, true),    // peak with a foot (a short standalone summit)
+    sm: mtnSet(220, false, false),  // slope body, rock below
+    sf: mtnSet(300, false, true),   // slope body meeting the ground (foot)
+  };
+  Sprites.terrain[T.MOUNTAIN] = Sprites.mountain.pf;   // fallback / minimap
   // sapper-dug TRENCH — a ditch of turned earth with a dark shadowed floor and
   // grass banks; MOAT — the same channel flooded from a water source. Both block
   // land movement (drawn full-tile so a dug line reads as one continuous ditch).

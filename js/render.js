@@ -157,6 +157,13 @@ const R = {
         ? (hp % 11 === 0 ? Sprites.terrainRare[T.FOREST] : Sprites.terrainFull[T.FOREST])
         : cnt >= 4 ? Sprites.terrainMed[T.FOREST] : Sprites.terrain[T.FOREST];
       img = set[hp % set.length];
+    } else if (t === T.MOUNTAIN) {
+      // role in the mass: a summit (no mountain above) vs a slope (mountain above),
+      // each either resting on rock or footing onto ground (no mountain below), so
+      // a column of tiles stacks into one tall peak and the range reads as elevation
+      const mN = (xx, yy) => MapGen.inB(xx, yy) && terr[MapGen.idx(xx, yy)] === T.MOUNTAIN;
+      const set = Sprites.mountain[(mN(x, y - 1) ? 's' : 'p') + (mN(x, y + 1) ? 'm' : 'f')];
+      img = set[((h ^ (h >>> 13)) >>> 0) % set.length];
     } else img = variants[(x * 7 + y * 13) % variants.length];
 
     // GROUND LAYER. Grass and every grass-floored resource (forest, fertile,
