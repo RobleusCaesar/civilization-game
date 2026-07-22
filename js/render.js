@@ -120,6 +120,44 @@ const R = {
     }
     let max = 1; for (let i = 0; i < W * H; i++) { if (T_[i] !== T.MOUNTAIN) d[i] = 0; else if (d[i] > max) max = d[i]; }
     this.mtnH = d; this.mtnMax = max;
+    // SUMMITS — local maxima of the field (plateau-deduped to their top-left cell),
+    // then greedily thinned so no two peaks sit closer than ~2 tiles. Each summit
+    // gets a small deterministic jitter so apexes don't sit on tile centers.
+    const hsh = (a, b) => { let n = (Math.imul(a | 0, 73856093) ^ Math.imul(b | 0, 19349663)) >>> 0; n = Math.imul(n ^ (n >>> 13), 0x85ebca6b) >>> 0; return ((n ^ (n >>> 16)) >>> 0) / 4294967295; };
+    let cand = [];
+    for (let i = 0; i < W * H; i++) {
+      if (d[i] < 2) continue;
+      const cx = i % W, cy = (i / W) | 0; let isMax = true;
+      for (let oy = -1; oy <= 1 && isMax; oy++) for (let ox = -1; ox <= 1; ox++) {
+        if (!ox && !oy) continue;
+        const nx = cx + ox, ny = cy + oy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const dj = d[ny * W + nx];
+        if (dj > d[i] || (dj === d[i] && (oy < 0 || (oy === 0 && ox < 0)))) { isMax = false; break; }
+      }
+      if (isMax) cand.push({ x: cx + 0.5 + (hsh(cx, cy) - 0.5) * 0.5, y: cy + 0.5 + (hsh(cy, cx + 9) - 0.5) * 0.5, h: d[i] });
+    }
+    cand.sort((a, b) => b.h - a.h);
+    const peaks = [];
+    for (const c of cand) { if (!peaks.some(p => (p.x - c.x) ** 2 + (p.y - c.y) ** 2 < 4)) peaks.push(c); }
+    // RIDGE GRAPH — each summit links to its nearest neighbour summit (deduped), so
+    // spines chain along a range; an isolated summit keeps a degenerate point-seg.
+    const segs = [], seen = new Set();
+    for (let a = 0; a < peaks.length; a++) {
+      const near = [];
+      for (let b = 0; b < peaks.length; b++) {
+        if (b === a) continue;
+        const dd = (peaks[a].x - peaks[b].x) ** 2 + (peaks[a].y - peaks[b].y) ** 2;
+        if (dd < 42) near.push([dd, b]);
+      }
+      near.sort((u, v) => u[0] - v[0]);
+      if (!near.length) { segs.push([peaks[a].x, peaks[a].y, peaks[a].x, peaks[a].y, peaks[a].h]); continue; }
+      for (const [, b] of near.slice(0, 2)) {          // link to the 2 nearest -> continuous chain along the range
+        const key = a < b ? a * 4096 + b : b * 4096 + a;
+        if (!seen.has(key)) { seen.add(key); segs.push([peaks[a].x, peaks[a].y, peaks[b].x, peaks[b].y, Math.min(peaks[a].h, peaks[b].h)]); }
+      }
+    }
+    this.mtnPeaks = peaks; this.mtnSegs = segs;
   },
   // Draw one mountain tile procedurally from the height field: real sloped rock
   // faces lit top-left / shadowed bottom-right by the surface gradient, faceted
@@ -154,6 +192,15 @@ const R = {
       + (vnoise(wx * 15.5 + 60, wy * 15.5 + 60) - 0.5) * 0.2;
     const snowLine = Math.max(2.8, this.mtnMax * 0.62);
     const E = 0.55, ce = 0.11;                        // macro / fine sampling offsets
+    // ridge spines + summits near this tile (prefiltered once per tile)
+    const segs = [], pks = [];
+    for (const sg of this.mtnSegs || []) {
+      if (Math.min(sg[0], sg[2]) < x + 5 && Math.max(sg[0], sg[2]) > x - 5 &&
+          Math.min(sg[1], sg[3]) < y + 5 && Math.max(sg[1], sg[3]) > y - 5) segs.push(sg);
+    }
+    for (const pk of this.mtnPeaks || []) {
+      if (pk.x > x - 5 && pk.x < x + 5 && pk.y > y - 5 && pk.y < y + 5) pks.push(pk);
+    }
     for (let jy = 0; jy < N; jy++) for (let jx = 0; jx < N; jx++) {
       const wx = x + (jx + 0.5) / N - 0.5, wy = y + (jy + 0.5) / N - 0.5;
       const s0 = samp(wx, wy);
@@ -178,16 +225,65 @@ const R = {
       const fineCrest = (4 * cc - cR - cL - cD - cU) * fade;
       const weather = vnoise(wx * 0.33 + 50, wy * 0.33 + 50) - 0.5;         // low-freq lighter/darker patches
       const grain = (rnd(x * N + jx + 3, y * N + jy + 3) - 0.5) * fade;     // per-pixel speckle (calm at the edge)
-      let tone = 0.46 + macroLit * 0.72 + macroCrest * 0.5
-        + fineLit * 0.9 + fineCrest * 0.5 + weather * 0.44 + grain * 0.2;
+      let tone = 0.46 + macroLit * 0.55 + macroCrest * 0.4
+        + fineLit * 0.6 + fineCrest * 0.35 + weather * 0.35 + grain * 0.18;
+      // RIDGE STRUCTURE — nearest spine segment gives: distance to the ridge (rd),
+      // which face of it we're on (rs: up-left = lit, down-right = shadow), and an
+      // arc-length coordinate along the ridge (ru) used to draw streaks that fan
+      // DOWN the flanks (stripes vary along the ridge, run away from it).
+      let rd = 1e9, rs = 0, ru = 0;
+      for (const sg of segs) {
+        const ex = sg[2] - sg[0], ey = sg[3] - sg[1], ll = ex * ex + ey * ey;
+        let t = ll ? ((wx - sg[0]) * ex + (wy - sg[1]) * ey) / ll : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const ox = wx - (sg[0] + ex * t), oy = wy - (sg[1] + ey * t);
+        const dd = Math.sqrt(ox * ox + oy * oy);
+        if (dd < rd) { rd = dd; rs = ox + oy; ru = ll ? t * Math.sqrt(ll) : Math.atan2(oy, ox) * 1.3; }
+      }
+      // bend the ridge organically: a low-frequency perpendicular wobble shifts the
+      // face boundary (and thus the spine) so it never reads as a ruler-straight line
+      const rsW = rs + (vnoise(wx * 0.9 + 71, wy * 0.9 + 71) - 0.5) * 0.55;
+      const litF = rsW <= 0, snowy = s0 >= snowLine;
+      // apex + crevice distances (nearest / second-nearest summit)
+      let r1p = 1e9, r2p = 1e9;
+      for (const pk of pks) { const dp = (wx - pk.x) ** 2 + (wy - pk.y) ** 2; if (dp < r1p) { r2p = r1p; r1p = dp; } else if (dp < r2p) r2p = dp; }
+      let ridged = 0;
+      if (rd < 2.6) {                                  // ridge structure only NEAR the spine (macro shading rules farther out)
+        ridged = 1;
+        const k = snowy ? 0.5 : 1;                     // snow softens the rock modulation
+        tone += (litF ? 0.14 : -0.3) * k;              // two distinct faces split hard at the spine —
+                                                       // the tonal jump at the boundary IS the ridge line
+        // radiating slope streaks fanning DOWN the flanks: stripes vary along the ridge
+        // (ru) and run away from it — angled with the slope, never combed. Lit face gets
+        // sparse DARK streaks on pale rock; shadow face gets dense LIGHT streaks cutting
+        // the dark mass. A gentle jitter bends them; gap noise breaks them into dashes.
+        const sq = ru * (litF ? 4.5 : 7) + (vnoise(wx * 1.3 + 80, wy * 1.3 + 80) - 0.5) * 1.5;
+        const duty = sq - Math.floor(sq);
+        const gapN = vnoise(ru * 2.8 + 90, rd * 3.2 + 90);
+        if (duty < (litF ? 0.26 : 0.3) && gapN > 0.44 && rd > 0.1)         // heavy gapping -> short rocky dashes, never combed
+          tone += (litF ? -0.26 : 0.3) * k * (0.6 + 0.8 * vnoise(wx * 2.6 + 99, wy * 2.6 + 99));
+        // damp the isotropic crag pattern near the ridge so the directional
+        // streaks dominate the read instead of the worm-maze texture
+        tone -= (fineLit * 0.6 + fineCrest * 0.35) * 0.5;
+        // contact shadow where two peak masses meet: darkest values in the crevice
+        // along the boundary between neighbouring summits — stacks the peaks visually.
+        if (pks.length > 1 && Math.sqrt(r2p) - Math.sqrt(r1p) < 0.24 && r1p > 0.36) tone -= 0.3;
+      }
+      if (snowy) tone += 0.2;
       // hard thresholds -> faceted planes with crisp edges between tonal steps (no smooth fills)
       let idx = tone < 0.15 ? 0 : tone < 0.31 ? 1 : tone < 0.49 ? 2 : tone < 0.66 ? 3 : tone < 0.82 ? 4 : 5;
       // cracks/fissures: short, higher-frequency ridged-noise streaks broken across the slopes
       const crk = vnoise(wx * 5.5 + wy * 1.4 + 13, wy * 5.5 - wx * 0.7 + 4);
-      if (1 - Math.abs(2 * crk - 1) > 0.84 && fade > 0.55) idx = Math.max(0, idx - 2);
+      if (1 - Math.abs(2 * crk - 1) > 0.93 && fade > 0.55) idx = Math.max(0, idx - 2);
+      // THE SPINE — a thin dark shadow lip right where the faces meet: the lit face
+      // runs bright up to the boundary and drops straight into this dark edge, which
+      // is what reads as a sharp crest (never a painted bright trail).
+      if (ridged && !litF && rsW < 0.08 && rd < 0.6 && s0 > 0.85 && fade > 0.3) idx = Math.min(idx, 1);
       if (fade < 0.14) idx = Math.min(idx, 1);                             // thin clean dark rim hugging the outer edge
       let col;
-      if (s0 >= snowLine && macroLit > -0.12 && idx >= 4) col = idx >= 5 ? P[5] : P[4];  // snow only on the highest lit crests
+      // SNOW — consistent altitude line across the range; sun-facing snow is
+      // brightest, shadow-face snow is a mid cool tone (never white); the dark
+      // spine lip and crevices stay bare rock poking through the cap.
+      if (snowy && idx >= 2) col = litF ? (idx >= 4 ? P[idx >= 5 ? 5 : 4] : P[4]) : P[3];
       else col = R[idx];                                                                  // warm brown-grey rock
       g.fillStyle = col;
       g.fillRect(bx + jx * cell, by + jy * cell, cell, cell);
