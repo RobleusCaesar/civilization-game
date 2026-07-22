@@ -100,6 +100,39 @@ const R = {
     }
   },
 
+  // WATER — calm and smooth. A flat body colour with long, LOW-contrast swells
+  // computed in WORLD space (the bands run straight across tile borders, so a lake
+  // can never show a per-tile pattern), plus a few hash-scattered wave dashes and
+  // pinpoint glints. Shore tiles use the lighter shallow ramp; the live sparkle /
+  // foam / fish animation layers on top at frame time.
+  paintWater(g, x, y, shore) {
+    const TL = CFG.TILE, px = TL / 16, W = ART.PALETTE.water;
+    const body = shore ? W[2] : W[1], dark = shore ? W[1] : W[0], lite = shore ? W[3] : W[2];
+    g.fillStyle = body;
+    g.fillRect(x * TL, y * TL, TL, TL);
+    for (let jy = 0; jy < 16; jy++) for (let jx = 0; jx < 16; jx++) {
+      const wx = x + jx / 16, wy = y + jy / 16;
+      // three long slow sine swells, wavelengths of several tiles, gently angled
+      const v = Math.sin(wx * 1.7 + wy * 0.55 + 1.3) + Math.sin(wx * 0.4 - wy * 1.35 + 4.1)
+        + Math.sin((wx + wy) * 0.75 + 2.2) * 0.8;
+      // per-pixel hash softens the band edges so the swell never reads as stripes
+      let hh = (Math.imul(x * 16 + jx, 73856093) ^ Math.imul(y * 16 + jy, 19349663)) >>> 0;
+      hh = ((Math.imul(hh ^ (hh >>> 13), 0x85ebca6b) >>> 0) >>> 8) / 16777215;
+      if (v > 2.05 + (hh - 0.5) * 0.5) g.fillStyle = lite;
+      else if (v < -2.15 - (hh - 0.5) * 0.5) g.fillStyle = dark;
+      else continue;
+      g.fillRect(x * TL + jx * px, y * TL + jy * px, px, px);
+    }
+    // sparse life: two short crest dashes + one pinpoint glint per tile, hash-placed
+    let hh = (Math.imul(x, 0x9e3779b1) ^ Math.imul(y, 0x85ebca6b)) >>> 0;
+    for (let k = 0; k < 3; k++) {
+      hh = (Math.imul(hh ^ (hh >>> 15), 0xc2b2ae35) >>> 0);
+      const gx = hh & 15, gy = (hh >> 4) & 15;
+      if (k < 2) { g.fillStyle = lite; g.fillRect(x * TL + Math.min(gx, 13) * px, y * TL + gy * px, px * (2 + (hh >> 9 & 1)), px); }
+      else if ((hh & 3) === 0) { g.fillStyle = shore ? W[4] : W[3]; g.fillRect(x * TL + gx * px, y * TL + gy * px, px, px); }
+    }
+  },
+
   // MOUNTAIN HEIGHT FIELD — the graph distance of every mountain tile from the
   // nearest non-mountain tile (1 at the rocky footprint, rising toward the
   // interior). A whole range shares one continuous field, so bilinear-sampling it
@@ -319,12 +352,14 @@ const R = {
     // the sea beyond a man-made isthmus reads exactly as it did before it was built.
     const shoreLand = (xx, yy) => MapGen.inB(xx, yy) && !wet(at(xx, yy)) &&
       !(S.map.reclaimed && S.map.reclaimed[MapGen.idx(xx, yy)]);
+    let waterShore = false;
     if (t === T.GRASS && h % 61 === 0)
       img = Sprites.terrainRare[T.GRASS][h % Sprites.terrainRare[T.GRASS].length];   // rare flower meadow
     else if (wet(t)) {
-      const shore = shoreLand(x + 1, y) || shoreLand(x - 1, y) ||
-                    shoreLand(x, y + 1) || shoreLand(x, y - 1);
-      img = Sprites.terrain[T.WATER][shore ? 0 : 1];    // lighter shallows, darker interior
+      waterShore = shoreLand(x + 1, y) || shoreLand(x - 1, y) ||
+                   shoreLand(x, y + 1) || shoreLand(x, y - 1);
+      // water is painted procedurally in the ground-layer step below (paintWater):
+      // calm world-space swells that run across tile borders, so no per-tile pattern
     } else if (t === T.MOUND) {
       const gr = Sprites.terrain[T.GRASS];               // a berm sits on a grass base
       img = gr[(x * 7 + y * 13) % gr.length];
@@ -363,6 +398,8 @@ const R = {
     } else if (t === T.MOUNTAIN) {
       this.paintGround(g, x, y, h);                               // grass floor under the irregular rocky footprint
       this.drawMountain(g, x, y);                                 // real textured slopes from the height field
+    } else if (wet(t)) {
+      this.paintWater(g, x, y, waterShore);                       // calm continuous water, no tile pattern
     } else if (GROUND_GRAIN.has(t)) {
       this.paintGround(g, x, y, h);               // continuous floor...
       g.drawImage(img, x * TL, y * TL);           // ...then the transparent-floored resource on top
