@@ -150,16 +150,27 @@ const Sprites = {
   function forestTile(p, seed, level) {
     const f = p.f, r = ART.rng(seed | 1);
     const trees = [];
-    if (level === 0) {                                                 // sparse: 1-2 lone trees on grass
-      const n = 1 + (r() < 0.6 ? 1 : 0);
-      for (let i = 0; i < n; i++) trees.push([9 + (r() * 14) | 0, 9 + (r() * 12) | 0, 6 + (r() * 2 | 0), leafPick(r)]);
-    } else {
-      const step = level === 2 ? 10 : 13, rad = level === 2 ? 5 : 6, drop = level === 2 ? 0.24 : 0.46;
-      for (let gy = 0, row = 0; gy <= 32; gy += step, row++)           // grid FROM 0 so crowns overhang the edges
-        for (let gx = (row & 1) ? (step >> 1) : 0; gx <= 32; gx += step) {
+    if (level === 2) {
+      // DENSE interior only (used when a tile is fully surrounded by forest): a
+      // straddling grid whose crowns overhang every edge. Half-cut trees are fine
+      // here — every edge abuts more forest that covers them.
+      const step = 10, rad = 5, drop = 0.24;
+      for (let gy = 0, row = 0; gy <= 32; gy += step, row++)
+        for (let gx = (row & 1) ? 5 : 0; gx <= 32; gx += step) {
           if (r() < drop) continue;
           trees.push([gx + ((r() * 5) | 0) - 2, gy + ((r() * 5) | 0) - 2, rad + (r() * 2 | 0), leafPick(r)]);
         }
+    } else {
+      // EDGE tiles (sparse fringe / medium perimeter): every tree FULLY CONTAINED
+      // within the tile (crown may touch an edge but is never cut), so the forest's
+      // visible border always shows whole trees on grass — never a half tree.
+      const n = level === 1 ? 7 + (r() * 3 | 0) : 1 + (r() * 3 | 0);   // medium packs a fuller clump
+      for (let i = 0; i < n; i++) {
+        const rr = 5 + (r() * 2 | 0);
+        const cx = rr + (r() * (32 - 2 * rr)) | 0;                     // crown fits in [0,31] (may touch, never cut)
+        const cy = rr + (r() * (30 - 2 * rr)) | 0;                     // crown + trunk fit in [0,31]
+        trees.push([cx, cy, rr, leafPick(r)]);
+      }
     }
     trees.sort((a, b) => a[1] - b[1]);
     for (const [cx, cy, rr, ramp] of trees) tree(f, cx, cy, rr, ramp);
@@ -187,9 +198,9 @@ const Sprites = {
     }
   }
   const forestSet = (base, lvl, n) => { const a = []; for (let i = 0; i < n; i++) { const s = base + i * 37; a.push(tile(p => forestTile(p, s, lvl))); } return a; };
-  Sprites.terrain[T.FOREST] = forestSet(11, 0, 6);                     // sparse — the outer fringe
-  Sprites.terrainMed = { [T.FOREST]: forestSet(400, 1, 6) };          // medium — the perimeter
-  Sprites.terrainFull = { [T.FOREST]: forestSet(800, 2, 6) };         // dense — the interior
+  Sprites.terrain[T.FOREST] = forestSet(11, 0, 8);                     // sparse — the outer fringe (complete trees)
+  Sprites.terrainMed = { [T.FOREST]: forestSet(400, 1, 8) };          // medium — the perimeter (complete trees)
+  Sprites.terrainFull = { [T.FOREST]: forestSet(800, 2, 8) };         // dense — the interior (may straddle)
   Sprites.terrainRare[T.FOREST] = [                                    // character one-offs
     tile(p => forestChar(p, 71, 'log')), tile(p => forestChar(p, 133, 'stumps')),
     tile(p => forestChar(p, 209, 'brambles')), tile(p => forestChar(p, 288, 'log')),

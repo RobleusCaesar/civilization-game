@@ -149,7 +149,11 @@ const R = {
       for (const [ox, oy] of NEIGH8)
         if (MapGen.inB(x + ox, y + oy) && terr[MapGen.idx(x + ox, y + oy)] === T.FOREST) cnt++;
       const hp = (h ^ (h >>> 13)) >>> 0;
-      const set = cnt >= 7
+      // ONLY a tile fully ringed by forest (cnt === 8) may use the dense straddling
+      // set (where crowns are cut by the edge) or a character tile — its cut edges
+      // always abut more forest. Any tile touching a non-forest neighbour uses the
+      // complete-tree edge sets, so the forest's border never shows a half tree.
+      const set = cnt === 8
         ? (hp % 11 === 0 ? Sprites.terrainRare[T.FOREST] : Sprites.terrainFull[T.FOREST])
         : cnt >= 4 ? Sprites.terrainMed[T.FOREST] : Sprites.terrain[T.FOREST];
       img = set[hp % set.length];
