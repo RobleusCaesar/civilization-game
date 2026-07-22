@@ -4,6 +4,7 @@
 // grass-floored resources: drawn on a transparent floor over one continuous
 // painted grass ground (see drawTile/paintGround) so no seam shows at block edges
 const GROUND_GRAIN = new Set([T.FOREST, T.FERTILE, T.HILLS, T.MOUNTAIN, T.STUMPS, T.PEBBLES]);
+const NEIGH8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
 
 const R = {
   cv: null, g: null,
@@ -99,28 +100,6 @@ const R = {
     }
   },
 
-  // dappled sunlight + shadow gaps over an interior canopy tile, placed from the
-  // tile's world hash (avalanche-mixed) so the texture never repeats per tile —
-  // the baked canopy is left near-uniform and this breaks up its grid, the same
-  // world-position trick that de-tiled the grass.
-  paintCanopyDapple(g, x, y, h) {
-    const TL = CFG.TILE, px = TL / 16, L = ART.PALETTE.leaf;
-    for (let k = 0; k < 13; k++) {
-      let hh = (h ^ Math.imul(k + 5, 0x9e3779b1)) >>> 0;
-      hh = Math.imul(hh ^ (hh >>> 15), 0x85ebca6b) >>> 0;
-      hh = Math.imul(hh ^ (hh >>> 13), 0xc2b2ae35) >>> 0;
-      hh = (hh ^ (hh >>> 16)) >>> 0;
-      const gx = hh & 15, gy = (hh >> 4) & 15, bx = x * TL + gx * px, by = y * TL + gy * px;
-      if (((hh >> 9) & 7) < 5) {                            // a small shaded leaf ball (canopy bump)
-        g.fillStyle = L[3]; g.fillRect(bx - px, by - px, px * 2, px * 2);   // 2x2 body
-        g.fillStyle = L[4]; g.fillRect(bx - px, by - px, px, px);          // lit top-left
-        g.fillStyle = L[1]; g.fillRect(bx, by + px, px, px);               // shade bottom-right
-      } else {                                              // shadow gap between crowns
-        g.fillStyle = L[0]; g.fillRect(bx, by, px, px);
-      }
-    }
-  },
-
   drawTile(g, x, y) {
     // THE MAP EDGE — the outermost ring is the hard border no unit may enter and
     // nothing may be built on (Path.passable / Bld.tileFree). Paint it as the same
@@ -140,7 +119,7 @@ const R = {
     const TL = CFG.TILE, px = TL / 16, AP = ART.PALETTE;
     const h = (x * 73856093 ^ y * 19349663) >>> 0;
     const variants = Sprites.terrain[t];
-    let img, forestInterior = false;
+    let img;
     // a sapper MOAT is just water filling a ditch — it renders exactly like the
     // lake (same blue, same shore treatment) so a dug channel reads as one body
     // of water with no per-tile seams
@@ -160,13 +139,20 @@ const R = {
       const gr = Sprites.terrain[T.GRASS];               // a berm sits on a grass base
       img = gr[(x * 7 + y * 13) % gr.length];
     } else if (t === T.FOREST) {
-      // interior tiles (forest on all four sides) get the SOLID overlapping
-      // canopy; edge tiles get the fringe (separated trees on grass), so a wood
-      // reads as dense canopy inside and individual trees at its outer border
-      const fN = (xx, yy) => MapGen.inB(xx, yy) && terr[MapGen.idx(xx, yy)] === T.FOREST;
-      forestInterior = fN(x + 1, y) && fN(x - 1, y) && fN(x, y + 1) && fN(x, y - 1);
-      const set = forestInterior ? Sprites.terrainFull[T.FOREST] : Sprites.terrain[T.FOREST];
-      img = set[((h ^ (h >>> 13)) >>> 0) % set.length];    // mixed hash — no diagonal variant grid
+      // density from how enclosed the tile is: a lone/edge tile is SPARSE, a
+      // perimeter tile MEDIUM, a fully-surrounded core tile DENSE — a natural
+      // gradient of individual trees, thickening toward the heart of the wood.
+      // Deep in the interior a rare character tile (fallen log / stumps / bramble)
+      // rolls in for flavour. Mixed hash for both variant and density so there's
+      // no diagonal grid.
+      let cnt = 0;
+      for (const [ox, oy] of NEIGH8)
+        if (MapGen.inB(x + ox, y + oy) && terr[MapGen.idx(x + ox, y + oy)] === T.FOREST) cnt++;
+      const hp = (h ^ (h >>> 13)) >>> 0;
+      const set = cnt >= 7
+        ? (hp % 11 === 0 ? Sprites.terrainRare[T.FOREST] : Sprites.terrainFull[T.FOREST])
+        : cnt >= 4 ? Sprites.terrainMed[T.FOREST] : Sprites.terrain[T.FOREST];
+      img = set[hp % set.length];
     } else img = variants[(x * 7 + y * 13) % variants.length];
 
     // GROUND LAYER. Grass and every grass-floored resource (forest, fertile,
@@ -181,7 +167,6 @@ const R = {
     } else if (GROUND_GRAIN.has(t)) {
       this.paintGround(g, x, y, h);               // continuous floor...
       g.drawImage(img, x * TL, y * TL);           // ...then the transparent-floored resource on top
-      if (forestInterior) this.paintCanopyDapple(g, x, y, h);   // world-position leaf dapple over solid canopy
     } else {
       g.drawImage(img, x * TL, y * TL);           // water / barren / ruin / camp / mound base
     }

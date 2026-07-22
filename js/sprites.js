@@ -123,56 +123,75 @@ const Sprites = {
   }
   Sprites.terrainRare = { [T.GRASS]: [tile(p => flowers(p, 301)), tile(p => flowers(p, 407))] };
 
-  // ONE simple, symmetric leafy crown — the repeated canopy asset. Kept clean
-  // (a shaded body + a sunlit top-left cap + a tight underside shadow) so crowns
-  // tile together without noisy gaps; variety comes from swapping the leaf ramp,
-  // not the shape (SLYNYRD "Top Down Objects" technique).
   const LEAF_D = [AP.leaf[0], AP.leaf[0], AP.leaf[1], AP.leaf[2], AP.leaf[3]];   // shade tree
   const LEAF_L = [AP.leaf[1], AP.leaf[2], AP.leaf[3], AP.leaf[4], AP.leaf[4]];   // sunlit tree
-  function crown(f, cx, cy, rr, ramp) {
-    ART.shadedCircle(f, cx, cy, rr, ramp, 2);                            // canopy body, top-left lit
-    ART.shadedCircle(f, cx - 1, cy - 1, Math.max(1, (rr * 0.55) | 0), ramp, 3);   // brighter sunlit cap
-    f(cx - 1, cy + rr - 1, 3, 1, ramp[0]);                              // tight underside shadow
+  // ONE tree, drawn to stay READABLE even when packed tight: a trunk, a rounded
+  // crown, a DARK underside rim (the key — it rings the bottom of every crown so
+  // neighbouring trees never merge into a blob), a sunlit top-left cap and a top
+  // glint. Trees are drawn back-to-front so front trunks/rims overlap the crowns
+  // behind, exactly like a real stand seen from above.
+  function tree(f, cx, cy, rr, ramp) {
+    f(cx, cy + rr - 2, 2, 5, AP.wood[1]); f(cx, cy + rr - 2, 1, 5, AP.wood[2]);   // trunk
+    ART.shadedCircle(f, cx, cy, rr, ramp, 2);                            // crown body
+    for (let a = 0.4; a <= 2.75; a += 0.28)                             // dark underside rim -> separation
+      f((cx + Math.cos(a) * rr) | 0, (cy + Math.sin(a) * rr) | 0, 1, 1, ramp[0]);
+    ART.shadedCircle(f, cx - 1, cy - 1, Math.max(1, (rr * 0.5) | 0), ramp, 3);    // sunlit cap
+    f(cx - (rr * 0.4 | 0), cy - rr, 1, 1, AP.leaf[4]);                  // crown glint
   }
-  // FOREST INTERIOR — a solid canopy. The base is a FLAT forest-green fill (a
-  // darker, cooler green than the grass) with only a whisper of baked mottle, so
-  // it carries no per-tile lattice. All the leafy relief — sunlit crown clumps and
-  // shadow gaps — is painted per-WORLD-position in render.js (paintCanopyDapple),
-  // so the canopy reads as bumpy tree-tops with no repeat and no seam (same
-  // world-position trick that de-tiled the grass).
-  function canopyTile(seed) {
-    return tile(p => {
-      const f = p.f, r = ART.rng(seed | 1);
-      f(0, 0, 32, 32, AP.leaf[2]);                                 // flat canopy base
-      for (let i = 0; i < 10; i++) f((r() * 32) | 0, (r() * 32) | 0, 1, 1, r() < 0.6 ? AP.leaf[1] : AP.leaf[3]);
-    });
-  }
-  Sprites.terrainFull = { [T.FOREST]: [canopyTile(11), canopyTile(53), canopyTile(151)] };
-  // FOREST FRINGE — where the wood meets open grass: a few separated tree crowns
-  // (individual silhouettes) with grass showing between, a trunk peeking out, an
-  // occasional fallen log. render.js uses these on edge tiles, the full canopy on
-  // interior tiles.
-  function forestTile(p, seed, log) {
-    const f = p.f, r = ART.rng(seed + 2);          // transparent floor — render paints the grass ground
-    const n = 2 + (r() * 2 | 0), crowns = [];
-    for (let i = 0; i < n; i++)
-      crowns.push([6 + (r() * 20) | 0, 6 + (r() * 18) | 0, 6 + (r() * 2 | 0),
-        r() < 0.35 ? LEAF_D : r() < 0.8 ? AP.leaf : LEAF_L]);
-    crowns.sort((a, b) => a[1] - b[1]);                           // back-to-front
-    if (r() < 0.6) {
-      const t = crowns[crowns.length - 1];
-      f(t[0], t[1] + t[2] - 1, 3, 5, AP.wood[1]); f(t[0], t[1] + t[2] - 1, 1, 5, AP.wood[2]);
+  const leafPick = r => { const u = r(); return u < 0.32 ? LEAF_D : u > 0.8 ? LEAF_L : AP.leaf; };
+  // FOREST at three densities (level 0 sparse / 1 medium / 2 dense). Trees are
+  // scattered on a jittered grid so they're individual, never carbon copies;
+  // medium/dense tiles get a canopy-shadow floor so the deepening wood reads
+  // darker toward its heart. render.js chooses the level from how enclosed the
+  // tile is, giving a natural sparse-edge -> dense-core gradient.
+  function forestTile(p, seed, level) {
+    const f = p.f, r = ART.rng(seed | 1);
+    if (level === 2) f(0, 0, 32, 32, 'rgba(20,42,16,0.5)');            // deep canopy shadow
+    else if (level === 1) f(0, 0, 32, 32, 'rgba(26,50,20,0.26)');
+    const trees = [];
+    if (level === 0) {                                                 // sparse: 1-2 lone trees on grass
+      const n = 1 + (r() < 0.6 ? 1 : 0);
+      for (let i = 0; i < n; i++) trees.push([8 + (r() * 16) | 0, 8 + (r() * 14) | 0, 6 + (r() * 2 | 0), leafPick(r)]);
+    } else {
+      const step = level === 2 ? 9 : 12, rad = level === 2 ? 5 : 6, drop = level === 2 ? 0.1 : 0.4;
+      for (let gy = 2; gy < 34; gy += step) for (let gx = 2; gx < 34; gx += step) {
+        if (r() < drop) continue;
+        trees.push([gx + ((r() * 5) | 0) - 2, gy + ((r() * 5) | 0) - 2, rad + (r() * 2 | 0), leafPick(r)]);
+      }
     }
-    f(crowns[0][0] - 4, crowns[0][1] + crowns[0][2], 7, 1, AP.leaf[0]);   // contact shadow
-    for (const [cx, cy, rr, ramp] of crowns) crown(f, cx, cy, rr, ramp);
-    if (log) {                                                    // fallen mossy log
-      f(16, 28, 12, 2, AP.wood[1]); f(16, 27, 12, 1, AP.wood[3]);
-      f(26, 27, 2, 1, AP.wood[4]); f(19, 27, 1, 1, AP.leaf[3]); f(23, 27, 1, 1, AP.leaf[3]);
+    trees.sort((a, b) => a[1] - b[1]);
+    for (const [cx, cy, rr, ramp] of trees) tree(f, cx, cy, rr, ramp);
+  }
+  // CHARACTER tiles — one-offs sprinkled rarely deep in the wood for flavour: a
+  // fallen mossy log, a logged clearing of cut stumps, an overgrown bramble patch.
+  function forestChar(p, seed, kind) {
+    const f = p.f, r = ART.rng(seed | 1);
+    f(0, 0, 32, 32, 'rgba(20,42,16,0.5)');
+    const ring = [[4, 6], [26, 5], [6, 26], [28, 27], [16, 3]];         // a few trees framing the feature
+    for (const [gx, gy] of ring) { if (r() < 0.25) continue; tree(f, gx + ((r() * 3) | 0), gy + ((r() * 3) | 0), 5 + (r() * 2 | 0), leafPick(r)); }
+    if (kind === 'log') {
+      f(9, 18, 15, 3, AP.wood[1]); f(9, 17, 15, 1, AP.wood[3]); f(23, 17, 2, 2, AP.wood[4]);   // trunk + cut end
+      f(12, 18, 1, 1, AP.leaf[3]); f(17, 19, 1, 1, AP.leaf[3]); f(20, 18, 1, 1, AP.leaf[4]);   // moss
+      f(9, 21, 15, 1, AP.leaf[0]);
+    } else if (kind === 'stumps') {
+      drawStump(p, 10, 16); drawStump(p, 19, 20); drawStump(p, 14, 24);
+      for (let i = 0; i < 6; i++) f(9 + (r() * 16) | 0, 15 + (r() * 12) | 0, 1, 1, AP.wood[2]);   // wood chips
+    } else {                                                           // brambles
+      for (let i = 0; i < 4; i++) {
+        const bx = 8 + (r() * 16) | 0, by = 14 + (r() * 12) | 0;
+        ART.shadedCircle(f, bx, by, 2 + (r() * 2 | 0), LEAF_D, 2);
+        f(bx, by - 3, 1, 3, AP.leaf[1]); f(bx + 2, by - 2, 1, 2, AP.leaf[1]);   // thorny sprigs
+        if (r() < 0.5) f(bx - 1, by, 1, 1, AP.berry[1]);              // odd berry
+      }
     }
   }
-  Sprites.terrain[T.FOREST] = [
-    tile(p => forestTile(p, 11)), tile(p => forestTile(p, 23)), tile(p => forestTile(p, 149, true)),
-    tile(p => forestTile(p, 205)), tile(p => forestTile(p, 262)), tile(p => forestTile(p, 377, true)),
+  const forestSet = (base, lvl, n) => { const a = []; for (let i = 0; i < n; i++) { const s = base + i * 37; a.push(tile(p => forestTile(p, s, lvl))); } return a; };
+  Sprites.terrain[T.FOREST] = forestSet(11, 0, 6);                     // sparse — the outer fringe
+  Sprites.terrainMed = { [T.FOREST]: forestSet(400, 1, 6) };          // medium — the perimeter
+  Sprites.terrainFull = { [T.FOREST]: forestSet(800, 2, 6) };         // dense — the interior
+  Sprites.terrainRare[T.FOREST] = [                                    // character one-offs
+    tile(p => forestChar(p, 71, 'log')), tile(p => forestChar(p, 133, 'stumps')),
+    tile(p => forestChar(p, 209, 'brambles')), tile(p => forestChar(p, 288, 'log')),
   ];
 
   // Water — the hero. [0] = shallow (near land, lighter), [1] = deep interior.
@@ -266,9 +285,8 @@ const Sprites = {
     const f = p.f, r = ART.rng(seed + 5);          // transparent floor — render paints the grass ground
     const fruitTree = (cx, cy, s2) => {
       const rr = 4 + (r() * 2 | 0);
-      f(cx + 1, cy + rr + 2, 2, 5, AP.wood[1]); f(cx + 1, cy + rr + 2, 1, 5, AP.wood[2]);   // trunk
-      f(cx - rr + 1, cy + rr + 1, rr + 2, 1, AP.leaf[0]);           // contact shadow
-      crown(f, cx, cy, rr, r() < 0.5 ? AP.leaf : LEAF_L);          // varied fruiting crown
+      f(cx - rr + 1, cy + rr + 2, rr + 2, 1, AP.leaf[0]);           // contact shadow
+      tree(f, cx, cy, rr, r() < 0.5 ? AP.leaf : LEAF_L);          // trunk + fruiting crown
       const fr = ART.rng(s2 + 1);
       const fruit = fr() < 0.5 ? AP.red[2] : AP.fire[2];            // apples on some trees, golden on others
       for (let i = 0; i < 8; i++)                                   // ripe fruit dotted in the crown
