@@ -299,17 +299,23 @@ const Sprites = {
     for (let i = 0; i < 6; i++)                              // a few scree chips + grass tufts (workable-deposit rubble)
       f((r() * 30) | 0, (r() * 30) | 0, 1, 1, r() < 0.6 ? AP.ore[2] : AP.grass[4]);
   }
-  // ORE (hills): a big chunky cluster of grey boulders on turf — 8 variants for
-  // variety. Bigger anchor boulders (r 5-7) with smaller ones + rubble around.
+  // ORE (hills): a big chunky cluster of grey boulders on turf — 12 variants for
+  // variety. Big anchor boulders (r 8-10) with mediums (r 6-7) + smalls (r 5) and
+  // rubble around; every rock (body + shadow) stays fully inside the tile so a
+  // deposit's edge never shows a cut-off boulder.
   Sprites.terrain[T.HILLS] = [
-    tile(p => rockField(p, 31, [[11, 17, 7], [22, 21, 5], [24, 9, 5], [7, 8, 4]])),
-    tile(p => rockField(p, 87, [[19, 18, 7], [8, 11, 5], [10, 24, 5], [26, 25, 4]])),
-    tile(p => rockField(p, 143, [[15, 14, 7], [25, 21, 5], [6, 22, 5], [27, 7, 4]])),
-    tile(p => rockField(p, 199, [[10, 20, 6], [22, 11, 6], [26, 25, 4], [13, 6, 5]])),
-    tile(p => rockField(p, 251, [[16, 16, 7], [8, 25, 5], [27, 12, 5], [23, 27, 4]])),
-    tile(p => rockField(p, 307, [[12, 12, 6], [24, 20, 6], [8, 23, 5], [20, 28, 4]])),
-    tile(p => rockField(p, 361, [[18, 22, 7], [9, 9, 6], [26, 9, 4], [13, 26, 4]])),
-    tile(p => rockField(p, 419, [[14, 19, 7], [23, 13, 5], [7, 24, 4], [27, 26, 5]])),
+    tile(p => rockField(p, 31, [[14, 16, 9], [24, 24, 6], [7, 25, 5]])),
+    tile(p => rockField(p, 87, [[17, 15, 10], [7, 23, 6], [25, 8, 5]])),
+    tile(p => rockField(p, 143, [[12, 18, 8], [23, 12, 7], [24, 25, 5]])),
+    tile(p => rockField(p, 199, [[16, 20, 9], [9, 9, 6], [24, 17, 6]])),
+    tile(p => rockField(p, 251, [[19, 13, 8], [10, 22, 7], [23, 25, 5]])),
+    tile(p => rockField(p, 307, [[13, 13, 8], [22, 22, 7], [8, 25, 5]])),
+    tile(p => rockField(p, 361, [[16, 17, 10], [26, 7, 5], [8, 12, 5]])),
+    tile(p => rockField(p, 419, [[15, 21, 8], [8, 14, 6], [24, 10, 6]])),
+    tile(p => rockField(p, 467, [[20, 18, 9], [9, 20, 6], [14, 7, 5]])),
+    tile(p => rockField(p, 523, [[12, 15, 9], [24, 20, 6], [18, 25, 5]])),
+    tile(p => rockField(p, 577, [[18, 16, 8], [8, 10, 5], [10, 24, 6], [26, 23, 5]])),
+    tile(p => rockField(p, 631, [[14, 17, 10], [24, 13, 6], [7, 7, 5]])),
   ];
 
   // wild fertile ground: fruit orchards and berry thickets, mixed across the
