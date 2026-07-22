@@ -17,7 +17,8 @@ const ART = (function () {
     water:   ['#1c4258', '#265674', '#2e6b8a', '#4589ab', '#7fc0d8'],
     stone:   ['#4a4a44', '#6f6f66', '#8f8f86', '#adada2', '#c9c9bf'],
     rock:    ['#443b31', '#655a49', '#877b66', '#a89a82', '#c9bca2'],   // warm earthy stone (terrain boulders — shares hue with soil)
-    peak:    ['#3a3a46', '#54545f', '#727280', '#9a9aa4', '#c2c2ca', '#eef0f6'],   // MOUNTAIN: cool blue-grey rock -> near-white snow (6 shades)
+    peak:    ['#3a3a46', '#54545f', '#727280', '#9a9aa4', '#c2c2ca', '#eef0f6'],   // MOUNTAIN snow ramp: cool blue-grey -> near-white (top shades used for snow caps)
+    mrock:   ['#3b372f', '#544d42', '#6f6659', '#948a78', '#b7ac97'],   // MOUNTAIN rock body: warm brown-grey (distinct from cooler grey ore `stone`)
 
     // materials
     wood:    ['#3e2c14', '#5c421f', '#6e5024', '#8a6b3a', '#a5854d'],

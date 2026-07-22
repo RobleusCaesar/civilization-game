@@ -100,19 +100,69 @@ const R = {
     }
   },
 
-  // dark shadowed-rock floor under a mountain's flanks (behind/around the lit
-  // spine) so no grass shows through the interior of a range — a flat dark fill
-  // broken up by a world-hash dither so it never reads as a flat grey box.
-  paintValley(g, x, y, h) {
-    const TL = CFG.TILE, px = TL / 16, P = ART.PALETTE.peak;
-    g.fillStyle = P[1];
-    g.fillRect(x * TL, y * TL, TL, TL);
-    for (let k = 0; k < 12; k++) {
-      let hh = (h ^ Math.imul(k + 3, 0x9e3779b1)) >>> 0;
-      hh = Math.imul(hh ^ (hh >>> 15), 0x85ebca6b) >>> 0;
-      hh = (hh ^ (hh >>> 13)) >>> 0;
-      g.fillStyle = (hh & 0x10000) ? P[0] : P[2];
-      g.fillRect(x * TL + (hh & 15) * px, y * TL + ((hh >> 4) & 15) * px, px, px);
+  // MOUNTAIN HEIGHT FIELD — the graph distance of every mountain tile from the
+  // nearest non-mountain tile (1 at the rocky footprint, rising toward the
+  // interior). A whole range shares one continuous field, so bilinear-sampling it
+  // gives real slopes that fall away to the ground and ridgelines that run between
+  // summits — no per-tile slabs. Computed once (mountains never move).
+  computeMountainHeight() {
+    const W = CFG.W, H = CFG.H, T_ = S.map.terrain, d = new Int32Array(W * H), q = [];
+    for (let i = 0; i < W * H; i++) { if (T_[i] === T.MOUNTAIN) d[i] = 1e6; else { d[i] = 0; q.push(i); } }
+    for (let head = 0; head < q.length; head++) {
+      const i = q[head], cx = i % W, cy = (i / W) | 0, nd = d[i] + 1;
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        if (!ox && !oy) continue;
+        const nx = cx + ox, ny = cy + oy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const j = ny * W + nx;
+        if (T_[j] === T.MOUNTAIN && d[j] > nd) { d[j] = nd; q.push(j); }
+      }
+    }
+    let max = 1; for (let i = 0; i < W * H; i++) { if (T_[i] !== T.MOUNTAIN) d[i] = 0; else if (d[i] > max) max = d[i]; }
+    this.mtnH = d; this.mtnMax = max;
+  },
+  // Draw one mountain tile procedurally from the height field: real sloped rock
+  // faces lit top-left / shadowed bottom-right by the surface gradient, faceted
+  // crag texture, scree at the footprint, snow on the tallest summits, and an
+  // irregular rocky edge where it meets grass. Chunky 2px blocks keep the rough style.
+  drawMountain(g, x, y) {
+    if (!this.mtnH) this.computeMountainHeight();
+    const TL = CFG.TILE, px = TL / 16, R = ART.PALETTE.mrock, P = ART.PALETTE.peak, W = CFG.W, Hh = CFG.H, Hf = this.mtnH;
+    const hAt = (xx, yy) => (xx < 0 || yy < 0 || xx >= W || yy >= Hh) ? 0 : Hf[yy * W + xx];
+    const samp = (wx, wy) => {                       // bilinear base height (the smooth dome)
+      const x0 = Math.floor(wx), y0 = Math.floor(wy), fx = wx - x0, fy = wy - y0;
+      return hAt(x0, y0) * (1 - fx) * (1 - fy) + hAt(x0 + 1, y0) * fx * (1 - fy)
+        + hAt(x0, y0 + 1) * (1 - fx) * fy + hAt(x0 + 1, y0 + 1) * fx * fy;
+    };
+    const rnd = (a, b) => { let n = (Math.imul(a | 0, 73856093) ^ Math.imul(b | 0, 19349663)) >>> 0; n = Math.imul(n ^ (n >>> 13), 0x85ebca6b) >>> 0; return ((n ^ (n >>> 16)) >>> 0) / 4294967295; };
+    const vnoise = (wx, wy) => {                      // smooth value noise (for crag/ridge structure)
+      const x0 = Math.floor(wx), y0 = Math.floor(wy), fx = wx - x0, fy = wy - y0;
+      const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+      const n0 = rnd(x0, y0) * (1 - sx) + rnd(x0 + 1, y0) * sx;
+      const n1 = rnd(x0, y0 + 1) * (1 - sx) + rnd(x0 + 1, y0 + 1) * sx;
+      return n0 * (1 - sy) + n1 * sy;
+    };
+    // height = smooth dome + medium/fine crag octaves — the added structure is what
+    // the gradient turns into faceted crags, secondary ridges and gullies
+    const hgt = (wx, wy) => samp(wx, wy) + (vnoise(wx * 2.3, wy * 2.3) - 0.5) * 1.4 + (vnoise(wx * 5.7 + 9, wy * 5.7 + 9) - 0.5) * 0.7;
+    const snowLine = Math.max(2.8, this.mtnMax * 0.62), bx = x * TL, by = y * TL;
+    for (let jy = 0; jy < 16; jy++) for (let jx = 0; jx < 16; jx++) {
+      const wx = x + (jx + 0.5) / 16 - 0.5, wy = y + (jy + 0.5) / 16 - 0.5;
+      const sh = hgt(wx, wy);
+      if (sh <= 0.55) {                                            // below the footprint = grass, scattered scree
+        if (sh > 0.2 && rnd(x * 16 + jx, y * 16 + jy) < 0.3) { g.fillStyle = rnd(jx, jy + 7) < 0.5 ? R[1] : R[2]; g.fillRect(bx + jx * px, by + jy * px, px, px); }
+        continue;
+      }
+      const e = 0.16, gx = hgt(wx + e, wy) - hgt(wx - e, wy), gy = hgt(wx, wy + e) - hgt(wx, wy - e);
+      const lit = gx + gy;                                         // top-left-facing crag faces are lit
+      let idx = lit > 0.45 ? 4 : lit > 0.12 ? 3 : lit < -0.45 ? 0 : lit < -0.12 ? 1 : 2;
+      const d = rnd(x * 16 + jx + 3, y * 16 + jy + 3);             // faint grain
+      if (d < 0.1) idx = Math.max(0, idx - 1); else if (d > 0.92) idx = Math.min(4, idx + 1);
+      let col;
+      if (sh >= snowLine && lit > -0.3) col = lit < -0.02 ? P[4] : P[5];   // snow (cool white) on the lit tops of the tallest crags
+      else col = R[idx];                                                   // warm brown-grey rock body
+      g.fillStyle = col;
+      g.fillRect(bx + jx * px, by + jy * px, px, px);
     }
   },
 
@@ -135,7 +185,7 @@ const R = {
     const TL = CFG.TILE, px = TL / 16, AP = ART.PALETTE;
     const h = (x * 73856093 ^ y * 19349663) >>> 0;
     const variants = Sprites.terrain[t];
-    let img, mtnGround = 'grass';   // for MOUNTAIN tiles: 'grass' floor (summit/edge) or 'valley' (dark flanks)
+    let img;
     // a sapper MOAT is just water filling a ditch — it renders exactly like the
     // lake (same blue, same shore treatment) so a dug channel reads as one body
     // of water with no per-tile seams
@@ -173,35 +223,9 @@ const R = {
         ? (hp % 11 === 0 ? Sprites.terrainRare[T.FOREST] : Sprites.terrainFull[T.FOREST])
         : cnt >= 4 ? Sprites.terrainMed[T.FOREST] : Sprites.terrain[T.FOREST];
       img = set[hp % set.length];
-    } else if (t === T.MOUNTAIN) {
-      const mN = (xx, yy) => MapGen.inB(xx, yy) && terr[MapGen.idx(xx, yy)] === T.MOUNTAIN;
-      let vUp = 0; while (vUp < 12 && mN(x, y - 1 - vUp)) vUp++;
-      let vDown = 0; while (vDown < 12 && mN(x, y + 1 + vDown)) vDown++;
-      let hL = 0; while (hL < 12 && mN(x - 1 - hL, y)) hL++;
-      let hR = 0; while (hR < 12 && mN(x + 1 + hR, y)) hR++;
-      const vLen = vUp + vDown + 1, hLen = hL + hR + 1, hp = (h ^ (h >>> 13)) >>> 0;
-      if (hLen <= 2 && vLen >= 3 && vLen > hLen) {
-        // VERTICAL ridge: seamless top-to-bottom, skinny at the ends, thickest in
-        // the middle of the run. Dark flanks (paintValley) so no grass shows except
-        // the top summit tile, which opens to sky.
-        const posFrac = vLen > 1 ? vUp / (vLen - 1) : 0.5;
-        const widthT = Math.sin(Math.max(0, Math.min(1, posFrac)) * Math.PI);   // 0 ends -> 1 middle
-        let set;
-        if (vUp === 0) { set = Sprites.mountainV.top; mtnGround = 'grass'; }
-        else { set = vDown === 0 ? Sprites.mountainV.bot : widthT > 0.62 ? Sprites.mountainV.midT : widthT > 0.32 ? Sprites.mountainV.midM : Sprites.mountainV.midS; mtnGround = 'valley'; }
-        img = set[hp % set.length];
-      } else {
-        // HORIZONTAL / blob: density by enclosure — a lone/edge tile is a small
-        // snowless foothill, a perimeter tile a medium peak, a fully-surrounded core
-        // tile the biggest snowy summit. Interior tiles (mountain above) sit on a
-        // dark valley so no grass shows between the overlapping peaks.
-        let cnt = 0;
-        for (const [ox, oy] of NEIGH8) if (mN(x + ox, y + oy)) cnt++;
-        const set = cnt >= 7 ? Sprites.mountain.high : cnt >= 4 ? Sprites.mountain.med : Sprites.mountain.low;
-        img = set[hp % set.length];
-        mtnGround = mN(x, y - 1) ? 'valley' : 'grass';
-      }
-    } else img = variants[(x * 7 + y * 13) % variants.length];
+    } else if (t !== T.MOUNTAIN) img = variants[(x * 7 + y * 13) % variants.length];
+    // MOUNTAIN is drawn procedurally from a height field in the ground-layer step
+    // below (drawMountain) — real slopes, not a sprite — so no img is selected here.
 
     // GROUND LAYER. Grass and every grass-floored resource (forest, fertile,
     // hills, mountain, stumps, pebbles) share ONE continuous painted grass floor
@@ -213,9 +237,8 @@ const R = {
     } else if (t === T.GRASS) {
       this.paintGround(g, x, y, h);               // plain grass
     } else if (t === T.MOUNTAIN) {
-      if (mtnGround === 'valley') this.paintValley(g, x, y, h);   // dark shadowed-rock flanks (no grass)
-      else this.paintGround(g, x, y, h);                          // grass under a summit / edge silhouette
-      g.drawImage(img, x * TL, y * TL);
+      this.paintGround(g, x, y, h);                               // grass floor under the irregular rocky footprint
+      this.drawMountain(g, x, y);                                 // real textured slopes from the height field
     } else if (GROUND_GRAIN.has(t)) {
       this.paintGround(g, x, y, h);               // continuous floor...
       g.drawImage(img, x * TL, y * TL);           // ...then the transparent-floored resource on top
@@ -329,6 +352,7 @@ const R = {
 
   onNewGame() {
     this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
+    this.mtnH = null;                                            // recompute the mountain height field for the new map
     // pre-render the full terrain layer once
     const px = CFG.W * CFG.TILE;
     this.terrainCache = document.createElement('canvas');
