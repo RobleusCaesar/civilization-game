@@ -479,7 +479,11 @@ const CFG = {
       gather: 1, output: 1, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
       waveFirst: 40, waveGapMult: 1.5, waveSizeAdd: 0, barbMult: 1,
       animalMax: 3, animalChance: 0.2, aiRaidDay: 50,
-      aiBuildEvery: 2, aiOutput: 1.1, aiArmyCap: 9, aiArmyDiv: 8, aiEliteShare: 0.45, aiAggro: 0.9,
+      // army volume dialed back ~20% from the original 9/8 tuning — playtesting
+      // read as relentless; the player needs a breath between pushes. aiEarly
+      // further trims the standing-army target before day 100 (see AI.armyWant)
+      // so the opening 100 days ramp up more gently.
+      aiBuildEvery: 2, aiOutput: 1.1, aiArmyCap: 7, aiArmyDiv: 10, aiEliteShare: 0.45, aiAggro: 0.9, aiEarly: 0.8,
     },
     hard: {
       name: 'Hard', icon: '💀', desc: 'Slower gathering, relentless enemies.',

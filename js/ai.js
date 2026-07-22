@@ -818,6 +818,10 @@ const AI = {
     if (post === 'EXPAND') want = Math.min(want, 4);          // boom: keep a token guard
     else if (post === 'PUSH') want = cap;                     // mass for the kill
     else if (post === 'DEFEND') want = Math.min(cap, want + 2);
+    // gentler opening: modes with aiEarly < 1 field a lighter army through the
+    // first 100 days, so the young village gets room to breathe before the
+    // full-weight pushes begin
+    if (S.day < 100 && m.aiEarly) want = Math.max(2, Math.round(want * m.aiEarly));
     return want;
   },
 
@@ -1901,7 +1905,19 @@ const AI = {
     if (raiders.length) {
       const tooFew = ai.raidN && raiders.length <= Math.max(1, Math.floor(ai.raidN * 0.35));
       const tooLong = ai.raidDay && S.day - ai.raidDay > 8;
-      if (tooFew || tooLong) {
+      // NO MERCY AT THE GATES: a party standing over a battered Town Center
+      // presses the kill instead of breaking off — a nearly-razed hall is the
+      // one prize worth dying for (villagers sheltering inside change nothing).
+      // Requires the party actually AT the hall; a beaten party scattered far
+      // from it still retreats as usual.
+      const ptc = Bld.tcOf('P');
+      const killShot = ptc && ptc.hp < ptc.maxhp * 0.35 && raiders.length >= 2 &&
+        raiders.some(u => Math.hypot(u.x - Bld.cx(ptc), u.y - Bld.cy(ptc)) < 12);
+      if (killShot) {
+        ai.raidDay = Math.max(ai.raidDay || 0, S.day - 4);        // hold the break-off clock while the kill is on
+        for (const u of raiders)                                   // idle hands swing at the hall itself
+          if (!u.tBld && !u.tUnit) Units.orderAttackBuilding(u, ptc);
+      } else if (tooFew || tooLong) {
         // LAYER 5: learn from how this raid went. Razing something means the
         // approach worked; stalling on walls means try the flank next time —
         // so the chief never suicides into the same wall twice.
