@@ -124,17 +124,29 @@ const Sprites = {
   Sprites.terrainRare = { [T.GRASS]: [tile(p => flowers(p, 301)), tile(p => flowers(p, 407))] };
 
   // a single tree crown with a chosen leaf sub-ramp (dark / normal / light), so a
-  // stand of trees is a mix of shades rather than identical stamps
+  // stand of trees is a mix of shades rather than identical stamps. Layered for
+  // depth: a shaded whole-canopy base, a lit upper-left lobe, irregular edge
+  // lobes that break the round silhouette, dappled highlights up top and a dark
+  // underside arc — reads as a real leafy canopy, not a flat green blob.
   const LEAF_D = [AP.leaf[0], AP.leaf[0], AP.leaf[1], AP.leaf[2], AP.leaf[3]];   // shade tree
   const LEAF_L = [AP.leaf[1], AP.leaf[2], AP.leaf[3], AP.leaf[4], AP.leaf[4]];   // sunlit tree
   function crown(f, cx, cy, rr, s2, ramp) {
-    f(cx - rr + 1, cy + rr, rr + 1, 1, AP.leaf[0]);               // ground shadow
-    ART.shadedCircle(f, cx + 1, cy + 1, rr, [AP.leaf[0], AP.leaf[0], AP.leaf[0]], 1);  // dark underside
-    ART.shadedCircle(f, cx, cy, rr, ramp, 3);                     // lit crown
     const r = ART.rng(s2 | 1);
-    for (let i = 0; i < rr * 2; i++) {                            // dappled leaf highlights
-      const a = r() * 6.283, d = r() * rr * 0.8;
-      f((cx + Math.cos(a) * d) | 0, (cy + Math.sin(a) * d) | 0, 1, 1, r() < 0.6 ? ramp[4] : ramp[3]);
+    f(cx - rr + 2, cy + rr, rr + 1, 1, AP.leaf[0]);                      // contact shadow
+    for (let i = 0; i < 3; i++) {                                        // edge lobes: ragged outline
+      const a = r() * 6.283, d = rr * 0.8;
+      ART.shadedCircle(f, (cx + Math.cos(a) * d) | 0, (cy + Math.sin(a) * d) | 0, 1 + (r() * 2 | 0), ramp, 2);
+    }
+    ART.shadedCircle(f, cx, cy, rr, [ramp[0], ramp[1], ramp[2]], 1);     // shaded whole mass (underside dark)
+    ART.shadedCircle(f, cx - (rr * 0.3 | 0), cy - (rr * 0.3 | 0), (rr * 0.72) | 0, [ramp[2], ramp[3], ramp[4]], 1);  // lit upper-left lobe
+    for (let i = 0; i < rr * 2.5; i++) {                                 // dapple: bright up-left, dark low-right
+      const a = r() * 6.283, d = r() * rr * 0.85, lx = (cx + Math.cos(a) * d) | 0, ly = (cy + Math.sin(a) * d) | 0;
+      const up = (lx - cx) + (ly - cy);
+      f(lx, ly, 1, 1, up < -rr * 0.4 ? ramp[4] : up > rr * 0.5 ? ramp[0] : r() < 0.5 ? ramp[3] : ramp[2]);
+    }
+    for (let i = 0; i < rr; i++) {                                       // dark underside arc (bottom-right)
+      const a = 0.25 + r() * 1.5;
+      f((cx + Math.cos(a) * rr) | 0, (cy + Math.sin(a) * rr) | 0, 1, 1, ramp[0]);
     }
   }
   // forest: a stand of varied crowns (2-4 per tile, random size/position/shade)
@@ -204,14 +216,27 @@ const Sprites = {
     for (let dy = -rr; dy <= rr; dy++) for (let dx = -rr; dx <= rr; dx++)
       if (dx * dx + dy * dy <= rr * rr) f(cx + dx + 1, cy + dy + 2, 1, 1, AP.grass[0]);
   }
+  // a faceted boulder: 3 clear planes (lit top-left, mid, shadowed lower-right)
+  // split by crack lines, a warm-grey mineral fleck or two for tonal variety
+  // (not flat grey), a bright crest glint and moss/grass creeping up the shaded
+  // base. Silhouette varies — some crags grow a second lobe.
   function boulderBody(f, cx, cy, rr, snow) {
-    const St = AP.stone;
+    const St = AP.stone, r = ART.rng((cx * 31 + cy * 17) | 1);
     ART.shadedCircle(f, cx, cy, rr, St, 2);
-    if (rr >= 4 && ((cx * 5 + cy * 3) & 3) === 0)           // ~1/4 of crags are lumpy/elongated
+    if (rr >= 4 && ((cx * 5 + cy * 3) & 3) === 0)           // lumpy/elongated silhouette
       ART.shadedCircle(f, cx + rr - 1, cy + 1, (rr * 0.55) | 0, St, 2);
-    f(cx, cy - rr + 1, 1, (rr * 1.3) | 0, St[0]);            // vertical fissure
-    f(cx - rr + 1, cy, (rr * 0.9) | 0, 1, St[1]);            // facet break
-    f(cx - 1, cy - rr + 2, 1, 1, St[4]);                     // crown glint
+    for (let dy = -rr; dy <= rr; dy++) for (let dx = -rr; dx <= rr; dx++) {   // faceted planes
+      if (dx * dx + dy * dy > rr * rr) continue;
+      const s = dx + dy;
+      if (s < -rr * 0.55) f(cx + dx, cy + dy, 1, 1, St[3]);        // lit top-left plane
+      else if (s > rr * 0.7) f(cx + dx, cy + dy, 1, 1, St[0]);     // shadowed lower-right plane
+    }
+    f(cx - (rr * 0.2 | 0), cy - rr + 2, 1, (rr * 1.25) | 0, St[0]);        // vertical crack
+    f(cx - rr + 2, cy + (rr * 0.2 | 0), (rr * 0.9) | 0, 1, St[1]);         // diagonal facet break
+    f(cx - 1, cy - rr + 1, 2, 1, St[4]); f(cx - 2, cy - rr + 2, 1, 1, St[4]);   // crest glint
+    for (let i = 0; i < rr; i++)                                            // warm mineral flecks (grey-brown variety)
+      f(cx - rr + 1 + (r() * (rr * 2 - 1) | 0), cy - rr + 1 + (r() * (rr * 2 - 1) | 0), 1, 1, r() < 0.5 ? AP.wood[2] : St[3]);
+    f(cx - 1, cy + rr - 1, 2, 1, AP.leaf[2]); f(cx + 1, cy + rr, 1, 1, AP.grass[4]);   // moss + grass at the base
     if (snow) {                                              // snow on the lit crown
       for (let dx = -rr + 1; dx <= 0; dx++) f(cx + dx, cy - rr + 1, 1, 1, AP.bone[2]);
       f(cx - rr + 1, cy - rr + 2, (rr * 0.7) | 0, 1, AP.bone[1]);
