@@ -19,7 +19,7 @@ const ART = (function () {
     ore:     ['#2b2a26', '#41403a', '#585549', '#716d5f', '#8a8577', '#a29d8d'],   // ORE boulders: dark muted grey-brown, sits in the earthy world palette (cooler than mountain `mrock`, far darker than building `stone`)
     rock:    ['#443b31', '#655a49', '#877b66', '#a89a82', '#c9bca2'],   // warm earthy stone (terrain boulders — shares hue with soil)
     peak:    ['#3a3a46', '#54545f', '#727280', '#9a9aa4', '#c2c2ca', '#eef0f6'],   // MOUNTAIN snow ramp: cool blue-grey -> near-white (top shades used for snow caps)
-    mrock:   ['#29251f', '#3b372f', '#544d42', '#6f6659', '#918876', '#b7ac97'],   // MOUNTAIN rock body: warm brown-grey, 6 steps crevice->weathered (distinct from cooler grey ore `stone`)
+    mrock:   ['#4a4337', '#5d5546', '#6f6656', '#857b68', '#9d937e', '#bbb098'],   // MOUNTAIN rock body: warm brown-grey, 6 steps crevice->weathered — lifted + compressed so shadows/outline stay soft and the ranges blend into the world (distinct from cooler grey ore `stone`)
 
     // materials
     wood:    ['#3e2c14', '#5c421f', '#6e5024', '#8a6b3a', '#a5854d'],
