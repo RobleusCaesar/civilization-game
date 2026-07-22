@@ -131,6 +131,7 @@ const Sprites = {
   // glint. Trees are drawn back-to-front so front trunks/rims overlap the crowns
   // behind, exactly like a real stand seen from above.
   function tree(f, cx, cy, rr, ramp) {
+    f(cx - 1, cy + rr + 1, 4, 1, AP.grass[0]); f(cx, cy + rr + 2, 2, 1, AP.grass[0]);   // tight ground shadow on the grass
     f(cx, cy + rr - 2, 2, 5, AP.wood[1]); f(cx, cy + rr - 2, 1, 5, AP.wood[2]);   // trunk
     ART.shadedCircle(f, cx, cy, rr, ramp, 2);                            // crown body
     for (let a = 0.4; a <= 2.75; a += 0.28)                             // dark underside rim -> separation
@@ -139,25 +140,26 @@ const Sprites = {
     f(cx - (rr * 0.4 | 0), cy - rr, 1, 1, AP.leaf[4]);                  // crown glint
   }
   const leafPick = r => { const u = r(); return u < 0.32 ? LEAF_D : u > 0.8 ? LEAF_L : AP.leaf; };
-  // FOREST at three densities (level 0 sparse / 1 medium / 2 dense). Trees are
-  // scattered on a jittered grid so they're individual, never carbon copies;
-  // medium/dense tiles get a canopy-shadow floor so the deepening wood reads
-  // darker toward its heart. render.js chooses the level from how enclosed the
-  // tile is, giving a natural sparse-edge -> dense-core gradient.
+  // FOREST at three densities (level 0 sparse / 1 medium / 2 dense). Trees sit
+  // directly ON the grass — NO tile-shaped floor tint (that printed hard square
+  // corners) — so the grass shows between them and the wood reads as trees on a
+  // continuous lawn. Crowns are placed on a jittered grid that STRADDLES every
+  // tile edge, so foliage from both sides buries the boundary and neighbouring
+  // tiles blend with no visible seam. Density = tree count (sparse edge -> dense
+  // core), chosen per tile in render.js from how enclosed it is.
   function forestTile(p, seed, level) {
     const f = p.f, r = ART.rng(seed | 1);
-    if (level === 2) f(0, 0, 32, 32, 'rgba(20,42,16,0.5)');            // deep canopy shadow
-    else if (level === 1) f(0, 0, 32, 32, 'rgba(26,50,20,0.26)');
     const trees = [];
     if (level === 0) {                                                 // sparse: 1-2 lone trees on grass
       const n = 1 + (r() < 0.6 ? 1 : 0);
-      for (let i = 0; i < n; i++) trees.push([8 + (r() * 16) | 0, 8 + (r() * 14) | 0, 6 + (r() * 2 | 0), leafPick(r)]);
+      for (let i = 0; i < n; i++) trees.push([9 + (r() * 14) | 0, 9 + (r() * 12) | 0, 6 + (r() * 2 | 0), leafPick(r)]);
     } else {
-      const step = level === 2 ? 9 : 12, rad = level === 2 ? 5 : 6, drop = level === 2 ? 0.1 : 0.4;
-      for (let gy = 2; gy < 34; gy += step) for (let gx = 2; gx < 34; gx += step) {
-        if (r() < drop) continue;
-        trees.push([gx + ((r() * 5) | 0) - 2, gy + ((r() * 5) | 0) - 2, rad + (r() * 2 | 0), leafPick(r)]);
-      }
+      const step = level === 2 ? 10 : 13, rad = level === 2 ? 5 : 6, drop = level === 2 ? 0.24 : 0.46;
+      for (let gy = 0, row = 0; gy <= 32; gy += step, row++)           // grid FROM 0 so crowns overhang the edges
+        for (let gx = (row & 1) ? (step >> 1) : 0; gx <= 32; gx += step) {
+          if (r() < drop) continue;
+          trees.push([gx + ((r() * 5) | 0) - 2, gy + ((r() * 5) | 0) - 2, rad + (r() * 2 | 0), leafPick(r)]);
+        }
     }
     trees.sort((a, b) => a[1] - b[1]);
     for (const [cx, cy, rr, ramp] of trees) tree(f, cx, cy, rr, ramp);
@@ -166,9 +168,8 @@ const Sprites = {
   // fallen mossy log, a logged clearing of cut stumps, an overgrown bramble patch.
   function forestChar(p, seed, kind) {
     const f = p.f, r = ART.rng(seed | 1);
-    f(0, 0, 32, 32, 'rgba(20,42,16,0.5)');
-    const ring = [[4, 6], [26, 5], [6, 26], [28, 27], [16, 3]];         // a few trees framing the feature
-    for (const [gx, gy] of ring) { if (r() < 0.25) continue; tree(f, gx + ((r() * 3) | 0), gy + ((r() * 3) | 0), 5 + (r() * 2 | 0), leafPick(r)); }
+    const ring = [[2, 3], [16, 1], [30, 4], [1, 18], [31, 20], [4, 30], [18, 31], [30, 30]];  // trees straddling edges frame the feature
+    for (const [gx, gy] of ring) { if (r() < 0.2) continue; tree(f, gx + ((r() * 3) | 0), gy + ((r() * 3) | 0), 5 + (r() * 2 | 0), leafPick(r)); }
     if (kind === 'log') {
       f(9, 18, 15, 3, AP.wood[1]); f(9, 17, 15, 1, AP.wood[3]); f(23, 17, 2, 2, AP.wood[4]);   // trunk + cut end
       f(12, 18, 1, 1, AP.leaf[3]); f(17, 19, 1, 1, AP.leaf[3]); f(20, 18, 1, 1, AP.leaf[4]);   // moss
