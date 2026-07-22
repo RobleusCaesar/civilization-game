@@ -123,48 +123,48 @@ const Sprites = {
   }
   Sprites.terrainRare = { [T.GRASS]: [tile(p => flowers(p, 301)), tile(p => flowers(p, 407))] };
 
-  // a single tree crown with a chosen leaf sub-ramp (dark / normal / light), so a
-  // stand of trees is a mix of shades rather than identical stamps. Layered for
-  // depth: a shaded whole-canopy base, a lit upper-left lobe, irregular edge
-  // lobes that break the round silhouette, dappled highlights up top and a dark
-  // underside arc — reads as a real leafy canopy, not a flat green blob.
+  // ONE simple, symmetric leafy crown — the repeated canopy asset. Kept clean
+  // (a shaded body + a sunlit top-left cap + a tight underside shadow) so crowns
+  // tile together without noisy gaps; variety comes from swapping the leaf ramp,
+  // not the shape (SLYNYRD "Top Down Objects" technique).
   const LEAF_D = [AP.leaf[0], AP.leaf[0], AP.leaf[1], AP.leaf[2], AP.leaf[3]];   // shade tree
   const LEAF_L = [AP.leaf[1], AP.leaf[2], AP.leaf[3], AP.leaf[4], AP.leaf[4]];   // sunlit tree
-  function crown(f, cx, cy, rr, s2, ramp) {
-    const r = ART.rng(s2 | 1);
-    f(cx - rr + 2, cy + rr, rr + 1, 1, AP.leaf[0]);                      // contact shadow
-    for (let i = 0; i < 3; i++) {                                        // edge lobes: ragged outline
-      const a = r() * 6.283, d = rr * 0.8;
-      ART.shadedCircle(f, (cx + Math.cos(a) * d) | 0, (cy + Math.sin(a) * d) | 0, 1 + (r() * 2 | 0), ramp, 2);
-    }
-    ART.shadedCircle(f, cx, cy, rr, [ramp[0], ramp[1], ramp[2]], 1);     // shaded whole mass (underside dark)
-    ART.shadedCircle(f, cx - (rr * 0.3 | 0), cy - (rr * 0.3 | 0), (rr * 0.72) | 0, [ramp[2], ramp[3], ramp[4]], 1);  // lit upper-left lobe
-    for (let i = 0; i < rr * 2.5; i++) {                                 // dapple: bright up-left, dark low-right
-      const a = r() * 6.283, d = r() * rr * 0.85, lx = (cx + Math.cos(a) * d) | 0, ly = (cy + Math.sin(a) * d) | 0;
-      const up = (lx - cx) + (ly - cy);
-      f(lx, ly, 1, 1, up < -rr * 0.4 ? ramp[4] : up > rr * 0.5 ? ramp[0] : r() < 0.5 ? ramp[3] : ramp[2]);
-    }
-    for (let i = 0; i < rr; i++) {                                       // dark underside arc (bottom-right)
-      const a = 0.25 + r() * 1.5;
-      f((cx + Math.cos(a) * rr) | 0, (cy + Math.sin(a) * rr) | 0, 1, 1, ramp[0]);
-    }
+  function crown(f, cx, cy, rr, ramp) {
+    ART.shadedCircle(f, cx, cy, rr, ramp, 2);                            // canopy body, top-left lit
+    ART.shadedCircle(f, cx - 1, cy - 1, Math.max(1, (rr * 0.55) | 0), ramp, 3);   // brighter sunlit cap
+    f(cx - 1, cy + rr - 1, 3, 1, ramp[0]);                              // tight underside shadow
   }
-  // forest: a stand of varied crowns (2-4 per tile, random size/position/shade)
-  // drawn back-to-front, crowns overhanging the edges so neighbouring tiles fuse
-  // into a continuous canopy — no two tiles are the same stamp, so it reads as a
-  // woodland, not a grid. A trunk peeks out under the frontmost crown on some.
+  // FOREST INTERIOR — a solid canopy. The base is a FLAT forest-green fill (a
+  // darker, cooler green than the grass) with only a whisper of baked mottle, so
+  // it carries no per-tile lattice. All the leafy relief — sunlit crown clumps and
+  // shadow gaps — is painted per-WORLD-position in render.js (paintCanopyDapple),
+  // so the canopy reads as bumpy tree-tops with no repeat and no seam (same
+  // world-position trick that de-tiled the grass).
+  function canopyTile(seed) {
+    return tile(p => {
+      const f = p.f, r = ART.rng(seed | 1);
+      f(0, 0, 32, 32, AP.leaf[2]);                                 // flat canopy base
+      for (let i = 0; i < 10; i++) f((r() * 32) | 0, (r() * 32) | 0, 1, 1, r() < 0.6 ? AP.leaf[1] : AP.leaf[3]);
+    });
+  }
+  Sprites.terrainFull = { [T.FOREST]: [canopyTile(11), canopyTile(53), canopyTile(151)] };
+  // FOREST FRINGE — where the wood meets open grass: a few separated tree crowns
+  // (individual silhouettes) with grass showing between, a trunk peeking out, an
+  // occasional fallen log. render.js uses these on edge tiles, the full canopy on
+  // interior tiles.
   function forestTile(p, seed, log) {
     const f = p.f, r = ART.rng(seed + 2);          // transparent floor — render paints the grass ground
-    const n = 2 + (r() * 3 | 0), crowns = [];
+    const n = 2 + (r() * 2 | 0), crowns = [];
     for (let i = 0; i < n; i++)
-      crowns.push([5 + (r() * 22) | 0, 5 + (r() * 20) | 0, 6 + (r() * 4 | 0),
-        r() < 0.4 ? LEAF_D : r() < 0.75 ? AP.leaf : LEAF_L]);
+      crowns.push([6 + (r() * 20) | 0, 6 + (r() * 18) | 0, 6 + (r() * 2 | 0),
+        r() < 0.35 ? LEAF_D : r() < 0.8 ? AP.leaf : LEAF_L]);
     crowns.sort((a, b) => a[1] - b[1]);                           // back-to-front
     if (r() < 0.6) {
       const t = crowns[crowns.length - 1];
-      f(t[0], t[1] + 2, 3, 6, AP.wood[1]); f(t[0], t[1] + 2, 1, 6, AP.wood[2]);
+      f(t[0], t[1] + t[2] - 1, 3, 5, AP.wood[1]); f(t[0], t[1] + t[2] - 1, 1, 5, AP.wood[2]);
     }
-    for (const [cx, cy, rr, ramp] of crowns) crown(f, cx, cy, rr, seed + cx * 7 + cy, ramp);
+    f(crowns[0][0] - 4, crowns[0][1] + crowns[0][2], 7, 1, AP.leaf[0]);   // contact shadow
+    for (const [cx, cy, rr, ramp] of crowns) crown(f, cx, cy, rr, ramp);
     if (log) {                                                    // fallen mossy log
       f(16, 28, 12, 2, AP.wood[1]); f(16, 27, 12, 1, AP.wood[3]);
       f(26, 27, 2, 1, AP.wood[4]); f(19, 27, 1, 1, AP.leaf[3]); f(23, 27, 1, 1, AP.leaf[3]);
@@ -172,8 +172,7 @@ const Sprites = {
   }
   Sprites.terrain[T.FOREST] = [
     tile(p => forestTile(p, 11)), tile(p => forestTile(p, 23)), tile(p => forestTile(p, 149, true)),
-    tile(p => forestTile(p, 205)), tile(p => forestTile(p, 262)), tile(p => forestTile(p, 318)),
-    tile(p => forestTile(p, 377, true)), tile(p => forestTile(p, 431)),
+    tile(p => forestTile(p, 205)), tile(p => forestTile(p, 262)), tile(p => forestTile(p, 377, true)),
   ];
 
   // Water — the hero. [0] = shallow (near land, lighter), [1] = deep interior.
@@ -213,29 +212,32 @@ const Sprites = {
   // one broken rocky massif rather than a repeating grid. Shadows are laid down
   // first, then bodies, so overlapping rocks composite cleanly.
   function boulderShadow(f, cx, cy, rr) {
-    for (let dy = -rr; dy <= rr; dy++) for (let dx = -rr; dx <= rr; dx++)
-      if (dx * dx + dy * dy <= rr * rr) f(cx + dx + 1, cy + dy + 2, 1, 1, AP.grass[0]);
+    // a TIGHT contact shadow hugging the rock's base — a small flat ellipse, not
+    // a big offset disc (long directional shadows fight the neighbouring tiles)
+    const ry = Math.max(1, (rr * 0.4) | 0), rx = rr;
+    for (let dy = 0; dy <= ry; dy++) for (let dx = -rx; dx <= rx; dx++)
+      if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1) f(cx + dx, cy + rr - 1 + dy, 1, 1, AP.grass[0]);
   }
   // a faceted boulder: 3 clear planes (lit top-left, mid, shadowed lower-right)
   // split by crack lines, a warm-grey mineral fleck or two for tonal variety
   // (not flat grey), a bright crest glint and moss/grass creeping up the shaded
   // base. Silhouette varies — some crags grow a second lobe.
   function boulderBody(f, cx, cy, rr, snow) {
-    const St = AP.stone, r = ART.rng((cx * 31 + cy * 17) | 1);
-    ART.shadedCircle(f, cx, cy, rr, St, 2);
+    const Rk = AP.rock, r = ART.rng((cx * 31 + cy * 17) | 1);     // WARM earthy stone, shares hue with soil
+    ART.shadedCircle(f, cx, cy, rr, Rk, 2);
     if (rr >= 4 && ((cx * 5 + cy * 3) & 3) === 0)           // lumpy/elongated silhouette
-      ART.shadedCircle(f, cx + rr - 1, cy + 1, (rr * 0.55) | 0, St, 2);
+      ART.shadedCircle(f, cx + rr - 1, cy + 1, (rr * 0.55) | 0, Rk, 2);
     for (let dy = -rr; dy <= rr; dy++) for (let dx = -rr; dx <= rr; dx++) {   // faceted planes
       if (dx * dx + dy * dy > rr * rr) continue;
       const s = dx + dy;
-      if (s < -rr * 0.55) f(cx + dx, cy + dy, 1, 1, St[3]);        // lit top-left plane
-      else if (s > rr * 0.7) f(cx + dx, cy + dy, 1, 1, St[0]);     // shadowed lower-right plane
+      if (s < -rr * 0.55) f(cx + dx, cy + dy, 1, 1, Rk[3]);        // lit top-left plane
+      else if (s > rr * 0.7) f(cx + dx, cy + dy, 1, 1, Rk[0]);     // shadowed lower-right plane
     }
-    f(cx - (rr * 0.2 | 0), cy - rr + 2, 1, (rr * 1.25) | 0, St[0]);        // vertical crack
-    f(cx - rr + 2, cy + (rr * 0.2 | 0), (rr * 0.9) | 0, 1, St[1]);         // diagonal facet break
-    f(cx - 1, cy - rr + 1, 2, 1, St[4]); f(cx - 2, cy - rr + 2, 1, 1, St[4]);   // crest glint
-    for (let i = 0; i < rr; i++)                                            // warm mineral flecks (grey-brown variety)
-      f(cx - rr + 1 + (r() * (rr * 2 - 1) | 0), cy - rr + 1 + (r() * (rr * 2 - 1) | 0), 1, 1, r() < 0.5 ? AP.wood[2] : St[3]);
+    f(cx - (rr * 0.2 | 0), cy - rr + 2, 1, (rr * 1.25) | 0, Rk[0]);        // vertical crack
+    f(cx - rr + 2, cy + (rr * 0.2 | 0), (rr * 0.9) | 0, 1, Rk[1]);         // diagonal facet break
+    f(cx - 1, cy - rr + 1, 2, 1, Rk[4]); f(cx - 2, cy - rr + 2, 1, 1, Rk[4]);   // crest glint
+    for (let i = 0; i < rr; i++)                                            // warm tonal flecks (browns/tans)
+      f(cx - rr + 1 + (r() * (rr * 2 - 1) | 0), cy - rr + 1 + (r() * (rr * 2 - 1) | 0), 1, 1, r() < 0.5 ? AP.soil[2] : Rk[3]);
     f(cx - 1, cy + rr - 1, 2, 1, AP.leaf[2]); f(cx + 1, cy + rr, 1, 1, AP.grass[4]);   // moss + grass at the base
     if (snow) {                                              // snow on the lit crown
       for (let dx = -rr + 1; dx <= 0; dx++) f(cx + dx, cy - rr + 1, 1, 1, AP.bone[2]);
@@ -248,7 +250,7 @@ const Sprites = {
     for (const b of spec) boulderShadow(f, b[0], b[1], b[2]);
     for (const b of spec) boulderBody(f, b[0], b[1], b[2], b[3]);
     for (let i = 0; i < 6; i++)                              // scree + grass tufts in the gaps
-      f((r() * 30) | 0, (r() * 30) | 0, 1, 1, r() < 0.5 ? AP.stone[2] : AP.grass[4]);
+      f((r() * 30) | 0, (r() * 30) | 0, 1, 1, r() < 0.5 ? AP.rock[2] : AP.grass[4]);
   }
   // hills: a low scatter of boulders on turf, plenty of grass between them
   Sprites.terrain[T.HILLS] = [
@@ -265,7 +267,8 @@ const Sprites = {
     const fruitTree = (cx, cy, s2) => {
       const rr = 4 + (r() * 2 | 0);
       f(cx + 1, cy + rr + 2, 2, 5, AP.wood[1]); f(cx + 1, cy + rr + 2, 1, 5, AP.wood[2]);   // trunk
-      crown(f, cx, cy, rr, s2, r() < 0.5 ? AP.leaf : LEAF_L);       // varied fruiting crown
+      f(cx - rr + 1, cy + rr + 1, rr + 2, 1, AP.leaf[0]);           // contact shadow
+      crown(f, cx, cy, rr, r() < 0.5 ? AP.leaf : LEAF_L);          // varied fruiting crown
       const fr = ART.rng(s2 + 1);
       const fruit = fr() < 0.5 ? AP.red[2] : AP.fire[2];            // apples on some trees, golden on others
       for (let i = 0; i < 8; i++)                                   // ripe fruit dotted in the crown
