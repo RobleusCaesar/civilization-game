@@ -403,22 +403,20 @@ const UI = {
     for (const u of S.units) {
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
       const d = Math.hypot(u.x - wx, u.y - wy);
-      let dd = d - (u.owner === 'P' ? 0.15 : 0); // bias towards own units
-      // a worker standing on their plot yields the tap to the building unless hit dead-on
-      if (u.task && u.task.type === 'work') dd += 0.3;
+      const dd = d - (u.owner === 'P' ? 0.15 : 0); // bias towards own units
       if (dd < hd) { hd = dd; hitUnit = u; }
     }
     const hitBld = G.visibleAt(tile.x, tile.y) ? Bld.at(tile.x, tile.y) : null;
-    // When the tap lands squarely on a building's footprint, the building wins the
-    // tap — UNLESS a unit is sitting essentially dead-on the tap point. Without this,
-    // a villager stationed on its plot steals every tap and the building takes two or
-    // three tries plus a zoom to finally select. Two guards: a worker OF this building
-    // always yields to it (tap the plot, get the plot), and any other unit yields
-    // unless it's right under the finger. A unit you mean to grab is still one tap
-    // away — put your finger on its sprite (distance ~0 always wins).
+    // When the tap lands on a building's footprint: the WORKER of that building
+    // wins the tap — pointing at a villager on their plot means the villager
+    // (their panel carries the station's upgrade anyway). The building takes the
+    // tap only from a clear part of its plot, or once nobody is standing on it.
+    // Any OTHER unit passing by still yields to the building unless it's right
+    // under the finger, so a soldier strolling past a barracks doesn't steal
+    // the tap.
     if (hitBld && hitUnit) {
       const worksHere = hitUnit.task && hitUnit.task.type === 'work' && hitUnit.task.id === hitBld.id;
-      if (worksHere || Math.hypot(hitUnit.x - wx, hitUnit.y - wy) > 0.42) hitUnit = null;
+      if (!worksHere && Math.hypot(hitUnit.x - wx, hitUnit.y - wy) > 0.42) hitUnit = null;
     }
     const hitBridge = (explored && Bld.bridgeAt) ? Bld.bridgeAt(tile.x, tile.y) : null;
 
