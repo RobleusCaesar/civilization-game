@@ -259,8 +259,21 @@ const Bld = {
     return window.Cards ? Cards.buildCost(owner, key, cost) : cost;
   },
 
+  // AI ACTION BUDGET — the rival has one pair of hands too. Starting a
+  // construction, an upgrade, a training run or a caravan spends one of its few
+  // daily macro actions (AI.daily refills S.ai.acts from the mode's aiActions;
+  // emergency/safety works run under S.ai._free). Purely a THROUGHPUT limit —
+  // the utility scoring still picks the best actions first, so the chief does
+  // the two smartest things a day instead of all seven at once, like a human.
+  aiAct(owner) {
+    if (owner !== 'A' || !S.ai || S.ai.acts == null || S.ai._free) return true;
+    if (S.ai.acts <= 0) return false;
+    S.ai.acts--; return true;
+  },
+
   place(owner, key, x, y, opts) {
     opts = opts || {};
+    if (owner === 'A' && !opts.free && !this.aiAct(owner)) return null;
     const d = this.def(key);
     const spec = this.buildSpec(key, owner);
     const res = owner === 'P' ? S.res : S.ai.res;
@@ -386,6 +399,7 @@ const Bld = {
   upgrade(b) {
     const c = this.canUpgrade(b);
     if (!c.ok) return false;
+    if (!this.aiAct(b.owner)) return false;
     const d = this.def(b.key);
     this.pay(d.levels[b.level].cost, b.owner === 'P' ? S.res : S.ai.res);
     b.upgrading = this.upgradeTime(b);
@@ -450,6 +464,7 @@ const Bld = {
   train(b, unitKey) {
     const c = this.canTrain(b, unitKey);
     if (!c.ok) return false;
+    if (!this.aiAct(b.owner)) return false;
     const spec = this.def(b.key).train[unitKey];
     this.pay(c.cost, b.owner === 'P' ? S.res : S.ai.res);
     b.queue.push({ unit: unitKey, t: spec.time });
@@ -493,6 +508,7 @@ const Bld = {
   // spend the load now; the gold arrives when the caravan returns (Bld.update)
   startTrade(b, res) {
     if (!this.canTrade(b, res).ok) return false;
+    if (!this.aiAct(b.owner)) return false;
     const spec = this.tradeSpec(b), bag = b.owner === 'P' ? S.res : S.ai.res;
     bag[res] -= spec.input;
     b.caravan = { res, gold: this.tradeGold(b), t: spec.delay, total: spec.delay };
@@ -572,16 +588,39 @@ const Bld = {
     const tc = this.tcOf(owner);
     const tcBoost = tc && tc.level >= 3 && this.done(tc) ? 1.1 : 1;
     const modeMult = owner === 'P' ? G.modeCfg().output : (G.modeCfg().aiOutput || 1);
+    // THE RIVAL'S WORKFORCE IS REAL NOW: its worker buildings no longer run at
+    // phantom full crew — they draw hands from its LIVING villagers, one villager
+    // one crew slot. Hands are dealt round-robin, one at a time across the
+    // stations, so farms, camps and quarries all stay manned in proportion (a
+    // human spreads their villagers the same way). Its income curve now
+    // resembles a village that trains workers one at a time, and killing its
+    // villagers cuts its production exactly like it cuts yours.
+    let aiCrew = null;
+    if (owner === 'A') {
+      let pool = S.units.reduce((n, u) => n + (u.owner === 'A' && Units.isVillager(u) ? 1 : 0), 0);
+      aiCrew = {};
+      const stations = this.list('A').filter(b =>
+        this.done(b) && !b.upgrading && this.def(b.key).needsWorker && this.lv(b).out);
+      let dealt = true;
+      while (pool > 0 && dealt) {
+        dealt = false;
+        for (const b of stations) {
+          if (pool <= 0) break;
+          const cur = aiCrew[b.id] || 0;
+          if (cur < this.maxWorkers(b)) { aiCrew[b.id] = cur + 1; pool--; dealt = true; }
+        }
+      }
+    }
     for (const b of this.list(owner)) {
       if (!this.done(b) || b.upgrading) continue;
       const out = this.lv(b).out;
       if (!out) continue;
-      // worker buildings produce PER STATIONED VILLAGER, up to their crew cap;
-      // the AI has no worker mechanic, so it's treated as fully crewed
+      // worker buildings produce PER VILLAGER: stationed crew for the player,
+      // dealt from the living-villager pool for the rival
       let crew = 1;
       if (this.def(b.key).needsWorker) {
         crew = owner === 'P' ? Math.min(this.workersActive(b), this.maxWorkers(b))
-                             : this.maxWorkers(b);
+                             : (aiCrew[b.id] || 0);
         if (!crew) continue;
       }
       const mult = crew * this.nearBonus(b) * tcBoost * modeMult *
@@ -679,6 +718,7 @@ const Bld = {
   aiUpgradeWalls() {
     const cost = this.aiCanUpgradeWalls();
     if (!cost) return false;
+    if (!this.aiAct('A')) return false;
     this.pay(cost, S.ai.res);
     S.ai.wallLevel = (S.ai.wallLevel || 1) + 1;
     for (const b of this.forts('A')) {

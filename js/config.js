@@ -473,6 +473,7 @@ const CFG = {
       waveFirst: 70, waveGapMult: 2.2, waveSizeAdd: -1, barbMult: 0.9,
       animalMax: 2, animalChance: 0.15, aiRaidDay: 80,
       aiBuildEvery: 3, aiOutput: 0.85, aiArmyCap: 6, aiArmyDiv: 11, aiEliteShare: 0.15, aiAggro: 0.55,
+      aiVillCap: 8, aiVillEvery: 16, aiActions: 1,
     },
     moderate: {
       name: 'Moderate', icon: '⚔️', desc: 'The intended experience.',
@@ -483,7 +484,12 @@ const CFG = {
       // read as relentless; the player needs a breath between pushes. aiEarly
       // further trims the standing-army target before day 100 (see AI.armyWant)
       // so the opening 100 days ramp up more gently.
-      aiBuildEvery: 2, aiOutput: 1.1, aiArmyCap: 7, aiArmyDiv: 10, aiEliteShare: 0.45, aiAggro: 0.9, aiEarly: 0.8,
+      aiBuildEvery: 2, aiOutput: 0.95, aiArmyCap: 7, aiArmyDiv: 10, aiEliteShare: 0.45, aiAggro: 0.9, aiEarly: 0.8,
+      // HUMANIZED THROUGHPUT (not intelligence): the rival's economy now runs on a
+      // real villager workforce (aiVillCap / aiVillEvery — kill its workers, cut its
+      // income) and it has one pair of hands: aiActions macro actions per day
+      // (build/upgrade/train/caravan each spend one). Strategy layers untouched.
+      aiVillCap: 12, aiVillEvery: 12, aiActions: 2,
     },
     hard: {
       name: 'Hard', icon: '💀', desc: 'Slower gathering, relentless enemies.',
@@ -496,7 +502,8 @@ const CFG = {
       gather: 0.90, output: 1.0, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
       waveFirst: 33, waveGapMult: 0.9, waveSizeAdd: 1, barbMult: 1.1, barbSpacing: true, bandCap: 8,
       animalMax: 4, animalChance: 0.3, aiRaidDay: 32,
-      aiBuildEvery: 1, aiOutput: 1.3, aiArmyCap: 13, aiArmyDiv: 6, aiEliteShare: 0.8, aiAggro: 1.2,
+      aiBuildEvery: 1, aiOutput: 1.15, aiArmyCap: 13, aiArmyDiv: 6, aiEliteShare: 0.8, aiAggro: 1.2,
+      aiVillCap: 16, aiVillEvery: 8, aiActions: 4,
     },
   },
 

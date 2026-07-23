@@ -397,12 +397,21 @@ const AI = {
   },
 
   tryBuild(key, ignoreGoal) {
+    // WORKFORCE-AWARE GROWTH: don't sprawl worker stations the village can't
+    // crew — a field of empty farms is how a chief LOOKS busy while starving.
+    // One slot ahead of the pool is allowed (the next hand trains into it).
+    // Safety works (S.ai._free) bypass, so a broke chief can still dig out.
+    if (CFG.BUILDINGS[key].needsWorker && !S.ai._free) {
+      const pool = Units.count('A', u => Units.isVillager(u));
+      let slots = 0;
+      for (const b of Bld.list('A')) if (Bld.def(b.key).needsWorker) slots += Bld.maxWorkers(b);
+      if (slots >= pool + 1) return false;
+    }
     const cost = CFG.BUILDINGS[key].levels[0].cost;
     if (ignoreGoal ? !Bld.canAfford(cost, S.ai.res) : !this.affordFree(cost)) return false;
     const spot = this.plot(key);
     if (!spot || !Bld.canPlace('A', key, spot.x, spot.y).ok) return false;
-    Bld.place('A', key, spot.x, spot.y);
-    return true;
+    return !!Bld.place('A', key, spot.x, spot.y);   // null = out of daily actions
   },
 
   // FORWARD OPERATING BASE — the rival plants a War Camp out toward the player when
@@ -861,7 +870,7 @@ const AI = {
     const tc = Bld.tcOf('A');
     if (!Bld.canAfford(CFG.BUILDINGS.dock.levels[0].cost, S.ai.res)) return false;
     const site = MapGen.findNear(tc.x, tc.y, 8, (x, y) => Bld.dockSiteOk(x, y, 'A').ok);
-    if (site && Bld.canPlace('A', 'dock', site.x, site.y).ok) { Bld.place('A', 'dock', site.x, site.y); return true; }
+    if (site && Bld.canPlace('A', 'dock', site.x, site.y).ok) return !!Bld.place('A', 'dock', site.x, site.y);
     return false;
   },
 
@@ -1759,16 +1768,43 @@ const AI = {
     this.learn(read);       // LAYER 5: fold observations into adaptive memory
     this.campaignSelect(read);   // SIEGE CAMPAIGN: if a plain raid can't get in, commit to a named plan (before we choose what to build, so support can bias it)
 
+    // THE DAY'S HANDS: the chief gets a few macro actions per day (mode-scaled).
+    // Every construction start / upgrade / training run / caravan spends one
+    // (Bld.aiAct), so it does the best-scored few things a human could — the
+    // utility layers still decide WHAT, this only decides HOW MUCH per day.
+    ai.acts = m.aiActions != null ? m.aiActions : 2;
+
     // small base income so the AI never fully stalls (scaled by difficulty).
     // A boom-opening chief works the fields harder in the first minutes.
+    // Kept modest — the real income comes from its villager-crewed stations now.
     const op = ai.opening || {};
     const boomMult = op.bias === 'boom' && S.day <= (op.until || 0)
       ? (op.fired ? 1.2 : 1.08) : 1;
-    ai.res.food += 3 * m.aiOutput * boomMult;
-    ai.res.wood += 3 * m.aiOutput * boomMult;
+    ai.res.food += 2 * m.aiOutput * boomMult;
+    ai.res.wood += 2 * m.aiOutput * boomMult;
     ai.res.stone += 1 * m.aiOutput * boomMult;
-    ai.res.gold += 4 * m.aiOutput;   // the AI has no worker mechanic, so gold trickles here
+    ai.res.gold += 3 * m.aiOutput;   // gold has no worker source for the rival — it trickles here
     Bld.dailyProduction('A');
+
+    /* ---- WORKFORCE FIRST: villagers ARE the rival's economy now (see
+       Bld.dailyProduction — each living villager crews one station slot).
+       Hiring happens BEFORE any other spending, the way a real player
+       protects villager production: the pool grows toward a target that
+       rises one hand every aiVillEvery days up to the mode's cap, at most
+       one per day, each paid in food. Raiders that cut down its workers
+       cut its income exactly like it cuts the player's. ---- */
+    const wantV = Math.min(m.aiVillCap || 8, 3 + Math.floor(S.day / (m.aiVillEvery || 12)));
+    if (Units.count('A', u => Units.isVillager(u)) < wantV) {
+      // skim a little of each day's food into a hiring purse the army can't
+      // eat — otherwise daily training drains the pot and the workforce never
+      // grows (exactly the trap a sloppy human falls into)
+      const put = Math.min(ai.res.food, 15);
+      ai.res.food -= put; ai.purse = (ai.purse || 0) + put;
+      if (ai.purse >= 50) {
+        const spot = MapGen.findNear(tc.x, tc.y + Bld.size(tc.key), 4, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+        if (spot) { ai.purse -= 50; Units.spawn('villager', 'A', spot.x, spot.y); }
+      }
+    } else if (ai.purse) { ai.res.food += ai.purse; ai.purse = 0; }   // workforce full — bank the change
 
     // run any Trading Posts: send a caravan out with a genuine surplus good,
     // like a player would. Stingy — keeps a reserve, one caravan per post, and
@@ -1848,7 +1884,9 @@ const AI = {
     if (ai.goal && (tc.level >= 3 || tc.upgrading || S.day > ai.goal.until)) ai.goal = null;
     if (!ai.goal && tc.level < 3 && !tc.upgrading && S.day > P.tcDays[tc.level - 1])
       ai.goal = { cost: CFG.BUILDINGS.tc.levels[tc.level].cost, until: S.day + 20 };
+    ai._free = true;                              // emergencies don't queue behind the day's chores
     const didSafety = this.digAndProtect(read);
+    ai._free = false;
     if (!didSafety && S.day % (m.aiBuildEvery || 2) === 0) this.bestBuild(read);
     if (!didSafety && S.day % 4 === 0) this.aiWarCamp(read);   // occasionally stake a forward base for a push
     this.trainForces(m, read);
@@ -1857,15 +1895,6 @@ const AI = {
     // and offensive breaches
     this.breachStall(read);
     this.terraform(read);
-
-    /* ---- townsfolk: a living village. A few villagers walk the lanes,
-       staffing the town in spirit — killable, worth raiding, and slowly
-       replaced. No more empty ghost towns. ---- */
-    if (Units.count('A', u => Units.isVillager(u)) < 2 + tc.level &&
-        ai.res.food >= 60 && G.rand() < 0.5) {
-      const spot = MapGen.findNear(tc.x, tc.y + Bld.size(tc.key), 4, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
-      if (spot) { ai.res.food -= 50; Units.spawn('villager', 'A', spot.x, spot.y); }
-    }
 
     /* ---- SCOUTING: the rival is blind beyond its own eyes, so it must go
        LOOK. When it hasn't found the player's town — or its memory of it has
