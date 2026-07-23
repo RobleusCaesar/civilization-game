@@ -1467,6 +1467,21 @@ const R = {
     g.drawImage(this.fogBlurCv, 0, 0, this.fogBlurCv.width, this.fogBlurCv.height, 0, 0, CFG.W * TL, CFG.H * TL);
     g.imageSmoothingEnabled = false;
 
+    // SPECIAL EVENT — the long winter's pall: a cold blue cast and drifting
+    // snow over the whole view while the freeze holds
+    if (S.winter && S.winter.days > 0) {
+      const vw = this.viewW() / this.cam.z, vh = this.viewH() / this.cam.z;
+      g.fillStyle = 'rgba(168,192,226,0.14)';
+      g.fillRect(this.cam.x, this.cam.y, vw, vh);
+      const now3 = performance.now() / 1000;
+      g.fillStyle = 'rgba(240,246,252,0.7)';
+      for (let i = 0; i < 26; i++) {
+        const fx3 = this.cam.x + ((i * 137 + now3 * (14 + (i % 5) * 4)) % vw);
+        const fy3 = this.cam.y + ((i * 71 + now3 * (26 + (i % 3) * 9)) % vh);
+        g.fillRect(fx3, fy3, 1.6, 1.6);
+      }
+    }
+
     // SPECIAL EVENT — the black dragon, drawn over the fog: nothing hides it
     if (S.dragon && S.dragon.ev) {
       const ev = S.dragon.ev;

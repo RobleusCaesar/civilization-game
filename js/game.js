@@ -234,6 +234,8 @@ const G = {
     // a buried hoard surfaces only when the larders scrape empty
     S.cache = { avail: S.special === 'cache', done: false, ev: null };
     S.trainDiscount = 0;   // fast-training charges left (the cache's work songs)
+    // the long winter waits for fat granaries; the plague for crowded lanes
+    S.winter = { avail: S.special === 'winter', done: false, days: 0 };
 
     this.freeVis = false;   // every real game starts fogged; the title demo re-enables it
     this.vis = null;
@@ -484,6 +486,12 @@ const G = {
       if (pop > (S.stats.peakPop || 0)) S.stats.peakPop = pop;
     }
 
+    // the long winter thaws after a few days — the pall lifts
+    if (S.winter && S.winter.days > 0) {
+      S.winter.days--;
+      if (S.winter.days === 0) this.log('🌤 The wind turns at last — the thaw comes, and the valley breathes again.');
+    }
+
     // the kraken stirs (SPECIAL EVENT): only under a boat whose OWN body of
     // water reaches the map's edge — it rises from the open ocean, so a boat
     // on a landlocked lake is safe forever. One visit per game, total.
@@ -711,6 +719,37 @@ const G = {
     this.log('🪙 The spade rings on oak — your great-uncle\u2019s lost hoard! Food, timber, stone… and his legendary work songs (next 5 recruits train TWICE as fast).', false, 8000);
   },
 
+  /* ---- SPECIAL EVENT: the Long Winter ----
+     It does not strike the desperate — it strikes the COMFORTABLE. When the
+     player's granary swells fat, a killing winter falls on the whole valley:
+     BOTH villages lose half their food and two of their food-works (farms
+     razed, fishing boats crushed in the ice), fairly, from what each side
+     actually has. A cold pall hangs over the world for a few days. */
+  maybeWinter() {
+    const E = S.winter;
+    if (!E || !E.avail || E.done || S.over) return;
+    if (S.day < 30) return;
+    if (S.res.food < 800) return;                       // punishes the boom, never the bust
+    E.done = true; E.avail = false; E.days = 3;
+    const cull = (owner) => {
+      const bag = owner === 'P' ? S.res : S.ai.res;
+      bag.food = Math.round(bag.food * 0.5);
+      // two food-works fall: farms and fishing boats, whatever they actually have
+      const works = [];
+      for (const b of Bld.list(owner)) if (b.key === 'farm' && Bld.done(b)) works.push({ farm: b });
+      for (const u of S.units) if (u.owner === owner && u.kind === 'fishboat') works.push({ boat: u });
+      let lost = 0;
+      for (let k = 0; k < 2 && works.length; k++) {
+        const w = works.splice((G.rand() * works.length) | 0, 1)[0];
+        if (w.farm) { Bld.removeToRuin(w.farm); lost++; }
+        else { Units.damage(w.boat, 99999, 0, 'W'); lost++; }
+      }
+      return lost;
+    };
+    const pl = cull('P'), al = cull('A');
+    this.log('❄️ A wind out of the north that does not stop — the LONG WINTER falls on the valley. Granaries dwindle by half and the fields lie dead under the snow (' + pl + ' of your food-works lost; the rival suffers the same).', true, 8000);
+  },
+
   dragonTick(dt) {
     const D = S.dragon;
     if (!D) return;
@@ -823,6 +862,7 @@ const G = {
     if (!data.sons) data.sons = { avail: false, done: true };   // legacy: no sons this run
     if (!data.cache) data.cache = { avail: false, done: true, ev: null };
     if (data.trainDiscount === undefined) data.trainDiscount = 0;
+    if (!data.winter) data.winter = { avail: false, done: true, days: 0 };
     // legacy saves predate the one-event registry: derive S.special from what
     // the old flags had armed (dragon first — it was the rarer roll)
     if (data.special === undefined) {
