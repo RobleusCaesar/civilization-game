@@ -606,6 +606,15 @@ const Units = {
         u.path = null;                         // the doomed don't march — they fall where the fire found them
         continue;
       }
+      if (u.dieT != null && u.dieT > 0) {      // the plague's slow fall — keel over, then gone
+        u.dieT -= dt; u.path = null;
+        if (u.dieT <= 0) {
+          for (const o of S.units) if (o.tUnit === u.id) o.tUnit = 0;
+          if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
+          S.units.splice(i, 1);
+        }
+        continue;
+      }
 
       // a siege tower parked against an enemy wall ferries one nearby soldier
       // per second up, over, and down the far side

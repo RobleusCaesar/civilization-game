@@ -236,6 +236,7 @@ const G = {
     S.trainDiscount = 0;   // fast-training charges left (the cache's work songs)
     // the long winter waits for fat granaries; the plague for crowded lanes
     S.winter = { avail: S.special === 'winter', done: false, days: 0 };
+    S.plague = { avail: S.special === 'plague', done: false, until: 0, lifted: true };
 
     this.freeVis = false;   // every real game starts fogged; the title demo re-enables it
     this.vis = null;
@@ -484,6 +485,12 @@ const G = {
     if (S.stats) {
       const pop = S.units.reduce((n, u) => n + (u.owner === 'P' ? 1 : 0), 0) + S.garrison.length;
       if (pop > (S.stats.peakPop || 0)) S.stats.peakPop = pop;
+    }
+
+    // the plague passes on its appointed day
+    if (S.plague && S.plague.until && !S.plague.lifted && S.day >= S.plague.until) {
+      S.plague.lifted = true;
+      this.log('🕊 The sickness passes — the village drums for new hands again.');
     }
 
     // the long winter thaws after a few days — the pall lifts
@@ -750,6 +757,28 @@ const G = {
     this.log('❄️ A wind out of the north that does not stop — the LONG WINTER falls on the valley. Granaries dwindle by half and the fields lie dead under the snow (' + pl + ' of your food-works lost; the rival suffers the same).', true, 8000);
   },
 
+  /* ---- SPECIAL EVENT: the Plague ----
+     It comes when the lanes are fullest. At the village's crowded peak, a
+     sickness walks hut to hut: FIVE villagers keel over where they stand
+     (a visible dying fall, not a number), and no new villagers can be
+     trained for 5 days while the village buries and scrubs and grieves. */
+  maybePlague() {
+    const E = S.plague;
+    if (!E || !E.avail || E.done || S.over) return;
+    if (S.day < 25) return;
+    const vills = S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !u.dieT);
+    if (vills.length < 7) return;
+    if (Units.popUsed('P') < Bld.popCap('P') * 0.85) return;   // strikes the boom, not the bust
+    E.done = true; E.avail = false;
+    E.until = S.day + 5; E.lifted = false;
+    for (let k = 0; k < 5 && vills.length; k++) {
+      const v = vills.splice((G.rand() * vills.length) | 0, 1)[0];
+      v.dieT = 2.4; v.task = null; v.tUnit = 0; v.tBld = 0; v.path = null;
+      R.float(v.x, v.y - 0.6, '☠', '#a5c86a');
+    }
+    this.log('☠️ A sickness walks hut to hut — five villagers fall where they stand. No new hands will answer the drum for 5 days.', true, 8000);
+  },
+
   dragonTick(dt) {
     const D = S.dragon;
     if (!D) return;
@@ -863,6 +892,7 @@ const G = {
     if (!data.cache) data.cache = { avail: false, done: true, ev: null };
     if (data.trainDiscount === undefined) data.trainDiscount = 0;
     if (!data.winter) data.winter = { avail: false, done: true, days: 0 };
+    if (!data.plague) data.plague = { avail: false, done: true, until: 0, lifted: true };
     // legacy saves predate the one-event registry: derive S.special from what
     // the old flags had armed (dragon first — it was the rarer roll)
     if (data.special === undefined) {

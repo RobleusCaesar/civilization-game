@@ -985,7 +985,24 @@ const R = {
       }
       // draw every unit into a TILE-sized box: 32px sheets render 1:1 (unchanged),
       // while the hi-res 64px villager sheet shows at the SAME size but twice as crisp
-      if (u.burnT > 0) {
+      if (u.dieT != null && u.dieT > 0) {
+        // DEATH BY PLAGUE — a slow, visible fall: the villager sways, keels
+        // over under a sickly green pall, and fades into the ground
+        const p2 = Math.min(1, Math.max(0, 1 - u.dieT / 2.4));
+        const fade2 = p2 > 0.75 ? Math.max(0, (1 - p2) / 0.25) : 1;
+        const cx3 = u.x * TL, cy3 = u.y * TL;
+        g.save();
+        g.globalAlpha = fade2;
+        g.translate(cx3, cy3 + p2 * 5);
+        g.rotate((u.id % 2 ? 1 : -1) * Math.min(1, p2 * 1.5) * Math.PI / 2 +
+          Math.sin(u.animT * 7) * 0.06 * (1 - p2));            // a last sway before the fall
+        g.drawImage(this.unitSprite(u), -TL / 2, -TL / 2 - 4, TL, TL);
+        g.globalAlpha = fade2 * 0.35 * Math.min(1, p2 * 2);    // the sickness's green cast
+        g.fillStyle = '#86b04a';
+        g.fillRect(-TL / 2 + 6, -TL / 2, TL - 12, TL - 6);
+        g.restore();
+        g.globalAlpha = 1;
+      } else if (u.burnT > 0) {
         // DEATH BY DRAGONFIRE — a last animation before the ash lands:
         // soldiers topple sideways ablaze; siege engines char, sag and
         // collapse where they stand. Both are wreathed in half-transparent
