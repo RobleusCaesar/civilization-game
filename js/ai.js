@@ -863,6 +863,19 @@ const AI = {
     // under attack with thin walls → raise a tower now (savings jar be damned)
     if (read.underThreat && Bld.list('A').filter(b => b.key === 'tower').length < 2 + tc.level &&
         this.tryBuild('tower', true)) return true;
+    /* THE HOME FLOOR — prudence, not paranoia. A punch can land before the
+       scouts see it coming, so the chief keeps a BASELINE of guard-works even
+       in peacetime instead of betting everything on the offence (a real game
+       was lost with one tower and no walls the moment the player hit back):
+       - towers up to the hall's level (one more late-game), coverage-sited;
+       - once the town is established, walls close the open seams — paid only
+         from a wood SURPLUS and paced every few days, so the army and economy
+         are never starved for the ring. */
+    const towerFloor = Math.min(4, tc.level + (S.day > 90 ? 1 : 0));
+    if (S.day >= 12 && Bld.list('A').filter(b => b.key === 'tower').length < towerFloor &&
+        this.tryBuild('tower', true)) return true;
+    if (S.day >= 35 && tc.level >= 2 && S.day % 3 === 0 && (ai.res.wood || 0) > 160 &&
+        (read.homeGapCount || 0) > 0) { this.maybeWalls(tc); return true; }
     return false;
   },
 
@@ -923,14 +936,16 @@ const AI = {
     // threatened one builds toward covering its whole frontage. Coverage-aware
     // placement (towerSpot) means each new tower earns its keep.
     const threatened = read.underThreat || read.foeRush || read.threat > 0 || post === 'DEFEND';
-    add(14 + (P.walls ? 14 : 0) + (post === 'DEFEND' ? 38 : 0) + (read.underThreat ? 20 : 0) +
+    add(18 + (P.walls ? 14 : 0) + (post === 'DEFEND' ? 38 : 0) + (read.underThreat ? 20 : 0) +
         (read.foeRush ? 16 : 0) + (threatened ? Math.min(18, (read.homeExposed || 0) * 1.4) : 0) -
-        (have.tower || 0) * 7,
+        (have.tower || 0) * 5,
       () => this.tryBuild('tower'));
     // WALLS scale with THREAT and posture — a wall-persona or a threatened chief
     // fortifies; a safe non-wall chief doesn't burn wood ringing open ground
     // against nobody (that starves the offence against a passive foe).
-    if ((S.day >= 18 || read.foeRush) && read.homeGapCount > 0 && (P.walls || threatened)) {
+    // ...and a MATURE town closes its seams whatever the persona — by day 60 an
+    // open village is an invitation, and every chief knows it
+    if ((S.day >= 18 || read.foeRush) && read.homeGapCount > 0 && (P.walls || threatened || S.day >= 60)) {
       const wu = (P.walls ? 26 : 10) + (post === 'DEFEND' ? 34 : 0) + (read.underThreat ? 26 : 0) +
         (read.foeRush ? 18 : 0) + (threatened ? Math.min(22, read.homeExposed * 2) : 0);
       add(wu, () => { this.maybeWalls(tc); return true; });
