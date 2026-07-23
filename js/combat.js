@@ -407,13 +407,16 @@ const Combat = {
       if (Math.hypot(end.x + 0.5 - goal.x, end.y + 0.5 - goal.y) > 2.5) {
         if (ai) ai.stall = { x: end.x, y: end.y, t: S.day };
         if (CFG.UNITS[u.kind].rng || CFG.UNITS[u.kind].proj) {
-          // shell what's shooting us: the nearest tower (then any building) in range
+          // shell what's shooting us: the nearest tower (then any building). Not in
+          // range yet? TARGET it anyway — the siege branch walks the engine up its
+          // own bank as far as the ground allows and it fires the moment the first
+          // boulder can fly. Engines standing idle out of range while the melee
+          // died at the trench line was a real failure: an engine on a raid must
+          // always be walking, aiming or firing.
           const tb = this.nearestBuilding(u.x, u.y, 'P', bb => bb.key === 'tower' && Bld.done(bb))
                   || this.nearestBuilding(u.x, u.y, 'P', bb => Bld.done(bb));
-          if (tb && Math.hypot(Bld.cx(tb) - u.x, Bld.cy(tb) - u.y) <= (CFG.UNITS[u.kind].rng || 0) + Bld.reach(tb) + 0.5) {
-            u.tBld = tb.id; return;
-          }
-          return;   // out of range — the forward path walks us up to loose from the bank
+          if (tb && Math.hypot(Bld.cx(tb) - u.x, Bld.cy(tb) - u.y) <= 15) { u.tBld = tb.id; u.tUnit = 0; return; }
+          return;   // nothing within marching distance to shell — keep on the forward path
         }
         this.aiStandoff(u);   // melee: retreat out of range and hold for a bridge
         return;
