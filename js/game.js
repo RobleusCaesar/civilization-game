@@ -208,10 +208,15 @@ const G = {
     // machinery arms; everything else stays cold. Extensible: new events join
     // the registry pool and gate on S.special the same way.
     {
-      const pool = Object.entries(CFG.SPECIALS.pool)
-        .filter(([, modes]) => modes.includes(mode)).map(([k]) => k);
-      S.special = (pool.length && G.rand() < CFG.SPECIALS.chance)
-        ? pool[(G.rand() * pool.length) | 0] : null;
+      const SP = CFG.SPECIALS;
+      const keys = Object.keys(SP.pool).filter(k => SP.pool[k].modes.includes(mode));
+      const pos = keys.filter(k => !SP.pool[k].neg), neg = keys.filter(k => SP.pool[k].neg);
+      S.special = null;
+      if (keys.length && G.rand() < SP.chance) {
+        // lean toward the delights: posWeight of rolled events are positive
+        const bag = G.rand() < (SP.posWeight || 0.6) ? (pos.length ? pos : neg) : (neg.length ? neg : pos);
+        S.special = bag[(G.rand() * bag.length) | 0];
+      }
     }
     // the kraken's clock: a visit on a day rolled from an early, middle, or
     // late band — when a fishing boat is out on water that reaches the map's
@@ -224,6 +229,8 @@ const G = {
     S.kraken = { avail: S.special === 'kraken', day: { P: kd(), A: kd() }, done: {}, ev: null };
     // the black dragon waits for a dark hour at the player's gates
     S.dragon = { avail: S.special === 'dragon', done: false, ev: null, ash: [], fire: [] };
+    // the lost sons ride only when the village's own line has broken
+    S.sons = { avail: S.special === 'sons', done: false };
 
     this.freeVis = false;   // every real game starts fogged; the title demo re-enables it
     this.vis = null;
@@ -623,6 +630,44 @@ const G = {
     this.log('🐉 A vast black shape crests the horizon…', true, 5200);
   },
 
+  /* ---- SPECIAL EVENT: the Returning Sons ----
+     Years ago, sons of this village rode out and never wrote home. When the
+     line breaks — foes at the hall and almost nobody left to hold them — the
+     horn is finally answered: five riders crest the safe horizon and ride in,
+     the player's to command. A lifeline, not an army. */
+  maybeSons() {
+    const E = S.sons;
+    if (!E || !E.avail || E.done || S.over) return;
+    if (S.day < 15) return;
+    const tc = Bld.tcOf('P'); if (!tc) return;
+    const cx = Bld.cx(tc), cy = Bld.cy(tc);
+    const foes = S.units.filter(u => (u.owner === 'A' || u.owner === 'R') &&
+      (Units.isMilitary(u) || u.owner === 'R') && !Units.isNaval(u) &&
+      Math.hypot(u.x - cx, u.y - cy) < 10);
+    if (foes.length < 4) return;
+    const mine = S.units.reduce((n, u) => n + (u.owner === 'P' && Units.isMilitary(u) && !Units.isNaval(u) ? 1 : 0), 0);
+    if (mine > Math.max(1, Math.floor(foes.length * 0.25))) return;   // only at the moment of despair
+    E.done = true; E.avail = false;
+    // they crest the horizon on the side AWAY from the foe and ride for home
+    const mx = foes.reduce((a, u) => a + u.x, 0) / foes.length;
+    const my = foes.reduce((a, u) => a + u.y, 0) / foes.length;
+    const ang = Math.atan2(cy - my, cx - mx);
+    let n = 0;
+    for (let i = 0; i < 5; i++) {
+      const a2 = ang + (i - 2) * 0.22, d = 8 + (i % 3);
+      const px2 = Math.max(1, Math.min(CFG.W - 2, Math.round(cx + Math.cos(a2) * d)));
+      const py2 = Math.max(1, Math.min(CFG.H - 2, Math.round(cy + Math.sin(a2) * d)));
+      const spot = MapGen.findNear(px2, py2, 6, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
+      if (!spot) continue;
+      const r = Units.spawn('rider', 'P', spot.x, spot.y);
+      const home = MapGen.findNear(cx | 0, (cy | 0) + 2, 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
+      if (home) Units.moveTo(r, home.x, home.y);
+      R.float(spot.x + 0.5, spot.y, '🐎', '#e8c15a');
+      n++;
+    }
+    if (n) this.log('🐎 Hoofbeats on the wind — the horn is answered! The village\u2019s lost sons crest the ridge, ' + n + ' riders come home to fight!', true, 7000);
+  },
+
   dragonTick(dt) {
     const D = S.dragon;
     if (!D) return;
@@ -732,6 +777,7 @@ const G = {
     if (!data.kraken) data.kraken = { day: { P: 60, A: 90 }, done: {}, ev: null };   // older saves owe the deep a visit too
     if (!data.dragon) data.dragon = { avail: false, done: true, ev: null, ash: [] };  // legacy runs: no dragon this time
     if (!data.dragon.fire) data.dragon.fire = [];
+    if (!data.sons) data.sons = { avail: false, done: true };   // legacy: no sons this run
     // legacy saves predate the one-event registry: derive S.special from what
     // the old flags had armed (dragon first — it was the rarer roll)
     if (data.special === undefined) {
@@ -847,7 +893,13 @@ const G = {
           G.krakenTick(dt);
           G.dragonTick(dt);
           G.dragonT = (G.dragonT || 0) - dt;
-          if (G.dragonT <= 0) { G.dragonT = 1.3; G.maybeDragon(); }
+          if (G.dragonT <= 0) {
+            G.dragonT = 1.3;   // the special-event pulse: each maybe* self-gates on its armed state
+            G.maybeDragon(); G.maybeSons();
+            if (G.maybeCache) G.maybeCache();
+            if (G.maybeWinter) G.maybeWinter();
+            if (G.maybePlague) G.maybePlague();
+          }
           G.visT -= dt;
           if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
           G.autosaveT -= dt;

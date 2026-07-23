@@ -460,7 +460,20 @@ const CFG = {
      fn from G.update, (4) give it Sprites.misc.<key> — an ARRAY of frames the
      renderer cycles (4+ frames reads smooth), drawn oversized like the
      kraken/dragon, (5) score it in CFG.SCORE if it's worth points. */
-  SPECIALS: { chance: 0.33, pool: { kraken: ['calm', 'moderate', 'hard'], dragon: ['moderate', 'hard'] } },
+  /* pool: modes each event may appear in, and whether it lands as a NEGATIVE
+     (punishment) — the roll leans posWeight toward the delights. The dragon
+     counts as a delight: it burns the army at YOUR gates. */
+  SPECIALS: {
+    chance: 0.33, posWeight: 0.6,
+    pool: {
+      kraken: { modes: ['calm', 'moderate', 'hard'], neg: true },
+      dragon: { modes: ['moderate', 'hard'] },
+      sons:   { modes: ['calm', 'moderate', 'hard'] },
+      cache:  { modes: ['calm', 'moderate', 'hard'] },
+      winter: { modes: ['moderate', 'hard'], neg: true },
+      plague: { modes: ['moderate', 'hard'], neg: true },
+    },
+  },
   DRAGON: { minDay: 25, foesMin: 6, radius: 9 },
 
   /* Difficulty gates the rival's APPETITE and SCALE, never its decision
