@@ -1942,26 +1942,36 @@ const AI = {
        gone stale — it dispatches a probe toward the far unknown (or toward
        where the player was last seen) to refresh what it knows. It won't
        strip its home guard to do it: a spare rider goes first, else a
-       villager, and only a spare soldier if there are several to spare. ---- */
+       villager, and only a spare soldier if there are several to spare.
+       PACED, never a death march: dispatches sit at least 8 days apart, each
+       scout that never comes home stretches the wait (the road is clearly
+       watched), and after two lost villagers no villager is risked again —
+       hands belong on farms and building sites, not a daily parade into the
+       player's tower fire. Fresh eyes on the town reset the caution. ---- */
     const scout = ai.scoutId && S.units.find(u => u.id === ai.scoutId);
-    if (!scout || !(scout.task && scout.task.type === 'move')) ai.scoutId = 0;
+    if (ai.scoutId && !scout) { ai.scoutId = 0; ai.scoutFail = (ai.scoutFail || 0) + 1; }   // never came home
+    else if (scout && !(scout.task && scout.task.type === 'move')) ai.scoutId = 0;          // arrived / released
     const kTC = read.knownTC;
+    if (kTC && S.day - (kTC.seen || 0) <= 2) ai.scoutFail = 0;   // intel refreshed — the road worked
     const needScout = !kTC || (S.day - (kTC.seen || 0) > 40);
-    if (needScout && !ai.scoutId && !read.underThreat) {
+    const scoutGap = 8 + Math.min(4, ai.scoutFail || 0) * 12;    // 8d base, +12d per lost scout (cap +48)
+    if (needScout && !ai.scoutId && !read.underThreat && S.day - (ai.scoutDay == null ? -99 : ai.scoutDay) >= scoutGap) {
       const dst = kTC || this.scoutTarget();
       const busy = u => u.tUnit || u.tBld ||
         (u.task && (u.task.type === 'raid' || u.task.type === 'move' || u.task.type === 'build'));
       const spares = S.units.filter(u => u.owner === 'A' && !Units.isNaval(u) && !busy(u));
       const soldiers = spares.filter(u => Units.isMilitary(u) && u.kind !== 'siegetower');
       const pick = soldiers.find(u => u.kind === 'rider' || u.kind === 'horsearcher')
-        || spares.find(u => Units.isVillager(u))
-        || (soldiers.length >= 3 ? soldiers[0] : null);
+        || ((ai.scoutFail || 0) < 2 ? spares.find(u => Units.isVillager(u)) : null)
+        // a proven-deadly road is soldier's work — one will go alone if he must
+        || (soldiers.length >= ((ai.scoutFail || 0) >= 2 ? 1 : 3) ? soldiers[0] : null);
       if (dst && pick) {
         const spot = MapGen.findNear(dst.x, dst.y, 5, (x, y) => Path.passable(x, y, 'A')) || dst;
         pick.task = { type: 'move', x: spot.x, y: spot.y };
         pick.anchor = { x: spot.x + 0.5, y: spot.y + 0.5 };
         Units.setPath(pick, spot.x, spot.y);
         ai.scoutId = pick.id;
+        ai.scoutDay = S.day;                                     // starts the between-scouts clock
       }
     }
 
