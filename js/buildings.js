@@ -377,8 +377,6 @@ const Bld = {
     if (!next) return { ok: false, why: 'No upgrades' };   // single-tier buildings (War Camp)
     if (b.construction || b.upgrading) return { ok: false, why: 'Busy' };
     if (b.wallUp > 0) return { ok: false, why: 'Reinforcing walls — Town Center busy' };
-    if (unitKey === 'villager' && b.owner === 'P' && S.plague && S.plague.until && S.day < S.plague.until)
-      return { ok: false, why: `Plague — village recovering (${Math.ceil(S.plague.until - S.day)}d)` };
     if (b.key !== 'tc') {
       const tc = this.tcOf(b.owner);
       if (!tc || tc.level < b.level + 1)
@@ -452,6 +450,8 @@ const Bld = {
     if (b.construction) return { ok: false, why: 'Under construction' };
     if (b.upgrading) return { ok: false, why: 'Upgrading — training paused' };
     if (b.wallUp > 0) return { ok: false, why: 'Reinforcing walls — Town Center busy' };
+    if (unitKey === 'villager' && b.owner === 'P' && S.plague && S.plague.until && S.day < S.plague.until)
+      return { ok: false, why: `Plague — village recovering (${Math.ceil(S.plague.until - S.day)}d)` };
     if (unitKey === 'villager' && b.owner === 'P' && S.plague && S.plague.until && S.day < S.plague.until)
       return { ok: false, why: `Plague — village recovering (${Math.ceil(S.plague.until - S.day)}d)` };
     if (spec.reqLevel && b.level < spec.reqLevel) return { ok: false, why: `Needs Lv ${spec.reqLevel}` };
