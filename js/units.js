@@ -601,7 +601,11 @@ const Units = {
       const u = S.units[i];
       u.animT += dt;
       if (u.cd > 0) u.cd -= dt;
-      if (u.burnT) u.burnT = Math.max(0, u.burnT - dt);   // dragonfire clings
+      if (u.burnT) {
+        u.burnT = Math.max(0, u.burnT - dt);   // dragonfire clings
+        u.path = null;                         // the doomed don't march — they fall where the fire found them
+        continue;
+      }
 
       // a siege tower parked against an enemy wall ferries one nearby soldier
       // per second up, over, and down the far side

@@ -887,29 +887,54 @@ const R = {
       }
     }
 
-    // the dragon's FIRE LINE: the ground itself burns where the breath swept —
-    // licking animated flames that die down to embers, then smoke, then nothing
+    // the dragon's FIRE LINE — the hero shot. Not scattered campfires: one
+    // CONNECTED wall of flame. Pass 1 lays a continuous charred, glowing ember
+    // bed under the whole line; pass 2 raises big overlapping tongues (a main
+    // tongue plus two offset side-tongues per point, all on their own beats),
+    // so the wall roars as a single blaze and dies down to embers and smoke.
     if (S.dragon && S.dragon.fire && S.dragon.fire.length) {
       const F = ART.PALETTE.fire, now = performance.now() / 1000;
+      // ---- pass 1: charred ground + ember glow, overlapping into one bed ----
       for (const fp of S.dragon.fire) {
         const fx = fp.x * TL, fy = fp.y * TL;
-        const life = Math.min(1, fp.ttl / 1.4);                 // fade out at the end
-        const lick = Math.sin(now * 12 + fp.seed) * 0.5 + 0.5;  // each flame licks on its own beat
-        const h = (5 + lick * 6) * life;
-        g.globalAlpha = 0.85 * life;
-        g.fillStyle = F[1]; g.fillRect(fx - 3, fy - h, 6, h);                       // outer tongue
-        g.fillStyle = F[2]; g.fillRect(fx - 2, fy - h * 0.72, 4, h * 0.72);         // hot middle
-        g.fillStyle = F[3] || '#ffd28a'; g.fillRect(fx - 1, fy - h * 0.4, 2, h * 0.4);  // white-hot core
-        // sparks spitting off the crest
-        if (lick > 0.72) { g.fillStyle = F[2]; g.fillRect(fx - 3 + ((fp.seed * 7) % 6), fy - h - 2 - lick * 2, 1.5, 1.5); }
-        // charred ground beneath the flame
-        g.globalAlpha = 0.5 * Math.min(1, fp.ttl);
-        g.fillStyle = '#171310'; g.fillRect(fx - 4, fy - 1, 8, 3);
-        // a smoke wisp as the flame gutters
-        if (fp.ttl < 2.4) {
-          g.globalAlpha = 0.22 * life;
+        const life = Math.min(1, fp.ttl / 1.4);
+        g.globalAlpha = 0.55 * Math.min(1, fp.ttl);
+        g.fillStyle = '#171310'; g.fillRect(fx - 9, fy - 2, 18, 6);           // scorched earth, fused with its neighbours
+        g.globalAlpha = 0.28 * life;
+        g.fillStyle = F[1];
+        g.beginPath(); g.ellipse(fx, fy + 1, 14, 6, 0, 0, Math.PI * 2); g.fill();   // the shared ember glow
+        g.globalAlpha = 0.5 * life;
+        g.fillStyle = F[0];                                                    // embers pulsing in the bed
+        g.fillRect(fx - 7 + ((fp.seed * 5) % 11), fy + 1 + ((fp.seed * 3) % 3), 2, 2);
+      }
+      // ---- pass 2: the wall of tongues, 2x tall, bases overlapping ----
+      for (const fp of S.dragon.fire) {
+        const fx = fp.x * TL, fy = fp.y * TL;
+        const life = Math.min(1, fp.ttl / 1.4);
+        const tongue = (ox, phMul, hMul, wMul) => {
+          const lick = Math.sin(now * (10 + phMul * 3) + fp.seed * phMul) * 0.5 + 0.5;
+          const h = (10 + lick * 12) * hMul * life;
+          const w = 12 * wMul;
+          if (h < 1) return;
+          g.globalAlpha = 0.9 * life;
+          g.fillStyle = F[1]; g.fillRect(fx + ox - w / 2, fy - h, w, h);                         // outer flame
+          g.fillStyle = F[2]; g.fillRect(fx + ox - w * 0.32, fy - h * 0.74, w * 0.64, h * 0.74); // hot middle
+          g.fillStyle = F[3] || '#ffd28a'; g.fillRect(fx + ox - w * 0.16, fy - h * 0.42, w * 0.32, h * 0.42);  // white-hot core
+          if (lick > 0.7) {                                                    // sparks off the crest
+            g.fillStyle = F[2];
+            g.fillRect(fx + ox - 2 + ((fp.seed * 7 + phMul * 13) % 5), fy - h - 3 - lick * 4, 2, 2);
+          }
+        };
+        tongue(0, 1, 1, 1);                    // the main tongue
+        tongue(-6, 2, 0.6, 0.7);               // side tongues knit the wall together
+        tongue(6, 3, 0.7, 0.7);
+        // rolling smoke as the blaze gutters
+        if (fp.ttl < 2.6) {
+          const life2 = Math.min(1, fp.ttl / 1.4);
+          g.globalAlpha = 0.24 * life2;
           g.fillStyle = '#4a4a52';
-          g.fillRect(fx - 1 + Math.sin(now * 2 + fp.seed) * 3, fy - h - 6, 3, 3);
+          g.fillRect(fp.x * TL - 2 + Math.sin(now * 2 + fp.seed) * 4, fp.y * TL - 24 - ((now * 6 + fp.seed) % 8), 4, 4);
+          g.fillRect(fp.x * TL + 2 + Math.sin(now * 1.6 + fp.seed * 2) * 5, fp.y * TL - 30 - ((now * 5 + fp.seed) % 6), 3, 3);
         }
       }
       g.globalAlpha = 1;
@@ -960,13 +985,41 @@ const R = {
       }
       // draw every unit into a TILE-sized box: 32px sheets render 1:1 (unchanged),
       // while the hi-res 64px villager sheet shows at the SAME size but twice as crisp
-      g.drawImage(this.unitSprite(u), ux, uy, TL, TL);
-      if (u.burnT > 0) {                                  // wreathed in dragonfire
-        const F = ART.PALETTE.fire, ph = ((u.animT * 9) | 0) % 2;
-        g.fillStyle = F[2]; g.fillRect(u.x * TL - 3, u.y * TL - 12 - ph, 3, 5);
-        g.fillStyle = F[1]; g.fillRect(u.x * TL + 1, u.y * TL - 10 + ph, 3, 4);
-        g.fillStyle = F[3]; g.fillRect(u.x * TL - 1, u.y * TL - 14 - ph, 2, 3);
-        g.fillStyle = F[0]; g.fillRect(u.x * TL - 4 + ph * 6, u.y * TL - 6, 2, 3);
+      if (u.burnT > 0) {
+        // DEATH BY DRAGONFIRE — a last animation before the ash lands:
+        // soldiers topple sideways ablaze; siege engines char, sag and
+        // collapse where they stand. Both are wreathed in half-transparent
+        // fire and fade out just before they vanish into ash.
+        const p = Math.min(1, Math.max(0, 1 - u.burnT / 1.6));       // 0 -> 1 across the burn
+        const fade = p > 0.72 ? Math.max(0, (1 - p) / 0.28) : 1;
+        const cx2 = u.x * TL, cy2 = u.y * TL;
+        const F = ART.PALETTE.fire;
+        const engine = Units.isSiege(u) || u.kind === 'ballista';
+        g.save();
+        g.globalAlpha = fade;
+        g.translate(cx2, cy2 + p * 4);
+        if (engine) g.scale(1, 1 - p * 0.35);                        // the timber frame sags and collapses
+        else g.rotate((u.id % 2 ? 1 : -1) * Math.pow(p, 1.4) * Math.PI / 2);   // toppling over
+        g.drawImage(this.unitSprite(u), -TL / 2, -TL / 2 - 4, TL, TL);
+        if (engine) {                                                // blackening timber
+          g.globalAlpha = fade * 0.6 * p;
+          g.fillStyle = '#14100c';
+          g.fillRect(-TL / 2 + 4, -TL / 2 - 2, TL - 8, TL - 4);
+        }
+        g.restore();
+        // the half-transparent fire wash over the body, and licking tongues
+        const lk = Math.sin(u.animT * 13 + u.id) * 0.5 + 0.5, ph = ((u.animT * 9) | 0) % 2;
+        g.globalAlpha = fade * 0.5;
+        g.fillStyle = F[1]; g.fillRect(cx2 - 8, cy2 - 12 + p * 6, 16, 14);
+        g.globalAlpha = fade * 0.9;
+        const hh = 8 + lk * 5;
+        g.fillStyle = F[1]; g.fillRect(cx2 - 5, cy2 - 4 - hh + p * 5, 4, hh);
+        g.fillStyle = F[2]; g.fillRect(cx2 + 1 - ph, cy2 - 2 - hh * 0.8 + p * 5, 3, hh * 0.8);
+        g.fillStyle = F[3] || '#ffd28a'; g.fillRect(cx2 - 1, cy2 - hh * 0.5 + p * 5, 2, hh * 0.5);
+        if (lk > 0.65) { g.fillStyle = F[2]; g.fillRect(cx2 - 3 + ph * 5, cy2 - hh - 7, 2, 2); }   // sparks
+        g.globalAlpha = 1;
+      } else {
+        g.drawImage(this.unitSprite(u), ux, uy, TL, TL);
       }
       if (u.cargo && u.cargo.length) {                 // one pip per soldier aboard
         g.fillStyle = u.owner === 'P' ? '#c0e8ff' : '#ffb0a0';
