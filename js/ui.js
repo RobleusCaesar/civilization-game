@@ -352,6 +352,25 @@ const UI = {
     R.clampCam();
   },
 
+  // SNAP: at phone zoom a thumb rarely lands square on the intended tile. When
+  // the tapped tile can't take the order, forgive a sliver of a miss — scan the
+  // eight neighbouring tiles for one that can, and take the one whose edge sits
+  // closest to the true tap point (within snapR of it).
+  snapNear(wx, wy, okFn, snapR = 0.45) {
+    const tx = Math.floor(wx), ty = Math.floor(wy);
+    let best = null, bd = snapR;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const x = tx + dx, y = ty + dy;
+      if (!MapGen.inB(x, y) || !okFn(x, y)) continue;
+      // distance from the tap point to the candidate tile's nearest point
+      const d = Math.hypot(wx - Math.max(x, Math.min(wx, x + 1)),
+                           wy - Math.max(y, Math.min(wy, y + 1)));
+      if (d < bd) { bd = d; best = { x, y }; }
+    }
+    return best;
+  },
+
   handleTap(sx, sy) {
     if (!S || S.over) return;
     const tile = R.screenToTile(sx, sy);
@@ -398,25 +417,41 @@ const UI = {
     }
 
     const explored = S.map.explored[MapGen.idx(tile.x, tile.y)];
-    // hit-test a unit near the tap point (only what we can actually see)
+    // hit-test a unit near the tap point (only what we can actually see).
+    // Sprites are drawn 4px ABOVE their logical position, so the comparison
+    // point is lifted to match what the player is actually aiming at.
+    const UOFF = 4 / CFG.TILE;
     let hitUnit = null, hd = 0.7;
     for (const u of S.units) {
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
-      const d = Math.hypot(u.x - wx, u.y - wy);
+      const d = Math.hypot(u.x - wx, u.y - UOFF - wy);
       const dd = d - (u.owner === 'P' ? 0.15 : 0); // bias towards own units
       if (dd < hd) { hd = dd; hitUnit = u; }
     }
+    // "dead-on" = the finger landed square on the sprite, not merely near it
+    const unitD = hitUnit ? Math.hypot(hitUnit.x - wx, hitUnit.y - UOFF - wy) : 9;
+    const deadOn = unitD <= 0.55;
     const hitBld = G.visibleAt(tile.x, tile.y) ? Bld.at(tile.x, tile.y) : null;
+    // near-miss lookup: the building a sliver away that the finger was probably
+    // aiming at — each caller states what kind of building would make sense, so
+    // a walk order beside a wall is never stolen by it
+    const bldNear = (r, ok) => {
+      const n = this.snapNear(wx, wy, (x, y) => {
+        const b2 = G.visibleAt(x, y) ? Bld.at(x, y) : null; return !!(b2 && ok(b2));
+      }, r);
+      return n ? Bld.at(n.x, n.y) : null;
+    };
     // When the tap lands on a building's footprint: the WORKER of that building
     // wins the tap — pointing at a villager on their plot means the villager
-    // (their panel carries the station's upgrade anyway). The building takes the
-    // tap only from a clear part of its plot, or once nobody is standing on it.
-    // Any OTHER unit passing by still yields to the building unless it's right
-    // under the finger, so a soldier strolling past a barracks doesn't steal
-    // the tap.
+    // (their panel carries the station's upgrade anyway). Same for the builder
+    // raising it. The building takes the tap only from a clear part of its
+    // plot, or once nobody is standing on it. Any OTHER unit passing by still
+    // yields to the building unless it's right under the finger, so a soldier
+    // strolling past a barracks doesn't steal the tap.
     if (hitBld && hitUnit) {
-      const worksHere = hitUnit.task && hitUnit.task.type === 'work' && hitUnit.task.id === hitBld.id;
-      if (!worksHere && Math.hypot(hitUnit.x - wx, hitUnit.y - wy) > 0.42) hitUnit = null;
+      const ht = hitUnit.task;
+      const worksHere = ht && (ht.type === 'work' || ht.type === 'build') && ht.id === hitBld.id;
+      if (!worksHere && !deadOn) hitUnit = null;
     }
     const hitBridge = (explored && Bld.bridgeAt) ? Bld.bridgeAt(tile.x, tile.y) : null;
 
@@ -426,32 +461,37 @@ const UI = {
       if (!ids.length) { this.deselect(); return; }
       this.sel.ids = ids;
       const fleet = ids.every(id => { const o = Units.get(id); return o && Units.isNaval(o); });
-      if (hitUnit && hitUnit.owner !== 'P') {
+      // taps are ORDERS while a party is selected: another own unit only steals
+      // the tap when hit dead-on (transports stay easy to board)
+      const tapUnit = (hitUnit && hitUnit.owner === 'P' && !deadOn && !Units.isTransport(hitUnit)) ? null : hitUnit;
+      if (tapUnit && tapUnit.owner !== 'P') {
         for (const id of ids) {
           const u = Units.get(id);
           if (Units.isTransport(u)) continue;   // troop hulls hold back — they don't charge with their cargo aboard
           // an explicit attack order: no guard leash yanking stragglers home mid-charge
-          u.task = { type: 'attack' }; u.tUnit = hitUnit.id; u.tBld = 0;
-          u.anchor = { x: hitUnit.x, y: hitUnit.y };
+          u.task = { type: 'attack' }; u.tUnit = tapUnit.id; u.tBld = 0;
+          u.anchor = { x: tapUnit.x, y: tapUnit.y };
           u.defend = false;   // direct command ends the guard stance
           u.assault = true;   // and commits them to press on once this target drops
         }
         this.toast(fleet ? '⚓ Fleet attacks!' : '⚔️ War party attacks!');
         return;
       }
-      if (hitUnit && hitUnit.owner === 'P' && Units.isTransport(hitUnit)) {
+      if (tapUnit && tapUnit.owner === 'P' && Units.isTransport(tapUnit)) {
         let n = 0;
         for (const id of ids) {
           const u = Units.get(id);
-          if (u && Units.isBoardable(u) && Units.orderBoard(u, hitUnit)) n++;
+          if (u && Units.isBoardable(u) && Units.orderBoard(u, tapUnit)) n++;
         }
-        this.toast(n ? `${n} boarding — the ${CFG.UNITS[hitUnit.kind].name} holds ${CFG.UNITS[hitUnit.kind].cap}`
+        this.toast(n ? `${n} boarding — the ${CFG.UNITS[tapUnit.kind].name} holds ${CFG.UNITS[tapUnit.kind].cap}`
           : 'Transport is full (or away from shore)', !n);
         return;
       }
-      if (hitBld && hitBld.owner === 'A') {
-        for (const id of ids) { const u = Units.get(id); if (u && !Units.isTransport(u)) { u.defend = false; u.assault = true; Units.orderAttackBuilding(u, hitBld); } }
-        this.toast('⚔️ ' + (fleet ? 'Fleet bombards ' : 'War party attacks ') + Bld.def(hitBld.key).name);
+      const foeBld = (hitBld && hitBld.owner === 'A') ? hitBld
+        : (!hitBld && !tapUnit ? bldNear(0.42, b2 => b2.owner === 'A') : null);
+      if (foeBld) {
+        for (const id of ids) { const u = Units.get(id); if (u && !Units.isTransport(u)) { u.defend = false; u.assault = true; Units.orderAttackBuilding(u, foeBld); } }
+        this.toast('⚔️ ' + (fleet ? 'Fleet bombards ' : 'War party attacks ') + Bld.def(foeBld.key).name);
         return;
       }
       if (hitBridge && hitBridge.owner !== 'P') {
@@ -459,7 +499,7 @@ const UI = {
         this.toast('⚔️ War party moves to sever the bridge');
         return;
       }
-      if (!hitUnit && !hitBld) {
+      if (!tapUnit && !hitBld) {
         if (!explored) { this.toast('Unexplored', true); return; }
         for (const id of ids) { const u = Units.get(id); if (u) u.defend = false; }
         Units.groupMove(ids, tile.x, tile.y);
@@ -472,25 +512,35 @@ const UI = {
     // orders for a selected player unit
     const sel = this.sel && this.sel.type === 'unit' ? Units.get(this.sel.id) : null;
     if (sel && sel.owner === 'P') {
-      if (hitUnit && hitUnit.owner !== 'P') {
-        sel.task = { type: 'attack' }; sel.tUnit = hitUnit.id; sel.tBld = 0;
-        sel.anchor = { x: hitUnit.x, y: hitUnit.y };
+      // taps are ORDERS while one of ours is selected: another own unit only
+      // steals the selection when hit dead-on (transports stay easy to board).
+      // And a resource under the finger outranks a bystander: an own unit merely
+      // overlapping the tapped resource tile doesn't steal a villager's order.
+      const tT = S.map.terrain[MapGen.idx(tile.x, tile.y)];
+      const gatherAim = Units.isVillager(sel) && explored && CFG.GATHER[tT];
+      const steal = deadOn && !(gatherAim && unitD > 0.32);
+      const tapUnit = (hitUnit && hitUnit.owner === 'P' && !steal && !Units.isTransport(hitUnit)) ? null : hitUnit;
+      if (tapUnit && tapUnit.owner !== 'P') {
+        sel.task = { type: 'attack' }; sel.tUnit = tapUnit.id; sel.tBld = 0;
+        sel.anchor = { x: tapUnit.x, y: tapUnit.y };
         sel.defend = false;   // taking direct control ends the guard stance
         sel.assault = true;   // press on to the next mark once this one falls
         this.toast('Attack!');
         return;
       }
-      if (hitUnit && hitUnit.owner === 'P' && Units.isTransport(hitUnit) &&
+      if (tapUnit && tapUnit.owner === 'P' && Units.isTransport(tapUnit) &&
           Units.isBoardable(sel)) {
-        if (Units.orderBoard(sel, hitUnit)) this.toast('Boarding the ' + CFG.UNITS[hitUnit.kind].name);
+        if (Units.orderBoard(sel, tapUnit)) this.toast('Boarding the ' + CFG.UNITS[tapUnit.kind].name);
         else this.toast('Transport is full (or away from shore)', true);
         return;
       }
-      if (hitBld && hitBld.owner === 'A' && Units.isMilitary(sel)) {
+      const foeBld = (hitBld && hitBld.owner === 'A') ? hitBld
+        : (!hitBld && !tapUnit && Units.isMilitary(sel) ? bldNear(0.42, b2 => b2.owner === 'A') : null);
+      if (foeBld && Units.isMilitary(sel)) {
         sel.defend = false;
         sel.assault = true;
-        Units.orderAttackBuilding(sel, hitBld);
-        this.toast('Attacking ' + Bld.def(hitBld.key).name);
+        Units.orderAttackBuilding(sel, foeBld);
+        this.toast('Attacking ' + Bld.def(foeBld.key).name);
         return;
       }
       if (hitBridge && hitBridge.owner !== 'P' && Units.isMilitary(sel)) {
@@ -499,31 +549,46 @@ const UI = {
         this.toast('Moving to sever the bridge');
         return;
       }
-      if (hitBld && hitBld.owner === 'P' && Units.isVillager(sel) &&
-          (hitBld.construction > 0 || hitBld.upgrading > 0 || hitBld.hp < hitBld.maxhp)) {
-        Units.assignBuild(sel, hitBld);
-        this.toast(hitBld.hp < hitBld.maxhp && !hitBld.construction && !hitBld.upgrading
+      // a build site / repairable / crewed building a sliver away counts too —
+      // but never when the finger actually landed on a resource or water tile
+      const ownBld = (hitBld && hitBld.owner === 'P') ? hitBld
+        : (!hitBld && !tapUnit && Units.isVillager(sel) && !gatherAim && tT !== T.WATER
+            ? bldNear(0.42, b2 => b2.owner === 'P' && (b2.construction > 0 || b2.upgrading > 0 ||
+                b2.hp < b2.maxhp || Bld.def(b2.key).needsWorker))
+            : null);
+      if (ownBld && ownBld.owner === 'P' && Units.isVillager(sel) &&
+          (ownBld.construction > 0 || ownBld.upgrading > 0 || ownBld.hp < ownBld.maxhp)) {
+        Units.assignBuild(sel, ownBld);
+        this.toast(ownBld.hp < ownBld.maxhp && !ownBld.construction && !ownBld.upgrading
           ? 'Villager sent to repair' : 'Villager sent to build');
         this.dispatchedVillager();   // job handed off — clear the selection like any other dispatch
         return;
       }
-      if (hitBld && hitBld.owner === 'P' && Units.isVillager(sel) &&
-          Bld.def(hitBld.key).needsWorker && !hitBld.construction) {
-        if (Bld.workersAssigned(hitBld) >= Bld.maxWorkers(hitBld)) {
-          this.toast(`${Bld.def(hitBld.key).name} is fully staffed (${Bld.maxWorkers(hitBld)})`, true);
+      if (ownBld && ownBld.owner === 'P' && Units.isVillager(sel) &&
+          Bld.def(ownBld.key).needsWorker && !ownBld.construction) {
+        if (Bld.workersAssigned(ownBld) >= Bld.maxWorkers(ownBld)) {
+          this.toast(`${Bld.def(ownBld.key).name} is fully staffed (${Bld.maxWorkers(ownBld)})`, true);
           return;
         }
-        sel.task = { type: 'work', id: hitBld.id }; sel.tUnit = 0; sel.tBld = 0;
-        Units.setPath(sel, hitBld.x, hitBld.y);
-        this.toast('Villager stationed at the ' + Bld.def(hitBld.key).name);
+        sel.task = { type: 'work', id: ownBld.id }; sel.tUnit = 0; sel.tBld = 0;
+        Units.setPath(sel, ownBld.x, ownBld.y);
+        this.toast('Villager stationed at the ' + Bld.def(ownBld.key).name);
         this.dispatchedVillager();   // stationed — no further orders needed
         return;
       }
-      if (!hitUnit && (!hitBld || hitBld.owner !== 'P')) {
+      if (!tapUnit && (!hitBld || hitBld.owner !== 'P')) {
         if (!explored) { this.toast('Unexplored', true); return; }
-        if (Units.isVillager(sel) && CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]]) {
-          if (Units.assignGather(sel, tile.x, tile.y)) { this.toast('Gathering ' + sel.task.res); this.dispatchedVillager(); }
-          return;
+        if (Units.isVillager(sel)) {
+          // the tapped tile itself, or — forgiving a sliver of a miss — the
+          // nearest gatherable neighbour the finger clearly aimed at
+          const gt = CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]] ? tile
+            : this.snapNear(wx, wy, (x, y) => S.map.explored[MapGen.idx(x, y)] &&
+                CFG.GATHER[S.map.terrain[MapGen.idx(x, y)]] && S.map.resAmount[MapGen.idx(x, y)] > 0);
+          if (gt) {
+            if (Units.assignGather(sel, gt.x, gt.y)) { this.toast('Gathering ' + sel.task.res); this.dispatchedVillager(); }
+            else this.toast('No clear ground to stand beside that resource', true);
+            return;
+          }
         }
         if (Units.isVillager(sel) && S.map.terrain[MapGen.idx(tile.x, tile.y)] === T.WATER) {
           // shore fishing — but only where the fish actually are
@@ -567,6 +632,12 @@ const UI = {
     if (hitUnit) { this.select('unit', hitUnit.id); return; }
     if (hitBld) { this.select('bld', hitBld.id); return; }
     if (hitBridge) { this.selectBridge(hitBridge.x, hitBridge.y); return; }
+    // near-miss: a tap a sliver off a building's plot still opens it (resource
+    // tiles keep their tap — the idle-villager convenience below wants them)
+    if (!(explored && CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]])) {
+      const nearB = bldNear(0.35, () => true);
+      if (nearB) { this.select('bld', nearB.id); return; }
+    }
 
     // convenience: tap a resource tile (or a jumping-fish shoal) with nothing
     // selected → send an idle villager
@@ -611,7 +682,7 @@ const UI = {
     let hit = null, hd = 0.9;
     for (const u of S.units) {
       if (u.owner !== 'P' || !G.visibleAt(u.x | 0, u.y | 0)) continue;
-      const d = Math.hypot(u.x - wx, u.y - wy);
+      const d = Math.hypot(u.x - wx, u.y - 4 / CFG.TILE - wy);   // sprites sit 4px above their logic pos
       if (d < hd) { hd = d; hit = u; }
     }
     // not on one of our army/fleet units → treat it as an ordinary tap so nothing is lost
