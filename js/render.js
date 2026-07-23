@@ -978,7 +978,7 @@ const R = {
     const units = S.units.slice().sort((a, b) => a.y - b.y);
     for (const u of units) {
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
-      const ux = u.x * TL - TL / 2, uy = u.y * TL - TL / 2 - 4;
+      const ux = u.x * TL - TL / 2, uy = u.y * TL - TL / 2 - CFG.SPRITE_LIFT;
       if (selIds && selIds.has(u.id)) {
         g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;
         g.beginPath(); g.ellipse(u.x * TL, u.y * TL + 10, 10, 5, 0, 0, Math.PI * 2); g.stroke();
@@ -996,7 +996,7 @@ const R = {
         g.translate(cx3, cy3 + p2 * 5);
         g.rotate((u.id % 2 ? 1 : -1) * Math.min(1, p2 * 1.5) * Math.PI / 2 +
           Math.sin(u.animT * 7) * 0.06 * (1 - p2));            // a last sway before the fall
-        g.drawImage(this.unitSprite(u), -TL / 2, -TL / 2 - 4, TL, TL);
+        g.drawImage(this.unitSprite(u), -TL / 2, -TL / 2 - CFG.SPRITE_LIFT, TL, TL);
         g.globalAlpha = fade2 * 0.35 * Math.min(1, p2 * 2);    // the sickness's green cast
         g.fillStyle = '#86b04a';
         g.fillRect(-TL / 2 + 6, -TL / 2, TL - 12, TL - 6);
@@ -1017,7 +1017,7 @@ const R = {
         g.translate(cx2, cy2 + p * 4);
         if (engine) g.scale(1, 1 - p * 0.35);                        // the timber frame sags and collapses
         else g.rotate((u.id % 2 ? 1 : -1) * Math.pow(p, 1.4) * Math.PI / 2);   // toppling over
-        g.drawImage(this.unitSprite(u), -TL / 2, -TL / 2 - 4, TL, TL);
+        g.drawImage(this.unitSprite(u), -TL / 2, -TL / 2 - CFG.SPRITE_LIFT, TL, TL);
         if (engine) {                                                // blackening timber
           g.globalAlpha = fade * 0.6 * p;
           g.fillStyle = '#14100c';

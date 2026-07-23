@@ -13,6 +13,9 @@ const T = {
 const CFG = {
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
   TILE: 32,
+  SPRITE_LIFT: 4,      // px a unit sprite draws ABOVE its logical position. Render (render.js)
+                       // and tap hit-testing (ui.js) BOTH read this — change it here only,
+                       // or taps land below what the player sees. See tests/tap-audit.mjs.
   W: 40,               // current map size — set per game from SIZES
   H: 40,
   SIZES: { medium: 38, large: 50, xlarge: 65 },   // ~25% bigger boards (was 30/40/52)

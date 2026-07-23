@@ -352,6 +352,11 @@ const UI = {
     R.clampCam();
   },
 
+  /* ============================ TAP HANDLING ============================
+     Under contract: tests/tap-audit.mjs (see CLAUDE.md, "Tap & selection
+     contract"). Run it after any change to the tap/selection/order flow —
+     hit radii, snapNear, sprite offsets, order gating — before shipping. */
+
   // SNAP: at phone zoom a thumb rarely lands square on the intended tile. When
   // the tapped tile can't take the order, forgive a sliver of a miss — scan the
   // eight neighbouring tiles for one that can, and take the one whose edge sits
@@ -418,9 +423,9 @@ const UI = {
 
     const explored = S.map.explored[MapGen.idx(tile.x, tile.y)];
     // hit-test a unit near the tap point (only what we can actually see).
-    // Sprites are drawn 4px ABOVE their logical position, so the comparison
-    // point is lifted to match what the player is actually aiming at.
-    const UOFF = 4 / CFG.TILE;
+    // Sprites are drawn SPRITE_LIFT px ABOVE their logical position, so the
+    // comparison point is lifted to match what the player is actually aiming at.
+    const UOFF = CFG.SPRITE_LIFT / CFG.TILE;
     let hitUnit = null, hd = 0.7;
     for (const u of S.units) {
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
@@ -682,7 +687,7 @@ const UI = {
     let hit = null, hd = 0.9;
     for (const u of S.units) {
       if (u.owner !== 'P' || !G.visibleAt(u.x | 0, u.y | 0)) continue;
-      const d = Math.hypot(u.x - wx, u.y - 4 / CFG.TILE - wy);   // sprites sit 4px above their logic pos
+      const d = Math.hypot(u.x - wx, u.y - CFG.SPRITE_LIFT / CFG.TILE - wy);   // sprites sit above their logic pos
       if (d < hd) { hd = d; hit = u; }
     }
     // not on one of our army/fleet units → treat it as an ordinary tap so nothing is lost
