@@ -529,26 +529,31 @@ const G = {
       Backend.autosaveNow('cadence');
   },
 
-  // does this water tile's whole BODY of water touch the map's edge? BFS
-  // through connected open water — a landlocked lake never reaches the rim,
-  // so nothing that lives in the deep ocean can surface there.
+  // does this water tile's whole BODY of water touch the map's edge? A
+  // landlocked lake never reaches the rim, so nothing that lives in the deep
+  // ocean can surface there. One multi-source flood from the rim, cached and
+  // recomputed at most once per day (sappers can reshape the water).
   waterReachesEdge(sx, sy) {
     const W = CFG.W, H = CFG.H, T_ = S.map.terrain;
     if (sx < 0 || sy < 0 || sx >= W || sy >= H || T_[sy * W + sx] !== T.WATER) return false;
-    const seen = new Uint8Array(W * H), q = [sy * W + sx];
-    seen[q[0]] = 1;
-    for (let h = 0; h < q.length; h++) {
-      const i = q[h], x = i % W, y = (i / W) | 0;
-      if (x === 0 || y === 0 || x === W - 1 || y === H - 1) return true;
-      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = x + ox, ny = y + oy;
-        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-        const j = ny * W + nx;
-        if (seen[j] || T_[j] !== T.WATER) continue;
-        seen[j] = 1; q.push(j);
+    if (this._ewDay !== S.day || !this._ew) {
+      this._ewDay = S.day;
+      const m = this._ew = new Uint8Array(W * H), q = [];
+      const seed = i => { if (T_[i] === T.WATER && !m[i]) { m[i] = 1; q.push(i); } };
+      for (let x = 0; x < W; x++) { seed(x); seed((H - 1) * W + x); }
+      for (let y = 0; y < H; y++) { seed(y * W); seed(y * W + W - 1); }
+      for (let h = 0; h < q.length; h++) {
+        const i = q[h], x = i % W, y = (i / W) | 0;
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + ox, ny = y + oy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const j = ny * W + nx;
+          if (m[j] || T_[j] !== T.WATER) continue;
+          m[j] = 1; q.push(j);
+        }
       }
     }
-    return false;
+    return !!this._ew[sy * W + sx];
   },
 
   // the kraken's three acts: rise under the boat, thrash (the fleet answers,
