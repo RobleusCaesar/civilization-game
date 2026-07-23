@@ -428,6 +428,18 @@ const Combat = {
         const e2 = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x, y: u.y };
         if (Math.hypot(e2.x + 0.5 - Bld.cx(b), e2.y + 0.5 - Bld.cy(b)) <= 1.6 + Bld.reach(b)) { u.tBld = b.id; return; }
       }
+      // ARRIVED at the objective and the field is bare — the chief pointed at
+      // ground that has since been razed (or was never anything). Standing in an
+      // empty meadow admiring rubble while the town lives was a real failure
+      // (a catapult train parked 9 tiles from the hall, doing nothing): swing to
+      // the real prize — the nearest standing tower first (the teeth), then any
+      // finished building, then the hall itself. The tBld branch marches us there.
+      if (Math.hypot(u.x - goal.x, u.y - goal.y) <= 3.5) {
+        const nb = this.nearestBuilding(u.x, u.y, 'P', bb => bb.key === 'tower' && Bld.done(bb))
+                || this.nearestBuilding(u.x, u.y, 'P', bb => Bld.done(bb));
+        if (nb && Math.hypot(Bld.cx(nb) - u.x, Bld.cy(nb) - u.y) <= 16) { u.tBld = nb.id; u.tUnit = 0; return; }
+        if (ptc) { u.tBld = ptc.id; u.tUnit = 0; return; }
+      }
       return;   // keep marching toward the objective
     }
     // 4) nothing left to hit — go home
