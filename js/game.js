@@ -203,19 +203,27 @@ const G = {
       console.log('[openings]', JSON.stringify(S.opening), '[draft]', JSON.stringify(S.draft));
     Units.spawnWild('deer', 8);
     Units.spawnWild('cow', 8);
-    // the kraken's clock: each village is owed at most one visit, on a day
-    // rolled from an early, middle, or late band — if its waters ever reach
-    // the map's edge and its boats are out
+    // SPECIAL EVENTS — one roll for the whole game (see CFG.SPECIALS): at most
+    // ONE event, and only a third of games get any. The rolled event's own
+    // machinery arms; everything else stays cold. Extensible: new events join
+    // the registry pool and gate on S.special the same way.
+    {
+      const pool = Object.entries(CFG.SPECIALS.pool)
+        .filter(([, modes]) => modes.includes(mode)).map(([k]) => k);
+      S.special = (pool.length && G.rand() < CFG.SPECIALS.chance)
+        ? pool[(G.rand() * pool.length) | 0] : null;
+    }
+    // the kraken's clock: a visit on a day rolled from an early, middle, or
+    // late band — when a fishing boat is out on water that reaches the map's
+    // edge (it comes up from the open ocean, never a landlocked lake)
     const kd = () => {
       const band = G.rand();
       return Math.round(band < 0.34 ? 20 + G.rand() * 30
         : band < 0.67 ? 60 + G.rand() * 40 : 100 + G.rand() * 50);
     };
-    S.kraken = { day: { P: kd(), A: kd() }, done: {}, ev: null };
-    // SPECIAL EVENT: the black dragon — Moderate/Hard only, most games never
-    // roll it, and it waits for a dark hour at the player's gates
-    S.dragon = { avail: mode !== 'calm' && G.rand() < CFG.DRAGON.chance,
-                 done: false, ev: null, ash: [] };
+    S.kraken = { avail: S.special === 'kraken', day: { P: kd(), A: kd() }, done: {}, ev: null };
+    // the black dragon waits for a dark hour at the player's gates
+    S.dragon = { avail: S.special === 'dragon', done: false, ev: null, ash: [], fire: [] };
 
     this.freeVis = false;   // every real game starts fogged; the title demo re-enables it
     this.vis = null;
@@ -466,19 +474,17 @@ const G = {
       if (pop > (S.stats.peakPop || 0)) S.stats.peakPop = pop;
     }
 
-    // the kraken stirs: only where open water touches the map's edge, only
-    // against a village with a fishing boat out, and only once per village
-    if (S.kraken && !S.kraken.ev) {
+    // the kraken stirs (SPECIAL EVENT): only under a boat whose OWN body of
+    // water reaches the map's edge — it rises from the open ocean, so a boat
+    // on a landlocked lake is safe forever. One visit per game, total.
+    if (S.kraken && S.kraken.avail && !S.kraken.ev) {
       for (const ow of ['P', 'A']) {
         if (S.kraken.done[ow] || S.day < S.kraken.day[ow]) continue;
-        let edge = false;
-        for (let x = 0; x < CFG.W && !edge; x++)
-          edge = S.map.terrain[MapGen.idx(x, 0)] === T.WATER || S.map.terrain[MapGen.idx(x, CFG.H - 1)] === T.WATER;
-        for (let y = 0; y < CFG.H && !edge; y++)
-          edge = S.map.terrain[MapGen.idx(0, y)] === T.WATER || S.map.terrain[MapGen.idx(CFG.W - 1, y)] === T.WATER;
-        if (!edge) { S.kraken.done[ow] = true; continue; }   // landlocked waters — safe forever
-        const boat = S.units.find(u => u.owner === ow && u.kind === 'fishboat');
-        if (!boat) continue;                                  // it waits for a boat
+        // the FIRST boat sailing edge-connected water is the one the deep takes
+        const boat = S.units.find(u => u.owner === ow && u.kind === 'fishboat' &&
+          this.waterReachesEdge(u.x | 0, u.y | 0));
+        if (!boat) continue;                                  // it waits for a boat on open water
+        S.kraken.avail = false;                               // ONE visit per game — the deep is spent
         S.kraken.done[ow] = true;
         S.kraken.ev = { x: boat.x, y: boat.y, boatId: boat.id, owner: ow, phase: 'rise', t: 0 };
         if (ow === 'P') this.log('🐙 Something vast stirs beneath the water…', true);
@@ -521,6 +527,28 @@ const G = {
         !(window.Screens && Screens._demo) &&
         S.day - (Backend._lastAutosaveDay || 0) >= Backend.autosaveDays)
       Backend.autosaveNow('cadence');
+  },
+
+  // does this water tile's whole BODY of water touch the map's edge? BFS
+  // through connected open water — a landlocked lake never reaches the rim,
+  // so nothing that lives in the deep ocean can surface there.
+  waterReachesEdge(sx, sy) {
+    const W = CFG.W, H = CFG.H, T_ = S.map.terrain;
+    if (sx < 0 || sy < 0 || sx >= W || sy >= H || T_[sy * W + sx] !== T.WATER) return false;
+    const seen = new Uint8Array(W * H), q = [sy * W + sx];
+    seen[q[0]] = 1;
+    for (let h = 0; h < q.length; h++) {
+      const i = q[h], x = i % W, y = (i / W) | 0;
+      if (x === 0 || y === 0 || x === W - 1 || y === H - 1) return true;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + ox, ny = y + oy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const j = ny * W + nx;
+        if (seen[j] || T_[j] !== T.WATER) continue;
+        seen[j] = 1; q.push(j);
+      }
+    }
+    return false;
   },
 
   // the kraken's three acts: rise under the boat, thrash (the fleet answers,
@@ -597,6 +625,10 @@ const G = {
       D.ash[i].ttl -= dt;
       if (D.ash[i].ttl <= 0) D.ash.splice(i, 1);
     }
+    for (let i = (D.fire || []).length - 1; i >= 0; i--) {  // the fire line burns down to embers
+      D.fire[i].ttl -= dt;
+      if (D.fire[i].ttl <= 0) D.fire.splice(i, 1);
+    }
     const ev = D.ev;
     if (!ev) return;
     ev.t += dt;
@@ -604,12 +636,21 @@ const G = {
       ev.x += ev.dir * 9 * dt;
       ev.y += (ev.ty - ev.y) * Math.min(1, dt * 1.6);
       if ((ev.dir > 0 && ev.x >= ev.tx - 2.5) || (ev.dir < 0 && ev.x <= ev.tx + 2.5)) {
-        ev.phase = 'burn'; ev.t = 0;
+        ev.phase = 'burn'; ev.t = 0; ev.fireT = 0;
         for (const id of ev.victims) { const u = Units.get(id); if (u) u.burnT = 1.6; }
         this.log('🐉 The dragon banks and BREATHES — the enemy line is a wall of fire!', true, 5200);
       }
     } else if (ev.phase === 'burn') {
       ev.x += ev.dir * 3.2 * dt;                  // a slow strafe along the line
+      // the breath leaves a LINE OF FIRE on the ground beneath the strafe —
+      // flames that keep burning after the dragon has moved on
+      ev.fireT = (ev.fireT || 0) - dt;
+      if (ev.fireT <= 0 && (D.fire || (D.fire = [])).length < 60) {
+        ev.fireT = 0.09;
+        D.fire.push({ x: ev.x + ev.dir * 2.1 + (G.rand() - 0.5) * 0.5,
+                      y: ev.ty + (G.rand() - 0.5) * 0.7,
+                      ttl: 4.5 + G.rand() * 2.5, seed: (G.rand() * 100) | 0 });
+      }
       if (ev.t > 1.7) {
         for (const id of ev.victims) {
           const u = Units.get(id);
@@ -685,6 +726,15 @@ const G = {
     if (data.ai && !data.ai.persona) data.ai.persona = 'homesteader';   // pre-persona save: the classic temperament
     if (!data.kraken) data.kraken = { day: { P: 60, A: 90 }, done: {}, ev: null };   // older saves owe the deep a visit too
     if (!data.dragon) data.dragon = { avail: false, done: true, ev: null, ash: [] };  // legacy runs: no dragon this time
+    if (!data.dragon.fire) data.dragon.fire = [];
+    // legacy saves predate the one-event registry: derive S.special from what
+    // the old flags had armed (dragon first — it was the rarer roll)
+    if (data.special === undefined) {
+      data.special = data.dragon.avail && !data.dragon.done ? 'dragon'
+        : (data.kraken.ev || !(data.kraken.done || {}).P) ? 'kraken' : null;
+    }
+    if (data.kraken.avail === undefined)
+      data.kraken.avail = data.special === 'kraken' && !data.kraken.ev;
     if (!data.origin) data.origin = 'An old tribe, from before the tellers kept count.';
     if (data.ai && !data.ai.opening) data.ai.opening = { bias: null, fired: false, until: 0 };
     if (!data.boons) data.boons = { P: {}, A: {} };   // pre-cards save: no boons in play

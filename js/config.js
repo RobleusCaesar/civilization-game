@@ -450,12 +450,18 @@ const CFG = {
     mult: { calm: 0.5, moderate: 1.0, hard: 1.75 },
   },
 
-  /* SPECIAL EVENTS — rare, once-a-game spectacles (the kraken shares this
-     category; its tuning lives with the kraken code in game.js). The black
-     dragon: Moderate/Hard only, roughly 1 game in 3.5 rolls the chance at
-     all, and it only spends it when an enemy army masses at the player's
-     gates with the odds stacked against them. */
-  DRAGON: { chance: 0.28, minDay: 25, foesMin: 6, radius: 9 },
+  /* SPECIAL EVENTS — rare spectacles. A game rolls AT MOST ONE special event,
+     and only `chance` of games roll any at all: when something vast finally
+     surfaces, it stays special. `pool` maps each event to the modes it can
+     appear in; the roll happens once in G.newGame (seeded).
+     TO ADD A NEW EVENT: (1) register it here (plus its own tuning const like
+     DRAGON below), (2) init its state in G.newGame gated on S.special === key
+     (and a legacy default in G.loadJSON), (3) trigger + drive it with a tick
+     fn from G.update, (4) give it Sprites.misc.<key> — an ARRAY of frames the
+     renderer cycles (4+ frames reads smooth), drawn oversized like the
+     kraken/dragon, (5) score it in CFG.SCORE if it's worth points. */
+  SPECIALS: { chance: 0.33, pool: { kraken: ['calm', 'moderate', 'hard'], dragon: ['moderate', 'hard'] } },
+  DRAGON: { minDay: 25, foesMin: 6, radius: 9 },
 
   /* Difficulty gates the rival's APPETITE and SCALE, never its decision
      quality — the perception → posture → utility → tactics brain runs at

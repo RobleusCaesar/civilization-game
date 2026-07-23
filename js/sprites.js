@@ -2088,56 +2088,158 @@ const Sprites = {
   Sprites.unit.ballista = ballistaSheet();
   Sprites.unit.siegetower = siegetowerSheet();
 
-  // the kraken — a once-a-game terror. Two writhing frames, drawn big.
-  Sprites.misc.kraken = [0, 1].map(f => ART.outline(tile(p => {
-    const t = f ? 1 : 0;
-    p(1, 12, 3, 1, AP.water[4]); p(12, 13, 3, 1, AP.water[4]);      // churned foam
-    // tentacles, curling opposite ways each frame
-    p(1, 8 - t, 1, 5, AP.ink[1]); p(1, 7 - t, 1, 1, AP.teal[1]);
-    p(3, 6 + t, 1, 7, AP.ink[1]); p(3, 5 + t, 1, 1, AP.teal[1]);
-    p(12, 6 - t, 1, 7, AP.ink[1]); p(12, 5 - t, 1, 1, AP.teal[1]);
-    p(14, 8 + t, 1, 5, AP.ink[1]); p(14, 7 + t, 1, 1, AP.teal[1]);
-    p(5, 4 + t, 1, 4, AP.ink[1]); p(10, 4 - t, 1, 4, AP.ink[1]);    // inner arms
-    p(1, 10, 1, 1, AP.teal[2]); p(3, 9, 1, 1, AP.teal[2]);          // suckers
-    p(12, 9, 1, 1, AP.teal[2]); p(14, 10, 1, 1, AP.teal[2]);
-    ART.shadedCircle(p, 8, 9, 3, [AP.ink[0], AP.ink[1], AP.teal[0], AP.teal[1]], 2);  // mantle
-    p(6, 8, 1, 1, AP.fire[2]); p(9, 8, 1, 1, AP.fire[2]);           // burning eyes
-    p(8, 11, 1, 1, AP.bone[2]);                                     // beak
-  })));
+  /* ---- SPECIAL EVENT SPRITES ----
+     Each event owns Sprites.misc.<key>: an ARRAY of frames the renderer
+     cycles (4 frames reads smooth at ~5-6 fps), drawn on an oversized canvas
+     at native pixel scale. New events should follow the same pattern. */
 
-  // the black dragon (SPECIAL EVENT — see G.maybeDragon): a wide dark
-  // silhouette, wings beating between two frames, one burning eye. 96x48 px
-  // = 3x1.5 tiles when it sweeps over an army.
-  Sprites.misc.dragon = [0, 1].map(f => {
-    const c = mk(96, 48), g2 = c.getContext('2d');
-    const p = (x, y, w, h, col) => { g2.fillStyle = col; g2.fillRect(x * 2, y * 2, (w || 1) * 2, (h || 1) * 2); };
-    const B = AP.ink[1], D = AP.ink[0], HL = AP.pelt[1];
-    // tail, kinked, with a spade tip
-    p(2, 15 - f, 6, 1, B); p(7, 14 - f, 5, 1, B); p(1, 14 - f, 1, 1, D); p(1, 13 - f, 1, 1, D);
-    // long body, belly catching a little light
-    p(12, 12, 18, 4, B); p(12, 15, 18, 1, D); p(14, 12, 14, 1, HL);
-    // spine ridges
-    for (let i = 0; i < 5; i++) p(14 + i * 3, 11, 1, 1, D);
-    // neck rising to the head
-    p(30, 10, 4, 4, B); p(34, 8, 4, 4, B);
-    // head: brow, jaw, horns swept back, ember eye
-    p(38, 8, 6, 3, B); p(42, 11, 3, 1, D);                       // muzzle + jaw
-    p(37, 6, 2, 2, D); p(39, 5, 2, 2, D);                        // horns
-    p(41, 9, 1, 1, AP.fire[2]);                                  // the eye
-    p(44, 10, 1, 1, AP.fire[1]);                                 // heat at the nostril
-    // wings: great bat sails, up-beat and down-beat
-    if (f === 0) {
-      p(16, 2, 12, 2, B); p(14, 1, 4, 2, D);                     // leading edge up
-      for (let i = 0; i < 5; i++) p(17 + i * 2, 4, 1, 8 - i, B); // membrane fingers
-      p(27, 4, 1, 3, B);
-      p(20, 3, 8, 3, B); p(24, 6, 5, 2, B);                      // membrane fill
-    } else {
-      p(16, 18, 12, 2, B); p(14, 20, 4, 2, D);                   // swept down
-      for (let i = 0; i < 5; i++) p(17 + i * 2, 16 - (4 - i), 1, 6, B);
-      p(20, 16, 8, 3, B); p(24, 14, 5, 2, B);
+  // THE KRAKEN — 96×96, four writhing frames. Eight tapered tentacles curl on
+  // their own phases around a mottled mantle with burning eyes; churned foam
+  // rings the waterline. Triple the pixels of the old 32px terror.
+  Sprites.misc.kraken = [0, 1, 2, 3].map(f => {
+    const c = mk(96, 96), g2 = c.getContext('2d');
+    const ph = f * Math.PI / 2;
+    const disc = (x, y, r, col) => { g2.fillStyle = col; for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (dx * dx + dy * dy <= r * r) g2.fillRect((x + dx) | 0, (y + dy) | 0, 1, 1); };
+    const px = (x, y, col) => { g2.fillStyle = col; g2.fillRect(x | 0, y | 0, 1, 1); };
+    const INK0 = AP.ink[0], INK1 = AP.ink[1];
+    // a tentacle: tapered discs along a curling S-path; each arm sways and
+    // tightens its curl on its own phase so the whole beast writhes
+    const tent = (bx, by, a0, len, curlDir, phOff, front) => {
+      let x = bx, y = by;
+      let a = a0 + 0.22 * Math.sin(ph + phOff);
+      const body = front ? INK1 : INK0;
+      for (let s = 0; s < len; s++) {
+        const t = s / len;
+        // rise first, then curl hard at the tip — an arm reaching up and coiling
+        a += curlDir * (0.02 + 0.30 * t * t) * (1 + 0.4 * Math.sin(ph + phOff + t * 2.5));
+        x += Math.cos(a) * 1.8; y += Math.sin(a) * 1.8;
+        const r = Math.max(1, Math.round(4 * (1 - t * 0.78)));
+        disc(x, y, r, body);
+        if (front && r >= 2 && s % 4 === 1)                    // wet sheen along the outer curve
+          px(x + Math.cos(a - Math.PI / 2) * r, y + Math.sin(a - Math.PI / 2) * r, AP.teal[1]);
+        if (front && r >= 2 && s % 4 === 3)                    // suckers down the inner face
+          px(x + Math.cos(a + Math.PI / 2) * (r - 0.4), y + Math.sin(a + Math.PI / 2) * (r - 0.4), AP.teal[2]);
+      }
+      disc(x, y, 1, front ? AP.teal[1] : INK1);                // curled glowing tip
+    };
+    const my = 50 + (f === 1 ? 1 : f === 3 ? -1 : 0);          // the mantle breathes
+    // four BACK arms first (darker, rearing high behind the mantle)
+    tent(38, 58, -1.95, 20, -1, 0.9, false);
+    tent(58, 58, -1.2, 20, 1, 2.1, false);
+    tent(30, 62, -2.3, 17, -1, 3.4, false);
+    tent(66, 62, -0.85, 17, 1, 4.6, false);
+    // the mantle: layered dome, a cold sheen high on the crown, mottled hide
+    disc(48, my, 15, INK0);
+    disc(48, my - 1, 13, INK1);
+    disc(44, my - 8, 5, AP.teal[0]);
+    px(42, my - 10, AP.teal[1]); px(45, my - 11, AP.teal[1]);   // wet glints on the crown
+    for (const [sx2, sy2] of [[40, my + 5], [55, my + 3], [50, my + 8], [57, my - 4]])
+      disc(sx2, sy2, 1, INK0);                                  // mottled spots
+    // burning eyes under a heavy brow, and the bone beak
+    g2.fillStyle = INK0; g2.fillRect(38, my - 3, 8, 2); g2.fillRect(50, my - 3, 8, 2);
+    g2.fillStyle = AP.fire[1]; g2.fillRect(39, my - 1, 5, 4); g2.fillRect(52, my - 1, 5, 4);
+    g2.fillStyle = AP.fire[2]; g2.fillRect(40, my, 3, 2); g2.fillRect(53, my, 3, 2);
+    g2.fillStyle = AP.bone[2]; g2.fillRect(46, my + 9, 4, 3); g2.fillRect(47, my + 12, 2, 2);
+    g2.fillStyle = INK0; g2.fillRect(47, my + 11, 2, 1);        // the beak's dark hinge
+    // four FRONT arms reaching up and coiling before the mantle
+    tent(34, 68, -2.1, 24, -1, 0.0, true);
+    tent(62, 68, -1.05, 24, 1, 1.6, true);
+    tent(42, 72, -1.8, 20, -1, 2.8, true);
+    tent(54, 72, -1.35, 20, 1, 4.2, true);
+    // churned foam ringing the waterline, shifting each frame
+    g2.fillStyle = AP.water[4];
+    for (let i = 0; i < 7; i++) {
+      const fx2 = 18 + i * 10 + ((f + i) % 3) * 2, fy2 = 76 + ((i * 7 + f) % 2);
+      g2.fillRect(fx2, fy2, 5 + (i % 2) * 3, 2);
     }
-    // hind leg tucked
-    p(26, 16, 2, 2, D);
+    for (let i = 0; i < 4; i++) px(26 + i * 15 + (f * 3) % 6, 73, '#dceef4');
+    return ART.outline(c);
+  });
+
+  // THE BLACK DRAGON — 192×96 (a 96×48 grid at 2px), four wing-beat frames
+  // (up → mid → down → mid). A sinuous spade-tipped tail, scaled body with
+  // belly plates and spine ridges, swept horns, ember eye, jaws already hot —
+  // and great bat sails with membrane fingers and red sheen. Double the
+  // canvas and four times the frames of the old sprite.
+  Sprites.misc.dragon = [0, 1, 2, 3].map(f => {
+    const c = mk(192, 96), g2 = c.getContext('2d');
+    const p = (x, y, w, h, col) => { g2.fillStyle = col; g2.fillRect((x * 2) | 0, (y * 2) | 0, ((w || 1) * 2) | 0, ((h || 1) * 2) | 0); };
+    const B = AP.ink[1], D = AP.ink[0], HL = AP.pelt[1];
+    const bob = f === 0 ? 1 : f === 2 ? -1 : 0;                 // body sinks as the wings lift
+    const BY = 24 + bob;                                        // body top line
+    const tw = f * Math.PI / 2;
+    // wing tips per frame: up / mid / down / mid — a full smooth beat
+    const tip = [[60, -6], [68, 10], [60, 42], [68, 20]][f];
+    const farTip = [[52, 36], [55, 20], [52, 6], [55, 16]][f];  // the far wing, shorter, beats in counterpoint
+    const wingRoot = 34, shX = 48, shY = BY - 1;
+    // a wing as a filled sail: scanline between the leading edge (shoulder->tip)
+    // and the trailing edge (body root->tip), whichever way the beat folds it
+    const wing = (tx, ty, main, faded) => {
+      const x0 = Math.min(wingRoot, tx), x1 = Math.max(wingRoot, tx, shX);
+      for (let xx = x0; xx <= x1; xx++) {
+        const kL = (xx - shX) / (tx - shX), kT = (xx - wingRoot) / (tx - wingRoot);
+        if (kT < 0 || kT > 1) continue;
+        const trailY = BY + 1 + (ty + 6 - (BY + 1)) * Math.pow(Math.max(0, kT), 1.25);
+        const leadY = kL >= 0 && kL <= 1 ? shY + (ty - shY) * kL : BY - 1;
+        const y0 = Math.min(leadY, trailY), y1 = Math.max(leadY, trailY);
+        p(xx, y0, 1, Math.max(1, y1 - y0), faded ? D : B);
+        if (!faded && kL >= 0 && kL <= 1) p(xx, leadY - 1, 1, 1.5, B);       // thick leading edge
+      }
+      if (!faded) {
+        for (const ftK of [0.35, 0.6, 0.82, 1]) {               // finger bones through the sail
+          const fx2 = shX + (tx - shX) * ftK, fy2 = shY + (ty - shY) * ftK;
+          const kT = (fx2 - wingRoot) / (tx - wingRoot);
+          const trailY = BY + 1 + (ty + 6 - (BY + 1)) * Math.pow(Math.max(0, kT), 1.25);
+          const y0 = Math.min(fy2, trailY), y1 = Math.max(fy2, trailY);
+          p(fx2, y0, 1, Math.max(1, y1 - y0), D);
+        }
+        for (let k = 2; k <= 8; k++) {                          // blood-sheen veins in the membrane
+          const fx2 = shX + (tx - shX) * (k / 10), fy2 = shY + (ty - shY) * (k / 10);
+          if ((k % 3) === 2) p(fx2, (fy2 + BY) / 2, 1, 1, AP.red[0]);
+        }
+      }
+    };
+    // ---- FAR WING first, behind everything ----
+    wing(farTip[0], farTip[1], D, true);
+    // ---- tail: a sinuous curve out to a spade tip, lashing with the beat ----
+    for (let i = 0; i < 26; i++) {
+      const tx2 = 30 - i, yy = BY + 3 + Math.sin(i * 0.22 + tw) * (2 + i * 0.16);
+      const th = Math.max(1, 3 - (i / 10) | 0);
+      p(tx2, yy, 1, th, i % 5 === 4 ? D : B);
+      if (i % 6 === 2) p(tx2, yy - 1, 1, 1, D);                 // dorsal barbs down the tail
+    }
+    const spY = BY + 3 + Math.sin(26 * 0.22 + tw) * (2 + 26 * 0.16);
+    p(3, spY - 2, 2, 5, B); p(2, spY - 1, 1, 3, B); p(4, spY, 1, 1, D);   // the spade
+    // ---- body: deep chest, scale rows, lighter belly plates ----
+    p(30, BY, 32, 7, B);
+    p(32, BY - 1, 26, 1, B);                                    // shoulder hump
+    for (let i = 0; i < 8; i++) p(33 + i * 4, BY + 1 + (i % 2), 2, 1, D);      // scale rows
+    for (let i = 0; i < 7; i++) p(34 + i * 4, BY + 3 + ((i + 1) % 2), 2, 1, D);
+    p(31, BY + 6, 30, 1, HL);                                   // belly plates catching light
+    for (let i = 0; i < 10; i++) p(32 + i * 3, BY + 6, 1, 1, '#8a7050');
+    for (let i = 0; i < 6; i++) p(33 + i * 5, BY - 2, 1, 1, D); // spine ridges
+    // ---- legs tucked for flight, claws trailing ----
+    p(40, BY + 7, 3, 2, D); p(39, BY + 9, 1, 1, D); p(42, BY + 9, 1, 1, D);
+    p(54, BY + 7, 3, 2, D); p(53, BY + 9, 1, 1, D); p(56, BY + 9, 1, 1, D);
+    // ---- neck: a thick smooth S rising to the head ----
+    for (let i = 0; i < 12; i++) {
+      const nx = 61 + i * 1.6, ny = BY - 1 - i * 0.85;
+      p(nx, ny, 3.5, 4, B);
+    }
+    for (let i = 0; i < 4; i++) p(63 + i * 4, BY - 3.4 - i * 2, 1, 1, D);   // neck ridge
+    // ---- head: brow, hot jaws, swept horns, ember eye ----
+    p(79, BY - 13, 8, 4, B);                                    // skull + heavy brow
+    p(86, BY - 12, 5, 2, B);                                    // muzzle
+    p(86, BY - 9.5, 4, 1.5, B);                                 // lower jaw, slightly open
+    p(86.5, BY - 10.2, 2.5, 1, AP.fire[1]);                     // heat inside the jaws
+    p(78, BY - 15, 2, 3, D); p(81, BY - 17, 2, 5, D);           // horns swept back
+    p(76, BY - 14, 2, 2, D);
+    p(84, BY - 12, 1.5, 1.5, AP.fire[2]);                       // the ember eye
+    p(84, BY - 12, 1, 1, AP.fire[3] || '#ffd28a');
+    p(90, BY - 11.5, 1, 1, AP.fire[1]);                         // nostril heat
+    // ---- NEAR WING over the body ----
+    wing(tip[0], tip[1], B, false);
+    p(shX - 2, shY - 2, 5, 4, B);                               // the wing shoulder
     return ART.outline(c);
   });
 

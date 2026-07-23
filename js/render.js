@@ -887,6 +887,33 @@ const R = {
       }
     }
 
+    // the dragon's FIRE LINE: the ground itself burns where the breath swept —
+    // licking animated flames that die down to embers, then smoke, then nothing
+    if (S.dragon && S.dragon.fire && S.dragon.fire.length) {
+      const F = ART.PALETTE.fire, now = performance.now() / 1000;
+      for (const fp of S.dragon.fire) {
+        const fx = fp.x * TL, fy = fp.y * TL;
+        const life = Math.min(1, fp.ttl / 1.4);                 // fade out at the end
+        const lick = Math.sin(now * 12 + fp.seed) * 0.5 + 0.5;  // each flame licks on its own beat
+        const h = (5 + lick * 6) * life;
+        g.globalAlpha = 0.85 * life;
+        g.fillStyle = F[1]; g.fillRect(fx - 3, fy - h, 6, h);                       // outer tongue
+        g.fillStyle = F[2]; g.fillRect(fx - 2, fy - h * 0.72, 4, h * 0.72);         // hot middle
+        g.fillStyle = F[3] || '#ffd28a'; g.fillRect(fx - 1, fy - h * 0.4, 2, h * 0.4);  // white-hot core
+        // sparks spitting off the crest
+        if (lick > 0.72) { g.fillStyle = F[2]; g.fillRect(fx - 3 + ((fp.seed * 7) % 6), fy - h - 2 - lick * 2, 1.5, 1.5); }
+        // charred ground beneath the flame
+        g.globalAlpha = 0.5 * Math.min(1, fp.ttl);
+        g.fillStyle = '#171310'; g.fillRect(fx - 4, fy - 1, 8, 3);
+        // a smoke wisp as the flame gutters
+        if (fp.ttl < 2.4) {
+          g.globalAlpha = 0.22 * life;
+          g.fillStyle = '#4a4a52';
+          g.fillRect(fx - 1 + Math.sin(now * 2 + fp.seed) * 3, fy - h - 6, 3, 3);
+        }
+      }
+      g.globalAlpha = 1;
+    }
     // dragonfire ash: what is left of an army, blowing away
     if (S.dragon && S.dragon.ash) for (const a of S.dragon.ash) {
       const al = Math.min(1, a.ttl / 1.4);
@@ -980,16 +1007,21 @@ const R = {
       if (G.visibleAt(ev.x | 0, ev.y | 0)) {
         const k = ev.phase === 'rise' ? Math.min(1, ev.t / 1.0)
           : ev.phase === 'sink' ? Math.max(0, 1 - ev.t / 1.2) : 1;
-        const fr = Sprites.misc.kraken[((ev.t * 3) | 0) % 2];
-        const size = TL * 1.7;
+        const fr = Sprites.misc.kraken[((ev.t * 5) | 0) % 4];
+        const size = TL * 3;                                   // 96px native — pixel-perfect at zoom 1
         g.globalAlpha = k;
-        g.drawImage(fr, ev.x * TL - size / 2, ev.y * TL - size / 2 - k * 5, size, size);
+        g.drawImage(fr, ev.x * TL - size / 2, ev.y * TL - size / 2 - k * 6, size, size);
         g.globalAlpha = 1;
         g.strokeStyle = 'rgba(235,244,248,' + (0.4 * k).toFixed(2) + ')';
         g.lineWidth = 1.5;
         g.beginPath();
-        g.ellipse(ev.x * TL, ev.y * TL + 9, 16 + Math.sin(ev.t * 5) * 4, 7, 0, 0, Math.PI * 2);
+        g.ellipse(ev.x * TL, ev.y * TL + 12, 24 + Math.sin(ev.t * 5) * 5, 9, 0, 0, Math.PI * 2);
         g.stroke();
+        g.beginPath();                                          // a second, wider churn ring
+        g.globalAlpha = 0.5 * k;
+        g.ellipse(ev.x * TL, ev.y * TL + 12, 34 + Math.sin(ev.t * 4 + 1.5) * 6, 12, 0, 0, Math.PI * 2);
+        g.stroke();
+        g.globalAlpha = 1;
       }
     }
 
@@ -1371,31 +1403,31 @@ const R = {
     if (S.dragon && S.dragon.ev) {
       const ev = S.dragon.ev;
       const dx2 = ev.x * TL, dy2 = ev.y * TL;
-      const spr = Sprites.misc.dragon[((ev.t * 5) | 0) % 2];
+      const spr = Sprites.misc.dragon[((ev.t * 6) | 0) % 4];   // four-beat wing cycle
       // its shadow races along the ground below
       g.fillStyle = 'rgba(10,8,5,0.30)';
-      g.beginPath(); g.ellipse(dx2, dy2 + 8, 22, 7, 0, 0, Math.PI * 2); g.fill();
-      // fire breath during the strafe: a cone from the jaws to the ground line
+      g.beginPath(); g.ellipse(dx2, dy2 + 8, 32, 9, 0, 0, Math.PI * 2); g.fill();
+      // fire breath during the strafe: a roaring cone from the jaws to the ground
       if (ev.phase === 'burn') {
         const F = ART.PALETTE.fire;
-        const mx = dx2 + ev.dir * 26, my = dy2 - 26;
-        for (let i = 0; i < 12; i++) {
-          const t2 = i / 12;
-          const bx2 = mx + ev.dir * t2 * 18 + Math.sin(ev.t * 22 + i * 2.4) * 3;
-          const by2 = my + t2 * 34;
-          const sz = 2 + t2 * 6;
-          g.fillStyle = F[t2 < 0.35 ? 3 : t2 < 0.7 ? 2 : 1];
+        const mx = dx2 + ev.dir * 72, my = dy2 - 52;           // the jaws (see sprite head position)
+        for (let i = 0; i < 18; i++) {
+          const t2 = i / 18;
+          const bx2 = mx + ev.dir * t2 * 26 + Math.sin(ev.t * 22 + i * 2.4) * (2 + t2 * 4);
+          const by2 = my + t2 * 58;
+          const sz = 2.5 + t2 * 8;
+          g.fillStyle = F[t2 < 0.3 ? 3 : t2 < 0.65 ? 2 : 1];
           g.fillRect(bx2 - sz / 2, by2 - sz / 2, sz, sz);
         }
-        for (let i = 0; i < 5; i++) {                     // embers skittering on the ground
+        for (let i = 0; i < 6; i++) {                     // embers skittering at the impact
           g.fillStyle = F[i % 2 ? 0 : 1];
-          g.fillRect(dx2 + ev.dir * (10 + i * 9) + Math.sin(ev.t * 17 + i * 3) * 4, dy2 + 6 + (i % 3), 3, 3);
+          g.fillRect(dx2 + ev.dir * (60 + i * 9) + Math.sin(ev.t * 17 + i * 3) * 5, dy2 + 4 + (i % 3) * 2, 3, 3);
         }
       }
       g.save();
-      g.translate(dx2, dy2 - 30);
+      g.translate(dx2, dy2 - 34);
       if (ev.dir < 0) g.scale(-1, 1);
-      g.drawImage(spr, -48, -24);
+      g.drawImage(spr, -96, -48);
       g.restore();
     }
 
