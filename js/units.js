@@ -819,8 +819,10 @@ const Units = {
           }
         }
       } else if (t.type === 'build') {
+        // owner-agnostic: the rival's villagers raise their buildings with the
+        // same hands (and the same hammer sprite) the player's do
         const b = Bld.get(t.id);
-        if (!b || b.owner !== 'P' || (b.construction <= 0 && b.upgrading <= 0 && b.hp >= b.maxhp)) {
+        if (!b || b.owner !== u.owner || (b.construction <= 0 && b.upgrading <= 0 && b.hp >= b.maxhp)) {
           u.task = null;   // done (or site gone) — villager is free again
           continue;
         }
@@ -845,7 +847,7 @@ const Units = {
                 // walk the wall line: continue to the nearest unmanned site
                 let best = null, bd = 6;
                 for (const nb of S.buildings) {
-                  if (nb.owner !== 'P' || nb.construction <= 0 || Bld.hasWorker(nb)) continue;
+                  if (nb.owner !== u.owner || nb.construction <= 0 || Bld.hasWorker(nb)) continue;
                   const dd = Math.hypot(Bld.cx(nb) - u.x, Bld.cy(nb) - u.y);
                   if (dd < bd) { bd = dd; best = nb; }
                 }

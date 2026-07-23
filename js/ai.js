@@ -1821,6 +1821,32 @@ const AI = {
       }
     } else if (ai.purse) { ai.res.food += ai.purse; ai.purse = 0; }   // workforce full — bank the change
 
+    /* ---- BUILD CREWS: no ghost construction. The rival's buildings rise only
+       under a villager's hammer, exactly like the player's — every unmanned
+       site or upgrade pulls the nearest free villager over (their build sprite
+       plays on site). Kill the builder and the work STOPS until another hand
+       is hired and walks out. Free to order (micro, not a macro action). ---- */
+    {
+      const sites = Bld.list('A').filter(b => b.construction > 0 || b.upgrading > 0);
+      if (sites.length) {
+        const busy = new Set();
+        for (const u of S.units) if (u.owner === 'A' && u.task && u.task.type === 'build') busy.add(u.task.id);
+        for (const site of sites) {
+          if (busy.has(site.id)) continue;
+          let best = null, bd = 1e9;
+          for (const u of S.units) {
+            if (u.owner !== 'A' || !Units.isVillager(u)) continue;
+            if (u.task && u.task.type === 'build') continue;
+            const dd = Math.hypot(u.x - Bld.cx(site), u.y - Bld.cy(site));
+            if (dd < bd) { bd = dd; best = u; }
+          }
+          if (!best) break;                    // no hands left alive — the works stand idle
+          Units.assignBuild(best, site);
+          busy.add(site.id);
+        }
+      }
+    }
+
     // run any Trading Posts: send a caravan out with a genuine surplus good,
     // like a player would. Stingy — keeps a reserve, one caravan per post, and
     // doesn't bother once the treasury is already flush with gold.
@@ -1923,7 +1949,8 @@ const AI = {
     const needScout = !kTC || (S.day - (kTC.seen || 0) > 40);
     if (needScout && !ai.scoutId && !read.underThreat) {
       const dst = kTC || this.scoutTarget();
-      const busy = u => u.tUnit || u.tBld || (u.task && (u.task.type === 'raid' || u.task.type === 'move'));
+      const busy = u => u.tUnit || u.tBld ||
+        (u.task && (u.task.type === 'raid' || u.task.type === 'move' || u.task.type === 'build'));
       const spares = S.units.filter(u => u.owner === 'A' && !Units.isNaval(u) && !busy(u));
       const soldiers = spares.filter(u => Units.isMilitary(u) && u.kind !== 'siegetower');
       const pick = soldiers.find(u => u.kind === 'rider' || u.kind === 'horsearcher')

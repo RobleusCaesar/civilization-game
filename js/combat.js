@@ -607,6 +607,14 @@ const Combat = {
           const foe = this.nearestUnit(u.x, u.y, 2.2,
             o => this.hostileUnits(u, o) && Units.isMilitary(o) && this.canEngage(u, o));
           if (foe) { u.tUnit = foe.id; continue; }
+          // A MENDING HAND UNDOES THE BATTERING: a villager repairing or finishing
+          // THIS building mid-fight is the smarter target — cut the crew down and
+          // the walls stay broken. What any veteran raider would do; and it cuts
+          // both ways (the player's soldiers switch onto the rival's builders too).
+          const mend = this.nearestUnit(u.x, u.y, 6,
+            o => this.hostileUnits(u, o) && Units.isVillager(o) &&
+                 o.task && o.task.type === 'build' && o.task.id === b.id && this.canEngage(u, o));
+          if (mend && this.canReach(u, mend.x, mend.y, 1.6)) { u.tUnit = mend.id; continue; }
         }
         const d = Math.hypot(Bld.cx(b) - u.x, Bld.cy(b) - u.y);
         // 1.55 floor so a DIAGONALLY-adjacent attacker (√2 ≈ 1.41 from a 1×1 wall's

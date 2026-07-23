@@ -352,9 +352,9 @@ const Bld = {
     if (window.Cards) Cards.onBuildFinish(b.owner, b);
   },
 
-  // any player villager currently working this site (construction/upgrade/repair)?
+  // any of the OWNER'S villagers currently working this site (construction/upgrade/repair)?
   hasWorker(b) {
-    return S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'build' && u.task.id === b.id);
+    return S.units.some(u => u.owner === b.owner && u.task && u.task.type === 'build' && u.task.id === b.id);
   },
 
   maxWorkers(b) { return this.def(b.key).maxWorkers || 1; },
@@ -532,17 +532,12 @@ const Bld = {
         }
       }
       if (b.construction > 0) {
-        // the rival's crews work off-screen; player sites need a villager builder
-        if (b.owner === 'A') {
-          b.construction -= dtDays;
-          if (b.construction <= 0) this.finish(b);
-        }
+        // EVERY site needs a villager builder on the ground — the rival's crews
+        // no longer work off-screen. Its buildings rise under a real hammer
+        // (see Units build task + AI.daily's crew dispatcher), so raiders can
+        // cut the builder down and stop the work, exactly as happens to the
+        // player. Ghost construction was a real fairness complaint.
         continue;
-      }
-      if (b.upgrading > 0 && b.owner === 'A') {
-        // the rival's crews upgrade off-screen; player upgrades need a villager
-        b.upgrading -= dtDays;
-        if (b.upgrading <= 0) this.finishUpgrade(b);
       }
       // village-wide wall reinforcement ties up the Town Center until it's done
       if (b.wallUp > 0) {
@@ -597,7 +592,10 @@ const Bld = {
     // villagers cuts its production exactly like it cuts yours.
     let aiCrew = null;
     if (owner === 'A') {
-      let pool = S.units.reduce((n, u) => n + (u.owner === 'A' && Units.isVillager(u) ? 1 : 0), 0);
+      // a hand out on a build site isn't at a station — construction costs the
+      // rival production attention exactly as it costs the player
+      let pool = S.units.reduce((n, u) => n + (u.owner === 'A' && Units.isVillager(u) &&
+        !(u.task && u.task.type === 'build') ? 1 : 0), 0);
       aiCrew = {};
       const stations = this.list('A').filter(b =>
         this.done(b) && !b.upgrading && this.def(b.key).needsWorker && this.lv(b).out);
