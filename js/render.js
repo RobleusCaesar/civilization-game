@@ -1054,6 +1054,21 @@ const R = {
       }
     }
 
+    // the buried cache (special event): the hoard waiting for a spade — with a
+    // beckoning golden shimmer so the player can't miss the errand
+    if (S.cache && S.cache.ev) {
+      const ev = S.cache.ev;
+      if (S.map.explored[MapGen.idx(ev.x, ev.y)]) {
+        const now2 = performance.now() / 1000;
+        const fr = Sprites.misc.cache[((now2 * 2) | 0) % 2];
+        g.drawImage(fr, ev.x * TL, ev.y * TL - 4, TL, TL);
+        g.globalAlpha = 0.35 + 0.25 * Math.sin(now2 * 3);
+        g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;
+        g.beginPath(); g.ellipse(ev.x * TL + TL / 2, ev.y * TL + TL / 2 + 4, 14 + Math.sin(now2 * 3) * 2, 7, 0, 0, Math.PI * 2); g.stroke();
+        g.globalAlpha = 1;
+      }
+    }
+
     // the kraken: a once-a-game terror breaking the surface
     if (S.kraken && S.kraken.ev) {
       const ev = S.kraken.ev;

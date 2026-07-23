@@ -467,7 +467,12 @@ const Bld = {
     if (!this.aiAct(b.owner)) return false;
     const spec = this.def(b.key).train[unitKey];
     this.pay(c.cost, b.owner === 'P' ? S.res : S.ai.res);
-    b.queue.push({ unit: unitKey, t: spec.time });
+    let time = spec.time;
+    if (b.owner === 'P' && S.trainDiscount > 0) {   // the cache's work songs: next 5 recruits at half time
+      time *= 0.5; S.trainDiscount--;
+      if (S.trainDiscount === 0) G.log('🎶 The last work song fades — training returns to its usual pace.');
+    }
+    b.queue.push({ unit: unitKey, t: time });
     return true;
   },
 

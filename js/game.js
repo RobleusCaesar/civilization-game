@@ -231,6 +231,9 @@ const G = {
     S.dragon = { avail: S.special === 'dragon', done: false, ev: null, ash: [], fire: [] };
     // the lost sons ride only when the village's own line has broken
     S.sons = { avail: S.special === 'sons', done: false };
+    // a buried hoard surfaces only when the larders scrape empty
+    S.cache = { avail: S.special === 'cache', done: false, ev: null };
+    S.trainDiscount = 0;   // fast-training charges left (the cache's work songs)
 
     this.freeVis = false;   // every real game starts fogged; the title demo re-enables it
     this.vis = null;
@@ -668,6 +671,46 @@ const G = {
     if (n) this.log('🐎 Hoofbeats on the wind — the horn is answered! The village\u2019s lost sons crest the ridge, ' + n + ' riders come home to fight!', true, 7000);
   },
 
+  /* ---- SPECIAL EVENT: the Buried Cache ----
+     When the village is scraping the bottom of every basket, an old map
+     corner surfaces: a hoard buried a stone's throw from camp, on the side
+     away from any foes. A villager must WALK to it and dig — then food,
+     timber and stone pour out, along with a dead uncle's legendary work
+     songs (the next 5 recruits train in half the time). */
+  maybeCache() {
+    const E = S.cache;
+    if (!E || E.done || S.over) return;
+    if (E.ev) return this.cacheClaimCheck();   // buried and waiting for a spade
+    if (!E.avail) return;
+    if (S.day < 12) return;
+    if (S.res.food > 60 || S.res.wood > 50) return;   // true desperation, not a dip
+    const tc = Bld.tcOf('P'); if (!tc) return;
+    const cx = Bld.cx(tc), cy = Bld.cy(tc);
+    // bury it opposite the nearest hostile (or any open side when at peace)
+    const foe = Combat.nearestUnit(cx, cy, 30, o => (o.owner === 'A' || o.owner === 'R') && Units.isMilitary(o));
+    const ang = foe ? Math.atan2(cy - foe.y, cx - foe.x) : G.rand() * Math.PI * 2;
+    for (let tries = 0; tries < 14; tries++) {
+      const a2 = ang + (G.rand() - 0.5) * 1.2, d = 5 + G.rand() * 3;
+      const x = Math.round(cx + Math.cos(a2) * d), y = Math.round(cy + Math.sin(a2) * d);
+      if (!MapGen.inB(x, y) || !Path.passable(x, y, 'P') || Bld.at(x, y)) continue;
+      E.avail = false; E.ev = { x, y, t: 0 };
+      G.reveal(x, y, 2);
+      this.log('✨ A weathered map corner pokes from the soil — a hoard lies buried just beyond the huts! Send a villager to dig it up.', true, 7000);
+      return;
+    }
+  },
+  cacheClaimCheck() {
+    const ev = S.cache.ev; if (!ev) return;
+    const digger = S.units.find(u => u.owner === 'P' && Units.isVillager(u) &&
+      Math.hypot(u.x - (ev.x + 0.5), u.y - (ev.y + 0.5)) < 0.9);
+    if (!digger) return;
+    S.cache.ev = null; S.cache.done = true;
+    S.res.food += 300; S.res.wood += 300; S.res.stone += 300;
+    S.trainDiscount = 5;
+    R.float(ev.x + 0.5, ev.y, '+300 🍖 🪵 🪨', '#e8c15a');
+    this.log('🪙 The spade rings on oak — your great-uncle\u2019s lost hoard! Food, timber, stone… and his legendary work songs (next 5 recruits train TWICE as fast).', false, 8000);
+  },
+
   dragonTick(dt) {
     const D = S.dragon;
     if (!D) return;
@@ -778,6 +821,8 @@ const G = {
     if (!data.dragon) data.dragon = { avail: false, done: true, ev: null, ash: [] };  // legacy runs: no dragon this time
     if (!data.dragon.fire) data.dragon.fire = [];
     if (!data.sons) data.sons = { avail: false, done: true };   // legacy: no sons this run
+    if (!data.cache) data.cache = { avail: false, done: true, ev: null };
+    if (data.trainDiscount === undefined) data.trainDiscount = 0;
     // legacy saves predate the one-event registry: derive S.special from what
     // the old flags had armed (dragon first — it was the rarer roll)
     if (data.special === undefined) {

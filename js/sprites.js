@@ -2243,6 +2243,33 @@ const Sprites = {
     return ART.outline(c);
   });
 
+  // THE BURIED CACHE (special event): a freshly-dug pit with an oaken chest
+  // thrown open — gold and goods spilling, a spade still standing in the
+  // spoil-heap. Two frames blink the treasure's glint. Fine grid, outlined.
+  Sprites.misc.cache = [0, 1].map(f => ART.outline(tile(p => {
+    const q = p.f;
+    // the dug pit and the thrown spoil
+    q(6, 22, 20, 6, AP.soil[0]);
+    q(4, 24, 24, 4, AP.soil[1]);
+    q(22, 18, 8, 5, AP.soil[2]); q(24, 16, 5, 3, AP.soil[1]);   // spoil heap
+    // the chest, lid thrown back
+    q(8, 14, 12, 8, AP.wood[1]); q(8, 14, 12, 1, AP.wood[3]);
+    q(8, 14, 1, 8, AP.wood[2]); q(13, 14, 1, 8, AP.wood[0]);    // planks + banding
+    q(7, 9, 14, 4, AP.wood[2]); q(7, 9, 14, 1, AP.wood[3]);     // the open lid
+    q(13, 9, 1, 4, AP.wood[0]);
+    // the hoard inside: gold heaped, a red gem, a silver torc
+    q(9, 15, 10, 3, AP.gold[1]);
+    q(10, 14, 8, 2, AP.gold[2]);
+    q(12, 13, 3, 2, AP.gold[2]);
+    q(15, 14, 2, 1, AP.red[1] || '#c04040');
+    q(10, 15, 2, 1, '#d8dde4');
+    // the spade in the spoil-heap
+    q(26, 8, 1, 10, AP.wood[2]); q(25, 6, 3, 3, AP.stone[3]); q(25, 6, 3, 1, AP.stone[4]);
+    // the glint — blinking between frames so it catches the eye
+    if (f === 0) { q(11, 13, 1, 1, '#fff2c0'); q(16, 15, 1, 1, '#fff2c0'); }
+    else { q(14, 12, 1, 1, '#fff2c0'); q(9, 16, 1, 1, '#fff2c0'); q(27, 5, 1, 1, '#fff2c0'); }
+  })));
+
   // fish breaking the surface — two frames used as an occasional flourish.
   // Fine-grid: an arcing silver body with a fin, dorsal shadow, eye and a spray
   // of droplets, then the splash ring as it falls back.
