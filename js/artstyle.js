@@ -16,7 +16,7 @@ const ART = (function () {
     soil:    ['#3c2c16', '#57431f', '#6b5433', '#82683f'],
     water:   ['#1c4258', '#265674', '#2e6b8a', '#4589ab', '#7fc0d8'],
     stone:   ['#4a4a44', '#6f6f66', '#8f8f86', '#adada2', '#c9c9bf'],
-    ore:     ['#45443e', '#5a5952', '#706e65', '#878579', '#9e9b8d', '#b5b2a3'],   // ORE boulders: light muted grey, cooler/greyer than the brown mountain `mrock` so deposits stay readable as mineable stone
+    ore:     ['#4d4c46', '#64635b', '#7b796f', '#929084', '#a9a698', '#c1beaf'],   // ORE boulders: light muted grey (lifted a touch), cooler/greyer than the brown mountain `mrock` so deposits stay readable as mineable stone
     rock:    ['#443b31', '#655a49', '#877b66', '#a89a82', '#c9bca2'],   // warm earthy stone (terrain boulders — shares hue with soil)
     peak:    ['#3a3a46', '#54545f', '#727280', '#9a9aa4', '#c2c2ca', '#eef0f6'],   // MOUNTAIN snow ramp: cool blue-grey -> near-white (top shades used for snow caps)
     mrock:   ['#4a4337', '#5d5546', '#6f6656', '#857b68', '#9d937e', '#bbb098'],   // MOUNTAIN rock body: warm brown-grey, 6 steps crevice->weathered — lifted + compressed so shadows/outline stay soft and the ranges blend into the world (distinct from cooler grey ore `stone`)

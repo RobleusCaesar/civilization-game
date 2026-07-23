@@ -259,10 +259,10 @@ const Sprites = {
   // a fissure and a crest glint. Reads as "stone you can mine", not elevation.
   function boulderBody(f, cx, cy, rr) {
     const St = AP.ore, r = ART.rng((cx * 31 + cy * 17) | 1);
-    const oct = []; for (let i = 0; i < 8; i++) oct.push(0.76 + r() * 0.3);   // per-facet radius -> irregular chunk
+    const oct = []; for (let i = 0; i < 8; i++) oct.push(0.8 + r() * 0.26);   // per-facet radius -> irregular chunk (kept mild so the mass stays rounded)
     const chipA = (r() * 8) | 0, chipB = (r() * 8) | 0;                       // chipped corners
     const s1 = -(0.3 + r() * 0.25) * rr, s2 = (0.35 + r() * 0.25) * rr;       // facet split lines, jittered per rock
-    const cut = rr * 0.55;                                                    // bury line — below this the rock is underground
+    const cut = rr * 0.6;                                                     // bury line — below this the rock is underground (a little more dome showing)
     const jag = dx => ((dx + cx) & 2) ? 0.7 : 0;                              // toothy contact line, never ruler-straight
     const radAt = (dx, dy) => {
       const ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
@@ -271,9 +271,11 @@ const Sprites = {
       if (k === chipA || k === chipB) rad *= 0.8;
       return rad;
     };
-    const inside = (dx, dy, m) => {                                           // octagonal metric -> flat angular edges
+    const inside = (dx, dy, m) => {                                           // mostly-octagonal metric: flat chunky edges with a bulbous belly
       const ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
-      return (ax > ay ? ax + 0.41 * ay : ay + 0.41 * ax) <= radAt(dx, dy) - m;
+      const octd = ax > ay ? ax + 0.41 * ay : ay + 0.41 * ax;                 // pure octagon = angular…
+      const d = octd * 0.62 + Math.sqrt(dx * dx + dy * dy) * 0.38;            // …a dash of circle rounds it out
+      return d <= radAt(dx, dy) - m;
     };
     for (let dy = -rr - 1; dy <= rr + 1; dy++) for (let dx = -rr - 1; dx <= rr + 1; dx++) {
       if (!inside(dx, dy, 0) || dy > cut + jag(dx)) continue;
