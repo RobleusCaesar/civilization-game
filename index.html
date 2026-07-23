@@ -255,8 +255,7 @@
   #scrEndgame.defeatMode { background:
       radial-gradient(130% 75% at 50% 18%, #141a2b 0%, #0b0f1c 52%, #060812 100%); }
   #scrEndgame.defeatMode .sbody.center { padding: 0; justify-content: center; }
-  #scrEndgame.defeatMode #btnEndNew, #scrEndgame.defeatMode #btnEndTitle { display: none; }
-  #defeatScene { width: 100%; max-width: 440px; margin: 0 auto; position: relative;
+    #defeatScene, #victoryScene { width: 100%; max-width: 440px; margin: 0 auto; position: relative;
     padding: 20px 20px calc(env(safe-area-inset-bottom) + 22px);
     min-height: 100%; display: flex; flex-direction: column; justify-content: center;
     /* the ornate double frame */
@@ -265,47 +264,69 @@
       inset 0 0 70px rgba(0,0,0,0.55);
     background: radial-gradient(120% 60% at 50% 0%, rgba(30,38,58,0.25), transparent 60%); }
   /* corner ticks on the frame */
-  #defeatScene::before, #defeatScene::after { content: ''; position: absolute; width: 16px; height: 16px;
+  #defeatScene::before, #defeatScene::after, #victoryScene::before, #victoryScene::after { content: ''; position: absolute; width: 16px; height: 16px;
     border: 2px solid rgba(200,168,92,0.5); pointer-events: none; }
-  #defeatScene::before { top: 8px; left: 8px; border-right: none; border-bottom: none; }
-  #defeatScene::after  { top: 8px; right: 8px; border-left: none; border-bottom: none; }
+  #defeatScene::before, #victoryScene::before { top: 8px; left: 8px; border-right: none; border-bottom: none; }
+  #defeatScene::after, #victoryScene::after  { top: 8px; right: 8px; border-left: none; border-bottom: none; }
   @keyframes defeatIn { 0% { opacity: 0; } 40% { opacity: 0; } 100% { opacity: 1; } }
+  /* victory: "A New Dawn" — the same handcrafted frame under a warm sky */
+  #scrEndgame.victoryMode { background:
+      radial-gradient(130% 75% at 50% 18%, #2b2416 0%, #171208 52%, #0b0804 100%); }
+  #scrEndgame.victoryMode .sbody.center { padding: 0; justify-content: center; }
+  #vicRank { color: var(--gold); font-weight: 900; letter-spacing: 3px; font-size: 13px;
+    text-align: center; margin: 12px auto 0; }
+  #vicMeta { color: #8d8368; font-size: 11px; letter-spacing: 0.5px; text-align: center; margin: 8px auto 0; }
+  .dbtn.primary.vic { background: linear-gradient(#4a3d1c, #33290f);
+    border-color: rgba(220,184,96,0.4);
+    box-shadow: inset 0 1px 0 rgba(240,208,120,0.25), inset 0 -2px 6px rgba(0,0,0,0.4), 0 4px 14px rgba(0,0,0,0.45); }
+  .dbtn.primary.vic b { color: #f4e6bc; }
+  .dbtn.primary.vic small { color: #c2ae7c; }
+  .dbtn.primary.vic .dbArrow { color: #e8d29a; }
+  .vbRow { display: flex; gap: 10px; width: 100%; max-width: 380px; margin: 12px auto 0; }
+  .vbRow .dbtn { flex: 1 1 0; margin: 0; justify-content: center; padding: 11px 6px; }
+  .vbRow .dbtn .dbBody { flex: 0 0 auto; align-items: center; }
+  .vbRow .dbtn .dbBody b { font-size: 13.5px; letter-spacing: 1.5px; }
+  /* the tally page: one centred, evenly-spaced column */
+  #victoryPane { display: flex; flex-direction: column; align-items: center; gap: 7px;
+    width: 100%; max-width: 380px; margin: 0 auto;
+    padding: calc(env(safe-area-inset-top) + 12px) 8px calc(env(safe-area-inset-bottom) + 12px); }
+  #victoryPane #btnScoreBack { width: 100%; max-width: 330px; margin-top: 6px; }
 
   .defeatFrame { position: relative; border-radius: 7px; overflow: visible;
     box-shadow: 0 0 0 1px rgba(0,0,0,0.7), 0 10px 30px rgba(0,0,0,0.7);
     background: #0a0d18; line-height: 0; margin-top: 12px; }
-  #defeatCanvas { display: block; width: 100%; height: auto; aspect-ratio: 200 / 150;
+  #defeatCanvas, #victoryCanvas { display: block; width: 100%; height: auto; aspect-ratio: 200 / 150;
     image-rendering: pixelated; border-radius: 7px;
     box-shadow: inset 0 0 0 2px rgba(8,10,18,0.9), inset 0 0 0 3px rgba(150,124,66,0.14); }
 
-  #defeatTitle { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  #defeatTitle, #victoryTitle { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
     font-size: 26px; font-weight: 700; letter-spacing: 3px; line-height: 1.1;
     color: #ecdfc0; margin: 20px 0 0; text-align: center;
     display: flex; align-items: center; justify-content: center; gap: 12px;
     text-shadow: 0 1px 0 #100c08, 0 3px 20px rgba(0,0,0,0.9); }
-  #defeatTitle .fl { color: rgba(200,168,92,0.55); font-size: 20px; font-weight: 400; }
+  #defeatTitle .fl, #victoryTitle .fl { color: rgba(200,168,92,0.55); font-size: 20px; font-weight: 400; }
   #defeatTitleText { background: none; }
   .defeatRule { display: flex; align-items: center; justify-content: center; gap: 10px;
     margin: 12px auto 0; max-width: 260px; }
   .defeatRule i { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, rgba(200,168,92,0.35), transparent); }
   .defeatRule b { color: rgba(200,168,92,0.6); font-size: 9px; }
   .defeatRule.sm { max-width: 150px; margin-top: 8px; }
-  #defeatEpitaph { font-family: Georgia, "Times New Roman", serif; font-style: italic;
+  #defeatEpitaph, #victoryEpitaph { font-family: Georgia, "Times New Roman", serif; font-style: italic;
     color: #9aa0ac; font-size: 15px; line-height: 1.5; margin: 14px auto 0;
     max-width: 340px; text-align: center; }
 
   /* the three-column stat card — each column centred, label over value */
-  #defeatStats { display: flex; align-items: stretch; justify-content: center; gap: 4px;
+  #defeatStats, #victoryStats { display: flex; align-items: stretch; justify-content: center; gap: 4px;
     width: 100%; margin: 22px auto 0; padding: 14px 10px; max-width: 380px;
     background: linear-gradient(#151a26, #0e121c);
     border: 1px solid rgba(150,124,66,0.18); border-radius: 10px;
     box-shadow: inset 0 1px 0 rgba(200,168,92,0.08), inset 0 0 24px rgba(0,0,0,0.45), 0 4px 14px rgba(0,0,0,0.4); }
-  #defeatStats .dstat { flex: 1 1 0; display: flex; flex-direction: column; align-items: center;
+  #defeatStats .dstat, #victoryStats .dstat { flex: 1 1 0; display: flex; flex-direction: column; align-items: center;
     justify-content: center; text-align: center; gap: 4px; min-width: 0; }
-  #defeatStats .dsLabel { font-size: 8.5px; letter-spacing: 1px; color: #6f7686; font-weight: 700; white-space: nowrap; }
-  #defeatStats .dsVal { font-family: Georgia, "Times New Roman", serif; font-size: 16px; font-weight: 700;
+  #defeatStats .dsLabel, #victoryStats .dsLabel { font-size: 8.5px; letter-spacing: 1px; color: #6f7686; font-weight: 700; white-space: nowrap; }
+  #defeatStats .dsVal, #victoryStats .dsVal { font-family: Georgia, "Times New Roman", serif; font-size: 16px; font-weight: 700;
     color: #ecdfc0; letter-spacing: 0.3px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  #defeatStats .dsSep { flex: 0 0 1px; align-self: stretch; margin: 2px 0;
+  #defeatStats .dsSep, #victoryStats .dsSep { flex: 0 0 1px; align-self: stretch; margin: 2px 0;
     background: linear-gradient(rgba(150,124,66,0), rgba(150,124,66,0.22), rgba(150,124,66,0)); }
 
   /* the two story buttons */
@@ -662,9 +683,36 @@
           <span class="dbArrow">&#8594;</span>
         </button>
       </div>
-      <!-- VICTORY — the arcade tally -->
-      <div id="victoryPane">
-        <h1 id="endTitle">Victory</h1>
+      <!-- VICTORY — "A New Dawn": the celebration scene (see js/victoryart.js) -->
+      <div id="victoryScene" style="display:none">
+        <div class="defeatFrame">
+          <canvas id="victoryCanvas" width="200" height="150" aria-label="Victory"></canvas>
+        </div>
+        <h1 id="victoryTitle"><span class="fl">&#8942;</span><span id="victoryTitleText">A NEW DAWN RISES</span><span class="fl">&#8942;</span></h1>
+        <div class="defeatRule"><i></i><b>&#9670;</b><i></i></div>
+        <p id="victoryEpitaph">The valley learns your name, and keeps it.</p>
+        <div id="victoryStats">
+          <div class="dstat"><span class="dsLabel">DIFFICULTY</span><span class="dsVal" id="vsDiff">&#8212;</span></div>
+          <span class="dsSep"></span>
+          <div class="dstat"><span class="dsLabel">TIME</span><span class="dsVal" id="vsTime">&#8212;</span></div>
+          <span class="dsSep"></span>
+          <div class="dstat"><span class="dsLabel">SCORE</span><span class="dsVal" id="vsScore">&#8212;</span></div>
+        </div>
+        <div id="vicRank" class="blink" style="display:none">★ GLOBAL RANK #1 ★</div>
+        <p id="vicMeta"></p>
+        <button class="dbtn primary vic" id="btnVicScore">
+          <canvas class="dbIcon" data-vicon="trophy" aria-hidden="true"></canvas>
+          <span class="dbBody"><b>SCORE</b><small>The full tally &amp; the world board</small></span>
+          <span class="dbArrow">&#8594;</span>
+        </button>
+        <div class="vbRow">
+          <button class="dbtn sm" id="btnVicAgain"><span class="dbBody"><b>PLAY AGAIN</b></span></button>
+          <button class="dbtn sm" id="btnVicTitle"><span class="dbBody"><b>TITLE SCREEN</b></span></button>
+        </div>
+      </div>
+      <!-- THE TALLY — the arcade rundown behind the Score button -->
+      <div id="victoryPane" style="display:none">
+        <h1 id="endTitle">🏆 The Tally</h1>
         <p class="hint" id="endMsg"></p>
         <div id="scoreLines"></div>
         <p id="scoreMult"></p>
@@ -676,9 +724,8 @@
         </div>
         <p id="savedNote" style="display:none"></p>
         <div id="endBoard"></div>
+        <button class="abtn big" id="btnScoreBack">‹ Back</button>
       </div>
-      <button class="abtn big gold" id="btnEndNew">🏕 Play again</button>
-      <button class="abtn big" id="btnEndTitle">🏔 Title screen</button>
     </div>
   </div>
 
@@ -758,6 +805,7 @@
 <script src="js/ai.js"></script>
 <script src="js/render.js"></script>
 <script src="js/defeatart.js"></script>
+<script src="js/victoryart.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/screens.js"></script>
 <script src="js/game.js"></script>

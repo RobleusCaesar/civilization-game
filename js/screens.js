@@ -510,7 +510,11 @@ const Screens = {
   },
   onEndgame(opts) {
     const def = this.el('defeatScene'), vic = this.el('victoryPane'), scr = this.el('scrEndgame');
+    const vs = this.el('victoryScene');
     if (!opts.win) {
+      scr.classList.remove('victoryMode');
+      if (window.VictoryArt) VictoryArt.stop();
+      vs.style.display = 'none';
       // DEFEAT — no score, no tally, no leaderboard. The clan simply fades into
       // the depths of history: a quiet grave in the dark (see js/defeatart.js).
       scr.classList.add('defeatMode');
@@ -537,27 +541,65 @@ const Screens = {
       if (window.Defeat) Defeat.start();
       return;
     }
-    // VICTORY — the arcade cabinet tally
+    // VICTORY — "A New Dawn": the celebration scene up front, the arcade tally
+    // waiting behind the SCORE button
     if (window.Defeat) Defeat.stop();
     scr.classList.remove('defeatMode');
+    scr.classList.add('victoryMode');
     def.style.display = 'none';
-    vic.style.display = 'block';
-    this.el('endTitle').textContent = '🏆 Victory!';
-    this.el('endTitle').style.color = 'var(--gold)';
-    this.el('endMsg').textContent = (opts.msg || '') +
-      ` (${G.modeCfg().name} · day ${S.day} · seed ${S.seed})`;
-    // reset the stage
+    vic.style.display = 'none';
+    vs.style.display = 'flex';
+    this._score = Score.compute(true);
+    this._submitted = false;
+    this._leaveWarned = false;
+    this._winMsg = opts.msg || '';
+    // the scene answers to the land you won and the difficulty you conquered,
+    // under a fresh sky (morning / midday / evening) each victory
+    if (window.VictoryArt) {
+      VictoryArt.begin(S.map && S.map.landform, S.mode);
+      this.el('victoryTitleText').textContent = VictoryArt.title();
+      this.el('victoryEpitaph').textContent = VictoryArt.subtitle();
+      for (const c of vs.querySelectorAll('canvas[data-vicon]')) VictoryArt.drawIcon(c, c.dataset.vicon);
+    }
+    // the headline card: difficulty · time · score, with the run's fingerprint below
+    this.el('vsDiff').textContent = (G.modeCfg().name || '').toUpperCase();
+    const vsecs = Math.max(0, Math.round(S.playtime || 0));
+    const vh = Math.floor(vsecs / 3600), vm = Math.floor((vsecs % 3600) / 60);
+    this.el('vsTime').textContent = vh ? `${vh}h ${vm}m` : vm ? `${vm}m` : `${vsecs}s`;
+    this.el('vsScore').textContent = this._score.total.toLocaleString();
+    this.el('vicRank').style.display = 'none';
+    this.el('vicMeta').textContent = `Day ${S.day} · seed ${S.seed}`;
+    // reset the tally stage behind the Score button
+    this.el('endMsg').textContent = this._winMsg;
     this.el('scoreLines').innerHTML = '';
     this.el('scoreMult').textContent = '';
+    this.el('scoreTotal').textContent = 'SCORE 0';
     this.el('hsBanner').style.display = 'none';
     this.el('nameRow').style.display = 'none';
     this.el('savedNote').style.display = 'none';
     this.el('savedNote').textContent = '';   // never let a prior run's note linger
     this.el('endBoard').innerHTML = '';
-    this._score = Score.compute(true);
-    this._submitted = false;
-    this._leaveWarned = false;
+    vs.style.animation = 'none'; void vs.offsetWidth; vs.style.animation = 'defeatIn 1.2s ease-out both';
+    if (window.VictoryArt) VictoryArt.start();
+    // post the run right away so the GLOBAL RANK banner can land on this screen
+    this._offerSubmit();
+  },
+
+  // SCORE ⇄ scene: the tally page slides in over the celebration and a plain
+  // Back returns to it (the board post is idempotent — no double submits)
+  openTally() {
+    if (window.VictoryArt) VictoryArt.stop();
+    this.el('victoryScene').style.display = 'none';
+    this.el('scoreLines').innerHTML = '';
+    this.el('scoreMult').textContent = '';
+    this.el('victoryPane').style.display = 'flex';
     this._tally(this._score, true);
+  },
+  closeTally() {
+    clearInterval(this._tallyT);
+    this.el('victoryPane').style.display = 'none';
+    this.el('victoryScene').style.display = 'flex';
+    if (window.VictoryArt) VictoryArt.start();
   },
 
   // the cabinet ritual: lines land one by one while the total ticks up
@@ -654,8 +696,12 @@ const Screens = {
       let meIdx = mine >= 0 && mine < 3 ? mine : -1;
       if (mine >= 3) { rows.push(top.data[mine]); meIdx = rows.length - 1; }
       this.renderBoard(rows, this.el('endBoard'), meIdx, mine >= 3 ? mine + 1 : 0);
-      if (mine === 0) { this.el('hsBanner').textContent = '★ NEW HIGH SCORE ★'; this.el('hsBanner').style.display = 'block'; }
-      else if (mine > 0) { this.el('hsBanner').textContent = `★ GLOBAL RANK #${mine + 1} ★`; this.el('hsBanner').style.display = 'block'; }
+      const rankText = mine === 0 ? '★ NEW HIGH SCORE ★' : mine > 0 ? `★ GLOBAL RANK #${mine + 1} ★` : '';
+      if (rankText) {
+        this.el('hsBanner').textContent = rankText; this.el('hsBanner').style.display = 'block';
+        // ...and the blinking rank lands on the celebration screen too
+        this.el('vicRank').textContent = rankText; this.el('vicRank').style.display = 'block';
+      }
       UI.toast(mine >= 0 ? 'You made the board, chief!' : 'Score on the board');
     }
   },
@@ -733,8 +779,10 @@ const Screens = {
     };
     const goNew = () => leaveEnd(() => { this.backTo = 'title'; this.show('newgame'); });
     const goTitle = () => leaveEnd(() => { this._demo = false; this.show('title'); });
-    on('btnEndNew', goNew);
-    on('btnEndTitle', goTitle);
+    on('btnVicScore', () => this.openTally());   // "A New Dawn" victory buttons
+    on('btnScoreBack', () => this.closeTally());
+    on('btnVicAgain', goNew);
+    on('btnVicTitle', goTitle);
     on('btnDefeatAgain', goNew);     // "The Last Fire" defeat buttons — same actions
     on('btnDefeatTitle', goTitle);
     // settings
