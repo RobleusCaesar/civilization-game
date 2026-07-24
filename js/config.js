@@ -465,7 +465,9 @@ const CFG = {
      kraken/dragon, (5) score it in CFG.SCORE if it's worth points. */
   /* pool: modes each event may appear in, and whether it lands as a NEGATIVE
      (punishment) — the roll leans posWeight toward the delights. The dragon
-     counts as a delight: it burns the army at YOUR gates. */
+     counts as a delight: it burns the army at YOUR gates.
+     The player-helping delights (sons, cache) additionally sit behind
+     G.positiveGate: defenses breached + zero soldiers + 5 real minutes played. */
   SPECIALS: {
     chance: 0.33, posWeight: 0.6,
     pool: {

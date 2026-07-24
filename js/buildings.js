@@ -666,6 +666,7 @@ const Bld = {
       const name = this.def(b.key).name, owner = b.owner, key = b.key;
       this.removeToRuin(b);
       if (owner === 'P') {
+        S.breachedP = true;   // the line is broken — positive specials may now answer (G.positiveGate)
         G.log(`${name} destroyed!`, true);
         if (key === 'tc') G.end(false, 'Your Town Center was destroyed.');
       } else if (owner === 'A') {

@@ -166,6 +166,7 @@ const G = {
       bridges: [],                          // {x,y,owner,hp,maxhp} — attackable crossings (Sapper tier 2)
       garrison: [],                         // villagers sheltered inside the Town Center
       reprieveUsed: false,                  // the one-time "two survivors emerge" reprieve (competitive modes)
+      breachedP: false,                     // set when the player loses a building to enemy fire — gates the positive specials
       collapse: false,                      // player's clan is finished — barbarians push the hall (Moderate/Hard)
       playtime: 0,                          // unpaused seconds, for save metadata
       // run stats — the raw material of the arcade score (js/score.js)
@@ -648,42 +649,65 @@ const G = {
     this.log('🐉 A vast black shape crests the horizon…', true, 5200);
   },
 
+  /* ---- gate for the POSITIVE specials (Returning Sons, Buried Cache) ----
+     Help only comes to a village truly on its knees: the defenses have been
+     BREACHED (a building lost to enemy fire), every soldier is gone, and at
+     least five real minutes have been played. Before that, no miracles. */
+  positiveGate() {
+    if ((S.playtime || 0) < 300) return false;                          // 5 minutes of real play
+    if (!S.breachedP) return false;                                     // the wall must have failed first
+    return !S.units.some(u => u.owner === 'P' && Units.isMilitary(u));  // and nobody left to hold the line
+  },
+
   /* ---- SPECIAL EVENT: the Returning Sons ----
-     Years ago, sons of this village rode out and never wrote home. When the
-     line breaks — foes at the hall and almost nobody left to hold them — the
-     horn is finally answered: five riders crest the safe horizon and ride in,
-     the player's to command. A lifeline, not an army. */
+     Years ago, sons and daughters of this village rode out and never wrote
+     home. When the line breaks — defenses breached, foes at the hall, not a
+     soldier left to hold them — the horn is finally answered: five riders
+     appear at the world's edge and ride in, the player's to command. A
+     lifeline, not an army. */
   maybeSons() {
     const E = S.sons;
     if (!E || !E.avail || E.done || S.over) return;
-    if (S.day < 15) return;
+    if (S.day < 15 || !this.positiveGate()) return;
     const tc = Bld.tcOf('P'); if (!tc) return;
     const cx = Bld.cx(tc), cy = Bld.cy(tc);
     const foes = S.units.filter(u => (u.owner === 'A' || u.owner === 'R') &&
       (Units.isMilitary(u) || u.owner === 'R') && !Units.isNaval(u) &&
       Math.hypot(u.x - cx, u.y - cy) < 10);
     if (foes.length < 4) return;
-    const mine = S.units.reduce((n, u) => n + (u.owner === 'P' && Units.isMilitary(u) && !Units.isNaval(u) ? 1 : 0), 0);
-    if (mine > Math.max(1, Math.floor(foes.length * 0.25))) return;   // only at the moment of despair
     E.done = true; E.avail = false;
-    // they crest the horizon on the side AWAY from the foe and ride for home
+    // they appear at the EDGE of the map, about a fifth of the map out from
+    // home, on whatever stretch of the border lies farthest from the foe
     const mx = foes.reduce((a, u) => a + u.x, 0) / foes.length;
     const my = foes.reduce((a, u) => a + u.y, 0) / foes.length;
-    const ang = Math.atan2(cy - my, cx - mx);
+    const want = Math.max(CFG.W, CFG.H) * 0.2;
+    const cands = [];
+    const consider = (x, y) => cands.push({
+      x, y,
+      s: Math.abs(Math.hypot(x - cx, y - cy) - want)                      // ~20% of the map from home…
+        + Math.max(0, 16 - Math.hypot(x - mx, y - my)) * 1.5,             // …and never on the foe's side
+    });
+    for (let x = 1; x < CFG.W - 1; x++) { consider(x, 1); consider(x, CFG.H - 2); }
+    for (let y = 2; y < CFG.H - 2; y++) { consider(1, y); consider(CFG.W - 2, y); }
+    cands.sort((a, b) => a.s - b.s);
+    // the best-scoring stretch of border that actually offers open ground —
+    // a tight search (r 2) so the arrival stays pressed against the world's edge
+    let ex = cx, ey = cy;
+    for (const c of cands) {
+      const spot2 = MapGen.findNear(c.x, c.y, 2, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
+      if (spot2) { ex = spot2.x; ey = spot2.y; break; }
+    }
     let n = 0;
     for (let i = 0; i < 5; i++) {
-      const a2 = ang + (i - 2) * 0.22, d = 8 + (i % 3);
-      const px2 = Math.max(1, Math.min(CFG.W - 2, Math.round(cx + Math.cos(a2) * d)));
-      const py2 = Math.max(1, Math.min(CFG.H - 2, Math.round(cy + Math.sin(a2) * d)));
-      const spot = MapGen.findNear(px2, py2, 6, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
+      const spot = MapGen.findNear(ex, ey, 3, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
       if (!spot) continue;
-      const r = Units.spawn('rider', 'P', spot.x, spot.y);
+      const r = Units.spawn('rider', 'P', spot.x + (i % 2) * 0.4, spot.y + (i % 3) * 0.3);
       const home = MapGen.findNear(cx | 0, (cy | 0) + 2, 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
       if (home) Units.moveTo(r, home.x, home.y);
       R.float(spot.x + 0.5, spot.y, '🐎', '#e8c15a');
       n++;
     }
-    if (n) this.log('🐎 Hoofbeats on the wind — the horn is answered! The village\u2019s lost sons crest the ridge, ' + n + ' riders come home to fight!', true, 7000);
+    if (n) this.log('🐎 Hoofbeats on the wind — the horn is answered! Your sons and daughters heed the call for support: ' + n + ' riders appear at the world\u2019s edge and race for home!', true, 8000);
   },
 
   /* ---- SPECIAL EVENT: the Buried Cache ----
@@ -697,7 +721,7 @@ const G = {
     if (!E || E.done || S.over) return;
     if (E.ev) return this.cacheClaimCheck();   // buried and waiting for a spade
     if (!E.avail) return;
-    if (S.day < 12) return;
+    if (S.day < 12 || !this.positiveGate()) return;
     if (S.res.food > 60 || S.res.wood > 50) return;   // true desperation, not a dip
     const tc = Bld.tcOf('P'); if (!tc) return;
     const cx = Bld.cx(tc), cy = Bld.cy(tc);
@@ -890,6 +914,7 @@ const G = {
     if (!data.dragon.fire) data.dragon.fire = [];
     if (!data.sons) data.sons = { avail: false, done: true };   // legacy: no sons this run
     if (!data.cache) data.cache = { avail: false, done: true, ev: null };
+    if (data.breachedP === undefined) data.breachedP = false;
     if (data.trainDiscount === undefined) data.trainDiscount = 0;
     if (!data.winter) data.winter = { avail: false, done: true, days: 0 };
     if (!data.plague) data.plague = { avail: false, done: true, until: 0, lifted: true };
