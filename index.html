@@ -255,8 +255,13 @@
   #scrEndgame.defeatMode { background:
       radial-gradient(130% 75% at 50% 18%, #141a2b 0%, #0b0f1c 52%, #060812 100%); }
   #scrEndgame.defeatMode .sbody.center { padding: 0; justify-content: center; }
-    #defeatScene, #victoryScene { width: 100%; max-width: 440px; margin: 0 auto; position: relative;
-    padding: 20px 20px calc(env(safe-area-inset-bottom) + 22px);
+    #defeatScene, #victoryScene { width: 100%; max-width: 440px; position: relative;
+    /* margin:auto — vertical AUTO margins centre the pane inside the flex scroll
+       body even where iOS refuses to resolve min-height:100% (which left the
+       victory page top-anchored on phones); padding symmetric beyond the safe
+       areas so the centred column doesn't sit visually high */
+    margin: auto;
+    padding: calc(env(safe-area-inset-top) + 16px) 20px calc(env(safe-area-inset-bottom) + 16px);
     min-height: 100%; display: flex; flex-direction: column; justify-content: center;
     /* the ornate double frame */
     border: 1px solid rgba(200,168,92,0.28);
