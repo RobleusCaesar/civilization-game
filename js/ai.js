@@ -33,7 +33,7 @@ const AI = {
   PERSONAS: {
     homesteader: {
       name: 'Homesteader',
-      order: ['farm', 'house', 'barracks', 'lodge', 'tower', 'farm', 'house', 'lumber',
+      order: ['farm', 'house', 'barracks', 'lumber', 'lodge', 'tower', 'farm', 'house',
               'tower', 'quarry', 'house', 'farm', 'range', 'farm', 'house'],
       mix: [['defender', 0.45], ['archer', 0.3], ['longbow', 0.25]],
       raidPower: 1.7, raidDayAdd: 25, raidShare: 0.5, raidCd: 16,
@@ -42,7 +42,7 @@ const AI = {
     },
     warlord: {
       name: 'Warlord',
-      order: ['barracks', 'house', 'farm', 'range', 'farm', 'house', 'stable', 'tower',
+      order: ['barracks', 'house', 'lumber', 'farm', 'range', 'farm', 'house', 'stable', 'tower',
               'farm', 'barracks', 'house', 'farm', 'house', 'tower', 'siege'],
       mix: [['defender', 0.3], ['axeman', 0.2], ['archer', 0.2], ['rider', 0.2], ['catapult', 0.1]],
       raidPower: 1.1, raidDayAdd: -15, raidShare: 0.7, raidCd: 10,
@@ -51,7 +51,7 @@ const AI = {
     },
     horselord: {
       name: 'Horselord',
-      order: ['farm', 'house', 'barracks', 'stable', 'tower', 'farm', 'lumber', 'house',
+      order: ['farm', 'house', 'barracks', 'lumber', 'stable', 'tower', 'farm', 'house',
               'tower', 'farm', 'stable', 'house', 'farm'],
       mix: [['rider', 0.45], ['horsearcher', 0.25], ['defender', 0.15], ['archer', 0.15]],
       raidPower: 1.15, raidDayAdd: -8, raidShare: 0.6, raidCd: 8,
@@ -69,7 +69,7 @@ const AI = {
     },
     mason: {
       name: 'Mason',
-      order: ['quarry', 'house', 'barracks', 'tower', 'farm', 'lumber', 'house', 'tower',
+      order: ['quarry', 'house', 'barracks', 'lumber', 'tower', 'farm', 'house', 'tower',
               'farm', 'range', 'tower', 'house', 'siege'],
       mix: [['defender', 0.3], ['archer', 0.3], ['longbow', 0.2], ['ballista', 0.1], ['catapult', 0.1]],
       raidPower: 1.9, raidDayAdd: 30, raidShare: 0.5, raidCd: 18,
@@ -384,6 +384,50 @@ const AI = {
     return null;
   },
 
+  /* THE OPENING BOOK — a human is strong early because the opening is
+     REHEARSED. The persona's `order` list is played move by move for the
+     first stretch of the game: each entry is placed the day it's affordable;
+     an unaffordable entry becomes a SAVINGS GOAL (the reserve stops other
+     spending from eating its pot) instead of a shrug; a station the village
+     can't crew yet — or an entry with no ground for it — is skipped so the
+     book never stalls. Returns true while the book owns construction. */
+  openingBook() {
+    const ai = S.ai, P = this.persona();
+    if (ai.orderI == null) ai.orderI = 0;
+    const order = P.order || [];
+    if (ai.orderI >= order.length || S.day > 45) {
+      if (ai.goal && ai.goal.book) ai.goal = null;
+      return false;
+    }
+    const key = order[ai.orderI];
+    // the move may already be MADE — a safety rule (hall bootstrap, dig-out,
+    // emergency tower) can build the book's next entry out of turn. The book
+    // tracks the town's SHAPE, not its own hammer-blows: when the town already
+    // holds as many of this key as the order has asked for so far, the move is
+    // done — advance. (This is what un-sticks a book that once sat at move 1
+    // forever, saving for a second barracks while the first stood finished.)
+    const wantCount = order.slice(0, ai.orderI + 1).filter(k => k === key).length;
+    const haveCount = Bld.list('A').filter(b => b.key === key).length;
+    if (haveCount >= wantCount) { ai.orderI++; if (ai.goal && ai.goal.book) ai.goal = null; return true; }
+    if (CFG.BUILDINGS[key].needsWorker) {
+      // no hands free for another station yet — the book flows on
+      const pool = Units.count('A', u => Units.isVillager(u));
+      let slots = 0;
+      for (const b of Bld.list('A')) if (Bld.def(b.key).needsWorker) slots += Bld.maxWorkers(b);
+      if (slots >= pool + 1) { ai.orderI++; return true; }
+    }
+    const cost = CFG.BUILDINGS[key].levels[0].cost;
+    if (!Bld.canAfford(cost, ai.res)) {
+      if (!ai.goal) ai.goal = { cost, until: S.day + 15, book: true };   // save for the next move
+      return true;
+    }
+    if (ai.acts != null && ai.acts <= 0) return true;   // hands full today — place it tomorrow
+    const spot = this.plot(key);
+    if (!spot || !Bld.canPlace('A', key, spot.x, spot.y).ok) { ai.orderI++; return true; }   // no ground — skip the move
+    if (Bld.place('A', key, spot.x, spot.y)) { ai.orderI++; if (ai.goal && ai.goal.book) ai.goal = null; }
+    return true;
+  },
+
   // afford a cost AND keep the current savings goal intact — big projects
   // (the next Town Center) are saved for like a human would, instead of the
   // treasury forever leaking into huts
@@ -643,13 +687,21 @@ const AI = {
     // a vulnerability window is only real if we've FOUND the player and can
     // see their home is thin (or their gatherers are out unguarded)
     const foeVuln = !!knownTC && ((foePower >= 2 && foeHome * 1.5 < foePower) || exposed.length >= 2);
+    // STRIKE WINDOW — timing, read off genuine scouting: intel on the town is
+    // fresh AND the army we can SEE is away from home (or home stands nearly
+    // empty while their soldiers are known to exist elsewhere). A human hits
+    // you the moment your army marches out; now so does the chief. Fog-honest:
+    // every term below comes from units currently visible to its own eyes.
+    const kFresh = !!knownTC && S.day - (knownTC.seen || 0) <= 6;
+    const strikeWindow = kFresh && foePower >= 2 &&
+      (foeAway >= foeHome + 3 || (foeHome === 0 && foeAway >= 2));
 
     ai.read = {
       day: S.day,
       knownTC: knownTC ? { x: knownTC.x, y: knownTC.y, seen: knownTC.seen } : null, scouted: !!knownTC,
       myPower, foePower, powerRatio: myPower / Math.max(1, foePower),
       foeTrend: foePower > prevFoe + 1 ? 1 : foePower < prevFoe - 1 ? -1 : 0,
-      foeHome, foeAway, foeVuln,
+      foeHome, foeAway, foeVuln, strikeWindow,
       foeWall, foeTower, weakFlank,
       foeCav, foeArch, foeSiege, foeMelee,
       foeCavHeavy: foeCav >= 2 && foeCav >= foeArch && foeCav >= foeMelee,
@@ -843,22 +895,38 @@ const AI = {
       ai.broke[k] = ai.res[k] < 40 ? (ai.broke[k] || 0) + 1 : 0;
       if (ai.broke[k] >= 5) {
         const bk = { wood: 'lumber', stone: 'quarry', food: 'farm' }[k];
-        if (this.tryBuild(bk, true)) { ai.broke[k] = 0; return true; }
+        // capped: a dig-out is ONE extra station the crews can rotate onto, never
+        // an uncrewed field of them (under the crewed economy an empty camp
+        // produces nothing while its cost starves whatever we were saving for)
+        const have = Bld.list('A').filter(b => b.key === bk).length;
+        const pool = Units.count('A', u => Units.isVillager(u));
+        if (have < Math.max(2, Math.ceil(pool / 2)) && this.tryBuild(bk, true)) { ai.broke[k] = 0; return true; }
       }
     }
     /* A town needs an ARMY HALL before it fortifies — an army is not a
        personality trait. Past a few days with no hall, build the persona's
-       core hall the moment it's affordable; and if a resource is blocking
-       it, dig THAT out first so it becomes affordable (this fixed a real
-       failure: a wall-happy Mason spent its wood on towers and never
-       afforded a 100-wood barracks, fielding no army at all). ---- */
+       core hall the moment it's affordable. If it ISN'T affordable, SAVE
+       for it (a goal reservation walls the pot off from other spending)
+       instead of "digging out" a new income building every day — under the
+       crewed economy those uncrewed camps produce nothing, and their cost
+       ate the very wood the hall needed (the no-army spiral that left a
+       Hard chief with 16 quarries, no stable and one soldier at day 60). */
     const ML = ['barracks', 'range', 'stable'];
-    if (S.day >= 8 && !S.buildings.some(b => b.owner === 'A' && ML.includes(b.key))) {
+    const hasHall = S.buildings.some(b => b.owner === 'A' && ML.includes(b.key));
+    if (ai.goal && ai.goal.hall && hasHall) ai.goal = null;   // saved up and built — release the reserve
+    if (S.day >= 8 && !hasHall) {
       const want = P.mix.map(([k]) => this.HALL_OF[k]).find(h => ML.includes(h)) || 'barracks';
-      if (this.tryBuild(want, true)) return true;
-      const cost = CFG.BUILDINGS[want].levels[0].cost;   // dig toward the blocking resource
-      for (const [res, key] of [['wood', 'lumber'], ['stone', 'quarry'], ['food', 'farm']])
-        if ((cost[res] || 0) > (ai.res[res] || 0) && this.tryBuild(key, true)) return true;
+      if (this.tryBuild(want, true)) { if (ai.goal && ai.goal.hall) ai.goal = null; return true; }
+      const cost = CFG.BUILDINGS[want].levels[0].cost;
+      if (!ai.goal || (!ai.goal.hall && !ai.goal.book))
+        ai.goal = { cost, until: S.day + 20, hall: true };
+      // at most ONE dig-out toward the blocking resource — then wait and save
+      for (const [res, key] of [['wood', 'lumber'], ['stone', 'quarry'], ['food', 'farm']]) {
+        if ((cost[res] || 0) > (ai.res[res] || 0)) {
+          const have = Bld.list('A').filter(b => b.key === key).length;
+          if (have < 2 && this.tryBuild(key, true)) return true;
+        }
+      }
     }
     // under attack with thin walls → raise a tower now (savings jar be damned)
     if (read.underThreat && Bld.list('A').filter(b => b.key === 'tower').length < 2 + tc.level &&
@@ -902,14 +970,17 @@ const AI = {
     if (camp === 'TIDEWRACK' && !have.dock && tc.level >= 2) add(95, () => this._buildDock());
     if (camp === 'MUDLARK' && !have.sapper && tc.level >= 2) add(95, () => this.tryBuild('sapper'));
 
-    // income buildings
+    // income buildings — but NOT while raiders are in the yard: a farm started
+    // under fire is wood handed to the torch (the day's actions belong to
+    // towers, walls and spears until the field is clear)
+    const calm = read.underThreat ? 0.2 : 1;
     for (const [res, key] of [['wood', 'lumber'], ['stone', 'quarry'], ['food', 'farm']]) {
       let u = 26 - (have[key] || 0) * 7 + Math.max(0, (60 - ai.res[res]) * 0.4);
       if (post === 'EXPAND') u += 24;
       if (pl.win === 'economy' || pl.win === 'timing') u += 6;
-      add(u, () => this.tryBuild(key));
+      add(u * calm, () => this.tryBuild(key));
     }
-    add(14 - (have.lodge || 0) * 8 + (P.name === 'Forager' ? 12 : 0), () => this.tryBuild('lodge'));
+    add((14 - (have.lodge || 0) * 8 + (P.name === 'Forager' ? 12 : 0)) * calm, () => this.tryBuild('lodge'));
 
     // military halls for the mix, plus counters the read demands
     const wantHalls = new Set();
@@ -976,7 +1047,7 @@ const AI = {
     }
 
     // houses (AI ignores pop cap — just a lived-in look)
-    add(9 + (post === 'EXPAND' ? 5 : 0) - (have.house || 0) * 2, () => this.tryBuild('house'));
+    add((9 + (post === 'EXPAND' ? 5 : 0) - (have.house || 0) * 2) * calm, () => this.tryBuild('house'));
 
     // Town Center upgrade
     if (tc.level < 3 && !tc.upgrading && Bld.canUpgrade(tc).ok) {
@@ -1014,7 +1085,7 @@ const AI = {
 
     // endless growth backfill
     const gk = this.growthKey();
-    if (gk) add(18, () => this.tryBuild(gk));
+    if (gk) add(18 * calm, () => this.tryBuild(gk));
 
     C.sort((a, b) => b.util - a.util);
     for (const a of C) if (a.run()) return true;   // best affordable action wins the day
@@ -1052,8 +1123,9 @@ const AI = {
     const ai = S.ai, P = this.persona();
     const want = this.armyWant(m, ai.posture);
     const mix = this.counterMix(P.mix, read);
-    if (this.trainArmy(m, want, mix) && ai.res.food > 400 && ai.res.gold > 80)
-      this.trainArmy(m, want, mix);
+    // drill until the halls refuse (want reached, resources dry, or the day's
+    // action budget spent) — a behind chief catches up instead of one-a-day
+    for (let drills = 0; drills < 3 && this.trainArmy(m, want, mix); drills++);
     // WALL-BREAKERS: a walled player needs siege to crack, whatever the persona.
     // With a workshop up, keep a catapult (or a trebuchet once L3) on hand so a
     // PUSH doesn't stall poking stone — combat already routes the rest through
@@ -1651,7 +1723,7 @@ const AI = {
       return true;
     }
     // land assaults — hold while the engines/host gather, then commit at the weak spot
-    if (S.units.some(u => u.owner === 'A' && u.task && u.task.type === 'raid')) return true;
+    if (S.units.some(u => u.owner === 'A' && u.task && u.task.type === 'raid' && !u.harass)) return true;
     if (!this.campaignReady(strat)) return true;
     if (this._launchCampRaid(read, strat)) startRound();
     return true;
@@ -1922,15 +1994,29 @@ const AI = {
        single best-scored construction/upgrade; (d) posture- and
        counter-weighted training plus navy. No fixed order — the choice is
        continuous, so behavior shifts smoothly instead of on cliff edges. ---- */
-    if (ai.goal && (tc.level >= 3 || tc.upgrading || S.day > ai.goal.until)) ai.goal = null;
+    if (ai.goal && ((ai.goal.book || ai.goal.hall) ? S.day > ai.goal.until
+        : (tc.level >= 3 || tc.upgrading || S.day > ai.goal.until))) ai.goal = null;
     if (!ai.goal && tc.level < 3 && !tc.upgrading && S.day > P.tcDays[tc.level - 1])
       ai.goal = { cost: CFG.BUILDINGS.tc.levels[tc.level].cost, until: S.day + 20 };
     ai._free = true;                              // emergencies don't queue behind the day's chores
     const didSafety = this.digAndProtect(read);
     ai._free = false;
-    if (!didSafety && S.day % (m.aiBuildEvery || 2) === 0) this.bestBuild(read);
-    if (!didSafety && S.day % 4 === 0) this.aiWarCamp(read);   // occasionally stake a forward base for a push
-    this.trainForces(m, read);
+    /* ARMY BEFORE BRICKS when the yard is empty: a chief with half (or less)
+       of its target force drills FIRST, so the day's resources arm hands
+       before they roof houses — no more all-city-no-army mornings. Otherwise
+       construction leads and training takes what's left. Safety acting no
+       longer swallows the whole day: the action budget is the throughput
+       limit, so the best build/upgrade still runs after an emergency. */
+    const standing = Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u) && !Units.isSiege(u));
+    const wantNow = this.armyWant(m, ai.posture);
+    const armyFirst = standing * 2 < wantNow;
+    if (armyFirst) this.trainForces(m, read);
+    // THE OPENING BOOK: the persona's rehearsed build order, played crisply —
+    // while it runs it owns construction (bestBuild dithering starts after)
+    const inBook = this.openingBook();
+    if (!inBook && S.day % (m.aiBuildEvery || 2) === 0) this.bestBuild(read);
+    if (S.day % 4 === 0) this.aiWarCamp(read);   // occasionally stake a forward base for a push
+    if (!armyFirst) this.trainForces(m, read);
     // SAPPERS: first priority is breaching where a raid party is stuck — clear the
     // woods or bridge the water so the assault gets through — then defensive moats
     // and offensive breaches
@@ -1949,28 +2035,50 @@ const AI = {
        hands belong on farms and building sites, not a daily parade into the
        player's tower fire. Fresh eyes on the town reset the caution. ---- */
     const scout = ai.scoutId && S.units.find(u => u.id === ai.scoutId);
-    if (ai.scoutId && !scout) { ai.scoutId = 0; ai.scoutFail = (ai.scoutFail || 0) + 1; }   // never came home
-    else if (scout && !(scout.task && scout.task.type === 'move')) ai.scoutId = 0;          // arrived / released
+    if (ai.scoutId && !scout) { ai.scoutId = 0; ai.scoutLegs = 0; ai.scoutFail = (ai.scoutFail || 0) + 1; }   // never came home
+    else if (scout && !(scout.task && scout.task.type === 'move')) {
+      // leg complete. Still blind? the SAME scout sweeps ON to the next
+      // unexplored frontier — a patrol that combs the map, not a single peek
+      // at one random meadow (which left a Hard chief blind until day 75).
+      // soldiers sweep up to 4 legs; a VILLAGER peeks once and walks home —
+      // long circuits through wolf country cost the workforce too dearly
+      const maxLegs = Units.isVillager(scout) ? 1 : 4;
+      if (!this.knownPlayerTC() && (ai.scoutLegs || 0) < maxLegs && !read.underThreat) {
+        const nxt = this.huntTarget();
+        if (nxt) {
+          const spot = MapGen.findNear(nxt.x, nxt.y, 5, (x, y) => Path.passable(x, y, 'A')) || nxt;
+          scout.task = { type: 'move', x: spot.x, y: spot.y };
+          scout.anchor = { x: spot.x + 0.5, y: spot.y + 0.5 };
+          Units.setPath(scout, spot.x, spot.y);
+          ai.scoutLegs = (ai.scoutLegs || 0) + 1;
+        } else { ai.scoutId = 0; ai.scoutLegs = 0; }
+      } else { ai.scoutId = 0; ai.scoutLegs = 0; }                                          // swept enough / found it — home
+    }
     const kTC = read.knownTC;
     if (kTC && S.day - (kTC.seen || 0) <= 2) ai.scoutFail = 0;   // intel refreshed — the road worked
     const needScout = !kTC || (S.day - (kTC.seen || 0) > 40);
     const scoutGap = 8 + Math.min(4, ai.scoutFail || 0) * 12;    // 8d base, +12d per lost scout (cap +48)
     if (needScout && !ai.scoutId && !read.underThreat && S.day - (ai.scoutDay == null ? -99 : ai.scoutDay) >= scoutGap) {
-      const dst = kTC || this.scoutTarget();
+      const dst = kTC || this.huntTarget() || this.scoutTarget();   // sweep the reachable frontier, not a random meadow
       const busy = u => u.tUnit || u.tBld ||
         (u.task && (u.task.type === 'raid' || u.task.type === 'move' || u.task.type === 'build'));
       const spares = S.units.filter(u => u.owner === 'A' && !Units.isNaval(u) && !busy(u));
       const soldiers = spares.filter(u => Units.isMilitary(u) && u.kind !== 'siegetower');
       const pick = soldiers.find(u => u.kind === 'rider' || u.kind === 'horsearcher')
-        || ((ai.scoutFail || 0) < 2 ? spares.find(u => Units.isVillager(u)) : null)
-        // a proven-deadly road is soldier's work — one will go alone if he must
-        || (soldiers.length >= ((ai.scoutFail || 0) >= 2 ? 1 : 3) ? soldiers[0] : null);
+        // a villager scout only when hands can be spared — never the last few
+        // (a young village that mails its workforce to the wolves dies of it)
+        || ((ai.scoutFail || 0) < 2 && spares.filter(u => Units.isVillager(u)).length >= 4
+            ? spares.find(u => Units.isVillager(u)) : null)
+        // a proven-deadly road is soldier's work — but never the LAST spear: a
+        // pair must remain at home whatever the need for eyes
+        || (soldiers.length >= ((ai.scoutFail || 0) >= 2 ? 3 : 4) ? soldiers[0] : null);
       if (dst && pick) {
         const spot = MapGen.findNear(dst.x, dst.y, 5, (x, y) => Path.passable(x, y, 'A')) || dst;
         pick.task = { type: 'move', x: spot.x, y: spot.y };
         pick.anchor = { x: spot.x + 0.5, y: spot.y + 0.5 };
         Units.setPath(pick, spot.x, spot.y);
         ai.scoutId = pick.id;
+        ai.scoutLegs = 0;
         ai.scoutDay = S.day;                                     // starts the between-scouts clock
       }
     }
@@ -1982,7 +2090,7 @@ const AI = {
        so a turtled game still ends in fire and iron. ---- */
     const mem = ai.memory || (ai.memory = { wallStop: false, wallHit: 0 });
     if (!mem.laneDef) mem.laneDef = {};
-    const raiders = S.units.filter(u => u.owner === 'A' && u.task && u.task.type === 'raid');
+    const raiders = S.units.filter(u => u.owner === 'A' && u.task && u.task.type === 'raid' && !u.harass);
     if (raiders.length) {
       const tooFew = ai.raidN && raiders.length <= Math.max(1, Math.floor(ai.raidN * 0.35));
       const tooLong = ai.raidDay && S.day - ai.raidDay > 8;
@@ -2003,23 +2111,34 @@ const AI = {
         // approach worked; stalling on walls means try the flank next time —
         // so the chief never suicides into the same wall twice.
         const razed = Bld.list('P').length < (ai.raidFoeBld || 1e9);
-        if (razed) mem.wallStop = false;
-        else if ((mem.wallHit || 0) > 0) mem.wallStop = true;
-        // remember which LANE this was: a stalled/beaten push marks its lane as
-        // defended (next time commit elsewhere); a productive one softens it
-        if (ai.raidLane) {
-          const cur = mem.laneDef[ai.raidLane] || 0;
-          mem.laneDef[ai.raidLane] = razed ? Math.max(0, cur - 1) : Math.min(6, cur + (tooFew ? 2 : 1));
+        // PRESS THE ADVANTAGE: a party that's WINNING (razed something, still
+        // mostly intact) doesn't march home on a timer — it rolls on to the
+        // next mark. A human snowballs a won fight; now so does the chief.
+        // Bounded to two extensions so a stalemate still ends in a withdrawal.
+        if (!tooFew && razed && raiders.length >= Math.ceil((ai.raidN || 1) * 0.6) && (ai.raidExt || 0) < 2) {
+          ai.raidExt = (ai.raidExt || 0) + 1;
+          ai.raidDay = S.day;                              // fresh clock for the next push
+          ai.raidFoeBld = Bld.list('P').length;            // fresh yardstick — progress must continue
+          mem.wallStop = false;
+        } else {
+          if (razed) mem.wallStop = false;
+          else if ((mem.wallHit || 0) > 0) mem.wallStop = true;
+          // remember which LANE this was: a stalled/beaten push marks its lane as
+          // defended (next time commit elsewhere); a productive one softens it
+          if (ai.raidLane) {
+            const cur = mem.laneDef[ai.raidLane] || 0;
+            mem.laneDef[ai.raidLane] = razed ? Math.max(0, cur - 1) : Math.min(6, cur + (tooFew ? 2 : 1));
+          }
+          for (const k in mem.laneDef) mem.laneDef[k] = Math.max(0, mem.laneDef[k] - 0.15);   // slow decay
+          for (const u of raiders) {
+            u.task = { type: 'move', x: tc.x, y: tc.y + 2 };
+            u.tUnit = 0; u.tBld = 0; u.tBridge = null; u.probe = false; u.raidObj = null;
+            u.anchor = { x: tc.x + 0.5, y: tc.y + 2.5 };
+            Units.setPath(u, tc.x, tc.y + 2);
+          }
+          ai.raidN = 0; ai.raidObj = null; ai.raidLane = null; ai.raidExt = 0;
+          if (tooFew) G.log('The rival war party breaks off and retreats!');
         }
-        for (const k in mem.laneDef) mem.laneDef[k] = Math.max(0, mem.laneDef[k] - 0.15);   // slow decay
-        for (const u of raiders) {
-          u.task = { type: 'move', x: tc.x, y: tc.y + 2 };
-          u.tUnit = 0; u.tBld = 0; u.tBridge = null; u.probe = false; u.raidObj = null;
-          u.anchor = { x: tc.x + 0.5, y: tc.y + 2.5 };
-          Units.setPath(u, tc.x, tc.y + 2);
-        }
-        ai.raidN = 0; ai.raidObj = null; ai.raidLane = null;
-        if (tooFew) G.log('The rival war party breaks off and retreats!');
       }
     } else { ai.raidN = 0; ai.raidObj = null; ai.raidLane = null; }
 
@@ -2042,8 +2161,11 @@ const AI = {
     // exploitation appetite (difficulty) sets how much of an edge it needs
     const aggro = Math.min(1.25, pl.aggression * (0.5 + 0.6 * (m.aiAggro || 1)));
     const boldness = Math.max(0.8,
-      P.raidPower - aggro * 0.5 - (read.foeVuln ? 0.35 : 0) - Math.max(0, S.day - 90) * 0.005);
-    const dayFloor = read.foeVuln ? 12 : Math.max(16, m.aiRaidDay + P.raidDayAdd);
+      P.raidPower - aggro * 0.5 - ((read.foeVuln || read.strikeWindow) ? 0.35 : 0) - Math.max(0, S.day - 90) * 0.005);
+    const dayFloor = (read.foeVuln || read.strikeWindow) ? 12 : Math.max(16, m.aiRaidDay + P.raidDayAdd);
+    // a SCOUTED strike window cuts the raid clock short: the enemy's army is
+    // seen away from home NOW — waiting out a cooldown wastes the moment
+    if (read.strikeWindow && attackPosture && ai.raidCd > 1 && mine > theirs) ai.raidCd = 1;
     // TWO-FRONT SPACING: on Hard, the chief won't march while a barbarian wave is
     // imminent or still fresh on the field — piling a rival raid onto a raider
     // wave stacks into an unsurvivable window. It HOLDS (this cycle only), then
@@ -2061,8 +2183,8 @@ const AI = {
       const shareJit = 1 + (G.rand() - 0.5) * 0.5 * cr;
       const share = Math.max(0.4, Math.min(1, (push ? Math.max(0.66, P.raidShare) : Math.min(0.5, P.raidShare)) * shareJit));
       const need = push ? Math.max(4, Math.ceil(theirs * boldness) + 1) : 3;
-      const strong = push ? (mine >= 4 && mine > theirs * boldness)
-        : (read.foeVuln || read.softCount > 0 || mine > theirs * boldness);
+      const strong = push ? (mine >= 4 && (mine > theirs * boldness || (read.strikeWindow && mine > theirs)))
+        : (read.foeVuln || read.strikeWindow || read.softCount > 0 || mine > theirs * boldness);
       if (strong && troops.length >= need) {
         const party = troops.slice(0, Math.max(need, Math.ceil(troops.length * share)));
         // LAYER 4: pick the main objective. Prefer the LEAST-DEFENDED approach
@@ -2113,6 +2235,7 @@ const AI = {
         ai.raidCd = Math.max(3, Math.round((push ? P.raidCd : Math.max(6, P.raidCd - 4)) * (1 + (G.rand() - 0.5) * 0.6 * cr)));
         ai.raidN = party.length;
         ai.raidDay = S.day;
+        ai.raidExt = 0;
         G.log(push ? (probes ? '⚔ The rival splits its host — probes on the flanks, the main column marching in!'
                              : '⚔ The rival tribe masses and marches on your village!')
           : '⚔ A rival raiding party rides out!', true);
@@ -2141,10 +2264,57 @@ const AI = {
             u.raidLane = 'hunt'; u.raidObj = { type: 'tc', x: dest.x, y: dest.y };
           }
           ai.raidObj = { type: 'tc', x: dest.x, y: dest.y };
-          ai.raidLane = 'hunt'; ai.raidN = party.length; ai.raidDay = S.day;
+          ai.raidLane = 'hunt'; ai.raidN = party.length; ai.raidDay = S.day; ai.raidExt = 0;
           ai.raidFoeBld = Bld.list('P').length; mem.wallHit = 0;
           ai.raidCd = Math.max(6, Math.round(P.raidCd));
           G.log('⚔ The rival tribe marches out in force, hunting for your village!', true);
+        }
+      }
+    }
+
+    /* ---- HARASSMENT: the constant small pressure a human opponent applies.
+       Two fast riders slip out at SCOUTED, exposed workers (read.exposed —
+       what its own eyes have actually seen), kill what they catch, and come
+       home on a short leash: hurt (<40%), out of work, or out of days (6) →
+       they break off. It never strips the guard (only fires with 4+ soldiers
+       free, takes 2), never blocks the main raid machinery (u.harass parties
+       are excluded from its bookkeeping), and rests aiHarass days between
+       sorties — Calm never does it at all. The tax on the player is having
+       to LOOK UP from their build order, over and over. ---- */
+    for (const u of S.units) {
+      if (u.owner !== 'A' || !u.harass) continue;
+      const hurt = u.hp < (u.maxhp || CFG.UNITS[u.kind].hp) * 0.4;
+      const raiding = u.task && u.task.type === 'raid';
+      if (!raiding || hurt || S.day > (u.harassUntil || 0)) {
+        u.harass = false;
+        if (raiding) {
+          u.task = { type: 'move', x: tc.x, y: tc.y + 2 };
+          u.tUnit = 0; u.tBld = 0; u.probe = false; u.raidObj = null;
+          u.anchor = { x: tc.x + 0.5, y: tc.y + 2.5 };
+          Units.setPath(u, tc.x, tc.y + 2);
+        }
+      }
+    }
+    if (ai.harassCd == null) ai.harassCd = 0;
+    if (ai.harassCd > 0) ai.harassCd--;
+    if (m.aiHarass && read.knownTC && ai.harassCd <= 0 && !read.underThreat &&
+        ai.posture !== 'DEFEND' && ai.posture !== 'REBUILD' &&
+        S.day >= Math.max(16, (m.aiRaidDay || 40) - 16)) {
+      const targets = (read.exposed || []);
+      if (targets.length) {
+        const free = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) && !Units.isNaval(u) &&
+          !Units.isSiege(u) && u.kind !== 'siegetower' && !u.harass && !(u.task && u.task.type === 'raid'));
+        if (free.length >= 4) {
+          const fast = free.slice().sort((a, b2) => (CFG.UNITS[b2.kind].speed || 2) - (CFG.UNITS[a.kind].speed || 2)).slice(0, 2);
+          const tgt = targets[(G.rand() * targets.length) | 0];
+          for (const u of fast) {
+            u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.defend = false;
+            u.probe = true; u.harass = true; u.harassUntil = S.day + 6;
+            u.raidLane = 'harass';
+            u.raidObj = { type: 'econ', x: Math.round(tgt.x), y: Math.round(tgt.y) };
+          }
+          ai.harassCd = Math.max(3, Math.round(m.aiHarass * (0.8 + G.rand() * 0.6)));
+          if (!ai.harassLogged) { ai.harassLogged = true; G.log('⚔ Rival riders slip out to harry your workers — guard your fields!', true); }
         }
       }
     }

@@ -497,7 +497,7 @@ const CFG = {
       waveFirst: 70, waveGapMult: 2.2, waveSizeAdd: -1, barbMult: 0.9,
       animalMax: 2, animalChance: 0.15, aiRaidDay: 80,
       aiBuildEvery: 3, aiOutput: 0.85, aiArmyCap: 6, aiArmyDiv: 11, aiEliteShare: 0.15, aiAggro: 0.55,
-      aiVillCap: 8, aiVillEvery: 16, aiActions: 1,
+      aiVillCap: 8, aiVillEvery: 16, aiActions: 1, aiHarass: 0,   // calm: no harassment parties
     },
     moderate: {
       name: 'Moderate', icon: '⚔️', desc: 'The intended experience.',
@@ -514,6 +514,7 @@ const CFG = {
       // income) and it has one pair of hands: aiActions macro actions per day
       // (build/upgrade/train/caravan each spend one). Strategy layers untouched.
       aiVillCap: 13, aiVillEvery: 12, aiActions: 2,
+      aiHarass: 9,   // days between two-rider harassment sorties at scouted, exposed workers
     },
     hard: {
       name: 'Hard', icon: '💀', desc: 'Slower gathering, relentless enemies.',
@@ -527,7 +528,7 @@ const CFG = {
       waveFirst: 33, waveGapMult: 0.9, waveSizeAdd: 1, barbMult: 1.1, barbSpacing: true, bandCap: 8,
       animalMax: 4, animalChance: 0.3, aiRaidDay: 32,
       aiBuildEvery: 1, aiOutput: 1.15, aiArmyCap: 13, aiArmyDiv: 6, aiEliteShare: 0.8, aiAggro: 1.2,
-      aiVillCap: 16, aiVillEvery: 8, aiActions: 4,
+      aiVillCap: 16, aiVillEvery: 8, aiActions: 4, aiHarass: 6,
     },
   },
 

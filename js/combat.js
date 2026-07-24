@@ -163,6 +163,29 @@ const Combat = {
     return foes > 0 && guards < foes;
   },
 
+  /* FOCUS FIRE (rival micro): where the player aims their own volleys, the
+     rival used to swing at whatever stood NEAREST. Its soldiers now pick
+     targets like a decent human: a wounded enemy is finished (removing its
+     damage output entirely beats spreading dents), and high-value marks —
+     siege engines, ballistae, sappers, then archers — die before chaff.
+     Same radius, same reach rules as the nearest-pick it replaces; only the
+     CHOICE within them is smarter. Player units are player-commanded and
+     keep the plain nearest pick. */
+  bestFoe(u, cx, cy, maxD, pred) {
+    let best = null, bs = 1e9;
+    for (const o of S.units) {
+      if (o === u || o.hp <= 0) continue;
+      const d = Math.hypot(o.x - cx, o.y - cy);
+      if (d > maxD) continue;
+      if (!pred(o)) continue;
+      const base = CFG.UNITS[o.kind] || {};
+      const val = (Units.isSiege(o) || o.kind === 'ballista') ? 4 : Units.isSapper(o) ? 3 : (base.rng ? 1.5 : 0);
+      const s = d - (1 - o.hp / (o.maxhp || base.hp || 1)) * 3 - val;
+      if (s < bs) { bs = s; best = o; }
+    }
+    return best;
+  },
+
   acquire() {
     this._militiaOn = this.townUnderSiege();
     for (const u of S.units) {
@@ -202,9 +225,10 @@ const Combat = {
             // and neither chases a provocation out past the defended land.
             const reach = CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE || 1.5;
             const MAXR = CFG.GUARD.maxNatural || 14;
-            const e = this.nearestUnit(g.x, g.y, g.r1 + MAXR + reach,
-              o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o) &&
-                Math.hypot(o.x - g.x, o.y - g.y) <= Units.holdRadius(g, o.x, o.y) + reach + 0.5);
+            const gpred = o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o) &&
+              Math.hypot(o.x - g.x, o.y - g.y) <= Units.holdRadius(g, o.x, o.y) + reach + 0.5;
+            const e = u.owner === 'A' ? this.bestFoe(u, g.x, g.y, g.r1 + MAXR + reach, gpred)
+              : this.nearestUnit(g.x, g.y, g.r1 + MAXR + reach, gpred);
             if (e) u.tUnit = e.id;
             else if (dc > Units.holdRadius(g, u.x, u.y) && !Units.moving(u)) Units.returnToGuard(u, g);   // no foe → drift home
             continue;
@@ -214,8 +238,9 @@ const Combat = {
         // guards: engage hostiles near them (but don't stray while following an order,
         // and never auto-hunt harmless game — that's the player's call)
         if (u.task && u.task.type === 'move') continue;
-        const e = this.nearestUnit(u.x, u.y, base.aggro,
-          o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
+        const lpred = o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o);
+        const e = u.owner === 'A' ? this.bestFoe(u, u.x, u.y, base.aggro, lpred)
+          : this.nearestUnit(u.x, u.y, base.aggro, lpred);
         if (e && Math.hypot(e.x - u.anchor.x, e.y - u.anchor.y) < 9) { u.tUnit = e.id; continue; }
         // ASSAULT autonomy: a unit committed to an attack (the order flagged
         // u.assault) whose target has fallen presses on by itself — a fighter in
@@ -349,7 +374,7 @@ const Combat = {
     // 1) a hostile fighter right in our face — engage (don't get picked apart).
     //    Only lock on if we can actually REACH it: a defender safe behind a wall
     //    must not distract the column from battering its way in.
-    const foe = this.nearestUnit(u.x, u.y, 5, o => this.hostileUnits(u, o) &&
+    const foe = this.bestFoe(u, u.x, u.y, 5, o => this.hostileUnits(u, o) &&
       (Units.isMilitary(o) || (o.owner === 'R' && !Units.isTransport(o))) && this.canEngage(u, o));
     if (foe && this.canReach(u, foe.x, foe.y, 1.6)) { u.tUnit = foe.id; return; }
     // 2) soft targets on the way — an enemy SAPPER (defenceless, mid-work, high
