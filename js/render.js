@@ -382,6 +382,19 @@ const R = {
         ? (hp % 11 === 0 ? Sprites.terrainRare[T.FOREST] : Sprites.terrainFull[T.FOREST])
         : cnt >= 4 ? Sprites.terrainMed[T.FOREST] : Sprites.terrain[T.FOREST];
       img = set[hp % set.length];
+    } else if (t === T.HILLS && Sprites.terrainFull[T.HILLS]) {
+      // ORE gets the forest's density gradient: a lone/edge tile is a few
+      // half-buried stones, a perimeter tile a chunky cluster, and only a
+      // fully-enclosed core tile uses the packed straddling set (its cut
+      // sides always abut more ore) — so a deposit reads as one rocky mass
+      // thickening toward its heart, not a grid of repeated tiles.
+      let cnt = 0;
+      for (const [ox, oy] of NEIGH8)
+        if (MapGen.inB(x + ox, y + oy) && terr[MapGen.idx(x + ox, y + oy)] === T.HILLS) cnt++;
+      const hp = (h ^ (h >>> 13)) >>> 0;
+      const set = cnt === 8 ? Sprites.terrainFull[T.HILLS]
+        : cnt >= 4 ? Sprites.terrainMed[T.HILLS] : Sprites.terrain[T.HILLS];
+      img = set[hp % set.length];
     } else if (t !== T.MOUNTAIN) img = variants[(x * 7 + y * 13) % variants.length];
     // MOUNTAIN is drawn procedurally from a height field in the ground-layer step
     // below (drawMountain) — real slopes, not a sprite — so no img is selected here.

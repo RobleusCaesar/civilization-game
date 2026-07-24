@@ -357,7 +357,10 @@ const G = {
         // a stale seam on each of them. Repaint every explored neighbour too, or
         // the rival's fog-hidden sapper work (moats / reclaimed land / mounds)
         // reads as a grid of hard-edged squares the moment the player sees it.
-        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        // ALL EIGHT: forest/ore density counts diagonals, so felling a tree must
+        // also thin the diagonal neighbour's art, not just the orthogonal ones.
+        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+          if (!ox && !oy) continue;
           const nx = rx + ox, ny = ry + oy;
           if (MapGen.inB(nx, ny) && S.map.explored[MapGen.idx(nx, ny)]) R.drawTileAt(nx, ny);
         }

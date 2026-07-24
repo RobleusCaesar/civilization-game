@@ -311,23 +311,51 @@ const Sprites = {
     for (let i = 0; i < 6; i++)                                // a few scree chips + grass tufts (workable-deposit rubble)
       f((r() * 30) | 0, (r() * 30) | 0, 1, 1, r() < 0.6 ? AP.ore[2] : AP.grass[4]);
   }
-  // ORE (hills): a big chunky cluster of grey boulders on turf — 12 variants for
-  // variety. Big anchor boulders (r 8-10) with mediums (r 6-7) + smalls (r 5) and
-  // rubble around; every rock (body + shadow) stays fully inside the tile so a
-  // deposit's edge never shows a cut-off boulder.
-  Sprites.terrain[T.HILLS] = [
-    tile(p => rockField(p, 31, [[14, 16, 9], [24, 24, 6], [7, 25, 5]])),
-    tile(p => rockField(p, 87, [[17, 15, 10], [7, 23, 6], [25, 8, 5]])),
-    tile(p => rockField(p, 143, [[12, 18, 8], [23, 12, 7], [24, 25, 5]])),
-    tile(p => rockField(p, 199, [[16, 20, 9], [9, 9, 6], [24, 17, 6]])),
-    tile(p => rockField(p, 251, [[19, 13, 8], [10, 22, 7], [23, 25, 5]])),
-    tile(p => rockField(p, 307, [[13, 13, 8], [22, 22, 7], [8, 25, 5]])),
-    tile(p => rockField(p, 361, [[16, 17, 10], [26, 7, 5], [8, 12, 5]])),
-    tile(p => rockField(p, 419, [[15, 21, 8], [8, 14, 6], [24, 10, 6]])),
-    tile(p => rockField(p, 467, [[20, 18, 9], [9, 20, 6], [14, 7, 5]])),
-    tile(p => rockField(p, 523, [[12, 15, 9], [24, 20, 6], [18, 25, 5]])),
-    tile(p => rockField(p, 577, [[18, 16, 8], [8, 10, 5], [10, 24, 6], [26, 23, 5]])),
-    tile(p => rockField(p, 631, [[14, 17, 10], [24, 13, 6], [7, 7, 5]])),
+  /* ORE (hills): the same three-density gradient as the forest, so a deposit
+     reads as one organic body of stone instead of a repeating grid of tiles:
+       SPARSE  (edge of the deposit): one or two smallish half-buried stones,
+               mostly open turf — no hard edges, everything inside the tile;
+       MEDIUM  (perimeter): the chunky 2-4 boulder clusters, still fully
+               inside the tile so the deposit's border never cuts a rock;
+       DENSE   (fully-enclosed core): big interlocked boulders that MAY
+               straddle the tile edge — every cut side abuts more ore, so the
+               heart of the deposit reads as one continuous rocky mass.
+     render.js picks the set from the 8-neighbour count, exactly like forest;
+     map.js scales each tile's stock by the same density (edge least, core
+     most — and at a fixed mining rate, the core holds a villager longest). */
+  Sprites.terrain[T.HILLS] = [                                  // SPARSE — the deposit's soft fringe
+    tile(p => rockField(p, 31,  [[10, 12, 5]])),
+    tile(p => rockField(p, 87,  [[22, 18, 6]])),
+    tile(p => rockField(p, 143, [[8, 22, 5], [20, 10, 4]])),
+    tile(p => rockField(p, 199, [[24, 24, 5]])),
+    tile(p => rockField(p, 251, [[14, 8, 5], [24, 20, 4]])),
+    tile(p => rockField(p, 307, [[6, 14, 4], [18, 24, 5]])),
+    tile(p => rockField(p, 361, [[20, 6, 5]])),
+    tile(p => rockField(p, 419, [[12, 20, 6]])),
+  ];
+  Sprites.terrainMed[T.HILLS] = [                               // MEDIUM — chunky clusters, none cut
+    tile(p => rockField(p, 33, [[14, 16, 9], [24, 24, 6], [7, 25, 5]])),
+    tile(p => rockField(p, 89, [[17, 15, 10], [7, 23, 6], [25, 8, 5]])),
+    tile(p => rockField(p, 145, [[12, 18, 8], [23, 12, 7], [24, 25, 5]])),
+    tile(p => rockField(p, 201, [[16, 20, 9], [9, 9, 6], [24, 17, 6]])),
+    tile(p => rockField(p, 253, [[19, 13, 8], [10, 22, 7], [23, 25, 5]])),
+    tile(p => rockField(p, 309, [[13, 13, 8], [22, 22, 7], [8, 25, 5]])),
+    tile(p => rockField(p, 363, [[16, 17, 10], [26, 7, 5], [8, 12, 5]])),
+    tile(p => rockField(p, 421, [[15, 21, 8], [8, 14, 6], [24, 10, 6]])),
+    tile(p => rockField(p, 469, [[20, 18, 9], [9, 20, 6], [14, 7, 5]])),
+    tile(p => rockField(p, 525, [[12, 15, 9], [24, 20, 6], [18, 25, 5]])),
+    tile(p => rockField(p, 579, [[18, 16, 8], [8, 10, 5], [10, 24, 6], [26, 23, 5]])),
+    tile(p => rockField(p, 633, [[14, 17, 10], [24, 13, 6], [7, 7, 5]])),
+  ];
+  Sprites.terrainFull[T.HILLS] = [                              // DENSE — the packed, straddling core
+    tile(p => rockField(p, 41, [[6, 8, 10], [22, 14, 11], [10, 24, 9], [28, 28, 8]])),
+    tile(p => rockField(p, 97, [[16, 6, 11], [5, 20, 9], [25, 24, 10]])),
+    tile(p => rockField(p, 151, [[8, 4, 9], [26, 8, 10], [6, 26, 10], [24, 28, 9]])),
+    tile(p => rockField(p, 209, [[16, 16, 13], [2, 6, 8], [30, 26, 9]])),
+    tile(p => rockField(p, 257, [[4, 14, 10], [20, 4, 9], [24, 22, 11]])),
+    tile(p => rockField(p, 311, [[12, 12, 11], [30, 10, 8], [8, 30, 9], [27, 29, 7]])),
+    tile(p => rockField(p, 367, [[18, 26, 11], [6, 10, 10], [28, 2, 8]])),
+    tile(p => rockField(p, 431, [[2, 24, 9], [14, 8, 11], [28, 16, 10]])),
   ];
 
   // wild fertile ground: fruit orchards and berry thickets, mixed across the

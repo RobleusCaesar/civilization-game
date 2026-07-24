@@ -337,6 +337,23 @@ const MapGen = {
         resAmount[i] = amt;
       }
     }
+    // DENSITY-TIERED STOCK (forest + ore): a stand or deposit is thin at its
+    // fringe and rich at its heart. The stock scales with the same 8-neighbour
+    // density the renderer draws (sparse edge ×0.6, perimeter ×1, enclosed
+    // core ×1.5) — and since the gather rate per terrain is fixed, a villager's
+    // time on a tile tracks its stock exactly: fringe tiles clear fast, the
+    // dense center takes the longest to cut or mine.
+    for (let i = 0; i < W * H; i++) {
+      if (t[i] !== T.FOREST && t[i] !== T.HILLS) continue;
+      const x = i % W, y = (i / W) | 0;
+      let cnt = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && ny >= 0 && nx < W && ny < H && t[ny * W + nx] === t[i]) cnt++;
+      }
+      resAmount[i] = Math.round(resAmount[i] * (cnt === 8 ? 1.5 : cnt >= 4 ? 1 : 0.6));
+    }
 
     return { terrain: t, resAmount, scarce: scarce.name, landform, spawns: { player, ai, camps } };
   },
