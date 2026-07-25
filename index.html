@@ -205,6 +205,14 @@
   .abtn.gold { border-color: var(--gold); background: #514627; }
   .trow2 { display: flex; gap: 10px; width: 100%; }
   .trow2 .abtn { flex: 1; }
+  /* PAUSE: a centred menu. The body is the scroll container, so the menu is
+     centred with vertical auto margins (min-height:100% inside a flex scroller
+     is unreliable on iOS) and only scrolls if it genuinely overflows. */
+  #scrPaused .sbody { display: flex; flex-direction: column; }
+  #scrPaused .pauseMenu { width: 100%; max-width: 560px; margin: auto;
+    padding: calc(env(safe-area-inset-top) + 6px) 0 calc(env(safe-area-inset-bottom) + 6px); }
+  #scrPaused .pauseMenu .mrow, #scrPaused .pauseMenu .trow2 { margin-bottom: 10px; }
+  #btnResign.danger, #btnQuitTitle.danger { border-color: #a4522e; background: #4a2a1c; }
   .trow3 .abtn { min-height: 48px; font-size: 12px; padding: 4px 6px; }
 
   /* title */
@@ -638,25 +646,32 @@
         Treat it like a password — anyone holding it can play as you.</p>
       <p class="lbl">Save file</p>
       <div class="mrow"><button class="abtn" id="btnExportFile">💾 Download current game as a file</button></div>
+      <!-- the running chronicle lives here now, so the pause screen stays a
+           clean menu instead of a wall of combat lines -->
+      <p class="lbl">📜 Event log</p>
+      <div id="logList"></div>
     </div>
   </div>
 
   <div class="screen" id="scrPaused">
     <header class="shead"><h2>⏸ Paused</h2></header>
     <div class="sbody">
-      <p class="hint" id="pauseSeed"></p>
-      <div class="mrow"><button class="abtn big gold" id="btnPauseResume">▶ Resume</button></div>
-      <div class="trow2">
-        <button class="abtn big" id="btnPauseSave">💾 Save</button>
-        <button class="abtn big" id="btnPauseLoad">📂 Load</button>
+      <div class="pauseMenu">
+        <p class="hint" id="pauseSeed"></p>
+        <div class="mrow"><button class="abtn big gold" id="btnPauseResume">▶ Resume</button></div>
+        <div class="trow2">
+          <button class="abtn big" id="btnPauseSave">💾 Save</button>
+          <button class="abtn big" id="btnPauseLoad">📂 Load</button>
+        </div>
+        <div class="trow2">
+          <button class="abtn big" id="btnPauseSettings">⚙ Settings</button>
+          <button class="abtn big" id="btnPauseHow">📖 How to play</button>
+        </div>
+        <div class="trow2">
+          <button class="abtn" id="btnResign">🏳 Resign</button>
+          <button class="abtn" id="btnQuitTitle">🏕 Quit to title</button>
+        </div>
       </div>
-      <div class="trow2" style="margin-top:10px">
-        <button class="abtn big" id="btnPauseSettings">⚙ Settings</button>
-        <button class="abtn big" id="btnPauseHow">📖 How to play</button>
-      </div>
-      <div class="mrow"><button class="abtn big" id="btnQuitTitle">🏕 Quit to title</button></div>
-      <p class="lbl">📜 Event log</p>
-      <div id="logList"></div>
     </div>
   </div>
 

@@ -459,6 +459,7 @@ const Screens = {
 
   /* ---------------- settings ---------------- */
   onSettings() {
+    this.renderLog();          // the event log lives on this page now
     const cad = this.el('setCadence');
     cad.value = String(window.Backend ? Backend.autosaveDays : 2);
     const idBox = this.el('setIdentity');
@@ -477,16 +478,41 @@ const Screens = {
     this.el('pauseSeed').textContent =
       `${G.modeCfg().icon} ${G.modeCfg().name} · ${S.sizeKey} map · day ${S.day} · seed ${S.seed}` +
       (G.lastFrameError ? '  ·  ⚠️ recovered a glitch (details in log)' : '');
+    const q = this.el('btnQuitTitle');
+    q.textContent = '🏕 Quit to title';
+    q.classList.remove('danger');
+    const r = this.el('btnResign');
+    if (r) { r.textContent = '🏳 Resign'; r.classList.remove('danger'); }
+    this._confirmResign = false;
+  },
+
+  // the running chronicle — rendered wherever it lives (Settings, now)
+  renderLog() {
     const log = this.el('logList');
+    if (!log || !window.S || !S.log) return;
     // if the loop caught and recovered from an error, surface its first line at
     // the top of the log so it can be reported (the game kept running past it)
     const errLine = G.lastFrameError
       ? `<div style="color:#e8a04a">⚠️ ${this.esc(String(G.lastFrameError).split('\n')[0]).slice(0, 160)}</div>`
       : '';
     log.innerHTML = errLine + S.log.slice(0, 30).map(l => `<div>Day ${l.day}: ${this.esc(l.msg)}</div>`).join('');
-    const q = this.el('btnQuitTitle');
-    q.textContent = '🏕 Quit to title';
-    q.classList.remove('danger');
+  },
+
+  /* RESIGN — concede the game. It ends the run for good, so it takes a second
+     tap to confirm (the same pattern as quitting with unsaved progress), then
+     drops straight into the Game Over screen. */
+  resign() {
+    if (!window.S || S.over) return;
+    const r = this.el('btnResign');
+    if (!this._confirmResign) {
+      this._confirmResign = true;
+      if (r) { r.textContent = '⚠ Concede the valley — tap again'; r.classList.add('danger'); }
+      return;
+    }
+    this._confirmResign = false;
+    if (r) { r.textContent = '🏳 Resign'; r.classList.remove('danger'); }
+    S.resigned = true;
+    G.end(false, 'You struck your banner and left the valley.');
   },
 
   quitToTitle() {
@@ -767,6 +793,7 @@ const Screens = {
     on('btnPauseSettings', () => { this.backTo = 'paused'; this.show('settings'); });
     on('btnPauseHow', () => { this.backTo = 'paused'; this.show('howto'); });
     on('btnQuitTitle', () => this.quitToTitle());
+    on('btnResign', () => this.resign());
     // endgame
     const leaveEnd = (go) => {
       if (this._score && this._score.win && !this._submitted &&
