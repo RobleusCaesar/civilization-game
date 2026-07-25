@@ -1874,6 +1874,9 @@ const AI = {
     if (!camp || !camp.strat) return false;
     const strat = camp.strat, ptc = read.knownTC;
     if (!ptc) return false;
+    // a held main column commits the moment its feint has had time to work
+    if (camp.pending && S.day >= camp.pending.due) { this._commitMain(read); return true; }
+    if (camp.pending) return true;                      // still letting the feint pull
     // MUDLARK earns its keep by CARVING LAND, not razing buildings — so credit its
     // progress before any give-up test: while the reachable lane is still growing
     // toward the town, reset the abandon clock so a long belt of woods actually gets
@@ -1894,6 +1897,9 @@ const AI = {
       const chipped = camp.roundBaseHp != null && this._foeFortHp() < camp.roundBaseHp * 0.9;
       const won = razed || chipped;
       this._noteStrat(strat, won);              // remember how this plan fared
+      // …and whether the door we chose actually gave way, so the next assault
+      // either returns to it or tries a different one (see composeAssault)
+      if (S.ai.memory) S.ai.memory.lastMainWorked = won;
       if (won) {
         // the way is proven: an opportunistic plan stands down having made its
         // point; a grind that is genuinely chewing through keeps at it
@@ -1940,6 +1946,84 @@ const AI = {
 
   // commit the relevant host (siege for IRONBELLY, towers for HIGHREACH, everyone for
   // WARHORN) at the softest wall segment, via the ordinary raid machinery
+  /* ================= COMBINED ARMS =================
+     Which way in, and whether to come two ways at once. The named plan says
+     HOW to breach; this says WHERE, and whether the host is strong enough to
+     spare a feint that drags defenders off the real door.
+
+     A FULL, UNDIVIDED ATTACK IS OFTEN CORRECT and stays the default — a split
+     host is a weaker host, and against a small garrison or a single way in,
+     concentration wins. A second prong is only bought when it is genuinely
+     affordable and there is something to pull. */
+  composeAssault(read, partyN) {
+    const ai = S.ai, mem = ai.memory || (ai.memory = {});
+    const lanes = this.playerLanes();
+    if (!lanes.length) return { main: null, feint: null, feintN: 0, why: 'no lane read' };
+    // AIM-POINT ROTATION: least-defended first, but don't walk into the same
+    // door twice running unless it actually gave way last time.
+    let main = lanes[0];
+    if (lanes.length > 1 && mem.lastMainLane === main.key && !mem.lastMainWorked) main = lanes[1];
+    const others = lanes.filter(l => l.key !== main.key);
+    // Is a feint worth its bodies? Needs a real surplus, a second way in, and
+    // defenders worth drawing (an undefended town needs no theatre). The
+    // scorecard can also tell us feints simply haven't worked on this player.
+    const combo = (mem.combo && mem.combo[main.key]) || null;
+    const comboSour = combo && combo.tries >= 2 && combo.pulled === 0;
+    /* A FEINT ONLY PAYS IF THERE IS A GARRISON TO DRAW. Towers don't march —
+       drawing works on SOLDIERS. Against a thinly-held town the theatre costs
+       a third of the host and buys nothing, and one undivided punch lands
+       sooner; measured, feinting an unmanned wall pushed a won siege out by
+       seventy days. So the second prong is bought only when live defenders are
+       actually standing where we mean to hit. */
+    const garrison = this._defendersNear(main, 11);
+    const worthFeint = partyN >= 10 && others.length > 0 && main.def > 0 && garrison >= 3 && !comboSour;
+    if (!worthFeint) return { main, feint: null, feintN: 0,
+      why: partyN < 10 ? 'host too small to split' : comboSour ? 'feints not working here'
+        : garrison < 3 ? 'no garrison to draw — one full attack' : 'nothing to draw' };
+    // the feint goes at the LOUDEST door — the best-defended other lane, since
+    // that's where the garrison already is and where a threat reads as real
+    const feint = others.slice().sort((a, b) => b.def - a.def)[0];
+    const feintN = Math.max(2, Math.min(5, Math.round(partyN * 0.28)));
+    return { main, feint, feintN, why: 'two prongs' };
+  },
+  // did the feint actually drag the garrison off the main door?
+  _noteCombo(laneKey, pulled) {
+    const mem = S.ai.memory || (S.ai.memory = {});
+    const c = mem.combo || (mem.combo = {});
+    const e = c[laneKey] || (c[laneKey] = { tries: 0, pulled: 0, last: 0 });
+    e.tries++; e.last = S.day; if (pulled) e.pulled++;
+  },
+  _defendersNear(lane, r) {
+    if (!lane) return 0;
+    let n = 0;
+    for (const u of S.units)
+      if (u.owner === 'P' && Units.isMilitary(u) && !Units.isNaval(u) &&
+          Math.hypot(u.x - lane.mid.x, u.y - lane.mid.y) <= (r || 9)) n++;
+    return n;
+  },
+  // commit the held main prong once the feint has had time to pull the garrison
+  _commitMain(read) {
+    const ai = S.ai, camp = ai.camp, pend = camp && camp.pending;
+    if (!pend) return false;
+    const host = pend.ids.map(id => Units.get(id)).filter(u => u && !(u.task && u.task.type === 'raid'));
+    camp.pending = null;
+    if (!host.length) return false;
+    // score the feint: are more of their soldiers at the feint door than ours?
+    const pulled = this._defendersNear(pend.feintLane) > this._defendersNear(pend.mainLane);
+    if (pend.feintLane) this._noteCombo(pend.mainLane.key, pulled);
+    for (const u of host) {
+      u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.probe = false; u.feint = false;
+      u.raidLane = pend.mainLane.key; u.raidObj = null; u.defend = false;
+    }
+    ai.raidObj = { type: 'tc', x: pend.x, y: pend.y, lane: pend.mainLane.key };
+    ai.raidLane = pend.mainLane.key; ai.raidN = host.length; ai.raidDay = S.day;
+    ai.raidFoeBld = Bld.list('P').length;
+    if (ai.memory) { ai.memory.wallHit = 0; ai.memory.lastMainLane = pend.mainLane.key; ai.memory.lastMainWorked = false; }
+    G.log(pulled ? '⚔ The feint draws them off — the rival’s main column storms the far side!'
+                 : '⚔ The rival’s main column commits!', true);
+    return true;
+  },
+
   _launchCampRaid(read, strat) {
     const ai = S.ai, ctx = this.probeAssault(read) || {};
     const seam = ctx.wallSeam || (ctx.siegeWall && { x: ctx.siegeWall.x, y: ctx.siegeWall.y }) || read.knownTC;
@@ -1947,13 +2031,43 @@ const AI = {
     const party = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) && !Units.isNaval(u) &&
       (withTowers || u.kind !== 'siegetower') && !(u.task && u.task.type === 'raid'));
     if (party.length < 3) return false;
-    const laneKey = (ctx.lane && ctx.lane.key) || strat;
-    for (const u of party) { u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.probe = false; u.raidLane = laneKey; u.raidObj = null; u.defend = false; }
-    ai.raidObj = { type: 'tc', x: seam.x, y: seam.y, lane: laneKey };
-    ai.raidLane = laneKey; ai.raidN = party.length; ai.raidDay = S.day;
+    const plan = this.composeAssault(read, party.length);
+    ai.raidCd = Math.max(4, Math.round(this.persona().raidCd));
     ai.raidFoeBld = Bld.list('P').length;
     if (ai.memory) ai.memory.wallHit = 0;
-    ai.raidCd = Math.max(4, Math.round(this.persona().raidCd));
+
+    /* TWO PRONGS: the feint marches now at the loudest door; the main column is
+       held two days so the garrison has time to commit to the wrong side, then
+       drives home somewhere else (see _commitMain). Engines never feint — they
+       belong with the real attack. */
+    if (plan.feint && plan.main) {
+      const light = party.filter(u => !Units.isSiege(u) && u.kind !== 'siegetower' && u.kind !== 'ballista');
+      const feintParty = light.slice(0, plan.feintN);
+      if (feintParty.length >= 2) {
+        const rest = party.filter(u => feintParty.indexOf(u) < 0);
+        for (const u of feintParty) {
+          u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.defend = false;
+          u.probe = true; u.feint = true; u.raidLane = plan.feint.key;
+          u.raidObj = { type: 'tc', x: plan.feint.mid.x, y: plan.feint.mid.y };
+        }
+        ai.camp.pending = { strat, ids: rest.map(u => u.id), due: S.day + 2,
+          mainLane: plan.main, feintLane: plan.feint, x: plan.main.mid.x, y: plan.main.mid.y };
+        ai.raidObj = { type: 'tc', x: plan.feint.mid.x, y: plan.feint.mid.y, lane: plan.feint.key };
+        ai.raidLane = plan.feint.key; ai.raidN = feintParty.length; ai.raidDay = S.day;
+        G.log('⚔ ' + this.CAMPAIGN_CRY[strat] + ' — riders feint at the near gate!', true);
+        return true;
+      }
+    }
+    // ONE FULL ATTACK — the whole host through the chosen door. The right call
+    // whenever the garrison is thin, there's only one way in, or splitting
+    // would leave neither prong strong enough to matter.
+    const lane = plan.main;
+    const aim = lane ? lane.mid : seam;
+    const laneKey = (lane && lane.key) || (ctx.lane && ctx.lane.key) || strat;
+    for (const u of party) { u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.probe = false; u.feint = false; u.raidLane = laneKey; u.raidObj = null; u.defend = false; }
+    ai.raidObj = { type: 'tc', x: aim.x, y: aim.y, lane: laneKey };
+    ai.raidLane = laneKey; ai.raidN = party.length; ai.raidDay = S.day;
+    if (ai.memory) { ai.memory.lastMainLane = laneKey; ai.memory.lastMainWorked = false; }
     G.log(this.CAMPAIGN_CRY[strat], true);
     return true;
   },
