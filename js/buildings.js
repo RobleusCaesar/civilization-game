@@ -124,10 +124,20 @@ const Bld = {
     res = res || S.res;
     for (const k in cost) res[k] -= cost[k];
   },
+  /* every price in the game reads ICON FIRST, then the number (🪵 120 🪨 40) —
+     the icon labels the number that follows it, so a multi-resource cost can't
+     be misread as "120 wood-and-stone". The resource bar reads the same way.
+     Use this for ANY price shown to the player; never hand-format one. */
+  RES_ICON: { food: '🍖', wood: '🪵', stone: '🪨', gold: '✨' },
+  resIcon(k) { return this.RES_ICON[k] || k; },
   costStr(cost) {
-    const ic = { food: '🍖', wood: '🪵', stone: '🪨', gold: '✨' };
+    // A NBSP binds each icon to ITS number so a pair can never wrap apart
+    // (the old format could drop an icon onto the next line, away from its
+    // figure). Pairs are separated by a normal space, which keeps the string
+    // exactly as wide as before — the narrow build-menu buttons wrap the
+    // longest prices onto a third line if the gap is any wider.
     const parts = [];
-    for (const k in cost) parts.push(cost[k] + ' ' + (ic[k] || k));
+    for (const k in cost) parts.push(this.resIcon(k) + ' ' + cost[k]);
     return parts.join(' ') || 'free';
   },
 

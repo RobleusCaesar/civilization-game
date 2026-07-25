@@ -749,7 +749,7 @@ const G = {
     S.cache.ev = null; S.cache.done = true;
     S.res.food += 300; S.res.wood += 300; S.res.stone += 300;
     S.trainDiscount = 5;
-    R.float(ev.x + 0.5, ev.y, '+300 🍖 🪵 🪨', '#e8c15a');
+    R.float(ev.x + 0.5, ev.y, '🍖 🪵 🪨 +300', '#e8c15a');   // icon-first, like every other price
     this.log('🪙 The spade rings on oak — your great-uncle\u2019s lost hoard! Food, timber, stone… and his legendary work songs (next 5 recruits train TWICE as fast).', false, 8000);
   },
 

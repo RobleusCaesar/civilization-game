@@ -904,7 +904,7 @@ const UI = {
     const hc = document.getElementById('healCost');
     if (hc && this.sel.type === 'unit') {
       const u = Units.get(this.sel.id);
-      if (u) hc.textContent = Bld.inHealZone(u) ? this.healCost(u) + ' 🍖' : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center');
+      if (u) hc.textContent = Bld.inHealZone(u) ? Bld.costStr({ food: this.healCost(u) }) : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center');
     }
     // tick the resource-station upgrade progress in place (no relayout)
     if (this.sel.type === 'unit') {
@@ -1053,18 +1053,18 @@ const UI = {
           html += `<button class="abtn wide ${Bld.canAfford(net) ? '' : 'cant'}" data-act="togate">🚪 Build Gate<small>${Bld.costStr(net)} — replaces this section</small></button>`;
         }
         if (b.key === 'trade' && !b.construction && !b.upgrading) {
-          const spec = Bld.tradeSpec(b), gold = Bld.tradeGold(b), ic = { food: '🍖', wood: '🪵', stone: '🪨' };
+          const spec = Bld.tradeSpec(b), gold = Bld.tradeGold(b), ic = r => Bld.resIcon(r);
           if (b.caravan) {
             const frac = Math.max(0, Math.min(1, 1 - b.caravan.t / (b.caravan.total || 1)));
-            html += `<div class="abtn cant" style="pointer-events:none">🐫 Caravan out — ${ic[b.caravan.res] || ''} for +${b.caravan.gold} ✨` +
+            html += `<div class="abtn cant" style="pointer-events:none">🐫 Caravan out — ${ic(b.caravan.res)} for ✨ +${b.caravan.gold}` +
               `<small><span id="carLeft">${Math.ceil(b.caravan.t)}d</span> to return</small>` +
               `<div style="height:4px;margin-top:5px;background:rgba(0,0,0,0.4);border-radius:2px;overflow:hidden">` +
               `<div id="carBar" style="height:100%;width:${Math.round(frac * 100)}%;background:var(--gold)"></div></div></div>`;
           } else {
-            html += `<span class="psub">Send a load out → +${gold} ✨ back in ${spec.delay}d (Lv ${b.level} rate). Gold stays scarce — trade sparingly.</span>`;
+            html += `<span class="psub">Send a load out → ✨ +${gold} back in ${spec.delay}d (Lv ${b.level} rate). Gold stays scarce — trade sparingly.</span>`;
             for (const res of CFG.TRADE.goods) {
               const can = Bld.canTrade(b, res).ok;
-              html += `<button class="abtn ${can ? '' : 'cant'}" data-act="trade" data-res="${res}">🐫 Sell ${ic[res] || res}<small>${spec.input} ${ic[res] || res} → +${gold} ✨</small></button>`;
+              html += `<button class="abtn ${can ? '' : 'cant'}" data-act="trade" data-res="${res}">🐫 Sell ${ic(res)}<small>${ic(res)} ${spec.input} → ✨ +${gold}</small></button>`;
             }
           }
         }
@@ -1310,7 +1310,7 @@ const UI = {
         const hc = this.healCost(u);
         const inZone = Bld.inHealZone(u);
         const ok = inZone && S.res.food >= hc;
-        html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${inZone ? hc + ' 🍖' : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center')}</small></button>`;
+        html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${inZone ? Bld.costStr({ food: hc }) : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center')}</small></button>`;
       }
       if (own && Units.isTransport(u)) {
         const cap = CFG.UNITS[u.kind].cap, aboard = (u.cargo || []).length;
