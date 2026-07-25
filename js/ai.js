@@ -1736,6 +1736,30 @@ const AI = {
   // a score at/above this means a GENUINE soft spot the chief should exploit; below
   // it, no angle is really open, so it stops shopping and commits to the grind.
   CAMP_OPENING: 7,
+
+  /* THE SCORECARD — punch, block, punch differently. The chief remembers how
+     each named plan actually FARED against this particular player: a plan that
+     drew blood is worth returning to, a plan that spent two rounds achieving
+     nothing sinks down the list. Crucially the memory FADES (~60 days), because
+     the board keeps changing — a landing that was hopeless before the dock was
+     grown, or a bridge that was impossible at a tier-1 corps, deserves another
+     look later. So nothing is ever permanently written off, and nothing is
+     repeated forever either. */
+  _noteStrat(k, won) {
+    const mem = S.ai.memory || (S.ai.memory = {});
+    const sl = mem.strat || (mem.strat = {});
+    const e = sl[k] || (sl[k] = { tries: 0, prog: 0, dry: 0, last: 0 });
+    e.tries++; e.last = S.day;
+    if (won) { e.prog++; e.dry = Math.max(0, e.dry - 1); } else e.dry++;
+  },
+  _campLearn(k) {
+    const sl = (S.ai.memory && S.ai.memory.strat) || {};
+    const e = sl[k]; if (!e) return 0;
+    const fade = Math.max(0, 1 - (S.day - (e.last || 0)) / 60);
+    return (e.prog * 2.5 - e.dry * 3) * fade;
+  },
+  // fit to the ground the chief has scouted, PLUS what it has learned trying
+  _campFit(k, ctx) { return this._campScore(k, ctx) + this._campLearn(k); },
   // total HP of the player's walls/gates/towers — the grind's progress yardstick, so
   // a siege line steadily chipping stone isn't misjudged as "failing" for not yet
   // razing a whole building.
@@ -1789,7 +1813,7 @@ const AI = {
     // EVIDENCE-DRIVEN CHOICE: score every viable plan by fit to the scouted defenses;
     // a light jitter only separates near-ties, so a clearly softer angle always wins.
     let strat = null, best = -1e9;
-    for (const k of pool) { const s = this._campScore(k, ctx) + G.rand() * 1.2; if (s > best) { best = s; strat = k; } }
+    for (const k of pool) { const s = this._campFit(k, ctx) + G.rand() * 1.2; if (s > best) { best = s; strat = k; } }
     if (!strat) return;
     // GRIND re-evaluation. While the plan we're grinding can STILL hit its target,
     // we keep battering and only break off for a GENUINE new opening (a different
@@ -1812,7 +1836,7 @@ const AI = {
       pool = this.CAMPAIGNS.filter(k => this._campViable(k, ctx, tc));
       if (!pool.length) { ai.camp.strat = null; ai.camp.grind = false; return; }   // truly no way by land or sea → back to raids
       best = -1e9; strat = null;
-      for (const k of pool) { const s = this._campScore(k, ctx) + G.rand() * 1.2; if (s > best) { best = s; strat = k; } }
+      for (const k of pool) { const s = this._campFit(k, ctx) + G.rand() * 1.2; if (s > best) { best = s; strat = k; } }
       // fall through to the commit below, which re-picks grind-vs-exploit for the new plan
     }
     // FRESH choice: a real opening → exploit it (rotate on failure); no soft spot
@@ -1866,13 +1890,26 @@ const AI = {
     // next-best fit. A GRIND never rotates — it keeps battering (campaignSelect's
     // escape hatch is the only thing that pulls it off, and only for a real opening).
     if (camp.rounds > 0 && S.day >= (camp.roundEnd || 0)) {
-      if (!camp.grind) {
-        const razed = Bld.list('P').length < (camp.roundBaseBld != null ? camp.roundBaseBld : 1e9);
-        const chipped = camp.roundBaseHp != null && this._foeFortHp() < camp.roundBaseHp * 0.9;
-        if (razed || chipped) { camp.tried = []; camp.strat = null; return false; }
-        if (camp.rounds >= 2) { camp.tried.push(strat); camp.strat = null; return false; }
+      const razed = Bld.list('P').length < (camp.roundBaseBld != null ? camp.roundBaseBld : 1e9);
+      const chipped = camp.roundBaseHp != null && this._foeFortHp() < camp.roundBaseHp * 0.9;
+      const won = razed || chipped;
+      this._noteStrat(strat, won);              // remember how this plan fared
+      if (won) {
+        // the way is proven: an opportunistic plan stands down having made its
+        // point; a grind that is genuinely chewing through keeps at it
+        if (!camp.grind) { camp.tried = []; camp.strat = null; return false; }
+      } else if (camp.rounds >= (camp.grind ? 3 : 2)) {
+        /* DRY ROUNDS — ROTATE. A grind used to be exempt from this: no opening
+           scored well enough, so the chief committed to battering and battered
+           the same stone for the rest of the game however little it achieved.
+           That is the fixation. Now every plan answers for its results: three
+           dry rounds and even a grind yields the slot, is marked tried, and the
+           chief comes back through the door with a different plan. */
+        if (camp.tried.indexOf(strat) < 0) camp.tried.push(strat);
+        camp.strat = null; camp.grind = false;
+        return false;
       }
-      // grind: fall through and mount another round
+      // otherwise: fall through and mount another round of the same plan
     }
     // abandon a plan that can never even assemble its force (kept us waiting too
     // long). For a grind this DEMOTES the fallback (Ironbelly→Mudlark→Tidewrack) via
