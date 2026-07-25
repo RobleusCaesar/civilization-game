@@ -608,6 +608,45 @@ const AI = {
   // If the whole reachable region is already explored, the enemy is walled off
   // or across water: a strong, blind chief stops circling and commits to the
   // player's stronghold, and breachStall carves a path to it on the way in.
+  /* WHERE TO LOOK NEXT. A search party needs a target that is (a) real ground
+     it can walk to, (b) somewhere it hasn't already looked, and (c) not where
+     the OTHER scout is already headed — two riders combing the same meadow is
+     one wasted rider. When we've been attacked, the bearing the attackers came
+     from is the best lead we have: they walked here from somewhere, so the
+     search leans that way instead of spiralling at random. */
+  searchTarget(forUnit) {
+    const ai = S.ai, tc = Bld.tcOf('A'); if (!tc) return null;
+    const seen = ai.seen || [];
+    const reach = Path.reachFrom([{ x: tc.x, y: tc.y + 2 }]);
+    const cx = Bld.cx(tc), cy = Bld.cy(tc);
+    // where other search parties are already headed — don't double up
+    const taken = [];
+    for (const id of (ai.scouts || [])) {
+      if (forUnit && id === forUnit.id) continue;
+      const u = S.units.find(x => x.id === id);
+      if (u && u.task && u.task.type === 'move') taken.push({ x: u.task.x, y: u.task.y });
+    }
+    // the bearing trouble keeps arriving from (Layer-5 memory)
+    const hf = (ai.memory && ai.memory.hitFlank) || null;
+    let best = null, bs = -1e9;
+    const consider = (x, y) => {
+      const i = MapGen.idx(x, y);
+      if (seen[i]) return;                                   // already looked here
+      if (reach && !reach[i]) return;                        // can't walk there
+      if (!Path.passable(x, y, 'A')) return;
+      const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy) || 1;
+      let s = d;                                             // far ground first — the enemy isn't next door
+      if (hf) s += ((dx / d) * hf.x + (dy / d) * hf.y) * 26;  // …and lean into the bearing they hit us from
+      for (const t of taken) s -= Math.max(0, 22 - Math.hypot(x - t.x, y - t.y)) * 2.2;
+      if (s > bs) { bs = s; best = { x, y }; }
+    };
+    for (let y = 1; y < CFG.H - 1; y += 2) for (let x = 1; x < CFG.W - 1; x += 2) consider(x, y);
+    if (best) return best;
+    // every reachable tile already seen — they're across water or walled off;
+    // make for their spawn corner and let the breach/landing logic take over
+    return this.huntTarget();
+  },
+
   huntTarget() {
     const ai = S.ai, tc = Bld.tcOf('A'); if (!tc) return null;
     const seen = ai.seen || [];
@@ -906,7 +945,11 @@ const AI = {
     const cap = Math.min(Math.round((m.aiArmyCap || 8) * 2.5),
       (m.aiArmyCap || 8) + Math.floor(Math.max(0, S.day - 60) / 12));
     let want = Math.min(2 + Math.floor(S.day / (m.aiArmyDiv || 8)), cap);
-    if (post === 'EXPAND') want = Math.min(want, 4);          // boom: keep a token guard
+    // BLIND: keep enough spears to send a search party out AND hold the hall —
+    // finding the enemy is the gate on every offensive plan, so it outranks
+    // even a boom chief's preference for a token guard
+    if (!(S.ai.read && S.ai.read.knownTC) && S.day >= 10) want = Math.max(want, 4);
+    else if (post === 'EXPAND') want = Math.min(want, 4);     // boom: keep a token guard
     else if (post === 'PUSH') want = cap;                     // mass for the kill
     else if (post === 'DEFEND') want = Math.min(cap, want + 2);
     // gentler opening: modes with aiEarly < 1 field a lighter army through the
@@ -941,10 +984,14 @@ const AI = {
        crewed economy those uncrewed camps produce nothing, and their cost
        ate the very wood the hall needed (the no-army spiral that left a
        Hard chief with 16 quarries, no stable and one soldier at day 60). */
+    /* THE FIRST HALL IS THE EYES, not just the spears. Nothing offensive can
+       start until the tribe has found its enemy, and a pair of soldiers is what
+       does the finding — so the first barracks is wanted EARLY, well before any
+       wall or second camp. */
     const ML = ['barracks', 'range', 'stable'];
     const hasHall = S.buildings.some(b => b.owner === 'A' && ML.includes(b.key));
     if (ai.goal && ai.goal.hall && hasHall) ai.goal = null;   // saved up and built — release the reserve
-    if (S.day >= 8 && !hasHall) {
+    if (S.day >= 5 && !hasHall) {
       const want = P.mix.map(([k]) => this.HALL_OF[k]).find(h => ML.includes(h)) || 'barracks';
       if (this.tryBuild(want, true)) { if (ai.goal && ai.goal.hall) ai.goal = null; return true; }
       const cost = CFG.BUILDINGS[want].levels[0].cost;
@@ -2117,51 +2164,86 @@ const AI = {
        watched), and after two lost villagers no villager is risked again —
        hands belong on farms and building sites, not a daily parade into the
        player's tower fire. Fresh eyes on the town reset the caution. ---- */
-    const scout = ai.scoutId && S.units.find(u => u.id === ai.scoutId);
-    if (ai.scoutId && !scout) { ai.scoutId = 0; ai.scoutLegs = 0; ai.scoutFail = (ai.scoutFail || 0) + 1; }   // never came home
-    else if (scout && !(scout.task && scout.task.type === 'move')) {
-      // leg complete. Still blind? the SAME scout sweeps ON to the next
-      // unexplored frontier — a patrol that combs the map, not a single peek
-      // at one random meadow (which left a Hard chief blind until day 75).
-      // soldiers sweep up to 4 legs; a VILLAGER peeks once and walks home —
-      // long circuits through wolf country cost the workforce too dearly
-      const maxLegs = Units.isVillager(scout) ? 1 : 4;
-      if (!this.knownPlayerTC() && (ai.scoutLegs || 0) < maxLegs && !read.underThreat) {
-        const nxt = this.huntTarget();
-        if (nxt) {
-          const spot = MapGen.findNear(nxt.x, nxt.y, 5, (x, y) => Path.passable(x, y, 'A')) || nxt;
-          scout.task = { type: 'move', x: spot.x, y: spot.y };
-          scout.anchor = { x: spot.x + 0.5, y: spot.y + 0.5 };
-          Units.setPath(scout, spot.x, spot.y);
-          ai.scoutLegs = (ai.scoutLegs || 0) + 1;
-        } else { ai.scoutId = 0; ai.scoutLegs = 0; }
-      } else { ai.scoutId = 0; ai.scoutLegs = 0; }                                          // swept enough / found it — home
-    }
     const kTC = read.knownTC;
     if (kTC && S.day - (kTC.seen || 0) <= 2) ai.scoutFail = 0;   // intel refreshed — the road worked
-    const needScout = !kTC || (S.day - (kTC.seen || 0) > 40);
-    const scoutGap = 8 + Math.min(4, ai.scoutFail || 0) * 12;    // 8d base, +12d per lost scout (cap +48)
-    if (needScout && !ai.scoutId && !read.underThreat && S.day - (ai.scoutDay == null ? -99 : ai.scoutDay) >= scoutGap) {
-      const dst = kTC || this.huntTarget() || this.scoutTarget();   // sweep the reachable frontier, not a random meadow
-      const busy = u => u.tUnit || u.tBld ||
+    const blind = !kTC;                                          // never laid eyes on their town
+    const needScout = blind || (S.day - (kTC.seen || 0) > 40);
+    if (!ai.scouts) ai.scouts = [];
+    // retire scouts that died, arrived, or are no longer needed
+    ai.scouts = ai.scouts.filter(id => {
+      const u = S.units.find(x => x.id === id);
+      if (!u) { ai.scoutFail = (ai.scoutFail || 0) + 1; return false; }
+      if (!needScout) {                       // FOUND THEM — the search is over
+        u.task = null; u.scouting = false;    // fall in as a soldier again
+        return false;
+      }
+      if (u.task && u.task.type === 'move') return true;         // still walking its leg
+      // leg done and we're still blind: sweep ON to the next unexplored frontier
+      const maxLegs = Units.isVillager(u) ? 1 : 6;
+      if ((u.scoutLegs || 0) >= maxLegs) { u.scouting = false; return false; }
+      const nxt = this.searchTarget(u);
+      if (!nxt) { u.scouting = false; return false; }
+      u.task = { type: 'move', x: nxt.x, y: nxt.y };
+      u.anchor = { x: nxt.x + 0.5, y: nxt.y + 0.5 };
+      Units.setPath(u, nxt.x, nxt.y);
+      u.scoutLegs = (u.scoutLegs || 0) + 1;
+      return true;
+    });
+    ai.scoutId = ai.scouts[0] || 0;                              // legacy field, kept for saves
+    /* HOW HARD TO LOOK. Two different problems wear the same word:
+         BLIND  — we have never found them. Nothing offensive can happen until
+                  we do (every attack layer is gated on knowing their hall), so
+                  this is an emergency: send a PAIR, keep them out, and do it
+                  even while we are being hit — especially then, since someone
+                  is clearly out there and we still don't know where from.
+         STALE  — we found them once and the memory has aged. No emergency:
+                  the old cautious pacing applies so we don't parade the
+                  workforce into their towers for a map update.
+       Once their hall is known the search stops dead and those hands go back
+       to soldiering — see the retirement pass above. */
+    /* Even blind, the road can be lethal — scouts that never come home mean the
+       way is watched. Being blind is existential, so the search never stops
+       outright, but it backs off hard as parties are lost (5d, then 12, 19, 26…
+       up to 40) and stops sending them in pairs. Otherwise a chief with a
+       tower-lined approach feeds its whole army down the same path a few at a
+       time — which is exactly the death-march this pacing was added to stop. */
+    const fails = Math.min(5, ai.scoutFail || 0);
+    const wantScouts = blind && S.day >= 8 && fails <= 1 ? 2 : 1;
+    const gap = blind ? 5 + fails * 7 : 8 + Math.min(4, ai.scoutFail || 0) * 12;
+    const mayLook = needScout && ai.scouts.length < wantScouts &&
+      (blind || !read.underThreat) &&
+      S.day - (ai.scoutDay == null ? -99 : ai.scoutDay) >= gap;
+    if (mayLook) {
+      /* WHO CAN BE SPARED. Ordinarily anyone already swinging at something is
+         off the list. But a BLIND tribe under attack has every hand drafted
+         into the militia (Combat gives them a target the moment the town is
+         besieged), so "everyone is busy" became a permanent deadlock: nobody
+         could be spared, so it never learned who was hitting it, so it never
+         fought back — the punching bag the day-74 game ended as. While blind,
+         a body fighting at home can be pulled out and sent to look; knowing
+         where the enemy lives is worth more than one extra militiaman. */
+      const engaged = u => u.tBld || u.scouting ||
         (u.task && (u.task.type === 'raid' || u.task.type === 'move' || u.task.type === 'build'));
-      const spares = S.units.filter(u => u.owner === 'A' && !Units.isNaval(u) && !busy(u));
-      const soldiers = spares.filter(u => Units.isMilitary(u) && u.kind !== 'siegetower');
+      const busy = u => u.tUnit || engaged(u);
+      const spares = S.units.filter(u => u.owner === 'A' && !Units.isNaval(u) &&
+        (blind ? !engaged(u) : !busy(u)));
+      const soldiers = spares.filter(u => Units.isMilitary(u) && u.kind !== 'siegetower' && !Units.isSiege(u));
+      const villagers = spares.filter(u => Units.isVillager(u));
+      // a horse is the born scout; otherwise a spear can be spared while blind
+      // (a home guard is still kept back), and only then a villager
+      const guard = blind ? (fails >= 2 ? 2 : 1) : 3;   // a proven-deadly road doesn't get the home guard too
       const pick = soldiers.find(u => u.kind === 'rider' || u.kind === 'horsearcher')
-        // a villager scout only when hands can be spared — never the last few
-        // (a young village that mails its workforce to the wolves dies of it)
-        || ((ai.scoutFail || 0) < 2 && spares.filter(u => Units.isVillager(u)).length >= 4
-            ? spares.find(u => Units.isVillager(u)) : null)
-        // a proven-deadly road is soldier's work — but never the LAST spear: a
-        // pair must remain at home whatever the need for eyes
-        || (soldiers.length >= ((ai.scoutFail || 0) >= 2 ? 3 : 4) ? soldiers[0] : null);
+        || (soldiers.length > guard ? soldiers[0] : null)
+        || (((ai.scoutFail || 0) < 2 || blind) && villagers.length >= (blind ? 3 : 4) ? villagers[0] : null);
+      const dst = pick ? this.searchTarget(pick) : null;
       if (dst && pick) {
-        const spot = MapGen.findNear(dst.x, dst.y, 5, (x, y) => Path.passable(x, y, 'A')) || dst;
-        pick.task = { type: 'move', x: spot.x, y: spot.y };
-        pick.anchor = { x: spot.x + 0.5, y: spot.y + 0.5 };
-        Units.setPath(pick, spot.x, spot.y);
-        ai.scoutId = pick.id;
-        ai.scoutLegs = 0;
+        pick.tUnit = 0; pick.militia = false;   // stood down from the line, sent to look
+        pick.task = { type: 'move', x: dst.x, y: dst.y };
+        pick.anchor = { x: dst.x + 0.5, y: dst.y + 0.5 };
+        Units.setPath(pick, dst.x, dst.y);
+        pick.scouting = true; pick.scoutLegs = 1;
+        ai.scouts.push(pick.id);
+        ai.scoutId = ai.scouts[0];
         ai.scoutDay = S.day;                                     // starts the between-scouts clock
       }
     }
@@ -2334,7 +2416,9 @@ const AI = {
        assess() flips the posture to PUSH so the full siege logic commits next
        day. A home guard stays back, and the raid retreat logic still pulls the
        column home if a hunt turns up nothing after several days. ---- */
-    if (!read.knownTC && !read.underThreat && ai.raidCd <= 0 && !raiders.length &&
+    // NOT gated on being unthreatened any more: a strong tribe that has never
+    // found its enemy must go and look precisely BECAUSE someone is hitting it
+    if (!read.knownTC && ai.raidCd <= 0 && !raiders.length &&
         S.day >= Math.max(20, (m.aiRaidDay || 40) - 8)) {
       const host = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
         !Units.isNaval(u) && u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
@@ -2406,6 +2490,7 @@ const AI = {
     // Only a committed raider marches free; everyone else defends the Town Center,
     // so the garrison can't be lured off across the map (as the player's can't).
     for (const u of S.units)
-      if (u.owner === 'A' && Units.isMilitary(u)) u.defend = !(u.task && u.task.type === 'raid');
+      if (u.owner === 'A' && Units.isMilitary(u))
+        u.defend = !u.scouting && !(u.task && u.task.type === 'raid');   // a search party isn't leashed to the hall
   },
 };
