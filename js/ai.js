@@ -366,7 +366,23 @@ const AI = {
       }
     }
     const count = Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u) && !Units.isSiege(u));
-    if (count >= want) return false;
+    const advN = Units.count('A', u => u.kind === 'elite' || u.kind === 'lancer' || u.kind === 'marksman');
+    const vetWant = Math.floor((m.aiEliteShare || 0) * want);
+    if (count >= want) {
+      /* AT STRENGTH, BUT RAW. Training stopped dead the moment the muster was
+         full — so a host raised early out of cheap levies stayed cheap levies
+         forever, and veterans only ever appeared to replace a casualty. The
+         chief ended games with grown halls, a target of nine veterans, ONE in
+         the field and eight hundred gold it had no other use for. Quantity is
+         capped; quality is not. While the host is short of its veteran share,
+         keep drilling the good troops — that is what the treasury is for. */
+      if (advN >= vetWant) return false;
+      const VET = { barracks: 'elite', range: 'marksman', stable: 'lancer' };
+      const vh = S.buildings.find(bb => bb.owner === 'A' && VET[bb.key] &&
+        bb.level >= 3 && Bld.done(bb) && !bb.upgrading && bb.queue.length === 0);
+      if (!vh) return false;
+      return Bld.train(vh, VET[vh.key]);
+    }
     const roll = G.rand();
     let acc = 0, kind = mix[0][0];
     for (const [k, w] of mix) { acc += w; if (roll < acc + 1e-9) { kind = k; break; } }
@@ -380,9 +396,7 @@ const AI = {
       if (!b) return false;
     }
     const ADV = { defender: 'elite', archer: 'marksman', rider: 'lancer' };
-    const advN = Units.count('A', u => u.kind === 'elite' || u.kind === 'lancer' || u.kind === 'marksman');
-    const adv = ADV[kind] && b.level >= 3 && S.ai.res.gold >= 25 &&
-      advN < Math.floor((m.aiEliteShare || 0) * want);
+    const adv = ADV[kind] && b.level >= 3 && S.ai.res.gold >= 25 && advN < vetWant;
     if (Bld.train(b, adv ? ADV[kind] : kind)) return true;
     // rolled a unit the hall can't make yet (still level 1) — drill the basic line
     const BASIC = { barracks: 'defender', range: 'archer', stable: 'rider', siege: 'catapult' };
@@ -402,12 +416,16 @@ const AI = {
       total++;
     }
     if (total >= 34) return null;
+    /* The backfill used to want a new farm every 45 days but a timber camp or
+       quarry only every 80 — backwards for what a war economy actually burns.
+       Food piled past ten thousand while wood and stone (every hall tier, wall
+       tier, tower and unit) ran at a few dozen. Timber and stone now lead. */
     const wish = [
-      ['farm',     2 + Math.floor(S.day / 45)],
+      ['lumber',   1 + Math.floor(S.day / 50)],
+      ['quarry',   1 + Math.floor(S.day / 50)],
+      ['farm',     2 + Math.floor(S.day / 60)],
       ['house',    2 + Math.floor(S.day / 40)],
       ['tower',    2 + Math.floor(S.day / 50)],
-      ['lumber',   1 + Math.floor(S.day / 80)],
-      ['quarry',   1 + Math.floor(S.day / 80)],
       ['barracks', 1 + Math.floor(S.day / 90)],
     ];
     for (const [k, n] of wish) if ((have[k] || 0) < n) return k;
@@ -1181,9 +1199,13 @@ const AI = {
       const prio = { barracks: 3, range: 3, stable: 3, siege: 2, tower: 2, dock: 2 };
       ups.sort((a, b2) => (prio[b2.key] || 1) - (prio[a.key] || 1));
       const sapUp = (stalledClear || stalledBridge) && ups.find(b => b.key === 'sapper');
-      const b = sapUp || ups[0];
+      // the hall we're saving for outranks the rest of the queue — that tier is
+      // the veteran unlock, and veterans are worth double their number
+      const vetHall = ai.goal && ai.goal.vet &&
+        ups.find(b => ['barracks', 'range', 'stable'].includes(b.key) && (b.level || 1) < 3);
+      const b = sapUp || vetHall || ups[0];
       add(24 + (prio[b.key] || 1) * 6 + (post === 'PUSH' ? 18 : 0) - (post === 'EXPAND' ? 10 : 0) +
-          (sapUp ? 40 : 0),
+          (sapUp ? 40 : 0) + (b === vetHall ? 34 : 0),
         () => Bld.upgrade(b));
     }
 
@@ -2179,10 +2201,26 @@ const AI = {
        single best-scored construction/upgrade; (d) posture- and
        counter-weighted training plus navy. No fixed order — the choice is
        continuous, so behavior shifts smoothly instead of on cliff edges. ---- */
-    if (ai.goal && ((ai.goal.book || ai.goal.hall) ? S.day > ai.goal.until
+    if (ai.goal && ((ai.goal.book || ai.goal.hall || ai.goal.vet) ? S.day > ai.goal.until
         : (tc.level >= 3 || tc.upgrading || S.day > ai.goal.until))) ai.goal = null;
     if (!ai.goal && tc.level < 3 && !tc.upgrading && S.day > P.tcDays[tc.level - 1])
       ai.goal = { cost: CFG.BUILDINGS.tc.levels[tc.level].cost, until: S.day + 20 };
+    /* SAVE FOR THE VETERAN UNLOCK. Champions, lancers and fire archers all
+       need their hall at Lv 3, and that tier is a lump (300 wood + 220 stone
+       for a barracks) that never gets saved for — so timber dribbled away into
+       towers, walls and basic troops while the chief sat on eight hundred gold
+       it had no way to spend and fielded ZERO veterans against a target of
+       nine. Once there's a real army to upgrade, the next hall tier becomes a
+       reservation like the Town Center's, and the treasury stops leaking. */
+    if (!ai.goal && tc.level >= 3) {
+      const army = Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u));
+      if (army >= 5) {
+        const hall = Bld.list('A')
+          .filter(b => ['barracks', 'range', 'stable'].includes(b.key) && (b.level || 1) < 3 && Bld.done(b) && !b.upgrading)
+          .sort((a, b) => (b.level || 1) - (a.level || 1))[0];   // finish the closest one first
+        if (hall) ai.goal = { cost: CFG.BUILDINGS[hall.key].levels[hall.level].cost, until: S.day + 25, vet: true };
+      }
+    }
     ai._free = true;                              // emergencies don't queue behind the day's chores
     const didSafety = this.digAndProtect(read);
     ai._free = false;
