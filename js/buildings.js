@@ -618,14 +618,44 @@ const Bld = {
       aiCrew = {};
       const stations = this.list('A').filter(b =>
         this.done(b) && !b.upgrading && this.def(b.key).needsWorker && this.lv(b).out);
-      let dealt = true;
-      while (pool > 0 && dealt) {
-        dealt = false;
-        for (const b of stations) {
-          if (pool <= 0) break;
-          const cur = aiCrew[b.id] || 0;
-          if (cur < this.maxWorkers(b)) { aiCrew[b.id] = cur + 1; pool--; dealt = true; }
-        }
+      /* DEMAND-DRIVEN CREWS. Hands used to be dealt round-robin, so the town
+         produced a flat mix whatever it actually needed — and a rival would sit
+         on ten thousand food with an empty quarry, unable to afford the stone
+         for a wall tier, a tower or a workshop. A real player moves people to
+         what the town is SHORT of. Each station is scored by the shortfall of
+         what it produces (counting what's being saved for), and the scarcer the
+         resource the sooner it gets the next hand. Round-robin remains the
+         tie-break, so a balanced town still spreads out. */
+      const goal = (S.ai && S.ai.goal && S.ai.goal.cost) || {};
+      const BASELINE = { food: 260, wood: 300, stone: 260, gold: 120 };
+      // a PROJECTION of the stores, credited as each hand is placed, so the
+      // next hand sees the town a little less short of what that one will
+      // bring in — this is what spreads the crew instead of piling everyone
+      // onto whichever resource happens to be lowest today
+      const proj = {};
+      for (const k in S.ai.res) proj[k] = S.ai.res[k] || 0;
+      const shortOf = (k) => {
+        const want = (BASELINE[k] || 200) + (goal[k] || 0);
+        return Math.max(0, want - (proj[k] || 0)) / Math.max(1, want);   // 0 = flush, 1 = empty
+      };
+      const stationNeed = (b) => {
+        const out = this.lv(b).out || {};
+        let n = 0;
+        for (const k in out) n = Math.max(n, shortOf(k));
+        return n;
+      };
+      while (pool > 0) {
+        const open = stations.filter(b => (aiCrew[b.id] || 0) < this.maxWorkers(b));
+        if (!open.length) break;
+        // one hand to the neediest station with room; crew size breaks ties, so
+        // an empty station is manned before a second hand joins another
+        open.sort((a, b2) => (stationNeed(b2) - stationNeed(a)) ||
+          ((aiCrew[a.id] || 0) - (aiCrew[b2.id] || 0)));
+        const pick = open[0];
+        aiCrew[pick.id] = (aiCrew[pick.id] || 0) + 1;
+        pool--;
+        const out = this.lv(pick).out || {};   // credit a season's worth to the projection
+        for (const k in out) proj[k] = (proj[k] || 0) + out[k] * 30;
       }
     }
     for (const b of this.list(owner)) {
@@ -745,6 +775,51 @@ const Bld = {
       b.maxhp = lv.hp;
       b.level = S.ai.wallLevel;
     }
+    return true;
+  },
+
+  /* RE-FACING THE RING, SECTION BY SECTION. Upgrading the whole ring at once is
+     the player's move — they pay for every section in one go. A rival that has
+     ringed its town can never afford that (thirty sections of dressed stone is
+     a fortune), so its wall tier never moved off sticks-and-grass all game.
+     A real village re-faces its wall a stretch at a time, starting with the
+     side it keeps getting hit from. Returns true if any section was re-faced. */
+  aiRefaceWalls(batch) {
+    const ai = S.ai, tc = this.tcOf('A');
+    if (!tc) return false;
+    const target = Math.min(3, tc.level);            // same tech gate as the player
+    const forts = this.forts('A').filter(b => (b.level || 1) < target);
+    if (!forts.length) return false;
+    const hit = (ai.memory && ai.memory.hitFlank) || null;
+    const cx = this.cx(tc), cy = this.cy(tc);
+    // the threatened flank first, gates before plain wall (a gate is the way in)
+    forts.sort((a, b) => {
+      const face = (f) => hit ? -((Math.sign(f.x - cx) === hit.x ? 1 : 0) + (Math.sign(f.y - cy) === hit.y ? 1 : 0)) : 0;
+      return (face(a) - face(b)) || ((b.key === 'gate' ? 1 : 0) - (a.key === 'gate' ? 1 : 0)) || ((a.level || 1) - (b.level || 1));
+    });
+    let done = 0;
+    for (const b of forts) {
+      if (done >= (batch || 4)) break;
+      const nextLv = (b.level || 1) + 1;
+      const cost = CFG.BUILDINGS[b.key].levels[nextLv - 1].cost;
+      if (!this.canAfford(cost, ai.res)) break;
+      // never re-face out of the war chest: the hall tier is what unlocks the
+      // workshop, the engines and the veteran troops, and it must come first
+      let raidsGoal = false;
+      for (const k in cost) if (((ai.res[k] || 0) - cost[k]) < ((ai.goal && ai.goal.cost[k]) || 0)) raidsGoal = true;
+      if (raidsGoal) break;
+      this.pay(cost, ai.res);
+      const lv = CFG.BUILDINGS[b.key].levels[nextLv - 1];
+      b.hp = Math.max(1, Math.round(lv.hp * (b.hp / b.maxhp)));
+      b.maxhp = lv.hp;
+      b.level = nextLv;
+      done++;
+    }
+    if (!done) return false;
+    // new sections are laid at the tier the ring has actually reached
+    let low = 3;
+    for (const f of this.forts('A')) low = Math.min(low, f.level || 1);
+    ai.wallLevel = low;
     return true;
   },
   wallUpgradeCost() {

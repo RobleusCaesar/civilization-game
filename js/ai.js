@@ -286,9 +286,32 @@ const AI = {
      still sortie, and reinforces the flank the player keeps attacking from
      (Layer-5 memory). Wall investment per call scales with threat and posture, so
      a threatened or turtling chief actually fortifies instead of dribbling. */
+  /* how much RING this town can actually carry. A ring isn't free once it's up:
+     every section has to be paid for again at each wall tier, and the upgrade is
+     village-wide. A chief that palisades its whole horizon on a two-farm economy
+     can never afford to turn any of it to stone — which is exactly how a real
+     game ended with 35 sticks-and-grass sections, no quarry, and a wall tier
+     that never moved. So the ring is capped by what the STONE economy can
+     maintain: quarries buy you wall. */
+  wallCap(tc) {
+    const P = this.persona();
+    const q = Bld.list('A').filter(b => b.key === 'quarry' && Bld.done(b)).length;
+    return 6 + (tc.level || 1) * 3 + q * 4 + (P.walls ? 6 : 0);
+  },
   maybeWalls(tc) {
     const P = this.persona(), ai = S.ai, read = ai.read || {};
     if (S.day < 16 || ai.res.wood < 45) return;
+    // a ring already at the limit of what this economy can re-tier: stop laying
+    // more sections and let the wood go to the works that raise the cap
+    const forts = Bld.forts('A');
+    if (forts.length >= this.wallCap(tc)) return;
+    /* FINISH THE RING BEFORE EXTENDING IT. An attacker only has to break ONE
+       section, so a short ring of stone is worth far more than a long one of
+       sticks — and every section laid is another to pay for at the next tier.
+       While a good part of the ring is still below the tier the hall allows,
+       the stone goes into re-facing, not into more frontage. */
+    const target = Math.min(3, tc.level || 1);
+    if (forts.length >= 6 && forts.filter(b => (b.level || 1) < target).length > forts.length * 0.34) return;
     const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0;
     const gaps = this.perimeterGaps(cx, cy, 5);
     if (!gaps.length) return;                       // terrain already seals the town
@@ -305,12 +328,19 @@ const AI = {
       return (ha + a.width) - (hb + b.width);
     });
     let placed = 0;
+    const cap = this.wallCap(tc);
     for (const g of order) {
       for (const [x, y] of g.tiles) {
         if (placed >= budget) return;
+        if (Bld.forts('A').length >= cap) return;
         if (!MapGen.inB(x, y) || Bld.at(x, y)) continue;
         const isGate = x === gateMid.x && y === gateMid.y;
         const key = isGate ? 'gate' : 'wall';
+        // THE RING NEVER RAIDS THE WAR CHEST. Walling ran outside the savings
+        // reservation, so a chief saving for its next Town Center tier spent the
+        // fund on palisade a fistful at a time and never got there (a real game
+        // sat at Lv 2 to day 159, so no workshop, no engines, no elites).
+        if (!this.affordFree(CFG.BUILDINGS[key].levels[0].cost)) return;
         if (!Bld.canPlace('A', key, x, y).ok) continue;
         Bld.place('A', key, x, y);
         placed++;
@@ -874,7 +904,7 @@ const AI = {
   // the standing-army target, shaped by difficulty AND posture appetite
   armyWant(m, post) {
     const cap = Math.min(Math.round((m.aiArmyCap || 8) * 2.5),
-      (m.aiArmyCap || 8) + Math.floor(Math.max(0, S.day - 60) / 15));
+      (m.aiArmyCap || 8) + Math.floor(Math.max(0, S.day - 60) / 12));
     let want = Math.min(2 + Math.floor(S.day / (m.aiArmyDiv || 8)), cap);
     if (post === 'EXPAND') want = Math.min(want, 4);          // boom: keep a token guard
     else if (post === 'PUSH') want = cap;                     // mass for the kill
@@ -974,10 +1004,34 @@ const AI = {
     // under fire is wood handed to the torch (the day's actions belong to
     // towers, walls and spears until the field is clear)
     const calm = read.underThreat ? 0.2 : 1;
+    // IDLE HANDS: villagers with no station to crew are dead weight — the pool
+    // grows on a clock whether or not there's work, so a town that stops laying
+    // stations quietly pays for hands that produce nothing.
+    const pool = Units.count('A', u => Units.isVillager(u));
+    let slots = 0;
+    for (const b of Bld.list('A')) if (Bld.def(b.key).needsWorker) slots += Bld.maxWorkers(b);
+    const idleHands = Math.max(0, pool - slots);
+    /* WHAT THE TOWN IS SHORT OF, not a fixed ratio of camps. The old score
+       keyed off a stock threshold (below 60 in hand) and a flat penalty per
+       existing camp, which is why a rival would run a single quarry for a
+       hundred days — stone starved every tower, wall tier and hall upgrade
+       while its granary climbed past four thousand food it had no use for.
+       Shortfall counts what's being SAVED for as well, so saving for the next
+       hall tier is itself a reason to open another quarry. */
+    const goalCost = (ai.goal && ai.goal.cost) || {};
+    const WANT = { food: 300, wood: 350, stone: 320 };
+    const shortfall = (r) => {
+      const want = (WANT[r] || 300) + (goalCost[r] || 0);
+      return Math.max(-1, Math.min(1.5, (want - (ai.res[r] || 0)) / want));   // >0 short, <0 drowning
+    };
     for (const [res, key] of [['wood', 'lumber'], ['stone', 'quarry'], ['food', 'farm']]) {
-      let u = 26 - (have[key] || 0) * 7 + Math.max(0, (60 - ai.res[res]) * 0.4);
-      if (post === 'EXPAND') u += 24;
+      let u = 20 - (have[key] || 0) * 5 + shortfall(res) * 46;
+      if (post === 'EXPAND') u += 20;
       if (pl.win === 'economy' || pl.win === 'timing') u += 6;
+      // NO STATION AT ALL for a resource is a hole in the economy, not a
+      // preference — a chief with no quarry simply stops developing.
+      if (!have[key] && S.day > 20) u += 45;
+      u += Math.min(30, idleHands * 10);            // put the idle hands to work
       add(u * calm, () => this.tryBuild(key));
     }
     add((14 - (have.lodge || 0) * 8 + (P.name === 'Forager' ? 12 : 0)) * calm, () => this.tryBuild('lodge'));
@@ -987,12 +1041,21 @@ const AI = {
     for (const [k] of P.mix) wantHalls.add(this.HALL_OF[k]);
     if (read.foeCavHeavy || read.foeMassed === 'cav') wantHalls.add('range');   // counter the trend, not one glimpse
     if (read.foeArchHeavy || read.foeMassed === 'arch') wantHalls.add('stable');
-    if (read.foeWall >= 3 && tc.level >= 3) wantHalls.add('siege');             // player turtled → tech to siege to crack it
+    /* SIEGE TECH. This used to demand THREE seen wall sections before the chief
+       would even consider a workshop — a bar a compact, well-towered town never
+       trips, so a mature rival reached day 160 with a full treasury and no
+       engine to its name. Any real fortification (a wall line OR standing
+       towers) now justifies the workshop once the hall is grown, and a rich
+       late-game chief builds one on principle: engines are how you crack a
+       town, and having none is why an attack stalls at the gate. */
+    const foeFortified = read.foeWall >= 2 || (read.foeTower || 0) > 0;
+    if (tc.level >= 3 && (foeFortified || (S.day > 90 && ai.res.wood > 260 && ai.res.stone > 160)))
+      wantHalls.add('siege');
     for (const hall of wantHalls) {
       if (!hall || have[hall]) continue;
       if (hall === 'siege' && tc.level < 3) continue;
       let u = 48;
-      if (hall === 'siege' && read.foeWall >= 3) u += 30;   // a walled foe makes a workshop worth the wood
+      if (hall === 'siege' && foeFortified) u += 30;   // a fortified foe makes a workshop worth the wood
       if (post === 'CONSOLIDATE' || post === 'PUSH' || post === 'PRESSURE') u += 28;
       if (hall === 'range' && read.foeCavHeavy) u += 40;   // massed arrows/spears beat horse
       if (hall === 'stable' && read.foeArchHeavy) u += 40; // cavalry closes on archers
@@ -1081,6 +1144,12 @@ const AI = {
       const wallUp = 22 + (P.walls ? 18 : 0) + (post === 'DEFEND' ? 20 : 0) +
         (read.underThreat ? 22 : 0) + (read.foeSiege > 0 ? 16 : 0);
       add(wallUp, () => Bld.aiUpgradeWalls());
+    } else if (tc.level >= 2 && Bld.forts('A').some(b => (b.level || 1) < Math.min(3, tc.level))) {
+      // can't re-face the whole ring in one go (few rivals ever can) — re-face
+      // the most exposed stretch instead, so the palisade keeps turning to stone
+      const wallUp = 20 + (P.walls ? 16 : 0) + (post === 'DEFEND' ? 18 : 0) +
+        (read.underThreat ? 20 : 0) + (read.foeSiege > 0 ? 14 : 0);
+      add(wallUp, () => Bld.aiRefaceWalls(4));
     }
 
     // endless growth backfill
@@ -1130,7 +1199,13 @@ const AI = {
     // With a workshop up, keep a catapult (or a trebuchet once L3) on hand so a
     // PUSH doesn't stall poking stone — combat already routes the rest through
     // the gap while the engines batter the wall.
-    if (read.foeWall >= 2) {
+    /* A WORKSHOP THAT NEVER BUILDS AN ENGINE is wasted wood. Engines used to be
+       trained only against a wall the chief had already SEEN (foeWall >= 2), so
+       a rival could raise a workshop, sit on a full treasury and still march on
+       a fortified town with nothing to break it — the exact reason an assault
+       stalls at the gate. Once the workshop stands, it keeps a small battery on
+       hand: engines are the answer to towers as well as walls. */
+    if (read.foeWall >= 2 || (read.foeTower || 0) > 0 || ai.posture === 'PUSH') {
       const ws = S.buildings.find(b => b.owner === 'A' && b.key === 'siege' &&
         Bld.done(b) && !b.upgrading && b.queue.length === 0);
       if (ws) {
@@ -1138,7 +1213,8 @@ const AI = {
         // a lone engine only pecks at a fortress — scale the siege TRAIN to how much
         // wall there is to break, and a full PUSH brings one more. So a heavily
         // fortified hall meets three or four engines pounding a segment, not one.
-        const wantBreak = Math.min(4, 1 + Math.floor(read.foeWall / 2) + (ai.posture === 'PUSH' ? 1 : 0));
+        const towered = (read.foeTower || 0) > 0 ? 1 : 0;
+        const wantBreak = Math.min(4, 1 + Math.floor(read.foeWall / 2) + towered + (ai.posture === 'PUSH' ? 1 : 0));
         if (breakers < wantBreak) {
           if (ws.level >= 3 && ai.res.gold >= 70) Bld.train(ws, 'trebuchet');
           else Bld.train(ws, 'catapult');
@@ -1867,8 +1943,15 @@ const AI = {
     const op = ai.opening || {};
     const boomMult = op.bias === 'boom' && S.day <= (op.until || 0)
       ? (op.fired ? 1.2 : 1.08) : 1;
-    ai.res.food += 2 * m.aiOutput * boomMult;
-    ai.res.wood += 2 * m.aiOutput * boomMult;
+    /* A TRIBE WIPED OF ITS WORKERS still has hands. With the crewed economy, a
+       chief whose last villager falls has NO income at all — it cannot afford
+       the 50 food to hire another, so it sits inert behind its walls forever
+       while the player mops up at leisure (a real game ended that way). When
+       the fields are empty the whole village turns out to forage: enough to put
+       a hand back on a plot in a week or so, never enough to fight from. */
+    const relief = Units.count('A', u => Units.isVillager(u)) === 0 && Bld.tcOf('A') ? 4 : 1;
+    ai.res.food += 2 * m.aiOutput * boomMult * relief;
+    ai.res.wood += 2 * m.aiOutput * boomMult * relief;
     ai.res.stone += 1 * m.aiOutput * boomMult;
     ai.res.gold += 3 * m.aiOutput;   // gold has no worker source for the rival — it trickles here
     Bld.dailyProduction('A');

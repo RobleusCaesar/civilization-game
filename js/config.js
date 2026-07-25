@@ -508,13 +508,17 @@ const CFG = {
       // read as relentless; the player needs a breath between pushes. aiEarly
       // further trims the standing-army target before day 100 (see AI.armyWant)
       // so the opening 100 days ramp up more gently.
-      aiBuildEvery: 2, aiOutput: 1.0, aiArmyCap: 7, aiArmyDiv: 10, aiEliteShare: 0.45, aiAggro: 0.9, aiEarly: 0.85,
+      // Retuned after a day-159 game read as too easy: the rival finished with
+      // thousands of food it had no way to spend, because its army target
+      // topped out around thirteen. A bigger standing force (and a faster ramp)
+      // turns that dead granary into pressure without touching its judgement.
+      aiBuildEvery: 2, aiOutput: 1.0, aiArmyCap: 10, aiArmyDiv: 8, aiEliteShare: 0.45, aiAggro: 0.95, aiEarly: 0.9,
       // HUMANIZED THROUGHPUT (not intelligence): the rival's economy now runs on a
       // real villager workforce (aiVillCap / aiVillEvery — kill its workers, cut its
       // income) and it has one pair of hands: aiActions macro actions per day
       // (build/upgrade/train/caravan each spend one). Strategy layers untouched.
-      aiVillCap: 13, aiVillEvery: 12, aiActions: 2,
-      aiHarass: 9,   // days between two-rider harassment sorties at scouted, exposed workers
+      aiVillCap: 15, aiVillEvery: 10, aiActions: 3,
+      aiHarass: 8,   // days between two-rider harassment sorties at scouted, exposed workers
     },
     hard: {
       name: 'Hard', icon: '💀', desc: 'Slower gathering, relentless enemies.',
