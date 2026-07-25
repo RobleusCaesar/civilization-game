@@ -1171,12 +1171,16 @@ const AI = {
     // stuck at woods it can't clear (needs a TIER-3 corps) makes upgrading the
     // sapper camp the priority — a bridging corps that can also clear-cut breaks
     // the deadlock.
+    // an assault stalled at an obstacle its corps can't yet overcome — woods
+    // needing tier 3, or WATER needing tier 2 — makes the sappers' camp the
+    // most valuable upgrade on the board: it's the thing unblocking the war
     const stalledClear = ai.stallClearT && S.day - ai.stallClearT <= 6;
+    const stalledBridge = ai.stallBridgeT && S.day - ai.stallBridgeT <= 6;
     const ups = Bld.list('A').filter(b => b.key !== 'tc' && Bld.canUpgrade(b).ok);
     if (ups.length) {
       const prio = { barracks: 3, range: 3, stable: 3, siege: 2, tower: 2, dock: 2 };
       ups.sort((a, b2) => (prio[b2.key] || 1) - (prio[a.key] || 1));
-      const sapUp = stalledClear && ups.find(b => b.key === 'sapper');
+      const sapUp = (stalledClear || stalledBridge) && ups.find(b => b.key === 'sapper');
       const b = sapUp || ups[0];
       add(24 + (prio[b.key] || 1) * 6 + (post === 'PUSH' ? 18 : 0) - (post === 'EXPAND' ? 10 : 0) +
           (sapUp ? 40 : 0),
@@ -1307,7 +1311,13 @@ const AI = {
         if (breakers < 4 && this.affordFree(CFG.BUILDINGS.siege.train[key].cost)) Bld.train(ws, key);
       }
     }
-    if (campStrat === 'TIDEWRACK' && dock && !dock.upgrading && dock.queue.length === 0) {
+    /* HULLS FOR A SECOND FRONT. Transports used to be built only while the
+       TIDEWRACK campaign held the slot, so a chief with a grown dock whose land
+       assault was beached at a moat never built a single one — it had the sea
+       right there and no way to use it. A stalled land attack is itself the
+       reason to put boats in the water. */
+    const beachedNow = ai.stall && S.day - (ai.stall.t || 0) <= 6;
+    if ((campStrat === 'TIDEWRACK' || beachedNow) && dock && !dock.upgrading && dock.queue.length === 0) {
       const big = dock.level >= 3;
       const key = big ? 'bigtransport' : 'transport';
       const cap = CFG.UNITS[big ? 'bigtransport' : 'transport'].cap || 3;
@@ -1384,6 +1394,11 @@ const AI = {
       const clearable = Terraform.isClearable(x, y);
       const water = terr === T.WATER || terr === T.MOAT;
       if (clearable && tier < 3) ai.stallClearT = S.day;              // woods we can't cut yet
+      // WATER WE CAN'T SPAN YET. Bridging needs a tier-2 corps; with only a
+      // level-1 camp the chief would sit a siege train on the bank for the rest
+      // of the game (a real game: ten engines parked across a moat, day 164).
+      // Record it so the works get the upgrade that unblocks the assault.
+      if (water && tier < 2 && Terraform.bridgeable(x, y) && !Bld.bridgeAt(x, y)) ai.stallBridgeT = S.day;
       if (!idle) continue;                                            // note the blocker, but no sapper to send
       // clear-cut a resource wall (forest / rock / orchard) that blocks the lane
       if (tier >= 3 && clearable && Units.assignTerraform(idle, x, y, 'clear')) { this._escort(idle); return true; }
@@ -1725,9 +1740,21 @@ const AI = {
     const attack = ai.posture === 'PUSH' || ai.posture === 'PRESSURE';
     ai.camp = ai.camp || { strat: null, since: 0, rounds: 0, tried: [], baseBld: 0, grind: false };
     if (!ptc || !attack) { ai.camp.strat = null; ai.camp.grind = false; return; }
-    // an OPPORTUNISTIC plan is left to run (its own evaluation rotates it); a GRIND
-    // is re-checked below so it can break off IF a real opening finally appears.
-    if (ai.camp.strat && !ai.camp.grind) return;
+    /* A LIVE PLAN THAT IS PHYSICALLY BEACHED gets re-opened. An opportunistic
+       plan is normally left alone to run its round — but a host bogged on the
+       far bank of a moat isn't "in progress", it's stuck, and the answers
+       (bridge it, or sail around it) can never be chosen while the old plan
+       holds the slot. A real game ended with ten engines parked across a moat
+       for a hundred days because WARHORN kept renewing itself. Only land plans
+       can be beached this way, and only after the plan has had time to work. */
+    const beached = ai.stall && S.day - (ai.stall.t || 0) <= 2 &&
+      S.day - (ai.camp.since || 0) >= 8 &&
+      ai.camp.strat !== 'MUDLARK' && ai.camp.strat !== 'TIDEWRACK';
+    if (ai.camp.strat && !ai.camp.grind && !beached) return;
+    if (beached) {
+      if (ai.camp.tried.indexOf(ai.camp.strat) < 0) ai.camp.tried.push(ai.camp.strat);
+      ai.camp.strat = null;
+    }
     const reach = this.aiLandReach();
     const routeToTown = this._reachesTown(reach, ptc);
     const wallStalled = !!(ai.memory && ai.memory.wallStop);
@@ -1921,7 +1948,7 @@ const AI = {
 
   // TIDEWRACK's landing: load troops into the transports and sail for the player's
   // shore (warships screen). Troops resume the assault the moment they hit the beach.
-  _launchAmphib(read) {
+  _launchAmphib(read, parallel) {
     const ai = S.ai, ptc = read.knownTC, ctx = this.probeAssault(read);
     if (!ptc || !ctx || !ctx.shore || !ctx.shore.land) return false;
     const land = ctx.shore.land;
@@ -1961,9 +1988,37 @@ const AI = {
       const wspot = MapGen.findNear(land.x, land.y, 6, (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.WATER && !Bld.at(x, y));
       if (wspot) { sh.task = { type: 'move', x: wspot.x, y: wspot.y }; sh.tUnit = 0; sh.tBld = 0; Units.setPath(sh, wspot.x, wspot.y); }
     }
-    ai.raidObj = obj; ai.raidLane = 'TIDEWRACK'; ai.raidN = Math.min(troops.length, ti); ai.raidDay = S.day;
-    G.log(this.CAMPAIGN_CRY.TIDEWRACK, true);
+    // a SECOND FRONT keeps its own orders: the landing party carries per-unit
+    // objectives, so it must not overwrite the land assault's bookkeeping
+    if (!parallel) {
+      ai.raidObj = obj; ai.raidLane = 'TIDEWRACK'; ai.raidN = Math.min(troops.length, ti); ai.raidDay = S.day;
+      G.log(this.CAMPAIGN_CRY.TIDEWRACK, true);
+    } else {
+      G.log('⛵ Rival sails slip past the moat — a second force is landing on your shore!', true);
+    }
     return true;
+  },
+
+  /* THE SECOND FRONT. The campaign system commits to ONE plan at a time, which
+     is usually right — but when the main assault is beached at a moat while a
+     dock and loaded hulls sit idle, the sea is a free extra axis. This puts the
+     RESERVE (troops not already committed to the land raid) ashore behind the
+     ditch while the siege line holds the far bank, so a moat buys time rather
+     than immunity. Bounded: only while genuinely stalled, only with hulls to
+     spare, and on its own long cooldown so it can't become a boat parade. */
+  secondFront(read) {
+    const ai = S.ai;
+    if (!read.knownTC) return false;
+    if (!(ai.stall && S.day - (ai.stall.t || 0) <= 6)) return false;      // the land route is open — no need
+    if ((ai.seaCd || 0) > 0) { ai.seaCd--; return false; }
+    const hulls = S.units.filter(u => u.owner === 'A' && Units.isTransport(u) &&
+      (!u.cargo || !u.cargo.length) && !(u.task && u.task.type === 'unload'));
+    if (!hulls.length) return false;
+    const reserve = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) && !Units.isNaval(u) &&
+      u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
+    if (reserve.length < 3) return false;                                 // don't strip the home guard for a token landing
+    if (this._launchAmphib(read, true)) { ai.seaCd = 24; return true; }
+    return false;
   },
 
   daily() {
@@ -2313,6 +2368,8 @@ const AI = {
     // deliberately HOLDS while it tools up, so the chief commits instead of throwing
     // an ordinary doomed raid at the same wall. Falls through to normal raids otherwise.
     const campOwns = this.campaignLaunch(read, m);
+    // …and while that plan grinds at the ditch, the reserve can go by sea
+    this.secondFront(read);
     /* ---- LAYER 2 drives IF we attack; the read drives WHEN. Only the
        attack postures march, and a real opening (foeVuln) beats any day
        timer — so the rival strikes an undefended player on the state of
