@@ -177,6 +177,46 @@ const out = await p.evaluate(() => {
       `${AI._campScore('WARHORN', ctx0)} -> ${AI._campScore('WARHORN', ctx1)}`);
   }
 
+  /* ---- 7. THE TOWN MUST HAVE A WAY OUT. A wall that seals the town seals the
+     ARMY in: a real game reached day 214 with a complete ring, water on the
+     fourth side, the one gate opening onto that water, sixty-nine reachable
+     tiles and the host stranded. And because a sealed ring has NO open seams,
+     read.homeGapCount is zero and the wall utility that would have noticed is
+     never even scored — so the check lives in digAndProtect, not maybeWalls. */
+  {
+    const tc = setup('wg7');
+    const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0, R = AI.WALL_R;
+    S.ai.res = { food: 900, wood: 900, stone: 900, gold: 900 };
+    S.ai.acts = 99;
+    // ring the rival's own town completely, by hand
+    let laid = 0;
+    for (const [x, y] of AI.wallRing(tc)) {
+      if (!MapGen.inB(x, y) || Bld.at(x, y)) continue;
+      G.clearFootprint(x, y, 'wall');
+      if (Bld.canPlace('A', 'wall', x, y).ok && Bld.place('A', 'wall', x, y, { free: true, instant: true })) laid++;
+    }
+    const sealed = !AI.townOut(tc);
+    ck('sealDetected', laid > 8 && sealed, `laid ${laid} sections, sealed=${sealed}`);
+    // the last section closing the ring must never be laid in the first place
+    const anyWouldSeal = AI.wallRing(tc).some(([x, y]) => AI.wallWouldSeal(tc, x, y));
+    // …and a town already shut cuts itself a door
+    const opened = AI.openTheGate(tc);
+    ck('sealSelfHeals', opened && AI.townOut(tc), `openTheGate=${opened} nowOpen=${AI.townOut(tc)}`);
+    // the door it cut leads to real ground, not into a lake
+    const out = AI.wallRing(tc).filter(([x, y]) => !Bld.at(x, y) && Path.passable(x, y, 'A'));
+    ck('doorLeadsSomewhere', out.length > 0 && out.some(([x, y]) =>
+      [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ox, oy]) => {
+        const nx = x + ox, ny = y + oy;
+        return Math.max(Math.abs(nx - cx), Math.abs(ny - cy)) > R && MapGen.inB(nx, ny) && Path.passable(nx, ny, 'A');
+      })), `${out.length} open ring tiles`);
+    // and the clamp refuses to re-close it
+    const reclose = out.filter(([x, y]) => AI.wallWouldSeal(tc, x, y)).length;
+    ck('clampRefusesToReseal', reclose > 0 && anyWouldSeal !== null,
+      `${reclose} of ${out.length} openings are recognised as the last way out`);
+    AI.maybeWalls(tc);                       // a full build cycle must not shut it again
+    ck('maybeWallsKeepsItOpen', AI.townOut(tc), 'still open after a wall pass');
+  }
+
   // ---- 6. NO DOORS: a walled stretch with a hut in it must end up with no
   //         ring tile that is passable from OUTSIDE and INSIDE at once ----
   {

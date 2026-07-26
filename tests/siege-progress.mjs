@@ -257,6 +257,38 @@ const out = await p.evaluate(() => {
     ck('repairResetsTheClock', !afterRepair && (ai.routeOpen || 0) === 0, `routeOpen=${ai.routeOpen}`);
   }
 
+  /* ---- 10. THE SAPPER PICKS THE RIGHT TOOL. A bridge is 6s and free; filling
+     a water tile is 10-20s and 35 stone + 10 wood. `Terraform.bridgeable` only
+     asks "is this water" — it does NOT ask whether a deck can be laid, which
+     needs land on both opposite sides. So the breach planner called mid-lake
+     tiles "bridge", the job could never be built, and the lane fell through to
+     filling the lake one wagon at a time beside a crossing it could have
+     spanned. bridgeCrossing is the honest question. ---- */
+  {
+    setup('sp10');
+    const idx = MapGen.idx, cx = 20, cy = 20;
+    for (let y = cy - 4; y <= cy + 4; y++) for (let x = cx - 6; x <= cx + 6; x++) S.map.terrain[idx(x, y)] = T.GRASS;
+    for (let y = cy - 4; y <= cy + 4; y++) S.map.terrain[idx(cx, y)] = T.WATER;                    // a 1-wide channel
+    for (let y = cy - 4; y <= cy + 4; y++) for (let x = cx + 3; x <= cx + 5; x++) S.map.terrain[idx(x, y)] = T.WATER;   // a wide lake
+    S.map.terrain[idx(cx - 2, cy)] = T.FOREST;
+    const mode = (x, y) => {
+      const t = S.map.terrain[idx(x, y)], water = (t === T.WATER || t === T.MOAT);
+      if (water && Terraform.bridgeCrossing(x, y, 'A') && !Bld.bridgeAt(x, y)) return 'bridge';
+      if (Terraform.isClearable(x, y)) return 'clear';
+      if (water && Terraform.isMoundable(x, y, 'A')) return 'mound';
+      return null;
+    };
+    const F = CFG.TERRAFORM;
+    ck('spanIsBridged', mode(cx, cy) === 'bridge' && !!Terraform.bridgeCrossing(cx, cy, 'A'),
+      `channel → ${mode(cx, cy)}`);
+    ck('lakeIsNotBridged', mode(cx + 4, cy) !== 'bridge' && !Terraform.bridgeCrossing(cx + 4, cy, 'A'),
+      `mid-lake → ${mode(cx + 4, cy)} (old code said "bridge" and could never build it)`);
+    ck('treelineIsCut', mode(cx - 2, cy) === 'clear', `forest → ${mode(cx - 2, cy)}`);
+    // and the price ladder the lane choice reasons about must stay in this order
+    ck('toolCostOrder', F.clear < F.bridge && F.bridge < F.reclaim && F.reclaim < F.reclaimDeep,
+      `clear ${F.clear} < bridge ${F.bridge} < reclaim ${F.reclaim} < deep ${F.reclaimDeep}`);
+  }
+
   // ---- 9. NO SNAP-BACK to the plan just abandoned ----
   {
     const { ai } = setup('sp9', 'IRONBELLY', true);

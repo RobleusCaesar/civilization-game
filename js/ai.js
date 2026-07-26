@@ -480,6 +480,73 @@ const AI = {
     return true;
   },
 
+  /* ================= THE TOWN MUST HAVE A WAY OUT =====================
+     A wall that seals the town seals the ARMY in. A real game ended with the
+     chief behind a complete ring — walls west and south, a lake east, and its
+     single gate opening straight onto that lake — with sixty-nine reachable
+     tiles, its host stranded, and a lone sapper outside trying to dig a road
+     back to a war it could no longer join. Terraform has always run through a
+     reachability clamp for exactly this reason; the ring never did.
+
+     `townOut` floods from the hall and answers: can anything walk from here to
+     ground beyond the ring? Every wall the chief lays is tested against it
+     first, and if the town is already shut, `openTheGate` cuts one. */
+  townOut(tc, blockTile, openTile) {
+    tc = tc || Bld.tcOf('A');
+    const c = this.wallCenter(tc); if (!c) return true;
+    const W = CFG.W, H = CFG.H, idx = MapGen.idx, R = this.WALL_R;
+    const bx = blockTile ? blockTile.x : -1, by = blockTile ? blockTile.y : -1;
+    const ox = openTile ? openTile.x : -1, oy = openTile ? openTile.y : -1;
+    const mask = new Uint8Array(W * H), q = [];
+    // `openTile` asks the counterfactual "…and if we cut THIS section out?"
+    const pass = (x, y) => MapGen.inB(x, y) && !(x === bx && y === by) &&
+      ((x === ox && y === oy) || Path.passable(x, y, 'A'));
+    const seed = (x, y) => { if (pass(x, y)) { const i = idx(x, y); if (!mask[i]) { mask[i] = 1; q.push(i); } } };
+    const s = Bld.size('tc');
+    for (let dy = -1; dy <= s; dy++) for (let dx = -1; dx <= s; dx++) seed(tc.x + dx, tc.y + dy);
+    let h = 0;
+    while (h < q.length) {
+      const cur = q[h++], cx = cur % W, cy = (cur / W) | 0;
+      // the moment we stand clear of the ring the town is open — stop early
+      if (Math.max(Math.abs(cx - c.cx), Math.abs(cy - c.cy)) > R) return true;
+      seed(cx + 1, cy); seed(cx - 1, cy); seed(cx, cy + 1); seed(cx, cy - 1);
+    }
+    return false;
+  },
+  // would walling this tile shut the town in? (cheap: only asked about ring tiles)
+  wallWouldSeal(tc, x, y) { return this.townOut(tc) && !this.townOut(tc, { x, y }); },
+
+  /* SELF-HEAL — the town is already shut. Cut a gate on the ring tile with the
+     best ground beyond it (never onto water, which is what made the old gate
+     useless), preferring a plain wall section over anything else. Saves that
+     load in this state dig themselves out on the next build cycle. */
+  openTheGate(tc) {
+    const c = this.wallCenter(tc); if (!c) return false;
+    const R = this.WALL_R;
+    let best = null, bs = -1e9;
+    for (const [x, y] of this.wallRing(tc)) {
+      const b = Bld.at(x, y);
+      if (!b || b.owner !== 'A' || !this.isFort(b)) continue;      // only our own sections may be cut
+      // how much walkable ground lies BEYOND this section?
+      let out = 0;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + ox, ny = y + oy;
+        if (Math.max(Math.abs(nx - c.cx), Math.abs(ny - c.cy)) <= R) continue;
+        if (MapGen.inB(nx, ny) && Path.passable(nx, ny, 'A') && !Bld.at(nx, ny)) out++;
+      }
+      if (!out) continue;                                          // a door onto a lake is not a door
+      // …and it must actually free the town: a section with no walkable ground
+      // on the INSIDE either is a door between two walls. Ask the flood.
+      if (!this.townOut(tc, null, { x, y })) continue;
+      const s = out * 4 - (b.key === 'gate' ? 6 : 0) + G.rand();   // don't tear out a working gate first
+      if (s > bs) { bs = s; best = b; }
+    }
+    if (!best) return false;
+    Bld.removeToRuin(best);        // the section comes down; maybeWalls will gate it properly
+    if (S.ai.memory) S.ai.memory.sealed = S.day;
+    return true;
+  },
+
   /* RULE 3 (act) — mend before you extend. Runs ahead of the ring cap and the
      re-facing gate, because those exist to stop the ring SPRAWLING, not to
      leave it broken: an attacker only has to find one soft tile. */
@@ -496,6 +563,8 @@ const AI = {
     }
     for (const h of audit.breach) {
       if (!this.affordFree(CFG.BUILDINGS.wall.levels[0].cost)) break;
+      // …but a "breach" that is the town's LAST WAY OUT is a gate, not a hole
+      if (this.wallWouldSeal(tc, h.x, h.y)) continue;
       if (Bld.canPlace('A', 'wall', h.x, h.y).ok && Bld.place('A', 'wall', h.x, h.y)) { fix.breach++; return true; }
     }
     return false;
@@ -504,6 +573,9 @@ const AI = {
   maybeWalls(tc) {
     const P = this.persona(), ai = S.ai, read = ai.read || {};
     if (S.day < 16 || ai.res.wood < 45) return;
+    // ALREADY SHUT IN — cut a way out before anything else. Nothing the ring can
+    // do for a town whose army can't leave it.
+    if (Bld.forts('A').length && !this.townOut(tc)) { this.openTheGate(tc); return; }
     // RULES 2+3 — a hole in the standing ring outranks every metre of new frontage
     if (this.mendWallLine(tc)) return;
     // a ring already at the limit of what this economy can re-tier: stop laying
@@ -522,8 +594,24 @@ const AI = {
     if (!gaps.length) return;                       // terrain already seals the town
     // how many tiles to lay this call — a real budget, not a flat 3
     let budget = 3 + (P.walls ? 2 : 0) + (ai.posture === 'DEFEND' ? 2 : 0) + (read.underThreat ? 2 : 0);
-    const gateSeam = gaps[0];                        // widest = the gated sortie lane
-    const gateMid = gateSeam.mid;
+    /* THE GATE MUST OPEN ONTO SOMEWHERE. The widest seam's midpoint was taken on
+       trust, and a real game gated the one ring tile whose far side was a lake —
+       a door into deep water, with the host shut in behind it. Walk the seam for
+       a tile that actually has walkable ground beyond the ring, and gate that. */
+    const outFacing = ([x, y]) => {
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + ox, ny = y + oy;
+        if (Math.max(Math.abs(nx - cx), Math.abs(ny - cy)) <= 5) continue;
+        if (MapGen.inB(nx, ny) && Path.passable(nx, ny, 'A') && !Bld.at(nx, ny)) return true;
+      }
+      return false;
+    };
+    const gateSeam = gaps.find(g => g.tiles.some(outFacing)) || gaps[0];   // widest usable = the sortie lane
+    const gateMid = (() => {
+      const usable = gateSeam.tiles.filter(outFacing);
+      const t = usable.length ? usable[usable.length >> 1] : null;
+      return t ? { x: t[0], y: t[1] } : gateSeam.mid;
+    })();
     // order seams: the flank the player keeps hitting first, then narrowest
     // (cheapest full seals) — reinforce where it hurts, seal what's quick to close
     const hit = (ai.memory && ai.memory.hitFlank) || null;
@@ -541,6 +629,9 @@ const AI = {
         if (!MapGen.inB(x, y) || Bld.at(x, y)) continue;
         const isGate = x === gateMid.x && y === gateMid.y;
         const key = isGate ? 'gate' : 'wall';
+        // NEVER LAY THE STONE THAT SHUTS US IN. A gate is passable, so it can
+        // always go up; a wall may not be the last section closing the ring.
+        if (!isGate && this.wallWouldSeal(tc, x, y)) continue;
         // THE RING NEVER RAIDS THE WAR CHEST. Walling ran outside the savings
         // reservation, so a chief saving for its next Town Center tier spent the
         // fund on palisade a fistful at a time and never got there (a real game
@@ -1186,6 +1277,13 @@ const AI = {
   // compose with the rest instead of pre-empting a fixed pipeline slot.
   digAndProtect(read) {
     const ai = S.ai, tc = Bld.tcOf('A'), P = this.persona();
+    /* SHUT IN BY ITS OWN WALLS — the first safety work of all, and it has to
+       live HERE rather than in maybeWalls, because a sealed ring has no open
+       seams, `read.homeGapCount` is therefore zero, and the wall utility that
+       would have noticed never gets scored. That catch-22 is exactly how a real
+       game reached day 214 with the host behind a complete ring and the chief
+       still calmly choosing which lake to fill. */
+    if (tc && Bld.forts('A').length && !this.townOut(tc) && this.openTheGate(tc)) return true;
     ai.broke = ai.broke || {};
     for (const k of ['wood', 'stone', 'food']) {   // starved for days → dig out now
       ai.broke[k] = ai.res[k] < 40 ? (ai.broke[k] || 0) + 1 : 0;
@@ -1835,18 +1933,34 @@ const AI = {
       }
     }
     ctx.siegeWall = bestSiege;
-    // MUDLARK: the breachable frontier tile (adjacent to our land) nearest the player
+    /* MUDLARK: where to open the lane. This used to take the breachable frontier
+       tile NEAREST THE HALL, which quietly meant "the tile facing the player,
+       whatever it costs to break" — and on a lake shore that is reclamation, ten
+       to twenty seconds and 35 stone a tile, when a treeline two tiles further
+       round cuts in four seconds for nothing. Cost the work as well as the
+       distance: a cheap tool a little further round beats an expensive one
+       straight ahead, and the chief digs the road a person would dig.
+       ctx.breachCost carries the winner's price so _campScore can read it. */
     if (tier >= 2) {
-      let best = null, bs = 1e9;
+      const F = CFG.TERRAFORM;
+      let best = null, bs = 1e9, bestCost = 0;
       for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
         const i = idx(x, y); if (reach[i] || Bld.at(x, y) || !adjReach(x, y)) continue;
         const t = S.map.terrain[i], water = (t === T.WATER || t === T.MOAT);
-        const breachable = (water && Terraform.bridgeable(x, y) && !Bld.bridgeAt(x, y)) ||
-          (tier >= 3 && Terraform.isClearable(x, y)) || (tier >= 3 && water && Terraform.isMoundable(x, y, 'A'));
-        if (!breachable) continue;
-        const d = Math.hypot(x - ptc.x, y - ptc.y); if (d < bs) { bs = d; best = { x, y, water }; }
+        // what would it actually take to open this tile? (cheapest tool that works)
+        let cost = 0;
+        if (water && Terraform.bridgeCrossing(x, y, 'A') && !Bld.bridgeAt(x, y)) cost = F.bridge;
+        else if (tier >= 3 && Terraform.isClearable(x, y)) cost = F.clear;
+        else if (tier >= 3 && water && Terraform.isMoundable(x, y, 'A'))
+          cost = Terraform.reclaimDepth(x, y) >= 2 ? F.reclaimDeep : F.reclaim;
+        else continue;
+        // distance to the hall still matters — a cheap cut on the far side of the
+        // map is no road at all — but it no longer decides the lane on its own
+        const score = Math.hypot(x - ptc.x, y - ptc.y) + cost * 0.8;
+        if (score < bs) { bs = score; best = { x, y, water }; bestCost = cost; }
       }
       ctx.breach = best;
+      ctx.breachCost = best ? bestCost : 0;
     }
     const lanes = this.playerLanes();
     ctx.lane = lanes[0] || null;
@@ -2036,6 +2150,18 @@ const AI = {
     }
     return n;
   },
+  /* A NEW PLAN STARTS FROM A CLEAN SLATE. Only `rounds`/`dry`/`surge` were being
+     cleared, so the previous plan's `roundEnd` stayed set — and the idle-dry
+     clock is gated on `!camp.roundEnd`, so it could never fire. A real game had
+     MUDLARK holding the slot from day 177 to 214 with a stale roundEnd of 161,
+     digging away, answerable to nothing. Wipe the whole round record. */
+  _campReset(camp) {
+    camp.since = S.day; camp.rounds = 0; camp.dry = 0; camp.surge = 0;
+    camp.roundEnd = null; camp.pushDay = S.day; camp.evalDay = S.day;
+    camp.deep = null; camp.inIds = []; camp.partyIds = []; camp.partyN = 0;
+    camp.aim = null; camp.pending = null; camp.mudReach = null;
+    camp.baseBld = Bld.list('P').length;
+  },
   _campLearn(k) {
     const sl = (S.ai.memory && S.ai.memory.strat) || {};
     const e = sl[k]; if (!e) return 0;
@@ -2093,12 +2219,12 @@ const AI = {
        holds the slot. A real game ended with ten engines parked across a moat
        for a hundred days because WARHORN kept renewing itself. Only land plans
        can be beached this way, and only after the plan has had time to work. */
-    const beached = ai.stall && S.day - (ai.stall.t || 0) <= 2 &&
+    const beached = ai.camp.strat && ai.stall && S.day - (ai.stall.t || 0) <= 2 &&
       S.day - (ai.camp.since || 0) >= 8 &&
       ai.camp.strat !== 'MUDLARK' && ai.camp.strat !== 'TIDEWRACK';
     if (ai.camp.strat && !ai.camp.grind && !beached) return;
     if (beached) {
-      if (ai.camp.tried.indexOf(ai.camp.strat) < 0) ai.camp.tried.push(ai.camp.strat);
+      if (ai.camp.strat && ai.camp.tried.indexOf(ai.camp.strat) < 0) ai.camp.tried.push(ai.camp.strat);
       ai.camp.strat = null;
     }
     const tc = Bld.tcOf('A'); if (!tc) return;
@@ -2126,7 +2252,7 @@ const AI = {
     if (ai.camp.strat && ai.camp.grind) {
       if (this._campViable(ai.camp.strat, ctx, tc)) {
         if (best >= this.CAMP_OPENING && strat !== ai.camp.strat) {
-          ai.camp.strat = strat; ai.camp.grind = false; ai.camp.since = S.day; ai.camp.rounds = 0; ai.camp.dry = 0; ai.camp.surge = 0; ai.camp.baseBld = Bld.list('P').length;
+          ai.camp.strat = strat; ai.camp.grind = false; AI._campReset(ai.camp);
           G.log(this.CAMPAIGN_CRY[strat], true);
         }
         return;
@@ -2152,7 +2278,7 @@ const AI = {
     // rather than an undefined one, which used to litter `tried` with blanks and
     // quietly cost the chief a rotation slot
     if (!strat) { ai.camp.strat = null; ai.camp.grind = false; return; }
-    ai.camp.strat = strat; ai.camp.since = S.day; ai.camp.rounds = 0; ai.camp.dry = 0; ai.camp.surge = 0; ai.camp.baseBld = Bld.list('P').length;
+    ai.camp.strat = strat; this._campReset(ai.camp);
     G.log(this.CAMPAIGN_CRY[strat], true);
   },
 
@@ -2480,12 +2606,30 @@ const AI = {
     const b = ctx && ctx.breach; if (!b) return false;
     const ptc = read.knownTC || this.knownPlayerTC(); if (!ptc) return false;
     const tier = Units.sapperTier('A');
+    /* PICK THE CHEAP TOOL WHERE IT WORKS. `bridgeable` only asks "is this
+       water" — it does NOT ask whether a deck can actually be laid, which needs
+       land on both opposite sides (`bridgeCrossing`). So the planner kept
+       calling mid-lake tiles "bridge", the job could never be built, and the
+       lane fell through to RECLAMATION: 10-20s a tile and 35 stone + 10 wood
+       each, versus 6s and free for a real span. That is how a chief ends up
+       filling a lake one wagon at a time beside a crossing it could have
+       bridged. Ask the honest question, and the tools sort themselves:
+       bridge a span, cut a treeline, and reclaim only where nothing else
+       reaches. */
     const modeFor = (x, y) => {
       const t = S.map.terrain[MapGen.idx(x, y)], water = (t === T.WATER || t === T.MOAT);
-      if (water && Terraform.bridgeable(x, y) && !Bld.bridgeAt(x, y)) return 'bridge';
+      if (water && Terraform.bridgeCrossing(x, y, 'A') && !Bld.bridgeAt(x, y)) return 'bridge';
       if (tier >= 3 && Terraform.isClearable(x, y)) return 'clear';
       if (tier >= 3 && water && Terraform.isMoundable(x, y, 'A') && Bld.canAfford(CFG.TERRAFORM.moundCost, ai.res)) return 'mound';
       return null;
+    };
+    // what a lane really costs, in sapper-seconds — a mound is up to three times
+    // a bridge and takes stone the walls want. The chief picks the cheap road.
+    const jobCost = (job, x, y) => {
+      const F = CFG.TERRAFORM;
+      if (job === 'bridge') return F.bridge;
+      if (job === 'clear') return F.clear;
+      return Terraform.reclaimDepth ? (Terraform.reclaimDepth(x, y) > 1 ? F.reclaimDeep : F.reclaim) : F.reclaim;
     };
     // walk from the frontier tile straight toward the hall, collecting the connected
     // run of tiles we must (and can) breach until open ground opens up on the far side

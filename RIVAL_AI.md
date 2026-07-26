@@ -108,6 +108,14 @@ shifts smoothly instead of on cliff edges.
   keep a **wall-breaker** (catapult, or a trebuchet at workshop L3) on hand — so a
   PUSH batters the wall with engines while the rest pour through the gap, instead
   of stalling on stone. A capable rival reaches for the tool the matchup needs.
+- **The cheap tool, where it works.** A bridge costs 6s and nothing; filling a
+  water tile costs 10-20s and 35 stone + 10 wood. `Terraform.bridgeable` only
+  asks *is this water* — the honest question is `bridgeCrossing`, which needs
+  land on both opposite sides. The breach planner now asks that one, so it spans
+  a real crossing, cuts a treeline for four seconds, and reclaims only where
+  nothing else reaches. The lane itself is chosen on **cost as well as
+  distance**, so a cheap cut a little further round beats an expensive one
+  straight ahead — instead of filling a lake beside a channel it could bridge.
 - **Terraforms both ways (Sappers).** A chief builds a **Sappers' Camp**, trains
   sappers (escorted while they work — `AI._escort`), and `AI.terraform()` uses them:
   - **Defensively** — a turtling/threatened/wall-persona chief digs a **moat/trench
@@ -156,6 +164,15 @@ shifts smoothly instead of on cliff edges.
      segments and **holes a razed section left behind** are closed *ahead* of
      any new frontage — the ring cap and the "finish before extending" rule
      exist to stop the ring sprawling, not to leave it broken.
+
+  4. **A way out** (`townOut` / `openTheGate`) — a wall that seals the town seals
+     the **army** in. Every section the chief lays is tested against a
+     reachability clamp first (the one Terraform always had, which the ring
+     never did), and a town already shut cuts itself a gate. That check lives in
+     `digAndProtect`, not `maybeWalls`, because a sealed ring has no open seams:
+     `read.homeGapCount` is zero, so the wall utility that would have noticed is
+     never even scored. The gate is also sited on a seam tile with walkable
+     ground beyond it — a door onto a lake is not a door.
 
   The mistake is **punished as well as avoided**: `AI.foeSoftDoors()` spots a
   player hut or farm embedded in *their* remembered wall line, `playerLanes()`

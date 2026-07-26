@@ -59,6 +59,9 @@ or tower sitting in the rival's perimeter ring is a *door*, not a wall. Covers
 `wallRelocate` / `mendWallLine` / `maybeWalls` / `playerLanes` / `foeSoftDoors`,
 `Bld.tileFree` / `canPlace` / `blockAt`, and `Path.passable`. `AI.WALL_R` is the
 single source of truth for where the line runs — never hard-code the radius.
+**The ring must never seal the town in** (`AI.townOut` / `wallWouldSeal` /
+`openTheGate`): a sealed ring has no seams, so `read.homeGapCount` is 0 and the
+wall utility never runs — which is why the check lives in `digAndProtect`.
 
 **Siege progress** (`tests/siege-progress.mjs`, details in `RIVAL_AI.md`): walls
 and gates are ordinary entries in `S.buildings`, so "a building was destroyed"
