@@ -902,6 +902,48 @@ const AI = {
     for (const k in kb) if (kb[k].key === 'tc') return kb[k];
     return null;
   },
+
+  /* THE TOWN IS SPENT — finish it. A village with no villagers cannot rebuild a
+     wall, re-crew a farm, repair the hall or train a single replacement; every
+     day after that is just the hall coming down slowly. So the chief stops
+     husbanding its host — no reserve, no cadence, no waiting for engines — and
+     puts every fighting unit it has on the Town Center.
+
+     This is OBSERVATION, not omniscience. It has to have eyes on the hall this
+     moment (`_vis`, the same fog the rest of the brain obeys) and see no
+     villager anywhere in that sight. A player who has hands alive somewhere out
+     in the fog is not written off — the chief simply hasn't seen them, and the
+     usual raid machinery keeps running. */
+  foeSpent() {
+    if (!this._vis) return false;
+    const ptc = this.knownPlayerTC(); if (!ptc) return false;
+    const cx = Bld.cx(ptc) | 0, cy = Bld.cy(ptc) | 0;
+    if (!MapGen.inB(cx, cy) || !this._vis[MapGen.idx(cx, cy)]) return false;   // no eyes on the hall
+    for (const u of S.units) if (u.owner === 'P' && Units.isVillager(u) && this.canSee(u)) return false;
+    return true;
+  },
+  // every hand on the hall. Naval units and siege towers keep their own jobs.
+  stormTheHall(ptc) {
+    const tc = Bld.tcOf('P') || ptc; if (!tc) return 0;
+    const aim = { type: 'tc', x: tc.x, y: tc.y };
+    let n = 0;
+    for (const u of S.units) {
+      if (u.owner !== 'A' || !Units.isMilitary(u) || Units.isNaval(u) || u.kind === 'siegetower') continue;
+      if (u.task && u.task.type === 'raid' && u.raidObj && u.raidObj.type === 'tc' &&
+          u.raidObj.x === aim.x && u.raidObj.y === aim.y) { n++; continue; }   // already on it
+      u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.tBridge = null;
+      u.probe = false; u.feint = false; u.defend = false; u.assault = true;
+      u.raidLane = 'finish'; u.raidObj = { type: 'tc', x: aim.x, y: aim.y };
+      n++;
+    }
+    if (n) {
+      const ai = S.ai;
+      ai.raidN = n; ai.raidDay = S.day; ai.raidExt = 0; ai.raidCd = 0;
+      ai.raidObj = { type: 'tc', x: aim.x, y: aim.y, lane: 'finish' };
+      ai.raidLane = 'finish'; ai.raidFoeBld = Bld.list('P').length;
+    }
+    return n;
+  },
   // a far, still-unexplored tile to probe toward (never reads the player's spot)
   scoutTarget() {
     const tc = Bld.tcOf('A'); if (!tc) return null;
@@ -3089,7 +3131,23 @@ const AI = {
     // its tailored assault (siege train / landing / escalade / breach / storm) or
     // deliberately HOLDS while it tools up, so the chief commits instead of throwing
     // an ordinary doomed raid at the same wall. Falls through to normal raids otherwise.
-    const campOwns = this.campaignLaunch(read, m);
+    /* FINISH IT. Once the chief can see the town has no villagers left, there
+       is nothing to husband a host for — no counter-attack is coming, no wall
+       will be rebuilt, no hand will put out a fire. Everything goes on the
+       hall, ahead of the campaign and the raid cadence both, and it is re-issued
+       every day so the ordinary break-off timers can't call the host home
+       halfway through. This is what turns a twenty-day chip-down into an end. */
+    const storming = this.foeSpent() && this.stormTheHall(read.knownTC) > 0;
+    if (storming) {
+      if (!ai.finishLogged) {
+        ai.finishLogged = true;
+        G.log('🔥 The rival sees your village empty of hands — every warrior turns on the Town Center!', true);
+      }
+    } else ai.finishLogged = false;
+    // `storming` short-circuits the campaign (nothing left to plan around) and,
+    // as an owner of the attack, stands the ordinary raid block down — but the
+    // rest of the day still runs, so nothing else the chief does is skipped.
+    const campOwns = storming || this.campaignLaunch(read, m);
     // …and while that plan grinds at the ditch, the reserve can go by sea
     this.secondFront(read);
     /* ---- LAYER 2 drives IF we attack; the read drives WHEN. Only the

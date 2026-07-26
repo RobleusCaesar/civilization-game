@@ -675,6 +675,19 @@
     </div>
   </div>
 
+  <!-- NO WAY BACK — offered once, when the village can no longer feed itself
+       (see G.checkDoom). Resign ends it; the other button hands the game back. -->
+  <div class="screen" id="scrDoomed">
+    <div class="sbody center">
+      <div class="pauseMenu">
+        <h2 style="margin:0 0 10px">🕯 Winning is no longer possible</h2>
+        <p class="hint" id="doomBody"></p>
+        <div class="mrow"><button class="abtn big danger" id="btnDoomResign">🏳 Resign</button></div>
+        <div class="mrow"><button class="abtn big" id="btnDoomStay">💀 I like to suffer</button></div>
+      </div>
+    </div>
+  </div>
+
   <div class="screen" id="scrEndgame">
     <div class="sbody center">
       <!-- DEFEAT — "The Last Fire": a quiet, story-driven Game Over. No score. -->

@@ -411,6 +411,38 @@ const G = {
   // famine: food clamps to zero and, if it drags on, a soldier deserts each
   // FAMINE_DESERT_DAYS (see Units.desertHungry). Symmetric — the rival eats too,
   // and its economy brain answers a shortfall by building farms (see AI.daily).
+  /* NO WAY BACK — the run is decided long before the Town Center actually
+     falls, and watching a hall get chipped down over twenty days with nothing
+     you can do about it is not a game, it's a wait. When the village can no
+     longer feed itself the chief offers the player the choice: strike the
+     banner, or stay and watch it burn.
+
+     The three conditions are FACTS about the board, not a guess:
+       · no villagers  — nothing left that can gather, build or work a farm
+       · food under a villager's price (50) — none can be trained back either
+       · no Trading Post — and no way to turn the wood and stone you're sitting
+         on into a meal (the post trades any resource for any other, and the
+         hall's own gold trickle keeps it fed, so owning one IS a way back)
+     Rather than reason about whether some fishing boat might still be working
+     a shoal, we MEASURE it: the granary must also have failed to rise for
+     DOOM_DAYS running. Anything still producing food shows up as food coming
+     in, and the offer is never made. Asked once per run. */
+  DOOM_DAYS: 3,
+  checkDoom() {
+    if (!S || S.over || S.doomShown) return;
+    const tc = Bld.tcOf('P');
+    const price = ((CFG.BUILDINGS.tc.train || {}).villager || {}).cost;
+    const seed = (price && price.food) || 50;
+    const post = S.buildings.some(b => b.owner === 'P' && b.key === 'trade' && Bld.done(b) && !b.upgrading);
+    const food = S.res.food || 0;
+    const spent = !!tc && !post && food < seed &&
+      Units.count('P', u => Units.isVillager(u)) === 0 &&
+      food <= (S._doomFood != null ? S._doomFood : 1e9);       // …and nothing is coming in
+    S._doomFood = food;
+    S.doomT = spent ? (S.doomT || 0) + 1 : 0;
+    if (S.doomT >= this.DOOM_DAYS && window.Screens) { S.doomShown = true; Screens.show('doomed'); }
+  },
+
   applyFoodUpkeep(owner) {
     const store = owner === 'P' ? S : S.ai;
     if (!store || !store.res) return;
@@ -485,6 +517,7 @@ const G = {
     // every mouth eats — food is a standing cost, not a one-time price at training
     this.applyFoodUpkeep('P');
     this.applyFoodUpkeep('A');
+    this.checkDoom();
     // arcade tally: the tribe at its greatest
     if (S.stats) {
       const pop = S.units.reduce((n, u) => n + (u.owner === 'P' ? 1 : 0), 0) + S.garrison.length;

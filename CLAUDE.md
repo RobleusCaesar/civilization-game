@@ -50,6 +50,8 @@ node tests/combined-arms.mjs   # AI assault composition: feint vs one full attac
 node tests/wall-line.mjs       # a building may NEVER be part of the AI wall line
 node tests/siege-progress.mjs  # a siege round is scored on PENETRATION, not damage
 node tests/trade-post.mjs      # any-resource exchange stays stingy in every direction
+node tests/endgame-doom.mjs    # the no-way-back offer fires only when it is true
+node tests/endgame-doom-ai.mjs # the rival finishes a spent town, fog-honestly
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -82,3 +84,13 @@ paid per 1) and `buy` (gold→goods). `buy` is bounded by arithmetic, not taste:
 swap and the direct trade becomes pointless. **Raising `buy` requires lowering
 `swap`.** Legacy saves hold caravans of the old `{res, gold}` shape —
 `Bld.caravanHaul` must keep paying those out.
+
+**No way back** (`tests/endgame-doom.mjs` + `-ai`): when the village provably
+cannot feed itself (no villagers, food under a villager's price, no Trading
+Post) `G.checkDoom` offers Resign / "I like to suffer", once per run. It does
+not reason about whether a fishing boat might still be working — it MEASURES,
+requiring the granary to also fail to rise for `DOOM_DAYS`. On the other side,
+`AI.foeSpent` / `stormTheHall` put every warrior on the hall, drawn from sight
+alone: eyes on the hall, no villager visible, and **never** a check against a
+unit the chief cannot see. A hidden villager is deliberately not caught —
+catching it would mean reading hidden state.

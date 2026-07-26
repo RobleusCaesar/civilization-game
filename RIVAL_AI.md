@@ -269,6 +269,17 @@ Three rules keep that honesty from turning into passivity:
   ordinary raid machinery for as long as it lasted. Now the initiative goes back
   the moment the plan stops moving.
 
+**Finish a spent town.** A village with no villagers left cannot rebuild a wall,
+re-crew a farm, repair the hall or train a replacement — every day after that is
+just the hall coming down slowly. So `AI.foeSpent` / `stormTheHall` drop the
+cadence entirely and put **every** fighting unit on the Town Center, ahead of
+the campaign and the raid timers, re-issued daily so the ordinary break-off
+clocks can't call the host home halfway. It is **observation, not omniscience**:
+the chief must have eyes on the hall this moment and see no villager in that
+sight, and it never consults a unit it cannot see. A villager hidden in a far
+corner is therefore not caught — the inference is fallible on purpose, and the
+chief stands straight back down the moment hands reappear in view.
+
 **Lane memory** (`S.ai.memory.laneDef`): a push that stalls or is beaten back
 marks *that lane* as defended, so the next commit routes elsewhere; a productive
 one softens it; all decay slowly. Probes that hit a defended lane **retreat and

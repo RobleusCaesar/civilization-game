@@ -62,6 +62,7 @@ const Screens = {
     else if (name === 'paused') this.onPaused();
     else if (name === 'leaders') this.onLeaders();
     else if (name === 'endgame') this.onEndgame(opts);
+    else if (name === 'doomed') this.onDoomed();
     else if (name === 'playing') { if (window.S) S.paused = false; }
     if (name !== 'playing' && window.S && !this._demo) S.paused = true;
   },
@@ -501,10 +502,25 @@ const Screens = {
   /* RESIGN — concede the game. It ends the run for good, so it takes a second
      tap to confirm (the same pattern as quitting with unsaved progress), then
      drops straight into the Game Over screen. */
-  resign() {
+  /* NO WAY BACK — the choice offered when the village can no longer feed
+     itself (G.checkDoom). It is already a two-button decision, so Resign here
+     goes straight through rather than asking to be tapped twice. */
+  onDoomed() {
+    const b = this.el('doomBody');
+    if (b) b.textContent = 'Your last villager is gone and the granary is empty — ' +
+      'no one left to gather, nothing to train a new hand with, and no Trading Post ' +
+      'to buy a meal. The Town Center will fall in its own time.';
+  },
+  doomResign() { this.resign(true); },
+  doomStay() {
+    if (window.UI) UI.toast('So be it. The fire burns low.', true);
+    this.show('playing');
+  },
+
+  resign(force) {
     if (!window.S || S.over) return;
     const r = this.el('btnResign');
-    if (!this._confirmResign) {
+    if (!force && !this._confirmResign) {
       this._confirmResign = true;
       if (r) { r.textContent = '⚠ Concede the valley — tap again'; r.classList.add('danger'); }
       return;
@@ -794,6 +810,8 @@ const Screens = {
     on('btnPauseHow', () => { this.backTo = 'paused'; this.show('howto'); });
     on('btnQuitTitle', () => this.quitToTitle());
     on('btnResign', () => this.resign());
+    on('btnDoomResign', () => this.doomResign());
+    on('btnDoomStay', () => this.doomStay());
     // endgame
     const leaveEnd = (go) => {
       if (this._score && this._score.win && !this._submitted &&
