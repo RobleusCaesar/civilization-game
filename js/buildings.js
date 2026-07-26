@@ -415,32 +415,59 @@ const Bld = {
     b.upgrading = this.upgradeTime(b);
     b.upgTotal = b.upgrading;   // remembered so the progress bar knows the full span
     if (b.owner === 'P') {
-      // upgrades need a villager on site, same as construction. A stationed
-      // hand does it themselves: they step off the job, raise the upgrade,
-      // and go straight back to work when it's done — no shuffling villagers
-      let v = null, wasWorker = false;
-      if (!this.hasWorker(b)) {
-        const crew = S.units.filter(u => u.owner === 'P' && u.task &&
-          u.task.type === 'work' && u.task.id === b.id);
-        if (crew.length) { v = crew[0]; wasWorker = true; }
-        else v = Units.nearestIdleVillager(b.x, b.y);
+      /* EVERY HAND ON THE SCAFFOLD. Upgrades need a villager on site, same as
+         construction — and a station's OWN crew are the obvious hands, since
+         production is paused for the whole upgrade anyway (`dailyProduction`
+         skips a building that's upgrading). A two-hand camp used to send one
+         worker to build and leave the other standing beside it doing nothing
+         at all. Now both down tools, both build — every builder on site ticks
+         the works, so two hands raise it in half the time — and both go back
+         to the seam the moment it's done (see finishUpgrade → resumeCrew). */
+      const crew = S.units.filter(u => u.owner === 'P' && u.task &&
+        u.task.type === 'work' && u.task.id === b.id);
+      let hands = 0;
+      for (const w of crew) {
+        Units.assignBuild(w, b);        // a hand already on site "paths" nowhere — still a builder
+        if (w.task && w.task.type === 'build') { w.task.resumeWork = true; hands++; }
       }
-      if (v) Units.assignBuild(v, b);   // a hand already on site "paths" nowhere — still a builder
-      if (v && v.task && v.task.type === 'build') {
-        if (wasWorker) {
-          v.task.resumeWork = true;   // back to the same post afterwards
-          G.log(`${d.name} upgrading to Lv ${b.level + 1} — the worker downs tools to build it`);
-        } else G.log(`${d.name} upgrading to Lv ${b.level + 1} — a villager heads over`);
+      if (hands) {
+        G.log(`${d.name} upgrading to Lv ${b.level + 1} — ` +
+          (hands > 1 ? `both hands down tools to build it` : 'the worker downs tools to build it'));
+      } else if (this.hasWorker(b)) {
+        G.log(`${d.name} upgrading to Lv ${b.level + 1}`);   // someone is already on it
+      } else {
+        const v = Units.nearestIdleVillager(b.x, b.y);
+        if (v) Units.assignBuild(v, b);
+        if (v && v.task && v.task.type === 'build') G.log(`${d.name} upgrading to Lv ${b.level + 1} — a villager heads over`);
+        else G.log(`${d.name} upgrade needs a builder — tap a villager, then the building`, true);
       }
-      else if (this.hasWorker(b)) G.log(`${d.name} upgrading to Lv ${b.level + 1}`);
-      else G.log(`${d.name} upgrade needs a builder — tap a villager, then the building`, true);
     }
     return true;
+  },
+
+  /* BACK TO THE SEAM — every hand that downed tools to raise this station
+     returns to its post, up to the station's crew cap. It lives here rather
+     than in the builder's own tick because with two builders only ONE of them
+     crosses the finish line; the other would find the works already done and
+     simply be let go. Which of them got there first shouldn't decide who keeps
+     their job. Returns how many went back. */
+  resumeCrew(b) {
+    if (b.owner !== 'P' || !this.def(b.key).needsWorker) return 0;
+    const cap = this.maxWorkers(b);
+    let n = this.workersAssigned(b), back = 0;
+    for (const u of S.units) {
+      if (u.owner !== 'P' || !u.task || u.task.type !== 'build' || u.task.id !== b.id) continue;
+      if (!u.task.resumeWork) continue;
+      if (n >= cap) { u.task = null; continue; }
+      u.task = { type: 'work', id: b.id }; n++; back++;
+    }
+    return back;
   },
 
   finishUpgrade(b) {
     b.upgrading = 0;
     b.level++;
+    this.resumeCrew(b);
     if (b.owner === 'P' && S.stats) S.stats.upgrades = (S.stats.upgrades || 0) + 1;
     const lv = this.lv(b);
     b.maxhp = lv.hp; b.hp = lv.hp;

@@ -52,6 +52,7 @@ node tests/siege-progress.mjs  # a siege round is scored on PENETRATION, not dam
 node tests/trade-post.mjs      # any-resource exchange stays stingy in every direction
 node tests/endgame-doom.mjs    # the no-way-back offer fires only when it is true
 node tests/endgame-doom-ai.mjs # the rival finishes a spent town, fog-honestly
+node tests/camp-crew.mjs       # a station's own hands raise its upgrade, then return
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -94,3 +95,11 @@ requiring the granary to also fail to rise for `DOOM_DAYS`. On the other side,
 alone: eyes on the hall, no villager visible, and **never** a check against a
 unit the chief cannot see. A hidden villager is deliberately not caught —
 catching it would mean reading hidden state.
+
+**Camp crew** (`tests/camp-crew.mjs`): lumber camps, quarries and lodges hold
+two workers, and production is paused for the whole upgrade — so BOTH hands
+down tools and build (every builder on site ticks the works, so two raise it in
+half the time), and both go back to the seam. Coming back lives in
+`Bld.finishUpgrade` → `Bld.resumeCrew`, not in the builder's own tick: with two
+builders only one crosses the finish line, and which one got there first must
+not decide who keeps their job.

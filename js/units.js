@@ -870,13 +870,11 @@ const Units = {
           } else if (b.upgrading > 0) {
             b.upgrading -= dtDays;
             if (b.upgrading <= 0) {
-              const resume = u.task && u.task.resumeWork;
+              // finishUpgrade sends EVERY hand that downed tools back to its post
+              // (Bld.resumeCrew) — with two builders only one of us gets here, and
+              // which one shouldn't decide who keeps their job
               Bld.finishUpgrade(b);
-              // a stationed hand goes straight back to their post
-              if (resume && Bld.def(b.key).needsWorker &&
-                  Bld.workersAssigned(b) < Bld.maxWorkers(b))
-                u.task = { type: 'work', id: b.id };
-              else u.task = null;
+              if (u.task && u.task.type === 'build' && u.task.id === b.id) u.task = null;
             }
           } else {
             b.hp = Math.min(b.maxhp, b.hp + b.maxhp * CFG.REPAIR_RATE * dtDays);
