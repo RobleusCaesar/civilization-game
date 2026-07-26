@@ -113,12 +113,62 @@ const AI = {
     }
   },
 
+  /* ================= THE WALL LINE — reserved ground ===================
+     A BUILDING IS NOT A WALL. A farm has 100 hp where a wall has 300–2600 —
+     and, far worse, it does not block movement at all: `Path.passable` stops
+     only on wall/gate, so a hut standing in the ring is a doorway an attacker
+     strolls through without swinging once. A real game showed exactly that —
+     a farm predating the ring, the wall builder stopping either side of it,
+     and the whole defence undone by one soft tile.
+
+     Three rules keep the line whole, in priority order:
+       1. RESERVE  (prevention) — the intended ring is off-limits to every
+          economy/military building from day one, walls and gates excepted.
+       2. REPAIR   (`mendWallLine`) — a builder that meets a friendly building
+          on the line bulges the wall OUTWARD around it (enclosing it), or, if
+          the ground won't take a bulge, moves the building inside and closes
+          the tile. It never leaves the building AS the segment.
+       3. AUDIT    (`wallAudit`) — the standing line is walked each build cycle
+          for soft segments and for holes a razed section left behind; those
+          are closed AHEAD of any new frontage.
+     `WALL_R` is the single source of truth for where the line runs — it must
+     match the radius `maybeWalls` seals (`perimeterGaps(cx, cy, 5)`). */
+  WALL_R: 5,
+  wallCenter(tc) {
+    tc = tc || Bld.tcOf('A');
+    if (!tc) return null;
+    return { cx: Bld.cx(tc) | 0, cy: Bld.cy(tc) | 0 };
+  },
+  onWallLine(x, y, tc) {
+    const c = this.wallCenter(tc);
+    if (!c) return false;
+    return Math.max(Math.abs(x - c.cx), Math.abs(y - c.cy)) === this.WALL_R;
+  },
+  // the ring walked in order, so neighbours in the array are neighbours on the ground
+  wallRing(tc) {
+    const c = this.wallCenter(tc);
+    if (!c) return [];
+    const R = this.WALL_R, cx = c.cx, cy = c.cy, ring = [];
+    for (let dx = -R; dx <= R; dx++) ring.push([cx + dx, cy - R]);
+    for (let dy = -R + 1; dy <= R; dy++) ring.push([cx + R, cy + dy]);
+    for (let dx = R - 1; dx >= -R; dx--) ring.push([cx + dx, cy + R]);
+    for (let dy = R - 1; dy >= -R + 1; dy--) ring.push([cx - R, cy + dy]);
+    return ring;
+  },
+  isFort(b) { return !!b && (b.key === 'wall' || b.key === 'gate'); },
+
   /* find a plot with some character instead of spiral-filling a square:
      terrain-hunters sit beside their bonus terrain, towers push toward the
      player, everything else scatters at a random angle from the hall */
   plot(key) {
     let tc = Bld.tcOf('A');
     if (!tc) return null;
+    const isFortKey = (key === 'wall' || key === 'gate');
+    // RULE 1 — nothing but the ring itself may be sited on the ring. The centre is
+    // resolved ONCE: this predicate runs on every candidate tile of the scan.
+    const line = isFortKey ? null : this.wallCenter(tc);   // reserved around the HALL, not a forward camp
+    const R = this.WALL_R;
+    const offLine = (x, y) => !line || Math.max(Math.abs(x - line.cx), Math.abs(y - line.cy)) !== R;
     // FORWARD STAGING: while pushing, raise military halls around a standing War Camp
     // (the mini-TC of the front) instead of back home, so the assault trains, spawns
     // and mends at the front line rather than a long march away.
@@ -129,8 +179,8 @@ const AI = {
     }
     const P = this.persona();
     const rMax = P.walls ? 5 : 7;   // wall-builders keep the town inside the ring
-    const isWall = (key === 'wall' || key === 'gate');
-    const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2;
+    const isWall = isFortKey;
+    const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2 && offLine(x, y);
     // how many of the 8 neighbours are already built on (crowding) — real buildings
     // want ELBOW ROOM so the town reads as a settlement, not a packed maze
     const crowd = (x, y) => { let n = 0; for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) if (Bld.at(x + ox, y + oy)) n++; return n; };
@@ -171,8 +221,12 @@ const AI = {
       if (s > bs) { bs = s; best = { x, y }; }
     }
     if (best) return best;
-    // crowded town (a full wall ring, a tight peninsula): spill outward rather than stall
-    return MapGen.findNear(tc.x, tc.y, rMax, free) || MapGen.findNear(tc.x, tc.y, rMax + 4, free);
+    // crowded town (a full wall ring, a tight peninsula): spill outward rather than
+    // stall — but NEVER onto the reserved line. A hut outside the ring is a hut the
+    // rival may lose; a hut IN the ring is the ring lost.
+    return MapGen.findNear(tc.x, tc.y, rMax, free) ||
+           MapGen.findNear(tc.x, tc.y, rMax + 4, free) ||
+           MapGen.findNear(tc.x, tc.y, rMax + 8, (x, y) => Bld.tileFree(x, y) && offLine(x, y));
   },
 
   /* COVERAGE-AWARE tower placement. The old heuristic dropped every tower on the
@@ -183,7 +237,11 @@ const AI = {
      tower is penalised (and pure duplicates are rejected). Towers spread to
      cover the town's whole frontage instead of piling up. */
   towerSpot(tc) {
-    const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2;
+    // a tower is NOT a wall segment either — it doesn't block a single step — so
+    // the reserved line is off-limits to it too. It guards the line from behind.
+    const line = this.wallCenter(), R = this.WALL_R;
+    const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2 &&
+      (!line || Math.max(Math.abs(x - line.cx), Math.abs(y - line.cy)) !== R);
     const cov = (CFG.BUILDINGS.tower.levels[0].range || 4.5) + 0.6;   // effective guard radius
     const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0;
     // the approach tiles worth guarding: the open perimeter seams attackers must
@@ -260,22 +318,49 @@ const AI = {
      walls covering that seam PLUS within-game memory of where past raids were
      beaten back (mem.laneDef). This is what lets the chief feint one lane and
      commit to the one the player left open. */
+  /* SOFT DOORS — and the mistake cuts both ways. A player hut, farm or tower
+     standing in their OWN wall line is worth a fraction of a wall's hp and
+     stops not a single step (only wall/gate block movement). The chief keeps
+     its own line clean of them (`mendWallLine`); here it looks for the player's.
+     A remembered non-fort building with walls on two sides of it is a door. */
+  foeSoftDoors() {
+    const kb = S.ai.knownB || {}, forts = {}, out = [];
+    for (const k in kb) { const b = kb[k]; if (b.key === 'wall' || b.key === 'gate') forts[b.x + ',' + b.y] = 1; }
+    for (const k in kb) {
+      const b = kb[k];
+      if (b.key === 'wall' || b.key === 'gate' || b.key === 'tc') continue;
+      let n = 0;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]])
+        if (forts[(b.x + ox) + ',' + (b.y + oy)]) n++;
+      if (n >= 2) out.push(b);
+    }
+    return out;
+  },
+
   playerLanes() {
     const tc = this.knownPlayerTC(); if (!tc) return [];
     const cx = Math.round(tc.x + Bld.size('tc') / 2), cy = Math.round(tc.y + Bld.size('tc') / 2);
     const gaps = this.perimeterGaps(cx, cy, 6);
     const kb = S.ai.knownB || {}, ld = (S.ai.memory && S.ai.memory.laneDef) || {};
+    const doors = this.foeSoftDoors();
+    const facing = (b, dir) => {
+      const bx = b.x + 0.5 - cx, by = b.y + 0.5 - cy, dist = Math.hypot(bx, by) || 1;
+      return dist >= 2 && dist <= 11 && (bx * dir.x + by * dir.y) / dist > 0.45;
+    };
     return gaps.map(g => {
       const key = g.dir.x + ',' + g.dir.y;
       let staticDef = 0;
       for (const k in kb) {
         const b = kb[k];
         if (b.key !== 'tower' && b.key !== 'wall' && b.key !== 'gate') continue;
-        const bx = b.x + 0.5 - cx, by = b.y + 0.5 - cy, dist = Math.hypot(bx, by) || 1;
-        if (dist < 2 || dist > 11) continue;
-        if ((bx * g.dir.x + by * g.dir.y) / dist > 0.45) staticDef += b.key === 'tower' ? 2 : 1;
+        if (!facing(b, g.dir)) continue;
+        staticDef += b.key === 'tower' ? 2 : 1;
       }
-      return { mid: g.mid, dir: g.dir, width: g.width, key, def: staticDef + (ld[key] || 0) * 2 };
+      // a door in this stretch is worth more than the sections either side of it
+      let door = 0;
+      for (const d of doors) if (facing(d, g.dir)) door++;
+      return { mid: g.mid, dir: g.dir, width: g.width, key, door,
+        def: Math.max(0, staticDef + (ld[key] || 0) * 2 - door * 2.5) };
     }).sort((a, b) => a.def - b.def);
   },
 
@@ -298,9 +383,129 @@ const AI = {
     const q = Bld.list('A').filter(b => b.key === 'quarry' && Bld.done(b)).length;
     return 6 + (tc.level || 1) * 3 + q * 4 + (P.walls ? 6 : 0);
   },
+
+  /* RULE 3 — WALK THE LINE. Classify every tile of the intended ring, so the
+     chief can tell a wall from a hut standing where a wall should be, and a
+     stretch terrain seals from a hole a razed section left behind:
+       fort   — our own wall/gate: sealed, and it stops movement
+       soft   — any OTHER friendly building: sealed to the eye, open to a boot
+       edge   — impassable ground (or someone else's building): sealed by nature
+       open   — passable and empty: honest frontage, not yet walled
+     A `soft` tile the wall has already reached (a fort beside it) is an open
+     door and gets fixed first; an `open` tile with forts on BOTH sides is a
+     breach in a finished stretch and gets re-closed before any new frontage. */
+  wallAudit(tc) {
+    tc = tc || Bld.tcOf('A');
+    const out = { soft: [], breach: [], forts: 0, open: 0 };
+    if (!tc) return out;
+    const ring = this.wallRing(tc), n = ring.length;
+    const cls = ring.map(([x, y]) => {
+      if (!MapGen.inB(x, y)) return 'edge';
+      const b = Bld.at(x, y);
+      if (b) return b.owner !== 'A' ? 'edge' : (this.isFort(b) ? 'fort' : 'soft');
+      return Path.passable(x, y, 'A') ? 'open' : 'edge';
+    });
+    for (let i = 0; i < n; i++) {
+      if (cls[i] === 'fort') out.forts++;
+      else if (cls[i] === 'open') out.open++;
+      const prev = cls[(i - 1 + n) % n], next = cls[(i + 1) % n];
+      if (cls[i] === 'soft') {
+        const [x, y] = ring[i];
+        // the wall has ARRIVED at this building if it stands beside a section
+        out.soft.push({ x, y, b: Bld.at(x, y), reached: prev === 'fort' || next === 'fort' });
+      } else if (cls[i] === 'open' && prev === 'fort' && next === 'fort') {
+        out.breach.push({ x: ring[i][0], y: ring[i][1] });
+      }
+    }
+    return out;
+  },
+
+  /* RULE 2a — the OUTWARD BULGE. The cheapest way past a friendly building on
+     the line is to carry the wall one tile around the outside of it, which
+     leaves the building safe INSIDE the perimeter. Those tiles are exactly the
+     8-neighbours that lie beyond the ring: wall them and the only way to the
+     building's tile is from the town side. Returns the tiles still to lay
+     (already-walled ones are skipped, so a part-built bulge resumes), or
+     `null` when the ground won't take one. */
+  _detourTiles(x, y, tc) {
+    const c = this.wallCenter(tc);
+    if (!c) return null;
+    const R = this.WALL_R, out = [];
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const nx = x + ox, ny = y + oy;
+      if (Math.max(Math.abs(nx - c.cx), Math.abs(ny - c.cy)) <= R) continue;   // on or inside the line
+      if (!MapGen.inB(nx, ny)) continue;                                       // the map's own edge seals it
+      const b = Bld.at(nx, ny);
+      if (b) { if (this.isFort(b) && b.owner === 'A') continue; return null; }  // something else stands there
+      if (!Path.passable(nx, ny, 'A')) continue;                               // terrain already seals it
+      if (!Bld.canPlace('A', 'wall', nx, ny).ok) return null;                  // open ground we can't build on
+      out.push([nx, ny]);
+    }
+    return out;
+  },
+  // lay the bulge. Returns the number of sections laid (0 = it was already
+  // closed, nothing to do), or null when no bulge is possible here.
+  wallDetour(flaw, tc) {
+    const tiles = this._detourTiles(flaw.x, flaw.y, tc);
+    if (!tiles) return null;
+    if (!tiles.length) return 0;
+    const unit = CFG.BUILDINGS.wall.levels[0].cost, need = {};
+    for (const k in unit) need[k] = unit[k] * tiles.length;
+    if (!this.affordFree(need)) return 0;      // save up and bulge in one piece
+    let laid = 0;
+    for (const [x, y] of tiles) if (Bld.place('A', 'wall', x, y)) laid++;
+    return laid;
+  },
+
+  /* RULE 2b — MOVE THE WORKS, NOT THE WALL. When the ground won't take a bulge,
+     the building comes down and goes back up inside the perimeter, and the tile
+     it vacated is walled on the next pass. The works are re-raised at the level
+     they held (it is a relocation, not a demolition — the chief loses the days
+     of construction, not the investment). The hall, a forward camp and a dock
+     are never moved: the first can't be, and the last two can't be re-sited. */
+  wallRelocate(flaw, tc) {
+    const b = flaw.b, ai = S.ai;
+    if (!b || b.key === 'tc' || b.key === 'warcamp' || b.key === 'dock') return false;
+    if ((ai.read || {}).underThreat) return false;      // not while it's being stormed
+    const spot = this.plot(b.key);                      // plot() already refuses the line
+    if (!spot || !Bld.canPlace('A', b.key, spot.x, spot.y).ok) return false;
+    const lv = b.level || 1;
+    Bld.removeToRuin(b);
+    const nb = Bld.place('A', b.key, spot.x, spot.y, { free: true });
+    if (nb && lv > 1) {
+      const L = CFG.BUILDINGS[b.key].levels[lv - 1];
+      nb.level = lv; nb.maxhp = L.hp; nb.hp = Math.max(30, Math.round(L.hp * 0.4));
+      nb.construction = L.time;
+    }
+    return true;
+  },
+
+  /* RULE 3 (act) — mend before you extend. Runs ahead of the ring cap and the
+     re-facing gate, because those exist to stop the ring SPRAWLING, not to
+     leave it broken: an attacker only has to find one soft tile. */
+  mendWallLine(tc) {
+    const ai = S.ai;
+    const audit = this.wallAudit(tc);
+    if (!audit.forts) return false;                     // no ring yet — nothing to keep whole
+    const fix = ai.wallFix || (ai.wallFix = { detour: 0, relocate: 0, breach: 0 });
+    for (const f of audit.soft) {
+      if (!f.reached) continue;                         // the wall hasn't got here yet
+      const laid = this.wallDetour(f, tc);
+      if (laid === null) { if (this.wallRelocate(f, tc)) { fix.relocate++; return true; } continue; }
+      if (laid > 0) { fix.detour++; return true; }
+    }
+    for (const h of audit.breach) {
+      if (!this.affordFree(CFG.BUILDINGS.wall.levels[0].cost)) break;
+      if (Bld.canPlace('A', 'wall', h.x, h.y).ok && Bld.place('A', 'wall', h.x, h.y)) { fix.breach++; return true; }
+    }
+    return false;
+  },
+
   maybeWalls(tc) {
     const P = this.persona(), ai = S.ai, read = ai.read || {};
     if (S.day < 16 || ai.res.wood < 45) return;
+    // RULES 2+3 — a hole in the standing ring outranks every metre of new frontage
+    if (this.mendWallLine(tc)) return;
     // a ring already at the limit of what this economy can re-tier: stop laying
     // more sections and let the wood go to the works that raise the cap
     const forts = Bld.forts('A');
@@ -1045,7 +1250,8 @@ const AI = {
   _buildDock() {
     const tc = Bld.tcOf('A');
     if (!Bld.canAfford(CFG.BUILDINGS.dock.levels[0].cost, S.ai.res)) return false;
-    const site = MapGen.findNear(tc.x, tc.y, 8, (x, y) => Bld.dockSiteOk(x, y, 'A').ok);
+    const site = MapGen.findNear(tc.x, tc.y, 8,
+      (x, y) => Bld.dockSiteOk(x, y, 'A').ok && !this.onWallLine(x, y, tc));
     if (site && Bld.canPlace('A', 'dock', site.x, site.y).ok) return !!Bld.place('A', 'dock', site.x, site.y);
     return false;
   },
@@ -1655,6 +1861,8 @@ const AI = {
     ctx.wallTowers = twTarget ? towersNear(twTarget.x + 0.5, twTarget.y + 0.5, 6) : 0;
     // WARHORN: the least-defended OPEN seam (a real gap in the ring), if reachable
     ctx.openSeam = (ctx.lane && ctx.landToTown) ? { width: ctx.lane.width, def: ctx.lane.def } : null;
+    // a building embedded in their ring is a door, not a wall — storming beats siege
+    ctx.softDoor = (ctx.lane && ctx.lane.door) || 0;
     return ctx;
   },
 
@@ -1684,9 +1892,12 @@ const AI = {
       }
       case 'WARHORN': {   // a straight rush wants an OPEN, lightly held gap — worst vs a walled town
         if (!ctx.landToTown) return 0;
+        // …or a SOFT DOOR: a hut left standing in their wall line is a gap that
+        // merely looks shut. Storm it — no engines, no ladders, just go through.
+        const door = Math.min(2, ctx.softDoor || 0) * 3;
         const seam = ctx.openSeam;
-        if (!seam) return 1.5;
-        return Math.max(0.5, 3 + Math.min(5, seam.width) - (seam.def || 0) * 1.5);
+        if (!seam) return Math.max(0.5, 1.5 + door);
+        return Math.max(0.5, 3 + Math.min(5, seam.width) - (seam.def || 0) * 1.5 + door);
       }
     }
     return 0;

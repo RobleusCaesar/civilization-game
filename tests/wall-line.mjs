@@ -1,0 +1,215 @@
+/* WALL-LINE CONTRACT — a building must never be part of the wall line.
+   A farm has 100 hp where a wall has 300–2600, and (the real killer) it does
+   not block movement at all: Path.passable stops only on wall/gate. So a hut
+   standing in the ring is a door an attacker walks through without swinging.
+
+   Run this after touching any of:
+     ai.js — plot, towerSpot, wallCenter/wallRing/onWallLine, wallAudit,
+             _detourTiles, wallDetour, wallRelocate, mendWallLine, maybeWalls,
+             playerLanes, foeSoftDoors, _campScore
+     buildings.js — tileFree, canPlace, blockAt, removeToRuin, forts
+     map.js — Path.passable
+     config.js — wall/gate/tower defs, BUILDINGS[*].size
+
+       node tests/wall-line.mjs      # exits non-zero on any regression
+
+   The invariants:
+     1. RESERVE   — plot()/towerSpot() never site anything on the intended ring
+     2. DETOUR    — a friendly building the wall reaches is bulged AROUND, not
+                    skipped, and the bulge genuinely seals it
+     3. RELOCATE  — when the ground won't take a bulge, the building moves
+                    inside the perimeter (and is NOT simply lost)
+     4. BREACH    — a razed section inside a finished stretch is re-closed
+     5. SOFT DOOR — a building embedded in the PLAYER's ring lowers that lane's
+                    defence and raises WARHORN: the mistake is punished, not
+                    only avoided
+     6. NO DOORS  — the end state that actually matters: no ring tile is
+                    passable from outside AND inside at once
+   If a feature genuinely needs different behaviour, update this file in the
+   same commit and say so in the commit message. */
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+let pw;
+try { pw = (await import('playwright')).default; }
+catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const b = await pw.chromium.launch();
+const p = await b.newPage({ viewport: { width: 900, height: 900 } });
+const errs = []; p.on('pageerror', e => errs.push(String(e)));
+await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+await p.waitForTimeout(900);
+
+const out = await p.evaluate(() => {
+  const res = {}; const fails = [];
+  const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' — ' + info : ''); if (!ok) fails.push(name); };
+  const setup = (seed, day) => {
+    G.newGame(seed, 'moderate', 'large'); Screens.show('playing'); S.paused = true;
+    S.day = day || 40; G.updateVisibility(); AI.assess();
+    return Bld.tcOf('A');
+  };
+  // is any tile of the intended ring held by a friendly non-fort building?
+  const softOnLine = (owner) => {
+    const tc = Bld.tcOf(owner); if (!tc) return [];
+    const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0, R = AI.WALL_R, bad = [];
+    for (const bb of S.buildings) {
+      if (bb.owner !== owner || bb.key === 'wall' || bb.key === 'gate') continue;
+      const sz = Bld.size(bb.key);
+      for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) {
+        const x = bb.x + dx, y = bb.y + dy;
+        if (Math.max(Math.abs(x - cx), Math.abs(y - cy)) === R) bad.push(bb.key + '@' + x + ',' + y);
+      }
+    }
+    return bad;
+  };
+
+  // ---- 1. RESERVE: plot() and towerSpot() refuse the line ----
+  {
+    const tc = setup('wg1');
+    let onLine = 0, tried = 0;
+    for (const key of ['farm', 'house', 'lumber', 'quarry', 'barracks', 'range', 'stable', 'lodge', 'tower', 'market']) {
+      for (let i = 0; i < 40; i++) {
+        const s = AI.plot(key);
+        if (!s) continue;
+        tried++;
+        if (AI.onWallLine(s.x, s.y, tc)) onLine++;
+      }
+    }
+    ck('reserve', tried > 100 && onLine === 0, `${onLine}/${tried} plots landed on the line`);
+    // walls and gates must still be allowed there
+    const w = AI.plot('wall');
+    ck('reserveAllowsWall', !!w, w ? 'wall siting still works' : 'wall plot returned null');
+  }
+
+  // ---- 2. DETOUR: a farm the wall reaches gets enclosed, not skipped ----
+  {
+    const tc = setup('wg2');
+    const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0, R = AI.WALL_R;
+    S.ai.res = { food: 900, wood: 900, stone: 900, gold: 900 };
+    S.ai.acts = 99;
+    // force a clean stretch of the north edge, plant a farm mid-line, wall either side
+    const line = [];
+    for (let dx = -2; dx <= 2; dx++) { const x = cx + dx, y = cy - R; G.clearFootprint(x, y, 'farm'); line.push([x, y]); }
+    for (let dx = -3; dx <= 3; dx++) G.clearFootprint(cx + dx, cy - R - 1, 'farm');   // bulge room
+    const farm = Bld.place('A', 'farm', cx, cy - R, { free: true, instant: true });
+    let sides = 0;
+    for (const dx of [-2, -1, 1, 2]) if (Bld.place('A', 'wall', cx + dx, cy - R, { free: true, instant: true })) sides++;
+    const before = AI.wallAudit(tc);
+    const reached = before.soft.filter(f => f.reached).length;
+    const acted = AI.mendWallLine(tc);
+    const after = AI.wallAudit(tc);
+    // the bulge: the three tiles at R+1 spanning the farm
+    const bulge = [-1, 0, 1].filter(dx => { const bb = Bld.at(cx + dx, cy - R - 1); return bb && AI.isFort(bb); }).length;
+    ck('detourSetup', !!farm && sides === 4 && reached === 1, `farm=${!!farm} sides=${sides} reached=${reached}`);
+    ck('detour', acted && bulge === 3 && !!Bld.at(cx, cy - R), `acted=${acted} bulge=${bulge}/3 farmKept=${!!Bld.at(cx, cy - R)}`);
+    // and the farm is now genuinely enclosed: no passable step from outside to it
+    const openFromOut = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0]]
+      .filter(([ox, oy]) => Path.passable(cx + ox, cy - R + oy, 'P')).length;
+    ck('detourSeals', openFromOut === 0, `${openFromOut} passable approaches remain`);
+    ck('detourCounted', (S.ai.wallFix || {}).detour === 1, JSON.stringify(S.ai.wallFix));
+  }
+
+  // ---- 3. RELOCATE: no room to bulge -> the building moves inside ----
+  {
+    const tc = setup('wg3');
+    const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0, R = AI.WALL_R;
+    S.ai.res = { food: 900, wood: 900, stone: 900, gold: 900 };
+    S.ai.acts = 99;
+    for (let dx = -2; dx <= 2; dx++) G.clearFootprint(cx + dx, cy - R, 'farm');
+    const farm = Bld.place('A', 'farm', cx, cy - R, { free: true, instant: true });
+    for (const dx of [-1, 1]) Bld.place('A', 'wall', cx + dx, cy - R, { free: true, instant: true });
+    // block the bulge with a friendly HOUSE the detour can't build through
+    for (let dx = -1; dx <= 1; dx++) G.clearFootprint(cx + dx, cy - R - 1, 'house');
+    Bld.place('A', 'house', cx, cy - R - 1, { free: true, instant: true });
+    const id = farm.id, n0 = Bld.list('A').filter(x => x.key === 'farm').length;
+    const acted = AI.mendWallLine(tc);
+    const gone = !Bld.get(id);
+    const n1 = Bld.list('A').filter(x => x.key === 'farm').length;
+    const nowOnLine = softOnLine('A').filter(s => s.startsWith('farm')).length;
+    ck('relocate', acted && gone && n1 === n0 && nowOnLine === 0,
+      `acted=${acted} removed=${gone} farms ${n0}->${n1} stillOnLine=${nowOnLine}`);
+    ck('relocateCounted', (S.ai.wallFix || {}).relocate === 1, JSON.stringify(S.ai.wallFix));
+  }
+
+  // ---- 4. BREACH: a hole punched in a finished stretch is re-closed ----
+  {
+    const tc = setup('wg4');
+    const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0, R = AI.WALL_R;
+    S.ai.res = { food: 900, wood: 900, stone: 900, gold: 900 };
+    S.ai.acts = 99;
+    for (let dx = -2; dx <= 2; dx++) G.clearFootprint(cx + dx, cy - R, 'wall');
+    let laid = 0;
+    for (let dx = -2; dx <= 2; dx++) if (Bld.place('A', 'wall', cx + dx, cy - R, { free: true, instant: true })) laid++;
+    // raze the middle section, as a catapult would
+    const mid = Bld.at(cx, cy - R); if (mid) Bld.removeToRuin(mid);
+    const audit = AI.wallAudit(tc);
+    const flagged = audit.breach.some(h => h.x === cx && h.y === cy - R);
+    const acted = AI.mendWallLine(tc);
+    const closed = AI.isFort(Bld.at(cx, cy - R));
+    ck('breachDetect', laid === 5 && flagged, `laid=${laid} flagged=${flagged}`);
+    ck('breachClose', acted && closed, `acted=${acted} closed=${closed}`);
+    // …and it happens even when the tier gate would normally stop new frontage
+    ck('breachCounted', (S.ai.wallFix || {}).breach === 1, JSON.stringify(S.ai.wallFix));
+  }
+
+  // ---- 5. SOFT DOOR on the PLAYER's ring lowers that lane's defence ----
+  {
+    const tc = setup('wg5');
+    const ptc = Bld.tcOf('P');
+    const cx = Math.round(ptc.x + Bld.size('tc') / 2), cy = Math.round(ptc.y + Bld.size('tc') / 2);
+    S.ai.knownB = S.ai.knownB || {};
+    S.ai.knownB[MapGen.idx(ptc.x, ptc.y)] = { key: 'tc', level: 1, owner: 'P', x: ptc.x, y: ptc.y, seen: S.day };
+    // remember a walled stretch on the north side with a FARM in the middle of it
+    const y = cy - 6;
+    for (const dx of [-2, -1, 1, 2]) S.ai.knownB[MapGen.idx(cx + dx, y)] = { key: 'wall', level: 1, owner: 'P', x: cx + dx, y, seen: S.day };
+    const lanesNoDoor = AI.playerLanes();
+    const northNoDoor = lanesNoDoor.find(l => l.dir.y < 0);
+    S.ai.knownB[MapGen.idx(cx, y)] = { key: 'farm', level: 1, owner: 'P', x: cx, y, seen: S.day };
+    const doors = AI.foeSoftDoors();
+    const lanes = AI.playerLanes();
+    const north = lanes.find(l => l.dir.y < 0);
+    ck('softDoorFound', doors.length === 1 && doors[0].key === 'farm', JSON.stringify(doors.map(d => d.key)));
+    ck('softDoorLane', !!north && north.door >= 1 && !!northNoDoor && north.def < northNoDoor.def,
+      north ? `door=${north.door} def ${northNoDoor && northNoDoor.def}->${north.def}` : 'no north lane');
+    // and WARHORN — storm it — scores higher for it
+    const ctx0 = { landToTown: true, openSeam: { width: 4, def: 2 }, softDoor: 0 };
+    const ctx1 = { landToTown: true, openSeam: { width: 4, def: 2 }, softDoor: 1 };
+    ck('softDoorScore', AI._campScore('WARHORN', ctx1) > AI._campScore('WARHORN', ctx0),
+      `${AI._campScore('WARHORN', ctx0)} -> ${AI._campScore('WARHORN', ctx1)}`);
+  }
+
+  // ---- 6. NO DOORS: a walled stretch with a hut in it must end up with no
+  //         ring tile that is passable from OUTSIDE and INSIDE at once ----
+  {
+    const tc = setup('wg6');
+    const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0, R = AI.WALL_R;
+    S.ai.res = { food: 900, wood: 900, stone: 900, gold: 900 };
+    S.ai.acts = 99;
+    for (let dx = -3; dx <= 3; dx++) { G.clearFootprint(cx + dx, cy - R, 'farm'); G.clearFootprint(cx + dx, cy - R - 1, 'farm'); }
+    Bld.place('A', 'farm', cx, cy - R, { free: true, instant: true });
+    Bld.place('A', 'house', cx + 2, cy - R, { free: true, instant: true });
+    for (const dx of [-3, -2, -1, 1, 3]) Bld.place('A', 'wall', cx + dx, cy - R, { free: true, instant: true });
+    const doors = () => {
+      const pass = (x, y) => MapGen.inB(x, y) && Path.passable(x, y, 'P');
+      const cheb = (x, y) => Math.max(Math.abs(x - cx), Math.abs(y - cy));
+      const N = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+      let n = 0;
+      for (let dx = -3; dx <= 3; dx++) {
+        const x = cx + dx, y = cy - R;
+        if (!pass(x, y)) continue;
+        if (N.some(([a, c]) => cheb(x + a, y + c) > R && pass(x + a, y + c)) &&
+            N.some(([a, c]) => cheb(x + a, y + c) < R && pass(x + a, y + c))) n++;
+      }
+      return n;
+    };
+    const before = doors();
+    for (let i = 0; i < 8; i++) AI.mendWallLine(tc);      // a handful of build cycles
+    const after = doors();
+    ck('noDoors', before > 0 && after === 0, `${before} doors -> ${after}`);
+  }
+  return { res, fails };
+});
+console.log(JSON.stringify(out.res, null, 1));
+console.log(out.fails.length ? 'FAILURES: ' + out.fails.join(', ') : 'ALL CONTRACT CHECKS PASS');
+console.log('errors:', errs.filter(e => !/supabase|fetch|TUNNEL/.test(e)).slice(0, 4));
+await b.close();
+process.exit(out.fails.length ? 1 : 0);

@@ -135,6 +135,32 @@ shifts smoothly instead of on cliff edges.
   frontage instead of piling onto the single widest seam (the old, readable tell).
   Placement is biased toward the player-facing frontage and, via Layer-5 memory,
   the **flank the player keeps attacking from**.
+- **A building is never part of the wall.** A farm has 100 hp where a wall has
+  300–2600 — and, decisively, *it does not block movement at all*
+  (`Path.passable` stops only on wall/gate). So a hut standing in the ring is a
+  **door an attacker walks through without swinging**. Three rules keep the line
+  whole, in priority order:
+  1. **Reserve** (`AI.onWallLine`, radius `AI.WALL_R`) — the intended ring is
+     off-limits from day one. `plot()`, `towerSpot()` and the dock site all
+     refuse it; only wall and gate may be raised there. This is prevention, and
+     in practice it does nearly all the work.
+  2. **Repair** (`mendWallLine`) — when the builder reaches a friendly building
+     already standing on the line it does **not** leave a gap. It carries the
+     wall **one tile outward around it** (`wallDetour` — the bulge encloses the
+     building inside the town, and is the cheap answer); if the ground won't
+     take a bulge it **moves the works inside** the perimeter at the level they
+     held (`wallRelocate`) and closes the vacated tile. The building is never
+     left AS the segment.
+  3. **Audit** (`wallAudit`) — each build cycle the line is walked and every
+     tile classified (fort / soft / sealed-by-terrain / open frontage). Soft
+     segments and **holes a razed section left behind** are closed *ahead* of
+     any new frontage — the ring cap and the "finish before extending" rule
+     exist to stop the ring sprawling, not to leave it broken.
+
+  The mistake is **punished as well as avoided**: `AI.foeSoftDoors()` spots a
+  player hut or farm embedded in *their* remembered wall line, `playerLanes()`
+  drops that lane's defence rating, and `_campScore` raises **Warhorn** — storm
+  the door rather than bring engines to the stone beside it.
 - **Real fortification — plug the seams, and invest.** `maybeWalls` closes the
   **open seams** on the perimeter (`perimeterGaps`), sealing the **shortest seams
   first** (a narrow gap is cheap to close completely and removes a whole route),
@@ -266,6 +292,14 @@ its host across 2+ lanes and commits to the softest).
 ---
 
 ## Verification
+
+Checked-in contract suites (run these; they exit non-zero on regression):
+
+```
+node tests/tap-audit.mjs        # tap & selection accuracy
+node tests/combined-arms.mjs    # feint / held main column / one-full-attack
+node tests/wall-line.mjs        # no building may be part of the wall line
+```
 
 Headless Playwright suites in the session scratchpad cover each layer:
 `aiperc` (fog-limited perception — blind without vision, sees within it,

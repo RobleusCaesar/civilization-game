@@ -39,3 +39,21 @@ The invariants it enforces (details in the test file):
 If a new feature genuinely needs different tap behaviour, update
 `tests/tap-audit.mjs` in the same commit and say so in the commit message —
 never leave the test failing or weaken a threshold without explaining why.
+
+## Other checked-in contracts
+
+Same deal — run the one that covers what you touched, and update it in the same
+commit if the behaviour is meant to change.
+
+```
+node tests/combined-arms.mjs   # AI assault composition: feint vs one full attack
+node tests/wall-line.mjs       # a building may NEVER be part of the AI wall line
+```
+
+**Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
+`gate` block movement — `Path.passable` ignores every other building. So a farm
+or tower sitting in the rival's perimeter ring is a *door*, not a wall. Covers
+`AI.plot` / `towerSpot` / `wallCenter` / `wallAudit` / `wallDetour` /
+`wallRelocate` / `mendWallLine` / `maybeWalls` / `playerLanes` / `foeSoftDoors`,
+`Bld.tileFree` / `canPlace` / `blockAt`, and `Path.passable`. `AI.WALL_R` is the
+single source of truth for where the line runs — never hard-code the radius.
