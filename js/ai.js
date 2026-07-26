@@ -2674,10 +2674,11 @@ const AI = {
         const need = Bld.tradeSpec(b).input;
         let best = null, bestAmt = 0;
         for (const res of CFG.TRADE.goods) {
+          if (res === 'gold') continue;                 // the chief sells goods FOR gold, not gold for goods
           const amt = ai.res[res] || 0;
           if (amt >= need + 150 && amt > bestAmt) { bestAmt = amt; best = res; }   // trade only a real surplus
         }
-        if (best) Bld.startTrade(b, best);
+        if (best) Bld.startTrade(b, 'gold', best);
       }
     }
 

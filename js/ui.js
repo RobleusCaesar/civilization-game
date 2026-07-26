@@ -26,6 +26,8 @@ const UI = {
      Wall sits immediately left of the Watchtower: the two defensive works read
      together. */
   MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'wall', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'warcamp', 'trade'],
+  RES_NAME: { food: 'Food', wood: 'Wood', stone: 'Stone', gold: 'Gold' },
+  tradeNeed: null,            // Trading Post step 1 → 2: what the caravan brings home
 
   // paint a sprite into an icon canvas: back it at 64px and scale the WHOLE
   // sprite in (sprites are now 64px — a naive drawImage would clip to a corner),
@@ -736,6 +738,7 @@ const UI = {
     this.builderFor = null;
     this.confirmDemolish = 0;
     this.terraMode = null;      // a fresh selection drops any armed sapper tool
+    this.tradeNeed = null;      // …and rewinds the Trading Post to "what do you need?"
     this.panelHidden = false;   // a fresh selection brings its panel back
     this.renderPanel();
   },
@@ -859,7 +862,9 @@ const UI = {
       // Trading Post: caravan out/in flips the whole panel; per-good affordability
       // greys the buttons. (The countdown itself ticks in place via refreshPanel.)
       if (b.key === 'trade')
-        sig += '|' + (b.caravan ? 'car' : CFG.TRADE.goods.map(r => (S.res[r] || 0) >= Bld.tradeSpec(b).input ? '1' : '0').join(''));
+        sig += '|' + (b.caravan ? 'car'
+          : (this.tradeNeed || '?') + CFG.TRADE.goods.map(r =>
+              Bld.canTrade(b, this.tradeNeed || 'gold', r).ok ? '1' : '0').join(''));
       return sig;
     }
     if (this.sel.type === 'group') {
@@ -1079,19 +1084,34 @@ const UI = {
           html += `<button class="abtn wide ${Bld.canAfford(net) ? '' : 'cant'}" data-act="togate">🚪 Build Gate<small>${Bld.costStr(net)} — replaces this section</small></button>`;
         }
         if (b.key === 'trade' && !b.construction && !b.upgrading) {
-          const spec = Bld.tradeSpec(b), gold = Bld.tradeGold(b), ic = r => Bld.resIcon(r);
+          const spec = Bld.tradeSpec(b), ic = r => Bld.resIcon(r);
           if (b.caravan) {
+            const haul = Bld.caravanHaul(b.caravan);
             const frac = Math.max(0, Math.min(1, 1 - b.caravan.t / (b.caravan.total || 1)));
-            html += `<div class="abtn cant" style="pointer-events:none">🐫 Caravan out — ${ic(b.caravan.res)} for ✨ +${b.caravan.gold}` +
+            html += `<div class="abtn cant" style="pointer-events:none">🐫 Caravan out — ${ic(haul.pay)} for ${ic(haul.need)} +${haul.amt}` +
               `<small><span id="carLeft">${Math.ceil(b.caravan.t)}d</span> to return</small>` +
               `<div style="height:4px;margin-top:5px;background:rgba(0,0,0,0.4);border-radius:2px;overflow:hidden">` +
               `<div id="carBar" style="height:100%;width:${Math.round(frac * 100)}%;background:var(--gold)"></div></div></div>`;
+          } else if (!this.tradeNeed) {
+            /* STEP 1 — what do you need? Pick the resource coming BACK first:
+               that's the question a player actually arrives with ("I'm out of
+               wood"), and it keeps the second step down to three choices. */
+            html += `<span class="psub">🐫 <b>What do you need?</b> Pick what the caravan brings home — Lv ${b.level} post, ${spec.delay}d each way.</span>`;
+            for (const res of CFG.TRADE.goods)
+              html += `<button class="abtn" data-act="tradeneed" data-res="${res}">${ic(res)} ${this.RES_NAME[res]}<small>${res === 'gold' ? 'the dearest thing to buy' : 'paid for in goods or gold'}</small></button>`;
           } else {
-            html += `<span class="psub">Send a load out → ✨ +${gold} back in ${spec.delay}d (Lv ${b.level} rate). Gold stays scarce — trade sparingly.</span>`;
-            for (const res of CFG.TRADE.goods) {
-              const can = Bld.canTrade(b, res).ok;
-              html += `<button class="abtn ${can ? '' : 'cant'}" data-act="trade" data-res="${res}">🐫 Sell ${ic(res)}<small>${ic(res)} ${spec.input} → ✨ +${gold}</small></button>`;
+            // STEP 2 — and what will you pay with? Live rate per pair, then go.
+            const need = this.tradeNeed;
+            html += `<span class="psub">🐫 Bringing home ${ic(need)} <b>${this.RES_NAME[need]}</b> — <b>what will you trade for it?</b></span>`;
+            for (const pay of CFG.TRADE.goods) {
+              if (pay === need) continue;
+              const deal = Bld.tradeDeal(b, need, pay), c = Bld.canTrade(b, need, pay);
+              if (!deal) continue;
+              html += `<button class="abtn ${c.ok ? '' : 'cant'}" data-act="trade" data-res="${need}" data-pay="${pay}">` +
+                `${ic(pay)} ${deal.pay} → ${ic(need)} ${deal.get}` +
+                `<small>${c.ok ? `back in ${spec.delay}d` : c.why}</small></button>`;
             }
+            html += `<button class="abtn wide" data-act="tradeback">← Pick something else</button>`;
           }
         }
         if (b.key !== 'tc') {
@@ -1119,10 +1139,24 @@ const UI = {
           this.refreshPanel();   // in-place queue/affordability update — no rebuild, no layout jump
           return;
         }
+        else if (btn.dataset.act === 'tradeneed') {
+          this.tradeNeed = btn.dataset.res;          // step 1 → step 2
+          this.renderPanel();
+          return;
+        }
+        else if (btn.dataset.act === 'tradeback') {
+          this.tradeNeed = null;                     // step 2 → step 1
+          this.renderPanel();
+          return;
+        }
         else if (btn.dataset.act === 'trade') {
-          const res = btn.dataset.res, c = Bld.canTrade(b2, res);
+          const need = btn.dataset.res, pay = btn.dataset.pay, c = Bld.canTrade(b2, need, pay);
           if (!c.ok) { this.toast(c.why, true); return; }
-          if (Bld.startTrade(b2, res)) this.toast(`Caravan sets out with the ${res} — gold on its return`);
+          const deal = Bld.tradeDeal(b2, need, pay);
+          if (Bld.startTrade(b2, need, pay)) {
+            this.tradeNeed = null;
+            this.toast(`Caravan sets out with the ${pay} — ${deal.get} ${need} on its return`);
+          }
           this.renderPanel(); this.refreshMenu();
           return;
         }

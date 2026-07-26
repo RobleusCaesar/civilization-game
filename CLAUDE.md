@@ -49,6 +49,7 @@ commit if the behaviour is meant to change.
 node tests/combined-arms.mjs   # AI assault composition: feint vs one full attack
 node tests/wall-line.mjs       # a building may NEVER be part of the AI wall line
 node tests/siege-progress.mjs  # a siege round is scored on PENETRATION, not damage
+node tests/trade-post.mjs      # any-resource exchange stays stingy in every direction
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -69,3 +70,12 @@ Never score a siege round that way — the verdict is whether raiders got INSIDE
 `routeHolds`, and `Combat.aiRaidSeek`. A plan that isn't attacking must hand the
 initiative back to ordinary raids — check the `owns` flag before adding any new
 early return to `campaignLaunch`.
+
+**Trading Post** (`tests/trade-post.mjs`): trades any resource for any other via
+a two-step panel (need → pay). The three directions have three rates in
+`CFG.TRADE` — `gold` (goods→gold, deliberately awful), `swap` (goods→goods, 2–4
+paid per 1) and `buy` (gold→goods). `buy` is bounded by arithmetic, not taste:
+`gold * buy` must stay under `1 / swap` or laundering through gold beats a direct
+swap and the direct trade becomes pointless. **Raising `buy` requires lowering
+`swap`.** Legacy saves hold caravans of the old `{res, gold}` shape —
+`Bld.caravanHaul` must keep paying those out.

@@ -511,27 +511,51 @@ const Bld = {
     return 1;
   },
 
-  /* ---- Trading Post: resource → gold caravans (see CFG.TRADE) ---- */
+  /* ---- Trading Post: any resource for any other (see CFG.TRADE) ---- */
   tradeSpec(b) { return CFG.TRADE.levels[Math.min(b.level, CFG.TRADE.levels.length) - 1]; },
-  tradeGold(b) { return Math.floor(this.tradeSpec(b).input * this.tradeSpec(b).rate); },
-  // can this Trading Post send a caravan of `res` right now?
-  canTrade(b, res) {
+  /* THE DEAL for one caravan: what it hauls out (`pay` of `payRes`) and what it
+     brings back (`get` of `needRes`). Three directions, three rates — see the
+     CFG.TRADE note for why `buy` is bounded by `swap`. Returns null for a pair
+     that isn't a trade at all (same resource in and out, unknown resource). */
+  tradeDeal(b, needRes, payRes) {
+    const s = b && b.key === 'trade' && this.tradeSpec(b);
+    if (!s || !needRes || !payRes || needRes === payRes) return null;
+    if (CFG.TRADE.goods.indexOf(needRes) < 0 || CFG.TRADE.goods.indexOf(payRes) < 0) return null;
+    // goods → gold: the old caravan, at the old poor rate
+    if (needRes === 'gold') return { pay: s.input, get: Math.floor(s.input * s.gold) };
+    // gold → goods: the load is the gold a full caravan of goods would earn
+    if (payRes === 'gold') {
+      const load = Math.max(1, Math.round(s.input * s.gold));
+      return { pay: load, get: Math.floor(load * s.buy) };
+    }
+    // goods → goods
+    return { pay: s.input, get: Math.floor(s.input / s.swap) };
+  },
+  // can this Trading Post send a caravan out for `needRes`, paying `payRes`?
+  canTrade(b, needRes, payRes) {
     if (!b || b.key !== 'trade' || !this.done(b) || b.upgrading) return { ok: false, why: 'Not ready' };
-    if (CFG.TRADE.goods.indexOf(res) < 0) return { ok: false, why: 'Not tradeable' };
+    const deal = this.tradeDeal(b, needRes, payRes);
+    if (!deal) return { ok: false, why: 'Not a trade' };
     if (b.caravan) return { ok: false, why: 'A caravan is already out' };
     const bag = b.owner === 'P' ? S.res : S.ai.res;
-    const need = this.tradeSpec(b).input;
-    if ((bag[res] || 0) < need) return { ok: false, why: `Needs ${need} ${res}` };
+    if ((bag[payRes] || 0) < deal.pay) return { ok: false, why: `Needs ${deal.pay} ${payRes}` };
     return { ok: true };
   },
-  // spend the load now; the gold arrives when the caravan returns (Bld.update)
-  startTrade(b, res) {
-    if (!this.canTrade(b, res).ok) return false;
+  // spend the load now; the goods arrive when the caravan returns (Bld.update)
+  startTrade(b, needRes, payRes) {
+    if (!this.canTrade(b, needRes, payRes).ok) return false;
     if (!this.aiAct(b.owner)) return false;
-    const spec = this.tradeSpec(b), bag = b.owner === 'P' ? S.res : S.ai.res;
-    bag[res] -= spec.input;
-    b.caravan = { res, gold: this.tradeGold(b), t: spec.delay, total: spec.delay };
+    const spec = this.tradeSpec(b), deal = this.tradeDeal(b, needRes, payRes);
+    const bag = b.owner === 'P' ? S.res : S.ai.res;
+    bag[payRes] -= deal.pay;
+    b.caravan = { need: needRes, pay: payRes, cost: deal.pay, amt: deal.get, t: spec.delay, total: spec.delay };
     return true;
+  },
+  // what a caravan (new shape, or a legacy resource→gold one) is bringing home
+  caravanHaul(c) {
+    if (!c) return null;
+    // legacy saves: { res, gold } — a goods-for-gold run, already paid for
+    return { need: c.need || 'gold', pay: c.pay || c.res, amt: c.amt != null ? c.amt : (c.gold || 0) };
   },
 
   /* continuous updates: construction/upgrade progress + training (measured in days) */
@@ -542,10 +566,11 @@ const Bld = {
         b.caravan.t -= dtDays;
         if (b.caravan.t <= 0) {
           const bag = b.owner === 'P' ? S.res : S.ai.res;
-          bag.gold += b.caravan.gold;
+          const haul = this.caravanHaul(b.caravan);
+          bag[haul.need] = (bag[haul.need] || 0) + haul.amt;
           if (b.owner === 'P') {
-            G.log(`Caravan returns — +${b.caravan.gold} ✨ gold from the ${this.def(b.key).name}`);
-            if (S.stats) S.stats.traded = (S.stats.traded || 0) + b.caravan.gold;
+            G.log(`Caravan returns — +${haul.amt} ${this.resIcon(haul.need)} from the ${this.def(b.key).name}`);
+            if (S.stats && haul.need === 'gold') S.stats.traded = (S.stats.traded || 0) + haul.amt;
           }
           b.caravan = null;
         }
