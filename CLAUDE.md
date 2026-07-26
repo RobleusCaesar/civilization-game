@@ -54,6 +54,7 @@ node tests/endgame-doom.mjs    # the no-way-back offer fires only when it is tru
 node tests/endgame-doom-ai.mjs # the rival finishes a spent town, fog-honestly
 node tests/camp-crew.mjs       # a station's own hands raise its upgrade, then return
 node tests/foe-notes.mjs       # enemy/raider intel toasts are gated by difficulty
+node tests/tower-archer-miss.mjs # Lv1 towers miss 1/3, base archers miss 1/4
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -115,3 +116,14 @@ proactive toast is gated. **`G.foeNote` is never used for "X under attack!"**
 at every difficulty, because it's the only defensive alarm in the game. The
 gate uses `G.rand()` (the seeded RNG), not `Math.random()`, so a seed's toast
 sequence stays reproducible.
+
+**Tower/archer miss chance** (`tests/tower-archer-miss.mjs`): a level-1
+Watchtower (and the War Camp, which fires like one — no upgrade path of its
+own) misses 1 shot in 3; a base Archer misses 1 in 4, against both units and
+buildings. A deliberate early-game nerf so upgrading actually matters — Lv2/Lv3
+towers, longbow and marksman are all untouched, and it's owner-agnostic (same
+combat.js code path fires for the rival's towers/archers, no `owner === 'P'`
+branch anywhere in the check). A miss shows `'Miss!'` via the same `R.float`
+path as a damage number, in place of it — no damage is dealt, no HP is lost.
+Rolls `G.rand()`, not `Math.random()`, so a seed's hit/miss sequence stays
+reproducible.

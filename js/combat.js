@@ -611,8 +611,15 @@ const Combat = {
           } else {
             if (CFG.UNITS[u.kind].rng)
               this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: tgt.x, y2: tgt.y, t: 0.15, fire: !!CFG.UNITS[u.kind].fire });
-            R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f08a7a');
-            Units.damage(tgt, dmg, u.id);
+            // THE BASE ARCHER FUMBLES 1 IN 4 SHOTS — the cheap early bowman
+            // trained straight off a Lv1 Range; the Lv2/Lv3 upgrades (longbow,
+            // marksman) are untouched. Owner-agnostic, same as the tower nerf.
+            if (u.kind === 'archer' && G.rand() < 1 / 4) {
+              R.float(tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf');
+            } else {
+              R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f08a7a');
+              Units.damage(tgt, dmg, u.id);
+            }
           }
         }
         continue;
@@ -687,7 +694,14 @@ const Combat = {
           } else {
             if (CFG.UNITS[u.kind].rng)
               this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: Bld.cx(b), y2: Bld.cy(b), t: 0.15, fire: !!CFG.UNITS[u.kind].fire });
-            this.hitBuilding(b, dmg, !!CFG.UNITS[u.kind].fire);
+            // same base-archer fumble as the unit-target branch above — a
+            // player CAN send an archer straight at a wall, so it has to miss
+            // there too, not just when trading blows with soldiers.
+            if (u.kind === 'archer' && G.rand() < 1 / 4) {
+              R.float(Bld.cx(b), b.y - 0.15, 'Miss!', '#cfcfcf');
+            } else {
+              this.hitBuilding(b, dmg, !!CFG.UNITS[u.kind].fire);
+            }
           }
         }
         continue;
@@ -724,10 +738,19 @@ const Combat = {
         o => this.hostileToBld(b, o) && !Units.isPassive(o) && o.kind !== 'siegetower');
       if (tgt) {
         b.cd = 1.4;
-        const dmg = Math.max(1, lv.atk - tgt.def);
         this.shots.push({ x1: cx, y1: cy - 0.6, x2: tgt.x, y2: tgt.y, t: 0.18 });
-        R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f0d27a');
-        Units.damage(tgt, dmg, 0, b.owner);
+        // A LEVEL-1 TOWER FUMBLES 1 IN 3 SHOTS — the cheap early shield, not the
+        // Lv2/Lv3 upgrades (untouched). A War Camp fires exactly like a Watchtower
+        // L1 (see the comment above) so it shares the same miss rate; it has no
+        // upgrade path of its own. Owner-agnostic: hits the rival's towers too.
+        const l1tower = (b.key === 'tower' && b.level === 1) || b.key === 'warcamp';
+        if (l1tower && G.rand() < 1 / 3) {
+          R.float(tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf');
+        } else {
+          const dmg = Math.max(1, lv.atk - tgt.def);
+          R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f0d27a');
+          Units.damage(tgt, dmg, 0, b.owner);
+        }
       } else b.cd = 0.3;
     }
     for (let i = this.shots.length - 1; i >= 0; i--) {
