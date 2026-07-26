@@ -1417,10 +1417,14 @@ const R = {
       const t = UI.placeTile;
       if (t) {
         const ok = Bld.canPlace('P', UI.placing, t.x, t.y).ok;
+        // the ghost shows what will ACTUALLY go up: walls and gates are raised at
+        // the village-wide fort tier, so once the ring is stone the ghost is too
+        // (and matches the build-menu icon — see UI.menuIconLevel)
+        const fi = Math.max(0, Math.min(2, ((S.wallLevel || 1) - 1)));
         const spr = UI.placing === 'gate'
-          ? Sprites.gateMask[0][this.gateVerticalAt(t.x, t.y) ? 1 : 0]
+          ? Sprites.gateMask[fi][this.gateVerticalAt(t.x, t.y) ? 1 : 0]
           : UI.placing === 'wall'
-            ? Sprites.wallMask[0][this.wallMaskAt(t.x, t.y)]
+            ? Sprites.wallMask[fi][this.wallMaskAt(t.x, t.y)]
             : Sprites.building[UI.placing][0];
         g.globalAlpha = 0.6;
         g.drawImage(spr, t.x * TL, t.y * TL);

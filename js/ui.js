@@ -20,7 +20,12 @@ const UI = {
   terraDrag: null,       // tile chain while dragging a sapper dig/clear line
   terraGhost: null,      // [{x,y,ok}] preview of the dragged terraform line
   settingRally: null,    // building id waiting for a rally-point tap
-  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'warcamp', 'trade', 'wall', 'gate'],
+  /* The build menu. NO GATE HERE — a gate is not raised on open ground, it is
+     cut into a wall you have already built: select a standing section and use
+     "🚪 Build Gate" (see the wall panel in renderPanel / the `togate` action).
+     Wall sits immediately left of the Watchtower: the two defensive works read
+     together. */
+  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'wall', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'warcamp', 'trade'],
 
   // paint a sprite into an icon canvas: back it at 64px and scale the WHOLE
   // sprite in (sprites are now 64px — a naive drawImage would clip to a corner),
@@ -78,7 +83,9 @@ const UI = {
       const btn = document.createElement('button');
       btn.className = 'bbtn'; btn.dataset.key = key;
       const ic = document.createElement('canvas');
-      this.iconInto(ic, Sprites.building[key][0]);
+      const lv = this.menuIconLevel(key);
+      this.iconInto(ic, Sprites.building[key][lv - 1]);
+      btn.dataset.lv = lv;
       btn.appendChild(ic);
       const nm = document.createElement('div'); nm.className = 'bname'; nm.textContent = d.name;
       const co = document.createElement('div'); co.className = 'bcost'; co.textContent = Bld.costStr(Bld.effCost('P', key));
@@ -103,17 +110,36 @@ const UI = {
     }
   },
 
+  /* What tier a NEW building of this key would be raised at. Everything is
+     raised at Lv 1 — except walls and gates, which go up at the village-wide
+     fort tier (Bld.buildSpec). So once the ring has been re-faced in stone the
+     button shows stone, matching what the villager will actually build, instead
+     of the starter palisade for the rest of the game. */
+  menuIconLevel(key) {
+    const spec = Bld.buildSpec(key, 'P');
+    const n = (Sprites.building[key] || []).length || 1;
+    return Math.min(n, Math.max(1, spec.level || 1));
+  },
+
   refreshMenu() {
     const tc = Bld.tcOf('P');
     document.querySelectorAll('.bbtn').forEach(b => {
-      const cost = Bld.effCost('P', b.dataset.key);   // card discounts show true prices
-      const gated = CFG.BUILDINGS[b.dataset.key].reqTC && (!tc || tc.level < CFG.BUILDINGS[b.dataset.key].reqTC);
-      b.classList.toggle('sel', this.placing === b.dataset.key);
+      const key = b.dataset.key;
+      const cost = Bld.effCost('P', key);   // card discounts show true prices
+      const gated = CFG.BUILDINGS[key].reqTC && (!tc || tc.level < CFG.BUILDINGS[key].reqTC);
+      b.classList.toggle('sel', this.placing === key);
       b.classList.toggle('cant', gated || !Bld.canAfford(cost));
       const co = b.querySelector('.bcost');
       if (co) {
         const txt = Bld.costStr(cost);
         if (co.textContent !== txt) co.textContent = txt;
+      }
+      // the wall's art follows its tier — repaint only when it actually changes
+      const lv = this.menuIconLevel(key);
+      if (+b.dataset.lv !== lv) {
+        b.dataset.lv = lv;
+        const ic = b.querySelector('canvas');
+        if (ic) this.iconInto(ic, Sprites.building[key][lv - 1]);
       }
     });
   },
