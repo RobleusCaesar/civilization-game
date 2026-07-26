@@ -835,7 +835,7 @@ const AI = {
     if (best && Bld.canPlace('A', 'warcamp', best.x, best.y).ok) {
       Bld.place('A', 'warcamp', best.x, best.y);
       if (ai.memory) ai.memory.warCampAt = S.day;
-      G.log('⚔ The rival throws up a War Camp on your doorstep — a forward base for the assault!', true);
+      G.foeNote('⚔ The rival throws up a War Camp on your doorstep — a forward base for the assault!');
     }
   },
 
@@ -2295,7 +2295,7 @@ const AI = {
       if (this._campViable(ai.camp.strat, ctx, tc)) {
         if (best >= this.CAMP_OPENING && strat !== ai.camp.strat) {
           ai.camp.strat = strat; ai.camp.grind = false; AI._campReset(ai.camp);
-          G.log(this.CAMPAIGN_CRY[strat], true);
+          G.foeNote(this.CAMPAIGN_CRY[strat]);
         }
         return;
       }
@@ -2321,7 +2321,7 @@ const AI = {
     // quietly cost the chief a rotation slot
     if (!strat) { ai.camp.strat = null; ai.camp.grind = false; return; }
     ai.camp.strat = strat; this._campReset(ai.camp);
-    G.log(this.CAMPAIGN_CRY[strat], true);
+    G.foeNote(this.CAMPAIGN_CRY[strat]);
   },
 
   // does the chosen campaign have the force it needs to launch its assault yet?
@@ -2575,8 +2575,8 @@ const AI = {
     ai.raidLane = pend.mainLane.key; ai.raidN = host.length; ai.raidDay = S.day;
     ai.raidFoeBld = Bld.list('P').length;
     if (ai.memory) { ai.memory.wallHit = 0; ai.memory.lastMainLane = pend.mainLane.key; ai.memory.lastMainWorked = false; }
-    G.log(pulled ? '⚔ The feint draws them off — the rival’s main column storms the far side!'
-                 : '⚔ The rival’s main column commits!', true);
+    G.foeNote(pulled ? '⚔ The feint draws them off — the rival’s main column storms the far side!'
+                 : '⚔ The rival’s main column commits!');
     return true;
   },
 
@@ -2610,7 +2610,7 @@ const AI = {
           mainLane: plan.main, feintLane: plan.feint, x: plan.main.mid.x, y: plan.main.mid.y };
         ai.raidObj = { type: 'tc', x: plan.feint.mid.x, y: plan.feint.mid.y, lane: plan.feint.key };
         ai.raidLane = plan.feint.key; ai.raidN = feintParty.length; ai.raidDay = S.day;
-        G.log('⚔ ' + this.CAMPAIGN_CRY[strat] + ' — riders feint at the near gate!', true);
+        G.foeNote('⚔ ' + this.CAMPAIGN_CRY[strat] + ' — riders feint at the near gate!');
         return true;
       }
     }
@@ -2624,7 +2624,7 @@ const AI = {
     ai.raidObj = { type: 'tc', x: aim.x, y: aim.y, lane: laneKey };
     ai.raidLane = laneKey; ai.raidN = party.length; ai.raidDay = S.day;
     if (ai.memory) { ai.memory.lastMainLane = laneKey; ai.memory.lastMainWorked = false; }
-    G.log(this.CAMPAIGN_CRY[strat], true);
+    G.foeNote(this.CAMPAIGN_CRY[strat]);
     return true;
   },
 
@@ -2739,9 +2739,9 @@ const AI = {
     // objectives, so it must not overwrite the land assault's bookkeeping
     if (!parallel) {
       ai.raidObj = obj; ai.raidLane = 'TIDEWRACK'; ai.raidN = Math.min(troops.length, ti); ai.raidDay = S.day;
-      G.log(this.CAMPAIGN_CRY.TIDEWRACK, true);
+      G.foeNote(this.CAMPAIGN_CRY.TIDEWRACK);
     } else {
-      G.log('⛵ Rival sails slip past the moat — a second force is landing on your shore!', true);
+      G.foeNote('⛵ Rival sails slip past the moat — a second force is landing on your shore!');
     }
     return true;
   },
@@ -3141,7 +3141,7 @@ const AI = {
     if (storming) {
       if (!ai.finishLogged) {
         ai.finishLogged = true;
-        G.log('🔥 The rival sees your village empty of hands — every warrior turns on the Town Center!', true);
+        G.foeNote('🔥 The rival sees your village empty of hands — every warrior turns on the Town Center!');
       }
     } else ai.finishLogged = false;
     // `storming` short-circuits the campaign (nothing left to plan around) and,
@@ -3238,9 +3238,9 @@ const AI = {
         ai.raidN = party.length;
         ai.raidDay = S.day;
         ai.raidExt = 0;
-        G.log(push ? (probes ? '⚔ The rival splits its host — probes on the flanks, the main column marching in!'
+        G.foeNote(push ? (probes ? '⚔ The rival splits its host — probes on the flanks, the main column marching in!'
                              : '⚔ The rival tribe masses and marches on your village!')
-          : '⚔ A rival raiding party rides out!', true);
+          : '⚔ A rival raiding party rides out!');
       }
     }
     /* ---- RECONNAISSANCE IN FORCE: a strong rival that has NEVER found the
@@ -3271,7 +3271,7 @@ const AI = {
           ai.raidLane = 'hunt'; ai.raidN = party.length; ai.raidDay = S.day; ai.raidExt = 0;
           ai.raidFoeBld = Bld.list('P').length; mem.wallHit = 0;
           ai.raidCd = Math.max(6, Math.round(P.raidCd));
-          G.log('⚔ The rival tribe marches out in force, hunting for your village!', true);
+          G.foeNote('⚔ The rival tribe marches out in force, hunting for your village!');
         }
       }
     }
@@ -3318,7 +3318,7 @@ const AI = {
             u.raidObj = { type: 'econ', x: Math.round(tgt.x), y: Math.round(tgt.y) };
           }
           ai.harassCd = Math.max(3, Math.round(m.aiHarass * (0.8 + G.rand() * 0.6)));
-          if (!ai.harassLogged) { ai.harassLogged = true; G.log('⚔ Rival riders slip out to harry your workers — guard your fields!', true); }
+          if (!ai.harassLogged) { ai.harassLogged = true; G.foeNote('⚔ Rival riders slip out to harry your workers — guard your fields!'); }
         }
       }
     }

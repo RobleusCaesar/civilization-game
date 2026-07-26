@@ -288,6 +288,26 @@ const G = {
     UI.toast(msg, warn, ms, true);
   },
 
+  /* ENEMY / RAIDER INTEL — telegraphs of the rival's plans (campaigns, war
+     camps, marching hosts, harassment sorties) and barbarian sightings.
+     Difficulty controls how much of it interrupts play: Calm always warns you,
+     Moderate is a coin flip, Hard never does — on Hard the enemy's plans are
+     always a surprise (CFG.MODES[mode].foeNoteChance). The event log always
+     gets the full entry regardless — a player who goes digging through their
+     own history hasn't been handed anything unfair; the surprise is in not
+     being PROACTIVELY told.
+     This is deliberately separate from "X under attack!" (Combat's own-
+     building damage alarm via G.log): that one always fires at every
+     difficulty. The fog is over the rival's PLANS, never over your own walls
+     actively burning — there's no other alarm for that in the game, so
+     silencing it would leave the player with no way to know to react. */
+  foeNote(msg, ms) {
+    S.log.unshift({ day: S.day, msg });
+    if (S.log.length > 60) S.log.pop();
+    const chance = this.modeCfg().foeNoteChance;
+    if (chance == null || chance >= 1 || this.rand() < chance) UI.toast(msg, true, ms, true);
+  },
+
   reveal(cx, cy, r) {
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       if (dx * dx + dy * dy > r * r + r) continue;

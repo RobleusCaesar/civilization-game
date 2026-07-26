@@ -812,7 +812,7 @@ const Combat = {
             tr.cargo.push(ru);
           }
           Units.orderUnload(tr, landing.x, landing.y);
-          G.log('⛵ Sails on the horizon — a barbarian longboat makes for the shore!', true);
+          G.foeNote('⛵ Sails on the horizon — a barbarian longboat makes for the shore!');
           return;
         }
       }
@@ -856,6 +856,6 @@ const Combat = {
                 MapGen.findNear(spot.x, spot.y, 4, inNet) || spot;
       Units.spawn(brute(i), 'R', p.x, p.y, { scale }).hostileTo = disp;
     }
-    G.log(`⚔ A barbarian war band is on the move (${n})!`, true);
+    G.foeNote(`⚔ A barbarian war band is on the move (${n})!`);
   },
 };

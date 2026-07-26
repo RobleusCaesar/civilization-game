@@ -53,6 +53,7 @@ node tests/trade-post.mjs      # any-resource exchange stays stingy in every dir
 node tests/endgame-doom.mjs    # the no-way-back offer fires only when it is true
 node tests/endgame-doom-ai.mjs # the rival finishes a spent town, fog-honestly
 node tests/camp-crew.mjs       # a station's own hands raise its upgrade, then return
+node tests/foe-notes.mjs       # enemy/raider intel toasts are gated by difficulty
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -103,3 +104,14 @@ half the time), and both go back to the seam. Coming back lives in
 `Bld.finishUpgrade` → `Bld.resumeCrew`, not in the builder's own tick: with two
 builders only one crosses the finish line, and which one got there first must
 not decide who keeps their job.
+
+**Foe notes** (`tests/foe-notes.mjs`): telegraphs of the rival's plans
+(campaigns, war camps, marching hosts, harassment sorties) and barbarian
+sightings all go through `G.foeNote`, gated by `CFG.MODES[mode].foeNoteChance`
+— Calm always toasts (1), Moderate is a coin flip (0.5), Hard never does (0).
+The event log always gets the full entry regardless of difficulty; only the
+proactive toast is gated. **`G.foeNote` is never used for "X under attack!"**
+— that alarm for the player's own buildings stays on plain `G.log` and fires
+at every difficulty, because it's the only defensive alarm in the game. The
+gate uses `G.rand()` (the seeded RNG), not `Math.random()`, so a seed's toast
+sequence stays reproducible.

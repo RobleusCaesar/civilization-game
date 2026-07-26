@@ -516,6 +516,7 @@ const CFG = {
       animalMax: 2, animalChance: 0.15, aiRaidDay: 80,
       aiBuildEvery: 3, aiOutput: 0.85, aiArmyCap: 6, aiArmyDiv: 11, aiEliteShare: 0.15, aiAggro: 0.55,
       aiVillCap: 8, aiVillEvery: 16, aiActions: 1, aiHarass: 0,   // calm: no harassment parties
+      foeNoteChance: 1,   // enemy/raider intel toasts (see G.foeNote) — Calm always warns you
     },
     moderate: {
       name: 'Moderate', icon: '⚔️', desc: 'The intended experience.',
@@ -537,6 +538,7 @@ const CFG = {
       // (build/upgrade/train/caravan each spend one). Strategy layers untouched.
       aiVillCap: 15, aiVillEvery: 10, aiActions: 3,
       aiHarass: 8,   // days between two-rider harassment sorties at scouted, exposed workers
+      foeNoteChance: 0.5,   // enemy/raider intel toasts (see G.foeNote) — half get through
     },
     hard: {
       name: 'Hard', icon: '💀', desc: 'Slower gathering, relentless enemies.',
@@ -551,6 +553,7 @@ const CFG = {
       animalMax: 4, animalChance: 0.3, aiRaidDay: 32,
       aiBuildEvery: 1, aiOutput: 1.15, aiArmyCap: 13, aiArmyDiv: 6, aiEliteShare: 0.8, aiAggro: 1.2,
       aiVillCap: 16, aiVillEvery: 8, aiActions: 4, aiHarass: 6,
+      foeNoteChance: 0,   // enemy/raider intel toasts (see G.foeNote) — none get through: everything a surprise
     },
   },
 
