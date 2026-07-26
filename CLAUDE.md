@@ -48,6 +48,7 @@ commit if the behaviour is meant to change.
 ```
 node tests/combined-arms.mjs   # AI assault composition: feint vs one full attack
 node tests/wall-line.mjs       # a building may NEVER be part of the AI wall line
+node tests/siege-progress.mjs  # a siege round is scored on PENETRATION, not damage
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -57,3 +58,14 @@ or tower sitting in the rival's perimeter ring is a *door*, not a wall. Covers
 `wallRelocate` / `mendWallLine` / `maybeWalls` / `playerLanes` / `foeSoftDoors`,
 `Bld.tileFree` / `canPlace` / `blockAt`, and `Path.passable`. `AI.WALL_R` is the
 single source of truth for where the line runs — never hard-code the radius.
+
+**Siege progress** (`tests/siege-progress.mjs`, details in `RIVAL_AI.md`): walls
+and gates are ordinary entries in `S.buildings`, so "a building was destroyed"
+and "fortification HP fell 10%" are BOTH satisfied by razing one wall section.
+Never score a siege round that way — the verdict is whether raiders got INSIDE
+(`AI.INSIDE_R` of the player hall) or a town-core building burned. Covers
+`AI.campaignLaunch` (round evaluation / `startRound`) / `campaignSelect` /
+`campaignReady` / `notePenetration` / `_foeCoreCount` / `_noteStrat` /
+`routeHolds`, and `Combat.aiRaidSeek`. A plan that isn't attacking must hand the
+initiative back to ordinary raids — check the `owns` flag before adding any new
+early return to `campaignLaunch`.

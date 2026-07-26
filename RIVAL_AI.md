@@ -212,6 +212,46 @@ town, least-defended first) it launches, in rough order of creativity:
   `u.raidLane`); the main force shares `ai.raidObj`. A creative Hard chief splits
   most pushes; a straight Calm chief rarely does.
 
+**Did we get IN? — how a siege round is scored.** A named plan is judged on
+**penetration**, never on damage. Walls and gates are ordinary buildings, so the
+old test ("razed something / knocked 10% off their fortifications") was satisfied
+by breaking a *single wall section* — and a chief that broke one section a round,
+was wiped out before it could walk through, and scored itself a winner every
+time, battered the same stone all game and never tried the sapper's road. Each
+round now ends in one of three verdicts:
+
+- **BROKE** — two or more raiders stood inside the town (`AI.INSIDE_R` from the
+  hall, well inside the R=6 lane ring — reaching the lane *mouth* is not getting
+  in), or a **town-core** building burned. Core excludes walls, gates and towers,
+  so an outlying farm proves nothing and a wall section least of all.
+- **CLOSER** — nobody got in, but the host carried further than this plan has
+  ever reached (`mem.strat[k].deep`). Real ground gained; worth another round.
+- **DRY** — neither. Chipping stone counts *half* a dry round, so a siege line
+  genuinely chewing through a castle gets six rounds while a plan achieving
+  nothing yields its slot after three. **A grind is not exempt.**
+
+Depth is sampled every frame from `Combat.aiRaidSeek` (`AI.notePenetration`).
+This is what makes the metric universal: an unwalled player is penetrated at
+once, so the chief keeps doing the simple thing instead of inventing problems; a
+castle registers nothing until someone is actually through the gap; a moat can
+never be penetrated by battering, so the plan rotates and the bridge gets its
+turn.
+
+Three rules keep that honesty from turning into passivity:
+
+- **Come back heavier, then come a different way.** A host *annihilated* short of
+  the wall raises `camp.surge`, and `campaignReady` then demands a materially
+  bigger force (and another engine) before it commits again. A second wipe means
+  the plan is wrong for this town whatever the numbers — rotate.
+- **A hole is not a road.** `AI.routeHolds` requires a route to the hall to hold
+  for `ROUTE_HOLD` days before it counts. Otherwise breaking one section read as
+  "we can walk in", which tore the plan down *and wiped the rotation memory*, so
+  the chief re-picked from scratch and did the same thing again.
+- **A plan that isn't attacking doesn't own the war band.** Every holding path
+  (tooling up, waiting out a cooldown, carving a sapper lane) used to silence the
+  ordinary raid machinery for as long as it lasted. Now the initiative goes back
+  the moment the plan stops moving.
+
 **Lane memory** (`S.ai.memory.laneDef`): a push that stalls or is beaten back
 marks *that lane* as defended, so the next commit routes elsewhere; a productive
 one softens it; all decay slowly. Probes that hit a defended lane **retreat and
@@ -299,6 +339,7 @@ Checked-in contract suites (run these; they exit non-zero on regression):
 node tests/tap-audit.mjs        # tap & selection accuracy
 node tests/combined-arms.mjs    # feint / held main column / one-full-attack
 node tests/wall-line.mjs        # no building may be part of the wall line
+node tests/siege-progress.mjs   # a siege round is scored on getting INSIDE
 ```
 
 Headless Playwright suites in the session scratchpad cover each layer:

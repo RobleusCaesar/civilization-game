@@ -1781,6 +1781,25 @@ const AI = {
     return false;
   },
 
+  /* IS THE ROAD ACTUALLY OPEN? A wall section knocked down for an afternoon is
+     not a road: the player's masons put it back and the next host arrives at
+     solid stone again. But `_reachesTown` says yes the moment the section
+     falls — so the chief tore down its whole siege plan AND the memory of
+     everything it had already tried, every single time it broke one stone.
+     Then it re-picked from scratch and did the same thing again. That is the
+     "it comes back and starts all over" the ring never recovered from.
+     A route now has to HOLD for a few days before it counts as a road.
+     Counted once per day, whoever asks first. */
+  ROUTE_HOLD: 3,
+  routeHolds(reach, ptc) {
+    const ai = S.ai;
+    if (ai.routeDay !== S.day) {
+      ai.routeDay = S.day;
+      ai.routeOpen = this._reachesTown(reach || this.aiLandReach(), ptc) ? (ai.routeOpen || 0) + 1 : 0;
+    }
+    return (ai.routeOpen || 0) >= this.ROUTE_HOLD;
+  },
+
   // study the player's town + the ground to it, so a strategy is chosen on evidence
   probeAssault(read, reach) {
     const atc = Bld.tcOf('A'), ptc = read.knownTC || this.knownPlayerTC();
@@ -1956,12 +1975,66 @@ const AI = {
      grown, or a bridge that was impossible at a tier-1 corps, deserves another
      look later. So nothing is ever permanently written off, and nothing is
      repeated forever either. */
-  _noteStrat(k, won) {
+  _noteStrat(k, verdict, deep) {
     const mem = S.ai.memory || (S.ai.memory = {});
     const sl = mem.strat || (mem.strat = {});
     const e = sl[k] || (sl[k] = { tries: 0, prog: 0, dry: 0, last: 0 });
     e.tries++; e.last = S.day;
-    if (won) { e.prog++; e.dry = Math.max(0, e.dry - 1); } else e.dry++;
+    // the closest this plan has EVER carried the host to their hall — the yardstick
+    // "are we getting further in than last time?" is measured against
+    if (deep != null && deep < (e.deep != null ? e.deep : 1e9)) e.deep = deep;
+    if (verdict === 'BROKE') { e.prog++; e.dry = Math.max(0, e.dry - 1); }
+    else if (verdict === 'CLOSER') { /* real ground gained, but not in — neutral */ }
+    else e.dry++;
+  },
+
+  /* ================= DID WE ACTUALLY GET IN? =========================
+     A siege round used to be scored "did we destroy something / knock 10% off
+     their fortifications". Walls and gates are ordinary buildings, so razing
+     ONE wall section satisfied both at once — which is how a real game went:
+     the chief broke a section every round, was wiped out before it could walk
+     through, scored itself a winner, and battered the same stone for the rest
+     of the game. It never tried the sapper's road because by its own books it
+     was succeeding.
+
+     The honest question is PENETRATION: did the host get inside the town?
+     That is universal in a way "razed a building" is not —
+       · a player with no walls  → raiders reach the hall at once, so plain
+         assault reads as working and the chief doesn't invent problems;
+       · a walled town           → nothing counts until someone is actually
+         through the gap, so one section down and everyone dead is a DRY round;
+       · a moat                  → never penetrable by battering, so the plan
+         rotates and the bridging road gets its turn.
+     `INSIDE_R` is measured from the hall, comfortably inside the R=6 ring
+     `playerLanes` treats as the perimeter — reaching the lane mouth is NOT
+     getting in. Razing counts too, but only for a NON-fortification building
+     in the town core: an outlying farm proves nothing, and a wall section
+     least of all. */
+  INSIDE_R: 4,
+
+  // sampled every frame from Combat.aiRaidSeek — must stay O(1). camp.aim is the
+  // hall's centre, cached at round start so this never walks the building list.
+  notePenetration(u) {
+    const camp = S.ai && S.ai.camp;
+    if (!camp || !camp.rounds || !camp.aim) return;
+    const d = Math.max(Math.abs(u.x - camp.aim.x), Math.abs(u.y - camp.aim.y));
+    if (d < (camp.deep != null ? camp.deep : 1e9)) camp.deep = d;
+    if (d > this.INSIDE_R) return;
+    const ids = camp.inIds || (camp.inIds = []);
+    if (ids.length < 12 && ids.indexOf(u.id) < 0) ids.push(u.id);   // bounded: it only has to prove "more than one"
+  },
+
+  // buildings in the player's TOWN CORE — no walls, no gates, no towers. Razing
+  // one of these means we were inside; razing a field hut on the far ridge doesn't.
+  _foeCoreCount() {
+    const ptc = Bld.tcOf('P'); if (!ptc) return 0;
+    const cx = Bld.cx(ptc), cy = Bld.cy(ptc), R = this.INSIDE_R + 2;
+    let n = 0;
+    for (const b of S.buildings) {
+      if (b.owner !== 'P' || b.key === 'wall' || b.key === 'gate' || b.key === 'tower') continue;
+      if (Math.max(Math.abs(Bld.cx(b) - cx), Math.abs(Bld.cy(b) - cy)) <= R) n++;
+    }
+    return n;
   },
   _campLearn(k) {
     const sl = (S.ai.memory && S.ai.memory.strat) || {};
@@ -1997,6 +2070,22 @@ const AI = {
     const attack = ai.posture === 'PUSH' || ai.posture === 'PRESSURE';
     ai.camp = ai.camp || { strat: null, since: 0, rounds: 0, tried: [], baseBld: 0, grind: false };
     if (!ptc || !attack) { ai.camp.strat = null; ai.camp.grind = false; return; }
+    /* THE ROAD IS CHECKED EVERY DAY, campaign or no campaign. This used to sit
+       BELOW the "a live plan is left alone" early return, so while an
+       opportunistic plan held the slot the check never ran at all — harmless
+       when razing anything ended the plan, fatal once plans are judged on
+       getting inside, because then nothing could stand a siege down and the
+       chief kept a siege train up against a town it could have walked into. */
+    const reach = this.aiLandReach();
+    const roadHolds = this.routeHolds(reach, ptc);     // ticks the daily counter
+    const openNow = (ai.routeOpen || 0) > 0;           // reachable on today's check
+    const wallStalled = !!(ai.memory && ai.memory.wallStop);
+    // a road that HOLDS stands down any plan, live or not — no siege train is
+    // needed for a town we can march into
+    if (roadHolds && !wallStalled) { ai.camp.tried = []; ai.camp.strat = null; ai.camp.grind = false; return; }
+    // …and with no plan running, today's plain open route is reason enough not
+    // to start one. Only TEARING DOWN a live plan needs the hole to have held.
+    if (!ai.camp.strat && openNow && !wallStalled) { ai.camp.tried = []; ai.camp.grind = false; return; }
     /* A LIVE PLAN THAT IS PHYSICALLY BEACHED gets re-opened. An opportunistic
        plan is normally left alone to run its round — but a host bogged on the
        far bank of a moat isn't "in progress", it's stuck, and the answers
@@ -2012,14 +2101,19 @@ const AI = {
       if (ai.camp.tried.indexOf(ai.camp.strat) < 0) ai.camp.tried.push(ai.camp.strat);
       ai.camp.strat = null;
     }
-    const reach = this.aiLandReach();
-    const routeToTown = this._reachesTown(reach, ptc);
-    const wallStalled = !!(ai.memory && ai.memory.wallStop);
-    if (routeToTown && !wallStalled) { ai.camp.tried = []; ai.camp.strat = null; ai.camp.grind = false; return; }
     const tc = Bld.tcOf('A'); if (!tc) return;
     const ctx = this.probeAssault(read, reach); if (!ctx) return;
-    let pool = this.CAMPAIGNS.filter(k => this._campViable(k, ctx, tc) && ai.camp.tried.indexOf(k) < 0);
-    if (!pool.length) { ai.camp.tried = []; pool = this.CAMPAIGNS.filter(k => this._campViable(k, ctx, tc)); }
+    const viable = this.CAMPAIGNS.filter(k => this._campViable(k, ctx, tc));
+    let pool = viable.filter(k => ai.camp.tried.indexOf(k) < 0);
+    if (!pool.length) {
+      /* EVERY PLAN HAS HAD ITS TURN — start the wheel again, but NOT on the plan
+         we just walked away from. Wiping `tried` outright meant the chief gave
+         up on a strategy and then immediately re-picked the very same one,
+         which is how "it rotates" turned into "it rotates back to this". */
+      const last = ai.camp.strat || ai.camp.tried[ai.camp.tried.length - 1];
+      ai.camp.tried = (last && viable.length > 1) ? [last] : [];
+      pool = viable.filter(k => ai.camp.tried.indexOf(k) < 0);
+    }
     if (!pool.length) return;                           // nothing the ground allows — fall back to raids
     // EVIDENCE-DRIVEN CHOICE: score every viable plan by fit to the scouted defenses;
     // a light jitter only separates near-ties, so a clearly softer angle always wins.
@@ -2032,7 +2126,7 @@ const AI = {
     if (ai.camp.strat && ai.camp.grind) {
       if (this._campViable(ai.camp.strat, ctx, tc)) {
         if (best >= this.CAMP_OPENING && strat !== ai.camp.strat) {
-          ai.camp.strat = strat; ai.camp.grind = false; ai.camp.since = S.day; ai.camp.rounds = 0; ai.camp.baseBld = Bld.list('P').length;
+          ai.camp.strat = strat; ai.camp.grind = false; ai.camp.since = S.day; ai.camp.rounds = 0; ai.camp.dry = 0; ai.camp.surge = 0; ai.camp.baseBld = Bld.list('P').length;
           G.log(this.CAMPAIGN_CRY[strat], true);
         }
         return;
@@ -2054,7 +2148,11 @@ const AI = {
     // anywhere → COMMIT to the reliable grind and stop shopping (never thrash).
     if (best >= this.CAMP_OPENING) { ai.camp.grind = false; }
     else { strat = this._grindFallback(ctx, tc, strat, ai.camp.tried); ai.camp.grind = true; }
-    ai.camp.strat = strat; ai.camp.since = S.day; ai.camp.rounds = 0; ai.camp.baseBld = Bld.list('P').length;
+    // the fallback can come back empty (nothing the ground allows) — take no plan
+    // rather than an undefined one, which used to litter `tried` with blanks and
+    // quietly cost the chief a rotation slot
+    if (!strat) { ai.camp.strat = null; ai.camp.grind = false; return; }
+    ai.camp.strat = strat; ai.camp.since = S.day; ai.camp.rounds = 0; ai.camp.dry = 0; ai.camp.surge = 0; ai.camp.baseBld = Bld.list('P').length;
     G.log(this.CAMPAIGN_CRY[strat], true);
   },
 
@@ -2062,17 +2160,24 @@ const AI = {
   campaignReady(strat) {
     const cnt = k => Units.count('A', u => u.kind === k);
     const infantry = Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u) && u.kind !== 'siegetower' && !Units.isSiege(u));
+    /* COME BACK HEAVIER. A host annihilated short of the wall doesn't get sent
+       again at the same strength — `camp.surge` raises the bar the chief waits
+       for, so the next commit is a materially bigger one (and one more engine
+       behind it). Two wipes and the plan itself is wrong: campaignLaunch
+       rotates rather than surging a third time. */
+    const surge = (S.ai.camp && S.ai.camp.surge) || 0;
+    const foot = 3 * surge, eng = surge;
     switch (strat) {
-      case 'IRONBELLY': return (cnt('catapult') + cnt('trebuchet')) >= 1 && infantry >= 3;
-      case 'HIGHREACH': return cnt('siegetower') >= 1 && infantry >= 4;
+      case 'IRONBELLY': return (cnt('catapult') + cnt('trebuchet')) >= 1 + eng && infantry >= 3 + foot;
+      case 'HIGHREACH': return cnt('siegetower') >= 1 + eng && infantry >= 4 + foot;
       case 'TIDEWRACK': {
         // hold until enough hull capacity AND a real landing party have gathered, so
         // the crossing puts a decisive wave on the beach instead of a doomed trickle.
         let cap = 0; for (const u of S.units) if (u.owner === 'A' && Units.isTransport(u)) cap += Units.cargoCap(u);
-        return cap >= 5 && infantry >= 5;
+        return cap >= 5 + foot && infantry >= 5 + foot;
       }
       case 'MUDLARK':   return Units.sapperTier('A') >= 2;
-      case 'WARHORN':   return infantry >= 6;
+      case 'WARHORN':   return infantry >= 6 + foot;
     }
     return false;
   },
@@ -2097,60 +2202,132 @@ const AI = {
       if (camp.mudReach == null) camp.mudReach = rc;
       else if (rc > camp.mudReach) { camp.mudReach = rc; camp.since = S.day; }
     }
-    // EVALUATE a finished round (its deadline has passed). PROGRESS = razed a
-    // building OR knocked ≥10% off the player's walls/towers (so a siege line that's
-    // steadily chewing stone counts as working). An OPPORTUNISTIC plan that made
-    // progress stands down (the way's proven); two dry rounds → rotate to the
-    // next-best fit. A GRIND never rotates — it keeps battering (campaignSelect's
-    // escape hatch is the only thing that pulls it off, and only for a real opening).
-    if (camp.rounds > 0 && S.day >= (camp.roundEnd || 0)) {
-      const razed = Bld.list('P').length < (camp.roundBaseBld != null ? camp.roundBaseBld : 1e9);
+    /* EVALUATE a finished round. The verdict is PENETRATION, not damage:
+         BROKE  — two or more raiders stood inside the town, or a core building
+                  (not a wall, not an outlying hut) burned. The way is proven.
+         CLOSER — nobody got in, but the host carried further than this plan has
+                  ever reached before. Real ground gained; worth another round.
+         DRY    — neither. Chipping stone counts HALF a dry round, so a siege
+                  line genuinely chewing through a castle gets six rounds while
+                  a plan achieving nothing yields the slot after three.
+       A grind is no longer exempt from any of this. */
+    if (camp.rounds > 0 && camp.roundEnd != null && S.day >= camp.roundEnd) {
+      const inN = (camp.inIds || []).length;
+      const coreRazed = camp.roundBaseCore != null && this._foeCoreCount() < camp.roundBaseCore;
+      const broke = inN >= 2 || coreRazed;
+      const best = (((ai.memory || {}).strat || {})[strat] || {}).deep;
+      const closer = camp.deep != null && camp.deep <= (best != null ? best : 1e9) - 2;
       const chipped = camp.roundBaseHp != null && this._foeFortHp() < camp.roundBaseHp * 0.9;
-      const won = razed || chipped;
-      this._noteStrat(strat, won);              // remember how this plan fared
-      // …and whether the door we chose actually gave way, so the next assault
-      // either returns to it or tries a different one (see composeAssault)
-      if (S.ai.memory) S.ai.memory.lastMainWorked = won;
-      if (won) {
+      const verdict = broke ? 'BROKE' : (closer ? 'CLOSER' : 'DRY');
+      /* ANNIHILATED SHORT OF THE WALL. Losing the whole host without getting in
+         is not an argument for sending the same host again. First time, the plan
+         keeps its slot but the chief waits for a materially bigger army before it
+         commits again (campaignReady reads camp.surge). Second time, the plan is
+         wrong for this town whatever the numbers — rotate. */
+      let alive = 0;
+      for (const id of (camp.partyIds || [])) if (Units.get(id)) alive++;
+      const wiped = (camp.partyN || 0) >= 3 && alive <= Math.floor(camp.partyN * 0.3);
+      if (wiped && !broke) { camp.surge = (camp.surge || 0) + 1; camp.surgeMax = Math.max(camp.surgeMax || 0, camp.surge); }
+      else if (broke) camp.surge = 0;
+      this._noteStrat(strat, verdict, camp.deep);    // remember how this plan fared, and how far in
+      // …and whether the door we chose actually let us THROUGH, so the next
+      // assault either returns to it or tries a different one (composeAssault)
+      if (ai.memory) ai.memory.lastMainWorked = broke;
+      camp.dry = (camp.dry || 0) + (broke ? 0 : (closer || chipped) ? 0.5 : 1);
+      /* SCORE A ROUND ONCE. The deadline test only asked "is the round over",
+         so once it was, EVERY following day re-scored the same round — the
+         scorecard showed ten tries for three assaults, and a plan rotated on
+         the calendar rather than on its results. Closing the round here means
+         the next verdict waits for the next assault. */
+      camp.roundEnd = null; camp.evalDay = S.day;
+      if (broke) {
+        camp.dry = 0;
         // the way is proven: an opportunistic plan stands down having made its
-        // point; a grind that is genuinely chewing through keeps at it
+        // point; a grind that is genuinely breaking in keeps at it
         if (!camp.grind) { camp.tried = []; camp.strat = null; return false; }
-      } else if (camp.rounds >= (camp.grind ? 3 : 2)) {
-        /* DRY ROUNDS — ROTATE. A grind used to be exempt from this: no opening
-           scored well enough, so the chief committed to battering and battered
-           the same stone for the rest of the game however little it achieved.
-           That is the fixation. Now every plan answers for its results: three
-           dry rounds and even a grind yields the slot, is marked tried, and the
-           chief comes back through the door with a different plan. */
+      } else if (camp.dry >= (camp.grind ? 3 : 2) || (camp.surge || 0) >= 2) {
+        /* DRY ROUNDS — ROTATE. A grind used to be exempt from this, and worse,
+           razing a single wall section scored as a WIN, so the chief could
+           batter the same stone for the whole game and never reach the dry
+           test at all. That is the fixation. Now every plan answers for
+           whether it got the host INSIDE: enough dry rounds (or two wipes) and
+           even a grind yields the slot, is marked tried, and the chief comes
+           back through a different door. */
         if (camp.tried.indexOf(strat) < 0) camp.tried.push(strat);
         camp.strat = null; camp.grind = false;
         return false;
       }
       // otherwise: fall through and mount another round of the same plan
     }
-    // abandon a plan that can never even assemble its force (kept us waiting too
-    // long). For a grind this DEMOTES the fallback (Ironbelly→Mudlark→Tidewrack) via
-    // `tried`, so a plan it can't build for gives way to one it can.
-    if (!camp.rounds && S.day - camp.since > 30) { camp.tried.push(strat); camp.strat = null; return false; }
-    const startRound = () => { camp.rounds++; camp.roundBaseBld = Bld.list('P').length; camp.roundBaseHp = this._foeFortHp(); camp.roundEnd = S.day + 12; };
+    /* A PLAN THAT NEVER ATTACKS IS ALSO FAILING. Rounds are scored on results,
+       but a plan can avoid ever being scored simply by never mustering a host —
+       and that is not neutral, it is the slot wasted. So idle time accrues dry
+       rounds exactly as a repelled assault does, and the same rotation carries
+       it off. (A grind this demotes gives way to the next fallback via `tried`,
+       Ironbelly → Mudlark → Tidewrack, so a plan it can't build for yields to
+       one it can.) Covers "never launched" and "can't muster a second host". */
+    if (!camp.roundEnd && S.day - (camp.pushDay || camp.since) > 20) {
+      camp.pushDay = S.day;
+      camp.dry = (camp.dry || 0) + 1;
+      if (camp.dry >= (camp.grind ? 3 : 2)) {
+        if (camp.tried.indexOf(strat) < 0) camp.tried.push(strat);
+        camp.strat = null; return false;
+      }
+    }
+    /* …AND A PLAN THAT ISN'T ATTACKING DOESN'T OWN THE WAR BAND. Every holding
+       path below used to answer "the campaign owns the attack today", which
+       silenced the ordinary raid machinery for as long as the plan was tooling
+       up, waiting out a cooldown, or carving a lane — a sapper road can take
+       fifty days, and the chief spent all of them not fighting. `owns` is the
+       one honest answer to that: commit to the plan while it is actually
+       moving, and hand the initiative back the moment it isn't. */
+    const owns = S.day - (camp.pushDay || camp.since || 0) <= 20;
+    // open a fresh round: the yardsticks it will be judged against, and the
+    // penetration tally Combat fills in while the host is in the field
+    const startRound = () => {
+      const foeTc = Bld.tcOf('P');
+      camp.rounds++;
+      camp.roundBaseBld = Bld.list('P').length;
+      camp.roundBaseHp = this._foeFortHp();
+      camp.roundBaseCore = this._foeCoreCount();
+      camp.roundEnd = S.day + 12;
+      camp.pushDay = S.day;                  // the idle clock restarts on every real assault
+      camp.aim = foeTc ? { x: Bld.cx(foeTc), y: Bld.cy(foeTc) } : null;   // cached: notePenetration runs per frame
+      camp.deep = null; camp.inIds = [];
+      /* NAME the host, don't just count it. Comparing army size before and after
+         hid every wipe: the halls train replacements all round, so a party that
+         died to the last man could leave the army LARGER than it started. Track
+         the actual men committed and see how many of them come home.
+         The WHOLE host — a two-pronged launch has only the feint in the field on
+         day one, with the main column still held back in camp.pending. */
+      camp.partyIds = S.units.filter(u => u.owner === 'A' && u.task && u.task.type === 'raid').map(u => u.id)
+        .concat((camp.pending && camp.pending.ids) || []);
+      camp.partyN = camp.partyIds.length;
+    };
     // MUDLARK — carve the lane a tile a day; when the road finally reaches the town,
     // stand the campaign down so an ordinary raid pours through the new gap.
     if (strat === 'MUDLARK') {
       const reach = this.aiLandReach();
-      if (this._reachesTown(reach, ptc)) { camp.tried = []; camp.strat = null; return false; }
-      this.breachToPlayer(read, reach);
-      return true;
+      if (this.routeHolds(reach, ptc)) { camp.tried = []; camp.strat = null; return false; }
+      this.breachToPlayer(read, reach);   // the digging goes on either way
+      return owns;
     }
-    if (ai.raidCd > 0) return true;
+    if (ai.raidCd > 0) return owns;
     // TIDEWRACK — put to sea once a hull and a landing party are ready
     if (strat === 'TIDEWRACK') {
-      if (!this.campaignReady('TIDEWRACK')) return true;
+      if (!this.campaignReady('TIDEWRACK')) return owns && (camp.dry || 0) < 1;
       if (this._launchAmphib(read)) { startRound(); ai.raidDay = S.day; ai.raidFoeBld = Bld.list('P').length; ai.raidCd = Math.max(6, Math.round(this.persona().raidCd)); }
       return true;
     }
     // land assaults — hold while the engines/host gather, then commit at the weak spot
     if (S.units.some(u => u.owner === 'A' && u.task && u.task.type === 'raid' && !u.harass)) return true;
-    if (!this.campaignReady(strat)) return true;
+    /* A PLAN THAT HAS ALREADY FAILED ONCE DOESN'T GET TO SILENCE THE WAR BAND
+       while it re-arms. The first tool-up is protected — that is the chief
+       committing to its plan instead of thrashing — but once a round has come
+       back dry (or a wipe has raised the bar it's waiting for), ordinary raids
+       resume and keep the pressure on while the siege train gathers. Without
+       this the accountability above bought its honesty with tempo. */
+    if (!this.campaignReady(strat)) return owns && (camp.dry || 0) < 1;
     if (this._launchCampRaid(read, strat)) startRound();
     return true;
   },

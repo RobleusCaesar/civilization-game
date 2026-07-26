@@ -368,6 +368,9 @@ const Combat = {
 
   aiRaidSeek(u) {
     const ai = S.ai;
+    // how far INTO the town this round's host actually got — the only honest
+    // measure of whether a siege plan is working (see AI.notePenetration)
+    if (ai) AI.notePenetration(u);
     // a probe party carries its OWN lane objective; the main force shares ai.raidObj
     const obj = u.raidObj || (ai && ai.raidObj) || null;
     const canWall = Units.isSiege(u) || u.kind === 'axeman' || !!CFG.UNITS[u.kind].bldAtk;
