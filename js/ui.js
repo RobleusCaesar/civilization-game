@@ -296,11 +296,19 @@ const UI = {
     if (u && list.length) {
       const n = Units.queueTerraform(u, list);
       const noun = job === 'dig' ? 'Trench' : job === 'mound' ? 'Mound' : 'Clear';
+      // `n` counts tiles QUEUED, not tiles that will actually get worked — a
+      // queued tile with no passable neighbour to stand beside fails silently
+      // inside startNextTerraform, leaving nothing running and nothing left
+      // in the queue. Only call this a real dispatch when something is
+      // genuinely underway: either the sapper is now actively on the job, or
+      // (already mid-job elsewhere) this order is truly waiting behind it.
+      const working = n > 0 && ((u.task && u.task.type === 'terraform') || (u.jobs && u.jobs.length > 0));
       this.toast(n
-        ? `${noun} line: ${n} tile${n > 1 ? 's' : ''} — the sapper works them in order`
+        ? (working ? `${noun} line: ${n} tile${n > 1 ? 's' : ''} — the sapper works them in order`
+                   : 'No clear ground to stand beside — try a different tile')
         : 'Those tiles are already queued');
-      this.terraMode = null;   // planning done — disarm so the next tap walks (no accidental digs)
-      this.renderPanel();
+      if (working) this.dispatchedWorker();
+      else { this.terraMode = null; this.renderPanel(); }   // nothing actually underway — stays selected
     } else if ((this.terraGhost || []).length) {
       this.toast(job === 'dig' ? 'No open ground to dig there'
         : job === 'mound' ? 'Nothing to mound there — open ground or near-shore water' : 'Nothing to clear there', true);
@@ -594,7 +602,7 @@ const UI = {
         Units.assignBuild(sel, ownBld);
         this.toast(ownBld.hp < ownBld.maxhp && !ownBld.construction && !ownBld.upgrading
           ? 'Villager sent to repair' : 'Villager sent to build');
-        this.dispatchedVillager();   // job handed off — clear the selection like any other dispatch
+        this.dispatchedWorker();   // job handed off — clear the selection like any other dispatch
         return;
       }
       if (ownBld && ownBld.owner === 'P' && Units.isVillager(sel) &&
@@ -606,7 +614,7 @@ const UI = {
         sel.task = { type: 'work', id: ownBld.id }; sel.tUnit = 0; sel.tBld = 0;
         Units.setPath(sel, ownBld.x, ownBld.y);
         this.toast('Villager stationed at the ' + Bld.def(ownBld.key).name);
-        this.dispatchedVillager();   // stationed — no further orders needed
+        this.dispatchedWorker();   // stationed — no further orders needed
         return;
       }
       if (!tapUnit && (!hitBld || hitBld.owner !== 'P')) {
@@ -618,7 +626,7 @@ const UI = {
             : this.snapNear(wx, wy, (x, y) => S.map.explored[MapGen.idx(x, y)] &&
                 CFG.GATHER[S.map.terrain[MapGen.idx(x, y)]] && S.map.resAmount[MapGen.idx(x, y)] > 0);
           if (gt) {
-            if (Units.assignGather(sel, gt.x, gt.y)) { this.toast('Gathering ' + sel.task.res); this.dispatchedVillager(); }
+            if (Units.assignGather(sel, gt.x, gt.y)) { this.toast('Gathering ' + sel.task.res); this.dispatchedWorker(); }
             else this.toast('No clear ground to stand beside that resource', true);
             return;
           }
@@ -626,7 +634,7 @@ const UI = {
         if (Units.isVillager(sel) && S.map.terrain[MapGen.idx(tile.x, tile.y)] === T.WATER) {
           // shore fishing — but only where the fish actually are
           if (MapGen.shoal(tile.x, tile.y) && S.map.resAmount[MapGen.idx(tile.x, tile.y)] > 0) {
-            if (Units.assignShoreFish(sel, tile.x, tile.y)) { this.toast('Line out — fishing from the shore 🎣'); this.dispatchedVillager(); }
+            if (Units.assignShoreFish(sel, tile.x, tile.y)) { this.toast('Line out — fishing from the shore 🎣'); this.dispatchedWorker(); }
             else this.toast('No clear shore to fish from', true);
           } else this.toast('No fish here — watch for fish breaking the surface', true);
           return;
@@ -644,11 +652,12 @@ const UI = {
           if (mode === 'bridge' && (tier < 2 || !Terraform.bridgeable(tile.x, tile.y) || Bld.bridgeAt(tile.x, tile.y))) { this.toast('Bridges span water or a moat', true); return; }
           if (mode === 'clear' && (tier < 3 || !Terraform.isClearable(tile.x, tile.y))) { this.toast('Clear a forest 🌲 / rock 🪨 / orchard tile', true); return; }
           if (mode === 'mound' && (tier < 3 || !Terraform.isMoundable(tile.x, tile.y, sel.owner))) { this.toast('Mound: raise open ground, or fill water within 2 tiles of shore', true); return; }
-          if (Units.assignTerraform(sel, tile.x, tile.y, mode))
+          if (Units.assignTerraform(sel, tile.x, tile.y, mode)) {
             this.toast(mode === 'dig' ? 'Sapper digging ⛏' : mode === 'bridge' ? 'Sapper raising a bridge 🌉'
               : mode === 'mound' ? 'Sapper raising a mound ⛰' : 'Sapper breaching ⛏');
-          else this.toast('Can’t reshape that tile', true);
-          return;   // tool stays armed — tap on to dig a whole channel
+            this.dispatchedWorker();   // job handed off — clear the selection like any other dispatch
+          } else this.toast('Can’t reshape that tile', true);
+          return;
         }
         if (Units.isTransport(sel) && sel.cargo && sel.cargo.length && Path.passable(tile.x, tile.y)) {
           Units.orderUnload(sel, tile.x, tile.y);
@@ -790,9 +799,10 @@ const UI = {
     this.syncBottomToggle();
   },
 
-  // a villager sent off to a resource job needs no further orders — drop the
+  // a worker sent off on a job — a villager to gather/build/station, a sapper
+  // to dig/clear/mound/bridge — needs no further orders right away — drop the
   // selection and tuck the menu away so the board is clear for the next pick
-  dispatchedVillager() {
+  dispatchedWorker() {
     this.deselect();
     this.setMenuCollapsed(true, true);
   },
@@ -1445,7 +1455,7 @@ const UI = {
         if (!c.ok) { this.toast(c.why, true); return; }
         if (Bld.upgrade(b2)) {
           this.toast(`${Bld.def(b2.key).name} upgrading to Lv ${b2.level + 1} — the crew builds it, then back to work`);
-          this.dispatchedVillager();   // the villager is off building the upgrade — deselect like any dispatch
+          this.dispatchedWorker();   // the villager is off building the upgrade — deselect like any dispatch
         } else this.renderPanel();
       });
       // sapper terraform tools — arm a job; the next tile tap performs it

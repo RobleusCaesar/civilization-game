@@ -425,12 +425,20 @@ const CFG = {
 
   MEAT_DROP: 10,               // food gained when a wild animal is killed
   PASSIVE_MAX: 2,              // grazing animals (deer/cow) kept on the map
+  // full-heal cost scales with missing hp. sapper: 30 matches its food line
+  // item at training (cost: { food: 30, wood: 40, gold: 10 }) — the same
+  // convention as villager/defender/archer, whose heal price is exactly their
+  // training food cost. It's fragile and unarmed (hp 55, atk 3) and expensive
+  // to lose mid-dig, so it's worth mending like any other unit — it already
+  // stood in the same TC healing ground (Bld.healZoneFor treats every
+  // non-naval unit alike); this missing price tag alone gated the heal UI off.
   HEAL_FOOD: { villager: 50, defender: 40, elite: 110,
                rider: 60, lancer: 100, archer: 40, marksman: 70,
                fishboat: 30, warship: 70, fireship: 110,
                transport: 50, bigtransport: 90,
                catapult: 90, siegetower: 80,
-               axeman: 45, longbow: 45, horsearcher: 65, ballista: 85 },  // full-heal cost scales with missing hp
+               axeman: 45, longbow: 45, horsearcher: 65, ballista: 85,
+               sapper: 30 },
 
   // units may only be healed on home ground — no patching up in an enemy camp.
   // Land units heal in the town-center grounds; ships heal by a dock. The

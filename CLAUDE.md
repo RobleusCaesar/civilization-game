@@ -55,6 +55,7 @@ node tests/endgame-doom-ai.mjs # the rival finishes a spent town, fog-honestly
 node tests/camp-crew.mjs       # a station's own hands raise its upgrade, then return
 node tests/foe-notes.mjs       # enemy/raider intel toasts are gated by difficulty
 node tests/tower-archer-miss.mjs # Lv1 towers miss 1/3, base archers miss 1/4
+node tests/sapper-deselect-heal.mjs # sapper dispatch deselects; sapper heals at the TC
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -127,3 +128,18 @@ branch anywhere in the check). A miss shows `'Miss!'` via the same `R.float`
 path as a damage number, in place of it — no damage is dealt, no HP is lost.
 Rolls `G.rand()`, not `Math.random()`, so a seed's hit/miss sequence stays
 reproducible.
+
+**Sapper deselect & heal** (`tests/sapper-deselect-heal.mjs`): a sapper given a
+real terraform task (bridge tap, or a drag-chain dig/clear/mound) deselects
+just like a villager sent to gather/build/station — both now go through
+`UI.dispatchedWorker` (renamed from `dispatchedVillager`). The catch:
+`Units.queueTerraform`'s return count is tiles QUEUED, not tiles the sapper
+actually reaches — a queued tile with no passable neighbour fails silently
+inside `Units.startNextTerraform`, so `commitTerraDrag` checks the sapper's
+real task/queue state afterward rather than trusting that count, or it would
+deselect on a silent failure with no way for the player to notice. Sappers
+also heal at the Town Center now — they're a land unit like any other and
+`Bld.healZoneFor` always treated them that way; the only gap was a missing
+`CFG.HEAL_FOOD.sapper` entry, which alone gated the whole heal UI off. Its
+price (30) matches its food line item at training, the same convention as
+villager/defender/archer.
