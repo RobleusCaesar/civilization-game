@@ -56,6 +56,7 @@ node tests/camp-crew.mjs       # a station's own hands raise its upgrade, then r
 node tests/foe-notes.mjs       # enemy/raider intel toasts are gated by difficulty
 node tests/tower-archer-miss.mjs # Lv1 towers miss 1/3, base archers miss 1/4
 node tests/sapper-deselect-heal.mjs # sapper dispatch deselects; sapper heals at the TC
+node tests/heal-limit.mjs      # at most 3 heals/unit per rolling 60s real-time window
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -143,3 +144,17 @@ also heal at the Town Center now — they're a land unit like any other and
 `CFG.HEAL_FOOD.sapper` entry, which alone gated the whole heal UI off. Its
 price (30) matches its food line item at training, the same convention as
 villager/defender/archer.
+
+**Heal limit** (`tests/heal-limit.mjs`): closes the "stand in the Town Center
+ring and spam Heal through a live fight" exploit — a unit topped off between
+every blow never effectively dies. At most `CFG.HEAL_LIMIT_N` (3) heals per
+unit inside any rolling `CFG.HEAL_LIMIT_MS` (60s) window, tracked in real
+wall-clock time (`performance.now()`, not `S.day`/`S.dayT`) because the
+exploit is real-time click-spamming, not anything tied to the in-game
+calendar. The log (`UI.healLog`/`UI._healLog`) is UI-local, same precedent as
+`UI._toastAt` — never on the unit or in `S`, so it's never in a save file —
+and is cleared in both `G.newGame` and `G.loadJSON` so a fresh/loaded game's
+reused low unit ids can't inherit a stale cooldown. `.cant` is opacity only
+and never blocks the click, so `UI.healThrottled` is re-checked inside the
+click handler itself, before the zone/afford checks — it's the branch that
+actually matters mid-fight, where zone/afford are usually already fine.

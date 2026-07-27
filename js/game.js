@@ -248,6 +248,8 @@ const G = {
     UI.placing = null;
     UI.builderFor = null;
     UI.settingRally = null;
+    UI._healLog = {};   // real-time heal-spam limit is UI-local — a fresh game must not
+                         // inherit a stale cooldown on whatever unit id collides with an old one
     document.getElementById('btnPause').textContent = '⏸';
     // opening notes linger twice as long — there's a lot to take in on day 1
     const LAND = { valley: 'a green valley', lakeland: 'a land of lakes', highlands: 'rugged highlands', islands: 'a chain of islands' };
@@ -1039,6 +1041,7 @@ const G = {
     document.getElementById('btnPause').textContent = '▶';
     UI.deselect();
     UI.placing = null;
+    UI._healLog = {};   // see newGame — a loaded save must not inherit a stale cooldown
     this.freeVis = false;
     this.vis = null;
     Units.clampToBoard();   // pull any unit off the (now impassable) map rim — e.g. a pre-border save

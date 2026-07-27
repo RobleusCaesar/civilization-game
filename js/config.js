@@ -446,6 +446,13 @@ const CFG = {
   HEAL_RADIUS: 5,          // tiles from the TC centre at level 1
   HEAL_DOCK_TOUCH: 2,      // ships repair at ANY owned dock, but must be touching it or ≤1 tile off (from the dock's edge)
   HEAL_RADIUS_STEP: 0.15,
+  // PER-UNIT HEAL LIMIT — closes the "stand in the TC ring and spam Heal
+  // through a live fight" exploit: a unit takes free hits forever if you can
+  // just top it off between blows. At most HEAL_LIMIT_N heals per unit in any
+  // HEAL_LIMIT_MS real-time window (UI.healLog — wall-clock, not game days:
+  // the exploit is spam-clicking in real time during a live fight).
+  HEAL_LIMIT_N: 3,
+  HEAL_LIMIT_MS: 60000,
 
   // "group nearby / group fleet" and double-tap-select-same-type both gather units
   // within this radius (tiles) of the tapped one — one grouping sphere for both

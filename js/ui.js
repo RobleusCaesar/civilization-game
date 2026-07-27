@@ -893,7 +893,7 @@ const UI = {
       stack = S.units.filter(o => o.owner !== 'P' && !Units.isPassive(o) &&
         (o.x | 0) === (u.x | 0) && (o.y | 0) === (u.y | 0)).length;
     const sig = ['u', u.id, u.hp < u.maxhp, stack, u.cargo ? u.cargo.length : 0,
-      !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u), Bld.inHealZone(u)];
+      !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u), Bld.inHealZone(u), this.healThrottled(u)];
     // villager resource-station upgrade state (level, phase, affordability) — the
     // continuously-shrinking day count is NOT here; refreshPanel ticks it in place
     const wb = this.villagerResBld(u);
@@ -926,6 +926,24 @@ const UI = {
     if (!base) return 0;
     return Math.max(1, Math.ceil((1 - u.hp / u.maxhp) * base));
   },
+  /* HEAL LIMIT — at most CFG.HEAL_LIMIT_N heals per unit inside any real
+     HEAL_LIMIT_MS window, so a unit standing in the TC ring can't just be
+     topped off between every blow of a live fight and outlast an attacker for
+     free. Tracked in real wall-clock time (performance.now()) because the
+     exploit IS real-time click-spamming during a fight, not anything tied to
+     the in-game calendar — and kept UI-local, never on the unit/S itself, so
+     it never touches the save file (a stray old timestamp surviving a
+     load would be meaningless — real time from a past browser session).
+     Cleared on every new game / load (G.newGame, G.loadJSON) so a fresh
+     game's low unit ids can never inherit a stale cooldown from the last one. */
+  _healLog: {},
+  healLog(u) {
+    const log = (this._healLog[u.id] || []).filter(t => performance.now() - t < CFG.HEAL_LIMIT_MS);
+    this._healLog[u.id] = log;
+    return log;
+  },
+  healThrottled(u) { return this.healLog(u).length >= CFG.HEAL_LIMIT_N; },
+  noteHeal(u) { this.healLog(u).push(performance.now()); },
   // the OWN resource-station a villager is stationed at (or building an upgrade
   // for) — so its Upgrade control can live on the villager's own panel
   villagerResBld(u) {
@@ -945,7 +963,12 @@ const UI = {
     const hc = document.getElementById('healCost');
     if (hc && this.sel.type === 'unit') {
       const u = Units.get(this.sel.id);
-      if (u) hc.textContent = Bld.inHealZone(u) ? Bld.costStr({ food: this.healCost(u) }) : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center');
+      // sig already covers throttled TRANSITIONS (forces the full rebuild
+      // above); this patches the drifting cost number in between them, so it
+      // must agree with the same throttled branch or it overwrites a settled
+      // "Cooldown…" label with a stale price the button no longer honours.
+      if (u) hc.textContent = this.healThrottled(u) ? 'Cooldown…'
+        : Bld.inHealZone(u) ? Bld.costStr({ food: this.healCost(u) }) : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center');
     }
     // tick the resource-station upgrade progress in place (no relayout)
     if (this.sel.type === 'unit') {
@@ -1379,8 +1402,10 @@ const UI = {
       if (own && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind]) {
         const hc = this.healCost(u);
         const inZone = Bld.inHealZone(u);
-        const ok = inZone && S.res.food >= hc;
-        html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${inZone ? Bld.costStr({ food: hc }) : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center')}</small></button>`;
+        const throttled = this.healThrottled(u);
+        const ok = inZone && S.res.food >= hc && !throttled;
+        const sub = throttled ? 'Cooldown…' : inZone ? Bld.costStr({ food: hc }) : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center');
+        html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${sub}</small></button>`;
       }
       if (own && Units.isTransport(u)) {
         const cap = CFG.UNITS[u.kind].cap, aboard = (u.cargo || []).length;
@@ -1484,10 +1509,14 @@ const UI = {
       if (heal) heal.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
         if (!u2 || u2.hp >= u2.maxhp) return;
+        // rate-limited BEFORE the zone/afford checks: this is the reason that
+        // actually applies mid-fight, where both of those are already fine
+        if (this.healThrottled(u2)) { this.toast('Healed enough — let them rest', true); return; }
         if (!Bld.inHealZone(u2)) { this.toast(Units.isNaval(u2) ? 'Ships heal at a Dock — move closer' : 'Can only heal within the Town Center grounds', true); return; }
         const cost = this.healCost(u2);
         if (S.res.food < cost) { this.toast('Not enough food', true); return; }
         S.res.food -= cost;
+        this.noteHeal(u2);
         u2.hp = u2.maxhp;
         R.float(u2.x, u2.y - 0.5, '❤', '#8ae08a');
         this.toast(`Healed for ${cost} food`);
