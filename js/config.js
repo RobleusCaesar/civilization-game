@@ -461,8 +461,10 @@ const CFG = {
   // WAR CAMP: soldiers standing within this many tiles of a forward camp are mended
   // (a field hospital), and the only structures you may raise at a forward camp are
   // these military/support ones — no relocating your economy to the front line.
+  // The Dock counts as military here: a beachhead needs its warships and
+  // transports staged at the front, not a long sail from home.
   WARCAMP_HEAL: 1.5,
-  STAGING_BUILD: ['barracks', 'stable', 'range', 'siege', 'sapper', 'tower', 'wall', 'gate', 'warcamp'],
+  STAGING_BUILD: ['barracks', 'stable', 'range', 'siege', 'sapper', 'tower', 'wall', 'gate', 'warcamp', 'dock'],
 
   // barbarian pressure: a spice, not a kingmaker — bands come less often and
   // smaller than they used to, tipping fights without deciding them
