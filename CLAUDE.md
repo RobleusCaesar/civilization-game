@@ -57,6 +57,7 @@ node tests/foe-notes.mjs       # enemy/raider intel toasts are gated by difficul
 node tests/tower-archer-miss.mjs # Lv1 towers miss 1/3, base archers miss 1/4
 node tests/sapper-deselect-heal.mjs # sapper dispatch deselects; sapper heals at the TC
 node tests/heal-limit.mjs      # at most 3 heals/unit per rolling 60s real-time window
+node tests/bridge-resource-shore.mjs # a resource-shored bank is bridgeable; no silent bridge failures
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -158,3 +159,24 @@ reused low unit ids can't inherit a stale cooldown. `.cant` is opacity only
 and never blocks the click, so `UI.healThrottled` is re-checked inside the
 click handler itself, before the zone/afford checks — it's the branch that
 actually matters mid-fight, where zone/afford are usually already fine.
+
+**Bridge over a resource shore** (`tests/bridge-resource-shore.mjs`): a bridge
+must SPAN water — land on both opposite sides — but `Terraform.bridgeCrossing`'s
+`land()` check used `Path.passable`, which a standing resource (forest/hills/
+fertile) fails exactly like water does. So a water tile with a tree- or
+rock-lined far shore had NO valid span and could never be bridged, even though
+mounding the same water right next to a resource works fine — a real player-
+facing dead end reported as "there was a bridge there, maybe it got destroyed."
+`land()` now also accepts `Terraform.CLEARABLE` terrain as a landing side; the
+far bank still blocks movement until a sapper clears it (tier 3, the existing
+`clear` job, untouched) — build the span, then clear the landing with the same
+sapper. A second bug compounded the symptom: the terraform task's mid-work
+revalidation checked only `Terraform.bridgeable` (still water?), not
+`bridgeCrossing` (still a valid SPAN?) — so an invalidated crossing let the
+sapper animate for the *full* build timer and then `Bld.buildBridge` failed
+silently at the end: no bridge, no toast, no log line, which is exactly what a
+player would misremember later as a bridge that vanished. Revalidation now
+calls `bridgeCrossing` (and re-checks `Bld.bridgeAt`), so an invalidated span
+drops the job promptly like any other skipped tile, and a completion-time
+failure (defensively still possible) now toasts a reason instead of finishing
+in silence.

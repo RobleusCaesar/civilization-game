@@ -544,6 +544,11 @@ const Terraform = {
       if (!MapGen.inB(nx, ny)) return false;
       const t = S.map.terrain[MapGen.idx(nx, ny)];
       if (t === T.WATER || t === T.MOAT) return !!(S.map.bridge && S.map.bridge[MapGen.idx(nx, ny)]);  // an existing bridge counts (extend a span)
+      // a standing resource (forest/hills/fertile) still counts as the far
+      // bank — it blocks land movement same as water, but a sapper can clear
+      // it with the same tool right after the bridge goes up, so it must not
+      // block the bridge itself or a resource-fringed shore is unbridgeable.
+      if (this.CLEARABLE[t]) return true;
       return Path.passable(nx, ny, owner);   // walkable land (grass/cleared/etc.)
     };
     const ew = land(x - 1, y) && land(x + 1, y);   // land east & west → deck runs E–W

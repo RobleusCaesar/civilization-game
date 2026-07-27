@@ -750,7 +750,8 @@ const Units = {
           }
           const stillValid = t.job === 'dig' ? Terraform.isDiggable(t.x, t.y)
             : t.job === 'clear' ? Terraform.isClearable(t.x, t.y)
-            : t.job === 'mound' ? Terraform.isMoundable(t.x, t.y, u.owner) : Terraform.bridgeable(t.x, t.y);
+            : t.job === 'mound' ? Terraform.isMoundable(t.x, t.y, u.owner)
+            : !(Bld.bridgeAt && Bld.bridgeAt(t.x, t.y)) && !!Terraform.bridgeCrossing(t.x, t.y, u.owner);   // not just "still water" — the span must still land on both sides
           if (!stillValid) { this.startNextTerraform(u); continue; }
           t.t -= dt;
           if (Math.random() < 0.16) R.float(u.x + (Math.random() - 0.5), u.y - 0.4, '·', '#cdbb90');   // spadefuls of earth
@@ -772,6 +773,7 @@ const Units = {
                 : 'Your sappers raise a bridge');
               else if (t.job === 'dig') UI.toast('Can’t dig there — it would seal the town in', true);
               else if (cost) UI.toast('Not enough stone & wood to raise a mound', true);
+              else if (t.job === 'bridge') UI.toast('The crossing fell through — can’t bridge there', true);
             }
             this.startNextTerraform(u);   // tile done — walk the line to the next queued job
           }
