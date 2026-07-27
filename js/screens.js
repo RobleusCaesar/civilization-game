@@ -102,7 +102,16 @@ const Screens = {
       Backend.listSaves().then(r => {
         const rows = ((r.ok && r.data) || []).slice()
           .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
-        const live = rows.find(row => !row.over);   // newest live cloud slot (finished runs greyed out)
+        /* a run that FINISHED is a told story in ALL its snapshots, not just
+           the one that carries the trophy: a mid-run save of a won game must
+           not resurrect the Continue button (the slots themselves stay fully
+           loadable from the Load screen — savescumming is the player's
+           right, Continue just doesn't walk back into it). Finished runs are
+           known two ways: rows stamped over (legacy saves), and the local
+           finished-seeds ledger finalizeRun keeps. */
+        const done = new Set((Backend.finishedSeeds ? Backend.finishedSeeds() : []).map(String));
+        for (const row of rows) if (row.over && row.map_seed != null) done.add(String(row.map_seed));
+        const live = rows.find(row => !row.over && !done.has(String(row.map_seed)));   // newest live snapshot of an UNFINISHED run
         // Continue = the MOST RECENT playable game. An unfinished run that was
         // never saved to a slot lives only in the crash net, and can be newer
         // than any cloud slot — don't let a stale cloud save shadow it.

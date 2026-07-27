@@ -60,6 +60,7 @@ node tests/heal-limit.mjs      # at most 3 heals/unit per rolling 60s real-time 
 node tests/bridge-resource-shore.mjs # a resource-shored bank is bridgeable; no silent bridge failures
 node tests/barb-sense.mjs      # barbarians attack any land unit, leave when stuck, land smart
 node tests/rival-crossing.mjs  # AI reaches its own works, eats before hoarding, bridges around towers
+node tests/finished-run-continue.mjs # a win never clobbers a save slot; Continue retires the whole run
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -220,3 +221,17 @@ time; each candidate now pays ~10 tiles of detour per KNOWN tower covering it
 (fog-honest — read from `ai.knownB` only). Together: that save goes from "26
 soldiers parked forever" to a six-bridge road over the bay and 20-strong
 parties attacking, within ~60 days.
+
+**Finished run & Continue** (`tests/finished-run-continue.mjs`): winning (or
+losing) must never eat a manual save, and must actually retire Continue.
+`Backend.finalizeRun` used to stamp the final (won) state into the ACTIVE
+cloud slot — whatever slot the player last saved to — so a snapshot taken two
+minutes before the win was replaced by the game-over state. It now never
+touches slot state: it clears the crash net, unbinds the slot, and records
+the run's seed on a local ledger (`Backend.noteFinishedSeed`/`finishedSeeds`,
+deduped, capped at 50). The title's Continue treats a finished run as told in
+ALL its snapshots — a live row whose `map_seed` is on the ledger (or matches
+any row stamped `over`, for legacy saves) is passed over, so an old mid-run
+save of a won game can't resurrect the button. The slots themselves stay
+fully loadable from the Load screen — savescumming is the player's right;
+Continue just doesn't walk back into a told story.

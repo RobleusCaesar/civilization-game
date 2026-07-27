@@ -256,19 +256,35 @@ const Backend = {
     } finally { this._busy = false; }
   },
 
-  // a run just ended: stamp its final (finished) state into the active slot so
-  // Continue knows this story is told, drop the crash net, unbind the slot
+  /* a run just ended: the story is told — drop the crash net, unbind the slot,
+     and remember the SEED so the title's Continue stops offering this run's
+     snapshots. The slot's saved state is left EXACTLY as the player wrote it:
+     this used to stamp the final (won) state into the active slot, which
+     destroyed a manual save taken minutes before the end — the player loaded
+     their snapshot and got the victory screen instead of their village. A
+     saved game is the player's property; the shell only marks the run
+     finished on its own ledger. */
   async finalizeRun() {
     this.clearLocalSnapshot();
-    if (!this.isReady() || !this.activeSlot || !window.S) { this.markActiveSlot(null); return this._err('no_slot', 'No cloud slot bound'); }
-    const slot = this.activeSlot, name = this.activeName || 'Village';
+    this.noteFinishedSeed(window.S && S.seed);
     this.markActiveSlot(null);
-    const json = G.saveJSON();
-    return this.saveSlot(slot, name, JSON.parse(json), {
-      day: S.day, seed: S.seed, landform: S.map.landform,
-      playtime: S.playtime || 0, thumbnail: R.thumb ? R.thumb() : null,
-      version: CFG.SAVE_VERSION,
-    });
+    this.activeName = null;
+    return { ok: true };
+  },
+
+  // the local ledger of finished runs (win or loss), by seed — capped so it
+  // can't grow forever. Continue reads this to grey out told stories.
+  noteFinishedSeed(seed) {
+    if (seed == null) return;
+    try {
+      const k = 'neo-finished-seeds';
+      const list = JSON.parse(localStorage.getItem(k) || '[]');
+      if (!list.includes(String(seed))) list.push(String(seed));
+      localStorage.setItem(k, JSON.stringify(list.slice(-50)));
+    } catch (e) {}
+  },
+  finishedSeeds() {
+    try { return JSON.parse(localStorage.getItem('neo-finished-seeds') || '[]'); } catch (e) { return []; }
   },
 
   snapshotLocal(json) {
