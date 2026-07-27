@@ -180,7 +180,27 @@ const AI = {
     const P = this.persona();
     const rMax = P.walls ? 5 : 7;   // wall-builders keep the town inside the ring
     const isWall = isFortKey;
-    const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2 && offLine(x, y);
+    /* A SITE THE TOWN CANNOT REACH IS NOT A SITE. Every rival building rises
+       under a villager's hammer, so a plot the villagers can't walk to is a
+       ghost: construction=full forever, and `have.<key>` reads as owned so the
+       building is never attempted anywhere else. A real 400-day game had its
+       Sappers' Camp plotted in a sealed pocket between the bay and its own
+       west wall — no hand could ever touch it, so the whole sapper corps
+       (bridges, breaches) stayed disabled for the rest of the game. Candidates
+       must sit in the villagers' own reach network (or right beside it — the
+       builder stands adjacent). Walls/gates are exempt: they sit ON the seam
+       and are raised from the inside face by design. */
+    const reachMask = isFortKey ? null : this.aiLandReach();
+    const canWork = (x, y) => {
+      if (!reachMask) return true;
+      if (reachMask[MapGen.idx(x, y)]) return true;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + ox, ny = y + oy;
+        if (MapGen.inB(nx, ny) && reachMask[MapGen.idx(nx, ny)]) return true;
+      }
+      return false;
+    };
+    const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2 && offLine(x, y) && canWork(x, y);
     // how many of the 8 neighbours are already built on (crowding) — real buildings
     // want ELBOW ROOM so the town reads as a settlement, not a packed maze
     const crowd = (x, y) => { let n = 0; for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) if (Bld.at(x + ox, y + oy)) n++; return n; };
@@ -209,7 +229,7 @@ const AI = {
       }
       if (best) return best;
     }
-    if (key === 'tower') { const s = this.towerSpot(tc); if (s) return s; }
+    if (key === 'tower') { const s = this.towerSpot(tc); if (s && canWork(s.x, s.y)) return s; }
     // score every free tile in the ring for elbow room + dry ground, so the town
     // grows as a spaced-out settlement instead of packing huts wall-to-wall (which
     // is what left a crowded maze the AI then dug moats straight through)
@@ -1985,6 +2005,12 @@ const AI = {
        ctx.breachCost carries the winner's price so _campScore can read it. */
     if (tier >= 2) {
       const F = CFG.TERRAFORM;
+      // a breach under a known tower's arrows is a dead sapper, not a road — the
+      // corps is unarmed and 55hp, so a Lv2 tower kills it in four shots while it
+      // works. Weigh each candidate by the KNOWN towers covering it (fog-honest:
+      // towersK is only what the scouts have actually seen), priced at ~10 tiles
+      // of detour per tower — the chief walks around the killzone like a person.
+      const twThreat = (x, y) => { let n = 0; for (const t of towersK) if (Math.hypot(t.x - x, t.y - y) <= 7.5) n++; return n; };
       let best = null, bs = 1e9, bestCost = 0;
       for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
         const i = idx(x, y); if (reach[i] || Bld.at(x, y) || !adjReach(x, y)) continue;
@@ -1998,7 +2024,7 @@ const AI = {
         else continue;
         // distance to the hall still matters — a cheap cut on the far side of the
         // map is no road at all — but it no longer decides the lane on its own
-        const score = Math.hypot(x - ptc.x, y - ptc.y) + cost * 0.8;
+        const score = Math.hypot(x - ptc.x, y - ptc.y) + cost * 0.8 + twThreat(x, y) * 10;
         if (score < bs) { bs = score; best = { x, y, water }; bestCost = cost; }
       }
       ctx.breach = best;
@@ -2845,9 +2871,54 @@ const AI = {
             if (dd < bd) { bd = dd; best = u; }
           }
           if (!best) break;                    // no hands left alive — the works stand idle
+          /* CAN THIS HAND ACTUALLY STAND AT THE WORKS? A site the town cannot
+             reach (plotted into a sealed pocket by an older save, or the road
+             to it razed/dug away since) must not glue a hand to it forever —
+             Path.find hands back a best-effort route, so the assignment
+             "succeeds" and the villager just stands at the dead end, while the
+             site reads as owned and is never re-attempted anywhere else. A
+             real game had the Sappers' Camp wedged that way for 50+ days,
+             which silently disabled every bridge the chief could have built.
+             Three straight days unreachable and an UNSTARTED site is abandoned
+             (the materials come home) so the utility can re-site it on real
+             ground; an upgrade in the same spot just waits — the building
+             itself is finished and standing. */
+          const route = Path.find(best.x | 0, best.y | 0, site.x, site.y, 'A');
+          const rEnd = route && route.length ? route[route.length - 1] : null;
+          const standable = rEnd &&
+            Math.hypot(rEnd.x + 0.5 - Bld.cx(site), rEnd.y + 0.5 - Bld.cy(site)) <= 1.55 + Bld.reach(site);
+          if (!standable) {
+            site.noReach = (site.noReach || 0) + 1;
+            if (site.noReach >= 3 && site.construction > 0) {
+              const cost = CFG.BUILDINGS[site.key].levels[0].cost;
+              for (const k in cost) ai.res[k] = (ai.res[k] || 0) + cost[k];
+              Bld.removeToRuin(site);
+            }
+            continue;
+          }
+          site.noReach = 0;
           Units.assignBuild(best, site);
           busy.add(site.id);
         }
+      }
+    }
+
+    // A STARVING chief eats its surplus first: with the granary at the floor
+    // and a mountain of goods, the caravan buys FOOD, not gold — an army no
+    // one can feed never marches. A real 400-day game sat at 0 food for months
+    // on 15,000 wood while its sappers, hulls and landing parties all starved
+    // in the training queue; a human player would have traded inside a minute.
+    if ((ai.res.food || 0) < 250) {
+      for (const b of Bld.list('A')) {
+        if (b.key !== 'trade' || !Bld.done(b) || b.upgrading || b.caravan) continue;
+        const need = Bld.tradeSpec(b).input;
+        let best = null, bestAmt = 0;
+        for (const res of CFG.TRADE.goods) {
+          if (res === 'gold' || res === 'food') continue;
+          const amt = ai.res[res] || 0;
+          if (amt >= need + 150 && amt > bestAmt) { bestAmt = amt; best = res; }
+        }
+        if (best) Bld.startTrade(b, 'food', best);
       }
     }
 

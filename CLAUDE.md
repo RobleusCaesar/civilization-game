@@ -59,6 +59,7 @@ node tests/sapper-deselect-heal.mjs # sapper dispatch deselects; sapper heals at
 node tests/heal-limit.mjs      # at most 3 heals/unit per rolling 60s real-time window
 node tests/bridge-resource-shore.mjs # a resource-shored bank is bridgeable; no silent bridge failures
 node tests/barb-sense.mjs      # barbarians attack any land unit, leave when stuck, land smart
+node tests/rival-crossing.mjs  # AI reaches its own works, eats before hoarding, bridges around towers
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -199,3 +200,23 @@ beach along the sail (nearest soft building wins; +8 inside a finished
 tower's/war camp's range, +2.5 per wall/gate within 3 tiles) so longboats
 beach at the soft underbelly instead of the fortified gate the shortest sail
 happened to end at.
+
+**Rival crossing** (`tests/rival-crossing.mjs`): why a 400-day game ended with
+the rival's whole army idle at its own gate, never bridging or landing. Three
+compounding wedges. **Ghost site**: `AI.plot` had no reachability check, so
+the Sappers' Camp was plotted in a sealed pocket its villagers could never
+stand at — construction stayed at day-zero forever, `have.sapper` read as
+owned so no second camp was tried, and with sapper tier stuck at 0 every
+bridge (MUDLARK, stall-breaching) was silently disabled. Prevention: plot
+candidates (and towerSpot picks) must sit in/beside `aiLandReach`;
+walls/gates exempt (they sit ON the seam). Cure: the daily build-crew block
+verifies the hand can STAND at the works — three days unreachable and an
+unstarted site is abandoned (refunded) for re-siting; an upgrade just waits.
+**Famine**: the same save sat at 0 food for months on 15k wood — the Trading
+Post only ever bought gold. A chief under 250 food now sends the caravan for
+FOOD first. **Killzone breach**: probeAssault's breach scorer ignored the
+player's towers, so the 55hp sapper bridged into tower fire and died every
+time; each candidate now pays ~10 tiles of detour per KNOWN tower covering it
+(fog-honest — read from `ai.knownB` only). Together: that save goes from "26
+soldiers parked forever" to a six-bridge road over the bay and 20-strong
+parties attacking, within ~60 days.
