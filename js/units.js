@@ -522,6 +522,7 @@ const Units = {
       }
       u.task = null;
       if (u.owner === 'P') G.log('No shore to land on — sail the transport up against the coast', true);
+      else if (u.owner === 'R') this.sailOff(u);   // the raid is off — never park a full longboat forever
       return;
     }
     // beached — put each soldier on its own open shore tile right beside the hull
@@ -561,6 +562,27 @@ const Units = {
     else if (u.owner === 'P' && cargo.length) G.log('No open shore beside the hull — sail closer to land', true);
     // an emptied raider / rival hull has done its job — beach and abandon it
     if ((u.owner === 'R' || u.owner === 'A') && !cargo.length && S.units.includes(u)) S.units.splice(S.units.indexOf(u), 1);
+    // a barbarian hull that STILL holds warriors it couldn't land gives up the
+    // raid entirely — it must never idle at the coast with a band stuck aboard
+    else if (u.owner === 'R' && cargo.length) this.sailOff(u);
+  },
+
+  // a barbarian longboat that can't put its warriors ashore abandons the raid:
+  // it stands out for the map rim and vanishes there, warriors and all — the
+  // same "melt into the wilds" every stranded land raider gets. If not even
+  // open water leads off the board, it slips away on the spot; the one thing
+  // it never does is float at the coast forever with a full hold.
+  sailOff(u) {
+    const W = CFG.W, H = CFG.H;
+    for (const c of [{ x: u.x | 0, y: 1 }, { x: u.x | 0, y: H - 2 }, { x: 1, y: u.y | 0 }, { x: W - 2, y: u.y | 0 }]) {
+      this.setPath(u, c.x, c.y);
+      const end = u.path && u.path.length ? u.path[u.path.length - 1] : null;
+      if (end && (end.x <= 1 || end.y <= 1 || end.x >= W - 2 || end.y >= H - 2)) {
+        u.task = { type: 'sailoff' };
+        return;
+      }
+    }
+    if (S.units.includes(u)) S.units.splice(S.units.indexOf(u), 1);
   },
 
   // advance along path; returns true when path finished
@@ -684,7 +706,16 @@ const Units = {
       if ((this.isRaider(u) && !this.isTransport(u) && !(u.task && u.task.type === 'flee')) ||
           (u.owner === 'A' && u.task && u.task.type === 'raid')) {
         Combat.raiderSeek(u);
-        if (S.units[i] === u && !u.tUnit && !u.tBld && this.moving(u)) this.followPath(u, dt);
+        if (S.units[i] === u && !u.tUnit && !u.tBld) {
+          if (this.moving(u)) { u.stallT = 0; this.followPath(u, dt); }
+          else if (u.owner === 'R' && (u.stallT = (u.stallT || 0) + dt) > 8) {
+            // BACKSTOP: no prey, no path, going nowhere for 8 straight seconds —
+            // whatever wedged this raider (marooned on water, a pocket with no
+            // exit, a state the seek logic never anticipated), it does not get
+            // to stand around glitching forever. The band melts into the wilds.
+            S.units.splice(i, 1);
+          }
+        }
         continue;
       }
 
@@ -936,6 +967,12 @@ const Units = {
       } else if (t.type === 'unload') {
         if (this.moving(u)) { if (this.followPath(u, dt)) this.disembark(u); }
         else this.disembark(u);
+      } else if (t.type === 'sailoff') {
+        // a defeated longboat stands out to sea; at the rim (or if its route
+        // ever runs dry) it is gone — cargo and all
+        const done = this.followPath(u, dt);
+        if (done || u.x < 2 || u.y < 2 || u.x > CFG.W - 2 || u.y > CFG.H - 2)
+          S.units.splice(i, 1);
       } else if (t.type === 'attackBld') {
         // target destroyed while en route
         u.task = null;

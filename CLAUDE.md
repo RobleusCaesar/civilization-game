@@ -58,6 +58,7 @@ node tests/tower-archer-miss.mjs # Lv1 towers miss 1/3, base archers miss 1/4
 node tests/sapper-deselect-heal.mjs # sapper dispatch deselects; sapper heals at the TC
 node tests/heal-limit.mjs      # at most 3 heals/unit per rolling 60s real-time window
 node tests/bridge-resource-shore.mjs # a resource-shored bank is bridgeable; no silent bridge failures
+node tests/barb-sense.mjs      # barbarians attack any land unit, leave when stuck, land smart
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -180,3 +181,21 @@ calls `bridgeCrossing` (and re-checks `Bld.bridgeAt`), so an invalidated span
 drops the job promptly like any other skipped tile, and a completion-time
 failure (defensively still possible) now toasts a reason instead of finishing
 in silence.
+
+**Barbarian sense** (`tests/barb-sense.mjs`): three rules that keep bands from
+glitching or acting dumb. **Prey**: `Combat.raiderSeek`'s second tier is ANY
+hostile land unit (`!isNaval`), not just villagers — sappers and scouts are
+fair game. **Leave**: a band with nothing reachable commits to an exit march
+(`u.leaving`); while it stands, the per-frame seek is skipped (only foes within
+2.5 tiles get engaged), because `canReach`'s side effect (it sets `u.path` to a
+best-effort route toward whatever it probed) otherwise stomps the exit route
+every frame and reads as "already walking" — the bug that left bands pacing the
+shoreline forever. No road off the board at all → melt away on the spot; a
+units.js backstop also melts any 'R' land unit idle (no target, no path) for 8
+straight seconds. **Sea**: a barbarian transport that can't land its warriors
+`sailOff`s for the rim and despawns, cargo and all — it never parks with a full
+hold; and the landing site comes from `Combat.pickLanding`, which scores every
+beach along the sail (nearest soft building wins; +8 inside a finished
+tower's/war camp's range, +2.5 per wall/gate within 3 tiles) so longboats
+beach at the soft underbelly instead of the fortified gate the shortest sail
+happened to end at.

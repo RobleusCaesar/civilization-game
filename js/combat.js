@@ -129,17 +129,30 @@ const Combat = {
   },
 
   // A raider with nothing left it can reach heads for the wilds. At the rim it
-  // vanishes; if no rim is reachable (stranded across a severed crossing) it
-  // simply slips away rather than milling in place forever.
+  // vanishes; if no rim is reachable (stranded across a severed crossing, or
+  // marooned off its longboat) it simply slips away rather than milling in
+  // place forever. The exit is a COMMITTED march stored on u.leaving: while it
+  // stands, raiderSeek stops re-planning toward prey every frame — those
+  // best-effort setPath calls (canReach's side effect) would stomp the exit
+  // route and read as "already walking", which left bands pacing the
+  // shoreline forever instead of ever getting off the board.
   raiderLeave(u) {
     if (u.x < 2 || u.y < 2 || u.x > CFG.W - 2 || u.y > CFG.H - 2) {
-      S.units.splice(S.units.indexOf(u), 1);
+      S.units.splice(S.units.indexOf(u), 1);   // reached the wilds — gone for good
       return;
     }
-    if (Units.moving(u)) return;            // already trudging out — let it walk
-    const edge = this.nearestEdgeTile(u);
-    if (!edge) { S.units.splice(S.units.indexOf(u), 1); return; }
-    Units.setPath(u, edge.x, edge.y);
+    if (u.leaving && Units.moving(u)) return;   // trudging out — let it walk
+    const goal = u.leaving || this.nearestEdgeTile(u);
+    if (goal) {
+      Units.setPath(u, goal.x, goal.y);
+      const end = u.path && u.path.length ? u.path[u.path.length - 1] : null;
+      if (end && (end.x <= 1 || end.y <= 1 || end.x >= CFG.W - 2 || end.y >= CFG.H - 2)) {
+        u.leaving = { x: goal.x, y: goal.y };   // the road out still stands — march it
+        return;
+      }
+    }
+    // no road off the board from here — the band melts into the wilds
+    S.units.splice(S.units.indexOf(u), 1);
   },
 
   // is the rival town on the line with too few soldiers to hold it? When an
@@ -482,18 +495,36 @@ const Combat = {
     if (u.owner === 'A') return this.aiRaidSeek(u);   // rival parties think tactically
     const disp = u.owner === 'R' ? (u.hostileTo || 'P') : 'P';
     const owners = disp === 'ALL' ? ['P', 'A'] : [disp];
-    // priority of prey: soldiers first, then villagers, then buildings. The
-    // hostileUnits check means an anyone-hating band that reaches the gates
-    // mid-siege wades into the rival's raiders too — three-way brawls happen
-    // (barbarian warriors count as soldiers for everyone hunting them).
+    // COMMITTED TO LEAVING — walk the stored exit and plan nothing else. Without
+    // this, the full seek below re-ran every frame and its best-effort setPath
+    // calls stomped the exit route (canReach's side effect reads as "already
+    // walking"), leaving the band pacing the shore forever. A departing band
+    // still cuts down whatever stands directly in its way, nothing more.
+    if (u.owner === 'R' && u.leaving) {
+      const near = this.nearestUnit(u.x, u.y, 2.5,
+        o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o));
+      if (near && this.canReach(u, near.x, near.y, 1.6)) { u.tUnit = near.id; u.leaving = null; return; }
+      if (near) u.path = null;   // drop canReach's best-effort route — it is NOT the exit march
+      this.raiderLeave(u);
+      return;
+    }
+    // priority of prey: soldiers first, then ANY other land unit — villagers,
+    // sappers, scouts: a barbarian doesn't spare the help just because it
+    // carries a spade instead of a spear. The hostileUnits check means an
+    // anyone-hating band that reaches the gates mid-siege wades into the
+    // rival's raiders too — three-way brawls happen (barbarian warriors count
+    // as soldiers for everyone hunting them).
     const fighter = o => Units.isMilitary(o) || (o.owner === 'R' && !Units.isTransport(o));
     const foe = this.nearestUnit(u.x, u.y, 6,
         o => this.hostileUnits(u, o) && fighter(o) && this.canEngage(u, o))
       || this.nearestUnit(u.x, u.y, 6,
-        o => this.hostileUnits(u, o) && Units.isVillager(o) && this.canEngage(u, o));
+        o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o));
     // only lock on if the prey is actually reachable — otherwise a band across a
     // severed crossing would freeze staring at a foe it can never close with
-    if (foe && this.canReach(u, foe.x, foe.y, 1.6)) { u.tUnit = foe.id; return; }
+    if (foe) {
+      if (this.canReach(u, foe.x, foe.y, 1.6)) { u.tUnit = foe.id; return; }
+      u.path = null;   // drop canReach's best-effort route before deciding what's next
+    }
     // barbarians loot and burn everything EXCEPT Town Centers — razing a
     // tribe's heart is normally beyond them, so they can't win the game for
     // anyone; once the rest is ash they wander off the map for good.
@@ -765,6 +796,50 @@ const Combat = {
     }
   },
 
+  /* SCORED LANDING — the longboat beaches like a thinking raider, not a ferry.
+     The old pick ("first open beach nearest the prey") put the band ashore at
+     whatever coast the shortest sail ended on — which, against a fortified
+     waterfront, is exactly the gate: the best-defended tiles on the map. Now
+     EVERY beach along the sail is a candidate, scored the way the rival AI
+     reads a town: closest to the soft underbelly (houses, farms, works —
+     anything that isn't a fortification) wins, and a beach under a finished
+     tower's / war camp's arrows or right against the wall line pays heavily
+     for it. Landing clear of the defenses and walking in beats stepping off
+     the gangplank into arrow fire.
+     `cells` — the water tiles of the sail (start + route); `tgt` — the prey's
+     Town Center (its owner scopes whose defenses/soft targets count); `open` —
+     the wilderness-reachability mask (null = everywhere), same gate the land
+     spawns use so a landing never materializes inside a sealed ring. */
+  pickLanding(cells, tgt, open) {
+    const HARD = { wall: 1, gate: 1, tower: 1, warcamp: 1 };
+    const seen = new Set();
+    let landing = null, bestS = Infinity;
+    for (const cell of cells) {
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const lx = cell.x + ox, ly = cell.y + oy, key = lx + ',' + ly;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (!Path.passable(lx, ly) || (open && !open[MapGen.idx(lx, ly)])) continue;
+        let soft = Infinity, threat = 0;
+        for (const b of S.buildings) {
+          if (b.owner !== tgt.owner) continue;
+          const d = Math.hypot(Bld.cx(b) - (lx + 0.5), Bld.cy(b) - (ly + 0.5));
+          if (!HARD[b.key]) { if (d < soft) soft = d; continue; }
+          if (!Bld.done(b)) continue;   // a half-built tower shoots nothing
+          if (b.key === 'tower' || b.key === 'warcamp') {
+            const rng = (CFG.BUILDINGS[b.key].levels[(b.level || 1) - 1] || {}).range || 4.5;
+            if (d <= rng + 1.5) threat += 8;   // ashore under fire — close to disqualifying
+          } else if (d <= 3) threat += 2.5;    // beaching right against the wall line
+        }
+        // a town of nothing but walls: fall back to closing on the hall
+        if (soft === Infinity) soft = Math.hypot(Bld.cx(tgt) - (lx + 0.5), Bld.cy(tgt) - (ly + 0.5));
+        const s = soft + threat;
+        if (s < bestS) { bestS = s; landing = { x: lx, y: ly }; }
+      }
+    }
+    return landing;
+  },
+
   /* barbarian war-band spawning, called from the day tick */
   maybeWave() {
     if (S.day < S.wave.next) return;
@@ -813,15 +888,7 @@ const Combat = {
       if (edges.length && tgt) {
         const start = edges[(G.rand() * edges.length) | 0];
         const route = Path.find(start.x, start.y, tgt.x, tgt.y, 'R', 'water') || [];
-        // walk back from the water tile nearest the target to the first open beach
-        const cells = [{ x: start.x, y: start.y }].concat(route);
-        let landing = null;
-        for (let ci = cells.length - 1; ci >= 0 && !landing; ci--) {
-          for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-            const lx = cells[ci].x + ox, ly = cells[ci].y + oy;
-            if (Path.passable(lx, ly) && (!open || open[MapGen.idx(lx, ly)])) { landing = { x: lx, y: ly }; break; }
-          }
-        }
+        const landing = this.pickLanding([{ x: start.x, y: start.y }].concat(route), tgt, open);
         if (landing) {
           const kindT = S.wave.count >= 5 ? 'bigtransport' : 'transport';
           const tr = Units.spawn(kindT, 'R', start.x, start.y);
