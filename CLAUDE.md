@@ -77,6 +77,19 @@ single source of truth for where the line runs — never hard-code the radius.
 **The ring must never seal the town in** (`AI.townOut` / `wallWouldSeal` /
 `openTheGate`): a sealed ring has no seams, so `read.homeGapCount` is 0 and the
 wall utility never runs — which is why the check lives in `digAndProtect`.
+**And the ring is not the whole truth** (POCKET CORK, same test): `townOut`
+only checks Chebyshev-R escape from the hall, so a town backed into a terrain
+pocket BIGGER than its ring reads "open" while a wall line plugging the
+pocket's one pass has sealed the army off the map — a real day-208 game corked
+its only pass with a straight 8-section line, no gate anywhere. Ground truth
+is `AI.corkedGround` (flood the army's ground as-is vs pretending own walls
+open; ≥24 tiles hidden behind own stone = corked — and a wall SITE under
+construction counts as solid in the strict flood, or two half-built sections
+of the closing line would vouch for each other). Cure: `AI.cutTheCork`, run
+daily from `maybeWalls` BEFORE its wood gate (cutting is free; a broke sealed
+town still frees its army). Prevention: the cork check joins `wallWouldSeal`
+in the placement clamps (maybeWalls budget loop, mendWallLine breach-close);
+gates stay exempt — a gate opens for its owner.
 
 **Siege progress** (`tests/siege-progress.mjs`, details in `RIVAL_AI.md`): walls
 and gates are ordinary entries in `S.buildings`, so "a building was destroyed"

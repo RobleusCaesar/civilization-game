@@ -255,6 +255,56 @@ const out = await p.evaluate(() => {
     const after = doors();
     ck('noDoors', before > 0 && after === 0, `${before} doors -> ${after}`);
   }
+
+  /* ---- 8. POCKET CORK: the army must be able to MARCH. townOut() polices
+     the RING (Chebyshev-R escape), so a town backed into a terrain pocket
+     BIGGER than its ring reads "open" even when a wall line plugging the
+     pocket's one pass has sealed the army off the map — a real day-208 game
+     corked its only pass with a straight 8-section line, no gate anywhere,
+     and parked its whole host. Ground truth is corkedGround (flood as-is vs
+     flood pretending own walls open); the cure is cutTheCork (raze the cork,
+     daily, even when broke); prevention is the cork clamp in maybeWalls /
+     mendWallLine (never lay the corking stone — and a SITE under
+     construction counts as a wall-to-be, or two half-built sections of the
+     closing line would vouch for each other). ---- */
+  {
+    const tc = setup('wg8');
+    tc.x = 30; tc.y = 12; Bld._block = null;
+    for (let y = 4; y <= 20; y++) for (let x = 20; x <= 44; x++)
+      if (MapGen.inB(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.GRASS;
+    // the pocket: water-ringed x 27..37 / y 7..17, one 3-wide pass west at x=26
+    for (let y = 6; y <= 18; y++) for (const x of [26, 38])
+      if (!(x === 26 && y >= 11 && y <= 13)) S.map.terrain[MapGen.idx(x, y)] = T.WATER;
+    for (let x = 26; x <= 38; x++) for (const y of [6, 18]) S.map.terrain[MapGen.idx(x, y)] = T.WATER;
+    S.ai.res = { food: 900, wood: 900, stone: 900, gold: 900 };
+    S.ai.acts = 99;
+    const pass = [[26, 11], [26, 12], [26, 13]];
+    for (const [x, y] of pass) Bld.place('A', 'wall', x, y, { free: true, instant: true });
+    const wallsN = () => S.buildings.filter(b2 => b2.owner === 'A' && b2.key === 'wall').length;
+    const n0 = wallsN();
+    ck('ringIllusion', AI.townOut(tc) === true, 'the pocket outsizes the ring, so townOut reads open');
+    ck('mapTruthSeesTheCork', !!AI.corkedGround(tc), '');
+    // the cure — and it must run even when the tribe is BROKE (the daily hook
+    // sits before maybeWalls' wood gate)
+    S.ai.res.wood = 0;
+    AI.maybeWalls(tc);
+    const n1 = wallsN();
+    const opened = pass.find(([x, y]) => !Bld.at(x, y));
+    ck('corkIsCut', n1 === n0 - 1 && !!opened && !AI.corkedGround(tc), `walls ${n0}->${n1}`);
+    const path = Path.find(31, 12, 21, 12, 'A');
+    const end = path && path.length ? path[path.length - 1] : null;
+    ck('armyMarchesOut', !!end && Math.hypot(end.x - 21, end.y - 12) < 1.1,
+      end ? `path ends at ${end.x},${end.y}` : 'no path');
+    // prevention — the clamp refuses the re-corking stone on the cut tile
+    ck('clampRefusesTheCorkingStone', !!AI.corkedGround(tc, { x: opened[0], y: opened[1] }), '');
+    // intent counts — a SITE on the cut tile corks just the same, even though
+    // movement still passes through it while it raises
+    S.ai.res.wood = 900;
+    const site = Bld.place('A', 'wall', opened[0], opened[1]);
+    ck('siteIsAWallToBe', !!site && site.construction > 0 && !!AI.corkedGround(tc),
+      site ? `construction=${+site.construction.toFixed(2)}` : 'site failed to place');
+    if (site) Bld.removeToRuin(site);
+  }
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

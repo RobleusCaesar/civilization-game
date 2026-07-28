@@ -545,6 +545,115 @@ const AI = {
   // would walling this tile shut the town in? (cheap: only asked about ring tiles)
   wallWouldSeal(tc, x, y) { return this.townOut(tc) && !this.townOut(tc, { x, y }); },
 
+  /* THE ARMY MUST BE ABLE TO MARCH (tests/wall-line.mjs, POCKET CORK).
+     townOut() polices the RING — a Chebyshev-R escape from the hall. But a
+     town backed into a terrain pocket bigger than its ring reads "open" the
+     moment the flood clears R, even when a wall line plugging the pocket's
+     one pass has sealed the whole army off the map. A real day-208 game: a
+     straight 8-section line corked the only pass — no gate anywhere — then
+     the build cycles added seven MORE sections and the raiders parked at
+     their own wall forever. Ground truth instead: flood the army's ground
+     as it is, flood it again pretending our own walls are open — if the
+     walls are hiding >= 24 tiles of marchable ground, they are the cork. */
+  // 4-dir flood for 'A' from (sx,sy); ignoreOwnForts pretends our wall/gate
+  // tiles are open ground; blockIdx (MapGen.idx or -1) is an extra solid tile.
+  // INTENT COUNTS in the strict flood: a wall SITE under construction is
+  // passable to movement (Bld.rebuildBlock skips it) but solid here — or two
+  // half-built sections of the same closing line would vouch for each other
+  // and the cork check would approve the seal one stone at a time.
+  _reachA(sx, sy, ignoreOwnForts, blockIdx) {
+    const W = CFG.W, seen = new Uint8Array(W * CFG.H);
+    if (!MapGen.inB(sx, sy)) return seen;
+    const q = [MapGen.idx(sx, sy)]; seen[q[0]] = 1;
+    let head = 0;
+    while (head < q.length) {
+      const i = q[head++], x = i % W, y = (i / W) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (!MapGen.inB(nx, ny)) continue;
+        const ni = MapGen.idx(nx, ny);
+        if (seen[ni] || ni === blockIdx) continue;
+        let ok = Path.passable(nx, ny, 'A');
+        const bb = ok || ignoreOwnForts ? Bld.at(nx, ny) : null;
+        if (ok && !ignoreOwnForts && bb && bb.construction > 0 &&
+            (bb.key === 'wall' || (bb.key === 'gate' && bb.owner !== 'A'))) ok = false;   // a site is a wall-to-be
+        if (!ok && ignoreOwnForts) {
+          ok = !!(bb && bb.owner === 'A' && (bb.key === 'wall' || bb.key === 'gate')) &&
+            !Path.blocksLand(S.map.terrain[ni]);
+        }
+        if (!ok) continue;
+        seen[ni] = 1; q.push(ni);
+      }
+    }
+    return seen;
+  },
+  _townSeed(tc) {
+    const s = Bld.size('tc');
+    for (let k = -1; k <= s; k++)
+      for (const [x, y] of [[tc.x + k, tc.y - 1], [tc.x + k, tc.y + s], [tc.x - 1, tc.y + k], [tc.x + s, tc.y + k]])
+        if (Path.passable(x, y, 'A')) return { x, y };
+    return null;
+  },
+  // are our own walls (plus `cand`, if we laid it) corking the army into a
+  // pocket? Returns {now, open, gained} when >= 24 tiles of marchable ground
+  // (fort tiles themselves excluded) exist only on the far side of our stone.
+  corkedGround(tc, cand) {
+    const seed = this._townSeed(tc); if (!seed) return null;
+    const W = CFG.W;
+    const now = this._reachA(seed.x, seed.y, false, cand ? MapGen.idx(cand.x, cand.y) : -1);
+    const open = this._reachA(seed.x, seed.y, true, -1);
+    const fortAt = new Uint8Array(W * CFG.H);
+    for (const b of S.buildings)
+      if (b.owner === 'A' && (b.key === 'wall' || b.key === 'gate')) fortAt[MapGen.idx(b.x, b.y)] = 1;
+    let gained = 0;
+    for (let i = 0; i < open.length; i++) if (open[i] && !now[i] && !fortAt[i]) gained++;
+    return gained >= 24 ? { now, open, fortAt, gained } : null;
+  },
+  // the cure: raze the own wall section between reached and corked ground that
+  // opens the most for the cheapest stone. memory.sealed makes the next build
+  // cycle gate the hole; the cork clamp refuses the re-corking stone anyway.
+  cutTheCork(tc) {
+    const pen = this.corkedGround(tc);
+    if (!pen) return false;
+    let best = null, bs = -1e9;
+    for (const b of S.buildings) {
+      if (b.owner !== 'A' || b.key !== 'wall') continue;   // an own gate never bars its owner
+      let inSide = 0, outSide = 0;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const x = b.x + ox, y = b.y + oy;
+        if (!MapGen.inB(x, y)) continue;
+        const i = MapGen.idx(x, y);
+        if (pen.now[i]) inSide++;
+        else if (pen.open[i] && !pen.fortAt[i]) outSide++;
+      }
+      if (!inSide || !outSide) continue;                   // not the cork
+      const s = outSide * 2 - (b.level || 1) + G.rand();   // most opened, cheapest stone
+      if (s > bs) { bs = s; best = b; }
+    }
+    if (!best) {
+      // a DOUBLE line: no single section touches both sides. Peel it — cut the
+      // reachable section closest to the corked ground; tomorrow's pass finds
+      // the next layer a direct cork and the cut converges.
+      const corked = [];
+      for (let i = 0; i < pen.open.length && corked.length < 200; i++)
+        if (pen.open[i] && !pen.now[i] && !pen.fortAt[i]) corked.push([i % CFG.W, (i / CFG.W) | 0]);
+      for (const b of S.buildings) {
+        if (b.owner !== 'A' || b.key !== 'wall') continue;
+        if (![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ox, oy]) =>
+          MapGen.inB(b.x + ox, b.y + oy) && pen.now[MapGen.idx(b.x + ox, b.y + oy)])) continue;
+        let dd = 1e9;
+        for (const [cx2, cy2] of corked) dd = Math.min(dd, Math.hypot(b.x - cx2, b.y - cy2));
+        const s = -dd - (b.level || 1) * 0.3 + G.rand() * 0.2;
+        if (s > bs) { bs = s; best = b; }
+      }
+    }
+    if (!best) return false;
+    Bld.removeToRuin(best);
+    if (S.ai.memory) S.ai.memory.sealed = S.day;
+    G.foeNote('The rival tears a doorway through its own wall — its host can march again');
+    return true;
+  },
+
   /* SELF-HEAL — the town is already shut. Cut a gate on the ring tile with the
      best ground beyond it (never onto water, which is what made the old gate
      useless), preferring a plain wall section over anything else. Saves that
@@ -593,7 +702,7 @@ const AI = {
     for (const h of audit.breach) {
       if (!this.affordFree(CFG.BUILDINGS.wall.levels[0].cost)) break;
       // …but a "breach" that is the town's LAST WAY OUT is a gate, not a hole
-      if (this.wallWouldSeal(tc, h.x, h.y)) continue;
+      if (this.wallWouldSeal(tc, h.x, h.y) || this.corkedGround(tc, h)) continue;
       if (Bld.canPlace('A', 'wall', h.x, h.y).ok && Bld.place('A', 'wall', h.x, h.y)) { fix.breach++; return true; }
     }
     return false;
@@ -601,10 +710,16 @@ const AI = {
 
   maybeWalls(tc) {
     const P = this.persona(), ai = S.ai, read = ai.read || {};
+    // ALREADY SHUT IN — cut a way out before anything else, and BEFORE the
+    // wood gate below: cutting a door costs nothing, and a broke sealed town
+    // must still free its army. Two flavours of shut: the RING sealed
+    // (townOut), and the POCKET sealed (corkedGround — ring-open by the
+    // flood, map-sealed in truth; see the cork notes above).
+    if (Bld.forts('A').length) {
+      if (!this.townOut(tc)) { this.openTheGate(tc); return; }
+      if (this.cutTheCork(tc)) return;
+    }
     if (S.day < 16 || ai.res.wood < 45) return;
-    // ALREADY SHUT IN — cut a way out before anything else. Nothing the ring can
-    // do for a town whose army can't leave it.
-    if (Bld.forts('A').length && !this.townOut(tc)) { this.openTheGate(tc); return; }
     // RULES 2+3 — a hole in the standing ring outranks every metre of new frontage
     if (this.mendWallLine(tc)) return;
     // a ring already at the limit of what this economy can re-tier: stop laying
@@ -660,7 +775,11 @@ const AI = {
         const key = isGate ? 'gate' : 'wall';
         // NEVER LAY THE STONE THAT SHUTS US IN. A gate is passable, so it can
         // always go up; a wall may not be the last section closing the ring.
-        if (!isGate && this.wallWouldSeal(tc, x, y)) continue;
+        // never lay the CORKING stone: wallWouldSeal polices the ring, the
+        // cork check polices the map — a section that would cut the army off
+        // from >= 24 tiles of marchable ground is refused (gates exempt: a
+        // gate opens for its owner)
+        if (!isGate && (this.wallWouldSeal(tc, x, y) || this.corkedGround(tc, { x, y }))) continue;
         // THE RING NEVER RAIDS THE WAR CHEST. Walling ran outside the savings
         // reservation, so a chief saving for its next Town Center tier spent the
         // fund on palisade a fistful at a time and never got there (a real game
