@@ -221,7 +221,17 @@ player's towers, so the 55hp sapper bridged into tower fire and died every
 time; each candidate now pays ~10 tiles of detour per KNOWN tower covering it
 (fog-honest — read from `ai.knownB` only). Together: that save goes from "26
 soldiers parked forever" to a six-bridge road over the bay and 20-strong
-parties attacking, within ~60 days.
+parties attacking, within ~60 days. **Pointless breach** (a day-212 save): the
+scorer also never asked whether a cut OPENS anything, so MUDLARK bridged a
+one-tile inlet whose both banks were the same shore — walkable around, aimed
+at a lake the corps could never cross. `AI._breachOpens` now gates every
+sapper-employment site (breach scorer, stall-breacher, offensive line walk):
+a cut counts only if it borders passable ground the army can't already reach,
+or the lane can genuinely continue tile by tile — each further water tile
+must be REALLY spannable (bridgeCrossing's land-on-opposite-sides rule, the
+lane's own opened tiles counting as landings like built bridges do) or
+clearable/reclaimable at tier. Open water fails: a mid-lake deck has water on
+both far sides, and always will.
 
 **Finished run & Continue** (`tests/finished-run-continue.mjs`): winning (or
 losing) must never eat a manual save, and must actually retire Continue.

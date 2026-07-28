@@ -35,6 +35,23 @@
       detour per known tower covering it (7.5 = max tower range + margin) —
       fog-honest, read from ai.knownB only.
 
+   4. POINTLESS BREACH (a second save, day 212) — the scorer also never asked
+      whether a cut OPENS anything. A one-tile inlet at a lake's southern
+      tip is bridgeable and sits nearest the hall, so MUDLARK marched its
+      sapper across the map to bridge water whose both banks were the SAME
+      shore — walkable around the notch, the bridge changed nothing, aimed
+      at a lake the corps could never actually cross. `AI._breachOpens` now
+      gates every sapper-employment site (the campaign breach scorer, the
+      stall-breacher, the offensive line walk): a cut counts only if the
+      opened tile borders passable ground the army cannot already reach, OR
+      the lane can genuinely CONTINUE tile by tile — each further water tile
+      must be really spannable (the same land-on-opposite-sides rule as
+      Terraform.bridgeCrossing, with the lane's own opened tiles counting as
+      landings, exactly as built bridges do) or clearable/reclaimable at the
+      corps' tier. Open water fails — a mid-lake deck has water on both far
+      sides, and always will. On the day-212 save this stands MUDLARK down
+      the same day and the silly bridge is never built.
+
    With all three fixed, the 400-day save goes from "26 soldiers idle at the
    gate forever" to a bridge road built across the bay and raid parties of 20
    fighting on the player's side, within ~60 simulated days.
@@ -159,6 +176,30 @@ const out = await p.evaluate(() => {
       JSON.stringify(post.caravan));
   }
 
+  /* controlled geography for the breach tests: a TRUE island (water on every
+     side) holding the "hall" the chief knows, separated from the reachable
+     shore by a 1-wide channel on its west. Spans are the channel tiles left
+     with land on both opposite sides. The island must be genuinely sealed —
+     grass wrapping around the channel ends would let the army simply walk
+     there, and the honest breach gate (_breachOpens) would rightly call
+     every span pointless. */
+  const carveIsland = (bx, by, spanYs) => {
+    for (let dy = -5; dy <= 13; dy++) for (let dx = -7; dx <= 7; dx++) T2(bx + dx, by + dy, T.GRASS);
+    // the water frame that seals the island (columns bx..bx+3). North, south
+    // and east run TWO tiles thick — a 1-thick frame tile has land on both
+    // opposite sides and is itself a perfectly good crossing, which the
+    // honest breach scorer will happily take; the west channel's spans must
+    // be the only bridgeable way in.
+    for (let dy = -4; dy <= 12; dy++) T2(bx - 1, by + dy, T.WATER);           // west channel
+    for (let dy = -4; dy <= 12; dy++) { T2(bx + 4, by + dy, T.WATER); T2(bx + 5, by + dy, T.WATER); }
+    for (let dx = -1; dx <= 5; dx++) {
+      T2(bx + dx, by - 3, T.WATER); T2(bx + dx, by - 4, T.WATER);
+      T2(bx + dx, by + 11, T.WATER); T2(bx + dx, by + 12, T.WATER);
+    }
+    // widen the channel beside every non-span tile so only the spans are bridgeable
+    for (let dy = -4; dy <= 12; dy++) { const y = by + dy; if (!spanYs.includes(y)) T2(bx - 2, y, T.WATER); }
+  };
+
   // ---- 6. the breach lane detours around KNOWN tower fire: with a tower
   //         guarding the near span, the chief bridges the far one ----
   {
@@ -166,18 +207,10 @@ const out = await p.evaluate(() => {
     // a tier-2 corps
     const camp = Bld.place('A', 'sapper', atc.x + 2, atc.y + 2, { free: true, instant: true });
     camp.level = 2; camp.maxhp = CFG.BUILDINGS.sapper.levels[1].hp; camp.hp = camp.maxhp;
-    /* controlled geography far from real towns: a water basin holding an
-       unreachable island "hall", with exactly two 1-tile bridgeable spans off
-       the reachable shore — span A right by the hall, span B 8 tiles south */
-    const bx = 25, by = 14;                     // basin centre ("hall" the chief knows)
-    for (let dy = -3; dy <= 11; dy++) for (let dx = -3; dx <= 3; dx++) T2(bx + dx, by + dy, T.GRASS);
-    for (let dy = -2; dy <= 10; dy++) T2(bx - 1, by + dy, T.WATER);   // the channel wall between shore and island
-    // spans: water tiles in the channel with land on both sides (E–W crossings)
-    // channel column is x = bx-1; land at bx-2 (shore) and bx (island strip)
+    const bx = 25, by = 14;                     // island "hall" the chief knows
     const spanA = { x: bx - 1, y: by };          // nearest the "hall"
     const spanB = { x: bx - 1, y: by + 8 };      // the long way round
-    // make everything in the channel EXCEPT the spans unbridgeable: widen to 2 tiles
-    for (let dy = -2; dy <= 10; dy++) { const y = by + dy; if (y !== spanA.y && y !== spanB.y) T2(bx - 2, y, T.WATER); }
+    carveIsland(bx, by, [spanA.y, spanB.y]);
     G.updateVisibility();
     const read = { knownTC: { x: bx, y: by, seen: S.day } };
     S.ai.posture = 'PUSH';
@@ -191,6 +224,34 @@ const out = await p.evaluate(() => {
     const farFromTower = seen && seen.breach && Math.hypot(seen.breach.x - (bx - 3), seen.breach.y - by) > 7.5;
     ck('breachDetoursAroundKnownTower', !!farFromTower,
       JSON.stringify(seen && seen.breach));
+  }
+
+  // ---- 7. a bridge that OPENS nothing is never chosen: the inlet notch
+  //         beside the hall loses to the real crossing eight tiles round ----
+  {
+    const atc = setup('rc7');
+    const camp = Bld.place('A', 'sapper', atc.x + 2, atc.y + 2, { free: true, instant: true });
+    camp.level = 2; camp.maxhp = CFG.BUILDINGS.sapper.levels[1].hp; camp.hp = camp.maxhp;
+    const bx = 25, by = 14;
+    const realSpan = { x: bx - 1, y: by + 8 };   // the ONLY span that reaches the island
+    carveIsland(bx, by, [realSpan.y]);
+    // the DECOY: a one-tile inlet biting into the reachable shore right by the
+    // hall — bridgeable (land both banks), walkable AROUND, three tiles out.
+    // The exact "silly bridge" of a real day-212 game: nearest the hall,
+    // cheapest tool, opens absolutely nothing.
+    const notch = { x: bx - 5, y: by };
+    T2(notch.x, notch.y, T.WATER);
+    G.updateVisibility();
+    const reach = AI.aiLandReach();
+    const aim = { x: bx, y: by };
+    ck('notchIsGenuinelyBridgeable', !!Terraform.bridgeCrossing(notch.x, notch.y, 'A'), '');   // the bait is real
+    ck('notchOpensNothing', !AI._breachOpens(notch.x, notch.y, aim, reach, 2), '');
+    ck('realSpanOpensTheIsland', AI._breachOpens(realSpan.x, realSpan.y, aim, reach, 2) === true, '');
+    S.ai.posture = 'PUSH';
+    const ctx = AI.probeAssault({ knownTC: { x: bx, y: by, seen: S.day } }, reach);
+    ck('breachSkipsTheNotchForTheRealSpan',
+      !!(ctx && ctx.breach && ctx.breach.x === realSpan.x && Math.abs(ctx.breach.y - realSpan.y) <= 1),
+      JSON.stringify(ctx && ctx.breach));
   }
 
   return { res, fails };

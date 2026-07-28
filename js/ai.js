@@ -1730,6 +1730,60 @@ const AI = {
     if (guard) { guard.task = { type: 'move', x: gx, y: gy }; guard.anchor = { x: gx + 0.5, y: gy + 0.5 }; Units.setPath(guard, gx, gy); }
   },
 
+  /* Does opening (x,y) actually OPEN anything? Two honest questions, either
+     may say yes:
+       1. Does the cut tile itself border passable ground the army canNOT
+          already reach? Then one cut connects it — a real lane.
+       2. If not, the lane must be able to CONTINUE tile by tile: march
+          toward the aim, virtually opening each lane tile as we go, and ask
+          of every water tile whether a deck could REALLY be laid there —
+          the same land-on-opposite-sides rule as Terraform.bridgeCrossing,
+          with the lane's already-opened tiles counting as landings, exactly
+          as built bridges do. Open water fails (a mid-lake deck has water
+          on both far sides, and always will); a strait, a 2-wide neck with
+          land beyond, or a tier-3 clear/reclaim chain passes.
+     A one-tile inlet at a lake's southern tip fails both — its banks are
+     the same shore (walkable around the notch) and the lake beyond has no
+     spannable run — which is exactly the "silly bridge" a real game's
+     sapper spent days marching to, aimed at water it could never actually
+     cross. Every sapper-employment site (the campaign breach scorer, the
+     stall-breacher, the offensive line walk) asks this before committing
+     the corps to a tile. `reach` is the owner-aware land mask
+     (aiLandReach); no mask / no aim → judge nothing, allow. */
+  _breachOpens(x, y, aim, reach, tier) {
+    if (!reach || !aim) return true;
+    if (tier == null) tier = Units.sapperTier('A');
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + ox, ny = y + oy;
+      if (MapGen.inB(nx, ny) && Path.passable(nx, ny, 'A') && !reach[MapGen.idx(nx, ny)]) return true;
+    }
+    const opened = new Set([x + ',' + y]);
+    // could this tile serve as a deck's landing, once the lane reaches it?
+    const landV = (nx, ny) => {
+      if (!MapGen.inB(nx, ny)) return false;
+      if (opened.has(nx + ',' + ny)) return true;   // a lane tile we will have opened by then
+      const t = S.map.terrain[MapGen.idx(nx, ny)];
+      if (t === T.WATER || t === T.MOAT) return !!(S.map.bridge && S.map.bridge[MapGen.idx(nx, ny)]);
+      if (Terraform.CLEARABLE[t]) return tier >= 3;   // a landing the corps can clear
+      return Path.passable(nx, ny, 'A');
+    };
+    const spannableV = (nx, ny) => (landV(nx - 1, ny) && landV(nx + 1, ny)) ||
+                                   (landV(nx, ny - 1) && landV(nx, ny + 1));
+    const dx = aim.x - x, dy = aim.y - y, len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    for (let s = 1; s <= 8; s++) {
+      const nx = Math.round(x + ux * s), ny = Math.round(y + uy * s);
+      if (!MapGen.inB(nx, ny)) return false;
+      if (Path.passable(nx, ny, 'A')) return !reach[MapGen.idx(nx, ny)];
+      const t = S.map.terrain[MapGen.idx(nx, ny)], water = (t === T.WATER || t === T.MOAT);
+      if (water && tier >= 2 && spannableV(nx, ny)) { opened.add(nx + ',' + ny); continue; }
+      if (water && tier >= 3 && Terraform.isMoundable(nx, ny, 'A')) { opened.add(nx + ',' + ny); continue; }
+      if (!water && tier >= 3 && Terraform.isClearable(nx, ny)) { opened.add(nx + ',' + ny); continue; }
+      return false;   // a belt the corps has no tool for — that is no lane
+    }
+    return false;     // eight tiles of barrier toward the aim — that is no lane
+  },
+
   /* OFFENSIVE breach — walk the line from our hall toward the player's and clear
      the first resource wall (tier 3) or bridge the first water (tier 2) that
      blocks it, opening a shorter/surprise attack lane the army then routes
@@ -1737,11 +1791,13 @@ const AI = {
   offensiveBreach(idle, read) {
     const atc = Bld.tcOf('A'), ptc = read.knownTC; if (!atc || !ptc) return false;
     const tier = Units.sapperTier('A');
+    const reach = this.aiLandReach();
     const dx = ptc.x - atc.x, dy = ptc.y - atc.y, len = Math.hypot(dx, dy) || 1;
     const ux = dx / len, uy = dy / len;
     for (let s = 3; s < len - 2; s++) {
       const x = Math.round(atc.x + ux * s), y = Math.round(atc.y + uy * s);
       if (!MapGen.inB(x, y)) continue;
+      if (!this._breachOpens(x, y, ptc, reach, tier)) continue;   // a cut that opens nothing is no cut
       if (tier >= 3 && Terraform.isClearable(x, y) && Units.assignTerraform(idle, x, y)) { this._escort(idle); return true; }
       if (tier >= 2 && Terraform.bridgeable(x, y) && !Bld.bridgeAt(x, y) && Units.assignTerraform(idle, x, y)) { this._escort(idle); return true; }
       // no plank crossing here? a Lv-3 corps can reclaim a short land-bridge across
@@ -1769,6 +1825,7 @@ const AI = {
     const tier = Units.sapperTier('A');
     if (tier < 1) return false;                            // no engineering corps at all
     const aim = read.knownTC || Bld.tcOf('P') || st;
+    const reach = this.aiLandReach();
     const dx = aim.x - st.x, dy = aim.y - st.y, len = Math.hypot(dx, dy) || 1;
     const ux = dx / len, uy = dy / len;
     // first, learn what's actually blocking the lane so the chief can react even
@@ -1781,6 +1838,10 @@ const AI = {
       const terr = S.map.terrain[MapGen.idx(x, y)];
       const clearable = Terraform.isClearable(x, y);
       const water = terr === T.WATER || terr === T.MOAT;
+      // a blocker only counts (for breaching AND for the tier-investment
+      // signals) if cutting it would actually open new ground — an inlet the
+      // army can walk around must not draw the corps or the treasury
+      if ((clearable || water) && !this._breachOpens(x, y, aim, reach, tier)) continue;
       if (clearable && tier < 3) ai.stallClearT = S.day;              // woods we can't cut yet
       // WATER WE CAN'T SPAN YET. Bridging needs a tier-2 corps; with only a
       // level-1 camp the chief would sit a siege train on the bank for the rest
@@ -2022,6 +2083,10 @@ const AI = {
         else if (tier >= 3 && water && Terraform.isMoundable(x, y, 'A'))
           cost = Terraform.reclaimDepth(x, y) >= 2 ? F.reclaimDeep : F.reclaim;
         else continue;
+        // …and the cut must actually OPEN something: a bridgeable notch whose
+        // far bank is the same shore we already stand on is not a lane, however
+        // close to the hall it sits (the "silly inlet bridge" of a real game)
+        if (!this._breachOpens(x, y, ptc, reach, tier)) continue;
         // distance to the hall still matters — a cheap cut on the far side of the
         // map is no road at all — but it no longer decides the lane on its own
         const score = Math.hypot(x - ptc.x, y - ptc.y) + cost * 0.8 + twThreat(x, y) * 10;
