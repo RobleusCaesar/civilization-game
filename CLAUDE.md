@@ -330,6 +330,14 @@ nothing; unfinished towers extend nothing; naval guards keep the dock
 radius. Owner-agnostic — the rival's garrison plays by the same rules. The
 player who wants soldiers further out turns Defend off; that is the toggle's
 meaning. (`guardCenter` now carries `owner`; `_isDefBarrier` is gone.)
+**Back to your post** (same test): a defending unit remembers where it STOOD
+when a fight began (`u.guardPost`, stamped at acquisition in `Combat.acquire`)
+and resolves back to that exact spot after the kill or an abandoned chase —
+`Units.returnToGuard` prefers the post over the generic ring point, and the
+post is forgotten on arrival. The subtle half: death cleanup (`Units.damage` /
+`despawn` / the plague fall) clears every attacker's `tUnit` directly, so the
+combat branch's "target gone → return" NEVER fires on a kill — each cleanup
+site sends defending hunters home itself, or they idle at the kill site.
 
 **Work order** (`tests/work-order.mjs`): a line of walls or trenches must never
 box the worker in, or box it out of its own remaining work — "if I do spot 2

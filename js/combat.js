@@ -245,7 +245,10 @@ const Combat = {
             const e = !(CFG.UNITS[u.kind].atk > 0) ? null
               : u.owner === 'A' ? this.bestFoe(u, g.x, g.y, g.r1 + MAXR + reach, gpred)
               : this.nearestUnit(g.x, g.y, g.r1 + MAXR + reach, gpred);
-            if (e) u.tUnit = e.id;
+            // BACK TO YOUR POST: remember where the guard STOOD as the fight
+            // began — kill or abandoned chase, returnToGuard walks it back to
+            // this exact spot, not a generic point on the ring
+            if (e) { u.guardPost = { x: u.x, y: u.y }; u.tUnit = e.id; }
             else if (dc > Units.holdRadius(g, u.x, u.y) && !Units.moving(u)) Units.returnToGuard(u, g);   // no foe → drift home
             continue;
           }

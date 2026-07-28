@@ -241,6 +241,35 @@ const out = await p.evaluate(() => {
       `back inside after ${t2}s, at ${Math.hypot(u.x - g.x, u.y - g.y).toFixed(1)}`);
   }
 
+  // ---- 9b. BACK TO YOUR POST: after a kill — or giving up a chase — the
+  //          guard returns to the exact spot it stood when the fight began,
+  //          not to a generic point on the ring ----
+  {
+    const { tc, u, g } = setup('dh12');
+    S.units = [u];
+    const px = g.x + 3, py = g.y - 3;   // a distinct post, well off the ring's center line
+    u.x = px; u.y = py; u.path = null;
+    const pin = (r2, x, y) => { r2.x = x; r2.y = y; r2.path = null; r2.task = null; r2.tUnit = 0; r2.tBld = 0; };
+    // the kill: a raider breaches the far side of the ring — cut it down, walk home
+    let raider = Units.spawn('raider', 'R', (g.x | 0) - 3, (g.y | 0) + 2); raider.hostileTo = 'P';
+    let t = 0; const dt = 0.1;
+    while (t < 40 && Units.get(raider.id)) { pin(raider, g.x - 3.5, g.y + 2.5); Units.update(dt); Combat.update(dt); t += dt; }
+    const t2 = run(15, () => Math.hypot(u.x - px, u.y - py) < 1.2);
+    ck('killThenBackToPost', !Units.get(raider.id) && Math.hypot(u.x - px, u.y - py) < 1.2,
+      `raider ${Units.get(raider.id) ? 'alive' : 'dead'}; guard ${Math.hypot(u.x - px, u.y - py).toFixed(1)} from post after ${t2}s`);
+    // the abandoned chase: a foe engages, then flees the defended ground —
+    // the lock releases and the guard resolves back to the same post
+    raider = Units.spawn('raider', 'R', (g.x | 0) - 3, (g.y | 0) + 2); raider.hostileTo = 'P';
+    raider.maxhp = raider.hp = 9999;
+    t = 0;
+    while (t < 10 && u.tUnit !== raider.id) { pin(raider, g.x - 3.5, g.y + 2.5); Units.update(dt); Combat.update(dt); t += dt; }
+    const engaged = u.tUnit === raider.id;
+    t = 0;
+    while (t < 15) { pin(raider, g.x + 16, g.y); Units.update(dt); Combat.update(dt); t += dt; if (Math.hypot(u.x - px, u.y - py) < 1.2 && !u.tUnit) break; }
+    ck('abandonedChaseBackToPost', engaged && !u.tUnit && Math.hypot(u.x - px, u.y - py) < 1.2,
+      `engaged=${engaged} tUnit=${u.tUnit} guard ${Math.hypot(u.x - px, u.y - py).toFixed(1)} from post`);
+  }
+
   // ---- 10. a weaponless hull (siege tower) never picks a fight it can't swing in ----
   {
     const { tc } = setup('dh11');

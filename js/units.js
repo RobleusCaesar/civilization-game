@@ -120,7 +120,7 @@ const Units = {
     const i = S.units.indexOf(u);
     if (i < 0) return;
     S.units.splice(i, 1);
-    for (const o of S.units) if (o.tUnit === u.id) o.tUnit = 0;
+    for (const o of S.units) if (o.tUnit === u.id) { o.tUnit = 0; if (o.defend) this.returnToGuard(o); }
     if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
   },
 
@@ -243,15 +243,25 @@ const Units = {
     return hold;
   },
   // walk back to just inside the perimeter (a 'guard' move task, which acquire()
-  // leaves alone until it lands — that's the hysteresis that stops jittering)
+  // leaves alone until it lands — that's the hysteresis that stops jittering).
+  // BACK TO YOUR POST (tests/defend-hold.mjs): a guard remembers where it stood
+  // when the fight began (u.guardPost, stamped in Combat.acquire) and returns to
+  // THAT spot after the kill or an abandoned chase — not to a generic point on
+  // the ring. The post is forgotten on arrival; the next fight stamps a fresh one.
   returnToGuard(u, g) {
     g = g || this.guardCenter(u);
     if (!g) return;
-    const d = Math.hypot(u.x - g.x, u.y - g.y) || 1, rr = g.r1 * 0.82;
-    const tx = (g.x + (u.x - g.x) / d * rr) | 0, ty = (g.y + (u.y - g.y) / d * rr) | 0;
+    const p = u.guardPost;
+    let tx, ty;
+    if (p && Math.hypot(p.x - g.x, p.y - g.y) <= this.holdRadius(g, p.x, p.y) + 0.5) {
+      tx = p.x | 0; ty = p.y | 0;
+    } else {
+      const d = Math.hypot(u.x - g.x, u.y - g.y) || 1, rr = g.r1 * 0.82;
+      tx = (g.x + (u.x - g.x) / d * rr) | 0; ty = (g.y + (u.y - g.y) / d * rr) | 0;
+    }
     u.tUnit = 0; u.tBld = 0; u.tBridge = null;
     u.task = { type: 'move', x: tx, y: ty, guard: true };
-    if (!this.setPath(u, tx, ty)) u.task = null;
+    if (!this.setPath(u, tx, ty)) { u.task = null; u.guardPost = null; }
   },
   // toggle the stance; turning it on pulls a strayed unit back to its perimeter
   setDefend(u, on) {
@@ -792,7 +802,7 @@ const Units = {
       if (u.dieT != null && u.dieT > 0) {      // the plague's slow fall — keel over, then gone
         u.dieT -= dt; u.path = null;
         if (u.dieT <= 0) {
-          for (const o of S.units) if (o.tUnit === u.id) o.tUnit = 0;
+          for (const o of S.units) if (o.tUnit === u.id) { o.tUnit = 0; if (o.defend) this.returnToGuard(o); }
           if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
           S.units.splice(i, 1);
         }
@@ -905,7 +915,10 @@ const Units = {
       const t = u.task;
       if (!t) continue;
       if (t.type === 'move') {
-        if (this.followPath(u, dt)) { u.task = null; u.anchor = { x: u.x, y: u.y }; }
+        if (this.followPath(u, dt)) {
+          u.task = null; u.anchor = { x: u.x, y: u.y };
+          if (t.guard) u.guardPost = null;   // back at the post — forget it (a fresh fight stamps a new one)
+        }
       } else if (t.type === 'flee') {
         if (this.followPath(u, dt)) u.task = null;
       } else if (t.type === 'gather') {
@@ -1237,7 +1250,10 @@ const Units = {
     const attacker = attackerId ? this.get(attackerId) : null;
     if (u.hp <= 0) {
       S.units.splice(S.units.indexOf(u), 1);
-      for (const o of S.units) if (o.tUnit === u.id) o.tUnit = 0;
+      // BACK TO YOUR POST: death cleanup clears every attacker's lock directly,
+      // so the combat branch's "target gone" return never fires — send each
+      // defending hunter home from HERE or it idles at the kill site forever
+      for (const o of S.units) if (o.tUnit === u.id) { o.tUnit = 0; if (o.defend) this.returnToGuard(o); }
       {   // arcade tally: rival and barbarian kills score
         const ko = (attackerId && this.get(attackerId) && this.get(attackerId).owner) || attackerOwner;
         if (ko === 'P' && (u.owner === 'A' || u.owner === 'R') && S.stats)
