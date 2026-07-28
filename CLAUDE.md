@@ -64,6 +64,7 @@ node tests/finished-run-continue.mjs # a win never clobbers a save slot; Continu
 node tests/drag-move.mjs       # drag-to-move: press ON the selection + drag = order, never a reselect
 node tests/chase-commit.mjs    # a hunter commits to its detour; no unit wedged in reshaped ground
 node tests/defend-hold.mjs     # Defend holds at the DEFENSES: tight ring, tower lanes, behind walls
+node tests/work-order.mjs      # wall/trench lines never box the worker in — far side of a choke first
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -300,3 +301,30 @@ nothing; unfinished towers extend nothing; naval guards keep the dock
 radius. Owner-agnostic — the rival's garrison plays by the same rules. The
 player who wants soldiers further out turns Defend off; that is the toggle's
 meaning. (`guardCenter` now carries `owner`; `_isDefBarrier` is gone.)
+
+**Work order** (`tests/work-order.mjs`): a line of walls or trenches must never
+box the worker in, or box it out of its own remaining work — "if I do spot 2
+first, I won't be able to reach spot 1, so spot 1 comes first."
+`Units.pickWorkOrder` takes the NEAREST job whose completion still leaves every
+other pending job workable (flood-fill from where the worker will stand, the
+finished tile treated as solid) — in open ground that IS plain nearest-first
+(no pointless trek); across a choke the pick falls past the cut to the far
+side, then the line closes homeward. Wired into `UI.commitWallDrag` (which end
+the builder starts at), the build-task continuation in units.js (which section
+a freed builder walks to next — candidates within 6, but the whole line within
+24 is protected), and `Units.startNextTerraform` (which queued dig a sapper
+takes next). Two companions: `assignTerraform` digs standing on the side that
+still connects to the town (KEEP A WAY HOME — never from the pocket between
+two of its own cuts); and only all-`dig` queues are reordered — bridge/clear/
+mound chains keep strict FIFO because their order MEANS something (AI breach
+lanes chain landings; mounds are sorted shore-first). The load-bearing change
+underneath: **a wall/gate section under construction is not solid** —
+`Bld.rebuildBlock` skips it, so builders (and everyone else) walk through the
+gap until the day it finishes; `Bld.finish` then invalidates `_block` and
+steps anyone standing on the tile off it, ties broken toward home. Without
+this, a placed line across a choke sealed its own far sections the moment it
+was laid, and NO order could build it. Seal-PLANNING still treats sites as
+solid (intent counts, or two half-built gaps would approve each other's
+closing stone): `AI.townOut` and `Terraform.digWouldSeal` (via
+`Path.reachFrom(spots, wallSitesSolid)`) both refuse based on what the line
+will be, not what it is today.

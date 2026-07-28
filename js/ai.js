@@ -518,9 +518,18 @@ const AI = {
     const bx = blockTile ? blockTile.x : -1, by = blockTile ? blockTile.y : -1;
     const ox = openTile ? openTile.x : -1, oy = openTile ? openTile.y : -1;
     const mask = new Uint8Array(W * H), q = [];
+    // INTENT COUNTS: movement treats a section under construction as open
+    // ground (rebuildBlock skips it), but seal-PLANNING must not — two gaps
+    // each "still open" while the other's section is being raised would let
+    // the last stone be laid and shut the town the day both finish. A wall
+    // site (or a foreign gate site) is solid here the moment it is laid.
+    const siteSolid = (x, y) => {
+      const b = Bld.at(x, y);
+      return !!(b && b.construction > 0 && (b.key === 'wall' || (b.key === 'gate' && b.owner !== 'A')));
+    };
     // `openTile` asks the counterfactual "…and if we cut THIS section out?"
     const pass = (x, y) => MapGen.inB(x, y) && !(x === bx && y === by) &&
-      ((x === ox && y === oy) || Path.passable(x, y, 'A'));
+      ((x === ox && y === oy) || (Path.passable(x, y, 'A') && !siteSolid(x, y)));
     const seed = (x, y) => { if (pass(x, y)) { const i = idx(x, y); if (!mask[i]) { mask[i] = 1; q.push(i); } } };
     const s = Bld.size('tc');
     for (let dy = -1; dy <= s; dy++) for (let dx = -1; dx <= s; dx++) seed(tc.x + dx, tc.y + dy);

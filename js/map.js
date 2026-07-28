@@ -457,13 +457,20 @@ const Path = {
   },
 
   // walkable tiles reachable (4-dir) from any of the given spots; null if none
-  // of the seed spots are passable
-  reachFrom(spots) {
+  // of the seed spots are passable. wallSitesSolid: planning mode — treat a
+  // wall/gate SITE under construction as already solid (movement doesn't, see
+  // Bld.rebuildBlock, but a seal check that ignored intent would approve a dig
+  // whose pocket closes the day the walls finish).
+  reachFrom(spots, wallSitesSolid) {
     const W = CFG.W, H = CFG.H;
     const open = new Uint8Array(W * H);
     const q = [];
     const push = (x, y) => {
       if (!this.passable(x, y)) return;
+      if (wallSitesSolid) {
+        const b = Bld.at(x, y);
+        if (b && b.construction > 0 && (b.key === 'wall' || b.key === 'gate')) return;
+      }
       const i = MapGen.idx(x, y);
       if (!open[i]) { open[i] = 1; q.push(i); }
     };
@@ -629,7 +636,7 @@ const Terraform = {
       const tc = Bld.tcOf(owner); if (!tc) continue;
       const s = Bld.size('tc'), seeds = [];
       for (let k = -1; k <= s; k++) seeds.push({ x: tc.x + k, y: tc.y - 1 }, { x: tc.x + k, y: tc.y + s }, { x: tc.x - 1, y: tc.y + k }, { x: tc.x + s, y: tc.y + k });
-      const open = Path.reachFrom(seeds.filter(sp => Path.passable(sp.x, sp.y)));
+      const open = Path.reachFrom(seeds.filter(sp => Path.passable(sp.x, sp.y)), true);
       let cnt = 0; if (open) for (let j = 0; j < open.length; j++) cnt += open[j];
       if (cnt < 24) { sealed = true; break; }   // penned in — refuse
     }

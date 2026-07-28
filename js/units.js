@@ -337,12 +337,25 @@ const Units = {
                          : this.terraformJob(u.owner, tx, ty);
     if (!job) return false;
     if (job === 'dig' && Terraform.digWouldSeal(tx, ty)) return false;   // reachability clamp, checked up front too
-    let best = null, bd = 1e9;
+    const opts = [];
     for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const x = tx + ox, y = ty + oy;
       if (!Path.passable(x, y, u.owner) || Bld.at(x, y)) continue;
-      const dd = Math.hypot(u.x - x, u.y - y);
-      if (dd < bd) { bd = dd; best = { x, y }; }
+      opts.push({ x, y, d: Math.hypot(u.x - x, u.y - y) });
+    }
+    opts.sort((a, b) => a.d - b.d);
+    let best = opts[0] || null;
+    if (best && job === 'dig' && opts.length > 1) {
+      // KEEP A WAY HOME (tests/work-order.mjs): dig standing on the side that
+      // still connects to the town once this tile is a trench. The nearest
+      // side can be a one-tile pocket between two cuts of the sapper's own
+      // line — dig from there and it maroons itself on the wrong bank.
+      const tc = Bld.tcOf(u.owner);
+      if (tc) {
+        const hi = MapGen.idx(Bld.cx(tc) | 0, Bld.cy(tc) | 0);
+        const home = opts.find(o => this._floodReach(o.x, o.y, u.owner, MapGen.idx(tx, ty))[hi]);
+        if (home) best = home;
+      }
     }
     if (!best) return false;
     const time = job === 'dig' ? CFG.TERRAFORM.dig : job === 'bridge' ? CFG.TERRAFORM.bridge
@@ -355,6 +368,86 @@ const Units = {
     };
     u.tUnit = 0; u.tBld = 0;
     return this.setPath(u, best.x, best.y);
+  },
+
+  /* ---------- WORK-ORDER INTELLIGENCE (tests/work-order.mjs) ----------
+     A finished wall blocks the tile it stands on; so does a dug trench. A
+     worker handed a LINE of such jobs must not take the near one first when
+     finishing it would cut them off from the rest — "if I do spot 2 first I
+     can't reach spot 1, so spot 1 comes first." pickWorkOrder returns the
+     next job to do: the NEAREST one whose completion leaves every other
+     pending job still workable. When the near job IS the cut, the pick falls
+     past it to the far side — cross first, then work back homeward. */
+
+  // 4-dir land flood from (sx,sy) for this owner; blockIdx (a MapGen.idx, or
+  // -1) is treated as solid — "what can I still reach once that tile is done?"
+  _floodReach(sx, sy, owner, blockIdx) {
+    const W = CFG.W;
+    const seen = new Uint8Array(W * CFG.H);
+    if (!MapGen.inB(sx, sy)) return seen;
+    const q = [MapGen.idx(sx, sy)]; seen[q[0]] = 1;
+    let head = 0;
+    while (head < q.length) {
+      const i = q[head++], x = i % W, y = (i / W) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (!MapGen.inB(nx, ny)) continue;
+        const ni = MapGen.idx(nx, ny);
+        if (seen[ni] || ni === blockIdx || !Path.passable(nx, ny, owner)) continue;
+        seen[ni] = 1; q.push(ni);
+      }
+    }
+    return seen;
+  },
+  // tiles a worker could stand on to work a job: the ring around its footprint.
+  // Builders reach the diagonal (the 1.55 floor); a sapper digs from the four
+  // edges only — j.diag says which.
+  _jobStands(j) {
+    const s = j.size || 1, out = [];
+    for (let dy = -1; dy <= s; dy++) for (let dx = -1; dx <= s; dx++) {
+      if (dx > -1 && dy > -1 && dx < s && dy < s) continue;              // the footprint itself
+      if (!j.diag && (dx === -1 || dx === s) && (dy === -1 || dy === s)) continue;   // corners
+      out.push([j.x + dx, j.y + dy]);
+    }
+    return out;
+  },
+  // pending: [{x, y, size?, diag?, blocks?, noStandBld?, ref}] — candidates to
+  // do next. protect (default pending): jobs that must STAY workable. Returns
+  // the chosen entry, or null when nothing is reachable at all.
+  pickWorkOrder(u, pending, protect) {
+    protect = protect || pending;
+    const R0 = this._floodReach(u.x | 0, u.y | 0, u.owner, -1);
+    const standIn = (j, R) => this._jobStands(j).some(([x, y]) =>
+      MapGen.inB(x, y) && R[MapGen.idx(x, y)] && !(j.noStandBld && Bld.at(x, y)));
+    const cand = [];
+    for (const j of pending) {
+      let stand = null, bd = 1e9;
+      for (const [x, y] of this._jobStands(j)) {
+        if (!MapGen.inB(x, y) || !R0[MapGen.idx(x, y)]) continue;
+        if (j.noStandBld && Bld.at(x, y)) continue;
+        const d = Math.hypot(u.x - (x + 0.5), u.y - (y + 0.5));
+        if (d < bd) { bd = d; stand = [x, y]; }
+      }
+      if (stand) cand.push({ j, d: bd, stand });
+    }
+    if (!cand.length) return null;
+    cand.sort((a, b) => a.d - b.d);
+    const live = protect.filter(pj => standIn(pj, R0));   // only guard what's reachable NOW
+    let fallback = null, fbCut = 1e9;
+    for (const c of cand) {
+      if (!c.j.blocks) return c.j;   // finishing it blocks nothing — safe by nature
+      // the worker ends this job standing beside it: from there, with the tile
+      // now solid, every other live job must still have a stand tile
+      const R1 = this._floodReach(c.stand[0], c.stand[1], u.owner, MapGen.idx(c.j.x, c.j.y));
+      let cut = 0;
+      for (const pj of live) {
+        if (pj === c.j || (pj.x === c.j.x && pj.y === c.j.y)) continue;
+        if (!standIn(pj, R1)) cut++;
+      }
+      if (!cut) return c.j;
+      if (cut < fbCut) { fbCut = cut; fallback = c.j; }   // every order cuts something — least damage first
+    }
+    return fallback;
   },
 
   // WORK QUEUE — a sapper can be handed a whole line of tiles to dig/clear (from
@@ -379,7 +472,19 @@ const Units = {
   startNextTerraform(u) {
     u.jobs = u.jobs || [];
     while (u.jobs.length) {
-      const it = u.jobs.shift();
+      let it;
+      if (u.jobs.length > 1 && u.jobs.every(j => j.job === 'dig')) {
+        // a trench LINE is order-sensitive: each dug tile blocks the ground
+        // it's on, so pick the tile whose completion doesn't wall the sapper
+        // off from the rest (pickWorkOrder — tests/work-order.mjs). Bridge /
+        // clear / mound lines OPEN ground, and their queue order carries
+        // meaning (the AI's breach lanes chain landings; mounds are sorted
+        // shore-first) — those stay strictly first-in-first-out.
+        const pick = this.pickWorkOrder(u, u.jobs.map(j =>
+          ({ x: j.x, y: j.y, blocks: true, noStandBld: true, ref: j })));
+        it = pick ? pick.ref : u.jobs[0];
+        u.jobs.splice(u.jobs.indexOf(it), 1);
+      } else it = u.jobs.shift();
       if (this.canTerraform(u.owner, it.x, it.y, it.job) &&
           !(it.job === 'dig' && Terraform.digWouldSeal(it.x, it.y)) &&
           this.assignTerraform(u, it.x, it.y, it.job)) return true;
@@ -934,14 +1039,24 @@ const Units = {
               Bld.finish(b, u);   // may station the builder as the worker
               if (u.task && u.task.type === 'build') {
                 u.task = null;
-                // walk the wall line: continue to the nearest unmanned site
-                let best = null, bd = 6;
+                // walk the wall line: continue to a nearby unmanned site — but
+                // never one whose finished wall would cut us off from the rest
+                // of the line (pickWorkOrder — tests/work-order.mjs). Nearest
+                // SAFE site wins; when the near section IS the cut, the pick
+                // falls past it and the line closes from the far side back.
+                const near = [], line = [];
                 for (const nb of S.buildings) {
                   if (nb.owner !== u.owner || nb.construction <= 0 || Bld.hasWorker(nb)) continue;
                   const dd = Math.hypot(Bld.cx(nb) - u.x, Bld.cy(nb) - u.y);
-                  if (dd < bd) { bd = dd; best = nb; }
+                  if (dd >= 24) continue;   // guard the whole line, not the whole map
+                  const desc = { x: nb.x, y: nb.y, size: Bld.size(nb.key), diag: true, blocks: nb.key === 'wall', ref: nb };
+                  line.push(desc);
+                  if (dd < 6) near.push(desc);
                 }
-                if (best) this.assignBuild(u, best);
+                if (near.length) {
+                  const pick = this.pickWorkOrder(u, near, line);
+                  if (pick) this.assignBuild(u, pick.ref);
+                }
               }
             }
           } else if (b.upgrading > 0) {

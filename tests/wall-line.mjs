@@ -101,7 +101,11 @@ const out = await p.evaluate(() => {
     const bulge = [-1, 0, 1].filter(dx => { const bb = Bld.at(cx + dx, cy - R - 1); return bb && AI.isFort(bb); }).length;
     ck('detourSetup', !!farm && sides === 4 && reached === 1, `farm=${!!farm} sides=${sides} reached=${reached}`);
     ck('detour', acted && bulge === 3 && !!Bld.at(cx, cy - R), `acted=${acted} bulge=${bulge}/3 farmKept=${!!Bld.at(cx, cy - R)}`);
-    // and the farm is now genuinely enclosed: no passable step from outside to it
+    // and the farm is now genuinely enclosed ONCE THE CREWS FINISH: a section
+    // under construction is passable until it's done (Bld.rebuildBlock skips
+    // it — tests/work-order.mjs), so finish the fresh sections first, as a
+    // day of building would
+    for (const w of S.buildings) if (w.owner === 'A' && (w.key === 'wall' || w.key === 'gate') && w.construction > 0) Bld.finish(w);
     const openFromOut = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0]]
       .filter(([ox, oy]) => Path.passable(cx + ox, cy - R + oy, 'P')).length;
     ck('detourSeals', openFromOut === 0, `${openFromOut} passable approaches remain`);
@@ -242,7 +246,12 @@ const out = await p.evaluate(() => {
       return n;
     };
     const before = doors();
-    for (let i = 0; i < 8; i++) AI.mendWallLine(tc);      // a handful of build cycles
+    // a handful of build cycles — each followed by its crews finishing, since
+    // a section under construction stays passable (tests/work-order.mjs)
+    for (let i = 0; i < 8; i++) {
+      AI.mendWallLine(tc);
+      for (const w of S.buildings) if (w.owner === 'A' && (w.key === 'wall' || w.key === 'gate') && w.construction > 0) Bld.finish(w);
+    }
     const after = doors();
     ck('noDoors', before > 0 && after === 0, `${before} doors -> ${after}`);
   }

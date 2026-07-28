@@ -7,6 +7,13 @@ const Bld = {
   rebuildBlock() {
     this._block = new Uint8Array(CFG.W * CFG.H);
     for (const b of S.buildings) {
+      // a section still being RAISED isn't solid yet — builders (and anyone
+      // else) walk through the gap until the day it finishes. This is what
+      // lets a wall line across a choke be built at all: the far sections
+      // stay reachable through the unbuilt near ones (tests/work-order.mjs).
+      // Planning code that cares about INTENT (seal checks) treats sites as
+      // solid separately — AI.townOut, Terraform.digWouldSeal.
+      if (b.construction > 0) continue;
       if (b.key === 'wall') this._block[MapGen.idx(b.x, b.y)] = 1;
       else if (b.key === 'gate') this._block[MapGen.idx(b.x, b.y)] = b.owner === 'P' ? 2 : 3;
     }
@@ -341,6 +348,32 @@ const Bld = {
   finish(b, builder) {
     b.construction = 0;
     b.hp = b.maxhp;
+    if (b.key === 'wall' || b.key === 'gate') {
+      // the section just became solid (rebuildBlock skips it while raising) —
+      // and anyone standing on the tile steps off, ties broken toward home,
+      // so a builder finishing a section under its own feet ends on the town
+      // side rather than sealed out (tests/work-order.mjs)
+      this._block = null;
+      for (const w of S.units) {
+        if (Units.isNaval(w) || !this.covers(b, w.x | 0, w.y | 0)) continue;
+        if (Path.passable(w.x | 0, w.y | 0, w.owner)) continue;   // an own gate stays open to its owner
+        const tcH = this.tcOf(w.owner);
+        let spot = null, sd = 1e9;
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+          const x = (w.x | 0) + dx, y = (w.y | 0) + dy;
+          if ((!dx && !dy) || !Path.passable(x, y, w.owner)) continue;
+          const d = Math.hypot(dx, dy) +
+            (tcH ? Math.hypot(x + 0.5 - this.cx(tcH), y + 0.5 - this.cy(tcH)) * 0.1 : 0);
+          if (d < sd) { sd = d; spot = { x, y }; }
+        }
+        if (spot) {
+          w.x = spot.x + 0.5; w.y = spot.y + 0.5; w.path = null; w.pathI = 0;
+          // a march in progress re-plans from the new footing (a nulled path
+          // reads as "arrived" to the move task, which would eat the order)
+          if (w.task && w.task.type === 'move' && w.task.x != null) Units.setPath(w, w.task.x, w.task.y);
+        }
+      }
+    }
     if (b.owner === 'P' && S.stats) {   // arcade tally: every raising scores
       if (b.key === 'wall' || b.key === 'gate') S.stats.walls = (S.stats.walls || 0) + 1;
       else S.stats.built = (S.stats.built || 0) + 1;

@@ -380,16 +380,28 @@ const UI = {
   commitWallDrag() {
     const ghost = this.wallGhost || [];
     let placed = 0, first = null;
+    const sites = [];
     for (const t of ghost) {
       if (!t.ok) continue;
       if (!Bld.canPlace('P', 'wall', t.x, t.y).ok) continue;   // re-check with live resources
       const b = Bld.place('P', 'wall', t.x, t.y, { noAutoAssign: true });
       if (!first) first = b;
+      sites.push(b);
       placed++;
     }
     if (placed) {
       const v = Units.nearestIdleVillager(first.x, first.y);
-      if (v && Units.assignBuild(v, first))
+      // start at the RIGHT end of the line: the nearest section whose finished
+      // wall doesn't cut the builder off from the rest (Units.pickWorkOrder —
+      // tests/work-order.mjs). Across a choke the pick falls to the FAR side,
+      // so the line closes from far back toward home instead of walling the
+      // far half off behind the first stone.
+      let start = first;
+      if (v && sites.length > 1) {
+        const pick = Units.pickWorkOrder(v, sites.map(b2 => ({ x: b2.x, y: b2.y, diag: true, blocks: true, ref: b2 })));
+        if (pick) start = pick.ref;
+      }
+      if (v && Units.assignBuild(v, start))
         this.toast(`Wall line: ${placed} section${placed > 1 ? 's' : ''} — builder en route. Tap villagers → wall to add hands.`);
       else this.toast(`Wall line placed (${placed}) — needs a builder`, true);
       // done drawing — drop out of placement so stray taps don't add walls
