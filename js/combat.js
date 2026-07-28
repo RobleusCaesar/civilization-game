@@ -616,18 +616,32 @@ const Combat = {
         if (!this.canEngage(u, tgt)) { u.tUnit = 0; continue; }
         const reach = CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE;
         if (d > reach) {
-          // at close range steer straight at the target — grid waypoints can't
-          // corner moving prey; fall back to pathfinding around water/walls
+          /* at close range steer straight at the target — grid waypoints can't
+             corner moving prey; fall back to pathfinding around water/walls.
+             BUT A COMMITTED DETOUR HAS RIGHT OF WAY. The steer used to fire
+             whenever ANY micro-step toward the prey was momentarily clear —
+             yanking the unit off its freshly planned path, NULLING the path,
+             and letting the next half-second repath plan the same detour
+             again. At a concave treeline corner that is a perfect trap orbit:
+             plan two steps, get yanked back, plan again — a real day-22 game
+             had a rival defender jittering beside the villager it was hunting
+             for minutes, never landing a blow. While a path is underway the
+             steer only takes over for the final LUNGE — one clear step from
+             striking range — so the unit walks the detour like it means it. */
           const step = u.speed * dt;
           const nx = u.x + (tgt.x - u.x) / d * step, ny = u.y + (tgt.y - u.y) / d * step;
-          if (d < 3 && Path.canStep(u.x, u.y, nx, ny, u.owner, Units.domain(u))) {
+          if ((!Units.moving(u) || d <= reach + 0.5) &&
+              d < 3 && Path.canStep(u.x, u.y, nx, ny, u.owner, Units.domain(u))) {
             u.x = nx; u.y = ny; u.path = null;
           } else {
             if (u.repathT <= 0) {
               u.repathT = 0.5; Units.setPath(u, tgt.x | 0, tgt.y | 0);
-              // a barbarian whose quarry slips beyond reach (a crossing fell
-              // behind it) abandons the chase so it can wander off the map
-              if (u.owner === 'R') {
+              // a barbarian — or the rival's soldier — whose quarry slips
+              // beyond reach (a crossing fell behind it, the woods regrew
+              // across the lane) abandons the chase instead of staring at
+              // prey it can never touch; its own seek picks a reachable mark
+              // on the next scan. Player units keep their explicit orders.
+              if (u.owner === 'R' || u.owner === 'A') {
                 const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x | 0, y: u.y | 0 };
                 if (Math.hypot(end.x + 0.5 - tgt.x, end.y + 0.5 - tgt.y) > reach + 1) { u.tUnit = 0; continue; }
               }

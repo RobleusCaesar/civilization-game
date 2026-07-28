@@ -62,6 +62,7 @@ node tests/barb-sense.mjs      # barbarians attack any land unit, leave when stu
 node tests/rival-crossing.mjs  # AI reaches its own works, eats before hoarding, bridges around towers
 node tests/finished-run-continue.mjs # a win never clobbers a save slot; Continue retires the whole run
 node tests/drag-move.mjs       # drag-to-move: press ON the selection + drag = order, never a reselect
+node tests/chase-commit.mjs    # a hunter commits to its detour; no unit wedged in reshaped ground
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -265,3 +266,19 @@ as taps do), explored ground → walk (green `UI.moveFlash` confirm pulse),
 unexplored → refused. Sub-threshold presses fall through to the ordinary tap
 byte-for-byte (tap-audit still rules); drags starting OFF the selection still
 pan; wall/terraform line-drags keep right of way at pointerdown.
+
+**Chase commit & ground rescue** (`tests/chase-commit.mjs`): the "attacker
+stuck in the trees" glitch. The close-range straight steer (`d < 3` in
+Combat's tUnit chase) fired whenever ANY micro-step toward the prey was
+momentarily clear — yanking the unit off its freshly planned detour AND
+nulling the path, so the next half-second repath planned the same detour
+again: a perfect trap orbit at a concave treeline corner, swinging at
+nobody. While a chase path is underway the steer now only takes over for the
+final LUNGE (one clear step from striking range, reach + 0.5); open-field
+chases are untouched (no obstacle → no path → the steer runs every frame as
+before). The unreachable-prey abandon now covers 'A' as well as 'R' — the
+rival's soldiers drop a lock they can't path to (player orders exempt). And
+units.js carries a GROUND-TRUTH RESCUE: the world reshapes under standing
+feet (stumps regrow to forest, channels flood to moats), so any land unit ON
+a tile that now blocks it slides to the nearest open tile — orders intact, a
+mid-march path re-planned from the new footing.

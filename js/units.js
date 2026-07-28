@@ -638,6 +638,28 @@ const Units = {
         continue;
       }
 
+      /* GROUND-TRUTH RESCUE: the world reshapes under standing feet — a logged
+         stump regrows to forest, a sapper's channel floods to a moat — and a
+         land unit left ON a tile that now blocks it is wedged for good: it can
+         neither strike (its prey sits a hair past reach) nor path away
+         (Path.find can never get CLOSER than where it already stands, so it
+         re-plans to nowhere every half-second, forever). A real day-22 game
+         had a rival defender rooted in regrown trees beside the villager it
+         was hunting. Slide it to the nearest open tile — orders intact — and
+         let it re-plan from honest ground. */
+      if (!this.isNaval(u)) {
+        const ti = MapGen.idx(u.x | 0, u.y | 0);
+        if (Path.blocksLand(S.map.terrain[ti]) && !(S.map.bridge && S.map.bridge[ti])) {
+          const spot = MapGen.findNear(u.x | 0, u.y | 0, 3, (x, y) => Path.passable(x, y, u.owner) && !Bld.blockAt(x, y));
+          if (spot) {
+            u.x = spot.x + 0.5; u.y = spot.y + 0.5; u.path = null; u.pathI = 0;
+            // a march in progress re-plans from the new footing (a nulled path
+            // reads as "arrived" to the move task, which would eat the order)
+            if (u.task && u.task.type === 'move' && u.task.x != null) this.setPath(u, u.task.x, u.task.y);
+          }
+        }
+      }
+
       // a siege tower parked against an enemy wall ferries one nearby soldier
       // per second up, over, and down the far side
       if (u.kind === 'siegetower' && !this.moving(u)) {
