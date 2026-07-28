@@ -63,6 +63,7 @@ node tests/rival-crossing.mjs  # AI reaches its own works, eats before hoarding,
 node tests/finished-run-continue.mjs # a win never clobbers a save slot; Continue retires the whole run
 node tests/drag-move.mjs       # drag-to-move: press ON the selection + drag = order, never a reselect
 node tests/chase-commit.mjs    # a hunter commits to its detour; no unit wedged in reshaped ground
+node tests/defend-hold.mjs     # Defend holds at the DEFENSES: tight ring, tower lanes, behind walls
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -282,3 +283,20 @@ units.js carries a GROUND-TRUTH RESCUE: the world reshapes under standing
 feet (stumps regrow to forest, channels flood to moats), so any land unit ON
 a tile that now blocks it slides to the nearest open tile — orders intact, a
 mid-march path re-planned from the new footing.
+
+**Defend hold** (`tests/defend-hold.mjs`): Defend means the DEFENSES, not the
+landscape. `Units.holdRadius` used to stretch the watch to natural barriers
+(forest/water/mountain, up to `maxNatural` 14) — "the island is the fort" —
+which on a tree-ringed map sent guards to hold at a treeline thirteen tiles
+out, past every tower's support, where they died piecemeal. The bound is now
+built from what the player raised: the tight TC ring (`r1`, ~6-8) as base; a
+finished own tower/war camp extends the watch only along threat lanes that
+genuinely pass under its arrows (along-ray distance + 70% of range, and the
+battery must sit within range+1 of the ray); the own wall line is a hard
+CEILING (first own finished wall/gate on the ray, walked at half-tiles) —
+guards hold INSIDE and wait for the breach, and when the section falls the
+ceiling lifts and the garrison meets what comes through. Enemy walls cap
+nothing; unfinished towers extend nothing; naval guards keep the dock
+radius. Owner-agnostic — the rival's garrison plays by the same rules. The
+player who wants soldiers further out turns Defend off; that is the toggle's
+meaning. (`guardCenter` now carries `owner`; `_isDefBarrier` is gone.)

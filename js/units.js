@@ -178,28 +178,50 @@ const Units = {
     const G2 = CFG.GUARD, cx = Bld.cx(b), cy = Bld.cy(b);
     let r1 = (naval ? G2.navalRadius : G2.radius) * (1 + G2.levelStep * ((b.level || 1) - 1));
     if (!naval) r1 = Math.min(r1, G2.maxRadius || 8);   // the OPEN-GROUND base perimeter
-    return { x: cx, y: cy, r1, r2: r1 + Math.max(1.2, r1 * G2.sortie), naval: !!naval };
+    return { x: cx, y: cy, r1, r2: r1 + Math.max(1.2, r1 * G2.sortie), naval: !!naval, owner: u.owner };
   },
-  // is this tile part of the defensive SHELL — an edge the enclosure holds at? A
-  // wall/gate, or a natural barrier no land unit crosses (water, moat, mountain,
-  // forest, rock/hills, orchard). This is what lets the water be the wall.
-  _isDefBarrier(x, y) {
-    if (!MapGen.inB(x, y)) return true;
-    if (Path.blocksLand(S.map.terrain[MapGen.idx(x, y)])) return true;
-    const b = Bld.at(x, y);
-    return !!(b && (b.key === 'wall' || b.key === 'gate'));
-  },
-  // the max distance a defender may hold from its hall TOWARD a given point: cast a
-  // ray that way and the first shell tile (wall OR natural barrier) sets the bound,
-  // so the defended area follows the real shape of the enclosure — the whole island,
-  // the walls, the mountainside — while open directions stay at the tight base.
+  /* the max distance a defender may hold from its hall TOWARD a given point.
+     REDESIGNED after a real day-148 game ("my soldiers keep ranging out too
+     far… out of the range of my towers for support, and getting killed"):
+     natural barriers used to stretch the watch — a treeline thirteen tiles
+     out counted as "the walls of home", so guards held at it, far past every
+     tower, and died piecemeal. A treeline is not a wall. The defended ground
+     is now built from the DEFENSES the player actually raised:
+       · base — the tight Town Center ring (r1, ~6-8 tiles);
+       · a finished own tower / war camp TOWARD the threat extends the watch
+         to stand under its arrows (its distance + ~70% of its range), so
+         soldiers balance the hall and the batteries that cover them;
+       · the own wall line along the ray is a hard CEILING — guards hold
+         INSIDE their wall and wait for the breach, never volunteering past
+         it. When a section falls the ray stops hitting it, the ceiling
+         lifts, and the garrison meets whatever comes through.
+     Want soldiers further out than the defenses reach? Turn Defend off —
+     that is exactly what the stance toggle means. */
   holdRadius(g, fx, fy) {
     if (g.naval) return g.r1;                       // ships keep their fixed dock radius
     const MAXR = CFG.GUARD.maxNatural || 14;
     const dx = fx - g.x, dy = fy - g.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
-    for (let s = 1; s <= MAXR; s++)
-      if (this._isDefBarrier(Math.round(g.x + ux * s), Math.round(g.y + uy * s))) return Math.max(g.r1, s);
-    return g.r1;                                    // open this way — hold the tight line
+    let hold = g.r1;
+    for (const b of S.buildings) {
+      if (b.owner !== g.owner || (b.key !== 'tower' && b.key !== 'warcamp') || !Bld.done(b)) continue;
+      const tx = Bld.cx(b) - g.x, ty = Bld.cy(b) - g.y;
+      const along = tx * ux + ty * uy;                        // how far out along this ray the battery sits
+      if (along < 0.5 || along > MAXR) continue;
+      const lv = CFG.BUILDINGS[b.key].levels[(b.level || 1) - 1] || {};
+      const rng = lv.range || 4.5;
+      // the extension is only real where the lane actually passes UNDER the
+      // battery's arrows — a tower far off the ray covers nothing here
+      if (Math.abs(tx * uy - ty * ux) > rng + 1) continue;
+      hold = Math.max(hold, Math.min(MAXR, along + rng * 0.7));
+    }
+    // the own wall line caps the hold INSIDE it — walk the ray at half-tiles
+    // so a diagonal line can't be stepped over
+    for (let s = 1; s <= Math.min(MAXR, hold + 1.5); s += 0.5) {
+      const b = Bld.at(Math.round(g.x + ux * s), Math.round(g.y + uy * s));
+      if (b && b.owner === g.owner && (b.key === 'wall' || b.key === 'gate') && Bld.done(b))
+        return Math.max(1.5, Math.min(hold, s - 0.6));
+    }
+    return hold;
   },
   // walk back to just inside the perimeter (a 'guard' move task, which acquire()
   // leaves alone until it lands — that's the hysteresis that stops jittering)
