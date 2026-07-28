@@ -61,6 +61,7 @@ node tests/bridge-resource-shore.mjs # a resource-shored bank is bridgeable; no 
 node tests/barb-sense.mjs      # barbarians attack any land unit, leave when stuck, land smart
 node tests/rival-crossing.mjs  # AI reaches its own works, eats before hoarding, bridges around towers
 node tests/finished-run-continue.mjs # a win never clobbers a save slot; Continue retires the whole run
+node tests/drag-move.mjs       # drag-to-move: press ON the selection + drag = order, never a reselect
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -235,3 +236,19 @@ any row stamped `over`, for legacy saves) is passed over, so an old mid-run
 save of a won game can't resurrect the button. The slots themselves stay
 fully loadable from the Load screen — savescumming is the player's right;
 Continue just doesn't walk back into a told story.
+
+**Drag-to-move** (`tests/drag-move.mjs`): the second movement gesture, born of
+the crowded-tile problem — with several units stacked, tapping a destination
+near them lands on a bystander and (by the tap contract's own design) steals
+the selection. A press that starts ON the current selection (any member of a
+group; 0.6-tile hit window on the visual sprite center, same `SPRITE_LIFT`
+math as taps) and drags past the 8px threshold becomes an ORDER, not a camera
+pan: `UI.moveDragArm` → `UI.moveDrag` (a marching-dash gold tether + pulsing
+destination ring, drawn in render.js) → `UI.commitMoveDrag` on release. The
+release NEVER re-selects. Semantics are movement-first but honour intent:
+enemy under the finger → attack, own transport → board, enemy building /
+bridge → attack/sever, villager onto a resource → gather (dispatch deselects,
+as taps do), explored ground → walk (green `UI.moveFlash` confirm pulse),
+unexplored → refused. Sub-threshold presses fall through to the ordinary tap
+byte-for-byte (tap-audit still rules); drags starting OFF the selection still
+pan; wall/terraform line-drags keep right of way at pointerdown.

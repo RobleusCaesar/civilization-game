@@ -19,6 +19,9 @@ const UI = {
   wallGhost: null,       // [{x,y,ok,mask}] preview of the dragged line
   terraDrag: null,       // tile chain while dragging a sapper dig/clear line
   terraGhost: null,      // [{x,y,ok}] preview of the dragged terraform line
+  moveDragArm: null,     // {ax,ay} press landed ON the selection — a drag becomes a move order
+  moveDrag: null,        // {ax,ay,sx,sy} live drag-to-move: tether anchor (tiles) + finger (screen)
+  moveFlash: null,       // {x,y,t,life} confirmation pulse where a drag order landed
   settingRally: null,    // building id waiting for a rally-point tap
   /* The build menu. NO GATE HERE — a gate is not raised on open ground, it is
      cut into a wall you have already built: select a standing section and use
@@ -165,6 +168,12 @@ const UI = {
           this.downAt = null;
         } else {
           this.downAt = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false };
+          // DRAG-TO-MOVE: a press that lands ON the current selection arms a
+          // move order instead of a camera pan — dragging then pulls a tether
+          // to the destination and release sends them. A press that never
+          // moves past the tap threshold falls through to the ordinary tap,
+          // so plain taps on your own units are completely unchanged.
+          this.moveDragArm = (!this.placing && !this.settingRally) ? this.dragMoveAnchor(e.clientX, e.clientY) : null;
         }
       } else if (this.pointers.size === 2) {
         const [a, b] = [...this.pointers.values()];
@@ -172,6 +181,7 @@ const UI = {
         this.downAt = null;
         this.wallDrag = null; this.wallGhost = null;   // pinch cancels the line
         this.terraDrag = null; this.terraGhost = null;
+        this.moveDrag = null; this.moveDragArm = null; // …and the move tether
       }
       e.preventDefault();
     });
@@ -189,8 +199,14 @@ const UI = {
           if (this.downAt && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 8)
             this.downAt.moved = true;
           if (this.downAt && this.downAt.moved) {
-            R.cam.x -= dx / R.cam.z; R.cam.y -= dy / R.cam.z;
-            R.clampCam();
+            if (this.moveDragArm) {
+              // the press started on the selection — this drag is an order, not
+              // a pan: keep the tether pinned to the finger for the ghost
+              this.moveDrag = { ax: this.moveDragArm.ax, ay: this.moveDragArm.ay, sx: e.clientX, sy: e.clientY };
+            } else {
+              R.cam.x -= dx / R.cam.z; R.cam.y -= dy / R.cam.z;
+              R.clampCam();
+            }
           }
         }
       } else if (this.pointers.size === 2) {
@@ -214,6 +230,10 @@ const UI = {
       } else if (this.terraDrag) {
         this.commitTerraDrag();
         this.terraDrag = null; this.terraGhost = null;
+      } else if (this.moveDrag) {
+        // release = the order lands where the finger lifted
+        this.commitMoveDrag(e.clientX, e.clientY);
+        this.moveDrag = null; this.moveDragArm = null;
       } else if (this.downAt && !this.downAt.moved && performance.now() - this.downAt.t < 400) {
         // a second quick tap on (nearly) the same spot is a DOUBLE-TAP: select every
         // like unit within the grouping sphere, so a whole trebuchet line / fleet of
@@ -225,7 +245,7 @@ const UI = {
         else this.handleTap(e.clientX, e.clientY);
       }
       if (this.pointers.size < 2) this.pinchD = 0;
-      if (this.pointers.size === 0) this.downAt = null;
+      if (this.pointers.size === 0) { this.downAt = null; this.moveDragArm = null; }
     };
     cv.addEventListener('pointerup', up);
     cv.addEventListener('pointercancel', e => {
@@ -233,6 +253,7 @@ const UI = {
       this.downAt = null;
       this.wallDrag = null; this.wallGhost = null;
       this.terraDrag = null; this.terraGhost = null;
+      this.moveDrag = null; this.moveDragArm = null;
     });
     cv.addEventListener('wheel', e => {
       this.zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 0.89);
@@ -410,6 +431,157 @@ const UI = {
       if (d < bd) { bd = d; best = { x, y }; }
     }
     return best;
+  },
+
+  /* ---------------- drag-to-move ----------------
+     The second movement gesture, born of the crowded-tile problem: with six
+     archers packed on one tile, TAPPING a destination near them mostly lands
+     on a bystander archer and steals the selection instead of moving anyone.
+     So a press that starts ON the selection and DRAGS becomes an order: a
+     tether follows the finger, and wherever it lifts, the selected unit or
+     party goes. The release NEVER re-selects — that is the whole point.
+     Release semantics stay movement-first but honour the obvious intents:
+     an enemy under the finger is attacked, an own transport is boarded, a
+     villager dropped on a resource gathers it; everything else is a walk. */
+
+  // does this press land on the current selection? → the tether's anchor
+  // (visual sprite center — same SPRITE_LIFT math as tap hit-testing)
+  dragMoveAnchor(sx, sy) {
+    if (!S || S.over || !this.sel) return null;
+    const w = R.screenToWorld(sx, sy), wx = w.x / CFG.TILE, wy = w.y / CFG.TILE;
+    const UOFF = CFG.SPRITE_LIFT / CFG.TILE;
+    const near = u => u && u.owner === 'P' && Math.hypot(u.x - wx, u.y - UOFF - wy) <= 0.6;
+    if (this.sel.type === 'unit') {
+      const u = Units.get(this.sel.id);
+      return near(u) ? { ax: u.x, ay: u.y - UOFF } : null;
+    }
+    if (this.sel.type === 'group') {
+      for (const id of this.sel.ids) {
+        const u = Units.get(id);
+        if (near(u)) return { ax: u.x, ay: u.y - UOFF };
+      }
+    }
+    return null;
+  },
+
+  commitMoveDrag(sx, sy) {
+    if (!S || S.over || !this.sel) return;
+    const tile = R.screenToTile(sx, sy);
+    if (!MapGen.inB(tile.x, tile.y)) return;
+    const w = R.screenToWorld(sx, sy), wx = w.x / CFG.TILE, wy = w.y / CFG.TILE;
+    const explored = S.map.explored[MapGen.idx(tile.x, tile.y)];
+    const UOFF = CFG.SPRITE_LIFT / CFG.TILE;
+    let hitUnit = null, hd = 0.7;
+    for (const u of S.units) {
+      if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
+      const d = Math.hypot(u.x - wx, u.y - UOFF - wy);
+      if (d < hd) { hd = d; hitUnit = u; }
+    }
+    const hitBld = G.visibleAt(tile.x, tile.y) ? Bld.at(tile.x, tile.y) : null;
+    const hitBridge = (explored && Bld.bridgeAt) ? Bld.bridgeAt(tile.x, tile.y) : null;
+    const foeBldNear = () => {
+      if (hitBld && hitBld.owner === 'A') return hitBld;
+      const n = this.snapNear(wx, wy, (x, y) => {
+        const b2 = G.visibleAt(x, y) ? Bld.at(x, y) : null; return !!(b2 && b2.owner === 'A');
+      }, 0.42);
+      return n ? Bld.at(n.x, n.y) : null;
+    };
+    const flash = () => { this.moveFlash = { x: tile.x, y: tile.y, t: 0.9, life: 0.9 }; };
+
+    if (this.sel.type === 'group') {
+      const ids = this.sel.ids.filter(id => Units.get(id));
+      if (!ids.length) { this.deselect(); return; }
+      this.sel.ids = ids;
+      const fleet = ids.every(id => { const o = Units.get(id); return o && Units.isNaval(o); });
+      if (hitUnit && hitUnit.owner !== 'P') {
+        for (const id of ids) {
+          const u = Units.get(id);
+          if (Units.isTransport(u)) continue;
+          u.task = { type: 'attack' }; u.tUnit = hitUnit.id; u.tBld = 0;
+          u.anchor = { x: hitUnit.x, y: hitUnit.y };
+          u.defend = false; u.assault = true;
+        }
+        this.toast(fleet ? '⚓ Fleet attacks!' : '⚔️ War party attacks!');
+        return;
+      }
+      if (hitUnit && hitUnit.owner === 'P' && Units.isTransport(hitUnit)) {
+        let n = 0;
+        for (const id of ids) {
+          const u = Units.get(id);
+          if (u && Units.isBoardable(u) && Units.orderBoard(u, hitUnit)) n++;
+        }
+        this.toast(n ? `${n} boarding — the ${CFG.UNITS[hitUnit.kind].name} holds ${CFG.UNITS[hitUnit.kind].cap}`
+          : 'Transport is full (or away from shore)', !n);
+        return;
+      }
+      const foeB = foeBldNear();
+      if (foeB) {
+        for (const id of ids) { const u = Units.get(id); if (u && !Units.isTransport(u)) { u.defend = false; u.assault = true; Units.orderAttackBuilding(u, foeB); } }
+        this.toast('⚔️ ' + (fleet ? 'Fleet bombards ' : 'War party attacks ') + Bld.def(foeB.key).name);
+        return;
+      }
+      if (hitBridge && hitBridge.owner !== 'P') {
+        for (const id of ids) { const u = Units.get(id); if (u && Units.isMilitary(u)) { u.defend = false; Units.orderAttackBridge(u, hitBridge); } }
+        this.toast('⚔️ War party moves to sever the bridge');
+        return;
+      }
+      if (!explored) { this.toast('Unexplored', true); return; }
+      for (const id of ids) { const u = Units.get(id); if (u) u.defend = false; }
+      Units.groupMove(ids, tile.x, tile.y);
+      flash();
+      return;
+    }
+
+    if (this.sel.type !== 'unit') return;
+    const sel = Units.get(this.sel.id);
+    if (!sel || sel.owner !== 'P') return;
+    if (hitUnit && hitUnit.owner !== 'P' && Combat.canEngage(sel, hitUnit)) {
+      sel.task = { type: 'attack' }; sel.tUnit = hitUnit.id; sel.tBld = 0;
+      sel.anchor = { x: hitUnit.x, y: hitUnit.y };
+      sel.defend = false; sel.assault = true;
+      this.toast('Attack!');
+      return;
+    }
+    if (hitUnit && hitUnit.owner === 'P' && Units.isTransport(hitUnit) && Units.isBoardable(sel)) {
+      this.toast(Units.orderBoard(sel, hitUnit)
+        ? `Boarding — the ${CFG.UNITS[hitUnit.kind].name} holds ${CFG.UNITS[hitUnit.kind].cap}`
+        : 'Transport is full (or away from shore)', true);
+      return;
+    }
+    const foeB = foeBldNear();
+    if (foeB && Units.isMilitary(sel)) {
+      sel.defend = false; sel.assault = true;
+      Units.orderAttackBuilding(sel, foeB);
+      this.toast('⚔️ Attacking ' + Bld.def(foeB.key).name);
+      return;
+    }
+    if (hitBridge && hitBridge.owner !== 'P' && Units.isMilitary(sel)) {
+      sel.defend = false; Units.orderAttackBridge(sel, hitBridge);
+      this.toast('Moving to sever the bridge');
+      return;
+    }
+    // a villager dropped square on a resource goes to gather it (near-miss
+    // snapping like a tap, and same dispatch: job handed off → deselect)
+    if (Units.isVillager(sel) && explored) {
+      let rt = CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]] && S.map.resAmount[MapGen.idx(tile.x, tile.y)] > 0
+        ? { x: tile.x, y: tile.y }
+        : this.snapNear(wx, wy, (x, y) => S.map.explored[MapGen.idx(x, y)] &&
+            CFG.GATHER[S.map.terrain[MapGen.idx(x, y)]] && S.map.resAmount[MapGen.idx(x, y)] > 0, 0.42);
+      if (rt) {
+        if (Units.assignGather(sel, rt.x, rt.y)) this.dispatchedWorker();
+        else this.toast('No clear ground to stand beside that resource', true);
+        return;
+      }
+    }
+    if (Units.isTransport(sel) && sel.cargo && sel.cargo.length && Path.passable(tile.x, tile.y)) {
+      Units.orderUnload(sel, tile.x, tile.y);
+      this.toast('Making for that shore — soldiers will land there');
+      return;
+    }
+    if (!explored) { this.toast('Unexplored', true); return; }
+    sel.defend = false;
+    Units.moveTo(sel, tile.x, tile.y);
+    flash();
   },
 
   handleTap(sx, sy) {

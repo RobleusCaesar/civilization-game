@@ -1445,6 +1445,57 @@ const R = {
       }
     }
 
+    // DRAG-TO-MOVE tether: a dashed gold line from the dragged selection to the
+    // finger, an arrowhead on the business end, and a pulsing ring on the
+    // destination tile — green-gold over known ground, red over the unexplored
+    if (UI.moveDrag) {
+      const md = UI.moveDrag;
+      const w = this.screenToWorld(md.sx, md.sy);
+      const tw = this.screenToTile(md.sx, md.sy);
+      const known = MapGen.inB(tw.x, tw.y) && S.map.explored[MapGen.idx(tw.x, tw.y)];
+      const ax = md.ax * TL, ay = md.ay * TL, tx = w.x, ty = w.y;
+      const col = known ? '232,193,90' : '224,101,80';
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 160);
+      g.save();
+      g.setLineDash([7, 6]);
+      g.lineDashOffset = -(performance.now() / 40) % 13;   // the dashes MARCH toward the target
+      g.strokeStyle = 'rgba(' + col + ',0.85)'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(ax, ay); g.lineTo(tx, ty); g.stroke();
+      g.setLineDash([]);
+      // arrowhead pointing along the tether
+      const angA = Math.atan2(ty - ay, tx - ax);
+      g.fillStyle = 'rgba(' + col + ',0.95)';
+      g.beginPath();
+      g.moveTo(tx, ty);
+      g.lineTo(tx - Math.cos(angA - 0.42) * 11, ty - Math.sin(angA - 0.42) * 11);
+      g.lineTo(tx - Math.cos(angA + 0.42) * 11, ty - Math.sin(angA + 0.42) * 11);
+      g.fill();
+      // the destination tile, breathing
+      if (MapGen.inB(tw.x, tw.y)) {
+        g.strokeStyle = 'rgba(' + col + ',' + (0.45 + 0.4 * pulse) + ')'; g.lineWidth = 2;
+        g.strokeRect(tw.x * TL + 2, tw.y * TL + 2, TL - 4, TL - 4);
+        g.beginPath();
+        g.arc((tw.x + 0.5) * TL, (tw.y + 0.5) * TL, TL * (0.38 + 0.1 * pulse), 0, Math.PI * 2);
+        g.stroke();
+      }
+      g.restore();
+    }
+    // …and the "order landed" pulse where a drag was released: a quick green
+    // double-ring that expands and fades, so the hand-off is unmistakable
+    if (UI.moveFlash) {
+      const f = UI.moveFlash;
+      f.t -= dt;
+      if (f.t <= 0) { UI.moveFlash = null; }
+      else {
+        const k = f.t / f.life, done = 1 - k;
+        const fx = (f.x + 0.5) * TL, fy = (f.y + 0.5) * TL;
+        g.strokeStyle = 'rgba(138,224,138,' + (0.75 * k) + ')'; g.lineWidth = 2.5;
+        g.beginPath(); g.arc(fx, fy, 4 + done * 15, 0, Math.PI * 2); g.stroke();
+        g.strokeStyle = 'rgba(138,224,138,' + (0.45 * k) + ')'; g.lineWidth = 1.5;
+        g.beginPath(); g.arc(fx, fy, 2 + done * 9, 0, Math.PI * 2); g.stroke();
+      }
+    }
+
     // rally point flag / rally-setting range ring
     if (UI.settingRally) {
       const rb = Bld.get(UI.settingRally);
