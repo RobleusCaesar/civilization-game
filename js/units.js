@@ -956,22 +956,28 @@ const Units = {
           if (Math.random() < 0.16) R.float(u.x + (Math.random() - 0.5), u.y - 0.4, '·', '#cdbb90');   // spadefuls of earth
           if (t.t <= 0) {
             let done = false, moat = false, berm = false, cost = false;
-            if (t.job === 'dig') { done = Terraform.dig(t.x, t.y); moat = done && S.map.terrain[MapGen.idx(t.x, t.y)] === T.MOAT; }
-            else if (t.job === 'clear') { done = Terraform.clear(t.x, t.y); }
-            else if (t.job === 'mound') {
-              // the one paid earthwork — quarry-heavy; skip (and warn) if broke
-              const res = u.owner === 'P' ? S.res : S.ai.res, mc = CFG.TERRAFORM.moundCost;
-              if (Bld.canAfford(mc, res)) { Bld.pay(mc, res); done = Terraform.mound(t.x, t.y); berm = done && S.map.terrain[MapGen.idx(t.x, t.y)] === T.MOUND; }
-              else cost = true;
+            // SERVICE FEES (tests/sapper-fees.mjs): every job bills per tile —
+            // dig/bridge/clear/mound, the deeper the tier the dearer. Checked
+            // before the work lands, PAID only when it does: a job that fails
+            // (a seal-guarded dig, a fallen-through crossing) charges nothing,
+            // and a tribe that can't pay skips the tile with a warning.
+            const res = u.owner === 'P' ? S.res : S.ai.res;
+            const fee = CFG.TERRAFORM[t.job + 'Cost'];
+            if (fee && !Bld.canAfford(fee, res)) cost = true;
+            else {
+              if (t.job === 'dig') { done = Terraform.dig(t.x, t.y); moat = done && S.map.terrain[MapGen.idx(t.x, t.y)] === T.MOAT; }
+              else if (t.job === 'clear') { done = Terraform.clear(t.x, t.y); }
+              else if (t.job === 'mound') { done = Terraform.mound(t.x, t.y); berm = done && S.map.terrain[MapGen.idx(t.x, t.y)] === T.MOUND; }
+              else if (t.job === 'bridge' && Bld.buildBridge) { done = Bld.buildBridge(u.owner, t.x, t.y); }
+              if (done && fee) Bld.pay(fee, res);
             }
-            else if (t.job === 'bridge' && Bld.buildBridge) { done = Bld.buildBridge(u.owner, t.x, t.y); }
             if (u.owner === 'P') {
               if (done) G.log(t.job === 'dig' ? (moat ? 'Your sappers open a moat — the channel floods!' : 'Your sappers dig a trench')
                 : t.job === 'clear' ? 'Your sappers breach the ground — a path opens'
                 : t.job === 'mound' ? (berm ? 'Your sappers raise an earth mound — slow to cross' : 'Your sappers reclaim solid ground from the water')
                 : 'Your sappers raise a bridge');
+              else if (cost) UI.toast(`The sappers want paying — ${Bld.costStr(fee)} per tile`, true);
               else if (t.job === 'dig') UI.toast('Can’t dig there — it would seal the town in', true);
-              else if (cost) UI.toast('Not enough stone & wood to raise a mound', true);
               else if (t.job === 'bridge') UI.toast('The crossing fell through — can’t bridge there', true);
             }
             this.startNextTerraform(u);   // tile done — walk the line to the next queued job

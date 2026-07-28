@@ -65,6 +65,7 @@ node tests/drag-move.mjs       # drag-to-move: press ON the selection + drag = o
 node tests/chase-commit.mjs    # a hunter commits to its detour; no unit wedged in reshaped ground
 node tests/defend-hold.mjs     # Defend holds at the DEFENSES: tight ring, tower lanes, behind walls
 node tests/work-order.mjs      # wall/trench lines never box the worker in — far side of a choke first
+node tests/sapper-fees.mjs     # sapper services bill per tile, dearer by tier, exactly once, never into debt
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -351,3 +352,16 @@ solid (intent counts, or two half-built gaps would approve each other's
 closing stone): `AI.townOut` and `Terraform.digWouldSeal` (via
 `Path.reachFrom(spots, wallSitesSolid)`) both refuse based on what the line
 will be, not what it is today.
+
+**Sapper fees** (`tests/sapper-fees.mjs`): every terraform job bills PER TILE
+from `CFG.TERRAFORM` (`digCost`/`bridgeCost`/`clearCost`/`moundCost`), dearer
+with the tier that unlocks it (T1 dig 10 food → T3 mound 35 stone + 10 wood),
+and **no fee contains gold** — a gold-poor tribe (the rival included) must
+still field its engineers. The fee is checked before the work lands and paid
+only when it does (units.js terraform completion): a failed job charges
+nothing, a broke tribe skips the tile with a toast — never debt, never free
+work. Bridges bill `bridgeCost` and nothing else — `CFG.BRIDGE.levels` prices
+are upgrades only. The rival pays from `S.ai.res` (same code path). The drag
+ghost (`UI.updateTerraGhost`) spends a running budget like the wall ghost, so
+a half-affordable line queues half the line; single taps refuse up front with
+the price in the toast; the panel tools show the per-tile fee.

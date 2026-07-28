@@ -302,9 +302,17 @@ const UI = {
   updateTerraGhost() {
     const u = this.armedSapper(), job = this.terraMode, chain = this.terraDrag || [];
     if (!u) { this.terraGhost = chain.map(t => ({ x: t.x, y: t.y, ok: false })); return; }
+    // the guild bills per tile — the drag ghost spends a running budget just
+    // like the wall ghost, so a line you can half afford queues half the line
+    const fee = CFG.TERRAFORM[job + 'Cost'];
+    const budget = Object.assign({}, S.res);
     this.terraGhost = chain.map(t => {
       let ok = !!S.map.explored[MapGen.idx(t.x, t.y)] && Units.canTerraform(u.owner, t.x, t.y, job);
       if (ok && job === 'dig' && Terraform.digWouldSeal(t.x, t.y)) ok = false;
+      if (ok && fee) {
+        for (const k in fee) if ((budget[k] || 0) < fee[k]) { ok = false; break; }
+        if (ok) for (const k in fee) budget[k] -= fee[k];
+      }
       return { x: t.x, y: t.y, ok };
     });
   },
@@ -836,6 +844,8 @@ const UI = {
           if (mode === 'bridge' && (tier < 2 || !Terraform.bridgeable(tile.x, tile.y) || Bld.bridgeAt(tile.x, tile.y))) { this.toast('Bridges span water or a moat', true); return; }
           if (mode === 'clear' && (tier < 3 || !Terraform.isClearable(tile.x, tile.y))) { this.toast('Clear a forest 🌲 / rock 🪨 / orchard tile', true); return; }
           if (mode === 'mound' && (tier < 3 || !Terraform.isMoundable(tile.x, tile.y, sel.owner))) { this.toast('Mound: raise open ground, or fill water within 2 tiles of shore', true); return; }
+          const fee = CFG.TERRAFORM[mode + 'Cost'];
+          if (fee && !Bld.canAfford(fee)) { this.toast(`The sappers want paying — ${Bld.costStr(fee)} per tile`, true); return; }
           if (Units.assignTerraform(sel, tile.x, tile.y, mode)) {
             this.toast(mode === 'dig' ? 'Sapper digging ⛏' : mode === 'bridge' ? 'Sapper raising a bridge 🌉'
               : mode === 'mound' ? 'Sapper raising a mound ⛰' : 'Sapper breaching ⛏');
@@ -1607,7 +1617,9 @@ const UI = {
         const tool = (job, icon, label, minTier) => {
           const locked = tier < minTier;
           const active = this.terraMode === job && !locked;
-          return `<button class="abtn ${locked ? 'cant' : ''}${active ? ' sel' : ''}" data-act="terra" data-job="${job}">${icon} ${label}${locked ? `<small>Camp Lv ${minTier}</small>` : ''}</button>`;
+          const fee = CFG.TERRAFORM[job + 'Cost'];
+          const sub = locked ? `Camp Lv ${minTier}` : fee ? `${Bld.costStr(fee)} / tile` : '';
+          return `<button class="abtn ${locked ? 'cant' : ''}${active ? ' sel' : ''}" data-act="terra" data-job="${job}">${icon} ${label}${sub ? `<small>${sub}</small>` : ''}</button>`;
         };
         html += tool('dig', '🕳', 'Trench / Moat', 1);
         html += tool('bridge', '🌉', 'Bridge', 2);

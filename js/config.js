@@ -409,7 +409,16 @@ const CFG = {
     reclaim: 10,       // fill a shallow water tile (1 from shore)
     reclaimDeep: 20,   // fill the deep tile (2 from shore) — twice as slow
     reclaimReach: 2,   // max tiles from natural land you may reclaim (2 = shallow + one deep)
-    moundCost: { stone: 35, wood: 10 },   // per tile — lots of quarry, some wood
+    /* SERVICE FEES (tests/sapper-fees.mjs) — the sappers' guild works for pay,
+       billed PER TILE when the work lands (a failed or skipped tile charges
+       nothing). The later the tier that unlocks a tool, the dearer it runs:
+       T1 dig is cheap fed spadework, T2 bridge buys timber and pilings, the
+       T3 tools cost real material. No gold in any fee — gold-poor tribes
+       (the rival included) must still be able to field their engineers. */
+    digCost: { food: 10 },                // tier 1 — spadework
+    bridgeCost: { wood: 30, stone: 10 },  // tier 2 — timber + pilings
+    clearCost: { food: 30, wood: 25 },    // tier 3 — demolition crews
+    moundCost: { stone: 35, wood: 10 },   // tier 3, per tile — lots of quarry, some wood
     moundCross: 0.25,  // a unit crosses a mound at 1/4 speed (4x longer)
   },
   /* BRIDGES — a sapper raises a level-1 timber crossing; it can then be upgraded
