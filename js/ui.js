@@ -1320,6 +1320,7 @@ const UI = {
             // STEP 2 — and what will you pay with? Live rate per pair, then go.
             const need = this.tradeNeed;
             html += `<span class="psub">🐫 Bringing home ${ic(need)} <b>${this.RES_NAME[need]}</b> — <b>what will you trade for it?</b></span>`;
+            let payN = 0;
             for (const pay of CFG.TRADE.goods) {
               if (pay === need) continue;
               const deal = Bld.tradeDeal(b, need, pay), c = Bld.canTrade(b, need, pay);
@@ -1327,8 +1328,14 @@ const UI = {
               html += `<button class="abtn ${c.ok ? '' : 'cant'}" data-act="trade" data-res="${need}" data-pay="${pay}">` +
                 `${ic(pay)} ${deal.pay} → ${ic(need)} ${deal.get}` +
                 `<small>${c.ok ? `back in ${spec.delay}d` : c.why}</small></button>`;
+              payN++;
             }
-            html += `<button class="abtn wide" data-act="tradeback">← Pick something else</button>`;
+            // an odd pay option stays BUTTON-sized, left, with the half-row
+            // held by a spacer (the grid packer would otherwise stretch it
+            // panel-wide) — and Back shares its row with Demolish below, so
+            // the whole panel stays as condensed as any other building menu
+            if (payN % 2) html += '<span></span>';
+            html += `<button class="abtn" data-act="tradeback">← Pick something else</button>`;
           }
         }
         if (b.key !== 'tc') {
