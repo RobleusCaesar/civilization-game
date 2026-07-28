@@ -572,6 +572,9 @@ const Units = {
 
   // spread a same-domain group into a block of open tiles around the target, the
   // front ranks (melee) leading. domain 'water' routes ships over water tiles.
+  // DENSE RANKS (tests/army-groups.mjs): two units of the same KIND share a
+  // tile, so a war party lands as a tight block instead of a sprawl — half the
+  // footprint, same melee-front / ranged-behind order.
   formationMove(units, tx, ty, domain) {
     if (!units.length) return;
     const cx = units.reduce((s, u) => s + u.x, 0) / units.length;
@@ -582,10 +585,19 @@ const Units = {
     const start = Path.passable(tx, ty, 'P', domain) ? { x: tx, y: ty }
       : MapGen.findNear(tx, ty, 6, (x, y) => Path.passable(x, y, 'P', domain));
     if (!start) { for (const u of units) this.moveTo(u, tx, ty); return; }
+    // melee front, and same kinds adjacent so they pair onto shared tiles
+    const rank = u => (CFG.UNITS[u.kind].rng ? 1 : 0);
+    const order = units.slice().sort((a, b) => rank(a) - rank(b) ||
+      (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0));
+    let needed = 0;
+    for (let i = 0; i < order.length; i++) {
+      needed++;
+      if (order[i + 1] && order[i + 1].kind === order[i].kind) i++;   // this pair shares a tile
+    }
     const spots = [];
     const seen = new Set([start.x + ',' + start.y]);
     const q = [start];
-    while (q.length && spots.length < units.length) {
+    while (q.length && spots.length < needed) {
       const c = q.shift();
       spots.push(c);
       for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
@@ -597,12 +609,15 @@ const Units = {
     }
     // frontmost spots (furthest along the direction of travel) first
     spots.sort((a, b) => (b.x * dx + b.y * dy) - (a.x * dx + a.y * dy));
-    const melee = units.filter(u => !CFG.UNITS[u.kind].rng);
-    const ranged = units.filter(u => CFG.UNITS[u.kind].rng);
-    melee.concat(ranged).forEach((u, i) => {
-      const spot = spots[i % spots.length];
-      this.moveTo(u, spot.x, spot.y);
-    });
+    let si = 0;
+    for (let i = 0; i < order.length; i++) {
+      const spot = spots[Math.min(si++, spots.length - 1)];
+      this.moveTo(order[i], spot.x, spot.y);
+      if (order[i + 1] && order[i + 1].kind === order[i].kind) {
+        this.moveTo(order[i + 1], spot.x, spot.y);
+        i++;
+      }
+    }
   },
 
   orderAttackBuilding(u, b) {

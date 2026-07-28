@@ -66,6 +66,7 @@ node tests/chase-commit.mjs    # a hunter commits to its detour; no unit wedged 
 node tests/defend-hold.mjs     # Defend holds at the DEFENSES: tight ring, tower lanes, behind walls
 node tests/work-order.mjs      # wall/trench lines never box the worker in — far side of a choke first
 node tests/sapper-fees.mjs     # sapper services bill per tile, dearer by tier, exactly once, never into debt
+node tests/army-groups.mjs     # dense 2-per-tile formations; three saved armies on right-rail banners
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -369,3 +370,17 @@ are upgrades only. The rival pays from `S.ai.res` (same code path). The drag
 ghost (`UI.updateTerraGhost`) spends a running budget like the wall ghost, so
 a half-affordable line queues half the line; single taps refuse up front with
 the price in the toast; the panel tools show the per-tile fee.
+
+**Army groups** (`tests/army-groups.mjs`): two features in one contract.
+**Dense ranks** — `Units.formationMove` packs TWO units of the same kind onto
+a tile (kinds never mixed on a tile; melee front, ranged behind unchanged),
+so a war party lands as a block half the old footprint. **Saved armies** —
+the group panel's Save banks the selection to the lowest free banner of
+three (`UI.saveArmy` → `S.armies`, slot → unit ids, in every save file;
+`loadJSON` backfills `{}`); Remove frees a number without renumbering the
+rest, and the NEXT save fills the gap; a banner whose last soldier falls
+vanishes on its own (`UI.tickArmies`, ~1s heartbeat from `UI.init`).
+Banners render as pixel centurion-helmet buttons (1/2/3 helmets) on the
+right rail under the minimap (`#armyBar`); tapping one centers the camera
+on the army and selects it. One banner per soldier — saving units into a
+new army pulls them out of any old one.

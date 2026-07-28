@@ -165,6 +165,7 @@ const G = {
       buildings: [], units: [],
       bridges: [],                          // {x,y,owner,hp,maxhp} — attackable crossings (Sapper tier 2)
       garrison: [],                         // villagers sheltered inside the Town Center
+      armies: {},                           // saved war parties: slot (1-3) → [unit ids] (see UI.saveArmy)
       reprieveUsed: false,                  // the one-time "two survivors emerge" reprieve (competitive modes)
       breachedP: false,                     // set when the player loses a building to enemy fire — gates the positive specials
       collapse: false,                      // player's clan is finished — barbarians push the hall (Moderate/Hard)
@@ -957,6 +958,7 @@ const G = {
       });
     }
     if (!data.garrison) data.garrison = [];
+    if (!data.armies) data.armies = {};   // pre-army saves: no standing banners
     // pre-sapper saves: no bridges, and rebuild the fast passability mirror
     if (!Array.isArray(data.bridges)) data.bridges = [];
     if (!Array.isArray(data.map.bridge)) data.map.bridge = new Array(w * h).fill(0);

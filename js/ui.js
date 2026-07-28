@@ -47,6 +47,8 @@ const UI = {
     // remembered preference: once the player knows the ropes they can tuck the
     // unit help-text away (− button); ℹ️ brings it back. Persists across games.
     try { this.helpHidden = localStorage.getItem('neo-unit-help') === '1'; } catch (e) { this.helpHidden = false; }
+    // saved-army heartbeat: banners follow their soldiers (see tickArmies)
+    setInterval(() => { try { this.tickArmies(); } catch (e) {} }, 900);
     // procedural UI chrome (ARTSTYLE): a dark plank texture generated once and
     // handed to CSS — panels, bars, and cards all share it. No image files.
     {
@@ -1042,6 +1044,150 @@ const UI = {
 
   /* ---------------- selection panel ---------------- */
   _panelSig: '',
+  /* ---------------- SAVED ARMIES (tests/army-groups.mjs) ----------------
+     Up to three war parties saved to numbered banners. Save from the group
+     panel (auto-assigned the lowest free slot of 1-3), recall from the
+     right-rail buttons under the minimap — the view jumps to the army and
+     it's selected, ready for orders. Removing a banner frees its number
+     without renumbering the others; a banner whose last soldier falls
+     vanishes on its own (tickArmies). Armies live in S.armies (slot →
+     [unit ids]) so they ride along in every save. */
+  armyAlive(n) {
+    const ids = (S.armies || {})[n] || [];
+    return ids.filter(id => { const u = Units.get(id); return u && u.hp > 0 && u.owner === 'P'; });
+  },
+  pruneArmies() {
+    if (!S || !S.armies) return false;
+    let changed = false;
+    for (const n of [1, 2, 3]) {
+      if (!S.armies[n]) continue;
+      const alive = this.armyAlive(n);
+      if (alive.length !== S.armies[n].length) {
+        changed = true;
+        if (alive.length) S.armies[n] = alive; else delete S.armies[n];
+      }
+    }
+    if (changed) this.renderArmyBar();
+    return changed;
+  },
+  // which saved army IS this selection? (set equality against the living roster)
+  armyOf(ids) {
+    if (!S.armies || !ids || !ids.length) return 0;
+    const set = new Set(ids);
+    for (const n of [1, 2, 3]) {
+      const a = this.armyAlive(n);
+      if (a.length && a.length === set.size && a.every(id => set.has(id))) return n;
+    }
+    return 0;
+  },
+  nextArmySlot() {
+    for (const n of [1, 2, 3]) if (!this.armyAlive(n).length) return n;
+    return 0;
+  },
+  saveArmy(ids) {
+    this.pruneArmies();
+    const live = (ids || []).filter(id => Units.get(id));
+    if (!live.length) return 0;
+    const n = this.nextArmySlot();
+    if (!n) { this.toast('All three banners are taken — remove one first', true); return 0; }
+    S.armies = S.armies || {};
+    // one banner per soldier — units joining a new army leave their old one
+    for (const m of [1, 2, 3]) if (m !== n && S.armies[m]) {
+      S.armies[m] = S.armies[m].filter(id => !live.includes(id));
+      if (!S.armies[m].length) delete S.armies[m];
+    }
+    S.armies[n] = live.slice();
+    this.toast(`🪖 Army ${n} mustered — tap its banner to return to it`);
+    this.renderArmyBar(); this.renderPanel();
+    return n;
+  },
+  removeArmy(n) {
+    if (S.armies && S.armies[n]) {
+      delete S.armies[n];
+      this.toast(`Army ${n} disbanded — its soldiers keep their posts`);
+    }
+    this.renderArmyBar(); this.renderPanel();
+  },
+  // banner tapped: jump the view to the army and select it, ready for orders
+  selectArmy(n) {
+    this.pruneArmies();
+    const alive = this.armyAlive(n);
+    if (!alive.length) { this.renderArmyBar(); return; }
+    S.armies[n] = alive;
+    let cx = 0, cy = 0;
+    for (const id of alive) { const u = Units.get(id); cx += u.x; cy += u.y; }
+    R.centerOn(cx / alive.length, cy / alive.length);
+    this.sel = { type: 'group', ids: alive.slice() };
+    this.builderFor = null; this.confirmDemolish = 0; this.terraMode = null; this.panelHidden = false;
+    this.renderPanel();
+  },
+  // 12x12 centurion galea, side view — crest, bronze dome, cheek + neck guard
+  ARMY_HELM: [
+    '...crrrr....',
+    '..crrrrrrr..',
+    '..rrrrrrrr..',
+    '...hhhhhh...',
+    '..hhhhhhhh..',
+    '.hhhhhhhhhh.',
+    '.hhhhhhhhhh.',
+    '.hdhhhh.ddh.',
+    '.hd.hhh..dh.',
+    '.hd.hhh..h..',
+    '.h..hhhh....',
+    '....hhh.....',
+  ],
+  drawHelmet(g, x, y, s) {
+    const COL = { r: '#c23b2e', c: '#e0603f', h: '#c8a24a', d: '#8a6a2a' };
+    // a dark outline pass first so overlapping helmets read apart
+    for (let ry = 0; ry < this.ARMY_HELM.length; ry++)
+      for (let rx = 0; rx < this.ARMY_HELM[ry].length; rx++)
+        if (this.ARMY_HELM[ry][rx] !== '.') {
+          g.fillStyle = '#1d1710';
+          g.fillRect(x + rx * s - 1, y + ry * s - 1, s + 2, s + 2);
+        }
+    for (let ry = 0; ry < this.ARMY_HELM.length; ry++)
+      for (let rx = 0; rx < this.ARMY_HELM[ry].length; rx++) {
+        const c = this.ARMY_HELM[ry][rx];
+        if (c === '.') continue;
+        g.fillStyle = COL[c];
+        g.fillRect(x + rx * s, y + ry * s, s, s);
+      }
+  },
+  // 1 helmet for Army 1, 2 stacked for Army 2, 3 stacked for Army 3
+  drawArmyIcon(g, n) {
+    g.imageSmoothingEnabled = false;
+    g.clearRect(0, 0, 44, 44);
+    if (n === 1) this.drawHelmet(g, 4, 4, 3);
+    else if (n === 2) { this.drawHelmet(g, 16, 2, 2); this.drawHelmet(g, 2, 14, 2); }
+    else { this.drawHelmet(g, 18, 0, 2); this.drawHelmet(g, 10, 10, 2); this.drawHelmet(g, 2, 20, 2); }
+  },
+  renderArmyBar() {
+    const bar = document.getElementById('armyBar');
+    if (!bar) return;
+    bar.innerHTML = '';
+    if (!window.S || !S.armies) return;
+    for (const n of [1, 2, 3]) {
+      if (!this.armyAlive(n).length) continue;
+      const btn = document.createElement('button');
+      btn.dataset.army = n;
+      btn.title = `Army ${n}`;
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 44;
+      this.drawArmyIcon(cv.getContext('2d'), n);
+      btn.appendChild(cv);
+      btn.addEventListener('click', (e) => { e.stopPropagation(); this.selectArmy(n); });
+      bar.appendChild(btn);
+    }
+  },
+  // ~1s heartbeat from init(): fallen soldiers leave their banner, an army
+  // wiped out takes its button with it — and a new/loaded game re-syncs
+  tickArmies() {
+    if (!window.S || !S.units) return;
+    this.pruneArmies();
+    const sig = S.armies ? [1, 2, 3].map(n => (S.armies[n] || []).length).join(',') : '';
+    if (sig !== this._armySig) { this._armySig = sig; this.renderArmyBar(); }
+  },
+
   panelSig() {
     if (!this.sel) return '';
     if (this.sel.type === 'bld') {
@@ -1529,14 +1675,30 @@ const UI = {
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${fleet ? '⚓ Fleet' : '⚔️ War Party'} <span style="color:var(--gold)">(${this.sel.ids.length})</span></div>
         <div class="psub">${this.groupComposition(this.sel.ids)}</div></div>
-        <button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button><button class="abtn" id="panelClose">✕</button></div>
-        <div class="pactions">${this.helpHidden ? '' : `<span class="psub">${fleet ? 'Tap water to sail together, or an enemy ship / coastal target to attack.' : 'Tap a tile to march (melee front, archers behind), or an enemy / rival building to attack together.'}</span>`}` +
+        <button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button><button class="abtn" id="panelClose">✕</button></div>`;
+      // SAVED ARMIES (tests/army-groups.mjs): a military group can be saved to
+      // a numbered banner — lowest free slot of three — and recalled from the
+      // right-rail helmet buttons. A group that IS a saved army offers Remove.
+      const armyN = gMil.length ? this.armyOf(this.sel.ids) : 0;
+      const armySlot = gMil.length && !armyN ? this.nextArmySlot() : 0;
+      html += `<div class="pactions">${this.helpHidden ? '' : `<span class="psub">${fleet ? 'Tap water to sail together, or an enemy ship / coastal target to attack.' : 'Tap a tile to march (melee front, archers behind), or an enemy / rival building to attack together.'}</span>`}` +
         (gLaden.length ? `<button class="abtn" data-act="gunload">⚓ Unload all<small>${gAboard} aboard</small></button>` : '') +
         (gMil.length ? `<button class="abtn ${gAllDef ? 'sel' : ''}" data-act="gdefend">${gAllDef ? '🛡 Stand Down' : '🛡 Defend'}</button>` : '') +
-        `<button class="abtn" data-act="stop">✋ Halt</button></div>`;
+        `<button class="abtn" data-act="stop">✋ Halt</button>` +
+        (armyN ? `<button class="abtn" data-act="garmyremove">🪖 Remove Army ${armyN}<small>frees its banner</small></button>`
+          : armySlot ? `<button class="abtn" data-act="garmysave">🪖 Save as Army ${armySlot}<small>recall it from the banner</small></button>`
+          : gMil.length ? `<button class="abtn cant" data-act="garmysave">🪖 Armies full<small>remove one to save</small></button>` : '') +
+        `</div>`;
       panel.innerHTML = html;
       const ic = panel.querySelector('#pIcon');
       this.iconInto(ic, R.unitSprite(first));
+      const gsave = panel.querySelector('[data-act="garmysave"]');
+      if (gsave) gsave.addEventListener('click', () => {
+        if (gsave.classList.contains('cant')) { this.toast('All three banners are taken — remove one first', true); return; }
+        this.saveArmy(this.sel.ids);
+      });
+      const gremove = panel.querySelector('[data-act="garmyremove"]');
+      if (gremove) gremove.addEventListener('click', () => this.removeArmy(armyN));
       panel.querySelector('[data-act="stop"]').addEventListener('click', () => {
         for (const id of this.sel.ids) {
           const u2 = Units.get(id);

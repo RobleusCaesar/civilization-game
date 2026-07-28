@@ -98,6 +98,21 @@
     min-width: 38px; min-height: 36px; font-size: 15px;
   }
 
+  /* ---- saved armies: banner buttons down the right rail, under the map ---- */
+  #armyBar {
+    position: absolute; right: 6px; z-index: 9;
+    top: calc(env(safe-area-inset-top) + 88px + 148px);
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  #armyBar button {
+    width: 48px; height: 48px; padding: 0; line-height: 0;
+    border: 2px solid #5c421f; border-radius: 9px; outline: 1px solid #241d15;
+    background: var(--bar-bg);
+    box-shadow: inset 0 0 0 1px rgba(232,200,140,0.25), 0 2px 6px rgba(0,0,0,0.5);
+  }
+  #armyBar button:active { background: var(--btn-hi); }
+  #armyBar canvas { width: 44px; height: 44px; image-rendering: pixelated; }
+
   /* ---- bottom bar ---- */
   #bottombar {
     position: absolute; left: 0; right: 0; bottom: 0; z-index: 10;
@@ -534,6 +549,7 @@
 
 <div id="miniWrap"><canvas id="mini" width="80" height="80"></canvas></div>
 <button id="miniToggle">▴</button>
+<div id="armyBar"></div>
 
 <div id="bottombar">
   <button id="bmToggle">▾</button>
