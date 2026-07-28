@@ -230,17 +230,20 @@ const Combat = {
           if (g) {
             if (u.task && u.task.type === 'move') continue;   // still walking back to post
             const dc = Math.hypot(u.x - g.x, u.y - g.y);
-            if (dc > Units.holdRadius(g, u.x, u.y) + 1.8) { Units.returnToGuard(u, g); continue; }
+            if (dc > Units.holdRadius(g, u.x, u.y) + Math.max(0.5, g.chase)) { Units.returnToGuard(u, g); continue; }
             // engage only a foe we can STRIKE while holding the line: one within the
             // bound (walls OR natural barriers) plus this unit's own weapon reach of
             // the hall. So an archer picks up an enemy still approaching the shore/wall
             // and volleys over it, a melee waits for the foe to reach the perimeter —
             // and neither chases a provocation out past the defended land.
+            // A weaponless hull (siege tower) acquires nothing — it has no blow
+            // to strike, and a 1-damage poke walk would only get it burned.
             const reach = CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE || 1.5;
             const MAXR = CFG.GUARD.maxNatural || 14;
             const gpred = o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o) &&
               Math.hypot(o.x - g.x, o.y - g.y) <= Units.holdRadius(g, o.x, o.y) + reach + 0.5;
-            const e = u.owner === 'A' ? this.bestFoe(u, g.x, g.y, g.r1 + MAXR + reach, gpred)
+            const e = !(CFG.UNITS[u.kind].atk > 0) ? null
+              : u.owner === 'A' ? this.bestFoe(u, g.x, g.y, g.r1 + MAXR + reach, gpred)
               : this.nearestUnit(g.x, g.y, g.r1 + MAXR + reach, gpred);
             if (e) u.tUnit = e.id;
             else if (dc > Units.holdRadius(g, u.x, u.y) && !Units.moving(u)) Units.returnToGuard(u, g);   // no foe → drift home
@@ -249,11 +252,18 @@ const Combat = {
           // no Town Center / Dock to guard — fall through to the ordinary leash
         }
         // guards: engage hostiles near them (but don't stray while following an order,
-        // and never auto-hunt harmless game — that's the player's call)
+        // and never auto-hunt harmless game — that's the player's call).
+        // ENGINES ARE ALWAYS AWAKE: a catapult/trebuchet/ballista ships with
+        // aggro 0 so it never WANDERS — but standing watch it still opens fire
+        // by itself on anything that walks into its own weapon range (the
+        // no-pursuit rule in update() keeps it from crawling after runners).
         if (u.task && u.task.type === 'move') continue;
+        const aggroR = (Units.isSiege(u) || u.kind === 'ballista')
+          ? Math.max(base.aggro || 0, (CFG.UNITS[u.kind].atk > 0 ? (base.rng || 0) + 0.5 : 0))
+          : base.aggro;
         const lpred = o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o);
-        const e = u.owner === 'A' ? this.bestFoe(u, u.x, u.y, base.aggro, lpred)
-          : this.nearestUnit(u.x, u.y, base.aggro, lpred);
+        const e = u.owner === 'A' ? this.bestFoe(u, u.x, u.y, aggroR, lpred)
+          : this.nearestUnit(u.x, u.y, aggroR, lpred);
         if (e && Math.hypot(e.x - u.anchor.x, e.y - u.anchor.y) < 9) { u.tUnit = e.id; continue; }
         // ASSAULT autonomy: a unit committed to an attack (the order flagged
         // u.assault) whose target has fallen presses on by itself — a fighter in
@@ -592,15 +602,33 @@ const Combat = {
           const gDef = Units.guardCenter(u);
           if (gDef) {
             const hold = Units.holdRadius(gDef, tgt.x, tgt.y);   // the bound TOWARD this foe (out to walls / water / rock)
+            // the trail allowance is the DOCTRINE's, not a flat slack: blades
+            // may follow a foe two tiles past the bound, bows one, engines
+            // none — then everyone is reined home (tests/defend-hold.mjs)
+            const chase = gDef.chase != null ? gDef.chase : 1.8;
+            const reachW = CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE;
             const dTC = Math.hypot(u.x - gDef.x, u.y - gDef.y);
-            if (dTC > hold + 1.8) { u.tUnit = 0; Units.returnToGuard(u, gDef); continue; }   // dragged past the leash — home
-            if (d > (CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE)) {   // out of range → about to move toward the foe
-              if (dTC > hold + 0.6) { u.tUnit = 0; Units.returnToGuard(u, gDef); continue; }   // standing beyond the bound — fall back in
+            // the foe has LEFT the defended ground (its engagement bound plus
+            // our weapon plus the trail grace) — let the runner go. Trailing
+            // retreating attackers across the field is how guards die.
+            if (Math.hypot(tgt.x - gDef.x, tgt.y - gDef.y) > hold + reachW + chase + 0.5) {
+              u.tUnit = 0; Units.returnToGuard(u, gDef); continue;
+            }
+            if (dTC > hold + chase + 0.8) { u.tUnit = 0; Units.returnToGuard(u, gDef); continue; }   // dragged past the leash — home
+            if (d > reachW) {   // out of range → about to move toward the foe
+              if (dTC > hold + chase + 0.2) { u.tUnit = 0; Units.returnToGuard(u, gDef); continue; }   // standing beyond the bound — fall back in
               const sx = u.x + (tgt.x - u.x) / (d || 1) * 0.5, sy = u.y + (tgt.y - u.y) / (d || 1) * 0.5;
-              if (Math.hypot(sx - gDef.x, sy - gDef.y) > hold) { u.path = null; continue; }    // the step would cross the bound — plant feet, wait/volley
+              if (Math.hypot(sx - gDef.x, sy - gDef.y) > hold + chase) { u.path = null; continue; }    // the step would cross the bound — plant feet, wait/volley
             }
           }
         } else {
+          // A BOMBARD ENGINE MINDS ITS GROUND: unordered (no raid/attack task),
+          // it fires on what's in range and lets what walks away go — pursuit
+          // is its escort's job. Without this a catapult that opened fire by
+          // itself would then crawl off after the runner at 1.0 speed.
+          if ((Units.isSiege(u) || u.kind === 'ballista') && !u.assault &&
+              !(u.task && (u.task.type === 'raid' || u.task.type === 'attack')) &&
+              d > (CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE) + 0.6) { u.tUnit = 0; continue; }
           // guards give up long chases and go home; wild animals lose interest even
           // sooner. Player-ordered attacks are exempt — no leash yanks a soldier
           // back home mid-charge while the rest of the party fights.

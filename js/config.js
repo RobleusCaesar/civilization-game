@@ -593,17 +593,20 @@ const CFG = {
      its target falls or it's dragged past the second bound. The perimeter grows
      `levelStep` per building level (TC for land, Dock for ships). */
   GUARD: {
-    radius: 6,        // base hold radius around the Town Center (level 1), tiles — a
-                      // TIGHT ring (~4-7 tiles): defenders hold the line, they don't
-                      // go hunting across the map at the first provocation
+    radius: 6,        // fallback hold radius (land classes below override), tiles
+    // LAND HOLDS BY DOCTRINE (tests/defend-hold.mjs): fixed, no level scaling —
+    // the whole point of Defend is a TIGHT ring. The workshop's engines stand
+    // closest to the hall, the ranges' bows a ring further, the barracks'
+    // blades the outer watch. Tower lanes / wall ceilings still apply on top.
+    holdByClass: { melee: 5, ranged: 4, siege: 3 },
+    // how far past the bound an ENGAGED guard may trail its foe before it's
+    // reined home — blades commit a couple of steps, bows one, engines none
+    chaseByClass: { melee: 2, ranged: 1, siege: 0 },
     navalRadius: 12,  // base hold radius for warships around a Dock (level 1)
-    levelStep: 0.12,  // +12% per building level above 1 (linear)
+    levelStep: 0.12,  // +12% per building level above 1 (naval only now)
     maxRadius: 8,     // hard cap on the OPEN-GROUND perimeter (no barrier near)
     sortie: 0.12,     // a slim leash past the hold radius before it's reined back in
-    // NATURAL BARRIERS define the defended area too: toward a threat, the bound
-    // extends out to whatever closes off the land there — a wall, water, a moat, a
-    // treeline/rock, a mountain — up to this reach. So an island town defends its
-    // whole island, a walled town its walls, but a town on open ground stays tight.
+    // ceiling for tower-lane extensions of the watch (see Units.holdRadius)
     maxNatural: 14,
   },
 };

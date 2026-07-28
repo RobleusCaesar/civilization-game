@@ -161,8 +161,18 @@ const Units = {
   /* ---- DEFEND stance: hold a perimeter around the Town Center / Dock ---- */
   // which units can be told to Defend — every land soldier and every warship
   canDefend(u) { return this.isMilitary(u); },
-  // the guard post for a defending unit: {x,y, r1 (hold radius), r2 (sortie/leash)}
-  // centred on its own Town Center (land) or nearest Dock (warships). null = no home.
+  // which guard doctrine a defender fights under (CFG.GUARD.holdByClass /
+  // chaseByClass): the workshop's engines hold closest and never chase, the
+  // ranges' bows a ring further with one step of trail, the barracks' blades
+  // the outer watch with two. Warships keep their own dock rules.
+  guardClass(u) {
+    if (this.isNaval(u)) return 'naval';
+    if (this.isSiege(u) || u.kind === 'ballista') return 'siege';
+    return CFG.UNITS[u.kind].rng ? 'ranged' : 'melee';
+  },
+  // the guard post for a defending unit: {x,y, r1 (hold radius), chase (trail
+  // allowance while engaged), r2 (sortie/leash)} centred on its own Town
+  // Center (land) or nearest Dock (warships). null = no home.
   guardCenter(u) {
     const naval = this.isNaval(u);
     let b = null;
@@ -176,9 +186,18 @@ const Units = {
     } else b = Bld.tcOf(u.owner);
     if (!b) return null;
     const G2 = CFG.GUARD, cx = Bld.cx(b), cy = Bld.cy(b);
-    let r1 = (naval ? G2.navalRadius : G2.radius) * (1 + G2.levelStep * ((b.level || 1) - 1));
-    if (!naval) r1 = Math.min(r1, G2.maxRadius || 8);   // the OPEN-GROUND base perimeter
-    return { x: cx, y: cy, r1, r2: r1 + Math.max(1.2, r1 * G2.sortie), naval: !!naval, owner: u.owner };
+    let r1, chase;
+    if (naval) {
+      r1 = G2.navalRadius * (1 + G2.levelStep * ((b.level || 1) - 1));
+      chase = 1.8;
+    } else {
+      // land holds are FIXED per doctrine — no level scaling: a bigger hall
+      // doesn't mean the watch stands further from it
+      const cls = this.guardClass(u);
+      r1 = Math.min((G2.holdByClass && G2.holdByClass[cls]) || G2.radius, G2.maxRadius || 8);
+      chase = (G2.chaseByClass && G2.chaseByClass[cls] != null) ? G2.chaseByClass[cls] : 1.8;
+    }
+    return { x: cx, y: cy, r1, chase, r2: r1 + Math.max(1.2, r1 * G2.sortie), naval: !!naval, owner: u.owner };
   },
   /* the max distance a defender may hold from its hall TOWARD a given point.
      REDESIGNED after a real day-148 game ("my soldiers keep ranging out too

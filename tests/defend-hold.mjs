@@ -156,6 +156,107 @@ const out = await p.evaluate(() => {
       `after ${t2}s: raider ${Units.get(raider.id) ? 'hp ' + raider.hp : 'dead/left'}, defender hp ${u.hp}`);
   }
 
+  // ---- 6. DOCTRINE BY CLASS: the workshop's engines hold closest and never
+  //         chase, the ranges' bows a ring further with one step of trail,
+  //         the barracks' blades the outer watch with two ----
+  {
+    const { tc } = setup('dh7');
+    const mk = (kind) => { const u2 = Units.spawn(kind, 'P', tc.x, tc.y + 2); u2.defend = true; return Units.guardCenter(u2); };
+    const gm = mk('defender'), gr = mk('archer'), gs = mk('catapult'), gb = mk('ballista');
+    ck('classHolds', gm.r1 === 5 && gr.r1 === 4 && gs.r1 === 3 && gb.r1 === 3,
+      `melee=${gm.r1} ranged=${gr.r1} catapult=${gs.r1} ballista=${gb.r1}`);
+    ck('classChase', gm.chase === 2 && gr.chase === 1 && gs.chase === 0 && gb.chase === 0,
+      `melee=${gm.chase} ranged=${gr.chase} catapult=${gs.chase} ballista=${gb.chase}`);
+    ck('openGroundHoldIsTheClassHold',
+      Units.holdRadius(gm, gm.x + 12, gm.y) === 5 && Units.holdRadius(gs, gs.x + 12, gs.y) === 3, '');
+  }
+
+  // ---- 7. an engine on Defend opens fire BY ITSELF — no order needed ----
+  {
+    const { tc, u } = setup('dh8');
+    S.units = [];   // hermetic: just the engine and its mark
+    const cat = Units.spawn('catapult', 'P', tc.x, tc.y + 2); cat.defend = true;
+    const g = Units.guardCenter(cat);
+    // the mark is PINNED at the ring's edge (a free raider just flees a lone
+    // catapult and the engine rightly lets the runner go — that release is
+    // scenario 9's subject; here the subject is unprompted fire)
+    const raider = Units.spawn('raider', 'R', (g.x | 0) + 6, g.y | 0); raider.hostileTo = 'P';
+    let acquired = false, maxD = 0;
+    let t = 0; const dt = 0.1;
+    while (t < 10) {
+      raider.x = g.x + 6; raider.y = g.y; raider.path = null; raider.task = null; raider.tUnit = 0; raider.tBld = 0;
+      Units.update(dt); Combat.update(dt); t += dt;
+      if (cat.tUnit === raider.id) acquired = true;
+      maxD = Math.max(maxD, Math.hypot(cat.x - g.x, cat.y - g.y));
+      if (!Units.get(raider.id) || raider.hp < raider.maxhp) break;
+    }
+    ck('siegeFiresUnprompted', acquired && (!Units.get(raider.id) || raider.hp < raider.maxhp),
+      `acquired=${acquired} raider=${Units.get(raider.id) ? 'hp ' + raider.hp + '/' + raider.maxhp : 'dead'} after ${t.toFixed(1)}s`);
+    ck('siegeNeverLeavesItsRing', maxD <= g.r1 + 0.9, `max distance from hall = ${maxD.toFixed(1)} (ring ${g.r1})`);
+  }
+
+  // ---- 8. an engine NOT on Defend is still awake: it fires on what walks
+  //         into its own range, and lets the runner go instead of crawling
+  //         after it ----
+  {
+    const { tc } = setup('dh9');
+    S.units = [];
+    const cat = Units.spawn('catapult', 'P', tc.x + 6, tc.y);   // parked in the field, no stance
+    const raider = Units.spawn('raider', 'R', tc.x + 10, tc.y); raider.hostileTo = 'P';
+    const pin = (x, y) => { raider.x = x + 0.5; raider.y = y + 0.5; raider.path = null; raider.task = null; raider.tUnit = 0; raider.tBld = 0; };
+    let acquired = false;
+    let t = 0; const dt = 0.1;
+    while (t < 4) { pin(tc.x + 10, tc.y); Units.update(dt); Combat.update(dt); t += dt; if (cat.tUnit === raider.id) acquired = true; }
+    ck('unorderedSiegeStillFires', acquired && raider.hp < raider.maxhp,
+      `acquired=${acquired} raider hp=${raider.hp}/${raider.maxhp}`);
+    const sx = cat.x, sy = cat.y;
+    t = 0;
+    while (t < 5) { pin(tc.x + 19, tc.y); Units.update(dt); Combat.update(dt); t += dt; }
+    ck('siegeNeverPursuesARunner', !cat.tUnit && Math.hypot(cat.x - sx, cat.y - sy) < 1.2,
+      `tUnit=${cat.tUnit} drifted ${Math.hypot(cat.x - sx, cat.y - sy).toFixed(1)}`);
+  }
+
+  // ---- 9. a blade trails its foe two tiles past the bound, then lets go ----
+  {
+    const { tc, u, g } = setup('dh10');
+    S.units = [u];
+    const raider = Units.spawn('raider', 'R', (g.x | 0) + 3, g.y | 0); raider.hostileTo = 'P';
+    raider.maxhp = raider.hp = 9999;   // survives to keep retreating
+    // phase 1: the raider stands INSIDE the ring until the guard lands a blow…
+    let rx = g.x + 3, maxD = 0, engaged = false;
+    let t = 0; const dt = 0.1;
+    while (t < 25) {
+      if (raider.hp < raider.maxhp) rx += 0.12 * dt * 10;   // …phase 2: it falls back east at ~1.2 tiles/s
+      raider.x = rx; raider.y = g.y; raider.path = null; raider.task = null; raider.tUnit = 0; raider.tBld = 0;
+      Units.update(dt); Combat.update(dt); t += dt;
+      if (u.tUnit === raider.id) engaged = true;
+      maxD = Math.max(maxD, Math.hypot(u.x - g.x, u.y - g.y));
+      if (rx > g.x + 14) break;
+    }
+    ck('bladeEngagesAtTheRing', engaged && raider.hp < raider.maxhp, `engaged=${engaged} raider hp=${raider.hp}`);
+    ck('bladeTrailsTwoTilesNoMore', maxD <= g.r1 + (g.chase || 0) + 0.9,
+      `max ${maxD.toFixed(1)} vs bound ${(g.r1 + (g.chase || 0)).toFixed(1)}`);
+    const t2 = run(10, () => Math.hypot(u.x - g.x, u.y - g.y) <= g.r1);
+    ck('bladeComesHomeAfterTheChase', Math.hypot(u.x - g.x, u.y - g.y) <= g.r1 + 0.2,
+      `back inside after ${t2}s, at ${Math.hypot(u.x - g.x, u.y - g.y).toFixed(1)}`);
+  }
+
+  // ---- 10. a weaponless hull (siege tower) never picks a fight it can't swing in ----
+  {
+    const { tc } = setup('dh11');
+    S.units = [];
+    const st = Units.spawn('siegetower', 'P', tc.x, tc.y + 2); st.defend = true;
+    const raider = Units.spawn('raider', 'R', tc.x + 4, tc.y + 2); raider.hostileTo = 'P';
+    let locked = false;
+    let t = 0; const dt = 0.1;
+    while (t < 4) {
+      raider.x = tc.x + 4.5; raider.y = tc.y + 2.5; raider.path = null; raider.task = null; raider.tUnit = 0; raider.tBld = 0;
+      Units.update(dt); Combat.update(dt); t += dt;
+      if (st.tUnit) locked = true;
+    }
+    ck('weaponlessHullNeverPokes', !locked, `tUnit=${st.tUnit}`);
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

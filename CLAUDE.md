@@ -290,7 +290,17 @@ landscape. `Units.holdRadius` used to stretch the watch to natural barriers
 (forest/water/mountain, up to `maxNatural` 14) — "the island is the fort" —
 which on a tree-ringed map sent guards to hold at a treeline thirteen tiles
 out, past every tower's support, where they died piecemeal. The bound is now
-built from what the player raised: the tight TC ring (`r1`, ~6-8) as base; a
+built from what the player raised: a FIXED per-class TC ring as base
+(`CFG.GUARD.holdByClass` — barracks blades 5, bows 4, workshop engines 3; no
+level scaling), with a per-class trail allowance while engaged
+(`chaseByClass` — 2/1/0 tiles past the bound, then reined home; a foe that
+leaves the defended ground entirely releases the lock, `Units.guardClass` /
+`guardCenter.chase`). Engines are ALWAYS awake — aggro 0 keeps a
+catapult/trebuchet/ballista from wandering, but standing watch (stance or no
+stance) it opens fire by itself on anything inside its own weapon range, and
+an unordered engine never crawls after a runner — pursuit is its escort's
+job. A weaponless hull (siege tower) acquires nothing. On top of the base
+ring: a
 finished own tower/war camp extends the watch only along threat lanes that
 genuinely pass under its arrows (along-ray distance + 70% of range, and the
 battery must sit within range+1 of the ray); the own wall line is a hard
