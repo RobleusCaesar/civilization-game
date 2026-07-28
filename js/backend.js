@@ -267,9 +267,17 @@ const Backend = {
   async finalizeRun() {
     this.clearLocalSnapshot();
     this.noteFinishedSeed(window.S && S.seed);
+    // the moment the story ended, on this device's clock: the title's Continue
+    // only offers saves NEWER than this — "my game is over, New Game is my
+    // only option", even when older unfinished runs still sit in the slots
+    // (those stay loadable from the Load screen)
+    try { localStorage.setItem('neo-finished-at', String(Date.now())); } catch (e) {}
     this.markActiveSlot(null);
     this.activeName = null;
     return { ok: true };
+  },
+  lastFinishAt() {
+    try { return +(localStorage.getItem('neo-finished-at') || 0) || 0; } catch (e) { return 0; }
   },
 
   // the local ledger of finished runs (win or loss), by seed — capped so it

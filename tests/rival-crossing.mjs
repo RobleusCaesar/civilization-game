@@ -26,7 +26,11 @@
       sappers (30 food), infantry and hulls all starved in the training queue
       even after the camp was cured. The rival's Trading Post only ever bought
       GOLD; a starving chief now sends the caravan for FOOD first (surplus
-      goods → food, the ordinary swap rate), like any human would.
+      goods → food, the ordinary swap rate), like any human would. The mirror
+      case (a day-167 Hard save): a razed chief died holding 1,352 gold and
+      66 wood — gold only flows out through the post, and nothing ever BOUGHT
+      with it. A chief over 600 gold with the woodpile under 200 now buys
+      wood at the (deliberately awful) gold rate — awful beats dead money.
 
    3. KILLZONE BREACH — probeAssault's breach-lane scorer picked the frontier
       tile nearest the player's hall with no regard for the player's KNOWN
@@ -199,6 +203,18 @@ const out = await p.evaluate(() => {
     // widen the channel beside every non-span tile so only the spans are bridgeable
     for (let dy = -4; dy <= 12; dy++) { const y = by + dy; if (!spanYs.includes(y)) T2(bx - 2, y, T.WATER); }
   };
+
+  // ---- 5b. a gold hoard with a bare woodpile buys WOOD — the treasury is
+  //          never dead money while a post stands (a real Hard game died in
+  //          REBUILD with 1,352 gold banked and 66 wood) ----
+  {
+    const atc = setup('rc5b');
+    const post = Bld.place('A', 'trade', atc.x + 3, atc.y + 2, { free: true, instant: true });
+    S.ai.res = { food: 5000, wood: 66, stone: 88, gold: 1352 };
+    S.day++; AI.daily();
+    ck('goldHoardBuysWood', !!(post.caravan && post.caravan.need === 'wood' && post.caravan.pay === 'gold'),
+      JSON.stringify(post.caravan));
+  }
 
   // ---- 6. the breach lane detours around KNOWN tower fire: with a tower
   //         guarding the near span, the chief bridges the far one ----

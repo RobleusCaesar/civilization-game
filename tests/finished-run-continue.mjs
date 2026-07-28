@@ -18,10 +18,15 @@
       mid-run snapshot of the very run just finished ("Mid Game — day 321").
       Continue now treats a finished run as told in ALL its snapshots: a live
       row whose map_seed is on the finished ledger (or matches any row
-      stamped over — legacy saves) is passed over. The slots themselves stay
-      fully loadable from the Load screen — savescumming is the player's
-      right; Continue just doesn't walk back into a told story. A live row
-      from a DIFFERENT, unfinished run still gets the button.
+      stamped over — legacy saves) is passed over. AND the finish is a hard
+      line in time (`neo-finished-at`, read via Backend.lastFinishAt): once a
+      game ends, Continue offers NOTHING saved before that moment — not even
+      an unfinished other run from last week. "My game is over, New Game is
+      my only option." A save written AFTER the finish (a fresh run, or an
+      old slot loaded from the Load screen and played) brings the button
+      back. The slots themselves stay fully loadable from the Load screen —
+      savescumming is the player's right; Continue just doesn't walk back
+      into a told story.
 
    Run this after touching any of:
      backend.js — finalizeRun, noteFinishedSeed/finishedSeeds, autosaveNow,
@@ -55,6 +60,7 @@ const out = await p.evaluate(async () => {
   // ---- 1. winning never writes to the save slot, but retires the run ----
   {
     localStorage.removeItem('neo-finished-seeds');
+    localStorage.removeItem('neo-finished-at');
     G.newGame('777', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
     Backend.markActiveSlot(2); Backend.activeName = 'Village';
     Backend.snapshotLocal(G.saveJSON());                    // the crash net holds a live snapshot
@@ -70,6 +76,7 @@ const out = await p.evaluate(async () => {
     ck('crashNetCleared', !Backend.readLocalSnapshot(), '');
     ck('slotUnbound', Backend.activeSlot == null, `activeSlot=${Backend.activeSlot}`);
     ck('finishedSeedRecorded', Backend.finishedSeeds().includes('777'), JSON.stringify(Backend.finishedSeeds()));
+    ck('finishMomentRecorded', Backend.lastFinishAt() > 0, String(Backend.lastFinishAt()));
   }
 
   // ---- 2. the title's Continue: all snapshots of a finished run are told ----
@@ -87,7 +94,9 @@ const out = await p.evaluate(async () => {
   {
     // exactly the reported bug: an old mid-run save + the won row, same seed —
     // Continue used to fall back to "Mid Game"; it must grey out instead
+    // (finished-at cleared so this isolates the SEED ledger specifically)
     localStorage.removeItem('neo-finished-seeds');
+    localStorage.removeItem('neo-finished-at');
     const r = await tryTitle([
       { slot: 1, name: 'Mid Game', day: 321, map_seed: '255723405', over: null, updated_at: '2026-07-27T01:00:00Z' },
       { slot: 2, name: 'Village', day: 489, map_seed: '255723405', over: { win: true }, updated_at: '2026-07-27T02:00:00Z' },
@@ -98,6 +107,7 @@ const out = await p.evaluate(async () => {
   {
     // the post-fix shape of the same story: NO won row (the slot was spared),
     // the finish known only from the local ledger — still no Continue
+    localStorage.removeItem('neo-finished-at');
     localStorage.setItem('neo-finished-seeds', JSON.stringify(['255723405']));
     const r = await tryTitle([
       { slot: 1, name: 'Mid Game', day: 321, map_seed: '255723405', over: null, updated_at: '2026-07-27T01:00:00Z' },
@@ -108,8 +118,9 @@ const out = await p.evaluate(async () => {
   }
 
   {
-    // regression: a live save of a DIFFERENT, unfinished run still continues —
-    // even when an older finished run sits beside it
+    // regression (fresh device, no recorded finish moment): a live save of a
+    // DIFFERENT, unfinished run still continues beside an older finished one
+    localStorage.removeItem('neo-finished-at');
     localStorage.setItem('neo-finished-seeds', JSON.stringify(['255723405']));
     const r = await tryTitle([
       { slot: 2, name: 'Village', day: 487, map_seed: '255723405', over: null, updated_at: '2026-07-27T02:00:00Z' },
@@ -121,10 +132,34 @@ const out = await p.evaluate(async () => {
 
   {
     // regression: a lone live run with a clean ledger continues as always
+    localStorage.removeItem('neo-finished-at');
     const r = await tryTitle([
       { slot: 1, name: 'Mid Game', day: 321, map_seed: '111', over: null, updated_at: '2026-07-27T01:00:00Z' },
     ]);
     ck('plainLiveRunContinues', !r.cant && /Mid Game/.test(r.label), JSON.stringify(r));
+  }
+
+  // ---- the finish is a hard line in time: after a win, even an OLDER
+  //      unfinished run does not continue — New Game is the only option ----
+  {
+    localStorage.removeItem('neo-finished-seeds');
+    localStorage.setItem('neo-finished-at', String(Date.now()));
+    const r = await tryTitle([
+      { slot: 3, name: 'Last Week', day: 88, map_seed: '424242', over: null, updated_at: '2026-07-20T12:00:00Z' },
+    ]);
+    ck('finishRetiresOlderRunsToo', r.cant, JSON.stringify(r));
+  }
+
+  // ---- …but a save written AFTER the finish revives the button ----
+  {
+    localStorage.removeItem('neo-finished-seeds');
+    localStorage.setItem('neo-finished-at', String(Date.now() - 60000));
+    const r = await tryTitle([
+      { slot: 3, name: 'Last Week', day: 88, map_seed: '424242', over: null, updated_at: '2026-07-20T12:00:00Z' },
+      { slot: 4, name: 'Fresh Run', day: 5, map_seed: '555', over: null, updated_at: new Date(Date.now() + 5000).toISOString() },
+    ]);
+    ck('saveAfterFinishRevivesContinue', !r.cant && /Fresh Run/.test(r.label), JSON.stringify(r));
+    localStorage.removeItem('neo-finished-at');
   }
 
   // ---- 3. the finished ledger is capped and deduped ----

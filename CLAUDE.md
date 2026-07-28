@@ -240,12 +240,15 @@ cloud slot — whatever slot the player last saved to — so a snapshot taken tw
 minutes before the win was replaced by the game-over state. It now never
 touches slot state: it clears the crash net, unbinds the slot, and records
 the run's seed on a local ledger (`Backend.noteFinishedSeed`/`finishedSeeds`,
-deduped, capped at 50). The title's Continue treats a finished run as told in
-ALL its snapshots — a live row whose `map_seed` is on the ledger (or matches
-any row stamped `over`, for legacy saves) is passed over, so an old mid-run
-save of a won game can't resurrect the button. The slots themselves stay
-fully loadable from the Load screen — savescumming is the player's right;
-Continue just doesn't walk back into a told story.
+deduped, capped at 50) plus the finish MOMENT (`neo-finished-at`, read via
+`Backend.lastFinishAt`). The title's Continue treats a finished run as told
+in ALL its snapshots — a live row whose `map_seed` is on the ledger (or
+matches any row stamped `over`, for legacy saves) is passed over — AND the
+finish is a hard line in time: nothing saved BEFORE it continues, not even an
+unfinished other run from last week ("my game is over, New Game is my only
+option"). A save written after the finish revives the button. The slots
+themselves stay fully loadable from the Load screen — savescumming is the
+player's right; Continue just doesn't walk back into a told story.
 
 **Drag-to-move** (`tests/drag-move.mjs`): the second movement gesture, born of
 the crowded-tile problem — with several units stacked, tapping a destination

@@ -565,11 +565,17 @@ const CFG = {
       // enemy stats are only lightly inflated (1.1×) — the pressure is VOLUME +
       // competence + timing, not stat sponges. barbSpacing keeps a barbarian
       // wave and a rival raid from landing in the same window (see AI.daily).
+      // Dialed up a notch after a day-167 Hard win read as too easy: the
+      // rival's push mass (cap 13, ramping 2 + day/6) never truly threatened
+      // a walled, towered town that teched to elites + engines by day 150.
+      // Still VOLUME + tempo, not stat sponges: a bigger standing army that
+      // ramps faster, a slightly richer economy to sustain it, and barbarian
+      // waves a shade heavier and closer together.
       gather: 0.90, output: 1.0, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
-      waveFirst: 33, waveGapMult: 0.9, waveSizeAdd: 1, barbMult: 1.1, barbSpacing: true, bandCap: 8,
+      waveFirst: 33, waveGapMult: 0.85, waveSizeAdd: 1, barbMult: 1.15, barbSpacing: true, bandCap: 9,
       animalMax: 4, animalChance: 0.3, aiRaidDay: 32,
-      aiBuildEvery: 1, aiOutput: 1.15, aiArmyCap: 13, aiArmyDiv: 6, aiEliteShare: 0.8, aiAggro: 1.2,
-      aiVillCap: 16, aiVillEvery: 8, aiActions: 4, aiHarass: 6,
+      aiBuildEvery: 1, aiOutput: 1.25, aiArmyCap: 15, aiArmyDiv: 5, aiEliteShare: 0.8, aiAggro: 1.2,
+      aiVillCap: 18, aiVillEvery: 8, aiActions: 4, aiHarass: 5,
       foeNoteChance: 0,   // enemy/raider intel toasts (see G.foeNote) — none get through: everything a surprise
     },
   },

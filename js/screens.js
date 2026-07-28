@@ -93,6 +93,9 @@ const Screens = {
     let snap = window.Backend ? Backend.readLocalSnapshot() : null;
     try {   // a finished run in the crash net is a told story, not a Continue
       if (snap && snap.json && JSON.parse(snap.json).over) snap = null;
+      // …and nothing OLDER than the last finish continues either (the net is
+      // cleared at game end; this guards a stale or imported snapshot)
+      if (snap && Backend.lastFinishAt && !((snap.at || 0) > Backend.lastFinishAt())) snap = null;
     } catch (e) { snap = null; }
     const finish = (label, ok) => {
       btn.querySelector('small').textContent = label;
@@ -108,10 +111,17 @@ const Screens = {
            loadable from the Load screen — savescumming is the player's
            right, Continue just doesn't walk back into it). Finished runs are
            known two ways: rows stamped over (legacy saves), and the local
-           finished-seeds ledger finalizeRun keeps. */
+           finished-seeds ledger finalizeRun keeps. AND the finish is a hard
+           line in time: once a game ends, Continue offers nothing older than
+           that moment — not even an unfinished OTHER run from last week.
+           "My game is over, New Game is my only option." A save written
+           after the finish (a new run, or an old slot loaded and played)
+           brings the button back. */
+        const finAt = Backend.lastFinishAt ? Backend.lastFinishAt() : 0;
         const done = new Set((Backend.finishedSeeds ? Backend.finishedSeeds() : []).map(String));
         for (const row of rows) if (row.over && row.map_seed != null) done.add(String(row.map_seed));
-        const live = rows.find(row => !row.over && !done.has(String(row.map_seed)));   // newest live snapshot of an UNFINISHED run
+        const live = rows.find(row => !row.over && !done.has(String(row.map_seed)) &&
+          (Date.parse(row.updated_at) || 0) > finAt);   // newest live snapshot of an UNFINISHED run, saved SINCE the last finish
         // Continue = the MOST RECENT playable game. An unfinished run that was
         // never saved to a slot lives only in the crash net, and can be newer
         // than any cloud slot — don't let a stale cloud save shadow it.

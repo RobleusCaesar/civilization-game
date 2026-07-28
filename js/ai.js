@@ -2987,6 +2987,18 @@ const AI = {
       }
     }
 
+    // …and a chief sitting on a gold hoard while the woodpile is bare BUYS its
+    // way out: gold → wood through the post. The buy rate is deliberately
+    // awful, but an awful rate beats a treasury nobody can spend — a real
+    // Hard game died in REBUILD with 1,352 gold banked and 66 wood, unable
+    // to afford a single hall while gold trickled in uselessly forever.
+    if ((ai.res.gold || 0) > 600 && (ai.res.wood || 0) < 200) {
+      for (const b of Bld.list('A')) {
+        if (b.key !== 'trade' || !Bld.done(b) || b.upgrading || b.caravan) continue;
+        Bld.startTrade(b, 'wood', 'gold');
+      }
+    }
+
     // run any Trading Posts: send a caravan out with a genuine surplus good,
     // like a player would. Stingy — keeps a reserve, one caravan per post, and
     // doesn't bother once the treasury is already flush with gold.
