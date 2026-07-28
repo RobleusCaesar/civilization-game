@@ -1121,45 +1121,61 @@ const UI = {
     this.builderFor = null; this.confirmDemolish = 0; this.terraMode = null; this.panelHidden = false;
     this.renderPanel();
   },
-  // 12x12 centurion galea, side view — crest, bronze dome, cheek + neck guard
+  // Centurion helmet, front view, 21x28 — tall serrated crest on a dark
+  // stand, bronze dome, and the bold one-piece dark T-visor that makes the
+  // silhouette read HELMET at a glance. K is the black outline the sprite
+  // carries everywhere (the buttons have no background box of their own).
   ARMY_HELM: [
-    '...crrrr....',
-    '..crrrrrrr..',
-    '..rrrrrrrr..',
-    '...hhhhhh...',
-    '..hhhhhhhh..',
-    '.hhhhhhhhhh.',
-    '.hhhhhhhhhh.',
-    '.hdhhhh.ddh.',
-    '.hd.hhh..dh.',
-    '.hd.hhh..h..',
-    '.h..hhhh....',
-    '....hhh.....',
+    '.....K.KK.KK.K.......',
+    '....KrKrrKrrKrK......',
+    '...KrRrRrRrRrRrK.....',
+    '..KrRrRrRrRrRrRrK....',
+    '..KrRrRrRrRrRrRrK....',
+    '..KrRrRrRrRrRrRrK....',
+    '..KrrRrRrRrRrRrrK....',
+    '...KrrrrrrrrrrrK.....',
+    '...KKDDDDDDDDDKK.....',
+    '..KKKKKKKKKKKKKKKK...',
+    '.KhhHHHHHHHHHHhhdK...',
+    'KhhHHHHHHHHHHHHhhdK..',
+    'KhHHHHHHHHHHHHHhhddK.',
+    'KhHHHHHHHHHHHHHhhddK.',
+    'KhHHHHHHHHHHHHhhhddK.',
+    'KhhHhhhhhhhhhhhhhddK.',
+    'KhhhhhhhhhhhhhhhhddK.',
+    'KhhhKKKKKKKKKKKKKddK.',
+    'KhhhKsssssssssssKddK.',
+    'KhhhKsssssssssssKddK.',
+    'KhhhKKKKKssKKKKKKddK.',
+    '.KhhhhhhKssKhhhhhdK..',
+    '.KhhhhhhKssKhhhhhdK..',
+    '.KdhhhhhKssKhhhhddK..',
+    '..KdhhhhKssKhhhddK...',
+    '..KKddhhKssKhhddKK...',
+    '...KKKdhKKKKhdKK.....',
+    '.....KKKK..KKKK......',
   ],
-  drawHelmet(g, x, y, s) {
-    const COL = { r: '#c23b2e', c: '#e0603f', h: '#c8a24a', d: '#8a6a2a' };
-    // a dark outline pass first so overlapping helmets read apart
-    for (let ry = 0; ry < this.ARMY_HELM.length; ry++)
-      for (let rx = 0; rx < this.ARMY_HELM[ry].length; rx++)
-        if (this.ARMY_HELM[ry][rx] !== '.') {
-          g.fillStyle = '#1d1710';
-          g.fillRect(x + rx * s - 1, y + ry * s - 1, s + 2, s + 2);
-        }
+  ARMY_HELM_COL: {
+    K: '#17110a', r: '#a92f24', R: '#d84a2f', D: '#54401b',
+    h: '#c9a24a', H: '#e6c878', d: '#96742f', s: '#241a0c',
+  },
+  drawHelmet(g, x, y) {
     for (let ry = 0; ry < this.ARMY_HELM.length; ry++)
       for (let rx = 0; rx < this.ARMY_HELM[ry].length; rx++) {
         const c = this.ARMY_HELM[ry][rx];
         if (c === '.') continue;
-        g.fillStyle = COL[c];
-        g.fillRect(x + rx * s, y + ry * s, s, s);
+        g.fillStyle = this.ARMY_HELM_COL[c];
+        g.fillRect(x + rx, y + ry, 1, 1);
       }
   },
-  // 1 helmet for Army 1, 2 stacked for Army 2, 3 stacked for Army 3
+  // 1 helmet for Army 1, 2 fanned for Army 2, 3 fanned for Army 3 — full-size
+  // sprites overlapped (never downscaled), so every copy stays pixel-crisp
   drawArmyIcon(g, n) {
     g.imageSmoothingEnabled = false;
-    g.clearRect(0, 0, 44, 44);
-    if (n === 1) this.drawHelmet(g, 4, 4, 3);
-    else if (n === 2) { this.drawHelmet(g, 16, 2, 2); this.drawHelmet(g, 2, 14, 2); }
-    else { this.drawHelmet(g, 18, 0, 2); this.drawHelmet(g, 10, 10, 2); this.drawHelmet(g, 2, 20, 2); }
+    g.clearRect(0, 0, 34, 34);
+    if (n === 1) this.drawHelmet(g, 6, 3);
+    else if (n === 2) { this.drawHelmet(g, 11, 0); this.drawHelmet(g, 2, 6); }
+    else { this.drawHelmet(g, 13, 0); this.drawHelmet(g, 7, 3); this.drawHelmet(g, 0, 6); }
   },
   renderArmyBar() {
     const bar = document.getElementById('armyBar');
@@ -1172,7 +1188,7 @@ const UI = {
       btn.dataset.army = n;
       btn.title = `Army ${n}`;
       const cv = document.createElement('canvas');
-      cv.width = cv.height = 44;
+      cv.width = cv.height = 34;
       this.drawArmyIcon(cv.getContext('2d'), n);
       btn.appendChild(cv);
       btn.addEventListener('click', (e) => { e.stopPropagation(); this.selectArmy(n); });
