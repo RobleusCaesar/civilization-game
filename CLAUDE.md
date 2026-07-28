@@ -150,7 +150,11 @@ combat.js code path fires for the rival's towers/archers, no `owner === 'P'`
 branch anywhere in the check). A miss shows `'Miss!'` via the same `R.float`
 path as a damage number, in place of it — no damage is dealt, no HP is lost.
 Rolls `G.rand()`, not `Math.random()`, so a seed's hit/miss sequence stays
-reproducible.
+reproducible. The same design's other half (same test): the BASE rank of each
+military hall — defender / archer / rider / catapult — costs **no gold**,
+so massing rough cheap troops stays a real late-game alternative to elite
+quality; every upgraded rank (axeman→elite, longbow→marksman, horse archer→
+lancer, ballista→trebuchet) still bills gold.
 
 **Sapper deselect & heal** (`tests/sapper-deselect-heal.mjs`): a sapper given a
 real terraform task (bridge tap, or a drag-chain dig/clear/mound) deselects

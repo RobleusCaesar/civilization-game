@@ -24,6 +24,10 @@
      6. longbow / marksman / horsearcher never miss — only the base archer
      7. The hit/miss sequence is deterministic per seed (uses G.rand, the
         seeded RNG — never Math.random)
+     8. The same design's other half: the BASE rank of each military hall
+        (defender / archer / rider / catapult) costs NO GOLD — rough, cheap
+        troops worth massing late-game — while every upgraded rank still
+        bills gold, so the choice between quantity and quality stays real
    If a feature genuinely needs different behaviour, update this file in the
    same commit and say so in the commit message. */
 const root = '/home/user/civilization-game';
@@ -180,6 +184,23 @@ const out = await p.evaluate(() => {
     };
     const a = seqFor(), b2 = seqFor();
     ck('deterministicPerSeed', a === b2 && a.length > 0, a === b2 ? `identical (${a.length} shots)` : `a=${a} b=${b2}`);
+  }
+
+  // ---- 8. the other half of the same design: base ranks cost NO GOLD.
+  //         The least-trained soldier of each military hall (the ones that
+  //         fumble shots) is the cheap body a late-game player can mass —
+  //         a real alternative to "Lv3 is only a little dearer, just use
+  //         that". Upgraded ranks all still bill gold. ----
+  {
+    const T2 = CFG.BUILDINGS;
+    const base = { barracks: 'defender', range: 'archer', stable: 'rider', siege: 'catapult' };
+    const goldFree = Object.entries(base).every(([hall, uk]) => !T2[hall].train[uk].cost.gold);
+    ck('baseRanksCostNoGold', goldFree,
+      Object.entries(base).map(([hall, uk]) => `${uk}:${T2[hall].train[uk].cost.gold || 0}g`).join(' '));
+    const upg = [['barracks', 'axeman'], ['barracks', 'elite'], ['range', 'longbow'], ['range', 'marksman'],
+      ['stable', 'horsearcher'], ['stable', 'lancer'], ['siege', 'ballista'], ['siege', 'trebuchet']];
+    ck('upgradedRanksStillBillGold', upg.every(([hall, uk]) => (T2[hall].train[uk].cost.gold || 0) > 0),
+      upg.map(([hall, uk]) => `${uk}:${T2[hall].train[uk].cost.gold || 0}g`).join(' '));
   }
   return { res, fails };
 });

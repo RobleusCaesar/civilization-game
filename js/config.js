@@ -210,7 +210,7 @@ const CFG = {
       name: 'Siege Workshop', reqTC: 3,
       desc: 'Engines of war — catapults that crush stone, and towers that top walls.',
       train: {
-        catapult:   { cost: { wood: 180, stone: 50, gold: 30 }, time: 3 },
+        catapult:   { cost: { wood: 180, stone: 50 }, time: 3 },
         ballista:   { cost: { wood: 160, stone: 30, gold: 25 }, time: 2.5, reqLevel: 2 },
         siegetower: { cost: { wood: 220, stone: 40, gold: 40 }, time: 3.5, reqLevel: 3 },
         trebuchet:  { cost: { wood: 280, stone: 140, gold: 70 }, time: 4.5, reqLevel: 3 },
@@ -226,7 +226,7 @@ const CFG = {
     barracks: {
       name: 'Barracks', desc: 'Trains defenders to protect the village.',
       train: {
-        defender: { cost: { food: 40, wood: 30, gold: 5 }, time: 1 },
+        defender: { cost: { food: 40, wood: 30 }, time: 1 },
         axeman:   { cost: { food: 50, wood: 40, gold: 8 }, time: 1.2, reqLevel: 2 },
         elite:    { cost: { food: 90, wood: 30, gold: 35 }, time: 2.4, reqLevel: 3 },
       },
@@ -241,7 +241,7 @@ const CFG = {
     stable: {
       name: 'Horse Stable', desc: 'Trains fast riders to run down raiders.', reqTC: 2,
       train: {
-        rider:  { cost: { food: 60, wood: 20, gold: 8 }, time: 1 },
+        rider:  { cost: { food: 60, wood: 20 }, time: 1 },
         horsearcher: { cost: { food: 70, wood: 30, gold: 15 }, time: 1.5, reqLevel: 2 },
         lancer: { cost: { food: 100, gold: 25 }, time: 2, reqLevel: 3 },
       },
@@ -256,7 +256,7 @@ const CFG = {
     range: {
       name: 'Archery Range', desc: 'Trains archers who fight from a distance.', reqTC: 2,
       train: {
-        archer:   { cost: { food: 40, wood: 40, gold: 6 }, time: 1 },
+        archer:   { cost: { food: 40, wood: 40 }, time: 1 },
         longbow:  { cost: { food: 40, wood: 60, gold: 10 }, time: 1.2, reqLevel: 2 },
         marksman: { cost: { food: 70, wood: 45, gold: 30 }, time: 2.2, reqLevel: 3 },
       },
