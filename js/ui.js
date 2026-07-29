@@ -1234,8 +1234,12 @@ const UI = {
       return sig;
     }
     if (this.sel.type === 'group') {
-      const alive = this.sel.ids.filter(id => Units.get(id)).length;
-      return alive ? 'g|' + alive : 'gone';
+      const mem = this.sel.ids.map(id => Units.get(id)).filter(Boolean);
+      if (!mem.length) return 'gone';
+      // Defend eligibility moves with the party's feet — the button must
+      // appear/vanish as they march in and out of the defended ground
+      const defEl = mem.filter(o => Units.canDefend(o) && (o.defend || Units.inDefendBounds(o))).length;
+      return 'g|' + mem.length + '|' + (defEl > 0) + '|' + mem.every(o => !Units.canDefend(o) || !o.defend);
     }
     if (this.sel.type === 'bridge') {
       const br = Bld.bridgeAt(this.sel.x, this.sel.y);
@@ -1249,7 +1253,8 @@ const UI = {
       stack = S.units.filter(o => o.owner !== 'P' && !Units.isPassive(o) &&
         (o.x | 0) === (u.x | 0) && (o.y | 0) === (u.y | 0)).length;
     const sig = ['u', u.id, u.hp < u.maxhp, stack, u.cargo ? u.cargo.length : 0,
-      !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u), Bld.inHealZone(u), this.healThrottled(u)];
+      !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u), Bld.inHealZone(u), this.healThrottled(u),
+      Units.canDefend(u) && (u.defend || Units.inDefendBounds(u))];   // Defend button follows the bounds
     // villager resource-station upgrade state (level, phase, affordability) — the
     // continuously-shrinking day count is NOT here; refreshPanel ticks it in place
     const wb = this.villagerResBld(u);
@@ -1683,7 +1688,10 @@ const UI = {
       const first = Units.get(this.sel.ids[0]);
       const fleet = this.sel.ids.every(id => { const o = Units.get(id); return o && Units.isNaval(o); });
       const gMil = this.sel.ids.map(id => Units.get(id)).filter(o => o && Units.canDefend(o));
-      const gAllDef = gMil.length > 0 && gMil.every(o => o.defend);
+      // Defend shows only for members on ground the stance would hold (or
+      // already in the stance — Stand Down stays available anywhere)
+      const gDefEligible = gMil.filter(o => o.defend || Units.inDefendBounds(o));
+      const gAllDef = gDefEligible.length > 0 && gDefEligible.every(o => o.defend);
       // troop-carrier count aboard the whole selection — a fleet of transports can
       // put everyone ashore in one order (each hull lands beside wherever it sits)
       const gLaden = this.sel.ids.map(id => Units.get(id)).filter(o => o && Units.isTransport(o) && o.cargo && o.cargo.length);
@@ -1699,7 +1707,7 @@ const UI = {
       const armySlot = gMil.length && !armyN ? this.nextArmySlot() : 0;
       html += `<div class="pactions">${this.helpHidden ? '' : `<span class="psub">${fleet ? 'Tap water to sail together, or an enemy ship / coastal target to attack.' : 'Tap a tile to march (melee front, archers behind), or an enemy / rival building to attack together.'}</span>`}` +
         (gLaden.length ? `<button class="abtn" data-act="gunload">⚓ Unload all<small>${gAboard} aboard</small></button>` : '') +
-        (gMil.length ? `<button class="abtn ${gAllDef ? 'sel' : ''}" data-act="gdefend">${gAllDef ? '🛡 Stand Down' : '🛡 Defend'}</button>` : '') +
+        (gDefEligible.length ? `<button class="abtn ${gAllDef ? 'sel' : ''}" data-act="gdefend">${gAllDef ? '🛡 Stand Down' : '🛡 Defend'}</button>` : '') +
         `<button class="abtn" data-act="stop">✋ Halt</button>` +
         (armyN ? `<button class="abtn" data-act="garmyremove">🪖 Remove Army ${armyN}<small>frees its banner</small></button>`
           : armySlot ? `<button class="abtn" data-act="garmysave">🪖 Save as Army ${armySlot}<small>recall it from the banner</small></button>`
@@ -1735,8 +1743,12 @@ const UI = {
       const gdef = panel.querySelector('[data-act="gdefend"]');
       if (gdef) gdef.addEventListener('click', () => {
         const mem = this.sel.ids.map(id => Units.get(id)).filter(o => o && Units.canDefend(o));
-        const turnOn = !mem.every(o => o.defend);
-        for (const o of mem) Units.setDefend(o, turnOn);
+        // turning the stance ON only takes members standing on defended
+        // ground — it must never yank the far half of a mixed party home.
+        // Standing DOWN releases everyone.
+        const elig = mem.filter(o => o.defend || Units.inDefendBounds(o));
+        const turnOn = !(elig.length && elig.every(o => o.defend));
+        for (const o of (turnOn ? elig : mem)) Units.setDefend(o, turnOn);
         this.toast(turnOn ? 'Holding the line — guarding home' : 'Standing down');
         this.renderPanel();
       });
@@ -1837,7 +1849,10 @@ const UI = {
       // held perimeter round the Town Center / Dock. Stop remains for villagers'
       // absence, transports, and working sappers.
       const sapperWorking = u.kind === 'sapper' && !!(u.task || (u.jobs && u.jobs.length));
-      if (own && Units.canDefend(u))
+      // Defend is offered only on ground the stance would actually hold — a
+      // soldier out beyond the defended bounds is attacking, not defending
+      // (a unit already in the stance keeps Stand Down wherever it is)
+      if (own && Units.canDefend(u) && (u.defend || Units.inDefendBounds(u)))
         html += `<button class="abtn ${u.defend ? 'sel' : ''}" data-act="defend">${u.defend ? '🛡 Stand Down' : '🛡 Defend'}</button>`;
       else if (own && !Units.isVillager(u) && (u.kind !== 'sapper' || sapperWorking))
         html += `<button class="abtn" data-act="stop">✋ Stop</button>`;

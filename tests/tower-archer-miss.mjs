@@ -186,6 +186,27 @@ const out = await p.evaluate(() => {
     ck('deterministicPerSeed', a === b2 && a.length > 0, a === b2 ? `identical (${a.length} shots)` : `a=${a} b=${b2}`);
   }
 
+  // ---- 9. an engine never shells ground it can't watch: the trebuchet's
+  //         spotters see at least as far as it throws (rng 8 → vision 9),
+  //         while ordinary units keep the tight UNIT_VISION fog ----
+  {
+    ck('trebuchetSeesItsShot', (CFG.UNITS.trebuchet.vision || 0) > CFG.UNITS.trebuchet.rng,
+      `vision ${CFG.UNITS.trebuchet.vision || 0} vs rng ${CFG.UNITS.trebuchet.rng}`);
+    setup('miss9');
+    const tc = Bld.tcOf('P');
+    const tx = tc.x > 25 ? tc.x - 15 : tc.x + 15, ty = tc.y;
+    const tb = Units.spawn('trebuchet', 'P', tx, ty);
+    G.updateVisibility();
+    const atThrow = !!G.vis[MapGen.idx(tx + 8, ty)];
+    Units.despawn(tb);
+    const df = Units.spawn('defender', 'P', tx, ty);
+    G.updateVisibility();
+    const footSees = !!G.vis[MapGen.idx(tx + 8, ty)];
+    ck('trebuchetLightsItsTargetGround', atThrow && !footSees,
+      `trebuchet sees +8: ${atThrow}; a defender there does not: ${!footSees}`);
+    Units.despawn(df);
+  }
+
   // ---- 8. the other half of the same design: base ranks cost NO GOLD.
   //         The least-trained soldier of each military hall (the ones that
   //         fumble shots) is the cheap body a late-game player can mass —

@@ -156,7 +156,10 @@ reproducible. The same design's other half (same test): the BASE rank of each
 military hall — defender / archer / rider / catapult — costs **no gold**,
 so massing rough cheap troops stays a real late-game alternative to elite
 quality; every upgraded rank (axeman→elite, longbow→marksman, horse archer→
-lancer, ballista→trebuchet) still bills gold.
+lancer, ballista→trebuchet) still bills gold. Also here (same test): the
+trebuchet's spotters see farther than it throws (`vision: 9` vs `rng: 8` —
+per-unit `vision` overrides `CFG.UNIT_VISION` in `G.updateVisibility` and
+`AI.assess`) — an engine never shells ground it can't watch.
 
 **Sapper deselect & heal** (`tests/sapper-deselect-heal.mjs`): a sapper given a
 real terraform task (bridge tap, or a drag-chain dig/clear/mound) deselects
@@ -331,6 +334,13 @@ nothing; unfinished towers extend nothing; naval guards keep the dock
 radius. Owner-agnostic — the rival's garrison plays by the same rules. The
 player who wants soldiers further out turns Defend off; that is the toggle's
 meaning. (`guardCenter` now carries `owner`; `_isDefBarrier` is gone.)
+**The Defend button belongs to the defended ground** (same test): a soldier
+out past its bounds (hold + chase + slack, `Units.inDefendBounds`) is
+attacking, not defending — the button disappears (Stop replaces it; group
+panels only offer Defend to members on defended ground, and turning it on
+never yanks the far half of a mixed party home). A unit already IN the
+stance keeps Stand Down wherever it is. Eligibility is in `panelSig`, so the
+button follows the party's feet.
 **Back to your post** (same test): a defending unit remembers where it STOOD
 when a fight began (`u.guardPost`, stamped at acquisition in `Combat.acquire`)
 and resolves back to that exact spot after the kill or an abandoned chase —

@@ -383,8 +383,11 @@ const CFG = {
     siegetower: { name: 'Siege Tower', hp: 170, atk: 0, def: 0, speed: 1.0, aggro: 0 },
     // trebuchet: the endgame engine — hurls a flaming counterweight ball the
     // FARTHEST (outranges towers), hits HARDEST vs stone, but crawls and reloads
-    // slowest; fragile and pricey, so it's a payoff, not an auto-win
-    trebuchet:  { name: 'Trebuchet',   hp: 160, atk: 6, def: 1, speed: 0.85, aggro: 0, rng: 8, cdMult: 4.0, bldAtk: 200, proj: 'flame', fire: true },
+    // slowest; fragile and pricey, so it's a payoff, not an auto-win.
+    // vision 9: its spotters see at least as far as it throws (rng 8) — an
+    // engine must never shell ground it can't watch (per-unit `vision`
+    // overrides CFG.UNIT_VISION in G.updateVisibility / AI.assess).
+    trebuchet:  { name: 'Trebuchet',   hp: 160, atk: 6, def: 1, speed: 0.85, aggro: 0, rng: 8, vision: 9, cdMult: 4.0, bldAtk: 200, proj: 'flame', fire: true },
   },
 
   /* SAPPER terraforming — deliberate tactical work, protected by an army. Work

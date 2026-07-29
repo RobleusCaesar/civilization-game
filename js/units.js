@@ -263,6 +263,17 @@ const Units = {
     u.task = { type: 'move', x: tx, y: ty, guard: true };
     if (!this.setPath(u, tx, ty)) { u.task = null; u.guardPost = null; }
   },
+  // is this soldier standing on ground its Defend stance would actually hold?
+  // Past the bound (+ its chase allowance) the stance is meaningless — you
+  // don't Defend while attacking the enemy — so the UI hides the button out
+  // there (tests/defend-hold.mjs). A unit already IN the stance always keeps
+  // its Stand Down button wherever it is.
+  inDefendBounds(u) {
+    const g = this.guardCenter(u);
+    if (!g) return false;
+    const d = Math.hypot(u.x - g.x, u.y - g.y);
+    return d <= this.holdRadius(g, u.x, u.y) + (g.chase != null ? g.chase : 1.8) + 0.8;
+  },
   // toggle the stance; turning it on pulls a strayed unit back to its perimeter
   setDefend(u, on) {
     if (!this.canDefend(u)) return;

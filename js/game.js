@@ -357,7 +357,7 @@ const G = {
       for (const b of S.buildings)
         if (b.owner === 'P' && Bld.done(b)) mark(b.x, b.y, Bld.lv(b).vision || 4);
       for (const u of S.units)
-        if (u.owner === 'P') mark(u.x | 0, u.y | 0, CFG.UNIT_VISION);
+        if (u.owner === 'P') mark(u.x | 0, u.y | 0, CFG.UNITS[u.kind].vision || CFG.UNIT_VISION);
       // ORIGIN CARDS: the Seer's far-seeing eye never closes
       const sn = S.boons && S.boons.P && S.boons.P.seer;
       if (sn) mark(sn.x, sn.y, 3);

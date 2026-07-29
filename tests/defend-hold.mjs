@@ -286,6 +286,31 @@ const out = await p.evaluate(() => {
     ck('weaponlessHullNeverPokes', !locked, `tUnit=${st.tUnit}`);
   }
 
+  // ---- 11. the Defend button belongs to the defended ground: a soldier out
+  //          past the bounds is attacking, not defending — the button goes,
+  //          Stop takes its place. Stand Down stays available anywhere. ----
+  {
+    const { tc } = setup('dh13');
+    S.units = [];
+    const near = Units.spawn('defender', 'P', tc.x + 2, tc.y);
+    UI.select('unit', near.id);
+    ck('defendOfferedAtHome', !!document.querySelector('#panel [data-act="defend"]'), '');
+    const far = Units.spawn('defender', 'P', tc.x + 14, tc.y);
+    UI.select('unit', far.id);
+    ck('defendGoneAfield', !document.querySelector('#panel [data-act="defend"]') &&
+      !!document.querySelector('#panel [data-act="stop"]'), 'Stop offered instead');
+    far.defend = true;   // already in the stance out there — Stand Down must survive
+    UI.renderPanel();
+    const btn = document.querySelector('#panel [data-act="defend"]');
+    ck('standDownStaysAnywhere', !!btn && /Stand Down/.test(btn.textContent), btn ? btn.textContent.trim() : 'missing');
+    far.defend = false;
+    const far2 = Units.spawn('archer', 'P', tc.x + 15, tc.y);
+    UI.sel = { type: 'group', ids: [far.id, far2.id] };
+    UI.renderPanel();
+    ck('groupDefendGoneAfield', !document.querySelector('#panel [data-act="gdefend"]'), '');
+    UI.deselect();
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));
