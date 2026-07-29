@@ -1790,6 +1790,14 @@ const UI = {
         const cap = CFG.UNITS[u.kind].cap, aboard = (u.cargo || []).length;
         html += `<button class="abtn ${aboard ? '' : 'cant'}" data-act="unload">⚓ Unload here<small>${aboard}/${cap} aboard</small></button>`;
       }
+      // SCUTTLE (tests/boats-moat-scuttle.mjs): any own hull can be sunk on
+      // purpose — no resources come back, but its place in the population is
+      // freed. Two taps, same confirm pattern as demolish.
+      if (own && Units.isNaval(u)) {
+        html += this.confirmDemolish === u.id
+          ? `<button class="abtn danger" data-act="scuttle">⚠️ Confirm — sink her<small>no resources returned</small></button>`
+          : `<button class="abtn" data-act="scuttle">🌊 Scuttle<small>sink the hull, free its place in the population</small></button>`;
+      }
       if (own && u.kind === 'sapper') {
         const tier = Units.sapperTier(u.owner);
         const tool = (job, icon, label, minTier) => {
@@ -1885,6 +1893,18 @@ const UI = {
         if (!u2 || !u2.cargo || !u2.cargo.length) { this.toast('Nobody aboard', true); return; }
         Units.disembark(u2);   // logs the outcome either way
         this.renderPanel();
+      });
+      const scut = panel.querySelector('[data-act="scuttle"]');
+      if (scut) scut.addEventListener('click', () => {
+        const u2 = Units.get(this.sel.id);
+        if (!u2) return;
+        // never send soldiers down with the ship — an accidental tap would be brutal
+        if (Units.isTransport(u2) && u2.cargo && u2.cargo.length) { this.toast('Soldiers are aboard — unload before scuttling', true); return; }
+        if (this.confirmDemolish !== u2.id) { this.confirmDemolish = u2.id; this.renderPanel(); return; }
+        R.float(u2.x, u2.y - 0.3, '🌊', '#9fc7e8');
+        Units.despawn(u2);   // deselects; population headcount follows the roster
+        G.log('Hull scuttled — she slips beneath the water');
+        this.toast('Scuttled — its place in the population is freed');
       });
       const heal = panel.querySelector('[data-act="heal"]');
       if (heal) heal.addEventListener('click', () => {

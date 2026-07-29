@@ -67,6 +67,7 @@ node tests/defend-hold.mjs     # Defend holds at the DEFENSES: tight ring, tower
 node tests/work-order.mjs      # wall/trench lines never box the worker in — far side of a choke first
 node tests/sapper-fees.mjs     # sapper services bill per tile, dearer by tier, exactly once, never into debt
 node tests/army-groups.mjs     # dense 2-per-tile formations; three saved armies on right-rail banners
+node tests/boats-moat-scuttle.mjs # a moat is open water to hulls; Scuttle sinks a boat, frees its pop, refunds nothing
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -392,3 +393,13 @@ Banners render as pixel centurion-helmet buttons (1/2/3 helmets) on the
 right rail under the minimap (`#armyBar`); tapping one centers the camera
 on the army and selects it. One banner per soldier — saving units into a
 new army pulls them out of any old one.
+
+**Boats on moats + Scuttle** (`tests/boats-moat-scuttle.mjs`): a MOAT is open
+water to a HULL — the water-domain branch of `Path.passable` accepts it like
+lake water, friend and foe alike (the tradeoff of digging one). It still
+blocks land, bridges still carry land over it, ranged fire still crosses.
+And every own hull carries a two-tap Scuttle (demolish's confirm pattern,
+sharing `UI.confirmDemolish` — unit and building ids never collide): the ship
+sinks, NOTHING is refunded, its place in the population is freed
+(`Units.despawn` → `popUsed` drops). A transport with soldiers aboard refuses
+to scuttle — unload first, never send the crew down with the ship.

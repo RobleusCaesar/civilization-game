@@ -6,7 +6,7 @@ const T = {
   STUMPS: 6, PEBBLES: 7, BARREN: 8, RUIN: 9,   // depleted / destroyed variants
   MOUNTAIN: 10,                                 // impassable, unbuildable
   TRENCH: 11,                                   // sapper-dug ditch — blocks land, not ranged fire
-  MOAT: 12,                                     // a trench that flooded from a water source — blocks land, boats can't cross either
+  MOAT: 12,                                     // a trench that flooded from a water source — blocks land; open water to boats
   MOUND: 13,                                    // sapper-raised earthwork — passable but 4x slower to cross; or reclaimed land where water was
 };
 

@@ -392,9 +392,11 @@ const MapGen = {
    in the pathfinding hot loop, so it's a flat array indexed by terrain id. */
 const BLOCK_TERR = (() => {
   const a = new Uint8Array(16);
-  // sapper-dug TRENCH/MOAT block land units too (a moat also stops boats — it's a
-  // ditch, not open water). Ranged fire is distance-based, so archers/siege still
-  // shoot over them: only movement is blocked.
+  // sapper-dug TRENCH/MOAT block land units too. A MOAT is open water to a
+  // HULL though (tests/boats-moat-scuttle.mjs) — boats sail flooded channels,
+  // friend and foe alike; that's the tradeoff of digging one. Ranged fire is
+  // distance-based, so archers/siege still shoot over them: only movement is
+  // blocked.
   for (const t of [T.WATER, T.MOUNTAIN, T.FOREST, T.HILLS, T.FERTILE, T.TRENCH, T.MOAT]) a[t] = 1;
   return a;
 })();
@@ -419,7 +421,7 @@ const Path = {
     // (Bld.tileFree / R.draw); the player builds up to it on row 1, which is
     // ordinary passable ground.
     if (x === 0 || y === 0 || x === CFG.W - 1 || y === CFG.H - 1) return false;
-    if (domain === 'water') return terr === T.WATER;   // boats: open water only (docks don't block hulls)
+    if (domain === 'water') return terr === T.WATER || terr === T.MOAT;   // boats: open water — a flooded moat included (docks don't block hulls)
     if (BLOCK_TERR[terr]) {
       // a standing bridge makes a water/moat tile crossable to land units
       if (!((terr === T.WATER || terr === T.MOAT) && S.map.bridge && S.map.bridge[i])) return false;
