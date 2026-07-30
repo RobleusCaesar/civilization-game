@@ -120,7 +120,7 @@ const Units = {
     const i = S.units.indexOf(u);
     if (i < 0) return;
     S.units.splice(i, 1);
-    for (const o of S.units) if (o.tUnit === u.id) { o.tUnit = 0; if (o.defend) this.returnToGuard(o); }
+    for (const o of S.units) if (o.tUnit === u.id) { o.tUnit = 0; this.resolveAfterFight(o); }
     if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
   },
 
@@ -274,10 +274,21 @@ const Units = {
     const d = Math.hypot(u.x - g.x, u.y - g.y);
     return d <= this.holdRadius(g, u.x, u.y) + (g.chase != null ? g.chase : 1.8) + 0.8;
   },
+  // a fighter whose lock just cleared resolves to wherever its doctrine says
+  // home is: defenders to their guard post, siege-line soldiers to their line
+  // post. Used by the death-cleanup sites, which clear attacker locks directly.
+  resolveAfterFight(o) {
+    if (o.defend) this.returnToGuard(o);
+    else if (o.strat === 'siege' && o.siegePost) {
+      o.task = { type: 'move', x: o.siegePost.x, y: o.siegePost.y, guard: true };
+      this.setPath(o, o.siegePost.x, o.siegePost.y);
+    }
+  },
   // toggle the stance; turning it on pulls a strayed unit back to its perimeter
   setDefend(u, on) {
     if (!this.canDefend(u)) return;
     u.defend = !!on;
+    u.strat = null; u.siegePost = null;   // Defend and the assault doctrines are exclusive
     if (on) u.assault = false;   // holding a perimeter ends any standing assault
     if (!on) return;
     const g = this.guardCenter(u);
@@ -641,6 +652,67 @@ const Units = {
     }
   },
 
+  /* SIEGE ORDER (tests/army-strategies.mjs) — the army splits by role:
+     ARTILLERY (engines with a throw; the ranges' bows stand in when the party
+     has no engines) bombards the chosen building; the FOOT LINE posts up
+     between the guns and the target and stands its ground; bows and horses
+     not on the guns post just behind the line as the reaction force. Nobody
+     free-hunts: siegeGuard only engages what comes to the line. */
+  siegeOrder(ids, b) {
+    const mem = ids.map(id => this.get(id)).filter(o => o && this.isMilitary(o) && !this.isNaval(o));
+    if (!mem.length) return false;
+    const isEngine = o => (this.isSiege(o) || o.kind === 'ballista') && CFG.UNITS[o.kind].atk > 0;
+    const isCav = o => o.kind === 'rider' || o.kind === 'lancer' || o.kind === 'horsearcher';
+    const engines = mem.filter(isEngine);
+    const bows = mem.filter(o => !isEngine(o) && !isCav(o) && CFG.UNITS[o.kind].rng);
+    const artillery = engines.length ? engines : bows;
+    if (!artillery.length) return false;   // nothing that can lay a siege — caller falls back
+    const line = mem.filter(o => !isEngine(o) && !isCav(o) && !CFG.UNITS[o.kind].rng);
+    const support = mem.filter(o => artillery.indexOf(o) < 0 && line.indexOf(o) < 0);
+    const cx = mem.reduce((s, o) => s + o.x, 0) / mem.length;
+    const cy = mem.reduce((s, o) => s + o.y, 0) / mem.length;
+    const tx = Bld.cx(b), ty = Bld.cy(b);
+    let dx = tx - cx, dy = ty - cy;
+    const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+    // the guns stand off at their own range; the line holds between guns and
+    // target, the reaction force a step behind the line
+    const rng = Math.min(...artillery.map(o => CFG.UNITS[o.kind].rng || 3.5));
+    const standoff = Math.max(3, rng - 0.5);
+    const px = -dy, py = dx;
+    const post = (D, k) => {
+      const wx = Math.round(tx - dx * D + px * k), wy = Math.round(ty - dy * D + py * k);
+      if (Path.passable(wx, wy, mem[0].owner) && !Bld.at(wx, wy)) return { x: wx, y: wy };
+      return MapGen.findNear(wx, wy, 3, (x, y) => Path.passable(x, y, mem[0].owner) && !Bld.at(x, y));
+    };
+    const place = (units, D) => {
+      // same dense pairing as formation moves: two of a kind to a tile
+      const order = units.slice().sort((a2, b2) => a2.kind < b2.kind ? -1 : a2.kind > b2.kind ? 1 : 0);
+      let slot = 0;
+      for (let i = 0; i < order.length; i++) {
+        const k = (slot % 2 ? 1 : -1) * Math.ceil(slot / 2); slot++;
+        const p = post(D, k);
+        const pair = order[i + 1] && order[i + 1].kind === order[i].kind ? [order[i], order[i + 1]] : [order[i]];
+        for (const o of pair) {
+          o.strat = 'siege'; o.defend = false; o.assault = false;
+          o.tUnit = 0; o.tBld = 0; o.tBridge = null;
+          if (p) {
+            o.siegePost = { x: p.x, y: p.y };
+            o.task = { type: 'move', x: p.x, y: p.y, guard: true };
+            this.setPath(o, p.x, p.y);
+          }
+        }
+        if (pair.length === 2) i++;
+      }
+    };
+    for (const o of artillery) {
+      o.strat = 'siege'; o.siegePost = null; o.defend = false; o.assault = false; o.tUnit = 0;
+      this.orderAttackBuilding(o, b);
+    }
+    place(line, Math.max(1.8, standoff - 1.6));
+    place(support, Math.max(2.4, standoff - 0.6));
+    return true;
+  },
+
   orderAttackBuilding(u, b) {
     u.task = { type: 'attackBld' };
     u.tBld = b.id; u.tUnit = 0;
@@ -813,7 +885,7 @@ const Units = {
       if (u.dieT != null && u.dieT > 0) {      // the plague's slow fall — keel over, then gone
         u.dieT -= dt; u.path = null;
         if (u.dieT <= 0) {
-          for (const o of S.units) if (o.tUnit === u.id) { o.tUnit = 0; if (o.defend) this.returnToGuard(o); }
+          for (const o of S.units) if (o.tUnit === u.id) { o.tUnit = 0; this.resolveAfterFight(o); }
           if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
           S.units.splice(i, 1);
         }
@@ -1264,7 +1336,7 @@ const Units = {
       // BACK TO YOUR POST: death cleanup clears every attacker's lock directly,
       // so the combat branch's "target gone" return never fires — send each
       // defending hunter home from HERE or it idles at the kill site forever
-      for (const o of S.units) if (o.tUnit === u.id) { o.tUnit = 0; if (o.defend) this.returnToGuard(o); }
+      for (const o of S.units) if (o.tUnit === u.id) { o.tUnit = 0; this.resolveAfterFight(o); }
       {   // arcade tally: rival and barbarian kills score
         const ko = (attackerId && this.get(attackerId) && this.get(attackerId).owner) || attackerOwner;
         if (ko === 'P' && (u.owner === 'A' || u.owner === 'R') && S.stats)
@@ -1325,6 +1397,9 @@ const Units = {
         if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + Bld.size(tc.key)); }
       }
     } else if (this.isMilitary(u) || this.isWild(u) || this.isVillager(u) || this.isRaider(u)) {
+      // ABSOLUTE FOCUS (tests/army-strategies.mjs): a strike-stance soldier
+      // never retaliates — it hits what it was ordered to hit, or waits
+      if (u.strat === 'strike') return;
       u.tUnit = attacker.id;   // barbarians hit back no matter whom they came for
     }
   },

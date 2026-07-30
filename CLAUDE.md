@@ -68,6 +68,7 @@ node tests/work-order.mjs      # wall/trench lines never box the worker in — f
 node tests/sapper-fees.mjs     # sapper services bill per tile, dearer by tier, exactly once, never into debt
 node tests/army-groups.mjs     # dense 2-per-tile formations; three saved armies on right-rail banners
 node tests/boats-moat-scuttle.mjs # a moat is open water to hulls; Scuttle sinks a boat, frees its pop, refunds nothing
+node tests/army-strategies.mjs # the three assault doctrines (Siege/Chaos/Strike) — for the player AND the rival
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -403,6 +404,27 @@ Banners render as pixel centurion-helmet buttons (1/2/3 helmets) on the
 right rail under the minimap (`#armyBar`); tapping one centers the camera
 on the army and selects it. One banner per soldier — saving units into a
 new army pulls them out of any old one.
+
+**Army strategies** (`tests/army-strategies.mjs`): three assault doctrines on
+the group panel (`u.strat`, toggled by the `gstrat` buttons; tap the lit one
+to stand it down; Halt and Defend clear it). **Strike** — ABSOLUTE focus: the
+whole army hits the one chosen object; the tBld fight-back/mending-hand
+switches are off, `Units.damage` retaliation is off, `acquire()` skips them,
+and when the target falls they hold their ground and wait (assault autonomy
+off — `u.assault` false on strike orders). **Chaos** (`Combat.chaosSeek`) —
+attack anything within `CHAOS_R`, in order: civilians → soldiers → economy →
+military halls → towers → walls → the rest. **Siege**
+(`Units.siegeOrder` / `Combat.siegeGuard`) — the army splits by role: engines
+(bows stand in when there are none) bombard the tapped building; the foot
+line posts BETWEEN guns and target and stands its ground (`u.siegePost`);
+bows/horses post behind the line; guards engage only what comes within
+`SIEGE_PROTECT` of their post and walk back after (the siege leash in
+`Combat.update`, plus `Units.resolveAfterFight` from the death-cleanup
+sites). THE RIVAL fights under the same flags: `AI._assaultStance` at
+campaign launch (engines → siege; WARHORN/MUDLARK → strike; else chaos —
+which is the raid brain's normal behavior), strike columns skip every
+opportunistic detour in `aiRaidSeek`, siege escorts hold beside the column's
+guns, and the stance stands down when the raid ends.
 
 **Boats on moats + Scuttle** (`tests/boats-moat-scuttle.mjs`): a MOAT is open
 water to a HULL — the water-domain branch of `Path.passable` accepts it like

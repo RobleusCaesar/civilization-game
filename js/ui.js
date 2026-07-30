@@ -515,15 +515,22 @@ const UI = {
       if (!ids.length) { this.deselect(); return; }
       this.sel.ids = ids;
       const fleet = ids.every(id => { const o = Units.get(id); return o && Units.isNaval(o); });
+      // ARMY STRATEGIES colour the orders (tests/army-strategies.mjs):
+      // a SIEGE army treats a building tap as "form the line and bombard THIS";
+      // a STRIKE army attacks with the assault autonomy OFF — when the target
+      // falls it holds its ground and waits for the next order.
+      const anySiege = ids.some(id => { const o = Units.get(id); return o && o.strat === 'siege'; });
+      const anyStrike = ids.some(id => { const o = Units.get(id); return o && o.strat === 'strike'; });
       if (hitUnit && hitUnit.owner !== 'P') {
+        if (anySiege) { this.toast('Siege targets structures — Chaos or Strike to hunt units', true); return; }
         for (const id of ids) {
           const u = Units.get(id);
           if (Units.isTransport(u)) continue;
           u.task = { type: 'attack' }; u.tUnit = hitUnit.id; u.tBld = 0;
           u.anchor = { x: hitUnit.x, y: hitUnit.y };
-          u.defend = false; u.assault = true;
+          u.defend = false; u.assault = !anyStrike && u.strat !== 'strike';
         }
-        this.toast(fleet ? '⚓ Fleet attacks!' : '⚔️ War party attacks!');
+        this.toast(anyStrike ? '⚡ Strike! Everyone on that one' : fleet ? '⚓ Fleet attacks!' : '⚔️ War party attacks!');
         return;
       }
       if (hitUnit && hitUnit.owner === 'P' && Units.isTransport(hitUnit)) {
@@ -538,8 +545,12 @@ const UI = {
       }
       const foeB = foeBldNear();
       if (foeB) {
-        for (const id of ids) { const u = Units.get(id); if (u && !Units.isTransport(u)) { u.defend = false; u.assault = true; Units.orderAttackBuilding(u, foeB); } }
-        this.toast('⚔️ ' + (fleet ? 'Fleet bombards ' : 'War party attacks ') + Bld.def(foeB.key).name);
+        if (anySiege && Units.siegeOrder(ids, foeB)) {
+          this.toast('⚙️ Laying siege to the ' + Bld.def(foeB.key).name + ' — the line holds, the guns work');
+          return;
+        }
+        for (const id of ids) { const u = Units.get(id); if (u && !Units.isTransport(u)) { u.defend = false; u.assault = !anyStrike && u.strat !== 'strike'; Units.orderAttackBuilding(u, foeB); } }
+        this.toast((anyStrike ? '⚡ Strike! Everyone on the ' : fleet ? '⚔️ Fleet bombards ' : '⚔️ War party attacks ') + Bld.def(foeB.key).name);
         return;
       }
       if (hitBridge && hitBridge.owner !== 'P') {
@@ -1239,7 +1250,9 @@ const UI = {
       // Defend eligibility moves with the party's feet — the button must
       // appear/vanish as they march in and out of the defended ground
       const defEl = mem.filter(o => Units.canDefend(o) && (o.defend || Units.inDefendBounds(o))).length;
-      return 'g|' + mem.length + '|' + (defEl > 0) + '|' + mem.every(o => !Units.canDefend(o) || !o.defend);
+      const land = mem.filter(o => Units.canDefend(o) && !Units.isNaval(o));
+      const gStrat = land.length && land.every(o => o.strat === land[0].strat) ? (land[0].strat || '-') : 'mix';
+      return 'g|' + mem.length + '|' + (defEl > 0) + '|' + mem.every(o => !Units.canDefend(o) || !o.defend) + '|' + gStrat;
     }
     if (this.sel.type === 'bridge') {
       const br = Bld.bridgeAt(this.sel.x, this.sel.y);
@@ -1705,10 +1718,20 @@ const UI = {
       // right-rail helmet buttons. A group that IS a saved army offers Remove.
       const armyN = gMil.length ? this.armyOf(this.sel.ids) : 0;
       const armySlot = gMil.length && !armyN ? this.nextArmySlot() : 0;
+      // ARMY STRATEGIES (tests/army-strategies.mjs) — the land army's three
+      // assault doctrines; the lit button is the one in force, tap it again
+      // to stand the doctrine down
+      const gLand = gMil.filter(o => !Units.isNaval(o));
+      const gStrat = gLand.length && gLand.every(o => o.strat === gLand[0].strat) ? (gLand[0].strat || '') : '';
+      const stratBtns = !fleet && gLand.length ? (
+        `<button class="abtn ${gStrat === 'siege' ? 'sel' : ''}" data-act="gstrat" data-strat="siege">⚙️ Siege<small>the line shields the guns</small></button>` +
+        `<button class="abtn ${gStrat === 'chaos' ? 'sel' : ''}" data-act="gstrat" data-strat="chaos">🔥 Chaos<small>attack all within reach</small></button>` +
+        `<button class="abtn ${gStrat === 'strike' ? 'sel' : ''}" data-act="gstrat" data-strat="strike">⚡ Strike<small>everyone on ONE target</small></button>`) : '';
       html += `<div class="pactions">${this.helpHidden ? '' : `<span class="psub">${fleet ? 'Tap water to sail together, or an enemy ship / coastal target to attack.' : 'Tap a tile to march (melee front, archers behind), or an enemy / rival building to attack together.'}</span>`}` +
         (gLaden.length ? `<button class="abtn" data-act="gunload">⚓ Unload all<small>${gAboard} aboard</small></button>` : '') +
         (gDefEligible.length ? `<button class="abtn ${gAllDef ? 'sel' : ''}" data-act="gdefend">${gAllDef ? '🛡 Stand Down' : '🛡 Defend'}</button>` : '') +
         `<button class="abtn" data-act="stop">✋ Halt</button>` +
+        stratBtns +
         (armyN ? `<button class="abtn" data-act="garmyremove">🪖 Remove Army ${armyN}<small>frees its banner</small></button>`
           : armySlot ? `<button class="abtn" data-act="garmysave">🪖 Save as Army ${armySlot}<small>recall it from the banner</small></button>`
           : gMil.length ? `<button class="abtn cant" data-act="garmysave">🪖 Armies full<small>remove one to save</small></button>` : '') +
@@ -1726,10 +1749,28 @@ const UI = {
       panel.querySelector('[data-act="stop"]').addEventListener('click', () => {
         for (const id of this.sel.ids) {
           const u2 = Units.get(id);
-          if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; u2.defend = false; }
+          if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; u2.defend = false; u2.strat = null; u2.siegePost = null; }
         }
         this.toast('War party halted');
+        this.renderPanel();
       });
+      panel.querySelectorAll('[data-act="gstrat"]').forEach(btn => btn.addEventListener('click', () => {
+        const mode = btn.dataset.strat;
+        const mem = this.sel.ids.map(id => Units.get(id)).filter(o => o && Units.isMilitary(o) && !Units.isNaval(o));
+        if (!mem.length) return;
+        const on = !mem.every(o => o.strat === mode);   // tapping the lit button stands it down
+        for (const o of mem) {
+          o.strat = on ? mode : null;
+          o.defend = false; o.assault = false;
+          if (!on || mode !== 'siege') o.siegePost = null;
+          if (on && mode === 'chaos') { o.tUnit = 0; o.tBld = 0; if (o.task && o.task.type !== 'move') o.task = null; }
+        }
+        this.toast(!on ? 'Doctrine stood down'
+          : mode === 'siege' ? '⚙️ Siege — tap a building to bombard; the line shields the guns'
+          : mode === 'chaos' ? '🔥 Chaos — the army falls on everything within reach'
+          : '⚡ Strike — tap ONE target; the whole army hits it and nothing else');
+        this.renderPanel();
+      }));
       const gunload = panel.querySelector('[data-act="gunload"]');
       if (gunload) gunload.addEventListener('click', () => {
         let n = 0;

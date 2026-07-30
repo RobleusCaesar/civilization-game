@@ -222,6 +222,16 @@ const Combat = {
           o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
         if (e && Math.hypot(e.x - u.anchor.x, e.y - u.anchor.y) < 8) u.tUnit = e.id;
       } else if (Units.isMilitary(u) && !(u.task && u.task.type === 'raid')) {
+        /* ARMY STRATEGIES (tests/army-strategies.mjs) — the three assault
+           doctrines a war party fights under (u.strat, set from the group
+           panel; the rival's campaigns assign the same flags):
+             strike — ABSOLUTE focus: never self-acquires anything, holds
+                      ground when its ordered target falls, waits for orders
+             chaos  — falls on everything in reach, by the priority ladder
+             siege  — holds a picket post and guards the guns (siegeGuard) */
+        if (u.strat === 'strike') continue;
+        if (u.strat === 'chaos') { this.chaosSeek(u); continue; }
+        if (u.strat === 'siege') { this.siegeGuard(u); continue; }
         // DEFEND: hold a perimeter round the Town Center / Dock — engage only foes
         // that reach the sortie bound of the POST (not just near the unit), and
         // never chase a provocation across the map (the leash lives in update()).
@@ -273,7 +283,7 @@ const Combat = {
         // reach first, then the nearest enemy structure, then the hall — so the
         // player commands the assault, not every blow. Bounded to a radius so the
         // army clears the objective it was sent to, never wandering off the map.
-        if (u.assault) this.assaultSeek(u);
+        if (u.assault && u.strat !== 'strike') this.assaultSeek(u);   // strike holds and waits instead
       } else if (u.owner === 'A' && Units.isVillager(u)) {
         // rival townsfolk militia: when the town is under siege and
         // undermanned, whoever's near the hall picks up the nearest attacker
@@ -296,6 +306,54 @@ const Combat = {
   // falls. Big enough to clear a whole town's footprint, small enough that the
   // army holds at the objective instead of marching on across the map.
   ASSAULT_R: 15,
+
+  /* ---- ARMY STRATEGIES (tests/army-strategies.mjs) ---- */
+  CHAOS_R: 15,        // how far a chaos-stance soldier looks for its next victim
+  SIEGE_PROTECT: 4,   // threats within this range of a siege post get engaged
+
+  /* CHAOS — attack anything in reach, in the player's stated order:
+     civilians → soldiers → resource buildings → military halls → towers →
+     walls → whatever's left. Reachability-checked like every other seek, so
+     a villager safe behind a wall doesn't freeze the hunter. */
+  chaosSeek(u) {
+    if (u.task && u.task.type === 'move') return;   // finish the walk first
+    const foe = u.owner === 'P' ? 'A' : 'P';
+    const civ = this.nearestUnit(u.x, u.y, this.CHAOS_R, o => this.hostileUnits(u, o) &&
+      !Units.isPassive(o) && (Units.isVillager(o) || Units.isSapper(o)) && this.canEngage(u, o));
+    if (civ && this.canReach(u, civ.x, civ.y, 1.6)) { u.tUnit = civ.id; u.task = { type: 'attack' }; u.anchor = { x: u.x, y: u.y }; return; }
+    const sol = this.nearestUnit(u.x, u.y, this.CHAOS_R, o => this.hostileUnits(u, o) &&
+      !Units.isPassive(o) && Units.isMilitary(o) && this.canEngage(u, o));
+    if (sol && this.canReach(u, sol.x, sol.y, 1.6)) { u.tUnit = sol.id; u.task = { type: 'attack' }; u.anchor = { x: u.x, y: u.y }; return; }
+    const ECON = { farm: 1, house: 1, lumber: 1, quarry: 1, lodge: 1, trade: 1 };
+    const MIL = { barracks: 1, range: 1, stable: 1, siege: 1, warcamp: 1, dock: 1, sapper: 1 };
+    const tiers = [bb => ECON[bb.key], bb => MIL[bb.key], bb => bb.key === 'tower',
+      bb => bb.key === 'wall' || bb.key === 'gate', bb => true];
+    for (const pred of tiers) {
+      const bld = this.nearestReachableBld(u, foe, this.CHAOS_R, pred);
+      if (bld) { Units.orderAttackBuilding(u, bld); return; }
+    }
+  },
+
+  /* SIEGE — the line stands its ground. A soldier with a siege post engages
+     ONLY what comes to the line (SIEGE_PROTECT of the post, a little more
+     for bows), walks back when displaced, and otherwise does nothing at all:
+     it is there to shield the guns, not to win the battle by itself. */
+  siegeGuard(u) {
+    const p = u.siegePost;
+    if (!p) return;
+    if (u.task && u.task.type === 'move') return;   // heading to (or back to) the post
+    if (CFG.UNITS[u.kind].atk > 0) {
+      const rng = CFG.UNITS[u.kind].rng || 0;
+      const R = this.SIEGE_PROTECT + (rng ? rng * 0.6 : 0);
+      const e = this.nearestUnit(p.x + 0.5, p.y + 0.5, R, o => this.hostileUnits(u, o) &&
+        !Units.isPassive(o) && this.canEngage(u, o));
+      if (e) { u.tUnit = e.id; return; }
+    }
+    if (Math.hypot(u.x - (p.x + 0.5), u.y - (p.y + 0.5)) > 1.3) {
+      u.task = { type: 'move', x: p.x, y: p.y, guard: true };
+      Units.setPath(u, p.x, p.y);
+    }
+  },
 
   // the nearest enemy structure this unit could turn on — measured from its edge,
   // completed only. No pathfind here: if a wall/orchard seals the target off the
@@ -397,26 +455,50 @@ const Combat = {
     // how far INTO the town this round's host actually got — the only honest
     // measure of whether a siege plan is working (see AI.notePenetration)
     if (ai) AI.notePenetration(u);
+    /* ARMY STRATEGIES (tests/army-strategies.mjs) colour the rival's raids:
+       an escort under SIEGE doctrine belongs to the guns — it holds beside
+       the column's nearest living engine and engages only what threatens it;
+       a STRIKE column takes no opportunistic detours at all (the skips
+       below) — one aim, no distractions, no peeling off when hit. */
+    const strike = u.strat === 'strike';
+    if (u.strat === 'siege' && !((Units.isSiege(u) || u.kind === 'ballista') && CFG.UNITS[u.kind].atk > 0)) {
+      let eng = null, ed = 14;
+      for (const o of S.units) {
+        if (o.owner !== u.owner || !(o.task && o.task.type === 'raid')) continue;
+        if (!((Units.isSiege(o) || o.kind === 'ballista') && CFG.UNITS[o.kind].atk > 0)) continue;
+        const dd = Math.hypot(o.x - u.x, o.y - u.y);
+        if (dd < ed) { ed = dd; eng = o; }
+      }
+      if (eng) {
+        const threat = this.nearestUnit(eng.x, eng.y, this.SIEGE_PROTECT + 1.5,
+          o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
+        if (threat && this.canReach(u, threat.x, threat.y, 1.6)) { u.tUnit = threat.id; return; }
+        if (ed > 3.5) { if (u.repathT <= 0) { u.repathT = 0.8; Units.setPath(u, eng.x | 0, eng.y | 0); } }
+        else u.path = null;   // in position — stand with the guns
+        return;
+      }
+      // the guns are gone — the escort duty is over; fight on normally
+    }
     // a probe party carries its OWN lane objective; the main force shares ai.raidObj
     const obj = u.raidObj || (ai && ai.raidObj) || null;
     const canWall = Units.isSiege(u) || u.kind === 'axeman' || !!CFG.UNITS[u.kind].bldAtk;
     // 1) a hostile fighter right in our face — engage (don't get picked apart).
     //    Only lock on if we can actually REACH it: a defender safe behind a wall
     //    must not distract the column from battering its way in.
-    const foe = this.bestFoe(u, u.x, u.y, 5, o => this.hostileUnits(u, o) &&
+    const foe = strike ? null : this.bestFoe(u, u.x, u.y, 5, o => this.hostileUnits(u, o) &&
       (Units.isMilitary(o) || (o.owner === 'R' && !Units.isTransport(o))) && this.canEngage(u, o));
     if (foe && this.canReach(u, foe.x, foe.y, 1.6)) { u.tUnit = foe.id; return; }
     // 2) soft targets on the way — an enemy SAPPER (defenceless, mid-work, high
     //    value) is the juiciest, then isolated villagers, then undefended workplaces.
     //    Reachability again: villagers tucked behind the walls are NOT a target —
     //    fixating on them is exactly what left raiders idling at the gate.
-    const sap = this.nearestUnit(u.x, u.y, 8, o => o.owner === 'P' && Units.isSapper(o) && this.canEngage(u, o));
+    const sap = strike ? null : this.nearestUnit(u.x, u.y, 8, o => o.owner === 'P' && Units.isSapper(o) && this.canEngage(u, o));
     if (sap && this.canReach(u, sap.x, sap.y, 1.6)) { u.tUnit = sap.id; return; }
-    const soft = this.nearestUnit(u.x, u.y, 7, o => o.owner === 'P' && Units.isVillager(o) && this.canEngage(u, o));
+    const soft = strike ? null : this.nearestUnit(u.x, u.y, 7, o => o.owner === 'P' && Units.isVillager(o) && this.canEngage(u, o));
     if (soft && this.canReach(u, soft.x, soft.y, 1.6)) { u.tUnit = soft.id; return; }
     // a player BRIDGE within reach — cutting the crossing severs an expansion or
     // flanking route. Only worth it if we can actually stand beside it.
-    if (S.bridges && S.bridges.length) {
+    if (!strike && S.bridges && S.bridges.length) {
       let bb = null, bd = 6;
       for (const br of S.bridges) {
         if (br.owner !== 'P') continue;
@@ -425,7 +507,7 @@ const Combat = {
       }
       if (bb) { u.tBridge = { x: bb.x, y: bb.y }; u.tUnit = 0; u.tBld = 0; return; }
     }
-    const econ = this.nearestBuilding(u.x, u.y, 'P',
+    const econ = strike ? null : this.nearestBuilding(u.x, u.y, 'P',
       bb => bb.key !== 'tc' && Bld.def(bb.key).needsWorker && Bld.done(bb));
     if (econ && Math.hypot(Bld.cx(econ) - u.x, Bld.cy(econ) - u.y) < 7) {
       Units.setPath(u, econ.x, econ.y);
@@ -570,6 +652,7 @@ const Combat = {
     if (u.owner === 'R') { this.raiderLeave(u); return; }
     if (u.owner === 'A') {
       u.task = null;
+      u.strat = null; u.siegePost = null;   // the assault is over — the doctrine stands down with it
       const tc = Bld.tcOf('A');
       if (tc) { u.anchor = { x: tc.x + 0.5, y: tc.y + 2.5 }; Units.setPath(u, tc.x, tc.y + 2); }
     }
@@ -623,6 +706,19 @@ const Combat = {
               const sx = u.x + (tgt.x - u.x) / (d || 1) * 0.5, sy = u.y + (tgt.y - u.y) / (d || 1) * 0.5;
               if (Math.hypot(sx - gDef.x, sy - gDef.y) > hold + chase) { u.path = null; continue; }    // the step would cross the bound — plant feet, wait/volley
             }
+          }
+        } else if (u.strat === 'siege' && u.siegePost) {
+          // THE LINE HOLDS (tests/army-strategies.mjs): fight what comes to
+          // the post, never march off after it — a runner is let go and the
+          // guard walks back to its place in the line
+          const px2 = u.siegePost.x + 0.5, py2 = u.siegePost.y + 0.5;
+          const reachW = CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE;
+          if (Math.hypot(u.x - px2, u.y - py2) > 3 ||
+              Math.hypot(tgt.x - px2, tgt.y - py2) > this.SIEGE_PROTECT + reachW + 1.5) {
+            u.tUnit = 0;
+            u.task = { type: 'move', x: u.siegePost.x, y: u.siegePost.y, guard: true };
+            Units.setPath(u, u.siegePost.x, u.siegePost.y);
+            continue;
           }
         } else {
           // A BOMBARD ENGINE MINDS ITS GROUND: unordered (no raid/attack task),
@@ -714,7 +810,10 @@ const Combat = {
         // wall to trade blows it can't win. It keeps hammering the structure and
         // leans on its escort for cover; that's what kept the siege line from
         // dissolving the moment a lone defender wandered up.
-        if (!Units.isSiege(u)) {
+        // STRIKE and SIEGE artillery are just as single-minded: absolute focus
+        // means nobody peels off the ordered target, whatever hits them
+        // (tests/army-strategies.mjs) — escorting them is the player's job.
+        if (!Units.isSiege(u) && u.strat !== 'strike' && u.strat !== 'siege') {
           const foe = this.nearestUnit(u.x, u.y, 2.2,
             o => this.hostileUnits(u, o) && Units.isMilitary(o) && this.canEngage(u, o));
           if (foe) { u.tUnit = foe.id; continue; }

@@ -2786,9 +2786,11 @@ const AI = {
     // score the feint: are more of their soldiers at the feint door than ours?
     const pulled = this._defendersNear(pend.feintLane) > this._defendersNear(pend.mainLane);
     if (pend.feintLane) this._noteCombo(pend.mainLane.key, pulled);
+    const stance = this._assaultStance(host, pend.strat);
     for (const u of host) {
       u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.probe = false; u.feint = false;
       u.raidLane = pend.mainLane.key; u.raidObj = null; u.defend = false;
+      u.strat = stance; u.siegePost = null;
     }
     ai.raidObj = { type: 'tc', x: pend.x, y: pend.y, lane: pend.mainLane.key };
     ai.raidLane = pend.mainLane.key; ai.raidN = host.length; ai.raidDay = S.day;
@@ -2797,6 +2799,18 @@ const AI = {
     G.foeNote(pulled ? '⚔ The feint draws them off — the rival’s main column storms the far side!'
                  : '⚔ The rival’s main column commits!');
     return true;
+  },
+
+  /* ARMY STRATEGIES (tests/army-strategies.mjs): the rival's assaults fight
+     under the same three doctrines the player's do. Engines in the party →
+     SIEGE (escorts hold near the guns instead of free-hunting); a storm/lane
+     campaign with one hard aim → STRIKE (no opportunistic detours, no
+     peeling off when hit); everything else → CHAOS (the raid brain's normal
+     take-what-you-can behavior, which IS the chaos priority ladder). */
+  _assaultStance(party, strat) {
+    if (party.some(u => (Units.isSiege(u) || u.kind === 'ballista') && CFG.UNITS[u.kind].atk > 0)) return 'siege';
+    if (strat === 'WARHORN' || strat === 'MUDLARK') return 'strike';
+    return 'chaos';
   },
 
   _launchCampRaid(read, strat) {
@@ -2839,7 +2853,8 @@ const AI = {
     const lane = plan.main;
     const aim = lane ? lane.mid : seam;
     const laneKey = (lane && lane.key) || (ctx.lane && ctx.lane.key) || strat;
-    for (const u of party) { u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.probe = false; u.feint = false; u.raidLane = laneKey; u.raidObj = null; u.defend = false; }
+    const stance = this._assaultStance(party, strat);
+    for (const u of party) { u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.probe = false; u.feint = false; u.raidLane = laneKey; u.raidObj = null; u.defend = false; u.strat = stance; u.siegePost = null; }
     ai.raidObj = { type: 'tc', x: aim.x, y: aim.y, lane: laneKey };
     ai.raidLane = laneKey; ai.raidN = party.length; ai.raidDay = S.day;
     if (ai.memory) { ai.memory.lastMainLane = laneKey; ai.memory.lastMainWorked = false; }
