@@ -685,10 +685,17 @@ const R = {
     const ns = conn(x, y - 1) || conn(x, y + 1), ew = conn(x + 1, y) || conn(x - 1, y);
     return ns && !ew;
   },
-  bldSprite(b) {
-    if (b.key === 'wall') return Sprites.wallMask[b.level - 1][this.wallMaskAt(b.x, b.y)];
-    if (b.key === 'gate') return Sprites.gateMask[b.level - 1][this.gateVerticalAt(b.x, b.y) ? 1 : 0];
-    return (b.owner === 'A' ? Sprites.buildingA : Sprites.building)[b.key][b.level - 1];
+  /* `lv` overrides which LEVEL's art to draw. Defaults to what the building
+     is today — but a work site nearing completion must show the level it is
+     becoming, not the one it is leaving (during an upgrade `b.level` is still
+     the OLD level; it only increments in Bld.finishUpgrade). See the staged
+     work-site branch below and tests/build-stages.mjs. */
+  bldSprite(b, lv) {
+    const L = Math.max(1, lv || b.level);
+    if (b.key === 'wall') return Sprites.wallMask[Math.min(L, Sprites.wallMask.length) - 1][this.wallMaskAt(b.x, b.y)];
+    if (b.key === 'gate') return Sprites.gateMask[Math.min(L, Sprites.gateMask.length) - 1][this.gateVerticalAt(b.x, b.y) ? 1 : 0];
+    const fam = (b.owner === 'A' ? Sprites.buildingA : Sprites.building)[b.key];
+    return fam[Math.min(L, fam.length) - 1];
   },
 
   /* ---- BURNING BUILDINGS (tests/burn-down.mjs) ----
@@ -1051,10 +1058,13 @@ const R = {
               : (up ? 'misc/upgrade2' : 'misc/construction');
             Assets.drawSprite(g, key, bx, by, { w: bw, h: bw });
           } else {
-            // nearly done: the building stands (a first raising shows the
-            // level being built; an upgrade shows the hall still being
-            // worked on), wrapped in the scaffold overlay
-            g.drawImage(this.bldSprite(b), bx, by, bw, bw);
+            // nearly done: the building being BUILT TOWARD stands in scaffold.
+            // It must be the TARGET level's art (`tgt`) — during an upgrade
+            // b.level is still the old level, and drawing that here put the
+            // pre-upgrade building (e.g. the TC's level-1 camp) on screen
+            // AFTER stage 1 had already raised the new hall's frame, so the
+            // sequence ran backwards. tests/build-stages.mjs pins the order.
+            g.drawImage(this.bldSprite(b, tgt), bx, by, bw, bw);
             Assets.drawSprite(g, 'misc/' + (up ? 'upgradeScaffold' : 'scaffold') + (bs >= 2 ? 'Big' : ''), bx, by, { w: bw, h: bw });
           }
         }

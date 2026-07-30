@@ -129,6 +129,37 @@ const out = await p.evaluate(() => {
       u0.includes('misc/upgradeBig1') && u2.includes('misc/upgradeScaffoldBig') &&
       !u0.includes('misc/constructionBig1') && !u2.includes('misc/scaffoldBig'),
       'misc/upgradeBig1 and misc/upgradeScaffoldBig requested');
+
+    /* THE SEQUENCE NEVER RUNS BACKWARDS. Stage 2 shows the building being
+       built TOWARD, standing in scaffold — the TARGET level's art. During an
+       upgrade b.level is still the OLD level (it only increments in
+       Bld.finishUpgrade), so drawing b.level here put the pre-upgrade
+       building (the TC's level-1 camp) on screen AFTER stage 1 had already
+       raised the new hall — the last picture looked like the first. */
+    const sprsAt = (setup) => {
+      setup();
+      const got = [];
+      const orig = R.bldSprite;
+      R.bldSprite = function (bb, lv) { const c = orig.call(R, bb, lv); if (bb.id === site.id) got.push(c); return c; };
+      try { R.draw(0.016); } finally { R.bldSprite = orig; }
+      return got;
+    };
+    const TC = Sprites.building.tc;
+    site.level = 1;
+    const s2 = sprsAt(() => { site.construction = 0; site.upgrading = site.upgTotal * 0.1; });
+    ck('upgradeStage2ShowsTargetLevel',
+      s2.includes(TC[1]) && !s2.includes(TC[0]),
+      'L1→L2: the NEW hall in scaffold, never the old camp');
+    site.level = 2; site.upgTotal = CFG.BUILDINGS.tc.levels[2].time || 1;
+    const s3 = sprsAt(() => { site.upgrading = site.upgTotal * 0.1; });
+    ck('upgradeStage2ShowsTargetLevelL3',
+      s3.includes(TC[2]) && !s3.includes(TC[1]),
+      'L2→L3: the stone keep in scaffold, never the timber hall');
+    // a FIRST raising still shows the level actually being built
+    site.level = 1; site.upgrading = 0;
+    const s1 = sprsAt(() => { site.construction = t * 0.1; });
+    ck('firstRaisingStage2ShowsOwnLevel', s1.includes(TC[0]), '');
+    site.construction = 0; site.upgrading = 0;
     S.buildings.splice(S.buildings.indexOf(site), 1);
 
     // ---- 4. the WATCHTOWER'S bespoke stages: double-res art, and the render

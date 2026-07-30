@@ -432,7 +432,12 @@ guns, and the stance stands down when the raid ends.
 looks at exact 1/3 intervals of its build time (`Bld.stageOf`) — ground
 broken (`misc/construction1` / `Big1`), the raising (the classic work-site
 art), then the TARGET BUILDING'S OWN SPRITE wrapped in the `misc/scaffold`
-(`scaffoldBig`) overlay — before the finished sprite appears. Upgrades render
+(`scaffoldBig`) overlay — before the finished sprite appears. **Stage 2 must
+draw the TARGET level** (`R.bldSprite(b, tgt)`, the `lv` override): during an
+upgrade `b.level` is still the OLD level — it only increments in
+`Bld.finishUpgrade` — so drawing `b.level` there put the pre-upgrade building
+(the TC's level-1 camp) on screen AFTER stage 1 had already raised the new
+hall's frame, and the sequence ran backwards. Upgrades render
 the same three stages under their OWN labels (`misc/upgrade1`, `upgrade2`,
 `upgradeScaffold`, `upgradeBig1`, `upgradeBig2`, `upgradeBig2_3`,
 `upgradeScaffoldBig`) — the SAME canvases today (the test pins the aliasing),
