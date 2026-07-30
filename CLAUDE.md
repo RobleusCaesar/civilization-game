@@ -437,6 +437,20 @@ the same three stages under their OWN labels (`misc/upgrade1`, `upgrade2`,
 `upgradeScaffoldBig`) — the SAME canvases today (the test pins the aliasing),
 so upgrade art can diverge per level later without touching the plumbing.
 Wall/gate first raisings keep their translucent oriented-ghost look.
+**EVERY 1×1 building now raises its own way** (same test): each has bespoke
+`misc/<key>Build1/2/3` stage art at 128px on a 64-cell fine grid — render.js
+routes any `b.key` with a `<key>Build1` sprite to its own three stages (the
+ui.js panel icon follows), so the generic three looks above now serve only
+the 2×2 hall. The house-family sequence follows real medieval build order
+(staked plot + framed SILL BEAMS on footing stones → the roofless FOUR-WALL
+box: wattle bays between studs under a lit wall plate, pale open floor with
+ceiling joists → walls done and THATCH going on from the eaves up over a
+dark rafter void), while the open yards (lumber/range/siege/sapper/trade),
+the tent (warcamp), the waterworks (dock: piles driven → stringers → deck)
+and the groundworks (farm: paring → ploughing → sowing; quarry: stripping →
+first bench → deep cut) each tell their own trade's story, every stage
+carrying the building's identity props. Upgrades alias under
+`misc/<key>Up1..3` labels and may diverge per level later.
 **The Watchtower has BESPOKE stage art** (same test): the first building with
 its own three-sprite raising — `misc/towerBuild1/2/3` at DOUBLE resolution
 (128px on a 64-cell fine grid, vs the finished tower's 32-grid), drawn from

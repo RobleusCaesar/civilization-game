@@ -1510,7 +1510,7 @@ const Sprites = {
      — DOUBLE the pixel density of the finished tower's 32-grid — so the
      tall, skinny silhouette (shaft x22..41, matching the finished sprite
      doubled) carries real masonry and carpentry detail. */
-  const towerFine = (draw) => ART.outline(tileB(p => {
+  const fine128 = (draw) => ART.outline(tileB(p => {
     const h = (x, y, w, ht, col) => { p.g.fillStyle = col; p.g.fillRect(x * 2, y * 2, (w || 1) * 2, (ht || 1) * 2); };
     // raw canvas-pixel plotter (coords 0..127) for TRUE 1px cordage — string
     // lines, plumb lines and hoist ropes stay hair-thin instead of being
@@ -1523,7 +1523,7 @@ const Sprites = {
   // to firm ground, and the first battered plinth course going in — dressed
   // blocks laid on a mortar bed, stopping mid-course where the masons are.
   // A plumb-line tripod, the mortar tub, and the first deliveries wait.
-  Sprites.misc.towerBuild1 = towerFine((h) => {
+  Sprites.misc.towerBuild1 = fine128((h) => {
     const W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil;
     const rr = ART.rng(211);
     h(16, 52, 34, 3, ART.STYLE.SHADOW); h(22, 55, 22, 2, ART.STYLE.SHADOW);
@@ -1580,7 +1580,7 @@ const Sprites = {
   // staked corner posts — the finished level-1 tower's own walls — while the
   // UPGRADE art (stone=true, towerUp2) climbs in coursed masonry with dressed
   // quoins, the stone tiers the works are lifting the tower to.
-  const towerStage2 = (stone) => towerFine((h) => {
+  const towerStage2 = (stone) => fine128((h) => {
     const W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil;
     const rr = ART.rng(223);
     h(16, 52, 34, 3, ART.STYLE.SHADOW); h(22, 55, 22, 2, ART.STYLE.SHADOW);
@@ -1657,7 +1657,7 @@ const Sprites = {
   // planked on its joists, the first railing up, a gin-pole hoist swinging
   // the next planks, a top lift on tall standards — the struck scaffold
   // stacked on the ground below. Same two material stories as stage 2.
-  const towerStage3 = (stone) => towerFine((h) => {
+  const towerStage3 = (stone) => fine128((h) => {
     const W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil;
     const rr = ART.rng(227);
     h(12, 54, 42, 3, ART.STYLE.SHADOW); h(22, 57, 24, 2, ART.STYLE.SHADOW);
@@ -1725,6 +1725,600 @@ const Sprites = {
   Sprites.misc.towerUp1 = Sprites.misc.towerBuild1;
   Sprites.misc.towerUp2 = towerStage2(true);
   Sprites.misc.towerUp3 = towerStage3(true);
+
+  /* ---- EVERY BUILDING RAISED ITS OWN WAY (tests/build-stages.mjs) ----
+     Bespoke three-stage construction art for each 1×1 building, replacing the
+     generic work-site looks entirely (render.js routes any b.key with a
+     `<key>Build1` sprite here). All at 128px on the 64-cell fine grid, and
+     all following the real medieval build order for a timber building:
+
+       stage 1  THE SILL    — plot staked and strung, footing stones set, the
+                sill beams framed square at the corners, first deliveries
+       stage 2  FOUR WALLS  — posts up from the sills, wall plate on top, the
+                roofless box read clearly: back wall's inner face, side-wall
+                tops, wattle bays woven and daubed on the front (some bays
+                still bare lattice), interior floor open to the sky
+       stage 3  THE ROOF    — walls done, rafters on the wall plate, and the
+                thatch going on FROM THE EAVES UP in overlapping courses
+                (how thatch is actually laid), ladder against the eave
+
+     Open yards (lumber, range, siege, sapper, trade), the tent (warcamp),
+     the waterworks (dock: piles driven first, then stringers, then deck) and
+     the groundworks (farm: paring → ploughing → sowing; quarry: stripping →
+     first bench → the deep cut) each tell their own trade's story instead.
+     Each stage carries the building's identity props so no site reads as an
+     anonymous brown blob. Upgrades alias the same art under `<key>Up1..3`
+     labels (divergence allowed later — the tower's already do). */
+  {
+    const W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil, BO = AP.bone,
+      GR = AP.grass, HD = AP.hide, INK = AP.ink, SH = ART.STYLE.SHADOW, WA = AP.water;
+
+    // trampled work-ground pad with a clod-broken edge (never a crisp panel)
+    const pad = (h, x, y, w, d, seed) => {
+      const r = ART.rng(seed);
+      h(x, y, w, d, SO[2]); h(x, y, w, 1, SO[3]); h(x, y + d - 1, w, 1, SO[1]);
+      for (let i = 0; i < 10; i++)
+        h(r() < 0.5 ? x - 1 - ((r() * 2) | 0) : x + w + ((r() * 2) | 0), y + 1 + ((r() * (d - 2)) | 0), 1, 1, r() < 0.5 ? SO[2] : SO[3]);
+      for (let i = 0; i < 12; i++) h(x + 2 + ((r() * (w - 4)) | 0), y + 1 + ((r() * (d - 2)) | 0), 1, 1, i % 2 ? SO[3] : SO[0]);
+    };
+    // corner stakes + the mason's taut 1px string squaring the plot
+    const stakes = (h, x, y, w, d) => {
+      for (const [sx, sy] of [[x - 1, y - 1], [x + w, y - 1], [x - 1, y + d], [x + w, y + d]]) {
+        h(sx, sy - 5, 1, 6, W[2]); h(sx, sy - 5, 1, 1, W[3]);
+      }
+      h.f(x * 2, y * 2 - 1, w * 2, 1, TH[3]); h.f(x * 2, (y + d) * 2, w * 2, 1, TH[3]);
+      h.f(x * 2 - 1, y * 2, 1, d * 2, TH[3]); h.f((x + w) * 2, y * 2, 1, d * 2, TH[3]);
+    };
+    // the sill frame: beams laid square on footing stones, lap-jointed at the
+    // corners, a floor joist or two across — the first day of real carpentry
+    const sills = (h, x, y, w, d) => {
+      for (const [fx, fy] of [[x - 1, y - 1], [x + w - 2, y - 1], [x - 1, y + d - 2], [x + w - 2, y + d - 2], [x + ((w / 2) | 0) - 1, y + d - 2]]) {
+        h(fx, fy, 3, 3, ST[2]); h(fx, fy, 3, 1, ST[3]);              // footing stones
+      }
+      h(x, y, w, 2, W[2]); h(x, y, w, 1, W[3]);                      // back sill
+      h(x, y + d - 2, w, 2, W[2]); h(x, y + d - 2, w, 1, W[3]);      // front sill
+      h(x, y, 2, d, W[2]); h(x + w - 2, y, 2, d, W[1]);              // side sills
+      for (const [cx, cy] of [[x, y], [x + w - 2, y], [x, y + d - 2], [x + w - 2, y + d - 2]])
+        h(cx, cy, 2, 1, W[3]);                                       // corner laps, lit
+      h(x + 3, y + ((d / 2) | 0), w - 6, 1, W[1]);                   // a floor joist across
+    };
+    // the roofless FOUR-WALL box: back wall's shaded inner face under a lit
+    // wall plate, open interior floor, side-wall tops, and the front wall in
+    // woven wattle — some bays daubed, some still bare lattice; corner posts
+    // and studs carry the frame. Returns nothing; front wall top edge = yTop
+    // + 4 + depth (the eave line stage 3 builds its roof on).
+    const frame = (h, x, yTop, w, depth, fH, o) => {
+      const seed = o.seed || 7, fy = yTop + 4 + depth;
+      ART.wattleTexture(h, x + 2, yTop, w - 4, 4, seed + 3);                   // back wall inner face…
+      h(x + 2, yTop, w - 4, 1, W[3]);                                          // …under its lit wall plate
+      h(x + 2, yTop + 4, w - 4, depth, BO[1]);                                 // the open floor, PALE dry earth — sky falls in
+      h(x + 2, yTop + 4, w - 4, 1, SO[3]);
+      const r = ART.rng(seed + 1);
+      for (let i = 0; i < 12; i++) h(x + 3 + ((r() * (w - 6)) | 0), yTop + 5 + ((r() * (depth - 2)) | 0), 1, 1, i % 2 ? SO[3] : BO[2]);
+      h(x, yTop, 2, 4 + depth, SO[2]); h(x, yTop, 1, 4 + depth, W[2]);         // side-wall tops
+      h(x + w - 2, yTop, 2, 4 + depth, SO[1]); h(x + w - 1, yTop, 1, 4 + depth, W[1]);
+      // ceiling JOISTS lying across the open box (the roofless read)
+      for (const jx of [x + ((w * 0.33) | 0), x + ((w * 0.66) | 0)]) {
+        h(jx, yTop, 2, 4 + depth + 1, W[2]); h(jx, yTop, 2, 1, W[3]); h(jx + 2, yTop + 2, 1, 3 + depth, SO[2]);
+      }
+      ART.wattleTexture(h, x, fy, w, fH, seed);                                // front wall going in
+      h(x, fy, w, 1, W[3]);                                                    // lit wall plate
+      for (const bx of (o.bare || [])) {                                       // bays still bare lattice
+        h(bx, fy + 2, 5, fH - 3, INK[1]);
+        for (let yy = fy + 3; yy < fy + fH - 1; yy += 2) h(bx, yy, 5, 1, W[1]);
+        h(bx + 2, fy + 2, 1, fH - 3, W[2]);
+      }
+      if (o.door) { h(o.door[0], fy + 2, o.door[1], fH - 2, INK[0]); h(o.door[0] - 1, fy + 1, o.door[1] + 2, 1, W[3]); }
+      for (let sx = x + 6; sx < x + w - 4; sx += 7) h(sx, fy + 1, 1, fH - 1, W[1]);   // studs
+      h(x, fy - 1, 2, fH + 1, W[2]); h(x, fy - 1, 2, 1, W[3]);                 // corner posts
+      h(x + w - 2, fy - 1, 2, fH + 1, W[1]); h(x + w - 2, fy - 1, 2, 1, W[2]);
+      h(x + 2, fy + 1, 2, 1, W[3]); h(x + w - 4, fy + 1, 2, 1, W[2]);          // corner braces at the plate
+      h(x + 3, fy + 2, 1, 1, W[3]); h(x + w - 4, fy + 2, 1, 1, W[2]);
+    };
+    // walls COMPLETE (stage 3): full wattle with corner posts, plate and door
+    const walls = (h, x, y, w, hh, o) => {
+      ART.wattleTexture(h, x, y, w, hh, (o && o.seed) || 9);
+      h(x, y, w, 1, W[3]);
+      h(x, y, 2, hh, W[2]); h(x, y, 2, 1, W[3]);
+      h(x + w - 2, y, 2, hh, W[1]); h(x + w - 2, y, 2, 1, W[2]);
+      if (o && o.door) { h(o.door[0], y + 2, o.door[1], hh - 2, INK[0]); h(o.door[0] - 1, y + 1, o.door[1] + 2, 1, W[3]); }
+    };
+    // the roof going on: ridge beam, bare rafters, and thatch courses laid
+    // FROM THE EAVES UP — the lit ragged working edge shows where the
+    // thatcher stands. frac = how far up the slope the courses have climbed.
+    const roofOn = (h, x, yR, w, slopeH, frac, seed) => {
+      h(x, yR, w, slopeH, W[0]);                                               // the dark under-roof void…
+      h(x + 1, yR, w - 2, 1, W[3]); h(x + 1, yR + 1, w - 2, 1, W[1]);          // …ridge beam along the top
+      for (let rx = x + 2; rx < x + w - 1; rx += 3) { h(rx, yR + 1, 1, slopeH - 1, W[2]); h(rx, yR + 1, 1, 1, W[3]); }   // rafters over it
+      h(x + 1, yR + ((slopeH * 0.4) | 0), w - 2, 1, W[1]);                     // a purlin across the rafters
+      h(x, yR, 1, slopeH, W[1]); h(x + w - 1, yR, 1, slopeH, W[1]);            // gable-end boards
+      const ch = Math.max(3, (slopeH * frac) | 0), cy = yR + slopeH - ch;
+      ART.thatchTexture(h, x, cy, w, ch, seed); h(x, cy, w, 1, TH[3]);         // courses from the eave up
+      for (let tx = x + 1; tx < x + w - 2; tx += 4) h(tx, cy - 1, 2, 1, TH[2]);   // ragged working edge
+      h(x - 1, yR + slopeH, w + 2, 1, TH[0]);                                  // eave lip shadow
+    };
+    const ladder = (h, x, y, len) => {
+      h(x, y, 1, len, W[1]); h(x + 3, y, 1, len, W[1]);
+      for (let r = 1; r < len; r += 2) h(x, y + r, 4, 1, W[2]);
+    };
+    const timber = (h, x, y) => {                                              // delivered log pile
+      h(x, y, 9, 1, W[3]); h(x, y + 1, 9, 1, W[2]); h(x, y + 2, 9, 1, W[3]);
+      h(x + 1, y, 1, 3, TH[2]); h(x + 7, y, 1, 3, TH[2]);
+    };
+    const tub = (h, x, y, mix) => {                                            // daub/mortar tub
+      h(x, y, 7, 3, W[1]); h(x, y, 7, 1, W[2]); h(x + 1, y + 1, 5, 1, mix);
+    };
+    const chips = (h, seed, n, x, y, w, d, a, b) => {
+      const r = ART.rng(seed);
+      for (let i = 0; i < n; i++) h(x + ((r() * w) | 0), y + ((r() * d) | 0), 1, 1, i % 2 ? a : b);
+    };
+
+    const DRAWS = {
+      // ============ HOUSE — the cottage: hearth first, home around it ============
+      house: [
+        (h) => {   // sill: staked plot, sills framed, and the HEARTHSTONE laid
+          h(14, 56, 38, 2, SH);
+          pad(h, 13, 30, 40, 27, 301); stakes(h, 16, 33, 32, 21); sills(h, 16, 34, 32, 19);
+          h(38, 38, 8, 5, ST[2]); h(38, 38, 8, 1, ST[3]); h(40, 40, 4, 2, ST[1]);   // the hearth pad — a house begins at its fire
+          timber(h, 2, 38); tub(h, 3, 50, SO[2]);
+          h(24, 44, 6, 3, TH[2]); h(24, 44, 6, 1, TH[3]);            // reed bundle on the floor
+          h(55, 44, 3, 5, W[1]); h(55, 44, 3, 1, W[3]); h(55, 43, 3, 1, WA[3]);   // the water barrel, already on site
+          chips(h, 302, 10, 16, 54, 32, 6, SO[3], ST[3]);
+        },
+        (h) => {   // four walls: the roofless box, chimney climbing inside
+          h(14, 54, 38, 2, SH);
+          frame(h, 16, 22, 32, 8, 16, { seed: 31, door: [22, 8], bare: [40] });
+          h(38, 24, 6, 9, ST[2]); h(38, 24, 6, 1, ST[3]); h(38, 24, 1, 9, ST[3]);   // chimney stack rising through the open roof
+          tub(h, 4, 50, SO[2]); h(2, 42, 6, 3, TH[2]); h(2, 42, 6, 1, TH[3]);      // daub tub + withies
+          ladder(h, 52, 34, 18);
+          chips(h, 303, 10, 14, 54, 36, 6, SO[3], W[3]);
+        },
+        (h) => {   // the roof: thatch from the eaves up, chimney topped out
+          h(14, 56, 38, 2, SH);
+          walls(h, 16, 36, 32, 16, { seed: 31, door: [22, 8] });
+          roofOn(h, 12, 20, 40, 16, 0.5, 33);
+          h(40, 10, 6, 12, ST[2]); h(40, 10, 6, 1, ST[3]); h(40, 10, 1, 12, ST[3]);   // chimney above the ridge
+          ladder(h, 54, 24, 20);
+          h(2, 48, 6, 3, TH[2]); h(2, 48, 6, 1, TH[3]); h(2, 52, 6, 3, TH[2]);        // thatch bundles waiting
+          chips(h, 304, 8, 16, 55, 32, 5, TH[1], TH[3]);
+        },
+      ],
+      // ============ HUNTER'S LODGE — the trophy waits by the door ============
+      lodge: [
+        (h) => {
+          h(16, 56, 34, 2, SH);
+          pad(h, 15, 28, 34, 28, 311); stakes(h, 18, 31, 26, 22); sills(h, 18, 32, 26, 21);
+          h(2, 40, 1, 12, W[1]); h(8, 40, 1, 12, W[1]);              // the pelt-frame poles, leant in a cross
+          h(50, 46, 10, 1, W[2]); h(50, 48, 10, 1, W[2]);            // drying-rack poles stacked
+          h(52, 36, 5, 4, HD[2]); h(52, 36, 5, 1, HD[3]);            // a bundle of hides
+          timber(h, 28, 50); chips(h, 312, 8, 20, 54, 24, 5, SO[3], SO[0]);
+        },
+        (h) => {
+          h(16, 54, 34, 2, SH);
+          frame(h, 18, 20, 26, 8, 16, { seed: 41, door: [26, 8], bare: [37] });
+          h(48, 26, 1, 26, W[2]); h(58, 26, 1, 26, W[2]); h(48, 26, 11, 1, W[3]);   // drying rack raised, nothing hung yet
+          h(2, 34, 1, 16, W[1]); h(13, 34, 1, 16, W[1]); h(2, 34, 12, 1, W[2]);     // pelt frame up, empty
+          tub(h, 30, 56, SO[2]); chips(h, 313, 8, 20, 54, 24, 5, SO[3], W[3]);
+        },
+        (h) => {
+          h(16, 56, 34, 2, SH);
+          walls(h, 18, 32, 26, 16, { seed: 41, door: [26, 8] });
+          roofOn(h, 14, 16, 34, 16, 0.5, 43);
+          h(4, 50, 8, 4, W[2]); h(4, 50, 8, 1, W[3]);                // a crate by the door…
+          h(5, 46, 6, 4, BO[2]); h(5, 46, 6, 1, BO[1]);              // …with the antlered SKULL waiting to be mounted
+          h(4, 44, 1, 3, BO[1]); h(11, 44, 1, 3, BO[1]); h(6, 48, 1, 1, INK[0]); h(9, 48, 1, 1, INK[0]);
+          h(48, 26, 1, 26, W[2]); h(58, 26, 1, 26, W[2]); h(48, 26, 11, 1, W[3]);
+          h(50, 30, 4, 10, HD[2]); h(50, 30, 4, 1, HD[3]);           // the first pelt hung
+          ladder(h, 60, 22, 18);
+        },
+      ],
+      // ============ BARRACKS — a hall wide enough to need a king post ============
+      barracks: [
+        (h) => {
+          h(12, 56, 42, 2, SH);
+          pad(h, 11, 28, 46, 28, 321); stakes(h, 14, 31, 40, 22); sills(h, 14, 32, 40, 21);
+          h(8, 44, 32, 1, W[2]); h(8, 43, 32, 1, W[3]); h(7, 43, 2, 2, ST[3]);   // the great banner pole, lying full length
+          timber(h, 44, 52); timber(h, 44, 56);                       // a drill hall takes real timber
+          h(58, 40, 2, 8, W[1]); h(57, 39, 4, 1, W[2]);               // the sparring-dummy post, bundled
+          chips(h, 322, 10, 16, 54, 36, 6, SO[3], SO[0]);
+        },
+        (h) => {
+          h(12, 54, 42, 2, SH);
+          frame(h, 14, 20, 40, 8, 16, { seed: 51, door: [28, 12], bare: [18, 46] });
+          h(33, 22, 2, 10, W[1]); h(33, 22, 2, 1, W[3]);              // king post through the open roof
+          h(58, 38, 1, 18, W[1]); h(56, 40, 5, 1, W[2]);              // dummy post planted, arms on
+          h(46, 40, 1, 12, W[2]); h(52, 40, 1, 12, W[2]);             // weapon-rack posts, empty
+          tub(h, 2, 50, SO[2]); chips(h, 323, 10, 14, 54, 38, 6, SO[3], W[3]);
+        },
+        (h) => {
+          h(12, 56, 42, 2, SH);
+          walls(h, 14, 34, 40, 16, { seed: 51, door: [27, 12] });
+          h(26, 34, 2, 16, W[2]); h(40, 34, 2, 16, W[1]);             // heavy door jambs going in
+          roofOn(h, 10, 16, 48, 18, 0.45, 53);
+          h(12, 4, 1, 26, W[1]); h(12, 3, 1, 1, ST[4]);               // the banner pole RAISED — bare, no cloth yet
+          h.f(26, 10, 14, 1, TH[1]); h.f(26, 10, 1, 24, TH[1]);       // guy ropes staking it
+          ladder(h, 56, 22, 22);
+          chips(h, 324, 8, 16, 55, 34, 5, TH[1], TH[3]);
+        },
+      ],
+      // ============ STABLE — the trough set before the horse arrives ============
+      stable: [
+        (h) => {
+          h(8, 58, 48, 2, SH);
+          pad(h, 6, 32, 52, 26, 331); stakes(h, 8, 35, 48, 20); sills(h, 8, 36, 48, 19);
+          h(42, 30, 14, 3, W[1]); h(42, 30, 14, 1, W[2]); h(43, 31, 12, 1, WA[3]);   // the water trough, filled and waiting
+          for (let px = 48; px < 62; px += 4) h(px, 52, 1, 6, W[2]);   // paddock posts stacked upright
+          h(2, 40, 6, 4, TH[2]); h(2, 40, 6, 1, TH[3]); h(2, 46, 6, 4, TH[2]);       // hay delivered early
+          chips(h, 332, 10, 12, 56, 40, 6, SO[3], SO[0]);
+        },
+        (h) => {
+          h(8, 56, 48, 2, SH);
+          frame(h, 8, 20, 48, 10, 16, { seed: 61, door: [18, 16], bare: [42, 50] });
+          h(42, 52, 14, 3, W[1]); h(42, 52, 14, 1, W[2]); h(43, 53, 12, 1, WA[3]);   // trough moved to the dooryard
+          h(58, 40, 4, 1, W[3]); h(58, 42, 4, 1, W[2]); h(58, 44, 4, 1, W[3]);       // paddock posts, cut and stacked
+          h(2, 44, 6, 4, TH[2]); h(2, 44, 6, 1, TH[3]);
+          tub(h, 2, 54, SO[2]); chips(h, 333, 10, 12, 52, 40, 6, SO[3], W[3]);
+        },
+        (h) => {
+          h(8, 58, 48, 2, SH);
+          walls(h, 8, 34, 48, 20, { seed: 61 });
+          h(18, 36, 16, 18, INK[0]); h(17, 35, 18, 1, W[3]);          // the big stall doorway…
+          h(18, 46, 16, 8, W[2]); h(18, 46, 16, 1, W[3]);             // …its Dutch lower leaf hung first
+          for (let dx = 21; dx < 33; dx += 3) h(dx, 46, 1, 8, W[1]);
+          roofOn(h, 4, 20, 56, 14, 0.55, 63);
+          h(26, 22, 8, 4, INK[0]); h(26, 22, 8, 1, W[3]);             // hay-loft opening framed in the gable
+          h(30, 14, 4, 1, W[2]); h(33, 14, 1, 3, W[1]);               // hoist beam + pulley over it
+          for (let px = 48; px < 62; px += 4) h(px, 38, 1, 6, W[2]);
+          h(48, 38, 14, 1, W[3]);                                     // first paddock rail on its posts
+          ladder(h, 1, 26, 20);
+        },
+      ],
+      // ============ ARCHERY RANGE — the butt is built before the roof ============
+      range: [
+        (h) => {   // the yard staked out: shelter sills + straw for the butt
+          h(6, 54, 52, 2, SH);
+          pad(h, 2, 26, 60, 30, 341); stakes(h, 4, 29, 24, 16); sills(h, 4, 30, 24, 15);
+          h(40, 34, 7, 4, TH[2]); h(40, 34, 7, 1, TH[3]); h(40, 40, 7, 4, TH[2]); h(40, 40, 7, 1, TH[3]);   // straw bales for the target butt
+          h(50, 36, 6, 5, W[2]); h(50, 36, 6, 1, W[3]); h(51, 34, 4, 2, BO[2]);      // arrow crate, shafts poking out
+          h(30, 46, 1, 10, W[2]); h(29, 45, 3, 1, W[3]);              // the pell post, delivered
+          chips(h, 342, 10, 8, 48, 44, 8, SO[3], SO[0]);
+        },
+        (h) => {   // shelter frame up; the butt's trestle stands, disc leaning
+          h(6, 52, 52, 2, SH);
+          frame(h, 4, 18, 24, 8, 14, { seed: 71, door: [8, 14], bare: [] });
+          h(46, 42, 1, 10, W[1]); h(56, 42, 1, 10, W[1]); h(45, 46, 13, 1, W[2]);    // trestle legs + crossbar
+          ART.shadedCircle(h, 44, 40, 9, TH, 1); h(44, 40, 1, 1, TH[1]);             // the straw disc, bound but UNPAINTED, leaning
+          h(30, 34, 1, 20, W[2]); h(29, 33, 3, 1, W[3]);              // pell post planted, bare
+          tub(h, 2, 54, SO[2]); chips(h, 343, 8, 8, 48, 40, 8, SO[3], W[3]);
+        },
+        (h) => {   // roof going on; the rings being painted, rail going up
+          h(6, 54, 52, 2, SH);
+          walls(h, 4, 30, 24, 14, { seed: 71 });
+          h(8, 32, 14, 12, INK[1]); h(7, 31, 16, 1, W[3]);            // the open front framed out
+          roofOn(h, 0, 22, 32, 8, 0.6, 73);
+          ART.shadedCircle(h, 50, 24, 12, TH, 1);                     // the butt MOUNTED on its trestle
+          ART.shadedCircle(h, 50, 24, 9, BO, 1); ART.shadedCircle(h, 50, 24, 6, AP.red, 1);   // first rings painted
+          h(46, 42, 1, 10, W[1]); h(56, 42, 1, 10, W[1]); h(45, 46, 13, 1, W[2]);
+          h(30, 30, 6, 20, TH[2]); h(30, 30, 1, 20, TH[3]); h(30, 34, 6, 1, W[1]); h(30, 40, 6, 1, W[1]);   // pell wrapped + bound
+          for (let fx = 2; fx < 24; fx += 10) { h(fx, 54, 1, 2, W[2]); h(fx, 54, 8, 1, W[1]); }   // shooting rail, first spans
+        },
+      ],
+      // ============ TRADING POST — posts, ridge, then the awning unrolls ============
+      trade: [
+        (h) => {
+          h(8, 56, 48, 2, SH);
+          pad(h, 4, 30, 56, 26, 351); stakes(h, 6, 33, 52, 20);
+          h(8, 40, 1, 1, INK[0]); h(55, 40, 1, 1, INK[0]);            // the two post holes, dug
+          h(12, 44, 34, 2, W[2]); h(12, 44, 34, 1, W[3]);             // the posts themselves, lying ready
+          h(14, 50, 10, 1, W[3]); h(14, 51, 10, 1, W[2]); h(14, 52, 10, 1, W[3]);   // counter planks stacked
+          h(40, 48, 6, 5, W[2]); h(40, 48, 6, 1, W[3]);               // first crate of trade goods
+          chips(h, 352, 10, 10, 50, 44, 8, SO[3], SO[0]);
+        },
+        (h) => {
+          h(8, 54, 48, 2, SH);
+          h(6, 20, 3, 36, W[2]); h(6, 20, 3, 1, W[3]);                // posts UP…
+          h(55, 20, 3, 36, W[1]); h(55, 20, 3, 1, W[2]);
+          h(6, 16, 52, 3, W[2]); h(6, 16, 52, 1, W[3]);               // …ridge beam across
+          h(6, 12, 52, 4, BO[2]); h(6, 12, 52, 1, BO[1]);             // the awning cloth, still ROLLED on the ridge
+          h.f(24, 25, 1, 6, TH[1]); h.f(84, 25, 1, 6, TH[1]);         // tie cords
+          h(10, 46, 2, 8, W[1]); h(28, 46, 2, 8, W[1]); h(46, 46, 2, 8, W[1]);      // counter trestles
+          h(8, 44, 24, 2, W[2]); h(8, 44, 24, 1, W[3]);               // half the counter top laid
+          chips(h, 353, 8, 10, 52, 40, 8, SO[3], W[3]);
+        },
+        (h) => {
+          h(8, 56, 48, 2, SH);
+          h(6, 20, 3, 36, W[2]); h(6, 20, 3, 1, W[3]);
+          h(55, 20, 3, 36, W[1]); h(55, 20, 3, 1, W[2]);
+          h(6, 16, 52, 3, W[2]); h(6, 16, 52, 1, W[3]);
+          h(6, 8, 34, 12, BO[2]); h(6, 8, 34, 1, BO[3]);              // awning HALF-UNROLLED down the left…
+          for (let vx = 8; vx < 38; vx += 5) h(vx, 20, 3, 1, BO[1]);  // …scalloped hem tabs
+          h(40, 10, 18, 4, BO[2]); h(40, 10, 18, 1, BO[1]);           // the rest still rolled
+          h(8, 44, 48, 2, W[2]); h(8, 44, 48, 1, W[3]);               // counter planked full
+          h(10, 46, 2, 8, W[1]); h(28, 46, 2, 8, W[1]); h(46, 46, 2, 8, W[1]);
+          h(14, 38, 3, 6, SO[2]); h(14, 38, 3, 1, SO[3]);             // first wares: a tall amphora…
+          h(20, 40, 5, 4, BO[1]); h(20, 40, 5, 1, BO[2]);             // …and a grain sack on the counter
+          h(50, 50, 6, 5, W[2]); h(50, 50, 6, 1, W[3]);
+        },
+      ],
+      // ============ SIEGE WORKSHOP — the engine takes shape on the stocks ============
+      siege: [
+        (h) => {   // hut sills + the STOCKS built first: a yard is its workbench
+          h(6, 56, 52, 2, SH);
+          pad(h, 2, 28, 60, 28, 361); stakes(h, 4, 31, 20, 18); sills(h, 4, 32, 20, 17);
+          h(32, 44, 28, 2, W[2]); h(32, 44, 28, 1, W[3]);             // the stocks (assembly rails)
+          h(34, 42, 1, 4, W[1]); h(56, 42, 1, 4, W[1]);
+          timber(h, 34, 52); timber(h, 34, 56);                        // seasoned timber, stacked to dry
+          h(48, 34, 2, 2, ST[2]); h(51, 35, 2, 2, ST[2]); h(46, 36, 2, 2, ST[1]);   // the first shot, piled
+          chips(h, 362, 10, 30, 50, 28, 8, SO[3], W[3]);
+        },
+        (h) => {   // hut frame; wheels and rails wait on the stocks
+          h(6, 54, 52, 2, SH);
+          frame(h, 4, 20, 20, 8, 12, { seed: 81, door: [10, 8], bare: [] });
+          h(32, 44, 28, 2, W[2]); h(32, 44, 28, 1, W[3]);
+          h(34, 40, 24, 3, W[2]); h(34, 40, 24, 1, W[3]);             // the frame rails, laid on the stocks
+          ART.shadedCircle(h, 36, 54, 4, W, 1); ART.shadedCircle(h, 46, 54, 4, W, 1);   // wheels leaning, not yet hung
+          h(36, 54, 1, 1, TH[2]); h(46, 54, 1, 1, TH[2]);             // their hubs
+          h(52, 50, 8, 1, W[1]); h(54, 48, 8, 1, W[1]);               // A-frame pieces on the ground
+          tub(h, 26, 56, SO[2]); chips(h, 363, 8, 30, 48, 28, 6, SO[3], W[3]);
+        },
+        (h) => {   // roof on; the catapult rises — wheels hung, A-frame up
+          h(6, 56, 52, 2, SH);
+          walls(h, 4, 32, 20, 12, { seed: 81, door: [10, 8] });
+          roofOn(h, 0, 18, 28, 14, 0.5, 83);
+          h(32, 44, 28, 3, W[2]); h(32, 44, 28, 1, W[3]);             // engine frame on its rails
+          ART.shadedCircle(h, 36, 50, 4, W, 1); ART.shadedCircle(h, 54, 50, 4, W, 1);   // wheels ON
+          h(40, 28, 2, 16, W[1]); h(48, 28, 2, 16, W[1]); h(40, 28, 10, 1, W[3]);       // A-frame + pivot beam
+          h(34, 30, 14, 1, W[2]); h(33, 29, 2, 2, W[3]);              // the throwing arm, leaned against it
+          h(52, 38, 3, 2, W[0]);                                      // winch drum waiting
+          chips(h, 364, 8, 30, 52, 28, 6, W[3], TH[1]);
+        },
+      ],
+      // ============ SAPPERS' CAMP — tools first, then the practice pit ============
+      sapper: [
+        (h) => {
+          h(6, 58, 52, 2, SH);
+          pad(h, 2, 32, 60, 26, 371); stakes(h, 4, 35, 24, 18); sills(h, 4, 36, 24, 17);
+          h(34, 40, 14, 1, W[2]);                                     // the tool rail, first thing up…
+          h(36, 34, 1, 8, W[2]); h(35, 33, 3, 2, ST[3]);              // …a shovel on it
+          h(40, 34, 1, 8, W[2]); h(39, 33, 1, 1, ST[3]); h(41, 33, 1, 1, ST[3]);   // …a pick beside it
+          h(44, 36, 1, 6, W[2]); h(43, 35, 3, 1, ST[4]);              // …an axe
+          h(50, 50, 6, 3, W[1]); h(50, 50, 6, 1, SO[2]); ART.shadedCircle(h, 51, 54, 2, W, 1);   // the barrow, loaded
+          h(28, 52, 8, 1, W[3]); h(28, 53, 8, 1, W[2]);               // planks
+          chips(h, 372, 10, 30, 46, 26, 8, SO[3], SO[0]);
+        },
+        (h) => {
+          h(6, 56, 52, 2, SH);
+          frame(h, 4, 24, 24, 8, 12, { seed: 91, door: [10, 8], bare: [] });
+          h(32, 40, 24, 12, SO[1]); h(36, 43, 16, 7, SO[0]);          // the practice pit, opened
+          h(32, 40, 24, 1, SO[3]); h(32, 40, 1, 12, SO[3]); h(32, 51, 24, 1, SO[2]);   // lit near rim
+          h(56, 38, 6, 4, SO[3]); h(57, 36, 4, 2, SO[3]); h(28, 46, 4, 3, SO[3]);      // spoil heaped both sides
+          h(38, 36, 1, 7, W[2]); h(37, 35, 3, 2, ST[3]);              // shovel stuck in the works
+          h(50, 52, 6, 3, W[1]); h(50, 52, 6, 1, SO[2]); ART.shadedCircle(h, 51, 56, 2, W, 1);
+          chips(h, 373, 8, 30, 52, 26, 6, SO[3], SO[1]);
+        },
+        (h) => {
+          h(6, 58, 52, 2, SH);
+          walls(h, 4, 36, 24, 12, { seed: 91, door: [10, 8] });
+          roofOn(h, 0, 22, 28, 14, 0.5, 93);
+          h(32, 40, 24, 12, SO[1]); h(38, 43, 12, 6, INK[1]);         // the pit, dug deep
+          h(32, 40, 24, 1, SO[3]); h(32, 40, 1, 12, SO[3]); h(32, 51, 24, 1, SO[2]);    // lit rim
+          h(42, 24, 1, 16, W[1]); h(52, 24, 1, 16, W[1]); h(42, 24, 11, 1, W[2]);        // the derrick A-frame going up over it
+          h.f(94, 50, 1, 10, TH[1]);                                  // its first rope hung
+          h(56, 38, 6, 4, SO[3]); h(57, 36, 4, 2, SO[3]);
+          h(30, 56, 8, 1, W[3]); h(30, 57, 8, 1, W[2]);
+        },
+      ],
+      // ============ WAR CAMP — a camp is PITCHED, not built ============
+      warcamp: [
+        (h) => {   // ground cleared: fire ring, pegs driven, canvas ready
+          h(10, 56, 44, 2, SH);
+          pad(h, 8, 26, 48, 32, 381);
+          for (const [px, py] of [[14, 30], [50, 30], [12, 52], [52, 52], [32, 24], [32, 56]])
+            h(px, py, 1, 2, W[2]);                                    // tent pegs ringing the pitch
+          ART.shadedCircle(h, 20, 48, 3, ST, 1); h(19, 48, 2, 1, INK[1]);   // the fire ring, laid cold
+          h(26, 38, 16, 4, BO[2]); h(26, 38, 16, 1, BO[1]); h.f(60, 78, 1, 6, TH[1]); h.f(74, 78, 1, 6, TH[1]);   // the canvas, rolled and corded
+          h(26, 44, 14, 1, W[2]); h(26, 46, 14, 1, W[1]);             // the poles beside it
+          chips(h, 382, 8, 12, 30, 40, 20, SO[3], SO[0]);
+        },
+        (h) => {   // the ridge stands; canvas half-hoisted, guys staked
+          h(10, 54, 44, 2, SH);
+          pad(h, 10, 30, 44, 27, 385);
+          h(31, 18, 2, 38, W[2]); h(31, 18, 2, 1, W[3]);              // the mast up
+          for (let y = 22; y <= 54; y++) {                            // canvas draped down the LEFT side only
+            const half = Math.round((y - 22) * 0.62) + 1;
+            h(32 - half, y, half, 1, y < 38 ? TH[2] : TH[1]);
+          }
+          h(30, 22, 1, 33, TH[3]);                                    // lit seam at the ridge
+          h.f(66, 42, 24, 1, TH[1]); h.f(90, 42, 1, 12, TH[1]);       // a guy line to the right-side peg
+          h(50, 52, 1, 3, W[2]); h(44, 26, 1, 2, W[2]);               // pegs the bare side ties to
+          ART.shadedCircle(h, 16, 48, 3, ST, 1); h(15, 48, 2, 1, INK[1]);
+          chips(h, 383, 8, 12, 34, 42, 18, SO[3], SO[0]);
+        },
+        (h) => {   // the tent stands; banner pole planted, spears racked
+          h(10, 56, 44, 2, SH);
+          pad(h, 10, 32, 44, 26, 386);
+          for (let y = 22; y <= 56; y++) {                            // full canvas cone
+            const half = Math.round((y - 22) * 0.62) + 1;
+            h(32 - half, y, half * 2, 1, y < 38 ? TH[2] : TH[1]);
+          }
+          h(31, 22, 2, 34, TH[3]); h(16, 56, 32, 1, TH[0]);           // ridge seam + shaded hem
+          h(31, 19, 1, 4, W[3]);                                      // finial pole
+          h(28, 42, 8, 14, INK[0]); h(26, 42, 2, 14, TH[3]);          // doorway, one flap pinned back
+          h(50, 20, 1, 36, W[2]); h(50, 19, 1, 1, ST[4]);             // the banner pole planted — no cloth yet
+          h(48, 52, 5, 2, SO[3]); h.f(101, 44, 8, 1, TH[1]);          // its footing mound + a stay
+          for (const sx of [12, 16]) { h(sx, 38, 1, 18, W[2]); h(sx, 37, 1, 1, ST[4]); }   // planted spears
+          chips(h, 384, 6, 12, 50, 36, 8, SO[3], SO[0]);
+        },
+      ],
+      // ============ DOCK — piles driven, stringers laid, deck planked ============
+      dock: [
+        (h) => {   // the pile rig: a driven pair, the weight hung over the next
+          h(12, 28, 48, 26, WA[2]); h(12, 48, 48, 12, WA[1]); h(12, 58, 48, 2, WA[0]);   // the slip
+          h(0, 16, 12, 40, BO[2]); h(0, 16, 12, 1, GR[2]); h(0, 15, 8, 1, GR[3]);        // the shore
+          h(0, 54, 12, 1, WA[4]); h(16, 52, 6, 1, WA[4]); h(40, 56, 5, 1, WA[3]);        // foam + ripples
+          h(20, 40, 2, 18, W[0]); h(20, 39, 2, 1, W[3]);              // the first piles, driven
+          h(28, 42, 2, 16, W[0]); h(28, 41, 2, 1, W[3]);
+          h(1, 20, 10, 1, W[2]); h(1, 23, 10, 1, W[2]); h(1, 26, 10, 1, W[2]);           // piles stacked on shore
+          h(34, 18, 1, 22, W[1]); h(42, 18, 1, 22, W[1]); h(34, 18, 9, 1, W[2]);         // the pile-driving frame…
+          h.f(76, 40, 1, 14, TH[1]); ART.shadedRect(h, 36, 26, 4, 4, ST, 3);             // …its drop weight on the rope
+          h(36, 44, 2, 6, W[0]); h(36, 43, 2, 1, W[3]);               // the pile it stands over, half-driven
+        },
+        (h) => {   // every pile home; stringers reach out; first boards down
+          h(12, 28, 48, 26, WA[2]); h(12, 48, 48, 12, WA[1]); h(12, 58, 48, 2, WA[0]);
+          h(0, 16, 12, 40, BO[2]); h(0, 16, 12, 1, GR[2]); h(0, 15, 8, 1, GR[3]);
+          h(0, 54, 12, 1, WA[4]); h(22, 54, 6, 1, WA[4]); h(44, 50, 5, 1, WA[3]);
+          for (const px of [20, 30, 40, 50]) { h(px, 38, 2, 20, W[0]); h(px, 37, 2, 1, W[3]); }   // all piles driven
+          h(4, 30, 52, 2, W[2]); h(4, 30, 52, 1, W[3]);               // stringers shore → out
+          h(4, 36, 52, 2, W[1]);
+          h(4, 26, 14, 6, W[2]); h(4, 26, 14, 1, W[3]);               // first deck boards at the shore end
+          for (let bx = 6; bx < 18; bx += 3) h(bx, 27, 1, 5, W[1]);
+          h(52, 18, 1, 20, W[1]); h(58, 18, 1, 20, W[1]); h(52, 18, 7, 1, W[2]);   // the rig, moved to the far end
+          h.f(110, 38, 1, 12, TH[1]);
+        },
+        (h) => {   // the deck planked; rails rising; bollard set
+          h(12, 28, 48, 26, WA[2]); h(12, 48, 48, 12, WA[1]); h(12, 58, 48, 2, WA[0]);
+          h(0, 16, 12, 40, BO[2]); h(0, 16, 12, 1, GR[2]); h(0, 15, 8, 1, GR[3]);
+          h(0, 54, 12, 1, WA[4]); h(20, 52, 6, 1, WA[4]); h(46, 56, 5, 1, WA[3]);
+          for (const px of [20, 30, 40, 50]) { h(px, 40, 2, 18, W[0]); }
+          ART.woodPlankTexture(h, 4, 24, 52, 14, 87); h(4, 24, 52, 1, W[3]);   // the deck, planked full
+          for (let bx = 8; bx < 54; bx += 4) h(bx, 26, 1, 11, W[1]);
+          for (let rx = 6; rx <= 42; rx += 9) h(rx, 16, 1, 8, W[3]);           // rail posts up…
+          h(6, 16, 28, 1, W[3]);                                               // …top rail on the first spans
+          h(54, 26, 4, 8, W[2]); h(54, 25, 4, 1, ST[3]);              // the mooring bollard, set
+          h.f(96, 60, 14, 1, TH[1]); h.f(96, 61, 1, 5, TH[1]);        // its first rope, hung ready
+        },
+      ],
+      // ============ FARM — paring, ploughing, sowing ============
+      farm: [
+        (h) => {   // paring: the sod stripped strip by strip, stones picked
+          h(0, 0, 64, 64, GR[2]);
+          h(0, 0, 34, 64, SO[2]); h(33, 0, 1, 64, SO[3]);             // stripped ground advancing from the west
+          for (let i = 0; i < 5; i++) h(34, 4 + i * 13, 6, 4, SO[2]); // the working edge, ragged
+          chips(h, 391, 24, 2, 2, 30, 60, SO[3], SO[0]);
+          const r = ART.rng(392);
+          for (let i = 0; i < 8; i++) h(36 + ((r() * 26) | 0), 2 + ((r() * 58) | 0), 1, 1, GR[3]);   // unbroken meadow tufts
+          for (const [sx, sy] of [[1, 1], [61, 1], [1, 60], [61, 60]]) { h(sx, sy - 0, 1, 3, W[2]); h(sx, sy, 1, 1, W[3]); }
+          h.f(4, 2, 120, 1, TH[3]); h.f(4, 125, 120, 1, TH[3]);       // the bounds strung
+          h(6, 44, 5, 4, ST[2]); h(6, 44, 5, 1, ST[3]); h(8, 42, 3, 2, ST[1]);   // field stones, picked and piled
+          h(20, 24, 1, 6, W[2]); h(19, 23, 3, 1, ST[3]);              // the spade at the working edge
+        },
+        (h) => {   // ploughing: furrows walk east; the ard rests mid-field
+          h(0, 0, 64, 64, SO[2]); ART.shadedRect(h, 0, 0, 64, 64, SO, 2);
+          for (let i = 0; i < 8; i++) {                               // furrows on the ploughed half
+            const ry = 6 + i * 7;
+            h(2, ry, 38, 1, SO[1]); h(2, ry - 1, 38, 1, SO[3]);
+          }
+          h(40, 26, 8, 2, W[2]); h(46, 24, 2, 2, W[1]); h(47, 22, 1, 3, W[3]); h(40, 28, 2, 2, ST[3]);   // the ard plough, standing in its furrow
+          for (let fx = 2; fx < 62; fx += 8) h(fx, 60, 1, 3, W[2]);   // fence posts along the lane — no rails yet
+          h(44, 8, 16, 2, W[2]); h(44, 8, 16, 1, W[3]); h(44, 18, 16, 2, W[2]);   // the shed's sills, back-right
+          h(44, 8, 2, 12, W[2]); h(58, 8, 2, 12, W[1]);
+          chips(h, 393, 16, 42, 30, 20, 26, SO[3], SO[0]);
+        },
+        (h) => {   // sowing: every furrow cast with seed; the shed frames up
+          h(0, 0, 64, 64, SO[2]); ART.shadedRect(h, 0, 0, 64, 64, SO, 2);
+          const r = ART.rng(394);
+          for (let i = 0; i < 8; i++) {
+            const ry = 6 + i * 7;
+            h(2, ry, 60, 1, SO[1]); h(2, ry - 1, 60, 1, SO[3]);
+            for (let x = 3; x < 60; x += 5) if (r() < 0.7) h(x + ((r() * 3) | 0), ry - 1, 1, 1, TH[3]);   // broadcast seed
+          }
+          frame(h, 44, 2, 18, 4, 8, { seed: 95, door: [50, 4] });     // the shed rising, back-right
+          for (let fx = 2; fx < 62; fx += 8) h(fx, 58, 1, 4, W[2]);
+          h(2, 58, 60, 1, W[3]);                                      // the fence railed
+          h(12, 32, 1, 8, W[2]); h(10, 34, 5, 1, W[2]);               // the scarecrow's cross, raised bare
+          h(24, 44, 4, 3, TH[2]); h(24, 44, 4, 1, TH[3]); h(25, 42, 2, 2, BO[1]);   // the seed basket
+        },
+      ],
+      // ============ QUARRY — strip, split, then the deep cut ============
+      quarry: [
+        (h) => {   // stripping: turf off, the seam marked with wedge slots
+          ART.stoneTexture(h, 0, 0, 64, 64, 111);
+          h(0, 0, 64, 4, GR[2]); h(0, 60, 64, 4, GR[2]); h(0, 0, 3, 64, GR[2]);   // turf still ringing the ground
+          h(0, 4, 64, 1, GR[1]); h(0, 59, 64, 1, GR[3]);
+          h(48, 8, 10, 6, SO[1]); h(48, 8, 10, 1, SO[3]); h(50, 6, 6, 2, SO[2]);  // overburden, barrowed to a heap
+          h.f(24, 60, 60, 1, BO[2]);                                  // the mason's chalked line on the rock
+          for (let wx = 13; wx < 42; wx += 5) h(wx, 29, 2, 2, INK[1]);            // wedge slots cut along it
+          h(16, 40, 1, 8, W[2]); h(15, 39, 3, 1, ST[3]);              // pick + sledge left at the line
+          h(30, 44, 1, 6, W[2]); h(29, 42, 3, 2, ST[2]);
+          chips(h, 395, 14, 8, 34, 44, 20, ST[3], ST[1]);
+        },
+        (h) => {   // the first bench: a slab split off its seam, on rollers
+          ART.stoneTexture(h, 0, 0, 64, 64, 111);
+          h(0, 0, 64, 3, GR[2]); h(0, 61, 64, 3, GR[2]);
+          ART.shadedRect(h, 10, 12, 44, 40, ST, 1);                   // the shallow bench opened
+          h(10, 12, 44, 1, ST[4]); h(10, 51, 44, 1, ST[0]);
+          for (let wx = 16; wx < 44; wx += 5) h(wx, 22, 2, 2, INK[1]);            // the next wedge line, set
+          h.f(32, 46, 44, 1, INK[0]);                                 // the crack running between wedges
+          h(18, 36, 12, 6, ST[3]); h(18, 36, 12, 1, ST[4]); h(22, 38, 1, 4, ST[1]);   // the freed slab…
+          h(17, 43, 14, 1, W[2]); h(17, 45, 14, 1, W[2]);             // …resting on log rollers
+          h(48, 8, 10, 6, SO[1]); h(48, 8, 10, 1, SO[3]);
+          h(40, 40, 1, 7, W[2]); h(39, 38, 3, 2, ST[2]);              // the sledge, mid-work
+          chips(h, 396, 14, 12, 16, 40, 32, ST[3], ST[1]);
+        },
+        (h) => {   // the deep cut opens; the crane rises over it
+          ART.stoneTexture(h, 0, 0, 64, 64, 111);
+          ART.shadedRect(h, 10, 12, 44, 42, ST, 1);
+          ART.shadedRect(h, 18, 20, 28, 26, ST, 0);                   // the second step down
+          h(24, 26, 16, 14, INK[1]);                                  // the deep cut, dark
+          h(40, 4, 3, 24, W[1]); h(40, 4, 3, 1, W[3]); h(40, 4, 18, 3, W[2]);     // the timber crane going up over the pit
+          h(44, 2, 1, 4, W[1]); h.f(112, 14, 1, 22, TH[1]);           // jib stay + the fall of its rope
+          for (const [bx, by] of [[4, 48], [4, 42], [10, 56]]) { h(bx, by, 7, 5, ST[3]); h(bx, by, 7, 1, ST[4]); h(bx, by + 4, 7, 1, ST[1]); }   // squared blocks stacking up
+          h(46, 50, 12, 2, W[3]); h(50, 46, 12, 2, W[3]);             // ramp planks into the works
+          h(28, 52, 1, 7, W[2]); h(27, 51, 3, 1, ST[3]);
+          chips(h, 397, 12, 12, 16, 40, 34, ST[3], ST[1]);
+        },
+      ],
+      // ============ LUMBER CAMP — the first tree pays for the shelter ============
+      lumber: [
+        (h) => {   // the first felling: a trunk down, limbed where it lies
+          h(10, 56, 44, 2, SH);
+          pad(h, 4, 30, 56, 28, 401);
+          h(14, 44, 36, 4, W[2]); h(14, 44, 36, 1, W[3]);             // the felled trunk
+          h(14, 44, 2, 4, TH[2]); h(15, 45, 1, 2, TH[3]);             // its pale ring end
+          h(24, 41, 2, 3, W[1]); h(36, 41, 2, 3, W[1]); h(44, 48, 3, 2, W[1]);   // limbed branch stubs
+          ART.shadedCircle(h, 54, 38, 4, W, 1); h(54, 38, 1, 1, TH[2]);          // the chopping stump…
+          h(56, 30, 1, 7, W[2]); h(54, 29, 4, 2, ST[3]);              // …axe sunk in it
+          for (const [px, py] of [[7, 34], [21, 34], [5, 40], [23, 40]]) h(px, py, 1, 1, INK[0]);   // the lean-to's post holes, dug
+          h(8, 36, 10, 1, W[2]); h(8, 38, 10, 1, W[2]);               // its posts, cut and waiting
+          chips(h, 402, 16, 10, 40, 44, 14, TH[1], W[3]);
+        },
+        (h) => {   // the lean-to frame: posts + single-pitch rafters, bare
+          h(10, 54, 44, 2, SH);
+          h(6, 18, 2, 22, W[2]); h(20, 18, 2, 22, W[1]);              // back posts, taller
+          h(4, 28, 2, 16, W[2]); h(22, 28, 2, 16, W[1]);              // front posts, shorter — the single pitch
+          h(6, 19, 16, 9, W[0]);                                      // the dark under-roof void of the pitch
+          h(6, 18, 16, 1, W[3]); h(4, 28, 20, 1, W[3]);               // plates
+          for (let rx = 6; rx < 24; rx += 3) { h(rx, 19, 1, 10, W[2]); h(rx, 19, 1, 1, W[3]); }   // rafters over it
+          for (let lx = 8; lx < 28; lx += 6) { ART.shadedCircle(h, lx, 50, 3, W, 2); h(lx, 50, 1, 1, TH[2]); }   // the stack begun — one course of ring ends
+          h(38, 44, 1, 8, W[1]); h(50, 44, 1, 8, W[1]); h(36, 47, 16, 1, W[2]);   // sawhorse trestles built
+          h(40, 34, 10, 1, ST[3]); h(40, 33, 1, 2, W[1]); h(49, 33, 1, 2, W[1]);  // the two-man saw, leaned ready
+          chips(h, 403, 14, 10, 40, 44, 14, TH[1], W[3]);
+        },
+        (h) => {   // the shelter thatched from its low edge; first log on the horse
+          h(10, 56, 44, 2, SH);
+          h(6, 18, 2, 24, W[2]); h(20, 18, 2, 24, W[1]);
+          h(4, 28, 2, 18, W[2]); h(22, 28, 2, 18, W[1]);
+          h(6, 19, 16, 5, W[0]);                                      // dark void where the pitch is still open
+          h(6, 18, 16, 1, W[3]);
+          for (let rx = 6; rx < 24; rx += 3) { h(rx, 19, 1, 5, W[2]); h(rx, 19, 1, 1, W[3]); }   // top of the pitch still bare
+          ART.thatchTexture(h, 4, 24, 20, 6, 105); h(4, 24, 20, 1, TH[3]);        // thatch from the LOW eave up
+          for (let lx = 8; lx < 28; lx += 6) {                        // the stack, two courses now
+            ART.shadedCircle(h, lx, 50, 3, W, 2); h(lx, 50, 1, 1, TH[2]);
+            ART.shadedCircle(h, lx + 3, 45, 3, W, 2); h(lx + 3, 45, 1, 1, TH[2]);
+          }
+          h(38, 44, 1, 8, W[1]); h(50, 44, 1, 8, W[1]); h(36, 47, 16, 1, W[2]);
+          h(34, 38, 20, 3, W[2]); h(34, 38, 20, 1, W[3]); h(34, 38, 1, 3, TH[2]);   // the first log ON the horse
+          h(43, 36, 6, 1, ST[3]); h(43, 34, 1, 3, W[1]);              // the saw in its kerf
+          chips(h, 404, 16, 30, 48, 24, 10, TH[1], W[3]);
+        },
+      ],
+    };
+
+    for (const [key, ds] of Object.entries(DRAWS)) {
+      ds.forEach((d, i) => { Sprites.misc[key + 'Build' + (i + 1)] = fine128(d); });
+      for (let i = 1; i <= 3; i++) Sprites.misc[key + 'Up' + i] = Sprites.misc[key + 'Build' + i];
+    }
+  }
 
   /* ---------------- units ---------------- */
   // pose: idle | walk | gather | fight ; c = colour set

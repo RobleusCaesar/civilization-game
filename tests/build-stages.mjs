@@ -95,10 +95,8 @@ const out = await p.evaluate(() => {
       if (MapGen.inB(x, y)) { S.map.terrain[MapGen.idx(x, y)] = T.GRASS; S.map.explored[MapGen.idx(x, y)] = 1; }
     }
     S.units = [];
-    const h = Bld.place('P', 'house', tc.x + 3, tc.y, { free: true });
     G.updateVisibility();
     R.centerOn(tc.x + 3.5, tc.y + 0.5);
-    const t = CFG.BUILDINGS.house.levels[0].time;
     // spy on the real draw path: which work-site sprite keys does a full
     // frame request for this site at each stage?
     const keysAt = (setup) => {
@@ -109,28 +107,33 @@ const out = await p.evaluate(() => {
       try { R.draw(0.016); } finally { Assets.drawSprite = orig; }
       return calls;
     };
-    const k0 = keysAt(() => { h.construction = t * 0.9; });
-    const k1 = keysAt(() => { h.construction = t * 0.5; });
-    const k2 = keysAt(() => { h.construction = t * 0.1; });
+    // the GENERIC three-stage path now serves the 2×2 hall (every 1×1
+    // building has bespoke art) — a synthetic TC site pins it
+    const t = CFG.BUILDINGS.tc.levels[0].time || 1;
+    const site = { id: 99871, key: 'tc', owner: 'P', x: tc.x + 3, y: tc.y, level: 1, hp: 100, construction: t, upgrading: 0 };
+    S.buildings.push(site);
+    const k0 = keysAt(() => { site.construction = t * 0.9; });
+    const k1 = keysAt(() => { site.construction = t * 0.5; });
+    const k2 = keysAt(() => { site.construction = t * 0.1; });
     ck('threeDistinctStageDraws',
-      k0.includes('misc/construction1') && !k0.includes('misc/construction') &&
-      k1.includes('misc/construction') && !k1.includes('misc/construction1') &&
-      k2.includes('misc/scaffold') && !k2.includes('misc/construction'),
-      `stage0 ground-broken, stage1 raising, stage2 scaffold overlay`);
+      k0.includes('misc/constructionBig1') && !k0.includes('misc/constructionBig') &&
+      k1.includes('misc/constructionBig') && !k1.includes('misc/constructionBig1') &&
+      k2.includes('misc/scaffoldBig') && !k2.includes('misc/constructionBig'),
+      `stage0 ground-broken, stage1 raising, stage2 scaffold overlay (2×2 hall)`);
     // and an upgrade renders the staged looks under its OWN labels
-    Bld.finish(h);
-    h.upgTotal = CFG.BUILDINGS.house.levels[1].time;
-    const u0 = keysAt(() => { h.upgrading = h.upgTotal * 0.9; });
-    const u2 = keysAt(() => { h.upgrading = h.upgTotal * 0.1; });
+    site.construction = 0;
+    site.upgTotal = CFG.BUILDINGS.tc.levels[1].time || 1;
+    const u0 = keysAt(() => { site.upgrading = site.upgTotal * 0.9; });
+    const u2 = keysAt(() => { site.upgrading = site.upgTotal * 0.1; });
     ck('upgradeStagesUseUpgradeLabels',
-      u0.includes('misc/upgrade1') && u2.includes('misc/upgradeScaffold') &&
-      !u0.includes('misc/construction1') && !u2.includes('misc/scaffold'),
-      'misc/upgrade1 and misc/upgradeScaffold requested');
+      u0.includes('misc/upgradeBig1') && u2.includes('misc/upgradeScaffoldBig') &&
+      !u0.includes('misc/constructionBig1') && !u2.includes('misc/scaffoldBig'),
+      'misc/upgradeBig1 and misc/upgradeScaffoldBig requested');
+    S.buildings.splice(S.buildings.indexOf(site), 1);
 
     // ---- 4. the WATCHTOWER'S bespoke stages: double-res art, and the render
     // path requests towerBuild1/2/3 (towerUp1..3 upgrading) — never the
     // generic looks, never the scaffold overlay ----
-    h.upgrading = 0;
     const M = Sprites.misc;
     const tNeed = ['towerBuild1', 'towerBuild2', 'towerBuild3', 'towerUp1', 'towerUp2', 'towerUp3'];
     const tMissing = tNeed.filter(k => !M[k]);
@@ -169,6 +172,46 @@ const out = await p.evaluate(() => {
       tu0.includes('misc/towerUp1') && tu2.includes('misc/towerUp3') &&
       !tu0.includes('misc/towerBuild1') && !tu2.includes('misc/upgradeScaffold'),
       'misc/towerUp1 and misc/towerUp3 requested');
+
+    // ---- 5. EVERY 1×1 building raises its own way: a bespoke three-sprite
+    // family at 128px each, three genuinely different stages, upgrades
+    // aliased under their own <key>Up labels (tower's diverge; the rest
+    // share art for now) ----
+    const KEYS = ['house', 'lodge', 'barracks', 'stable', 'range', 'trade', 'siege',
+      'sapper', 'warcamp', 'dock', 'farm', 'quarry', 'lumber'];
+    const probs = [];
+    for (const k of KEYS) {
+      for (let i = 1; i <= 3; i++) {
+        const c = M[k + 'Build' + i];
+        if (!c) { probs.push(k + 'Build' + i + ' missing'); continue; }
+        if (c.width !== 128) probs.push(k + 'Build' + i + ' not 128px');
+        if (px2(c) < 1200) probs.push(k + 'Build' + i + ' too thin (' + px2(c) + 'px)');
+        if (M[k + 'Up' + i] !== c) probs.push(k + 'Up' + i + ' not aliased');
+      }
+      if (M[k + 'Build1'] && M[k + 'Build2'] && M[k + 'Build3'] &&
+        (M[k + 'Build1'].toDataURL() === M[k + 'Build2'].toDataURL() ||
+          M[k + 'Build2'].toDataURL() === M[k + 'Build3'].toDataURL()))
+        probs.push(k + ' stages not distinct');
+    }
+    ck('allBuildingsHaveBespokeStages', probs.length === 0,
+      probs.length ? probs.slice(0, 6).join('; ') : KEYS.length + ' buildings × 3 stages, all 128px, all distinct, Up-aliased');
+    // and the render path actually requests them — the house as witness
+    const hh = Bld.place('P', 'house', tc.x - 3, tc.y + 2, { free: true });
+    G.updateVisibility();
+    const ht = CFG.BUILDINGS.house.levels[0].time;
+    const h0 = keysAt(() => { hh.construction = ht * 0.9; });
+    const h1 = keysAt(() => { hh.construction = ht * 0.5; });
+    const h2 = keysAt(() => { hh.construction = ht * 0.1; });
+    ck('houseRendersBespokeStages',
+      h0.includes('misc/houseBuild1') && !h0.includes('misc/construction1') &&
+      h1.includes('misc/houseBuild2') && !h1.includes('misc/construction') &&
+      h2.includes('misc/houseBuild3') && !h2.includes('misc/scaffold'),
+      'houseBuild1/2/3 requested, generic keys not');
+    Bld.finish(hh);
+    hh.upgTotal = CFG.BUILDINGS.house.levels[1].time;
+    const hu0 = keysAt(() => { hh.upgrading = hh.upgTotal * 0.9; });
+    ck('houseUpgradeUsesHouseUpLabels',
+      hu0.includes('misc/houseUp1') && !hu0.includes('misc/upgrade1'), 'misc/houseUp1 requested');
   }
 
   return { res, fails };

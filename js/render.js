@@ -875,11 +875,11 @@ const R = {
              same art for now) so their looks can diverge later. */
           const tgt = up ? b.level + 1 : b.level;
           const stage = Bld.stageOf(b);
-          if (b.key === 'tower') {
-            // the Watchtower has BESPOKE stage art: the footing → the shaft
-            // in its putlog scaffold → the crown going in (all three stages,
-            // no generic scaffold overlay — tests/build-stages.mjs)
-            Assets.drawSprite(g, 'misc/' + (up ? 'towerUp' : 'towerBuild') + (stage + 1), bx, by, { w: bw, h: bw });
+          if (Sprites.misc[b.key + 'Build1']) {
+            // this building has BESPOKE stage art (every 1×1 building does —
+            // tests/build-stages.mjs): its own three raising sprites for ALL
+            // three stages, no generic look, no scaffold overlay
+            Assets.drawSprite(g, 'misc/' + b.key + (up ? 'Up' : 'Build') + (stage + 1), bx, by, { w: bw, h: bw });
           } else if (stage === 0) {
             Assets.drawSprite(g, 'misc/' + (up ? 'upgrade' : 'construction') + (bs >= 2 ? 'Big1' : '1'), bx, by, { w: bw, h: bw });
           } else if (stage === 1) {
