@@ -1540,9 +1540,14 @@ const UI = {
       html += '</div>';
       panel.innerHTML = html;
       const ic = panel.querySelector('#pIcon');
-      this.iconInto(ic, b.construction > 0
-        ? (Bld.size(b.key) >= 2 ? Sprites.misc.constructionBig : Sprites.misc.construction)
-        : Sprites.building[b.key][b.level - 1]);
+      // the panel icon follows the work-site stage (tests/build-stages.mjs):
+      // ground broken → the raising → the (nearly finished) building itself
+      const iconStage = b.construction > 0 ? Bld.stageOf(b) : 3;
+      this.iconInto(ic, iconStage === 0
+        ? (Bld.size(b.key) >= 2 ? Sprites.misc.constructionBig1 : Sprites.misc.construction1)
+        : iconStage === 1
+          ? (Bld.size(b.key) >= 2 ? (b.level >= 3 ? Sprites.misc.constructionBig3 : Sprites.misc.constructionBig) : Sprites.misc.construction)
+          : Sprites.building[b.key][b.level - 1]);
       panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => {
         const b2 = Bld.get(this.sel.id);
         if (!b2) return;

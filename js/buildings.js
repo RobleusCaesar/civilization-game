@@ -42,6 +42,17 @@ const Bld = {
   size(key) { const d = this.def(key); return (d && d.size) || 1; },
   cx(b) { return b.x + this.size(b.key) / 2; },       // footprint center (world units)
   cy(b) { return b.y + this.size(b.key) / 2; },
+  /* WORK-SITE STAGE (tests/build-stages.mjs): 0, 1 or 2 at exact 1/3
+     intervals of the build (or upgrade) time — ground broken, the raising,
+     the target standing in scaffold — until the finished building appears. */
+  stageOf(b) {
+    const up = b.upgrading > 0;
+    const total = up ? (b.upgTotal || this.def(b.key).levels[b.level].time || 1)
+      : (this.def(b.key).levels[b.level - 1].time || 1);
+    const left = up ? b.upgrading : b.construction;
+    const prog = Math.max(0, Math.min(0.9999, 1 - left / (total || 1)));
+    return Math.min(2, Math.floor(prog * 3));
+  },
   reach(b) { return (this.size(b.key) - 1) * 0.5; },  // extra radius past the 1×1 norm
   covers(b, x, y) {
     const s = this.size(b.key);

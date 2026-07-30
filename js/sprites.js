@@ -1416,6 +1416,87 @@ const Sprites = {
     for (let i = 0; i < 14; i++) q(5 + (rr() * 22) | 0, 25 + (rr() * 4) | 0, 1, 1, i % 2 ? ST[3] : ST[1]);  // stone chips
   }, 128), 2);
 
+  /* ---- WORK-SITE STAGES (tests/build-stages.mjs) — a site now moves through
+     THREE looks at exact 1/3 intervals of its build time, then the finished
+     building appears:
+       stage 1  GROUND BROKEN  — misc.construction1 / constructionBig1 (below)
+       stage 2  THE RAISING    — the classic work-site art above
+       stage 3  IN SCAFFOLD    — the target building's own sprite with the
+                misc.scaffold / scaffoldBig overlay drawn over it (render.js)
+     Upgrades reuse the same three under their OWN labels (further below), so
+     upgrade art can diverge per level later without touching the plumbing. */
+
+  // STAGE 1 — GROUND BROKEN: the plot staked and strung, the pad half dug,
+  // the first deliveries just arriving. Deliberately sparse next to stage 2.
+  Sprites.misc.construction1 = ART.outline(tileB(p => {
+    const W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil;
+    ART.dropShadow(p, 8, 14, 13);
+    // the half-dug pad — a lit lip, a shaded far edge, turned clods
+    p(2, 9, 12, 6, SO[2]); p(2, 9, 12, 1, SO[3]); p(2, 14, 12, 1, SO[1]);
+    const rr = ART.rng(97);
+    for (let i = 0; i < 10; i++) p.hi(6 + (rr() * 20) | 0, 20 + (rr() * 8) | 0, 1, 1, i % 2 ? SO[3] : SO[0]);
+    // corner stakes and the mason's taut string line
+    for (const [sx, sy] of [[2, 8], [13, 8], [2, 13], [13, 13]]) { p(sx, sy - 2, 1, 3, W[2]); p(sx, sy - 2, 1, 1, W[3]); }
+    p.hi(5, 13, 22, 1, TH[1]);
+    p.hi(5, 23, 22, 1, TH[1]);
+    // spoil heap, a small log pile, first dressed stones, a stuck shovel
+    p(0, 11, 2, 2, SO[1]); p(0, 11, 2, 1, SO[3]);
+    p(14, 10, 2, 1, W[3]); p(14, 11, 2, 1, W[2]);
+    p(14, 13, 1, 1, ST[2]); p(15, 13, 1, 1, ST[1]);
+    p(6, 10, 1, 3, W[2]); p(6, 9, 1, 1, ST[3]);
+  }), 1);
+
+  // STAGE 1, 2×2 — the Town Center's plot broken: a broad dug pad, staked and
+  // strung, with the first stock of timber, stone and spoil around it
+  Sprites.misc.constructionBig1 = ART.outline(tileB(p => {
+    const q = p.hi, W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil;
+    const rr = ART.rng(83);
+    q(6, 27, 21, 2, ART.STYLE.SHADOW);
+    q(4, 19, 24, 9, SO[2]); q(4, 19, 24, 1, SO[3]); q(4, 27, 24, 1, SO[1]);
+    for (let i = 0; i < 14; i++) q(5 + (rr() * 21) | 0, 20 + (rr() * 7) | 0, 1, 1, i % 2 ? SO[3] : SO[0]);
+    for (const [sx, sy] of [[4, 18], [27, 18], [4, 26], [27, 26]]) { q(sx, sy - 3, 1, 4, W[2]); q(sx, sy - 3, 1, 1, W[3]); }
+    q(5, 19, 22, 1, TH[1]); q(5, 26, 22, 1, TH[1]);   // string lines
+    // first deliveries: a log stack, dressed stone, the spoil heap, a barrow
+    q(0, 22, 4, 1, W[3]); q(0, 23, 4, 1, W[2]); q(0, 24, 4, 1, W[3]);
+    q(0, 22, 1, 3, TH[2]);
+    ART.shadedRect(q, 27, 22, 4, 3, ST, 2); q(27, 22, 4, 1, ST[3]);
+    q(12, 15, 6, 3, SO[1]); q(12, 15, 6, 1, SO[3]);
+    q(19, 24, 4, 1, W[2]); q(20, 25, 1, 1, W[0]); q(22, 22, 1, 2, W[3]);
+  }, 128), 2);
+
+  // STAGE 3 OVERLAY — a sparse scaffold drawn OVER the finished sprite, so
+  // the building reads "up, but still wrapped in the works"
+  Sprites.misc.scaffold = ART.outline(tileB(p => {
+    const W = AP.wood, TH = AP.thatch;
+    p(1, 2, 1, 12, W[2]); p(1, 2, 1, 1, W[3]);
+    p(14, 2, 1, 12, W[2]);
+    p(1, 4, 14, 1, W[3]);
+    p(1, 9, 14, 1, W[2]);
+    p(12, 6, 1, 8, W[3]); p(14, 6, 1, 8, W[3]);
+    for (let y = 7; y < 13; y += 2) p(12, y, 3, 1, W[1]);
+    for (const [lx, ly] of [[1, 4], [14, 4], [1, 9], [14, 9]]) { p.hi(lx * 2, ly * 2, 1, 1, TH[1]); p.hi(lx * 2 + 1, ly * 2 + 1, 1, 1, TH[3]); }
+  }), 1);
+
+  Sprites.misc.scaffoldBig = ART.outline(tileB(p => {
+    const q = p.hi, W = AP.wood, TH = AP.thatch;
+    for (const px of [1, 30]) { q(px, 4, 1, 22, W[2]); q(px, 4, 1, 1, W[3]); }
+    q(1, 7, 30, 1, W[3]); q(1, 17, 30, 1, W[2]);
+    q(25, 10, 1, 16, W[3]); q(28, 10, 1, 16, W[3]);
+    for (let y = 12; y < 25; y += 3) q(25, y, 4, 1, W[1]);
+    for (const [lx, ly] of [[1, 7], [30, 7], [1, 17], [30, 17]]) { q(lx, ly, 1, 1, TH[1]); q(lx, ly + 1, 1, 1, TH[3]); }
+  }, 128), 2);
+
+  /* UPGRADE work-site stages — the SAME three looks for now, but under their
+     own labels so upgrade art can diverge per level later without touching
+     the render plumbing (tests/build-stages.mjs pins the aliasing). */
+  Sprites.misc.upgrade1 = Sprites.misc.construction1;
+  Sprites.misc.upgrade2 = Sprites.misc.construction;
+  Sprites.misc.upgradeScaffold = Sprites.misc.scaffold;
+  Sprites.misc.upgradeBig1 = Sprites.misc.constructionBig1;
+  Sprites.misc.upgradeBig2 = Sprites.misc.constructionBig;
+  Sprites.misc.upgradeBig2_3 = Sprites.misc.constructionBig3;
+  Sprites.misc.upgradeScaffoldBig = Sprites.misc.scaffoldBig;
+
   /* ---------------- units ---------------- */
   // pose: idle | walk | gather | fight ; c = colour set
   function humanoid(p, f, pose, c) {

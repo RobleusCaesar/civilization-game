@@ -69,6 +69,7 @@ node tests/sapper-fees.mjs     # sapper services bill per tile, dearer by tier, 
 node tests/army-groups.mjs     # dense 2-per-tile formations; three saved armies on right-rail banners
 node tests/boats-moat-scuttle.mjs # a moat is open water to hulls; Scuttle sinks a boat, frees its pop, refunds nothing
 node tests/army-strategies.mjs # the three assault doctrines (Siege/Chaos/Strike) — for the player AND the rival
+node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals; upgrades own their labels
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -425,6 +426,17 @@ campaign launch (engines → siege; WARHORN/MUDLARK → strike; else chaos —
 which is the raid brain's normal behavior), strike columns skip every
 opportunistic detour in `aiRaidSeek`, siege escorts hold beside the column's
 guns, and the stance stands down when the raid ends.
+
+**Build stages** (`tests/build-stages.mjs`): a work site moves through THREE
+looks at exact 1/3 intervals of its build time (`Bld.stageOf`) — ground
+broken (`misc/construction1` / `Big1`), the raising (the classic work-site
+art), then the TARGET BUILDING'S OWN SPRITE wrapped in the `misc/scaffold`
+(`scaffoldBig`) overlay — before the finished sprite appears. Upgrades render
+the same three stages under their OWN labels (`misc/upgrade1`, `upgrade2`,
+`upgradeScaffold`, `upgradeBig1`, `upgradeBig2`, `upgradeBig2_3`,
+`upgradeScaffoldBig`) — the SAME canvases today (the test pins the aliasing),
+so upgrade art can diverge per level later without touching the plumbing.
+Wall/gate first raisings keep their translucent oriented-ghost look.
 
 **Boats on moats + Scuttle** (`tests/boats-moat-scuttle.mjs`): a MOAT is open
 water to a HULL — the water-domain branch of `Path.passable` accepts it like

@@ -867,11 +867,28 @@ const R = {
           // fortifications show their oriented shape while first going up
           g.globalAlpha = 0.55; g.drawImage(this.bldSprite(b), bx, by, bw, bw); g.globalAlpha = 1;
         } else {
-          // 2×2 (TC) work-sites match the shape being raised: the timber
-          // long-hall (→L2) or the stone keep (→L3). target = the level once done
+          /* WORK-SITE STAGES (tests/build-stages.mjs): three looks at 1/3
+             intervals — ground broken → the raising → the building standing
+             in scaffold — then the finished sprite. 2×2 (TC) raisings still
+             match the shape going up: the timber long-hall (→L2) or the
+             stone keep (→L3). Upgrades wear their own sprite labels (the
+             same art for now) so their looks can diverge later. */
           const tgt = up ? b.level + 1 : b.level;
-          const key = bs >= 2 ? (tgt >= 3 ? 'misc/constructionBig3' : 'misc/constructionBig') : 'misc/construction';
-          Assets.drawSprite(g, key, bx, by, { w: bw, h: bw });
+          const stage = Bld.stageOf(b);
+          if (stage === 0) {
+            Assets.drawSprite(g, 'misc/' + (up ? 'upgrade' : 'construction') + (bs >= 2 ? 'Big1' : '1'), bx, by, { w: bw, h: bw });
+          } else if (stage === 1) {
+            const key = bs >= 2
+              ? (up ? (tgt >= 3 ? 'misc/upgradeBig2_3' : 'misc/upgradeBig2') : (tgt >= 3 ? 'misc/constructionBig3' : 'misc/constructionBig'))
+              : (up ? 'misc/upgrade2' : 'misc/construction');
+            Assets.drawSprite(g, key, bx, by, { w: bw, h: bw });
+          } else {
+            // nearly done: the building stands (a first raising shows the
+            // level being built; an upgrade shows the hall still being
+            // worked on), wrapped in the scaffold overlay
+            g.drawImage(this.bldSprite(b), bx, by, bw, bw);
+            Assets.drawSprite(g, 'misc/' + (up ? 'upgradeScaffold' : 'scaffold') + (bs >= 2 ? 'Big' : ''), bx, by, { w: bw, h: bw });
+          }
         }
         const total = up ? (b.upgTotal || Bld.def(b.key).levels[b.level].time) : Bld.def(b.key).levels[b.level - 1].time;
         this.bar(g, bx + 4, by + bw - 4, bw - 8, 3, 1 - (up ? b.upgrading : b.construction) / total, '#e8c15a');
