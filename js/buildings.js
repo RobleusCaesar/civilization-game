@@ -321,7 +321,7 @@ const Bld = {
     const b = {
       id: S.nextId++, key, owner, x, y, level: spec.level,
       // construction sites are fragile until finished
-      hp: opts.instant ? spec.lv.hp : Math.max(30, Math.round(spec.lv.hp * 0.4)),
+      hp: opts.instant ? spec.lv.hp : this.siteStartHp(spec.lv.hp),
       maxhp: spec.lv.hp,
       construction: opts.instant ? 0 : spec.lv.time * tMult,   // days left
       upgrading: 0, queue: [], cd: 0, outpost,
@@ -802,10 +802,19 @@ const Bld = {
      third (the partially-destroyed look, fires guttering low). Purely a
      function of hp, so the fire burns until a villager's repair puts it
      out — the persistent "this needs mending" signal. */
+  // what a fresh construction site's hp starts at (fragile until finished) —
+  // the single source of truth for place() AND burnPhase below
+  siteStartHp(maxhp) { return Math.max(30, Math.round(maxhp * 0.4)); },
+
   burnPhase(b) {
     const max = b.maxhp || this.def(b.key).levels[b.level - 1].hp;
-    const dmg = 1 - b.hp / max;
-    if (dmg <= 0.02) return -1;          // a scratch doesn't smoulder
+    // a CONSTRUCTION SITE is fragile BY DESIGN — it starts at a fraction of
+    // its finished hp, and building work never raises hp (only finish() does).
+    // Burn is measured against what the site was GIVEN, never against the
+    // finished building's hp, or every fresh site would read as on fire.
+    const base = b.construction > 0 ? this.siteStartHp(max) : max;
+    const dmg = 1 - b.hp / base;
+    if (dmg <= 0.02) return -1;          // a scratch (or an untouched site) doesn't smoulder
     return Math.min(2, (dmg * 3) | 0);
   },
 

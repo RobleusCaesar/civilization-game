@@ -475,7 +475,11 @@ bitten out adaptively until the silhouette measurably shrinks, remains
 charred, rafter stubs + embers) with the fires guttering small again. The
 flames are `misc/flameSmall/0..3` and `misc/flameBig/0..3` (four-frame
 animated fire, opaque flame on transparent ground) drawn via
-`Assets.drawSprite` in `R.drawBurn`; work sites burn by the same rule.
+`Assets.drawSprite` in `R.drawBurn`; work sites burn by the same rule —
+but a site is fragile BY DESIGN (it starts at `Bld.siteStartHp`, the single
+source of truth shared with `place()`), so burn on a site is measured
+against what it was GIVEN, never against finished hp: an untouched
+construction site must NEVER show fire.
 Variants cache per base canvas in a WeakMap, so building levels, the rival's
 red set and wall/gate auto-tile masks all get scorched/ruined selves for
 free — but beware `destination-out` with a translucent fillStyle: it only

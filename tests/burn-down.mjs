@@ -129,11 +129,19 @@ const out = await p.evaluate(() => {
     ck('phase0SmallFires', anyS(k1) && !anyB(k1), '');
     ck('phase1BigFires', anyB(k2) && !anyS(k2), '');
     ck('phase2SmallFiresAgain', anyS(k3) && !anyB(k3), '');
-    // a half-built work site burns by the same rule
+    // a construction site is fragile BY DESIGN (it starts at siteStartHp, a
+    // fraction of finished hp) — an UNTOUCHED site must never read as on
+    // fire (the regression: fresh sites burning). Only real damage below
+    // what the site was given lights it.
+    h.hp = h.maxhp;   // the house is whole again — only the site under test may burn
     const site = Bld.place('P', 'tower', tc.x - 3, tc.y, { free: true });
     G.updateVisibility();
-    const k4 = keysAt(() => { site.hp = site.maxhp * 0.5; });
-    ck('workSitesBurnToo', anyB(k4), 'flames over the staged raising');
+    ck('siteStartsFragile', site.hp === Bld.siteStartHp(site.maxhp) && site.hp < site.maxhp, '');
+    const kFresh = keysAt(() => {});
+    ck('freshSiteNeverBurns', !anyS(kFresh) && !anyB(kFresh),
+      'building under construction is not under fire');
+    const k4 = keysAt(() => { site.hp = Bld.siteStartHp(site.maxhp) * 0.5; });
+    ck('damagedSitesBurnToo', anyB(k4), 'flames once a site takes REAL damage');
     Bld.finish(site); site.hp = site.maxhp;
     h.hp = h.maxhp;
 
