@@ -607,12 +607,19 @@ const Sprites = {
   /* ---------------- buildings ---------------- */
   function shadow(p) { p(2, 13, 12, 2, 'rgba(0,0,0,0.25)'); }
 
-  // fortification materials by level: 1 = stick-and-grass palisade, 2 = stone, 3 = dressed stone
+  /* fortification materials by level (tests/wall-tower-bond.mjs):
+       1 = stick-and-grass palisade
+       2 = a STONE CURTAIN CARRYING A TIMBER WALL-WALK — half stone, half
+           wood, the same story the level-2 Watchtower tells (stone base,
+           timber upper works) and the material step every level-2 building
+           takes. It used to be plain stone, which read as a finished castle
+           two tiers early and left level 3 nowhere to go.
+       3 = dressed stone, gold-crested */
   function wallPal(lv) {
     return lv === 1
       ? { base: PAL.woodD, top: PAL.thatch, seam: APx.wood[0], stick: PAL.wood }
       : lv === 2
-        ? { base: PAL.stone, top: PAL.rockL, seam: PAL.stoneD }
+        ? { base: PAL.stone, top: PAL.rockL, seam: PAL.stoneD, timber: true }
         : { base: PAL.stoneD, top: PAL.stone, seam: APx.stone[0], gold: true };
   }
   // directional wall piece for a 4-bit neighbor mask (N=1, E=2, S=4, W=8)
@@ -657,6 +664,34 @@ const Sprites = {
       if (E) p(12, 8, 3, 1, c.seam);
       if (N) p(6, 2, 2, 1, c.seam);
       if (S) p(8, 13, 2, 1, c.seam);
+    }
+    /* LEVEL 2 — the TIMBER WALL-WALK laid along the stone curtain: planks
+       run down the middle third of every arm (and across the hub) with the
+       stone parapet left showing on both flanks, so the run reads half
+       stone / half wood from above. Posts stand at the parapet edge. */
+    if (c.timber) {
+      const WD = APx.wood;
+      const deck = (x, y, w, h, vert) => {
+        p(x, y, w, h, WD[2]);
+        if (vert) { p(x, y, 1, h, WD[3]); p(x + w - 1, y, 1, h, WD[1]); }
+        else { p(x, y, w, 1, WD[3]); p(x, y + h - 1, w, 1, WD[1]); }
+      };
+      deck(7, 7, 3, 3);                                   // the hub's decking
+      if (W) deck(0, 7, 6, 3);
+      if (E) deck(10, 7, 6, 3);
+      if (N) deck(7, 0, 3, 6, true);
+      if (S) deck(7, 10, 3, 6, true);
+      // plank seams across the walk, and posts standing along the parapet
+      if (W || E) {
+        for (let px = 1; px < 16; px += 3) if ((px < 6 && W) || (px > 9 && E) || (px >= 6 && px <= 9)) p(px, 8, 1, 1, WD[1]);
+        if (W) { p(2, 6, 1, 1, WD[3]); p(2, 10, 1, 1, WD[3]); }
+        if (E) { p(13, 6, 1, 1, WD[3]); p(13, 10, 1, 1, WD[3]); }
+      }
+      if (N || S) {
+        for (let py = 1; py < 16; py += 3) if ((py < 6 && N) || (py > 9 && S) || (py >= 6 && py <= 9)) p(8, py, 1, 1, WD[1]);
+        if (N) { p(6, 2, 1, 1, WD[3]); p(10, 2, 1, 1, WD[3]); }
+        if (S) { p(6, 13, 1, 1, WD[3]); p(10, 13, 1, 1, WD[3]); }
+      }
     }
     if (c.gold) p(5, 4, 6, 1, PAL.gold);
   }
@@ -987,7 +1022,22 @@ const Sprites = {
     tower(p, lv) {
       const q = p.hi, tier = lv;
       q(6, 27, 22, 2, ART.STYLE.SHADOW); q(11, 29, 13, 1, ART.STYLE.SHADOW);   // long shadow = height
-      bWall(q, 11, 9, 10, 17, tier, 17);                            // tall narrow shaft
+      if (tier === 2) {
+        /* LEVEL 2 — HALF AND HALF (tests/wall-tower-bond.mjs): a coursed
+           STONE base carrying a TIMBER upper storey, divided by a lit
+           corbelled string-course. It used to be bWall's tier-2 dress —
+           planking with a mere two-row stone footing — which barely read as
+           a change from the level-1 tower. L1 (wattle) and L3 (all dressed
+           stone) are deliberately untouched. */
+        ART.woodPlankTexture(q, 11, 9, 10, 8, 17);                  // timber upper storey
+        q(11, 9, 1, 8, AP.wood[3]); q(20, 9, 1, 8, AP.wood[1]);     // corner posts
+        q(10, 16, 12, 1, AP.stone[4]); q(10, 17, 12, 1, AP.stone[2]);   // corbelled string-course
+        ART.stoneTexture(q, 11, 18, 10, 8, 24);                     // coursed stone base
+        for (let i = 0; i < 8; i += 2) {                            // dressed quoins up the base
+          q(11, 18 + i, 2, 2, (i & 2) ? AP.stone[4] : AP.stone[3]);
+          q(19, 18 + i, 2, 2, (i & 2) ? AP.stone[1] : AP.stone[0]);
+        }
+      } else bWall(q, 11, 9, 10, 17, tier, 17);                     // tall narrow shaft
       q(11, 25, 10, 1, AP.stone[0]);                               // footing rim
       // overhanging lookout platform (machicolation) at the top
       ART.shadedRect(q, 8, 5, 16, 4, tier >= 3 ? AP.stone : AP.wood, 2);

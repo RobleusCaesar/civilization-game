@@ -71,6 +71,7 @@ node tests/boats-moat-scuttle.mjs # a moat is open water to hulls; Scuttle sinks
 node tests/army-strategies.mjs # the three assault doctrines (Siege/Chaos/Strike) — for the player AND the rival
 node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals; upgrades own their labels
 node tests/burn-down.mjs       # damaged buildings burn in thirds; a razed one leaves 5 days of unbuildable ash
+node tests/wall-tower-bond.mjs # L2 forts are half stone/half timber; an in-line tower joins the curtain
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -469,6 +470,29 @@ follows). Tower upgrade art DIVERGES on purpose — that's what the separate
 labels are for: `towerUp2/3` climb in coursed masonry with dressed quoins
 (the stone tiers an upgrade builds toward) while `towerBuild2/3` climb in
 wattle-and-daub matching the level-1 tower; `towerUp1` aliases `towerBuild1`.
+
+**Wall/tower materials & the bond** (`tests/wall-tower-bond.mjs`): two rules
+about how a castle reads. **Materials** — every level-2 building steps to
+"stone below, timber above", and forts now do too: `wallPal(2)` is a stone
+curtain carrying a TIMBER WALL-WALK (planks down the middle third of every
+arm, stone parapet showing on both flanks — the `timber` flag in
+`drawWallMask`), and the level-2 Watchtower is a coursed stone base under a
+timber upper storey divided by a corbelled string-course (a `tier === 2`
+branch in the tower draw, NOT `bWall`, whose tier-2 dress is a mere two-row
+footing). Both land near 50/50; L1 (palisade/wattle) and L3 (dressed stone,
+gold crest) are deliberately untouched, and each tier must remain a visible
+step. **The bond** — a tower raised IN a wall line joins it (corners,
+T-junctions, mid-run), so the curtain reads unbroken like a real castle's
+mural towers; a tower merely BEHIND or IN FRONT of a line must not.
+`R.towerLinkMask` decides: link toward a neighbouring wall/gate when the run
+continues on the tower's far side, or the tower sits mid-line, or that
+neighbour is a lone stub with no run of its own. It reads walls and gates
+ONLY (never other towers), so it can never recurse; `R.wallMaskAt` calls it
+to reciprocate, and `R.drawTowerBond` draws the curtain's own mask art UNDER
+the tower. Unfinished towers bond to nothing. **The bond is COSMETIC** —
+`Bld.blockAt` and `Path.passable` are untouched, so a bonded tower stays a
+walkable door exactly as the wall-line contract requires. Never "fix" the
+look by making towers block.
 
 **Burning buildings & ash** (`tests/burn-down.mjs`): a damaged building shows
 its destruction in THIRDS (`Bld.burnPhase`, keyed to hp — so the fire burns

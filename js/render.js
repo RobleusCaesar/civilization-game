@@ -673,12 +673,65 @@ const R = {
     const conn = (xx, yy) => {
       if (!MapGen.inB(xx, yy)) return true;                 // map edge
       if (Bld.blockAt(xx, yy) !== 0) return true;           // wall / gate
+      // a finished TOWER standing IN the line bonds to it (see towerLinkMask)
+      const tb = Bld.at(xx, yy);
+      if (tb && tb.key === 'tower' && !(tb.construction > 0)) {
+        const back = xx === x ? (yy < y ? 4 : 1) : (xx < x ? 2 : 8);   // dir from that tower back to us
+        if (this.towerLinkMask(xx, yy).mask & back) return true;
+      }
       const t = S.map.terrain[MapGen.idx(xx, yy)];
       if (t === T.WATER || t === T.MOUNTAIN) return true;   // natural barrier
       return !!(extra && extra.has(xx + ',' + yy));
     };
     return (conn(x, y - 1) ? 1 : 0) | (conn(x + 1, y) ? 2 : 0) |
            (conn(x, y + 1) ? 4 : 0) | (conn(x - 1, y) ? 8 : 0);
+  },
+
+  /* ---- WALL ↔ TOWER BOND (tests/wall-tower-bond.mjs) ----
+     A tower raised IN a wall line should read as part of the curtain, the
+     way a real castle's mural towers do — no gap, corners and T-junctions
+     included. A tower merely standing BEHIND or IN FRONT of a line must not
+     grow a stub toward it, so the rule is that the wall run has to pass
+     THROUGH the tower along that axis:
+
+       link toward a neighbouring wall/gate if the run continues on the
+       tower's far side (a wall two out along the same axis), or the tower
+       has a wall on the opposite side (it sits mid-line), or that
+       neighbour is a lone stub with no run of its own yet (the first
+       section a player lays out from a tower).
+
+     Reads walls and gates only — never other towers — so it can never
+     recurse. PURELY COSMETIC: Bld.blockAt and Path.passable are untouched,
+     so a tower in the line stays a walkable door exactly as before (that is
+     the wall-line contract, tests/wall-line.mjs). */
+  _wgAt(x, y) {
+    if (!MapGen.inB(x, y)) return null;
+    const b = Bld.at(x, y);
+    return b && (b.key === 'wall' || b.key === 'gate') ? b : null;
+  },
+  towerLinkMask(x, y) {
+    let mask = 0, level = 0;
+    for (const [dx, dy, bit] of [[0, -1, 1], [1, 0, 2], [0, 1, 4], [-1, 0, 8]]) {
+      const nb = this._wgAt(x + dx, y + dy);
+      if (!nb || nb.construction > 0) continue;
+      let lone = true;                                     // a stub with no run of its own?
+      for (const [ex, ey] of [[0, -1], [1, 0], [0, 1], [-1, 0]])
+        if (this._wgAt(nb.x + ex, nb.y + ey)) { lone = false; break; }
+      if (this._wgAt(x + dx * 2, y + dy * 2) || this._wgAt(x - dx, y - dy) || lone) {
+        mask |= bit;
+        if (!level) level = nb.level;                      // wear the curtain's own tier
+      }
+    }
+    return { mask, level: level || 1 };
+  },
+  // the curtain's stonework reaching in to meet the tower, drawn UNDER it so
+  // the tower's own body always sits on top of the joint
+  drawTowerBond(g, b, bx, by, bw) {
+    if (b.construction > 0) return;
+    const lk = this.towerLinkMask(b.x, b.y);
+    if (!lk.mask) return;
+    const fam = Sprites.wallMask[Math.min(lk.level, Sprites.wallMask.length) - 1];
+    g.drawImage(fam[lk.mask], bx, by, bw, bw);
   },
   gateVerticalAt(x, y) {
     const conn = (xx, yy) => MapGen.inB(xx, yy) && Bld.blockAt(xx, yy) !== 0;
@@ -1008,6 +1061,9 @@ const R = {
         : snap.key === 'gate' ? Sprites.gateMask[snap.level - 1][this.gateVerticalAt(gx, gy) ? 1 : 0]
         : (snap.owner === 'A' ? Sprites.buildingA : Sprites.building)[snap.key][snap.level - 1];
       const gs = Bld.size(snap.key) * TL;
+      // a remembered tower keeps its bond to the line, same as the wall
+      // ghosts beside it (which already mask from live neighbours)
+      if (snap.key === 'tower') this.drawTowerBond(g, { x: gx, y: gy, construction: 0 }, gx * TL, gy * TL, gs);
       g.drawImage(spr, gx * TL, gy * TL, gs, gs);
     }
 
@@ -1080,6 +1136,9 @@ const R = {
         const spr = bph === 1 ? this.darkOf(this.bldSprite(b))
           : bph === 2 ? this.ruinOf(this.bldSprite(b))
           : this.bldSprite(b);
+        // a tower in a wall line wears the curtain's own stonework as
+        // connecting stubs, under its body — one unbroken castle wall
+        if (b.key === 'tower') this.drawTowerBond(g, b, bx, by, bw);
         g.drawImage(spr, bx, by, bw, bw);
         // owner tag
         g.fillStyle = b.owner === 'P' ? '#4a90c2' : '#c2564a';
