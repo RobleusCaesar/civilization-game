@@ -164,6 +164,7 @@ const G = {
       },
       buildings: [], units: [],
       bridges: [],                          // {x,y,owner,hp,maxhp} — attackable crossings (Sapper tier 2)
+      ashes: [],                            // burned-down buildings: {x,y,sz,key,lv,day} — unbuildable for CFG.ASH_DAYS (tests/burn-down.mjs)
       garrison: [],                         // villagers sheltered inside the Town Center
       armies: {},                           // saved war parties: slot (1-3) → [unit ids] (see UI.saveArmy)
       reprieveUsed: false,                  // the one-time "two survivors emerge" reprieve (competitive modes)
@@ -532,6 +533,10 @@ const G = {
         this.log('🌱 Worked-out land recovers in time — old clearings and pits are worth working again');
       }
     }
+    // ash piles cool: after ASH_DAYS the footprint of a burned building is
+    // buildable ground again (the ruined tiles beneath fade on their own clock)
+    if (S.ashes && S.ashes.length)
+      S.ashes = S.ashes.filter(a => S.day - a.day < CFG.ASH_DAYS);
     Bld.dailyProduction('P');
     Units.dailySpawns();
     if (window.Cards) Cards.seerWatch();   // ORIGIN CARDS: the Seer's forewarning
@@ -959,6 +964,7 @@ const G = {
     }
     if (!data.garrison) data.garrison = [];
     if (!data.armies) data.armies = {};   // pre-army saves: no standing banners
+    if (!Array.isArray(data.ashes)) data.ashes = [];   // pre-burn saves: no smouldering ground
     // pre-sapper saves: no bridges, and rebuild the fast passability mirror
     if (!Array.isArray(data.bridges)) data.bridges = [];
     if (!Array.isArray(data.map.bridge)) data.map.bridge = new Array(w * h).fill(0);

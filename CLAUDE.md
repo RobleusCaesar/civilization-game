@@ -70,6 +70,7 @@ node tests/army-groups.mjs     # dense 2-per-tile formations; three saved armies
 node tests/boats-moat-scuttle.mjs # a moat is open water to hulls; Scuttle sinks a boat, frees its pop, refunds nothing
 node tests/army-strategies.mjs # the three assault doctrines (Siege/Chaos/Strike) — for the player AND the rival
 node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals; upgrades own their labels
+node tests/burn-down.mjs       # damaged buildings burn in thirds; a razed one leaves 5 days of unbuildable ash
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
@@ -463,6 +464,30 @@ follows). Tower upgrade art DIVERGES on purpose — that's what the separate
 labels are for: `towerUp2/3` climb in coursed masonry with dressed quoins
 (the stone tiers an upgrade builds toward) while `towerBuild2/3` climb in
 wattle-and-daub matching the level-1 tower; `towerUp1` aliases `towerBuild1`.
+
+**Burning buildings & ash** (`tests/burn-down.mjs`): a damaged building shows
+its destruction in THIRDS (`Bld.burnPhase`, keyed to hp — so the fire burns
+until a villager's REPAIR puts it out, the persistent "needs mending"
+signal): first third lost = SMALL fires on the roof and at the foot (sprite
+untouched); second third = BIG fires and the sprite scorched darker
+(`R.darkOf`); final third = a partially-DESTROYED look (`R.ruinOf` — crown
+bitten out adaptively until the silhouette measurably shrinks, remains
+charred, rafter stubs + embers) with the fires guttering small again. The
+flames are `misc/flameSmall/0..3` and `misc/flameBig/0..3` (four-frame
+animated fire, opaque flame on transparent ground) drawn via
+`Assets.drawSprite` in `R.drawBurn`; work sites burn by the same rule.
+Variants cache per base canvas in a WeakMap, so building levels, the rival's
+red set and wall/gate auto-tile masks all get scorched/ruined selves for
+free — but beware `destination-out` with a translucent fillStyle: it only
+thins alpha, it does not erase (the eraser must be full-alpha `#000`). A
+DESTROYED building leaves an ASH PILE (`S.ashes`: `{x,y,sz,key,lv,day}`,
+in every save, `loadJSON` backfills) rendered by `R.ashOf` — generated from
+the building's own sprite silhouette (column mass → heap profile), so each
+building's ash is unique. Ash blocks BUILDING on the footprint (`Bld.tileFree`
+/ `canPlace` → "Ashes still smoulder here") but never movement, for
+`CFG.ASH_DAYS` (5), then cools away in `G.dayTick`. Walls/gates are exempt —
+a breached line must stay instantly mendable (`AI.mendWallLine` and player
+repairs depend on it) — and a broken dock washes into open water as before.
 
 **Boats on moats + Scuttle** (`tests/boats-moat-scuttle.mjs`): a MOAT is open
 water to a HULL — the water-domain branch of `Path.passable` accepts it like

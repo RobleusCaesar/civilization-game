@@ -175,6 +175,7 @@ const Bld = {
       t === T.STUMPS || t === T.PEBBLES || t === T.BARREN || t === T.RUIN;
     if (!buildable) return false;
     if (this.at(x, y)) return false;
+    if (this.ashAt(x, y)) return false;   // a burned building's footprint stays unbuildable while its ash cools
     return true;
   },
 
@@ -241,7 +242,8 @@ const Bld = {
       // every tile of the footprint must be buildable ground
       const s = this.size(key);
       for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++)
-        if (!this.tileFree(x + dx, y + dy)) return { ok: false, why: 'Blocked tile' };
+        if (!this.tileFree(x + dx, y + dy))
+          return { ok: false, why: this.ashAt(x + dx, y + dy) ? 'Ashes still smoulder here' : 'Blocked tile' };
     }
     // TC-level gate (player only — the rival's scripted build order sets its own pace)
     if (owner === 'P' && d.reqTC) {
@@ -794,12 +796,42 @@ const Bld = {
     if (UI.sel && UI.sel.type === 'bld' && UI.sel.id === b.id) UI.deselect();
   },
 
+  /* ---- BURNING (tests/burn-down.mjs) — how far gone is a damaged building?
+     Returns -1 (sound), or the destruction third: 0 = first third of hp lost
+     (small fires), 1 = second third (big fires, scorched dark), 2 = final
+     third (the partially-destroyed look, fires guttering low). Purely a
+     function of hp, so the fire burns until a villager's repair puts it
+     out — the persistent "this needs mending" signal. */
+  burnPhase(b) {
+    const max = b.maxhp || this.def(b.key).levels[b.level - 1].hp;
+    const dmg = 1 - b.hp / max;
+    if (dmg <= 0.02) return -1;          // a scratch doesn't smoulder
+    return Math.min(2, (dmg * 3) | 0);
+  },
+
+  // is a cooling ash pile on this tile? (blocks building, never movement)
+  ashAt(x, y) {
+    if (!S.ashes || !S.ashes.length) return null;
+    for (const a of S.ashes)
+      if (x >= a.x && x < a.x + a.sz && y >= a.y && y < a.y + a.sz) return a;
+    return null;
+  },
+
   damage(b, amt) {
     b.hp -= amt;
     // ring the rival's town alarm — idle soldiers converge (see AI.daily)
     if (b.owner === 'A' && S.ai) S.ai.alarm = { x: b.x, y: b.y, day: S.day };
     if (b.hp <= 0) {
       const name = this.def(b.key).name, owner = b.owner, key = b.key;
+      // a burned-down building leaves an ASH PILE that blocks building on its
+      // footprint for CFG.ASH_DAYS (tests/burn-down.mjs). Walls and gates are
+      // exempt — a breached line must stay instantly mendable (the AI's
+      // mendWallLine loop and the player's own repairs depend on it) — and a
+      // broken dock washes into open water, leaving nothing to smoulder.
+      if (key !== 'wall' && key !== 'gate' && key !== 'dock') {
+        if (!S.ashes) S.ashes = [];
+        S.ashes.push({ x: b.x, y: b.y, sz: this.size(key), key, lv: b.level, day: S.day });
+      }
       this.removeToRuin(b);
       if (owner === 'P') {
         S.breachedP = true;   // the line is broken — positive specials may now answer (G.positiveGate)

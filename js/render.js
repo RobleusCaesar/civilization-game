@@ -691,6 +691,161 @@ const R = {
     return (b.owner === 'A' ? Sprites.buildingA : Sprites.building)[b.key][b.level - 1];
   },
 
+  /* ---- BURNING BUILDINGS (tests/burn-down.mjs) ----
+     A damaged building shows its destruction in thirds (Bld.burnPhase):
+       phase 0  small fires, the building itself untouched
+       phase 1  bigger fires, the sprite scorched DARKER (darkOf)
+       phase 2  a partially-DESTROYED look (ruinOf: roofline bitten out,
+                remains charred), the fires guttering small again
+     Variants are generated lazily per base canvas and cached in a WeakMap,
+     so every building level, the rival's red set, and even wall/gate
+     auto-tile masks get their scorched and ruined selves for free. */
+  _burnCache: new WeakMap(),
+  _burnEntry(base) {
+    let e = this._burnCache.get(base);
+    if (!e) { e = {}; this._burnCache.set(base, e); }
+    return e;
+  },
+  darkOf(base) {
+    const e = this._burnEntry(base);
+    if (e.dark) return e.dark;
+    const c = document.createElement('canvas'); c.width = base.width; c.height = base.height;
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+    g.drawImage(base, 0, 0);
+    g.globalCompositeOperation = 'source-atop';        // scorch ONLY the sprite's own pixels
+    g.fillStyle = 'rgba(28,18,10,0.34)';
+    g.fillRect(0, 0, c.width, c.height);
+    const r = ART.rng(base.width * 7 + base.height);   // soot licks climbing from openings
+    g.fillStyle = 'rgba(15,10,6,0.45)';
+    for (let i = 0; i < Math.max(4, c.width >> 4); i++) {
+      const sx = r() * c.width, sh = (0.2 + r() * 0.3) * c.height;
+      g.fillRect(sx, r() * c.height * 0.5, Math.max(2, c.width * 0.03), sh);
+    }
+    return e.dark = c;
+  },
+  ruinOf(base) {
+    const e = this._burnEntry(base);
+    if (e.ruin) return e.ruin;
+    const c = document.createElement('canvas'); c.width = base.width; c.height = base.height;
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+    g.drawImage(base, 0, 0);
+    g.globalCompositeOperation = 'source-atop';        // char what still stands
+    g.fillStyle = 'rgba(24,15,8,0.48)';
+    g.fillRect(0, 0, c.width, c.height);
+    const r = ART.rng(base.width * 13 + base.height * 3);
+    // BITE the structure apart — collapsed chunks torn out, biased hard to
+    // the top half so the roofline reads fallen while the base still stands.
+    // Bite ADAPTIVELY: keep tearing until the silhouette has measurably
+    // shrunk (a dense full-tile mask needs more bites than an airy sprite).
+    const count = (cv) => {
+      try {
+        const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+        let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) n++;
+        return n;
+      } catch (_) { return null; }   // asset-pack image taint — bite blind
+    };
+    const before = count(c);
+    g.globalCompositeOperation = 'destination-out';
+    g.fillStyle = '#000';                              // FULL-alpha eraser — a translucent one only singes
+    g.fillRect(0, 0, c.width, c.height * 0.12);        // the very crown is always gone
+    for (let round = 0; round < 4; round++) {
+      for (let i = 0; i < Math.max(5, c.width >> 4); i++) {
+        const bw = c.width * (0.05 + r() * 0.09), bh = c.height * (0.06 + r() * 0.12);
+        g.fillRect(r() * (c.width - bw), r() * c.height * (i % 3 ? 0.4 : 0.7), bw, bh);
+      }
+      const now = count(c);
+      if (before === null || now === null || now <= before * 0.87) break;
+    }
+    // charred rafter stubs and embers ON the remains (source-atop — the
+    // wounds stay open; ruin must always read as LESS building, never more)
+    g.globalCompositeOperation = 'source-atop';
+    const AF = ART.PALETTE.fire;
+    for (let i = 0; i < Math.max(3, c.width >> 5); i++) {
+      const sx = (0.15 + r() * 0.7) * c.width, sy = (0.1 + r() * 0.3) * c.height;
+      g.fillStyle = '#241a10';
+      g.fillRect(sx, sy, Math.max(2, c.width * 0.025), (0.1 + r() * 0.12) * c.height);
+      if (r() < 0.7) { g.fillStyle = AF[0]; g.fillRect(sx + 1, sy + 2, 2, 2); }
+    }
+    g.globalCompositeOperation = 'source-over';
+    return e.ruin = c;
+  },
+
+  // the animated fires themselves, planted on the roof and at the foot of the
+  // building; count and size follow the phase (small → BIG → small)
+  drawBurn(g, b, bx, by, bw) {
+    const ph = Bld.burnPhase(b);
+    if (ph < 0) return;
+    const beat = (performance.now() / 130) | 0;
+    const hsh = (n) => ((((b.id * 2654435761 + n * 40503) >>> 0) >>> 7) % 1000) / 1000;
+    const spots = ph === 1
+      ? [[0.5, 0.2, 1], [0.24, 0.62, 1], [0.74, 0.5, 1]]   // the blaze: roof + two faces
+      : [[0.42, 0.24, 0], [0.66, 0.6, 0]];                 // catching / guttering: two small fires
+    for (let i = 0; i < spots.length; i++) {
+      const [sx, sy, big] = spots[i];
+      const jx = (hsh(i) - 0.5) * 0.18 * bw, jy = (hsh(i + 3) - 0.5) * 0.1 * bw;
+      const s = (big ? 0.56 : 0.42) * bw;
+      Assets.drawSprite(g, 'misc/' + (big ? 'flameBig' : 'flameSmall') + '/' + ((beat + i * 2 + b.id) % 4),
+        bx + sx * bw - s / 2 + jx, by + sy * bw - s * 0.9 + jy, { w: s, h: s });
+    }
+  },
+
+  /* ---- ASH PILES (tests/burn-down.mjs) — what a burned building leaves ----
+     Generated from the building's OWN finished sprite: each column's pixel
+     mass becomes the heap's height there, so a tall tower leaves a tall
+     narrow cone and a broad hall a long low mound — unique to each building
+     by construction. Charcoal base, grey ash body, pale blown-ash crown,
+     a few charred beam stubs, embers still pinpricking the fresh pile. */
+  _ashCache: {},
+  ashOf(key, lv) {
+    const ck = key + ':' + (lv || 1);
+    if (this._ashCache[ck]) return this._ashCache[ck];
+    const fam = Sprites.building[key] || Sprites.building.house;
+    const base = fam[Math.min((lv || 1) - 1, fam.length - 1)] || fam[0];
+    const W = base.width, H = base.height;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+    const COLS = 16, cw = W / COLS;
+    let mass = new Array(COLS).fill(0);
+    try {
+      const d = base.getContext('2d').getImageData(0, 0, W, H).data;
+      for (let x = 0; x < W; x++) {
+        let n = 0;
+        for (let y = 0; y < H; y++) if (d[(y * W + x) * 4 + 3] > 96) n++;
+        mass[Math.min(COLS - 1, (x / cw) | 0)] += n;
+      }
+    } catch (_) {
+      // an asset-pack image can taint its canvas — fall back to a settled dome
+      mass = mass.map((_, i) => 1 - Math.abs(i - COLS / 2) / (COLS / 2) * 0.7);
+    }
+    const peak = Math.max(...mass, 1);
+    const ST = ART.PALETTE.stone, INK = ART.PALETTE.ink, BO = ART.PALETTE.bone, F = ART.PALETTE.fire;
+    const r = ART.rng(ck.length * 31 + key.charCodeAt(0) * 7);
+    const ground = H * 0.86;
+    g.fillStyle = 'rgba(0,0,0,0.25)';                       // scorched contact shadow
+    g.fillRect(W * 0.1, ground + H * 0.02, W * 0.8, H * 0.06);
+    for (let i = 0; i < COLS; i++) {
+      // the heap: this column's share of the building's mass, softened by its
+      // neighbours so the profile reads as one settled pile
+      const m = (mass[i] + (mass[i - 1] || mass[i]) + (mass[i + 1] || mass[i])) / 3;
+      const hh = Math.max(H * 0.05, (m / peak) * H * 0.3) * (0.85 + r() * 0.3);
+      const x = i * cw;
+      g.fillStyle = INK[1]; g.fillRect(x, ground - hh, cw, hh);              // charcoal body
+      g.fillStyle = ST[1]; g.fillRect(x, ground - hh, cw, Math.max(1, hh * 0.55));   // grey ash over it
+      if (r() < 0.65) { g.fillStyle = ST[2]; g.fillRect(x + r() * cw * 0.4, ground - hh, cw * (0.3 + r() * 0.5), Math.max(1, hh * 0.22)); }  // lit crown, settled unevenly
+      if (r() < 0.4) { g.fillStyle = BO[1]; g.fillRect(x + r() * cw, ground - hh - 1, Math.max(1, cw * 0.3), 1); }  // blown pale ash
+    }
+    for (let i = 0; i < 3; i++) {                            // charred beam stubs leaning out of the pile
+      const x = (0.2 + r() * 0.6) * W, hh2 = (0.08 + r() * 0.08) * H;
+      g.fillStyle = '#241a10';
+      g.fillRect(x, ground - (mass[(x / cw) | 0] / peak) * H * 0.25 - hh2, Math.max(2, W * 0.025), hh2);
+    }
+    for (let i = 0; i < 4; i++) {                            // embers dying in the ash
+      g.fillStyle = i % 2 ? F[0] : F[1];
+      g.fillRect((0.2 + r() * 0.6) * W, ground - r() * H * 0.12, 2, 2);
+    }
+    return this._ashCache[ck] = c;
+  },
+
   unitPose(u) {
     const vil = u.kind === 'villager';
     // in a fight: villagers swing a pickaxe (guard), soldiers thrust a spear
@@ -849,6 +1004,14 @@ const R = {
       g.drawImage(spr, gx * TL, gy * TL, gs, gs);
     }
 
+    // ash piles — what burned-down buildings left, cooling on the ground
+    // (drawn under everything that walks or stands; explored memory is enough,
+    // a cold heap doesn't move)
+    if (S.ashes) for (const a of S.ashes) {
+      if (!S.map.explored[MapGen.idx(a.x, a.y)]) continue;
+      g.drawImage(this.ashOf(a.key, a.lv), a.x * TL, a.y * TL, a.sz * TL, a.sz * TL);
+    }
+
     // buildings (sorted by footprint bottom edge)
     const blds = S.buildings.slice().sort((a, b) =>
       (a.y + Bld.size(a.key)) - (b.y + Bld.size(b.key)));
@@ -901,7 +1064,13 @@ const R = {
         g.fillStyle = b.owner === 'P' ? '#4a90c2' : '#c2564a';
         g.fillRect(bx + 1, by + 1, 4, 4);
       } else {
-        g.drawImage(this.bldSprite(b), bx, by, bw, bw);
+        // a damaged building wears its destruction phase (tests/burn-down.mjs):
+        // untouched → scorched dark → partially destroyed (Bld.burnPhase)
+        const bph = Bld.burnPhase(b);
+        const spr = bph === 1 ? this.darkOf(this.bldSprite(b))
+          : bph === 2 ? this.ruinOf(this.bldSprite(b))
+          : this.bldSprite(b);
+        g.drawImage(spr, bx, by, bw, bw);
         // owner tag
         g.fillStyle = b.owner === 'P' ? '#4a90c2' : '#c2564a';
         g.fillRect(bx + 1, by + 1, 4, 4);
@@ -915,6 +1084,7 @@ const R = {
           g.fillStyle = F[1]; g.fillRect(fx2 + (ph ? 1 : -2), fy2 - 5, 1, 2);
         }
       }
+      this.drawBurn(g, b, bx, by, bw);   // fires ride on work sites and finished buildings alike
       if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, bw - 6, 3, b.hp / b.maxhp, '#7dbb5e');
       if (UI.sel && UI.sel.type === 'bld' && UI.sel.id === b.id) {
         g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;

@@ -2320,6 +2320,52 @@ const Sprites = {
     }
   }
 
+  /* ---- BURNING BUILDINGS (tests/burn-down.mjs): the flame animation ----
+     Four-frame licking fire in two sizes, drawn OVER a damaged building
+     (render.js drawBurn). Opaque fire on a transparent ground, anchored to
+     the canvas bottom so render.js can plant the base of the flame on a
+     roof line or a doorway. No ink outline — fire glows, it isn't drawn.
+     Layered like the dragon's fire line: a dark ember bed, an outer tongue,
+     a hot middle, a white-hot core, sparks off the crest on the high frames
+     and a curl of smoke as it licks. */
+  {
+    const F = AP.fire, SMOKE = 'rgba(74,74,82,0.55)', SMOKE2 = 'rgba(74,74,82,0.3)';
+    const flameFrames = (big) => Array.from({ length: 4 }, (_, f) => tileB(p => {
+      const q = p.hi, base = 30, cx = 16;
+      const sway = [0, -1, 1, 0][f];
+      // one licking tongue: rows narrow toward the tip, each row wobbling
+      // with height and frame so the fire genuinely licks
+      const tongue = (tx, tw, th, col, ph) => {
+        for (let yy = 0; yy < th; yy++) {
+          const t = yy / th;
+          const ww = Math.max(1, Math.round(tw * (1 - t * t)));
+          const wob = Math.round(Math.sin(t * 5 + f * 1.6 + ph) * t * 2 + sway * t);
+          q(tx - (ww >> 1) + wob, base - 1 - yy, ww, 1, col);
+        }
+      };
+      const w = big ? 13 : 8, h = (big ? 21 : 13) + [0, 3, 1, 4][f];
+      if (big) {                                          // side licks knit a broad blaze
+        tongue(cx - 5, 6, Math.round(h * 0.55), F[1], 2.1);
+        tongue(cx + 5, 6, Math.round(h * 0.5), F[1], 4.2);
+      }
+      tongue(cx, w, h, F[1], 0);                          // outer flame
+      tongue(cx, Math.max(2, w - 4), Math.round(h * 0.72), F[2], 0.4);   // hot middle
+      tongue(cx, Math.max(1, w - 8), Math.round(h * 0.4), F[3] || F[2], 0.8);  // white-hot core
+      q(cx - (w >> 1) - 1, base - 1, w + 2, 1, F[0]);     // dark ember bed
+      q(cx - (w >> 1), base, w, 1, F[1]);                 // glow spilling at the foot
+      if (f === 1 || f === 3) {                           // sparks off the crest
+        q(cx + sway * 2 + (f === 1 ? 2 : -3), base - h - 3, 1, 1, F[2]);
+        if (big) q(cx - sway * 2 + 4, base - h - 5, 1, 1, F[3] || F[2]);
+      }
+      if (f >= 2) {                                       // smoke curling off the tip
+        q(cx + sway + 2, base - h - 4, 2, 2, SMOKE);
+        q(cx - 2 + sway * 2, base - h - 7, 2, 2, SMOKE2);
+      }
+    }, 64));
+    Sprites.misc.flameSmall = flameFrames(false);
+    Sprites.misc.flameBig = flameFrames(true);
+  }
+
   /* ---------------- units ---------------- */
   // pose: idle | walk | gather | fight ; c = colour set
   function humanoid(p, f, pose, c) {

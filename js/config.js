@@ -96,6 +96,7 @@ const CFG = {
   },
   DEMOLISH_REFUND: 0.4,       // fraction of spent resources returned on demolish
   RUIN_DECAY_DAYS: 60,        // base days before stumps/pebbles/spent soil regrow (ruins fade to grass) — cleared land stays cleared a good while
+  ASH_DAYS: 5,                // a burned-down building's ash pile blocks building on its footprint this many days (tests/burn-down.mjs)
   REGROW_MULT: {              // per-terrain regrowth-time multiplier over the base
     [T.STUMPS]:  2,           // felled forest — twice as slow to grow back
     [T.BARREN]:  2,           // spent orchard/berry soil — twice as slow
