@@ -14,6 +14,19 @@
    later without touching the render plumbing. This file pins that aliasing —
    if the art diverges on purpose, update the check and say so in the commit.
 
+   THE WATCHTOWER is the first building with BESPOKE stage art: three
+   double-res (128px, 64-cell fine grid) sprites of the tall tower going up —
+   misc/towerBuild1 (the footing: staked plot, foundation trench, first plinth
+   course), towerBuild2 (the shaft rising in its putlog scaffold under a rope
+   windlass), towerBuild3 (the crown: lookout platform, railing and hoist at
+   the wall-head). render.js routes b.key === 'tower' to these for ALL three
+   stages — never the generic looks, never the scaffold overlay. Tower
+   UPGRADES diverge on purpose: an upgrade lifts the tower toward its STONE
+   tiers, so misc/towerUp2/3 climb in coursed masonry with dressed quoins,
+   while towerBuild2/3 (the first raising, toward the wattle level-1 tower)
+   climb in wattle-and-daub. Ground-breaking is shared (towerUp1 aliases
+   towerBuild1).
+
    Run this after touching any of:
      buildings.js — Bld.stageOf
      render.js — the work-site branch of the building draw
@@ -113,6 +126,49 @@ const out = await p.evaluate(() => {
       u0.includes('misc/upgrade1') && u2.includes('misc/upgradeScaffold') &&
       !u0.includes('misc/construction1') && !u2.includes('misc/scaffold'),
       'misc/upgrade1 and misc/upgradeScaffold requested');
+
+    // ---- 4. the WATCHTOWER'S bespoke stages: double-res art, and the render
+    // path requests towerBuild1/2/3 (towerUp1..3 upgrading) — never the
+    // generic looks, never the scaffold overlay ----
+    h.upgrading = 0;
+    const M = Sprites.misc;
+    const tNeed = ['towerBuild1', 'towerBuild2', 'towerBuild3', 'towerUp1', 'towerUp2', 'towerUp3'];
+    const tMissing = tNeed.filter(k => !M[k]);
+    ck('towerSpriteFamilyDoubleRes',
+      tMissing.length === 0 && tNeed.every(k => M[k].width === 128),
+      tMissing.length ? 'missing: ' + tMissing.join(',') : '6 labels at 128px');
+    const px2 = (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) n++; return n; };
+    ck('towerStagesHaveSubstanceAndDiffer',
+      px2(M.towerBuild1) > 1500 && px2(M.towerBuild2) > 2500 && px2(M.towerBuild3) > 2500 &&
+      M.towerBuild1.toDataURL() !== M.towerBuild2.toDataURL() &&
+      M.towerBuild2.toDataURL() !== M.towerBuild3.toDataURL(), '');
+    // upgrades diverge ON PURPOSE: same ground-breaking, then masonry (the
+    // stone tiers the upgrade builds toward), not the level-1 wattle raising
+    ck('towerUpgradeArtDiverges',
+      M.towerUp1 === M.towerBuild1 &&
+      M.towerUp2 !== M.towerBuild2 && M.towerUp2.toDataURL() !== M.towerBuild2.toDataURL() &&
+      M.towerUp3 !== M.towerBuild3 && M.towerUp3.toDataURL() !== M.towerBuild3.toDataURL() &&
+      px2(M.towerUp2) > 2500 && px2(M.towerUp3) > 2500,
+      'towerUp2/3 are the masonry raisings');
+    const tw = Bld.place('P', 'tower', tc.x - 3, tc.y, { free: true });
+    G.updateVisibility();
+    const tt = CFG.BUILDINGS.tower.levels[0].time;
+    const w0 = keysAt(() => { tw.construction = tt * 0.9; });
+    const w1 = keysAt(() => { tw.construction = tt * 0.5; });
+    const w2 = keysAt(() => { tw.construction = tt * 0.1; });
+    ck('towerRendersBespokeStages',
+      w0.includes('misc/towerBuild1') && !w0.includes('misc/construction1') &&
+      w1.includes('misc/towerBuild2') && !w1.includes('misc/construction') &&
+      w2.includes('misc/towerBuild3') && !w2.includes('misc/scaffold'),
+      'towerBuild1/2/3 requested, generic keys not');
+    Bld.finish(tw);
+    tw.upgTotal = CFG.BUILDINGS.tower.levels[1].time;
+    const tu0 = keysAt(() => { tw.upgrading = tw.upgTotal * 0.9; });
+    const tu2 = keysAt(() => { tw.upgrading = tw.upgTotal * 0.1; });
+    ck('towerUpgradeUsesTowerUpLabels',
+      tu0.includes('misc/towerUp1') && tu2.includes('misc/towerUp3') &&
+      !tu0.includes('misc/towerBuild1') && !tu2.includes('misc/upgradeScaffold'),
+      'misc/towerUp1 and misc/towerUp3 requested');
   }
 
   return { res, fails };

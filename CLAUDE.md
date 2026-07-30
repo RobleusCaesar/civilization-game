@@ -437,6 +437,18 @@ the same three stages under their OWN labels (`misc/upgrade1`, `upgrade2`,
 `upgradeScaffoldBig`) — the SAME canvases today (the test pins the aliasing),
 so upgrade art can diverge per level later without touching the plumbing.
 Wall/gate first raisings keep their translucent oriented-ghost look.
+**The Watchtower has BESPOKE stage art** (same test): the first building with
+its own three-sprite raising — `misc/towerBuild1/2/3` at DOUBLE resolution
+(128px on a 64-cell fine grid, vs the finished tower's 32-grid), drawn from
+real medieval practice: the staked plot with its foundation trench and first
+plinth course; the shaft in a putlog scaffold (beams socketed into the wall)
+under a rope windlass; the crown works — half-planked lookout platform,
+railing, gin-pole hoist. render.js routes `b.key === 'tower'` to these for
+ALL three stages (no generic look, no scaffold overlay; ui.js panel icon
+follows). Tower upgrade art DIVERGES on purpose — that's what the separate
+labels are for: `towerUp2/3` climb in coursed masonry with dressed quoins
+(the stone tiers an upgrade builds toward) while `towerBuild2/3` climb in
+wattle-and-daub matching the level-1 tower; `towerUp1` aliases `towerBuild1`.
 
 **Boats on moats + Scuttle** (`tests/boats-moat-scuttle.mjs`): a MOAT is open
 water to a HULL — the water-domain branch of `Path.passable` accepts it like

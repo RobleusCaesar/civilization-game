@@ -1497,6 +1497,235 @@ const Sprites = {
   Sprites.misc.upgradeBig2_3 = Sprites.misc.constructionBig3;
   Sprites.misc.upgradeScaffoldBig = Sprites.misc.scaffoldBig;
 
+  /* ---- WATCHTOWER — bespoke stage art (tests/build-stages.mjs) ----
+     The first building with its OWN three-sprite raising, replacing the
+     generic work-site looks for b.key === 'tower' in render.js. Grounded in
+     how a real medieval tower went up: a foundation pit dug to firm ground
+     and a battered plinth laid first; the shaft rising in coursed masonry
+     with dressed corner quoins, wrapped in a PUTLOG scaffold (horizontal
+     beams socketed into putlog holes left in the wall, carrying plank lifts,
+     raised with the wall as work climbed); stone hoisted by rope windlass;
+     and the crown — lookout platform, railing, crenellation — fitted LAST at
+     the wall-head. Authored at 128px on a 64-cell fine grid (`h`, 2px/cell)
+     — DOUBLE the pixel density of the finished tower's 32-grid — so the
+     tall, skinny silhouette (shaft x22..41, matching the finished sprite
+     doubled) carries real masonry and carpentry detail. */
+  const towerFine = (draw) => ART.outline(tileB(p => {
+    const h = (x, y, w, ht, col) => { p.g.fillStyle = col; p.g.fillRect(x * 2, y * 2, (w || 1) * 2, (ht || 1) * 2); };
+    // raw canvas-pixel plotter (coords 0..127) for TRUE 1px cordage — string
+    // lines, plumb lines and hoist ropes stay hair-thin instead of being
+    // fattened into bars by the grid cell + outline pass
+    h.f = (x, y, w, ht, col) => { p.g.fillStyle = col; p.g.fillRect(x, y, (w || 1), (ht || 1)); };
+    draw(h, p);
+  }, 128), 2);
+
+  // STAGE 1 — THE FOOTING: the plot staked and strung, the foundation pit dug
+  // to firm ground, and the first battered plinth course going in — dressed
+  // blocks laid on a mortar bed, stopping mid-course where the masons are.
+  // A plumb-line tripod, the mortar tub, and the first deliveries wait.
+  Sprites.misc.towerBuild1 = towerFine((h) => {
+    const W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil;
+    const rr = ART.rng(211);
+    h(16, 52, 34, 3, ART.STYLE.SHADOW); h(22, 55, 22, 2, ART.STYLE.SHADOW);
+    // the stripped plot — turned earth, its edge broken by spilled clods so it
+    // reads as ground works, not a panel
+    h(18, 38, 28, 16, SO[2]); h(18, 38, 28, 1, SO[3]); h(18, 53, 28, 1, SO[1]);
+    for (let i = 0; i < 14; i++) {
+      const ex = rr() < 0.5, ey = (rr() * 14) | 0;                   // clods spilling over both edges
+      h(ex ? 17 - ((rr() * 2) | 0) : 46 + ((rr() * 2) | 0), 39 + ey, 1, 1, rr() < 0.5 ? SO[2] : SO[3]);
+    }
+    for (let i = 0; i < 16; i++) h(20 + (rr() * 24) | 0, 40 + (rr() * 12) | 0, 1, 1, i % 2 ? SO[3] : SO[0]);
+    // the FOUNDATION TRENCH dug deeper along the tower's square perimeter —
+    // a dark ring down to firm ground, the undug core left standing
+    h(22, 41, 20, 3, SO[1]); h(22, 48, 20, 3, SO[1]);
+    h(22, 41, 3, 10, SO[1]); h(39, 41, 3, 10, SO[1]);
+    h(22, 41, 20, 1, SO[0]); h(22, 50, 20, 1, SO[0]);
+    h(22, 41, 1, 10, SO[0]); h(41, 42, 1, 9, SO[0]);                 // trench shadow walls
+    // corner stakes + the mason's taut string squaring the plot — the string
+    // is TRUE 1px cord, drawn over the pit so it stays hair-thin
+    for (const [sx, sy] of [[17, 37], [46, 37], [17, 53], [46, 53]]) { h(sx, sy - 6, 1, 7, W[2]); h(sx, sy - 6, 1, 1, W[3]); }
+    h.f(36, 77, 56, 1, TH[3]); h.f(36, 104, 56, 1, TH[3]);
+    h.f(37, 78, 1, 26, TH[3]); h.f(91, 78, 1, 26, TH[3]);
+    // the first PLINTH course going into the trench — dressed blocks laid on
+    // a mortar screed along the back run, stopping where the masons stand
+    h(22, 41, 18, 1, ST[1]);                                         // mortar screed in the trench
+    for (let i = 0; i < 4; i++) {
+      const bx = 22 + i * 4;
+      h(bx, 41, 4, 3, ST[2]); h(bx, 41, 4, 1, ST[4]);                // laid blocks, lit beds
+      h(bx, 41, 1, 3, ST[3]); h(bx + 3, 42, 1, 2, ST[0]);            // dressed face + joint shadow
+    }
+    h(22, 44, 3, 3, ST[2]); h(22, 44, 3, 1, ST[4]); h(22, 44, 1, 3, ST[3]);   // the corner turned down the left run
+    h(38, 42, 4, 1, ST[1]);                                          // mortar spread for the next block
+    h(40, 45, 4, 3, ST[2]); h(40, 45, 4, 1, ST[3]);                  // that block, waiting askew in the pit
+    // plumb-line tripod standing over the trench corner (the mason's level)
+    h(30, 45, 1, 8, W[2]); h(34, 45, 1, 8, W[2]); h(30, 44, 5, 1, W[3]);
+    h.f(65, 90, 1, 13, TH[3]); h(32, 51, 1, 1, ST[3]);               // hair-thin line + bob
+    // deliveries: rough stone (left), scaffold timber, the mortar tub, spoil,
+    // a stuck shovel and a hand barrow
+    ART.shadedRect(h, 6, 46, 7, 5, ST, 2); h(6, 46, 7, 1, ST[3]); h(8, 48, 1, 1, ST[0]); h(11, 49, 1, 1, ST[0]);
+    h(4, 40, 10, 1, W[3]); h(4, 41, 10, 1, W[2]); h(4, 42, 10, 1, W[3]);   // timber for the putlog scaffold
+    h(5, 40, 1, 3, TH[2]); h(12, 40, 1, 3, TH[2]);                   // ring-ends
+    h(50, 46, 8, 4, W[1]); h(50, 46, 8, 1, W[2]); h(51, 47, 6, 2, ST[1]);  // mortar tub, mixed grey
+    h(48, 38, 6, 4, SO[1]); h(48, 38, 6, 1, SO[3]);                  // spoil heap out of the pit
+    h(50, 34, 1, 5, W[2]); h(50, 33, 2, 1, ST[3]);                   // shovel stuck in the spoil
+    h(52, 54, 8, 1, W[2]); h(53, 55, 1, 2, W[0]); h(58, 52, 1, 3, W[3]); h(51, 55, 2, 2, W[1]);  // barrow
+    for (let i = 0; i < 12; i++) h(14 + (rr() * 36) | 0, 55 + (rr() * 5) | 0, 1, 1, i % 2 ? ST[3] : SO[3]);
+  });
+
+  // STAGE 2 — THE SHAFT RISES: half height over the battered plinth, the top
+  // course stepped where the hands stand. A putlog scaffold socketed into the
+  // wall carries two plank lifts; a rope windlass at the wall-head raises the
+  // next load; the doorway is formed under a timber lintel. Two material
+  // stories: the FIRST RAISING (stone=false) climbs in wattle-and-daub over
+  // staked corner posts — the finished level-1 tower's own walls — while the
+  // UPGRADE art (stone=true, towerUp2) climbs in coursed masonry with dressed
+  // quoins, the stone tiers the works are lifting the tower to.
+  const towerStage2 = (stone) => towerFine((h) => {
+    const W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil;
+    const rr = ART.rng(223);
+    h(16, 52, 34, 3, ART.STYLE.SHADOW); h(22, 55, 22, 2, ART.STYLE.SHADOW);
+    // battered plinth — two stepped courses wider than the shaft (the stone
+    // footing every tier of the tower stands on)
+    ART.stoneTexture(h, 20, 46, 24, 6, 141); h(20, 46, 24, 1, ST[4]);
+    h(21, 44, 22, 2, ST[2]); h(21, 44, 22, 1, ST[3]);
+    if (stone) {
+      // the shaft to half height — coursed masonry, quoins up both corners
+      ART.stoneTexture(h, 22, 28, 20, 16, 143);
+      for (let i = 0; i < 16; i += 2) {
+        h(22, 28 + i, 2, 2, (i & 2) ? ST[4] : ST[3]);                // lit left quoins
+        h(40, 28 + i, 2, 2, (i & 2) ? ST[1] : ST[0]);                // shaded right quoins
+      }
+      // the top course stepped and unfinished, fresh mortar beds lit on top
+      h(22, 28, 20, 1, ST[1]);
+      h(24, 26, 5, 2, ST[2]); h(24, 26, 5, 1, ST[4]);
+      h(31, 25, 6, 3, ST[2]); h(31, 25, 6, 1, ST[4]); h(33, 26, 1, 2, ST[0]);
+      h(38, 27, 3, 1, ST[3]);
+    } else {
+      // the shaft to half height — wattle-and-daub packed between staked
+      // corner posts, the top edge ragged where the daubing stands
+      ART.wattleTexture(h, 22, 28, 20, 16, 143);
+      h(22, 28, 1, 18, W[2]); h(22, 28, 1, 1, W[3]);                 // corner posts, proud of the wall
+      h(41, 28, 1, 18, W[1]);
+      h(23, 28, 18, 1, SO[1]);                                        // raw daub edge
+      h(25, 26, 4, 2, SO[2]); h(25, 26, 4, 1, SO[3]);                // fresh daub climbing
+      h(32, 25, 5, 3, SO[2]); h(32, 25, 5, 1, SO[3]); h(34, 26, 1, 2, SO[0]);
+      h(38, 27, 3, 1, SO[3]);
+    }
+    // PUTLOG HOLES — dark sockets left in the wall as the scaffold climbed
+    for (const px of [25, 30, 35]) { h(px, 34, 1, 1, AP.ink[0]); h(px + 2, 41, 1, 1, AP.ink[0]); }
+    // the putlog scaffold: beams socketed INTO the wall carry plank lifts,
+    // lashed to outside standards; a ladder links the lifts
+    for (const px of [16, 47]) { h(px, 22, 1, 30, W[2]); h(px, 22, 1, 1, W[3]); }
+    h(15, 33, 8, 1, W[1]); h(41, 33, 8, 1, W[1]);                    // upper putlogs, wall → standard
+    h(15, 41, 8, 1, W[1]); h(41, 41, 8, 1, W[1]);                    // lower putlogs
+    h(13, 32, 9, 1, W[3]); h(42, 32, 9, 1, W[3]);                    // upper plank lifts
+    h(13, 40, 9, 1, W[3]); h(42, 40, 9, 1, W[3]);                    // lower plank lifts
+    for (let x = 14; x < 21; x += 2) h(x, 32, 1, 1, W[1]);
+    for (let x = 43; x < 50; x += 2) h(x, 40, 1, 1, W[1]);           // plank grain
+    for (const [lx, ly] of [[16, 33], [47, 33], [16, 41], [47, 41]]) { h(lx, ly - 1, 1, 1, TH[1]); h(lx, ly, 1, 1, TH[3]); }
+    h(50, 36, 1, 16, W[1]); h(53, 36, 1, 16, W[1]);
+    for (let r = 0; r < 7; r++) h(50, 37 + r * 2, 4, 1, W[2]);       // ladder to the lower lift
+    // rope WINDLASS at the wall-head raising the next load — a dressed block
+    // for the masons, a bound wattle hurdle for the daubers
+    h(31, 19, 1, 7, W[1]); h(38, 19, 1, 7, W[1]); h(30, 18, 10, 1, W[3]);
+    h(32, 20, 6, 2, W[2]); h(32, 20, 6, 1, W[3]); h(38, 21, 2, 1, ST[3]);   // drum + crank
+    h.f(69, 44, 1, 28, TH[1]);                                       // the fall of the rope, 1px
+    if (stone) { ART.shadedRect(h, 32, 36, 5, 4, ST, 3); h(32, 36, 5, 1, ST[4]); }
+    else {
+      h(32, 36, 5, 4, W[2]); h(32, 36, 5, 1, W[3]);                  // the hurdle in its sling
+      h(33, 37, 1, 3, W[1]); h(35, 37, 1, 3, W[1]);                  // withies
+    }
+    h.f(64, 75, 10, 1, TH[1]); h.f(69, 72, 1, 8, TH[1]);             // sling cords
+    // the doorway formed under a timber lintel, jambs boarded
+    h(27, 38, 10, 2, W[3]);
+    h(29, 40, 6, 11, AP.ink[0]); h(28, 40, 1, 11, W[2]); h(35, 40, 1, 11, W[2]);
+    // ground: the material stock, the mortar/daub tub, chips off the bankers
+    if (stone) { ART.shadedRect(h, 6, 47, 7, 4, ST, 2); h(6, 47, 7, 1, ST[3]); h(9, 49, 1, 1, ST[0]); }
+    else {
+      h(6, 47, 8, 1, W[3]); h(6, 48, 8, 1, W[2]); h(6, 49, 8, 1, W[3]); h(6, 50, 8, 1, W[2]);  // stacked hurdles
+      h(7, 47, 1, 4, TH[2]); h(12, 47, 1, 4, TH[2]);
+    }
+    h(8, 52, 7, 3, W[1]); h(8, 52, 7, 1, W[2]); h(9, 53, 5, 1, stone ? ST[1] : SO[2]);  // the tub, mixed
+    h(56, 50, 6, 1, W[3]); h(56, 51, 6, 1, W[2]);                    // spare putlog timber
+    for (let i = 0; i < 14; i++) h(12 + (rr() * 40) | 0, 54 + (rr() * 6) | 0, 1, 1, i % 2 ? (stone ? ST[3] : SO[3]) : (stone ? ST[1] : SO[1]));
+  });
+  Sprites.misc.towerBuild2 = towerStage2(false);
+
+  // STAGE 3 — THE CROWN: the shaft at full height (the finished tower's own
+  // silhouette), arrow slits cut, the lower putlog rows already patched. The
+  // work is all at the wall-head now: the overhanging lookout platform half
+  // planked on its joists, the first railing up, a gin-pole hoist swinging
+  // the next planks, a top lift on tall standards — the struck scaffold
+  // stacked on the ground below. Same two material stories as stage 2.
+  const towerStage3 = (stone) => towerFine((h) => {
+    const W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil;
+    const rr = ART.rng(227);
+    h(12, 54, 42, 3, ART.STYLE.SHADOW); h(22, 57, 24, 2, ART.STYLE.SHADOW);
+    // full-height shaft on its battered stone plinth
+    ART.stoneTexture(h, 20, 48, 24, 4, 151); h(20, 48, 24, 1, ST[4]);
+    if (stone) {
+      ART.stoneTexture(h, 22, 18, 20, 30, 153);
+      for (let i = 0; i < 30; i += 2) {
+        h(22, 18 + i, 2, 2, (i & 2) ? ST[4] : ST[3]);                // quoins all the way up
+        h(40, 18 + i, 2, 2, (i & 2) ? ST[1] : ST[0]);
+      }
+      h(22, 18, 20, 1, ST[4]);                                       // finished top course
+    } else {
+      ART.wattleTexture(h, 22, 18, 20, 30, 153);
+      h(22, 18, 1, 30, W[2]); h(22, 18, 1, 1, W[3]);                 // corner posts all the way up
+      h(41, 18, 1, 30, W[1]);
+      h(23, 18, 18, 1, SO[3]);                                        // finished daub edge
+    }
+    // putlog history up the wall: the top rows still open sockets, the
+    // lowest already patched
+    for (const px of [26, 31, 36]) { h(px, 24, 1, 1, AP.ink[0]); h(px + 1, 32, 1, 1, AP.ink[0]); }
+    for (const px of [27, 33, 38]) h(px, 41, 1, 1, stone ? ST[1] : SO[3]);
+    // arrow slits cut, the viewing gap, the finished doorway
+    const sill = stone ? ST[4] : SO[3];
+    h(28, 26, 2, 7, AP.ink[0]); h(28, 25, 2, 1, sill);
+    h(34, 26, 2, 7, AP.ink[0]); h(34, 25, 2, 1, sill);
+    h(28, 38, 8, 2, AP.ink[0]); h(28, 37, 8, 1, sill);
+    h(26, 40, 12, 2, W[3]); h(28, 42, 8, 10, AP.ink[0]);
+    h(28, 42, 1, 10, W[2]); h(35, 42, 1, 10, W[2]);
+    // the LOOKOUT PLATFORM going in: a bearer beam across the wall-head,
+    // joists cantilevered out both sides — the left half planked and railed,
+    // the right still bare joists
+    h(15, 16, 34, 2, W[1]); h(15, 16, 34, 1, W[2]);                  // bearer + joist ends
+    ART.shadedRect(h, 16, 12, 16, 4, AP.wood, 2); h(16, 12, 16, 1, W[3]);  // planked left half
+    for (let x = 17; x < 31; x += 3) h(x, 12, 1, 1, W[1]);           // plank seams
+    for (let rx = 34; rx < 48; rx += 3) { h(rx, 12, 1, 4, W[2]); h(rx, 12, 1, 1, W[3]); }  // bare joists right
+    for (const px of [17, 21, 25, 29]) h(px, 8, 1, 4, W[2]);
+    h(17, 8, 13, 1, W[3]);                                           // first railing run
+    // gin-pole hoist at the summit swinging the next bundle of planks
+    h(45, 2, 1, 12, W[1]); h(40, 2, 6, 1, W[2]); h(45, 1, 1, 1, W[0]);
+    h.f(83, 6, 1, 7, TH[1]);                                         // hoist rope, 1px
+    h(38, 6, 7, 1, W[3]); h(38, 7, 7, 1, W[2]);                      // the bundle swinging clear of the deck
+    // the top lift: tall standards, one high platform each side, lashings —
+    // the lower lifts are already struck
+    for (const px of [13, 50]) { h(px, 8, 1, 44, W[2]); h(px, 8, 1, 1, W[3]); }
+    h(14, 20, 8, 1, W[1]); h(42, 20, 8, 1, W[1]);                    // top putlogs
+    h(11, 19, 10, 1, W[3]); h(43, 19, 10, 1, W[3]);                  // high plank lifts
+    for (let x = 12; x < 19; x += 2) h(x, 19, 1, 1, W[1]);
+    for (const [lx, ly] of [[13, 20], [50, 20]]) { h(lx, ly - 1, 1, 1, TH[1]); h(lx, ly, 1, 1, TH[3]); }
+    h(50, 34, 1, 18, W[1]); h(53, 34, 1, 18, W[1]);
+    for (let r = 0; r < 8; r++) h(50, 35 + r * 2, 4, 1, W[2]);       // the long ladder up
+    // the struck scaffold stacked below, the last of the stock, chips
+    h(4, 50, 13, 1, W[2]); h(4, 52, 13, 1, W[1]); h(5, 50, 1, 3, TH[2]); h(15, 50, 1, 3, TH[2]);
+    if (stone) { ART.shadedRect(h, 56, 48, 5, 4, ST, 3); h(56, 48, 5, 1, ST[4]); }
+    else { h(56, 48, 6, 1, W[3]); h(56, 49, 6, 1, W[2]); h(57, 48, 1, 2, TH[2]); }
+    for (let i = 0; i < 12; i++) h(14 + (rr() * 38) | 0, 56 + (rr() * 4) | 0, 1, 1, i % 2 ? (stone ? ST[3] : SO[3]) : (stone ? ST[1] : SO[1]));
+  });
+  Sprites.misc.towerBuild3 = towerStage3(false);
+
+  /* tower UPGRADES diverge on purpose (the whole point of the separate
+     labels): an upgrade lifts the tower toward its STONE tiers, so towerUp2/3
+     climb in coursed masonry with dressed quoins while towerBuild2/3 — the
+     first raising, toward the wattle level-1 tower — climb in wattle-and-daub
+     over staked posts. The ground-breaking is the same work either way. */
+  Sprites.misc.towerUp1 = Sprites.misc.towerBuild1;
+  Sprites.misc.towerUp2 = towerStage2(true);
+  Sprites.misc.towerUp3 = towerStage3(true);
+
   /* ---------------- units ---------------- */
   // pose: idle | walk | gather | fight ; c = colour set
   function humanoid(p, f, pose, c) {
