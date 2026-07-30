@@ -541,10 +541,16 @@ const CFG = {
     calm: {
       name: 'Calm', icon: '🌿', desc: 'Nearly peaceful — the odd wild animal keeps you sharp; raids are rare.',
       gather: 1, output: 1,
-      waveFirst: 70, waveGapMult: 2.2, waveSizeAdd: -1, barbMult: 0.9,
-      animalMax: 2, animalChance: 0.15, aiRaidDay: 80,
-      aiBuildEvery: 3, aiOutput: 0.85, aiArmyCap: 6, aiArmyDiv: 11, aiEliteShare: 0.15, aiAggro: 0.55,
-      aiVillCap: 8, aiVillEvery: 16, aiActions: 1, aiHarass: 0,   // calm: no harassment parties
+      // Softened after a playtest read Calm as "a little too hard": the sword
+      // arm is dialed well back (later first wave, rarer and smaller bands, a
+      // much later and smaller rival army that commits reluctantly) while the
+      // rival's HOMESTEAD grows richer — more villagers trained sooner, more
+      // build actions, full output — so the town you eventually visit is a
+      // living farm sprawl, not a war camp. Calm = watch it farm, not fight.
+      waveFirst: 85, waveGapMult: 2.8, waveSizeAdd: -2, barbMult: 0.75,
+      animalMax: 2, animalChance: 0.15, aiRaidDay: 110,
+      aiBuildEvery: 2, aiOutput: 1.0, aiArmyCap: 5, aiArmyDiv: 14, aiEliteShare: 0.1, aiAggro: 0.4,
+      aiVillCap: 12, aiVillEvery: 11, aiActions: 2, aiHarass: 0,   // calm: no harassment parties
       foeNoteChance: 1,   // enemy/raider intel toasts (see G.foeNote) — Calm always warns you
     },
     moderate: {
