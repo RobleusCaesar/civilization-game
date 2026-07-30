@@ -4,10 +4,21 @@
 const Bld = {
   _block: null,    // transient movement-blocking grid (walls/gates)
 
+  /* ---- WHAT STANDS IN THE WAY (tests/buildings-block.mjs) ----
+     A building is SOLID: nobody — player, rival, barbarian or wild animal —
+     walks through a hall, a tower or a house; they go around, and a village
+     becomes real ground to navigate. The ONLY exceptions are the worker
+     PLOTS (farm, hunter's lodge, lumber camp, quarry): their crews stand ON
+     the plot itself (the 'work' task in units.js walks the villager onto
+     b.x/b.y and holds it there), so those must stay walkable or they could
+     never be worked at all. That is why the rule keys off `needsWorker`
+     rather than a hand-listed set — the two facts are the same fact. */
+  solid(key) { const d = this.def(key); return !!d && !d.needsWorker; },
+
   rebuildBlock() {
     this._block = new Uint8Array(CFG.W * CFG.H);
     for (const b of S.buildings) {
-      // a section still being RAISED isn't solid yet — builders (and anyone
+      // a building still being RAISED isn't solid yet — builders (and anyone
       // else) walk through the gap until the day it finishes. This is what
       // lets a wall line across a choke be built at all: the far sections
       // stay reachable through the unbuilt near ones (tests/work-order.mjs).
@@ -16,12 +27,21 @@ const Bld = {
       if (b.construction > 0) continue;
       if (b.key === 'wall') this._block[MapGen.idx(b.x, b.y)] = 1;
       else if (b.key === 'gate') this._block[MapGen.idx(b.x, b.y)] = b.owner === 'P' ? 2 : 3;
+      else if (this.solid(b.key)) {
+        // every tile of the footprint, so the 2×2 Town Center is solid whole
+        const sz = this.size(b.key);
+        for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++)
+          if (MapGen.inB(b.x + dx, b.y + dy)) this._block[MapGen.idx(b.x + dx, b.y + dy)] = 4;
+      }
     }
   },
   blockAt(x, y) {
     if (!this._block) this.rebuildBlock();
     return this._block[MapGen.idx(x, y)];
   },
+  // a WALL or GATE stands here — what the fortification auto-tiling asks, so
+  // an ordinary solid building never makes a wall grow a stub toward it
+  fortAt(x, y) { const c = this.blockAt(x, y); return c === 1 || c === 2 || c === 3; },
 
   def(key) { return CFG.BUILDINGS[key]; },
   // what a new building of this type costs/produces right now — walls and
@@ -361,11 +381,13 @@ const Bld = {
   finish(b, builder) {
     b.construction = 0;
     b.hp = b.maxhp;
-    if (b.key === 'wall' || b.key === 'gate') {
-      // the section just became solid (rebuildBlock skips it while raising) —
-      // and anyone standing on the tile steps off, ties broken toward home,
-      // so a builder finishing a section under its own feet ends on the town
-      // side rather than sealed out (tests/work-order.mjs)
+    if (this.solid(b.key)) {
+      // the building just became solid (rebuildBlock skips it while raising) —
+      // and anyone standing on its footprint steps off, ties broken toward
+      // home, so a builder finishing it under its own feet ends on the town
+      // side rather than sealed out (tests/work-order.mjs). Every solid
+      // building does this now, not just walls: a hall raised over a
+      // villager's head would otherwise wedge it (tests/buildings-block.mjs).
       this._block = null;
       for (const w of S.units) {
         if (Units.isNaval(w) || !this.covers(b, w.x | 0, w.y | 0)) continue;

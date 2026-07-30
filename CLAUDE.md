@@ -72,11 +72,15 @@ node tests/army-strategies.mjs # the three assault doctrines (Siege/Chaos/Strike
 node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals; upgrades own their labels
 node tests/burn-down.mjs       # damaged buildings burn in thirds; a razed one leaves 5 days of unbuildable ash
 node tests/wall-tower-bond.mjs # L2 forts are half stone/half timber; an in-line tower joins the curtain
+node tests/buildings-block.mjs # every building is solid ground except the four worker plots
 ```
 
-**Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): only `wall` and
-`gate` block movement — `Path.passable` ignores every other building. So a farm
-or tower sitting in the rival's perimeter ring is a *door*, not a wall. Covers
+**Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
+perimeter line may only be MADE of `wall` and `gate` — it never counts an
+ordinary building as a section of its ring. (Movement is a separate rule and
+has changed: every building except the four worker plots now blocks — see
+**Buildings are solid** below. A *farm* in the ring is still a door; a house
+no longer is.) Covers
 `AI.plot` / `towerSpot` / `wallCenter` / `wallAudit` / `wallDetour` /
 `wallRelocate` / `mendWallLine` / `maybeWalls` / `playerLanes` / `foeSoftDoors`,
 `Bld.tileFree` / `canPlace` / `blockAt`, and `Path.passable`. `AI.WALL_R` is the
@@ -471,6 +475,35 @@ labels are for: `towerUp2/3` climb in coursed masonry with dressed quoins
 (the stone tiers an upgrade builds toward) while `towerBuild2/3` climb in
 wattle-and-daub matching the level-1 tower; `towerUp1` aliases `towerBuild1`.
 
+**Buildings are solid** (`tests/buildings-block.mjs`): a building is ground
+you walk AROUND — for every owner. `Bld.solid(key)` is true for everything
+except the four WORKER PLOTS (`farm`, `lodge`, `lumber`, `quarry`), and the
+exception is not a taste call: their crews stand ON the plot (the `work` task
+walks the villager onto `b.x/b.y` and holds it there), so a solid plot could
+never be worked. The rule therefore keys off `needsWorker` — the exception
+and its reason are the same fact, and the Hunter's Lodge is in the set for
+exactly that mechanical reason. `Bld.rebuildBlock` marks code **4** across
+the WHOLE footprint (the 2×2 hall included) and `Path.passable` refuses it
+owner-agnostically: you walk around your own hall, around the rival's, and so
+do barbarians and wild animals (which needed no new code — they already move
+through `Path.passable`). Consequences that have each already bitten:
+`Bld.fortAt` (codes 1–3) is what the wall auto-tiling asks, so a house never
+makes a curtain grow a stub toward it; a site is NOT solid while raising
+(builders must reach the far side of a line) and `Bld.finish` steps anyone
+off the footprint the day it completes, with the units.js ground-truth rescue
+as the backstop; **"can I still get home?" checks must target the hall's
+DOORSTEP** (`Units.homeSteps`), never its own tile, or they answer no forever
+(this silently broke `assignTerraform`'s keep-a-way-home rule); docks never
+block hulls (the water domain is decided before buildings); ash blocks
+building but never movement. On the rival's side a hut can now cork a town
+exactly as stone can, so `AI.plot` takes the wall line's own seal clamps
+(behind a cheap pinch prefilter — a tile with 3+ open orthogonal neighbours
+can always be walked around), `AI._reachA`/`corkedGround` reckon with every
+own solid work rather than only wall/gate, `AI.cutTheCork` may raze a hut
+when a hut is the cork (stone strongly preferred), and `AI.foeSoftDoors`
+only counts walkable plots — planning a lane through a house would march the
+host into a wall.
+
 **Wall/tower materials & the bond** (`tests/wall-tower-bond.mjs`): two rules
 about how a castle reads. **Materials** — every level-2 building steps to
 "stone below, timber above", and forts now do too: `wallPal(2)` is a stone
@@ -489,10 +522,11 @@ continues on the tower's far side, or the tower sits mid-line, or that
 neighbour is a lone stub with no run of its own. It reads walls and gates
 ONLY (never other towers), so it can never recurse; `R.wallMaskAt` calls it
 to reciprocate, and `R.drawTowerBond` draws the curtain's own mask art UNDER
-the tower. Unfinished towers bond to nothing. **The bond is COSMETIC** —
-`Bld.blockAt` and `Path.passable` are untouched, so a bonded tower stays a
-walkable door exactly as the wall-line contract requires. Never "fix" the
-look by making towers block.
+the tower. Unfinished towers bond to nothing. The bond decides only where stubs are
+DRAWN; whether anyone may walk there is `Bld.solid` (**Buildings are solid**,
+below), and the two now agree — a bonded tower really does seal the line.
+Keep them independent rules: an off-line tower blocks its own tile without
+ever drawing a stub.
 
 **Burning buildings & ash** (`tests/burn-down.mjs`): a damaged building shows
 its destruction in THIRDS (`Bld.burnPhase`, keyed to hp — so the fire burns

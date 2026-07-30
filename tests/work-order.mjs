@@ -94,8 +94,13 @@ const out = await p.evaluate(() => {
   };
   const terr = (x, y) => S.map.terrain[MapGen.idx(x, y)];
   const dug = (x, y) => terr(x, y) === T.TRENCH || terr(x, y) === T.MOAT;
-  const homeConnected = (u, tc) =>
-    !!Units._floodReach(u.x | 0, u.y | 0, u.owner, -1)[MapGen.idx(Bld.cx(tc) | 0, Bld.cy(tc) | 0)];
+  // "still connected to the town" = can reach the hall's DOORSTEP. The hall
+  // itself is solid ground now (Bld.solid — tests/buildings-block.mjs), so
+  // flooding to its centre tile would always answer no.
+  const homeConnected = (u) => {
+    const R = Units._floodReach(u.x | 0, u.y | 0, u.owner, -1);
+    return Units.homeSteps(u.owner).some(hi => R[hi]);
+  };
 
   // ---- 1. THE reported scenario, trenches: two digs in a one-tile corridor.
   //         Queued near-first; the sapper must take the FAR one first, work

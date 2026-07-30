@@ -20,10 +20,12 @@
       or the tower sits mid-line, or that neighbour is a lone stub with no
       run of its own yet.
 
-      THE BOND IS COSMETIC ONLY. Bld.blockAt and Path.passable are untouched,
-      so a tower in the line stays a walkable door — that is the wall-line
-      contract (tests/wall-line.mjs) and the AI's cork/seal logic depends on
-      it. Never "fix" the visual by making towers block.
+      The bond is about the LOOK. What a tower does to movement is a separate
+      rule that now agrees with it: every building except the worker plots is
+      solid (Bld.solid — tests/buildings-block.mjs), so a bonded tower really
+      does seal the line, for every owner. The two rules are independent —
+      the bond decides where stubs are drawn, Bld.solid decides who may walk
+      — and this file pins both so neither silently drifts from the other.
 
    Run this after touching any of:
      sprites.js — wallPal / drawWallMask / the tower draw
@@ -148,10 +150,16 @@ const out = await p.evaluate(() => {
       drawn.includes(Sprites.wallMask[1][E | W]) && drawn.includes(Sprites.building.tower[midT.level - 1]),
       'the level-2 curtain stub and the tower both reached the canvas');
 
-    // ---- 4. COSMETIC ONLY — the tower is still a door, not a wall ----
-    ck('bondNeverBlocksMovement',
-      Bld.blockAt(12, 20) === 0 && Path.passable(12, 20, 'P') && Path.passable(12, 20, 'A'),
-      'a bonded tower stays walkable (wall-line contract)');
+    // ---- 4. a bonded tower SEALS the line, for everyone (buildings-block) ----
+    ck('bondedTowerSealsTheLine',
+      Bld.blockAt(12, 20) === 4 &&
+      !Path.passable(12, 20, 'P') && !Path.passable(12, 20, 'A') && !Path.passable(12, 20, 'R'),
+      'the curtain is shut at the tower for every owner');
+    // …but the LOOK and the BLOCKING stay independent rules: an off-line
+    // tower blocks its own tile without ever drawing a stub
+    ck('offLineTowerBlocksButDoesNotBond',
+      Bld.blockAt(31, 39) === 4 && R.towerLinkMask(31, 39).mask === 0,
+      'solid, yet visually separate');
   }
 
   return { res, fails };

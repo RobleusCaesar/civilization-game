@@ -431,7 +431,10 @@ const Path = {
     if (blk === 1) return false;                 // wall
     if (blk === 2) return owner === 'P';         // player gate
     if (blk === 3) return owner === 'A';         // rival gate
-    return true;
+    // 4 = an ordinary SOLID building (Bld.solid — everything but the worker
+    // plots). Owner-agnostic on purpose: you walk around your own hall, and
+    // around the rival's, and so do barbarians and wild animals.
+    return false;
   },
 
   // guard for continuous (non-grid) steering: same rules as find() — the

@@ -200,7 +200,22 @@ const AI = {
       }
       return false;
     };
-    const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2 && offLine(x, y) && canWork(x, y);
+    /* A HUT IS A BLOCKER NOW (tests/buildings-block.mjs). Since every
+       building but the worker plots is solid, an ordinary hut dropped into
+       the one gap of a choke corks the town exactly as a wall section can —
+       so plot candidates take the same seal clamps the wall line does.
+       Guarded by a cheap PINCH prefilter: a tile with three or more open
+       orthogonal neighbours can always be walked around, so only genuinely
+       tight ground pays for the flood fills. */
+    const sealsTown = (x, y) => {
+      if (isFortKey) return false;                 // walls have their own clamps, on the seam
+      let shut = 0;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+        if (!Path.passable(x + ox, y + oy, 'A')) shut++;
+      if (shut < 2) return false;
+      return this.wallWouldSeal(tc, x, y) || !!this.corkedGround(tc, { x, y });
+    };
+    const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2 && offLine(x, y) && canWork(x, y) && !sealsTown(x, y);
     // how many of the 8 neighbours are already built on (crowding) — real buildings
     // want ELBOW ROOM so the town reads as a settlement, not a packed maze
     const crowd = (x, y) => { let n = 0; for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) if (Bld.at(x + ox, y + oy)) n++; return n; };
@@ -349,6 +364,12 @@ const AI = {
     for (const k in kb) {
       const b = kb[k];
       if (b.key === 'wall' || b.key === 'gate' || b.key === 'tc') continue;
+      // …and it is only a DOOR if you can actually walk through it. Every
+      // building but the worker plots is solid now (Bld.solid), so a house
+      // embedded in the line is stone to us, not a gap — planning a lane
+      // through one would march the host into a wall
+      // (tests/buildings-block.mjs).
+      if (Bld.solid(b.key)) continue;
       let n = 0;
       for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]])
         if (forts[(b.x + ox) + ',' + (b.y + oy)]) n++;
@@ -578,7 +599,11 @@ const AI = {
         if (ok && !ignoreOwnForts && bb && bb.construction > 0 &&
             (bb.key === 'wall' || (bb.key === 'gate' && bb.owner !== 'A'))) ok = false;   // a site is a wall-to-be
         if (!ok && ignoreOwnForts) {
-          ok = !!(bb && bb.owner === 'A' && (bb.key === 'wall' || bb.key === 'gate')) &&
+          // "…and if our own works weren't in the way?" Every SOLID own
+          // building counts, not just stone: a hut plugs a choke exactly as
+          // a wall section does now (Bld.solid — tests/buildings-block.mjs),
+          // so a hut-corked town has to be visible here or it is never cured.
+          ok = !!(bb && bb.owner === 'A' && Bld.solid(bb.key)) &&
             !Path.blocksLand(S.map.terrain[ni]);
         }
         if (!ok) continue;
@@ -602,9 +627,15 @@ const AI = {
     const W = CFG.W;
     const now = this._reachA(seed.x, seed.y, false, cand ? MapGen.idx(cand.x, cand.y) : -1);
     const open = this._reachA(seed.x, seed.y, true, -1);
+    // ground our OWN works stand on is not "marchable ground gained" — every
+    // solid building's whole footprint, not just wall/gate tiles
     const fortAt = new Uint8Array(W * CFG.H);
-    for (const b of S.buildings)
-      if (b.owner === 'A' && (b.key === 'wall' || b.key === 'gate')) fortAt[MapGen.idx(b.x, b.y)] = 1;
+    for (const b of S.buildings) {
+      if (b.owner !== 'A' || !Bld.solid(b.key)) continue;
+      const sz = Bld.size(b.key);
+      for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++)
+        if (MapGen.inB(b.x + dx, b.y + dy)) fortAt[MapGen.idx(b.x + dx, b.y + dy)] = 1;
+    }
     let gained = 0;
     for (let i = 0; i < open.length; i++) if (open[i] && !now[i] && !fortAt[i]) gained++;
     return gained >= 24 ? { now, open, fortAt, gained } : null;
@@ -615,9 +646,15 @@ const AI = {
   cutTheCork(tc) {
     const pen = this.corkedGround(tc);
     if (!pen) return false;
+    /* what may be torn down to reopen the ground: any own SOLID building
+       except a gate (which never bars its owner). Stone is the cheap answer
+       and stays strongly preferred, but when the cork is a hut the hut has
+       to go — otherwise a town that boxed itself in with houses would sit
+       there forever with its army idle (tests/buildings-block.mjs). */
+    const cutCand = (b) => b.owner === 'A' && b.key !== 'gate' && Bld.solid(b.key);
     let best = null, bs = -1e9;
     for (const b of S.buildings) {
-      if (b.owner !== 'A' || b.key !== 'wall') continue;   // an own gate never bars its owner
+      if (!cutCand(b)) continue;
       let inSide = 0, outSide = 0;
       for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const x = b.x + ox, y = b.y + oy;
@@ -627,7 +664,8 @@ const AI = {
         else if (pen.open[i] && !pen.fortAt[i]) outSide++;
       }
       if (!inSide || !outSide) continue;                   // not the cork
-      const s = outSide * 2 - (b.level || 1) + G.rand();   // most opened, cheapest stone
+      const s = outSide * 2 - (b.level || 1) + G.rand()
+        - (b.key === 'wall' ? 0 : 6);                      // raze stone first; a hall is the last resort
       if (s > bs) { bs = s; best = b; }
     }
     if (!best) {
@@ -638,12 +676,12 @@ const AI = {
       for (let i = 0; i < pen.open.length && corked.length < 200; i++)
         if (pen.open[i] && !pen.now[i] && !pen.fortAt[i]) corked.push([i % CFG.W, (i / CFG.W) | 0]);
       for (const b of S.buildings) {
-        if (b.owner !== 'A' || b.key !== 'wall') continue;
+        if (!cutCand(b)) continue;
         if (![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ox, oy]) =>
           MapGen.inB(b.x + ox, b.y + oy) && pen.now[MapGen.idx(b.x + ox, b.y + oy)])) continue;
         let dd = 1e9;
         for (const [cx2, cy2] of corked) dd = Math.min(dd, Math.hypot(b.x - cx2, b.y - cy2));
-        const s = -dd - (b.level || 1) * 0.3 + G.rand() * 0.2;
+        const s = -dd - (b.level || 1) * 0.3 + G.rand() * 0.2 - (b.key === 'wall' ? 0 : 6);
         if (s > bs) { bs = s; best = b; }
       }
     }

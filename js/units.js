@@ -401,10 +401,12 @@ const Units = {
       // still connects to the town once this tile is a trench. The nearest
       // side can be a one-tile pocket between two cuts of the sapper's own
       // line — dig from there and it maroons itself on the wrong bank.
-      const tc = Bld.tcOf(u.owner);
-      if (tc) {
-        const hi = MapGen.idx(Bld.cx(tc) | 0, Bld.cy(tc) | 0);
-        const home = opts.find(o => this._floodReach(o.x, o.y, u.owner, MapGen.idx(tx, ty))[hi]);
+      const steps = this.homeSteps(u.owner);
+      if (steps.length) {
+        const home = opts.find(o => {
+          const R = this._floodReach(o.x, o.y, u.owner, MapGen.idx(tx, ty));
+          return steps.some(hi => R[hi]);
+        });
         if (home) best = home;
       }
     }
@@ -429,6 +431,23 @@ const Units = {
      next job to do: the NEAREST one whose completion leaves every other
      pending job still workable. When the near job IS the cut, the pick falls
      past it to the far side — cross first, then work back homeward. */
+
+  /* THE TOWN'S DOORSTEP — the passable tiles touching the hall. "Can I still
+     get home?" must never ask for the hall's OWN tile: buildings are solid
+     now (Bld.solid), so no flood can ever land inside the Town Center and
+     every home check would silently answer "no" forever. Asking for the
+     doorstep is the same question with an honest target. */
+  homeSteps(owner) {
+    const tc = Bld.tcOf(owner);
+    if (!tc) return [];
+    const sz = Bld.size('tc'), out = [];
+    for (let dy = -1; dy <= sz; dy++) for (let dx = -1; dx <= sz; dx++) {
+      if (dx >= 0 && dx < sz && dy >= 0 && dy < sz) continue;   // skip the footprint itself
+      const x = tc.x + dx, y = tc.y + dy;
+      if (MapGen.inB(x, y) && Path.passable(x, y, owner)) out.push(MapGen.idx(x, y));
+    }
+    return out;
+  },
 
   // 4-dir land flood from (sx,sy) for this owner; blockIdx (a MapGen.idx, or
   // -1) is treated as solid — "what can I still reach once that tile is done?"
@@ -901,9 +920,11 @@ const Units = {
          had a rival defender rooted in regrown trees beside the villager it
          was hunting. Slide it to the nearest open tile — orders intact — and
          let it re-plan from honest ground. */
+      // (asks Path.passable outright, so it catches a BUILDING raised over a
+      // unit's head exactly as it catches regrown forest — same wedge, same
+      // cure; an own gate reads as open to its owner and needs no rescue)
       if (!this.isNaval(u)) {
-        const ti = MapGen.idx(u.x | 0, u.y | 0);
-        if (Path.blocksLand(S.map.terrain[ti]) && !(S.map.bridge && S.map.bridge[ti])) {
+        if (!Path.passable(u.x | 0, u.y | 0, u.owner)) {
           const spot = MapGen.findNear(u.x | 0, u.y | 0, 3, (x, y) => Path.passable(x, y, u.owner) && !Bld.blockAt(x, y));
           if (spot) {
             u.x = spot.x + 0.5; u.y = spot.y + 0.5; u.path = null; u.pathI = 0;

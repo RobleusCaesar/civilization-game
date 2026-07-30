@@ -3,6 +3,13 @@
    not block movement at all: Path.passable stops only on wall/gate. So a hut
    standing in the ring is a door an attacker walks through without swinging.
 
+   UPDATE — buildings are SOLID now (Bld.solid, tests/buildings-block.mjs):
+   everything but the worker plots (farm, lodge, lumber camp, quarry) blocks
+   movement for every owner. The AI's own line still may not be MADE of
+   buildings, which is what this file polices; and a "soft door" in the
+   player's ring is now only ever a walkable plot — a farm really is a gap,
+   a house is not (AI.foeSoftDoors filters on Bld.solid).
+
    Run this after touching any of:
      ai.js — plot, towerSpot, wallCenter/wallRing/onWallLine, wallAudit,
              _detourTiles, wallDetour, wallRelocate, mendWallLine, maybeWalls,

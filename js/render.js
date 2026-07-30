@@ -672,7 +672,7 @@ const R = {
   wallMaskAt(x, y, extra) {
     const conn = (xx, yy) => {
       if (!MapGen.inB(xx, yy)) return true;                 // map edge
-      if (Bld.blockAt(xx, yy) !== 0) return true;           // wall / gate
+      if (Bld.fortAt(xx, yy)) return true;                  // wall / gate ONLY (a house is not a curtain)
       // a finished TOWER standing IN the line bonds to it (see towerLinkMask)
       const tb = Bld.at(xx, yy);
       if (tb && tb.key === 'tower' && !(tb.construction > 0)) {
@@ -734,7 +734,7 @@ const R = {
     g.drawImage(fam[lk.mask], bx, by, bw, bw);
   },
   gateVerticalAt(x, y) {
-    const conn = (xx, yy) => MapGen.inB(xx, yy) && Bld.blockAt(xx, yy) !== 0;
+    const conn = (xx, yy) => MapGen.inB(xx, yy) && Bld.fortAt(xx, yy);
     const ns = conn(x, y - 1) || conn(x, y + 1), ew = conn(x + 1, y) || conn(x - 1, y);
     return ns && !ew;
   },
