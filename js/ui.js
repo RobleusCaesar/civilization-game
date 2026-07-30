@@ -1166,9 +1166,15 @@ const UI = {
     '...KKKdhKKKKhdKK.....',
     '.....KKKK..KKKK......',
   ],
+  /* Bronze and crest sit 20% DOWN from their first values (every channel
+     ×0.8) so the right-rail buttons read as part of the UI instead of
+     shouting over it. The black outline K and the near-black visor s are
+     left alone — they carry the silhouette, and darkening near-black buys
+     no subtlety. Original: r a92f24 / R d84a2f / D 54401b / h c9a24a /
+     H e6c878 / d 96742f. */
   ARMY_HELM_COL: {
-    K: '#17110a', r: '#a92f24', R: '#d84a2f', D: '#54401b',
-    h: '#c9a24a', H: '#e6c878', d: '#96742f', s: '#241a0c',
+    K: '#17110a', r: '#87261d', R: '#ad3b26', D: '#433316',
+    h: '#a1823b', H: '#b8a060', d: '#785d26', s: '#241a0c',
   },
   drawHelmet(g, x, y) {
     for (let ry = 0; ry < this.ARMY_HELM.length; ry++)
