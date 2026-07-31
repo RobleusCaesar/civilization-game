@@ -1,0 +1,188 @@
+/* THE FISHERY CONTRACT — fish are leaner than they were, and they come back.
+
+   THE SHALLOW/DEEP SPLIT (`CFG.FISH_STOCK`). A water tile touching land is a
+   SHORE SHOAL — the water a villager can line-fish and a boat can hug — and
+   carries only HALF the raw stock. Open DEEP water carries three quarters.
+   So rowing out is worth more than paddling at the edge, and the lean water
+   is exactly the water the renderer already shades as shallows (both use the
+   same "touches a non-water tile" rule — `MapGen.shallowWater`).
+
+   THE RETURN (`CFG.FISH_RETURN_DAYS`, 120). Fish are the one resource that
+   renews on a CLOCK rather than by terrain regrowth: the water never changes,
+   only what swims in it. A tile fished to nothing — by boat or from the shore
+   — goes on `S.map.fishBack`, and `G.dayTick` restocks it 120 days later at
+   the stock its own water is worth. (Contrast ore, which never returns at
+   all — tests/ore-finite.mjs.)
+
+   Run this after touching any of:
+     config.js — FISH_STOCK / FISH_RETURN_DAYS / RES_AMOUNT[T.WATER]
+     map.js — the water stock pass in generation, MapGen.shallowWater
+     game.js — fishStockAt / scheduleFishReturn / the fishBack block in dayTick
+     units.js — the boat and shore fishing tasks
+
+     node tests/fishery.mjs      # exits non-zero on any regression */
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+let pw;
+try { pw = (await import('playwright')).default; }
+catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const b = await pw.chromium.launch();
+const p = await b.newPage({ viewport: { width: 430, height: 880 } });
+const errs = []; p.on('pageerror', e => errs.push(String(e)));
+p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
+await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+await p.waitForTimeout(900);
+
+const out = await p.evaluate(() => {
+  const res = {}, fails = [];
+  const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
+  const idx = MapGen.idx;
+
+  // ---- 1. the dials ----
+  ck('stockSplitIsHalfAndThreeQuarters',
+    CFG.FISH_STOCK.shallow === 0.5 && CFG.FISH_STOCK.deep === 0.75, '');
+  ck('shoalsReturnAfter120Days', CFG.FISH_RETURN_DAYS === 120, '');
+
+  // ---- 2. what generation actually lays down, averaged over a whole map ----
+  {
+    G.newGame('fish-a', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const sh = [], dp = [];
+    for (let y = 1; y < CFG.H - 1; y++) for (let x = 1; x < CFG.W - 1; x++) {
+      if (S.map.terrain[idx(x, y)] !== T.WATER) continue;
+      (MapGen.shallowWater(x, y) ? sh : dp).push(S.map.resAmount[idx(x, y)]);
+    }
+    const avg = a => a.reduce((s, v) => s + v, 0) / (a.length || 1);
+    const raw = CFG.RES_AMOUNT[T.WATER], mid = (raw[0] + raw[1]) / 2;
+    const shR = avg(sh) / mid, dpR = avg(dp) / mid;
+    // a FOOD-SCARCE map already halves its waters at generation, so the split
+    // is measured on top of that lean — fish are food, and a dock must not
+    // quietly cancel the scarcity (see the generation pass in map.js)
+    const lean = S.map.scarce === 'food' ? 0.5 : 1;
+    const note = lean < 1 ? ' (food-scarce map, on top of its ×0.5)' : '';
+    ck('enoughWaterToJudge', sh.length > 20 && dp.length > 20, sh.length + ' shallow / ' + dp.length + ' deep');
+    ck('shallowWaterCarriesHalf', Math.abs(shR - 0.5 * lean) < 0.06,
+      Math.round(shR / lean * 100) + '% of stock' + note);
+    ck('deepWaterCarriesThreeQuarters', Math.abs(dpR - 0.75 * lean) < 0.06,
+      Math.round(dpR / lean * 100) + '% of stock' + note);
+    ck('rowingOutBeatsTheEdge', avg(dp) > avg(sh) * 1.3,
+      avg(sh).toFixed(1) + ' vs ' + avg(dp).toFixed(1) + ' per tile');
+  }
+
+  // ---- 3. the shallow rule matches what the renderer shades ----
+  {
+    // a water tile with a land neighbour is shallow; one ringed by water is not
+    let sample = null;
+    for (let y = 2; y < CFG.H - 2 && !sample; y++) for (let x = 2; x < CFG.W - 2; x++) {
+      if (S.map.terrain[idx(x, y)] !== T.WATER) continue;
+      let land = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+        if (S.map.terrain[idx(x + dx, y + dy)] !== T.WATER) land++;
+      if (land > 0) { sample = { x, y, land }; break; }
+    }
+    ck('shallowMeansTouchingLand',
+      !!sample && MapGen.shallowWater(sample.x, sample.y) === true,
+      sample ? sample.land + ' land neighbours at ' + sample.x + ',' + sample.y : 'no shore found');
+  }
+
+  // ---- 4. fishing a tile out starts the clock — BOAT ----
+  {
+    G.newGame('fish-b', 'moderate', 'large'); S.paused = true;
+    let deep = null;
+    for (let y = 2; y < CFG.H - 2 && !deep; y++) for (let x = 2; x < CFG.W - 2; x++)
+      if (S.map.terrain[idx(x, y)] === T.WATER && !MapGen.shallowWater(x, y)) { deep = { x, y }; break; }
+    const i = idx(deep.x, deep.y);
+    S.map.resAmount[i] = 0.0005;                       // one net-haul from empty
+    const boat = Units.spawn('fishboat', 'P', deep.x, deep.y);
+    Units.assignFish(boat, deep.x, deep.y);
+    for (let k = 0; k < 30; k++) Units.update(0.1);
+    ck('boatFishedOutStartsTheClock',
+      S.map.resAmount[i] === 0 && S.map.fishBack[i] - S.day === CFG.FISH_RETURN_DAYS,
+      'due in ' + (S.map.fishBack[i] - S.day) + ' days');
+
+    // ---- 5. …and it stays empty until the day it is due ----
+    for (let k = 0; k < CFG.FISH_RETURN_DAYS - 1; k++) G.dayTick();
+    ck('stillEmptyTheDayBefore', S.map.resAmount[i] === 0 && S.map.fishBack[i] !== undefined, '');
+    G.dayTick();
+    ck('restocksOnTheDueDay',
+      S.map.resAmount[i] === G.fishStockAt(deep.x, deep.y) && S.map.fishBack[i] === undefined,
+      'came back with ' + S.map.resAmount[i] + ' (deep water)');
+    // a returning DEEP shoal is worth more than a returning SHORE one, on
+    // whatever map this is (compare two real tiles, not a hardcoded number)
+    let shal = null;
+    for (let y = 2; y < CFG.H - 2 && !shal; y++) for (let x = 2; x < CFG.W - 2; x++)
+      if (S.map.terrain[idx(x, y)] === T.WATER && MapGen.shallowWater(x, y)) { shal = { x, y }; break; }
+    ck('deepReturnBeatsShallowReturn',
+      !!shal && G.fishStockAt(deep.x, deep.y) > G.fishStockAt(shal.x, shal.y),
+      shal ? G.fishStockAt(shal.x, shal.y) + ' shore vs ' + G.fishStockAt(deep.x, deep.y) + ' deep' : 'no shore water');
+  }
+
+  // ---- 6. the SHORE line also starts the clock ----
+  {
+    G.newGame('fish-c', 'moderate', 'large'); S.paused = true;
+    let shoal = null;
+    for (let y = 2; y < CFG.H - 2 && !shoal; y++) for (let x = 2; x < CFG.W - 2; x++) {
+      if (S.map.terrain[idx(x, y)] !== T.WATER) continue;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const sx = x + dx, sy = y + dy;
+        if (MapGen.inB(sx, sy) && Path.passable(sx, sy, 'P')) { shoal = { x, y, sx, sy }; break; }
+      }
+      if (shoal) break;
+    }
+    const i = idx(shoal.x, shoal.y);
+    S.map.resAmount[i] = 0.0005;
+    const v = Units.spawn('villager', 'P', shoal.sx, shoal.sy);
+    v.x = shoal.sx + 0.5; v.y = shoal.sy + 0.5;
+    v.task = { type: 'shorefish', x: shoal.x, y: shoal.y, sx: shoal.sx, sy: shoal.sy };
+    for (let k = 0; k < 30; k++) Units.update(0.1);
+    ck('shoreFishedOutStartsTheClock',
+      S.map.resAmount[i] === 0 && S.map.fishBack[i] - S.day === CFG.FISH_RETURN_DAYS,
+      'due in ' + (S.map.fishBack[i] - S.day) + ' days');
+    const lean2 = S.map.scarce === 'food' ? 0.5 : 1;
+    ck('shallowShoalReturnsLean',
+      G.fishStockAt(shoal.x, shoal.y) ===
+      Math.max(1, Math.round((CFG.RES_AMOUNT[T.WATER][0] + CFG.RES_AMOUNT[T.WATER][1]) / 2 * CFG.FISH_STOCK.shallow * lean2)),
+      'a shore shoal comes back at ' + G.fishStockAt(shoal.x, shoal.y));
+  }
+
+  // ---- 7. a shoal that stopped being water just drops off the clock ----
+  {
+    G.newGame('fish-d', 'moderate', 'large'); S.paused = true;
+    let w = null;
+    for (let y = 2; y < CFG.H - 2 && !w; y++) for (let x = 2; x < CFG.W - 2; x++)
+      if (S.map.terrain[idx(x, y)] === T.WATER) { w = { x, y }; break; }
+    const i = idx(w.x, w.y);
+    S.map.resAmount[i] = 0;
+    G.scheduleFishReturn(i);
+    S.map.terrain[i] = T.GRASS;                       // a sapper filled it in
+    for (let k = 0; k < CFG.FISH_RETURN_DAYS + 1; k++) G.dayTick();
+    ck('reclaimedWaterDropsOffTheClock',
+      S.map.fishBack[i] === undefined && S.map.terrain[i] === T.GRASS && S.map.resAmount[i] === 0,
+      'no fish in a filled channel');
+  }
+
+  // ---- 8. the clock rides in the save; legacy saves backfill ----
+  {
+    G.newGame('fish-e', 'moderate', 'large'); S.paused = true;
+    let w = null;
+    for (let y = 2; y < CFG.H - 2 && !w; y++) for (let x = 2; x < CFG.W - 2; x++)
+      if (S.map.terrain[idx(x, y)] === T.WATER) { w = { x, y }; break; }
+    const i = idx(w.x, w.y);
+    S.map.resAmount[i] = 0;
+    G.scheduleFishReturn(i);
+    const due = S.map.fishBack[i], json = G.saveJSON();
+    G.loadJSON(json);
+    ck('clockSurvivesSaveLoad', S.map.fishBack[i] === due, 'due day ' + due + ' preserved');
+    const legacy = JSON.parse(json); delete legacy.map.fishBack;
+    G.loadJSON(JSON.stringify(legacy));
+    ck('legacySavesBackfillTheClock',
+      S.map.fishBack && typeof S.map.fishBack === 'object' && Object.keys(S.map.fishBack).length === 0, '');
+  }
+
+  return { res, fails };
+});
+console.log(JSON.stringify(out.res, null, 1));
+console.log(out.fails.length ? 'FAILURES: ' + out.fails.join(', ') : 'ALL FISHERY CHECKS PASS');
+console.log('errors:', errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e)));
+await b.close();
+process.exit(out.fails.length ? 1 : 0);

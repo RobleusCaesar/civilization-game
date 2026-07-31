@@ -155,6 +155,7 @@ const G = {
         scarce: gen.scarce,
         landform: gen.landform,
         decay: {},                          // idx -> day the depleted/ruined tile regrows to grass
+        fishBack: {},                       // idx -> day a fished-out shoal restocks (tests/fishery.mjs)
         reclaimed: {},                      // idx -> 1 where a sapper filled water into land (never counts as shore again)
         explored: new Array(CFG.W * CFG.H).fill(0),
         seenTerrain: gen.terrain.slice(),   // what the player last saw, per tile
@@ -410,6 +411,24 @@ const G = {
   // a freshly depleted or ruined tile greens over after RUIN_DECAY_DAYS, scaled
   // by what it is: felled forest / spent orchard take twice as long to come
   // back, quarried stone three times (rock is slowest of all); ruins as base.
+  /* ---- THE FISHERY (tests/fishery.mjs) — fish are the one resource that
+     renews on a CLOCK rather than by terrain regrowth: the water never
+     changes, only its stock. A shoal fished to nothing comes back after
+     CFG.FISH_RETURN_DAYS, at the stock its own water is worth (shallow
+     shore water is the leaner half — CFG.FISH_STOCK). ---- */
+  fishStockAt(x, y) {
+    const r = CFG.RES_AMOUNT[T.WATER];
+    const mult = MapGen.shallowWater(x, y) ? CFG.FISH_STOCK.shallow : CFG.FISH_STOCK.deep;
+    // food-scarce maps keep lean waters, exactly as at generation
+    const lean = S.map.scarce === 'food' ? 0.5 : 1;
+    return Math.max(1, Math.round((r[0] + r[1]) / 2 * mult * lean));
+  },
+  scheduleFishReturn(idx) {
+    if (S.map.terrain[idx] !== T.WATER) return;
+    if (!S.map.fishBack) S.map.fishBack = {};
+    S.map.fishBack[idx] = S.day + CFG.FISH_RETURN_DAYS;
+  },
+
   scheduleRevert(idx) {
     const t = S.map.terrain[idx];
     // ORE NEVER COMES BACK: a quarried seam (PEBBLES) is not on the regrow
@@ -539,6 +558,26 @@ const G = {
       if (regrown && !S.regrowSeen) {
         S.regrowSeen = true;
         this.log('🌱 Felled woods and spent soil recover in time — but a quarried seam never does');
+      }
+    }
+    // THE SHOALS RETURN: a fished-out tile restocks after FISH_RETURN_DAYS.
+    // The water itself never changed — only what swims in it — so this is its
+    // own clock, not the terrain-regrowth table (tests/fishery.mjs).
+    if (S.map.fishBack) {
+      let back = false;
+      for (const k in S.map.fishBack) {
+        if (S.day < S.map.fishBack[k]) continue;
+        const i = +k, fx = i % CFG.W, fy = (i / CFG.W) | 0;
+        // a shoal a sapper filled in is simply gone; so is one already restocked
+        if (S.map.terrain[i] === T.WATER && !(S.map.resAmount[i] > 0)) {
+          S.map.resAmount[i] = this.fishStockAt(fx, fy);
+          back = true;
+        }
+        delete S.map.fishBack[k];
+      }
+      if (back && !S.fishBackSeen) {
+        S.fishBackSeen = true;
+        this.log('🐟 The shoals return — waters fished out long ago are worth casting in again');
       }
     }
     // ash piles cool: after ASH_DAYS the footprint of a burned building is
@@ -1013,6 +1052,7 @@ const G = {
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};
+    if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.reclaimed) data.map.reclaimed = {};
     if (!data.map.fishStocked) {
       // pre-dock save: stock its waters so fishing works after loading

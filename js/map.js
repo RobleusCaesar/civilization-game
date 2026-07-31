@@ -18,6 +18,18 @@ function hashSeed(str) {
 const MapGen = {
   idx(x, y) { return y * CFG.W + x; },
   inB(x, y) { return x >= 0 && y >= 0 && x < CFG.W && y < CFG.H; },
+  /* SHALLOWS — a water tile touching land, which is exactly what the renderer
+     shades as shore. The leaner half of the fishery (CFG.FISH_STOCK), used
+     both when a map is generated and when a fished-out shoal returns
+     (G.fishStockAt — tests/fishery.mjs). */
+  shallowWater(x, y) {
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (!this.inB(nx, ny)) continue;
+      if (S.map.terrain[this.idx(nx, ny)] !== T.WATER) return true;
+    }
+    return false;
+  },
 
   generate(seedStr, mode) {
     const rnd = mulberry32(hashSeed(String(seedStr)));
@@ -353,6 +365,21 @@ const MapGen = {
         if (nx >= 0 && ny >= 0 && nx < W && ny < H && t[ny * W + nx] === t[i]) cnt++;
       }
       resAmount[i] = Math.round(resAmount[i] * (cnt === 8 ? 1.5 : cnt >= 4 ? 1 : 0.6));
+    }
+    // THE SHALLOW/DEEP SPLIT (CFG.FISH_STOCK): water touching land is a shore
+    // shoal — easy to reach and the leanest fishing on the map; open water
+    // keeps more. Uses the same "touches a non-water tile" rule the renderer
+    // draws its shallows with, so the lean water is the water that LOOKS lean.
+    for (let i = 0; i < W * H; i++) {
+      if (t[i] !== T.WATER) continue;
+      const x = i % W, y = (i / W) | 0;
+      let shallow = false;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        if (t[ny * W + nx] !== T.WATER) { shallow = true; break; }
+      }
+      resAmount[i] = Math.round(resAmount[i] * (shallow ? CFG.FISH_STOCK.shallow : CFG.FISH_STOCK.deep));
     }
 
     return { terrain: t, resAmount, scarce: scarce.name, landform, spawns: { player, ai, camps } };

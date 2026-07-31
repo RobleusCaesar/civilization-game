@@ -74,6 +74,7 @@ node tests/burn-down.mjs       # damaged buildings burn in thirds; a razed one l
 node tests/wall-tower-bond.mjs # L2 forts are half stone/half timber; an in-line tower joins the curtain
 node tests/buildings-block.mjs # every building is solid ground except the four worker plots
 node tests/ore-finite.mjs      # felled woods and spent soil grow back; a quarried seam never does
+node tests/fishery.mjs         # shore shoals are half-stocked, deep water three quarters; both return in 120 days
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -486,9 +487,23 @@ Post for it. `G.scheduleRevert` refuses to even put a non-regrowing tile on
 the clock (ruins excepted — rubble fading to grass is cleanup, not
 regrowth), so legacy saves carrying a pending ore entry simply drop it and
 keep the scar. The rule is invisible for 120+ in-game days, so it can only
-be caught by the test, never by playing. (Fish are a separate system: water
-`resAmount` is only ever spent down, so fished-out water does not restock
-today either.)
+be caught by the test, never by playing.
+
+**The fishery** (`tests/fishery.mjs`): fish renew on a CLOCK, not by terrain
+regrowth — the water never changes, only what swims in it, so they sit
+outside `REGROW_TO` entirely. Two rules. **The split** (`CFG.FISH_STOCK`): a
+water tile TOUCHING LAND is a shore shoal and carries half the raw stock;
+open deep water carries three quarters — so rowing out beats paddling at the
+edge. Shallow uses the same "touches a non-water tile" rule the renderer
+shades its shallows with (`MapGen.shallowWater`), so the lean water is the
+water that LOOKS lean; it is applied at generation (map.js) and again on
+every restock. A food-scarce map's ×0.5 on water still applies UNDER this,
+so the split is measured on top of that lean — the test accounts for it.
+**The return** (`CFG.FISH_RETURN_DAYS`, 120): a tile fished to nothing by
+either path (boat or shore line) goes on `S.map.fishBack` (idx → day, in
+every save, `loadJSON` backfills) and `G.dayTick` restocks it at
+`G.fishStockAt` — its own water's worth, not a flat number. Water a sapper
+filled in just drops off the clock.
 
 **Buildings are solid** (`tests/buildings-block.mjs`): a building is ground
 you walk AROUND — for every owner. `Bld.solid(key)` is true for everything

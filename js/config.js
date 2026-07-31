@@ -51,8 +51,17 @@ const CFG = {
     [T.FOREST]:  [80, 140],
     [T.HILLS]:   [70, 130],
     [T.FERTILE]: [80, 140],
-    [T.WATER]:   [45, 85],    // fish — harvested by boats, not villagers
+    [T.WATER]:   [45, 85],    // fish — before the shallow/deep split below
   },
+  /* A FISHERY, NOT A MINE (tests/fishery.mjs). A shoal yields less than the
+     raw stock above — HALF in the SHALLOWS (water touching land: the shore
+     shoals a villager can line-fish and the coast a boat hugs) and three
+     quarters in DEEP water, so rowing out is worth more than paddling at the
+     edge — and a fished-out tile comes back after FISH_RETURN_DAYS. Fish are
+     the one resource that renews on a clock rather than by terrain regrowth:
+     the water never changes, only its stock. */
+  FISH_STOCK: { shallow: 0.5, deep: 0.75 },
+  FISH_RETURN_DAYS: 120,
   FISH: { res: 'food', rate: 1.2 },   // fishing-boat harvest per second (12/day — a notch under a Lv1 farm's 15)
   SHORE_FISH: { rate: 1.0 },  // villager line-fishing off the shore — same pace as picking berries;
                               // only works on shoals (about a third of shore water, where fish jump)

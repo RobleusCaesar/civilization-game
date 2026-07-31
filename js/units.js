@@ -1134,6 +1134,7 @@ const Units = {
             R.float(u.x, u.y - 0.5, '+food', '#d8e8b0');
           if (S.map.resAmount[idx] <= 0.001) {
             S.map.resAmount[idx] = 0;
+            G.scheduleFishReturn(idx);   // the shoal comes back in time
             // drift to the next stocked water tile nearby, or go idle
             const next = MapGen.findNear(t.x, t.y, 4, (x, y) => this.canFish(x, y));
             if (next && this.assignFish(u, next.x, next.y)) continue;
@@ -1166,6 +1167,7 @@ const Units = {
             R.float(u.x, u.y - 0.5, '+food', '#d8e8b0');
           if (S.map.resAmount[idx] <= 0.001) {
             S.map.resAmount[idx] = 0;
+            G.scheduleFishReturn(idx);   // the shoal comes back in time
             if (u.owner === 'P') G.log('This shoal is fished out — villager idle');
             u.task = null;
           }
