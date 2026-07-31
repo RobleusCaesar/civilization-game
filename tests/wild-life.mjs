@@ -15,6 +15,19 @@
       group scatters as one. Villagers don't frighten anything — beasts and
       armed strangers do.
 
+   2b. AND THE HERD BREATHES. It draws in close, fans out over the feed and
+      gathers again — never converging on a point, never stringing out into a
+      line. Every step is measured from the herd's CENTRE, on a radius swinging
+      between HERD_TIGHT and HERD_LOOSE on one clock all of them share
+      (Units.herdClock); the oldest animal in company leads and the centre is
+      dragged after it, so the band travels as a body. A separated animal walks
+      back rather than roaming for good.
+
+   2c. FOUR FRAMES IS THE FLOOR. Every beast pose — idle, walk, fight — is a
+      4+ frame cycle of genuinely different drawings (sprites.js beast(),
+      BEAST_POSE), played at the kind's own rate (Sprites.animFps, read by
+      R.unitSprite), never a two-still flip.
+
    3. THE SKY REACTS. R.startle throws flocks up and away and sends critters
       bolting for cover when a fight breaks out (R.noteFights spots a unit
       gaining a target it did not have) or when a building comes down.
@@ -111,6 +124,66 @@ const out = await p.evaluate(() => {
     const spread1 = Math.max(...calm.map(d => Math.hypot(d.x - calm[0].x, d.y - calm[0].y)));
     ck('grazersKeepCompany', spread1 <= Units.HERD_R * 2.2,
       'herd spread ' + spread0.toFixed(1) + ' → ' + spread1.toFixed(1) + ' tiles');
+  }
+
+  // ---- 2b. …and the herd BREATHES: gather → spread → gather ----
+  {
+    arena('wl2c');
+    const herd = [];
+    for (let i = 0; i < 5; i++) herd.push(Units.spawn('deer', 'W', 30 + (i % 3), 30 + ((i / 3) | 0)));
+    const start = { x: 31, y: 30.4 };
+    const spread = () => {
+      let cx = 0, cy = 0;
+      for (const d of herd) { cx += d.x; cy += d.y; }
+      cx /= herd.length; cy /= herd.length;
+      return { r: Math.max(...herd.map(d => Math.hypot(d.x - cx, d.y - cy))), cx, cy };
+    };
+    const samples = [];
+    for (let n = 0; n < 900; n++) {        // 90s — four full breaths at HERD_BREATH
+      Units.update(0.1); Combat.update(0.1);
+      if (n % 20 === 0) samples.push(spread().r);
+    }
+    const lo = Math.min(...samples), hi = Math.max(...samples);
+    ck('theHerdDrawsInAndFansOut', hi - lo >= 1.5,
+      'radius swung ' + lo.toFixed(1) + ' → ' + hi.toFixed(1) + ' tiles');
+    ck('itNeverStringsOutIntoALine', hi <= Units.HERD_LOOSE * 2,
+      'widest ' + hi.toFixed(1) + ' tiles, loose radius ' + Units.HERD_LOOSE);
+    const end = spread();
+    ck('noHeadIsLeftBehind',
+      herd.every(d => Math.hypot(d.x - end.cx, d.y - end.cy) <= Units.HERD_R * 1.8),
+      'every animal still in company after 90s');
+    ck('theBandMovesAsABody', Math.hypot(end.cx - start.x, end.cy - start.y) > 2,
+      'centre walked ' + Math.hypot(end.cx - start.x, end.cy - start.y).toFixed(1) + ' tiles');
+    // a separated animal makes its own way back rather than roaming for good
+    arena('wl2d');
+    const band = [];
+    for (let i = 0; i < 3; i++) band.push(Units.spawn('deer', 'W', 20 + i, 20));
+    const stray = Units.spawn('deer', 'W', 20 + Units.HERD_JOIN * 0.5, 20);
+    const d0 = Math.hypot(stray.x - band[0].x, stray.y - band[0].y);
+    for (let n = 0; n < 600; n++) { Units.update(0.1); Combat.update(0.1); }
+    const d1 = Math.min(...band.map(d => Math.hypot(stray.x - d.x, stray.y - d.y)));
+    ck('aStragglerRejoinsTheHerd', d1 < d0 * 0.5 && d1 <= Units.HERD_R * 1.8,
+      'was ' + d0.toFixed(1) + ' tiles out, now ' + d1.toFixed(1));
+  }
+
+  // ---- 2c. four or more frames in every animal action ----
+  {
+    const kinds = ['wolf', 'boar', 'bear', 'deer', 'cow'];
+    const short = [];
+    for (const k of kinds) for (const pose of ['idle', 'walk', 'fight'])
+      if (!Sprites.unit[k][pose] || Sprites.unit[k][pose].length < 4) short.push(k + '.' + pose);
+    ck('everyBeastActionHasFourPlusFrames', short.length === 0, short.join(',') || '15 cycles');
+    // …and the frames are actually DIFFERENT drawings, not a padded still
+    const flat = [];
+    for (const k of kinds) for (const pose of ['idle', 'walk']) {
+      const n = new Set(Sprites.unit[k][pose].map(c => c.toDataURL())).size;
+      if (n < 4) flat.push(k + '.' + pose + '=' + n);
+    }
+    ck('thoseFramesActuallyMove', flat.length === 0, flat.join(',') || 'every cycle steps');
+    // the renderer plays a beast's longer cycle at its own rate
+    ck('beastsRunTheirOwnFrameRate',
+      kinds.every(k => (Sprites.animFps && Sprites.animFps[k] || 0) >= 6),
+      'Sprites.animFps drives R.unitSprite');
   }
 
   // ---- 3. the sky reacts ----

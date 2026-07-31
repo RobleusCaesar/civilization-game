@@ -1149,7 +1149,10 @@ const R = {
     }
     const pose = sheet[this.unitPose(u)] ? this.unitPose(u) : (sheet.walk ? 'walk' : 'idle');
     const fr = sheet[pose];
-    return fr[((u.animT * 4) | 0) % fr.length];
+    // beasts run their longer cycles faster than a villager's four frames a
+    // second, so an 8-frame stride still reads as one stride (Sprites.animFps)
+    const fps = (Sprites.animFps && Sprites.animFps[u.kind]) || 4;
+    return fr[((u.animT * fps) | 0) % fr.length];
   },
 
   draw(dt) {

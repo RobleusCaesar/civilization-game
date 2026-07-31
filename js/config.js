@@ -455,7 +455,8 @@ const CFG = {
   },
 
   MEAT_DROP: 10,               // food gained when a wild animal is killed
-  PASSIVE_MAX: 2,              // grazing animals (deer/cow) kept on the map
+  PASSIVE_MAX: 10,             // grazing animals kept on the map — two herds' worth
+                               // (Units.spawnHerd puts them down 3–5 at a time)
   // full-heal cost scales with missing hp. sapper: 30 matches its food line
   // item at training (cost: { food: 30, wood: 40, gold: 10 }) — the same
   // convention as villager/defender/archer, whose heal price is exactly their

@@ -205,8 +205,8 @@ const G = {
                econ: pkA.econ, card: S.draft.rival.pick.key } };
     if (window.DEBUG_OPENINGS)
       console.log('[openings]', JSON.stringify(S.opening), '[draft]', JSON.stringify(S.draft));
-    Units.spawnWild('deer', 8);
-    Units.spawnWild('cow', 8);
+    Units.spawnHerd('deer', 8);
+    Units.spawnHerd('cow', 8);
     // SPECIAL EVENTS — one roll for the whole game (see CFG.SPECIALS): at most
     // ONE event, and only a third of games get any. The rolled event's own
     // machinery arms; everything else stays cold. Extensible: new events join

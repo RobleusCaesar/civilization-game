@@ -486,10 +486,34 @@ hostile, and deliberately ONE-WAY, since prey never fights back. In
 `Combat.acquire` a wolf takes people first and, with none in reach, ranges
 `aggro × 2.5` after game — so a pack is seen working the treeline long before
 it threatens a village. **The herd bolts together** (`Units.grazeIdle`):
-grazers drift toward the herd's centre (`HERD_R`) and PANIC SPREADS — the
-animal that actually sees the threat spooks every herd-mate in range, so the
-group scatters as one. Beasts and armed strangers frighten them;
-villagers don't, or a herd would never settle near a town. **The sky reacts**
+grazers keep company and PANIC SPREADS — the
+animal that actually sees the threat spooks every herd-mate within `HERD_R`, so
+the group scatters as one. Beasts and armed strangers frighten them;
+villagers don't, or a herd would never settle near a town.
+**And the herd BREATHES** (same test): real cattle and deer draw in close, fan
+out over the feed and gather again — they never converge on a point and never
+string out into a line. So every step is measured from the HERD'S CENTRE (never
+the animal's own feet, which lets the lead animal walk away from its band and
+off the map): each grazer keeps its own slowly-drifting BEARING and steps to a
+radius swinging between `HERD_TIGHT` and `HERD_LOOSE` on one clock shared by
+every animal on the map (`Units.herdClock`, advanced in `Units.update` so it
+ticks under a test harness that drives units directly, not off `S.day`). The
+oldest animal in company leads: it takes the leading edge `HERD_DRIFT` past the
+ring and the centre is dragged after it — that, and only that, is what walks a
+herd across a field. Company reaches further than panic does (`HERD_R * 1.8`)
+because the ring's own width would otherwise drop the far side of the herd out
+of its own band, and a separated animal walks back (`HERD_JOIN`) instead of
+roaming for good. Grazers arrive as a BAND — `Units.spawnHerd` puts down 3–5
+head at once and `CFG.PASSIVE_MAX` is the map's whole standing stock — because
+a herd of one has nothing to breathe with.
+**Four frames is the floor** (same test): every beast pose — `idle`, `walk`,
+`fight` — is a 4+ frame cycle driven by a CONTINUOUS phase in `sprites.js`'s
+`beast()` (legs travel through swing and stance, the barrel bobs twice a
+stride, the head nods, the tail swishes, grazers put their heads down in the
+grass and chew), never a two-still flip. Counts live in `BEAST_POSE` and the
+playback rate per kind in `Sprites.animFps`, which `R.unitSprite` reads so a
+longer cycle still reads as one stride; both can be raised without touching the
+drawing code. **The sky reacts**
 (`R.startle`): a fight breaking out (`R.noteFights` spots a unit gaining a
 target it didn't have — one scatter per outbreak, not per blow) or a building
 coming down throws flocks up and away and sends critters bolting for cover.

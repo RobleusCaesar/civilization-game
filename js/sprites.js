@@ -3330,44 +3330,98 @@ const Sprites = {
   // legs (near pair in front, far pair behind & darker), and per-species
   // features. Drawn without an outline here; the shared unit-outline pass below
   // gives every frame its 1px ink edge, exactly like the villagers & soldiers.
-  function beastFrames(n, draw) {
-    const out = [];
-    for (let fr = 0; fr < n; fr++) out.push(tileU((q) => draw(q, fr)));
-    return out;
-  }
+  //
+  // ANIMATION (tests/wild-life.mjs): every pose is a cycle of FOUR OR MORE
+  // frames driven by a CONTINUOUS phase rather than a two-still flip — the legs
+  // travel through swing and stance (hoof lifted on the swing, planted on the
+  // push), the barrel bobs twice a stride, the head nods, the tail swishes.
+  // Frame counts live in BEAST_POSE and the playback rate per kind in
+  // Sprites.animFps (read by R.unitSprite); both can be raised without touching
+  // a line of the drawing code.
+  const TAU = Math.PI * 2;
+  const BEAST_POSE = { idle: 6, walk: 8, fight: 4 };
+  Sprites.animFps = { wolf: 8, boar: 7, bear: 6, deer: 8, cow: 6 };
   // ramp = [dark, mid, light]
   function beast(name, ramp, opts) {
     const w = opts.w, h = opts.h;
     const bx = 6, byb = 24, byt = byb - h;                    // body box
     const dark = ramp[0], mid = ramp[1], lite = ramp[2] || ramp[1];
     const BN = AP.bone[2], INK = AP.ink[0];
-    const draw = (q, f, attacking) => {
+    const LEG = 6;
+    const draw = (q, ph, pose) => {
+      const walking = pose === 'walk', fighting = pose === 'fight';
+      // ---- carriage: how the animal is holding itself THIS frame ----
+      let bob = 0, hdx = 0, hdy = 0, tail = 0, ear = 0, maw = false, graze = false;
+      if (walking) {
+        bob = Math.sin(ph * TAU * 2) > 0.35 ? -1 : 0;         // rises twice a stride
+        hdy = Math.sin(ph * TAU) > 0.45 ? 1 : 0;              // the nod that comes with it
+        tail = Math.round(Math.sin(ph * TAU * 2));
+      } else if (fighting) {
+        const push = Math.round(Math.sin(ph * TAU) * 3);      // crouch → lunge → strike → recover
+        bob = push > 1 ? -1 : 0;
+        hdx = push; hdy = push > 1 ? 1 : 0;
+        maw = push > 0;
+        tail = Math.round(Math.cos(ph * TAU));
+      } else if (opts.grazes) {
+        // GRAZING: the head reaches DOWN AND FORWARD into the grass for most of
+        // the cycle, jaw working, then comes up for a look round — the loop that
+        // makes a standing herd read as feeding rather than waiting
+        const down = ph < 0.68;
+        graze = down;
+        hdy = down ? 5 + (Math.sin(ph * TAU * 5) > 0 ? 1 : 0) : 0;
+        hdx = down ? 3 : 0;
+        tail = Math.round(Math.sin(ph * TAU));
+        ear = down ? 0 : 1;
+      } else {
+        bob = Math.sin(ph * TAU) > 0.6 ? -1 : 0;              // breathing
+        hdy = ph > 0.38 && ph < 0.62 ? 1 : 0;                 // a low sniff at the ground
+        hdx = ph > 0.82 ? 1 : 0;                              // then the head cranes round
+        tail = Math.round(Math.sin(ph * TAU * 2));
+        ear = ph > 0.66 && ph < 0.86 ? 1 : 0;                 // an ear flicks
+      }
       q(bx - 1, byb + 6, w + 5, 2, 'rgba(20,16,10,0.26)');    // contact shadow
-      const gait = f === 0 ? 0 : 1;
-      const leg = (lx, fwd, shade) => {                       // a single animated leg
-        const ll = fwd ? 6 : 5, off = fwd ? 1 : 0;
-        q(lx + off, byb, 2, ll, shade); q(lx + off, byb + ll, 2, 1, INK);
+      // a single leg: hip at the barrel (which bobs), hoof on the ground
+      const leg = (lx, p, shade) => {
+        const top = byb + bob, foot = byb + LEG;
+        if (!walking && !fighting) { q(lx, top, 2, foot - top, shade); q(lx, foot, 2, 1, INK); return; }
+        const sw = Math.sin(p * TAU);
+        const dx = Math.round(sw * 2);                        // forward on the swing, back on the push
+        const lift = sw > 0 ? Math.round(sw * 2) : 0;         // the hoof clears the ground
+        const thigh = 3, cannon = Math.max(1, foot - lift - (top + thigh));
+        q(lx, top, 2, thigh, shade);
+        q(lx + dx, top + thigh, 2, cannon, shade);
+        q(lx + dx, top + thigh + cannon, 2, 1, INK);
       };
-      // far (offside) legs first, one shade down
-      leg(bx + 2, gait, dark); leg(bx + w - 5, 1 - gait, dark);
+      // diagonal pairs move together (a trot); the offside pair goes first, one shade down
+      const gp = fighting ? ph * 2 : ph;
+      leg(bx + 2, gp, dark); leg(bx + w - 5, gp + 0.5, dark);
       // tail
+      const ty0 = byt + bob + 1;
       if (opts.tail) {
-        if (opts.bushy) { q(bx - 2, byt + 1, 2, 5, mid); q(bx - 3, byt + 2, 1, 3, dark); q(bx - 2, byt + 1, 1, 2, lite); }
-        else q(bx - 1, byt + 1, 1, opts.longtail ? 6 : 3, dark);
+        if (opts.bushy) { q(bx - 2, ty0, 2, 5, mid); q(bx - 3 + tail, ty0 + 1, 1, 3, dark); q(bx - 2, ty0, 1, 2, lite); }
+        else { const tl = opts.longtail ? 6 : 3; q(bx - 1, ty0, 1, tl - 1, dark); q(bx - 1 + tail, ty0 + tl - 1, 1, 1, dark); }
       }
       // body
-      ART.shadedRect(q, bx, byt, w, h, ramp, 1);
-      if (opts.hump) { q(bx + 1, byt - 2, 5, 2, mid); q(bx + 1, byt - 2, 4, 1, lite); }   // shoulder hump
-      if (opts.spots) { q(bx + 2, byt + 1, 3, 2, opts.spots); q(bx + w - 6, byt + 2, 3, 2, opts.spots); q(bx + 5, byt + h - 2, 2, 1, opts.spots); }
-      // neck + head at the front (right)
-      const hx = bx + w - 1, hy = byt - 1;
-      q(hx - 1, byt, 3, 3, mid);                              // neck
+      ART.shadedRect(q, bx, byt + bob, w, h, ramp, 1);
+      if (opts.hump) { q(bx + 1, byt + bob - 2, 5, 2, mid); q(bx + 1, byt + bob - 2, 4, 1, lite); }   // shoulder hump
+      if (opts.spots) { q(bx + 2, byt + bob + 1, 3, 2, opts.spots); q(bx + w - 6, byt + bob + 2, 3, 2, opts.spots); q(bx + 5, byt + bob + h - 2, 2, 1, opts.spots); }
+      // neck + head at the front (right) — both follow the carriage
+      const hx = bx + w - 1 + hdx, hy = byt - 1 + bob + hdy;
+      // the neck follows the head WHEREVER it goes — laid down the line from the
+      // shoulder to the head's root, so a grazing animal reaches into the grass
+      // instead of parting company with its own skull
+      {
+        const sx = bx + w - 3, sy = byt + bob, rx = hx - 1, ry = hy + 1;
+        const steps = Math.max(Math.abs(rx - sx), Math.abs(ry - sy), 1);
+        for (let i = 0; i <= steps; i++)
+          q(Math.round(sx + (rx - sx) * i / steps), Math.round(sy + (ry - sy) * i / steps), 3, 3, mid);
+      }
       q(hx, hy, 6, h - 1, mid); q(hx, hy, 6, 1, lite);        // head block, lit top
       q(hx + 5, hy + 2, 2, 2, opts.snout || dark);            // muzzle
       q(hx + 6, hy + 3, 1, 1, INK);                           // nostril
       q(hx + 3, hy + 1, 1, 1, INK);                           // eye
       // ears / horns / antlers / tusks
-      if (opts.ears) { q(hx, hy - 2, 1, 2, mid); q(hx + 3, hy - 2, 2, 2, mid); q(hx + 3, hy - 2, 1, 1, lite); }
+      if (opts.ears) { q(hx, hy - 2 - ear, 1, 2, mid); q(hx + 3, hy - 2, 2, 2, mid); q(hx + 3, hy - 2, 1, 1, lite); }
       if (opts.horns) { q(hx - 1, hy - 2, 1, 2, BN); q(hx + 5, hy - 2, 1, 2, BN); q(hx - 1, hy - 3, 3, 1, BN); }
       if (opts.antlers) {
         q(hx + 1, hy - 5, 1, 5, BN); q(hx + 4, hy - 5, 1, 5, BN);        // main beams
@@ -3376,22 +3430,23 @@ const Sprites = {
       }
       if (opts.tusk) { q(hx + 5, hy + 4, 2, 1, BN); q(hx + 6, hy + 3, 1, 1, BN); }
       if (opts.mane) { q(hx - 1, hy - 1, 2, h + 1, dark); }             // scruff at the neck
-      if (attacking) { q(hx + 5, hy + 3, 2, 1, AP.red[2]); q(hx + 6, hy + 2, 1, 1, BN); }   // open maw + fang
+      if (maw) { q(hx + 5, hy + 3, 2, 1, AP.red[2]); q(hx + 6, hy + 2, 1, 1, BN); }   // open maw + fang
       // near (onside) legs in front of the body
-      leg(bx + 3, 1 - gait, mid); leg(bx + w - 4, gait, mid);
+      leg(bx + 3, gp + 0.5, mid); leg(bx + w - 4, gp, mid);
     };
-    Sprites.unit[name] = {
-      idle: beastFrames(2, (q, f) => draw(q, 0, false)),
-      walk: beastFrames(2, (q, f) => draw(q, f, false)),
-      fight: beastFrames(2, (q, f) => draw(q, f, true)),
+    const cycle = (pose) => {
+      const n = BEAST_POSE[pose], out = [];
+      for (let f = 0; f < n; f++) out.push(tileU(q => draw(q, f / n, pose)));
+      return out;
     };
+    Sprites.unit[name] = { idle: cycle('idle'), walk: cycle('walk'), fight: cycle('fight') };
   }
   beast('wolf', [AP.pelt[0], AP.pelt[1], AP.pelt[2]], { w: 15, h: 6, ears: true, tail: true, bushy: true, mane: true });
   beast('boar', [AP.hide[0], AP.hide[1], AP.hide[2]], { w: 16, h: 8, tusk: true, tail: true, mane: true });
   // the bear: rare, huge, dark — a humped silhouette a head taller than a boar
   beast('bear', [AP.rust[0], AP.hide[0], AP.hide[1]], { w: 18, h: 10, ears: true, hump: true, snout: AP.hide[2] });
-  beast('deer', ['#7a5430', '#a87848', '#c89868'], { w: 13, h: 6, ears: true, tail: true, antlers: true });
-  beast('cow', ['#8a8078', '#d8d0c4', '#f0ece2'], { w: 16, h: 8, ears: true, tail: true, longtail: true, horns: true, spots: '#5a4a3a' });
+  beast('deer', ['#7a5430', '#a87848', '#c89868'], { w: 13, h: 6, ears: true, tail: true, antlers: true, grazes: true });
+  beast('cow', ['#8a8078', '#d8d0c4', '#f0ece2'], { w: 16, h: 8, ears: true, tail: true, longtail: true, horns: true, spots: '#5a4a3a', grazes: true });
 
   /* ---------------- icons (16px) ---------------- */
 

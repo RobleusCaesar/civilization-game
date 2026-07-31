@@ -995,6 +995,7 @@ const Units = {
   moving(u) { return u.path && u.pathI < u.path.length; },
 
   update(dt) {
+    this.herdClock = (this.herdClock || 0) + dt;   // the shared slow beat every herd breathes to
     for (let i = S.units.length - 1; i >= 0; i--) {
       const u = S.units[i];
       u.animT += dt;
@@ -1447,9 +1448,23 @@ const Units = {
      Predators roam alone; GRAZERS keep company and bolt TOGETHER. A herd that
      scatters as one — because the panic spreads from whichever animal actually
      saw the wolf — reads as a living wood in a way that a field of
-     independently-wandering deer never does. */
+     independently-wandering deer never does.
+
+     And a herd BREATHES. Real cattle and deer draw in close, fan out across the
+     feed, and gather again; they never converge on one point and they never
+     trail into a single file. So every grazer keeps its own slowly-drifting
+     BEARING from the herd's centre and steps to a radius that swings between
+     HERD_TIGHT and HERD_LOOSE on one clock shared by every animal on the map
+     (Units.herdClock, advanced in update) — the whole group opens and closes
+     as a body. The oldest animal in company leads: it picks the feeding ground
+     and the centre follows it, which is what walks a herd across a field. */
   HERD_R: 6,        // how far a herd-mate counts as company
   SPOOK_R: 5.5,     // how close a predator (or an armed stranger) gets before they run
+  HERD_TIGHT: 1.3,  // how close they draw in at the top of the breath
+  HERD_LOOSE: 3.6,  // how far they fan out at the bottom of it
+  HERD_BREATH: 22,  // seconds for one gather → spread → gather
+  HERD_JOIN: 30,    // how far a separated animal will walk to rejoin its herd
+  HERD_DRIFT: 1.2,  // how far past the ring the leader steps — the herd's slow travel
   spook(u, tx, ty) { u.spookT = 2.2 + Math.random() * 1.6; u.spookX = tx; u.spookY = ty; },
   wildIdle(u, dt) {
     if (this.isPassive(u)) return this.grazeIdle(u, dt);
@@ -1494,22 +1509,57 @@ const Units = {
       }
     }
     if (this.moving(u)) { this.followPath(u, dt); return; }
-    // grazing: short steps, drifting back toward the herd so they keep company
+    // grazing: short steps on the herd's breath (see the note above)
     u.wanderT -= dt;
-    if (u.wanderT <= 0) {
-      u.wanderT = 2.5 + Math.random() * 3.5;
-      let hx = 0, hy = 0, n = 0;
-      for (const o of S.units)
-        if (o !== u && this.isPassive(o) && Math.hypot(o.x - u.x, o.y - u.y) <= this.HERD_R) { hx += o.x; hy += o.y; n++; }
-      let tx, ty;
-      if (n) {                                   // a loose step toward the herd's centre
-        tx = Math.round(u.x + (hx / n - u.x) * 0.5 + (Math.random() * 4 - 2));
-        ty = Math.round(u.y + (hy / n - u.y) * 0.5 + (Math.random() * 4 - 2));
-      } else {
-        tx = (u.x | 0) + ((Math.random() * 7) | 0) - 3;
-        ty = (u.y | 0) + ((Math.random() * 7) | 0) - 3;
+    if (u.wanderT > 0) return;
+    u.wanderT = 1.6 + Math.random() * 1.8;
+    let hx = u.x, hy = u.y, n = 0, lead = u;
+    for (const o of S.units) {
+      if (o === u || !this.isPassive(o)) continue;
+      if (Math.hypot(o.x - u.x, o.y - u.y) > this.HERD_R * 1.8) continue;   // company reaches
+      hx += o.x; hy += o.y; n++;                                            // further than panic does
+      if (o.id < lead.id) lead = o;
+    }
+    // every step is measured from the HERD'S CENTRE, never from the animal's own
+    // feet — a bearing off its own position lets the lead animal walk away from
+    // its band (and off the map); a bearing off the centre cannot
+    let cx = n ? hx / (n + 1) : u.x, cy = n ? hy / (n + 1) : u.y;
+    if (!n) {
+      // SEPARATED — a bolt, or one wide step, can leave an animal on its own.
+      // It makes its way back: without this a straggler roams for good and the
+      // herd bleeds a head every time something frightens it
+      let best = null, bd = this.HERD_JOIN;
+      for (const o of S.units) {
+        if (o === u || !this.isPassive(o)) continue;
+        const d = Math.hypot(o.x - u.x, o.y - u.y);
+        if (d < bd) { bd = d; best = o; }
       }
-      if (Path.passable(tx, ty)) this.setPath(u, tx, ty);
+      if (best) { cx = best.x; cy = best.y; lead = best; }
+    }
+    const breath = 0.5 - 0.5 * Math.cos((this.herdClock || 0) / this.HERD_BREATH * Math.PI * 2);
+    let r = this.HERD_TIGHT + (this.HERD_LOOSE - this.HERD_TIGHT) * breath;
+    let a;
+    if (lead === u) {
+      // the oldest animal in company leads: it takes the leading edge on a
+      // heading that only DRIFTS, and the herd's centre is dragged after it
+      u.roamA = u.roamA === undefined ? Math.random() * Math.PI * 2
+                                      : u.roamA + (Math.random() - 0.5) * 0.5;
+      a = u.roamA;
+      r = n ? r + this.HERD_DRIFT : 2.2;
+    } else {
+      if (u.herdA === undefined) u.herdA = Math.random() * Math.PI * 2;
+      u.herdA += (Math.random() - 0.5) * 0.9;                    // they trade places as they feed
+      a = u.herdA;
+    }
+    // a blocked bearing turns the animal rather than stalling it against a shore
+    for (let k = 0; k < 4; k++) {
+      const aa = a + k * 1.7;
+      const tx = Math.round(cx + Math.cos(aa) * r + (Math.random() - 0.5));
+      const ty = Math.round(cy + Math.sin(aa) * r + (Math.random() - 0.5));
+      if (tx < 1 || ty < 1 || tx >= CFG.W - 1 || ty >= CFG.H - 1) continue;
+      if (!Path.passable(tx, ty) || !this.setPath(u, tx, ty)) continue;
+      if (lead === u) u.roamA = aa; else u.herdA = aa;
+      return;
     }
   },
 
@@ -1593,8 +1643,8 @@ const Units = {
   dailySpawns() {
     const m = G.modeCfg();
     // grazing game animals (harmless, huntable) — kept around in small numbers
-    if (this.count('W', u => this.isPassive(u)) < CFG.PASSIVE_MAX && G.rand() < 0.4)
-      this.spawnWild(G.rand() < 0.5 ? 'deer' : 'cow', 8);
+    if (this.count('W', u => this.isPassive(u)) < CFG.PASSIVE_MAX - 3 && G.rand() < 0.25)
+      this.spawnHerd(G.rand() < 0.5 ? 'deer' : 'cow', 8);
     // predators
     if (S.day < CFG.ANIMALS.graceDays) return;   // early grace period — get established first
     // a lone bear pads out of the deep woods on rare occasion — one at a time,
@@ -1620,5 +1670,24 @@ const Units = {
       return this.spawn(kind, 'W', x, y);
     }
     return null;
+  },
+
+  // grazers arrive as a BAND, never as a single beast — a herd is the unit of
+  // wildlife here, and grazeIdle's breathing needs company to breathe with
+  spawnHerd(kind, minDistTC) {
+    const first = this.spawnWild(kind, minDistTC);
+    if (!first) return null;
+    const mates = 2 + ((G.rand() * 3) | 0);              // 3–5 head all told
+    const open = Path.borderReach();                     // no beast pops up inside a sealed town
+    for (let i = 0; i < mates; i++) {
+      if (this.count('W', u => this.isPassive(u)) >= CFG.PASSIVE_MAX) break;
+      for (let tries = 0; tries < 12; tries++) {
+        const x = Math.round(first.x + G.rand() * 5 - 2.5), y = Math.round(first.y + G.rand() * 5 - 2.5);
+        if (!Path.passable(x, y) || Bld.at(x, y)) continue;
+        if (open && !open[MapGen.idx(x, y)]) continue;
+        this.spawn(kind, 'W', x, y); break;
+      }
+    }
+    return first;
   },
 };
