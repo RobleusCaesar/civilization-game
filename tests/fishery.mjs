@@ -179,6 +179,53 @@ const out = await p.evaluate(() => {
       S.map.fishBack && typeof S.map.fishBack === 'object' && Object.keys(S.map.fishBack).length === 0, '');
   }
 
+  // ---- 9. ONE BOAT PER TILE — a fleet you can actually see and manage ----
+  {
+    G.newGame('fish-f', 'moderate', 'large'); S.paused = true;
+    S.units = [];
+    let w = null;                                    // a patch of open water
+    for (let y = 3; y < CFG.H - 3 && !w; y++) for (let x = 3; x < CFG.W - 3; x++) {
+      let ok = true;
+      for (let dy = -2; dy <= 2 && ok; dy++) for (let dx = -2; dx <= 2; dx++)
+        if (S.map.terrain[idx(x + dx, y + dy)] !== T.WATER) { ok = false; break; }
+      if (ok) w = { x, y };
+    }
+    const boats = [];
+    for (let i = 0; i < 6; i++) {
+      const u = Units.spawn('fishboat', 'P', w.x, w.y);
+      boats.push(u);
+      Units.assignFish(u, w.x, w.y);                 // every one ordered to the SAME tile
+    }
+    const targets = boats.map(u => u.task && u.task.type === 'fish' ? u.task.x + ',' + u.task.y : 'none');
+    ck('sameOrderFansTheFleetOut',
+      new Set(targets).size === 6 && !targets.includes('none'),
+      '6 boats, 6 different shoals');
+    ck('firstBoatKeepsTheTileItWasSent', targets[0] === w.x + ',' + w.y, '');
+
+    // a claimed tile is not free, but its own claimant may keep it
+    ck('claimedWaterIsNotFree',
+      !!Units.fisherAt(w.x, w.y, null) && Units.canFish(w.x, w.y) === false &&
+      Units.canFish(w.x, w.y, boats[0]) === true,
+      'claimed by another hull, still fine for the one working it');
+    // re-issuing the same order to the same boat must not shuffle it
+    Units.assignFish(boats[0], w.x, w.y);
+    ck('reorderingABoatToItsOwnTileKeepsIt',
+      boats[0].task.x === w.x && boats[0].task.y === w.y, '');
+
+    // and they stay apart once the nets are actually out
+    for (let k = 0; k < 400; k++) Units.update(0.1);
+    const tiles = boats.map(u => (u.x | 0) + ',' + (u.y | 0));
+    ck('boatsNeverStackOnceWorking', new Set(tiles).size === 6, tiles.join(' '));
+    ck('andAllOfThemAreStillFishing',
+      boats.every(u => u.task && u.task.type === 'fish'), '');
+
+    // an idle hull parked on water claims it too, so nothing is sent on top
+    const parked = boats[0];
+    parked.task = null;
+    ck('idleHullStillClaimsItsTile',
+      Units.fisherAt(parked.x | 0, parked.y | 0, null) === parked, '');
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

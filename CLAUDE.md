@@ -499,7 +499,15 @@ shades its shallows with (`MapGen.shallowWater`), so the lean water is the
 water that LOOKS lean; it is applied at generation (map.js) and again on
 every restock. A food-scarce map's ×0.5 on water still applies UNDER this,
 so the split is measured on top of that lean — the test accounts for it.
-**The return** (`CFG.FISH_RETURN_DAYS`, 120): a tile fished to nothing by
+**One boat per tile**: the fish task pins a boat ON its tile while it works,
+so two boats sent to the same water sat hull-in-hull — you could not count
+your fleet or pick one out to order. `Units.fisherAt` treats a tile as
+claimed by the boat working it, one on its way, or any idle hull parked on
+it; `canFish(x, y, except)` excludes claimed water (the claimant itself
+passes, so re-ordering a boat to its own tile is a no-op); and `assignFish`
+SLIDES to the nearest free shoal rather than refusing, so ordering a whole
+fleet at one spot fans it out. Unfishable water still fails as before — the
+slide is only for the claim. **The return** (`CFG.FISH_RETURN_DAYS`, 120): a tile fished to nothing by
 either path (boat or shore line) goes on `S.map.fishBack` (idx → day, in
 every save, `loadJSON` backfills) and `G.dayTick` restocks it at
 `G.fishStockAt` — its own water's worth, not a flat number. Water a sapper

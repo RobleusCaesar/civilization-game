@@ -326,13 +326,35 @@ const Units = {
   },
 
   // fishing boats harvest fish from stocked water tiles
-  canFish(tx, ty) {
+  // water worth casting in at all: stocked, unbuilt, off the black rim
+  fishableTile(tx, ty) {
     if (tx <= 0 || ty <= 0 || tx >= CFG.W - 1 || ty >= CFG.H - 1) return false;   // off-map black rim — no fishing there
     const i = MapGen.idx(tx, ty);
     return S.map.terrain[i] === T.WATER && S.map.resAmount[i] > 0 && !Bld.at(tx, ty);
   },
+  /* ONE BOAT PER TILE (tests/fishery.mjs). The fish task pins a boat ON its
+     tile for as long as it works there, so two boats sent to the same water
+     sit hull-in-hull: you cannot see how many you have, and you cannot pick
+     one out to give it an order. A tile is CLAIMED by the boat working it,
+     by one on its way to it, and by any idle hull parked on it. */
+  fisherAt(tx, ty, except) {
+    for (const u of S.units) {
+      if (u.kind !== 'fishboat' || u === except) continue;
+      if (u.task && u.task.type === 'fish') { if (u.task.x === tx && u.task.y === ty) return u; continue; }
+      if ((u.x | 0) === tx && (u.y | 0) === ty) return u;      // idling right there
+    }
+    return null;
+  },
+  canFish(tx, ty, except) { return this.fishableTile(tx, ty) && !this.fisherAt(tx, ty, except); },
   assignFish(u, tx, ty) {
-    if (u.kind !== 'fishboat' || !this.canFish(tx, ty)) return false;
+    if (u.kind !== 'fishboat' || !this.fishableTile(tx, ty)) return false;
+    // the water is good but another hull already has it — take the nearest
+    // free shoal instead of stacking on top of it (or refusing the order)
+    if (this.fisherAt(tx, ty, u)) {
+      const alt = MapGen.findNear(tx, ty, 4, (x, y) => this.canFish(x, y, u));
+      if (!alt) return false;
+      tx = alt.x; ty = alt.y;
+    }
     u.task = { type: 'fish', x: tx, y: ty };
     u.tUnit = 0; u.tBld = 0;
     return this.setPath(u, tx, ty);
