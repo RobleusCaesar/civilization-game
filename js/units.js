@@ -145,6 +145,87 @@ const Units = {
     return atk;
   },
 
+  /* ---- WHAT AM I DOING, AND WHAT AM I NETTING? (tests/work-report.mjs) ----
+     The panel's live line. Everything static about a unit (HP, ATK, DEF) you
+     learn once; what it is DOING and what that is worth per day changes all
+     the time, and is the thing worth watching. The rates here are computed
+     from the SAME constants the gather/production code actually applies —
+     mode multiplier, origin-card multipliers, the station's terrain bonus and
+     the level-3 hall boost — so the number on the panel is the number going
+     into the granary, not a nominal figure from the config table.
+     Returns { icon, what, rate, working } — `rate` is null when the job pays
+     no resource (building, marching), `working` is false while still walking
+     to the job, so "on the way" never claims income it isn't earning yet. */
+  dayLen() { return CFG.DAY_MS / 1000; },     // seconds of real time in one in-game day
+  workReport(u) {
+    if (!u) return null;
+    const t = u.task, at = (x, y) => (u.x | 0) === x && (u.y | 0) === y;
+    const mode = G.modeCfg();
+    const per = (rate, res) => ({ res, n: rate * this.dayLen() });
+    if (u.tUnit) return { icon: '⚔️', what: 'In combat', rate: null, working: true };
+    if (u.tBld) return { icon: '⚔️', what: 'Attacking a building', rate: null, working: true };
+    if (!t) {
+      if (u.stance === 'guard') return { icon: '🛡️', what: 'Defending', rate: null, working: true };
+      return { icon: '💤', what: 'Idle', rate: null, working: false };
+    }
+    if (t.type === 'gather') {
+      const g = CFG.GATHER[S.map.terrain[MapGen.idx(t.x, t.y)]];
+      const sx = t.sx == null ? t.x : t.sx, sy = t.sy == null ? t.y : t.sy;
+      const on = at(sx, sy);
+      const name = { wood: 'Felling timber', stone: 'Quarrying stone', food: 'Harvesting food' };
+      const ico = { wood: '🪓', stone: '⛏️', food: '🧺' };
+      if (!g) return { icon: '🚶', what: 'Heading out', rate: null, working: false };
+      const n = g.rate * this.dayLen() * mode.gather * (window.Cards ? Cards.gatherMult(u.owner, g.res) : 1);
+      return { icon: ico[g.res] || '🧺', what: on ? name[g.res] : 'Walking to the ' + g.res,
+        rate: on ? { res: g.res, n } : null, working: on };
+    }
+    if (t.type === 'fish' || t.type === 'shorefish') {
+      const shore = t.type === 'shorefish';
+      const on = shore ? at(t.sx, t.sy) : at(t.x, t.y);
+      const n = (shore ? CFG.SHORE_FISH.rate : CFG.FISH.rate) * this.dayLen() * mode.gather *
+        (window.Cards ? Cards.fishMult(u.owner) : 1);
+      return { icon: '🎣', what: on ? (shore ? 'Line-fishing the shoal' : 'Nets out') : 'Rowing to the shoal',
+        rate: on ? { res: 'food', n } : null, working: on };
+    }
+    if (t.type === 'work') {                       // stationed on a plot
+      const b = Bld.get(t.id);
+      if (!b) return { icon: '💤', what: 'Idle', rate: null, working: false };
+      const nm = Bld.def(b.key).name;
+      const on = at(b.x, b.y);
+      const out = (Bld.lv(b).out) || {};
+      const key = Object.keys(out)[0];
+      if (!on) return { icon: '🚶', what: 'Walking to the ' + nm, rate: null, working: false };
+      if (b.upgrading > 0) return { icon: '🔨', what: nm + ' — upgrading', rate: null, working: true };
+      if (!key) return { icon: '🛠️', what: 'Working the ' + nm, rate: null, working: true };
+      const tc = Bld.tcOf(u.owner);
+      const tcBoost = tc && tc.level >= 3 && Bld.done(tc) ? 1.1 : 1;
+      const modeMult = u.owner === 'P' ? mode.output : (mode.aiOutput || 1);
+      const n = out[key] * Bld.nearBonus(b) * tcBoost * modeMult *
+        (window.Cards ? Cards.prodMult(u.owner, b) : 1);
+      return { icon: '🛠️', what: 'Working the ' + nm, rate: { res: key, n }, working: true };
+    }
+    if (t.type === 'build') {
+      const b = Bld.get(t.id);
+      if (!b) return { icon: '💤', what: 'Idle', rate: null, working: false };
+      const nm = Bld.def(b.key).name;
+      const near = Math.hypot(Bld.cx(b) - u.x, Bld.cy(b) - u.y) <= 1.55 + Bld.reach(b);
+      if (!near) return { icon: '🚶', what: 'Walking to the ' + nm, rate: null, working: false };
+      if (b.construction > 0) return { icon: '🔨', what: 'Raising the ' + nm, rate: null, working: true, left: b.construction };
+      if (b.upgrading > 0) return { icon: '🔨', what: 'Upgrading the ' + nm, rate: null, working: true, left: b.upgrading };
+      return { icon: '🔧', what: 'Mending the ' + nm, rate: null, working: true,
+        pct: Math.round(b.hp / b.maxhp * 100) };
+    }
+    if (t.type === 'terraform') {
+      const nm = { dig: 'Digging a trench', bridge: 'Raising a bridge', clear: 'Clearing the ground', mound: 'Raising a mound' };
+      return { icon: '⛏️', what: nm[t.job] || 'Working the ground', rate: null, working: true };
+    }
+    if (t.type === 'garrison') return { icon: '🛖', what: 'Taking shelter', rate: null, working: false };
+    if (t.type === 'board') return { icon: '⚓', what: 'Boarding', rate: null, working: false };
+    if (t.type === 'move') return { icon: '🚶', what: 'Marching', rate: null, working: false };
+    if (t.type === 'flee') return { icon: '💨', what: 'Fleeing', rate: null, working: false };
+    return { icon: '💤', what: 'Idle', rate: null, working: false };
+  },
+
   setPath(u, tx, ty) {
     const p = Path.find(u.x | 0, u.y | 0, tx, ty, u.owner, this.domain(u));
     if (p) { u.path = p; u.pathI = 0; }
@@ -1362,13 +1443,72 @@ const Units = {
     if (Path.passable(tx | 0, ty | 0, u.owner, this.domain(u))) { u.x = tx; u.y = ty; }
   },
 
+  /* ---- WILD BEHAVIOUR (tests/wild-life.mjs) ----
+     Predators roam alone; GRAZERS keep company and bolt TOGETHER. A herd that
+     scatters as one — because the panic spreads from whichever animal actually
+     saw the wolf — reads as a living wood in a way that a field of
+     independently-wandering deer never does. */
+  HERD_R: 6,        // how far a herd-mate counts as company
+  SPOOK_R: 5.5,     // how close a predator (or an armed stranger) gets before they run
+  spook(u, tx, ty) { u.spookT = 2.2 + Math.random() * 1.6; u.spookX = tx; u.spookY = ty; },
   wildIdle(u, dt) {
+    if (this.isPassive(u)) return this.grazeIdle(u, dt);
     if (this.moving(u)) { this.followPath(u, dt); return; }
     u.wanderT -= dt;
     if (u.wanderT <= 0) {
       u.wanderT = 2 + Math.random() * 4;
       const tx = (u.x | 0) + ((Math.random() * 9) | 0) - 4;
       const ty = (u.y | 0) + ((Math.random() * 9) | 0) - 4;
+      if (Path.passable(tx, ty)) this.setPath(u, tx, ty);
+    }
+  },
+  grazeIdle(u, dt) {
+    // already bolting — keep running until the fright wears off
+    if (u.spookT > 0) {
+      u.spookT -= dt;
+      if (this.moving(u)) { this.followPath(u, dt); return; }
+      const ax = u.x - u.spookX, ay = u.y - u.spookY, d = Math.hypot(ax, ay) || 1;
+      const tx = Math.round(u.x + ax / d * 6), ty = Math.round(u.y + ay / d * 6);
+      if (!Path.passable(tx, ty) || !this.setPath(u, tx, ty)) u.spookT = 0;
+      return;
+    }
+    // a look up from the grass every half second: a predator, or anyone armed
+    u.lookT = (u.lookT || 0) - dt;
+    if (u.lookT <= 0) {
+      u.lookT = 0.5;
+      let threat = null;
+      for (const o of S.units) {
+        if (o === u || this.isPassive(o) || this.isNaval(o)) continue;
+        const scary = this.isWild(o) || !this.isVillager(o);   // beasts and soldiers, not farmhands
+        if (!scary) continue;
+        if (Math.hypot(o.x - u.x, o.y - u.y) > this.SPOOK_R) continue;
+        threat = o; break;
+      }
+      if (threat) {
+        // PANIC SPREADS — the whole herd goes, not just the one that saw it
+        this.spook(u, threat.x, threat.y);
+        for (const o of S.units)
+          if (o !== u && this.isPassive(o) && Math.hypot(o.x - u.x, o.y - u.y) <= this.HERD_R)
+            this.spook(o, threat.x, threat.y);
+        return;
+      }
+    }
+    if (this.moving(u)) { this.followPath(u, dt); return; }
+    // grazing: short steps, drifting back toward the herd so they keep company
+    u.wanderT -= dt;
+    if (u.wanderT <= 0) {
+      u.wanderT = 2.5 + Math.random() * 3.5;
+      let hx = 0, hy = 0, n = 0;
+      for (const o of S.units)
+        if (o !== u && this.isPassive(o) && Math.hypot(o.x - u.x, o.y - u.y) <= this.HERD_R) { hx += o.x; hy += o.y; n++; }
+      let tx, ty;
+      if (n) {                                   // a loose step toward the herd's centre
+        tx = Math.round(u.x + (hx / n - u.x) * 0.5 + (Math.random() * 4 - 2));
+        ty = Math.round(u.y + (hy / n - u.y) * 0.5 + (Math.random() * 4 - 2));
+      } else {
+        tx = (u.x | 0) + ((Math.random() * 7) | 0) - 3;
+        ty = (u.y | 0) + ((Math.random() * 7) | 0) - 3;
+      }
       if (Path.passable(tx, ty)) this.setPath(u, tx, ty);
     }
   },

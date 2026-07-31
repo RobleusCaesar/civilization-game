@@ -163,6 +163,11 @@
   #panel .phead > div { flex: 1; min-width: 0; padding-right: 96px; }  /* clear the −/ℹ️ + ✕ */
   #panel .ptitle { font-size: 14px; font-weight: 800; }
   #panel .psub { font-size: 11px; color: var(--dim); }
+  /* the LIVE line: what this unit is doing right now and what it nets per day.
+     Brighter than .psub because it is the one thing on the panel that keeps
+     changing — the static stats above it you read once. */
+  #panel .pwork { font-size: 12px; color: #e8d9b0; margin-top: 2px; line-height: 1.35; }
+  #panel .pwork b { font-weight: 700; }
   /* actions sit on an even two-column grid — tidy rows, equal-width buttons */
   #panel .pactions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   #panel .pactions .psub { grid-column: 1 / -1; padding: 0 2px; }

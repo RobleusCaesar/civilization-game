@@ -1221,6 +1221,27 @@ const UI = {
     if (sig !== this._armySig) { this._armySig = sig; this.renderArmyBar(); }
   },
 
+  /* the live work line (Units.workReport): an icon, what the unit is doing,
+     and — when the job actually pays — what it is worth per day, coloured by
+     the resource so a glance is enough. Rates are the real applied numbers,
+     so a Lumber Camp that has been upgraded visibly nets more. */
+  RES_TINT: { food: '#d8e8b0', wood: '#c9a24a', stone: '#b8b8b0', gold: '#e8c15a' },
+  workLine(u) {
+    const w = Units.workReport(u);
+    if (!w) return '';
+    const esc = (s) => String(s).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+    let extra = '';
+    if (w.rate) {
+      const n = w.rate.n >= 10 ? Math.round(w.rate.n) : Math.round(w.rate.n * 10) / 10;
+      extra = ` <b style="color:${this.RES_TINT[w.rate.res] || '#e8d9b0'}">+${n} ${w.rate.res}/day</b>`;
+    } else if (w.left != null) {
+      extra = ` <b>${Math.ceil(w.left * 10) / 10}d left</b>`;
+    } else if (w.pct != null) {
+      extra = ` <b>${w.pct}%</b>`;
+    }
+    return `${w.icon} ${esc(w.what)}${extra}`;
+  },
+
   panelSig() {
     if (!this.sel) return '';
     if (this.sel.type === 'bld') {
@@ -1340,6 +1361,13 @@ const UI = {
     if (sig !== this._panelSig) { this.renderPanel(); return; }
     const el = document.querySelector('#panel .phead .psub');
     if (el) el.textContent = this.panelSub();
+    // THE LIVE LINE: what the unit is doing and what it is netting, patched in
+    // place every tick so it can change without relaying out the whole panel
+    if (this.sel.type === 'unit') {
+      const wk = document.getElementById('pWork');
+      const wu = Units.get(this.sel.id);
+      if (wk && wu && wu.owner === 'P') wk.innerHTML = this.workLine(wu);
+    }
     const hc = document.getElementById('healCost');
     if (hc && this.sel.type === 'unit') {
       const u = Units.get(this.sel.id);
@@ -1841,7 +1869,8 @@ const UI = {
       const helpBtn = own ? `<button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button>` : '';
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : '☠ '}${nm}</div>
-        <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${u.def}</div></div>
+        <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${u.def}</div>
+        <div class="pwork" id="pWork">${own ? this.workLine(u) : ''}</div></div>
         ${helpBtn}<button class="abtn" id="panelClose">✕</button></div>
         <div class="pactions">${own && this.helpHidden ? '' : `<span class="psub">${hint}</span>`}`;
       if (own && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind]) {

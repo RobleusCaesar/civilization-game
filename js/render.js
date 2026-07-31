@@ -666,6 +666,51 @@ const R = {
 
   explored(x, y) { return S.map.explored[MapGen.idx(x, y)]; },
 
+  /* ---- THE WOOD REACTS (tests/wild-life.mjs) ----
+     Ambience that only ever ignores the world is wallpaper; ambience that
+     REACTS is a living system. A fight breaking out, or a building coming
+     down, throws every flock within earshot up and away and sends the
+     critters bolting for cover. Cheap by construction: the ambient pool is
+     capped at a handful of entities, so this is a short loop over ≤7 items,
+     and it only ever retargets things that are already on screen. */
+  /* who was fighting last frame — render-side only, so it never reaches a save
+     file. A unit that gains a target it did not have is a fight STARTING, and
+     that is the moment the birds go up. */
+  _fighting: null,
+  noteFights() {
+    const now = new Set();
+    for (const u of S.units) if (u.tUnit || u.tBld) now.add(u.id);
+    if (this._fighting) {
+      for (const id of now) {
+        if (this._fighting.has(id)) continue;
+        const u = Units.get(id);
+        if (u) { this.startle(u.x, u.y, 8); break; }   // one scatter per outbreak is plenty
+      }
+    }
+    this._fighting = now;
+  },
+  startle(x, y, r) {
+    if (!this.ambient || !this.ambient.length) return;
+    r = r || 9;
+    for (const a of this.ambient) {
+      const d = Math.hypot(a.x - x, a.y - y);
+      if (d > r) continue;
+      const dx = (a.x - x) || (Math.random() - 0.5), dy = (a.y - y) || (Math.random() - 0.5);
+      const dd = Math.hypot(dx, dy) || 1;
+      if (a.kind === 'flock') {
+        a.vx = dx / dd * 3.4; a.vy = dy / dd * 1.9 - 1.5;   // climb, and get out
+        a.dir = a.vx < 0 ? -1 : 1;
+        a.ttl = Math.min(a.ttl, a.t + 2.2);
+      } else if (a.kind === 'critter') {
+        a.state = 'flee';                                    // straight back into cover
+        a.ttl = Math.min(a.ttl, a.t + 1.6);
+      } else {
+        a.vx = dx / dd * 1.1; a.vy = dy / dd * 0.9;          // butterflies just scatter
+        a.ttl = Math.min(a.ttl, a.t + 2.5);
+      }
+    }
+  },
+
   // fortification auto-tiling: connect to any adjacent wall/gate — and brace
   // flush against water, mountains, and the map edge, so a wall anchored on an
   // obstacle reads as a stout, sealed junction instead of an open end-cap
@@ -906,6 +951,90 @@ const R = {
       Assets.drawSprite(g, 'misc/flameSmall/' + ((beat + i * 2 + b.id) % 4),
         bx + fires[i][0] * bw - sz / 2, by + fires[i][1] * bw - sz * 0.9, { w: sz, h: sz });
     }
+  },
+
+  /* ---- BANNERS THAT FLY (tests/banners-smoke.mjs) ----
+     The POLES are baked into the building sprites; the CLOTH is drawn here,
+     every frame, for two reasons: it can ripple, and it can wear the tribe's
+     own tunic dye instead of the generic blue/red the sprite sets are built
+     in — a purple village flies purple. Anchors are tile FRACTIONS measured
+     off the sprite art (the 16-grid ones are c/16, the fine 32-grid ones
+     c/32), so they scale with zoom and with the 2×2 hall for free. `lv` is
+     the level the pole first appears at — ART.tierDress puts most banners at
+     3, while the barracks and the war camp carry theirs from the start. */
+  BANNER_AT: {
+    barracks: [{ x: 4 / 32, y: 2 / 32, w: 6 / 32, h: 7 / 32, lv: 1 }],
+    warcamp:  [{ x: 21 / 32, y: 9 / 32, w: 4 / 32, h: 5 / 32, lv: 1, left: true }],
+    range:    [{ x: 14 / 16, y: 0, w: 3 / 16, h: 3 / 16, lv: 3 }],
+    trade:    [{ x: 15 / 16, y: 0, w: 3 / 16, h: 3 / 16, lv: 3 }],
+    sapper:   [{ x: 1 / 16, y: 0, w: 3 / 16, h: 3 / 16, lv: 3 }],
+    dock:     [{ x: 4 / 32, y: 3 / 32, w: 3 / 32, h: 3 / 32, lv: 3 }],
+    siege:    [{ x: 3 / 32, y: 4 / 32, w: 3 / 32, h: 3 / 32, lv: 3 }],
+    tc:       [{ x: 5 / 32, y: 3 / 32, w: 4 / 32, h: 4 / 32, lv: 3 },
+               { x: 23 / 32, y: 3 / 32, w: 4 / 32, h: 4 / 32, lv: 3, left: true }],
+  },
+  drawBanners(g, b, bx, by, bw) {
+    const set = this.BANNER_AT[b.key];
+    if (!set || b.construction > 0) return;                 // no colours over a work site
+    const dye = (Sprites.tunicCol || {})[G.tunicOf(b.owner)] || { body: '#3f6d99', accent: '#2c4e70' };
+    const now = performance.now() / 1000;
+    for (let s = 0; s < set.length; s++) {
+      const a = set[s];
+      if (b.level < a.lv) continue;                          // the pole isn't there yet
+      const w = a.w * bw, h = a.h * bw, x0 = bx + a.x * bw, y0 = by + a.y * bw;
+      const cols = Math.max(3, Math.round(w));
+      const cw = w / cols;
+      const ph = b.id * 0.7 + s * 1.9;
+      for (let i = 0; i < cols; i++) {
+        // the ripple: each column further from the pole lags a little more and
+        // swings a little wider, which is what reads as cloth catching wind
+        const f = a.left ? (cols - 1 - i) / cols : i / cols;
+        const wave = Math.sin(now * 3.1 - f * 2.6 + ph) * h * 0.16 * (0.25 + f);
+        const cx = x0 + i * cw;
+        const cy = y0 + wave;
+        // the fly end tapers, so the banner reads as cloth and not a slab
+        const ch = h * (1 - f * 0.18);
+        g.fillStyle = dye.body; g.fillRect(cx, cy, Math.ceil(cw), ch);
+        g.fillStyle = dye.accent; g.fillRect(cx, cy + ch - Math.max(1, h * 0.16), Math.ceil(cw), Math.max(1, h * 0.16));
+        if (i === 0) { g.fillStyle = dye.accent; g.fillRect(cx, cy, Math.max(1, cw * 0.5), ch); }  // shadowed fold at the pole
+      }
+    }
+  },
+
+  /* ---- HEARTH SMOKE (tests/banners-smoke.mjs) ----
+     A village should look INHABITED. Homes and halls breathe a thin column of
+     smoke that drifts and fades as it rises — three puffs on a slow loop,
+     seeded per building so no two chimneys pulse together. Only finished
+     buildings smoke (a work site has no hearth yet), and a building far gone
+     in flames doesn't bother — its own fire is already the story. */
+  SMOKE_AT: {
+    house:   { x: 21.5 / 32, y: 3 / 32 },     // the chimney pot
+    tc:      { x: 16 / 32, y: 1 / 32 },       // the hall's roof-hole / ridge
+    lodge:   { x: 12 / 32, y: 7 / 32 },       // the smoking rack's fire
+    warcamp: { x: 15.5 / 32, y: 9 / 32 },     // the campfire under the ridge pole
+    trade:   { x: 3 / 16, y: 1 / 16 },        // the trader's brazier
+  },
+  drawHearthSmoke(g, b, bx, by, bw) {
+    const a = this.SMOKE_AT[b.key];
+    if (!a || b.construction > 0) return;
+    if (Bld.burnPhase(b) >= 1) return;                       // it's on fire; that's smoke enough
+    const now = performance.now() / 1000;
+    const ox = bx + a.x * bw, oy = by + a.y * bw;
+    const seed = (b.id * 0.37) % 1;
+    for (let i = 0; i < 3; i++) {
+      const t = ((now * 0.42 + seed + i / 3) % 1);           // 0..1 up the column
+      const rise = t * bw * 0.55;
+      const drift = Math.sin(now * 0.9 + i * 2 + b.id) * bw * 0.09 * t;
+      const sz = Math.max(1, bw * (0.05 + t * 0.055));
+      g.globalAlpha = 0.34 * (1 - t) * (1 - t * 0.3);
+      g.fillStyle = '#cfcac0';
+      g.fillRect(ox + drift - sz / 2, oy - rise - sz, sz, sz);
+      if (t > 0.35) {                                        // the column frays as it climbs
+        g.globalAlpha *= 0.7;
+        g.fillRect(ox + drift * 1.5 + sz * 0.4, oy - rise - sz * 1.6, sz * 0.7, sz * 0.7);
+      }
+    }
+    g.globalAlpha = 1;
   },
 
   drawBurn(g, b, bx, by, bw) {
@@ -1231,6 +1360,8 @@ const R = {
           g.fillStyle = F[1]; g.fillRect(fx2 + (ph ? 1 : -2), fy2 - 5, 1, 2);
         }
       }
+      this.drawBanners(g, b, bx, by, bw);      // cloth flies in the tribe's own dye
+      this.drawHearthSmoke(g, b, bx, by, bw);  // and the hearths breathe
       this.drawBurn(g, b, bx, by, bw);   // fires ride on work sites and finished buildings alike
       if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, bw - 6, 3, b.hp / b.maxhp, '#7dbb5e');
       if (UI.sel && UI.sel.type === 'bld' && UI.sel.id === b.id) {

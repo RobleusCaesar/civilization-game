@@ -61,6 +61,12 @@ const Combat = {
   // unit-level hostility: barbarian bands roll a disposition on spawn
   // (u.hostileTo: 'P' = hunt the player, 'A' = march on the rival, 'ALL' = anyone)
   hostileUnits(u, o) {
+    /* PREDATOR AND PREY (tests/wild-life.mjs): the wilderness is not one happy
+       family. A wolf or a bear hunts deer and wild cattle — the only case
+       where same-owner units are hostile, and deliberately ONE-WAY, since
+       prey never fights back; it bolts (Units.grazeIdle). */
+    if (u.owner === 'W' && o.owner === 'W')
+      return Units.isPassive(o) && !Units.isPassive(u);
     if (u.owner === o.owner) return false;
     if (u.owner === 'R' && o.owner === 'R') return false;
     if (u.owner === 'R')
@@ -209,11 +215,23 @@ const Combat = {
         const v = this.nearestUnit(u.x, u.y, base.aggro, o => Units.isVillager(o) &&
           !(window.Cards && Cards.atPeace(o.owner)));
         if (v) u.tUnit = v.id;
+        // …and with no one of the tribes to trouble, a wolf does what a wolf
+        // does: works the treeline for GAME. It ranges further after deer than
+        // it ever does after people, so the pack is seen hunting long before
+        // it is ever a threat to a village (tests/wild-life.mjs).
+        else {
+          const d = this.nearestUnit(u.x, u.y, base.aggro * 2.5, o => Units.isPassive(o));
+          if (d) u.tUnit = d.id;
+        }
       } else if ((u.kind === 'boar' || u.kind === 'bear') && Units.isWild(u)) {
         const v = this.nearestUnit(u.x, u.y, base.aggro,
           o => (o.owner === 'P' || o.owner === 'A') && this.canEngage(u, o) &&
             !(window.Cards && Cards.atPeace(o.owner)));
         if (v) u.tUnit = v.id;
+        else if (u.kind === 'bear') {                 // a bear takes game too
+          const d = this.nearestUnit(u.x, u.y, base.aggro * 1.8, o => Units.isPassive(o));
+          if (d) u.tUnit = d.id;
+        }
       } else if ((u.kind === 'bear' || u.kind === 'wolf' || u.kind === 'boar') &&
                  (u.owner === 'P' || u.owner === 'A')) {
         // ORIGIN CARDS (Houndmaster): a kept guard-beast patrols its home
@@ -660,7 +678,10 @@ const Combat = {
 
   update(dt) {
     this.scanT -= dt;
-    if (this.scanT <= 0) { this.scanT = 0.4; this.acquire(); }
+    if (this.scanT <= 0) {
+      this.scanT = 0.4; this.acquire();
+      if (window.R && R.noteFights) R.noteFights();   // the birds go up when a fight breaks out
+    }
 
     for (const u of S.units) {
       if (u.repathT > 0) u.repathT -= dt;

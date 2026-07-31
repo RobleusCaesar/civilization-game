@@ -863,6 +863,8 @@ const Bld = {
         if (!S.ashes) S.ashes = [];
         S.ashes.push({ x: b.x, y: b.y, sz: this.size(key), key, lv: b.level, day: S.day });
       }
+      // a building coming down empties the sky above it (tests/wild-life.mjs)
+      if (window.R && R.startle) R.startle(this.cx(b), this.cy(b), 12);
       this.removeToRuin(b);
       if (owner === 'P') {
         S.breachedP = true;   // the line is broken — positive specials may now answer (G.positiveGate)

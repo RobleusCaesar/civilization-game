@@ -744,9 +744,15 @@ const Sprites = {
       }
     }
   }
+  /* Only the POLE is baked. The CLOTH is drawn every frame by render.js
+     (R.drawBanners) so it can ripple in the wind AND wear the tribe's own
+     tunic colour — a purple village flies purple, not the generic blue this
+     sprite set is built in. Anchors live in R.BANNER_AT; if you move a pole
+     here, move its anchor there (tests/banners-smoke.mjs pins that they
+     agree). `fac` is unused now but kept in the signature: every caller
+     passes it, and the rival set is still generated per faction. */
   function banner(p, x, y, fac) {
     p(x, y, 1, 4, AP.wood[2]);
-    p(x + 1, y, 3, 2, fac[2]); p(x + 1, y + 2, 2, 1, fac[1]);
   }
   /* ---- HI-RES building materials on the fine (32-grid) plotter, keyed to tier so
      every building tells the SAME material story: L1 wattle-&-daub with stakes
@@ -900,8 +906,7 @@ const Sprites = {
         // arched glowing windows in the hall
         for (const wx of [7, 22]) { q(wx, 18, 3, 4, AP.ink[0]); q(wx, 18, 3, 1, AP.stone[4]); q(wx + 1, 19, 1, 2, AP.fire[1]); }
         // twin faction banners flying from the towers
-        q(4, 3, 1, 8, AP.wood[2]); q(5, 3, 4, 3, fac[2]); q(5, 6, 3, 1, fac[1]); q(5, 3, 4, 1, fac[3]);
-        q(27, 3, 1, 8, AP.wood[2]); q(23, 3, 4, 3, fac[2]); q(23, 6, 3, 1, fac[1]); q(23, 3, 4, 1, fac[3]);
+        q(4, 3, 1, 8, AP.wood[2]); q(27, 3, 1, 8, AP.wood[2]);   // poles only — cloth in render.js
       }
     },
     // FARM — a tilled field of furrowed crop rows (green shoots ripening to gold at
@@ -1069,8 +1074,7 @@ const Sprites = {
       q(14, 21, 4, 7, AP.ink[0]);                           // dark doorway
       q(13, 21, 1, 7, cv[3]); q(18, 21, 1, 7, cv[0]);       // pinned-back flaps
       // war banner on a tall pole beside the tent
-      q(25, 8, 1, 20, AP.wood[2]); q(25, 6, 1, 2, AP.stone[4]);
-      q(21, 9, 4, 5, fac[2]); q(21, 9, 4, 1, fac[1]); q(21, 13, 3, 1, fac[0]);
+      q(25, 8, 1, 20, AP.wood[2]); q(25, 6, 1, 2, AP.stone[4]);   // pole only — cloth in render.js
       // a stand of planted spears + a round shield out front (the staging ground)
       for (const sx of [6, 8]) { q(sx, 19, 1, 9, AP.wood[2]); q(sx, 18, 1, 1, AP.stone[4]); }
       ART.shadedCircle(q, 8, 26, 3, AP.hide, 2); q(8, 26, 1, 1, fac[1]);
@@ -1084,8 +1088,7 @@ const Sprites = {
       const q = p.hi, tier = lv;
       ART.dropShadow(p, 8, 14, 15);
       // tall faction war-banner on a pole (left) — the standard, at every tier
-      q(3, 1, 1, 24, AP.wood[1]); q(3, 0, 1, 1, AP.gold[2]);
-      q(4, 2, 6, 7, fac[2]); q(4, 2, 6, 1, fac[3]); q(4, 8, 5, 1, fac[1]); q(4, 5, 5, 1, fac[0]); q(4, 2, 1, 7, fac[3]);
+      q(3, 1, 1, 24, AP.wood[1]); q(3, 0, 1, 1, AP.gold[2]);   // pole only — the cloth flies in render.js
       // the hall — broad and sturdy, taller than a dwelling
       bWall(q, 7, 15, 20, 11, tier, 13);
       bRoof(q, 5, 6, 24, 9, tier, 14);
@@ -2842,6 +2845,7 @@ const Sprites = {
     Sprites.villagerF[name] = villagerSheet({ body: t.body, accent: t.accent, pants: '#6e5024', hair: PAL.hair }, true);
   }
   Sprites.villagerTunics = Object.keys(TUNICS);            // exposed for the tunic picker
+  Sprites.tunicCol = TUNICS;                               // render.js flies banners in the village's own dye
   Sprites.unit.villager = Sprites.villager.blue;           // default + fallback sheet
 
   // ---- MILITARY units. The silhouette + tools identify the unit TYPE; the

@@ -75,6 +75,7 @@ node tests/wall-tower-bond.mjs # L2 forts are half stone/half timber; an in-line
 node tests/buildings-block.mjs # every building is solid ground except the four worker plots
 node tests/ore-finite.mjs      # felled woods and spent soil grow back; a quarried seam never does
 node tests/fishery.mjs         # shore shoals are half-stocked, deep water three quarters; both return in 120 days
+node tests/wild-life.mjs       # wolves stalk deer, herds bolt as one, birds scatter; banners fly in the tribe's dye
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -476,6 +477,35 @@ follows). Tower upgrade art DIVERGES on purpose — that's what the separate
 labels are for: `towerUp2/3` climb in coursed masonry with dressed quoins
 (the stone tiers an upgrade builds toward) while `towerBuild2/3` climb in
 wattle-and-daub matching the level-1 tower; `towerUp1` aliases `towerBuild1`.
+
+**A living world** (`tests/wild-life.mjs`): four things that make the map look
+inhabited, plus the panel line that makes a unit's work legible.
+**Predator and prey** — `Combat.hostileUnits` lets a wolf or bear hunt deer
+and wild cattle: the ONLY case where two same-owner (`'W'`) units are
+hostile, and deliberately ONE-WAY, since prey never fights back. In
+`Combat.acquire` a wolf takes people first and, with none in reach, ranges
+`aggro × 2.5` after game — so a pack is seen working the treeline long before
+it threatens a village. **The herd bolts together** (`Units.grazeIdle`):
+grazers drift toward the herd's centre (`HERD_R`) and PANIC SPREADS — the
+animal that actually sees the threat spooks every herd-mate in range, so the
+group scatters as one. Beasts and armed strangers frighten them;
+villagers don't, or a herd would never settle near a town. **The sky reacts**
+(`R.startle`): a fight breaking out (`R.noteFights` spots a unit gaining a
+target it didn't have — one scatter per outbreak, not per blow) or a building
+coming down throws flocks up and away and sends critters bolting for cover.
+`R._fighting` is render-side only, so it never reaches a save. **Banners fly
+and hearths smoke**: only the POLES are baked into building sprites — the
+cloth is drawn every frame by `R.drawBanners` from `R.BANNER_AT` anchors, in
+the tribe's own tunic dye (`Sprites.tunicCol`), so a purple village flies
+purple rather than the blue the sprite set is built in; `R.drawHearthSmoke`
+breathes a drifting column from homes and halls (`R.SMOKE_AT`). Neither
+shows over a work site, and a building already ablaze skips the hearth smoke.
+**The live work line** (`Units.workReport` → `UI.workLine`, the `#pWork`
+element patched in place by `refreshPanel`): what a unit is doing and what it
+nets per day, computed from the SAME constants the gather/production code
+applies — mode multiplier, origin cards, the station's terrain bonus, the
+level-3 hall boost — so an upgraded Lumber Camp visibly pays more. A unit
+still walking to its job reports no income, because it isn't earning any.
 
 **Ore is finite** (`tests/ore-finite.mjs`): `CFG.REGROW_TO` is the single
 source of truth for what worked-out land turns back into — `STUMPS→FOREST`
