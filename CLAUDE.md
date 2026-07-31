@@ -619,6 +619,39 @@ DRAWN; whether anyone may walk there is `Bld.solid` (**Buildings are solid**,
 below), and the two now agree — a bonded tower really does seal the line.
 Keep them independent rules: an off-line tower blocks its own tile without
 ever drawing a stub.
+**The gatehouse** (same test): a gate is a castle's face — twin flanking drum
+towers thicker than the curtain, a paved passage between them, the portcullis
+raised in its grooves under the arch, iron-strapped oak doors hung in the
+wall's thickness, machicolated crenels, arrow loops, and a standard flying
+from each tower at L3 (`R.BANNER_AT.gate` / `.gateV`, cloth in the tribe's
+dye; move a pole in `drawGate` and you must move its anchor). ONE plan serves
+both axes: `drawGate(p, lv, vert)` transposes `(x, y) -> (y, x)`, a reflection
+about the main diagonal, so the top-left light source lands on top-left either
+way and neither orientation is the poor relation — the old north-south gate
+was a separate, far plainer drawing with no door at all. It is drawn at high
+res like every other building (only `wall` is left in `LORES_BLD`, whose
+16-mask atlas must tile seamlessly), and its curtain band sits at fine rows
+10..21, exactly where `drawWallMask` puts its arms (5..10 of 16) — change one
+and you must change the other. The last column each side is left as CURTAIN
+(the neck), or the tile edge would present a 20-row tower face to a 12-row
+wall arm and the join would read as a bulge rather than a gate.
+**Which way a gate faces** (`R.gateVerticalAt`, same test): the way its LINE
+runs — and the line is made of TOWERS as well as walls. The old wall-only test
+read a tower/gate/tower gatehouse as neither axis and drew its east-west self
+inside a north-south curtain: the "I tore down a wall, built a second gate,
+and it never went back" bug. Bonded towers now count and the axes are SCORED
+rather than compared as booleans, so one wall to the east cannot outvote two
+towers north and south. Terrain deliberately does NOT vote: a curtain running
+east-west to a lake shore has water north and south of its gate, and counting
+it would face the gate exactly the wrong way.
+**The owner pip** (`R.draw`): every building wears a 4px owner tag at its
+top-left — but a fortification's tile is bare ground there (the curtain runs
+down the MIDDLE), so the pip floated out on the grass beside the wall like a
+UI glitch, one per section the whole length of the line. Walls and gates share
+one faction-less atlas, so it cannot simply be dropped either — it is their
+only owner cue. It now marks only the RIVAL's stonework, and sits ON it:
+nobody else builds walls, so an unmarked curtain is yours by elimination, and
+your own castle reads clean.
 
 **Burning buildings & ash** (`tests/burn-down.mjs`): a damaged building shows
 its destruction in THIRDS (`Bld.burnPhase`, keyed to hp — so the fire burns

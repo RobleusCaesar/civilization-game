@@ -695,19 +695,151 @@ const Sprites = {
     }
     if (c.gold) p(5, 4, 6, 1, PAL.gold);
   }
-  // north-south gate: no visible door from this angle — a thicker wall span
-  // flanked by two small towers marks the passage
-  function drawGateVertical(p, lv) {
-    const c = wallPal(lv);
-    p(5, 0, 6, 16, c.base);                     // wall run
-    p(4, 5, 8, 6, c.base);                      // thickened waist
-    p(4, 5, 8, 1, c.top);
-    // twin towers flanking the passage
-    p(2, 0, 12, 4, c.base); p(2, 0, 12, 1, c.top);
-    p(2, 12, 12, 4, c.base); p(2, 12, 12, 1, c.top);
-    p(3, 2, 2, 1, c.seam); p(11, 14, 2, 1, c.seam);
-    if (c.stick) { p(3, 1, 1, 3, c.stick); p(12, 1, 1, 3, c.stick); p(3, 13, 1, 3, c.stick); p(12, 13, 1, 3, c.stick); }
-    if (c.gold) { p(2, 0, 12, 1, PAL.gold); p(2, 12, 12, 1, PAL.gold); }
+  /* ---- THE GATEHOUSE (tests/wall-tower-bond.mjs) ----
+     A castle's gate is its face: twin flanking towers thicker than the curtain
+     they interrupt, a vaulted passage between them, the portcullis dropped in
+     its grooves ahead of iron-studded oak doors, machicolation corbels
+     overhanging both approaches, and arrow loops covering the road.
+
+     ONE design serves BOTH orientations. The vertical gate is the same plan
+     TRANSPOSED — (x, y) -> (y, x) — which is a reflection about the main
+     diagonal, so the art's top-left light source lands on top-left either way
+     and neither orientation is the poor relation of the other. (The old
+     vertical gate was a separate, far plainer drawing: no door, no arch, a
+     grey waist between two bars.)
+
+     It is drawn on the FINE 32-grid at high res like every other building —
+     the curtain it joins is still the 16-grid wall atlas, so the gatehouse's
+     wall band sits at rows 10..21, exactly where drawWallMask puts its arms
+     (5..10 of 16). Change one and you must change the other. */
+  function drawGate(p, lv, vert) {
+    // the plotter: straight through for an east-west gate, transposed for a
+    // north-south one. w/h swap with x/y — a wall band stays a wall band.
+    const hi = p.hi, HALF = 2;         // tileB's fine cell, in canvas px
+    const q = vert ? (x, y, w, h, c) => hi(y, x, h || 1, w || 1, c) : hi;
+    // a true eraser (a transparent fill only paints nothing) — used to take the
+    // corners off the drum towers so they don't read as packing crates
+    const clr = vert
+      ? (x, y, w, h) => p.g.clearRect(y * HALF, x * HALF, (h || 1) * HALF, (w || 1) * HALF)
+      : (x, y, w, h) => p.g.clearRect(x * HALF, y * HALF, (w || 1) * HALF, (h || 1) * HALF);
+    const ST = AP.stone, WD = AP.wood, TH = AP.thatch, IN = AP.ink[0];
+    const T1 = lv === 1, T3 = lv >= 3;
+    // tier dress: 1 timber palisade gate · 2 stone below, timber above · 3 dressed stone, gold crest
+    const lit = T1 ? WD[3] : T3 ? ST[4] : ST[3];
+    const mid = T1 ? WD[2] : T3 ? ST[3] : ST[2];
+    const dim = T1 ? WD[1] : ST[1], shade = T1 ? WD[0] : ST[0];
+    const W0 = 10, W1 = 21;            // the curtain band this gate stands in (drawWallMask arms 5..10/16)
+    const P0 = 11, P1 = 20;            // the passage between the towers
+    const TA = T1 ? 7 : 6, TB = T1 ? 24 : 25;    // how far the gatehouse projects on each face
+
+    // COURSED ASHLAR — real dressed masonry (staggered blocks under a mortar
+    // line) rather than a field of noise: at this size random speckle reads as
+    // dirt, courses read as a wall somebody BUILT
+    const ashlar = (x, y, w, h, seed) => {
+      const rnd = ART.rng(seed);
+      for (let r = 0; r < h; r++) {
+        q(x, y + r, w, 1, r % 3 === 2 ? ST[1] : ST[2]);                     // course + its mortar line
+        if (r % 3 === 2) continue;
+        for (let bx = x + ((r >> 1) & 1 ? 0 : 2); bx < x + w - 1; bx += 4)  // blocks, staggered course to course
+          q(bx, y + r, 3, 1, rnd() < 0.5 ? ST[3] : ST[2]);
+      }
+    };
+
+    /* THE NECK: the curtain runs INTO the gatehouse. Without these the tile's
+       edge presented a 20-row tower face to a 12-row wall arm, and the join
+       read as a bulge in the line rather than a gate in it. */
+    for (const x of [0, 30]) {
+      q(x, W0, 2, W1 - W0 + 1, mid);
+      q(x, W0, 2, 1, lit); q(x, W1, 2, 1, shade);
+      if (lv === 2) { ART.woodPlankTexture(q, x, 14, 2, 6, x + 3); q(x, 14, 2, 1, WD[3]); q(x, 19, 2, 1, WD[1]); }
+    }
+
+    // ---- the twin drum towers flanking the passage ----
+    const tower = (tx) => {
+      const tw = 9;
+      if (T1) {                                        // a stockade of upright logs
+        for (let x = tx; x < tx + tw; x += 2) { q(x, TA, 2, TB - TA + 1, WD[2]); q(x + 1, TA, 1, TB - TA + 1, WD[1]); }
+        for (const y of [TA + 4, TB - 4]) {            // withy bands lashed round the stockade
+          q(tx, y, tw, 1, WD[1]); q(tx, y - 1, tw, 1, TH[0]);
+        }
+      } else {
+        ashlar(tx, TA, tw, TB - TA + 1, tx * 5 + lv);
+        if (T3) for (let y = TA + 2; y < TB - 2; y += 3) {                  // dressed quoins up the corners
+          q(tx, y, 2, 2, ST[3]); q(tx + tw - 2, y, 2, 2, ST[1]);
+        }
+      }
+      q(tx, TA, tw, 1, lit);                           // lit crown
+      q(tx, TB, tw, 1, shade);                         // shaded foot
+      // the corners taken off, so the mass reads as a drum rather than a crate
+      for (const [cx, cy] of [[tx, TA], [tx + tw - 1, TA], [tx, TB], [tx + tw - 1, TB]]) clr(cx, cy, 1, 1);
+      // crenellations standing proud of the body on both approaches — at L2
+      // they are the TIMBER HOARDING a stone castle rigs over its parapet,
+      // which is the tier's whole story and keeps the gate as half-and-half as
+      // the curtain it stands in
+      const cr = lv === 2 ? WD[2] : mid, crL = lv === 2 ? WD[3] : lit, crD = lv === 2 ? WD[1] : dim;
+      for (let x = tx + 1; x < tx + tw - 1; x += 3) {
+        q(x, TA - 2, 2, 2, cr); q(x, TA - 2, 2, 1, crL);
+        q(x, TB + 1, 2, 2, crD);
+      }
+      q(tx + 4, TA + 3, 1, 2, IN); q(tx + 4, TB - 4, 1, 2, IN);             // arrow loops covering the road
+      if (T3) q(tx, TA, tw, 1, AP.gold[2]);            // the crest along the crown
+    };
+    tower(2); tower(21);
+    /* THE STANDARDS. Poles are drawn with the UNTRANSPOSED plotter, because a
+       flagpole stands up out of the world whichever way the wall runs — only
+       the cloth is orientation-aware, and that flies per frame in the tribe's
+       own dye from R.BANNER_AT (keys `gate` and `gateV`). Move a pole and you
+       must move its anchor. */
+    if (T3) for (const [px, py] of vert ? [[8, 0], [8, 17]] : [[6, 1], [25, 1]]) {
+      hi(px, py, 1, 5, WD[1]); hi(px, py, 1, 1, AP.gold[2]);
+    }
+
+    /* LEVEL 2 — STONE BELOW, TIMBER ABOVE: the curtain's own wall-walk carries
+       across the gatehouse on planking down the middle third, stone parapet
+       showing on both flanks — the same half-and-half story drawWallMask tells
+       at this tier, so wall and gate read as one work. */
+    // rows 14..19 — the SAME six the L2 curtain planks (drawWallMask decks 7..9
+    // of its 16-grid), so the walk runs on unbroken from wall to gatehouse
+    if (lv === 2) for (const tx of [2, 21]) {
+      ART.woodPlankTexture(q, tx, 14, 9, 6, tx + 7);
+      q(tx, 14, 9, 1, WD[3]); q(tx, 19, 9, 1, WD[1]);
+      for (let x = tx + 1; x < tx + 9; x += 3) q(x, 16, 1, 1, WD[1]);   // plank seams
+    }
+
+    /* ---- the passage: arch, the portcullis's teeth, and THE DOORS ----
+       The doors are the hero of the composition and get the room to say so:
+       stacking a full portcullis in FRONT of them turned the middle of the tile
+       into grey mush at map size. The portcullis instead hangs RAISED under the
+       arch head — teeth showing, exactly as it reads walking under a real one —
+       and the oak is left to fill the gateway. */
+    const pave = T1 ? AP.soil : ST;
+    q(P0, TA, P1 - P0 + 1, TB - TA + 1, pave[T1 ? 0 : 1]);
+    for (let y = TA + 4; y < TB - 3; y += 2)             // cobble courses in the mouth
+      for (let x = P0 + (y & 1); x <= P1 - 2; x += 3) q(x, y, 2, 1, pave[0]);
+    const mouth = (y, inward) => {
+      q(P0, y, P1 - P0 + 1, 2, mid);                                   // the voussoir ring
+      q(P0, y + (inward > 0 ? 0 : 1), P1 - P0 + 1, 1, lit);            // lit on the light's side
+      // the portcullis, raised in its grooves: teeth under the arch head
+      const t = y + inward * 2;
+      q(P0, t, P1 - P0 + 1, 1, T1 ? WD[1] : ST[1]);                    // the beam it hangs from
+      for (let x = P0 + 1; x <= P1 - 1; x += 2) q(x, t + inward, 1, 1, T1 ? WD[3] : ST[4]);
+    };
+    mouth(TA, 1); mouth(TB - 1, -1);
+    // THE DOORS — two oak leaves hung in the thickness of the wall, iron-bound
+    const d0 = 12, dh = 10;
+    ART.woodPlankTexture(q, P0, d0, P1 - P0 + 1, dh, 21);
+    q(P0, d0, P1 - P0 + 1, 1, WD[3]);                    // lit head
+    q(P0, d0 + dh - 1, P1 - P0 + 1, 1, WD[0]);           // and the shadow it throws
+    q(P0 - 1, d0 - 1, 1, dh + 2, dim); q(P1 + 1, d0 - 1, 1, dh + 2, dim);   // the jambs they hang on
+    q(15, d0, 1, dh, WD[0]); q(16, d0, 1, dh, IN);       // where the two leaves meet
+    const iron = T1 ? WD[0] : ST[1];
+    for (const y of [d0 + 1, d0 + dh - 2]) {             // iron strap hinges, right across each leaf
+      q(P0, y, 5, 1, iron); q(P1 - 4, y, 5, 1, iron);
+      q(P0, y, 1, 1, ST[3]); q(P1, y, 1, 1, ST[3]);      // the pintles they turn on
+    }
+    for (const y of [d0 + 4, d0 + 6])                    // rows of studs down the boards
+      for (let x = P0 + 1; x <= P1 - 1; x += 3) if (x < 15 || x > 16) q(x, y, 1, 1, T1 ? WD[3] : ST[4]);
+    q(14, d0 + 5, 1, 1, ST[2]); q(17, d0 + 5, 1, 1, ST[2]);            // ring handles
   }
   function roofStrips(p, x, y, w, rows, colA, colB) {
     for (let i = 0; i < rows; i++) p(x + i, y + i, w - i * 2, 1, i % 2 ? colB : colA);
@@ -1281,27 +1413,17 @@ const Sprites = {
       if (d.banner) banner(p, 0, 0, fac);
     },
     wall(p, lv) { drawWallMask(p, lv, 2 | 8); },   // menu/panel icon: an east-west run
-    gate(p, lv) {
-      const c = wallPal(lv);
-      p(0, 5, 16, 9, c.base);
-      p(0, 5, 16, 1, c.top);
-      p(0, 2, 4, 12, c.base); p(0, 2, 4, 1, c.top);   // twin towers
-      p(12, 2, 4, 12, c.base); p(12, 2, 4, 1, c.top);
-      p(5, 7, 6, 7, PAL.dark);
-      p(5, 8, 3, 6, PAL.trunk); p(8, 8, 3, 6, PAL.woodD);
-      p(7, 10, 1, 1, PAL.dark);
-      p(1, 6, 2, 1, c.seam); p(13, 10, 2, 1, c.seam);
-      if (c.stick) { p(1, 3, 1, 4, c.stick); p(14, 3, 1, 4, c.stick); }
-      if (c.gold) { p(0, 2, 4, 1, PAL.gold); p(12, 2, 4, 1, PAL.gold); }
-    },
+    gate(p, lv) { drawGate(p, lv, false); },       // the east-west gatehouse (and the panel icon)
   };
   // build the player (blue) set and a rival (red) set; full-tile and
   // auto-tiling sprites skip the outline pass so they keep tiling seamlessly
   const NO_OUTLINE = new Set(['farm', 'quarry', 'wall', 'gate']);
   Sprites.buildingA = {};
-  // walls & gates stay full-tile (32px) so they auto-tile seamlessly; every
-  // other building is drawn at HIGH RES (64px) with a proportional 2px outline
-  const LORES_BLD = new Set(['wall', 'gate']);
+  // WALLS stay full-tile (32px) so the 16-mask atlas auto-tiles seamlessly;
+  // every other building — the GATEHOUSE included, so it carries the same
+  // detail as the towers it stands between — is drawn at HIGH RES (64px), with
+  // a proportional 2px outline for everything not in NO_OUTLINE
+  const LORES_BLD = new Set(['wall']);
   for (const key of Object.keys(B_DRAW)) {
     const hi = !LORES_BLD.has(key);
     const build = (fac) => [1, 2, 3].map(lv => {
@@ -1314,8 +1436,9 @@ const Sprites = {
   // auto-tiling atlases: wallMask[level-1][mask 0..15], gateMask[level-1][0=horizontal,1=vertical]
   Sprites.wallMask = [1, 2, 3].map(lv =>
     Array.from({ length: 16 }, (_, m) => tile(p => drawWallMask(p, lv, m))));
+  // [horizontal, vertical] — the SAME gatehouse plan, transposed (see drawGate)
   Sprites.gateMask = [0, 1, 2].map(li =>
-    [Sprites.building.gate[li], tile(p => drawGateVertical(p, li + 1))]);
+    [Sprites.building.gate[li], tileB(p => drawGate(p, li + 1, true))]);
 
   // a proper work-site: a lashed timber scaffold over a dug foundation with a
   // half-laid stone footing, stacked materials, and a leaning ladder. Drawn at

@@ -12,6 +12,11 @@
       used to be plain stone (a finished castle two tiers early) and the
       level-2 tower nearly all timber (barely a change from L1).
 
+   1b. THE GATEHOUSE. A gate faces the way its LINE runs — and the line is made
+      of towers as well as walls, which is what a player's tower/gate/tower
+      gatehouse is. Both orientations are the same plan (drawGate transposes
+      it), so neither is the poor relation; terrain never votes on the axis.
+
    2. THE BOND. A tower raised IN a wall line joins it — corners, T-junctions
       and mid-run alike — so the curtain reads unbroken like a real castle's
       mural towers. A tower merely standing BEHIND or IN FRONT of a line must
@@ -28,8 +33,9 @@
       — and this file pins both so neither silently drifts from the other.
 
    Run this after touching any of:
-     sprites.js — wallPal / drawWallMask / the tower draw
-     render.js — wallMaskAt / towerLinkMask / drawTowerBond / the building draw
+     sprites.js — wallPal / drawWallMask / drawGate / the tower draw
+     render.js — wallMaskAt / towerLinkMask / drawTowerBond / gateVerticalAt /
+                 BANNER_AT / the building draw
 
      node tests/wall-tower-bond.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
@@ -80,6 +86,65 @@ const out = await p.evaluate(() => {
     // every tier is a visible step, in both families
     ck('everyTierStepsInMaterial',
       w1.stone < w2.stone && w2.stone < w3.stone && t1.stone < t2.stone && t2.stone < t3.stone, '');
+  }
+
+  // ---- 1b. THE GATEHOUSE: it faces the way its line runs, both ways look
+  //          built, and it steps through the same materials ----
+  {
+    const g1 = mix(Sprites.gateMask[0][0]), g2 = mix(Sprites.gateMask[1][0]), g3 = mix(Sprites.gateMask[2][0]);
+    ck('gateL1StaysTimber', g1.wood > 0.6 && g1.stone < 0.2, pct(g1));
+    ck('gateL2IsHalfAndHalf', g2.wood > 0.25 && g2.wood < 0.7 && g2.stone > 0.3, pct(g2));
+    ck('gateL3StaysStone', g3.stone > 0.7 && g3.wood < 0.3, pct(g3));
+    ck('gateStepsInMaterialToo', g1.stone < g2.stone && g2.stone < g3.stone, '');
+    // NEITHER ORIENTATION IS THE POOR RELATION: the north-south gate used to be
+    // a plain grey waist with no door at all. Both are now the same plan, so
+    // they carry the same weight of art — and they are not the same image.
+    for (let L = 0; L < 3; L++) {
+      const h = Sprites.gateMask[L][0], v = Sprites.gateMask[L][1];
+      const mh = mix(h), mv = mix(v);
+      ck('bothGatesAreBuilt' + (L + 1),
+        h.toDataURL() !== v.toDataURL() && Math.abs(mh.wood - mv.wood) < 0.12 && Math.abs(mh.stone - mv.stone) < 0.12,
+        'L' + (L + 1) + ' east-west ' + pct(mh) + ' · north-south ' + pct(mv));
+    }
+    // and it tells the SAME half-and-half story as the curtain it stands in
+    ck('gateAndWallAgreeAtL2', Math.abs(g2.wood - mix(Sprites.wallMask[1][10]).wood) < 0.25,
+      'gate ' + pct(g2) + ' vs wall ' + pct(mix(Sprites.wallMask[1][10])));
+    ck('theGatehouseFliesAStandardEitherWay',
+      Array.isArray(R.BANNER_AT.gate) && Array.isArray(R.BANNER_AT.gateV) &&
+      R.BANNER_AT.gate.length === 2 && R.BANNER_AT.gateV.length === 2, 'an anchor per flanking tower, per axis');
+  }
+
+  // ---- 1c. which way a gate faces ----
+  {
+    G.newGame('gate1', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.res = { food: 99999, wood: 99999, stone: 99999, gold: 99999 };
+    S.wallLevel = 2;
+    const tc = Bld.tcOf('P'); tc.x = 2; tc.y = 2;
+    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) {
+      const i = MapGen.idx(x, y);
+      S.map.terrain[i] = T.GRASS; S.map.seenTerrain[i] = T.GRASS; S.map.explored[i] = 1;
+    }
+    S.buildings = S.buildings.filter(z => z.key === 'tc'); Bld._block = null;
+    const put = (key, x, y) => { const bb = Bld.place('P', key, x, y, { free: true }); Bld.finish(bb); return bb; };
+    // a gate in a NORTH-SOUTH curtain, flanked by two towers — the player's own
+    // gatehouse, and the shape that used to draw its east-west self sideways
+    put('wall', 20, 14); put('tower', 20, 15); put('gate', 20, 16); put('tower', 20, 17); put('wall', 20, 18);
+    ck('gateFacesItsLineThroughTowers', R.gateVerticalAt(20, 16) === true, 'north-south');
+    // …and the same run made of plain wall
+    put('wall', 26, 14); put('wall', 26, 15); put('gate', 26, 16); put('wall', 26, 17);
+    ck('gateFacesItsLineThroughWalls', R.gateVerticalAt(26, 16) === true, 'north-south');
+    // an EAST-WEST run reads the other way
+    put('wall', 30, 20); put('tower', 31, 20); put('gate', 32, 20); put('tower', 33, 20); put('wall', 34, 20);
+    ck('anEastWestGateFacesEastWest', R.gateVerticalAt(32, 20) === false, 'east-west');
+    // one wall to the east must not outvote two towers north and south
+    put('wall', 20, 15 - 1); put('wall', 21, 16);
+    ck('oneStrayWallDoesNotSpinTheGate', R.gateVerticalAt(20, 16) === true, 'still north-south');
+    // TERRAIN NEVER VOTES: a curtain running east-west to a lake shore has water
+    // north and south of its gate — counting it would face the gate exactly wrong
+    put('wall', 39, 24); put('gate', 40, 24); put('wall', 41, 24);
+    for (const [wx, wy] of [[40, 23], [40, 25]]) S.map.terrain[MapGen.idx(wx, wy)] = T.WATER;
+    Bld._block = null;
+    ck('waterDoesNotTurnAGate', R.gateVerticalAt(40, 24) === false, 'the walls decide, not the lake');
   }
 
   // ---- 2. the bond rule ----

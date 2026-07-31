@@ -778,10 +778,25 @@ const R = {
     const fam = Sprites.wallMask[Math.min(lk.level, Sprites.wallMask.length) - 1];
     g.drawImage(fam[lk.mask], bx, by, bw, bw);
   },
+  /* Which way does this gate face? It faces the way its LINE runs — and the
+     line is made of more than walls. A gate flanked by two towers (the classic
+     gatehouse the player builds) read as neither axis under the old wall-only
+     test, so it drew its east-west self inside a north-south curtain: the
+     "tore down a wall, built a second gate, it never went back" bug. Towers
+     that have bonded into the line now count, and the axes are SCORED rather
+     than compared as booleans, so one wall to the east no longer cancels two
+     towers north and south. Terrain deliberately does NOT count: a wall
+     running east-west to a lake shore has water north and south of its gate,
+     and counting it would spin the gate exactly the wrong way. */
   gateVerticalAt(x, y) {
-    const conn = (xx, yy) => MapGen.inB(xx, yy) && Bld.fortAt(xx, yy);
-    const ns = conn(x, y - 1) || conn(x, y + 1), ew = conn(x + 1, y) || conn(x - 1, y);
-    return ns && !ew;
+    const score = (xx, yy) => {
+      if (!MapGen.inB(xx, yy)) return 0;
+      if (Bld.fortAt(xx, yy)) return 2;                    // wall or gate — the line itself
+      const t = Bld.at(xx, yy);
+      return t && t.key === 'tower' && !(t.construction > 0) ? 2 : 0;   // a mural tower stands IN it
+    };
+    const ns = score(x, y - 1) + score(x, y + 1), ew = score(x - 1, y) + score(x + 1, y);
+    return ns > ew;
   },
   /* `lv` overrides which LEVEL's art to draw. Defaults to what the building
      is today — but a work site nearing completion must show the level it is
@@ -972,9 +987,17 @@ const R = {
     siege:    [{ x: 3 / 32, y: 4 / 32, w: 3 / 32, h: 3 / 32, lv: 3 }],
     tc:       [{ x: 5 / 32, y: 3 / 32, w: 4 / 32, h: 4 / 32, lv: 3 },
                { x: 23 / 32, y: 3 / 32, w: 4 / 32, h: 4 / 32, lv: 3, left: true }],
+    // the gatehouse flies a standard from each flanking tower — and its poles
+    // move with the gate's ORIENTATION, so it keeps a set of anchors per axis
+    gate:     [{ x: 7 / 32, y: 1 / 32, w: 4 / 32, h: 4 / 32, lv: 3 },
+               { x: 22 / 32, y: 1 / 32, w: 4 / 32, h: 4 / 32, lv: 3, left: true }],
+    gateV:    [{ x: 9 / 32, y: 0, w: 4 / 32, h: 4 / 32, lv: 3 },
+               { x: 9 / 32, y: 17 / 32, w: 4 / 32, h: 4 / 32, lv: 3 }],
   },
   drawBanners(g, b, bx, by, bw) {
-    const set = this.BANNER_AT[b.key];
+    const set = b.key === 'gate'
+      ? (this.gateVerticalAt(b.x, b.y) ? this.BANNER_AT.gateV : this.BANNER_AT.gate)
+      : this.BANNER_AT[b.key];
     if (!set || b.construction > 0) return;                 // no colours over a work site
     const dye = (Sprites.tunicCol || {})[G.tunicOf(b.owner)] || { body: '#3f6d99', accent: '#2c4e70' };
     const now = performance.now() / 1000;
@@ -1350,9 +1373,18 @@ const R = {
         // connecting stubs, under its body — one unbroken castle wall
         if (b.key === 'tower') this.drawTowerBond(g, b, bx, by, bw);
         g.drawImage(spr, bx, by, bw, bw);
-        // owner tag
+        /* Owner tag. On a FORTIFICATION the tile's top-left corner is bare
+           ground — the curtain runs down the middle of the tile — so the pip
+           floated out on the grass beside the wall like a UI glitch, one per
+           section the whole length of the line. Walls and gates share one
+           faction-less atlas, so the pip can't simply be dropped either: it is
+           their only owner cue. It now marks only the RIVAL's stonework, and
+           sits ON it. Nobody else builds walls, so an unmarked curtain is
+           yours by elimination — and your own castle reads clean. */
+        const fort = b.key === 'wall' || b.key === 'gate' || b.key === 'tower';
         g.fillStyle = b.owner === 'P' ? '#4a90c2' : '#c2564a';
-        g.fillRect(bx + 1, by + 1, 4, 4);
+        if (!fort) g.fillRect(bx + 1, by + 1, 4, 4);
+        else if (b.owner !== 'P') g.fillRect(bx + bw / 2 - 1.5, by + bw / 2 - 1.5, 3, 3);
         if (b.key === 'tc' && b.level === 1) {
           // the camp's heart: a small live flame flickering over the baked embers
           const F = ART.PALETTE.fire;
