@@ -753,43 +753,60 @@ const Sprites = {
         q(bx, y + r, 3, 1, rnd() < 0.5 ? ramp[3] : ramp[2]);
     }
   }
-  /* THE FACE — an east-west gatehouse, seen straight on. */
+  /* THE FACE — an east-west gatehouse, seen straight on.
+
+     THE TURRETS STAND IN THE WALL, they do not stand in front of it. The
+     curtain runs the whole width of the tile at its own height, with its own
+     merlons on the same rhythm as the wall atlas beside it; the two turrets
+     rise OUT of that line (and carry down past it to the ground, as a mural
+     tower does); and the gate stretches BETWEEN them, its head level with the
+     curtain's, the archway cut through it. Drawn the other way round — a
+     gatehouse block with turrets of its own, parked on the line — it reads as
+     a separate building shoved up against the wall. */
   function drawGateFace(q, lv) {
-    const d = gateDress(lv), WD = AP.wood, ST = AP.stone, IN = AP.ink[0];
-    const GND = 26;                          // its foot — the same ground line the Watchtower stands on
-    const TL0 = 1, TL1 = 9, TR0 = 22, TR1 = 30;    // the two flanking towers
-    const C0 = 9, C1 = 22;                   // the gate block between them
+    const d = gateDress(lv), WD = AP.wood, IN = AP.ink[0];
+    const GND = 26;                          // the ground line the Watchtower stands on
+    const W0 = 10, W1 = 21;                  // the curtain band (drawWallMask's arms, 5..10 of 16)
+    const TL0 = 1, TL1 = 8, TR0 = 24, TR1 = 31;    // the turrets, standing IN the line
+    const C0 = 8, C1 = 24;                   // the gate, stretching between them
     const A0 = 12, A1 = 19;                  // the archway
+    const uM = d.timber ? WD[2] : d.mid, uL = d.timber ? WD[3] : d.lit;   // L2 = timber upper works
 
-    // the curtain running in from both sides, at wall height
-    for (const x of [0, 30]) { q(x, 10, 2, 12, d.mid); q(x, 10, 2, 1, d.lit); q(x, 21, 2, 1, d.dark); }
-
-    // the gate block: lower than the towers, with the passage cut through it
-    const block = (x0, x1, top) => {
-      const w = x1 - x0;
-      if (d.T1) {                            // upright logs, banded
-        for (let x = x0; x < x1; x += 2) { q(x, top, 2, GND - top, WD[2]); q(x + 1, top, 1, GND - top, WD[1]); }
-        q(x0, top + 3, w, 1, AP.thatch[0]); q(x0, GND - 5, w, 1, AP.thatch[0]);
-      } else ashlar(q, x0, top, w, GND - top, d.body, x0 * 7 + lv);
-      q(x0, top, w, 1, d.lit);               // lit wall head
-      q(x0, GND - 1, w, 1, d.dark);          // and the shadow at its foot
-      /* MACHICOLATIONS and the crenels above them. At L2 the whole upper works
-         are TIMBER — the hoarding a stone castle rigs over its head in war —
-         which is this tier's story everywhere else (stone below, timber above)
-         and keeps the gatehouse as half-and-half as the curtain it stands in. */
-      const uM = d.timber ? WD[2] : d.mid, uL = d.timber ? WD[3] : d.lit;
-      q(x0, top + 2, w, 2, uM); q(x0, top + 2, w, 1, uL);
-      for (let x = x0 + 1; x < x1 - 1; x += 3) q(x, top + 3, 1, 1, IN);
-      for (let x = x0; x < x1 - 1; x += 3) { q(x, top - 2, 2, 3, uM); q(x, top - 2, 2, 1, uL); }
+    // masonry (or upright logs) for any mass of the gatehouse
+    const face = (x0, w, top, bot, seed) => {
+      if (d.T1) {
+        for (let x = x0; x < x0 + w; x += 2) { q(x, top, 2, bot - top, WD[2]); q(x + 1, top, 1, bot - top, WD[1]); }
+        q(x0, top + 3, w, 1, AP.thatch[0]);
+      } else ashlar(q, x0, top, w, bot - top, d.body, seed);
+      q(x0, top, w, 1, d.lit); q(x0, bot - 1, w, 1, d.dark);
+    };
+    // the crenellated head every part of the castle wears
+    const head = (x0, w, top, mach) => {
+      if (mach) {                            // the corbelled gallery, over gate and turret alike
+        q(x0, top + 2, w, 2, uM); q(x0, top + 2, w, 1, uL);
+        for (let x = x0 + 1; x < x0 + w - 1; x += 3) q(x, top + 3, 1, 1, IN);
+      }
+      for (let x = x0; x < x0 + w - 1; x += 3) { q(x, top - 2, 2, 3, uM); q(x, top - 2, 2, 1, uL); }
       if (d.gold) q(x0, top - 3, w, 1, AP.gold[2]);
     };
-    block(C0, C1, 6);
-    block(TL0, TL1, 2); block(TR0, TR1, 2);
-    // arrow loops watching the road
-    for (const x of [TL0 + 4, TR0 + 4]) { q(x, 8, 1, 4, IN); q(x, 14, 1, 4, IN); q(x, 20, 1, 4, IN); }
-    q(C0 + 2, 12, 1, 3, IN); q(C1 - 3, 12, 1, 3, IN);
 
-    // THE ARCHWAY — a round head over the passage, in dressed voussoirs
+    // ---- 1. THE CURTAIN, straight through, at wall height ----
+    face(0, 32, W0, W1 + 1, 5 + lv);
+    for (let x = 2; x < 30; x += 10) { q(x, W0 - 4, 4, 4, d.mid); q(x, W0 - 4, 4, 1, d.lit); }
+
+    // ---- 2. THE GATE, stretching between the turrets ----
+    face(C0, C1 - C0, 6, GND, 71 + lv);
+    head(C0, C1 - C0, 6, true);
+    q(C0 + 2, 12, 1, 3, IN); q(C1 - 3, 12, 1, 3, IN);            // loops over the arch
+
+    // ---- 3. THE TURRETS, rising out of the line and carrying down to the ground ----
+    for (const [x0, x1] of [[TL0, TL1], [TR0, TR1]]) {
+      face(x0, x1 - x0, 2, GND, x0 * 7 + lv);
+      head(x0, x1 - x0, 2, true);
+      q(x0 + 3, 8, 1, 4, IN); q(x0 + 3, 14, 1, 4, IN); q(x0 + 3, 20, 1, 4, IN);   // arrow loops
+    }
+
+    // ---- 4. THE ARCHWAY — a round head over the passage, in dressed voussoirs
     const AT = 16;                                      // where the arch springs
     q(A0, AT + 2, A1 - A0 + 1, GND - AT - 2, IN);       // the dark of the passage
     q(A0 + 1, AT, A1 - A0 - 1, 2, IN); q(A0 + 2, AT - 1, A1 - A0 - 3, 1, IN);
@@ -798,7 +815,7 @@ const Sprites = {
     q(A0 + 1, AT - 1, 1, 1, d.lit); q(A1 - 1, AT - 1, 1, 1, d.lit);
     q(A0 + 2, AT - 2, A1 - A0 - 3, 1, d.lit);           // the crown of the arch
     // THE PORTCULLIS, backlit from the passage the way it always is in the photos
-    q(A0, AT + 3, A1 - A0 + 1, GND - AT - 4, d.T1 ? '#3a2a18' : '#5c3f24');   // torchlight in the passage beyond
+    q(A0, AT + 3, A1 - A0 + 1, GND - AT - 4, d.T1 ? '#3a2a18' : '#5c3f24');   // torchlight beyond
     for (let x = A0; x <= A1; x += 2) q(x, AT + 1, 1, GND - AT - 2, d.iron);
     for (let y = AT + 3; y < GND - 1; y += 3) q(A0, y, A1 - A0 + 1, 1, d.iron);
     for (let x = A0; x <= A1; x += 2) q(x, GND - 2, 1, 2, d.iron);   // the spikes at its foot
@@ -814,7 +831,7 @@ const Sprites = {
         q(x0 + 1, 4, x1 - x0 - 2, 1, WD[3]);
       }
     }
-    if (d.gold) for (const x of [TL0 + 4, TR0 + 4]) { q(x, -1, 1, 5, WD[1]); q(x, -1, 1, 1, AP.gold[2]); }
+    if (d.gold) for (const x of [TL0 + 3, TR0 + 3]) { q(x, -1, 1, 5, WD[1]); q(x, -1, 1, 1, AP.gold[2]); }
   }
   /* THE FLANK — a north-south gatehouse. You are looking along the wall, so the
      archway faces away from you and there is NO DOOR to see; what you see is

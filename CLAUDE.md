@@ -623,9 +623,13 @@ ever drawing a stub.
 terrain from above but BUILDINGS FACE YOU — a tower is an elevation with a door
 at its foot. A fortification obeys the same rule, so a gate has TWO DIFFERENT
 DRAWINGS, not one drawing rotated. Across an **east-west** wall you are looking
-straight at the castle (`drawGateFace`): twin crenellated towers, the
-machicolated gallery, the round arch, the portcullis backlit from the passage
-beyond, a timber threshold — the picture-postcard view. Along a **north-south**
+straight at the castle (`drawGateFace`): the curtain runs the WHOLE WIDTH of
+the tile at its own height with its own merlons, two turrets rise OUT of that
+line (carrying down past it to the ground, as a mural tower does), and the gate
+stretches BETWEEN them — machicolated gallery, round arch, portcullis backlit
+from the passage beyond, timber threshold. Drawn the other way round — a
+gatehouse block carrying turrets of its own, parked on the line — the turrets
+read as standing IN FRONT of the wall instead of being part of it. Along a **north-south**
 wall you see the gatehouse's FLANK (`drawGateSide`): the archway faces east and
 west, AWAY from you, so there is no door to see — the curtain simply swells to
 the width of a tower, crenellated and machicolated like everything else.
