@@ -73,6 +73,7 @@ node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals
 node tests/burn-down.mjs       # damaged buildings burn in thirds; a razed one leaves 5 days of unbuildable ash
 node tests/wall-tower-bond.mjs # L2 forts are half stone/half timber; an in-line tower joins the curtain
 node tests/buildings-block.mjs # every building is solid ground except the four worker plots
+node tests/ore-finite.mjs      # felled woods and spent soil grow back; a quarried seam never does
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -474,6 +475,20 @@ follows). Tower upgrade art DIVERGES on purpose — that's what the separate
 labels are for: `towerUp2/3` climb in coursed masonry with dressed quoins
 (the stone tiers an upgrade builds toward) while `towerBuild2/3` climb in
 wattle-and-daub matching the level-1 tower; `towerUp1` aliases `towerBuild1`.
+
+**Ore is finite** (`tests/ore-finite.mjs`): `CFG.REGROW_TO` is the single
+source of truth for what worked-out land turns back into — `STUMPS→FOREST`
+and `BARREN→FERTILE`, and NOTHING else. Living things recover at a lean
+`REGROW_FRACTION` stock so wood and food can always be ground back; a
+quarried seam (`PEBBLES`) never does, which makes STONE the one genuinely
+finite resource on the map and leaves the late game leaning on the Trading
+Post for it. `G.scheduleRevert` refuses to even put a non-regrowing tile on
+the clock (ruins excepted — rubble fading to grass is cleanup, not
+regrowth), so legacy saves carrying a pending ore entry simply drop it and
+keep the scar. The rule is invisible for 120+ in-game days, so it can only
+be caught by the test, never by playing. (Fish are a separate system: water
+`resAmount` is only ever spent down, so fished-out water does not restock
+today either.)
 
 **Buildings are solid** (`tests/buildings-block.mjs`): a building is ground
 you walk AROUND — for every owner. `Bld.solid(key)` is true for everything

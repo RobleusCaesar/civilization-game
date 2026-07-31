@@ -411,8 +411,13 @@ const G = {
   // by what it is: felled forest / spent orchard take twice as long to come
   // back, quarried stone three times (rock is slowest of all); ruins as base.
   scheduleRevert(idx) {
+    const t = S.map.terrain[idx];
+    // ORE NEVER COMES BACK: a quarried seam (PEBBLES) is not on the regrow
+    // table, so there is nothing to schedule — the scar stays. Ruins are
+    // still scheduled: rubble fades to grass, which is cleanup, not regrowth.
+    if (!CFG.REGROW_TO[t] && t !== T.RUIN) return;
     if (!S.map.decay) S.map.decay = {};
-    const mult = CFG.REGROW_MULT[S.map.terrain[idx]] || 1;
+    const mult = CFG.REGROW_MULT[t] || 1;
     S.map.decay[idx] = S.day + CFG.RUIN_DECAY_DAYS * mult;
   },
 
@@ -496,12 +501,15 @@ const G = {
   dayTick() {
     // victory and defeat come only through Town Centers falling (see Bld.damage)
     S.day++;
-    // worked-out land recovers: stumps, pebbles and spent soil regrow into
-    // their source terrain with a lean restock, so no resource is ever gone
-    // for good — a starved player can always grind back, just slowly.
-    // Ruins simply fade to grass.
+    /* LIVING land recovers: felled forest and spent orchard/berry soil grow
+       back with a lean restock, so a starved player can always grind wood
+       and food back — just slowly. ORE DOES NOT (CFG.REGROW_TO): a quarried
+       seam stays PEBBLES for good, which makes stone the one finite resource
+       on the map. Ruins simply fade to grass. Legacy saves carrying decay
+       entries for old quarried tiles are safe: PEBBLES matches no branch
+       below, so the entry is simply dropped and the scar stays. */
     if (S.map.decay) {
-      const SOURCE = { [T.STUMPS]: T.FOREST, [T.PEBBLES]: T.HILLS, [T.BARREN]: T.FERTILE };
+      const SOURCE = CFG.REGROW_TO;
       const scarceTerr = { wood: T.FOREST, stone: T.HILLS, food: T.FERTILE }[S.map.scarce];
       let regrown = false;
       for (const k in S.map.decay) {
@@ -530,7 +538,7 @@ const G = {
       }
       if (regrown && !S.regrowSeen) {
         S.regrowSeen = true;
-        this.log('🌱 Worked-out land recovers in time — old clearings and pits are worth working again');
+        this.log('🌱 Felled woods and spent soil recover in time — but a quarried seam never does');
       }
     }
     // ash piles cool: after ASH_DAYS the footprint of a burned building is
