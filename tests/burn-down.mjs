@@ -134,7 +134,7 @@ const out = await p.evaluate(() => {
     // fire (the regression: fresh sites burning). Only real damage below
     // what the site was given lights it.
     h.hp = h.maxhp;   // the house is whole again — only the site under test may burn
-    const site = Bld.place('P', 'tower', tc.x - 3, tc.y, { free: true });
+    const site = Bld.place('P', 'barracks', tc.x - 3, tc.y, { free: true });
     G.updateVisibility();
     ck('siteStartsFragile', site.hp === Bld.siteStartHp(site.maxhp) && site.hp < site.maxhp, '');
     const kFresh = keysAt(() => {});
@@ -143,6 +143,29 @@ const out = await p.evaluate(() => {
     const k4 = keysAt(() => { site.hp = Bld.siteStartHp(site.maxhp) * 0.5; });
     ck('damagedSitesBurnToo', anyB(k4), 'flames once a site takes REAL damage');
     Bld.finish(site); site.hp = site.maxhp;
+
+    /* ---- 4b. A TOWER CRUMBLES INSTEAD OF BLAZING. There is nothing in a
+       stone shaft to burn: it gets SMALL fires only, never the big roof
+       blaze, and sheds masonry to the ground (R.drawTowerCrumble). ---- */
+    const tw2 = Bld.place('P', 'tower', tc.x + 3, tc.y + 3, { free: true });
+    Bld.finish(tw2);
+    G.updateVisibility();
+    let crumbles = 0;
+    const origCrumble = R.drawTowerCrumble;
+    R.drawTowerCrumble = function (...a) { if (a[1] && a[1].id === tw2.id) crumbles++; return origCrumble.apply(R, a); };
+    const t0 = keysAt(() => { tw2.hp = tw2.maxhp; });
+    const t1 = keysAt(() => { tw2.hp = tw2.maxhp * 0.9; });
+    const t2 = keysAt(() => { tw2.hp = tw2.maxhp * 0.5; });
+    const t3 = keysAt(() => { tw2.hp = tw2.maxhp * 0.2; });
+    R.drawTowerCrumble = origCrumble;
+    ck('soundTowerDoesNotCrumble', !anyS(t0) && !anyB(t0), '');
+    ck('towerNeverTakesTheBigBlaze',
+      !anyB(t1) && !anyB(t2) && !anyB(t3), 'stone gets no roof fire');
+    ck('towerKeepsSmallFiresAtEveryPhase',
+      anyS(t1) && anyS(t2) && anyS(t3), '');
+    ck('towerShedsMasonry', crumbles === 3,
+      'drawTowerCrumble ran for each damaged phase (' + crumbles + '/3)');
+    tw2.hp = tw2.maxhp;
     h.hp = h.maxhp;
 
     // ---- 5. ash: unique per building, blocks building 5 days, never movement ----

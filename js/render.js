@@ -832,9 +832,87 @@ const R = {
 
   // the animated fires themselves, planted on the roof and at the foot of the
   // building; count and size follow the phase (small → BIG → small)
+  /* ---- A TOWER DOESN'T BLAZE, IT CRUMBLES (tests/burn-down.mjs) ----
+     There is next to nothing in a stone shaft to burn: what a battered tower
+     does is SHED ITSELF. Small fires only (never the big roof blaze a timber
+     hall gets), and the real signal is masonry spalling off the shaft and
+     falling to the ground — each stone on its own falling cycle, seeded from
+     the building id so it is deterministic per tower rather than jittering
+     every frame, dust puffing where it breaks loose and again where it
+     lands, and a rubble heap at the foot that grows with each third. The
+     sprite phases underneath (scorched → part-destroyed) are unchanged. */
+  drawTowerCrumble(g, b, bx, by, bw, ph) {
+    const now = performance.now() / 1000;
+    const ST = ART.PALETTE.stone;
+    const hsh = (n) => ((((b.id * 2654435761 + n * 97531) >>> 0) >>> 5) % 1000) / 1000;
+    const px = bw / 32, ground = 0.86;                  // one sprite-pixel; the foot of the shaft
+    // --- rubble already down, banked around the base ---
+    const piles = [2, 4, 7][ph];
+    for (let i = 0; i < piles; i++) {
+      const rx = bx + (0.22 + hsh(i + 40) * 0.56) * bw;
+      const ry = by + (ground + hsh(i + 60) * 0.05) * bw;
+      const w = (1 + (i % 3)) * px;
+      g.fillStyle = i % 3 ? ST[1] : ST[2];
+      g.fillRect(rx, ry, w * 2, w);
+      g.fillStyle = ST[0];
+      g.fillRect(rx, ry + w, w * 2, Math.max(1, w * 0.6));
+    }
+    /* --- stones breaking loose and falling. They tear off the SHAFT'S EDGE
+       and fall clear of it, alternating sides: a grey stone dropping down a
+       grey wall is invisible, and real spalling sheds away from the face
+       anyway. Each carries a dark edge so it reads against grass and stone
+       alike. --- */
+    const live = [2, 3, 5][ph];
+    for (let i = 0; i < live; i++) {
+      const s = hsh(i);
+      const period = 1.2 + s * 1.1;
+      const t = ((now + s * 9) % period) / period;      // 0..1 through this stone's fall
+      const left = i % 2 === 0;
+      const x0 = left ? 0.30 - hsh(i + 10) * 0.04 : 0.70 + hsh(i + 10) * 0.04;
+      const y0 = 0.26 + hsh(i + 20) * 0.30;             // from the upper shaft
+      const out = (0.04 + hsh(i + 30) * 0.06) * (left ? -1 : 1);   // shed away from the face
+      const fx = bx + (x0 + out * t) * bw;
+      const fy = by + (y0 + (ground - y0) * t * t) * bw;   // gravity, not a drift
+      const w = px * (i % 2 ? 2.4 : 1.6);                // chips of masonry, not boulders
+      if (t < 0.10) {                                    // the spall: dust where it tears away
+        g.globalAlpha = 0.55 * (1 - t / 0.10);
+        g.fillStyle = ST[3];
+        g.fillRect(bx + x0 * bw - px, by + y0 * bw, px * 3, px * 2);
+        g.globalAlpha = 1;
+      }
+      if (t > 0.93) {                                    // it lands: a low puff, no stone
+        g.globalAlpha = 0.5 * (1 - (t - 0.93) / 0.07);
+        g.fillStyle = ST[2];
+        g.fillRect(fx - px * 2, by + ground * bw, px * 5, px);
+        g.globalAlpha = 1;
+        continue;
+      }
+      g.fillStyle = ART.PALETTE.ink[0];                            // dark edge, so it always reads
+      g.fillRect(fx - px * 0.4, fy - px * 0.4, w + px * 0.8, w + px * 0.8);
+      g.fillStyle = ST[1]; g.fillRect(fx, fy, w, w);               // the chip
+      g.fillStyle = ST[3]; g.fillRect(fx, fy, w, w * 0.5);         // its lit top face
+      if (t > 0.3) {                                     // dust trailing the fall
+        g.globalAlpha = 0.28;
+        g.fillStyle = ST[2];
+        g.fillRect(fx + w * 0.25, fy - w * 2, w * 0.5, w * 1.6);
+        g.globalAlpha = 1;
+      }
+    }
+    // --- and a little fire, never a blaze ---
+    const beat = (performance.now() / 130) | 0;
+    const fires = ph === 1 ? [[0.40, 0.42], [0.62, 0.66]] : [[0.52, 0.55]];
+    for (let i = 0; i < fires.length; i++) {
+      const sz = 0.3 * bw;
+      Assets.drawSprite(g, 'misc/flameSmall/' + ((beat + i * 2 + b.id) % 4),
+        bx + fires[i][0] * bw - sz / 2, by + fires[i][1] * bw - sz * 0.9, { w: sz, h: sz });
+    }
+  },
+
   drawBurn(g, b, bx, by, bw) {
     const ph = Bld.burnPhase(b);
     if (ph < 0) return;
+    // stone sheds; timber burns
+    if (b.key === 'tower') return this.drawTowerCrumble(g, b, bx, by, bw, ph);
     const beat = (performance.now() / 130) | 0;
     const hsh = (n) => ((((b.id * 2654435761 + n * 40503) >>> 0) >>> 7) % 1000) / 1000;
     const spots = ph === 1

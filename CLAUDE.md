@@ -568,7 +568,17 @@ bitten out adaptively until the silhouette measurably shrinks, remains
 charred, rafter stubs + embers) with the fires guttering small again. The
 flames are `misc/flameSmall/0..3` and `misc/flameBig/0..3` (four-frame
 animated fire, opaque flame on transparent ground) drawn via
-`Assets.drawSprite` in `R.drawBurn`; work sites burn by the same rule —
+`Assets.drawSprite` in `R.drawBurn`. **A TOWER IS THE EXCEPTION** — stone
+has almost nothing in it to burn, so `R.drawTowerCrumble` takes over for
+`b.key === 'tower'`: SMALL fires only at every phase (never the big roof
+blaze), and the real signal is masonry spalling off the shaft's EDGES and
+falling clear of it (a grey stone dropping down a grey wall is invisible —
+and real spalling sheds away from the face anyway), alternating sides, each
+chip on its own falling cycle seeded from the building id so it is stable
+per tower rather than jittering every frame, with dust where it tears loose
+and where it lands, and a rubble heap at the foot that grows each third.
+The sprite phases underneath (scorched → part-destroyed) are unchanged.
+Work sites burn by the same rule —
 but a site is fragile BY DESIGN (it starts at `Bld.siteStartHp`, the single
 source of truth shared with `place()`), so burn on a site is measured
 against what it was GIVEN, never against finished hp: an untouched
