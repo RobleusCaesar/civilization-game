@@ -619,22 +619,41 @@ DRAWN; whether anyone may walk there is `Bld.solid` (**Buildings are solid**,
 below), and the two now agree — a bonded tower really does seal the line.
 Keep them independent rules: an off-line tower blocks its own tile without
 ever drawing a stub.
-**The gatehouse** (same test): a gate is a castle's face — twin flanking drum
-towers thicker than the curtain, a paved passage between them, the portcullis
-raised in its grooves under the arch, iron-strapped oak doors hung in the
-wall's thickness, machicolated crenels, arrow loops, and a standard flying
-from each tower at L3 (`R.BANNER_AT.gate` / `.gateV`, cloth in the tribe's
-dye; move a pole in `drawGate` and you must move its anchor). ONE plan serves
-both axes: `drawGate(p, lv, vert)` transposes `(x, y) -> (y, x)`, a reflection
-about the main diagonal, so the top-left light source lands on top-left either
-way and neither orientation is the poor relation — the old north-south gate
-was a separate, far plainer drawing with no door at all. It is drawn at high
-res like every other building (only `wall` is left in `LORES_BLD`, whose
-16-mask atlas must tile seamlessly), and its curtain band sits at fine rows
-10..21, exactly where `drawWallMask` puts its arms (5..10 of 16) — change one
-and you must change the other. The last column each side is left as CURTAIN
-(the neck), or the tile edge would present a 20-row tower face to a 12-row
-wall arm and the join would read as a bulge rather than a gate.
+**The gatehouse, and where you are standing** (same test): this game draws
+terrain from above but BUILDINGS FACE YOU — a tower is an elevation with a door
+at its foot. A fortification obeys the same rule, so a gate has TWO DIFFERENT
+DRAWINGS, not one drawing rotated. Across an **east-west** wall you are looking
+straight at the castle (`drawGateFace`): twin crenellated towers, the
+machicolated gallery, the round arch, the portcullis backlit from the passage
+beyond, a timber threshold — the picture-postcard view. Along a **north-south**
+wall you see the gatehouse's FLANK (`drawGateSide`): the archway faces east and
+west, AWAY from you, so there is no door to see — the curtain simply swells to
+the width of a tower, crenellated and machicolated like everything else.
+Transposing one into the other (which this file did for one commit) draws a
+gateway seen from a viewpoint that cannot exist, and reads as a door lying on
+its side. Both stand on the SAME ground line the Watchtower stands on (fine row
+26), or a gate between two towers floats above its own neighbours; both are
+drawn at high res like every other building (only `wall` is left in
+`LORES_BLD`, whose 16-mask atlas must tile seamlessly); and the curtain meets
+them at fine rows 10..21, exactly where `drawWallMask` puts its arms (5..10 of
+16) — change one and you must change the other. At L2 the whole upper works
+(crenels, machicolation gallery, hoarding) are TIMBER, which is what keeps the
+gatehouse as half-and-half as the curtain it stands in. At L3 each tower flies
+a standard in the tribe's dye (`R.BANNER_AT.gate` / `.gateV` — move a pole and
+you must move its anchor).
+**A vertical run is a wall too** (same test, `drawWallMask`): a
+north-south run now carries MERLONS DOWN BOTH FLANKS (and flanking stakes at
+L1). Looking along a wall you see its two parapets with the walk between them;
+without them a vertical run was a plain strip with no castle in it, and every
+tower and gatehouse standing in that line read as a building from a different
+game.
+**The seam** (`R.drawTowerBond`): a tower is an elevation, the curtain north of
+it is drawn flat from above; butted together with nothing between, the wall
+reads as running ONTO the tower's roof ("the top tower is sitting on top of the
+wall"). A shadow line where the walk meets the tower's back reads instead as
+the wall passing BEHIND it. Only the NORTH link needs it — a wall to the south
+is nearer and is drawn over the tower anyway, since the building list is sorted
+by footprint bottom edge.
 **Which way a gate faces** (`R.gateVerticalAt`, same test): the way its LINE
 runs — and the line is made of TOWERS as well as walls. The old wall-only test
 read a tower/gate/tower gatehouse as neither axis and drew its east-west self

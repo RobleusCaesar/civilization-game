@@ -653,11 +653,25 @@ const Sprites = {
       p(6, 6, 1, 5, c.stick); p(8, 6, 1, 5, c.stick); p(10, 7, 1, 4, c.stick);
       if (W || E) { p(2, 11, 1, 1, PAL.sprout); p(13, 11, 1, 1, PAL.sprout); }
       if (N || S) p(4, 9, 1, 1, PAL.sprout);
+      // the palisade's own flanking stakes down a north-south run, so a vertical
+      // line of timber wall reads as a wall from the side too
+      if (N) { p(4, 1, 1, 3, c.stick); p(11, 1, 1, 3, c.stick); }
+      if (S) { p(4, 12, 1, 3, c.stick); p(11, 12, 1, 3, c.stick); }
+      if (N || S) { p(4, 7, 1, 2, c.stick); p(11, 7, 1, 2, c.stick); }
     } else {
-      // crenels along horizontal stone tops
+      // crenels along horizontal stone tops — the wall's FACE, seen from the south
       if (W) p(1, 3, 2, 2, c.base);
       if (E) p(12, 3, 2, 2, c.base);
       if (!N) p(6, 3, 2, 2, c.base);
+      /* …and MERLONS DOWN BOTH FLANKS of a north-south run. Looking along a
+         wall you see its two parapets with the walk between them; without them
+         a vertical run was a plain strip with no castle in it at all, and every
+         tower and gatehouse standing in that line read as a different building
+         from a different game. Every fortification now shows crenellation from
+         every side. */
+      if (N) { p(3, 1, 2, 2, c.base); p(11, 1, 2, 2, c.base); p(3, 1, 2, 1, c.top); p(11, 1, 2, 1, c.top); }
+      if (S) { p(3, 13, 2, 2, c.base); p(11, 13, 2, 2, c.base); p(3, 13, 2, 1, c.top); p(11, 13, 2, 1, c.top); }
+      if (N || S) { p(3, 7, 2, 2, c.base); p(11, 7, 2, 2, c.base); p(3, 7, 2, 1, c.top); p(11, 7, 2, 1, c.top); }
       // masonry seams
       p(7, 8, 2, 1, c.seam);
       if (W) p(1, 8, 3, 1, c.seam);
@@ -696,150 +710,164 @@ const Sprites = {
     if (c.gold) p(5, 4, 6, 1, PAL.gold);
   }
   /* ---- THE GATEHOUSE (tests/wall-tower-bond.mjs) ----
-     A castle's gate is its face: twin flanking towers thicker than the curtain
-     they interrupt, a vaulted passage between them, the portcullis dropped in
-     its grooves ahead of iron-studded oak doors, machicolation corbels
-     overhanging both approaches, and arrow loops covering the road.
+     THE TWO VIEWS ARE NOT THE SAME DRAWING, because you are not standing in the
+     same place. This game draws terrain from above but buildings FACE YOU — a
+     tower is an elevation with a door at its foot, a house shows its walls and
+     roof. A fortification has to obey the same rule:
 
-     ONE design serves BOTH orientations. The vertical gate is the same plan
-     TRANSPOSED — (x, y) -> (y, x) — which is a reflection about the main
-     diagonal, so the art's top-left light source lands on top-left either way
-     and neither orientation is the poor relation of the other. (The old
-     vertical gate was a separate, far plainer drawing: no door, no arch, a
-     grey waist between two bars.)
+       EAST-WEST run  → you are looking straight AT the castle. This is the
+         picture-postcard view: twin crenellated towers, the gate block between
+         them under its machicolations, the round arch, and the portcullis
+         backlit from the passage beyond. Everything a castle is famous for.
 
-     It is drawn on the FINE 32-grid at high res like every other building —
-     the curtain it joins is still the 16-grid wall atlas, so the gatehouse's
-     wall band sits at rows 10..21, exactly where drawWallMask puts its arms
-     (5..10 of 16). Change one and you must change the other. */
+       NORTH-SOUTH run → you are looking along the wall, edge on. YOU CANNOT SEE
+         THE GATE AT ALL — the arch faces east and west, away from you. What you
+         see is the plan: the curtain running past as a skinny strip, swelling
+         to the WIDTH OF THE TOWERS where the gatehouse stands.
+
+     Drawing one and transposing it (as this file did before) produces a gate
+     lying on its side in a north-south wall — a doorway seen from a viewpoint
+     that cannot exist. The two are authored separately and neither is a
+     rotation of the other.
+
+     Both are drawn on the FINE 32-grid at high res like every other building;
+     the curtain they join is still the 16-grid wall atlas, so the wall band
+     sits at rows 10..21, exactly where drawWallMask puts its arms (5..10 of
+     16). Change one and you must change the other. */
+  function gateDress(lv) {
+    const ST = AP.stone, WD = AP.wood;
+    return lv === 1
+      ? { body: WD, lit: WD[3], mid: WD[2], dim: WD[1], dark: WD[0], iron: WD[0], T1: true }
+      : lv === 2
+        ? { body: ST, lit: ST[3], mid: ST[2], dim: ST[1], dark: ST[0], iron: AP.ink[0], timber: true }
+        : { body: ST, lit: ST[4], mid: ST[3], dim: ST[2], dark: ST[1], iron: AP.ink[0], gold: true };
+  }
+  // coursed ashlar: staggered blocks under a mortar line. At this size random
+  // speckle reads as dirt; courses read as a wall somebody BUILT.
+  function ashlar(q, x, y, w, h, ramp, seed) {
+    const rnd = ART.rng(seed);
+    for (let r = 0; r < h; r++) {
+      q(x, y + r, w, 1, r % 3 === 2 ? ramp[1] : ramp[2]);
+      if (r % 3 === 2) continue;
+      for (let bx = x + ((r >> 1) & 1 ? 0 : 2); bx < x + w - 1; bx += 4)
+        q(bx, y + r, 3, 1, rnd() < 0.5 ? ramp[3] : ramp[2]);
+    }
+  }
+  /* THE FACE — an east-west gatehouse, seen straight on. */
+  function drawGateFace(q, lv) {
+    const d = gateDress(lv), WD = AP.wood, ST = AP.stone, IN = AP.ink[0];
+    const GND = 26;                          // its foot — the same ground line the Watchtower stands on
+    const TL0 = 1, TL1 = 9, TR0 = 22, TR1 = 30;    // the two flanking towers
+    const C0 = 9, C1 = 22;                   // the gate block between them
+    const A0 = 12, A1 = 19;                  // the archway
+
+    // the curtain running in from both sides, at wall height
+    for (const x of [0, 30]) { q(x, 10, 2, 12, d.mid); q(x, 10, 2, 1, d.lit); q(x, 21, 2, 1, d.dark); }
+
+    // the gate block: lower than the towers, with the passage cut through it
+    const block = (x0, x1, top) => {
+      const w = x1 - x0;
+      if (d.T1) {                            // upright logs, banded
+        for (let x = x0; x < x1; x += 2) { q(x, top, 2, GND - top, WD[2]); q(x + 1, top, 1, GND - top, WD[1]); }
+        q(x0, top + 3, w, 1, AP.thatch[0]); q(x0, GND - 5, w, 1, AP.thatch[0]);
+      } else ashlar(q, x0, top, w, GND - top, d.body, x0 * 7 + lv);
+      q(x0, top, w, 1, d.lit);               // lit wall head
+      q(x0, GND - 1, w, 1, d.dark);          // and the shadow at its foot
+      /* MACHICOLATIONS and the crenels above them. At L2 the whole upper works
+         are TIMBER — the hoarding a stone castle rigs over its head in war —
+         which is this tier's story everywhere else (stone below, timber above)
+         and keeps the gatehouse as half-and-half as the curtain it stands in. */
+      const uM = d.timber ? WD[2] : d.mid, uL = d.timber ? WD[3] : d.lit;
+      q(x0, top + 2, w, 2, uM); q(x0, top + 2, w, 1, uL);
+      for (let x = x0 + 1; x < x1 - 1; x += 3) q(x, top + 3, 1, 1, IN);
+      for (let x = x0; x < x1 - 1; x += 3) { q(x, top - 2, 2, 3, uM); q(x, top - 2, 2, 1, uL); }
+      if (d.gold) q(x0, top - 3, w, 1, AP.gold[2]);
+    };
+    block(C0, C1, 6);
+    block(TL0, TL1, 2); block(TR0, TR1, 2);
+    // arrow loops watching the road
+    for (const x of [TL0 + 4, TR0 + 4]) { q(x, 8, 1, 4, IN); q(x, 14, 1, 4, IN); q(x, 20, 1, 4, IN); }
+    q(C0 + 2, 12, 1, 3, IN); q(C1 - 3, 12, 1, 3, IN);
+
+    // THE ARCHWAY — a round head over the passage, in dressed voussoirs
+    const AT = 16;                                      // where the arch springs
+    q(A0, AT + 2, A1 - A0 + 1, GND - AT - 2, IN);       // the dark of the passage
+    q(A0 + 1, AT, A1 - A0 - 1, 2, IN); q(A0 + 2, AT - 1, A1 - A0 - 3, 1, IN);
+    q(A0 - 1, AT + 2, 1, GND - AT - 2, d.lit); q(A1 + 1, AT + 2, 1, GND - AT - 2, d.lit);   // the jambs
+    q(A0, AT + 1, 1, 1, d.lit); q(A1, AT + 1, 1, 1, d.lit);
+    q(A0 + 1, AT - 1, 1, 1, d.lit); q(A1 - 1, AT - 1, 1, 1, d.lit);
+    q(A0 + 2, AT - 2, A1 - A0 - 3, 1, d.lit);           // the crown of the arch
+    // THE PORTCULLIS, backlit from the passage the way it always is in the photos
+    q(A0, AT + 3, A1 - A0 + 1, GND - AT - 4, d.T1 ? '#3a2a18' : '#5c3f24');   // torchlight in the passage beyond
+    for (let x = A0; x <= A1; x += 2) q(x, AT + 1, 1, GND - AT - 2, d.iron);
+    for (let y = AT + 3; y < GND - 1; y += 3) q(A0, y, A1 - A0 + 1, 1, d.iron);
+    for (let x = A0; x <= A1; x += 2) q(x, GND - 2, 1, 2, d.iron);   // the spikes at its foot
+    // the timber threshold under it, and the ground shadow the whole pile throws
+    q(A0 - 1, GND, A1 - A0 + 3, 2, WD[2]); q(A0 - 1, GND, A1 - A0 + 3, 1, WD[3]);
+    for (let x = A0; x <= A1; x += 3) q(x, GND + 1, 1, 1, WD[1]);
+    q(TL0 + 1, GND + 2, TR1 - TL0 - 1, 2, ART.STYLE.SHADOW);
+    if (d.timber) {                          // L2: the timber hoarding over the stone
+      ART.woodPlankTexture(q, C0 + 1, 8, C1 - C0 - 2, 4, 11);
+      q(C0 + 1, 8, C1 - C0 - 2, 1, WD[3]);
+      for (const [x0, x1] of [[TL0, TL1], [TR0, TR1]]) {
+        ART.woodPlankTexture(q, x0 + 1, 4, x1 - x0 - 2, 4, x0 + 5);
+        q(x0 + 1, 4, x1 - x0 - 2, 1, WD[3]);
+      }
+    }
+    if (d.gold) for (const x of [TL0 + 4, TR0 + 4]) { q(x, -1, 1, 5, WD[1]); q(x, -1, 1, 1, AP.gold[2]); }
+  }
+  /* THE FLANK — a north-south gatehouse. You are looking along the wall, so the
+     archway faces away from you and there is NO DOOR to see; what you see is
+     the gatehouse's side: a block as wide as a tower standing in a curtain that
+     is skinnier than it, with the wall running in above and below. Drawn in the
+     same elevation language as the Watchtower it stands beside — a plan-view
+     block between two elevation towers reads as two different games. */
+  function drawGateSide(q, lv) {
+    const d = gateDress(lv), WD = AP.wood, IN = AP.ink[0];
+    const W0 = 10, W1 = 21;                  // the curtain's own width
+    const G0 = 6, G1 = 25;                   // the gatehouse: as wide as a tower
+    const TOP = 5, GND = 26;                 // its head and its foot — the tower's own ground line
+
+    // the curtain running in from north and south, behind the gatehouse — with
+    // a shadow line where the northern walk goes behind it, so it reads as
+    // passing BEHIND the block and not running onto its roof
+    q(W0, 0, W1 - W0 + 1, TOP + 3, d.mid); q(W0, 0, 1, TOP + 3, d.lit);
+    q(W0, GND - 2, W1 - W0 + 1, 32 - GND + 2, d.mid); q(W0, GND - 2, 1, 32 - GND + 2, d.lit);
+    q(W1, 0, 1, TOP + 3, d.dark); q(W1, GND - 2, 1, 32 - GND + 2, d.dark);
+    q(W0, 0, W1 - W0 + 1, 2, 'rgba(24,18,12,0.55)');
+
+    // the block itself
+    if (d.T1) {
+      for (let x = G0; x <= G1; x += 2) { q(x, TOP, 2, GND - TOP, WD[2]); q(x + 1, TOP, 1, GND - TOP, WD[1]); }
+      q(G0, TOP + 4, G1 - G0 + 1, 1, AP.thatch[0]); q(G0, GND - 5, G1 - G0 + 1, 1, AP.thatch[0]);
+    } else ashlar(q, G0, TOP, G1 - G0 + 1, GND - TOP, d.body, 31 + lv);
+    q(G0, TOP, G1 - G0 + 1, 1, d.lit); q(G0, GND - 1, G1 - G0 + 1, 1, d.dark);
+    q(G0, TOP, 1, GND - TOP, d.lit); q(G1, TOP, 1, GND - TOP, d.dark);
+    // machicolations, then the crenels above them — the same head the face
+    // wears, timber at L2 for the same reason
+    const uM = d.timber ? WD[2] : d.mid, uL = d.timber ? WD[3] : d.lit;
+    q(G0, TOP + 2, G1 - G0 + 1, 2, uM); q(G0, TOP + 2, G1 - G0 + 1, 1, uL);
+    for (let x = G0 + 1; x < G1 - 1; x += 3) q(x, TOP + 3, 1, 1, IN);
+    for (let x = G0; x < G1 - 1; x += 3) { q(x, TOP - 2, 2, 3, uM); q(x, TOP - 2, 2, 1, uL); }
+    // arrow loops covering the ground either side of the gate
+    for (const x of [G0 + 4, G1 - 4]) { q(x, TOP + 6, 1, 4, IN); q(x, TOP + 12, 1, 4, IN); }
+    q((G0 + G1) >> 1, TOP + 6, 1, 4, IN);
+    // the mouth of the passage running through, east to west: from here it is
+    // only a shadow at each flank, never a doorway — the arch faces away
+    q(G0, GND - 7, 1, 6, IN); q(G1, GND - 7, 1, 6, IN);
+    q(G0 + 1, GND - 7, 1, 6, d.dark); q(G1 - 1, GND - 7, 1, 6, d.dark);
+    if (d.timber) {                          // L2: timber hoarding over the stone head
+      ART.woodPlankTexture(q, G0 + 1, TOP + 5, G1 - G0 - 1, 5, 13);
+      q(G0 + 1, TOP + 5, G1 - G0 - 1, 1, WD[3]);
+    }
+    if (d.gold) {
+      q(G0, TOP - 3, G1 - G0 + 1, 1, AP.gold[2]);
+      for (const x of [G0 + 3, G1 - 3]) { q(x, TOP - 7, 1, 5, WD[1]); q(x, TOP - 7, 1, 1, AP.gold[2]); }
+    }
+    q(G0 + 1, GND, G1 - G0 - 1, 2, ART.STYLE.SHADOW);      // the shadow it throws
+  }
   function drawGate(p, lv, vert) {
-    // the plotter: straight through for an east-west gate, transposed for a
-    // north-south one. w/h swap with x/y — a wall band stays a wall band.
-    const hi = p.hi, HALF = 2;         // tileB's fine cell, in canvas px
-    const q = vert ? (x, y, w, h, c) => hi(y, x, h || 1, w || 1, c) : hi;
-    // a true eraser (a transparent fill only paints nothing) — used to take the
-    // corners off the drum towers so they don't read as packing crates
-    const clr = vert
-      ? (x, y, w, h) => p.g.clearRect(y * HALF, x * HALF, (h || 1) * HALF, (w || 1) * HALF)
-      : (x, y, w, h) => p.g.clearRect(x * HALF, y * HALF, (w || 1) * HALF, (h || 1) * HALF);
-    const ST = AP.stone, WD = AP.wood, TH = AP.thatch, IN = AP.ink[0];
-    const T1 = lv === 1, T3 = lv >= 3;
-    // tier dress: 1 timber palisade gate · 2 stone below, timber above · 3 dressed stone, gold crest
-    const lit = T1 ? WD[3] : T3 ? ST[4] : ST[3];
-    const mid = T1 ? WD[2] : T3 ? ST[3] : ST[2];
-    const dim = T1 ? WD[1] : ST[1], shade = T1 ? WD[0] : ST[0];
-    const W0 = 10, W1 = 21;            // the curtain band this gate stands in (drawWallMask arms 5..10/16)
-    const P0 = 11, P1 = 20;            // the passage between the towers
-    const TA = T1 ? 7 : 6, TB = T1 ? 24 : 25;    // how far the gatehouse projects on each face
-
-    // COURSED ASHLAR — real dressed masonry (staggered blocks under a mortar
-    // line) rather than a field of noise: at this size random speckle reads as
-    // dirt, courses read as a wall somebody BUILT
-    const ashlar = (x, y, w, h, seed) => {
-      const rnd = ART.rng(seed);
-      for (let r = 0; r < h; r++) {
-        q(x, y + r, w, 1, r % 3 === 2 ? ST[1] : ST[2]);                     // course + its mortar line
-        if (r % 3 === 2) continue;
-        for (let bx = x + ((r >> 1) & 1 ? 0 : 2); bx < x + w - 1; bx += 4)  // blocks, staggered course to course
-          q(bx, y + r, 3, 1, rnd() < 0.5 ? ST[3] : ST[2]);
-      }
-    };
-
-    /* THE NECK: the curtain runs INTO the gatehouse. Without these the tile's
-       edge presented a 20-row tower face to a 12-row wall arm, and the join
-       read as a bulge in the line rather than a gate in it. */
-    for (const x of [0, 30]) {
-      q(x, W0, 2, W1 - W0 + 1, mid);
-      q(x, W0, 2, 1, lit); q(x, W1, 2, 1, shade);
-      if (lv === 2) { ART.woodPlankTexture(q, x, 14, 2, 6, x + 3); q(x, 14, 2, 1, WD[3]); q(x, 19, 2, 1, WD[1]); }
-    }
-
-    // ---- the twin drum towers flanking the passage ----
-    const tower = (tx) => {
-      const tw = 9;
-      if (T1) {                                        // a stockade of upright logs
-        for (let x = tx; x < tx + tw; x += 2) { q(x, TA, 2, TB - TA + 1, WD[2]); q(x + 1, TA, 1, TB - TA + 1, WD[1]); }
-        for (const y of [TA + 4, TB - 4]) {            // withy bands lashed round the stockade
-          q(tx, y, tw, 1, WD[1]); q(tx, y - 1, tw, 1, TH[0]);
-        }
-      } else {
-        ashlar(tx, TA, tw, TB - TA + 1, tx * 5 + lv);
-        if (T3) for (let y = TA + 2; y < TB - 2; y += 3) {                  // dressed quoins up the corners
-          q(tx, y, 2, 2, ST[3]); q(tx + tw - 2, y, 2, 2, ST[1]);
-        }
-      }
-      q(tx, TA, tw, 1, lit);                           // lit crown
-      q(tx, TB, tw, 1, shade);                         // shaded foot
-      // the corners taken off, so the mass reads as a drum rather than a crate
-      for (const [cx, cy] of [[tx, TA], [tx + tw - 1, TA], [tx, TB], [tx + tw - 1, TB]]) clr(cx, cy, 1, 1);
-      // crenellations standing proud of the body on both approaches — at L2
-      // they are the TIMBER HOARDING a stone castle rigs over its parapet,
-      // which is the tier's whole story and keeps the gate as half-and-half as
-      // the curtain it stands in
-      const cr = lv === 2 ? WD[2] : mid, crL = lv === 2 ? WD[3] : lit, crD = lv === 2 ? WD[1] : dim;
-      for (let x = tx + 1; x < tx + tw - 1; x += 3) {
-        q(x, TA - 2, 2, 2, cr); q(x, TA - 2, 2, 1, crL);
-        q(x, TB + 1, 2, 2, crD);
-      }
-      q(tx + 4, TA + 3, 1, 2, IN); q(tx + 4, TB - 4, 1, 2, IN);             // arrow loops covering the road
-      if (T3) q(tx, TA, tw, 1, AP.gold[2]);            // the crest along the crown
-    };
-    tower(2); tower(21);
-    /* THE STANDARDS. Poles are drawn with the UNTRANSPOSED plotter, because a
-       flagpole stands up out of the world whichever way the wall runs — only
-       the cloth is orientation-aware, and that flies per frame in the tribe's
-       own dye from R.BANNER_AT (keys `gate` and `gateV`). Move a pole and you
-       must move its anchor. */
-    if (T3) for (const [px, py] of vert ? [[8, 0], [8, 17]] : [[6, 1], [25, 1]]) {
-      hi(px, py, 1, 5, WD[1]); hi(px, py, 1, 1, AP.gold[2]);
-    }
-
-    /* LEVEL 2 — STONE BELOW, TIMBER ABOVE: the curtain's own wall-walk carries
-       across the gatehouse on planking down the middle third, stone parapet
-       showing on both flanks — the same half-and-half story drawWallMask tells
-       at this tier, so wall and gate read as one work. */
-    // rows 14..19 — the SAME six the L2 curtain planks (drawWallMask decks 7..9
-    // of its 16-grid), so the walk runs on unbroken from wall to gatehouse
-    if (lv === 2) for (const tx of [2, 21]) {
-      ART.woodPlankTexture(q, tx, 14, 9, 6, tx + 7);
-      q(tx, 14, 9, 1, WD[3]); q(tx, 19, 9, 1, WD[1]);
-      for (let x = tx + 1; x < tx + 9; x += 3) q(x, 16, 1, 1, WD[1]);   // plank seams
-    }
-
-    /* ---- the passage: arch, the portcullis's teeth, and THE DOORS ----
-       The doors are the hero of the composition and get the room to say so:
-       stacking a full portcullis in FRONT of them turned the middle of the tile
-       into grey mush at map size. The portcullis instead hangs RAISED under the
-       arch head — teeth showing, exactly as it reads walking under a real one —
-       and the oak is left to fill the gateway. */
-    const pave = T1 ? AP.soil : ST;
-    q(P0, TA, P1 - P0 + 1, TB - TA + 1, pave[T1 ? 0 : 1]);
-    for (let y = TA + 4; y < TB - 3; y += 2)             // cobble courses in the mouth
-      for (let x = P0 + (y & 1); x <= P1 - 2; x += 3) q(x, y, 2, 1, pave[0]);
-    const mouth = (y, inward) => {
-      q(P0, y, P1 - P0 + 1, 2, mid);                                   // the voussoir ring
-      q(P0, y + (inward > 0 ? 0 : 1), P1 - P0 + 1, 1, lit);            // lit on the light's side
-      // the portcullis, raised in its grooves: teeth under the arch head
-      const t = y + inward * 2;
-      q(P0, t, P1 - P0 + 1, 1, T1 ? WD[1] : ST[1]);                    // the beam it hangs from
-      for (let x = P0 + 1; x <= P1 - 1; x += 2) q(x, t + inward, 1, 1, T1 ? WD[3] : ST[4]);
-    };
-    mouth(TA, 1); mouth(TB - 1, -1);
-    // THE DOORS — two oak leaves hung in the thickness of the wall, iron-bound
-    const d0 = 12, dh = 10;
-    ART.woodPlankTexture(q, P0, d0, P1 - P0 + 1, dh, 21);
-    q(P0, d0, P1 - P0 + 1, 1, WD[3]);                    // lit head
-    q(P0, d0 + dh - 1, P1 - P0 + 1, 1, WD[0]);           // and the shadow it throws
-    q(P0 - 1, d0 - 1, 1, dh + 2, dim); q(P1 + 1, d0 - 1, 1, dh + 2, dim);   // the jambs they hang on
-    q(15, d0, 1, dh, WD[0]); q(16, d0, 1, dh, IN);       // where the two leaves meet
-    const iron = T1 ? WD[0] : ST[1];
-    for (const y of [d0 + 1, d0 + dh - 2]) {             // iron strap hinges, right across each leaf
-      q(P0, y, 5, 1, iron); q(P1 - 4, y, 5, 1, iron);
-      q(P0, y, 1, 1, ST[3]); q(P1, y, 1, 1, ST[3]);      // the pintles they turn on
-    }
-    for (const y of [d0 + 4, d0 + 6])                    // rows of studs down the boards
-      for (let x = P0 + 1; x <= P1 - 1; x += 3) if (x < 15 || x > 16) q(x, y, 1, 1, T1 ? WD[3] : ST[4]);
-    q(14, d0 + 5, 1, 1, ST[2]); q(17, d0 + 5, 1, 1, ST[2]);            // ring handles
+    return vert ? drawGateSide(p.hi, lv) : drawGateFace(p.hi, lv);
   }
   function roofStrips(p, x, y, w, rows, colA, colB) {
     for (let i = 0; i < rows; i++) p(x + i, y + i, w - i * 2, 1, i % 2 ? colB : colA);

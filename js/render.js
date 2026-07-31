@@ -777,6 +777,18 @@ const R = {
     if (!lk.mask) return;
     const fam = Sprites.wallMask[Math.min(lk.level, Sprites.wallMask.length) - 1];
     g.drawImage(fam[lk.mask], bx, by, bw, bw);
+    /* THE SEAM. A tower is drawn as an elevation — you see its face — while the
+       curtain running north of it is drawn flat, from above. Butted together
+       with nothing between, the wall reads as running ONTO the tower's roof
+       ("the top tower is sitting on top of the wall"). A shadow line where the
+       walk meets the tower's back reads instead as the wall passing BEHIND it,
+       which is what is actually happening. Only the north link needs it: a wall
+       to the south is nearer than the tower and is drawn over it anyway (the
+       building list is sorted by footprint bottom edge). */
+    if (lk.mask & 1) {
+      g.fillStyle = 'rgba(24,18,12,0.55)';
+      g.fillRect(bx + bw * 10 / 32, by, bw * 12 / 32, Math.max(1, bw * 2 / 32));
+    }
   },
   /* Which way does this gate face? It faces the way its LINE runs — and the
      line is made of more than walls. A gate flanked by two towers (the classic

@@ -14,8 +14,15 @@
 
    1b. THE GATEHOUSE. A gate faces the way its LINE runs — and the line is made
       of towers as well as walls, which is what a player's tower/gate/tower
-      gatehouse is. Both orientations are the same plan (drawGate transposes
-      it), so neither is the poor relation; terrain never votes on the axis.
+      gatehouse is; terrain never votes on the axis.
+
+      The two views are DIFFERENT DRAWINGS, because you are not standing in the
+      same place. Across an east-west wall you look straight at the castle: twin
+      crenellated towers, machicolations, the arch, the portcullis. Along a
+      north-south wall you see the gatehouse's FLANK — the archway faces east
+      and west, away from you, so there is no door to see; the curtain simply
+      swells to the width of a tower. Transposing one into the other (which this
+      file used to do) draws a gateway seen from a viewpoint that cannot exist.
 
    2. THE BOND. A tower raised IN a wall line joins it — corners, T-junctions
       and mid-run alike — so the curtain reads unbroken like a real castle's
@@ -97,8 +104,8 @@ const out = await p.evaluate(() => {
     ck('gateL3StaysStone', g3.stone > 0.7 && g3.wood < 0.3, pct(g3));
     ck('gateStepsInMaterialToo', g1.stone < g2.stone && g2.stone < g3.stone, '');
     // NEITHER ORIENTATION IS THE POOR RELATION: the north-south gate used to be
-    // a plain grey waist with no door at all. Both are now the same plan, so
-    // they carry the same weight of art — and they are not the same image.
+    // a plain grey waist with no art in it at all. Both are now fully drawn, in
+    // the same materials — and they are not the same image.
     for (let L = 0; L < 3; L++) {
       const h = Sprites.gateMask[L][0], v = Sprites.gateMask[L][1];
       const mh = mix(h), mv = mix(v);
@@ -109,6 +116,26 @@ const out = await p.evaluate(() => {
     // and it tells the SAME half-and-half story as the curtain it stands in
     ck('gateAndWallAgreeAtL2', Math.abs(g2.wood - mix(Sprites.wallMask[1][10]).wood) < 0.25,
       'gate ' + pct(g2) + ' vs wall ' + pct(mix(Sprites.wallMask[1][10])));
+    /* THE ARCH FACES EAST AND WEST. Looking along a north-south wall you are
+       looking at the gatehouse's FLANK: there is no doorway to see, and drawing
+       one there (by transposing the face, as this file used to) puts a gateway
+       at a viewpoint that cannot exist. So the face must have a dark gateway
+       through its middle and the flank must not. */
+    const gateway = (c) => {
+      const d = c.getContext('2d').getImageData(22, 30, 20, 24).data;
+      let n = 0, dark = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 96) continue;
+        n++;
+        if (d[i] < 62 && d[i + 1] < 62 && d[i + 2] < 62) dark++;
+      }
+      return n ? dark / n : 0;
+    };
+    for (let L = 0; L < 3; L++) {
+      const f = gateway(Sprites.gateMask[L][0]), v = gateway(Sprites.gateMask[L][1]);
+      ck('theArchIsOnTheFaceOnly' + (L + 1), f > 0.3 && v < 0.12,
+        'L' + (L + 1) + ' face ' + Math.round(f * 100) + '% shadow · flank ' + Math.round(v * 100) + '%');
+    }
     ck('theGatehouseFliesAStandardEitherWay',
       Array.isArray(R.BANNER_AT.gate) && Array.isArray(R.BANNER_AT.gateV) &&
       R.BANNER_AT.gate.length === 2 && R.BANNER_AT.gateV.length === 2, 'an anchor per flanking tower, per axis');
