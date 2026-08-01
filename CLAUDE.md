@@ -651,6 +651,22 @@ L1). Looking along a wall you see its two parapets with the walk between them;
 without them a vertical run was a plain strip with no castle in it, and every
 tower and gatehouse standing in that line read as a building from a different
 game.
+**A tower has two selves** (same test): a tower with a wall built onto it is
+not a building standing next to a wall — it is a THICKER, TALLER PIECE OF THE
+WALL, same stone, no outline of its own, no door in its foot, the wall-walk
+running into its flanks. That is what the free-standing Watchtower sprite can
+never be: its outline, its drop shadow and its doorway are exactly what read as
+"a separate building parked on the line". So a tower has a second drawing
+(`drawTowerMural` → `Sprites.towerMural`), and `R.bldSprite` hands it back
+whenever `R.towerLinkMask` says the tower is bonded into a line — mid-run,
+corner or T alike. Alone in open ground it stays the Watchtower, because a lone
+scout tower should still read as a building; a work SITE keeps the ordinary
+sprite too, since what is being raised is the building, not the bond. It wears
+`gateDress` like the curtain and the gatehouse (L1 timber, L2 stone under
+timber upper works, L3 dressed stone, gold crest, beacon lit), is narrower than
+the gatehouse (16 fine cells against 20) so the gate stays the biggest thing on
+the wall, wider than the curtain (12) so it still reads as a tower, and stands
+on the same ground line as both.
 **The seam** (`R.drawTowerBond`): a tower is an elevation, the curtain north of
 it is drawn flat from above; butted together with nothing between, the wall
 reads as running ONTO the tower's roof ("the top tower is sitting on top of the

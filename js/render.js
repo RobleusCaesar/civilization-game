@@ -819,6 +819,15 @@ const R = {
     const L = Math.max(1, lv || b.level);
     if (b.key === 'wall') return Sprites.wallMask[Math.min(L, Sprites.wallMask.length) - 1][this.wallMaskAt(b.x, b.y)];
     if (b.key === 'gate') return Sprites.gateMask[Math.min(L, Sprites.gateMask.length) - 1][this.gateVerticalAt(b.x, b.y) ? 1 : 0];
+    /* A TOWER HAS TWO SELVES. Built onto a wall it is a MURAL TOWER — a
+       thicker, taller piece of the curtain in the same stone, no outline of
+       its own, no door in its foot, the walk running into its flanks. Standing
+       alone in open ground it stays the free-standing Watchtower, which is
+       what a lone scout tower should look like. Work sites keep the ordinary
+       sprite: what is being raised is the building, not the bond. */
+    if (b.key === 'tower' && !(b.construction > 0) && Sprites.towerMural &&
+        MapGen.inB(b.x, b.y) && this.towerLinkMask(b.x, b.y).mask)
+      return Sprites.towerMural[Math.min(L, Sprites.towerMural.length) - 1];
     const fam = (b.owner === 'A' ? Sprites.buildingA : Sprites.building)[b.key];
     return fam[Math.min(L, fam.length) - 1];
   },

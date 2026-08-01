@@ -24,6 +24,11 @@
       swells to the width of a tower. Transposing one into the other (which this
       file used to do) draws a gateway seen from a viewpoint that cannot exist.
 
+   2b. A TOWER HAS TWO SELVES. Built onto a wall it is a MURAL TOWER — a
+      thicker, taller piece of the curtain, same stone, no outline of its own
+      and no door in its foot, the wall-walk running into its flanks. Alone in
+      open ground it stays the free-standing Watchtower. R.bldSprite chooses.
+
    2. THE BOND. A tower raised IN a wall line joins it — corners, T-junctions
       and mid-run alike — so the curtain reads unbroken like a real castle's
       mural towers. A tower merely standing BEHIND or IN FRONT of a line must
@@ -229,6 +234,36 @@ const out = await p.evaluate(() => {
       'walls wait for the tower to finish');
     Bld.finish(site);
     ck('finishedSiteThenBonds', !!(R.wallMaskAt(6, 25) & E), '');
+
+    /* ---- 2b. A TOWER HAS TWO SELVES ----
+       Built onto a wall it is a MURAL TOWER: a thicker, taller piece of the
+       curtain in the same stone, no outline and no door in its foot. Standing
+       alone in open ground it stays the free-standing Watchtower, because a
+       lone scout tower should still read as a building. A work site keeps the
+       ordinary sprite — what is being raised is the building, not the bond. */
+    {
+      const lone = put('tower', 40, 10);
+      const lv = (b) => Math.max(1, b.level);
+      ck('aLoneTowerIsAWatchtower',
+        R.bldSprite(lone) === Sprites.building.tower[lv(lone) - 1], 'free-standing art in open ground');
+      ck('aTowerBuiltOntoAWallIsMural',
+        R.bldSprite(midT) === Sprites.towerMural[lv(midT) - 1], 'mid-run wears the curtain\'s own stone');
+      ck('soDoesACornerTower',
+        R.bldSprite(Bld.at(22, 30)) === Sprites.towerMural[lv(Bld.at(22, 30)) - 1], '');
+      const site2 = put('tower', 40, 14, true);
+      put('wall', 41, 14);
+      ck('aWorkSiteIsNeither',
+        R.bldSprite(site2) === Sprites.building.tower[lv(site2) - 1], 'the raising is of a building');
+      // …and the mural tower tells the tier's own material story, like everything
+      // else on the wall — it is part of the curtain, so it must match it
+      const m1 = mix(Sprites.towerMural[0]), m2 = mix(Sprites.towerMural[1]), m3 = mix(Sprites.towerMural[2]);
+      ck('theMuralTowerStepsInMaterialToo',
+        m1.wood > 0.6 && m2.wood > 0.2 && m2.stone > 0.3 && m3.stone > 0.7 &&
+        m1.stone < m2.stone && m2.stone < m3.stone,
+        [m1, m2, m3].map(pct).join(' · '));
+      ck('andItIsNotTheWatchtowerRedrawn',
+        Sprites.towerMural[1].toDataURL() !== Sprites.building.tower[1].toDataURL(), '');
+    }
 
     // ---- 3. the bond is DRAWN: the curtain's own art, under the tower ----
     const vis = G.visibleAt;

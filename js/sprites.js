@@ -883,6 +883,59 @@ const Sprites = {
     }
     q(G0 + 1, GND, G1 - G0 - 1, 2, ART.STYLE.SHADOW);      // the shadow it throws
   }
+  /* ---- THE MURAL TOWER (tests/wall-tower-bond.mjs) ----
+     A tower with a wall on it is not a building standing next to a wall — it
+     is a THICKER, TALLER PIECE OF THE WALL, built at the same time out of the
+     same stone, with the wall-walk running straight into its flanks. That is
+     what a castle looks like, and it is what the free-standing Watchtower
+     sprite could never be: that one has its own outline, its own drop shadow
+     and a door in its foot, which are exactly the things that read as "a
+     separate building parked on the line".
+
+     So a tower gets a SECOND drawing. R.bldSprite hands back this one whenever
+     the tower is bonded into a line (R.towerLinkMask), and the free-standing
+     watchtower whenever it stands alone in open ground — a lone scout tower
+     should still read as a building, not as a stump of curtain.
+
+     Same dress as the gatehouse and the curtain (gateDress): L1 timber, L2
+     stone under timber upper works, L3 dressed stone with a gold crest and the
+     beacon lit. Narrower than the gatehouse (16 of 32 against its 20) so the
+     gate stays the biggest thing on the wall, wider than the curtain (12) so
+     it reads as a tower, and standing on the same ground line as both. */
+  function drawTowerMural(p, lv) {
+    const q = p.hi, d = gateDress(lv), WD = AP.wood, IN = AP.ink[0];
+    const X0 = 8, X1 = 23;                   // wider than the curtain, narrower than the gate
+    const TOP = 3, GND = 26;                 // the tallest thing on the wall, on the wall's own ground line
+    const uM = d.timber ? WD[2] : d.mid, uL = d.timber ? WD[3] : d.lit;
+
+    // the shaft
+    if (d.T1) {
+      for (let x = X0; x <= X1; x += 2) { q(x, TOP, 2, GND - TOP, WD[2]); q(x + 1, TOP, 1, GND - TOP, WD[1]); }
+      q(X0, TOP + 5, X1 - X0 + 1, 1, AP.thatch[0]); q(X0, GND - 6, X1 - X0 + 1, 1, AP.thatch[0]);
+    } else ashlar(q, X0, TOP, X1 - X0 + 1, GND - TOP, d.body, 47 + lv);
+    q(X0, TOP, X1 - X0 + 1, 1, d.lit); q(X0, GND - 1, X1 - X0 + 1, 1, d.dark);
+    q(X0, TOP, 1, GND - TOP, d.lit); q(X1, TOP, 1, GND - TOP, d.dark);
+    if (!d.T1) for (let y = TOP + 2; y < GND - 2; y += 4) {      // dressed quoins up both corners
+      q(X0, y, 2, 2, d.lit); q(X1 - 1, y, 2, 2, d.dark);
+    }
+    // the machicolated head, and the crenels standing above it
+    q(X0, TOP + 2, X1 - X0 + 1, 2, uM); q(X0, TOP + 2, X1 - X0 + 1, 1, uL);
+    for (let x = X0 + 1; x < X1 - 1; x += 3) q(x, TOP + 3, 1, 1, IN);
+    for (let x = X0; x < X1 - 1; x += 3) { q(x, TOP - 2, 2, 3, uM); q(x, TOP - 2, 2, 1, uL); }
+    if (d.timber) {                          // L2: the timber storey over the stone
+      ART.woodPlankTexture(q, X0 + 1, TOP + 5, X1 - X0 - 1, 5, 29);
+      q(X0 + 1, TOP + 5, X1 - X0 - 1, 1, WD[3]);
+    }
+    // arrow loops — a tower watches every way, so they run down the whole shaft
+    for (const x of [X0 + 4, X1 - 4]) { q(x, TOP + 12, 1, 4, IN); q(x, TOP + 18, 1, 4, IN); }
+    q((X0 + X1) >> 1, TOP + 12, 1, 4, IN);
+    if (d.gold) {                            // the crest, and the beacon alight
+      q(X0, TOP - 3, X1 - X0 + 1, 1, AP.gold[2]);
+      q((X0 + X1) >> 1, TOP - 6, 2, 2, AP.fire[2]); q((X0 + X1) >> 1, TOP - 7, 1, 1, AP.fire[3]);
+      q(((X0 + X1) >> 1) - 1, TOP - 4, 4, 1, AP.fire[1]);
+    }
+    q(X0 + 1, GND, X1 - X0 - 1, 2, ART.STYLE.SHADOW);           // the shadow it throws
+  }
   function drawGate(p, lv, vert) {
     return vert ? drawGateSide(p.hi, lv) : drawGateFace(p.hi, lv);
   }
@@ -1481,9 +1534,11 @@ const Sprites = {
   // auto-tiling atlases: wallMask[level-1][mask 0..15], gateMask[level-1][0=horizontal,1=vertical]
   Sprites.wallMask = [1, 2, 3].map(lv =>
     Array.from({ length: 16 }, (_, m) => tile(p => drawWallMask(p, lv, m))));
-  // [horizontal, vertical] — the SAME gatehouse plan, transposed (see drawGate)
+  // [east-west face, north-south flank] — two authored views (see drawGate)
   Sprites.gateMask = [0, 1, 2].map(li =>
     [Sprites.building.gate[li], tileB(p => drawGate(p, li + 1, true))]);
+  // the tower's OTHER self: the one it wears when a wall is built onto it
+  Sprites.towerMural = [1, 2, 3].map(lv => tileB(p => drawTowerMural(p, lv)));
 
   // a proper work-site: a lashed timber scaffold over a dug foundation with a
   // half-laid stone footing, stacked materials, and a leaning ladder. Drawn at
