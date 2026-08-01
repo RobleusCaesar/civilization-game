@@ -800,6 +800,28 @@ const R = {
      towers north and south. Terrain deliberately does NOT count: a wall
      running east-west to a lake shore has water north and south of its gate,
      and counting it would spin the gate exactly the wrong way. */
+  /* A curtain running SOUTH out of a mural tower must meet its flank at WALK
+     HEIGHT, partway up the shaft — not at the tower's foot, where it reads as
+     bolted onto the bottom of the tower. The tower's body is drawn OVER the
+     bond stub, so the southern arm is drawn again on top of it, clipped to the
+     curtain's own width and to everything below TOWER_WALK. The north arm
+     needs the opposite treatment (it passes behind — see the seam in
+     drawTowerBond), and the east/west arms already emerge at the right height
+     because the wall band crosses the tower's middle. */
+  TOWER_WALK: 17 / 32,
+  drawTowerWalk(g, b, bx, by, bw) {
+    if (b.construction > 0) return;
+    const lk = this.towerLinkMask(b.x, b.y);
+    if (!(lk.mask & 4)) return;                          // nothing coming from the south
+    const fam = Sprites.wallMask[Math.min(lk.level, Sprites.wallMask.length) - 1];
+    const y0 = by + bw * this.TOWER_WALK;
+    g.save();
+    g.beginPath();
+    g.rect(bx + bw * 10 / 32, y0, bw * 12 / 32, by + bw - y0);   // the curtain's own width only
+    g.clip();
+    g.drawImage(fam[lk.mask], bx, by, bw, bw);
+    g.restore();
+  },
   gateVerticalAt(x, y) {
     const score = (xx, yy) => {
       if (!MapGen.inB(xx, yy)) return 0;
@@ -1394,6 +1416,8 @@ const R = {
         // connecting stubs, under its body — one unbroken castle wall
         if (b.key === 'tower') this.drawTowerBond(g, b, bx, by, bw);
         g.drawImage(spr, bx, by, bw, bw);
+        // …and the walk running south out of it meets its flank at WALK height
+        if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);
         /* Owner tag. On a FORTIFICATION the tile's top-left corner is bare
            ground — the curtain runs down the middle of the tile — so the pip
            floated out on the grass beside the wall like a UI glitch, one per

@@ -667,6 +667,16 @@ timber upper works, L3 dressed stone, gold crest, beacon lit), is narrower than
 the gatehouse (16 fine cells against 20) so the gate stays the biggest thing on
 the wall, wider than the curtain (12) so it still reads as a tower, and stands
 on the same ground line as both.
+**Where the walk meets it** (`R.drawTowerWalk`, `R.TOWER_WALK`): a curtain
+running SOUTH out of a mural tower must join its flank at WALK HEIGHT, partway
+up the shaft. The tower's body is drawn over the bond stub, so the southern arm
+only reappeared below the tower's foot — and a wall leaving at the foot reads
+as bolted onto the bottom of the tower. The south arm is now drawn AGAIN on top
+of the tower, clipped to the curtain's own width and to everything below
+`TOWER_WALK`; the gatehouse flank brings its own southern walk out at the same
+height. North is the opposite case (it passes behind — see the seam), and
+east/west already leave at the right height because the wall band crosses the
+tower's middle.
 **The seam** (`R.drawTowerBond`): a tower is an elevation, the curtain north of
 it is drawn flat from above; butted together with nothing between, the wall
 reads as running ONTO the tower's roof ("the top tower is sitting on top of the

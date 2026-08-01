@@ -849,8 +849,11 @@ const Sprites = {
     // a shadow line where the northern walk goes behind it, so it reads as
     // passing BEHIND the block and not running onto its roof
     q(W0, 0, W1 - W0 + 1, TOP + 3, d.mid); q(W0, 0, 1, TOP + 3, d.lit);
-    q(W0, GND - 2, W1 - W0 + 1, 32 - GND + 2, d.mid); q(W0, GND - 2, 1, 32 - GND + 2, d.lit);
-    q(W1, 0, 1, TOP + 3, d.dark); q(W1, GND - 2, 1, 32 - GND + 2, d.dark);
+    // the southern walk meets the block at WALK HEIGHT, partway up its flank —
+    // brought out at the foot it reads as bolted onto the bottom of the gate
+    q(W0, 17, W1 - W0 + 1, 15, d.mid); q(W0, 17, 1, 15, d.lit);
+    q(W1, 0, 1, TOP + 3, d.dark); q(W1, 17, 1, 15, d.dark);
+    q(W0, 17, W1 - W0 + 1, 1, d.lit);
     q(W0, 0, W1 - W0 + 1, 2, 'rgba(24,18,12,0.55)');
 
     // the block itself
