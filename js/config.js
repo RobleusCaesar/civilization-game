@@ -503,12 +503,16 @@ const CFG = {
   },
   /* BRIDGES — a sapper raises a level-1 timber crossing; it can then be upgraded
      to L2/L3 (stone piers, then a stone arch), each stouter and costing a bit
-     MORE than the matching tower upgrade. Attackable — protect your crossings. */
+     MORE than the matching tower upgrade. Attackable — protect your crossings.
+     `time` is the upgrade's build time in DAYS: reinforcing a span is real
+     masonry, and like the level-1 crossing it needs a SAPPER standing at the
+     works for the whole of it (tests/bridge-resource-shore.mjs). The numbers
+     match the Watchtower's stone tiers, the closest thing to it in the game. */
   BRIDGE: {
     levels: [
-      { hp: 220 },                                              // L1 timber (sapper-built)
-      { hp: 480, cost: { wood: 120, stone: 140, gold: 15 } },   // L2 stone piers
-      { hp: 900, cost: { wood: 240, stone: 300, gold: 35 } },   // L3 stone arch
+      { hp: 220 },                                                        // L1 timber (sapper-built)
+      { hp: 480, time: 2, cost: { wood: 120, stone: 140, gold: 15 } },    // L2 stone piers
+      { hp: 900, time: 3, cost: { wood: 240, stone: 300, gold: 35 } },    // L3 stone arch
     ],
   },
 

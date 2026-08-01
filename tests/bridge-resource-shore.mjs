@@ -30,13 +30,29 @@
       failure (defensively still possible) now toasts a reason instead of
       finishing in silence.
 
+   And a third rule, added later — REINFORCING A SPAN IS A BUILD, NOT A
+   PURCHASE. Levels 2 and 3 used to be instant: pay, and the timber crossing
+   was a stone arch the same frame. They now work like every other upgrade in
+   the game — the stone is paid up front, the works stand on the bridge for
+   `CFG.BRIDGE.levels[lv].time` DAYS, and a SAPPER has to be at them for the
+   whole of it, the same hands that raised the level-1 crossing. The clock
+   lives on the BRIDGE (`br.upgrading` / `upTotal` / `upTo`), never on the
+   sapper's task, so progress survives the sapper being cut down at the
+   waterline and a second sapper genuinely halves the work — the same
+   convention buildings use. The span stays crossable throughout.
+
    Run this after touching any of:
      map.js — Terraform.bridgeCrossing, bridgeable, CLEARABLE
      units.js — the terraform task branch in Units.update (stillValid,
-                the job==='bridge' completion block), assignTerraform,
-                canTerraform, terraformJob, startNextTerraform
-     buildings.js — Bld.buildBridge, bridgeAt
-     ui.js — the terraMode==='bridge' tap-order branch
+                the job==='bridge' and job==='bridgeup' blocks),
+                assignTerraform, canTerraform, terraformJob,
+                startNextTerraform, nearestIdleSapper, _bridgeWorks
+     buildings.js — Bld.buildBridge, bridgeAt, canUpgradeBridge,
+                    orderBridgeUpgrade, finishBridgeUpgrade
+     config.js — CFG.BRIDGE.levels (cost + time)
+     ui.js — the terraMode==='bridge' tap-order branch, the bridge panel,
+             the sapper-taps-the-works branch, panelSig
+     render.js — the works drawn on a bridge under reinforcement
 
      node tests/bridge-resource-shore.mjs      # exits non-zero on any regression
 
@@ -180,6 +196,114 @@ const out = await p.evaluate(() => {
     Bld.buildBridge = origBuild;
     ck('completionFailureToasts', toastMsg === 'The crossing fell through — can’t bridge there', JSON.stringify(toastMsg));
     ck('completionFailureBuildsNothing', !Bld.bridgeAt(cx, cy), JSON.stringify(Bld.bridgeAt(cx, cy)));
+  }
+
+  /* ---- 4. REINFORCING TAKES TIME, AND TAKES A SAPPER ---- */
+  {
+    G.newGame('brup', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.res = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };
+    const tc = Bld.tcOf('P');
+    const cx = tc.x + 5, cy = tc.y;
+    for (let y = cy - 3; y <= cy + 3; y++) for (let x = cx - 3; x <= cx + 3; x++) {
+      if (!MapGen.inB(x, y)) continue;
+      const i = MapGen.idx(x, y);
+      S.map.terrain[i] = T.GRASS; S.map.seenTerrain[i] = T.GRASS; S.map.explored[i] = 1;
+    }
+    for (let y = cy - 3; y <= cy + 3; y++) S.map.terrain[MapGen.idx(cx, y)] = T.WATER;
+    Bld._block = null;
+    const sc = Bld.place('P', 'sapper', tc.x + 2, tc.y + 2, { free: true }); Bld.finish(sc); sc.level = 3;
+    Bld.buildBridge('P', cx, cy);
+    const br = Bld.bridgeAt(cx, cy);
+    S.units = [];   // no sapper anywhere — the works must simply wait
+    ck('everyTierHasATimer',
+      CFG.BRIDGE.levels.slice(1).every(l => l.time > 0 && l.cost), 'L2/L3 carry cost AND time');
+
+    // ordering the works pays, but raises NOTHING on the spot
+    const before = { wood: S.res.wood, stone: S.res.stone, gold: S.res.gold };
+    const ordered = Bld.orderBridgeUpgrade(br);
+    const paid = { wood: before.wood - S.res.wood, stone: before.stone - S.res.stone, gold: before.gold - S.res.gold };
+    ck('orderingIsNotUpgrading',
+      ordered === true && br.level === 1 && br.upTo === 2 &&
+      br.upgrading === CFG.BRIDGE.levels[1].time,
+      'lv ' + br.level + ', ' + br.upgrading + ' days of works standing');
+    ck('theStoneIsPaidUpFront',
+      JSON.stringify(paid) === JSON.stringify(CFG.BRIDGE.levels[1].cost), JSON.stringify(paid));
+    ck('oneSetOfWorksAtATime', Bld.orderBridgeUpgrade(br) === false && Bld.canUpgradeBridge(br) === false, '');
+
+    // …and nothing happens at all until a sapper stands at it
+    for (let i = 0; i < 400; i++) Units.update(0.1);
+    ck('noSapperNoProgress',
+      br.level === 1 && br.upgrading === CFG.BRIDGE.levels[1].time,
+      'forty seconds and not a stone laid');
+
+    const sap = Units.spawn('sapper', 'P', cx - 2, cy);
+    ck('theSapperTakesTheJob',
+      Units.assignTerraform(sap, cx, cy, 'bridgeup') === true &&
+      sap.task.job === 'bridgeup' && Units.canTerraform('P', cx, cy, 'bridgeup') === true, '');
+    ck('itIsTheAutoDetectedJobToo', Units.terraformJob('P', cx, cy) === 'bridgeup',
+      'a sapper tapped onto its own standing works knows what to do');
+    ck('theWorkLineSaysSo', /reinforc/i.test(Units.workReport(sap).what || ''),
+      Units.workReport(sap).what);
+    let n = 0;
+    while (br.upgrading > 0 && n < 4000) { Units.update(0.1); n++; }
+    const secs = n / 10, expect = CFG.BRIDGE.levels[1].time * CFG.DAY_MS / 1000;
+    ck('itRunsOnTheBuildingClock', Math.abs(secs - expect) < expect * 0.25,
+      secs.toFixed(1) + 's for ' + CFG.BRIDGE.levels[1].time + ' days (expected ~' + expect + 's)');
+    ck('andThenTheSpanIsStone',
+      br.level === 2 && br.maxhp === CFG.BRIDGE.levels[1].hp && br.hp === br.maxhp &&
+      !br.upgrading, 'lv ' + br.level + ' hp ' + br.hp);
+    ck('theSapperIsFreeAgain', !sap.task || sap.task.type !== 'terraform', JSON.stringify(sap.task));
+
+    // TWO sappers halve it — the clock is on the bridge, not on one pair of hands
+    S.units = [];
+    Bld.orderBridgeUpgrade(br);
+    const total = br.upTotal;
+    const a = Units.spawn('sapper', 'P', cx - 2, cy - 1), b2 = Units.spawn('sapper', 'P', cx + 2, cy + 1);
+    Units.assignTerraform(a, cx, cy, 'bridgeup'); Units.assignTerraform(b2, cx, cy, 'bridgeup');
+    let n2 = 0;
+    while (br.upgrading > 0 && n2 < 4000) { Units.update(0.1); n2++; }
+    const solo = total * CFG.DAY_MS / 1000;
+    ck('twoSappersHalveIt', Math.abs(n2 / 10 - solo / 2) < solo * 0.3,
+      (n2 / 10).toFixed(1) + 's for ' + total + ' days, vs ~' + solo + 's alone');
+    ck('theArchIsUp', br.level === 3 && Bld.canUpgradeBridge(br) === false, 'lv ' + br.level + ', max');
+
+    // the works survive the sapper being cut down mid-span
+    G.newGame('brup2', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.res = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };
+    const tc2 = Bld.tcOf('P'), dx = tc2.x + 5, dy = tc2.y;
+    for (let y = dy - 3; y <= dy + 3; y++) for (let x = dx - 3; x <= dx + 3; x++) {
+      if (!MapGen.inB(x, y)) continue;
+      const i = MapGen.idx(x, y);
+      S.map.terrain[i] = T.GRASS; S.map.seenTerrain[i] = T.GRASS; S.map.explored[i] = 1;
+    }
+    for (let y = dy - 3; y <= dy + 3; y++) S.map.terrain[MapGen.idx(dx, y)] = T.WATER;
+    Bld._block = null;
+    const sc2 = Bld.place('P', 'sapper', tc2.x + 2, tc2.y + 2, { free: true }); Bld.finish(sc2); sc2.level = 3;
+    Bld.buildBridge('P', dx, dy);
+    const br2 = Bld.bridgeAt(dx, dy);
+    S.units = [];
+    Bld.orderBridgeUpgrade(br2);
+    const s3 = Units.spawn('sapper', 'P', dx - 2, dy);
+    Units.assignTerraform(s3, dx, dy, 'bridgeup');
+    for (let i = 0; i < 100; i++) Units.update(0.1);
+    const part = br2.upgrading;
+    Units.despawn ? Units.despawn(s3) : S.units.splice(S.units.indexOf(s3), 1);
+    for (let i = 0; i < 100; i++) Units.update(0.1);
+    ck('progressOutlivesTheSapper',
+      br2.upgrading === part && part > 0 && part < br2.upTotal,
+      part.toFixed(2) + ' days left, held while nobody works it');
+    // and a save carries the half-finished works
+    const json = G.saveJSON();
+    G.loadJSON(json);
+    const br3 = Bld.bridgeAt(dx, dy);
+    ck('theWorksRideInTheSave',
+      !!br3 && Math.abs(br3.upgrading - part) < 1e-6 && br3.upTo === 2, JSON.stringify(br3 && br3.upgrading));
+    const legacy = JSON.parse(json);
+    for (const z of legacy.bridges) { delete z.upgrading; delete z.upTo; delete z.upTotal; }
+    G.loadJSON(JSON.stringify(legacy));
+    ck('legacySpansHaveNoWorks',
+      Bld.bridgeAt(dx, dy).upgrading === 0 && Bld.canUpgradeBridge(Bld.bridgeAt(dx, dy)) === true,
+      'pre-timer saves reinforce from scratch');
   }
 
   return { res, fails };

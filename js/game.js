@@ -1086,6 +1086,7 @@ const G = {
       if (br.level == null) br.level = 1;                 // pre-level saves: default L1 timber
       if (!br.dir) br.dir = 'h';
       if (br.maxhp == null) br.maxhp = (CFG.BRIDGE.levels[(br.level || 1) - 1] || CFG.BRIDGE.levels[0]).hp;
+      if (br.upgrading == null) br.upgrading = 0;   // pre-timer saves: reinforcing used to be instant
     }
     if (data.ai && !data.ai.persona) data.ai.persona = 'homesteader';   // pre-persona save: the classic temperament
     if (!data.kraken) data.kraken = { day: { P: 60, A: 90 }, done: {}, ev: null };   // older saves owe the deep a visit too

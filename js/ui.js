@@ -878,6 +878,22 @@ const UI = {
           if (Units.assignFish(sel, tile.x, tile.y)) this.toast('Nets out — fishing 🐟');
           return;
         }
+        /* A SPAN BEING REINFORCED wants a sapper on it (tests/bridge-resource-shore.mjs).
+           Tapping the works with a sapper selected puts it to work — no tool
+           needs arming, because the bridge itself already says what the job
+           is. Checked before the armed-tool branch: a sapper with the bridge
+           tool up would otherwise be told "bridges span water" on its own
+           standing bridge. */
+        if (sel.kind === 'sapper') {
+          const brW = Bld.bridgeAt(tile.x, tile.y);
+          if (brW && brW.owner === sel.owner && brW.upgrading > 0) {
+            if (Units.assignTerraform(sel, tile.x, tile.y, 'bridgeup')) {
+              this.toast('Sapper reinforcing the bridge 🌉');
+              this.dispatchedWorker();
+            } else this.toast('No clear footing beside the bridge', true);
+            return;
+          }
+        }
         if (sel.kind === 'sapper' && this.terraMode) {
           // a terraform tool is armed (from the panel): force that job, with a
           // clear reason when the tile is the wrong type
@@ -1374,7 +1390,12 @@ const UI = {
     if (this.sel.type === 'bridge') {
       const br = Bld.bridgeAt(this.sel.x, this.sel.y);
       if (!br) return 'gone';
-      return ['br', br.owner, br.level, br.hp < br.maxhp, Bld.canUpgradeBridge(br), this.confirmDemolish === 'bridge'].join('|');
+      // the works' countdown is IN the signature (to a tenth of a day), so the
+      // "N days left / no sapper on site" line actually ticks
+      const wk = br.upgrading > 0 ? br.upgrading.toFixed(1) + ':' +
+        S.units.filter(u2 => u2.owner === 'P' && u2.task && u2.task.type === 'terraform' &&
+          u2.task.job === 'bridgeup' && u2.task.x === br.x && u2.task.y === br.y).length : '';
+      return ['br', br.owner, br.level, br.hp < br.maxhp, Bld.canUpgradeBridge(br), wk, this.confirmDemolish === 'bridge'].join('|');
     }
     const u = Units.get(this.sel.id);
     if (!u) return 'gone';
@@ -1793,14 +1814,26 @@ const UI = {
       if (!br) { this.deselect(); return; }
       const own = br.owner === 'P', lv = br.level || 1;
       const names = ['Timber Bridge', 'Stone-Pier Bridge', 'Stone Arch Bridge'];
+      const works = br.upgrading > 0;
+      const onWorks = works && S.units.filter(u => u.owner === 'P' && u.task &&
+        u.task.type === 'terraform' && u.task.job === 'bridgeup' &&
+        u.task.x === br.x && u.task.y === br.y).length;
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : 'Rival '}${names[lv - 1]} <span style="color:var(--gold)">Lv ${lv}</span></div>
         <div class="psub">HP ${Math.ceil(br.hp)}/${br.maxhp} · a crossing over water</div></div>
         <button class="abtn" id="panelClose">✕</button></div>
         <div class="pactions"><span class="psub">${own ? 'Reinforce for more stone and HP, or demolish to sever the crossing. Guard it — the enemy can hack it down.' : 'A rival crossing. Send soldiers here to sever it.'}</span>`;
-      if (own && lv < 3) {
+      if (own && works) {
+        // the works are standing: show the clock, and say plainly whose hands
+        // it is waiting on. A span is reinforced by SAPPERS, like it was built.
+        const left = Math.max(0, br.upgrading).toFixed(1);
+        html += `<span class="psub">⬆ Reinforcing to Lv ${br.upTo} — ${left} of ${br.upTotal} days left` +
+          (onWorks ? ` · ${onWorks} sapper${onWorks > 1 ? 's' : ''} on site` : ' · <b>no sapper on site</b> — tap a sapper, then the bridge') +
+          `</span>`;
+      } else if (own && lv < 3) {
         const cost = CFG.BRIDGE.levels[lv].cost, ok = Bld.canUpgradeBridge(br);
-        html += `<button class="abtn wide ${ok ? '' : 'cant'}" data-act="brup">⬆ Reinforce to Lv ${lv + 1}<small>${Bld.costStr(cost)}${ok ? '' : ' — need resources'}</small></button>`;
+        const days = CFG.BRIDGE.levels[lv].time || 2;
+        html += `<button class="abtn wide ${ok ? '' : 'cant'}" data-act="brup">⬆ Reinforce to Lv ${lv + 1}<small>${Bld.costStr(cost)} · ${days}d · needs a sapper${ok ? '' : ' — need resources'}</small></button>`;
       }
       if (own) html += `<button class="abtn ${this.confirmDemolish === 'bridge' ? 'danger' : ''}" data-act="brdemo">💥 ${this.confirmDemolish === 'bridge' ? 'Confirm — sever it' : 'Demolish'}</button>`;
       html += '</div>';
@@ -1815,7 +1848,9 @@ const UI = {
       const up = panel.querySelector('[data-act="brup"]');
       if (up) up.addEventListener('click', () => {
         const b2 = Bld.bridgeAt(this.sel.x, this.sel.y); if (!b2) return;
-        if (Bld.upgradeBridge(b2)) { this.toast('Bridge reinforced — Lv ' + b2.level); this.renderPanel(); this.refreshMenu(); }
+        // orders the WORKS — the stone is paid now, the span is raised over the
+        // next few days by a sapper standing at it (no more instant arches)
+        if (Bld.orderBridgeUpgrade(b2)) { this.toast('Bridge works laid out — Lv ' + b2.upTo); this.renderPanel(); this.refreshMenu(); }
         else this.toast('Not enough resources', true);
       });
       const demo = panel.querySelector('[data-act="brdemo"]');

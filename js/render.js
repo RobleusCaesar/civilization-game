@@ -1608,6 +1608,30 @@ const R = {
           g.fillStyle = fac; g.fillRect(bx, by + 4, TL, 2); g.fillRect(bx, by + TL - 6, TL, 2);
         }
         if (lv > 1) { g.fillStyle = ART.PALETTE.gold[2]; for (let i = 0; i < lv; i++) g.fillRect(bx + 4 + i * 4, by + TL / 2 - 1, 2, 2); }  // level pips
+        /* WORKS ON THE SPAN: reinforcing to the next tier takes days and a
+           sapper standing at it, so the bridge wears a work site — lashed
+           poles along the rails and the usual gold build bar. It stays
+           CROSSABLE the whole time; this is a re-facing, not a rebuild. */
+        if (br.upgrading > 0) {
+          // dressed blocks waiting along the span and straw-coloured lashings
+          // over the rails: PALE marks, because at 32px anything in the deck's
+          // own brown reads as a hole in the planking rather than work on it
+          const TH2 = ART.PALETTE.thatch, ST2 = ART.PALETTE.stone;
+          if (dir === 'v') {
+            for (let py = 4; py < TL - 7; py += 9) {
+              g.fillStyle = ST2[2]; g.fillRect(bx + 10, by + py, 12, 5);
+              g.fillStyle = ST2[4]; g.fillRect(bx + 10, by + py, 12, 2);
+            }
+            g.fillStyle = TH2[2]; g.fillRect(bx + 6, by, 2, TL); g.fillRect(bx + TL - 8, by, 2, TL);
+          } else {
+            for (let px = 4; px < TL - 7; px += 9) {
+              g.fillStyle = ST2[2]; g.fillRect(bx + px, by + 10, 5, 12);
+              g.fillStyle = ST2[4]; g.fillRect(bx + px, by + 10, 2, 12);
+            }
+            g.fillStyle = TH2[2]; g.fillRect(bx, by + 6, TL, 2); g.fillRect(bx, by + TL - 8, TL, 2);
+          }
+          this.bar(g, bx + 3, by + TL - 4, TL - 6, 3, 1 - br.upgrading / (br.upTotal || 1), '#e8c15a');
+        }
         if (br.hp < br.maxhp) this.bar(g, bx + 3, by - 3, TL - 6, 3, br.hp / br.maxhp, '#c98a4a');
       }
     }
@@ -1666,6 +1690,16 @@ const R = {
       if (t.job === 'bridge') {
         g.fillStyle = WO[1];
         for (let px = 4; px < TL; px += 8) g.fillRect(wx + px, wy + 8, 3, (TL - 16) * (0.4 + prog * 0.6));   // planks going down
+      } else if (t.job === 'bridgeup') {
+        /* REINFORCING a standing span is MASONRY, not digging: the generic
+           turned-earth patch below would put a hole of dark soil in the middle
+           of a plank deck. The span already wears its own works (the bridge
+           loop draws the blocks and lashings) — all this adds is the mason's
+           mortar tub, so the tile reads as actively worked. */
+        const ST3 = ART.PALETTE.stone;
+        g.fillStyle = WO[1]; g.fillRect(wx + 4, wy + TL - 10, 7, 5);
+        g.fillStyle = ART.PALETTE.bone[1]; g.fillRect(wx + 5, wy + TL - 9, 5, 2);
+        g.fillStyle = ST3[4]; g.fillRect(wx + TL - 12, wy + TL - 11, 4, 4);
       } else {
         const r = Math.round((TL * 0.32) * (0.6 + prog * 0.4));         // a growing patch of turned soil
         g.fillStyle = SO[1]; g.fillRect(wx + TL / 2 - r, wy + TL / 2 - r, r * 2, r * 2);

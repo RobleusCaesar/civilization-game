@@ -57,7 +57,7 @@ node tests/foe-notes.mjs       # enemy/raider intel toasts are gated by difficul
 node tests/tower-archer-miss.mjs # Lv1 towers miss 1/3, base archers miss 1/4
 node tests/sapper-deselect-heal.mjs # sapper dispatch deselects; sapper heals at the TC
 node tests/heal-limit.mjs      # at most 3 heals/unit per rolling 60s real-time window
-node tests/bridge-resource-shore.mjs # a resource-shored bank is bridgeable; no silent bridge failures
+node tests/bridge-resource-shore.mjs # a resource-shored bank is bridgeable; no silent failures; reinforcing takes days and a sapper
 node tests/barb-sense.mjs      # barbarians attack any land unit, leave when stuck, land smart
 node tests/rival-crossing.mjs  # AI reaches its own works, eats before hoarding, bridges around towers
 node tests/finished-run-continue.mjs # a win never clobbers a save slot; Continue retires the whole run
@@ -222,6 +222,28 @@ calls `bridgeCrossing` (and re-checks `Bld.bridgeAt`), so an invalidated span
 drops the job promptly like any other skipped tile, and a completion-time
 failure (defensively still possible) now toasts a reason instead of finishing
 in silence.
+**Reinforcing a span is a BUILD, not a purchase** (same test): levels 2 and 3
+used to be instant — pay, and the timber crossing was a stone arch the same
+frame. They now work like every other upgrade in the game.
+`Bld.orderBridgeUpgrade` takes the stone up front and stands WORKS on the
+bridge for `CFG.BRIDGE.levels[lv].time` days (2 then 3, the Watchtower's stone
+tiers), and a SAPPER has to be at them the whole time — the same hands that
+raised the level-1 crossing (`'bridgeup'`, a fifth terraform job; the nearest
+idle sapper is dispatched automatically, `Units.nearestIdleSapper`, exactly as
+a laid building site pulls the nearest idle villager, and tapping the works
+with any sapper selected puts it on the job — no tool to arm, since the bridge
+already says what the work is). **The clock lives on the BRIDGE**
+(`br.upgrading`/`upTotal`/`upTo`, in every save, `loadJSON` backfills), never
+on the sapper's task: progress therefore survives the sapper being cut down at
+the waterline, and a second sapper genuinely halves the work — the same
+convention builders use. It counts DAYS, not the seconds every other terraform
+job runs on. The span stays crossable throughout; this is a re-facing, not a
+rebuild. Two render notes: the bridge loop draws the works itself (pale
+dressed blocks along the deck and straw lashings over the rails — anything in
+the deck's own brown reads as a HOLE in the planking at 32px) plus the gold
+build bar, and `'bridgeup'` needs its own branch in the active-sapper worksite
+overlay or the generic TURNED-SOIL patch digs a pit of dark earth in the middle
+of a plank deck.
 
 **Barbarian sense** (`tests/barb-sense.mjs`): three rules that keep bands from
 glitching or acting dumb. **Prey**: `Combat.raiderSeek`'s second tier is ANY

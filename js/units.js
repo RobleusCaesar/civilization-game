@@ -216,7 +216,8 @@ const Units = {
         pct: Math.round(b.hp / b.maxhp * 100) };
     }
     if (t.type === 'terraform') {
-      const nm = { dig: 'Digging a trench', bridge: 'Raising a bridge', clear: 'Clearing the ground', mound: 'Raising a mound' };
+      const nm = { dig: 'Digging a trench', bridge: 'Raising a bridge', clear: 'Clearing the ground',
+        mound: 'Raising a mound', bridgeup: 'Reinforcing the bridge' };
       return { icon: '⛏️', what: nm[t.job] || 'Working the ground', rate: null, working: true };
     }
     if (t.type === 'garrison') return { icon: '🛖', what: 'Taking shelter', rate: null, working: false };
@@ -469,19 +470,38 @@ const Units = {
   // which terraform job (if any) a sapper of this tribe can do on a tile
   terraformJob(owner, tx, ty) {
     const tier = this.sapperTier(owner); if (tier < 1) return null;
+    // an own bridge with WORKS STANDING ON IT wants the same hands that raised
+    // it — and it comes first, since the tile is no longer bridgeable anyway
+    if (tier >= 2 && this._bridgeWorks(owner, tx, ty)) return 'bridgeup';
     if (Terraform.isDiggable(tx, ty)) return 'dig';
     if (tier >= 2 && Terraform.bridgeCrossing(tx, ty, owner) && !(Bld.bridgeAt && Bld.bridgeAt(tx, ty))) return 'bridge';
     if (tier >= 3 && Terraform.isClearable(tx, ty)) return 'clear';
     return null;
+  },
+  // an own bridge here that has been ordered reinforced and is still building?
+  _bridgeWorks(owner, tx, ty) {
+    const br = Bld.bridgeAt && Bld.bridgeAt(tx, ty);
+    return br && br.owner === owner && br.upgrading > 0 ? br : null;
   },
   // can a sapper of this tribe do a SPECIFIC job on this tile? (tier + tile type)
   canTerraform(owner, tx, ty, job) {
     const tier = this.sapperTier(owner); if (tier < 1) return false;
     if (job === 'dig') return Terraform.isDiggable(tx, ty);
     if (job === 'bridge') return tier >= 2 && !!Terraform.bridgeCrossing(tx, ty, owner) && !(Bld.bridgeAt && Bld.bridgeAt(tx, ty));
+    if (job === 'bridgeup') return tier >= 2 && !!this._bridgeWorks(owner, tx, ty);
     if (job === 'clear') return tier >= 3 && Terraform.isClearable(tx, ty);
     if (job === 'mound') return tier >= 3 && Terraform.isMoundable(tx, ty, owner);
     return false;
+  },
+  // the nearest sapper with nothing on: who a fresh set of bridge works calls out
+  nearestIdleSapper(x, y, owner) {
+    let best = null, bd = 1e9;
+    for (const u of S.units) {
+      if (u.owner !== (owner || 'P') || u.kind !== 'sapper' || u.task || u.tUnit) continue;
+      const d = Math.hypot(u.x - x - 0.5, u.y - y - 0.5);
+      if (d < bd) { bd = d; best = u; }
+    }
+    return best;
   },
   // order a sapper to reshape a tile: path to the open edge beside it, then work.
   // forceJob (from a panel tool) picks the job explicitly; else it's auto-detected.
@@ -514,13 +534,18 @@ const Units = {
       }
     }
     if (!best) return false;
+    // 'bridgeup' is the odd one out: its clock lives on the BRIDGE and counts
+    // DAYS, not seconds (see the terraform tick) — the task only mirrors it so
+    // the panel has a bar to draw
+    const works = job === 'bridgeup' ? this._bridgeWorks(u.owner, tx, ty) : null;
     const time = job === 'dig' ? CFG.TERRAFORM.dig : job === 'bridge' ? CFG.TERRAFORM.bridge
+      : job === 'bridgeup' ? (works ? works.upgrading : 1)
       : job === 'mound' ? Terraform.moundTime(tx, ty) : CFG.TERRAFORM.clear;
     const STAND = 0.4;
     u.task = {
       type: 'terraform', job, x: tx, y: ty, sx: best.x, sy: best.y,
       stx: best.x + 0.5 + (tx - best.x) * STAND, sty: best.y + 0.5 + (ty - best.y) * STAND,
-      t: time, total: time,
+      t: time, total: works ? (works.upTotal || time) : time,
     };
     u.tUnit = 0; u.tBld = 0;
     return this.setPath(u, best.x, best.y);
@@ -1186,8 +1211,22 @@ const Units = {
           const stillValid = t.job === 'dig' ? Terraform.isDiggable(t.x, t.y)
             : t.job === 'clear' ? Terraform.isClearable(t.x, t.y)
             : t.job === 'mound' ? Terraform.isMoundable(t.x, t.y, u.owner)
+            : t.job === 'bridgeup' ? !!this._bridgeWorks(u.owner, t.x, t.y)   // the span (and its works) still stand
             : !(Bld.bridgeAt && Bld.bridgeAt(t.x, t.y)) && !!Terraform.bridgeCrossing(t.x, t.y, u.owner);   // not just "still water" — the span must still land on both sides
           if (!stillValid) { this.startNextTerraform(u); continue; }
+          /* REINFORCING A SPAN is a BUILD, so it runs on the building clock:
+             DAYS, counted down on the bridge itself rather than on this task.
+             Two consequences that are the whole point — the work survives the
+             sapper being cut down at the waterline, and a second sapper on the
+             same works genuinely halves it, exactly as two builders do. */
+          if (t.job === 'bridgeup') {
+            const br = this._bridgeWorks(u.owner, t.x, t.y);
+            br.upgrading -= dt * 1000 / CFG.DAY_MS;
+            t.t = Math.max(0, br.upgrading); t.total = br.upTotal || t.total;
+            if (Math.random() < 0.10) R.float(u.x + (Math.random() - 0.5), u.y - 0.4, '·', '#adada2');   // stone dust
+            if (br.upgrading <= 0) { Bld.finishBridgeUpgrade(br); this.startNextTerraform(u); }
+            continue;
+          }
           t.t -= dt;
           if (Math.random() < 0.16) R.float(u.x + (Math.random() - 0.5), u.y - 0.4, '·', '#cdbb90');   // spadefuls of earth
           if (t.t <= 0) {

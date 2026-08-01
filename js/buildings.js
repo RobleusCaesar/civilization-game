@@ -100,13 +100,41 @@ const Bld = {
     if (window.R && R.updateTile) R.updateTile(x, y);
     return true;
   },
-  canUpgradeBridge(br) { return !!br && (br.level || 1) < 3 && this.canAfford(CFG.BRIDGE.levels[br.level || 1].cost, S.res); },
-  upgradeBridge(br) {
+  /* REINFORCING A SPAN IS A BUILD, NOT A PURCHASE (tests/bridge-resource-shore.mjs).
+     It used to be instant: pay, and the timber crossing was a stone arch the
+     same frame. It now works exactly like every other upgrade in the game —
+     the stone is paid up front, the works stand on the bridge for
+     CFG.BRIDGE.levels[lv].time DAYS, and a SAPPER has to be at them the whole
+     time, the same hands that raised the level-1 crossing. The clock lives on
+     the BRIDGE (br.upgrading / upTotal / upTo), not on the sapper's task, so
+     progress survives the sapper being killed mid-span and a second sapper
+     genuinely halves the work — the same convention buildings use. */
+  canUpgradeBridge(br) {
+    return !!br && br.owner === 'P' && !(br.upgrading > 0) && (br.level || 1) < 3 &&
+      this.canAfford(CFG.BRIDGE.levels[br.level || 1].cost, S.res);
+  },
+  orderBridgeUpgrade(br) {
     if (!this.canUpgradeBridge(br)) return false;
-    this.pay(CFG.BRIDGE.levels[br.level].cost, S.res);   // player-only (UI); AI doesn't upgrade spans
-    br.level++;
+    const next = CFG.BRIDGE.levels[br.level];
+    this.pay(next.cost, S.res);            // player-only (UI); the AI doesn't upgrade spans
+    br.upTo = br.level + 1;
+    br.upgrading = br.upTotal = next.time || 2;
+    // …and the nearest free sapper walks out to it, the way a laid building
+    // site pulls the nearest idle villager (Bld.place)
+    const s = Units.nearestIdleSapper(br.x, br.y, 'P');
+    if (s && Units.assignTerraform(s, br.x, br.y, 'bridgeup'))
+      G.log('Bridge works laid out — a sapper heads over');
+    else
+      G.log('Bridge works need a sapper — tap one, then the bridge', true);
+    if (window.R && R.updateTile) R.updateTile(br.x, br.y);
+    return true;
+  },
+  finishBridgeUpgrade(br) {
+    br.level = br.upTo || (br.level + 1);
+    br.upgrading = 0; br.upTotal = 0; br.upTo = 0;
     br.maxhp = CFG.BRIDGE.levels[br.level - 1].hp;
-    br.hp = br.maxhp;   // upgrading re-plates and fully restores the span
+    br.hp = br.maxhp;   // the finished span is re-plated and whole
+    if (br.owner === 'P') G.log('Bridge reinforced — Lv ' + br.level);
     if (window.R && R.updateTile) R.updateTile(br.x, br.y);
     return true;
   },
