@@ -216,6 +216,17 @@ const CFG = {
         { cost: { wood: 320, gold: 25 },  time: 2, hp: 220, out: { stone: 12 } },
       ],
     },
+    /* BARBARIAN CAMP (tests/raider-camps.mjs) — the one building neither
+       tribe raises. The map puts them down in the wild country, they are
+       ALWAYS tended by a few barbarians, and they can be pulled down: a camp
+       is a place on the board, so a trip out to the far woods is a trip past
+       somebody's spears. Owned by 'R', so it is hostile ground to both tribes.
+       No cost and no build time — it is placed, never built. */
+    raidercamp: {
+      name: 'Barbarian Camp', wild: true,
+      desc: 'A barbarian war camp. Its band musters here — burn it out and they lose the ground.',
+      levels: [{ cost: {}, time: 0, hp: 420, vision: 5 }],
+    },
     /* GOLD MINE (tests/gold-mine.mjs) — the only building you cannot site
        where you like: it is SUNK ON A GOLD SEAM (T.GOLDORE), and seams are
        scattered across the map away from both towns, so gold has to be found,
@@ -552,6 +563,13 @@ const CFG = {
      top of. `aiDay` is the earliest the rival will march out and sink one. */
   GOLD_SEAMS: { count: 3, perTile: 0.0008, minFromTown: 10, aiDay: 40 },
 
+  /* BARBARIAN CAMPS (tests/raider-camps.mjs). How many the map carries is the
+     size factor times the mode's `campMult`; how many barbarians tend each is
+     rolled from the mode's `campGuard` band. A tender that falls is replaced
+     after `remanDays`, so a camp is only cleared for good by pulling the camp
+     itself down. `guardR` is how far from home a tender will stray. */
+  RAIDER_CAMPS: { perArea: 2, min: 2, guardR: 5, remanDays: 6, chaseR: 7 },
+
   MEAT_DROP: 10,               // food gained when a wild animal is killed
   PASSIVE_MAX: 10,             // grazing animals kept on the map — two herds' worth
                                // (Units.spawnHerd puts them down 3–5 at a time)
@@ -666,6 +684,7 @@ const CFG = {
       // build actions, full output — so the town you eventually visit is a
       // living farm sprawl, not a war camp. Calm = watch it farm, not fight.
       waveFirst: 85, waveGapMult: 2.8, waveSizeAdd: -2, barbMult: 0.75,
+      campMult: 0.6, campGuard: [1, 2],   // BARBARIAN CAMPS (tests/raider-camps.mjs): how many the map carries, and how many tend each
       animalMax: 2, animalChance: 0.15, aiRaidDay: 110,
       aiBuildEvery: 2, aiOutput: 1.0, aiArmyCap: 5, aiArmyDiv: 14, aiEliteShare: 0.1, aiAggro: 0.4,
       aiVillCap: 12, aiVillEvery: 11, aiActions: 2, aiHarass: 0,   // calm: no harassment parties
@@ -680,6 +699,7 @@ const CFG = {
       name: 'Moderate', icon: '⚔️', desc: 'The intended experience.',
       gather: 1, output: 1, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
       waveFirst: 40, waveGapMult: 1.5, waveSizeAdd: 0, barbMult: 1,
+      campMult: 1, campGuard: [1, 3],   // BARBARIAN CAMPS (tests/raider-camps.mjs): how many the map carries, and how many tend each
       animalMax: 3, animalChance: 0.2, aiRaidDay: 50,
       // army volume dialed back ~20% from the original 9/8 tuning — playtesting
       // read as relentless; the player needs a breath between pushes. aiEarly
@@ -714,6 +734,7 @@ const CFG = {
       // waves a shade heavier and closer together.
       gather: 0.90, output: 1.0, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
       waveFirst: 33, waveGapMult: 0.85, waveSizeAdd: 1, barbMult: 1.15, barbSpacing: true, bandCap: 9,
+      campMult: 1.5, campGuard: [2, 3],   // BARBARIAN CAMPS (tests/raider-camps.mjs): how many the map carries, and how many tend each
       animalMax: 4, animalChance: 0.3, aiRaidDay: 32,
       aiBuildEvery: 1, aiOutput: 1.25, aiArmyCap: 15, aiArmyDiv: 5, aiEliteShare: 0.8, aiAggro: 1.2,
       aiVillCap: 18, aiVillEvery: 8, aiActions: 4, aiHarass: 5,

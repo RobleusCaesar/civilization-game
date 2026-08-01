@@ -1134,7 +1134,10 @@ const Units = {
         Combat.raiderSeek(u);
         if (S.units[i] === u && !u.tUnit && !u.tBld) {
           if (this.moving(u)) { u.stallT = 0; this.followPath(u, dt); }
-          else if (u.owner === 'R' && (u.stallT = (u.stallT || 0) + dt) > 8) {
+          // …but a CAMP TENDER standing at its own fire is not stranded — it is
+          // doing its job (tests/raider-camps.mjs). Melting those away would
+          // empty every camp on the map within a minute of the game starting.
+          else if (u.owner === 'R' && !u.campId && (u.stallT = (u.stallT || 0) + dt) > 8) {
             // BACKSTOP: no prey, no path, going nowhere for 8 straight seconds —
             // whatever wedged this raider (marooned on water, a pocket with no
             // exit, a state the seek logic never anticipated), it does not get
@@ -1404,6 +1407,17 @@ const Units = {
           const tx2 = b.x + (twin ? (twin.x <= b.x + 0.5 ? 0.75 : 0.25) : 0.5);
           u.x += (tx2 - u.x) * Math.min(1, dt * 4);
           u.y += (b.y + 0.62 - u.y) * Math.min(1, dt * 4);
+          /* WHAT THIS HAND IS BRINGING IN. A gatherer out on a forest tile
+             floats "+wood" as it works (the gather branch above); a villager
+             stationed at a plot used to show nothing at all, even though a
+             station's whole job is producing. Same white vanishing text, same
+             colour, at about the same cadence — so a miner reads "+gold" the
+             way a woodcutter reads "+wood", and gold needs no special
+             treatment of its own. Production itself is still the once-a-day
+             lump in Bld.dailyProduction; this only SAYS so. */
+          const out = Bld.lv(b).out;
+          if (out && !b.upgrading && Math.random() < dt * 0.7)
+            R.float(u.x, u.y - 0.5, '+' + Object.keys(out)[0], '#d8e8b0');
         }
       } else if (t.type === 'board') {
         // march to the pier and step aboard the transport

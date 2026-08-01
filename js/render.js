@@ -1069,9 +1069,6 @@ const R = {
   COLLAPSE_PAD: { w: 2.5, h: 1.6, x: 0.75, y: 0.45 },
   collapses: [],                 // live one-shots: {x,y,sz,spr,cfg,t,flip,art}
   marvel: null,                  // the wonder's held frame: {x,y,t,name,blurb} — never in S
-  // building key → the resource icon a stationed worker carries over its head
-  // (tests/gold-mine.mjs). One entry is the whole feature for a new station.
-  CARRY_ICON: { mine: 'gold' },
 
   // does this kind carry hand-drawn collapse art? (returns the frame count)
   collapseArt(key, frames) {
@@ -1832,7 +1829,9 @@ const R = {
            sits ON it. Nobody else builds walls, so an unmarked curtain is
            yours by elimination — and your own castle reads clean. */
         const fort = b.key === 'wall' || b.key === 'gate' || b.key === 'tower';
-        g.fillStyle = b.owner === 'P' ? '#4a90c2' : '#c2564a';
+        // barbarian works wear the band's own rust, never the rival's red —
+        // a camp is nobody's tribe (tests/raider-camps.mjs)
+        g.fillStyle = b.owner === 'P' ? '#4a90c2' : b.owner === 'R' ? '#6e5b40' : '#c2564a';
         if (!fort) g.fillRect(bx + 1, by + 1, 4, 4);
         else if (b.owner !== 'P') g.fillRect(bx + bw / 2 - 1.5, by + bw / 2 - 1.5, 3, 3);
         if (b.key === 'tc' && b.level === 1) {
@@ -2012,26 +2011,6 @@ const R = {
         g.fillStyle = u.owner === 'P' ? '#c0e8ff' : '#ffb0a0';
         for (let ci = 0; ci < u.cargo.length; ci++)
           g.fillRect(ux + 7 + ci * 4, uy - 1, 3, 3);
-      }
-      /* WHAT THIS PAIR OF HANDS IS BRINGING UP (tests/gold-mine.mjs). A worker
-         stationed at a plot in CARRY_ICON floats that resource's icon over its
-         head — so a miner at the seam is visibly hauling GOLD, not just
-         standing on a building. The registry is the extension point: a key in
-         it is the whole feature, and only the Gold Mine is in it today (the
-         farms and camps of an ordinary town would be noise). It bobs on a
-         continuous clock, and only while the worker is actually ON the plot
-         and the plot is actually running. */
-      const carry = u.task && u.task.type === 'work' && this.CARRY_ICON[
-        (Bld.get(u.task.id) || {}).key];
-      if (carry) {
-        const wb = Bld.get(u.task.id);
-        if (wb && Bld.done(wb) && !wb.upgrading && (u.x | 0) === wb.x && (u.y | 0) === wb.y) {
-          const ic = Sprites.icons[carry];
-          if (ic) {
-            const bob = Math.sin(performance.now() / 320 + u.id) * 1.6;
-            g.drawImage(ic, Math.round(ux + TL / 2 - 8), Math.round(uy - 13 + bob), 16, 16);
-          }
-        }
       }
       if (u.hp < u.maxhp) this.bar(g, ux + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');

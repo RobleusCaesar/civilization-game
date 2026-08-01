@@ -213,9 +213,14 @@ const MapGen = {
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++)
         t[id(s.x + dx, s.y + dy)] = T.GRASS;
 
-    // raider camps, far from both starts (more on bigger maps)
+    /* BARBARIAN CAMPS (tests/raider-camps.mjs), far from both starts — more on
+       bigger maps, and more where the mode is harsher. The tile only carries
+       the trampled GROUND; the camp itself is a building placed on it in
+       G.newGame, with a band of tenders, so it can be pulled down. */
     const camps = [];
-    const wantCamps = Math.max(2, Math.round(2 * f));
+    const cm = (CFG.MODES[mode] && CFG.MODES[mode].campMult) != null ? CFG.MODES[mode].campMult : 1;
+    const RC = CFG.RAIDER_CAMPS || { perArea: 2, min: 2 };
+    const wantCamps = Math.max(RC.min || 2, Math.round((RC.perArea || 2) * f * cm));
     let guard = 0;
     while (camps.length < wantCamps && guard++ < 600) {
       const x = 3 + rnd() * (W - 6) | 0, y = 3 + rnd() * (H - 6) | 0;

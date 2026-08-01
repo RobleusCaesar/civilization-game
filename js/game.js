@@ -210,6 +210,12 @@ const G = {
                econ: pkA.econ, card: S.draft.rival.pick.key } };
     if (window.DEBUG_OPENINGS)
       console.log('[openings]', JSON.stringify(S.opening), '[draft]', JSON.stringify(S.draft));
+    /* THE BARBARIAN CAMPS (tests/raider-camps.mjs). MapGen marked the ground;
+       the camps themselves go down here as BUILDINGS owned by 'R' — hostile
+       to both tribes, and burnable. Each is manned at once, so the wild
+       country is dangerous from day one and a lone villager sent across the
+       map is a villager sent past somebody's spears. */
+    for (const c of (gen.spawns.camps || [])) this.plantRaiderCamp(c.x, c.y);
     Units.spawnHerd('deer', 8);
     Units.spawnHerd('cow', 8);
     // SPECIAL EVENTS — one roll for the whole game (see CFG.SPECIALS): at most
@@ -528,6 +534,7 @@ const G = {
   dayTick() {
     // victory and defeat come only through Town Centers falling (see Bld.damage)
     S.day++;
+    this.tickRaiderCamps();   // a camp raises another spear when one falls
     /* LIVING land recovers: felled forest and spent orchard/berry soil grow
        back with a lean restock, so a starved player can always grind wood
        and food back — just slowly. ORE DOES NOT (CFG.REGROW_TO): a quarried
@@ -972,6 +979,67 @@ const G = {
       ev.x += ev.dir * 10 * dt;
       ev.y -= dt * 1.4;
       if (ev.x < -4 || ev.x > CFG.W + 4) D.ev = null;
+    }
+  },
+
+  /* ================= BARBARIAN CAMPS (tests/raider-camps.mjs) =============
+     A camp is a BUILDING owned by 'R' standing on trampled ground, always
+     with a few barbarians about it. That is the whole point: the far country
+     is not empty scenery, and a trip out to a distant seam or a fat forest is
+     a trip past somebody's spears. Burn the camp and the ground is yours —
+     its band stops being replaced and no wave musters there again. */
+  plantRaiderCamp(x, y) {
+    if (!MapGen.inB(x, y) || Bld.at(x, y)) return null;
+    S.map.terrain[MapGen.idx(x, y)] = T.CAMP;
+    const b = Bld.place('R', 'raidercamp', x, y, { free: true, instant: true });
+    if (!b) return null;
+    // the camp's own quota, rolled once and REMEMBERED: it is what the camp
+    // re-mans back up to, so a band you cut down comes back the same size
+    b.reman = 0;
+    b.quota = this.campQuota();
+    this.manRaiderCamp(b, b.quota);
+    return b;
+  },
+  // how many tend a camp on this difficulty — rolled per camp from the mode's
+  // band, so no two camps are quite the same errand
+  campQuota() {
+    const band = (this.modeCfg().campGuard) || [1, 3];
+    return band[0] + ((this.rand() * (band[1] - band[0] + 1)) | 0);
+  },
+  campTenders(b) {
+    return S.units.filter(u => u.owner === 'R' && u.campId === b.id);
+  },
+  // put `n` barbarians on a camp — anchored to it, and marked as its tenders
+  // so the seek logic keeps them home (Combat.raiderSeek) and the
+  // stranded-raider backstop in units.js never melts them away
+  manRaiderCamp(b, n) {
+    let put = 0;
+    for (let i = 0; i < n; i++) {
+      const spot = MapGen.findNear(b.x, b.y, 3, (sx, sy) =>
+        Path.passable(sx, sy, 'R') && !Bld.at(sx, sy));
+      if (!spot) break;
+      const kind = this.rand() < 0.25 ? 'brute' : 'raider';
+      const u = Units.spawn(kind, 'R', spot.x, spot.y);
+      u.hostileTo = 'ALL';          // a camp band answers to nobody
+      u.campId = b.id;
+      u.anchor = { x: b.x + 0.5, y: b.y + 0.5 };
+      put++;
+    }
+    return put;
+  },
+  /* A CAMP RE-MANS ITSELF. Kill the band and the camp simply raises another
+     in a few days — "always tended" has to mean always, or clearing one is a
+     free afternoon's work and the ground is won without ever facing the camp
+     itself. Called once a day from G.dayTick. */
+  tickRaiderCamps() {
+    const RC = CFG.RAIDER_CAMPS || {};
+    for (const b of Bld.list('R')) {
+      if (b.key !== 'raidercamp' || b.construction > 0) continue;
+      if (b.quota == null) b.quota = this.campQuota();
+      const have = this.campTenders(b).length;
+      if (have >= b.quota) { b.reman = 0; continue; }
+      b.reman = (b.reman || 0) + 1;
+      if (b.reman >= (RC.remanDays || 6)) { b.reman = 0; this.manRaiderCamp(b, 1); }
     }
   },
 

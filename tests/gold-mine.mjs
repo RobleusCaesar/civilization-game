@@ -153,9 +153,20 @@ const out = await p.evaluate(() => {
       /Gold Mine/.test(wr.what) && wr.rate && wr.rate.res === 'gold' && wr.rate.n > 0,
       wr.what + ' · ' + JSON.stringify(wr.rate));
     ck('theMinerSwingsAPick', R.unitPose(v) === 'mine', R.unitPose(v));
-    ck('andCarriesTheGoldOverItsHead',
-      R.CARRY_ICON.mine === 'gold' && !!Sprites.icons.gold,
-      'R.CARRY_ICON is the registry — one entry per station that shows its haul');
+    /* …and says "+gold" as it works, in exactly the white vanishing text a
+       woodcutter says "+wood" in. Gold gets NO treatment of its own: every
+       stationed worker floats its plot's output, the same way the gather task
+       has always floated a raw tile's. */
+    {
+      const seen = [];
+      const of2 = R.float.bind(R);
+      R.float = (x, y, txt, col) => { seen.push(txt + '|' + col); return of2(x, y, txt, col); };
+      for (let t = 0; t < 200; t++) Units.update(0.1);
+      R.float = of2;
+      ck('andSaysPlusGoldAsItWorks',
+        seen.some(s => s === '+gold|#d8e8b0'),
+        seen.length ? seen.slice(0, 3).join(' ') : 'nothing floated');
+    }
     /* the richest per hand on the board — measured in WORTH, not raw units: a
        farm's 50 food a day is more THINGS than a mine's 16 gold and nothing
        like as valuable. The weights are the same rough exchange the sapper's

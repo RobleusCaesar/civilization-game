@@ -78,6 +78,7 @@ node tests/fishery.mjs         # shore shoals are half-stocked, deep water three
 node tests/wild-life.mjs       # wolves stalk deer, herds bolt as one, birds scatter; banners fly in the tribe's dye
 node tests/wonder.mjs          # the second way to win: one of ten 3×3 monuments, and the rival comes running
 node tests/gold-mine.mjs       # gold seams are found, claimed, worked and held — and the seam outlives the mine
+node tests/raider-camps.mjs    # barbarian camps are standing, tended, burnable ground — the wild country has owners
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -900,11 +901,16 @@ stands ON the plot like every other station, which is why `Bld.solid` (keyed
 off `needsWorker`) leaves it walkable — the Gold Mine joined the worker-plot
 set for free the day it was added, and `tests/buildings-block.mjs` pins that
 the set is DERIVED and never hand-listed.
-**What the miner is bringing up** (same test): `R.CARRY_ICON` is a registry
-keyed by building key — a stationed worker floats that resource's icon over
-its head. Only `mine` is in it today (an ordinary town's farms and camps would
-be noise); one entry is the whole feature for another station. The pick-swing
-pose and the `Units.workReport` gold rate come along with it. The mine's own
+**What the miner is bringing up** (same test): a villager stationed at ANY
+plot now floats `+<resource>` as it works — the same white vanishing text, the
+same colour (`#d8e8b0`) and about the same cadence as the gather task has
+always floated `+wood` for a woodcutter. So a miner reads `+gold` exactly the
+way a farmhand reads `+food`, and gold gets no treatment of its own. (An
+earlier pass hung a gold ICON over the miner's head; that was the wrong idea —
+no other resource does that, and it made gold look special instead of normal.)
+Production is still the once-a-day lump in `Bld.dailyProduction`; the float
+only SAYS so. The pick-swing pose and the `Units.workReport` gold rate come
+along with it. The mine's own
 art puts the ADIT hard LEFT in the tile (x≈2): a villager sprite fills roughly
 the middle third of its plot, so a mouth in the centre is a mouth nobody ever
 sees, and the mouth is the one thing that says "mine". The bank behind it is
@@ -923,3 +929,37 @@ already targets it: holding one needs no new AI code, only soldiers.
 **A new `T.*` needs a minimap colour**: `R.drawMini`'s `COLORS` table is
 INDEXED BY TERRAIN, so a new type without an entry paints holes where its
 tiles stand.
+
+**Barbarian camps** (`tests/raider-camps.mjs`): a camp used to be a PICTURE on
+the ground — `T.CAMP` terrain, a wave muster point, and nothing you could ever
+do about it. It is now a BUILDING (`raidercamp`) owned by `'R'`, standing on
+that trampled ground, and the terrain sprite was stripped back to bare churned
+earth because that is what is LEFT when the camp burns. Four rules.
+**Tended, always**: `G.plantRaiderCamp` mans each camp the day the map is made
+from the mode's `campGuard` band, and `G.tickRaiderCamps` (once a day from
+`G.dayTick`) replaces a fallen tender after `CFG.RAIDER_CAMPS.remanDays`. The
+camp REMEMBERS its own `quota`, rolled once, so a band you cut down comes back
+the same size — clearing the band is an afternoon's work, taking the ground is
+not.
+**Milling, not marching**: tenders carry `u.campId`, and the branch at the top
+of `Combat.raiderSeek` keeps them home — they wander inside `guardR`, fight
+anything inside `chaseR` (and anything hacking at the camp itself, first), and
+never set off across the map after a villager they glimpsed. That is what makes
+a trip out to a far seam dangerous WITHOUT turning every camp into a permanent
+invasion. **The stranded-'R' backstop in units.js must skip them** (`!u.campId`)
+— it melts any land raider that stands still for 8 seconds, which is exactly
+what a tender at its own fire does, and without the exemption every camp on the
+map empties within a minute of the game starting.
+**Burnable**: it has hp, so a war party can pull it down. `Bld.damage`'s `'R'`
+branch logs it; the standing band goes loose the next time `raiderSeek` runs
+(no camp, no post); `tickRaiderCamps` raises nothing there again; and the wave
+muster filter in `Combat.spawnWave` only counts camps still standing, so
+burning one takes that muster point off the board for good.
+**Scaled both ways**: camp COUNT is the map's area factor × the mode's
+`campMult` (calm 0.6 / moderate 1 / hard 1.5, floored at `RAIDER_CAMPS.min`),
+and the band size comes from `campGuard` (calm 1–2, moderate 1–3, hard 2–3).
+Two consequences of a camp being a real building: it is SOLID like every other
+non-plot building, so `Combat.spawnWave`'s island-map wilderness flood must
+seed from the open ground BESIDE a camp rather than the camp tile itself; and
+the owner pip needed an `'R'` case (rust, not the rival's red) — a camp is
+nobody's tribe.

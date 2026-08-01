@@ -655,6 +655,45 @@ const Combat = {
       this.raiderLeave(u);
       return;
     }
+    /* A CAMP'S OWN BAND STAYS AT THE CAMP (tests/raider-camps.mjs). Tenders
+       are not a war party: they mill about their own ground, fight whatever
+       walks into it, and never set off across the map after a villager they
+       glimpsed. That is what makes the far country dangerous WITHOUT turning
+       every camp into a permanent invasion. Burn the camp and the band is
+       loose — it becomes an ordinary raider band from that moment. */
+    if (u.owner === 'R' && u.campId) {
+      const camp = Bld.get(u.campId);
+      if (!camp || camp.owner !== 'R') {
+        u.campId = 0;                                  // the camp is gone; hunt like any other band
+      } else {
+        const RC = CFG.RAIDER_CAMPS || {};
+        const gR = RC.guardR || 5, cR = RC.chaseR || 7;
+        const hx = camp.x + 0.5, hy = camp.y + 0.5;
+        // anyone hacking at the camp itself is the first business of the day
+        const atCamp = this.nearestUnit(hx, hy, cR,
+          o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o));
+        if (atCamp && this.canReach(u, atCamp.x, atCamp.y, 1.6)) { u.tUnit = atCamp.id; return; }
+        // …then anything that has strayed into the camp's ground
+        const near = this.nearestUnit(u.x, u.y, cR,
+          o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o) &&
+               Math.hypot(o.x - hx, o.y - hy) <= cR + 2);
+        if (near && this.canReach(u, near.x, near.y, 1.6)) { u.tUnit = near.id; return; }
+        u.tUnit = 0; u.tBld = 0;
+        const d = Math.hypot(u.x - hx, u.y - hy);
+        if (d > gR) {                                  // strayed too far — amble home
+          if (u.repathT <= 0) { u.repathT = 1; Units.setPath(u, camp.x, camp.y); }
+          return;
+        }
+        // MILLING: a slow, aimless wander inside the camp's ground. Seeded, so
+        // a seed's camp reads the same way twice.
+        if (!Units.moving(u) && G.rand() < 0.03) {
+          const wx = (hx + (G.rand() * 2 - 1) * gR * 0.75) | 0;
+          const wy = (hy + (G.rand() * 2 - 1) * gR * 0.75) | 0;
+          if (MapGen.inB(wx, wy) && Path.passable(wx, wy, 'R')) Units.setPath(u, wx, wy);
+        }
+        return;
+      }
+    }
     // priority of prey: soldiers first, then ANY other land unit — villagers,
     // sappers, scouts: a barbarian doesn't spare the help just because it
     // carries a spade instead of a spear. The hostileUnits check means an
@@ -1066,7 +1105,14 @@ const Combat = {
     // sea raiders can't step off inside someone's sealed walls
     let open = Path.borderReach();
     if (!open) {
-      const seeds = (S.map.spawns.camps || []).slice();
+      // the camp tile itself is a BUILDING now, and buildings are solid — seed
+      // the flood from the open ground BESIDE each camp, or an island map's
+      // wilderness network comes back empty (tests/raider-camps.mjs)
+      const seeds = [];
+      for (const c of (S.map.spawns.camps || [])) {
+        const near = MapGen.findNear(c.x, c.y, 3, (x, y) => Path.passable(x, y));
+        if (near) seeds.push(near);
+      }
       const atc0 = Bld.tcOf('A');
       if (atc0) seeds.push({ x: atc0.x, y: atc0.y + 2 });
       open = Path.reachFrom(seeds);
@@ -1111,7 +1157,12 @@ const Combat = {
     // occasionally do they muster at an existing raider camp. Keeping the entry
     // point varied stops bands from repeatedly funnelling into the same corner.
     let sx, sy;
-    const camps = S.map.spawns.camps;
+    // only camps still STANDING muster a wave — burning one out takes that
+    // muster point off the board for good (tests/raider-camps.mjs)
+    const camps = (S.map.spawns.camps || []).filter(c => {
+      const cb = Bld.at(c.x, c.y);
+      return cb && cb.owner === 'R' && cb.key === 'raidercamp';
+    });
     if (camps.length && G.rand() < 0.25) {
       const c = camps[(G.rand() * camps.length) | 0];
       sx = c.x; sy = c.y;

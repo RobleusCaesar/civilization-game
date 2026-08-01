@@ -614,18 +614,24 @@ const Sprites = {
       for (let i = 0; i < 8; i++) f(2 + ((r() * 28) | 0), 22 + ((r() * 6) | 0), 1, 1, r() < 0.5 ? ST[2] : RK[1]);
     }),
   ];
+  /* the CAMP GROUND (tests/raider-camps.mjs) — trampled bare earth, churned by
+     feet and scattered with the litter of a band. The camp ITSELF is a
+     building drawn on top of this (B_DRAW.raidercamp), because it can be
+     pulled down: when it burns, this ground is what is left. */
   Sprites.terrain[T.CAMP] = [
     tile(p => {
+      const f = p.f, r = ART.rng(41);
       ART.dither(p, 0, 0, 16, 16, AP.soil[3], AP.grass[2]);          // trampled dirt
-      const r = ART.rng(41);
-      for (let i = 0; i < 6; i++) p((r() * 16) | 0, (r() * 16) | 0, 1, 1, AP.soil[1]);
-      p(1, 2, 1, 3, AP.wood[1]); p(4, 1, 1, 3, AP.wood[1]);          // crude spike palisade
-      p(13, 2, 1, 3, AP.wood[1]); p(1, 1, 1, 1, AP.wood[3]); p(13, 1, 1, 1, AP.wood[3]);
-      ART.shadedRect(p, 5, 5, 6, 5, AP.rust, 1);                      // hide tent
-      p(6, 4, 4, 1, AP.rust[2]);
-      p(7, 7, 2, 3, AP.ink[0]);                                       // entrance
-      p(2, 9, 1, 3, AP.wood[1]); p(1, 8, 3, 1, AP.bone[2]); p(2, 7, 1, 1, AP.bone[2]);  // skull totem
-      p(11, 11, 3, 1, AP.ink[1]); p(12, 10, 2, 2, AP.fire[1]); p(12, 9, 1, 1, AP.fire[2]);  // fire pit
+      for (let i = 0; i < 16; i++) f((r() * 32) | 0, (r() * 32) | 0, 1, 1, r() < 0.5 ? AP.soil[1] : AP.soil[2]);
+      for (let i = 0; i < 5; i++) {                                   // boot-churned hollows
+        const hx = 2 + ((r() * 26) | 0), hy = 2 + ((r() * 26) | 0);
+        f(hx, hy, 3, 2, AP.soil[1]); f(hx, hy, 3, 1, AP.soil[2]);
+      }
+      for (let i = 0; i < 4; i++) {                                   // gnawed bones and broken shafts
+        const bx = 3 + ((r() * 24) | 0), by = 3 + ((r() * 24) | 0);
+        if (r() < 0.5) { f(bx, by, 3, 1, AP.bone[1]); f(bx, by, 1, 1, AP.bone[2]); }
+        else f(bx, by, 1, 3, AP.wood[1]);
+      }
     }),
   ];
   // ground color per terrain — render.js dithers these along biome borders. Every
@@ -1279,6 +1285,48 @@ const Sprites = {
        its wheel, a wash-trough sluicing the crushed rock, and gold stacked in
        the cart. The seam it stands on shows around the works at every tier —
        that is what says GOLD rather than "quarry". */
+    /* ============ BARBARIAN CAMP (tests/raider-camps.mjs) ============
+       Nobody's tribe raised this: a hide tent lashed over bent poles, a ring
+       of sharpened stakes leaning outward, a skull totem on a pole and a fire
+       that never goes out. Rust and bone, never the tribes' timber-and-thatch,
+       so it reads as OTHER at a glance across a fogged map — and it has hp,
+       so a war party can burn it out. One level; `lv` is ignored. */
+    raidercamp(p) {
+      const q = p.hi, R = AP.rust, HD = AP.hide, BO = AP.bone, W = AP.wood, F = AP.fire, INK = AP.ink;
+      ART.dropShadow(p, 8, 14, 12);
+      const rr = ART.rng(311);
+      // the stake ring — sharpened poles leaning outward round the camp
+      for (const [sx, sy, lean] of [[2, 12, -1], [4, 22, -1], [27, 11, 1], [29, 21, 1], [9, 27, 0], [21, 28, 0]]) {
+        q(sx, sy, 2, 6, W[1]); q(sx, sy, 1, 6, W[2]);
+        q(sx + lean, sy - 2, 2, 2, W[2]); q(sx + lean, sy - 2, 1, 1, BO[1]);
+      }
+      // the TENT — hide stretched over bent poles, a dark mouth in the front
+      for (let i = 0; i < 13; i++) {
+        const w = 3 + i * 1.5 | 0;
+        q(15 - (w >> 1), 6 + i, w, 1, i < 3 ? HD[2] : HD[1]);
+        q(15 - (w >> 1), 6 + i, 1, 1, HD[3]);
+        q(15 + (w >> 1) - 1, 6 + i, 1, 1, HD[0]);
+      }
+      q(5, 18, 21, 3, HD[1]); q(5, 18, 21, 1, HD[2]); q(5, 20, 21, 1, INK[0]);
+      q(12, 12, 7, 9, INK[0]);                            // the mouth of it
+      q(12, 12, 7, 1, HD[0]);
+      for (let i = 0; i < 5; i++) q(6 + i * 4, 8 + i, 1, 10 - i, R[1]);   // hide seams and lashings
+      q(13, 3, 2, 5, W[1]); q(12, 2, 4, 2, BO[2]);        // the pole at the crown, tipped with bone
+      // the SKULL TOTEM on its stake, facing out
+      q(24, 8, 2, 12, W[1]); q(24, 8, 1, 12, W[2]);
+      q(22, 4, 6, 5, BO[2]); q(22, 4, 6, 1, BO[1]);
+      q(23, 6, 2, 2, INK[0]); q(26, 6, 1, 2, INK[0]);     // eye sockets
+      q(23, 9, 4, 1, BO[1]);
+      q(21, 3, 2, 3, R[2]); q(28, 3, 2, 3, R[2]);         // war rags tied to the stake
+      // the FIRE that never goes out, ringed with stones
+      const fx = 6, fy = 24;
+      for (let i = 0; i < 6; i++) q(fx - 2 + i * 2, fy + 2 - (i % 2), 2, 2, AP.stone[1]);
+      q(fx - 1, fy - 1, 6, 2, W[0]); q(fx, fy - 3, 4, 3, F[0]);
+      q(fx + 1, fy - 5, 3, 3, F[1]); q(fx + 1, fy - 7, 2, 2, F[2]);
+      // a gnawed carcass and a spear stuck in the ground
+      q(20, 25, 6, 2, BO[1]); q(20, 25, 6, 1, BO[2]); q(22, 24, 1, 2, BO[2]);
+      q(29, 22, 1, 8, W[1]); q(28, 20, 3, 3, AP.stone[2]); q(28, 20, 3, 1, AP.stone[3]);
+    },
     mine(p, lv) {
       const q = p.hi, tier = lv, ST = AP.stone, W = AP.wood, GD = AP.gold, RK = AP.rock, INK = AP.ink;
       ART.dropShadow(p, 8, 14, 12);

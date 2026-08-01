@@ -67,6 +67,13 @@ const out = await p.evaluate(() => {
 
   const setup = (seed) => {
     G.newGame(seed, 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    /* Every map now plants BARBARIAN CAMPS with bands about them
+       (tests/raider-camps.mjs) — real 'R' units that belong to no scenario
+       here. Clear them, so every count below is about the band the scenario
+       itself put on the board and nothing else. */
+    for (const c of Bld.list('R').filter(z => z.key === 'raidercamp')) Bld.removeToRuin(c);
+    S.units = S.units.filter(u => !u.campId);
+    Bld._block = null;
     return Bld.tcOf('P');
   };
   const T2 = (x, y, t) => { S.map.terrain[MapGen.idx(x, y)] = t; };
