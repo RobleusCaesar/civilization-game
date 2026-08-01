@@ -61,6 +61,17 @@ const out = await p.evaluate(() => {
     ck('woodSoilAndRuinsAreScheduled',
       S.map.decay[idx(21, 20)] !== undefined && S.map.decay[idx(22, 20)] !== undefined &&
       S.map.decay[idx(23, 20)] !== undefined, '');
+    /* RUBBLE RUNS ON ITS OWN, SHORTER CLOCK. Sweeping up a demolished building
+       is not the same job as a forest growing back, and a player who tears
+       down their own hut should not be looking at the rubble for two months.
+       CFG.RUIN_FADE_DAYS is that clock; the regrowth base is untouched. */
+    ck('rubbleFadesOnItsOwnClock',
+      S.map.decay[idx(23, 20)] === S.day + CFG.RUIN_FADE_DAYS &&
+      CFG.RUIN_FADE_DAYS === 20, `${CFG.RUIN_FADE_DAYS} days`);
+    ck('regrowthKeepsTheLongOne',
+      S.map.decay[idx(21, 20)] === S.day + CFG.RUIN_DECAY_DAYS * CFG.REGROW_MULT[T.STUMPS] &&
+      S.map.decay[idx(21, 20)] > S.map.decay[idx(23, 20)],
+      `felled woods ${CFG.RUIN_DECAY_DAYS * CFG.REGROW_MULT[T.STUMPS]} days`);
 
     // ---- 3. and after a long time, ore is still a scar ----
     for (let i = 0; i < 400; i++) G.dayTick();
@@ -68,11 +79,43 @@ const out = await p.evaluate(() => {
     ck('forestStillGrowsBack', S.map.terrain[idx(21, 20)] === T.FOREST, '');
     ck('orchardSoilStillRecovers', S.map.terrain[idx(22, 20)] === T.FERTILE, '');
     ck('ruinsStillFadeToGrass', S.map.terrain[idx(23, 20)] === T.GRASS, '');
+
     // what does grow back comes back LEAN, not full
     const fresh = CFG.RES_AMOUNT[T.FOREST];
     const got = S.map.resAmount[idx(21, 20)];
     ck('regrowthIsStillLean', got > 0 && got < fresh[1],
       got + ' vs a fresh ' + fresh[0] + '–' + fresh[1]);
+  }
+
+  /* ---- 3b. a DEMOLISHED building's ground greens over on the day ---- */
+  {
+    G.newGame('ore-d', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const tc = Bld.tcOf('P');
+    const hx = tc.x + 3, hy = tc.y + 3;
+    S.map.terrain[idx(hx, hy)] = T.GRASS; Bld._block = null;
+    const h = Bld.place('P', 'house', hx, hy, { free: true });
+    Bld.finish(h);
+    Bld.demolish(h);
+    ck('demolishLeavesRubble', S.map.terrain[idx(hx, hy)] === T.RUIN, 'rubble on the plot');
+    for (let i = 0; i < CFG.RUIN_FADE_DAYS - 1; i++) G.dayTick();
+    ck('rubbleIsStillThereTheDayBefore', S.map.terrain[idx(hx, hy)] === T.RUIN,
+      `day ${CFG.RUIN_FADE_DAYS - 1}`);
+    G.dayTick();
+    ck('andItIsGrassOnTheTwentiethDay', S.map.terrain[idx(hx, hy)] === T.GRASS,
+      `day ${CFG.RUIN_FADE_DAYS}`);
+    // an old save that scheduled its rubble on the 60-day clock is brought over
+    const save = JSON.parse(G.saveJSON());
+    const j = idx(hx, hy);
+    save.map.terrain[j] = T.RUIN;
+    save.map.decay = save.map.decay || {};
+    save.map.decay[j] = save.day + CFG.RUIN_DECAY_DAYS;          // the old 60-day schedule
+    save.map.terrain[idx(hx + 2, hy)] = T.STUMPS;
+    save.map.decay[idx(hx + 2, hy)] = save.day + CFG.RUIN_DECAY_DAYS * 2;
+    G.loadJSON(JSON.stringify(save));
+    ck('legacyRubbleIsBroughtOntoTheShortClock',
+      S.map.decay[j] === S.day + CFG.RUIN_FADE_DAYS, `due day ${S.map.decay[j]} of ${S.day}`);
+    ck('andLegacyRegrowthIsLeftAlone',
+      S.map.decay[idx(hx + 2, hy)] === S.day + CFG.RUIN_DECAY_DAYS * 2, 'felled woods keep their long clock');
   }
 
   // ---- 4. legacy saves: an old pending ore entry must not fire ----

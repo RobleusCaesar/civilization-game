@@ -436,6 +436,9 @@ const G = {
     // still scheduled: rubble fades to grass, which is cleanup, not regrowth.
     if (!CFG.REGROW_TO[t] && t !== T.RUIN) return;
     if (!S.map.decay) S.map.decay = {};
+    // rubble is CLEANUP and runs on its own short clock; everything else is
+    // regrowth, on the base scaled by what it is
+    if (t === T.RUIN) { S.map.decay[idx] = S.day + CFG.RUIN_FADE_DAYS; return; }
     const mult = CFG.REGROW_MULT[t] || 1;
     S.map.decay[idx] = S.day + CFG.RUIN_DECAY_DAYS * mult;
   },
@@ -1052,6 +1055,13 @@ const G = {
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};
+    // pre-RUIN_FADE saves scheduled rubble on the 60-day regrowth clock; bring
+    // any tile that is still rubble onto its own shorter one
+    for (const k in data.map.decay) {
+      if (data.map.terrain[+k] !== T.RUIN) continue;
+      const due = data.day + CFG.RUIN_FADE_DAYS;
+      if (data.map.decay[k] > due) data.map.decay[k] = due;
+    }
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.reclaimed) data.map.reclaimed = {};
     if (!data.map.fishStocked) {

@@ -104,7 +104,10 @@ const CFG = {
     [T.FERTILE]: T.BARREN,
   },
   DEMOLISH_REFUND: 0.4,       // fraction of spent resources returned on demolish
-  RUIN_DECAY_DAYS: 60,        // base days before felled forest / spent soil regrow (ruins fade to grass) — cleared land stays cleared a good while
+  RUIN_DECAY_DAYS: 60,        // base days before felled forest / spent soil regrow — cleared land stays cleared a good while
+  RUIN_FADE_DAYS: 20,         // days before a demolished/razed building's rubble greens over (tests/ore-finite.mjs).
+                              // Its OWN clock, not the regrowth base: sweeping up a building site is not the same
+                              // job as a forest growing back, and the player should not stare at their own rubble
   ASH_DAYS: 5,                // a burned-down building's ash pile blocks building on its footprint this many days (tests/burn-down.mjs)
   /* WHAT GROWS BACK, and into what — the single source of truth for regrowth
      (G.scheduleRevert schedules only these; G.dayTick turns them back).
