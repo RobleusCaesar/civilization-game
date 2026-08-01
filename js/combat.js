@@ -328,6 +328,8 @@ const Combat = {
   /* ---- ARMY STRATEGIES (tests/army-strategies.mjs) ---- */
   CHAOS_R: 15,        // how far a chaos-stance soldier looks for its next victim
   SIEGE_PROTECT: 4,   // threats within this range of a siege post get engaged
+  RAID_SHELL_R: 12,   // how far a raider with no orders looks for the enemy's own
+                      // stonework before it gives up and marches home
 
   /* CHAOS — attack anything in reach, in the player's stated order:
      civilians → soldiers → resource buildings → military halls → towers →
@@ -596,7 +598,27 @@ const Combat = {
       }
       return;   // keep marching toward the objective
     }
-    // 4) nothing left to hit — go home
+    /* 4) NO ORDERS AND NOTHING WE CAN REACH — but we are standing in front of
+       their works. A column that can SEE the villagers and cannot get at them
+       must NOT stand there waiting to be shot: it turns on the SHELL. Nearest
+       wall or gate first (that is the way in), then anything else it can walk
+       up to. The raid TASK is kept and only u.tBld set — exactly as the
+       objective branch above does — so the chief's own bookkeeping (extend,
+       break off, learn the lane) still sees a raid under way. Only a party
+       with nothing at all inside RAID_SHELL_R gives up and marches home.
+       (tests/siege-progress.mjs) */
+    if (!u.harass) {
+      const near = (bb) => Math.hypot(Bld.cx(bb) - u.x, Bld.cy(bb) - u.y) <= this.RAID_SHELL_R;
+      const reach = (bb) => this.canReach(u, bb.x, bb.y, 1.7 + Bld.reach(bb));
+      const shell = this.nearestBuilding(u.x, u.y, 'P', bb => (bb.key === 'wall' || bb.key === 'gate') && near(bb) && reach(bb))
+                 || this.nearestBuilding(u.x, u.y, 'P', bb => Bld.done(bb) && near(bb) && reach(bb));
+      if (shell) {
+        if (ai && ai.memory) ai.memory.wallHit = (ai.memory.wallHit || 0) + 1;
+        u.tUnit = 0; u.tBld = shell.id;
+        return;
+      }
+    }
+    // nothing left to hit — go home
     u.task = null;
     const atc = Bld.tcOf('A');
     if (atc) { u.anchor = { x: atc.x + 0.5, y: atc.y + 2.5 }; Units.setPath(u, atc.x, atc.y + 2); }

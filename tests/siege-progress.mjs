@@ -301,6 +301,67 @@ const out = await p.evaluate(() => {
       `was ${before}, now ${ai.camp.strat}, tried=[${ai.camp.tried}]`);
     ck('noBlanksInTried', ai.camp.tried.every(k => !!k), `tried=[${ai.camp.tried}]`);
   }
+  /* ---- 10. A COLUMN NEVER STANDS AT THE WALL DOING NOTHING ----
+     The reported failure: a war party marched up to a walled town, could SEE
+     the villagers working inside, could not reach any of them, had no standing
+     objective — and simply stood there. Every seek branch above it is
+     reachability-gated (deliberately: a villager safe behind stone must not
+     freeze the column), so with no objective the party fell straight through to
+     "go home" and did nothing at all. A raider that can reach the enemy's
+     STONEWORK turns on it instead: the way in is the way in. */
+  {
+    G.newGame('sp10', 'moderate', 'large'); Screens.show('playing'); S.paused = true;
+    const ptc = Bld.tcOf('P');
+    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) {
+      const i = MapGen.idx(x, y);
+      S.map.terrain[i] = T.GRASS; S.map.seenTerrain[i] = T.GRASS; S.map.explored[i] = 1;
+    }
+    S.units = S.units.filter(u => u.owner === 'P' && Units.isVillager(u));
+    Bld._block = null;
+    /* a SEALED pocket: eight wall sections ringing one tile, with a villager
+       inside it. Nothing about this is reachable — which is the whole point:
+       the column can see a man it can never touch. */
+    // mid-board, well clear of the hall and of the map edge (a party spawned
+    // off-map is clamped onto the ring itself and can never take a step)
+    const px = (CFG.W / 2) | 0, py = (CFG.H / 2) | 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const w = Bld.place('P', 'wall', px + dx, py + dy, { free: true });
+      if (w) Bld.finish(w);
+    }
+    Bld._block = null;
+    S.units = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).slice(0, 1);
+    for (const u of S.units) { u.x = px + 0.5; u.y = py + 0.5; u.path = null; u.task = null; }
+    // the rival's column arrives outside it, with NO objective of any kind
+    S.ai.raidObj = null; S.ai.raidLane = null;
+    const party = [];
+    for (let i = 0; i < 4; i++) {
+      const u = Units.spawn(i < 2 ? 'axeman' : 'elite', 'A', px + 3 + (i % 2), py - 1 + ((i / 2) | 0));
+      u.task = { type: 'raid' }; u.defend = false; u.anchor = { x: u.x, y: u.y };
+      party.push(u);
+    }
+    const fortHp = () => Bld.list('P').filter(z => z.key === 'wall').reduce((a, z) => a + z.hp, 0);
+    const hp0 = fortHp();
+    // they can SEE a villager they cannot get at — that must not freeze them
+    const vil = S.units.find(u => u.owner === 'P' && Units.isVillager(u));
+    ck('theVillagersAreVisibleButOutOfReach',
+      !!vil && Math.hypot(vil.x - party[0].x, vil.y - party[0].y) < Combat.CHAOS_R &&
+      !Combat.canReach(party[0], vil.x, vil.y, 1.6), 'seen, unreachable');
+    for (let t = 0; t < 400; t++) { Units.update(0.1); Combat.update(0.1); }
+    const onStone = party.filter(u => Units.get(u.id) && u.tBld && (() => {
+      const bb = Bld.get(u.tBld); return bb && (bb.key === 'wall' || bb.key === 'gate');
+    })()).length;
+    ck('theColumnTurnsOnTheWall', onStone >= 3, `${onStone} of ${party.length} battering stone`);
+    ck('andTheStoneActuallyTakesIt', fortHp() < hp0, `${hp0} → ${fortHp()}`);
+    ck('theyKeepTheirRaidTask', party.every(u => !Units.get(u.id) || (u.task && u.task.type === 'raid')),
+      'the chief can still call them home');
+    // …but a column with nothing of the enemy's within reach still goes home
+    const lone = Units.spawn('axeman', 'A', 2, 2);
+    lone.task = { type: 'raid' }; lone.anchor = { x: lone.x, y: lone.y };
+    Combat.aiRaidSeek(lone);
+    ck('anEmptyFieldStillSendsThemHome', !lone.tBld, 'nothing within RAID_SHELL_R');
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));
