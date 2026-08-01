@@ -1552,6 +1552,714 @@ const Sprites = {
   // the tower's OTHER self: the one it wears when a wall is built onto it
   Sprites.towerMural = [1, 2, 3].map(lv => tileB(p => drawTowerMural(p, lv)));
 
+  /* ================= THE ANCIENT WONDERS (tests/wonder.mjs) =================
+     Ten monuments, one rolled per run. Each is a 3×3 building — the biggest
+     footprint in the game — so each gets a 192px canvas with a 96-CELL grid
+     (`q`, 2px per cell) and a 192-cell fine grid (`q.hi`, 1px per cell). At
+     three tiles wide that lands one grid cell per screen pixel: exactly the
+     density every other building is authored at, over nine times the area.
+
+     Convention, same as the fortifications: the monument FACES YOU and stands
+     on the front of its plot — the ground line is cell y=84 of 96, with the
+     contact shadow under it. Megaliths use the warm weathered `rock` ramp,
+     dressed masonry the cool `stone` ramp; that alone tells a raised circle
+     of menhirs from a mason's temple at a glance. */
+  function tileW(draw) {
+    const c = mk(192, 192), g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    const p = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * 2, y * 2, (w || 1) * 2, (h || 1) * 2); };
+    p.hi = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, (w || 1), (h || 1)); };
+    p.g = g;
+    draw(p, g);
+    return c;
+  }
+  const WGY = 84;   // the ground line every wonder stands on (96-grid)
+
+  // broad soft contact shadow for a monument — three tapering bands, so the
+  // thing reads as PLANTED rather than pasted onto the grass
+  function wShadow(q, cx, w) {
+    const SH = ART.STYLE.SHADOW;
+    q(cx - (w >> 1), WGY, w, 3, SH);
+    q(cx - (w >> 1) + 3, WGY + 3, w - 6, 2, SH);
+    q(cx - (w >> 1) + 8, WGY + 5, w - 16, 1, SH);
+  }
+  // a weathered MEGALITH — undressed stone, lit top-left, lichen and pitting.
+  // `lean` shifts the top edge, so a raised circle never reads as a picket fence.
+  function menhir(q, x, y, w, h, seed, lean) {
+    const RK = AP.rock, r = ART.rng(seed);
+    lean = lean || 0;
+    for (let i = 0; i < h; i++) {
+      const off = Math.round(lean * (h - i) / h);
+      q(x + off, y + i, w, 1, RK[2]);
+      q(x + off, y + i, 1, 1, RK[3]);                       // lit left edge
+      q(x + off + w - 1, y + i, 1, 1, RK[1]);               // shaded right edge
+    }
+    q(x + Math.round(lean), y, w, 1, RK[4]);                // sun on the crown
+    for (let i = 0; i < w * h * 0.10; i++) {                // pitting and lichen
+      const px = x + ((r() * w) | 0), py = y + ((r() * h) | 0);
+      const off = Math.round(lean * (h - (py - y)) / h);
+      q(px + off, py, 1, 1, r() < 0.62 ? RK[1] : (r() < 0.5 ? AP.leaf[1] : RK[3]));
+    }
+  }
+  // dressed ASHLAR masonry — coursed blocks with recessed joints
+  function ashlarBlock(q, x, y, w, h, seed, ramp) {
+    const ST = ramp || AP.stone, r = ART.rng(seed);
+    q(x, y, w, h, ST[2]);
+    q(x, y, w, 1, ST[4]); q(x, y, 1, h, ST[3]);
+    q(x, y + h - 1, w, 1, ST[0]); q(x + w - 1, y, 1, h, ST[1]);
+    for (let cy = y + 3; cy < y + h - 1; cy += 3) {
+      q(x + 1, cy, w - 2, 1, ST[1]);                        // course line
+      const start = ((cy - y) & 2) ? 4 : 7;
+      for (let cx = x + start; cx < x + w - 1; cx += 7) q(cx, cy - 2, 1, 2, ST[1]);   // vertical joints
+    }
+    for (let i = 0; i < w * h * 0.06; i++)
+      q(x + ((r() * w) | 0), y + ((r() * h) | 0), 1, 1, r() < 0.5 ? ST[3] : ST[1]);
+  }
+  // the stepped plinth most of the monuments stand on
+  function plinth(q, cx, w, h, steps, ramp) {
+    for (let i = 0; i < steps; i++) {
+      const sw = w - i * ((w * 0.10) | 0), sy = WGY - (i + 1) * h;
+      ashlarBlock(q, cx - (sw >> 1), sy, sw, h + 1, 200 + i * 13, ramp);
+    }
+  }
+
+  const BRONZE = ['#3a2810', '#6b481c', '#96662a', '#bd8b3e', '#e3b862'];
+  const PATINA = ['#1c4a3e', '#2f7a63', '#49a184'];
+
+  const W_DRAW = {
+    /* ---- THE STONE CIRCLE — a raised ring of trilithons on trodden chalk,
+       the back arc small and high, the front arc big and low, an altar slab
+       lying across the middle. ---- */
+    henge(q) {
+      wShadow(q, 48, 78);
+      const SO = AP.soil, RK = AP.rock;
+      // trodden chalk ring the stones stand in (an ellipse of bare pale earth)
+      for (let y = 30; y <= WGY - 1; y++) {
+        const t = (y - 30) / (WGY - 31), rw = Math.round(20 + t * 24);
+        q(48 - rw, y, rw * 2, 1, y > 62 ? SO[2] : SO[1]);
+      }
+      for (let y = 34; y <= WGY - 5; y++) {                 // inner sward, so it reads as a RING
+        const t = (y - 34) / (WGY - 39), rw = Math.round(11 + t * 13);
+        q(48 - rw, y, rw * 2, 1, AP.grass[2]);
+      }
+      const trilithon = (cx, top, sw, sh, seed) => {
+        menhir(q, cx - sw - 2, top + 4, sw, sh, seed, 0);
+        menhir(q, cx + 2, top + 4, sw, sh, seed + 7, 0);
+        // the lintel across, with its own lit top and dark underside
+        q(cx - sw - 3, top, sw * 2 + 6, 4, RK[2]);
+        q(cx - sw - 3, top, sw * 2 + 6, 1, RK[4]);
+        q(cx - sw - 3, top + 3, sw * 2 + 6, 1, RK[0]);
+      };
+      // BACK arc — smaller, higher up the plot
+      trilithon(24, 24, 4, 20, 11); trilithon(48, 20, 4, 22, 23); trilithon(72, 24, 4, 20, 37);
+      // FLANKS — the ring turning toward us
+      trilithon(12, 38, 5, 24, 51); trilithon(84, 38, 5, 24, 67);
+      // FRONT arc — the great stones, tallest and nearest
+      trilithon(26, 50, 7, 30, 83); trilithon(70, 50, 7, 30, 97);
+      // the altar slab lying in the middle of the ring
+      q(38, 62, 22, 6, RK[2]); q(38, 62, 22, 1, RK[4]); q(38, 67, 22, 1, RK[0]);
+      q(37, 68, 24, 2, RK[1]);
+      for (let i = 0; i < 5; i++) q(40 + i * 4, 63, 1, 4, RK[3]);
+    },
+
+    /* ---- THE BRONZE COLOSSUS — a giant warrior of hammered bronze on a
+       dressed plinth, spear levelled, shield on the arm, patina running in
+       the shadowed folds. ---- */
+    colossus(q) {
+      wShadow(q, 48, 62);
+      plinth(q, 48, 54, 5, 3);
+      const B = BRONZE, PT = PATINA;
+      /* Anatomy is laid out in ABSOLUTE cells, so the giant reads as a FIGURE
+         and not a mass of metal: feet on the plinth at 68, hips at 42,
+         shoulders at 22, the head filling 13..22 — six heads tall, the heroic
+         proportion. The arms hang CLEAR of the torso with daylight between
+         them, which at this size is the whole difference between a statue and
+         a blob. */
+      const limb = (x, y, w, h) => {
+        q(x, y, w, h, B[2]); q(x, y, 2, h, B[3]); q(x + w - 2, y, 2, h, B[1]);
+      };
+      // LEGS — one bearing the weight, one relaxed and half a step forward
+      limb(39, 42, 8, 24); limb(50, 42, 8, 26);
+      q(45, 48, 2, 12, B[1]); q(56, 50, 2, 12, B[1]);         // shin shadow, so the legs separate
+      q(37, 65, 12, 4, B[2]); q(37, 65, 12, 1, B[3]);         // sandals
+      q(48, 66, 12, 3, B[2]); q(48, 66, 12, 1, B[3]);
+      q(41, 40, 6, 4, B[3]); q(52, 40, 6, 4, B[3]);           // knees catching the light
+      // the pteruges skirt hanging from the belt
+      q(37, 35, 23, 7, B[2]); q(37, 35, 23, 1, B[4]);
+      for (let i = 0; i < 6; i++) q(38 + i * 4, 42, 3, 5, i & 1 ? B[1] : B[2]);
+      // TORSO — a modelled cuirass, broad at the shoulder, drawn in at the waist
+      for (let y = 22; y < 36; y++) {
+        const t = (y - 22) / 13, w = Math.round(24 - t * 7);
+        q(48 - (w >> 1), y, w, 1, B[2]);
+        q(48 - (w >> 1), y, 2, 1, B[3]); q(48 + (w >> 1) - 2, y, 2, 1, B[1]);
+      }
+      q(36, 22, 24, 2, B[4]);
+      q(40, 26, 7, 5, B[3]); q(50, 26, 7, 5, B[3]);           // pectorals
+      q(47, 25, 2, 10, B[1]);                                  // the line down the breastplate
+      q(42, 32, 12, 2, B[1]);                                  // the ribs' shadow
+      q(38, 30, 21, 1, PT[0]); q(40, 33, 16, 1, PT[1]);        // patina weeping down the bronze
+      // ARMS, hanging clear of the body — the left carrying the shield low,
+      // the right closed on the spear haft
+      limb(29, 24, 7, 19); limb(30, 42, 6, 13);
+      limb(60, 24, 7, 18); limb(61, 41, 6, 14);
+      q(29, 22, 9, 4, B[3]); q(58, 22, 9, 4, B[3]);            // shoulder pauldrons
+      // the SPEAR standing the full height of the plot, gripped in the right fist
+      q(63, 2, 3, 64, AP.wood[1]); q(63, 2, 1, 64, AP.wood[3]);
+      q(61, 0, 7, 7, B[3]); q(63, 0, 3, 3, B[4]); q(61, 6, 7, 2, B[1]);
+      q(60, 51, 8, 5, B[2]); q(60, 51, 8, 1, B[4]);            // the fist round the haft
+      // the SHIELD, carried on the left arm and well clear of the chest. It
+      // needs a DARK RIM: bronze on bronze at one value is a boulder.
+      ART.shadedCircle(q, 21, 44, 9, B, 2);
+      for (let a = 0; a < 26; a++) {
+        const t = a * 0.242;
+        q(21 + Math.round(Math.cos(t) * 9), 44 + Math.round(Math.sin(t) * 9), 2, 2, B[0]);
+        q(21 + Math.round(Math.cos(t) * 7), 44 + Math.round(Math.sin(t) * 7), 1, 1, B[4]);
+      }
+      ART.shadedCircle(q, 21, 44, 3, B, 3);
+      q(14, 50, 13, 2, PT[0]);
+      /* SEPARATION. Every limb is the same metal at the same value, so the
+         figure only reads if the joins are cut with the darkest bronze — this
+         is what turns a bronze mass back into arms, legs and a body. */
+      q(36, 24, 2, 30, B[0]); q(58, 24, 2, 28, B[0]);          // torso against the arms
+      q(47, 42, 2, 24, B[0]);                                   // between the legs
+      q(41, 12, 1, 11, B[0]); q(54, 12, 1, 11, B[0]);           // face against the cheek pieces
+      // HEAD — a clean bronze face under a crested helm
+      q(42, 13, 13, 10, B[2]); q(42, 13, 3, 10, B[3]); q(52, 13, 3, 10, B[1]);
+      q(44, 17, 3, 2, AP.ink[0]); q(50, 17, 3, 2, AP.ink[0]);  // eye sockets, cast in shadow
+      q(47, 17, 3, 4, B[1]);                                    // the nose guard
+      q(44, 22, 9, 1, B[0]);
+      q(40, 13, 2, 8, B[1]); q(55, 13, 2, 8, B[1]);             // cheek pieces
+      q(41, 9, 15, 5, B[3]); q(41, 9, 15, 1, B[4]);             // helm brow band
+      q(43, 6, 11, 4, B[2]); q(43, 6, 11, 1, B[4]);             // the dome
+      // the horsehair CREST — an arc springing off the dome and falling behind,
+      // drawn as a curve rather than a heap so it reads as a plume
+      for (let i = 0; i < 20; i++) {
+        const t = i / 19;
+        const cx = 44 + Math.round(t * 15);
+        const top = 1 + Math.round(t * t * 9);
+        const h = Math.round(4 + Math.sin(t * 3.14) * 4);
+        q(cx, top, 2, h, i % 3 ? AP.red[2] : AP.red[1]);
+        q(cx, top, 2, 1, AP.red[2]);
+      }
+      q(43, 4, 10, 3, B[3]); q(43, 4, 10, 1, B[4]);             // the crest box on the dome
+      // the dedication plaque on the plinth
+      q(38, WGY - 12, 22, 7, AP.stone[1]); q(38, WGY - 12, 22, 1, AP.stone[3]);
+      for (let i = 0; i < 5; i++) q(41 + i * 4, WGY - 10, 2, 3, AP.gold[2]);
+    },
+
+    /* ---- THE GREAT STONE HEADS — three moai on a long ahu platform: heavy
+       brows, long noses, jutting chins, and scoria topknots. ---- */
+    moai(q) {
+      wShadow(q, 48, 84);
+      const RK = AP.rock;
+      // the AHU — a long fitted-stone platform the heads stand on
+      ashlarBlock(q, 6, WGY - 13, 84, 13, 17, AP.stone);
+      q(6, WGY - 13, 84, 2, AP.stone[4]);
+      const head = (cx, top, w, seed, topknot) => {
+        const h = WGY - 13 - top;
+        // the body/torso, narrower than the head and buried to the shoulders
+        q(cx - (w >> 1) - 2, top + Math.round(h * 0.62), w + 4, h - Math.round(h * 0.62), RK[2]);
+        q(cx - (w >> 1) - 2, top + Math.round(h * 0.62), 3, h - Math.round(h * 0.62), RK[3]);
+        q(cx + (w >> 1), top + Math.round(h * 0.62), 3, h - Math.round(h * 0.62), RK[1]);
+        // the HEAD — a long slab, flat top, lit left face
+        q(cx - (w >> 1), top, w, Math.round(h * 0.66), RK[2]);
+        q(cx - (w >> 1), top, 4, Math.round(h * 0.66), RK[3]);
+        q(cx + (w >> 1) - 4, top, 4, Math.round(h * 0.66), RK[1]);
+        q(cx - (w >> 1), top, w, 2, RK[4]);
+        // the brow — one heavy shelf across, with the eyes cut deep beneath it
+        q(cx - (w >> 1) + 1, top + 7, w - 2, 4, RK[3]);
+        q(cx - (w >> 1) + 1, top + 11, w - 2, 2, RK[0]);
+        q(cx - (w >> 1) + 3, top + 12, 5, 3, AP.ink[0]); q(cx + (w >> 1) - 8, top + 12, 5, 3, AP.ink[0]);
+        // the long nose and the set mouth
+        q(cx - 2, top + 11, 5, 13, RK[3]); q(cx - 3, top + 22, 7, 3, RK[1]);
+        q(cx - 5, top + 29, 11, 2, RK[0]);
+        // the jutting chin, and the long ears down the flanks
+        q(cx - 7, top + 33, 15, 5, RK[2]); q(cx - 7, top + 33, 15, 1, RK[3]);
+        q(cx - (w >> 1) - 1, top + 10, 3, 20, RK[1]); q(cx + (w >> 1) - 2, top + 10, 3, 20, RK[1]);
+        if (topknot) {                                        // red scoria topknot
+          const RD = AP.red;
+          q(cx - (w >> 1) + 1, top - 8, w - 2, 8, RD[1]);
+          q(cx - (w >> 1) + 1, top - 8, w - 2, 2, RD[2]);
+          q(cx - (w >> 1) + 3, top - 10, w - 6, 2, RD[1]);
+        }
+        for (let i = 0; i < 14; i++) {                        // weathering on the face
+          const r = ART.rng(seed + i);
+          q(cx - (w >> 1) + ((r() * w) | 0), top + ((r() * h * 0.6) | 0), 1, 1, r() < 0.5 ? RK[1] : RK[3]);
+        }
+      };
+      head(20, 30, 20, 61, true);
+      head(48, 18, 24, 29, true);
+      head(76, 32, 19, 97, false);
+      // fallen blocks and cut chips at the foot of the platform
+      for (let i = 0; i < 7; i++) {
+        const x = 8 + i * 12 + (i & 1) * 3;
+        q(x, WGY - 2, 6, 3, RK[1]); q(x, WGY - 2, 6, 1, RK[2]);
+      }
+    },
+
+    /* ---- THE STEP PYRAMID — five receding terraces of dressed stone, a
+       ceremonial stair up the front face, a shrine with a lit doorway on the
+       summit. ---- */
+    pyramid(q) {
+      wShadow(q, 48, 86);
+      const ST = AP.stone;
+      const N = 5, baseW = 86, topW = 26, hStep = 11;
+      for (let i = 0; i < N; i++) {
+        const w = Math.round(baseW - (baseW - topW) * (i / (N - 1)));
+        const y = WGY - (i + 1) * hStep;
+        ashlarBlock(q, 48 - (w >> 1), y, w, hStep + 1, 31 + i * 9, ST);
+        q(48 - (w >> 1), y, w, 2, ST[4]);                       // sunlit terrace lip
+        q(48 - (w >> 1), y + hStep - 1, w, 1, ST[0]);           // shadow under the overhang
+        // the shaded right flank of each terrace, so it reads as a solid mass
+        q(48 + (w >> 1) - 7, y, 7, hStep, ST[1]);
+      }
+      // the GREAT STAIR up the front — balustrades either side, treads between
+      const sx = 38, sw = 20;
+      q(sx - 3, WGY - N * hStep, 3, N * hStep, ST[3]);
+      q(sx + sw, WGY - N * hStep, 3, N * hStep, ST[1]);
+      for (let i = 0; i < N * hStep - 2; i += 3) {
+        q(sx, WGY - 1 - i, sw, 2, ST[3]);
+        q(sx, WGY - 2 - i, sw, 1, ST[0]);
+      }
+      // the SHRINE on the summit — a small hall with a lit doorway and a lintel
+      const ty = WGY - N * hStep;
+      ashlarBlock(q, 36, ty - 17, 24, 17, 77, ST);
+      q(36, ty - 17, 24, 2, ST[4]);
+      q(33, ty - 20, 30, 4, ST[3]); q(33, ty - 20, 30, 1, ST[4]);  // projecting cornice
+      q(43, ty - 12, 10, 12, AP.ink[0]);
+      q(43, ty - 12, 10, 2, AP.fire[0]);                            // firelight in the doorway
+      q(45, ty - 4, 6, 4, AP.fire[1]);
+      for (let i = 0; i < 3; i++) q(38, ty - 15 + i * 4, 20, 1, ST[1]);
+    },
+
+    /* ---- THE SUN OBELISK — one tapering granite needle with a gilded
+       pyramidion, carved bands down its length, on a stepped base between two
+       burning bowls. ---- */
+    obelisk(q) {
+      wShadow(q, 48, 58);
+      plinth(q, 48, 50, 5, 3);
+      const RK = AP.rock, GD = AP.gold;
+      const capY = 2, botY = WGY - 16;
+      // the SHAFT — a true needle: 62 cells of granite tapering from 13 wide at
+      // the foot to 7 at the throat, so it reads as tall rather than stubby
+      for (let y = 14; y <= botY; y++) {
+        const t = (y - 14) / (botY - 14);
+        const w = 7 + Math.round(t * 6);
+        const x0 = 48 - (w >> 1);
+        q(x0, y, w, 1, RK[2]);
+        q(x0, y, 2, 1, RK[3]);
+        q(x0 + w - 2, y, 2, 1, RK[1]);
+      }
+      // the gilded PYRAMIDION catching the first of the sun
+      for (let i = 0; i < 12; i++) {
+        const w = 1 + Math.round(i * 0.55);
+        q(48 - w, capY + i, w * 2 + 1, 1, i < 4 ? GD[3] : GD[2]);
+        q(48 + w - 1, capY + i, 1, 1, GD[1]);
+        q(48 - w, capY + i, 1, 1, GD[3]);
+      }
+      q(45, 14, 7, 2, GD[1]); q(45, 14, 7, 1, GD[2]);
+      // carved bands of glyphs running the length of the face
+      for (let y = 20; y < botY - 8; y += 10) {
+        q(45, y, 6, 7, RK[1]);
+        q(46, y + 1, 2, 2, RK[3]); q(48, y + 4, 2, 2, RK[3]); q(46, y + 4, 1, 1, RK[3]);
+      }
+      // the two BRAZIERS flanking the base — bronze bowls on stone columns,
+      // burning low so they frame the shaft instead of competing with it
+      const B = BRONZE, F = AP.fire, ST = AP.stone;
+      for (const bx of [17, 79]) {
+        q(bx - 8, WGY - 7, 16, 7, ST[2]); q(bx - 8, WGY - 7, 16, 1, ST[4]); q(bx - 8, WGY - 1, 16, 1, ST[0]);
+        q(bx - 5, WGY - 23, 10, 16, ST[2]); q(bx - 5, WGY - 23, 3, 16, ST[3]); q(bx + 2, WGY - 23, 3, 16, ST[1]);
+        for (let i = 0; i < 4; i++) q(bx - 5, WGY - 20 + i * 4, 10, 1, ST[1]);
+        q(bx - 8, WGY - 27, 16, 4, ST[3]); q(bx - 8, WGY - 27, 16, 1, ST[4]);
+        // the bowl
+        for (let dy = 0; dy < 6; dy++) {
+          const w = 11 - dy;
+          q(bx - (w >> 1), WGY - 33 + dy, w, 1, dy < 1 ? B[4] : dy > 3 ? B[1] : B[2]);
+        }
+        q(bx - 7, WGY - 34, 14, 2, B[3]); q(bx - 7, WGY - 34, 14, 1, B[4]);
+        // a small steady flame
+        q(bx - 5, WGY - 38, 10, 5, F[0]);
+        q(bx - 4, WGY - 43, 8, 6, F[1]);
+        q(bx - 2, WGY - 47, 5, 5, F[2]);
+        q(bx - 1, WGY - 50, 2, 4, F[3]);
+      }
+    },
+
+    /* ---- THE TEMPLE OF DAWN — a colonnade on a three-step stylobate under a
+       carved pediment with the sun disc, roof tiles and antefixes. ---- */
+    temple(q) {
+      wShadow(q, 48, 84);
+      const ST = AP.stone;
+      // STYLOBATE — three broad steps
+      for (let i = 0; i < 3; i++) {
+        const w = 84 - i * 6, y = WGY - (i + 1) * 5;
+        ashlarBlock(q, 48 - (w >> 1), y, w, 6, 41 + i * 5, ST);
+        q(48 - (w >> 1), y, w, 1, ST[4]);
+      }
+      const floor = WGY - 15, capY = 30;
+      // the CELLA wall behind the columns, in shadow
+      q(20, capY + 6, 56, floor - capY - 6, ST[1]);
+      q(42, floor - 22, 14, 22, AP.ink[0]);                  // the deep doorway
+      q(42, floor - 22, 14, 2, ST[0]);
+      q(44, floor - 8, 10, 8, AP.fire[0]);                   // lamplight within
+      // SIX fluted columns with base and capital
+      for (let i = 0; i < 6; i++) {
+        const cx = 15 + i * 14;
+        q(cx - 1, floor - 3, 10, 3, ST[3]);                  // base
+        q(cx, capY + 8, 8, floor - capY - 11, ST[2]);
+        q(cx, capY + 8, 2, floor - capY - 11, ST[4]);        // lit flute
+        q(cx + 6, capY + 8, 2, floor - capY - 11, ST[1]);    // shaded flute
+        for (const f of [3, 4]) q(cx + f, capY + 8, 1, floor - capY - 11, ST[1]);
+        q(cx - 2, capY + 3, 12, 5, ST[3]);                   // capital
+        q(cx - 2, capY + 3, 12, 1, ST[4]);
+      }
+      // ARCHITRAVE and frieze
+      q(10, capY - 5, 76, 8, ST[2]); q(10, capY - 5, 76, 1, ST[4]); q(10, capY + 2, 76, 1, ST[0]);
+      for (let i = 0; i < 12; i++) q(13 + i * 6, capY - 3, 3, 4, ST[1]);   // triglyphs
+      // PEDIMENT — a raking cornice over a tympanum carrying the sun disc
+      for (let i = 0; i <= 22; i++) {
+        const w = 76 - i * 3.2 | 0;
+        q(48 - (w >> 1), capY - 6 - i, w, 1, i > 19 ? ST[3] : ST[2]);
+        q(48 - (w >> 1), capY - 6 - i, 2, 1, ST[4]);
+        q(48 + (w >> 1) - 2, capY - 6 - i, 2, 1, ST[1]);
+      }
+      ART.shadedCircle(q, 48, capY - 15, 7, AP.gold, 2);
+      for (let a = 0; a < 12; a++) {
+        const ax = 48 + Math.round(Math.cos(a * 0.523) * 10), ay = capY - 15 + Math.round(Math.sin(a * 0.523) * 10);
+        q(ax, ay, 2, 2, AP.gold[3]);
+      }
+      // roof edge + antefixes at the eaves
+      q(8, capY - 8, 80, 3, ST[3]); q(8, capY - 8, 80, 1, ST[4]);
+      for (const ax of [8, 86]) { q(ax - 1, capY - 12, 5, 5, ST[3]); q(ax - 1, capY - 12, 5, 1, ST[4]); }
+    },
+
+    /* ---- THE GREAT SPHINX — a crowned lion couchant in warm sandstone,
+       forepaws thrown forward, nemes headdress striped and gold-banded. ---- */
+    sphinx(q) {
+      wShadow(q, 48, 86);
+      const RK = AP.rock, SO = AP.soil, GD = AP.gold;
+      // the ledge it is carved out of
+      ashlarBlock(q, 8, WGY - 9, 80, 9, 63, AP.stone);
+      const gy = WGY - 9;
+      // BODY — a long couchant mass, haunch at the right, chest at the left
+      q(26, gy - 30, 56, 30, RK[2]);
+      q(26, gy - 30, 56, 3, RK[3]);
+      q(26, gy - 6, 56, 6, RK[1]);
+      q(64, gy - 34, 22, 34, RK[2]); q(64, gy - 34, 22, 3, RK[3]);   // the raised haunch
+      ART.shadedCircle(q, 74, gy - 18, 10, RK, 2);                    // the thigh muscle
+      q(84, gy - 26, 6, 20, RK[1]);                                   // the tail curling in
+      q(84, gy - 8, 10, 4, RK[2]); q(88, gy - 12, 4, 6, RK[1]);
+      // FOREPAWS thrown forward, toes cut in
+      for (const py of [gy - 12, gy - 5]) {
+        q(6, py, 30, 6, RK[2]); q(6, py, 30, 1, RK[3]); q(6, py + 5, 30, 1, RK[1]);
+        for (let i = 0; i < 4; i++) q(8 + i * 6, py + 1, 1, 4, RK[1]);
+      }
+      // CHEST rising to the neck
+      q(18, gy - 34, 22, 26, RK[2]); q(18, gy - 34, 22, 3, RK[3]);
+      // the NEMES headdress — striped lappets falling either side of the face
+      q(12, gy - 66, 40, 22, RK[3]);
+      for (let i = 0; i < 9; i++) q(13 + i * 4, gy - 66, 2, 22, RK[1]);
+      q(10, gy - 48, 12, 18, RK[2]); q(42, gy - 48, 12, 18, RK[2]);
+      for (let i = 0; i < 4; i++) { q(11, gy - 46 + i * 4, 10, 2, RK[1]); q(43, gy - 46 + i * 4, 10, 2, RK[1]); }
+      q(10, gy - 70, 44, 5, GD[1]); q(10, gy - 70, 44, 1, GD[2]);     // the gold brow band
+      q(28, gy - 74, 8, 5, GD[2]); q(30, gy - 77, 4, 4, GD[3]);       // the uraeus rearing at the front
+      // the FACE — broad, weathered, eyes and mouth cut deep
+      q(18, gy - 62, 28, 26, RK[2]); q(18, gy - 62, 28, 2, RK[4]);
+      q(21, gy - 54, 7, 4, AP.ink[0]); q(36, gy - 54, 7, 4, AP.ink[0]);
+      q(21, gy - 56, 7, 2, RK[1]); q(36, gy - 56, 7, 2, RK[1]);
+      q(29, gy - 54, 5, 11, RK[3]); q(28, gy - 44, 8, 2, RK[1]);      // the nose, chipped away
+      q(25, gy - 40, 15, 3, RK[0]);                                    // mouth
+      q(20, gy - 38, 24, 4, RK[1]);
+      // wind-blown sand banked against the base
+      for (let i = 0; i < 22; i++) {
+        const r = ART.rng(300 + i);
+        q(6 + ((r() * 84) | 0), WGY - 1 + ((r() * 3) | 0), 3, 1, r() < 0.5 ? SO[3] : SO[2]);
+      }
+    },
+
+    /* ---- THE ETERNAL FLAME — a great bronze bowl on a tripod over a round
+       stepped platform, two votive pillars flanking, the fire always lit. ---- */
+    flame(q) {
+      wShadow(q, 48, 72);
+      const ST = AP.stone, B = BRONZE, F = AP.fire;
+      // ROUND stepped platform, drawn as stacked ellipses
+      for (let i = 0; i < 3; i++) {
+        const rw = 38 - i * 6, y = WGY - 5 - i * 6;
+        for (let dy = 0; dy < 7; dy++) {
+          const t = dy / 6, w = Math.round(rw * (1 - t * 0.10));
+          q(48 - w, y - 6 + dy, w * 2, 1, dy === 0 ? ST[4] : dy > 4 ? ST[1] : ST[2]);
+        }
+      }
+      const py = WGY - 23;
+      // votive pillars either side, carrying small lamps
+      for (const px of [14, 82]) {
+        q(px - 5, py - 30, 10, 32, ST[2]); q(px - 5, py - 30, 3, 32, ST[3]); q(px + 2, py - 30, 3, 32, ST[1]);
+        q(px - 7, py - 35, 14, 5, ST[3]); q(px - 7, py - 35, 14, 1, ST[4]);
+        q(px - 4, py - 39, 8, 4, B[2]); q(px - 4, py - 39, 8, 1, B[3]);
+        q(px - 3, py - 43, 6, 4, F[1]); q(px - 2, py - 46, 4, 3, F[2]);
+        for (let i = 0; i < 5; i++) q(px - 5, py - 26 + i * 6, 10, 1, ST[1]);
+      }
+      // the TRIPOD — three bronze legs with lion feet, meeting under the bowl
+      for (const [lx, dir] of [[34, -1], [48, 0], [62, 1]]) {
+        for (let i = 0; i < 22; i++)
+          q(lx + Math.round(dir * i * 0.30), py - 22 + i, 4, 1, dir < 0 ? B[3] : dir > 0 ? B[1] : B[2]);
+        q(lx + Math.round(dir * 6) - 2, py, 8, 4, B[2]); q(lx + Math.round(dir * 6) - 2, py, 8, 1, B[3]);
+      }
+      q(32, py - 26, 32, 5, B[2]); q(32, py - 26, 32, 1, B[4]);
+      // the BOWL — a bronze basin, narrow enough that the FIRE is the hero;
+      // rim catching the light, soot black inside
+      for (let dy = 0; dy < 12; dy++) {
+        const w = Math.round(21 - dy * 1.35);
+        q(48 - w, py - 30 + dy, w * 2, 1, dy < 2 ? B[3] : dy > 8 ? B[1] : B[2]);
+      }
+      q(25, py - 32, 46, 3, B[3]); q(25, py - 32, 46, 1, B[4]);
+      q(29, py - 29, 38, 3, AP.ink[0]);
+      /* the FIRE — tongues, not a stack of slabs. Each is a tapering column of
+         flame on its own centre and its own height; the hot core sits inside
+         the cooler outer flames, so the blaze has depth instead of banding. */
+      // the blaze is measured off the bowl's LIP and kept inside the plot —
+      // a tongue taller than the canvas is simply cut off at the top
+      const fb = py - 30;
+      const tongue = (cx, h, w0, seed, hot) => {
+        const r = ART.rng(seed);
+        for (let i = 0; i < h; i++) {
+          const t = i / h;
+          let w = w0 * (1 - t * t) * (1 - t * 0.2);
+          w = Math.max(1, Math.round(w - (r() < 0.35 ? 1 : 0)));
+          const off = Math.round(Math.sin(i * 0.34 + seed) * (0.8 + t * 1.1));   // it writhes as it climbs
+          const col = F[t < 0.22 ? 0 : t < 0.55 ? 1 : t < 0.84 ? 2 : 3];
+          q(cx + off - w, fb - i, w * 2, 1, hot && t > 0.3 && t < 0.8 ? F[2] : col);
+        }
+      };
+      // outer flames first, hot core last, with air between them
+      tongue(32, 13, 5, 1); tongue(64, 12, 5, 5);
+      tongue(39, 21, 5, 2); tongue(57, 19, 4, 4);
+      tongue(48, 28, 7, 3, true);
+      q(30, fb - 3, 36, 4, F[0]); q(34, fb - 6, 28, 3, F[1]);  // the ember bed inside the bowl
+      for (let i = 0; i < 16; i++) {                           // sparks riding the heat
+        const r = ART.rng(400 + i * 3);
+        q(34 + ((r() * 30) | 0), fb - 40 + ((r() * 18) | 0), 2, 2, r() < 0.5 ? F[2] : F[3]);
+      }
+    },
+
+    /* ---- THE ANCESTOR TOTEMS — three carved cedar poles of different
+       heights on a log platform, each a stack of faces, wings and beaks in
+       the clan's paints, a fire pit smouldering between them. ---- */
+    totems(q) {
+      wShadow(q, 48, 78);
+      const W = AP.wood, TL = AP.teal, RD = AP.red, GD = AP.gold, BO = AP.bone;
+      // a low platform of split logs
+      for (let i = 0; i < 6; i++) {
+        q(8, WGY - 10 + i * 2, 80, 2, i & 1 ? W[1] : W[2]);
+        q(8, WGY - 10 + i * 2, 80, 1, W[3]);
+      }
+      q(8, WGY - 10, 80, 1, W[3]);
+      const pole = (cx, top, w, seed) => {
+        const bot = WGY - 10, r = ART.rng(seed);
+        q(cx - (w >> 1), top, w, bot - top, W[2]);
+        q(cx - (w >> 1), top, 3, bot - top, W[3]);
+        q(cx + (w >> 1) - 3, top, 3, bot - top, W[1]);
+        q(cx - (w >> 1), top, w, 2, W[4]);
+        // a stack of carved faces down the pole
+        let y = top + 4;
+        let i = 0;
+        while (y < bot - 12) {
+          const h = 15 + ((r() * 5) | 0);
+          const col = [TL[1], RD[2], GD[2], BO[1]][i % 4];
+          q(cx - (w >> 1) + 1, y, w - 2, 1, AP.ink[0]);                // the seam between carvings
+          q(cx - (w >> 1) + 2, y + 3, w - 4, 5, col);                  // painted brow band
+          q(cx - (w >> 1) + 4, y + 5, 4, 4, AP.ink[0]);                // eyes, deep-set
+          q(cx + (w >> 1) - 8, y + 5, 4, 4, AP.ink[0]);
+          q(cx - 3, y + 8, 6, 6, W[1]);                                 // the beak/snout jutting out
+          q(cx - 5, y + 12, 10, 2, AP.ink[0]);                          // the mouth
+          q(cx - (w >> 1) + 2, y + h - 4, w - 4, 3, i % 2 ? RD[1] : TL[0]);
+          y += h; i++;
+        }
+        // outstretched wings at the crown
+        q(cx - (w >> 1) - 9, top + 3, 9, 4, W[1]); q(cx + (w >> 1), top + 3, 9, 4, W[1]);
+        q(cx - (w >> 1) - 9, top + 3, 9, 1, W[3]); q(cx + (w >> 1), top + 3, 9, 1, W[3]);
+        q(cx - (w >> 1) - 12, top + 6, 12, 3, i % 2 ? TL[1] : RD[2]);
+        q(cx + (w >> 1), top + 6, 12, 3, TL[1]);
+      };
+      pole(22, 26, 14, 13);
+      pole(48, 8, 16, 29);
+      pole(74, 30, 13, 47);
+      // the fire pit smouldering between the poles
+      q(38, WGY - 6, 20, 5, AP.stone[1]);
+      for (let i = 0; i < 7; i++) q(38 + i * 3, WGY - 7, 2, 2, AP.stone[2]);
+      q(42, WGY - 9, 12, 3, AP.fire[0]); q(44, WGY - 12, 8, 4, AP.fire[1]);
+      q(46, WGY - 15, 4, 4, AP.fire[2]);
+    },
+
+    /* ---- THE GREAT SUNDIAL — a vast graven disc laid tilted to the sky, a
+       triangular gnomon throwing its shadow across the marks, a ring of hour
+       stones set round it. ---- */
+    sundial(q) {
+      wShadow(q, 48, 80);
+      const ST = AP.stone, RK = AP.rock, GD = AP.gold;
+      // the hour stones set in a ring around the dial
+      for (let a = 0; a < 12; a++) {
+        const t = a * 0.5236;
+        const hx = 48 + Math.round(Math.cos(t) * 42), hy = 56 + Math.round(Math.sin(t) * 25);
+        if (hy < 30) continue;                                 // the back of the ring is hidden by the dial
+        menhir(q, hx - 2, hy - 9, 5, 10, 500 + a, 0);
+      }
+      // the ROUND PLINTH the disc rests on
+      for (let dy = 0; dy < 12; dy++) {
+        const w = Math.round(36 - dy * 0.4);
+        q(48 - w, WGY - 12 + dy, w * 2, 1, dy < 2 ? ST[3] : dy > 8 ? ST[0] : ST[1]);
+      }
+      /* the DISC — a great circle laid back toward the sky, so it is drawn as
+         an ellipse. The face is deliberately DARK stone: every mark on it is
+         cut bright, which is the only way an engraved dial reads at this size
+         (a pale disc with pale marks is a grey plate). */
+      const cyD = 54, rx = 42, ry = 21;
+      for (let dy = -ry; dy <= ry; dy++) {
+        const t = dy / ry, w = Math.round(rx * Math.sqrt(Math.max(0, 1 - t * t)));
+        q(48 - w, cyD + dy, w * 2, 1, dy < -14 ? ST[2] : dy > 15 ? ST[0] : ST[1]);
+      }
+      // the rim: a raised gilded band all the way round the face
+      for (let a = 0; a < 128; a++) {
+        const t = a * 0.0491;
+        q(48 + Math.round(Math.cos(t) * rx), cyD + Math.round(Math.sin(t) * ry), 2, 2,
+          Math.sin(t) < -0.2 ? GD[2] : GD[1]);
+      }
+      // the hour lines cut into the face, every sixth one gilded and doubled
+      for (let a = 0; a < 24; a++) {
+        const t = a * 0.2618, c1 = Math.cos(t), s1 = Math.sin(t);
+        const major = a % 6 === 0;
+        for (let r = major ? 12 : 26; r < 40; r++) {
+          const ex = 48 + Math.round(c1 * r), ey = cyD + Math.round(s1 * r * (ry / rx));
+          q(ex, ey, major ? 2 : 1, major ? 2 : 1, major ? GD[2] : ST[3]);
+        }
+      }
+      /* the GNOMON — a right-triangular blade standing on the meridian, thin
+         enough that the dial it reads stays the subject. Its raking
+         hypotenuse takes the sun; the shaded face falls away east. */
+      const gH = 38;
+      for (let i = 0; i < gH; i++) {
+        const y = cyD - 2 - i, t = i / gH;
+        const w = Math.max(1, Math.round((gH - i) * 0.34));
+        q(48, y, 2, 1, RK[2]); q(48, y, 1, 1, RK[4]);           // the blade seen edge-on
+        q(50, y, w, 1, RK[1]);                                   // the shaded face of the wedge
+        q(49 + w, y, 2, 1, RK[3]);
+        if (t < 0.06) q(46, y, 4, 1, RK[1]);
+      }
+      q(40, cyD - 3, 18, 5, RK[2]); q(40, cyD - 3, 18, 1, RK[4]); q(40, cyD + 1, 18, 1, RK[0]);
+      // the SHADOW the blade throws WEST across the face — the whole point of
+      // the thing, and it must be laid over the marks, not under the blade
+      for (let r = 5; r < 39; r++) {
+        const ex = 48 - Math.round(Math.cos(0.34) * r), ey = cyD + Math.round(Math.sin(0.34) * r * (ry / rx));
+        q(ex, ey, 3, 2, 'rgba(14,11,8,0.60)');
+      }
+    },
+  };
+
+  /* Build all ten. `Sprites.wonders[key]` holds the artwork; the run's chosen
+     one is copied into `Sprites.building.wonder` by Sprites.useWonder (called
+     from G.setWonder), so every existing code path — the menu icon, the panel
+     thumbnail, R.bldSprite, the burn variants, the ash silhouette — finds it
+     exactly where it finds every other building's art, with no special case. */
+  Sprites.wonders = {};
+  for (const key of Object.keys(W_DRAW)) Sprites.wonders[key] = ART.outline(tileW(p => W_DRAW[key](p)), 2);
+  Sprites.useWonder = function (key) {
+    const c = Sprites.wonders[key] || Sprites.wonders.henge;
+    Sprites.building.wonder = [c];
+    Sprites.buildingA.wonder = [c];   // stone is stone — the rival's monument is the same monument
+    return c;
+  };
+  Sprites.useWonder('henge');
+
+  /* The GREAT WORKS going up (tests/wonder.mjs). Two shared stages — every
+     wonder is raised the same way, by the same masons — and then stage three
+     is the monument's OWN art under a scaffold (render.js), so the last third
+     of a very long build is when the valley finally sees what it is getting. */
+  Sprites.misc.wonderBuild1 = ART.outline(tileW(p => {
+    const q = p, W = AP.wood, ST = AP.stone, SO = AP.soil, r = ART.rng(19);
+    wShadow(q, 48, 80);
+    // the ground broken: a great dug pad, spoil heaps, staked-out string lines
+    q(6, WGY - 16, 84, 17, SO[2]); q(6, WGY - 16, 84, 2, SO[3]); q(6, WGY - 1, 84, 2, SO[1]);
+    for (let i = 0; i < 60; i++) q(8 + ((r() * 80) | 0), WGY - 14 + ((r() * 14) | 0), 2, 1, r() < 0.5 ? SO[1] : SO[3]);
+    for (let i = 0; i < 9; i++) {                                  // surveyors' stakes and string
+      const sx = 10 + i * 10;
+      q(sx, WGY - 30, 2, 15, W[1]); q(sx, WGY - 30, 2, 1, W[3]);
+    }
+    q(10, WGY - 29, 72, 1, AP.bone[1]);
+    q(10, WGY - 22, 72, 1, AP.bone[1]);
+    for (const hx of [16, 76]) {                                    // spoil heaps either side
+      for (let i = 0; i < 9; i++) q(hx - 12 + i, WGY - 20 - i, 26 - i * 2, 2, i & 1 ? SO[1] : SO[2]);
+      for (let i = 0; i < 10; i++) { const r = ART.rng(hx + i); q(hx - 10 + ((r() * 20) | 0), WGY - 26 + ((r() * 8) | 0), 2, 1, SO[3]); }
+    }
+    // the first course of dressed blocks, laid true along the front
+    for (let i = 0; i < 9; i++) ashlarBlock(q, 16 + i * 7, WGY - 24, 7, 8, 60 + i, ST);
+    // a QUARRY SLED with a great block on it, rollers under, ropes out ahead
+    for (let i = 0; i < 6; i++) { q(50 + i * 6, WGY - 8, 4, 3, W[2]); q(50 + i * 6, WGY - 8, 4, 1, W[3]); }
+    q(48, WGY - 12, 40, 4, W[1]); q(48, WGY - 12, 40, 1, W[3]);
+    ashlarBlock(q, 56, WGY - 22, 22, 10, 91, ST);
+    for (let i = 0; i < 3; i++) q(20, WGY - 15 + i * 3, 30, 1, AP.thatch[1]);   // the haul ropes
+    // the masons' shelter and the lifting shears standing over the first course
+    q(6, WGY - 34, 22, 4, W[2]); q(6, WGY - 34, 22, 1, W[3]);
+    ART.thatchTexture(q, 6, WGY - 42, 22, 8, 9);
+    q(7, WGY - 30, 3, 8, W[1]); q(24, WGY - 30, 3, 8, W[1]);
+    q(60, WGY - 56, 3, 34, W[1]); q(74, WGY - 56, 3, 34, W[1]);
+    q(58, WGY - 58, 21, 3, W[2]); q(58, WGY - 58, 21, 1, W[3]);
+    q(67, WGY - 55, 1, 18, AP.thatch[1]);
+    ashlarBlock(q, 62, WGY - 37, 12, 7, 44, ST);
+  }), 2);
+
+  Sprites.misc.wonderBuild2 = ART.outline(tileW(p => {
+    const q = p, W = AP.wood, ST = AP.stone, SO = AP.soil, TH = AP.thatch, r = ART.rng(23);
+    wShadow(q, 48, 84);
+    q(6, WGY - 12, 84, 13, SO[2]); q(6, WGY - 12, 84, 2, SO[3]);
+    // a broad plinth of coursed stone rising, stepped down where work stopped
+    for (let i = 0; i < 4; i++) {
+      const w = 78 - i * 8, y = WGY - 12 - (i + 1) * 8;
+      const cut = i >= 2 ? 18 : 0;                                  // the right end still unbuilt
+      ashlarBlock(q, 48 - (w >> 1), y, w - cut, 9, 70 + i * 7, ST);
+    }
+    // the SCAFFOLD around the works — standards, ledgers, putlogs, lashings
+    for (const sx of [8, 24, 68, 86]) {
+      q(sx, 12, 3, WGY - 12, W[1]); q(sx, 12, 1, WGY - 12, W[3]);
+    }
+    for (const sy of [20, 36, 52, 68]) {
+      q(8, sy, 81, 2, W[2]); q(8, sy, 81, 1, W[3]);
+      for (const lx of [8, 24, 68, 86]) { q(lx - 1, sy - 1, 5, 1, TH[1]); q(lx - 1, sy + 2, 5, 1, TH[1]); }
+    }
+    for (let i = 0; i < 6; i++) q(26, 22 + i * 8, 42, 1, W[1]);     // putlogs across the face
+    // planked working platforms with blocks and tools on them
+    for (const [px, py, pw] of [[10, 34, 26], [58, 50, 30], [26, 18, 24]]) {
+      ART.woodPlankTexture(q, px, py - 3, pw, 3, 7);
+      ashlarBlock(q, px + 4, py - 9, 10, 6, 33, ST);
+    }
+    // the great LEWIS CRANE — a treadwheel hoist swinging a block over the works
+    q(74, 4, 4, 44, W[1]); q(74, 4, 2, 44, W[3]);
+    q(40, 4, 38, 3, W[2]); q(40, 4, 38, 1, W[3]);
+    for (let i = 0; i < 5; i++) q(72 + i, 8 + i * 2, 2, 2, W[0]);   // the brace
+    ART.shadedCircle(q, 82, 20, 9, AP.wood, 2);                     // the tread wheel
+    for (let a = 0; a < 8; a++) q(82 + Math.round(Math.cos(a * 0.785) * 6), 20 + Math.round(Math.sin(a * 0.785) * 6), 2, 2, W[1]);
+    q(44, 6, 1, 22, TH[1]);                                          // the fall rope
+    ashlarBlock(q, 38, 28, 14, 9, 55, ST);                           // the block swinging on it
+    // masons' clutter at the foot: mortar tub, chisels, a barrow, chips
+    q(12, WGY - 6, 12, 5, W[1]); q(12, WGY - 6, 12, 1, W[3]); q(14, WGY - 5, 8, 2, AP.bone[1]);
+    q(30, WGY - 5, 10, 4, W[2]); q(30, WGY - 8, 3, 4, W[1]);
+    for (let i = 0; i < 26; i++) q(10 + ((r() * 76) | 0), WGY - 4 + ((r() * 5) | 0), 2, 1, r() < 0.5 ? ST[3] : ST[1]);
+  }), 2);
+
+  // the scaffold the finished-looking monument wears through its last third —
+  // open in the middle so the wonder itself is what the eye lands on
+  Sprites.misc.wonderScaffold = tileW(p => {
+    const q = p, W = AP.wood, TH = AP.thatch;
+    for (const sx of [6, 20, 72, 86]) {
+      q(sx, 8, 3, WGY - 6, W[1]); q(sx, 8, 1, WGY - 6, W[3]);
+    }
+    for (const sy of [16, 34, 52, 70]) {
+      q(6, sy, 83, 2, W[2]); q(6, sy, 83, 1, W[3]);
+      for (const lx of [6, 20, 72, 86]) { q(lx - 1, sy - 1, 5, 1, TH[1]); q(lx - 1, sy + 2, 5, 1, TH[1]); }
+    }
+    for (const [px, py, pw] of [[4, 34, 20], [70, 52, 22]]) ART.woodPlankTexture(q, px, py - 3, pw, 3, 11);
+    q(78, 2, 4, 30, W[1]); q(50, 2, 32, 3, W[2]); q(54, 4, 1, 16, TH[1]);   // the crane still standing over it
+  });
+
   // a proper work-site: a lashed timber scaffold over a dug foundation with a
   // half-laid stone footing, stacked materials, and a leaning ladder. Drawn at
   // high res with rope lashings, plank grain and mortar seams in the fine grid.

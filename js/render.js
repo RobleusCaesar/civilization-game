@@ -539,6 +539,7 @@ const R = {
     this.fogDirty = true;
     this.floats = [];
     this.collapses = [];       // render-side only — never in a save (same rule as _fighting)
+    this.marvel = null;        // …and so is the wonder's held frame
     this.particles = [];
     Combat.shots.length = 0; Combat.projectiles.length = 0;
     const tc = Bld.tcOf('P');
@@ -1067,6 +1068,7 @@ const R = {
   // shared by the generated sheet and by any authored `<key>Fall` art
   COLLAPSE_PAD: { w: 2.5, h: 1.6, x: 0.75, y: 0.45 },
   collapses: [],                 // live one-shots: {x,y,sz,spr,cfg,t,flip,art}
+  marvel: null,                  // the wonder's held frame: {x,y,t,name,blurb} — never in S
 
   // does this kind carry hand-drawn collapse art? (returns the frame count)
   collapseArt(key, frames) {
@@ -1261,6 +1263,103 @@ const R = {
       }
       g.restore();
     }
+  },
+
+  /* ---- THE WONDER'S SHINE (tests/wonder.mjs) ----
+     Seventy thousand of everything and forty-five days went into this, and
+     for the rest of the run it has to look like it. Not a glow filter — a
+     slow warm radiance that breathes over the monument, and gold motes that
+     drift up off it and fade, drawn on a CONTINUOUS clock so nothing snaps.
+     Cheap: one gradient and a dozen little rects. */
+  drawWonderShine(g, b, bx, by, bw) {
+    const now = performance.now() / 1000;
+    const cx = bx + bw / 2, cy = by + bw * 0.55;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.8);
+    const rad = bw * (0.62 + pulse * 0.05);
+    const grd = g.createRadialGradient(cx, cy, bw * 0.10, cx, cy, rad);
+    grd.addColorStop(0, 'rgba(255,238,175,' + (0.16 + pulse * 0.07).toFixed(3) + ')');
+    grd.addColorStop(0.55, 'rgba(240,200,110,' + (0.07 + pulse * 0.03).toFixed(3) + ')');
+    grd.addColorStop(1, 'rgba(232,193,90,0)');
+    const old = g.globalCompositeOperation;
+    g.globalCompositeOperation = 'lighter';
+    g.fillStyle = grd;
+    g.fillRect(cx - rad, cy - rad, rad * 2, rad * 2);
+    g.globalCompositeOperation = old;
+    // motes lifting off the stone, each on its own slow cycle
+    const GD = ART.PALETTE.gold, px = bw / 96;
+    for (let i = 0; i < 11; i++) {
+      const s = ((i * 2654435761) >>> 8) % 1000 / 1000;
+      const period = 3.4 + s * 2.6;
+      const t = ((now + s * 11) % period) / period;
+      const mx = bx + (0.14 + s * 0.72) * bw + Math.sin(now * 0.9 + i) * bw * 0.03;
+      const my = by + bw * (0.86 - t * 0.78);
+      g.globalAlpha = Math.min(1, t * 4) * (1 - t) * 0.85;
+      g.fillStyle = i % 3 ? GD[3] : GD[2];
+      g.fillRect(mx, my, px * 2, px * 2);
+      g.globalAlpha = 1;
+    }
+  },
+
+  /* ---- THE MARVEL (tests/wonder.mjs) ----
+     The monument is finished and the run is won — but the player is NOT
+     snapped straight to a score screen. The world holds still for
+     CFG.WONDER.marvelMs with the camera on the thing and its name across the
+     bottom of the frame, and only then does the victory screen come up.
+     G.wonderRaised owns the clock; this only draws it. Screen space, so it
+     runs after the world transform has been reset. */
+  drawMarvel(g, dt) {
+    const m = this.marvel;
+    if (!m) return;
+    m.t += dt;
+    const W = this.cv.width, H = this.cv.height;
+    const fade = Math.min(1, m.t * 1.2);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    /* The canvas runs the WHOLE viewport, but the HUD sits on top of it in the
+       DOM — so the caption has to live in the open band between the status bar
+       and the bottom bar, or it is drawn underneath them and nobody ever sees
+       it. Measure BOTH bars as they stand right now, once, when the marvel
+       starts: R.topReserve/bottomReserve are learned lazily elsewhere and are
+       still 0 in a session where the camera has not been clamped yet. Canvas
+       pixels are CSS pixels × dpr. */
+    if (m.top == null) {
+      const tb = document.getElementById('topbar'), bb = document.getElementById('bottombar');
+      const dpr = this.dpr || 1;
+      m.top = (tb ? tb.offsetHeight : 0) * dpr || (this.topReserve || 0);
+      m.bot = (bb ? bb.offsetHeight : 0) * dpr || (this.bottomReserve || 0);
+    }
+    const top = m.top, bot = m.bot;
+    const openH = Math.max(120, H - top - bot);
+    const midY = top + openH * 0.5;
+    // a warm vignette closing gently in from the edges of the open frame
+    const vg = g.createRadialGradient(W / 2, midY, Math.min(W, openH) * 0.16,
+      W / 2, midY, Math.max(W, openH) * 0.72);
+    vg.addColorStop(0, 'rgba(255,236,180,0)');
+    vg.addColorStop(0.6, 'rgba(90,60,20,' + (0.20 * fade).toFixed(3) + ')');
+    vg.addColorStop(1, 'rgba(24,16,8,' + (0.55 * fade).toFixed(3) + ')');
+    g.fillStyle = vg; g.fillRect(0, top, W, openH);
+    const band = Math.min(92, openH * 0.24), bandY = top + openH - band;
+    g.fillStyle = 'rgba(18,14,9,' + (0.72 * fade).toFixed(3) + ')';
+    g.fillRect(0, bandY, W, band);
+    g.fillStyle = 'rgba(232,193,90,' + (0.9 * fade).toFixed(3) + ')';
+    g.fillRect(0, bandY, W, 2);
+    g.textAlign = 'center';
+    g.globalAlpha = fade;
+    g.fillStyle = '#f3dc9a';
+    g.font = 'bold ' + Math.round(Math.min(26, W / 15)) + 'px sans-serif';
+    g.fillText((m.name || '').toUpperCase(), W / 2, bandY + Math.round(band * 0.42));
+    g.fillStyle = '#cbb98a';
+    g.font = Math.round(Math.min(14, W / 30)) + 'px sans-serif';
+    // the blurb can be longer than a phone is wide — wrap it onto two lines
+    const words = String(m.blurb || '').split(' ');
+    const lines = [''];
+    for (const wd of words) {
+      const t2 = lines[lines.length - 1] ? lines[lines.length - 1] + ' ' + wd : wd;
+      if (g.measureText(t2).width > W - 28 && lines.length < 2) lines.push(wd);
+      else lines[lines.length - 1] = t2;
+    }
+    lines.forEach((ln, i) => g.fillText(ln, W / 2, bandY + Math.round(band * (0.66 + i * 0.20))));
+    g.globalAlpha = 1;
+    g.textAlign = 'left';
   },
 
   /* ---- BANNERS THAT FLY (tests/banners-smoke.mjs) ----
@@ -1633,7 +1732,20 @@ const R = {
              same art for now) so their looks can diverge later. */
           const tgt = up ? b.level + 1 : b.level;
           const stage = Bld.stageOf(b);
-          if (Sprites.misc[b.key + 'Build1']) {
+          if (b.key === 'wonder') {
+            /* THE GREAT WORKS (tests/wonder.mjs). Two shared raising stages —
+               every wonder is raised by the same masons, off the same
+               drawings — and then the MONUMENT'S OWN ART under a scaffold for
+               the last third, which is the moment the valley finally sees
+               what it is getting. Forty-five days is a long time to look at a
+               building site. */
+            if (stage < 2) {
+              Assets.drawSprite(g, 'misc/wonderBuild' + (stage + 1), bx, by, { w: bw, h: bw });
+            } else {
+              g.drawImage(this.bldSprite(b, tgt), bx, by, bw, bw);
+              Assets.drawSprite(g, 'misc/wonderScaffold', bx, by, { w: bw, h: bw });
+            }
+          } else if (Sprites.misc[b.key + 'Build1']) {
             // this building has BESPOKE stage art (every 1×1 building does —
             // tests/build-stages.mjs): its own three raising sprites for ALL
             // three stages, no generic look, no scaffold overlay
@@ -1698,6 +1810,8 @@ const R = {
       }
       this.drawBanners(g, b, bx, by, bw);      // cloth flies in the tribe's own dye
       this.drawHearthSmoke(g, b, bx, by, bw);  // and the hearths breathe
+      // a finished WONDER is never just another building on the map
+      if (b.key === 'wonder' && !(b.construction > 0)) this.drawWonderShine(g, b, bx, by, bw);
       this.drawBurn(g, b, bx, by, bw);   // fires ride on work sites and finished buildings alike
       if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, bw - 6, 3, b.hp / b.maxhp, '#7dbb5e');
       if (UI.sel && UI.sel.type === 'bld' && UI.sel.id === b.id) {
@@ -2439,6 +2553,9 @@ const R = {
         }
       }
     }
+
+    // the monument is finished: hold the frame on it (tests/wonder.mjs)
+    this.drawMarvel(g, dt);
 
     this.miniT -= dt;
     if (this.miniT <= 0) { this.miniT = 0.5; this.drawMini(); }

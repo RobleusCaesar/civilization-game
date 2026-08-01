@@ -1130,6 +1130,93 @@ const AI = {
     }
     return n;
   },
+  /* ================= THE ANCIENT WONDER (tests/wonder.mjs) =================
+     A monument going up on the other side of the valley is not a building —
+     it is a countdown. The chief cannot out-build it and cannot ignore it, so
+     the works OUTRANK every other consideration it has: posture, campaign,
+     raid cooldown, all of it. Everything that can march, marches.
+
+     The site is never a secret (Bld.place reveals it to both sides the day the
+     ground is broken), so this is fog-honest by construction — the chief is
+     not reading hidden state, it is reacting to something it was shown. */
+  wonderWatch() {
+    const ai = S.ai; if (!ai) return false;
+    const al = ai.wonderAlarm; if (!al) return false;
+    const w = Bld.get(al.id);
+    // razed, or finished — either way the alarm is over (if it finished, the
+    // run is already decided and nothing here matters)
+    if (!w || w.owner !== 'P' || w.key !== 'wonder') { ai.wonderAlarm = null; return false; }
+    ai.knownB = ai.knownB || {};
+    ai.knownB[MapGen.idx(w.x, w.y)] = { key: 'wonder', level: 1, owner: 'P', x: w.x, y: w.y, seen: S.day };
+    return this.stormTheWonder(w) > 0;
+  },
+  // every hand within CFG.WONDER.alarmR onto the works. Naval units and siege
+  // towers keep their own jobs, exactly as stormTheHall leaves them.
+  stormTheWonder(w) {
+    const aim = { type: 'tc', x: w.x, y: w.y };
+    let n = 0;
+    for (const u of S.units) {
+      if (u.owner !== 'A' || !Units.isMilitary(u) || Units.isNaval(u) || u.kind === 'siegetower') continue;
+      if (Math.hypot(u.x - Bld.cx(w), u.y - Bld.cy(w)) > CFG.WONDER.alarmR) continue;
+      if (u.task && u.task.type === 'raid' && u.raidObj && u.raidObj.type === 'tc' &&
+          u.raidObj.x === aim.x && u.raidObj.y === aim.y) { n++; continue; }   // already on it
+      u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.tBridge = null;
+      u.probe = false; u.feint = false; u.defend = false; u.assault = true;
+      u.strat = null; u.siegePost = null;
+      u.raidLane = 'wonder'; u.raidObj = { x: aim.x, y: aim.y, type: 'tc' };
+      n++;
+    }
+    if (n) {
+      const ai = S.ai;
+      ai.raidN = n; ai.raidDay = S.day; ai.raidExt = 0; ai.raidCd = 0;
+      ai.raidObj = { type: 'tc', x: aim.x, y: aim.y, lane: 'wonder' };
+      ai.raidLane = 'wonder'; ai.raidFoeBld = Bld.list('P').length;
+    }
+    return n;
+  },
+  /* The rival may raise one TOO — but not before CFG.WONDER.aiDay (350). The
+     late gate is the point: the peaceful victory should be a race the player
+     can plausibly win, not one the chief has been quietly running since day
+     one. In practice it needs 70,000 resources banked, which almost never
+     happens; the path exists so the door is not one-way. */
+  maybeWonder() {
+    const ai = S.ai; if (!ai) return false;
+    if (S.day < (CFG.WONDER.aiDay || 350)) return false;
+    if (Bld.list('A').some(b => b.key === 'wonder')) return false;
+    if (!Bld.canAfford(CFG.BUILDINGS.wonder.levels[0].cost, ai.res)) return false;
+    const spot = this.plotWonder();
+    if (!spot) return false;
+    return !!Bld.place('A', 'wonder', spot.x, spot.y);
+  },
+  // a 3×3 of clear ground near the hall that the villagers can actually stand
+  // at, and that the wall line has no claim on (AI.plot's rules, footprint-wide)
+  plotWonder() {
+    const tc = Bld.tcOf('A'); if (!tc) return null;
+    const reach = this.aiLandReach();
+    const line = this.wallCenter(tc), R = this.WALL_R, SZ = Bld.size('wonder');
+    let best = null, bs = -1e9;
+    for (let dy = -9; dy <= 9; dy++) for (let dx = -9; dx <= 9; dx++) {
+      const x = tc.x + dx, y = tc.y + dy;
+      let ok = true;
+      for (let oy = 0; oy < SZ && ok; oy++) for (let ox = 0; ox < SZ; ox++) {
+        const nx = x + ox, ny = y + oy;
+        if (!MapGen.inB(nx, ny) || !Bld.tileFree(nx, ny)) { ok = false; break; }
+        if (line && Math.max(Math.abs(nx - line.cx), Math.abs(ny - line.cy)) === R) { ok = false; break; }
+      }
+      if (!ok) continue;
+      // a hand has to be able to STAND at the works or it is a ghost site
+      let stand = !reach;
+      for (let oy = -1; oy <= SZ && !stand; oy++) for (let ox = -1; ox <= SZ; ox++) {
+        const nx = x + ox, ny = y + oy;
+        if (MapGen.inB(nx, ny) && reach[MapGen.idx(nx, ny)]) { stand = true; break; }
+      }
+      if (!stand) continue;
+      const s = -Math.hypot(dx, dy) + G.rand() * 0.6;
+      if (s > bs) { bs = s; best = { x, y }; }
+    }
+    return best;
+  },
+
   // a far, still-unexplored tile to probe toward (never reads the player's spot)
   scoutTarget() {
     const tc = Bld.tcOf('A'); if (!tc) return null;
@@ -3051,6 +3138,11 @@ const AI = {
     const read = ai.read;
     this.learn(read);       // LAYER 5: fold observations into adaptive memory
     this.campaignSelect(read);   // SIEGE CAMPAIGN: if a plain raid can't get in, commit to a named plan (before we choose what to build, so support can bias it)
+    // AN ANCIENT WONDER GOING UP OUTRANKS THE WHOLE PLAN (tests/wonder.mjs) —
+    // run before the day's spending, so the alarm cannot be crowded out by a
+    // macro-action budget that has already been used on huts.
+    this.wonderWatch();
+    this.maybeWonder();          // …and past day 350 the chief may raise one of its own
 
     // THE DAY'S HANDS: the chief gets a few macro actions per day (mode-scaled).
     // Every construction start / upgrade / training run / caravan spends one

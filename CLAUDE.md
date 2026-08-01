@@ -76,6 +76,7 @@ node tests/buildings-block.mjs # every building is solid ground except the four 
 node tests/ore-finite.mjs      # felled woods and spent soil grow back; a quarried seam never does
 node tests/fishery.mjs         # shore shoals are half-stocked, deep water three quarters; both return in 120 days
 node tests/wild-life.mjs       # wolves stalk deer, herds bolt as one, birds scatter; banners fly in the tribe's dye
+node tests/wonder.mjs          # the second way to win: one of ten 3×3 monuments, and the rival comes running
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -792,3 +793,57 @@ sharing `UI.confirmDemolish` — unit and building ids never collide): the ship
 sinks, NOTHING is refunded, its place in the population is freed
 (`Units.despawn` → `popUsed` drops). A transport with soldiers aboard refuses
 to scuttle — unload first, never send the crew down with the ship.
+
+**The Ancient Wonder** (`tests/wonder.mjs`): the SECOND way to win, and the
+only one that isn't a war — raise the monument and the run is yours. **Ten**
+monuments live in `CFG.WONDERS` with a drawing each in `Sprites.wonders`; ONE
+is rolled per run by `G.rollWonder`, hashed off the SEED STRING and **never
+off `S.rngState`** — a draw from the run's own RNG would shift every roll after
+it and re-deal a seed's cards. `G.setWonder` then points the single `wonder`
+building key at it (name, blurb, artwork via `Sprites.useWonder`), so the build
+menu, the panel, `R.bldSprite`, the burn variants and the ash silhouette all
+find it exactly where they find every other building's art, with no special
+case. **3×3 — the only one in the game** (the hall is 2×2, everything else
+1×1); 20,000 each of food/wood/stone plus 10,000 gold, and 45 days to raise,
+over four times the level-3 hall. **Last in `UI.MENU_KEYS`**, because it is the
+end of the game. **Calm alone SHOWS the button** (`CFG.MODES[m].wonderMenu`,
+read by `UI.wonderOffered`) — the RULES work on every difficulty, nothing in
+Bld/AI/G asks what mode you are in, so flipping the flag is the whole change
+needed to offer it elsewhere. Its art is authored at **192px on a 96-cell
+grid** (`tileW`), which is the same one-cell-per-screen-pixel density every
+other building has, over nine times the area; megaliths wear the warm
+weathered `rock` ramp and dressed masonry the cool `stone` ramp, and every
+monument stands on the tile's front edge (`WGY`, fine row 84 of 96) like the
+fortifications do. The **work site** gets two shared raising stages
+(`misc/wonderBuild1/2` — every wonder is raised by the same masons) and then
+the MONUMENT'S OWN ART under `misc/wonderScaffold` for the last third, so a
+45-day build is not 45 days of looking at a building site.
+**A wonder cannot be built in secret** (same test): `Bld.place` reveals it to
+the other side the day the ground is broken and sets `S.ai.wonderAlarm`;
+`AI.wonderWatch` → `stormTheWonder` then throws every soldier within
+`CFG.WONDER.alarmR` at the works — before the day's spending, so the alarm can
+never be crowded out by a spent macro-action budget — and `Combat.aiRaidSeek`
+carries a top-priority branch that puts a raider on the works over any other
+target once it is within reach (placed AFTER "engage what's in our face", so
+the column still defends itself). A site starts at `Bld.siteStartHp` like any
+other, so it CAN be broken: holding the ground is the price of the peaceful
+victory. The rival may raise one too — never before `CFG.WONDER.aiDay` (350),
+via `AI.maybeWonder`/`plotWonder`, which takes `AI.plot`'s reachability and
+wall-line clamps across the whole 3×3 footprint.
+**The marvel** (same test): finishing it does NOT snap to a score screen.
+`G.wonderRaised` pauses the world, settles the camera on the monument and
+holds the frame for `CFG.WONDER.marvelMs` (7s) with the monument's name across
+the bottom (`R.drawMarvel`), and only then calls the run. The caption measures
+`#topbar`/`#bottombar` itself — `R.topReserve`/`bottomReserve` are learned
+lazily elsewhere and are still 0 in a fresh session, which draws the caption
+underneath the build menu where nobody sees it. A finished wonder keeps a slow
+golden radiance and drifting motes for the rest of the run (`R.drawWonderShine`).
+`R.marvel` and `G._marvel` are render/flow state and NEVER reach a save (same
+rule as `R._fighting`); `S.wonder` does, and legacy saves backfill it from
+their own seed. The rival finishing one simply ends the run — no held frame,
+the defeat scene has its own staging.
+**Two traps this cost, both the same trap**: `G` and `Sprites` are script-level
+`const`s, so `window.G` and `window.Sprites` are **undefined** — only `R`,
+`Assets`, `Cards`, `Backend`, `Screens`, `Terraform`, `Score`, `Defeat` and
+`VictoryArt` are actually put on `window`. A `window.G &&` guard silently
+disables whatever it guards.

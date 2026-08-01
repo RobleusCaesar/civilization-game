@@ -369,6 +369,58 @@ const CFG = {
         { cost: { wood: 130, stone: 150, gold: 50 }, time: 2, hp: 2200 },
       ],
     },
+    /* THE ANCIENT WONDER (tests/wonder.mjs) — the second way to win, and the
+       only one that isn't a war. ONE building key; WHICH monument it is, is
+       rolled once per run into S.wonder from CFG.WONDERS, and its name, blurb
+       and sprite all follow that roll (G.setWonder). The biggest footprint in
+       the game at 3×3, the last entry in the build menu, and priced so only a
+       genuinely enormous economy can reach it. Finishing it wins the run. */
+    wonder: {
+      name: 'Ancient Wonder', unique: true, vision: true, wonder: true,
+      size: 3,   // the only 3×3 in the game — the hall is 2×2, everything else 1×1
+      desc: 'A monument for the ages. Finishing it wins the game.',
+      levels: [
+        // 45 days is over four times what the level-3 hall takes, and the hp is
+        // the largest on the map by a wide margin — a work site still starts at
+        // Bld.siteStartHp (40%), so the works CAN be broken and holding them is
+        // the whole tension of the peaceful victory
+        { cost: { food: 20000, wood: 20000, stone: 20000, gold: 10000 },
+          time: 45, hp: 15000, vision: 9 },
+      ],
+    },
+  },
+
+  /* THE TEN WONDERS. One is rolled per run (seeded, so a seed always raises
+     the same monument) — every one is a compact silhouette that reads at 3×3
+     in this pixel system: no towers, no sprawling walls, no hanging gardens.
+     Adding an eleventh is: an entry here plus a drawing in sprites.js keyed
+     by the same `key`. */
+  WONDERS: [
+    { key: 'henge',    name: 'The Stone Circle',
+      blurb: 'A ring of trilithons raised to the turning sky.' },
+    { key: 'colossus', name: 'The Bronze Colossus',
+      blurb: 'A giant of hammered bronze, spear levelled at the horizon.' },
+    { key: 'moai',     name: 'The Great Stone Heads',
+      blurb: 'Long-faced guardians cut from the quarry, watching the sea.' },
+    { key: 'pyramid',  name: 'The Step Pyramid',
+      blurb: 'Terrace upon terrace of dressed stone, a stair climbing to the sun.' },
+    { key: 'obelisk',  name: 'The Sun Obelisk',
+      blurb: 'One needle of granite, gold-capped, laying its shadow across the valley.' },
+    { key: 'temple',   name: 'The Temple of Dawn',
+      blurb: 'A colonnade beneath a carved pediment, facing the first light.' },
+    { key: 'sphinx',   name: 'The Great Sphinx',
+      blurb: 'A crowned lion couchant, keeping a riddle nobody has answered.' },
+    { key: 'flame',    name: 'The Eternal Flame',
+      blurb: 'A fire altar on a stepped platform that has never once gone out.' },
+    { key: 'totems',   name: 'The Ancestor Totems',
+      blurb: 'Cedar poles carved with every face the clan remembers.' },
+    { key: 'sundial',  name: 'The Great Sundial',
+      blurb: 'A stone dial ringed with the marks of the year, keeping time for the ages.' },
+  ],
+  WONDER: {
+    aiDay: 350,        // the rival may not LAY a wonder before this day
+    marvelMs: 7000,    // how long the finished monument is left on screen before the win screen
+    alarmR: 40,        // how far the chief's whole host is called in from when the works are seen
   },
 
   UNITS: {
@@ -578,6 +630,11 @@ const CFG = {
       aiBuildEvery: 2, aiOutput: 1.0, aiArmyCap: 5, aiArmyDiv: 14, aiEliteShare: 0.1, aiAggro: 0.4,
       aiVillCap: 12, aiVillEvery: 11, aiActions: 2, aiHarass: 0,   // calm: no harassment parties
       foeNoteChance: 1,   // enemy/raider intel toasts (see G.foeNote) — Calm always warns you
+      // THE WONDER (tests/wonder.mjs) works on EVERY difficulty — the rules
+      // never ask what mode you are in. This flag only decides whether the
+      // build menu SHOWS the button, and for now that is Calm alone: the
+      // peaceful mode is the one that needed a way to win without a war.
+      wonderMenu: true,
     },
     moderate: {
       name: 'Moderate', icon: '⚔️', desc: 'The intended experience.',

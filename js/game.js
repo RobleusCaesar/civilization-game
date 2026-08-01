@@ -146,6 +146,7 @@ const G = {
       paused: false, over: null,
       res: Object.assign({}, CFG.START_RES),
       wallLevel: 1,                         // village-wide fortification tier (all walls & gates)
+      wonder: null,                         // this run's ANCIENT WONDER key (set by G.setWonder, below)
       map: {
         W: CFG.W, H: CFG.H,
         terrain: gen.terrain,
@@ -182,6 +183,10 @@ const G = {
       log: [],
     };
     Bld._block = null;
+    this._marvel = false;
+    // which ANCIENT WONDER this run may raise — hashed off the seed, so it
+    // never disturbs the run's own RNG sequence (see G.rollWonder)
+    this.setWonder(this.rollWonder(seed).key);
     const p = gen.spawns.player;
     G.clearFootprint(p.x, p.y, 'tc');
     Bld.place('P', 'tc', p.x, p.y, { free: true, instant: true });
@@ -970,6 +975,64 @@ const G = {
     }
   },
 
+  /* ================= THE ANCIENT WONDER (tests/wonder.mjs) =================
+     The second way to win, and the only one that isn't a war: raise the
+     monument and the run is yours. WHICH monument is rolled once per run from
+     CFG.WONDERS — but NOT off S.rngState. Consuming a draw from the run's own
+     RNG would shift every roll after it (start package, cards, specials), so
+     a seed played yesterday would deal a different hand today. The pick is
+     hashed straight off the SEED STRING instead: stable per seed, and it
+     costs the sequence nothing. */
+  rollWonder(seed) {
+    const list = CFG.WONDERS;
+    const h = Math.abs(hashSeed(String(seed == null ? '' : seed) + '::wonder') | 0);
+    return list[h % list.length];
+  },
+  wonderDef() { return CFG.WONDERS.find(z => z.key === (S && S.wonder)) || CFG.WONDERS[0]; },
+  // point the single `wonder` building key at this run's monument: its name,
+  // its blurb and its artwork. Everything downstream — the build menu, the
+  // panel, R.bldSprite, the burn variants — then finds it exactly where it
+  // finds every other building's, with no special case anywhere.
+  setWonder(key) {
+    const w = CFG.WONDERS.find(z => z.key === key) || CFG.WONDERS[0];
+    S.wonder = w.key;
+    const d = CFG.BUILDINGS.wonder;
+    d.name = w.name;
+    d.desc = w.blurb + ' Finishing it wins the game.';
+    // `Sprites` is a script-level const, NOT a window property (window.Sprites
+    // is undefined) — reference it directly or the artwork never swaps
+    if (Sprites.useWonder) Sprites.useWonder(w.key);
+    return w;
+  },
+  /* The monument is finished. The player does NOT get snapped to a score
+     screen mid-cheer: the valley holds still, the camera settles on the
+     thing, and it is left on screen for CFG.WONDER.marvelMs before the run is
+     called. The rival finishing one is simply the run lost — the defeat scene
+     has its own staging and does not want a pause bolted in front of it. */
+  wonderRaised(b) {
+    if (!S || S.over) return;
+    const w = this.wonderDef();
+    if (b.owner !== 'P') {
+      this.log(`The rival has raised ${w.name}.`, true);
+      this.end(false, `The rival raised ${w.name} while your masons idled. The age will remember their name, not yours.`);
+      return;
+    }
+    if (this._marvel) return;
+    this._marvel = true;
+    S.paused = true;                       // let the valley hold its breath
+    this.log(`${w.name} is finished!`, true);
+    if (window.R) {
+      R.centerOn(Bld.cx(b), Bld.cy(b));
+      R.marvel = { x: Bld.cx(b), y: Bld.cy(b), t: 0, name: w.name, blurb: w.blurb };
+    }
+    setTimeout(() => {
+      G._marvel = false;
+      if (window.R) R.marvel = null;
+      G.end(true, `You raised ${w.name}. ${w.blurb} Long after the last spear has rusted, it will still be standing.`);
+    }, CFG.WONDER.marvelMs);
+  },
+  _marvel: false,   // render/flow only — never in S, so it can't survive a save
+
   end(win, msg) {
     if (S.over) return;
     S.over = { win, msg };
@@ -1062,6 +1125,9 @@ const G = {
       const due = data.day + CFG.RUIN_FADE_DAYS;
       if (data.map.decay[k] > due) data.map.decay[k] = due;
     }
+    // pre-wonder saves: derive the run's monument from its own seed, exactly
+    // as newGame does, so an old save keeps playing with a stable wonder
+    if (!data.wonder) data.wonder = G.rollWonder(data.seed).key;
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.reclaimed) data.map.reclaimed = {};
     if (!data.map.fishStocked) {
@@ -1103,11 +1169,13 @@ const G = {
       }
     }
     Bld._block = null;
+    this.setWonder(S.wonder);   // name, blurb and artwork follow the saved roll
     S.paused = true;
     document.getElementById('btnPause').textContent = '▶';
     UI.deselect();
     UI.placing = null;
     UI._healLog = {};   // see newGame — a loaded save must not inherit a stale cooldown
+    this._marvel = false;   // a save loaded mid-marvel is just a save
     this.freeVis = false;
     this.vis = null;
     Units.clampToBoard();   // pull any unit off the (now impassable) map rim — e.g. a pre-border save

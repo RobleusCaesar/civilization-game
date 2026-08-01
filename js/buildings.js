@@ -348,6 +348,17 @@ const Bld = {
     };
     S.buildings.push(b);
     if (key === 'warcamp') this._revealCampToFoe(b);   // a forward camp shows on the enemy's map
+    /* AN ANCIENT WONDER CANNOT BE BUILT IN SECRET (tests/wonder.mjs). Raising
+       one is visible for a day's ride: it shows up on the other side's map
+       the moment the ground is broken, and it rings the alarm — the chief
+       drops whatever plan it was running and marches on the works. That is
+       the price of the peaceful victory: you must hold the site. */
+    if (key === 'wonder') {
+      this._revealCampToFoe(b);
+      if (owner === 'P' && S.ai) S.ai.wonderAlarm = { x: b.x, y: b.y, day: S.day, id: b.id };
+      if (owner === 'A') G.log('The rival is raising a monument of their own!', true);
+      else G.foeNote(`Word of your great work is carried over the hills — the rival is coming.`);
+    }
     this._block = null;
     // fresh construction clears old stumps/rubble — only the new building shows
     const sz = this.size(key);
@@ -428,6 +439,9 @@ const Bld = {
     }
     // ORIGIN CARDS: "N free units when you first build X" kickers fire here
     if (window.Cards) Cards.onBuildFinish(b.owner, b);
+    // THE SECOND WAY TO WIN: the monument is up, the run is decided
+    // (tests/wonder.mjs). Last, so the building is fully finished first.
+    if (b.key === 'wonder') G.wonderRaised(b);
   },
 
   // any of the OWNER'S villagers currently working this site (construction/upgrade/repair)?

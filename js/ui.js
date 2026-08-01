@@ -28,7 +28,9 @@ const UI = {
      "🚪 Build Gate" (see the wall panel in renderPanel / the `togate` action).
      Wall sits immediately left of the Watchtower: the two defensive works read
      together. */
-  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'wall', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'warcamp', 'trade'],
+  // …and LAST, always last, the Ancient Wonder (tests/wonder.mjs) — the end of
+  // the list because it is the end of the game
+  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'wall', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'warcamp', 'trade', 'wonder'],
   RES_NAME: { food: 'Food', wood: 'Wood', stone: 'Stone', gold: 'Gold' },
   tradeNeed: null,            // Trading Post step 1 → 2: what the caravan brings home
 
@@ -89,6 +91,10 @@ const UI = {
       const d = CFG.BUILDINGS[key];
       const btn = document.createElement('button');
       btn.className = 'bbtn'; btn.dataset.key = key;
+      // the wonder's button is BUILT here but only SHOWN where the mode offers
+      // it (refreshMenu) — the menu is laid out once, at boot, long before a
+      // difficulty has been chosen
+      if (key === 'wonder') btn.style.display = 'none';
       const ic = document.createElement('canvas');
       const lv = this.menuIconLevel(key);
       this.iconInto(ic, Sprites.building[key][lv - 1]);
@@ -128,10 +134,34 @@ const UI = {
     return Math.min(n, Math.max(1, spec.level || 1));
   },
 
+  /* Is the ANCIENT WONDER offered in the build menu right now? The wonder
+     RULES work on every difficulty — nothing in Bld/AI/G asks what mode you
+     are in — but for now only Calm SHOWS the button, because Calm is the mode
+     that needed a way to win without a war. Flip `wonderMenu` on a mode in
+     config.js and it appears there too, no other change. */
+  wonderOffered() {
+    // `G` is a script-level const, not a window property — never window.G here
+    const m = G && G.modeCfg ? G.modeCfg() : null;
+    return !!(m && m.wonderMenu);
+  },
+
   refreshMenu() {
     const tc = Bld.tcOf('P');
     document.querySelectorAll('.bbtn').forEach(b => {
       const key = b.dataset.key;
+      if (key === 'wonder') {
+        const show = this.wonderOffered();
+        b.style.display = show ? '' : 'none';
+        if (!show) { if (this.placing === 'wonder') this.placing = null; return; }
+        // the icon (and the name) follow THIS RUN's monument
+        if (b.dataset.wonder !== S.wonder) {
+          b.dataset.wonder = S.wonder;
+          const ic = b.querySelector('canvas');
+          if (ic) this.iconInto(ic, Sprites.building.wonder[0]);
+          const nm = b.querySelector('.bname');
+          if (nm) nm.textContent = CFG.BUILDINGS.wonder.name;
+        }
+      }
       const cost = Bld.effCost('P', key);   // card discounts show true prices
       const gated = CFG.BUILDINGS[key].reqTC && (!tc || tc.level < CFG.BUILDINGS[key].reqTC);
       b.classList.toggle('sel', this.placing === key);
@@ -143,7 +173,7 @@ const UI = {
       }
       // the wall's art follows its tier — repaint only when it actually changes
       const lv = this.menuIconLevel(key);
-      if (+b.dataset.lv !== lv) {
+      if (key !== 'wonder' && +b.dataset.lv !== lv) {
         b.dataset.lv = lv;
         const ic = b.querySelector('canvas');
         if (ic) this.iconInto(ic, Sprites.building[key][lv - 1]);

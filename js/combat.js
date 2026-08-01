@@ -508,6 +508,18 @@ const Combat = {
     const foe = strike ? null : this.bestFoe(u, u.x, u.y, 5, o => this.hostileUnits(u, o) &&
       (Units.isMilitary(o) || (o.owner === 'R' && !Units.isTransport(o))) && this.canEngage(u, o));
     if (foe && this.canReach(u, foe.x, foe.y, 1.6)) { u.tUnit = foe.id; return; }
+    /* 1b) AN ANCIENT WONDER UNDER CONSTRUCTION beats every other target on the
+       board — finishing it simply wins the game, so once a raider is within
+       striking distance of the works nothing else is worth a swing. Placed
+       AFTER the "engage what's in our face" step, so the column still defends
+       itself, and before every opportunistic detour below (tests/wonder.mjs). */
+    if (ai && ai.wonderAlarm) {
+      const won = Bld.get(ai.wonderAlarm.id);
+      if (won && won.owner === 'P' && won.key === 'wonder' &&
+          Math.hypot(Bld.cx(won) - u.x, Bld.cy(won) - u.y) <= 2.6 + Bld.reach(won)) {
+        u.tBld = won.id; u.tUnit = 0; return;
+      }
+    }
     // 2) soft targets on the way — an enemy SAPPER (defenceless, mid-work, high
     //    value) is the juiciest, then isolated villagers, then undefended workplaces.
     //    Reachability again: villagers tucked behind the walls are NOT a target —
