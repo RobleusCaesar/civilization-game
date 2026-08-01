@@ -715,13 +715,19 @@ nobody else builds walls, so an unmarked curtain is yours by elimination, and
 your own castle reads clean.
 
 **Burning buildings & ash** (`tests/burn-down.mjs`): a damaged building shows
-its destruction in THIRDS (`Bld.burnPhase`, keyed to hp — so the fire burns
+how far gone it is (`Bld.burnPhase`, keyed to hp — so the fire burns
 until a villager's REPAIR puts it out, the persistent "needs mending"
 signal): first third lost = SMALL fires on the roof and at the foot (sprite
-untouched); second third = BIG fires and the sprite scorched darker
-(`R.darkOf`); final third = a partially-DESTROYED look (`R.ruinOf` — crown
+untouched); badly hurt = BIG fires and the sprite scorched darker
+(`R.darkOf`); the last `CFG.RUIN_AT` (0.9) of the hp bar = a
+partially-DESTROYED look (`R.ruinOf` — crown
 bitten out adaptively until the silhouette measurably shrinks, remains
-charred, rafter stubs + embers) with the fires guttering small again. The
+charred, rafter stubs + embers) with the fires guttering small again.
+**The ruined look waits deliberately late**: it is the LAST thing a building
+shows before it falls, so it belongs to the final tenth, not the final third
+— held at a third, a building spent most of a long fight already looking
+ruined and the moment it actually came down read as nothing happening.
+`CFG.RUIN_AT` is the single source of truth; never hard-code the fraction. The
 flames are `misc/flameSmall/0..3` and `misc/flameBig/0..3` (four-frame
 animated fire, opaque flame on transparent ground) drawn via
 `Assets.drawSprite` in `R.drawBurn`. **A TOWER IS THE EXCEPTION** — stone
@@ -751,6 +757,31 @@ building's ash is unique. Ash blocks BUILDING on the footprint (`Bld.tileFree`
 `CFG.ASH_DAYS` (5), then cools away in `G.dayTick`. Walls/gates are exempt —
 a breached line must stay instantly mendable (`AI.mendWallLine` and player
 repairs depend on it) — and a broken dock washes into open water as before.
+**And a TOWER TOPPLES when it dies** (same test): burning is the long signal,
+the COLLAPSE is the payoff for the minute of work it took to chew through a
+stone shaft. `R.COLLAPSE` is a registry keyed by building key — putting a key
+in it is the WHOLE extension point, and only `tower` is in it today (walls,
+gates and every other building come down exactly as they always did). Frames
+are CUT FROM THE BUILDING'S OWN SPRITE by `R.collapseSheet` — the block above
+the break line sweeps ~90° about it and slides down so it finishes lying ON
+the ground, the stump crumbles after it, masonry flies clear, dust rolls out
+along the ground and hangs over the rubble — so every level, the rival's red
+set and the mural tower's bonded self all collapse for free, cached per base
+canvas in a WeakMap. A kind that wants HAND-DRAWN art instead just labels it
+`misc/<key>Fall1..N` (`R.collapseArt`), the same convention as the build
+stages; both are drawn over `R.COLLAPSE_PAD`'s roomier-than-the-tile canvas,
+the single source of truth for that geometry. `R.startCollapse` fires from
+`Bld.damage`'s destroy branch — BEFORE `removeToRuin`, because the animation
+snapshots the building's sprite and a mural tower's sprite depends on wall
+neighbours that are still standing — and NOT from `demolish`, which is a
+teardown, not a kill. The live one-shots sit on `R.collapses` and never in
+`S` (same rule as `R._fighting`); the ash pile the tower leaves is held off
+screen while its topple plays (`R.collapseAt`), or the ending is given away a
+second early. Drawn after the units, so the dust rolls over whoever knocked it
+down. Two traps this cost: `TL` is a per-function local everywhere in
+render.js (a method that forgets `const TL = CFG.TILE` throws every frame),
+and `Sprites` is a script-level `const`, so `window.Sprites` is undefined —
+reference it directly.
 
 **Boats on moats + Scuttle** (`tests/boats-moat-scuttle.mjs`): a MOAT is open
 water to a HULL — the water-domain branch of `Path.passable` accepts it like

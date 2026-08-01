@@ -109,6 +109,9 @@ const CFG = {
                               // Its OWN clock, not the regrowth base: sweeping up a building site is not the same
                               // job as a forest growing back, and the player should not stare at their own rubble
   ASH_DAYS: 5,                // a burned-down building's ash pile blocks building on its footprint this many days (tests/burn-down.mjs)
+  RUIN_AT: 0.9,               // fraction of hp that must be GONE before the broken-open sprite shows (Bld.burnPhase,
+                              // tests/burn-down.mjs) — the last look before a building falls, so it waits for the
+                              // last tenth of the hp bar rather than arriving two thirds of the way through a fight
   /* WHAT GROWS BACK, and into what — the single source of truth for regrowth
      (G.scheduleRevert schedules only these; G.dayTick turns them back).
      LIVING things return: felled forest and spent orchard/berry soil.

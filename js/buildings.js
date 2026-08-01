@@ -819,11 +819,16 @@ const Bld = {
   },
 
   /* ---- BURNING (tests/burn-down.mjs) — how far gone is a damaged building?
-     Returns -1 (sound), or the destruction third: 0 = first third of hp lost
-     (small fires), 1 = second third (big fires, scorched dark), 2 = final
-     third (the partially-destroyed look, fires guttering low). Purely a
-     function of hp, so the fire burns until a villager's repair puts it
-     out — the persistent "this needs mending" signal. */
+     Returns -1 (sound), or the destruction stage: 0 = first third of hp lost
+     (small fires), 1 = badly hurt (big fires, scorched dark), 2 = the
+     partially-DESTROYED look, fires guttering low. Purely a function of hp,
+     so the fire burns until a villager's repair puts it out — the persistent
+     "this needs mending" signal.
+     Stage 2 is deliberately LATE: the broken-open sprite is the last thing a
+     building shows before it comes down, so it waits until only RUIN_AT of
+     the hp bar is left. Held at a third (as it once was) a building spent
+     most of a long fight looking already ruined, and the moment it actually
+     fell read as nothing happening. */
   // what a fresh construction site's hp starts at (fragile until finished) —
   // the single source of truth for place() AND burnPhase below
   siteStartHp(maxhp) { return Math.max(30, Math.round(maxhp * 0.4)); },
@@ -837,7 +842,8 @@ const Bld = {
     const base = b.construction > 0 ? this.siteStartHp(max) : max;
     const dmg = 1 - b.hp / base;
     if (dmg <= 0.02) return -1;          // a scratch (or an untouched site) doesn't smoulder
-    return Math.min(2, (dmg * 3) | 0);
+    if (dmg >= CFG.RUIN_AT) return 2;    // the last sliver of hp — broken open
+    return dmg < 1 / 3 ? 0 : 1;
   },
 
   // is a cooling ash pile on this tile? (blocks building, never movement)
@@ -865,6 +871,12 @@ const Bld = {
       }
       // a building coming down empties the sky above it (tests/wild-life.mjs)
       if (window.R && R.startle) R.startle(this.cx(b), this.cy(b), 12);
+      // …and, if its kind has a collapse registered, TOPPLES on screen. Fired
+      // here and not in demolish(): this is the DESTROYED path, the one the
+      // player earned. Must run BEFORE removeToRuin — the collapse animation
+      // is cut from the building's own sprite, and a mural tower's sprite
+      // depends on the wall neighbours that are still standing right now.
+      if (window.R && R.startCollapse) R.startCollapse(b);
       this.removeToRuin(b);
       if (owner === 'P') {
         S.breachedP = true;   // the line is broken — positive specials may now answer (G.positiveGate)

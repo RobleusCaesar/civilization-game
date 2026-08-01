@@ -538,6 +538,7 @@ const R = {
     this.fogG = this.fogCv.getContext('2d');
     this.fogDirty = true;
     this.floats = [];
+    this.collapses = [];       // render-side only — never in a save (same rule as _fighting)
     this.particles = [];
     Combat.shots.length = 0; Combat.projectiles.length = 0;
     const tc = Bld.tcOf('P');
@@ -1027,6 +1028,241 @@ const R = {
     }
   },
 
+  /* ================= THE COLLAPSE (tests/burn-down.mjs) =================
+     Burning is the long signal; the COLLAPSE is the payoff. When a building
+     whose kind is registered below is DESTROYED it topples once, on screen,
+     in its own cloud of dust — the reward for the minute of work it took to
+     chew through a stone shaft.
+
+     The registry is the whole extension point: put a key in R.COLLAPSE and
+     that building gets a collapse, with no other code touched. Today only the
+     TOWER has one — walls, gates and every other building come down exactly
+     as they always did (they simply aren't in the table).
+
+     Frames are CUT FROM THE BUILDING'S OWN SPRITE by default, not drawn by
+     hand, so a collapse is free for every level, the rival's red set, and the
+     mural tower's bonded self alike: the block above the break line rotates
+     about the break, the stump below crumbles down after it, masonry is
+     thrown clear, and dust rolls out along the ground and rises over the
+     rubble. Sheets cache per base canvas — one generation per artwork.
+
+     A kind that wants BESPOKE art instead just draws it, the same way the
+     build stages do: sprites labelled `misc/<key>Fall1..N` take over the whole
+     animation (R.COLLAPSE_ART). They are drawn over the same roomy canvas the
+     generated frames use — COLLAPSE_PAD is the single source of truth for that
+     geometry, so authored art and cut art land in exactly the same place.
+
+     The live animations live on R and NEVER in S — same rule as R._fighting.
+     A save file has no business remembering a puff of dust. */
+  COLLAPSE: {
+    // key → how that kind comes down.
+    //   frames  how many looks the topple is cut into (5–10 reads as a fall)
+    //   ms      how long the whole thing takes
+    //   pivot   where the shaft SNAPS, as a fraction of the sprite's height
+    //   lean    radians the toppling block sweeps through
+    //   spread  how far the dust rolls, in sprite widths
+    tower: { frames: 8, ms: 1500, pivot: 0.62, lean: 1.55, spread: 1.15 },
+  },
+  // how much ROOMIER than the building's own footprint a collapse frame is —
+  // shared by the generated sheet and by any authored `<key>Fall` art
+  COLLAPSE_PAD: { w: 2.5, h: 1.6, x: 0.75, y: 0.45 },
+  collapses: [],                 // live one-shots: {x,y,sz,spr,cfg,t,flip,art}
+
+  // does this kind carry hand-drawn collapse art? (returns the frame count)
+  collapseArt(key, frames) {
+    if (!Sprites.misc || !Sprites.misc[key + 'Fall1']) return 0;
+    let n = 0;
+    while (n < frames && Sprites.misc[key + 'Fall' + (n + 1)]) n++;
+    return n;
+  },
+
+  startCollapse(b) {
+    const cfg = this.COLLAPSE[b.key];
+    if (!cfg) return;                              // this kind doesn't topple
+    if (this.collapses.length > 12) this.collapses.shift();
+    this.collapses.push({
+      x: b.x, y: b.y, sz: Bld.size(b.key), cfg, t: 0, key: b.key,
+      spr: this.bldSprite(b),                      // snapshot: it's about to be gone
+      art: this.collapseArt(b.key, cfg.frames),    // …unless this kind draws its own
+      flip: (b.id & 1) === 1,                      // half the towers fall the other way
+    });
+  },
+
+  _collapseCache: new WeakMap(),
+  collapseSheet(base, cfg) {
+    let sheet = this._collapseCache.get(base);
+    if (sheet) return sheet;
+    const N = cfg.frames, W = base.width, H = base.height;
+    // the frames are ROOMIER than the tile: the dust rolls out to either side
+    // and rises well above where the crown used to be
+    const PD = this.COLLAPSE_PAD;
+    const cw = W * PD.w, ch = H * PD.h, ox = W * PD.x, oy = H * PD.y;
+    const px = W / 32;                             // one sprite pixel
+    const Q = (v) => Math.round(v / px) * px;      // keep every particle on the pixel grid
+    const gy = oy + H * (30 / 32);                 // the ground line every fortification stands on
+    const pivX = ox + W * 0.5, pivY = oy + H * cfg.pivot;
+    const ST = ART.PALETTE.stone, RK = ART.PALETTE.rock, INK = ART.PALETTE.ink;
+    const DUST = [ST[2], ST[3], RK[3], ST[4]];
+    sheet = [];
+    for (let i = 0; i < N; i++) {
+      const p = i / (N - 1);
+      const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+      const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+
+      /* --- 1. the block ABOVE the break, sweeping down about the break ---
+         Squared easing, because a falling tower doesn't tip at a constant
+         rate — it hangs, then goes. It shatters as it lands (`gone`), which
+         is what hands the frame over to the rubble heap. */
+      const ease = Math.min(1, Math.pow(p / 0.82, 1.8));
+      const ang = cfg.lean * ease;                   // ~90° by the time it lands
+      // …and it SLIDES DOWN the stump as it goes, so it finishes lying ON the
+      // ground rather than pivoting in mid-air at the height of the break
+      const drop = (gy - pivY) * Math.min(1, Math.pow(p / 0.85, 2));
+      const gone = Math.max(0, (p - 0.84) / 0.16);   // only then does it break up
+      if (gone < 1) {
+        g.save();
+        g.globalAlpha = 1 - gone;
+        g.translate(pivX, pivY + drop);
+        g.rotate(ang);
+        g.translate(-pivX, -pivY);
+        g.beginPath(); g.rect(0, 0, cw, pivY); g.clip();   // cut at the break line
+        g.drawImage(base, ox, oy);
+        g.restore();
+      }
+
+      /* --- 2. the STUMP still standing. It judders early (the shaft losing
+         its footing) and then crumbles DOWN from the break to the ground. --- */
+      const eaten = Math.min(1, Math.max(0, (p - 0.42) / 0.5));
+      const stumpTop = pivY + (gy - pivY) * eaten;
+      if (stumpTop < gy - px) {
+        g.save();
+        const jit = p > 0.05 && p < 0.5 ? (i % 2 ? px : -px) : 0;
+        g.beginPath(); g.rect(0, stumpTop, cw, ch - stumpTop); g.clip();
+        g.drawImage(base, ox + jit, oy);
+        if (p > 0.2) {                               // and darkens as it breaks up
+          g.globalCompositeOperation = 'source-atop';
+          g.fillStyle = 'rgba(26,20,12,' + (0.45 * Math.min(1, (p - 0.2) * 2)).toFixed(2) + ')';
+          g.fillRect(0, 0, cw, ch);
+        }
+        g.restore();
+      }
+
+      /* --- 3. masonry thrown clear. Each stone breaks loose on its own beat
+         and flies a parabola from the break out to the ground. --- */
+      const rc = ART.rng(9173);
+      for (let k = 0; k < 13; k++) {
+        const a0 = rc(), a1 = rc(), a2 = rc(), a3 = rc();
+        const t = (p - (0.14 + a0 * 0.36)) / 0.58;
+        if (t <= 0 || t >= 1) continue;
+        const side = a1 < 0.42 ? -1 : 1;             // biased with the topple
+        const fx = Q(pivX + side * (0.18 + a2 * 0.52) * W * t);
+        const fy = Q(pivY - H * 0.05 + (gy - pivY) * t * t - H * (0.08 + a3 * 0.14) * 4 * t * (1 - t));
+        const w = px * (1 + (k % 2));
+        // a chip of masonry, not a die: dark under-edge only (so it still
+        // reads flying over grass), stone body, one lit pixel on top
+        g.fillStyle = INK[0]; g.fillRect(fx, fy + px * 0.5, w + px * 0.5, w);
+        g.fillStyle = ST[1]; g.fillRect(fx, fy, w, w);
+        g.fillStyle = ST[2]; g.fillRect(fx, fy, w, px * 0.5);
+      }
+
+      /* --- 4. the RUBBLE the tower becomes: a heap banked over its own
+         footprint, growing from the moment the block lands. --- */
+      const heap = Math.max(0, (p - 0.48) / 0.52);
+      if (heap > 0) {
+        const rr = ART.rng(5501);
+        const hw = W * 0.34 * (0.6 + heap * 0.4);    // a MOUND: banked high in the
+        for (let k = 0; k < 34; k++) {               // middle, thinning to nothing at its skirts
+          const b0 = rr(), b1 = rr(), b2 = rr();
+          if (b0 > heap * 1.25) continue;            // stones arrive as the heap builds
+          const u = (b1 - 0.5) * 2;
+          const crest = H * 0.21 * heap * (1 - u * u);
+          const hx = Q(pivX + u * hw);
+          const hy = Q(gy - px * 2 - crest * (0.25 + b2 * 0.75));
+          const w = px * (1 + (k % 2));
+          g.fillStyle = INK[0]; g.fillRect(hx, hy + px * 0.5, w * 2 + px * 0.5, w);
+          g.fillStyle = k % 3 ? ST[1] : ST[2]; g.fillRect(hx, hy, w * 2, w);
+          g.fillStyle = ST[3]; g.fillRect(hx, hy, w * 2, px * 0.5);
+        }
+      }
+
+      /* --- 5. THE DUST. Half of it puffs off the shaft as it goes over; the
+         rest bursts at the impact and ROLLS OUT ALONG THE GROUND, which is
+         what a real collapse looks like. Blocky puffs, on the pixel grid,
+         because everything else in this game is. --- */
+      const rp = ART.rng(3121);
+      for (let k = 0; k < 38; k++) {
+        const d0 = rp(), d1 = rp(), d2 = rp(), d3 = rp();
+        // even puffs come off the falling shaft, odd ones burst at the impact
+        const birth = k % 2 ? 0.50 + d0 * 0.22 : 0.10 + d0 * 0.34;
+        const t = (p - birth) / (1 - birth);
+        if (t <= 0) continue;
+        const side = d1 < 0.5 ? -1 : 1;
+        const roll = Math.min(1, t * 1.3);
+        const cx = Q(pivX + side * (0.12 + d2 * cfg.spread) * W * roll);
+        const rise = (k % 2 ? 0.06 + d3 * 0.34 : 0.16 + d3 * 0.52) * H;
+        const cy = Q(gy - rise * roll);
+        const sz = Q(px * (1.8 + d3 * 3.2) * (0.6 + t * 1.4));
+        // it thins as it drifts but never wipes clean — a haze still hangs
+        // over the rubble on the last frame
+        g.globalAlpha = Math.max(0, 0.30 * (1 - t * 0.86) * Math.min(1, t * 5));
+        g.fillStyle = DUST[k % DUST.length];
+        g.fillRect(cx - sz, cy - sz * 0.6, sz * 2, sz * 1.2);
+        g.fillRect(cx - sz * 0.6, cy - sz, sz * 1.2, sz * 2);
+        g.globalAlpha = 1;
+      }
+      // the low wash rolling out along the ground — the signature of a real
+      // collapse, and the last thing to settle
+      if (p > 0.45) {
+        const wash = Math.min(1, (p - 0.45) / 0.25);
+        for (let k = 0; k < 3; k++) {
+          g.globalAlpha = 0.13 * wash * (1 - Math.max(0, (p - 0.66) / 0.5)) * (1 - k * 0.28);
+          g.fillStyle = DUST[k];
+          const ww = W * (0.45 + wash * (0.5 + k * 0.30));
+          const wh = px * (3 + k * 3) * wash;
+          g.fillRect(Q(pivX - ww), Q(gy - wh), Q(ww * 2), Q(wh));
+        }
+        g.globalAlpha = 1;
+      }
+      sheet.push(c);
+    }
+    this._collapseCache.set(base, sheet);
+    return sheet;
+  },
+
+  // is a topple still playing over this tile? (the ash it leaves waits for it)
+  collapseAt(x, y) {
+    for (const c of this.collapses)
+      if (x >= c.x && x < c.x + c.sz && y >= c.y && y < c.y + c.sz) return c;
+    return null;
+  },
+
+  // advance and draw the live topples. Called from the frame loop AFTER the
+  // units, so the dust rolls over whoever knocked the thing down.
+  drawCollapses(g, dt) {
+    const TL = CFG.TILE;
+    for (let i = this.collapses.length - 1; i >= 0; i--) {
+      const c = this.collapses[i];
+      c.t += dt;
+      const p = c.t / (c.cfg.ms / 1000);
+      if (p >= 1) { this.collapses.splice(i, 1); continue; }
+      if (!G.visibleAt(c.x, c.y)) continue;        // a tower falling in the fog is not seen
+      const PD = this.COLLAPSE_PAD;
+      const bw = c.sz * TL, bx = c.x * TL, by = c.y * TL;
+      const dx = bx - bw * PD.x, dy = by - bw * PD.y, dw = bw * PD.w, dh = bw * PD.h;
+      g.save();
+      if (c.flip) { g.translate(bx + bw / 2, 0); g.scale(-1, 1); g.translate(-(bx + bw / 2), 0); }
+      if (c.art) {                                 // this kind draws its own fall
+        const f = Math.min(c.art - 1, (p * c.art) | 0);
+        Assets.drawSprite(g, 'misc/' + c.key + 'Fall' + (f + 1), dx, dy, { w: dw, h: dh });
+      } else {
+        const sheet = this.collapseSheet(c.spr, c.cfg);
+        const f = Math.min(sheet.length - 1, (p * sheet.length) | 0);
+        g.drawImage(sheet[f], dx, dy, dw, dh);
+      }
+      g.restore();
+    }
+  },
+
   /* ---- BANNERS THAT FLY (tests/banners-smoke.mjs) ----
      The POLES are baked into the building sprites; the CLOTH is drawn here,
      every frame, for two reasons: it can ripple, and it can wear the tribe's
@@ -1364,6 +1600,10 @@ const R = {
     // a cold heap doesn't move)
     if (S.ashes) for (const a of S.ashes) {
       if (!S.map.explored[MapGen.idx(a.x, a.y)]) continue;
+      // a building still TOPPLING owns its own ground — the ash is what it
+      // leaves, and showing it under a tower that is visibly still falling
+      // gives the ending away a second and a half early
+      if (this.collapseAt(a.x, a.y)) continue;
       g.drawImage(this.ashOf(a.key, a.lv), a.x * TL, a.y * TL, a.sz * TL, a.sz * TL);
     }
 
@@ -2164,6 +2404,9 @@ const R = {
       g.drawImage(spr, -96, -48);
       g.restore();
     }
+
+    // buildings coming DOWN — over the units, so the dust rolls across them
+    this.drawCollapses(g, dt);
 
     // floating text
     g.textAlign = 'center';

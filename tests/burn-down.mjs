@@ -1,13 +1,25 @@
-/* BURN-DOWN CONTRACT — a damaged building shows its destruction in THIRDS
+/* BURN-DOWN CONTRACT — a damaged building shows how far gone it is
    (Bld.burnPhase, keyed to hp so the fire burns until repair puts it out):
 
      phase 0  first third lost   — SMALL fires on the roof and at the foot,
               the building's own sprite untouched
-     phase 1  second third lost  — BIG fires, the sprite scorched DARKER
+     phase 1  badly hurt         — BIG fires, the sprite scorched DARKER
               (R.darkOf, cached per base canvas)
-     phase 2  final third        — a partially-DESTROYED look (R.ruinOf:
-              crown bitten out, remains charred, rafter stubs + embers),
-              the fires guttering small again
+     phase 2  the LAST CFG.RUIN_AT of the hp bar — a partially-DESTROYED look
+              (R.ruinOf: crown bitten out, remains charred, rafter stubs +
+              embers), the fires guttering small again
+
+   Phase 2 waits deliberately late. It is the last look a building shows
+   before it comes down, so it belongs to the final tenth of the hp bar; held
+   at a third, a building spent most of a long fight already looking ruined
+   and the moment it actually fell read as nothing happening.
+
+   And when a building whose kind is in R.COLLAPSE is DESTROYED, it TOPPLES
+   once on screen in a cloud of dust (R.startCollapse / collapseSheet /
+   drawCollapses). The registry is the extension point — a key in R.COLLAPSE
+   is all a building needs, and authored `misc/<key>Fall1..N` art takes over
+   the whole animation if it exists. Only the TOWER is registered today;
+   walls, gates and every other building must come down exactly as before.
 
    The flames are misc/flameSmall/0..3 and misc/flameBig/0..3 — four-frame
    animated fire, opaque flame on transparent ground, drawn OVER the
@@ -24,7 +36,9 @@
    Run this after touching any of:
      buildings.js — burnPhase / ashAt / damage / tileFree / canPlace
      render.js — drawBurn / darkOf / ruinOf / ashOf / the building draw
+                 COLLAPSE / startCollapse / collapseSheet / drawCollapses
      sprites.js — the flame frames
+     config.js — RUIN_AT, ASH_DAYS
      game.js — dayTick ash expiry, newGame/loadJSON ashes field
 
      node tests/burn-down.mjs      # exits non-zero on any regression */
@@ -69,15 +83,22 @@ const out = await p.evaluate(() => {
     ck('bigBurnsHotter', px(B1[0]) > px(S1[0]) * 1.8, 'the blaze is genuinely bigger');
   }
 
-  // ---- 2. burnPhase: destruction in thirds, hp-keyed ----
+  // ---- 2. burnPhase: hp-keyed, and the RUINED look waits for the last sliver ----
   {
     const fake = (frac) => ({ key: 'house', level: 1, hp: 100 * frac, maxhp: 100 });
-    ck('phaseThirds',
+    ck('phaseLadder',
       Bld.burnPhase(fake(1)) === -1 && Bld.burnPhase(fake(0.99)) === -1 &&
       Bld.burnPhase(fake(0.9)) === 0 && Bld.burnPhase(fake(0.67)) === 0 &&
       Bld.burnPhase(fake(0.6)) === 1 && Bld.burnPhase(fake(0.34)) === 1 &&
-      Bld.burnPhase(fake(0.3)) === 2 && Bld.burnPhase(fake(0.01)) === 2,
+      Bld.burnPhase(fake(0.2)) === 1 && Bld.burnPhase(fake(0.12)) === 1 &&
+      Bld.burnPhase(fake(0.05)) === 2 && Bld.burnPhase(fake(0.01)) === 2,
       'sound → small → big+dark → ruined');
+    // the threshold is CFG.RUIN_AT and nothing else — never a hard-coded third
+    ck('ruinWaitsForTheLastTenth',
+      CFG.RUIN_AT >= 0.85 && CFG.RUIN_AT < 1 &&
+      Bld.burnPhase(fake(1 - CFG.RUIN_AT + 0.02)) === 1 &&
+      Bld.burnPhase(fake(1 - CFG.RUIN_AT)) === 2,
+      'RUIN_AT=' + CFG.RUIN_AT);
   }
 
   // ---- 3. the scorched and ruined variants: darker, holed, cached ----
@@ -124,10 +145,12 @@ const out = await p.evaluate(() => {
     const k0 = keysAt(() => { h.hp = h.maxhp; });
     const k1 = keysAt(() => { h.hp = h.maxhp * 0.9; });
     const k2 = keysAt(() => { h.hp = h.maxhp * 0.5; });
-    const k3 = keysAt(() => { h.hp = h.maxhp * 0.2; });
+    const k2b = keysAt(() => { h.hp = h.maxhp * 0.2; });
+    const k3 = keysAt(() => { h.hp = h.maxhp * 0.05; });
     ck('soundBuildingNoFlames', !anyS(k0) && !anyB(k0), '');
     ck('phase0SmallFires', anyS(k1) && !anyB(k1), '');
     ck('phase1BigFires', anyB(k2) && !anyS(k2), '');
+    ck('stillBlazingAtAFifth', anyB(k2b) && !anyS(k2b), 'the ruined look has NOT arrived yet');
     ck('phase2SmallFiresAgain', anyS(k3) && !anyB(k3), '');
     // a construction site is fragile BY DESIGN (it starts at siteStartHp, a
     // fraction of finished hp) — an UNTOUCHED site must never read as on
@@ -156,7 +179,7 @@ const out = await p.evaluate(() => {
     const t0 = keysAt(() => { tw2.hp = tw2.maxhp; });
     const t1 = keysAt(() => { tw2.hp = tw2.maxhp * 0.9; });
     const t2 = keysAt(() => { tw2.hp = tw2.maxhp * 0.5; });
-    const t3 = keysAt(() => { tw2.hp = tw2.maxhp * 0.2; });
+    const t3 = keysAt(() => { tw2.hp = tw2.maxhp * 0.05; });
     R.drawTowerCrumble = origCrumble;
     ck('soundTowerDoesNotCrumble', !anyS(t0) && !anyB(t0), '');
     ck('towerNeverTakesTheBigBlaze',
@@ -215,6 +238,86 @@ const out = await p.evaluate(() => {
     const legacy = JSON.parse(json); delete legacy.ashes;
     G.loadJSON(JSON.stringify(legacy));
     ck('legacySavesBackfill', Array.isArray(S.ashes) && S.ashes.length === 0, '');
+  }
+
+  /* ---- 8. THE COLLAPSE: a destroyed tower topples once, in dust ---- */
+  {
+    // 8a. the registry IS the feature, and only the tower is in it
+    const cfg = R.COLLAPSE.tower;
+    ck('towerIsRegisteredToCollapse', !!cfg, '');
+    ck('collapseIsFiveToTenFrames', cfg.frames >= 5 && cfg.frames <= 10, cfg.frames + ' frames');
+    ck('nothingElseCollapsesYet',
+      Object.keys(R.COLLAPSE).join() === 'tower',
+      'walls, gates and every other building come down as before');
+
+    // 8b. frames are cut from the building's own sprite: roomier than the
+    // tile, starting whole and ending with the tower gone
+    const base = Sprites.building.tower[0];
+    const sheet = R.collapseSheet(base, cfg);
+    const PD = R.COLLAPSE_PAD;
+    ck('sheetHasEveryFrame', Array.isArray(sheet) && sheet.length === cfg.frames, '');
+    ck('framesAreRoomierThanTheTile',
+      sheet[0].width === Math.round(base.width * PD.w) &&
+      sheet[0].height === Math.round(base.height * PD.h),
+      'the dust needs room to roll: ' + sheet[0].width + 'x' + sheet[0].height);
+    // the SOLID mass only — dust is deliberately translucent, and counting it
+    // would say the last frame has more building in it than the first
+    const solid = (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 200) n++; return n; };
+    ck('itStartsStanding', solid(sheet[0]) >= solid(base) * 0.9, 'frame 0 is still the building');
+    ck('itFalls',
+      sheet.every((f, i) => i === 0 || f.toDataURL() !== sheet[i - 1].toDataURL()) &&
+      solid(sheet[cfg.frames - 1]) < solid(sheet[0]) * 0.75,
+      'every frame differs and the tower is gone by the end');
+    ck('andItRaisesDust',
+      px(sheet[cfg.frames - 2]) > px(sheet[0]) * 2.5,
+      'translucent cloud far wider than the building ever was');
+    ck('sheetCached', R.collapseSheet(base, cfg) === sheet, 'WeakMap identity, one sheet per artwork');
+    // the mural tower's bonded self gets a collapse for free, off the same code
+    ck('everyArtworkCollapses',
+      R.collapseSheet(Sprites.towerMural[0], cfg).length === cfg.frames &&
+      R.collapseSheet(Sprites.buildingA.tower[0], cfg).length === cfg.frames,
+      'mural + rival sets included');
+
+    // 8c. destroying a tower starts ONE topple; nothing else starts any
+    G.newGame('burn2', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.res = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };
+    const tc2 = Bld.tcOf('P');
+    for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
+      const x = tc2.x + dx, y = tc2.y + dy;
+      if (MapGen.inB(x, y)) { S.map.terrain[MapGen.idx(x, y)] = T.GRASS; S.map.explored[MapGen.idx(x, y)] = 1; }
+    }
+    Bld._block = null;
+    const mk = (key, dx, dy) => { const z = Bld.place('P', key, tc2.x + dx, tc2.y + dy, { free: true }); Bld.finish(z); return z; };
+    const tw = mk('tower', 4, 0), hs = mk('house', 4, 3), wl = mk('wall', 4, -3);
+    G.updateVisibility(); R.centerOn(tw.x + 0.5, tw.y + 0.5);
+    R.collapses.length = 0;
+    Bld.damage(hs, 999999);
+    Bld.damage(wl, 999999);
+    ck('onlyRegisteredKindsTopple', R.collapses.length === 0, 'a house and a wall start nothing');
+    Bld.damage(tw, 999999);
+    ck('aDestroyedTowerTopples', R.collapses.length === 1 && R.collapses[0].x === tw.x, '');
+    ck('itSnapshotsItsOwnSprite', !!R.collapses[0].spr, 'the building is already gone by draw time');
+
+    // 8d. the ash it leaves WAITS for the topple to finish
+    ck('ashWaitsForTheFall', !!R.collapseAt(tw.x, tw.y) && !!Bld.ashAt(tw.x, tw.y),
+      'the pile exists in state but is held back on screen');
+
+    // 8e. it is a ONE-SHOT, and it never reaches a save file
+    R.draw(0.016);
+    ck('stillPlayingAfterAFrame', R.collapses.length === 1, '');
+    ck('collapsesAreNeverSaved',
+      S.collapses === undefined && !/"collapses"/.test(G.saveJSON()),
+      'render-side only, same rule as R._fighting');
+    const dur = cfg.ms / 1000;
+    R.draw(dur * 0.6); R.draw(dur * 0.6);
+    ck('itPlaysExactlyOnce', R.collapses.length === 0, 'the topple retires itself');
+
+    // 8f. the OTHER half of the extension point: hand-drawn fall art wins
+    ck('noAuthoredFallArtYet', R.collapseArt('tower', cfg.frames) === 0, 'the tower uses the cut sheet');
+    Sprites.misc.towerFall1 = base; Sprites.misc.towerFall2 = base; Sprites.misc.towerFall3 = base;
+    ck('authoredFallArtIsPickedUp', R.collapseArt('tower', cfg.frames) === 3,
+      'misc/<key>Fall1..N takes over the whole animation');
+    delete Sprites.misc.towerFall1; delete Sprites.misc.towerFall2; delete Sprites.misc.towerFall3;
   }
 
   return { res, fails };
