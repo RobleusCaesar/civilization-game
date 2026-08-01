@@ -1217,6 +1217,43 @@ const AI = {
     return best;
   },
 
+  /* GOLD SEAMS (tests/gold-mine.mjs). The chief wants the map's gold too —
+     otherwise every seam is the player's for the taking and "fight to protect
+     it" means nothing. It only ever goes for a seam it has actually SCOUTED
+     (ai.seen — fog-honest, the same mask scoutTarget reads) and only one its
+     own villagers can walk to, since the shaft has to be sunk by hand. Not
+     before CFG.GOLD_SEAMS.aiDay: a chief that claimed the gold on day two
+     would be racing before the player knew there was a race. */
+  maybeMine() {
+    const ai = S.ai; if (!ai) return false;
+    const GS = CFG.GOLD_SEAMS || {};
+    if (S.day < (GS.aiDay || 40)) return false;
+    if (!Bld.canAfford(CFG.BUILDINGS.mine.levels[0].cost, ai.res)) return false;
+    const spot = this.plotMine();
+    if (!spot) return false;
+    return !!Bld.place('A', 'mine', spot.x, spot.y);
+  },
+  plotMine() {
+    const tc = Bld.tcOf('A'); if (!tc) return null;
+    const reach = this.aiLandReach();
+    const seen = S.ai.seen || [];
+    let best = null, bd = 1e9;
+    for (let y = 1; y < CFG.H - 1; y++) for (let x = 1; x < CFG.W - 1; x++) {
+      const i = MapGen.idx(x, y);
+      if (S.map.terrain[i] !== T.GOLDORE || Bld.at(x, y)) continue;
+      if (!seen[i]) continue;                    // never a seam it has not laid eyes on
+      if (reach && !reach[i]) {                  // …and never one no hand of its can stand at
+        let side = false;
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+          if (MapGen.inB(x + ox, y + oy) && reach[MapGen.idx(x + ox, y + oy)]) { side = true; break; }
+        if (!side) continue;
+      }
+      const d = Math.hypot(x - tc.x, y - tc.y);
+      if (d < bd) { bd = d; best = { x, y }; }
+    }
+    return best;
+  },
+
   // a far, still-unexplored tile to probe toward (never reads the player's spot)
   scoutTarget() {
     const tc = Bld.tcOf('A'); if (!tc) return null;
@@ -3143,6 +3180,7 @@ const AI = {
     // macro-action budget that has already been used on huts.
     this.wonderWatch();
     this.maybeWonder();          // …and past day 350 the chief may raise one of its own
+    this.maybeMine();            // the map's GOLD SEAMS are contested too (tests/gold-mine.mjs)
 
     // THE DAY'S HANDS: the chief gets a few macro actions per day (mode-scaled).
     // Every construction start / upgrade / training run / caravan spends one

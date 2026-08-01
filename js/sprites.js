@@ -580,6 +580,40 @@ const Sprites = {
       p(2, 13, 12, 1, AP.ink[0]);                                   // deep far lip
     }),
   ];
+  /* A GOLD SEAM (tests/gold-mine.mjs) — an outcrop of quartz broken open at
+     the surface with gold showing in it. The read has to be unmistakable at a
+     glance across a fogged map, because finding one is the whole point: warm
+     GOLD in a pale quartz reef, on the same transparent floor the other
+     resource nodes use so the grass shows around it. */
+  Sprites.terrain[T.GOLDORE] = [
+    tile(p => {
+      const f = p.f, r = ART.rng(613), GD = AP.gold, ST = AP.stone, RK = AP.rock;
+      // the reef: a broken white-quartz ridge running across the tile
+      f(5, 20, 22, 3, ART.STYLE.SHADOW);
+      for (let i = 0; i < 7; i++) {
+        const bx = 4 + i * 3, h = 6 + ((r() * 6) | 0), by = 20 - h;
+        f(bx, by, 4, h, ST[3]);
+        f(bx, by, 4, 1, ST[4]);                       // sun on the crown
+        f(bx + 3, by, 1, h, ST[1]);                   // shaded right face
+        f(bx, by + h - 1, 4, 1, ST[0]);
+      }
+      // warm rock skirting the base, so the reef sits IN the ground
+      f(3, 18, 26, 4, RK[2]); f(3, 18, 26, 1, RK[3]); f(3, 21, 26, 1, RK[1]);
+      // THE GOLD: veins running through the quartz, and loose nuggets at the foot
+      for (let i = 0; i < 9; i++) {
+        const vx = 5 + ((r() * 21) | 0), vy = 9 + ((r() * 10) | 0);
+        f(vx, vy, 2, 1, GD[2]); f(vx, vy, 1, 1, GD[3]);
+        if (r() < 0.5) f(vx + 1, vy + 1, 1, 1, GD[1]);
+      }
+      f(8, 17, 3, 2, GD[2]); f(8, 17, 2, 1, GD[3]);   // a fat vein breaking the surface
+      f(19, 14, 3, 2, GD[2]); f(19, 14, 2, 1, GD[3]);
+      for (let i = 0; i < 5; i++) {                    // nuggets weathered out onto the ground
+        const nx = 4 + ((r() * 24) | 0), ny = 22 + ((r() * 5) | 0);
+        f(nx, ny, 2, 2, GD[1]); f(nx, ny, 1, 1, GD[3]);
+      }
+      for (let i = 0; i < 8; i++) f(2 + ((r() * 28) | 0), 22 + ((r() * 6) | 0), 1, 1, r() < 0.5 ? ST[2] : RK[1]);
+    }),
+  ];
   Sprites.terrain[T.CAMP] = [
     tile(p => {
       ART.dither(p, 0, 0, 16, 16, AP.soil[3], AP.grass[2]);          // trampled dirt
@@ -602,6 +636,7 @@ const Sprites = {
     [T.FERTILE]: AP.grass[2], [T.STUMPS]: AP.grass[2], [T.PEBBLES]: AP.grass[2],
     [T.MOUNTAIN]: AP.grass[2],
     [T.BARREN]: AP.soil[3], [T.RUIN]: AP.stone[1], [T.CAMP]: AP.soil[3],
+    [T.GOLDORE]: AP.grass[2],   // the seam stands ON grass, like the other nodes
   };
 
   /* ---------------- buildings ---------------- */
@@ -1235,6 +1270,101 @@ const Sprites = {
       q(24, 24, 1, 1, AP.stone[1]); q(22, 27, 1, 1, AP.stone[2]); q(3, 15, 1, 1, AP.stone[1]);
       if (tier >= 2) { q(0, 0, 1, 32, AP.wood[2]); q(31, 0, 1, 32, AP.wood[2]); q(0, 0, 32, 1, AP.wood[2]); }   // timber shoring
       if (tier >= 3) { q(0, 31, 32, 1, AP.wood[3]); for (let sx = 4; sx < 30; sx += 6) q(sx, 29, 1, 3, AP.wood[1]); }
+    },
+    /* ============ GOLD MINE (tests/gold-mine.mjs) ============
+       A mine is a HOLE with works around it, and the tiers are the works
+       getting serious: L1 a timber-framed adit driven into the reef with a
+       spoil heap and a barrow; L2 a windlass on a frame over the shaft, an
+       ore cart on rails and a dressed-stone portal; L3 the full headframe with
+       its wheel, a wash-trough sluicing the crushed rock, and gold stacked in
+       the cart. The seam it stands on shows around the works at every tier —
+       that is what says GOLD rather than "quarry". */
+    mine(p, lv) {
+      const q = p.hi, tier = lv, ST = AP.stone, W = AP.wood, GD = AP.gold, RK = AP.rock, INK = AP.ink;
+      ART.dropShadow(p, 8, 14, 12);
+      const FOOT = 23;                                      // where the bank meets the ground
+      const r = ART.rng(77);
+      /* THE BANK the adit is driven into. It has to be a natural RISE with a
+         broken skyline, not a filled rectangle — a rect reads as a flat card
+         with a hole in it and the eye never finds the mine in it. Every column
+         gets its own crest height off two out-of-phase sines, and the right
+         flank falls into shadow so the mass turns away from the light. */
+      for (let x = 2; x < 30; x++) {
+        // low frequencies only — a high-frequency term puts a TOOTH on every
+        // column and the bank reads as battlements instead of a hillside
+        const top = 6 + Math.round(2.6 * Math.sin(x * 0.30) + 1.1 * Math.sin(x * 0.85 + 1.2));
+        q(x, top, 1, FOOT - top, RK[2]);
+        q(x, top, 1, 1, RK[4]);                             // sun on the crest
+        q(x, top + 1, 1, 1, RK[3]);
+        if (x >= 21) q(x, top + 2, 1, FOOT - top - 2, RK[1]);
+        if (x <= 4) q(x, top + 2, 1, FOOT - top - 2, RK[3]);
+      }
+      q(2, FOOT - 1, 28, 1, RK[0]);                         // the dark line at the foot
+      // GOLD showing all through the rock — the one thing that says which mine
+      for (let i = 0; i < 14; i++) {
+        const vx = 3 + ((r() * 25) | 0), vy = 8 + ((r() * 12) | 0);
+        q(vx, vy, 3, 1, GD[2]); q(vx, vy, 2, 1, GD[3]);
+        if (r() < 0.5) q(vx + 1, vy + 1, 2, 1, GD[1]);
+      }
+      /* THE ADIT sits OFF-CENTRE, to the left. A worker stationed here stands
+         on the middle of its own plot (the `work` task walks it onto b.x/b.y),
+         so a mouth in the middle of the tile is a mouth nobody can see — the
+         one thing that says "mine" would be behind a villager all game. The
+         mouth takes the left third and every set of works runs off to the
+         right of it. */
+      // AX is pushed hard left on purpose: a villager sprite fills roughly the
+      // middle third of its tile, so anything from x≈10 to x≈22 is behind a
+      // worker whenever the mine is actually being worked
+      const stone2 = tier >= 2, AX = 2, AW = 9;
+      q(AX, 11, AW, FOOT - 11, INK[0]);
+      q(AX + 1, 10, AW - 2, 1, INK[0]);
+      q(AX - 1, 9, AW + 2, 2, stone2 ? ST[3] : W[2]);       // the head timber
+      q(AX - 1, 9, AW + 2, 1, stone2 ? ST[4] : W[3]);
+      q(AX - 1, 11, 2, FOOT - 11, stone2 ? ST[3] : W[2]);   // the legs of the set
+      q(AX + AW - 1, 11, 2, FOOT - 11, stone2 ? ST[1] : W[1]);
+      if (stone2) { q(AX - 2, 8, AW + 4, 1, ST[4]); q(AX - 2, FOOT - 1, AW + 4, 1, ST[1]); }
+      // the SPOIL running out of the mouth, and a pick left standing in it
+      q(0, FOOT, 12, 3, RK[1]); q(0, FOOT, 12, 1, RK[2]); q(1, FOOT - 1, 8, 1, RK[2]);
+      for (let i = 0; i < 5; i++) q(1 + i * 2, FOOT + 1, 1, 1, ST[2]);
+      q(29, FOOT - 3, 1, 7, W[2]); q(28, FOOT - 4, 3, 1, ST[3]);
+      q(28, FOOT - 3, 1, 1, ST[3]); q(30, FOOT - 3, 1, 1, ST[3]);
+      if (tier === 1) {
+        // a hand barrow parked to the right of the mouth
+        q(17, FOOT + 1, 8, 4, W[2]); q(17, FOOT + 1, 8, 1, W[3]);
+        q(16, FOOT + 5, 2, 2, W[1]); q(24, FOOT + 4, 2, 1, W[1]);
+        q(19, FOOT + 2, 4, 2, GD[1]); q(19, FOOT + 2, 2, 1, GD[2]);
+      }
+      if (tier >= 2) {
+        // the WINDLASS — a frame standing over the mouth and clear of the
+        // bank's crest, so the tier is legible in silhouette
+        q(AX - 3, 1, 2, 9, W[1]); q(AX - 3, 1, 2, 1, W[3]);
+        q(AX + AW + 1, 1, 2, 9, W[1]); q(AX + AW + 1, 1, 2, 1, W[3]);
+        q(AX - 4, 0, AW + 8, 2, W[2]); q(AX - 4, 0, AW + 8, 1, W[3]);
+        ART.shadedCircle(q, AX + 4, 4, 3, W, 2);
+        q(AX + 4, 6, 1, 4, AP.thatch[1]);                   // the rope down the shaft
+        // rails running out to the right with a loaded ore cart on them
+        q(14, FOOT + 5, 17, 1, W[1]); q(14, FOOT + 7, 17, 1, W[1]);
+        q(17, FOOT + 1, 10, 4, W[2]); q(17, FOOT + 1, 10, 1, W[3]); q(17, FOOT + 1, 1, 4, W[3]);
+        q(19, FOOT + 2, 6, 2, GD[1]); q(19, FOOT + 2, 4, 1, GD[2]);
+        q(17, FOOT + 5, 2, 2, INK[1]); q(25, FOOT + 5, 2, 2, INK[1]);
+      }
+      if (tier >= 3) {
+        // the FULL HEADFRAME: braced legs and a winding wheel over the mouth
+        q(AX - 4, 0, 2, 11, W[2]); q(AX + AW + 2, 0, 2, 11, W[2]); q(AX - 4, 0, 2, 1, W[3]);
+        q(AX - 3, 3, AW + 5, 1, W[1]); q(AX - 3, 7, AW + 5, 1, W[1]);
+        ART.shadedCircle(q, AX + 4, 3, 4, W, 3);
+        ART.shadedCircle(q, AX + 4, 3, 2, ST, 2);
+        for (let a = 0; a < 6; a++)
+          q(AX + 4 + Math.round(Math.cos(a) * 3), 3 + Math.round(Math.sin(a) * 3), 1, 1, W[1]);
+        // a wash trough sluicing the crushed rock, running gold-bright
+        q(18, FOOT - 5, 13, 3, W[1]); q(18, FOOT - 5, 13, 1, W[3]);
+        q(19, FOOT - 4, 11, 1, AP.water[3]);
+        for (let i = 0; i < 4; i++) q(20 + i * 3, FOOT - 4, 1, 1, GD[2]);
+        // ingots stacked clear of the rails, and gold set in the portal head
+        q(27, FOOT + 2, 5, 2, GD[1]); q(27, FOOT + 2, 5, 1, GD[2]);
+        q(28, FOOT, 3, 2, GD[1]); q(28, FOOT, 3, 1, GD[3]);
+        q(AX + 3, 6, 3, 2, GD[2]); q(AX + 3, 6, 2, 1, GD[3]);
+      }
     },
     // small dwelling — 1×1, but crafted: fine-grid doorway with depth, footing
     // stones, framed windows, a clay pot and grass at the base
@@ -2747,7 +2877,8 @@ const Sprites = {
      labels (divergence allowed later — the tower's already do). */
   {
     const W = AP.wood, ST = AP.stone, TH = AP.thatch, SO = AP.soil, BO = AP.bone,
-      GR = AP.grass, HD = AP.hide, INK = AP.ink, SH = ART.STYLE.SHADOW, WA = AP.water;
+      GR = AP.grass, HD = AP.hide, INK = AP.ink, SH = ART.STYLE.SHADOW, WA = AP.water,
+      GD = AP.gold, RK = AP.rock;   // the gold mine's stages work in warm rock and gold
 
     // trampled work-ground pad with a clod-broken edge (never a crisp panel)
     const pad = (h, x, y, w, d, seed) => {
@@ -2847,6 +2978,28 @@ const Sprites = {
     const chips = (h, seed, n, x, y, w, d, a, b) => {
       const r = ART.rng(seed);
       for (let i = 0; i < n; i++) h(x + ((r() * w) | 0), y + ((r() * d) | 0), 1, 1, i % 2 ? a : b);
+    };
+    /* the GOLD MINE's bank, shared by its three raising stages: a natural rise
+       with a BROKEN skyline and gold showing through it, over stripped ground.
+       Never a filled rectangle — that reads as a flat card with a hole in it,
+       which is exactly how the first pass of this art failed. */
+    const mineBank = (h, seed, foot) => {
+      const r = ART.rng(seed);
+      for (let x = 0; x < 64; x++) {
+        const top = 8 + Math.round(5 * Math.sin(x * 0.15) + 2.2 * Math.sin(x * 0.42 + 1.2));
+        h(x, top, 1, foot - top, RK[2]);
+        h(x, top, 1, 2, RK[4]);
+        h(x, top + 2, 1, 1, RK[3]);
+        if (x >= 44) h(x, top + 3, 1, foot - top - 3, RK[1]);
+        if (x <= 8) h(x, top + 3, 1, foot - top - 3, RK[3]);
+      }
+      h(0, foot - 2, 64, 2, RK[0]);
+      h(0, foot, 64, 64 - foot, SO[2]); h(0, foot, 64, 2, SO[3]);      // the stripped ground below
+      for (let i = 0; i < 18; i++) {                                   // gold traced through the rock
+        const vx = 2 + ((r() * 60) | 0), vy = 12 + ((r() * (foot - 18)) | 0);
+        h(vx, vy, 3, 2, GD[2]); h(vx, vy, 2, 1, GD[3]);
+      }
+      for (let i = 0; i < 16; i++) h(2 + ((r() * 60) | 0), foot + 2 + ((r() * 14) | 0), 1, 1, r() < 0.5 ? SO[1] : SO[3]);
     };
 
     const DRAWS = {
@@ -3226,6 +3379,54 @@ const Sprites = {
         },
       ],
       // ============ QUARRY — strip, split, then the deep cut ============
+      /* GOLD MINE — sinking a shaft, in three: the seam prospected and staked;
+         the adit collared and the first sets timbered in; the drive going in
+         under a working windlass with the first ore out. Warm rock and gold
+         showing all through, so the stages read as a MINE and never a quarry. */
+      mine: [
+        (h) => {   // prospecting: the reef stripped, the gold traced, the shaft staked
+          mineBank(h, 431, 46);
+          for (let sx = 14; sx <= 46; sx += 16) { h(sx, 34, 2, 12, W[1]); h(sx, 34, 2, 2, W[3]); }   // survey stakes on the collar line
+          h.f(28, 72, 72, 2, BO[2]);                                   // the chalked line between them
+          h(20, 40, 22, 6, SO[1]); h(20, 40, 22, 2, SO[3]);            // the first cut into the bank
+          h(20, 54, 14, 6, RK[1]); h(20, 54, 14, 2, RK[2]);            // spoil barrowed clear
+          h(48, 46, 2, 12, W[2]); h(46, 44, 6, 2, ST[3]);              // pick leaned at the works
+          h(4, 50, 12, 6, W[1]); h(4, 50, 12, 2, W[3]); h(6, 52, 8, 3, GD[1]);   // the pan of washings that started it all
+          chips(h, 432, 14, 8, 48, 48, 14, GD[2], RK[3]);
+        },
+        (h) => {   // the collar: the mouth cut and the first timber sets driven in
+          mineBank(h, 433, 46);
+          h(24, 24, 18, 22, INK[0]);                                   // the mouth, driven in
+          for (const sx of [21, 42]) { h(sx, 22, 3, 24, W[1]); h(sx, 22, 3, 2, W[3]); }   // the legs of the sets
+          h(19, 18, 28, 4, W[2]); h(19, 18, 28, 2, W[3]);              // the head timber across
+          h(26, 30, 14, 2, W[1]); h(26, 38, 14, 2, W[1]);              // sets going in down the drive
+          h(2, 44, 18, 10, RK[1]); h(2, 44, 18, 2, RK[2]); h(4, 42, 12, 2, RK[2]);   // the growing spoil heap
+          h(50, 40, 12, 8, W[2]); h(50, 40, 12, 2, W[3]);              // stacked props waiting
+          for (let i = 0; i < 3; i++) h(52, 42 + i * 2, 8, 1, W[1]);
+          h(28, 50, 16, 8, W[2]); h(28, 50, 16, 2, W[3]); h(26, 58, 4, 4, W[1]);   // the barrow, loaded
+          h(32, 52, 8, 4, RK[3]);
+          chips(h, 434, 16, 6, 46, 44, 18, GD[2], RK[3]);
+        },
+        (h) => {   // the drive goes in: a windlass over the collar, the first ore out
+          mineBank(h, 437, 46);
+          h(24, 26, 18, 20, INK[0]);
+          for (const sx of [21, 42]) { h(sx, 24, 3, 22, W[1]); h(sx, 24, 3, 2, W[3]); }
+          h(19, 20, 28, 4, W[2]); h(19, 20, 28, 2, W[3]);
+          h(26, 30, 14, 2, W[2]); h(26, 36, 14, 2, W[2]);              // sets receding into the dark
+          // the WINDLASS standing over the collar, its rope down the shaft
+          h(16, 2, 4, 16, W[1]); h(44, 2, 4, 16, W[1]); h(16, 2, 4, 2, W[3]);
+          h(14, 0, 36, 4, W[2]); h(14, 0, 36, 2, W[3]);
+          ART.shadedCircle(h, 32, 7, 5, W, 2); h(30, 5, 4, 4, W[3]);
+          h.f(64, 24, 2, 26, TH[1]);                                   // the fall of the rope
+          h(4, 46, 16, 10, RK[1]); h(4, 46, 16, 2, RK[2]);
+          h(24, 52, 22, 2, W[1]); h(24, 58, 22, 2, W[1]);              // rails laid out of the mouth
+          h(28, 46, 16, 8, W[2]); h(28, 46, 16, 2, W[3]);
+          h(31, 48, 10, 4, GD[1]); h(31, 48, 7, 2, GD[2]);             // the first cart of ore, gold in it
+          h(27, 54, 4, 4, INK[1]); h(40, 54, 4, 4, INK[1]);
+          h(50, 44, 12, 6, W[1]); h(50, 44, 12, 2, W[3]); h(52, 46, 8, 3, GD[1]);   // washed gold set aside
+          chips(h, 438, 14, 6, 46, 44, 18, GD[2], RK[3]);
+        },
+      ],
       quarry: [
         (h) => {   // stripping: turf off, the seam marked with wedge slots
           ART.stoneTexture(h, 0, 0, 64, 64, 111);

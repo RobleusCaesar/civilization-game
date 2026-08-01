@@ -72,17 +72,18 @@ node tests/army-strategies.mjs # the three assault doctrines (Siege/Chaos/Strike
 node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals; upgrades own their labels
 node tests/burn-down.mjs       # damaged buildings burn in thirds; a razed one leaves 5 days of unbuildable ash
 node tests/wall-tower-bond.mjs # L2 forts are half stone/half timber; an in-line tower joins the curtain
-node tests/buildings-block.mjs # every building is solid ground except the four worker plots
+node tests/buildings-block.mjs # every building is solid ground except the worker plots
 node tests/ore-finite.mjs      # felled woods and spent soil grow back; a quarried seam never does
 node tests/fishery.mjs         # shore shoals are half-stocked, deep water three quarters; both return in 120 days
 node tests/wild-life.mjs       # wolves stalk deer, herds bolt as one, birds scatter; banners fly in the tribe's dye
 node tests/wonder.mjs          # the second way to win: one of ten 3×3 monuments, and the rival comes running
+node tests/gold-mine.mjs       # gold seams are found, claimed, worked and held — and the seam outlives the mine
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
 perimeter line may only be MADE of `wall` and `gate` — it never counts an
 ordinary building as a section of its ring. (Movement is a separate rule and
-has changed: every building except the four worker plots now blocks — see
+has changed: every building except the worker plots now blocks — see
 **Buildings are solid** below. A *farm* in the ring is still a door; a house
 no longer is.) Covers
 `AI.plot` / `towerSpot` / `wallCenter` / `wallAudit` / `wallDetour` /
@@ -601,12 +602,12 @@ filled in just drops off the clock.
 
 **Buildings are solid** (`tests/buildings-block.mjs`): a building is ground
 you walk AROUND — for every owner. `Bld.solid(key)` is true for everything
-except the four WORKER PLOTS (`farm`, `lodge`, `lumber`, `quarry`), and the
+except the WORKER PLOTS (`farm`, `lodge`, `lumber`, `quarry`, `mine`), and the
 exception is not a taste call: their crews stand ON the plot (the `work` task
 walks the villager onto `b.x/b.y` and holds it there), so a solid plot could
 never be worked. The rule therefore keys off `needsWorker` — the exception
 and its reason are the same fact, and the Hunter's Lodge is in the set for
-exactly that mechanical reason. `Bld.rebuildBlock` marks code **4** across
+exactly that mechanical reason (the Gold Mine joined it for free). `Bld.rebuildBlock` marks code **4** across
 the WHOLE footprint (the 2×2 hall included) and `Path.passable` refuses it
 owner-agnostically: you walk around your own hall, around the rival's, and so
 do barbarians and wild animals (which needed no new code — they already move
@@ -869,3 +870,56 @@ the defeat scene has its own staging.
 `Assets`, `Cards`, `Backend`, `Screens`, `Terraform`, `Score`, `Defeat` and
 `VictoryArt` are actually put on `window`. A `window.G &&` guard silently
 disables whatever it guards.
+
+**Gold mines & seams** (`tests/gold-mine.mjs`): gold is the one resource with
+no ordinary tile to gather — it trickles out of the hall and the Trading Post
+and nowhere else. **GOLD SEAMS** (`T.GOLDORE`) fix that without ever making it
+free. They are laid down LAST in `MapGen.generate` (so nothing overwrites
+them), scattered on open ground at least `CFG.GOLD_SEAMS.minFromTown` from
+BOTH towns and only on land the player can actually walk to — a seam a
+villager can't reach is a mine nobody can ever crew. `CFG.GOLD_SEAMS` scales
+the count with the board (~4 medium, ~6 xlarge) and a relaxation pass
+guarantees at least two, because a map with no seam is the feature switched
+off. A seam is walkable and buildable but appears in NONE of the three
+terraform whitelists (`DIGGABLE`/`CLEARABLE`/`MOUNDABLE_LAND`), so it can
+never be trenched, cleared or paved away.
+**The seam is for the mine and the mine is for a seam** (same test): the
+`onTerrain` clamp in `Bld.canPlace` runs BOTH ways — a mine on ordinary grass
+would be gold from nothing, and a hut on a seam would spend the map's rarest
+tile on a hut. The mine is `freePlace` like the War Camp, because the
+build-anchor rule ("near your town") would otherwise forbid every seam on the
+map; being far from home is the whole risk of the richest income there is, and
+it anchors nothing further (`_isOutpostSite`), so it stays a claim rather than
+a beachhead.
+**Worked like any station, and the best of them**: `needsWorker`, two hands,
+gold PER HAND (4 → 9 → 16 at L1/L2/L3) — measured in worth, the richest income
+on the board. Upgrades run on the STATION rule (`Bld.upgradeTime` doubles a
+worker plot's time then quadruples it), so L2 is six days of work and L3
+sixteen, and `dailyProduction` pays nothing while the works stand. Its crew
+stands ON the plot like every other station, which is why `Bld.solid` (keyed
+off `needsWorker`) leaves it walkable — the Gold Mine joined the worker-plot
+set for free the day it was added, and `tests/buildings-block.mjs` pins that
+the set is DERIVED and never hand-listed.
+**What the miner is bringing up** (same test): `R.CARRY_ICON` is a registry
+keyed by building key — a stationed worker floats that resource's icon over
+its head. Only `mine` is in it today (an ordinary town's farms and camps would
+be noise); one entry is the whole feature for another station. The pick-swing
+pose and the `Units.workReport` gold rate come along with it. The mine's own
+art puts the ADIT hard LEFT in the tile (x≈2): a villager sprite fills roughly
+the middle third of its plot, so a mouth in the centre is a mouth nobody ever
+sees, and the mouth is the one thing that says "mine". The bank behind it is
+built from low-frequency sines only — a high-frequency term puts a tooth on
+every column and the rise reads as battlements.
+**And the seam OUTLIVES the mine** (same test): `Bld.removeToRuin` leaves
+`T.GOLDORE` where every other building leaves rubble, so a razed mine hands
+the ground back rather than destroying it — which is exactly what makes a seam
+worth fighting over instead of worth burning. The ash still cools first, like
+any burned building. The rival competes for them too (`AI.maybeMine` /
+`plotMine`): fog-honest (only seams on `ai.seen`), only ones its own villagers
+can stand at, and never before `CFG.GOLD_SEAMS.aiDay` (40) — a chief that
+claimed the gold on day two would be racing before the player knew there was a
+race. A player's mine is `needsWorker`, so `Combat.aiRaidSeek`'s economy branch
+already targets it: holding one needs no new AI code, only soldiers.
+**A new `T.*` needs a minimap colour**: `R.drawMini`'s `COLORS` table is
+INDEXED BY TERRAIN, so a new type without an entry paints holes where its
+tiles stand.

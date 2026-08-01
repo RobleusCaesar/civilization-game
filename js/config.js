@@ -8,6 +8,10 @@ const T = {
   TRENCH: 11,                                   // sapper-dug ditch — blocks land, not ranged fire
   MOAT: 12,                                     // a trench that flooded from a water source — blocks land; open water to boats
   MOUND: 13,                                    // sapper-raised earthwork — passable but 4x slower to cross; or reclaimed land where water was
+  GOLDORE: 14,                                  // a GOLD SEAM (tests/gold-mine.mjs) — rare, found by exploring, the only
+                                                // ground a Gold Mine may be sunk on. Walkable and buildable, but never
+                                                // diggable/clearable/mound-able: a seam cannot be paved over or trenched away
+                                                // (the three terraform whitelists in map.js exclude it by construction)
 };
 
 const CFG = {
@@ -210,6 +214,32 @@ const CFG = {
         { cost: { wood: 80, gold: 5 },    time: 1, hp: 120, out: { stone: 3.5 } },
         { cost: { wood: 170, gold: 10 },  time: 2, hp: 170, out: { stone: 7 } },
         { cost: { wood: 320, gold: 25 },  time: 2, hp: 220, out: { stone: 12 } },
+      ],
+    },
+    /* GOLD MINE (tests/gold-mine.mjs) — the only building you cannot site
+       where you like: it is SUNK ON A GOLD SEAM (T.GOLDORE), and seams are
+       scattered across the map away from both towns, so gold has to be found,
+       claimed and then HELD. Deliberately the strongest income in the game per
+       hand and the most expensive to raise: the whole point is that a seam is
+       worth marching out to and worth fighting over. Two hands work it, like
+       the other stations, and it upgrades on the station rule (Bld.upgradeTime
+       doubles then quadruples a worker plot's upgrade) — L2 is six days of
+       work, L3 sixteen. */
+    mine: {
+      // freePlace, like the War Camp: a seam is wherever the map put it, and
+      // the anchor rule ("build near your town") would forbid every one of
+      // them. Being far from home is the whole risk of the richest income
+      // there is — the mine anchors nothing further, so it stays a claim
+      // rather than a beachhead.
+      name: 'Gold Mine', reqTC: 2, needsWorker: true, maxWorkers: 2, freePlace: true,
+      onTerrain: T.GOLDORE,
+      desc: 'Sunk on a gold seam. Gold per worker (up to 2) — the richest income there is, and the one you have to go out and hold.',
+      levels: [    // out is PER WORKER, like every other station
+        { cost: { wood: 150, stone: 120 },              time: 3, hp: 260, out: { gold: 4 } },
+        { cost: { wood: 400, stone: 500, gold: 120 },   time: 3, hp: 420, out: { gold: 9 },
+          bonus: 'Deeper shaft — a windlass over the adit' },
+        { cost: { wood: 800, stone: 1000, gold: 300 },  time: 4, hp: 600, out: { gold: 16 },
+          bonus: 'Full headframe and wash-house — the richest seam works' },
       ],
     },
     house: {
@@ -515,6 +545,12 @@ const CFG = {
       { hp: 900, time: 3, cost: { wood: 240, stone: 300, gold: 35 } },    // L3 stone arch
     ],
   },
+
+  /* GOLD SEAMS (tests/gold-mine.mjs) — how many T.GOLDORE tiles a map carries,
+     scaled with its size, and how far they must sit from either town so gold
+     is always something you go and FIND rather than something you start on
+     top of. `aiDay` is the earliest the rival will march out and sink one. */
+  GOLD_SEAMS: { count: 3, perTile: 0.0008, minFromTown: 10, aiDay: 40 },
 
   MEAT_DROP: 10,               // food gained when a wild animal is killed
   PASSIVE_MAX: 10,             // grazing animals kept on the map — two herds' worth

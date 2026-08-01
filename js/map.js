@@ -382,7 +382,68 @@ const MapGen = {
       resAmount[i] = Math.round(resAmount[i] * (shallow ? CFG.FISH_STOCK.shallow : CFG.FISH_STOCK.deep));
     }
 
-    return { terrain: t, resAmount, scarce: scarce.name, landform, spawns: { player, ai, camps } };
+    /* GOLD SEAMS (tests/gold-mine.mjs). Gold is the one resource with no
+       ordinary tile to gather from — it trickles out of the hall and the
+       Trading Post and nowhere else. Seams fix that, but never for free: they
+       are laid down LAST (so nothing later overwrites them), scattered across
+       open ground well away from BOTH towns, and each must sit on land a
+       villager could actually walk to, or the mine on it would be a building
+       nobody can ever crew. Finding one is exploration; keeping one is a
+       fight. */
+    {
+      const GS = CFG.GOLD_SEAMS || { count: 4, perTile: 0.0015, minFromTown: 10 };
+      const want = Math.max(2, Math.round((GS.count || 4) + (GS.perTile || 0) * W * H));
+      const reach = (() => {                       // the open land the player can walk
+        const BLOCKS2 = v => v === T.WATER || v === T.MOUNTAIN || v === T.FOREST || v === T.HILLS || v === T.FERTILE;
+        const seen = new Uint8Array(W * H), q = [id(player.x, player.y)];
+        seen[q[0]] = 1;
+        for (let h = 0; h < q.length; h++) {
+          const cur = q[h], cx = cur % W, cy = (cur / W) | 0;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = cx + dx, ny = cy + dy;
+            if (!MapGen.inB(nx, ny)) continue;
+            const ni = id(nx, ny);
+            if (seen[ni] || BLOCKS2(t[ni])) continue;
+            seen[ni] = 1; q.push(ni);
+          }
+        }
+        return seen;
+      })();
+      const seams = [];
+      const far = GS.minFromTown || 10;
+      let guard3 = 0;
+      while (seams.length < want && guard3++ < 3000) {
+        const x = 2 + rnd() * (W - 4) | 0, y = 2 + rnd() * (H - 4) | 0;
+        const i = id(x, y);
+        if (t[i] !== T.GRASS || !reach[i]) continue;
+        if (Math.hypot(x - player.x, y - player.y) < far) continue;
+        if (Math.hypot(x - ai.x, y - ai.y) < far) continue;
+        if (seams.some(s => Math.hypot(s.x - x, s.y - y) < 6)) continue;   // never two in one pocket
+        t[i] = T.GOLDORE; resAmount[i] = 0;
+        seams.push({ x, y });
+      }
+      // A MAP WITH NO SEAM AT ALL is a map with the whole feature switched off,
+      // and a tight or watery roll can genuinely produce one. Relax the rules in
+      // order — the spacing first, then the distance from the towns — rather
+      // than leaving the player nothing to find.
+      for (const relax of [4, 2]) {
+        let g4 = 0;
+        while (seams.length < 2 && g4++ < 3000) {
+          const x = 2 + rnd() * (W - 4) | 0, y = 2 + rnd() * (H - 4) | 0;
+          const i = id(x, y);
+          if (t[i] !== T.GRASS || !reach[i]) continue;
+          if (Math.hypot(x - player.x, y - player.y) < far / relax * 2) continue;
+          if (Math.hypot(x - ai.x, y - ai.y) < far / relax * 2) continue;
+          if (seams.some(s => Math.hypot(s.x - x, s.y - y) < relax)) continue;
+          t[i] = T.GOLDORE; resAmount[i] = 0;
+          seams.push({ x, y });
+        }
+      }
+      var goldSeams = seams;
+    }
+
+    return { terrain: t, resAmount, scarce: scarce.name, landform,
+      spawns: { player, ai, camps, gold: goldSeams } };
   },
 
   // a shoal: shore water where fish school close enough to catch from land.

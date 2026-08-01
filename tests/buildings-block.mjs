@@ -6,12 +6,13 @@
    navigate. (`Bld.solid`, block code 4 in `Bld.rebuildBlock`, refused by
    `Path.passable` for every owner.)
 
-   THE ONE EXCEPTION IS THE WORKER PLOTS — farm, hunter's lodge, lumber camp
-   and quarry. Their crews stand ON the plot itself (the 'work' task walks the
-   villager onto b.x/b.y and holds it there), so a solid plot could never be
-   worked at all. That is why the rule keys off `needsWorker` rather than a
-   hand-listed set: the exception and the reason for it are the same fact.
-   The Hunter's Lodge is in that set for exactly this mechanical reason.
+   THE ONE EXCEPTION IS THE WORKER PLOTS — farm, hunter's lodge, lumber camp,
+   quarry and gold mine. Their crews stand ON the plot itself (the 'work' task
+   walks the villager onto b.x/b.y and holds it there), so a solid plot could
+   never be worked at all. That is why the rule keys off `needsWorker` rather
+   than a hand-listed set: the exception and the reason for it are the same
+   fact. The Hunter's Lodge is in that set for exactly this mechanical reason,
+   and the Gold Mine joined it for free when it was added.
 
    Consequences pinned here because each one has already bitten:
      · the 2×2 Town Center blocks its WHOLE footprint
@@ -76,11 +77,15 @@ const out = await p.evaluate(() => {
 
   // ---- 1. WHICH buildings stand in the way ----
   {
-    const PLOTS = ['farm', 'lodge', 'lumber', 'quarry'];
+    const PLOTS = ['farm', 'lodge', 'lumber', 'quarry', 'mine'];
     const all = Object.keys(CFG.BUILDINGS);
     const wrong = all.filter(k => Bld.solid(k) === PLOTS.includes(k));
     ck('solidSetIsEverythingButTheWorkerPlots', wrong.length === 0,
-      wrong.length ? 'disagree: ' + wrong.join(',') : all.length - PLOTS.length + ' solid, 4 walkable plots');
+      wrong.length ? 'disagree: ' + wrong.join(',') : all.length - PLOTS.length + ' solid, ' + PLOTS.length + ' walkable plots');
+    // …and the set is DERIVED, never hand-listed: a new station is a walkable
+    // plot the day it is added, because its crew has to stand on it
+    ck('theRuleIsNeedsWorkerNotAList',
+      all.every(k => Bld.solid(k) === !CFG.BUILDINGS[k].needsWorker), '');
     ck('theExceptionIsExactlyNeedsWorker',
       all.every(k => Bld.solid(k) === !CFG.BUILDINGS[k].needsWorker), '');
     ck('lodgeIsAWalkablePlotToo', !Bld.solid('lodge'), 'its crew stands on it, like farm/lumber/quarry');

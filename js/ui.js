@@ -30,7 +30,7 @@ const UI = {
      together. */
   // …and LAST, always last, the Ancient Wonder (tests/wonder.mjs) — the end of
   // the list because it is the end of the game
-  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'wall', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'warcamp', 'trade', 'wonder'],
+  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'mine', 'lodge', 'wall', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'warcamp', 'trade', 'wonder'],
   RES_NAME: { food: 'Food', wood: 'Wood', stone: 'Stone', gold: 'Gold' },
   tradeNeed: null,            // Trading Post step 1 → 2: what the caravan brings home
 

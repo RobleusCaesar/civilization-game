@@ -1069,6 +1069,9 @@ const R = {
   COLLAPSE_PAD: { w: 2.5, h: 1.6, x: 0.75, y: 0.45 },
   collapses: [],                 // live one-shots: {x,y,sz,spr,cfg,t,flip,art}
   marvel: null,                  // the wonder's held frame: {x,y,t,name,blurb} — never in S
+  // building key → the resource icon a stationed worker carries over its head
+  // (tests/gold-mine.mjs). One entry is the whole feature for a new station.
+  CARRY_ICON: { mine: 'gold' },
 
   // does this kind carry hand-drawn collapse art? (returns the frame count)
   collapseArt(key, frames) {
@@ -1546,7 +1549,7 @@ const R = {
       if (t.type === 'terraform') return u.kind === 'sapper' ? 'work' : 'build';   // pick swing at the dig
       if (t.type === 'work') {                                   // stationed at a workplace → its craft
         const wb = Bld.get(t.id), k = wb && wb.key;
-        return k === 'quarry' ? 'mine' : k === 'farm' ? 'farm'
+        return (k === 'quarry' || k === 'mine') ? 'mine' : k === 'farm' ? 'farm'
           : (k === 'lumber' || k === 'lodge') ? 'gather' : 'build';
       }
       if (t.type === 'fish') return 'gather';
@@ -2009,6 +2012,26 @@ const R = {
         g.fillStyle = u.owner === 'P' ? '#c0e8ff' : '#ffb0a0';
         for (let ci = 0; ci < u.cargo.length; ci++)
           g.fillRect(ux + 7 + ci * 4, uy - 1, 3, 3);
+      }
+      /* WHAT THIS PAIR OF HANDS IS BRINGING UP (tests/gold-mine.mjs). A worker
+         stationed at a plot in CARRY_ICON floats that resource's icon over its
+         head — so a miner at the seam is visibly hauling GOLD, not just
+         standing on a building. The registry is the extension point: a key in
+         it is the whole feature, and only the Gold Mine is in it today (the
+         farms and camps of an ordinary town would be noise). It bobs on a
+         continuous clock, and only while the worker is actually ON the plot
+         and the plot is actually running. */
+      const carry = u.task && u.task.type === 'work' && this.CARRY_ICON[
+        (Bld.get(u.task.id) || {}).key];
+      if (carry) {
+        const wb = Bld.get(u.task.id);
+        if (wb && Bld.done(wb) && !wb.upgrading && (u.x | 0) === wb.x && (u.y | 0) === wb.y) {
+          const ic = Sprites.icons[carry];
+          if (ic) {
+            const bob = Math.sin(performance.now() / 320 + u.id) * 1.6;
+            g.drawImage(ic, Math.round(ux + TL / 2 - 8), Math.round(uy - 13 + bob), 16, 16);
+          }
+        }
       }
       if (u.hp < u.maxhp) this.bar(g, ux + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');
@@ -2617,8 +2640,11 @@ const R = {
   drawMini() {
     const AP = ART.PALETTE;
     const g = this.mg, COLORS = [AP.grass[3], AP.leaf[1], AP.water[2], AP.stone[2], AP.soil[2], AP.rust[1],
-      AP.grass[2], AP.stone[3], AP.soil[3], AP.stone[1], AP.stone[0], AP.soil[0], AP.water[1], AP.soil[3]];
-      // grass forest water hills fertile camp stumps pebbles barren ruin mountain trench moat mound
+      AP.grass[2], AP.stone[3], AP.soil[3], AP.stone[1], AP.stone[0], AP.soil[0], AP.water[1], AP.soil[3],
+      AP.gold[2]];
+      // grass forest water hills fertile camp stumps pebbles barren ruin mountain trench moat mound goldore
+      // (INDEXED BY TERRAIN — a new T.* needs a colour here or its tiles read as
+      //  undefined and the minimap paints holes where they stand)
     const shadeCache = {};
     const shade = c => shadeCache[c] || (shadeCache[c] = c.replace(/[0-9a-f]{2}/gi,
       h => Math.max(0, (parseInt(h, 16) * 0.55) | 0).toString(16).padStart(2, '0')));

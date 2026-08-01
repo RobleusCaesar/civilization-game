@@ -209,7 +209,7 @@ const out = await p.evaluate(() => {
     // aliased under their own <key>Up labels (tower's diverge; the rest
     // share art for now) ----
     const KEYS = ['house', 'lodge', 'barracks', 'stable', 'range', 'trade', 'siege',
-      'sapper', 'warcamp', 'dock', 'farm', 'quarry', 'lumber'];
+      'sapper', 'warcamp', 'dock', 'farm', 'quarry', 'lumber', 'mine'];
     const probs = [];
     for (const k of KEYS) {
       for (let i = 1; i <= 3; i++) {

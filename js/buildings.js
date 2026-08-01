@@ -219,8 +219,10 @@ const Bld = {
     // grass and anything depleted or ruined is fair ground to build on. Fertile
     // soil (orchard/berry ground) is now a standing obstacle — clear it first,
     // or build on the grass beside it (a farm still draws its bonus from nearby)
+    // …and a GOLD SEAM is buildable ground too — but only ever for the mine
+    // that belongs on it (the onTerrain clamp in canPlace, tests/gold-mine.mjs)
     const buildable = t === T.GRASS ||
-      t === T.STUMPS || t === T.PEBBLES || t === T.BARREN || t === T.RUIN;
+      t === T.STUMPS || t === T.PEBBLES || t === T.BARREN || t === T.RUIN || t === T.GOLDORE;
     if (!buildable) return false;
     if (this.at(x, y)) return false;
     if (this.ashAt(x, y)) return false;   // a burned building's footprint stays unbuildable while its ash cools
@@ -292,6 +294,15 @@ const Bld = {
       for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++)
         if (!this.tileFree(x + dx, y + dy))
           return { ok: false, why: this.ashAt(x + dx, y + dy) ? 'Ashes still smoulder here' : 'Blocked tile' };
+      /* A SEAM IS FOR THE MINE, AND THE MINE IS FOR A SEAM (tests/gold-mine.mjs).
+         Both halves matter: a mine sited on ordinary grass would be gold from
+         nothing, and a house dropped on a seam would spend the map's rarest
+         tile on a hut — so the clamp runs in both directions. */
+      const seam = S.map.terrain[MapGen.idx(x, y)] === T.GOLDORE;
+      if (d.onTerrain === T.GOLDORE && !seam)
+        return { ok: false, why: 'A Gold Mine is sunk on a gold seam — go and find one' };
+      if (seam && d.onTerrain !== T.GOLDORE)
+        return { ok: false, why: 'That is a gold seam — only a Gold Mine belongs there' };
     }
     // TC-level gate (player only — the rival's scripted build order sets its own pace)
     if (owner === 'P' && d.reqTC) {
@@ -848,6 +859,13 @@ const Bld = {
       const idx = MapGen.idx(b.x + dx, b.y + dy);
       if (S.map.terrain[idx] === T.WATER) {
         // a broken dock washes away — open water again, no rubble
+        R.updateTile(b.x + dx, b.y + dy);
+      } else if (S.map.terrain[idx] === T.GOLDORE) {
+        /* THE SEAM OUTLIVES THE MINE (tests/gold-mine.mjs). Rubble would erase
+           the rarest tile on the map, so a razed mine leaves the gold exactly
+           where it was — whoever holds the ground can sink a new shaft, and
+           that is precisely what makes a seam worth fighting over rather than
+           worth burning. */
         R.updateTile(b.x + dx, b.y + dy);
       } else {
         S.map.terrain[idx] = T.RUIN;
