@@ -765,7 +765,7 @@ const Sprites = {
      a separate building shoved up against the wall. */
   function drawGateFace(q, lv) {
     const d = gateDress(lv), WD = AP.wood, IN = AP.ink[0];
-    const GND = 26;                          // the ground line the Watchtower stands on
+    const GND = 30;                          // the front edge of the tile — everything on the wall is planted on it
     const W0 = 10, W1 = 21;                  // the curtain band (drawWallMask's arms, 5..10 of 16)
     const TL0 = 1, TL1 = 8, TR0 = 24, TR1 = 31;    // the turrets, standing IN the line
     const C0 = 8, C1 = 24;                   // the gate, stretching between them
@@ -829,6 +829,10 @@ const Sprites = {
       for (const [x0, x1] of [[TL0, TL1], [TR0, TR1]]) {
         ART.woodPlankTexture(q, x0 + 1, 4, x1 - x0 - 2, 4, x0 + 5);
         q(x0 + 1, 4, x1 - x0 - 2, 1, WD[3]);
+        // a second hoarding rigged out over each turret at walk height, which is
+        // where the L2 curtain's own timber walk runs into the gatehouse
+        ART.woodPlankTexture(q, x0, 13, x1 - x0, 5, x0 + 9);
+        q(x0, 13, x1 - x0, 1, WD[3]); q(x0, 17, x1 - x0, 1, WD[1]);
       }
     }
     if (d.gold) for (const x of [TL0 + 3, TR0 + 3]) { q(x, -1, 1, 5, WD[1]); q(x, -1, 1, 1, AP.gold[2]); }
@@ -843,7 +847,7 @@ const Sprites = {
     const d = gateDress(lv), WD = AP.wood, IN = AP.ink[0];
     const W0 = 10, W1 = 21;                  // the curtain's own width
     const G0 = 6, G1 = 25;                   // the gatehouse: as wide as a tower
-    const TOP = 5, GND = 26;                 // its head and its foot — the tower's own ground line
+    const TOP = 5, GND = 30;                 // its head and its foot — the tower's own ground line
 
     // the curtain running in from north and south, behind the gatehouse — with
     // a shadow line where the northern walk goes behind it, so it reads as
@@ -874,8 +878,8 @@ const Sprites = {
     q((G0 + G1) >> 1, TOP + 6, 1, 4, IN);
     // the mouth of the passage running through, east to west: from here it is
     // only a shadow at each flank, never a doorway — the arch faces away
-    q(G0, GND - 7, 1, 6, IN); q(G1, GND - 7, 1, 6, IN);
-    q(G0 + 1, GND - 7, 1, 6, d.dark); q(G1 - 1, GND - 7, 1, 6, d.dark);
+    q(G0, GND - 11, 1, 6, IN); q(G1, GND - 11, 1, 6, IN);
+    q(G0 + 1, GND - 11, 1, 6, d.dark); q(G1 - 1, GND - 11, 1, 6, d.dark);
     if (d.timber) {                          // L2: timber hoarding over the stone head
       ART.woodPlankTexture(q, G0 + 1, TOP + 5, G1 - G0 - 1, 5, 13);
       q(G0 + 1, TOP + 5, G1 - G0 - 1, 1, WD[3]);
@@ -884,7 +888,7 @@ const Sprites = {
       q(G0, TOP - 3, G1 - G0 + 1, 1, AP.gold[2]);
       for (const x of [G0 + 3, G1 - 3]) { q(x, TOP - 7, 1, 5, WD[1]); q(x, TOP - 7, 1, 1, AP.gold[2]); }
     }
-    q(G0 + 1, GND, G1 - G0 - 1, 2, ART.STYLE.SHADOW);      // the shadow it throws
+    q(G0 + 1, GND, G1 - G0 - 1, 32 - GND, ART.STYLE.SHADOW);   // the shadow at its foot
   }
   /* ---- THE MURAL TOWER (tests/wall-tower-bond.mjs) ----
      A tower with a wall on it is not a building standing next to a wall — it
@@ -908,7 +912,12 @@ const Sprites = {
   function drawTowerMural(p, lv) {
     const q = p.hi, d = gateDress(lv), WD = AP.wood, IN = AP.ink[0];
     const X0 = 8, X1 = 23;                   // wider than the curtain, narrower than the gate
-    const TOP = 3, GND = 26;                 // the tallest thing on the wall, on the wall's own ground line
+    /* TOP..GND — and GND reaches the FRONT EDGE OF THE TILE. A tower is drawn
+       facing you, so its foot is the nearest thing in the picture: stopping it
+       short left it standing on the walk that runs past it and reading as if it
+       hovered. The curtain behind it meets it half way up (drawTowerWalk); the
+       tower itself is planted on the ground. */
+    const TOP = 3, GND = 30;
     const uM = d.timber ? WD[2] : d.mid, uL = d.timber ? WD[3] : d.lit;
 
     // the shaft
@@ -930,14 +939,14 @@ const Sprites = {
       q(X0 + 1, TOP + 5, X1 - X0 - 1, 1, WD[3]);
     }
     // arrow loops — a tower watches every way, so they run down the whole shaft
-    for (const x of [X0 + 4, X1 - 4]) { q(x, TOP + 12, 1, 4, IN); q(x, TOP + 18, 1, 4, IN); }
+    for (const x of [X0 + 4, X1 - 4]) { q(x, TOP + 12, 1, 4, IN); q(x, TOP + 20, 1, 4, IN); }
     q((X0 + X1) >> 1, TOP + 12, 1, 4, IN);
     if (d.gold) {                            // the crest, and the beacon alight
       q(X0, TOP - 3, X1 - X0 + 1, 1, AP.gold[2]);
       q((X0 + X1) >> 1, TOP - 6, 2, 2, AP.fire[2]); q((X0 + X1) >> 1, TOP - 7, 1, 1, AP.fire[3]);
       q(((X0 + X1) >> 1) - 1, TOP - 4, 4, 1, AP.fire[1]);
     }
-    q(X0 + 1, GND, X1 - X0 - 1, 2, ART.STYLE.SHADOW);           // the shadow it throws
+    q(X0 + 1, GND, X1 - X0 - 1, 32 - GND, ART.STYLE.SHADOW);    // the shadow at its foot
   }
   function drawGate(p, lv, vert) {
     return vert ? drawGateSide(p.hi, lv) : drawGateFace(p.hi, lv);

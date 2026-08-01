@@ -635,8 +635,10 @@ west, AWAY from you, so there is no door to see — the curtain simply swells to
 the width of a tower, crenellated and machicolated like everything else.
 Transposing one into the other (which this file did for one commit) draws a
 gateway seen from a viewpoint that cannot exist, and reads as a door lying on
-its side. Both stand on the SAME ground line the Watchtower stands on (fine row
-26), or a gate between two towers floats above its own neighbours; both are
+its side. Both stand on the SAME ground line as the mural tower — the FRONT EDGE OF THE
+TILE (fine row 30). Every fortification faces you, so its foot is the nearest
+thing in its tile: stopped short, a tower reads as hovering above the walk that
+runs past it, and a gate between two towers floats above its own neighbours; both are
 drawn at high res like every other building (only `wall` is left in
 `LORES_BLD`, whose 16-mask atlas must tile seamlessly); and the curtain meets
 them at fine rows 10..21, exactly where `drawWallMask` puts its arms (5..10 of
@@ -666,7 +668,8 @@ sprite too, since what is being raised is the building, not the bond. It wears
 timber upper works, L3 dressed stone, gold crest, beacon lit), is narrower than
 the gatehouse (16 fine cells against 20) so the gate stays the biggest thing on
 the wall, wider than the curtain (12) so it still reads as a tower, and stands
-on the same ground line as both.
+on the same ground line as both — the tile's front edge, so it is planted on
+the ground rather than perched on the curtain that passes it.
 **Where the walk meets it** (`R.drawTowerWalk`, `R.TOWER_WALK`): a curtain
 running SOUTH out of a mural tower must join its flank at WALK HEIGHT, partway
 up the shaft. The tower's body is drawn over the bond stub, so the southern arm
