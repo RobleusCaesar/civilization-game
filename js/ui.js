@@ -1125,9 +1125,17 @@ const UI = {
     const alive = this.armyAlive(n);
     if (!alive.length) { this.renderArmyBar(); return; }
     S.armies[n] = alive;
-    let cx = 0, cy = 0;
-    for (const id of alive) { const u = Units.get(id); cx += u.x; cy += u.y; }
-    R.centerOn(cx / alive.length, cy / alive.length);
+    /* Only HAUL THE CAMERA when the army is nowhere to be seen. If any of them
+       is on screen — even half off the edge — the view stays put: yanking it
+       to re-centre on soldiers the player is already looking at loses their
+       place for nothing (tests/army-groups.mjs). */
+    let cx = 0, cy = 0, seen = false;
+    for (const id of alive) {
+      const u = Units.get(id);
+      cx += u.x; cy += u.y;
+      if (R.onScreen(u.x, u.y)) seen = true;
+    }
+    if (!seen) R.centerOn(cx / alive.length, cy / alive.length);
     this.sel = { type: 'group', ids: alive.slice() };
     this.builderFor = null; this.confirmDemolish = 0; this.terraMode = null; this.panelHidden = false;
     this.renderPanel();
@@ -1176,23 +1184,75 @@ const UI = {
     K: '#17110a', r: '#87261d', R: '#ad3b26', D: '#433316',
     h: '#a1823b', H: '#b8a060', d: '#785d26', s: '#241a0c',
   },
-  drawHelmet(g, x, y) {
-    for (let ry = 0; ry < this.ARMY_HELM.length; ry++)
-      for (let rx = 0; rx < this.ARMY_HELM[ry].length; rx++) {
-        const c = this.ARMY_HELM[ry][rx];
+  /* THE FLEET'S OWN MARK. A saved army whose soldiers float gets a SHIP on its
+     banner instead of a helmet — the same 21x28 footprint and the same dulled
+     palette, so the rail reads as one set, but unmistakable at a glance: square
+     sail on its yard, masthead pennant, clinker hull with a row of shields
+     along the gunwale, stem and stern posts, and the water under her keel. */
+  ARMY_SHIP: [
+    '..........Krr........',
+    '.........KmKrr.......',
+    '.........KmK.........',
+    '..KmmmmmmmmmmmmmmmK..',
+    '..KKKKKKKKKKKKKKKKK..',
+    '..KsssssssssssssssK..',
+    '..KsssssssssssssssK..',
+    '..KsssSSSSSSSSSsssK..',
+    '..KrrrrrrrrrrrrrrrK..',
+    '..KrrrrrrrrrrrrrrrK..',
+    '..KsssssssssssssssK..',
+    '..KsssSSSSSSSSSsssK..',
+    '..KsssssssssssssssK..',
+    '..KsssssssssssssssK..',
+    '..KSSSSSSSSSSSSSSSK..',
+    '..KKKKKKKKKKKKKKKKK..',
+    '.........KmmK........',
+    '.........KmmK........',
+    '.KK......KmmK.....KK.',
+    '.KbK.....KmmK....KbK.',
+    'KbbWWWWWWWmmWWWWWWbbK',
+    'KbWbWbWbWbWbWbWbWbWbK',
+    'KwwwwwwwwwwwwwwwwwwwK',
+    '.KwwwwwwwwwwwwwwwwwK.',
+    '..KwwwwwwwwwwwwwwwK..',
+    '...KKwwwwwwwwwwwKK...',
+    '.....KKKKKKKKKKK.....',
+    '...uu...uuu...uu.....',
+  ],
+  ARMY_SHIP_COL: {
+    K: '#17110a', m: '#7a5a2c', s: '#bdb28f', S: '#9c8f6a', r: '#8c3a2a',
+    W: '#8a6534', w: '#66471f', b: '#a1823b', u: '#4a6b86',
+  },
+  _stamp(g, art, col, x, y) {
+    for (let ry = 0; ry < art.length; ry++)
+      for (let rx = 0; rx < art[ry].length; rx++) {
+        const c = art[ry][rx];
         if (c === '.') continue;
-        g.fillStyle = this.ARMY_HELM_COL[c];
+        g.fillStyle = col[c];
         g.fillRect(x + rx, y + ry, 1, 1);
       }
   },
-  // 1 helmet for Army 1, 2 fanned for Army 2, 3 fanned for Army 3 — full-size
+  drawHelmet(g, x, y) { this._stamp(g, this.ARMY_HELM, this.ARMY_HELM_COL, x, y); },
+  drawShip(g, x, y) { this._stamp(g, this.ARMY_SHIP, this.ARMY_SHIP_COL, x, y); },
+  // a banner flies the ship when MOST of its roster floats — one scout tagging
+  // along with a fleet should not turn it back into an army
+  armyIsNaval(n) {
+    const alive = this.armyAlive(n);
+    if (!alive.length) return false;
+    let sea = 0;
+    for (const id of alive) { const u = Units.get(id); if (u && Units.isNaval(u)) sea++; }
+    return sea * 2 > alive.length;
+  },
+  // 1 mark for Army 1, 2 fanned for Army 2, 3 fanned for Army 3 — full-size
   // sprites overlapped (never downscaled), so every copy stays pixel-crisp
   drawArmyIcon(g, n) {
     g.imageSmoothingEnabled = false;
     g.clearRect(0, 0, 34, 34);
-    if (n === 1) this.drawHelmet(g, 6, 3);
-    else if (n === 2) { this.drawHelmet(g, 11, 0); this.drawHelmet(g, 2, 6); }
-    else { this.drawHelmet(g, 13, 0); this.drawHelmet(g, 7, 3); this.drawHelmet(g, 0, 6); }
+    const mark = this.armyIsNaval(n) ? (gg, x, y) => this.drawShip(gg, x, y)
+                                     : (gg, x, y) => this.drawHelmet(gg, x, y);
+    if (n === 1) mark(g, 6, 3);
+    else if (n === 2) { mark(g, 11, 0); mark(g, 2, 6); }
+    else { mark(g, 13, 0); mark(g, 7, 3); mark(g, 0, 6); }
   },
   renderArmyBar() {
     const bar = document.getElementById('armyBar');
@@ -1203,7 +1263,7 @@ const UI = {
       if (!this.armyAlive(n).length) continue;
       const btn = document.createElement('button');
       btn.dataset.army = n;
-      btn.title = `Army ${n}`;
+      btn.title = this.armyIsNaval(n) ? `Fleet ${n}` : `Army ${n}`;
       const cv = document.createElement('canvas');
       cv.width = cv.height = 34;
       this.drawArmyIcon(cv.getContext('2d'), n);

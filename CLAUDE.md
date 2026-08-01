@@ -410,9 +410,18 @@ three (`UI.saveArmy` → `S.armies`, slot → unit ids, in every save file;
 `loadJSON` backfills `{}`); Remove frees a number without renumbering the
 rest, and the NEXT save fills the gap; a banner whose last soldier falls
 vanishes on its own (`UI.tickArmies`, ~1s heartbeat from `UI.init`).
-Banners render as pixel centurion-helmet buttons (1/2/3 helmets) on the
-right rail under the minimap (`#armyBar`); tapping one centers the camera
-on the army and selects it. One banner per soldier — saving units into a
+Banners render as pixel buttons (1/2/3 marks) on the
+right rail under the minimap (`#armyBar`); tapping one selects the army.
+**The camera only moves when the army is nowhere to be seen** — `R.onScreen`
+tests each member's sprite box against the visible band, discounting what the
+HUD covers (`topReserve` / `bottomReserve`), so one soldier half off the edge
+still counts and the view is left alone; yanking it to re-centre on soldiers
+the player is already looking at loses their place for nothing.
+**A banner whose roster mostly FLOATS flies a SHIP** (`UI.armyIsNaval` — most,
+not all, so a scout tagging along with a fleet doesn't turn it back into an
+army): `UI.ARMY_SHIP`, the same 21×28 footprint and dulled palette as
+`ARMY_HELM`, square sail on its yard, masthead pennant, shielded gunwale, and
+water under the keel. One banner per soldier — saving units into a
 new army pulls them out of any old one.
 
 **Army strategies** (`tests/army-strategies.mjs`): three assault doctrines on

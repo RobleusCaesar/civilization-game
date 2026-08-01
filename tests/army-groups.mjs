@@ -19,7 +19,9 @@
    Run this after touching any of:
      units.js — formationMove / groupMove
      ui.js — armyAlive/pruneArmies/armyOf/nextArmySlot/saveArmy/removeArmy/
-             selectArmy/renderArmyBar/tickArmies, the group panel buttons
+             selectArmy/armyIsNaval/drawShip/drawHelmet/drawArmyIcon/
+             renderArmyBar/tickArmies, the group panel buttons
+     render.js — onScreen
      game.js — S.armies init in newGame, the loadJSON armies migration
      index.html — #armyBar
 
@@ -146,6 +148,62 @@ const out = await p.evaluate(() => {
     ck('bannerJumpsTheView', inView, `army at ${cx.toFixed(0)},${cy.toFixed(0)} view x ${viewL.toFixed(0)}..${viewR2.toFixed(0)} y ${viewT.toFixed(0)}..${viewB.toFixed(0)}`);
     ck('bannerSelectsTheArmy', UI.sel && UI.sel.type === 'group' &&
       UI.sel.ids.length === 2 && UI.sel.ids.every(id => far.some(u => u.id === id)), '');
+    /* …but it only HAULS the camera when the army is nowhere to be seen. The
+       view is on them now: tapping the banner again must not move it, or the
+       player loses their place for nothing. */
+    const held = { x: R.cam.x, y: R.cam.y };
+    UI.selectArmy(1);
+    ck('bannerLeavesAViewThatAlreadySeesTheArmy',
+      R.cam.x === held.x && R.cam.y === held.y, 'camera held still');
+    // even one soldier half off the edge counts as seen
+    R.centerOn(cx - R.viewW() / R.cam.z / CFG.TILE / 2 + 0.4, cy);
+    const edge = { x: R.cam.x, y: R.cam.y };
+    ck('theArmyIsOnScreenAtTheEdge', R.onScreen(far[0].x, far[0].y), 'sprite box overlaps the view');
+    UI.selectArmy(1);
+    ck('bannerLeavesAnArmyHalfOffTheEdge',
+      R.cam.x === edge.x && R.cam.y === edge.y, 'still no jump');
+    // and a soldier hidden behind the build menu is NOT on screen
+    const savedBottom = R.bottomReserve;
+    R.bottomReserve = R.viewH() * 0.9;
+    ck('theHudDoesNotCountAsVisible', !R.onScreen(far[0].x, far[0].y + 6), 'behind the menu is out of sight');
+    R.bottomReserve = savedBottom;
+  }
+
+  // ---- 5b. a fleet flies a SHIP on its banner, an army flies the helmet ----
+  {
+    const tc = setup('ag5b');
+    const boats = [mk('warship', tc.x + 2, tc.y + 2), mk('warship', tc.x + 3, tc.y + 2)];
+    const foot = [mk('defender', tc.x + 5, tc.y), mk('archer', tc.x + 6, tc.y)];
+    const nf = UI.saveArmy(boats.map(u => u.id));
+    const na = UI.saveArmy(foot.map(u => u.id));
+    ck('aFleetKnowsItFloats', UI.armyIsNaval(nf) === true && UI.armyIsNaval(na) === false,
+      `fleet ${nf} naval, army ${na} not`);
+    // a lone scout tagging along does not turn a fleet back into an army
+    const mixed = [boats[0].id, boats[1].id, foot[0].id];
+    UI.removeArmy(nf);
+    const nm = UI.saveArmy(mixed);
+    ck('mostOfItAfloatIsStillAFleet', UI.armyIsNaval(nm) === true, '2 hulls to 1 pair of boots');
+    // the art itself: the ship is drawn, and it is not the helmet
+    const draw = (art) => {
+      const c = document.createElement('canvas'); c.width = c.height = 34;
+      const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+      (art === 'ship' ? UI.drawShip : UI.drawHelmet).call(UI, g, 6, 3);
+      return c.toDataURL();
+    };
+    ck('theShipIsItsOwnDrawing', draw('ship') !== draw('helm'), '');
+    ck('theShipFitsTheHelmetsFootprint',
+      UI.ARMY_SHIP.length === UI.ARMY_HELM.length &&
+      UI.ARMY_SHIP.every(r => r.length === UI.ARMY_HELM[0].length),
+      UI.ARMY_SHIP[0].length + 'x' + UI.ARMY_SHIP.length);
+    ck('everyShipPixelHasAColour',
+      UI.ARMY_SHIP.every(r => [...r].every(c => c === '.' || UI.ARMY_SHIP_COL[c])), '');
+    // and the banner the fleet actually renders differs from an army's
+    const icon = (n) => {
+      const c = document.createElement('canvas'); c.width = c.height = 34;
+      UI.drawArmyIcon(c.getContext('2d'), n);
+      return c.toDataURL();
+    };
+    ck('theRailTellsThemApart', icon(nm) !== icon(na), 'fleet banner vs army banner');
   }
 
   // ---- 6. the group panel offers Save (next slot named), then Remove ----

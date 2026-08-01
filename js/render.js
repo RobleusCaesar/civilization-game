@@ -620,6 +620,22 @@ const R = {
     this.clampCam();
   },
 
+  /* Is this world point actually on the player's screen right now? Used by the
+     army banners, which only haul the camera when NOTHING of the army can be
+     seen (tests/army-groups.mjs). The band excludes what the HUD covers — the
+     top bar and the open build menu — because a soldier hidden behind the
+     interface is not a soldier the player can see. A unit counts as visible
+     when its SPRITE BOX overlaps the band, so one standing half off the edge
+     still counts: the ask was "slightly in frame". */
+  onScreen(wx, wy) {
+    const z = this.cam.z, TL = CFG.TILE, half = TL * z * 0.5;
+    const sx = (wx * TL - this.cam.x) * z;
+    const sy = (wy * TL - this.cam.y) * z - CFG.SPRITE_LIFT * z;
+    const top = this.topReserve || 0, bot = this.bottomReserve || 0;
+    return sx + half > 0 && sx - half < this.viewW() &&
+           sy + half > top && sy - half < this.viewH() - bot;
+  },
+
   screenToWorld(sx, sy) {
     return { x: sx / this.cam.z + this.cam.x, y: sy / this.cam.z + this.cam.y };
   },
