@@ -167,9 +167,11 @@ const CFG = {
       desc: 'Heart of the village. Trains villagers, stores goods.',
       train: { villager: { cost: { food: 50 }, time: 1 } },
       levels: [
-        { cost: {},                                time: 0, hp: 500,  pop: 5,  out: { gold: 4 }, vision: 6 },
-        { cost: { wood: 200, stone: 150, gold: 30 }, time: 3, hp: 800,  pop: 8,  out: { gold: 8 }, vision: 7 },
-        { cost: { wood: 400, stone: 300, gold: 80 }, time: 4, hp: 1200, pop: 12, out: { gold: 12 }, vision: 8,
+        { cost: {},                                 time: 0, hp: 500,  pop: 5,  out: { gold: 4 }, vision: 6 },
+        // the hall is the spine of the run, so its storeys are dear — and they
+        // are gated on a town that has actually GROWN (Bld.tcSupport)
+        { cost: { wood: 300, stone: 225, gold: 45 },  time: 3, hp: 800,  pop: 8,  out: { gold: 8 }, vision: 7 },
+        { cost: { wood: 600, stone: 450, gold: 120 }, time: 4, hp: 1200, pop: 12, out: { gold: 12 }, vision: 8,
           bonus: '+10% production to all buildings' },
       ],
     },

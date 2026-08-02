@@ -81,6 +81,7 @@ node tests/gold-mine.mjs       # gold seams are found, claimed, worked and held 
 node tests/raider-camps.mjs    # barbarian camps are standing, tended, burnable ground — the wild country has owners
 node tests/mortality.mjs       # a villager dies every so often, of something apt — and their post is left empty
 node tests/drawbridge.mjs      # a Lv3 gate's bridge on chains: raised, the gate is a WALL — to its owner too
+node tests/tc-upgrade.mjs      # the hall rises on the town's shoulders — 3 buildings at its own level
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -1035,3 +1036,27 @@ building, never in a save — the same rule `R._fighting`, `R.collapses` and
 inherit another run's deck angle. The tile seals the INSTANT the order is
 given; the animation is only what the player sees. A gate first met already
 shut (a loaded save) starts settled rather than slamming on sight.
+
+**The hall rises on the town's shoulders** (`tests/tc-upgrade.mjs`): a Town
+Center storey is no longer something you simply save up for. Its price went up
+by half (Lv 2 now 300 wood / 225 stone / 45 gold, Lv 3 600 / 450 / 120), and it
+must be EARNED: `Bld.tcSupport` counts FINISHED buildings at the hall's own
+level and `Bld.canUpgrade` demands `Bld.TC_SUPPORT` (3) of them — three level-1
+buildings for Lv 2, three level-2 buildings for Lv 3. One rule serves both
+tiers because it keys off the hall's CURRENT level, so the hall is always a
+step BEHIND the town rather than in front of it.
+**It cannot deadlock**: an ordinary building may only reach Lv 2 once the hall
+is Lv 2 (the `Needs Town Center Lv N` gate just above it), so the sequence is
+town → hall → town → hall and always terminates.
+**Walls and gates do not count.** They have no upgrade of their own — the whole
+curtain is raised at once from the Town Center at a village-wide tier — so
+counting them would let a line of cheap palisade sections buy the hall's next
+storey, which is exactly the shortcut the rule exists to close. Work SITES
+don't count either: a building that isn't finished isn't a building yet.
+**Owner-agnostic** — the rival's chief builds a town before a hall on the same
+terms, and its Town-Center macro-action simply scores something else while it
+cannot (a 300-day sim puts the rival's L2/L3 roughly 15–100 days later, never
+never-happening). The refusal carries a LIVE TALLY ("Needs 3 buildings at Lv 1
+(have 2)"), so `UI.panelSig`'s `tc` branch has to include `Bld.tcSupport(b)` —
+that number moves without `ok` flipping, and without it the panel sits on a
+stale count.

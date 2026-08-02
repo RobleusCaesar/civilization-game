@@ -1368,7 +1368,9 @@ const UI = {
         // visibility bits: pointless buttons unrender the moment they empty
         const vills = S.units.some(u => u.owner === 'P' && Units.isVillager(u));
         const idle = S.units.some(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
-        sig += '|' + (S.wallLevel || 1) + '|' + Bld.forts().length +
+        // the upgrade button's reason counts the town up ("have 2 of 3") — that
+        // number changes without `ok` flipping, so it has to be in the signature
+        sig += '|' + Bld.tcSupport(b) + '|' + (S.wallLevel || 1) + '|' + Bld.forts().length +
                '|' + vills + '|' + (S.garrison.length > 0) + '|' + idle +
                '|' + (b.wallUp > 0 ? 'w' + b.wallUpTarget : '-');
       }

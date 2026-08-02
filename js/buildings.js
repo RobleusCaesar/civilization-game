@@ -539,6 +539,31 @@ const Bld = {
       u.task.id === b.id && Math.hypot(u.x - b.x - 0.5, u.y - b.y - 0.5) <= 1.4).length;
   },
 
+  /* ---- THE HALL RISES ON THE TOWN'S SHOULDERS (tests/tc-upgrade.mjs) ----
+     A Town Center storey is no longer a thing you simply save up for: it must
+     be EARNED by a village that has actually grown around it. Three finished
+     buildings at the hall's own level buy the next one — three level-1
+     buildings for Lv 2, three level-2 buildings for Lv 3 — so the hall is
+     always a step BEHIND the town rather than a step in front of it.
+
+     The requirement keys off the hall's CURRENT level (`b.level`), which is
+     what makes one rule serve both tiers. It cannot deadlock: an ordinary
+     building may only reach Lv 2 once the hall is Lv 2 (the Town Center gate
+     just above), so the sequence is town → hall → town → hall.
+
+     WALLS AND GATES DO NOT COUNT. They have no upgrade of their own — the
+     whole curtain is raised at once from the Town Center at a village-wide
+     tier — so counting them would let a line of cheap palisade sections buy
+     the hall's next storey, which is precisely the shortcut this rule exists
+     to close. Owner-agnostic: the rival's chief builds a town before a hall
+     on the same terms. */
+  TC_SUPPORT: 3,
+  tcSupport(tc) {
+    return this.list(tc.owner).filter(o =>
+      o.key !== 'tc' && o.key !== 'wall' && o.key !== 'gate' &&
+      !(o.construction > 0) && o.level >= tc.level).length;
+  },
+
   canUpgrade(b) {
     const d = this.def(b.key);
     if (b.key === 'wall' || b.key === 'gate')
@@ -552,6 +577,10 @@ const Bld = {
       const tc = this.tcOf(b.owner);
       if (!tc || tc.level < b.level + 1)
         return { ok: false, why: `Needs Town Center Lv ${b.level + 1}` };
+    } else if (this.tcSupport(b) < this.TC_SUPPORT) {
+      // the hall rises on the town's shoulders, not the other way round
+      return { ok: false, why: `Needs ${this.TC_SUPPORT} buildings at Lv ${b.level} ` +
+        `(have ${this.tcSupport(b)})` };
     }
     const res = b.owner === 'P' ? S.res : S.ai.res;
     if (!this.canAfford(next.cost, res)) return { ok: false, why: 'Not enough resources' };
