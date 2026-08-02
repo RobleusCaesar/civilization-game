@@ -535,9 +535,11 @@ const UI = {
     const hitBld = G.visibleAt(tile.x, tile.y) ? Bld.at(tile.x, tile.y) : null;
     const hitBridge = (explored && Bld.bridgeAt) ? Bld.bridgeAt(tile.x, tile.y) : null;
     const foeBldNear = () => {
-      if (hitBld && hitBld.owner === 'A') return hitBld;
+      // anything not ours that can be hurt — the rival's works AND a
+      // barbarian camp (Bld.foeBld)
+      if (Bld.foeBld(hitBld, 'P')) return hitBld;
       const n = this.snapNear(wx, wy, (x, y) => {
-        const b2 = G.visibleAt(x, y) ? Bld.at(x, y) : null; return !!(b2 && b2.owner === 'A');
+        const b2 = G.visibleAt(x, y) ? Bld.at(x, y) : null; return Bld.foeBld(b2, 'P');
       }, 0.42);
       return n ? Bld.at(n.x, n.y) : null;
     };
@@ -766,8 +768,8 @@ const UI = {
           : 'Transport is full (or away from shore)', !n);
         return;
       }
-      const foeBld = (hitBld && hitBld.owner === 'A') ? hitBld
-        : (!hitBld && !tapUnit ? bldNear(0.42, b2 => b2.owner === 'A') : null);
+      const foeBld = Bld.foeBld(hitBld, 'P') ? hitBld
+        : (!hitBld && !tapUnit ? bldNear(0.42, b2 => Bld.foeBld(b2, 'P')) : null);
       if (foeBld) {
         for (const id of ids) { const u = Units.get(id); if (u && !Units.isTransport(u)) { u.defend = false; u.assault = true; Units.orderAttackBuilding(u, foeBld); } }
         this.toast('⚔️ ' + (fleet ? 'Fleet bombards ' : 'War party attacks ') + Bld.def(foeBld.key).name);
@@ -813,11 +815,12 @@ const UI = {
         else this.toast('Transport is full (or away from shore)', true);
         return;
       }
-      // a mine is never a target (Bld.attackable) — tapping the rival's seam
-      // with soldiers walks them onto it, which is how you actually take it
-      const foeBld = (hitBld && hitBld.owner === 'A' && Bld.attackable(hitBld)) ? hitBld
+      // anything not ours that can be hurt: the rival's works and a barbarian
+      // camp alike. A mine is never a target (Bld.attackable) — tapping a seam
+      // with soldiers walks them onto it, which is how you actually take it.
+      const foeBld = Bld.foeBld(hitBld, 'P') ? hitBld
         : (!hitBld && !tapUnit && Units.isMilitary(sel)
-            ? bldNear(0.42, b2 => b2.owner === 'A' && Bld.attackable(b2)) : null);
+            ? bldNear(0.42, b2 => Bld.foeBld(b2, 'P')) : null);
       if (foeBld && Units.isMilitary(sel)) {
         sel.defend = false;
         sel.assault = true;

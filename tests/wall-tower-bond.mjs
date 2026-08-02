@@ -121,25 +121,77 @@ const out = await p.evaluate(() => {
     // and it tells the SAME half-and-half story as the curtain it stands in
     ck('gateAndWallAgreeAtL2', Math.abs(g2.wood - mix(Sprites.wallMask[1][10]).wood) < 0.25,
       'gate ' + pct(g2) + ' vs wall ' + pct(mix(Sprites.wallMask[1][10])));
-    /* THE ARCH FACES EAST AND WEST. Looking along a north-south wall you are
-       looking at the gatehouse's FLANK: there is no doorway to see, and drawing
-       one there (by transposing the face, as this file used to) puts a gateway
-       at a viewpoint that cannot exist. So the face must have a dark gateway
-       through its middle and the flank must not. */
-    const gateway = (c) => {
-      const d = c.getContext('2d').getImageData(22, 30, 20, 24).data;
-      let n = 0, dark = 0;
-      for (let i = 0; i < d.length; i += 4) {
-        if (d[i + 3] < 96) continue;
-        n++;
-        if (d[i] < 62 && d[i + 1] < 62 && d[i + 2] < 62) dark++;
+    /* THE WAY THROUGH FACES EAST AND WEST. Looking along a north-south wall you
+       see the gatehouse's FLANK: there is no doorway to see, and drawing one
+       there — by TRANSPOSING the face, which this file did for one commit —
+       puts a gateway at a viewpoint that cannot exist and reads as a door
+       lying on its side. That transposition is the thing to guard, so measure
+       it directly: the flank must be nothing like the face turned on its side.
+
+       (This used to be measured as "the face's passage is DARK and the flank's
+       is not", which only held while every tier was a castle with an open
+       archway. The L1 palisade gate and the L2 stone archway both close their
+       gateway with a TIMBER DOOR — no dark hole at all — so the old proxy
+       failed on art that is perfectly correct. The rule it stood for is the
+       one below.) */
+    const transposed = (c) => {
+      const n = c.width, src = c.getContext('2d').getImageData(0, 0, n, n).data;
+      const t = document.createElement('canvas'); t.width = t.height = n;
+      const tg = t.getContext('2d'), img = tg.createImageData(n, n);
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        const a = (y * n + x) * 4, b2 = (x * n + y) * 4;
+        for (let k = 0; k < 4; k++) img.data[b2 + k] = src[a + k];
       }
-      return n ? dark / n : 0;
+      tg.putImageData(img, 0, 0);
+      return t;
+    };
+    const differ = (a, b2) => {   // mean per-pixel difference, 0 = identical
+      const n = a.width;
+      const da = a.getContext('2d').getImageData(0, 0, n, n).data;
+      const db = b2.getContext('2d').getImageData(0, 0, n, n).data;
+      let sum = 0;
+      for (let i = 0; i < da.length; i += 4)
+        sum += Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) +
+               Math.abs(da[i + 2] - db[i + 2]) + Math.abs(da[i + 3] - db[i + 3]);
+      return sum / (n * n * 4);
     };
     for (let L = 0; L < 3; L++) {
-      const f = gateway(Sprites.gateMask[L][0]), v = gateway(Sprites.gateMask[L][1]);
-      ck('theArchIsOnTheFaceOnly' + (L + 1), f > 0.3 && v < 0.12,
-        'L' + (L + 1) + ' face ' + Math.round(f * 100) + '% shadow · flank ' + Math.round(v * 100) + '%');
+      const face = Sprites.gateMask[L][0], flank = Sprites.gateMask[L][1];
+      const d = differ(flank, transposed(face));
+      ck('theFlankIsNotTheFaceOnItsSide' + (L + 1), d > 20,
+        'L' + (L + 1) + ' differs from the transposed face by ' + d.toFixed(1));
+    }
+    /* …and the tier that DOES stand open still reads that way: the level-3
+       gatehouse's passage is a dark arch behind a portcullis, and its flank
+       shows no such thing. */
+    {
+      const gateway = (c) => {
+        const d = c.getContext('2d').getImageData(22, 30, 20, 24).data;
+        let n = 0, dark = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3] < 96) continue;
+          n++;
+          if (d[i] < 62 && d[i + 1] < 62 && d[i + 2] < 62) dark++;
+        }
+        return n ? dark / n : 0;
+      };
+      const f = gateway(Sprites.gateMask[2][0]), v = gateway(Sprites.gateMask[2][1]);
+      ck('theThirdTierStandsOpen', f > 0.3 && v < 0.12,
+        'L3 face ' + Math.round(f * 100) + '% shadow · flank ' + Math.round(v * 100) + '%');
+      // …and the earlier tiers CLOSE theirs with a timber door, which is the
+      // whole reason they no longer read as castles
+      for (let L = 0; L < 2; L++) {
+        const c = Sprites.gateMask[L][0];
+        const d = c.getContext('2d').getImageData(24, 36, 16, 18).data;
+        let n = 0, wood = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3] < 96) continue;
+          n++;
+          if (d[i] - d[i + 2] > 26) wood++;
+        }
+        ck('theEarlyTiersHangATimberDoor' + (L + 1), n > 0 && wood / n > 0.75,
+          'L' + (L + 1) + ' gateway is ' + Math.round(100 * wood / n) + '% timber');
+      }
     }
     ck('theGatehouseFliesAStandardEitherWay',
       Array.isArray(R.BANNER_AT.gate) && Array.isArray(R.BANNER_AT.gateV) &&

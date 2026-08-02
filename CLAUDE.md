@@ -685,6 +685,30 @@ DRAWN; whether anyone may walk there is `Bld.solid` (**Buildings are solid**,
 below), and the two now agree — a bonded tower really does seal the line.
 Keep them independent rules: an off-line tower blocks its own tile without
 ever drawing a stub.
+**Three gates, three ages** (same test): a gatehouse is the clearest read the
+player has on how far the tribe has come, so the tiers are three DIFFERENT
+STRUCTURES rather than one castle in three stones. **L1** (`gateFaceT1` /
+`gateSideT1`) is a PALISADE GATE — two stout posts driven either side of a gap,
+a lintel across them, a braced plank door hung between, rope lashings; no
+turrets, no battlements, no portcullis, because nobody in a stockade has any of
+those. Its only "iron" is `WD[0]`, the darkest wood, since real iron at this
+size reads as masonry. **L2** (`gateFaceT2` / `gateSideT2`) is a STONE ARCHWAY
+with a timber door in it — squared piers, a round arch of voussoirs, flat
+coping, and the same planked wall-walk down the curtain that the L2 wall
+carries (which is also what keeps it half-and-half rather than a slab of
+masonry). Still not a castle: nothing rises out of the line, no machicolation,
+no crenels. **L3** (`gateFaceT3`) is the original full gatehouse — flanking
+turrets, machicolated gallery, portcullis, and the drawbridge, which is L3-only
+and therefore untouched by any of this. All three still carry the curtain at
+rows 10..21 and stand on the tile's front edge (row 30).
+**The flank test measures TRANSPOSITION, not darkness** (same test): the old
+check was "the face's passage is dark and the flank's is not", which only held
+while every tier had an open archway — the L1 and L2 gateways are CLOSED with a
+timber door and have no dark hole at all, so it failed on art that was perfectly
+correct. The rule it stood for is measured directly now: the flank must be
+nothing like the face turned on its side. L3 keeps a check that its passage
+genuinely stands open; L1 and L2 get one that theirs is genuinely timber.
+
 **The gatehouse, and where you are standing** (same test): this game draws
 terrain from above but BUILDINGS FACE YOU — a tower is an elevation with a door
 at its foot. A fortification obeys the same rule, so a gate has TWO DIFFERENT
@@ -1031,6 +1055,15 @@ branch logs it; the standing band goes loose the next time `raiderSeek` runs
 (no camp, no post); `tickRaiderCamps` raises nothing there again; and the wave
 muster filter in `Combat.spawnWave` only counts camps still standing, so
 burning one takes that muster point off the board for good.
+**And you can actually ORDER the attack** (same test): making a camp a building
+was only half of "burnable" — the TAP has to issue the order, and it didn't.
+Every foe-building tap in ui.js asked `owner === 'A'`, and a camp is owned by
+`'R'`, so a war party stood beside one being told ABOUT it with no way to pull
+it down. All three tap sites now go through `Bld.foeBld(b, owner)` — anything
+not yours that can be hurt, the rival's works and a barbarian camp alike (and
+never a gold mine, which `Bld.attackable` excludes). One predicate, so the
+sites can never drift apart again.
+
 **Scaled both ways**: camp COUNT is the map's area factor × the mode's
 `campMult` (calm 0.6 / moderate 1 / hard 1.5, floored at `RAIDER_CAMPS.min`),
 and the band size comes from `campGuard` (calm 1–2, moderate 1–3, hard 2–3).

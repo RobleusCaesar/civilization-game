@@ -160,6 +160,14 @@ const Bld = {
      agnostic to the team" would be a lie. Every target-picking path asks
      this, and Bld.damage refuses as a backstop. */
   attackable(b) { return !!b && b.key !== 'mine'; },
+  /* IS THIS A TARGET FOR `owner`? Not "does it belong to the rival" — a
+     BARBARIAN CAMP is owned by 'R' and is every bit as attackable, which is
+     the whole point of making it a building you can pull down
+     (tests/raider-camps.mjs). Keying the tap on `owner === 'A'` left a war
+     party standing beside a camp being told ABOUT it, with no way to burn it:
+     the order simply never issued. Every target tap goes through here now, so
+     the two can never drift apart again. */
+  foeBld(b, owner) { return !!b && b.owner !== owner && this.attackable(b); },
 
   def(key) { return CFG.BUILDINGS[key]; },
   // what a new building of this type costs/produces right now — walls and

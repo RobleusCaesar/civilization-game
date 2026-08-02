@@ -194,6 +194,44 @@ const out = await p.evaluate(() => {
       'nobody raises one of these');
   }
 
+  /* ---- 6. AND YOU CAN ACTUALLY ORDER THE ATTACK ----
+     Making the camp a building is only half of "burnable": the tap has to
+     issue the order. It didn't. Every foe-building tap in ui.js asked
+     `owner === 'A'`, and a camp is owned by 'R' — so a war party stood beside
+     one being told ABOUT it, with no way to pull it down. All three tap sites
+     now go through Bld.foeBld(b, owner): anything not yours that can be hurt,
+     the rival's works and a barbarian camp alike. */
+  {
+    G.newGame('rc6', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    G.freeVis = true; G.updateVisibility();
+    const camp = S.buildings.find(z => z.key === 'raidercamp');
+    ck('aCampIsSomethingYouMayAttack',
+      !!camp && camp.owner === 'R' && Bld.foeBld(camp, 'P') === true,
+      camp ? 'owner ' + camp.owner : 'no camp on the map');
+    // …and it is not a target for the band that lives in it
+    ck('butNotForItsOwnBand', Bld.foeBld(camp, 'R') === false, '');
+    const spot = MapGen.findNear(camp.x + 2, camp.y, 6,
+      (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
+    const s2 = Units.spawn('defender', 'P', spot.x, spot.y);
+    s2.x = spot.x + 0.5; s2.y = spot.y + 0.5;
+    UI.select('unit', s2.id);
+    const TL = CFG.TILE, z = R.cam.z;
+    UI.handleTap((camp.x + 0.5) * TL * z - R.cam.x * z, (camp.y + 0.5) * TL * z - R.cam.y * z);
+    ck('tappingItOrdersTheAttack',
+      s2.task && s2.task.type === 'attackBld' && s2.tBld === camp.id,
+      s2.task ? s2.task.type + ' / tBld ' + s2.tBld : 'no order given');
+    // …and the blows land, and it comes down
+    const hp0 = camp.hp;
+    for (let i = 0; i < 6; i++) {
+      const q = Units.spawn('defender', 'P', spot.x, spot.y);
+      q.x = spot.x + 0.5 + i * 0.2; q.y = spot.y + 0.5;
+      Units.orderAttackBuilding(q, camp);
+    }
+    for (let i = 0; i < 4000 && Bld.get(camp.id); i++) { Units.update(0.05); Combat.update(0.05); }
+    ck('andTheCampBurnsDown', !Bld.get(camp.id) && camp.hp < hp0,
+      'hp ' + Math.round(camp.hp) + '/' + camp.maxhp);
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));
