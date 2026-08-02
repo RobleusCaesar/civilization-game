@@ -851,9 +851,9 @@ const Sprites = {
       if (d.gold) q(x0, top - 3, w, 1, AP.gold[2]);
     };
 
-    // ---- 1. THE CURTAIN, straight through, at wall height ----
-    face(0, 32, W0, W1 + 1, 5 + lv);
-    for (let x = 2; x < 30; x += 10) { q(x, W0 - 4, 4, 4, d.mid); q(x, W0 - 4, 4, 1, d.lit); }
+    // ---- 1. THE CURTAIN — the WALL's own art, stamped by drawGate before
+    //         this runs. Hand-drawing it here is what made the merlons stop
+    //         dead at every gate; the line now runs straight through. ----
 
     // ---- 2. THE GATE, stretching between the turrets ----
     face(C0, C1 - C0, 6, GND, 71 + lv);
@@ -910,15 +910,9 @@ const Sprites = {
     const G0 = 6, G1 = 25;                   // the gatehouse: as wide as a tower
     const TOP = 5, GND = 30;                 // its head and its foot — the tower's own ground line
 
-    // the curtain running in from north and south, behind the gatehouse — with
-    // a shadow line where the northern walk goes behind it, so it reads as
-    // passing BEHIND the block and not running onto its roof
-    q(W0, 0, W1 - W0 + 1, TOP + 3, d.mid); q(W0, 0, 1, TOP + 3, d.lit);
-    // the southern walk meets the block at WALK HEIGHT, partway up its flank —
-    // brought out at the foot it reads as bolted onto the bottom of the gate
-    q(W0, 17, W1 - W0 + 1, 15, d.mid); q(W0, 17, 1, 15, d.lit);
-    q(W1, 0, 1, TOP + 3, d.dark); q(W1, 17, 1, 15, d.dark);
-    q(W0, 17, W1 - W0 + 1, 1, d.lit);
+    // the curtain running in from north and south is the WALL's own art,
+    // stamped by drawGate — all that is left to draw is the shadow line where
+    // the northern walk goes BEHIND the block rather than onto its roof
     q(W0, 0, W1 - W0 + 1, 2, 'rgba(24,18,12,0.55)');
 
     // the block itself
@@ -1047,15 +1041,8 @@ const Sprites = {
     const WD = AP.wood, TH = AP.thatch;
     const GND = 30, W0 = 10, W1 = 21;
     const P0 = 8, P1 = 20, O0 = 12, O1 = 19;   // posts, and the opening between them
-    // the stockade running the width of the tile at the curtain's own band
-    for (let x = 0; x < 32; x += 2) {
-      q(x, W0, 2, W1 - W0 + 1, WD[2]);
-      q(x + 1, W0, 1, W1 - W0 + 1, WD[1]);
-      q(x, W0 - 1, 2, 1, WD[3]);                       // sharpened tops catching the light
-    }
-    q(0, W1, 32, 1, WD[0]);
-    // …with a rail lashed along it
-    q(0, W0 + 4, 32, 1, WD[3]); q(0, W0 + 5, 32, 1, WD[0]);
+    // (the stockade crossing this tile is the WALL's own art, stamped by
+    // drawGate before we get here — never redrawn, or the two drift apart)
     // the two gate posts, thicker than the stakes and driven deeper
     for (const px of [P0, P1]) {
       q(px, 6, 4, GND - 6, WD[2]);
@@ -1095,11 +1082,8 @@ const Sprites = {
     const GND = 30, W0 = 10, W1 = 21;
     const P0 = 8, P1 = 20, O0 = 12, O1 = 19;
     const SPR = 15, CX = (O0 + O1 + 1) / 2;            // where the arch springs, and its centre
-    // the curtain: stone below, a planked walk down its middle
-    ashlar(q, 0, W0, 32, W1 - W0 + 1, ST, 9);
-    q(0, W0, 32, 1, ST[3]); q(0, W1, 32, 1, ST[0]);
-    ART.woodPlankTexture(q, 0, W0 + 3, 32, 5, 17);
-    q(0, W0 + 3, 32, 1, WD[3]); q(0, W0 + 7, 32, 1, WD[0]);
+    // (the curtain crossing this tile is the WALL's own art — stamped by
+    // drawGate, merlons, walk and all — so the line runs unbroken through)
     // the two piers of the archway
     for (const px of [P0, P1]) {
       ashlar(q, px, 7, 4, GND - 7, ST, px + 3);
@@ -1137,13 +1121,10 @@ const Sprites = {
   function gateSideT1(q) {
     const WD = AP.wood, TH = AP.thatch;
     const W0 = 10, W1 = 21, G0 = 8, G1 = 23, TOP = 6, GND = 30;
-    // the stockade coming in from north and south, behind the posts
-    for (const [y0, h] of [[0, TOP + 2], [18, 14]]) {
-      for (let x = W0; x <= W1; x += 2) { q(x, y0, 2, h, WD[2]); q(x + 1, y0, 1, h, WD[1]); }
-      q(W1, y0, 1, h, WD[0]);
-    }
-    q(W0, 0, W1 - W0 + 1, 2, 'rgba(24,18,12,0.55)');   // the northern run passes behind
-    q(W0, 18, W1 - W0 + 1, 1, WD[3]);
+    // the stockade coming in from north and south is the WALL's own art
+    // (stamped by drawGate); all this adds is the shadow where the northern
+    // run passes BEHIND the block instead of onto its roof
+    q(W0, 0, W1 - W0 + 1, 2, 'rgba(24,18,12,0.55)');
     // the gate block: close-set uprights, lashed
     for (let x = G0; x <= G1; x += 2) { q(x, TOP, 2, GND - TOP, WD[2]); q(x + 1, TOP, 1, GND - TOP, WD[1]); }
     q(G0, TOP, G1 - G0 + 1, 1, WD[3]);
@@ -1160,15 +1141,9 @@ const Sprites = {
   function gateSideT2(q) {
     const ST = AP.stone, WD = AP.wood;
     const W0 = 10, W1 = 21, G0 = 7, G1 = 24, TOP = 6, GND = 30;
-    for (const [y0, h] of [[0, TOP + 3], [18, 14]]) {
-      ashlar(q, W0, y0, W1 - W0 + 1, h, ST, 11 + y0);
-      q(W0, y0, 1, h, ST[3]); q(W1, y0, 1, h, ST[0]);
-      // the walk runs down the middle of the curtain, stone parapet either side
-      ART.woodPlankTexture(q, W0 + 2, y0, 8, h, 23 + y0);
-      q(W0 + 2, y0, 1, h, WD[3]); q(W0 + 9, y0, 1, h, WD[0]);
-    }
+    // the curtain running in north and south is the WALL's own art (stamped by
+    // drawGate) — only the shadow where the northern run passes behind is ours
     q(W0, 0, W1 - W0 + 1, 2, 'rgba(24,18,12,0.55)');
-    q(W0, 18, W1 - W0 + 1, 1, ST[3]);
     // the pier block
     ashlar(q, G0, TOP, G1 - G0 + 1, GND - TOP, ST, 37);
     q(G0, TOP, G1 - G0 + 1, 1, ST[4]); q(G0, GND - 1, G1 - G0 + 1, 1, ST[0]);
@@ -1187,7 +1162,21 @@ const Sprites = {
     q(G0 + 1, GND, G1 - G0 - 1, 2, ART.STYLE.SHADOW);
   }
 
+  /* A GATE STANDS IN THE WALL, so the curtain crossing its tile IS the wall —
+     the same stone, the same merlons on the same rhythm, the same walk at the
+     same height. Each tier used to hand-draw its own version of that band and
+     they drifted: the crenellation stopped at the gate and started again the
+     other side, and the timber walk stepped a row as it crossed. Stamping the
+     REAL wall sprite for a straight run (E|W under a face, N|S under a flank)
+     and building the gate on top of it makes the match structural — change
+     drawWallMask and every gate follows it for free. */
   function drawGate(p, lv, vert) {
+    const fam = Sprites.wallMask && Sprites.wallMask[Math.min(Math.max(lv, 1), 3) - 1];
+    if (fam && p.g) {
+      const w = p.g.canvas.width;
+      p.g.imageSmoothingEnabled = false;
+      p.g.drawImage(fam[vert ? (1 | 4) : (2 | 8)], 0, 0, w, w);
+    }
     return vert ? drawGateSide(p.hi, lv) : drawGateFace(p.hi, lv);
   }
 
@@ -2043,6 +2032,14 @@ const Sprites = {
   // detail as the towers it stands between — is drawn at HIGH RES (64px), with
   // a proportional 2px outline for everything not in NO_OUTLINE
   const LORES_BLD = new Set(['wall']);
+  /* THE WALL ATLAS IS BUILT FIRST. A gatehouse stamps a straight run of the
+     REAL wall art as its own curtain (drawGate), so the two can never drift
+     apart — which is exactly what had happened: the gate hand-drew its own
+     approximation of the curtain and the merlons stopped dead at the gate,
+     the walk stepped a row, and every gate wore a seam on both flanks.
+     wallMask[level-1][mask 0..15]. */
+  Sprites.wallMask = [1, 2, 3].map(lv =>
+    Array.from({ length: 16 }, (_, m) => tile(p => drawWallMask(p, lv, m))));
   for (const key of Object.keys(B_DRAW)) {
     const hi = !LORES_BLD.has(key);
     const build = (fac) => [1, 2, 3].map(lv => {
@@ -2052,9 +2049,6 @@ const Sprites = {
     Sprites.building[key] = build(AP.blue);
     Sprites.buildingA[key] = build(AP.red);
   }
-  // auto-tiling atlases: wallMask[level-1][mask 0..15], gateMask[level-1][0=horizontal,1=vertical]
-  Sprites.wallMask = [1, 2, 3].map(lv =>
-    Array.from({ length: 16 }, (_, m) => tile(p => drawWallMask(p, lv, m))));
   // [east-west face, north-south flank] — two authored views (see drawGate)
   Sprites.gateMask = [0, 1, 2].map(li =>
     [Sprites.building.gate[li], tileB(p => drawGate(p, li + 1, true))]);

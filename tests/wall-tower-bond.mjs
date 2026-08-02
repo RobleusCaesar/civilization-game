@@ -121,6 +121,75 @@ const out = await p.evaluate(() => {
     // and it tells the SAME half-and-half story as the curtain it stands in
     ck('gateAndWallAgreeAtL2', Math.abs(g2.wood - mix(Sprites.wallMask[1][10]).wood) < 0.25,
       'gate ' + pct(g2) + ' vs wall ' + pct(mix(Sprites.wallMask[1][10])));
+    /* THE CURTAIN THROUGH A GATE *IS* THE WALL. Each tier used to hand-draw
+       its own version of the band crossing the gate's tile, and they drifted:
+       the crenellation stopped dead at the gate and started again the far
+       side, and the timber walk stepped a row as it crossed. drawGate now
+       STAMPS the real wall sprite for a straight run (E|W under a face, N|S
+       under a flank) and builds the gate on top, so the match is structural.
+
+       Measured where it shows: the columns of the gate's tile that its own
+       structure does not cover must be PIXEL-IDENTICAL to the wall beside
+       it. Redraw the band by hand again and this fails immediately. */
+    {
+      const upscale = (c, n) => {          // the wall atlas is 32px, the gate 64
+        const t = document.createElement('canvas'); t.width = t.height = n;
+        const g2 = t.getContext('2d'); g2.imageSmoothingEnabled = false;
+        g2.drawImage(c, 0, 0, n, n);
+        return t;
+      };
+      // mean per-pixel difference over a rectangle given in FINE CELLS (of 32)
+      const rectDiff = (a, b2, x0, x1, y0, y1) => {
+        const k = a.width / 32;
+        const da = a.getContext('2d').getImageData(x0 * k, y0 * k, (x1 - x0 + 1) * k, (y1 - y0 + 1) * k).data;
+        const db = b2.getContext('2d').getImageData(x0 * k, y0 * k, (x1 - x0 + 1) * k, (y1 - y0 + 1) * k).data;
+        let sum = 0;
+        for (let i = 0; i < da.length; i += 4)
+          sum += Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) +
+                 Math.abs(da[i + 2] - db[i + 2]) + Math.abs(da[i + 3] - db[i + 3]);
+        return sum / (da.length / 4 * 4);
+      };
+      const EW = 2 | 8, NS = 1 | 4;
+      for (let L = 0; L < 3; L++) {
+        const face = Sprites.gateMask[L][0], flank = Sprites.gateMask[L][1];
+        const wEW = upscale(Sprites.wallMask[L][EW], face.width);
+        const wNS = upscale(Sprites.wallMask[L][NS], flank.width);
+        /* THE SEAM ITSELF: the outermost column of the gate's tile, where it
+           butts the wall next door. The gate's own works fill the middle (an
+           L3 gatehouse is turret-gate-turret across nearly the whole tile),
+           so this is the column that has to line up, and it is the one the
+           player's eye follows along the line. */
+        const dL = rectDiff(face, wEW, 0, 0, 0, 31), dR = rectDiff(face, wEW, 31, 31, 0, 31);
+        ck('theCurtainRunsStraightThroughAGate' + (L + 1), dL === 0 && dR === 0,
+          'L' + (L + 1) + ' left ' + dL.toFixed(1) + ' · right ' + dR.toFixed(1) + ' from the wall beside it');
+        /* THE FLANK'S NORTHERN SEAM. There is very little bare curtain to
+           measure here — the block fills the tile from its head down to the
+           front edge — so measure the one strip there is, rows 0-1, which
+           carry the deliberate shadow line that reads as the walk passing
+           BEHIND the block rather than onto its roof. Compare against the
+           wall with that same shadow laid on it: this pins BOTH that the
+           curtain is the wall's own art and that the shadow is where it
+           should be. (There is no southern equivalent: the block stands on
+           the tile's front edge and lays its own contact shadow there, like
+           every other fortification in the game.) */
+        const shaded = (() => {
+          const n = flank.width, k = n / 32;
+          const t = document.createElement('canvas'); t.width = t.height = n;
+          const g2 = t.getContext('2d'); g2.imageSmoothingEnabled = false;
+          g2.drawImage(wNS, 0, 0, n, n);
+          g2.fillStyle = 'rgba(24,18,12,0.55)';
+          g2.fillRect(10 * k, 0, 12 * k, 2 * k);
+          return t;
+        })();
+        // the curtain's OWN width only (cells 10..21): at L3 the gatehouse's
+        // banner poles stand above the tile either side of it, and a pole is
+        // the gate's, not the wall's
+        const dN = rectDiff(flank, shaded, 10, 21, 0, 1);
+        ck('andStraightThroughItsFlank' + (L + 1), dN === 0,
+          'L' + (L + 1) + ' north seam ' + dN.toFixed(1));
+      }
+    }
+
     /* THE WAY THROUGH FACES EAST AND WEST. Looking along a north-south wall you
        see the gatehouse's FLANK: there is no doorway to see, and drawing one
        there — by TRANSPOSING the face, which this file did for one commit —

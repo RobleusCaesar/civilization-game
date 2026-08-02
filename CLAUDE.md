@@ -685,6 +685,20 @@ DRAWN; whether anyone may walk there is `Bld.solid` (**Buildings are solid**,
 below), and the two now agree — a bonded tower really does seal the line.
 Keep them independent rules: an off-line tower blocks its own tile without
 ever drawing a stub.
+**The curtain through a gate IS the wall** (same test): each tier used to
+hand-draw its own version of the band crossing the gate's tile, and they
+drifted — the crenellation stopped dead at the gate and started again the far
+side, the timber walk stepped a row as it crossed, and every gate wore a visible
+seam on both flanks. `drawGate` now STAMPS the real wall sprite for a straight
+run (`E|W` under a face, `N|S` under a flank) and builds the gate on top, so the
+match is structural: change `drawWallMask` and all six gate drawings follow it
+for free. **`Sprites.wallMask` is therefore built BEFORE the building loop** —
+`B_DRAW.gate` reads it, and built after it would be `undefined`. No gate drawing
+may redraw the band; the test measures the outermost COLUMN of the gate's tile
+(the seam itself, where it butts the wall next door) as pixel-identical, and the
+flank's northern strip as the wall plus exactly the shadow that reads as the
+walk passing behind the block.
+
 **Three gates, three ages** (same test): a gatehouse is the clearest read the
 player has on how far the tribe has come, so the tiers are three DIFFERENT
 STRUCTURES rather than one castle in three stones. **L1** (`gateFaceT1` /
