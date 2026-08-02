@@ -35,6 +35,15 @@ The invariants it enforces (details in the test file):
    ground beside a resource) must toast a reason.
 5. A stationed worker (or builder) wins taps on their own plot; the building
    takes the tap once nobody works it. Dead-on taps always reselect.
+6. **A FULL station takes the tap as a LOOK, not an order.** Tapping a
+   fully-crewed plot while holding a villager can only mean "show me that one"
+   — the order is impossible — so the tap falls through to exactly what it
+   would have done with nothing selected (rule 5: the worker standing there).
+   Without this, walking your eye along five lumber camps to find the ones a
+   new hall lets you upgrade cost a deselect between every camp. A station with
+   ROOM is untouched: there the order is real and the villager walks over and
+   joins. This is the one place rule 4 does NOT toast a refusal — the selection
+   moving IS the answer, and it is the useful one.
 
 If a new feature genuinely needs different tap behaviour, update
 `tests/tap-audit.mjs` in the same commit and say so in the commit message —

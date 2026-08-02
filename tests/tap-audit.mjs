@@ -109,6 +109,45 @@ const out = await p.evaluate(() => {
     }
     ok('D station taps land incl. near-misses outside the plot', st === pts.length, st + '/' + pts.length);
 
+    /* D2: A FULL STATION TAKES THE TAP AS A LOOK, NOT AN ORDER.
+       Tapping a fully-crewed plot with a villager already selected used to
+       refuse the order and HOLD the selection, so walking your eye along five
+       lumber camps to see which the new hall lets you upgrade cost a deselect
+       between every one. The order is impossible there, so the tap falls
+       through to exactly what it would have done with nothing selected — by
+       rule 5 that is the worker standing on the plot. A station with ROOM is
+       untouched: the order is real and the villager walks over and joins. */
+    {
+      for (const w of S.units.filter(u => u.task && u.task.type === 'work' && u.task.id === farm.id)) w.task = null;
+      // crew the farm to capacity with hands of its own
+      const crew = [];
+      for (let i = 0; i < Bld.maxWorkers(farm); i++) {
+        const w = Units.spawn('villager', 'P', farm.x, farm.y);
+        w.x = farm.x + 0.5; w.y = farm.y + 0.62; w.task = { type: 'work', id: farm.id };
+        crew.push(w);
+      }
+      park(vil, bx + 0.5, by - 2.5);
+      UI.deselect(); UI.select('unit', vil.id);
+      toasts.length = 0;
+      tap(farm.x + 0.5, farm.y + 0.62);
+      const now = UI.sel && UI.sel.type === 'unit' ? Units.get(UI.sel.id) : null;
+      ok('D2 a full station hands the selection to its own worker',
+        !!now && now !== vil && crew.includes(now), now ? 'unit ' + now.id : String(UI.sel && UI.sel.type));
+      ok('D2 …and the villager that was selected keeps its own orders',
+        !vil.task || vil.task.type !== 'work', vil.task ? vil.task.type : 'idle');
+      ok('D2 …and it is not reported as a failure', !toasts.some(t => t[0] === '!'), toasts.join(' | ') || 'no toast');
+      // …but a station with a free slot still takes the order
+      crew[0].task = null;
+      park(vil, bx + 0.5, by - 2.5);
+      UI.deselect(); UI.select('unit', vil.id);
+      tap(farm.x + 0.5, farm.y + 0.62);
+      ok('D2 a station with room still takes the villager',
+        !!vil.task && vil.task.type === 'work' && vil.task.id === farm.id,
+        vil.task ? vil.task.type : 'no order');
+      for (const w of crew) { const i = S.units.indexOf(w); if (i >= 0) S.units.splice(i, 1); }
+      vil.task = null;
+    }
+
     // E: gather taps that miss the forest tile by a sliver still gather it
     let ga = 0;
     for (const [px, py] of [[ftx - 0.2, fty + 0.5], [ftx + 1.2, fty + 0.5], [ftx + 0.5, fty - 0.2], [ftx + 0.5, fty + 1.25],

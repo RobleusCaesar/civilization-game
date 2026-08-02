@@ -851,8 +851,23 @@ const UI = {
       }
       if (ownBld && ownBld.owner === 'P' && Units.isVillager(sel) &&
           Bld.def(ownBld.key).needsWorker && !ownBld.construction) {
+        /* A FULL STATION TAKES THE TAP AS A LOOK, NOT AN ORDER
+           (tests/tap-audit.mjs). Tapping a fully-crewed plot with a villager
+           already selected used to refuse the order and hold the selection —
+           so walking your eye along five lumber camps to see which ones the
+           new hall lets you upgrade cost a deselect between every one. The
+           order is IMPOSSIBLE here, and the only thing the player can have
+           meant is "show me that one": the tap falls through to exactly what
+           it would have done with nothing selected, which by the tap
+           contract's rule 5 is the worker standing on the plot (or the
+           building once nobody works it). A station with ROOM is untouched —
+           there the order is real, and the villager walks over and joins. */
         if (Bld.workersAssigned(ownBld) >= Bld.maxWorkers(ownBld)) {
-          this.toast(`${Bld.def(ownBld.key).name} is fully staffed (${Bld.maxWorkers(ownBld)})`, true);
+          if (!this._stationLook) {          // one bounce only: the second pass has no selection
+            this._stationLook = true;
+            this.deselect();
+            try { this.handleTap(sx, sy); } finally { this._stationLook = false; }
+          }
           return;
         }
         sel.task = { type: 'work', id: ownBld.id }; sel.tUnit = 0; sel.tBld = 0;
