@@ -419,6 +419,62 @@ const out = await p.evaluate(() => {
       !!am && am.key === 'mine' && am.owner === 'A', am ? am.owner : 'nothing');
   }
 
+  /* ---- 8. AND IT GOES LOOKING (AI.maybeProspect / prospectTarget) ----
+     The chief stops reading the map the day it finds the player's hall — the
+     scout retirement pass stands every scout down the moment the hall is
+     known, and searchTarget only ever aims at THEM. Seams lie far from both
+     towns, so on a bad seed the rival reached day 160 having never laid eyes
+     on one, and plotMine can only pick a seam that is on ai.seen: the richest
+     income on the board was the player's by default. So a chief with no seam
+     in sight sends ONE hand out to open new country. */
+  {
+    G.newGame('gm-prospect', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.ai.res = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };
+    const atc = Bld.tcOf('A');
+    if (!S.ai.seen || !S.ai.seen.length) S.ai.seen = new Array(CFG.W * CFG.H).fill(0);
+    // nothing it can see is worth claiming — that is the whole trigger
+    for (let y = 1; y < CFG.H - 1; y++) for (let x = 1; x < CFG.W - 1; x++)
+      if (S.map.terrain[MapGen.idx(x, y)] === T.GOLDORE) S.ai.seen[MapGen.idx(x, y)] = 0;
+    // hands to spare, and none of them busy
+    for (let i = 0; i < 5; i++) {
+      const sp = MapGen.findNear(atc.x + 2, atc.y + 2, 6,
+        (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+      Units.spawn('villager', 'A', sp.x, sp.y);
+    }
+    S.ai.prospectId = 0; S.ai.prospectDay = null;
+    S.day = (CFG.GOLD_SEAMS.aiDay || 40) - 1;
+    ck('noProspectingBeforeItsDay', AI.maybeProspect({}) === false,
+      'the same clock the claim itself waits on');
+    S.day = CFG.GOLD_SEAMS.aiDay + 1;
+    ck('withNoSeamInSightAHandIsSent', AI.maybeProspect({}) === true, '');
+    const w = S.units.find(u => u.owner === 'A' && u.prospecting);
+    ck('andItWalksTowardGroundNooneHasSeen',
+      !!w && w.task && w.task.type === 'move' && !S.ai.seen[MapGen.idx(w.task.x, w.task.y)],
+      w && w.task ? w.task.x + ',' + w.task.y : 'nobody went');
+    ck('onGroundItsOwnHandsCanReach',
+      (() => { const r = AI.aiLandReach(); return !r || !!r[MapGen.idx(w.task.x, w.task.y)]; })(), '');
+    ck('andNeverIntoAWarBandsYard', AI.campGround(w.task.x, w.task.y) === false,
+      'a lone prospector is not sent to a barbarian fire');
+    ck('oneHandAtATime', AI.maybeProspect({}) === true &&
+      S.units.filter(u => u.owner === 'A' && u.prospecting).length === 1, '');
+    // …and the errand ends the moment a seam comes into view: it has a purpose,
+    // not a duration, and maybeMine takes it from there
+    for (let y = 1; y < CFG.H - 1; y++) for (let x = 1; x < CFG.W - 1; x++)
+      if (S.map.terrain[MapGen.idx(x, y)] === T.GOLDORE) S.ai.seen[MapGen.idx(x, y)] = 1;
+    const seam = AI.plotMine();
+    ck('theFindIsWhatEndsIt', !!seam, 'a seam it could actually claim');
+    AI.maybeProspect({});
+    ck('andItStandsDownWhenGoldIsSpotted',
+      w.prospecting === false && S.ai.prospectId === 0, '');
+    // a hand already sent to CLAIM keeps its order — maybeMine runs first and
+    // will often pick this very walker, being the one stood nearest the find
+    w.prospecting = true; S.ai.prospectId = w.id;
+    w.task = { type: 'claim', x: seam.x, y: seam.y };
+    AI.maybeProspect({});
+    ck('standingDownNeverCancelsAClaim',
+      w.task && w.task.type === 'claim', w.task ? w.task.type : 'the order was thrown away');
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

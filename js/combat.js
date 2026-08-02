@@ -672,7 +672,14 @@ const Combat = {
   raiderSeek(u) {
     if (u.owner === 'A') return this.aiRaidSeek(u);   // rival parties think tactically
     const disp = u.owner === 'R' ? (u.hostileTo || 'P') : 'P';
-    const owners = disp === 'ALL' ? ['P', 'A'] : [disp];
+    /* A GUTTED TOWN IS LEFT ALONE (G.barbEase, tests/raider-camps.mjs) — not
+       only by the next wave, but by the bands already in the field. A tribe on
+       its knees drops off the target list entirely; if that leaves the band
+       with nobody to hunt, it does what a band with nothing to hunt has always
+       done and walks off the map. Tenders are unaffected: they are defending
+       their own ground, not choosing a town to sack. */
+    let owners = disp === 'ALL' ? ['P', 'A'] : [disp];
+    if (u.owner === 'R') owners = owners.filter(o => !G.barbEase(o));
     // COMMITTED TO LEAVING — walk the stored exit and plan nothing else. Without
     // this, the full seek below re-ran every frame and its best-effort setPath
     // calls stomped the exit route (canReach's side effect reads as "already
@@ -739,10 +746,14 @@ const Combat = {
     // rival's raiders too — three-way brawls happen (barbarian warriors count
     // as soldiers for everyone hunting them).
     const fighter = o => Units.isMilitary(o) || (o.owner === 'R' && !Units.isTransport(o));
+    // …and the people of a town the wilds have eased off are not prey either.
+    // Struck, a barbarian still hits back — that is Units.damage's retaliation,
+    // not a hunt.
+    const mark = o => u.owner !== 'R' || o.owner === 'R' || !G.barbEase(o.owner);
     const foe = this.nearestUnit(u.x, u.y, 6,
-        o => this.hostileUnits(u, o) && fighter(o) && this.canEngage(u, o))
+        o => this.hostileUnits(u, o) && mark(o) && fighter(o) && this.canEngage(u, o))
       || this.nearestUnit(u.x, u.y, 6,
-        o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o));
+        o => this.hostileUnits(u, o) && mark(o) && !Units.isNaval(o) && this.canEngage(u, o));
     // only lock on if the prey is actually reachable — otherwise a band across a
     // severed crossing would freeze staring at a foe it can never close with
     if (foe) {
@@ -1128,7 +1139,14 @@ const Combat = {
     S.wave.count++;
     S.wave.lastDay = S.day;   // so the rival can avoid piling a raid onto a fresh wave
     const gap = CFG.WAVES.minGap + Math.floor(G.rand() * (CFG.WAVES.maxGap - CFG.WAVES.minGap + 1));
-    S.wave.next = S.day + Math.max(4, Math.round(gap * m.waveGapMult));
+    /* A GUTTED TOWN GETS A BREATHER (G.barbEase, tests/raider-camps.mjs).
+       While either tribe is on its knees the whole wilderness quietens down —
+       the wave clock stretches so the town has days to put hands back on its
+       plots. Barbarians season a war; a war they have already decided leaves
+       the player nothing to conquer. */
+    const easing = G.barbEase('P') || G.barbEase('A');
+    S.wave.next = S.day + Math.max(4, Math.round(gap * m.waveGapMult *
+      (easing ? (G.BARB_EASE.gapMult || 2) : 1)));
     // bands stay small — barbarians season a fight, they don't decide the war.
     // Hard lifts the LATE-game cap (bandCap) so the climax comes in numbers, not
     // in stat-inflated sponges; early bands are unaffected (the +count ramp hasn't
@@ -1141,7 +1159,14 @@ const Combat = {
     // 80% attack whomever they find. The village never learns which: the only
     // warning anyone gets is that barbarians are on the move.
     const dr = G.rand();
-    const disp = dr < 0.10 ? 'P' : dr < 0.20 ? 'A' : 'ALL';
+    let disp = dr < 0.10 ? 'P' : dr < 0.20 ? 'A' : 'ALL';
+    /* …and nobody marches on a town that is already on its knees. The temper
+       is re-aimed at whoever is still standing; if BOTH are, the wave simply
+       does not muster — the wilds have nothing left to take today. */
+    const easeP = G.barbEase('P'), easeA = G.barbEase('A');
+    if (easeP && easeA) { G.foeNote('🌫 The war bands keep to the deep country — there is nothing left worth taking.'); return; }
+    if (disp === 'ALL' && (easeP || easeA)) disp = easeP ? 'A' : 'P';
+    if ((disp === 'P' && easeP) || (disp === 'A' && easeA)) disp = easeP ? 'A' : 'P';
     const brute = i => (S.wave.count >= 4 && i % 3 === 2) ? 'brute' : 'raider';
 
     // the open wilderness network (see below) — also gates beach landings so

@@ -1054,6 +1054,22 @@ can stand at, and never before `CFG.GOLD_SEAMS.aiDay` (40) — a chief that
 claimed the gold on day two would be racing before the player knew there was a
 race. A player's mine is `needsWorker`, so `Combat.aiRaidSeek`'s economy branch
 already targets it: holding one needs no new AI code, only soldiers.
+**And a chief that can see no seam GOES LOOKING** (`AI.maybeProspect` /
+`prospectTarget`, same test): the rival stops reading the map the day it finds
+the player's hall — `searchTarget` only ever aims at THEM, and the scout
+retirement pass stands every scout down the moment the hall is known. Seams lie
+far from BOTH towns, so on a bad seed the chief reached day 160 having never
+laid eyes on one, and `plotMine` can only pick a seam that is on `ai.seen`: the
+richest income on the board was the player's by default. So with nothing
+claimable in sight it sends ONE hand (a horse first, then a spare spear, then a
+villager the fields can do without) out to open new country — paced like the
+scout dispatches, `PROSPECT_LEGS` legs at most, never onto ground it can't walk
+to and never into a war band's yard (`AI.campGround`). **The find is what ends
+the errand**, not a timer. Two traps: the walker's stand-down must only drop the
+WALK — `maybeMine` runs FIRST and will often put that very hand on the seam it
+just found, being the one stood nearest it — and a walker carrying ANY other
+order has been claimed by somebody else, which is emphatically not a cue to
+overwrite it with another leg.
 **A new `T.*` needs a minimap colour**: `R.drawMini`'s `COLORS` table is
 INDEXED BY TERRAIN, so a new type without an entry paints holes where its
 tiles stand.
@@ -1124,6 +1140,27 @@ it down. All three tap sites now go through `Bld.foeBld(b, owner)` — anything
 not yours that can be hurt, the rival's works and a barbarian camp alike (and
 never a gold mine, which `Bld.attackable` excludes). One predicate, so the
 sites can never drift apart again.
+
+**The wilds EASE OFF a gutted town** (`G.barbEase`, same test): barbarians
+SEASON a war — they must never decide it. A rival ground down to a hall and a
+field of ash by war bands robs the player of the victory they spent two hundred
+days working toward: you march up expecting the fight of the game and find an
+empty village. So a tribe on its knees gets a breather — `Combat.maybeWave`
+re-aims the band's temper at whoever is still standing (and musters NOTHING when
+both are down), the wave clock stretches by `BARB_EASE.gapMult`, and
+`Combat.raiderSeek` drops that owner off the target list so bands ALREADY in the
+field stop hunting it too. Measured: a rival cut to one hut and one hand on day
+100 is back to 9–17 buildings and a standing army by day 170.
+The test is the town's STATE, never blame — nobody can attribute a burned farm
+to a barbarian rather than a player — so it reads like a chief looking at a
+smoking village and deciding there is nothing left worth taking. **Both halves
+are gated on `minPeak`** (`S.peakTown`, in every save, `loadJSON` backfills):
+the ease is for a town that got ESTABLISHED and then fell apart, never for a
+three-villager opening — a hard first week is the player's to have. Owner-
+agnostic, with one exception: a COLLAPSED player (`S.collapse`) is being ENDED,
+not nursed. Camp tenders are untouched — they are defending their own ground,
+not choosing a town to sack — and `Units.damage` retaliation still applies, so
+a barbarian you strike always strikes back.
 
 **Scaled both ways**: camp COUNT is the map's area factor × the mode's
 `campMult` (calm 0.6 / moderate 1 / hard 1.5, floored at `RAIDER_CAMPS.min`),

@@ -334,6 +334,90 @@ const out = await p.evaluate(() => {
       AI.campGround(seam.x, seam.y) === false && !!AI.plotMine(), '');
   }
 
+  /* ---- 9. THE WILDS EASE OFF A GUTTED TOWN (G.barbEase) ----
+     Barbarians SEASON a war; they must never decide it. A rival ground down to
+     a hall and a field of ash by war bands robs the player of the victory they
+     spent two hundred days working toward — you march up expecting the fight of
+     the game and find an empty village. So a town that got established and then
+     fell apart is left alone until it is back on its feet. */
+  {
+    G.newGame('rc-ease', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    G.notePeaks();
+    // A THIN OPENING IS NOT A GUTTED TOWN. The ease is for a village that stood
+    // and fell; a hard first week is the player's to have.
+    for (const u of S.units.filter(z => z.owner === 'P' && Units.isVillager(z)))
+      S.units.splice(S.units.indexOf(u), 1);
+    ck('aThinOpeningIsNotEased',
+      Units.count('P', z => Units.isVillager(z)) === 0 && G.barbEase('P') === false,
+      'peak ' + S.peakTown.P + ' — it never got established, so there is no fall to cushion');
+    S.peakTown.P = 14;                       // …but this one did
+    ck('butAGuttedTownIs', G.barbEase('P') === true,
+      G.townSize('P') + ' left of a town that stood at 14');
+    ck('andItIsMeasuredOnFinishedWorks',
+      G.townSize('P') === Bld.list('P').filter(z => Bld.done(z) && z.key !== 'wall' && z.key !== 'gate').length,
+      'a curtain is raised and razed constantly and says nothing about a village');
+    // a COLLAPSED player is being ENDED, not nursed — the bands finish the run
+    S.collapse = true;
+    ck('aCollapsedRunIsNeverNursed', G.barbEase('P') === false, '');
+    S.collapse = false;
+  }
+  {
+    // …the whole wilderness quietens while it rebuilds
+    G.newGame('rc-ease2', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    G.notePeaks();
+    S.wave.count = 4; S.wave.next = S.day;
+    const before = (() => { Combat.maybeWave(); const g = S.wave.next - S.day; return g; })();
+    S.peakTown.A = 14;
+    ck('theRivalReadsAsGutted', G.barbEase('A') === true && G.barbEase('P') === false, '');
+    S.wave.next = S.day;
+    Combat.maybeWave();
+    const after = S.wave.next - S.day;
+    ck('theWaveClockStretches', after > before, before + ' days between waves → ' + after);
+    ck('andNoBandMarchesOnIt',
+      S.units.filter(z => z.owner === 'R' && !z.campId).every(z => z.hostileTo !== 'A'),
+      'the temper is re-aimed at whoever is still standing');
+    // both on their knees: the wilds simply have nothing to take today
+    S.peakTown.P = 14;
+    const n0 = S.units.filter(z => z.owner === 'R' && !z.campId).length;
+    S.wave.next = S.day; Combat.maybeWave();
+    ck('withBothDownNoWaveMustersAtAll',
+      S.units.filter(z => z.owner === 'R' && !z.campId).length === n0, '');
+  }
+  {
+    // a band ALREADY in the field drops the gutted town off its list too
+    G.newGame('rc-ease3', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    G.notePeaks();
+    const atc = Bld.tcOf('A');
+    const sp = MapGen.findNear(atc.x + 3, atc.y + 3, 8,
+      (x, y) => Path.passable(x, y, 'R') && !Bld.at(x, y));
+    const band = Units.spawn('raider', 'R', sp.x, sp.y);
+    band.hostileTo = 'ALL';
+    const vsp = MapGen.findNear(sp.x + 1, sp.y, 3,
+      (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+    const vic = Units.spawn('villager', 'A', vsp.x, vsp.y);
+    Combat.raiderSeek(band);
+    const mk0 = Units.get(band.tUnit) || Bld.get(band.tBld);
+    ck('anOrdinaryTownIsStillHunted', !!mk0 && mk0.owner === 'A',
+      mk0 ? mk0.owner + ':' + (mk0.kind || mk0.key) : 'nothing was taken as a mark');
+    band.tUnit = 0; band.tBld = 0;
+    S.peakTown.A = 14;                                  // now it is on its knees
+    Combat.raiderSeek(band);
+    const tb = Bld.get(band.tBld);
+    ck('aGuttedOneIsPassedOver',
+      band.tUnit !== vic.id && (!tb || tb.owner !== 'A'),
+      'tUnit ' + band.tUnit + ' / tBld ' + (tb ? tb.owner + ':' + tb.key : 'none'));
+    // …but a camp's own tenders are DEFENDING, not choosing a town to sack
+    const camp = campsOf()[0];
+    const tender = G.campTenders(camp)[0];
+    const tsp = MapGen.findNear(camp.x + 2, camp.y, 3,
+      (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+    const stray = Units.spawn('villager', 'A', tsp.x, tsp.y);
+    tender.tUnit = 0;
+    Combat.raiderSeek(tender);
+    ck('butATenderStillHoldsItsOwnGround', tender.tUnit === stray.id,
+      'walking into a war band\'s fire is dangerous whoever you are');
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

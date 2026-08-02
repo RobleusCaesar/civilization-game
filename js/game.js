@@ -179,6 +179,7 @@ const G = {
                walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0, originBonus: 0 },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
+      peakTown: { P: 0, A: 0 },             // biggest each town ever stood (G.barbEase)
       ai: null,
       boons: { P: {}, A: {} },   // ORIGIN CARDS: each side's kept-card modifiers
       log: [],
@@ -537,6 +538,7 @@ const G = {
   dayTick() {
     // victory and defeat come only through Town Centers falling (see Bld.damage)
     S.day++;
+    this.notePeaks();         // how big each town ever got — what "gutted" is measured against
     this.tickRaiderCamps();   // a camp raises another spear when one falls
     this.tickMortality();     // …and every so often a villager simply goes
     /* LIVING land recovers: felled forest and spent orchard/berry soil grow
@@ -683,6 +685,56 @@ const G = {
         !(window.Screens && Screens._demo) &&
         S.day - (Backend._lastAutosaveDay || 0) >= Backend.autosaveDays)
       Backend.autosaveNow('cadence');
+  },
+
+  /* ================= THE WILDS EASE OFF A GUTTED TOWN =================
+     (tests/raider-camps.mjs)
+
+     Barbarians SEASON a war; they must never decide it. A rival ground down
+     to a hall and a field of ash by war bands robs the player of the victory
+     they spent two hundred days working toward — you march up expecting the
+     fight of the game and find an empty village. The run is only satisfying
+     if conquering the enemy is HARD and EARNED; an opponent the wilds already
+     killed for you is neither.
+
+     So a tribe that is genuinely on its knees gets a breather: no band takes
+     it as a mark (Combat.raiderSeek / spawnWave's disposition roll), and the
+     whole wave clock stretches while it rebuilds (spawnWave's gap). The test
+     is the town's STATE, not blame — nobody can attribute a burned farm to a
+     barbarian rather than a player — so it reads exactly like a chief looking
+     at a smoking village and deciding there is nothing left worth taking.
+
+     Deliberately owner-AGNOSTIC: a player being wiped out by the wilds is
+     robbed of their game just as surely. The one exception is a COLLAPSED
+     player (S.collapse — workforce gone for good on Moderate/Hard), where the
+     bands are there to end a lost run cleanly rather than to bleed it.
+
+     `S.peakTown` is what makes "gutted" measurable: how big each town ever
+     got, counting FINISHED buildings and never the curtain (a wall line is
+     raised and razed constantly and says nothing about whether a village is
+     alive). It rides in every save; loadJSON backfills it from the towns as
+     they stand, so an old save simply starts its record from today.
+
+     BOTH tests are gated on `minPeak` — the ease is for a town that got
+     ESTABLISHED and then fell apart, never for a three-villager opening. A
+     player struggling on day six is having a hard game, which is theirs to
+     have; a player arriving on day two hundred deserves an enemy. */
+  BARB_EASE: { vil: 3, bldFrac: 0.55, minPeak: 6, gapMult: 2 },
+  townSize(owner) {
+    return Bld.list(owner).filter(b => Bld.done(b) && b.key !== 'wall' && b.key !== 'gate').length;
+  },
+  notePeaks() {
+    if (!S.peakTown) S.peakTown = { P: 0, A: 0 };
+    for (const o of ['P', 'A']) S.peakTown[o] = Math.max(S.peakTown[o] || 0, this.townSize(o));
+  },
+  barbEase(owner) {
+    if (!S || (owner !== 'P' && owner !== 'A') || !Bld.tcOf(owner)) return false;
+    if (owner === 'P' && S.collapse) return false;      // a lost run is ENDED, not nursed
+    const E = this.BARB_EASE;
+    const peak = (S.peakTown && S.peakTown[owner]) || 0;
+    if (peak < E.minPeak) return false;                 // it never got established — no fall to cushion
+    return Units.count(owner, u => Units.isVillager(u)) < E.vil ||
+      this.townSize(owner) < peak * E.bldFrac;
   },
 
   // does this water tile's whole BODY of water touch the map's edge? A
@@ -1278,6 +1330,7 @@ const G = {
     // as newGame does, so an old save keeps playing with a stable wonder
     if (!data.wonder) data.wonder = G.rollWonder(data.seed).key;
     if (!data.nextDeath) data.nextDeath = 0;   // pre-mortality saves: rolled on the next dayTick
+    if (!data.peakTown) data.peakTown = null;  // pre-ease saves: the record starts today (notePeaks)
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.reclaimed) data.map.reclaimed = {};
     if (!data.map.fishStocked) {

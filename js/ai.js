@@ -1297,6 +1297,103 @@ const AI = {
     return best;
   },
 
+  /* ---- PROSPECTING (tests/gold-mine.mjs) ----
+     The chief stops looking at the map the day it finds the player's hall:
+     searchTarget's whole job is finding THEM, and the scout retirement pass
+     stands every scout down the moment the hall is known. Gold seams are
+     scattered far from BOTH towns, so they simply were never seen — measured
+     over four 260-day sims the rival had laid eyes on 0 of 5 seams in three of
+     them, and plotMine can only ever pick a seam that is on `ai.seen`. So the
+     richest income on the board was, in practice, the player's alone.
+
+     A tribe that wants the map's gold goes LOOKING for it. One hand at a time,
+     paced like the scout dispatches, only while there is nothing already in
+     sight worth claiming, and never into a war band's yard. It stands down the
+     moment a seam comes into view — the errand has a purpose, not a duration. */
+  PROSPECT_LEGS: 8,
+  prospectTarget(u) {
+    const tc = Bld.tcOf('A'); if (!tc) return null;
+    const seen = S.ai.seen || [];
+    const reach = this.aiLandReach();
+    let best = null, bs = -1e9;
+    for (let t = 0; t < 140; t++) {
+      const x = (G.rand() * CFG.W) | 0, y = (G.rand() * CFG.H) | 0;
+      const i = MapGen.idx(x, y);
+      if (!MapGen.onBoard(x, y) || seen[i] || !Path.passable(x, y, 'A')) continue;
+      if (reach && !reach[i]) continue;              // ground no hand of ours can walk to
+      if (this.campGround(x, y)) continue;           // a lone prospector is not sent into a camp
+      // FAR from home, but no further from the walker than it has to be: the
+      // errand is to open new country, not to march a villager off the map
+      const d = Math.hypot(x - tc.x, y - tc.y);
+      const walk = Math.hypot(x - u.x, y - u.y);
+      const s = d - walk * 0.55 + G.rand() * 4;
+      if (s > bs) { bs = s; best = { x, y }; }
+    }
+    return best;
+  },
+  maybeProspect(read) {
+    const ai = S.ai; if (!ai) return false;
+    const GS = CFG.GOLD_SEAMS || {};
+    if (S.day < (GS.aiDay || 40)) return false;
+    if (!Bld.tcOf('A')) return false;
+    const sendOn = (u) => {
+      const dst = this.prospectTarget(u);
+      if (!dst) return false;
+      u.tUnit = 0; u.militia = false;
+      u.task = { type: 'move', x: dst.x, y: dst.y };
+      u.anchor = { x: dst.x + 0.5, y: dst.y + 0.5 };
+      Units.setPath(u, dst.x, dst.y);
+      u.prospecting = true;
+      u.scoutLegs = (u.scoutLegs || 0) + 1;
+      return true;
+    };
+    // …and standing down only drops the WALK. maybeMine runs first and may well
+    // have put this very hand on the seam it just found (it is the nearest one
+    // to it, being stood right there) — clearing its task outright would cancel
+    // the claim the errand existed to make.
+    const standDown = (u) => {
+      if (u) { u.prospecting = false; if (u.task && u.task.type === 'move') u.task = null; }
+      ai.prospectId = 0;
+    };
+    // a seam already in sight is the end of the errand — the hand goes home and
+    // maybeMine claims it in the ordinary way
+    const inSight = !!this.plotMine();
+    const walker = ai.prospectId ? S.units.find(x => x.id === ai.prospectId) : null;
+    if (ai.prospectId && !walker) { ai.prospectId = 0; ai.prospectFail = (ai.prospectFail || 0) + 1; }
+    if (walker) {
+      if (inSight || (walker.scoutLegs || 0) >= this.PROSPECT_LEGS) { standDown(walker); return false; }
+      if (walker.task && walker.task.type === 'move') return true;    // still walking its leg
+      // ANY OTHER ORDER means somebody else has claimed this hand (a seam claim,
+      // a building site, the militia) — the errand is over, and it is emphatically
+      // NOT a cue to overwrite that order with another leg
+      if (walker.task) { standDown(walker); return false; }
+      if (!sendOn(walker)) standDown(walker);                          // leg done — walk on
+      return true;
+    }
+    if (inSight) return false;
+    if (read && read.underThreat) return false;
+    // PACED, and a road that eats prospectors is walked less often
+    const gap = 10 + Math.min(4, ai.prospectFail || 0) * 8;
+    if (S.day - (ai.prospectDay == null ? -99 : ai.prospectDay) < gap) return false;
+    // WHO CAN BE SPARED: a horse first (the born scout), then a spare spear,
+    // and only then a villager the fields can do without
+    const busy = u => u.tUnit || u.tBld || u.scouting || u.prospecting ||
+      (u.task && (u.task.type === 'raid' || u.task.type === 'move' ||
+                  u.task.type === 'build' || u.task.type === 'claim'));
+    const spare = S.units.filter(u => u.owner === 'A' && !Units.isNaval(u) && !busy(u));
+    const soldiers = spare.filter(u => Units.isMilitary(u) && !Units.isSiege(u) && u.kind !== 'siegetower');
+    const hands = spare.filter(u => Units.isVillager(u));
+    const pick = soldiers.find(u => u.kind === 'rider' || u.kind === 'horsearcher')
+      || (soldiers.length > 2 ? soldiers[0] : null)
+      || (hands.length >= 4 ? hands[hands.length - 1] : null);
+    if (!pick) return false;
+    pick.scoutLegs = 0;
+    if (!sendOn(pick)) return false;
+    ai.prospectId = pick.id;
+    ai.prospectDay = S.day;
+    return true;
+  },
+
   // a far, still-unexplored tile to probe toward (never reads the player's spot)
   scoutTarget() {
     const tc = Bld.tcOf('A'); if (!tc) return null;
@@ -3224,6 +3321,7 @@ const AI = {
     this.wonderWatch();
     this.maybeWonder();          // …and past day 350 the chief may raise one of its own
     this.maybeMine();            // the map's GOLD SEAMS are contested too (tests/gold-mine.mjs)
+    this.maybeProspect(read);    // …and a chief that can see none goes LOOKING
 
     // THE DAY'S HANDS: the chief gets a few macro actions per day (mode-scaled).
     // Every construction start / upgrade / training run / caravan spends one
