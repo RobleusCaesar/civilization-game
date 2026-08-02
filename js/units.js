@@ -407,6 +407,25 @@ const Units = {
     return this.setPath(u, best.x, best.y);
   },
 
+  /* Send a villager out to claim (or take over) the gold seam at tx,ty. The
+     works are only raised when they get there — see the 'claim' task. The
+     miner stands ON the seam, like every other worker plot's crew, so the
+     tile itself has to be walkable, which it is by construction (T.GOLDORE is
+     in no BLOCK_TERR set, and Bld.solid leaves worker plots open). */
+  assignMine(u, tx, ty) {
+    if (!this.isVillager(u) || !Bld.seamAt(tx, ty)) return false;
+    const b = Bld.at(tx, ty);
+    if (b && b.key === 'mine' && b.owner === u.owner) {
+      // already ours — this is just a normal stationing order
+      if (Bld.workersAssigned(b) >= Bld.maxWorkers(b)) return false;
+      u.task = { type: 'work', id: b.id }; u.tUnit = 0; u.tBld = 0;
+      return this.setPath(u, tx, ty);
+    }
+    if (!Bld.canClaimSeam(u.owner, tx, ty).ok) return false;
+    u.task = { type: 'claim', x: tx, y: ty }; u.tUnit = 0; u.tBld = 0;
+    return this.setPath(u, tx, ty);
+  },
+
   // fishing boats harvest fish from stocked water tiles
   // water worth casting in at all: stocked, unbuilt, off the black rim
   fishableTile(tx, ty) {
@@ -1285,6 +1304,32 @@ const Units = {
             if (next && this.assignFish(u, next.x, next.y)) continue;
             if (u.owner === 'P') G.log('These waters are fished out — boat idle');
             u.task = null;
+          }
+        }
+      } else if (t.type === 'claim') {
+        /* WALK OUT AND TAKE THE SEAM (tests/gold-mine.mjs). The works go up
+           only when a hand actually reaches the gold — claiming on the ORDER
+           would let a tribe stake every seam on the map from its own doorstep.
+           On arrival the claim becomes an ordinary 'work' task, so everything
+           downstream (production, the work line, the panel, the pick-swing
+           pose) sees the same station every other plot is. */
+        if (!Bld.seamAt(t.x, t.y)) { u.task = null; continue; }
+        if ((u.x | 0) !== t.x || (u.y | 0) !== t.y) {
+          if (this.followPath(u, dt) && !((u.x | 0) === t.x && (u.y | 0) === t.y)) {
+            if (u.owner === 'P') G.log('The gold seam cannot be reached', true);
+            u.task = null;
+          }
+        } else {
+          u.path = null;
+          const b = Bld.claimSeam(u.owner, t.x, t.y);
+          if (!b) {                                     // still held — clear them off first
+            if (u.owner === 'P') UI.toast(Bld.canClaimSeam(u.owner, t.x, t.y).why, true);
+            u.task = null;
+          } else if (Bld.workersAssigned(b) >= Bld.maxWorkers(b)) {
+            if (u.owner === 'P') UI.toast('The mine is fully crewed', true);
+            u.task = null;
+          } else {
+            u.task = { type: 'work', id: b.id };
           }
         }
       } else if (t.type === 'shorefish') {

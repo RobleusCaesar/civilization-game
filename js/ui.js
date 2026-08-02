@@ -30,7 +30,9 @@ const UI = {
      together. */
   // …and LAST, always last, the Ancient Wonder (tests/wonder.mjs) — the end of
   // the list because it is the end of the game
-  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'mine', 'lodge', 'wall', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'warcamp', 'trade', 'wonder'],
+  // the Gold Mine is deliberately NOT here (CFG.BUILDINGS.mine.noMenu): a seam
+  // is found and claimed in the field, never raised from the menu
+  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'wall', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'warcamp', 'trade', 'wonder'],
   RES_NAME: { food: 'Food', wood: 'Wood', stone: 'Stone', gold: 'Gold' },
   tradeNeed: null,            // Trading Post step 1 → 2: what the caravan brings home
 
@@ -89,6 +91,7 @@ const UI = {
     el.innerHTML = '';
     for (const key of this.MENU_KEYS) {
       const d = CFG.BUILDINGS[key];
+      if (d.noMenu) continue;   // claimed in the field, never bought (the Gold Mine)
       const btn = document.createElement('button');
       btn.className = 'bbtn'; btn.dataset.key = key;
       // the wonder's button is BUILT here but only SHOWN where the mode offers
@@ -810,8 +813,11 @@ const UI = {
         else this.toast('Transport is full (or away from shore)', true);
         return;
       }
-      const foeBld = (hitBld && hitBld.owner === 'A') ? hitBld
-        : (!hitBld && !tapUnit && Units.isMilitary(sel) ? bldNear(0.42, b2 => b2.owner === 'A') : null);
+      // a mine is never a target (Bld.attackable) — tapping the rival's seam
+      // with soldiers walks them onto it, which is how you actually take it
+      const foeBld = (hitBld && hitBld.owner === 'A' && Bld.attackable(hitBld)) ? hitBld
+        : (!hitBld && !tapUnit && Units.isMilitary(sel)
+            ? bldNear(0.42, b2 => b2.owner === 'A' && Bld.attackable(b2)) : null);
       if (foeBld && Units.isMilitary(sel)) {
         sel.defend = false;
         sel.assault = true;
@@ -865,6 +871,22 @@ const UI = {
             else this.toast('No clear ground to stand beside that resource', true);
             return;
           }
+        }
+        /* A GOLD SEAM IS CLAIMED IN THE FIELD (tests/gold-mine.mjs): there is
+           no build button for it, so tapping the seam with a villager IS the
+           order. It sits after the gather branch — a seam is in no GATHER
+           table, so the two can never contend for the same tap. */
+        if (Units.isVillager(sel) && Bld.seamAt(tile.x, tile.y)) {
+          const c = Bld.canClaimSeam('P', tile.x, tile.y);
+          if (!c.ok) { this.toast(c.why, true); return; }
+          const held = Bld.at(tile.x, tile.y);
+          if (Units.assignMine(sel, tile.x, tile.y)) {
+            this.toast(held && held.owner !== 'P' ? 'Marching out to take the gold mine ⛏'
+              : held ? 'Villager heading to the gold mine ⛏'
+              : 'Villager heading out to claim the gold seam ⛏');
+            this.dispatchedWorker();
+          } else this.toast(held ? 'The mine is fully crewed' : 'No way through to that seam', true);
+          return;
         }
         if (Units.isVillager(sel) && S.map.terrain[MapGen.idx(tile.x, tile.y)] === T.WATER) {
           // shore fishing — but only where the fish actually are
@@ -940,6 +962,14 @@ const UI = {
       const idle = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
       if (idle && Units.assignGather(idle, tile.x, tile.y)) {
         this.toast('Idle villager sent to gather');
+        return;
+      }
+    }
+    // …and the same convenience on a gold seam nobody has claimed yet
+    if (explored && !this.sel && Bld.seamAt(tile.x, tile.y) && !Bld.at(tile.x, tile.y)) {
+      const idle = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
+      if (idle && Units.assignMine(idle, tile.x, tile.y)) {
+        this.toast('Idle villager sent to claim the gold seam ⛏');
         return;
       }
     }

@@ -911,6 +911,43 @@ the defeat scene has its own staging.
 `VictoryArt` are actually put on `window`. A `window.G &&` guard silently
 disables whatever it guards.
 
+**The seam is CLAIMED, not built** (`tests/gold-mine.mjs`): the Gold Mine has
+no button in the build menu (`CFG.BUILDINGS.mine.noMenu`, and `UI.buildMenu`
+skips any `noMenu` key so the flag and `MENU_KEYS` cannot disagree). You walk a
+villager out to a seam and the works go up around them for NOTHING — the price
+is the journey and holding the ground. `Units.assignMine` sets a `'claim'`
+task; the works are raised only when a hand actually ARRIVES
+(`Bld.claimSeam`), because claiming on the order would let a tribe stake every
+seam on the map from its own doorstep. On arrival the claim becomes an ordinary
+`'work'` task, so production, the work line, the panel and the pick-swing pose
+all see the same station every other plot is. Tapping a seam with a villager IS
+the order (`UI.handleTap`, after the gather branch — a seam is in no `GATHER`
+table so the two can never contend), and an unclaimed seam tapped with nothing
+selected sends an idle hand, like a resource tile.
+**And the LEVEL BELONGS TO THE SEAM** (same test): clear the hands off a mine,
+put your own on it, and you inherit whatever it was raised to — an L3 shaft
+somebody else paid sixteen days for. Ownership flips only when the holder has
+NOBODY left on it (`Bld.mineHands` / `canClaimSeam`), so you cannot walk up and
+take a manned mine; you take the ground first. Which is why **the works are not
+a target at all**: `Bld.attackable(b)` is false for `mine`, both of combat's
+target funnels (`Combat.nearestBuilding` / `nearestReachableBld`) skip it, the
+`tBld` branch drops an unattackable target as a backstop, and `Bld.damage`
+refuses. A raid that could raze the shaft would DESTROY the level rather than
+win it, and "the level is agnostic to the team" would be a lie. The rival plays
+by every one of these rules — `AI.maybeMine` sends a VILLAGER (fog-honest, never
+before `CFG.GOLD_SEAMS.aiDay`), and `AI.plotMine` prefers an unclaimed or
+newly-unmanned seam over one it already works.
+**A transparent-floored terrain MUST be in `GROUND_GRAIN`** (same test): the
+seam's sprite is authored on a clear floor like every other resource node, and
+`R.drawTile` only paints grass under terrains in that set. Left out, the tile
+falls to the plain `drawImage` branch and shows the BARE CACHE CANVAS, which
+composites as black — a gold seam was a black tile with some gold in it.
+`Sprites.blendCol` is the matching declaration of the floor each one stands on;
+the two tables must agree. The seam itself is now drawn from the map's own rock
+language (`boulderBody`, which takes a palette) in a pale QUARTZ ramp with gold
+veins struck along the facet breaks, so it reads as a different KIND of rock
+rather than a grey slab with dots on it.
+
 **Gold mines & seams** (`tests/gold-mine.mjs`): gold is the one resource with
 no ordinary tile to gather — it trickles out of the hall and the Trading Post
 and nowhere else. **GOLD SEAMS** (`T.GOLDORE`) fix that without ever making it

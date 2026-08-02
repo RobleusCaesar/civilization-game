@@ -93,10 +93,14 @@ const Combat = {
       if (Path.passable(x + ox, y + oy, owner) && !Bld.at(x + ox, y + oy)) return { x: x + ox, y: y + oy };
     return null;
   },
+  /* The two funnels every building target is picked through. A structure that
+     is NOT ATTACKABLE (Bld.attackable — the gold mine's works, which change
+     hands rather than come down) is invisible to both, so nobody ever marches
+     up and hammers something that cannot be hurt. */
   nearestBuilding(x, y, owner, pred) {
     let best = null, bd = 1e9;
     for (const b of S.buildings) {
-      if (b.owner !== owner) continue;
+      if (b.owner !== owner || !Bld.attackable(b)) continue;
       if (pred && !pred(b)) continue;
       // big footprints measure from their edge, not just their center
       const d = Math.hypot(Bld.cx(b) - x, Bld.cy(b) - y) - Bld.reach(b);
@@ -382,7 +386,7 @@ const Combat = {
   nearestReachableBld(u, owner, within, pred) {
     let best = null, bd = within;
     for (const b of S.buildings) {
-      if (b.owner !== owner || !Bld.done(b)) continue;
+      if (b.owner !== owner || !Bld.done(b) || !Bld.attackable(b)) continue;
       if (pred && !pred(b)) continue;
       const d = Math.hypot(Bld.cx(b) - u.x, Bld.cy(b) - u.y) - Bld.reach(b);
       if (d < bd) { bd = d; best = b; }
@@ -899,6 +903,9 @@ const Combat = {
           if (u.task && u.task.finalBld) { const fb = Bld.get(u.task.finalBld); u.task.finalBld = 0; if (fb) { u.tBld = fb.id; b = fb; } }
           if (!b) { u.tBld = 0; continue; }
         }
+        // backstop: an order given before the rule (or a legacy save) must not
+        // leave somebody swinging forever at works that cannot be hurt
+        if (!Bld.attackable(b)) { u.tBld = 0; continue; }
         // fight back defenders that get close while sieging — but a bombard engine
         // (catapult/trebuchet/siege tower: no melee to speak of) never abandons the
         // wall to trade blows it can't win. It keeps hammering the structure and

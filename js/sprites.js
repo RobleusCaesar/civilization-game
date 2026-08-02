@@ -257,8 +257,11 @@ const Sprites = {
   // contact line and grass blades sprout in front of and beside the base.
   // Hard-edged facet planes split by crack lines, a crisp rim, speckle grain,
   // a fissure and a crest glint. Reads as "stone you can mine", not elevation.
-  function boulderBody(f, cx, cy, rr) {
-    const St = AP.ore, r = ART.rng((cx * 31 + cy * 17) | 1);
+  // `pal` overrides the boulder's stone ramp (6 steps, dark→bright). The GOLD
+  // SEAM borrows this same body so a seam reads as ore of the map's own kind,
+  // just struck through with a paler quartz.
+  function boulderBody(f, cx, cy, rr, pal) {
+    const St = pal || AP.ore, r = ART.rng((cx * 31 + cy * 17) | 1);
     const oct = []; for (let i = 0; i < 8; i++) oct.push(0.8 + r() * 0.26);   // per-facet radius -> irregular chunk (kept mild so the mass stays rounded)
     const chipA = (r() * 8) | 0, chipB = (r() * 8) | 0;                       // chipped corners
     const s1 = -(0.3 + r() * 0.25) * rr, s2 = (0.35 + r() * 0.25) * rr;       // facet split lines, jittered per rock
@@ -585,33 +588,50 @@ const Sprites = {
      glance across a fogged map, because finding one is the whole point: warm
      GOLD in a pale quartz reef, on the same transparent floor the other
      resource nodes use so the grass shows around it. */
+  /* A GOLD SEAM (tests/gold-mine.mjs). Built from the map's OWN rock language —
+     boulderBody, the same faceted stone every ore deposit is drawn from — but
+     in a pale QUARTZ ramp instead of the grey ore one, so a seam reads as a
+     different KIND of rock at a glance rather than as a grey slab with dots on
+     it. The gold is struck through the quartz as veins that follow the lit
+     faces, with weathered nuggets and a little spoil in the turf at the foot.
+     Authored on a TRANSPARENT floor like every other resource node: render.js
+     paints the grass under it (GROUND_GRAIN). */
+  const QUARTZ = ['#6a6a63', '#8c8b80', '#a8a79a', '#c2c1b3', '#dcdbcc', '#f2f1e4'];
   Sprites.terrain[T.GOLDORE] = [
     tile(p => {
-      const f = p.f, r = ART.rng(613), GD = AP.gold, ST = AP.stone, RK = AP.rock;
-      // the reef: a broken white-quartz ridge running across the tile
-      f(5, 20, 22, 3, ART.STYLE.SHADOW);
-      for (let i = 0; i < 7; i++) {
-        const bx = 4 + i * 3, h = 6 + ((r() * 6) | 0), by = 20 - h;
-        f(bx, by, 4, h, ST[3]);
-        f(bx, by, 4, 1, ST[4]);                       // sun on the crown
-        f(bx + 3, by, 1, h, ST[1]);                   // shaded right face
-        f(bx, by + h - 1, 4, 1, ST[0]);
+      const f = p.f, r = ART.rng(613), GD = AP.gold;
+      // the outcrop: one big block with two smaller shoulders, half buried
+      boulderBody(f, 14, 15, 9, QUARTZ);
+      boulderBody(f, 24, 20, 6, QUARTZ);
+      boulderBody(f, 6, 21, 5, QUARTZ);
+      /* THE GOLD — short veins that RUN, at the same 45° the facets break on,
+         so they read as metal in the rock rather than confetti on top of it.
+         Only on the quartz: a vein is sampled and skipped if it would land on
+         the open turf. */
+      const onRock = (x, y) => {
+        const d = (cx, cy, rr) => Math.hypot(x - cx, y - cy) < rr * 0.82;
+        return d(14, 15, 9) || d(24, 20, 6) || d(6, 21, 5);
+      };
+      for (let i = 0; i < 14; i++) {
+        const vx = 3 + ((r() * 26) | 0), vy = 7 + ((r() * 16) | 0);
+        if (!onRock(vx, vy)) continue;
+        const len = 2 + ((r() * 3) | 0), dn = r() < 0.5 ? 1 : -1;
+        for (let k = 0; k < len; k++) {
+          const x = vx + k, y = vy + k * dn;
+          if (!onRock(x, y)) break;
+          f(x, y, 1, 1, k === 0 ? GD[3] : GD[2]);
+          if (r() < 0.45) f(x, y + 1, 1, 1, GD[1]);      // the vein's shadowed under-edge
+        }
       }
-      // warm rock skirting the base, so the reef sits IN the ground
-      f(3, 18, 26, 4, RK[2]); f(3, 18, 26, 1, RK[3]); f(3, 21, 26, 1, RK[1]);
-      // THE GOLD: veins running through the quartz, and loose nuggets at the foot
-      for (let i = 0; i < 9; i++) {
-        const vx = 5 + ((r() * 21) | 0), vy = 9 + ((r() * 10) | 0);
-        f(vx, vy, 2, 1, GD[2]); f(vx, vy, 1, 1, GD[3]);
-        if (r() < 0.5) f(vx + 1, vy + 1, 1, 1, GD[1]);
+      // a fat vein breaking the surface of the main block, the eye-catcher
+      f(11, 12, 4, 2, GD[2]); f(11, 12, 3, 1, GD[3]); f(12, 14, 2, 1, GD[1]);
+      // spoil at the foot: weathered nuggets and quartz chips in the turf
+      for (let i = 0; i < 6; i++) {
+        const nx = 4 + ((r() * 24) | 0), ny = 23 + ((r() * 6) | 0);
+        f(nx, ny, 2, 1, GD[1]); f(nx, ny, 1, 1, GD[2]);
       }
-      f(8, 17, 3, 2, GD[2]); f(8, 17, 2, 1, GD[3]);   // a fat vein breaking the surface
-      f(19, 14, 3, 2, GD[2]); f(19, 14, 2, 1, GD[3]);
-      for (let i = 0; i < 5; i++) {                    // nuggets weathered out onto the ground
-        const nx = 4 + ((r() * 24) | 0), ny = 22 + ((r() * 5) | 0);
-        f(nx, ny, 2, 2, GD[1]); f(nx, ny, 1, 1, GD[3]);
-      }
-      for (let i = 0; i < 8; i++) f(2 + ((r() * 28) | 0), 22 + ((r() * 6) | 0), 1, 1, r() < 0.5 ? ST[2] : RK[1]);
+      for (let i = 0; i < 9; i++)
+        f(2 + ((r() * 28) | 0), 22 + ((r() * 8) | 0), 1, 1, r() < 0.55 ? QUARTZ[3] : AP.grass[4]);
     }),
   ];
   /* the CAMP GROUND (tests/raider-camps.mjs) — trampled bare earth, churned by

@@ -3,7 +3,13 @@
 
 // grass-floored resources: drawn on a transparent floor over one continuous
 // painted grass ground (see drawTile/paintGround) so no seam shows at block edges
-const GROUND_GRAIN = new Set([T.FOREST, T.FERTILE, T.HILLS, T.MOUNTAIN, T.STUMPS, T.PEBBLES]);
+/* Terrains whose sprite is authored on a TRANSPARENT floor and therefore needs
+   paintGround under it. A tile left out of this set falls to the plain
+   drawImage branch in drawTile — and a transparent-floored sprite drawn there
+   shows the BARE CACHE CANVAS, which composites as black: exactly the "gold
+   seam is mostly black" bug. Sprites.blendCol is the matching declaration of
+   what floor each one stands on; the two tables must agree. */
+const GROUND_GRAIN = new Set([T.FOREST, T.FERTILE, T.HILLS, T.MOUNTAIN, T.STUMPS, T.PEBBLES, T.GOLDORE]);
 const NEIGH8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
 
 const R = {

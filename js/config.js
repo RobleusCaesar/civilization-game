@@ -229,26 +229,30 @@ const CFG = {
       desc: 'A barbarian war camp. Its band musters here — burn it out and they lose the ground.',
       levels: [{ cost: {}, time: 0, hp: 420, vision: 5 }],
     },
-    /* GOLD MINE (tests/gold-mine.mjs) — the only building you cannot site
-       where you like: it is SUNK ON A GOLD SEAM (T.GOLDORE), and seams are
-       scattered across the map away from both towns, so gold has to be found,
-       claimed and then HELD. Deliberately the strongest income in the game per
-       hand and the most expensive to raise: the whole point is that a seam is
-       worth marching out to and worth fighting over. Two hands work it, like
-       the other stations, and it upgrades on the station rule (Bld.upgradeTime
-       doubles then quadruples a worker plot's upgrade) — L2 is six days of
-       work, L3 sixteen. */
+    /* THE GOLD MINE IS NOT BUILT — IT IS CLAIMED (tests/gold-mine.mjs).
+       It is the ONE structure with no button in the build menu (`noMenu`):
+       you find a gold seam by exploring, walk a villager out to it, and the
+       works go up around them for nothing. What you pay for is the SHAFT —
+       levels 2 and 3 are the dearest station upgrades in the game, on the
+       station rule (Bld.upgradeTime doubles then quadruples a worker plot's
+       time), so L2 is six days of work and L3 sixteen.
+
+       And the level belongs to the SEAM, not to a tribe. Clear the hands off
+       a mine and put your own on it and you inherit whatever it has been
+       raised to — which is why the works cannot be attacked at all
+       (Bld.attackable): the only way to take a seam is to take the ground. */
     mine: {
       // freePlace, like the War Camp: a seam is wherever the map put it, and
       // the anchor rule ("build near your town") would forbid every one of
       // them. Being far from home is the whole risk of the richest income
       // there is — the mine anchors nothing further, so it stays a claim
       // rather than a beachhead.
-      name: 'Gold Mine', reqTC: 2, needsWorker: true, maxWorkers: 2, freePlace: true,
+      name: 'Gold Mine', needsWorker: true, maxWorkers: 2, freePlace: true, noMenu: true,
       onTerrain: T.GOLDORE,
-      desc: 'Sunk on a gold seam. Gold per worker (up to 2) — the richest income there is, and the one you have to go out and hold.',
+      desc: 'A claimed gold seam. Gold per worker (up to 2) — the richest income there is, and the one you have to go out and hold.',
       levels: [    // out is PER WORKER, like every other station
-        { cost: { wood: 150, stone: 120 },              time: 3, hp: 260, out: { gold: 4 } },
+        // the CLAIM is free: walking out there and holding it is the price
+        { cost: {},                                     time: 1, hp: 260, out: { gold: 4 } },
         { cost: { wood: 400, stone: 500, gold: 120 },   time: 3, hp: 420, out: { gold: 9 },
           bonus: 'Deeper shaft — a windlass over the adit' },
         { cost: { wood: 800, stone: 1000, gold: 300 },  time: 4, hp: 600, out: { gold: 16 },

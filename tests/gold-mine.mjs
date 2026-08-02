@@ -9,33 +9,54 @@
                 walk to. Every map size carries some; a map with none would be
                 the whole feature switched off.
 
-     CLAIMED    A seam is the ONLY ground a Gold Mine may be sunk on, and a
-                Gold Mine is the only thing that may be built on a seam. It is
-                freePlace, like the War Camp — the anchor rule would forbid
-                every seam on the map — so claiming one means marching out.
+     CLAIMED    The Gold Mine has NO BUTTON IN THE BUILD MENU. You walk a
+                villager out to a seam and the works go up around them for
+                nothing (Units.assignMine → the 'claim' task → Bld.claimSeam);
+                claiming on the ORDER rather than on arrival would let a tribe
+                stake every seam on the map from its own doorstep. A seam is
+                still the only ground a mine may stand on, and a mine the only
+                thing that may stand on a seam.
+
+     TAKEN      The LEVEL BELONGS TO THE SEAM, not to a tribe. Clear the hands
+                off a mine and put your own on it and you inherit whatever it
+                was raised to. Ownership flips only when the holder has NOBODY
+                left on it — and the works are not a target at all
+                (Bld.attackable), because a raid that could raze the shaft
+                would destroy the level rather than win it.
 
      WORKED     An ordinary worker plot: two hands, gold PER HAND, and by a
-                distance the richest income in the game. The miner shows what
-                it is bringing up — the gold icon over its head (R.CARRY_ICON)
-                and the gold rate on its work line.
+                distance the richest income in the game. The miner says what
+                it is bringing up in the same white "+gold" a woodcutter says
+                "+wood" in, and its work line carries the rate.
 
      RAISED     Three tiers, expensive, and slow: an upgrade runs on the
                 station rule (Bld.upgradeTime doubles then quadruples a worker
                 plot), so L2 is six days of work and L3 sixteen.
 
-     HELD       A seam OUTLIVES the mine on it. A razed mine leaves the gold
-                exactly where it was, so the ground stays worth fighting over
-                rather than worth burning — and the rival wants it too
-                (AI.maybeMine, fog-honest and never before CFG.GOLD_SEAMS.aiDay).
+     HELD       A seam OUTLIVES the mine on it: demolish one and the gold is
+                still there, so the ground stays worth fighting over rather
+                than worth burning. The rival plays by every one of these
+                rules — it sends a VILLAGER to claim (AI.maybeMine, fog-honest
+                and never before CFG.GOLD_SEAMS.aiDay), and it goes after a
+                seam whose crew has been cleared off exactly as the player can.
+
+     DRAWN      The seam's sprite is authored on a TRANSPARENT floor like every
+                other resource node, so T.GOLDORE must be in render.js's
+                GROUND_GRAIN set — left out, drawTile falls to the plain
+                drawImage branch and the tile shows the bare cache canvas,
+                which composites as BLACK.
 
    Run this after touching any of:
      config.js — T.GOLDORE, CFG.GOLD_SEAMS, CFG.BUILDINGS.mine
      map.js — the seam pass in MapGen.generate; DIGGABLE / CLEARABLE /
               MOUNDABLE_LAND (a seam must be in none of them)
-     buildings.js — tileFree, canPlace (the onTerrain clamp), removeToRuin
+     buildings.js — tileFree, canPlace (the onTerrain clamp), removeToRuin,
+                    seamAt / canClaimSeam / claimSeam / mineHands / attackable
+     units.js — assignMine, the 'claim' task
+     combat.js — nearestBuilding / nearestReachableBld (the attackable filter)
      sprites.js — Sprites.terrain[T.GOLDORE], B_DRAW.mine, the mine stages
-     render.js — CARRY_ICON, unitPose, the minimap COLORS table
-     ui.js — MENU_KEYS
+     render.js — GROUND_GRAIN, workFloat, unitPose, the minimap COLORS table
+     ui.js — MENU_KEYS, the seam tap in handleTap
      ai.js — maybeMine / plotMine
 
      node tests/gold-mine.mjs      # exits non-zero on any regression */
@@ -97,6 +118,45 @@ const out = await p.evaluate(() => {
       'no sapper tool takes a seam off the map');
   }
 
+  /* ---- 2b. THE SEAM IS DRAWN ON GRASS, not on nothing ----
+     Its sprite is authored on a TRANSPARENT floor like every other resource
+     node. A terrain left out of render.js's GROUND_GRAIN set falls to the
+     plain drawImage branch in drawTile, and a transparent-floored sprite
+     drawn there shows the BARE CACHE CANVAS — which composites as black.
+     That is exactly what a gold seam did: a tile of black with some gold in
+     it. Sprites.blendCol is the matching declaration of the floor it stands
+     on, so the two tables have to agree. */
+  {
+    G.newGame('gm-art', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const spr = Sprites.terrain[T.GOLDORE][0];
+    const d = spr.getContext('2d').getImageData(0, 0, spr.width, spr.height).data;
+    let clear = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] < 10) clear++;
+    ck('theSeamSpriteHasATransparentFloor', clear > spr.width * spr.height * 0.35,
+      Math.round(100 * clear / (spr.width * spr.height)) + '% open');
+    // …so the tile MUST get a painted ground under it
+    const seam = (() => {
+      for (let y = 1; y < CFG.H - 1; y++) for (let x = 1; x < CFG.W - 1; x++)
+        if (S.map.terrain[MapGen.idx(x, y)] === T.GOLDORE) return { x, y };
+      return null;
+    })();
+    ck('aSeamExistsToDraw', !!seam, '');
+    let painted = false;
+    const orig = R.paintGround.bind(R);
+    R.paintGround = (g2, x, y, h) => { if (x === seam.x && y === seam.y) painted = true; return orig(g2, x, y, h); };
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = CFG.TILE * (seam.x + 2);
+    try { R.drawTile(cv.getContext('2d'), seam.x, seam.y); } finally { R.paintGround = orig; }
+    ck('andTheTileIsPaintedGrassFirst', painted,
+      'without it the transparent floor shows the bare canvas — black');
+    // measure it: the drawn tile must be overwhelmingly opaque
+    const td = cv.getContext('2d').getImageData(seam.x * CFG.TILE, seam.y * CFG.TILE, CFG.TILE, CFG.TILE).data;
+    let holes = 0;
+    for (let i = 3; i < td.length; i += 4) if (td[i] < 250) holes++;
+    ck('soTheSeamHasNoHolesInIt', holes === 0,
+      holes + ' see-through pixels of ' + (CFG.TILE * CFG.TILE));
+  }
+
   // ---- 3. the seam is for the mine and the mine is for a seam ----
   {
     G.newGame('gm-rules', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
@@ -120,12 +180,40 @@ const out = await p.evaluate(() => {
       /seam/i.test(Bld.canPlace('P', 'house', sx, sy).why),
       Bld.canPlace('P', 'house', sx, sy).why);
     ck('theMineGoesOnTheSeam', Bld.canPlace('P', 'mine', sx, sy).ok === true, '');
-    ck('itIsInTheBuildMenu', UI.MENU_KEYS.indexOf('mine') >= 0, '');
-    ck('itNeedsTheSecondHall', CFG.BUILDINGS.mine.reqTC === 2, '');
+    /* AND NEVER FROM THE MENU. A seam is found in the field and claimed by
+       hand; a build button for it would make gold something you shop for. */
+    ck('itIsNotInTheBuildMenu',
+      UI.MENU_KEYS.indexOf('mine') < 0 && CFG.BUILDINGS.mine.noMenu === true, '');
+    ck('andTheClaimItselfIsFree',
+      Object.keys(CFG.BUILDINGS.mine.levels[0].cost || {}).length === 0,
+      'the journey and holding it are the price');
     // …and it may be claimed far from home, or no seam could ever be worked
     ck('aClaimIsMadeWhereTheGoldIs', CFG.BUILDINGS.mine.freePlace === true,
       'the anchor rule would forbid every seam on the map');
     window.__seam = { x: sx, y: sy };
+  }
+
+  /* ---- 3b. THE CLAIM: walked out to, and only raised on arrival ---- */
+  {
+    const s2 = window.__seam;
+    S.units = [];
+    const stand = MapGen.findNear(s2.x, s2.y, 6, (x, y) =>
+      Path.passable(x, y, 'P') && !Bld.at(x, y) && !(x === s2.x && y === s2.y));
+    const v = Units.spawn('villager', 'P', stand.x, stand.y);
+    ck('theSeamIsAnOrderNotAPurchase', Units.assignMine(v, s2.x, s2.y) === true &&
+      v.task.type === 'claim', v.task && v.task.type);
+    ck('andNothingStandsOnItYet', !Bld.at(s2.x, s2.y),
+      'claiming on the order would stake every seam from the doorstep');
+    for (let i = 0; i < 600 && !(v.task && v.task.type === 'work'); i++) Units.update(0.1);
+    const m0 = Bld.at(s2.x, s2.y);
+    ck('theWorksGoUpWhenAHandArrives',
+      !!m0 && m0.key === 'mine' && m0.owner === 'P' && m0.level === 1 && !m0.construction,
+      m0 ? 'Lv ' + m0.level : 'nothing there');
+    ck('andTheClaimBecomesAnOrdinaryStation',
+      v.task.type === 'work' && v.task.id === m0.id, v.task.type);
+    Bld.demolish(m0);
+    S.ashes.length = 0;
+    S.units = [];
   }
 
   // ---- 4. worked by hand: gold per villager, and the richest there is ----
@@ -249,18 +337,53 @@ const out = await p.evaluate(() => {
     ck('theSeamPaysOut', m.level === 3 && m.maxhp === L[2].hp, 'Lv ' + m.level);
   }
 
-  // ---- 6. the seam outlives the mine ----
+  /* ---- 6. THE WORKS CANNOT BE RAZED — a seam changes hands instead ---- */
   {
     const m = Bld.get(window.__mine), s = window.__seam;
+    const hp0 = m.hp, lv0 = m.level;
     Bld.damage(m, 999999);
-    ck('theGoldStaysInTheGround',
-      S.map.terrain[MapGen.idx(s.x, s.y)] === T.GOLDORE,
-      'a razed mine leaves rubble everywhere else — never here');
-    ck('theGroundIsWorthFightingFor',
-      !!Bld.ashAt(s.x, s.y) && Bld.canPlace('P', 'mine', s.x, s.y).ok === false,
-      'the ash still cools first, like any burned building');
+    ck('theWorksAreNotATarget',
+      Bld.attackable(m) === false && m.hp === hp0 && !!Bld.at(s.x, s.y),
+      'razing the shaft would destroy the level rather than win it');
+    ck('andNobodyEverAimsAtThem',
+      Combat.nearestBuilding(s.x, s.y, 'P', () => true) !== m &&
+      Combat.nearestReachableBld({ x: s.x, y: s.y, owner: 'A' }, 'P', 30, () => true) !== m,
+      'invisible to both target funnels, so nobody swings at it forever');
+
+    /* THE TAKEOVER. While a hand of the holder's is on it, nobody else may
+       touch it; clear them off and it changes hands AT THE LEVEL IT STANDS. */
+    S.units = [];
+    const stand = MapGen.findNear(s.x, s.y, 6, (x, y) =>
+      Path.passable(x, y, 'P') && !Bld.at(x, y) && !(x === s.x && y === s.y));
+    const mine = Units.spawn('villager', 'P', stand.x, stand.y);
+    mine.x = s.x + 0.5; mine.y = s.y + 0.5;
+    mine.task = { type: 'work', id: m.id };
+    ck('aMannedSeamCannotBeTaken',
+      Bld.canClaimSeam('A', s.x, s.y).ok === false &&
+      /clear them off/i.test(Bld.canClaimSeam('A', s.x, s.y).why),
+      Bld.canClaimSeam('A', s.x, s.y).why);
+    const foe = Units.spawn('villager', 'A', stand.x, stand.y);
+    ck('andTheRivalIsRefusedTheOrder', Units.assignMine(foe, s.x, s.y) === false, '');
+    Units.despawn(mine);
+    ck('killTheMinerAndItIsFree', Bld.canClaimSeam('A', s.x, s.y).ok === true, '');
+    Units.assignMine(foe, s.x, s.y);
+    for (let i = 0; i < 600 && !(foe.task && foe.task.type === 'work'); i++) Units.update(0.1);
+    const m2 = Bld.at(s.x, s.y);
+    ck('theSeamChangesHands', m2 === m && m2.owner === 'A', m2 && m2.owner);
+    ck('atTheLevelYouRaisedItTo', m2.level === lv0 && lv0 === 3,
+      'Lv ' + m2.level + ' — the shaft you paid for is the shaft they get');
+    const a0 = S.ai.res.gold; Bld.dailyProduction('A');
+    ck('andItPaysThemNow', S.ai.res.gold - a0 > 0, +(S.ai.res.gold - a0).toFixed(1) + ' gold/day');
+
+    // …and the GROUND outlives the works: take them away and the gold is still
+    // there (removeToRuin — demolish is own-only, and these works are theirs now)
+    S.units = [];
+    Bld.removeToRuin(m2);
     S.ashes.length = 0;
-    ck('andCanBeClaimedAgain', Bld.canPlace('P', 'mine', s.x, s.y).ok === true, '');
+    ck('theGoldStaysInTheGround',
+      S.map.terrain[MapGen.idx(s.x, s.y)] === T.GOLDORE && !Bld.at(s.x, s.y),
+      'everywhere else leaves rubble — never here');
+    ck('andCanBeClaimedAgain', Bld.canClaimSeam('P', s.x, s.y).ok === true, '');
   }
 
   // ---- 7. the rival wants it too, but not on day one ----
@@ -282,11 +405,18 @@ const out = await p.evaluate(() => {
     ck('andBlindToWhatItHasNotScouted', AI.maybeMine() === false && !S.ai.seen[MapGen.idx(sx, sy)],
       'the seam is not on its map yet — fog-honest');
     S.ai.seen[MapGen.idx(sx, sy)] = 1;
-    const laid = AI.maybeMine();
-    const am = Bld.list('A').find(z => z.key === 'mine');
-    ck('butOnceItHasSeenOneItClaimsIt',
-      laid === true && !!am && am.x === sx && am.y === sy, '');
-    ck('andOnlyEverOnePerSeam', AI.maybeMine() === false, 'the seam is taken');
+    // it sends a HAND, exactly as the player does — no hand, no claim
+    const hands = S.units.filter(u => u.owner === 'A' && Units.isVillager(u));
+    ck('itNeedsAHandToSend', hands.length > 0, hands.length + ' villagers alive');
+    const sent = AI.maybeMine();
+    const walker = S.units.find(u => u.owner === 'A' && u.task && u.task.type === 'claim');
+    ck('butOnceItHasSeenOneItSendsAVillager',
+      sent === true && !!walker && walker.task.x === sx && walker.task.y === sy, '');
+    ck('andNotASecondHandForTheSameSeam', AI.maybeMine() === false, 'one is already on the road');
+    for (let i = 0; i < 900 && !(walker.task && walker.task.type === 'work'); i++) Units.update(0.1);
+    const am = Bld.at(sx, sy);
+    ck('andTheWorksGoUpWhenItGetsThere',
+      !!am && am.key === 'mine' && am.owner === 'A', am ? am.owner : 'nothing');
   }
 
   return { res, fails };

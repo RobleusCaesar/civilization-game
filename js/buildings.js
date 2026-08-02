@@ -101,6 +101,66 @@ const Bld = {
     }
   },
 
+  /* ---- THE SEAM IS CLAIMED, NOT BUILT (tests/gold-mine.mjs) ----
+     A gold seam has no button in the build menu. A villager walks out to it
+     and the works go up around them for nothing — the price of a seam is the
+     journey and holding the ground, not timber.
+
+     And the LEVEL BELONGS TO THE SEAM. Whoever works it inherits whatever it
+     has been raised to, so a mine you sank two thousand stone into is a prize
+     the rival can take by clearing your miners off it — which is the whole
+     point. Ownership therefore flips only when the current holder has NOBODY
+     left on it: you cannot walk up and take a manned mine, you have to take
+     the ground first.
+
+     Owner-agnostic: the rival claims and loses seams by exactly this call. */
+  seamAt(x, y) {
+    return MapGen.inB(x, y) && S.map.terrain[MapGen.idx(x, y)] === T.GOLDORE;
+  },
+  // who is actually working this mine right now, whatever tribe they are
+  mineHands(b, owner) {
+    return S.units.filter(u => u.task && u.task.type === 'work' && u.task.id === b.id &&
+      (owner === undefined || u.owner === owner)).length;
+  },
+  // can `owner` put a hand on the works standing here? (null = nothing to take)
+  canClaimSeam(owner, x, y) {
+    const b = this.at(x, y);
+    if (!b || b.key !== 'mine') return { ok: true, why: '' };      // unclaimed seam
+    if (b.owner === owner) return { ok: true, why: '' };
+    return this.mineHands(b, b.owner) > 0
+      ? { ok: false, why: 'Their miners hold it — clear them off first' }
+      : { ok: true, why: '' };
+  },
+  /* Put `owner` on the seam at x,y and hand back the works. Returns null if
+     the tile is not a seam, or if somebody else's hands are still on it. */
+  claimSeam(owner, x, y) {
+    if (!this.seamAt(x, y)) return null;
+    let b = this.at(x, y);
+    if (b && b.key !== 'mine') return null;                        // something else stands here
+    if (!b) {
+      b = this.place(owner, 'mine', x, y, { free: true, instant: true, noAutoAssign: true });
+      if (b && owner === 'P') G.log('⛏ Gold seam claimed — the works go up');
+      return b;
+    }
+    if (b.owner === owner) return b;
+    if (this.mineHands(b, b.owner) > 0) return null;               // still held
+    // TAKEN OVER, at whatever level it stands: nothing about the works
+    // changes but whose banner is over them
+    const was = b.owner;
+    b.owner = owner;
+    b.rally = null;
+    this._block = null;
+    if (owner === 'P') G.log(`⛏ The Lv ${b.level} gold mine is yours — the seam changes hands`, true);
+    else if (was === 'P') G.log('⚠️ The rival has taken your gold mine!', true);
+    return b;
+  },
+  /* THE WORKS ARE NOT A TARGET. A seam changes hands by clearing the miners
+     off it, never by razing it — if a raid could level the shaft, the level
+     the loser paid for would be destroyed rather than won, and "the level is
+     agnostic to the team" would be a lie. Every target-picking path asks
+     this, and Bld.damage refuses as a backstop. */
+  attackable(b) { return !!b && b.key !== 'mine'; },
+
   def(key) { return CFG.BUILDINGS[key]; },
   // what a new building of this type costs/produces right now — walls and
   // gates are built at the village-wide wall level
@@ -984,6 +1044,7 @@ const Bld = {
   },
 
   damage(b, amt) {
+    if (!this.attackable(b)) return;   // the seam's works change hands, they never come down
     b.hp -= amt;
     // ring the rival's town alarm — idle soldiers converge (see AI.daily)
     if (b.owner === 'A' && S.ai) S.ai.alarm = { x: b.x, y: b.y, day: S.day };

@@ -1228,11 +1228,29 @@ const AI = {
     const ai = S.ai; if (!ai) return false;
     const GS = CFG.GOLD_SEAMS || {};
     if (S.day < (GS.aiDay || 40)) return false;
-    if (!Bld.canAfford(CFG.BUILDINGS.mine.levels[0].cost, ai.res)) return false;
     const spot = this.plotMine();
     if (!spot) return false;
-    return !!Bld.place('A', 'mine', spot.x, spot.y);
+    /* A SEAM IS CLAIMED BY HAND, NOT BOUGHT (tests/gold-mine.mjs). The chief
+       sends a villager, exactly as the player does — so the works only stand
+       up if the walk is actually made, and a raid that kills the miner takes
+       the seam back off it. A hand already on its way is left alone. */
+    for (const u of S.units)
+      if (u.owner === 'A' && u.task && u.task.type === 'claim' &&
+          u.task.x === spot.x && u.task.y === spot.y) return false;
+    let best = null, bd = 1e9;
+    for (const u of S.units) {
+      if (u.owner !== 'A' || !Units.isVillager(u)) continue;
+      if (u.task && (u.task.type === 'build' || u.task.type === 'claim')) continue;
+      const dd = Math.hypot(u.x - spot.x, u.y - spot.y);
+      if (dd < bd) { bd = dd; best = u; }
+    }
+    if (!best) return false;
+    return Units.assignMine(best, spot.x, spot.y);
   },
+  /* The nearest seam worth walking to: one it has SEEN, one its hands can
+     stand at, and one that is either unclaimed or standing UNMANNED — a mine
+     whose crew has been cleared off is a prize at whatever level its last
+     owner raised it to, so the chief goes and takes it. */
   plotMine() {
     const tc = Bld.tcOf('A'); if (!tc) return null;
     const reach = this.aiLandReach();
@@ -1240,7 +1258,11 @@ const AI = {
     let best = null, bd = 1e9;
     for (let y = 1; y < CFG.H - 1; y++) for (let x = 1; x < CFG.W - 1; x++) {
       const i = MapGen.idx(x, y);
-      if (S.map.terrain[i] !== T.GOLDORE || Bld.at(x, y)) continue;
+      if (S.map.terrain[i] !== T.GOLDORE) continue;
+      const b = Bld.at(x, y);
+      if (b && b.key !== 'mine') continue;                    // something else stands on it
+      if (b && !Bld.canClaimSeam('A', x, y).ok) continue;     // still held by hands it must clear first
+      if (b && b.owner === 'A' && Bld.workersAssigned(b) >= Bld.maxWorkers(b)) continue;
       if (!seen[i]) continue;                    // never a seam it has not laid eyes on
       if (reach && !reach[i]) {                  // …and never one no hand of its can stand at
         let side = false;
@@ -1248,7 +1270,8 @@ const AI = {
           if (MapGen.inB(x + ox, y + oy) && reach[MapGen.idx(x + ox, y + oy)]) { side = true; break; }
         if (!side) continue;
       }
-      const d = Math.hypot(x - tc.x, y - tc.y);
+      // an unclaimed seam, or one that can be TAKEN, before one it already works
+      const d = Math.hypot(x - tc.x, y - tc.y) + (b && b.owner === 'A' ? 40 : 0);
       if (d < bd) { bd = d; best = { x, y }; }
     }
     return best;
