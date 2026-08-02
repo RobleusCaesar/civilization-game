@@ -1214,6 +1214,8 @@ const G = {
       if (br.maxhp == null) br.maxhp = (CFG.BRIDGE.levels[(br.level || 1) - 1] || CFG.BRIDGE.levels[0]).hp;
       if (br.upgrading == null) br.upgrading = 0;   // pre-timer saves: reinforcing used to be instant
     }
+    // pre-drawbridge saves: every gate stood open, and always could
+    for (const b of data.buildings) if (b && b.key === 'gate' && b.raised == null) b.raised = false;
     if (data.ai && !data.ai.persona) data.ai.persona = 'homesteader';   // pre-persona save: the classic temperament
     if (!data.kraken) data.kraken = { day: { P: 60, A: 90 }, done: {}, ev: null };   // older saves owe the deep a visit too
     if (!data.dragon) data.dragon = { avail: false, done: true, ev: null, ash: [] };  // legacy runs: no dragon this time

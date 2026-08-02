@@ -80,6 +80,7 @@ node tests/wonder.mjs          # the second way to win: one of ten 3×3 monument
 node tests/gold-mine.mjs       # gold seams are found, claimed, worked and held — and the seam outlives the mine
 node tests/raider-camps.mjs    # barbarian camps are standing, tended, burnable ground — the wild country has owners
 node tests/mortality.mjs       # a villager dies every so often, of something apt — and their post is left empty
+node tests/drawbridge.mjs      # a Lv3 gate's bridge on chains: raised, the gate is a WALL — to its owner too
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -994,3 +995,43 @@ puff of dust, and gone by the last frame. Frames are the SAME canvas size as an
 ordinary unit sprite, so they draw through the identical box at the identical
 `SPRITE_LIFT` offset. `R.deaths` is render-side only and never reaches a save
 (same rule as `R.collapses`).
+
+**The drawbridge** (`tests/drawbridge.mjs`): the level-3 gatehouse hangs its
+bridge on chains, and the panel carries ONE button whose label is the ACTION
+rather than the state — "⬆ Raise the drawbridge" while the deck is down, "⬇
+Lower the drawbridge" while it is up (`data-act="drawbridge"` →
+`Bld.toggleDrawbridge`). **Raised, the gate is a WALL**: `Bld.rebuildBlock`
+writes block code **1** for `b.raised`, the code that stops EVERYONE — its
+owner included — instead of the 2/3 that passes its own tribe. That is what
+makes the lever a decision and not a free upgrade: you shut your own door and
+live with it. Only the third tier has the winch (`Bld.canDrawbridge`: finished,
+`level >= 3`); L1 and L2 show no button at all, and `b.raised` rides in every
+save (`loadJSON` backfills `false`, so a pre-drawbridge save's gates load open).
+Shutting the gate on somebody standing in the passage steps them clear via
+`Bld.stepOffFootprint` — the step-off `Bld.finish` already did for a footprint
+that turns solid, now factored out and shared. `UI.panelSig` carries `b.raised`
+so the label flips the moment the order lands.
+**The deck is its own little atlas** (`Sprites.drawbridge`, `deckFace` /
+`deckSide` / `tileDB`): eight stills per orientation, frame 0 fully down and the
+last fully up — raising and lowering are the SAME strip read one way or the
+other — drawn over the finished gate by `R.drawDrawbridge`. Canvases are one
+tile plus a half, the extra half hanging off the side the deck falls toward: the
+east-west face is 1 wide × 1½ TALL (it lies south, toward you), the north-south
+flank 1½ WIDE × 1 (the passage runs east-west, so it lies east). Two authored
+views, like the gatehouse itself — neither is the other rotated.
+**Do not "fix" the edge-on frames.** The face view uses the honest projection —
+`yEnd = GND + LEN·cosθ·FORE − LEN·sinθ`, the ground reach foreshortened, the
+standing height 1:1 like every other elevation in the game — which walks the
+free end SMOOTHLY across the hinge, through a two-row slab mid-swing that is
+exactly what a deck pointing at the camera looks like. Taking a `max()` of the
+two terms to keep it "visible" teleports the deck from one side of the hinge to
+the other in a single frame. `LEN` 16 is not free either: stood up the deck
+reaches fine row 14, which is the crown of the arch it has to shut, and the
+chains hang from winches at row 10 — the machicolation gallery `drawGateFace`
+draws. Move one and you must move the other.
+**The swing is render state** (`R._dbA`, eased per gate id): never on the
+building, never in a save — the same rule `R._fighting`, `R.collapses` and
+`R.deaths` follow, and it is cleared in `R.onNewGame` so reused ids can't
+inherit another run's deck angle. The tile seals the INSTANT the order is
+given; the animation is only what the player sees. A gate first met already
+shut (a loaded save) starts settled rather than slamming on sight.

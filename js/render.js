@@ -541,6 +541,8 @@ const R = {
     this.collapses = [];       // render-side only — never in a save (same rule as _fighting)
     this.deaths = [];          // …so are villagers going over…
     this.marvel = null;        // …and so is the wonder's held frame
+    this._dbA = {};            // …and each gate's drawbridge swing (reused ids
+                               //    must not inherit another run's deck angle)
     this.particles = [];
     Combat.shots.length = 0; Combat.projectiles.length = 0;
     const tc = Bld.tcOf('P');
@@ -840,6 +842,35 @@ const R = {
     g.clip();
     g.drawImage(fam[lk.mask], bx, by, bw, bw);
     g.restore();
+  },
+  /* ---- THE DRAWBRIDGE (tests/drawbridge.mjs) ----
+     The deck is drawn OVER the finished gate sprite, from its own little
+     atlas of stills (Sprites.drawbridge), because it moves and a baked sprite
+     cannot. `_dbA` eases each gate's deck from lying flat (0) to standing
+     against the arch (1) so the order plays as a swing rather than a snap —
+     and it is RENDER STATE, kept off the building and out of every save, the
+     same rule R._fighting and R.collapses follow. The rule the game actually
+     obeys is Bld.rebuildBlock's: the tile seals the instant the order is
+     given; the swing is what the player SEES happen. A gate first met already
+     shut (a loaded save) starts settled rather than slamming on sight. */
+  DB_SPEED: 1.7,          // a full swing in a little over half a second
+  _dbA: {},
+  drawDrawbridge(g, b, bx, by, bw, dt) {
+    if (!Sprites.drawbridge || !Bld.canDrawbridge(b)) return;
+    const tgt = b.raised ? 1 : 0;
+    let a = this._dbA[b.id];
+    if (a == null) a = tgt;
+    else if (a !== tgt) {
+      const step = Math.max(0, Math.min(0.2, dt || 0)) * this.DB_SPEED;
+      a = tgt > a ? Math.min(tgt, a + step) : Math.max(tgt, a - step);
+    }
+    this._dbA[b.id] = a;
+    const vert = this.gateVerticalAt(b.x, b.y);
+    const fam = Sprites.drawbridge[vert ? 1 : 0];
+    const fr = Math.max(0, Math.min(fam.length - 1, Math.round(a * (fam.length - 1))));
+    // the extra half-tile hangs off whichever side the deck falls toward
+    if (vert) g.drawImage(fam[fr], bx, by, bw * 1.5, bw);
+    else g.drawImage(fam[fr], bx, by, bw, bw * 1.5);
   },
   gateVerticalAt(x, y) {
     const score = (xx, yy) => {
@@ -1906,6 +1937,8 @@ const R = {
         g.drawImage(spr, bx, by, bw, bw);
         // …and the walk running south out of it meets its flank at WALK height
         if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);
+        // the L3 gatehouse's bridge swings over its own archway
+        if (b.key === 'gate') this.drawDrawbridge(g, b, bx, by, bw, dt);
         /* Owner tag. On a FORTIFICATION the tile's top-left corner is bare
            ground — the curtain runs down the middle of the tile — so the pip
            floated out on the grass beside the wall like a UI glitch, one per

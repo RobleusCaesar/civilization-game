@@ -992,6 +992,139 @@ const Sprites = {
   function drawGate(p, lv, vert) {
     return vert ? drawGateSide(p.hi, lv) : drawGateFace(p.hi, lv);
   }
+
+  /* ================= THE DRAWBRIDGE (tests/drawbridge.mjs) =================
+     A level-3 gatehouse hangs its bridge on chains. The deck is NOT baked into
+     the gate sprite: it moves, so it is its own little atlas of frames drawn
+     over the gate — DRAWBRIDGE_N stills from flat on the ground to standing
+     against the arch, one per orientation, exactly the way the build stages
+     and the collapse frames are handled.
+
+     The deck reaches PAST the gate's own tile, because a bridge that stops at
+     the threshold is a door, not a bridge. So these canvases are one tile plus
+     a half: the face view is 1 wide × 1½ TALL (the deck lies south, toward
+     you), the flank view 1½ WIDE × 1 tall (the passage runs east-west, so the
+     deck lies east). render.js draws each through its own rect.
+
+     Geometry is shared with the gate art it lands on: GND 30 is the front edge
+     of the tile, the arch is cells 12..19, and the gallery the chains hang
+     from is the machicolation course at row 9. Move one and you must move the
+     other. */
+  const DRAWBRIDGE_N = 8;                     // stills from fully down (0) to fully up (N-1)
+  const IRON = ['#22222a', '#3d3d47', '#5f5f6c', '#87879a'];
+
+  // a hanging chain: alternating dark/lit links, straight when the winch has
+  // it taut, sagging a little once it has been let out
+  function chainLine(q, x0, y0, x1, y1, sag) {
+    const n = Math.max(2, Math.round(Math.hypot(x1 - x0, y1 - y0)));
+    for (let i = 0; i <= n; i++) {
+      const f = i / n;
+      const x = Math.round(x0 + (x1 - x0) * f);
+      const y = Math.round(y0 + (y1 - y0) * f + Math.sin(f * Math.PI) * sag);
+      q(x, y, 1, 1, i % 2 ? IRON[0] : IRON[2]);
+    }
+  }
+  // the winch drum the chain runs over, sat on the gallery
+  function winch(q, x, y) {
+    q(x - 1, y - 2, 4, 3, IRON[1]);
+    q(x - 1, y - 2, 4, 1, IRON[2]);
+    q(x, y - 1, 1, 1, IRON[3]);
+    q(x - 1, y + 1, 4, 1, IRON[0]);
+  }
+
+  /* THE FACE — an east-west gatehouse seen straight on. The deck is hinged at
+     the threshold (GND) and swings in the plane you are looking down: DOWN it
+     lies south over the ground in front of the gate, UP it stands flat against
+     the archway. So the free end's screen height is
+
+         yEnd = GND + LEN·cosθ·FORE − LEN·sinθ
+
+     — the ground reach foreshortened by FORE, the standing height drawn 1:1,
+     which is how this game draws every other elevation. That expression walks
+     smoothly from +10 rows (lying) through NEARLY EDGE-ON (a two-row slab, the
+     honest look of a deck pointing at the camera) to −16 (upright), so the
+     swing never jumps and never vanishes. Do not "fix" the edge-on frames by
+     clamping the length: taking a max() of the two terms makes the deck
+     teleport across the hinge in a single frame.
+
+     Planks run ACROSS the span, so their spacing compresses with the
+     foreshortening for free; two iron straps run ALONG it, hinge to chain
+     ring. */
+  function deckFace(q, t) {
+    const WD = AP.wood;
+    // LEN 16 is not free: stood up the deck reaches row 14, which is exactly
+    // the crown of the arch it has to shut. FORE sets how far it reads over
+    // the ground when it is down.
+    const GND = 30, LEN = 16, CX = 15.5, FORE = 0.70;
+    const th = t * Math.PI / 2;
+    const yEnd = GND + LEN * Math.cos(th) * FORE - LEN * Math.sin(th);
+    const span = Math.abs(yEnd - GND) || 0.001;
+    const y0 = Math.round(Math.min(GND, yEnd)), y1 = Math.round(Math.max(GND, yEnd));
+    const frac = y => Math.min(1, Math.abs(y - GND) / span);      // 0 at the hinge, 1 at the free end
+    // lying flat the far end is NEARER, so it reads a touch wider; stood up it
+    // is the same distance away as the hinge and the taper goes with it
+    const half = y => 5 + frac(y) * 0.9 * Math.cos(th);
+    for (let y = y0; y <= y1; y++) {
+      const h2 = half(y), x0 = Math.round(CX - h2), w = Math.max(2, Math.round(h2 * 2));
+      const s = frac(y) * LEN;
+      q(x0, y, w, 1, Math.round(s) % 3 === 0 ? WD[1] : (((s / 3) | 0) % 2 ? WD[2] : WD[3]));
+      q(x0, y, 1, 1, WD[1]); q(x0 + w - 1, y, 1, 1, WD[1]);       // the deck's own long edges
+    }
+    // the iron straps running the deck's length, hinge to ring
+    for (const fx of [-3, 2]) q(Math.round(CX + fx), y0, 1, y1 - y0 + 1, IRON[1]);
+    // the shoe at the free end and the rings the chains are shackled to
+    const eY = Math.round(yEnd), eh = 5 + 0.9 * Math.cos(th);
+    const ex0 = Math.round(CX - eh), ew = Math.max(2, Math.round(eh * 2));
+    q(ex0, eY, ew, 1, IRON[1]);
+    q(ex0 - 1, eY, 1, 1, IRON[2]); q(ex0 + ew, eY, 1, 1, IRON[2]);
+    // …and the chains, up to the winches sat in the machicolation gallery
+    const sag = (1 - t) * 2.4;
+    chainLine(q, 10, 10, ex0 - 1, eY, sag);
+    chainLine(q, 21, 10, ex0 + ew, eY, sag);
+    winch(q, 10, 10); winch(q, 21, 10);
+    // the shadow: cast back into the passage once the deck stands over it,
+    // laid on the ground in front of it while it is still down
+    if (yEnd < GND - 1) q(Math.round(CX - 5), eY, 10, 1, 'rgba(20,14,8,0.5)');
+    if (yEnd > GND + 1) q(ex0 + 1, eY + 1, ew - 2, 1, ART.STYLE.SHADOW);
+  }
+
+  /* THE FLANK — a north-south gatehouse. The passage runs east-west, AWAY from
+     you, so the deck swings out to the EAST and you watch it side-on: this is
+     a plain picture-plane rotation about the hinge, no foreshortening to fight,
+     and the clearest of the two views. Down it reaches east over the ground;
+     up it stands against the block's east face. */
+  function deckSide(q, t) {
+    const WD = AP.wood;
+    const HX = 26, GND = 29, LEN = 16, TH = 3;    // hinge at the block's east flank
+    const th = t * Math.PI / 2;
+    const ex = HX + LEN * Math.cos(th), ey = GND - LEN * Math.sin(th);
+    // march the deck's length, stamping its thickness across at each step
+    const n = Math.max(4, Math.round(LEN));
+    const nx = Math.sin(th), ny = Math.cos(th);   // across the deck, from its walking face
+    for (let i = 0; i <= n; i++) {
+      const f = i / n, s = f * LEN;
+      const cx = HX + (ex - HX) * f, cy = GND + (ey - GND) * f;
+      const col = Math.round(s) % 3 === 0 ? WD[1] : (((s / 3) | 0) % 2 ? WD[2] : WD[3]);
+      for (let k = 0; k <= TH; k++)
+        q(Math.round(cx + nx * k), Math.round(cy + ny * k), 1, 1, k === TH ? WD[0] : col);
+      q(Math.round(cx), Math.round(cy), 1, 1, WD[4]);             // the lit walking face
+    }
+    // the shoe, the ring, and the chain up to the winch on the block's head
+    q(Math.round(ex), Math.round(ey), 1, 1, IRON[2]);
+    q(Math.round(ex + nx * 2), Math.round(ey + ny * 2), 1, 1, IRON[1]);
+    chainLine(q, 22, 9, Math.round(ex), Math.round(ey), (1 - t) * 2.4);
+    winch(q, 22, 9);
+    if (t < 0.6) q(HX, GND + TH + 1, Math.max(1, Math.round(ex - HX)), 1, ART.STYLE.SHADOW);
+  }
+  // one tile plus a half, the extra half hanging off the side the deck falls
+  // toward: `tall` for the face (south), otherwise `wide` for the flank (east)
+  function tileDB(tall, draw) {
+    const c = mk(tall ? 64 : 96, tall ? 96 : 64), g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    const q = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * 2, y * 2, (w || 1) * 2, (h || 1) * 2); };
+    draw(q);
+    return c;
+  }
   function roofStrips(p, x, y, w, rows, colA, colB) {
     for (let i = 0; i < rows; i++) p(x + i, y + i, w - i * 2, 1, i % 2 ? colB : colA);
   }
@@ -1729,6 +1862,15 @@ const Sprites = {
     [Sprites.building.gate[li], tileB(p => drawGate(p, li + 1, true))]);
   // the tower's OTHER self: the one it wears when a wall is built onto it
   Sprites.towerMural = [1, 2, 3].map(lv => tileB(p => drawTowerMural(p, lv)));
+  /* THE DRAWBRIDGE ATLAS — drawbridge[0] is the east-west face (1×1½ tall),
+     drawbridge[1] the north-south flank (1½ wide×1); frame 0 is fully DOWN and
+     the last is fully UP, so both directions of the action are the same strip
+     read one way or the other. R.drawDrawbridge picks the frame. */
+  Sprites.DRAWBRIDGE_N = DRAWBRIDGE_N;
+  Sprites.drawbridge = [
+    Array.from({ length: DRAWBRIDGE_N }, (_, i) => tileDB(true, q => deckFace(q, i / (DRAWBRIDGE_N - 1)))),
+    Array.from({ length: DRAWBRIDGE_N }, (_, i) => tileDB(false, q => deckSide(q, i / (DRAWBRIDGE_N - 1)))),
+  ];
 
   /* ================= THE ANCIENT WONDERS (tests/wonder.mjs) =================
      Ten monuments, one rolled per run. Each is a 3×3 building — the biggest

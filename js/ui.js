@@ -1360,7 +1360,10 @@ const UI = {
       let sig = ['b', b.id, b.level, b.construction > 0, b.upgrading > 0,
         b.level < 3 && Bld.canUpgrade(b).ok, b.hp < b.maxhp, Bld.hasWorker(b),
         d.needsWorker ? Bld.workersAssigned(b) + '/' + Bld.workersActive(b) : '-',
-        !!b.rally, this.confirmDemolish === b.id].join('|');
+        !!b.rally, this.confirmDemolish === b.id,
+        // the drawbridge lever reads the OPPOSITE of the deck's state, so the
+        // label has to flip the moment the order lands (tests/drawbridge.mjs)
+        Bld.canDrawbridge(b) ? (b.raised ? 'up' : 'down') : '-'].join('|');
       if (b.key === 'tc') {
         // visibility bits: pointless buttons unrender the moment they empty
         const vills = S.units.some(u => u.owner === 'P' && Units.isVillager(u));
@@ -1597,6 +1600,14 @@ const UI = {
         }
         if ((b.key === 'wall' || b.key === 'gate') && !b.construction && b.level < 3)
           html += `<span class="psub">Walls upgrade together — use the Town Center.</span>`;
+        /* THE DRAWBRIDGE LEVER (tests/drawbridge.mjs). One button, and it says
+           what pulling it will DO — raise the deck when it is down, lower it
+           when it is up — so the gate's state is readable from the button
+           alone. Only the third tier has the winch to work it. */
+        if (Bld.canDrawbridge(b))
+          html += b.raised
+            ? `<button class="abtn wide" data-act="drawbridge">⬇ Lower the drawbridge<small>the gate opens — your people pass again</small></button>`
+            : `<button class="abtn wide" data-act="drawbridge">⬆ Raise the drawbridge<small>shuts the gate fast — to your own people too</small></button>`;
         if (d.train && !b.construction) {
           for (const [uk, spec] of Object.entries(d.train)) {
             const ct = Bld.canTrain(b, uk);
@@ -1797,6 +1808,14 @@ const UI = {
           if (v) Units.assignBuild(v, b2);
           G.log('Wall section being rebuilt as a gate' + (v ? ' — a villager heads over' : ' — needs a builder'));
           this.renderPanel();
+        }
+        else if (btn.dataset.act === 'drawbridge') {
+          if (!Bld.toggleDrawbridge(b2)) { this.toast('This gate has no winch — only a Lv 3 gatehouse does', true); return; }
+          this.toast(b2.raised
+            ? 'Drawbridge up — nobody comes through, yourself included'
+            : 'Drawbridge down — the gate is open');
+          this.renderPanel();
+          return;
         }
         else if (btn.dataset.act === 'upwalls') {
           if (!Bld.upgradeWalls()) this.toast(Bld.canUpgradeWalls().why, true);

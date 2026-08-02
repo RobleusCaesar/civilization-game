@@ -26,7 +26,11 @@ const Bld = {
       // solid separately — AI.townOut, Terraform.digWouldSeal.
       if (b.construction > 0) continue;
       if (b.key === 'wall') this._block[MapGen.idx(b.x, b.y)] = 1;
-      else if (b.key === 'gate') this._block[MapGen.idx(b.x, b.y)] = b.owner === 'P' ? 2 : 3;
+      // A GATE WITH ITS BRIDGE UP IS A WALL (tests/drawbridge.mjs) — code 1,
+      // which blocks EVERYONE, its owner included. That is the whole point of
+      // the lever: you shut your own door and take the consequences.
+      else if (b.key === 'gate') this._block[MapGen.idx(b.x, b.y)] =
+        b.raised ? 1 : (b.owner === 'P' ? 2 : 3);
       else if (this.solid(b.key)) {
         // every tile of the footprint, so the 2×2 Town Center is solid whole
         const sz = this.size(b.key);
@@ -42,6 +46,60 @@ const Bld = {
   // a WALL or GATE stands here — what the fortification auto-tiling asks, so
   // an ordinary solid building never makes a wall grow a stub toward it
   fortAt(x, y) { const c = this.blockAt(x, y); return c === 1 || c === 2 || c === 3; },
+
+  /* ---- THE DRAWBRIDGE (tests/drawbridge.mjs) ----
+     A level-3 gatehouse has a bridge on chains. Raised, the deck stands
+     against the arch and the gate is simply WALL — nobody passes, the owner
+     least of all, which is what makes it a decision rather than a free
+     upgrade. Lowered, it is the door it always was.
+
+     Levels 1 and 2 have no bridge: the winch, the chains and the gallery to
+     hang them from are exactly what the third tier buys. A gate raising or
+     upgrading has no working lever yet either. */
+  canDrawbridge(b) {
+    return !!b && b.key === 'gate' && b.level >= 3 &&
+      !(b.construction > 0) && !(b.upgrading > 0);
+  },
+  bridgeRaised(b) { return !!(b && b.key === 'gate' && b.raised); },
+  toggleDrawbridge(b) {
+    if (!this.canDrawbridge(b)) return false;
+    b.raised = !b.raised;
+    this._block = null;
+    // shutting the gate on somebody standing in the passage would wedge them
+    // in solid ground — they step clear, exactly as a finished building's
+    // footprint clears itself
+    if (b.raised) this.stepOffFootprint(b);
+    if (b.owner === 'P')
+      G.log(b.raised ? '⛓ The drawbridge is hauled up — the gate is shut fast'
+                     : '⛓ The drawbridge is lowered — the gate stands open');
+    return true;
+  },
+
+  /* Anyone standing on a footprint that just turned SOLID steps off it, ties
+     broken toward home so a builder finishing a wall under its own feet ends
+     on the town side rather than sealed out (tests/work-order.mjs). Shared by
+     Bld.finish and the drawbridge, which seals its own tile the same way. */
+  stepOffFootprint(b) {
+    for (const w of S.units) {
+      if (Units.isNaval(w) || !this.covers(b, w.x | 0, w.y | 0)) continue;
+      if (Path.passable(w.x | 0, w.y | 0, w.owner)) continue;   // an own gate stays open to its owner
+      const tcH = this.tcOf(w.owner);
+      let spot = null, sd = 1e9;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const x = (w.x | 0) + dx, y = (w.y | 0) + dy;
+        if ((!dx && !dy) || !Path.passable(x, y, w.owner)) continue;
+        const d = Math.hypot(dx, dy) +
+          (tcH ? Math.hypot(x + 0.5 - this.cx(tcH), y + 0.5 - this.cy(tcH)) * 0.1 : 0);
+        if (d < sd) { sd = d; spot = { x, y }; }
+      }
+      if (spot) {
+        w.x = spot.x + 0.5; w.y = spot.y + 0.5; w.path = null; w.pathI = 0;
+        // a march in progress re-plans from the new footing (a nulled path
+        // reads as "arrived" to the move task, which would eat the order)
+        if (w.task && w.task.type === 'move' && w.task.x != null) Units.setPath(w, w.task.x, w.task.y);
+      }
+    }
+  },
 
   def(key) { return CFG.BUILDINGS[key]; },
   // what a new building of this type costs/produces right now — walls and
@@ -439,25 +497,7 @@ const Bld = {
       // building does this now, not just walls: a hall raised over a
       // villager's head would otherwise wedge it (tests/buildings-block.mjs).
       this._block = null;
-      for (const w of S.units) {
-        if (Units.isNaval(w) || !this.covers(b, w.x | 0, w.y | 0)) continue;
-        if (Path.passable(w.x | 0, w.y | 0, w.owner)) continue;   // an own gate stays open to its owner
-        const tcH = this.tcOf(w.owner);
-        let spot = null, sd = 1e9;
-        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
-          const x = (w.x | 0) + dx, y = (w.y | 0) + dy;
-          if ((!dx && !dy) || !Path.passable(x, y, w.owner)) continue;
-          const d = Math.hypot(dx, dy) +
-            (tcH ? Math.hypot(x + 0.5 - this.cx(tcH), y + 0.5 - this.cy(tcH)) * 0.1 : 0);
-          if (d < sd) { sd = d; spot = { x, y }; }
-        }
-        if (spot) {
-          w.x = spot.x + 0.5; w.y = spot.y + 0.5; w.path = null; w.pathI = 0;
-          // a march in progress re-plans from the new footing (a nulled path
-          // reads as "arrived" to the move task, which would eat the order)
-          if (w.task && w.task.type === 'move' && w.task.x != null) Units.setPath(w, w.task.x, w.task.y);
-        }
-      }
+      this.stepOffFootprint(b);
     }
     if (b.owner === 'P' && S.stats) {   // arcade tally: every raising scores
       if (b.key === 'wall' || b.key === 'gate') S.stats.walls = (S.stats.walls || 0) + 1;
