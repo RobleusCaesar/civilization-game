@@ -1474,6 +1474,189 @@ const Sprites = {
     }
   }
 
+  /* ====== THE FIVE CAMPS (CFG.TRIBES, tests/raider-camps.mjs) ======
+     A camp says who lives in it before you are near enough to see a face. So
+     each of the five peoples makes its home its own way, drawn from what that
+     people actually built: a Norse skin-tent and drying frames; a Mesolithic
+     bender of bent hazel under hides; the wreck of a soldiers' camp still
+     pitched in ranks; a Celtic wattle enclosure round a dye vat and a standing
+     stone; a beached hull turned over for a roof. Same 32-grid plot, same
+     footprint and the same fire in all five — what changes is the SHELTER'S
+     SILHOUETTE and the gear lying round it, which is what carries at map zoom.
+
+     Every camp keeps a FIRE, because a fire is what says "somebody lives
+     here", and the bare churned ground under it is the terrain sprite, which
+     is what is left when the camp burns. */
+  const TRIBE_CAMP = {
+    // WOLFSKINS — a Norse skin-tent on an A-frame, a wolf skull on the ridge,
+    // and a pelt stretched on a drying rack: this is a hunting people's camp.
+    wolf(p) {
+      const q = p.hi, P = AP.pelt, W = AP.wood, BO = AP.bone, F = AP.fire, INK = AP.ink, ST = AP.stone;
+      ART.dropShadow(p, 8, 14, 12);
+      // the A-frame tent: two crossed poles, hides pegged down both slopes
+      for (let i = 0; i < 12; i++) {
+        const w = 2 + i * 1.6 | 0;
+        q(13 - (w >> 1), 8 + i, w, 1, i < 3 ? P[2] : P[1]);
+        q(13 - (w >> 1), 8 + i, 1, 1, P[3]);
+        q(13 + (w >> 1) - 1, 8 + i, 1, 1, P[0]);
+      }
+      q(4, 19, 19, 2, P[1]); q(4, 19, 19, 1, P[2]); q(4, 21, 19, 1, INK[0]);
+      q(10, 13, 6, 8, INK[0]); q(10, 13, 6, 1, P[0]);      // the dark mouth
+      q(6, 10, 2, 12, W[1]); q(19, 10, 2, 12, W[1]);       // the crossed ridge poles
+      q(6, 8, 9, 2, W[2]); q(12, 8, 9, 2, W[2]);
+      // WOLF SKULL on the ridge, long-snouted — the sign of the people
+      q(10, 3, 6, 4, BO[2]); q(10, 3, 6, 1, BO[1]);
+      q(15, 5, 5, 2, BO[2]); q(19, 5, 1, 2, BO[1]);        // the muzzle
+      q(11, 4, 2, 2, INK[0]); q(14, 4, 1, 2, INK[0]);      // sockets
+      q(16, 7, 1, 1, BO[1]); q(18, 7, 1, 1, BO[1]);        // fangs
+      // the DRYING RACK with a pelt stretched on it
+      q(24, 8, 1, 14, W[1]); q(30, 8, 1, 14, W[1]); q(24, 8, 7, 1, W[2]);
+      q(25, 10, 5, 9, P[1]); q(25, 10, 5, 1, P[2]); q(25, 10, 1, 9, P[2]);
+      for (let i = 0; i < 4; i++) { q(24, 11 + i * 2, 1, 1, BO[1]); q(30, 11 + i * 2, 1, 1, BO[1]); }
+      // the long fire in its stone ring
+      for (let i = 0; i < 6; i++) q(3 + i * 2, 27 - (i % 2), 2, 2, ST[1]);
+      q(4, 24, 6, 2, W[0]); q(5, 22, 4, 3, F[0]); q(6, 20, 3, 3, F[1]); q(6, 19, 2, 2, F[2]);
+      q(20, 26, 6, 2, BO[1]); q(20, 26, 6, 1, BO[2]);      // gnawed bones by the fire
+    },
+    // FLINTFOLK — a Mesolithic bender: hazel rods bent to a dome and skinned
+    // over, with a knapping floor of pale flakes and an antler rack outside.
+    flint(p) {
+      const q = p.hi, HD = AP.hide, W = AP.wood, BO = AP.bone, F = AP.fire, ST = AP.stone, INK = AP.ink;
+      ART.dropShadow(p, 8, 14, 12);
+      const r = ART.rng(151);
+      // the DOME — a low round bender, wider than it is tall
+      for (let i = 0; i < 11; i++) {
+        const w = 20 - Math.round(Math.sqrt(i) * 4.2);
+        q(14 - (w >> 1), 9 + i, w, 1, i < 3 ? HD[3] : HD[2]);
+        q(14 - (w >> 1), 9 + i, 1, 1, HD[3]);
+        q(14 + (w >> 1) - 1, 9 + i, 1, 1, HD[1]);
+      }
+      q(4, 20, 21, 1, HD[1]); q(4, 21, 21, 1, INK[0]);
+      for (let i = 0; i < 5; i++) {                         // the hazel rods showing through
+        const bx = 6 + i * 4;
+        q(bx, 12 - Math.abs(2 - i), 1, 9 + Math.abs(2 - i), W[1]);
+      }
+      q(11, 14, 6, 7, INK[0]); q(11, 14, 6, 1, HD[1]);      // low crawl-in mouth
+      q(9, 13, 2, 2, HD[0]); q(17, 13, 2, 2, HD[0]);        // hide flaps pegged back
+      // ANTLER RACK — a pole with a red-deer skull and its tines
+      q(26, 6, 1, 16, W[1]); q(24, 4, 5, 4, BO[2]); q(24, 4, 5, 1, BO[1]);
+      q(25, 5, 1, 2, INK[0]); q(27, 5, 1, 2, INK[0]);
+      for (const [bx, s] of [[24, -1], [28, 1]]) {
+        q(bx, 1, 1, 3, BO[2]); q(bx + s, -1, 1, 3, BO[2]); q(bx + s * 2, 0, 1, 1, BO[1]);
+      }
+      // KNAPPING FLOOR — a scatter of pale flakes and a struck core
+      for (let i = 0; i < 16; i++) q(2 + ((r() * 10) | 0), 22 + ((r() * 7) | 0), 1, 1, ST[3 + ((r() * 2) | 0)]);
+      q(5, 25, 4, 3, ST[2]); q(5, 25, 4, 1, ST[4]); q(5, 25, 1, 3, ST[3]);
+      // the hearth of stones
+      for (let i = 0; i < 5; i++) q(16 + i * 2, 26 - (i % 2), 2, 2, ST[1]);
+      q(18, 24, 4, 2, W[0]); q(19, 22, 3, 3, F[0]); q(19, 20, 2, 3, F[1]); q(19, 19, 1, 2, F[2]);
+    },
+    // THE BROKEN — a soldiers' camp gone to ruin, still pitched in a line: a
+    // patched ridge tent, a snapped standard, a shield propped on a stump.
+    broken(p) {
+      const q = p.hi, W = AP.wood, ST = AP.stone, RU = AP.rust, F = AP.fire, INK = AP.ink, HD = AP.hide;
+      ART.dropShadow(p, 8, 14, 12);
+      const CL = ['#3b4438', '#4a5548', '#5d6a58'];        // the village dye, filthy now
+      // RIDGE TENT — square-cut army canvas, sagging, torn along one slope
+      q(5, 10, 2, 12, W[1]); q(21, 10, 2, 12, W[1]);       // the two uprights
+      q(5, 9, 18, 2, W[2]);                                // the ridge pole
+      for (let i = 0; i < 11; i++) {
+        const w = 4 + i * 1.6 | 0;
+        q(14 - (w >> 1), 10 + i, w, 1, i < 3 ? CL[2] : CL[1]);
+        q(14 - (w >> 1), 10 + i, 1, 1, CL[2]);
+        q(14 + (w >> 1) - 1, 10 + i, 1, 1, CL[0]);
+      }
+      q(4, 20, 21, 2, CL[1]); q(4, 20, 21, 1, CL[2]); q(4, 22, 21, 1, INK[0]);
+      q(11, 14, 6, 8, INK[0]);                             // the mouth
+      q(18, 12, 5, 6, INK[0]); q(18, 12, 5, 1, CL[0]);     // a rip in the canvas
+      q(19, 13, 1, 4, HD[1]); q(21, 14, 1, 3, HD[1]);      // rawhide stitching, giving way
+      q(6, 22, 2, 3, W[1]); q(21, 22, 2, 3, W[1]);         // guy pegs
+      // THE SNAPPED STANDARD — a pole broken off, its rag still on it
+      q(27, 6, 1, 10, W[1]); q(26, 15, 3, 1, W[2]);
+      q(27, 3, 1, 3, W[0]); q(28, 2, 2, 1, INK[1]);        // the broken stub, leaning
+      q(28, 6, 3, 5, RU[3]); q(28, 6, 1, 5, RU[2]);
+      for (let i = 0; i < 3; i++) q(30, 8 + i * 2, 1, 1, RU[1]);   // the rag frayed to strips
+      // A SHIELD propped against a stump, split across the boss
+      q(2, 24, 5, 4, W[1]); q(2, 24, 5, 1, W[2]);
+      ART.shadedCircle(q, 6, 22, 5, W, 2);
+      q(5, 21, 3, 3, ST[2]); q(5, 21, 1, 1, ST[3]);
+      q(4, 17, 1, 11, INK[1]);
+      q(2, 20, 4, 1, HD[1]);
+      // a cold-looking little fire, and a dented helm left in the grass
+      for (let i = 0; i < 4; i++) q(15 + i * 2, 27 - (i % 2), 2, 2, ST[1]);
+      q(16, 25, 4, 2, W[0]); q(17, 24, 2, 2, F[0]); q(17, 23, 1, 1, F[1]);
+      q(24, 25, 5, 3, ST[2]); q(24, 25, 5, 1, ST[3]); q(26, 24, 2, 2, ST[2]);
+      q(27, 26, 1, 1, INK[1]);
+    },
+    // WOADKIN — a wattle enclosure round a dye vat that stains everything
+    // blue, with a carved standing stone and heads on the gate posts.
+    woad(p) {
+      const q = p.hi, W = AP.wood, ST = AP.stone, BO = AP.bone, F = AP.fire, INK = AP.ink;
+      const WD2 = ['#1d3a63', '#2c5a94', '#4a86c2'];
+      ART.dropShadow(p, 8, 14, 12);
+      // the WATTLE SCREEN — woven hazel in a crescent behind the camp
+      for (let x = 3; x < 29; x += 2) {
+        const h = 9 - Math.round(Math.abs(16 - x) * 0.16);
+        q(x, 8 + (9 - h), 1, h, W[1]); q(x, 8 + (9 - h), 1, 1, W[3]);
+      }
+      for (let i = 0; i < 4; i++) q(3, 10 + i * 2, 26, 1, W[2]);   // the weave running through
+      q(3, 17, 26, 1, W[0]);
+      // GATE POSTS with heads on them — the thing that makes a stranger stop
+      for (const px of [4, 27]) {
+        q(px, 6, 2, 14, W[2]); q(px, 6, 1, 14, W[3]);
+        q(px - 1, 2, 4, 4, BO[2]); q(px - 1, 2, 4, 1, BO[1]);
+        q(px, 3, 1, 2, INK[0]); q(px + 2, 3, 1, 2, INK[0]);
+        q(px - 1, 6, 4, 1, WD2[0]);
+      }
+      // THE DYE VAT — a sunken cauldron of woad, steaming, everything stained
+      ART.shadedCircle(q, 11, 22, 6, ['#2a2018', '#3d3024', '#4f4030', '#63513e'], 2);
+      ART.shadedCircle(q, 11, 21, 4, WD2, 1);
+      q(9, 19, 3, 1, WD2[2]); q(13, 22, 1, 1, WD2[2]);
+      q(10, 15, 1, 3, 'rgba(74,134,194,0.35)'); q(12, 13, 1, 3, 'rgba(74,134,194,0.25)');
+      q(4, 27, 5, 1, WD2[0]); q(15, 28, 4, 1, WD2[0]);     // spilled dye in the mud
+      // THE STANDING STONE, carved with spirals
+      q(21, 12, 6, 16, ST[2]); q(21, 12, 1, 16, ST[3]); q(26, 13, 1, 15, ST[1]);
+      q(22, 11, 4, 1, ST[3]);
+      q(22, 16, 4, 1, WD2[1]); q(22, 16, 1, 3, WD2[1]); q(25, 17, 1, 3, WD2[1]);
+      q(23, 19, 2, 1, WD2[1]); q(23, 22, 3, 1, WD2[0]); q(23, 24, 3, 1, WD2[0]);
+      // a small fire at the stone's foot
+      q(28, 24, 3, 2, W[0]); q(29, 22, 2, 3, F[0]); q(29, 21, 1, 2, F[1]);
+    },
+    // THE SEA FOLK — a beached hull turned over for a roof, oars stacked in a
+    // tripod, nets on a drying frame. Everything here came off the water.
+    sea(p) {
+      const q = p.hi, W = AP.wood, ST = AP.stone, F = AP.fire, INK = AP.ink, HD = AP.hide;
+      const BRZ2 = ['#6a5218', '#a07a2a', '#caa04a'];
+      ART.dropShadow(p, 8, 14, 12);
+      // THE OVERTURNED HULL — a boat's belly up, propped on its gunwale
+      for (let i = 0; i < 10; i++) {
+        const w = 24 - Math.round(i * i * 0.22);
+        q(14 - (w >> 1), 10 + i, w, 1, i < 2 ? W[3] : W[2]);
+        q(14 - (w >> 1), 10 + i, 1, 1, W[3]);
+        q(14 + (w >> 1) - 1, 10 + i, 1, 1, W[1]);
+      }
+      for (let x = 3; x < 26; x += 3) q(x, 10, 1, 10, W[1]);        // the strakes
+      q(2, 9, 25, 2, W[3]); q(2, 9, 25, 1, AP.thatch[2]);           // the keel, uppermost
+      q(2, 20, 25, 2, W[1]); q(2, 22, 25, 1, INK[0]);
+      q(9, 16, 8, 6, INK[0]); q(9, 16, 8, 1, W[0]);                 // the shelter under it
+      q(3, 20, 2, 5, W[2]); q(24, 20, 2, 5, W[2]);                  // props holding it up
+      // OARS stacked in a tripod
+      for (const [ox, lean] of [[27, 0], [29, 1], [28, -1]]) {
+        q(ox, 6, 1, 18, W[2]); q(ox + lean, 4, 2, 3, W[1]);
+      }
+      q(27, 12, 4, 1, HD[1]);                                        // lashed at the throat
+      // a NET drying on a low frame
+      q(1, 24, 1, 6, W[1]); q(10, 24, 1, 6, W[1]); q(1, 24, 10, 1, W[2]);
+      for (let x = 2; x < 10; x += 2) q(x, 25, 1, 4, 'rgba(200,190,150,0.55)');
+      for (let yy = 26; yy < 30; yy += 2) q(2, yy, 8, 1, 'rgba(200,190,150,0.55)');
+      // amphorae and a driftwood fire
+      q(13, 25, 3, 5, BRZ2[1]); q(13, 25, 1, 5, BRZ2[2]); q(14, 24, 1, 1, BRZ2[0]);
+      q(17, 26, 3, 4, BRZ2[0]); q(17, 26, 1, 4, BRZ2[1]);
+      for (let i = 0; i < 4; i++) q(21 + i * 2, 28 - (i % 2), 2, 2, ST[1]);
+      q(22, 26, 4, 2, W[0]); q(23, 24, 3, 3, F[0]); q(23, 22, 2, 3, F[1]); q(23, 21, 1, 2, F[2]);
+    },
+  };
+
   /* ---- the 8+ buildings. Each receives (p, lv, fac) where fac is the owning
      faction's cloth ramp — the rival's set is generated in red. Silhouette
      identifies the building; tierDress drives materials and decoration. ---- */
@@ -2134,6 +2317,14 @@ const Sprites = {
     Sprites.building[key] = build(AP.blue);
     Sprites.buildingA[key] = build(AP.red);
   }
+  /* ONE CAMP PER PEOPLE (CFG.TRIBES, tests/raider-camps.mjs). R.bldSprite hands
+     back the camp of whatever people holds the fire; the generic B_DRAW camp
+     stays as the fallback for a save from before the peoples existed, and as
+     the panel icon when a camp somehow carries no tribe. */
+  Sprites.camp = {};
+  for (const k of Object.keys(TRIBE_CAMP))
+    Sprites.camp[k] = ART.outline(tileB(p => TRIBE_CAMP[k](p)), 1);
+
   // [east-west face, north-south flank] — two authored views (see drawGate)
   Sprites.gateMask = [0, 1, 2].map(li =>
     [Sprites.building.gate[li], tileB(p => drawGate(p, li + 1, true))]);
@@ -4502,20 +4693,329 @@ const Sprites = {
   // barbarians / wildlings: shaggy furs, bone trinkets, teal war paint — a
   // colour family all their own so they never read as the (red) rival tribe
   const BARB = { paint: '#3fb094', fur: '#6e5b40', furD: '#4a3d2c', bone: '#d8cfae' };
-  Sprites.unit.raider = unitSheet({ body: BARB.fur, accent: BARB.furD, pants: BARB.furD, hair: '#7a5a30', spear: BARB.bone },
-    (p, f) => {
-      p(7, 1, 2, 1, BARB.paint);                    // teal face paint
-      p(6, 6, 4, 1, BARB.paint);                    // painted chest stripe
-      p(5, 5, 1, 2, BARB.furD); p(10, 5, 1, 2, BARB.furD);   // shaggy fur shoulders
-      p(6, 2, 1, 1, '#7a5a30'); p(9, 2, 1, 1, '#7a5a30');    // wild hair spills down
-    });
-  Sprites.unit.brute = unitSheet({ body: BARB.furD, accent: BARB.fur, pants: BARB.fur, hair: '#3a2c1a', spear: BARB.bone },
-    (p, f) => {
-      p(5, 5, 6, 1, BARB.paint);                    // broad teal war stripe
-      p(6, 0, 4, 1, BARB.bone);                     // bone crown
-      p(5, 7, 1, 1, BARB.bone); p(10, 7, 1, 1, BARB.bone);   // bone trinkets
-      p(4, 6, 1, 3, BARB.furD);                     // hulking fur bulk
-    });
+
+  /* ======= THE FIVE PEOPLES OF THE WILD COUNTRY (tests/raider-camps.mjs) =======
+     Barbarians used to be one look, drawn on the LEGACY 16-grid rig while every
+     tribesman in the game had moved to the 32-grid one — which is exactly why
+     they read as scruffy villagers rather than as something you should be
+     afraid of. They are now five distinct PEOPLES, each on the hi-res rig, each
+     with men and women, and each dealt to a camp for that camp's whole life.
+
+     What makes a people read at 32px is the SILHOUETTE ABOVE THE SHOULDERS and
+     the shape in the hand — not the palette. So every one of the five owns a
+     distinct headline: a wolf's muzzle, a rack of antler, a dented war-helm, a
+     crown of limed spikes, a fan of plumes. Colour only confirms what the
+     outline already said.
+
+     The rig below is the villager's own proportions (a 32-grid figure standing
+     on the tile's foot) so the whole cast still reads at one scale. Bare arms,
+     hide leggings, no faction collar — nobody's tribe raised these. */
+  function barbHi(q, f, pose, c, ex) {
+    const SK = c.skin || APx.skin, HD = APx.hide, INK = APx.ink;
+    const HR = c.hairRamp || APx.hair;
+    const body = c.body, dark = c.dark, pants = c.pants || HD[1];
+    const big = !!c.big, female = !!c.female;
+    const bob = (pose === 'idle' && f === 1) ? 2 : 0;
+    // A BRUTE IS A BIGGER ANIMAL, not a wider rectangle: it stands a row lower
+    // in its own shoulders, carries a heavier chest and thicker arms. A brute
+    // and a raider standing side by side have to read apart at a glance, or the
+    // second rank of a war band means nothing.
+    const y = (big ? 7 : 6) + bob;
+    // a woman is narrower through the shoulders and flares at the hem; a man is
+    // square. That contrast is the whole read at this size — the same solution
+    // the villagers use.
+    const x0 = big ? 11 : (female ? 13 : 12), w = big ? 10 : (female ? 6 : 8);
+    q(12, 30, 9, 1, 'rgba(20,16,10,0.26)'); q(14, 31, 5, 1, 'rgba(20,16,10,0.15)');
+    const step = pose === 'walk';
+    const upL = step && f === 1 ? 1 : 0, upR = step && f === 0 ? 1 : 0;
+    // ---- legs: bound hide leggings and bare shins
+    for (const [lx, up] of [[13, upL], [17, upR]]) {
+      q(lx, 22, 2, 4 - up, pants); q(lx, 22, 1, 4 - up, HD[2]);
+      q(lx, 24, 2, 1, HD[0]);                                        // cross-binding
+      q(lx, 26 - up, 2, 2, SK[1]); q(lx, 26 - up, 1, 2, SK[2]);
+      q(lx, 28 - up, 2, 1, INK[1]);
+    }
+    // ---- torso
+    const th = female ? 7 : (big ? 10 : 9);
+    q(x0, y + 6, w, th, body);
+    q(x0 + w - 1, y + 6, 1, th, dark);
+    q(x0, y + 6, w, 2, dark);                                        // shoulder shade
+    q(x0 + 1, y + 9, 1, th - 4, dark);                               // a fold down the chest
+    if (big) { q(x0 - 1, y + 7, 1, 7, body); q(x0 + w, y + 7, 1, 7, dark); q(x0, y + 6, w, 1, body); }
+    if (female) {
+      // a hide skirt flaring WIDER than the shoulders — the silhouette does the work
+      q(x0 - 1, y + 13, w + 2, 2, dark);
+      q(x0 - 2, y + 15, w + 4, 4, body); q(x0 - 2, y + 18, w + 4, 1, dark);
+      q(x0 - 2, y + 15, 1, 4, dark); q(x0 + w + 1, y + 15, 1, 4, dark);
+      q(x0, y + 15, 1, 4, dark); q(x0 + w - 1, y + 15, 1, 4, dark);   // pleats
+      for (let i = 0; i < w + 4; i += 2) q(x0 - 2 + i, y + 19, 1, 1, dark);
+    } else {
+      q(x0, y + 13, w, 1, HD[1]); q(x0 + 3, y + 13, 1, 2, INK[2]);   // rope belt + knot
+      for (let i = 0; i < w; i += 2) q(x0 + i, y + 6 + th, 1, 1, dark);   // ragged hem
+    }
+    // ---- head (a headdress from `ex` sits over this)
+    q(14, y, 4, 5, SK[2]); q(14, y, 3, 1, SK[3]); q(14, y, 1, 4, SK[3]);
+    q(17, y + 1, 1, 4, SK[1]);
+    q(15, y + 2, 1, 1, INK[1]); q(17, y + 2, 1, 1, INK[1]);
+    q(13, y - 1, 6, 2, HR[1]); q(13, y - 1, 6, 1, HR[2]);
+    if (female) {
+      // long hair falling OUTSIDE the head, past the shoulders — drawn wide of
+      // the skull so a helm, hood or crown never hides it
+      q(11, y, 2, 10, HR[1]); q(19, y, 2, 10, HR[1]);
+      q(11, y, 1, 10, HR[0]); q(20, y + 6, 1, 4, HR[0]);
+      q(11, y + 10, 2, 1, HR[0]); q(19, y + 10, 2, 1, HR[0]);
+    } else {
+      q(14, y + 4, 4, 1, HR[1]); q(13, y + 1, 1, 3, HR[0]); q(18, y + 1, 1, 3, HR[0]);
+      if (big) { q(13, y + 4, 5, 2, HR[0]); q(14, y + 5, 3, 1, HR[1]); }   // a heavy beard
+    }
+    // ---- left arm at rest (bare — no sleeve; a brute's is thicker)
+    const aw = big ? 3 : 2, alx = big ? 10 : 11;
+    q(alx, y + 8, aw, 4, SK[2]); q(alx, y + 8, 1, 4, SK[3]); q(alx, y + 11, aw, 1, SK[2]);
+    if (ex) ex(q, f, pose, Object.assign({}, c, { y, big, female }));
+  }
+  /* The right arm. At rest it hangs; in the fight pose it swings — raised on
+     frame 0, struck on frame 1 — and the hand position comes back so each
+     people can hang its OWN weapon off it. */
+  function barbArm(q, y, f, pose) {
+    const SK = APx.skin;
+    if (pose === 'fight') {
+      const ax = f === 0 ? 20 : 23, ay = f === 0 ? y + 1 : y + 6;
+      q(19, y + 8, Math.max(1, ax - 18), 1, SK[2]);
+      q(ax, ay, 1, Math.max(1, y + 9 - ay), SK[2]);
+      return { ax, ay };
+    }
+    q(19, y + 8, 2, 4, SK[2]); q(20, y + 8, 1, 4, SK[1]); q(19, y + 11, 2, 1, SK[2]);
+    return { ax: 21, ay: y + 6 };
+  }
+
+  const WOAD = ['#1d3a63', '#2c5a94', '#4a86c2'];          // the blue that gave the Woadkin their name
+  const LIME = ['#b8b09a', '#ded6c0', '#f4efe0'];          // hair limed white and spiked
+  const OCH  = ['#8a4a18', '#b8702a', '#d99a48'];          // Flintfolk ochre
+  const BRZ  = ['#6a5218', '#a07a2a', '#caa04a', '#e8ce80'];  // Sea Folk bronze
+  const GRIME = 'rgba(30,24,14,0.35)';
+
+  const TRIBE_ART = {
+    /* WOLFSKINS — the Norse úlfheðnar: a wolf taken whole for a war-mask, its
+       muzzle over the brow and its ears standing off the crown, the pelt worn
+       down the back. The one profile in the game with EARS, so it is named at
+       a glance across a fogged field. Bearded iron axe. */
+    wolf: {
+      // the BODY is dark hide and the PELT is grey: a wolf worn over a man has
+      // to be two tones or the whole figure is one grey slab with a face in it
+      pal: { body: APx.hide[1], dark: APx.hide[0], pants: APx.hide[0], hairRamp: APx.hair },
+      ex: (q, f, pose, c) => {
+        const y = c.y, P = APx.pelt, BO = APx.bone, ST = APx.stone, INK = APx.ink;
+        // a fur MANTLE across the shoulders, hanging in ragged tails — nothing
+        // a village would sew, and it breaks the square of the torso
+        q(10, y + 5, 12, 3, P[2]); q(10, y + 5, 12, 1, P[3]);
+        q(10, y + 8, 1, 4, P[1]); q(21, y + 8, 1, 4, P[0]);
+        for (let i = 0; i < 5; i++) { const tx = 10 + i * 3; q(tx, y + 8, 2, 1 + (i % 2) * 2, P[1]); }
+        // WOLF-HOOD. The read is the SNOUT and the EARS: a low skull cap over
+        // the brow, the muzzle tapering forward and DOWN past the face (so the
+        // man's own eyes look out from under it), two pricked triangular ears.
+        q(12, y - 2, 8, 3, P[2]); q(12, y - 2, 8, 1, P[3]); q(12, y - 2, 1, 3, P[1]);
+        q(12, y + 1, 2, 2, P[1]); q(18, y + 1, 2, 2, P[1]);      // the hood's cheeks, framing the face
+        // the SNOUT: it lies along the brow and juts clear of the head, so the
+        // outline itself says wolf even when the tile is 32px on a fogged map
+        q(19, y - 1, 4, 3, P[2]); q(19, y - 1, 4, 1, P[3]);
+        q(23, y, 1, 2, P[1]); q(23, y, 1, 1, INK[0]);            // the black nose at the tip
+        q(20, y + 2, 3, 1, P[0]);                                // the jaw line under it
+        q(21, y + 3, 1, 1, BO[2]); q(19, y + 3, 1, 1, BO[2]);    // fangs showing under the jaw
+        for (const [ex0, s] of [[12, -1], [18, 1]]) {            // pricked ears, leaning outward
+          q(ex0, y - 5, 2, 3, P[2]); q(ex0 + (s < 0 ? -1 : 1), y - 6, 1, 2, P[2]);
+          q(ex0 + (s < 0 ? 0 : 1), y - 4, 1, 2, P[0]);
+        }
+        q(15, y + 2, 1, 1, INK[1]); q(17, y + 2, 1, 1, INK[1]);  // the man's eyes under the mask
+        // fang necklace
+        q(13, y + 6, 6, 1, BO[2]); q(15, y + 7, 1, 1, BO[2]); q(17, y + 7, 1, 1, BO[2]);
+        // BEARDED AXE
+        const { ax, ay } = barbArm(q, y, f, pose);
+        const hx = ax + 1, hy = pose === 'fight' ? ay - 5 : y + 3;
+        q(hx, hy, 1, 10, APx.wood[1]); q(hx, hy, 1, 10, APx.wood[2]);
+        q(hx - 1, hy - 1, 4, 2, ST[3]); q(hx - 1, hy - 1, 4, 1, ST[4]);
+        q(hx + 1, hy + 1, 2, 3, ST[3]); q(hx + 1, hy + 3, 1, 1, ST[2]);   // the beard of the blade
+        q(hx - 1, hy + 1, 1, 1, HDE[1]);                                  // lashing
+        if (pose === 'fight' && f === 1) q(hx + 3, hy + 2, 1, 1, FIRE[2]);
+      },
+    },
+    /* FLINTFOLK — old blood of the stone country. An antler headdress (the
+       Star Carr frontlet: a red-deer skull with its tines still on it), ochre
+       hand-print across the chest, a knapped flint spear. Nothing metal on
+       them anywhere; the tallest silhouette of the five. */
+    flint: {
+      // pale sun-bleached hide, so the ochre print on it actually shows
+      pal: { body: '#a88a5c', dark: '#6e5432', pants: APx.hide[1], hairRamp: APx.hair },
+      ex: (q, f, pose, c) => {
+        const y = c.y, BO = APx.bone, ST = APx.stone;
+        // ochre HAND-PRINT across the chest — the mark of the people, pressed
+        // on palm-first: four short fingers over a broad palm
+        for (let i = 0; i < 4; i++) q(13 + i * 1.5 | 0, y + 7, 1, 2, OCH[1]);
+        q(13, y + 9, 5, 3, OCH[1]); q(13, y + 9, 5, 1, OCH[2]);
+        q(13, y + 12, 1, 2, OCH[0]); q(17, y + 9, 1, 3, OCH[0]);
+        /* ANTLER FRONTLET (the Star Carr piece: a red-deer skull worn as a mask,
+           tines still on it). The read is a RACK — beams that sweep back and
+           out and branch, never a symmetric pair of horns, which is what two
+           bare posts look like. Each beam gets a brow tine low, a fork high,
+           and a different height from its partner. */
+        q(13, y - 2, 6, 2, BO[1]); q(13, y - 2, 6, 1, BO[2]);
+        for (const [bx, s, tall] of [[13, -1, 0], [18, 1, 1]]) {
+          q(bx, y - 5, 1, 3, BO[2]);                             // the beam off the brow
+          q(bx + s, y - 7, 1, 3, BO[2]);
+          q(bx + s * 2, y - 9 - tall, 1, 3, BO[2]);              // sweeping back and out
+          q(bx + s * 3, y - 10 - tall, 1, 2, BO[1]);
+          q(bx + s * 2, y - 6, 1, 1, BO[1]); q(bx + s * 3, y - 6, 1, 1, BO[1]);   // brow tine
+          q(bx + s, y - 10 - tall, 1, 2, BO[1]);                 // inner fork
+          q(bx + s * 4, y - 12 - tall, 1, 2, BO[1]);             // the crown tine
+          q(bx + s * 3, y - 12 - tall, 1, 1, BO[2]);
+        }
+        q(13, y - 1, 1, 1, OCH[0]); q(18, y - 1, 1, 1, OCH[0]);
+        // bone necklace
+        q(14, y + 6, 4, 1, BO[2]); q(16, y + 7, 1, 1, BO[1]);
+        // FLINT SPEAR — a long shaft with a knapped pale head
+        const { ax, ay } = barbArm(q, y, f, pose);
+        const hx = ax + 1, hy = pose === 'fight' ? ay - 8 : y - 3;
+        q(hx, hy, 1, 16, APx.wood[2]); q(hx, hy + 4, 1, 1, HDE[1]); q(hx, hy + 9, 1, 1, HDE[1]);
+        q(hx, hy - 3, 1, 3, ST[4]); q(hx - 1, hy - 2, 3, 2, ST[3]); q(hx, hy - 3, 1, 2, ST[4]);
+        if (pose === 'fight' && f === 1) q(hx + 2, hy - 1, 1, 1, FIRE[2]);
+      },
+    },
+    /* THE BROKEN — what is left of a third village. They still wear the gear
+       of a level-1 garrison: a conical helm and a round shield. But the helm
+       is dented and missing its cheek-piece, the shield is patched across a
+       split boss, the tunic is a faded dye gone filthy, and the sword is
+       notched. Read them as soldiers first, then notice the state of them. */
+    broken: {
+      pal: { body: '#4a5548', dark: '#333c33', pants: '#3f3a2c', hairRamp: APx.hair },
+      ex: (q, f, pose, c) => {
+        const y = c.y, ST = APx.stone, WD = APx.wood, RU = APx.rust, INK = APx.ink;
+        // DENTED CONICAL HELM with a nasal — one cheek-piece torn away
+        q(13, y - 3, 6, 4, ST[2]); q(13, y - 3, 6, 1, ST[3]); q(15, y - 5, 2, 2, ST[2]);
+        q(13, y - 3, 1, 4, ST[1]); q(18, y - 2, 1, 3, ST[1]);
+        q(16, y, 1, 3, ST[2]);                                   // nasal bar
+        q(17, y - 2, 2, 1, INK[1]); q(14, y - 1, 1, 1, INK[1]);   // the dents
+        q(13, y + 1, 1, 3, ST[1]);                               // the one cheek-piece left
+        q(15, y + 4, 3, 1, APx.hair[0]);                         // unkempt beard
+        // PATCHED ROUND SHIELD on the left arm, split across the boss
+        ART.shadedCircle(q, 10, y + 11, 4, WD, 2);
+        q(10, y + 10, 2, 2, ST[2]); q(10, y + 10, 1, 1, ST[3]);   // boss
+        q(9, y + 7, 1, 9, INK[1]);                               // the split
+        q(7, y + 12, 4, 1, HDE[1]); q(8, y + 9, 3, 1, HDE[1]);    // rawhide patches
+        q(6, y + 11, 1, 2, RU[3]);
+        // the grime that says these are not soldiers any more
+        q(12, y + 9, 8, 1, GRIME); q(13, y + 16, 6, 1, GRIME); q(14, y + 3, 1, 2, GRIME);
+        // NOTCHED SWORD
+        const { ax, ay } = barbArm(q, y, f, pose);
+        const hx = ax + 1, hy = pose === 'fight' ? ay - 4 : y + 4;
+        q(hx - 1, hy + 6, 3, 1, WD[1]); q(hx, hy + 7, 1, 2, WD[2]);   // crossguard + grip
+        q(hx, hy - 3, 1, 9, ST[3]); q(hx, hy - 3, 1, 5, ST[4]);
+        q(hx + 1, hy - 1, 1, 1, ST[1]); q(hx + 1, hy + 3, 1, 1, ST[1]);   // the notches
+        if (pose === 'fight' && f === 1) q(hx + 2, hy, 1, 1, FIRE[2]);
+      },
+    },
+    /* WOADKIN — Celts as the Romans described them: fighting stripped to the
+       waist, the body painted with woad, the hair washed with lime until it
+       stood off the head in white spikes, a heavy gold torc at the throat.
+       The only bare-chested people of the five, and the only white crown. */
+    woad: {
+      pal: { body: APx.skin[2], dark: APx.skin[1], pants: '#6a4a3a', hairRamp: LIME },
+      ex: (q, f, pose, c) => {
+        const y = c.y, ST = APx.stone, WD = APx.wood, G2 = APx.gold;
+        // WOAD SPIRALS across the chest and one shoulder
+        q(13, y + 8, 5, 1, WOAD[1]); q(13, y + 9, 1, 2, WOAD[1]); q(17, y + 9, 1, 3, WOAD[1]);
+        q(14, y + 11, 3, 1, WOAD[1]); q(15, y + 10, 1, 1, WOAD[2]);
+        q(12, y + 7, 1, 3, WOAD[0]); q(19, y + 7, 1, 3, WOAD[0]);
+        q(14, y + 2, 1, 1, WOAD[1]); q(17, y + 3, 1, 1, WOAD[1]);   // paint across the face
+        q(14, y + 4, 4, 1, WOAD[0]);
+        /* LIMED HAIR. Washed with lime and combed back until it stood off the
+           head — so it must read as HAIR SWEPT BACK, not as a hat: the spikes
+           lean, they are of uneven height and thickness, and they leave gaps
+           of sky between them. A flat white band across the brow reads as a
+           cap, so there isn't one. */
+        q(13, y - 2, 6, 2, LIME[1]); q(13, y - 2, 6, 1, LIME[2]);
+        const SPK = [[12, 5, -1], [14, 7, 0], [15, 8, 0], [17, 6, 1], [19, 4, 1]];
+        for (const [sx, h, lean] of SPK) {
+          for (let i = 0; i < h; i++) q(sx + ((i * lean * 0.6) | 0), y - 3 - i, 1, 1, i > h - 3 ? LIME[2] : LIME[1]);
+          q(sx, y - 3, 1, 1, LIME[0]);
+        }
+        // GOLD TORC at the throat — the one rich thing they wear
+        q(13, y + 5, 6, 1, G2[2]); q(13, y + 5, 6, 1, G2[3]);
+        q(12, y + 5, 1, 2, G2[1]); q(19, y + 5, 1, 2, G2[1]);
+        // TALL OVAL SHIELD, and a long iron sword
+        q(8, y + 5, 4, 13, WD[2]); q(8, y + 5, 1, 13, WD[3]); q(11, y + 5, 1, 13, WD[1]);
+        q(8, y + 10, 4, 2, ST[2]); q(9, y + 10, 1, 1, ST[4]);
+        q(9, y + 7, 2, 1, WOAD[1]); q(9, y + 14, 2, 1, WOAD[1]);
+        const { ax, ay } = barbArm(q, y, f, pose);
+        const hx = ax + 1, hy = pose === 'fight' ? ay - 6 : y + 2;
+        q(hx - 1, hy + 8, 3, 1, G2[1]); q(hx, hy + 9, 1, 2, WD[1]);
+        q(hx, hy - 4, 1, 12, ST[3]); q(hx, hy - 4, 1, 7, ST[4]);
+        if (pose === 'fight' && f === 1) q(hx + 2, hy - 2, 1, 1, FIRE[2]);
+      },
+    },
+    /* THE SEA FOLK — the Sherden and Peleset of the Bronze Age collapse, the
+       raiders who came off the water and ended an age. Their monuments show
+       them in a tall crown of upright plumes over a headband, a ribbed
+       corselet and a tasselled kilt, with a straight bronze sword and a small
+       round shield. Nine longboat crews in ten are these. */
+    sea: {
+      pal: { body: '#b9ac86', dark: '#8a7d5c', pants: '#a2955f', hairRamp: APx.hair },
+      ex: (q, f, pose, c) => {
+        const y = c.y, INK = APx.ink;
+        // ribbed corselet over the linen
+        for (let i = 0; i < 3; i++) q(12, y + 8 + i * 2, 8, 1, BRZ[1]);
+        q(12, y + 6, 8, 2, BRZ[2]); q(14, y + 6, 4, 1, BRZ[3]);
+        // tasselled kilt hem
+        for (let i = 0; i < 4; i++) q(12 + i * 2, y + 16, 1, 2, BRZ[0]);
+        /* PLUME CROWN — the Peleset headdress from the Medinet Habu reliefs: a
+           bronze diadem carrying a fan of upright reeds. Solid, it is a brush;
+           what makes it feathers is the GAP between them, so the plumes stand
+           one cell apart and splay outward toward the ends. */
+        q(12, y - 3, 8, 2, BRZ[2]); q(12, y - 3, 8, 1, BRZ[3]);
+        q(13, y - 2, 1, 1, APx.teal[1]); q(18, y - 2, 1, 1, APx.teal[1]);
+        for (let i = 0; i < 5; i++) {
+          const lean = i - 2, h = 6 + (2 - Math.abs(2 - i));
+          for (let j = 0; j < h; j++) {
+            const px = 12 + i * 2 - 1 + ((j * lean * 0.28) | 0);
+            q(px, y - 4 - j, 1, 1, j > h - 3 ? '#f2ecd8' : '#d6cdae');
+          }
+          q(12 + i * 2 - 1, y - 4, 1, 1, '#9a8f70');       // the quill socketed in the band
+        }
+        q(13, y + 4, 5, 1, INK[2]);                              // chin-strap
+        // small round shield, bronze-bossed
+        ART.shadedCircle(q, 10, y + 11, 3, ['#6a5a3a', '#8a7648', '#a89058', '#c4ae74'], 2);
+        q(10, y + 11, 1, 1, BRZ[3]);
+        // STRAIGHT BRONZE SWORD (the Naue II — a straight cut-and-thrust blade)
+        const { ax, ay } = barbArm(q, y, f, pose);
+        const hx = ax + 1, hy = pose === 'fight' ? ay - 5 : y + 3;
+        q(hx - 1, hy + 7, 3, 1, BRZ[1]); q(hx, hy + 8, 1, 2, APx.wood[1]);
+        q(hx, hy - 3, 1, 10, BRZ[2]); q(hx, hy - 3, 1, 6, BRZ[3]);
+        q(hx, hy - 4, 1, 1, BRZ[3]);
+        if (pose === 'fight' && f === 1) q(hx + 2, hy - 1, 1, 1, FIRE[2]);
+      },
+    },
+  };
+  function barbSheet(c, ex) {
+    const mk = (pose) => framesU(2, (q, g, f) => barbHi(q, f, pose, c, ex), 1);
+    return { idle: mk('idle'), walk: mk('walk'), gather: mk('gather'), fight: mk('fight') };
+  }
+  /* Built lazily per people and cached, like Sprites.militaryFor — a map that
+     only ever meets two of the five never pays for the other three.
+     barbFor(key)[kind][female ? 1 : 0]. An unknown key falls back to the
+     wolfskins rather than crashing, so a save from before the peoples existed
+     still draws. */
+  Sprites.barb = {};
+  Sprites.barbFor = function (tribe) {
+    const key = TRIBE_ART[tribe] ? tribe : 'wolf';
+    if (Sprites.barb[key]) return Sprites.barb[key];
+    const t = TRIBE_ART[key];
+    const mk = (big, female) => barbSheet(Object.assign({}, t.pal, { big, female }), t.ex);
+    Sprites.barb[key] = {
+      raider: [mk(false, false), mk(false, true)],
+      brute: [mk(true, false), mk(true, true)],
+    };
+    return Sprites.barb[key];
+  };
+  Sprites.tribeKeys = Object.keys(TRIBE_ART);
+  { const w = Sprites.barbFor('wolf'); Sprites.unit.raider = w.raider[0]; Sprites.unit.brute = w.brute[0]; }
 
   // (axeman & longbow silhouettes are defined in FOOT above, dyed per village)
 

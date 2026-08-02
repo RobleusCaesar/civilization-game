@@ -1141,6 +1141,38 @@ not yours that can be hurt, the rival's works and a barbarian camp alike (and
 never a gold mine, which `Bld.attackable` excludes). One predicate, so the
 sites can never drift apart again.
 
+**FIVE PEOPLES walk the wild country** (`CFG.TRIBES`, same test): barbarians
+used to be ONE look, and drawn on the legacy 16-grid rig while every tribesman
+in the game had moved to the 32-grid one — which is exactly why they read as
+scruffy villagers rather than as something to be afraid of. There are five now,
+each on the hi-res rig, each with MEN AND WOMEN, each with its own camp and its
+own name in the log: **Wolfskins** (úlfheðnar in a wolf war-mask), **Flintfolk**
+(Mesolithic, antler-crowned), **the Broken** (what is left of a third village,
+still in its ragged garrison gear), **Woadkin** (Celts, hair limed white) and
+**the Sea Folk** (Sherden/Peleset in the plumed crown — nine longboat crews in
+ten are these). What makes a people read at 32px is the SILHOUETTE ABOVE THE
+SHOULDERS and the shape in the hand — a muzzle and ears, a rack of antler, a
+dented helm, a crown of limed spikes, a fan of plumes; colour only confirms what
+the outline already said. Three traps this cost: a wolf pelt over a wolf-brown
+body is one grey slab, so the body and the fur must be different materials; a
+solid block of plumes or spikes is a HAT, so both leave gaps of sky between
+them; and two bare posts are horns, so an antler rack has to sweep back, branch,
+and be uneven between the two beams.
+**A camp keeps its people for its whole life** (`G.plantRaiderCamp`, `b.tribe`
+in every save): everything raised there wears that look, so the band at the
+northern fire is the same band every time you come back — and burning that camp
+out takes those people off the board. A band mustered AT a camp is its people;
+one marching in off the map edge rolls its own. The rig is `Sprites.barbFor(key)
+[kind][female ? 1 : 0]`, built lazily and cached like `militaryFor` (a map that
+meets two of the five never pays for the other three), with `Sprites.camp[key]`
+for the fires; an unknown key falls back to the Wolfskins rather than throwing.
+`R.bldSprite` and `R.unitSprite` are the only two places that choose. The camp
+panel names them (`UI.renderPanel`) and so do the war-band and burned-out log
+lines — a note that only says "barbarians" tells you nothing about who is
+coming. `loadJSON` deals a people to every camp and barbarian in a pre-peoples
+save, hashed off the SAVE'S OWN SEED so loading twice deals the same peoples and
+the run's roll sequence is never disturbed.
+
 **The wilds EASE OFF a gutted town** (`G.barbEase`, same test): barbarians
 SEASON a war — they must never decide it. A rival ground down to a hall and a
 field of ash by war bands robs the player of the victory they spent two hundred

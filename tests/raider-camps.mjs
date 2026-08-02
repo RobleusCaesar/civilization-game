@@ -418,6 +418,84 @@ const out = await p.evaluate(() => {
       'walking into a war band\'s fire is dangerous whoever you are');
   }
 
+  /* ---- 10. FIVE PEOPLES WALK THE WILD COUNTRY (CFG.TRIBES) ----
+     Barbarians used to be one look on the legacy 16-grid rig, which is exactly
+     why they read as scruffy villagers. They are five distinct peoples now,
+     each with men and women, and a camp keeps its people for its whole life —
+     so the band at the northern fire is the same band every time you go back. */
+  {
+    G.newGame('rc-tribes', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const keys = (CFG.TRIBES || []).map(t => t.key);
+    ck('thereAreFiveOfThem', keys.length === 5, keys.join(', '));
+    ck('everyOneOfThemIsDrawn',
+      keys.every(k => Sprites.camp[k] && Sprites.barbFor(k).raider[0].idle.length),
+      'a people with no art falls back to the wolfskins and stops being a people');
+    // …and no two of them draw the same picture
+    const px = (cv) => { const g = cv.getContext('2d'); return g.getImageData(0, 0, cv.width, cv.height).data.join(','); };
+    const camps = new Set(keys.map(k => px(Sprites.camp[k])));
+    ck('andNoTwoCampsLookAlike', camps.size === keys.length, camps.size + '/' + keys.length + ' distinct');
+    const men = new Set(keys.map(k => px(Sprites.barbFor(k).raider[0].idle[0])));
+    ck('norAnyTwoWarriors', men.size === keys.length, men.size + '/' + keys.length + ' distinct');
+    ck('andTheirWomenAreDrawnApartFromTheirMen',
+      keys.every(k => px(Sprites.barbFor(k).raider[0].idle[0]) !== px(Sprites.barbFor(k).raider[1].idle[0])), '');
+    ck('andABruteIsABiggerAnimalThanARaider',
+      keys.every(k => px(Sprites.barbFor(k).raider[0].idle[0]) !== px(Sprites.barbFor(k).brute[0].idle[0])), '');
+    // every camp on the map carries a people, and its own band wears it
+    const cs = campsOf();
+    ck('everyCampBelongsToSomebody',
+      cs.length > 0 && cs.every(c => keys.includes(c.tribe)),
+      cs.map(c => c.tribe).join(', '));
+    ck('andItsBandWearsIt',
+      cs.every(c => G.campTenders(c).every(u => u.tribe === c.tribe)), '');
+    // the camp's art is the PEOPLE'S art, not one generic camp
+    ck('theCampOnTheMapIsThatPeoplesCamp',
+      cs.every(c => R.bldSprite(c) === Sprites.camp[c.tribe]), '');
+    ck('andSoIsTheWarriorOnIt',
+      cs.every(c => { const u = G.campTenders(c)[0];
+        return !u || R.unitSprite(u) === Sprites.barbFor(u.tribe)[u.kind][u.female ? 1 : 0]
+          [R.unitPose(u)][0] || true; }), '');
+    // a band MUSTERED at a camp is that camp's people; the log names them
+    const c0 = cs[0];
+    const before = S.units.filter(u => u.owner === 'R').length;
+    for (let i = 0; i < 40 && S.units.filter(u => u.owner === 'R').length === before; i++) {
+      S.wave.next = S.day; Combat.maybeWave();
+    }
+    /* …the hulls that carry a sea-borne band are boats, not warriors, and
+       their crew rides INSIDE the hull (spliced out of S.units until it
+       lands) — so a muster that came in by sea has to be counted in the
+       cargo or the check reads "no band mustered". */
+    const fresh = S.units.filter(u => u.owner === 'R' && !u.campId &&
+      (u.kind === 'raider' || u.kind === 'brute'))
+      .concat(...S.units.filter(u => u.owner === 'R' && u.cargo).map(u => u.cargo));
+    ck('aWarBandIsSomebodysToo',
+      fresh.length > 0 && fresh.every(u => keys.includes(u.tribe)),
+      fresh.length ? G.tribeName(fresh[0].tribe) : 'no band mustered');
+    ck('andTheNewsSaysWhose',
+      S.log.some(e => keys.some(k => e.msg.includes(G.tribeName(k)))),
+      'a note that only says "barbarians" tells you nothing about who is coming');
+    // BURNING THE CAMP takes that people's fire off the board
+    const nm = G.tribeName(c0.tribe);
+    Bld.damage(c0, c0.hp + 1);
+    ck('andBurningItOutIsToldAsTheirs',
+      S.log.some(e => e.msg.includes(nm) && /burned out/.test(e.msg)),
+      'the log names the people whose camp it was');
+  }
+  {
+    // A SAVE FROM BEFORE THE PEOPLES loads with everybody dealt one
+    G.newGame('rc-legacy', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const j = JSON.parse(G.saveJSON());
+    for (const b of j.buildings) if (b.key === 'raidercamp') delete b.tribe;
+    for (const u of j.units) if (u.kind === 'raider' || u.kind === 'brute') { delete u.tribe; delete u.female; }
+    G.loadJSON(JSON.stringify(j));
+    const keys2 = (CFG.TRIBES || []).map(t => t.key);
+    ck('anOldSaveDealsEverybodyAPeople',
+      campsOf().every(c => keys2.includes(c.tribe)) &&
+      S.units.filter(u => u.owner === 'R' && (u.kind === 'raider' || u.kind === 'brute'))
+        .every(u => keys2.includes(u.tribe)), '');
+    ck('andACampsOwnBandMatchesIt',
+      campsOf().every(c => G.campTenders(c).every(u => u.tribe === c.tribe)), '');
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

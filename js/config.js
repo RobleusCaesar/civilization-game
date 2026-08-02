@@ -677,6 +677,22 @@ const CFG = {
      itself down. `guardR` is how far from home a tender will stray. */
   RAIDER_CAMPS: { perArea: 2, min: 2, guardR: 5, remanDays: 6, chaseR: 7 },
 
+  /* THE FIVE PEOPLES OF THE WILD COUNTRY (tests/raider-camps.mjs). The wild
+     country is not one undifferentiated mass of "barbarians": five distinct
+     peoples walk it, each with its own look, its own camp and its own name in
+     the log. A camp is DEALT one when the map is made and keeps it for its
+     whole life, so the band you meet at the northern fire is the same people
+     every time you go back — and burning that camp out takes those people off
+     the board. Every entry needs matching art in sprites.js (TRIBE_ART):
+     miss one and the unit falls back to the wolfskins. */
+  TRIBES: [
+    { key: 'wolf',   name: 'Wolfskins',    note: 'Pelt-hooded raiders who take the wolf as a war-mask' },
+    { key: 'flint',  name: 'Flintfolk',    note: 'Old blood of the stone country, antler-crowned' },
+    { key: 'broken', name: 'the Broken',   note: 'What is left of a third village, still in its ragged mail' },
+    { key: 'woad',   name: 'Woadkin',      note: 'Painted fighters with hair limed white' },
+    { key: 'sea',    name: 'the Sea Folk', note: 'Plumed crews off the water, come to take what floats' },
+  ],
+
   MEAT_DROP: 10,               // food gained when a wild animal is killed
   PASSIVE_MAX: 10,             // grazing animals kept on the map — two herds' worth
                                // (Units.spawnHerd puts them down 3–5 at a time)

@@ -1168,6 +1168,14 @@ const Combat = {
     if (disp === 'ALL' && (easeP || easeA)) disp = easeP ? 'A' : 'P';
     if ((disp === 'P' && easeP) || (disp === 'A' && easeA)) disp = easeP ? 'A' : 'P';
     const brute = i => (S.wave.count >= 4 && i % 3 === 2) ? 'brute' : 'raider';
+    /* WHICH PEOPLE IS ON THE MOVE (CFG.TRIBES, tests/raider-camps.mjs). A band
+       mustered AT a camp is that camp's own people — walk up to the northern
+       fire and it is the same faces every time. A band marching in off the map
+       edge is somebody else's, so it takes a roll of its own. Settled here so
+       the toast can name them; the sea-borne branch below reads it too, and a
+       longboat crew is a SEA FOLK crew nine times in ten. */
+    const campTribe = (c) => { const cb = Bld.at(c.x, c.y); return cb && cb.tribe; };
+    let bandTribe = G.rollTribe();
 
     // the open wilderness network (see below) — also gates beach landings so
     // sea raiders can't step off inside someone's sealed walls
@@ -1207,15 +1215,16 @@ const Combat = {
           const tr = Units.spawn(kindT, 'R', start.x, start.y);
           tr.hostileTo = disp;
           tr.cargo = [];
+          if (G.rand() < 0.9) bandTribe = 'sea';     // a crew off the water is nearly always the Sea Folk
           const aboard = Math.min(n, CFG.UNITS[kindT].cap);
           for (let i = 0; i < aboard; i++) {
-            const ru = Units.spawn(brute(i), 'R', start.x, start.y, { scale });
+            const ru = Units.spawn(brute(i), 'R', start.x, start.y, { scale, tribe: bandTribe });
             ru.hostileTo = disp;
             S.units.splice(S.units.indexOf(ru), 1);   // they ride in the hull
             tr.cargo.push(ru);
           }
           Units.orderUnload(tr, landing.x, landing.y);
-          G.foeNote('⛵ Sails on the horizon — a barbarian longboat makes for the shore!');
+          G.foeNote('⛵ Sails on the horizon — a longboat of ' + G.tribeName(bandTribe) + ' makes for the shore!');
           return;
         }
       }
@@ -1234,6 +1243,7 @@ const Combat = {
     if (camps.length && G.rand() < 0.25) {
       const c = camps[(G.rand() * camps.length) | 0];
       sx = c.x; sy = c.y;
+      bandTribe = campTribe(c) || bandTribe;   // mustered at a fire: its own people
     } else {
       const side = (G.rand() * 4) | 0;
       sx = side === 0 ? 0 : side === 1 ? CFG.W - 1 : (G.rand() * CFG.W) | 0;
@@ -1262,8 +1272,8 @@ const Combat = {
     for (let i = 0; i < n; i++) {
       const p = MapGen.findNear(spot.x, spot.y, 4, farOk) ||
                 MapGen.findNear(spot.x, spot.y, 4, inNet) || spot;
-      Units.spawn(brute(i), 'R', p.x, p.y, { scale }).hostileTo = disp;
+      Units.spawn(brute(i), 'R', p.x, p.y, { scale, tribe: bandTribe }).hostileTo = disp;
     }
-    G.foeNote(`⚔ A barbarian war band is on the move (${n})!`);
+    G.foeNote(`⚔ A war band of ${G.tribeName(bandTribe)} is on the move (${n})!`);
   },
 };

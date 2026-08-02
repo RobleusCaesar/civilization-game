@@ -23,6 +23,16 @@ const Units = {
       repathT: 0,
     };
     if (kind === 'villager') u.female = Math.random() < 0.5;   // ~50/50 men & women (stays with the unit through saves)
+    /* THE FIVE PEOPLES OF THE WILD COUNTRY (tests/raider-camps.mjs). A war
+       band belongs to a PEOPLE — wolfskins, flintfolk, the broken, woadkin,
+       sea peoples — and wears its look. The tribe is passed in by whoever
+       raises the band (a camp hands out its own, kept for the camp's whole
+       life); anything spawned without one takes a roll, so no barbarian is
+       ever tribeless. Men and women both, like the villages. */
+    if (kind === 'raider' || kind === 'brute') {
+      u.tribe = opts.tribe || G.rollTribe();
+      u.female = Math.random() < 0.5;
+    }
     if (window.Cards) Cards.onSpawn(u);   // ORIGIN CARDS: Ironhand toughness
     S.units.push(u);
     return u;

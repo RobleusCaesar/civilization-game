@@ -1629,8 +1629,13 @@ const UI = {
       if (!b) { this.deselect(); return; }
       const d = Bld.def(b.key);
       const sub = this.panelSub();
+      // A CAMP IS SOMEBODY'S (CFG.TRIBES): the panel names the people whose
+      // fire it is, so walking up to a strange camp actually tells you who
+      // lives there — that is the whole point of five distinct peoples.
+      const nm = b.key === 'raidercamp' && b.tribe
+        ? `Camp of ${G.tribeName(b.tribe)}` : d.name;
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
-        <div class="ptitle">${b.owner === 'A' ? 'Rival ' : ''}${d.name} <span style="color:var(--gold)">Lv ${b.level}</span></div>
+        <div class="ptitle">${b.owner === 'A' ? 'Rival ' : ''}${nm} <span style="color:var(--gold)">Lv ${b.level}</span></div>
         <div class="psub">${sub}</div></div>
         <button class="abtn" id="panelClose">✕</button></div>`;
       html += '<div class="pactions">';
@@ -1754,7 +1759,11 @@ const UI = {
           ? (Bld.size(b.key) >= 2 ? Sprites.misc.constructionBig1 : Sprites.misc.construction1)
           : iconStage === 1
             ? (Bld.size(b.key) >= 2 ? (b.level >= 3 ? Sprites.misc.constructionBig3 : Sprites.misc.constructionBig) : Sprites.misc.construction)
-            : Sprites.building[b.key][b.level - 1]);
+            // …and a camp shows the art of the people whose fire it is. Only
+            // the camp is routed this way: R.bldSprite hands a wall or gate its
+            // AUTO-TILED mask, which is the wrong picture for a panel icon.
+            : (b.key === 'raidercamp' && Sprites.camp && Sprites.camp[b.tribe]
+                ? Sprites.camp[b.tribe] : Sprites.building[b.key][b.level - 1]));
       panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => {
         const b2 = Bld.get(this.sel.id);
         if (!b2) return;

@@ -1225,7 +1225,7 @@ const Bld = {
         // the ground is won: no more spears raised here, and no wave musters
         // at it again (tests/raider-camps.mjs). Its band is loose from now on
         // — Combat.raiderSeek drops the post the moment the camp is gone.
-        G.log('A barbarian camp is burned out — that ground is yours.', true);
+        G.log(`A camp of ${G.tribeName(b.tribe)} is burned out — that ground is yours.`, true);
         if (S.stats) S.stats.razed = (S.stats.razed || 0) + 1;
       }
     }

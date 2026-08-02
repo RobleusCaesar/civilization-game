@@ -1118,11 +1118,28 @@ const G = {
      is not empty scenery, and a trip out to a distant seam or a fat forest is
      a trip past somebody's spears. Burn the camp and the ground is yours —
      its band stops being replaced and no wave musters there again. */
-  plantRaiderCamp(x, y) {
+  /* WHICH PEOPLE (CFG.TRIBES, tests/raider-camps.mjs). Rolled on the SEEDED
+     rng so a seed's wild country is the same wild country twice. */
+  rollTribe() {
+    const list = CFG.TRIBES || [];
+    return list.length ? list[(this.rand() * list.length) | 0].key : 'wolf';
+  },
+  tribeDef(key) {
+    return (CFG.TRIBES || []).find(t => t.key === key) || (CFG.TRIBES || [])[0] ||
+      { key: 'wolf', name: 'Barbarians' };
+  },
+  tribeName(key) { return this.tribeDef(key).name; },
+
+  plantRaiderCamp(x, y, tribe) {
     if (!MapGen.inB(x, y) || Bld.at(x, y)) return null;
     S.map.terrain[MapGen.idx(x, y)] = T.CAMP;
     const b = Bld.place('R', 'raidercamp', x, y, { free: true, instant: true });
     if (!b) return null;
+    /* A CAMP KEEPS ITS PEOPLE FOR ITS WHOLE LIFE. Everything raised here wears
+       this look, so the band at the northern fire is the same band every time
+       you come back — and burning the camp out takes those people off the
+       board with it. Rides in every save on the building itself. */
+    b.tribe = tribe || this.rollTribe();
     // the camp's own quota, rolled once and REMEMBERED: it is what the camp
     // re-mans back up to, so a band you cut down comes back the same size
     b.reman = 0;
@@ -1149,7 +1166,7 @@ const G = {
         Path.passable(sx, sy, 'R') && !Bld.at(sx, sy));
       if (!spot) break;
       const kind = this.rand() < 0.25 ? 'brute' : 'raider';
-      const u = Units.spawn(kind, 'R', spot.x, spot.y);
+      const u = Units.spawn(kind, 'R', spot.x, spot.y, { tribe: b.tribe });
       u.hostileTo = 'ALL';          // a camp band answers to nobody
       u.campId = b.id;
       u.anchor = { x: b.x + 0.5, y: b.y + 0.5 };
@@ -1331,6 +1348,29 @@ const G = {
     if (!data.wonder) data.wonder = G.rollWonder(data.seed).key;
     if (!data.nextDeath) data.nextDeath = 0;   // pre-mortality saves: rolled on the next dayTick
     if (!data.peakTown) data.peakTown = null;  // pre-ease saves: the record starts today (notePeaks)
+    /* PRE-PEOPLES SAVES (CFG.TRIBES): every camp is dealt a people and its own
+       standing band takes it, so a loaded old game looks exactly like a new
+       one from the next frame. Barbarians with no camp take a roll each. The
+       deal is off `data.seed`, not the live rng, so loading a save twice deals
+       the same peoples — and never disturbs the run's own roll sequence. */
+    {
+      let n = 0;
+      const pick = () => {
+        const list = CFG.TRIBES || [];
+        if (!list.length) return 'wolf';
+        let h = 0; const s = String(data.seed || '') + '::tribe' + (n++);
+        for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+        return list[Math.abs(h) % list.length].key;
+      };
+      const byCamp = {};
+      for (const b of (data.buildings || []))
+        if (b.key === 'raidercamp') byCamp[b.id] = (b.tribe = b.tribe || pick());
+      for (const u of (data.units || []))
+        if ((u.kind === 'raider' || u.kind === 'brute') && !u.tribe) {
+          u.tribe = (u.campId && byCamp[u.campId]) || pick();
+          if (u.female == null) u.female = Math.random() < 0.5;
+        }
+    }
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.reclaimed) data.map.reclaimed = {};
     if (!data.map.fishStocked) {

@@ -977,6 +977,8 @@ const R = {
     if (b.key === 'tower' && !(b.construction > 0) && Sprites.towerMural &&
         MapGen.inB(b.x, b.y) && this.towerLinkMask(b.x, b.y).mask)
       return Sprites.towerMural[Math.min(L, Sprites.towerMural.length) - 1];
+    // a camp is the home of one of the five peoples, and looks like it
+    if (b.key === 'raidercamp' && Sprites.camp && Sprites.camp[b.tribe]) return Sprites.camp[b.tribe];
     const fam = (b.owner === 'A' ? Sprites.buildingA : Sprites.building)[b.key];
     return fam[Math.min(L, fam.length) - 1];
   },
@@ -1776,6 +1778,12 @@ const R = {
     if (u.kind === 'villager') {
       const tunic = G.tunicOf(u.owner);
       sheet = (u.female && Sprites.villagerF[tunic]) || Sprites.villager[tunic] || Sprites.unit.villager;
+    } else if ((u.kind === 'raider' || u.kind === 'brute') && Sprites.barbFor) {
+      /* THE FIVE PEOPLES (CFG.TRIBES, tests/raider-camps.mjs): a war band wears
+         the look of the people that raised it — the camp's own, for its whole
+         life — and its men and women are drawn apart like the villages'. */
+      const set = Sprites.barbFor(u.tribe);
+      sheet = (set[u.kind] || set.raider)[u.female ? 1 : 0];
     } else {
       // military units wear the village colour on their collar/stripe; barbarians,
       // siege engines and civilian boats fall through to their single sheet
