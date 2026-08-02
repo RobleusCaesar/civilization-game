@@ -2124,7 +2124,18 @@ const UI = {
         html += tool('clear', '⛏', 'Clear', 3);
         html += tool('mound', '⛰', 'Mound', 3);
       }
-      if (own && Units.isVillager(u)) html += `<button class="abtn" data-act="gobuild">🔨 Build…</button>`;
+      /* BUILD and BANISH share a row (tests/banish.mjs). Banish is the
+         villager's Scuttle: nothing comes back but the place in the
+         population, which late on — when the fields are staffed and you want
+         spears instead — is the only thing you actually wanted. Two taps, the
+         same confirm pattern the hulls and demolition use, because it cannot
+         be undone once they reach the rim. */
+      if (own && Units.isVillager(u)) {
+        html += `<button class="abtn" data-act="gobuild">🔨 Build…</button>`;
+        html += this.confirmDemolish === u.id
+          ? `<button class="abtn danger" data-act="banish">⚠️ Confirm — send them away<small>nothing is returned</small></button>`
+          : `<button class="abtn" data-act="banish">👋 Banish<small>they leave for good, freeing their place in the population</small></button>`;
+      }
       // resource-station upgrade, right on the worker's panel
       const wb = own ? this.villagerResBld(u) : null;
       if (wb) {
@@ -2226,6 +2237,16 @@ const UI = {
         if (!u2 || !u2.cargo || !u2.cargo.length) { this.toast('Nobody aboard', true); return; }
         Units.disembark(u2);   // logs the outcome either way
         this.renderPanel();
+      });
+      const ban = panel.querySelector('[data-act="banish"]');
+      if (ban) ban.addEventListener('click', () => {
+        const u2 = Units.get(this.sel.id);
+        if (!u2 || !Units.canBanish(u2)) return;
+        if (this.confirmDemolish !== u2.id) { this.confirmDemolish = u2.id; this.renderPanel(); return; }
+        this.confirmDemolish = 0;
+        Units.banish(u2);
+        this.toast('Banished — they are walking out of the valley');
+        this.deselect();
       });
       const scut = panel.querySelector('[data-act="scuttle"]');
       if (scut) scut.addEventListener('click', () => {

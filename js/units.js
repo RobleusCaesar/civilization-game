@@ -134,6 +134,62 @@ const Units = {
     if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
   },
 
+  /* ================= BANISHMENT (tests/banish.mjs) =================
+     The villager's answer to Scuttle. Late on, a town that has finished
+     building has hands it would rather have as spears, and the population cap
+     is the only thing standing in the way — so a villager can be sent away for
+     good. NOTHING comes back: no food, no wood, not even the training cost.
+     The one thing it buys is the place in the population, and that is the
+     whole point of the button.
+
+     They LEAVE UNDER THEIR OWN FEET rather than vanishing on the tap, so the
+     road is real: a barbarian can cut them down on the way, and the order can
+     be called off by giving them any other order before they reach the rim.
+     Deliberately villagers only for now — soldiers keep their posts. */
+  canBanish(u) { return !!u && u.owner === 'P' && this.isVillager(u); },
+  atMapEdge(u) {
+    const x = u.x | 0, y = u.y | 0;
+    return x <= 1 || y <= 1 || x >= CFG.W - 2 || y >= CFG.H - 2;
+  },
+  // the nearest walkable tile on the board's outermost usable ring — the black
+  // rim itself is off-map void, so "off the map" means row/column 1 or W-2/H-2
+  edgeTarget(u) {
+    const cand = [];
+    const push = (x, y) => { if (MapGen.onBoard(x, y) && Path.passable(x, y, u.owner)) cand.push({ x, y }); };
+    for (let x = 1; x < CFG.W - 1; x++) { push(x, 1); push(x, CFG.H - 2); }
+    for (let y = 1; y < CFG.H - 1; y++) { push(1, y); push(CFG.W - 2, y); }
+    let best = null, bd = 1e9;
+    for (const c of cand) {
+      const d = Math.hypot(c.x - u.x, c.y - u.y);
+      if (d < bd) { bd = d; best = c; }
+    }
+    return best;
+  },
+  sendToEdge(u) {
+    const e = this.edgeTarget(u);
+    if (!e) return false;
+    if ((u.x | 0) === e.x && (u.y | 0) === e.y) return false;   // already there — leave now
+    this.setPath(u, e.x, e.y);
+    return this.moving(u);
+  },
+  banish(u) {
+    if (!this.canBanish(u)) return false;
+    u.tUnit = 0; u.tBld = 0; u.jobs = null; u.defend = false;
+    u.task = { type: 'banish' };
+    if (!this.sendToEdge(u) && !this.atMapEdge(u)) {
+      // nowhere to walk to (sealed in) — they slip away all the same
+      this.leaveTheMap(u);
+      return true;
+    }
+    return true;
+  },
+  // gone for good: no rubble, no refund, just a place freed in the population
+  leaveTheMap(u) {
+    R.float(u.x, u.y - 0.6, '👋', '#d8cfae');
+    G.log('A villager is banished — they walk out of the valley for good');
+    this.despawn(u);
+  },
+
   villagerArmed() {
     return S.buildings.some(b => b.owner === 'P' && b.key === 'lodge' && b.level >= 3 && Bld.done(b));
   },
@@ -178,6 +234,7 @@ const Units = {
       if (u.stance === 'guard') return { icon: '🛡️', what: 'Defending', rate: null, working: true };
       return { icon: '💤', what: 'Idle', rate: null, working: false };
     }
+    if (t.type === 'banish') return { icon: '👋', what: 'Leaving the valley', rate: null, working: false };
     if (t.type === 'gather') {
       const g = CFG.GATHER[S.map.terrain[MapGen.idx(t.x, t.y)]];
       const sx = t.sx == null ? t.x : t.sx, sy = t.sy == null ? t.y : t.sy;
@@ -1183,6 +1240,21 @@ const Units = {
         if (this.followPath(u, dt)) {
           u.task = null; u.anchor = { x: u.x, y: u.y };
           if (t.guard) u.guardPost = null;   // back at the post — forget it (a fresh fight stamps a new one)
+        }
+      } else if (t.type === 'banish') {
+        /* BANISHED (tests/banish.mjs): they down tools and walk off the map for
+           good. The pop cap is the only thing this gives back — nothing is
+           refunded — so it is the villager's answer to Scuttle: a way to make
+           room for soldiers late on when the fields no longer need the hands.
+           They leave under their own feet, so the walk is real: a barbarian
+           can still cut them down on the road, and a banishment can be called
+           off by giving them any other order before they reach the edge. */
+        // (the roster is walked BACKWARDS, so despawning from inside it is safe)
+        if (this.followPath(u, dt) || !this.moving(u)) {
+          if (this.atMapEdge(u)) { this.leaveTheMap(u); continue; }
+          // the road ended short (the way out was blocked, or the ground
+          // reshaped under them) — pick a fresh way off the board
+          if (!this.sendToEdge(u)) { this.leaveTheMap(u); continue; }
         }
       } else if (t.type === 'flee') {
         if (this.followPath(u, dt)) u.task = null;

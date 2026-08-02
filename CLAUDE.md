@@ -91,6 +91,7 @@ node tests/raider-camps.mjs    # barbarian camps are standing, tended, burnable 
 node tests/mortality.mjs       # a villager dies every so often, of something apt — and their post is left empty
 node tests/drawbridge.mjs      # a Lv3 gate's bridge on chains: raised, the gate is a WALL — to its owner too
 node tests/tc-upgrade.mjs      # the hall rises on the town's shoulders — 3 buildings at its own level
+node tests/banish.mjs          # a villager can be sent away for good — the pop cap is all you get back
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -970,6 +971,23 @@ sharing `UI.confirmDemolish` — unit and building ids never collide): the ship
 sinks, NOTHING is refunded, its place in the population is freed
 (`Units.despawn` → `popUsed` drops). A transport with soldiers aboard refuses
 to scuttle — unload first, never send the crew down with the ship.
+
+**Banishment** (`tests/banish.mjs`): the VILLAGER's answer to Scuttle, and the
+same bargain — late on, a town that has finished building has hands it would
+rather have as spears, and the population cap is the only thing in the way.
+`Units.banish` downs their tools and walks them to the board's rim
+(`edgeTarget` → the outermost USABLE ring, one tile in: the black is off-map
+void), where `leaveTheMap` despawns them. NOTHING comes back: no food, no wood,
+not even the training cost — the place in the population is the whole of it,
+which is what keeps it from being a disguised refund.
+**They leave under their own feet**, so the road is real: a barbarian can cut
+them down on the way, the place is freed when they LEAVE rather than when the
+order is given, and any other order before they reach the rim calls it off. A
+villager sealed in with no road out slips away anyway — no way to the edge is
+not a reason to keep feeding them. Two taps (`UI.confirmDemolish`, the same
+confirm the hulls and demolition use) because it cannot be undone. The button
+shares the villager panel's row with Build; **villagers only for now** —
+`Units.canBanish` is the single gate, and soldiers keep their posts.
 
 **The Ancient Wonder** (`tests/wonder.mjs`): the SECOND way to win, and the
 only one that isn't a war — raise the monument and the run is yours. **Ten**
