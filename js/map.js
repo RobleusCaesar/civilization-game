@@ -523,8 +523,12 @@ const Path = {
     if (!MapGen.onBoard(x, y)) return false;
     if (domain === 'water') return terr === T.WATER || terr === T.MOAT;   // boats: open water — a flooded moat included (docks don't block hulls)
     if (BLOCK_TERR[terr]) {
-      // a standing bridge makes a water/moat tile crossable to land units
-      if (!((terr === T.WATER || terr === T.MOAT) && S.map.bridge && S.map.bridge[i])) return false;
+      // a standing bridge makes a water/moat tile crossable to land units —
+      // and so does a LOWERED DRAWBRIDGE, whose deck spans the tile in front
+      // of its gate (Bld.deckAt, tests/drawbridge.mjs). Raise it and the
+      // crossing goes with it.
+      const wet = terr === T.WATER || terr === T.MOAT;
+      if (!(wet && ((S.map.bridge && S.map.bridge[i]) || Bld.deckAt(x, y)))) return false;
     }
     const blk = Bld.blockAt(x, y);
     if (blk === 0) return true;

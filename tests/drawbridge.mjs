@@ -17,6 +17,21 @@
                               before, so nothing else in the wall-line
                               contract moves.
 
+     THE DECK IS A CROSSING   And it spans a WHOLE TILE — that is the entire
+                              point of the thing. Lowered, the one tile it
+                              reaches across (Bld.drawbridgeSpan, one step
+                              OUTWARD) becomes walkable, so an army pours out
+                              over the moat; raised, the crossing goes with it
+                              and the ditch is water again. Owner-AGNOSTIC:
+                              anyone on a lowered deck may cross it. What they
+                              cannot do is walk through the gate itself unless
+                              it is theirs — so lowering it lets a raid reach
+                              your gate to hammer on it, which is the decision.
+                              Bld._deck is built lazily against _blockGen, not
+                              inside rebuildBlock: working out which way a gate
+                              faces needs the block grid to exist already, and
+                              building it from in there would recurse.
+
      NOBODY IS WEDGED         Shutting the gate on somebody standing in the
                               passage steps them clear (Bld.stepOffFootprint,
                               the same helper Bld.finish uses when a
@@ -39,6 +54,17 @@
                               terms instead would teleport the deck from one
                               side of the hinge to the other in a single
                               frame.
+
+     ONE TILE, BOTH WAYS      Sprites' DB_LEN is one tile of ground, and the
+                              deck is the same board in both states: 30 cells
+                              lying down, 30 cells standing up. The ground is
+                              drawn top-down and is NOT foreshortened, so there
+                              is no cheat factor and no jump in size when it
+                              lands. The canvases are TWO tiles in the fall
+                              direction, and the level-3 gateway was rebuilt
+                              around the door — a tall plain arch between the
+                              turrets, so a full-height deck has somewhere to
+                              stand.
 
      TWO VIEWS, NOT ONE       Like the gatehouse it hangs on, the deck has an
      ROTATED                  east-west self (it lies south, toward you) and a
@@ -309,6 +335,74 @@ const out = await p.evaluate(() => {
     // …and the strip for the OTHER direction never reaches the canvas
     ck('andOnlyThatOne',
       !Sprites.drawbridge[faceStrip === 2 ? 0 : 2].some(c => drawn.includes(c)), '');
+  }
+
+  /* ---- 2f-i. IT SPANS THE DITCH, and taking it up takes the crossing away ---- */
+  {
+    G.newGame('db-moat', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.res = { food: 99999, wood: 99999, stone: 99999, gold: 99999 };
+    // a CLOSED bailey with one gate in its south wall — "nobody gets out" can
+    // only be measured on ground that is genuinely shut in, or the walk simply
+    // rounds the end of an open line and the deck proves nothing
+    const t = Bld.tcOf('P'), cy = t.y + 8, X0 = t.x - 4, X1 = t.x + 4, Y0 = cy - 6;
+    for (let y = t.y - 8; y <= t.y + 12; y++) for (let x = t.x - 12; x <= t.x + 12; x++) {
+      if (!MapGen.inB(x, y)) continue;
+      const i = MapGen.idx(x, y);
+      S.map.terrain[i] = T.GRASS; S.map.seenTerrain[i] = T.GRASS; S.map.explored[i] = 1;
+    }
+    // clear the village off the ground the bailey stands on
+    S.buildings = S.buildings.filter(z =>
+      z.x < X0 - 1 || z.x > X1 + 1 || z.y < Y0 - 1 || z.y > cy + 1);
+    let gm = null;
+    for (let x = X0; x <= X1; x++) for (const y of [Y0, cy]) {
+      const nb = Bld.place('P', (y === cy && x === t.x) ? 'gate' : 'wall', x, y, { instant: true });
+      if (y === cy && x === t.x) gm = nb;
+    }
+    for (let y = Y0 + 1; y < cy; y++) for (const x of [X0, X1])
+      Bld.place('P', 'wall', x, y, { instant: true });
+    for (let x = X0 - 1; x <= X1 + 1; x++)
+      S.map.terrain[MapGen.idx(x, cy + 1)] = T.MOAT;           // the ditch, right in front
+    S.wallLevel = 3;
+    for (const z of S.buildings) if (z.key === 'wall' || z.key === 'gate') {
+      z.level = 3; z.maxhp = CFG.BUILDINGS[z.key].levels[2].hp; z.hp = z.maxhp; z.construction = 0;
+    }
+    Bld._block = null;
+    const span = Bld.drawbridgeSpan(gm);
+    ck('theDeckReachesTheTileBeyond',
+      !!span && span.x === gm.x && span.y === gm.y + 1 && Bld.gateOutside(gm) === 1,
+      span ? span.x + ',' + span.y : 'nowhere');
+    ck('thatTileIsTheDitch', S.map.terrain[MapGen.idx(span.x, span.y)] === T.MOAT, '');
+    // DOWN: the army pours out — and so could a raid, which is the trade
+    ck('loweredItCarriesYouOver',
+      Path.passable(span.x, span.y, 'P') && Bld.deckAt(span.x, span.y) === 1, '');
+    ck('andCarriesAnybodyElseToo', Path.passable(span.x, span.y, 'A'),
+      'owner-agnostic — that is what makes raising it a decision');
+    // …and a walk from inside the wall to outside it genuinely connects
+    const inside = { x: gm.x, y: gm.y - 1 }, outside = { x: gm.x, y: gm.y + 2 };
+    const road = Path.find(inside.x, inside.y, outside.x, outside.y, 'P');
+    ck('soThereIsAWayOutThroughTheGate',
+      !!road && road.length && road[road.length - 1].x === outside.x &&
+      road[road.length - 1].y === outside.y,
+      road ? road.length + ' steps' : 'no road');
+    // UP: nobody passes, good or bad — the gate seals AND the ditch is water again
+    Bld.toggleDrawbridge(gm);
+    ck('raisedTheCrossingGoesWithIt',
+      Bld.deckAt(span.x, span.y) === 0 &&
+      !Path.passable(span.x, span.y, 'P') && !Path.passable(span.x, span.y, 'A'), '');
+    ck('andTheGateSealsBehindIt',
+      Bld.blockAt(gm.x, gm.y) === 1 && !Path.passable(gm.x, gm.y, 'P'), '');
+    const shut = Path.find(inside.x, inside.y, outside.x, outside.y, 'P');
+    ck('soNobodyGetsOutAtAll',
+      !shut || !shut.length ||
+      shut[shut.length - 1].x !== outside.x || shut[shut.length - 1].y !== outside.y,
+      shut && shut.length ? 'a road still runs — ' + shut.length + ' steps' : 'sealed');
+    // …and lowering it opens the way again
+    Bld.toggleDrawbridge(gm);
+    ck('andLoweringItOpensTheWayAgain', Path.passable(span.x, span.y, 'P'), '');
+    // a LEVEL 2 gate has no deck at all, so it never carries anyone over water
+    gm.level = 2; Bld._block = null;
+    ck('anEarlierGateHasNoDeck',
+      Bld.drawbridgeSpan(gm) === null && Bld.deckAt(span.x, span.y) === 0, '');
   }
 
   /* ---- 2f-ii. IT FALLS OUTWARD, whatever the stronghold is made of ---- */

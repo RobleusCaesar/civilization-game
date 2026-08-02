@@ -1189,24 +1189,49 @@ castle when the bridge comes up. `R.drawDrawbridge` takes a `front` flag and the
 building loop calls it twice — once before the gate sprite, once after — so each
 strip answers on the pass it belongs to.
 
+**THE DECK IS A CROSSING** (same test): a drawbridge exists to span the ditch,
+so lowered it makes the ONE TILE it reaches across WALKABLE — `Bld.drawbridgeSpan`
+is that tile (one step along `gateOutside`, in the axis `R.gateVerticalAt`
+gives), `Bld.rebuildDeck`/`deckAt` is the grid of them, and `Path.passable`
+carries land over a moat or water tile that a deck lies on exactly as a built
+bridge does. Raised, the crossing goes with it: the deck grid drops the tile
+AND the gate's own tile turns to code 1, so a closed bailey is genuinely shut —
+that is the whole ask, "the army floods out when it's down, nobody good or bad
+passes when it's up". Deliberately **owner-agnostic**: anyone may walk a lowered
+deck (what they still cannot do is pass the gate itself unless it is theirs,
+code 2/3), which is what makes the lever a decision rather than a free wall.
+The deck grid is built LAZILY against `_blockGen`, never inside `rebuildBlock`
+— working out which way a gate faces needs the block grid to exist already
+(`gateOutside` → `gateVerticalAt` → `fortAt`) and building it from inside the
+rebuild would recurse — and `deckAt` must force `rebuildBlock` BEFORE comparing
+generations, or it reads a stale deck while `_blockGen` is still the old number.
+
 **The deck is its own little atlas** (`Sprites.drawbridge`, `deckFace` /
-`deckSide` / `tileDB`): eight stills per orientation, frame 0 fully down and the
-last fully up — raising and lowering are the SAME strip read one way or the
-other — drawn over the finished gate by `R.drawDrawbridge`. Canvases are one
-tile plus a half, the extra half hanging off the side the deck falls toward: the
-east-west face is 1 wide × 1½ TALL (it lies south, toward you), the north-south
-flank 1½ WIDE × 1 (the passage runs east-west, so it lies east). Two authored
-views, like the gatehouse itself — neither is the other rotated.
+`deckSide` / `deckFaceAway` / `tileDB`): eight stills per orientation, frame 0
+fully down and the last fully up — raising and lowering are the SAME strip read
+one way or the other — drawn over the finished gate by `R.drawDrawbridge`.
+**ONE TILE, BOTH WAYS**: the deck is a FULL TILE long (`DB_LEN` 30 fine cells of
+a 32-cell tile), because a bridge that lands mid-moat crosses nothing. So the
+canvases are TWO TILES in the fall direction, the second hanging off the side
+the deck falls toward: the east-west face is 1 wide × 2 TALL (it lies south,
+toward you), the north-south flank 2 WIDE × 1 (the passage runs east-west, so it
+lies east). Two authored views, like the gatehouse itself — neither is the other
+rotated. The same board stands up as lies down; nothing grows on landing.
+**A bigger door needs a plainer gateway.** A full-tile deck stood upright fills
+the whole archway, so `gateFaceT3`'s central block was widened (`A0/A1` 11..20,
+`AT` 14) and its machicolated gallery over the passage dropped for a plain coped
+head — the turrets keep theirs, so the gatehouse still reads as a gatehouse
+while the raised deck has somewhere to be. The chains hang from winches at the
+TURRET heads (row 6) rather than off the gallery that is no longer there.
 **Do not "fix" the edge-on frames.** The face view uses the honest projection —
-`yEnd = GND + LEN·cosθ·FORE − LEN·sinθ`, the ground reach foreshortened, the
-standing height 1:1 like every other elevation in the game — which walks the
-free end SMOOTHLY across the hinge, through a two-row slab mid-swing that is
-exactly what a deck pointing at the camera looks like. Taking a `max()` of the
-two terms to keep it "visible" teleports the deck from one side of the hinge to
-the other in a single frame. `LEN` 16 is not free either: stood up the deck
-reaches fine row 14, which is the crown of the arch it has to shut, and the
-chains hang from winches at row 10 — the machicolation gallery `drawGateFace`
-draws. Move one and you must move the other.
+`yEnd = GND + LEN·cosθ·FORE − LEN·sinθ`, the ground reach at `FORE` 1 now that
+the deck must cover a whole tile of ground — which walks the free end SMOOTHLY
+across the hinge, through a two-row slab mid-swing that is exactly what a deck
+pointing at the camera looks like. Taking a `max()` of the two terms to keep it
+"visible" teleports the deck from one side of the hinge to the other in a single
+frame. The away view's extent curve is `LEN·cos(θ)^1.6·0.94 + 1.5` rather than a
+plain cosine: at this length a plain cosine rounds frames 0 and 1 to the same
+pixels and the strip reads as a stutter.
 **The swing is render state** (`R._dbA`, eased per gate id): never on the
 building, never in a save — the same rule `R._fighting`, `R.collapses` and
 `R.deaths` follow, and it is cleared in `R.onNewGame` so reused ids can't

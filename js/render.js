@@ -933,19 +933,20 @@ const R = {
     this._dbA[b.id] = a;
     const fam = Sprites.drawbridge[away ? 2 : vert ? 1 : 0];
     const fr = Math.max(0, Math.min(fam.length - 1, Math.round(a * (fam.length - 1))));
+    // TWO tiles in the direction the deck falls — it spans a whole one
     if (away) {
-      // the tile sits at the BOTTOM of that canvas; the half above it is the
-      // ground beyond the wall
-      g.drawImage(fam[fr], bx, by - bw * 0.5, bw, bw * 1.5);
+      // the gate's tile is the BOTTOM half of that canvas; the tile above it is
+      // the ground beyond the wall
+      g.drawImage(fam[fr], bx, by - bw, bw, bw * 2);
     } else if (vert) {
       if (dir < 0) {                          // …falling WEST: mirror about the tile
         g.save();
         g.translate(bx + bw / 2, 0); g.scale(-1, 1); g.translate(-(bx + bw / 2), 0);
-        g.drawImage(fam[fr], bx, by, bw * 1.5, bw);
+        g.drawImage(fam[fr], bx, by, bw * 2, bw);
         g.restore();
-      } else g.drawImage(fam[fr], bx, by, bw * 1.5, bw);
+      } else g.drawImage(fam[fr], bx, by, bw * 2, bw);
     } else {
-      g.drawImage(fam[fr], bx, by, bw, bw * 1.5);
+      g.drawImage(fam[fr], bx, by, bw, bw * 2);
     }
   },
   gateVerticalAt(x, y) {

@@ -830,7 +830,7 @@ const Sprites = {
     const W0 = 10, W1 = 21;                  // the curtain band (drawWallMask's arms, 5..10 of 16)
     const TL0 = 1, TL1 = 8, TR0 = 24, TR1 = 31;    // the turrets, standing IN the line
     const C0 = 8, C1 = 24;                   // the gate, stretching between them
-    const A0 = 12, A1 = 19;                  // the archway
+    const A0 = 11, A1 = 20;                  // the archway — the drawbridge's own width
     const uM = d.timber ? WD[2] : d.mid, uL = d.timber ? WD[3] : d.lit;   // L2 = timber upper works
 
     // masonry (or upright logs) for any mass of the gatehouse
@@ -855,10 +855,18 @@ const Sprites = {
     //         this runs. Hand-drawing it here is what made the merlons stop
     //         dead at every gate; the line now runs straight through. ----
 
-    // ---- 2. THE GATE, stretching between the turrets ----
-    face(C0, C1 - C0, 6, GND, 71 + lv);
-    head(C0, C1 - C0, 6, true);
-    q(C0 + 2, 12, 1, 3, IN); q(C1 - 3, 12, 1, 3, IN);            // loops over the arch
+    /* ---- 2. THE GATEWAY, stretching between the turrets ----
+       DELIBERATELY PLAIN, and it rises the FULL HEIGHT of the tile. The
+       drawbridge spans a whole tile of ground (DB_LEN), so raised it is a
+       whole tile TALL — and the old central block (head at row 6, a
+       machicolated gallery under it, crenels over that) left it nowhere to
+       stand: the door would have covered its own gallery and towered over the
+       castle. A tall bare arch between two crenellated turrets is a real
+       gatehouse, it gives the door a gateway that fits it, and it keeps every
+       piece of castle character on the turrets where it still reads. */
+    face(C0, C1 - C0, 0, GND, 71 + lv);
+    q(C0, 0, C1 - C0, 1, d.lit);                                 // a plain coped head
+    q(C0, 1, C1 - C0, 1, d.dark);
 
     // ---- 3. THE TURRETS, rising out of the line and carrying down to the ground ----
     for (const [x0, x1] of [[TL0, TL1], [TR0, TR1]]) {
@@ -867,8 +875,9 @@ const Sprites = {
       q(x0 + 3, 8, 1, 4, IN); q(x0 + 3, 14, 1, 4, IN); q(x0 + 3, 20, 1, 4, IN);   // arrow loops
     }
 
-    // ---- 4. THE ARCHWAY — a round head over the passage, in dressed voussoirs
-    const AT = 16;                                      // where the arch springs
+    // ---- 4. THE ARCHWAY — a round head over the passage, in dressed voussoirs.
+    //         Wider (it has to pass the deck) and taller (it has to hold it).
+    const AT = 14;                                      // where the arch springs
     q(A0, AT + 2, A1 - A0 + 1, GND - AT - 2, IN);       // the dark of the passage
     q(A0 + 1, AT, A1 - A0 - 1, 2, IN); q(A0 + 2, AT - 1, A1 - A0 - 3, 1, IN);
     q(A0 - 1, AT + 2, 1, GND - AT - 2, d.lit); q(A1 + 1, AT + 2, 1, GND - AT - 2, d.lit);   // the jambs
@@ -1199,6 +1208,26 @@ const Sprites = {
      other. */
   const DRAWBRIDGE_N = 8;                     // stills from fully down (0) to fully up (N-1)
   const IRON = ['#22222a', '#3d3d47', '#5f5f6c', '#87879a'];
+  /* THE DECK SPANS A WHOLE TILE. That is the entire point of a drawbridge: it
+     reaches across the ditch in front of the gate and lands on the far bank,
+     so an army can pour out over it and nothing can follow once it is hauled
+     up. A shorter deck stops in the water and crosses nothing.
+
+     DB_LEN is therefore ONE TILE of ground, and it is the same board in both
+     states — 30 cells long lying down, 30 cells tall standing up. The ground
+     in this game is drawn top-down and is NOT foreshortened, so a tile of
+     ground is a tile of screen: there is no cheat factor here, and no jump in
+     size when it lands. Everything else follows from that:
+
+       · the raised deck is nearly a full tile TALL, so the level-3 gateway
+         had to be rebuilt around it — a tall plain arch between the two
+         turrets instead of a stack of galleries (gateFaceT3)
+       · the canvases are TWO tiles in the direction the deck falls
+       · the chains are long, and hang from the turret heads rather than a
+         gallery the deck would cover
+
+     Change this and you must re-check the gateway it stands in. */
+  const DB_LEN = 30;
 
   // a hanging chain: alternating dark/lit links, straight when the winch has
   // it taut, sagging a little once it has been let out
@@ -1239,10 +1268,9 @@ const Sprites = {
      ring. */
   function deckFace(q, t) {
     const WD = AP.wood;
-    // LEN 16 is not free: stood up the deck reaches row 14, which is exactly
-    // the crown of the arch it has to shut. FORE sets how far it reads over
-    // the ground when it is down.
-    const GND = 30, LEN = 16, CX = 15.5, FORE = 0.70;
+    // one tile of ground, one tile of height — see DB_LEN. FORE is 1: the
+    // terrain is drawn top-down, so a tile of ground IS a tile of screen.
+    const GND = 30, LEN = DB_LEN, CX = 15.5, FORE = 1;
     const th = t * Math.PI / 2;
     const yEnd = GND + LEN * Math.cos(th) * FORE - LEN * Math.sin(th);
     const span = Math.abs(yEnd - GND) || 0.001;
@@ -1264,11 +1292,13 @@ const Sprites = {
     const ex0 = Math.round(CX - eh), ew = Math.max(2, Math.round(eh * 2));
     q(ex0, eY, ew, 1, IRON[1]);
     q(ex0 - 1, eY, 1, 1, IRON[2]); q(ex0 + ew, eY, 1, 1, IRON[2]);
-    // …and the chains, up to the winches sat in the machicolation gallery
+    /* …and the chains, up to winches on the TURRET HEADS. They used to sit in
+       the gallery over the arch — which a full-height deck now covers, so the
+       chains would have run to a drum hidden behind their own bridge. */
     const sag = (1 - t) * 2.4;
-    chainLine(q, 10, 10, ex0 - 1, eY, sag);
-    chainLine(q, 21, 10, ex0 + ew, eY, sag);
-    winch(q, 10, 10); winch(q, 21, 10);
+    chainLine(q, 8, 6, ex0 - 1, eY, sag);
+    chainLine(q, 23, 6, ex0 + ew, eY, sag);
+    winch(q, 8, 6); winch(q, 23, 6);
     // the shadow: cast back into the passage once the deck stands over it,
     // laid on the ground in front of it while it is still down
     if (yEnd < GND - 1) q(Math.round(CX - 5), eY, 10, 1, 'rgba(20,14,8,0.5)');
@@ -1282,7 +1312,7 @@ const Sprites = {
      up it stands against the block's east face. */
   function deckSide(q, t) {
     const WD = AP.wood;
-    const HX = 26, GND = 29, LEN = 16, TH = 3;    // hinge at the block's east flank
+    const HX = 26, GND = 29, LEN = DB_LEN, TH = 3;   // hinge at the block's east flank
     const th = t * Math.PI / 2;
     const ex = HX + LEN * Math.cos(th), ey = GND - LEN * Math.sin(th);
     // march the deck's length, stamping its thickness across at each step
@@ -1299,8 +1329,8 @@ const Sprites = {
     // the shoe, the ring, and the chain up to the winch on the block's head
     q(Math.round(ex), Math.round(ey), 1, 1, IRON[2]);
     q(Math.round(ex + nx * 2), Math.round(ey + ny * 2), 1, 1, IRON[1]);
-    chainLine(q, 22, 9, Math.round(ex), Math.round(ey), (1 - t) * 2.4);
-    winch(q, 22, 9);
+    chainLine(q, 20, 6, Math.round(ex), Math.round(ey), (1 - t) * 2.4);
+    winch(q, 20, 6);
     if (t < 0.6) q(HX, GND + TH + 1, Math.max(1, Math.round(ex - HX)), 1, ART.STYLE.SHADOW);
   }
   /* THE FAR SIDE. A drawbridge falls OUTWARD (Bld.gateOutside), and for a gate
@@ -1321,17 +1351,22 @@ const Sprites = {
      The tile sits at the BOTTOM of this canvas (fine rows 16..47); the extra
      half-tile above is the ground beyond the wall. */
   function deckFaceAway(q, t) {
-    const WD = AP.wood, TILE = 16;                     // where the gate's own tile starts
+    const WD = AP.wood, TILE = 32;                     // where the gate's own tile starts
     /* The hinge is the gate's far threshold — which, in a projection that
        draws terrain from above and buildings facing you, is the TOP EDGE of
        the gate's tile: the ground beyond the wall is the tile above. Hung any
        lower the deck lands on the gatehouse's own crown and reads as a raft
        floating over the battlements. */
-    const HINGE = TILE + 2, LEN = 16, CX = 15.5, FORE = 0.70;
+    const HINGE = TILE + 2, LEN = DB_LEN, CX = 15.5, FORE = 1;
     const th = t * Math.PI / 2;
-    // lying flat it reaches FORE of its length up the screen; standing, only a
-    // sliver still clears the parapet
-    const ext = LEN * (FORE * Math.cos(th) + 0.19 * Math.sin(th));
+    /* How much deck is still lying out there beyond the wall. Its HEIGHT is
+       invisible from here (the wall is in the way), so the only thing the
+       player reads is the reach — and a plain cos() barely moves for the first
+       two frames, which made them identical stills. The mild power curve keeps
+       it honest (monotone, fastest through the middle of the swing) while
+       giving every frame its own length. The +1.5 floor leaves a last sliver
+       of deck showing against the parapet rather than popping to nothing. */
+    const ext = LEN * Math.pow(Math.cos(th), 1.6) * 0.94 + 1.5;
     const yEnd = HINGE - ext;
     const y0 = Math.round(yEnd), y1 = HINGE;
     const frac = y => Math.min(1, (HINGE - y) / (ext || 0.001));
@@ -1350,10 +1385,13 @@ const Sprites = {
     // the shadow it lays on the ground beyond the wall
     if (ext > 5) q(ex0 + 1, y1 + 1, ew - 2, 1, ART.STYLE.SHADOW);
   }
-  // one tile plus a half, the extra half hanging off the side the deck falls
-  // toward: `tall` for the face (south), otherwise `wide` for the flank (east)
+  /* TWO TILES, the second one being the ground the deck reaches across. `tall`
+     is the face (the deck falls south, so the gate's tile is the TOP half);
+     otherwise it is the flank (falls east, gate's tile is the LEFT half). The
+     far-side face uses the tall canvas with the gate's tile at the BOTTOM —
+     deckFaceAway offsets itself by TILE to say so. */
   function tileDB(tall, draw) {
-    const c = mk(tall ? 64 : 96, tall ? 96 : 64), g = c.getContext('2d');
+    const c = mk(tall ? 64 : 128, tall ? 128 : 64), g = c.getContext('2d');
     g.imageSmoothingEnabled = false;
     const q = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * 2, y * 2, (w || 1) * 2, (h || 1) * 2); };
     draw(q);

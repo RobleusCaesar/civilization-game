@@ -65,6 +65,50 @@ const Bld = {
   },
   bridgeRaised(b) { return !!(b && b.key === 'gate' && b.raised); },
 
+  /* ---- THE DECK IS A CROSSING (tests/drawbridge.mjs) ----
+     A drawbridge exists to span the ditch in front of the gate. Lowered, it
+     makes the ONE TILE it reaches across walkable — that is the whole point,
+     and it is why the deck is a full tile long (Sprites' DB_LEN). Raised, the
+     crossing goes with it: the gate's own tile turns to block code 1 and the
+     moat beyond it is water again, so nobody passes, friend or foe.
+
+     Deliberately owner-AGNOSTIC. Anyone standing on a lowered deck may walk
+     across it; what they cannot do is walk through the gate itself unless it
+     is theirs (code 2/3). So lowering the bridge lets your army pour out —
+     and lets a raid reach your gate to hammer on it. That is the decision.
+
+     Built lazily against _blockGen rather than inside rebuildBlock, because
+     working out which way a gate faces needs the block grid to already exist
+     (gateOutside → gateVerticalAt → fortAt) and building it from inside the
+     rebuild would recurse. */
+  _deck: null,
+  _deckGen: -1,
+  // the single tile a lowered deck reaches across: one step OUTWARD
+  drawbridgeSpan(b) {
+    if (!this.canDrawbridge(b)) return null;
+    const vert = window.R && R.gateVerticalAt ? R.gateVerticalAt(b.x, b.y) : false;
+    const d = this.gateOutside(b);
+    const x = b.x + (vert ? d : 0), y = b.y + (vert ? 0 : d);
+    return MapGen.onBoard(x, y) ? { x, y } : null;
+  },
+  rebuildDeck() {
+    if (!this._block) this.rebuildBlock();
+    this._deck = new Uint8Array(CFG.W * CFG.H);
+    for (const b of S.buildings) {
+      if (b.key !== 'gate' || b.raised || !this.canDrawbridge(b)) continue;
+      const t = this.drawbridgeSpan(b);
+      if (t) this._deck[MapGen.idx(t.x, t.y)] = 1;
+    }
+    this._deckGen = this._blockGen;
+  },
+  deckAt(x, y) {
+    // force the block grid FIRST: _blockGen is bumped inside rebuildBlock, so
+    // comparing generations while _block is still null reads a stale deck.
+    if (!this._block) this.rebuildBlock();
+    if (!this._deck || this._deckGen !== this._blockGen) this.rebuildDeck();
+    return this._deck[MapGen.idx(x, y)];
+  },
+
   /* ---- WHICH SIDE OF A GATE IS THE OUTSIDE? (tests/drawbridge.mjs) ----
      A drawbridge falls OUTWARD. It has to: a deck dropping into the courtyard
      is not a bridge over anything, and it reads as the castle opening
