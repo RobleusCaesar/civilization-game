@@ -2064,7 +2064,11 @@ const UI = {
           : u.owner === 'R' ? 'Barbarian — nothing but trouble. Who they strike at, only they know.'
           : 'Rival tribe')
         : u.kind === 'sapper' ? 'Pick a tool below, then tap or drag a line of tiles — dig trenches (a moat where it touches water), clear resources, or (Camp Lv 3) raise mounds — slow-to-cross berms, or reclaim near-shore water into land (costs stone & wood). The sapper works the line in order. Bridge spans water. Tool down = tap to walk. Sappers can’t fight — keep them guarded.'
-        : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / an orchard to gather, jumping fish 🐟 to fish off the shore, a work site to build, or a tile to walk.'
+        /* the BANISH explanation lives here, not under the button
+           (tests/banish.mjs): the panel's hint line is where this unit's
+           options are explained, and a caption under every button turns the
+           action row into a wall of small print. */
+        : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / an orchard to gather, jumping fish 🐟 to fish off the shore, a work site to build, or a tile to walk. Banish sends them out of the valley for good — nothing is returned, but their place in the population is freed.'
         : u.kind === 'fishboat' ? 'Tap water where fish jump 🐟 to fish, or open water to row there.'
         : u.kind === 'catapult' ? 'Slow, but stone breaks stone — tap a rival wall, tower, or building to bombard it.'
         : u.kind === 'siegetower' ? 'Roll it flush against an enemy wall — nearby soldiers climb over, one per second. Only melee and marksmen can harm it.'
@@ -2131,10 +2135,10 @@ const UI = {
          same confirm pattern the hulls and demolition use, because it cannot
          be undone once they reach the rim. */
       if (own && Units.isVillager(u)) {
-        html += `<button class="abtn" data-act="gobuild">🔨 Build…</button>`;
+        html += `<button class="abtn" data-act="gobuild">🔨 Build</button>`;
         html += this.confirmDemolish === u.id
-          ? `<button class="abtn danger" data-act="banish">⚠️ Confirm — send them away<small>nothing is returned</small></button>`
-          : `<button class="abtn" data-act="banish">👋 Banish<small>they leave for good, freeing their place in the population</small></button>`;
+          ? `<button class="abtn danger" data-act="banish">⚠️ Confirm — send them away</button>`
+          : `<button class="abtn" data-act="banish">👋 Banish</button>`;
       }
       // resource-station upgrade, right on the worker's panel
       const wb = own ? this.villagerResBld(u) : null;

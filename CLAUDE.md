@@ -988,6 +988,10 @@ not a reason to keep feeding them. Two taps (`UI.confirmDemolish`, the same
 confirm the hulls and demolition use) because it cannot be undone. The button
 shares the villager panel's row with Build; **villagers only for now** —
 `Units.canBanish` is the single gate, and soldiers keep their posts.
+**The buttons carry LABELS, not captions**: what banishment costs is explained
+once in the villager's hint line, where the rest of that unit's options are
+explained, because a caption under every button turns the action row into a
+wall of small print.
 
 **The Ancient Wonder** (`tests/wonder.mjs`): the SECOND way to win, and the
 only one that isn't a war — raise the monument and the run is yours. **Ten**
