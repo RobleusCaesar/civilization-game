@@ -576,6 +576,20 @@ the tribe's own tunic dye (`Sprites.tunicCol`), so a purple village flies
 purple rather than the blue the sprite set is built in; `R.drawHearthSmoke`
 breathes a drifting column from homes and halls (`R.SMOKE_AT`). Neither
 shows over a work site, and a building already ablaze skips the hearth smoke.
+**The work tick is a GLANCE, not a readout** (`R.workFloat`, `R.WORK_FLOAT_S`):
+the white `+wood` over a worker's head exists so you can read the village at
+sight without selecting anybody. It used to roll for a float on every gather
+step and every production step — about one every 4 seconds per worker, and
+worse the faster the game ran — which wrote text over the whole town. Every
+`+res` now goes through `R.workFloat`, throttled per UNIT to one tick every
+`WORK_FLOAT_S` (20s, jittered off the unit id so a row of woodcutters never
+pulses in lockstep): about a fifth of the old rate, so ten workers still write
+something every couple of seconds somewhere while no single villager chatters.
+REAL time, not game days — the same reasoning as the heal limit, since this is
+a rule about what the eye can take. A MISSING entry means "due now", never
+"last ticked at time zero", or the first tick of every worker is eaten for the
+first 20 seconds of a session. The log is render-side only (`R._workFloatAt`,
+cleared in `R.onNewGame`), never on the unit and never in a save.
 **The live work line** (`Units.workReport` → `UI.workLine`, the `#pWork`
 element patched in place by `refreshPanel`): what a unit is doing and what it
 nets per day, computed from the SAME constants the gather/production code
@@ -1010,6 +1024,18 @@ ones; adding a station is one more key in the table and nothing else.
 **The news is plain `G.log`, never `G.foeNote`** — foeNote is difficulty-gated
 ENEMY intel, and a death in the village is the player's own news, told at every
 difficulty.
+**The news comes FIRST** (`CFG.MORTALITY.warnMs`, `G.tickMortality` →
+`G.dyingTick`): the fall is a second and a half of animation somewhere in a
+village the player may not be looking at, so announcing it in the same instant
+means they read the line and look up at nothing. `tickMortality` now names the
+victim, logs the line and marks them; `dyingTick` (driven from the frame loop)
+takes them a beat later. The pending fall lives on `G._dying` and NEVER in a
+save (same rule as `G._marvel`) — save inside that beat and the villager simply
+lives, which is a kindness rather than a bug. Every `CFG.DEATHS` line is now a
+WHOLE SENTENCE naming a villager's death ("A villager was crushed by the very
+block they had just called a good one."), because the log prints it as-is
+behind a skull: a line that only described the accident read as a mishap, not
+a death.
 **The fall** (`R.deathSheet` / `startDeath` / `drawDeaths`): six frames cut from
 THAT VILLAGER'S OWN sprite, so the tunic dye and the man/woman variants come
 free — a stagger, the tip about their heels (pivot at 82% of the sprite's

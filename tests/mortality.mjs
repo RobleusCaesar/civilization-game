@@ -26,7 +26,15 @@
 
      THE NEWS     Plain G.log at EVERY difficulty — never G.foeNote, which is
                   difficulty-gated enemy intel. A death in the village is the
-                  player's own news.
+                  player's own news. Every line is a WHOLE SENTENCE naming a
+                  villager's death, so it stands on its own in the log.
+
+     THE NEWS     …and it goes out BEFORE the villager goes over
+     COMES FIRST  (CFG.MORTALITY.warnMs). Told at the same instant, the player
+                  reads the line and looks up at nothing — the fall is a
+                  second and a half somewhere they may not be watching. The
+                  pending fall lives on G._dying, never in a save: save inside
+                  that beat and the villager simply lives.
 
      THE FALL     R.deathSheet cuts 4-8 frames out of that villager's own
                   sprite: a stagger, the tip about their heels, flat on the
@@ -35,8 +43,8 @@
 
    Run this after touching any of:
      config.js — CFG.MORTALITY, CFG.DEATHS, MODES[*].deathEvery
-     game.js — rollDeathGap / deathCause / tickMortality / dayTick /
-               newGame + loadJSON (S.nextDeath)
+     game.js — rollDeathGap / deathCause / tickMortality / dyingTick / frame /
+               dayTick / newGame + loadJSON (S.nextDeath, G._dying)
      render.js — deathSheet / startDeath / drawDeaths
 
      node tests/mortality.mjs      # exits non-zero on any regression */
@@ -71,6 +79,22 @@ const out = await p.evaluate(() => {
     ck('noTwoTheSame', new Set(all).size === all.length, all.length + ' lines, all distinct');
     ck('theyReadLikeSentences',
       all.every(s => /[.!]$/.test(s) && s.length > 20 && s === s.trim()), '');
+    /* EVERY LINE SAYS SOMEBODY DIED, and says it about a VILLAGER. The log
+       prints the line as-is behind a skull, so a line that only describes the
+       accident ("lost an argument with a goat") reads as a mishap, not a
+       death. Each one names the villager and lands on a word for dying. */
+    const dead = /\b(died|death|dead|killed|drowned|crushed|perished|trampled|gored|buried|choked|stung to death|never (got|rose|woke) up|did not (get|rise|survive) |never seen alive|never recovered|never rose)/i;
+    const noVillager = all.filter(s => !/^A villager\b/.test(s));
+    ck('everyLineNamesAVillager', noVillager.length === 0,
+      noVillager.length ? noVillager[0] : all.length + ' lines');
+    const noDeath = all.filter(s => !dead.test(s));
+    ck('everyLineSaysTheyDied', noDeath.length === 0,
+      noDeath.length ? noDeath[0] : 'all ' + all.length + ' say so');
+    // …and stay short enough to read at a glance in a toast
+    const tooLong = all.filter(s => s.length > 92);
+    ck('andNoneOfThemRambles', tooLong.length === 0,
+      tooLong.length ? tooLong[0].length + ' chars: ' + tooLong[0] : 'longest ' +
+        Math.max.apply(null, all.map(s => s.length)) + ' chars');
     // the station keys line up with real buildings, so a plot always has its own
     ck('everyWorkerPlotHasItsOwn',
       Object.keys(CFG.BUILDINGS).filter(k => CFG.BUILDINGS[k].needsWorker)
@@ -128,6 +152,20 @@ const out = await p.evaluate(() => {
     S.nextDeath = S.day;
     const cause = G.tickMortality();
     G.log = ol;
+    /* THE NEWS COMES FIRST: tickMortality announces and marks the villager,
+       and dyingTick takes them a beat later. Nobody has fallen yet. */
+    const midway = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
+    ck('theNewsGoesOutFirst',
+      midway === before && !!G._dying && R.deaths.length === 0,
+      midway + ' still standing, pending ' + JSON.stringify(!!G._dying));
+    ck('andTheBeatIsAboutASecond',
+      Math.abs(G._dying.t - (CFG.MORTALITY.warnMs / 1000)) < 1e-9 &&
+      CFG.MORTALITY.warnMs >= 600 && CFG.MORTALITY.warnMs <= 2000,
+      CFG.MORTALITY.warnMs + 'ms');
+    ck('thePendingFallIsNeverSaved',
+      !/"_dying"/.test(G.saveJSON()), 'render/flow state, same rule as G._marvel');
+    // …and then they go
+    for (let i = 0; i < 40 && G._dying; i++) G.dyingTick(0.05);
     const after = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
     ck('oneVillagerGoes', after === before - 1, before + ' → ' + after);
     ck('andItsPostIsEmpty',
@@ -160,7 +198,7 @@ const out = await p.evaluate(() => {
     const atc = Bld.tcOf('A');
     for (let i = 0; i < 6; i++) Units.spawn('villager', 'A', atc.x + (i % 3), atc.y + 2 + ((i / 3) | 0));
     const rival0 = S.units.filter(u => u.owner === 'A' && Units.isVillager(u)).length;
-    for (let d = 0; d < 120; d++) { S.nextDeath = S.day; G.tickMortality(); G.day = S.day++; }
+    for (let d = 0; d < 120; d++) { S.nextDeath = S.day; G.tickMortality(); for (let i = 0; i < 40 && G._dying; i++) G.dyingTick(0.05); G.day = S.day++; }
     const rival1 = S.units.filter(u => u.owner === 'A' && Units.isVillager(u)).length;
     ck('theRivalNeverLosesOneToThis', rival1 >= rival0, rival0 + ' → ' + rival1);
   }

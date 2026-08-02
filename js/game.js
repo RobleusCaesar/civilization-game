@@ -185,6 +185,7 @@ const G = {
     };
     Bld._block = null;
     this._marvel = false;
+    this._dying = null;    // …and no announced death is left pending
     S.nextDeath = S.day + this.rollDeathGap();   // the first villager's day, rolled now
     // which ANCIENT WONDER this run may raise — hashed off the seed, so it
     // never disturbs the run's own RNG sequence (see G.rollWonder)
@@ -1031,13 +1032,32 @@ const G = {
     if (pool.length < 2) { S.nextDeath = S.day + 2; return; }
     const u = pool[(this.rand() * pool.length) | 0];
     const cause = this.deathCause(u);
-    if (window.R && R.startDeath) R.startDeath(u);   // …keel over where they stood
-    Units.despawn(u);                                 // …and their post is empty
+    /* THE NEWS COMES FIRST (CFG.MORTALITY.warnMs). The fall itself is a
+       second and a half of animation somewhere in a village the player may
+       not be looking at, so telling them at the same instant means they read
+       the line and look up at nothing. The word goes out, and the villager
+       goes over a beat later — long enough to lift your eyes, short enough
+       that it still reads as one event. The pending fall lives on G, never in
+       a save (same rule as G._marvel): save inside that beat and the villager
+       simply survives it, which is a kindness rather than a bug. */
+    this._dying = { id: u.id, t: ((CFG.MORTALITY || {}).warnMs || 1000) / 1000 };
     // NEVER foeNote: that is difficulty-gated enemy intel. A death in the
     // village is the player's own news and is told at every difficulty.
-    this.log('☠ A villager ' + cause.line, true, 5200);
+    this.log('☠ ' + cause.line, true, 5200);
     S.nextDeath = S.day + this.rollDeathGap();
     return cause;
+  },
+  // …and the beat later, they go. Driven from the frame loop.
+  dyingTick(dt) {
+    const d = this._dying;
+    if (!d) return;
+    d.t -= dt;
+    if (d.t > 0) return;
+    this._dying = null;
+    const u = S.units.find(o => o.id === d.id);
+    if (!u) return;                                   // taken by something else first — the news stands
+    if (window.R && R.startDeath) R.startDeath(u);    // …keel over where they stood
+    Units.despawn(u);                                 // …and their post is empty
   },
 
   /* ================= BARBARIAN CAMPS (tests/raider-camps.mjs) =============
@@ -1306,6 +1326,7 @@ const G = {
     UI.placing = null;
     UI._healLog = {};   // see newGame — a loaded save must not inherit a stale cooldown
     this._marvel = false;   // a save loaded mid-marvel is just a save
+    this._dying = null;     // …and an announced-but-unfallen villager lives
     this.freeVis = false;
     this.vis = null;
     Units.clampToBoard();   // pull any unit off the (now impassable) map rim — e.g. a pre-border save
@@ -1353,6 +1374,7 @@ const G = {
         G._safe(() => Units.update(dt), 'units');
         G._safe(() => Combat.update(dt), 'combat');
         G._safe(() => {
+          G.dyingTick(dt);       // the villager whose death was announced a beat ago
           G.krakenTick(dt);
           G.dragonTick(dt);
           G.dragonT = (G.dragonT || 0) - dt;

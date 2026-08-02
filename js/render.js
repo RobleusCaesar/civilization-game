@@ -543,6 +543,7 @@ const R = {
     this.marvel = null;        // …and so is the wonder's held frame
     this._dbA = {};            // …and each gate's drawbridge swing (reused ids
                                //    must not inherit another run's deck angle)
+    this._workFloatAt = {};    // …and the per-worker "+wood" tick throttle
     this.particles = [];
     Combat.shots.length = 0; Combat.projectiles.length = 0;
     const tc = Bld.tcOf('P');
@@ -652,6 +653,46 @@ const R = {
   float(x, y, txt, col) {
     if (this.floats.length > 40) this.floats.shift();
     this.floats.push({ x, y, txt, col, t: 1.0 });
+  },
+
+  /* ---- THE WORK TICK (tests/mortality.mjs … see workLine's neighbours) ----
+     The white "+wood" over a worker's head is a GLANCE cue — an occasional
+     tick so you can tell at sight what somebody is doing, without selecting
+     them. It is NOT a running readout, and it used to behave like one: every
+     gather step and every production step rolled for a float, so a working
+     village wrote text over itself continuously (and the faster the game ran,
+     the worse it got).
+
+     It is now throttled per UNIT to roughly one float every WORK_FLOAT_S
+     seconds. Measured, the old rules fired about once every 4 seconds per
+     worker (a gather step's 0.3 roll on each integer tick; a station's
+     dt*0.7), so 20s is about a FIFTH of what it was — which is the point:
+     a tick, occasionally, not a readout. A village of ten still writes
+     something every couple of seconds somewhere, which is what makes it
+     readable at a glance; no single villager ever chatters.
+
+     REAL time, not game days, for the same reason the heal limit is
+     (UI.healThrottled): this is a rule about what the eye can take, not
+     about the calendar — and it must not get worse as the game speeds up.
+     The jitter is derived from the unit's id so a row of woodcutters never
+     pulses in lockstep, and the log is render-side only — never on the unit,
+     never in a save (same rule as R._dbA), cleared in onNewGame so reused
+     ids can't inherit another run's timer. */
+  WORK_FLOAT_S: 20,
+  _workFloatAt: {},
+  workFloat(u, txt) {
+    const now = performance.now() / 1000;
+    const last = this._workFloatAt[u.id];
+    const gap = this.WORK_FLOAT_S * (0.75 + ((u.id * 37) % 50) / 100);
+    // NO ENTRY means "due now", not "last ticked at time zero": the clock is
+    // time-since-page-load, so treating a missing entry as 0 silently ate the
+    // first tick of every worker for the first WORK_FLOAT_S seconds of a
+    // session — the one tick that most wants to be seen, right after you give
+    // somebody a job.
+    if (last != null && now - last < gap) return false;
+    this._workFloatAt[u.id] = now;
+    this.float(u.x, u.y - 0.5, txt, '#d8e8b0');
+    return true;
   },
 
   // impact burst at (x,y): 'stone'/'bolt' throw pale dust + dark debris that

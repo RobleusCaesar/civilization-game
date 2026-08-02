@@ -159,6 +159,7 @@ const out = await p.evaluate(() => {
        has always floated a raw tile's. */
     {
       const seen = [];
+      R._workFloatAt = {};   // earlier sections already worked this miner
       const of2 = R.float.bind(R);
       R.float = (x, y, txt, col) => { seen.push(txt + '|' + col); return of2(x, y, txt, col); };
       for (let t = 0; t < 200; t++) Units.update(0.1);
@@ -166,6 +167,35 @@ const out = await p.evaluate(() => {
       ck('andSaysPlusGoldAsItWorks',
         seen.some(s => s === '+gold|#d8e8b0'),
         seen.length ? seen.slice(0, 3).join(' ') : 'nothing floated');
+      /* …ONCE, though. The work float is a GLANCE cue, not a running readout:
+         every "+res" goes through R.workFloat, which is throttled per unit to
+         about one tick every WORK_FLOAT_S REAL seconds (the loop above is
+         twenty game-seconds of work in a few milliseconds of wall clock, so a
+         throttled worker says it exactly once). Before the throttle the same
+         loop wrote dozens of lines over one villager's head. */
+      const hands = S.units.filter(o => o.task && o.task.type === 'work' && o.task.id === m.id).length;
+      ck('butOnlyOccasionally',
+        seen.filter(s => /^\+/.test(s)).length === hands,
+        seen.filter(s => /^\+/.test(s)).length + ' ticks in 20 game-seconds from ' + hands + ' hands');
+    }
+    {
+      // the throttle itself: one now, none a moment later, one again once the
+      // gap has passed — and the timer is render-side, never on the unit
+      R._workFloatAt = {};
+      const fired = [];
+      const of3 = R.float.bind(R);
+      R.float = (x, y, txt, col) => { fired.push(txt); return of3(x, y, txt, col); };
+      const a = R.workFloat(v, '+gold'), b2 = R.workFloat(v, '+gold');
+      R._workFloatAt[v.id] = performance.now() / 1000 - R.WORK_FLOAT_S * 2;
+      const c = R.workFloat(v, '+gold');
+      R.float = of3;
+      ck('theTickIsThrottledPerWorker', a === true && b2 === false && c === true,
+        JSON.stringify([a, b2, c]));
+      ck('andItIsATickNotAReadout', R.WORK_FLOAT_S >= 15,
+        'one every ~' + R.WORK_FLOAT_S + 's, down from about one every 4');
+      ck('theTimerIsNeverOnTheUnitOrInASave',
+        !('_workFloatAt' in v) && !/_workFloatAt/.test(G.saveJSON()),
+        'render-side only, same rule as R._dbA');
     }
     /* the richest per hand on the board — measured in WORTH, not raw units: a
        farm's 50 food a day is more THINGS than a mine's 16 gold and nothing

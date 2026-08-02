@@ -1184,8 +1184,8 @@ const Units = {
           S.res[g.res] += take;
           if (S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
-          if ((before | 0) !== (S.res[g.res] | 0) && Math.random() < 0.3)
-            R.float(u.x, u.y - 0.5, '+' + g.res, '#d8e8b0');
+          // an occasional glance-tick, throttled per worker (R.workFloat)
+          if ((before | 0) !== (S.res[g.res] | 0)) R.workFloat(u, '+' + g.res);
           if (S.map.resAmount[idx] <= 0.001) {
             // tile exhausted — it turns to stumps/pebbles/spent soil, which is
             // now PASSABLE: felling the wood opens a new route through it
@@ -1276,8 +1276,7 @@ const Units = {
           bag.food += take;
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
-          if (u.owner === 'P' && (before | 0) !== (bag.food | 0) && Math.random() < 0.3)
-            R.float(u.x, u.y - 0.5, '+food', '#d8e8b0');
+          if (u.owner === 'P' && (before | 0) !== (bag.food | 0)) R.workFloat(u, '+food');
           if (S.map.resAmount[idx] <= 0.001) {
             S.map.resAmount[idx] = 0;
             G.scheduleFishReturn(idx);   // the shoal comes back in time
@@ -1309,8 +1308,7 @@ const Units = {
           bag.food += take;
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
-          if (u.owner === 'P' && (before | 0) !== (bag.food | 0) && Math.random() < 0.3)
-            R.float(u.x, u.y - 0.5, '+food', '#d8e8b0');
+          if (u.owner === 'P' && (before | 0) !== (bag.food | 0)) R.workFloat(u, '+food');
           if (S.map.resAmount[idx] <= 0.001) {
             S.map.resAmount[idx] = 0;
             G.scheduleFishReturn(idx);   // the shoal comes back in time
@@ -1416,8 +1414,7 @@ const Units = {
              treatment of its own. Production itself is still the once-a-day
              lump in Bld.dailyProduction; this only SAYS so. */
           const out = Bld.lv(b).out;
-          if (out && !b.upgrading && Math.random() < dt * 0.7)
-            R.float(u.x, u.y - 0.5, '+' + Object.keys(out)[0], '#d8e8b0');
+          if (out && !b.upgrading) R.workFloat(u, '+' + Object.keys(out)[0]);
         }
       } else if (t.type === 'board') {
         // march to the pier and step aboard the transport
