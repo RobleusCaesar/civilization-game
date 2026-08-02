@@ -425,7 +425,7 @@ const CFG = {
         // the largest on the map by a wide margin — a work site still starts at
         // Bld.siteStartHp (40%), so the works CAN be broken and holding them is
         // the whole tension of the peaceful victory
-        { cost: { food: 20000, wood: 20000, stone: 20000, gold: 10000 },
+        { cost: { food: 15000, wood: 15000, stone: 15000, gold: 4000 },
           time: 45, hp: 15000, vision: 9 },
       ],
     },

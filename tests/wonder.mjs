@@ -13,7 +13,7 @@
 
      THE BIGGEST    3×3 — the only one in the game (the hall is 2×2).
 
-     THE PRICE      20,000 each of food/wood/stone and 10,000 gold, and 45 days
+     THE PRICE      15,000 each of food/wood/stone and 4,000 gold, and 45 days
                     to raise: over four times the level-3 Town Center. It is
                     the LAST entry in the build menu.
 
@@ -119,7 +119,7 @@ await p.evaluate(() => {
       Object.keys(CFG.BUILDINGS).filter(k => k !== 'wonder')
         .every(k => (CFG.BUILDINGS[k].size || 1) <= 2), 'the hall is 2×2; everything else 1×1');
     ck('theFullPrice',
-      lv.cost.food === 20000 && lv.cost.wood === 20000 && lv.cost.stone === 20000 && lv.cost.gold === 10000,
+      lv.cost.food === 15000 && lv.cost.wood === 15000 && lv.cost.stone === 15000 && lv.cost.gold === 4000,
       JSON.stringify(lv.cost));
     const tc3 = CFG.BUILDINGS.tc.levels[2].time;
     ck('fourTimesTheHall', lv.time >= tc3 * 4, lv.time + ' days vs the level-3 hall\'s ' + tc3);

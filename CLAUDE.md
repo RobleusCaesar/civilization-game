@@ -828,7 +828,7 @@ building key at it (name, blurb, artwork via `Sprites.useWonder`), so the build
 menu, the panel, `R.bldSprite`, the burn variants and the ash silhouette all
 find it exactly where they find every other building's art, with no special
 case. **3×3 — the only one in the game** (the hall is 2×2, everything else
-1×1); 20,000 each of food/wood/stone plus 10,000 gold, and 45 days to raise,
+1×1); 15,000 each of food/wood/stone plus 4,000 gold, and 45 days to raise,
 over four times the level-3 hall. **Last in `UI.MENU_KEYS`**, because it is the
 end of the game. **Calm alone SHOWS the button** (`CFG.MODES[m].wonderMenu`,
 read by `UI.wonderOffered`) — the RULES work on every difficulty, nothing in
