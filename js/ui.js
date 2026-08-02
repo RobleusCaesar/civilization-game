@@ -1141,6 +1141,19 @@ const UI = {
     for (const n of [1, 2, 3]) if (!this.armyAlive(n).length) return n;
     return 0;
   },
+  /* Is this ONE soldier the whole of a saved army? An army worn down to its
+     last man selects as a single unit (renderPanel collapses a one-member
+     group), so the unit panel has to be able to free the banner too — see the
+     Remove button there. Deliberately NOT "is a member of": disbanding a
+     five-strong army from one man's panel would be a surprise. */
+  armyOfUnit(u) {
+    if (!u || !S.armies) return 0;
+    for (const n of [1, 2, 3]) {
+      const a = this.armyAlive(n);
+      if (a.length === 1 && a[0] === u.id) return n;
+    }
+    return 0;
+  },
   saveArmy(ids) {
     this.pruneArmies();
     const live = (ids || []).filter(id => Units.get(id));
@@ -1410,7 +1423,8 @@ const UI = {
         (o.x | 0) === (u.x | 0) && (o.y | 0) === (u.y | 0)).length;
     const sig = ['u', u.id, u.hp < u.maxhp, stack, u.cargo ? u.cargo.length : 0,
       !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u), Bld.inHealZone(u), this.healThrottled(u),
-      Units.canDefend(u) && (u.defend || Units.inDefendBounds(u))];   // Defend button follows the bounds
+      Units.canDefend(u) && (u.defend || Units.inDefendBounds(u)),   // Defend button follows the bounds
+      this.armyOfUnit(u)];   // …and Remove Army appears the moment this one is the last of it
     // villager resource-station upgrade state (level, phase, affordability) — the
     // continuously-shrinking day count is NOT here; refreshPanel ticks it in place
     const wb = this.villagerResBld(u);
@@ -2085,6 +2099,17 @@ const UI = {
         html += `<button class="abtn ${u.defend ? 'sel' : ''}" data-act="defend">${u.defend ? '🛡 Stand Down' : '🛡 Defend'}</button>`;
       else if (own && !Units.isVillager(u) && (u.kind !== 'sapper' || sapperWorking))
         html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
+      /* THE LAST OF AN ARMY (tests/army-groups.mjs). A war party ground down to
+         one soldier still flies its banner, but a one-member group renders as
+         the UNIT panel (see the group branch above) — which used to leave the
+         player tapping the banner, getting this panel, and having no way to
+         free the number. Remove appears here too when this soldier IS the
+         whole of a saved army; it never appears for one member of a larger
+         one, where disbanding the lot from a single man's panel would be a
+         surprise. */
+      const soleArmy = own ? this.armyOfUnit(u) : 0;
+      if (soleArmy)
+        html += `<button class="abtn wide" data-act="armyremove">🪖 Remove Army ${soleArmy}<small>the last of it — frees its banner</small></button>`;
       html += '</div>';
       panel.innerHTML = html;
       const ic = panel.querySelector('#pIcon');
@@ -2094,6 +2119,13 @@ const UI = {
         const u2 = Units.get(this.sel.id);
         if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; u2.jobs = null; }   // drop any queued sapper line too
         this.terraMode = null;   // downing tools stops the terraform tool too
+        this.renderPanel();
+      });
+      const armyRm = panel.querySelector('[data-act="armyremove"]');
+      if (armyRm) armyRm.addEventListener('click', () => {
+        const u2 = Units.get(this.sel.id); if (!u2) return;
+        const n = this.armyOfUnit(u2);
+        if (n) this.removeArmy(n);
         this.renderPanel();
       });
       const defBtn = panel.querySelector('[data-act="defend"]');

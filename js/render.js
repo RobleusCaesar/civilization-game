@@ -1114,12 +1114,36 @@ const R = {
     const cfg = this.COLLAPSE[b.key];
     if (!cfg) return;                              // this kind doesn't topple
     if (this.collapses.length > 12) this.collapses.shift();
+    const TL = CFG.TILE, sz = Bld.size(b.key);
+    /* THE GROUND KEEPS ITS FACE UNTIL THE TOWER IS DOWN. Bld.removeToRuin
+       lays rubble the instant the building dies and bakes it straight into
+       the terrain cache — so without this the brown scar appeared UNDER a
+       tower that was still standing, giving the ending away a second early.
+       (The ash pile is held back for the same reason — see collapseAt.)
+       Snapshot the ground NOW, while it is still whole; drawCollapseGround
+       stamps it back over the cache each frame until the topple ends. It
+       rides on the one-shot, so like everything else here it never reaches a
+       save. startCollapse must therefore keep running BEFORE removeToRuin. */
+    let ground = null;
+    if (this.terrainCache) {
+      ground = document.createElement('canvas');
+      ground.width = sz * TL; ground.height = sz * TL;
+      ground.getContext('2d').drawImage(this.terrainCache,
+        b.x * TL, b.y * TL, sz * TL, sz * TL, 0, 0, sz * TL, sz * TL);
+    }
     this.collapses.push({
-      x: b.x, y: b.y, sz: Bld.size(b.key), cfg, t: 0, key: b.key,
+      x: b.x, y: b.y, sz, cfg, t: 0, key: b.key,
       spr: this.bldSprite(b),                      // snapshot: it's about to be gone
       art: this.collapseArt(b.key, cfg.frames),    // …unless this kind draws its own
       flip: (b.id & 1) === 1,                      // half the towers fall the other way
+      ground,
     });
+  },
+  // the held ground, stamped straight after the terrain layer so bridges,
+  // buildings, units and effects all still draw on top of it as normal
+  drawCollapseGround(g) {
+    const TL = CFG.TILE;
+    for (const c of this.collapses) if (c.ground) g.drawImage(c.ground, c.x * TL, c.y * TL);
   },
 
   _collapseCache: new WeakMap(),
@@ -1700,6 +1724,8 @@ const R = {
 
     // terrain
     g.drawImage(this.terrainCache, 0, 0);
+    // …but a tower still coming down keeps the ground it stood on (startCollapse)
+    if (this.collapses.length) this.drawCollapseGround(g);
 
     // sapper bridges: faction-trimmed plank decks over water/moat (above terrain,
     // below units). Dynamic structures, so drawn per-frame, not baked into the cache.
@@ -1805,8 +1831,28 @@ const R = {
       const wx = t.x * TL, wy = t.y * TL, SO = ART.PALETTE.soil, WO = ART.PALETTE.wood;
       const prog = t.total ? 1 - t.t / t.total : 0.5;
       if (t.job === 'bridge') {
-        g.fillStyle = WO[1];
-        for (let px = 4; px < TL; px += 8) g.fillRect(wx + px, wy + 8, 3, (TL - 16) * (0.4 + prog * 0.6));   // planks going down
+        /* A SPAN IS BUILT ACROSS THE WATER, NOT ALONG IT. The site used to
+           draw one fixed pattern of slats whatever way the crossing ran, so a
+           north-south bridge went up as a raft of planks floating sideways on
+           the channel. It now takes the crossing's OWN direction — the same
+           Terraform.bridgeCrossing that decides br.dir when the deck lands —
+           and builds the way a real one goes up: two stringers thrown bank to
+           bank first, then the decking planked over them from the near shore
+           out as the work proceeds. Falls back to E–W if the crossing has
+           since been invalidated (the task's own revalidation will drop it).  */
+        const bdir = Terraform.bridgeCrossing(t.x, t.y, u.owner) || 'h';
+        const laid = 0.18 + prog * 0.82;
+        if (bdir === 'v') {
+          g.fillStyle = WO[1];                                             // the stringers, shore to shore
+          g.fillRect(wx + 8, wy, 3, TL); g.fillRect(wx + TL - 11, wy, 3, TL);
+          g.fillStyle = WO[3];                                             // decking, laid across them
+          for (let py = 1; py < TL * laid; py += 5) g.fillRect(wx + 5, wy + py, TL - 10, 3);
+        } else {
+          g.fillStyle = WO[1];
+          g.fillRect(wx, wy + 8, TL, 3); g.fillRect(wx, wy + TL - 11, TL, 3);
+          g.fillStyle = WO[3];
+          for (let px = 1; px < TL * laid; px += 5) g.fillRect(wx + px, wy + 5, 3, TL - 10);
+        }
       } else if (t.job === 'bridgeup') {
         /* REINFORCING a standing span is MASONRY, not digging: the generic
            turned-earth patch below would put a hole of dark soil in the middle

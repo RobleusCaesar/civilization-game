@@ -302,6 +302,33 @@ const out = await p.evaluate(() => {
     ck('ashWaitsForTheFall', !!R.collapseAt(tw.x, tw.y) && !!Bld.ashAt(tw.x, tw.y),
       'the pile exists in state but is held back on screen');
 
+    /* 8d-ii. …AND SO DOES THE GROUND. Bld.removeToRuin lays rubble the instant
+       the building dies and bakes it straight into the terrain cache, so the
+       brown scar used to appear UNDER a tower that was still standing — the
+       ending given away a second early, exactly what holding the ash back is
+       meant to prevent. startCollapse snapshots the ground while it is still
+       whole (which is why it must keep running BEFORE removeToRuin) and
+       drawCollapseGround stamps it back until the topple ends. The rubble is
+       real in STATE the whole time; only the picture waits. */
+    ck('theRuinIsAlreadyRealInState',
+      S.map.terrain[MapGen.idx(tw.x, tw.y)] === T.RUIN, 'the game knows the tower is gone');
+    ck('theGroundIsHeldWhileItFalls', !!R.collapses[0].ground,
+      'a snapshot of the tile taken before the rubble was laid');
+    ck('theHeldGroundIsTheWholeFootprint',
+      R.collapses[0].ground.width === Bld.size('tower') * CFG.TILE &&
+      R.collapses[0].ground.height === Bld.size('tower') * CFG.TILE,
+      R.collapses[0].ground.width + '×' + R.collapses[0].ground.height);
+    {
+      // it is STAMPED, every frame, over the tile the tower stood on
+      const proto = CanvasRenderingContext2D.prototype, orig = proto.drawImage;
+      const drawn = [];
+      proto.drawImage = function (img) { drawn.push(img); return orig.apply(this, arguments); };
+      try { R.draw(0.016); } finally { proto.drawImage = orig; }
+      ck('andItIsStampedOverTheScar', drawn.includes(R.collapses[0].ground), '');
+    }
+    ck('theHeldGroundIsNeverSaved',
+      !/"ground"/.test(G.saveJSON()), 'render-side only, like the topple itself');
+
     // 8e. it is a ONE-SHOT, and it never reaches a save file
     R.draw(0.016);
     ck('stillPlayingAfterAFrame', R.collapses.length === 1, '');

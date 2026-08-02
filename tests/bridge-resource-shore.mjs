@@ -306,6 +306,83 @@ const out = await p.evaluate(() => {
       'pre-timer saves reinforce from scratch');
   }
 
+  /* ---- THE WORK SITE RUNS THE WAY THE SPAN DOES ----
+     A span is built ACROSS the water, never along it. The site used to draw
+     one fixed pattern of slats whatever way the crossing ran, so a
+     north-south bridge went up as a raft of planks floating sideways on the
+     channel. It now reads Terraform.bridgeCrossing — the same call that
+     decides br.dir when the deck lands — and lays two stringers bank to bank
+     with the decking planked across them.
+
+     Measured off the rects the frame actually draws on the worked tile
+     (the game canvas is tainted by cross-origin art, so pixels are out):
+     an E–W span's decking planks stand TALL, an N–S span's lie WIDE. */
+  {
+    G.newGame('brdir', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.res = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };
+    const tc = Bld.tcOf('P');
+    // clamped inward: a town near the east edge would put the second crossing
+    // off the board, where every neighbour reads as impassable rim
+    const ox = Math.max(6, Math.min(tc.x + 6, CFG.W - 10));
+    const oy = Math.max(6, Math.min(tc.y + 6, CFG.H - 6));
+    for (let y = oy - 4; y <= oy + 4; y++) for (let x = ox - 4; x <= ox + 8; x++) {
+      if (!MapGen.inB(x, y)) continue;
+      const i = MapGen.idx(x, y);
+      S.map.terrain[i] = T.GRASS; S.map.seenTerrain[i] = T.GRASS; S.map.explored[i] = 1;
+    }
+    // an E–W crossing at (ox, oy) and an N–S one at (ox + 4, oy)
+    S.map.terrain[MapGen.idx(ox, oy - 1)] = T.WATER;
+    S.map.terrain[MapGen.idx(ox, oy)] = T.WATER;
+    S.map.terrain[MapGen.idx(ox, oy + 1)] = T.WATER;
+    S.map.terrain[MapGen.idx(ox + 3, oy)] = T.WATER;
+    S.map.terrain[MapGen.idx(ox + 4, oy)] = T.WATER;
+    S.map.terrain[MapGen.idx(ox + 5, oy)] = T.WATER;
+    Bld._block = null;
+    ck('theTwoCrossingsRunDifferentWays',
+      Terraform.bridgeCrossing(ox, oy, 'P') === 'h' &&
+      Terraform.bridgeCrossing(ox + 4, oy, 'P') === 'v',
+      Terraform.bridgeCrossing(ox, oy, 'P') + ' / ' + Terraform.bridgeCrossing(ox + 4, oy, 'P'));
+
+    // every rect the frame draws INSIDE one tile, in tile-local pixels
+    const rectsOn = (tx, ty) => {
+      const proto = CanvasRenderingContext2D.prototype, orig = proto.fillRect;
+      const TL = CFG.TILE, x0 = tx * TL, y0 = ty * TL, got = [];
+      proto.fillRect = function (x, y, w, h) {
+        if (x >= x0 - 1 && y >= y0 + 3 && x + w <= x0 + TL + 1 && y + h <= y0 + TL - 2 &&
+            Math.max(w, h) >= 12) got.push({ w, h });
+        return orig.apply(this, arguments);
+      };
+      const vis = G.visibleAt; G.visibleAt = () => true;
+      R.centerOn(tx + 0.5, ty + 0.5);
+      try { R.draw(0.016); } finally { proto.fillRect = orig; G.visibleAt = vis; }
+      return got;
+    };
+    const shape = (tx, ty) => {
+      const r = rectsOn(tx, ty);
+      return { tall: r.filter(o => o.h > o.w).length, wide: r.filter(o => o.w > o.h).length };
+    };
+    // put a sapper on each crossing, mid-build
+    const site = (x, y) => {
+      const s = Units.spawn('sapper', 'P', x - 1, y);
+      s.x = x - 0.5; s.y = y + 0.5;
+      s.task = { type: 'terraform', job: 'bridge', x, y, sx: x - 1, sy: y, t: 4, total: 10 };
+      return s;
+    };
+    site(ox, oy); site(ox + 4, oy);
+    const hS = shape(ox, oy), vS = shape(ox + 4, oy);
+    ck('anEastWestSiteDecksInTallPlanks', hS.tall > hS.wide, JSON.stringify(hS));
+    ck('aNorthSouthSiteDecksInWidePlanks', vS.wide > vS.tall, JSON.stringify(vS));
+    ck('theTwoSitesAreNotTheSameDrawing',
+      hS.tall !== vS.tall && hS.wide !== vS.wide,
+      'E–W ' + JSON.stringify(hS) + ' · N–S ' + JSON.stringify(vS));
+    // …and the FINISHED deck still agrees with the site that raised it
+    const okH = Bld.buildBridge('P', ox, oy), okV = Bld.buildBridge('P', ox + 4, oy);
+    const dH = Bld.bridgeAt(ox, oy), dV = Bld.bridgeAt(ox + 4, oy);
+    ck('theFinishedDecksKeepThoseDirections',
+      !!dH && !!dV && dH.dir === 'h' && dV.dir === 'v',
+      'built ' + okH + '/' + okV + ' → ' + (dH && dH.dir) + ' / ' + (dV && dV.dir));
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

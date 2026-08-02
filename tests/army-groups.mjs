@@ -134,6 +134,41 @@ const out = await p.evaluate(() => {
       `armies: ${Object.keys(S.armies).join(',')} buttons: ${btns.join(',')}`);
   }
 
+  /* ---- 4b. THE LAST OF AN ARMY still lets you strike the banner ----
+     A war party ground down to one soldier keeps its number — but a
+     one-member group renders as the UNIT panel, which had no army button on
+     it at all, so tapping the banner gave you a panel with no way to free
+     the number. The unit panel now carries Remove when that soldier IS the
+     whole of a saved army — and pointedly NOT when it is merely one member
+     of a larger one, where disbanding the lot from one man's panel would be
+     a surprise. */
+  {
+    const tc = setup('ag4b');
+    const party = [mk('defender', tc.x + 2, tc.y), mk('defender', tc.x + 3, tc.y)];
+    UI.saveArmy(party.map(u => u.id));
+    const btn = () => document.querySelector('#panel [data-act="armyremove"]');
+    // one member of a two-strong army: no button
+    UI.select('unit', party[0].id); UI.renderPanel();
+    ck('noBannerButtonForOneOfMany', !btn() && UI.armyOfUnit(party[0]) === 0, '');
+    // …now the other one falls
+    party[1].hp = 0;
+    S.units = S.units.filter(u => u.hp > 0);
+    UI.pruneArmies();
+    ck('theBannerSurvivesItsLastMan', !!S.armies[1] && UI.armyAlive(1).length === 1, '');
+    UI.selectArmy(1);
+    ck('aLoneSurvivorSelectsAsAUnit', UI.sel && UI.sel.type === 'unit', UI.sel && UI.sel.type);
+    ck('andTheUnitPanelOffersRemove', !!btn() && /Remove Army 1/.test(btn().textContent),
+      btn() ? btn().textContent : 'no button');
+    // the signature has to carry it, or the button never appears in place
+    const sigBefore = UI.panelSig();
+    btn().click();
+    ck('theBannerIsFreed', !S.armies[1] &&
+      [...document.querySelectorAll('#armyBar button')].length === 0, '');
+    ck('andTheButtonGoesWithIt', !btn() && sigBefore !== UI.panelSig(), '');
+    // the freed number is available again
+    ck('theNumberComesBack', UI.nextArmySlot() === 1, String(UI.nextArmySlot()));
+  }
+
   // ---- 5. tapping a banner jumps the view to the army and selects it ----
   {
     const tc = setup('ag5');

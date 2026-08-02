@@ -227,6 +227,13 @@ calls `bridgeCrossing` (and re-checks `Bld.bridgeAt`), so an invalidated span
 drops the job promptly like any other skipped tile, and a completion-time
 failure (defensively still possible) now toasts a reason instead of finishing
 in silence.
+**And a span is built ACROSS the water, never along it** (same test): the work
+site used to draw one fixed pattern of slats whatever way the crossing ran, so
+a north-south bridge went up as a raft of planks floating sideways on the
+channel. The active-sapper overlay now reads `Terraform.bridgeCrossing` — the
+same call that decides `br.dir` when the deck lands — and builds the way a real
+one does: two stringers thrown bank to bank, then the decking planked over them
+from the near shore out as the work proceeds.
 **Reinforcing a span is a BUILD, not a purchase** (same test): levels 2 and 3
 used to be instant — pay, and the timber crossing was a stone arch the same
 frame. They now work like every other upgrade in the game.
@@ -445,6 +452,14 @@ tests each member's sprite box against the visible band, discounting what the
 HUD covers (`topReserve` / `bottomReserve`), so one soldier half off the edge
 still counts and the view is left alone; yanking it to re-centre on soldiers
 the player is already looking at loses their place for nothing.
+**The LAST OF AN ARMY can still strike its banner** (same test): a party
+ground down to one soldier keeps its number, but a one-member group renders as
+the UNIT panel (`renderPanel` collapses it) — which had no army button on it at
+all, so tapping the banner gave a panel with no way to free the number. The
+unit panel now carries Remove when that soldier IS the whole of a saved army
+(`UI.armyOfUnit`, carried in `panelSig` so it appears and vanishes in place) —
+and pointedly NOT for one member of a larger one, where disbanding the lot from
+one man's panel would be a surprise.
 **A banner whose roster mostly FLOATS flies a SHIP** (`UI.armyIsNaval` — most,
 not all, so a scout tagging along with a fleet doesn't turn it back into an
 army): `UI.ARMY_SHIP`, the same 21×28 footprint and dulled palette as
@@ -805,7 +820,14 @@ neighbours that are still standing — and NOT from `demolish`, which is a
 teardown, not a kill. The live one-shots sit on `R.collapses` and never in
 `S` (same rule as `R._fighting`); the ash pile the tower leaves is held off
 screen while its topple plays (`R.collapseAt`), or the ending is given away a
-second early. Drawn after the units, so the dust rolls over whoever knocked it
+second early. **The GROUND is held back for the same reason**
+(`R.startCollapse` snapshots the footprint out of the terrain cache,
+`R.drawCollapseGround` stamps it straight after the terrain layer each frame):
+`Bld.removeToRuin` lays rubble the instant the building dies and bakes it into
+the cache, so the brown scar appeared UNDER a tower that was still standing.
+The rubble is real in STATE throughout — only the picture waits — which is why
+`startCollapse` must keep running BEFORE `removeToRuin`, and why the snapshot
+rides on the one-shot rather than in `S`. Drawn after the units, so the dust rolls over whoever knocked it
 down. Two traps this cost: `TL` is a per-function local everywhere in
 render.js (a method that forgets `const TL = CFG.TILE` throws every frame),
 and `Sprites` is a script-level `const`, so `window.Sprites` is undefined —
