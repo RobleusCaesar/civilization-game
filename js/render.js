@@ -902,8 +902,27 @@ const R = {
      shut (a loaded save) starts settled rather than slamming on sight. */
   DB_SPEED: 1.7,          // a full swing in a little over half a second
   _dbA: {},
-  drawDrawbridge(g, b, bx, by, bw, dt) {
+  /* A DRAWBRIDGE FALLS OUTWARD (tests/drawbridge.mjs). Which way that is comes
+     from Bld.gateOutside, which reads the ground rather than the wall line —
+     a stronghold is half masonry and half lake and mountain, so the wall alone
+     never tells you which side is the courtyard.
+
+     Three strips, and the deck's own geometry decides where each is drawn:
+       flank, east   the authored side view
+       flank, west   the same view MIRRORED about the tile's centre line — a
+                     picture-plane rotation, so a mirror is exactly right
+       face, south   the authored toward-the-camera view, drawn OVER the gate
+       face, north   deckFaceAway, drawn UNDER it, so the curtain and the
+                     gatehouse occlude its near end the way they really would
+     `front` says which pass this is: the caller draws once before the gate
+     sprite and once after, and each strip answers on the pass it belongs to. */
+  drawDrawbridge(g, b, bx, by, bw, dt, front) {
     if (!Sprites.drawbridge || !Bld.canDrawbridge(b)) return;
+    const vert = this.gateVerticalAt(b.x, b.y);
+    const dir = Bld.gateOutside(b);          // +1 south / east, -1 north / west
+    const away = !vert && dir < 0;           // the only case drawn behind the gate
+    if (away === !!front) return;
+    // the swing is eased here, on the pass that actually draws — never twice
     const tgt = b.raised ? 1 : 0;
     let a = this._dbA[b.id];
     if (a == null) a = tgt;
@@ -912,12 +931,22 @@ const R = {
       a = tgt > a ? Math.min(tgt, a + step) : Math.max(tgt, a - step);
     }
     this._dbA[b.id] = a;
-    const vert = this.gateVerticalAt(b.x, b.y);
-    const fam = Sprites.drawbridge[vert ? 1 : 0];
+    const fam = Sprites.drawbridge[away ? 2 : vert ? 1 : 0];
     const fr = Math.max(0, Math.min(fam.length - 1, Math.round(a * (fam.length - 1))));
-    // the extra half-tile hangs off whichever side the deck falls toward
-    if (vert) g.drawImage(fam[fr], bx, by, bw * 1.5, bw);
-    else g.drawImage(fam[fr], bx, by, bw, bw * 1.5);
+    if (away) {
+      // the tile sits at the BOTTOM of that canvas; the half above it is the
+      // ground beyond the wall
+      g.drawImage(fam[fr], bx, by - bw * 0.5, bw, bw * 1.5);
+    } else if (vert) {
+      if (dir < 0) {                          // …falling WEST: mirror about the tile
+        g.save();
+        g.translate(bx + bw / 2, 0); g.scale(-1, 1); g.translate(-(bx + bw / 2), 0);
+        g.drawImage(fam[fr], bx, by, bw * 1.5, bw);
+        g.restore();
+      } else g.drawImage(fam[fr], bx, by, bw * 1.5, bw);
+    } else {
+      g.drawImage(fam[fr], bx, by, bw, bw * 1.5);
+    }
   },
   gateVerticalAt(x, y) {
     const score = (xx, yy) => {
@@ -2027,11 +2056,14 @@ const R = {
         // a tower in a wall line wears the curtain's own stonework as
         // connecting stubs, under its body — one unbroken castle wall
         if (b.key === 'tower') this.drawTowerBond(g, b, bx, by, bw);
+        // a drawbridge that falls to the FAR side lies beyond the wall, so it
+        // goes down before the gatehouse does and is occluded by it
+        if (b.key === 'gate') this.drawDrawbridge(g, b, bx, by, bw, dt, false);
         g.drawImage(spr, bx, by, bw, bw);
         // …and the walk running south out of it meets its flank at WALK height
         if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);
-        // the L3 gatehouse's bridge swings over its own archway
-        if (b.key === 'gate') this.drawDrawbridge(g, b, bx, by, bw, dt);
+        // …and one that falls toward us swings over its own archway
+        if (b.key === 'gate') this.drawDrawbridge(g, b, bx, by, bw, dt, true);
         /* Owner tag. On a FORTIFICATION the tile's top-left corner is bare
            ground — the curtain runs down the middle of the tile — so the pip
            floated out on the grass beside the wall like a UI glitch, one per

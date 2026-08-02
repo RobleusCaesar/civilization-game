@@ -1144,6 +1144,37 @@ Shutting the gate on somebody standing in the passage steps them clear via
 `Bld.stepOffFootprint` — the step-off `Bld.finish` already did for a footprint
 that turns solid, now factored out and shared. `UI.panelSig` carries `b.raised`
 so the label flips the moment the order lands.
+**A drawbridge falls OUTWARD** (same test): never into the courtyard. Which way
+that is cannot be read off the wall line, because a stronghold is only PARTLY
+built — the cheap way to enclose ground is to run a wall between a lake and a
+mountain and let the map do the rest. `Bld.gateOutside` therefore reads the
+GROUND: flood the two sides the passage joins, with deep water, mountain,
+trench, moat and the tribe's OWN finished walls/gates/towers as barriers (never
+back through this gate), then take the side the HALL is on as the inside —
+falling back to whichever side is ENCLOSED (the other ran to the map's edge or
+past `GATE_FLOOD_CAP`), then to whichever holds more of the tribe's works, then
+to the old default. The hall test is primary because it is the one that
+survives a LEAKY ring, where both floods reach the wide world. Harvestable
+ground — woods, crags, orchards — is deliberately NOT a barrier even though it
+blocks movement: a woodcutter finishing a stand would otherwise turn a castle
+inside out the day the last tree came down. Owner-agnostic, and CACHED against
+`Bld._blockGen` (bumped in `rebuildBlock`), so two floods run only when the
+walls actually change — build the block grid BEFORE reading the generation or
+the cache is stamped with a number already stale.
+**Which strip, and where it is drawn** (same test): a west-falling flank deck is
+the east one MIRRORED about the tile's centre line (a picture-plane rotation, so
+a mirror is exact); a north-falling FACE deck cannot be mirrored at all — flipped,
+the raised frames would stand below the hinge — so it is authored
+(`deckFaceAway`, `Sprites.drawbridge[2]`) and drawn UNDER the gate sprite, with
+the curtain and gatehouse occluding its near end. It hinges on the gate tile's
+TOP edge, because in a projection that draws terrain from above and buildings
+facing you, the ground beyond the wall is the tile above; hung lower it lands on
+the gatehouse's own crown and reads as a raft floating over the battlements. Its
+visible length SHRINKS as it rises, which is exactly what you see from inside a
+castle when the bridge comes up. `R.drawDrawbridge` takes a `front` flag and the
+building loop calls it twice — once before the gate sprite, once after — so each
+strip answers on the pass it belongs to.
+
 **The deck is its own little atlas** (`Sprites.drawbridge`, `deckFace` /
 `deckSide` / `tileDB`): eight stills per orientation, frame 0 fully down and the
 last fully up — raising and lowering are the SAME strip read one way or the

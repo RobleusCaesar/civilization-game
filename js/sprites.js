@@ -1303,6 +1303,53 @@ const Sprites = {
     winch(q, 22, 9);
     if (t < 0.6) q(HX, GND + TH + 1, Math.max(1, Math.round(ex - HX)), 1, ART.STYLE.SHADOW);
   }
+  /* THE FAR SIDE. A drawbridge falls OUTWARD (Bld.gateOutside), and for a gate
+     in an east-west wall the outside is sometimes NORTH — the far side, away
+     from the camera. You cannot draw that deck coming toward you without
+     drawing the castle opening backwards, and you cannot flip the near-side
+     strip either: flipped, the RAISED frames stand below the hinge, which is
+     nonsense.
+
+     So it is authored: the deck lies on the ground BEYOND the wall and is
+     hauled up out of sight behind it. The hinge is the curtain's far face
+     (row 10, the top of the wall band), the deck reaches away from it up the
+     screen, and its visible length SHRINKS as it rises — which is exactly
+     what you see from inside a castle when the bridge comes up. render.js
+     draws this one UNDER the gate sprite, so the curtain and the gatehouse
+     occlude its near end the way they really would.
+
+     The tile sits at the BOTTOM of this canvas (fine rows 16..47); the extra
+     half-tile above is the ground beyond the wall. */
+  function deckFaceAway(q, t) {
+    const WD = AP.wood, TILE = 16;                     // where the gate's own tile starts
+    /* The hinge is the gate's far threshold — which, in a projection that
+       draws terrain from above and buildings facing you, is the TOP EDGE of
+       the gate's tile: the ground beyond the wall is the tile above. Hung any
+       lower the deck lands on the gatehouse's own crown and reads as a raft
+       floating over the battlements. */
+    const HINGE = TILE + 2, LEN = 16, CX = 15.5, FORE = 0.70;
+    const th = t * Math.PI / 2;
+    // lying flat it reaches FORE of its length up the screen; standing, only a
+    // sliver still clears the parapet
+    const ext = LEN * (FORE * Math.cos(th) + 0.19 * Math.sin(th));
+    const yEnd = HINGE - ext;
+    const y0 = Math.round(yEnd), y1 = HINGE;
+    const frac = y => Math.min(1, (HINGE - y) / (ext || 0.001));
+    const half = y => 5 - frac(y) * 1.1;               // the far end recedes, so it narrows
+    for (let y = y0; y <= y1; y++) {
+      const h2 = half(y), x0 = Math.round(CX - h2), w = Math.max(2, Math.round(h2 * 2));
+      const s2 = frac(y) * LEN;
+      q(x0, y, w, 1, Math.round(s2) % 3 === 0 ? WD[1] : (((s2 / 3) | 0) % 2 ? WD[2] : WD[3]));
+      q(x0, y, 1, 1, WD[1]); q(x0 + w - 1, y, 1, 1, WD[1]);
+    }
+    // the iron shoe at the far end, and the straps running the deck's length
+    const eh = half(y0), ex0 = Math.round(CX - eh), ew = Math.max(2, Math.round(eh * 2));
+    q(ex0, y0, ew, 1, IRON[1]);
+    q(ex0 - 1, y0, 1, 1, IRON[2]); q(ex0 + ew, y0, 1, 1, IRON[2]);
+    for (const fx of [-3, 2]) q(Math.round(CX + fx), y0, 1, y1 - y0 + 1, IRON[1]);
+    // the shadow it lays on the ground beyond the wall
+    if (ext > 5) q(ex0 + 1, y1 + 1, ew - 2, 1, ART.STYLE.SHADOW);
+  }
   // one tile plus a half, the extra half hanging off the side the deck falls
   // toward: `tall` for the face (south), otherwise `wide` for the flank (east)
   function tileDB(tall, draw) {
@@ -2062,6 +2109,8 @@ const Sprites = {
   Sprites.drawbridge = [
     Array.from({ length: DRAWBRIDGE_N }, (_, i) => tileDB(true, q => deckFace(q, i / (DRAWBRIDGE_N - 1)))),
     Array.from({ length: DRAWBRIDGE_N }, (_, i) => tileDB(false, q => deckSide(q, i / (DRAWBRIDGE_N - 1)))),
+    // …and the FAR-SIDE face, for a gate whose outside is north (deckFaceAway)
+    Array.from({ length: DRAWBRIDGE_N }, (_, i) => tileDB(true, q => deckFaceAway(q, i / (DRAWBRIDGE_N - 1)))),
   ];
 
   /* ================= THE ANCIENT WONDERS (tests/wonder.mjs) =================

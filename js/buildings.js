@@ -16,6 +16,9 @@ const Bld = {
   solid(key) { const d = this.def(key); return !!d && !d.needsWorker; },
 
   rebuildBlock() {
+    // bumped on every rebuild — derived answers that depend on where the walls
+    // are (Bld.gateOutside) cache against it instead of recomputing per frame
+    this._blockGen = (this._blockGen || 0) + 1;
     this._block = new Uint8Array(CFG.W * CFG.H);
     for (const b of S.buildings) {
       // a building still being RAISED isn't solid yet — builders (and anyone
@@ -61,6 +64,96 @@ const Bld = {
       !(b.construction > 0) && !(b.upgrading > 0);
   },
   bridgeRaised(b) { return !!(b && b.key === 'gate' && b.raised); },
+
+  /* ---- WHICH SIDE OF A GATE IS THE OUTSIDE? (tests/drawbridge.mjs) ----
+     A drawbridge falls OUTWARD. It has to: a deck dropping into the courtyard
+     is not a bridge over anything, and it reads as the castle opening
+     backwards. But "outward" cannot be read off the wall line, because a
+     stronghold is only PARTLY built — the cheap way to enclose ground is to
+     let the map do half the work and run your wall between a lake and a
+     mountain. So the question is answered by looking at the ground itself.
+
+     Flood the two sides the passage joins, treating as barriers the things
+     that actually enclose: deep water, mountain, a sapper's trench or moat,
+     and the tribe's OWN finished walls, gates and towers. Never through this
+     gate. Then, in order:
+
+       1. the side the tribe's HALL is on is the inside. This is the whole
+          answer nearly always, and it is the one that survives a leaky ring:
+          if the wall doesn't quite close, both floods run to the wide world
+          and the hall still tells you which way you are facing.
+       2. failing that, the ENCLOSED side is the inside — the other one ran to
+          the map's edge or past the search cap.
+       3. failing that, whichever side holds more of the tribe's own works.
+       4. and failing everything, the old default (south / east).
+
+     Harvestable ground — woods, crags, orchards — is deliberately NOT a
+     barrier even though it blocks movement: a woodcutter finishing a stand
+     would otherwise turn a castle inside out. Owner-agnostic; the rival's
+     gates are read the same way.
+
+     Returns +1 (south for a gate in an east-west wall, east for one in a
+     north-south wall) or -1 (north / west). Cached against _blockGen, so it
+     is recomputed only when the walls actually change. */
+  GATE_FLOOD_CAP: 900,
+  _outDir: {},
+  gateOutside(b) {
+    if (!b || b.key !== 'gate') return 1;
+    // build the block grid FIRST: the flood reads it (via gateVerticalAt), and
+    // a rebuild bumps the generation — read it after and we would stamp the
+    // cache with a number already out of date, recomputing on every call
+    if (!this._block) this.rebuildBlock();
+    const gen = this._blockGen || 0;
+    const c = this._outDir[b.id];
+    if (c && c.gen === gen) return c.dir;
+    const dir = this._computeOutside(b);
+    this._outDir[b.id] = { gen, dir };
+    return dir;
+  },
+  _computeOutside(b) {
+    const vert = window.R && R.gateVerticalAt ? R.gateVerticalAt(b.x, b.y) : false;
+    const neg = vert ? { x: b.x - 1, y: b.y } : { x: b.x, y: b.y - 1 };   // west / north
+    const pos = vert ? { x: b.x + 1, y: b.y } : { x: b.x, y: b.y + 1 };   // east / south
+    const A = this._floodSide(b, neg), C = this._floodSide(b, pos);
+    if (A.hall !== C.hall) return A.hall ? 1 : -1;      // the hall's side is the inside
+    if (A.open !== C.open) return A.open ? -1 : 1;      // the side that runs away is the outside
+    if (A.own !== C.own) return A.own > C.own ? 1 : -1; // …or the side with the town on it
+    return 1;
+  },
+  _floodSide(b, s) {
+    const out = { hall: false, open: false, own: 0, n: 0 };
+    if (!MapGen.inB(s.x, s.y)) { out.open = true; return out; }
+    const owner = b.owner, cap = this.GATE_FLOOD_CAP;
+    const wall = (t) => t === T.WATER || t === T.MOUNTAIN || t === T.MOAT || t === T.TRENCH;
+    const blocked = (x, y) => {
+      if (x === b.x && y === b.y) return true;                        // never back through this gate
+      if (wall(S.map.terrain[MapGen.idx(x, y)])) return true;         // what the map walls off
+      const o = this.at(x, y);
+      return !!(o && o.owner === owner && !(o.construction > 0) &&
+        (o.key === 'wall' || o.key === 'gate' || o.key === 'tower')); // …and what the tribe raised
+    };
+    if (blocked(s.x, s.y)) return out;                                // that side is solid: enclosed by definition
+    const seen = new Uint8Array(CFG.W * CFG.H), q = [s.x, s.y];
+    seen[MapGen.idx(s.x, s.y)] = 1;
+    while (q.length) {
+      if (out.n >= cap) { out.open = true; break; }
+      const y = q.pop(), x = q.pop();
+      out.n++;
+      if (x <= 1 || y <= 1 || x >= CFG.W - 2 || y >= CFG.H - 2) out.open = true;
+      const o = this.at(x, y);
+      if (o && o.owner === owner) { out.own++; if (o.key === 'tc') out.hall = true; }
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + ox, ny = y + oy;
+        if (!MapGen.inB(nx, ny)) { out.open = true; continue; }
+        const i = MapGen.idx(nx, ny);
+        if (seen[i]) continue;
+        seen[i] = 1;
+        if (blocked(nx, ny)) continue;
+        q.push(nx, ny);
+      }
+    }
+    return out;
+  },
   toggleDrawbridge(b) {
     if (!this.canDrawbridge(b)) return false;
     b.raised = !b.raised;

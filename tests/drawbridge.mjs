@@ -45,6 +45,26 @@
                               north-south self (it lies east), on canvases of
                               different shapes. Neither is the other rotated.
 
+     IT FALLS OUTWARD         And never into the courtyard. Which way that is
+                              cannot be read off the wall line, because a
+                              stronghold is only PARTLY built — the cheap way
+                              to enclose ground is to run your wall between a
+                              lake and a mountain and let the map do the rest.
+                              So Bld.gateOutside reads the GROUND: flood both
+                              sides of the passage, barriers being deep water,
+                              mountain, trench, moat and the tribe's own
+                              finished walls/gates/towers, then take the side
+                              the HALL is on as the inside (falling back to
+                              whichever side is enclosed, then to whichever
+                              holds more of the tribe's works). Harvestable
+                              ground is deliberately NOT a barrier: a
+                              woodcutter finishing a stand must not turn a
+                              castle inside out.
+                              A west-falling flank deck is the east one
+                              MIRRORED (a picture-plane rotation, so a mirror
+                              is exact); a north-falling face deck is authored
+                              (deckFaceAway) and drawn UNDER the gate.
+
      THE SWING IS RENDER      R._dbA (the eased angle) lives on R and never on
      STATE                    the building or in S — same rule as R._fighting,
                               R.collapses and R.deaths. The tile seals the
@@ -55,6 +75,7 @@
    Run this after touching any of:
      buildings.js — rebuildBlock / canDrawbridge / toggleDrawbridge /
                     stepOffFootprint / finish
+     buildings.js — gateOutside / _computeOutside / _floodSide / _blockGen
      render.js    — drawDrawbridge / _dbA / gateVerticalAt / the building draw
      sprites.js   — deckFace / deckSide / tileDB / the drawbridge atlas
      ui.js        — panelSig / renderPanel's gate branch / the drawbridge act
@@ -80,18 +101,21 @@ const out = await p.evaluate(() => {
   /* ---------- 1. THE ART: both directions, both views ---------- */
   {
     const fam = Sprites.drawbridge;
-    ck('atlasHasBothViews', Array.isArray(fam) && fam.length === 2 &&
-      fam[0].length >= 5 && fam[0].length === fam[1].length,
-      fam ? fam[0].length + ' frames per view' : 'missing');
+    ck('atlasHasEveryView', Array.isArray(fam) && fam.length === 3 &&
+      fam[0].length >= 5 && fam.every(v => v.length === fam[0].length),
+      fam ? fam[0].length + ' frames × ' + fam.length + ' views' : 'missing');
     // the face view hangs its extra half-tile BELOW (the deck lies south);
     // the flank view hangs it to the SIDE (the deck lies east)
     const f0 = fam[0][0], f1 = fam[1][0];
     ck('faceCanvasIsTall', f0.height > f0.width, f0.width + '×' + f0.height);
     ck('flankCanvasIsWide', f1.width > f1.height, f1.width + '×' + f1.height);
-    // neither view is the other rotated — they are authored separately
+    // no view is another rotated or flipped — each is authored separately
     ck('viewsAreNotTheSameDrawing',
-      fam[0][0].toDataURL() !== fam[1][0].toDataURL() &&
-      fam[0][fam[0].length - 1].toDataURL() !== fam[1][fam[1].length - 1].toDataURL(), '');
+      new Set(fam.map(v => v[0].toDataURL())).size === 3 &&
+      new Set(fam.map(v => v[v.length - 1].toDataURL())).size === 3, '');
+    // the FAR-SIDE face shares the tall canvas but hangs its half-tile ABOVE
+    ck('theFarSideFaceIsTallToo', fam[2][0].height > fam[2][0].width,
+      fam[2][0].width + '×' + fam[2][0].height);
     // every frame differs from its neighbour — a strip of stills, not padding
     let same = 0;
     for (const set of fam) for (let i = 1; i < set.length; i++)
@@ -278,8 +302,117 @@ const out = await p.evaluate(() => {
     proto.drawImage = function (img) { drawn.push(img); return orig.apply(this, arguments); };
     R.centerOn(gate.x + 4, gate.y + 0.5);
     try { R.draw(0.016); } finally { proto.drawImage = orig; G.visibleAt = vis; }
-    ck('theFaceDeckIsDrawn', Sprites.drawbridge[0].some(c => drawn.includes(c)), '');
+    const faceStrip = Bld.gateOutside(gate) < 0 ? 2 : 0;
+    ck('theFaceDeckIsDrawn', Sprites.drawbridge[faceStrip].some(c => drawn.includes(c)),
+      'the ' + (faceStrip === 2 ? 'far-side' : 'near-side') + ' strip, as its outside calls for');
     ck('theFlankDeckIsDrawn', Sprites.drawbridge[1].some(c => drawn.includes(c)), '');
+    // …and the strip for the OTHER direction never reaches the canvas
+    ck('andOnlyThatOne',
+      !Sprites.drawbridge[faceStrip === 2 ? 0 : 2].some(c => drawn.includes(c)), '');
+  }
+
+  /* ---- 2f-ii. IT FALLS OUTWARD, whatever the stronghold is made of ---- */
+  {
+    const build = (seed, paint) => {
+      G.newGame(seed, 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+      S.res = { food: 99999, wood: 99999, stone: 99999, gold: 99999 };
+      const t = Bld.tcOf('P');
+      for (let y = t.y - 14; y <= t.y + 14; y++) for (let x = t.x - 14; x <= t.x + 14; x++) {
+        if (!MapGen.inB(x, y)) continue;
+        const i = MapGen.idx(x, y);
+        S.map.terrain[i] = T.GRASS; S.map.seenTerrain[i] = T.GRASS; S.map.explored[i] = 1;
+      }
+      const g0 = paint(t);
+      S.wallLevel = 3;
+      for (const z of S.buildings) if (z.key === 'wall' || z.key === 'gate') {
+        z.level = 3; z.maxhp = CFG.BUILDINGS[z.key].levels[2].hp; z.hp = z.maxhp; z.construction = 0;
+      }
+      Bld._block = null; Bld.blockAt(1, 1);
+      return g0;
+    };
+    // A CLOSED RING: all four gates must point away from the hall
+    {
+      const gs = {};
+      build('db-ring', (t) => {
+        const Rr = 5;
+        for (let d = -Rr; d <= Rr; d++)
+          for (const [x, y, side] of [[t.x + d, t.y - Rr, 'N'], [t.x + d, t.y + Rr, 'S'],
+                                      [t.x - Rr, t.y + d, 'W'], [t.x + Rr, t.y + d, 'E']]) {
+            if (!MapGen.inB(x, y) || Bld.at(x, y)) continue;
+            const nb = Bld.place('P', d === 0 ? 'gate' : 'wall', x, y, { instant: true });
+            if (d === 0 && nb) gs[side] = nb;
+          }
+        return gs.N;
+      });
+      const d = (k) => Bld.gateOutside(gs[k]);
+      ck('everyGateOfARingFacesOut',
+        d('N') === -1 && d('S') === 1 && d('W') === -1 && d('E') === 1,
+        'N ' + d('N') + ' · S ' + d('S') + ' · W ' + d('W') + ' · E ' + d('E'));
+    }
+    /* A STRONGHOLD THE MAP HALF-BUILT: a lake walls the north and east, crags
+       close the south, and a short wall shuts the west with one gate. The hall
+       is east of that gate, so the bridge falls WEST — and no wall line
+       anywhere says so. This is the case the whole rule exists for. */
+    {
+      const g0 = build('db-lake', (t) => {
+        for (let y = t.y - 8; y <= t.y + 8; y++) for (let x = t.x - 6; x <= t.x + 8; x++)
+          if ((y <= t.y - 5 || x >= t.x + 5) && MapGen.inB(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.WATER;
+        for (let y = t.y - 4; y <= t.y + 8; y++) S.map.terrain[MapGen.idx(t.x - 6, y)] = T.GRASS;
+        for (let x = t.x - 6; x <= t.x + 8; x++) S.map.terrain[MapGen.idx(x, t.y + 6)] = T.MOUNTAIN;
+        let g = null;
+        for (let y = t.y - 4; y <= t.y + 5; y++) {
+          const nb = Bld.place('P', y === t.y ? 'gate' : 'wall', t.x - 6, y, { instant: true });
+          if (y === t.y) g = nb;
+        }
+        return g;
+      });
+      ck('aLakeAndACragCountAsWalls', Bld.gateOutside(g0) === -1,
+        'the bridge falls ' + (Bld.gateOutside(g0) < 0 ? 'west, away from the town' : 'EAST, into it'));
+    }
+    /* A LEAKY RING: the wall does not quite close, so BOTH sides run to the
+       wide world and the enclosure test cannot answer. The hall still can. */
+    {
+      const g0 = build('db-leak', (t) => {
+        let g = null;
+        for (let d = -5; d <= 5; d++) {
+          if (d === 4) continue;                       // the gap
+          const nb = Bld.place('P', d === 0 ? 'gate' : 'wall', t.x + 5, t.y + d, { instant: true });
+          if (d === 0) g = nb;
+        }
+        return g;
+      });
+      ck('anUnclosedRingStillKnowsItsInside', Bld.gateOutside(g0) === 1,
+        'the hall answers it when enclosure cannot');
+    }
+    /* HARVESTABLE GROUND IS NOT A WALL. Ring the hall in forest and the answer
+       must not change — otherwise a woodcutter finishing a stand would turn a
+       castle inside out on the day the last tree came down. */
+    {
+      const g0 = build('db-wood', (t) => {
+        for (let d = -5; d <= 5; d++)
+          for (const [x, y] of [[t.x + d, t.y - 5], [t.x + d, t.y + 5], [t.x - 5, t.y + d]])
+            if (MapGen.inB(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.FOREST;
+        let g = null;
+        for (let d = -5; d <= 5; d++) {
+          const nb = Bld.place('P', d === 0 ? 'gate' : 'wall', t.x + 5, t.y + d, { instant: true });
+          if (d === 0) g = nb;
+        }
+        return g;
+      });
+      ck('woodsAreNotFortifications', Bld.gateOutside(g0) === 1,
+        'a stand of trees must not decide which way a castle faces');
+    }
+    // …and the answer is CACHED against the wall generation, not recomputed
+    {
+      const g0 = S.buildings.find(z => z.key === 'gate');
+      const gen0 = Bld._blockGen;
+      Bld.gateOutside(g0);
+      const cached = Bld._outDir[g0.id];
+      ck('theAnswerIsCachedUntilTheWallsChange',
+        !!cached && cached.gen === gen0, JSON.stringify(cached));
+      Bld._block = null; Bld.blockAt(1, 1);
+      ck('andRecomputedWhenTheyDo', Bld._blockGen !== gen0, '');
+    }
   }
 
   // ---- 2g. a legacy save has open gates, and knows it ----
