@@ -1192,6 +1192,15 @@ const R = {
   startCollapse(b) {
     const cfg = this.COLLAPSE[b.key];
     if (!cfg) return;                              // this kind doesn't topple
+    /* A WORK SITE HAS NOTHING TO TOPPLE. The collapse is cut from the
+       BUILDING'S OWN SPRITE (bldSprite), and a site's sprite is the finished
+       tower — so knocking down a half-raised shaft played the frame sequence
+       staked plot → scaffold → a whole finished tower → the whole thing
+       falling over, which is the building's life story run backwards in one
+       second. A site simply stops being a site and leaves its rubble, the
+       same way every other unfinished building dies. An UPGRADING tower is a
+       standing tower and still comes down. */
+    if (b.construction > 0) return;
     if (this.collapses.length > 12) this.collapses.shift();
     const TL = CFG.TILE, sz = Bld.size(b.key);
     /* THE GROUND KEEPS ITS FACE UNTIL THE TOWER IS DOWN. Bld.removeToRuin

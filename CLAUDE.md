@@ -883,7 +883,13 @@ the single source of truth for that geometry. `R.startCollapse` fires from
 `Bld.damage`'s destroy branch — BEFORE `removeToRuin`, because the animation
 snapshots the building's sprite and a mural tower's sprite depends on wall
 neighbours that are still standing — and NOT from `demolish`, which is a
-teardown, not a kill. The live one-shots sit on `R.collapses` and never in
+teardown, not a kill. **Nor from a WORK SITE** (`b.construction > 0`): the
+frames are cut from the building's own sprite and a site's sprite is the
+FINISHED tower, so knocking down a half-raised shaft played its life story
+backwards in one second — staked plot, scaffold, a whole finished tower, then
+the whole thing falling over. A site just stops being a site and leaves its
+rubble like every other unfinished building; an UPGRADING tower is a standing
+tower in scaffolding and still comes down. The live one-shots sit on `R.collapses` and never in
 `S` (same rule as `R._fighting`); the ash pile the tower leaves is held off
 screen while its topple plays (`R.collapseAt`), or the ending is given away a
 second early. **The GROUND is held back for the same reason**

@@ -298,6 +298,30 @@ const out = await p.evaluate(() => {
     ck('aDestroyedTowerTopples', R.collapses.length === 1 && R.collapses[0].x === tw.x, '');
     ck('itSnapshotsItsOwnSprite', !!R.collapses[0].spr, 'the building is already gone by draw time');
 
+    /* 8c-ii. A WORK SITE HAS NOTHING TO TOPPLE. The collapse frames are cut
+       from the building's OWN sprite, and a site's sprite is the finished
+       tower — so knocking down a half-raised shaft played its life story
+       backwards in one second: staked plot → scaffold → a whole finished
+       tower → the whole thing falling over. A site just stops being a site
+       and leaves its rubble, like every other unfinished building. */
+    {
+      const site = Bld.place('P', 'tower', tc2.x + 4, tc2.y + 5, { free: true });
+      const nBefore = R.collapses.length;
+      ck('aTowerSiteIsStillASite', site.construction > 0, '');
+      Bld.damage(site, 999999);
+      ck('aHalfRaisedTowerNeverTopples', R.collapses.length === nBefore,
+        'no finished tower is conjured up just to knock it down');
+      ck('butItStillLeavesItsRubble',
+        S.map.terrain[MapGen.idx(site.x, site.y)] === T.RUIN && !Bld.at(site.x, site.y), '');
+      // …while an UPGRADING tower is a standing tower, and still comes down
+      const up = Bld.place('P', 'tower', tc2.x + 5, tc2.y + 5, { free: true });
+      Bld.finish(up); up.upgrading = 2; up.upTotal = 2;
+      Bld.damage(up, 999999);
+      ck('anUpgradingOneStillDoes', R.collapses.length === nBefore + 1,
+        'it is a tower standing in scaffolding, not a hole in the ground');
+      R.collapses.length = nBefore;
+    }
+
     // 8d. the ash it leaves WAITS for the topple to finish
     ck('ashWaitsForTheFall', !!R.collapseAt(tw.x, tw.y) && !!Bld.ashAt(tw.x, tw.y),
       'the pile exists in state but is held back on screen');
