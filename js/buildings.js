@@ -433,7 +433,7 @@ const Bld = {
     // it — they raise their walls and gates on row 1, the first passable ground,
     // flush against the black. (This is why a gate never lands on an impassable
     // rim tile where no soldier could reach it.)
-    if (x === 0 || y === 0 || x === CFG.W - 1 || y === CFG.H - 1) return false;
+    if (!MapGen.onBoard(x, y)) return false;
     const t = S.map.terrain[MapGen.idx(x, y)];
     // grass and anything depleted or ruined is fair ground to build on. Fertile
     // soil (orchard/berry ground) is now a standing obstacle — clear it first,
@@ -452,7 +452,7 @@ const Bld = {
   // pier needs a walkable shore tile beside it so villagers can build/repair it
   dockSiteOk(x, y, owner) {
     owner = owner || 'P';
-    if (x === 0 || y === 0 || x === CFG.W - 1 || y === CFG.H - 1)
+    if (!MapGen.onBoard(x, y))
       return { ok: false, why: 'Too close to the map edge' };   // the outer ring is off-map black void
     if (!MapGen.inB(x, y) || S.map.terrain[MapGen.idx(x, y)] !== T.WATER || this.at(x, y))
       return { ok: false, why: 'Docks are built on open water' };

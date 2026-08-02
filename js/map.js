@@ -18,6 +18,13 @@ function hashSeed(str) {
 const MapGen = {
   idx(x, y) { return y * CFG.W + x; },
   inB(x, y) { return x >= 0 && y >= 0 && x < CFG.W && y < CFG.H; },
+  /* THE PLAYABLE BOARD. `inB` is only "inside the array" — it INCLUDES the
+     outermost ring, which is the map's hard border: rendered as off-map black
+     void, impassable to everything, unbuildable, unfishable and unworkable.
+     Anything asking "may this tile be used" wants THIS, not inB. It was
+     spelled out by hand in five places and the sapper's tools were not among
+     them, so a trench or a mound could be queued out in the black. */
+  onBoard(x, y) { return x > 0 && y > 0 && x < CFG.W - 1 && y < CFG.H - 1; },
   /* SHALLOWS — a water tile touching land, which is exactly what the renderer
      shades as shore. The leaner half of the fishery (CFG.FISH_STOCK), used
      both when a map is generated and when a fished-out shoal returns
@@ -455,7 +462,7 @@ const MapGen = {
   // Hash-derived (~1/3 of shore tiles), so it needs no save data and matches
   // the renderer's jumping-fish tell exactly — watch the water to find them.
   shoal(x, y) {
-    if (!this.inB(x, y) || x === 0 || y === 0 || x === CFG.W - 1 || y === CFG.H - 1) return false;   // off-map rim
+    if (!this.onBoard(x, y)) return false;   // off-map rim
     if (S.map.terrain[this.idx(x, y)] !== T.WATER) return false;
     let shore = false;
     for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
@@ -513,7 +520,7 @@ const Path = {
     // black and fish jumped in it). The ring is rendered black and is unbuildable
     // (Bld.tileFree / R.draw); the player builds up to it on row 1, which is
     // ordinary passable ground.
-    if (x === 0 || y === 0 || x === CFG.W - 1 || y === CFG.H - 1) return false;
+    if (!MapGen.onBoard(x, y)) return false;
     if (domain === 'water') return terr === T.WATER || terr === T.MOAT;   // boats: open water — a flooded moat included (docks don't block hulls)
     if (BLOCK_TERR[terr]) {
       // a standing bridge makes a water/moat tile crossable to land units
@@ -637,9 +644,13 @@ const Terraform = {
   CLEARABLE: { [T.FOREST]: 1, [T.HILLS]: 1, [T.FERTILE]: 1 },
   // open ground a berm may be raised on (NOT a mound already, NOT the founding camp)
   MOUNDABLE_LAND: { [T.GRASS]: 1, [T.STUMPS]: 1, [T.PEBBLES]: 1, [T.BARREN]: 1, [T.RUIN]: 1 },
-  isDiggable(x, y) { return MapGen.inB(x, y) && !Bld.at(x, y) && !!this.DIGGABLE[S.map.terrain[MapGen.idx(x, y)]]; },
-  isClearable(x, y) { return MapGen.inB(x, y) && !!this.CLEARABLE[S.map.terrain[MapGen.idx(x, y)]]; },
-  bridgeable(x, y) { if (!MapGen.inB(x, y)) return false; const t = S.map.terrain[MapGen.idx(x, y)]; return t === T.WATER || t === T.MOAT; },
+  /* NOTHING IS WORKED IN THE BLACK (tests/sapper-fees.mjs). Every tool asks
+     MapGen.onBoard, not inB: the outermost ring is the map's hard border, and a
+     sapper could queue a trench or a mound out there — marks drawn on the void,
+     work that could never be reached. */
+  isDiggable(x, y) { return MapGen.onBoard(x, y) && !Bld.at(x, y) && !!this.DIGGABLE[S.map.terrain[MapGen.idx(x, y)]]; },
+  isClearable(x, y) { return MapGen.onBoard(x, y) && !!this.CLEARABLE[S.map.terrain[MapGen.idx(x, y)]]; },
+  bridgeable(x, y) { if (!MapGen.onBoard(x, y)) return false; const t = S.map.terrain[MapGen.idx(x, y)]; return t === T.WATER || t === T.MOAT; },
   // a bridge must SPAN water: land (or an existing bridge) on both OPPOSITE sides.
   // Returns the deck orientation ('h' = spans E–W, 'v' = spans N–S) perpendicular
   // to the water, or null (middle of a lake / no crossing → can't place).
@@ -693,7 +704,7 @@ const Terraform = {
     return 0;
   },
   isMoundable(x, y, owner) {
-    if (!MapGen.inB(x, y) || Bld.at(x, y)) return false;
+    if (!MapGen.onBoard(x, y) || Bld.at(x, y)) return false;
     const t = S.map.terrain[MapGen.idx(x, y)];
     if (this.MOUNDABLE_LAND[t]) return true;                            // berm on open ground
     if (t === T.WATER || t === T.MOAT) return this.reclaimDepth(x, y) > 0;  // fill near-shore water

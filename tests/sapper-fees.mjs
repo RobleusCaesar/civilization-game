@@ -157,6 +157,72 @@ const out = await p.evaluate(() => {
     UI.terraMode = null; UI.deselect();
   }
 
+  /* ---- NOTHING IS WORKED IN THE BLACK ----
+     The map's outermost ring is its hard border: rendered as off-map void,
+     impassable, unbuildable, unfishable. Every one of those rules was spelled
+     out by hand where it was needed — and the sapper's four tools were not
+     among the places, so a trench or a mound could be QUEUED out in the black:
+     marks drawn on the void, for work no hand could ever reach.
+
+     The rule is one thing now, MapGen.onBoard, and every tool asks it. (`inB`
+     is only "inside the array" and INCLUDES the rim — that is the trap.) */
+  {
+    G.newGame('rim', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.res = { food: 99999, wood: 99999, stone: 99999, gold: 99999 };
+    const W = CFG.W, H = CFG.H, rim = [];
+    for (let x = 0; x < W; x++) rim.push([x, 0], [x, H - 1]);
+    for (let y = 0; y < H; y++) rim.push([0, y], [W - 1, y]);
+    // lay WORKABLE ground all along the rim, so only the border rule itself can
+    // refuse — never the terrain
+    for (const [x, y] of rim) { const i = MapGen.idx(x, y); S.map.terrain[i] = T.GRASS; S.map.explored[i] = 1; }
+    for (let x = 1; x < W - 1; x++) { const i = MapGen.idx(x, 1); S.map.terrain[i] = T.GRASS; S.map.explored[i] = 1; }
+    S.map.terrain[MapGen.idx(0, 10)] = T.FOREST;                    // something to clear
+    S.map.terrain[MapGen.idx(0, 12)] = T.WATER;                     // something to bridge / fill
+    S.map.terrain[MapGen.idx(1, 12)] = T.WATER;
+    Bld._block = null;
+    const anyRim = (fn) => rim.some(([x, y]) => fn(x, y));
+
+    ck('theBorderRuleIsOneThing',
+      typeof MapGen.onBoard === 'function' &&
+      MapGen.onBoard(0, 5) === false && MapGen.onBoard(W - 1, 5) === false &&
+      MapGen.onBoard(5, 0) === false && MapGen.onBoard(5, H - 1) === false &&
+      MapGen.onBoard(1, 1) === true, 'MapGen.onBoard — and inB is NOT it');
+    ck('noToolReachesTheRim',
+      !anyRim((x, y) => Terraform.isDiggable(x, y)) &&
+      !anyRim((x, y) => Terraform.isClearable(x, y)) &&
+      !anyRim((x, y) => Terraform.isMoundable(x, y, 'P')) &&
+      !anyRim((x, y) => Terraform.bridgeable(x, y)), 'dig / clear / mound / bridge');
+    ck('norIsAJobEverFoundThere', !anyRim((x, y) => !!Units.terraformJob('P', x, y)), '');
+    ck('norAnythingElse',
+      !anyRim((x, y) => Bld.tileFree(x, y)) &&
+      !anyRim((x, y) => Bld.dockSiteOk(x, y, 'P').ok) &&
+      !anyRim((x, y) => Units.fishableTile(x, y)) &&
+      !anyRim((x, y) => Path.passable(x, y, 'P')),
+      'built on, docked on, fished or walked');
+    // …and the rule must not eat REAL ground: row 1 is the first playable line
+    ck('butRowOneIsRealGround', Terraform.isDiggable(5, 1) && Bld.tileFree(5, 1), '');
+
+    /* THE MARKS. The drag ghost is what actually decides where a mark is laid,
+       so it is the thing that has to refuse — measured end to end. */
+    const camp = Bld.place('P', 'sapper', Bld.tcOf('P').x + 2, Bld.tcOf('P').y + 2, { free: true, instant: true });
+    camp.level = 3;
+    const spot = MapGen.findNear(6, 3, 10, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
+    const sp = Units.spawn('sapper', 'P', spot.x, spot.y);
+    ck('theOrderItselfIsRefused', Units.assignTerraform(sp, 5, 0, 'dig') === false, '');
+    UI.select('unit', sp.id); UI.terraMode = 'dig';
+    UI.terraDrag = [{ x: 5, y: 0 }, { x: 5, y: 1 }, { x: 6, y: 0 }];
+    UI.updateTerraGhost();
+    const ghost = UI.terraGhost;
+    ck('theGhostLaysNoMarkOnTheVoid',
+      ghost.filter(t => t.ok).length === 1 && ghost.find(t => t.y === 1).ok === true,
+      ghost.map(t => t.x + ',' + t.y + ':' + (t.ok ? 'ok' : 'no')).join(' '));
+    UI.commitTerraDrag();
+    const queued = (sp.jobs || []).concat(sp.task && sp.task.type === 'terraform' ? [sp.task] : []);
+    ck('andNothingIsQueuedOutThere',
+      queued.length === 1 && queued.every(j => MapGen.onBoard(j.x, j.y)),
+      queued.map(j => j.x + ',' + j.y).join(' ') || 'nothing queued at all');
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

@@ -423,6 +423,20 @@ closing stone): `AI.townOut` and `Terraform.digWouldSeal` (via
 `Path.reachFrom(spots, wallSitesSolid)`) both refuse based on what the line
 will be, not what it is today.
 
+**Nothing is worked in the BLACK** (`tests/sapper-fees.mjs`): the map's
+outermost ring is its hard border — off-map void, impassable, unbuildable,
+unfishable — and that rule had been spelled out BY HAND in five places
+(`Path.passable`, `Bld.tileFree`, `Bld.dockSiteOk`, `Units.fishableTile`,
+`MapGen.shoal`). The sapper's four tools were not among them, so a trench or a
+mound could be queued out in the void: marks drawn on the black, for work no
+hand could ever reach. **`MapGen.onBoard` is now the single declaration** and
+every one of those callers asks it. The trap it closes: `MapGen.inB` is only
+"inside the array" and INCLUDES the rim, so `inB` is never the right question
+for "may this tile be used". The drag ghost is what actually lays a mark
+(`UI.updateTerraGhost` → `Units.canTerraform` → the four predicates), so the
+test measures it end to end — order refused, ghost marks nothing, queue holds
+only the real tile — and pins that row 1 is still real, workable ground.
+
 **Sapper fees** (`tests/sapper-fees.mjs`): every terraform job bills PER TILE
 from `CFG.TERRAFORM` (`digCost`/`bridgeCost`/`clearCost`/`moundCost`), dearer
 with the tier that unlocks it (T1 dig 10 food → T3 mound 35 stone + 10 wood),

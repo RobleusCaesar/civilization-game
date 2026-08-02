@@ -429,7 +429,7 @@ const Units = {
   // fishing boats harvest fish from stocked water tiles
   // water worth casting in at all: stocked, unbuilt, off the black rim
   fishableTile(tx, ty) {
-    if (tx <= 0 || ty <= 0 || tx >= CFG.W - 1 || ty >= CFG.H - 1) return false;   // off-map black rim — no fishing there
+    if (!MapGen.onBoard(tx, ty)) return false;   // off-map black rim — no fishing there
     const i = MapGen.idx(tx, ty);
     return S.map.terrain[i] === T.WATER && S.map.resAmount[i] > 0 && !Bld.at(tx, ty);
   },
