@@ -157,6 +157,24 @@ const AI = {
   },
   isFort(b) { return !!b && (b.key === 'wall' || b.key === 'gate'); },
 
+  /* NOBODY WORKS IN A WAR BAND'S YARD (tests/raider-camps.mjs). A barbarian
+     camp's tenders hold the ground around their fire, so a station — or a gold
+     seam claim — laid inside it is a hand sent to die, and the chief sends
+     another the moment it does: a conveyor that cost one rival town a villager
+     every four days for the back half of a 200-day run. Fog-honest, like every
+     other read the chief makes: only camps it has actually laid eyes on, and
+     only ones still standing (burn the camp and the ground is ordinary again). */
+  campGround(x, y) {
+    const seen = S.ai && S.ai.seen;
+    const cR = (CFG.RAIDER_CAMPS || {}).chaseR || 7;
+    for (const b of S.buildings) {
+      if (b.owner !== 'R' || b.key !== 'raidercamp') continue;
+      if (seen && !seen[MapGen.idx(b.x, b.y)]) continue;
+      if (Math.hypot(x - b.x, y - b.y) <= cR + 1) return true;
+    }
+    return false;
+  },
+
   /* find a plot with some character instead of spiral-filling a square:
      terrain-hunters sit beside their bonus terrain, towers push toward the
      player, everything else scatters at a random angle from the hall */
@@ -215,7 +233,8 @@ const AI = {
       if (shut < 2) return false;
       return this.wallWouldSeal(tc, x, y) || !!this.corkedGround(tc, { x, y });
     };
-    const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2 && offLine(x, y) && canWork(x, y) && !sealsTown(x, y);
+    const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2 && offLine(x, y) &&
+      canWork(x, y) && !sealsTown(x, y) && !(!isFortKey && this.campGround(x, y));
     // how many of the 8 neighbours are already built on (crowding) — real buildings
     // want ELBOW ROOM so the town reads as a settlement, not a packed maze
     const crowd = (x, y) => { let n = 0; for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) if (Bld.at(x + ox, y + oy)) n++; return n; };
@@ -1264,6 +1283,7 @@ const AI = {
       if (b && !Bld.canClaimSeam('A', x, y).ok) continue;     // still held by hands it must clear first
       if (b && b.owner === 'A' && Bld.workersAssigned(b) >= Bld.maxWorkers(b)) continue;
       if (!seen[i]) continue;                    // never a seam it has not laid eyes on
+      if (this.campGround(x, y)) continue;       // …and never one in a war band's yard
       if (reach && !reach[i]) {                  // …and never one no hand of its can stand at
         let side = false;
         for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])

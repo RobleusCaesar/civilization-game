@@ -228,11 +228,24 @@ const MapGen = {
     const cm = (CFG.MODES[mode] && CFG.MODES[mode].campMult) != null ? CFG.MODES[mode].campMult : 1;
     const RC = CFG.RAIDER_CAMPS || { perArea: 2, min: 2 };
     const wantCamps = Math.max(RC.min || 2, Math.round((RC.perArea || 2) * f * cm));
-    let guard = 0;
-    while (camps.length < wantCamps && guard++ < 600) {
-      const x = 3 + rnd() * (W - 6) | 0, y = 3 + rnd() * (H - 6) | 0;
-      const dP = Math.hypot(x - player.x, y - player.y), dA = Math.hypot(x - ai.x, y - ai.y);
-      if (dP > 14 && dA > 14 && t[id(x, y)] === T.GRASS) { t[id(x, y)] = T.CAMP; camps.push({ x, y }); }
+    /* AND THE CLEARANCE IS DERIVED, not a taste number. A camp's tenders hold
+       ground out to RAIDER_CAMPS.chaseR, and a town lays its buildings out to
+       about seven tiles from its hall — so any clearance under the two added
+       together puts a barbarian band's yard on top of somebody's lumber camp.
+       At the old 14 that happened often, and the rival (whose income is paid
+       per LIVING hand) bled a villager every few days from day three and never
+       got off the ground. Relaxed in steps if the board can't seat them all,
+       so a small map still gets its camps rather than none. */
+    const TOWN_RING = 7;
+    const wantClear = (RC.chaseR || 7) + TOWN_RING + 4;
+    for (const clear of [wantClear, wantClear - 4, 14, 10]) {
+      let guard = 0;
+      while (camps.length < wantCamps && guard++ < 600) {
+        const x = 3 + rnd() * (W - 6) | 0, y = 3 + rnd() * (H - 6) | 0;
+        const dP = Math.hypot(x - player.x, y - player.y), dA = Math.hypot(x - ai.x, y - ai.y);
+        if (dP > clear && dA > clear && t[id(x, y)] === T.GRASS) { t[id(x, y)] = T.CAMP; camps.push({ x, y }); }
+      }
+      if (camps.length >= wantCamps) break;
     }
 
     /* DIFFICULTY DEFENSIBILITY — bias the PLAYER's seat by difficulty, but with

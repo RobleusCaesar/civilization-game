@@ -143,6 +143,49 @@ const out = await p.evaluate(() => {
     S.units.splice(S.units.indexOf(far), 1);
   }
 
+  /* ---- 4b. AND THE CHASE IS LEASHED TOO ----
+     Keeping ACQUISITION inside the camp's ground was only half the rule: with
+     a mark in hand the chase ran on the generic 10-tile anchor leash — twice
+     the camp's own ground — and everything a barbarian frightens runs HOME. A
+     village's people flee to their hall, so the band followed them there and
+     stood outside somebody's town killing whoever came out, day after day. On
+     a passive-player sim that alone cost the rival 47 villagers by day 200 on
+     one seed (its income is paid per LIVING hand), and the day-219 save that
+     found this had a rival with 9 buildings and a level-1 hall. */
+  {
+    const camp = Bld.get(window.__camp);
+    const cR = CFG.RAIDER_CAMPS.chaseR || 7;
+    const tender = G.campTenders(camp)[0];
+    const near = MapGen.findNear(camp.x + 2, camp.y, 2,
+      (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
+    const v = Units.spawn('villager', 'P', near.x, near.y);
+    Combat.raiderSeek(tender);
+    ck('theTenderTakesTheMarkInItsYard', tender.tUnit === v.id, '');
+    // …now the villager bolts for its hall, the way a frightened villager does
+    let spot = null;
+    for (let y = 1; y < CFG.H - 1 && !spot; y++) for (let x = 1; x < CFG.W - 1; x++) {
+      if (Math.hypot(x - camp.x, y - camp.y) < cR + 6) continue;
+      if (Path.passable(x, y, 'P') && !Bld.at(x, y)) { spot = { x, y }; break; }
+    }
+    v.x = spot.x + 0.5; v.y = spot.y + 0.5;
+    ck('aRunnerThatLeavesTheYardIsLetGo', Combat.campLeash(tender, v) === true,
+      'the quarry is ' + Math.round(Math.hypot(v.x - camp.x, v.y - camp.y)) + ' tiles off');
+    ck('andTheChaseIsDropped', tender.tUnit === 0, '');
+    ck('homeIsAlwaysTheFire',
+      Math.abs(tender.anchor.x - (camp.x + 0.5)) < 0.01 &&
+      Math.abs(tender.anchor.y - (camp.y + 0.5)) < 0.01,
+      'the generic leash measures from u.anchor, and a walk home that ends ' +
+      'short re-anchors where it stopped — that ratchet is what let a tender ' +
+      'end up 19 tiles from its camp');
+    // …and run live, the band never ends up out at the runner
+    tender.tUnit = v.id;
+    for (let t = 0; t < 400; t++) { Units.update(0.1); Combat.update(0.1); }
+    const far2 = Math.max(...G.campTenders(camp).map(u => Math.hypot(u.x - camp.x, u.y - camp.y)));
+    ck('soTheBandIsStillAtItsCamp', far2 <= cR + 2,
+      'furthest ' + far2.toFixed(1) + ' tiles (the old anchor leash allowed 10, and ratcheted past it)');
+    S.units.splice(S.units.indexOf(v), 1);
+  }
+
   // ---- 5. the camp re-mans itself ----
   {
     const camp = Bld.get(window.__camp);
@@ -230,6 +273,65 @@ const out = await p.evaluate(() => {
     for (let i = 0; i < 4000 && Bld.get(camp.id); i++) { Units.update(0.05); Combat.update(0.05); }
     ck('andTheCampBurnsDown', !Bld.get(camp.id) && camp.hp < hp0,
       'hp ' + Math.round(camp.hp) + '/' + camp.maxhp);
+  }
+
+  /* ---- 7. A CAMP STANDS IN THE WILD COUNTRY ----
+     The clearance from a town is DERIVED: a camp's tenders hold ground out to
+     chaseR and a town lays buildings out to ~7 tiles from its hall, so any
+     less puts a war band's yard on top of somebody's lumber camp. */
+  {
+    const cR = CFG.RAIDER_CAMPS.chaseR || 7;
+    let worst = 1e9;
+    for (let s = 0; s < 4; s++) {
+      G.newGame('rc-clear' + s, 'moderate', 'large');
+      Screens._demo = false; Screens.show('playing'); S.paused = true;
+      const ptc = Bld.tcOf('P'), atc = Bld.tcOf('A');
+      for (const c of campsOf())
+        worst = Math.min(worst, Math.hypot(c.x - ptc.x, c.y - ptc.y), Math.hypot(c.x - atc.x, c.y - atc.y));
+    }
+    ck('noCampOnATownsDoorstep', worst > cR + 7,
+      'nearest camp to a hall across four boards: ' + worst.toFixed(1) + ' tiles');
+  }
+
+  /* ---- 8. AND THE CHIEF DOES NOT WORK IN A WAR BAND'S YARD ----
+     The other half of the bleed: the rival kept siting stations (and claiming
+     gold seams) inside a camp's ground, and sent another hand the moment the
+     last one was cut down — a conveyor, one villager every few days. */
+  {
+    G.newGame('rc-yard', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const atc = Bld.tcOf('A');
+    // plant a camp right at the edge of the rival's building ring, and let the
+    // chief SEE it (fog-honest: an unseen camp is ground it has no reason to shun)
+    const cs = MapGen.findNear(atc.x + 6, atc.y, 6,
+      (x, y) => Path.passable(x, y) && !Bld.at(x, y) && MapGen.onBoard(x, y));
+    const camp = G.plantRaiderCamp(cs.x, cs.y);
+    if (!S.ai.seen || !S.ai.seen.length) S.ai.seen = new Array(CFG.W * CFG.H).fill(0);
+    S.ai.seen[MapGen.idx(camp.x, camp.y)] = 1;
+    const cR2 = CFG.RAIDER_CAMPS.chaseR || 7;
+    ck('theYardIsGroundTheChiefKnowsToShun',
+      AI.campGround(camp.x + 1, camp.y) === true &&
+      AI.campGround(camp.x, camp.y + cR2 + 4) === false,
+      'the yard reaches chaseR from the fire and no further');
+    let inYard = 0;
+    for (let i = 0; i < 40; i++) {
+      const s2 = AI.plot('house');
+      if (s2 && AI.campGround(s2.x, s2.y)) inYard++;
+    }
+    ck('soNoStationIsLaidInIt', inYard === 0, inYard + '/40 plots fell inside the camp ground');
+    // a gold seam in the yard is not worth a hand either
+    const seam = MapGen.findNear(camp.x + 1, camp.y, 2,
+      (x, y) => Path.passable(x, y) && !Bld.at(x, y) && MapGen.onBoard(x, y));
+    for (let y = 1; y < CFG.H - 1; y++) for (let x = 1; x < CFG.W - 1; x++)
+      if (S.map.terrain[MapGen.idx(x, y)] === T.GOLDORE) S.map.terrain[MapGen.idx(x, y)] = T.GRASS;
+    S.map.terrain[MapGen.idx(seam.x, seam.y)] = T.GOLDORE;
+    S.ai.seen[MapGen.idx(seam.x, seam.y)] = 1;
+    ck('norIsASeamInItClaimed', AI.plotMine() === null,
+      'the only seam it can see stands ' +
+      Math.round(Math.hypot(seam.x - camp.x, seam.y - camp.y)) + ' tiles from the fire');
+    // …but burn the camp out and the ground is ordinary again
+    Bld.removeToRuin(camp);
+    ck('untilTheCampIsBurnedOut',
+      AI.campGround(seam.x, seam.y) === false && !!AI.plotMine(), '');
   }
 
   return { res, fails };

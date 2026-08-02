@@ -1078,6 +1078,39 @@ invasion. **The stranded-'R' backstop in units.js must skip them** (`!u.campId`)
 — it melts any land raider that stands still for 8 seconds, which is exactly
 what a tender at its own fire does, and without the exemption every camp on the
 map empties within a minute of the game starting.
+**And the CHASE is leashed too** (`Combat.campLeash`, same test): keeping a
+tender's ACQUISITION inside its ground was only half the rule. With a mark in
+hand the chase ran on the generic 10-tile `u.anchor` leash in `Combat.update` —
+twice the camp's own ground — and **everything a barbarian frightens runs
+HOME**: a village's people flee to their hall (`Units.damage`), so the band
+followed them there and stood outside somebody's town killing whoever came out,
+day after day. Worse, the walk home re-anchors a unit wherever its path ENDS
+(the `'move'` completion in units.js), so a tender dragged out once could be
+dragged out again from there — a real ratchet, measured at 19 tiles from its
+camp. Two fixes, both in the camp branch: the tender's `anchor` is re-stamped
+on the fire every scan, and `campLeash` drops the quarry the moment either of
+them leaves the camp's ground (`chaseR` + weapon + 1.5 for the runner,
+`chaseR` + 1.5 for the tender) and walks it back. **This was the whole reason a
+rival town would never get established** — a passive-player sim on the reported
+day-219 seed had the chief lose 47 villagers by day 200 and end with 9
+buildings and a level-1 hall; its income is paid per LIVING hand
+(`Bld.dailyProduction`), so every kill is a permanent cut. Leashed, the same
+seed reaches a level-3 hall and 54 buildings.
+**A camp stands in the WILD COUNTRY** (same test): the clearance from a town is
+DERIVED, not a taste number — a camp's tenders hold ground out to `chaseR` and a
+town lays its buildings out to about seven tiles from its hall (`AI.plot`'s
+`rMax`), so anything under the two added together puts a war band's yard on top
+of somebody's lumber camp. `MapGen.generate` uses `chaseR + 7 + 4` and relaxes
+in steps (…, 14, 10) if the board can't seat them all, so a small map still gets
+its camps rather than none.
+**And the chief does not WORK in a war band's yard** (`AI.campGround`, same
+test): the other half of the bleed was the rival siting stations and claiming
+gold seams inside a camp's ground and sending another hand the moment the last
+was cut down — a conveyor, one villager every few days for the back half of a
+run. `AI.plot`'s `free()` (non-fort keys only; walls sit on the seam and have
+their own clamps) and `AI.plotMine` both refuse that ground. Fog-honest like
+every other read the chief makes — only camps it has actually seen — and only
+ones still STANDING, so burning the camp out hands the ground back.
 **Burnable**: it has hp, so a war party can pull it down. `Bld.damage`'s `'R'`
 branch logs it; the standing band goes loose the next time `raiderSeek` runs
 (no camp, no post); `tickRaiderCamps` raises nothing there again; and the wave

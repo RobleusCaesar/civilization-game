@@ -642,6 +642,33 @@ const Combat = {
 
   // raiders + AI raid parties pick their objective. Barbarian bands follow
   // their spawn disposition: the player, the rival tribe, or whoever they find.
+  /* THE CHASE IS LEASHED TO THE FIRE TOO (tests/raider-camps.mjs). Keeping a
+     tender's ACQUISITION inside the camp's ground was only half the rule: once
+     it had a mark, the chase ran on the generic 10-tile anchor leash — twice
+     the camp's own ground — and everything a barbarian frightens runs HOME. A
+     village's people flee to their hall, so the band followed them there and
+     stood outside somebody's town killing whoever came out, day after day.
+     Measured on a passive-player sim, that alone cost the rival 47 villagers
+     by day 200 on one seed: an economy paid per living hand simply never left
+     the ground. So a tender lets a runner go the moment either of them leaves
+     the camp's ground, and walks back to its fire. Returns true when the chase
+     was called off. Owner-agnostic in spirit — only camps have tenders. */
+  campLeash(u, tgt) {
+    const camp = Bld.get(u.campId);
+    if (!camp || camp.owner !== 'R') { u.campId = 0; return false; }
+    const RC = CFG.RAIDER_CAMPS || {};
+    const cR = RC.chaseR || 7;
+    const reachW = CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE || 1.5;
+    const hx = camp.x + 0.5, hy = camp.y + 0.5;
+    // the quarry has left our ground, or the chase has dragged US off it
+    if (Math.hypot(tgt.x - hx, tgt.y - hy) <= cR + reachW + 1.5 &&
+        Math.hypot(u.x - hx, u.y - hy) <= cR + 1.5) return false;
+    u.tUnit = 0; u.task = null;
+    u.anchor = { x: hx, y: hy };
+    Units.setPath(u, camp.x, camp.y);
+    return true;
+  },
+
   raiderSeek(u) {
     if (u.owner === 'A') return this.aiRaidSeek(u);   // rival parties think tactically
     const disp = u.owner === 'R' ? (u.hostileTo || 'P') : 'P';
@@ -673,6 +700,13 @@ const Combat = {
         const RC = CFG.RAIDER_CAMPS || {};
         const gR = RC.guardR || 5, cR = RC.chaseR || 7;
         const hx = camp.x + 0.5, hy = camp.y + 0.5;
+        // HOME IS THE FIRE, ALWAYS. The generic 10-tile chase leash measures
+        // from u.anchor, and a walk home that ends short re-anchors the unit
+        // where it stopped (the 'move' completion in units.js) — so a tender
+        // dragged out once could be dragged out again from there, and again.
+        // Re-stamping the anchor every scan keeps that ratchet from ever
+        // starting: a tender's home never drifts off its own camp.
+        u.anchor = { x: hx, y: hy };
         // anyone hacking at the camp itself is the first business of the day
         const atCamp = this.nearestUnit(hx, hy, cR,
           o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o));
@@ -818,6 +852,8 @@ const Combat = {
             Units.setPath(u, u.siegePost.x, u.siegePost.y);
             continue;
           }
+        } else if (u.campId && this.campLeash(u, tgt)) {
+          continue;   // a tender let its quarry go and is walking back to its fire
         } else {
           // A BOMBARD ENGINE MINDS ITS GROUND: unordered (no raid/attack task),
           // it fires on what's in range and lets what walks away go — pursuit
