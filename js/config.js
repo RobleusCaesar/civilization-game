@@ -563,6 +563,102 @@ const CFG = {
      top of. `aiDay` is the earliest the rival will march out and sink one. */
   GOLD_SEAMS: { count: 3, perTile: 0.0008, minFromTown: 10, aiDay: 40 },
 
+  /* MORTALITY (tests/mortality.mjs) — every so often, a villager simply dies.
+     Life was short and full of surprises, and mechanically it means a station
+     you staffed and forgot about occasionally needs a hand put back on it.
+     `deathEvery` is the day band between deaths, per difficulty (Calm waits
+     longest, Hard shortest); MORTALITY.every is the fallback for a mode that
+     names none. Never the LAST villager — a random roll must not be able to
+     end a run the player is still playing. Player-side only: the rival hires
+     its workforce back on a timer of its own, so mortality there would be
+     invisible bookkeeping that only re-tunes its economy. */
+  MORTALITY: { every: [25, 40], animMs: 1500 },
+
+  /* HOW THEY WENT. Keyed by what the villager was DOING — the station it was
+     stationed at, the resource it was gathering, whether it was building or
+     fishing — so the news reads like a small story rather than a dice roll.
+     `general` covers everyone caught idling, walking or sheltering. Adding a
+     new station is one more key here, nothing else. */
+  DEATHS: {
+    general: [
+      'lay down under a hawthorn for a short rest and simply did not get up.',
+      'was carried off by a fever nobody could name. The moon was blamed.',
+      'ate something the elders had specifically warned about.',
+      'lost an argument with a goat on a very narrow path.',
+      'drank from the downstream well. Twice.',
+      'was struck by lightning while explaining that lightning never strikes twice.',
+      'tripped over the dog and did not trip back.',
+      'died of an ache the healer treated with a louder ache.',
+      'went to see what that noise in the woods was.',
+      'was very old, which in these years means thirty-one.',
+      'choked on a barley loaf during an otherwise excellent feast.',
+      'caught a chill standing about admiring the new walls.',
+      'was bitten by something small, green and entirely unbothered.',
+      'sat down on a warm rock to rest. The rock outlasted them.',
+      'insisted, right to the end, that the mushrooms were fine.',
+    ],
+    farm: [
+      'was trampled by the ox they had just called "gentle".',
+      'bent to pull one last weed and never straightened up again.',
+      'took a scythe to the shin, and their pride to the grave.',
+      'was stung by every bee in the barley at more or less the same moment.',
+    ],
+    lumber: [
+      'shouted "TIMBER" and then stood quite still to admire it.',
+      'was flattened by the very tree they were leaning on for a rest.',
+      'misjudged which way an elm falls. Elms are unforgiving.',
+      'let go of the axe at the top of the swing. It came back.',
+    ],
+    quarry: [
+      'was buried under the very block they had called "a good one".',
+      'tested a chisel with their thumb, then a boulder with their head.',
+      'discovered that a stone bench can also be a stone ceiling.',
+      'was on the wrong side of the wedge when the seam finally let go.',
+    ],
+    mine: [
+      'went back in for one more nugget. The roof went in after them.',
+      'carried more gold up the ladder than one pair of lungs could manage.',
+      'lit a lamp in a shaft that had been waiting years for exactly that.',
+      'was run down by an ore cart with no brake and very firm opinions.',
+    ],
+    lodge: [
+      'found the boar first. The boar found them second.',
+      'was outrun by dinner, and then caught by it.',
+      'mistook a bear\'s den for an unusually well-stocked berry patch.',
+      'was gored mid-sentence, while explaining that this one looked friendly.',
+    ],
+    gatherWood: [
+      'was pinned by a widow-maker branch nobody had thought to look up at.',
+      'chopped enthusiastically at the trunk they were standing on.',
+      'was last seen carrying a bundle of faggots twice their own height.',
+      'startled a wasps\' nest with the second-to-last blow of the day.',
+    ],
+    gatherStone: [
+      'levered out the one rock that had been holding up all the others.',
+      'was struck by a chip of flint travelling faster than the eye follows.',
+      'went to fetch the crowbar and came back under the pile.',
+      'carried a hod of stone up a slope they had already lost an argument with.',
+    ],
+    gatherFood: [
+      'reached deep into the bramble and met something already living there.',
+      'was seen off by a very territorial swan, and did not recover.',
+      'sampled the berries thoroughly before bringing any home.',
+      'fell out of the apple tree, which everyone agreed was the good one.',
+    ],
+    build: [
+      'was under the roof beam at the exact moment the rope was not.',
+      'fell from the scaffold that everyone had agreed was perfectly fine.',
+      'was set in the mortar they had mixed just a little too well.',
+      'hit their thumb with the mallet, sat down, and never got back up.',
+    ],
+    fish: [
+      'hooked something considerably larger than the shore they stood on.',
+      'leaned out for the float, and kept on leaning.',
+      'slipped in the shallows and was far too proud to shout for help.',
+      'was pulled under by a pike that had clearly been holding a grudge.',
+    ],
+  },
+
   /* BARBARIAN CAMPS (tests/raider-camps.mjs). How many the map carries is the
      size factor times the mode's `campMult`; how many barbarians tend each is
      rolled from the mode's `campGuard` band. A tender that falls is replaced
@@ -684,7 +780,8 @@ const CFG = {
       // build actions, full output — so the town you eventually visit is a
       // living farm sprawl, not a war camp. Calm = watch it farm, not fight.
       waveFirst: 85, waveGapMult: 2.8, waveSizeAdd: -2, barbMult: 0.75,
-      campMult: 0.6, campGuard: [1, 2],   // BARBARIAN CAMPS (tests/raider-camps.mjs): how many the map carries, and how many tend each
+      campMult: 0.6, campGuard: [1, 2],
+      deathEvery: [34, 52],   // days between villager deaths (tests/mortality.mjs)
       animalMax: 2, animalChance: 0.15, aiRaidDay: 110,
       aiBuildEvery: 2, aiOutput: 1.0, aiArmyCap: 5, aiArmyDiv: 14, aiEliteShare: 0.1, aiAggro: 0.4,
       aiVillCap: 12, aiVillEvery: 11, aiActions: 2, aiHarass: 0,   // calm: no harassment parties
@@ -699,7 +796,8 @@ const CFG = {
       name: 'Moderate', icon: '⚔️', desc: 'The intended experience.',
       gather: 1, output: 1, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
       waveFirst: 40, waveGapMult: 1.5, waveSizeAdd: 0, barbMult: 1,
-      campMult: 1, campGuard: [1, 3],   // BARBARIAN CAMPS (tests/raider-camps.mjs): how many the map carries, and how many tend each
+      campMult: 1, campGuard: [1, 3],
+      deathEvery: [25, 40],   // days between villager deaths (tests/mortality.mjs)
       animalMax: 3, animalChance: 0.2, aiRaidDay: 50,
       // army volume dialed back ~20% from the original 9/8 tuning — playtesting
       // read as relentless; the player needs a breath between pushes. aiEarly
@@ -734,7 +832,8 @@ const CFG = {
       // waves a shade heavier and closer together.
       gather: 0.90, output: 1.0, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
       waveFirst: 33, waveGapMult: 0.85, waveSizeAdd: 1, barbMult: 1.15, barbSpacing: true, bandCap: 9,
-      campMult: 1.5, campGuard: [2, 3],   // BARBARIAN CAMPS (tests/raider-camps.mjs): how many the map carries, and how many tend each
+      campMult: 1.5, campGuard: [2, 3],
+      deathEvery: [18, 28],   // days between villager deaths (tests/mortality.mjs)
       animalMax: 4, animalChance: 0.3, aiRaidDay: 32,
       aiBuildEvery: 1, aiOutput: 1.25, aiArmyCap: 15, aiArmyDiv: 5, aiEliteShare: 0.8, aiAggro: 1.2,
       aiVillCap: 18, aiVillEvery: 8, aiActions: 4, aiHarass: 5,

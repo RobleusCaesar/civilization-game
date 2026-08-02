@@ -147,6 +147,7 @@ const G = {
       res: Object.assign({}, CFG.START_RES),
       wallLevel: 1,                         // village-wide fortification tier (all walls & gates)
       wonder: null,                         // this run's ANCIENT WONDER key (set by G.setWonder, below)
+      nextDeath: 0,                         // the day the next villager goes (tests/mortality.mjs)
       map: {
         W: CFG.W, H: CFG.H,
         terrain: gen.terrain,
@@ -184,6 +185,7 @@ const G = {
     };
     Bld._block = null;
     this._marvel = false;
+    S.nextDeath = S.day + this.rollDeathGap();   // the first villager's day, rolled now
     // which ANCIENT WONDER this run may raise — hashed off the seed, so it
     // never disturbs the run's own RNG sequence (see G.rollWonder)
     this.setWonder(this.rollWonder(seed).key);
@@ -535,6 +537,7 @@ const G = {
     // victory and defeat come only through Town Centers falling (see Bld.damage)
     S.day++;
     this.tickRaiderCamps();   // a camp raises another spear when one falls
+    this.tickMortality();     // …and every so often a villager simply goes
     /* LIVING land recovers: felled forest and spent orchard/berry soil grow
        back with a lean restock, so a starved player can always grind wood
        and food back — just slowly. ORE DOES NOT (CFG.REGROW_TO): a quarried
@@ -982,6 +985,61 @@ const G = {
     }
   },
 
+  /* ================= MORTALITY (tests/mortality.mjs) =====================
+     Life is short here. Every `deathEvery` days one villager simply goes —
+     with a keeling-over animation where they stood, a line in the log saying
+     what did for them, and their post left EMPTY. That last part is the point
+     of the whole feature: a station you staffed on day forty and forgot about
+     will, sooner or later, want a hand put back on it.
+
+     Two deliberate limits. It never takes the LAST villager — a random roll
+     must not be able to end a run the player is still playing — and it is
+     player-side only: the rival hires its workforce back on a timer of its
+     own, so mortality there would be invisible bookkeeping that only re-tunes
+     its economy. */
+  rollDeathGap() {
+    const band = this.modeCfg().deathEvery || (CFG.MORTALITY || {}).every || [25, 40];
+    return Math.max(1, Math.round(band[0] + this.rand() * (band[1] - band[0])));
+  },
+  /* WHAT DID FOR THEM, keyed to what they were DOING (CFG.DEATHS) — the
+     station they were stationed at, the resource they were gathering,
+     whether they were building or fishing. A woodcutter goes the way a
+     woodcutter goes; everyone caught idling or walking draws from `general`. */
+  deathCause(u) {
+    const D = CFG.DEATHS || {};
+    const t = u && u.task;
+    let bucket = 'general';
+    if (t && t.type === 'work') {
+      const b = Bld.get(t.id);
+      if (b && D[b.key]) bucket = b.key;
+    } else if (t && t.type === 'gather') {
+      bucket = { wood: 'gatherWood', stone: 'gatherStone', food: 'gatherFood' }[t.res] || 'general';
+    } else if (t && t.type === 'build') bucket = 'build';
+    else if (t && t.type === 'shorefish') bucket = 'fish';
+    const list = D[bucket] && D[bucket].length ? D[bucket] : (D.general || ['died.']);
+    return { bucket, line: list[(this.rand() * list.length) | 0] };
+  },
+  tickMortality() {
+    if (!S || S.over) return;
+    // 0 / null / undefined all mean "not rolled yet" — a fresh game, or a
+    // pre-mortality save being loaded. Roll it and wait; never fire on the
+    // very first tick after a load.
+    if (!S.nextDeath) { S.nextDeath = S.day + this.rollDeathGap(); return; }
+    if (S.day < S.nextDeath) return;
+    const pool = S.units.filter(u => u.owner === 'P' && Units.isVillager(u));
+    // never the last hand — try again in a couple of days
+    if (pool.length < 2) { S.nextDeath = S.day + 2; return; }
+    const u = pool[(this.rand() * pool.length) | 0];
+    const cause = this.deathCause(u);
+    if (window.R && R.startDeath) R.startDeath(u);   // …keel over where they stood
+    Units.despawn(u);                                 // …and their post is empty
+    // NEVER foeNote: that is difficulty-gated enemy intel. A death in the
+    // village is the player's own news and is told at every difficulty.
+    this.log('☠ A villager ' + cause.line, true, 5200);
+    S.nextDeath = S.day + this.rollDeathGap();
+    return cause;
+  },
+
   /* ================= BARBARIAN CAMPS (tests/raider-camps.mjs) =============
      A camp is a BUILDING owned by 'R' standing on trampled ground, always
      with a few barbarians about it. That is the whole point: the far country
@@ -1197,6 +1255,7 @@ const G = {
     // pre-wonder saves: derive the run's monument from its own seed, exactly
     // as newGame does, so an old save keeps playing with a stable wonder
     if (!data.wonder) data.wonder = G.rollWonder(data.seed).key;
+    if (!data.nextDeath) data.nextDeath = 0;   // pre-mortality saves: rolled on the next dayTick
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.reclaimed) data.map.reclaimed = {};
     if (!data.map.fishStocked) {

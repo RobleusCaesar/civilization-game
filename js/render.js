@@ -539,6 +539,7 @@ const R = {
     this.fogDirty = true;
     this.floats = [];
     this.collapses = [];       // render-side only — never in a save (same rule as _fighting)
+    this.deaths = [];          // …so are villagers going over…
     this.marvel = null;        // …and so is the wonder's held frame
     this.particles = [];
     Combat.shots.length = 0; Combat.projectiles.length = 0;
@@ -1229,6 +1230,91 @@ const R = {
     }
     this._collapseCache.set(base, sheet);
     return sheet;
+  },
+
+  /* ================= KEELING OVER (tests/mortality.mjs) =================
+     A villager's time is up. Six frames, cut from THAT VILLAGER'S OWN sprite
+     — so the tunic dye and the man/woman variants come along for free — of
+     them going over: a stagger, the slow tip about their own heels, flat on
+     the ground, and then gone, with a puff of dust where they land. The body
+     disappears at the end of the sheet; the station they were standing at is
+     simply empty from that moment.
+
+     Frames are the SAME SIZE as an ordinary unit sprite, so they draw through
+     the identical box at the identical offset (a figure lying flat is about
+     as wide as it was tall, and both fit inside the 64px sheet). The live
+     one-shots sit on R.deaths and never in S — same rule as R.collapses. */
+  DEATH_FRAMES: 6,
+  deaths: [],                    // live one-shots: {x,y,spr,t,flip}
+  _deathCache: new WeakMap(),
+  deathSheet(base) {
+    let sheet = this._deathCache.get(base);
+    if (sheet) return sheet;
+    const N = this.DEATH_FRAMES, W = base.width, H = base.height;
+    const px = W / 32;
+    const pivX = W * 0.5, pivY = H * 0.82;      // their heels: what they turn about
+    const ST = ART.PALETTE.stone, SO = ART.PALETTE.soil;
+    sheet = [];
+    for (let i = 0; i < N; i++) {
+      const p = i / (N - 1);
+      const c = document.createElement('canvas'); c.width = W; c.height = H;
+      const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+      // the tip: a slow stagger, then over they go, faster as they fall
+      const ang = 1.55 * Math.min(1, Math.pow(p / 0.82, 1.9));
+      // they lie there plainly for a beat before fading — a body that starts
+      // dissolving on the way down never reads as having LANDED
+      const gone = Math.max(0, (p - 0.74) / 0.26);
+      g.save();
+      g.globalAlpha = 1 - gone;   // GONE by the last frame — only the dust is left
+      g.translate(pivX, pivY);
+      g.rotate(ang);
+      g.translate(-pivX, -pivY);
+      // a small sag as the knees give, so it isn't a rigid plank falling over
+      g.drawImage(base, 0, Math.round(px * 2 * Math.sin(p * Math.PI)));
+      g.restore();
+      if (p > 0.45) {                            // dust where they come down
+        const d = Math.min(1, (p - 0.45) / 0.35);
+        const rr = ART.rng(97);
+        for (let k = 0; k < 7; k++) {
+          const s = rr(), side = k % 2 ? 1 : -1;
+          const dx = pivX + side * (2 + s * 12) * d * px * 0.6;
+          const dy = pivY + px * (1 + s * 2) - d * px * 3;
+          g.globalAlpha = 0.5 * (1 - d) + 0.08;
+          g.fillStyle = k % 3 ? SO[2] : ST[3];
+          const sz = px * (1.6 + s * 2.2);
+          g.fillRect(Math.round(dx - sz / 2), Math.round(dy), Math.round(sz), Math.round(px));
+          g.globalAlpha = 1;
+        }
+      }
+      sheet.push(c);
+    }
+    this._deathCache.set(base, sheet);
+    return sheet;
+  },
+  startDeath(u) {
+    if (this.deaths.length > 8) this.deaths.shift();
+    this.deaths.push({
+      x: u.x, y: u.y, t: 0,
+      spr: this.unitSprite(u),                   // snapshot: they are about to be gone
+      flip: (u.id & 1) === 1,                    // half of them fall the other way
+    });
+  },
+  drawDeaths(g, dt) {
+    const TL = CFG.TILE, ms = (CFG.MORTALITY && CFG.MORTALITY.animMs) || 1500;
+    for (let i = this.deaths.length - 1; i >= 0; i--) {
+      const d = this.deaths[i];
+      d.t += dt;
+      const p = d.t / (ms / 1000);
+      if (p >= 1) { this.deaths.splice(i, 1); continue; }
+      if (!G.visibleAt(d.x | 0, d.y | 0)) continue;
+      const sheet = this.deathSheet(d.spr);
+      const f = Math.min(sheet.length - 1, (p * sheet.length) | 0);
+      const ux = d.x * TL - TL / 2, uy = d.y * TL - TL / 2 - CFG.SPRITE_LIFT;
+      g.save();
+      if (d.flip) { g.translate(ux + TL / 2, 0); g.scale(-1, 1); g.translate(-(ux + TL / 2), 0); }
+      g.drawImage(sheet[f], ux, uy, TL, TL);
+      g.restore();
+    }
   },
 
   // is a topple still playing over this tile? (the ash it leaves waits for it)
@@ -2557,6 +2643,7 @@ const R = {
 
     // buildings coming DOWN — over the units, so the dust rolls across them
     this.drawCollapses(g, dt);
+    this.drawDeaths(g, dt);     // …and villagers keeling over where they stood
 
     // floating text
     g.textAlign = 'center';

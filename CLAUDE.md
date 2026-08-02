@@ -79,6 +79,7 @@ node tests/wild-life.mjs       # wolves stalk deer, herds bolt as one, birds sca
 node tests/wonder.mjs          # the second way to win: one of ten 3×3 monuments, and the rival comes running
 node tests/gold-mine.mjs       # gold seams are found, claimed, worked and held — and the seam outlives the mine
 node tests/raider-camps.mjs    # barbarian camps are standing, tended, burnable ground — the wild country has owners
+node tests/mortality.mjs       # a villager dies every so often, of something apt — and their post is left empty
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -963,3 +964,33 @@ non-plot building, so `Combat.spawnWave`'s island-map wilderness flood must
 seed from the open ground BESIDE a camp rather than the camp tile itself; and
 the owner pip needed an `'R'` case (rust, not the rival's red) — a camp is
 nobody's tribe.
+
+**Mortality** (`tests/mortality.mjs`): every `CFG.MODES[m].deathEvery` days one
+villager simply dies — Calm waits longest (34–52), Moderate is the stated band
+(25–40), Hard shortest (18–28). It exists for ONE mechanical reason: a station
+staffed on day forty and forgotten will sooner or later want a hand put back on
+it, so the post is left EMPTY and re-staffing is the player's problem.
+**Two deliberate limits.** It never takes the LAST villager (`pool.length < 2`
+→ try again in two days) — a random roll must not end a run the player is still
+playing — and it is PLAYER-SIDE ONLY: the rival hires its workforce back on a
+timer of its own, so mortality there would be invisible bookkeeping that only
+re-tunes its economy. `S.nextDeath` rides in every save; `0`/`null`/`undefined`
+all mean "not rolled yet", so a pre-mortality save rolls a fresh gap on its next
+tick instead of burying someone the instant it loads.
+**The cause fits the work** (`CFG.DEATHS`, `G.deathCause`): keyed by what the
+villager was DOING — the station they were stationed at (`farm`/`lumber`/
+`quarry`/`mine`/`lodge`, so every `needsWorker` plot has its own set), the
+resource they were gathering, whether they were building or line-fishing, with
+`general` for anyone caught idling. 3–4 lines per kind of work and 15 general
+ones; adding a station is one more key in the table and nothing else.
+**The news is plain `G.log`, never `G.foeNote`** — foeNote is difficulty-gated
+ENEMY intel, and a death in the village is the player's own news, told at every
+difficulty.
+**The fall** (`R.deathSheet` / `startDeath` / `drawDeaths`): six frames cut from
+THAT VILLAGER'S OWN sprite, so the tunic dye and the man/woman variants come
+free — a stagger, the tip about their heels (pivot at 82% of the sprite's
+height, with a small sag so it isn't a rigid plank), flat on the ground with a
+puff of dust, and gone by the last frame. Frames are the SAME canvas size as an
+ordinary unit sprite, so they draw through the identical box at the identical
+`SPRITE_LIFT` offset. `R.deaths` is render-side only and never reaches a save
+(same rule as `R.collapses`).
