@@ -209,6 +209,118 @@ const AI = {
     return !!this.galleryMask()[MapGen.idx(x, y)];
   },
 
+  /* ---- ANSWER THE GUNS (tests/wall-line.mjs) ----
+     Refusing to rebuild into a shooting gallery stops the chief FEEDING an
+     unanswerable siege. It does not answer it. A tribe being shelled from
+     ground it cannot walk to has one strategic problem and it is not "where
+     should the next farm go": it must reach out and kill the battery, and
+     until it can, everything else waits.
+
+     DETECTION IS FOG-HONEST. It counts only enemy engines the chief can
+     actually SEE (`canSee`), standing on ground its own hands cannot walk to,
+     within their own weapon's throw of something of ours. That is exactly the
+     situation the player creates by parking catapults across a channel, and
+     nothing else trips it.
+
+     THE ANSWER IS WHATEVER IT CAN REACH WITH. In order of what the tech tree
+     allows: an engine of its own (a trebuchet outranges everything; a catapult
+     at least trades at parity), or a WARSHIP if the guns stand on a bank its
+     hulls can sail to — which is the answer available long before a Siege
+     Workshop, since that wants a level-3 hall. The reaction raises those
+     buildings and those units to the top of the day's spending, and stands
+     itself down `GUN_MEMORY` days after the last gun is seen, so a chief that
+     wins its counter-battery duel goes straight back to attacking. */
+  GUN_MEMORY: 12,
+  seenGuns() {
+    const reach = this.aiLandReach();
+    const out = [];
+    for (const u of S.units) {
+      if (u.owner !== 'P' || !Units.isMilitary(u)) continue;
+      const rng = CFG.UNITS[u.kind].rng || 0;
+      if (rng < 4) continue;                       // not a stand-off weapon
+      if (!this.canSee(u)) continue;               // never a gun we have not laid eyes on
+      const i = MapGen.idx(u.x | 0, u.y | 0);
+      if (Units.isNaval(u)) { /* a hull is unreachable by definition */ }
+      else if (reach && reach[i]) continue;        // we can walk to it — an ordinary fight
+      /* …and is it covering OUR ground? Deliberately not "is it shooting at a
+         building right now": the whole complaint is a gun that kills whatever
+         we put in front of it, so the moment the last tower falls there is
+         nothing standing for it to be aimed at and the chief would decide the
+         problem had solved itself. What makes it a gun position is that its
+         throw reaches the ground we live on — home ground, so a catapult
+         parked beside some remote corner of the reach network is somebody
+         else's problem. */
+      const tcA = Bld.tcOf('A');
+      if (!tcA) continue;
+      const HOME = 10;
+      let covers = false;
+      const R0 = Math.ceil(rng);
+      for (let dy = -R0; dy <= R0 && !covers; dy++) for (let dx = -R0; dx <= R0; dx++) {
+        if (Math.hypot(dx, dy) > rng) continue;
+        const x = (u.x | 0) + dx, y = (u.y | 0) + dy;
+        if (!MapGen.onBoard(x, y)) continue;
+        if (Math.hypot(x - Bld.cx(tcA), y - Bld.cy(tcA)) > HOME) continue;
+        if (reach && !reach[MapGen.idx(x, y)]) continue;
+        covers = true; break;
+      }
+      if (covers) out.push(u);
+    }
+    return out;
+  },
+  noteGuns() {
+    const ai = S.ai; if (!ai) return null;
+    const guns = this.seenGuns();
+    if (guns.length) {
+      const g = guns[0];
+      ai.gunned = { day: S.day, x: Math.round(g.x), y: Math.round(g.y), n: guns.length };
+    } else if (ai.gunned && S.day - ai.gunned.day > this.GUN_MEMORY) {
+      ai.gunned = null;                            // the guns are gone — back to the plan
+    }
+    return ai.gunned;
+  },
+  underBombardment() {
+    const g = S.ai && S.ai.gunned;
+    return !!(g && S.day - g.day <= this.GUN_MEMORY) && g;
+  },
+  /* Put whatever we have that can REACH them onto them. Engines are the point
+     of the exercise, but a warship is a gun too, and it can sail to a bank no
+     foot of ours can walk to. Each is sent to the FARTHEST tile from which it
+     can still hit — standing at the edge of its own range is what keeps it out
+     of the reply. */
+  answerTheGuns() {
+    const g = this.underBombardment();
+    if (!g) return false;
+    let sent = 0;
+    for (const u of S.units) {
+      if (u.owner !== 'A') continue;
+      const naval = Units.isNaval(u);
+      if (!Units.isSiege(u) && u.kind !== 'ballista' && !(naval && CFG.UNITS[u.kind].atk > 0)) continue;
+      if (u.task && u.task.type === 'raid') continue;          // already committed to an assault
+      const rng = CFG.UNITS[u.kind].rng || 0;
+      if (!rng) continue;
+      const d = Math.hypot(u.x - g.x, u.y - g.y);
+      if (d <= rng) { u.task = null; continue; }               // in range already — it fires by itself
+      // the farthest firing step we can actually stand on
+      let best = null, bd = -1;
+      const R0 = Math.ceil(rng);
+      for (let dy = -R0; dy <= R0; dy++) for (let dx = -R0; dx <= R0; dx++) {
+        const x = g.x + dx, y = g.y + dy;
+        if (!MapGen.onBoard(x, y)) continue;
+        const dd = Math.hypot(dx, dy);
+        if (dd > rng - 0.4) continue;
+        if (!Path.passable(x, y, 'A', naval ? 'water' : Units.domain(u))) continue;
+        if (!naval && Bld.at(x, y)) continue;
+        if (dd > bd) { bd = dd; best = { x, y }; }
+      }
+      if (!best) continue;
+      u.task = { type: 'move', x: best.x, y: best.y };
+      u.anchor = { x: best.x + 0.5, y: best.y + 0.5 };
+      Units.setPath(u, best.x, best.y);
+      sent++;
+    }
+    return sent > 0;
+  },
+
   /* ---- AND WE DO NOT REBUILD INTO OUR OWN ASHES (same test) ----
      The general backstop, and the one that covers whatever the gallery rule
      cannot measure (a trebuchet outranging it, a warship's deck, a lane the
@@ -1968,6 +2080,27 @@ const AI = {
     if (camp === 'TIDEWRACK' && !have.dock && tc.level >= 2) add(95, () => this._buildDock());
     if (camp === 'MUDLARK' && !have.sapper && tc.level >= 2) add(95, () => this.tryBuild('sapper'));
 
+    /* ANSWER THE GUNS — the single most commanding thing on this list. Being
+       shelled from ground it cannot walk to is a strategic problem with one
+       answer: reach out and kill the battery. Until it can, nothing else is
+       worth the day's hammer. The tech tree decides WHAT it races for — the
+       workshop wants a level-3 hall, so a young town's real answer is a DOCK
+       and hulls that can sail to a bank no foot can reach. It stands down
+       GUN_MEMORY days after the last gun is seen and goes back to attacking. */
+    if (this.underBombardment()) {
+      if (!have.siege && tc.level >= 3) add(140, () => this.tryBuild('siege'));
+      // …and if the hall is what gates the workshop, the hall IS the answer
+      if (tc.level < 3 && !tc.upgrading && Bld.canUpgrade(tc).ok)
+        add(120, () => { Bld.upgrade(tc); return true; });
+      if (!have.dock && tc.level >= 2) add(115, () => this._buildDock());
+      const dk = S.buildings.find(b => b.owner === 'A' && b.key === 'dock' && Bld.done(b));
+      if (dk && dk.level < 2 && !dk.upgrading && Bld.canUpgrade(dk).ok)
+        add(110, () => { Bld.upgrade(dk); return true; });     // level 2 is what floats a warship
+      const wsN = S.buildings.find(b => b.owner === 'A' && b.key === 'siege' && Bld.done(b));
+      if (wsN && wsN.level < 3 && !wsN.upgrading && Bld.canUpgrade(wsN).ok)
+        add(100, () => { Bld.upgrade(wsN); return true; });     // level 3 is what throws a trebuchet
+    }
+
     // income buildings — but NOT while raiders are in the yard: a farm started
     // under fire is wood handed to the torch (the day's actions belong to
     // towers, walls and spears until the field is clear)
@@ -2197,6 +2330,31 @@ const AI = {
         }
       }
     }
+    /* COUNTER-BATTERY TRAIN. While the guns are firing, every engine and hull
+       the yards can turn out goes to answering them — ahead of the ordinary
+       wall-breaking quota above, which is about attacking somebody else's
+       fortress and can wait. A trebuchet outranges everything on the board; a
+       catapult at least trades at parity; a warship reaches a bank no foot of
+       ours can walk to, which on a young town is the only answer there is. */
+    if (this.underBombardment()) {
+      const wsG = S.buildings.find(b => b.owner === 'A' && b.key === 'siege' &&
+        Bld.done(b) && !b.upgrading && b.queue.length === 0);
+      if (wsG) {
+        const guns = Units.count('A', u => Units.isSiege(u) || u.kind === 'ballista');
+        if (guns < 3) {
+          if (wsG.level >= 3 && ai.res.gold >= 70) Bld.train(wsG, 'trebuchet');
+          else Bld.train(wsG, 'catapult');
+        }
+      }
+      const dkG = S.buildings.find(b => b.owner === 'A' && b.key === 'dock' &&
+        Bld.done(b) && !b.upgrading && b.queue.length === 0);
+      if (dkG && dkG.level >= 2) {
+        const ships = Units.count('A', u => u.kind === 'warship' || u.kind === 'fireship');
+        if (ships < 3 && Bld.canAfford(CFG.BUILDINGS.dock.train.warship.cost, ai.res))
+          Bld.train(dkG, dkG.level >= 3 && ai.res.gold >= 45 ? 'fireship' : 'warship');
+      }
+    }
+
     // keep a sapper or two if the camp is up — the terraforming crew
     const camp = S.buildings.find(b => b.owner === 'A' && b.key === 'sapper' && Bld.done(b) && !b.upgrading && b.queue.length === 0);
     if (camp) {
@@ -3429,6 +3587,12 @@ const AI = {
     this.maybeWonder();          // …and past day 350 the chief may raise one of its own
     this.maybeMine();            // the map's GOLD SEAMS are contested too (tests/gold-mine.mjs)
     this.maybeProspect(read);    // …and a chief that can see none goes LOOKING
+    /* BEING SHELLED FROM GROUND WE CANNOT REACH outranks the whole plan — read
+       it before the day's spending, so the answer can never be crowded out by
+       a macro-action budget already spent on huts (the same reasoning the
+       wonder alarm runs on). */
+    this.noteGuns();
+    this.answerTheGuns();
 
     // THE DAY'S HANDS: the chief gets a few macro actions per day (mode-scaled).
     // Every construction start / upgrade / training run / caravan spends one

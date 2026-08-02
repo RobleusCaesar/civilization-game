@@ -113,6 +113,27 @@ still has to be built somewhere. The mask is cached per day and per
 `Bld._blockGen`. **`towerSpot` also gained `plot`'s own reachability rule** —
 without it, tightening the clamps let the scan offer a shoreline across the
 water that no villager could ever stand on to build.
+**And then it ANSWERS THE GUNS** (`AI.seenGuns` / `noteGuns` /
+`underBombardment` / `answerTheGuns`, same test): refusing to feed a gallery
+stops the bleeding, it does not answer it. A tribe shelled from ground it
+cannot walk to has ONE strategic problem — reach out and kill the battery — and
+everything else waits until it can. Detection is FOG-HONEST (`canSee` only) and
+deliberately not "is a building being hit right now": the moment the last tower
+falls there is nothing standing to aim at, and the chief would decide the
+problem had solved itself. What makes it a gun position is that its throw
+covers the ground the town lives on (within 10 of the hall, on our own reach).
+The answer is whatever the tech tree allows — a trebuchet outranges everything,
+a catapult trades at parity, and a WARSHIP reaches a bank no foot can walk to,
+which on a young town is the only answer there is, since the workshop wants a
+level-3 hall (`CFG.BUILDINGS.siege.reqTC`). So the reaction adds commanding
+utilities for the dock/workshop/hall (and the dock's level 2, which is what
+floats a warship), trains engines and hulls ahead of the ordinary wall-breaking
+quota, and `answerTheGuns` walks each engine to the FARTHEST tile it can still
+fire from — standing at the edge of its own range is what keeps it out of the
+reply; one already in range is left alone, since an engine on watch fires by
+itself. It stands down `GUN_MEMORY` (12) days after the last sighting, so a
+chief that wins the duel goes straight back to attacking. `ai.gunned` rides in
+the save.
 **And we do not rebuild into our own ashes** (`AI.noteLoss` / `burnedGround`,
 same test): the general backstop for whatever the gallery rule cannot measure
 (a trebuchet outranging it, a warship's deck, a lane the reach flood happens to

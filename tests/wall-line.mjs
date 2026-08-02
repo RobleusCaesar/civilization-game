@@ -408,6 +408,100 @@ const out = await p.evaluate(() => {
     ck('andNeverOfferedAgain', again === 0,
       'twelve rebuilds into the same gallery is what this rule exists to stop');
   }
+
+  /* ---- 9. ANSWER THE GUNS ----
+     Refusing to feed a shooting gallery stops the bleeding; it does not answer
+     it. A tribe shelled from ground it cannot walk to has ONE strategic
+     problem — reach out and kill the battery — and everything else waits until
+     it can. The tech tree decides what it races for: an engine of its own, or
+     a warship, which is the answer available long before a Siege Workshop
+     (that wants a level-3 hall). It stands down GUN_MEMORY days after the last
+     gun is seen and goes back to attacking. */
+  {
+    G.newGame('guns', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const tc = Bld.tcOf('A');
+    for (let y = tc.y - 12; y <= tc.y + 12; y++) for (let x = tc.x - 16; x <= tc.x + 16; x++)
+      if (MapGen.onBoard(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.GRASS;
+    const CH = tc.x - 6;
+    for (let y = tc.y - 12; y <= tc.y + 12; y++) for (let x = CH - 3; x <= CH; x++)
+      if (MapGen.onBoard(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.WATER;
+    Bld._block = null; AI._gallery = null;
+    S.ai.res = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };
+    S.ai.gunned = null;
+    // the chief can see everything, so nothing here is about fog
+    AI._vis = new Uint8Array(CFG.W * CFG.H).fill(1);
+    // a catapult on the far bank, covering the ground the town lives on
+    const gun = Units.spawn('catapult', 'P', CH - 4, tc.y);
+    let seen = AI.seenGuns();
+    ck('aGunOnGroundWeCannotWalkToIsSeen',
+      seen.length === 1 && seen[0].id === gun.id,
+      seen.length + ' guns, ' + Math.round(Math.hypot(gun.x - Bld.cx(tc), gun.y - Bld.cy(tc))) + ' tiles from the hall');
+    // …but one we could walk up and kill is an ordinary fight, not a gallery
+    const near = Units.spawn('catapult', 'P', tc.x + 4, tc.y + 1);
+    ck('butOneWeCouldWalkToIsNot',
+      AI.seenGuns().every(u => u.id !== near.id),
+      'that is a fight, not a battery we cannot answer');
+    S.units.splice(S.units.indexOf(near), 1);
+    // …and one it has not laid eyes on is not read at all: fog-honest
+    AI._vis = new Uint8Array(CFG.W * CFG.H);
+    ck('andOneItCannotSeeIsNotReadAtAll', AI.seenGuns().length === 0, '');
+    AI._vis = new Uint8Array(CFG.W * CFG.H).fill(1);
+    // the memory: stamped when seen, held, then let go
+    AI.noteGuns();
+    ck('theGunIsRemembered', !!AI.underBombardment(), '');
+    S.units.splice(S.units.indexOf(gun), 1);
+    AI.noteGuns();
+    ck('andStillRememberedAfterItStopsFiring', !!AI.underBombardment(),
+      'the guns do not stop being a problem the instant they leave our sight');
+    S.day += AI.GUN_MEMORY + 1; AI.noteGuns();
+    ck('butLetGoOnceTheyAreGone', AI.underBombardment() === false,
+      'a chief that wins the duel goes straight back to attacking');
+  }
+  {
+    // WHAT IT RACES FOR: with the guns up, the day's hammer goes to the answer
+    const tc = Bld.tcOf('A');
+    tc.level = 2;
+    S.ai.res = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };
+    S.ai.gunned = { day: S.day, x: Bld.cx(tc) - 10, y: Bld.cy(tc), n: 1 };
+    S.ai.acts = 9;
+    const had = new Set(Bld.list('A').map(b => b.key));
+    let answered = null;
+    for (let i = 0; i < 12 && !answered; i++) {
+      AI.bestBuild(S.ai.read || {});
+      for (const b of Bld.list('A'))
+        if (!had.has(b.key) && (b.key === 'dock' || b.key === 'siege')) answered = b.key;
+    }
+    ck('theDaysHammerGoesToTheAnswer', !!answered,
+      answered ? 'it raised a ' + answered : 'it built huts while being shelled');
+    // …and a hull is the answer a young town actually has: the workshop wants
+    // a level-3 hall, and this one is level 2
+    ck('andAYoungTownReachesForAHull', answered === 'dock',
+      'CFG.BUILDINGS.siege.reqTC is ' + CFG.BUILDINGS.siege.reqTC);
+  }
+  {
+    // THE ORDER: an engine is walked to the FARTHEST tile it can still fire
+    // from — standing at the edge of its own range is what keeps it out of the
+    // reply — and one already in range is left alone to shoot.
+    const tc = Bld.tcOf('A');
+    const g = { x: Bld.cx(tc) - 10 | 0, y: Bld.cy(tc) | 0 };
+    S.ai.gunned = { day: S.day, x: g.x, y: g.y, n: 1 };
+    const spot = MapGen.findNear(tc.x + 5, tc.y, 6,
+      (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+    const eng = Units.spawn('catapult', 'A', spot.x, spot.y);
+    ck('itStartsOutOfRange', Math.hypot(eng.x - g.x, eng.y - g.y) > CFG.UNITS.catapult.rng, '');
+    ck('theEngineIsSentToAnswer', AI.answerTheGuns() === true && !!eng.task,
+      eng.task ? eng.task.type + ' → ' + eng.task.x + ',' + eng.task.y : 'it was left standing');
+    const d = Math.hypot(eng.task.x - g.x, eng.task.y - g.y);
+    ck('andSentToTheEdgeOfItsOwnRange',
+      d <= CFG.UNITS.catapult.rng && d > CFG.UNITS.catapult.rng - 1.6,
+      'it stops at ' + d.toFixed(1) + ' of ' + CFG.UNITS.catapult.rng +
+      ' — walking closer only puts it in the reply');
+    ck('andItStandsOnGroundOfItsOwn', Path.passable(eng.task.x, eng.task.y, 'A'), '');
+    // one already in range is left where it is — it fires by itself
+    eng.x = g.x + 2.5; eng.y = g.y + 0.5; eng.task = null;
+    AI.answerTheGuns();
+    ck('oneAlreadyInRangeIsLeftToShoot', !eng.task, '');
+  }
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));
