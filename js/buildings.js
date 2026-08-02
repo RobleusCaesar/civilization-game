@@ -1218,6 +1218,11 @@ const Bld = {
         G.log(`${name} destroyed!`, true);
         if (key === 'tc') G.end(false, 'Your Town Center was destroyed.');
       } else if (owner === 'A') {
+        // …and the chief REMEMBERS where it lost this one (tests/wall-line.mjs):
+        // twice-burned ground is never offered a third building
+        // (AI is a script-level const — `window.AI` is undefined, so it is
+        // referenced directly, the same trap G and Sprites carry)
+        AI.noteLoss(b.x, b.y);
         G.log(`Rival ${name} destroyed!`);
         if (S.stats) S.stats.razed++;
         if (key === 'tc') G.end(true, 'You razed the rival Town Center. The valley is yours!');

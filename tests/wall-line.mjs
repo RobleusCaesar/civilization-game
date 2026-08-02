@@ -312,6 +312,102 @@ const out = await p.evaluate(() => {
       site ? `construction=${+site.construction.toFixed(2)}` : 'site failed to place');
     if (site) Bld.removeToRuin(site);
   }
+
+  /* ---- 7. A SHOOTING GALLERY IS NOT A BUILDING SITE ----
+     A real day-146 game: the player parked two catapults on the far bank of a
+     channel and shelled the rival's shoreline tower. The chief rebuilt it
+     TWELVE times in seventeen days — towerSpot scores a site on what it
+     covers and knew nothing about who could shoot it, and its own "reinforce
+     the flank the player keeps hitting" bias steered it back to the shore
+     every time. Ground our own hands cannot walk to, that an enemy CAN stand
+     on, is a gun position; anything of ours within a catapult's throw of one
+     is a gallery, and a gallery is not a site. */
+  {
+    G.newGame('gallery', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const tc = Bld.tcOf('A');
+    // flatten the chief's ground, then cut a CHANNEL through it: the far bank
+    // is land an enemy can stand on and no hand of ours can reach
+    for (let y = tc.y - 12; y <= tc.y + 12; y++) for (let x = tc.x - 16; x <= tc.x + 16; x++) {
+      if (!MapGen.onBoard(x, y)) continue;
+      S.map.terrain[MapGen.idx(x, y)] = T.GRASS;
+    }
+    for (const b of S.buildings.slice())
+      if (b.owner === 'A' && b.key !== 'tc') Bld.removeToRuin(b);
+    const CH = tc.x - 6;                      // the channel, four tiles wide
+    for (let y = tc.y - 12; y <= tc.y + 12; y++)
+      for (let x = CH - 3; x <= CH; x++)
+        if (MapGen.onBoard(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.WATER;
+    Bld._block = null; AI._gallery = null; AI._reachDay = -1;
+    const far = { x: CH - 5, y: tc.y }, near = { x: CH + 2, y: tc.y }, home = { x: tc.x + 4, y: tc.y };
+    const reach = AI.aiLandReach();
+    ck('theFarBankIsOutOfOurReach',
+      Path.passable(far.x, far.y, 'P') && !reach[MapGen.idx(far.x, far.y)],
+      'a gun can stand there and no hand of ours can walk to it');
+    ck('soTheNearBankIsAGallery', AI.inGallery(near.x, near.y) === true,
+      Math.round(Math.hypot(near.x - far.x, near.y - far.y)) + ' tiles from the far bank, ' +
+      'a catapult throws ' + CFG.UNITS.catapult.rng);
+    ck('andHomeGroundIsNot', AI.inGallery(home.x, home.y) === false, '');
+    ck('theRadiusIsTheEnginesOwn', AI.galleryR() === CFG.UNITS.catapult.rng + 1,
+      'derived from the common engine, never hand-picked');
+    // …and NO tower is ever sited in it
+    let inGal = 0, sited = 0;
+    for (let i = 0; i < 30; i++) {
+      const s = AI.plot('tower');
+      if (!s) continue;
+      sited++;
+      if (AI.inGallery(s.x, s.y)) inGal++;
+    }
+    ck('noTowerIsRaisedInIt', sited > 0 && inGal === 0,
+      sited + ' sites offered, ' + inGal + ' of them in the gallery');
+    // an ordinary building is only PENALISED — a town backed against an
+    // unreachable bank still has to be built somewhere
+    let houseGal = 0;
+    for (let i = 0; i < 30; i++) { const s = AI.plot('house'); if (s && AI.inGallery(s.x, s.y)) houseGal++; }
+    ck('andHutsSettleInland', houseGal <= 3, houseGal + '/30 huts fell in the gallery');
+  }
+
+  /* ---- 8. AND WE DO NOT REBUILD INTO OUR OWN ASHES ----
+     The general backstop, for whatever the gallery rule cannot measure — a
+     trebuchet outranging it, a warship's deck, a lane the reach flood happens
+     to include. Two losses on a spot and the chief stops offering it a third. */
+  {
+    const tc = Bld.tcOf('A');
+    const spot = { x: tc.x + 5, y: tc.y + 2 };
+    S.ai.lostAt = {};
+    ck('freshGroundIsFine', AI.burnedGround(spot.x, spot.y) === false, '');
+    AI.noteLoss(spot.x, spot.y);
+    ck('oneLossIsBadLuck', AI.burnedGround(spot.x, spot.y) === false,
+      'a single burned hut is not a lesson');
+    AI.noteLoss(spot.x, spot.y);
+    ck('twiceIsAPattern', AI.burnedGround(spot.x, spot.y) === true, '');
+    ck('andItSpreadsToTheGroundBesideIt',
+      AI.burnedGround(spot.x + 1, spot.y) === true &&
+      AI.burnedGround(spot.x + 3, spot.y) === false,
+      'the neighbouring tile is the same spot; three over is not');
+    // a DESTROYED rival building stamps it — that is where the memory comes from
+    S.ai.lostAt = {};
+    const v = Bld.place('A', 'house', spot.x, spot.y, { free: true });
+    Bld.finish(v); Bld.damage(v, 999999);
+    ck('losingOneStampsTheGround', !!S.ai.lostAt[spot.x + ',' + spot.y],
+      'Bld.damage records it, so nothing has to remember to call this');
+    // …and the stamps age out: ground the front has moved away from is fair again
+    S.ai.lostAt = { [spot.x + ',' + spot.y]: { n: 5, day: S.day - AI.LOST_DAYS - 1 } };
+    ck('butOldAshesCoolOff', AI.burnedGround(spot.x, spot.y) === false,
+      'after ' + AI.LOST_DAYS + ' days it is ordinary ground again');
+    // and the refusal is REAL: burn the spot the chief keeps choosing, twice,
+    // and it never offers that spot again
+    S.ai.lostAt = {};
+    const first = AI.plot('tower');
+    ck('itHasASpotItLikes', !!first, first ? first.x + ',' + first.y : 'nowhere');
+    AI.noteLoss(first.x, first.y); AI.noteLoss(first.x, first.y);
+    let again = 0;
+    for (let i = 0; i < 25; i++) {
+      const s = AI.plot('tower');
+      if (s && s.x === first.x && s.y === first.y) again++;
+    }
+    ck('andNeverOfferedAgain', again === 0,
+      'twelve rebuilds into the same gallery is what this rule exists to stop');
+  }
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

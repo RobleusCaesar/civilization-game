@@ -157,6 +157,85 @@ const AI = {
   },
   isFort(b) { return !!b && (b.key === 'wall' || b.key === 'gate'); },
 
+  /* ---- A SHOOTING GALLERY IS NOT A BUILDING SITE (tests/wall-line.mjs) ----
+     A real day-146 game: the player parked two catapults on the far bank of a
+     channel and shelled the rival's shoreline tower. The chief rebuilt it
+     TWELVE times in seventeen days — each time into the same gallery, because
+     `towerSpot` scores a site on what it covers and knows nothing about who
+     can shoot it, and its own "reinforce the flank the player keeps hitting"
+     bias actively steered it back to the shore. Every rebuild was stone and a
+     villager's week handed to an enemy that could never be reached.
+
+     So: ground the chief's own hands cannot walk to, that an enemy CAN stand
+     on, is a gun position. Anything of ours inside a siege engine's throw of
+     one is in a shooting gallery, and a gallery is not a site. This is not a
+     read of hidden state — it is the lie of the land beside its own town,
+     which a chief can see perfectly well.
+
+     The radius is DERIVED from the common engine (`catapult.rng`) plus a
+     tile's grace, never hand-picked: it is exactly "can a catapult standing
+     over there hit this". The trebuchet reaches further, and is deliberately
+     NOT the bound — an 8-tile exclusion round every unreachable bank makes a
+     narrow map unbuildable. What catches the longer engines is the other half
+     of this rule, `burnedGround`: whatever keeps killing our works, we stop
+     rebuilding into it. */
+  galleryR() { return ((CFG.UNITS.catapult || {}).rng || 5.5) + 1; },
+  _gallery: null, _galleryDay: -1, _galleryGen: -1,
+  galleryMask() {
+    const gen = Bld._blockGen || 0;
+    if (this._gallery && this._galleryDay === S.day && this._galleryGen === gen) return this._gallery;
+    const W = CFG.W, H = CFG.H, m = new Uint8Array(W * H);
+    this._gallery = m; this._galleryDay = S.day; this._galleryGen = gen;
+    const reach = this.aiLandReach();
+    if (!reach) return m;
+    const R = this.galleryR(), R0 = Math.ceil(R), R2 = R * R;
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x;
+      if (reach[i]) continue;                      // our own ground — a fair fight
+      if (!Path.passable(x, y, 'P')) continue;     // not ground anyone can stand on
+      // …a gun could stand here: paint its throw onto OUR ground
+      for (let dy = -R0; dy <= R0; dy++) for (let dx = -R0; dx <= R0; dx++) {
+        if (dx * dx + dy * dy > R2) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx < 1 || ny < 1 || nx >= W - 1 || ny >= H - 1) continue;
+        const j = ny * W + nx;
+        if (reach[j]) m[j] = 1;
+      }
+    }
+    return m;
+  },
+  inGallery(x, y) {
+    if (!MapGen.onBoard(x, y)) return false;
+    return !!this.galleryMask()[MapGen.idx(x, y)];
+  },
+
+  /* ---- AND WE DO NOT REBUILD INTO OUR OWN ASHES (same test) ----
+     The general backstop, and the one that covers whatever the gallery rule
+     cannot measure (a trebuchet outranging it, a warship's deck, a lane the
+     reach flood happens to include). Every rival building DESTROYED stamps
+     the ground; two losses on the same spot and the chief stops offering it a
+     third. The stamps age out (`LOST_DAYS`), so ground the front has moved
+     away from is fair to build on again. Rides in the save on `ai.lostAt`. */
+  LOST_N: 2,
+  LOST_DAYS: 70,
+  noteLoss(x, y) {
+    const ai = S.ai; if (!ai) return;
+    if (!ai.lostAt) ai.lostAt = {};
+    const k = x + ',' + y, e = ai.lostAt[k];
+    if (e && S.day - e.day > this.LOST_DAYS) { e.n = 0; }
+    ai.lostAt[k] = { n: ((e && e.n) || 0) + 1, day: S.day };
+  },
+  burnedGround(x, y) {
+    const ai = S.ai, lost = ai && ai.lostAt;
+    if (!lost) return false;
+    let n = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const e = lost[(x + dx) + ',' + (y + dy)];
+      if (e && S.day - e.day <= this.LOST_DAYS) n += e.n;
+    }
+    return n >= this.LOST_N;
+  },
+
   /* NOBODY WORKS IN A WAR BAND'S YARD (tests/raider-camps.mjs). A barbarian
      camp's tenders hold the ground around their fire, so a station — or a gold
      seam claim — laid inside it is a hand sent to die, and the chief sends
@@ -234,7 +313,12 @@ const AI = {
       return this.wallWouldSeal(tc, x, y) || !!this.corkedGround(tc, { x, y });
     };
     const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2 && offLine(x, y) &&
-      canWork(x, y) && !sealsTown(x, y) && !(!isFortKey && this.campGround(x, y));
+      canWork(x, y) && !sealsTown(x, y) && !(!isFortKey && this.campGround(x, y)) &&
+      // …and never onto ground that has already eaten two of our works. The
+      // GALLERY is only a scoring penalty for an ordinary building (see
+      // layout) — a town backed against an unreachable bank still has to be
+      // built somewhere — but twice-burned ground is a hard refusal.
+      !(!isFortKey && this.burnedGround(x, y));
     // how many of the 8 neighbours are already built on (crowding) — real buildings
     // want ELBOW ROOM so the town reads as a settlement, not a packed maze
     const crowd = (x, y) => { let n = 0; for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) if (Bld.at(x + ox, y + oy)) n++; return n; };
@@ -245,6 +329,8 @@ const AI = {
       if (isWall) return s;
       s -= crowd(x, y) * 1.4;                                          // keep a little air around each hut
       if (wetAdj(x, y)) s -= 3;                                        // stay off the waterline (no huts in the future moat)
+      if (this.inGallery(x, y)) s -= 14;                               // shelled from ground we can't reach — settle inland
+
       s -= Math.abs(Math.hypot(dx, dy) - Math.min(rMax - 0.6, 4)) * 0.35;   // settle on a loose ring, not on top of the hall
       return s;
     };
@@ -294,8 +380,29 @@ const AI = {
     // a tower is NOT a wall segment either — it doesn't block a single step — so
     // the reserved line is off-limits to it too. It guards the line from behind.
     const line = this.wallCenter(), R = this.WALL_R;
+    /* …and NEVER into a shooting gallery, nor onto ground that has already
+       eaten two of our works. A tower is the most expensive thing the chief
+       raises outside its hall, and one sited where an enemy can shell it from
+       ground we cannot walk to is a gift, rebuilt for as long as the player
+       cares to keep firing. If nothing survives the clamp the chief simply
+       raises no tower today and tries again tomorrow — plot returning null
+       spends nothing. */
+    /* A SITE THE TOWN CANNOT REACH IS NOT A SITE — the same rule `plot` has
+       (it re-checks this function's answer with `canWork` and falls through),
+       stated here too so towerSpot is correct on its own. Without it, tighten
+       the clamps below and the scan happily offers a shoreline across the
+       water: ground no villager of ours could ever stand on to raise it. */
+    const reachMask = this.aiLandReach();
+    const standable = (x, y) => {
+      if (!reachMask) return true;
+      if (reachMask[MapGen.idx(x, y)]) return true;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+        if (MapGen.inB(x + ox, y + oy) && reachMask[MapGen.idx(x + ox, y + oy)]) return true;
+      return false;
+    };
     const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2 &&
-      (!line || Math.max(Math.abs(x - line.cx), Math.abs(y - line.cy)) !== R);
+      (!line || Math.max(Math.abs(x - line.cx), Math.abs(y - line.cy)) !== R) &&
+      standable(x, y) && !this.inGallery(x, y) && !this.burnedGround(x, y);
     const cov = (CFG.BUILDINGS.tower.levels[0].range || 4.5) + 0.6;   // effective guard radius
     const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0;
     // the approach tiles worth guarding: the open perimeter seams attackers must

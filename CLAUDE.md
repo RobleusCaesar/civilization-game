@@ -94,6 +94,32 @@ no longer is.) Covers
 `wallRelocate` / `mendWallLine` / `maybeWalls` / `playerLanes` / `foeSoftDoors`,
 `Bld.tileFree` / `canPlace` / `blockAt`, and `Path.passable`. `AI.WALL_R` is the
 single source of truth for where the line runs — never hard-code the radius.
+**A SHOOTING GALLERY IS NOT A BUILDING SITE** (`AI.inGallery` /
+`galleryMask`, same test): a real day-146 game had the player park two
+catapults on the far bank of a channel and shell the rival's shoreline tower —
+the chief rebuilt it TWELVE times in seventeen days, because `towerSpot` scores
+a site on what it COVERS and knew nothing about who could shoot it, and its own
+"reinforce the flank the player keeps hitting" bias steered it back to the
+shore every time. Ground the chief's own hands cannot walk to that an enemy CAN
+stand on is a gun position; anything of ours within a throw of one is a
+gallery. Not a read of hidden state — it is the lie of the land beside its own
+town. The radius is DERIVED (`AI.galleryR` = `catapult.rng` + 1), never
+hand-picked; the trebuchet reaches further and is deliberately NOT the bound,
+because an 8-tile exclusion round every unreachable bank makes a narrow map
+unbuildable. A tower is a hard REFUSAL (raising none today costs nothing —
+`plot` returning null spends no resources); an ordinary building takes a
+scoring penalty in `layout`, since a town backed against an unreachable bank
+still has to be built somewhere. The mask is cached per day and per
+`Bld._blockGen`. **`towerSpot` also gained `plot`'s own reachability rule** —
+without it, tightening the clamps let the scan offer a shoreline across the
+water that no villager could ever stand on to build.
+**And we do not rebuild into our own ashes** (`AI.noteLoss` / `burnedGround`,
+same test): the general backstop for whatever the gallery rule cannot measure
+(a trebuchet outranging it, a warship's deck, a lane the reach flood happens to
+include). Every destroyed rival building stamps its tile from `Bld.damage`, so
+nothing has to remember to call it; `LOST_N` (2) losses in a 3×3 and the ground
+is refused for `LOST_DAYS` (70), after which the front has moved and it is
+ordinary ground again. `ai.lostAt` rides in the save.
 **The ring must never seal the town in** (`AI.townOut` / `wallWouldSeal` /
 `openTheGate`): a sealed ring has no seams, so `read.homeGapCount` is 0 and the
 wall utility never runs — which is why the check lives in `digAndProtect`.
