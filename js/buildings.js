@@ -525,11 +525,14 @@ const Bld = {
 
   // a would-be site whose ONLY anchor is a War Camp (out beyond the home settlement)
   // — used to tag forward outposts, which don't themselves anchor further building.
-  _isOutpostSite(owner, x, y) {
+  _isOutpostSite(owner, key, x, y) {
     const mine = this.list(owner);
     const nearHome = mine.some(b => !b.outpost && b.key !== 'warcamp' &&
       Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
     if (nearHome) return false;
+    // a station out on its own worked ground (or a seam) is a CLAIM, not a
+    // second town: it stands there, but nothing may be anchored off it
+    if (this.needsWorkedGround(key)) return true;
     return mine.some(b => b.key === 'warcamp' && Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
   },
   // a forward camp shows up on the OTHER side's map — a bet, not a hidden win. A
@@ -543,6 +546,48 @@ const Bld = {
       if (S.map.seenB) S.map.seenB[MapGen.idx(b.x, b.y)] = { key: b.key, level: b.level, owner: 'A' };
       R.fogDirty = true;
     }
+  },
+
+  /* ===== A STATION STANDS ON GROUND THAT WAS WORKED (tests/worked-ground.mjs) =====
+     The economic spine of the game. A resource station may only be raised on
+     ground its own resource was taken out of: a lumber camp on a stand you
+     felled, a quarry on rock you broke, a farm on soil you picked bare, a
+     lodge on a killing ground, a mine on a seam. Nowhere else — and pointedly
+     never on ordinary grass.
+
+     WHY: without it a village manufactures resources from nothing. Ten lumber
+     camps on an empty meadow out-produce any forest, so wood, stone and bread
+     stop being things on the map and become things you buy with wood, stone
+     and bread. With it, every station is a claim on a real, finite piece of
+     ground that had to be found, worked out by hand, and held — which is what
+     makes a scarce map bite, sends the village out to explore, and forces it
+     to garrison what it works. The gold seam has always played by this rule;
+     this is the same rule for everything else.
+
+     DENSITY DOES NOT MATTER, only that the tile is spent: `T.STUMPS`,
+     `T.PEBBLES` and `T.BARREN` are what the gather code leaves behind when a
+     tile's stock runs out, and a sapper's `clear` leaves GRASS, so clearing is
+     no shortcut — the resource has to actually be taken.
+
+     OWNER-AGNOSTIC, and it is `canPlace` that enforces it, so the chief's own
+     plotting obeys it through exactly the same call the player's build menu
+     makes. Buildings already standing are never re-checked: an older save's
+     stations keep their ground. */
+  stationGround(key, x, y) {
+    const d = this.def(key);
+    if (!d) return { ok: true };
+    if (d.onWorked != null) {
+      if (S.map.terrain[MapGen.idx(x, y)] !== d.onWorked)
+        return { ok: false, why: d.whyGround || 'That ground was never worked' };
+    }
+    if (d.onHunted && !G.huntedAt(x, y))
+      return { ok: false, why: d.whyGround || 'No game has ever fallen here' };
+    return { ok: true };
+  },
+  // does this key care where it stands? (the build menu asks, to explain itself)
+  needsWorkedGround(key) {
+    const d = this.def(key);
+    return !!(d && (d.onWorked != null || d.onHunted || d.onTerrain != null));
   },
 
   canPlace(owner, key, x, y) {
@@ -566,6 +611,10 @@ const Bld = {
         return { ok: false, why: 'A Gold Mine is sunk on a gold seam — go and find one' };
       if (seam && d.onTerrain !== T.GOLDORE)
         return { ok: false, why: 'That is a gold seam — only a Gold Mine belongs there' };
+      // …and every OTHER station stands on ground its own resource was worked
+      // out of (tests/worked-ground.mjs). Owner-agnostic: the chief obeys it too.
+      const gnd = this.stationGround(key, x, y);
+      if (!gnd.ok) return gnd;
     }
     // TC-level gate (player only — the rival's scripted build order sets its own pace)
     if (owner === 'P' && d.reqTC) {
@@ -589,7 +638,17 @@ const Bld = {
     // front). A forward OUTPOST — a building anchored only by a camp — does NOT itself
     // anchor, so the camp is a linchpin: raze it and the front-line base can't grow.
     const mine = this.list(owner);
-    const freePlace = d.freePlace || key === 'wall' || key === 'gate';
+    /* A STATION GOES WHERE ITS GROUND IS (tests/worked-ground.mjs). The nearest
+       stand of timber may be twelve tiles out; the build-anchor rule would then
+       forbid the camp on the very ground you just spent a fortnight felling —
+       "I worked this out and now I can't build on it" is the worst possible
+       answer. So a station standing on its own proper worked ground is placed
+       freely, exactly as the Gold Mine is, and for exactly the same reason:
+       being far from home is the whole risk of working a distant seam. It
+       ANCHORS NOTHING further (see _isOutpostSite) — you may plant the camp out
+       there, but you may not grow a second town around it. */
+    const onItsGround = this.needsWorkedGround(key) && this.stationGround(key, x, y).ok;
+    const freePlace = d.freePlace || onItsGround || key === 'wall' || key === 'gate';
     const homeAnchors = mine.filter(b => !b.outpost && b.key !== 'warcamp');
     const nearHome = homeAnchors.some(b => Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
     const nearCamp = mine.some(b => b.key === 'warcamp' && Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
@@ -639,7 +698,7 @@ const Bld = {
     // beyond the home settlement? Such buildings don't themselves anchor further
     // construction, so razing the camp stops the front-line base from growing. The
     // camp itself is never an outpost (it's the anchor).
-    const outpost = key !== 'warcamp' && this._isOutpostSite(owner, x, y);
+    const outpost = key !== 'warcamp' && this._isOutpostSite(owner, key, x, y);
     const b = {
       id: S.nextId++, key, owner, x, y, level: spec.level,
       // construction sites are fragile until finished

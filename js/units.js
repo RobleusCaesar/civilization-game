@@ -1279,24 +1279,36 @@ const Units = {
           const terr = S.map.terrain[idx];
           const g = CFG.GATHER[terr];
           if (!g) { u.task = null; continue; }   // already felled/cleared by someone
-          const before = S.res[g.res];
+          /* THE HARVEST GOES TO ITS OWN TRIBE'S STORES (tests/worked-ground.mjs).
+             This used to credit S.res flat — the PLAYER's stockpile — because
+             only the player ever hand-gathered. The rival works the land by
+             hand now (AI.workTheLand), and it has to: worked-out ground is the
+             only ground a station may stand on, so a chief that never fells a
+             tree could never raise a lumber camp. */
+          const store = u.owner === 'P' ? S.res : (S.ai && S.ai.res);
+          if (!store) { u.task = null; continue; }
+          const before = store[g.res];
           const take = Math.min(S.map.resAmount[idx], g.rate * dt * G.modeCfg().gather *
             (window.Cards ? Cards.gatherMult(u.owner, g.res) : 1));   // ORIGIN CARDS pace
-          S.res[g.res] += take;
-          if (S.stats) S.stats.gathered += take;
+          store[g.res] += take;
+          if (u.owner === 'P' && S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
           // an occasional glance-tick, throttled per worker (R.workFloat)
-          if ((before | 0) !== (S.res[g.res] | 0)) R.workFloat(u, '+' + g.res);
+          if ((before | 0) !== (store[g.res] | 0)) R.workFloat(u, '+' + g.res);
           if (S.map.resAmount[idx] <= 0.001) {
             // tile exhausted — it turns to stumps/pebbles/spent soil, which is
-            // now PASSABLE: felling the wood opens a new route through it
+            // now PASSABLE (felling the wood opens a new route through it) and,
+            // from here on, the ONE kind of ground that station belongs on
             S.map.resAmount[idx] = 0;
             S.map.terrain[idx] = CFG.DEPLETED[terr];
             G.scheduleRevert(idx);
             R.updateTile(t.x, t.y);
-            const what = terr === T.FOREST ? 'The forest here is felled — a path opens'
-              : terr === T.HILLS ? 'The stone here is quarried out — a path opens' : 'The soil here is spent';
-            G.log(`${what} — villager idle`);
+            if (u.owner === 'P') {
+              const what = terr === T.FOREST ? 'The forest here is felled — a lumber camp may stand on it'
+                : terr === T.HILLS ? 'The stone here is quarried out — a quarry may stand on it'
+                : 'The soil here is spent — a farm may stand on it';
+              G.log(`${what} — villager idle`);
+            }
             u.task = null;
           }
         }
@@ -1760,6 +1772,15 @@ const Units = {
         G.log(`💀 ${u.cargo.length} soldier${u.cargo.length > 1 ? 's' : ''} lost with the hull`, true);
       // any wild animal killed by a tribe yields meat
       if (this.isWild(u)) {
+        /* AND THE GROUND REMEMBERS IT (tests/worked-ground.mjs). A Hunter's
+           Lodge is the one station with no terrain of its own to stand on —
+           game is not a tile, it is a thing that dies somewhere — so the tile
+           it fell on becomes a killing ground, and that is where a lodge may
+           be raised. Stamped for ANY wild death, a wolf taking a deer
+           included: a place where animals die is a hunting ground whoever
+           made it so, and it keeps the rule symmetric without asking the
+           chief to take its soldiers off to chase deer. */
+        G.noteHunt(u.x | 0, u.y | 0);
         const owner = (attacker && attacker.owner) || attackerOwner;
         const meat = Math.round((u.kind === 'bear' ? CFG.MEAT_DROP * 3 : CFG.MEAT_DROP) *   // a bear feeds the village
           (window.Cards ? Cards.huntMult(owner) : 1));   // ORIGIN CARDS: Beastward hunts

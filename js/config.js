@@ -175,9 +175,23 @@ const CFG = {
           bonus: '+10% production to all buildings' },
       ],
     },
+    /* ===== A STATION STANDS ON GROUND THAT WAS WORKED (tests/worked-ground.mjs) =====
+       `onWorked` is the terrain a station may be raised on — the SPENT ground
+       its own resource leaves behind — and `whyGround` is what the player is
+       told when they try to put it anywhere else. Together they are the whole
+       of the rule: no station may be raised on ordinary grass, so a village
+       cannot conjure infinite wood, stone or bread by stamping camps across an
+       empty meadow. It has to go out, find the resource, work it out by hand,
+       and hold that ground long enough to raise the works on it.
+
+       The Hunter's Lodge is the one that has no terrain of its own — game is
+       not a tile, it is a thing that dies somewhere — so it names a MARK
+       instead (`onHunted`, S.map.hunted). See Bld.stationGround. */
     farm: {
       name: 'Farm', desc: 'Steady food while a villager works it. Thrives beside fertile soil.', needsWorker: true,
       near: { terrain: T.FERTILE, mult: 1.5, radius: 1 },
+      onWorked: T.BARREN,
+      whyGround: 'Nothing has ever grown here and nothing plans to start. A farm goes on soil already picked bare — an orchard or a berry patch your people have harvested out.',
       levels: [
         { cost: { wood: 60, gold: 5 },     time: 1, hp: 100, out: { food: 15 } },
         { cost: { wood: 120, stone: 40, gold: 10 }, time: 2, hp: 140, out: { food: 30 } },
@@ -188,6 +202,8 @@ const CFG = {
       name: "Hunter's Lodge", desc: 'Food per worker (up to 2). Build near forest.', needsWorker: true,
       maxWorkers: 2,
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
+      onHunted: true,
+      whyGround: 'No animal has ever died on this spot. A lodge is raised on a killing ground — go and make one, then come back.',
       levels: [    // out is PER WORKER — a lone hand yields less than raw foraging
         { cost: { wood: 50, gold: 5 },    time: 1, hp: 120, out: { food: 4.5 } },
         { cost: { wood: 100, stone: 30, gold: 10 }, time: 2, hp: 160, out: { food: 9 } },
@@ -202,6 +218,8 @@ const CFG = {
       name: 'Lumber Camp', desc: 'Wood per worker (up to 2). Build near forest.', needsWorker: true,
       maxWorkers: 2,
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
+      onWorked: T.STUMPS,
+      whyGround: 'There are no trees on this tile. Your woodcutters would be standing in the grass looking at each other — a lumber camp goes on a stand you have already felled.',
       levels: [    // out is PER WORKER — a lone hand yields less than chopping forest
         { cost: { stone: 25, gold: 5 },   time: 1, hp: 120, out: { wood: 5 } },
         { cost: { stone: 60, gold: 10 },  time: 2, hp: 160, out: { wood: 10 } },
@@ -212,6 +230,8 @@ const CFG = {
       name: 'Quarry', desc: 'Stone per worker (up to 2). Build near hills.', needsWorker: true,
       maxWorkers: 2,
       near: { terrain: T.HILLS, mult: 1.5, radius: 2 },
+      onWorked: T.PEBBLES,
+      whyGround: 'You could dig here until your grandchildren are old and never strike stone. A quarry goes where the rock has already been broken open.',
       levels: [    // out is PER WORKER — a lone hand yields less than mining hills
         { cost: { wood: 80, gold: 5 },    time: 1, hp: 120, out: { stone: 3.5 } },
         { cost: { wood: 170, gold: 10 },  time: 2, hp: 170, out: { stone: 7 } },

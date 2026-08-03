@@ -387,7 +387,16 @@ const AI = {
       if (camp) tc = camp;
     }
     const P = this.persona();
-    const rMax = P.walls ? 5 : 7;   // wall-builders keep the town inside the ring
+    /* A STATION HUNTS ITS OWN GROUND (tests/worked-ground.mjs). Worked-out
+       tiles are wherever the resource happened to be, which is often outside
+       the town's tidy ring — so the scan for a station reaches further than
+       the scan for a hut. `canPlace` places it freely once it stands on the
+       right ground (and marks it an outpost, so it anchors nothing). */
+    const stationKey = Bld.needsWorkedGround(key);
+    // …as far as its own work parties walk: a town whose near woods are bare
+    // fells a stand out at the edge of its range, and the camp has to be
+    // allowed to stand on THAT ground or the wood never comes home at all.
+    const rMax = stationKey ? Math.round(this.WORK_R * 2.4) : (P.walls ? 5 : 7);
     const isWall = isFortKey;
     /* A SITE THE TOWN CANNOT REACH IS NOT A SITE. Every rival building rises
        under a villager's hammer, so a plot the villagers can't walk to is a
@@ -430,7 +439,9 @@ const AI = {
       // GALLERY is only a scoring penalty for an ordinary building (see
       // layout) — a town backed against an unreachable bank still has to be
       // built somewhere — but twice-burned ground is a hard refusal.
-      !(!isFortKey && this.burnedGround(x, y));
+      !(!isFortKey && this.burnedGround(x, y)) &&
+      // …and a station only ever on the ground its own resource was taken from
+      Bld.stationGround(key, x, y).ok;
     // how many of the 8 neighbours are already built on (crowding) — real buildings
     // want ELBOW ROOM so the town reads as a settlement, not a packed maze
     const crowd = (x, y) => { let n = 0; for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) if (Bld.at(x + ox, y + oy)) n++; return n; };
@@ -1191,7 +1202,22 @@ const AI = {
     }
     if (ai.acts != null && ai.acts <= 0) return true;   // hands full today — place it tomorrow
     const spot = this.plot(key);
-    if (!spot || !Bld.canPlace('A', key, spot.x, spot.y).ok) { ai.orderI++; return true; }   // no ground — skip the move
+    if (!spot || !Bld.canPlace('A', key, spot.x, spot.y).ok) {
+      /* A STATION WAITS FOR ITS GROUND (tests/worked-ground.mjs). "No ground —
+         skip the move" is right for a hut (the ring is full, build elsewhere)
+         and wrong for a lumber camp: the felled stand it needs does not exist
+         YET, and its own woodcutters are out making one right now. Skipping
+         would strike the camp off the book for the rest of the game. So the
+         book HOLDS for a station — but not forever, or a map with no timber
+         within reach deadlocks the whole build order. */
+      if (Bld.needsWorkedGround(key)) {
+        ai.bookWait = (ai.bookWait || 0) + 1;
+        if (ai.bookWait < 8) return true;
+      }
+      ai.bookWait = 0;
+      ai.orderI++; return true;
+    }
+    ai.bookWait = 0;
     if (Bld.place('A', key, spot.x, spot.y)) { ai.orderI++; if (ai.goal && ai.goal.book) ai.goal = null; }
     return true;
   },
@@ -1514,6 +1540,120 @@ const AI = {
       if (d < bd) { bd = d; best = { x, y }; }
     }
     return best;
+  },
+
+  /* ---- THE CHIEF WORKS THE LAND BY HAND (tests/worked-ground.mjs) ----
+     The rival's economy used to be entirely abstract: hands were dealt to
+     stations in `Bld.dailyProduction` and its villagers never touched a tile,
+     which is why they stood about the huts looking idle all game.
+
+     That is no longer merely cosmetic. A station may only be raised on ground
+     its own resource was worked out of, and only HAND-GATHERING makes that
+     ground — a sapper's clear leaves grass, not stumps. A chief that never
+     fells a tree can never raise a lumber camp, so it must go out and work
+     like everybody else. This is what keeps the rule owner-agnostic in fact
+     and not just in the code.
+
+     It sends its SPARE hands: anything already stationed, building, claiming a
+     seam or out prospecting is left alone. They work whatever the town is
+     shortest of, nearest first, and the tile they empty is exactly the site
+     `plot` will want for the next station — so the two halves feed each other
+     without either needing to know about the other. */
+  WORK_SPARE: 2,          // hands kept back for hammers and errands
+  WORK_R: 11,             // how far from the hall a work party will go
+  WORK_FLEE: 7,           // …and how close a hostile has to get before it runs
+  workTheLand(read) {
+    const ai = S.ai, tc = Bld.tcOf('A'); if (!ai || !tc) return false;
+    /* NOT WHILE THE FIELD IS HOT. A villager sent out to chop while raiders
+       are in the yard is a villager handed to them — and the rival's income is
+       paid per LIVING hand, so every one lost is a permanent cut. */
+    if (read && read.underThreat) return false;
+    const busy = u => u.tUnit || u.tBld || u.scouting || u.prospecting ||
+      (u.task && u.task.type !== 'flee');
+    const hands = S.units.filter(u => u.owner === 'A' && Units.isVillager(u) && !busy(u));
+    if (hands.length <= this.WORK_SPARE) return false;
+    /* WHAT THE TOWN IS SHORT OF — the same reading the crew allocation uses,
+       so the hands in the field and the hands at the stations are answering
+       the same question. */
+    const WANT = { food: 320, wood: 380, stone: 300 };
+    const short = (r) => (WANT[r] - (ai.res[r] || 0)) / WANT[r];
+    const order = ['wood', 'stone', 'food'].sort((a, b) => short(b) - short(a));
+    const reach = this.aiLandReach();
+    const cx = Bld.cx(tc), cy = Bld.cy(tc);
+    const claimed = new Set();
+    for (const u of S.units)
+      if (u.owner === 'A' && u.task && u.task.type === 'gather')
+        claimed.add(MapGen.idx(u.task.x, u.task.y));
+    /* WITHIN A DAY'S WALK OF THE FIRE. Scanning the whole board sent
+       woodcutters thirty tiles out into barbarian country after the "nearest"
+       stand of whatever the town was shortest of — fifty villagers lost by day
+       200 in a passive-player sim, which is the death spiral all over again.
+       Worked ground is only worth having if the hands come home.
+       …but a town with NO timber inside that walk must go further or do
+       without wood, and without wood it builds nothing at all. So the ring
+       WIDENS when the near country is bare: a longer, more dangerous walk,
+       which is the bargain a real village makes when its woods run out. */
+    const pick = (R0) => {
+      let best = null, bd = 1e9, bestRank = 99;
+      const y0 = Math.max(1, (cy - R0) | 0), y1 = Math.min(CFG.H - 1, (cy + R0 + 1) | 0);
+      const x0 = Math.max(1, (cx - R0) | 0), x1 = Math.min(CFG.W - 1, (cx + R0 + 1) | 0);
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const i = MapGen.idx(x, y);
+        const g = CFG.GATHER[S.map.terrain[i]];
+        if (!g || !S.map.resAmount[i]) continue;
+        if (claimed.has(i)) continue;
+        if (this.campGround(x, y)) continue;          // never in a war band's yard
+        const d = Math.hypot(x - cx, y - cy);
+        if (d > R0) continue;
+        // …and it has to be a tile a hand of ours can actually stand beside
+        if (reach) {
+          let side = false;
+          for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+            if (MapGen.inB(x + ox, y + oy) && reach[MapGen.idx(x + ox, y + oy)]) { side = true; break; }
+          if (!side) continue;
+        }
+        const rank = order.indexOf(g.res);
+        if (rank < bestRank || (rank === bestRank && d < bd)) { bestRank = rank; bd = d; best = { x, y }; }
+      }
+      return best;
+    };
+    /* CALL THEM IN WHEN SOMETHING IS COMING. Working ground that lies outside
+       the town is the whole point of the rule — and it is also how a workforce
+       gets killed one hand at a time. A player answers that by garrisoning or
+       by pulling people back; the chief had no notion of it at all, and paid
+       43 villagers by day 200 for the privilege. A gatherer with a hostile
+       inside WORK_FLEE of it downs tools and runs for the hall; the fields can
+       wait, hands cannot be replaced for free. */
+    for (const u of S.units) {
+      if (u.owner !== 'A' || !Units.isVillager(u)) continue;
+      if (!u.task || u.task.type !== 'gather') continue;
+      const foe = Combat.nearestUnit(u.x, u.y, this.WORK_FLEE,
+        o => (o.owner === 'P' && Units.isMilitary(o)) || (o.owner === 'R' && !Units.isTransport(o)));
+      if (!foe) continue;
+      u.task = { type: 'flee' }; u.tUnit = 0; u.tBld = 0;
+      Units.setPath(u, tc.x, tc.y + Bld.size('tc'));
+    }
+    let sent = 0, far = 0;
+    for (const u of hands) {
+      if (hands.length - sent <= this.WORK_SPARE) break;   // never strip the town
+      let best = pick(this.WORK_R);
+      if (!best) {
+        /* ONE HAND AT A TIME GOES FAR. The wide ring is how a town with bare
+           near country still gets its timber, but it is a long walk through
+           country nobody is guarding — send the whole workforce down it and
+           the losses are the old death spiral again (43 villagers by day 200,
+           measured). One party out at a time bounds the bleed while the wood
+           still comes home. */
+        if (far >= 1) break;
+        best = pick(this.WORK_R * 2.4);
+        if (best) far++;
+      }
+      if (!best) break;
+      if (!Units.assignGather(u, best.x, best.y)) continue;
+      claimed.add(MapGen.idx(best.x, best.y));
+      sent++;
+    }
+    return sent > 0;
   },
 
   /* ---- PROSPECTING (tests/gold-mine.mjs) ----
@@ -3587,6 +3727,7 @@ const AI = {
     this.maybeWonder();          // …and past day 350 the chief may raise one of its own
     this.maybeMine();            // the map's GOLD SEAMS are contested too (tests/gold-mine.mjs)
     this.maybeProspect(read);    // …and a chief that can see none goes LOOKING
+    this.workTheLand(read);      // spare hands FELL, QUARRY and HARVEST (tests/worked-ground.mjs)
     /* BEING SHELLED FROM GROUND WE CANNOT REACH outranks the whole plan — read
        it before the day's spending, so the answer can never be crowded out by
        a macro-action budget already spent on huts (the same reasoning the

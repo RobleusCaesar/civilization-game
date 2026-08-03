@@ -158,6 +158,7 @@ const G = {
         landform: gen.landform,
         decay: {},                          // idx -> day the depleted/ruined tile regrows to grass
         fishBack: {},                       // idx -> day a fished-out shoal restocks (tests/fishery.mjs)
+        hunted: {},                         // idx -> day an animal fell here (a lodge's ground)
         reclaimed: {},                      // idx -> 1 where a sapper filled water into land (never counts as shore again)
         explored: new Array(CFG.W * CFG.H).fill(0),
         seenTerrain: gen.terrain.slice(),   // what the player last saw, per tile
@@ -1118,6 +1119,24 @@ const G = {
      is not empty scenery, and a trip out to a distant seam or a fat forest is
      a trip past somebody's spears. Burn the camp and the ground is yours —
      its band stops being replaced and no wave musters there again. */
+  /* ===== HUNTING GROUNDS (tests/worked-ground.mjs) =====
+     Every other station stands on spent TERRAIN; the Hunter's Lodge has none
+     to stand on, because game is not a tile. So the ground itself remembers
+     where an animal fell, and a lodge may be raised there and nowhere else.
+     The marks are PERMANENT for the run — a game trail is a game trail, and
+     an expiring mark would mean hunting a spot twice for one building — and
+     they ride in the save (`S.map.hunted`, idx → the day of the kill; an older
+     save simply starts its record empty). */
+  noteHunt(x, y) {
+    if (!S || !S.map || !MapGen.onBoard(x, y)) return;
+    if (!S.map.hunted) S.map.hunted = {};
+    S.map.hunted[MapGen.idx(x, y)] = S.day;
+  },
+  huntedAt(x, y) {
+    return !!(S && S.map && S.map.hunted && MapGen.onBoard(x, y) &&
+      S.map.hunted[MapGen.idx(x, y)] != null);
+  },
+
   /* WHICH PEOPLE (CFG.TRIBES, tests/raider-camps.mjs). Rolled on the SEEDED
      rng so a seed's wild country is the same wild country twice. */
   rollTribe() {
@@ -1372,6 +1391,7 @@ const G = {
         }
     }
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
+    if (!data.map.hunted) data.map.hunted = {};       // pre-worked-ground saves: the record starts empty
     if (!data.map.reclaimed) data.map.reclaimed = {};
     if (!data.map.fishStocked) {
       // pre-dock save: stock its waters so fishing works after loading
