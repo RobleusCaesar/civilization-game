@@ -221,6 +221,12 @@ const G = {
        country is dangerous from day one and a lone villager sent across the
        map is a villager sent past somebody's spears. */
     for (const c of (gen.spawns.camps || [])) this.plantRaiderCamp(c.x, c.y);
+    // …and a band within reach of EACH seat, so both sides start with a hunt
+    // they could go and make (a lodge needs a killing ground — CFG.START_RESOURCE)
+    {
+      const g = (CFG.START_RESOURCE || {}).game || 4;
+      for (const s of [gen.spawns.player, gen.spawns.ai]) Units.seedGameNear(s.x, s.y, g);
+    }
     Units.spawnHerd('deer', 8);
     Units.spawnHerd('cow', 8);
     // SPECIAL EVENTS — one roll for the whole game (see CFG.SPECIALS): at most

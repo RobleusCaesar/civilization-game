@@ -695,6 +695,15 @@ const CFG = {
      rolled from the mode's `campGuard` band. A tender that falls is replaced
      after `remanDays`, so a camp is only cleared for good by pulling the camp
      itself down. `guardR` is how far from home a tender will stray. */
+  /* WHAT EVERY SEAT IS GUARANTEED (tests/worked-ground.mjs). Since a station
+     may only stand on ground its own resource was worked out of, a seat with
+     no timber in reach can never raise a lumber camp at all. Both tribes get
+     at least `min` workable tiles of every gatherable kind within `r`, and at
+     least `game` head of game within reach of a lodge's killing ground. THREE
+     is the number because three camps still produce meaningfully — a lean
+     start should be hard, not dead. */
+  START_RESOURCE: { min: 3, r: 14, game: 4 },
+
   RAIDER_CAMPS: { perArea: 2, min: 2, guardR: 5, remanDays: 6, chaseR: 7 },
 
   /* THE FIVE PEOPLES OF THE WILD COUNTRY (tests/raider-camps.mjs). The wild

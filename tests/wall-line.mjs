@@ -126,6 +126,17 @@ const out = await p.evaluate(() => {
     S.ai.res = { food: 900, wood: 900, stone: 900, gold: 900 };
     S.ai.acts = 99;
     for (let dx = -2; dx <= 2; dx++) G.clearFootprint(cx + dx, cy - R, 'farm');
+    /* A FARM NEEDS SPENT SOIL TO MOVE TO (tests/worked-ground.mjs): a station
+       may only stand on ground its own resource was worked out of, so the
+       relocation has nowhere to go unless the town has some. Lay a little
+       inside the ring — which is what a village that has been farming for a
+       season actually looks like. */
+    for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) {
+      const bx = cx + dx, by = cy + dy;
+      if (!MapGen.onBoard(bx, by) || Bld.at(bx, by)) continue;
+      if (S.map.terrain[MapGen.idx(bx, by)] === T.GRASS) S.map.terrain[MapGen.idx(bx, by)] = T.BARREN;
+    }
+    Bld._block = null;
     const farm = Bld.place('A', 'farm', cx, cy - R, { free: true, instant: true });
     for (const dx of [-1, 1]) Bld.place('A', 'wall', cx + dx, cy - R, { free: true, instant: true });
     // block the bulge with a friendly HOUSE the detour can't build through

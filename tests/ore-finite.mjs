@@ -56,33 +56,53 @@ const out = await p.evaluate(() => {
   {
     G.newGame('ore-a', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
     const spend = (x, y, t) => { S.map.terrain[idx(x, y)] = t; S.map.resAmount[idx(x, y)] = 0; G.scheduleRevert(idx(x, y)); };
-    spend(20, 20, T.PEBBLES); spend(21, 20, T.STUMPS); spend(22, 20, T.BARREN); spend(23, 20, T.RUIN);
-    ck('oreIsNeverScheduled', S.map.decay[idx(20, 20)] === undefined, '');
+    /* FAR FROM BOTH TOWNS. Worked-out ground is the ONE ground a resource
+       station may stand on now (tests/worked-ground.mjs), so spent tiles laid
+       next to a hall are prime building sites — and regrowth is held under a
+       building, which would read here as "the forest never came back". Put the
+       scars out in the country where nobody is going to build on them. */
+    const ptc0 = Bld.tcOf('P'), atc0 = Bld.tcOf('A');
+    let ox = 20, oy = 20, bestD = -1;
+    for (let y = 2; y < CFG.H - 6; y++) for (let x = 2; x < CFG.W - 6; x++) {
+      const d = Math.min(Math.hypot(x - ptc0.x, y - ptc0.y), Math.hypot(x - atc0.x, y - atc0.y));
+      if (d > bestD) { bestD = d; ox = x; oy = y; }
+    }
+    spend(ox, oy, T.PEBBLES); spend(ox + 1, oy, T.STUMPS); spend(ox + 2, oy, T.BARREN); spend(ox + 3, oy, T.RUIN);
+    ck('oreIsNeverScheduled', S.map.decay[idx(ox, oy)] === undefined, '');
     ck('woodSoilAndRuinsAreScheduled',
-      S.map.decay[idx(21, 20)] !== undefined && S.map.decay[idx(22, 20)] !== undefined &&
-      S.map.decay[idx(23, 20)] !== undefined, '');
+      S.map.decay[idx(ox + 1, oy)] !== undefined && S.map.decay[idx(ox + 2, oy)] !== undefined &&
+      S.map.decay[idx(ox + 3, oy)] !== undefined, '');
     /* RUBBLE RUNS ON ITS OWN, SHORTER CLOCK. Sweeping up a demolished building
        is not the same job as a forest growing back, and a player who tears
        down their own hut should not be looking at the rubble for two months.
        CFG.RUIN_FADE_DAYS is that clock; the regrowth base is untouched. */
     ck('rubbleFadesOnItsOwnClock',
-      S.map.decay[idx(23, 20)] === S.day + CFG.RUIN_FADE_DAYS &&
+      S.map.decay[idx(ox + 3, oy)] === S.day + CFG.RUIN_FADE_DAYS &&
       CFG.RUIN_FADE_DAYS === 20, `${CFG.RUIN_FADE_DAYS} days`);
     ck('regrowthKeepsTheLongOne',
-      S.map.decay[idx(21, 20)] === S.day + CFG.RUIN_DECAY_DAYS * CFG.REGROW_MULT[T.STUMPS] &&
-      S.map.decay[idx(21, 20)] > S.map.decay[idx(23, 20)],
+      S.map.decay[idx(ox + 1, oy)] === S.day + CFG.RUIN_DECAY_DAYS * CFG.REGROW_MULT[T.STUMPS] &&
+      S.map.decay[idx(ox + 1, oy)] > S.map.decay[idx(ox + 3, oy)],
       `felled woods ${CFG.RUIN_DECAY_DAYS * CFG.REGROW_MULT[T.STUMPS]} days`);
 
     // ---- 3. and after a long time, ore is still a scar ----
+    /* NOBODY BUILDS DURING THE MEASUREMENT. Since worked-out ground is the only
+       ground a station may stand on (tests/worked-ground.mjs), a scar anywhere
+       on the board is a building site the chief will eventually walk to — over
+       four hundred days it found these, raised camps on them (regrowth is held
+       under a building), and lost them to raiders, which read here as "the
+       forest never came back". This section measures the terrain CLOCKS, so the
+       rival's daily brain stands down for it and comes back after. */
+    const aiDaily = AI.daily; AI.daily = () => {};
     for (let i = 0; i < 400; i++) G.dayTick();
-    ck('oreNeverComesBack', S.map.terrain[idx(20, 20)] === T.PEBBLES, 'still PEBBLES after 400 days');
-    ck('forestStillGrowsBack', S.map.terrain[idx(21, 20)] === T.FOREST, '');
-    ck('orchardSoilStillRecovers', S.map.terrain[idx(22, 20)] === T.FERTILE, '');
-    ck('ruinsStillFadeToGrass', S.map.terrain[idx(23, 20)] === T.GRASS, '');
+    AI.daily = aiDaily;
+    ck('oreNeverComesBack', S.map.terrain[idx(ox, oy)] === T.PEBBLES, 'still PEBBLES after 400 days');
+    ck('forestStillGrowsBack', S.map.terrain[idx(ox + 1, oy)] === T.FOREST, '');
+    ck('orchardSoilStillRecovers', S.map.terrain[idx(ox + 2, oy)] === T.FERTILE, '');
+    ck('ruinsStillFadeToGrass', S.map.terrain[idx(ox + 3, oy)] === T.GRASS, '');
 
     // what does grow back comes back LEAN, not full
     const fresh = CFG.RES_AMOUNT[T.FOREST];
-    const got = S.map.resAmount[idx(21, 20)];
+    const got = S.map.resAmount[idx(ox + 1, oy)];
     ck('regrowthIsStillLean', got > 0 && got < fresh[1],
       got + ' vs a fresh ' + fresh[0] + '–' + fresh[1]);
   }

@@ -487,9 +487,16 @@ const AI = {
     // crowded town (a full wall ring, a tight peninsula): spill outward rather than
     // stall — but NEVER onto the reserved line. A hut outside the ring is a hut the
     // rival may lose; a hut IN the ring is the ring lost.
+    /* The last-ditch spill drops the layout clamps, but it may NEVER drop the
+       station-ground one (tests/worked-ground.mjs): a lumber camp offered on
+       open grass is a site `canPlace` will refuse anyway, so the chief spends
+       its whole build turn on a plot that cannot be laid — and does it again
+       tomorrow. No worked ground, no station today; plot returning null spends
+       nothing, and `workTheLand` is what makes the ground for tomorrow. */
     return MapGen.findNear(tc.x, tc.y, rMax, free) ||
            MapGen.findNear(tc.x, tc.y, rMax + 4, free) ||
-           MapGen.findNear(tc.x, tc.y, rMax + 8, (x, y) => Bld.tileFree(x, y) && offLine(x, y));
+           MapGen.findNear(tc.x, tc.y, rMax + 8, (x, y) => Bld.tileFree(x, y) && offLine(x, y) &&
+             Bld.stationGround(key, x, y).ok);
   },
 
   /* COVERAGE-AWARE tower placement. The old heuristic dropped every tower on the
@@ -1564,10 +1571,22 @@ const AI = {
   WORK_FLEE: 7,           // …and how close a hostile has to get before it runs
   workTheLand(read) {
     const ai = S.ai, tc = Bld.tcOf('A'); if (!ai || !tc) return false;
-    /* NOT WHILE THE FIELD IS HOT. A villager sent out to chop while raiders
-       are in the yard is a villager handed to them — and the rival's income is
-       paid per LIVING hand, so every one lost is a permanent cut. */
-    if (read && read.underThreat) return false;
+    /* UNDER ATTACK, THE WORK PARTY TAKES A GUARD WITH IT (tests/worked-ground.mjs).
+       Standing the whole workforce down while raiders are about is how a town
+       starves; sending it out unescorted is how a town loses its hands. On a
+       scarce map the ground worth working is outside the walls, so the answer
+       is the one a player reaches for: send spears with them. While the field
+       is hot the chief works only as many parties as it has soldiers to walk
+       beside — and if it has none to spare, then and only then does it stand
+       the work down. */
+    const hot = !!(read && read.underThreat);
+    let guards = [];
+    if (hot) {
+      guards = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
+        !Units.isNaval(u) && !Units.isSiege(u) && !u.tUnit && !u.tBld &&
+        !(u.task && (u.task.type === 'raid' || u.task.type === 'move')));
+      if (!guards.length) return false;
+    }
     const busy = u => u.tUnit || u.tBld || u.scouting || u.prospecting ||
       (u.task && u.task.type !== 'flee');
     const hands = S.units.filter(u => u.owner === 'A' && Units.isVillager(u) && !busy(u));
@@ -1636,6 +1655,7 @@ const AI = {
     let sent = 0, far = 0;
     for (const u of hands) {
       if (hands.length - sent <= this.WORK_SPARE) break;   // never strip the town
+      if (hot && sent >= guards.length) break;             // no spear to spare, no party goes out
       let best = pick(this.WORK_R);
       if (!best) {
         /* ONE HAND AT A TIME GOES FAR. The wide ring is how a town with bare
@@ -1651,6 +1671,20 @@ const AI = {
       if (!best) break;
       if (!Units.assignGather(u, best.x, best.y)) continue;
       claimed.add(MapGen.idx(best.x, best.y));
+      // …and the spear walks out with them, standing at the tile they work.
+      // Its own acquire() takes anything that comes near, which is the whole
+      // job: the hand keeps chopping while somebody else does the fighting.
+      if (hot && guards[sent]) {
+        const g = guards[sent];
+        const post = MapGen.findNear(best.x, best.y, 3,
+          (gx, gy) => Path.passable(gx, gy, 'A') && !Bld.at(gx, gy));
+        if (post) {
+          g.defend = false; g.tUnit = 0; g.tBld = 0;
+          g.task = { type: 'move', x: post.x, y: post.y };
+          g.anchor = { x: post.x + 0.5, y: post.y + 0.5 };
+          Units.setPath(g, post.x, post.y);
+        }
+      }
       sent++;
     }
     return sent > 0;

@@ -359,6 +359,61 @@ const MapGen = {
           if (!ok && near) carve(s, near, rt, true);
         }
       }
+      /* (c) THREE OF EACH, WITHIN A WALK (tests/worked-ground.mjs).
+         A resource station may only stand on ground its own resource was
+         worked OUT of, so "one reachable tile of each kind" — the guarantee
+         above — is now the difference between a village that can raise a
+         lumber camp and one that can never raise one at all. A seat that rolls
+         a single distant stand of timber is not playing a lean game, it is
+         playing a broken one, and the rival cannot reason its way out of it.
+
+         So both seats are given at least `min` tiles of every gatherable kind
+         inside `r`, planted on open ground beside their own reach when the
+         roll did not provide them. THREE is the number because three camps
+         still produce meaningfully: a lean start stays hard without being
+         dead. The scarce resource is guaranteed too — it stays scarce by
+         being few on the board and lean in the ground (×0.6 stock), not by
+         being absent from somebody's whole country. */
+      const SR = CFG.START_RESOURCE || { min: 3, r: 14 };
+      for (const s of [player, ai]) {
+        const sreach = flood(s.x, s.y);
+        const beside = (x, y) => {
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+            if (MapGen.inB(x + dx, y + dy) && sreach[id(x + dx, y + dy)]) return true;
+          return false;
+        };
+        for (const rt of [T.FOREST, T.HILLS, T.FERTILE]) {
+          const have = [];
+          for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+            if (t[id(x, y)] !== rt) continue;
+            if (Math.hypot(x - s.x, y - s.y) > SR.r) continue;
+            if (beside(x, y)) have.push(1);
+          }
+          if (have.length >= SR.min) continue;
+          // …plant the shortfall on open ground the seat can already walk to,
+          // never on its own doorstep (the start plots stay clear)
+          const spots = [];
+          for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+            if (t[id(x, y)] !== T.GRASS) continue;
+            const d = Math.hypot(x - s.x, y - s.y);
+            if (d < 3 || d > SR.r) continue;
+            if (!sreach[id(x, y)]) continue;
+            spots.push({ x, y, d });
+          }
+          spots.sort((a, b2) => a.d - b2.d);
+          for (let k = 0; k < spots.length && have.length < SR.min; k++) {
+            // spread them out a little — three tiles in one clump is one camp's
+            // worth of ground, not three
+            const sp = spots[k];
+            let clash = false;
+            for (let dy = -1; dy <= 1 && !clash; dy++) for (let dx = -1; dx <= 1; dx++)
+              if (t[id(sp.x + dx, sp.y + dy)] === rt) { clash = true; break; }
+            if (clash) continue;
+            t[id(sp.x, sp.y)] = rt;
+            have.push(1);
+          }
+        }
+      }
     }
 
     // every resource tile carries a finite, randomized stock; scarce tiles run leaner

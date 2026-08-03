@@ -1872,6 +1872,24 @@ const Units = {
 
   // grazers arrive as a BAND, never as a single beast — a herd is the unit of
   // wildlife here, and grazeIdle's breathing needs company to breathe with
+  /* GAME WITHIN REACH OF BOTH SEATS (tests/worked-ground.mjs). A Hunter's
+     Lodge stands on ground where an animal fell, so a tribe that never sees a
+     deer can never raise one. The world's ordinary herds wander wherever the
+     roll puts them; this puts a band near each town on day one so both sides
+     start with a hunt they could actually go and make. Seeded rng, so a seed's
+     opening is still its own. */
+  seedGameNear(x, y, n) {
+    let put = 0;
+    for (let tries = 0; tries < 60 && put < n; tries++) {
+      const ax = Math.round(x + (G.rand() * 2 - 1) * 9), ay = Math.round(y + (G.rand() * 2 - 1) * 9);
+      if (!MapGen.onBoard(ax, ay) || !Path.passable(ax, ay) || Bld.at(ax, ay)) continue;
+      if (Math.hypot(ax - x, ay - y) < 4) continue;      // not milling on the doorstep
+      this.spawn(G.rand() < 0.5 ? 'deer' : 'cow', 'W', ax, ay);
+      put++;
+    }
+    return put;
+  },
+
   spawnHerd(kind, minDistTC) {
     const first = this.spawnWild(kind, minDistTC);
     if (!first) return null;

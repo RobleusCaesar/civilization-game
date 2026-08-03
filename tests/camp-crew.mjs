@@ -44,7 +44,17 @@ const out = await p.evaluate(() => {
     S.res = { food: 9000, wood: 9000, stone: 9000, gold: 9000 };
     const tc = Bld.tcOf('P');
     tc.level = 3; tc.maxhp = CFG.BUILDINGS.tc.levels[2].hp; tc.hp = tc.maxhp;   // station upgrades need TC 2+
-    const spot = MapGen.findNear(tc.x + 3, tc.y + 3, 10, (x, y) => Bld.canPlace('P', key, x, y).ok);
+    /* A STATION STANDS ON WORKED GROUND NOW (tests/worked-ground.mjs) — so the
+       scenario has to make some before it can plant a camp: paint the spent
+       terrain this station belongs on, and mark a killing ground for a lodge. */
+    const spot = MapGen.findNear(tc.x + 3, tc.y + 3, 10,
+      (x, y) => Bld.tileFree(x, y) && !Bld.at(x, y));
+    {
+      const d = Bld.def(key);
+      if (d.onWorked != null) S.map.terrain[MapGen.idx(spot.x, spot.y)] = d.onWorked;
+      if (d.onHunted) G.noteHunt(spot.x, spot.y);
+      Bld._block = null;
+    }
     const camp = Bld.place('P', key, spot.x, spot.y, { free: true, instant: true });
     for (const u of S.units.slice()) if (u.owner === 'P' && Units.isVillager(u)) u.hp = 0;
     S.units = S.units.filter(u => u.hp > 0);
@@ -105,7 +115,9 @@ const out = await p.evaluate(() => {
     S.res = { food: 9000, wood: 9000, stone: 9000, gold: 9000 };
     const tc = Bld.tcOf('P');
     tc.level = 3; tc.maxhp = CFG.BUILDINGS.tc.levels[2].hp; tc.hp = tc.maxhp;
-    const spot = MapGen.findNear(tc.x + 3, tc.y + 3, 10, (x, y) => Bld.canPlace('P', 'lumber', x, y).ok);
+    const spot = MapGen.findNear(tc.x + 3, tc.y + 3, 10, (x, y) => Bld.tileFree(x, y) && !Bld.at(x, y));
+    S.map.terrain[MapGen.idx(spot.x, spot.y)] = T.STUMPS;   // a camp stands on a felled stand
+    Bld._block = null;
     const camp = Bld.place('P', 'lumber', spot.x, spot.y, { free: true, instant: true });
     for (const u of S.units) if (u.owner === 'P' && Units.isVillager(u)) u.task = null;
     Bld.upgrade(camp);

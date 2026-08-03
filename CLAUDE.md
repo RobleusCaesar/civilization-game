@@ -92,6 +92,7 @@ node tests/mortality.mjs       # a villager dies every so often, of something ap
 node tests/drawbridge.mjs      # a Lv3 gate's bridge on chains: raised, the gate is a WALL — to its owner too
 node tests/tc-upgrade.mjs      # the hall rises on the town's shoulders — 3 buildings at its own level
 node tests/banish.mjs          # a villager can be sent away for good — the pop cap is all you get back
+node tests/worked-ground.mjs   # a station stands only on ground its own resource was taken out of
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -1448,3 +1449,95 @@ never-happening). The refusal carries a LIVE TALLY ("Needs 3 buildings at Lv 1
 (have 2)"), so `UI.panelSig`'s `tc` branch has to include `Bld.tcSupport(b)` —
 that number moves without `ok` flipping, and without it the panel sits on a
 stale count.
+
+**A station stands on ground that was WORKED** (`tests/worked-ground.mjs`): the
+economic spine. A resource station may only be raised on ground its own
+resource was taken out of — a Lumber Camp on a stand you felled (`T.STUMPS`), a
+Quarry on rock you broke open (`T.PEBBLES`), a Farm on soil picked bare
+(`T.BARREN`), a Hunter's Lodge on a killing ground, a Gold Mine on a seam.
+Nowhere else, and pointedly never on open grass. **Why**: without it a village
+manufactures resources out of nothing — ten lumber camps in a ring round the
+hall, on grass, forever. With it the map's resources are the run's real budget,
+the scarce one is FELT, and holding distant ground matters exactly the way it
+already does for gold.
+**One declaration, in the building's own def**: `onWorked` (the terrain the
+station demands) or `onHunted` (the kill mark), plus a `whyGround` line, all in
+`CFG.BUILDINGS`. `Bld.stationGround(key, x, y)` is the single predicate and
+`Bld.needsWorkedGround(key)` the single question "is this one of them" — adding
+a station is one more `onWorked` key and nothing else. `canPlace` calls it, so
+every path in the game (the build menu, `Bld.place`, the rival's plotting) is
+gated in one place.
+**Each refusal is in its own words.** Four stations, four messages, none of them
+a shared "bad ground" — and every one of them says what to DO ("a lumber camp
+goes on a stand you have already felled"). A joke that does not teach the rule
+is a bad error, and the test measures both halves: the messages must be
+distinct, and each must name the work that makes its ground.
+**Clearing is no shortcut**: `Terraform.clear` leaves GRASS, not stumps — the
+resource has to actually be TAKEN, by hand, not bulldozed. **Density does not
+matter**: spent is spent, and what the tile happened to hold is not the
+question. An ordinary building (a hut, a barracks) is untouched by any of this.
+
+**The hunting ground** (same test): the lodge is the one station whose ground is
+not terrain at all, so it is REMEMBERED — `G.noteHunt(x, y)` stamps the tile
+where an animal falls and `G.huntedAt(x, y)` reads it, on `S.map.hunted`
+(idx → day, in every save, `loadJSON` backfills `{}`). Permanent for the run: a
+killing ground does not heal. **A wolf's kill counts too** — the mark is
+owner-agnostic, stamped in the wild-animal death branch whoever struck the blow,
+because the chief never hunts deer and without this the lodge would be the
+player's building alone.
+
+**Far ground is a CLAIM, not a second town** (same test): worked-out tiles are
+wherever the resource happened to be, which is routinely outside the build
+anchor's reach — so a station standing on its own ground is `freePlace` (folded
+in as `onItsGround`), exactly like the Gold Mine. And exactly like the Gold Mine
+it is an OUTPOST: `Bld._isOutpostSite` took the building key so a far camp
+anchors nothing — you may claim the stand, you may not grow a second village
+around it.
+
+**Every seat is dealt a fair hand** (`CFG.START_RESOURCE`, same test): the rule
+turns a bad deal into an unplayable one — a seat with no reachable trees can
+never raise a lumber camp, at all, for the whole run. So `MapGen.generate`
+guarantees `START_RESOURCE.min` (3) workable tiles of EACH of forest, hills and
+fertile within `START_RESOURCE.r` (14) of both seats, planted on reachable grass
+at least 3 tiles out with a 3×3 anti-clump check, and `Units.seedGameNear` puts
+a few head of game by each. Three camps still produce meaningfully, so this is a
+floor, not a hand-out: the scarce resource stays visibly scarce (3–7 tiles
+against 10–59 for the plentiful ones) — you simply always have somewhere to
+start. Owner-agnostic; the rival's seat is guaranteed on the same terms.
+
+**The chief plays by the same rule, and works the land to obey it** (same test):
+`AI.plot`'s `free()` asks `Bld.stationGround` like everyone else, and a station's
+scan reaches as far as its own work parties walk (`WORK_R * 2.4`) rather than the
+town's tidy 5–7 tile ring, because the stand it felled is out there. **The
+last-ditch spill keeps the station clamp** — it drops the layout clamps, but a
+lumber camp offered on open grass is a site `canPlace` refuses anyway, so the
+chief burns its whole build turn on a plot it cannot lay, and does it again
+tomorrow. No worked ground, no station today; `plot` returning null spends
+nothing. And `openingBook` HOLDS for a station rather than skipping it
+(`ai.bookWait`, up to 8 days): the felled stand does not exist YET and its own
+woodcutters are out making one — skipping would strike the camp off the book for
+the rest of the game, while holding forever would deadlock a map with no timber
+in reach.
+**`AI.workTheLand`** is what makes the ground: spare hands are sent to gather by
+hand (the rival had no hand-gathering at all before this — every scrap of its
+income came from stations, which is precisely the loop this rule breaks).
+`WORK_SPARE` (2) hands always stay home, so the town never runs out of hammers;
+work is scanned within `WORK_R` (11) first and only ONE party may range to the
+far ring, because scanning the whole board sent woodcutters into barbarian
+country; and a gatherer with a hostile inside `WORK_FLEE` (7) drops the job and
+runs for the hall.
+**No spear, no work party** (same test): a chief `underThreat` sends nobody out
+alone — it draws an escort for each party from its unengaged soldiers, walks the
+spear to the work tile, and sends no more parties than it has spears. The escort
+needs no special combat code: standing at the work, its own `acquire` takes
+whatever comes near, which is the whole job.
+**The trap this cost**: the gather task credited `S.res` — the PLAYER's pile —
+flat, whatever the gatherer's owner, because until now only the player ever
+gathered by hand. It is owner-aware now, and `S.stats.gathered` still counts the
+player's take only.
+**And a second-order one**: regrowth is held under a building, and a scar
+anywhere on the board is now a building site the chief will eventually walk to.
+`tests/ore-finite.mjs` stands `AI.daily` down for its 400-day measurement for
+exactly that reason — over that long the rival found the test's scars, raised
+camps on them and lost them to raiders, which read as "the forest never came
+back".
