@@ -1677,7 +1677,7 @@ const R = {
      in flames doesn't bother — its own fire is already the story. */
   SMOKE_AT: {
     house:   { x: 21.5 / 32, y: 3 / 32 },     // the chimney pot
-    tc:      { x: 16 / 32, y: 1 / 32 },       // the hall's roof-hole / ridge
+    tc:      { x: 15.5 / 32, y: 1 / 32 },     // the hall's roof-hole / ridge
     lodge:   { x: 12 / 32, y: 7 / 32 },       // the smoking rack's fire
     warcamp: { x: 15.5 / 32, y: 9 / 32 },     // the campfire under the ridge pole
     trade:   { x: 3 / 16, y: 1 / 16 },        // the trader's brazier
