@@ -1,26 +1,40 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
-<title>TC L1 — grand hall, 4x master generator</title>
-<!-- Generator for assets/tc-l1.png: Town Center L1 as a GRAND HALL on a
-     2×2-tile footprint, painted per-pixel at 256×256 (4× the in-engine 64×64
-     slot; the pipeline downscales at decode). Deterministic. ARTSTYLE.md
-     applies: palette ramps only, top-left light, 1px darkest-ramp outlines,
-     soft baked contact shadow. Composition (per the approved reference): one
-     dominant hall — a two-tier hipped thatch roof with a raised cap, timber
-     walls braced by stone corner pillars, an arched doorway under a small
-     awning, pennant flags at the front corners — with the campfire burning
-     in the dooryard (engine smoke/flame anchor: 0.78, 1.64 in tile units). -->
+<title>TC L1 — round thatched hut, 4x master generator</title>
+<!-- Generator for assets/tc-l1.png: Town Center L1 as a ROUND THATCHED HUT on
+     a 2×2-tile footprint, painted per-pixel at 256×256 (4× the in-engine 64×64
+     slot; the pipeline supersamples down at decode). Deterministic, and the
+     background stays TRANSPARENT — only a soft contact shadow sits under it.
+     ARTSTYLE.md applies: palette ramps only, top-left light, 1px darkest-ramp
+     outlines.
+
+     Composition (per the approved reference): one dominant conical thatch roof
+     with a crown finial at the peak, a squat wattle-and-daub drum beneath it
+     carrying an arched doorway between two shuttered windows, a length of
+     cloth draped over the right eave, cooperage and pots around the foot, and
+     a stone-ringed campfire burning in the dooryard.
+
+     TWO ENGINE ANCHORS CONSTRAIN THIS ART, and moving either means moving the
+     matching table in render.js:
+       R.SMOKE_AT.tc = 16/32, 1/32 — hearth smoke leaves the sprite at TOP
+         CENTRE, so the roof's peak (its smoke hole) must be at x=128 up top,
+         or the column drifts out of thin air beside the roof.
+       R.BANNER_AT.tc is lv:3 ONLY — the engine flies no cloth at level 1, so
+         the draped banner here is baked and cannot double up. If a level-1
+         entry is ever added there, strip the cloth out of this file. -->
 <canvas id="c" width="256" height="256"></canvas>
 <script>
 'use strict';
 /* master palette ramps — mirror of ART.PALETTE (artstyle.js) */
 const P = {
   thatch: ['#7a6224', '#ab8c38', '#c9a84c', '#e0c065'],
+  straw:  ['#8a6f2c', '#bb9a3e', '#d8b755', '#f0d47a'],   // the sunlit crown of the cone
   wood:   ['#3e2c14', '#5c421f', '#6e5024', '#8a6b3a', '#a5854d'],
   soil:   ['#3c2c16', '#57431f', '#6b5433', '#82683f'],
   stone:  ['#4a4a44', '#6f6f66', '#8f8f86', '#adada2', '#c9c9bf'],
   fire:   ['#a33f1c', '#e88a3a', '#f2c14a', '#ffe9a0'],
   hide:   ['#41291a', '#5c3c20', '#7a5230', '#9c7040'],
+  cloth:  ['#8a6a30', '#b8934a', '#d4b06a', '#e8cd93'],   // the draped banner
   ink:    ['#14100a', '#241d15', '#3a3324'],
 };
 const W = 256, H = 256;
@@ -36,9 +50,12 @@ function put(x, y, c, structural, a) {
   px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2]; px[i + 3] = a === undefined ? 255 : a;
   mask[y * W + x] = structural ? 1 : (mask[y * W + x] === 1 ? 1 : 0);
 }
-let seed = 2049;
+let seed = 7717;
 const rnd = () => (seed = (seed * 16807 + 11) % 2147483647) / 2147483647;
 
+/* soft contact shadow — the only thing that touches the ground, so the hut
+   sits on the grass instead of hovering over it. Alpha only: the background
+   must stay transparent. */
 function shadow(cx, cy, rx, ry, strength) {
   for (let y = cy - ry; y <= cy + ry; y++) for (let x = cx - rx; x <= cx + rx; x++) {
     const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
@@ -49,178 +66,262 @@ function shadow(cx, cy, rx, ry, strength) {
     }
   }
 }
-function earth(cx, cy, rx, ry, litBias) {
-  for (let y = cy - ry; y <= cy + ry; y++) for (let x = cx - rx; x <= cx + rx; x++) {
-    const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
-    if (d > 1 || rnd() < d * d * 0.9) continue;
-    const t = rnd();
-    put(x, y, rgb.soil[t < (0.4 + (litBias || 0)) ? 3 : t < 0.82 ? 2 : 1], false);
-  }
-}
-/* a thatch plane: trapezoid between a top edge and a wider bottom edge, with
-   diagonal hip seams, layered courses, comb streaks and top-left light */
-function thatchPlane(topX0, topX1, topY, botX0, botX1, botY, courseH) {
-  const comb = Array.from({ length: 16 }, () => rnd());
-  for (let y = topY; y <= botY; y++) {
-    const v = (y - topY) / (botY - topY);
-    const x0 = topX0 + (botX0 - topX0) * v, x1 = topX1 + (botX1 - topX1) * v;
-    for (let x = Math.round(x0); x <= Math.round(x1); x++) {
-      const u = (x - x0) / Math.max(1, x1 - x0);
-      /* hip zones: outside the top edge's span reads as the side slopes */
-      const hipL = x < topX0 + (x0 - topX0) * 0 + (topX0 - x0) * 0 && false;
-      let light = 3.5 - u * 1.7 - v * 1.15 + (rnd() - 0.5) * 0.7;
-      if (x < topX0) light += Math.max(0, 0.4 - (topX0 - x) * 0.008);   // left hip catches sun
-      if (x > topX1) light -= Math.min(0.7, (x - topX1) * 0.016);        // right hip shades off gently
-      let step = Math.max(0, Math.min(3, Math.round(light)));
-      if (((y - topY) % courseH) >= courseH - 1 && rnd() < 0.75) step = Math.max(0, step - 1);
-      for (let k = 0; k < comb.length; k++)
-        if (Math.abs(u - comb[k]) < 0.005) { step = Math.max(0, step - 1); break; }
-      put(x, y, rgb.thatch[step], true);
-    }
-    /* dark hip seams from the top corners down to the bottom corners */
-    const sL = topX0 + (botX0 - topX0) * v, sR = topX1 + (botX1 - topX1) * v;
-    put(sL, y, rgb.thatch[0], true);
-    put(sR, y, rgb.thatch[0], true);
-  }
-  /* ragged eave fringe */
-  for (let x = botX0; x <= botX1; x += 1 + (rnd() * 3 | 0)) {
-    const drop = 1 + (rnd() * 2 | 0);
-    for (let d = 1; d <= drop; d++) put(x, botY + d, rgb.thatch[rnd() < 0.5 ? 0 : 1], true);
-  }
-}
-function pennant(pxx, top, bot, dir) {
-  for (let y = top; y <= bot; y++) {                     // the pole
-    put(pxx, y, rgb.wood[1], true); put(pxx + 1, y, rgb.wood[3], true);
-  }
-  put(pxx, top - 1, rgb.wood[4], true);
-  for (let i = 0; i < 14; i++) {                         // triangular flame-orange pennant
-    const len = Math.round((1 - i / 14) * 16);
-    const wave = Math.round(Math.sin(i * 0.7) * 1.2);
-    for (let k = 2; k <= len; k++)
-      put(pxx + dir * k, top + 1 + i + wave, rgb.fire[k > len - 3 ? 1 : (i < 4 ? 2 : 1)], true);
-    if (len > 2) put(pxx + dir * len, top + 1 + i + wave, rgb.fire[0], true);
-  }
-}
-function pot(cx, cy) {
-  for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) {
-    if (x * x + y * y > 10) continue;
-    put(cx + x, cy + y, rgb.soil[x < 0 && y < 0 ? 3 : 2], true);
-  }
-  put(cx - 1, cy - 4, rgb.soil[1], true); put(cx, cy - 4, rgb.ink[1], true); put(cx + 1, cy - 4, rgb.soil[1], true);
-}
 
-/* ================= the ground: packed earth + walked threshold ================= */
-shadow(129, 188, 100, 13, 62);         // under everything — the earth covers most of it
-earth(128, 198, 100, 42, 0.05);
-earth(100, 214, 42, 24, 0.1);          // brightest by the fire
-for (let i = 0; i < 40; i++) {         // worn path door → fire
-  const t = i / 40;
-  put(128 - t * 26 + (rnd() * 6 - 3), 190 + t * 18 + (rnd() * 4 - 2), rgb.soil[3], false);
-}
+/* ================= geometry =================
+   The roof is a CONE: an apex over the ring of its eave. The eave ring is a
+   circle seen from above, so it projects to an ellipse — which is what gives
+   the front edge its downward bow and lets the sides ride up. Every straw is a
+   segment from the apex to a point on that ring, so combing, courses and the
+   ragged fringe all fall out of one parametrisation instead of being drawn on
+   top of a blob. */
+const AX = 128, AY = 34;                       // apex — x=128 keeps the smoke anchor honest
+const EX = 128, EY = 139, ERX = 101, ERY = 27; // eave ring — its FRONT (EY+ERY)
+                                               // is the line the drum must clear
 
-/* ================= the hall ================= */
-const WX0 = 34, WX1 = 222, WTOP = 118, WBOT = 184;   // wall band
+/* ================= the ground shadow, first so everything covers it ======== */
+shadow(128, 211, 96, 22, 74);
+shadow(128, 231, 34, 13, 52);                  // …and a tighter one under the fire ring
 
-/* --- main hip roof: wide trapezoid, ridge high and narrow --- */
-thatchPlane(92, 164, 48, 20, 236, 118, 12);
-/* --- upper storey: a short wall band riding the ridge, then its own cap roof --- */
-for (let y = 34; y <= 47; y++) for (let x = 96; x <= 160; x++) {
-  const u = (x - 96) / 64;
-  let c = rgb.wood[u < 0.3 ? 3 : u < 0.75 ? 2 : 1];
-  if ((x - 96) % 10 < 1) c = rgb.wood[1];             // plank seams
-  put(x, y, c, true);
+/* ================= the drum: wattle-and-daub wall under the roof =========== */
+const DTOP = 128, DBOT = 205, DRX = 60, DRY = 11;
+for (let y = DTOP; y <= DBOT + DRY; y++) {
+  for (let x = AX - DRX; x <= AX + DRX; x++) {
+    const u = (x - (AX - DRX)) / (DRX * 2);            // 0 left … 1 right
+    /* the drum is a cylinder: its foot curves away from us */
+    const edge = DBOT + Math.round(Math.sqrt(Math.max(0, 1 - ((x - AX) / DRX) ** 2)) * DRY);
+    if (y > edge) continue;
+    /* cylinder shading — brightest left of centre, falling off round the barrel */
+    const curve = Math.cos((u - 0.34) * 2.1);
+    let step = curve > 0.86 ? 4 : curve > 0.62 ? 3 : curve > 0.3 ? 2 : 1;
+    if (rnd() < 0.16) step = Math.max(0, step - 1);     // daub tooth
+    put(x, y, rgb.hide[Math.min(3, step)], true);
+  }
 }
-for (const wx of [112, 140]) {                        // smoke vents up top
-  for (let y = 38; y <= 44; y++) for (let x = wx; x <= wx + 6; x++) put(x, y, rgb.ink[0], true);
-  for (let x = wx - 1; x <= wx + 7; x++) put(x, 37, rgb.wood[4], true);
-}
-thatchPlane(116, 140, 8, 88, 168, 34, 9);             // the cap roof
-/* ridge caps: bound reed bundles with lashings */
-for (let x = 92; x <= 164; x++) {                     // main ridge
-  put(x, 47, rgb.thatch[3], true); put(x, 48, rgb.thatch[1], true);
-}
-for (let x = 116; x <= 140; x++) {                    // cap ridge
-  put(x, 7, rgb.thatch[3], true); put(x, 8, rgb.thatch[1], true);
-  if (x % 8 < 2) put(x, 7, rgb.wood[1], true);
-}
-/* crossed finials on the cap */
-for (let i = 0; i < 7; i++) {
-  put(124 + i, 0 + i, rgb.wood[2], true); put(125 + i, 0 + i, rgb.wood[4], true);
-  put(132 - i, 0 + i, rgb.wood[1], true); put(131 - i, 0 + i, rgb.wood[2], true);
-}
-
-/* --- walls: timber planks between stone corner pillars --- */
-for (let y = WTOP + 1; y <= WBOT; y++) for (let x = WX0; x <= WX1; x++) {
-  const u = (x - WX0) / (WX1 - WX0);
-  let c = rgb.wood[u < 0.28 ? 3 : u < 0.72 ? 2 : 1];
-  if (rnd() < 0.06) c = rgb.wood[u < 0.5 ? 2 : 0];    // grain flecks
-  if (y <= WTOP + 4) c = rgb.ink[2];                  // deep eave shadow
-  put(x, y, c, true);
-}
-for (const sx of [66, 96, 160, 190]) {                // wall studs, lit left edge
-  for (let y = WTOP + 4; y <= WBOT; y++) {
+/* vertical staves — the frame the daub is packed around */
+for (let s = -5; s <= 5; s++) {
+  const sx = Math.round(AX + Math.sin(s * 0.29) * DRX * 0.99);
+  const u = (sx - (AX - DRX)) / (DRX * 2);
+  const lit = Math.cos((u - 0.34) * 2.1) > 0.55;
+  for (let y = DTOP; y <= DBOT + DRY; y++) {
+    const edge = DBOT + Math.round(Math.sqrt(Math.max(0, 1 - ((sx - AX) / DRX) ** 2)) * DRY);
+    if (y > edge) continue;
     put(sx, y, rgb.wood[1], true);
-    put(sx + 1, y, rgb.wood[y % 3 === 0 ? 4 : 3], true);
+    put(sx + 1, y, rgb.wood[lit ? 3 : 2], true);
   }
 }
-/* horizontal plank lines */
-for (const wy of [140, 158, 174]) for (let x = WX0 + 2; x <= WX1 - 2; x++)
-  if (rnd() < 0.8) put(x, wy, rgb.wood[1], true);
-/* stone corner pillars — chunky, blockwork, lit on the left faces */
-for (const [px0, litSide] of [[WX0 - 8, 1], [WX1 - 6, 0]]) {
-  for (let y = WTOP - 6; y <= WBOT + 2; y++) for (let x = px0; x <= px0 + 14; x++) {
-    const row = ((y - WTOP) / 8 | 0), gap = ((x - px0 + (row % 2) * 4) % 8) === 0 || (y - WTOP + 6) % 8 === 0;
-    let c = gap ? rgb.ink[2] : rgb.stone[litSide ? (x < px0 + 5 ? 3 : 2) : (x < px0 + 8 ? 2 : 1)];
-    if (!gap && y === WTOP - 6) c = rgb.stone[3];
-    put(x, y, c, true);
-  }
+/* a sill line where the daub meets the packed earth */
+for (let x = AX - DRX; x <= AX + DRX; x++) {
+  const edge = DBOT + Math.round(Math.sqrt(Math.max(0, 1 - ((x - AX) / DRX) ** 2)) * DRY);
+  put(x, edge, rgb.ink[1], true);
+  if (rnd() < 0.7) put(x, edge - 1, rgb.hide[0], true);
 }
 
-/* --- arched doorway, timber frame, thatch awning over it --- */
+/* --- the doorway: a tall arch, dark inside, timber posts and a lintel --- */
 for (let x = 112; x <= 144; x++) {
   const dx = Math.abs(x - 128);
-  const top = 146 + Math.round(dx * dx * 0.014);      // shallow arch
-  for (let y = top; y <= WBOT; y++) put(x, y, rgb.ink[y < top + 10 ? 0 : 1], true);
+  const top = 169 + Math.round(dx * dx * 0.016);
+  for (let y = top; y <= DBOT + 6; y++) put(x, y, rgb.ink[y < top + 9 ? 0 : 1], true);
 }
-for (let y = 144; y <= WBOT; y++) {                   // door posts
+for (let y = 167; y <= DBOT + 7; y++) {
   put(109, y, rgb.wood[2], true); put(110, y, rgb.wood[4], true);
   put(146, y, rgb.wood[2], true); put(147, y, rgb.wood[1], true);
 }
-for (let x = 106; x <= 150; x++) { put(x, 142, rgb.wood[3], true); put(x, 143, rgb.wood[2], true); }
-thatchPlane(112, 144, 128, 102, 154, 141, 8);         // little awning roof
-for (let x = 116; x <= 140; x++) put(x, WBOT + 1, rgb.soil[3], false);   // worn sill
+for (let x = 107; x <= 149; x++) { put(x, 165, rgb.wood[3], true); put(x, 166, rgb.wood[1], true); }
 
-/* --- pennant flags at the front corners, rising past the eaves --- */
-pennant(WX0 - 4, 76, WTOP - 4, -1);
-pennant(WX1 + 8, 72, WTOP - 8, 1);
+/* --- two shuttered windows, one either side of the door --- */
+/* the frames carry the read, not the openings: a dark hole in a dark drum
+   vanishes at 1/4 size, so each window is a BRIGHT timber surround with the
+   shadow inside it */
+function window_(x0, y0, lit) {
+  for (let y = y0; y <= y0 + 16; y++) for (let x = x0; x <= x0 + 23; x++)
+    put(x, y, rgb.ink[y < y0 + 4 ? 0 : 1], true);
+  for (let x = x0 - 1; x <= x0 + 24; x++) {             // lintel + sill, both lit
+    put(x, y0 - 2, rgb.wood[lit ? 4 : 3], true);
+    put(x, y0 - 1, rgb.wood[lit ? 3 : 2], true);
+    put(x, y0 + 17, rgb.wood[lit ? 4 : 3], true);
+    put(x, y0 + 18, rgb.wood[1], true);
+  }
+  for (const vx of [x0 - 1, x0 + 23])                   // jambs
+    for (let y = y0 - 1; y <= y0 + 17; y++) {
+      put(vx, y, rgb.wood[lit ? 4 : 3], true);
+      put(vx + (vx === x0 - 1 ? 1 : -1), y, rgb.wood[2], true);
+    }
+  for (const vx of [x0 + 7, x0 + 15])                   // mullions
+    for (let y = y0; y <= y0 + 16; y++) put(vx, y, rgb.wood[lit ? 3 : 2], true);
+  for (let x = x0; x <= x0 + 23; x++) put(x, y0 + 8, rgb.wood[lit ? 3 : 2], true);
+}
+window_(74, 174, true);
+window_(158, 174, false);
 
-/* ================= the dooryard: campfire (engine anchor 0.78, 1.64) ================= */
-const FX = 100, FY = 210;
-for (let y = FY - 5; y <= FY + 5; y++) for (let x = FX - 9; x <= FX + 9; x++)
-  if (((x - FX) / 9.4) ** 2 + ((y - FY) / 5.6) ** 2 < 1)
+/* ================= the cone: every straw a segment from apex to eave ======= */
+/* back half first, then the front half over it — the far side of the ring is
+   genuinely behind the near side, and painting in that order is what makes the
+   silhouette read as a cone rather than a disc. */
+const combs = Array.from({ length: 96 }, () => rnd());
+function cone(back) {
+  const step = 0.0016;
+  for (let a = 0; a < Math.PI * 2; a += step) {
+    const sinA = Math.sin(a);
+    if (back ? sinA > 0 : sinA <= 0) continue;
+    const ex = EX + Math.cos(a) * ERX, ey = EY + sinA * ERY;
+    /* how the light falls on this facet: top-left lit, lower-right in shade */
+    const lam = -0.62 * Math.cos(a) - 0.79 * sinA;
+    const ramp = lam > 0.72 ? rgb.straw : rgb.thatch;
+    let combDark = 0;
+    for (let k = 0; k < combs.length; k++)
+      if (Math.abs((a / (Math.PI * 2)) - combs[k]) < 0.0022) { combDark = 1; break; }
+    const len = Math.hypot(ex - AX, ey - AY);
+    for (let t = 0; t <= 1.0001; t += 1 / (len * 1.6)) {
+      const x = AX + (ex - AX) * t, y = AY + (ey - AY) * t;
+      /* courses: the thatch is laid in overlapping rings, each with a shaded
+         lip at its lower edge — this is what stops the cone reading as a
+         smooth ice-cream scoop at 64px */
+      const ring = t * 5.6;
+      const lip = (ring % 1) > 0.86;
+      let s = 2.4 + lam * 1.5 - t * 0.55 + (rnd() - 0.5) * 0.55;
+      if (lip) s -= 1.25;
+      if (combDark) s -= 0.9;
+      put(x, y, ramp[Math.max(0, Math.min(3, Math.round(s)))], true);
+    }
+    /* ragged fringe hanging past the eave */
+    if (rnd() < 0.5) {
+      const dx = (ex - AX) / len, dy = (ey - AY) / len;
+      const drop = 1 + (rnd() * 4 | 0);
+      for (let d = 1; d <= drop; d++)
+        put(ex + dx * d, ey + dy * d, rgb.thatch[rnd() < 0.55 ? 0 : 1], true);
+    }
+  }
+}
+cone(true);
+cone(false);
+/* scalloped course lines picked out around the front skirt, so the layering
+   still reads once the whole thing is four times smaller */
+for (let r = 0; r < 3; r++) {
+  const t = 0.63 + r * 0.135;
+  for (let a = 0.06; a < Math.PI - 0.06; a += 0.004) {
+    const ex = EX + Math.cos(a) * ERX, ey = EY + Math.sin(a) * ERY;
+    const x = AX + (ex - AX) * t, y = AY + (ey - AY) * t;
+    const scal = Math.sin(a * 26) > 0.1 ? 0 : 1;
+    put(x, y + scal, rgb.thatch[0], true);
+  }
+}
+
+/* ================= the crown finial at the peak ================= */
+/* the one silhouette that says "this hut is the seat of the village" — it has
+   to survive the downscale, so it is a solid dark shape with a lit rim rather
+   than fine filigree */
+for (let y = 24; y <= 34; y++) {                       // the band
+  const w = 11 - Math.abs(y - 29) * 0.2;
+  for (let x = AX - w; x <= AX + w; x++)
+    put(x, y, rgb.wood[y < 27 ? 3 : x < AX - 2 ? 2 : 1], true);
+}
+for (const [ox, hgt] of [[-9, 8], [-4.5, 12], [0, 15], [4.5, 12], [9, 8]]) {
+  for (let i = 0; i < hgt; i++) {                      // the points
+    const w = Math.max(0, 2.4 - i * (2.4 / hgt));
+    for (let x = AX + ox - w; x <= AX + ox + w; x++)
+      put(x, 24 - i, rgb.wood[x < AX + ox ? 3 : 2], true);
+  }
+  put(AX + ox, 24 - hgt, rgb.thatch[3], true);         // a bead of gold on each tip
+}
+for (let x = AX - 11; x <= AX + 11; x++) put(x, 35, rgb.ink[1], true);   // seated in the thatch
+
+/* ================= cloth draped over the right eave ================= */
+/* hangs OUTSIDE the cone's silhouette so it breaks the circle — a perfectly
+   round object at this size otherwise reads as a haystack */
+/* drawn COLUMN-WISE, not row-wise: a hanging cloth is a set of vertical falls,
+   so each column gets its own hem height and its own fold shade. Row-wise with
+   a sin() cutoff (the first attempt) striped it horizontally and read as a
+   plank of wood rather than cloth. No pole either — it is draped over the
+   eave and tucked under the thatch, so the top edge follows the roof's slope */
+const BX0 = 188, BX1 = 220;
+for (let x = BX0; x <= BX1; x++) {
+  const u = (x - BX0) / (BX1 - BX0);
+  const top = 94 + Math.round(u * 15);                  // tucked along the eave's fall
+  const hem = 166 + Math.round(Math.sin(u * 5.6) * 6 - u * 5);
+  /* three soft folds down the drop, lit from the left like everything else */
+  const fold = Math.sin(u * Math.PI * 3.1 - 0.4);
+  for (let y = top; y <= hem; y++) {
+    const v = (y - top) / (hem - top);
+    let s = fold > 0.6 ? 3 : fold > 0.05 ? 2 : fold > -0.6 ? 1 : 0;
+    if (v > 0.86) s = Math.max(0, s - 1);                // the hem falls into shade
+    if (u > 0.93) s = 0;                                 // the far edge turns away
+    put(x, y, rgb.cloth[s], true);
+  }
+  put(x, hem, rgb.cloth[0], true);                       // a weighted hem line
+  if (u > 0.06 && u < 0.94) put(x, top, rgb.cloth[3], true);   // catch light along the fold-over
+}
+
+/* ================= cooperage and pots around the foot ================= */
+function barrel(cx, cy, h, w) {
+  for (let y = cy - h; y <= cy; y++) {
+    const bulge = Math.sin(((y - (cy - h)) / h) * Math.PI) * 1.8;
+    for (let x = cx - w - bulge; x <= cx + w + bulge; x++) {
+      const u = (x - (cx - w - bulge)) / ((w + bulge) * 2);
+      let c = rgb.wood[u < 0.3 ? 3 : u < 0.72 ? 2 : 1];
+      if ((x - cx + 40) % 5 === 0) c = rgb.wood[1];       // stave seams
+      put(x, y, c, true);
+    }
+  }
+  for (const hy of [cy - h + 2, cy - (h >> 1), cy - 1]) {  // iron hoops
+    const bulge = Math.sin(((hy - (cy - h)) / h) * Math.PI) * 1.8;
+    for (let x = cx - w - bulge; x <= cx + w + bulge; x++)
+      put(x, hy, rgb.stone[x < cx ? 2 : 1], true);
+  }
+  for (let x = cx - w + 1; x <= cx + w - 1; x++) put(x, cy - h, rgb.wood[4], true);
+}
+function pot(cx, cy, r) {
+  for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) {
+    if ((x * x) / (r * r) + (y * y) / (r * r * 0.92) > 1) continue;
+    put(cx + x, cy + y, rgb.soil[x < 0 && y < 0 ? 3 : x < r * 0.4 ? 2 : 1], true);
+  }
+  for (let x = cx - r + 1; x <= cx + r - 1; x++) put(x, cy - r, rgb.soil[1], true);
+  put(cx - 1, cy - r - 1, rgb.soil[1], true); put(cx, cy - r - 1, rgb.ink[1], true);
+  put(cx + 1, cy - r - 1, rgb.soil[1], true);
+}
+barrel(58, 206, 22, 10);
+pot(36, 208, 9);
+pot(84, 210, 7);
+barrel(198, 208, 20, 9);
+pot(176, 211, 8);
+
+/* ================= the campfire in the dooryard ================= */
+const FX = 128, FY = 231;
+for (let y = FY - 7; y <= FY + 7; y++) for (let x = FX - 22; x <= FX + 22; x++)
+  if (((x - FX) / 22) ** 2 + ((y - FY) / 7.4) ** 2 < 1)
     put(x, y, rnd() < 0.3 ? rgb.ink[1] : rgb.ink[0], true);
-for (let a = 0; a < 12; a++) {
-  const ang = (a / 12) * Math.PI * 2 + 0.3;
-  const sx = Math.round(FX + Math.cos(ang) * 10.5), sy = Math.round(FY + Math.sin(ang) * 6.4);
+for (let a = 0; a < 15; a++) {                      // the ring of stones
+  const ang = (a / 15) * Math.PI * 2 + 0.25;
+  const sx = Math.round(FX + Math.cos(ang) * 23), sy = Math.round(FY + Math.sin(ang) * 8.2);
   const back = sy < FY;
-  put(sx, sy, rgb.stone[back ? 1 : 2], true); put(sx + 1, sy, rgb.stone[back ? 1 : 2], true);
-  put(sx, sy - 1, rgb.stone[back ? 2 : 3], true);
-  if (!back) put(sx + 1, sy + 1, rgb.stone[0], true);
-  if (sy >= FY - 2) put(sx + (sx < FX ? 2 : -2), sy, rgb.fire[0], true);
+  for (let y = sy - 3; y <= sy + 2; y++) for (let x = sx - 3; x <= sx + 3; x++) {
+    if ((x - sx) ** 2 / 9 + (y - sy + 0.5) ** 2 / 5 > 1) continue;
+    put(x, y, rgb.stone[back ? (x < sx ? 2 : 1) : (x < sx ? 4 : 2)], true);
+  }
+  put(sx - 1, sy - 3, rgb.stone[back ? 3 : 4], true);
 }
-put(FX - 1, FY, rgb.fire[2], true); put(FX, FY, rgb.fire[2], true);
-put(FX, FY - 1, rgb.fire[3], true); put(FX + 1, FY, rgb.fire[1], true);
-put(FX - 2, FY + 1, rgb.fire[0], true); put(FX + 2, FY + 1, rgb.fire[0], true);
-/* a log bench and pots complete the yard */
-for (let i = 0; i < 24; i++) {
-  put(146 + i, 213 - (i * 0.06 | 0), rgb.wood[3], true);
-  put(146 + i, 214, rgb.wood[2], true);
-  put(146 + i, 215, rgb.wood[1], true);
+/* flame: a bright core with a couple of tongues, warm light spilling on the
+   nearest stones */
+for (let y = FY + 2; y >= FY - 16; y--) {
+  const t = (FY + 2 - y) / 18;
+  const w = Math.max(0.6, (1 - t) * 7.5 * (0.75 + Math.sin(t * 7) * 0.25));
+  for (let x = FX - w; x <= FX + w; x++) {
+    const u = Math.abs(x - FX) / Math.max(0.7, w);
+    put(x, y, rgb.fire[t > 0.72 ? 0 : u > 0.72 ? 1 : u > 0.34 ? 2 : 3], true);
+  }
 }
-put(146, 213, rgb.wood[4], true); put(169, 213, rgb.wood[1], true);
-pot(160, 194); pot(92, 190);
+for (let i = 0; i < 5; i++) {                       // embers riding the draught
+  put(FX + (rnd() * 18 - 9), FY - 18 - rnd() * 8, rgb.fire[2], true);
+}
+for (let x = FX - 14; x <= FX + 14; x++)            // firelight on the near stones
+  if (rnd() < 0.5) put(x, FY + 5 + (rnd() * 2 | 0), rgb.fire[0], true);
+/* two logs feeding it */
+for (let i = 0; i < 16; i++) {
+  put(FX - 20 + i, FY + 3 - (i * 0.1 | 0), rgb.wood[2], true);
+  put(FX - 20 + i, FY + 4, rgb.wood[1], true);
+  put(FX + 6 + i, FY + 4, rgb.wood[i > 10 ? 3 : 2], true);
+}
 
-/* ================= outline pass: darkest ramp shade, never black ================= */
+/* ================= outline pass: darkest ramp shade, never black ========== */
 const isStruct = (x, y) => x >= 0 && y >= 0 && x < W && y < H &&
   mask[y * W + x] === 1 && px[(y * W + x) * 4 + 3] > 200;
 const edges = [];

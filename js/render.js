@@ -964,6 +964,28 @@ const R = {
      becoming, not the one it is leaving (during an upgrade `b.level` is still
      the OLD level; it only increments in Bld.finishUpgrade). See the staged
      work-site branch below and tests/build-stages.mjs. */
+  /* BLIT A BUILDING SPRITE, RESAMPLING HONESTLY.
+
+     The world is drawn with `imageSmoothingEnabled = false` (see draw()) —
+     right for pixel art authored at the tile grid, where a hard nearest-
+     neighbour upscale is the whole look. But a sprite supplied by the asset
+     manifest may be a SUPERSAMPLED MASTER several times the size of the tile
+     rect it lands in (the Town Center L1 hut is 256×256 into ~110 screen px),
+     and nearest-neighbour DOWN is not a look, it is decimation: seven of every
+     eight pixels thrown away, on whichever phase the camera happens to land,
+     so the thatch crawls and shimmers as you scroll.
+
+     So: scaling a source DOWN turns smoothing on for that one blit and puts it
+     straight back. Sprites at or below their destination size — every
+     procedural sprite in the game — take the untouched nearest-neighbour path
+     and are pixel-identical to before. */
+  blitBld(g, spr, x, y, w, h) {
+    const down = spr.width > w * 1.02;
+    if (down) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; }
+    g.drawImage(spr, x, y, w, h);
+    if (down) g.imageSmoothingEnabled = false;
+  },
+
   bldSprite(b, lv) {
     const L = Math.max(1, lv || b.level);
     if (b.key === 'wall') return Sprites.wallMask[Math.min(L, Sprites.wallMask.length) - 1][this.wallMaskAt(b.x, b.y)];
@@ -1982,7 +2004,7 @@ const R = {
       // a remembered tower keeps its bond to the line, same as the wall
       // ghosts beside it (which already mask from live neighbours)
       if (snap.key === 'tower') this.drawTowerBond(g, { x: gx, y: gy, construction: 0 }, gx * TL, gy * TL, gs);
-      g.drawImage(spr, gx * TL, gy * TL, gs, gs);
+      this.blitBld(g, spr, gx * TL, gy * TL, gs, gs);
     }
 
     // ash piles — what burned-down buildings left, cooling on the ground
@@ -2013,7 +2035,7 @@ const R = {
         const up = b.upgrading > 0;
         if (!up && (b.key === 'wall' || b.key === 'gate')) {
           // fortifications show their oriented shape while first going up
-          g.globalAlpha = 0.55; g.drawImage(this.bldSprite(b), bx, by, bw, bw); g.globalAlpha = 1;
+          g.globalAlpha = 0.55; this.blitBld(g, this.bldSprite(b), bx, by, bw, bw); g.globalAlpha = 1;
         } else {
           /* WORK-SITE STAGES (tests/build-stages.mjs): three looks at 1/3
              intervals — ground broken → the raising → the building standing
@@ -2033,7 +2055,7 @@ const R = {
             if (stage < 2) {
               Assets.drawSprite(g, 'misc/wonderBuild' + (stage + 1), bx, by, { w: bw, h: bw });
             } else {
-              g.drawImage(this.bldSprite(b, tgt), bx, by, bw, bw);
+              this.blitBld(g, this.bldSprite(b, tgt), bx, by, bw, bw);
               Assets.drawSprite(g, 'misc/wonderScaffold', bx, by, { w: bw, h: bw });
             }
           } else if (Sprites.misc[b.key + 'Build1']) {
@@ -2055,7 +2077,7 @@ const R = {
             // pre-upgrade building (e.g. the TC's level-1 camp) on screen
             // AFTER stage 1 had already raised the new hall's frame, so the
             // sequence ran backwards. tests/build-stages.mjs pins the order.
-            g.drawImage(this.bldSprite(b, tgt), bx, by, bw, bw);
+            this.blitBld(g, this.bldSprite(b, tgt), bx, by, bw, bw);
             Assets.drawSprite(g, 'misc/' + (up ? 'upgradeScaffold' : 'scaffold') + (bs >= 2 ? 'Big' : ''), bx, by, { w: bw, h: bw });
           }
         }
@@ -2077,7 +2099,7 @@ const R = {
         // a drawbridge that falls to the FAR side lies beyond the wall, so it
         // goes down before the gatehouse does and is occluded by it
         if (b.key === 'gate') this.drawDrawbridge(g, b, bx, by, bw, dt, false);
-        g.drawImage(spr, bx, by, bw, bw);
+        this.blitBld(g, spr, bx, by, bw, bw);
         // …and the walk running south out of it meets its flank at WALK height
         if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);
         // …and one that falls toward us swings over its own archway

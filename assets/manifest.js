@@ -10,14 +10,29 @@ window.ASSET_MANIFEST = {
   version: 1,
   atlases: [
     {
-      // Town Center L1 — the founding camp on a 2×2 footprint, authored at 4×
-      // (256×256, generator in assets/src/) and supersampled down to the
-      // 64×64 slot at decode. Both tribes share the camp: faction banners
-      // only arrive at L3, per the level design
+      /* Town Center L1 — the founding hut on a 2×2 footprint, authored and
+         KEPT at its full 256×256.
+
+         No dw/dh here, deliberately. A sprite's on-screen size never came from
+         its slot: render.js blits it with `drawImage(spr, bx, by, bw, bw)`,
+         where bw is footprint × CFG.TILE × cam.z. Downscaling to a 64×64 slot
+         at decode therefore threw away three quarters of the master and then
+         let the camera stretch what was left — at the default zoom (1.5) a 2×2
+         hall covers ~96 screen px, so the engine was UPSCALING a 64px bitmap
+         to 96. Held at 256 the browser resamples straight from the master to
+         whatever the camera asks for, and it only gets sharper as you zoom in.
+
+         Safe because everything downstream sizes itself off the source canvas
+         rather than assuming 64: R.darkOf / ruinOf / ashOf / collapseSheet all
+         read base.width, and the work-site scaffold overlay is blitted into
+         the same world rect rather than composited onto the sprite.
+
+         Both tribes share the hut: faction banners only arrive at L3, per the
+         level design — which is also why this art may bake its own cloth. */
       image: 'assets/tc-l1.png',
       sprites: {
-        'building/tc/1':   { x: 0, y: 0, w: 256, h: 256, dw: 64, dh: 64 },
-        'building_a/tc/1': { x: 0, y: 0, w: 256, h: 256, dw: 64, dh: 64 },
+        'building/tc/1':   { x: 0, y: 0, w: 256, h: 256 },
+        'building_a/tc/1': { x: 0, y: 0, w: 256, h: 256 },
       },
     },
     /* ORIGIN CARDS art goes here when it lands — one `ui/card/<cardKey>`
