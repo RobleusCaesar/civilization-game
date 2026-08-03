@@ -1541,3 +1541,36 @@ anywhere on the board is now a building site the chief will eventually walk to.
 exactly that reason — over that long the rival found the test's scars, raised
 camps on them and lost them to raiders, which read as "the forest never came
 back".
+
+**And nobody works another tribe's yard** (same test): the rule's own blind
+spot, reported from a real day-33 game. Worked-out ground is the only ground a
+station may stand on, and early in a run the only worked ground on the whole
+map may be the ENEMY'S — the player felled two trees beside their hall and the
+chief raised a lumber camp on one of them: **34.7 tiles from its own fire, 5.1
+from theirs**, under three of their towers, pulled down three days later. Two
+compounding faults. **The scan was a SQUARE**, not a circle: `plot` looped
+`dx/dy` over ±`rMax` and `free()` never bounded distance at all, so a station
+ring of `WORK_R * 2.4` (26) really reached **37 tiles on the diagonal** —
+across a large board. Both square loops now skip `hypot(dx, dy) > rMax`, and a
+station NEVER SPILLS past its ring (widening is the right answer for a crowded
+hut and exactly the wrong one for a camp, where "look further for worked
+ground" is the bug itself). **And `Bld.foreignHome(owner, x, y)`** is the rule
+that was missing: ground within `Bld.HOME_GROUND_R` (10) of another tribe's
+hall is theirs. It withdraws **only the free PASS** that standing on worked
+ground grants (`onItsGround`), never the tile — two halls can sit within ten
+tiles of each other on a tight board, and ground beside your own fires stays
+yours, decided by the ordinary anchor rule like everywhere else. So a War Camp
+may still be planted at the enemy's gate and the military works it anchors are
+still legal: a forward base you must hold is a real siege, a lumber camp in
+their high street is not. **Fog-honest both ways** — the player's hall counts
+against the chief only once it has actually seen it (`AI.knownPlayerTC`, its
+own memory), the rival's counts against the player only once its tile is
+explored — so neither refusal can be read as a hint about where the other
+lives. `AI.plot`'s `free()` and `workTheLand`'s `pick()` ask it too, so the
+chief neither plots works nor sends woodcutters into somebody's village.
+**And the field work is load-bearing, not decoration**: stubbing `workTheLand`
+out on the same seed leaves the rival on **1 building and a level-1 hall** at
+day 200 (it can make no worked ground, so it can raise no station at all)
+against 28 buildings and a level-3 hall with it. Villagers die out there — 19
+of 28 losses on that seed were hands in the field — and that is the price of
+the rule, not a fault in it.

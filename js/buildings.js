@@ -590,6 +590,38 @@ const Bld = {
     return !!(d && (d.onWorked != null || d.onHunted || d.onTerrain != null));
   },
 
+  /* ---- NOBODY WORKS ANOTHER TRIBE'S YARD (tests/worked-ground.mjs) ----
+     Worked-out ground is the only ground a station may stand on, and early in
+     a run the only worked ground on the whole map may be the ENEMY'S. A real
+     day-33 game had the chief plot a lumber camp on a stump inside the
+     player's town — thirty-five tiles from its own hall, five from theirs,
+     under three of their towers — and walk a villager the whole way to raise
+     it. It was pulled down three days later, which is the giveaway: siting
+     works where the other side can trivially burn them is the same class of
+     mistake as the shooting gallery.
+
+     The rule is narrow ON PURPOSE. Standing on worked ground is what lets a
+     station skip the build-anchor rule (`onItsGround`) — this takes that free
+     pass away inside somebody else's home ground, and nothing else. A War
+     Camp may still be planted at the enemy's gate, and the military works it
+     anchors are still legal: a forward base you must hold is a real siege, a
+     lumber camp in their high street is not.
+
+     FOG-HONEST both ways. The player's hall counts against the chief only once
+     the chief has actually seen it (`AI.knownPlayerTC`, its own memory), and
+     the rival's counts against the player only once its tile is explored — so
+     neither refusal can be read as a hint about where the other lives. */
+  HOME_GROUND_R: 10,
+  foreignHome(owner, x, y) {
+    for (const b of S.buildings) {
+      if (b.key !== 'tc' || b.owner === owner) continue;
+      if (owner === 'A') { if (!AI.knownPlayerTC()) continue; }
+      else if (!S.map.explored || !S.map.explored[MapGen.idx(b.x, b.y)]) continue;
+      if (Math.hypot(x - this.cx(b), y - this.cy(b)) <= this.HOME_GROUND_R) return true;
+    }
+    return false;
+  },
+
   canPlace(owner, key, x, y) {
     const d = this.def(key);
     if (!d) return { ok: false, why: '?' };
@@ -647,13 +679,22 @@ const Bld = {
        being far from home is the whole risk of working a distant seam. It
        ANCHORS NOTHING further (see _isOutpostSite) — you may plant the camp out
        there, but you may not grow a second town around it. */
-    const onItsGround = this.needsWorkedGround(key) && this.stationGround(key, x, y).ok;
+    /* …EXCEPT IN SOMEBODY ELSE'S YARD (see foreignHome). Only the free PASS is
+       withdrawn, never the tile: two halls can sit within ten tiles of each
+       other on a small board, and ground that is also beside your own fires is
+       still yours to build on — the ordinary anchor rule decides, as it does
+       everywhere else. What you may not do is walk across the map and set up
+       inside their town because you felled one of their trees. */
+    const theirYard = this.foreignHome(owner, x, y);
+    const onItsGround = this.needsWorkedGround(key) && this.stationGround(key, x, y).ok && !theirYard;
     const freePlace = d.freePlace || onItsGround || key === 'wall' || key === 'gate';
     const homeAnchors = mine.filter(b => !b.outpost && b.key !== 'warcamp');
     const nearHome = homeAnchors.some(b => Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
     const nearCamp = mine.some(b => b.key === 'warcamp' && Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
     if (!freePlace && mine.length && !nearHome && !nearCamp)
-      return { ok: false, why: mine.some(b => b.key === 'warcamp') || homeAnchors.length ? 'Too far — build by your town or a War Camp' : 'Too far from your buildings' };
+      return { ok: false, why: theirYard && this.needsWorkedGround(key)
+        ? 'Another tribe keeps its fires here — fell their woods if you like, but the camp goes up by your own'
+        : (mine.some(b => b.key === 'warcamp') || homeAnchors.length ? 'Too far — build by your town or a War Camp' : 'Too far from your buildings') };
     // a forward camp is a MILITARY staging ground — no relocating farms/houses/economy
     // to the front. (Near home, anything goes as normal.)
     if (!freePlace && !nearHome && nearCamp && CFG.STAGING_BUILD.indexOf(key) < 0)

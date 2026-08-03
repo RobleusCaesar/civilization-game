@@ -224,8 +224,12 @@ const out = await p.evaluate(() => {
     // give it real worked ground and it finds it — and ONLY it
     const made = {};
     for (const k of STATIONS) {
-      const t = MapGen.findNear(atc.x, atc.y, 9, (x, y) =>
+      // …a few tiles OUT, not on the doorstep: `plot` has always refused the
+      // ring within 2 of the hall, and a scan started at the hall's own tile
+      // hands back the nearest match, which is next to it
+      const t = MapGen.findNear(atc.x + 5, atc.y + 5, 7, (x, y) =>
         S.map.terrain[MapGen.idx(x, y)] === T.GRASS && !Bld.at(x, y) && !G.huntedAt(x, y) &&
+        Math.hypot(x - atc.x, y - atc.y) >= 3 &&
         Object.values(made).every(m => m.x !== x || m.y !== y));
       made[k] = t;
       const d = CFG.BUILDINGS[k];
@@ -314,6 +318,79 @@ const out = await p.evaluate(() => {
         !worker.task || worker.task.type === 'flee',
         worker.task ? worker.task.type : 'no task');
     }
+  }
+
+  /* ---- 9. NOBODY WORKS ANOTHER TRIBE'S YARD ----
+     Reported from a real day-33 game: the player felled two trees beside their
+     own hall and the rival raised a lumber camp on one of them — 34.7 tiles
+     from its own fire, 5.1 from the player's, under three of their towers, and
+     pulled down three days later. Two compounding faults. The station scan was
+     a SQUARE of half-width WORK_R * 2.4, so its real reach was 37 tiles on the
+     diagonal, not 26; and nothing anywhere said that a felled stand inside
+     somebody's town is not free ground. */
+  {
+    G.newGame('wg-e', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.map.explored.fill(1); G.freeVis = true; G.updateVisibility();
+    S.res = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };
+    S.ai.res = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };
+    const atc = Bld.tcOf('A'), ptc = Bld.tcOf('P');
+    // the chief has seen the player's hall — the refusal is fog-honest, so it
+    // only bites once it actually knows where they live
+    S.ai.knownB = S.ai.knownB || {};
+    S.ai.knownB[MapGen.idx(ptc.x, ptc.y)] = { key: 'tc', x: ptc.x, y: ptc.y, owner: 'P', day: S.day };
+    ck('theChiefKnowsWhereTheyLive', !!AI.knownPlayerTC(), '');
+    // the ONLY worked ground on the board is the player's, right by their hall
+    const stumps = [];
+    for (let i = 0; i < 6; i++) {
+      const t = MapGen.findNear(ptc.x + 3, ptc.y - 3, 7, (x, y) =>
+        Bld.tileFree(x, y) && !Bld.at(x, y) && S.map.terrain[MapGen.idx(x, y)] !== T.STUMPS);
+      if (t) { S.map.terrain[MapGen.idx(t.x, t.y)] = T.STUMPS; stumps.push(t); }
+    }
+    Bld._block = null;
+    ck('theOnlyFelledStandIsTheirs',
+      stumps.length > 0 && stumps.every(t => Math.hypot(t.x - ptc.x, t.y - ptc.y) <= Bld.HOME_GROUND_R),
+      stumps.length + ' stumps inside their home ground');
+    let offers = 0, inYard = 0, beyondRing = 0;
+    const rMax = Math.round(AI.WORK_R * 2.4);
+    for (let i = 0; i < 15; i++) {
+      const s = AI.plot('lumber');
+      if (!s) continue;
+      offers++;
+      if (Math.hypot(s.x - ptc.x, s.y - ptc.y) <= Bld.HOME_GROUND_R) inYard++;
+      if (Math.hypot(s.x - atc.x, s.y - atc.y) > rMax) beyondRing++;
+    }
+    ck('theChiefWillNotPlotInTheirTown', inYard === 0,
+      offers + ' offers, ' + inYard + ' inside the player’s home ground');
+    ck('andTheScanIsARadiusNotASquare', beyondRing === 0,
+      'a square of half-width ' + rMax + ' reaches ' + Math.round(rMax * 1.414) + ' on the diagonal — across the map');
+    // …and its woodcutters do not go there either
+    for (const u of S.units) if (u.owner === 'A' && Units.isVillager(u)) u.task = null;
+    for (let i = 0; i < 5; i++) {
+      const sp = MapGen.findNear(atc.x + 2, atc.y + 2, 8, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+      Units.spawn('villager', 'A', sp.x, sp.y);
+    }
+    AI.workTheLand({});
+    const out3 = S.units.filter(u => u.owner === 'A' && u.task && u.task.type === 'gather');
+    ck('norDoesItSendWoodcuttersIntoTheirVillage',
+      out3.every(u => Math.hypot(u.task.x - ptc.x, u.task.y - ptc.y) > Bld.HOME_GROUND_R),
+      out3.length + ' parties out, none in the player’s town');
+    // THE SAME RULE IN REVERSE — the player may not do it to the rival either
+    const near = MapGen.findNear(atc.x + 3, atc.y + 3, 6, (x, y) => Bld.tileFree(x, y) && !Bld.at(x, y));
+    S.map.terrain[MapGen.idx(near.x, near.y)] = T.STUMPS; Bld._block = null;
+    const pc = Bld.canPlace('P', 'lumber', near.x, near.y);
+    ck('andThePlayerMayNotDoItEither', !pc.ok, pc.why || 'allowed');
+    ck('theRefusalSaysWhoseGroundItIs', !pc.ok && /another tribe/i.test(pc.why || ''), pc.why || '');
+    /* ONLY THE FREE PASS IS WITHDRAWN, NEVER THE TILE. Two halls can sit within
+       HOME_GROUND_R of each other on a tight board; ground that is ALSO beside
+       your own fires stays yours to build on, decided by the ordinary anchor
+       rule like everywhere else. */
+    const own = MapGen.findNear(ptc.x + 2, ptc.y + 2, 6, (x, y) =>
+      Bld.tileFree(x, y) && !Bld.at(x, y) && S.map.terrain[MapGen.idx(x, y)] !== T.STUMPS);
+    S.map.terrain[MapGen.idx(own.x, own.y)] = T.STUMPS; Bld._block = null;
+    S.ai.knownB[MapGen.idx(ptc.x, ptc.y)] = { key: 'tc', x: ptc.x, y: ptc.y, owner: 'P', day: S.day };
+    const oc = Bld.canPlace('P', 'lumber', own.x, own.y);
+    ck('butYourOwnDoorstepIsStillYours', oc.ok === true,
+      'the tile is not forbidden — only the free pass into somebody else’s town');
   }
 
   return { res, fails };

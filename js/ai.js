@@ -441,7 +441,9 @@ const AI = {
       // built somewhere — but twice-burned ground is a hard refusal.
       !(!isFortKey && this.burnedGround(x, y)) &&
       // …and a station only ever on the ground its own resource was taken from
-      Bld.stationGround(key, x, y).ok;
+      Bld.stationGround(key, x, y).ok &&
+      // …and never inside somebody else's town, whatever was worked out of it
+      !(!isFortKey && Bld.foreignHome('A', x, y));
     // how many of the 8 neighbours are already built on (crowding) — real buildings
     // want ELBOW ROOM so the town reads as a settlement, not a packed maze
     const crowd = (x, y) => { let n = 0; for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) if (Bld.at(x + ox, y + oy)) n++; return n; };
@@ -463,6 +465,7 @@ const AI = {
       let best = null, bs = -1e9;
       for (let dy = -rMax; dy <= rMax; dy++) for (let dx = -rMax; dx <= rMax; dx++) {
         const x = tc.x + dx, y = tc.y + dy;
+        if (Math.hypot(dx, dy) > rMax) continue;      // a RADIUS, not a square (see inRange)
         if (!MapGen.inB(x, y) || !free(x, y)) continue;
         let bonus = 0; const r = d.near.radius;
         for (let oy = -r; oy <= r && !bonus; oy++) for (let ox = -r; ox <= r; ox++)
@@ -479,6 +482,7 @@ const AI = {
     let best = null, bs = -1e9;
     for (let dy = -rMax; dy <= rMax; dy++) for (let dx = -rMax; dx <= rMax; dx++) {
       const x = tc.x + dx, y = tc.y + dy;
+      if (Math.hypot(dx, dy) > rMax) continue;        // a RADIUS, not a square (see inRange)
       if (!MapGen.inB(x, y) || !free(x, y)) continue;
       const s = layout(x, y, dx, dy);
       if (s > bs) { bs = s; best = { x, y }; }
@@ -493,6 +497,13 @@ const AI = {
        its whole build turn on a plot that cannot be laid — and does it again
        tomorrow. No worked ground, no station today; plot returning null spends
        nothing, and `workTheLand` is what makes the ground for tomorrow. */
+    /* …and a STATION NEVER SPILLS. Widening the ring is the right answer for a
+       hut (the town is crowded, put it one street further out); it is the wrong
+       answer for a lumber camp, where "look further for worked ground" is
+       exactly the behaviour that walked a villager across the whole board. The
+       camp's ring is already as wide as the work parties' own, and past it
+       there is nothing to find that should be found. */
+    if (stationKey) return MapGen.findNear(tc.x, tc.y, rMax, free);
     return MapGen.findNear(tc.x, tc.y, rMax, free) ||
            MapGen.findNear(tc.x, tc.y, rMax + 4, free) ||
            MapGen.findNear(tc.x, tc.y, rMax + 8, (x, y) => Bld.tileFree(x, y) && offLine(x, y) &&
@@ -1622,6 +1633,7 @@ const AI = {
         if (!g || !S.map.resAmount[i]) continue;
         if (claimed.has(i)) continue;
         if (this.campGround(x, y)) continue;          // never in a war band's yard
+        if (Bld.foreignHome('A', x, y)) continue;     // …nor in the enemy's village
         const d = Math.hypot(x - cx, y - cy);
         if (d > R0) continue;
         // …and it has to be a tile a hand of ours can actually stand beside
