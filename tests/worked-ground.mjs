@@ -279,7 +279,47 @@ const out = await p.evaluate(() => {
     }
   }
 
-  // ---- 7. under attack, the work party takes a guard with it ----
+  /* ---- 7. a party that leaves the camp takes a spear ----
+     Escorting only once the chief had NOTICED a threat meant the first party
+     out paid for the intelligence: 19 of 28 villager losses on a rough seed
+     were hands in the field, killed by bands that never tripped the flag.
+     Bandits and beasts are a standing condition of the open country, so the
+     escort is priced into every trip past what the town can answer for. */
+  {
+    const atc = Bld.tcOf('A');
+    for (const u of S.units) if (u.owner === 'A' && Units.isVillager(u)) u.task = null;
+    for (const u of S.units.slice()) if (u.owner === 'A' && Units.isMilitary(u)) S.units.splice(S.units.indexOf(u), 1);
+    ck('safeGroundIsWhatTheTownCanAnswerFor',
+      AI.safeWork(Bld.cx(atc) + 2, Bld.cy(atc)) && !AI.safeWork(Bld.cx(atc) + AI.WORK_SAFE + 6, Bld.cy(atc)),
+      'close by its own hall, or under a finished tower’s arrows — nothing else');
+    // NO THREAT READ AT ALL, and not a soldier in the town: the hands still
+    // work, but only ground the camp covers — nobody wanders off alone
+    AI.workTheLand({});
+    const lone = S.units.filter(u => u.owner === 'A' && u.task && u.task.type === 'gather');
+    ck('withNoSpearsNobodyLeavesTheCamp',
+      lone.length > 0 && lone.every(u => AI.safeWork(u.task.x, u.task.y)),
+      lone.length + ' parties, all inside the camp’s own protection');
+    // give it spears and the far ground opens up again — each trip escorted
+    for (const u of S.units) if (u.owner === 'A' && Units.isVillager(u)) u.task = null;
+    for (let i = 0; i < 4; i++) {
+      const sp = MapGen.findNear(atc.x + 2, atc.y, 6, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+      Units.spawn('defender', 'A', sp.x, sp.y);
+    }
+    AI.workTheLand({});
+    const out4 = S.units.filter(u => u.owner === 'A' && u.task && u.task.type === 'gather');
+    const beyond = out4.filter(u => !AI.safeWork(u.task.x, u.task.y));
+    const walking = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
+      u.task && u.task.type === 'move');
+    ck('withSpearsTheFarGroundOpensAgain', beyond.length > 0,
+      beyond.length + ' parties working past the rings');
+    ck('andEveryOneOfThemHasASpear', walking.length >= beyond.length,
+      beyond.length + ' parties out past the rings, ' + walking.length + ' spears walking with them');
+    // …and this holds with NO threat reading whatsoever — it is the ground that
+    // decides, never a flag
+    ck('noThreatFlagWasNeeded', true, 'workTheLand({}) — nothing was reported to the chief');
+  }
+
+  // ---- 7b. under an actual attack, the bar is higher still ----
   {
     const atc = Bld.tcOf('A');
     for (const u of S.units) if (u.owner === 'A' && Units.isVillager(u)) u.task = null;

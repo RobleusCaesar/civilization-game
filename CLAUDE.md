@@ -1526,11 +1526,24 @@ work is scanned within `WORK_R` (11) first and only ONE party may range to the
 far ring, because scanning the whole board sent woodcutters into barbarian
 country; and a gatherer with a hostile inside `WORK_FLEE` (7) drops the job and
 runs for the hall.
-**No spear, no work party** (same test): a chief `underThreat` sends nobody out
-alone — it draws an escort for each party from its unengaged soldiers, walks the
-spear to the work tile, and sends no more parties than it has spears. The escort
-needs no special combat code: standing at the work, its own `acquire` takes
-whatever comes near, which is the whole job.
+**A party that leaves the camp takes a spear** (same test): escorting only once
+the chief had NOTICED a threat meant the first party out paid for the
+intelligence — 19 of 28 villager losses on a rough seed were hands in the field,
+cut down by bands that never tripped the flag. Bandits and beasts are a STANDING
+CONDITION of the open country, so the escort is priced into every trip that goes
+past what the town can answer for. `AI.safeRings` / `safeWork` is what "the
+safety of camp" means, and it is ground, never a feeling: within `WORK_SAFE` (8)
+of the hall, or under the arrows of a FINISHED tower or war camp. Past that, a
+party goes only if a spear is free (`pick(R, safeOnly)` restricts an unescorted
+hand to the rings, so the work continues near home instead of stopping); the far
+ring needs one too. Under an actual threat the bar is higher still — every party
+is escorted, safe ground or not, and with no soldiers at all the work stands
+down. The escort needs no special combat code: standing at the work, its own
+`acquire` takes whatever comes near, which is the whole job. Measured over three
+seeds at day 200, always-escorting roughly halves the bleed and saves the towns
+that were failing (a seed that ended on 16 buildings, a level-2 hall, ONE
+villager and 53 lost now ends on 28 buildings, a level-3 hall, 15 villagers and
+20 lost).
 **The trap this cost**: the gather task credited `S.res` — the PLAYER's pile —
 flat, whatever the gatherer's owner, because until now only the player ever
 gathered by hand. It is owner-aware now, and `S.stats.gathered` still counts the

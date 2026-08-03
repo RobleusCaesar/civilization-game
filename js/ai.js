@@ -1580,6 +1580,29 @@ const AI = {
   WORK_SPARE: 2,          // hands kept back for hammers and errands
   WORK_R: 11,             // how far from the hall a work party will go
   WORK_FLEE: 7,           // …and how close a hostile has to get before it runs
+  WORK_SAFE: 8,           // …and how far the camp's own protection reaches
+
+  /* WHAT "THE SAFETY OF CAMP" ACTUALLY MEANS. Not a feeling and not a threat
+     reading — the ground the town can answer for: close by its own hall, or
+     under the arrows of a finished tower or war camp. Everything past it is
+     open country, and open country is ASSUMED to hold bandits and beasts
+     whether or not any have been seen. That assumption is the point: waiting
+     for a sighting means the first party out pays for the intelligence. */
+  safeRings() {
+    const out = [];
+    const tc = Bld.tcOf('A');
+    if (tc) out.push({ x: Bld.cx(tc), y: Bld.cy(tc), r: this.WORK_SAFE });
+    for (const b of Bld.list('A')) {
+      if (!Bld.done(b) || (b.key !== 'tower' && b.key !== 'warcamp')) continue;
+      out.push({ x: Bld.cx(b), y: Bld.cy(b), r: (Bld.lv(b).range || 4.5) + 1 });
+    }
+    return out;
+  },
+  safeWork(x, y, rings) {
+    rings = rings || this.safeRings();
+    for (const c of rings) if (Math.hypot(x - c.x, y - c.y) <= c.r) return true;
+    return false;
+  },
   workTheLand(read) {
     const ai = S.ai, tc = Bld.tcOf('A'); if (!ai || !tc) return false;
     /* UNDER ATTACK, THE WORK PARTY TAKES A GUARD WITH IT (tests/worked-ground.mjs).
@@ -1591,13 +1614,10 @@ const AI = {
        beside — and if it has none to spare, then and only then does it stand
        the work down. */
     const hot = !!(read && read.underThreat);
-    let guards = [];
-    if (hot) {
-      guards = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
-        !Units.isNaval(u) && !Units.isSiege(u) && !u.tUnit && !u.tBld &&
-        !(u.task && (u.task.type === 'raid' || u.task.type === 'move')));
-      if (!guards.length) return false;
-    }
+    const guards = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
+      !Units.isNaval(u) && !Units.isSiege(u) && !u.tUnit && !u.tBld &&
+      !(u.task && (u.task.type === 'raid' || u.task.type === 'move')));
+    if (hot && !guards.length) return false;   // a hot field and no spears: nobody goes out
     const busy = u => u.tUnit || u.tBld || u.scouting || u.prospecting ||
       (u.task && u.task.type !== 'flee');
     const hands = S.units.filter(u => u.owner === 'A' && Units.isVillager(u) && !busy(u));
@@ -1623,7 +1643,8 @@ const AI = {
        without wood, and without wood it builds nothing at all. So the ring
        WIDENS when the near country is bare: a longer, more dangerous walk,
        which is the bargain a real village makes when its woods run out. */
-    const pick = (R0) => {
+    const rings = this.safeRings();
+    const pick = (R0, safeOnly) => {
       let best = null, bd = 1e9, bestRank = 99;
       const y0 = Math.max(1, (cy - R0) | 0), y1 = Math.min(CFG.H - 1, (cy + R0 + 1) | 0);
       const x0 = Math.max(1, (cx - R0) | 0), x1 = Math.min(CFG.W - 1, (cx + R0 + 1) | 0);
@@ -1634,6 +1655,7 @@ const AI = {
         if (claimed.has(i)) continue;
         if (this.campGround(x, y)) continue;          // never in a war band's yard
         if (Bld.foreignHome('A', x, y)) continue;     // …nor in the enemy's village
+        if (safeOnly && !this.safeWork(x, y, rings)) continue;   // no spear to spare today
         const d = Math.hypot(x - cx, y - cy);
         if (d > R0) continue;
         // …and it has to be a tile a hand of ours can actually stand beside
@@ -1664,12 +1686,20 @@ const AI = {
       u.task = { type: 'flee' }; u.tUnit = 0; u.tBld = 0;
       Units.setPath(u, tc.x, tc.y + Bld.size('tc'));
     }
-    let sent = 0, far = 0;
+    /* A PARTY THAT LEAVES THE CAMP TAKES A SPEAR — always, not only when the
+       chief has noticed something. Bandits and wild animals are a standing
+       condition of the open country, so the escort is priced into every trip
+       that goes past what the town can cover: no spear free, no work beyond
+       the rings, and the hand takes what it can get near home instead. Under
+       an actual threat the bar is higher still — every party is escorted, safe
+       ground or not, and with no soldiers at all the work stands down. */
+    let sent = 0, far = 0, gi = 0;
     for (const u of hands) {
       if (hands.length - sent <= this.WORK_SPARE) break;   // never strip the town
-      if (hot && sent >= guards.length) break;             // no spear to spare, no party goes out
-      let best = pick(this.WORK_R);
-      if (!best) {
+      if (hot && gi >= guards.length) break;               // no spear to spare, no party goes out
+      const spear = gi < guards.length;
+      let best = pick(this.WORK_R, !spear);
+      if (!best && spear) {
         /* ONE HAND AT A TIME GOES FAR. The wide ring is how a town with bare
            near country still gets its timber, but it is a long walk through
            country nobody is guarding — send the whole workforce down it and
@@ -1686,8 +1716,8 @@ const AI = {
       // …and the spear walks out with them, standing at the tile they work.
       // Its own acquire() takes anything that comes near, which is the whole
       // job: the hand keeps chopping while somebody else does the fighting.
-      if (hot && guards[sent]) {
-        const g = guards[sent];
+      if ((hot || !this.safeWork(best.x, best.y, rings)) && guards[gi]) {
+        const g = guards[gi];
         const post = MapGen.findNear(best.x, best.y, 3,
           (gx, gy) => Path.passable(gx, gy, 'A') && !Bld.at(gx, gy));
         if (post) {
@@ -1695,6 +1725,7 @@ const AI = {
           g.task = { type: 'move', x: post.x, y: post.y };
           g.anchor = { x: post.x + 0.5, y: post.y + 0.5 };
           Units.setPath(g, post.x, post.y);
+          gi++;
         }
       }
       sent++;
