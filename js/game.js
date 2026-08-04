@@ -389,7 +389,7 @@ const G = {
     // sync last-seen memory on every visible tile
     const liveB = new Map();
     for (const b of S.buildings) {
-      const bs = Bld.size(b.key);
+      const bs = Bld.size(b);
       for (let dy = 0; dy < bs; dy++) for (let dx = 0; dx < bs; dx++)
         liveB.set(MapGen.idx(b.x + dx, b.y + dy), b);
     }
@@ -672,7 +672,7 @@ const G = {
       const gaveReprieve = noVills && !(m.finishTC && S.reprieveUsed);
       if (gaveReprieve) {
         for (let i = 0; i < 2; i++) {
-          const spot = MapGen.findNear(tc.x, tc.y + Bld.size(tc.key), 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: tc.x, y: tc.y + Bld.size(tc.key) };
+          const spot = MapGen.findNear(tc.x, tc.y + Bld.size(tc), 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: tc.x, y: tc.y + Bld.size(tc) };
           Units.spawn('villager', 'P', spot.x, spot.y);
         }
         S.reprieveUsed = true;
@@ -1330,6 +1330,15 @@ const G = {
     }
     // pre-drawbridge saves: every gate stood open, and always could
     for (const b of data.buildings) if (b && b.key === 'gate' && b.raised == null) b.raised = false;
+    /* PRE-FOOTPRINT saves: the primary works (barracks, range, stable, siege,
+       sapper, trade, warcamp, dock) were 1×1 when these towns were built, and
+       their neighbours are packed against them accordingly. Stamp each one
+       with the footprint it was RAISED on, not the one its key claims today —
+       otherwise every one of them grows a row and a column on load and eats
+       whatever was standing there. Grandfathered, never migrated: the town
+       loads exactly as it was left, and new construction is 2×2 from here.
+       (tests/footprint.mjs measures a real pre-change save for overlaps.) */
+    for (const b of data.buildings) if (b && !b.sz) b.sz = Bld.legacySize(b.key);
     if (data.ai && !data.ai.persona) data.ai.persona = 'homesteader';   // pre-persona save: the classic temperament
     if (!data.kraken) data.kraken = { day: { P: 60, A: 90 }, done: {}, ev: null };   // older saves owe the deep a visit too
     if (!data.dragon) data.dragon = { avail: false, done: true, ev: null, ash: [] };  // legacy runs: no dragon this time

@@ -93,6 +93,7 @@ node tests/drawbridge.mjs      # a Lv3 gate's bridge on chains: raised, the gate
 node tests/tc-upgrade.mjs      # the hall rises on the town's shoulders — 3 buildings at its own level
 node tests/banish.mjs          # a villager can be sent away for good — the pop cap is all you get back
 node tests/worked-ground.mjs   # a station stands only on ground its own resource was taken out of
+node tests/footprint.mjs       # the primary works stand on 2×2; old saves keep the ground they were raised on
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -1587,3 +1588,59 @@ day 200 (it can make no worked ground, so it can raise no station at all)
 against 28 buildings and a level-3 hall with it. Villagers die out there — 19
 of 28 losses on that seed were hands in the field — and that is the price of
 the rule, not a fault in it.
+
+**The primary works stand on 2×2** (`tests/footprint.mjs`): the Barracks,
+Archery Range, Horse Stable, Siege Workshop, Sappers' Camp, Trading Post, War
+Camp and Dock each claim two tiles on a side. The WORKER PLOTS (farm, lumber,
+quarry, lodge, gold mine), houses and the whole fortification set (wall, gate,
+tower) stay 1×1; the hall stays 2×2 and the wonder 3×3. Sizes are declared in
+`CFG.BUILDINGS[key].size` and read through `Bld.size` — never hard-coded
+anywhere, so changing a footprint is a one-line edit and everything follows.
+**Why it is delicate**: a footprint is not a number in a config file, it is an
+assumption threaded through placement, collision, pathing, tap hit-testing, the
+rival's town layout and every save ever written. The codebase was already
+footprint-aware where it counted (`covers` / `at` / `cx` / `cy` / `reach`, all
+exercised by the 2×2 hall), so the work was finding the rules that were being
+asked of ONE TILE only because every building but the hall happened to be one
+tile big.
+**A building keeps the ground it was RAISED on** (`b.sz`, stamped in
+`Bld.place`, in every save): `Bld.size` is polymorphic — pass a BUILDING and
+you get its own footprint, pass a KEY and you get what a new one would claim
+today. The two are deliberately allowed to differ, because a save written when
+these works were 1×1 has neighbours packed hard against them; had they all
+claimed a second row and column on load they would have swallowed each other,
+and a loaded town would have had buildings inside buildings. So old buildings
+are GRANDFATHERED (`loadJSON` stamps `Bld.legacySize` where `sz` is absent —
+the pre-change table, `tc: 2`, `wonder: 3`, everything else 1) and never
+migrated: nothing moves, nothing is deleted, and the town the player left is
+the town they get back. The cost is cosmetic and heals as they rebuild. **Every
+INSTANCE call site passes the building, never `b.key`** — that is the whole
+discipline this rests on, and the test pins it.
+**Placement validates the WHOLE plot**: `canPlace`'s footprint loop already
+covered buildable ground; the gold-seam clamp now runs across the footprint too
+(a 2×2 dropped one tile off a seam would bury the map's rarest ground without
+ever standing on it), and `Bld.dockSiteOk` checks that the whole quay floats and
+that a walkable shore touches any of its flanks — not just the anchor tile's.
+**The rival's clamps are asked of every tile** (`AI.plot`'s `everyTile`): the
+reserved wall ring above all, since `tests/wall-line.mjs` says a building may
+never be part of the line and a 2×2 makes that a four-tile question. Two
+deliberate exceptions: `stationGround` is anchor-only (every station is 1×1 and
+`onWorked` is a statement about the tile it stands on), and REACHABILITY is a
+`some` rather than an `every` — a builder has to stand beside the works, not
+beside all four corners. `crowd` counts the ring around the whole footprint
+(and each neighbour once), and `rMax` grows with the footprint, or a walled town
+runs out of places a barracks fits and spills every hall outside its own ring.
+**The art is not stretched** — building sprites are authored at 64px and were
+being DOWNSCALED into a 1-tile rect, so at 2×2 they now draw 1:1 and are
+sharper than before. What is off is the relationship to the plot, not the
+resolution: the hall no longer reads as the biggest thing in the village now
+that eight other works match its footprint, which is what the real art pass
+has to answer.
+
+**A contract sweep must key on EXIT CODES, never on grepping the output**
+(learned the hard way): every `tests/*.mjs` exits non-zero on failure, but the
+suites do not share a failure vocabulary — `tap-audit.mjs` ends with
+`1 FAILURE(S) — …`, which a `grep -E "FAILURES|FAIL\b"` filter matches
+NEITHER of (`FAILURES` needs the S, and `FAIL\b` fails on the `U` of FAILURE).
+A sweep written that way reported 39/39 green while tap-audit had been red for
+four commits. Use `if node "$f" >/dev/null 2>&1; then pass; else fail; fi`.

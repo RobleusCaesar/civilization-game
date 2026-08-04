@@ -163,7 +163,7 @@ const CFG = {
   BUILDINGS: {
     tc: {
       name: 'Town Center', unique: true, vision: true,
-      size: 2,   // the founding camp claims a 2×2 footprint (every other building is 1×1)
+      size: 2,   // the founding hall — see Bld.size / tests/footprint.mjs
       desc: 'Heart of the village. Trains villagers, stores goods.',
       train: { villager: { cost: { food: 50 }, time: 1 } },
       levels: [
@@ -300,6 +300,7 @@ const CFG = {
     },
     siege: {
       name: 'Siege Workshop', reqTC: 3,
+      size: 2,   // a PRIMARY work — two tiles on a side (tests/footprint.mjs)
       desc: 'Engines of war — catapults that crush stone, and towers that top walls.',
       train: {
         catapult:   { cost: { wood: 180, stone: 50 }, time: 3 },
@@ -317,6 +318,7 @@ const CFG = {
     },
     barracks: {
       name: 'Barracks', desc: 'Trains defenders to protect the village.',
+      size: 2,   // a PRIMARY work — two tiles on a side (tests/footprint.mjs)
       train: {
         defender: { cost: { food: 40, wood: 30 }, time: 1 },
         axeman:   { cost: { food: 50, wood: 40, gold: 8 }, time: 1.2, reqLevel: 2 },
@@ -332,6 +334,7 @@ const CFG = {
     },
     stable: {
       name: 'Horse Stable', desc: 'Trains fast riders to run down raiders.', reqTC: 2,
+      size: 2,   // a PRIMARY work — two tiles on a side (tests/footprint.mjs)
       train: {
         rider:  { cost: { food: 60, wood: 20 }, time: 1 },
         horsearcher: { cost: { food: 70, wood: 30, gold: 15 }, time: 1.5, reqLevel: 2 },
@@ -347,6 +350,7 @@ const CFG = {
     },
     range: {
       name: 'Archery Range', desc: 'Trains archers who fight from a distance.', reqTC: 2,
+      size: 2,   // a PRIMARY work — two tiles on a side (tests/footprint.mjs)
       train: {
         archer:   { cost: { food: 40, wood: 40 }, time: 1 },
         longbow:  { cost: { food: 40, wood: 60, gold: 10 }, time: 1.2, reqLevel: 2 },
@@ -366,6 +370,7 @@ const CFG = {
     // L3 clearing (Bld handles the tier gate in the work order).
     sapper: {
       name: "Sappers' Camp", desc: 'Trains sappers who reshape the land — dig trenches & moats, bridge water, breach resource walls.', reqTC: 2,
+      size: 2,   // a PRIMARY work — two tiles on a side (tests/footprint.mjs)
       train: {
         sapper: { cost: { food: 30, wood: 40, gold: 10 }, time: 1.4 },
       },
@@ -382,6 +387,7 @@ const CFG = {
     // so a forward camp is a bet, not a free win. Capped so it can't blanket the map.
     warcamp: {
       name: 'War Camp', reqTC: 3, max: 2, freePlace: true, staging: true,
+      size: 2,   // a PRIMARY work — two tiles on a side (tests/footprint.mjs)
       desc: 'Forward base — raise it anywhere you have scouted, then build military structures around it. Shoots arrows, heals nearby soldiers. No upgrades; falls easily; the enemy sees it.',
       levels: [
         { cost: { wood: 350, stone: 250, gold: 150 }, time: 3, hp: 300, atk: 8, range: 4.5, vision: 6 },
@@ -389,6 +395,7 @@ const CFG = {
     },
     dock: {
       name: 'Dock', desc: 'Built on open water (6+ tiles). Fishing boats harvest fish; warships defend the coast.',
+      size: 2,   // a PRIMARY work — two tiles on a side (tests/footprint.mjs)
       reqTC: 2,   // needs Town Center level 2 before it can be placed
       train: {
         fishboat: { cost: { wood: 40, gold: 5 }, time: 1 },
@@ -410,6 +417,7 @@ const CFG = {
        (see CFG.TRADE), so gold stays precious. TC-3 gated. */
     trade: {
       name: 'Trading Post', desc: 'Send caravans out to trade any resource for any other. Costly to run — every exchange loses more than half, and gold stays precious.', reqTC: 3,
+      size: 2,   // a PRIMARY work — two tiles on a side (tests/footprint.mjs)
       levels: [
         { cost: { wood: 260, stone: 180, gold: 40 },  time: 3, hp: 300, bonus: 'Trade any resource for any other (small loads, poor rates)' },
         { cost: { wood: 420, stone: 320, gold: 80 },  time: 3, hp: 420, bonus: 'Better rates — but each caravan hauls more' },

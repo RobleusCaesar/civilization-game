@@ -1224,7 +1224,7 @@ const R = {
        standing tower and still comes down. */
     if (b.construction > 0) return;
     if (this.collapses.length > 12) this.collapses.shift();
-    const TL = CFG.TILE, sz = Bld.size(b.key);
+    const TL = CFG.TILE, sz = Bld.size(b);
     /* THE GROUND KEEPS ITS FACE UNTIL THE TOWER IS DOWN. Bld.removeToRuin
        lays rubble the instant the building dies and bakes it straight into
        the terrain cache — so without this the brown scar appeared UNDER a
@@ -2030,7 +2030,7 @@ const R = {
       const spr = snap.key === 'wall' ? Sprites.wallMask[snap.level - 1][this.wallMaskAt(gx, gy)]
         : snap.key === 'gate' ? Sprites.gateMask[snap.level - 1][this.gateVerticalAt(gx, gy) ? 1 : 0]
         : (snap.owner === 'A' ? Sprites.buildingA : Sprites.building)[snap.key][snap.level - 1];
-      const gs = Bld.size(snap.key) * TL;
+      const gs = Bld.size(snap) * TL;
       // a remembered tower keeps its bond to the line, same as the wall
       // ghosts beside it (which already mask from live neighbours)
       if (snap.key === 'tower') this.drawTowerBond(g, { x: gx, y: gy, construction: 0 }, gx * TL, gy * TL, gs);
@@ -2051,9 +2051,9 @@ const R = {
 
     // buildings (sorted by footprint bottom edge)
     const blds = S.buildings.slice().sort((a, b) =>
-      (a.y + Bld.size(a.key)) - (b.y + Bld.size(b.key)));
+      (a.y + Bld.size(a)) - (b.y + Bld.size(b)));
     for (const b of blds) {
-      const bs = Bld.size(b.key);
+      const bs = Bld.size(b);
       let seen = false;
       for (let vy = 0; vy < bs && !seen; vy++) for (let vx = 0; vx < bs; vx++)
         if (G.visibleAt(b.x + vx, b.y + vy)) { seen = true; break; }
@@ -2948,9 +2948,9 @@ const R = {
     }
     for (const b of S.buildings) {
       if (!G.visibleAt(b.x, b.y)) continue;
-      if (Bld.size(b.key) > 1) {
+      if (Bld.size(b) > 1) {
         g.fillStyle = b.owner === 'P' ? '#7ab4dc' : '#d98a80';
-        g.fillRect(b.x * 2 - 1, b.y * 2 - 1, Bld.size(b.key) * 2 + 2, Bld.size(b.key) * 2 + 2);
+        g.fillRect(b.x * 2 - 1, b.y * 2 - 1, Bld.size(b) * 2 + 2, Bld.size(b) * 2 + 2);
         continue;
       }
       g.fillStyle = b.owner === 'P' ? '#5ab4f0' : '#f0645a';

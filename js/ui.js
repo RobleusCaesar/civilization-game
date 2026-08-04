@@ -473,6 +473,48 @@ const UI = {
   // the tapped tile can't take the order, forgive a sliver of a miss — scan the
   // eight neighbouring tiles for one that can, and take the one whose edge sits
   // closest to the true tap point (within snapR of it).
+  /* CAN THIS TILE ACTUALLY BE WORKED — is it a live resource with somewhere to
+     stand? Asks Units.gatherEdge, the same question assignGather asks, so the
+     tap layer never promises an order the task layer refuses. */
+  gatherable(u, x, y) {
+    if (!MapGen.inB(x, y)) return false;
+    const i = MapGen.idx(x, y);
+    if (!S.map.explored[i]) return false;
+    if (!CFG.GATHER[S.map.terrain[i]] || !(S.map.resAmount[i] > 0)) return false;
+    return !!Units.gatherEdge(u, x, y);
+  },
+  /* …AND IF IT CANNOT, TAKE THE NEAREST TILE OF THE SAME STAND THAT CAN.
+
+     A thumb landing in the INTERIOR of a dense wood or crag hits a real
+     resource tile with no clear ground on any of its four sides — so the order
+     was refused outright and the player got a toast for tapping the middle of
+     a forest, which is exactly where a forest looks most like a forest. The
+     near-miss snap could not help: it only fires when the tile under the
+     finger is not a resource, and this one is.
+
+     So: same resource, within STAND_R, nearest wins. This can only ever fire
+     where the order would otherwise be REFUSED, so it cannot steal a tap that
+     already works — which is what keeps it clear of the tap contract's rule 3
+     (every snap gated by what the selection could actually do there). */
+  STAND_R: 2,
+  gatherFallback(u, x, y) {
+    const i = MapGen.idx(x, y);
+    const g = CFG.GATHER[S.map.terrain[i]];
+    if (!g) return null;
+    let best = null, bd = 1e9;
+    const R = this.STAND_R;
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      const nx = x + dx, ny = y + dy;
+      if (!MapGen.inB(nx, ny)) continue;
+      const ng = CFG.GATHER[S.map.terrain[MapGen.idx(nx, ny)]];
+      if (!ng || ng.res !== g.res) continue;          // the same stand, not a different crop
+      if (!this.gatherable(u, nx, ny)) continue;
+      const d = Math.hypot(dx, dy);
+      if (d < bd) { bd = d; best = { x: nx, y: ny }; }
+    }
+    return best;
+  },
+
   snapNear(wx, wy, okFn, snapR = 0.45) {
     const tx = Math.floor(wx), ty = Math.floor(wy);
     let best = null, bd = snapR;
@@ -636,7 +678,8 @@ const UI = {
         : this.snapNear(wx, wy, (x, y) => S.map.explored[MapGen.idx(x, y)] &&
             CFG.GATHER[S.map.terrain[MapGen.idx(x, y)]] && S.map.resAmount[MapGen.idx(x, y)] > 0, 0.42);
       if (rt) {
-        if (Units.assignGather(sel, rt.x, rt.y)) this.dispatchedWorker();
+        const wk = this.gatherable(sel, rt.x, rt.y) ? rt : this.gatherFallback(sel, rt.x, rt.y);
+        if (wk && Units.assignGather(sel, wk.x, wk.y)) this.dispatchedWorker();
         else this.toast('No clear ground to stand beside that resource', true);
         return;
       }
@@ -885,7 +928,11 @@ const UI = {
             : this.snapNear(wx, wy, (x, y) => S.map.explored[MapGen.idx(x, y)] &&
                 CFG.GATHER[S.map.terrain[MapGen.idx(x, y)]] && S.map.resAmount[MapGen.idx(x, y)] > 0);
           if (gt) {
-            if (Units.assignGather(sel, gt.x, gt.y)) { this.toast('Gathering ' + sel.task.res); this.dispatchedWorker(); }
+            // the finger may have landed in the INTERIOR of the stand, where
+            // there is nothing to stand on — take the nearest tile of the same
+            // stand that can be worked before refusing (see gatherFallback)
+            const wk = this.gatherable(sel, gt.x, gt.y) ? gt : this.gatherFallback(sel, gt.x, gt.y);
+            if (wk && Units.assignGather(sel, wk.x, wk.y)) { this.toast('Gathering ' + sel.task.res); this.dispatchedWorker(); }
             else this.toast('No clear ground to stand beside that resource', true);
             return;
           }
@@ -1771,9 +1818,9 @@ const UI = {
       this.iconInto(ic, Sprites.misc[b.key + 'Build1'] && iconStage < 3
         ? Sprites.misc[b.key + 'Build' + (iconStage + 1)]   // the building's bespoke stages
         : iconStage === 0
-          ? (Bld.size(b.key) >= 2 ? Sprites.misc.constructionBig1 : Sprites.misc.construction1)
+          ? (Bld.size(b) >= 2 ? Sprites.misc.constructionBig1 : Sprites.misc.construction1)
           : iconStage === 1
-            ? (Bld.size(b.key) >= 2 ? (b.level >= 3 ? Sprites.misc.constructionBig3 : Sprites.misc.constructionBig) : Sprites.misc.construction)
+            ? (Bld.size(b) >= 2 ? (b.level >= 3 ? Sprites.misc.constructionBig3 : Sprites.misc.constructionBig) : Sprites.misc.construction)
             // …and a camp shows the art of the people whose fire it is. Only
             // the camp is routed this way: R.bldSprite hands a wall or gate its
             // AUTO-TILED mask, which is the wrong picture for a panel icon.
@@ -1848,7 +1895,7 @@ const UI = {
           const n = S.garrison.length;
           if (!n) { this.toast('Nobody is sheltered inside', true); return; }
           for (const gv of S.garrison) {
-            const spot = MapGen.findNear(b2.x, b2.y + Bld.size(b2.key), 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: b2.x, y: b2.y + Bld.size(b2.key) };
+            const spot = MapGen.findNear(b2.x, b2.y + Bld.size(b2), 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: b2.x, y: b2.y + Bld.size(b2) };
             const v = Units.spawn('villager', 'P', spot.x, spot.y);
             v.hp = Math.min(gv.hp, v.maxhp);
           }
@@ -1860,7 +1907,7 @@ const UI = {
           let n = 0;
           for (const u of S.units)
             if (u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit) {
-              const spot = MapGen.findNear(b2.x, b2.y + Bld.size(b2.key) + 1, 3, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: b2.x, y: b2.y + Bld.size(b2.key) + 1 };
+              const spot = MapGen.findNear(b2.x, b2.y + Bld.size(b2) + 1, 3, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: b2.x, y: b2.y + Bld.size(b2) + 1 };
               Units.moveTo(u, spot.x, spot.y);
               n++;
             }

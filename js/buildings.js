@@ -36,7 +36,7 @@ const Bld = {
         b.raised ? 1 : (b.owner === 'P' ? 2 : 3);
       else if (this.solid(b.key)) {
         // every tile of the footprint, so the 2×2 Town Center is solid whole
-        const sz = this.size(b.key);
+        const sz = this.size(b);
         for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++)
           if (MapGen.inB(b.x + dx, b.y + dy)) this._block[MapGen.idx(b.x + dx, b.y + dy)] = 4;
       }
@@ -322,9 +322,41 @@ const Bld = {
   /* ---- footprints: b.x/b.y is the top-left tile; most buildings are 1×1,
      the Town Center claims size×size. All hit-testing, placement and
      distance math flows through these helpers. ---- */
-  size(key) { const d = this.def(key); return (d && d.size) || 1; },
-  cx(b) { return b.x + this.size(b.key) / 2; },       // footprint center (world units)
-  cy(b) { return b.y + this.size(b.key) / 2; },
+  /* FOOTPRINT — of a STANDING BUILDING, or of a key about to be placed.
+
+     Pass a building and you get the footprint it was RAISED with (`b.sz`);
+     pass a key and you get what a new one would claim today. The two are
+     normally the same and deliberately may not be: when the primary works grew
+     from 1×1 to 2×2, every barracks, range, stable, workshop, sappers' camp,
+     trading post, war camp and dock already standing in somebody's save was
+     placed on the old footprint, with neighbours packed tight against it. Had
+     they all silently claimed a second row and column on load, they would have
+     swallowed each other — a loaded town with buildings inside buildings, and
+     no way to tell which was meant to be there.
+
+     So an old building is GRANDFATHERED at the size it was built (loadJSON
+     stamps LEGACY_SIZE where `sz` is absent) and anything raised from now on
+     takes the current one. Non-destructive by construction: nothing moves,
+     nothing is deleted, and the town the player left is the town they get
+     back. The cost is cosmetic — an old save's barracks stays a small one
+     beside a new large one — and it heals as they rebuild.
+
+     Every INSTANCE call site passes the building, never `b.key`; that is the
+     whole discipline this rests on (tests/footprint.mjs pins it). */
+  size(k) {
+    if (k && typeof k === 'object') {
+      if (k.sz) return k.sz;
+      const d = this.def(k.key); return (d && d.size) || 1;
+    }
+    const d = this.def(k); return (d && d.size) || 1;
+  },
+  /* what each key claimed BEFORE the primary works grew — the footprint a
+     pre-migration save was written with. Only keys that differ need an entry;
+     everything absent was, and still is, 1×1. */
+  LEGACY_SIZE: { tc: 2, wonder: 3 },
+  legacySize(key) { return this.LEGACY_SIZE[key] || 1; },
+  cx(b) { return b.x + this.size(b) / 2; },       // footprint center (world units)
+  cy(b) { return b.y + this.size(b) / 2; },
   /* WORK-SITE STAGE (tests/build-stages.mjs): 0, 1 or 2 at exact 1/3
      intervals of the build (or upgrade) time — ground broken, the raising,
      the target standing in scaffold — until the finished building appears. */
@@ -336,9 +368,9 @@ const Bld = {
     const prog = Math.max(0, Math.min(0.9999, 1 - left / (total || 1)));
     return Math.min(2, Math.floor(prog * 3));
   },
-  reach(b) { return (this.size(b.key) - 1) * 0.5; },  // extra radius past the 1×1 norm
+  reach(b) { return (this.size(b) - 1) * 0.5; },  // extra radius past the 1×1 norm
   covers(b, x, y) {
-    const s = this.size(b.key);
+    const s = this.size(b);
     return x >= b.x && x < b.x + s && y >= b.y && y < b.y + s;
   },
   at(x, y) { return S.buildings.find(b => this.covers(b, x, y)); },
@@ -496,13 +528,28 @@ const Bld = {
   // pier needs a walkable shore tile beside it so villagers can build/repair it
   dockSiteOk(x, y, owner) {
     owner = owner || 'P';
-    if (!MapGen.onBoard(x, y))
-      return { ok: false, why: 'Too close to the map edge' };   // the outer ring is off-map black void
-    if (!MapGen.inB(x, y) || S.map.terrain[MapGen.idx(x, y)] !== T.WATER || this.at(x, y))
-      return { ok: false, why: 'Docks are built on open water' };
+    /* THE WHOLE QUAY HAS TO FLOAT (tests/footprint.mjs). A dock is a primary
+       work and stands on a 2×2 of open water now, so checking the anchor tile
+       alone would let three quarters of it sit on dry land or inside another
+       building. Derived from the def, never hard-coded: change the size and
+       this follows. */
+    const sz = this.size('dock');
+    for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) {
+      const px = x + dx, py = y + dy;
+      if (!MapGen.onBoard(px, py))
+        return { ok: false, why: 'Too close to the map edge' };   // the outer ring is off-map black void
+      if (!MapGen.inB(px, py) || S.map.terrain[MapGen.idx(px, py)] !== T.WATER || this.at(px, py))
+        return { ok: false, why: 'Docks are built on open water' };
+    }
+    // …and a walkable shore anywhere along the quay's edge, not just beside its
+    // anchor tile — a 2×2 dock may touch land on any of its eight flanks
     let shore = false;
-    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
-      if (MapGen.inB(x + ox, y + oy) && Path.passable(x + ox, y + oy, owner)) { shore = true; break; }
+    for (let dy = 0; dy < sz && !shore; dy++) for (let dx = 0; dx < sz && !shore; dx++)
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx + ox, ny = y + dy + oy;
+        if (nx >= x && nx < x + sz && ny >= y && ny < y + sz) continue;   // inside the quay itself
+        if (MapGen.inB(nx, ny) && Path.passable(nx, ny, owner)) { shore = true; break; }
+      }
     if (!shore) return { ok: false, why: 'Needs a walkable shore beside it' };
     // flood the water body up to the required size
     const seen = new Set([x + ',' + y]);
@@ -641,7 +688,14 @@ const Bld = {
       const seam = S.map.terrain[MapGen.idx(x, y)] === T.GOLDORE;
       if (d.onTerrain === T.GOLDORE && !seam)
         return { ok: false, why: 'A Gold Mine is sunk on a gold seam — go and find one' };
-      if (seam && d.onTerrain !== T.GOLDORE)
+      /* …and a PRIMARY WORK may not pave one over either. The mine is 1×1, so
+         its own anchor tile is the whole of it; a 2×2 barracks dropped one
+         tile off a seam would bury the map's rarest ground under a hut without
+         ever standing on it (tests/footprint.mjs). Whole footprint, both ways. */
+      let anySeam = false;
+      for (let dy = 0; dy < s && !anySeam; dy++) for (let dx = 0; dx < s; dx++)
+        if (S.map.terrain[MapGen.idx(x + dx, y + dy)] === T.GOLDORE) { anySeam = true; break; }
+      if (anySeam && d.onTerrain !== T.GOLDORE)
         return { ok: false, why: 'That is a gold seam — only a Gold Mine belongs there' };
       // …and every OTHER station stands on ground its own resource was worked
       // out of (tests/worked-ground.mjs). Owner-agnostic: the chief obeys it too.
@@ -742,6 +796,11 @@ const Bld = {
     const outpost = key !== 'warcamp' && this._isOutpostSite(owner, key, x, y);
     const b = {
       id: S.nextId++, key, owner, x, y, level: spec.level,
+      // THE FOOTPRINT IS STAMPED AT PLACEMENT, never re-read from the def (see
+      // Bld.size): a building keeps the ground it was raised on for its whole
+      // life, so growing a key later can never make somebody's standing town
+      // overlap itself. Rides in every save.
+      sz: this.size(key),
       // construction sites are fragile until finished
       hp: opts.instant ? spec.lv.hp : this.siteStartHp(spec.lv.hp),
       maxhp: spec.lv.hp,
@@ -1117,7 +1176,7 @@ const Bld = {
           const naval = !!CFG.UNITS[item.unit].naval;
           const spot = (naval
             ? MapGen.findNear(b.x, b.y, 3, (x, y) => Path.passable(x, y, b.owner, 'water') && !Bld.at(x, y))
-            : MapGen.findNear(b.x, b.y + Bld.size(b.key), 3, (x, y) => Path.passable(x, y) && !Bld.at(x, y)))
+            : MapGen.findNear(b.x, b.y + Bld.size(b), 3, (x, y) => Path.passable(x, y) && !Bld.at(x, y)))
             || { x: b.x, y: b.y + 1 };
           const nu = Units.spawn(item.unit, b.owner, spot.x, spot.y);
           if (b.owner === 'P') {
@@ -1228,7 +1287,7 @@ const Bld = {
   removeToRuin(b) {
     S.buildings.splice(S.buildings.indexOf(b), 1);
     this._block = null;
-    const sz = this.size(b.key);
+    const sz = this.size(b);
     for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) {
       const idx = MapGen.idx(b.x + dx, b.y + dy);
       if (S.map.terrain[idx] === T.WATER) {

@@ -396,7 +396,12 @@ const AI = {
     // …as far as its own work parties walk: a town whose near woods are bare
     // fells a stand out at the edge of its range, and the camp has to be
     // allowed to stand on THAT ground or the wood never comes home at all.
-    const rMax = stationKey ? Math.round(this.WORK_R * 2.4) : (P.walls ? 5 : 7);
+    /* …and a bigger building needs a bigger yard: the primary works are 2×2
+       now, so the ring they may settle in grows with the footprint, or a
+       walled town simply runs out of places a barracks fits and spills every
+       hall outside its own ring (tests/footprint.mjs). */
+    const rMax = stationKey ? Math.round(this.WORK_R * 2.4)
+      : (P.walls ? 5 : 7) + (Bld.size(key) - 1);
     const isWall = isFortKey;
     /* A SITE THE TOWN CANNOT REACH IS NOT A SITE. Every rival building rises
        under a villager's hammer, so a plot the villagers can't walk to is a
@@ -433,20 +438,53 @@ const AI = {
       if (shut < 2) return false;
       return this.wallWouldSeal(tc, x, y) || !!this.corkedGround(tc, { x, y });
     };
-    const free = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2 && offLine(x, y) &&
-      canWork(x, y) && !sealsTown(x, y) && !(!isFortKey && this.campGround(x, y)) &&
+    /* ONE TILE OF THE CLAMP IS NOT THE CLAMP (tests/footprint.mjs). Every rule
+       below used to be asked of the anchor tile alone, which was exactly right
+       while every building but the hall was 1×1. Now the primary works are
+       2×2, and asking only the anchor lets three quarters of a barracks sit on
+       the reserved wall ring, in a war band's yard, or on twice-burned ground.
+       So each clamp is asked of the WHOLE footprint. */
+    const FSZ = Bld.size(key);
+    const everyTile = (x, y, fn) => {
+      for (let dy = 0; dy < FSZ; dy++) for (let dx = 0; dx < FSZ; dx++)
+        if (!fn(x + dx, y + dy)) return false;
+      return true;
+    };
+    const freeTile = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2 &&
+      offLine(x, y) && !sealsTown(x, y) && !(!isFortKey && this.campGround(x, y)) &&
       // …and never onto ground that has already eaten two of our works. The
       // GALLERY is only a scoring penalty for an ordinary building (see
       // layout) — a town backed against an unreachable bank still has to be
       // built somewhere — but twice-burned ground is a hard refusal.
       !(!isFortKey && this.burnedGround(x, y)) &&
-      // …and a station only ever on the ground its own resource was taken from
-      Bld.stationGround(key, x, y).ok &&
       // …and never inside somebody else's town, whatever was worked out of it
       !(!isFortKey && Bld.foreignHome('A', x, y));
+    const free = (x, y) => everyTile(x, y, freeTile) &&
+      // …a station only ever on the ground its own resource was taken from.
+      // Anchor-only ON PURPOSE: every station is 1×1, and its `onWorked`
+      // terrain is a statement about the tile it stands on, not a 2×2 area.
+      Bld.stationGround(key, x, y).ok &&
+      // …and REACHABLE is a `some`, not an `every`: a builder has to be able to
+      // stand beside the works, not beside all four corners of them.
+      (() => { for (let dy = 0; dy < FSZ; dy++) for (let dx = 0; dx < FSZ; dx++)
+                 if (canWork(x + dx, y + dy)) return true;
+               return false; })();
     // how many of the 8 neighbours are already built on (crowding) — real buildings
     // want ELBOW ROOM so the town reads as a settlement, not a packed maze
-    const crowd = (x, y) => { let n = 0; for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) if (Bld.at(x + ox, y + oy)) n++; return n; };
+    /* CROWDING IS MEASURED ROUND THE WHOLE FOOTPRINT. Counting the anchor
+       tile's eight neighbours reads a 2×2 as if it were a 1×1 sitting in its
+       top-left corner — half the building's real frontage never gets looked
+       at, and the town packs tight on the side the scan cannot see. */
+    const crowd = (x, y) => {
+      const sz = Bld.size(key), seen = new Set();
+      let n = 0;
+      for (let dy = -1; dy <= sz; dy++) for (let dx = -1; dx <= sz; dx++) {
+        if (dx >= 0 && dx < sz && dy >= 0 && dy < sz) continue;   // inside our own plot
+        const b = Bld.at(x + dx, y + dy);
+        if (b && !seen.has(b.id)) { seen.add(b.id); n++; }         // count each neighbour ONCE
+      }
+      return n;
+    };
     const wetAdj = (x, y) => { for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + ox, ny = y + oy; if (MapGen.inB(nx, ny)) { const t = S.map.terrain[MapGen.idx(nx, ny)]; if (t === T.WATER || t === T.MOAT) return true; } } return false; };
     // spacing/dryness score for a normal building (walls exempt — they belong on the seam)
     const layout = (x, y, dx, dy) => {
@@ -899,7 +937,7 @@ const AI = {
     const fortAt = new Uint8Array(W * CFG.H);
     for (const b of S.buildings) {
       if (b.owner !== 'A' || !Bld.solid(b.key)) continue;
-      const sz = Bld.size(b.key);
+      const sz = Bld.size(b);
       for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++)
         if (MapGen.inB(b.x + dx, b.y + dy)) fortAt[MapGen.idx(b.x + dx, b.y + dy)] = 1;
     }
@@ -1351,7 +1389,7 @@ const AI = {
     const kb = S.ai.knownB, liveTL = new Set();
     for (const b of S.buildings) {
       if (b.owner !== 'P') continue;
-      const s = Bld.size(b.key), tl = MapGen.idx(b.x, b.y);
+      const s = Bld.size(b), tl = MapGen.idx(b.x, b.y);
       liveTL.add(tl);
       let visible = false;
       for (let dy = 0; dy < s && !visible; dy++) for (let dx = 0; dx < s; dx++)
@@ -3852,7 +3890,7 @@ const AI = {
       const put = Math.min(ai.res.food, 15);
       ai.res.food -= put; ai.purse = (ai.purse || 0) + put;
       if (ai.purse >= 50) {
-        const spot = MapGen.findNear(tc.x, tc.y + Bld.size(tc.key), 4, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+        const spot = MapGen.findNear(tc.x, tc.y + Bld.size(tc), 4, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
         if (spot) { ai.purse -= 50; Units.spawn('villager', 'A', spot.x, spot.y); }
       }
     } else if (ai.purse) { ai.res.food += ai.purse; ai.purse = 0; }   // workforce full — bank the change

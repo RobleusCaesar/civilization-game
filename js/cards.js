@@ -568,7 +568,7 @@ const Cards = {
     delete b.onBuild[bld.key];   // one-time
     const made = [];
     for (let i = 0; i < k.n; i++) {
-      const s = MapGen.findNear(bld.x, bld.y + Bld.size(bld.key), 4,
+      const s = MapGen.findNear(bld.x, bld.y + Bld.size(bld), 4,
         (x, y) => Path.passable(x, y, owner) && !Bld.at(x, y)) || { x: bld.x, y: bld.y + 1 };
       made.push(Units.spawn(k.kind, owner, s.x, s.y));
     }

@@ -448,9 +448,12 @@ const Units = {
   // stand on an OPEN tile beside the resource and work it — the wood/rock/
   // orchard tile itself is impassable now, so the villager harvests from the
   // edge (and felling it opens the ground). Returns false if it's fully walled.
-  assignGather(u, tx, ty) {
-    const g = CFG.GATHER[S.map.terrain[MapGen.idx(tx, ty)]];
-    if (!g) return false;
+  /* WHERE A GATHERER WOULD STAND to work this tile, or null if there is
+     nowhere. Split out of assignGather so the UI can ASK the question before
+     issuing an order that would only be refused (UI.gatherable) — the two must
+     never drift, or the tap layer starts promising work the task layer won't
+     take. */
+  gatherEdge(u, tx, ty) {
     let best = null, bd = 1e9;
     for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const x = tx + ox, y = ty + oy;
@@ -462,6 +465,13 @@ const Units = {
       const dd = Math.hypot(u.x - x, u.y - y) + (taken ? 100 : 0);
       if (dd < bd) { bd = dd; best = { x, y }; }
     }
+    return best;
+  },
+
+  assignGather(u, tx, ty) {
+    const g = CFG.GATHER[S.map.terrain[MapGen.idx(tx, ty)]];
+    if (!g) return false;
+    const best = this.gatherEdge(u, tx, ty);
     if (!best) return false;
     // stand at the NEAR edge of the chosen tile, hard up against the resource
     // (offset the resting point toward the node, but stay within the tile)
@@ -1491,7 +1501,7 @@ const Units = {
                   if (nb.owner !== u.owner || nb.construction <= 0 || Bld.hasWorker(nb)) continue;
                   const dd = Math.hypot(Bld.cx(nb) - u.x, Bld.cy(nb) - u.y);
                   if (dd >= 24) continue;   // guard the whole line, not the whole map
-                  const desc = { x: nb.x, y: nb.y, size: Bld.size(nb.key), diag: true, blocks: nb.key === 'wall', ref: nb };
+                  const desc = { x: nb.x, y: nb.y, size: Bld.size(nb), diag: true, blocks: nb.key === 'wall', ref: nb };
                   line.push(desc);
                   if (dd < 6) near.push(desc);
                 }
@@ -1820,14 +1830,14 @@ const Units = {
     if (!attacker) return;
     if (this.isVillager(u) && u.owner === 'P' && !this.villagerArmed()) {
       const tc = Bld.tcOf('P');
-      if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + Bld.size(tc.key)); }
+      if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + Bld.size(tc)); }
     } else if (this.isVillager(u) && u.owner === 'A') {
       // a townsfolk militiaman stands and fights (see Combat.acquire);
       // otherwise the rival's people run for their hall when struck
       if (u.militia) { u.tUnit = attacker.id; }
       else {
         const tc = Bld.tcOf('A');
-        if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + Bld.size(tc.key)); }
+        if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + Bld.size(tc)); }
       }
     } else if (this.isMilitary(u) || this.isWild(u) || this.isVillager(u) || this.isRaider(u)) {
       // ABSOLUTE FOCUS (tests/army-strategies.mjs): a strike-stance soldier
