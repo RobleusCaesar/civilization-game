@@ -37,6 +37,20 @@ window.ASSET_MANIFEST = {
       },
     },
     {
+      /* Town Center L2 — the timber longhouse (ART_PLAN.md 1.2 step 0):
+         thatched pitched roof, split-log + wattle walls, fieldstone footing,
+         woodpile. Same 256×256-kept, no-dw/dh convention as L1, and the same
+         "both tribes share one image" call — banners still don't arrive
+         until L3. R.SMOKE_AT.tc and R.CAMPFIRE_AT.tc both gained an lv:2
+         entry (js/render.js) since this roofline's ridge/dooryard sit in a
+         genuinely different spot than L1's cone. */
+      image: 'assets/tc-l2.png',
+      sprites: {
+        'building/tc/2':   { x: 0, y: 0, w: 256, h: 256 },
+        'building_a/tc/2': { x: 0, y: 0, w: 256, h: 256 },
+      },
+    },
+    {
       /* The dooryard campfire — split out of the hut master so a small prop
          can carry its own supersampled detail density instead of sharing the
          hut's downscale math (or being baked in at the hut's own resolution
@@ -101,6 +115,42 @@ window.ASSET_MANIFEST = {
     { image: 'assets/wall-l1-ns.png', sprites: { 'wall/1/5': { x: 0, y: 0, w: 128, h: 128 } } },
     { image: 'assets/gate-l1.png',    sprites: { 'building/gate/1': { x: 0, y: 0, w: 128, h: 128 }, 'gate/1/h': { x: 0, y: 0, w: 128, h: 128 } } },
     { image: 'assets/gate-l1-v.png',  sprites: { 'gate/1/v': { x: 0, y: 0, w: 128, h: 128 } } },
+
+    /* ===== LEVEL 2 BUILDING ART — ART_PLAN.md 1.2 =====
+       The settlement's first real buildings: timber-framed, split-log or
+       wattle-and-daub walls, a fieldstone footing course, tight thatch —
+       style-referenced against assets/tc-l2.png. Same 4×-master, no-dw/dh
+       convention as L1 (128 for 1×1, 256 for 2×2). Every key again shares
+       one image between `building`/`building_a` — barracks and warcamp are
+       the two whose L1 procedural art carried a faction-colored banner, and
+       that's still true here: the cloth is drawn procedurally over a POLE
+       position (R.BANNER_AT, now with an lv:2 entry for both, and a new
+       `R.BANNER_EXCLUSIVE` set so the L2 pole position REPLACES the L1 one
+       instead of drawing both at once — see js/render.js). */
+    { image: 'assets/house-l2.png',    sprites: { 'building/house/2':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/house/2':    { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/farm-l2.png',     sprites: { 'building/farm/2':     { x: 0, y: 0, w: 128, h: 128 }, 'building_a/farm/2':     { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/lumber-l2.png',   sprites: { 'building/lumber/2':   { x: 0, y: 0, w: 128, h: 128 }, 'building_a/lumber/2':   { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/quarry-l2.png',   sprites: { 'building/quarry/2':   { x: 0, y: 0, w: 128, h: 128 }, 'building_a/quarry/2':   { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/lodge-l2.png',    sprites: { 'building/lodge/2':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/lodge/2':    { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/tower-l2.png',    sprites: { 'building/tower/2':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/tower/2':    { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/barracks-l2.png', sprites: { 'building/barracks/2': { x: 0, y: 0, w: 256, h: 256 }, 'building_a/barracks/2': { x: 0, y: 0, w: 256, h: 256 } } },
+    { image: 'assets/range-l2.png',    sprites: { 'building/range/2':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/range/2':    { x: 0, y: 0, w: 256, h: 256 } } },
+    { image: 'assets/stable-l2.png',   sprites: { 'building/stable/2':   { x: 0, y: 0, w: 256, h: 256 }, 'building_a/stable/2':   { x: 0, y: 0, w: 256, h: 256 } } },
+    { image: 'assets/siege-l2.png',    sprites: { 'building/siege/2':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/siege/2':    { x: 0, y: 0, w: 256, h: 256 } } },
+    { image: 'assets/sapper-l2.png',   sprites: { 'building/sapper/2':   { x: 0, y: 0, w: 256, h: 256 }, 'building_a/sapper/2':   { x: 0, y: 0, w: 256, h: 256 } } },
+    { image: 'assets/trade-l2.png',    sprites: { 'building/trade/2':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/trade/2':    { x: 0, y: 0, w: 256, h: 256 } } },
+    { image: 'assets/warcamp-l2.png',  sprites: { 'building/warcamp/2':  { x: 0, y: 0, w: 256, h: 256 }, 'building_a/warcamp/2':  { x: 0, y: 0, w: 256, h: 256 } } },
+    { image: 'assets/dock-l2.png',     sprites: { 'building/dock/2':     { x: 0, y: 0, w: 256, h: 256 }, 'building_a/dock/2':     { x: 0, y: 0, w: 256, h: 256 } } },
+
+    /* WALL & GATE L2 — same partial-coverage call as L1 (ART_PLAN.md 1.1):
+       only the two straight wall masks (E-W=10, N-S=5) and both gate faces,
+       this time BOTH genuinely re-generated per-orientation rather than one
+       rotated copy of the other (the brief asked for it explicitly this
+       round). Corners/T-junctions stay on the procedural L2 art. */
+    { image: 'assets/wall-l2.png',    sprites: { 'building/wall/2': { x: 0, y: 0, w: 128, h: 128 }, 'wall/2/10': { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/wall-l2-ns.png', sprites: { 'wall/2/5': { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/gate-l2.png',    sprites: { 'building/gate/2': { x: 0, y: 0, w: 128, h: 128 }, 'gate/2/h': { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/gate-l2-v.png',  sprites: { 'gate/2/v': { x: 0, y: 0, w: 128, h: 128 } } },
 
     /* ORIGIN CARDS art goes here when it lands — one `ui/card/<cardKey>`
        entry per card (keys and art briefs: ASSET_SPEC.md). Until then the

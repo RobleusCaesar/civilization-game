@@ -1622,9 +1622,18 @@ const R = {
      c/32), so they scale with zoom and with the 2×2 hall for free. `lv` is
      the level the pole first appears at — ART.tierDress puts most banners at
      3, while the barracks and the war camp carry theirs from the start. */
+  // ART_PLAN.md 1.2: keys in here whose pole genuinely MOVES between levels
+  // (the art itself changed, not just the building growing around a fixed
+  // pole) — drawBanners picks the single highest-lv entry that qualifies,
+  // same "latest wins" rule as R.smokeAnchor, instead of drawing every
+  // entry at once (which is right for tc/gate: those really do grow a
+  // SECOND simultaneous pole at L3, on top of the first).
+  BANNER_EXCLUSIVE: new Set(['barracks', 'warcamp']),
   BANNER_AT: {
-    barracks: [{ x: 14.25 / 32, y: 4.4 / 32, w: 6 / 32, h: 7 / 32, lv: 1 }],   // the tallest yard post
-    warcamp:  [{ x: 19.1 / 32, y: 4.5 / 32, w: 4 / 32, h: 5 / 32, lv: 1, left: true }],  // the bare standard pole
+    barracks: [{ x: 14.25 / 32, y: 4.4 / 32, w: 6 / 32, h: 7 / 32, lv: 1 },   // the tallest yard post
+               { x: 13 / 32, y: 5.875 / 32, w: 6 / 32, h: 7 / 32, lv: 2 }],   // the L2 drill-hall's own roof ridge
+    warcamp:  [{ x: 19.1 / 32, y: 4.5 / 32, w: 4 / 32, h: 5 / 32, lv: 1, left: true },  // the bare standard pole
+               { x: 15.75 / 32, y: 3.625 / 32, w: 4 / 32, h: 5 / 32, lv: 2, left: true }],  // the L2 camp's own bare pole
     range:    [{ x: 14 / 16, y: 0, w: 3 / 16, h: 3 / 16, lv: 3 }],
     trade:    [{ x: 15 / 16, y: 0, w: 3 / 16, h: 3 / 16, lv: 3 }],
     sapper:   [{ x: 1 / 16, y: 0, w: 3 / 16, h: 3 / 16, lv: 3 }],
@@ -1646,8 +1655,13 @@ const R = {
     if (!set || b.construction > 0) return;                 // no colours over a work site
     const dye = (Sprites.tunicCol || {})[G.tunicOf(b.owner)] || { body: '#3f6d99', accent: '#2c4e70' };
     const now = performance.now() / 1000;
-    for (let s = 0; s < set.length; s++) {
-      const a = set[s];
+    // an exclusive set has ONE pole that moves as the art changes level —
+    // draw only the latest anchor that qualifies, not every one at once
+    const list = this.BANNER_EXCLUSIVE.has(b.key)
+      ? [this.smokeAnchor(this.BANNER_AT, b.key, b.level)].filter(Boolean)
+      : set;
+    for (let s = 0; s < list.length; s++) {
+      const a = list[s];
       if (b.level < a.lv) continue;                          // the pole isn't there yet
       const w = a.w * bw, h = a.h * bw, x0 = bx + a.x * bw, y0 = by + a.y * bw;
       const cols = Math.max(3, Math.round(w));
@@ -1675,15 +1689,33 @@ const R = {
      seeded per building so no two chimneys pulse together. Only finished
      buildings smoke (a work site has no hearth yet), and a building far gone
      in flames doesn't bother — its own fire is already the story. */
+  /* Each entry is a list of { lv, x, y } — the anchor takes effect from that
+     level UP, so a key with only an lv:1 entry keeps the same spot at every
+     level (the common case), while one whose roofline actually changes shape
+     between tiers (the hall: L1's cone vs L2's pitched ridge, a different
+     roof-hole position) can add an lv:2/3 entry without disturbing the rest.
+     smokeAnchor() picks the highest lv that is <= the building's own level. */
   SMOKE_AT: {
-    house:   { x: 13.9 / 32, y: 4.75 / 32 },  // the dome's own roof-hole
-    tc:      { x: 15.7 / 32, y: 3 / 32 },     // the hall's roof-hole / ridge
-    lodge:   { x: 17.6 / 32, y: 10.25 / 32 }, // the lean-to's own ridge
-    warcamp: { x: 9.7 / 32, y: 21.5 / 32 },   // the fire ring
-    trade:   { x: 8.75 / 32, y: 9.4 / 32 },   // beside the hanging pots
+    house:   [{ lv: 1, x: 13.9 / 32, y: 4.75 / 32 },     // the dome's own roof-hole
+               { lv: 2, x: 11.9 / 32, y: 3 / 32 }],      // the L2 cottage's own roof-hole
+    tc:      [{ lv: 1, x: 15.7 / 32, y: 3 / 32 },        // the L1 cone's roof-hole
+               { lv: 2, x: 15.7 / 32, y: 1.4 / 32 }],    // the L2 longhouse's own ridge
+    lodge:   [{ lv: 1, x: 17.6 / 32, y: 10.25 / 32 },   // the lean-to's own ridge
+               { lv: 2, x: 21.4 / 32, y: 2 / 32 }],      // the L2 lodge's own roof apex
+    warcamp: [{ lv: 1, x: 9.7 / 32, y: 21.5 / 32 },     // the fire ring
+               { lv: 2, x: 16 / 32, y: 25.6 / 32 }],     // the L2 camp's own fire ring
+    trade:   [{ lv: 1, x: 8.75 / 32, y: 9.4 / 32 },     // beside the hanging pots
+               { lv: 2, x: 21.1 / 32, y: 3.4 / 32 }],    // the L2 stall's own awning post
+  },
+  smokeAnchor(table, key, lv) {
+    const arr = table[key];
+    if (!arr) return null;
+    let best = null;
+    for (const a of arr) if (a.lv <= lv && (!best || a.lv > best.lv)) best = a;
+    return best;
   },
   drawHearthSmoke(g, b, bx, by, bw) {
-    const a = this.SMOKE_AT[b.key];
+    const a = this.smokeAnchor(this.SMOKE_AT, b.key, b.level);
     if (!a || b.construction > 0) return;
     if (Bld.burnPhase(b) >= 1) return;                       // it's on fire; that's smoke enough
     const now = performance.now() / 1000;
@@ -1719,10 +1751,11 @@ const R = {
      used to fake with three raw fillRects — cheap, and never fights the
      fine-grained flame already painted into the master. */
   CAMPFIRE_AT: {
-    tc: { x: 10.9 / 32, y: 29.4 / 32 },   // the dooryard, in front of the door
+    tc: [{ lv: 1, x: 10.9 / 32, y: 29.4 / 32 },   // the L1 dooryard, in front of the door
+         { lv: 2, x: 16 / 32, y: 31 / 32 }],      // the L2 longhouse's own dooryard, between its two doors
   },
   drawCampfire(g, b, bx, by, bw) {
-    const a = this.CAMPFIRE_AT[b.key];
+    const a = this.smokeAnchor(this.CAMPFIRE_AT, b.key, b.level);
     if (!a || b.construction > 0) return;
     const spr = Assets.resolve('misc/campfireTc');
     if (!spr) return;

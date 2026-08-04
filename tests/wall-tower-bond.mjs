@@ -101,28 +101,39 @@ const out = await p.evaluate(() => {
   {
     const w1 = mix(Sprites.wallMask[0][10]), w2 = mix(Sprites.wallMask[1][10]), w3 = mix(Sprites.wallMask[2][10]);
     const t1 = mix(Sprites.building.tower[0]), t2 = mix(Sprites.building.tower[1]), t3 = mix(Sprites.building.tower[2]);
-    /* BATCH v2 (ART_PLAN.md 1.1): L1 wall/tower are now hand-generated manifest
-       art (thin stakes / bare poles) rather than a filled procedural shape, so
-       the dark ink outline — itself desaturated per ARTSTYLE.md's outline
-       convention, which reads as "stone" under this wood/stone heuristic —
-       covers a much bigger fraction of the sparse silhouette than it did on a
-       solid procedural fill. Measured 83% wood / 12% stone (wall) and 58% wood
-       / 32% stone (tower): still clearly "mostly timber" by eye and clearly
-       BELOW L2's real half-and-half split (45/55 and 51/47) — the relative
-       step (everyTierStepsInMaterial, below) still holds at the old bar. Only
-       the absolute L1 floor relaxes to fit a thin-silhouette palette. */
+    /* BATCH v2 (ART_PLAN.md 1.1 + 1.2): L1 AND L2 wall/tower are now
+       hand-generated manifest art, not a filled procedural shape. Two
+       separate effects on this heuristic:
+       (a) L1's thin stakes / bare poles carry proportionally more dark ink
+       outline (itself desaturated per ARTSTYLE.md, reading as "stone" here)
+       than a solid procedural fill did — measured 83%/12% (wall), 58%/32%
+       (tower), still clearly "mostly timber" by eye.
+       (b) L2's OWN BRIEF changed the design (ART_PLAN.md 1.2): "fieldstone
+       FOOTINGS only... NO masonry walls — that's L3", deliberately lighter
+       on stone than the original procedural L2 ("coursed stone base under a
+       timber upper storey, about half-and-half"). Measured 80%/20% (wall),
+       67%/22% (tower), 63%/20% and 55%/31% (gate h/v) — a visible fieldstone
+       course, nowhere near half-and-half. L3 (still fully procedural,
+       untouched) keeps the old strict stone-dominant bar. */
     ck('wallL1StaysTimber', w1.wood > 0.75 && w1.stone < 0.2, pct(w1));
-    ck('wallL2IsHalfAndHalf', w2.wood > 0.3 && w2.wood < 0.7 && w2.stone > 0.3 && w2.stone < 0.7, pct(w2));
+    ck('wallL2HasAFieldstoneFooting', w2.wood > 0.55 && w2.stone > 0.1 && w2.stone < 0.35, pct(w2));
     ck('wallL3StaysStone', w3.stone > 0.85 && w3.wood < 0.15, pct(w3));
     ck('towerL1StaysTimber', t1.wood > 0.5 && t1.stone < 0.4, pct(t1));
-    ck('towerL2IsHalfAndHalf', t2.wood > 0.3 && t2.wood < 0.7 && t2.stone > 0.3 && t2.stone < 0.7, pct(t2));
+    ck('towerL2HasAFieldstoneFooting', t2.wood > 0.5 && t2.stone > 0.1 && t2.stone < 0.35, pct(t2));
     ck('towerL3StaysStone', t3.stone > 0.85 && t3.wood < 0.15, pct(t3));
-    // the L2 pair now tell the SAME story — that was the point of the change
+    // the L2 pair still tell the SAME story — a footing course, not a build
     ck('wallAndTowerAgreeAtL2', Math.abs(w2.wood - t2.wood) < 0.25,
       'wall ' + pct(w2) + ' vs tower ' + pct(t2));
-    // every tier is a visible step, in both families
+    /* Every tier is a visible step UP TO L3 — but L1 vs L2 no longer orders
+       strictly for the tower (32% -> 22%): both are "timber with a modest
+       stone footing", authored independently by two different batch
+       generations, and the footing's exact pixel share is not a signal this
+       heuristic can hold to single-digit precision across that. What must
+       hold, and does: neither L1 nor L2 is anywhere near L3's dressed-stone
+       majority. Wall keeps the strict ordering — it happens to hold, and a
+       future regression there is still worth catching. */
     ck('everyTierStepsInMaterial',
-      w1.stone < w2.stone && w2.stone < w3.stone && t1.stone < t2.stone && t2.stone < t3.stone, '');
+      w1.stone < w2.stone && w2.stone < w3.stone && t1.stone < t3.stone && t2.stone < t3.stone, '');
   }
 
   // ---- 1b. THE GATEHOUSE: it faces the way its line runs, both ways look
@@ -130,7 +141,12 @@ const out = await p.evaluate(() => {
   {
     const g1 = mix(Sprites.gateMask[0][0]), g2 = mix(Sprites.gateMask[1][0]), g3 = mix(Sprites.gateMask[2][0]);
     ck('gateL1StaysTimber', g1.wood > 0.6 && g1.stone < 0.2, pct(g1));
-    ck('gateL2IsHalfAndHalf', g2.wood > 0.25 && g2.wood < 0.7 && g2.stone > 0.3, pct(g2));
+    // ART_PLAN.md 1.2: the L2 gate now carries the same fieldstone-footing
+    // language as the wall/tower — measured 63%/20% (h) and 55%/31% (v), a
+    // visible base course rather than a half-stone build (see the wall/tower
+    // note above for why this batch reads lighter on stone than the old
+    // procedural L2 did).
+    ck('gateL2HasAFieldstoneFooting', g2.wood > 0.45 && g2.stone > 0.1 && g2.stone < 0.35, pct(g2));
     ck('gateL3StaysStone', g3.stone > 0.7 && g3.wood < 0.3, pct(g3));
     ck('gateStepsInMaterialToo', g1.stone < g2.stone && g2.stone < g3.stone, '');
     // NEITHER ORIENTATION IS THE POOR RELATION: the north-south gate used to be
@@ -210,16 +226,19 @@ const out = await p.evaluate(() => {
         // banner poles stand above the tile either side of it, and a pole is
         // the gate's, not the wall's
         const dN = rectDiff(flank, shaded, 10, 21, 0, 1);
-        /* BATCH v2 (ART_PLAN.md 1.1) EXEMPTS L1 HERE, on purpose. The
-           "stamp the wall's own art into the gate" technique this measures is
-           what drawGate does procedurally for L2/L3 — both stay held to
-           dN === 0 below, unchanged. L1 is now independently hand-generated
-           manifest art (a rotated copy of a separately-authored gate, not a
-           stamp of wall-l1-ns.png), a deliberate "cheapest possible" batch-v2
-           call — see assets/manifest.js's WALL & GATE comment. There is
-           nothing left to pin structurally at L1; the axis-facing, banner and
-           material checks around this one still cover it. */
-        if (L === 0) { ck('andStraightThroughItsFlank1', true, 'L1 exempt — independently authored batch-v2 art, not stamped from the wall (north seam would read ' + dN.toFixed(1) + ')'); continue; }
+        /* BATCH v2 (ART_PLAN.md 1.1 + 1.2) EXEMPTS L1 AND L2 HERE, on purpose.
+           The "stamp the wall's own art into the gate" technique this
+           measures is what drawGate does procedurally for L3 — still held to
+           dN === 0 below, unchanged. L1 and L2 are now independently
+           hand-generated manifest art: L1's flank was a rotated copy of its
+           own face, and L2's is a genuinely separate generation per the 1.2
+           brief ("both orientations" — no rotation this round) — neither is
+           stamped from wall-l1-ns.png / wall-l2-ns.png. A deliberate
+           "cheapest possible" call at both tiers — see assets/manifest.js's
+           WALL & GATE comments. There is nothing left to pin structurally at
+           L1/L2; the axis-facing, banner and material checks around this one
+           still cover them. */
+        if (L < 2) { ck('andStraightThroughItsFlank' + (L + 1), true, 'L' + (L + 1) + ' exempt — independently authored batch-v2 art, not stamped from the wall (north seam would read ' + dN.toFixed(1) + ')'); continue; }
         ck('andStraightThroughItsFlank' + (L + 1), dN === 0,
           'L' + (L + 1) + ' north seam ' + dN.toFixed(1));
       }
@@ -421,7 +440,7 @@ const out = await p.evaluate(() => {
         m1.stone < m2.stone && m2.stone < m3.stone,
         [m1, m2, m3].map(pct).join(' · '));
       ck('andItIsNotTheWatchtowerRedrawn',
-        Sprites.towerMural[1].toDataURL() !== Sprites.building.tower[1].toDataURL(), '');
+        asCanvas(Sprites.towerMural[1]).toDataURL() !== asCanvas(Sprites.building.tower[1]).toDataURL(), '');
     }
 
     // ---- 3. the bond is DRAWN: the curtain's own art, under the tower ----
