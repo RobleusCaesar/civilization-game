@@ -1705,6 +1705,36 @@ const R = {
     g.globalAlpha = 1;
   },
 
+  /* ---- THE DOORYARD CAMPFIRE ----
+     A standalone sprite (assets/tc-l1-fire.png, manifest key misc/campfireTc),
+     composited here rather than baked into the hut master — the hut and the
+     fire can now each carry their own supersampled detail density without
+     one dragging the other's downscale math along. CAMPFIRE_AT is measured
+     against the ACTUAL art (the old baked-in position, 0.78/1.64 tile units,
+     was tuned for a composition this hut replaced and had drifted loose of
+     the stone ring — the floating-glyph bug). blitBld, not Assets.drawSprite,
+     because this master is supersampled exactly like the hut's and needs the
+     same smoothing-on-downscale treatment or it shimmers as the camera moves.
+     A light scale/alpha pulse stands in for the flicker the old baked flame
+     used to fake with three raw fillRects — cheap, and never fights the
+     fine-grained flame already painted into the master. */
+  CAMPFIRE_AT: {
+    tc: { x: 15.5 / 32, y: 25.5 / 32 },   // the stone ring's own centre
+  },
+  drawCampfire(g, b, bx, by, bw) {
+    const a = this.CAMPFIRE_AT[b.key];
+    if (!a || b.construction > 0) return;
+    const spr = Assets.resolve('misc/campfireTc');
+    if (!spr) return;
+    const now = performance.now() / 1000;
+    const pulse = 1 + Math.sin(now * 5.3 + b.id) * 0.035;       // a slow flicker breathing
+    const w = bw * 0.24 * pulse, h = w * (spr.height / spr.width);
+    const ox = bx + a.x * bw - w / 2, oy = by + a.y * bw - h / 2;
+    g.globalAlpha = 0.94 + Math.sin(now * 9.1 + b.id * 3) * 0.06;
+    this.blitBld(g, spr, ox, oy, w, h);
+    g.globalAlpha = 1;
+  },
+
   drawBurn(g, b, bx, by, bw) {
     const ph = Bld.burnPhase(b);
     if (ph < 0) return;
@@ -2118,15 +2148,7 @@ const R = {
         g.fillStyle = b.owner === 'P' ? '#4a90c2' : b.owner === 'R' ? '#6e5b40' : '#c2564a';
         if (!fort) g.fillRect(bx + 1, by + 1, 4, 4);
         else if (b.owner !== 'P') g.fillRect(bx + bw / 2 - 1.5, by + bw / 2 - 1.5, 3, 3);
-        if (b.key === 'tc' && b.level === 1) {
-          // the camp's heart: a small live flame flickering over the baked embers
-          const F = ART.PALETTE.fire;
-          const fx2 = bx + 0.78 * TL, fy2 = by + 1.64 * TL;
-          const ph = ((performance.now() / 150) | 0) % 2;
-          g.fillStyle = F[2]; g.fillRect(fx2 - 2, fy2 - 2 - ph, 4, 2 + ph);
-          g.fillStyle = F[3]; g.fillRect(fx2 - 1, fy2 - 4 - ph, 2, 3);
-          g.fillStyle = F[1]; g.fillRect(fx2 + (ph ? 1 : -2), fy2 - 5, 1, 2);
-        }
+        this.drawCampfire(g, b, bx, by, bw);
       }
       this.drawBanners(g, b, bx, by, bw);      // cloth flies in the tribe's own dye
       this.drawHearthSmoke(g, b, bx, by, bw);  // and the hearths breathe
@@ -2378,9 +2400,11 @@ const R = {
           // the L1 roundhouse hearth is the fire pit in the dooryard — a very
           // faint wisp curls up from it; every other hearth smokes from the roof
           const pit = b.key === 'tc' && b.level === 1;
-          // the grand hall's hearth is the dooryard campfire (2x2 footprint)
-          this.smoke.push({ x: b.x + (pit ? 0.78 : 0.5) + (Math.random() - 0.5) * 0.12,
-                            y: b.y + (pit ? 1.62 : 0.18),
+          // the campfire's own anchor (R.CAMPFIRE_AT.tc), in tile units rather
+          // than bw-fraction — the smoke must rise from the SAME stone ring
+          // the sprite actually draws, not the composition it replaced
+          this.smoke.push({ x: b.x + (pit ? 0.969 : 0.5) + (Math.random() - 0.5) * 0.12,
+                            y: b.y + (pit ? 1.594 : 0.18),
                             t: 0, ttl: (pit ? 1.6 : 2) + Math.random() * 1.2,
                             a: pit ? 0.15 : 0.30 });
           if (this.smoke.length >= 36) break;

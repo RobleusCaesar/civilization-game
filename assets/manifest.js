@@ -36,6 +36,18 @@ window.ASSET_MANIFEST = {
         'building_a/tc/1': { x: 0, y: 0, w: 256, h: 256 },
       },
     },
+    {
+      /* The dooryard campfire — split out of the hut master so a small prop
+         can carry its own supersampled detail density instead of sharing the
+         hut's downscale math (or being baked in at the hut's own resolution
+         and looking soft/blocky next to it). Composited by R.drawCampfire at
+         R.CAMPFIRE_AT.tc, same blitBld smoothing-on-downscale treatment as
+         the hut. No dw/dh for the same reason the hut has none. */
+      image: 'assets/tc-l1-fire.png',
+      sprites: {
+        'misc/campfireTc': { x: 0, y: 0, w: 180, h: 160 },
+      },
+    },
     /* ORIGIN CARDS art goes here when it lands — one `ui/card/<cardKey>`
        entry per card (keys and art briefs: ASSET_SPEC.md). Until then the
        draft screen draws placeholder motifs procedurally (Cards.drawMotif). */

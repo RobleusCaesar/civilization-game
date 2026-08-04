@@ -5438,6 +5438,22 @@ const Sprites = {
     }),
   ];
 
+  // TC L1 CAMPFIRE — a standalone stone-ring + flame prop, composited by
+  // render.js at R.CAMPFIRE_AT.tc rather than baked into the hut art, so a
+  // real PixelLab master (assets/tc-l1-fire.png) can carry its own detail
+  // density and be swapped without dragging the hut's own art along with it.
+  // Procedural fallback only, per the zero-image-files rule — the manifest's
+  // master is what actually ships.
+  Sprites.misc.campfireTc = ART.outline(tileB(p => {
+    const q = p.hi, ST = AP.stone, F = AP.fire, INK = AP.ink;
+    ART.dropShadow(p, 8, 13, 7);
+    const stones = [[3, 6], [7, 4], [12, 4], [16, 6], [18, 10], [16, 14], [12, 16], [7, 16], [3, 14], [1, 10]];
+    for (const [sx, sy] of stones) { q(sx, sy, 3, 3, ST[1]); q(sx, sy, 3, 1, ST[2]); q(sx + 2, sy + 2, 1, 1, ST[0]); }
+    q(7, 9, 6, 4, INK[1]); q(7, 9, 6, 1, INK[2]);                          // banked embers
+    q(8, 6, 4, 5, F[0]); q(9, 4, 2, 3, F[1]); q(9, 2, 1, 2, F[2]);         // the flame's core and tip
+    q(7, 7, 1, 2, F[1]); q(12, 7, 1, 2, F[1]);                            // side licks
+  }), 1);
+
   // HI-RES beasts (64px / 32-grid, 2× the old density) — a proper quadruped
   // silhouette with a 3-shade body, a distinct head + muzzle, four animated
   // legs (near pair in front, far pair behind & darker), and per-species
