@@ -1623,8 +1623,8 @@ const R = {
      the level the pole first appears at — ART.tierDress puts most banners at
      3, while the barracks and the war camp carry theirs from the start. */
   BANNER_AT: {
-    barracks: [{ x: 4 / 32, y: 2 / 32, w: 6 / 32, h: 7 / 32, lv: 1 }],
-    warcamp:  [{ x: 21 / 32, y: 9 / 32, w: 4 / 32, h: 5 / 32, lv: 1, left: true }],
+    barracks: [{ x: 14.25 / 32, y: 4.4 / 32, w: 6 / 32, h: 7 / 32, lv: 1 }],   // the tallest yard post
+    warcamp:  [{ x: 19.1 / 32, y: 4.5 / 32, w: 4 / 32, h: 5 / 32, lv: 1, left: true }],  // the bare standard pole
     range:    [{ x: 14 / 16, y: 0, w: 3 / 16, h: 3 / 16, lv: 3 }],
     trade:    [{ x: 15 / 16, y: 0, w: 3 / 16, h: 3 / 16, lv: 3 }],
     sapper:   [{ x: 1 / 16, y: 0, w: 3 / 16, h: 3 / 16, lv: 3 }],
@@ -1676,11 +1676,11 @@ const R = {
      buildings smoke (a work site has no hearth yet), and a building far gone
      in flames doesn't bother — its own fire is already the story. */
   SMOKE_AT: {
-    house:   { x: 21.5 / 32, y: 3 / 32 },     // the chimney pot
+    house:   { x: 13.9 / 32, y: 4.75 / 32 },  // the dome's own roof-hole
     tc:      { x: 15.7 / 32, y: 3 / 32 },     // the hall's roof-hole / ridge
-    lodge:   { x: 12 / 32, y: 7 / 32 },       // the smoking rack's fire
-    warcamp: { x: 15.5 / 32, y: 9 / 32 },     // the campfire under the ridge pole
-    trade:   { x: 3 / 16, y: 1 / 16 },        // the trader's brazier
+    lodge:   { x: 17.6 / 32, y: 10.25 / 32 }, // the lean-to's own ridge
+    warcamp: { x: 9.7 / 32, y: 21.5 / 32 },   // the fire ring
+    trade:   { x: 8.75 / 32, y: 9.4 / 32 },   // beside the hanging pots
   },
   drawHearthSmoke(g, b, bx, by, bw) {
     const a = this.SMOKE_AT[b.key];
