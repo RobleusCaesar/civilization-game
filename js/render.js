@@ -1677,7 +1677,7 @@ const R = {
      in flames doesn't bother — its own fire is already the story. */
   SMOKE_AT: {
     house:   { x: 21.5 / 32, y: 3 / 32 },     // the chimney pot
-    tc:      { x: 15.5 / 32, y: 1 / 32 },     // the hall's roof-hole / ridge
+    tc:      { x: 15.7 / 32, y: 3 / 32 },     // the hall's roof-hole / ridge
     lodge:   { x: 12 / 32, y: 7 / 32 },       // the smoking rack's fire
     warcamp: { x: 15.5 / 32, y: 9 / 32 },     // the campfire under the ridge pole
     trade:   { x: 3 / 16, y: 1 / 16 },        // the trader's brazier
@@ -1719,7 +1719,7 @@ const R = {
      used to fake with three raw fillRects — cheap, and never fights the
      fine-grained flame already painted into the master. */
   CAMPFIRE_AT: {
-    tc: { x: 15.5 / 32, y: 25.5 / 32 },   // the stone ring's own centre
+    tc: { x: 10.9 / 32, y: 29.4 / 32 },   // the dooryard, in front of the door
   },
   drawCampfire(g, b, bx, by, bw) {
     const a = this.CAMPFIRE_AT[b.key];
