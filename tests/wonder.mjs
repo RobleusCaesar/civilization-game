@@ -56,11 +56,7 @@ let pw;
 try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-// ART_PLAN.md 1.3: Sprites.wonders[key] is now manifest-loaded (ImageBitmap)
-// for all ten monuments, not a procedural <canvas> — reading pixels back off
-// one taints an unflagged canvas under file:// (ASSET_SPEC.md; the same fix
-// wall-tower-bond.mjs already carries).
-const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] });
+const b = await pw.chromium.launch();
 const p = await b.newPage({ viewport: { width: 430, height: 880 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
@@ -74,18 +70,7 @@ await p.evaluate(() => {
     window.__res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : '');
     if (!ok) window.__fails.push(n);
   };
-  // ART_PLAN.md 1.3: Sprites.wonders[key] may now be a manifest-loaded
-  // ImageBitmap (no .getContext/.toDataURL) rather than a procedural
-  // <canvas> — normalize once at the boundary, same pattern as
-  // tests/wall-tower-bond.mjs's asCanvas.
-  window.asCanvas = (c) => {
-    if (c && c.getContext) return c;
-    const t = document.createElement('canvas'); t.width = c.width; t.height = c.height;
-    t.getContext('2d').drawImage(c, 0, 0);
-    return t;
-  };
   window.px = (c) => {
-    c = window.asCanvas(c);
     const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
     let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) n++; return n;
   };
@@ -101,7 +86,7 @@ await p.evaluate(() => {
 });
 
 await p.evaluate(() => {
-  const ck = window.ck, px = window.px, asCanvas = window.asCanvas;
+  const ck = window.ck, px = window.px;
 
   // ---- 1. the ten, and the seeded roll ----
   {
@@ -116,7 +101,7 @@ await p.evaluate(() => {
       CFG.WONDERS.every(w => px(Sprites.wonders[w.key]) > 192 * 192 * 0.06),
       'each fills a real part of its 3×3 plot');
     ck('noTwoAlike',
-      new Set(CFG.WONDERS.map(w => asCanvas(Sprites.wonders[w.key]).toDataURL())).size === 10, '');
+      new Set(CFG.WONDERS.map(w => Sprites.wonders[w.key].toDataURL())).size === 10, '');
     // the roll is stable per seed, spreads across the ten, and — crucially —
     // does not touch the run's RNG
     const a = G.rollWonder('alpha').key, a2 = G.rollWonder('alpha').key;

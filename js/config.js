@@ -189,10 +189,6 @@ const CFG = {
        instead (`onHunted`, S.map.hunted). See Bld.stationGround. */
     farm: {
       name: 'Farm', desc: 'Steady food while a villager works it. Thrives beside fertile soil.', needsWorker: true,
-      // L2 art gave this plot a real structure standing on it — the crew now
-      // works from an open tile at its edge instead of the plot tile itself,
-      // same pattern as Units.gatherEdge. See Units.plotEdge.
-      workAdjacent: true,
       near: { terrain: T.FERTILE, mult: 1.5, radius: 1 },
       onWorked: T.BARREN,
       whyGround: 'Nothing has ever grown here and nothing plans to start. A farm goes on soil already picked bare — an orchard or a berry patch your people have harvested out.',
@@ -204,7 +200,6 @@ const CFG = {
     },
     lodge: {
       name: "Hunter's Lodge", desc: 'Food per worker (up to 2). Build near forest.', needsWorker: true,
-      workAdjacent: true,   // stand at the plot's edge — see Units.plotEdge
       maxWorkers: 2,
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
       onHunted: true,
@@ -221,7 +216,6 @@ const CFG = {
        map starved of one resource always leaves a road back to it. */
     lumber: {
       name: 'Lumber Camp', desc: 'Wood per worker (up to 2). Build near forest.', needsWorker: true,
-      workAdjacent: true,   // stand at the plot's edge — see Units.plotEdge
       maxWorkers: 2,
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
       onWorked: T.STUMPS,
@@ -234,7 +228,6 @@ const CFG = {
     },
     quarry: {
       name: 'Quarry', desc: 'Stone per worker (up to 2). Build near hills.', needsWorker: true,
-      workAdjacent: true,   // stand at the plot's edge — see Units.plotEdge
       maxWorkers: 2,
       near: { terrain: T.HILLS, mult: 1.5, radius: 2 },
       onWorked: T.PEBBLES,

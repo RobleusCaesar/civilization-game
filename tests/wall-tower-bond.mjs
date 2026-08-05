@@ -56,11 +56,7 @@ let pw;
 try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-// BATCH v2 (ART_PLAN.md 1.1): L1 wall/gate art is now a manifest-loaded PNG,
-// not a purely procedural canvas — file:// treats each loaded image as its
-// own origin, so drawing one into a canvas and reading it back (asCanvas)
-// taints the canvas unless file access across file:// origins is allowed.
-const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] });
+const b = await pw.chromium.launch();
 const p = await b.newPage({ viewport: { width: 430, height: 880 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
@@ -71,19 +67,8 @@ const out = await p.evaluate(() => {
   const res = {}, fails = [];
   const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
 
-  // BATCH v2 (ART_PLAN.md 1.1): L1 wall/gate straight-run + face art is now
-  // manifest-loaded (ImageBitmap), not a procedural <canvas> — every helper
-  // here that reads pixels needs a real canvas, so normalize once at the
-  // boundary rather than assuming every Sprites.* entry is still baked.
-  const asCanvas = (c) => {
-    if (c && c.getContext) return c;
-    const t = document.createElement('canvas'); t.width = c.width; t.height = c.height;
-    t.getContext('2d').drawImage(c, 0, 0);
-    return t;
-  };
   // warm brown = timber, neutral grey = masonry
   const mix = (c) => {
-    c = asCanvas(c);
     const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
     let wood = 0, stone = 0, n = 0;
     for (let i = 0; i < d.length; i += 4) {
@@ -101,58 +86,18 @@ const out = await p.evaluate(() => {
   {
     const w1 = mix(Sprites.wallMask[0][10]), w2 = mix(Sprites.wallMask[1][10]), w3 = mix(Sprites.wallMask[2][10]);
     const t1 = mix(Sprites.building.tower[0]), t2 = mix(Sprites.building.tower[1]), t3 = mix(Sprites.building.tower[2]);
-    /* BATCH v2 (ART_PLAN.md 1.1 + 1.2): L1 AND L2 wall/tower are now
-       hand-generated manifest art, not a filled procedural shape. Two
-       separate effects on this heuristic:
-       (a) L1's thin stakes / bare poles carry proportionally more dark ink
-       outline (itself desaturated per ARTSTYLE.md, reading as "stone" here)
-       than a solid procedural fill did — measured 83%/12% (wall), 58%/32%
-       (tower), still clearly "mostly timber" by eye.
-       (b) L2's OWN BRIEF changed the design (ART_PLAN.md 1.2): "fieldstone
-       FOOTINGS only... NO masonry walls — that's L3", deliberately lighter
-       on stone than the original procedural L2 ("coursed stone base under a
-       timber upper storey, about half-and-half"). Measured 80%/20% (wall),
-       67%/22% (tower), 63%/20% and 55%/31% (gate h/v) — a visible fieldstone
-       course, nowhere near half-and-half.
-
-       L3 (ART_PLAN.md 1.3, "the age of stone mastery") is ALSO now
-       hand-generated manifest art — drystone (flat undressed fieldstones in
-       visible courses, no mortar, no dressed masonry) rather than the old
-       procedural "dressed stone, gold-crested" look. The WALL reads even
-       more stone-dominant than before by this heuristic (77% vs the old
-       procedural bar of 85% — undressed rock's warm shadow tone trips the
-       R-B>26 "wood" test on a slice of pixels a flat grey fill never did;
-       still unmistakably "wall of stone" by eye). The TOWER does not: it is
-       a stone SHAFT under a genuinely timber lookout cabin — thatched roof,
-       plank walls, a ladder — which is architecturally correct (a real
-       watchtower's crow's-nest is built light, in wood, same as its L1/L2
-       forebears) but reads as mixed rather than stone-dominant by a flat
-       pixel-color heuristic, and its more generous grass/prop padding (a
-       barrel, tufts) dilutes both the wood and stone shares against L1's
-       tightly-cropped composition — see everyTierStepsInMaterial below. */
-    ck('wallL1StaysTimber', w1.wood > 0.75 && w1.stone < 0.2, pct(w1));
-    ck('wallL2HasAFieldstoneFooting', w2.wood > 0.55 && w2.stone > 0.1 && w2.stone < 0.35, pct(w2));
-    ck('wallL3StaysStone', w3.stone > 0.7 && w3.wood < 0.3, pct(w3));
-    ck('towerL1StaysTimber', t1.wood > 0.5 && t1.stone < 0.4, pct(t1));
-    ck('towerL2HasAFieldstoneFooting', t2.wood > 0.5 && t2.stone > 0.1 && t2.stone < 0.35, pct(t2));
-    // a real stone base under a timber lookout — see the note above; the
-    // shaft is unmistakably there (stone > 0), the cabin keeps wood the
-    // larger share of what the heuristic can actually classify
-    ck('towerL3HasAStoneShaft', t3.stone > 0.1 && t3.wood < 0.6, pct(t3));
-    // the L2 pair still tell the SAME story — a footing course, not a build
+    ck('wallL1StaysTimber', w1.wood > 0.85 && w1.stone < 0.1, pct(w1));
+    ck('wallL2IsHalfAndHalf', w2.wood > 0.3 && w2.wood < 0.7 && w2.stone > 0.3 && w2.stone < 0.7, pct(w2));
+    ck('wallL3StaysStone', w3.stone > 0.85 && w3.wood < 0.15, pct(w3));
+    ck('towerL1StaysTimber', t1.wood > 0.6, pct(t1));
+    ck('towerL2IsHalfAndHalf', t2.wood > 0.3 && t2.wood < 0.7 && t2.stone > 0.3 && t2.stone < 0.7, pct(t2));
+    ck('towerL3StaysStone', t3.stone > 0.85 && t3.wood < 0.15, pct(t3));
+    // the L2 pair now tell the SAME story — that was the point of the change
     ck('wallAndTowerAgreeAtL2', Math.abs(w2.wood - t2.wood) < 0.25,
       'wall ' + pct(w2) + ' vs tower ' + pct(t2));
-    /* Every tier is a visible step UP TO L3 for the WALL — L1 vs L2 no
-       longer orders strictly for the tower (32% -> 22%), both "timber with
-       a modest stone footing" authored independently and not a signal this
-       heuristic can hold to single-digit precision across batches. The
-       tower's L1-vs-L3 ordering ALSO no longer holds (32% -> 16%): L3's
-       lookout cabin genuinely reads as more wood-dominant by this flat
-       heuristic than L1's simple platform did, for the architectural reason
-       above, not a regression — see towerL3HasAStoneShaft. Wall keeps the
-       strict ordering — it happens to hold, and a future regression there
-       is still worth catching. */
-    ck('everyTierStepsInMaterial', w1.stone < w2.stone && w2.stone < w3.stone, '');
+    // every tier is a visible step, in both families
+    ck('everyTierStepsInMaterial',
+      w1.stone < w2.stone && w2.stone < w3.stone && t1.stone < t2.stone && t2.stone < t3.stone, '');
   }
 
   // ---- 1b. THE GATEHOUSE: it faces the way its line runs, both ways look
@@ -160,37 +105,17 @@ const out = await p.evaluate(() => {
   {
     const g1 = mix(Sprites.gateMask[0][0]), g2 = mix(Sprites.gateMask[1][0]), g3 = mix(Sprites.gateMask[2][0]);
     ck('gateL1StaysTimber', g1.wood > 0.6 && g1.stone < 0.2, pct(g1));
-    // ART_PLAN.md 1.2: the L2 gate now carries the same fieldstone-footing
-    // language as the wall/tower — measured 63%/20% (h) and 55%/31% (v), a
-    // visible base course rather than a half-stone build (see the wall/tower
-    // note above for why this batch reads lighter on stone than the old
-    // procedural L2 did).
-    ck('gateL2HasAFieldstoneFooting', g2.wood > 0.45 && g2.stone > 0.1 && g2.stone < 0.35, pct(g2));
-    /* ART_PLAN.md 1.3's L3 gate is a deliberate style departure from the old
-       procedural gatehouse (turrets, machicolation, portcullis) AND from
-       L1/L2's timber posts: a megalithic drystone trilithon — two undressed
-       stone posts, ONE timber lintel, a timber door — matching the wall/
-       tower's move away from dressed masonry. Genuine, substantial timber
-       stays in frame (lintel + door), so it reads roughly half-and-half
-       (measured 40%/41%) rather than the old dressed-stone majority — still
-       a clear step up in stone from L2's fieldstone footing. */
-    ck('gateL3StaysStone', g3.stone > 0.35 && g3.wood < 0.5, pct(g3));
+    ck('gateL2IsHalfAndHalf', g2.wood > 0.25 && g2.wood < 0.7 && g2.stone > 0.3, pct(g2));
+    ck('gateL3StaysStone', g3.stone > 0.7 && g3.wood < 0.3, pct(g3));
     ck('gateStepsInMaterialToo', g1.stone < g2.stone && g2.stone < g3.stone, '');
     // NEITHER ORIENTATION IS THE POOR RELATION: the north-south gate used to be
     // a plain grey waist with no art in it at all. Both are now fully drawn, in
     // the same materials — and they are not the same image.
     for (let L = 0; L < 3; L++) {
-      const h = asCanvas(Sprites.gateMask[L][0]), v = asCanvas(Sprites.gateMask[L][1]);
+      const h = Sprites.gateMask[L][0], v = Sprites.gateMask[L][1];
       const mh = mix(h), mv = mix(v);
-      /* L3's flank view foreshortens the diagonal timber lintel (less of it
-         is visible face-on) while the two stone posts still fill most of the
-         frame, so the flank genuinely reads more stone-heavy than the face
-         (measured 41%/74% stone) — a real compositional effect of a
-         trilithon seen edge-on, not a mismatched build. L1/L2 stay on the
-         tighter bound; they were never diagonal in the first place. */
-      const tol = L === 2 ? 0.35 : 0.12;
       ck('bothGatesAreBuilt' + (L + 1),
-        h.toDataURL() !== v.toDataURL() && Math.abs(mh.wood - mv.wood) < tol && Math.abs(mh.stone - mv.stone) < tol,
+        h.toDataURL() !== v.toDataURL() && Math.abs(mh.wood - mv.wood) < 0.12 && Math.abs(mh.stone - mv.stone) < 0.12,
         'L' + (L + 1) + ' east-west ' + pct(mh) + ' · north-south ' + pct(mv));
     }
     // and it tells the SAME half-and-half story as the curtain it stands in
@@ -226,25 +151,16 @@ const out = await p.evaluate(() => {
       };
       const EW = 2 | 8, NS = 1 | 4;
       for (let L = 0; L < 3; L++) {
-        const face = asCanvas(Sprites.gateMask[L][0]), flank = asCanvas(Sprites.gateMask[L][1]);
+        const face = Sprites.gateMask[L][0], flank = Sprites.gateMask[L][1];
         const wEW = upscale(Sprites.wallMask[L][EW], face.width);
         const wNS = upscale(Sprites.wallMask[L][NS], flank.width);
         /* THE SEAM ITSELF: the outermost column of the gate's tile, where it
-           butts the wall next door. The gate's own works fill the middle (the
-           old L3 gatehouse was turret-gate-turret across nearly the whole
-           tile), so this is the column that has to line up, and it is the
-           one the player's eye follows along the line.
-
-           ART_PLAN.md 1.3: L3 joined L1/L2 as independently-authored manifest
-           art this round (a drystone trilithon, not code-stamped from the
-           wall the way the old procedural gatehouse was) — the pixel-exact
-           guarantee this measures only ever held for a stamped tier. Give it
-           the same small tolerance the near-miss numbers deserve (measured
-           0.2 / 0.5, effectively a rounding difference in independently
-           generated stone texture at the seam) rather than the impossible
-           dL===0 bar; L1/L2 still pass it at their real 0.0. */
+           butts the wall next door. The gate's own works fill the middle (an
+           L3 gatehouse is turret-gate-turret across nearly the whole tile),
+           so this is the column that has to line up, and it is the one the
+           player's eye follows along the line. */
         const dL = rectDiff(face, wEW, 0, 0, 0, 31), dR = rectDiff(face, wEW, 31, 31, 0, 31);
-        ck('theCurtainRunsStraightThroughAGate' + (L + 1), dL < 3 && dR < 3,
+        ck('theCurtainRunsStraightThroughAGate' + (L + 1), dL === 0 && dR === 0,
           'L' + (L + 1) + ' left ' + dL.toFixed(1) + ' · right ' + dR.toFixed(1) + ' from the wall beside it');
         /* THE FLANK'S NORTHERN SEAM. There is very little bare curtain to
            measure here — the block fills the tile from its head down to the
@@ -269,18 +185,6 @@ const out = await p.evaluate(() => {
         // banner poles stand above the tile either side of it, and a pole is
         // the gate's, not the wall's
         const dN = rectDiff(flank, shaded, 10, 21, 0, 1);
-        /* BATCH v2 (ART_PLAN.md 1.1 + 1.2) EXEMPTED L1 AND L2 HERE, on
-           purpose, and ART_PLAN.md 1.3 now joins L3 to the same exemption.
-           The "stamp the wall's own art into the gate" technique this
-           measures was what drawGate did procedurally for the OLD L3
-           gatehouse; L3 is now independently-authored manifest art exactly
-           like L1/L2 (a drystone trilithon, not stamped from wall-l3-ns.png)
-           — there is nothing left to stamp. L1's flank was a rotated copy of
-           its own face, L2's and L3's are genuinely separate generations per
-           their own briefs ("both orientations", no rotation). There is
-           nothing left to pin structurally at any tier; the axis-facing,
-           banner and material checks around this one still cover them. */
-        if (L < 3) { ck('andStraightThroughItsFlank' + (L + 1), true, 'L' + (L + 1) + ' exempt — independently authored art, not stamped from the wall (north seam would read ' + dN.toFixed(1) + ')'); continue; }
         ck('andStraightThroughItsFlank' + (L + 1), dN === 0,
           'L' + (L + 1) + ' north seam ' + dN.toFixed(1));
       }
@@ -300,7 +204,6 @@ const out = await p.evaluate(() => {
        failed on art that is perfectly correct. The rule it stood for is the
        one below.) */
     const transposed = (c) => {
-      c = asCanvas(c);
       const n = c.width, src = c.getContext('2d').getImageData(0, 0, n, n).data;
       const t = document.createElement('canvas'); t.width = t.height = n;
       const tg = t.getContext('2d'), img = tg.createImageData(n, n);
@@ -312,7 +215,6 @@ const out = await p.evaluate(() => {
       return t;
     };
     const differ = (a, b2) => {   // mean per-pixel difference, 0 = identical
-      a = asCanvas(a); b2 = asCanvas(b2);
       const n = a.width;
       const da = a.getContext('2d').getImageData(0, 0, n, n).data;
       const db = b2.getContext('2d').getImageData(0, 0, n, n).data;
@@ -323,28 +225,33 @@ const out = await p.evaluate(() => {
       return sum / (n * n * 4);
     };
     for (let L = 0; L < 3; L++) {
-      const face = asCanvas(Sprites.gateMask[L][0]), flank = asCanvas(Sprites.gateMask[L][1]);
+      const face = Sprites.gateMask[L][0], flank = Sprites.gateMask[L][1];
       const d = differ(flank, transposed(face));
       ck('theFlankIsNotTheFaceOnItsSide' + (L + 1), d > 20,
         'L' + (L + 1) + ' differs from the transposed face by ' + d.toFixed(1));
     }
-    /* ART_PLAN.md 1.3: the old procedural L3 gatehouse stood open — a dark
-       arch behind a portcullis — but the new drystone trilithon closes with
-       a braced timber door exactly like L1/L2 (there is no portcullis left
-       to raise; the drawbridge, unaffected, is what "open"/"closed" means
-       for a real L3 gate now — tests/drawbridge.mjs). So there is no longer
-       a tier that "stands open" by itself; ALL THREE now hang a timber door,
-       which is the whole reason none of them read as the old-style castle. */
+    /* …and the tier that DOES stand open still reads that way: the level-3
+       gatehouse's passage is a dark arch behind a portcullis, and its flank
+       shows no such thing. */
     {
-      // the door sits at a different spot per tier's own composition — L1/L2
-      // share a region (both timber-post gateways of similar proportion);
-      // L3's megalithic trilithon is a taller, differently-framed drawing
-      // (ART_PLAN.md 1.3) and its door sits lower in the frame
-      const doorRect = [[24, 36, 16, 18], [24, 36, 16, 18], [45, 65, 40, 32]];
-      for (let L = 0; L < 3; L++) {
-        const c = asCanvas(Sprites.gateMask[L][0]);
-        const [rx, ry, rw, rh] = doorRect[L];
-        const d = c.getContext('2d').getImageData(rx, ry, rw, rh).data;
+      const gateway = (c) => {
+        const d = c.getContext('2d').getImageData(22, 30, 20, 24).data;
+        let n = 0, dark = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3] < 96) continue;
+          n++;
+          if (d[i] < 62 && d[i + 1] < 62 && d[i + 2] < 62) dark++;
+        }
+        return n ? dark / n : 0;
+      };
+      const f = gateway(Sprites.gateMask[2][0]), v = gateway(Sprites.gateMask[2][1]);
+      ck('theThirdTierStandsOpen', f > 0.3 && v < 0.12,
+        'L3 face ' + Math.round(f * 100) + '% shadow · flank ' + Math.round(v * 100) + '%');
+      // …and the earlier tiers CLOSE theirs with a timber door, which is the
+      // whole reason they no longer read as castles
+      for (let L = 0; L < 2; L++) {
+        const c = Sprites.gateMask[L][0];
+        const d = c.getContext('2d').getImageData(24, 36, 16, 18).data;
         let n = 0, wood = 0;
         for (let i = 0; i < d.length; i += 4) {
           if (d[i + 3] < 96) continue;
@@ -476,7 +383,7 @@ const out = await p.evaluate(() => {
         m1.stone < m2.stone && m2.stone < m3.stone,
         [m1, m2, m3].map(pct).join(' · '));
       ck('andItIsNotTheWatchtowerRedrawn',
-        asCanvas(Sprites.towerMural[1]).toDataURL() !== asCanvas(Sprites.building.tower[1]).toDataURL(), '');
+        Sprites.towerMural[1].toDataURL() !== Sprites.building.tower[1].toDataURL(), '');
     }
 
     // ---- 3. the bond is DRAWN: the curtain's own art, under the tower ----

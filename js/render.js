@@ -1622,39 +1622,22 @@ const R = {
      c/32), so they scale with zoom and with the 2×2 hall for free. `lv` is
      the level the pole first appears at — ART.tierDress puts most banners at
      3, while the barracks and the war camp carry theirs from the start. */
-  // ART_PLAN.md 1.2: keys in here whose pole genuinely MOVES between levels
-  // (the art itself changed, not just the building growing around a fixed
-  // pole) — drawBanners picks the single highest-lv entry that qualifies,
-  // same "latest wins" rule as R.smokeAnchor, instead of drawing every
-  // entry at once (which is right for tc/gate: those really do grow a
-  // SECOND simultaneous pole at L3, on top of the first).
-  BANNER_EXCLUSIVE: new Set(['barracks', 'warcamp']),
   BANNER_AT: {
-    barracks: [{ x: 14.25 / 32, y: 4.4 / 32, w: 6 / 32, h: 7 / 32, lv: 1 },   // the tallest yard post
-               { x: 13 / 32, y: 5.875 / 32, w: 6 / 32, h: 7 / 32, lv: 2 }],   // the L2 drill-hall's own roof ridge
-    warcamp:  [{ x: 19.1 / 32, y: 4.5 / 32, w: 4 / 32, h: 5 / 32, lv: 1, left: true },  // the bare standard pole
-               { x: 15.75 / 32, y: 3.625 / 32, w: 4 / 32, h: 5 / 32, lv: 2, left: true }],  // the L2 camp's own bare pole
-    // range/sapper/dock/siege lost their lv:3 pole in the switch to the
-    // drystone L3 art (ART_PLAN.md 1.3): those four builds' new sprites have
-    // no free-standing post to mount cloth on (a catapult yard, a plain
-    // pier, a closed drill-hall — none of them carry a flagpole the way
-    // warcamp/gate/tc do), and drawing banner cloth with no pole under it
-    // reads as a floating-flag bug, worse than no banner at that tier. Each
-    // simply keeps whatever lower-level entry it had (none, here — these
-    // four never flew one before L3 either).
-    warcamp:  [{ x: 19.1 / 32, y: 4.5 / 32, w: 4 / 32, h: 5 / 32, lv: 1, left: true },  // the bare standard pole
-               { x: 15.75 / 32, y: 3.625 / 32, w: 4 / 32, h: 5 / 32, lv: 2, left: true },  // the L2 camp's own bare pole
-               { x: 28.8 / 32, y: 8 / 32, w: 4 / 32, h: 6 / 32, lv: 3, left: true }],  // the L3 tent's own bare RIGHT pole (the left one carries a skull trophy instead)
-    tc:       [{ x: 10.6 / 32, y: 4.375 / 32, w: 4 / 32, h: 4 / 32, lv: 3 },   // the L3 hall's own upper-left roof slope
-               { x: 22.3 / 32, y: 4.375 / 32, w: 4 / 32, h: 4 / 32, lv: 3, left: true }],  // ...and upper-right
+    barracks: [{ x: 4 / 32, y: 2 / 32, w: 6 / 32, h: 7 / 32, lv: 1 }],
+    warcamp:  [{ x: 21 / 32, y: 9 / 32, w: 4 / 32, h: 5 / 32, lv: 1, left: true }],
+    range:    [{ x: 14 / 16, y: 0, w: 3 / 16, h: 3 / 16, lv: 3 }],
+    trade:    [{ x: 15 / 16, y: 0, w: 3 / 16, h: 3 / 16, lv: 3 }],
+    sapper:   [{ x: 1 / 16, y: 0, w: 3 / 16, h: 3 / 16, lv: 3 }],
+    dock:     [{ x: 4 / 32, y: 3 / 32, w: 3 / 32, h: 3 / 32, lv: 3 }],
+    siege:    [{ x: 3 / 32, y: 4 / 32, w: 3 / 32, h: 3 / 32, lv: 3 }],
+    tc:       [{ x: 10.6 / 32, y: 4.375 / 32, w: 4 / 32, h: 4 / 32, lv: 3 },   // the L3 hall's upper-left roof slope
+               { x: 22.3 / 32, y: 4.375 / 32, w: 4 / 32, h: 4 / 32, lv: 3, left: true }],  // …and upper-right
     // the gatehouse flies a standard from each flanking tower — and its poles
-    // move with the gate's ORIENTATION, so it keeps a set of anchors per axis.
-    // Re-measured for ART_PLAN.md 1.3's drystone trilithon gate (two plain
-    // stone posts, no turret) — planted on the posts' own flat tops.
-    gate:     [{ x: 6.75 / 32, y: 2.25 / 32, w: 4 / 32, h: 4 / 32, lv: 3 },
-               { x: 24.75 / 32, y: 2.25 / 32, w: 4 / 32, h: 4 / 32, lv: 3, left: true }],
-    gateV:    [{ x: 7.5 / 32, y: 6.25 / 32, w: 4 / 32, h: 4 / 32, lv: 3 },   // the nearer, lower post
-               { x: 21.75 / 32, y: 3.5 / 32, w: 4 / 32, h: 4 / 32, lv: 3 }],  // the farther, higher post
+    // move with the gate's ORIENTATION, so it keeps a set of anchors per axis
+    gate:     [{ x: 7 / 32, y: 1 / 32, w: 4 / 32, h: 4 / 32, lv: 3 },
+               { x: 22 / 32, y: 1 / 32, w: 4 / 32, h: 4 / 32, lv: 3, left: true }],
+    gateV:    [{ x: 9 / 32, y: 0, w: 4 / 32, h: 4 / 32, lv: 3 },
+               { x: 9 / 32, y: 17 / 32, w: 4 / 32, h: 4 / 32, lv: 3 }],
   },
   drawBanners(g, b, bx, by, bw) {
     const set = b.key === 'gate'
@@ -1663,13 +1646,8 @@ const R = {
     if (!set || b.construction > 0) return;                 // no colours over a work site
     const dye = (Sprites.tunicCol || {})[G.tunicOf(b.owner)] || { body: '#3f6d99', accent: '#2c4e70' };
     const now = performance.now() / 1000;
-    // an exclusive set has ONE pole that moves as the art changes level —
-    // draw only the latest anchor that qualifies, not every one at once
-    const list = this.BANNER_EXCLUSIVE.has(b.key)
-      ? [this.smokeAnchor(this.BANNER_AT, b.key, b.level)].filter(Boolean)
-      : set;
-    for (let s = 0; s < list.length; s++) {
-      const a = list[s];
+    for (let s = 0; s < set.length; s++) {
+      const a = set[s];
       if (b.level < a.lv) continue;                          // the pole isn't there yet
       const w = a.w * bw, h = a.h * bw, x0 = bx + a.x * bw, y0 = by + a.y * bw;
       const cols = Math.max(3, Math.round(w));
@@ -1697,34 +1675,32 @@ const R = {
      seeded per building so no two chimneys pulse together. Only finished
      buildings smoke (a work site has no hearth yet), and a building far gone
      in flames doesn't bother — its own fire is already the story. */
-  /* Each entry is a list of { lv, x, y } — the anchor takes effect from that
-     level UP, so a key with only an lv:1 entry keeps the same spot at every
-     level (the common case), while one whose roofline actually changes shape
-     between tiers (the hall: L1's cone vs L2's pitched ridge, a different
-     roof-hole position) can add an lv:2/3 entry without disturbing the rest.
-     smokeAnchor() picks the highest lv that is <= the building's own level. */
   SMOKE_AT: {
-    house:   [{ lv: 1, x: 13.9 / 32, y: 4.75 / 32 },     // the dome's own roof-hole
-               { lv: 2, x: 11.9 / 32, y: 3 / 32 },       // the L2 cottage's own roof-hole
-               { lv: 3, x: 12.75 / 32, y: 4 / 32 }],      // the L3 cottage's own thatch ridge (no visible hole — smoke seeps at the peak)
-    tc:      [{ lv: 1, x: 15.7 / 32, y: 3 / 32 },        // the L1 cone's roof-hole
-               { lv: 2, x: 15.7 / 32, y: 1.4 / 32 },     // the L2 longhouse's own ridge
-               { lv: 3, x: 21.7 / 32, y: 3 / 32 }],       // the L3 hall's own CHIMNEY top (not a roof-hole)
-    lodge:   [{ lv: 1, x: 17.6 / 32, y: 10.25 / 32 },   // the lean-to's own ridge
-               { lv: 2, x: 21.4 / 32, y: 2 / 32 },       // the L2 lodge's own roof apex
-               { lv: 3, x: 18.25 / 32, y: 4 / 32 }],      // the L3 lodge's own thatch ridge
-    warcamp: [{ lv: 1, x: 9.7 / 32, y: 21.5 / 32 },     // the fire ring
-               { lv: 2, x: 16 / 32, y: 25.6 / 32 },      // the L2 camp's own fire ring
-               { lv: 3, x: 16 / 32, y: 26 / 32 }],        // the L3 tent's own fire ring (cold — see ART_PLAN.md 1.3, still smokes: the L1/L2 rings are unlit too)
-    trade:   [{ lv: 1, x: 8.75 / 32, y: 9.4 / 32 },     // beside the hanging pots
-               { lv: 2, x: 21.1 / 32, y: 3.4 / 32 },     // the L2 stall's own awning post
-               { lv: 3, x: 9 / 32, y: 3 / 32 }],          // the L3 market hall's own CHIMNEY top
+    house:   { x: 21.5 / 32, y: 3 / 32 },     // the chimney pot
+    /* the hall is the one key whose roofline really CHANGES shape between
+       tiers, and it is the only one still carrying manifest art — so it alone
+       is a per-level list. Everything else here is back to procedural art and
+       keeps its single flat anchor; smokeAnchor accepts both shapes. */
+    tc:      [{ lv: 1, x: 15.7 / 32, y: 3 / 32 },      // the L1 cone's roof-hole
+              { lv: 2, x: 15.7 / 32, y: 1.4 / 32 },    // the L2 longhouse's ridge
+              { lv: 3, x: 21.7 / 32, y: 3 / 32 }],     // the L3 hall's CHIMNEY top
+    lodge:   { x: 12 / 32, y: 7 / 32 },       // the smoking rack's fire
+    warcamp: { x: 15.5 / 32, y: 9 / 32 },     // the campfire under the ridge pole
+    trade:   { x: 3 / 16, y: 1 / 16 },        // the trader's brazier
   },
+  /* AN ANCHOR THAT MAY VARY BY LEVEL. A key whose art genuinely changes shape
+     between tiers (today only the hall, the one building still served by the
+     manifest) lists its anchors as [{lv, x, y}, …] and takes the highest lv at
+     or below the building's own. Every other key keeps a single flat {x, y}
+     and is returned untouched — so this stayed a two-line change when the
+     generated building art was reverted and those keys went back to one
+     procedural sprite per level. */
   smokeAnchor(table, key, lv) {
-    const arr = table[key];
-    if (!arr) return null;
+    const e = table[key];
+    if (!e) return null;
+    if (!Array.isArray(e)) return e;                 // a flat anchor: same at every level
     let best = null;
-    for (const a of arr) if (a.lv <= lv && (!best || a.lv > best.lv)) best = a;
+    for (const a of e) if (a.lv <= lv && (!best || a.lv > best.lv)) best = a;
     return best;
   },
   drawHearthSmoke(g, b, bx, by, bw) {
@@ -1764,9 +1740,9 @@ const R = {
      used to fake with three raw fillRects — cheap, and never fights the
      fine-grained flame already painted into the master. */
   CAMPFIRE_AT: {
-    tc: [{ lv: 1, x: 10.9 / 32, y: 29.4 / 32 },   // the L1 dooryard, in front of the door
-         { lv: 2, x: 16 / 32, y: 31 / 32 },       // the L2 longhouse's own dooryard, between its two doors
-         { lv: 3, x: 16 / 32, y: 30.5 / 32 }],    // the L3 hall's own threshold, in front of the door
+    tc: [{ lv: 1, x: 10.9 / 32, y: 29.4 / 32 },   // the L1 dooryard, before the door
+         { lv: 2, x: 16 / 32, y: 31 / 32 },       // the L2 longhouse's dooryard, between its doors
+         { lv: 3, x: 16 / 32, y: 30.5 / 32 }],    // the L3 hall's threshold
   },
   drawCampfire(g, b, bx, by, bw) {
     const a = this.smokeAnchor(this.CAMPFIRE_AT, b.key, b.level);

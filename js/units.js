@@ -254,15 +254,11 @@ const Units = {
       return { icon: '🎣', what: on ? (shore ? 'Line-fishing the shoal' : 'Nets out') : 'Rowing to the shoal',
         rate: on ? { res: 'food', n } : null, working: on };
     }
-    if (t.type === 'work') {                       // stationed on (or beside) a plot
+    if (t.type === 'work') {                       // stationed on a plot
       const b = Bld.get(t.id);
       if (!b) return { icon: '💤', what: 'Idle', rate: null, working: false };
       const nm = Bld.def(b.key).name;
-      // workAdjacent plots (farm/lumber/quarry/lodge) cache their crew's edge
-      // tile on t.sx/sy once Units.plotEdge picks one, same field names a
-      // 'gather' task uses for the same reason — everything else (the gold
-      // mine) never sets sx/sy, so this falls back to the plot tile itself
-      const on = at(t.sx == null ? b.x : t.sx, t.sy == null ? b.y : t.sy);
+      const on = at(b.x, b.y);
       const out = (Bld.lv(b).out) || {};
       const key = Object.keys(out)[0];
       if (!on) return { icon: '🚶', what: 'Walking to the ' + nm, rate: null, working: false };
@@ -466,26 +462,6 @@ const Units = {
       // spreads around the resource instead of stacking on one side
       const taken = S.units.some(o => o !== u && o.task && o.task.type === 'gather' &&
         o.task.x === tx && o.task.y === ty && o.task.sx === x && o.task.sy === y);
-      const dd = Math.hypot(u.x - x, u.y - y) + (taken ? 100 : 0);
-      if (dd < bd) { bd = dd; best = { x, y }; }
-    }
-    return best;
-  },
-
-  /* WHERE A STATION'S CREW STANDS, for the plots whose L2+ art put a real
-     building on the tile (CFG.BUILDINGS[key].workAdjacent — farm/lumber/
-     quarry/lodge): an open tile at the plot's edge, exactly the same
-     nearest-open-neighbour search as gatherEdge, with "taken" read off the
-     'work' task's own cached sx/sy instead of a fresh 'gather' task's. The
-     gold mine (and any future worker plot without the flag) is unaffected —
-     that crew still stands ON the seam, per its own design note. */
-  plotEdge(u, b) {
-    let best = null, bd = 1e9;
-    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const x = b.x + ox, y = b.y + oy;
-      if (!Path.passable(x, y, u.owner) || Bld.at(x, y)) continue;
-      const taken = S.units.some(o => o !== u && o.task && o.task.type === 'work' &&
-        o.task.id === b.id && o.task.sx === x && o.task.sy === y);
       const dd = Math.hypot(u.x - x, u.y - y) + (taken ? 100 : 0);
       if (dd < bd) { bd = dd; best = { x, y }; }
     }
@@ -1563,39 +1539,10 @@ const Units = {
           S.units.splice(i, 1);
         }
       } else if (t.type === 'work') {
-        // stationed at a production building
+        // stationed at a production building — stand ON the plot itself and
+        // keep it running (workers idling beside the field just cluttered the ground)
         const b = Bld.get(t.id);
         if (!b || b.owner !== 'P' || !Bld.def(b.key).needsWorker) { u.task = null; continue; }
-        /* THE PLOT'S OWN GROUND, OR ITS EDGE. Farm/lumber/quarry/lodge got a
-           real building standing on the tile from L2 art on — the crew now
-           works from an open tile at its edge (Units.plotEdge), same pattern
-           as a gatherer beside a resource. Picked once and cached on the
-           task (t.sx/sy) exactly like a 'gather' task's own sx/sy, so the
-           choice is stable frame to frame; a tile that closes up later is the
-           general ground-truth rescue's problem, not this task's. Every
-           OTHER worker plot (today, just the gold mine) is unmoved: its crew
-           still stands ON the plot, per its own design note. */
-        if (Bld.def(b.key).workAdjacent) {
-          if (t.sx == null) {
-            const edge = this.plotEdge(u, b);
-            if (!edge) { u.task = null; continue; }
-            t.sx = edge.x; t.sy = edge.y;
-          }
-          if ((u.x | 0) !== t.sx || (u.y | 0) !== t.sy) {
-            if (this.moving(u)) this.followPath(u, dt);
-            else if (!this.setPath(u, t.sx, t.sy)) u.task = null;
-          } else {
-            u.path = null;
-            // ease in against the plot's edge, same STAND offset as a gatherer
-            const STAND = 0.4;
-            const ex = t.sx + 0.5 + (b.x - t.sx) * STAND, ey = t.sy + 0.5 + (b.y - t.sy) * STAND;
-            u.x += (ex - u.x) * Math.min(1, dt * 4);
-            u.y += (ey - u.y) * Math.min(1, dt * 4);
-            const out = Bld.lv(b).out;
-            if (out && !b.upgrading) R.workFloat(u, '+' + Object.keys(out)[0]);
-          }
-          continue;
-        }
         if ((u.x | 0) !== b.x || (u.y | 0) !== b.y) {
           if (this.moving(u)) this.followPath(u, dt);
           else if (!this.setPath(u, b.x, b.y)) u.task = null;

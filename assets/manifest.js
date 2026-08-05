@@ -37,13 +37,14 @@ window.ASSET_MANIFEST = {
       },
     },
     {
-      /* Town Center L2 — the timber longhouse (ART_PLAN.md 1.2 step 0):
-         thatched pitched roof, split-log + wattle walls, fieldstone footing,
-         woodpile. Same 256×256-kept, no-dw/dh convention as L1, and the same
-         "both tribes share one image" call — banners still don't arrive
-         until L3. R.SMOKE_AT.tc and R.CAMPFIRE_AT.tc both gained an lv:2
-         entry (js/render.js) since this roofline's ridge/dooryard sit in a
-         genuinely different spot than L1's cone. */
+      /* Town Center L2 — the timber longhouse. Pre-approved art, wired in
+         step 0 of the L2 batch and KEPT when that batch's generated building
+         art was reverted: the hall is the one building still served by the
+         manifest, everything else falls back to its procedural sprite simply
+         by having no entry here. Same 256×256-kept, no-dw/dh convention as L1
+         (see the L1 block above for why). Both tribes share one image —
+         banners don't arrive until L3. R.SMOKE_AT.tc and R.CAMPFIRE_AT.tc
+         carry lv:2 entries for this roofline's ridge and dooryard. */
       image: 'assets/tc-l2.png',
       sprites: {
         'building/tc/2':   { x: 0, y: 0, w: 256, h: 256 },
@@ -51,14 +52,11 @@ window.ASSET_MANIFEST = {
       },
     },
     {
-      /* Town Center L3 — the drystone great hall (ART_PLAN.md 1.3 step 0):
-         stacked-stone walls, thatch roof, stone CHIMNEY, carved totem, stone
-         threshold. R.SMOKE_AT.tc gained an lv:3 entry measured to the
-         chimney TOP (not a roof smoke-hole, unlike L1/L2) — the whole
-         reason this step is called out on its own. R.CAMPFIRE_AT.tc and
-         R.BANNER_AT.tc (the hall's own twin poles, cumulative with gate's —
-         see BANNER_EXCLUSIVE) both also gained lv:3 entries against this
-         art's actual dooryard and roofline. */
+      /* Town Center L3 — the drystone great hall: stacked-stone walls, thatch
+         roof, stone CHIMNEY, carved totem. Also pre-approved, also kept.
+         R.SMOKE_AT.tc's lv:3 entry is measured to the CHIMNEY TOP rather than
+         a roof smoke-hole (unlike L1/L2), and R.BANNER_AT.tc's twin lv:3
+         poles are measured against this art's own roof slopes. */
       image: 'assets/tc-l3.png',
       sprites: {
         'building/tc/3':   { x: 0, y: 0, w: 256, h: 256 },
@@ -77,170 +75,6 @@ window.ASSET_MANIFEST = {
         'misc/campfireTc': { x: 0, y: 0, w: 180, h: 160 },
       },
     },
-    /* ===== LEVEL 1 BUILDING ART — BATCH v2 (ART_PLAN.md 1.1) =====
-       Founding-tier art for every non-TC, non-Wonder building. Authored at
-       4× the render size like TC (128 for 1×1, 256 for 2×2), no dw/dh, same
-       reason: blitBld turns on smoothing whenever the source outsizes the
-       destination, so the browser resamples straight from the master.
-
-       Every key here shares ONE image between `building` (player) and
-       `building_a` (rival) — the same trick TC uses, and it generalizes to
-       13 of these 14 ordinary keys because their procedural L1 art carries
-       no faction color at all (house/farm/lumber/quarry/lodge/tower) or
-       none until L3 (range/trade/sapper/dock/siege). `barracks` and
-       `warcamp` are the two exceptions that DO fly a faction-colored
-       banner at L1 in the procedural version (R.BANNER_AT) — but that cloth
-       is drawn procedurally over a POLE position, never baked into the
-       sprite, so sharing one image is still correct as long as
-       R.BANNER_AT.barracks/.warcamp point at an actual post in the new art
-       (re-measured below). `trade` genuinely loses its L1 faction color
-       (a striped awning baked into the old procedural sprite) — the brief
-       for this batch explicitly asked for no awning at L1, so there is
-       nothing left to color; accepted. */
-    { image: 'assets/house-l1.png',    sprites: { 'building/house/1':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/house/1':    { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/farm-l1.png',     sprites: { 'building/farm/1':     { x: 0, y: 0, w: 128, h: 128 }, 'building_a/farm/1':     { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/lumber-l1.png',   sprites: { 'building/lumber/1':   { x: 0, y: 0, w: 128, h: 128 }, 'building_a/lumber/1':   { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/quarry-l1.png',   sprites: { 'building/quarry/1':   { x: 0, y: 0, w: 128, h: 128 }, 'building_a/quarry/1':   { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/lodge-l1.png',    sprites: { 'building/lodge/1':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/lodge/1':    { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/tower-l1.png',    sprites: { 'building/tower/1':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/tower/1':    { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/barracks-l1.png', sprites: { 'building/barracks/1': { x: 0, y: 0, w: 256, h: 256 }, 'building_a/barracks/1': { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/range-l1.png',    sprites: { 'building/range/1':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/range/1':    { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/stable-l1.png',   sprites: { 'building/stable/1':   { x: 0, y: 0, w: 256, h: 256 }, 'building_a/stable/1':   { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/siege-l1.png',    sprites: { 'building/siege/1':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/siege/1':    { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/sapper-l1.png',   sprites: { 'building/sapper/1':   { x: 0, y: 0, w: 256, h: 256 }, 'building_a/sapper/1':   { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/trade-l1.png',    sprites: { 'building/trade/1':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/trade/1':    { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/warcamp-l1.png',  sprites: { 'building/warcamp/1':  { x: 0, y: 0, w: 256, h: 256 }, 'building_a/warcamp/1':  { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/dock-l1.png',     sprites: { 'building/dock/1':     { x: 0, y: 0, w: 256, h: 256 }, 'building_a/dock/1':     { x: 0, y: 0, w: 256, h: 256 } } },
-
-    /* WALL & GATE — the "cheapest possible" L1 pass, deliberately partial.
-       Both are auto-tiled from a 16-mask atlas (wallMaskAt: N=1,E=2,S=4,W=8)
-       with no runtime rotation — a manifest image lands in exactly the mask
-       slot it's assigned and nowhere else. This batch covers only the two
-       STRAIGHT masks (E-W = mask 10, N-S = mask 5, the second a 90°-rotated
-       copy of the first) and both gate orientations (h = the authored face
-       view, v = a 90°-rotated copy) — corners, T-junctions and dead-ends
-       stay on the old procedural art until a later pass explicitly covers
-       them. Acceptable ONLY because L1 posts have no face/flank asymmetry
-       (no door leaf, no depth cue) — do not reuse the rotate-a-copy trick
-       for L2/L3 gates, which are genuinely different drawings per axis
-       (CLAUDE.md). `building/wall/1` and `building/gate/1` additionally
-       carry the build-menu thumbnail (Sprites.building.wall/.gate) — a
-       separate slot from the on-map atlas, per ASSET_SPEC.md. */
-    { image: 'assets/wall-l1.png',    sprites: { 'building/wall/1': { x: 0, y: 0, w: 128, h: 128 }, 'wall/1/10': { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/wall-l1-ns.png', sprites: { 'wall/1/5': { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/gate-l1.png',    sprites: { 'building/gate/1': { x: 0, y: 0, w: 128, h: 128 }, 'gate/1/h': { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/gate-l1-v.png',  sprites: { 'gate/1/v': { x: 0, y: 0, w: 128, h: 128 } } },
-
-    /* ===== LEVEL 2 BUILDING ART — ART_PLAN.md 1.2 =====
-       The settlement's first real buildings: timber-framed, split-log or
-       wattle-and-daub walls, a fieldstone footing course, tight thatch —
-       style-referenced against assets/tc-l2.png. Same 4×-master, no-dw/dh
-       convention as L1 (128 for 1×1, 256 for 2×2). Every key again shares
-       one image between `building`/`building_a` — barracks and warcamp are
-       the two whose L1 procedural art carried a faction-colored banner, and
-       that's still true here: the cloth is drawn procedurally over a POLE
-       position (R.BANNER_AT, now with an lv:2 entry for both, and a new
-       `R.BANNER_EXCLUSIVE` set so the L2 pole position REPLACES the L1 one
-       instead of drawing both at once — see js/render.js). */
-    { image: 'assets/house-l2.png',    sprites: { 'building/house/2':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/house/2':    { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/farm-l2.png',     sprites: { 'building/farm/2':     { x: 0, y: 0, w: 128, h: 128 }, 'building_a/farm/2':     { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/lumber-l2.png',   sprites: { 'building/lumber/2':   { x: 0, y: 0, w: 128, h: 128 }, 'building_a/lumber/2':   { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/quarry-l2.png',   sprites: { 'building/quarry/2':   { x: 0, y: 0, w: 128, h: 128 }, 'building_a/quarry/2':   { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/lodge-l2.png',    sprites: { 'building/lodge/2':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/lodge/2':    { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/tower-l2.png',    sprites: { 'building/tower/2':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/tower/2':    { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/barracks-l2.png', sprites: { 'building/barracks/2': { x: 0, y: 0, w: 256, h: 256 }, 'building_a/barracks/2': { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/range-l2.png',    sprites: { 'building/range/2':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/range/2':    { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/stable-l2.png',   sprites: { 'building/stable/2':   { x: 0, y: 0, w: 256, h: 256 }, 'building_a/stable/2':   { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/siege-l2.png',    sprites: { 'building/siege/2':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/siege/2':    { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/sapper-l2.png',   sprites: { 'building/sapper/2':   { x: 0, y: 0, w: 256, h: 256 }, 'building_a/sapper/2':   { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/trade-l2.png',    sprites: { 'building/trade/2':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/trade/2':    { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/warcamp-l2.png',  sprites: { 'building/warcamp/2':  { x: 0, y: 0, w: 256, h: 256 }, 'building_a/warcamp/2':  { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/dock-l2.png',     sprites: { 'building/dock/2':     { x: 0, y: 0, w: 256, h: 256 }, 'building_a/dock/2':     { x: 0, y: 0, w: 256, h: 256 } } },
-
-    /* WALL & GATE L2 — same partial-coverage call as L1 (ART_PLAN.md 1.1):
-       only the two straight wall masks (E-W=10, N-S=5) and both gate faces,
-       this time BOTH genuinely re-generated per-orientation rather than one
-       rotated copy of the other (the brief asked for it explicitly this
-       round). Corners/T-junctions stay on the procedural L2 art. */
-    { image: 'assets/wall-l2.png',    sprites: { 'building/wall/2': { x: 0, y: 0, w: 128, h: 128 }, 'wall/2/10': { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/wall-l2-ns.png', sprites: { 'wall/2/5': { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/gate-l2.png',    sprites: { 'building/gate/2': { x: 0, y: 0, w: 128, h: 128 }, 'gate/2/h': { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/gate-l2-v.png',  sprites: { 'gate/2/v': { x: 0, y: 0, w: 128, h: 128 } } },
-
-    /* ===== LEVEL 3 BUILDING ART — ART_PLAN.md 1.3 =====
-       "The age of stone mastery": drystone-dominant, larger, more refined —
-       flat undressed stones stacked in visible courses (Skara Brae style, NO
-       mortar lines, NO dressed masonry, NO medieval anything: no arches, no
-       crenellations, no brick, no metal). Timber remains for roofs, lintels,
-       frames. Style-referenced against assets/tc-l3.png. Same 4×-master,
-       no-dw/dh convention as L1/L2 (128 for 1×1, 256 for 2×2). barracks and
-       warcamp keep flying faction cloth over a POLE position (R.BANNER_AT);
-       trade and lodge pick up a genuine chimney/roof-hole this tier, so
-       R.SMOKE_AT gained lv:3 entries for house/lodge/trade/warcamp measured
-       against this art (js/render.js) alongside gate/gateV's lv:3
-       R.BANNER_AT, all re-measured off the actual new sprites rather than
-       inherited from the L1/L2 procedural positions they used to point at. */
-    { image: 'assets/house-l3.png',    sprites: { 'building/house/3':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/house/3':    { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/farm-l3.png',     sprites: { 'building/farm/3':     { x: 0, y: 0, w: 128, h: 128 }, 'building_a/farm/3':     { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/lumber-l3.png',   sprites: { 'building/lumber/3':   { x: 0, y: 0, w: 128, h: 128 }, 'building_a/lumber/3':   { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/quarry-l3.png',   sprites: { 'building/quarry/3':   { x: 0, y: 0, w: 128, h: 128 }, 'building_a/quarry/3':   { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/lodge-l3.png',    sprites: { 'building/lodge/3':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/lodge/3':    { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/tower-l3.png',    sprites: { 'building/tower/3':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/tower/3':    { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/barracks-l3.png', sprites: { 'building/barracks/3': { x: 0, y: 0, w: 256, h: 256 }, 'building_a/barracks/3': { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/range-l3.png',    sprites: { 'building/range/3':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/range/3':    { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/stable-l3.png',   sprites: { 'building/stable/3':   { x: 0, y: 0, w: 256, h: 256 }, 'building_a/stable/3':   { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/siege-l3.png',    sprites: { 'building/siege/3':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/siege/3':    { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/sapper-l3.png',   sprites: { 'building/sapper/3':   { x: 0, y: 0, w: 256, h: 256 }, 'building_a/sapper/3':   { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/trade-l3.png',    sprites: { 'building/trade/3':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/trade/3':    { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/warcamp-l3.png',  sprites: { 'building/warcamp/3':  { x: 0, y: 0, w: 256, h: 256 }, 'building_a/warcamp/3':  { x: 0, y: 0, w: 256, h: 256 } } },
-    { image: 'assets/dock-l3.png',     sprites: { 'building/dock/3':     { x: 0, y: 0, w: 256, h: 256 }, 'building_a/dock/3':     { x: 0, y: 0, w: 256, h: 256 } } },
-
-    /* WALL & GATE L3 — same partial-coverage call as L1/L2: only the two
-       straight wall masks (E-W=10, N-S=5) and both gate faces, both
-       genuinely re-generated per-orientation. The gate is a deliberate
-       style departure from L1/L2's timber-post look AND from the old
-       procedural L3 gatehouse (turrets, machicolation, portcullis) — a
-       megalithic drystone trilithon (two undressed stone posts, a single
-       timber lintel) matching the "age of stone mastery" brief, which is
-       why R.BANNER_AT.gate/.gateV needed re-measuring rather than reuse:
-       there is no turret left to fly a standard from. Corners/T-junctions
-       stay on the procedural L3 art. */
-    { image: 'assets/wall-l3.png',    sprites: { 'building/wall/3': { x: 0, y: 0, w: 128, h: 128 }, 'wall/3/10': { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/wall-l3-v.png',  sprites: { 'wall/3/5': { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/gate-l3.png',    sprites: { 'building/gate/3': { x: 0, y: 0, w: 128, h: 128 }, 'gate/3/h': { x: 0, y: 0, w: 128, h: 128 } } },
-    { image: 'assets/gate-l3-v.png',  sprites: { 'gate/3/v': { x: 0, y: 0, w: 128, h: 128 } } },
-
-    /* ===== THE ANCIENT WONDERS — ART_PLAN.md 1.3 =====
-       Ten monuments, one rolled per run (CFG.WONDERS / G.rollWonder). Unlike
-       every other building, a wonder's art doesn't live at `building/wonder/1`
-       — that slot is overwritten wholesale every time Sprites.useWonder(key)
-       runs (on new game, on load, on any future re-roll), so a manifest
-       overlay written there would simply be discarded the next time it does.
-       Sprites.wonders[key] is the stable per-monument dictionary useWonder
-       reads FROM, so that's the actual overlay point — see the new `wonder`
-       case in Assets._slot (js/assets.js). The procedural canvas is 192×192
-       (tileW, a 96-cell fine grid — HALF the resolution every other building
-       uses, see js/sprites.js); this art was authored at the same 4×
-       convention as everything else (384×384) and downscaled on load via
-       dw/dh, the one place in this manifest that needs it, so the browser
-       resamples straight from the high-res master instead of upscaling a
-       192px decode. No `building_a/wonder` — stone is stone, the rival's
-       monument (if it manages to raise one) is the same monument. Camera
-       corrected to match tc-l3.png's front elevation (screen-aligned
-       footprint, front face at the bottom edge) after the first pass came
-       back isometric; the Bronze Colossus additionally got a new top figure
-       (Colossus-of-Rhodes-inspired) in the same pass. */
-    { image: 'assets/wonder-henge.png',    sprites: { 'wonder/henge':    { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
-    { image: 'assets/wonder-colossus.png', sprites: { 'wonder/colossus': { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
-    { image: 'assets/wonder-moai.png',     sprites: { 'wonder/moai':     { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
-    { image: 'assets/wonder-pyramid.png',  sprites: { 'wonder/pyramid':  { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
-    { image: 'assets/wonder-obelisk.png',  sprites: { 'wonder/obelisk':  { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
-    { image: 'assets/wonder-temple.png',   sprites: { 'wonder/temple':   { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
-    { image: 'assets/wonder-sphinx.png',   sprites: { 'wonder/sphinx':   { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
-    { image: 'assets/wonder-flame.png',    sprites: { 'wonder/flame':    { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
-    { image: 'assets/wonder-totems.png',   sprites: { 'wonder/totems':   { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
-    { image: 'assets/wonder-sundial.png',  sprites: { 'wonder/sundial':  { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
-
     /* ORIGIN CARDS art goes here when it lands — one `ui/card/<cardKey>`
        entry per card (keys and art briefs: ASSET_SPEC.md). Until then the
        draft screen draws placeholder motifs procedurally (Cards.drawMotif). */
