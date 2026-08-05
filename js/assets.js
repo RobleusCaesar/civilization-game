@@ -79,6 +79,13 @@ const Assets = {
     switch (p[0]) {
       case 'building':   return at((Sprites.building[p[1]] || {}), +p[2] - 1);
       case 'building_a': return at((Sprites.buildingA[p[1]] || {}), +p[2] - 1);
+      // wonder/<key> — one of the ten monuments, keyed by NAME rather than
+      // level: Sprites.building.wonder is reassigned wholesale by
+      // Sprites.useWonder every time the run's roll (re)applies, so an
+      // overlay written there would be wiped the next time useWonder runs.
+      // Sprites.wonders[key] is the stable per-monument dict useWonder reads
+      // FROM — overlay there and the swap picks up manifest art for free.
+      case 'wonder':     return at(Sprites.wonders, p[1]);
       case 'wall':       return at((Sprites.wallMask[+p[1] - 1] || {}), +p[2]);
       case 'gate':       return at((Sprites.gateMask[+p[1] - 1] || {}), p[2] === 'v' ? 1 : 0);
       case 'unit':       return at(((Sprites.unit[p[1]] || {})[p[2]] || {}), +p[3]);

@@ -225,8 +225,18 @@ const out = await p.evaluate(() => {
 
   // ---- 4. banners fly in the tribe's own dye, hearths smoke ----
   {
+    /* ART_PLAN.md 1.3: range/trade/sapper/dock/siege lost their banner pole
+       in the move to drystone L3 art — none of the five new sprites (a
+       catapult yard, a market hall's awning post, a plain pier, a closed
+       drill-hall) carries a free-standing post the way warcamp/gate/tc do,
+       and drawing banner CLOTH with no POLE under it in the art (the pole is
+       always baked into the sprite; only the cloth is code-drawn — see
+       R.drawBanners above) reads as a floating-flag bug, worse than no
+       banner at that tier. Each simply never flew one before L3 either, so
+       this is a coverage LOSS, not a broken anchor — every key that DOES
+       still have a pole keeps its anchor. */
     ck('everyBannerPoleHasAnAnchor',
-      ['barracks', 'warcamp', 'range', 'trade', 'sapper', 'dock', 'siege', 'tc']
+      ['barracks', 'warcamp', 'tc']
         .every(k => Array.isArray(R.BANNER_AT[k]) && R.BANNER_AT[k].length),
       Object.keys(R.BANNER_AT).length + ' keyed');
     ck('tunicDyesAreExposedToTheRenderer',

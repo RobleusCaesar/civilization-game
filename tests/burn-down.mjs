@@ -48,7 +48,11 @@ let pw;
 try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const b = await pw.chromium.launch();
+// ART_PLAN.md 1.3: reading pixels back off Sprites.building.house[0] (a
+// manifest-loaded ImageBitmap since well before this batch) taints the
+// canvas under file:// without this flag — the same fix wall-tower-bond.mjs
+// already carries, for the same reason (ASSET_SPEC.md).
+const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] });
 const p = await b.newPage({ viewport: { width: 430, height: 880 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
@@ -58,8 +62,18 @@ await p.waitForTimeout(900);
 const out = await p.evaluate(() => {
   const res = {}, fails = [];
   const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
-  const px = (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) n++; return n; };
+  // ART_PLAN.md 1.3: Sprites.building.house[0] / .tower[0] are manifest-
+  // loaded ImageBitmaps (no .getContext/.toDataURL) — normalize once at the
+  // boundary, same pattern as tests/wall-tower-bond.mjs's asCanvas.
+  const asCanvas = (c) => {
+    if (c && c.getContext) return c;
+    const t = document.createElement('canvas'); t.width = c.width; t.height = c.height;
+    t.getContext('2d').drawImage(c, 0, 0);
+    return t;
+  };
+  const px = (c) => { c = asCanvas(c); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) n++; return n; };
   const avgLum = (c) => {
+    c = asCanvas(c);
     const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
     let s = 0, n = 0;
     for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 96) { s += d[i] + d[i + 1] + d[i + 2]; n++; }
@@ -262,7 +276,7 @@ const out = await p.evaluate(() => {
       'the dust needs room to roll: ' + sheet[0].width + 'x' + sheet[0].height);
     // the SOLID mass only — dust is deliberately translucent, and counting it
     // would say the last frame has more building in it than the first
-    const solid = (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 200) n++; return n; };
+    const solid = (c) => { c = asCanvas(c); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 200) n++; return n; };
     ck('itStartsStanding', solid(sheet[0]) >= solid(base) * 0.9, 'frame 0 is still the building');
     ck('itFalls',
       sheet.every((f, i) => i === 0 || f.toDataURL() !== sheet[i - 1].toDataURL()) &&

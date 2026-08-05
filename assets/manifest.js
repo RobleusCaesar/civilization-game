@@ -51,6 +51,21 @@ window.ASSET_MANIFEST = {
       },
     },
     {
+      /* Town Center L3 — the drystone great hall (ART_PLAN.md 1.3 step 0):
+         stacked-stone walls, thatch roof, stone CHIMNEY, carved totem, stone
+         threshold. R.SMOKE_AT.tc gained an lv:3 entry measured to the
+         chimney TOP (not a roof smoke-hole, unlike L1/L2) — the whole
+         reason this step is called out on its own. R.CAMPFIRE_AT.tc and
+         R.BANNER_AT.tc (the hall's own twin poles, cumulative with gate's —
+         see BANNER_EXCLUSIVE) both also gained lv:3 entries against this
+         art's actual dooryard and roofline. */
+      image: 'assets/tc-l3.png',
+      sprites: {
+        'building/tc/3':   { x: 0, y: 0, w: 256, h: 256 },
+        'building_a/tc/3': { x: 0, y: 0, w: 256, h: 256 },
+      },
+    },
+    {
       /* The dooryard campfire — split out of the hut master so a small prop
          can carry its own supersampled detail density instead of sharing the
          hut's downscale math (or being baked in at the hut's own resolution
@@ -151,6 +166,80 @@ window.ASSET_MANIFEST = {
     { image: 'assets/wall-l2-ns.png', sprites: { 'wall/2/5': { x: 0, y: 0, w: 128, h: 128 } } },
     { image: 'assets/gate-l2.png',    sprites: { 'building/gate/2': { x: 0, y: 0, w: 128, h: 128 }, 'gate/2/h': { x: 0, y: 0, w: 128, h: 128 } } },
     { image: 'assets/gate-l2-v.png',  sprites: { 'gate/2/v': { x: 0, y: 0, w: 128, h: 128 } } },
+
+    /* ===== LEVEL 3 BUILDING ART — ART_PLAN.md 1.3 =====
+       "The age of stone mastery": drystone-dominant, larger, more refined —
+       flat undressed stones stacked in visible courses (Skara Brae style, NO
+       mortar lines, NO dressed masonry, NO medieval anything: no arches, no
+       crenellations, no brick, no metal). Timber remains for roofs, lintels,
+       frames. Style-referenced against assets/tc-l3.png. Same 4×-master,
+       no-dw/dh convention as L1/L2 (128 for 1×1, 256 for 2×2). barracks and
+       warcamp keep flying faction cloth over a POLE position (R.BANNER_AT);
+       trade and lodge pick up a genuine chimney/roof-hole this tier, so
+       R.SMOKE_AT gained lv:3 entries for house/lodge/trade/warcamp measured
+       against this art (js/render.js) alongside gate/gateV's lv:3
+       R.BANNER_AT, all re-measured off the actual new sprites rather than
+       inherited from the L1/L2 procedural positions they used to point at. */
+    { image: 'assets/house-l3.png',    sprites: { 'building/house/3':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/house/3':    { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/farm-l3.png',     sprites: { 'building/farm/3':     { x: 0, y: 0, w: 128, h: 128 }, 'building_a/farm/3':     { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/lumber-l3.png',   sprites: { 'building/lumber/3':   { x: 0, y: 0, w: 128, h: 128 }, 'building_a/lumber/3':   { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/quarry-l3.png',   sprites: { 'building/quarry/3':   { x: 0, y: 0, w: 128, h: 128 }, 'building_a/quarry/3':   { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/lodge-l3.png',    sprites: { 'building/lodge/3':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/lodge/3':    { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/tower-l3.png',    sprites: { 'building/tower/3':    { x: 0, y: 0, w: 128, h: 128 }, 'building_a/tower/3':    { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/barracks-l3.png', sprites: { 'building/barracks/3': { x: 0, y: 0, w: 256, h: 256 }, 'building_a/barracks/3': { x: 0, y: 0, w: 256, h: 256 } } },
+    { image: 'assets/range-l3.png',    sprites: { 'building/range/3':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/range/3':    { x: 0, y: 0, w: 256, h: 256 } } },
+    { image: 'assets/stable-l3.png',   sprites: { 'building/stable/3':   { x: 0, y: 0, w: 256, h: 256 }, 'building_a/stable/3':   { x: 0, y: 0, w: 256, h: 256 } } },
+    { image: 'assets/siege-l3.png',    sprites: { 'building/siege/3':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/siege/3':    { x: 0, y: 0, w: 256, h: 256 } } },
+    { image: 'assets/sapper-l3.png',   sprites: { 'building/sapper/3':   { x: 0, y: 0, w: 256, h: 256 }, 'building_a/sapper/3':   { x: 0, y: 0, w: 256, h: 256 } } },
+    { image: 'assets/trade-l3.png',    sprites: { 'building/trade/3':    { x: 0, y: 0, w: 256, h: 256 }, 'building_a/trade/3':    { x: 0, y: 0, w: 256, h: 256 } } },
+    { image: 'assets/warcamp-l3.png',  sprites: { 'building/warcamp/3':  { x: 0, y: 0, w: 256, h: 256 }, 'building_a/warcamp/3':  { x: 0, y: 0, w: 256, h: 256 } } },
+    { image: 'assets/dock-l3.png',     sprites: { 'building/dock/3':     { x: 0, y: 0, w: 256, h: 256 }, 'building_a/dock/3':     { x: 0, y: 0, w: 256, h: 256 } } },
+
+    /* WALL & GATE L3 — same partial-coverage call as L1/L2: only the two
+       straight wall masks (E-W=10, N-S=5) and both gate faces, both
+       genuinely re-generated per-orientation. The gate is a deliberate
+       style departure from L1/L2's timber-post look AND from the old
+       procedural L3 gatehouse (turrets, machicolation, portcullis) — a
+       megalithic drystone trilithon (two undressed stone posts, a single
+       timber lintel) matching the "age of stone mastery" brief, which is
+       why R.BANNER_AT.gate/.gateV needed re-measuring rather than reuse:
+       there is no turret left to fly a standard from. Corners/T-junctions
+       stay on the procedural L3 art. */
+    { image: 'assets/wall-l3.png',    sprites: { 'building/wall/3': { x: 0, y: 0, w: 128, h: 128 }, 'wall/3/10': { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/wall-l3-v.png',  sprites: { 'wall/3/5': { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/gate-l3.png',    sprites: { 'building/gate/3': { x: 0, y: 0, w: 128, h: 128 }, 'gate/3/h': { x: 0, y: 0, w: 128, h: 128 } } },
+    { image: 'assets/gate-l3-v.png',  sprites: { 'gate/3/v': { x: 0, y: 0, w: 128, h: 128 } } },
+
+    /* ===== THE ANCIENT WONDERS — ART_PLAN.md 1.3 =====
+       Ten monuments, one rolled per run (CFG.WONDERS / G.rollWonder). Unlike
+       every other building, a wonder's art doesn't live at `building/wonder/1`
+       — that slot is overwritten wholesale every time Sprites.useWonder(key)
+       runs (on new game, on load, on any future re-roll), so a manifest
+       overlay written there would simply be discarded the next time it does.
+       Sprites.wonders[key] is the stable per-monument dictionary useWonder
+       reads FROM, so that's the actual overlay point — see the new `wonder`
+       case in Assets._slot (js/assets.js). The procedural canvas is 192×192
+       (tileW, a 96-cell fine grid — HALF the resolution every other building
+       uses, see js/sprites.js); this art was authored at the same 4×
+       convention as everything else (384×384) and downscaled on load via
+       dw/dh, the one place in this manifest that needs it, so the browser
+       resamples straight from the high-res master instead of upscaling a
+       192px decode. No `building_a/wonder` — stone is stone, the rival's
+       monument (if it manages to raise one) is the same monument. Camera
+       corrected to match tc-l3.png's front elevation (screen-aligned
+       footprint, front face at the bottom edge) after the first pass came
+       back isometric; the Bronze Colossus additionally got a new top figure
+       (Colossus-of-Rhodes-inspired) in the same pass. */
+    { image: 'assets/wonder-henge.png',    sprites: { 'wonder/henge':    { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
+    { image: 'assets/wonder-colossus.png', sprites: { 'wonder/colossus': { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
+    { image: 'assets/wonder-moai.png',     sprites: { 'wonder/moai':     { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
+    { image: 'assets/wonder-pyramid.png',  sprites: { 'wonder/pyramid':  { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
+    { image: 'assets/wonder-obelisk.png',  sprites: { 'wonder/obelisk':  { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
+    { image: 'assets/wonder-temple.png',   sprites: { 'wonder/temple':   { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
+    { image: 'assets/wonder-sphinx.png',   sprites: { 'wonder/sphinx':   { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
+    { image: 'assets/wonder-flame.png',    sprites: { 'wonder/flame':    { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
+    { image: 'assets/wonder-totems.png',   sprites: { 'wonder/totems':   { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
+    { image: 'assets/wonder-sundial.png',  sprites: { 'wonder/sundial':  { x: 0, y: 0, w: 384, h: 384, dw: 192, dh: 192 } } },
 
     /* ORIGIN CARDS art goes here when it lands — one `ui/card/<cardKey>`
        entry per card (keys and art briefs: ASSET_SPEC.md). Until then the

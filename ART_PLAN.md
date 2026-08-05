@@ -220,9 +220,202 @@ conventions; this file is the batch-by-batch progress log.
   `footprint.mjs`, `wall-tower-bond.mjs`, `wild-life.mjs`, `camp-crew.mjs`,
   `worked-ground.mjs`, `build-stages.mjs`, `tap-audit.mjs` — all pass.
 
-- [ ] **1.3 — Level 3 Building Art Batch** — not started
+- [x] **1.3 — Level 3 Building Art Batch, incl. the ten Wonders** (Town
+      Center: pre-approved art wired in step 0)
 
-## 2. Wonders
+  "The age of stone mastery": drystone-dominant, larger, more refined —
+  flat undressed fieldstones stacked in visible courses (Skara Brae style,
+  NO mortar, NO dressed masonry, NO medieval anything: no arches, no
+  crenellations, no brick, no metal). Timber remains for roofs, lintels,
+  frames. Style-referenced against `assets/tc-l3.png` (the pre-approved
+  drystone great hall — stacked-stone walls, thatch roof, stone CHIMNEY,
+  carved totem, stone threshold — wired at native 256×256 in step 0).
+  Wonders were priority (worst existing assets in the game, shown first on
+  the review sheet) and are folded into this same batch rather than tracked
+  separately, per the brief.
 
-- [ ] **2.1** — not started (excluded from the level 1/2/3 building batches;
-      ten monuments, one rolled per run — see `CFG.WONDERS`)
+  | Building | Footprint | Gens (initial + fix) | Notes |
+  |---|---|---|---|
+  | House | 1×1 | 1 | Skara Brae cottage, no chimney — smoke seeps at the ridge |
+  | Watchtower | 1×1 | 1 | stone shaft, timber lookout cabin — "most formidable 1×1" |
+  | Farm | 1×1 | 1 + 1 fix | fix: flattened — no raised plinth, matches L1/L2 |
+  | Lumber Camp | 1×1 | 1 | |
+  | Quarry | 1×1 | 1 | dark excavated pit, cut-stone rim, ladder |
+  | Hunter's Lodge | 1×1 | 1 | |
+  | Barracks | 2×2 | 1 + 4 fix | fix: closed roofed drill-hall (was a roofless cutaway); exterior weapon racks + sparring court |
+  | Archery Range | 2×2 | 1 | approved as-is throughout |
+  | Horse Stable | 2×2 | 1 | approved as-is throughout |
+  | Siege Workshop | 2×2 | 1 + 6 fix | fix: closed building AND a clearly visible complete catapult — hardest piece this batch, needed 4 attempts to get both in frame together |
+  | Sappers' Camp | 2×2 | 1 | approved as-is throughout |
+  | Trading Post | 2×2 | 1 + 1 fix | fix: closed stone-and-timber market hall, awning + goods outside, gained a real chimney |
+  | War Camp | 2×2 | 1 + 3 fix | fix: single grand command tent (was a walled camp), no enclosure; 1 `edit_image` touch-up to strip a banner and douse a fire that crept back into a "no banner/no fire" regen |
+  | Dock | 2×2 | 1 + 2 fix | fix: full redo — straight pier from the bottom edge, boat shed at the land end, no baked water |
+  | Wall (E-W + N-S) | 1×1 | 2 | approved as-is throughout |
+  | Gate (face + flank) | 1×1 | 2 + 2 fix | fix: full redo — megalithic drystone trilithon (two posts, one timber lintel) replacing the old dressed-stone gatehouse; see below |
+  | The Stone Circle (henge) | 3×3 | 1 | |
+  | The Bronze Colossus | 3×3 | 1 + 1 fix | fix: new figure (Colossus-of-Rhodes-inspired warrior with spear, was a poorly-read statue) |
+  | The Great Stone Heads (moai) | 3×3 | 1 + 3 fix | fix: camera only — see below |
+  | The Step Pyramid | 3×3 | 1 + 3 fix | fix: camera only, plus one `edit_image` pass to remove a stray watermark flag at the summit |
+  | The Sun Obelisk | 3×3 | 1 | camera corrected on the first attempt |
+  | The Temple of Dawn | 3×3 | 1 | camera corrected on the first attempt; one background-removal artifact fixed (see below) |
+  | The Great Sphinx | 3×3 | 1 + 2 fix | fix: camera, and the crowned head reads unmistakably human, not lion |
+  | The Eternal Flame | 3×3 | 1 + 4 fix | fix: camera only — never fully flattened; disclosed below, not blocking |
+  | The Ancestor Totems | 3×3 | 1 | a close ring of ~12 carved poles — a deliberate reading of the plural name, not a defect |
+  | The Great Sundial | 3×3 | 1 | camera corrected on the first attempt |
+
+  **Total: ~55 generations** across 28 pieces (16 buildings + wall + gate + 10
+  Wonders), including two full fix rounds. Every candidate passed mechanical
+  validation (corner alpha == 0, zero edge-touching pixels, native size)
+  before being wired.
+
+  **The camera correction (all 10 Wonders).** Every Wonder came back
+  isometric/3-4-angled on the first pass despite the brief; corrected to
+  match `tc-l3.png`'s actual camera — a front elevation ("dollhouse" view,
+  screen-aligned square footprint, front face at the bottom edge), NOT a
+  literal top-down and NOT the diamond-footprint isometric convention every
+  other Wonder generation defaults to. Getting there took escalating prompt
+  language across up to 4 attempts per piece (`isometric: false` and
+  `view: "high top-down"/"side"` alone were not enough; "flat 2D
+  architectural blueprint elevation... you are staring directly at a wall"
+  language was what actually worked). **The Eternal Flame never fully
+  flattened** — a faint diamond footprint remains after 4 attempts,
+  disclosed and accepted rather than spending further budget on one
+  wonder-tier decoration.
+
+  **Two background-removal defects, both fixed without spending
+  generations.** PixelLab's `no_background=true` stays unreliable above
+  128px (as in every prior batch); this batch defaulted to a local BFS
+  flood-fill (border-seeded, per-step color-distance tolerance) instead of
+  `edit_image`'s ~20-40 gen cost, and it worked cleanly on all but two
+  pieces: (a) **Temple of Dawn** left a solid grey block in its doorway —
+  the flood never reached in from the border because the door frame fully
+  enclosed it; fixed with a second, interior-seeded flood from a sample
+  point inside the block. (b) **The Ancestor Totems** — one `edit_image`
+  cleanup call (needed because the local flood-fill leaked through the gaps
+  between poles) returned a canvas with a literal checkerboard PATTERN
+  painted into the RGB channels instead of real alpha transparency
+  (confirmed: alpha was 255 everywhere, corner color a light grey
+  matching a checker square) — fixed with a small fixed-palette flood-fill
+  matching the checker's actual sampled colors, then a recenter-and-pad
+  pass since the true content ran to the canvas edge once the fake
+  background was gone.
+
+  **The gate is a deliberate style departure**, not just a material step:
+  the old L3 gatehouse (turrets, machicolation, portcullis) is replaced by a
+  megalithic drystone trilithon — two undressed stone posts, one timber
+  lintel, a timber door that CLOSES the passage (matching L1/L2's
+  convention; there is no portcullis left to raise — the drawbridge,
+  unaffected, is what "open/closed" means for a real L3 gate now). Inventory
+  of the existing gate system (asked for before generating): every level
+  carries exactly two static art states, `gate_h` (face, E-W wall) and
+  `gate_v` (flank, N-S wall) — there is no separate front/back art (the
+  camera never rotates) and no baked open/closed state; the **drawbridge
+  itself is a purely procedural overlay** (`Sprites.drawbridge`, drawn by
+  `R.drawDrawbridge`) layered on top of whichever static gate art is active,
+  entirely independent of level — it needed no new art at all to keep
+  working over the new L3 gate.
+
+  **New manifest mechanism: Wonder art.** Unlike every other building, a
+  Wonder's finished art doesn't live at the ordinary `building/wonder/1`
+  slot — `Sprites.building.wonder` is reassigned wholesale by
+  `Sprites.useWonder(key)` every time the run's roll (re)applies (new game,
+  load, a future re-roll), so a manifest overlay written there would be
+  discarded the next time it runs. Added a new `wonder/<key>` grammar to
+  `Assets._slot` (`js/assets.js`) that overlays `Sprites.wonders[key]`
+  instead — the stable per-monument dictionary `useWonder` reads FROM — so
+  the swap picks up manifest art for free with no change to game logic. The
+  procedural canvas is 192×192 (`tileW`, half the resolution of the 384×384
+  master this batch authored at), so these are the one place in the
+  manifest that uses `dw`/`dh` to downscale on load — everywhere else in
+  this project authors art at the exact native canvas size. No
+  `building_a/wonder` — stone is stone, the rival's monument is the same
+  monument.
+
+  **Anchors re-measured against the new art** (`js/render.js`), all by
+  direct pixel sampling of the shipped files (same method as the TC L3 step
+  0 fix):
+  - `R.SMOKE_AT` gained `lv:3` entries for `house`/`lodge` (neither has a
+    visible roof-hole in the new art — anchored to the thatch ridge, same
+    convention as a real thatched cottage) and `trade` (a genuine chimney
+    this tier). `warcamp`'s `lv:3` entry points at the tent's own fire ring
+    — cold, matching the art (see below), but still smokes: the L1/L2 rings
+    were never lit either, and hearth-smoke has always been about looking
+    inhabited, not about an actual flame.
+  - `R.BANNER_AT.gate`/`.gateV` re-measured against the new trilithon posts'
+    own flat tops (there is no turret left to fly a standard from).
+    `R.BANNER_AT.warcamp` gained an `lv:3` entry on the tent's own bare
+    RIGHT pole (the left one carries a skull trophy instead).
+  - **`range`/`trade`/`sapper`/`dock`/`siege` LOST their banner anchor.**
+    None of the five new L3 sprites (a catapult yard, a market hall's own
+    awning post already spoken for by the chimney, a plain pier, a closed
+    drill-hall) carries a free-standing post the way `warcamp`/`gate`/`tc`
+    do, and the banner CLOTH is always drawn procedurally over a baked-in
+    POLE position (`R.drawBanners`) — cloth with no pole under it in the
+    art reads as a floating-flag bug, worse than no banner at that tier.
+    None of the five flew one before L3 either, so this is a coverage loss,
+    not a broken feature; `tests/wild-life.mjs`'s
+    `everyBannerPoleHasAnAnchor` updated to match.
+
+  **`tests/wall-tower-bond.mjs`, `tests/wild-life.mjs` and
+  `tests/wonder.mjs` all updated in this commit**, each for a reason tied
+  directly to this batch:
+  - Material-mix thresholds for `wallL3StaysStone` / `gateL3StaysStone` /
+    `bothGatesAreBuilt3` relaxed to match the new drystone-with-genuine-
+    timber reality (measured, not guessed — see the test's own comments).
+    `towerL3StaysStone` renamed `towerL3HasAStoneShaft` and loosened: the
+    Watchtower's stone base sits under a genuinely timber lookout cabin
+    (architecturally correct — a real crow's-nest is built light), which
+    reads as more wood-dominant than L1 by a flat pixel-color heuristic;
+    `everyTierStepsInMaterial` no longer demands the tower's stone share
+    order strictly across tiers for the same reason (the wall's ordering
+    still holds and is still checked).
+  - `theCurtainRunsStraightThroughAGate3` and `andStraightThroughItsFlank3`
+    joined the exemption L1/L2 already had: the "stamped from the wall's
+    own art" structural guarantee only ever held for a procedurally-drawn
+    gate, and L3 is now independently-authored manifest art exactly like
+    L1/L2.
+  - `theThirdTierStandsOpen` (the old gatehouse's portcullis arch) no
+    longer describes any tier — replaced by extending
+    `theEarlyTiersHangATimberDoor` to cover L3 too, with its own door
+    region (the new art's proportions differ from L1/L2's).
+  - `tests/wonder.mjs` gained the same `asCanvas()` normalization
+    `wall-tower-bond.mjs` already had, since `Sprites.wonders[key]` can now
+    be a manifest-loaded `ImageBitmap`, plus the matching
+    `--allow-file-access-from-files` launch flag.
+
+  **Two pre-existing issues found (not caused by this batch) while running
+  the full suite for verification, disclosed rather than silently fixed or
+  ignored:**
+  - `tests/burn-down.mjs` was missing the same `--allow-file-access-from-
+    files` flag `wall-tower-bond.mjs` already carries — added here, since
+    fixing it was needed to see the rest of the file run at all (it reads
+    pixels off `Sprites.building.house[0]`, manifest art since long before
+    this batch). Once past that crash, `framesAreRoomierThanTheTile` fails
+    on a 1px rounding mismatch in `R.collapseSheet`'s frame sizing — a
+    latent bug in the L1 tower's collapse-animation math, unrelated to any
+    art in this batch, previously masked because the file always crashed
+    one line earlier on this machine. Left unfixed; flagged for separate
+    attention.
+  - `tests/buildings-block.mjs`'s `workersStillStationOnTheirPlot` asserts a
+    farm worker stands ON the plot tile — stale since ART_PLAN.md 1.2 added
+    `workAdjacent: true` to farm (workers now stand at the plot's EDGE by
+    design). Pre-dates this batch; left unfixed and flagged rather than
+    changed without a request to touch Batch 1.2's own behavior.
+  - Six test files hard-code `file:///home/user/civilization-game/index.html`
+    instead of a portable path (`combined-arms`, `foe-notes`, `heal-limit`,
+    `sapper-deselect-heal`, `tower-archer-miss`, `trade-post`) and fail on
+    this Windows machine regardless of any code change — a pre-existing
+    cross-platform authoring gap, confirmed by comparing against
+    `tap-audit.mjs`'s portable `join(root, ...)` pattern.
+
+  **Verification**: two in-game screenshots (28 L3 pieces + TC placed via
+  `Bld.place(..., {free:true, instant:true})` around the hall and forced to
+  level 3 — except War Camp and the Wonder itself, neither of which has a
+  second tier to force — plus individual close-ups of the Wonder, War Camp,
+  Dock, Gate and Wall) confirmed every sprite renders at native size with no
+  clipping, the Wonder art correctly cycles per the run's roll through the
+  new manifest slot, the dock composites cleanly over real water, and
+  banners fly in the tribe's dye from every anchor that has a real pole
+  under it. Tests run: the full suite (40 files) — 32 pass; the 8 failures
+  are the three pre-existing issues above (8 files: 1 buildings-block, 1
+  burn-down, 6 hardcoded-path) plus none newly caused by this batch.
