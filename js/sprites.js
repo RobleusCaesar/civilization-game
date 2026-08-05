@@ -1660,6 +1660,201 @@ const Sprites = {
   /* ---- the 8+ buildings. Each receives (p, lv, fac) where fac is the owning
      faction's cloth ramp — the rival's set is generated in red. Silhouette
      identifies the building; tierDress drives materials and decoration. ---- */
+  /* ================= THE 2×2 BUILDING LANGUAGE =================
+     Shared vocabulary for every BIG_DRAW below, so eight buildings across three
+     tiers read as one settlement rather than eight sketches. All coordinates
+     are the 128-cell FINE grid (q = p.hi); the coarse 64-grid is used only for
+     broad blocks.
+
+     ONE CAMERA, EVERY BUILDING, EVERY LEVEL — matched to assets/tc-l3.png:
+       · screen-aligned, zero corner rotation, NO isometric
+       · the FRONT FACE dominates: G2.EAVE(56) → G2.GND(118), ~60% of the mass
+       · a modest ROOF PLANE seen from above: G2.SKY(14) → G2.EAVE, ~40%
+     Nothing may lean, foreshorten to a corner, or show a second wall — the
+     moment one building shows two faces the whole set reads as a different
+     game (which is exactly what the 1×1-era draws did at this size).
+
+     TIER MATERIALS (ARTSTYLE.md ramps, top-left light, hard tonal steps):
+       L1 lashed poles, thatch and hide over packed earth — a WORK-SITE, not a
+          building; most L1s are yards with a shelter at most.
+       L2 the first real building: timber frame, wattle infill, a fieldstone
+          FOOTING course, tight thatch, and visible activity.
+       L3 drystone-dominant: flat stacked courses, no mortar, no medieval
+          features (no arches, crenels, glazing) — mass and craft instead. */
+  const G2 = { SKY: 14, EAVE: 56, GND: 118, L: 8, R: 120 };
+
+  // packed-earth pad + soft contact shadow: what makes the thing stand on the
+  // ground instead of floating over it. Drawn first, so everything covers it.
+  function g2Ground(q, x0, x1, seed) {
+    const r = ART.rng(seed);
+    for (let y = G2.GND - 6; y <= G2.GND + 5; y++) {
+      const t = Math.abs(y - (G2.GND - 1)) / 7;
+      const in0 = x0 + t * 6, in1 = x1 - t * 6;
+      for (let x = in0 | 0; x <= in1; x++) {
+        if (r() < t * t * 1.5) continue;
+        q(x, y, 1, 1, AP.soil[r() < 0.42 ? 2 : 1]);
+      }
+    }
+    for (let x = x0 + 3; x <= x1 - 3; x++) q(x, G2.GND + 6, 1, 1, AP.soil[0]);   // shadow lip
+  }
+
+  /* A ROOF SEEN FROM ABOVE-FRONT: a trapezoid narrowing to a ridge, laid in
+     courses, top-left lit. `ramp` is thatch (L1/L2) or wood shingle (L3). */
+  function g2Roof(q, x0, x1, yTop, yBot, ramp, seed, courseH) {
+    const r = ART.rng(seed), ch = courseH || 5;
+    const inset = (x1 - x0) * 0.17;
+    for (let y = yTop; y <= yBot; y++) {
+      const v = (y - yTop) / Math.max(1, yBot - yTop);
+      const a = x0 + inset * (1 - v), b = x1 - inset * (1 - v);
+      for (let x = a | 0; x <= b; x++) {
+        const u = (x - a) / Math.max(1, b - a);
+        let step = 2.6 - u * 1.25 - v * 0.5 + (r() - 0.5) * 0.6;   // top-left light
+        if ((y - yTop) % ch === ch - 1) step -= 1.1;               // the course lip
+        q(x, y, 1, 1, ramp[Math.max(0, Math.min(ramp.length - 1, Math.round(step)))]);
+      }
+      q(a | 0, y, 1, 1, ramp[0]); q(b | 0, y, 1, 1, ramp[0]);      // hip seams
+    }
+    for (let x = (x0 + inset) | 0; x <= x1 - inset; x++) {         // the ridge
+      q(x, yTop - 1, 1, 1, ramp[ramp.length - 1]); q(x, yTop, 1, 1, ramp[1]);
+    }
+    for (let x = x0; x <= x1; x += 2 + ((r() * 3) | 0))            // ragged eave
+      q(x, yBot + 1, 1, 1 + ((r() * 2) | 0), ramp[0]);
+  }
+
+  /* THE FRONT FACE, dressed by tier. L2/L3 both stand on a fieldstone footing;
+     what changes is what rises off it — timber frame with wattle, or drystone
+     courses laid flat and dry. */
+  function g2Wall(q, x0, x1, yTop, yBot, tier, seed) {
+    const r = ART.rng(seed);
+    const foot = tier >= 2 ? 8 : 0;
+    for (let y = yTop; y <= yBot - foot; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const u = (x - x0) / (x1 - x0);
+        if (tier >= 3) {
+          // DRYSTONE: flat courses, staggered joints, no mortar line
+          const row = ((y - yTop) / 6) | 0;
+          const joint = ((x + row * 5) % 11) === 0 || (y - yTop) % 6 === 0;
+          q(x, y, 1, 1, joint ? AP.stone[0] : AP.stone[u < 0.42 ? 3 : 2]);
+        } else if (tier === 2) {
+          // TIMBER FRAME with wattle infill between the studs
+          const stud = ((x - x0) % 17) < 3;
+          q(x, y, 1, 1, stud ? AP.wood[u < 0.4 ? 3 : 2]
+                             : (r() < 0.2 ? AP.hide[2] : AP.hide[u < 0.45 ? 3 : 2]));
+        } else {
+          q(x, y, 1, 1, AP.hide[u < 0.45 ? 2 : 1]);
+        }
+      }
+    }
+    for (let y = yBot - foot + 1; y <= yBot; y++)                  // fieldstone footing
+      for (let x = x0; x <= x1; x++) {
+        const u = (x - x0) / (x1 - x0);
+        const joint = ((x + (y - yBot) * 3) % 9) === 0;
+        q(x, y, 1, 1, joint ? AP.stone[0] : AP.stone[u < 0.4 ? 2 : 1]);
+      }
+  }
+
+  // a lashed pole — the L1 vocabulary: everything is tied, nothing is joined
+  function g2Pole(q, x, yTop, yBot, lash) {
+    q(x, yTop, 1, yBot - yTop, AP.wood[1]);
+    q(x + 1, yTop, 1, yBot - yTop, AP.wood[3]);
+    if (lash) for (const ly of lash) { q(x - 1, ly, 4, 1, AP.bone[1]); q(x - 1, ly + 1, 4, 1, AP.bone[0]); }
+  }
+
+  const BIG_DRAW = {
+    /* ---------------- BARRACKS: the fighting yard ----------------
+       Signature, in one second: the SPARRING DUMMY and the spear rack. At L1
+       there is no building at all — a hide lean-to over a beaten yard, which is
+       the honest read of a founding village's "barracks". L2 raises the drill
+       hall behind the yard; L3 lays it in drystone and the yard fills with
+       finished arms. The dummy stands in the same place at all three tiers, so
+       the eye can track one building growing rather than three buildings. */
+    barracks(p, lv, fac) {
+      const q = p.hi;
+      /* COMPOSITION: hall on the LEFT two thirds, an open YARD on the right.
+         The yard is not decoration — it is the identity, so its props are
+         drawn at full size and never tucked against the wall (the first pass
+         put them there and every tier read as a house with ornaments). */
+      const x0 = 8, x1 = 76;
+      g2Ground(q, G2.L, G2.R - 2, 41 + lv);
+
+      if (lv === 1) {
+        // no building yet: a hide lean-to over a beaten yard is what a founding
+        // village's "barracks" honestly is
+        g2Pole(q, 12, 54, G2.GND - 2, [60, 100]);
+        g2Pole(q, 66, 54, G2.GND - 2, [60, 100]);
+        q(10, 50, 60, 4, AP.wood[2]); q(10, 50, 60, 1, AP.wood[3]);        // ridge pole
+        for (let y = 54; y <= 84; y++) {
+          const sag = Math.round(Math.sin((y - 54) / 30 * Math.PI) * 2);
+          for (let x = 11 + sag; x <= 69 - sag; x++) {
+            const u = (x - 11) / 58, v = (y - 54) / 30;
+            q(x, y, 1, 1, AP.hide[Math.max(0, Math.round(2.6 - u * 1.1 - v * 0.8))]);
+          }
+        }
+        for (let x = 13; x <= 67; x += 9) q(x, 85, 3, 4, AP.hide[0]);      // weighted hem
+        q(18, 96, 44, 3, AP.wood[1]);                                       // a bench under it
+        q(18, 99, 44, 2, AP.wood[0]);
+      } else {
+        g2Roof(q, x0 - 5, x1 + 5, G2.SKY + (lv === 3 ? 3 : 7), G2.EAVE,
+               lv >= 3 ? AP.wood : AP.thatch, 70 + lv, lv >= 3 ? 4 : 5);
+        g2Wall(q, x0, x1, G2.EAVE + 1, G2.GND - 2, lv, 80 + lv);
+        // a WIDE doorway — a hall soldiers march out of, not a cottage door
+        const dx = 30, dw = 24;
+        q(dx, 70, dw, G2.GND - 72, AP.ink[0]);
+        q(dx, 70, dw, 5, AP.ink[1]);
+        q(dx - 4, 66, dw + 8, 5, AP.wood[3]); q(dx - 4, 71, 4, G2.GND - 73, AP.wood[2]);
+        q(dx + dw, 71, 4, G2.GND - 73, AP.wood[1]);
+        if (lv >= 3) q(dx + 6, 96, 12, 8, AP.fire[1]);                      // forge glow within
+        // SHIELDS hung on the face — big enough to read as shields
+        ART.shadedCircle(q, 17, 84, 9, AP.hide, 2);          // the leather face
+        ART.shadedCircle(q, 17, 84, 6, fac, 2);               // painted in the tribe's dye
+        ART.shadedCircle(q, 17, 84, 2, AP.stone, 3);          // iron boss, lit top-left
+        for (let a = 0; a < 8; a++) {                          // rim studs
+          const an = a / 8 * Math.PI * 2;
+          q(Math.round(17 + Math.cos(an) * 8), Math.round(84 + Math.sin(an) * 8), 1, 1, AP.stone[4]);
+        }
+        if (lv >= 3) {
+          ART.shadedCircle(q, 66, 84, 9, AP.wood, 2);
+          ART.shadedCircle(q, 66, 84, 6, fac, 1);
+          ART.shadedCircle(q, 66, 84, 2, AP.gold, 2);
+        }
+      }
+
+      /* ---- THE YARD, right third: the signature at every tier ---- */
+      // SPARRING DUMMY — free-standing, full height, unmistakable
+      const bx = 111;
+      q(bx, 52, 4, G2.GND - 54, AP.wood[1]); q(bx + 1, 52, 2, G2.GND - 54, AP.wood[3]);
+      q(bx - 10, 62, 24, 4, AP.wood[2]); q(bx - 10, 62, 24, 1, AP.wood[3]);   // cross-arm
+      q(bx - 10, 66, 3, 4, AP.wood[0]); q(bx + 11, 66, 3, 4, AP.wood[0]);     // arm stubs
+      /* A BATTERED HELM on the post, not a straw ball — the first pass drew a
+         circle on a stick and it read as a lollipop. A domed cap with a nasal
+         bar is the one shape that says "a man's head to aim at" at 40px. */
+      q(bx - 5, 44, 12, 7, AP.stone[2]); q(bx - 5, 44, 12, 2, AP.stone[3]);    // dome
+      q(bx - 6, 50, 14, 3, AP.stone[1]); q(bx - 6, 50, 14, 1, AP.stone[4]);    // brow band
+      q(bx, 51, 2, 6, AP.stone[1]);                                            // nasal bar
+      q(bx - 4, 41, 4, 3, AP.stone[4]);                                        // lit crown
+      // torso: hide wrapped over a straw core, strapped down — wider than the post
+      q(bx - 8, 70, 20, 22, AP.hide[2]); q(bx - 8, 70, 20, 4, AP.hide[3]);
+      q(bx - 8, 88, 20, 4, AP.hide[1]);
+      for (let i = 0; i < 3; i++) { q(bx - 8, 74 + i * 6, 20, 2, AP.bone[1]); q(bx - 8, 76 + i * 6, 20, 1, AP.bone[0]); }
+      for (let i = 0; i < 5; i++) q(bx - 7 + i * 4, 92, 2, 4, AP.thatch[1]);   // straw poking out below
+      if (lv >= 2) { q(bx - 6, 78, 6, 6, AP.ink[1]); q(bx + 5, 82, 5, 5, AP.ink[1]); }  // strike marks
+      // SPEAR RACK — free-standing in the yard, shafts clearing the rail so the
+      // silhouette itself says "weapons"
+      const rx = 82, n = lv === 1 ? 3 : lv === 2 ? 4 : 5;
+      q(rx, 78, 3, G2.GND - 80, AP.wood[1]); q(rx + 16, 78, 3, G2.GND - 80, AP.wood[1]);
+      q(rx - 1, 78, 21, 4, AP.wood[2]); q(rx - 1, 78, 21, 1, AP.wood[3]);
+      q(rx - 1, 104, 21, 3, AP.wood[1]);
+      for (let i = 0; i < n; i++) {
+        const x = rx + 2 + i * (14 / Math.max(1, n - 1));
+        q(x | 0, 40, 2, 66, AP.wood[i % 2 ? 2 : 3]);                           // shaft
+        q((x | 0) - 2, 34, 6, 8, AP.stone[lv >= 3 ? 4 : 3]);                   // head
+        q((x | 0) - 1, 34, 4, 3, AP.stone[4]);
+        q((x | 0) - 2, 41, 6, 2, AP.bone[1]);                                  // binding
+      }
+      if (lv >= 3) { q(rx + 2, 108, 16, 6, AP.stone[2]); q(rx + 2, 108, 16, 2, AP.stone[3]); }  // whetstone block
+    },
+  };
+
   const B_DRAW = {
     // ============ TOWN CENTER — the hero asset ============
     // ============ TOWN CENTER — the 2×2 hero, authored on the fine 32-grid ============
@@ -2308,10 +2503,45 @@ const Sprites = {
      wallMask[level-1][mask 0..15]. */
   Sprites.wallMask = [1, 2, 3].map(lv =>
     Array.from({ length: 16 }, (_, m) => tile(p => drawWallMask(p, lv, m))));
+  /* ---------------- 2×2 BUILDINGS: their own canvas, at real density ----------------
+
+     A sprite's DETAIL ceiling is its canvas, and tileB hands every building the
+     same 64px one. For a 1×1 that is 2 canvas px per world px — its 32-cell
+     fine grid addresses one world pixel per cell. A 2×2 covers twice the ground
+     on the same canvas, so the identical grid addresses TWO world px per cell:
+     half the density, which is why the promoted buildings read as their old
+     1×1 art spread thin rather than as bigger buildings.
+
+     tileB2 fixes the ceiling rather than the drawing: 128px over the same 2×2
+     of ground, so `p` (64 cells) matches a 1×1's fine grid exactly and `p.hi`
+     (128 cells) doubles it. Same relationship tileW already gives the 3×3
+     wonders at 192px/96 cells — this is that convention applied one size down.
+
+     R.blitBld needs no change: it turns smoothing on whenever a source outsizes
+     its destination, so the extra detail resolves cleanly at every zoom.
+
+     BIG_DRAW is the conversion register. A key in here is drawn natively for
+     2×2; a key still only in B_DRAW keeps its old draw untouched, so this pass
+     lands one building at a time with nothing half-migrated. */
+  function tileB2(draw) {
+    const c = mk(128, 128), g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    const p = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * 2, y * 2, (w || 1) * 2, (h || 1) * 2); };
+    p.hi = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, (w || 1), (h || 1)); };
+    p.g = g;
+    draw(p, g);
+    return c;
+  }
   for (const key of Object.keys(B_DRAW)) {
     const hi = !LORES_BLD.has(key);
+    const big = BIG_DRAW[key];
     const build = (fac) => [1, 2, 3].map(lv => {
-      const c = (hi ? tileB : tile)(p => B_DRAW[key](p, lv, fac));
+      /* THE MANIFEST FALLBACK IS UNTOUCHED BY ANY OF THIS. Assets._slot writes
+         into Sprites.building[key][lv-1], so a hand-made PNG landing later
+         simply overwrites whichever canvas we put there — procedural second,
+         image first, no code change at the swap. */
+      const c = big ? tileB2(p => big(p, lv, fac))
+                    : (hi ? tileB : tile)(p => B_DRAW[key](p, lv, fac));
       return NO_OUTLINE.has(key) ? c : ART.outline(c, 1);
     });
     Sprites.building[key] = build(AP.blue);
