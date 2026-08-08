@@ -1782,6 +1782,53 @@ const Sprites = {
   // top-left light from the CANVAS position, so every facing is lit the same way
   function dockLit(x, y) { return 1 - ((x / 128) * 0.45 + (y / 128) * 0.55); }
 
+  /* A SHED AT THE HEAD OF THE JETTY.
+     BUILDINGS FACE YOU — the camera rule the whole set follows — so unlike the
+     deck this is drawn axis-aligned in CANVAS space and never rotates with the
+     facing. Only its ANCHOR moves: dockFrame says where the jetty's land end
+     lands, and the shed is planted beside it. Front face under a modest roof
+     plane, same 60/40 split as every other building. */
+  function dockShed(q, cx, gy, w, h, lv, fac) {
+    const WD = AP.wood, x0 = (cx - w / 2) | 0, x1 = x0 + w;
+    const eave = gy - h, ridge = eave - (h * 0.62) | 0;
+    // roof plane, seen from above-front
+    for (let y = ridge; y <= eave; y++) {
+      const v = (y - ridge) / Math.max(1, eave - ridge);
+      const a = x0 - 3 + (1 - v) * (w * 0.16), b = x1 + 3 - (1 - v) * (w * 0.16);
+      for (let x = a | 0; x <= b; x++) {
+        const u = (x - a) / Math.max(1, b - a);
+        let st = 2.5 - u * 1.1 - v * 0.5;
+        if ((y - ridge) % 4 === 3) st -= 1;
+        const R = lv >= 3 ? AP.wood : AP.thatch;
+        q(x, y, 1, 1, R[Math.max(0, Math.min(R.length - 1, Math.round(st)))]);
+      }
+    }
+    for (let x = (x0 - 1); x <= x1 + 1; x++) q(x, ridge - 1, 1, 1, (lv >= 3 ? AP.wood : AP.thatch)[3]);
+    // front face
+    for (let y = eave + 1; y <= gy; y++) for (let x = x0; x <= x1; x++) {
+      const u = (x - x0) / w;
+      if (lv >= 3) {
+        const row = ((y - eave) / 5) | 0;
+        const joint = ((x + row * 4) % 9) === 0 || (y - eave) % 5 === 0;
+        q(x, y, 1, 1, joint ? AP.stone[0] : AP.stone[u < 0.42 ? 3 : 2]);
+      } else {
+        const stud = ((x - x0) % 11) < 2;
+        q(x, y, 1, 1, stud ? WD[3] : WD[u < 0.45 ? 2 : 1]);
+      }
+    }
+    // a dark doorway facing the deck, and a shuttered window at L3
+    const dw = Math.max(5, (w * 0.3) | 0);
+    q((cx - dw / 2) | 0, gy - (h * 0.72) | 0, dw, (h * 0.72) | 0, AP.ink[0]);
+    q((cx - dw / 2) | 0, gy - (h * 0.72) | 0, dw, 2, AP.ink[1]);
+    if (lv >= 3) {
+      q(x0 + 3, eave + 5, 7, 6, AP.ink[1]); q(x0 + 3, eave + 4, 7, 1, WD[3]);
+      q(x1 - 9, eave + 5, 7, 6, AP.ink[1]); q(x1 - 9, eave + 4, 7, 1, WD[3]);
+    }
+    // nets hung to dry on the gable end — what makes it a FISHER'S shed
+    for (let i = 0; i < 4; i++) q(x1 + 1, eave + 3 + i * 3, 3, 2, AP.bone[i % 2 ? 2 : 1]);
+    if (fac && lv >= 3) q(cx - 1, ridge - 6, 2, 6, AP.wood[1]);   // a bare pennant post
+  }
+
   const BIG_DRAW = {
     /* ---------------- BARRACKS: the fighting yard ----------------
        Signature, in one second: the SPARRING DUMMY and the spear rack. At L1
@@ -1962,6 +2009,17 @@ const Sprites = {
           }
           for (let a = 2; a <= LEN; a++) put(a, c + (c > 0 ? 1 : -1), WD[a % 9 === 0 ? 1 : 3]);
         }
+      }
+      /* ---- L2/L3: a shed at the head of the jetty, near the shore ----
+         Anchored off the jetty's land end so it follows the facing, but drawn
+         screen-facing like every other building. L3's is the larger of the
+         two, in drystone under a shingle roof to match the tier. */
+      if (lv >= 2) {
+        const sw = lv === 2 ? 26 : 36, sh = lv === 2 ? 15 : 20;
+        const [ax, ay] = M(lv === 2 ? 16 : 20, -(w + 4 + sw / 2));
+        const cx = Math.max(sw / 2 + 4, Math.min(128 - sw / 2 - 4, ax));
+        const gy = Math.max(sh + 16, Math.min(124, ay + sh / 2));
+        dockShed(q, cx, gy, sw, sh, lv, fac);
       }
       // ---- what makes it a working dock ----
       if (lv === 1) {
@@ -2698,6 +2756,115 @@ const Sprites = {
      them. A hand-made PNG therefore lands on the north-facing dock and the
      rest keep the procedural art until per-facing slots exist, which is a
      graceful split rather than a broken one. */
+  /* ---- THE DOCK'S OWN RAISING (tests/build-stages.mjs) ----
+     A jetty is not raised like a building, and the old stages made the same
+     mistake the finished sprite did: they painted their own water and beach,
+     and ran shore-left whatever the map said. These are TIMBER OVER
+     TRANSPARENCY in the same jetty frame as the finished dock, so a site under
+     construction points the way the finished dock will.
+
+       1 PILES DRIVEN — the driver's frame stands at the head with its weight
+         on the fall; the first pairs are home, the next only half sunk.
+       2 STRINGERS    — every pile home and capped, two stringers run out over
+         them, the first boards laid at the land end.
+       3 DECKING      — planked from the shore outward, the last bay still open
+         over bare stringers, rail posts going up behind. */
+  function dockStage(p, st, face) {
+    const q = p.hi, WD = AP.wood, { LEN, HALF } = DOCK, M = dockFrame(face || 'n');
+    const put = (a, c, col) => { const [x, y] = M(a, c); q(x, y, 1, 1, col); };
+    const w = HALF + 1;
+    const done = st === 0 ? 0 : st === 1 ? 20 : LEN - 22;      // how far the deck has got
+    /* shadow ONLY under what has actually been built. Casting it over the whole
+       future footprint (the first pass) left a dark slab of water floating
+       where the deck was not yet laid. */
+    if (st >= 1) { const r = ART.rng(140 + st);
+      for (let a = 1; a <= done + 2; a++) for (let c = -w; c <= w + 2; c++) {
+        if (r() < 0.25) continue;
+        const [x, y] = M(a, c); q(x + 2, y + 3, 1, 1, AP.water[0]);
+      } }
+    // the piles
+    const last = st === 0 ? 46 : LEN - 2;
+    for (let a = 8; a <= last; a += 18) for (const c of [-w - 2, w + 2]) {
+      const half = st === 0 && a > 30;                          // not yet driven home
+      for (let k = -3; k <= 4; k++) put(a + k + (half ? 3 : 0), c, WD[k < 0 ? 1 : 0]);
+      put(a - 3 + (half ? 3 : 0), c, WD[4]);
+      if (st >= 1) { put(a - 1, c, AP.bone[1]); put(a, c, AP.bone[0]); }   // capped and banded
+    }
+    if (st >= 1) for (const c of [-w + 2, w - 2])                // stringers reaching out
+      for (let a = 2; a <= LEN; a++) put(a, c, WD[a % 11 === 0 ? 0 : 2]);
+    if (st >= 1) for (let a = 0; a <= done; a++)                 // boards laid so far
+      for (let c = -w; c <= w; c++) {
+        const [x, y] = M(a, c);
+        const t = dockLit(x, y) - (((c + 64) % 4) === 0 ? 0.3 : 0);
+        q(x, y, 1, 1, WD[t > 0.6 ? 4 : t > 0.48 ? 3 : t > 0.36 ? 2 : 1]);
+      }
+    if (st === 2) {                                             // rail posts behind the work
+      for (let a = 4; a <= done - 4; a += 11) for (let k = 0; k < 3; k++) put(a + k, w + 1, WD[3]);
+      for (let a = 2; a <= done - 2; a++) put(a, w + 2, WD[a % 9 === 0 ? 1 : 3]);
+    }
+    // the pile-driver: a frame with its drop weight, standing at the working end
+    const fa = st === 0 ? 34 : st === 1 ? 30 : LEN - 14;
+    if (st < 2) {
+      // the driver: two legs, a head beam, and the weight hung on the fall.
+      // (The first pass looped over a single pixel and drew an H.)
+      for (let c = -w - 12; c <= -w - 1; c++) { put(fa - 4, c, WD[1]); put(fa + 6, c, WD[2]); }
+      for (let a = fa - 5; a <= fa + 7; a++) put(a, -w - 12, WD[2]);
+      for (let a = fa - 5; a <= fa + 7; a++) put(a, -w - 13, WD[3]);       // lit top edge
+      for (let c = -w - 11; c <= -w - 6; c++) put(fa + 1, c, AP.bone[1]);  // the fall
+      for (let a = fa - 1; a <= fa + 3; a++) for (let c = -w - 6; c <= -w - 3; c++)
+        put(a, c, AP.stone[a === fa - 1 ? 3 : 2]);                          // the weight
+      put(fa - 4, -w - 1, WD[0]); put(fa + 6, -w - 1, WD[0]);              // feet on the deck
+    } else {
+      for (let a = fa; a <= fa + 8; a++) for (let c = w - 6; c <= w - 1; c++)
+        put(a, c, AP.thatch[a % 3 ? 2 : 1]);                                // a crate of nails/pitch
+    }
+    /* THE STAGING, at the land end. Not decoration: the first stage is a few
+       piles in open water and reads as an empty site without it — the
+       build-stages contract measures exactly that ("too thin"), and it was
+       right. A pile-driving site has its materials to hand. */
+    for (let i = 0; i < 5; i++) for (let a = -5; a <= 4; a++)          // piles stacked, waiting
+      put(a, -w - 5 - i * 3, WD[i % 2 ? 2 : 3]);
+    for (let i = 0; i < 5; i++) put(-5, -w - 5 - i * 3, WD[4]);        // lit sawn ends
+    for (let i = 0; i < 4; i++) for (let a = -5; a <= 4; a++)          // …and on the other flank
+      put(a, w + 5 + i * 3, WD[i % 2 ? 1 : 2]);
+    for (let c = -w - 3; c <= w + 3; c++) { put(-6, c, WD[1]); put(-7, c, WD[2]); }   // the sill the deck starts from
+    if (st === 0) {
+      /* MORE PILES ALREADY IN THE WATER, waiting to be set — a pile field is
+         what a jetty site actually looks like before any deck exists, and it
+         is what carries the stage visually. */
+      for (let a = 14; a <= LEN - 8; a += 12) for (const c of [-w + 5, w - 5]) {
+        for (let k = -2; k <= 3; k++) put(a + k, c, WD[k < 0 ? 2 : 1]);
+        put(a - 2, c, WD[4]);
+        put(a, c + 1, AP.water[0]);
+      }
+      // a WORKING RAFT moored off the head: the crew's platform while the
+      // piles go in, with its own poles and a coil of line
+      const ra = 30;
+      for (let a = ra; a <= ra + 16; a++) for (let c = w + 6; c <= w + 15; c++)
+        put(a, c, WD[((a + c) % 5) === 0 ? 1 : ((c < w + 9) ? 3 : 2)]);
+      for (let a = ra; a <= ra + 16; a++) { put(a, w + 5, WD[0]); put(a, w + 16, WD[0]); }
+      for (let c = w + 7; c <= w + 14; c++) { put(ra + 3, c, AP.bone[1]); }
+      put(ra + 8, w + 10, AP.stone[3]); put(ra + 9, w + 10, AP.stone[2]);
+      for (let k = 0; k < 12; k++) put(ra + 12 + (k >> 3), w + 8 + k, WD[2]);   // a punt pole across it
+    } else {
+      // tools and a tar bucket on the finished boards
+      for (let a = 4; a <= 10; a++) for (let c = -w + 2; c <= -w + 6; c++) put(a, c, AP.stone[c < -w + 4 ? 2 : 1]);
+      for (let k = 0; k < 9; k++) put(12 + k, -w + 4, WD[2]);
+      for (let a = 16; a <= 21; a++) for (let c = w - 6; c <= w - 2; c++) put(a, c, AP.ink[1]);
+      for (let a = 16; a <= 21; a++) put(a, w - 6, AP.ink[2]);
+    }
+  }
+
+  Sprites.dockBuildFace = {};
+  for (const f of ['n', 'e', 's', 'w'])
+    Sprites.dockBuildFace[f] = [0, 1, 2].map(st => ART.outline(tileB2(p => dockStage(p, st, f)), 1));
+  // the canonical land-at-top set keeps the ordinary names, so the generic
+  // stage router and any manifest override still find it
+  for (let i = 0; i < 3; i++) {
+    Sprites.misc['dockBuild' + (i + 1)] = Sprites.dockBuildFace.n[i];
+    Sprites.misc['dockUp' + (i + 1)] = Sprites.dockBuildFace.n[i];
+  }
+
   Sprites.dockFace = {};
   for (const [set, fc] of [['P', AP.blue], ['A', AP.red]])
     Sprites.dockFace[set] = [1, 2, 3].map(lv => {
@@ -4346,44 +4513,6 @@ const Sprites = {
           h(48, 52, 5, 2, SO[3]); h.f(101, 44, 8, 1, TH[1]);          // its footing mound + a stay
           for (const sx of [12, 16]) { h(sx, 38, 1, 18, W[2]); h(sx, 37, 1, 1, ST[4]); }   // planted spears
           chips(h, 384, 6, 12, 50, 36, 8, SO[3], SO[0]);
-        },
-      ],
-      // ============ DOCK — piles driven, stringers laid, deck planked ============
-      dock: [
-        (h) => {   // the pile rig: a driven pair, the weight hung over the next
-          h(12, 28, 48, 26, WA[2]); h(12, 48, 48, 12, WA[1]); h(12, 58, 48, 2, WA[0]);   // the slip
-          h(0, 16, 12, 40, BO[2]); h(0, 16, 12, 1, GR[2]); h(0, 15, 8, 1, GR[3]);        // the shore
-          h(0, 54, 12, 1, WA[4]); h(16, 52, 6, 1, WA[4]); h(40, 56, 5, 1, WA[3]);        // foam + ripples
-          h(20, 40, 2, 18, W[0]); h(20, 39, 2, 1, W[3]);              // the first piles, driven
-          h(28, 42, 2, 16, W[0]); h(28, 41, 2, 1, W[3]);
-          h(1, 20, 10, 1, W[2]); h(1, 23, 10, 1, W[2]); h(1, 26, 10, 1, W[2]);           // piles stacked on shore
-          h(34, 18, 1, 22, W[1]); h(42, 18, 1, 22, W[1]); h(34, 18, 9, 1, W[2]);         // the pile-driving frame…
-          h.f(76, 40, 1, 14, TH[1]); ART.shadedRect(h, 36, 26, 4, 4, ST, 3);             // …its drop weight on the rope
-          h(36, 44, 2, 6, W[0]); h(36, 43, 2, 1, W[3]);               // the pile it stands over, half-driven
-        },
-        (h) => {   // every pile home; stringers reach out; first boards down
-          h(12, 28, 48, 26, WA[2]); h(12, 48, 48, 12, WA[1]); h(12, 58, 48, 2, WA[0]);
-          h(0, 16, 12, 40, BO[2]); h(0, 16, 12, 1, GR[2]); h(0, 15, 8, 1, GR[3]);
-          h(0, 54, 12, 1, WA[4]); h(22, 54, 6, 1, WA[4]); h(44, 50, 5, 1, WA[3]);
-          for (const px of [20, 30, 40, 50]) { h(px, 38, 2, 20, W[0]); h(px, 37, 2, 1, W[3]); }   // all piles driven
-          h(4, 30, 52, 2, W[2]); h(4, 30, 52, 1, W[3]);               // stringers shore → out
-          h(4, 36, 52, 2, W[1]);
-          h(4, 26, 14, 6, W[2]); h(4, 26, 14, 1, W[3]);               // first deck boards at the shore end
-          for (let bx = 6; bx < 18; bx += 3) h(bx, 27, 1, 5, W[1]);
-          h(52, 18, 1, 20, W[1]); h(58, 18, 1, 20, W[1]); h(52, 18, 7, 1, W[2]);   // the rig, moved to the far end
-          h.f(110, 38, 1, 12, TH[1]);
-        },
-        (h) => {   // the deck planked; rails rising; bollard set
-          h(12, 28, 48, 26, WA[2]); h(12, 48, 48, 12, WA[1]); h(12, 58, 48, 2, WA[0]);
-          h(0, 16, 12, 40, BO[2]); h(0, 16, 12, 1, GR[2]); h(0, 15, 8, 1, GR[3]);
-          h(0, 54, 12, 1, WA[4]); h(20, 52, 6, 1, WA[4]); h(46, 56, 5, 1, WA[3]);
-          for (const px of [20, 30, 40, 50]) { h(px, 40, 2, 18, W[0]); }
-          ART.woodPlankTexture(h, 4, 24, 52, 14, 87); h(4, 24, 52, 1, W[3]);   // the deck, planked full
-          for (let bx = 8; bx < 54; bx += 4) h(bx, 26, 1, 11, W[1]);
-          for (let rx = 6; rx <= 42; rx += 9) h(rx, 16, 1, 8, W[3]);           // rail posts up…
-          h(6, 16, 28, 1, W[3]);                                               // …top rail on the first spans
-          h(54, 26, 4, 8, W[2]); h(54, 25, 4, 1, ST[3]);              // the mooring bollard, set
-          h.f(96, 60, 14, 1, TH[1]); h.f(96, 61, 1, 5, TH[1]);        // its first rope, hung ready
         },
       ],
       // ============ FARM — paring, ploughing, sowing ============

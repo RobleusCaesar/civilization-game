@@ -2123,6 +2123,18 @@ const R = {
               this.blitBld(g, this.bldSprite(b, tgt), bx, by, bw, bw);
               Assets.drawSprite(g, 'misc/wonderScaffold', bx, by, { w: bw, h: bw });
             }
+          } else if (b.key === 'dock' && Sprites.dockBuildFace) {
+            /* A DOCK SITE POINTS THE WAY THE DOCK WILL. Its stages live in the
+               same jetty frame as the finished deck (Sprites.dockBuildFace), so
+               the piles march out from the shore rather than from a fixed edge.
+               'n' goes through the ordinary misc/ name so a manifest image can
+               still override the canonical set. */
+            const side = Bld.dockShore(b);
+            if (side === 'n') {
+              Assets.drawSprite(g, 'misc/dock' + (up ? 'Up' : 'Build') + (stage + 1), bx, by, { w: bw, h: bw });
+            } else {
+              this.blitBld(g, Sprites.dockBuildFace[side][stage], bx, by, bw, bw);
+            }
           } else if (Sprites.misc[b.key + 'Build1']) {
             // this building has BESPOKE stage art (every 1×1 building does —
             // tests/build-stages.mjs): its own three raising sprites for ALL
