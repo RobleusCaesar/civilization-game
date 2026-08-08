@@ -526,6 +526,40 @@ const Bld = {
 
   // docks stand on open water: the body must be big enough to work, and the
   // pier needs a walkable shore tile beside it so villagers can build/repair it
+  /* WHICH SIDE THE LAND IS ON. A dock stands on a 2×2 of open water with a
+     walkable shore against one of its flanks — but WHICH flank varies with
+     every coastline, and a jetty drawn into the water from the wrong edge is
+     the whole reason the old sprite read as a confusing raft. Returns 'n', 'e',
+     's' or 'w': the side the shore lies on, i.e. the end the deck is anchored
+     at. Cached against _blockGen like the rest of the layout reads, since it
+     only changes when the world does.
+
+     Ties are broken N→S→W→E, and a dock with no walkable flank at all (its
+     shore was dug away later) keeps its last honest answer of 'n' rather than
+     flickering. */
+  dockShore(b) {
+    if (!this._block) this.rebuildBlock();
+    if (this._dockGen !== this._blockGen) { this._dockGen = this._blockGen; this._dockAt = {}; }
+    const hit = this._dockAt[b.id];
+    if (hit) return hit;
+    const sz = this.size(b);
+    const sides = [
+      ['n', 0, -1], ['s', 0, sz], ['w', -1, 0], ['e', sz, 0],
+    ];
+    let found = 'n';
+    for (const [name, ox, oy] of sides) {
+      let land = false;
+      for (let k = 0; k < sz && !land; k++) {
+        const x = b.x + (ox === -1 ? -1 : ox === sz ? sz : k);
+        const y = b.y + (oy === -1 ? -1 : oy === sz ? sz : k);
+        if (MapGen.inB(x, y) && Path.passable(x, y, b.owner)) land = true;
+      }
+      if (land) { found = name; break; }
+    }
+    this._dockAt[b.id] = found;
+    return found;
+  },
+
   dockSiteOk(x, y, owner) {
     owner = owner || 'P';
     /* THE WHOLE QUAY HAS TO FLOAT (tests/footprint.mjs). A dock is a primary

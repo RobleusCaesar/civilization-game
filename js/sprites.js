@@ -1760,6 +1760,28 @@ const Sprites = {
     if (lash) for (const ly of lash) { q(x - 1, ly, 4, 1, AP.bone[1]); q(x - 1, ly + 1, 4, 1, AP.bone[0]); }
   }
 
+  /* ---------------- THE JETTY FRAME ----------------
+     A dock stands on OPEN WATER with the shore against one flank, and which
+     flank varies with the coastline. So the draw is written once in jetty
+     space — `a` runs from the LAND end outward, `c` runs across the deck — and
+     dockFrame maps that to the canvas for whichever side the land is on.
+
+     Light stays TOP-LEFT in canvas space in all four facings, because every
+     shade below is chosen from the mapped canvas position rather than from the
+     jetty's own axis. That is the whole reason this is a coordinate transform
+     and not four rotated copies of one canvas (ARTSTYLE.md; the same trap
+     CLAUDE.md flags for L2/L3 gates). */
+  const DOCK = { LEN: 92, HALF: 17, PAD: 6 };   // 92 of 128 ≈ three quarters across the 2×2
+  function dockFrame(face) {
+    const { LEN, PAD } = DOCK, F = 128 - PAD;
+    if (face === 's') return (a, c) => [64 + c, F - a];
+    if (face === 'w') return (a, c) => [PAD + a, 64 + c];
+    if (face === 'e') return (a, c) => [F - a, 64 + c];
+    return (a, c) => [64 + c, PAD + a];            // 'n' — land at the top
+  }
+  // top-left light from the CANVAS position, so every facing is lit the same way
+  function dockLit(x, y) { return 1 - ((x / 128) * 0.45 + (y / 128) * 0.55); }
+
   const BIG_DRAW = {
     /* ---------------- BARRACKS: the fighting yard ----------------
        Signature, in one second: the SPARRING DUMMY and the spear rack. At L1
@@ -1852,6 +1874,127 @@ const Sprites = {
         q((x | 0) - 2, 41, 6, 2, AP.bone[1]);                                  // binding
       }
       if (lv >= 3) { q(rx + 2, 108, 16, 6, AP.stone[2]); q(rx + 2, 108, 16, 2, AP.stone[3]); }  // whetstone block
+    },
+
+    /* ---------------- DOCK: one jetty, anchored to the land ----------------
+       The old draw painted its OWN water slip and sandy shore into a sprite
+       that stands on real water tiles — water over water, and a beach with no
+       relation to the actual coastline, which is exactly why the perspective
+       read as confusing. This one paints TIMBER ONLY over transparency: the
+       terrain underneath is the water, and the shore is wherever the map put
+       it (Bld.dockShore). A single deck runs from the land edge three quarters
+       of the way across the plot and stops in open water.
+
+       L1 rough poles and split planks, lashed, no rail.
+       L2 a proper sawn jetty: even decking, a rail down one side, a fieldstone
+          footing at the land end, catch drying on a rack.
+       L3 a working quay: wider deck, rails both sides, drystone footing, a
+          timber derrick for lifting cargo, barrels and a moored boat. */
+    dock(p, lv, fac, face) {
+      const q = p.hi, WD = AP.wood, { LEN, HALF } = DOCK;
+      const M = dockFrame(face || 'n');
+      const put = (a, c, col) => { const [x, y] = M(a, c); q(x, y, 1, 1, col); };
+      // shade a deck plank by where it actually lands on the canvas
+      /* Boards run ALONG the jetty — long planks with seams parallel to the
+         walk. Mixing a cross-modulo into the shade (the first pass) wove the
+         deck into brickwork, which reads as a wall lying down. */
+      const BOARD = lv === 1 ? 5 : 4;
+      const plank = (a, c) => {
+        const [x, y] = M(a, c);
+        const seam = (((c + 64) % BOARD) === 0);
+        const butt = lv === 1 ? (((a + ((c + 64) / BOARD | 0) * 7) % 23) === 0) : false;
+        const t = dockLit(x, y) - (seam ? 0.3 : 0) - (butt ? 0.25 : 0)
+                + ((((c + 64) / BOARD | 0) % 2) ? 0.05 : -0.05);
+        return WD[t > 0.62 ? 4 : t > 0.5 ? 3 : t > 0.38 ? 2 : 1];
+      };
+      const w = lv === 1 ? HALF - 2 : lv === 2 ? HALF + 1 : HALF + 4;
+
+      /* the shadow on the water, offset down-right. TAPERED and broken at the
+         edges — a clean filled rectangle of the darkest water read as a hard
+         blue outline around the deck rather than as shade. */
+      { const r = ART.rng(90 + lv);
+        for (let a = 1; a <= LEN + 2; a++) for (let c = -w; c <= w + 2; c++) {
+          const edge = (c > w - 1) || (a > LEN - 1) || (a < 3);
+          if (edge && r() < 0.55) continue;
+          const [x, y] = M(a, c);
+          q(x + 2, y + 3, 1, 1, AP.water[edge ? 1 : 0]);
+        } }
+
+      // ---- the deck ----
+      for (let a = 0; a <= LEN; a++)
+        for (let c = -w; c <= w; c++) put(a, c, plank(a, c));
+      // the cross-bearers the boards are nailed to, showing at intervals
+      for (let a = (lv === 1 ? 8 : 6); a <= LEN - 2; a += (lv === 1 ? 24 : 18))
+        for (let c = -w; c <= w; c++) put(a, c, WD[1]);
+      for (let a = 0; a <= LEN; a++) { put(a, -w - 1, WD[0]); put(a, w + 1, WD[0]); }   // deck edges
+      for (let c = -w - 1; c <= w + 1; c++) put(LEN + 1, c, WD[0]);                     // seaward end
+      /* PILINGS, drawn AFTER the deck and PROTRUDING past its edge — under it
+         they were invisible and the jetty looked like it floated. Each shows a
+         sunlit cap above the boards and a dark collar at the waterline. */
+      const step = lv === 1 ? 26 : lv === 2 ? 22 : 18;
+      for (let a = 8; a <= LEN - 2; a += step) for (const c of [-w - 2, w + 2]) {
+        for (let k = -3; k <= 4; k++) put(a + k, c, WD[k < 0 ? 1 : 0]);
+        put(a - 3, c, WD[4]); put(a - 2, c, WD[3]);              // sunlit cap
+        for (let k = -1; k <= 2; k++) put(a + k, c + (c > 0 ? 1 : -1), AP.water[0]);   // waterline collar
+        if (lv >= 2) { put(a - 1, c, AP.bone[1]); put(a, c, AP.bone[0]); }             // lashing / iron band
+      }
+      // ---- the land end: what the deck is anchored INTO ----
+      if (lv === 1) {
+        for (let c = -w - 2; c <= w + 2; c++) { put(0, c, WD[1]); put(1, c, WD[2]); }
+        for (const c of [-w, 0, w]) { put(-2, c, WD[2]); put(-1, c, WD[3]); }           // stub poles ashore
+      } else {
+        const foot = lv >= 3 ? AP.stone : AP.stone;
+        for (let a = -4; a <= 3; a++) for (let c = -w - 3; c <= w + 3; c++) {
+          const [x, y] = M(a, c);
+          const course = lv >= 3 ? (((a + 6) / 3) | 0) : 0;
+          const joint = lv >= 3 ? (((c + 40 + course * 4) % 9) === 0 || (a + 6) % 3 === 0)
+                                : (((c + 40) % 7) === 0);
+          q(x, y, 1, 1, joint ? foot[0] : foot[dockLit(x, y) > 0.55 ? 3 : 2]);
+        }
+      }
+      // ---- rails ----
+      if (lv >= 2) {
+        const rails = lv >= 3 ? [-w - 1, w + 1] : [w + 1];
+        for (const c of rails) {
+          for (let a = 4; a <= LEN - 2; a += 11) {                // posts
+            for (let k = 0; k < 3; k++) put(a + k, c, WD[3]);
+            put(a, c + (c > 0 ? 1 : -1), WD[1]);
+          }
+          for (let a = 2; a <= LEN; a++) put(a, c + (c > 0 ? 1 : -1), WD[a % 9 === 0 ? 1 : 3]);
+        }
+      }
+      // ---- what makes it a working dock ----
+      if (lv === 1) {
+        // a mooring post and a coil of rope at the seaward end
+        for (let k = 0; k < 6; k++) put(LEN - 6 + k, -w + 3, WD[1]);
+        put(LEN - 7, -w + 3, AP.bone[2]);
+        for (let k = 0; k < 5; k++) put(LEN - 10, -w + 6 + k, AP.thatch[1]);
+      } else if (lv === 2) {
+        // a drying rack of split fish, and a crate of catch
+        for (let a = 24; a <= 52; a += 14) {
+          for (let k = 0; k < 9; k++) put(a, -w + 2 + k, WD[2]);
+          for (let k = 0; k < 3; k++) { put(a - 3 + k * 3, -w + 4, AP.bone[2]); put(a - 3 + k * 3, -w + 8, AP.bone[1]); }
+        }
+        for (let a = 62; a <= 70; a++) for (let c = w - 8; c <= w - 2; c++) put(a, c, AP.thatch[a % 3 ? 2 : 1]);
+        for (let a = 62; a <= 70; a++) put(a, w - 8, AP.thatch[3]);
+      } else {
+        // a timber DERRICK for lifting cargo, barrels, and a moored boat
+        const dA = 40;
+        for (let k = 0; k < 26; k++) put(dA + (k >> 3), -w + 4, WD[k % 4 ? 1 : 0]);   // mast
+        for (let k = 0; k < 14; k++) put(dA - 3 + k, -w + 4 - k, WD[2]);              // boom
+        for (let k = 0; k < 8; k++) put(dA + 11, -w - 9 + k, AP.bone[1]);             // fall rope
+        for (let k = 0; k < 5; k++) put(dA + 12 + k, -w - 10, AP.hide[2]);            // the load
+        for (const a of [66, 76]) {                                                   // barrels
+          for (let k = -4; k <= 4; k++) for (let c = w - 9; c <= w - 3; c++) put(a + k, c, WD[Math.abs(k) < 2 ? 3 : 2]);
+          for (let k = -4; k <= 4; k += 4) for (let c = w - 9; c <= w - 3; c++) put(a + k, c, AP.stone[2]);
+        }
+        for (let a = LEN - 26; a <= LEN - 6; a++) {                                   // moored hull alongside
+          const b0 = Math.abs(a - (LEN - 16)) / 11;
+          for (let c = w + 4; c <= w + 9 - (b0 * 3 | 0); c++) put(a, c, AP.hide[c > w + 6 ? 1 : 2]);
+        }
+        for (let a = LEN - 24; a <= LEN - 8; a++) put(a, w + 4, AP.hide[3]);          // gunwale
+        if (fac) for (let k = 0; k < 10; k++) put(LEN - 4, -w + 2 + k, fac[2]);       // a claim flag laid on the boards
+      }
     },
   };
 
@@ -2547,6 +2690,22 @@ const Sprites = {
     Sprites.building[key] = build(AP.blue);
     Sprites.buildingA[key] = build(AP.red);
   }
+  /* THE DOCK'S FOUR FACINGS. Its deck must run out from whichever flank the
+     shore is on (Bld.dockShore), so it needs four drawings rather than one.
+     Sprites.building.dock stays the canonical LAND-AT-TOP drawing — that is
+     the build-menu icon and the slot the manifest overrides, so the fallback
+     path is untouched; the other three live here and R.bldSprite picks between
+     them. A hand-made PNG therefore lands on the north-facing dock and the
+     rest keep the procedural art until per-facing slots exist, which is a
+     graceful split rather than a broken one. */
+  Sprites.dockFace = {};
+  for (const [set, fc] of [['P', AP.blue], ['A', AP.red]])
+    Sprites.dockFace[set] = [1, 2, 3].map(lv => {
+      const o = {};
+      for (const f of ['n', 'e', 's', 'w'])
+        o[f] = ART.outline(tileB2(p => BIG_DRAW.dock(p, lv, fc, f)), 1);
+      return o;
+    });
   /* ONE CAMP PER PEOPLE (CFG.TRIBES, tests/raider-camps.mjs). R.bldSprite hands
      back the camp of whatever people holds the fire; the generic B_DRAW camp
      stays as the fallback for a save from before the peoples existed, and as

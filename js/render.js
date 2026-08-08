@@ -988,6 +988,18 @@ const R = {
 
   bldSprite(b, lv) {
     const L = Math.max(1, lv || b.level);
+    /* A DOCK FACES ITS SHORE. The deck runs out from the land, and which flank
+       that is depends on the coastline — so the sprite is chosen by
+       Bld.dockShore, not baked. 'n' returns the canonical slot so a manifest
+       image still overrides it (see Sprites.dockFace). */
+    if (b.key === 'dock') {
+      const side = Bld.dockShore(b);
+      if (side !== 'n') {
+        const set = (Sprites.dockFace || {})[b.owner === 'A' ? 'A' : 'P'];
+        const f = set && set[Math.min(L, 3) - 1] && set[Math.min(L, 3) - 1][side];
+        if (f) return f;
+      }
+    }
     if (b.key === 'wall') return Sprites.wallMask[Math.min(L, Sprites.wallMask.length) - 1][this.wallMaskAt(b.x, b.y)];
     if (b.key === 'gate') return Sprites.gateMask[Math.min(L, Sprites.gateMask.length) - 1][this.gateVerticalAt(b.x, b.y) ? 1 : 0];
     /* A TOWER HAS TWO SELVES. Built onto a wall it is a MURAL TOWER — a
