@@ -1698,27 +1698,45 @@ const Sprites = {
     for (let x = x0 + 3; x <= x1 - 3; x++) q(x, G2.GND + 6, 1, 1, AP.soil[0]);   // shadow lip
   }
 
-  /* A ROOF SEEN FROM ABOVE-FRONT: a trapezoid narrowing to a ridge, laid in
-     courses, top-left lit. `ramp` is thatch (L1/L2) or wood shingle (L3). */
-  function g2Roof(q, x0, x1, yTop, yBot, ramp, seed, courseH) {
-    const r = ART.rng(seed), ch = courseH || 5;
-    const inset = (x1 - x0) * 0.17;
-    for (let y = yTop; y <= yBot; y++) {
-      const v = (y - yTop) / Math.max(1, yBot - yTop);
-      const a = x0 + inset * (1 - v), b = x1 - inset * (1 - v);
-      for (let x = a | 0; x <= b; x++) {
-        const u = (x - a) / Math.max(1, b - a);
-        let step = 2.6 - u * 1.25 - v * 0.5 + (r() - 0.5) * 0.6;   // top-left light
-        if ((y - yTop) % ch === ch - 1) step -= 1.1;               // the course lip
-        q(x, y, 1, 1, ramp[Math.max(0, Math.min(ramp.length - 1, Math.round(step)))]);
+  /* ---------------- A GABLED ROOF, SEEN FROM ABOVE-FRONT ----------------
+     THE camera of this art direction, measured off assets/tc-l3.png rather
+     than guessed: the roof starts near a POINT at the top and fans out to its
+     full width by the near eave, filling roughly the top half of the sprite,
+     with the RIDGE running away from the viewer as a fold down the middle.
+
+     That fold is the whole thing. The first pass drew the roof as one shallow
+     trapezoid shaded left-to-right, which is a flat panel — a building seen
+     SIDEWAYS, exactly the complaint. A roof only reads as a roof when the eye
+     is given two planes at different angles to the light meeting along a
+     ridge: the left slope catches the top-left sun, the right slope turns away
+     into shade, and the ridge is a bright line with its own shadow beneath.
+
+     yTop → yEave is the roof; the ridge fold sits at cx; wTop → wBot is the
+     perspective fan (far end narrow, near end wide). */
+  function g2Gable(q, cx, wTop, wBot, yTop, yEave, ramp, seed, courseH) {
+    const r = ART.rng(seed), ch = courseH || 6, top = ramp.length - 1;
+    for (let y = yTop; y <= yEave; y++) {
+      const v = (y - yTop) / Math.max(1, yEave - yTop);
+      const hw = wTop + (wBot - wTop) * v;
+      const x0 = Math.round(cx - hw), x1 = Math.round(cx + hw);
+      for (let x = x0; x <= x1; x++) {
+        const left = x < cx;
+        // how far across its OWN slope this pixel is: 0 at the ridge, 1 at the eave
+        const u = Math.min(1, Math.abs(x - cx) / Math.max(1, hw));
+        let step = (left ? 2.85 - u * 0.9 : 2.05 - u * 1.15) - v * 0.45 + (r() - 0.5) * 0.5;
+        if (((y - yTop) % ch) === ch - 1) step -= 1.0;          // the course lip
+        q(x, y, 1, 1, ramp[Math.max(0, Math.min(top, Math.round(step)))]);
       }
-      q(a | 0, y, 1, 1, ramp[0]); q(b | 0, y, 1, 1, ramp[0]);      // hip seams
+      // the ridge fold: lit crest, shaded far side
+      q(cx, y, 1, 1, ramp[top]);
+      q(cx + 1, y, 1, 1, ramp[Math.max(0, top - 2)]);
+      q(x0, y, 1, 1, ramp[0]); q(x1, y, 1, 1, ramp[0]);          // hip/verge seams
     }
-    for (let x = (x0 + inset) | 0; x <= x1 - inset; x++) {         // the ridge
-      q(x, yTop - 1, 1, 1, ramp[ramp.length - 1]); q(x, yTop, 1, 1, ramp[1]);
-    }
-    for (let x = x0; x <= x1; x += 2 + ((r() * 3) | 0))            // ragged eave
-      q(x, yBot + 1, 1, 1 + ((r() * 2) | 0), ramp[0]);
+    // the ragged eave, and the shadow it throws on the wall below
+    for (let x = Math.round(cx - wBot); x <= cx + wBot; x += 1 + ((r() * 3) | 0))
+      q(x, yEave + 1, 1, 1 + ((r() * 2) | 0), ramp[0]);
+    for (let x = Math.round(cx - wBot) + 2; x <= cx + wBot - 2; x++)
+      q(x, yEave + 3, 1, 2, AP.ink[2]);
   }
 
   /* THE FRONT FACE, dressed by tier. L2/L3 both stand on a fieldstone footing;
@@ -1837,90 +1855,161 @@ const Sprites = {
        hall behind the yard; L3 lays it in drystone and the yard fills with
        finished arms. The dummy stands in the same place at all three tiers, so
        the eye can track one building growing rather than three buildings. */
+    /* ---------------- BARRACKS: the fighting yard ----------------
+       ONE CAMERA with the Town Center: at L2/L3 a gabled roof fans from a
+       narrow far end to a wide near eave over the top half, ridge folding down
+       the middle, and only a band of wall shows beneath it. L1 is a YARD — a
+       staked fence, a beaten ring and the arms in it — because a founding
+       village's barracks is where men train, not a hall.
+
+       Signature at every tier: the sparring dummy and the spear rack, standing
+       in the same place so the eye tracks one place growing up. */
     barracks(p, lv, fac) {
-      const q = p.hi;
-      /* COMPOSITION: hall on the LEFT two thirds, an open YARD on the right.
-         The yard is not decoration — it is the identity, so its props are
-         drawn at full size and never tucked against the wall (the first pass
-         put them there and every tier read as a house with ornaments). */
-      const x0 = 8, x1 = 76;
+      const q = p.hi, WD = AP.wood;
       g2Ground(q, G2.L, G2.R - 2, 41 + lv);
 
+      // ---- the fence: what makes a YARD read as a yard, at every tier ----
+      const fence = (x0, x1, y, post) => {
+        for (let x = x0; x <= x1; x++) { q(x, y, 1, 2, WD[2]); q(x, y - 1, 1, 1, WD[3]); }
+        for (let x = x0; x <= x1; x += post) {
+          q(x, y - 7, 2, 12, WD[1]); q(x, y - 7, 1, 12, WD[3]); q(x, y - 8, 2, 1, WD[4]);
+        }
+      };
+
       if (lv === 1) {
-        // no building yet: a hide lean-to over a beaten yard is what a founding
-        // village's "barracks" honestly is
-        g2Pole(q, 12, 54, G2.GND - 2, [60, 100]);
-        g2Pole(q, 66, 54, G2.GND - 2, [60, 100]);
-        q(10, 50, 60, 4, AP.wood[2]); q(10, 50, 60, 1, AP.wood[3]);        // ridge pole
-        for (let y = 54; y <= 84; y++) {
-          const sag = Math.round(Math.sin((y - 54) / 30 * Math.PI) * 2);
-          for (let x = 11 + sag; x <= 69 - sag; x++) {
-            const u = (x - 11) / 58, v = (y - 54) / 30;
-            q(x, y, 1, 1, AP.hide[Math.max(0, Math.round(2.6 - u * 1.1 - v * 0.8))]);
-          }
+        // a staked ring of fence around beaten earth — no building at all
+        fence(10, 118, 58, 14);
+        fence(10, 118, G2.GND - 4, 16);
+        for (const fx of [10, 118]) for (let y = 52; y <= G2.GND - 2; y += 3) q(fx, y, 2, 2, WD[1]);
+        // a rough shelter for the arms, lashed poles and a hide slung over
+        g2Pole(q, 16, 46, 92, [54]);
+        g2Pole(q, 46, 46, 92, [54]);
+        q(14, 44, 36, 3, WD[2]); q(14, 44, 36, 1, WD[3]);
+        for (let y = 47; y <= 66; y++) for (let x = 15 + ((y - 47) >> 3); x <= 49 - ((y - 47) >> 3); x++) {
+          const u = (x - 15) / 34, v = (y - 47) / 19;
+          q(x, y, 1, 1, AP.hide[Math.max(0, Math.round(2.6 - u * 1.1 - v * 0.8))]);
         }
-        for (let x = 13; x <= 67; x += 9) q(x, 85, 3, 4, AP.hide[0]);      // weighted hem
-        q(18, 96, 44, 3, AP.wood[1]);                                       // a bench under it
-        q(18, 99, 44, 2, AP.wood[0]);
+        for (let x = 17; x <= 47; x += 8) q(x, 67, 3, 3, AP.hide[0]);
       } else {
-        g2Roof(q, x0 - 5, x1 + 5, G2.SKY + (lv === 3 ? 3 : 7), G2.EAVE,
-               lv >= 3 ? AP.wood : AP.thatch, 70 + lv, lv >= 3 ? 4 : 5);
-        g2Wall(q, x0, x1, G2.EAVE + 1, G2.GND - 2, lv, 80 + lv);
-        // a WIDE doorway — a hall soldiers march out of, not a cottage door
-        const dx = 30, dw = 24;
-        q(dx, 70, dw, G2.GND - 72, AP.ink[0]);
-        q(dx, 70, dw, 5, AP.ink[1]);
-        q(dx - 4, 66, dw + 8, 5, AP.wood[3]); q(dx - 4, 71, 4, G2.GND - 73, AP.wood[2]);
-        q(dx + dw, 71, 4, G2.GND - 73, AP.wood[1]);
-        if (lv >= 3) q(dx + 6, 96, 12, 8, AP.fire[1]);                      // forge glow within
-        // SHIELDS hung on the face — big enough to read as shields
-        ART.shadedCircle(q, 17, 84, 9, AP.hide, 2);          // the leather face
-        ART.shadedCircle(q, 17, 84, 6, fac, 2);               // painted in the tribe's dye
-        ART.shadedCircle(q, 17, 84, 2, AP.stone, 3);          // iron boss, lit top-left
-        for (let a = 0; a < 8; a++) {                          // rim studs
-          const an = a / 8 * Math.PI * 2;
-          q(Math.round(17 + Math.cos(an) * 8), Math.round(84 + Math.sin(an) * 8), 1, 1, AP.stone[4]);
-        }
+        // ---- the hall, under the settlement's own roof ----
+        const cx = 44, eave = lv === 3 ? 62 : 60, wall = G2.GND - 8;
+        g2Gable(q, cx, lv === 3 ? 11 : 9, lv === 3 ? 40 : 35, G2.SKY - 2, eave,
+                lv >= 3 ? AP.wood : AP.thatch, 70 + lv, lv >= 3 ? 5 : 6);
+        const x0 = cx - (lv === 3 ? 32 : 27), x1 = cx + (lv === 3 ? 32 : 27);
+        g2Wall(q, x0, x1, eave + 4, wall, lv, 80 + lv);
+        // the doorway soldiers march out of — wide, dark, timber-framed
+        const dw = lv === 3 ? 22 : 18, dx = cx - (dw >> 1);
+        q(dx, wall - 26, dw, 26, AP.ink[0]); q(dx, wall - 26, dw, 4, AP.ink[1]);
+        q(dx - 3, wall - 30, dw + 6, 4, WD[3]);
+        q(dx - 3, wall - 26, 3, 26, WD[2]); q(dx + dw, wall - 26, 3, 26, WD[1]);
+        if (lv >= 3) q(dx + 4, wall - 8, dw - 8, 6, AP.fire[1]);
+        // shields hung either side of the door
+        ART.shadedCircle(q, x0 + 11, wall - 20, 8, AP.hide, 2);
+        ART.shadedCircle(q, x0 + 11, wall - 20, 5, fac, 2);
+        ART.shadedCircle(q, x0 + 11, wall - 20, 2, AP.stone, 3);
         if (lv >= 3) {
-          ART.shadedCircle(q, 66, 84, 9, AP.wood, 2);
-          ART.shadedCircle(q, 66, 84, 6, fac, 1);
-          ART.shadedCircle(q, 66, 84, 2, AP.gold, 2);
+          ART.shadedCircle(q, x1 - 11, wall - 20, 8, AP.wood, 2);
+          ART.shadedCircle(q, x1 - 11, wall - 20, 5, fac, 1);
+          ART.shadedCircle(q, x1 - 11, wall - 20, 2, AP.gold, 2);
         }
+        // the yard is still fenced, out to the right of the hall
+        fence(78, 120, G2.GND - 4, 14);
+        fence(78, 120, 66, 14);
       }
 
-      /* ---- THE YARD, right third: the signature at every tier ---- */
-      // SPARRING DUMMY — free-standing, full height, unmistakable
-      const bx = 111;
-      q(bx, 52, 4, G2.GND - 54, AP.wood[1]); q(bx + 1, 52, 2, G2.GND - 54, AP.wood[3]);
-      q(bx - 10, 62, 24, 4, AP.wood[2]); q(bx - 10, 62, 24, 1, AP.wood[3]);   // cross-arm
-      q(bx - 10, 66, 3, 4, AP.wood[0]); q(bx + 11, 66, 3, 4, AP.wood[0]);     // arm stubs
-      /* A BATTERED HELM on the post, not a straw ball — the first pass drew a
-         circle on a stick and it read as a lollipop. A domed cap with a nasal
-         bar is the one shape that says "a man's head to aim at" at 40px. */
-      q(bx - 5, 44, 12, 7, AP.stone[2]); q(bx - 5, 44, 12, 2, AP.stone[3]);    // dome
-      q(bx - 6, 50, 14, 3, AP.stone[1]); q(bx - 6, 50, 14, 1, AP.stone[4]);    // brow band
-      q(bx, 51, 2, 6, AP.stone[1]);                                            // nasal bar
-      q(bx - 4, 41, 4, 3, AP.stone[4]);                                        // lit crown
-      // torso: hide wrapped over a straw core, strapped down — wider than the post
-      q(bx - 8, 70, 20, 22, AP.hide[2]); q(bx - 8, 70, 20, 4, AP.hide[3]);
-      q(bx - 8, 88, 20, 4, AP.hide[1]);
-      for (let i = 0; i < 3; i++) { q(bx - 8, 74 + i * 6, 20, 2, AP.bone[1]); q(bx - 8, 76 + i * 6, 20, 1, AP.bone[0]); }
-      for (let i = 0; i < 5; i++) q(bx - 7 + i * 4, 92, 2, 4, AP.thatch[1]);   // straw poking out below
-      if (lv >= 2) { q(bx - 6, 78, 6, 6, AP.ink[1]); q(bx + 5, 82, 5, 5, AP.ink[1]); }  // strike marks
-      // SPEAR RACK — free-standing in the yard, shafts clearing the rail so the
-      // silhouette itself says "weapons"
-      const rx = 82, n = lv === 1 ? 3 : lv === 2 ? 4 : 5;
-      q(rx, 78, 3, G2.GND - 80, AP.wood[1]); q(rx + 16, 78, 3, G2.GND - 80, AP.wood[1]);
-      q(rx - 1, 78, 21, 4, AP.wood[2]); q(rx - 1, 78, 21, 1, AP.wood[3]);
-      q(rx - 1, 104, 21, 3, AP.wood[1]);
+      /* ---- THE YARD: dummy and rack, the signature at every tier ---- */
+      const bx = lv === 1 ? 84 : 96;
+      q(bx, 66, 4, G2.GND - 70, WD[1]); q(bx + 1, 66, 2, G2.GND - 70, WD[3]);
+      q(bx - 10, 76, 24, 4, WD[2]); q(bx - 10, 76, 24, 1, WD[3]);
+      q(bx - 10, 80, 3, 4, WD[0]); q(bx + 11, 80, 3, 4, WD[0]);
+      q(bx - 5, 58, 12, 7, AP.stone[2]); q(bx - 5, 58, 12, 2, AP.stone[3]);   // battered helm
+      q(bx - 6, 64, 14, 3, AP.stone[1]); q(bx - 6, 64, 14, 1, AP.stone[4]);
+      q(bx, 65, 2, 6, AP.stone[1]); q(bx - 4, 55, 4, 3, AP.stone[4]);
+      q(bx - 8, 84, 20, 20, AP.hide[2]); q(bx - 8, 84, 20, 4, AP.hide[3]);    // strapped torso
+      q(bx - 8, 100, 20, 4, AP.hide[1]);
+      for (let i = 0; i < 3; i++) { q(bx - 8, 88 + i * 5, 20, 2, AP.bone[1]); q(bx - 8, 90 + i * 5, 20, 1, AP.bone[0]); }
+      for (let i = 0; i < 5; i++) q(bx - 7 + i * 4, 104, 2, 4, AP.thatch[1]);
+      if (lv >= 2) { q(bx - 6, 90, 6, 6, AP.ink[1]); q(bx + 5, 94, 5, 5, AP.ink[1]); }
+      // the spear rack
+      const rx = lv === 1 ? 60 : 74, n = lv === 1 ? 3 : lv === 2 ? 4 : 5;
+      q(rx, 88, 3, 22, WD[1]); q(rx + 16, 88, 3, 22, WD[1]);
+      q(rx - 1, 88, 21, 4, WD[2]); q(rx - 1, 88, 21, 1, WD[3]);
+      q(rx - 1, 108, 21, 3, WD[1]);
       for (let i = 0; i < n; i++) {
-        const x = rx + 2 + i * (14 / Math.max(1, n - 1));
-        q(x | 0, 40, 2, 66, AP.wood[i % 2 ? 2 : 3]);                           // shaft
-        q((x | 0) - 2, 34, 6, 8, AP.stone[lv >= 3 ? 4 : 3]);                   // head
-        q((x | 0) - 1, 34, 4, 3, AP.stone[4]);
-        q((x | 0) - 2, 41, 6, 2, AP.bone[1]);                                  // binding
+        const x = (rx + 2 + i * (14 / Math.max(1, n - 1))) | 0;
+        q(x, 52, 2, 58, WD[i % 2 ? 2 : 3]);
+        q(x - 2, 46, 6, 8, AP.stone[lv >= 3 ? 4 : 3]); q(x - 1, 46, 4, 3, AP.stone[4]);
+        q(x - 2, 53, 6, 2, AP.bone[1]);
       }
-      if (lv >= 3) { q(rx + 2, 108, 16, 6, AP.stone[2]); q(rx + 2, 108, 16, 2, AP.stone[3]); }  // whetstone block
+      if (lv >= 3) { q(rx + 2, 112, 16, 6, AP.stone[2]); q(rx + 2, 112, 16, 2, AP.stone[3]); }
+    },
+
+    /* ---------------- ARCHERY RANGE: the shooting line ----------------
+       Signature: the TARGET BUTTS down the far end and the shooting line the
+       archers stand on. Same camera as the barracks — L1 a fenced yard with
+       straw butts, L2 a small fletcher's shed beside it, L3 a proper range
+       house with a covered shooting stand. */
+    range(p, lv, fac) {
+      const q = p.hi, WD = AP.wood;
+      g2Ground(q, G2.L, G2.R - 2, 51 + lv);
+
+      // the shooting lane runs left→right: butts at the right, line at the left
+      const laneY = 92;
+      // ---- the butts: straw bosses on tripods, the thing you aim at ----
+      for (let i = 0; i < (lv === 1 ? 2 : 3); i++) {
+        const tx = 96, ty = 58 + i * 24;
+        if (ty > G2.GND - 12) continue;
+        q(tx - 2, ty + 6, 3, 16, WD[1]); q(tx + 8, ty + 6, 3, 16, WD[1]);      // legs
+        ART.shadedCircle(q, tx + 4, ty + 4, 11, AP.thatch, 2);                  // straw boss
+        ART.shadedCircle(q, tx + 4, ty + 4, 7, AP.bone, 2);
+        ART.shadedCircle(q, tx + 4, ty + 4, 4, fac, 2);
+        ART.shadedCircle(q, tx + 4, ty + 4, 1, AP.ink, 0);                      // the gold
+        for (let k = 0; k < 3; k++) {                                           // arrows in it
+          const ax = tx + 1 + k * 3, ay = ty + 1 + (k % 2) * 4;
+          q(ax, ay, 5, 1, WD[3]); q(ax + 5, ay - 1, 2, 3, AP.bone[2]);
+        }
+      }
+      // ---- the shooting line: a low rail the archers stand behind ----
+      for (let x = 14; x <= 66; x++) { q(x, laneY, 1, 3, WD[2]); q(x, laneY - 1, 1, 1, WD[3]); }
+      for (let x = 14; x <= 66; x += 17) { q(x, laneY - 8, 3, 13, WD[1]); q(x, laneY - 9, 3, 1, WD[4]); }
+
+      if (lv === 1) {
+        // a fenced yard, a butt-stack of spare straw, arrows stood in a barrel
+        for (let x = 10; x <= 118; x += 15) { q(x, G2.GND - 12, 3, 14, WD[1]); q(x, G2.GND - 13, 3, 1, WD[4]); }
+        for (let x = 10; x <= 118; x++) { q(x, G2.GND - 6, 1, 2, WD[2]); q(x, G2.GND - 7, 1, 1, WD[3]); }
+        for (let x = 10; x <= 118; x++) { q(x, 46, 1, 2, WD[2]); q(x, 45, 1, 1, WD[3]); }
+        for (let x = 10; x <= 118; x += 15) { q(x, 40, 3, 12, WD[1]); q(x, 39, 3, 1, WD[4]); }
+        for (let y = 56; y <= 74; y++) for (let x = 22; x <= 46; x++)            // spare straw bales
+          q(x, y, 1, 1, AP.thatch[((x + y) % 7) === 0 ? 1 : ((y - 56) < 4 ? 3 : 2)]);
+        for (let x = 22; x <= 46; x += 6) q(x, 56, 2, 18, AP.bone[1]);
+      } else {
+        // ---- the fletcher's shed (L2) / range house (L3), left of the lane ----
+        const cx = 36, eave = lv === 3 ? 56 : 52, wall = lv === 3 ? 84 : 76;
+        g2Gable(q, cx, lv === 3 ? 9 : 7, lv === 3 ? 30 : 24, G2.SKY + 2, eave,
+                lv >= 3 ? AP.wood : AP.thatch, 90 + lv, lv >= 3 ? 5 : 6);
+        const x0 = cx - (lv === 3 ? 24 : 19), x1 = cx + (lv === 3 ? 24 : 19);
+        g2Wall(q, x0, x1, eave + 4, wall, lv, 96 + lv);
+        const dw = lv === 3 ? 16 : 13, dx = cx - (dw >> 1);
+        q(dx, wall - 20, dw, 20, AP.ink[0]); q(dx, wall - 20, dw, 3, AP.ink[1]);
+        q(dx - 3, wall - 23, dw + 6, 3, WD[3]);
+        // bow staves seasoning against the wall — the fletcher's signature
+        for (let i = 0; i < (lv === 3 ? 5 : 3); i++) {
+          const bxx = x1 - 4 - i * 5;
+          q(bxx, wall - 26, 2, 26, WD[i % 2 ? 3 : 2]);
+          q(bxx - 1, wall - 28, 4, 3, AP.bone[1]);
+        }
+        if (lv >= 3) {
+          // a covered shooting stand over the line: posts and a shingle lean-to
+          for (const px of [14, 62]) { q(px, laneY - 30, 3, 24, WD[1]); q(px, laneY - 31, 3, 1, WD[4]); }
+          for (let y = laneY - 36; y <= laneY - 29; y++)
+            for (let x = 12 + (y - (laneY - 36)) ; x <= 66 - (y - (laneY - 36)); x++)
+              q(x, y, 1, 1, AP.wood[((y + x) % 5) === 0 ? 1 : ((x < 38) ? 3 : 2)]);
+          q(12, laneY - 28, 56, 2, AP.ink[2]);
+        }
+      }
+      // a quiver of spare shafts stood by the line at every tier
+      q(70, laneY - 14, 9, 16, AP.hide[2]); q(70, laneY - 14, 9, 3, AP.hide[3]);
+      for (let i = 0; i < 4; i++) { q(71 + i * 2, laneY - 24, 1, 11, WD[3]); q(71 + i * 2, laneY - 26, 2, 3, AP.bone[2]); }
     },
 
     /* ---------------- DOCK: one jetty, anchored to the land ----------------
