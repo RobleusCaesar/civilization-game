@@ -42,7 +42,7 @@ const Units = {
     return u.kind === 'defender' || u.kind === 'axeman' || u.kind === 'elite' ||
            u.kind === 'rider' || u.kind === 'horsearcher' || u.kind === 'lancer' ||
            u.kind === 'archer' || u.kind === 'longbow' || u.kind === 'marksman' ||
-           u.kind === 'warship' || u.kind === 'fireship' ||
+           u.kind === 'fireship' || u.kind === 'bombard' ||
            u.kind === 'catapult' || u.kind === 'ballista' || u.kind === 'siegetower' ||
            u.kind === 'trebuchet';
   },
@@ -50,7 +50,7 @@ const Units = {
   isVillager(u) { return u.kind === 'villager'; },
   isSapper(u) { return u.kind === 'sapper'; },
   isNaval(u) { return !!CFG.UNITS[u.kind].naval; },
-  isTransport(u) { return u.kind === 'transport' || u.kind === 'bigtransport'; },
+  isTransport(u) { return u.kind === 'transport'; },   // one troop hull now (see CFG.UNITS)
   // a land unit that can ride a transport hull: soldiers and siege, AND villagers
   // (settlers ferried across to a new shore). A boat can't board a boat.
   isBoardable(u) { return !this.isNaval(u) && (this.isMilitary(u) || this.isVillager(u)); },
@@ -93,7 +93,7 @@ const Units = {
         f += U.boat;
         if (u.cargo) f += u.cargo.length * U.cargo;   // soldiers below deck still eat
       }
-      else if (u.kind === 'warship' || u.kind === 'fireship') f += U.warship;
+      else if (u.kind === 'fireship' || u.kind === 'bombard') f += U.warship;
       else if (this.isMilitary(u)) f += U.military;
     }
     return f;

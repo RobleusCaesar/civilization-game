@@ -1339,6 +1339,21 @@ const G = {
        loads exactly as it was left, and new construction is 2×2 from here.
        (tests/footprint.mjs measures a real pre-change save for overlaps.) */
     for (const b of data.buildings) if (b && !b.sz) b.sz = Bld.legacySize(b.key);
+    /* RETIRED HULLS (the dock's four-vessel roster). The generic Warship and
+       the War Transport no longer exist as unit kinds, and a save full of them
+       would put `undefined` through every CFG.UNITS[u.kind] lookup in the game
+       — a crash on load, not a cosmetic problem. So they are RECREWED, not
+       deleted: nobody loses a ship they paid for.
+         warship      → fireship   (the surviving fighting hull)
+         bigtransport → transport  (which now carries 5 anyway, so the
+                                    player's capacity is unchanged)
+       Cargo rides along untouched. Training queues are migrated too — a yard
+       part-way through building a retired hull finishes its replacement
+       instead of stalling on a key that is gone. */
+    const RECREW = { warship: 'fireship', bigtransport: 'transport' };
+    for (const u of (data.units || [])) if (u && RECREW[u.kind]) u.kind = RECREW[u.kind];
+    for (const bd of (data.buildings || []))
+      for (const q of (bd && bd.queue) || []) if (q && RECREW[q.unit]) q.unit = RECREW[q.unit];
     if (data.ai && !data.ai.persona) data.ai.persona = 'homesteader';   // pre-persona save: the classic temperament
     if (!data.kraken) data.kraken = { day: { P: 60, A: 90 }, done: {}, ev: null };   // older saves owe the deep a visit too
     if (!data.dragon) data.dragon = { avail: false, done: true, ev: null, ash: [] };  // legacy runs: no dragon this time

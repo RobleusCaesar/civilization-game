@@ -150,7 +150,7 @@ const CFG = {
     cavalry: 2.0,    // riders eat for horse and man both
     siege: 1.5,      // engine crews
     boat: 0.5,       // a hull's small crew (fishing boat / transport)
-    warship: 1.0,    // a fighting ship's crew
+    warship: 1.0,    // a fighting ship's crew (fire warship, bombard)
     cargo: 1.5,      // each soldier riding a transport still eats
   },
   FAMINE_DESERT_DAYS: 1.5,    // days of unbroken famine between desertions
@@ -394,22 +394,21 @@ const CFG = {
       ],
     },
     dock: {
-      name: 'Dock', desc: 'Built on open water (6+ tiles). Fishing boats harvest fish; warships defend the coast.',
+      name: 'Dock', desc: 'Built on open water (6+ tiles). Fishing boats harvest fish; rafts carry soldiers, fire warships hold the coast and bombards break it.',
       size: 2,   // a PRIMARY work — two tiles on a side (tests/footprint.mjs)
       reqTC: 2,   // needs Town Center level 2 before it can be placed
       train: {
         fishboat: { cost: { wood: 40, gold: 5 }, time: 1 },
-        transport: { cost: { wood: 60, gold: 10 }, time: 1.5 },
-        warship:  { cost: { wood: 80, gold: 20 }, time: 2, reqLevel: 2 },
-        bigtransport: { cost: { wood: 120, gold: 30 }, time: 2, reqLevel: 3 },
+        transport: { cost: { wood: 90, gold: 20 }, time: 1.8 },
         fireship: { cost: { wood: 130, gold: 45 }, time: 2.5, reqLevel: 3 },
+        bombard:  { cost: { wood: 200, stone: 60, gold: 60 }, time: 3.5, reqLevel: 3 },
       },
       levels: [
         { cost: { wood: 60, gold: 5 },              time: 2, hp: 220, vision: 5 },
         { cost: { wood: 100, stone: 40, gold: 15 }, time: 2, hp: 340, vision: 6,
-          bonus: 'Unlocks Warship' },
+          bonus: 'Sturdier hulls, wider watch' },
         { cost: { wood: 160, stone: 90, gold: 30 }, time: 3, hp: 480, vision: 7,
-          bonus: 'Unlocks Fire Warship & War Transport' },
+          bonus: 'Unlocks Fire Warship & Bombard Ship' },
       ],
     },
     /* Trading Post — a late-game relief valve: turn a surplus of food/wood/stone
@@ -522,11 +521,28 @@ const CFG = {
     cow:      { name: 'Wild Cow',       hp: 35,  atk: 0,  def: 0, speed: 1.2, aggro: 0 },
     // naval — these move only on water
     fishboat: { name: 'Fishing Boat',   hp: 35,  atk: 0,  def: 0, speed: 2.4, aggro: 0,   naval: true },
-    warship:  { name: 'Warship',        hp: 95,  atk: 9,  def: 1, speed: 2.6, aggro: 5,   naval: true, rng: 4 },
     fireship: { name: 'Fire Warship',   hp: 140, atk: 14, def: 2, speed: 2.6, aggro: 5.5, naval: true, rng: 4.5, fire: true },
-    // troop transports: no weapons, just a hull — cap = soldiers carried
-    transport:    { name: 'Transport Raft', hp: 80,  atk: 0, def: 1, speed: 2.2, aggro: 0, naval: true, cap: 3 },
-    bigtransport: { name: 'War Transport',  hp: 130, atk: 0, def: 2, speed: 2.4, aggro: 0, naval: true, cap: 5 },
+    /* ONE troop hull, not two. A 3-cap raft and a 5-cap War Transport were the
+       same decision twice — you always wanted the bigger one — so they are
+       merged: one Transport Raft carrying 5, available from the first dock, at
+       a price between the two it replaces. */
+    transport: { name: 'Transport Raft', hp: 110, atk: 0, def: 2, speed: 2.3, aggro: 0, naval: true, cap: 5 },
+    /* BOMBARD — the siege engine of the water, and the fourth distinct hull.
+       Historically this is a BOMB VESSEL (the French galiote à bombes, Renau
+       d'Eliçagaray, first thrown against Algiers in 1682, and the English bomb
+       ketches after it): a beamy, slow hull built around one heavy piece
+       firing on a high arc, framed to absorb its own recoil, and famously
+       hopeless in a ship fight. It exists to break a fortified SHORE.
+
+       So the numbers say exactly that, in the vocabulary the land engines
+       already use: bldAtk 190 (between catapult's 110 and trebuchet's 200),
+       cdMult 4.0 (the trebuchet's own reload), and rng 7.5 — which must stay
+       ABOVE the level-3 Watchtower's 5.5, or the whole point of the ship is
+       gone. Against UNITS it is nearly harmless (atk 5) and it dies if caught
+       (hp 150, def 1, speed 1.6): a Fire Warship eats it. aggro 0 so it never
+       chases; it fires when ordered, and on watch inside its own range. */
+    bombard:   { name: 'Bombard Ship',  hp: 150, atk: 5,  def: 1, speed: 1.6, aggro: 0, naval: true,
+                 rng: 7.5, vision: 9, cdMult: 4.0, bldAtk: 190, proj: 'stone' },
     // siege engines: slow, deliberate, decisive. The catapult lobs boulders
     // (bldAtk vs structures, cdMult stretches its reload); the siege tower
     // carries no weapon — parked on an enemy wall it ferries one nearby
@@ -742,8 +758,8 @@ const CFG = {
   // non-naval unit alike); this missing price tag alone gated the heal UI off.
   HEAL_FOOD: { villager: 50, defender: 40, elite: 110,
                rider: 60, lancer: 100, archer: 40, marksman: 70,
-               fishboat: 30, warship: 70, fireship: 110,
-               transport: 50, bigtransport: 90,
+               fishboat: 30, fireship: 110, bombard: 120,
+               transport: 70,
                catapult: 90, siegetower: 80,
                axeman: 45, longbow: 45, horsearcher: 65, ballista: 85,
                sapper: 30 },

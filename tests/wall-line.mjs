@@ -379,7 +379,7 @@ const out = await p.evaluate(() => {
 
   /* ---- 8. AND WE DO NOT REBUILD INTO OUR OWN ASHES ----
      The general backstop, for whatever the gallery rule cannot measure — a
-     trebuchet outranging it, a warship's deck, a lane the reach flood happens
+     trebuchet outranging it, a bombard's deck, a lane the reach flood happens
      to include. Two losses on a spot and the chief stops offering it a third. */
   {
     const tc = Bld.tcOf('A');
@@ -425,8 +425,8 @@ const out = await p.evaluate(() => {
      it. A tribe shelled from ground it cannot walk to has ONE strategic
      problem — reach out and kill the battery — and everything else waits until
      it can. The tech tree decides what it races for: an engine of its own, or
-     a warship, which is the answer available long before a Siege Workshop
-     (that wants a level-3 hall). It stands down GUN_MEMORY days after the last
+     a BOMBARD SHIP, whose reach beats anything standing on the far bank
+     (that Siege Workshop wants a level-3 hall). It stands down GUN_MEMORY days after the last
      gun is seen and goes back to attacking. */
   {
     G.newGame('guns', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;

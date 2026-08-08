@@ -207,7 +207,7 @@ const out = await p.evaluate(() => {
   // ---- 5b. a fleet flies a SHIP on its banner, an army flies the helmet ----
   {
     const tc = setup('ag5b');
-    const boats = [mk('warship', tc.x + 2, tc.y + 2), mk('warship', tc.x + 3, tc.y + 2)];
+    const boats = [mk('fireship', tc.x + 2, tc.y + 2), mk('fireship', tc.x + 3, tc.y + 2)];   // the warship retired; fireship is the fighting hull
     const foot = [mk('defender', tc.x + 5, tc.y), mk('archer', tc.x + 6, tc.y)];
     const nf = UI.saveArmy(boats.map(u => u.id));
     const na = UI.saveArmy(foot.map(u => u.id));

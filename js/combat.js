@@ -1211,7 +1211,7 @@ const Combat = {
         const route = Path.find(start.x, start.y, tgt.x, tgt.y, 'R', 'water') || [];
         const landing = this.pickLanding([{ x: start.x, y: start.y }].concat(route), tgt, open);
         if (landing) {
-          const kindT = S.wave.count >= 5 ? 'bigtransport' : 'transport';
+          const kindT = 'transport';   // one troop hull now — a raft carries 5
           const tr = Units.spawn(kindT, 'R', start.x, start.y);
           tr.hostileTo = disp;
           tr.cargo = [];

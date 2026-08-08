@@ -135,7 +135,7 @@ falls there is nothing standing to aim at, and the chief would decide the
 problem had solved itself. What makes it a gun position is that its throw
 covers the ground the town lives on (within 10 of the hall, on our own reach).
 The answer is whatever the tech tree allows — a trebuchet outranges everything,
-a catapult trades at parity, and a WARSHIP reaches a bank no foot can walk to,
+a catapult trades at parity, and a BOMBARD SHIP reaches a bank no foot can walk to,
 which on a young town is the only answer there is, since the workshop wants a
 level-3 hall (`CFG.BUILDINGS.siege.reqTC`). So the reaction adds commanding
 utilities for the dock/workshop/hall (and the dock's level 2, which is what
@@ -1644,3 +1644,38 @@ suites do not share a failure vocabulary — `tap-audit.mjs` ends with
 NEITHER of (`FAILURES` needs the S, and `FAIL\b` fails on the `U` of FAILURE).
 A sweep written that way reported 39/39 green while tap-audit had been red for
 four commits. Use `if node "$f" >/dev/null 2>&1; then pass; else fail; fi`.
+
+**Four hulls, and one of them is a siege engine** (`tests/boats-moat-scuttle.mjs`
+covers the hulls; the roster lives in `CFG.BUILDINGS.dock.train`): the dock
+trains the **Fishing Boat**, the **Transport Raft**, the **Fire Warship** and
+the **Bombard Ship** — four roles, no overlap. The generic Warship is retired
+and the two troop hulls are merged: a 3-cap raft and a 5-cap War Transport were
+the same decision twice (you always wanted the bigger one), so there is now ONE
+`transport`, carrying 5, available from the first dock.
+**The BOMBARD is the siege engine of the water.** Historically a BOMB VESSEL —
+the French *galiote à bombes* (Renau d'Eliçagaray, first thrown against Algiers
+in 1682) and the English bomb ketches after it: a beamy, slow hull built around
+one heavy piece firing on a high arc, framed to take its own recoil, and
+famously hopeless in a ship fight. The numbers say exactly that, in the
+vocabulary the land engines already use — `bldAtk` 190 (between catapult's 110
+and trebuchet's 200), `cdMult` 4.0 (the trebuchet's own reload), and `rng` 7.5,
+which **must stay above the level-3 Watchtower's 5.5** or the ship has no
+reason to exist. Against units it is nearly harmless (`atk` 5) and it dies if
+caught (hp 150, def 1, speed 1.6): a Fire Warship eats it. `aggro: 0`, so like
+every other engine it never chases and fires on watch inside its own range.
+Its silhouette is deliberately the Fire Warship's opposite — squat and low with
+a raked barrel amidships against tall mast and square sail — because two ships
+that read the same at 32px are one ship.
+**It is also the rival's counter-battery.** `AI.answerTheGuns` used to train the
+generic warship "because a warship reaches a bank no foot can walk to"; the
+bombard is the hull that actually fits that job (it outranges what stands on the
+far bank), so the reaction got stronger, not weaker. Below a level-3 yard the
+chief falls back to the Fire Warship, which at least reaches the bank. The
+ordinary naval quota keeps at most **two** bombards — the same restraint it
+shows with trebuchets, since a fleet of them could not defend itself.
+**Retired hulls are RECREWED on load, never deleted** (`G.loadJSON`'s `RECREW`):
+`warship` → `fireship`, `bigtransport` → `transport`, in `S.units` *and* in
+every building's training queue. Deleting the keys instead would put `undefined`
+through every `CFG.UNITS[u.kind]` lookup in the game — a crash on load, not a
+cosmetic problem — and nobody loses a ship they paid for. Any future retirement
+goes in the same table.

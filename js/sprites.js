@@ -5289,7 +5289,11 @@ const Sprites = {
       ? footSheetHi({ body: FOOT[k].body, accent: acc, pants: FOOT[k].pants, spear: PAL.trunk, noThrust: FOOT[k].noThrust }, FOOT[k].exHi)
       : unitSheet({ body: FOOT[k].body, accent: acc, pants: FOOT[k].pants, hair: PAL.hair, spear: PAL.trunk, noThrust: FOOT[k].noThrust }, FOOT[k].extra);
     for (const k in RIDERS) set[k] = riderSheetHi({ horse: RIDERS[k].horse, horseD: RIDERS[k].horseD, body: RIDERS[k].body, accent: acc, bow: RIDERS[k].bow, lance: RIDERS[k].lance, tip: RIDERS[k].tip });
-    set.warship = warshipSheet({ hull: PAL.wood, hullD: PAL.woodD, sail: '#e8e8e0', sailD: '#c9c9c0', stripe: acc, crew: '#7a6242', arrow: PAL.rockL });
+    /* the BOMBARD carries the tribe's band (the retired warship used to be
+       the dyed hull here) — a siege ship you cannot tell from the enemy's
+       is a shot you do not take */
+    set.bombard = bombardSheet({ hull: '#4a3c26', hullD: '#33291a', crew: '#5d4a30',
+      iron: '#3a3a42', ironL: '#6f6f7a', stripe: acc });
     set.trebuchet = trebuchetSheet(acc);   // siege engine, but faction-draped so friend/foe reads
     set.sapper = sapperSheet(acc);         // earth-toned engineer, faction collar
     Sprites.military[tunic] = set;
@@ -5743,8 +5747,59 @@ const Sprites = {
       walk: framesU(2, (q, g, f) => draw(q, f), 1),
     };
   }
-  Sprites.unit.transport = transportSheet(false);
-  Sprites.unit.bigtransport = transportSheet(true);
+  // ONE troop hull now, and it is the BIG one — the raft that carries five
+  Sprites.unit.transport = transportSheet(true);
+
+  /* ---- BOMBARD SHIP: the siege engine of the water ----
+     Historically a BOMB VESSEL (galiote à bombes, 1682): a beamy, low hull
+     built around ONE heavy piece firing on a high arc, its deck framed to
+     take the recoil, and no use at all in a ship fight.
+
+     It must not read as the Fire Warship at 32px, so the silhouette is
+     deliberately its opposite: no tall mast and square sail, but a squat hull
+     sitting low with a stubby raked barrel amidships on a timber bed, a
+     powder tub and a ready rack of stone shot. Wide and low against the fire
+     ship's tall and narrow. */
+  function bombardSheet(c) {
+    const W = APx.wood;
+    const draw = (q, f, pose) => {
+      const y = 19 + (f === 1 ? 1 : 0);
+      const rec = (pose === 'fight' && f === 1) ? 1 : 0;      // the whole hull kicks on firing
+      q(2, y + 5, 28, 1, 'rgba(20,16,10,0.26)');              // its shadow on the water
+      q(2, y, 28, 6, c.hull); q(2, y, 28, 1, W[3]);           // broad low hull
+      q(4, y + 4, 24, 1, c.hullD);
+      q(0, y + 1, 2, 3, c.hullD); q(30, y + 1, 2, 3, c.hullD);   // blunt bow and stern
+      for (let i = 0; i < 5; i++) q(5 + i * 5, y + 1, 1, 4, c.hullD);   // heavy frames, showing
+      if (c.stripe) q(2, y + 2, 28, 1, c.stripe);            // painted band — whose ship this is
+      // the timber bed and the piece itself, raked up and aft
+      q(11, y - 3, 11, 4, W[1]); q(11, y - 3, 11, 1, W[2]);
+      q(12 - rec, y - 7, 9, 4, c.iron); q(12 - rec, y - 7, 9, 1, c.ironL);   // the barrel
+      q(20 - rec, y - 8, 3, 5, c.iron); q(20 - rec, y - 8, 3, 1, c.ironL);   // muzzle, raised
+      q(11, y - 5, 2, 3, W[0]); q(20, y - 5, 2, 3, W[0]);      // the trunnion cheeks
+      // powder tub forward, a rack of stone shot aft
+      q(5, y - 3, 4, 3, W[2]); q(5, y - 3, 4, 1, W[3]); q(6, y - 4, 2, 1, APx.stone[1]);
+      for (let i = 0; i < 3; i++) q(25, y - 2 - i, 3, 1, APx.stone[i ? 2 : 3]);
+      // the gunner, crouched at the breech
+      q(9, y - 4, 3, 4, c.crew); q(9, y - 7, 3, 3, SKN[2]); q(9, y - 8, 3, 1, APx.hair[1]);
+      if (pose === 'fight') {
+        // the shot leaving, and the smoke it leaves behind
+        if (f === 1) {
+          q(24, y - 12, 3, 3, APx.stone[3]); q(25, y - 14, 2, 2, APx.stone[4]);
+          q(21, y - 9, 4, 4, 'rgba(226,220,206,0.85)'); q(24, y - 11, 3, 3, 'rgba(226,220,206,0.55)');
+          q(22, y - 7, 3, 2, FIRE[2]); q(23, y - 8, 2, 1, FIRE[3]);
+        } else {
+          q(21, y - 8, 2, 2, 'rgba(226,220,206,0.35)');
+        }
+      }
+      if (f === 1) { q(1, y + 3, 1, 1, AP.water[4]); q(30, y + 3, 1, 1, AP.water[4]); }
+    };
+    return {
+      idle: framesU(2, (q, g, f) => draw(q, f, 'idle'), 1),
+      walk: framesU(2, (q, g, f) => draw(q, f, 'walk'), 1),
+      fight: framesU(2, (q, g, f) => draw(q, f, 'fight'), 1),
+    };
+  }
+  // (the blue-dyed bombard is surfaced on Sprites.unit.bombard by militaryFor)
 
   /* ---------------- siege engines ---------------- */
   // catapult (onager): timber frame on wheels, winch, long throwing arm.

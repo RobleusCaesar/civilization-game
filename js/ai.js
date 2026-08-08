@@ -18,7 +18,7 @@ const AI = {
      raidCd     — days between raids
      walls      — build a wall ring (with gates) around town
      dockTC     — TC level needed before it goes to sea (0 = never bothers)
-     boats/ships— fishing fleet size / warship cap divisor of aiArmyCap
+     boats/ships— fishing fleet size / fighting-hull cap divisor of aiArmyCap
      tcDays     — [day for TC2, day for TC3]
      blurb      — what your scouts whisper at first light
 
@@ -65,7 +65,7 @@ const AI = {
       mix: [['archer', 0.35], ['longbow', 0.25], ['defender', 0.4]],
       raidPower: 1.3, raidDayAdd: 5, raidShare: 0.6, raidCd: 14,
       walls: false, dockTC: 1, boats: 3, shipDiv: 3, tcDays: [25, 58],
-      blurb: 'a mariner-chief — nets in the shallows, warships off the coast.',
+      blurb: 'a mariner-chief — nets in the shallows, fire and bombards off the coast.',
     },
     mason: {
       name: 'Mason',
@@ -283,7 +283,7 @@ const AI = {
     return !!(g && S.day - g.day <= this.GUN_MEMORY) && g;
   },
   /* Put whatever we have that can REACH them onto them. Engines are the point
-     of the exercise, but a warship is a gun too, and it can sail to a bank no
+     of the exercise, but a BOMBARD is a gun too, and it can sail to a bank no
      foot of ours can walk to. Each is sent to the FARTHEST tile from which it
      can still hit — standing at the edge of its own range is what keeps it out
      of the reply. */
@@ -323,7 +323,7 @@ const AI = {
 
   /* ---- AND WE DO NOT REBUILD INTO OUR OWN ASHES (same test) ----
      The general backstop, and the one that covers whatever the gallery rule
-     cannot measure (a trebuchet outranging it, a warship's deck, a lane the
+     cannot measure (a trebuchet outranging it, a bombard's deck, a lane the
      reach flood happens to include). Every rival building DESTROYED stamps
      the ground; two losses on the same spot and the chief stops offering it a
      third. The stamps age out (`LOST_DAYS`), so ground the front has moved
@@ -2350,7 +2350,7 @@ const AI = {
       if (!have.dock && tc.level >= 2) add(115, () => this._buildDock());
       const dk = S.buildings.find(b => b.owner === 'A' && b.key === 'dock' && Bld.done(b));
       if (dk && dk.level < 2 && !dk.upgrading && Bld.canUpgrade(dk).ok)
-        add(110, () => { Bld.upgrade(dk); return true; });     // level 2 is what floats a warship
+        add(110, () => { Bld.upgrade(dk); return true; });     // the yard has to grow to float a fighting hull
       const wsN = S.buildings.find(b => b.owner === 'A' && b.key === 'siege' && Bld.done(b));
       if (wsN && wsN.level < 3 && !wsN.upgrading && Bld.canUpgrade(wsN).ok)
         add(100, () => { Bld.upgrade(wsN); return true; });     // level 3 is what throws a trebuchet
@@ -2589,8 +2589,11 @@ const AI = {
        the yards can turn out goes to answering them — ahead of the ordinary
        wall-breaking quota above, which is about attacking somebody else's
        fortress and can wait. A trebuchet outranges everything on the board; a
-       catapult at least trades at parity; a warship reaches a bank no foot of
-       ours can walk to, which on a young town is the only answer there is. */
+       catapult at least trades at parity; and a BOMBARD SHIP reaches a bank no
+       foot of ours can walk to and outranges what stands on it, which on a
+       young town is the only answer there is. (This used to train the generic
+       warship, which no longer exists — the bombard is the hull that actually
+       fits the job, so the reaction is stronger than it was, not weaker.) */
     if (this.underBombardment()) {
       const wsG = S.buildings.find(b => b.owner === 'A' && b.key === 'siege' &&
         Bld.done(b) && !b.upgrading && b.queue.length === 0);
@@ -2604,9 +2607,13 @@ const AI = {
       const dkG = S.buildings.find(b => b.owner === 'A' && b.key === 'dock' &&
         Bld.done(b) && !b.upgrading && b.queue.length === 0);
       if (dkG && dkG.level >= 2) {
-        const ships = Units.count('A', u => u.kind === 'warship' || u.kind === 'fireship');
-        if (ships < 3 && Bld.canAfford(CFG.BUILDINGS.dock.train.warship.cost, ai.res))
-          Bld.train(dkG, dkG.level >= 3 && ai.res.gold >= 45 ? 'fireship' : 'warship');
+        const ships = Units.count('A', u => u.kind === 'bombard' || u.kind === 'fireship');
+        /* the bombard is the real answer and needs a level-3 yard; below that
+           the fire warship is what the dock can float, and it at least reaches
+           the bank. */
+        const want = dkG.level >= 3 ? 'bombard' : 'fireship';
+        if (ships < 3 && Bld.canAfford(CFG.BUILDINGS.dock.train[want].cost, ai.res))
+          Bld.train(dkG, want);
       }
     }
 
@@ -2620,12 +2627,17 @@ const AI = {
     const dock = S.buildings.find(b => b.owner === 'A' && b.key === 'dock' && Bld.done(b));
     if (dock && !dock.upgrading && dock.queue.length === 0) {
       const boats = Units.count('A', u => u.kind === 'fishboat');
-      const ships = Units.count('A', u => u.kind === 'warship' || u.kind === 'fireship');
+      const ships = Units.count('A', u => u.kind === 'bombard' || u.kind === 'fireship');
       const seaLean = ai.opening && ai.opening.bias === 'sea' && ai.opening.fired && S.day < 45 ? 1 : 0;
+      /* the fire warship is the fighting hull; a bombard is a siege engine and
+         the chief keeps only a couple, the same restraint it shows with
+         trebuchets — a fleet of them could not defend itself. */
+      const bombards = Units.count('A', u => u.kind === 'bombard');
+      const wantShip = (dock.level >= 3 && bombards < 2 && ai.res.gold >= 60) ? 'bombard' : 'fireship';
       if (boats < P.boats + seaLean) Bld.train(dock, 'fishboat');
-      else if (dock.level >= 2 && ships < Math.max(1, Math.floor((m.aiArmyCap || 8) / P.shipDiv)) &&
-               this.affordFree(CFG.BUILDINGS.dock.train.warship.cost))
-        Bld.train(dock, dock.level >= 3 && ai.res.gold >= 45 ? 'fireship' : 'warship');
+      else if (dock.level >= 3 && ships < Math.max(1, Math.floor((m.aiArmyCap || 8) / P.shipDiv)) &&
+               this.affordFree(CFG.BUILDINGS.dock.train[wantShip].cost))
+        Bld.train(dock, wantShip);
     }
 
     // SIEGE-CAMPAIGN units — the engines the ordinary training never builds:
@@ -2656,9 +2668,8 @@ const AI = {
        reason to put boats in the water. */
     const beachedNow = ai.stall && S.day - (ai.stall.t || 0) <= 6;
     if ((campStrat === 'TIDEWRACK' || beachedNow) && dock && !dock.upgrading && dock.queue.length === 0) {
-      const big = dock.level >= 3;
-      const key = big ? 'bigtransport' : 'transport';
-      const cap = CFG.UNITS[big ? 'bigtransport' : 'transport'].cap || 3;
+      const key = 'transport';                       // one troop hull now
+      const cap = CFG.UNITS.transport.cap || 5;
       // enough hulls to put a DECISIVE wave ashore in a single crossing rather than
       // trickling three troops at a time into the teeth of the defense: ferry the
       // whole landing force (up to ~10) at once, fleet capped at five hulls.
