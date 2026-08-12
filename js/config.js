@@ -746,7 +746,10 @@ const CFG = {
     { key: 'sea',    name: 'the Sea Folk', note: 'Plumed crews off the water, come to take what floats' },
   ],
 
-  MEAT_DROP: 10,               // food gained when a wild animal is killed
+  MEAT_DROP: 10,               // fallback: food when a wild animal has no MEAT entry
+  // the bigger the beast, the deeper the larder — a cow outfeeds a deer, a
+  // bear feeds the village, and a wolf is lean eating for the trouble it is
+  MEAT: { deer: 8, wolf: 6, boar: 12, cow: 15, bear: 30 },
   PASSIVE_MAX: 10,             // grazing animals kept on the map — two herds' worth
                                // (Units.spawnHerd puts them down 3–5 at a time)
   // full-heal cost scales with missing hp. sapper: 30 matches its food line

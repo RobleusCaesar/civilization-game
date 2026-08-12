@@ -643,6 +643,21 @@ grazers keep company and PANIC SPREADS — the
 animal that actually sees the threat spooks every herd-mate within `HERD_R`, so
 the group scatters as one. Beasts and armed strangers frighten them;
 villagers don't, or a herd would never settle near a town.
+**Two kinds are two herds** (same test): company, the centre and the lead are
+all measured over the animal's OWN species, and a step target inside another
+kind's standing room (`Units.HERD_APART`, 4) is refused — so a deer band and a
+cattle band feeding the same field keep a respectful gap instead of milling as
+one mixed blob (a reported screenshot). It only steers the STEP, never
+teleports, so a crossing or a panic still overlaps briefly — and when two
+bands ARE interleaved (a collision, or an old save) the animal whose every
+bearing is refused steps straight away from the nearest foreigner instead of
+freezing in the tangle. Panic deliberately still crosses kinds — a bolting
+herd startles the neighbours too. `Units.seedGameNear` deals ONE kind per
+band for the same reason. **And the meat is tiered by the beast**
+(`CFG.MEAT`: bear 30 > cow 15 > boar 12 > deer 8 > wolf 6, `MEAT_DROP` only a
+fallback for unknown kinds): the payout in `Units.damage` and both panel
+hints read the table, the bear's old hard-coded ×3 lives in its own entry,
+and the rival's hunters eat by the same table.
 **And the herd BREATHES** (same test): real cattle and deer draw in close, fan
 out over the feed and gather again — they never converge on a point and never
 string out into a line. So every step is measured from the HERD'S CENTRE (never

@@ -166,6 +166,77 @@ const out = await p.evaluate(() => {
       'was ' + d0.toFixed(1) + ' tiles out, now ' + d1.toFixed(1));
   }
 
+  /* ---- 2b². TWO KINDS ARE TWO HERDS. Company, the centre and the lead are
+     measured over the animal's own species, and a step into another kind's
+     standing room (HERD_APART) is refused — so a deer band and a cattle band
+     dropped INTERLEAVED on the same grass sort themselves into two distinct
+     herds instead of milling as one mixed blob (the reported screenshot).
+     Panic deliberately still crosses kinds: a bolting herd startles the
+     neighbours too. ---- */
+  {
+    arena('wl2e');
+    const deer = [], cows = [];
+    for (let i = 0; i < 4; i++) {
+      deer.push(Units.spawn('deer', 'W', 30 + (i % 2) * 2, 30 + ((i / 2) | 0) * 2));
+      cows.push(Units.spawn('cow', 'W', 31 + (i % 2) * 2, 30 + ((i / 2) | 0) * 2));
+    }
+    const centroid = (band) => {
+      let cx = 0, cy = 0;
+      for (const d of band) { cx += d.x; cy += d.y; }
+      return { x: cx / band.length, y: cy / band.length };
+    };
+    const gap = () => { const a = centroid(deer), b = centroid(cows); return Math.hypot(a.x - b.x, a.y - b.y); };
+    const g0 = gap();
+    run(90);
+    const g1 = gap();
+    ck('interleavedBandsSortThemselvesApart', g1 >= Units.HERD_APART * 0.75,
+      'centroids ' + g0.toFixed(1) + ' → ' + g1.toFixed(1) + ' tiles apart (want ≥ ' + (Units.HERD_APART * 0.75).toFixed(1) + ')');
+    const c1 = centroid(deer), c2 = centroid(cows);
+    ck('eachKindStaysItsOwnHerd',
+      deer.every(d => Math.hypot(d.x - c1.x, d.y - c1.y) <= Units.HERD_R * 1.8) &&
+      cows.every(c => Math.hypot(c.x - c2.x, c.y - c2.y) <= Units.HERD_R * 1.8),
+      'every head still in its own band after 90s');
+    // panic still leaps the species line — the deer that sees the soldier
+    // spooks the cattle grazing beside it
+    arena('wl2f');
+    const d5 = Units.spawn('deer', 'W', 20, 20);
+    const c5 = Units.spawn('cow', 'W', 22, 20);
+    Units.spawn('defender', 'A', 20, 21.5);
+    run(1.2);
+    ck('panicStillCrossesKinds', d5.spookT > 0 && c5.spookT > 0,
+      'deer ' + (d5.spookT > 0 ? 'runs' : 'grazes') + ', cow ' + (c5.spookT > 0 ? 'runs' : 'grazes'));
+  }
+
+  /* ---- 2b³. MEAT BY THE BEAST. CFG.MEAT tiers the take by the animal's
+     size — a cow outfeeds a deer, a bear feeds the village, and a wolf is
+     lean eating — and the payout code reads that table (the bear's old
+     hard-coded ×3 lives in its own entry now). ---- */
+  {
+    arena('wl2g');
+    const M = CFG.MEAT;
+    ck('everyBeastHasACut', !!M && ['deer', 'cow', 'wolf', 'boar', 'bear'].every(k => M[k] > 0),
+      JSON.stringify(M));
+    ck('theBiggerTheBeastTheDeeperTheLarder',
+      !!M && M.bear > M.cow && M.cow > M.boar && M.boar > M.deer && M.deer > M.wolf,
+      'bear ' + M.bear + ' > cow ' + M.cow + ' > boar ' + M.boar + ' > deer ' + M.deer + ' > wolf ' + M.wolf);
+    const mult = (window.Cards && Cards.huntMult) ? Cards.huntMult('P') : 1;
+    const f0 = S.res.food;
+    Units.damage(Units.spawn('deer', 'W', 20, 20), 9999, null, 'P');
+    const gotDeer = S.res.food - f0;
+    ck('aDeerPaysTheDeerCut', gotDeer === Math.round(M.deer * mult), '+' + gotDeer);
+    const f1 = S.res.food;
+    Units.damage(Units.spawn('cow', 'W', 24, 20), 9999, null, 'P');
+    const gotCow = S.res.food - f1;
+    ck('aCowPaysTheCowCut', gotCow === Math.round(M.cow * mult), '+' + gotCow);
+    ck('theCowOutfeedsTheDeer', gotCow > gotDeer, gotCow + ' vs ' + gotDeer);
+    // the rival's hunters eat by the same table
+    const a0 = S.ai.res.food;
+    Units.damage(Units.spawn('boar', 'W', 28, 20), 9999, null, 'A');
+    const multA = (window.Cards && Cards.huntMult) ? Cards.huntMult('A') : 1;
+    ck('theRivalEatsByTheSameTable', S.ai.res.food - a0 === Math.round(M.boar * multA),
+      '+' + (S.ai.res.food - a0));
+  }
+
   // ---- 2c. four or more frames in every animal action ----
   {
     const kinds = ['wolf', 'boar', 'bear', 'deer', 'cow'];

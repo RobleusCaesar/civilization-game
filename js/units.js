@@ -1664,6 +1664,7 @@ const Units = {
   HERD_BREATH: 22,  // seconds for one gather → spread → gather
   HERD_JOIN: 30,    // how far a separated animal will walk to rejoin its herd
   HERD_DRIFT: 1.2,  // how far past the ring the leader steps — the herd's slow travel
+  HERD_APART: 4,    // the distance different KINDS keep from each other's ground
   spook(u, tx, ty) { u.spookT = 2.2 + Math.random() * 1.6; u.spookX = tx; u.spookY = ty; },
   wildIdle(u, dt) {
     if (this.isPassive(u)) return this.grazeIdle(u, dt);
@@ -1712,9 +1713,14 @@ const Units = {
     u.wanderT -= dt;
     if (u.wanderT > 0) return;
     u.wanderT = 1.6 + Math.random() * 1.8;
+    /* A HERD IS ITS OWN KIND (tests/wild-life.mjs). Company, the centre and
+       the lead are all measured over the animal's OWN species — a deer band
+       and a cattle band that drift together must stay two herds, not merge
+       into one mixed blob milling on the same grass. Panic is deliberately
+       still cross-kind (a bolting herd startles the neighbours too). */
     let hx = u.x, hy = u.y, n = 0, lead = u;
     for (const o of S.units) {
-      if (o === u || !this.isPassive(o)) continue;
+      if (o === u || !this.isPassive(o) || o.kind !== u.kind) continue;
       if (Math.hypot(o.x - u.x, o.y - u.y) > this.HERD_R * 1.8) continue;   // company reaches
       hx += o.x; hy += o.y; n++;                                            // further than panic does
       if (o.id < lead.id) lead = o;
@@ -1729,7 +1735,7 @@ const Units = {
       // herd bleeds a head every time something frightens it
       let best = null, bd = this.HERD_JOIN;
       for (const o of S.units) {
-        if (o === u || !this.isPassive(o)) continue;
+        if (o === u || !this.isPassive(o) || o.kind !== u.kind) continue;   // its OWN herd, never the neighbours'
         const d = Math.hypot(o.x - u.x, o.y - u.y);
         if (d < bd) { bd = d; best = o; }
       }
@@ -1750,15 +1756,40 @@ const Units = {
       u.herdA += (Math.random() - 0.5) * 0.9;                    // they trade places as they feed
       a = u.herdA;
     }
+    /* ANOTHER KIND'S GROUND IS GIVEN WAY (HERD_APART): a step target inside
+       another species' standing room is refused, so two herds feeding the
+       same field keep a respectful gap between them. It only steers the STEP
+       — nothing is ever teleported — so a crossing or a panic still overlaps
+       briefly, which is the "some overlap is okay" the rule intends. */
+    const foreigner = (x, y) => {
+      for (const o of S.units)
+        if (o !== u && this.isPassive(o) && o.kind !== u.kind &&
+            Math.hypot(o.x - x, o.y - y) < this.HERD_APART) return o;
+      return null;
+    };
     // a blocked bearing turns the animal rather than stalling it against a shore
     for (let k = 0; k < 4; k++) {
       const aa = a + k * 1.7;
       const tx = Math.round(cx + Math.cos(aa) * r + (Math.random() - 0.5));
       const ty = Math.round(cy + Math.sin(aa) * r + (Math.random() - 0.5));
       if (tx < 1 || ty < 1 || tx >= CFG.W - 1 || ty >= CFG.H - 1) continue;
+      if (foreigner(tx, ty)) continue;
       if (!Path.passable(tx, ty) || !this.setPath(u, tx, ty)) continue;
       if (lead === u) u.roamA = aa; else u.herdA = aa;
       return;
+    }
+    /* every bearing lands in the other herd's ground — the two bands are
+       standing INTERLEAVED (two drifts collided, or an old save loaded from
+       before this rule). Freezing in the mix would hold the tangle forever;
+       instead step straight away from the nearest foreigner, and the ordinary
+       company pull re-forms each band on its own side over the next breaths. */
+    const near = foreigner(u.x, u.y);
+    if (near) {
+      const d = Math.hypot(u.x - near.x, u.y - near.y) || 1;
+      const tx = Math.round(u.x + (u.x - near.x) / d * 2.5);
+      const ty = Math.round(u.y + (u.y - near.y) / d * 2.5);
+      if (tx >= 1 && ty >= 1 && tx < CFG.W - 1 && ty < CFG.H - 1 && Path.passable(tx, ty))
+        this.setPath(u, tx, ty);
     }
   },
 
@@ -1792,7 +1823,10 @@ const Units = {
            chief to take its soldiers off to chase deer. */
         G.noteHunt(u.x | 0, u.y | 0);
         const owner = (attacker && attacker.owner) || attackerOwner;
-        const meat = Math.round((u.kind === 'bear' ? CFG.MEAT_DROP * 3 : CFG.MEAT_DROP) *   // a bear feeds the village
+        // MEAT BY THE BEAST (tests/wild-life.mjs): CFG.MEAT tiers the take by
+        // the animal's size — the bear's old ×3 lives in its own entry now
+        const cut = (CFG.MEAT && CFG.MEAT[u.kind] != null) ? CFG.MEAT[u.kind] : CFG.MEAT_DROP;
+        const meat = Math.round(cut *
           (window.Cards ? Cards.huntMult(owner) : 1));   // ORIGIN CARDS: Beastward hunts
         if (owner === 'P') {
           S.res.food += meat;
@@ -1890,11 +1924,14 @@ const Units = {
      opening is still its own. */
   seedGameNear(x, y, n) {
     let put = 0;
+    // one KIND per band — herds are kind-true now, and a mixed handful would
+    // spend its first minute sorting itself into two tiny herds
+    const kind = G.rand() < 0.5 ? 'deer' : 'cow';
     for (let tries = 0; tries < 60 && put < n; tries++) {
       const ax = Math.round(x + (G.rand() * 2 - 1) * 9), ay = Math.round(y + (G.rand() * 2 - 1) * 9);
       if (!MapGen.onBoard(ax, ay) || !Path.passable(ax, ay) || Bld.at(ax, ay)) continue;
       if (Math.hypot(ax - x, ay - y) < 4) continue;      // not milling on the doorstep
-      this.spawn(G.rand() < 0.5 ? 'deer' : 'cow', 'W', ax, ay);
+      this.spawn(kind, 'W', ax, ay);
       put++;
     }
     return put;

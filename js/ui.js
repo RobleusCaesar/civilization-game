@@ -2104,8 +2104,8 @@ const UI = {
       const nm = CFG.UNITS[u.kind].name;
       const own = u.owner === 'P';
       let hint = !own ? (
-          Units.isPassive(u) ? `Wild game — send a villager or defender to hunt it (+${CFG.MEAT_DROP} food).`
-          : u.owner === 'W' ? `Wild beast — dangerous, but worth +${CFG.MEAT_DROP} food.`
+          Units.isPassive(u) ? `Wild game — send a villager or defender to hunt it (+${(CFG.MEAT && CFG.MEAT[u.kind]) || CFG.MEAT_DROP} food).`
+          : u.owner === 'W' ? `Wild beast — dangerous, but worth +${(CFG.MEAT && CFG.MEAT[u.kind]) || CFG.MEAT_DROP} food.`
           // barbarian tempers stay hidden — you find out who they're after
           // the same way everyone else does
           : u.owner === 'R' ? 'Barbarian — nothing but trouble. Who they strike at, only they know.'
