@@ -169,6 +169,28 @@ daily from `maybeWalls` BEFORE its wood gate (cutting is free; a broke sealed
 town still frees its army). Prevention: the cork check joins `wallWouldSeal`
 in the placement clamps (maybeWalls budget loop, mendWallLine breach-close);
 gates stay exempt — a gate opens for its owner.
+**THE SEAL CLAMP IS VALIDATED ON THE PICK, NEVER ON THE SCAN** (the measured
+stutter of a real day-146 save: `sealsTown` runs up to four flood fills per
+tile, and asked inside `plot`'s per-candidate `freeTile` it ran for every tile
+that passed the cheap pinch prefilter — on tight coastal ground that was
+HUNDREDS of full-map floods per `plot()` call, several calls per day, worst
+day tick 918ms). `plot`'s scans collect scored candidates cheaply and
+`pickSealFree` floods only the best few (capped at 12 — a day where the
+twelve best spots would all cork the town plots nothing, which spends
+nothing). Two flood caches ride the same `(S.day, Bld._blockGen)` key the
+gallery mask uses — sound because within one day tick only the chief's own
+placements change the answer, and `Bld.place` bumps the generation, which is
+also why `_blockGen` must stay MONOTONIC (never reset on newGame): the plain
+no-counterfactual `townOut(tc)` (in `AI._townOutC`), and `corkedGround`'s
+candidate-independent `open` flood + `fortAt` mask (`AI._corkC`). The
+counterfactual forms (blockTile/openTile, the per-candidate `now` flood) are
+never cached. **Both caches force the block grid current before reading the
+generation** (`if (!Bld._block) Bld.rebuildBlock()`): the grid invalidates
+LAZILY (`_block = null`) and only bumps `_blockGen` when it actually
+rebuilds, so a gen read after a change but before any passable() query
+matches the cache and vouches for a stale flood — the same trap `Bld.deckAt`
+documents, and it cost `openTheGate` its self-heal check the first time. Measured on a striped-ground microbench: plot('house') went
+from 58ms median / 190ms max to 1.1ms / 6.5ms with identical clamps.
 
 **Siege progress** (`tests/siege-progress.mjs`, details in `RIVAL_AI.md`): walls
 and gates are ordinary entries in `S.buildings`, so "a building was destroyed"
@@ -1708,6 +1730,31 @@ sharper than before. What is off is the relationship to the plot, not the
 resolution: the hall no longer reads as the biggest thing in the village now
 that eight other works match its footprint, which is what the real art pass
 has to answer.
+
+**The frame must never pay for bookkeeping** (the stutter post-mortem, a real
+multi-save report): four measured taxes, each invisible in review and each a
+rule now. **No dead serialization** — `G.autosave` stringified the ENTIRE
+state every 10 real seconds into a field nothing ever read; it is gone, and
+the crash net is `Backend.autosaveNow` alone. **An autosave cadence paces the
+WORK, not the cloud's mood** — `_lastAutosaveDay` used to be stamped only on
+cloud success, so a player with no slot bound re-ran the full-state stringify
+every single day tick forever; it stamps right after the local snapshot now,
+and a failed cloud push just waits for the next cadence. **A pre-serialized
+save rides through as the string it already is** — `saveSlot` splices a string
+state into the POST body verbatim (`_rest` passes string bodies through,
+parsing them only for the test mock), instead of parse→re-stringify doubling
+the cost; the manual Save screen's object path is untouched. **The fog ghosts
+are viewport-clipped** — `S.map.seenB` spans the whole explored map and only
+grows, and the ghost loop was issuing hundreds of off-screen blits (mask
+lookups, smoothing flips) every frame; it now skips anything outside the
+visible tile band (3-tile margin: the wonder anchored just off the top-left
+edge). And **the peoples' sprite rigs are warmed at load** (`G.warmTribes`,
+called from newGame and loadJSON): `Sprites.barbFor` stays lazy by design,
+but the resident tribes (every camp's, plus the Sea Folk, who arrive by
+longboat whatever the camps rolled) are built while the world is being set
+up, not as a one-frame hitch at first sighting. The plot() seal-clamp storm —
+the biggest of the five — is documented at **The ring must never seal the
+town in** above.
 
 **A contract sweep must key on EXIT CODES, never on grepping the output**
 (learned the hard way): every `tests/*.mjs` exits non-zero on failure, but the

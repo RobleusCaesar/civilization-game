@@ -199,8 +199,19 @@ const Backend = {
       landform: meta.landform || null,
       playtime_seconds: Math.round(meta.playtime || 0),
       thumbnail: meta.thumbnail || null,
-      state: stateObj,
     };
+    /* the state is routinely a multi-megabyte string fresh from G.saveJSON();
+       parsing it back to an object only for _rest to stringify it again
+       doubled the main-thread cost of every autosave. A pre-serialized state
+       (always valid JSON — it came from JSON.stringify) is spliced into the
+       body verbatim; an object caller (the manual Save screen) is untouched. */
+    if (typeof stateObj === 'string') {
+      const head = JSON.stringify(row);                        // "{...fields}"
+      return this._rest('POST', '/saves?on_conflict=user_id,slot',
+        '[' + head.slice(0, -1) + ',"state":' + stateObj + '}]',
+        { Prefer: 'resolution=merge-duplicates,return=minimal' });
+    }
+    row.state = stateObj;
     return this._rest('POST', '/saves?on_conflict=user_id,slot', [row],
       { Prefer: 'resolution=merge-duplicates,return=minimal' });
   },
@@ -241,6 +252,13 @@ const Backend = {
     if (!window.S || S.over) return this._err('no_game', 'No running game');
     const json = G.saveJSON();
     this.snapshotLocal(json);
+    /* the cadence stamp lands HERE, after the crash net, not only on cloud
+       success: it paces the WORK, and the crash net is the work that always
+       runs. Stamped only on cloud success, a player with no slot bound (or
+       offline) re-ran this whole serialization every single day tick — a
+       full-state stringify every ten real seconds, forever. A failed cloud
+       push simply waits for the next cadence, exactly like any other retry. */
+    this._lastAutosaveDay = S.day;
     if (!this.isReady() || !this.activeSlot) return this._err('no_slot', 'No cloud slot bound');
     if (this._busy) return this._err('busy', 'Autosave already in flight');
     this._busy = true;
@@ -250,7 +268,8 @@ const Backend = {
         playtime: S.playtime || 0, thumbnail: R.thumb ? R.thumb() : null,
         version: CFG.SAVE_VERSION,
       };
-      const r = await this.saveSlot(this.activeSlot, this.activeName || 'Village', JSON.parse(json), meta);
+      // the state rides through as the STRING it already is — see saveSlot
+      const r = await this.saveSlot(this.activeSlot, this.activeName || 'Village', json, meta);
       if (r.ok) this._lastAutosaveDay = S.day;
       return r;
     } finally { this._busy = false; }
@@ -342,7 +361,11 @@ const Backend = {
 
   // PostgREST over plain fetch — small, controllable, easy to mock
   async _rest(method, path, body, headers) {
-    if (this.mock) return this._retry(() => this.mock.rest(method, path, body, headers))
+    // a STRING body is already-serialized JSON (saveSlot's fast path) and goes
+    // over the wire verbatim; the test mock still expects objects, so it gets
+    // the parsed form (test-only — the real path never pays for this)
+    if (this.mock) return this._retry(() => this.mock.rest(method, path,
+        typeof body === 'string' ? JSON.parse(body) : body, headers))
       .then(r => r.ok ? { ok: true, data: r.data } : r);
     let last = null;
     for (let a = 0; a < this.RETRIES; a++) {
@@ -360,7 +383,7 @@ const Backend = {
             { apikey: SUPA_CFG.anonKey, 'Content-Type': 'application/json' },
             this.session ? { Authorization: 'Bearer ' + this.session.access_token } : {},
             headers || {}),
-          body: body == null ? undefined : JSON.stringify(body),
+          body: body == null ? undefined : (typeof body === 'string' ? body : JSON.stringify(body)),
         });
         clearTimeout(timer);
         if (res.status === 401 && a === 0 && this.client) {

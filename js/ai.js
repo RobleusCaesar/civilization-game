@@ -450,8 +450,16 @@ const AI = {
         if (!fn(x + dx, y + dy)) return false;
       return true;
     };
+    /* THE SEAL CLAMP IS VALIDATED ON THE PICK, NOT ON THE SCAN. sealsTown
+       runs up to four flood fills per tile; asked inside freeTile it ran for
+       every candidate that passed the pinch prefilter — on tight coastal
+       ground that was HUNDREDS of floods per plot() call, several calls per
+       day, and it is the measured 900ms day-tick stutter of a real save.
+       The scans below collect candidates cheaply and the seal floods run
+       only on the handful actually about to be returned. */
+    const sealFree = (x, y) => everyTile(x, y, (tx, ty) => !sealsTown(tx, ty));
     const freeTile = (x, y) => Bld.tileFree(x, y) && Math.hypot(x - tc.x, y - tc.y) >= 2 &&
-      offLine(x, y) && !sealsTown(x, y) && !(!isFortKey && this.campGround(x, y)) &&
+      offLine(x, y) && !(!isFortKey && this.campGround(x, y)) &&
       // …and never onto ground that has already eaten two of our works. The
       // GALLERY is only a scoring penalty for an ordinary building (see
       // layout) — a town backed against an unreachable bank still has to be
@@ -497,10 +505,20 @@ const AI = {
       s -= Math.abs(Math.hypot(dx, dy) - Math.min(rMax - 0.6, 4)) * 0.35;   // settle on a loose ring, not on top of the hall
       return s;
     };
+    // walk a scored candidate list best-first and return the first whose
+    // footprint passes the seal floods — capped, so a day where the twelve
+    // best spots would all cork the town simply plots nothing (returning
+    // null spends nothing; tomorrow the ground has changed)
+    const pickSealFree = (cands) => {
+      cands.sort((a, b2) => b2.s - a.s);
+      for (let i = 0; i < cands.length && i < 12; i++)
+        if (sealFree(cands[i].x, cands[i].y)) return { x: cands[i].x, y: cands[i].y };
+      return null;
+    };
     const d = CFG.BUILDINGS[key];
     if (d && d.near) {
       // hunt the bonus terrain, but still with spacing + off the waterline
-      let best = null, bs = -1e9;
+      const cands = [];
       for (let dy = -rMax; dy <= rMax; dy++) for (let dx = -rMax; dx <= rMax; dx++) {
         const x = tc.x + dx, y = tc.y + dy;
         if (Math.hypot(dx, dy) > rMax) continue;      // a RADIUS, not a square (see inRange)
@@ -508,24 +526,26 @@ const AI = {
         let bonus = 0; const r = d.near.radius;
         for (let oy = -r; oy <= r && !bonus; oy++) for (let ox = -r; ox <= r; ox++)
           if (MapGen.inB(x + ox, y + oy) && S.map.terrain[MapGen.idx(x + ox, y + oy)] === d.near.terrain) { bonus = 1; break; }
-        const s = bonus * 10 + layout(x, y, dx, dy);
-        if (s > bs) { bs = s; best = { x, y }; }
+        cands.push({ x, y, s: bonus * 10 + layout(x, y, dx, dy) });
       }
+      const best = pickSealFree(cands);
       if (best) return best;
     }
     if (key === 'tower') { const s = this.towerSpot(tc); if (s && canWork(s.x, s.y)) return s; }
     // score every free tile in the ring for elbow room + dry ground, so the town
     // grows as a spaced-out settlement instead of packing huts wall-to-wall (which
     // is what left a crowded maze the AI then dug moats straight through)
-    let best = null, bs = -1e9;
-    for (let dy = -rMax; dy <= rMax; dy++) for (let dx = -rMax; dx <= rMax; dx++) {
-      const x = tc.x + dx, y = tc.y + dy;
-      if (Math.hypot(dx, dy) > rMax) continue;        // a RADIUS, not a square (see inRange)
-      if (!MapGen.inB(x, y) || !free(x, y)) continue;
-      const s = layout(x, y, dx, dy);
-      if (s > bs) { bs = s; best = { x, y }; }
+    {
+      const cands = [];
+      for (let dy = -rMax; dy <= rMax; dy++) for (let dx = -rMax; dx <= rMax; dx++) {
+        const x = tc.x + dx, y = tc.y + dy;
+        if (Math.hypot(dx, dy) > rMax) continue;      // a RADIUS, not a square (see inRange)
+        if (!MapGen.inB(x, y) || !free(x, y)) continue;
+        cands.push({ x, y, s: layout(x, y, dx, dy) });
+      }
+      const best = pickSealFree(cands);
+      if (best) return best;
     }
-    if (best) return best;
     // crowded town (a full wall ring, a tight peninsula): spill outward rather than
     // stall — but NEVER onto the reserved line. A hut outside the ring is a hut the
     // rival may lose; a hut IN the ring is the ring lost.
@@ -541,9 +561,13 @@ const AI = {
        exactly the behaviour that walked a villager across the whole board. The
        camp's ring is already as wide as the work parties' own, and past it
        there is nothing to find that should be found. */
-    if (stationKey) return MapGen.findNear(tc.x, tc.y, rMax, free);
-    return MapGen.findNear(tc.x, tc.y, rMax, free) ||
-           MapGen.findNear(tc.x, tc.y, rMax + 4, free) ||
+    // the spill keeps the seal clamp inline: it only runs when the scored ring
+    // found nothing at all, and findNear stops at the first passing tile — the
+    // cheap `free` gate runs first, so the floods only price real candidates
+    const freeSealed = (x, y) => free(x, y) && sealFree(x, y);
+    if (stationKey) return MapGen.findNear(tc.x, tc.y, rMax, freeSealed);
+    return MapGen.findNear(tc.x, tc.y, rMax, freeSealed) ||
+           MapGen.findNear(tc.x, tc.y, rMax + 4, freeSealed) ||
            MapGen.findNear(tc.x, tc.y, rMax + 8, (x, y) => Bld.tileFree(x, y) && offLine(x, y) &&
              Bld.stationGround(key, x, y).ok);
   },
@@ -839,6 +863,26 @@ const AI = {
      first, and if the town is already shut, `openTheGate` cuts one. */
   townOut(tc, blockTile, openTile) {
     tc = tc || Bld.tcOf('A');
+    /* THE PLAIN QUESTION IS CACHED: townOut(tc) with no counterfactual tiles
+       is asked once per wallWouldSeal call and floods every time. Within one
+       day tick the world only changes when the chief itself places something
+       (which bumps Bld._blockGen), so (day, blockGen) keys it exactly. The
+       counterfactual forms (blockTile/openTile) are never cached. */
+    if (!blockTile && !openTile) {
+      // force the block grid CURRENT before reading the generation — the grid
+      // invalidates lazily (_block = null), and a stale gen here answers from
+      // before the change (the same trap Bld.deckAt documents)
+      if (!Bld._block) Bld.rebuildBlock();
+      const gen = Bld._blockGen || 0;
+      const c0 = this._townOutC;
+      if (c0 && c0.day === S.day && c0.gen === gen && c0.tc === tc.id) return c0.val;
+      const val = this._townOutFlood(tc, null, null);
+      this._townOutC = { day: S.day, gen, tc: tc.id, val };
+      return val;
+    }
+    return this._townOutFlood(tc, blockTile, openTile);
+  },
+  _townOutFlood(tc, blockTile, openTile) {
     const c = this.wallCenter(tc); if (!c) return true;
     const W = CFG.W, H = CFG.H, idx = MapGen.idx, R = this.WALL_R;
     const bx = blockTile ? blockTile.x : -1, by = blockTile ? blockTile.y : -1;
@@ -931,16 +975,30 @@ const AI = {
     const seed = this._townSeed(tc); if (!seed) return null;
     const W = CFG.W;
     const now = this._reachA(seed.x, seed.y, false, cand ? MapGen.idx(cand.x, cand.y) : -1);
-    const open = this._reachA(seed.x, seed.y, true, -1);
-    // ground our OWN works stand on is not "marchable ground gained" — every
-    // solid building's whole footprint, not just wall/gate tiles
-    const fortAt = new Uint8Array(W * CFG.H);
-    for (const b of S.buildings) {
-      if (b.owner !== 'A' || !Bld.solid(b.key)) continue;
-      const sz = Bld.size(b);
-      for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++)
-        if (MapGen.inB(b.x + dx, b.y + dy)) fortAt[MapGen.idx(b.x + dx, b.y + dy)] = 1;
+    /* `open` and `fortAt` do not depend on the candidate, so per-candidate
+       validation reuses them from a (day, blockGen) cache — the same key the
+       townOut cache rides on, and for the same reason: inside one day tick
+       only the chief's own placements change the answer, and those bump the
+       generation. Halves the flood cost of every seal validation. */
+    // same trap as the townOut cache: force the lazily-invalidated block grid
+    // current, or a stale generation vouches for a stale flood
+    if (!Bld._block) Bld.rebuildBlock();
+    const gen = Bld._blockGen || 0;
+    let cc = this._corkC;
+    if (!cc || cc.day !== S.day || cc.gen !== gen || cc.sx !== seed.x || cc.sy !== seed.y) {
+      const open = this._reachA(seed.x, seed.y, true, -1);
+      // ground our OWN works stand on is not "marchable ground gained" — every
+      // solid building's whole footprint, not just wall/gate tiles
+      const fortAt = new Uint8Array(W * CFG.H);
+      for (const b of S.buildings) {
+        if (b.owner !== 'A' || !Bld.solid(b.key)) continue;
+        const sz = Bld.size(b);
+        for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++)
+          if (MapGen.inB(b.x + dx, b.y + dy)) fortAt[MapGen.idx(b.x + dx, b.y + dy)] = 1;
+      }
+      cc = this._corkC = { day: S.day, gen, sx: seed.x, sy: seed.y, open, fortAt };
     }
+    const open = cc.open, fortAt = cc.fortAt;
     let gained = 0;
     for (let i = 0; i < open.length; i++) if (open[i] && !now[i] && !fortAt[i]) gained++;
     return gained >= 24 ? { now, open, fortAt, gained } : null;

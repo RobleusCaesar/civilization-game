@@ -2057,9 +2057,18 @@ const R = {
       if (t.total) this.bar(g, wx + 3, wy - 3, TL - 6, 3, prog, '#c9a84c');
     }
 
-    // remembered buildings (ghosts in the grey fog) — drawn as last seen
+    // remembered buildings (ghosts in the grey fog) — drawn as last seen.
+    // CLIPPED TO THE VIEWPORT: seenB spans the whole explored map and only
+    // ever grows, so late in a run this loop was issuing hundreds of blits
+    // (each with mask lookups, some with smoothing flips) for ghosts nowhere
+    // near the screen, every frame. The 3-tile margin covers the biggest
+    // footprint (the wonder) anchored just off the top-left edge.
+    const gvx0 = ((this.cam.x / TL) | 0) - 3, gvy0 = ((this.cam.y / TL) | 0) - 3;
+    const gvx1 = ((this.cam.x + this.viewW() / this.cam.z) / TL) | 0;
+    const gvy1 = ((this.cam.y + this.viewH() / this.cam.z) / TL) | 0;
     for (const k in S.map.seenB) {
       const i = +k, gx = i % CFG.W, gy = (i / CFG.W) | 0;
+      if (gx < gvx0 || gx > gvx1 || gy < gvy0 || gy > gvy1) continue;
       if ((G.vis && G.vis[i]) || !S.map.explored[i]) continue;
       const snap = S.map.seenB[k];
       const spr = snap.key === 'wall' ? Sprites.wallMask[snap.level - 1][this.wallMaskAt(gx, gy)]

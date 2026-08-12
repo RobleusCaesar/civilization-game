@@ -4,8 +4,6 @@
 var S = null;   // the whole game state — plain data, JSON-serializable
 
 const G = {
-  autosave: null,
-  autosaveT: 0,
   lastT: 0,
 
   // seeded runtime RNG (state lives in S so saves stay coherent)
@@ -286,6 +284,23 @@ const G = {
     this.log('🏕 ' + S.origin, false, 6400);
     this.log(`Scouts report: ${gen.scarce} is scarce in this valley — claim it before the rival does.`, false, 6400);
     this.log('First barbarian raids expected around day ' + S.wave.next, false, 6400);
+    this.warmTribes();
+  },
+
+  /* build the sprite rigs for the peoples actually ON this map, now, while
+     the world is being set up — Sprites.barbFor is lazy by design (a map
+     that meets two peoples never pays for five), but left fully lazy the
+     FIRST SIGHTING of each people built its whole rig inside one frame: a
+     visible hitch in the middle of play. The camps carry every resident
+     tribe; 'sea' rides along because nine longboat crews in ten are the Sea
+     Folk whatever the camps rolled. A band that marches in off the map with
+     a sixth look still builds lazily, exactly as before. */
+  warmTribes() {
+    if (typeof Sprites === 'undefined' || !Sprites.barbFor) return;
+    const want = new Set(['sea']);
+    for (const b of S.buildings) if (b.key === 'raidercamp' && b.tribe) want.add(b.tribe);
+    for (const u of S.units) if (u.owner === 'R' && u.tribe) want.add(u.tribe);
+    for (const t of want) Sprites.barbFor(t);
   },
 
   // the rare start extras: a spearman, a scout, a standing workplace, a rich cache
@@ -1530,6 +1545,7 @@ const G = {
     Units.clampToBoard();   // pull any unit off the (now impassable) map rim — e.g. a pre-border save
     R.onNewGame();
     this.updateVisibility();
+    this.warmTribes();      // build the resident peoples' rigs here, not on first sighting
     if (S.over) UI.showEnd(S.over.win, S.over.msg);
   },
 
@@ -1585,8 +1601,11 @@ const G = {
           }
           G.visT -= dt;
           if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
-          G.autosaveT -= dt;
-          if (G.autosaveT <= 0) { G.autosaveT = 10; G.autosave = G.saveJSON(); }
+          /* G.autosave is GONE, on purpose: it serialized the ENTIRE game
+             state (a multi-megabyte JSON.stringify) every 10 real seconds
+             into a field nothing ever read — a metronome of frame hitches
+             for zero benefit. The real safety nets are Backend.autosaveNow
+             (cadence + tab-hide), which drops the local crash snapshot. */
         }, 'world');
       }
     }
