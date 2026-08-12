@@ -94,6 +94,7 @@ node tests/tc-upgrade.mjs      # the hall rises on the town's shoulders — 3 bu
 node tests/banish.mjs          # a villager can be sent away for good — the pop cap is all you get back
 node tests/worked-ground.mjs   # a station stands only on ground its own resource was taken out of
 node tests/footprint.mjs       # the primary works stand on 2×2; old saves keep the ground they were raised on
+node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring rule; ?dev=1 preview = the shipping path
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -1730,6 +1731,28 @@ sharper than before. What is off is the relationship to the plot, not the
 resolution: the hall no longer reads as the biggest thing in the village now
 that eight other works match its footprint, which is what the real art pass
 has to answer.
+
+**Art lands by FILENAME, never by manifest** (`tests/art-pipeline.mjs`, full
+rules in `ART_PLAN.md`): `assets/buildings/{id}-l{level}.png` — all lowercase
+(Pages is case-sensitive), tried for every valid slot at startup, swapped in
+on decode with no loading gate (procedural renders from frame one). A hit
+lands in BOTH tribes' tables; a 404 keeps the procedural drawable. The old
+`assets/manifest.js` atlas pipeline is GONE — `Assets._slot`'s key grammar
+survives only for the procedural misc/ui tables. **ONE anchoring rule**
+(`R.artRect`, routed via the `_cfArt` marker through `blitBld`):
+bottom-center on the footprint, scaled to footprint width, aspect preserved,
+tall art overhangs UP — per-building tuning lives in the optional sidecar
+(`{id}-l{level}.json`: offsetX/offsetY as footprint fractions, scale), never
+in code. `darkOf`/`ruinOf` must copy `_cfArt` onto their variants or a
+burning PNG building snaps back to a square. Excluded on purpose: wall/gate
+(16-mask atlases), wonder (per-monument, rolled per run), raidercamp (its
+look belongs to its people). A dock PNG overrides ALL four shore
+orientations; a bonded mural tower keeps its procedural self (it must match
+the curtain). `CFG.ART_V` is the CDN cache-buster — bump it when a PNG is
+re-uploaded under the same name. The `?dev=1` drag-and-drop preview
+(js/dev.js) injects through `Assets.setBuildingArt` — the SAME path startup
+takes, which is the whole point: the preview is what ships. Without the
+flag dev.js does nothing at all — no listeners, no DOM, no state.
 
 **The frame must never pay for bookkeeping** (the stutter post-mortem, a real
 multi-save report): four measured taxes, each invisible in review and each a

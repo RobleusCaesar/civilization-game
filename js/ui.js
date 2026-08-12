@@ -43,7 +43,18 @@ const UI = {
     if (!spr) return;
     ic.width = 64; ic.height = 64;
     const g = ic.getContext('2d');
-    g.imageSmoothingEnabled = false;
+    // hand-authored PNG art keeps its aspect in the menu too — fit within the
+    // icon, feet on the floor (the same reading as R.blitBld's anchor rule)
+    if (spr._cfArt && spr.height !== spr.width) {
+      g.imageSmoothingEnabled = true;
+      const s = Math.min(64 / spr.width, 64 / spr.height);
+      const w = spr.width * s, h = spr.height * s;
+      g.drawImage(spr, (64 - w) / 2, 64 - h, w, h);
+      return;
+    }
+    // PNG art downscales smoothly (a 256px master decimated nearest-neighbour
+    // shimmers); procedural pixel art keeps its hard-edged look
+    g.imageSmoothingEnabled = !!spr._cfArt;
     g.drawImage(spr, 0, 0, spr.width, spr.height, 0, 0, 64, 64);
   },
 

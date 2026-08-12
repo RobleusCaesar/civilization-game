@@ -1,10 +1,16 @@
 # ASSET_SPEC.md — Clanfire complete asset manifest & spec sheet
 
-The exhaustive list of **every drawable asset** the game needs, so external art
-can be produced and dropped in through the existing manifest pipeline
-(`assets/manifest.js` → `js/assets.js`). Every key below is a **real key from
-the current build** (enumerated from the live `Sprites.*` tables, `CFG`,
-`Cards.DEFS`) — nothing invented, nothing omitted.
+> **The atlas manifest is retired.** BUILDING art now loads by filename
+> convention — `assets/buildings/{id}-l{level}.png`, no manifest, no code —
+> see **ART_PLAN.md** for the convention, the anchoring rule, the sidecar
+> format and the `?dev=1` preview workflow. This file remains as the
+> reference for the internal `Sprites.*` key grammar (still used by
+> `Assets._slot` for misc/work-site and ui/card drawables) and for the art
+> briefs below.
+
+The exhaustive list of **every drawable asset** the game needs. Every key
+below is a **real key from the current build** (enumerated from the live
+`Sprites.*` tables, `CFG`, `Cards.DEFS`) — nothing invented, nothing omitted.
 
 The game ships fully playable with **zero image files**: every sprite is drawn
 procedurally at boot by `js/sprites.js` + `js/artstyle.js`. A manifest image

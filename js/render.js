@@ -980,10 +980,37 @@ const R = {
      procedural sprite in the game — take the untouched nearest-neighbour path
      and are pixel-identical to before. */
   blitBld(g, spr, x, y, w, h) {
+    /* HAND-AUTHORED ART TAKES THE ONE SHARED ANCHORING RULE (ART_PLAN.md):
+       bottom-center on the footprint, scaled to footprint width, aspect
+       preserved — a tall roof overhangs UPWARD past the tile. artRect is the
+       single source of that geometry (tested directly by
+       tests/art-pipeline.mjs); nothing per-building is tuned in code — the
+       sidecar JSON's offsets/scale ride in on spr._cfArt. A square PNG lands
+       pixel-identical to the old square blit, so the shipped hall art is
+       untouched by this. */
+    if (spr._cfArt) {
+      const r = this.artRect(spr, x, y, w, h);
+      const down = spr.width > r.w * 1.02;
+      if (down) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; }
+      g.drawImage(spr, r.x, r.y, r.w, r.h);
+      if (down) g.imageSmoothingEnabled = false;
+      return;
+    }
     const down = spr.width > w * 1.02;
     if (down) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; }
     g.drawImage(spr, x, y, w, h);
     if (down) g.imageSmoothingEnabled = false;
+  },
+  // where a _cfArt drawable lands in a footprint rect — offsets are fractions
+  // of the footprint, scale is a multiplier, and the FLOOR of the image sits
+  // on the floor of the footprint
+  artRect(spr, x, y, w, h) {
+    const a = spr._cfArt || {};
+    const dw = w * (a.scale || 1);
+    const dh = dw * (spr.height / spr.width);
+    return { x: x + (w - dw) / 2 + (a.ox || 0) * w,
+             y: y + h - dh + (a.oy || 0) * h,
+             w: dw, h: dh };
   },
 
   bldSprite(b, lv) {
@@ -993,11 +1020,17 @@ const R = {
        Bld.dockShore, not baked. 'n' returns the canonical slot so a manifest
        image still overrides it (see Sprites.dockFace). */
     if (b.key === 'dock') {
-      const side = Bld.dockShore(b);
-      if (side !== 'n') {
-        const set = (Sprites.dockFace || {})[b.owner === 'A' ? 'A' : 'P'];
-        const f = set && set[Math.min(L, 3) - 1] && set[Math.min(L, 3) - 1][side];
-        if (f) return f;
+      // hand-authored dock art (one rectangle) overrides ALL orientations —
+      // the per-shore procedural faces only serve while no PNG exists
+      const famD = (b.owner === 'A' ? Sprites.buildingA : Sprites.building).dock;
+      const over = famD && famD[Math.min(L, famD.length) - 1];
+      if (!(over && over._cfArt)) {
+        const side = Bld.dockShore(b);
+        if (side !== 'n') {
+          const set = (Sprites.dockFace || {})[b.owner === 'A' ? 'A' : 'P'];
+          const f = set && set[Math.min(L, 3) - 1] && set[Math.min(L, 3) - 1][side];
+          if (f) return f;
+        }
       }
     }
     if (b.key === 'wall') return Sprites.wallMask[Math.min(L, Sprites.wallMask.length) - 1][this.wallMaskAt(b.x, b.y)];
@@ -1047,6 +1080,7 @@ const R = {
       const sx = r() * c.width, sh = (0.2 + r() * 0.3) * c.height;
       g.fillRect(sx, r() * c.height * 0.5, Math.max(2, c.width * 0.03), sh);
     }
+    c._cfArt = base._cfArt;   // a burning PNG building keeps its anchoring
     return e.dark = c;
   },
   ruinOf(base) {
@@ -1093,6 +1127,7 @@ const R = {
       if (r() < 0.7) { g.fillStyle = AF[0]; g.fillRect(sx + 1, sy + 2, 2, 2); }
     }
     g.globalCompositeOperation = 'source-over';
+    c._cfArt = base._cfArt;   // a ruined PNG building keeps its anchoring too
     return e.ruin = c;
   },
 
