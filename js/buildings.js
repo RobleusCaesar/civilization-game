@@ -1387,7 +1387,7 @@ const Bld = {
     // ring the rival's town alarm — idle soldiers converge (see AI.daily)
     if (b.owner === 'A' && S.ai) S.ai.alarm = { x: b.x, y: b.y, day: S.day };
     if (b.hp <= 0) {
-      const name = this.def(b.key).name, owner = b.owner, key = b.key;
+      const name = this.def(b.key).name, owner = b.owner, key = b.key, underCon = b.construction > 0;
       // a burned-down building leaves an ASH PILE that blocks building on its
       // footprint for CFG.ASH_DAYS (tests/burn-down.mjs). Walls and gates are
       // exempt — a breached line must stay instantly mendable (the AI's
@@ -1406,6 +1406,11 @@ const Bld = {
       // depends on the wall neighbours that are still standing right now.
       if (window.R && R.startCollapse) R.startCollapse(b);
       this.removeToRuin(b);
+      /* the loss ledger the barbarian ease reads (G.noteWorkLost) — finished
+         non-fortification works only: a razed wall section is not a town
+         coming apart, and a burned work SITE never was a work */
+      if ((owner === 'P' || owner === 'A') && key !== 'wall' && key !== 'gate' && !underCon)
+        G.noteWorkLost(owner);
       if (owner === 'P') {
         S.breachedP = true;   // the line is broken — positive specials may now answer (G.positiveGate)
         G.log(`${name} destroyed!`, true);

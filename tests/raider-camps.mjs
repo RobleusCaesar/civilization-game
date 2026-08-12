@@ -350,7 +350,9 @@ const out = await p.evaluate(() => {
     ck('aThinOpeningIsNotEased',
       Units.count('P', z => Units.isVillager(z)) === 0 && G.barbEase('P') === false,
       'peak ' + S.peakTown.P + ' — it never got established, so there is no fall to cushion');
-    S.peakTown.P = 14;                       // …but this one did
+    S.peakTown.P = 14; G._easeC = null;      // …but this one did (the ease is
+                                             // day-cached now — bust it after a
+                                             // mid-day mutation, a test artifact)
     ck('butAGuttedTownIs', G.barbEase('P') === true,
       G.townSize('P') + ' left of a town that stood at 14');
     ck('andItIsMeasuredOnFinishedWorks',
@@ -367,7 +369,7 @@ const out = await p.evaluate(() => {
     G.notePeaks();
     S.wave.count = 4; S.wave.next = S.day;
     const before = (() => { Combat.maybeWave(); const g = S.wave.next - S.day; return g; })();
-    S.peakTown.A = 14;
+    S.peakTown.A = 14; G._easeC = null;
     ck('theRivalReadsAsGutted', G.barbEase('A') === true && G.barbEase('P') === false, '');
     S.wave.next = S.day;
     Combat.maybeWave();
@@ -377,7 +379,7 @@ const out = await p.evaluate(() => {
       S.units.filter(z => z.owner === 'R' && !z.campId).every(z => z.hostileTo !== 'A'),
       'the temper is re-aimed at whoever is still standing');
     // both on their knees: the wilds simply have nothing to take today
-    S.peakTown.P = 14;
+    S.peakTown.P = 14; G._easeC = null;
     const n0 = S.units.filter(z => z.owner === 'R' && !z.campId).length;
     S.wave.next = S.day; Combat.maybeWave();
     ck('withBothDownNoWaveMustersAtAll',
@@ -400,7 +402,7 @@ const out = await p.evaluate(() => {
     ck('anOrdinaryTownIsStillHunted', !!mk0 && mk0.owner === 'A',
       mk0 ? mk0.owner + ':' + (mk0.kind || mk0.key) : 'nothing was taken as a mark');
     band.tUnit = 0; band.tBld = 0;
-    S.peakTown.A = 14;                                  // now it is on its knees
+    S.peakTown.A = 14; G._easeC = null;                 // now it is on its knees
     Combat.raiderSeek(band);
     const tb = Bld.get(band.tBld);
     ck('aGuttedOneIsPassedOver',
@@ -416,6 +418,95 @@ const out = await p.evaluate(() => {
     Combat.raiderSeek(tender);
     ck('butATenderStillHoldsItsOwnGround', tender.tUnit === stray.id,
       'walking into a war band\'s fire is dangerous whoever you are');
+  }
+
+  /* ---- 9b. THE EASE LEADS THE COLLAPSE (rate-of-loss prong + latch) ----
+     A real day-320 game was gutted by one band over days 299-303 while both
+     original prongs still read "healthy" — eleven works burned in five days,
+     and the ease arrived only after the town was already below the
+     thresholds. The RATE OF LOSS is a prong of its own now, and once eased a
+     town STAYS eased until it has genuinely recovered. */
+  {
+    G.newGame('rc-ease4', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    G.notePeaks();
+    S.res = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };
+    const atc = Bld.tcOf('A');
+    /* build the scenario from MEASURED state, not guessed numbers: the town
+       must read healthy on the OLD prongs (size >= 0.55*peak, hands >= vil)
+       while sitting BELOW the release bar (0.7*peak, relVil hands), so only
+       the latch can hold it eased once the losses age out */
+    const houses = (n) => { let placed = 0;
+      for (let r = 2; r <= 9 && placed < n; r++) for (let dx = -r; dx <= r && placed < n; dx++) for (const dy of [-r, r]) {
+        const x = atc.x + dx, y = atc.y + dy;
+        if (Bld.canPlace('A', 'house', x, y).ok && Bld.place('A', 'house', x, y, { instant: true, free: true })) placed++;
+      } return placed; };
+    const hire = (n) => { for (let i = 0; i < n; i++) {
+      const sp = MapGen.findNear(atc.x + 2, atc.y, 9, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+      if (sp) Units.spawn('villager', 'A', sp.x, sp.y);
+    } };
+    houses(9);
+    const E = G.BARB_EASE;
+    hire(Math.max(0, E.vil + 1 - Units.count('A', u => Units.isVillager(u))));   // >= vil, < relVil
+    const size0 = G.townSize('A');
+    S.peakTown.A = Math.floor(size0 / (E.releaseFrac + 0.05));   // healthy on 0.55, below the 0.7 release bar
+    G._easeC = null;
+    ck('aHealthyTownIsNotEased', G.barbEase('A') === false,
+      G.townSize('A') + ' works, ' + Units.count('A', u => Units.isVillager(u)) + ' hands — both prongs quiet');
+    // four works fall inside the window — the town is BEING GUTTED, whoever is doing it
+    for (let i = 0; i < 4; i++) G.noteWorkLost('A');
+    ck('fourLossesInTwelveDaysIsAGutting', G.barbEase('A') === true,
+      'the rate of loss fires DURING the gutting, not after — and noteWorkLost busts the day cache itself');
+    ck('theLossLedgerRidesInTheSave',
+      (JSON.parse(G.saveJSON()).workLost || {}).A.length >= 4 &&
+      JSON.parse(G.saveJSON()).eased.A === true, '');
+    // THE LATCH: the losses age out of the window, but the ease HOLDS until
+    // the town is genuinely back — past releaseFrac of peak and relVil hands
+    S.workLost.A = S.workLost.A.map(() => S.day - 30);
+    S.day += 1; G._easeC = null;
+    ck('theEaseLatchesPastTheWindow', G.barbEase('A') === true,
+      'a town bouncing on the threshold must not flicker between hunted and spared');
+    houses(Math.ceil(S.peakTown.A * E.releaseFrac - G.townSize('A')) + 1);
+    hire(Math.max(0, E.relVil - Units.count('A', u => Units.isVillager(u))));
+    S.day += 1; G._easeC = null;
+    ck('andAGenuineRecoveryReleasesIt', G.barbEase('A') === false,
+      G.townSize('A') + ' works vs release bar ' + (S.peakTown.A * G.BARB_EASE.releaseFrac).toFixed(1) +
+      ', ' + Units.count('A', u => Units.isVillager(u)) + ' hands vs ' + G.BARB_EASE.relVil);
+    // an old save with no ledger just starts empty
+    const j = JSON.parse(G.saveJSON()); delete j.workLost; delete j.eased;
+    G.loadJSON(JSON.stringify(j));
+    ck('anOlderSaveStartsWithAnEmptyLedger', !!S.workLost && S.eased.A === false, '');
+  }
+  {
+    /* THE EASE REACHES BANDS ALREADY IN THE FIGHT: raiderSeek stops new
+       acquisitions, but a band that took its mark a minute before the ease
+       flipped used to keep killing. It drops the mark now; a tender defending
+       its own camp does not. */
+    G.newGame('rc-ease5', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    G.notePeaks();
+    const atc = Bld.tcOf('A');
+    const sp = MapGen.findNear(atc.x + 3, atc.y + 3, 8, (x, y) => Path.passable(x, y, 'R') && !Bld.at(x, y));
+    const band = Units.spawn('raider', 'R', sp.x, sp.y);
+    band.hostileTo = 'ALL';
+    const vsp = MapGen.findNear(sp.x + 1, sp.y, 3, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+    const vic = Units.spawn('villager', 'A', vsp.x, vsp.y);
+    Combat.raiderSeek(band);
+    const mk = Units.get(band.tUnit) || Bld.get(band.tBld);
+    ck('theBandHoldsAMarkBeforeTheEase', !!mk && mk.owner === 'A',
+      mk ? mk.owner + ':' + (mk.kind || mk.key) : 'nothing taken — vic at ' + vic.x + ',' + vic.y);
+    S.peakTown.A = 14; G._easeC = null;                 // the town falls mid-fight
+    Combat.update(0.1);
+    ck('theEaseFlipDropsTheMark', band.tUnit === 0 && band.tBld === 0,
+      'the band that was mid-swing stands off with everyone else');
+    // …but a tender whose CAMP is being menaced keeps its fight
+    const camp = campsOf()[0];
+    const tender = G.campTenders(camp)[0];
+    const tsp = MapGen.findNear(camp.x + 2, camp.y, 3, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+    const stray = Units.spawn('villager', 'A', tsp.x, tsp.y);
+    tender.tUnit = 0;
+    Combat.raiderSeek(tender);
+    Combat.update(0.1);
+    ck('aTenderKeepsItsOwnFight', tender.tUnit === stray.id,
+      'its fight is the camp\'s ground, not the war');
   }
 
   /* ---- 10. FIVE PEOPLES WALK THE WILD COUNTRY (CFG.TRIBES) ----

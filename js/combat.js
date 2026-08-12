@@ -810,6 +810,18 @@ const Combat = {
 
       if (u.tUnit) {
         const tgt = Units.get(u.tUnit);
+        /* THE EASE REACHES BANDS ALREADY IN THE FIGHT (tests/raider-camps.mjs).
+           raiderSeek stops NEW acquisitions of an eased owner, but a band that
+           took its mark a minute before the ease flipped kept killing — the
+           gutting the ease exists to stop was finished by units it never
+           touched. A raider holding an eased owner's unit drops it here.
+           Tenders keep defending their own ground (their fight is the camp's,
+           not the war's), and Units.damage retaliation re-marks an attacker
+           the next time it is actually struck — struck barbarians still
+           strike back. Cheap: barbEase is latch-cached per day. */
+        if (tgt && u.owner === 'R' && !u.campId && G.barbEase(tgt.owner)) {
+          u.tUnit = 0; u.path = null;
+        } else
         if (!tgt) {
           u.tUnit = 0;
           // a defender falls back to its perimeter the moment its target drops;
@@ -944,6 +956,8 @@ const Combat = {
 
       if (u.tBld) {
         let b = Bld.get(u.tBld);
+        // same ease rule for a building mark (see the tUnit branch above)
+        if (b && u.owner === 'R' && !u.campId && G.barbEase(b.owner)) { u.tBld = 0; u.path = null; continue; }
         if (!b) {
           // the thing we were hitting fell. If it was a wall we broke to reach a
           // real target beyond it, resume on that target now the breach is open.

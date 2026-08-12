@@ -180,14 +180,18 @@ const G = {
                walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0, originBonus: 0 },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
-      peakTown: { P: 0, A: 0 },             // biggest each town ever stood (G.barbEase)
+      peakTown: { P: 0, A: 0 },
+      workLost: { P: [], A: [] },  // the ease's loss ledger (G.noteWorkLost)
+      eased: { P: false, A: false },             // biggest each town ever stood (G.barbEase)
       ai: null,
       boons: { P: {}, A: {} },   // ORIGIN CARDS: each side's kept-card modifiers
       log: [],
     };
     Bld._block = null;
     this._marvel = false;
-    this._dying = null;    // …and no announced death is left pending
+    this._dying = null;
+    this._easeC = null;    // the ease day-cache must not leak across runs (day numbers collide)    // …and no announced death is left pending
+    this._easeC = null;    // the ease day-cache must not leak across runs (day numbers collide)
     S.nextDeath = S.day + this.rollDeathGap();   // the first villager's day, rolled now
     // which ANCIENT WONDER this run may raise — hashed off the seed, so it
     // never disturbs the run's own RNG sequence (see G.rollWonder)
@@ -726,7 +730,10 @@ const G = {
      ESTABLISHED and then fell apart, never for a three-villager opening. A
      player struggling on day six is having a hard game, which is theirs to
      have; a player arriving on day two hundred deserves an enemy. */
-  BARB_EASE: { vil: 3, bldFrac: 0.55, minPeak: 6, gapMult: 2 },
+  /* lossN-in-lossDays is the LEADING prong (see barbEase); releaseFrac/relVil
+     are the latch's release bar. */
+  BARB_EASE: { vil: 3, bldFrac: 0.55, minPeak: 6, gapMult: 2,
+               lossN: 4, lossDays: 12, releaseFrac: 0.7, relVil: 5 },
   townSize(owner) {
     return Bld.list(owner).filter(b => Bld.done(b) && b.key !== 'wall' && b.key !== 'gate').length;
   },
@@ -734,14 +741,59 @@ const G = {
     if (!S.peakTown) S.peakTown = { P: 0, A: 0 };
     for (const o of ['P', 'A']) S.peakTown[o] = Math.max(S.peakTown[o] || 0, this.townSize(o));
   },
+  /* EVERY FALLEN WORK IS ON THE RECORD (tests/raider-camps.mjs). Stamped from
+     Bld.damage's destroy branch for finished non-fortification buildings of
+     either tribe — attacker-agnostic, like everything the ease reads, because
+     nobody can attribute a burned farm. S.workLost rides in every save. */
+  noteWorkLost(owner) {
+    if (owner !== 'P' && owner !== 'A') return;
+    if (!S.workLost) S.workLost = { P: [], A: [] };
+    const l = S.workLost[owner]; l.push(S.day);
+    if (l.length > 24) l.splice(0, l.length - 24);
+    this._easeC = null;                                 // a loss can flip the ease TODAY
+  },
+  /* THE EASE LEADS THE COLLAPSE NOW, instead of trailing it. A real day-320
+     game (hard, xlarge) was gutted by a nine-strong band over days 299-303
+     while both original prongs still read "healthy": eleven works burned in
+     five days, and only once the town was ALREADY below the thresholds did
+     the wilds stand off — a lagging indicator by construction. Two changes:
+
+     RATE OF LOSS is a prong of its own — lossN finished works inside
+     lossDays reads as a town being torn down whoever is doing the tearing,
+     and it fires DURING the gutting, not after.
+
+     AND THE EASE LATCHES (S.eased, in every save): once the wilds stand off
+     a town they STAY off until it has genuinely recovered — townSize back
+     past releaseFrac of peak AND relVil villagers — so a town bouncing on
+     the threshold doesn't flicker between hunted and spared. The latch is
+     also what makes the per-frame reads cheap: computed at most once per
+     day (G._easeC, render-side only, never saved; busted by noteWorkLost so
+     a mid-day gutting still flips it the same day). */
   barbEase(owner) {
     if (!S || (owner !== 'P' && owner !== 'A') || !Bld.tcOf(owner)) return false;
     if (owner === 'P' && S.collapse) return false;      // a lost run is ENDED, not nursed
+    const c = this._easeC;
+    if (c && c.day === S.day && c[owner] != null) return c[owner];
     const E = this.BARB_EASE;
     const peak = (S.peakTown && S.peakTown[owner]) || 0;
-    if (peak < E.minPeak) return false;                 // it never got established — no fall to cushion
-    return Units.count(owner, u => Units.isVillager(u)) < E.vil ||
-      this.townSize(owner) < peak * E.bldFrac;
+    let val = false;
+    if (peak >= E.minPeak) {                            // it must have been ESTABLISHED
+      if (!S.eased) S.eased = { P: false, A: false };
+      const vils = Units.count(owner, u => Units.isVillager(u));
+      const size = this.townSize(owner);
+      if (S.eased[owner]) {
+        // latched: only a real recovery releases it
+        val = !(size >= peak * E.releaseFrac && vils >= E.relVil);
+      } else {
+        const lost = ((S.workLost && S.workLost[owner]) || [])
+          .filter(d => S.day - d <= E.lossDays).length;
+        val = vils < E.vil || size < peak * E.bldFrac || lost >= E.lossN;
+      }
+      S.eased[owner] = val;
+    }
+    const cc = this._easeC && this._easeC.day === S.day ? this._easeC : (this._easeC = { day: S.day });
+    cc[owner] = val;
+    return val;
   },
 
   // does this water tile's whole BODY of water touch the map's edge? A
@@ -1422,6 +1474,8 @@ const G = {
     }
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.hunted) data.map.hunted = {};       // pre-worked-ground saves: the record starts empty
+    if (!data.workLost) data.workLost = { P: [], A: [] };   // pre-ease-reshape saves: empty ledger
+    if (!data.eased) data.eased = { P: false, A: false };   // …and no latch held
     if (!data.map.reclaimed) data.map.reclaimed = {};
     if (!data.map.fishStocked) {
       // pre-dock save: stock its waters so fishing works after loading
@@ -1470,6 +1524,7 @@ const G = {
     UI._healLog = {};   // see newGame — a loaded save must not inherit a stale cooldown
     this._marvel = false;   // a save loaded mid-marvel is just a save
     this._dying = null;     // …and an announced-but-unfallen villager lives
+    this._easeC = null;    // the ease day-cache must not leak across runs (day numbers collide)
     this.freeVis = false;
     this.vis = null;
     Units.clampToBoard();   // pull any unit off the (now impassable) map rim — e.g. a pre-border save
