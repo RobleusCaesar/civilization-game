@@ -512,6 +512,28 @@ const Combat = {
     const foe = strike ? null : this.bestFoe(u, u.x, u.y, 5, o => this.hostileUnits(u, o) &&
       (Units.isMilitary(o) || (o.owner === 'R' && !Units.isTransport(o))) && this.canEngage(u, o));
     if (foe && this.canReach(u, foe.x, foe.y, 1.6)) { u.tUnit = foe.id; return; }
+    /* 1a) EXPEDITION AGAINST A BARBARIAN CAMP (tests/raider-camps.mjs). A
+       purge column's whole aim is the camp — none of the player-facing
+       detours below apply to it. Tenders that come out to meet the column
+       are step 1's problem (they strike at us, we engage what is in our
+       face). The camp gone — burned by us or anyone — ends the errand: the
+       walker turns for home, and the raid-maintenance block clears the
+       ai-side state when the last of them drops off the raid roster. */
+    if (obj && obj.type === 'camp') {
+      const camp = Bld.get(obj.id);
+      if (!camp || camp.key !== 'raidercamp') {
+        const home = Bld.tcOf(u.owner);
+        u.raidObj = null; u.tUnit = 0; u.tBld = 0;
+        if (home) { u.task = { type: 'move', x: home.x, y: home.y + Bld.size(home) }; Units.setPath(u, home.x, home.y + Bld.size(home)); }
+        else u.task = null;
+        return;
+      }
+      if (Math.hypot(Bld.cx(camp) - u.x, Bld.cy(camp) - u.y) <= 2.6 + Bld.reach(camp)) {
+        u.tBld = camp.id; u.tUnit = 0; return;   // at the fire — pull it down
+      }
+      if (u.repathT <= 0) { u.repathT = 0.8; Units.setPath(u, camp.x, camp.y); }
+      return;
+    }
     /* 1b) AN ANCIENT WONDER UNDER CONSTRUCTION beats every other target on the
        board — finishing it simply wins the game, so once a raider is within
        striking distance of the works nothing else is worth a swing. Placed

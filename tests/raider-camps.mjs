@@ -509,6 +509,52 @@ const out = await p.evaluate(() => {
       'its fight is the camp\'s ground, not the war');
   }
 
+  /* ---- 9c. THE EXPEDITION AGAINST THE WILDS (AI.maybePurge) ----
+     A chief being bled by war bands while the player is quiet takes the war
+     to the camps instead of feeding hands to them piecemeal. Fog-honest, and
+     riding the ordinary raid machinery so retreat/stand-down come for free. */
+  {
+    G.newGame('rc-purge', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const atc = Bld.tcOf('A');
+    const camp = campsOf()[0];
+    if (!S.ai.seen) S.ai.seen = new Array(CFG.W * CFG.H).fill(0);
+    for (let i = 0; i < 7; i++) {
+      const sp = MapGen.findNear(atc.x + 2, atc.y, 9, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+      Units.spawn('defender', 'A', sp.x, sp.y);
+    }
+    // no motive, no march: a chief that has lost nothing leaves the wilds be
+    ck('anUnbledChiefStaysHome', AI.maybePurge({ underThreat: false }) === false, '');
+    G.noteWorkLost('A'); G.noteWorkLost('A');
+    // bled — but the camp is UNSEEN: reading the map through the fog is cheating
+    ck('anUnseenCampIsNoTarget', AI.maybePurge({ underThreat: false }) === false,
+      'fog-honest: only fires it has laid eyes on');
+    S.ai.seen[MapGen.idx(camp.x, camp.y)] = 1;
+    // …and a chief under REAL attack has a war already
+    ck('aThreatenedChiefFightsItsOwnFight', AI.maybePurge({ underThreat: true }) === false, '');
+    ck('aBledChiefMarchesOnTheCamp', AI.maybePurge({ underThreat: false }) === true, '');
+    const party = S.units.filter(u => u.owner === 'A' && u.task && u.task.type === 'raid');
+    ck('theExpeditionIsARealParty', party.length >= 6 &&
+      party.every(u => u.raidLane === 'purge' && u.raidObj && u.raidObj.type === 'camp'),
+      party.length + ' spears, lane purge');
+    ck('andTheRosterRefusesADoubleMarch', AI.maybePurge({ underThreat: false }) === false, '');
+    // drive it: the camp burns, and the walkers come home
+    S.paused = false;
+    const step = (dt) => { S.dayT += dt * 1000; while (S.dayT >= CFG.DAY_MS) { S.dayT -= CFG.DAY_MS; G.dayTick(); }
+      Bld.update(dt * 1000 / CFG.DAY_MS); Units.update(dt); Combat.update(dt);
+      const t = Bld.tcOf('P'); if (t) { t.maxhp = 1e9; t.hp = 1e9; } S.over = null; };
+    const t0 = Date.now(); let burned = false;
+    while (Date.now() - t0 < 90000) {
+      step(0.12);
+      if (!S.buildings.includes(camp)) { burned = true; break; }
+    }
+    ck('theCampBurns', burned, 'day ' + S.day + ' — the ground is won for good (tickRaiderCamps never remans it)');
+    for (let i = 0; i < 220; i++) step(0.12);
+    ck('andTheErrandEnds', S.units.filter(u => u.owner === 'A' && u.task && u.task.type === 'raid').length === 0,
+      'the camp gone ends the raid — nobody stands admiring the ashes');
+    ck('onACooldownNotAConveyor', (S.ai.purgeCd || 0) > S.day - 25,
+      'a mauled expedition must not be re-raised daily');
+  }
+
   /* ---- 10. FIVE PEOPLES WALK THE WILD COUNTRY (CFG.TRIBES) ----
      Barbarians used to be one look on the legacy 16-grid rig, which is exactly
      why they read as scruffy villagers. They are five distinct peoples now,

@@ -1805,6 +1805,58 @@ const AI = {
     }
     return best;
   },
+  /* ---- THE EXPEDITION AGAINST THE WILDS (tests/raider-camps.mjs) ----
+     A camp used to be a standing tax the chief could only route around:
+     campGround denies it the surrounding country, its bands bleed the field
+     parties, and nothing anywhere ever considered BURNING it — the diagnosed
+     day-320 game lost nineteen works to the wilds and never once marched on a
+     fire it had seen with its own eyes.
+
+     The MOTIVE is measured, never assumed: works actually lost in the last
+     fifteen days (S.workLost, the same ledger the barbarian ease reads), or a
+     town already under the ease — and the PLAYER quiet, because a chief under
+     real attack has a war already. Fog-honest: only camps its own eyes have
+     seen (ai.seen), nearest first. The FORCE is the ordinary raid machinery
+     wearing a different objective — task 'raid', lane 'purge', raidObj
+     {type:'camp'} — so retreat-when-beaten, the roster bookkeeping and the
+     stand-down all come for free; aiRaidSeek's camp branch does the marching
+     and the burning. Burning a camp is permanent ground won: it is never
+     remanned, and the wave muster filter stops counting it (both existing
+     rules). purgeCd keeps a mauled expedition from being re-raised daily. */
+  maybePurge(read) {
+    const ai = S.ai, tc = Bld.tcOf('A'); if (!ai || !tc) return false;
+    if (read && read.underThreat) return false;          // the town's own fight comes first
+    if (ai.camp && ai.camp.strat) return false;          // a live siege plan owns the army
+    if (ai.raidCd > 0 || (ai.purgeCd || 0) > S.day) return false;
+    if (S.units.some(u => u.owner === 'A' && u.task && u.task.type === 'raid')) return false;
+    const lost = ((S.workLost && S.workLost.A) || []).filter(d => S.day - d <= 15).length;
+    if (lost < 2 && !G.barbEase('A')) return false;
+    const seen = ai.seen; let camp = null, cd = 1e9;
+    for (const b of S.buildings) {
+      if (b.key !== 'raidercamp' || b.owner !== 'R') continue;
+      if (!seen || !seen[MapGen.idx(b.x, b.y)]) continue;
+      const d = Math.hypot(Bld.cx(b) - Bld.cx(tc), Bld.cy(b) - Bld.cy(tc));
+      if (d < cd) { cd = d; camp = b; }
+    }
+    if (!camp) return false;
+    const host = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
+      !Units.isNaval(u) && !Units.isSiege(u) && u.kind !== 'siegetower' &&
+      !u.tUnit && !u.tBld && !(u.task && u.task.type));
+    if (host.length < 6) return false;                   // enough spears to beat a tended fire AND walk home
+    host.sort((a, b2) => Math.hypot(a.x - camp.x, a.y - camp.y) - Math.hypot(b2.x - camp.x, b2.y - camp.y));
+    const party = host.slice(0, Math.min(8, host.length));
+    for (const u of party) {
+      u.task = { type: 'raid' }; u.tUnit = 0; u.tBld = 0; u.probe = false; u.defend = false;
+      u.raidLane = 'purge'; u.raidObj = { type: 'camp', id: camp.id, x: camp.x, y: camp.y };
+    }
+    ai.raidObj = { type: 'camp', id: camp.id, x: camp.x, y: camp.y };
+    ai.raidLane = 'purge'; ai.raidN = party.length; ai.raidDay = S.day; ai.raidExt = 0;
+    ai.raidFoeBld = Bld.list('P').length;
+    ai.raidCd = 6; ai.purgeCd = S.day + 20;
+    G.foeNote('⚔ The rival tribe marches on a barbarian camp — the wilds have bled it enough!');
+    return true;
+  },
+
   maybeProspect(read) {
     const ai = S.ai; if (!ai) return false;
     const GS = CFG.GOLD_SEAMS || {};
@@ -4391,6 +4443,11 @@ const AI = {
        assess() flips the posture to PUSH so the full siege logic commits next
        day. A home guard stays back, and the raid retreat logic still pulls the
        column home if a hunt turns up nothing after several days. ---- */
+    // THE EXPEDITION AGAINST THE WILDS comes first: a chief being bled by war
+    // bands while the player is quiet takes the war to the camps instead of
+    // feeding hands to them piecemeal (tests/raider-camps.mjs). A launched
+    // purge occupies the raid roster, so the hunt below waits its turn.
+    this.maybePurge(read);
     // NOT gated on being unthreatened any more: a strong tribe that has never
     // found its enemy must go and look precisely BECAUSE someone is hitting it
     if (!read.knownTC && ai.raidCd <= 0 && !raiders.length &&
