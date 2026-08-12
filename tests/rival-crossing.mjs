@@ -270,6 +270,105 @@ const out = await p.evaluate(() => {
       JSON.stringify(ctx && ctx.breach));
   }
 
+  /* ---- 7. THE BLIND CHIEF (a real day-320 save): knownTC was STILL null after
+     320 days — the player's hall sat across water, outside the reach-limited
+     hunt — and every attack system gated on it. choosePosture demoted PUSH to
+     CONSOLIDATE, campaignSelect returned before selecting, so TIDEWRACK and
+     MUDLARK were unreachable code for the one chief that needed them most:
+     the whole army walked to the waterline and stood there for 200 days.
+     AI.attackAnchor is the stand-in — the known player building nearest the
+     centroid of everything the chief has actually seen — and it is EVIDENCE-
+     GATED (AI.warStuck): it exists only once the war is provably parked, so a
+     young chief still hunts before it besieges. ---- */
+  {
+    setup('rc7');
+    const cluster = () => {
+      S.ai.knownB = {
+        a: { x: 30, y: 30, key: 'warcamp', owner: 'P', level: 1 },
+        b: { x: 32, y: 31, key: 'tower', owner: 'P', level: 2 },
+        c: { x: 31, y: 33, key: 'farm', owner: 'P', level: 1 },
+      };
+    };
+    cluster();
+    // 7a. an UNSTUCK war never invents an anchor — the hunt keeps hunting
+    S.ai.stall = null; if (S.ai.memory) S.ai.memory.laneDef = null;
+    ck('warNotStuckByDefault', !AI.warStuck(), '');
+    ck('noAnchorWhileTheHuntStillRuns', AI.attackAnchor({ knownTC: null }) === null, '');
+    // 7b. a fresh stall IS a stuck war, and the anchor is one of the SEEN works
+    S.ai.stall = { x: 20, y: 20, t: S.day };
+    ck('freshStallMeansStuck', AI.warStuck(), '');
+    const a = AI.attackAnchor({ knownTC: null });
+    ck('anchorIsAKnownWork', !!a && ['warcamp', 'tower', 'farm'].includes(a.key), a && a.key);
+    // 7c. the real hall always outranks the stand-in
+    const tcRead = { x: 5, y: 5, key: 'tc' };
+    ck('theRealHallOutranksTheAnchor', AI.attackAnchor({ knownTC: tcRead }) === tcRead, '');
+    // 7d. one building is a sighting, not a town — no anchor from a lone glimpse
+    S.ai.knownB = { a: { x: 30, y: 30, key: 'tower', owner: 'P' } };
+    ck('oneSightingIsNoAnchor', AI.attackAnchor({ knownTC: null }) === null, '');
+    // 7e. a stall gone stale (>20 days) stands the whole thing down again…
+    cluster();
+    S.ai.stall = { x: 20, y: 20, t: S.day - 30 };
+    ck('aStaleStallIsNotStuck', !AI.warStuck(), '');
+    ck('staleStallDropsTheAnchor', AI.attackAnchor({ knownTC: null }) === null, '');
+    // 7f. …but a hunt lane worn down by fruitless marches counts as stuck too
+    S.ai.memory = S.ai.memory || {}; S.ai.memory.laneDef = { hunt: 2 };
+    ck('aWornHuntLaneIsStuck', AI.warStuck(), '');
+    // 7g. probeAssault answers with the anchor — this returning null was what
+    // made campaignSelect bail before it could ever pick a crossing plan
+    const ctx7 = AI.probeAssault({ knownTC: null }, AI.aiLandReach());
+    ck('probeAssaultSeesTheAnchor', !!ctx7 && !!ctx7.ptc, '');
+  }
+
+  /* ---- 8. THE WOOD WEDGE: the TC3 savings jar (ai.goal) starved the crossing
+     of its HANDS — the camp stood but affordFree refused the 40-wood sapper
+     for two hundred days while the jar demanded 600 banked. A war provably
+     stuck may raid the jar for the units that unstick it; a war that is NOT
+     stuck keeps saving like before. ---- */
+  {
+    const atc = setup('rc8');
+    const camp = Bld.place('A', 'sapper', atc.x + 2, atc.y + 2, { free: true, instant: true });
+    S.ai.goal = { key: 'tc', cost: { wood: 600, stone: 450, gold: 120 } };
+    S.ai.res = { food: 500, wood: 200, stone: 100, gold: 50 };
+    S.ai.posture = 'PUSH';
+    const m = CFG.MODES[S.mode] || CFG.MODES.moderate;
+    const read8 = { foeWall: 0, foeTower: 0, underThreat: false };
+    // 8a. unstuck → the jar holds: no sapper is trained past the savings goal
+    S.ai.stall = null; if (S.ai.memory) S.ai.memory.laneDef = null;
+    AI.trainForces(m, read8);
+    ck('theJarHoldsWhileTheWarMoves', !camp.queue.some(q => q.unit === 'sapper'),
+      JSON.stringify(camp.queue));
+    // 8b. stuck → the corps trains anyway; the hall can wait a season
+    S.ai.stall = { x: 20, y: 20, t: S.day };
+    AI.trainForces(m, read8);
+    ck('aStuckWarRaidsTheJarForItsSapper', camp.queue.some(q => q.unit === 'sapper'),
+      JSON.stringify(camp.queue));
+  }
+
+  /* ---- 9. END TO END: an island cluster, no hall ever found, a fresh stall —
+     the chief still commits to a crossing plan. This is the whole point of the
+     anchor: the machinery below it (probeAssault's breach scan, campaignSelect's
+     viability filter) runs exactly as it would with a known hall. ---- */
+  {
+    const atc = setup('rc9');
+    const camp = Bld.place('A', 'sapper', atc.x + 2, atc.y + 2, { free: true, instant: true });
+    camp.level = 2; camp.maxhp = CFG.BUILDINGS.sapper.levels[1].hp; camp.hp = camp.maxhp;
+    const bx = 25, by = 14;
+    carveIsland(bx, by, [by + 4]);
+    G.updateVisibility();
+    // the chief has seen three works ON the island — never the hall
+    S.ai.knownB = {
+      a: { x: bx + 1, y: by, key: 'warcamp', owner: 'P', level: 1 },
+      b: { x: bx + 2, y: by + 1, key: 'tower', owner: 'P', level: 2 },
+      c: { x: bx + 1, y: by + 2, key: 'farm', owner: 'P', level: 1 },
+    };
+    S.ai.posture = 'PUSH';
+    S.ai.stall = { x: bx - 3, y: by, t: S.day };
+    S.ai.camp = null;
+    AI.campaignSelect({ knownTC: null, weakFlank: null });
+    ck('aBlindStuckChiefStillPicksACrossingPlan',
+      !!(S.ai.camp && S.ai.camp.strat), S.ai.camp && S.ai.camp.strat);
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

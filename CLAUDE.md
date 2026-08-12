@@ -68,7 +68,7 @@ node tests/sapper-deselect-heal.mjs # sapper dispatch deselects; sapper heals at
 node tests/heal-limit.mjs      # at most 3 heals/unit per rolling 60s real-time window
 node tests/bridge-resource-shore.mjs # a resource-shored bank is bridgeable; no silent failures; reinforcing takes days and a sapper
 node tests/barb-sense.mjs      # barbarians attack any land unit, leave when stuck, land smart
-node tests/rival-crossing.mjs  # AI reaches its own works, eats before hoarding, bridges around towers
+node tests/rival-crossing.mjs  # AI reaches its own works, eats before hoarding, bridges around towers; a stuck blind chief still crosses
 node tests/finished-run-continue.mjs # a win never clobbers a save slot; Continue retires the whole run
 node tests/drag-move.mjs       # drag-to-move: press ON the selection + drag = order, never a reselect
 node tests/chase-commit.mjs    # a hunter commits to its detour; no unit wedged in reshaped ground
@@ -363,6 +363,34 @@ must be REALLY spannable (bridgeCrossing's land-on-opposite-sides rule, the
 lane's own opened tiles counting as landings like built bridges do) or
 clearable/reclaimable at tier. Open water fails: a mid-lake deck has water on
 both far sides, and always will.
+**The blind chief** (a day-320 save, same test): knownTC was STILL null after
+320 days — the player's hall sat across water, outside the reach-limited hunt
+— and EVERY attack system gated on it: `choosePosture` demoted PUSH to
+CONSOLIDATE, `campaignSelect`/`campaignLaunch`/`probeAssault`/`breachToPlayer`/
+`_launchAmphib` all returned early, so TIDEWRACK (boats) and MUDLARK (bridges)
+were unreachable code for the one chief that needed them most: the whole army
+walked to the waterline and stood there for two hundred days. Two rules fix it.
+**`AI.attackAnchor(read)`** — the known player building nearest the centroid of
+everything the chief has actually seen (`ai.knownB`, its own memory, so it is
+fog-honest by construction) stands in for the hall at every one of those gates;
+a town is where its buildings are. It is EVIDENCE-GATED by **`AI.warStuck()`**
+(a fresh `ai.stall` within 20 days, or the hunt lane's `laneDef.hunt` worn to
+2+): no anchor while the hunt still runs, so a young chief still scouts before
+it besieges, and the real hall always outranks the stand-in. **The wood wedge**
+is the other half: the TC3 savings jar (`ai.goal` via `affordFree`) plus the
+`armyFirst` treadmill (a 30-wood spear hired every day) meant the 60-wood dock
+and 120-wood sappers' camp were never affordable — so while the war is stuck
+and the chief is committed (PUSH/PRESSURE), the camp and dock get commanding
+utility boosts, `tryBuild` ignores the jar for them, army training yields the
+day's wood when an enabler is missing and short, and the sapper/transport
+TRAINING blocks may pay from the jar too (`Bld.canAfford` instead of
+`affordFree` — a camp whose corps the jar starves is 120 wood spent on
+nothing). Replayed on the real save: TIDEWRACK selected within 3 days,
+transports trained, two amphibious landings mounted, and the hunt column razed
+the player's forward war camp — against 80 more days of standing still without
+it. The army famine the replay also surfaced (Bronze Champions deserting,
+day 357–375) is the food-upkeep economy correcting an over-mustered army and
+recovers on its own — deliberately not patched here.
 
 **Finished run & Continue** (`tests/finished-run-continue.mjs`): winning (or
 losing) must never eat a manual save, and must actually retire Continue.
@@ -1279,6 +1307,35 @@ agnostic, with one exception: a COLLAPSED player (`S.collapse`) is being ENDED,
 not nursed. Camp tenders are untouched — they are defending their own ground,
 not choosing a town to sack — and `Units.damage` retaliation still applies, so
 a barbarian you strike always strikes back.
+**The ease LEADS the collapse instead of following it** (same test, from a real
+day-320 save where the rival was gutted in four days flat, d299–303, while the
+old thresholds slept): a RATE-OF-LOSS prong joins the two state prongs — every
+destroyed finished building (never walls/gates/sites) stamps `G.noteWorkLost`
+onto the `S.workLost[owner]` ledger (capped 24, in every save), and
+`BARB_EASE.lossN` (4) losses inside `lossDays` (12) trips the ease while the
+town still LOOKS healthy, because a town losing a building every three days is
+already falling. And the ease LATCHES (`S.eased[owner]`, in every save): once
+tripped it holds until the town climbs back to `releaseFrac` (0.7) of its peak
+AND `relVil` (5) villagers — the old instant-release flapped on the boundary,
+easing and un-easing daily while the town bled sideways. Bands already MID-FIGHT
+drop their marks the day the ease flips (the tUnit/tBld guards in
+`Combat.update`; camp tenders exempt — `u.campId` — they defend their ground).
+`G.barbEase` answers from a per-day cache (`G._easeC`, cleared in
+newGame/loadJSON and busted by `noteWorkLost`) because it now runs in per-frame
+combat paths.
+**And a bled chief BURNS THE CAMP THAT BLEEDS IT** (`AI.maybePurge`, same
+test): dialling the wilds back is the world's half of the answer; the tribe's
+half is an EXPEDITION. A chief losing ground to the wilds — 2+ ledger entries
+in 15 days, or its own ease already tripped — musters 6–8 unengaged foot
+(never naval, never siege), marches them on the nearest barbarian camp it has
+actually SEEN (`ai.seen`, fog-honest) and burns it out, via the ordinary raid
+machinery (`ai.raidObj = {type:'camp'}`, a dedicated branch in
+`Combat.aiRaidSeek` walks the party home and clears the objective when the camp
+dies). Gated hard so it can never become the whole war: not under threat, no
+live siege campaign, no raiders already out, `ai.purgeCd` 20 days between
+marches (in the save), and the raid cooldown is set so the war effort and the
+purge can't double-book the same host. Verified end-to-end on the day-320 save:
+seven spears out on day 337, camp burned by day 340, zero losses, walk home.
 
 **Scaled both ways**: camp COUNT is the map's area factor × the mode's
 `campMult` (calm 0.6 / moderate 1 / hard 1.5, floored at `RAIDER_CAMPS.min`),

@@ -1403,6 +1403,47 @@ const AI = {
     const x = u.x | 0, y = u.y | 0;
     return MapGen.inB(x, y) && !!this._vis[MapGen.idx(x, y)];
   },
+  /* THE WAR IS PROVABLY STUCK: a column parked at a crossing inside the last
+     20 days, or the blind hunt lane worn down by repeated fruitless marches.
+     The evidence the wedge-breaker and the attack anchor both read. */
+  warStuck() {
+    const ai = S.ai; if (!ai) return false;
+    if (ai.stall && S.day - (ai.stall.t || 0) <= 20) return true;
+    const ld = ai.memory && ai.memory.laneDef;
+    return !!(ld && (ld.hunt || 0) >= 2);
+  },
+  /* WHERE THE ATTACK POINTS WHEN THE HALL WAS NEVER FOUND (tests/rival-crossing.mjs).
+     A real 320-day game ended with knownTC still null: the player's hall sat
+     across water, outside the reach-limited hunt and outside vision from the
+     stall line — and EVERY attack system gated on knownTC. choosePosture
+     demoted PUSH to CONSOLIDATE, campaignSelect returned before selecting, so
+     TIDEWRACK (boats) and MUDLARK (bridges) were unreachable code for the one
+     chief that needed them most: the whole army walked to the waterline and
+     stood there for two hundred days.
+
+     The stand-in is FOG-HONEST — the known player building nearest the
+     centroid of everything the chief has actually seen (ai.knownB, its own
+     memory) — and EVIDENCE-GATED: it exists only once the war is provably
+     stuck (warStuck), so a young chief still hunts before it besieges. A town
+     is where its buildings are; a chief that has seen three of them knows
+     where to point the war even if the hall itself stays hidden. */
+  attackAnchor(read) {
+    if (read && read.knownTC) return read.knownTC;
+    const ai = S.ai; if (!ai || !this.warStuck()) return null;
+    const kb = ai.knownB || {};
+    const known = Object.values(kb).filter(b => b && b.owner === 'P');
+    if (known.length < 2) return null;
+    let cx = 0, cy = 0;
+    for (const b of known) { cx += b.x; cy += b.y; }
+    cx /= known.length; cy /= known.length;
+    let best = null, bd = 1e9;
+    for (const b of known) {
+      const d = Math.hypot(b.x - cx, b.y - cy);
+      if (d < bd) { bd = d; best = b; }
+    }
+    return best;
+  },
+
   knownPlayerTC() {
     const kb = S.ai.knownB || {};
     for (const k in kb) if (kb[k].key === 'tc') return kb[k];
@@ -2189,7 +2230,10 @@ const AI = {
     // you cannot commit to an attack on a town you have not FOUND: with no
     // known enemy home, an attack plan falls back to massing (CONSOLIDATE)
     // while the scouts go looking. DEFEND still holds against what's on us.
-    if (!r.knownTC && (want === 'PUSH' || want === 'PRESSURE')) want = 'CONSOLIDATE';
+    // …but a KNOWN CLUSTER will do once the war is provably stuck — a chief
+    // that has watched its hunt columns die at the same waterline for weeks
+    // commits to what it HAS seen (AI.attackAnchor, tests/rival-crossing.mjs)
+    if (!r.knownTC && !this.attackAnchor(r) && (want === 'PUSH' || want === 'PRESSURE')) want = 'CONSOLIDATE';
     // --- hysteresis: commit to a plan unless an emergency forces a change ---
     const emergency = (want === 'DEFEND' && r.underThreat) || want === 'REBUILD';
     if (!ai.posture) { ai.posture = want; ai.postureSince = S.day; }
@@ -2493,8 +2537,12 @@ const AI = {
       add(wu, () => { this.maybeWalls(tc); return true; });
     }
 
-    // dock (naval)
-    if (tc.level >= P.dockTC && !have.dock) add(pl.win === 'naval' ? 55 : 14, () => this._buildDock());
+    // dock (naval) — and the OTHER crossing enabler for a war stuck at water:
+    // boats reach what bridges cannot (a shore with no near bank to span from)
+    if (tc.level >= P.dockTC && !have.dock)
+      add((pl.win === 'naval' ? 55 : 14) +
+          (this.warStuck() && (post === 'PUSH' || post === 'PRESSURE') && have.sapper ? 40 : 0),
+        () => this._buildDock());
 
     // sappers' camp — the terraforming corps. A turtling/threatened chief moats
     // its approaches; a wall-persona especially loves it (layers with walls).
@@ -2503,9 +2551,20 @@ const AI = {
         (read.homeGapCount > 0);   // cheap proxy; the dig routine checks real water adjacency
       // a raid party stuck at a crossing badly wants a bridging corps
       const stalled = ai.stall && S.day - (ai.stall.t || 0) <= 6;
+      /* A PUSH CHIEF PARKED AT WATER treats the corps as the day's imperative,
+         not one bidder among the huts: without it MUDLARK is unreachable code
+         and the army stands at the shore forever (the diagnosed day-320 game
+         — the camp candidate kept losing the auction to houses at ~50 vs
+         ~55). The boost only exists while the war is provably stuck AND the
+         chief is committed to attacking, so a peaceful builder's auction is
+         untouched. */
+      const mustCross = this.warStuck() && (post === 'PUSH' || post === 'PRESSURE');
       add(8 + (P.walls ? 24 : 0) + (post === 'DEFEND' ? 22 : 0) + (read.underThreat ? 14 : 0) +
-          (read.homeExposed > 4 ? 10 : 0) + (nearWater ? 4 : 0) + (stalled ? 26 : 0),
-        () => this.tryBuild('sapper'));
+          (read.homeExposed > 4 ? 10 : 0) + (nearWater ? 4 : 0) + (stalled ? 26 : 0) +
+          (mustCross ? 55 : 0),
+        // a war provably stuck at water may raid the TC savings jar for its
+        // enablers — the hall can wait a season; the parked army cannot
+        () => this.tryBuild('sapper', this.warStuck()));
     }
 
     // trading post — a late-game coin sink. The rival raises one once it's TC3
@@ -2669,12 +2728,18 @@ const AI = {
       }
     }
 
-    // keep a sapper or two if the camp is up — the terraforming crew
+    // keep a sapper or two if the camp is up — the terraforming crew. A war
+    // provably stuck at water may raid the TC savings jar for the hands that
+    // unstick it (the same bargain the camp itself was built on): a chief that
+    // raised the works and then let the jar starve the corps has spent 120 wood
+    // on a building that does nothing.
     const camp = S.buildings.find(b => b.owner === 'A' && b.key === 'sapper' && Bld.done(b) && !b.upgrading && b.queue.length === 0);
     if (camp) {
       const have = Units.count('A', u => u.kind === 'sapper');
       const want = (this.persona().walls || ai.posture === 'DEFEND') ? 2 : 1;
-      if (have < want && this.affordFree(CFG.BUILDINGS.sapper.train.sapper.cost)) Bld.train(camp, 'sapper');
+      const cost = CFG.BUILDINGS.sapper.train.sapper.cost;
+      const pay = this.warStuck() ? Bld.canAfford(cost, ai.res) : this.affordFree(cost);
+      if (have < want && pay) Bld.train(camp, 'sapper');
     }
     const dock = S.buildings.find(b => b.owner === 'A' && b.key === 'dock' && Bld.done(b));
     if (dock && !dock.upgrading && dock.queue.length === 0) {
@@ -2728,7 +2793,11 @@ const AI = {
       const infantry = Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u) && u.kind !== 'siegetower' && !Units.isSiege(u));
       const wantHulls = Math.max(2, Math.min(5, Math.ceil(Math.min(infantry, 10) / cap)));
       const trs = Units.count('A', u => Units.isTransport(u));
-      if (trs < wantHulls && this.affordFree(CFG.BUILDINGS.dock.train[key].cost)) Bld.train(dock, key);
+      // the hulls ARE the war while the land road is stuck — the savings jar
+      // must not beach the landing it exists to pay for
+      const hullCost = CFG.BUILDINGS.dock.train[key].cost;
+      const payHull = this.warStuck() ? Bld.canAfford(hullCost, ai.res) : this.affordFree(hullCost);
+      if (trs < wantHulls && payHull) Bld.train(dock, key);
     }
   },
 
@@ -3036,7 +3105,9 @@ const AI = {
 
   // study the player's town + the ground to it, so a strategy is chosen on evidence
   probeAssault(read, reach) {
-    const atc = Bld.tcOf('A'), ptc = read.knownTC || this.knownPlayerTC();
+    // the anchor stands in for a never-found hall (tests/rival-crossing.mjs):
+    // without it this returned null and campaignSelect could never pick a plan
+    const atc = Bld.tcOf('A'), ptc = read.knownTC || this.knownPlayerTC() || this.attackAnchor(read);
     if (!atc || !ptc) return null;
     reach = reach || this.aiLandReach();
     const W = CFG.W, H = CFG.H, idx = MapGen.idx, tier = Units.sapperTier('A');
@@ -3338,7 +3409,9 @@ const AI = {
 
   // choose (or hold) a siege-campaign strategy when a plain raid can't get in
   campaignSelect(read) {
-    const ai = S.ai, ptc = read.knownTC;
+    // the anchor stands in for a never-found hall once the war is stuck —
+    // which is exactly when TIDEWRACK/MUDLARK stop being unreachable code
+    const ai = S.ai, ptc = read.knownTC || this.attackAnchor(read);
     const attack = ai.posture === 'PUSH' || ai.posture === 'PRESSURE';
     ai.camp = ai.camp || { strat: null, since: 0, rounds: 0, tried: [], baseBld: 0, grind: false };
     if (!ptc || !attack) { ai.camp.strat = null; ai.camp.grind = false; return; }
@@ -3460,7 +3533,7 @@ const AI = {
   campaignLaunch(read, m) {
     const ai = S.ai, camp = ai.camp;
     if (!camp || !camp.strat) return false;
-    const strat = camp.strat, ptc = read.knownTC;
+    const strat = camp.strat, ptc = read.knownTC || this.attackAnchor(read);
     if (!ptc) return false;
     // a held main column commits the moment its feint has had time to work
     if (camp.pending && S.day >= camp.pending.due) { this._commitMain(read); return true; }
@@ -3700,7 +3773,7 @@ const AI = {
 
   _launchCampRaid(read, strat) {
     const ai = S.ai, ctx = this.probeAssault(read) || {};
-    const seam = ctx.wallSeam || (ctx.siegeWall && { x: ctx.siegeWall.x, y: ctx.siegeWall.y }) || read.knownTC;
+    const seam = ctx.wallSeam || (ctx.siegeWall && { x: ctx.siegeWall.x, y: ctx.siegeWall.y }) || read.knownTC || this.attackAnchor(read);
     const withTowers = strat === 'HIGHREACH';
     const party = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) && !Units.isNaval(u) &&
       (withTowers || u.kind !== 'siegetower') && !(u.task && u.task.type === 'raid'));
@@ -3765,7 +3838,7 @@ const AI = {
     if (!idle) return false;
     const ctx = this.probeAssault(read, reach);
     const b = ctx && ctx.breach; if (!b) return false;
-    const ptc = read.knownTC || this.knownPlayerTC(); if (!ptc) return false;
+    const ptc = read.knownTC || this.knownPlayerTC() || this.attackAnchor(read); if (!ptc) return false;
     const tier = Units.sapperTier('A');
     /* PICK THE CHEAP TOOL WHERE IT WORKS. `bridgeable` only asks "is this
        water" — it does NOT ask whether a deck can actually be laid, which needs
@@ -3815,7 +3888,7 @@ const AI = {
   // TIDEWRACK's landing: load troops into the transports and sail for the player's
   // shore (warships screen). Troops resume the assault the moment they hit the beach.
   _launchAmphib(read, parallel) {
-    const ai = S.ai, ptc = read.knownTC, ctx = this.probeAssault(read);
+    const ai = S.ai, ptc = read.knownTC || this.attackAnchor(read), ctx = this.probeAssault(read);
     if (!ptc || !ctx || !ctx.shore || !ctx.shore.land) return false;
     const land = ctx.shore.land;
     const transports = S.units.filter(u => u.owner === 'A' && Units.isTransport(u) && (!u.cargo || !u.cargo.length) && !(u.task && u.task.type === 'unload'));
@@ -4148,7 +4221,22 @@ const AI = {
        limit, so the best build/upgrade still runs after an emergency. */
     const standing = Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u) && !Units.isSiege(u));
     const wantNow = this.armyWant(m, ai.posture);
-    const armyFirst = standing * 2 < wantNow;
+    let armyFirst = standing * 2 < wantNow;
+    /* THE WAR CHEST BEATS THE MUSTER ROLL when the army is already parked at a
+       shore it cannot cross: the diagnosed day-320 game hired a 30-wood
+       defender every single day, so the 60-wood dock and 120-wood sappers'
+       camp it needed were never affordable for two hundred days — spears
+       queued for an assault that could not physically reach the enemy. While
+       the war is stuck and a crossing enabler is both MISSING and short of
+       wood, army training yields the day's wood to it. */
+    if (armyFirst && this.warStuck()) {
+      const have = { dock: S.buildings.some(b => b.owner === 'A' && b.key === 'dock'),
+                     sapper: S.buildings.some(b => b.owner === 'A' && b.key === 'sapper') };
+      const w = ai.res.wood || 0;
+      const needDock = !have.dock && w < ((CFG.BUILDINGS.dock.levels[0].cost.wood || 0) + 20);
+      const needSap = !have.sapper && w < ((CFG.BUILDINGS.sapper.levels[0].cost.wood || 0) + 20);
+      if (needDock || needSap) armyFirst = false;
+    }
     if (armyFirst) this.trainForces(m, read);
     // THE OPENING BOOK: the persona's rehearsed build order, played crisply —
     // while it runs it owns construction (bestBuild dithering starts after)
@@ -4455,7 +4543,10 @@ const AI = {
       const host = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
         !Units.isNaval(u) && u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
       if (host.length >= 6 && mine >= 5) {
-        const dest = this.huntTarget();
+        // a worn hunt lane stops guessing: march on the known cluster instead
+        // of the farthest unseen corner (the stall it records there is what
+        // arms the sapper/dock machinery)
+        const dest = this.attackAnchor(read) || this.huntTarget();
         if (dest) {
           const party = host.slice(0, Math.max(6, Math.ceil(host.length * 0.7)));   // leave a home guard
           for (const u of party) {
