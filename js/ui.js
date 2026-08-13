@@ -5,6 +5,19 @@ const UI = {
   sel: null,          // {type:'unit'|'bld', id}
   placing: null,      // building key while placing
   placeTile: null,
+  /* ---- PLACEMENT MODE (tests/placement.mjs) ---- a tap arms a key from the
+     build menu; a translucent true-art ghost then rides the finger over a
+     green/red validity grid, and a ✓/✗ pair commits or discards. All state is
+     UI-local and never saved; exitPlacement() is the ONLY way out and clears
+     every scrap of it. The wall keeps its own proven line-drag flow. */
+  placeGhost: null,     // {x, y, set} — snapped footprint origin; set = ✓/✗ showing
+  placeMap: null,       // Uint8Array W*H: 0 valid · 1 invalid · 255 no grid cell
+  placeMapStamp: null,  // {gen, day, t} — what the cached validity map was built against
+  placeVerdict: null,   // {ok, why, afford} for the ghost's tile (live, seal included)
+  placeDragging: false, // a finger is dragging the ghost right now
+  placePtr: null,       // {x, y, touch} last pointer position while placing (edge scroll)
+  _placeAffordT: 0,     // afford re-check cadence
+  _placeCueOk: null,    // last verdict for the valid↔invalid crossing cue
   pointers: new Map(),
   pinchD: 0,
   downAt: null,
@@ -59,6 +72,17 @@ const UI = {
   },
 
   init() {
+    /* desktop parity for placement mode: Esc = the ✗ (discard the ghost,
+       menu back with the choice intact), Enter = the ✓. Installed ONCE, for
+       the session — gated on state, so entering/exiting placement a hundred
+       times leaks nothing (tests/placement.mjs). */
+    document.addEventListener('keydown', e => {
+      if (!this.placing || this.placing === 'wall' || !window.S) return;
+      if (e.key === 'Escape') { this.cancelPlacement(); e.preventDefault(); }
+      else if (e.key === 'Enter' && this.placeGhost && this.placeGhost.set) {
+        this.confirmPlacement(); e.preventDefault();
+      }
+    });
     // remembered preference: once the player knows the ropes they can tuck the
     // unit help-text away (− button); ℹ️ brings it back. Persists across games.
     try { this.helpHidden = localStorage.getItem('neo-unit-help') === '1'; } catch (e) { this.helpHidden = false; }
@@ -118,19 +142,18 @@ const UI = {
       const co = document.createElement('div'); co.className = 'bcost'; co.textContent = Bld.costStr(Bld.effCost('P', key));
       btn.appendChild(nm); btn.appendChild(co);
       btn.addEventListener('click', () => {
-        if (this.placing === key) { this.placing = null; this.builderFor = null; }
-        else {
-          const tc = Bld.tcOf('P');
-          if (d.reqTC && (!tc || tc.level < d.reqTC)) { this.toast(`Needs Town Center Lv ${d.reqTC}`, true); return; }
-          const can = Bld.canAfford(Bld.effCost('P', key));   // card discounts count
-          if (!can) { this.toast('Not enough resources', true); return; }
-          this.placing = key;
-          this.deselect();
-          this.toast(`Tap a clear tile to place the ${d.name}`);
-          // tuck the build menu away so the whole map is visible to pick a site
-          // (keepPlacing: don't cancel the building we just chose)
-          this.setMenuCollapsed(true, true);
-        }
+        if (this.placing === key) { this.exitPlacement(); return; }   // tapping the lit button quits cleanly
+        const tc = Bld.tcOf('P');
+        if (d.reqTC && (!tc || tc.level < d.reqTC)) { this.toast(`Needs Town Center Lv ${d.reqTC}`, true); return; }
+        // NOT affordable is no longer a refusal — placement opens in its amber
+        // "scout the spot you're saving for" state, with ✓ disabled
+        if (key === 'wall' && !Bld.canAfford(Bld.effCost('P', key))) { this.toast('Not enough resources', true); return; }
+        this.deselect();
+        // tuck the build menu away so the whole map is visible to pick a site
+        // (keepPlacing: don't cancel the building we just chose)
+        this.setMenuCollapsed(true, true);
+        if (key === 'wall') this.placing = key;   // the wall keeps its line-drag flow
+        else this.enterPlacement(key);
         this.refreshMenu();
       });
       el.appendChild(btn);
@@ -166,7 +189,7 @@ const UI = {
       if (key === 'wonder') {
         const show = this.wonderOffered();
         b.style.display = show ? '' : 'none';
-        if (!show) { if (this.placing === 'wonder') this.placing = null; return; }
+        if (!show) { if (this.placing === 'wonder') this.exitPlacement(); return; }
         // the icon (and the name) follow THIS RUN's monument
         if (b.dataset.wonder !== S.wonder) {
           b.dataset.wonder = S.wonder;
@@ -207,6 +230,14 @@ const UI = {
           this.wallDrag = [R.screenToTile(e.clientX, e.clientY)];
           this.updateWallGhost();
           this.downAt = null;
+        } else if (this.placing && this.placeGhost && this._onPlaceGhost(e.clientX, e.clientY)) {
+          // the press landed ON the ghost: this drag moves the BUILDING, not
+          // the camera. A press elsewhere still pans — sighting the ground is
+          // half of placing well.
+          this.placeDragging = true;
+          this.placePtr = { x: e.clientX, y: e.clientY, touch: e.pointerType === 'touch' };
+          this.placeGhostTo(e.clientX, e.clientY, e.pointerType === 'touch');
+          this.downAt = null;
         } else if (this.armedSapper()) {
           // a sapper tool is armed: drag paints a line of tiles to dig/clear
           this.terraDrag = [R.screenToTile(e.clientX, e.clientY)];
@@ -228,16 +259,24 @@ const UI = {
         this.wallDrag = null; this.wallGhost = null;   // pinch cancels the line
         this.terraDrag = null; this.terraGhost = null;
         this.moveDrag = null; this.moveDragArm = null; // …and the move tether
+        this.placeDragging = false; this.placePtr = null;   // ghost stays put; fingers zoom
       }
       e.preventDefault();
     });
     cv.addEventListener('pointermove', e => {
       const p = this.pointers.get(e.pointerId);
-      if (this.placing) this.placeTile = R.screenToTile(e.clientX, e.clientY);
+      // desktop hover: with nothing pressed, the ghost rides the mouse until
+      // it is parked — placement reads the ground as you sweep it
+      if (!p && this.placing && this.placing !== 'wall' && this.placeGhost &&
+          !this.placeGhost.set && e.pointerType === 'mouse')
+        this.placeGhostTo(e.clientX, e.clientY, false);
       if (!p) return;
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
       if (this.pointers.size === 1) {
-        if (this.wallDrag) {
+        if (this.placeDragging) {
+          this.placePtr = { x: e.clientX, y: e.clientY, touch: e.pointerType === 'touch' };
+          this.placeGhostTo(e.clientX, e.clientY, e.pointerType === 'touch');
+        } else if (this.wallDrag) {
           this.extendWallDrag(R.screenToTile(e.clientX, e.clientY));
         } else if (this.terraDrag) {
           this.extendTerraDrag(R.screenToTile(e.clientX, e.clientY));
@@ -270,7 +309,12 @@ const UI = {
     });
     const up = e => {
       this.pointers.delete(e.pointerId);
-      if (this.wallDrag) {
+      if (this.placeDragging) {
+        // release parks the ghost where it sits and offers ✓/✗
+        this.placeDragging = false;
+        this.placePtr = null;
+        if (this.placeGhost) { this.placeGhost.set = true; this._placeCheck(); }
+      } else if (this.wallDrag) {
         this.commitWallDrag();
         this.wallDrag = null; this.wallGhost = null;
       } else if (this.terraDrag) {
@@ -300,6 +344,7 @@ const UI = {
       this.wallDrag = null; this.wallGhost = null;
       this.terraDrag = null; this.terraGhost = null;
       this.moveDrag = null; this.moveDragArm = null;
+      this.placeDragging = false; this.placePtr = null;   // ghost survives, unparked
     });
     cv.addEventListener('wheel', e => {
       this.zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 0.89);
@@ -313,6 +358,370 @@ const UI = {
       R.centerOn(tx, ty);
       e.preventDefault(); e.stopPropagation();
     });
+  },
+
+  /* ================= PLACEMENT MODE (tests/placement.mjs) =================
+     The touch-first building placement flow. One source of truth for "may it
+     stand here": Bld.canPlace — the grid, the ghost, the confirm and the
+     rival AI all ask it, so nobody can disagree. The VALIDITY MAP is built
+     once on entry and re-built only when something that can change it does
+     (a building placed → Bld._blockGen; a day tick → terrain/regrowth; a
+     slow heartbeat covers fog creep) — never per frame. Seal floods are
+     validated on the PICK (the ghost's own tile and the confirm), never on
+     the scan — the same rule AI.plot's pickSealFree follows. */
+  PLACE_HYST: 0.18,      // tiles of stickiness past a cell boundary before the snap moves
+  PLACE_LIFT: 62,        // css px the ghost rides ABOVE a touch point (thumb occlusion)
+  PLACE_EDGE: 44,        // css px band at the viewport edge that auto-pans while dragging
+
+  // did a press land on the ghost's drawn footprint? The forgiveness margin
+  // is a SCREEN-space read (≥ ~26px), so a zoomed-out ghost is still a real
+  // touch target instead of a 16px sliver (the design review's 44px floor)
+  _onPlaceGhost(clientX, clientY) {
+    const g = this.placeGhost; if (!g) return false;
+    const sz = Bld.size(this.placing), TL = CFG.TILE;
+    const m = Math.max(0.5, 26 / (TL * R.cam.z));
+    const w = R.screenToWorld(clientX, clientY);
+    const wx = w.x / TL, wy = w.y / TL;
+    return wx >= g.x - m && wx <= g.x + sz + m &&
+           wy >= g.y - m && wy <= g.y + sz + m;
+  },
+
+  enterPlacement(key) {
+    this.placing = key;
+    this.placeGhost = null;
+    this.placeVerdict = null;
+    this.placeDragging = false;
+    this._placeCueOk = null;
+    this.buildPlaceMap();
+    // the ghost starts at the nearest valid cell to the middle of the view —
+    // the player sees a real suggestion, not an empty field
+    const c = R.screenToTile(R.viewW() / 2, R.viewH() / 2);
+    const spot = this._nearestValidCell(c.x, c.y);
+    if (spot) { this.placeGhost = { x: spot.x, y: spot.y, set: false }; this._placeCheck(); return; }
+    /* NOWHERE TO STAND AT ALL (a farm before any soil is picked bare, a dock
+       with no explored water): entering a mode with no ghost, no grid and no
+       word of why is the design-review finding this closes — say why in the
+       building's own voice and stay in the menu. */
+    const d = CFG.BUILDINGS[key];
+    this.toast(d.whyGround || (key === 'dock' ? 'No open water in reach of your town yet'
+      : 'No ground for this yet — explore or clear more land'), true);
+    this.exitPlacement();
+    this.setMenuCollapsed(false);
+  },
+
+  /* the cached validity map: 0 = valid origin, 1 = invalid, 255 = draw no
+     grid cell at all. Cells are computed with canPlace (noCost — amber is a
+     STATE, not a refusal; noSeal — floods never run on a scan), only over
+     explored ground, only inside the anchor region for anchored keys, and
+     then trimmed to the neighbourhood of the valid cells so the grid reads
+     as "the region you may build in, with its obstructions marked" instead
+     of painting the whole map red. */
+  buildPlaceMap() {
+    const key = this.placing;
+    if (!key || key === 'wall') { this.placeMap = null; return; }
+    if (!Bld._block) Bld.rebuildBlock();     // gen must be CURRENT (the deckAt trap)
+    const W = CFG.W, H = CFG.H, sz = Bld.size(key), d = CFG.BUILDINGS[key];
+    const t0 = performance.now();
+    const m = new Uint8Array(W * H); m.fill(255);
+    // region prefilter: anchored keys only ever place near an anchor — skip
+    // the rest of the board before canPlace is even asked
+    const freeKey = d.freePlace || Bld.needsWorkedGround(key) || key === 'gate';
+    let anchors = null;
+    if (!freeKey) {
+      anchors = Bld.list('P').filter(b => (!b.outpost && b.key !== 'warcamp') || b.key === 'warcamp');
+      if (!anchors.length) anchors = null;   // first building of a run places freely
+    }
+    const R2 = CFG.BUILD_RANGE + 1;
+    const ok = [];
+    for (let y = 1; y < H - 1 - (sz - 1); y++) for (let x = 1; x < W - 1 - (sz - 1); x++) {
+      const i = MapGen.idx(x, y);
+      if (!S.map.explored[i]) continue;                       // fog stays clean — no grid, no hints
+      if (anchors) {
+        let near = false;
+        for (const b of anchors) if (Math.hypot(b.x - x, b.y - y) <= R2) { near = true; break; }
+        if (!near) continue;
+      }
+      const r = Bld.canPlace('P', key, x, y, { noCost: true, noSeal: true });
+      m[i] = r.ok ? 0 : 1;
+      if (r.ok) ok.push(i);
+    }
+    // trim: an invalid cell earns its slot only within 2 tiles of a valid one —
+    // "cells far outside any plausible build area draw no grid at all"
+    const keep = new Uint8Array(W * H);
+    for (const i of ok) {
+      const x = i % W, y = (i / W) | 0;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && ny >= 0 && nx < W && ny < H) keep[MapGen.idx(nx, ny)] = 1;
+      }
+    }
+    for (let i = 0; i < m.length; i++) if (m[i] === 1 && !keep[i]) m[i] = 255;
+    this.placeMap = m;
+    this.placeMapStamp = { gen: Bld._blockGen || 0, day: S.day, t: performance.now() };
+    this.placeMapMs = this.placeMapStamp.t - t0;   // profiled; tests/placement.mjs reads it
+  },
+
+  _nearestValidCell(cx, cy) {
+    const m = this.placeMap; if (!m) return null;
+    const W = CFG.W;
+    let best = null, bd = 1e9;
+    for (let i = 0; i < m.length; i++) {
+      if (m[i] !== 0) continue;
+      const x = i % W, y = (i / W) | 0;
+      const d = Math.hypot(x - cx, y - cy);
+      if (d < bd) { bd = d; best = { x, y }; }
+    }
+    return best;
+  },
+
+  // the ghost's own tile gets the FULL check (seal flood included; cost still
+  // separate — amber is a state of its own)
+  _placeCheck() {
+    const g = this.placeGhost;
+    if (!g || !this.placing) { this.placeVerdict = null; return; }
+    const r = Bld.canPlace('P', this.placing, g.x, g.y, { noCost: true });
+    const afford = Bld.canAfford(Bld.effCost('P', this.placing));
+    this.placeVerdict = { ok: r.ok, why: r.why || '', code: r.code || '', afford };
+    // the valid↔invalid crossing cue (subtle; never on the first look)
+    if (this._placeCueOk !== null && this._placeCueOk !== r.ok) this.cue(r.ok ? 'ok' : 'bad');
+    this._placeCueOk = r.ok;
+  },
+
+  // snap the ghost to the pointer with hysteresis, footprint centered on the
+  // (lifted) point — sticky enough that a finger resting on a cell boundary
+  // never flickers between neighbours
+  placeGhostTo(clientX, clientY, touch) {
+    const key = this.placing; if (!key || key === 'wall') return;
+    const sz = Bld.size(key), TL = CFG.TILE;
+    const w = R.screenToWorld(clientX, clientY);
+    if (touch) w.y -= (this.PLACE_LIFT + sz * TL * R.cam.z * 0.35) / R.cam.z;
+    const fox = w.x / TL - sz / 2, foy = w.y / TL - sz / 2;   // fractional footprint origin
+    const g = this.placeGhost;
+    let nx = Math.round(fox), ny = Math.round(foy);
+    if (g && Math.abs(fox - g.x) < 0.5 + this.PLACE_HYST) nx = g.x;
+    if (g && Math.abs(foy - g.y) < 0.5 + this.PLACE_HYST) ny = g.y;
+    nx = Math.max(1, Math.min(CFG.W - 1 - sz, nx));
+    ny = Math.max(1, Math.min(CFG.H - 1 - sz, ny));
+    if (g && g.x === nx && g.y === ny) return;
+    this.placeGhost = { x: nx, y: ny, set: g ? g.set : false };
+    this._placeCheck();
+  },
+
+  // a tap (or a released drag) parks the ghost and offers ✓/✗
+  placeGhostSet(tx, ty) {
+    const key = this.placing; if (!key || key === 'wall') return;
+    const sz = Bld.size(key);
+    const nx = Math.max(1, Math.min(CFG.W - 1 - sz, tx - ((sz / 2) | 0)));
+    const ny = Math.max(1, Math.min(CFG.H - 1 - sz, ty - ((sz / 2) | 0)));
+    this.placeGhost = { x: nx, y: ny, set: true };
+    this.setMenuCollapsed(true, true);       // sighting needs the whole map
+    this._placeCheck();
+  },
+
+  /* CONFIRM re-validates from scratch — the tint is never trusted (the world
+     can change between release and ✓: a building finished, a villager felled
+     the anchor, the treasury drained). The one placement truth runs with
+     everything on: seal flood AND cost. */
+  confirmPlacement() {
+    const key = this.placing, g = this.placeGhost;
+    if (!key || !g || !g.set) return;
+    const r = Bld.canPlace('P', key, g.x, g.y);
+    if (!r.ok) {
+      this.toast(r.why, true);
+      this.buildPlaceMap();                  // the world moved — show the new truth
+      this._placeCheck();
+      return;
+    }
+    Bld.place('P', key, g.x, g.y, { builderId: this.builderFor });
+    this.cue('confirm');
+    this.exitPlacement();
+  },
+  // ✗ / Esc: the ghost is discarded, the menu reopens with the selection
+  // intact — one tap on the map tries again, one tap on the lit button quits
+  cancelPlacement() {
+    this.placeGhost = null;
+    this.placeVerdict = null;
+    this.placeDragging = false;
+    this._placeCueOk = null;
+    this._placeDom(false);
+    this.setMenuCollapsed(false, true);
+    this.refreshMenu();
+  },
+  // the ONLY full exit — no orphaned ghost, no stuck overlay, no stale state
+  exitPlacement() {
+    this.placing = null;
+    this.placeTile = null;
+    this.builderFor = null;
+    this.placeGhost = null;
+    this.placeMap = null;
+    this.placeMapStamp = null;
+    this.placeVerdict = null;
+    this.placeDragging = false;
+    this.placePtr = null;
+    this._placeCueOk = null;
+    this._placeDom(false);
+    this.refreshMenu();
+  },
+
+  /* per-frame placement upkeep, called from UI.refresh BEFORE its 0.25s
+     throttle: edge scrolling, the staleness checks on the cached validity
+     map, and the DOM widget riding the ghost. Cheap when idle: three field
+     compares and out. */
+  tickPlacement(dt) {
+    if (!this.placing || this.placing === 'wall' || !window.S || !S.map) {
+      if (this._placeUIVisible) this._placeDom(false);
+      return;
+    }
+    // EDGE SCROLL: dragging the ghost against the viewport edge pans the map
+    if (this.placeDragging && this.placePtr) {
+      const E = this.PLACE_EDGE, vw = R.viewW(), vh = R.viewH();
+      const top = (R.topReserve || 0) + E, bot = vh - (R.bottomReserve || 0) - E;
+      const p = this.placePtr;
+      let px = 0, py = 0;
+      if (p.x < E) px = -(E - p.x); else if (p.x > vw - E) px = p.x - (vw - E);
+      if (p.y < top) py = -(top - p.y); else if (p.y > bot) py = p.y - bot;
+      if (px || py) {
+        const v = 12 * dt / R.cam.z;         // smooth, zoom-honest
+        R.cam.x += Math.max(-1, Math.min(1, px / E)) * v * 60;
+        R.cam.y += Math.max(-1, Math.min(1, py / E)) * v * 60;
+        R.clampCam();
+        this.placeGhostTo(p.x, p.y, p.touch);   // the ghost stays under the finger
+      }
+    }
+    // STALE MAP? rebuild only on real change: a placement (blockGen), a day
+    // tick (terrain/regrowth), or the 1.2s heartbeat that covers fog creep
+    const st = this.placeMapStamp;
+    if (!Bld._block) Bld.rebuildBlock();
+    if (!st || st.gen !== (Bld._blockGen || 0) || st.day !== S.day ||
+        performance.now() - st.t > 1200) {
+      this.buildPlaceMap();
+      this._placeCheck();
+    }
+    // afford is global, not per-tile — re-check on its own quick cadence
+    this._placeAffordT -= dt;
+    if (this._placeAffordT <= 0) {
+      this._placeAffordT = 0.3;
+      if (this.placeVerdict) {
+        const a = Bld.canAfford(Bld.effCost('P', this.placing));
+        if (a !== this.placeVerdict.afford) { this.placeVerdict.afford = a; }
+      }
+    }
+    this._placeDomSync();
+  },
+
+  /* ---- the ✓/✗ pair and the reason chip: persistent DOM, built once ---- */
+  _placeUIVisible: false,
+  _ensurePlaceDom() {
+    if (this._placeEl) return this._placeEl;
+    const el = document.createElement('div');
+    el.id = 'placeUI';
+    el.innerHTML =
+      '<div id="placeWhy"></div>' +
+      '<div id="placeBtns">' +
+      '<button id="placeNo" aria-label="Cancel placement">✕</button>' +
+      '<button id="placeOk" aria-label="Confirm placement">✓</button>' +
+      '</div>';
+    document.body.appendChild(el);
+    el.querySelector('#placeNo').addEventListener('click', () => this.cancelPlacement());
+    el.querySelector('#placeOk').addEventListener('click', () => this.confirmPlacement());
+    this._placeEl = el;
+    return el;
+  },
+  _placeDom(show) {
+    const el = this._ensurePlaceDom();
+    el.style.display = show ? 'block' : 'none';
+    this._placeUIVisible = show;
+  },
+  _placeDomSync() {
+    const g = this.placeGhost, v = this.placeVerdict;
+    if (!g) { if (this._placeUIVisible) this._placeDom(false); return; }
+    const el = this._ensurePlaceDom();
+    if (!this._placeUIVisible) this._placeDom(true);
+    const TL = CFG.TILE, z = R.cam.z, sz = Bld.size(this.placing);
+    const sx = (g.x * TL - R.cam.x) * z, sy = (g.y * TL - R.cam.y) * z, sw = sz * TL * z;
+    const vw = R.viewW(), vh = R.viewH();
+    // buttons: visible only when the ghost is parked; positioned above the
+    // footprint, flipped below when the top is tight, always fully on-screen
+    const btns = el.querySelector('#placeBtns');
+    const showBtns = g.set && !this.placeDragging;
+    btns.style.display = showBtns ? 'flex' : 'none';
+    let btnsBelow = false;
+    if (showBtns) {
+      // lifted well clear of the footprint (and spread wide) so the pair
+      // never squats on a neighbour's roof the player is judging against
+      const bw = 140, bh = 56;
+      let bx = sx + sw / 2 - bw / 2, by = sy - bh - 22;
+      if (by < (R.topReserve || 0) + 8) { by = sy + sw + 18; btnsBelow = true; }
+      bx = Math.max(8, Math.min(vw - bw - 8, bx));
+      by = Math.max((R.topReserve || 0) + 8, Math.min(vh - bh - 8, by));
+      btns.style.transform = `translate(${bx | 0}px, ${by | 0}px)`;
+      const okB = el.querySelector('#placeOk');
+      const usable = v && v.ok && v.afford;
+      okB.classList.toggle('off', !usable);
+    }
+    // the chip: the reason when invalid, the missing goods when amber —
+    // never leave the player guessing, never chatter when everything is fine.
+    // It always takes the OPPOSITE side of the ✓/✗ pair, so they can't collide.
+    const why = el.querySelector('#placeWhy');
+    let msg = '';
+    if (v && !v.ok) msg = '⃠ ' + v.why;
+    else if (v && !v.afford) msg = '⏳ Need ' + this._missingCostStr();
+    if (msg) {
+      why.style.display = 'block';
+      if (why.textContent !== msg) why.textContent = msg;
+      const cw = Math.min(260, why.offsetWidth || 160), ch = 30;
+      let cx2 = sx + sw / 2 - cw / 2;
+      let cy2 = (showBtns && btnsBelow) ? sy - 44 : sy + sw + 8;
+      if (!showBtns && cy2 > vh - 120) cy2 = sy - 44;
+      cx2 = Math.max(8, Math.min(vw - cw - 8, cx2));
+      cy2 = Math.max((R.topReserve || 0) + 4, Math.min(vh - 40, cy2));
+      // never across the minimap (design review): slide left of it, or drop
+      // under the ghost when the ghost itself is up in that corner
+      const mini = this._miniRect || (this._miniRect = (document.getElementById('mini') || {}).getBoundingClientRect
+        ? document.getElementById('mini').getBoundingClientRect() : null);
+      if (mini && cx2 + cw > mini.left - 4 && cy2 < mini.bottom + 4 && cy2 + ch > mini.top - 4) {
+        if (mini.left - 12 - cw >= 8) cx2 = mini.left - 12 - cw;
+        else cy2 = Math.min(vh - 40, mini.bottom + 8);
+      }
+      why.style.transform = `translate(${cx2 | 0}px, ${cy2 | 0}px)`;
+      why.classList.toggle('amber', !!(v && v.ok && !v.afford));
+    } else why.style.display = 'none';
+  },
+  _missingCostStr() {
+    const cost = Bld.effCost('P', this.placing), out = [];
+    const IC = { food: '🍖', wood: '🪵', stone: '🪨', gold: '🪙' };
+    for (const k in cost) {
+      const short = cost[k] - (S.res[k] || 0);
+      if (short > 0) out.push((IC[k] || k) + ' ' + short);   // icon-first, the Bld.costStr convention
+    }
+    return out.join('   ') || '…';
+  },
+
+  /* a whisper of feedback: valid↔invalid crossings and the confirm. WebAudio
+     built lazily on first use (needs a user gesture anyway); haptics where
+     the platform has them. The game has no sound system yet, so the switch
+     is a stored preference future settings can surface: localStorage
+     neo-sfx = '0' silences everything. */
+  cue(kind) {
+    try {
+      if (localStorage.getItem('neo-sfx') === '0') return;
+    } catch (e) {}
+    try {
+      if (navigator.vibrate) navigator.vibrate(kind === 'bad' ? 16 : 8);
+    } catch (e) {}
+    try {
+      const ctx = this._sfx || (this._sfx = new (window.AudioContext || window.webkitAudioContext)());
+      if (ctx.state === 'suspended') ctx.resume();
+      const o = ctx.createOscillator(), gn = ctx.createGain();
+      o.type = 'triangle';
+      const f = kind === 'bad' ? 196 : kind === 'confirm' ? 660 : 440;
+      o.frequency.value = f;
+      if (kind === 'confirm') o.frequency.exponentialRampToValueAtTime(990, ctx.currentTime + 0.09);
+      gn.gain.value = 0.045;
+      gn.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (kind === 'confirm' ? 0.12 : 0.06));
+      o.connect(gn).connect(ctx.destination);
+      o.start(); o.stop(ctx.currentTime + 0.13);
+    } catch (e) { /* no audio — the visuals carry it */ }
   },
 
   /* ---------------- sapper dig/clear line dragging ---------------- */
@@ -739,15 +1148,11 @@ const UI = {
       return;
     }
 
-    // placement mode
+    // placement mode: a tap is never the commit — it JUMPS the ghost there
+    // and offers ✓/✗ (tests/placement.mjs). The wall never reaches this
+    // branch (its pointerdown starts a line drag instead of a tap).
     if (this.placing) {
-      const can = Bld.canPlace('P', this.placing, tile.x, tile.y);
-      if (can.ok) {
-        Bld.place('P', this.placing, tile.x, tile.y, { builderId: this.builderFor });
-        this.builderFor = null;
-        this.placing = null; this.placeTile = null;
-      } else this.toast(can.why, true);
-      this.refreshMenu();
+      this.placeGhostSet(tile.x, tile.y);
       return;
     }
 
@@ -1076,6 +1481,9 @@ const UI = {
   // pulled cleanly out of a mixed army so it can be ordered on its own.
   handleDoubleTap(sx, sy) {
     if (!S || S.over) return;
+    // while placing, a fast second tap is just another placement tap — the
+    // ghost jumps, nothing gets group-selected out from under the mode
+    if (this.placing) { this.handleTap(sx, sy); return; }
     const w = R.screenToWorld(sx, sy);
     const wx = w.x / CFG.TILE, wy = w.y / CFG.TILE;
     // find the OWN unit under the tap (a touch more forgiving than a single tap,
@@ -1187,7 +1595,7 @@ const UI = {
     } else {
       document.getElementById('buildmenu').style.display = v ? 'none' : 'flex';
     }
-    if (v && !keepPlacing && this.placing) { this.placing = null; this.builderFor = null; this.refreshMenu(); }
+    if (v && !keepPlacing && this.placing) this.exitPlacement();
     // opening the build menu: capture its bar height so the camera reserves that
     // much clear space at the bottom (see R.clampCam), then re-clamp to apply it
     if (window.R) {
@@ -2394,6 +2802,7 @@ const UI = {
     return n >= 10000 ? (Math.round(n / 100) / 10 + '').replace(/\.0$/, '') + 'k' : String(n);
   },
   refresh(dt) {
+    this.tickPlacement(dt);   // per-frame: edge scroll + ghost DOM must not wait on the throttle
     this.refreshT -= dt;
     if (this.refreshT > 0) return;
     this.refreshT = 0.25;

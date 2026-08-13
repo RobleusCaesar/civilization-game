@@ -95,6 +95,7 @@ node tests/banish.mjs          # a villager can be sent away for good — the po
 node tests/worked-ground.mjs   # a station stands only on ground its own resource was taken out of
 node tests/footprint.mjs       # the primary works stand on 2×2; old saves keep the ground they were raised on
 node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring rule; ?dev=1 preview = the shipping path
+node tests/placement.mjs       # ONE placement truth (canPlace codes); ghost+confirm flow; the seal clamp; AI parity
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -1731,6 +1732,54 @@ sharper than before. What is off is the relationship to the plot, not the
 resolution: the hall no longer reads as the biggest thing in the village now
 that eight other works match its footprint, which is what the real art pass
 has to answer.
+
+**Placement has ONE truth, and the truth wears codes** (`tests/placement.mjs`):
+`Bld.canPlace(owner, key, x, y, opts)` is the single authority on "may a
+building stand here" — the placement grid's tinting, the ghost's verdict, the
+confirm's re-validation, `Bld.place`'s callers and every rival-AI site ask IT
+(the one historical bypass, `maybeWonder`'s raw `Bld.place`, now asks first).
+Every refusal carries a machine-readable `code` beside its human `why`
+(`blocked`/`ash`/`seam`/`needSeam`/`ground`/`reqTC`/`unexplored`/`unique`/
+`max`/`anchor`/`staging`/`edge`/`water`/`shore`/`sealed`/`cost`), so UI styles
+by code, never by string-matching. Two opts, both about WHO pays for what:
+`noCost` (affordability is a separate STATE — the amber "scout the spot
+you're saving for" grid, ✓ disabled, missing goods named — never a tile
+refusal; the cost check stays LAST so money never masks a ground problem)
+and `noSeal` (the seal flood is validated on the PICK — ghost tile, confirm,
+AI validate-on-pick — never on the scan; the exact rule `pickSealFree`
+follows). **The seal clamp** (`Bld.wouldSeal` / `_openToBorder`): a player
+must not wall themselves in by accident — the stone that would cut the
+owner's hall doorstep off from the map's border ring is refused (`sealed`);
+gates are exempt (they open for their owner), it only fires while the town is
+currently OPEN, wall/gate SITES count as solid (intent counts), it hides
+behind a cheap all-perimeter-open prefilter, and the no-candidate flood is
+cached per (day, `_blockGen`) with the force-rebuildBlock-first discipline.
+**The flow** (ui.js `enterPlacement`→`exitPlacement`): arming seeds a ghost
+at the nearest valid cell to the view centre; the VALIDITY MAP is built once
+and re-built only on real change (`_blockGen`, day tick, a 1.2s fog-creep
+heartbeat) — never per frame; taps JUMP the ghost (never commit); a press ON
+the ghost drags it (riding `PLACE_LIFT` px above a touch so the thumb never
+covers it, with `PLACE_HYST` stickiness so a boundary finger never flickers);
+elsewhere still pans, two fingers still pinch; release parks it and the ✓/✗
+pair (44px+, repositioned to stay on-screen, chip on the opposite side)
+appears; ✓ RE-VALIDATES from scratch — the tint is never trusted. Esc = ✗
+(menu back, choice intact), Enter = ✓, hover moves the ghost on desktop. The
+wall keeps its line-drag flow untouched (tests/work-order.mjs owns it). A key
+with NOWHERE valid to stand (a farm before any soil is picked bare) never
+opens a ghostless mode — enterPlacement toasts the station's own `whyGround`
+and stays in the menu.
+**The look** (render.js `drawPlaceGrid`/`drawPlaceGhost`): a quiet surveyor's
+lattice over valid ground, cached full-map like the terrain (repainted only
+when the map or the amber state changes — one blit per frame); framed cells
+and slashed obstructions only NEAR the ghost, so detail follows the finger;
+true art in the ghost (bldSprite + blitBld — a PNG ghost keeps its anchor);
+state never rides on color alone (slash/check/hourglass shapes); effect
+radii (tower range, farm orchard reach, war-camp range + build reach) as
+dashed rings. Measured on the dense day-320 save: frame p50/p95 UNCHANGED
+with the overlay on, map build ~1–11ms on entry only. `UI.cue` is the
+subtle audio/haptic tick (localStorage `neo-sfx`='0' silences; there is no
+other sound system yet). All placement state is UI-local, never saved;
+`exitPlacement` is the only exit and newGame/loadJSON both call it.
 
 **Art lands by FILENAME, never by manifest** (`tests/art-pipeline.mjs`, full
 rules in `ART_PLAN.md`): `assets/buildings/{id}-l{level}.png` — all lowercase

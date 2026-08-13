@@ -155,6 +155,34 @@
   .bbtn .bname { font-size: 9px; font-weight: 700; }
   .bbtn .bcost { font-size: 9px; color: var(--dim); }
 
+  /* ---- placement mode: the ✓/✗ pair and the reason chip ---- */
+  #placeUI { position: fixed; inset: 0; z-index: 20; pointer-events: none; display: none; }
+  #placeBtns { position: absolute; left: 0; top: 0; display: flex; gap: 20px; pointer-events: none; }
+  #placeBtns button {
+    pointer-events: auto;
+    width: 54px; height: 54px; border-radius: 50%;
+    font-size: 26px; font-weight: 800; line-height: 1;
+    border: 2px solid; cursor: pointer;
+    box-shadow: 0 3px 10px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.12);
+    -webkit-tap-highlight-color: transparent;
+  }
+  #placeOk { background: #3f6b2e; border-color: #9ed678; color: #eaf6dc; }
+  #placeOk:active { transform: translateY(1px); background: #4a7d36; }
+  /* disabled = present-but-locked, never invisible: dark ring, grey fill,
+     clear glyph — and it stays tappable so the refusal can SAY why */
+  #placeOk.off { background: #3a3d33; border-color: #7b7f70; color: #b9bdae; opacity: .8; }
+  #placeNo { background: #6b2f26; border-color: #e08a74; color: #f8e4dc; }
+  #placeNo:active { transform: translateY(1px); background: #7d3a2e; }
+  #placeWhy {
+    position: absolute; left: 0; top: 0; display: none;
+    max-width: 260px; padding: 6px 12px; border-radius: 6px;
+    background: rgba(30,22,14,.92); border: 1px solid #a05a48;
+    color: #f0d8cc; font-size: 13px; font-weight: 700; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; letter-spacing: .2px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.5);
+  }
+  #placeWhy.amber { border-color: #c8a050; color: #f0e0b8; }
+
   /* ---- context panel ---- */
   #panel { display: none; }
   #panel.show { display: block; }

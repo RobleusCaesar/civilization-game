@@ -1013,6 +1013,236 @@ const R = {
              w: dw, h: dh };
   },
 
+  /* ============== PLACEMENT MODE RENDERING (tests/placement.mjs) ==============
+     The design brief: quiet, legible, and never color-alone. Valid cells wear
+     a soft green pane with corner ticks; invalid cells a fainter red pane cut
+     by a diagonal slash (the SHAPE difference carries the meaning for
+     colorblind players); the amber "saving up" state re-dresses the valid
+     cells without changing their shape. All three are pre-rendered once at
+     tile size and blitted — the per-frame cost is a lookup and a drawImage
+     per visible cell. */
+  _placeCells: null,
+  _placeCellBucket: 0,
+  /* cell art is re-rendered per ZOOM BUCKET (k ≈ 1/cam.z, quantized) so the
+     lattice reads ~1px on screen at every zoom — baked at tile size it
+     fattened into bright brackets zoomed in and dissolved to sub-pixel noise
+     zoomed out (the design review). Buckets change rarely (a pinch crossing
+     a quarter-step), and the full-map cache repaints with them. */
+  _placeCell(kind) {
+    const k = Math.round(Math.max(0.4, Math.min(2, 1 / this.cam.z)) * 4) / 4;
+    if (this._placeCellBucket !== k) { this._placeCells = null; this._placeCellBucket = k; }
+    if (!this._placeCells) {
+      const TL = CFG.TILE;
+      /* the VALID field is a surveyor's grid — a whisper of a pane and four
+         corner dots, calm enough that the town still reads over it. The
+         louder framed look is reserved for NEAR cells (around the ghost,
+         where the eye is working) and the invalid slash for near
+         obstructions only — detail follows the finger, the far field
+         stays quiet. */
+      const k = this._placeCellBucket;
+      const pane = (fill, line, dim) => {
+        const c = document.createElement('canvas'); c.width = c.height = TL;
+        const q = c.getContext('2d');
+        q.fillStyle = fill; q.fillRect(1, 1, TL - 2, TL - 2);
+        q.strokeStyle = dim; q.lineWidth = 1 * k;      // a hairline lattice, screen-true
+        q.strokeRect(1.5, 1.5, TL - 3, TL - 3);
+        q.fillStyle = line;
+        const ps = 3 * k;
+        for (const [px, py] of [[1, 1], [TL - 1 - ps, 1], [1, TL - 1 - ps], [TL - 1 - ps, TL - 1 - ps]])
+          q.fillRect(px, py, ps, ps);                  // surveyor's corner pips
+        return c;
+      };
+      const framed = (fill, line) => {
+        const c = document.createElement('canvas'); c.width = c.height = TL;
+        const q = c.getContext('2d');
+        q.fillStyle = fill; q.fillRect(1, 1, TL - 2, TL - 2);
+        q.strokeStyle = line; q.lineWidth = 1.2 * k;
+        q.strokeRect(1.5, 1.5, TL - 3, TL - 3);
+        return c;
+      };
+      const slashed = (fill, line) => {
+        const c = document.createElement('canvas'); c.width = c.height = TL;
+        const q = c.getContext('2d');
+        q.fillStyle = fill; q.fillRect(1, 1, TL - 2, TL - 2);
+        q.strokeStyle = line; q.lineWidth = 1.2 * k;
+        q.strokeRect(1.5, 1.5, TL - 3, TL - 3);
+        // the refused-plot cue: one slash — carried by LUMINANCE, not hue
+        // (red-on-green is the classic deuteranopia trap): a dark underlay
+        // stroke with a light stroke over it reads for every eye
+        q.lineWidth = 4 * k; q.strokeStyle = 'rgba(20,12,8,0.55)'; q.beginPath();
+        q.moveTo(8, TL - 8); q.lineTo(TL - 8, 8); q.stroke();
+        q.lineWidth = 2 * k; q.strokeStyle = line; q.beginPath();
+        q.moveTo(8, TL - 8); q.lineTo(TL - 8, 8); q.stroke();
+        return c;
+      };
+      this._placeCells = {
+        ok:       pane('rgba(125,187,94,0.09)', 'rgba(190,235,150,0.7)', 'rgba(170,220,130,0.18)'),
+        amber:    pane('rgba(226,178,74,0.08)', 'rgba(240,210,140,0.7)', 'rgba(232,200,130,0.18)'),
+        okNear:   framed('rgba(125,187,94,0.12)', 'rgba(170,220,130,0.55)'),
+        amberNear: framed('rgba(226,178,74,0.11)', 'rgba(232,200,130,0.5)'),
+        badNear:  slashed('rgba(214,84,62,0.11)', 'rgba(230,116,92,0.48)'),
+      };
+    }
+    return this._placeCells[kind];
+  },
+  PLACE_NEAR: 2.5,   // Chebyshev tiles around the ghost that get the detailed cells
+  /* THE FAR LATTICE IS CACHED LIKE THE TERRAIN (the frame must never pay for
+     bookkeeping): every valid cell's quiet pane is painted ONCE into a
+     full-map offscreen canvas whenever the validity map (or the amber state)
+     actually changes, and each frame blits the one visible slice of it —
+     zoomed all the way out over a dense late-game base, the grid costs one
+     drawImage plus the handful of live near-ring cells around the ghost.
+     Freed on exitPlacement (drawPlaceGrid nulls it when the map is gone). */
+  _placeGridCv: null,
+  _placeGridStamp: null,
+  _paintPlaceGridCache(m, amber) {
+    const TL = CFG.TILE;
+    if (!this._placeGridCv) {
+      this._placeGridCv = document.createElement('canvas');
+      this._placeGridCv.width = CFG.W * TL; this._placeGridCv.height = CFG.H * TL;
+    }
+    const q = this._placeGridCv.getContext('2d');
+    q.clearRect(0, 0, this._placeGridCv.width, this._placeGridCv.height);
+    const far = this._placeCell(amber ? 'amber' : 'ok');
+    for (let i = 0; i < m.length; i++)
+      if (m[i] === 0) q.drawImage(far, (i % CFG.W) * TL, ((i / CFG.W) | 0) * TL);
+  },
+  drawPlaceGrid(g) {
+    const m = UI.placeMap, gh = UI.placeGhost;
+    if (!m || !UI.placing || UI.placing === 'wall' || !gh) {
+      if (!m && this._placeGridCv) { this._placeGridCv = null; this._placeGridStamp = null; }
+      return;
+    }
+    const TL = CFG.TILE, sz = Bld.size(UI.placing);
+    const amber = !!(UI.placeVerdict && !UI.placeVerdict.afford);
+    const stamp = UI.placeMapStamp;
+    const bucket = Math.round(Math.max(0.4, Math.min(2, 1 / this.cam.z)) * 4) / 4;
+    if (!this._placeGridCv || this._placeGridStamp !== stamp || this._placeGridAmber !== amber ||
+        this._placeGridBucket !== bucket) {
+      this._paintPlaceGridCache(m, amber);
+      this._placeGridStamp = stamp; this._placeGridAmber = amber; this._placeGridBucket = bucket;
+    }
+    // one blit of the visible slice of the cached lattice
+    const wx = Math.max(0, this.cam.x), wy = Math.max(0, this.cam.y);
+    const ww = Math.min(this._placeGridCv.width - wx, this.viewW() / this.cam.z);
+    const wh = Math.min(this._placeGridCv.height - wy, this.viewH() / this.cam.z);
+    if (ww > 0 && wh > 0) g.drawImage(this._placeGridCv, wx, wy, ww, wh, wx, wy, ww, wh);
+    // …and the LIVE detail ring around the ghost: framed valid cells, slashed
+    // obstructions — a few dozen cells at most, redrawn as the ghost moves
+    const near = this._placeCell(amber ? 'amberNear' : 'okNear');
+    const bad = this._placeCell('badNear');
+    const NR = Math.ceil(this.PLACE_NEAR + (sz - 1) / 2);
+    const gx = gh.x + ((sz / 2) | 0), gy = gh.y + ((sz / 2) | 0);
+    for (let y = Math.max(1, gy - NR); y <= Math.min(CFG.H - 2, gy + NR); y++)
+      for (let x = Math.max(1, gx - NR); x <= Math.min(CFG.W - 2, gx + NR); x++) {
+        const v = m[y * CFG.W + x];
+        if (v === 255) continue;
+        // the framed cell draws OVER the cached pane (never clearRect here —
+        // that would punch a hole through to the page under the terrain)
+        g.drawImage(v === 0 ? near : bad, x * TL, y * TL);
+      }
+  },
+
+  // a drawable tinted to one flat color, silhouette-true — cached per base
+  // canvas per color (the darkOf/WeakMap pattern); _cfArt rides along so a
+  // tinted PNG ghost keeps its anchoring
+  _tintCache: new WeakMap(),
+  tintOf(base, col) {
+    let e = this._tintCache.get(base);
+    if (!e) { e = {}; this._tintCache.set(base, e); }
+    if (e[col]) return e[col];
+    const c = document.createElement('canvas'); c.width = base.width; c.height = base.height;
+    const q = c.getContext('2d');
+    q.drawImage(base, 0, 0);
+    q.globalCompositeOperation = 'source-atop';
+    q.fillStyle = col; q.fillRect(0, 0, c.width, c.height);
+    c._cfArt = base._cfArt;
+    return e[col] = c;
+  },
+
+  /* the ghost: the building's TRUE art (image or procedural, via the same
+     bldSprite + blitBld path the standing building will use) at its TRUE
+     footprint, translucent, washed green/red/amber, with a ✓ / ⃠ / ⏳ badge
+     so state never rides on color alone — plus any effect radius the
+     placement decision should know about. */
+  drawPlaceGhost(g) {
+    const gh = UI.placeGhost, key = UI.placing;
+    if (!gh || !key || key === 'wall') return;
+    const TL = CFG.TILE, sz = Bld.size(key), bw = sz * TL;
+    const bx = gh.x * TL, by = gh.y * TL;
+    const v = UI.placeVerdict || { ok: true, afford: true };
+    const state = !v.ok ? 'bad' : (v.afford ? 'ok' : 'amber');
+    const line = state === 'ok' ? 'rgba(158,214,120,0.95)'
+               : state === 'amber' ? 'rgba(232,196,120,0.95)' : 'rgba(230,106,84,0.95)';
+    const wash = state === 'ok' ? 'rgba(125,187,94,0.30)'
+               : state === 'amber' ? 'rgba(226,178,74,0.30)' : 'rgba(220,80,58,0.34)';
+
+    // EFFECT RADIUS — a soft ring under everything: a tower's arrows, a war
+    // camp's arrows + its forward build reach, a farm's orchard bonus reach
+    const d = CFG.BUILDINGS[key];
+    const spec = Bld.buildSpec(key, 'P');
+    const lv = (spec.level || 1);
+    const rings = [];
+    const lvDef = d.levels[Math.min(lv, d.levels.length) - 1];
+    if (lvDef && lvDef.range) rings.push({ r: lvDef.range, col: 'rgba(224,140,96,0.55)' });
+    if (d.near && d.near.radius) rings.push({ r: d.near.radius, col: 'rgba(150,210,110,0.5)' });
+    if (key === 'warcamp') rings.push({ r: CFG.BUILD_RANGE, col: 'rgba(210,190,140,0.4)' });
+    const cx = bx + bw / 2, cy = by + bw / 2;
+    for (const ring of rings) {
+      g.beginPath();
+      g.setLineDash([6, 5]);
+      g.arc(cx, cy, ring.r * TL, 0, Math.PI * 2);
+      g.strokeStyle = ring.col; g.lineWidth = 1.5; g.stroke();
+      g.setLineDash([]);
+      g.fillStyle = ring.col.replace(/[\d.]+\)$/, '0.05)');
+      g.fill();
+    }
+
+    // footprint pane + strong outline
+    g.fillStyle = wash.replace(/[\d.]+\)$/, '0.16)');
+    g.fillRect(bx, by, bw, bw);
+    g.strokeStyle = line; g.lineWidth = 2;
+    g.strokeRect(bx + 1, by + 1, bw - 2, bw - 2);
+
+    // the building itself — true art, true anchor, translucent, with only a
+    // BREATH of wash: the pane, outline and badge carry the validity, and a
+    // heavier tint flattened the art into a green blob (the design review)
+    const bobj = { key, owner: 'P', level: lv, x: gh.x, y: gh.y, construction: 0,
+                   sz, id: 'g' + gh.x + '_' + gh.y };
+    const spr = this.bldSprite(bobj);
+    g.globalAlpha = 0.78;
+    this.blitBld(g, spr, bx, by, bw, bw);
+    g.globalAlpha = 0.15;
+    this.blitBld(g, this.tintOf(spr, line), bx, by, bw, bw);
+    g.globalAlpha = 1;
+
+    /* the badge: shape, not just color — ✓ ready · ⃠ refused · hourglass
+       saving. Drawn only while the ghost is UNPARKED (dragging or hover):
+       once it is set, the ✓/✗ buttons themselves carry the state and a
+       second glyph would just be clutter. */
+    if (!gh.set || UI.placeDragging) {
+      // CONSTANT SCREEN SIZE (design review): the badge is a touch-scale read,
+      // so it holds its size whatever the zoom — divide by cam.z in world space
+      const k = Math.max(0.6, 1 / this.cam.z);
+      const r = 8 * k, bxc = bx + bw - 1, byc = by + 1;
+      g.beginPath(); g.arc(bxc, byc, r, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(24,18,12,0.85)'; g.fill();
+      g.strokeStyle = line; g.lineWidth = 2 * k; g.stroke();
+      g.lineWidth = 2.2 * k; g.strokeStyle = line; g.beginPath();
+      if (state === 'ok') {
+        g.moveTo(bxc - 4 * k, byc + 0.5 * k); g.lineTo(bxc - 1.5 * k, byc + 3 * k); g.lineTo(bxc + 4 * k, byc - 3 * k);
+      } else if (state === 'bad') {
+        g.arc(bxc, byc, 4.5 * k, 0, Math.PI * 2);
+        g.moveTo(bxc - 3.2 * k, byc + 3.2 * k); g.lineTo(bxc + 3.2 * k, byc - 3.2 * k);
+      } else {
+        // an hourglass: still saving up
+        g.moveTo(bxc - 3.2 * k, byc - 3.8 * k); g.lineTo(bxc + 3.2 * k, byc - 3.8 * k); g.lineTo(bxc - 3.2 * k, byc + 3.8 * k);
+        g.lineTo(bxc + 3.2 * k, byc + 3.8 * k); g.closePath();
+      }
+      g.stroke();
+    }
+  },
+
   bldSprite(b, lv) {
     const L = Math.max(1, lv || b.level);
     /* A DOCK FACES ITS SHORE. The deck runs out from the land, and which flank
@@ -2092,6 +2322,12 @@ const R = {
       if (t.total) this.bar(g, wx + 3, wy - 3, TL - 6, 3, prog, '#c9a84c');
     }
 
+    // PLACEMENT GRID (tests/placement.mjs): the validity map as quiet ground
+    // markings — under the buildings, so the town reads over it. Viewport
+    // cells only; three pre-rendered cell sprites, so the whole overlay is
+    // one small blit per visible cell and nothing is computed here.
+    this.drawPlaceGrid(g);
+
     // remembered buildings (ghosts in the grey fog) — drawn as last seen.
     // CLIPPED TO THE VIEWPORT: seenB spans the whole explored map and only
     // ever grows, so late in a run this loop was issuing hundreds of blits
@@ -2769,24 +3005,9 @@ const R = {
         g.fillRect(t.x * TL, t.y * TL, TL, TL);
       }
     } else if (UI.placing) {
-      const t = UI.placeTile;
-      if (t) {
-        const ok = Bld.canPlace('P', UI.placing, t.x, t.y).ok;
-        // the ghost shows what will ACTUALLY go up: walls and gates are raised at
-        // the village-wide fort tier, so once the ring is stone the ghost is too
-        // (and matches the build-menu icon — see UI.menuIconLevel)
-        const fi = Math.max(0, Math.min(2, ((S.wallLevel || 1) - 1)));
-        const spr = UI.placing === 'gate'
-          ? Sprites.gateMask[fi][this.gateVerticalAt(t.x, t.y) ? 1 : 0]
-          : UI.placing === 'wall'
-            ? Sprites.wallMask[fi][this.wallMaskAt(t.x, t.y)]
-            : Sprites.building[UI.placing][0];
-        g.globalAlpha = 0.6;
-        g.drawImage(spr, t.x * TL, t.y * TL);
-        g.globalAlpha = 1;
-        g.fillStyle = ok ? 'rgba(125,187,94,0.35)' : 'rgba(224,101,80,0.4)';
-        g.fillRect(t.x * TL, t.y * TL, TL, TL);
-      }
+      // the true-art, true-footprint placement ghost + its ✓/⃠ badge and any
+      // effect radius — the whole look lives in drawPlaceGhost
+      this.drawPlaceGhost(g);
     }
 
     // sapper dig/clear line being dragged: amber where workable, red where not

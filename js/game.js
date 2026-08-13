@@ -272,7 +272,7 @@ const G = {
     R.onNewGame();
     this.updateVisibility();
     UI.deselect();
-    UI.placing = null;
+    if (UI.exitPlacement) UI.exitPlacement();   // ghost, grid, ✓/✗ — all of it
     UI.builderFor = null;
     UI.settingRally = null;
     UI._healLog = {};   // real-time heal-spam limit is UI-local — a fresh game must not
@@ -1535,7 +1535,7 @@ const G = {
     S.paused = true;
     document.getElementById('btnPause').textContent = '▶';
     UI.deselect();
-    UI.placing = null;
+    if (UI.exitPlacement) UI.exitPlacement();   // a load mid-placement cancels the mode whole
     UI._healLog = {};   // see newGame — a loaded save must not inherit a stale cooldown
     this._marvel = false;   // a save loaded mid-marvel is just a save
     this._dying = null;     // …and an announced-but-unfallen villager lives

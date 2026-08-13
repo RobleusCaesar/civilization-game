@@ -1605,6 +1605,10 @@ const AI = {
     if (!Bld.canAfford(CFG.BUILDINGS.wonder.levels[0].cost, ai.res)) return false;
     const spot = this.plotWonder();
     if (!spot) return false;
+    // THE ONE PLACEMENT TRUTH (tests/placement.mjs): this was the single AI
+    // path that placed without asking canPlace — plotWonder's own scan missed
+    // canPlace-only clamps (the gold-seam footprint rule, the seal flood)
+    if (!Bld.canPlace('A', 'wonder', spot.x, spot.y).ok) return false;
     return !!Bld.place('A', 'wonder', spot.x, spot.y);
   },
   // a 3×3 of clear ground near the hall that the villagers can actually stand

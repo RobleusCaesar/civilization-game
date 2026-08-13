@@ -210,12 +210,17 @@ const out = await p.evaluate(() => {
     const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0, R = AI.WALL_R;
     S.ai.res = { food: 900, wood: 900, stone: 900, gold: 900 };
     S.ai.acts = 99;
-    // ring the rival's own town completely, by hand
+    // ring the rival's own town completely, by hand. noSeal on purpose: since
+    // tests/placement.mjs, canPlace itself REFUSES the closing stone (code
+    // 'sealed', owner-agnostic) — this test deliberately CONSTRUCTS the
+    // pathological sealed state to prove the detection and the cure
+    // (openTheGate) still work on a town that got sealed some other way
+    // (an old save, razed gates).
     let laid = 0;
     for (const [x, y] of AI.wallRing(tc)) {
       if (!MapGen.inB(x, y) || Bld.at(x, y)) continue;
       G.clearFootprint(x, y, 'wall');
-      if (Bld.canPlace('A', 'wall', x, y).ok && Bld.place('A', 'wall', x, y, { free: true, instant: true })) laid++;
+      if (Bld.canPlace('A', 'wall', x, y, { noSeal: true }).ok && Bld.place('A', 'wall', x, y, { free: true, instant: true })) laid++;
     }
     const sealed = !AI.townOut(tc);
     ck('sealDetected', laid > 8 && sealed, `laid ${laid} sections, sealed=${sealed}`);

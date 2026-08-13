@@ -571,9 +571,9 @@ const Bld = {
     for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) {
       const px = x + dx, py = y + dy;
       if (!MapGen.onBoard(px, py))
-        return { ok: false, why: 'Too close to the map edge' };   // the outer ring is off-map black void
+        return { ok: false, code: 'edge', why: 'Too close to the map edge' };   // the outer ring is off-map black void
       if (!MapGen.inB(px, py) || S.map.terrain[MapGen.idx(px, py)] !== T.WATER || this.at(px, py))
-        return { ok: false, why: 'Docks are built on open water' };
+        return { ok: false, code: 'water', why: 'Docks are built on open water' };
     }
     // …and a walkable shore anywhere along the quay's edge, not just beside its
     // anchor tile — a 2×2 dock may touch land on any of its eight flanks
@@ -584,7 +584,7 @@ const Bld = {
         if (nx >= x && nx < x + sz && ny >= y && ny < y + sz) continue;   // inside the quay itself
         if (MapGen.inB(nx, ny) && Path.passable(nx, ny, owner)) { shore = true; break; }
       }
-    if (!shore) return { ok: false, why: 'Needs a walkable shore beside it' };
+    if (!shore) return { ok: false, code: 'shore', why: 'Needs a walkable shore beside it' };
     // flood the water body up to the required size
     const seen = new Set([x + ',' + y]);
     const q = [{ x, y }];
@@ -600,7 +600,7 @@ const Bld = {
       }
     }
     if (n < CFG.DOCK_MIN_WATER)
-      return { ok: false, why: `This water is too small (needs ${CFG.DOCK_MIN_WATER}+ tiles)` };
+      return { ok: false, code: 'water', why: `This water is too small (needs ${CFG.DOCK_MIN_WATER}+ tiles)` };
     return { ok: true };
   },
 
@@ -703,9 +703,27 @@ const Bld = {
     return false;
   },
 
-  canPlace(owner, key, x, y) {
+  /* THE ONE PLACEMENT TRUTH (tests/placement.mjs). Every consumer of "may a
+     building stand here" asks THIS function — the placement grid's tinting,
+     the ghost, the confirm re-validation, Bld.place itself, and the rival
+     AI's plot/tryBuild — so the player and the chief can never disagree
+     about what is buildable. Each refusal carries a machine-readable `code`
+     beside its human `why`, so the UI can style states differently (amber
+     for `cost`, nothing at all for `unexplored`) without string-matching.
+
+     opts:
+       noCost  — skip the resource check (the placement grid uses this: an
+                 unaffordable spot is a DIFFERENT state from an unbuildable
+                 one, and the player may scout ground they are saving for)
+       noSeal  — skip the seal flood (the grid tint uses this; the ghost,
+                 confirm and the AI's validate-on-pick all keep it — the
+                 same validate-on-the-pick-never-the-scan rule AI.plot
+                 follows, tests/wall-line.mjs) */
+  canPlace(owner, key, x, y, opts) {
+    opts = opts || {};
     const d = this.def(key);
-    if (!d) return { ok: false, why: '?' };
+    if (!d) return { ok: false, code: 'key', why: '?' };
+    if (!MapGen.onBoard(x, y)) return { ok: false, code: 'edge', why: 'Off the map' };
     if (key === 'dock') {
       const site = this.dockSiteOk(x, y, owner);
       if (!site.ok) return site;
@@ -714,14 +732,16 @@ const Bld = {
       const s = this.size(key);
       for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++)
         if (!this.tileFree(x + dx, y + dy))
-          return { ok: false, why: this.ashAt(x + dx, y + dy) ? 'Ashes still smoulder here' : 'Blocked tile' };
+          return this.ashAt(x + dx, y + dy)
+            ? { ok: false, code: 'ash', why: 'Ashes still smoulder here' }
+            : { ok: false, code: 'blocked', why: this._blockedWhy(x + dx, y + dy) };
       /* A SEAM IS FOR THE MINE, AND THE MINE IS FOR A SEAM (tests/gold-mine.mjs).
          Both halves matter: a mine sited on ordinary grass would be gold from
          nothing, and a house dropped on a seam would spend the map's rarest
          tile on a hut — so the clamp runs in both directions. */
       const seam = S.map.terrain[MapGen.idx(x, y)] === T.GOLDORE;
       if (d.onTerrain === T.GOLDORE && !seam)
-        return { ok: false, why: 'A Gold Mine is sunk on a gold seam — go and find one' };
+        return { ok: false, code: 'needSeam', why: 'A Gold Mine is sunk on a gold seam — go and find one' };
       /* …and a PRIMARY WORK may not pave one over either. The mine is 1×1, so
          its own anchor tile is the whole of it; a 2×2 barracks dropped one
          tile off a seam would bury the map's rarest ground under a hut without
@@ -730,28 +750,28 @@ const Bld = {
       for (let dy = 0; dy < s && !anySeam; dy++) for (let dx = 0; dx < s; dx++)
         if (S.map.terrain[MapGen.idx(x + dx, y + dy)] === T.GOLDORE) { anySeam = true; break; }
       if (anySeam && d.onTerrain !== T.GOLDORE)
-        return { ok: false, why: 'That is a gold seam — only a Gold Mine belongs there' };
+        return { ok: false, code: 'seam', why: 'That is a gold seam — only a Gold Mine belongs there' };
       // …and every OTHER station stands on ground its own resource was worked
       // out of (tests/worked-ground.mjs). Owner-agnostic: the chief obeys it too.
       const gnd = this.stationGround(key, x, y);
-      if (!gnd.ok) return gnd;
+      if (!gnd.ok) { gnd.code = gnd.code || 'ground'; return gnd; }
     }
     // TC-level gate (player only — the rival's scripted build order sets its own pace)
     if (owner === 'P' && d.reqTC) {
       const tc = this.tcOf('P');
       if (!tc || tc.level < d.reqTC)
-        return { ok: false, why: `Needs Town Center Lv ${d.reqTC}` };
+        return { ok: false, code: 'reqTC', why: `Needs Town Center Lv ${d.reqTC}` };
     }
-    if (owner === 'P' && !S.map.explored[MapGen.idx(x, y)]) return { ok: false, why: 'Unexplored' };
-    if (owner === 'P' && this.size(key) > 1) {
+    if (owner === 'P') {
       const s = this.size(key);
       for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++)
-        if (!S.map.explored[MapGen.idx(x + dx, y + dy)]) return { ok: false, why: 'Unexplored' };
+        if (!S.map.explored[MapGen.idx(x + dx, y + dy)])
+          return { ok: false, code: 'unexplored', why: 'Unexplored' };
     }
-    if (d.unique && this.list(owner).some(b => b.key === key)) return { ok: false, why: 'Already built' };
+    if (d.unique && this.list(owner).some(b => b.key === key)) return { ok: false, code: 'unique', why: 'Already built' };
     // capped structures (War Camp) — only so many forward bases in the field at once
     if (d.max && this.list(owner).filter(b => b.key === key).length >= d.max)
-      return { ok: false, why: `Only ${d.max} ${d.name}${d.max > 1 ? 's' : ''} at a time` };
+      return { ok: false, code: 'max', why: `Only ${d.max} ${d.name}${d.max > 1 ? 's' : ''} at a time` };
     // ANCHORS & the front line. Fortifications (walls/gates) and the freely-placed
     // War Camp may be raised anywhere explored. Everything else must sit within reach
     // of an ANCHOR: a home building (near the town) or a War Camp (the mini-TC of the
@@ -780,16 +800,105 @@ const Bld = {
     const nearHome = homeAnchors.some(b => Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
     const nearCamp = mine.some(b => b.key === 'warcamp' && Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
     if (!freePlace && mine.length && !nearHome && !nearCamp)
-      return { ok: false, why: theirYard && this.needsWorkedGround(key)
+      return { ok: false, code: 'anchor', why: theirYard && this.needsWorkedGround(key)
         ? 'Another tribe keeps its fires here — fell their woods if you like, but the camp goes up by your own'
         : (mine.some(b => b.key === 'warcamp') || homeAnchors.length ? 'Too far — build by your town or a War Camp' : 'Too far from your buildings') };
     // a forward camp is a MILITARY staging ground — no relocating farms/houses/economy
     // to the front. (Near home, anything goes as normal.)
     if (!freePlace && !nearHome && nearCamp && CFG.STAGING_BUILD.indexOf(key) < 0)
-      return { ok: false, why: 'Only military buildings at a War Camp' };
-    const res = owner === 'P' ? S.res : S.ai.res;
-    if (!this.canAfford(this.effCost(owner, key), res)) return { ok: false, why: 'Not enough resources' };
+      return { ok: false, code: 'staging', why: 'Only military buildings at a War Camp' };
+    /* A PLAYER MUST NOT WALL THEMSELVES IN BY ACCIDENT (tests/placement.mjs).
+       Owner-agnostic seal clamp: refuse the stone that would cut the owner's
+       hall off from the wide map. Gates are exempt — a gate opens for its
+       owner — and it only fires when the town is currently OPEN (a town
+       already sealed can't be made worse, and razing is the cure). Behind
+       the cheap perimeter prefilter, and skippable (noSeal) for the grid
+       scan: floods are validated on the PICK, never on the scan — the same
+       rule AI.plot's pickSealFree follows. */
+    if (!opts.noSeal && key !== 'gate' && this._sealPinch(key, x, y) && this.wouldSeal(owner, key, x, y))
+      return { ok: false, code: 'sealed', why: 'That would seal your people in — leave a gap or use a gate' };
+    if (!opts.noCost) {
+      const res = owner === 'P' ? S.res : S.ai.res;
+      if (!this.canAfford(this.effCost(owner, key), res))
+        return { ok: false, code: 'cost', why: 'Not enough resources' };
+    }
     return { ok: true };
+  },
+
+  // why is this tile not buildable ground? — the distinct label the placement
+  // UI shows, derived from what actually stands there
+  _blockedWhy(x, y) {
+    if (!MapGen.onBoard(x, y)) return 'Off the map';
+    const b = this.at(x, y);
+    if (b) return 'Blocked by a building';
+    const t = S.map.terrain[MapGen.idx(x, y)];
+    const N = {
+      [T.WATER]: 'Open water', [T.FOREST]: 'Blocked by forest',
+      [T.MOUNTAIN]: 'Blocked by rock', [T.FERTILE]: 'Blocked by orchards',
+      [T.MOAT]: 'A moat is dug here',
+    };
+    return N[t] || 'Blocked tile';
+  },
+
+  /* the seal PREFILTER: if every tile on the footprint's outer perimeter is
+     open walkable ground, the perimeter ring itself connects every approach —
+     placing the building cannot disconnect anything, so no flood is owed.
+     Only a footprint already butted against something solid can pinch. */
+  _sealPinch(key, x, y) {
+    const s = this.size(key);
+    for (let dy = -1; dy <= s; dy++) for (let dx = -1; dx <= s; dx++) {
+      if (dx >= 0 && dx < s && dy >= 0 && dy < s) continue;
+      if (!MapGen.inB(x + dx, y + dy) || !Path.passable(x + dx, y + dy)) return true;
+    }
+    return false;
+  },
+  /* would this footprint cut the owner's hall doorstep off from the map's
+     border ring? Flood owner-aware (own gates pass), wall/gate SITES solid
+     (intent counts — tests/work-order.mjs precedent), candidate footprint
+     virtually solid; early exit the moment the border band is reached. The
+     no-candidate "is the town open today" answer is cached against
+     (S.day, _blockGen) — force the lazily-invalidated block grid current
+     BEFORE reading the generation (the Bld.deckAt trap). */
+  wouldSeal(owner, key, x, y) {
+    if (!this._block) this.rebuildBlock();
+    const openNow = this._openToBorder(owner, null, null, null, null);
+    if (!openNow) return false;                    // already sealed — placing more can't be blamed
+    return !this._openToBorder(owner, x, y, this.size(key), key);
+  },
+  _openToBorder(owner, fx, fy, fs, fkey) {
+    const gen = this._blockGen || 0;
+    if (fx == null) {
+      const c = this._openC;
+      if (c && c.day === S.day && c.gen === gen && c.owner === owner) return c.val;
+    }
+    const W = CFG.W, H = CFG.H;
+    const inFoot = (x, y) => fx != null && x >= fx && x < fx + fs && y >= fy && y < fy + fs;
+    const seen = new Uint8Array(W * H);
+    const q = [];
+    const push = (x, y) => {
+      if (!MapGen.inB(x, y) || inFoot(x, y)) return;
+      const i = MapGen.idx(x, y);
+      if (seen[i]) return;
+      if (!Path.passable(x, y, owner)) return;
+      const b = this.at(x, y);
+      if (b && b.construction > 0 && (b.key === 'wall' || (b.key === 'gate' && b.owner !== owner))) return;
+      seen[i] = 1; q.push(i);
+    };
+    for (const i of Units.homeSteps(owner)) push(i % W, (i / W) | 0);
+    let open = false, h = 0;
+    while (h < q.length) {
+      const i = q[h++], x = i % W, y = (i / W) | 0;
+      if (x <= 1 || y <= 1 || x >= W - 2 || y >= H - 2) { open = true; break; }
+      push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1);
+    }
+    /* an EMPTY seed queue reads as NOT OPEN, deliberately, in both forms:
+       - candidate form: the footprint smothers the hall's every doorstep —
+         that IS the seal, and it must refuse;
+       - plain form: the hall has no doorstep at all (or no hall) — openNow
+         is then false and wouldSeal short-circuits to "allowed", because a
+         town already shut (or gone) can't be made worse by building. */
+    if (fx == null) this._openC = { day: S.day, gen, owner, val: open };
+    return open;
   },
 
   // what a placement really costs — ORIGIN CARDS discounts (Mason forts,
