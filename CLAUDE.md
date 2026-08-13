@@ -1761,8 +1761,15 @@ heartbeat) — never per frame; taps JUMP the ghost (never commit); a press ON
 the ghost drags it (riding `PLACE_LIFT` px above a touch so the thumb never
 covers it, with `PLACE_HYST` stickiness so a boundary finger never flickers);
 elsewhere still pans, two fingers still pinch; release parks it and the ✓/✗
-pair (44px+, repositioned to stay on-screen, chip on the opposite side)
-appears; ✓ RE-VALIDATES from scratch — the tint is never trusted. Esc = ✗
+pair (44px, BENEATH the footprint — under the doorstep, not on a neighbour's
+roof — flipping above only when the bottom bar is tight; chip on the opposite
+side) appears; ✓ RE-VALIDATES from scratch — the tint is never trusted.
+**The confirm throws dust** (`R.poofSheet`/`startPlacePoof`/`drawPlacePoofs`):
+a ring of two-tone dust billows out from UNDER the new site on all four
+sides — the materials landing — 7 pre-rendered frames per footprint size
+(≥5 by contract), one 850ms run, drawn over the units like the collapse
+dust; render-side only (`R.placePoofs`, the `R.collapses` rule), cleared in
+`onNewGame`, never in a save. Esc = ✗
 (menu back, choice intact), Enter = ✓, hover moves the ghost on desktop. The
 wall keeps its line-drag flow untouched (tests/work-order.mjs owns it). A key
 with NOWHERE valid to stand (a farm before any soil is picked bare) never

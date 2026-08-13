@@ -172,6 +172,23 @@ const out = await p.evaluate(() => {
     const built = Bld.at(tc.x + 3, tc.y + 3);
     ck('confirmStartsConstruction', !!built && built.key === 'house' && built.construction > 0, '');
     ck('confirmExitsTheModeWhole', UI.placing === null && UI.placeGhost === null && UI.placeMap === null, '');
+    // …and THE MATERIALS LAND: the confirm throws a ring of dust from under
+    // the new site — at least 5 frames, one run under a second, render-side
+    // only (the R.collapses rule), and it never overstays
+    ck('confirmThrowsTheDust', R.placePoofs.length === 1 &&
+      R.placePoofs[0].x === tc.x + 3 && R.placePoofs[0].sz === 1, '');
+    ck('theDustHasFiveFramesPlus', R.POOF_FRAMES >= 5 &&
+      R.poofSheet(1).frames.length === R.POOF_FRAMES, R.POOF_FRAMES + ' frames');
+    ck('theDustIsGoneInsideASecond', R.POOF_MS <= 1000, R.POOF_MS + 'ms');
+    {
+      const gg = R.cv.getContext('2d');
+      for (let i = 0; i < 30; i++) R.drawPlacePoofs(gg, 0.05);   // 1.5 simulated seconds
+      ck('theDustSettles', R.placePoofs.length === 0, '');
+      R.startPlacePoof(5, 5, 2);
+      G.newGame('pl6b', 'moderate', 'large'); Screens._demo = false; Screens.show('playing');
+      ck('noDustCarriesAcrossRuns', R.placePoofs.length === 0, '');
+      const tc2 = arena('pl6c'); R.centerOn(Bld.cx(tc2), Bld.cy(tc2));
+    }
     // cancel keeps the selection armed and reopens the menu
     UI.enterPlacement('tower');
     UI.cancelPlacement();

@@ -533,6 +533,7 @@ const R = {
   onNewGame() {
     this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
     this.mtnH = null;                                            // recompute the mountain height field for the new map
+    this.placePoofs = [];                                        // no dust carried across runs (the R.collapses rule)
     // pre-render the full terrain layer once
     const px = CFG.W * CFG.TILE;
     this.terrainCache = document.createElement('canvas');
@@ -1158,6 +1159,86 @@ const R = {
     q.fillStyle = col; q.fillRect(0, 0, c.width, c.height);
     c._cfArt = base._cfArt;
     return e[col] = c;
+  },
+
+  /* ---- THE CONFIRM POOF (tests/placement.mjs): the materials land. When ✓
+     is tapped, a ring of dust billows out from UNDER the new work site on
+     all four sides — as if the timber and stone just dropped out of the sky
+     onto the plot. Seven pre-rendered frames per footprint size (≥5 by
+     contract), one run lasting under a second: a cool beat that never
+     overstays. Render-side only (R.placePoofs, the R.collapses rule) —
+     never in a save, cleared in onNewGame. */
+  POOF_FRAMES: 7,
+  POOF_MS: 850,
+  _poofSheets: {},
+  poofSheet(sz) {
+    if (this._poofSheets[sz]) return this._poofSheets[sz];
+    const TL = CFG.TILE, pad = TL, side = sz * TL + pad * 2;
+    const frames = [];
+    const r = ART.rng(97 + sz * 13);
+    // fixed puff seeds around the footprint's perimeter, so the ring is the
+    // same shape every frame and reads as ONE cloud billowing, not noise
+    const seeds = [];
+    const N = 10 + sz * 4;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2 + r() * 0.4;
+      seeds.push({ a, sp: 0.7 + r() * 0.6, sz: 0.6 + r() * 0.7, wob: r() * Math.PI * 2 });
+    }
+    const DUST = ['#8a7355', '#a89272', '#c9b896', '#e0d4b4'];
+    for (let f = 0; f < this.POOF_FRAMES; f++) {
+      const t = f / (this.POOF_FRAMES - 1);              // 0..1 through the second
+      const c = document.createElement('canvas'); c.width = c.height = side;
+      const q = c.getContext('2d');
+      const cx = side / 2, cy = side / 2;
+      const spread = Math.sin(Math.min(1, t * 1.15) * Math.PI / 2);   // fast burst, drifting finish
+      const fade = t < 0.25 ? 1 : 1 - (t - 0.25) / 0.75;
+      // the ground wash under the plot — the impact itself
+      if (t < 0.5) {
+        q.globalAlpha = 0.35 * (1 - t * 2);
+        q.fillStyle = DUST[2];
+        q.beginPath(); q.ellipse(cx, cy, sz * TL * 0.5, sz * TL * 0.34, 0, 0, Math.PI * 2); q.fill();
+      }
+      // the billowing ring: each puff pushes outward from the footprint edge,
+      // swells as it travels, thins as it dies — biased wide (dust hugs ground)
+      for (const s of seeds) {
+        const dist = (sz * TL * 0.5) + spread * s.sp * (TL * 0.55 + sz * 3);
+        const px = cx + Math.cos(s.a) * dist * 1.12;
+        const py = cy + Math.sin(s.a) * dist * 0.72 - spread * 2;   // squashed: seen from above
+        const pr = (3 + s.sz * 4 + spread * s.sz * 5) * (0.75 + sz * 0.12);
+        q.globalAlpha = 0.75 * fade * (0.7 + 0.3 * Math.sin(s.wob + t * 5));
+        // two-tone puff: dark core, light crown — reads as a rolling cloud
+        q.fillStyle = DUST[(f + (s.wob * 3 | 0)) % 2];
+        q.beginPath(); q.arc(px, py + 1, pr, 0, Math.PI * 2); q.fill();
+        q.fillStyle = DUST[2 + ((s.wob * 7 | 0) % 2)];
+        q.beginPath(); q.arc(px - pr * 0.25, py - pr * 0.3, pr * 0.62, 0, Math.PI * 2); q.fill();
+      }
+      // a few motes thrown clear of the ring
+      q.globalAlpha = 0.7 * fade;
+      q.fillStyle = DUST[3];
+      for (let i = 0; i < 6 + sz * 3; i++) {
+        const a = r() * Math.PI * 2, d2 = (sz * TL * 0.5) + spread * (TL * 0.8 + r() * TL * 0.5);
+        q.fillRect(cx + Math.cos(a) * d2 * 1.1, cy + Math.sin(a) * d2 * 0.7 - spread * 4, 2, 2);
+      }
+      q.globalAlpha = 1;
+      frames.push(c);
+    }
+    return this._poofSheets[sz] = { frames, pad };
+  },
+  placePoofs: [],
+  startPlacePoof(x, y, sz) {
+    this.placePoofs.push({ x, y, sz: sz || 1, t: 0 });
+  },
+  drawPlacePoofs(g, dt) {
+    if (!this.placePoofs.length) return;
+    const TL = CFG.TILE;
+    for (let i = this.placePoofs.length - 1; i >= 0; i--) {
+      const p = this.placePoofs[i];
+      p.t += dt * 1000;
+      if (p.t >= this.POOF_MS) { this.placePoofs.splice(i, 1); continue; }
+      const sheet = this.poofSheet(p.sz);
+      const f = Math.min(this.POOF_FRAMES - 1, (p.t / this.POOF_MS * this.POOF_FRAMES) | 0);
+      g.drawImage(sheet.frames[f], p.x * TL - sheet.pad, p.y * TL - sheet.pad);
+    }
   },
 
   /* the ghost: the building's TRUE art (image or procedural, via the same
@@ -2993,6 +3074,10 @@ const R = {
       }
       g.globalAlpha = 1;
     }
+
+    // construction-start dust — drawn over the units, so the cloud rolls
+    // over whoever is standing at the new site (the collapse-dust rule)
+    this.drawPlacePoofs(g, dt);
 
     // placement ghost
     if (UI.placing === 'wall' && UI.wallGhost && UI.wallGhost.length) {

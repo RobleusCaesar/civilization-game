@@ -533,6 +533,8 @@ const UI = {
       return;
     }
     Bld.place('P', key, g.x, g.y, { builderId: this.builderFor });
+    // the materials land: a ring of dust billows out from under the new site
+    if (R.startPlacePoof) R.startPlacePoof(g.x, g.y, Bld.size(key));
     this.cue('confirm');
     this.exitPlacement();
   },
@@ -647,11 +649,13 @@ const UI = {
     btns.style.display = showBtns ? 'flex' : 'none';
     let btnsBelow = false;
     if (showBtns) {
-      // lifted well clear of the footprint (and spread wide) so the pair
-      // never squats on a neighbour's roof the player is judging against
-      const bw = 140, bh = 56;
-      let bx = sx + sw / 2 - bw / 2, by = sy - bh - 22;
-      if (by < (R.topReserve || 0) + 8) { by = sy + sw + 18; btnsBelow = true; }
+      // the pair sits BENEATH the footprint — under the doorstep, not on a
+      // neighbour's roof — and flips above only when the bottom bar is tight
+      const bw = 116, bh = 46;
+      const floor = vh - (R.bottomReserve || 0) - bh - 10;
+      let bx = sx + sw / 2 - bw / 2, by = sy + sw + 12;
+      btnsBelow = true;
+      if (by > floor) { by = sy - bh - 14; btnsBelow = false; }
       bx = Math.max(8, Math.min(vw - bw - 8, bx));
       by = Math.max((R.topReserve || 0) + 8, Math.min(vh - bh - 8, by));
       btns.style.transform = `translate(${bx | 0}px, ${by | 0}px)`;
@@ -671,7 +675,10 @@ const UI = {
       if (why.textContent !== msg) why.textContent = msg;
       const cw = Math.min(260, why.offsetWidth || 160), ch = 30;
       let cx2 = sx + sw / 2 - cw / 2;
-      let cy2 = (showBtns && btnsBelow) ? sy - 44 : sy + sw + 8;
+      // opposite side of the pair: buttons beneath → chip above, and back —
+      // and above the ghost during a touch drag, where the thumb owns below
+      const thumb = this.placeDragging && this.placePtr && this.placePtr.touch;
+      let cy2 = ((showBtns && btnsBelow) || thumb) ? sy - 44 : sy + sw + 8;
       if (!showBtns && cy2 > vh - 120) cy2 = sy - 44;
       cx2 = Math.max(8, Math.min(vw - cw - 8, cx2));
       cy2 = Math.max((R.topReserve || 0) + 4, Math.min(vh - 40, cy2));
