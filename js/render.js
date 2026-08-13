@@ -1184,27 +1184,64 @@ const R = {
     /* the beast, fallen: FLIPPED on its back, legs in the air — the one pose
        that reads "dead" at a glance from any distance. (A quarter-turn
        rotation was tried first: a side-view quadruped rotated 90° is a
-       nose-down totem pole, not a carcass.) */
+       nose-down totem pole, not a carcass.) The living sprite's soft baked
+       ground-shadow is ERASED first — flipped, that line rode above the feet
+       and read as an upside-down animal standing on a ceiling. Body pixels
+       are full-alpha (the ink-outline pass), the shadow is translucent, so
+       alpha is the honest separator. */
+    const clean = document.createElement('canvas'); clean.width = w; clean.height = h;
+    const qc = clean.getContext('2d');
+    qc.drawImage(base, 0, 0);
+    try {
+      const px = qc.getImageData(0, 0, w, h);
+      for (let i = 3; i < px.data.length; i += 4)
+        if (px.data[i] > 0 && px.data[i] < 190) px.data[i] = 0;
+      qc.putImageData(px, 0, 0);
+    } catch (e) { /* tainted (never for procedural beasts) — keep the shadow */ }
     const lay = document.createElement('canvas'); lay.width = lay.height = side;
     const ql = lay.getContext('2d');
     ql.imageSmoothingEnabled = false;
     ql.translate(side / 2, side / 2);
-    ql.scale(1, -1);
-    ql.drawImage(base, -w / 2, -h / 2);
+    ql.scale(1, -0.86);                      // …and settled: a carcass slumps flat
+    ql.drawImage(clean, -w / 2, -h / 2);
     if (phase === 'meat') {
-      // a small dark pool under it, then the carcass, stilled and dulled
-      q.fillStyle = 'rgba(110,26,20,0.45)';
-      q.beginPath(); q.ellipse(side / 2, side * 0.68, side * 0.30, side * 0.12, 0, 0, Math.PI * 2); q.fill();
-      q.drawImage(lay, 0, 4);
+      /* the blood is the GROUND the carcass lies on, not a disc beneath it: an
+         irregular stain of overlapping blots spreading out AROUND the body —
+         wider by the head and belly, ragged at the rim — with the body settled
+         INTO it so the pool shows past it on every side. A neat ellipse read
+         as a shadow, and a shadow reads as floating. */
+      const r = ART.rng(side * 7 + kind.length);
+      const bx = side / 2, by2 = side * 0.56;        // where the body mass lies
+      q.fillStyle = 'rgba(96,22,16,0.42)';
+      for (let i = 0; i < 7; i++) {
+        const a = r() * Math.PI * 2, d2 = r() * side * 0.20;
+        q.beginPath();
+        q.ellipse(bx + Math.cos(a) * d2 * 1.5, by2 + Math.sin(a) * d2 * 0.7,
+          side * (0.10 + r() * 0.13), side * (0.05 + r() * 0.07), r() * 1.2, 0, Math.PI * 2);
+        q.fill();
+      }
+      // a darker heart to the stain, right under the wound side
+      q.fillStyle = 'rgba(74,14,10,0.5)';
+      q.beginPath();
+      q.ellipse(bx - side * 0.08, by2, side * 0.16, side * 0.08, 0.3, 0, Math.PI * 2);
+      q.fill();
+      // two thin runs where it crept along the ground
+      q.strokeStyle = 'rgba(96,22,16,0.4)'; q.lineWidth = Math.max(1, side / 24);
+      q.beginPath();
+      q.moveTo(bx + side * 0.12, by2 + side * 0.05);
+      q.lineTo(bx + side * 0.30, by2 + side * (0.08 + r() * 0.05));
+      q.moveTo(bx - side * 0.14, by2 + side * 0.06);
+      q.lineTo(bx - side * 0.30, by2 + side * (0.10 + r() * 0.04));
+      q.stroke();
+      q.drawImage(lay, 0, 6);                        // settled low, lying IN the stain
       q.globalCompositeOperation = 'source-atop';
       q.fillStyle = 'rgba(58,38,30,0.35)';           // the life gone out of the hide
       q.fillRect(0, 0, side, side);
       q.globalCompositeOperation = 'source-over';
       // meat still on it: two modest open patches along the upper flank
-      const r = ART.rng(side * 7 + kind.length);
       q.fillStyle = '#a84438';
       for (let i = 0; i < 2; i++) {
-        const px = side * (0.35 + r() * 0.3), py = side * (0.34 + r() * 0.18);
+        const px = side * (0.35 + r() * 0.3), py = side * (0.40 + r() * 0.16);
         q.fillRect(px, py, 3 + (r() * 3 | 0), 2 + (r() * 2 | 0));
         q.fillStyle = '#c86a52';
       }
