@@ -167,6 +167,7 @@ const G = {
       buildings: [], units: [],
       bridges: [],                          // {x,y,owner,hp,maxhp} — attackable crossings (Sapper tier 2)
       ashes: [],                            // burned-down buildings: {x,y,sz,key,lv,day} — unbuildable for CFG.ASH_DAYS (tests/burn-down.mjs)
+      corpses: [],                          // fallen game: {x,y,kind,day} — carcass then skeleton, the lodge-ground cue (tests/wild-life.mjs)
       garrison: [],                         // villagers sheltered inside the Town Center
       armies: {},                           // saved war parties: slot (1-3) → [unit ids] (see UI.saveArmy)
       reprieveUsed: false,                  // the one-time "two survivors emerge" reprieve (competitive modes)
@@ -631,6 +632,9 @@ const G = {
     // buildable ground again (the ruined tiles beneath fade on their own clock)
     if (S.ashes && S.ashes.length)
       S.ashes = S.ashes.filter(a => S.day - a.day < CFG.ASH_DAYS);
+    // fallen game weathers away: meat for CORPSE_DAYS.meat, bone until .bone
+    if (S.corpses && S.corpses.length)
+      S.corpses = S.corpses.filter(c => S.day - c.day < CFG.CORPSE_DAYS.bone);
     Bld.dailyProduction('P');
     Units.dailySpawns();
     if (window.Cards) Cards.seerWatch();   // ORIGIN CARDS: the Seer's forewarning
@@ -1489,6 +1493,7 @@ const G = {
     }
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.hunted) data.map.hunted = {};       // pre-worked-ground saves: the record starts empty
+    if (!data.corpses) data.corpses = [];             // pre-corpse saves: no remains on the ground yet
     if (!data.workLost) data.workLost = { P: [], A: [] };   // pre-ease-reshape saves: empty ledger
     if (!data.eased) data.eased = { P: false, A: false };   // …and no latch held
     if (!data.map.reclaimed) data.map.reclaimed = {};

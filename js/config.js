@@ -753,6 +753,11 @@ const CFG = {
   // the bigger the beast, the deeper the larder — a cow outfeeds a deer, a
   // bear feeds the village, and a wolf is lean eating for the trouble it is
   MEAT: { deer: 8, wolf: 6, boar: 12, cow: 15, bear: 30 },
+  // a kill leaves its mark on the ground (tests/wild-life.mjs): a carcass
+  // with meat still on it for `meat` days, then a bleached skeleton until
+  // `bone` — the standing visual cue for where a Hunter's Lodge may rise,
+  // so the player never has to carry the killing grounds in their head
+  CORPSE_DAYS: { meat: 10, bone: 50 },
   PASSIVE_MAX: 10,             // grazing animals kept on the map — two herds' worth
                                // (Units.spawnHerd puts them down 3–5 at a time)
   // full-heal cost scales with missing hp. sapper: 30 matches its food line

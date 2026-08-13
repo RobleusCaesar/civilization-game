@@ -74,9 +74,10 @@ const Assets = {
     const img = new Image();
     img.onload = async () => {
       // the sidecar is fetched only for art that actually exists — and only
-      // over http(s); on file:// (tests) fetch throws and defaults apply
+      // over http(s): on file:// the Fetch API rejects the scheme outright
+      // (and logs a console error per attempt), so defaults apply there
       let meta = null;
-      try {
+      if (location.protocol !== 'file:') try {
         const r = await fetch(this.ART_DIR + this.slotKey(id, lv) + '.json?v=' + (CFG.ART_V || 1));
         if (r.ok) meta = await r.json();
       } catch (e) { /* no sidecar — defaults */ }

@@ -1161,6 +1161,87 @@ const R = {
     return e[col] = c;
   },
 
+  /* ---- FALLEN GAME (tests/wild-life.mjs): every kill leaves its mark. Both
+     looks are CUT FROM THE BEAST'S OWN SPRITE (the deathSheet/collapseSheet
+     convention), so all five kinds — and any future beast — get remains for
+     free. Phase 'meat': the animal on its side, a modest darkening, a small
+     blood pool and a couple of open patches — an animal died here, told
+     plainly, not gorily. Phase 'bone': the same silhouette bleached and
+     eroded to an outline with a rib-cage across the middle. Cached per
+     (kind, phase); never in a save (S.corpses carries only x/y/kind/day). */
+  _corpseC: {},
+  corpseOf(kind, phase) {
+    const k = kind + '/' + phase;
+    if (this._corpseC[k] !== undefined) return this._corpseC[k];
+    const set = Sprites.unit[kind];
+    const base = set && set.idle && set.idle[0];
+    if (!base) return this._corpseC[k] = null;
+    const w = base.width, h = base.height;
+    const side = Math.max(w, h);
+    const c = document.createElement('canvas'); c.width = c.height = side;
+    const q = c.getContext('2d');
+    q.imageSmoothingEnabled = false;
+    /* the beast, fallen: FLIPPED on its back, legs in the air — the one pose
+       that reads "dead" at a glance from any distance. (A quarter-turn
+       rotation was tried first: a side-view quadruped rotated 90° is a
+       nose-down totem pole, not a carcass.) */
+    const lay = document.createElement('canvas'); lay.width = lay.height = side;
+    const ql = lay.getContext('2d');
+    ql.imageSmoothingEnabled = false;
+    ql.translate(side / 2, side / 2);
+    ql.scale(1, -1);
+    ql.drawImage(base, -w / 2, -h / 2);
+    if (phase === 'meat') {
+      // a small dark pool under it, then the carcass, stilled and dulled
+      q.fillStyle = 'rgba(110,26,20,0.45)';
+      q.beginPath(); q.ellipse(side / 2, side * 0.68, side * 0.30, side * 0.12, 0, 0, Math.PI * 2); q.fill();
+      q.drawImage(lay, 0, 4);
+      q.globalCompositeOperation = 'source-atop';
+      q.fillStyle = 'rgba(58,38,30,0.35)';           // the life gone out of the hide
+      q.fillRect(0, 0, side, side);
+      q.globalCompositeOperation = 'source-over';
+      // meat still on it: two modest open patches along the upper flank
+      const r = ART.rng(side * 7 + kind.length);
+      q.fillStyle = '#a84438';
+      for (let i = 0; i < 2; i++) {
+        const px = side * (0.35 + r() * 0.3), py = side * (0.34 + r() * 0.18);
+        q.fillRect(px, py, 3 + (r() * 3 | 0), 2 + (r() * 2 | 0));
+        q.fillStyle = '#c86a52';
+      }
+    } else {
+      /* bones: the lying shape as a faint pale shade — the OUTLINE of the
+         animal that fell there — with the spine, a rib-cage and the skull
+         drawn over it. The suggestion of the beast, not an anatomy lesson.
+         (A first draft eroded the silhouette to a 1px outline; on sprites
+         that are mostly 1px lines already, nothing survived the erosion.) */
+      const bone = document.createElement('canvas'); bone.width = bone.height = side;
+      const qb = bone.getContext('2d');
+      qb.drawImage(lay, 0, 4);
+      qb.globalCompositeOperation = 'source-atop';
+      qb.fillStyle = '#ded4b8'; qb.fillRect(0, 0, side, side);
+      q.globalAlpha = 0.30;
+      q.drawImage(bone, 0, 0);
+      q.globalAlpha = 1;
+      const W2 = side, cy2 = side * 0.52, rh = side * 0.15;
+      q.strokeStyle = '#ece4cc'; q.lineWidth = Math.max(1.5, side / 20);
+      // the spine, nose to tail
+      q.beginPath(); q.moveTo(W2 * 0.22, cy2 - rh); q.lineTo(W2 * 0.76, cy2 - rh); q.stroke();
+      // the rib-cage — the one shape that says SKELETON at a glance
+      q.beginPath();
+      for (let i = 0; i < 4; i++) {
+        const rx = W2 * 0.36 + i * W2 * 0.09;
+        q.moveTo(rx, cy2 - rh); q.quadraticCurveTo(rx + W2 * 0.05, cy2, rx, cy2 + rh);
+      }
+      q.stroke();
+      // the skull at the head end, a socket dotted into it
+      q.fillStyle = '#ece4cc';
+      q.beginPath(); q.ellipse(W2 * 0.20, cy2 - rh * 0.4, W2 * 0.07, W2 * 0.055, -0.3, 0, Math.PI * 2); q.fill();
+      q.fillStyle = 'rgba(40,32,22,0.8)';
+      q.fillRect(W2 * 0.185, cy2 - rh * 0.55, Math.max(1.5, side / 24), Math.max(1.5, side / 24));
+    }
+    return this._corpseC[k] = c;
+  },
+
   /* ---- THE CONFIRM POOF (tests/placement.mjs): the materials land. When ✓
      is tapped, a ring of dust billows out from UNDER the new work site on
      all four sides — as if the timber and stone just dropped out of the sky
@@ -2431,6 +2512,18 @@ const R = {
       // ghosts beside it (which already mask from live neighbours)
       if (snap.key === 'tower') this.drawTowerBond(g, { x: gx, y: gy, construction: 0 }, gx * TL, gy * TL, gs);
       this.blitBld(g, spr, gx * TL, gy * TL, gs, gs);
+    }
+
+    // fallen game (tests/wild-life.mjs) — a carcass for CORPSE_DAYS.meat
+    // days, then bleached bones until .bone: the standing cue for where a
+    // Hunter's Lodge may rise. Explored memory is enough — a landmark you
+    // found is a landmark you remember, which is the feature's whole point.
+    if (S.corpses) for (const c of S.corpses) {
+      if (!S.map.explored[MapGen.idx(c.x | 0, c.y | 0)]) continue;
+      const spr = this.corpseOf(c.kind, S.day - c.day < CFG.CORPSE_DAYS.meat ? 'meat' : 'bone');
+      // the same TL×TL box a living unit draws through, so the remains are
+      // exactly the beast's own size on the ground
+      if (spr) g.drawImage(spr, c.x * TL - TL / 2, c.y * TL - TL / 2, TL, TL);
     }
 
     // ash piles — what burned-down buildings left, cooling on the ground

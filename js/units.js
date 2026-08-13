@@ -1822,6 +1822,16 @@ const Units = {
            made it so, and it keeps the rule symmetric without asking the
            chief to take its soldiers off to chase deer. */
         G.noteHunt(u.x | 0, u.y | 0);
+        /* …and the kill LEAVES A CORPSE (tests/wild-life.mjs): the carcass,
+           then its skeleton, stand on the spot for CFG.CORPSE_DAYS — the
+           visible record of the hunting ground the lodge rule reads, so
+           "where may a lodge stand" is on the GROUND, not in the player's
+           memory. In the save (it outlives fifty days); capped so a long
+           war of wolves never bloats the file. */
+        if (S.corpses) {
+          S.corpses.push({ x: u.x, y: u.y, kind: u.kind, day: S.day });
+          if (S.corpses.length > 80) S.corpses.shift();
+        }
         const owner = (attacker && attacker.owner) || attackerOwner;
         // MEAT BY THE BEAST (tests/wild-life.mjs): CFG.MEAT tiers the take by
         // the animal's size — the bear's old ×3 lives in its own entry now

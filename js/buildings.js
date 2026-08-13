@@ -976,6 +976,11 @@ const Bld = {
         R.updateTile(x + dx, y + dy);
       }
     }
+    // …and any remains on the plot: raising a lodge OVER the kill site is the
+    // whole point of the cue, and bones under a floor are bones cleaned away
+    if (S.corpses && S.corpses.length)
+      S.corpses = S.corpses.filter(c => (c.x | 0) < x || (c.x | 0) >= x + sz ||
+                                        (c.y | 0) < y || (c.y | 0) >= y + sz);
     if (owner === 'P') {
       // a work site reveals nothing while it goes up — only a finished
       // building (or one placed already-built) expands the view

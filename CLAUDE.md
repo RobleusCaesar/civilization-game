@@ -682,6 +682,23 @@ band for the same reason. **And the meat is tiered by the beast**
 fallback for unknown kinds): the payout in `Units.damage` and both panel
 hints read the table, the bear's old hard-coded ×3 lives in its own entry,
 and the rival's hunters eat by the same table.
+**And the kill LEAVES ITS MARK** (same test): every wild death drops a corpse
+on the spot (`S.corpses`: `{x,y,kind,day}`, in every save, `loadJSON`
+backfills, capped at 80) — a carcass with meat still on it for
+`CFG.CORPSE_DAYS.meat` (10) days, then a bleached skeleton until `.bone`
+(50), weathered away by `G.dayTick`. This is the STANDING VISUAL CUE for
+where a Hunter's Lodge may rise (`G.huntedAt` ground) — without it the
+killing grounds live only in the player's memory. Both looks are CUT FROM
+THE BEAST'S OWN SPRITE (`R.corpseOf`, cached per kind+phase — the
+deathSheet convention, so any future beast gets remains for free): the
+carcass is the idle frame FLIPPED on its back, legs up (a quarter-turn
+rotation reads as a nose-down totem, not a death), dulled, over a modest
+pool with two open patches — plainly dead, never gory; the skeleton is the
+same shape as a faint pale shade under a drawn spine, rib-cage and skull.
+Drawn in the ground-decal layer on EXPLORED memory (a landmark you found is
+a landmark you remember — that is the feature), at the same `TL×TL` box a
+living unit draws through. `Bld.place` clears remains under a new footprint
+— raising the lodge over the bones is the point.
 **And the herd BREATHES** (same test): real cattle and deer draw in close, fan
 out over the feed and gather again — they never converge on a point and never
 string out into a line. So every step is measured from the HERD'S CENTRE (never

@@ -237,6 +237,64 @@ const out = await p.evaluate(() => {
       '+' + (S.ai.res.food - a0));
   }
 
+  /* ---- 2b⁴. THE KILL LEAVES ITS MARK. A carcass with meat on it for
+     CFG.CORPSE_DAYS.meat days, then a skeleton until .bone — the standing
+     visual cue for where a Hunter's Lodge may rise, so the killing grounds
+     live on the GROUND instead of in the player's memory. In every save;
+     weathered away by the day tick; cleared by a building raised over it. */
+  {
+    arena('wl2h');
+    const before = S.corpses.length;
+    Units.damage(Units.spawn('deer', 'W', 24, 24), 9999, null, 'P');
+    ck('aKillLeavesACorpse', S.corpses.length === before + 1 &&
+      S.corpses[S.corpses.length - 1].kind === 'deer' &&
+      Math.abs(S.corpses[S.corpses.length - 1].x - 24) < 1.5, '');
+    const c = S.corpses[S.corpses.length - 1];
+    // the two phases, by the day arithmetic the renderer uses
+    c.day = S.day - (CFG.CORPSE_DAYS.meat - 1);
+    ck('freshRemainsStillCarryMeat', S.day - c.day < CFG.CORPSE_DAYS.meat, '');
+    c.day = S.day - (CFG.CORPSE_DAYS.meat + 1);
+    ck('oldRemainsAreBone', S.day - c.day >= CFG.CORPSE_DAYS.meat &&
+      S.day - c.day < CFG.CORPSE_DAYS.bone, '');
+    // the art: both phases exist for every beast, cut from its own sprite
+    ck('everyBeastLeavesBothLooks',
+      ['deer', 'cow', 'wolf', 'boar', 'bear'].every(k =>
+        R.corpseOf(k, 'meat') && R.corpseOf(k, 'bone')), '');
+    // …and the skeleton is genuinely the PALER of the two
+    const lum = (cv) => {
+      const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      let s = 0, n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 30) { s += d[i] + d[i + 1] + d[i + 2]; n++; }
+      return n ? s / n : 0;
+    };
+    ck('bonesBleachPalerThanMeat', lum(R.corpseOf('deer', 'bone')) > lum(R.corpseOf('deer', 'meat')), '');
+    // weathering: gone after CORPSE_DAYS.bone, standing the day before
+    // (G.dayTick advances S.day itself — the ages below account for it)
+    c.day = S.day - (CFG.CORPSE_DAYS.bone - 2);
+    G.dayTick();
+    ck('bonesStandToTheLastDay', S.corpses.includes(c), '');
+    c.day = S.day - CFG.CORPSE_DAYS.bone;
+    G.dayTick();
+    ck('thenTheGroundIsClean', !S.corpses.includes(c), '');
+    // the record rides in every save; a pre-corpse save starts clean
+    S.corpses.push({ x: 30, y: 30, kind: 'cow', day: S.day });
+    const json = G.saveJSON();
+    ck('remainsRideInTheSave', /"corpses"/.test(json), '');
+    const data = JSON.parse(json); delete data.corpses;
+    G.loadJSON(JSON.stringify(data));
+    ck('aPreCorpseSaveStartsClean', Array.isArray(S.corpses) && S.corpses.length === 0, '');
+    Screens._demo = false; Screens.show('playing');
+    // a building raised over the remains clears them — the lodge IS the point
+    arena('wl2i');
+    const tc = Bld.tcOf('P');
+    S.corpses.push({ x: tc.x + 3.4, y: tc.y + 3.6, kind: 'boar', day: S.day });
+    Bld.place('P', 'house', tc.x + 3, tc.y + 3, { free: true, instant: true });
+    ck('aBuildingClearsTheBonesBeneathIt', S.corpses.length === 0, '');
+    // the cap: a long war of wolves never bloats the save
+    for (let i = 0; i < 120; i++) Units.damage(Units.spawn('deer', 'W', 20, 20), 9999, null, 'P');
+    ck('theBoneyardIsCapped', S.corpses.length <= 80, S.corpses.length + ' remains');
+  }
+
   // ---- 2c. four or more frames in every animal action ----
   {
     const kinds = ['wolf', 'boar', 'bear', 'deer', 'cow'];
