@@ -1168,8 +1168,8 @@ const R = {
      contract), one run lasting under a second: a cool beat that never
      overstays. Render-side only (R.placePoofs, the R.collapses rule) —
      never in a save, cleared in onNewGame. */
-  POOF_FRAMES: 7,
-  POOF_MS: 850,
+  POOF_FRAMES: 10,   // more stills, shorter run: the cloud rolls, then it's gone
+  POOF_MS: 600,
   _poofSheets: {},
   poofSheet(sz) {
     if (this._poofSheets[sz]) return this._poofSheets[sz];

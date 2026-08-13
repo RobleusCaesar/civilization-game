@@ -370,7 +370,6 @@ const UI = {
      validated on the PICK (the ghost's own tile and the confirm), never on
      the scan — the same rule AI.plot's pickSealFree follows. */
   PLACE_HYST: 0.18,      // tiles of stickiness past a cell boundary before the snap moves
-  PLACE_LIFT: 62,        // css px the ghost rides ABOVE a touch point (thumb occlusion)
   PLACE_EDGE: 44,        // css px band at the viewport edge that auto-pans while dragging
 
   // did a press land on the ghost's drawn footprint? The forgiveness margin
@@ -487,14 +486,17 @@ const UI = {
     this._placeCueOk = r.ok;
   },
 
-  // snap the ghost to the pointer with hysteresis, footprint centered on the
-  // (lifted) point — sticky enough that a finger resting on a cell boundary
-  // never flickers between neighbours
+  /* snap the ghost to the pointer with hysteresis, footprint centered on the
+     EXACT point under the finger — sticky enough that a finger resting on a
+     cell boundary never flickers between neighbours. (An earlier draft
+     lifted the ghost ~2 tiles above a touch to dodge the thumb; in play
+     that read as the building landing above where you pointed — the ghost's
+     translucency and the framed footprint keep it legible under a thumb,
+     so the building goes where the finger IS.) */
   placeGhostTo(clientX, clientY, touch) {
     const key = this.placing; if (!key || key === 'wall') return;
     const sz = Bld.size(key), TL = CFG.TILE;
     const w = R.screenToWorld(clientX, clientY);
-    if (touch) w.y -= (this.PLACE_LIFT + sz * TL * R.cam.z * 0.35) / R.cam.z;
     const fox = w.x / TL - sz / 2, foy = w.y / TL - sz / 2;   // fractional footprint origin
     const g = this.placeGhost;
     let nx = Math.round(fox), ny = Math.round(foy);

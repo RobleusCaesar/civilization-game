@@ -283,6 +283,12 @@ const out = await p.evaluate(() => {
     ck('boundaryWiggleNeverFlickers', !moved, 'ghost stayed while the finger sat on the seam');
     UI.placeGhostTo(sx(cx0 + 1.3), sy(cy0), false);
     ck('aRealMoveStillMoves', UI.placeGhost.x === tc.x + 4, 'x=' + UI.placeGhost.x);
+    // a TOUCH lands the footprint on the EXACT tile under the finger — a real
+    // mobile report had an occlusion lift placing buildings ~2 tiles above it
+    UI.placeGhostTo(sx(tc.x + 6.5), sy(tc.y + 5.5), true);
+    ck('aTouchLandsOnTheTouchedTile',
+      UI.placeGhost.x === tc.x + 6 && UI.placeGhost.y === tc.y + 5,
+      UI.placeGhost.x + ',' + UI.placeGhost.y + ' for a touch at ' + (tc.x + 6.5) + ',' + (tc.y + 5.5));
     UI.exitPlacement();
   }
 
