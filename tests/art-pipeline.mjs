@@ -156,9 +156,13 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
     ck('freeformNamesGoToThePicker', DevArt.parseName('my cool barracks.png') === null, '');
     ck('canonicalNamesAreLowercase', DevArt.canonicalName('range', 2) === 'range-l2.png', '');
 
-    // ---- inject / revert round-trip through the shipping path ----
+    // ---- inject / revert round-trip through the shipping path. The slot's
+    // shipped state is whatever it is TODAY (procedural, or a real PNG that
+    // has since landed in assets/buildings/) — revert restores exactly it. ----
+    await new Promise(r => setTimeout(r, 400));   // let any shipped PNG finish decoding
     const before = Sprites.building.barracks[0];
     const beforeA = Sprites.buildingA.barracks[0];
+    const loadedBefore = !!Assets.loaded['barracks-l1'];
     const fake = document.createElement('canvas'); fake.width = 80; fake.height = 120;
     DevArt.inject('barracks', 1, fake, 'draft-3.png');
     ck('injectionReplacesTheLiveSlot',
@@ -169,7 +173,8 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
     DevArt.revert('barracks-l1');
     ck('revertRestoresTheShippedState',
       Sprites.building.barracks[0] === before && Sprites.buildingA.barracks[0] === beforeA &&
-      !DevArt.overrides['barracks-l1'] && !Assets.loaded['barracks-l1'], '');
+      !DevArt.overrides['barracks-l1'] && !!Assets.loaded['barracks-l1'] === loadedBefore,
+      loadedBefore ? 'shipped PNG restored' : 'procedural restored');
     // multi-slot, then revert all
     const f2 = document.createElement('canvas'); f2.width = f2.height = 64;
     DevArt.inject('house', 1, fake, 'a.png');
