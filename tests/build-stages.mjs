@@ -98,10 +98,20 @@ const out = await p.evaluate(() => {
         'avg rgb ' + [r, g2, bl].map(v => v | 0).join(','));
     }
 
+    // THE PLAN MATCHES THE BUILDING: a round kind breaks a round plot, a
+    // squared kind a squared one as wide as its own art — never one blob
+    ck('thePlanMatchesTheBuilding',
+      R.padShape('house', 1).round === true && R.padShape('lodge', 1).round === false &&
+      R.padOf(1, R.padShape('house', 1)).toDataURL() !== p1.toDataURL(), '');
+    // …and the clearing is a morning's work, not a stamp: tongues of live
+    // grass still stand inside the plan (erased holes in the decal)
+    ck('aLittleGrassStillStands', px(p1) < 64 * 64 * 0.82, px(p1) + ' of ' + 64 * 64 + ' px');
+
     // the cleared site: pad + stakes/cord + tools + the tier's deliveries
     const s11 = R.siteOf('house', 1, 1), s13 = R.siteOf('house', 1, 3);
+    const hPad = R.padOf(1, R.padShape('house', 1));           // the site's OWN plan
     ck('siteAddsTheToolsToThePad',
-      s11.width === 64 && px(s11) > px(p1) + 60, px(s11) - px(p1) + ' prop px');
+      s11.width === 64 && px(s11) > px(hPad) + 60, px(s11) - px(hPad) + ' prop px');
     ck('siteIsCachedPerKeySizeTier',
       R.siteOf('house', 1, 1) === s11 && s13 !== s11 && s13.toDataURL() !== s11.toDataURL(),
       'tier deliveries differ');

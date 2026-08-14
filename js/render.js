@@ -1618,34 +1618,84 @@ const R = {
     const e = this.STAGE_ROUND[key];
     return !!(e && e.indexOf(lv || 1) >= 0);
   },
-  // the trodden work-ground alone — drawn under stages 1 and 2
-  padOf(sz) {
-    const ck = 'pad' + sz;
+  /* the GROUND PLAN of a site — which shape of patch gets cleared. Derived
+     from the target art: round kinds break a round plot, everything else a
+     squared one as wide as its own art. lv may exceed the family (a wall
+     preview) — clamped inside. */
+  padShape(key, lv, base) {
+    if (!base) {
+      const fam = Sprites.building[key];
+      base = fam ? fam[Math.min(lv || 1, fam.length) - 1] : null;
+    }
+    const box = base ? this._artBox(base) : null;
+    const qz = (v) => Math.round(v * 16) / 16;                 // quantized — the cache key reads it
+    return {
+      round: this.stageRound(key, lv),
+      l: qz(box ? Math.max(0.02, box.l - 0.04) : 0.06),
+      r: qz(box ? Math.min(0.98, box.r + 0.04) : 0.94),
+    };
+  },
+  /* the trodden work-ground alone — drawn under every stage. NOT a blob: the
+     patch is the building's own PLAN (square, long or round), broken to a
+     ragged clod edge, and only PARTLY cleared — tongues of the real grass
+     still stand inside it (erased holes, so the live terrain shows through).
+     A ground decal in this projection is seen from above, so the plan fills
+     the footprint's depth and takes its WIDTH from the art. */
+  padOf(sz, shape) {
+    shape = shape || { round: false, l: 0.06, r: 0.94 };
+    const ck = ['pad', sz, shape.round ? 'o' : 'q', shape.l, shape.r].join(':');
     if (this._siteCache[ck]) return this._siteCache[ck];
     const side = sz * 64, px = 2, E = this.SITE_EARTH;
     const c = document.createElement('canvas'); c.width = c.height = side;
     const q = c.getContext('2d');
-    const r = ART.rng(31 + sz * 7);
-    const cx = side / 2, cy = side / 2, rad = side * 0.47;
+    const r = ART.rng(31 + sz * 7 + (shape.round ? 3 : 0) + ((shape.l * 61) | 0));
+    const X0 = shape.l * side, X1 = shape.r * side;
+    const Y0 = side * 0.08, Y1 = side * 0.97;
+    const cx = (X0 + X1) / 2, cy = (Y0 + Y1) / 2;
+    const hw = (X1 - X0) / 2, hh = (Y1 - Y0) / 2;
+    const cr = Math.min(hw, hh) * 0.35;                        // squared, not sharp — a dug edge
+    // signed outside-ness of the plan, in px: <0 inside, >0 outside
+    const out = (x, y) => {
+      if (shape.round) {
+        const dx = (x - cx) / hw, dy = (y - cy) / hh;
+        return (Math.hypot(dx, dy) - 1) * Math.min(hw, hh);
+      }
+      const qx = Math.max(Math.abs(x - cx) - (hw - cr), 0);
+      const qy = Math.max(Math.abs(y - cy) - (hh - cr), 0);
+      const inx = Math.min(hw - Math.abs(x - cx), hh - Math.abs(y - cy));
+      return qx || qy ? Math.hypot(qx, qy) - cr : -Math.min(inx, cr);
+    };
     for (let y = 0; y < side; y += px) for (let x = 0; x < side; x += px) {
-      const dx = (x + 1 - cx) / rad, dy = (y + 1 - cy) / (rad * 0.94);
-      const d2 = dx * dx + dy * dy;
-      if (d2 > 1 + (r() - 0.5) * 0.3) continue;               // clod-broken edge, never a disc
-      q.fillStyle = d2 > 0.82 ? E[1] : (x * 7 + y * 13) % 23 === 0 ? E[3] : E[2];
+      const o = out(x + 1, y + 1);
+      if (o > (r() - 0.7) * 5) continue;                       // ragged clod edge, never a stamp
+      q.fillStyle = o > -4 ? E[1] : (x * 7 + y * 13) % 23 === 0 ? E[3] : E[2];
       q.fillRect(x, y, px, px);
     }
     // trodden dark patches and scattered clods
     for (let i = 0; i < 8 + sz * 6; i++) {
-      const a = r() * Math.PI * 2, dd = r() * rad * 0.8;
       q.fillStyle = i % 3 ? E[0] : E[1];
-      q.fillRect(((cx + Math.cos(a) * dd) / px | 0) * px, ((cy + Math.sin(a) * dd * 0.94) / px | 0) * px,
-        px * (1 + (i % 2)), px);
+      q.fillRect(((cx + (r() - 0.5) * hw * 1.6) / px | 0) * px,
+        ((cy + (r() - 0.5) * hh * 1.6) / px | 0) * px, px * (1 + (i % 2)), px);
     }
     for (let i = 0; i < 6 + sz * 4; i++) {                     // lit crumbs
-      const a = r() * Math.PI * 2, dd = (0.3 + r() * 0.6) * rad;
       q.fillStyle = E[4];
-      q.fillRect(((cx + Math.cos(a) * dd) / px | 0) * px, ((cy + Math.sin(a) * dd * 0.94) / px | 0) * px, px, px);
+      q.fillRect(((cx + (r() - 0.5) * hw * 1.7) / px | 0) * px,
+        ((cy + (r() - 0.5) * hh * 1.7) / px | 0) * px, px, px);
     }
+    /* a little still grass: erase tongues and nicks so the LIVE terrain
+       grows through — clearing a plot is a morning's work, not a stamp */
+    q.globalCompositeOperation = 'destination-out';
+    q.fillStyle = '#000';
+    for (let i = 0; i < 3 + sz * 2; i++) {
+      const gx = cx + (r() - 0.5) * hw * 1.5, gy = cy + (r() - 0.5) * hh * 1.5;
+      const gr = (2 + r() * 3) * px;
+      q.beginPath(); q.ellipse(gx, gy, gr, gr * 0.7, 0, 0, Math.PI * 2); q.fill();
+      q.fillRect(gx - px, gy - gr * 0.7 - px, px, px);         // a stray tuft at the tongue's tip
+    }
+    for (let i = 0; i < 8 + sz * 6; i++)                       // single-cell nicks
+      q.fillRect(((cx + (r() - 0.5) * hw * 1.9) / px | 0) * px,
+        ((cy + (r() - 0.5) * hh * 1.9) / px | 0) * px, px, px);
+    q.globalCompositeOperation = 'source-over';
     return this._siteCache[ck] = c;
   },
   // stage 0 — the cleared site: the pad, the plot staked and corded, the
@@ -1656,7 +1706,7 @@ const R = {
     const side = sz * 64, px = 2, N = side / px;               // N cells on a side
     const c = document.createElement('canvas'); c.width = c.height = side;
     const q = c.getContext('2d');
-    q.drawImage(this.padOf(sz), 0, 0);
+    q.drawImage(this.padOf(sz, this.padShape(key, tier)), 0, 0);
     const W = ART.PALETTE.wood, ST = ART.PALETTE.stone, TH = ART.PALETTE.thatch, BO = ART.PALETTE.bone;
     const DK = '#2c1c10';                                       // the props' own dark edge
     // every prop sits on a one-cell dark under-shadow, or it sinks into the pad
@@ -3296,8 +3346,8 @@ const R = {
             if (stage === 0) {
               g.drawImage(this.siteOf(b.key, bs, tier), bx, by, bw, bw);
             } else {
-              g.drawImage(this.padOf(bs), bx, by, bw, bw);
               const base = this.bldSprite(b, tgt);
+              g.drawImage(this.padOf(bs, this.padShape(b.key, tgt, base)), bx, by, bw, bw);
               this.blitBld(g, stage === 1
                 ? this.frameOf(base, tier, this.stageRoof(b.key, tgt), this.stageRound(b.key, tgt))
                 : this.partialOf(base, !this.stageRoof(b.key, tgt)), bx, by, bw, bw);

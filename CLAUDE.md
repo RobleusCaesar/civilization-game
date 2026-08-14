@@ -625,7 +625,11 @@ materials and the TARGET SPRITE itself (`R.padOf` / `siteOf` / `frameOf` /
            yard art (`R.SITE_EARTH`, sampled from the sapper/siege PNGs —
            never tan), corner stakes and a taut cord, Neolithic tools (wood
            spade, antler pick, woven basket) and the tier's deliveries:
-           poles at tier 1, fieldstones at 2, drystone slabs at 3
+           poles at tier 1, fieldstones at 2, drystone slabs at 3. The
+           patch is the building's own PLAN (`R.padShape`: round for the
+           STAGE_ROUND kinds, squared and as wide as the art for the rest —
+           never one blob), ragged-edged, and only PARTLY cleared: tongues
+           of the live grass still grow through erased holes in the decal
   stage 1  THE FRAMING — a lashed post-and-beam skeleton traced from the
            target sprite's own opaque silhouette (`R._artBox`): drystone
            piers at tier 3, a fieldstone footing at 2; roofed kinds sketch
