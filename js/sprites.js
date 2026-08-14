@@ -447,15 +447,32 @@ const Sprites = {
       f(18, 20, 8, 1, AP.soil[0]); f(20, 12, 1, 6, AP.soil[0]);
     }),
   ];
-  Sprites.terrain[T.RUIN] = [
-    tile(p => {
-      ART.dither(p, 0, 0, 16, 16, AP.soil[1], AP.stone[1]);
-      p(2, 9, 5, 3, AP.stone[1]); p(2, 8, 3, 1, AP.stone[2]);       // collapsed wall
-      p(9, 4, 4, 2, AP.stone[1]); p(12, 6, 2, 2, AP.stone[2]);
-      p(6, 3, 2, 2, AP.wood[1]); p(5, 13, 4, 1, AP.wood[0]);        // charred beams
-      p(10, 11, 3, 1, AP.ink[0]); p(4, 5, 1, 1, AP.ink[0]);
-    }),
-  ];
+  /* RUIN — the ground a destroyed building leaves. NOT a whole-tile dither:
+     a uniform checker under the destruction dust read as the universal
+     missing-texture pattern at the exact moment the player is guaranteed to
+     be looking (the design-review blocker). Mottled burnt soil instead, with
+     CLUSTERED rubble, ash drifts and charred beams — three variants, so a
+     2×2 or 3×3 footprint never resolves into one continuous grid. */
+  Sprites.terrain[T.RUIN] = [0, 1, 2].map(v => tile(p => {
+    const r = ART.rng(97 + v * 31);
+    p(0, 0, 16, 16, AP.soil[1]);                                    // scorched trodden earth
+    for (let i = 0; i < 26; i++)                                    // mottle, never a pattern
+      p((r() * 15) | 0, (r() * 15) | 0, 1 + ((r() * 2) | 0), 1, r() < 0.5 ? AP.soil[2] : AP.soil[0]);
+    for (let i = 0; i < 3; i++)                                     // ash drifts
+      p((r() * 12) | 0, (r() * 12) | 0, 2 + ((r() * 3) | 0), 1 + ((r() * 2) | 0), AP.stone[0]);
+    for (let c2 = 0; c2 < 2; c2++) {                                // rubble in CLUSTERS
+      const cx2 = 2 + ((r() * 10) | 0), cy2 = 2 + ((r() * 10) | 0);
+      for (let i = 0; i < 4; i++) {
+        const sx = Math.max(0, Math.min(14, cx2 + ((r() * 5) | 0) - 2));
+        const sy = Math.max(0, Math.min(14, cy2 + ((r() * 4) | 0) - 1));
+        p(sx, sy, 2, r() < 0.4 ? 2 : 1, AP.stone[1]);
+        p(sx, sy, 1, 1, AP.stone[2]);
+      }
+    }
+    p(2 + ((r() * 8) | 0), 3 + ((r() * 9) | 0), 4 + ((r() * 3) | 0), 1, AP.wood[0]);   // charred beams
+    p(2 + ((r() * 9) | 0), 2 + ((r() * 10) | 0), 1, 2 + ((r() * 3) | 0), AP.ink[1]);
+    p((r() * 14) | 0, (r() * 14) | 0, 1, 1, AP.ink[0]);             // a cold ember
+  }));
   // MOUNTAINS — raised BROWN-GREY terrain that reads as ELEVATION, not scattered
   // rock. A tile is drawn by its ROLE in the mass (render.js picks it from the
   // mountain neighbours): a `peak` tile (nothing above it) draws a snow-capped

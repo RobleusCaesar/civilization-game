@@ -630,9 +630,17 @@ materials and the TARGET SPRITE itself (`R.padOf` / `siteOf` / `frameOf` /
            target sprite's own opaque silhouette (`R._artBox`): drystone
            piers at tier 3, a fieldstone footing at 2; roofed kinds sketch
            a ridge and rafters, worker plots and the FIRE_AT ground yards
-           frame flat (`R.stageRoof`)
+           frame flat (`R.stageRoof`). The ROUND kinds (`R.STAGE_ROUND` —
+           the L1 roundhouses; roundness cannot be read off a bbox, so it
+           is the one per-key fact the derivation carries) frame as a ring
+           of posts with cone rafters — a square frame under a conical hut
+           watched a square building turn round overnight
   stage 2  THE PARTIAL BUILD — the target sprite with its top erased above
-           the wall line, pale fresh-cut ends along the break, post stubs
+           the wall line, pale fresh-cut ends along the break, post stubs.
+           A FLAT kind (anything stageRoof frames flat) has no wall line:
+           it keeps much more of itself (cut at 0.28, not 0.45), draws pale
+           ends only on BRIGHT material and never the stub row — pale ends
+           over a pit mouth read as teeth
 
 No sawn lumber, no scaffolding towers, no metal — the tools on site are the
 tools this world has. Derivation is LAZY and cached per target sprite
@@ -1114,7 +1122,16 @@ and FOG-GATED at the trigger: dust nobody can see is a cloud drawn for
 nobody. The pile is capped (16 + the pushing one), so razing a town block
 stays a scene, not a whiteout; measured at a locked 60fps through 12
 simultaneous destructions. `tests/placement.mjs`'s `confirmThrowsTheDust`
-still sees exactly one un-delayed poof after a ✓.
+still sees exactly one un-delayed poof after a ✓. The dust is PIXEL dust:
+each `poofSheet` frame is drawn at half resolution with alpha quantized to
+three steps, then blitted up nearest-neighbour — smooth alpha-graded
+balloons were the one element on screen in a different rendering language
+from the hard-edged art. And the `T.RUIN` ground it lands on is mottled
+burnt soil with CLUSTERED rubble, ash drifts and charred beams in three
+variants (sprites.js): the old whole-tile dither resolved into one
+continuous checker across a 2×2 footprint and read as the universal
+missing-texture pattern at the exact moment the player is guaranteed to be
+looking.
 
 **Boats on moats + Scuttle** (`tests/boats-moat-scuttle.mjs`): a MOAT is open
 water to a HULL — the water-domain branch of `Path.passable` accepts it like

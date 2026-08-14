@@ -1303,27 +1303,37 @@ const R = {
       seeds.push({ a, sp: 0.7 + r() * 0.6, sz: 0.6 + r() * 0.7, wob: r() * Math.PI * 2 });
     }
     const DUST = ['#8a7355', '#a89272', '#c9b896', '#e0d4b4'];
+    /* PIXEL DUST: every shipped sprite is hard-edged, so smooth alpha-graded
+       balloons read as pasted in from another engine (the design review).
+       Each frame is drawn at HALF resolution with alpha quantized to three
+       steps, then blitted up nearest-neighbour — chunky stepped puffs in the
+       same rendering language as the buildings, geometry untouched. */
+    const K = 2;                                          // the pixelation factor
+    const qa = (a) => Math.round(a * 3) / 3;              // 3-step alpha, no gradients
     for (let f = 0; f < this.POOF_FRAMES; f++) {
       const t = f / (this.POOF_FRAMES - 1);              // 0..1 through the second
-      const c = document.createElement('canvas'); c.width = c.height = side;
-      const q = c.getContext('2d');
+      const lo = document.createElement('canvas'); lo.width = lo.height = Math.ceil(side / K);
+      const q = lo.getContext('2d');
+      q.scale(1 / K, 1 / K);
       const cx = side / 2, cy = side / 2;
       const spread = Math.sin(Math.min(1, t * 1.15) * Math.PI / 2);   // fast burst, drifting finish
       const fade = t < 0.25 ? 1 : 1 - (t - 0.25) / 0.75;
       // the ground wash under the plot — the impact itself
       if (t < 0.5) {
-        q.globalAlpha = 0.35 * (1 - t * 2);
+        q.globalAlpha = qa(0.35 * (1 - t * 2));
         q.fillStyle = DUST[2];
         q.beginPath(); q.ellipse(cx, cy, sz * TL * 0.5, sz * TL * 0.34, 0, 0, Math.PI * 2); q.fill();
       }
       // the billowing ring: each puff pushes outward from the footprint edge,
-      // swells as it travels, thins as it dies — biased wide (dust hugs ground)
+      // swells as it travels, thins as it dies — biased wide (dust hugs
+      // ground), the travel scaled by footprint so a razed hut is visibly a
+      // smaller event than a razed barracks
       for (const s of seeds) {
-        const dist = (sz * TL * 0.5) + spread * s.sp * (TL * 0.55 + sz * 3);
+        const dist = (sz * TL * 0.5) + spread * s.sp * (TL * (0.3 + sz * 0.14) + sz * 3);
         const px = cx + Math.cos(s.a) * dist * 1.12;
         const py = cy + Math.sin(s.a) * dist * 0.72 - spread * 2;   // squashed: seen from above
         const pr = (3 + s.sz * 4 + spread * s.sz * 5) * (0.75 + sz * 0.12);
-        q.globalAlpha = 0.75 * fade * (0.7 + 0.3 * Math.sin(s.wob + t * 5));
+        q.globalAlpha = qa(0.75 * fade * (0.7 + 0.3 * Math.sin(s.wob + t * 5)));
         // two-tone puff: dark core, light crown — reads as a rolling cloud
         q.fillStyle = DUST[(f + (s.wob * 3 | 0)) % 2];
         q.beginPath(); q.arc(px, py + 1, pr, 0, Math.PI * 2); q.fill();
@@ -1331,13 +1341,17 @@ const R = {
         q.beginPath(); q.arc(px - pr * 0.25, py - pr * 0.3, pr * 0.62, 0, Math.PI * 2); q.fill();
       }
       // a few motes thrown clear of the ring
-      q.globalAlpha = 0.7 * fade;
+      q.globalAlpha = qa(0.7 * fade);
       q.fillStyle = DUST[3];
       for (let i = 0; i < 6 + sz * 3; i++) {
         const a = r() * Math.PI * 2, d2 = (sz * TL * 0.5) + spread * (TL * 0.8 + r() * TL * 0.5);
-        q.fillRect(cx + Math.cos(a) * d2 * 1.1, cy + Math.sin(a) * d2 * 0.7 - spread * 4, 2, 2);
+        q.fillRect(cx + Math.cos(a) * d2 * 1.1, cy + Math.sin(a) * d2 * 0.7 - spread * 4, K * 2, K * 2);
       }
       q.globalAlpha = 1;
+      const c = document.createElement('canvas'); c.width = c.height = side;
+      const cg = c.getContext('2d');
+      cg.imageSmoothingEnabled = false;
+      cg.drawImage(lo, 0, 0, side, side);
       frames.push(c);
     }
     return this._poofSheets[sz] = { frames, pad };
@@ -1594,6 +1608,16 @@ const R = {
     const d = CFG.BUILDINGS[key];
     return !(d && d.needsWorker);
   },
+  /* the ROUND kinds — a square gabled frame under a conical hut meant the
+     player watched a square building turn round overnight (the design
+     review). Roundness cannot be read off a silhouette bbox, so it is the
+     one per-key fact the derivation carries: the levels whose art is a
+     roundhouse. */
+  STAGE_ROUND: { tc: [1], house: [1] },
+  stageRound(key, lv) {
+    const e = this.STAGE_ROUND[key];
+    return !!(e && e.indexOf(lv || 1) >= 0);
+  },
   // the trodden work-ground alone — drawn under stages 1 and 2
   padOf(sz) {
     const ck = 'pad' + sz;
@@ -1651,15 +1675,19 @@ const R = {
     q.fillRect(m * px, m * px, (N - 2 * m) * px, 1); q.fillRect(m * px, (N - m - 1) * px, (N - 2 * m) * px, 1);
     q.fillRect(m * px, m * px, 1, (N - 2 * m) * px); q.fillRect((N - m - 1) * px, m * px, 1, (N - 2 * m) * px);
     q.globalAlpha = 1;
-    // a pile of rough poles laid ready — the biggest thing on the site
+    // a pile of rough poles laid ready — the biggest thing on the site.
+    // LOGS, not lumber (the design review): dark log-brown bodies, uneven
+    // lengths, and a round butt at each end — a dark ring around a pale core
     const pll = (12 * s) | 0;
     const plx = ((N - pll) / 3 | 0) + j(), ply = ((22 * s) | 0) + j();
     sh(plx, ply + 5 * s | 0, pll, 1);
     for (let i = 0; i < (sz >= 2 ? 4 : 3); i++) {
       const py2 = ply + i * 2, ind = (i % 2) * 2;               // staggered like a real stack
-      h(plx + ind, py2, pll, 2, W[i % 2 ? 2 : 1]); h(plx + ind, py2, pll, 1, W[3]);
-      h(plx + ind, py2, 1, 2, BO[1]);                          // pale ring-end
-      h(plx + ind + pll - 1, py2, 1, 2, DK);
+      const len = pll - (i % 3);                                // no two poles the same length
+      h(plx + ind, py2, len, 2, W[1]); h(plx + ind, py2, len, 1, W[2]);
+      h(plx + ind, py2, 1, 2, W[0]); h(plx + ind, py2 + 0.5, 0.5, 1, BO[2]);   // ringed butt, pale core
+      h(plx + ind + len - 1, py2, 1, 2, W[0]);
+      h(plx + ind + len - 1, py2 + 0.5, 0.5, 1, BO[1]);
     }
     // a wooden spade stuck upright by the dig
     const spx = ((24 * s) | 0) + j(), spy = ((5 * s) | 0) + Math.abs(j());
@@ -1699,16 +1727,17 @@ const R = {
     } else {
       const ph2 = (7 * s) | 0;
       sh(dx2, dy2 + ph2, 5, 1);
-      h(dx2, dy2, 2, ph2, W[2]); h(dx2, dy2, 1, ph2, W[3]);
-      h(dx2, dy2, 2, 1, BO[1]);
-      h(dx2 + 3, dy2 + 1, 2, ph2 - 1, W[1]); h(dx2 + 3, dy2 + 1, 2, 1, BO[1]);
+      h(dx2, dy2, 2, ph2, W[1]); h(dx2, dy2, 1, ph2, W[2]);
+      h(dx2, dy2, 2, 1, W[0]); h(dx2 + 0.5, dy2, 1, 0.5, BO[2]);   // ringed butt
+      h(dx2 + 3, dy2 + 1, 2, ph2 - 2, W[1]);
+      h(dx2 + 3, dy2 + 1, 2, 1, W[0]); h(dx2 + 3.5, dy2 + 1, 1, 0.5, BO[1]);
     }
     return this._siteCache[ck] = c;
   },
   // stage 1 — the framing, traced from the target sprite's own silhouette
-  frameOf(base, tier, roof) {
+  frameOf(base, tier, roof, round) {
     const e = this._stageEntry(base);
-    const k = 'frame' + tier + (roof ? 'r' : '');
+    const k = 'frame' + tier + (roof ? 'r' : '') + (round ? 'o' : '');
     if (e[k]) return e[k];
     const W = base.width, H = base.height;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -1720,6 +1749,49 @@ const R = {
     const l = Math.round(box.l * W), rgt = Math.round(box.r * W);
     const top = Math.round(box.t * H), bot = Math.round(box.b * H);
     const bw = rgt - l, bh = bot - top;
+    if (round) {
+      /* A ROUNDHOUSE FRAME: a ring of posts on the footprint's oval, a bent
+         ring-beam at the wall head, cone rafters lashed to the apex — the
+         skeleton of the conical hut the finished art shows, never a box. */
+      const cx2 = (l + rgt) / 2, ex = bw / 2 - px;
+      const eyR = Math.max(px * 2, bh * 0.10);
+      const baseY = bot - px - eyR, headY = Math.round(top + bh * 0.52);
+      const apexY = Math.round(top + bh * 0.10);
+      const cell = (x, y, col) => { q.fillStyle = col; q.fillRect(Math.round(x), Math.round(y), px, px); };
+      // the wall-head RING, stepped around the full oval
+      for (let i = 0; i < 40; i++) {
+        const a2 = (i / 40) * Math.PI * 2;
+        cell(cx2 + Math.cos(a2) * ex * 0.86 - px / 2, headY + Math.sin(a2) * eyR - px / 2,
+          Math.sin(a2) > 0 ? WD[3] : WD[2]);
+      }
+      // posts on the front arc, rising from the ground oval to the ring
+      const posts = [];
+      for (let i2 = 0; i2 < 5; i2++) {
+        const a2 = (i2 / 4) * Math.PI;                     // 0..π: the visible half
+        const x = cx2 + Math.cos(a2) * ex * 0.86 - px / 2;
+        const y0 = baseY + Math.sin(a2) * eyR;
+        q.fillStyle = WD[2]; q.fillRect(Math.round(x), headY, px, Math.round(y0 - headY) + px);
+        q.fillStyle = WD[4] || WD[3]; q.fillRect(Math.round(x), headY, Math.max(1, px >> 1), Math.round(y0 - headY) + px);
+        q.fillStyle = LASH; q.fillRect(Math.round(x) - 1, headY, px + 2, Math.max(2, px >> 1));
+        posts.push(x);
+      }
+      // cone rafters from the ring up to the lashed apex
+      for (const x of posts) {
+        const steps = Math.max(3, Math.round(Math.abs(cx2 - x) / px) + 2);
+        for (let i2 = 0; i2 <= steps; i2++)
+          cell(x + (cx2 - px / 2 - x) * (i2 / steps), headY - (headY - apexY) * (i2 / steps), WD[2]);
+      }
+      q.fillStyle = LASH; q.fillRect(Math.round(cx2 - px), apexY - 1, px * 2, Math.max(2, px >> 1) + 1);
+      q.fillStyle = ART.PALETTE.thatch[3]; q.fillRect(Math.round(cx2 - px / 2), apexY, 1, 1);
+      // the tier-2/3 kinds are never round today, but keep the footing honest
+      if (tier >= 2) for (let i = 0; i < 40; i++) {
+        const a2 = (i / 40) * Math.PI;
+        cell(cx2 + Math.cos(a2) * ex * 0.9 - px / 2, baseY + Math.sin(a2) * eyR, ST[i % 2 ? 2 : 1]);
+      }
+      try { ART.outline(c, px >= 4 ? 2 : 1); } catch (_) { }
+      c._cfArt = base._cfArt;
+      return e[k] = c;
+    }
     const plateY = Math.round(top + bh * (roof ? 0.42 : 0.5));
     const beam = (y, col, lit) => {
       q.fillStyle = col; q.fillRect(l, y, bw, px);
@@ -1790,31 +1862,39 @@ const R = {
     c._cfArt = base._cfArt;   // a PNG's frame lands where its finished art will
     return e[k] = c;
   },
-  // stage 2 — the partial build: the target sprite with its top taken off,
-  // pale fresh-cut ends along the break, post stubs above it
-  partialOf(base) {
+  /* stage 2 — the partial build: the target sprite with its top taken off,
+     pale fresh-cut ends along the break, post stubs above it. A FLAT kind (a
+     yard, a field, a dug pit — anything stageRoof frames flat) has no wall
+     line to cut: it keeps much more of itself (the work is horizontal) and
+     never wears the stub row — pale ends over a pit mouth read as teeth. */
+  partialOf(base, flat) {
     const e = this._stageEntry(base);
-    if (e.partial) return e.partial;
+    const ck = 'partial' + (flat ? 'f' : '');
+    if (e[ck]) return e[ck];
     const W = base.width, H = base.height;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const q = c.getContext('2d'); q.imageSmoothingEnabled = false;
     q.drawImage(base, 0, 0);
     const box = this._artBox(base);
     const px = Math.max(2, Math.round(W / 32));
-    const cutY = Math.round((box.t + (box.b - box.t) * 0.45) * H);
+    const cutY = Math.round((box.t + (box.b - box.t) * (flat ? 0.28 : 0.45)) * H);
     // which columns still hold wall at the cut — read before the erase, so
-    // the pale ends land on real material (taint → an even dashed band)
+    // the pale ends land on real material (taint → an even dashed band).
+    // For a flat kind the end is drawn only where the material is BRIGHT
+    // (timber, straw): a dark pit mouth stays a pit mouth.
     let cols = null;
     try {
       const d = q.getImageData(0, 0, W, H).data;
       cols = [];
       for (let x = 0; x < W; x += px) {
-        let hit = false;
-        for (let xx = x; xx < Math.min(W, x + px) && !hit; xx++)
-          if (d[((cutY + px) * W + xx) * 4 + 3] > 40) hit = true;
-        cols.push(hit);
+        let hit = false, bright = false;
+        for (let xx = x; xx < Math.min(W, x + px) && !hit; xx++) {
+          const i2 = ((cutY + px) * W + xx) * 4;
+          if (d[i2 + 3] > 40) { hit = true; bright = d[i2] + d[i2 + 1] + d[i2 + 2] > 260; }
+        }
+        cols.push(hit && (!flat || bright));
       }
-    } catch (_) { /* tainted — the dashed band stands in */ }
+    } catch (_) { /* tainted — the dashed band stands in (roofed only) */ }
     q.globalCompositeOperation = 'destination-out';
     q.fillStyle = '#000';                                       // FULL-alpha eraser (the ruinOf lesson)
     q.fillRect(0, 0, W, cutY);
@@ -1823,19 +1903,19 @@ const R = {
     const PALE = '#e0d0a0', PALE2 = '#c4ae7e', DARKW = '#503020';
     let stub = 0;
     for (let x = lpx, i = 0; x < rpx; x += px, i++) {
-      const hit = cols ? cols[(x / px) | 0] : (i % 2 === 0);
+      const hit = cols ? cols[(x / px) | 0] : (!flat && i % 2 === 0);
       if (!hit) continue;
       // the fresh-cut end — alternating pale tones, 1–2 cells deep
       q.fillStyle = i % 2 ? PALE : PALE2;
       q.fillRect(x, cutY, px, px * (1 + (i % 3 === 0 ? 1 : 0)));
-      // every few bays a post stub still stands proud of the cut
-      if (++stub % 5 === 0) {
+      // every few bays a post stub still stands proud of the cut (walls only)
+      if (!flat && ++stub % 5 === 0) {
         q.fillStyle = DARKW; q.fillRect(x, cutY - px * 3, px, px * 3);
         q.fillStyle = PALE; q.fillRect(x, cutY - px * 3, px, Math.max(1, px >> 1));
       }
     }
     c._cfArt = base._cfArt;
-    return e.partial = c;
+    return e[ck] = c;
   },
   // the panel's work-site icon takes the same routing the map draw does
   stageIcon(b) {
@@ -1855,8 +1935,8 @@ const R = {
     const base = fam ? fam[Math.min(tgt, fam.length) - 1] : this.bldSprite(b, tgt);
     const bs = Bld.size(b), tier = Math.min(3, tgt);
     if (stage === 0) return this.siteOf(b.key, bs, tier);
-    if (stage === 1) return this.frameOf(base, tier, this.stageRoof(b.key, tgt));
-    return this.partialOf(base);
+    if (stage === 1) return this.frameOf(base, tier, this.stageRoof(b.key, tgt), this.stageRound(b.key, tgt));
+    return this.partialOf(base, !this.stageRoof(b.key, tgt));
   },
 
   /* ---- BURNING BUILDINGS (tests/burn-down.mjs) ----
@@ -2722,19 +2802,22 @@ const R = {
   // the smoke of a real fire — darker and denser than a hearth's, climbing
   // from the roofline (or off the smoldering ground) and fraying downwind
   drawBurnSmoke(g, cx, topY, w, ph, seed) {
+    // WARM grey-brown and near-opaque low down: a translucent grey wash over
+    // grass composited to a mossy green smudge (the design review); the
+    // column should read as solid smoke at its root and fray only as it dies
     const now = performance.now() / 1000;
-    const n = ph === 1 ? 5 : 3, dark = ph === 1 ? '#4a443c' : '#6a655c';
+    const n = ph === 1 ? 5 : 3, dark = ph === 1 ? '#3f382f' : '#57503f';
     for (let i = 0; i < n; i++) {
       const t = ((now * 0.5 + seed + i / n) % 1);
       const rise = t * w * (ph === 1 ? 1.05 : 0.7);
       const drift = Math.sin(now * 0.8 + i * 2.1 + seed * 9) * w * 0.14 * t + t * w * 0.08;
-      const sz = Math.max(2, w * (0.09 + t * 0.10) * (ph === 1 ? 1.25 : 1));
-      g.globalAlpha = (ph === 1 ? 0.44 : 0.30) * (1 - t);
+      const sz = Math.max(2, w * (0.10 + t * 0.11) * (ph === 1 ? 1.25 : 1));
+      g.globalAlpha = (ph === 1 ? 0.8 : 0.6) * (1 - t * 0.85);
       g.fillStyle = dark;
       g.fillRect(cx + drift - sz / 2, topY - rise - sz, sz, sz);
       if (t > 0.3) {
-        g.globalAlpha *= 0.6;
-        g.fillStyle = '#8c8880';
+        g.globalAlpha *= 0.65;
+        g.fillStyle = '#8a7f70';
         g.fillRect(cx + drift + sz * 0.5, topY - rise - sz * 1.5, sz * 0.6, sz * 0.6);
       }
     }
@@ -2749,12 +2832,21 @@ const R = {
       const sp = spots[i];
       const px = rct.x + sp.x * rct.w, py = rct.y + sp.y * rct.h;
       const rad = rct.w * (ph === 0 ? 0.10 : ph === 1 ? 0.14 : 0.17) * (0.8 + hsh(i) * 0.4);
-      // scorched earth — two offset blots so the patch reads irregular
-      g.globalAlpha = ph === 2 ? 0.62 : 0.48;
-      g.fillStyle = '#241a10';
+      // scorched earth — near-opaque char (a translucent multiply over green
+      // grass read as moss), two offset blots so the patch stays irregular
+      g.globalAlpha = ph === 2 ? 0.92 : 0.62;
+      g.fillStyle = '#1c140c';
       g.beginPath(); g.ellipse(px, py, rad, rad * 0.62, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#3a2c1c';
       g.beginPath(); g.ellipse(px + rad * 0.5 * (hsh(i + 9) - 0.5), py + rad * 0.3,
         rad * 0.6, rad * 0.4, 0, 0, Math.PI * 2); g.fill();
+      // guttering leaves ASH — a pale grey drift on the char, the one phase
+      // whose whole job is "this yard is nearly gone"
+      if (ph === 2) {
+        g.globalAlpha = 0.8;
+        g.fillStyle = '#78716a';
+        g.beginPath(); g.ellipse(px - rad * 0.25, py - rad * 0.1, rad * 0.5, rad * 0.28, 0, 0, Math.PI * 2); g.fill();
+      }
       g.globalAlpha = 1;
       // embers winking in the char
       const F = ART.PALETTE.fire;
@@ -3207,8 +3299,8 @@ const R = {
               g.drawImage(this.padOf(bs), bx, by, bw, bw);
               const base = this.bldSprite(b, tgt);
               this.blitBld(g, stage === 1
-                ? this.frameOf(base, tier, this.stageRoof(b.key, tgt))
-                : this.partialOf(base), bx, by, bw, bw);
+                ? this.frameOf(base, tier, this.stageRoof(b.key, tgt), this.stageRound(b.key, tgt))
+                : this.partialOf(base, !this.stageRoof(b.key, tgt)), bx, by, bw, bw);
             }
           }
         }
