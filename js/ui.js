@@ -2243,17 +2243,15 @@ const UI = {
       // the panel icon follows the work-site stage (tests/build-stages.mjs):
       // ground broken → the raising → the (nearly finished) building itself
       const iconStage = b.construction > 0 ? Bld.stageOf(b) : 3;
-      this.iconInto(ic, Sprites.misc[b.key + 'Build1'] && iconStage < 3
-        ? Sprites.misc[b.key + 'Build' + (iconStage + 1)]   // the building's bespoke stages
-        : iconStage === 0
-          ? (Bld.size(b) >= 2 ? Sprites.misc.constructionBig1 : Sprites.misc.construction1)
-          : iconStage === 1
-            ? (Bld.size(b) >= 2 ? (b.level >= 3 ? Sprites.misc.constructionBig3 : Sprites.misc.constructionBig) : Sprites.misc.construction)
-            // …and a camp shows the art of the people whose fire it is. Only
-            // the camp is routed this way: R.bldSprite hands a wall or gate its
-            // AUTO-TILED mask, which is the wrong picture for a panel icon.
-            : (b.key === 'raidercamp' && Sprites.camp && Sprites.camp[b.tribe]
-                ? Sprites.camp[b.tribe] : Sprites.building[b.key][b.level - 1]));
+      this.iconInto(ic, iconStage < 3
+        // a work site's icon follows the stage the map shows — bespoke or
+        // derived, R.stageIcon takes the same routing the building draw does
+        ? R.stageIcon(b)
+        // …and a camp shows the art of the people whose fire it is. Only
+        // the camp is routed this way: R.bldSprite hands a wall or gate its
+        // AUTO-TILED mask, which is the wrong picture for a panel icon.
+        : (b.key === 'raidercamp' && Sprites.camp && Sprites.camp[b.tribe]
+            ? Sprites.camp[b.tribe] : Sprites.building[b.key][b.level - 1]));
       panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => {
         const b2 = Bld.get(this.sel.id);
         if (!b2) return;

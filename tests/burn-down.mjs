@@ -102,8 +102,14 @@ const out = await p.evaluate(() => {
   }
 
   // ---- 3. the scorched and ruined variants: darker, holed, cached ----
+  // measured on a PROCEDURAL base: a shipped PNG loaded over file:// taints
+  // every canvas it touches and the pixel reads here would throw. The pick
+  // is dynamic (first key whose sprite is still a canvas), so new art
+  // shipping later never breaks the check — it just moves it.
+  const procKeys = Object.keys(Sprites.building)
+    .filter(k => Sprites.building[k][0] && Sprites.building[k][0].getContext);
   {
-    const base = Sprites.building.house[0];
+    const base = Sprites.building[procKeys[0]][0];
     const dark = R.darkOf(base), ruin = R.ruinOf(base);
     ck('darkVariantScorches',
       dark !== base && dark.width === base.width && avgLum(dark) < avgLum(base) * 0.9,
@@ -149,8 +155,12 @@ const out = await p.evaluate(() => {
     const k3 = keysAt(() => { h.hp = h.maxhp * 0.05; });
     ck('soundBuildingNoFlames', !anyS(k0) && !anyB(k0), '');
     ck('phase0SmallFires', anyS(k1) && !anyB(k1), '');
-    ck('phase1BigFires', anyB(k2) && !anyS(k2), '');
-    ck('stillBlazingAtAFifth', anyB(k2b) && !anyS(k2b), 'the ruined look has NOT arrived yet');
+    // the BLAZE is phase 1's alone — but the per-building anchors now put
+    // small licks at the doorway and the foot ALONGSIDE the roof's flameBig,
+    // so ph1 is no longer big-only (it was, when the fire was three fixed
+    // fractions of the tile)
+    ck('phase1BigFires', anyB(k2), '');
+    ck('stillBlazingAtAFifth', anyB(k2b), 'the ruined look has NOT arrived yet');
     ck('phase2SmallFiresAgain', anyS(k3) && !anyB(k3), '');
     // a construction site is fragile BY DESIGN (it starts at siteStartHp, a
     // fraction of finished hp) — an UNTOUCHED site must never read as on
@@ -204,10 +214,11 @@ const out = await p.evaluate(() => {
       /smoulder/i.test(Bld.canPlace('P', 'house', hx, hy).why),
       Bld.canPlace('P', 'house', hx, hy).why);
     ck('ashNeverBlocksMovement', Path.passable(hx, hy, 'P'), 'ash is ground, not a wall');
-    const a1 = R.ashOf('house', 1), a2 = R.ashOf('tower', 1);
+    // two dynamically-picked PROCEDURAL keys (the file:// taint rule again)
+    const a1 = R.ashOf(procKeys[0], 1), a2 = R.ashOf(procKeys[1], 1);
     ck('ashArtUniquePerBuilding',
       px(a1) > 150 && px(a2) > 150 && a1.toDataURL() !== a2.toDataURL() &&
-      R.ashOf('house', 1) === a1,
+      R.ashOf(procKeys[0], 1) === a1,
       'derived from each building\'s own silhouette, cached');
     // expiry: present through day 4, cool and buildable on day 5
     const burnedDay = S.ashes[S.ashes.length - 1].day;
@@ -369,6 +380,178 @@ const out = await p.evaluate(() => {
     ck('authoredFallArtIsPickedUp', R.collapseArt('tower', cfg.frames) === 3,
       'misc/<key>Fall1..N takes over the whole animation');
     delete Sprites.misc.towerFall1; delete Sprites.misc.towerFall2; delete Sprites.misc.towerFall3;
+  }
+
+  /* ---- 9. WHERE A BUILDING BURNS (R.FIRE_AT): the fire is anchored to the
+     hand-made art's real roofs, doorways and yards — per key, per level —
+     and the GROUND-LEVEL kinds (a field, a pit, an open yard) smoulder low
+     instead of blazing tall. ---- */
+  {
+    // every shipped PNG slot has anchors, resolved through the [{lv,…}] form
+    const SHIPPED = [['tc', 3], ['house', 3], ['barracks', 3], ['range', 3],
+      ['farm', 1], ['sapper', 1], ['siege', 1]];
+    const probs = [];
+    for (const [id, top] of SHIPPED) for (let lv = 1; lv <= top; lv++) {
+      const a = R.smokeAnchor(R.FIRE_AT, id, lv);
+      if (!a || !a.spots || a.spots.length < 3) { probs.push(id + '-l' + lv + ' unanchored'); continue; }
+      if (!a.spots.every(sp => sp.x >= 0 && sp.x <= 1 && sp.y >= 0 && sp.y <= 1))
+        probs.push(id + '-l' + lv + ' out of rect');
+    }
+    ck('everyShippedArtHasFireAnchors', probs.length === 0,
+      probs.length ? probs.slice(0, 5).join('; ') : '15 PNG slots anchored');
+    ck('theGroundKindsAreMarked',
+      R.smokeAnchor(R.FIRE_AT, 'farm', 1).ground === 1 &&
+      R.smokeAnchor(R.FIRE_AT, 'sapper', 1).ground === 1 &&
+      R.smokeAnchor(R.FIRE_AT, 'siege', 1).ground === 1 &&
+      R.smokeAnchor(R.FIRE_AT, 'barracks', 1).ground === 1 &&
+      !R.smokeAnchor(R.FIRE_AT, 'barracks', 3).ground &&
+      !R.smokeAnchor(R.FIRE_AT, 'house', 1).ground,
+      'field, pit, open yards — a roofed hall is not among them');
+    // a level with no entry of its own resolves down (the smokeAnchor rule),
+    // and a WORK SITE always burns the classic way — the anchors are for the
+    // building, not for the piled materials
+    ck('anchorsResolveDownTheLevels',
+      R.smokeAnchor(R.FIRE_AT, 'sapper', 3) === R.smokeAnchor(R.FIRE_AT, 'sapper', 1), '');
+    ck('sitesKeepTheClassicBurn',
+      R.fireAnchors({ key: 'house', level: 1, construction: 5, upgrading: 0 }) === null &&
+      R.fireAnchors({ key: 'house', level: 1, construction: 0, upgrading: 2 }) === null &&
+      !!R.fireAnchors({ key: 'house', level: 1, construction: 0, upgrading: 0 }), '');
+
+    // the render path: a burning FARM never draws flameBig at any phase, and
+    // never takes the ruinOf crown-bite (holes in a flat field); a burning
+    // HOUSE still does both
+    G.newGame('burn4', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const tc = Bld.tcOf('P');
+    tc.x = 20; tc.y = 25; Bld._block = null;
+    for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
+      const x = tc.x + dx, y = tc.y + dy;
+      if (MapGen.inB(x, y)) { S.map.terrain[MapGen.idx(x, y)] = T.GRASS; S.map.explored[MapGen.idx(x, y)] = 1; }
+    }
+    S.units = [];
+    const farm = Bld.place('P', 'farm', tc.x + 3, tc.y, { free: true });
+    Bld.finish(farm);
+    const hs = Bld.place('P', 'house', tc.x - 3, tc.y, { free: true });
+    Bld.finish(hs);
+    G.updateVisibility();
+    R.centerOn(tc.x + 0.5, tc.y + 0.5);
+    const keysAt = (setup) => {
+      setup();
+      const calls = [];
+      const orig = Assets.drawSprite;
+      Assets.drawSprite = function (g, key, x, y, o) { calls.push(key); return orig.call(Assets, g, key, x, y, o); };
+      try { R.draw(0.016); } finally { Assets.drawSprite = orig; }
+      return calls;
+    };
+    const anyB = (k) => k.some(x => /^misc\/flameBig\//.test(x));
+    const anyS = (k) => k.some(x => /^misc\/flameSmall\//.test(x));
+    hs.hp = hs.maxhp;
+    const g1 = keysAt(() => { farm.hp = farm.maxhp * 0.5; });
+    const g2 = keysAt(() => { farm.hp = farm.maxhp * 0.05; });
+    ck('theGroundNeverBlazes', !anyB(g1) && !anyB(g2) && anyS(g1),
+      'small smoulder flames only, at every phase');
+    let ruins = 0;
+    const oRuin = R.ruinOf;
+    R.ruinOf = function (...a) { ruins++; return oRuin.apply(R, a); };
+    try { R.draw(0.016); } finally { R.ruinOf = oRuin; }
+    ck('aRuinedFieldStaysDarkNotHoled', ruins === 0,
+      'ground kinds keep darkOf at phase 2 — ruinOf is for things with rooflines');
+    farm.hp = farm.maxhp;
+    hs.hp = hs.maxhp * 0.05;
+    ruins = 0;
+    R.ruinOf = function (...a) { ruins++; return oRuin.apply(R, a); };
+    try { R.draw(0.016); } finally { R.ruinOf = oRuin; }
+    ck('aRuinedHouseIsStillHoled', ruins >= 1, '');
+    // the blaze breaks out BEHIND the ridge: the back-pass draws flameBig
+    // before the sprite at phase 1, and only at phase 1
+    hs.hp = hs.maxhp * 0.5;
+    const back1 = keysAt(() => { const o = R.draw; }); // full frame — back-pass included
+    ck('theBlazeBreaksOutBehindTheRidge',
+      (() => {
+        const calls = [];
+        const orig = Assets.drawSprite;
+        Assets.drawSprite = function (g, key, x, y, o) { calls.push(key); return orig.call(Assets, g, key, x, y, o); };
+        try { R.drawBurnBack(R.g, hs, 0, 0, 64); } finally { Assets.drawSprite = orig; }
+        return calls.some(k => /^misc\/flameBig\//.test(k));
+      })() && back1.length >= 0, 'drawBurnBack issues the behind-the-ridge blaze at ph1');
+    ck('theBackPassRestsOutsideTheBlaze',
+      (() => {
+        const calls = [];
+        const orig = Assets.drawSprite;
+        Assets.drawSprite = function (g, key, x, y, o) { calls.push(key); return orig.call(Assets, g, key, x, y, o); };
+        try {
+          hs.hp = hs.maxhp * 0.9; R.drawBurnBack(R.g, hs, 0, 0, 64);   // ph0
+          hs.hp = hs.maxhp * 0.05; R.drawBurnBack(R.g, hs, 0, 0, 64);  // ph2
+        } finally { Assets.drawSprite = orig; }
+        return calls.length === 0;
+      })(), 'catching and guttering keep the fire in front');
+    hs.hp = hs.maxhp;
+  }
+
+  /* ---- 10. THE FALL THROWS DUST (R.startDestructPoof): the placement poof,
+     reused at the other end of a building's life. One full-size burst under
+     the footprint, a smaller residual a beat later; the tower holds its dust
+     for the LANDING; fog-gated; capped; never from a demolition. ---- */
+  {
+    G.newGame('burn5', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const tc = Bld.tcOf('P');
+    tc.x = 20; tc.y = 25; Bld._block = null;
+    for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) {
+      const x = tc.x + dx, y = tc.y + dy;
+      if (MapGen.inB(x, y)) { S.map.terrain[MapGen.idx(x, y)] = T.GRASS; S.map.explored[MapGen.idx(x, y)] = 1; }
+    }
+    S.units = [];
+    const mk = (key, dx, dy) => { const z = Bld.place('P', key, tc.x + dx, tc.y + dy, { free: true }); Bld.finish(z); return z; };
+    const h1 = mk('house', 3, 0), bk = mk('barracks', 5, 3), tw = mk('tower', -3, 0), h2 = mk('house', 3, 2);
+    G.updateVisibility();
+    R.placePoofs.length = 0; R.collapses.length = 0;
+    Bld.damage(h1, 999999);
+    ck('theFallThrowsDust',
+      R.placePoofs.length === 2 && R.placePoofs[0].t === 0 && R.placePoofs[0].sz === 1 &&
+      R.placePoofs[0].x === h1.x && R.placePoofs[0].y === h1.y, '');
+    ck('andALittleMoreSettlesAfter',
+      R.placePoofs[1].t === -250 && R.placePoofs[1].scale === 0.65,
+      'a 0.65-scale echo, 250ms behind');
+    Bld.damage(bk, 999999);
+    ck('theDustScalesWithTheFootprint',
+      R.placePoofs[2].sz === Bld.size('barracks'), '2×2 ground, 2×2 cloud');
+    R.placePoofs.length = 0;
+    Bld.damage(tw, 999999);
+    ck('theTowerDustWaitsForTheLanding',
+      R.placePoofs.length === 2 &&
+      R.placePoofs[0].t === -(R.COLLAPSE.tower.ms * 0.84) &&
+      R.placePoofs[1].t === -(R.COLLAPSE.tower.ms * 0.84 + 250),
+      'the poof answers the block hitting the ground, not the killing blow');
+    R.collapses.length = 0;
+    // …but a tower SITE has nothing to topple, so its dust flies at once
+    const twSite = Bld.place('P', 'tower', tc.x - 3, tc.y + 3, { free: true });
+    R.placePoofs.length = 0;
+    Bld.damage(twSite, 999999);
+    ck('aTowerSitePoofsAtOnce', R.placePoofs.length === 2 && R.placePoofs[0].t === 0, '');
+    // a DEMOLITION is a teardown, not a kill — no dust
+    R.placePoofs.length = 0;
+    Bld.demolish(h2);
+    ck('aDemolitionThrowsNoDust', R.placePoofs.length === 0, '');
+    // dust nobody can see is a cloud drawn for nobody: a building destroyed
+    // outside the vis grid starts nothing (placed AFTER updateVisibility ran,
+    // so the stale grid genuinely cannot see it)
+    const farX = tc.x + 14, farY = tc.y + 14;
+    if (MapGen.inB(farX, farY)) {
+      S.map.terrain[MapGen.idx(farX, farY)] = T.GRASS;
+      const far = Bld.place('P', 'house', farX, farY, { free: true });
+      Bld.finish(far);
+      R.placePoofs.length = 0;
+      Bld.damage(far, 999999);
+      ck('unseenFallsThrowNoDust', R.placePoofs.length === 0, 'fog-gated at the trigger');
+    } else ck('unseenFallsThrowNoDust', false, 'probe tile off the board — rework the test scene');
+    // a razed town block stays a scene, not a whiteout: the pile is capped
+    R.placePoofs.length = 0;
+    for (let i = 0; i < 12; i++) {
+      const z = Bld.place('P', 'house', tc.x - 6 + i, tc.y + 5, { free: true });
+      Bld.finish(z); G.updateVisibility();
+      Bld.damage(z, 999999);
+    }
+    ck('theDustPileIsCapped', R.placePoofs.length <= 17, R.placePoofs.length + ' clouds live');
+    R.placePoofs.length = 0; R.collapses.length = 0;
   }
 
   return { res, fails };

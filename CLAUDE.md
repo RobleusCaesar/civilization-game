@@ -78,8 +78,8 @@ node tests/sapper-fees.mjs     # sapper services bill per tile, dearer by tier, 
 node tests/army-groups.mjs     # dense 2-per-tile formations; three saved armies on right-rail banners
 node tests/boats-moat-scuttle.mjs # a moat is open water to hulls; Scuttle sinks a boat, frees its pop, refunds nothing
 node tests/army-strategies.mjs # the three assault doctrines (Siege/Chaos/Strike) — for the player AND the rival
-node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals; upgrades own their labels
-node tests/burn-down.mjs       # damaged buildings burn in thirds; a razed one leaves 5 days of unbuildable ash
+node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals — DERIVED from the target art
+node tests/burn-down.mjs       # buildings burn in thirds at their OWN anchors; the fall throws dust; 5 days of ash
 node tests/wall-tower-bond.mjs # L2 forts are half stone/half timber; an in-line tower joins the curtain
 node tests/buildings-block.mjs # every building is solid ground except the worker plots
 node tests/ore-finite.mjs      # felled woods and spent soil grow back; a quarried seam never does
@@ -614,34 +614,47 @@ opportunistic detour in `aiRaidSeek`, siege escorts hold beside the column's
 guns, and the stance stands down when the raid ends.
 
 **Build stages** (`tests/build-stages.mjs`): a work site moves through THREE
-looks at exact 1/3 intervals of its build time (`Bld.stageOf`) — ground
-broken (`misc/construction1` / `Big1`), the raising (the classic work-site
-art), then the TARGET BUILDING'S OWN SPRITE wrapped in the `misc/scaffold`
-(`scaffoldBig`) overlay — before the finished sprite appears. **Stage 2 must
-draw the TARGET level** (`R.bldSprite(b, tgt)`, the `lv` override): during an
-upgrade `b.level` is still the OLD level — it only increments in
-`Bld.finishUpgrade` — so drawing `b.level` there put the pre-upgrade building
-(the TC's level-1 camp) on screen AFTER stage 1 had already raised the new
-hall's frame, and the sequence ran backwards. Upgrades render
-the same three stages under their OWN labels (`misc/upgrade1`, `upgrade2`,
-`upgradeScaffold`, `upgradeBig1`, `upgradeBig2`, `upgradeBig2_3`,
-`upgradeScaffoldBig`) — the SAME canvases today (the test pins the aliasing),
-so upgrade art can diverge per level later without touching the plumbing.
-Wall/gate first raisings keep their translucent oriented-ghost look.
-**EVERY 1×1 building now raises its own way** (same test): each has bespoke
-`misc/<key>Build1/2/3` stage art at 128px on a 64-cell fine grid — render.js
-routes any `b.key` with a `<key>Build1` sprite to its own three stages (the
-ui.js panel icon follows), so the generic three looks above now serve only
-the 2×2 hall. The house-family sequence follows real medieval build order
-(staked plot + framed SILL BEAMS on footing stones → the roofless FOUR-WALL
-box: wattle bays between studs under a lit wall plate, pale open floor with
-ceiling joists → walls done and THATCH going on from the eaves up over a
-dark rafter void), while the open yards (lumber/range/siege/sapper/trade),
-the tent (warcamp), the waterworks (dock: piles driven → stringers → deck)
-and the groundworks (farm: paring → ploughing → sowing; quarry: stripping →
-first bench → deep cut) each tell their own trade's story, every stage
-carrying the building's identity props. Upgrades alias under
-`misc/<key>Up1..3` labels and may diverge per level later.
+looks at exact 1/3 intervals of its build time (`Bld.stageOf`) — and the
+looks are now DERIVED, not hand-drawn per key. The hand-made PNGs replace
+finished buildings faster than authored stage art could ever follow them, so
+render.js generates each site's stages from the footprint, the target TIER's
+materials and the TARGET SPRITE itself (`R.padOf` / `siteOf` / `frameOf` /
+`partialOf`, the big block above `_burnCache`):
+
+  stage 0  THE CLEARED SITE — trodden earth in the CHOCOLATE of the shipped
+           yard art (`R.SITE_EARTH`, sampled from the sapper/siege PNGs —
+           never tan), corner stakes and a taut cord, Neolithic tools (wood
+           spade, antler pick, woven basket) and the tier's deliveries:
+           poles at tier 1, fieldstones at 2, drystone slabs at 3
+  stage 1  THE FRAMING — a lashed post-and-beam skeleton traced from the
+           target sprite's own opaque silhouette (`R._artBox`): drystone
+           piers at tier 3, a fieldstone footing at 2; roofed kinds sketch
+           a ridge and rafters, worker plots and the FIRE_AT ground yards
+           frame flat (`R.stageRoof`)
+  stage 2  THE PARTIAL BUILD — the target sprite with its top erased above
+           the wall line, pale fresh-cut ends along the break, post stubs
+
+No sawn lumber, no scaffolding towers, no metal — the tools on site are the
+tools this world has. Derivation is LAZY and cached per target sprite
+(WeakMap, the `_burnCache` pattern) because PNG art decodes late; the
+canvases carry the base's `_cfArt` so a PNG's stages land exactly where its
+finished art will (the `darkOf`/`ruinOf` rule). Pixel reads try/catch down
+to honest margins — a file:// PNG taints its canvas, so the file:// tests
+measure the generators on synthetic sprites only. **Stages 1–2 derive from
+the TARGET level** (`R.bldSprite(b, tgt)`): during an upgrade `b.level` is
+still the OLD level — deriving from it would run the sequence backwards.
+**Bespoke `misc/<key>Build1..3` art still WINS the route** — that is the
+extension point — but only the TOWER carries any today; the other thirteen
+bespoke sets (house/lodge/barracks/stable/range/trade/siege/sapper/warcamp/
+farm/quarry/lumber/mine, ~850 lines of sprites.js) are RETIRED. The DOCK
+keeps its four-facing jetty stages (`Sprites.dockBuildFace`), the WONDER its
+shared masons' stages (tests/wonder.mjs), and wall/gate their translucent
+oriented ghosts. The ui.js panel icon asks `R.stageIcon(b)`, which takes the
+SAME routing (wonder and dock checked BEFORE the bespoke branch — the wonder
+has a `wonderBuild1` but no `wonderBuild3`, so the bespoke branch would hand
+back undefined); a wall/gate site's icon derives from the straight-run
+preview, never the auto-tiled mask. `tests/gold-mine.mjs`'s
+`andItRaisesItsOwnWay` now pins the mine's DERIVED raising.
 **The Watchtower has BESPOKE stage art** (same test): the first building with
 its own three-sprite raising — `misc/towerBuild1/2/3` at DOUBLE resolution
 (128px on a 64-cell fine grid, vs the finished tower's 32-grid), drawn from
@@ -995,7 +1008,30 @@ ruined and the moment it actually came down read as nothing happening.
 `CFG.RUIN_AT` is the single source of truth; never hard-code the fraction. The
 flames are `misc/flameSmall/0..3` and `misc/flameBig/0..3` (four-frame
 animated fire, opaque flame on transparent ground) drawn via
-`Assets.drawSprite` in `R.drawBurn`. **A TOWER IS THE EXCEPTION** — stone
+`Assets.drawSprite` in `R.drawBurn`.
+**WHERE a building burns is now a TABLE** (`R.FIRE_AT`, same test): the
+hand-made art gave every building a real roof, doorway and yard, so the fire
+anchors to THEM — per key, per level via the same `[{lv,…}]` resolver the
+smoke anchors use (`R.smokeAnchor`), in ART-RECT space (identical to the
+tile box for square art, honest under a sidecar's offsets — `R.fireRect`).
+Roofed entries carry `big`/`behind` flags: catching (ph0) lights the first
+two front spots small; the blaze (ph1) puts `flameBig` on the big spots —
+the `behind` ones drawn BEFORE the sprite (`R.drawBurnBack`, called just
+above `blitBld` in the building loop) so the fire licks up from behind the
+ridge — and small licks at the doorway and foot, WHICH MEANS PH1 IS NO
+LONGER BIG-ONLY (the test's ladder check was relaxed to match); guttering
+(ph2) falls back to small fires at the door/foot spots. The BLAZE stays
+phase 1's alone: ph0/ph2 never draw `flameBig`. **GROUND-LEVEL kinds burn
+low** (`ground: 1` entries — the farm, the sapper's pit, the siege yard, the
+open L1 training yards): nothing stands tall enough to blaze, so
+`R.drawGroundBurn` spreads smoldering scorch patches, winking embers and
+small low flames instead — never `flameBig` at any phase — and at ph2 they
+keep `darkOf` instead of `ruinOf`, because biting a "roofline" out of a
+flat field just punches green holes in it. A key with no entry (and EVERY
+work site / upgrade — what burns on a site is the piled materials) keeps
+the classic three-fraction look. Every burning building now also breathes a
+real smoke column above its roofline (`R.drawBurnSmoke` — darker and denser
+than the hearth's, thickest at ph1). **A TOWER IS THE EXCEPTION** — stone
 has almost nothing in it to burn, so `R.drawTowerCrumble` takes over for
 `b.key === 'tower'`: SMALL fires only at every phase (never the big roof
 blaze), and the real signal is masonry spalling off the shaft's EDGES and
@@ -1060,6 +1096,25 @@ down. Two traps this cost: `TL` is a per-function local everywhere in
 render.js (a method that forgets `const TL = CFG.TILE` throws every frame),
 and `Sprites` is a script-level `const`, so `window.Sprites` is undefined —
 reference it directly.
+**And EVERY fall now throws DUST** (`R.startDestructPoof`, same test): the
+placement poof reused at the other end of a building's life — a destroyed
+sprite drops off the map in a frame, and the dust is what sells the weight.
+One full-size burst under the footprint (`poofSheet` already scales with it
+and already biases wide and low), then a 0.65-scale residual 250ms behind.
+`startPlacePoof` grew `delay`/`scale` opts for this: delay is a NEGATIVE `t`
+that `drawPlacePoofs` advances through and skips while below zero, frame
+index clamped ≥ 0 so a stray negative can never index `frames[-1]`. A kind
+registered in `R.COLLAPSE` (the tower) holds its dust for the LANDING —
+`cfg.ms * 0.84`, the beat the block hits the ground — because dust on the
+killing blow gives the ending away (the held-ash reasoning again); a tower
+SITE has nothing to topple and poofs at once. Fired from `Bld.damage`'s
+destroy branch beside `startCollapse` — NEVER from `demolish` (a teardown,
+not a kill), never for the dock (a broken quay washes into open water) —
+and FOG-GATED at the trigger: dust nobody can see is a cloud drawn for
+nobody. The pile is capped (16 + the pushing one), so razing a town block
+stays a scene, not a whiteout; measured at a locked 60fps through 12
+simultaneous destructions. `tests/placement.mjs`'s `confirmThrowsTheDust`
+still sees exactly one un-delayed poof after a ✓.
 
 **Boats on moats + Scuttle** (`tests/boats-moat-scuttle.mjs`): a MOAT is open
 water to a HULL — the water-domain branch of `Path.passable` accepts it like

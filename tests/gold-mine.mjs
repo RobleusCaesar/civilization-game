@@ -316,9 +316,19 @@ const out = await p.evaluate(() => {
       Sprites.building.mine.length === 3 &&
       new Set(Sprites.building.mine.map(c => c.toDataURL())).size === 3 &&
       Sprites.building.mine.every(c => px(c) > 900), '');
+    // the bespoke mineBuild set is RETIRED — the mine raises through the
+    // DERIVED stages like every ordinary key (tests/build-stages.mjs):
+    // cleared site → framing → partial works, three genuinely different looks
     ck('andItRaisesItsOwnWay',
-      [1, 2, 3].every(i => Sprites.misc['mineBuild' + i] && Sprites.misc['mineBuild' + i].width === 128) &&
-      new Set([1, 2, 3].map(i => Sprites.misc['mineBuild' + i].toDataURL())).size === 3, '');
+      !Sprites.misc.mineBuild1 && !Sprites.misc.mineUp1 &&
+      (() => {
+        const t = L[0].time || 1;
+        const fk = { id: 91234, key: 'mine', owner: 'P', x: 1, y: 1, level: 1, construction: t * 0.9, upgrading: 0 };
+        const s0 = R.stageIcon(fk);
+        fk.construction = t * 0.5; const s1 = R.stageIcon(fk);
+        fk.construction = t * 0.1; const s2 = R.stageIcon(fk);
+        return !!s0 && !!s1 && !!s2 && s0 !== s1 && s1 !== s2 && s0 !== s2;
+      })(), 'derived stages, distinct at each third');
     // the clock: a station's upgrade is doubled then quadrupled
     S.res = { food: 99999, wood: 99999, stone: 99999, gold: 99999 };
     Bld.upgrade(m);

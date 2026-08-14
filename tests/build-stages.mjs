@@ -1,36 +1,36 @@
 /* BUILD-STAGES CONTRACT — a work site moves through THREE looks at exact 1/3
    intervals of its build (or upgrade) time, then the finished building
-   appears:
+   appears. The looks are DERIVED (render.js padOf/siteOf/frameOf/partialOf)
+   — from the footprint, the target TIER's materials and the TARGET SPRITE
+   itself — never hand-drawn per key:
 
-     stage 0  GROUND BROKEN  — misc/construction1 (Big1 for the 2×2 hall)
-     stage 1  THE RAISING    — the classic work-site art (construction /
-              constructionBig / constructionBig3 by size and target level)
-     stage 2  IN SCAFFOLD    — the target building's own sprite with the
-              misc/scaffold (scaffoldBig) overlay drawn over it
+     stage 0  THE CLEARED SITE — trodden bare earth in the chocolate brown of
+              the shipped yard art (R.SITE_EARTH), the plot staked and
+              corded, Neolithic tools (wooden spade, antler pick, basket)
+              and the tier's first deliveries (poles / fieldstone / drystone)
+     stage 1  THE FRAMING — a lashed post-and-beam skeleton traced from the
+              target sprite's own opaque silhouette (R._artBox); drystone
+              piers at tier 3, a fieldstone footing at tier 2; roofed kinds
+              sketch a ridge and rafters, worker plots and ground-level
+              yards frame flat (R.stageRoof)
+     stage 2  THE PARTIAL BUILD — the target sprite with its top erased
+              above the wall line, pale fresh-cut ends along the break and
+              post stubs above it
 
-   Upgrades wear the SAME three looks for now, but under their OWN sprite
-   labels (misc/upgrade1, upgrade2, upgradeScaffold, upgradeBig1, upgradeBig2,
-   upgradeBig2_3, upgradeScaffoldBig) so upgrade art can diverge per level
-   later without touching the render plumbing. This file pins that aliasing —
-   if the art diverges on purpose, update the check and say so in the commit.
-
-   THE WATCHTOWER is the first building with BESPOKE stage art: three
-   double-res (128px, 64-cell fine grid) sprites of the tall tower going up —
-   misc/towerBuild1 (the footing: staked plot, foundation trench, first plinth
-   course), towerBuild2 (the shaft rising in its putlog scaffold under a rope
-   windlass), towerBuild3 (the crown: lookout platform, railing and hoist at
-   the wall-head). render.js routes b.key === 'tower' to these for ALL three
-   stages — never the generic looks, never the scaffold overlay. Tower
-   UPGRADES diverge on purpose: an upgrade lifts the tower toward its STONE
-   tiers, so misc/towerUp2/3 climb in coursed masonry with dressed quoins,
-   while towerBuild2/3 (the first raising, toward the wattle level-1 tower)
-   climb in wattle-and-daub. Ground-breaking is shared (towerUp1 aliases
-   towerBuild1).
+   Derivation is lazy and cached per target sprite (WeakMap), so PNG art
+   that decodes late simply re-derives; the canvases carry the base's
+   _cfArt so a PNG's stages land exactly where its finished art will.
+   Bespoke `misc/<key>Build1..3` art still WINS the route — the TOWER keeps
+   its authored three-sprite raising (and its Up2/3 masonry divergence), the
+   DOCK keeps its four-facing jetty stages, the WONDER its shared masons'
+   stages (tests/wonder.mjs) and wall/gate their oriented ghosts. The other
+   thirteen bespoke sets are RETIRED — the derived stages serve every one.
 
    Run this after touching any of:
      buildings.js — Bld.stageOf
-     render.js — the work-site branch of the building draw
-     sprites.js — the construction/upgrade/scaffold sprite family
+     render.js — padOf / siteOf / frameOf / partialOf / stageRoof / _artBox /
+                 stageIcon / the work-site branch of the building draw
+     sprites.js — the tower/dock stage art
      ui.js — the building panel's work-site icon
 
      node tests/build-stages.mjs      # exits non-zero on any regression */
@@ -50,6 +50,7 @@ await p.waitForTimeout(900);
 const out = await p.evaluate(() => {
   const res = {}, fails = [];
   const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
+  const px = (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) n++; return n; };
 
   // ---- 1. stage math: exact 1/3 intervals, construction and upgrade alike ----
   {
@@ -67,24 +68,129 @@ const out = await p.evaluate(() => {
       Bld.stageOf(fakeUp(ut)) === 0 && Bld.stageOf(fakeUp(ut * 0.5)) === 1 && Bld.stageOf(fakeUp(ut * 0.1)) === 2, '');
   }
 
-  // ---- 2. the sprite family exists, and upgrades alias construction FOR NOW ----
+  /* ---- 2. THE DERIVED GENERATORS, measured on a synthetic sprite so the
+     checks are taint-proof (a file:// PNG poisons getImageData) and fully
+     controlled: a "building" with a known wall box and a known roof peak. ---- */
   {
-    const M = Sprites.misc;
-    const need = ['construction1', 'construction', 'constructionBig1', 'constructionBig', 'constructionBig3',
-      'scaffold', 'scaffoldBig', 'upgrade1', 'upgrade2', 'upgradeScaffold',
-      'upgradeBig1', 'upgradeBig2', 'upgradeBig2_3', 'upgradeScaffoldBig'];
-    const missing = need.filter(k => !M[k]);
-    ck('spriteFamilyComplete', missing.length === 0, missing.length ? 'missing: ' + missing.join(',') : '14 labels');
-    const px = (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) n++; return n; };
-    ck('stageArtHasSubstance', px(M.construction1) > 400 && px(M.scaffold) > 300 && px(M.constructionBig1) > 1500 && px(M.scaffoldBig) > 1200, '');
-    ck('upgradeAliasesConstructionForNow',
-      M.upgrade1 === M.construction1 && M.upgrade2 === M.construction && M.upgradeScaffold === M.scaffold &&
-      M.upgradeBig1 === M.constructionBig1 && M.upgradeBig2 === M.constructionBig &&
-      M.upgradeBig2_3 === M.constructionBig3 && M.upgradeScaffoldBig === M.scaffoldBig,
-      'same art, separate labels');
+    const mkBase = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 64;
+      const g = c.getContext('2d');
+      g.fillStyle = '#8a6a4a'; g.fillRect(12, 24, 40, 36);                       // walls x12..52, y24..60
+      g.fillStyle = '#c8a058';
+      g.beginPath(); g.moveTo(8, 26); g.lineTo(32, 6); g.lineTo(56, 26); g.fill();  // roof peaking at y6
+      return c;
+    };
+    const base = mkBase();
+
+    // the trodden pad: chocolate, footprint-scaled, cached
+    const p1 = R.padOf(1), p2 = R.padOf(2);
+    ck('padIsFootprintScaled', p1.width === 64 && p2.width === 128 && px(p2) > px(p1) * 2.5,
+      px(p1) + ' / ' + px(p2) + ' opaque px');
+    ck('padIsCached', R.padOf(1) === p1, '');
+    {
+      // trodden earth in the shipped yard art's CHOCOLATE, never tan/sandy —
+      // warm (r above g above b) and dark enough to read as turned soil
+      const d = p1.getContext('2d').getImageData(0, 0, 64, 64).data;
+      let r = 0, g2 = 0, bl = 0, n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 96) { r += d[i]; g2 += d[i + 1]; bl += d[i + 2]; n++; }
+      r /= n; g2 /= n; bl /= n;
+      ck('thePadIsChocolateNotTan', r > g2 + 20 && g2 > bl + 15 && r < 180 && r > 90,
+        'avg rgb ' + [r, g2, bl].map(v => v | 0).join(','));
+    }
+
+    // the cleared site: pad + stakes/cord + tools + the tier's deliveries
+    const s11 = R.siteOf('house', 1, 1), s13 = R.siteOf('house', 1, 3);
+    ck('siteAddsTheToolsToThePad',
+      s11.width === 64 && px(s11) > px(p1) + 60, px(s11) - px(p1) + ' prop px');
+    ck('siteIsCachedPerKeySizeTier',
+      R.siteOf('house', 1, 1) === s11 && s13 !== s11 && s13.toDataURL() !== s11.toDataURL(),
+      'tier deliveries differ');
+    ck('twoKindsSitesDiffer',
+      R.siteOf('lodge', 1, 1).toDataURL() !== s11.toDataURL(), 'per-key seed');
+
+    // the framing: traced from the base's own silhouette
+    const f1 = R.frameOf(base, 1, true);
+    ck('frameMatchesTheSprite', f1.width === 64 && f1.height === 64 && px(f1) > 150, px(f1) + ' px');
+    ck('frameIsCached', R.frameOf(base, 1, true) === f1, '');
+    {
+      // every frame pixel stays inside the sprite's own bounding box (+outline)
+      const d = f1.getContext('2d').getImageData(0, 0, 64, 64).data;
+      let out2 = 0;
+      for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++)
+        if (d[(y * 64 + x) * 4 + 3] > 10 && (x < 5 || x > 59 || y < 3 || y > 63)) out2++;
+      ck('theFrameTracesTheSilhouette', out2 === 0, out2 + ' stray px outside the bbox');
+    }
+    {
+      // a roofed kind sketches ridge and rafters above the wall plate; a flat
+      // one (yard / worker plot) does not
+      const topOf = (c) => {
+        const d = c.getContext('2d').getImageData(0, 0, 64, 64).data;
+        for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++)
+          if (d[(y * 64 + x) * 4 + 3] > 10) return y;
+        return 64;
+      };
+      const flat = R.frameOf(base, 1, false);
+      ck('roofedFramesSketchTheRidge', topOf(f1) < topOf(flat) - 6,
+        'roofed top y=' + topOf(f1) + ' vs flat y=' + topOf(flat));
+    }
+    {
+      // tier materials: 2 adds a fieldstone footing, 3 builds drystone piers —
+      // all three tiers are genuinely different pictures, and stone shows grey
+      const f2 = R.frameOf(base, 2, true), f3 = R.frameOf(base, 3, true);
+      const grey = (c) => {
+        const d = c.getContext('2d').getImageData(0, 0, 64, 64).data;
+        let n = 0;
+        for (let i = 0; i < d.length; i += 4)
+          if (d[i + 3] > 96 && Math.abs(d[i] - d[i + 1]) < 16 && Math.abs(d[i + 1] - d[i + 2]) < 18 && d[i] > 70) n++;
+        return n;
+      };
+      ck('tierMaterialsDiffer',
+        f1.toDataURL() !== f2.toDataURL() && f2.toDataURL() !== f3.toDataURL() &&
+        grey(f2) > grey(f1) && grey(f3) > grey(f2),
+        'grey px t1/t2/t3 = ' + grey(f1) + '/' + grey(f2) + '/' + grey(f3));
+    }
+    // stageRoof: worker plots and FIRE_AT ground keys frame flat, homes frame roofed
+    ck('stageRoofKnowsTheYards',
+      R.stageRoof('house', 1) === true && R.stageRoof('tc', 2) === true &&
+      R.stageRoof('farm', 1) === false && R.stageRoof('lumber', 1) === false &&
+      R.stageRoof('barracks', 1) === false && R.stageRoof('barracks', 3) === true, '');
+
+    // the partial build: top erased above the wall line, pale cut ends, stubs
+    const part = R.partialOf(base);
+    const box = R._artBox(base);
+    const cutY = Math.round((box.t + (box.b - box.t) * 0.45) * 64);
+    {
+      const d = part.getContext('2d').getImageData(0, 0, 64, 64).data;
+      let above = 0, pale = 0;
+      for (let y = 0; y < cutY - 8; y++) for (let x = 0; x < 64; x++)
+        if (d[(y * 64 + x) * 4 + 3] > 10) above++;
+      for (let y = cutY - 1; y < Math.min(64, cutY + 6); y++) for (let x = 0; x < 64; x++) {
+        const i = (y * 64 + x) * 4;
+        if (d[i + 3] > 96 && d[i] > 180 && d[i + 1] > 150) pale++;
+      }
+      const bottomPx = (c) => {
+        const dd = c.getContext('2d').getImageData(0, 44, 64, 20).data;
+        let n = 0; for (let i = 3; i < dd.length; i += 4) if (dd[i] > 10) n++;
+        return n;
+      };
+      ck('partialErasesTheRoof', above === 0, above + ' px left above the cut');
+      ck('partialKeepsTheWalls', bottomPx(part) >= bottomPx(base), '');
+      ck('paleCutEndsAlongTheBreak', pale > 6, pale + ' pale px at the cut line');
+      ck('partialIsCached', R.partialOf(base) === part, '');
+    }
+    {
+      // the derived canvases carry the base's _cfArt, so a PNG's stages land
+      // exactly where its finished art will (the darkOf/ruinOf rule)
+      const marked = mkBase();
+      marked._cfArt = { ox: 0, oy: 0, scale: 1 };
+      ck('derivedStagesKeepTheAnchor',
+        R.frameOf(marked, 1, true)._cfArt === marked._cfArt &&
+        R.partialOf(marked)._cfArt === marked._cfArt, '');
+    }
   }
 
-  // ---- 3. the three stages RENDER as three genuinely different pictures ----
+  // ---- 3. the RENDER PATH: three genuinely different draws, target-level
+  // art, upgrades derived from the level being built TOWARD ----
   {
     G.newGame('bs3', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
     S.res = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };
@@ -97,45 +203,42 @@ const out = await p.evaluate(() => {
     S.units = [];
     G.updateVisibility();
     R.centerOn(tc.x + 3.5, tc.y + 0.5);
-    // spy on the real draw path: which work-site sprite keys does a full
-    // frame request for this site at each stage?
-    const keysAt = (setup) => {
+    // which derived generators (and which misc keys) does a full frame ask for?
+    const stageCalls = (setup) => {
       setup();
-      const calls = [];
-      const orig = Assets.drawSprite;
-      Assets.drawSprite = function (g, key, x, y, o) { calls.push(key); return orig.call(Assets, g, key, x, y, o); };
-      try { R.draw(0.016); } finally { Assets.drawSprite = orig; }
-      return calls;
+      const got = { site: 0, frame: 0, partial: 0, keys: [] };
+      const oS = R.siteOf, oF = R.frameOf, oP = R.partialOf, oA = Assets.drawSprite;
+      R.siteOf = function (...a) { got.site++; return oS.apply(R, a); };
+      R.frameOf = function (...a) { got.frame++; return oF.apply(R, a); };
+      R.partialOf = function (...a) { got.partial++; return oP.apply(R, a); };
+      Assets.drawSprite = function (g, key, ...rest) { got.keys.push(key); return oA.call(Assets, g, key, ...rest); };
+      try { R.draw(0.016); } finally {
+        R.siteOf = oS; R.frameOf = oF; R.partialOf = oP; Assets.drawSprite = oA;
+      }
+      return got;
     };
-    // the GENERIC three-stage path now serves the 2×2 hall (every 1×1
-    // building has bespoke art) — a synthetic TC site pins it
     const t = CFG.BUILDINGS.tc.levels[0].time || 1;
     const site = { id: 99871, key: 'tc', owner: 'P', x: tc.x + 3, y: tc.y, level: 1, hp: 100, construction: t, upgrading: 0 };
     S.buildings.push(site);
-    const k0 = keysAt(() => { site.construction = t * 0.9; });
-    const k1 = keysAt(() => { site.construction = t * 0.5; });
-    const k2 = keysAt(() => { site.construction = t * 0.1; });
+    const k0 = stageCalls(() => { site.construction = t * 0.9; });
+    const k1 = stageCalls(() => { site.construction = t * 0.5; });
+    const k2 = stageCalls(() => { site.construction = t * 0.1; });
     ck('threeDistinctStageDraws',
-      k0.includes('misc/constructionBig1') && !k0.includes('misc/constructionBig') &&
-      k1.includes('misc/constructionBig') && !k1.includes('misc/constructionBig1') &&
-      k2.includes('misc/scaffoldBig') && !k2.includes('misc/constructionBig'),
-      `stage0 ground-broken, stage1 raising, stage2 scaffold overlay (2×2 hall)`);
-    // and an upgrade renders the staged looks under its OWN labels
-    site.construction = 0;
-    site.upgTotal = CFG.BUILDINGS.tc.levels[1].time || 1;
-    const u0 = keysAt(() => { site.upgrading = site.upgTotal * 0.9; });
-    const u2 = keysAt(() => { site.upgrading = site.upgTotal * 0.1; });
-    ck('upgradeStagesUseUpgradeLabels',
-      u0.includes('misc/upgradeBig1') && u2.includes('misc/upgradeScaffoldBig') &&
-      !u0.includes('misc/constructionBig1') && !u2.includes('misc/scaffoldBig'),
-      'misc/upgradeBig1 and misc/upgradeScaffoldBig requested');
+      k0.site === 1 && k0.frame === 0 && k0.partial === 0 &&
+      k1.site === 0 && k1.frame === 1 && k1.partial === 0 &&
+      k2.site === 0 && k2.frame === 0 && k2.partial === 1,
+      'stage0 cleared site, stage1 framing, stage2 partial build');
+    ck('theOldGenericLooksAreGone',
+      !Sprites.misc.construction1 && !Sprites.misc.constructionBig && !Sprites.misc.scaffold &&
+      !Sprites.misc.upgrade1 && !Sprites.misc.upgradeScaffoldBig &&
+      [...k0.keys, ...k1.keys, ...k2.keys].every(k => !/^misc\/(construction|upgrade|scaffold)/.test(k)),
+      'no generic construction/scaffold sprites exist or are requested');
 
-    /* THE SEQUENCE NEVER RUNS BACKWARDS. Stage 2 shows the building being
-       built TOWARD, standing in scaffold — the TARGET level's art. During an
-       upgrade b.level is still the OLD level (it only increments in
-       Bld.finishUpgrade), so drawing b.level here put the pre-upgrade
-       building (the TC's level-1 camp) on screen AFTER stage 1 had already
-       raised the new hall — the last picture looked like the first. */
+    /* THE SEQUENCE NEVER RUNS BACKWARDS. Stages 1 and 2 derive from the
+       level being built TOWARD. During an upgrade b.level is still the OLD
+       level (it only increments in Bld.finishUpgrade), so deriving from it
+       would frame and part-build the pre-upgrade building — the last
+       pictures would look like the first. */
     const sprsAt = (setup) => {
       setup();
       const got = [];
@@ -145,35 +248,35 @@ const out = await p.evaluate(() => {
       return got;
     };
     const TC = Sprites.building.tc;
-    site.level = 1;
-    const s2 = sprsAt(() => { site.construction = 0; site.upgrading = site.upgTotal * 0.1; });
+    site.level = 1; site.construction = 0;
+    site.upgTotal = CFG.BUILDINGS.tc.levels[1].time || 1;
+    const s2 = sprsAt(() => { site.upgrading = site.upgTotal * 0.1; });
     ck('upgradeStage2ShowsTargetLevel',
       s2.includes(TC[1]) && !s2.includes(TC[0]),
-      'L1→L2: the NEW hall in scaffold, never the old camp');
+      'L1→L2: the partial NEW hall, never the old camp');
     site.level = 2; site.upgTotal = CFG.BUILDINGS.tc.levels[2].time || 1;
     const s3 = sprsAt(() => { site.upgrading = site.upgTotal * 0.1; });
     ck('upgradeStage2ShowsTargetLevelL3',
       s3.includes(TC[2]) && !s3.includes(TC[1]),
-      'L2→L3: the stone keep in scaffold, never the timber hall');
-    // a FIRST raising still shows the level actually being built
+      'L2→L3: the partial stone keep, never the timber hall');
+    // a FIRST raising still derives from the level actually being built
     site.level = 1; site.upgrading = 0;
     const s1 = sprsAt(() => { site.construction = t * 0.1; });
     ck('firstRaisingStage2ShowsOwnLevel', s1.includes(TC[0]), '');
     site.construction = 0; site.upgrading = 0;
     S.buildings.splice(S.buildings.indexOf(site), 1);
 
-    // ---- 4. the WATCHTOWER'S bespoke stages: double-res art, and the render
-    // path requests towerBuild1/2/3 (towerUp1..3 upgrading) — never the
-    // generic looks, never the scaffold overlay ----
+    // ---- 4. the WATCHTOWER'S bespoke stages still win the route: double-res
+    // art, towerBuild1/2/3 requested (towerUp1..3 upgrading), the derived
+    // generators never asked ----
     const M = Sprites.misc;
     const tNeed = ['towerBuild1', 'towerBuild2', 'towerBuild3', 'towerUp1', 'towerUp2', 'towerUp3'];
     const tMissing = tNeed.filter(k => !M[k]);
     ck('towerSpriteFamilyDoubleRes',
       tMissing.length === 0 && tNeed.every(k => M[k].width === 128),
       tMissing.length ? 'missing: ' + tMissing.join(',') : '6 labels at 128px');
-    const px2 = (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) n++; return n; };
     ck('towerStagesHaveSubstanceAndDiffer',
-      px2(M.towerBuild1) > 1500 && px2(M.towerBuild2) > 2500 && px2(M.towerBuild3) > 2500 &&
+      px(M.towerBuild1) > 1500 && px(M.towerBuild2) > 2500 && px(M.towerBuild3) > 2500 &&
       M.towerBuild1.toDataURL() !== M.towerBuild2.toDataURL() &&
       M.towerBuild2.toDataURL() !== M.towerBuild3.toDataURL(), '');
     // upgrades diverge ON PURPOSE: same ground-breaking, then masonry (the
@@ -182,67 +285,64 @@ const out = await p.evaluate(() => {
       M.towerUp1 === M.towerBuild1 &&
       M.towerUp2 !== M.towerBuild2 && M.towerUp2.toDataURL() !== M.towerBuild2.toDataURL() &&
       M.towerUp3 !== M.towerBuild3 && M.towerUp3.toDataURL() !== M.towerBuild3.toDataURL() &&
-      px2(M.towerUp2) > 2500 && px2(M.towerUp3) > 2500,
+      px(M.towerUp2) > 2500 && px(M.towerUp3) > 2500,
       'towerUp2/3 are the masonry raisings');
     const tw = Bld.place('P', 'tower', tc.x - 3, tc.y, { free: true });
     G.updateVisibility();
     const tt = CFG.BUILDINGS.tower.levels[0].time;
-    const w0 = keysAt(() => { tw.construction = tt * 0.9; });
-    const w1 = keysAt(() => { tw.construction = tt * 0.5; });
-    const w2 = keysAt(() => { tw.construction = tt * 0.1; });
+    const w0 = stageCalls(() => { tw.construction = tt * 0.9; });
+    const w1 = stageCalls(() => { tw.construction = tt * 0.5; });
+    const w2 = stageCalls(() => { tw.construction = tt * 0.1; });
     ck('towerRendersBespokeStages',
-      w0.includes('misc/towerBuild1') && !w0.includes('misc/construction1') &&
-      w1.includes('misc/towerBuild2') && !w1.includes('misc/construction') &&
-      w2.includes('misc/towerBuild3') && !w2.includes('misc/scaffold'),
-      'towerBuild1/2/3 requested, generic keys not');
+      w0.keys.includes('misc/towerBuild1') && w1.keys.includes('misc/towerBuild2') &&
+      w2.keys.includes('misc/towerBuild3') &&
+      w0.site + w0.frame + w0.partial + w1.site + w1.frame + w1.partial + w2.site + w2.frame + w2.partial === 0,
+      'towerBuild1/2/3 requested, derived generators never asked');
     Bld.finish(tw);
     tw.upgTotal = CFG.BUILDINGS.tower.levels[1].time;
-    const tu0 = keysAt(() => { tw.upgrading = tw.upgTotal * 0.9; });
-    const tu2 = keysAt(() => { tw.upgrading = tw.upgTotal * 0.1; });
+    const tu0 = stageCalls(() => { tw.upgrading = tw.upgTotal * 0.9; });
+    const tu2 = stageCalls(() => { tw.upgrading = tw.upgTotal * 0.1; });
     ck('towerUpgradeUsesTowerUpLabels',
-      tu0.includes('misc/towerUp1') && tu2.includes('misc/towerUp3') &&
-      !tu0.includes('misc/towerBuild1') && !tu2.includes('misc/upgradeScaffold'),
-      'misc/towerUp1 and misc/towerUp3 requested');
+      tu0.keys.includes('misc/towerUp1') && tu2.keys.includes('misc/towerUp3') &&
+      !tu0.keys.includes('misc/towerBuild1'), 'misc/towerUp1 and misc/towerUp3 requested');
+    tw.upgrading = 0;
 
-    // ---- 5. EVERY 1×1 building raises its own way: a bespoke three-sprite
-    // family at 128px each, three genuinely different stages, upgrades
-    // aliased under their own <key>Up labels (tower's diverge; the rest
-    // share art for now) ----
-    const KEYS = ['house', 'lodge', 'barracks', 'stable', 'range', 'trade', 'siege',
-      'sapper', 'warcamp', 'dock', 'farm', 'quarry', 'lumber', 'mine'];
-    const probs = [];
-    for (const k of KEYS) {
-      for (let i = 1; i <= 3; i++) {
-        const c = M[k + 'Build' + i];
-        if (!c) { probs.push(k + 'Build' + i + ' missing'); continue; }
-        if (c.width !== 128) probs.push(k + 'Build' + i + ' not 128px');
-        if (px2(c) < 1200) probs.push(k + 'Build' + i + ' too thin (' + px2(c) + 'px)');
-        if (M[k + 'Up' + i] !== c) probs.push(k + 'Up' + i + ' not aliased');
-      }
-      if (M[k + 'Build1'] && M[k + 'Build2'] && M[k + 'Build3'] &&
-        (M[k + 'Build1'].toDataURL() === M[k + 'Build2'].toDataURL() ||
-          M[k + 'Build2'].toDataURL() === M[k + 'Build3'].toDataURL()))
-        probs.push(k + ' stages not distinct');
-    }
-    ck('allBuildingsHaveBespokeStages', probs.length === 0,
-      probs.length ? probs.slice(0, 6).join('; ') : KEYS.length + ' buildings × 3 stages, all 128px, all distinct, Up-aliased');
-    // and the render path actually requests them — the house as witness
+    // ---- 5. the bespoke 1×1 sets are RETIRED; the derived route serves
+    // every ordinary key. The dock and the tower alone keep authored stages. ----
+    const RETIRED = ['house', 'lodge', 'barracks', 'stable', 'range', 'trade', 'siege',
+      'sapper', 'warcamp', 'farm', 'quarry', 'lumber', 'mine'];
+    const leftover = RETIRED.filter(k => M[k + 'Build1'] || M[k + 'Up1']);
+    ck('bespokeSetsAreRetired', leftover.length === 0,
+      leftover.length ? 'still present: ' + leftover.join(',') : '13 sets retired');
+    ck('dockKeepsItsOwnRaising',
+      !!M.dockBuild1 && !!Sprites.dockBuildFace && Sprites.dockBuildFace.n[0] === M.dockBuild1,
+      'the jetty still stages in its own frame');
+    // the house as witness: an ordinary key renders the derived stages
     const hh = Bld.place('P', 'house', tc.x - 3, tc.y + 2, { free: true });
     G.updateVisibility();
     const ht = CFG.BUILDINGS.house.levels[0].time;
-    const h0 = keysAt(() => { hh.construction = ht * 0.9; });
-    const h1 = keysAt(() => { hh.construction = ht * 0.5; });
-    const h2 = keysAt(() => { hh.construction = ht * 0.1; });
-    ck('houseRendersBespokeStages',
-      h0.includes('misc/houseBuild1') && !h0.includes('misc/construction1') &&
-      h1.includes('misc/houseBuild2') && !h1.includes('misc/construction') &&
-      h2.includes('misc/houseBuild3') && !h2.includes('misc/scaffold'),
-      'houseBuild1/2/3 requested, generic keys not');
+    const h0 = stageCalls(() => { hh.construction = ht * 0.9; });
+    const h2 = stageCalls(() => { hh.construction = ht * 0.1; });
+    ck('houseRendersDerivedStages',
+      h0.site >= 1 && h0.partial === 0 && h2.partial >= 1 && h2.site === 0 &&
+      [...h0.keys, ...h2.keys].every(k => !/house(Build|Up)/.test(k)),
+      'cleared site then partial build, no bespoke keys');
     Bld.finish(hh);
-    hh.upgTotal = CFG.BUILDINGS.house.levels[1].time;
-    const hu0 = keysAt(() => { hh.upgrading = hh.upgTotal * 0.9; });
-    ck('houseUpgradeUsesHouseUpLabels',
-      hu0.includes('misc/houseUp1') && !hu0.includes('misc/upgrade1'), 'misc/houseUp1 requested');
+
+    // ---- 6. the PANEL ICON follows the same routing (ui.js asks R.stageIcon) ----
+    const hFake = { id: 777, key: 'house', owner: 'P', x: 5, y: 5, level: 1, construction: ht * 0.9, upgrading: 0 };
+    const icon0 = R.stageIcon(hFake);
+    hFake.construction = ht * 0.1;
+    const icon2 = R.stageIcon(hFake);
+    ck('stageIconFollowsTheDerivedStages',
+      icon0 === R.siteOf('house', Bld.size('house'), 1) &&
+      icon2 === R.partialOf(R.bldSprite(hFake, 1)), '');
+    const twFake = { id: 778, key: 'tower', owner: 'P', x: 5, y: 5, level: 1, construction: tt * 0.9, upgrading: 0 };
+    ck('stageIconHonoursBespokeArt', R.stageIcon(twFake) === M.towerBuild1, '');
+    const wlFake = { id: 779, key: 'wall', owner: 'P', x: 5, y: 5, level: 1, construction: 1, upgrading: 0 };
+    const wIcon = R.stageIcon(wlFake);
+    ck('aFortificationIconNeverBreaks', !!wIcon && !!wIcon.width,
+      'derived from the straight-run preview, not the auto-tile mask');
   }
 
   return { res, fails };

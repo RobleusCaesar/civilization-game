@@ -70,9 +70,15 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
       tc1 ? 'loaded, marked' : 'not loaded (moved file missing?)');
     ck('bothTribesShareTheImage',
       Sprites.building.tc[0] === tc1 && Sprites.buildingA.tc[0] === tc1, '');
+    // dynamic pick: the artist keeps shipping PNGs, so "a missing file" is
+    // whatever slot is STILL missing today — hard-coding one broke the check
+    // the day house-l1.png landed
+    const missKey = slots.map(s => Assets.slotKey(s.id, s.lv)).find(k => Assets.art[k] === null);
+    const miss = missKey && missKey.match(/^(.+)-l(\d+)$/);
     ck('aMissingFileStaysProcedural',
-      Assets.art['house-l1'] === null && !Sprites.building.house[0]._cfArt &&
-      Sprites.building.house[0] instanceof HTMLCanvasElement, '');
+      !missKey || (!Sprites.building[miss[1]][+miss[2] - 1]._cfArt &&
+        Sprites.building[miss[1]][+miss[2] - 1] instanceof HTMLCanvasElement),
+      missKey || 'every slot has shipped art — nothing left to check');
     ck('theCampfirePropStillArrives', !!Assets.resolve('misc/campfireTc') &&
       Assets.isImage('misc/campfireTc'), '');
 
@@ -175,13 +181,15 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
       Sprites.building.barracks[0] === before && Sprites.buildingA.barracks[0] === beforeA &&
       !DevArt.overrides['barracks-l1'] && !!Assets.loaded['barracks-l1'] === loadedBefore,
       loadedBefore ? 'shipped PNG restored' : 'procedural restored');
-    // multi-slot, then revert all
+    // multi-slot, then revert all — restoring whatever shipped TODAY (a real
+    // house PNG keeps its _cfArt; the old `!_cfArt` check assumed procedural)
+    const h1 = Sprites.building.house[0], h2 = Sprites.building.house[1];
     const f2 = document.createElement('canvas'); f2.width = f2.height = 64;
     DevArt.inject('house', 1, fake, 'a.png');
     DevArt.inject('house', 2, f2, 'b.png');
     DevArt.revertAll();
     ck('revertAllClearsEveryOverride', Object.keys(DevArt.overrides).length === 0 &&
-      !Sprites.building.house[0]._cfArt && !Sprites.building.house[1]._cfArt, '');
+      Sprites.building.house[0] === h1 && Sprites.building.house[1] === h2, '');
 
     // ---- a REAL drop event lands end-to-end (a genuine PNG File, a genuine
     // DragEvent on the window — the whole glue, not just the API below it) ----

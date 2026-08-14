@@ -1343,8 +1343,16 @@ const R = {
     return this._poofSheets[sz] = { frames, pad };
   },
   placePoofs: [],
-  startPlacePoof(x, y, sz) {
-    this.placePoofs.push({ x, y, sz: sz || 1, t: 0 });
+  /* opts.delay (ms) holds a cloud back before its first frame — the residual
+     puff after a destruction, and the tower's landing beat. Implemented as a
+     NEGATIVE t that drawPlacePoofs advances through and skips while below
+     zero; the frame index is clamped ≥ 0 so a stray negative can never index
+     frames[-1]. opts.scale draws the same sheet smaller/larger about the
+     footprint's center (the residual puff is a 0.65 echo of the first). */
+  startPlacePoof(x, y, sz, opts) {
+    if (this.placePoofs.length > 16) this.placePoofs.shift();   // a razed town block stays a scene, not a whiteout
+    opts = opts || {};
+    this.placePoofs.push({ x, y, sz: sz || 1, t: -(opts.delay || 0), scale: opts.scale || 1 });
   },
   drawPlacePoofs(g, dt) {
     if (!this.placePoofs.length) return;
@@ -1352,11 +1360,41 @@ const R = {
     for (let i = this.placePoofs.length - 1; i >= 0; i--) {
       const p = this.placePoofs[i];
       p.t += dt * 1000;
+      if (p.t < 0) continue;                                    // still waiting its beat
       if (p.t >= this.POOF_MS) { this.placePoofs.splice(i, 1); continue; }
       const sheet = this.poofSheet(p.sz);
-      const f = Math.min(this.POOF_FRAMES - 1, (p.t / this.POOF_MS * this.POOF_FRAMES) | 0);
-      g.drawImage(sheet.frames[f], p.x * TL - sheet.pad, p.y * TL - sheet.pad);
+      const f = Math.max(0, Math.min(this.POOF_FRAMES - 1, (p.t / this.POOF_MS * this.POOF_FRAMES) | 0));
+      const sc = p.scale || 1;
+      if (sc === 1) {
+        g.drawImage(sheet.frames[f], p.x * TL - sheet.pad, p.y * TL - sheet.pad);
+      } else {
+        const side = sheet.frames[f].width, w = side * sc;
+        const cx = p.x * TL + p.sz * TL / 2, cy = p.y * TL + p.sz * TL / 2;
+        g.drawImage(sheet.frames[f], cx - w / 2, cy - w / 2, w, w);
+      }
     }
+  },
+  /* THE FALL THROWS THE SAME DUST THE MATERIALS DID (tests/burn-down.mjs).
+     A destroyed building's sprite drops off the map in a frame — the poof is
+     what SELLS the weight: one full-size burst under the footprint (bigger
+     ground, bigger cloud — poofSheet already scales, and its bias is already
+     outward and low), then a smaller residual puff a beat later as the last
+     of it settles. A kind registered in R.COLLAPSE holds its dust for the
+     LANDING instead — the tower's block hits the ground at ~0.84 of its
+     topple, and dust on the killing blow would give the ending away (the
+     same reasoning that holds its ash and its ground back). Fired from
+     Bld.damage's destroy branch only — a demolition is a teardown, not a
+     kill — and fog-gated: dust nobody can see is a cloud drawn for nobody. */
+  startDestructPoof(b) {
+    const sz = Bld.size(b);
+    let seen = false;
+    for (let vy = 0; vy < sz && !seen; vy++) for (let vx = 0; vx < sz; vx++)
+      if (G.visibleAt(b.x + vx, b.y + vy)) { seen = true; break; }
+    if (!seen) return;
+    const cfg = this.COLLAPSE[b.key];
+    const delay = (cfg && !(b.construction > 0)) ? cfg.ms * 0.84 : 0;
+    this.startPlacePoof(b.x, b.y, sz, { delay });
+    this.startPlacePoof(b.x, b.y, sz, { delay: delay + 250, scale: 0.65 });
   },
 
   /* the ghost: the building's TRUE art (image or procedural, via the same
@@ -1477,6 +1515,348 @@ const R = {
     if (b.key === 'raidercamp' && Sprites.camp && Sprites.camp[b.tribe]) return Sprites.camp[b.tribe];
     const fam = (b.owner === 'A' ? Sprites.buildingA : Sprites.building)[b.key];
     return fam[Math.min(L, fam.length) - 1];
+  },
+
+  /* ============ THE RAISING, DERIVED (tests/build-stages.mjs) ============
+     The hand-made PNGs replace finished buildings faster than authored stage
+     art could ever follow them, so a work site's three looks are now DERIVED
+     — from the footprint, the tier's materials and the TARGET SPRITE itself
+     — instead of hand-drawn per key:
+
+       stage 0  THE CLEARED SITE — trodden bare earth in the chocolate brown
+                of the shipped yard art (SITE_EARTH, sampled from the
+                sapper/siege PNGs — never tan), corner stakes and a taut
+                cord marking the plot, a few Neolithic tools (wooden spade,
+                antler pick, woven basket) and the tier's first deliveries:
+                rough poles at tier 1, fieldstones at 2, drystone slabs at 3
+       stage 1  THE FRAMING — a lashed post-and-beam skeleton traced from
+                the target sprite's own silhouette: rough poles at tier 1,
+                the same frame on a fieldstone footing at tier 2, drystone
+                piers at tier 3. The massing is the building's own, so a
+                wide yard frames wide and a tall hall frames tall — and a
+                roofed kind sketches its ridge and rafters (stageRoof; a
+                worker plot or a ground-level yard frames flat)
+       stage 2  THE PARTIAL BUILD — the target sprite itself with its top
+                taken off above the wall line, pale fresh-cut ends along
+                the break and post stubs above it: walls up, roof to come
+
+     No sawn lumber, no scaffolding towers, no metal — the tools on site are
+     the tools this world has. Hard-edged fills only, dark outlines on the
+     frame (ART.outline), and the derived canvases carry the base's _cfArt
+     so a PNG's stages land exactly where its finished art will.
+
+     Derivation is LAZY and cached per target sprite (WeakMap — the
+     _burnCache pattern) because PNG art decodes late and swaps in whenever
+     it lands; the stages simply re-derive from whatever sprite the building
+     would draw today. Pixel reads on a file:// PNG throw (canvas taint), so
+     every read here try/catches down to honest margins — the stages always
+     render, just less silhouette-aware. Bespoke `misc/<key>Build1..3` art
+     still wins the route (the tower today), and the dock, the wonder and
+     the wall/gate ghosts keep their own raisings. */
+  SITE_EARTH: ['#482820', '#503020', '#806040', '#886040', '#a07850'],
+  _siteCache: {},
+  _stageCache: new WeakMap(),
+  _stageEntry(base) {
+    let e = this._stageCache.get(base);
+    if (!e) { e = {}; this._stageCache.set(base, e); }
+    return e;
+  },
+  // the opaque bounding box of a drawable, as fractions of its canvas —
+  // pixel-read where the canvas allows it, honest margins where taint forbids
+  _artBox(base) {
+    const e = this._stageEntry(base);
+    if (e.box) return e.box;
+    let box = { l: 0.08, r: 0.92, t: 0.08, b: 0.94 };
+    try {
+      let c = base;
+      if (!c.getContext) {
+        c = document.createElement('canvas'); c.width = base.width; c.height = base.height;
+        c.getContext('2d').drawImage(base, 0, 0);
+      }
+      const W = c.width, H = c.height;
+      const d = c.getContext('2d').getImageData(0, 0, W, H).data;
+      let x0 = W, x1 = 0, y0 = H, y1 = 0, n = 0;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++)
+        if (d[(y * W + x) * 4 + 3] > 40) {
+          n++;
+          if (x < x0) x0 = x; if (x > x1) x1 = x;
+          if (y < y0) y0 = y; if (y > y1) y1 = y;
+        }
+      if (n > 50) box = { l: x0 / W, r: (x1 + 1) / W, t: y0 / H, b: (y1 + 1) / H };
+    } catch (_) { /* tainted — the margins stand */ }
+    return e.box = box;
+  },
+  // does this kind's frame sketch a roof? A worker plot or a ground-level
+  // yard (the FIRE_AT ground entries know which) frames flat.
+  stageRoof(key, lv) {
+    const fa = this.smokeAnchor(this.FIRE_AT, key, lv || 1);
+    if (fa && fa.ground) return false;
+    const d = CFG.BUILDINGS[key];
+    return !(d && d.needsWorker);
+  },
+  // the trodden work-ground alone — drawn under stages 1 and 2
+  padOf(sz) {
+    const ck = 'pad' + sz;
+    if (this._siteCache[ck]) return this._siteCache[ck];
+    const side = sz * 64, px = 2, E = this.SITE_EARTH;
+    const c = document.createElement('canvas'); c.width = c.height = side;
+    const q = c.getContext('2d');
+    const r = ART.rng(31 + sz * 7);
+    const cx = side / 2, cy = side / 2, rad = side * 0.47;
+    for (let y = 0; y < side; y += px) for (let x = 0; x < side; x += px) {
+      const dx = (x + 1 - cx) / rad, dy = (y + 1 - cy) / (rad * 0.94);
+      const d2 = dx * dx + dy * dy;
+      if (d2 > 1 + (r() - 0.5) * 0.3) continue;               // clod-broken edge, never a disc
+      q.fillStyle = d2 > 0.82 ? E[1] : (x * 7 + y * 13) % 23 === 0 ? E[3] : E[2];
+      q.fillRect(x, y, px, px);
+    }
+    // trodden dark patches and scattered clods
+    for (let i = 0; i < 8 + sz * 6; i++) {
+      const a = r() * Math.PI * 2, dd = r() * rad * 0.8;
+      q.fillStyle = i % 3 ? E[0] : E[1];
+      q.fillRect(((cx + Math.cos(a) * dd) / px | 0) * px, ((cy + Math.sin(a) * dd * 0.94) / px | 0) * px,
+        px * (1 + (i % 2)), px);
+    }
+    for (let i = 0; i < 6 + sz * 4; i++) {                     // lit crumbs
+      const a = r() * Math.PI * 2, dd = (0.3 + r() * 0.6) * rad;
+      q.fillStyle = E[4];
+      q.fillRect(((cx + Math.cos(a) * dd) / px | 0) * px, ((cy + Math.sin(a) * dd * 0.94) / px | 0) * px, px, px);
+    }
+    return this._siteCache[ck] = c;
+  },
+  // stage 0 — the cleared site: the pad, the plot staked and corded, the
+  // tools down and the tier's first deliveries by the edge
+  siteOf(key, sz, tier) {
+    const ck = key + ':' + sz + ':' + tier;
+    if (this._siteCache[ck]) return this._siteCache[ck];
+    const side = sz * 64, px = 2, N = side / px;               // N cells on a side
+    const c = document.createElement('canvas'); c.width = c.height = side;
+    const q = c.getContext('2d');
+    q.drawImage(this.padOf(sz), 0, 0);
+    const W = ART.PALETTE.wood, ST = ART.PALETTE.stone, TH = ART.PALETTE.thatch, BO = ART.PALETTE.bone;
+    const DK = '#2c1c10';                                       // the props' own dark edge
+    // every prop sits on a one-cell dark under-shadow, or it sinks into the pad
+    const h = (x, y, w, ht, col) => { q.fillStyle = col; q.fillRect(x * px, y * px, (w || 1) * px, (ht || 1) * px); };
+    const sh = (x, y, w, ht) => h(x - 0.5, y + 0.5, (w || 1) + 1, ht || 1, 'rgba(30,18,10,0.5)');
+    let sd = 5; for (let i = 0; i < key.length; i++) sd = (sd * 31 + key.charCodeAt(i)) >>> 0;
+    const r = ART.rng(sd % 997), j = () => ((r() * 5) | 0) - 2; // per-key jitter, so two sites differ
+    const s = N / 32;                                           // prop-position scale
+    // corner stakes + the taut cord squaring the plot
+    const m = (4 * s) | 0;
+    for (const [kx, ky] of [[m, m], [N - m - 1, m], [m, N - m - 1], [N - m - 1, N - m - 1]]) {
+      h(kx, ky - 2, 1, 3, W[2]); h(kx, ky - 2, 1, 1, W[3] || W[2]);
+      h(kx, ky + 1, 1, 0.5, DK);
+    }
+    q.fillStyle = TH[3]; q.globalAlpha = 0.8;
+    q.fillRect(m * px, m * px, (N - 2 * m) * px, 1); q.fillRect(m * px, (N - m - 1) * px, (N - 2 * m) * px, 1);
+    q.fillRect(m * px, m * px, 1, (N - 2 * m) * px); q.fillRect((N - m - 1) * px, m * px, 1, (N - 2 * m) * px);
+    q.globalAlpha = 1;
+    // a pile of rough poles laid ready — the biggest thing on the site
+    const pll = (12 * s) | 0;
+    const plx = ((N - pll) / 3 | 0) + j(), ply = ((22 * s) | 0) + j();
+    sh(plx, ply + 5 * s | 0, pll, 1);
+    for (let i = 0; i < (sz >= 2 ? 4 : 3); i++) {
+      const py2 = ply + i * 2, ind = (i % 2) * 2;               // staggered like a real stack
+      h(plx + ind, py2, pll, 2, W[i % 2 ? 2 : 1]); h(plx + ind, py2, pll, 1, W[3]);
+      h(plx + ind, py2, 1, 2, BO[1]);                          // pale ring-end
+      h(plx + ind + pll - 1, py2, 1, 2, DK);
+    }
+    // a wooden spade stuck upright by the dig
+    const spx = ((24 * s) | 0) + j(), spy = ((5 * s) | 0) + Math.abs(j());
+    const spl = (7 * s) | 0;
+    sh(spx - 1, spy + spl + 2, 4, 1);
+    h(spx, spy, 1, spl, W[2]); h(spx, spy, 0.5, spl, W[3]);
+    h(spx - 1, spy + spl, 3, 3, W[2]); h(spx - 1, spy + spl, 3, 1, W[3]);
+    h(spx - 1, spy + spl + 2, 3, 1, DK);
+    // a woven basket
+    const bx2 = ((24 * s) | 0) + j(), by2 = ((22 * s) | 0) + j(), bw2 = Math.max(4, (5 * s) | 0);
+    sh(bx2, by2 + 3 * s | 0, bw2, 1);
+    for (let i = 0; i < (3 * s | 0); i++) h(bx2, by2 + i, bw2, 1, i % 2 ? TH[1] : TH[2]);
+    h(bx2, by2, bw2, 1, TH[3]);
+    h(bx2 - 1, by2 + 1, 1, (2 * s) | 0, TH[1]); h(bx2 + bw2, by2 + 1, 1, (2 * s) | 0, TH[0]);
+    // the bigger plots get the antler pick too
+    if (sz >= 2) {
+      const ax = ((10 * s) | 0) + j(), ay = ((8 * s) | 0) + Math.abs(j());
+      sh(ax, ay + 1, 7, 1);
+      h(ax, ay, 6, 1, BO[1]); h(ax, ay, 6, 0.5, BO[2]);        // the beam
+      h(ax + 1, ay - 2, 1, 2, BO[2]); h(ax + 4, ay - 3, 1, 3, BO[1]);   // tines, uneven
+      h(ax + 5, ay - 2, 1, 1, BO[2]);
+      h(ax, ay, 1, 1, BO[0]);                                  // the burr end, darkest
+    }
+    // the tier's deliveries: more poles at 1, fieldstones at 2, drystone at 3
+    const dx2 = ((4 * s) | 0) + Math.abs(j()), dy2 = ((6 * s) | 0) + Math.abs(j());
+    if (tier >= 3) {
+      const sw = (6 * s) | 0;
+      sh(dx2, dy2 + 4, sw, 1);
+      for (let i = 0; i < 4; i++) { h(dx2 + (i % 2), dy2 + i, sw - i, 1, ST[i % 2 ? 2 : 1]); }
+      h(dx2, dy2, sw, 0.5, ST[3]);
+    } else if (tier === 2) {
+      sh(dx2, dy2 + 3, 7 * s | 0, 1);
+      for (const [fx, fy, fw] of [[0, 1, 3], [3, 0, 3], [6, 1, 3], [1.5, 2.5, 4]]) {
+        h(dx2 + fx * s, dy2 + fy * s, fw * s * 0.7, 2 * s * 0.8, ST[(fx + fy) % 2 ? 2 : 1]);
+        h(dx2 + fx * s, dy2 + fy * s, fw * s * 0.7, 1, ST[3]);
+      }
+    } else {
+      const ph2 = (7 * s) | 0;
+      sh(dx2, dy2 + ph2, 5, 1);
+      h(dx2, dy2, 2, ph2, W[2]); h(dx2, dy2, 1, ph2, W[3]);
+      h(dx2, dy2, 2, 1, BO[1]);
+      h(dx2 + 3, dy2 + 1, 2, ph2 - 1, W[1]); h(dx2 + 3, dy2 + 1, 2, 1, BO[1]);
+    }
+    return this._siteCache[ck] = c;
+  },
+  // stage 1 — the framing, traced from the target sprite's own silhouette
+  frameOf(base, tier, roof) {
+    const e = this._stageEntry(base);
+    const k = 'frame' + tier + (roof ? 'r' : '');
+    if (e[k]) return e[k];
+    const W = base.width, H = base.height;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const q = c.getContext('2d');
+    const box = this._artBox(base);
+    const px = Math.max(2, Math.round(W / 32));                 // one frame-cell
+    const WD = ART.PALETTE.wood, ST = ART.PALETTE.stone;
+    const LASH = '#3a2a18';
+    const l = Math.round(box.l * W), rgt = Math.round(box.r * W);
+    const top = Math.round(box.t * H), bot = Math.round(box.b * H);
+    const bw = rgt - l, bh = bot - top;
+    const plateY = Math.round(top + bh * (roof ? 0.42 : 0.5));
+    const beam = (y, col, lit) => {
+      q.fillStyle = col; q.fillRect(l, y, bw, px);
+      q.fillStyle = lit; q.fillRect(l, y, bw, Math.max(1, px >> 1));
+    };
+    // uprights: poles at tiers 1–2, drystone piers at 3
+    const nPost = Math.max(2, Math.min(6, Math.round(bw / (px * 7))));
+    const posts = [];
+    for (let i = 0; i < nPost; i++) posts.push(Math.round(l + (bw - px) * (i / (nPost - 1))));
+    const LIT = WD[4] || WD[3];        // the frame must stand OFF the dark pad
+    for (const x of posts) {
+      if (tier >= 3) {
+        const pw = Math.round(px * 1.5);
+        for (let y = bot - px; y >= plateY; y -= px) {
+          q.fillStyle = ST[((y / px) | 0) % 2 ? 3 : 2]; q.fillRect(x - ((pw - px) >> 1), y, pw, px);
+        }
+        q.fillStyle = ST[3]; q.fillRect(x - ((pw - px) >> 1), plateY, pw, Math.max(1, px >> 1));
+      } else {
+        q.fillStyle = WD[2]; q.fillRect(x, plateY, px, bot - plateY);
+        q.fillStyle = LIT; q.fillRect(x, plateY, Math.max(1, px >> 1), bot - plateY);
+      }
+    }
+    // sill along the ground, wall plate on the post-tops, a mid rail
+    beam(bot - px, WD[1], WD[2]);
+    beam(plateY, WD[2], LIT);
+    beam(Math.round((plateY + bot) / 2), WD[2], WD[3]);
+    // two diagonal braces stepped between the outer bays
+    const brace = (x0, x1) => {
+      const steps = Math.max(2, Math.round(Math.abs(x1 - x0) / px));
+      for (let i = 0; i <= steps; i++) {
+        q.fillStyle = WD[2];
+        q.fillRect(Math.round(x0 + (x1 - x0) * (i / steps)),
+          Math.round(bot - px - (bot - px - plateY) * (i / steps)), px, px);
+      }
+    };
+    if (posts.length >= 2) { brace(posts[0] + px, posts[1]); brace(posts[posts.length - 1] - px, posts[posts.length - 2]); }
+    // rope lashings at every post/beam joint (a drystone pier needs none)
+    if (tier < 3) for (const x of posts) for (const y of [plateY, bot - px]) {
+      q.fillStyle = LASH; q.fillRect(x - 1, y - 1, px + 2, Math.max(2, px >> 1) + 1);
+      q.fillStyle = ART.PALETTE.thatch[3]; q.fillRect(x + (px >> 1), y, 1, 1);
+    }
+    // the tier-2 frame stands on a fieldstone footing course
+    if (tier === 2) for (let x = l; x < rgt; x += Math.round(px * 1.6)) {
+      const fw = Math.round(px * (1.2 + ((x / px) % 2) * 0.6));
+      q.fillStyle = ST[((x / px) | 0) % 2 ? 2 : 1]; q.fillRect(x, bot - px, Math.min(fw, rgt - x), px);
+      q.fillStyle = ST[3]; q.fillRect(x, bot - px, Math.min(fw, rgt - x), Math.max(1, px >> 1));
+    }
+    if (roof) {
+      // the roof to come: king post, ridge pole, and two stepped rafters
+      const midX = Math.round(l + bw / 2 - px / 2), ridgeY = Math.round(top + bh * 0.16);
+      q.fillStyle = WD[1]; q.fillRect(midX, ridgeY, px, plateY - ridgeY);
+      q.fillStyle = WD[3]; q.fillRect(midX, ridgeY, Math.max(1, px >> 1), plateY - ridgeY);
+      const rl = Math.round(l + bw * 0.18), rr2 = Math.round(rgt - bw * 0.18);
+      q.fillStyle = WD[2]; q.fillRect(rl, ridgeY, rr2 - rl, px);
+      q.fillStyle = WD[3]; q.fillRect(rl, ridgeY, rr2 - rl, Math.max(1, px >> 1));
+      const rafter = (x0) => {
+        const steps = Math.max(3, Math.round(Math.abs(midX - x0) / px));
+        for (let i = 0; i <= steps; i++) {
+          q.fillStyle = WD[2];
+          q.fillRect(Math.round(x0 + (midX - x0) * (i / steps)),
+            Math.round(plateY - (plateY - ridgeY - px) * (i / steps)), px, px);
+        }
+      };
+      rafter(posts[0]); rafter(posts[posts.length - 1]);
+      q.fillStyle = LASH; q.fillRect(midX - 1, ridgeY, px + 2, Math.max(2, px >> 1));
+    }
+    try { ART.outline(c, px >= 4 ? 2 : 1); } catch (_) { /* never tainted, but stay safe */ }
+    c._cfArt = base._cfArt;   // a PNG's frame lands where its finished art will
+    return e[k] = c;
+  },
+  // stage 2 — the partial build: the target sprite with its top taken off,
+  // pale fresh-cut ends along the break, post stubs above it
+  partialOf(base) {
+    const e = this._stageEntry(base);
+    if (e.partial) return e.partial;
+    const W = base.width, H = base.height;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const q = c.getContext('2d'); q.imageSmoothingEnabled = false;
+    q.drawImage(base, 0, 0);
+    const box = this._artBox(base);
+    const px = Math.max(2, Math.round(W / 32));
+    const cutY = Math.round((box.t + (box.b - box.t) * 0.45) * H);
+    // which columns still hold wall at the cut — read before the erase, so
+    // the pale ends land on real material (taint → an even dashed band)
+    let cols = null;
+    try {
+      const d = q.getImageData(0, 0, W, H).data;
+      cols = [];
+      for (let x = 0; x < W; x += px) {
+        let hit = false;
+        for (let xx = x; xx < Math.min(W, x + px) && !hit; xx++)
+          if (d[((cutY + px) * W + xx) * 4 + 3] > 40) hit = true;
+        cols.push(hit);
+      }
+    } catch (_) { /* tainted — the dashed band stands in */ }
+    q.globalCompositeOperation = 'destination-out';
+    q.fillStyle = '#000';                                       // FULL-alpha eraser (the ruinOf lesson)
+    q.fillRect(0, 0, W, cutY);
+    q.globalCompositeOperation = 'source-over';
+    const lpx = Math.round(box.l * W), rpx = Math.round(box.r * W);
+    const PALE = '#e0d0a0', PALE2 = '#c4ae7e', DARKW = '#503020';
+    let stub = 0;
+    for (let x = lpx, i = 0; x < rpx; x += px, i++) {
+      const hit = cols ? cols[(x / px) | 0] : (i % 2 === 0);
+      if (!hit) continue;
+      // the fresh-cut end — alternating pale tones, 1–2 cells deep
+      q.fillStyle = i % 2 ? PALE : PALE2;
+      q.fillRect(x, cutY, px, px * (1 + (i % 3 === 0 ? 1 : 0)));
+      // every few bays a post stub still stands proud of the cut
+      if (++stub % 5 === 0) {
+        q.fillStyle = DARKW; q.fillRect(x, cutY - px * 3, px, px * 3);
+        q.fillStyle = PALE; q.fillRect(x, cutY - px * 3, px, Math.max(1, px >> 1));
+      }
+    }
+    c._cfArt = base._cfArt;
+    return e.partial = c;
+  },
+  // the panel's work-site icon takes the same routing the map draw does
+  stageIcon(b) {
+    const stage = Bld.stageOf(b), up = b.upgrading > 0, tgt = up ? b.level + 1 : b.level;
+    // the wonder before the bespoke check, same order as the map draw: its
+    // shared masons' stages stop at wonderBuild2, and the last third is the
+    // monument's own art (tests/wonder.mjs)
+    if (b.key === 'wonder')
+      return stage < 2 ? Sprites.misc['wonderBuild' + (stage + 1)] : this.bldSprite(b, tgt);
+    if (b.key === 'dock' && Sprites.dockBuildFace)
+      return Sprites.dockBuildFace[Bld.dockShore(b)][stage];
+    if (Sprites.misc[b.key + 'Build1'])
+      return Sprites.misc[b.key + (up ? 'Up' : 'Build') + (stage + 1)];
+    // a fortification's bldSprite is its auto-tiled mask — the wrong picture
+    // for a panel; derive from the straight-run preview instead
+    const fam = (b.key === 'wall' || b.key === 'gate') ? Sprites.building[b.key] : null;
+    const base = fam ? fam[Math.min(tgt, fam.length) - 1] : this.bldSprite(b, tgt);
+    const bs = Bld.size(b), tier = Math.min(3, tgt);
+    if (stage === 0) return this.siteOf(b.key, bs, tier);
+    if (stage === 1) return this.frameOf(base, tier, this.stageRoof(b.key, tgt));
+    return this.partialOf(base);
   },
 
   /* ---- BURNING BUILDINGS (tests/burn-down.mjs) ----
@@ -2249,23 +2629,190 @@ const R = {
     g.globalAlpha = 1;
   },
 
+  /* ---- WHERE A BUILDING BURNS (tests/burn-down.mjs) ----
+     The hand-made art gave every building a real roof, a real doorway and a
+     real yard — so the fire is anchored to THEM instead of to three fixed
+     fractions of the tile. Anchors are fractions of the ART RECT (identical
+     to the tile box for square art, but honest under a sidecar's offsets),
+     per key and per level via the same [{lv, …}] resolver the smoke anchors
+     use. Two treatments:
+
+       roofed  spots carry big/behind flags. Catching (ph0) lights the first
+               two front spots small; the blaze (ph1) puts flameBig on the
+               big spots — the `behind` ones drawn BEFORE the sprite, so the
+               fire licks up from behind the ridge — and flameSmall on the
+               rest; guttering (ph2) falls back to small fires at the
+               doorway/foot spots. The BLAZE stays phase 1's alone: ph0 and
+               ph2 never draw flameBig.
+       ground  (farm, the sapper's pit, the siege yard, the open training
+               grounds) — nothing stands tall enough to blaze: smoldering
+               scorch patches that deepen with the phase, embers, low small
+               flames, drifting smoke. NEVER flameBig, at any phase.
+
+     A key with no entry keeps the old three-fraction look, and a WORK SITE
+     always uses it too (what burns on a site is the piled materials, not
+     the building they were going to be). Every burning building now also
+     breathes a proper smoke column above its roofline. */
+  FIRE_AT: {
+    house: [
+      { lv: 1, spots: [{ x: 0.51, y: 0.12, big: 1, behind: 1 }, { x: 0.34, y: 0.32, big: 1 },
+                       { x: 0.61, y: 0.70 }, { x: 0.16, y: 0.74 }] },
+      { lv: 2, spots: [{ x: 0.32, y: 0.18, big: 1, behind: 1 }, { x: 0.60, y: 0.16, big: 1 },
+                       { x: 0.42, y: 0.66 }, { x: 0.79, y: 0.50 }] },
+      { lv: 3, spots: [{ x: 0.42, y: 0.16, big: 1, behind: 1 }, { x: 0.71, y: 0.14, big: 1 },
+                       { x: 0.48, y: 0.64 }, { x: 0.80, y: 0.74 }] },
+    ],
+    tc: [
+      { lv: 1, spots: [{ x: 0.50, y: 0.12, big: 1, behind: 1 }, { x: 0.33, y: 0.40, big: 1 },
+                       { x: 0.67, y: 0.40, big: 1 }, { x: 0.40, y: 0.72 }] },
+      { lv: 2, spots: [{ x: 0.44, y: 0.10, big: 1, behind: 1 }, { x: 0.60, y: 0.20, big: 1 },
+                       { x: 0.62, y: 0.32 }, { x: 0.43, y: 0.70 }] },
+      { lv: 3, spots: [{ x: 0.42, y: 0.12, big: 1, behind: 1 }, { x: 0.66, y: 0.24, big: 1 },
+                       { x: 0.46, y: 0.66 }, { x: 0.20, y: 0.80 }] },
+    ],
+    barracks: [
+      { lv: 1, ground: 1, spots: [{ x: 0.45, y: 0.52 }, { x: 0.80, y: 0.16 }, { x: 0.18, y: 0.80 }] },
+      { lv: 2, spots: [{ x: 0.42, y: 0.10, big: 1, behind: 1 }, { x: 0.42, y: 0.14, big: 1 },
+                       { x: 0.46, y: 0.55 }, { x: 0.22, y: 0.85 }] },
+      { lv: 3, spots: [{ x: 0.50, y: 0.08, big: 1, behind: 1 }, { x: 0.50, y: 0.14, big: 1 },
+                       { x: 0.50, y: 0.55 }, { x: 0.12, y: 0.38 }] },
+    ],
+    range: [
+      { lv: 1, ground: 1, spots: [{ x: 0.28, y: 0.24 }, { x: 0.55, y: 0.60 }, { x: 0.80, y: 0.85 }] },
+      { lv: 2, spots: [{ x: 0.50, y: 0.10, big: 1, behind: 1 }, { x: 0.50, y: 0.15, big: 1 },
+                       { x: 0.35, y: 0.44 }, { x: 0.62, y: 0.66 }] },
+      { lv: 3, spots: [{ x: 0.72, y: 0.16, big: 1, behind: 1 }, { x: 0.68, y: 0.26, big: 1 },
+                       { x: 0.30, y: 0.52 }, { x: 0.25, y: 0.78 }] },
+    ],
+    farm:   [{ lv: 1, ground: 1, spots: [{ x: 0.30, y: 0.36 }, { x: 0.65, y: 0.52 }, { x: 0.45, y: 0.76 }] }],
+    sapper: [{ lv: 1, ground: 1, spots: [{ x: 0.60, y: 0.32 }, { x: 0.75, y: 0.14 }, { x: 0.16, y: 0.76 }] }],
+    siege:  [{ lv: 1, ground: 1, spots: [{ x: 0.50, y: 0.52 }, { x: 0.24, y: 0.44 }, { x: 0.70, y: 0.56 }] }],
+  },
+  // the anchors for THIS building, in art-rect space — or null (legacy look).
+  // Sites and upgrades are always legacy: they draw stage art, not the roof.
+  fireAnchors(b) {
+    if (b.construction > 0 || b.upgrading > 0) return null;
+    return this.smokeAnchor(this.FIRE_AT, b.key, b.level);
+  },
+  // the rect the flames anchor to — the art rect when the sprite carries one
+  fireRect(b, bx, by, bw) {
+    const spr = this.bldSprite(b);
+    return (spr && spr._cfArt) ? this.artRect(spr, bx, by, bw, bw)
+                               : { x: bx, y: by, w: bw, h: bw };
+  },
+  _flame(g, b, i, big, x, y, s) {
+    const beat = (performance.now() / 130) | 0;
+    Assets.drawSprite(g, 'misc/' + (big ? 'flameBig' : 'flameSmall') + '/' + ((beat + i * 2 + b.id) % 4),
+      x - s / 2, y - s * 0.9, { w: s, h: s });
+  },
+  // the blaze breaking out BEHIND the ridge — drawn before the sprite, so the
+  // building's own silhouette occludes the flame's foot
+  drawBurnBack(g, b, bx, by, bw) {
+    const ph = Bld.burnPhase(b);
+    if (ph !== 1) return;
+    const a = this.fireAnchors(b);
+    if (!a || a.ground) return;
+    const rct = this.fireRect(b, bx, by, bw);
+    for (let i = 0; i < a.spots.length; i++) {
+      const sp = a.spots[i];
+      if (!sp.behind) continue;
+      this._flame(g, b, i + 5, 1, rct.x + sp.x * rct.w, rct.y + sp.y * rct.h, 0.62 * rct.w);
+    }
+  },
+  // the smoke of a real fire — darker and denser than a hearth's, climbing
+  // from the roofline (or off the smoldering ground) and fraying downwind
+  drawBurnSmoke(g, cx, topY, w, ph, seed) {
+    const now = performance.now() / 1000;
+    const n = ph === 1 ? 5 : 3, dark = ph === 1 ? '#4a443c' : '#6a655c';
+    for (let i = 0; i < n; i++) {
+      const t = ((now * 0.5 + seed + i / n) % 1);
+      const rise = t * w * (ph === 1 ? 1.05 : 0.7);
+      const drift = Math.sin(now * 0.8 + i * 2.1 + seed * 9) * w * 0.14 * t + t * w * 0.08;
+      const sz = Math.max(2, w * (0.09 + t * 0.10) * (ph === 1 ? 1.25 : 1));
+      g.globalAlpha = (ph === 1 ? 0.44 : 0.30) * (1 - t);
+      g.fillStyle = dark;
+      g.fillRect(cx + drift - sz / 2, topY - rise - sz, sz, sz);
+      if (t > 0.3) {
+        g.globalAlpha *= 0.6;
+        g.fillStyle = '#8c8880';
+        g.fillRect(cx + drift + sz * 0.5, topY - rise - sz * 1.5, sz * 0.6, sz * 0.6);
+      }
+    }
+    g.globalAlpha = 1;
+  },
+  // smoldering ground: scorch that deepens with the phase, embers, low flames
+  drawGroundBurn(g, b, rct, spots, ph) {
+    const hsh = (n) => ((((b.id * 2654435761 + n * 40503) >>> 0) >>> 7) % 1000) / 1000;
+    const now = performance.now() / 1000;
+    const live = ph === 0 ? 1 : spots.length;      // the smolder spreads patch by patch
+    for (let i = 0; i < live; i++) {
+      const sp = spots[i];
+      const px = rct.x + sp.x * rct.w, py = rct.y + sp.y * rct.h;
+      const rad = rct.w * (ph === 0 ? 0.10 : ph === 1 ? 0.14 : 0.17) * (0.8 + hsh(i) * 0.4);
+      // scorched earth — two offset blots so the patch reads irregular
+      g.globalAlpha = ph === 2 ? 0.62 : 0.48;
+      g.fillStyle = '#241a10';
+      g.beginPath(); g.ellipse(px, py, rad, rad * 0.62, 0, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.ellipse(px + rad * 0.5 * (hsh(i + 9) - 0.5), py + rad * 0.3,
+        rad * 0.6, rad * 0.4, 0, 0, Math.PI * 2); g.fill();
+      g.globalAlpha = 1;
+      // embers winking in the char
+      const F = ART.PALETTE.fire;
+      for (let e = 0; e < (ph === 1 ? 5 : 3); e++) {
+        const wink = Math.sin(now * (2 + hsh(i * 7 + e) * 3) + e * 2.2 + b.id) * 0.5 + 0.5;
+        if (wink < 0.3) continue;
+        g.globalAlpha = 0.5 + wink * 0.5;
+        g.fillStyle = F[e % 2];
+        g.fillRect(px + (hsh(i * 11 + e) - 0.5) * rad * 1.6,
+                   py + (hsh(i * 13 + e) - 0.5) * rad * 0.9, 2, 2);
+      }
+      g.globalAlpha = 1;
+      // a low tongue of flame — small at every phase; the ground never blazes
+      if (ph === 1 || (i === 0 && ph === 0))
+        this._flame(g, b, i, 0, px, py + rad * 0.2, (ph === 1 ? 0.34 : 0.30) * rct.w);
+      // each patch breathes its own wisp
+      this.drawBurnSmoke(g, px, py - rad * 0.3, rct.w * 0.55, ph, (b.id * 0.37 + i * 0.29) % 1);
+    }
+  },
   drawBurn(g, b, bx, by, bw) {
     const ph = Bld.burnPhase(b);
     if (ph < 0) return;
     // stone sheds; timber burns
     if (b.key === 'tower') return this.drawTowerCrumble(g, b, bx, by, bw, ph);
-    const beat = (performance.now() / 130) | 0;
     const hsh = (n) => ((((b.id * 2654435761 + n * 40503) >>> 0) >>> 7) % 1000) / 1000;
+    const a = this.fireAnchors(b);
+    if (a && a.ground) return this.drawGroundBurn(g, b, this.fireRect(b, bx, by, bw), a.spots, ph);
+    if (a) {
+      const rct = this.fireRect(b, bx, by, bw);
+      const front = a.spots.filter(sp => !sp.behind);
+      const list = ph === 0 ? front.slice(0, 2)                 // catching: the first two licks
+        : ph === 1 ? front                                       // the blaze: every front anchor
+        : front.filter(sp => !sp.big);                           // guttering: down at the door and the foot
+      for (let i = 0; i < list.length; i++) {
+        const sp = list[i];
+        const jx = (hsh(i) - 0.5) * 0.10 * rct.w, jy = (hsh(i + 3) - 0.5) * 0.06 * rct.h;
+        const big = ph === 1 && sp.big ? 1 : 0;                  // the BLAZE is phase 1's alone
+        this._flame(g, b, i, big, rct.x + sp.x * rct.w + jx, rct.y + sp.y * rct.h + jy,
+          (big ? 0.56 : 0.42) * rct.w);
+      }
+      // the column above the roofline — anchored over the big spots' center
+      const bigs = a.spots.filter(sp => sp.big);
+      const cx = rct.x + (bigs.length
+        ? bigs.reduce((s, sp) => s + sp.x, 0) / bigs.length : 0.5) * rct.w;
+      this.drawBurnSmoke(g, cx, rct.y + rct.h * 0.10, rct.w, ph, (b.id * 0.37) % 1);
+      return;
+    }
+    // no anchors (a work site, or a key without a table entry): the classic
+    // three-fraction look — what burns on a site is the piled materials
     const spots = ph === 1
       ? [[0.5, 0.2, 1], [0.24, 0.62, 1], [0.74, 0.5, 1]]   // the blaze: roof + two faces
       : [[0.42, 0.24, 0], [0.66, 0.6, 0]];                 // catching / guttering: two small fires
     for (let i = 0; i < spots.length; i++) {
       const [sx, sy, big] = spots[i];
       const jx = (hsh(i) - 0.5) * 0.18 * bw, jy = (hsh(i + 3) - 0.5) * 0.1 * bw;
-      const s = (big ? 0.56 : 0.42) * bw;
-      Assets.drawSprite(g, 'misc/' + (big ? 'flameBig' : 'flameSmall') + '/' + ((beat + i * 2 + b.id) % 4),
-        bx + sx * bw - s / 2 + jx, by + sy * bw - s * 0.9 + jy, { w: s, h: s });
+      this._flame(g, b, i, big, bx + sx * bw + jx, by + sy * bw + jy, (big ? 0.56 : 0.42) * bw);
     }
+    this.drawBurnSmoke(g, bx + bw / 2, by + bw * 0.16, bw, ph, (b.id * 0.37) % 1);
   },
 
   /* ---- ASH PILES (tests/burn-down.mjs) — what a burned building leaves ----
@@ -2642,26 +3189,27 @@ const R = {
               this.blitBld(g, Sprites.dockBuildFace[side][stage], bx, by, bw, bw);
             }
           } else if (Sprites.misc[b.key + 'Build1']) {
-            // this building has BESPOKE stage art (every 1×1 building does —
+            // BESPOKE stage art still wins the route (the tower today —
             // tests/build-stages.mjs): its own three raising sprites for ALL
-            // three stages, no generic look, no scaffold overlay
+            // three stages, no derived look
             Assets.drawSprite(g, 'misc/' + b.key + (up ? 'Up' : 'Build') + (stage + 1), bx, by, { w: bw, h: bw });
-          } else if (stage === 0) {
-            Assets.drawSprite(g, 'misc/' + (up ? 'upgrade' : 'construction') + (bs >= 2 ? 'Big1' : '1'), bx, by, { w: bw, h: bw });
-          } else if (stage === 1) {
-            const key = bs >= 2
-              ? (up ? (tgt >= 3 ? 'misc/upgradeBig2_3' : 'misc/upgradeBig2') : (tgt >= 3 ? 'misc/constructionBig3' : 'misc/constructionBig'))
-              : (up ? 'misc/upgrade2' : 'misc/construction');
-            Assets.drawSprite(g, key, bx, by, { w: bw, h: bw });
           } else {
-            // nearly done: the building being BUILT TOWARD stands in scaffold.
-            // It must be the TARGET level's art (`tgt`) — during an upgrade
-            // b.level is still the old level, and drawing that here put the
-            // pre-upgrade building (e.g. the TC's level-1 camp) on screen
-            // AFTER stage 1 had already raised the new hall's frame, so the
-            // sequence ran backwards. tests/build-stages.mjs pins the order.
-            this.blitBld(g, this.bldSprite(b, tgt), bx, by, bw, bw);
-            Assets.drawSprite(g, 'misc/' + (up ? 'upgradeScaffold' : 'scaffold') + (bs >= 2 ? 'Big' : ''), bx, by, { w: bw, h: bw });
+            /* THE DERIVED STAGES (tests/build-stages.mjs): cleared site →
+               framing → partial build, generated from the footprint, the
+               TARGET tier's materials and the target sprite itself — see the
+               big block above padOf/siteOf/frameOf/partialOf. `tgt`, not
+               b.level: during an upgrade b.level is still the old level, and
+               deriving from it would run the sequence backwards. */
+            const tier = Math.min(3, tgt);
+            if (stage === 0) {
+              g.drawImage(this.siteOf(b.key, bs, tier), bx, by, bw, bw);
+            } else {
+              g.drawImage(this.padOf(bs), bx, by, bw, bw);
+              const base = this.bldSprite(b, tgt);
+              this.blitBld(g, stage === 1
+                ? this.frameOf(base, tier, this.stageRoof(b.key, tgt))
+                : this.partialOf(base), bx, by, bw, bw);
+            }
           }
         }
         const total = up ? (b.upgTotal || Bld.def(b.key).levels[b.level].time) : Bld.def(b.key).levels[b.level - 1].time;
@@ -2673,10 +3221,14 @@ const R = {
         }
       } else {
         // a damaged building wears its destruction phase (tests/burn-down.mjs):
-        // untouched → scorched dark → partially destroyed (Bld.burnPhase)
+        // untouched → scorched dark → partially destroyed (Bld.burnPhase).
+        // A GROUND-LEVEL yard (the FIRE_AT ground keys) never takes ruinOf —
+        // biting the "roofline" out of a flat field just punches green holes
+        // in it; scorched-dark plus the spreading char patches is its ruin.
         const bph = Bld.burnPhase(b);
+        const bfa = this.fireAnchors(b);
         const spr = bph === 1 ? this.darkOf(this.bldSprite(b))
-          : bph === 2 ? this.ruinOf(this.bldSprite(b))
+          : bph === 2 ? ((bfa && bfa.ground) ? this.darkOf(this.bldSprite(b)) : this.ruinOf(this.bldSprite(b)))
           : this.bldSprite(b);
         // a tower in a wall line wears the curtain's own stonework as
         // connecting stubs, under its body — one unbroken castle wall
@@ -2684,6 +3236,9 @@ const R = {
         // a drawbridge that falls to the FAR side lies beyond the wall, so it
         // goes down before the gatehouse does and is occluded by it
         if (b.key === 'gate') this.drawDrawbridge(g, b, bx, by, bw, dt, false);
+        // the blaze breaking out BEHIND the ridge goes down first too, so the
+        // roof's own silhouette occludes its foot (tests/burn-down.mjs)
+        this.drawBurnBack(g, b, bx, by, bw);
         this.blitBld(g, spr, bx, by, bw, bw);
         // …and the walk running south out of it meets its flank at WALK height
         if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);

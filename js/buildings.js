@@ -1519,6 +1519,10 @@ const Bld = {
       // is cut from the building's own sprite, and a mural tower's sprite
       // depends on the wall neighbours that are still standing right now.
       if (window.R && R.startCollapse) R.startCollapse(b);
+      // …and the fall throws dust — the placement poof, reused at the other
+      // end of the building's life (tests/burn-down.mjs). Not the dock: a
+      // broken quay washes into open water, and dust over water reads wrong.
+      if (window.R && R.startDestructPoof && key !== 'dock') R.startDestructPoof(b);
       this.removeToRuin(b);
       /* the loss ledger the barbarian ease reads (G.noteWorkLost) — finished
          non-fortification works only: a razed wall section is not a town
