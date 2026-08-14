@@ -350,6 +350,23 @@ const out = await p.evaluate(() => {
     ck('aThinOpeningIsNotEased',
       Units.count('P', z => Units.isVillager(z)) === 0 && G.barbEase('P') === false,
       'peak ' + S.peakTown.P + ' — it never got established, so there is no fall to cushion');
+    /* …but the RIVAL'S thin opening has a CLOCK on it (a real day-218 game:
+       peak 4, farmed from day 14 to the end — hire a hand, lose the hand,
+       two hundred days of it). Still below minPeak past slowStart, the wilds
+       decide there is nothing there worth taking. The player's opening is
+       pointedly NOT covered: a hard first week is theirs to have. */
+    {
+      const day0 = S.day;
+      ck('theCradleClockHasNotRunYet', G.barbEase('A') === false,
+        'day ' + S.day + ' — a young rival is still fair game');
+      S.day = G.BARB_EASE.slowStart; G._easeC = null;
+      ck('aRivalStrangledInItsCradleIsSpared',
+        (S.peakTown.A || 0) < G.BARB_EASE.minPeak && G.barbEase('A') === true,
+        'peak ' + S.peakTown.A + ' on day ' + S.day + ' — never took off, so the wilds stand off');
+      ck('thePlayersCradleIsStillTheirs', G.barbEase('P') === false,
+        'rival only — a struggling player deserves their hard game');
+      S.day = day0; S.eased.A = false; G._easeC = null;
+    }
     S.peakTown.P = 14; G._easeC = null;      // …but this one did (the ease is
                                              // day-cached now — bust it after a
                                              // mid-day mutation, a test artifact)

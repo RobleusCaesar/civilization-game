@@ -1448,6 +1448,17 @@ agnostic, with one exception: a COLLAPSED player (`S.collapse`) is being ENDED,
 not nursed. Camp tenders are untouched — they are defending their own ground,
 not choosing a town to sack — and `Units.damage` retaliation still applies, so
 a barbarian you strike always strikes back.
+**But the RIVAL'S cradle has a clock** (`BARB_EASE.slowStart` 40, same test —
+from a real day-218 hard game): the minPeak gate assumes a young tribe
+survives its own opening, and a rival seat mauled from day 14 stayed BELOW
+the gate for two hundred days and was farmed forever — hire a hand, lose the
+hand (peak 4, food-broke 201 days, zero units at the end, and the run "won"
+when the wilds razed the abandoned hall). A rival still under `minPeak` past
+`slowStart` reads as strangled in its cradle and the wilds stand off — until
+the town finally crosses minPeak, where the established-town rules and their
+release bar take over (replayed on the save: 0→7 hands and past minPeak
+within ~140 days, then hunted again as normal). RIVAL ONLY, deliberately:
+the player's opening is theirs to have, hard or not.
 **The ease LEADS the collapse instead of following it** (same test, from a real
 day-320 save where the rival was gutted in four days flat, d299–303, while the
 old thresholds slept): a RATE-OF-LOSS prong joins the two state prongs — every

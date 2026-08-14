@@ -750,9 +750,12 @@ const G = {
      player struggling on day six is having a hard game, which is theirs to
      have; a player arriving on day two hundred deserves an enemy. */
   /* lossN-in-lossDays is the LEADING prong (see barbEase); releaseFrac/relVil
-     are the latch's release bar. */
+     are the latch's release bar. slowStart is the never-took-off prong's
+     clock: a RIVAL still below minPeak this deep into the game was strangled
+     in its cradle, not out-played. */
   BARB_EASE: { vil: 3, bldFrac: 0.55, minPeak: 6, gapMult: 2,
-               lossN: 4, lossDays: 12, releaseFrac: 0.7, relVil: 5 },
+               lossN: 4, lossDays: 12, releaseFrac: 0.7, relVil: 5,
+               slowStart: 40 },
   townSize(owner) {
     return Bld.list(owner).filter(b => Bld.done(b) && b.key !== 'wall' && b.key !== 'gate').length;
   },
@@ -796,7 +799,21 @@ const G = {
     const E = this.BARB_EASE;
     const peak = (S.peakTown && S.peakTown[owner]) || 0;
     let val = false;
-    if (peak >= E.minPeak) {                            // it must have been ESTABLISHED
+    if (owner === 'A' && peak < E.minPeak && S.day >= E.slowStart) {
+      /* NEVER TOOK OFF (a real day-218 game): the minPeak gate assumes a
+         young tribe survives its own opening — but a rival seat mauled from
+         day 14 on stays BELOW the gate forever and is farmed forever: hire a
+         hand, lose the hand, two hundred days of it (peak 4, food broke 201
+         days, zero units at the end). A chief this small this late was
+         strangled in its cradle, so the wilds decide there is nothing there
+         worth taking — until the town finally crosses minPeak, where the
+         ordinary established-town rules (and their release bar) take over.
+         RIVAL ONLY, deliberately: a player struggling on day fifty is having
+         a hard game, which is theirs to have. */
+      if (!S.eased) S.eased = { P: false, A: false };
+      val = true;
+      S.eased[owner] = val;
+    } else if (peak >= E.minPeak) {                     // it must have been ESTABLISHED
       if (!S.eased) S.eased = { P: false, A: false };
       const vils = Units.count(owner, u => Units.isVillager(u));
       const size = this.townSize(owner);
