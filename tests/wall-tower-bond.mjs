@@ -341,6 +341,17 @@ const out = await p.evaluate(() => {
     put('tower', 14, 10);
     ck('bondsToALoneStub', R.towerLinkMask(14, 10).mask === E, 'mask ' + R.towerLinkMask(14, 10).mask);
 
+    // (d2) THE ELBOW (a reported screenshot): an east-west run ENDS one tile
+    // above the tower — the line terminates ON the tower, which is its
+    // corner post and joins the curtain. Distinct from (c): there the
+    // neighbour was MID-run (walls both sides); here it is the run's END
+    // (exactly one wall continuing sideways, none straight past).
+    put('wall', 40, 20); put('wall', 41, 20); put('wall', 42, 20);
+    put('tower', 42, 21);
+    ck('bondsAtAnElbow', R.towerLinkMask(42, 21).mask === N, 'mask ' + R.towerLinkMask(42, 21).mask);
+    ck('theWallEndReachesTheElbowTower', !!(R.wallMaskAt(42, 20) & SS),
+      'the curtain turns its corner into the tower');
+
     // (e) the wall RECIPROCATES on an in-line tower
     ck('wallBondsBack',
       !!(R.wallMaskAt(11, 20) & E) && !!(R.wallMaskAt(13, 20) & W),

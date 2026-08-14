@@ -862,8 +862,12 @@ T-junctions, mid-run), so the curtain reads unbroken like a real castle's
 mural towers; a tower merely BEHIND or IN FRONT of a line must not.
 `R.towerLinkMask` decides: link toward a neighbouring wall/gate when the run
 continues on the tower's far side, or the tower sits mid-line, or that
-neighbour is a lone stub with no run of its own. It reads walls and gates
-ONLY (never other towers), so it can never recurse; `R.wallMaskAt` calls it
+neighbour is a lone stub with no run of its own, or — THE ELBOW (a reported
+screenshot) — that neighbour is the END of a run coming in perpendicular
+(exactly one wall continuing sideways, none straight past): the line
+terminates ON the tower, which is its corner post. A tower behind a MID-run
+stays unbonded — its neighbour has walls on both sides, never one. It reads
+walls and gates ONLY (never other towers), so it can never recurse; `R.wallMaskAt` calls it
 to reciprocate, and `R.drawTowerBond` draws the curtain's own mask art UNDER
 the tower. Unfinished towers bond to nothing. The bond decides only where stubs are
 DRAWN; whether anyone may walk there is `Bld.solid` (**Buildings are solid**,

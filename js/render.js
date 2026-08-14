@@ -812,7 +812,13 @@ const R = {
        tower's far side (a wall two out along the same axis), or the tower
        has a wall on the opposite side (it sits mid-line), or that
        neighbour is a lone stub with no run of its own yet (the first
-       section a player lays out from a tower).
+       section a player lays out from a tower), or — THE ELBOW (a reported
+       screenshot: a run turning its corner one tile short of the tower) —
+       that neighbour is the END of a run coming in PERPENDICULAR to the
+       tower: exactly one wall continuing sideways out of it and none
+       straight past, so the line genuinely terminates on the tower and the
+       tower is its corner post. A tower merely behind a mid-run stays
+       unbonded — its neighbour has walls on BOTH sides, never one.
 
      Reads walls and gates only — never other towers — so it can never
      recurse. PURELY COSMETIC: Bld.blockAt and Path.passable are untouched,
@@ -828,10 +834,14 @@ const R = {
     for (const [dx, dy, bit] of [[0, -1, 1], [1, 0, 2], [0, 1, 4], [-1, 0, 8]]) {
       const nb = this._wgAt(x + dx, y + dy);
       if (!nb || nb.construction > 0) continue;
-      let lone = true;                                     // a stub with no run of its own?
+      let lone = true, perp = 0;                           // a stub? or a run turning here?
       for (const [ex, ey] of [[0, -1], [1, 0], [0, 1], [-1, 0]])
-        if (this._wgAt(nb.x + ex, nb.y + ey)) { lone = false; break; }
-      if (this._wgAt(x + dx * 2, y + dy * 2) || this._wgAt(x - dx, y - dy) || lone) {
+        if (this._wgAt(nb.x + ex, nb.y + ey)) {
+          lone = false;
+          if (ex * dx + ey * dy === 0) perp++;             // sideways out of the neighbour
+        }
+      const past = this._wgAt(x + dx * 2, y + dy * 2);     // straight on through it
+      if (past || this._wgAt(x - dx, y - dy) || lone || perp === 1) {
         mask |= bit;
         if (!level) level = nb.level;                      // wear the curtain's own tier
       }
