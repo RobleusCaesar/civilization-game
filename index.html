@@ -314,15 +314,20 @@
      an ornate frame + vignette give it a premium, handcrafted feel. */
   #scrEndgame.defeatMode { background:
       radial-gradient(130% 75% at 50% 18%, #141a2b 0%, #0b0f1c 52%, #060812 100%); }
-  #scrEndgame.defeatMode .sbody.center { padding: 0; justify-content: center; }
+  /* the SAFE AREAS live on the scroll body, OUTSIDE the frame — with them as
+     padding inside a min-height:100% pane, the ornate border ran the full
+     viewport and its top edge hid under the phone's status bar (a reported
+     bug: "you don't see the top of the box"). The frame now wraps its own
+     content and centres in the padded body, so the whole outline is always
+     on screen with breathing room on every side. */
+  #scrEndgame.defeatMode .sbody.center { justify-content: center;
+    padding: calc(env(safe-area-inset-top) + 12px) 14px calc(env(safe-area-inset-bottom) + 12px); }
     #defeatScene, #victoryScene { width: 100%; max-width: 440px; position: relative;
-    /* margin:auto — vertical AUTO margins centre the pane inside the flex scroll
-       body even where iOS refuses to resolve min-height:100% (which left the
-       victory page top-anchored on phones); padding symmetric beyond the safe
-       areas so the centred column doesn't sit visually high */
+    /* margin:auto — vertical AUTO margins centre the pane inside the flex
+       scroll body even where iOS refuses to resolve percentage heights */
     margin: auto;
-    padding: calc(env(safe-area-inset-top) + 16px) 20px calc(env(safe-area-inset-bottom) + 16px);
-    min-height: 100%; display: flex; flex-direction: column; justify-content: center;
+    padding: 18px 20px 16px;
+    display: flex; flex-direction: column; justify-content: center;
     /* the ornate double frame */
     border: 1px solid rgba(200,168,92,0.28);
     box-shadow: inset 0 0 0 3px rgba(10,12,22,0.9), inset 0 0 0 4px rgba(160,132,70,0.16),
@@ -337,7 +342,8 @@
   /* victory: "A New Dawn" — the same handcrafted frame under a warm sky */
   #scrEndgame.victoryMode { background:
       radial-gradient(130% 75% at 50% 18%, #2b2416 0%, #171208 52%, #0b0804 100%); }
-  #scrEndgame.victoryMode .sbody.center { padding: 0; justify-content: center; }
+  #scrEndgame.victoryMode .sbody.center { justify-content: center;
+    padding: calc(env(safe-area-inset-top) + 12px) 14px calc(env(safe-area-inset-bottom) + 12px); }
   #vicRank { color: var(--gold); font-weight: 900; letter-spacing: 3px; font-size: 13px;
     text-align: center; margin: 12px auto 0; }
   #vicMeta { color: #8d8368; font-size: 11px; letter-spacing: 0.5px; text-align: center; margin: 8px auto 0; }
