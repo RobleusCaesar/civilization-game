@@ -511,7 +511,9 @@ const out = await p.evaluate(() => {
     ck('theBandHoldsAMarkBeforeTheEase', !!mk && mk.owner === 'A',
       mk ? mk.owner + ':' + (mk.kind || mk.key) : 'nothing taken — vic at ' + vic.x + ',' + vic.y);
     S.peakTown.A = 14; G._easeC = null;                 // the town falls mid-fight
-    Combat.update(0.1);
+    // a few frames, not one: the contract is that the drop is PROMPT — a
+    // single 100ms tick proved flaky under parallel sweep load
+    for (let i = 0; i < 5 && (band.tUnit || band.tBld); i++) Combat.update(0.1);
     ck('theEaseFlipDropsTheMark', band.tUnit === 0 && band.tBld === 0,
       'the band that was mid-swing stands off with everyone else');
     // …but a tender whose CAMP is being menaced keeps its fight

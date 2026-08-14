@@ -180,6 +180,42 @@ const out = await p.evaluate(() => {
       JSON.stringify(post.caravan));
   }
 
+  /* ---- 5c. NO HIRING INTO A KILL ZONE (a real day-156 save): the player
+     parked two marksmen and a catapult at the beaten rival's hall doorstep,
+     and the forage valve fed them a fresh villager every few days — free
+     kills, and a recovery that could never start. With enemy soldiers in the
+     hall's own yard and NO soldier of its own to screen the hand, the chief
+     banks the purse; the guns moving off resumes the hiring; and a chief
+     WITH a screen hires as normal, stepping the hand out on the far side of
+     the hall from the threat. ---- */
+  {
+    const atc = setup('rc5c');
+    S.units = S.units.filter(u => u.owner !== 'A');
+    S.ai.res = { food: 500, wood: 100, stone: 100, gold: 100 };
+    S.ai.purse = 60;
+    const foe = Units.spawn('marksman', 'P', atc.x + 1, atc.y + Bld.size(atc) + 1);
+    const vilCount = () => Units.count('A', u => Units.isVillager(u));
+    S.day++; AI.daily();
+    ck('noHiringIntoAKillZone', vilCount() === 0 && S.ai.purse >= 50,
+      'purse banked at ' + Math.round(S.ai.purse) + ' while the guns hold the yard');
+    S.units.splice(S.units.indexOf(foe), 1);
+    S.day++; AI.daily();
+    ck('theGunsMovingOffResumesTheHiring', vilCount() === 1, '');
+    // a screened chief hires under threat — on the far side of the hall
+    const atc2 = setup('rc5c2');
+    S.units = S.units.filter(u => u.owner !== 'A');
+    S.ai.res = { food: 500, wood: 100, stone: 100, gold: 100 };
+    S.ai.purse = 60;
+    const foe2 = Units.spawn('marksman', 'P', atc2.x + 1, atc2.y + Bld.size(atc2) + 1);
+    Units.spawn('defender', 'A', atc2.x - 1, atc2.y);
+    S.day++; AI.daily();
+    const hand = S.units.find(u => u.owner === 'A' && Units.isVillager(u));
+    ck('aScreenedChiefStillHires', !!hand, '');
+    ck('andTheHandStepsOutOnTheFarSide',
+      !!hand && Math.hypot(hand.x - foe2.x, hand.y - foe2.y) > 3.5,
+      hand ? Math.hypot(hand.x - foe2.x, hand.y - foe2.y).toFixed(1) + ' tiles from the guns' : '');
+  }
+
   /* controlled geography for the breach tests: a TRUE island (water on every
      side) holding the "hall" the chief knows, separated from the reachable
      shore by a 1-wide channel on its west. Spans are the channel tiles left

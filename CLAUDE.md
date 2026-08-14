@@ -371,7 +371,14 @@ verifies the hand can STAND at the works — three days unreachable and an
 unstarted site is abandoned (refunded) for re-siting; an upgrade just waits.
 **Famine**: the same save sat at 0 food for months on 15k wood — the Trading
 Post only ever bought gold. A chief under 250 food now sends the caravan for
-FOOD first. **Killzone breach**: probeAssault's breach scorer ignored the
+FOOD first. **No hiring into a kill zone** (same test, a real day-156 save):
+the player parked two marksmen and a catapult at a beaten rival's hall
+doorstep, and the forage valve fed them a fresh villager every few days —
+free kills, and a recovery that could never start. Enemy soldiers within 10
+of the hall are inside its own vision (fog-honest); with no soldier of its
+own to screen the hand the chief BANKS the purse until the guns move off,
+and a screened chief hires as normal but steps the hand out on the hall's
+far side from the nearest threat (a scored spot search, never blind). **Killzone breach**: probeAssault's breach scorer ignored the
 player's towers, so the 55hp sapper bridged into tower fire and died every
 time; each candidate now pays ~10 tiles of detour per KNOWN tower covering it
 (fog-honest — read from `ai.knownB` only). Together: that save goes from "26

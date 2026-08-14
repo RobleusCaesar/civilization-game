@@ -4088,8 +4088,31 @@ const AI = {
       const put = Math.min(ai.res.food, 15);
       ai.res.food -= put; ai.purse = (ai.purse || 0) + put;
       if (ai.purse >= 50) {
-        const spot = MapGen.findNear(tc.x, tc.y + Bld.size(tc), 4, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
-        if (spot) { ai.purse -= 50; Units.spawn('villager', 'A', spot.x, spot.y); }
+        /* NO HIRING INTO A KILL ZONE (a real day-156 save): the player left
+           two marksmen and a catapult parked at the hall's doorstep, and the
+           forage valve fed them a fresh villager every few days — free kills,
+           and a recovery that could never start. Enemy soldiers this close to
+           the hall are inside its own vision, so the read is fog-honest. With
+           NO soldier of its own to screen the new hand, the chief banks the
+           purse and waits for the guns to move off; with any screen at all it
+           hires as normal — but steps the hand out on the far side of the
+           hall from the nearest threat, not blindly into it. */
+        const sz2 = Bld.size(tc);
+        const foes = S.units.filter(u => (u.owner === 'P' || u.owner === 'R') &&
+          !Units.isVillager(u) && !Units.isNaval(u) &&
+          Math.hypot(u.x - (tc.x + sz2 / 2), u.y - (tc.y + sz2 / 2)) <= 10);
+        const screened = Units.count('A', u => !Units.isVillager(u) && !Units.isNaval(u)) > 0;
+        if (!foes.length || screened) {
+          let spot = null, best = -1;
+          for (let dy = -2; dy <= sz2 + 1; dy++) for (let dx = -2; dx <= sz2 + 1; dx++) {
+            const x = tc.x + dx, y = tc.y + dy;
+            if (!MapGen.inB(x, y) || !Path.passable(x, y, 'A') || Bld.at(x, y)) continue;
+            const dmin = foes.length
+              ? Math.min.apply(null, foes.map(u => Math.hypot(u.x - x, u.y - y))) : 99;
+            if (dmin > best) { best = dmin; spot = { x, y }; }
+          }
+          if (spot) { ai.purse -= 50; Units.spawn('villager', 'A', spot.x, spot.y); }
+        }
       }
     } else if (ai.purse) { ai.res.food += ai.purse; ai.purse = 0; }   // workforce full — bank the change
 
