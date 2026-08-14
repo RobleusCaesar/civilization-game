@@ -637,7 +637,10 @@ const CFG = {
   DEATHS: {
     /* Every line is a WHOLE SENTENCE that says a villager died — the log
        prints it as-is behind a skull, so it has to stand on its own and read
-       plainly at a glance. Keyed by what they were DOING when it happened. */
+       plainly at a glance. Keyed by what they were DOING when it happened.
+       House style (the bee line is the model): name the villager, make the
+       CAUSE concrete enough to picture, land on a word for dying, and put
+       the joke in the middle — never in place of the death. */
     general: [
       'A villager lay down under a hawthorn for a short rest and never got up.',
       'A villager died of a fever nobody could name. The moon was blamed.',
@@ -646,7 +649,7 @@ const CFG = {
       'A villager drank from the downstream well twice, and died of the second cup.',
       'A villager was struck dead by lightning while insisting it never strikes twice.',
       'A villager tripped over the dog, went into the doorpost, and did not get up.',
-      'A villager has died of an ache the healer treated with a louder ache.',
+      'A villager went to the healer with a small ache, and died of the cure.',
       'A villager went to see what the noise in the woods was, and was never seen alive again.',
       'A villager died of old age, which in these years means thirty-one.',
       'A villager choked to death on a barley loaf at an otherwise excellent feast.',
@@ -654,66 +657,82 @@ const CFG = {
       'A villager died of a bite from something small, green and entirely unbothered.',
       'A villager sat on a warm rock to rest and died there. The rock outlasted them.',
       'A villager has died, insisting to the last that the mushrooms were the good sort.',
+      'A villager bet they could swim the lake there and back, and drowned winning the first half.',
+      'A villager lent out the good blanket the night of the cold snap, and never woke up.',
+      'A villager died proving to the children that the old rope swing still held. It did not.',
+      'A villager died of the hiccups on the third day, envied quietly by everyone in earshot.',
+      'A villager tried to move the standing stone alone, out of principle, and died beneath it.',
     ],
     farm: [
       'A villager was trampled to death by the ox they had just called gentle.',
       'A villager bent to pull one last weed from the barley and died where they stooped.',
-      'A villager put a scythe clean through their own boot at harvest, and died of it.',
+      'A villager put a scythe through their own boot; the wound went green and killed them.',
       'A villager was stung to death by every bee in the orchard at more or less once.',
+      'A villager napped in the tall barley, and died beneath the one ox team that never saw them.',
+      'A villager fell into their own grain pit, and was buried by the barley that followed them.',
     ],
     lumber: [
-      'A villager shouted TIMBER, stepped back to admire it, and was killed by it.',
-      'A villager died beneath the very tree they were leaning on for a rest.',
-      'A villager spent the night at the ale barrel, swung an axe at dawn, and died by noon.',
+      'A villager shouted TIMBER, then stepped the way the tree also chose, and was killed by it.',
+      'A villager leaned against the one tree already cut halfway through, and died beneath it.',
+      'A villager chopped drunk, missed the tree, and died of what the axe found instead.',
       'A villager misjudged which way an elm falls, and was crushed learning otherwise.',
+      'A villager stacked the logs on the slope to save walking, and was killed by the savings.',
     ],
     quarry: [
       'A villager was crushed by the very block they had just called a good one.',
       'A villager tested a chisel with their thumb, then a boulder with their head, and died.',
       'A villager died learning that a stone bench can also be a stone ceiling.',
       'A villager was on the wrong side of the wedge when the seam let go, and was killed.',
+      'A villager tapped the overhang to ask if it was hollow, and died of the answer.',
     ],
     mine: [
       'A villager went back in for one more nugget and was buried by the roof.',
-      'A villager died carrying more gold up the ladder than one pair of lungs allows.',
+      'A villager died on the ladder, hauling more gold in one load than their heart could lift.',
       'A villager lit a lamp in a shaft that had waited years for exactly that, and died.',
       'A villager was run down and killed by an ore cart with no brake and firm opinions.',
+      'A villager followed the seam past the last prop, and the roof came down. They died rich.',
     ],
     lodge: [
       'A villager was killed by a boar they had described as more of a large pig.',
       'A villager was outrun by dinner, then caught by it, and did not survive the meeting.',
       'A villager mistook a bear\'s den for a berry patch and died correcting the error.',
       'A villager was gored to death mid-sentence, explaining that this one looked friendly.',
+      'A villager tracked a wounded stag uphill all day, and met what had wounded it. They died.',
     ],
     gatherWood: [
       'A villager was killed by a dead branch nobody had thought to look up at.',
       'A villager chopped through the limb they were standing on, and died of the drop.',
       'A villager was crushed to death under a bundle of firewood twice their own height.',
       'A villager put an axe into a wasps\' nest on the last blow of the day, and died of it.',
+      'A villager tugged at a snagged branch until the dead pine came down with it, and was killed.',
     ],
     gatherStone: [
       'A villager levered out the one rock holding up the others, and died beneath them.',
       'A villager was killed by a chip of flint travelling faster than the eye follows.',
-      'A villager went to fetch the crowbar and came back under the pile, quite dead.',
-      'A villager died hauling stone up a slope they had already lost an argument with.',
+      'A villager pried at the pile the crowbar was bought for, and was buried by the answer.',
+      'A villager hauled one stone too many up the scree, and came down crushed beneath the lot.',
+      'A villager tripped carrying flint home in their hood, and was killed by their own harvest.',
     ],
     gatherFood: [
       'A villager reached deep into the bramble, met something already living there, and died.',
       'A villager was seen off by a territorial swan and never recovered from the encounter.',
       'A villager sampled the berries very thoroughly before bringing any home, and died.',
       'A villager fell out of the apple tree — the good one — and did not get up again.',
+      'A villager raced a bear to the last of the blackberries, and very nearly won. They died.',
     ],
     build: [
       'A villager was under the roof beam at the exact moment the rope was not, and died.',
-      'A villager fell to their death from scaffolding everyone agreed was perfectly sound.',
+      'A villager fell to their death from a frame everyone had agreed would hold one more man.',
       'A villager died in — and is now part of — the mortar they mixed a little too well.',
       'A villager hit their thumb with the mallet, sat down heavily, and never rose again.',
+      'A villager checked whether the post hole was deep enough, headfirst, and died at the bottom.',
     ],
     fish: [
       'A villager hooked something larger than the shore they stood on, and drowned.',
       'A villager leaned out for the float, kept on leaning, and drowned in four feet of water.',
       'A villager slipped in the shallows, was far too proud to shout, and drowned.',
       'A villager was pulled under and drowned by a pike that had clearly held a grudge.',
+      'A villager waded out to prove the sandbar was close, and drowned proving otherwise.',
     ],
   },
 

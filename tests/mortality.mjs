@@ -72,9 +72,11 @@ const out = await p.evaluate(() => {
       D.general.length >= 10 && D.general.length <= 20, D.general.length + ' general causes');
     const JOBS = ['farm', 'lumber', 'quarry', 'mine', 'lodge',
       'gatherWood', 'gatherStone', 'gatherFood', 'build', 'fish'];
-    const thin = JOBS.filter(k => !D[k] || D[k].length < 3 || D[k].length > 4);
-    ck('threeOrFourPerJob', thin.length === 0,
-      thin.length ? thin.join(',') : JOBS.length + ' kinds of work, 3-4 causes each');
+    // widened from 3–4 when the table grew a variety pass (the same commit
+    // revised the vague lines): still at least 3, never a wall of them
+    const thin = JOBS.filter(k => !D[k] || D[k].length < 3 || D[k].length > 6);
+    ck('threeToSixPerJob', thin.length === 0,
+      thin.length ? thin.join(',') : JOBS.length + ' kinds of work, 3-6 causes each');
     const all = Object.keys(D).reduce((a, k) => a.concat(D[k]), []);
     ck('noTwoTheSame', new Set(all).size === all.length, all.length + ' lines, all distinct');
     ck('theyReadLikeSentences',

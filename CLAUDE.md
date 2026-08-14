@@ -1503,8 +1503,13 @@ tick instead of burying someone the instant it loads.
 villager was DOING — the station they were stationed at (`farm`/`lumber`/
 `quarry`/`mine`/`lodge`, so every `needsWorker` plot has its own set), the
 resource they were gathering, whether they were building or line-fishing, with
-`general` for anyone caught idling. 3–4 lines per kind of work and 15 general
-ones; adding a station is one more key in the table and nothing else.
+`general` for anyone caught idling. 3–6 lines per kind of work and 20 general
+ones; adding a station is one more key in the table and nothing else. The
+lines have a HOUSE STYLE, spelled out at the top of the table (the bee-sting
+line is the model): name the villager, make the cause concrete enough to
+picture, land on a word for dying, and put the joke in the middle — never in
+place of the death. A line that has to be decoded ("swung an axe at dawn,
+died by noon" — of what?) fails the style even when it scans.
 **The news is plain `G.log`, never `G.foeNote`** — foeNote is difficulty-gated
 ENEMY intel, and a death in the village is the player's own news, told at every
 difficulty.
