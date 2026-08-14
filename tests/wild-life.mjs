@@ -354,6 +354,14 @@ const out = await p.evaluate(() => {
 
   // ---- 4. banners fly in the tribe's own dye, hearths smoke ----
   {
+    /* …except that the cloth and the 4px owner pip are SWITCHED OFF for now
+       (an art-direction call — they crowded the new building art). The
+       machinery below is deliberately still exercised: it must keep working
+       so flipping either flag restores the feature exactly. If you turn one
+       back on, flip its expectation here in the same commit. */
+    ck('theTopLeftChromeIsOffForNow',
+      R.SHOW_BANNERS === false && R.SHOW_OWNER_PIP === false,
+      'banners=' + R.SHOW_BANNERS + ' pip=' + R.SHOW_OWNER_PIP);
     ck('everyBannerPoleHasAnAnchor',
       ['barracks', 'warcamp', 'range', 'trade', 'sapper', 'dock', 'siege', 'tc']
         .every(k => Array.isArray(R.BANNER_AT[k]) && R.BANNER_AT[k].length),

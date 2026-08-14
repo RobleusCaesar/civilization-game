@@ -733,6 +733,9 @@ the tribe's own tunic dye (`Sprites.tunicCol`), so a purple village flies
 purple rather than the blue the sprite set is built in; `R.drawHearthSmoke`
 breathes a drifting column from homes and halls (`R.SMOKE_AT`). Neither
 shows over a work site, and a building already ablaze skips the hearth smoke.
+**The cloth is switched OFF for now** (`R.SHOW_BANNERS`, see **The owner pip**
+below) — gated at the call site, machinery and contract intact; the smoke is
+untouched and still flies.
 **The work tick is a GLANCE, not a readout** (`R.workFloat`, `R.WORK_FLOAT_S`):
 the white `+wood` over a worker's head exists so you can read the village at
 sight without selecting anybody. It used to roll for a float on every gather
@@ -965,6 +968,16 @@ one faction-less atlas, so it cannot simply be dropped either — it is their
 only owner cue. It now marks only the RIVAL's stonework, and sits ON it:
 nobody else builds walls, so an unmarked curtain is yours by elimination, and
 your own castle reads clean.
+**…and the top-left pip is OFF for now** (`R.SHOW_OWNER_PIP`, with
+`R.SHOW_BANNERS` beside it — pinned by `theTopLeftChromeIsOffForNow` in
+tests/wild-life.mjs): against the new building art the 4px tag and the waving
+cloth crowded every silhouette and read as UI stuck onto the scene. Both are
+gated at their CALL SITES in the building loop, never deleted — `drawBanners`,
+`BANNER_AT`'s measured anchors, the tunic-dye lookup and their contract checks
+all still stand, so flipping a flag restores the feature exactly. The rival's
+FORT pip is exempt and still drawn: it is the only way to tell whose stonework
+you are looking at, and it never appears on your own. Turning either flag back
+on means flipping its expectation in the same commit.
 
 **Burning buildings & ash** (`tests/burn-down.mjs`): a damaged building shows
 how far gone it is (`Bld.burnPhase`, keyed to hp — so the fire burns

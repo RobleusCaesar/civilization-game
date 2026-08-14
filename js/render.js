@@ -2098,6 +2098,21 @@ const R = {
      c/32), so they scale with zoom and with the 2×2 hall for free. `lv` is
      the level the pole first appears at — ART.tierDress puts most banners at
      3, while the barracks and the war camp carry theirs from the start. */
+  /* ---- THE ART CARRIES ITSELF (both off for now, an art-direction call) ----
+     Two owner cues used to ride on every building's top-left corner: a waving
+     cloth BANNER and a 4px faction PIP. Against the new building art they
+     crowd the silhouette and read as UI stuck onto the scene rather than part
+     of it. So they are switched off HERE, at the call sites — never deleted:
+     drawBanners, BANNER_AT's measured anchors, the tunic-dye lookup and their
+     contract checks all still stand, so flipping a flag back to true restores
+     the feature exactly as it was.
+     The rival's FORT pip is a different thing and stays: walls, gates and
+     towers share one faction-less atlas, so that small centre mark is the
+     only way to tell whose stonework you are looking at (it never appears on
+     your own — see the Owner tag note below). */
+  SHOW_BANNERS: false,
+  SHOW_OWNER_PIP: false,
+
   BANNER_AT: {
     barracks: [{ x: 4 / 32, y: 2 / 32, w: 6 / 32, h: 7 / 32, lv: 1 }],
     warcamp:  [{ x: 21 / 32, y: 9 / 32, w: 4 / 32, h: 5 / 32, lv: 1, left: true }],
@@ -2652,8 +2667,10 @@ const R = {
         const total = up ? (b.upgTotal || Bld.def(b.key).levels[b.level].time) : Bld.def(b.key).levels[b.level - 1].time;
         this.bar(g, bx + 4, by + bw - 4, bw - 8, 3, 1 - (up ? b.upgrading : b.construction) / total, '#e8c15a');
         // still tag the owner so a work site reads as friend or foe
-        g.fillStyle = b.owner === 'P' ? '#4a90c2' : '#c2564a';
-        g.fillRect(bx + 1, by + 1, 4, 4);
+        if (this.SHOW_OWNER_PIP) {
+          g.fillStyle = b.owner === 'P' ? '#4a90c2' : '#c2564a';
+          g.fillRect(bx + 1, by + 1, 4, 4);
+        }
       } else {
         // a damaged building wears its destruction phase (tests/burn-down.mjs):
         // untouched → scorched dark → partially destroyed (Bld.burnPhase)
@@ -2684,11 +2701,11 @@ const R = {
         // barbarian works wear the band's own rust, never the rival's red —
         // a camp is nobody's tribe (tests/raider-camps.mjs)
         g.fillStyle = b.owner === 'P' ? '#4a90c2' : b.owner === 'R' ? '#6e5b40' : '#c2564a';
-        if (!fort) g.fillRect(bx + 1, by + 1, 4, 4);
+        if (!fort) { if (this.SHOW_OWNER_PIP) g.fillRect(bx + 1, by + 1, 4, 4); }
         else if (b.owner !== 'P') g.fillRect(bx + bw / 2 - 1.5, by + bw / 2 - 1.5, 3, 3);
         this.drawCampfire(g, b, bx, by, bw);
       }
-      this.drawBanners(g, b, bx, by, bw);      // cloth flies in the tribe's own dye
+      if (this.SHOW_BANNERS) this.drawBanners(g, b, bx, by, bw);   // cloth in the tribe's own dye
       this.drawHearthSmoke(g, b, bx, by, bw);  // and the hearths breathe
       // a finished WONDER is never just another building on the map
       if (b.key === 'wonder' && !(b.construction > 0)) this.drawWonderShine(g, b, bx, by, bw);
