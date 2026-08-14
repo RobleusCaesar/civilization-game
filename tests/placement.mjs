@@ -135,19 +135,39 @@ const out = await p.evaluate(() => {
     const gap = ring.find(t => t.y === tc.y - R2 && t.x === tc.x + 1);   // an EDGE gap (4-dir floods can't pass corners)
     for (const t of ring) if (t !== gap) Bld.place('P', 'wall', t.x, t.y, { free: true, instant: true });
     Bld._openC = null;
+    /* THE PLAYER MAY BOX THEIR PEOPLE IN (a reported bug: the old hard
+       refusal blocked the whole point of a shut ring). The closing stone is
+       ALLOWED and carries a WARNING the placement chip shows — an informed
+       choice, never a silent one. Only the RIVAL is still hard-refused. */
     const rw = Bld.canPlace('P', 'wall', gap.x, gap.y);
-    ck('theClosingStoneIsRefused', !rw.ok && rw.code === 'sealed', JSON.stringify(rw));
-    ck('aHouseCorksJustTheSame', Bld.canPlace('P', 'house', gap.x, gap.y).code === 'sealed', '');
-    ck('aGateAlwaysOpensForItsOwner', Bld.canPlace('P', 'gate', gap.x, gap.y).ok === true, '');
-    ck('theScanSkipsTheFlood', Bld.canPlace('P', 'wall', gap.x, gap.y, { noSeal: true }).ok === true,
+    ck('theClosingStoneIsAllowedWithAWarning',
+      rw.ok === true && rw.warn === 'sealed' && /gate/i.test(rw.warnWhy || ''), JSON.stringify(rw));
+    ck('aHouseCorksWithTheSameWarning',
+      Bld.canPlace('P', 'house', gap.x, gap.y).warn === 'sealed', '');
+    ck('aGateAlwaysOpensForItsOwner',
+      (() => { const rg = Bld.canPlace('P', 'gate', gap.x, gap.y); return rg.ok === true && !rg.warn; })(), '');
+    ck('theScanSkipsTheFlood', !Bld.canPlace('P', 'wall', gap.x, gap.y, { noSeal: true }).warn,
       'the grid uses noSeal; the pick pays for the truth');
-    // a gate elsewhere in the ring, and the wall may close the gap
+    // the RIVAL'S chief is still hard-refused — a corked chief is a
+    // pathology, and prevention is cheaper than cutTheCork
+    {
+      const tcA = Bld.tcOf('A');
+      if (tcA) {
+        const keep = { x: tcA.x, y: tcA.y };
+        tcA.x = tc.x; tcA.y = tc.y; Bld._block = null; Bld._openC = null;
+        const ra = Bld.canPlace('A', 'wall', gap.x, gap.y, { free: true });
+        ck('theRivalIsStillHardRefused', !ra.ok && ra.code === 'sealed', JSON.stringify(ra));
+        tcA.x = keep.x; tcA.y = keep.y; Bld._block = null; Bld._openC = null;
+      } else ck('theRivalIsStillHardRefused', false, 'no rival hall in the arena');
+    }
+    // a gate elsewhere in the ring, and the wall closes with no warning at all
     const g2 = ring.find(t => t.y === tc.y + sz + R2 - 1 && t.x === tc.x + 1);
     const old = Bld.at(g2.x, g2.y);
     S.buildings.splice(S.buildings.indexOf(old), 1); Bld._block = null; Bld._openC = null;
     Bld.place('P', 'gate', g2.x, g2.y, { free: true, instant: true });
     Bld._openC = null;
-    ck('aGateInTheRingFreesTheWall', Bld.canPlace('P', 'wall', gap.x, gap.y).ok === true, '');
+    ck('aGateInTheRingFreesTheWall',
+      (() => { const rr = Bld.canPlace('P', 'wall', gap.x, gap.y); return rr.ok === true && !rr.warn; })(), '');
   }
 
   // ---- 6. THE FLOW: arm → ghost → jump → confirm/cancel/exit ----

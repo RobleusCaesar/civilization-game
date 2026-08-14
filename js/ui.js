@@ -480,7 +480,8 @@ const UI = {
     if (!g || !this.placing) { this.placeVerdict = null; return; }
     const r = Bld.canPlace('P', this.placing, g.x, g.y, { noCost: true });
     const afford = Bld.canAfford(Bld.effCost('P', this.placing));
-    this.placeVerdict = { ok: r.ok, why: r.why || '', code: r.code || '', afford };
+    this.placeVerdict = { ok: r.ok, why: r.why || '', code: r.code || '', afford,
+      warn: r.warn || '', warnWhy: r.warnWhy || '' };
     // the valid↔invalid crossing cue (subtle; never on the first look)
     if (this._placeCueOk !== null && this._placeCueOk !== r.ok) this.cue(r.ok ? 'ok' : 'bad');
     this._placeCueOk = r.ok;
@@ -535,6 +536,9 @@ const UI = {
       return;
     }
     Bld.place('P', key, g.x, g.y, { builderId: this.builderFor });
+    // a sealing placement was allowed, and is ACKNOWLEDGED — the player chose
+    // to shut their own people in, and the toast marks the moment they did
+    if (r.warn === 'sealed') this.toast('Your town is walled in — only a gate lets your people out', true);
     // the materials land: a ring of dust billows out from under the new site
     if (R.startPlacePoof) R.startPlacePoof(g.x, g.y, Bld.size(key));
     this.cue('confirm');
@@ -672,6 +676,9 @@ const UI = {
     let msg = '';
     if (v && !v.ok) msg = '⃠ ' + v.why;
     else if (v && !v.afford) msg = '⏳ Need ' + this._missingCostStr();
+    // a WARNING rides a valid spot (sealing your own town in is allowed —
+    // the chip just says what it means, so the choice is an informed one)
+    else if (v && v.warn) msg = '⚠ ' + v.warnWhy;
     if (msg) {
       why.style.display = 'block';
       if (why.textContent !== msg) why.textContent = msg;
@@ -851,16 +858,19 @@ const UI = {
 
   commitWallDrag() {
     const ghost = this.wallGhost || [];
-    let placed = 0, first = null;
+    let placed = 0, first = null, sealed = false;
     const sites = [];
     for (const t of ghost) {
       if (!t.ok) continue;
-      if (!Bld.canPlace('P', 'wall', t.x, t.y).ok) continue;   // re-check with live resources
+      const r = Bld.canPlace('P', 'wall', t.x, t.y);   // re-check with live resources
+      if (!r.ok) continue;
+      if (r.warn === 'sealed') sealed = true;          // allowed — sealing is the player's choice
       const b = Bld.place('P', 'wall', t.x, t.y, { noAutoAssign: true });
       if (!first) first = b;
       sites.push(b);
       placed++;
     }
+    if (sealed) this.toast('Your town is walled in — only a gate lets your people out', true);
     if (placed) {
       const v = Units.nearestIdleVillager(first.x, first.y);
       // start at the RIGHT end of the line: the nearest section whose finished

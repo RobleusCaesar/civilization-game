@@ -807,22 +807,32 @@ const Bld = {
     // to the front. (Near home, anything goes as normal.)
     if (!freePlace && !nearHome && nearCamp && CFG.STAGING_BUILD.indexOf(key) < 0)
       return { ok: false, code: 'staging', why: 'Only military buildings at a War Camp' };
-    /* A PLAYER MUST NOT WALL THEMSELVES IN BY ACCIDENT (tests/placement.mjs).
-       Owner-agnostic seal clamp: refuse the stone that would cut the owner's
-       hall off from the wide map. Gates are exempt — a gate opens for its
-       owner — and it only fires when the town is currently OPEN (a town
-       already sealed can't be made worse, and razing is the cure). Behind
-       the cheap perimeter prefilter, and skippable (noSeal) for the grid
-       scan: floods are validated on the PICK, never on the scan — the same
-       rule AI.plot's pickSealFree follows. */
-    if (!opts.noSeal && key !== 'gate' && this._sealPinch(key, x, y) && this.wouldSeal(owner, key, x, y))
-      return { ok: false, code: 'sealed', why: 'That would seal your people in — leave a gap or use a gate' };
+    /* THE SEAL CHECK (tests/placement.mjs). Gates are exempt — a gate opens
+       for its owner — and it only fires when the town is currently OPEN (a
+       town already sealed can't be made worse, and razing is the cure).
+       Behind the cheap perimeter prefilter, and skippable (noSeal) for the
+       grid scan: floods are validated on the PICK, never on the scan — the
+       same rule AI.plot's pickSealFree follows.
+       FOR THE PLAYER IT IS A WARNING, NEVER A REFUSAL (a reported bug: "the
+       game won't let me box my people in — but that's the whole point of
+       town gates"). Shutting your own people behind stone is a legitimate
+       choice and the placement chip says what it costs; only the RIVAL is
+       hard-refused — a corked chief is a pathology, and preventing it is
+       cheaper than AI.cutTheCork razing its way back out. */
+    let warnSeal = false;
+    if (!opts.noSeal && key !== 'gate' && this._sealPinch(key, x, y) && this.wouldSeal(owner, key, x, y)) {
+      if (owner !== 'P')
+        return { ok: false, code: 'sealed', why: 'That would seal your people in — leave a gap or use a gate' };
+      warnSeal = true;
+    }
     if (!opts.noCost) {
       const res = owner === 'P' ? S.res : S.ai.res;
       if (!this.canAfford(this.effCost(owner, key), res))
         return { ok: false, code: 'cost', why: 'Not enough resources' };
     }
-    return { ok: true };
+    return warnSeal
+      ? { ok: true, warn: 'sealed', warnWhy: 'This walls your town in — nobody leaves without a gate' }
+      : { ok: true };
   },
 
   // why is this tile not buildable ground? — the distinct label the placement

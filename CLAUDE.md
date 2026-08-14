@@ -1878,10 +1878,17 @@ you're saving for" grid, ✓ disabled, missing goods named — never a tile
 refusal; the cost check stays LAST so money never masks a ground problem)
 and `noSeal` (the seal flood is validated on the PICK — ghost tile, confirm,
 AI validate-on-pick — never on the scan; the exact rule `pickSealFree`
-follows). **The seal clamp** (`Bld.wouldSeal` / `_openToBorder`): a player
-must not wall themselves in by accident — the stone that would cut the
-owner's hall doorstep off from the map's border ring is refused (`sealed`);
-gates are exempt (they open for their owner), it only fires while the town is
+follows). **The seal check** (`Bld.wouldSeal` / `_openToBorder`): the stone
+that would cut the owner's hall doorstep off from the map's border ring is
+detected — and for the PLAYER it is a WARNING, never a refusal (a reported
+bug: the old hard refusal blocked deliberately shutting your own ring, which
+is the whole point of a walled town). `canPlace` returns
+`ok: true, warn: 'sealed', warnWhy` — the placement chip shows the warning
+on a valid ghost, the confirm and the wall line-drag toast it once when the
+sealing stone actually lands — while the RIVAL stays hard-refused
+(`code: 'sealed'`): a corked chief is a pathology, and prevention is cheaper
+than `AI.cutTheCork`. Gates are exempt (they open for their owner, and a
+ring with one closes warning-free), it only fires while the town is
 currently OPEN, wall/gate SITES count as solid (intent counts), it hides
 behind a cheap all-perimeter-open prefilter, and the no-candidate flood is
 cached per (day, `_blockGen`) with the force-rebuildBlock-first discipline.
