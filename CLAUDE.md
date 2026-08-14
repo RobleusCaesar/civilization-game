@@ -1545,6 +1545,15 @@ makes the lever a decision and not a free upgrade: you shut your own door and
 live with it. Only the third tier has the winch (`Bld.canDrawbridge`: finished,
 `level >= 3`); L1 and L2 show no button at all, and `b.raised` rides in every
 save (`loadJSON` backfills `false`, so a pre-drawbridge save's gates load open).
+**A PLAYER gate that ARRIVES at the third tier is BORN UP** (`Bld.finish` and
+`Bld.finishWallUpgrade`, tests/drawbridge.mjs): a deck the player never chose
+to lower must not be an open road into the castle — and the born-"down" deck
+was a lie anyway (a reported bug): the deck grid caches against `_blockGen`,
+which a mere level bump never moved, so the lowered-looking bridge carried
+nobody until the winch was worked twice. Born shut, the first lowering IS the
+first winch-work, through the toggle's own invalidate-then-step-off order.
+Player only — the rival's chief never works a winch, and a raised gate of its
+own would seal its army in for good.
 Shutting the gate on somebody standing in the passage steps them clear via
 `Bld.stepOffFootprint` — the step-off `Bld.finish` already did for a footprint
 that turns solid, now factored out and shared. `UI.panelSig` carries `b.raised`

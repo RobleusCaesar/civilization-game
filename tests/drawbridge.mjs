@@ -405,6 +405,58 @@ const out = await p.evaluate(() => {
       Bld.drawbridgeSpan(gm) === null && Bld.deckAt(span.x, span.y) === 0, '');
   }
 
+  /* ---- 2f-iii. THE BRIDGE IS BORN UP (a reported bug). A gate that ARRIVES
+     at the third tier starts with its bridge RAISED: a deck the player never
+     chose to lower must not be an open road into the castle — and the old
+     born-"down" deck was a lie anyway, drawn lowered over the moat while the
+     stale deck grid carried nobody until the winch was worked twice. Born
+     shut, the first lowering IS the first winch-work. Player only: the
+     rival's chief never works a winch. ---- */
+  {
+    G.newGame('dbborn', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.res = { food: 99999, wood: 99999, stone: 99999, gold: 99999 };
+    const t = Bld.tcOf('P');
+    const cy2 = t.y + 4, X0 = t.x - 2, X1 = t.x + 2;
+    G.reveal(t.x, cy2, 14);
+    let gm = null;
+    for (let x = X0; x <= X1; x++) {
+      S.map.terrain[MapGen.idx(x, cy2)] = T.GRASS;
+      const nb = Bld.place('P', x === t.x ? 'gate' : 'wall', x, cy2, { instant: true });
+      if (x === t.x) gm = nb;
+    }
+    for (let x = X0 - 1; x <= X1 + 1; x++)
+      S.map.terrain[MapGen.idx(x, cy2 + 1)] = T.MOAT;          // the ditch out front
+    S.wallLevel = 2;
+    for (const z of S.buildings) if (z.key === 'wall' || z.key === 'gate') z.level = 2;
+    Bld._block = null;
+    // the village-wide reinforcement carries the ring to the drawbridge tier
+    t.wallUpTarget = 3;
+    Bld.finishWallUpgrade(t);
+    ck('theBridgeIsBornUp',
+      gm.level === 3 && gm.raised === true && Bld.blockAt(gm.x, gm.y) === 1,
+      'a deck nobody lowered is never a road in');
+    // …and the FIRST lowering already carries the army over the moat — the
+    // reported regression: born "down", the deck grid was stale and the
+    // crossing carried nobody until the bridge was raised and lowered again
+    Bld.toggleDrawbridge(gm);
+    const span = Bld.drawbridgeSpan(gm);
+    ck('theFirstLoweringAlreadyCarries',
+      !!span && S.map.terrain[MapGen.idx(span.x, span.y)] === T.MOAT &&
+      Bld.deckAt(span.x, span.y) === 1 && Path.passable(span.x, span.y, 'P'),
+      'one pull of the winch and the moat is bridged');
+    // a NEW gate built while the tier is already 3 is born up too
+    S.map.terrain[MapGen.idx(X1 + 1, cy2)] = T.GRASS;
+    const fresh = Bld.place('P', 'gate', X1 + 1, cy2, {});
+    Bld.finish(fresh);
+    ck('aFreshTierThreeGateIsBornUpToo', fresh.level === 3 && fresh.raised === true, '');
+    // the rival's gates are NOT born up — no chief works a winch, and a
+    // raised gate of its own would seal its army in for good
+    S.ai.wallLevel = 3;
+    S.map.terrain[MapGen.idx(X0 - 1, cy2)] = T.GRASS;
+    const ag = Bld.place('A', 'gate', X0 - 1, cy2, { free: true, instant: true });
+    ck('theRivalsGateIsNotBornUp', ag.level === 3 && !ag.raised, 'no winch, no self-seal');
+  }
+
   /* ---- 2f-ii. IT FALLS OUTWARD, whatever the stronghold is made of ---- */
   {
     const build = (seed, paint) => {

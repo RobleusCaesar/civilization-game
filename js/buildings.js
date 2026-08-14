@@ -1001,6 +1001,13 @@ const Bld = {
   finish(b, builder) {
     b.construction = 0;
     b.hp = b.maxhp;
+    /* A PLAYER GATE FINISHED AT THE DRAWBRIDGE TIER STARTS WITH THE BRIDGE UP
+       (tests/drawbridge.mjs): a deck nobody chose to lower must never be a
+       road into the castle — the player opens it, and the first lowering
+       runs the ordinary toggle path with its block/deck rebuild. Player only:
+       the rival's chief never works a winch, so a raised gate of its own
+       would seal its army in for good. */
+    if (b.key === 'gate' && b.owner === 'P' && b.level >= 3) b.raised = true;
     if (this.solid(b.key)) {
       // the building just became solid (rebuildBlock skips it while raising) —
       // and anyone standing on its footprint steps off, ties broken toward
@@ -1706,6 +1713,22 @@ const Bld = {
       b.hp = Math.max(1, Math.round(lv.hp * (b.hp / b.maxhp)));
       b.maxhp = lv.hp;
       b.level = S.wallLevel;
+    }
+    /* THE NEW DRAWBRIDGE STARTS UP (tests/drawbridge.mjs). Two reasons, one
+       player-reported. Surprise: a deck the player never chose to lower is an
+       open road into the castle the moment the tier lands. And staleness: the
+       deck grid caches against _blockGen, which a mere level bump never
+       moved — so a gate born with its bridge "down" drew a crossing that
+       carried nobody until the winch was worked once. Born shut, the first
+       lowering IS that first winch-work, through the ordinary toggle path.
+       (The block grid is invalidated here regardless — a raised gate blocks
+       differently, and the deck grid must re-read the new tier either way.) */
+    if (S.wallLevel >= 3) {
+      for (const b of this.forts())
+        if (b.key === 'gate' && !b.raised && this.canDrawbridge(b)) b.raised = true;
+      this._block = null;              // BEFORE the step-off, the toggle's own order —
+      for (const b of this.forts())    // stepping off must read the shut gates as solid
+        if (this.bridgeRaised(b)) this.stepOffFootprint(b);
     }
     G.log(`⚒ Every wall and gate reinforced to Lv ${S.wallLevel}!`);
   },
