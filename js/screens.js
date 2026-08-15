@@ -50,6 +50,15 @@ const Screens = {
     this.current = name;
     this.el('shell').classList.toggle('show', name !== 'playing');
     document.body.classList.toggle('shell', name !== 'playing');
+    /* IN-GAME CHROME IS GATED ON A GAME EXISTING (index.html, tests/boot.mjs).
+       The HUD is hidden by default and this class is the only thing that
+       brings it back, so nothing renders before the player is actually in a
+       game. `playing` alone is not the test: the title runs a DEMO world in
+       S, which must never wear a resource bar. */
+    document.body.classList.toggle('ingame',
+      name === 'playing' && !!window.S && !this._demo);
+    // …and entering a game always retires the boot splash, whatever the timer
+    if (name === 'playing' && window.Boot) Boot.force();
     for (const s of document.querySelectorAll('.screen')) s.classList.remove('show');
     const scr = this.el('scr' + name[0].toUpperCase() + name.slice(1));
     if (scr) scr.classList.add('show');

@@ -21,6 +21,16 @@
     --edge: rgba(232, 200, 140, 0.14);   /* 1px light-edge highlight */
     --edge-dark: rgba(10, 8, 5, 0.85);
     --wood-tex: none;                    /* set procedurally at boot */
+    /* THE SAFE AREA IS ONE VARIABLE. Every top-anchored piece of chrome reads
+       it, so the notch is handled in exactly one place. Two hardenings live
+       here rather than in each rule: env()'s own DEFAULT (0px) keeps the
+       calc() valid where env() is unknown — without it the whole padding
+       declaration is dropped and the bar loses its inset entirely — and the
+       boot block raises the floor to --safe-min on iOS standalone, where
+       `black-translucent` puts the status bar ON the page and some builds
+       still report a zero inset (the clock-over-the-food-counter bug). */
+    --safe-min: 0px;
+    --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-min));
   }
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -35,7 +45,7 @@
   /* ---- top resource bar ---- */
   #topbar {
     position: absolute; top: 0; left: 0; right: 0; z-index: 10;
-    padding: calc(env(safe-area-inset-top) + 5px) 6px 5px 6px;
+    padding: calc(var(--safe-top) + 5px) 6px 5px 6px;
     background: var(--bar-bg); background-image: var(--wood-tex);
     border-bottom: 1px solid var(--edge-dark);
     box-shadow: inset 0 -1px 0 var(--edge);
@@ -64,7 +74,7 @@
 
   /* ---- toasts / event log ---- */
   #toasts {
-    position: absolute; left: 8px; top: calc(env(safe-area-inset-top) + 82px);
+    position: absolute; left: 8px; top: calc(var(--safe-top) + 82px);
     z-index: 9; display: flex; flex-direction: column; gap: 4px; pointer-events: none;
     max-width: 66%;   /* clears the minimap, which now shares the top strip */
   }
@@ -80,7 +90,7 @@
   /* ---- minimap ---- */
   /* minimap lives top-right, clear of the (almost always open) bottom menu */
   #miniWrap {
-    position: absolute; right: 6px; top: calc(env(safe-area-inset-top) + 88px);
+    position: absolute; right: 6px; top: calc(var(--safe-top) + 88px);
     z-index: 9; border: 3px solid #5c421f; border-radius: 5px; overflow: hidden;
     outline: 1px solid #241d15;
     box-shadow: inset 0 0 0 1px rgba(232,200,140,0.25), 0 2px 6px rgba(0,0,0,0.5);
@@ -89,12 +99,12 @@
   #mini { width: 96px; height: 96px; image-rendering: pixelated; }
   #miniToggle {
     position: absolute; right: 6px; z-index: 9;
-    top: calc(env(safe-area-inset-top) + 88px + 106px);   /* bottom-right of the map */
+    top: calc(var(--safe-top) + 88px + 106px);   /* bottom-right of the map */
     min-width: 30px; min-height: 30px; border: 1px solid #4a4232; border-radius: 8px;
     background: var(--bar-bg); color: var(--dim); font-size: 12px; font-weight: 700;
   }
   #miniToggle.collapsed {
-    top: calc(env(safe-area-inset-top) + 88px);
+    top: calc(var(--safe-top) + 88px);
     min-width: 38px; min-height: 36px; font-size: 15px;
   }
 
@@ -103,7 +113,7 @@
      shadow lifts it off the terrain. ---- */
   #armyBar {
     position: absolute; right: 8px; z-index: 9;
-    top: calc(env(safe-area-inset-top) + 88px + 148px);
+    top: calc(var(--safe-top) + 88px + 148px);
     display: flex; flex-direction: column; gap: 8px;
   }
   #armyBar button {
@@ -229,11 +239,36 @@
   #logList div { padding: 3px 0; border-bottom: 1px solid #2e2a1e; }
   .hint { font-size: 11px !important; color: var(--dim); line-height: 1.5; }
 
+  /* ---- THE BOOT SPLASH (tests/boot.mjs) ----
+     The element is declared in the document with INLINE styles so it paints
+     on the very FIRST frame — a splash injected by JS shows a black screen
+     for however long the scripts take to parse. There is deliberately NO
+     `#splash.lift { opacity: 0 }` rule here: the element's own inline
+     `opacity:1` outranks any stylesheet, so a class-driven fade silently
+     never runs and the splash reads as a hard cut. Boot lifts it by writing
+     the inline property instead. */
+
+  /* ---- IN-GAME CHROME IS GATED ON A GAME EXISTING (tests/boot.mjs) ----
+     All of this used to render from the first frame: a bare resource bar, an
+     empty minimap, "Day 1", a pause button and the collapse arrows, laid over
+     a black canvas before the player had entered anything. It is hidden by
+     DEFAULT now — the pre-JS document has no HUD at all — and comes back only
+     under `body.ingame`, which Screens.show sets for the playing screen and
+     only when a real, non-demo game is live. The gate subsumes the old
+     `body.shell` hide (a shell screen is never `playing`), so there is ONE
+     rule for "is there a game to wear chrome for". Each element keeps its own
+     display value for when it returns. */
+  body:not(.ingame) #topbar,
+  body:not(.ingame) #bottombar,
+  body:not(.ingame) #miniWrap,
+  body:not(.ingame) #miniToggle,
+  body:not(.ingame) #armyBar,
+  body:not(.ingame) #toasts,
+  body:not(.ingame) #placeUI { display: none !important; }
+
   /* ---- game shell: full-viewport screens over the canvas ---- */
   #shell { position: absolute; inset: 0; z-index: 30; display: none; }
   #shell.show { display: block; }
-  body.shell #topbar, body.shell #bottombar, body.shell #miniWrap,
-  body.shell #miniToggle, body.shell #toasts { display: none; }
   .screen {
     position: absolute; inset: 0; display: none; flex-direction: column;
     background: linear-gradient(rgba(13,11,8,0.66), rgba(13,11,8,0.9));
@@ -242,7 +277,7 @@
   .shead {
     display: flex; align-items: center; gap: 10px; width: 100%;
     max-width: 560px; margin: 0 auto; flex: 0 0 auto;
-    padding: calc(env(safe-area-inset-top) + 12px) 14px 10px 14px;
+    padding: calc(var(--safe-top) + 12px) 14px 10px 14px;
   }
   .shead h2 { color: var(--gold); font-size: 19px; flex: 1; }
   .abtn.back { min-width: 48px; min-height: 44px; font-size: 20px; flex: 0 0 auto; }
@@ -262,7 +297,7 @@
      is unreliable on iOS) and only scrolls if it genuinely overflows. */
   #scrPaused .sbody { display: flex; flex-direction: column; }
   #scrPaused .pauseMenu { width: 100%; max-width: 560px; margin: auto;
-    padding: calc(env(safe-area-inset-top) + 6px) 0 calc(env(safe-area-inset-bottom) + 6px); }
+    padding: calc(var(--safe-top) + 6px) 0 calc(env(safe-area-inset-bottom) + 6px); }
   #scrPaused .pauseMenu .mrow, #scrPaused .pauseMenu .trow2 { margin-bottom: 10px; }
   #btnResign.danger, #btnQuitTitle.danger { border-color: #a4522e; background: #4a2a1c; }
   .trow3 .abtn { min-height: 48px; font-size: 12px; padding: 4px 6px; }
@@ -308,7 +343,7 @@
   .sacts .abtn { min-height: 36px; padding: 2px 10px; font-size: 11px; }
 
   /* endgame — the arcade tally, sized to fit one phone screen */
-  #scrEndgame .sbody.center { justify-content: flex-start; padding-top: calc(env(safe-area-inset-top) + 14px); gap: 6px; }
+  #scrEndgame .sbody.center { justify-content: flex-start; padding-top: calc(var(--safe-top) + 14px); gap: 6px; }
   /* defeat: "The Last Fire" — a story-driven Game Over that fades up from black.
      The whole screen goes deep navy so the paused world never shows through, and
      an ornate frame + vignette give it a premium, handcrafted feel. */
@@ -321,7 +356,7 @@
      content and centres in the padded body, so the whole outline is always
      on screen with breathing room on every side. */
   #scrEndgame.defeatMode .sbody.center { justify-content: center;
-    padding: calc(env(safe-area-inset-top) + 12px) 14px calc(env(safe-area-inset-bottom) + 12px); }
+    padding: calc(var(--safe-top) + 12px) 14px calc(env(safe-area-inset-bottom) + 12px); }
     #defeatScene, #victoryScene { width: 100%; max-width: 440px; position: relative;
     /* margin:auto — vertical AUTO margins centre the pane inside the flex
        scroll body even where iOS refuses to resolve percentage heights */
@@ -343,7 +378,7 @@
   #scrEndgame.victoryMode { background:
       radial-gradient(130% 75% at 50% 18%, #2b2416 0%, #171208 52%, #0b0804 100%); }
   #scrEndgame.victoryMode .sbody.center { justify-content: center;
-    padding: calc(env(safe-area-inset-top) + 12px) 14px calc(env(safe-area-inset-bottom) + 12px); }
+    padding: calc(var(--safe-top) + 12px) 14px calc(env(safe-area-inset-bottom) + 12px); }
   #vicRank { color: var(--gold); font-weight: 900; letter-spacing: 3px; font-size: 13px;
     text-align: center; margin: 12px auto 0; }
   #vicMeta { color: #8d8368; font-size: 11px; letter-spacing: 0.5px; text-align: center; margin: 8px auto 0; }
@@ -360,7 +395,7 @@
   /* the tally page: one centred, evenly-spaced column */
   #victoryPane { display: flex; flex-direction: column; align-items: center; gap: 7px;
     width: 100%; max-width: 380px; margin: 0 auto;
-    padding: calc(env(safe-area-inset-top) + 12px) 8px calc(env(safe-area-inset-bottom) + 12px); }
+    padding: calc(var(--safe-top) + 12px) 8px calc(env(safe-area-inset-bottom) + 12px); }
   #victoryPane #btnScoreBack { width: 100%; max-width: 330px; margin-top: 6px; }
 
   .defeatFrame { position: relative; border-radius: 7px; overflow: visible;
@@ -543,7 +578,7 @@
   #draftRival b { color: var(--gold); }
   #scrDraft .abtn.big { max-width: 330px; }
   #btnDraftHelp {
-    position: absolute; right: 12px; top: calc(env(safe-area-inset-top) + 12px);
+    position: absolute; right: 12px; top: calc(var(--safe-top) + 12px);
     min-width: 44px; min-height: 44px; font-size: 17px;
   }
   #draftOverlay {
@@ -571,6 +606,85 @@
 </style>
 </head>
 <body>
+
+<!-- ============================ THE BOOT SPLASH ============================
+     Declared HERE, in the document, with INLINE styles, as the first thing in
+     the body: this is what the browser paints on frame one. A splash built by
+     JS cannot do that job — the screen is black until the scripts parse, which
+     is exactly the flash it is meant to hide. Nothing below it is visible
+     (every piece of HUD is gated on `body.ingame`), so the first frame is the
+     logo on the game's own dark ground and nothing else. Boot lifts it. -->
+<div id="splash" style="position:fixed;inset:0;z-index:200;background:#0d0b08;display:flex;align-items:center;justify-content:center;opacity:1;transition:opacity .45s ease">
+  <img src="assets/ui/logo.png" alt="Clanfire" decoding="sync" fetchpriority="high"
+       style="width:100%;height:100%;object-fit:contain;image-rendering:pixelated;pointer-events:none;-webkit-user-select:none;user-select:none">
+</div>
+<script>
+/* BOOT — the splash holds, then cross-fades to the title screen.
+
+   Two conditions must BOTH be met before it lifts:
+     the HOLD has elapsed (or a tap skipped it), and
+     the title is READY — its world built and its first frame painted.
+   Lifting on the timer alone would uncover the very gap the splash exists to
+   cover, so `ready` is never short-circuited; a tap skips the WAIT, not the
+   readiness. A failsafe marks ready anyway if the game never reports in, so a
+   broken boot can never leave the player staring at a logo forever.
+
+   This script is inline and sits directly under the element on purpose: the
+   skip listeners must be armed before any external script has parsed, or the
+   first tap of the session is swallowed. */
+(function () {
+  var now = function () {
+    return (window.performance && performance.now) ? performance.now() : Date.now();
+  };
+  var Boot = window.Boot = {
+    HOLD_MS: 2500,          // the beat the logo holds before it starts to go
+    FADE_MS: 450,           // matches the inline transition above
+    FAILSAFE_MS: 9000,      // …but a game that never reports in still starts
+    t0: now(),
+    held: false, ready: false, skipped: false, done: false,
+    /* the title's world is built and its first frame is on the canvas */
+    markReady: function () { this.ready = true; this._try(); },
+    /* a tap anywhere shortens the wait — it never skips the readiness */
+    skip: function () { this.skipped = true; this._try(); },
+    /* a game is starting (or a test drove straight in): go NOW, no fade */
+    force: function () {
+      this.ready = this.held = this.skipped = true;
+      this._try(true);
+    },
+    _try: function (instant) {
+      if (this.done || !this.ready) return;
+      if (!this.held && !this.skipped) return;
+      this.done = true;
+      var el = document.getElementById('splash');
+      if (!el) return;
+      var drop = function () { if (el.parentNode) el.parentNode.removeChild(el); };
+      if (instant) { drop(); return; }
+      /* INLINE, not a class: the element carries its own inline opacity so it
+         can paint before any stylesheet is parsed, and an inline property
+         outranks every rule — a class-driven fade would silently do nothing
+         and the splash would cut rather than cross-fade. */
+      el.style.pointerEvents = 'none';
+      el.style.opacity = '0';
+      setTimeout(drop, this.FADE_MS + 60);
+    },
+  };
+  setTimeout(function () { Boot.held = true; Boot._try(); }, Boot.HOLD_MS);
+  setTimeout(function () { Boot.markReady(); }, Boot.FAILSAFE_MS);
+  var skip = function () { Boot.skip(); };
+  ['pointerdown', 'touchstart', 'mousedown', 'keydown'].forEach(function (ev) {
+    window.addEventListener(ev, skip, { passive: true });
+  });
+
+  /* iOS STANDALONE: `black-translucent` runs the page under the status bar,
+     and some iOS builds report a zero safe-area inset there — the clock then
+     sits on top of the food counter. Raise the floor so the top bar always
+     clears it; the browser tab, where iOS keeps content below the status bar
+     itself, is left on the real env() value. */
+  if (navigator.standalone === true)
+    document.documentElement.style.setProperty('--safe-min', '44px');
+})();
+</script>
+
 <canvas id="c"></canvas>
 
 <div id="topbar">

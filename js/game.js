@@ -1652,5 +1652,16 @@ window.addEventListener('load', () => {
   }
   Screens.init();
   Screens.show('title');   // builds the demo world behind the logo
-  requestAnimationFrame(t => { G.lastT = t; requestAnimationFrame(G.frame); });
+  /* THE SPLASH LIFTS ONTO A DRAWN TITLE, never onto a gap (tests/boot.mjs).
+     Screens.show built the world; the canvas is still blank until a frame
+     actually runs, so Boot is told the title is ready from INSIDE the first
+     frame — one draw later than the state was made, which is the difference
+     between a cross-fade and a flash of empty ground. */
+  requestAnimationFrame(t => {
+    G.lastT = t;
+    requestAnimationFrame(ts => {
+      G.frame(ts);                                     // the title's first painted frame
+      if (window.Boot) Boot.markReady();               // …so the logo may go
+    });
+  });
 });

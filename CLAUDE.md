@@ -96,6 +96,7 @@ node tests/worked-ground.mjs   # a station stands only on ground its own resourc
 node tests/footprint.mjs       # the primary works stand on 2×2; old saves keep the ground they were raised on
 node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring rule; ?dev=1 preview = the shipping path
 node tests/placement.mjs       # ONE placement truth (canPlace codes); ghost+confirm flow; the seal clamp; AI parity
+node tests/boot.mjs            # frame one is the logo; no chrome before a game; the notch inset
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -1937,6 +1938,54 @@ with the overlay on, map build ~1–11ms on entry only. `UI.cue` is the
 subtle audio/haptic tick (localStorage `neo-sfx`='0' silences; there is no
 other sound system yet). All placement state is UI-local, never saved;
 `exitPlacement` is the only exit and newGame/loadJSON both call it.
+
+**The boot sequence** (`tests/boot.mjs`): the game used to open on a BLACK
+screen wearing a live HUD — a resource bar, an empty minimap, "Day 1", a
+pause button and the collapse arrows, all over nothing, for as long as the
+scripts took to parse. Three rules fix it.
+**THE SPLASH IS DECLARED IN THE DOCUMENT** — `#splash` is the first element
+in `<body>` in index.html, with INLINE styles (fixed, full-bleed, `#0d0b08`,
+`assets/ui/logo.png` at `object-fit: contain`) and its own inline `<script>`
+right underneath. That placement is the whole feature: anything a script
+injects paints black first, which is exactly the flash the splash exists to
+hide, and the skip listeners must be armed before any external script has
+parsed or the session's first tap is swallowed. **The lift needs BOTH the
+hold and the readiness** (`Boot.HOLD_MS` 2500, `FADE_MS` 450): a tap
+(`pointerdown`/`touchstart`/`mousedown`/`keydown`) skips the WAIT, never the
+readiness — `Boot.markReady()` is called from INSIDE the title's first
+painted frame (game.js's load handler runs `G.frame` by hand, then marks),
+because lifting a frame earlier uncovers the very gap the splash covers.
+`FAILSAFE_MS` (9000) marks ready regardless, so a broken boot can never
+strand the player on a logo, and `Screens.show('playing')` calls
+`Boot.force()` so entering a game always retires it instantly (which is what
+keeps the whole test suite unaffected).
+**THE LIFT IS WRITTEN INLINE, NOT AS A CLASS** — the element carries its own
+inline `opacity:1` so it can paint before any stylesheet is parsed, and an
+inline property outranks every rule: a `#splash.lift { opacity: 0 }` rule
+silently does nothing and the splash reads as a hard cut. There is
+deliberately no such rule; `Boot._try` sets `el.style.opacity` directly. (The
+contract catches this by sampling mid-fade on a real clock — a transition's
+first tick lands on the style recalc AFTER the change, so two rAFs in it can
+still read exactly 1 and prove nothing.)
+**IN-GAME CHROME IS GATED ON A GAME EXISTING**: `#topbar`, `#bottombar`,
+`#miniWrap`, `#miniToggle`, `#armyBar`, `#toasts` and `#placeUI` are
+`display: none` by DEFAULT and come back only under `body.ingame`, which
+`Screens.show` sets for the playing screen **and only when a real, non-demo
+game is live** — the title runs a demo world in `S` and must never wear a
+resource bar. The gate subsumes the old `body.shell` hide (a shell screen is
+never `playing`), so there is ONE rule for "is there a game to wear chrome
+for". `R.topReserve`/`bottomReserve` need no change: they learn lazily and
+only latch a measurement above their sanity floor, so a hidden bar simply
+re-measures once it returns.
+**The notch is ONE variable**: `--safe-top` = `max(env(safe-area-inset-top,
+0px), var(--safe-min))`, read by every top-anchored rule. Two hardenings live
+in it — env()'s own DEFAULT, without which an unknown `env()` invalidates the
+whole `calc()` and the bar loses its inset entirely, and the `--safe-min`
+floor, which the boot block raises to 44px on iOS **standalone**
+(`navigator.standalone`), where `black-translucent` runs the page under the
+status bar and some builds still report a zero inset — the reported
+clock-on-top-of-the-food-counter bug. The browser tab, where iOS keeps
+content below the status bar itself, stays on the real `env()` value.
 
 **Art lands by FILENAME, never by manifest** (`tests/art-pipeline.mjs`, full
 rules in `ART_PLAN.md`): `assets/buildings/{id}-l{level}.png` — all lowercase
