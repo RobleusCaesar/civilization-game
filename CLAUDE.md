@@ -2022,6 +2022,37 @@ accepts 3 alongside 0 and 2) — quantizing took the icon set from 385KB to
 `icon-512.png`: no web manifest reads one, and it was the heaviest file in the
 set.
 
+**The title is the painted glen** (`tests/boot.mjs`, the title block): the
+menu no longer sits over the drifting demo world — it sits over SUPPLIED ART
+(`assets/ui/title-bg.webp` served, `.jpg` fallback, declared in `#scrTitle`'s
+own markup so the fetch starts with the HTML parse, behind the splash). The
+art was delivered with a rounded-corner frame baked into its edges; the
+shipped asset is cropped 20px per side so no dark arc ever shows at a
+viewport corner. **The menu sits over the MEADOW, the scene shows BELOW it**:
+the hut and campfire are baked into the art at ~56–77% of its height, so the
+reference layout (scene top, menu bottom) would bury the focal point under
+the buttons — logo, then plaques, then open ground is the layout OUR art
+asks for. The demo world still runs behind the image, deliberately
+untouched: it is the no-image fallback, and the other shell screens still
+show it through their translucent gradients. **The buttons are carved
+plaques** (`#scrTitle .abtn`): dark outline, tan rim, top/bottom bevels,
+faint vertical grain, four nailhead studs (`::after`), and a HARD 4px drop
+shadow; pressed (`:active`) the plaque translates 3px down, the drop
+collapses, the bevel inverts and the face darkens — the press reads as wood
+going INTO the frame. Continue is the one green plaque with the gold rim;
+disabled it keeps its body and desaturates (`filter`, opacity stays 1 —
+the global `.cant` ghosting reads as a rendering bug on a solid plaque).
+**The icons are drawn, not typed** (pinned): every title button carries an
+inline pixel-SVG (`.pxi`, `shape-rendering: crispEdges`) and none carries an
+emoji — Apple's glossy 3D set beside pixel art is the loudest "web page"
+tell there is. The other shell screens still wear emoji and are the obvious
+next pass. **The display face is Pixelify Sans** (`--pxfont`, self-hosted
+OFL latin subset, ~12KB woff2, title screens only — never the HUD): its C
+CLOSES when set bold — weight 700 at 46px reads OLANFIRE, so the wordmark
+is weight 500, and below 40px (the landscape media query) weight 400 — a
+size-dependent glyph trap that must be re-checked in a screenshot whenever
+the logo's size or weight moves.
+
 **Art lands by FILENAME, never by manifest** (`tests/art-pipeline.mjs`, full
 rules in `ART_PLAN.md`): `assets/buildings/{id}-l{level}.png` — all lowercase
 (Pages is case-sensitive), tried for every valid slot at startup, swapped in

@@ -122,6 +122,39 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     'an unknown env() would otherwise drop the whole declaration');
   ck('andTheTopBarWearsIt',
     /#topbar\s*\{[^}]*padding:\s*calc\(var\(--safe-top\)/.test(html), '');
+
+  /* THE TITLE WEARS THE PAINTED GLEN. The menu backdrop is supplied art —
+     webp served, jpg fallback — declared in the title screen's own markup so
+     it starts loading with the HTML parse, behind the splash. */
+  {
+    const iTitle = body.indexOf('id="scrTitle"');
+    const title = body.slice(iTitle, body.indexOf('id="scrNewgame"'));
+    ck('theTitleWearsThePaintedBackdrop',
+      /srcset="assets\/ui\/title-bg\.webp"/.test(title) &&
+      /<img[^>]+src="assets\/ui\/title-bg\.jpg"/.test(title),
+      'webp source + jpg fallback in #scrTitle');
+    const wb = readFileSync(join(root, 'assets/ui/title-bg.webp')).length;
+    const jb = readFileSync(join(root, 'assets/ui/title-bg.jpg')).length;
+    ck('andTheBackdropIsServedLight', wb < jb && wb < 300 * 1024,
+      Math.round(wb / 1024) + 'KB webp vs ' + Math.round(jb / 1024) + 'KB jpg');
+    /* THE MENU IS DRAWN, NOT TYPED: every title button carries a pixel-SVG
+       icon and none carries an emoji — Apple's glossy 3D set beside pixel
+       art is the single loudest "web page" tell there is. (The cloud chip
+       is JS-written and exempt; this is a claim about the buttons.) */
+    const btns = [...title.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].map(m => m[0]);
+    const emoji = /[\u{1F000}-\u{1FAFF}\u{2190}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/u;
+    ck('theMenuIsDrawnNotTyped',
+      btns.length >= 6 && btns.every(t => t.includes('class="pxi"')) &&
+      !btns.some(t => emoji.test(t)),
+      btns.length + ' buttons, all iconed, no emoji');
+    /* and the display face is SELF-HOSTED and light — a Google Fonts
+       fetch would be a third-party call on the boot path */
+    const f = readFileSync(join(root, 'assets/ui/pixelify.woff2'));
+    ck('theTitleFaceIsSelfHosted',
+      /@font-face[^}]*url\('assets\/ui\/pixelify\.woff2'\)/.test(html) &&
+      f.slice(0, 4).toString() === 'wOF2' && f.length < 30 * 1024,
+      Math.round(f.length / 1024) + 'KB woff2');
+  }
 }
 
 /* ---- 2. THE FIRST PAINTED FRAME is the logo, and nothing else ---- */

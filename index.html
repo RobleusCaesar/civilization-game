@@ -44,6 +44,13 @@
        still report a zero inset (the clock-over-the-food-counter bug). */
     --safe-min: 0px;
     --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-min));
+    /* the title's display face (self-hosted, OFL, latin subset, wght 400-700) */
+    --pxfont: 'Pixelify Sans', -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @font-face {
+    font-family: 'Pixelify Sans';
+    src: url('assets/ui/pixelify.woff2') format('woff2');
+    font-weight: 400 700; font-style: normal; font-display: swap;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -315,22 +322,205 @@
   #btnResign.danger, #btnQuitTitle.danger { border-color: #a4522e; background: #4a2a1c; }
   .trow3 .abtn { min-height: 48px; font-size: 12px; padding: 4px 6px; }
 
-  /* title */
-  #scrTitle {
-    align-items: center; justify-content: flex-end;
-    background: linear-gradient(rgba(13,11,8,0.15) 30%, rgba(13,11,8,0.82) 78%);
-    padding-bottom: calc(env(safe-area-inset-bottom) + 22px);
+  /* ---- title: the painted glen ----
+     The backdrop is supplied art (assets/ui/title-bg, webp served / jpg
+     fallback) with the hut+campfire baked in at ~56-77% of its height — so
+     the MENU SITS OVER THE EMPTY MEADOW ABOVE IT and the scene stays visible
+     below the buttons. The old .screen gradient stays on the element itself
+     as the no-image fallback (the live demo world still runs behind it). */
+  #scrTitle { padding: 0; }
+  #scrTitle .tbg { position: absolute; inset: 0; z-index: 0; }
+  #scrTitle .tbg img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #scrTitle .tcol {
+    position: relative; z-index: 1; flex: 1 1 0; min-height: 0;
+    display: flex; flex-direction: column; align-items: center; width: 100%;
+    padding: calc(var(--safe-top) + 3vh) 16px calc(env(safe-area-inset-bottom, 0px) + 12px);
   }
+  /* the wordmark is a CARVED BLOCK, not tinted text: a full 8-direction dark
+     outline gives it mass and holds its edge over the busy beach/water band
+     at top-left, then a two-step extrusion drops it onto the scene. A flat
+     fill with only an under-edge read as a thin gold ring on the grass. */
   .logo {
-    font-size: 42px; font-weight: 900; letter-spacing: 7px; color: var(--gold);
-    text-shadow: 0 3px 0 #241d15, 0 8px 22px rgba(0,0,0,0.85);
+    /* weight 500, NOT 700: Pixelify's bold C closes its aperture at this
+       size and the wordmark reads as OLANFIRE */
+    font-family: var(--pxfont); font-size: 54px; font-weight: 500;
+    letter-spacing: 1px; color: #f7d97a;
+    /* the outline is 1px, NOT 2px: an outline grows INWARD across an aperture
+       too, and at 2px it seals the C's gap — OLANFIRE again, by a second
+       route. Check the wordmark in a zoomed screenshot after touching this. */
+    text-shadow:
+      1px 0 0 #3a2410, -1px 0 0 #3a2410, 0 1px 0 #3a2410, 0 -1px 0 #3a2410,
+      1px 1px 0 #3a2410, -1px 1px 0 #3a2410, 1px -1px 0 #3a2410, -1px -1px 0 #3a2410,
+      0 5px 0 #9c7226, 0 8px 0 #2c1f0e, 0 12px 20px rgba(0,0,0,0.6);
   }
-  .tagline { font-size: 12px; color: var(--text); letter-spacing: 3px; margin: 4px 0 0;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+  /* a soft scrim under the title block only — the letters cross the pale
+     shoreline, the busiest ground in the art */
+  #scrTitle .thead {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 6px 22px 12px; border-radius: 50%/34%;
+    background: radial-gradient(62% 92% at 50% 44%, rgba(10,14,6,0.34), rgba(10,14,6,0) 74%);
+  }
+  .tagline {
+    font-family: var(--pxfont); font-weight: 500; font-size: 13px;
+    letter-spacing: 4px; color: var(--text); margin: 5px 0 0;
+    text-shadow: 0 2px 0 rgba(18,12,5,0.85), 0 3px 8px rgba(0,0,0,0.6);
+  }
   .tspacer { flex: 1 1 0; }
-  .tmenu { width: min(330px, 88vw); display: flex; flex-direction: column; gap: 10px; }
-  #cloudChip { margin-top: 14px; font-size: 11px; color: var(--dim);
-    background: rgba(0,0,0,0.4); padding: 5px 12px; border-radius: 999px; }
+  .tmenu { margin-top: 4vh; width: min(340px, 90vw); display: flex; flex-direction: column; gap: 11px; }
+
+  /* THE CARVED WOODEN PLAQUE (title menu only).
+     The corners are a STEPPED CHAMFER, never border-radius: a smooth
+     anti-aliased arc is the loudest "web button" tell there is next to pixel
+     art. clip-path cuts the silhouette, which means the face, the rim and
+     the drop shadow all have to live on the ::before — a border and a
+     box-shadow drop would both be clipped away. The drop is a
+     filter: drop-shadow, which follows the CLIPPED silhouette rather than
+     the box, so the shadow is chamfered too.
+     Layers, outermost in: dark outline → gold rim highlight → rim base →
+     dark separator → top/bottom/side bevels → wood grain → face gradient,
+     then the studs on ::after. */
+  #scrTitle .abtn {
+    --chamfer: polygon(
+      0 6px, 3px 6px, 3px 3px, 6px 3px, 6px 0,
+      calc(100% - 6px) 0, calc(100% - 6px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 6px, 100% 6px,
+      100% calc(100% - 6px), calc(100% - 3px) calc(100% - 6px), calc(100% - 3px) calc(100% - 3px),
+      calc(100% - 6px) calc(100% - 3px), calc(100% - 6px) 100%,
+      6px 100%, 6px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 6px), 0 calc(100% - 6px));
+    position: relative; isolation: isolate;
+    border: 0; border-radius: 0; background: none; box-shadow: none;
+    color: var(--text);
+    font-family: var(--pxfont); font-weight: 600; font-size: 17px;
+    letter-spacing: 0.5px;
+    text-shadow: 0 2px 0 rgba(20,12,4,0.7);
+  }
+  #scrTitle .abtn::before {
+    content: ''; position: absolute; inset: 0; z-index: -1;
+    clip-path: var(--chamfer);
+    /* grain on two CO-PRIME periods so the beat never repeats visibly —
+       one regular stripe reads as corduroy on a plaque this wide */
+    background:
+      repeating-linear-gradient(90deg, rgba(26,16,6,0.05) 0 2px, rgba(26,16,6,0) 2px 13px),
+      repeating-linear-gradient(90deg, rgba(26,16,6,0.035) 0 3px, rgba(26,16,6,0) 3px 31px),
+      linear-gradient(#6a4a2a 0%, #5c3e20 45%, #4e321a 58%, #402812 100%);
+    box-shadow:
+      inset 0 0 0 2px #1a1006,
+      inset 0 0 0 4px #c9973e,
+      inset 0 0 0 6px #8a5f28,
+      inset 0 0 0 7px #241505,
+      inset 0 11px 0 rgba(240,214,150,0.13),
+      inset 0 -8px 0 rgba(0,0,0,0.26),
+      inset 8px 0 0 rgba(240,214,150,0.05),
+      inset -8px 0 0 rgba(0,0,0,0.12);
+    filter: drop-shadow(0 4px 0 rgba(10,7,3,0.55)) drop-shadow(0 8px 14px rgba(0,0,0,0.4));
+  }
+  /* four square nailheads. SOLID, not two-tone: at 3px a diagonal split is
+     a triangle, not a lit-and-shaded stud. The lower pair sits a shade
+     darker, which is all the lighting this size can carry. */
+  #scrTitle .abtn::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(#e8c47a, #e8c47a), linear-gradient(#e8c47a, #e8c47a),
+      linear-gradient(#b98f4a, #b98f4a), linear-gradient(#b98f4a, #b98f4a);
+    background-size: 3px 3px;
+    background-repeat: no-repeat;
+    background-position: 11px 11px, calc(100% - 11px) 11px, 11px calc(100% - 11px), calc(100% - 11px) calc(100% - 11px);
+  }
+  #scrTitle .abtn.big { min-height: 58px; }
+  #scrTitle .abtn small {
+    font-family: var(--pxfont); font-weight: 400; font-size: 11px;
+    color: rgba(240,230,208,0.72); margin-top: 1px;
+  }
+  /* Continue: the green banner plaque with the gold rim */
+  #scrTitle .abtn.gold::before {
+    background:
+      repeating-linear-gradient(90deg, rgba(16,26,8,0.05) 0 2px, rgba(16,26,8,0) 2px 13px),
+      repeating-linear-gradient(90deg, rgba(16,26,8,0.035) 0 3px, rgba(16,26,8,0) 3px 31px),
+      linear-gradient(#6f8c3e 0%, #5b7530 45%, #4c6423 58%, #3f5519 100%);
+    box-shadow:
+      inset 0 0 0 2px #14200a,
+      inset 0 0 0 4px #e0b95a,
+      inset 0 0 0 6px #a8853a,
+      inset 0 0 0 7px #14200a,
+      inset 0 11px 0 rgba(240,230,170,0.17),
+      inset 0 -8px 0 rgba(0,0,0,0.26),
+      inset 8px 0 0 rgba(240,230,170,0.06),
+      inset -8px 0 0 rgba(0,0,0,0.12);
+  }
+  /* pressed: the plaque goes DOWN INTO the frame — drop shadow collapses,
+     bevel inverts (dark now on top), face darkens a step. The whole button
+     translates, so the studs and the icon go down and darken WITH it —
+     ornament that stays lit while its plank sinks reads as stuck on. */
+  #scrTitle .abtn:active:not(.cant) { transform: translateY(3px); filter: brightness(0.78); }
+  #scrTitle .abtn:active:not(.cant)::before {
+    box-shadow:
+      inset 0 0 0 2px #1a1006,
+      inset 0 0 0 4px #8a6730,
+      inset 0 0 0 6px #5f421c,
+      inset 0 0 0 7px #241505,
+      inset 0 9px 0 rgba(0,0,0,0.34),
+      inset 0 -6px 0 rgba(240,214,150,0.06);
+    filter: drop-shadow(0 1px 0 rgba(10,7,3,0.55));
+  }
+  #scrTitle .abtn.gold:active:not(.cant)::before {
+    box-shadow:
+      inset 0 0 0 2px #14200a,
+      inset 0 0 0 4px #9d8140,
+      inset 0 0 0 6px #6f5a28,
+      inset 0 0 0 7px #14200a,
+      inset 0 9px 0 rgba(0,0,0,0.34),
+      inset 0 -6px 0 rgba(240,230,170,0.07);
+  }
+  /* DISABLED SITS FLUSH. A plank already down cannot be pushed — so the
+     drop shadow goes and the lit top bevel inverts, which is the same
+     posture the pressed state uses. Washed, never ghosted: the global
+     .cant opacity reads as a rendering fault on a solid carved object. */
+  #scrTitle .abtn.cant { opacity: 1; filter: saturate(0.35) brightness(0.82); }
+  #scrTitle .abtn.cant::before {
+    filter: none;
+    box-shadow:
+      inset 0 0 0 2px #1a1006,
+      inset 0 0 0 4px #8d8a63,
+      inset 0 0 0 6px #5e5c40,
+      inset 0 0 0 7px #1d2012,
+      inset 0 9px 0 rgba(0,0,0,0.26),
+      inset 0 -6px 0 rgba(255,255,255,0.05);
+  }
+  #scrTitle .abtn.cant .pxi { filter: grayscale(1) brightness(0.85); }
+  .blab { display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .pxi { width: 27px; height: 27px; flex: 0 0 auto; filter: drop-shadow(0 2px 0 rgba(0,0,0,0.35)); }
+  #scrTitle .trow3 .abtn { min-height: 48px; font-size: 12.5px; padding: 4px 3px; }
+  #scrTitle .trow3 .pxi { width: 17px; height: 17px; }
+  #scrTitle .trow3 .blab { gap: 6px; }
+  #cloudChip {
+    margin-top: 12px; font-family: var(--pxfont); font-size: 12px; color: #cfe0a8;
+    background: linear-gradient(#2e3d1c, #223014);
+    border-radius: 0; padding: 7px 16px;
+    clip-path: polygon(
+      0 5px, 2px 5px, 2px 2px, 5px 2px, 5px 0, calc(100% - 5px) 0, calc(100% - 5px) 2px,
+      calc(100% - 2px) 2px, calc(100% - 2px) 5px, 100% 5px, 100% calc(100% - 5px),
+      calc(100% - 2px) calc(100% - 5px), calc(100% - 2px) calc(100% - 2px),
+      calc(100% - 5px) calc(100% - 2px), calc(100% - 5px) 100%, 5px 100%,
+      5px calc(100% - 2px), 2px calc(100% - 2px), 2px calc(100% - 5px), 0 calc(100% - 5px));
+    box-shadow: inset 0 0 0 2px #121c08, inset 0 0 0 3px #a8853a, inset 0 0 0 4px #14200a;
+    filter: drop-shadow(0 3px 0 rgba(10,7,3,0.45));
+  }
+  /* desktop: the wordmark scales with the viewport, or the composition that
+     reads as deliberate on a phone floats in a large empty middle */
+  @media (min-width: 900px) {
+    .logo { font-size: clamp(54px, 5vw, 68px); }
+    .tagline { font-size: 15px; }
+  }
+  /* short viewports (landscape phones): compact so nothing clips */
+  @media (max-height: 600px) {
+    #scrTitle .tcol { padding-top: calc(var(--safe-top) + 6px); }
+    /* 400 below 40px: Pixelify's C closes at small sizes on any heavier cut */
+    .logo { font-size: 36px; font-weight: 400; }
+    .tagline { display: none; }
+    .tmenu { margin-top: 10px; gap: 7px; }
+    #scrTitle .abtn.big { min-height: 44px; }
+    #scrTitle .trow3 .abtn { min-height: 40px; }
+    #cloudChip { margin-top: 8px; padding: 4px 10px; }
+  }
 
   /* new-game option rows */
   .orow { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -740,21 +930,30 @@
 <div id="shell">
 
   <div class="screen" id="scrTitle">
-    <div class="tspacer"></div>
-    <h1 class="logo">CLANFIRE</h1>
-    <p class="tagline">GATHER · EXPAND · CONQUER</p>
-    <div class="tspacer"></div>
-    <div class="tmenu">
-      <button class="abtn big gold" id="btnContinue">▶ Continue<small>looking for saves…</small></button>
-      <button class="abtn big" id="btnTitleNew">🏕 New game</button>
-      <button class="abtn big" id="btnTitleBoard">🏆 Leaderboard</button>
-      <div class="trow2 trow3">
-        <button class="abtn" id="btnTitleSettings">⚙ Settings</button>
-        <button class="abtn" id="btnTitleHow">📖 How Play</button>
-        <button class="abtn" id="btnTitleLoad">📂 Load</button>
+    <!-- painted backdrop: webp served, jpg fallback; the .screen gradient
+         over the live demo world remains behind it as the no-image fallback -->
+    <picture class="tbg">
+      <source srcset="assets/ui/title-bg.webp" type="image/webp">
+      <img src="assets/ui/title-bg.jpg" alt="" decoding="async">
+    </picture>
+    <div class="tcol">
+      <div class="thead">
+        <h1 class="logo">CLANFIRE</h1>
+        <p class="tagline">GATHER · EXPAND · CONQUER</p>
       </div>
+      <div class="tmenu">
+        <button class="abtn big gold" id="btnContinue"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><polygon points="3,2 14,8 3,14" fill="#2c1f0e"/><polygon points="4,4 12,8 4,12" fill="#f7d364"/><polygon points="4,8 12,8 4,12" fill="#d9a83f"/></svg>Continue</span><small>looking for saves…</small></button>
+        <button class="abtn big" id="btnTitleNew"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><rect x="7" y="0" width="2" height="3" fill="#8a6a3c"/><rect x="6" y="1" width="4" height="1" fill="#8a6a3c"/><polygon points="8,2 15,8 1,8" fill="#2c1f0e"/><polygon points="8,3 13.5,7.4 2.5,7.4" fill="#e3c079"/><polygon points="8,3 13.5,7.4 8,7.4" fill="#c8a15c"/><rect x="2.5" y="5" width="11" height="0.6" fill="#a8834a"/><rect x="4" y="6.4" width="8" height="0.6" fill="#a8834a"/><rect x="2" y="8" width="12" height="7" fill="#2c1f0e"/><rect x="3" y="9" width="10" height="5" fill="#d9bd86"/><rect x="3" y="9" width="10" height="1" fill="#efdcaf"/><rect x="6" y="10" width="4" height="5" fill="#2c1f0e"/><rect x="6.6" y="10.6" width="2.8" height="4.4" fill="#4a3117"/></svg>New game</span></button>
+        <button class="abtn big" id="btnTitleBoard"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><rect x="2" y="2" width="12" height="2" fill="#8a5f23"/><rect x="4" y="2" width="8" height="6" fill="#f2cd62"/><rect x="2" y="3" width="2" height="3" fill="#d9a83f"/><rect x="12" y="3" width="2" height="3" fill="#d9a83f"/><rect x="4" y="2" width="8" height="1" fill="#f7e39a"/><rect x="5" y="8" width="6" height="1" fill="#d9a83f"/><rect x="6" y="9" width="4" height="1" fill="#b98a2e"/><rect x="7" y="10" width="2" height="2" fill="#d9a83f"/><rect x="4" y="12" width="8" height="2" fill="#8a5f23"/></svg>Leaderboard</span></button>
+        <div class="trow2 trow3">
+          <button class="abtn" id="btnTitleSettings"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><rect x="7" y="1" width="2" height="3" fill="#8f887a"/><rect x="7" y="12" width="2" height="3" fill="#8f887a"/><rect x="1" y="7" width="3" height="2" fill="#8f887a"/><rect x="12" y="7" width="3" height="2" fill="#8f887a"/><rect x="3" y="3" width="2" height="2" fill="#8f887a"/><rect x="11" y="3" width="2" height="2" fill="#8f887a"/><rect x="3" y="11" width="2" height="2" fill="#8f887a"/><rect x="11" y="11" width="2" height="2" fill="#8f887a"/><rect x="4" y="4" width="8" height="8" fill="#a89f8c"/><rect x="4" y="4" width="8" height="2" fill="#c2b9a4"/><rect x="6" y="6" width="4" height="4" fill="#2c1f0e"/></svg>Settings</span></button>
+          <button class="abtn" id="btnTitleHow"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><polygon points="1,3 8,5 15,3 15,13 8,15 1,13" fill="#2c1f0e"/><polygon points="2,4 7,5.5 7,13 2,11.5" fill="#ead9b6"/><polygon points="14,4 9,5.5 9,13 14,11.5" fill="#ead9b6"/><rect x="7" y="5" width="2" height="8" fill="#3a250f"/><polygon points="3,6 6,6.8 6,7.8 3,7" fill="#b9a67e"/><polygon points="10,6.8 13,6 13,7 10,7.8" fill="#b9a67e"/><polygon points="3,8.5 6,9.3 6,10.3 3,9.5" fill="#b9a67e"/><polygon points="10,9.3 13,8.5 13,9.5 10,10.3" fill="#b9a67e"/></svg>How to play</span></button>
+          <button class="abtn" id="btnTitleLoad"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><rect x="1" y="2" width="14" height="12" fill="#2c1f0e"/><rect x="2" y="3" width="12" height="5" fill="#cbb389"/><rect x="2" y="3" width="12" height="2" fill="#e6d4b0"/><rect x="2" y="9" width="12" height="4" fill="#a8906a"/><rect x="2" y="8" width="12" height="1" fill="#2c1f0e"/><rect x="6" y="6" width="4" height="4" fill="#2c1f0e"/><rect x="6.7" y="6.7" width="2.6" height="2.6" fill="#f2cd62"/></svg>Load</span></button>
+        </div>
+      </div>
+      <div class="tspacer"></div>
+      <div id="cloudChip">☁ …</div>
     </div>
-    <div id="cloudChip">☁ …</div>
   </div>
 
   <div class="screen" id="scrNewgame">
