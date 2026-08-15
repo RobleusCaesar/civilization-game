@@ -348,7 +348,7 @@
     position: relative; z-index: 1; flex: 1 1 0; min-height: 0;
     display: flex; flex-direction: column; align-items: center;
     justify-content: center; width: 100%;
-    padding: calc(var(--safe-top) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 52px);
+    padding: calc(var(--safe-top) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 18px);
   }
   /* the wordmark is a CARVED BLOCK, not tinted text: a full 8-direction dark
      outline gives it mass and holds its edge over the busy beach/water band
@@ -518,27 +518,22 @@
   #scrTitle .abtn.cant .pxi { filter: grayscale(1) brightness(0.85); }
   .blab { display: flex; align-items: center; justify-content: center; gap: 10px; }
   .pxi { width: 27px; height: 27px; flex: 0 0 auto; filter: drop-shadow(0 2px 0 rgba(0,0,0,0.35)); }
-  /* the three-across row: caps are wider than the pixel face was, and
-     "HOW TO PLAY" is the longest label in the narrowest plaque — it must
-     stay on ONE line or that button reads as the odd one out */
-  #scrTitle .trow3 .abtn { min-height: 48px; font-size: 9.5px; letter-spacing: 0.2px; padding: 4px 1px; }
-  #scrTitle .trow3 .blab { gap: 4px; white-space: nowrap; }
+  /* THE THREE-ACROSS ROW MUST NEVER RUN OFF ITS PLAQUES. Roman caps are
+     wider than the pixel face was, and this row is the pinch point: three
+     buttons share the menu's width, so each has ~100px for an icon, a gap
+     and a label. `nowrap` keeps a label on one line and the size is set so
+     the LONGEST of them still clears its plaque at a 320px viewport —
+     re-measure (scrollWidth vs clientWidth) whenever a label changes. */
+  #scrTitle .trow3 .abtn { min-height: 48px; font-size: 11px; letter-spacing: 0.4px; padding: 4px 3px; }
+  #scrTitle .trow3 .blab { gap: 5px; white-space: nowrap; }
   #scrTitle .trow3 .pxi { width: 15px; height: 15px; }
-  #cloudChip {
-    position: absolute; left: 50%; transform: translateX(-50%);
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
-    font-family: var(--menufont); font-weight: 600; font-size: 10.5px;
-    text-transform: uppercase; letter-spacing: 1px; color: #d6e6b0;
-    background: linear-gradient(#2e3d1c, #223014);
-    border-radius: 0; padding: 7px 16px;
-    clip-path: polygon(
-      0 5px, 2px 5px, 2px 2px, 5px 2px, 5px 0, calc(100% - 5px) 0, calc(100% - 5px) 2px,
-      calc(100% - 2px) 2px, calc(100% - 2px) 5px, 100% 5px, 100% calc(100% - 5px),
-      calc(100% - 2px) calc(100% - 5px), calc(100% - 2px) calc(100% - 2px),
-      calc(100% - 5px) calc(100% - 2px), calc(100% - 5px) 100%, 5px 100%,
-      5px calc(100% - 2px), 2px calc(100% - 2px), 2px calc(100% - 5px), 0 calc(100% - 5px));
-    box-shadow: inset 0 0 0 2px #121c08, inset 0 0 0 3px #a8853a, inset 0 0 0 4px #14200a;
-    filter: drop-shadow(0 3px 0 rgba(10,7,3,0.45));
+  /* the narrowest phones still in service (320px) leave ~63px of label room
+     in each plaque, which the longest label fills exactly — step it down
+     there rather than shrinking the type on every other handset */
+  @media (max-width: 359px) {
+    #scrTitle .trow3 .abtn { font-size: 9.5px; letter-spacing: 0.2px; padding: 4px 2px; }
+    #scrTitle .trow3 .blab { gap: 4px; }
+    #scrTitle .trow3 .pxi { width: 13px; height: 13px; }
   }
   /* THE POP-IN. The loading screen IS this screen's backdrop, so the boot has
      no scene change in it: the glen is up from frame one and the chrome
@@ -559,10 +554,9 @@
   #scrTitle.popIn .tmenu > *:nth-child(2) { animation-delay: 0.23s; }
   #scrTitle.popIn .tmenu > *:nth-child(3) { animation-delay: 0.30s; }
   #scrTitle.popIn .tmenu > *:nth-child(4) { animation-delay: 0.37s; }
-  #scrTitle.popIn #cloudChip    { animation: popIn 0.36s ease-out 0.46s both; }
   /* a player who asks for less motion gets the arrival, not the movement */
   @media (prefers-reduced-motion: reduce) {
-    #scrTitle.popIn .thead, #scrTitle.popIn .tmenu > *, #scrTitle.popIn #cloudChip {
+    #scrTitle.popIn .thead, #scrTitle.popIn .tmenu > * {
       animation-name: popInFade;
     }
     @keyframes popInFade { from { opacity: 0; } to { opacity: 1; } }
@@ -584,7 +578,6 @@
     .tmenu { margin-top: 12px; gap: 7px; }
     #scrTitle .abtn.big { min-height: 44px; }
     #scrTitle .trow3 .abtn { min-height: 40px; }
-    #cloudChip { bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); padding: 4px 10px; }
   }
 
   /* new-game option rows */
@@ -1027,12 +1020,11 @@
         <button class="abtn big" id="btnTitleBoard"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><rect x="2" y="2" width="12" height="2" fill="#8a5f23"/><rect x="4" y="2" width="8" height="6" fill="#f2cd62"/><rect x="2" y="3" width="2" height="3" fill="#d9a83f"/><rect x="12" y="3" width="2" height="3" fill="#d9a83f"/><rect x="4" y="2" width="8" height="1" fill="#f7e39a"/><rect x="5" y="8" width="6" height="1" fill="#d9a83f"/><rect x="6" y="9" width="4" height="1" fill="#b98a2e"/><rect x="7" y="10" width="2" height="2" fill="#d9a83f"/><rect x="4" y="12" width="8" height="2" fill="#8a5f23"/></svg>Leaderboard</span></button>
         <div class="trow2 trow3">
           <button class="abtn" id="btnTitleSettings"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><rect x="7" y="1" width="2" height="3" fill="#8f887a"/><rect x="7" y="12" width="2" height="3" fill="#8f887a"/><rect x="1" y="7" width="3" height="2" fill="#8f887a"/><rect x="12" y="7" width="3" height="2" fill="#8f887a"/><rect x="3" y="3" width="2" height="2" fill="#8f887a"/><rect x="11" y="3" width="2" height="2" fill="#8f887a"/><rect x="3" y="11" width="2" height="2" fill="#8f887a"/><rect x="11" y="11" width="2" height="2" fill="#8f887a"/><rect x="4" y="4" width="8" height="8" fill="#a89f8c"/><rect x="4" y="4" width="8" height="2" fill="#c2b9a4"/><rect x="6" y="6" width="4" height="4" fill="#2c1f0e"/></svg>Settings</span></button>
-          <button class="abtn" id="btnTitleHow"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><polygon points="1,3 8,5 15,3 15,13 8,15 1,13" fill="#2c1f0e"/><polygon points="2,4 7,5.5 7,13 2,11.5" fill="#ead9b6"/><polygon points="14,4 9,5.5 9,13 14,11.5" fill="#ead9b6"/><rect x="7" y="5" width="2" height="8" fill="#3a250f"/><polygon points="3,6 6,6.8 6,7.8 3,7" fill="#b9a67e"/><polygon points="10,6.8 13,6 13,7 10,7.8" fill="#b9a67e"/><polygon points="3,8.5 6,9.3 6,10.3 3,9.5" fill="#b9a67e"/><polygon points="10,9.3 13,8.5 13,9.5 10,10.3" fill="#b9a67e"/></svg>How to play</span></button>
+          <button class="abtn" id="btnTitleHow"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><polygon points="1,3 8,5 15,3 15,13 8,15 1,13" fill="#2c1f0e"/><polygon points="2,4 7,5.5 7,13 2,11.5" fill="#ead9b6"/><polygon points="14,4 9,5.5 9,13 14,11.5" fill="#ead9b6"/><rect x="7" y="5" width="2" height="8" fill="#3a250f"/><polygon points="3,6 6,6.8 6,7.8 3,7" fill="#b9a67e"/><polygon points="10,6.8 13,6 13,7 10,7.8" fill="#b9a67e"/><polygon points="3,8.5 6,9.3 6,10.3 3,9.5" fill="#b9a67e"/><polygon points="10,9.3 13,8.5 13,9.5 10,10.3" fill="#b9a67e"/></svg>Tutorial</span></button>
           <button class="abtn" id="btnTitleLoad"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><rect x="1" y="2" width="14" height="12" fill="#2c1f0e"/><rect x="2" y="3" width="12" height="5" fill="#cbb389"/><rect x="2" y="3" width="12" height="2" fill="#e6d4b0"/><rect x="2" y="9" width="12" height="4" fill="#a8906a"/><rect x="2" y="8" width="12" height="1" fill="#2c1f0e"/><rect x="6" y="6" width="4" height="4" fill="#2c1f0e"/><rect x="6.7" y="6.7" width="2.6" height="2.6" fill="#f2cd62"/></svg>Load</span></button>
         </div>
       </div>
     </div>
-    <div id="cloudChip">☁ …</div>
   </div>
 
   <div class="screen" id="scrNewgame">

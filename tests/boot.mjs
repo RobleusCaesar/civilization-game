@@ -252,6 +252,36 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   if (errs.length) ck('theBootRunsClean', false, errs[0]);
 }
 
+/* ---- 2b. NO TITLE LABEL RUNS OFF ITS PLAQUE ----
+   The three-across row shares the menu's width, so each button gets about a
+   third of it for an icon, a gap and a label — and the labels are set in
+   Roman CAPS, which run wider than the pixel face they replaced. This is
+   measured on the live page at the narrowest phone still in service and at
+   both sides of the step-down breakpoint, because a label that overflows
+   does not throw, wrap or fail any other check: it just gets quietly
+   clipped by the plaque it is written on. ---- */
+{
+  const widths = [320, 359, 360, 375, 390, 430];
+  const tight = [];
+  for (const w of widths) {
+    const p = await b.newPage({ viewport: { width: w, height: 780 } });
+    await p.goto(url);
+    await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 20000 });
+    await p.evaluate(() => Boot.force());
+    await p.waitForFunction(() => document.fonts.status === 'loaded', null, { timeout: 15000 });
+    const rows = await p.evaluate(() => [...document.querySelectorAll('#scrTitle .trow3 .abtn')].map(el => {
+      const lab = el.querySelector('.blab'), cs = getComputedStyle(el);
+      const inner = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const r = lab.getBoundingClientRect();
+      return { t: lab.textContent.trim(), slack: +(inner - r.width).toFixed(1), h: r.height };
+    }));
+    for (const r of rows) if (r.slack < 2 || r.h > 26) tight.push(`${w}px ${r.t} slack=${r.slack}`);
+    await p.close();
+  }
+  ck('noTitleLabelRunsOffItsPlaque', tight.length === 0,
+    tight.length ? tight.join(' | ') : 'all three fit at ' + widths.join('/') + 'px');
+}
+
 /* ---- 3. THE HOLD, and the tap that skips it ---- */
 {
   // 3a. left alone, the splash holds its beat and then lifts by itself

@@ -2051,9 +2051,11 @@ cropped 20px per side so no dark arc ever shows at a viewport corner (the
 crop+encode is a scratch script, not a build step — there is still no build
 step). **The logo and menu ride as ONE CENTRED BLOCK**: the art frames an
 open corridor down the middle and that corridor is the ground the menu
-stands on, so `.tcol` is `justify-content: center` and `#cloudChip` is
-PINNED to the foot — left in the flow, the chip joins the block and pulls
-it off centre. The demo world still runs behind the image, deliberately
+stands on, so `.tcol` is `justify-content: center` and nothing else shares
+the column. (The cloud/map chip that used to sit at the foot is GONE —
+`Screens.renderChip` already returned early on a missing element, so
+removing it needed no JS change; cloud state still reaches the player
+through the Load screen.) The demo world still runs behind the image, deliberately
 untouched: it is the no-image fallback, and the other shell screens still
 show it through their translucent gradients.
 **The wordmark is SWAPPABLE BY FILENAME** — drop `assets/ui/title-logo.png`
@@ -2073,10 +2075,17 @@ still loads. Palette PNGs count only WITH a `tRNS` chunk.
 self-hosted ~25KB, `text-transform: uppercase`): inscriptional Roman caps,
 warm cream, hard dark under-edge — the same lettering the art's own ribbon
 wears. The pixel face (`--pxfont`) reads as a computer terminal beside that
-art and is now only the wordmark's fallback. Caps are WIDER than the pixel
-face was, so the three-across row is the pinch point: `HOW TO PLAY` is the
-longest label in the narrowest plaque and must stay on ONE line (checked
-down to a 320px viewport) or that button reads as the odd one out. **The buttons are carved
+art and is now only the wordmark's fallback.
+**NO LABEL MAY RUN OFF ITS PLAQUE** (`noTitleLabelRunsOffItsPlaque`): caps
+are WIDER than the pixel face was, and the three-across row is the pinch
+point — three buttons split the menu's width, leaving each about 100px for
+an icon, a gap and a label. `nowrap` keeps each on one line and a
+`max-width: 359px` step-down handles the narrowest phones still in service
+rather than shrinking the type on every handset. The check MEASURES the
+live page (label width vs the plaque's inner box) at 320/359/360/375/390/
+430 — both sides of the breakpoint — because an overflowing label throws
+nothing, wraps nothing and fails no other check: it is just quietly clipped
+by the plaque it is written on. Re-run it whenever a label's text changes. **The buttons are carved
 plaques** (`#scrTitle .abtn`): dark outline, tan rim, top/bottom bevels,
 faint vertical grain, four nailhead studs (`::after`), and a HARD 4px drop
 shadow; pressed (`:active`) the plaque translates 3px down, the drop
