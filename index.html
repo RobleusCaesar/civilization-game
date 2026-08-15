@@ -637,7 +637,7 @@
     return (window.performance && performance.now) ? performance.now() : Date.now();
   };
   var Boot = window.Boot = {
-    HOLD_MS: 2500,          // the beat the logo holds before it starts to go
+    HOLD_MS: 5000,          // the beat the logo holds before it starts to go
     FADE_MS: 450,           // matches the inline transition above
     FAILSAFE_MS: 9000,      // …but a game that never reports in still starts
     t0: now(),

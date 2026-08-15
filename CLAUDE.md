@@ -1950,7 +1950,7 @@ right underneath. That placement is the whole feature: anything a script
 injects paints black first, which is exactly the flash the splash exists to
 hide, and the skip listeners must be armed before any external script has
 parsed or the session's first tap is swallowed. **The lift needs BOTH the
-hold and the readiness** (`Boot.HOLD_MS` 2500, `FADE_MS` 450): a tap
+hold and the readiness** (`Boot.HOLD_MS` 5000, `FADE_MS` 450): a tap
 (`pointerdown`/`touchstart`/`mousedown`/`keydown`) skips the WAIT, never the
 readiness — `Boot.markReady()` is called from INSIDE the title's first
 painted frame (game.js's load handler runs `G.frame` by hand, then marks),

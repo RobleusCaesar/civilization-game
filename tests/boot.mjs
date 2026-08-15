@@ -137,7 +137,8 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       up, readyAt, ready: Boot.ready, doneLate: Boot.done,
     };
   });
-  ck('theHoldIsTwoToThreeSeconds', mid.hold >= 2000 && mid.hold <= 3000, mid.hold + 'ms');
+  // long enough to read the logo, short enough that it never feels like a wait
+  ck('theHoldIsAFullBeat', mid.hold >= 4000 && mid.hold <= 6000, mid.hold + 'ms');
   ck('andTheFadeIsACrossFadeNotACut', mid.fade >= 200 && mid.fade <= 900, mid.fade + 'ms');
   ck('andAFailsafeAlwaysStartsTheGame', mid.fail > mid.hold, mid.fail + 'ms');
   ck('itHoldsThroughTheBeat', mid.up.at < mid.hold && !mid.up.done,
