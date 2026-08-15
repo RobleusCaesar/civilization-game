@@ -2060,10 +2060,23 @@ show it through their translucent gradients.
 in and it replaces the type, the same rule the building art follows, with
 no code change and no manifest. `#logoArt` starts `display: none` and
 reveals only on a successful decode (`onload` adds `.hasLogoArt`, which
-also hides the `<h1>`); a 404 fires `onerror` and the element removes
-itself, so a repo without the file keeps the CSS wordmark instead of
-flashing a broken image. Authored art WINS and the type is the fallback —
-never both drawn. **The buttons are carved
+hides BOTH the `<h1>` and the tagline — the shipped art carries its own
+banner, and two taglines is worse than none); a 404 fires `onerror` and the
+element removes itself, so a repo without the file keeps the CSS wordmark
+instead of flashing a broken image. Authored art WINS and the type is the
+fallback — never both drawn. **The art must be genuinely TRANSPARENT**
+(`theShippedWordmarkIsTransparent`): it stands on the glen, so a PNG that
+lost its alpha — a round trip through JPEG will do it — reads as a black
+box nailed to the meadow, and would pass every other check because the file
+still loads. Palette PNGs count only WITH a `tRNS` chunk.
+**And the MENU IS SET LIKE THE LOGO'S BANNER** (`--menufont`, Cinzel,
+self-hosted ~25KB, `text-transform: uppercase`): inscriptional Roman caps,
+warm cream, hard dark under-edge — the same lettering the art's own ribbon
+wears. The pixel face (`--pxfont`) reads as a computer terminal beside that
+art and is now only the wordmark's fallback. Caps are WIDER than the pixel
+face was, so the three-across row is the pinch point: `HOW TO PLAY` is the
+longest label in the narrowest plaque and must stay on ONE line (checked
+down to a 320px viewport) or that button reads as the odd one out. **The buttons are carved
 plaques** (`#scrTitle .abtn`): dark outline, tan rim, top/bottom bevels,
 faint vertical grain, four nailhead studs (`::after`), and a HARD 4px drop
 shadow; pressed (`:active`) the plaque translates 3px down, the drop

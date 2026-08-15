@@ -161,7 +161,9 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     ck('theWordmarkIsSwappableByFilename',
       /id="logoArt"[^>]+src="assets\/ui\/title-logo\.png"/.test(title) &&
       /onload="[^"]*hasLogoArt/.test(title) && /onerror="this\.remove\(\)"/.test(title) &&
-      /#scrTitle\.hasLogoArt \.logo \{ display: none/.test(html),
+      // the rule may carry a selector LIST (the art also stands the tagline
+      // down) — match the behaviour, not the exact formatting
+      /#scrTitle\.hasLogoArt \.logo\b[^{]*\{[^}]*display:\s*none/.test(html),
       'art wins, type is the fallback');
     ck('andTheTypeFallbackIsStillThere', /<h1 class="logo">CLANFIRE<\/h1>/.test(title), '');
     /* ONE PICTURE, TWO LAYERS. The loading screen and the title wear the
@@ -182,13 +184,39 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       /@keyframes popIn\s*\{\s*from\s*\{[^}]*opacity:\s*0/.test(html) &&
       /#scrTitle\.popIn \.thead\s*\{[^}]*both/.test(html),
       'hidden only inside the keyframe, never at rest');
-    /* and the display face is SELF-HOSTED and light — a Google Fonts
+    /* THE SHIPPED WORDMARK MUST BE GENUINELY TRANSPARENT. It sits over the
+       glen, so a PNG that lost its alpha (a round-trip through JPEG will do
+       it) reads as a BLACK BOX nailed to the meadow — and it would still
+       pass every other check here, because the file loads fine. */
+    {
+      const buf = readFileSync(join(root, 'assets/ui/title-logo.png'));
+      const colour = buf[25];
+      const hasTRNS = buf.includes(Buffer.from('tRNS'));
+      ck('theShippedWordmarkIsTransparent',
+        colour === 6 || colour === 4 || (colour === 3 && hasTRNS),
+        'PNG colour type ' + colour + (colour === 3 ? (hasTRNS ? ' + tRNS' : ' with NO tRNS') : ''));
+      ck('andItIsLightEnoughForTheTitle', buf.length < 200 * 1024,
+        Math.round(buf.length / 1024) + 'KB');
+    }
+    /* and the display faces are SELF-HOSTED and light — a Google Fonts
        fetch would be a third-party call on the boot path */
     const f = readFileSync(join(root, 'assets/ui/pixelify.woff2'));
     ck('theTitleFaceIsSelfHosted',
       /@font-face[^}]*url\('assets\/ui\/pixelify\.woff2'\)/.test(html) &&
       f.slice(0, 4).toString() === 'wOF2' && f.length < 30 * 1024,
       Math.round(f.length / 1024) + 'KB woff2');
+    /* THE MENU IS SET LIKE THE LOGO'S BANNER, not like a terminal: the
+       plaque labels wear the same inscriptional Roman caps the art does. */
+    const mf = readFileSync(join(root, 'assets/ui/cinzel.woff2'));
+    ck('theMenuFaceMatchesTheBanner',
+      /--menufont:\s*'Cinzel'/.test(html) &&
+      /@font-face[^}]*url\('assets\/ui\/cinzel\.woff2'\)/.test(html) &&
+      mf.slice(0, 4).toString() === 'wOF2' && mf.length < 60 * 1024,
+      Math.round(mf.length / 1024) + 'KB woff2');
+    ck('andTheButtonsAreSetInIt',
+      /#scrTitle \.abtn \{[^}]*font-family:\s*var\(--menufont\)/.test(html) &&
+      /#scrTitle \.abtn \{[^}]*text-transform:\s*uppercase/.test(html),
+      'Roman caps on the plaques');
   }
 }
 

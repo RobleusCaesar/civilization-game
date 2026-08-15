@@ -46,11 +46,20 @@
     --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-min));
     /* the title's display face (self-hosted, OFL, latin subset, wght 400-700) */
     --pxfont: 'Pixelify Sans', -apple-system, "Segoe UI", Roboto, sans-serif;
+    /* the MENU face: inscriptional Roman caps, matching the lettering on the
+       logo's own banner. The pixel face reads as a computer terminal beside
+       that art, which is exactly the mismatch this replaces. */
+    --menufont: 'Cinzel', 'Times New Roman', Georgia, serif;
   }
   @font-face {
     font-family: 'Pixelify Sans';
     src: url('assets/ui/pixelify.woff2') format('woff2');
     font-weight: 400 700; font-style: normal; font-display: swap;
+  }
+  @font-face {
+    font-family: 'Cinzel';
+    src: url('assets/ui/cinzel.woff2') format('woff2');
+    font-weight: 400 900; font-style: normal; font-display: swap;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -381,7 +390,10 @@
   #logoArt { display: none; width: min(330px, 84vw); height: auto; image-rendering: pixelated;
     filter: drop-shadow(0 4px 0 rgba(20,12,4,0.55)) drop-shadow(0 10px 18px rgba(0,0,0,0.5)); }
   #scrTitle.hasLogoArt #logoArt { display: block; }
-  #scrTitle.hasLogoArt .logo { display: none; }
+  /* the art carries its own wordmark AND its own banner, so the type
+     wordmark and the tagline both stand down — never two taglines */
+  #scrTitle.hasLogoArt .logo,
+  #scrTitle.hasLogoArt .tagline { display: none; }
 
   /* THE CARVED WOODEN PLAQUE (title menu only).
      The corners are a STEPPED CHAMFER, never border-radius: a smooth
@@ -403,10 +415,12 @@
       6px 100%, 6px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 6px), 0 calc(100% - 6px));
     position: relative; isolation: isolate;
     border: 0; border-radius: 0; background: none; box-shadow: none;
-    color: var(--text);
-    font-family: var(--pxfont); font-weight: 600; font-size: 17px;
-    letter-spacing: 0.5px;
-    text-shadow: 0 2px 0 rgba(20,12,4,0.7);
+    /* set like the logo's banner: Roman caps, warm cream, generous tracking,
+       a hard dark under-edge rather than a soft glow */
+    color: #f2e6cd;
+    font-family: var(--menufont); font-weight: 700; font-size: 16px;
+    text-transform: uppercase; letter-spacing: 1.4px;
+    text-shadow: 0 2px 0 rgba(20,12,4,0.85), 0 0 4px rgba(20,12,4,0.5);
   }
   #scrTitle .abtn::before {
     content: ''; position: absolute; inset: 0; z-index: -1;
@@ -442,8 +456,9 @@
   }
   #scrTitle .abtn.big { min-height: 58px; }
   #scrTitle .abtn small {
-    font-family: var(--pxfont); font-weight: 400; font-size: 11px;
-    color: rgba(240,230,208,0.72); margin-top: 1px;
+    font-family: var(--menufont); font-weight: 400; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    color: rgba(240,230,208,0.72); margin-top: 2px;
   }
   /* Continue: the green banner plaque with the gold rim */
   #scrTitle .abtn.gold::before {
@@ -503,13 +518,17 @@
   #scrTitle .abtn.cant .pxi { filter: grayscale(1) brightness(0.85); }
   .blab { display: flex; align-items: center; justify-content: center; gap: 10px; }
   .pxi { width: 27px; height: 27px; flex: 0 0 auto; filter: drop-shadow(0 2px 0 rgba(0,0,0,0.35)); }
-  #scrTitle .trow3 .abtn { min-height: 48px; font-size: 12.5px; padding: 4px 3px; }
-  #scrTitle .trow3 .pxi { width: 17px; height: 17px; }
-  #scrTitle .trow3 .blab { gap: 6px; }
+  /* the three-across row: caps are wider than the pixel face was, and
+     "HOW TO PLAY" is the longest label in the narrowest plaque — it must
+     stay on ONE line or that button reads as the odd one out */
+  #scrTitle .trow3 .abtn { min-height: 48px; font-size: 9.5px; letter-spacing: 0.2px; padding: 4px 1px; }
+  #scrTitle .trow3 .blab { gap: 4px; white-space: nowrap; }
+  #scrTitle .trow3 .pxi { width: 15px; height: 15px; }
   #cloudChip {
     position: absolute; left: 50%; transform: translateX(-50%);
     bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
-    font-family: var(--pxfont); font-size: 12px; color: #cfe0a8;
+    font-family: var(--menufont); font-weight: 600; font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: 1px; color: #d6e6b0;
     background: linear-gradient(#2e3d1c, #223014);
     border-radius: 0; padding: 7px 16px;
     clip-path: polygon(
