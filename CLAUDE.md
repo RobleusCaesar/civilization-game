@@ -1990,9 +1990,21 @@ content below the status bar itself, stays on the real `env()` value.
 `apple-touch-icon`, with 192/512 for tabs and Android): no wordmark, because
 iOS prints the app's name under the icon already and lettering inside it is
 mush at 60px. It is fully OPAQUE — iOS composites black behind any alpha —
-and the subject sits centred with margin so the squircle mask never clips
-it. Cut from the same logo art, upscaled on the pixel grid before landing on
-the target size so the edges stay crisp rather than smearing.
+and the subject is centred on its OWN bounding box (not on whatever canvas
+the source art came on), with margin so the squircle mask never clips it.
+**It is COMPOSED, never a crop of the promo art**: a crop is a screenshot,
+and a screenshot at 60px is a texture. The subject is the roundhouse
+(`tc-l1.png`) with the bare flame lifted out of the campfire prop —
+the stone ring is dropped, since a cool grey mass beside the flame is the
+one thing that stops the fire reading at small size — over a warm radial
+ground with a ground pool, a bloom, firelight warming the hut's lower half
+and a vignette. Three rules the shrink test settled: the flame must sit
+plainly IN FRONT of the doorway (raised any higher the hut reads as burning
+DOWN, which is the wrong story for a village builder), the ground must be
+DARK (the earlier green icon camouflaged against a green wallpaper — an
+icon has to hold its edge on any wallpaper), and the subject fills ~80% of
+the frame, because a small subject in a big field is what "boring" means at
+60px.
 
 **Art lands by FILENAME, never by manifest** (`tests/art-pipeline.mjs`, full
 rules in `ART_PLAN.md`): `assets/buildings/{id}-l{level}.png` — all lowercase
