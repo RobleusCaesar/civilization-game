@@ -14,7 +14,11 @@
      Screen" reads; the plain icon link serves browser tabs and Android. -->
 <link rel="apple-touch-icon" href="assets/ui/icon-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="assets/ui/icon-192.png">
-<link rel="icon" type="image/png" sizes="512x512" href="assets/ui/icon-512.png">
+<!-- the TAB wears the simpler drawing: a favicon is painted at 16-32px, where
+     the detailed icon's border and wheat collapse into mush, so the two slots
+     genuinely want two pictures. Smallest first — browsers take the best fit. -->
+<link rel="icon" type="image/png" sizes="32x32" href="assets/ui/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/ui/favicon-16.png">
 <title>Clanfire — Civ Builder</title>
 <style>
   :root {
@@ -624,8 +628,18 @@
      (every piece of HUD is gated on `body.ingame`), so the first frame is the
      logo on the game's own dark ground and nothing else. Boot lifts it. -->
 <div id="splash" style="position:fixed;inset:0;z-index:200;background:#0d0b08;display:flex;align-items:center;justify-content:center;opacity:1;transition:opacity .45s ease">
-  <img src="assets/ui/logo.png" alt="Clanfire" decoding="sync" fetchpriority="high"
-       style="width:100%;height:100%;object-fit:contain;image-rendering:pixelated;pointer-events:none;-webkit-user-select:none;user-select:none">
+  <!-- WEBP FIRST, PNG BEHIND IT. This image gates the first paint, so its
+       weight is the boot's weight: the same art is 191KB as WebP against
+       906KB as PNG, indistinguishable at 1:1. The <img> keeps the PNG so a
+       browser without WebP still gets a logo rather than a bare dark screen —
+       the exact failure the splash exists to prevent. `display:contents` on
+       the <picture> lets the <img> stay the flex item, so the centring works
+       either way. -->
+  <picture style="display:contents">
+    <source srcset="assets/ui/logo.webp" type="image/webp">
+    <img src="assets/ui/logo.png" alt="Clanfire" decoding="sync" fetchpriority="high"
+         style="width:100%;height:100%;object-fit:contain;image-rendering:pixelated;pointer-events:none;-webkit-user-select:none;user-select:none">
+  </picture>
 </div>
 <script>
 /* BOOT — the splash holds, then cross-fades to the title screen.

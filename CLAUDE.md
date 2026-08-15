@@ -1986,25 +1986,41 @@ floor, which the boot block raises to 44px on iOS **standalone**
 status bar and some builds still report a zero inset — the reported
 clock-on-top-of-the-food-counter bug. The browser tab, where iOS keeps
 content below the status bar itself, stays on the real `env()` value.
-**The home-screen icon** is art only (`assets/ui/icon-180.png`, linked as
-`apple-touch-icon`, with 192/512 for tabs and Android): no wordmark, because
-iOS prints the app's name under the icon already and lettering inside it is
-mush at 60px. It is fully OPAQUE — iOS composites black behind any alpha —
-and the subject is centred on its OWN bounding box (not on whatever canvas
-the source art came on), with margin so the squircle mask never clips it.
-**It is COMPOSED, never a crop of the promo art**: a crop is a screenshot,
-and a screenshot at 60px is a texture. The subject is the roundhouse
-(`tc-l1.png`) with the bare flame lifted out of the campfire prop —
-the stone ring is dropped, since a cool grey mass beside the flame is the
-one thing that stops the fire reading at small size — over a warm radial
-ground with a ground pool, a bloom, firelight warming the hut's lower half
-and a vignette. Three rules the shrink test settled: the flame must sit
-plainly IN FRONT of the doorway (raised any higher the hut reads as burning
-DOWN, which is the wrong story for a village builder), the ground must be
-DARK (the earlier green icon camouflaged against a green wallpaper — an
-icon has to hold its edge on any wallpaper), and the subject fills ~80% of
-the frame, because a small subject in a big field is what "boring" means at
-60px.
+**TWO ICONS, BECAUSE THEY ARE SEEN AT TWO SIZES** (same test): the
+home-screen icon and the browser-tab favicon are DIFFERENT DRAWINGS, not one
+file resized. A home-screen icon is looked at around 60px and can carry
+modelling — firelight on a wall, a ground pool, a vignette; a tab favicon is
+looked at around 16px, where every one of those details resolves into mud, so
+it wants flat facets and one silhouette. Both are supplied art (the shipped
+icons are the drawings the author made, not a crop of the promo image — a crop
+is a screenshot, and a screenshot at 60px is a texture).
+`assets/ui/icon-180.png` is the `apple-touch-icon` and `icon-192.png` the
+Android/tab size, both the DETAILED drawing; `favicon-32.png` and
+`favicon-16.png` are the LOW-POLY one. `tests/boot.mjs` pins that a small
+favicon is declared, that each file is genuinely the pixel size its `sizes`
+attribute claims, and that the tab art is a different file from the
+home-screen art — the check that stops the pair quietly collapsing back into
+one image.
+Rules that hold for both: **no wordmark** (iOS prints the app's name under the
+icon already and lettering inside it is mush at 60px), **fully OPAQUE** (iOS
+composites black behind any alpha), subject centred on its OWN bounding box
+with margin so the squircle mask never clips it, and a DARK ground — a green
+icon camouflages against a green wallpaper, and an icon has to hold its edge
+on any wallpaper.
+**And nothing on the critical path is heavy** (same test): the splash is the
+FIRST paint of the session, so its image is what the player waits on. The logo
+ships as `assets/ui/logo.webp` (~192KB) inside a `<picture>` whose `<img>`
+still points at `assets/ui/logo.png` (~907KB) — the WebP is the served file
+everywhere it is understood and the PNG is the fallback, never removed. The
+`<picture>` carries `display:contents` so the `<img>` stays the flex item and
+the centring is untouched. `theSplashIsServedLight` /
+`andItIsGenuinelySmaller` (the WebP must be under HALF the PNG, or the
+indirection is buying nothing) / `butThePngStaysAsTheFallback` pin all three.
+The icons are PALETTE PNGs (colour type 3, which is why the opacity check
+accepts 3 alongside 0 and 2) — quantizing took the icon set from 385KB to
+154KB with no visible change at the sizes they are ever seen at. There is no
+`icon-512.png`: no web manifest reads one, and it was the heaviest file in the
+set.
 
 **Art lands by FILENAME, never by manifest** (`tests/art-pipeline.mjs`, full
 rules in `ART_PLAN.md`): `assets/buildings/{id}-l{level}.png` — all lowercase

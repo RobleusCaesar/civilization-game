@@ -58,7 +58,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   ck('theSplashIsInTheDocument', iSplash > 0, iSplash > 0 ? '' : 'not declared in index.html');
   ck('andItIsTheFirstThingInTheBody', iSplash > 0 && iSplash < iCanvas,
     'ahead of the canvas and all chrome');
-  const tag = body.slice(iSplash - 60, iSplash + 400);
+  const tag = body.slice(iSplash - 60, iSplash + 1200);   // wide enough for the <picture> block
   ck('itCarriesItsOwnInlineStyles',
     /style="[^"]*position:fixed/.test(tag) && /style="[^"]*z-index:\s*\d/.test(tag),
     'it needs no stylesheet to cover the screen');
@@ -71,16 +71,50 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   /* THE HOME-SCREEN ICON. "Add to Home Screen" reads apple-touch-icon; the
      image must be square, OPAQUE (iOS composites black behind any alpha) and
      carry no wordmark — iOS prints the app's name under the icon already. */
+  const png = (rel) => {
+    const buf = readFileSync(join(root, rel));
+    // PNG header: width/height at bytes 16..24, colour type at byte 25
+    return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20), colour: buf[25], bytes: buf.length };
+  };
   const iconM = html.match(/rel="apple-touch-icon"[^>]*href="([^"]+)"/);
   ck('theHomeScreenIconIsDeclared', !!iconM, iconM ? iconM[1] : 'no apple-touch-icon link');
   if (iconM) {
-    const buf = readFileSync(join(root, iconM[1]));
-    // PNG header: width/height at bytes 16..24, colour type at byte 25
-    const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20), colour = buf[25];
+    const { w, h, colour } = png(iconM[1]);
     ck('theIconIsSquareAndBigEnough', w === h && w >= 180, w + '×' + h);
-    ck('andItIsOpaque', colour === 2 || colour === 0,
+    // colour type 3 is a PALETTE png — opaque unless it carries a tRNS chunk
+    ck('andItIsOpaque', colour === 2 || colour === 0 || colour === 3,
       colour === 6 || colour === 4 ? 'has an alpha channel — iOS fills it black'
         : 'PNG colour type ' + colour);
+  }
+  /* THE TAB GETS ITS OWN, SIMPLER DRAWING. A favicon is painted at 16-32px,
+     where the home-screen icon's ornate border and wheat turn to mush — two
+     jobs, two pictures. Smallest declared first so browsers pick the fit. */
+  const favs = [...html.matchAll(/rel="icon"[^>]*sizes="(\d+)x\1"[^>]*href="([^"]+)"/g)]
+    .map(m => ({ px: +m[1], href: m[2] }));
+  ck('theTabIconIsDeclared', favs.some(f => f.px <= 32),
+    favs.map(f => f.px).join(', ') || 'no small icon link');
+  const tab = favs.filter(f => f.px <= 32);
+  const tabBad = tab.filter(f => { const p = png(f.href); return p.w !== f.px || p.h !== f.px; });
+  ck('andTheTabFilesAreTheSizeTheyClaim', tab.length > 0 && tabBad.length === 0,
+    tabBad.length ? tabBad[0].href : tab.map(f => f.px + 'px').join(' + '));
+  ck('andItIsADifferentDrawingFromTheHomeScreen',
+    !!iconM && tab.length > 0 && !tab.some(f => f.href === iconM[1]),
+    'the tab must not just be the detailed icon shrunk');
+  /* THE SPLASH IMAGE GATES FIRST PAINT, so it is served as WebP with the PNG
+     still behind it — a browser without WebP must get a logo, not the bare
+     dark screen the splash exists to prevent. */
+  {
+    const tag = body.slice(iSplash, iSplash + 900);
+    const hasWebp = /srcset="[^"]*\.webp"/.test(tag);
+    ck('theSplashIsServedLight', hasWebp, hasWebp ? 'webp source declared' : 'PNG only');
+    const webpM = tag.match(/srcset="([^"]+\.webp)"/);
+    if (webpM) {
+      const wb = readFileSync(join(root, webpM[1])).length;
+      const pb = readFileSync(join(root, 'assets/ui/logo.png')).length;
+      ck('andItIsGenuinelySmaller', wb < pb * 0.5,
+        Math.round(wb/1024) + 'KB vs ' + Math.round(pb/1024) + 'KB of PNG');
+    }
+    ck('butThePngStaysAsTheFallback', /<img[^>]+src="assets\/ui\/logo\.png"/.test(tag), '');
   }
   ck('theTopInsetHasADefaultAndAFloor',
     /--safe-top:\s*max\(env\(safe-area-inset-top,\s*0px\)/.test(html) &&
