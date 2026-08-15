@@ -149,10 +149,18 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
        is JS-written and exempt; this is a claim about the buttons.) */
     const btns = [...title.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].map(m => m[0]);
     const emoji = /[\u{1F000}-\u{1FAFF}\u{2190}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/u;
+    /* NO EMOJI ANYWHERE on the title — Apple's glossy 3D set beside pixel
+       art is the loudest "web page" tell there is. The HERO plaques carry a
+       drawn pixel icon (which is part of what marks them primary); the
+       narrow secondary row is deliberately TEXT ONLY, because an icon in a
+       plaque that size costs more label room than it earns. */
+    const big = btns.filter(t => /class="abtn big/.test(t));
     ck('theMenuIsDrawnNotTyped',
-      btns.length >= 6 && btns.every(t => t.includes('class="pxi"')) &&
-      !btns.some(t => emoji.test(t)),
-      btns.length + ' buttons, all iconed, no emoji');
+      btns.length >= 6 && !btns.some(t => emoji.test(t)),
+      btns.length + ' buttons, no emoji');
+    ck('andTheHeroPlaquesAreIconed',
+      big.length === 3 && big.every(t => t.includes('class="pxi"')),
+      big.length + ' hero plaques drawn, secondary row text-only');
     /* THE WORDMARK IS SWAPPABLE BY FILENAME. Drop assets/ui/title-logo.png
        in and it replaces the type — the same "art lands by filename" rule
        the building art follows, no code change and no manifest. It must

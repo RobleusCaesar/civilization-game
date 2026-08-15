@@ -2093,11 +2093,17 @@ collapses, the bevel inverts and the face darkens — the press reads as wood
 going INTO the frame. Continue is the one green plaque with the gold rim;
 disabled it keeps its body and desaturates (`filter`, opacity stays 1 —
 the global `.cant` ghosting reads as a rendering bug on a solid plaque).
-**The icons are drawn, not typed** (pinned): every title button carries an
-inline pixel-SVG (`.pxi`, `shape-rendering: crispEdges`) and none carries an
+**The icons are drawn, not typed** (pinned): NO title button carries an
 emoji — Apple's glossy 3D set beside pixel art is the loudest "web page"
-tell there is. The other shell screens still wear emoji and are the obvious
-next pass. **The display face is Pixelify Sans** (`--pxfont`, self-hosted
+tell there is. The three HERO plaques carry an inline pixel-SVG (`.pxi`,
+`shape-rendering: crispEdges`), which is part of what marks them primary;
+the narrow secondary row (Settings / Tutorial / Load) is deliberately TEXT
+ONLY, because an icon in a plaque that size costs about a third of the
+label's room and forces the type down to fine print beside the big three.
+Two checks, so the split is intentional rather than drift:
+`theMenuIsDrawnNotTyped` (no emoji anywhere) and
+`andTheHeroPlaquesAreIconed` (exactly the three big ones drawn). The other
+shell screens still wear emoji and are the obvious next pass. **The display face is Pixelify Sans** (`--pxfont`, self-hosted
 OFL latin subset, ~12KB woff2, title screens only — never the HUD): its C
 CLOSES when set bold — weight 700 at 46px reads OLANFIRE, so the wordmark
 is weight 500, and below 40px (the landscape media query) weight 400 — a
