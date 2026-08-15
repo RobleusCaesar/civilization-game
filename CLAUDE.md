@@ -1950,7 +1950,7 @@ right underneath. That placement is the whole feature: anything a script
 injects paints black first, which is exactly the flash the splash exists to
 hide, and the skip listeners must be armed before any external script has
 parsed or the session's first tap is swallowed. **The lift needs BOTH the
-hold and the readiness** (`Boot.HOLD_MS` 5000, `FADE_MS` 450): a tap
+hold and the readiness** (`Boot.HOLD_MS` 4000, `FADE_MS` 450): a tap
 (`pointerdown`/`touchstart`/`mousedown`/`keydown`) skips the WAIT, never the
 readiness — `Boot.markReady()` is called from INSIDE the title's first
 painted frame (game.js's load handler runs `G.frame` by hand, then marks),
@@ -1986,6 +1986,13 @@ floor, which the boot block raises to 44px on iOS **standalone**
 status bar and some builds still report a zero inset — the reported
 clock-on-top-of-the-food-counter bug. The browser tab, where iOS keeps
 content below the status bar itself, stays on the real `env()` value.
+**The home-screen icon** is art only (`assets/ui/icon-180.png`, linked as
+`apple-touch-icon`, with 192/512 for tabs and Android): no wordmark, because
+iOS prints the app's name under the icon already and lettering inside it is
+mush at 60px. It is fully OPAQUE — iOS composites black behind any alpha —
+and the subject sits centred with margin so the squircle mask never clips
+it. Cut from the same logo art, upscaled on the pixel grid before landing on
+the target size so the edges stay crisp rather than smearing.
 
 **Art lands by FILENAME, never by manifest** (`tests/art-pipeline.mjs`, full
 rules in `ART_PLAN.md`): `assets/buildings/{id}-l{level}.png` — all lowercase

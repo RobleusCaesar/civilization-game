@@ -67,6 +67,21 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     'the dark theme ground — never a white or transparent flash');
   // …and the viewport opts into the notch
   ck('theViewportCoversTheNotch', /viewport-fit=cover/.test(html), '');
+
+  /* THE HOME-SCREEN ICON. "Add to Home Screen" reads apple-touch-icon; the
+     image must be square, OPAQUE (iOS composites black behind any alpha) and
+     carry no wordmark — iOS prints the app's name under the icon already. */
+  const iconM = html.match(/rel="apple-touch-icon"[^>]*href="([^"]+)"/);
+  ck('theHomeScreenIconIsDeclared', !!iconM, iconM ? iconM[1] : 'no apple-touch-icon link');
+  if (iconM) {
+    const buf = readFileSync(join(root, iconM[1]));
+    // PNG header: width/height at bytes 16..24, colour type at byte 25
+    const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20), colour = buf[25];
+    ck('theIconIsSquareAndBigEnough', w === h && w >= 180, w + '×' + h);
+    ck('andItIsOpaque', colour === 2 || colour === 0,
+      colour === 6 || colour === 4 ? 'has an alpha channel — iOS fills it black'
+        : 'PNG colour type ' + colour);
+  }
   ck('theTopInsetHasADefaultAndAFloor',
     /--safe-top:\s*max\(env\(safe-area-inset-top,\s*0px\)/.test(html) &&
     /--safe-min:/.test(html),
@@ -138,7 +153,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     };
   });
   // long enough to read the logo, short enough that it never feels like a wait
-  ck('theHoldIsAFullBeat', mid.hold >= 4000 && mid.hold <= 6000, mid.hold + 'ms');
+  ck('theHoldIsAFullBeat', mid.hold >= 3000 && mid.hold <= 5000, mid.hold + 'ms');
   ck('andTheFadeIsACrossFadeNotACut', mid.fade >= 200 && mid.fade <= 900, mid.fade + 'ms');
   ck('andAFailsafeAlwaysStartsTheGame', mid.fail > mid.hold, mid.fail + 'ms');
   ck('itHoldsThroughTheBeat', mid.up.at < mid.hold && !mid.up.done,

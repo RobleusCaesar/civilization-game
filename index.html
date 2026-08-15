@@ -6,6 +6,15 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
+<!-- THE HOME-SCREEN ICON. Art only, no wordmark: iOS draws the app's name
+     under the icon itself, so lettering inside it only fights that label and
+     turns to mush at 60px. The image is fully opaque — iOS composites black
+     behind any transparency — and the subject is centred with margin so the
+     squircle mask never clips it. apple-touch-icon is what "Add to Home
+     Screen" reads; the plain icon link serves browser tabs and Android. -->
+<link rel="apple-touch-icon" href="assets/ui/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/ui/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="assets/ui/icon-512.png">
 <title>Clanfire — Civ Builder</title>
 <style>
   :root {
@@ -637,7 +646,7 @@
     return (window.performance && performance.now) ? performance.now() : Date.now();
   };
   var Boot = window.Boot = {
-    HOLD_MS: 5000,          // the beat the logo holds before it starts to go
+    HOLD_MS: 4000,          // the beat the logo holds before it starts to go
     FADE_MS: 450,           // matches the inline transition above
     FAILSAFE_MS: 9000,      // …but a game that never reports in still starts
     t0: now(),
