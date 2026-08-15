@@ -331,10 +331,15 @@
   #scrTitle { padding: 0; }
   #scrTitle .tbg { position: absolute; inset: 0; z-index: 0; }
   #scrTitle .tbg img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* the logo + menu ride as ONE centred block: the art frames an open
+     corridor down the middle, which is the ground the menu is meant to
+     stand on. The chip is pinned to the foot so it never joins the block
+     and pulls it off centre. */
   #scrTitle .tcol {
     position: relative; z-index: 1; flex: 1 1 0; min-height: 0;
-    display: flex; flex-direction: column; align-items: center; width: 100%;
-    padding: calc(var(--safe-top) + 3vh) 16px calc(env(safe-area-inset-bottom, 0px) + 12px);
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; width: 100%;
+    padding: calc(var(--safe-top) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 52px);
   }
   /* the wordmark is a CARVED BLOCK, not tinted text: a full 8-direction dark
      outline gives it mass and holds its edge over the busy beach/water band
@@ -366,7 +371,17 @@
     text-shadow: 0 2px 0 rgba(18,12,5,0.85), 0 3px 8px rgba(0,0,0,0.6);
   }
   .tspacer { flex: 1 1 0; }
-  .tmenu { margin-top: 4vh; width: min(340px, 90vw); display: flex; flex-direction: column; gap: 11px; }
+  .tmenu { margin-top: 26px; width: min(340px, 90vw); display: flex; flex-direction: column; gap: 11px; }
+  /* THE WORDMARK IS SWAPPABLE BY FILENAME, like the building art: drop
+     assets/ui/title-logo.png in and it replaces the type, with no code
+     change and no manifest. It starts hidden and reveals only on a
+     successful decode, so a missing file leaves the CSS wordmark standing
+     rather than flashing a broken image. Authored art wins; the type is
+     the fallback, never a second thing drawn on top of it. */
+  #logoArt { display: none; width: min(330px, 84vw); height: auto; image-rendering: pixelated;
+    filter: drop-shadow(0 4px 0 rgba(20,12,4,0.55)) drop-shadow(0 10px 18px rgba(0,0,0,0.5)); }
+  #scrTitle.hasLogoArt #logoArt { display: block; }
+  #scrTitle.hasLogoArt .logo { display: none; }
 
   /* THE CARVED WOODEN PLAQUE (title menu only).
      The corners are a STEPPED CHAMFER, never border-radius: a smooth
@@ -492,7 +507,9 @@
   #scrTitle .trow3 .pxi { width: 17px; height: 17px; }
   #scrTitle .trow3 .blab { gap: 6px; }
   #cloudChip {
-    margin-top: 12px; font-family: var(--pxfont); font-size: 12px; color: #cfe0a8;
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+    font-family: var(--pxfont); font-size: 12px; color: #cfe0a8;
     background: linear-gradient(#2e3d1c, #223014);
     border-radius: 0; padding: 7px 16px;
     clip-path: polygon(
@@ -512,14 +529,15 @@
   }
   /* short viewports (landscape phones): compact so nothing clips */
   @media (max-height: 600px) {
-    #scrTitle .tcol { padding-top: calc(var(--safe-top) + 6px); }
+    #scrTitle .tcol { padding: calc(var(--safe-top) + 6px) 16px calc(env(safe-area-inset-bottom, 0px) + 40px); }
     /* 400 below 40px: Pixelify's C closes at small sizes on any heavier cut */
     .logo { font-size: 36px; font-weight: 400; }
+    #logoArt { width: min(240px, 60vw); }
     .tagline { display: none; }
-    .tmenu { margin-top: 10px; gap: 7px; }
+    .tmenu { margin-top: 12px; gap: 7px; }
     #scrTitle .abtn.big { min-height: 44px; }
     #scrTitle .trow3 .abtn { min-height: 40px; }
-    #cloudChip { margin-top: 8px; padding: 4px 10px; }
+    #cloudChip { bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); padding: 4px 10px; }
   }
 
   /* new-game option rows */
@@ -938,6 +956,9 @@
     </picture>
     <div class="tcol">
       <div class="thead">
+        <img id="logoArt" src="assets/ui/title-logo.png" alt="CLANFIRE" decoding="async"
+             onload="if(this.naturalWidth)document.getElementById('scrTitle').classList.add('hasLogoArt')"
+             onerror="this.remove()">
         <h1 class="logo">CLANFIRE</h1>
         <p class="tagline">GATHER · EXPAND · CONQUER</p>
       </div>
@@ -951,9 +972,8 @@
           <button class="abtn" id="btnTitleLoad"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><rect x="1" y="2" width="14" height="12" fill="#2c1f0e"/><rect x="2" y="3" width="12" height="5" fill="#cbb389"/><rect x="2" y="3" width="12" height="2" fill="#e6d4b0"/><rect x="2" y="9" width="12" height="4" fill="#a8906a"/><rect x="2" y="8" width="12" height="1" fill="#2c1f0e"/><rect x="6" y="6" width="4" height="4" fill="#2c1f0e"/><rect x="6.7" y="6.7" width="2.6" height="2.6" fill="#f2cd62"/></svg>Load</span></button>
         </div>
       </div>
-      <div class="tspacer"></div>
-      <div id="cloudChip">☁ …</div>
     </div>
+    <div id="cloudChip">☁ …</div>
   </div>
 
   <div class="screen" id="scrNewgame">

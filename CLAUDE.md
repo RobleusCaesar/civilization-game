@@ -2026,15 +2026,24 @@ set.
 menu no longer sits over the drifting demo world — it sits over SUPPLIED ART
 (`assets/ui/title-bg.webp` served, `.jpg` fallback, declared in `#scrTitle`'s
 own markup so the fetch starts with the HTML parse, behind the splash). The
-art was delivered with a rounded-corner frame baked into its edges; the
-shipped asset is cropped 20px per side so no dark arc ever shows at a
-viewport corner. **The menu sits over the MEADOW, the scene shows BELOW it**:
-the hut and campfire are baked into the art at ~56–77% of its height, so the
-reference layout (scene top, menu bottom) would bury the focal point under
-the buttons — logo, then plaques, then open ground is the layout OUR art
-asks for. The demo world still runs behind the image, deliberately
+art is delivered with a frame baked into its edges; the shipped asset is
+cropped 20px per side so no dark arc ever shows at a viewport corner (the
+crop+encode is a scratch script, not a build step — there is still no build
+step). **The logo and menu ride as ONE CENTRED BLOCK**: the art frames an
+open corridor down the middle and that corridor is the ground the menu
+stands on, so `.tcol` is `justify-content: center` and `#cloudChip` is
+PINNED to the foot — left in the flow, the chip joins the block and pulls
+it off centre. The demo world still runs behind the image, deliberately
 untouched: it is the no-image fallback, and the other shell screens still
-show it through their translucent gradients. **The buttons are carved
+show it through their translucent gradients.
+**The wordmark is SWAPPABLE BY FILENAME** — drop `assets/ui/title-logo.png`
+in and it replaces the type, the same rule the building art follows, with
+no code change and no manifest. `#logoArt` starts `display: none` and
+reveals only on a successful decode (`onload` adds `.hasLogoArt`, which
+also hides the `<h1>`); a 404 fires `onerror` and the element removes
+itself, so a repo without the file keeps the CSS wordmark instead of
+flashing a broken image. Authored art WINS and the type is the fallback —
+never both drawn. **The buttons are carved
 plaques** (`#scrTitle .abtn`): dark outline, tan rim, top/bottom bevels,
 faint vertical grain, four nailhead studs (`::after`), and a HARD 4px drop
 shadow; pressed (`:active`) the plaque translates 3px down, the drop

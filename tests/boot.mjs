@@ -147,6 +147,17 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       btns.length >= 6 && btns.every(t => t.includes('class="pxi"')) &&
       !btns.some(t => emoji.test(t)),
       btns.length + ' buttons, all iconed, no emoji');
+    /* THE WORDMARK IS SWAPPABLE BY FILENAME. Drop assets/ui/title-logo.png
+       in and it replaces the type — the same "art lands by filename" rule
+       the building art follows, no code change and no manifest. It must
+       reveal only on a successful decode and drop itself on a 404, or a
+       repo without the file flashes a broken image where the logo goes. */
+    ck('theWordmarkIsSwappableByFilename',
+      /id="logoArt"[^>]+src="assets\/ui\/title-logo\.png"/.test(title) &&
+      /onload="[^"]*hasLogoArt/.test(title) && /onerror="this\.remove\(\)"/.test(title) &&
+      /#scrTitle\.hasLogoArt \.logo \{ display: none/.test(html),
+      'art wins, type is the fallback');
+    ck('andTheTypeFallbackIsStillThere', /<h1 class="logo">CLANFIRE<\/h1>/.test(title), '');
     /* and the display face is SELF-HOSTED and light — a Google Fonts
        fetch would be a third-party call on the boot path */
     const f = readFileSync(join(root, 'assets/ui/pixelify.woff2'));
