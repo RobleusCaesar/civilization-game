@@ -58,11 +58,16 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   ck('theSplashIsInTheDocument', iSplash > 0, iSplash > 0 ? '' : 'not declared in index.html');
   ck('andItIsTheFirstThingInTheBody', iSplash > 0 && iSplash < iCanvas,
     'ahead of the canvas and all chrome');
-  const tag = body.slice(iSplash - 60, iSplash + 1200);   // wide enough for the <picture> block
+  const tag = body.slice(iSplash - 60, iSplash + 1400);   // wide enough for the <picture> block
   ck('itCarriesItsOwnInlineStyles',
     /style="[^"]*position:fixed/.test(tag) && /style="[^"]*z-index:\s*\d/.test(tag),
     'it needs no stylesheet to cover the screen');
-  ck('itShowsTheLogoFile', /assets\/ui\/logo\.png/.test(tag), '');
+  /* THE LOADING SCREEN IS THE TITLE'S OWN GLEN — the same file, drawn the
+     same way, so the fade has no scene change in it and the boot fetches
+     ONE image rather than a poster and then a backdrop. */
+  ck('theLoadingScreenIsTheGlen', /assets\/ui\/title-bg\.jpg/.test(tag), '');
+  ck('andItIsDrawnLikeTheTitleIs', /object-fit:\s*cover/.test(tag),
+    'contain would letterbox it and the fade would jump');
   ck('itPaintsOnTheGamesOwnGround', /background:\s*#0d0b08/.test(tag),
     'the dark theme ground — never a white or transparent flash');
   // …and the viewport opts into the notch
@@ -100,21 +105,22 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   ck('andItIsADifferentDrawingFromTheHomeScreen',
     !!iconM && tab.length > 0 && !tab.some(f => f.href === iconM[1]),
     'the tab must not just be the detailed icon shrunk');
-  /* THE SPLASH IMAGE GATES FIRST PAINT, so it is served as WebP with the PNG
-     still behind it — a browser without WebP must get a logo, not the bare
-     dark screen the splash exists to prevent. */
+  /* THE SPLASH IMAGE GATES FIRST PAINT, so it is served as WebP with a
+     baseline format still behind it — a browser without WebP must get the
+     glen, not the bare dark screen the splash exists to prevent. */
   {
-    const tag = body.slice(iSplash, iSplash + 900);
+    const tag = body.slice(iSplash, iSplash + 1400);
     const hasWebp = /srcset="[^"]*\.webp"/.test(tag);
-    ck('theSplashIsServedLight', hasWebp, hasWebp ? 'webp source declared' : 'PNG only');
+    ck('theSplashIsServedLight', hasWebp, hasWebp ? 'webp source declared' : 'no webp');
     const webpM = tag.match(/srcset="([^"]+\.webp)"/);
     if (webpM) {
       const wb = readFileSync(join(root, webpM[1])).length;
-      const pb = readFileSync(join(root, 'assets/ui/logo.png')).length;
-      ck('andItIsGenuinelySmaller', wb < pb * 0.5,
-        Math.round(wb/1024) + 'KB vs ' + Math.round(pb/1024) + 'KB of PNG');
+      const fb = readFileSync(join(root, 'assets/ui/title-bg.jpg')).length;
+      ck('andItIsGenuinelySmaller', wb < fb,
+        Math.round(wb/1024) + 'KB webp vs ' + Math.round(fb/1024) + 'KB fallback');
     }
-    ck('butThePngStaysAsTheFallback', /<img[^>]+src="assets\/ui\/logo\.png"/.test(tag), '');
+    ck('butTheBaselineStaysAsTheFallback',
+      /<img[^>]+src="assets\/ui\/title-bg\.jpg"/.test(tag), '');
   }
   ck('theTopInsetHasADefaultAndAFloor',
     /--safe-top:\s*max\(env\(safe-area-inset-top,\s*0px\)/.test(html) &&
@@ -158,6 +164,24 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       /#scrTitle\.hasLogoArt \.logo \{ display: none/.test(html),
       'art wins, type is the fallback');
     ck('andTheTypeFallbackIsStillThere', /<h1 class="logo">CLANFIRE<\/h1>/.test(title), '');
+    /* ONE PICTURE, TWO LAYERS. The loading screen and the title wear the
+       SAME file: that is what makes the lift seamless — the scene stands
+       still and only the chrome arrives. If these ever diverge the boot
+       gains a visible jump-cut back. */
+    ck('theLoadingScreenAndTheTitleShareTheirGround',
+      /srcset="assets\/ui\/title-bg\.webp"/.test(tag) &&
+      /srcset="assets\/ui\/title-bg\.webp"/.test(title),
+      'same art on both layers');
+    /* THE POP-IN CAN NEVER STRAND AN INVISIBLE MENU. The hidden state lives
+       ONLY in the keyframe's `from`, held through the delay by `both` — a
+       resting `opacity: 0` on the chrome would mean a title whose .popIn
+       never lands (JS died, a test drove straight in with Boot.force, the
+       class refactored away) shows a backdrop and NO BUTTONS. */
+    ck('andAMissingPopNeverHidesTheMenu',
+      !/#scrTitle[^{]*\.(thead|tmenu)[^{]*\{[^}]*opacity:\s*0\s*[;}]/.test(html) &&
+      /@keyframes popIn\s*\{\s*from\s*\{[^}]*opacity:\s*0/.test(html) &&
+      /#scrTitle\.popIn \.thead\s*\{[^}]*both/.test(html),
+      'hidden only inside the keyframe, never at rest');
     /* and the display face is SELF-HOSTED and light — a Google Fonts
        fetch would be a third-party call on the boot path */
     const f = readFileSync(join(root, 'assets/ui/pixelify.woff2'));

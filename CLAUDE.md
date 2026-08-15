@@ -1943,10 +1943,25 @@ other sound system yet). All placement state is UI-local, never saved;
 screen wearing a live HUD — a resource bar, an empty minimap, "Day 1", a
 pause button and the collapse arrows, all over nothing, for as long as the
 scripts took to parse. Three rules fix it.
+**THE LOADING SCREEN IS THE TITLE'S OWN GLEN** — `#splash` shows
+`assets/ui/title-bg` (webp served, jpg fallback) at `object-fit: cover`:
+the SAME file, drawn the SAME way, in the same full-bleed box as
+`#scrTitle`'s `.tbg`. So the lift has no scene change in it at all — the
+two images are pixel-identical, the glen simply stands still, and the logo
+and plaques POP IN on top of it (`Boot._try` adds `.popIn`, fired at the
+lift rather than when the title screen is first shown, which happens early
+and BEHIND the splash where nobody would see it). It also halves the boot's
+image weight: one picture instead of a poster and then a backdrop.
+**THE POP CAN NEVER STRAND AN INVISIBLE MENU** — nothing sets a resting
+`opacity: 0`; the hidden state lives ONLY in the keyframe's `from`, held
+through the stagger delay by `both`. A title whose `.popIn` never lands
+(JS died, `Boot.force` drove straight in, the class got refactored away)
+shows every element plainly visible, which is the same failsafe reasoning
+as `FAILSAFE_MS`. `prefers-reduced-motion` keeps the arrival and drops the
+movement. `tests/boot.mjs` pins both halves.
 **THE SPLASH IS DECLARED IN THE DOCUMENT** — `#splash` is the first element
-in `<body>` in index.html, with INLINE styles (fixed, full-bleed, `#0d0b08`,
-`assets/ui/logo.png` at `object-fit: contain`) and its own inline `<script>`
-right underneath. That placement is the whole feature: anything a script
+in `<body>` in index.html, with INLINE styles (fixed, full-bleed, `#0d0b08`)
+and its own inline `<script>` right underneath. That placement is the whole feature: anything a script
 injects paints black first, which is exactly the flash the splash exists to
 hide, and the skip listeners must be armed before any external script has
 parsed or the session's first tap is swallowed. **The lift needs BOTH the
@@ -2008,14 +2023,19 @@ with margin so the squircle mask never clips it, and a DARK ground — a green
 icon camouflages against a green wallpaper, and an icon has to hold its edge
 on any wallpaper.
 **And nothing on the critical path is heavy** (same test): the splash is the
-FIRST paint of the session, so its image is what the player waits on. The logo
-ships as `assets/ui/logo.webp` (~192KB) inside a `<picture>` whose `<img>`
-still points at `assets/ui/logo.png` (~907KB) — the WebP is the served file
-everywhere it is understood and the PNG is the fallback, never removed. The
-`<picture>` carries `display:contents` so the `<img>` stays the flex item and
-the centring is untouched. `theSplashIsServedLight` /
-`andItIsGenuinelySmaller` (the WebP must be under HALF the PNG, or the
-indirection is buying nothing) / `butThePngStaysAsTheFallback` pin all three.
+FIRST paint of the session, so its image is what the player waits on — and
+since the loading screen became the title's own glen there is only ONE such
+image for the whole boot. `assets/ui/title-bg.webp` (~264KB) is served inside
+a `<picture>` whose `<img>` still points at `assets/ui/title-bg.jpg`
+(~385KB), the fallback, never removed; the `<picture>` carries
+`display:contents` so the `<img>` stays the flex item. Before this the boot
+fetched the poster AND the backdrop (~456KB of WebP between them), so
+sharing the file was a saving as well as a seamless lift.
+`theSplashIsServedLight` / `andItIsGenuinelySmaller` /
+`butTheBaselineStaysAsTheFallback` / `theLoadingScreenAndTheTitleShareTheirGround`
+pin it. **`assets/ui/logo.*` is the PROMO POSTER and is no longer on any
+path** — the full scene with the wordmark baked in, kept for store/promo
+use, referenced by nothing; do not "restore" it to the splash.
 The icons are PALETTE PNGs (colour type 3, which is why the opacity check
 accepts 3 alongside 0 and 2) — quantizing took the icon set from 385KB to
 154KB with no visible change at the sizes they are ever seen at. There is no

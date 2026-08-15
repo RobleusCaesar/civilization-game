@@ -521,6 +521,34 @@
     box-shadow: inset 0 0 0 2px #121c08, inset 0 0 0 3px #a8853a, inset 0 0 0 4px #14200a;
     filter: drop-shadow(0 3px 0 rgba(10,7,3,0.45));
   }
+  /* THE POP-IN. The loading screen IS this screen's backdrop, so the boot has
+     no scene change in it: the glen is up from frame one and the chrome
+     arrives on top as the splash fades (Boot._try adds .popIn).
+     IT CAN NEVER STRAND AN INVISIBLE MENU. Nothing here sets a resting
+     opacity: 0 — the hidden state lives only in the keyframe's `from`, held
+     during the delay by `both`. So if .popIn is never added (JS died, a test
+     drove straight in, the class was refactored away) every element is
+     simply visible, which is the same failsafe reasoning as Boot's own. */
+  @keyframes popIn {
+    from { opacity: 0; transform: translateY(9px) scale(0.955); }
+    68%  { opacity: 1; transform: translateY(0)   scale(1.012); }
+    to   { opacity: 1; transform: translateY(0)   scale(1); }
+  }
+  #scrTitle.popIn .thead        { animation: popIn 0.44s cubic-bezier(.22,.9,.3,1) 0.02s both; }
+  #scrTitle.popIn .tmenu > *    { animation: popIn 0.40s cubic-bezier(.22,.9,.3,1) both; }
+  #scrTitle.popIn .tmenu > *:nth-child(1) { animation-delay: 0.16s; }
+  #scrTitle.popIn .tmenu > *:nth-child(2) { animation-delay: 0.23s; }
+  #scrTitle.popIn .tmenu > *:nth-child(3) { animation-delay: 0.30s; }
+  #scrTitle.popIn .tmenu > *:nth-child(4) { animation-delay: 0.37s; }
+  #scrTitle.popIn #cloudChip    { animation: popIn 0.36s ease-out 0.46s both; }
+  /* a player who asks for less motion gets the arrival, not the movement */
+  @media (prefers-reduced-motion: reduce) {
+    #scrTitle.popIn .thead, #scrTitle.popIn .tmenu > *, #scrTitle.popIn #cloudChip {
+      animation-name: popInFade;
+    }
+    @keyframes popInFade { from { opacity: 0; } to { opacity: 1; } }
+  }
+
   /* desktop: the wordmark scales with the viewport, or the composition that
      reads as deliberate on a phone floats in a large empty middle */
   @media (min-width: 900px) {
@@ -836,17 +864,22 @@
      (every piece of HUD is gated on `body.ingame`), so the first frame is the
      logo on the game's own dark ground and nothing else. Boot lifts it. -->
 <div id="splash" style="position:fixed;inset:0;z-index:200;background:#0d0b08;display:flex;align-items:center;justify-content:center;opacity:1;transition:opacity .45s ease">
-  <!-- WEBP FIRST, PNG BEHIND IT. This image gates the first paint, so its
-       weight is the boot's weight: the same art is 191KB as WebP against
-       906KB as PNG, indistinguishable at 1:1. The <img> keeps the PNG so a
-       browser without WebP still gets a logo rather than a bare dark screen —
-       the exact failure the splash exists to prevent. `display:contents` on
-       the <picture> lets the <img> stay the flex item, so the centring works
-       either way. -->
+  <!-- THE LOADING SCREEN IS THE TITLE'S OWN GLEN. Same file, same
+       `object-fit: cover`, same full-bleed box as #scrTitle's .tbg — so when
+       the splash fades there is NO transition of the background at all: the
+       two images are pixel-identical and the scene simply stands still while
+       the logo and menu pop in on top of it. It also means the boot now
+       fetches ONE image instead of two (the poster and then the glen), so
+       the whole path got lighter.
+       WEBP FIRST, JPG BEHIND IT: this image gates the first paint, so its
+       weight is the boot's weight. The <img> keeps the jpg so a browser
+       without WebP still gets the glen rather than a bare dark screen — the
+       exact failure the splash exists to prevent. `display:contents` on the
+       <picture> lets the <img> stay the flex item. -->
   <picture style="display:contents">
-    <source srcset="assets/ui/logo.webp" type="image/webp">
-    <img src="assets/ui/logo.png" alt="Clanfire" decoding="sync" fetchpriority="high"
-         style="width:100%;height:100%;object-fit:contain;image-rendering:pixelated;pointer-events:none;-webkit-user-select:none;user-select:none">
+    <source srcset="assets/ui/title-bg.webp" type="image/webp">
+    <img src="assets/ui/title-bg.jpg" alt="" decoding="sync" fetchpriority="high"
+         style="width:100%;height:100%;object-fit:cover;image-rendering:pixelated;pointer-events:none;-webkit-user-select:none;user-select:none">
   </picture>
 </div>
 <script>
@@ -896,6 +929,13 @@
          and the splash would cut rather than cross-fade. */
       el.style.pointerEvents = 'none';
       el.style.opacity = '0';
+      /* THE CHROME ARRIVES AS THE SPLASH GOES. The backdrop underneath is the
+         same picture, so nothing about the scene changes — the logo and the
+         plaques simply pop onto ground that was already there. Fired here
+         rather than when the title screen is first shown, because that
+         happens early and BEHIND the splash, where nobody would see it. */
+      var t = document.getElementById('scrTitle');
+      if (t) t.classList.add('popIn');
       setTimeout(drop, this.FADE_MS + 60);
     },
   };
