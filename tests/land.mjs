@@ -312,48 +312,89 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
 }
 
 /* ---- 7b. THE GROUND MAY NOT SPEAK THE RESOURCE LANGUAGE ---------------
-   `gold` is the seam, the bar and the +gold float; `fire` is a building
-   burning, the only unprompted alarm in the game; `berry` is forage worth
-   walking to. A ground decal in one of those ramps is a two-pixel promise
-   the ground cannot keep. Measured on the DRAWN PIXELS, not on the source,
-   so it still catches a colour arrived at some other way. ---- */
+   `gold` is the seam, the resource bar and the +gold float; `fire` is a
+   building burning, the only unprompted alarm in the game; `berry` is forage
+   worth walking to. Ground texture in one of those ramps is a two-pixel
+   promise the ground cannot keep.
+
+   The audit covers EVERY ground-layer surface — decals, the core scatter and
+   every terrain sprite — because the collisions found by eye were spread
+   across all three: a wheat sheaf as bright as brass, orchard fruit in the
+   FIRE ramp, a felled stump's cut face 20 units from gold, and bright yellow
+   flowers on the one rare meadow tile.
+
+   A colour that MEANS what it looks like is not a collision, so a surface may
+   wear a ramp it genuinely is: the gold seam is allowed to look like gold and
+   a berry bush is allowed to look like a berry. Those are the only two
+   exemptions, and each is named — anything else wearing a reserved colour is
+   a false promise. Measured on the DRAWN PIXELS, so a colour arrived at some
+   other way is still caught. ---- */
 {
   const p = await page();
   const v = await p.evaluate(new Function(boot + `
+    const AP=ART.PALETTE;
     const hex=(r,g2,b)=>'#'+[r,g2,b].map(v=>v.toString(16).padStart(2,'0')).join('');
     const rgb=(h)=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
     const banned=[];
-    for (const k of R.DECAL_RESERVED) ART.PALETTE[k].forEach((h,i)=>banned.push([k,h,rgb(h),i]));
-    const c=document.createElement('canvas'); c.width=c.height=64;
-    const g=c.getContext('2d');
-    const hits=[], near=[];
-    for (const kind of [...R.DECAL_OPEN, ...R.DECAL_FOLIAGE]) {
-      g.clearRect(0,0,64,64);
-      let s=12345; const rnd=()=>{s=(s*1103515245+12345)>>>0;return s/4294967296;};
-      for (let k=0;k<24;k++) R.drawDecal(g, 8, 8, kind, 2, rnd);
-      const d=g.getImageData(0,0,64,64).data;
-      const seen=new Set();
-      for (let i=0;i<d.length;i+=4) if (d[i+3]>200) seen.add(hex(d[i],d[i+1],d[i+2]));
-      for (const h of seen) {
+    for (const k of R.DECAL_RESERVED) AP[k].forEach((h,i)=>banned.push([k,h,rgb(h),i]));
+    // the surface genuinely IS the thing its colour claims
+    const TRUTHFUL={ 'coreScatter:GOLDORE':['gold'], 'terrain:GOLDORE':['gold'],
+                     'terrain:FERTILE':['berry'] };
+    const seenPx=(draw,w,h)=>{
+      const c=document.createElement('canvas'); c.width=w; c.height=h;
+      const g=c.getContext('2d'); draw(g);
+      const d=g.getImageData(0,0,w,h).data, s=new Set();
+      for(let i=0;i<d.length;i+=4) if(d[i+3]>200) s.add(hex(d[i],d[i+1],d[i+2]));
+      return s;
+    };
+    const bad=[], ok=[];
+    const check=(what,set)=>{
+      const allow=TRUTHFUL[what]||[];
+      // a colour that IS a member of a ramp this surface may wear is
+      // legitimate, and how near it happens to sit to some OTHER ramp is then
+      // beside the point — gold[2] is 26 from fire[2] because the palette's
+      // two accent ramps neighbour each other, and a gold seam still has to
+      // look like gold. The near test exists to catch a surface reaching for
+      // a signal colour it has no right to, not to relitigate the palette.
+      const owned = new Set();
+      for (const ramp of allow) for (const h of AP[ramp]) owned.add(h);
+      for(const h of set){ if (owned.has(h)) { ok.push(what+' '+h); continue; }
         const [r0,g0,b0]=rgb(h);
-        for (const [ramp,bh,[br,bg,bb],idx] of banned) {
-          const dist=Math.abs(r0-br)+Math.abs(g0-bg)+Math.abs(b0-bb);
-          if (dist===0) hits.push(kind+' draws '+h+' = '+ramp+' '+bh);
-          // …and NEAR is the real failure: bloom[2] and gold[2] were 20 apart
-          // and indistinguishable at two pixels on grass. The DARKEST step of
-          // every ramp is exempt from the near test — a ramp's index 0 is its
-          // shadow, and every shadow in this palette is the same dark earthy
-          // brown, so gold[0] sits a few units from honest wood and thatch.
-          // What the eye reads as gold, fire or berry is the bright end.
-          else if (idx > 0 && dist<=40) near.push(kind+' draws '+h+' ~ '+ramp+' '+bh+' (d='+dist+')');
+        for(const [ramp,bh,[br,bg,bb],idx] of banned){
+          const d=Math.abs(r0-br)+Math.abs(g0-bg)+Math.abs(b0-bb);
+          // the DARKEST step of every ramp is exempt from the near test: a
+          // ramp's index 0 is its shadow, and every shadow in this palette is
+          // the same dark earthy brown. What the eye reads is the bright end.
+          const hit = d===0 || (idx>0 && d<=40);
+          if(!hit) continue;
+          (allow.includes(ramp) ? ok : bad).push(what+' '+h+' ~ '+ramp+'['+bh+'] d='+d);
         }
       }
+    };
+    for(const kind of [...R.DECAL_OPEN, ...R.DECAL_FOLIAGE, 'reed','damp'])
+      check('decal:'+kind, seenPx(g=>{ let s=1;const rnd=()=>{s=(s*1103515245+12345)>>>0;return s/4294967296;};
+        for(let k=0;k<24;k++) R.drawDecal(g,8,8,kind,2,rnd); },64,64));
+    for(const t of [T.FERTILE,T.PEBBLES,T.GOLDORE]){
+      const name=Object.keys(T).find(k=>T[k]===t);
+      check('coreScatter:'+name, seenPx(g=>{
+        const terr=new Array(CFG.W*CFG.H).fill(t);
+        g.translate(-4*CFG.TILE,-4*CFG.TILE);
+        for(let k=0;k<40;k++) R.coreScatter(g,4,4,terr,t);
+      }, CFG.TILE, CFG.TILE));
     }
-    return { hits, near, reserved: R.DECAL_RESERVED };`));
-  ck('noGroundDecalWearsAReservedColour', v.hits.length === 0,
-    v.hits.length ? v.hits.join('; ') : 'none of ' + v.reserved.join('/') + ' appears in any ground decal');
-  ck('andNoneComesCloseEnoughToBeMistaken', v.near.length === 0,
-    v.near.length ? v.near.join('; ') : 'no decal colour within 40 of a reserved one');
+    for(const key in T){ const t=T[key];
+      for(const set of [Sprites.terrain[t],(Sprites.terrainMed||{})[t],
+                        (Sprites.terrainFull||{})[t],(Sprites.terrainRare||{})[t]]){
+        if(!set) continue;
+        for(const img of set) check('terrain:'+key, seenPx(g=>g.drawImage(img,0,0), img.width, img.height));
+      }
+    }
+    const uniq=a=>[...new Set(a)];
+    return { bad:uniq(bad), truthful:uniq(ok).length, reserved:R.DECAL_RESERVED };`));
+  ck('noGroundSurfaceMakesAFalsePromise', v.bad.length === 0,
+    v.bad.length ? v.bad.slice(0, 8).join('; ')
+      : 'nothing in ' + v.reserved.join('/') + ' outside the ' + v.truthful
+        + ' places the surface genuinely is that resource');
   await p.close();
 }
 
@@ -479,6 +520,114 @@ const seaBoot = `Boot.force(); G.newGame('scenes1','moderate','xlarge');
   ck('theSameSeedTracesTheSameCoast', v.stable, 'region ids, cells and loops survive a save/load');
   ck('andOnlyWaterMovingReTracesIt', v.fellSame && v.floodDiff,
     'felling a stand leaves the water key alone; flooding a tile changes it');
+  await p.close();
+}
+
+/* ---- 9. DECORATIVE STREAMS HAVE NO GAMEPLAY EFFECT AT ALL -------------
+   The whole point of the feature is that it is a drawing. A stream is not a
+   water tile: it does not block movement, does not count as water for docks,
+   fishing, naval hulls, bridges, sappers or the reachability clamp, does not
+   appear on the minimap as water, and writes to no map array. Units and
+   buildings pass over it freely.
+
+   This is measured the only way it can honestly be measured — run every one
+   of those answers over the tiles a stream actually crosses, with the streams
+   drawn and with them switched off, and require the two to be identical. ---- */
+const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
+  Screens._demo=false; Screens.show('playing'); S.paused=true;
+  for (let i=0;i<S.map.explored.length;i++){S.map.explored[i]=1; if(S.map.seenTerrain)S.map.seenTerrain[i]=S.map.terrain[i];}
+  R.rebuildTerrain();`;
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(wetBoot + `
+    const runs = R.streams();
+    // the tiles a stream crosses, which is where an effect would show up
+    const on = new Set();
+    for (const r of runs) for (const pt of r) on.add((Math.floor(pt[1]))*CFG.W + Math.floor(pt[0]));
+    const tiles = [...on].map(k => [k % CFG.W, (k / CFG.W) | 0]);
+    const sig = () => {
+      const m = S.map, parts = [];
+      for (const k of ['terrain','seenTerrain','explored','reclaimed','seenB'])
+        if (m[k]) { let h=0x811c9dc5; for(let i=0;i<m[k].length;i++){h^=m[k][i];h=Math.imul(h,0x01000193);} parts.push(k+':'+(h>>>0)); }
+      return parts.join('|');
+    };
+    const answers = () => tiles.map(([x,y]) => [
+      Path.passable(x,y,'P') ? 1 : 0,                    // land movement
+      Path.passable(x,y,'P',true) ? 1 : 0,               // naval
+      Path.passable(x,y,'A') ? 1 : 0,                    // …for the rival too
+      Bld.dockSiteOk(x,y,'P').code || 'ok',              // dock siting
+      Bld.tileFree ? (Bld.tileFree(x,y) ? 1 : 0) : 0,    // buildable ground
+      Bld.canPlace('P','house',x,y,{noCost:1}).code || 'ok',
+      Units.canFish ? (Units.canFish(x,y) ? 1 : 0) : 0,  // fishing
+      MapGen.shallowWater(x,y) ? 1 : 0,
+      Terraform && Terraform.bridgeable ? (Terraform.bridgeable(x,y) ? 1 : 0) : 0,
+      Terraform && Terraform.diggable ? (Terraform.diggable(x,y) ? 1 : 0) : 0,
+    ].join(',')).join(';');
+    const before = { sig: sig(), ans: answers() };
+    // …now switch the drawing off entirely and ask again
+    const dens = LAND.STREAM_DENSITY;
+    LAND.STREAM_DENSITY = 0; R._streamKey = ''; R.streams(); R.rebuildTerrain();
+    const off = { sig: sig(), ans: answers(), runs: R.streams().length };
+    LAND.STREAM_DENSITY = dens; R._streamKey = ''; R.rebuildTerrain();
+    // and the minimap must not paint a stream as water
+    const mini = (() => {
+      R.drawMini && R.drawMini();
+      if (!R.mini) return 'no minimap';
+      const g = R.mini.getContext('2d');
+      const d = g.getImageData(0,0,R.mini.width,R.mini.height).data;
+      const wc = ART.PALETTE.water;
+      const px = (x,y) => { const sx=Math.round(x/CFG.W*R.mini.width), sy=Math.round(y/CFG.H*R.mini.height);
+        const i=(sy*R.mini.width+sx)*4; return [d[i],d[i+1],d[i+2]]; };
+      let asWater = 0;
+      for (const [x,y] of tiles) {
+        const t = S.map.terrain[MapGen.idx(x,y)];
+        if (t === T.WATER || t === T.MOAT) continue;      // genuinely water — not our business
+        const [r,g2,b] = px(x,y);
+        if (b > r + 25 && b > g2 + 10) asWater++;          // painted blue on dry land
+      }
+      return asWater;
+    })();
+    return { tiles: tiles.length, runs: runs.length, wrote: before.sig !== off.sig,
+             moved: before.ans !== off.ans, offRuns: off.runs, miniAsWater: mini };`));
+  ck('aStreamCrossesRealGround', v.tiles >= 12 && v.runs > 0,
+    v.runs + ' streams over ' + v.tiles + ' tiles');
+  ck('andStreamsWriteToNoMapArray', !v.wrote, 'every map array identical');
+  ck('andHaveNoGameplayEffectWhatever', !v.moved && v.offRuns === 0,
+    'land/naval/rival passability, dock siting, buildable ground, house placement, '
+    + 'fishing, shallowness, bridgeability and diggability all identical with the '
+    + 'streams drawn and with them off');
+  ck('andTheMinimapNeverShowsThemAsWater', v.miniAsWater === 0,
+    v.miniAsWater + ' stream tiles painted as water on the minimap');
+  await p.close();
+}
+
+/* ---- 10. HILLS ARE STILL ORDINARY GROUND -----------------------------
+   The elevation hints are a DRAWING. A hill must stay exactly as passable
+   and as buildable as it was before anything was shaded on it. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(wetBoot + `
+    const W=CFG.W, tiles=[];
+    for (let y=1;y<CFG.H-1;y++) for (let x=1;x<CFG.W-1;x++)
+      if (S.map.terrain[y*W+x] === T.HILLS) tiles.push([x,y]);
+    const answers = () => tiles.map(([x,y]) => [
+      Path.passable(x,y,'P')?1:0, Path.passable(x,y,'A')?1:0,
+      Bld.tileFree ? (Bld.tileFree(x,y)?1:0) : 0,
+      Bld.canPlace('P','house',x,y,{noCost:1}).code || 'ok',
+    ].join(',')).join(';');
+    const before = answers();
+    const rel = R.hillRelief, sh = R.hillShadow;
+    R.hillRelief=()=>{}; R.hillShadow=()=>{}; R.rebuildTerrain();
+    const after = answers();
+    R.hillRelief=rel; R.hillShadow=sh; R.rebuildTerrain();
+    // …and the shading must actually be doing something
+    const d = R.hillHeight();
+    let deep=0; for (const [x,y] of tiles) if (d[y*W+x] > 1) deep++;
+    return { n: tiles.length, same: before === after, deep, max: R._hillMax };`));
+  ck('hillsAreStillOrdinaryGround', v.same,
+    v.n + ' hill tiles: passability and buildability identical with the relief and without');
+  ck('andTheHillFieldIsRealDepth', v.max >= 2 && v.deep > 0,
+    'depth field runs to ' + v.max + ', ' + v.deep + ' tiles more than one deep');
   await p.close();
 }
 

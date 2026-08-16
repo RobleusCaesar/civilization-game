@@ -92,6 +92,15 @@ const LAND = {
   SHORE_SMOOTH: 4,      // Chaikin iterations over the TILE lattice
   SHORE_NOISE: 0.16,    // tiles of ragged displacement after smoothing
   SHORE_NOISE_F: 2.6,   // how fine that raggedness is
+  /* …and the two caps that keep a SMALL body of water from tearing itself
+     apart. Both are fractions of the loop's own radius: a band is an offset
+     of the shore curve, and an offset larger than the radius inverts through
+     the centre and sprays outward. Lower BAND_CAP if a pond's shelf still
+     looks like a wash rather than a rim; lower SHORE_NOISE_CAP if a small
+     pond's outline looks knotted. Neither has any effect on an ordinary
+     coast, where the radius is many tiles. */
+  SHORE_NOISE_CAP: 0.30,
+  BAND_CAP: 0.55,
   SHORE_MAXPTS: 9000,   // per-loop cap, so a vast lake stops subdividing
   /* THE SHELF IS MEASURED FROM THE TRACED CURVE, never from the tile grid.
      Stacked translucent bands offset into the water: each adds its own alpha,
@@ -118,6 +127,51 @@ const LAND = {
   SHOAL_FREQ: 0.55,
   SHOAL_GATE: 0.5,
   SHOAL_THROW: 11,      // 1/16ths of spread either side of the waterline
+  /* LIFE IN THE ROCKY SHALLOWS — kelp, coral heads, drowned boulders. Drawn
+     BEFORE the shelf so the shallow water washes over them. Sparse on
+     purpose: the shallows are background. Raise LIFE_CHANCE if a rocky
+     coast looks barren, raise LIFE_GATE if the growth reads as an even
+     sprinkle rather than beds, and LIFE_REACH is how far out it grows. */
+  LIFE_CHANCE: 0.52,
+  LIFE_GATE: 0.45,
+  LIFE_REACH: 7,
+  /* --- HILLS ARE RAISED GROUND, and must stay clearly less than a mountain.
+     They are read at their EDGES: hillRelief draws the catch-light along the
+     northern rim, hillShadow the cast shadow on the ground to the south, and
+     nothing shades the middle (see hillRelief for why that was tried three
+     ways and abandoned). The shadow is the strongest cue by a distance —
+     raise HILL_SHADOW / HILL_SHADOW_MAX if hills still read flat, lower them
+     if a hill starts looking like a mountain. WOBBLE is how much both edges
+     wander; drop it to 0 and they become ruled lines. --- */
+  HILL_RIM_MAX: 3,      // 1/32nds — how deep the northern catch-light reaches
+  HILL_RIM: 0.11,
+  HILL_SHADOW: 0.32,
+  HILL_SHADOW_MAX: 9,   // 1/32nds of a tile, so the shadow never leaves the tile below
+  HILL_SHADOW_WOBBLE: 3.1,
+  /* --- DECORATIVE STREAMS. Pure texture: they are not water tiles and have
+     no gameplay effect whatsoever (see R.streams). STREAM_DENSITY is the
+     count on a 65x65 map, scaled by area and jittered so some maps get none
+     — raise it if the world looks dry, but keep it low: a creek is a detail
+     you notice once, not a feature. STREAM_MIN_RUN is how far from the sea a
+     spring must be to be worth following. WANDER trades directness for
+     meander; SMOOTH/NOISE are the coastline's two-step applied to an open
+     path. STREAM_W is the thread's width in 1/16ths of a tile — well under
+     one tile, or it starts reading as real water. --- */
+  STREAM_DENSITY: 1.7,
+  STREAM_MIN_RUN: 7,
+  STREAM_IDEAL_RUN: 11,
+  STREAM_APART: 12,
+  STREAM_WANDER: 7.5,
+  STREAM_SIDE_MAX: 2,   // how many sideways steps in a row a meander may take
+  STREAM_SIDE_COST: 1.6,
+  STREAM_SMOOTH: 3,
+  STREAM_NOISE: 0.11,
+  STREAM_NOISE_F: 2.1,
+  STREAM_W: 1.1,
+  STREAM_W_VAR: 0.9,
+  STREAM_DAMP: 1.1,   // 1/16ths of damp ground either side of the thread
+  STREAM_DECAL_STEP: 5,
+  STREAM_DECAL: 0.22,
 };
 
 const R = {
@@ -467,7 +521,18 @@ const R = {
       const q = (ox, oy, w, h, c) => { g.fillStyle = c; g.fillRect(dx + ox * px, dy + oy * px, w * px, h * px); };
       if (kind === 'pebble') { q(1, 2, 2, 1, AP.stone[0]); q(0, 0, 3, 2, AP.stone[2]); q(0, 0, 1, 1, AP.stone[3]); }
       else if (kind === 'vein') { q(0, 1, 3, 1, AP.gold[0]); q(0, 0, 2, 1, AP.gold[2]); q(2, 0, 1, 1, AP.gold[3]); }
-      else { q(1, 3, 1, 1, AP.soil[1]); q(0, 1, 1, 2, AP.thatch[1]); q(1, 0, 1, 3, AP.thatch[2]); q(2, 1, 1, 2, AP.thatch[1]); }
+      /* DRY GRASS, NOT A SHEAF OF WHEAT. This drew a standing four-pixel
+         sheaf in thatch[1]/thatch[2] — bright brass, as big on screen as the
+         berry bush beside it and taller than it was wide, so the eye read a
+         golden OBJECT lying in the orchard rather than ground texture, and
+         could not tell whether it was a resource, a harvestable or litter.
+         It is now a low tussock of dry stems in muted browns: the same job
+         (rich ground reads richer at its core) with nothing in it that says
+         "pick me up". Note `vein` KEEPS the gold ramp and is not a
+         collision — it is drawn only on a gold seam, where gold is exactly
+         what is being promised. */
+      else { q(0, 2, 4, 1, AP.soil[1]); q(0, 1, 1, 1, AP.wood[3]); q(1, 0, 1, 2, AP.soil[3]);
+             q(2, 1, 1, 1, AP.wood[3]); q(3, 1, 1, 1, AP.soil[3]); }
     }
   },
 
@@ -517,7 +582,7 @@ const R = {
            two-pixel yellow speck in a meadow therefore read as something the
            player could pick up, scattered a thousand times over the map. The
            petals are muted ochre and cream now (see DECAL_RESERVED). */
-        const pet = [AP.bloom[0], AP.bloom[1], AP.thatch[0], AP.bone[1], AP.bloom[0]][(rnd() * 5) | 0];
+        const pet = [AP.bloom[0], AP.bone[2], AP.thatch[0], AP.bone[1], AP.bloom[0]][(rnd() * 5) | 0];
         q(1, 1, 1, 1, D);
         q(0, 0, 1, 1, pet); q(1, 0, 1, 1, pet); q(3, 0, 1, 1, pet); break;
       }
@@ -544,6 +609,24 @@ const R = {
         q(0, 0, 2, 1, AP.leaf[1]); q(1, 1, 1, 1, AP.leaf[2]); break;
       case 'scuff':
         q(0, 0, 3, 1, AP.soil[2]); q(1, 1, 1, 1, AP.soil[1]); break;
+      /* ---- UNDER THE SURFACE (rocky shallows only) --------------------
+         These are drawn BEFORE the shelf ribbons, so the five translucent
+         bands of shallow water wash over them — which is what actually puts
+         them under the surface, and costs nothing. Drawing them on top and
+         hand-desaturating each colour would be the same picture arrived at
+         by guesswork. They are DARK and low-contrast to begin with: the
+         shallows are background, and anything bright down there competes
+         with the shore it is supposed to sit behind. */
+      case 'kelp':                                                  // fronds, leaning
+        q(1, 0, 1, 5, AP.leaf[0]); q(0, 1, 1, 2, AP.leaf[1]);
+        q(2, 2, 1, 2, AP.leaf[1]); q(2, 0, 1, 1, AP.leaf[0]); break;
+      case 'coral':                                                 // a low branching clump
+        q(0, 2, 4, 1, AP.hide[0]);
+        q(1, 0, 1, 2, AP.hide[2]); q(0, 1, 1, 1, AP.hide[1]);
+        q(2, 1, 1, 1, AP.hide[2]); q(3, 0, 1, 1, AP.hide[1]); break;
+      case 'sunkrock':                                              // a dark submerged boulder
+        q(0, 1, 4, 2, AP.ore[0]); q(1, 0, 2, 1, AP.ore[1]);
+        q(0, 2, 1, 1, AP.ink[1]); break;
     }
   },
 
@@ -688,8 +771,21 @@ const R = {
         }
       }
       // ---- 2. TRACE: every water/land edge, directed so loops chain ----
-      const edges = new Map();                 // "x,y" -> [x2,y2]
-      const add = (ax, ay, bx, by) => { edges.set(ax + ',' + ay, [ax, ay, bx, by]); };
+      /* A VERTEX CAN HAVE TWO EDGES LEAVING IT. Where two water cells touch
+         only at a CORNER, the boundary passes through that lattice point
+         twice — once for each cell — and a Map keyed by the start vertex
+         silently kept the second and threw the first away. The lost edge left
+         the chain unable to close, so the walk produced a figure-of-eight
+         that crossed itself and a stretch of real shoreline that was never
+         drawn at all. Each vertex therefore holds a LIST, and the walk takes
+         one edge at a time. (Which of the two a walk takes at a diagonal
+         pinch is arbitrary and does not matter: both are real boundary, and
+         between them the two walks cover it exactly once.) */
+      const edges = new Map();                 // "x,y" -> [[ax,ay,bx,by], …]
+      const add = (ax, ay, bx, by) => {
+        const k2 = ax + ',' + ay, cur = edges.get(k2);
+        if (cur) cur.push([ax, ay, bx, by]); else edges.set(k2, [[ax, ay, bx, by]]);
+      };
       for (const k of cells) {
         const cx = k % W, cy = (k / W) | 0;
         if (!wet(cx, cy - 1)) add(cx, cy, cx + 1, cy);              // top    →
@@ -697,13 +793,19 @@ const R = {
         if (!wet(cx, cy + 1)) add(cx + 1, cy + 1, cx, cy + 1);      // bottom ←
         if (!wet(cx - 1, cy)) add(cx, cy + 1, cx, cy);              // left   ↑
       }
+      const take = (k2) => {
+        const list = edges.get(k2);
+        if (!list || !list.length) return null;
+        const e = list.pop();
+        if (!list.length) edges.delete(k2);
+        return e;
+      };
       const loops = [];
       while (edges.size) {
         const first = edges.keys().next().value;
         const loop = [];
-        let cur = first;
-        while (edges.has(cur)) {
-          const e = edges.get(cur); edges.delete(cur);
+        let cur = first, e;
+        while ((e = take(cur))) {
           loop.push([e[0], e[1]]);
           cur = e[2] + ',' + e[3];
         }
@@ -715,6 +817,23 @@ const R = {
     }
     this._shore = regions; this._shoreKey = key;
     return regions;
+  },
+
+  /* HOW MUCH BAND A LOOP CAN CARRY. A band is an OFFSET of the shore curve,
+     and no offset can reach further than the loop's own radius without
+     turning inside out — pushed past the centre, the offset polyline inverts
+     and the fill sprays outward instead of hugging the curve. A one-tile
+     pond has a radius of about 0.4 tiles and the shelf reaches 0.69, which
+     is exactly how a pond came to throw a pale wash four tiles across the
+     grass. Effective radius from the enclosed area, so a long thin inlet is
+     correctly judged narrow rather than large. */
+  loopRadius(pts) {
+    let a = 0;
+    for (let i = 0, n = pts.length; i < n; i++) {
+      const p = pts[i], q = pts[(i + 1) % n];
+      a += p[0] * q[1] - q[0] * p[1];
+    }
+    return Math.sqrt(Math.abs(a) / 2 / Math.PI);
   },
 
   /* CHAIKIN on a CLOSED loop. Each pass replaces every edge with points at
@@ -742,13 +861,17 @@ const R = {
   roughen(pts) {
     this.landLattices();
     const n = pts.length, out = new Array(n);
+    // …but never by more than the loop can take: on a pond a couple of tiles
+    // across, the full amplitude is a sizeable fraction of the radius and the
+    // curve ties itself in a knot.
+    const amp = Math.min(LAND.SHORE_NOISE, this.loopRadius(pts) * LAND.SHORE_NOISE_CAP);
     for (let i = 0; i < n; i++) {
       const a = pts[(i - 1 + n) % n], b = pts[(i + 1) % n], p = pts[i];
       let nx = -(b[1] - a[1]), ny = (b[0] - a[0]);
       const len = Math.hypot(nx, ny) || 1;
       nx /= len; ny /= len;
       const d = (this._latRead(this._latOne.edge, p[0] * LAND.SHORE_NOISE_F, p[1] * LAND.SHORE_NOISE_F) - 0.5)
-        * 2 * LAND.SHORE_NOISE;
+        * 2 * amp;
       out[i] = [p[0] + nx * d, p[1] + ny * d];
     }
     return out;
@@ -784,14 +907,30 @@ const R = {
       if (x < 0 || y < 0 || x >= W || y >= H) return false;
       const t = terr[y * W + x]; return t === T.WATER || t === T.MOAT;
     };
-    /* which side is land? Decided by SAMPLING, not by winding order: a traced
-       loop may be an outer shore or an island's, and the two wind opposite
-       ways. Ask the map. */
+    /* WHICH SIDE THE LAND IS ON IS A PROPERTY OF THE LOOP, NOT OF A POINT.
+       This used to ask the MAP, per point — step a little way along the
+       normal and see whether you landed in water. That is fragile exactly
+       where the roughened curve wobbles across a tile boundary or turns a
+       tight corner, and on a real map 2.4% of points came back with a normal
+       pointing the OPPOSITE way to both their neighbours'. One flipped point
+       puts its offset on the far side of the curve, and since a band is
+       filled as (base forward + offset reversed) the fill spans the jump —
+       which is what painted pale blue wedges two tiles inland out of a tight
+       bay. Nothing about a coastline is per-point, so nothing here samples
+       per point any more.
+
+       The tracer walks every water cell's own boundary in a fixed rotational
+       order (top →, right ↓, bottom ←, left ↑), so the water is ALWAYS on
+       the left-hand normal: for the top edge, direction (1,0) and (-dy, dx)
+       = (0,1), which points down into the cell — and the same holds for the
+       other three, and for an island's loop, whose edges still belong to the
+       water cells around it. Chaikin and the roughening preserve point
+       order, so they preserve the tangent, so they preserve this. It is a
+       fact about how the loop was built, and it cannot flip. */
     const outward = (p, a, b) => {
-      let nx = -(b[1] - a[1]), ny = (b[0] - a[0]);
-      const len = Math.hypot(nx, ny) || 1; nx /= len; ny /= len;
-      if (wetT(Math.floor(p[0] + nx * 0.6), Math.floor(p[1] + ny * 0.6))) { nx = -nx; ny = -ny; }
-      return [nx, ny];
+      const nx = (b[1] - a[1]), ny = -(b[0] - a[0]);   // (dy, -dx): away from the water
+      const len = Math.hypot(nx, ny) || 1;
+      return [nx / len, ny / len];
     };
     // the land tile this point looks out onto, or -1 off the board
     const landAt = (p, nx, ny) => {
@@ -816,7 +955,7 @@ const R = {
       return (S.map.reclaimed && S.map.reclaimed[k]) ? 0 : 1;
     };
     const ribbon = (pts, offs, col) => {                 // fill between base and offset
-      if (pts.length < 3) return;
+      if (!offs || pts.length < 3 || offs.length < 3) return;
       g.beginPath();
       g.moveTo(pts[0][0] * TL, pts[0][1] * TL);
       for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0] * TL, pts[i][1] * TL);
@@ -824,7 +963,22 @@ const R = {
       g.closePath(); g.fillStyle = col; g.fill();
     };
 
-    for (const reg of this.waterRegions()) for (const loop of reg.loops) {
+    /* EACH BAND IS PENNED INTO ITS OWN SIDE. The geometry above should never
+       stray now, but a band drawn from a curve has five offsets and any one
+       of them is a place a future edit can get wrong — so the last word is a
+       CLIP, which cannot be argued with. A water-side band (shelf, foam) may
+       paint on water tiles and one tile of land beyond; a land-side band
+       (beach, shoal, stones) on land tiles and one tile of water. The one
+       tile of slack is what keeps the clip off the visible edge: every real
+       band lives well inside it, so the waterline itself is still drawn by
+       the traced curve and the grid never shows through. Two passes rather
+       than two clips per loop — regions do not overlap, so the only order
+       that matters is within a loop, and that is preserved. */
+    const side = this.shoreSideMasks();
+    for (const pass of [0, 1]) {
+      g.save();
+      g.clip(pass ? side.land : side.water);
+      for (const reg of this.waterRegions()) for (const loop of reg.loops) {
       const n = loop.length;
       if (n < 4) continue;
       const nrm = new Array(n), rock = new Array(n), nat = new Array(n);
@@ -854,25 +1008,78 @@ const R = {
          swells and pinches to nothing without any reference to the grid. */
       const wAt = i => this._latRead(this._latOne.sand,
         loop[i][0] * LAND.SAND_FREQ * 3.1, loop[i][1] * LAND.SAND_FREQ * 3.1);
-      // an offset polyline: + is outward onto the land, - is out into the water
+      /* AN OFFSET CURVE EATS ITSELF ON A TIGHT CONCAVE TURN. Where the radius
+         of curvature is smaller than the offset distance — the head of a
+         narrow inlet, the neck of a one-tile channel — the offset points
+         overtake each other and the polyline doubles back, which fills as a
+         spurious loop hanging off the band. The reversal is exactly the
+         signal: an offset segment whose direction OPPOSES the base segment it
+         came from is inside such a loop, so those points are dropped. The
+         band then bridges the pinch in a straight line, which is what a
+         beach does at the head of an inlet anyway. */
+      const prune = (o) => {
+        const keep = [];
+        for (let i = 0; i < n; i++) {
+          const j = (i + 1) % n;
+          const bx = loop[j][0] - loop[i][0], by = loop[j][1] - loop[i][1];
+          const ox = o[j][0] - o[i][0], oy = o[j][1] - o[i][1];
+          if (bx * ox + by * oy >= 0) keep.push(o[i]);
+        }
+        // …and if NOTHING survives, the whole offset has turned inside out.
+        // Falling back to the broken polyline (which is what this did at
+        // first) draws the very artefact the prune exists to remove: the
+        // band is simply not drawn.
+        return keep.length >= 3 ? keep : null;
+      };
+      // an offset polyline: + is outward onto the land, - is out into the water.
+      // The magnitude is CLAMPED to the loop's own radius, so a band on a small
+      // pond narrows to fit instead of inverting through its centre.
+      const cap = this.loopRadius(loop) * LAND.BAND_CAP * 16;
       const off = (fn) => {
         const o = new Array(n);
         for (let i = 0; i < n; i++) {
-          const p = loop[i], nn = nrm[i], d = fn(i) / 16;
+          const p = loop[i], nn = nrm[i];
+          let d = fn(i);
+          if (d > cap) d = cap; else if (d < -cap) d = -cap;
+          d /= 16;
           o[i] = [p[0] + nn[0] * d, p[1] + nn[1] * d];
         }
-        return o;
+        return prune(o);
       };
       /* THE SHELF, STACKED. One band would put a hard rim wherever it ended;
          several translucent bands of decreasing reach each add their own alpha,
          so the water pales continuously from deep to shore. Painted widest
          first, and every one of them measured from the curve. */
+      if (!pass) {
+      /* WHAT LIVES IN A ROCKY SHALLOW. Sand shelves carry nothing worth
+         drawing at this scale; a rocky one has weed, coral heads and drowned
+         boulders, and they are the whole reason to look at the water instead
+         of past it. Gated on the SAME drift field the shore stones use, so
+         the growth gathers where the stones gather — one rocky headland is
+         busy and the next stretch is bare, which is what stops a scatter
+         reading as wallpaper. Never on a sandy shore. */
+      for (let i = 0; i < n; i += LAND.SHOAL_STEP) {
+        if (rockS[i] < 0.35 || natS[i] < 0.5) continue;
+        const p = loop[i], [nx, ny] = nrm[i];
+        let hh = (Math.imul(Math.round(p[0] * 16) + 7, 0x85ebca6b)
+          ^ Math.imul(Math.round(p[1] * 16) + 13, 0xc2b2ae35) ^ this.landSeed()) >>> 0;
+        const rnd = () => { hh = Math.imul(hh ^ (hh >>> 15), 0x2c1b3c6d); hh = (hh ^ (hh >>> 12)) >>> 0; return hh / 4294967295; };
+        const drift = this._latRead(this._latOne.shoal, p[0] + 3.7, p[1] - 2.1);
+        const gate = drift <= LAND.LIFE_GATE ? 0 : (drift - LAND.LIFE_GATE) / (1 - LAND.LIFE_GATE);
+        if (rnd() > LAND.LIFE_CHANCE * rockS[i] * gate) continue;
+        const d = -(1.5 + rnd() * LAND.LIFE_REACH) / 16;      // out into the shallows
+        const u = rnd();
+        this.drawDecal(g, (p[0] + nx * d) * TL, (p[1] + ny * d) * TL,
+          u < 0.4 ? 'kelp' : u < 0.72 ? 'coral' : 'sunkrock', px * (0.75 + rnd() * 0.7), rnd);
+      }
       for (let k = LAND.SHELF_STEPS; k >= 1; k--) {
         const f = k / LAND.SHELF_STEPS;
         ribbon(loop, off(i => -(0.8 + wAt(i) * 0.55) * LAND.SHELF_REACH * f * natS[i]),
           'rgba(126,192,216,' + LAND.SHELF_ALPHA.toFixed(3) + ')');
       }
       ribbon(loop, off(i => -(0.5 + wAt(i)) * LAND.FOAM_W * natS[i]), AP.water[4]);  // the wet lip
+      continue;
+      }
       ribbon(loop, off(i => {                                              // the beach
         const w = wAt(i);
         return (LAND.SAND_MIN + w * w * (LAND.SAND_MAX - LAND.SAND_MIN)) * (1 - rockS[i]) * natS[i];
@@ -898,8 +1105,54 @@ const R = {
         this.drawDecal(g, (p[0] + nx * d) * TL, (p[1] + ny * d) * TL,
           rnd() < 0.55 ? 'pebble' : 'stone', px * (0.8 + rnd() * 0.9), rnd);
       }
+      }
+      g.restore();
     }
     g.restore();
+  },
+
+  /* THE TWO SIDES, AS CLIP PATHS. Water tiles dilated by one, and land tiles
+     dilated by one — built once per water change and cached on the same key
+     the regions use, since that is exactly when they can change. Rows are
+     merged into runs so the path is a few hundred rectangles rather than
+     four thousand. */
+  _sideMask: null, _sideKey: '',
+  shoreSideMasks() {
+    const key = this.waterKey();
+    if (this._sideKey === key && this._sideMask) return this._sideMask;
+    const W = CFG.W, H = CFG.H, TL = CFG.TILE;
+    const terr = (S.map.seenTerrain || S.map.terrain);
+    const wetM = new Uint8Array(W * H), dryM = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) {
+      const t = terr[i];
+      if (t === T.WATER || t === T.MOAT) wetM[i] = 1; else dryM[i] = 1;
+    }
+    const dilate = (src) => {
+      const o = new Uint8Array(W * H);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        if (!src[y * W + x]) continue;
+        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+          const nx = x + ox, ny = y + oy;
+          if (nx >= 0 && ny >= 0 && nx < W && ny < H) o[ny * W + nx] = 1;
+        }
+      }
+      return o;
+    };
+    const toPath = (m) => {
+      const p = new Path2D();
+      for (let y = 0; y < H; y++) {
+        let run = -1;
+        for (let x = 0; x <= W; x++) {
+          const on = x < W && m[y * W + x];
+          if (on && run < 0) run = x;
+          else if (!on && run >= 0) { p.rect(run * TL, y * TL, (x - run) * TL, TL); run = -1; }
+        }
+      }
+      return p;
+    };
+    this._sideMask = { water: toPath(dilate(wetM)), land: toPath(dilate(dryM)) };
+    this._sideKey = key;
+    return this._sideMask;
   },
 
   /* (the per-tile `shoreBand` that used to draw the beach lived here. It is
@@ -1030,6 +1283,326 @@ const R = {
   // interior). A whole range shares one continuous field, so bilinear-sampling it
   // gives real slopes that fall away to the ground and ridgelines that run between
   // summits — no per-tile slabs. Computed once (mountains never move).
+  /* ---- HILLS: HOW DEEP INTO THE HILL AM I? ------------------------------
+     The same distance transform the mountain height field uses, over
+     contiguous HILLS instead — 1 at the outer fringe, rising toward the
+     middle of a mass. It is what lets a hill be shaded like a raised thing
+     (interior lighter, edge darker) and what scales the cast shadow, so a
+     broad upland throws a longer one than a single knoll.
+
+     Unlike the mountains, hills MOVE: a quarry works a hill out to PEBBLES.
+     So the field is keyed on a signature of where the hills are — the same
+     device waterKey uses for the coast — and recomputed only when that
+     actually changes, rather than computed once and quietly going stale. */
+  _hillH: null, _hillKey: '', _hillMax: 1,
+  /* the field WITHOUT re-checking the key. hillHeight() hashes the whole
+     terrain array to decide whether the hills have moved, which is fine once
+     per repaint and ruinous per TILE — and hillRelief/hillShadow run on every
+     tile of the map. The three entry points that repaint (rebuildTerrain,
+     drawTilesAt, drawTileAt) re-key once at the top; everything inside a
+     repaint reads the answer they settled on. Measured: 169ms of bake back
+     down to 135ms. */
+  hillField() { return this._hillH || this.hillHeight(); },
+  hillHeight() {
+    const W = CFG.W, H = CFG.H, terr = (S.map.seenTerrain || S.map.terrain);
+    let k = 0x811c9dc5 ^ this.landSeed();
+    for (let i = 0; i < terr.length; i++) if (terr[i] === T.HILLS) { k ^= i; k = Math.imul(k, 0x01000193); }
+    const key = (k >>> 0) + ':' + W + 'x' + H;
+    if (this._hillKey === key && this._hillH) return this._hillH;
+    const d = new Int32Array(W * H), q = [];
+    for (let i = 0; i < W * H; i++) { if (terr[i] === T.HILLS) d[i] = 1e6; else { d[i] = 0; q.push(i); } }
+    for (let head = 0; head < q.length; head++) {
+      const i = q[head], cx = i % W, cy = (i / W) | 0, nd = d[i] + 1;
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        if (!ox && !oy) continue;
+        const nx = cx + ox, ny = cy + oy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const j = ny * W + nx;
+        if (terr[j] === T.HILLS && d[j] > nd) { d[j] = nd; q.push(j); }
+      }
+    }
+    let max = 1;
+    for (let i = 0; i < W * H; i++) { if (terr[i] !== T.HILLS) d[i] = 0; else if (d[i] > max) max = d[i]; }
+    this._hillH = d; this._hillKey = key; this._hillMax = max;
+    return d;
+  },
+
+  /* THE HILL ITSELF — a few hard value steps, lit from the upper left, with a
+     catch-light along the northern edge where the ground turns to face the
+     sun. Sampled from the tile's four CORNERS and resolved per sub-cell, for
+     the same reason the ground tone is: one value per tile puts the steps on
+     the tile boundaries and DRAWS the grid it is meant to hide. */
+  /* A HILL IS READ AT ITS EDGES, NOT ACROSS ITS MIDDLE. Three passes were
+     tried at shading the interior from the depth field — quantized steps,
+     noise-perturbed steps, and a dithered slope term — and every one of them
+     landed as tile-shaped rectangles, for a reason that is not a bug: on
+     these maps a hill is ONE OR TWO TILES DEEP, so the depth field takes two
+     distinct values and its gradient is near-constant within a tile and jumps
+     between them. There is no interior to shade, and pretending otherwise
+     just draws the grid.
+
+     What is left is the pair of EDGE cues, which is what actually carries
+     height anyway: a catch-light along the northern rim where the ground
+     turns to face the sun, and the cast shadow on the ground to the south
+     (hillShadow, below). Both are dithered with a per-cell hash so their
+     boundaries are organic rather than ruled, and neither touches the middle
+     of a hill, so neither can draw a rectangle. Restrained on purpose — a
+     hill must stay clearly less than a mountain. */
+  hillRelief(g, x, y, terr) {
+    const d = this.hillField(), W = CFG.W, H = CFG.H, TL = CFG.TILE;
+    const at = (cx, cy) => (cx < 0 || cy < 0 || cx >= W || cy >= H) ? 0 : d[cy * W + cx];
+    if (at(x, y - 1) !== 0) return;                 // not the northern rim of anything
+    const px = TL / 32;
+    g.fillStyle = 'rgba(240,248,225,' + LAND.HILL_RIM.toFixed(3) + ')';
+    for (let i = 0; i < 32; i++) {
+      const wob = this._latRead(this._latOne.edge,
+        (x + i / 32) * LAND.HILL_SHADOW_WOBBLE, y * LAND.HILL_SHADOW_WOBBLE);
+      const len = 1 + Math.round(wob * LAND.HILL_RIM_MAX);
+      for (let k = 0; k < len; k++)
+        if (this._lh(x * 32 + i, y * 32 + k, 57) < 1 - k / (len + 1))
+          g.fillRect(x * TL + i * px, y * TL + k * px, px, px);
+    }
+  },
+
+  /* …AND THE SHADOW IT THROWS. The cheapest and by far the most effective
+     height cue there is: a dark band on the ground immediately SOUTH of a
+     hill, its length scaled to how deep the hill behind it runs, with an
+     irregular edge so it never reads as a drawn rectangle. Capped below one
+     tile, which is what keeps the whole effect inside the 3x3 that a terrain
+     edit already repaints. */
+  hillShadow(g, x, y, terr) {
+    const d = this.hillField(), W = CFG.W, TL = CFG.TILE, px = TL / 32;
+    const above = (y - 1 >= 0) ? d[(y - 1) * W + x] : 0;
+    if (!above) return;
+    const reach = Math.min(LAND.HILL_SHADOW_MAX, 3 + above * 1.6);
+    for (let i = 0; i < 32; i++) {
+      const wob = this._latRead(this._latOne.edge,
+        (x + i / 32) * LAND.HILL_SHADOW_WOBBLE, y * LAND.HILL_SHADOW_WOBBLE);
+      const len = Math.max(1, Math.round(reach * (0.55 + wob * 0.75)));
+      for (let k = 0; k < len; k++) {
+        // fades out along its length, so the far edge is a falling-off rather
+        // than a line — a hard-edged slab reads as a hole in the ground
+        const a = LAND.HILL_SHADOW * (1 - k / len) * (1 - k / len);
+        g.fillStyle = 'rgba(18,26,12,' + a.toFixed(3) + ')';
+        g.fillRect(x * TL + i * px, y * TL + k * px, px, px);
+      }
+    }
+  },
+
+  /* ===== DECORATIVE STREAMS =============================================
+     Small creeks that wander down off high ground and end at the sea. They
+     are PURE DECORATION and that is a hard rule, not a caveat: they are not
+     water tiles, they write to NO map array, and nothing in the game may
+     notice them. Movement, docks, fishing, naval hulls, bridges, sappers,
+     the reachability clamp and the minimap all read S.map.terrain, which
+     this code only ever READS. tests/land.mjs pins the whole of that by
+     running every one of those answers with the streams drawn and without.
+
+     Routing is a descent of the DISTANCE-TO-WATER field, which buys three of
+     the rules for free: a stream can never run uphill (the field strictly
+     decreases), it always reaches water (the field is a gradient toward it),
+     and it never has to be told where to stop. Mountains are excluded from
+     the field, so a creek routes around a range rather than through it.
+     Sources are picked beside hills or crags and far from the sea, so a run
+     has somewhere to come from and somewhere to go. ===== */
+  _streams: null, _streamKey: '',
+  streams() {
+    const W = CFG.W, H = CFG.H, terr = (S.map.seenTerrain || S.map.terrain);
+    let k = 0x811c9dc5 ^ this.landSeed();
+    for (let i = 0; i < terr.length; i++) {
+      const t = terr[i];
+      if (t === T.WATER || t === T.MOAT || t === T.HILLS || t === T.MOUNTAIN) {
+        k ^= i * (t + 1); k = Math.imul(k, 0x01000193);
+      }
+    }
+    const key = (k >>> 0) + ':' + W + 'x' + H;
+    if (this._streamKey === key && this._streams) return this._streams;
+
+    const wet = (x, y) => { const t = terr[y * W + x]; return t === T.WATER || t === T.MOAT; };
+    const mtn = (x, y) => terr[y * W + x] === T.MOUNTAIN;
+    // distance to the nearest water, over routable land only
+    const dist = new Int32Array(W * H).fill(0x7fffffff), q = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++)
+      if (wet(x, y)) { dist[y * W + x] = 0; q.push(y * W + x); }
+    for (let head = 0; head < q.length; head++) {
+      const i = q[head], cx = i % W, cy = (i / W) | 0, nd = dist[i] + 1;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + ox, ny = cy + oy;
+        if (!MapGen.onBoard(nx, ny) || mtn(nx, ny)) continue;
+        const j = ny * W + nx;
+        if (dist[j] > nd) { dist[j] = nd; q.push(j); }
+      }
+    }
+    let hh = this.landSeed() ^ 0x5bf03635;
+    const rnd = () => { hh = Math.imul(hh ^ (hh >>> 15), 0x2c1b3c6d); hh = (hh ^ (hh >>> 12)) >>> 0; return hh / 4294967295; };
+    // how many this map gets — scaled by area, and honestly allowed to be none
+    const area = (W * H) / (65 * 65);
+    const want = Math.max(0, Math.round(LAND.STREAM_DENSITY * area + (rnd() - 0.62)));
+    // sources: beside high ground, far enough from the sea to be worth a run
+    const src = [];
+    for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
+      const d = dist[y * W + x];
+      if (d < LAND.STREAM_MIN_RUN || d === 0x7fffffff) continue;
+      if (wet(x, y) || mtn(x, y)) continue;
+      let high = 0;
+      for (const [ox, oy] of NEIGH8) {
+        const t = terr[(y + oy) * W + (x + ox)];
+        if (t === T.HILLS || t === T.MOUNTAIN) high++;
+      }
+      if (high) src.push({ x, y, d, high });
+    }
+    /* A CREEK, NOT A RIVER. Sorting by "furthest from the sea" picks springs
+       in the far corner of the map and runs them twenty-odd tiles across it,
+       which reads as a major river and dominates the ground it crosses.
+       Sources are scored on being WELL PLACED instead: hard against high
+       ground, and about STREAM_IDEAL_RUN from water rather than as far from
+       it as the board allows. */
+    src.sort((a, b) => (b.high * 3 - Math.abs(b.d - LAND.STREAM_IDEAL_RUN))
+                     - (a.high * 3 - Math.abs(a.d - LAND.STREAM_IDEAL_RUN)));
+    const runs = [], used = [];
+    for (const s of src) {
+      if (runs.length >= want) break;
+      if (used.some(u => Math.hypot(u.x - s.x, u.y - s.y) < LAND.STREAM_APART)) continue;
+      // …descend the field, wandering, never uphill
+      /* WANDERING, BUT NEVER UPHILL. A strict descent of the field always
+         takes the shortest way to the water, which draws a creek as a ruled
+         line straight down the slope. Steps that stay at the SAME distance
+         are allowed too — sideways along a contour — which is where the
+         meander comes from; they are rationed (SIDE_MAX in a row) and no
+         tile may be used twice, so the run still terminates and can still
+         never climb. */
+      const path = [[s.x + 0.5, s.y + 0.5]];
+      const seen2 = new Set([s.y * W + s.x]);
+      let cx = s.x, cy = s.y, guard = 0, sideRun = 0;
+      while (dist[cy * W + cx] > 0 && guard++ < 400) {
+        const here = dist[cy * W + cx];
+        let best = null, bs = -1e9, bestSide = false;
+        for (const [ox, oy] of NEIGH8) {
+          const nx = cx + ox, ny = cy + oy;
+          if (!MapGen.onBoard(nx, ny) || mtn(nx, ny)) continue;
+          const j = ny * W + nx;
+          if (seen2.has(j)) continue;
+          const nd = dist[j];
+          const side = nd === here;
+          if (nd > here) continue;                                 // never uphill
+          if (side && sideRun >= LAND.STREAM_SIDE_MAX) continue;
+          const wob = this._latRead(this._latOne.clump, nx * 1.7, ny * 1.7);
+          const sc = -nd * 4 + wob * LAND.STREAM_WANDER - (side ? LAND.STREAM_SIDE_COST : 0);
+          if (sc > bs) { bs = sc; best = [nx, ny]; bestSide = side; }
+        }
+        if (!best) break;
+        sideRun = bestSide ? sideRun + 1 : 0;
+        cx = best[0]; cy = best[1];
+        seen2.add(cy * W + cx);
+        path.push([cx + 0.5, cy + 0.5]);
+      }
+      if (path.length < LAND.STREAM_MIN_RUN) continue;
+      used.push(s);
+      // smooth well above tile scale, then put a little ragged back — the
+      // same two-step the coastline uses, on an OPEN path rather than a loop
+      runs.push(this.roughenOpen(this.chaikinOpen(path, LAND.STREAM_SMOOTH)));
+    }
+    this._streams = runs; this._streamKey = key;
+    return runs;
+  },
+  // Chaikin / roughen for an OPEN path: the endpoints are pinned, because a
+  // stream must still start at its spring and end exactly at the waterline.
+  chaikinOpen(pts, iters) {
+    let p = pts;
+    for (let it = 0; it < iters && p.length < 4000; it++) {
+      const out = [p[0]];
+      for (let i = 0; i < p.length - 1; i++) {
+        const a = p[i], b = p[i + 1];
+        out.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25]);
+        out.push([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
+      }
+      out.push(p[p.length - 1]);
+      p = out;
+    }
+    return p;
+  },
+  roughenOpen(pts) {
+    this.landLattices();
+    const n = pts.length, out = new Array(n);
+    for (let i = 0; i < n; i++) {
+      if (i === 0 || i === n - 1) { out[i] = pts[i]; continue; }
+      const a = pts[i - 1], b = pts[i + 1], p = pts[i];
+      let nx = -(b[1] - a[1]), ny = (b[0] - a[0]);
+      const len = Math.hypot(nx, ny) || 1; nx /= len; ny /= len;
+      const d = (this._latRead(this._latOne.edge, p[0] * LAND.STREAM_NOISE_F, p[1] * LAND.STREAM_NOISE_F) - 0.5)
+        * 2 * LAND.STREAM_NOISE;
+      out[i] = [p[0] + nx * d, p[1] + ny * d];
+    }
+    return out;
+  },
+
+  /* …and the drawing. Damp ground either side, the thread itself, and a few
+     stones and reeds along the run from the ordinary decal scatter. Low
+     contrast on purpose: this is texture, not a feature, and a bright ribbon
+     across a meadow would read as something the player can use.
+
+     A point is skipped where a BUILDING stands — a creek running under a
+     house looks like a bug — and where the tile is already water, which is
+     what terminates the run cleanly at the traced waterline instead of
+     letting it overlap the shore bands. */
+  drawStreams(g, x0, y0, x1, y1) {
+    const TL = CFG.TILE, AP = ART.PALETTE, px = TL / 16;
+    const terr = (S.map.seenTerrain || S.map.terrain);
+    const W = CFG.W, H = CFG.H;
+    const blocked = (tx, ty) => {
+      if (tx < 0 || ty < 0 || tx >= W || ty >= H) return true;
+      const t = terr[ty * W + tx];
+      if (t === T.WATER || t === T.MOAT) return true;
+      return !!(typeof Bld !== 'undefined' && Bld.at && Bld.at(tx, ty));
+    };
+    /* RASTERISED ALONG THE PATH, NOT STAMPED AT ITS POINTS. Filling a little
+       square at every point draws a chain of beads — the points sit about a
+       quarter of a tile apart and the squares are smaller than the gap — so
+       the run reads as a zip rather than as running water. Each SEGMENT is
+       walked in one-pixel steps instead, which is also the only way to keep
+       the thread a consistent width where the path turns.
+
+       Kept deliberately low-contrast and thin: a bright ribbon across a
+       meadow reads as something the player can use, and this is texture. */
+    for (const run of this.streams()) {
+      for (let i = 1; i < run.length; i++) {
+        const p = run[i - 1], q = run[i];
+        const ax = p[0] * TL, ay = p[1] * TL, bx = q[0] * TL, by = q[1] * TL;
+        const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay)));
+        for (let k = 0; k <= steps; k++) {
+          const f = k / steps, wx = ax + (bx - ax) * f, wy = ay + (by - ay) * f;
+          const tx = (wx / TL) | 0, ty = (wy / TL) | 0;
+          if (tx < x0 - 1 || ty < y0 - 1 || tx > x1 + 1 || ty > y1 + 1) continue;
+          if (blocked(tx, ty)) continue;
+          const wob = this._latRead(this._latOne.sand, wx / TL * 2.3, wy / TL * 2.3);
+          const half = (LAND.STREAM_W + wob * LAND.STREAM_W_VAR) * 0.5 * px;
+          const damp = half + LAND.STREAM_DAMP * px;
+          const rx = Math.round(wx), ry = Math.round(wy);
+          g.fillStyle = AP.grass[0];                              // damp ground either side
+          g.fillRect(rx - Math.round(damp), ry - Math.round(damp),
+            Math.round(damp) * 2 + 1, Math.round(damp) * 2 + 1);
+          g.fillStyle = AP.water[1];                              // the thread itself
+          g.fillRect(rx - Math.round(half), ry - Math.round(half),
+            Math.round(half) * 2 + 1, Math.round(half) * 2 + 1);
+          if (wob > 0.80 && (k & 3) === 0) { g.fillStyle = AP.water[2]; g.fillRect(rx, ry, 1, 1); }
+        }
+      }
+      // …and the odd stone or stand of reeds on the bank
+      for (let i = 0; i < run.length; i += LAND.STREAM_DECAL_STEP) {
+        const p = run[i], tx = Math.floor(p[0]), ty = Math.floor(p[1]);
+        if (tx < x0 - 1 || ty < y0 - 1 || tx > x1 + 1 || ty > y1 + 1) continue;
+        if (blocked(tx, ty)) continue;
+        let s2 = (Math.imul(Math.round(p[0] * 16), 0x27d4eb2d)
+          ^ Math.imul(Math.round(p[1] * 16), 0x9e3779b1) ^ this.landSeed()) >>> 0;
+        const rr = () => { s2 = Math.imul(s2 ^ (s2 >>> 15), 0x2c1b3c6d); s2 = (s2 ^ (s2 >>> 12)) >>> 0; return s2 / 4294967295; };
+        if (rr() > LAND.STREAM_DECAL) continue;
+        const side = rr() < 0.5 ? -1 : 1, off = (1.8 + rr() * 1.6) * side;
+        this.drawDecal(g, p[0] * TL + off * px, p[1] * TL + (rr() - 0.5) * 2 * px,
+          rr() < 0.5 ? 'reed' : 'pebble', px * 0.9, rr);
+      }
+    }
+  },
+
   computeMountainHeight() {
     const W = CFG.W, H = CFG.H, T_ = S.map.terrain, d = new Int32Array(W * H), q = [];
     for (let i = 0; i < W * H; i++) { if (T_[i] === T.MOUNTAIN) d[i] = 1e6; else { d[i] = 0; q.push(i); } }
@@ -1400,6 +1973,13 @@ const R = {
       if (!mnd(at(x + 1, y))) { g.fillStyle = AP.leaf[1]; g.fillRect(bx + TL - (ri + 2) * px, by + ti * px, 2 * px, hgt); g.fillStyle = AP.ink[0]; g.fillRect(bx + TL - (ri + 1) * px, by + ti * px, px, hgt); }   // shaded right slope + dark edge
       if (!mnd(at(x, y + 1))) { g.fillStyle = AP.leaf[1]; g.fillRect(bx + li * px, by + TL - (bi + 2) * px, w, 2 * px); g.fillStyle = AP.ink[0]; g.fillRect(bx + li * px, by + TL - bi * px, w, px); }            // shaded foot
     }
+    /* ELEVATION HINTS ON HILLS. Drawn over whatever the ground layer put
+       down — procedural or a supplied override — so a dropped-in hills.png
+       is raised ground too. `t === T.HILLS` shades the hill; anything else
+       may be catching the shadow of a hill to its north. Both are pure
+       overlays: they read the terrain and write only pixels. */
+    if (t === T.HILLS) this.hillRelief(g, x, y, terr);
+    else if (!wet(t)) this.hillShadow(g, x, y, terr);
     // IRREGULAR FRINGES at every land boundary (replaces the old 1px dithered
     // checker, which only ran between differing floor colours and was invisible)
     this.terrainEdges(g, x, y, terr);
@@ -1431,6 +2011,7 @@ const R = {
     const g = this.terrainCache.getContext('2d');
     g.imageSmoothingEnabled = false;
     const terr = S.map.seenTerrain || S.map.terrain;
+    this.hillHeight();                       // re-key the hill field ONCE for this repaint
     // TWO PASSES, and they may not be merged: decals overhang their tile, so
     // every tile's ground must be down before any decal is laid — otherwise a
     // neighbour's ground, painted later, erases the spill.
@@ -1439,6 +2020,7 @@ const R = {
     // the tile beside the rim would throw a tuft out onto the black
     this.clipBoard(g, () => {
       for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) this.landDecals(g, x, y, terr);
+      this.drawStreams(g, 0, 0, CFG.W - 1, CFG.H - 1);
     });
     // …then the traced coast over the top, from its own cached layer
     this.buildShoreLayer();
@@ -1471,6 +2053,7 @@ const R = {
     if (!this.terrainCache || !list || !list.length) return;
     const g = this.terrainCache.getContext('2d');
     const terr = S.map.seenTerrain || S.map.terrain;
+    this.hillHeight();                       // re-key the hill field ONCE for this repaint
     const W = CFG.W, ground = new Set(), deco = new Set();
     for (const [x, y] of list) {
       for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) {
@@ -1481,7 +2064,16 @@ const R = {
       }
     }
     for (const k of ground) this.drawTile(g, k % W, (k / W) | 0);
-    this.clipBoard(g, () => { for (const k of deco) this.landDecals(g, k % W, (k / W) | 0, terr); });
+    this.clipBoard(g, () => {
+      for (const k of deco) this.landDecals(g, k % W, (k / W) | 0, terr);
+      let sx0 = 1e9, sy0 = 1e9, sx1 = -1e9, sy1 = -1e9;
+      for (const k of deco) {
+        const cx = k % W, cy = (k / W) | 0;
+        if (cx < sx0) sx0 = cx; if (cx > sx1) sx1 = cx;
+        if (cy < sy0) sy0 = cy; if (cy > sy1) sy1 = cy;
+      }
+      if (sx1 >= sx0) this.drawStreams(g, sx0, sy0, sx1, sy1);
+    });
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
     for (const k of deco) {
       const cx = k % W, cy = (k / W) | 0;
@@ -1495,6 +2087,7 @@ const R = {
     if (!this.terrainCache) return;
     const g = this.terrainCache.getContext('2d');
     const terr = S.map.seenTerrain || S.map.terrain;
+    this.hillHeight();                       // re-key the hill field ONCE for this repaint
     for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
       const nx = x + ox, ny = y + oy;
       if (MapGen.inB(nx, ny)) this.drawTile(g, nx, ny);
@@ -1510,6 +2103,7 @@ const R = {
         const nx = x + ox, ny = y + oy;
         if (MapGen.inB(nx, ny)) this.landDecals(g, nx, ny, terr);
       }
+      this.drawStreams(g, x - 2, y - 2, x + 2, y + 2);
     });
     this.blitShore(g, x - 2, y - 2, 5, 5);
   },
@@ -1536,6 +2130,9 @@ const R = {
     this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
     this.mtnH = null;                                            // recompute the mountain height field for the new map
     this._mtnTile = null;                                        // …and with it the baked mountain tiles (same fact)
+    this._hillH = null; this._hillKey = '';                      // hills move (a quarry works one out), so this is keyed, not one-shot
+    this._streams = null; this._streamKey = '';
+    this._sideMask = null; this._sideKey = '';
     this.placePoofs = [];                                        // no dust carried across runs (the R.collapses rule)
     // pre-render the full terrain layer once
     this.rebuildTerrain();

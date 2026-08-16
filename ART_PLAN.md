@@ -217,7 +217,31 @@ Tunables, all in the `LAND` block:
 | the rocky coast reads as an inked outline | lower `SHOAL_ALPHA` |
 | shore stones look like beads on a string | raise `SHOAL_GATE`, lower `SHOAL_FREQ` |
 | too many / too few shore stones | `SHOAL_STONES`, `SHOAL_STEP` |
+| the shallows look barren on a rocky coast | raise `LIFE_CHANCE` |
+| kelp and coral look evenly sprinkled | raise `LIFE_GATE` |
 | the ground looks busy rather than deep | lower `DECAL_DENSITY`, raise `DECAL_GATE` |
 | a tile grid is visible in flat ground | `TONE_SUB` (must stay above 1), `TONE_STEPS` |
+| hills read flat | raise `HILL_SHADOW`, `HILL_SHADOW_MAX` |
+| a hill starts looking like a mountain | lower the same two |
+| a hill's edges read as ruled lines | raise `HILL_SHADOW_WOBBLE` |
+| the world looks dry | raise `STREAM_DENSITY` |
+| a creek reads as a river | lower `STREAM_IDEAL_RUN` |
+| a creek runs too straight | raise `STREAM_WANDER`, `STREAM_SIDE_MAX` |
+| a creek is too loud | lower `STREAM_W`, `STREAM_DAMP` |
+
+### Two things on the ground that are not what they look like
+
+**Streams are a drawing.** They are not water tiles and have no gameplay
+effect of any kind — no blocking, no docks, no fishing, no naval movement, no
+bridges, no sappers, not on the minimap. They write to no map array. If you
+supply terrain art, streams are drawn over it and change nothing about how
+that tile behaves.
+
+**Hills are shaded only at their edges** — a catch-light on the northern rim
+and a cast shadow on the ground to the south. Nothing shades a hill's middle,
+because on these map scales a hill is one or two tiles deep and there is no
+interior to shade; every attempt at one came out as tile-shaped rectangles.
+Author a `hills.png` as flat ground with rocks on it and let the edges do the
+elevation.
 
 Re-uploading a changed file under a name it already had? Bump `CFG.ART_V`.

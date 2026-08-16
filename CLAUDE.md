@@ -97,7 +97,7 @@ node tests/footprint.mjs       # the primary works stand on 2×2; old saves keep
 node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring rule; ?dev=1 preview = the shipping path
 node tests/placement.mjs       # ONE placement truth (canPlace codes); ghost+confirm flow; the seal clamp; AI parity
 node tests/boot.mjs            # frame one is the logo; no chrome before a game; the notch inset
-node tests/land.mjs            # the coast is TRACED, not tiled — and tile data still decides everything
+node tests/land.mjs            # the coast is TRACED, not tiled; streams are a DRAWING; tile data still decides everything
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -2225,6 +2225,50 @@ loops answer 100%; the traced coast answers ~43%. It is deliberately NOT held
 near the 27% an unbiased scatter would give — some lock is HONEST, since a
 coast that really does run east-west should read axis-aligned. The bar is the
 distance from the raw control.
+**THE SIDE A BAND BELONGS ON IS A PROPERTY OF THE LOOP, NOT OF A POINT**
+(`outward`, pinned by `noBlueOnTheLand`): a reported bug — pale blue shelf and
+foam appearing detached on LAND, looping back on itself, worst where a bay
+curves tightly. It was NOT offset self-intersection. `outward()` decided which
+side was land by SAMPLING THE MAP one step along the normal, per point, and on
+a real map **2.4% of points came back with a normal opposite to both their
+neighbours'** — the roughened curve wobbles across a tile boundary and the
+sample lands on the wrong side. One flipped point puts its offset on the far
+side of the curve, and since a band is filled as (base forward + offset
+reversed) the fill SPANS the jump: a pale wedge two tiles inland. The tracer
+walks every water cell's boundary in a fixed rotational order, so the water is
+always on the left-hand normal `(-dy, dx)` — for the top edge, direction (1,0)
+gives (0,1), pointing down into the cell, and the same holds for the other
+three and for an island's loop. Chaikin and the roughening preserve point
+order, so they preserve the tangent, so they preserve this. It is a fact about
+how the loop was built and it cannot flip.
+**A BAND CANNOT REACH FURTHER THAN ITS LOOP'S RADIUS** (`R.loopRadius`,
+`LAND.BAND_CAP` / `SHORE_NOISE_CAP`, same test): the second, separate failure —
+a ONE-TILE POND has a radius of about 0.4 tiles and the shelf reaches 0.69, so
+the offset inverted through the centre and sprayed a pale wash four tiles
+across the grass. Both the band offsets and the roughening amplitude are now
+clamped to a fraction of the loop's own radius (from the enclosed area, so a
+long thin inlet is correctly judged narrow). `prune` drops offset points whose
+segment direction OPPOSES the base — the reversal IS the self-intersection
+loop — and when NOTHING survives the band is simply not drawn: falling back to
+the broken polyline, which is what it did at first, draws the very artefact the
+prune exists to remove.
+**AND THE LAST WORD IS A CLIP** (`R.shoreSideMasks`, same test): the geometry
+should never stray now, but a band has five offsets and any one of them is a
+place a future edit can get wrong. Water-side bands are clipped to the water
+tiles dilated by one, land-side bands to the land tiles dilated by one — two
+passes over the loops rather than two clips per loop. The one tile of slack is
+what keeps the clip OFF the visible edge, so the waterline is still drawn by
+the traced curve and the grid never shows through. Measured: 12 seeds, zero
+blue pixels anywhere at 2+ tiles from water.
+**A VERTEX CAN HAVE TWO EDGES LEAVING IT** (same test): where two water cells
+touch only at a CORNER the boundary passes through that lattice point twice,
+and a Map keyed by the start vertex silently kept one and threw the other away.
+The lost edge left the chain unable to close — a figure-of-eight that crossed
+itself — and a stretch of real shoreline that was never drawn at all. Each
+vertex holds a LIST now and the walk takes one edge at a time. Measured: every
+boundary edge traced exactly once (360/360, 634/634, 426/426) and zero
+self-crossings over ~6M segment-pair checks.
+
 **5b. ROCKY SHOALS.** Where the land off the curve is hills/mountain/pebbles
 the beach gives way to wet dark rock and scattered stones (`stony` → `rockS`,
 smoothed over `SHOAL_BLEND` points so the changeover is a give-way rather than
@@ -2264,6 +2308,61 @@ that means changing how mountains are drawn, which is a separate job.
 Mountains otherwise keep their current rendering — they want a silhouette
 treatment, not tiles.
 
+**LIFE IN THE ROCKY SHALLOWS** (`R.drawDecal`'s `kelp`/`coral`/`sunkrock`,
+`LAND.LIFE_*`): a sand shelf carries nothing worth drawing at this scale; a
+rocky one has weed, coral heads and drowned boulders. Gated on the SAME drift
+field the shore stones use, so the growth gathers where the stones gather —
+one headland busy, the next bare — and never on a sandy shore. They are drawn
+BEFORE the shelf ribbons, so the five translucent bands of shallow water wash
+over them: that is what actually puts them under the surface, and it costs
+nothing. Drawing them on top and hand-desaturating each colour would be the
+same picture arrived at by guesswork.
+
+**HILLS ARE READ AT THEIR EDGES** (`R.hillHeight` / `hillRelief` / `hillShadow`,
+pinned by `hillsAreStillOrdinaryGround`): a distance transform over contiguous
+HILLS, the same one the mountains use — but unlike the mountains, hills MOVE (a
+quarry works one out to PEBBLES), so the field is keyed on a signature of where
+they are rather than computed once and quietly going stale.
+**Three passes at shading the INTERIOR were tried and all three failed**, for a
+reason that is not a bug: on these maps a hill is ONE OR TWO TILES DEEP, so the
+depth field takes two distinct values and its gradient is near-constant within a
+tile and jumps between them. Quantized steps, noise-perturbed steps and a
+dithered slope term each landed as tile-shaped rectangles. There is no interior
+to shade and pretending otherwise just draws the grid. What is left is the pair
+of EDGE cues, which is what carries height anyway — a dithered catch-light along
+the northern rim and a dithered cast shadow on the ground to the SOUTH, its
+length scaled to the depth of the hill behind it and capped below one tile so
+the whole effect stays inside the 3×3 a terrain edit already repaints.
+**The field is keyed ONCE PER REPAINT** (`R.hillField` vs `hillHeight`): the key
+hashes the whole terrain array, which is fine once and ruinous per TILE — and
+the two passes run on every tile of the map. The three entry points re-key at
+the top; everything inside reads what they settled on. Measured: 169ms of bake
+back down to 154ms.
+
+**DECORATIVE STREAMS** (`R.streams` / `chaikinOpen` / `roughenOpen` /
+`drawStreams`, `LAND.STREAM_*`, pinned by `andHaveNoGameplayEffectWhatever`):
+creeks that wander down off high ground and end at the sea. They are PURE
+DECORATION and that is a hard rule, not a caveat — not water tiles, writing to
+NO map array, and nothing in the game may notice them. Routing is a DESCENT OF
+THE DISTANCE-TO-WATER FIELD, which buys three rules for free: a stream can
+never run uphill (the field strictly decreases), it always reaches water, and
+it never has to be told where to stop. Mountains are excluded from the field,
+so a creek routes around a range rather than through it. Steps that stay at the
+SAME distance are allowed too — sideways along a contour, rationed and with no
+tile used twice — because a strict descent draws a ruled line straight down the
+slope and that is where the meander comes from. Sources are scored on being
+WELL PLACED (hard against high ground, about `STREAM_IDEAL_RUN` from water)
+rather than furthest from the sea, which picked springs in the far corner and
+ran them twenty tiles across the map as a major river.
+**Rasterised along the path, not stamped at its points** — the points sit a
+quarter of a tile apart and a square at each one draws a chain of beads.
+Suppressed where a BUILDING stands (a creek under a house looks like a bug) and
+where the tile is already water, which is what terminates the run cleanly at
+the traced waterline instead of overlapping the shore bands. `Bld.place` now
+repaints its own footprint so that suppression actually takes effect — nothing
+dirtied those tiles before unless the TERRAIN under them happened to change too.
+Deterministic from the seed; most maps get one or two, some get none.
+
 **A WOOD IS FOUR TREES** (`Sprites.tree` / `KINDS` / `pickKind` / `rampFor`,
 pinned by `tests/land.mjs`): the forest was one shaded disc, jittered in radius
 and picked from three greens — which reads as ONE STAMP REPEATED, because at a
@@ -2298,7 +2397,7 @@ the conifer's own taller bounding box, or a spire's leader is cut off at the
 fringe, which is the one place a whole tree matters.
 
 **THE GROUND MAY NOT SPEAK THE RESOURCE LANGUAGE** (`R.DECAL_RESERVED`, pinned
-by `noGroundDecalWearsAReservedColour`): the map has a colour LANGUAGE and
+by `noGroundSurfaceMakesAFalsePromise`): the map has a colour LANGUAGE and
 ground texture does not get to speak it. `gold` is the seam, the resource bar
 and the `+gold` float; `fire` is a building burning, which is the only
 unprompted alarm in the game; `berry` is forage worth walking to. The meadow
@@ -2314,6 +2413,26 @@ indistinguishable. The darkest step of each reserved ramp is exempt from the
 near test: a ramp's index 0 is its shadow, and every shadow in this palette is
 the same dark earthy brown, so `gold[0]` sits a few units from honest wood.
 What the eye reads as gold, fire or berry is the bright end.
+**AND THE AUDIT COVERS EVERY GROUND SURFACE, NOT JUST DECALS** — the collisions
+found by eye were spread across all three layers. `R.coreScatter`'s `crop` drew
+a standing four-pixel SHEAF in `thatch[1]`/`thatch[2]`, as big on screen as the
+berry bush beside it, so the eye read a golden OBJECT lying in the orchard and
+could not tell whether it was a resource, a harvestable or litter (now a low
+tussock of dry stems in muted browns). `orchardTile` bore half its fruit in
+`fire[2]` with `fire[3]` highlights — the exact colour of a burning building,
+the one unprompted alarm in the game, dotted through every second canopy (now
+apples and plums, which say "food" truthfully). `drawStump`'s cut face was
+`thatch[2]`/`thatch[3]`, 39 and 20 units from the bright end of gold, so a
+felled stand was scattered with pale-gold discs (now pale heartwood). And the
+rare flower-meadow tile drew from the whole `bloom` ramp, whose index 2 is a
+bright yellow 20 from `gold[2]`.
+**A colour that MEANS what it looks like is not a collision**: the gold seam is
+allowed to look like gold and a berry bush like a berry, so the check carries a
+named exemption for each, and a colour that IS a member of a ramp its surface
+may wear is legitimate however near it sits to some OTHER ramp — `gold[2]` is
+26 from `fire[2]` because the palette's two accent ramps neighbour each other,
+and that is not the ground's fault. 21 findings down to 12, and all 12 remaining
+are a resource wearing its own colour.
 
 **And the GROUND takes art the same way** (`tests/art-pipeline.mjs`):
 `assets/terrain/{name}.png`, plus `{name}-2.png`, `-3` … for variants —

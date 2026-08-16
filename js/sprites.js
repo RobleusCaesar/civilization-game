@@ -113,12 +113,19 @@ const Sprites = {
   function flowers(p, seed) {
     grassBase(p, seed);
     const f = p.f, r = ART.rng(seed + 1);
+    /* THE SAME RULE THE DECAL FLOWER FOLLOWS. This drew from the whole bloom
+       ramp, whose index 2 is a bright yellow 20 units from gold[2] and 27
+       from fire[2] — so the one "special" grass tile in the game was
+       sprinkled with specks that read as gold, and its lit centres used
+       bloom[3], a near-white that reads as a glint. Muted ochre and cream
+       instead; magenta stays, since nothing else on the ground is magenta. */
+    const PET = [AP.bloom[0], AP.thatch[0], AP.bone[1]];
     for (let i = 0; i < 7; i++) {
       const x = 2 + (r() * 27) | 0, y = 2 + (r() * 27) | 0;
-      const col = AP.bloom[(r() * 3) | 0];
+      const col = PET[(r() * PET.length) | 0];
       f(x, y - 2, 1, 2, AP.grass[1]);                    // stem
-      f(x, y, 1, 1, col); f(x - 1, y, 1, 1, col === AP.bloom[2] ? AP.bloom[1] : col);
-      f(x + 1, y, 1, 1, col); f(x, y - 1, 1, 1, AP.bloom[3]);   // petals + lit centre
+      f(x, y, 1, 1, col); f(x - 1, y, 1, 1, col);
+      f(x + 1, y, 1, 1, col); f(x, y - 1, 1, 1, AP.bone[2]);   // petals + lit centre
     }
   }
   Sprites.terrainRare = { [T.GRASS]: [tile(p => flowers(p, 301)), tile(p => flowers(p, 407))] };
@@ -320,7 +327,10 @@ const Sprites = {
         const bx = 8 + (r() * 16) | 0, by = 14 + (r() * 12) | 0;
         ART.shadedCircle(f, bx, by, 2 + (r() * 2 | 0), LEAF_D, 2);
         f(bx, by - 3, 1, 3, AP.leaf[1]); f(bx + 2, by - 2, 1, 2, AP.leaf[1]);   // thorny sprigs
-        if (r() < 0.5) f(bx - 1, by, 1, 1, AP.berry[1]);              // odd berry
+        // (a berry[1] dot used to sit here. A bramble in the WOOD is wood, not
+        // forage — the ripe-berry red promised a harvest the tile cannot give,
+        // and a thorn thicket reads as one perfectly well without it.)
+        if (r() < 0.5) f(bx - 1, by, 1, 1, AP.leaf[0]);               // a dark thorn
       }
     }
   }
@@ -503,10 +513,16 @@ const Sprites = {
       f(cx - rr + 1, cy + rr + 2, rr + 2, 1, AP.leaf[0]);           // contact shadow
       tree(f, cx, cy, rr, r() < 0.5 ? AP.leaf : LEAF_L);          // trunk + fruiting crown
       const fr = ART.rng(s2 + 1);
-      const fruit = fr() < 0.5 ? AP.red[2] : AP.fire[2];            // apples on some trees, golden on others
+      /* FRUIT IS FOOD, SO FRUIT IS RED — never the FIRE ramp. Half these
+         trees used to bear fire[2] with fire[3] highlights, which is the
+         exact colour a burning building wears: the one unprompted alarm in
+         the game, dotted through the canopy of every second orchard. Apples
+         and plums say "food" truthfully; a golden apple said "gold" and
+         "fire" at once and meant neither. */
+      const fruit = fr() < 0.5 ? AP.red[2] : AP.berry[3];           // apples on some trees, plums on others
       for (let i = 0; i < 8; i++)                                   // ripe fruit dotted in the crown
         f(cx - rr + 1 + ((fr() * (rr * 2 - 1)) | 0), cy - rr + 1 + ((fr() * (rr * 2 - 1)) | 0), 1, 1,
-          fr() < 0.7 ? fruit : AP.fire[3]);
+          fr() < 0.7 ? fruit : AP.red[3]);
     };
     const nt = 2 + (r() * 2 | 0);
     for (let i = 0; i < nt; i++) fruitTree(7 + (r() * 18) | 0, 8 + (r() * 13) | 0, seed + i * 23 + 11);
@@ -544,8 +560,13 @@ const Sprites = {
     const f = p.f;
     f(x - 1, y + 6, 8, 1, AP.wood[0]);                            // ground shadow
     f(x, y + 1, 6, 5, AP.wood[1]); f(x, y + 1, 1, 5, AP.wood[2]); // trunk side (lit left)
-    f(x, y, 6, 2, AP.thatch[2]);                                  // cut top face
-    f(x + 1, y, 4, 1, AP.thatch[3]); f(x + 2, y + 1, 2, 1, AP.wood[3]);   // rings
+    /* CUT HEARTWOOD IS PALE TAN, NOT BRASS. The top face was thatch[2] under
+       a thatch[3] ring — 39 and 20 units from the two bright steps of the
+       gold ramp — so a felled stand was scattered with small pale-gold discs
+       that read as gold lying in the grass. Wood is the honest material for
+       the top of a tree. */
+    f(x, y, 6, 2, AP.wood[4]);                                    // cut top face
+    f(x + 1, y, 4, 1, AP.bone[1]); f(x + 2, y + 1, 2, 1, AP.wood[3]);   // rings
     f(x + 4, y + 2, 1, 2, AP.wood[0]);                            // axe notch
   }
   Sprites.terrain[T.STUMPS] = [
