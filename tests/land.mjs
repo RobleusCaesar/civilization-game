@@ -631,6 +631,89 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   await p.close();
 }
 
+/* ---- 11. LEGIBILITY: BLOCKED GROUND MUST ANNOUNCE ITSELF --------------
+   The governing rule of the readability pass: a player must be able to tell
+   passable ground from impassable resource terrain instantly, without
+   looking closely. That is a GAMEPLAY property, not a taste one, so it is
+   measured rather than eyeballed — coverage of the tile by the resource, and
+   how far the tile's pixels sit from bare decorated grass. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(wetBoot + `
+    const TL = 32;
+    const lum = (r,g2,b) => 0.299*r + 0.587*g2 + 0.114*b;
+    // draw one tile of a terrain over the grass floor, the way the map does
+    const sample = (t, dense) => {
+      const c = document.createElement('canvas'); c.width = c.height = TL;
+      const g = c.getContext('2d');
+      g.fillStyle = ART.PALETTE.grass[2]; g.fillRect(0,0,TL,TL);
+      const set = dense && Sprites.terrainFull[t] ? Sprites.terrainFull[t] : Sprites.terrain[t];
+      const img = set[0];
+      // alpha coverage is the honest "how much of this tile is the resource"
+      const ac = document.createElement('canvas'); ac.width = ac.height = TL;
+      const ag = ac.getContext('2d'); ag.drawImage(img, 0, 0);
+      const ad = ag.getImageData(0,0,TL,TL).data;
+      let cov = 0; for (let i=3;i<ad.length;i+=4) if (ad[i] > 100) cov++;
+      g.drawImage(img, 0, 0);
+      const d = g.getImageData(0,0,TL,TL).data;
+      const base = lum(...['1','3','5'].map(k=>parseInt(ART.PALETTE.grass[2].slice(+k,+k+2),16)));
+      let far = 0, sum = 0;
+      for (let i=0;i<d.length;i+=4){ const dl = Math.abs(lum(d[i],d[i+1],d[i+2]) - base);
+        sum += dl; if (dl > 18) far++; }
+      return { cov: cov/(TL*TL), farPct: far/(TL*TL), meanDelta: sum/(TL*TL) };
+    };
+    // a DECORATED open-grass tile, the thing blocked ground must out-shout
+    const meadow = (() => {
+      const c = document.createElement('canvas'); c.width = c.height = TL;
+      const g = c.getContext('2d');
+      g.fillStyle = ART.PALETTE.grass[2]; g.fillRect(0,0,TL,TL);
+      /* a REALISTIC tile, not a stress test: the live scatter never puts more
+         than LAND.DECAL_MAX decals on one tile, and packing two dozen in
+         measures a density the player never sees. */
+      let s2 = 99; const rnd = () => { s2=(s2*1103515245+12345)>>>0; return s2/4294967296; };
+      const kinds = [...R.DECAL_OPEN];
+      for (let i=0;i<LAND.DECAL_MAX;i++)
+        R.drawDecal(g, 3 + rnd()*24, 3 + rnd()*24, kinds[(rnd()*kinds.length)|0], 2, rnd);
+      const d = g.getImageData(0,0,TL,TL).data;
+      const base = lum(...['1','3','5'].map(k=>parseInt(ART.PALETTE.grass[2].slice(+k,+k+2),16)));
+      let far = 0, sum = 0;
+      for (let i=0;i<d.length;i+=4){ const dl = Math.abs(lum(d[i],d[i+1],d[i+2]) - base);
+        sum += dl; if (dl > 18) far++; }
+      return { farPct: far/(TL*TL), meanDelta: sum/(TL*TL) };
+    })();
+    const names = ['FOREST','HILLS','FERTILE'];
+    const blocked = names.map(n => Object.assign({ n }, sample(T[n], true)));
+    // …and the cue itself must be DERIVED from the movement rule, not a list
+    const cue = [];
+    for (const key in T) {
+      const t = T[key];
+      const c = document.createElement('canvas'); c.width = c.height = TL;
+      const g = c.getContext('2d');
+      const terr = new Array(CFG.W*CFG.H).fill(t);
+      g.translate(-5*TL, -5*TL);
+      R.blockShade(g, 5, 5, terr);
+      // getImageData ignores the transform — read where the PIXELS are
+      const d = g.getImageData(0,0,TL,TL).data;
+      let n2 = 0; for (let i=3;i<d.length;i+=4) if (d[i] > 0) n2++;
+      cue.push({ key, shaded: n2 > 0, blocks: Path.blocksLand(t) });
+    }
+    return { blocked, meadow, cueMismatch: cue.filter(c2 => c2.shaded !== c2.blocks).map(c2=>c2.key) };`));
+  const worst = v.blocked.reduce((a, b2) => a.cov < b2.cov ? a : b2);
+  ck('impassableGroundIsVisiblyOccupied', worst.cov >= 0.80,
+    v.blocked.map(b2 => b2.n + ' ' + Math.round(b2.cov*100) + '%').join(', ')
+    + ' of the tile covered at the core');
+  const quietest = v.blocked.reduce((a, b2) => a.meanDelta < b2.meanDelta ? a : b2);
+  ck('andOutShoutsDecoratedGrass', quietest.meanDelta > v.meadow.meanDelta * 3,
+    'quietest blocked terrain (' + quietest.n + ') sits ' + quietest.meanDelta.toFixed(1)
+    + ' from bare grass; a fully decorated meadow tile only ' + v.meadow.meanDelta.toFixed(1));
+  ck('andDecorationStaysBackground', v.meadow.farPct < 0.10,
+    Math.round(v.meadow.farPct*100) + '% of a decorated meadow tile reads as anything but grass');
+  ck('theBlockedCueIsDerivedFromTheMovementRule', v.cueMismatch.length === 0,
+    v.cueMismatch.length ? 'disagrees on ' + v.cueMismatch.join(', ')
+      : 'R.blockShade fires exactly where Path.blocksLand says a unit cannot walk');
+  await p.close();
+}
+
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL LAND CHECKS PASS');
 await b.close();

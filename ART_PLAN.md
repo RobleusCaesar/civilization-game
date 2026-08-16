@@ -219,7 +219,11 @@ Tunables, all in the `LAND` block:
 | too many / too few shore stones | `SHOAL_STONES`, `SHOAL_STEP` |
 | the shallows look barren on a rocky coast | raise `LIFE_CHANCE` |
 | kelp and coral look evenly sprinkled | raise `LIFE_GATE` |
+| a decal still reads as an object | raise `DECAL_MUTE` |
 | the ground looks busy rather than deep | lower `DECAL_DENSITY`, raise `DECAL_GATE` |
+| impassable ground does not announce itself | raise `BLOCK_SHADE` |
+| the map looks blotchy | lower `BLOCK_SHADE` |
+| a resource cluster shows tile-shaped patches | raise `BLOCK_FADE`, soften the density taper |
 | a tile grid is visible in flat ground | `TONE_SUB` (must stay above 1), `TONE_STEPS` |
 | hills read flat | raise `HILL_SHADOW`, `HILL_SHADOW_MAX` |
 | a hill starts looking like a mountain | lower the same two |
@@ -228,6 +232,32 @@ Tunables, all in the `LAND` block:
 | a creek reads as a river | lower `STREAM_IDEAL_RUN` |
 | a creek runs too straight | raise `STREAM_WANDER`, `STREAM_SIDE_MAX` |
 | a creek is too loud | lower `STREAM_W`, `STREAM_DAMP` |
+
+### Readability comes before atmosphere
+
+The one rule that outranks everything else here: **a player must be able to
+tell passable ground from impassable resource terrain instantly, without
+looking closely.** Resources are the foreground; ground decoration is
+background. If art you supply makes that harder, it is wrong however good it
+looks on its own.
+
+What the engine does to keep it true:
+
+- The **core of every blocking resource is closed** — 95–99% of the tile is
+  covered at the heart of a wood, an ore body or a thicket, tapering out
+  through a near-solid perimeter to a thinned fringe. If you supply art for
+  forest, hills or fertile, author it dense.
+- **Blocked ground carries a shared cue** — a darker, dithered patch beneath
+  the cluster. It is derived from `Path.blocksLand`, the same predicate
+  movement asks, so it can never disagree with the rules. It is drawn under
+  your art, not over it.
+- **Ground decals are muted toward the grass** at the point of drawing
+  (`LAND.DECAL_MUTE`), so nothing on open ground reads as an object.
+
+**Gold ore, spent quarries and felled stands are WALKABLE** and deliberately
+carry none of that cue. A gold seam is meant to be unmistakable by being
+*gold*, not by pretending to be an obstruction — marking it blocked would be
+the exact lie the cue exists to prevent.
 
 ### Two things on the ground that are not what they look like
 

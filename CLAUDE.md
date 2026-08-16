@@ -1785,6 +1785,13 @@ seeds at day 200, always-escorting roughly halves the bleed and saves the towns
 that were failing (a seed that ended on 16 buildings, a level-2 hall, ONE
 villager and 53 lost now ends on 28 buildings, a level-3 hall, 15 villagers and
 20 lost).
+**A CONIFER'S TRUNK IS MEASURED FROM ITS FOOT** (same test): it used to start
+at (top + the cone's height) and run four pixels down — and since the cone's
+height grows as 2.3× the radius while the foot only moves 0.75×, a big conifer
+finished several pixels BELOW its own ground shadow. A dark two-pixel stick
+hanging under the tree, which is what read as vertical streaks through the
+canopy of a dense wood.
+
 **The trap this cost**: the gather task credited `S.res` — the PLAYER's pile —
 flat, whatever the gatherer's owner, because until now only the player ever
 gathered by hand. It is owner-aware now, and `S.stats.gathered` still counts the
@@ -2195,6 +2202,28 @@ draws NO shallows at all any more, and took its `shore` flag out with them: a
 whole-tile switch on the swell/glint palette lit a run of shore tiles up
 together as a pale rectangle several tiles across in the middle of a bay — the
 same grid-drawing fault wearing different clothes.
+**THE WATER IS PAINTED INSIDE ITS OWN OUTLINE** (`R.waterBodyPath` /
+`paintWaterIn`): Chaikin INSCRIBES its curve — the limit of corner-cutting a
+square is a B-spline that touches the edge midpoints and cuts every corner off
+— so the traced waterline sits INSIDE the tile boundary at every convex corner.
+Filling water by the square left raw blue poking out past the sand there: a
+sliver on a long coast, and on a SMALL lake the entire shape, which read as a
+hard-edged rectangle with stair steps sitting behind a correctly-traced pond
+(reported exactly that way). A water tile now paints the ordinary grass floor
+and the water goes down CLIPPED to the traced outline — and the clip happens
+ONCE PER REPAINT, not per tile: handing the canvas a five-thousand-point path
+three hundred times over measured at 740ms of a 930ms bake.
+**A BAND IS AN ANNULUS BETWEEN TWO CLOSED RINGS**, drawn as two closed
+subpaths with the inner one REVERSED and filled NONZERO. Running out along the
+base and back along the offset as one path makes the two joins real segments
+that cut across the band at the loop's seam — stacked five deep for the shelf
+they drew a dark vertical mark at the top-left corner of every lake. Even-odd
+also gives the annulus but FLIPS on any self-intersection, and a roughened ring
+on a tight curve does sometimes cross itself, which punched radial streaks out
+of the shelf all round a bay; opposite winding gets the same shape from nonzero,
+which simply fills through a crossing. A collapsed offset keeps a hair of its
+width (`BAND_PINCH`) for the same reason — collapsed exactly onto the base the
+two rings TOUCH.
 **IT IS A DRAWING OF THE WATER, NOT A DEFINITION OF IT.** Tile data is
 untouched, and everything that decides anything still reads it: passability,
 dock siting, dock ORIENTATION, fishing, naval movement, shallowness for the
@@ -2362,6 +2391,57 @@ the traced waterline instead of overlapping the shore bands. `Bld.place` now
 repaints its own footprint so that suppression actually takes effect — nothing
 dirtied those tiles before unless the TERRAIN under them happened to change too.
 Deterministic from the seed; most maps get one or two, some get none.
+
+**BLOCKED GROUND HAS TO ANNOUNCE ITSELF** (`R.blockShade`, `Path.blocksLand`,
+pinned by `theBlockedCueIsDerivedFromTheMovementRule`): the decoration layers
+had grown until a player could look at an area, see no clear obstruction, and
+find their units would not walk through it. That is a GAMEPLAY bug wearing an
+art costume, and where an aesthetic choice fights it, readability wins.
+**The cue is DERIVED FROM THE RULE IT SIGNALS** — `blockShade` asks
+`Path.blocksLand`, the same predicate movement itself asks — so it can never
+drift out of agreement with what units can do. Add a terrain to `BLOCK_TERR`
+and it gets the cue; take one out and it loses it. It is a darker patch of
+ground beneath the cluster, no outline and no tint, DITHERED so it thins toward
+whichever sides face open ground: a flat fill over a tile-shaped footprint
+draws the tile, which is the failure this whole file keeps relearning. A tile
+whose every side is blocked takes the shade in ONE rect — no edge to fade
+toward, and in a big wood that is most of the tiles.
+**GOLD ORE DOES NOT GET IT, AND THAT IS THE POINT.** The brief listed gold
+among the impassable resources; in this game it is not — `BLOCK_TERR` is
+water, mountain, forest, hills and fertile, and a seam is deliberately walkable
+AND buildable (tests/gold-mine.mjs). A seam wearing the blocked signature would
+be exactly the lie the signature exists to prevent. Gold is made unmistakable
+by being gold. Spent quarries and felled stands are walkable too, and likewise
+stay unmarked.
+**AND THE CORES ARE CLOSED** (`rockField` / `forestTile` / `orchardTile` /
+`berryTile`, all three taking a density level): a wood's interior was three
+quarters bare grass and an ore field was a few evenly-spaced identical stamps
+with turf showing between them — which is what a player reads as walkable. The
+core of every blocking resource is now a packed, straddling mass (measured at
+**95–99% of the tile covered**), tapering out through a near-solid perimeter to
+a thinned fringe whose rocks and crowns stay whole and inside their tile, since
+that is the edge actually seen against grass. **The taper has to be GENTLE**:
+a solid core beside a two-thirds-bare perimeter puts a hard square of stone in
+the middle of a deposit and the tile boundary becomes the most visible line on
+screen — worse than the scattered stamps it replaced.
+**Four rocks, chosen to differ in OUTLINE** (`ROCK_KINDS`): an angular chunk,
+a rounded dome, a cracked slab and a knot of rubble, each picking its own stone
+ramp so the mass has depth instead of reading as one flat grey shape, all laid
+down shadows-first and back-to-front. The slab is built from an ELLIPSE — drawn
+as a rectangle it read as masonry, a built thing, which is the wrong signal
+entirely on wild ground.
+**Measured, not eyeballed** (`andOutShoutsDecoratedGrass`): the quietest
+blocked terrain sits 15.7 luminance from bare grass where a fully decorated
+meadow tile sits 2.0 — a 7.9× separation, and only 6% of that meadow tile reads
+as anything but grass.
+**AND DECORATION RECEDES** (`LAND.DECAL_MUTE`): every ground decal is pulled
+toward the grass it lies on at the point of drawing, so ONE dial governs the
+whole layer and no decal can be forgotten — including the shore stones and the
+streamside reeds, which come through the same door and pass their own
+`DECAL_MUTE_WET` so a wet stone stays a touch crisper. Density and the empty
+ground between patches were cut again with it. The mix is memoised per
+(colour, mute): it runs several times per decal and thousands of times per
+bake, and re-deriving it from two hex strings each time is pure waste.
 
 **A WOOD IS FOUR TREES** (`Sprites.tree` / `KINDS` / `pickKind` / `rampFor`,
 pinned by `tests/land.mjs`): the forest was one shaded disc, jittered in radius

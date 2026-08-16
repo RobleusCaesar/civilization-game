@@ -167,8 +167,9 @@ const Sprites = {
       f(cx, cy + rr, 1, 1, AP.wood[0]); f(cx, cy + rr + 2, 1, 1, AP.wood[0]);   // bark ticks
       return;
     }
-    f(cx, cy + rr - 2, 2, 5, AP.wood[1]);
-    f(cx, cy + rr - 2, 1, 5, AP.wood[2]);
+    // …and a broadleaf's trunk stops AT the shadow line, not a pixel past it
+    f(cx, cy + rr - 2, 2, 4, AP.wood[1]);
+    f(cx, cy + rr - 2, 1, 4, AP.wood[2]);
   }
   // the rim is what separates one crown from the next — never drop it
   function crownRim(f, cx, cy, rr, ramp, squash, col) {
@@ -180,9 +181,18 @@ const Sprites = {
       /* A SPIRE OF TIERS. A cone drawn as one smooth triangle reads as a
          chevron; real spruce at this size is a stack of drooping tiers, and
          the STEPS between them are the whole silhouette. */
-      const h = Math.max(6, Math.round(rr * 2.3)), top = cy - Math.round(rr * 1.15);
+      /* THE TRUNK IS MEASURED FROM THE FOOT, not from the cone's height. It
+         used to start at (top + height of cone) and run four pixels down,
+         and since the cone's height grows as 2.3x the radius while the foot
+         only moves 0.75x, a big conifer's trunk finished several pixels BELOW
+         its own ground shadow — a dark two-pixel stick hanging under the
+         tree, which is what read as vertical streaks through the canopy of a
+         dense wood. */
+      const foot = cy + Math.round(rr * 0.75);
+      const top = cy - Math.round(rr * 1.15);
+      const h = Math.max(6, foot - 3 - top);
       treeShadow(f, cx, cy, Math.round(rr * 0.75));
-      f(cx, top + h - 1, 2, 4, AP.wood[1]); f(cx, top + h - 1, 1, 4, AP.wood[2]);
+      f(cx, foot - 3, 2, 4, AP.wood[1]); f(cx, foot - 3, 1, 4, AP.wood[2]);
       const tiers = rr >= 6 ? 4 : 3, th = Math.max(2, Math.round(h / tiers));
       for (let t = 0; t < tiers; t++) {
         const ty = top + Math.round((h - th) * t / (tiers - 1));
@@ -274,12 +284,19 @@ const Sprites = {
        by taking the lesser of two rolls so a stand is mostly ordinary trees
        with the odd sapling and the odd giant, rather than an even spread of
        four distinct sizes. */
-    const radius = () => 4 + Math.min((r() * 5) | 0, (r() * 5) | 0) + ((r() < 0.18) ? 1 : 0);
+    const radius = () => (level === 2 ? 5 : 4)
+      + Math.min((r() * 5) | 0, (r() * 5) | 0) + ((r() < 0.18) ? 1 : 0);
     if (level === 2) {
       // DENSE interior only (used when a tile is fully surrounded by forest): a
       // straddling grid whose crowns overhang every edge. Half-cut trees are fine
       // here — every edge abuts more forest that covers them.
-      const step = 10, drop = 0.24;
+      /* A WOOD BLOCKS MOVEMENT, so its core must LOOK closed. At step 10 with
+         a quarter of the positions dropped the interior of a forest was three
+         quarters bare grass — a scattering of trees on an open lawn, which is
+         what a player reads as walkable. Tighter lattice, almost nothing
+         dropped, bigger crowns: the heart of a wood is now a closed canopy
+         and its edge still thins out through the medium and sparse sets. */
+      const step = 7, drop = 0.08;
       for (let gy = 0, row = 0; gy <= 32; gy += step, row++)
         for (let gx = (row & 1) ? 5 : 0; gx <= 32; gx += step) {
           if (r() < drop) continue;
@@ -293,7 +310,7 @@ const Sprites = {
       // EDGE tiles (sparse fringe / medium perimeter): every tree FULLY CONTAINED
       // within the tile (crown may touch an edge but is never cut), so the forest's
       // visible border always shows whole trees on grass — never a half tree.
-      const n = level === 1 ? 7 + (r() * 3 | 0) : 1 + (r() * 3 | 0);   // medium packs a fuller clump
+      const n = level === 1 ? 11 + (r() * 4 | 0) : 3 + (r() * 3 | 0);   // medium packs a fuller clump
       for (let i = 0; i < n; i++) {
         const k = pickKind(r, dom);
         const rr = radius();
@@ -451,65 +468,123 @@ const Sprites = {
     }
     f(cx - rr, gy - 1, 1, 2, AP.grass[3]); f(cx + rr - 1, gy - 1, 1, 2, AP.grass[1]);   // flanking tufts beside the rock
   }
-  function rockField(p, seed, spec) {
+  /* ---- FOUR ROCKS, AND A CORE YOU CANNOT WALK THROUGH -------------------
+     Hills BLOCK MOVEMENT, and the old field did not say so: three or four
+     evenly-spaced identical stamps with bare turf showing between them, which
+     reads as scattered stones lying on a meadow — passable ground. A player
+     could look at a rock field, see no obstruction, and be unable to move
+     through it. That is a gameplay bug wearing an art costume.
+
+     The core is DENSE AND CONTINUOUS now: a packed jittered lattice of large
+     overlapping boulders that straddle the tile edge, laid down shadows-first
+     so the mass composites as one body of stone with no grass showing through.
+     Density and size then taper outward — big interlocking boulders at the
+     core, mid rocks on the perimeter, a few small stones at the fringe
+     thinning to nothing — so the deposit still has a soft edge.
+
+     Four silhouettes, chosen (as with the trees) to differ in OUTLINE rather
+     than in shade: an ANGULAR chunk, a ROUNDED dome, a cracked SLAB and a
+     knot of RUBBLE. Each rock also picks its own stone ramp, so the mass has
+     depth instead of reading as one flat grey shape. ---- */
+  const ROCK_PALS = [AP.ore, AP.rock, AP.stone];
+  function rockRound(f, cx, cy, rr, pal) {
+    const St = pal || AP.ore;
+    ART.shadedCircle(f, cx, cy, rr, [St[0], St[1], St[2], St[3], St[4] || St[3]], 2);
+    for (let a2 = 0.35; a2 <= 2.8; a2 += 0.24)                       // dark underside rim
+      f((cx + Math.cos(a2) * rr) | 0, (cy + Math.sin(a2) * rr) | 0, 1, 1, St[0]);
+    ART.shadedCircle(f, cx - 1, cy - 1, Math.max(1, (rr * 0.45) | 0), St, 4);   // crown glint
+  }
+  function rockSlab(f, cx, cy, rr, pal) {
+    /* A CRACKED SLAB — a low, wide, SPLIT boulder. Built from an ellipse
+       rather than a rectangle, because anything with four straight sides and
+       square corners reads as MASONRY, a built thing, which is the wrong
+       signal entirely on wild ground (the first version of this was
+       indistinguishable from a dropped block of stone). Wide and flat is what
+       makes it a slab; the crack is what makes it a split one. */
+    const St = pal || AP.rock, w = rr + 2, hgt = Math.max(2, (rr * 0.58) | 0);
+    const r2 = ART.rng((cx * 41 + cy * 23 + rr) | 1);
+    for (let dy = -hgt; dy <= hgt; dy++) {
+      const k = 1 - (dy * dy) / ((hgt + 0.7) * (hgt + 0.7));
+      if (k <= 0) continue;
+      const hw = Math.max(1, Math.round(w * Math.sqrt(k) - r2() * 1.3));
+      f(cx - hw, cy + dy, hw * 2, 1, dy < -hgt * 0.25 ? St[3] : St[2]);
+      f(cx - hw, cy + dy, 1, 1, St[1]);
+      f(cx + hw - 1, cy + dy, 1, 1, St[0]);
+      if (dy >= hgt - 1) f(cx - hw, cy + dy, hw * 2, 1, St[0]);      // dark foot
+    }
+    const cr = ((cx * 7 + cy * 13) & 3) - 1;                          // the split
+    f(cx + cr, cy - hgt + 1, 1, hgt * 2 - 1, St[0]);
+    f(cx + cr + 1, cy - hgt + 2, 1, hgt, St[1]);
+  }
+  function rockRubble(f, cx, cy, rr, pal) {
+    const St = pal || AP.stone, r2 = ART.rng((cx * 31 + cy * 17 + rr) | 1);
+    const n = 3 + ((r2() * 3) | 0);
+    for (let i = 0; i < n; i++) {
+      const ox = ((r2() * 2 - 1) * rr) | 0, oy = ((r2() * 2 - 1) * rr * 0.7) | 0;
+      const sr = Math.max(1, ((rr * 0.45) * (0.6 + r2() * 0.8)) | 0);
+      f(cx + ox - sr, cy + oy - sr + 1, sr * 2 + 1, sr * 2, St[2]);
+      f(cx + ox - sr, cy + oy - sr + 1, sr * 2 + 1, 1, St[3]);
+      f(cx + ox - sr, cy + oy + sr, sr * 2 + 1, 1, St[0]);
+    }
+  }
+  const ROCK_KINDS = [boulderBody, rockRound, rockSlab, rockRubble];
+  Sprites.ROCK_KINDS = ROCK_KINDS.length;
+  /* level 0 = fringe, 1 = perimeter, 2 = core. The core's lattice step is
+     SMALLER than the rocks it places, which is what makes the mass close up;
+     raise ROCK_STEP or lower ROCK_RAD and bare grass starts showing through,
+     which is the whole thing this exists to prevent. */
+  function rockField(p, seed, level) {
     const f = p.f, r = ART.rng(seed + 3);
-    for (const b of spec) boulderBody(f, b[0], b[1], b[2]);    // no cast shadows — buried rocks sit IN the turf, not on it
-    for (let i = 0; i < 6; i++)                                // a few scree chips + grass tufts (workable-deposit rubble)
+    const rocks = [];
+    /* THE TAPER HAS TO BE GENTLE OR IT DRAWS THE GRID. A core tile packed
+       solid beside a perimeter tile that is two thirds bare turf puts a hard
+       square of stone in the middle of a deposit — the tile boundary becomes
+       the most visible line on screen, which is worse than the scattered
+       stamps this replaced. The perimeter therefore sits CLOSE to the core
+       (and may straddle its edges, since a tile with four or more ore
+       neighbours is nowhere near the deposit's border); only the FRINGE keeps
+       every rock whole and inside its tile, because that is the edge the
+       player actually sees against grass. */
+    if (level >= 1) {
+      const step = level === 2 ? 8 : 10;
+      const lo = level === 2 ? 7 : 6, hi = level === 2 ? 4 : 4;
+      for (let gy = -2, row = 0; gy <= 34; gy += step, row++)
+        for (let gx = (row & 1) ? -6 : -2; gx <= 34; gx += step) {
+          if (level === 1 && r() < 0.22) continue;          // a little air on the perimeter
+          const rr = lo + ((r() * hi) | 0);
+          rocks.push([gx + ((r() * 7) | 0) - 3, gy + ((r() * 7) | 0) - 3, rr,
+            ROCK_KINDS[(r() * ROCK_KINDS.length) | 0], ROCK_PALS[(r() * ROCK_PALS.length) | 0]]);
+        }
+    } else {
+      const n = 3 + ((r() * 3) | 0);
+      for (let i = 0; i < n; i++) {
+        const rr = 4 + ((r() * 3) | 0);
+        const cx = rr + 1 + ((r() * (30 - 2 * rr)) | 0);
+        const cy = rr + 1 + ((r() * (29 - 2 * rr)) | 0);
+        rocks.push([cx, cy, rr, ROCK_KINDS[(r() * ROCK_KINDS.length) | 0],
+          ROCK_PALS[(r() * ROCK_PALS.length) | 0]]);
+      }
+    }
+    // shadows first, bodies after, back to front — so an overlapping mass
+    // composites cleanly and every rock still sits ON the ground
+    rocks.sort((a2, b2) => a2[1] - b2[1]);
+    for (const [cx, cy, rr] of rocks) boulderShadow(f, cx, cy, rr);
+    for (const [cx, cy, rr, draw, pal] of rocks) draw(f, cx, cy, rr, pal);
+    if (level < 2) for (let i = 0; i < 5; i++)                       // scree chips at the fringe
       f((r() * 30) | 0, (r() * 30) | 0, 1, 1, r() < 0.6 ? AP.ore[2] : AP.grass[4]);
   }
-  /* ORE (hills): the same three-density gradient as the forest, so a deposit
-     reads as one organic body of stone instead of a repeating grid of tiles:
-       SPARSE  (edge of the deposit): one or two smallish half-buried stones,
-               mostly open turf — no hard edges, everything inside the tile;
-       MEDIUM  (perimeter): the chunky 2-4 boulder clusters, still fully
-               inside the tile so the deposit's border never cuts a rock;
-       DENSE   (fully-enclosed core): big interlocked boulders that MAY
-               straddle the tile edge — every cut side abuts more ore, so the
-               heart of the deposit reads as one continuous rocky mass.
-     render.js picks the set from the 8-neighbour count, exactly like forest;
-     map.js scales each tile's stock by the same density (edge least, core
-     most — and at a fixed mining rate, the core holds a villager longest). */
-  Sprites.terrain[T.HILLS] = [                                  // SPARSE — the deposit's soft fringe
-    tile(p => rockField(p, 31,  [[10, 12, 5]])),
-    tile(p => rockField(p, 87,  [[22, 18, 6]])),
-    tile(p => rockField(p, 143, [[8, 22, 5], [20, 10, 4]])),
-    tile(p => rockField(p, 199, [[24, 24, 5]])),
-    tile(p => rockField(p, 251, [[14, 8, 5], [24, 20, 4]])),
-    tile(p => rockField(p, 307, [[6, 14, 4], [18, 24, 5]])),
-    tile(p => rockField(p, 361, [[20, 6, 5]])),
-    tile(p => rockField(p, 419, [[12, 20, 6]])),
-  ];
-  Sprites.terrainMed[T.HILLS] = [                               // MEDIUM — chunky clusters, none cut
-    tile(p => rockField(p, 33, [[14, 16, 9], [24, 24, 6], [7, 25, 5]])),
-    tile(p => rockField(p, 89, [[17, 15, 10], [7, 23, 6], [25, 8, 5]])),
-    tile(p => rockField(p, 145, [[12, 18, 8], [23, 12, 7], [24, 25, 5]])),
-    tile(p => rockField(p, 201, [[16, 20, 9], [9, 9, 6], [24, 17, 6]])),
-    tile(p => rockField(p, 253, [[19, 13, 8], [10, 22, 7], [23, 25, 5]])),
-    tile(p => rockField(p, 309, [[13, 13, 8], [22, 22, 7], [8, 25, 5]])),
-    tile(p => rockField(p, 363, [[16, 17, 10], [26, 7, 5], [8, 12, 5]])),
-    tile(p => rockField(p, 421, [[15, 21, 8], [8, 14, 6], [24, 10, 6]])),
-    tile(p => rockField(p, 469, [[20, 18, 9], [9, 20, 6], [14, 7, 5]])),
-    tile(p => rockField(p, 525, [[12, 15, 9], [24, 20, 6], [18, 25, 5]])),
-    tile(p => rockField(p, 579, [[18, 16, 8], [8, 10, 5], [10, 24, 6], [26, 23, 5]])),
-    tile(p => rockField(p, 633, [[14, 17, 10], [24, 13, 6], [7, 7, 5]])),
-  ];
-  Sprites.terrainFull[T.HILLS] = [                              // DENSE — the packed, straddling core
-    tile(p => rockField(p, 41, [[6, 8, 10], [22, 14, 11], [10, 24, 9], [28, 28, 8]])),
-    tile(p => rockField(p, 97, [[16, 6, 11], [5, 20, 9], [25, 24, 10]])),
-    tile(p => rockField(p, 151, [[8, 4, 9], [26, 8, 10], [6, 26, 10], [24, 28, 9]])),
-    tile(p => rockField(p, 209, [[16, 16, 13], [2, 6, 8], [30, 26, 9]])),
-    tile(p => rockField(p, 257, [[4, 14, 10], [20, 4, 9], [24, 22, 11]])),
-    tile(p => rockField(p, 311, [[12, 12, 11], [30, 10, 8], [8, 30, 9], [27, 29, 7]])),
-    tile(p => rockField(p, 367, [[18, 26, 11], [6, 10, 10], [28, 2, 8]])),
-    tile(p => rockField(p, 431, [[2, 24, 9], [14, 8, 11], [28, 16, 10]])),
-  ];
+  const rockSet = (base, lvl, n) => { const a2 = []; for (let i = 0; i < n; i++) a2.push(tile(p => rockField(p, base + i * 53, lvl))); return a2; };
+  Sprites.terrain[T.HILLS] = rockSet(31, 0, 8);        // SPARSE — the deposit's soft fringe
+  Sprites.terrainMed[T.HILLS] = rockSet(33, 1, 8);     // MEDIUM — chunky clusters, none cut
+  Sprites.terrainFull[T.HILLS] = rockSet(41, 2, 8);    // DENSE — the packed, straddling core
 
   // wild fertile ground: fruit orchards and berry thickets, mixed across the
   // map — the village forages these long before it tills its first farm
-  function orchardTile(p, seed) {
+  function orchardTile(p, seed, level) {
     const f = p.f, r = ART.rng(seed + 5);          // transparent floor — render paints the grass ground
+    level = level || 0;
     const fruitTree = (cx, cy, s2) => {
-      const rr = 4 + (r() * 2 | 0);
+      const rr = (level === 2 ? 5 : 4) + (r() * 2 | 0);
       f(cx - rr + 1, cy + rr + 2, rr + 2, 1, AP.leaf[0]);           // contact shadow
       tree(f, cx, cy, rr, r() < 0.5 ? AP.leaf : LEAF_L);          // trunk + fruiting crown
       const fr = ART.rng(s2 + 1);
@@ -524,14 +599,20 @@ const Sprites = {
         f(cx - rr + 1 + ((fr() * (rr * 2 - 1)) | 0), cy - rr + 1 + ((fr() * (rr * 2 - 1)) | 0), 1, 1,
           fr() < 0.7 ? fruit : AP.red[3]);
     };
-    const nt = 2 + (r() * 2 | 0);
-    for (let i = 0; i < nt; i++) fruitTree(7 + (r() * 18) | 0, 8 + (r() * 13) | 0, seed + i * 23 + 11);
+    // core tiles pack in and MAY straddle the edge (a cut crown always abuts
+    // more orchard); fringe tiles keep every tree whole and inside the tile
+    const nt = level === 2 ? 22 + (r() * 6 | 0) : level === 1 ? 9 + (r() * 4 | 0) : 2 + (r() * 2 | 0);
+    const span = level === 2 ? 34 : 18, base = level === 2 ? -1 : 7;
+    for (let i = 0; i < nt; i++)
+      fruitTree(base + (r() * span) | 0, (level === 2 ? -1 : 8) + (r() * (level === 2 ? 34 : 13)) | 0,
+        seed + i * 23 + 11);
     f(13, 27, 1, 1, AP.red[1]); f(27, 12, 1, 1, AP.red[2]);         // windfall fruit
   }
-  function berryTile(p, seed) {
+  function berryTile(p, seed, level) {
     const f = p.f, r = ART.rng(seed + 7);          // transparent floor — render paints the grass ground
+    level = level || 0;
     const bush = (cx, cy, s2) => {
-      const rr = 3 + (r() * 2 | 0);                                 // varied size
+      const rr = (level === 2 ? 4 : 3) + (r() * 3 | 0);             // varied size
       f(cx - rr, cy + rr + 1, rr * 2 + 1, 1, AP.leaf[0]);           // ground shadow
       ART.shadedCircle(f, cx + 1, cy + 1, rr, [AP.leaf[0], AP.leaf[0], AP.leaf[0]], 1);   // dark underside
       ART.shadedCircle(f, cx, cy, rr, AP.leaf, 2);                  // green bush
@@ -544,15 +625,24 @@ const Sprites = {
         if (br() < 0.3) f(bx, by - 1, 1, 1, AP.berry[2]);           // bright pink highlight
       }
     };
-    const nb = 3 + (r() * 2 | 0);
-    for (let i = 0; i < nb; i++) bush(5 + (r() * 22) | 0, 6 + (r() * 19) | 0, seed + i * 17 + 3);
+    const nb = level === 2 ? 34 + (r() * 8 | 0) : level === 1 ? 13 + (r() * 5 | 0) : 3 + (r() * 2 | 0);
+    const span = level === 2 ? 34 : 22, base = level === 2 ? -1 : 5;
+    for (let i = 0; i < nb; i++)
+      bush(base + (r() * span) | 0, (level === 2 ? -1 : 6) + (r() * (level === 2 ? 34 : 19)) | 0,
+        seed + i * 17 + 3);
     f(27, 26, 1, 1, AP.berry[1]); f(4, 17, 1, 1, AP.berry[3]);      // dropped berries
   }
-  Sprites.terrain[T.FERTILE] = [
-    tile(p => orchardTile(p, 17)), tile(p => berryTile(p, 53)),
-    tile(p => orchardTile(p, 91)), tile(p => berryTile(p, 133)),
-    tile(p => berryTile(p, 188)), tile(p => orchardTile(p, 241)),
-  ];
+  /* FERTILE BLOCKS MOVEMENT TOO — a standing orchard or a berry thicket is
+     something you walk around — so it takes the forest's and the ore's
+     three-density ramp for the same reason: one flat set meant the heart of a
+     thicket looked exactly as open as its edge, and neither looked closed. */
+  const fertSet = (base, lvl, n) => { const a2 = [];
+    for (let i = 0; i < n; i++) a2.push(tile(p => (i & 1)
+      ? berryTile(p, base + i * 47, lvl) : orchardTile(p, base + i * 47, lvl)));
+    return a2; };
+  Sprites.terrain[T.FERTILE] = fertSet(17, 0, 6);
+  Sprites.terrainMed[T.FERTILE] = fertSet(311, 1, 6);
+  Sprites.terrainFull[T.FERTILE] = fertSet(577, 2, 6);
 
   // depleted terrain: felled forest, quarried-out hills, spent soil, ruins
   // a felled stump: lit ring-grain top, a bark rim, an axe notch, ground shadow
