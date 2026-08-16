@@ -5005,23 +5005,73 @@ const Sprites = {
     };
     return { idle: framesU(2, (q, g, f) => draw(q, 0), 1), walk: framesU(2, (q, g, f) => draw(q, f), 1) };
   }
-  // BALLISTA (siege T2): a giant crossbow on a wheeled frame — the unit-killer.
-  // String drawn with a bolt nocked; on the strike the string snaps and the bolt flies.
+  // BALLISTA (siege T2): a giant torsion bow-thrower on a wheeled carriage —
+  // the unit-killer. Drawn HEAD-ON (three-quarter), which is the only view in
+  // which a ballista reads as one: side-on, its bow is edge-up and the whole
+  // silhouette collapses to a post. So the arms spread across the tile and the
+  // stock is foreshortened, running DOWN the screen toward the viewer with the
+  // windlass at the near end.
+  //   THE ARMS ARE SWEPT, NEVER STRAIGHT. A bow drawn as two horizontal bars
+  // reads as scaffolding — the curve is the whole reason the shape says
+  // "weapon". Each arm is stepped out in four rising segments with a darker
+  // underside, so it turns.
+  //   THE STRING IS A V, NOT A LINE. Head-on, a drawn string is pulled toward
+  // the viewer, so it hangs back from both tips to the nock — that V is what
+  // says "spanned and ready" at 32px. The strike snaps it flat and the bolt
+  // is gone from the rail.
+  //   The torsion drums either side of the stock are the springs that actually
+  // throw it; iron-banded, they also break the timber up so the machine does
+  // not read as one brown mass.
   function ballistaSheet() {
-    const draw = (q, f, pose) => {
-      q(4, 29, 24, 1, 'rgba(20,16,10,0.28)');
-      _wheel(q, 8, 26); _wheel(q, 23, 26);
-      q(5, 22, 22, 3, WD[2]); q(5, 22, 22, 1, WD[3]);              // carriage
-      q(14, 12, 4, 10, WD[1]); q(14, 12, 4, 1, WD[3]);             // stock riser
-      q(4, 10, 10, 2, WD[3]); q(18, 10, 10, 2, WD[3]);             // bow arms
-      q(3, 9, 1, 3, WD[2]); q(28, 9, 1, 3, WD[2]);                 // arm tips
-      q(20, 18, 5, 3, WD[0]);                                      // windlass
+    const TH = APx.thatch, IN = APx.ink;
+    const draw = (q0, f, pose) => {
+      const bob = (pose === 'walk' && f === 1) ? 1 : 0;
+      const q = (x, y, w, h, c) => q0(x, y + bob, w, h, c);
+      // a 1px line, for the string
+      const cord = (x0, y0, x1, y1, c) => {
+        const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+        for (let i = 0; i <= n; i++)
+          q(Math.round(x0 + (x1 - x0) * i / n), Math.round(y0 + (y1 - y0) * i / n), 1, 1, c);
+      };
+      // SIDE ELEVATION, SHOOTING LEFT — the same staging the catapult and the
+      // trebuchet use, and for the same reason: a symmetrical head-on machine
+      // at this size reads as an INSECT, all wings and no direction. Side-on,
+      // the prod stands EDGE-ON as a tall recurve at the bow, the stock runs
+      // away from it to the windlass, and the string falls back from both tips
+      // to the nock in a long V that says "spanned" at a glance.
+      q0(4, 29, 24, 1, 'rgba(20,16,10,0.30)');                     // ground shadow
+      _wheel(q, 10, 25); _wheel(q, 22, 25);
+      q(10, 24, 12, 1, WD[0]);                                     // axle
+      q(6, 20, 20, 4, WD[2]); q(6, 20, 20, 1, WD[3]);              // carriage bed
+      q(6, 21, 1, 3, WD[1]); q(25, 21, 1, 3, WD[1]);
+      q(12, 20, 1, 4, IN[2]); q(20, 20, 1, 4, IN[2]);              // iron straps
+      q(15, 17, 5, 3, WD[1]); q(15, 17, 5, 1, WD[3]);              // pedestal
+      // the stock: one long rail from the bow back to the windlass
+      q(3, 11, 25, 3, WD[2]); q(3, 11, 25, 1, WD[3]); q(4, 12, 23, 1, WD[0]);
+      // windlass STRADDLING the rail at the rear — it is what draws the
+      // string, so it belongs on the line the string comes back to
+      q(22, 9, 6, 5, WD[1]); q(22, 9, 6, 1, WD[3]);
+      q(22, 11, 6, 1, TH[1]);                                      // wound rope
+      q(24, 9, 1, 5, IN[2]); q(26, 9, 1, 5, IN[2]);                // drum bands
+      q(28, 10, 1, 4, IN[2]); q(27, 13, 2, 1, IN[2]);              // crank
+      // THE PROD, edge-on: two limbs off a bound hub, tips RECURVING forward.
+      // Both limbs stay CLEAR OF THE BED — a limb reaching down into the
+      // wheels drags the string across the carriage, where it stops reading
+      // as a bowstring and starts reading as a stick leaning on the machine.
+      q(6, 4, 3, 6, WD[3]); q(9, 4, 1, 6, WD[0]);                  // upper limb + shade
+      q(6, 14, 3, 4, WD[3]); q(9, 14, 1, 4, WD[0]);                // lower limb + shade
+      q(4, 2, 3, 2, WD[2]); q(4, 17, 3, 2, WD[2]);                 // recurved tips
+      q(5, 10, 5, 4, WD[1]); q(5, 11, 5, 1, IN[2]);                // hub + spring binding
       if (pose === 'fight' && f === 1) {
-        q(5, 11, 22, 1, APx.thatch[1]);                            // string slack forward
-        q(12, 3, 8, 1, BONE[2]); q(20, 3, 2, 1, STN[3]);           // bolt away!
+        cord(5, 3, 8, 11, TH[2]); cord(8, 11, 5, 18, TH[2]);       // string snapped forward
+        q(0, 10, 5, 1, BONE[0]); q(0, 10, 2, 1, STN[4]);           // bolt away!
+        q(7, 10, 3, 1, 'rgba(226,220,206,0.35)');                  // the snap
       } else {
-        q(5, 13, 9, 1, APx.thatch[1]); q(18, 13, 9, 1, APx.thatch[1]);  // string drawn
-        q(10, 11, 10, 1, BONE[2]); q(20, 11, 2, 1, STN[3]);        // bolt nocked
+        cord(5, 3, 21, 10, TH[2]); cord(21, 10, 5, 18, TH[2]);     // string spanned back
+        // the bolt lies IN the channel — only its head clears the stock, so
+        // the rail stays timber instead of wearing a bright metal pipe
+        q(0, 10, 5, 1, STN[3]); q(0, 10, 2, 1, STN[4]);
+        q(5, 10, 3, 1, BONE[0]);
       }
     };
     return { idle: framesU(2, (q, g, f) => draw(q, 0, 'idle'), 1), walk: framesU(2, (q, g, f) => draw(q, f, 'walk'), 1), fight: framesU(2, (q, g, f) => draw(q, f, 'fight'), 1) };
