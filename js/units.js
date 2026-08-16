@@ -1665,6 +1665,24 @@ const Units = {
   HERD_JOIN: 30,    // how far a separated animal will walk to rejoin its herd
   HERD_DRIFT: 1.2,  // how far past the ring the leader steps — the herd's slow travel
   HERD_APART: 4,    // the distance different KINDS keep from each other's ground
+  TOWN_SHY: 6,      // how close to a town's buildings a HERD will feed — the wild keeps to the periphery
+  /* THE WILD KEEPS TO THE PERIPHERY (tests/wild-life.mjs): herds used to
+     graze in the village high street, which read as tame cattle rather than
+     wild country — and kept the killing grounds (and so the Hunter's Lodge)
+     pinned to the town's doorstep. A step target within TOWN_SHY of any
+     standing town building (P or A — a barbarian camp is wild country and
+     repels nothing) is refused, the same way HERD_APART refuses another
+     kind's ground. The rule applies only to an animal IN COMPANY: a lone
+     wanderer may still drift through town — that is the "one deer in the
+     lane" the map should keep — and a panic still runs wherever it runs. */
+  townBldNear(x, y, r) {
+    r = r || this.TOWN_SHY;
+    for (const b of S.buildings) {
+      if (b.owner !== 'P' && b.owner !== 'A') continue;
+      if (Math.hypot(Bld.cx(b) - x, Bld.cy(b) - y) < r) return b;
+    }
+    return null;
+  },
   spook(u, tx, ty) { u.spookT = 2.2 + Math.random() * 1.6; u.spookX = tx; u.spookY = ty; },
   wildIdle(u, dt) {
     if (this.isPassive(u)) return this.grazeIdle(u, dt);
@@ -1672,9 +1690,20 @@ const Units = {
     u.wanderT -= dt;
     if (u.wanderT <= 0) {
       u.wanderT = 2 + Math.random() * 4;
+      // a beast has no business IDLING in the square: standing on town
+      // ground it drifts out, and its aimless wander never aims there.
+      // A hunt (Combat.acquire) still takes it wherever the prey is.
+      const tb = this.townBldNear(u.x, u.y);
+      if (tb) {
+        const bx = Bld.cx(tb), by = Bld.cy(tb);
+        const d = Math.hypot(u.x - bx, u.y - by) || 1;
+        const ox = Math.round(u.x + (u.x - bx) / d * 4), oy = Math.round(u.y + (u.y - by) / d * 4);
+        if (Path.passable(ox, oy)) this.setPath(u, ox, oy);
+        return;
+      }
       const tx = (u.x | 0) + ((Math.random() * 9) | 0) - 4;
       const ty = (u.y | 0) + ((Math.random() * 9) | 0) - 4;
-      if (Path.passable(tx, ty)) this.setPath(u, tx, ty);
+      if (Path.passable(tx, ty) && !this.townBldNear(tx, ty)) this.setPath(u, tx, ty);
     }
   },
   grazeIdle(u, dt) {
@@ -1774,6 +1803,7 @@ const Units = {
       const ty = Math.round(cy + Math.sin(aa) * r + (Math.random() - 0.5));
       if (tx < 1 || ty < 1 || tx >= CFG.W - 1 || ty >= CFG.H - 1) continue;
       if (foreigner(tx, ty)) continue;
+      if (n && this.townBldNear(tx, ty)) continue;    // a herd gives a town its ground (TOWN_SHY)
       if (!Path.passable(tx, ty) || !this.setPath(u, tx, ty)) continue;
       if (lead === u) u.roamA = aa; else u.herdA = aa;
       return;
@@ -1788,6 +1818,21 @@ const Units = {
       const d = Math.hypot(u.x - near.x, u.y - near.y) || 1;
       const tx = Math.round(u.x + (u.x - near.x) / d * 2.5);
       const ty = Math.round(u.y + (u.y - near.y) / d * 2.5);
+      if (tx >= 1 && ty >= 1 && tx < CFG.W - 1 && ty < CFG.H - 1 && Path.passable(tx, ty))
+        this.setPath(u, tx, ty);
+      return;
+    }
+    /* …or the herd is standing ON town ground (a panic ran it in, a new
+       building went up under its feet, an old save): every bearing was
+       refused by TOWN_SHY, so step straight away from the nearest town
+       building — the same escape the interleaved-herds tangle uses — and
+       the band walks itself back out to the periphery over the next breaths. */
+    const tb = n ? this.townBldNear(u.x, u.y) : null;
+    if (tb) {
+      const bx = Bld.cx(tb), by = Bld.cy(tb);
+      const d = Math.hypot(u.x - bx, u.y - by) || 1;
+      const tx = Math.round(u.x + (u.x - bx) / d * 2.5);
+      const ty = Math.round(u.y + (u.y - by) / d * 2.5);
       if (tx >= 1 && ty >= 1 && tx < CFG.W - 1 && ty < CFG.H - 1 && Path.passable(tx, ty))
         this.setPath(u, tx, ty);
     }

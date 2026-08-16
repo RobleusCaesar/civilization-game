@@ -713,10 +713,28 @@ bearing is refused steps straight away from the nearest foreigner instead of
 freezing in the tangle. Panic deliberately still crosses kinds — a bolting
 herd startles the neighbours too. `Units.seedGameNear` deals ONE kind per
 band for the same reason. **And the meat is tiered by the beast**
-(`CFG.MEAT`: bear 30 > cow 15 > boar 12 > deer 8 > wolf 6, `MEAT_DROP` only a
-fallback for unknown kinds): the payout in `Units.damage` and both panel
-hints read the table, the bear's old hard-coded ×3 lives in its own entry,
-and the rival's hunters eat by the same table.
+(`CFG.MEAT`: bear 100 > cow 50 > boar 40 > deer 30 > wolf 20, `MEAT_DROP`
+only a fallback for unknown kinds — the whole table raised ~3.5× because at
+the old cuts a hunt barely beat a day of foraging, so nobody hunted and the
+killing grounds a lodge needs were never made): the payout in `Units.damage`
+and both panel hints read the table, the bear's old hard-coded ×3 lives in
+its own entry, and the rival's hunters eat by the same table.
+**And the wild keeps to the PERIPHERY** (`Units.TOWN_SHY` 6 /
+`Units.townBldNear`, same test): herds used to graze in the village high
+street, which read as tame cattle and pinned the killing grounds — and so
+the Hunter's Lodge — to the town's doorstep. A grazer IN COMPANY refuses a
+step target within `TOWN_SHY` of any standing town building (P or A — a
+barbarian camp is wild country and repels nothing), exactly the way
+`HERD_APART` refuses another kind's ground, and a herd standing ON town
+ground steps straight away from the nearest building (the interleaved-herds
+escape) until it is back on the periphery. A LONE animal is deliberately
+exempt — one deer drifting down the lane is the map living, a herd camped on
+the well is not — and a panic still runs wherever it runs. Idle predators
+take the same standoff in `wildIdle` (a wander never AIMS at town ground),
+but a hunt still goes wherever the prey is. Note the lodge itself has NO
+range gate from the hall — it is `freePlace` on any killing ground anywhere
+(tests/worked-ground.mjs) — so where the game dies is the whole geography of
+the lodge, and this rule is what moves that geography out of town.
 **And the kill LEAVES ITS MARK** (same test): every wild death drops a corpse
 on the spot (`S.corpses`: `{x,y,kind,day}`, in every save, `loadJSON`
 backfills, capped at 80) — a carcass with meat still on it for

@@ -235,6 +235,44 @@ const out = await p.evaluate(() => {
     const multA = (window.Cards && Cards.huntMult) ? Cards.huntMult('A') : 1;
     ck('theRivalEatsByTheSameTable', S.ai.res.food - a0 === Math.round(M.boar * multA),
       '+' + (S.ai.res.food - a0));
+    // the cuts are worth a hunting trip: at the old table (deer 8, cow 15) a
+    // kill barely beat a day of foraging, nobody hunted, and the killing
+    // grounds a lodge needs were never made
+    ck('theCutsMakeHuntingWorthTheTrip', M.deer === 30 && M.cow === 50,
+      'deer ' + M.deer + ', cow ' + M.cow);
+  }
+
+  /* ---- 2b³b. THE WILD KEEPS TO THE PERIPHERY (Units.TOWN_SHY). Herds used
+     to graze in the village high street, which read as tame cattle and kept
+     the killing grounds — and so the Hunter's Lodge — pinned to the town's
+     doorstep. A herd IN COMPANY refuses step targets within TOWN_SHY of any
+     standing town building and walks itself out if it finds itself inside;
+     a LONE animal is deliberately exempt (one deer drifting down the lane
+     is the map living, a herd camped on the well is not), and a panic still
+     runs wherever it runs. ---- */
+  {
+    arena('wl2gp');
+    const tc = Bld.tcOf('P');                       // arena parks it at (4,4)
+    // a herd of four camped practically on the hall
+    const herd = [];
+    for (const [hx, hy] of [[7, 6], [8, 7], [7, 8], [8, 5]])
+      herd.push(Units.spawn('deer', 'W', hx, hy));
+    run(90);
+    const still = herd.filter(d => Units.townBldNear(d.x, d.y, Units.TOWN_SHY - 1.5));
+    ck('aHerdGivesTheTownItsGround', still.length === 0,
+      still.length + ' of ' + herd.length + ' head still inside the shy ring after the walk-out'
+      + ' (tc at ' + tc.x + ',' + tc.y + ')');
+    // …but a LONE animal is never town-filtered — the company gate (n) must
+    // short-circuit before townBldNear is ever asked
+    arena('wl2gq');
+    Units.spawn('deer', 'W', 6, 6);
+    const orig = Units.townBldNear;
+    let asked = 0;
+    Units.townBldNear = function (...a) { asked++; return orig.apply(this, a); };
+    run(30);
+    Units.townBldNear = orig;
+    ck('aLoneWandererMayStillDriftThrough', asked === 0,
+      'townBldNear consulted ' + asked + ' times for an animal with no company');
   }
 
   /* ---- 2b⁴. THE KILL LEAVES ITS MARK. A carcass with meat on it for

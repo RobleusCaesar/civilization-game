@@ -768,10 +768,13 @@ const CFG = {
     { key: 'sea',    name: 'the Sea Folk', note: 'Plumed crews off the water, come to take what floats' },
   ],
 
-  MEAT_DROP: 10,               // fallback: food when a wild animal has no MEAT entry
+  MEAT_DROP: 25,               // fallback: food when a wild animal has no MEAT entry
   // the bigger the beast, the deeper the larder — a cow outfeeds a deer, a
-  // bear feeds the village, and a wolf is lean eating for the trouble it is
-  MEAT: { deer: 8, wolf: 6, boar: 12, cow: 15, bear: 30 },
+  // bear feeds the village, and a wolf is lean eating for the trouble it is.
+  // Raised ~3.5x (deer 8→30, cow 15→50, the rest scaled to keep the order):
+  // at the old cuts a hunt barely beat a day of foraging, so nobody hunted
+  // and the killing grounds a Hunter's Lodge needs were never made.
+  MEAT: { deer: 30, wolf: 20, boar: 40, cow: 50, bear: 100 },
   // a kill leaves its mark on the ground (tests/wild-life.mjs): a carcass
   // with meat still on it for `meat` days, then a bleached skeleton until
   // `bone` — the standing visual cue for where a Hunter's Lodge may rise,
