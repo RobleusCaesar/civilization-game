@@ -111,6 +111,7 @@ const LAND = {
   SHORE_NOISE_CAP: 0.30,
   BAND_CAP: 0.55,
   BAND_PINCH: 0.12,     // what a collapsed band keeps, so its two rings never touch
+  WATER_DIRTY_R: 3,     // tiles of repaint around water that appeared or vanished
   SHORE_MAXPTS: 9000,   // per-loop cap, so a vast lake stops subdividing
   /* THE SHELF IS MEASURED FROM THE TRACED CURVE, never from the tile grid.
      Stacked translucent bands offset into the water: each adds its own alpha,
@@ -930,7 +931,17 @@ const R = {
      Widths ride their own noise along the run, so the beach still swells and
      pinches to nothing — but now along the curve rather than along the grid.
      Rocky coasts are handled here too (see landAt / the shoal branch). */
+  _layerKey: '',
   buildShoreLayer() {
+    /* THE LAYER HAS ITS OWN KEY, and it must: `_shoreKey` is the cache key for
+       the traced REGIONS, and `waterRegions()` stamps it the moment anything
+       asks for the geometry. Sharing it meant that any call which only wanted
+       the regions — `paintWaterIn` asking `waterBodyPath`, say — silently
+       marked the BANDS fresh without anyone having redrawn them, so `blitShore`
+       skipped the rebuild and composited the old shore. That is what left a
+       beach running down the middle of a flooded moat: the geometry knew the
+       moat and the lake were one body, and the picture still had the sand. */
+    this._layerKey = this.waterKey();
     const W = CFG.W, H = CFG.H, TL = CFG.TILE, AP = ART.PALETTE;
     const px = TL / 16;
     if (!this.shoreLayer) this.shoreLayer = document.createElement('canvas');
@@ -988,12 +999,31 @@ const R = {
       const t = terr[k];
       return (t === T.HILLS || t === T.MOUNTAIN || t === T.PEBBLES) ? 1 : 0;
     };
-    /* ONLY NATURAL LAND RAISES A SHORE. Where a sapper filled water in, the
-       sea beyond the new isthmus must read exactly as it did before it was
-       built — no beach appears on ground that was open water last week, and
-       the deep stays deep against it. This rule used to live in drawTile's
-       `shoreLand`; the shore moved to the traced curve and it came with it. */
+    // the WATER tile this point looks back into — the inverse of landAt
+    const wetAt = (p, nx, ny) => {
+      const wx = Math.floor(p[0] - nx * 0.8), wy = Math.floor(p[1] - ny * 0.8);
+      return (wx < 0 || wy < 0 || wx >= W || wy >= H) ? -1 : wy * W + wx;
+    };
+    /* ONLY NATURAL GROUND RAISES A SHORE — on BOTH sides of the waterline.
+       Where a sapper filled water in, the sea beyond the new isthmus must
+       read exactly as it did before it was built: no beach on ground that
+       was open water last week, and the deep stays deep against it. (That
+       half used to live in drawTile's `shoreLand` and came with the shore
+       when it moved to the traced curve.)
+
+       The other half is the same rule read the other way round. A MOAT is a
+       CUT — a ditch a sapper dug and then let the water into — so its banks
+       are spade-cut earth, not a beach that took a thousand years to build.
+       Drawing the full shoreline treatment along one put a rim of sand and
+       foam down both sides of the channel, and where the channel met the
+       lake it fed it out of, that rim read as a SHORELINE SEPARATING THE
+       TWO: a bar across a passage that is in fact open water end to end.
+       So a moat's own waterline raises nothing, and since the changeover is
+       smoothed like every other along the loop, the lake's beach simply
+       fades out as it runs into the cut.  */
     const natural = (p, nx, ny) => {
+      const w = wetAt(p, nx, ny);
+      if (w >= 0 && terr[w] === T.MOAT) return 0;       // a dug channel has no shore
       const k = landAt(p, nx, ny);
       if (k < 0) return 1;
       return (S.map.reclaimed && S.map.reclaimed[k]) ? 0 : 1;
@@ -1224,6 +1254,82 @@ const R = {
     }
     this._bodyPath = p; this._bodyKey = key;
     return p;
+  },
+
+  /* ---- WHEN THE WATER MOVES, THE SHORE MOVES WITH IT --------------------
+     A dug moat that reaches a lake JOINS it: the two become one region and
+     the beach that used to run between them is not a shore any more. But an
+     incremental repaint only ever redrew the edited tile's own neighbourhood,
+     and `blitShore` COMPOSITES the shore layer onto the terrain cache — it
+     cannot erase. So the old sand stayed baked into the cache and a flooded
+     channel kept a beach down the middle of open water, with the moat reading
+     as a separate body in a slightly different blue. (Reported from a real
+     day-82 game, and measured here at 38 stale tiles for one eight-tile
+     channel — the moat tiles themselves were never repainted as water at all,
+     because `floodMoats` converts them one at a time and each conversion
+     re-traced the region under the tiles already drawn.)
+
+     The cure is to notice that the water itself changed and widen the repaint
+     to everything whose shore could have moved: the tiles that became (or
+     stopped being) water, grown by WATER_DIRTY_R. Geometry further away is
+     genuinely unchanged — the tracer walks the same cell edges and the
+     roughening is sampled in WORLD space, so a point far from the junction
+     gets the same displacement whichever region it now belongs to. */
+  _waterMask: null,
+  waterDirty() {
+    const W = CFG.W, H = CFG.H, terr = (S.map.seenTerrain || S.map.terrain);
+    const now = new Uint8Array(W * H);
+    for (let i = 0; i < now.length; i++) {
+      const t = terr[i];
+      if (t === T.WATER || t === T.MOAT) now[i] = 1;
+    }
+    const was = this._waterMask;
+    this._waterMask = now;
+    if (!was || was.length !== now.length) return null;      // nothing to compare against
+    const changed = [];
+    for (let i = 0; i < now.length; i++) if (now[i] !== was[i]) changed.push(i);
+    if (!changed.length) return null;
+    /* THE WHOLE REGION'S SHORE, not a radius around the edit. A band is
+       offset from a curve, and several things about that curve are properties
+       of the LOOP rather than of a point — its enclosed area caps how far a
+       band may reach, and the loop is what the ribbon fill is computed over.
+       So joining a moat to a lake can move the drawn shore anywhere along
+       that lake, and a fixed-radius repaint left slivers of the old beach
+       behind at the far end of it. Repainting the region is unarguable, and
+       water only moves when a sapper digs, floods, bridges or reclaims —
+       rare, deliberate, already-multi-tile events. */
+    const seen = new Set(), out = [];
+    const add = (nx, ny) => {
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) return;
+      const k = ny * W + nx;
+      if (seen.has(k)) return;
+      seen.add(k); out.push([nx, ny]);
+    };
+    const R2 = LAND.WATER_DIRTY_R;
+    for (const i of changed) {
+      const cx = i % W, cy = (i / W) | 0;
+      for (let oy = -R2; oy <= R2; oy++) for (let ox = -R2; ox <= R2; ox++) add(cx + ox, cy + oy);
+    }
+    // …and every cell (plus its ring) of any region the edit touched
+    const hit = new Set(changed);
+    for (const reg of this.waterRegions()) {
+      let touches = false;
+      for (const c of reg.cells) {
+        if (!hit.has(c)) continue;
+        touches = true; break;
+      }
+      if (!touches) for (const c of reg.cells) {           // …or merely adjacent to one
+        const cx = c % W;
+        if ((cx > 0 && hit.has(c - 1)) || (cx < W - 1 && hit.has(c + 1))
+          || hit.has(c - W) || hit.has(c + W)) { touches = true; break; }
+      }
+      if (!touches) continue;
+      for (const c of reg.cells) {
+        const cx = c % W, cy = (c / W) | 0;
+        for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) add(cx + ox, cy + oy);
+      }
+    }
+    return out.length ? out : null;
   },
 
   _sideMask: null, _sideKey: '',
@@ -2222,6 +2328,7 @@ const R = {
     g.imageSmoothingEnabled = false;
     const terr = S.map.seenTerrain || S.map.terrain;
     this.hillHeight();                       // re-key the hill field ONCE for this repaint
+    this.waterDirty();                       // …and re-baseline the water mask
     // TWO PASSES, and they may not be merged: decals overhang their tile, so
     // every tile's ground must be down before any decal is laid — otherwise a
     // neighbour's ground, painted later, erases the spill.
@@ -2262,6 +2369,8 @@ const R = {
   },
   drawTilesAt(list) {
     if (!this.terrainCache || !list || !list.length) return;
+    const moved = this.waterDirty();
+    if (moved) list = list.concat(moved);
     const g = this.terrainCache.getContext('2d');
     const terr = S.map.seenTerrain || S.map.terrain;
     this.hillHeight();                       // re-key the hill field ONCE for this repaint
@@ -2305,6 +2414,10 @@ const R = {
 
   drawTileAt(x, y) {
     if (!this.terrainCache) return;
+    /* if the WATER moved, this is no longer a local repaint — hand the whole
+       affected stretch of shore to drawTilesAt, which paints each tile once */
+    const moved = this.waterDirty();
+    if (moved) { moved.push([x, y]); this.drawTilesAt(moved); return; }
     const g = this.terrainCache.getContext('2d');
     const terr = S.map.seenTerrain || S.map.terrain;
     this.hillHeight();                       // re-key the hill field ONCE for this repaint
@@ -2333,7 +2446,7 @@ const R = {
      is re-derived only if the WATER ITSELF changed (waterKey), so an ordinary
      edit — felling a tree, laying a wall — costs one blit and no tracing. */
   blitShore(g, x0, y0, w, h) {
-    if (this._shoreKey !== this.waterKey() || !this.shoreLayer) this.buildShoreLayer();
+    if (this._layerKey !== this.waterKey() || !this.shoreLayer) this.buildShoreLayer();
     if (!this.shoreLayer) return;
     const TL = CFG.TILE;
     const sx = Math.max(0, x0 * TL), sy = Math.max(0, y0 * TL);
@@ -2356,6 +2469,7 @@ const R = {
     this._sideMask = null; this._sideKey = '';
     this._mixC = null;
     this._bodyPath = null; this._bodyKey = '';
+    this._waterMask = null;
     this.placePoofs = [];                                        // no dust carried across runs (the R.collapses rule)
     // pre-render the full terrain layer once
     this.rebuildTerrain();

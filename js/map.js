@@ -864,12 +864,23 @@ const Terraform = {
       }
     }
     if (!touches) return;   // dry ditch, stays a trench
+    /* CONVERT THE WHOLE CHANNEL, THEN REPAINT ONCE. Repainting per tile
+       (R.updateTile inside the loop) redrew each tile against a HALF-FLOODED
+       channel — the flood walks its component in DFS order, so a tile could
+       be painted while the ditch three tiles along was still dry, and nothing
+       ever came back to it once the rest filled. The visible result was a
+       flooded moat that kept the lake's old beach running down the middle of
+       it and read as a separate body of water. The terrain is settled first
+       and the picture drawn from the finished state. */
+    const changed = [];
     for (const [cx, cy] of comp) {
       const ci = MapGen.idx(cx, cy);
       if (S.map.terrain[ci] === T.MOAT) continue;
       S.map.terrain[ci] = T.MOAT;
-      if (window.R && R.updateTile) R.updateTile(cx, cy);   // updateTile writes seenTerrain only when visible (see dig)
+      // seenTerrain only where the player can actually see it (see dig)
+      if (G.visibleAt(cx, cy)) { S.map.seenTerrain[ci] = T.MOAT; changed.push([cx, cy]); }
     }
+    if (changed.length && window.R && R.drawTilesAt) R.drawTilesAt(changed);
   },
 
   clear(x, y) {

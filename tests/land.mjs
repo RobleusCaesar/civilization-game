@@ -714,6 +714,94 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   await p.close();
 }
 
+/* ---- 12. A FLOODED MOAT IS PART OF THE WATER IT CAME FROM -------------
+   A sapper's channel that reaches a lake JOINS it, and must read as one
+   continuous body: no beach running down the middle, and the same blue at
+   both ends. Two things had to be true for that and neither was.
+
+   The picture is drawn from a SETTLED state — floodMoats converts its whole
+   connected channel and repaints once, where it used to convert and repaint
+   tile by tile, so a tile could be painted while the ditch three along was
+   still dry and nothing ever came back to it. And when the water MOVES the
+   repaint covers the affected region's whole shore, because a band is offset
+   from a curve and several things about that curve are properties of the
+   loop, not of a point.
+
+   And a MOAT IS A CUT: a ditch a sapper dug and let the water into, whose
+   banks are spade-cut earth. It raises no shore of its own — the full
+   beach/foam/shelf treatment along one put a rim of sand down both sides
+   of the channel, and where the channel met the lake it fed out of, that
+   rim read as a shoreline barring an open passage.
+
+   The check that actually catches all of it: after digging and flooding,
+   the incrementally-repainted cache must equal a full rebake, byte for
+   byte. The sand is measured BEFORE and AFTER over the whole channel
+   neighbourhood — the dig may not ADD a grain anywhere (the lake's own
+   beach beside it is legitimate and pre-existing), and the channel proper
+   must carry none at all. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(wetBoot + `
+    const W=CFG.W, H=CFG.H, TL=CFG.TILE;
+    const wet=(x,y)=>{const t=S.map.terrain[y*W+x];return t===T.WATER||t===T.MOAT;};
+    // a lake edge with a clear run of dry land leading away from it
+    let sx=-1,sy=-1;
+    for(let y=6;y<H-10&&sx<0;y++)for(let x=6;x<W-14;x++){
+      if(!wet(x,y)) continue;
+      let ok=true; for(let k=1;k<=8;k++) if(S.map.terrain[y*W+x+k]!==T.GRASS){ok=false;break;}
+      if(ok){sx=x;sy=y;break;}
+    }
+    if(sx<0) return {skip:true};
+    const sand=ART.PALETTE.bone[2];
+    const sr=parseInt(sand.slice(1,3),16), sg=parseInt(sand.slice(3,5),16), sb=parseInt(sand.slice(5,7),16);
+    const g2=R.terrainCache.getContext('2d');
+    const sandAt=(x,y)=>{const d=g2.getImageData(x*TL,y*TL,TL,TL).data;let c=0;
+      for(let i=0;i<d.length;i+=4) if(Math.abs(d[i]-sr)+Math.abs(d[i+1]-sg)+Math.abs(d[i+2]-sb)<30) c++;
+      return c;};
+    /* The sweep starts at the tile PAST the mouth. The lake's own tile keeps
+       its own shore and that shore is re-derived when the channel joins the
+       region — the loop is a different loop, so the roughening lands a few
+       pixels elsewhere along it. That is the coast being one traced curve,
+       not a beach appearing; what must not happen is sand arriving along
+       the CHANNEL. */
+    const sweep=()=>{const o=[];for(let k=1;k<=9;k++)for(let dy=-1;dy<=1;dy++)o.push(sandAt(sx+k,sy+dy));return o;};
+    const pre=sweep();
+    // dig and flood exactly as a sapper does (updateTile gates on visibility)
+    const vis=G.visibleAt; G.visibleAt=()=>true;
+    for(let k=1;k<=8;k++){ S.map.terrain[sy*W+sx+k]=T.TRENCH; R.updateTile(sx+k,sy); }
+    Terraform.floodMoats(sx+1,sy);
+    G.visibleAt=vis;
+    const post=sweep();
+    let added=0; for(let i=0;i<pre.length;i++) added+=Math.max(0,post[i]-pre[i]);
+    // the channel proper — its own tiles, past the lake mouth — carries none
+    let inChannel=0; for(let k=2;k<=8;k++) inChannel+=sandAt(sx+k,sy);
+    const inc=R.terrainCache.getContext('2d').getImageData(0,0,W*TL,H*TL).data;
+    R.rebuildTerrain();
+    const full=R.terrainCache.getContext('2d').getImageData(0,0,W*TL,H*TL).data;
+    let stale=0;
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+      let d=0;
+      for(let j=0;j<TL;j+=2)for(let i=0;i<TL;i+=2){
+        const k=((y*TL+j)*W*TL+(x*TL+i))*4;
+        if(inc[k]!==full[k]||inc[k+1]!==full[k+1]||inc[k+2]!==full[k+2]) d++;
+      }
+      if(d>4) stale++;
+    }
+    // …and the channel really is part of the lake now
+    let moats=0; for(let i=0;i<S.map.terrain.length;i++) if(S.map.terrain[i]===T.MOAT) moats++;
+    const regionOf=(x,y)=>R.waterRegions().findIndex(rg=>rg.cells.includes(y*W+x));
+    const joined = regionOf(sx+4,sy) >= 0 && regionOf(sx+4,sy) === regionOf(sx,sy);
+    return { stale, moats, joined, added, inChannel, at:[sx,sy] };`));
+  ck('aFloodedMoatJoinsTheWaterItCameFrom', v.skip || (v.moats > 0 && v.joined),
+    v.skip ? 'no lake with a dry run beside it' : v.moats + ' moat tiles, one region with the lake');
+  ck('andNoBeachRunsDownTheMiddleOfIt', v.skip || (v.added === 0 && v.inChannel === 0),
+    v.skip ? 'skipped' : 'the dig added ' + v.added + ' sand pixels; the channel itself carries '
+      + v.inChannel);
+  ck('andDiggingItLeavesNoStaleShore', v.skip || v.stale === 0,
+    v.skip ? 'skipped' : v.stale + ' tiles differ from a full rebake after the dig');
+  await p.close();
+}
+
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL LAND CHECKS PASS');
 await b.close();

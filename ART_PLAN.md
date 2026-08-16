@@ -204,6 +204,16 @@ stand and which way it faces, where a villager may fish, what is passable —
 all of it still reads the tile grid, so the painted waterline is free to cut
 inside a tile without any rule noticing.
 
+**Only NATURAL ground raises a shore, on both sides of the waterline.** Land a
+sapper reclaimed out of the sea gets no beach, and a MOAT — a ditch cut with a
+spade and then flooded — raises none of its own either. So a channel dug into
+a lake reads as one continuous body of water with the lake: same blue end to
+end, no rim of sand between them. A supplied `moat.png` therefore never has a
+beach drawn against it, and a `water.png` loses its edge treatment along any
+stretch where the water on that side is a moat. Both fade in and out along the
+curve rather than switching at a tile, so the lake's beach dies away as it
+runs into the cut.
+
 Tunables, all in the `LAND` block:
 
 | symptom | dial |

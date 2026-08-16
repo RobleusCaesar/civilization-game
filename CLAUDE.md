@@ -2248,6 +2248,45 @@ grass underneath.)
 carried, moved into the tracer as `natural`/`natS`: where a sapper filled water
 in, the sea beyond the new isthmus must read exactly as it did before it was
 built, so the beach, the foam and the shelf all fade out along that stretch.
+**AND NEITHER DOES A DUG CHANNEL** (`tests/land.mjs`'s moat block, reported
+from a real day-82 game): the same rule read the other way round — `natural`
+now asks the WATER side too (`wetAt`, the inverse of `landAt`) and a `T.MOAT`
+waterline raises nothing. A moat is a CUT, a ditch a sapper dug and let the
+water into, so its banks are spade-cut earth rather than a beach a thousand
+years in the making; drawing the full treatment along one put a rim of sand
+and foam down both sides of the channel, and where the channel met the lake it
+fed out of, THAT RIM READ AS A SHORELINE BARRING AN OPEN PASSAGE. The
+changeover is smoothed like every other along the loop, so the lake's own
+beach simply fades out as it runs into the cut.
+**A flooded moat is PART of the water it came from**, and three separate
+things had to be true before it looked like it. **The picture is drawn from a
+SETTLED state**: `Terraform.floodMoats` converts its whole connected channel
+and repaints ONCE — it used to convert and repaint tile by tile, and since the
+flood walks its component in DFS order a tile could be painted while the ditch
+three along was still dry, with nothing ever coming back to it. **The bands
+have their own cache key** (`R._layerKey`, never `_shoreKey`): `_shoreKey` is
+the key for the traced REGIONS and `waterRegions()` stamps it the moment
+anything asks for the geometry, so a call that only wanted the regions
+(`paintWaterIn` → `waterBodyPath`) silently marked the BANDS fresh and
+`blitShore` composited the old shore over the new water. **And when the water
+MOVES, the repaint follows the whole affected shore** (`R.waterDirty`,
+`LAND.WATER_DIRTY_R`): `blitShore` COMPOSITES and cannot erase, so old sand
+stays baked in until something repaints its tile — and a fixed radius around
+the edit is not enough, because a band is offset from a curve and several
+things about that curve (the loop's enclosed area capping the band reach, the
+ribbon fill itself) are properties of the LOOP, not of a point. Joining a moat
+to a lake can therefore move the drawn shore anywhere along that lake, so the
+repaint takes every cell of any region the edit touched. Water only moves when
+a sapper digs, floods, bridges or reclaims — rare, deliberate, already
+multi-tile — so the cost is paid nowhere else. `drawTileAt` hands off to
+`drawTilesAt` when it fires; `rebuildTerrain` re-baselines the mask.
+The contract check is the unarguable one: after digging and flooding, the
+incrementally-repainted cache must equal a full rebake byte for byte (0 tiles
+differ), the channel must be in the LAKE'S OWN region, and the dig must add no
+sand along it. The one tile deliberately left out of the sand sweep is the
+lake's own mouth tile: joining the channel makes a different loop, so the
+roughening lands a few pixels elsewhere along the lake's shore — that is the
+coast being one traced curve, not a beach appearing.
 **The staircase is measured, not eyeballed** (`theCoastIsTracedNotTiled`): the
 share of ~1-tile chords whose bearing locks to a multiple of 45°. Untraced tile
 loops answer 100%; the traced coast answers ~43%. It is deliberately NOT held
