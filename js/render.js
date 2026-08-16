@@ -86,8 +86,30 @@ const R = {
   // grid. A gentle DIAGONAL low-frequency field (mixes x AND y, so no axis-aligned
   // banding) leans the grain lighter/darker for soft meadow undulation. Painted
   // identically under open grass AND under every resource, so blocks never seam.
+  /* stamp supplied ground art into one tile. Scaled to the tile from
+     WHATEVER it was authored at — 32, 64, 128 — so the art can carry more
+     detail than the grid, and drawn with smoothing OFF so it stays crisp
+     rather than turning to soup against the procedural pixels beside it. */
+  blitTile(g, img, x, y) {
+    if (!img) return;
+    const TL = CFG.TILE, sm = g.imageSmoothingEnabled;
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, x * TL, y * TL, TL, TL);
+    g.imageSmoothingEnabled = sm;
+  },
+
   paintGround(g, x, y, h) {
     const TL = CFG.TILE, px = TL / 16, AP = ART.PALETTE;
+    /* SUPPLIED GRASS ART REPLACES THE WHOLE FLOOR, not just the grass tiles.
+       Every grass-floored resource (forest, hills, fertile, stumps, pebbles,
+       the seam) is authored on a TRANSPARENT floor and painted over this, so
+       if the two disagreed every resource tile would show a patch of the old
+       green under new grass. One override, read here, keeps the floor
+       continuous — which is the same reason the procedural floor is shared. */
+    if (window.Assets && Assets.hasTerrainArt(T.GRASS)) {
+      this.blitTile(g, Assets.terrainImg(T.GRASS, h >>> 3), x, y);
+      return;
+    }
     g.fillStyle = AP.grass[2];
     g.fillRect(x * TL, y * TL, TL, TL);
     const lean = (Math.sin((x * 0.8 + y * 0.6) * 0.09) + Math.sin((x * 0.5 - y * 0.9) * 0.075)) * 0.2;
@@ -410,18 +432,30 @@ const R = {
     // — flat green + a world-hash felt grain — so there is no shade mismatch and
     // no seam where a forest/resource block meets open grass. The resource sprites
     // are authored on a TRANSPARENT floor and drawn ON TOP of this ground.
-    if (t === T.GRASS && h % 61 === 0) {
+    /* SUPPLIED GROUND ART, if any, stands in for whatever this terrain would
+       have drawn — a sprite variant, or one of the three procedural painters
+       (grass, water, mountain), which have no sprite to swap and so need
+       asking for by name. Everything layered on afterwards — the shore foam,
+       the trench clods, the fog — is untouched, so a dropped-in tile still
+       gets the world's own edges drawn over it. */
+    const ovr = window.Assets ? Assets.terrainImg(t, h >>> 3) : null;
+    if (t === T.GRASS && h % 61 === 0 && !ovr) {
       g.drawImage(img, x * TL, y * TL);           // rare flower meadow (self-contained)
     } else if (t === T.GRASS) {
-      this.paintGround(g, x, y, h);               // plain grass
+      this.paintGround(g, x, y, h);               // plain grass (reads the override itself)
     } else if (t === T.MOUNTAIN) {
       this.paintGround(g, x, y, h);                               // grass floor under the irregular rocky footprint
-      this.drawMountain(g, x, y);                                 // real textured slopes from the height field
+      if (ovr) this.blitTile(g, ovr, x, y);
+      else this.drawMountain(g, x, y);                            // real textured slopes from the height field
     } else if (wet(t)) {
-      this.paintWater(g, x, y, waterShore);                       // calm continuous water, no tile pattern
+      if (ovr) this.blitTile(g, ovr, x, y);
+      else this.paintWater(g, x, y, waterShore);                  // calm continuous water, no tile pattern
     } else if (GROUND_GRAIN.has(t)) {
       this.paintGround(g, x, y, h);               // continuous floor...
-      g.drawImage(img, x * TL, y * TL);           // ...then the transparent-floored resource on top
+      if (ovr) this.blitTile(g, ovr, x, y);       // ...then the transparent-floored resource on top
+      else g.drawImage(img, x * TL, y * TL);
+    } else if (ovr) {
+      this.blitTile(g, ovr, x, y);
     } else {
       g.drawImage(img, x * TL, y * TL);           // water / barren / ruin / camp / mound base
     }
@@ -526,6 +560,24 @@ const R = {
       if (MapGen.inB(nx, ny) && S.map.explored[MapGen.idx(nx, ny)]) this.drawTileAt(nx, ny);
     }
   },
+  /* (re)bake the whole terrain layer. Called once per new game, and again
+     whenever supplied ground art decodes — the map is a baked cache, so a
+     PNG that lands after the world was built would otherwise not show until
+     something else happened to dirty its tile. Safe before a map exists:
+     there is nothing to draw and nothing to invalidate. */
+  rebuildTerrain() {
+    // NOT `window.S` — S is a script-level var, so window.S is undefined and
+    // the guard would be permanently true (the same trap window.G/window.Sprites
+    // set, documented in CLAUDE.md). Reference it directly.
+    if (!S || !S.map || !S.map.terrain) return;
+    const px = CFG.W * CFG.TILE;
+    if (!this.terrainCache) this.terrainCache = document.createElement('canvas');
+    this.terrainCache.width = px; this.terrainCache.height = px;
+    const g = this.terrainCache.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) this.drawTile(g, x, y);
+  },
+
   drawTileAt(x, y) {
     if (this.terrainCache) this.drawTile(this.terrainCache.getContext('2d'), x, y);
   },
@@ -535,11 +587,7 @@ const R = {
     this.mtnH = null;                                            // recompute the mountain height field for the new map
     this.placePoofs = [];                                        // no dust carried across runs (the R.collapses rule)
     // pre-render the full terrain layer once
-    const px = CFG.W * CFG.TILE;
-    this.terrainCache = document.createElement('canvas');
-    this.terrainCache.width = px; this.terrainCache.height = px;
-    const g = this.terrainCache.getContext('2d');
-    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) this.drawTile(g, x, y);
+    this.rebuildTerrain();
     this.fogCv = document.createElement('canvas');
     this.fogCv.width = CFG.W; this.fogCv.height = CFG.H;
     this.fogG = this.fogCv.getContext('2d');

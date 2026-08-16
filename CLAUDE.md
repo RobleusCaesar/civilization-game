@@ -2110,6 +2110,40 @@ is weight 500, and below 40px (the landscape media query) weight 400 — a
 size-dependent glyph trap that must be re-checked in a screenshot whenever
 the logo's size or weight moves.
 
+**And the GROUND takes art the same way** (`tests/art-pipeline.mjs`):
+`assets/terrain/{name}.png`, plus `{name}-2.png`, `-3` … for variants —
+`{name}` being the terrain's own name in lowercase (grass, forest, water,
+hills, fertile, stumps, pebbles, barren, ruin, mountain, trench, moat,
+mound, goldore, camp), DERIVED from the `T` enum by `Assets.terrainName`
+rather than hand-listed, so a new terrain gets a slot for free. ONE FILE IS
+ENOUGH — supply `forest.png` alone and every forest tile wears it;
+`Assets.terrainImg(t, i)` wraps, so added variants are picked by the same
+tile hash the procedural ones use. Probing CASCADES: only the blanket is
+tried for each terrain at startup, `-2` only once the blanket loaded, so a
+bare repo pays 15 requests rather than `TERRAIN_MAX` × 15.
+**The overrides never touch `Sprites.terrain`** — they live on
+`Assets.terrain`, so the procedural tables stay whole, the variant-picking
+maths in `drawTile` is unchanged, and deleting a file restores the old look
+with no other moving part. `R.blitTile` stamps them scaled to the tile from
+whatever they were authored at (32/64/128) with smoothing OFF.
+**GRASS, WATER and MOUNTAIN have no sprite to swap** — they are painted
+procedurally (`paintGround`/`paintWater`/`drawMountain`) — so `drawTile`
+asks for them by name and stands the painter down when art exists.
+**Supplied grass carries the WHOLE FLOOR, not just the grass tiles**: every
+grass-floored resource is authored on a transparent floor and painted over
+`paintGround`, so the override is read THERE too — otherwise each forest
+tile keeps a patch of the old green under the new ground. Everything
+layered on afterwards (shore foam, trench clods, fog) is untouched.
+**The map is a BAKED CACHE**, so art that decodes after the world was built
+must ask for `R.rebuildTerrain()` or it will not show until something else
+dirties its tile; `Assets.setTerrainArt` does that. **That guard must not
+test `window.S`** — `S` is a script-level `var`, so `window.S` is undefined
+and the guard is permanently true, the cache is never baked and the whole
+map draws as a swallowed render error (the same trap `window.G` /
+`window.Sprites` set). Pinned by `theRebuildGuardsOnTheRealMapField`, on
+the SOURCE, because a wrong guard there fails silently — the frame loop
+catches it and the game keeps running.
+
 **Art lands by FILENAME, never by manifest** (`tests/art-pipeline.mjs`, full
 rules in `ART_PLAN.md`): `assets/buildings/{id}-l{level}.png` — all lowercase
 (Pages is case-sensitive), tried for every valid slot at startup, swapped in

@@ -51,6 +51,50 @@ const Assets = {
   // rectangle. One fixed URL per prop key; same swap-in rules as buildings.
   PROPS: { 'misc/campfireTc': 'assets/misc/campfire-tc.png' },
 
+  /* ---- GROUND ART: the same deal as buildings, for the map itself ----
+
+       assets/terrain/{name}.png        the whole terrain
+       assets/terrain/{name}-2.png      a second variant, -3, -4 … as many
+                                        as you like
+
+     {name} is the terrain's own name in lowercase: grass, forest, water,
+     hills, fertile, stumps, pebbles, barren, ruin, mountain, trench, moat,
+     mound, goldore, camp. Drop a file in and it is used; drop nothing and
+     the procedural tile stands, exactly as with a building.
+
+     ONE FILE IS ENOUGH. Supply `forest.png` alone and every forest tile
+     wears it; add `-2`/`-3` and the map picks between them by the same tile
+     hash the procedural variants use, so a supplied set breaks up its own
+     tiling for free.
+
+     Probing CASCADES: only `{name}.png` is tried for every terrain at
+     startup (15 requests), and `-2` is only tried once the blanket loaded,
+     `-3` once `-2` did. A repo with no ground art pays 15 404s; an artist
+     working on one terrain pays a handful more.
+
+     The overrides live HERE and never touch Sprites.terrain — the
+     procedural tables stay whole, so the variant-picking maths in
+     R.drawTile is unchanged and removing a file restores the old look with
+     no other moving part. */
+  TERRAIN_DIR: 'assets/terrain/',
+  TERRAIN_MAX: 8,          // most variants probed for one terrain
+  terrain: {},             // T value -> [img, …] in the order they were found
+  terrainName(t) {
+    for (const k of Object.keys(T)) if (T[k] === t) return k.toLowerCase();
+    return null;
+  },
+  terrainUrl(name, n) {
+    return this.TERRAIN_DIR + (n > 1 ? name + '-' + n : name) + '.png?v=' + (CFG.ART_V || 1);
+  },
+  /* the drawable for terrain t at variant index i, or null to draw
+     procedurally. Wraps, so one supplied file answers for every index. */
+  terrainImg(t, i) {
+    const a = this.terrain[t];
+    if (!a || !a.length) return null;
+    return a[((i | 0) % a.length + a.length) % a.length];
+  },
+  hasTerrainArt(t) { const a = this.terrain[t]; return !!(a && a.length); },
+
   artIds() { return Object.keys(CFG.BUILDINGS).filter(k => this.EXCLUDE.indexOf(k) < 0); },
   artSlots() {
     const out = [];
@@ -66,8 +110,35 @@ const Assets = {
   async init() {
     for (const s of this.artSlots()) this._tryLoad(s.id, s.lv);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key]);
+    for (const k of Object.keys(T)) this._tryTerrain(T[k], 1);
     this.ready = true;
     return { ok: true, data: { slots: this.artSlots().length } };
+  },
+
+  /* probe one ground slot; on a hit, install it and reach for the next
+     variant. The cascade is what keeps a bare repo at one request per
+     terrain instead of TERRAIN_MAX of them. */
+  _tryTerrain(t, n) {
+    const name = this.terrainName(t);
+    if (!name || n > this.TERRAIN_MAX) return;
+    const img = new Image();
+    img.onload = () => {
+      this.setTerrainArt(t, img);
+      this._tryTerrain(t, n + 1);
+    };
+    img.onerror = () => { /* no art at this slot — the procedural tile stands */ };
+    img.src = this.terrainUrl(name, n);
+  },
+
+  /* install ground art. The map is baked into R.terrainCache, so a PNG that
+     decodes after the world was built has to ask for a repaint or it will
+     not show until something else happens to dirty a tile. */
+  setTerrainArt(t, img) {
+    const a = this.terrain[t] || (this.terrain[t] = []);
+    if (a.indexOf(img) < 0) a.push(img);
+    this.loaded['terrain/' + this.terrainName(t)] = true;
+    if (window.R && typeof R.rebuildTerrain === 'function') R.rebuildTerrain();
+    return true;
   },
 
   _tryLoad(id, lv) {

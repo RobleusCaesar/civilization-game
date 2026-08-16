@@ -36,6 +36,24 @@ const b = await pw.chromium.launch();
 const res = {}, fails = [];
 const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); };
 
+/* THE TERRAIN REBUILD MUST NOT GUARD ON `window.S`. S is a script-level var,
+   so window.S is undefined and such a guard is permanently true — the cache
+   is then never baked and the whole map draws as a swallowed render error.
+   (The same trap window.G / window.Sprites set; CLAUDE.md documents it.)
+   Measured on the source, because a wrong guard here fails SILENTLY: the
+   frame loop catches the error and the game keeps running. */
+{
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(join(root, 'js/render.js'), 'utf8');
+  // strip the comments first — this rule is ABOUT the word `window.S`, and the
+  // comment above the guard necessarily says it
+  const fn = src.slice(src.indexOf('rebuildTerrain()'), src.indexOf('rebuildTerrain()') + 700)
+    .split('\n').filter(l => !/^\s*(\/\/|\/\*|\*)/.test(l)).join('\n');
+  const ok = fn.length > 20 && !/window\.S\b/.test(fn) && /S\.map\.terrain/.test(fn);
+  res.theRebuildGuardsOnTheRealMapField = ok ? 'PASS' : 'FAIL — window.S is undefined, or the field name drifted';
+  if (!ok) fails.push('theRebuildGuardsOnTheRealMapField');
+}
+
 // ---------- pass 1: the player page (no dev flag) ----------
 {
   const p = await b.newPage({ viewport: { width: 430, height: 880 } });
@@ -48,6 +66,59 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
   const out = await p.evaluate(() => {
     const res = {}, fails = [];
     const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
+
+    /* ---- 0. THE GROUND TAKES ART THE SAME WAY THE BUILDINGS DO ----
+       assets/terrain/{name}.png, {name}-2.png … where {name} is the
+       terrain's own name in lowercase. Derived from the T enum, never a
+       hand-kept list, so a new terrain gets a slot for free. */
+    {
+      const names = Object.keys(T).map(k => Assets.terrainName(T[k]));
+      ck('everyTerrainHasAnArtSlot',
+        names.length === Object.keys(T).length && names.every(n => n && n === n.toLowerCase()),
+        names.join(', '));
+      ck('andTheGroundNamesAreDerivedNotListed',
+        Assets.terrainName(T.GOLDORE) === 'goldore' && Assets.terrainName(T.GRASS) === 'grass', '');
+      ck('theGroundUrlsCarryTheCacheBuster',
+        /assets\/terrain\/grass\.png\?v=/.test(Assets.terrainUrl('grass', 1)) &&
+        /grass-2\.png\?v=/.test(Assets.terrainUrl('grass', 2)),
+        Assets.terrainUrl('grass', 2));
+
+      // a stand-in tile, injected the way a decoded PNG is
+      const tile = (col) => {
+        const c = document.createElement('canvas'); c.width = c.height = CFG.TILE;
+        const g = c.getContext('2d'); g.fillStyle = col; g.fillRect(0, 0, c.width, c.height);
+        return c;
+      };
+      // skip the border ring: the outermost tiles are drawn as the off-map
+      // void (#0d0b08), so a sample taken there measures the rim, not ground
+      const idxOf = (want) => {
+        for (let y = 2; y < CFG.H - 2; y++) for (let x = 2; x < CFG.W - 2; x++)
+          if (S.map.terrain[MapGen.idx(x, y)] === want) return { x, y };
+        return null;
+      };
+      const sample = (at) => {
+        const g = R.terrainCache.getContext('2d');
+        const d = g.getImageData(at.x * CFG.TILE + 2, at.y * CFG.TILE + 2, 1, 1).data;
+        return d[0] + ',' + d[1] + ',' + d[2];
+      };
+      const gAt = idxOf(T.GRASS), fAt = idxOf(T.FOREST);
+      if (gAt && fAt && R.terrainCache) {
+        const before = sample(gAt);
+        Assets.terrain = {};                                   // start from the shipped state
+        Assets.setTerrainArt(T.GRASS, tile('rgb(255,0,200)'));
+        ck('aDroppedTileIsWhatTheMapDraws', sample(gAt) === '255,0,200', sample(gAt));
+        /* THE GRASS OVERRIDE CARRIES THE WHOLE FLOOR. Every grass-floored
+           resource is authored on a TRANSPARENT floor and painted over this
+           one, so if supplied grass did not reach paintGround each forest
+           tile would keep a patch of the old green under the new ground. */
+        ck('andTheGrassOverrideCarriesTheWholeFloor', sample(fAt) === '255,0,200', sample(fAt));
+        Assets.terrain = {}; R.rebuildTerrain();
+        ck('andRemovingItRestoresTheProceduralTile', sample(gAt) === before,
+          sample(gAt) + ' vs ' + before);
+      } else {
+        ck('aDroppedTileIsWhatTheMapDraws', false, 'no map to measure on');
+      }
+    }
 
     // ---- 1. the manifest is gone; the convention enumerates the slots ----
     ck('manifestIsGone', window.ASSET_MANIFEST === undefined, '');
