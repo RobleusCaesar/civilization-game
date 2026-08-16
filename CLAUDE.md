@@ -2110,6 +2110,73 @@ is weight 500, and below 40px (the landscape media query) weight 400 — a
 size-dependent glyph trap that must be re-checked in a screenshot whenever
 the logo's size or weight moves.
 
+**A LIVING GROUND** (`tests/land.mjs`): the land used to be uniform green with
+hard seams and an even sprinkle of decoration, which read as a spreadsheet.
+Five layers fix it, all BAKED into the terrain cache — the frame loop pays
+nothing (measured: frame p95 unchanged at 0.4–0.8ms). Every tunable lives in
+the `LAND` block at the top of render.js; `TONE_AMP` and `DECAL_DENSITY` are
+the two that actually change the feel.
+**Everything is seeded from `S.seed`** (`R.landSeed`), never `Math.random` and
+never `S.rngState` — a draw from the run's own RNG would re-deal every roll
+after it, the rule `G.rollWonder` already follows. So a seed's land is the
+same land on reload and through a save/load, which `tests/land.mjs` pins.
+**1. TONE.** A few octaves of value noise over TILE space (`R.landTone`),
+quantized to `TONE_STEPS` hard steps — no gradients, or it stops matching the
+pixel art beside it. **Resolved PER SUB-CELL, never per tile**
+(`LAND.TONE_SUB`): one tone per tile puts the steps on the tile boundaries and
+the quantization DRAWS THE GRID it was added to hide. Contextual shade rides
+along, bilinear from the tile's four CORNERS (`R.cornerShade` — a corner value
+is shared by every tile touching it, which is what makes shade continuous
+across borders): darker under and beside wood, at crags, and in the damp band
+inland of water. Applied as an OVERLAY inside `paintGround`, so **supplied
+`assets/terrain/grass.png` gets the same form** rather than silently
+flattening the layer. **The lattices are baked, not hashed per sample** — the
+octaves are low-frequency, so their lattices are a few hundred numbers; that
+one change took the xlarge bake from 131ms to a fraction of it. A whole-tile
+fast path (all four corners in one step) covers the common case.
+**2. DECALS** (`R.landDecals` / `drawDecal`). Tufts, clover, ferns, flowers,
+pebbles, stones, twigs, leaf litter, reeds, scuffs — context-chosen from the
+neighbourhood. **Sub-tile position is the whole point**: each sits at an
+arbitrary pixel offset and MAY OVERHANG its tile, because decoration that
+lands on tile centres draws the lattice. Placement is gated on a low-frequency
+CLUMP field, not a per-tile roll: most of the map grows nothing, and that
+emptiness is what makes the patches read as natural. **Every decal gets a dark
+contact pixel** — the first version drew two thousand decals in greens either
+side of the grass base and nobody could see one of them.
+**3. TRANSITIONS** (`R.terrainEdges`). Irregular fringes at every land
+boundary, replacing a 1px dithered checker that only ran between differing
+floor colours and was invisible. **The mask is code, the material is the
+terrain's own** — so it costs no art, covers every pair derived from the enum,
+and picks up a dropped-in override for free. The depth profile is sampled in
+WORLD space so both sides of a seam agree and a long boundary reads as one
+wandering edge. `R.bleedRank` (a property of the material, not a list of
+pairs) decides which side gives way.
+**4. SHORELINE** (`R.shoreBand`, `paintWater`). The beach width wanders and may
+PINCH TO NOTHING (`SAND_MIN` is 0 on purpose). **Sand spills across the seam
+into the water tile** — banding only the land side leaves the waterline running
+along tile edges, so a coast stays a 90° staircase however pretty the sand is.
+Foam rides the water side on its own profile. **Shallowness is a FIELD, not a
+flag**: the body colour used to switch wholesale on "does this tile touch
+land", painting a hard rectangle into every lake; it is now bilinear from the
+corners and resolved per sub-cell, so a bay shelves.
+**5. RESOURCE CLUSTERS.** Forest and ore already thicken toward their heart via
+whole sprite sets picked by enclosure. Fertile, pebbles and gold have one set
+each, so `R.coreScatter` gives them the same gradient ADDITIVELY — a core tile
+is enriched with extra material, an edge tile left alone. Thinning the edge
+instead would mean erasing authored art back to the floor, which reads as
+damage.
+**INVALIDATION IS EXACT, AND WIDER THAN IT LOOKS.** `R.drawTileAt` owns the
+neighbourhood: ground pass over the 3×3, then a decal pass over the **5×5**.
+The wider decal pass is not padding — repainting the ring wipes decals that
+spilled IN from the ring outside it, measured as 64px of stale seam against a
+full rebake. Re-stamping a decal whose ground was not repainted is idempotent.
+Callers just name the tile that changed; they no longer hand-roll neighbour
+loops (that is what left the moat "squares" a reload had to clear).
+**Cost**: the xlarge (65²) bake went 45ms → ~120ms, once, at load, beside
+~150ms of map generation. A terrain edit is 0.5ms.
+Mountains keep their current rendering — they want a silhouette treatment, not
+tiles, and that is a separate job.
+
 **And the GROUND takes art the same way** (`tests/art-pipeline.mjs`):
 `assets/terrain/{name}.png`, plus `{name}-2.png`, `-3` … for variants —
 `{name}` being the terrain's own name in lowercase (grass, forest, water,

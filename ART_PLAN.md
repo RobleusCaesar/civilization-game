@@ -128,3 +128,48 @@ Composited props that are not a building's own rectangle load from fixed
 paths listed in `Assets.PROPS` (currently one: the hall's dooryard campfire,
 `assets/misc/campfire-tc.png` → `misc/campfireTc`). Adding a prop key is a
 one-line entry there — still no manifest.
+
+## Ground art
+
+`assets/terrain/{name}.png`, plus `{name}-2.png`, `-3` … for variants.
+`{name}` is the terrain's own name in lowercase, derived from the `T` enum by
+`Assets.terrainName` — never a hand-kept list, so a new terrain gets a slot
+for free:
+
+    grass  forest  water  hills  fertile  stumps  pebbles  barren
+    ruin   mountain  trench  moat  mound  goldore  camp
+
+**One file is enough.** Supply `forest.png` alone and every forest tile wears
+it; add `-2`/`-3` and the map picks between them by the same tile hash the
+procedural variants use, which is what stops a supplied set reading as
+wallpaper. Probing cascades — only the blanket is tried for each terrain at
+startup, `-2` only once the blanket loaded — so a bare repo pays 15 requests.
+
+**Any size.** 32, 64, 128; it is scaled to the tile with smoothing off, so a
+larger tile just carries more detail than the grid.
+
+**Resource tiles want a TRANSPARENT floor.** forest, hills, fertile, stumps,
+pebbles, goldore and mountain are painted OVER the grass floor — draw the
+trees/rocks/crop and leave the ground clear. grass, water, ruin, barren,
+trench, moat, mound and camp are full-tile.
+
+**Replacing `grass.png` changes the floor under every resource too.** That is
+deliberate and the only way the two stay seam-free.
+
+### What the engine adds on top of your tile
+
+Supplied ground is not stamped raw — it receives the same treatment the
+procedural ground gets (`tests/land.mjs` pins this, because it is the
+regression most likely to slip through):
+
+- the **tonal layer** — broad seeded blotches, quantized to hard steps
+- **contextual shade** — under wood, at crags, inland of water
+- the **decal scatter** — tufts, flowers, pebbles, reeds, leaf litter
+- **irregular edge fringes** where your terrain meets another
+- **shore sand and foam** where it meets water
+
+So author a FLAT, even tile. Do not bake lighting, blotches or scatter into
+it: the engine's layers will land on top and the two will fight. Tunables for
+all of it live in the `LAND` block at the top of `js/render.js`.
+
+Re-uploading a changed file under a name it already had? Bump `CFG.ART_V`.

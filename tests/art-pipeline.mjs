@@ -96,25 +96,46 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
           if (S.map.terrain[MapGen.idx(x, y)] === want) return { x, y };
         return null;
       };
+      /* Sample the MEAN of a tile's middle, and compare with a tolerance: the
+         ground now carries a tonal overlay and a decal scatter ON TOP of
+         whatever the floor is (that is the point — supplied art must get the
+         same treatment as procedural ground), so an exact pixel match would
+         only ever pass on a flat world. The override still has to DOMINATE. */
       const sample = (at) => {
         const g = R.terrainCache.getContext('2d');
-        const d = g.getImageData(at.x * CFG.TILE + 2, at.y * CFG.TILE + 2, 1, 1).data;
-        return d[0] + ',' + d[1] + ',' + d[2];
+        const d = g.getImageData(at.x * CFG.TILE + 8, at.y * CFG.TILE + 8, CFG.TILE - 16, CFG.TILE - 16).data;
+        let r = 0, gg = 0, bb = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4) { r += d[i]; gg += d[i + 1]; bb += d[i + 2]; n++; }
+        return [Math.round(r / n), Math.round(gg / n), Math.round(bb / n)];
       };
+      const near = (a, b2, tol) => Math.abs(a[0] - b2[0]) <= tol && Math.abs(a[1] - b2[1]) <= tol && Math.abs(a[2] - b2[2]) <= tol;
+      /* On a FOREST tile the canopy covers most of the middle, so an average
+         says nothing about the floor beneath it. Count how much of the tile is
+         unmistakably the override colour instead — that is the actual claim. */
+      const floorPct = (at, isCol) => {
+        const g = R.terrainCache.getContext('2d');
+        const d = g.getImageData(at.x * CFG.TILE, at.y * CFG.TILE, CFG.TILE, CFG.TILE).data;
+        let hit = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4) { n++; if (isCol(d[i], d[i + 1], d[i + 2])) hit++; }
+        return +(100 * hit / n).toFixed(1);
+      };
+      const magenta = (r, gg, bb) => r > 140 && gg < 110 && bb > 110;
       const gAt = idxOf(T.GRASS), fAt = idxOf(T.FOREST);
       if (gAt && fAt && R.terrainCache) {
         const before = sample(gAt);
         Assets.terrain = {};                                   // start from the shipped state
         Assets.setTerrainArt(T.GRASS, tile('rgb(255,0,200)'));
-        ck('aDroppedTileIsWhatTheMapDraws', sample(gAt) === '255,0,200', sample(gAt));
+        ck('aDroppedTileIsWhatTheMapDraws', near(sample(gAt), [255, 0, 200], 40), sample(gAt).join(','));
         /* THE GRASS OVERRIDE CARRIES THE WHOLE FLOOR. Every grass-floored
            resource is authored on a TRANSPARENT floor and painted over this
            one, so if supplied grass did not reach paintGround each forest
            tile would keep a patch of the old green under the new ground. */
-        ck('andTheGrassOverrideCarriesTheWholeFloor', sample(fAt) === '255,0,200', sample(fAt));
+        const under = floorPct(fAt, magenta);
+        ck('andTheGrassOverrideCarriesTheWholeFloor', under > 8,
+          under + '% of the forest tile is the supplied floor, under its trees');
         Assets.terrain = {}; R.rebuildTerrain();
-        ck('andRemovingItRestoresTheProceduralTile', sample(gAt) === before,
-          sample(gAt) + ' vs ' + before);
+        ck('andRemovingItRestoresTheProceduralTile', near(sample(gAt), before, 1),
+          sample(gAt).join(',') + ' vs ' + before.join(','));
       } else {
         ck('aDroppedTileIsWhatTheMapDraws', false, 'no map to measure on');
       }

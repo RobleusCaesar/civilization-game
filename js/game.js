@@ -413,24 +413,18 @@ const G = {
       for (let dy = 0; dy < bs; dy++) for (let dx = 0; dx < bs; dx++)
         liveB.set(MapGen.idx(b.x + dx, b.y + dy), b);
     }
+    /* Repaints are COLLECTED and flushed once. A tile's art is computed from
+       its neighbours and the decal scatter overhangs tile borders, so every
+       change carries a neighbourhood with it — and on a wide fog reveal those
+       neighbourhoods overlap almost entirely. Painting each tile as it is
+       found repaints the same ground dozens of times; R.drawTilesAt takes the
+       union and paints each tile once. */
+    const dirty = [];
     for (let i = 0; i < W * H; i++) {
       if (!vis[i]) continue;
       if (S.map.seenTerrain[i] !== S.map.terrain[i]) {
         S.map.seenTerrain[i] = S.map.terrain[i];
-        const rx = i % W, ry = (i / W) | 0;
-        R.drawTileAt(rx, ry);
-        // a tile's edge art (water shore/foam, trench & mound walls, biome blends)
-        // is computed from its neighbours — so a change first revealed here leaves
-        // a stale seam on each of them. Repaint every explored neighbour too, or
-        // the rival's fog-hidden sapper work (moats / reclaimed land / mounds)
-        // reads as a grid of hard-edged squares the moment the player sees it.
-        // ALL EIGHT: forest/ore density counts diagonals, so felling a tree must
-        // also thin the diagonal neighbour's art, not just the orthogonal ones.
-        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
-          if (!ox && !oy) continue;
-          const nx = rx + ox, ny = ry + oy;
-          if (MapGen.inB(nx, ny) && S.map.explored[MapGen.idx(nx, ny)]) R.drawTileAt(nx, ny);
-        }
+        dirty.push([i % W, (i / W) | 0]);
       }
       const b = liveB.get(i);
       if (b) {
@@ -443,6 +437,7 @@ const G = {
       } else if (S.map.seenB[i]) delete S.map.seenB[i];
     }
     R.fogDirty = true;
+    if (dirty.length) R.drawTilesAt(dirty);
   },
 
   // which tunic colour a village wears (defaults keep player blue / rival red)

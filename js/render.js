@@ -11,6 +11,56 @@
    what floor each one stands on; the two tables must agree. */
 const GROUND_GRAIN = new Set([T.FOREST, T.FERTILE, T.HILLS, T.MOUNTAIN, T.STUMPS, T.PEBBLES, T.GOLDORE]);
 const NEIGH8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
+/* ground the decal scatter is allowed to dress. Resource tiles carry their own
+   art and are left alone; so is anything dug, flooded, burnt or trampled. */
+const DECAL_GROUND = new Set([T.GRASS, T.MOUND]);
+/* Part 5 — resources whose deposits should THICKEN toward their heart. Forest
+   and ore already do it with whole sprite sets (sparse / medium / full, picked
+   by how enclosed a tile is). These three have one set each, so they get the
+   same gradient additively: a core tile is enriched with extra scatter of its
+   own material, an edge tile is left alone, and the deposit reads as one mass
+   thinning outward instead of a uniform block. */
+const CORE_SCATTER = { [T.FERTILE]: 'crop', [T.PEBBLES]: 'pebble', [T.GOLDORE]: 'vein' };
+
+/* ---------------------------------------------------------------------------
+   LAND — the tunable constants for how the ground LOOKS. Everything here is
+   baked into the terrain cache once and costs the frame loop nothing.
+
+   The whole layer is driven by seeded value noise, so a seed's land is the
+   same land on every reload and through every save; nothing reads Math.random
+   and nothing reads S.rngState (drawing from the run's own RNG would re-deal
+   every roll that came after it — the rule G.rollWonder already follows).
+
+   Dial the look from HERE. TONE_AMP and DECAL_DENSITY are the two that
+   actually change the feel; err small on both — the goal is ground with form,
+   not camouflage. --------------------------------------------------------- */
+const LAND = {
+  // --- Part 1: broad tonal variation -------------------------------------
+  TONE_STEPS: 5,        // discrete steps. HARD-EDGED — no smooth gradients, or
+                        // it stops matching the pixel art beside it
+  TONE_AMP: 0.105,      // strongest lightness swing at the extremes
+  TONE_OCT: [[0.045, 0.60], [0.115, 0.27], [0.290, 0.13]],  // [freq per tile, weight]
+  TONE_SUB: 4,          // tone samples per tile side. >1 IS THE WHOLE POINT — see groundTint
+  // --- contextual shade, from neighbours ---------------------------------
+  SHADE_FOREST: 0.085,  // full shade under a tile ringed by wood (scaled by count)
+  SHADE_ROCK: 0.055,    // beside hills / mountain
+  SHADE_SHORE: 0.030,   // the damp band immediately inland from water
+  // --- Part 2: decal scatter ---------------------------------------------
+  DECAL_DENSITY: 1.0,   // ONE dial for the whole scatter. 0 disables it.
+  DECAL_CLUMP: 0.115,   // clump-field frequency: lower = bigger patches
+  DECAL_GATE: 0.44,     // clump value a tile must beat to grow anything at all —
+                        // this is what leaves real empty ground between patches
+  DECAL_MAX: 6,         // most decals on one tile
+  // --- Part 3: transitions ------------------------------------------------
+  EDGE_MAX: 5,          // deepest an edge fringe reaches into a tile, in 1/16ths
+  EDGE_FREQ: 1.6,       // how fast a boundary wanders. Sampled in WORLD space so
+                        // both sides of a seam agree — see terrainEdges
+  // --- Part 4: shorelines -------------------------------------------------
+  SAND_MIN: 0,          // beach width in 1/16ths — noise rides between these, and
+  SAND_MAX: 5,          // MIN 0 is what lets a shore pinch out to bare rock
+  SAND_FREQ: 0.30,     // how fast the beach width wanders along a shore
+  FOAM_FREQ: 0.42,
+};
 
 const R = {
   cv: null, g: null,
@@ -86,6 +136,449 @@ const R = {
   // grid. A gentle DIAGONAL low-frequency field (mixes x AND y, so no axis-aligned
   // banding) leans the grain lighter/darker for soft meadow undulation. Painted
   // identically under open grass AND under every resource, so blocks never seam.
+  /* ---- SEEDED VALUE NOISE ----------------------------------------------
+     The land's own randomness. Seeded from S.seed (never S.rngState — a draw
+     from the run's RNG would shift every roll after it), so the same seed is
+     the same land on every reload and across a save/load. Deterministic and
+     pure: same (x, y) always answers the same, which is what lets a single
+     tile be repainted in isolation and still match its neighbours. */
+  _landSeed: 0,
+  _landSeedFor: null,
+  landSeed() {
+    const s = (S && S.seed != null) ? String(S.seed) : '';
+    if (this._landSeedFor === s) return this._landSeed;
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+    this._landSeedFor = s; this._landSeed = h >>> 0;
+    return this._landSeed;
+  },
+  // hash a lattice point to 0..1
+  _lh(ix, iy, salt) {
+    let n = Math.imul(ix | 0, 0x27d4eb2d) ^ Math.imul(iy | 0, 0x165667b1)
+          ^ Math.imul(salt | 0, 0x9e3779b1) ^ this.landSeed();
+    n = Math.imul(n ^ (n >>> 15), 0x85ebca6b);
+    n = Math.imul(n ^ (n >>> 13), 0xc2b2ae35);
+    return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+  },
+
+  /* THE LATTICES ARE BAKED, NOT HASHED PER SAMPLE. The tone is sampled at
+     sub-tile resolution — tens of thousands of points on a big map — but the
+     octaves are LOW frequency, so their lattices are tiny: at 0.045 per tile
+     a 65-tile map needs a 4x4 grid. Hashing 12 times per sample re-derives
+     those few hundred numbers over and over; building them once and reading
+     them back took the full xlarge bake from 131ms to a fraction of it.
+     Rebuilt when the seed or the map size changes, and nowhere else. */
+  _lat: null, _latKey: '', _latOne: null,
+  _mkLat(f, salt) {
+    const w = Math.ceil(CFG.W * f) + 3, h = Math.ceil(CFG.H * f) + 3;
+    const d = new Float32Array(w * h);
+    for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++)
+      d[yy * w + xx] = this._lh(xx, yy, salt);
+    return { w, h, f, d };
+  },
+  _latRead(o, x, y) {
+    const fx = x * o.f, fy = y * o.f;
+    let x0 = Math.floor(fx), y0 = Math.floor(fy);
+    const tx = fx - x0, ty = fy - y0;
+    if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0;
+    if (x0 > o.w - 2) x0 = o.w - 2; if (y0 > o.h - 2) y0 = o.h - 2;
+    const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+    const r0 = y0 * o.w + x0, r1 = r0 + o.w;
+    const top = o.d[r0] + (o.d[r0 + 1] - o.d[r0]) * sx;
+    const bot = o.d[r1] + (o.d[r1 + 1] - o.d[r1]) * sx;
+    return top + (bot - top) * sy;
+  },
+  landLattices() {
+    const key = this.landSeed() + 'x' + CFG.W + 'x' + CFG.H;
+    if (this._latKey === key && this._lat) return this._lat;
+    const out = [];
+    for (let i = 0; i < LAND.TONE_OCT.length; i++)
+      out.push(Object.assign(this._mkLat(LAND.TONE_OCT[i][0], i + 1), { wt: LAND.TONE_OCT[i][1] }));
+    this._lat = out; this._latKey = key;
+    this._latOne = { clump: this._mkLat(LAND.DECAL_CLUMP, 41), sand: this._mkLat(LAND.SAND_FREQ, 57),
+                     edge: this._mkLat(LAND.EDGE_FREQ, 73) };
+    return out;
+  },
+  /* the CLUMP FIELD — what decides where things grow at all. Nature clumps:
+     flowers in patches, pebbles in scatters, reeds in stands, and wide bare
+     ground between them. A uniform per-tile roll produces an even sprinkle,
+     which is the synthetic look this exists to avoid; the emptiness IS the
+     feature, so DECAL_GATE deliberately silences most of the map. */
+  landClump(x, y) { this.landLattices(); return this._latRead(this._latOne.clump, x, y); },
+  landSand(x, y) { this.landLattices(); return this._latRead(this._latOne.sand, x, y); },
+  /* the broad tonal field: a few octaves of smoothstep value noise over TILE
+     space, so the blotches are many tiles wide and never read as per-tile
+     checkering. Pure in (x, y) — which is what lets one tile be repainted on
+     its own and still line up with its neighbours. */
+  landTone(x, y) {
+    const L = this.landLattices();
+    let v = 0;
+    for (let i = 0; i < L.length; i++) {
+      const o = L[i], fx = x * o.f, fy = y * o.f;
+      let x0 = Math.floor(fx), y0 = Math.floor(fy);
+      const tx = fx - x0, ty = fy - y0;
+      if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0;
+      if (x0 > o.w - 2) x0 = o.w - 2; if (y0 > o.h - 2) y0 = o.h - 2;
+      const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+      const r0 = y0 * o.w + x0, r1 = r0 + o.w;
+      const top = o.d[r0] + (o.d[r0 + 1] - o.d[r0]) * sx;
+      const bot = o.d[r1] + (o.d[r1 + 1] - o.d[r1]) * sx;
+      v += (top + (bot - top) * sy) * o.wt;
+    }
+    return v;
+  },
+
+  /* ---- THE GROUND'S TONE AND ITS SHADE ---------------------------------
+     Applied as an OVERLAY over whatever the floor turned out to be — the
+     procedural paint or a dropped-in assets/terrain/grass.png. That is the
+     whole point of doing it here rather than inside the painter: supplied
+     ground art gets the same form the procedural ground has, instead of
+     silently flattening everything this layer achieves.
+
+     Warm and light going up, cool and dark going down, so the swing carries
+     a little hue with it rather than reading as grey wash. Quantized to
+     TONE_STEPS hard steps — a smooth gradient would be the one thing on
+     screen not made of pixels.
+
+     THE STEPS ARE RESOLVED PER SUB-CELL, NEVER PER TILE. One tone per tile
+     is the obvious implementation and it is exactly wrong: the steps then
+     land on tile boundaries and the quantization DRAWS THE GRID it was
+     added to hide. Sampling on a LAND.TONE_SUB grid inside the tile lets a
+     step boundary wander across tile borders as an organic stair, which is
+     what reads as ground having form.
+
+     The shade is bilinear from the tile's four CORNERS (each corner being
+     what the four tiles meeting there imply), for the same reason: a flat
+     per-tile shade rectangle beside a wood is a visible square. */
+  groundTint(g, x, y, terr) {
+    const TL = CFG.TILE, N = LAND.TONE_SUB, cell = TL / N;
+    const s00 = this.cornerShade(x, y, terr), s10 = this.cornerShade(x + 1, y, terr);
+    const s01 = this.cornerShade(x, y + 1, terr), s11 = this.cornerShade(x + 1, y + 1, terr);
+    const flat = s00 === s10 && s00 === s01 && s00 === s11;
+    /* THE WHOLE-TILE FAST PATH. The tone field is low-frequency, so the great
+       majority of tiles sit entirely inside one step with no shade gradient
+       across them — those want ONE rect, not TONE_SUB². Without this the
+       layer costs ~67k fills on a 65² map and the bake doubles for a
+       difference nobody can see. Checked on the four corners: a step boundary
+       that crosses a tile without touching a corner is not possible at these
+       frequencies. */
+    if (flat) {
+      const q = (u, v) => Math.min(LAND.TONE_STEPS - 1, (this.landTone(x + u, y + v) * LAND.TONE_STEPS) | 0);
+      const c0 = q(0.02, 0.02);
+      if (c0 === q(0.98, 0.02) && c0 === q(0.02, 0.98) && c0 === q(0.98, 0.98)) {
+        const a = (c0 / (LAND.TONE_STEPS - 1) - 0.5) * 2 * LAND.TONE_AMP - s00;
+        if (Math.abs(a) < 0.005) return;
+        g.fillStyle = a > 0 ? 'rgba(232,220,150,' + a.toFixed(3) + ')'
+                            : 'rgba(10,26,20,' + (-a).toFixed(3) + ')';
+        g.fillRect(x * TL, y * TL, TL, TL);
+        return;
+      }
+    }
+    for (let j = 0; j < N; j++) {
+      const v = (j + 0.5) / N;
+      for (let i = 0; i < N; i++) {
+        const u = (i + 0.5) / N;
+        const tone = this.landTone(x + u, y + v);
+        const step = Math.min(LAND.TONE_STEPS - 1, (tone * LAND.TONE_STEPS) | 0);
+        let a = (step / (LAND.TONE_STEPS - 1) - 0.5) * 2 * LAND.TONE_AMP;
+        if (!flat || s00) {
+          const top = s00 + (s10 - s00) * u, bot = s01 + (s11 - s01) * u;
+          a -= top + (bot - top) * v;
+        }
+        if (Math.abs(a) < 0.005) continue;
+        g.fillStyle = a > 0 ? 'rgba(232,220,150,' + a.toFixed(3) + ')'    // sun-warmed
+                            : 'rgba(10,26,20,' + (-a).toFixed(3) + ')';  // cool shade
+        g.fillRect(x * TL + i * cell, y * TL + j * cell, cell, cell);
+      }
+    }
+  },
+
+  /* what the four tiles meeting at a lattice corner imply about shade there.
+     Averaged at the CORNER so the value is shared by every tile that touches
+     it — that shared value is what makes the shade continuous across tile
+     borders instead of stepping at them. */
+  cornerShade(cx, cy, terr) {
+    let wood = 0, rock = 0, wet = 0, n = 0;
+    for (let oy = -1; oy <= 0; oy++) for (let ox = -1; ox <= 0; ox++) {
+      const nx = cx + ox, ny = cy + oy;
+      if (!MapGen.inB(nx, ny)) continue;
+      const v = terr[MapGen.idx(nx, ny)];
+      n++;
+      if (v === T.FOREST) wood++;
+      else if (v === T.HILLS || v === T.MOUNTAIN) rock++;
+      else if (v === T.WATER || v === T.MOAT) wet++;
+    }
+    if (!n) return 0;
+    return (wood / n) * LAND.SHADE_FOREST + (rock / n) * LAND.SHADE_ROCK + (wet / n) * LAND.SHADE_SHORE;
+  },
+
+  /* ---- DECAL SCATTER ----------------------------------------------------
+     The blank green tile is the single biggest source of flatness, and this
+     is the layer that answers it.
+
+     TWO RULES CARRY THE WHOLE EFFECT.
+
+     SUB-TILE POSITION. Every decal sits at an arbitrary pixel offset in its
+     tile and is allowed to hang over the edge. Land them on tile centres —
+     or even on a tidy sub-grid — and the eye reads the lattice instantly;
+     the whole point is that nothing about the scatter agrees with the grid.
+
+     CLUSTERING. Placement is gated on a low-frequency clump field, not a
+     per-tile roll. Most of the map grows NOTHING, and the bare ground
+     between patches is what makes the patches read as natural.
+
+     Kind is chosen from the neighbourhood — leaf litter and twigs under
+     wood, reeds and rushes by water, loose stone below crags, wildflowers
+     out in the open meadow. Everything is hashed from (x, y, seed), so the
+     scatter is identical on every reload and through every save. */
+  landDecals(g, x, y, terr) {
+    if (LAND.DECAL_DENSITY <= 0) return;
+    const t = terr[MapGen.idx(x, y)];
+    if (CORE_SCATTER[t]) { this.coreScatter(g, x, y, terr, t); return; }
+    if (!DECAL_GROUND.has(t)) return;                 // only open, walkable ground
+    // never under a building's footprint — its own art owns that ground
+    if (typeof Bld !== 'undefined' && Bld.at && Bld.at(x, y)) return;
+    const clump = this.landClump(x, y);
+    if (clump < LAND.DECAL_GATE) return;              // the empty ground between patches
+    const lush = (clump - LAND.DECAL_GATE) / (1 - LAND.DECAL_GATE);
+
+    let wood = 0, rock = 0, wet = 0;
+    for (const [ox, oy] of NEIGH8) {
+      const nx = x + ox, ny = y + oy;
+      if (!MapGen.inB(nx, ny)) continue;
+      const n = terr[MapGen.idx(nx, ny)];
+      if (n === T.FOREST || n === T.STUMPS) wood++;
+      else if (n === T.HILLS || n === T.MOUNTAIN || n === T.PEBBLES) rock++;
+      else if (n === T.WATER || n === T.MOAT) wet++;
+    }
+
+    const TL = CFG.TILE, px = TL / 16;
+    let hh = (Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ this.landSeed()) >>> 0;
+    const rnd = () => { hh = Math.imul(hh ^ (hh >>> 15), 0x2c1b3c6d); hh = (hh ^ (hh >>> 12)) >>> 0; return hh / 4294967295; };
+    const n = Math.max(1, Math.min(LAND.DECAL_MAX,
+      Math.round((0.7 + lush * (LAND.DECAL_MAX - 0.7)) * LAND.DECAL_DENSITY + rnd() * 0.5)));
+    for (let i = 0; i < n; i++) {
+      // OVERHANG: -3 … TL+3 px, so a decal may straddle the tile border. Capped
+      // at one tile so the 3x3 repaint in drawTileAt always covers the spill.
+      const dx = x * TL + Math.round(rnd() * (TL + 6)) - 3;
+      const dy = y * TL + Math.round(rnd() * (TL + 6)) - 3;
+      const r = rnd();
+      let kind;
+      if (wet >= 2 && r < 0.55) kind = r < 0.3 ? 'reed' : 'damp';
+      else if (wood >= 2 && r < 0.6) kind = r < 0.25 ? 'leaf' : r < 0.45 ? 'twig' : 'fern';
+      else if (rock >= 2 && r < 0.6) kind = r < 0.3 ? 'pebble' : 'stone';
+      else kind = r < 0.34 ? 'tuft' : r < 0.55 ? 'tuft2' : r < 0.72 ? 'clover'
+        : r < 0.86 ? 'flower' : r < 0.94 ? 'pebble' : 'scuff';
+      this.drawDecal(g, dx, dy, kind, px, rnd);
+    }
+  },
+
+  /* the density gradient for deposits that have only one sprite set: count how
+     enclosed the tile is, exactly as the forest and ore sets do, and enrich the
+     CORE with extra material rather than thinning the edge (thinning would mean
+     erasing authored art back to the floor, which reads as damage). */
+  coreScatter(g, x, y, terr, t) {
+    let cnt = 0;
+    for (const [ox, oy] of NEIGH8) {
+      const nx = x + ox, ny = y + oy;
+      if (MapGen.inB(nx, ny) && terr[MapGen.idx(nx, ny)] === t) cnt++;
+    }
+    if (cnt < 5) return;                               // an edge tile stays as drawn
+    const TL = CFG.TILE, px = TL / 16, AP = ART.PALETTE;
+    let hh = (Math.imul(x, 0x2545f491) ^ Math.imul(y, 0x9e3779b1) ^ this.landSeed()) >>> 0;
+    const rnd = () => { hh = Math.imul(hh ^ (hh >>> 15), 0x2c1b3c6d); hh = (hh ^ (hh >>> 12)) >>> 0; return hh / 4294967295; };
+    const n = 1 + Math.round((cnt - 5) / 3 * 2);       // 1 at the rim of the core, 3 dead centre
+    const kind = CORE_SCATTER[t];
+    for (let i = 0; i < n; i++) {
+      const dx = x * TL + Math.round(rnd() * (TL - 6)) + 1;
+      const dy = y * TL + Math.round(rnd() * (TL - 6)) + 1;
+      const q = (ox, oy, w, h, c) => { g.fillStyle = c; g.fillRect(dx + ox * px, dy + oy * px, w * px, h * px); };
+      if (kind === 'pebble') { q(1, 2, 2, 1, AP.stone[0]); q(0, 0, 3, 2, AP.stone[2]); q(0, 0, 1, 1, AP.stone[3]); }
+      else if (kind === 'vein') { q(0, 1, 3, 1, AP.gold[0]); q(0, 0, 2, 1, AP.gold[2]); q(2, 0, 1, 1, AP.gold[3]); }
+      else { q(1, 3, 1, 1, AP.soil[1]); q(0, 1, 1, 2, AP.thatch[1]); q(1, 0, 1, 3, AP.thatch[2]); q(2, 1, 1, 2, AP.thatch[1]); }
+    }
+  },
+
+  /* one decal, in the world's own palette. Pixel shapes only — a few
+     fillRects at the tile's own 1/16 unit, so they sit in the same rendering
+     language as everything drawn beside them. */
+  drawDecal(g, dx, dy, kind, px, rnd) {
+    const AP = ART.PALETTE;
+    const q = (ox, oy, w, h, c) => { g.fillStyle = c; g.fillRect(dx + ox * px, dy + oy * px, w * px, h * px); };
+    /* EVERY DECAL GETS A DARK FOOT. A tuft painted in the greens either side
+       of the grass base is invisible against it — the first version of this
+       drew two thousand decals nobody could see. The dark contact pixel is
+       what separates a small object from the ground it stands on, and the
+       bright tip is what gives it a lit side; between them a five-pixel
+       shape reads at a glance. */
+    const D = AP.grass[0];                    // the shadow every one of them casts
+    switch (kind) {
+      case 'tuft':                                                  // three blades
+        q(1, 3, 1, 1, D);
+        q(0, 1, 1, 2, AP.grass[3]); q(1, 0, 1, 3, AP.grass[4]); q(2, 1, 1, 2, AP.grass[3]); break;
+      case 'tuft2':                                                 // a wider, leaning clump
+        q(1, 4, 2, 1, D);
+        q(0, 2, 1, 2, AP.grass[3]); q(1, 1, 1, 3, AP.grass[4]);
+        q(2, 0, 1, 3, AP.grass[4]); q(3, 2, 1, 2, AP.grass[3]); break;
+      case 'clover':
+        q(1, 1, 1, 1, D);
+        q(0, 0, 1, 1, AP.grass[4]); q(2, 0, 1, 1, AP.grass[4]); q(1, 0, 1, 1, AP.grass[3]); break;
+      case 'fern':
+        q(1, 4, 1, 1, D);
+        q(1, 0, 1, 4, AP.leaf[3]); q(0, 1, 1, 1, AP.leaf[2]); q(2, 1, 1, 1, AP.leaf[2]);
+        q(0, 3, 1, 1, AP.leaf[1]); q(2, 3, 1, 1, AP.leaf[1]); break;
+      case 'flower': {
+        const pet = [AP.bloom[0], AP.bloom[1], AP.bloom[2], AP.gold[2], AP.bloom[3]][(rnd() * 5) | 0];
+        q(1, 3, 1, 1, D);
+        q(1, 1, 1, 2, AP.grass[4]); q(1, 0, 1, 1, pet); q(0, 0, 1, 1, pet); q(2, 0, 1, 1, pet); break;
+      }
+      case 'pebble':
+        q(0, 2, 2, 1, D);
+        q(0, 0, 2, 2, AP.stone[2]); q(0, 0, 1, 1, AP.stone[3]); q(1, 1, 1, 1, AP.stone[1]); break;
+      case 'stone':
+        q(1, 3, 2, 1, D);
+        q(0, 1, 3, 2, AP.stone[2]); q(0, 0, 2, 1, AP.stone[3]); q(2, 2, 1, 1, AP.stone[0]); break;
+      case 'twig':
+        q(1, 2, 2, 1, D);
+        q(0, 1, 3, 1, AP.wood[3]); q(2, 0, 1, 1, AP.wood[2]); q(3, 1, 1, 1, AP.wood[1]); break;
+      case 'leaf':
+        q(0, 1, 1, 1, D);
+        q(0, 0, 2, 1, AP.fire[1]); q(1, 0, 1, 1, AP.fire[2]); break;
+      case 'reed':
+        q(1, 5, 1, 1, D);
+        q(0, 2, 1, 3, AP.leaf[3]); q(1, 0, 1, 5, AP.grass[4]); q(2, 1, 1, 4, AP.leaf[3]);
+        q(1, 0, 1, 1, AP.thatch[2]); break;
+      case 'damp':
+        q(0, 0, 2, 1, AP.leaf[1]); q(1, 1, 1, 1, AP.leaf[2]); break;
+      case 'scuff':
+        q(0, 0, 3, 1, AP.soil[2]); q(1, 1, 1, 1, AP.soil[1]); break;
+    }
+  },
+
+  /* ---- TERRAIN TRANSITIONS: THE MASK IS CODE, THE MATERIAL IS THE TERRAIN'S
+     Every boundary in the enum gets an irregular fringe of the encroaching
+     terrain's OWN material eating into its neighbour, so a stand of barren
+     ground bleeds into the turf around it instead of stopping at a ruled
+     line. Nothing here is authored art: the geometry is generated and the
+     fill is whatever that terrain is made of — which is why it costs no new
+     files, covers every pair automatically, and picks up a dropped-in
+     assets/terrain/*.png for free.
+
+     THE PROFILE IS SAMPLED IN WORLD SPACE, not per tile. That is what makes a
+     long boundary read as one wandering edge rather than as a row of
+     identical scallops: neighbouring tiles read the same continuous noise
+     and their fringes line up across the seam. The hash gives every stretch
+     its own shape, so no two runs repeat.
+
+     Which side gives way is BLEED_RANK — a property of the material, not a
+     hand-kept list of pairs; the pairs themselves are derived by walking the
+     enum. Equal rank means no fringe (two grass-floored resources already
+     share a floor and have nothing to blend). */
+  bleedRank(t) {
+    if (t === T.WATER || t === T.MOAT) return 0;      // handled by the shoreline
+    if (t === T.TRENCH) return 1;
+    if (t === T.RUIN) return 6;
+    if (t === T.CAMP) return 5;
+    if (t === T.BARREN) return 4;
+    if (t === T.PEBBLES || t === T.STUMPS) return 3;
+    return 2;                                          // grass and its resources
+  },
+  floorInk(t) { return Sprites.blendCol[t] || null; },
+
+  /* depth of the fringe at a point ON the seam, in 1/16ths of a tile. Reads
+     the shared world-space profile, so both sides of a seam agree. */
+  edgeDepth(wx, wy) {
+    this.landLattices();
+    const v = this._latRead(this._latOne.edge, wx, wy);
+    const d = Math.round(v * v * (LAND.EDGE_MAX + 1.2));       // squared: mostly shallow, occasionally deep
+    return d > LAND.EDGE_MAX ? LAND.EDGE_MAX : d;
+  },
+
+  terrainEdges(g, x, y, terr) {
+    const t = terr[MapGen.idx(x, y)];
+    const mine = this.bleedRank(t), ink = this.floorInk(t);
+    if (mine === 0) return;                    // water: the shoreline owns it
+    const TL = CFG.TILE, px = TL / 16;
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + ox, ny = y + oy;
+      if (!MapGen.inB(nx, ny)) continue;
+      const tt = terr[MapGen.idx(nx, ny)];
+      if (tt === t) continue;
+      const rank = this.bleedRank(tt);
+      if (rank <= mine) continue;              // only the stronger material intrudes
+      const c = this.floorInk(tt);
+      if (!c || c === ink) continue;           // same floor — nothing to blend
+      g.fillStyle = c;
+      for (let i = 0; i < 16; i++) {
+        // sample ON the shared seam so the neighbour's own fringe agrees with ours
+        const wx = ox ? x + (ox > 0 ? 1 : 0) : x + (i + 0.5) / 16;
+        const wy = oy ? y + (oy > 0 ? 1 : 0) : y + (i + 0.5) / 16;
+        const d = this.edgeDepth(wx * 1.0 + (ox ? (i + 0.5) / 16 : 0), wy * 1.0 + (oy ? (i + 0.5) / 16 : 0));
+        if (d <= 0) continue;
+        if (ox === 1) g.fillRect(x * TL + TL - d * px, y * TL + i * px, d * px, px);
+        else if (ox === -1) g.fillRect(x * TL, y * TL + i * px, d * px, px);
+        else if (oy === 1) g.fillRect(x * TL + i * px, y * TL + TL - d * px, px, d * px);
+        else g.fillRect(x * TL + i * px, y * TL, px, d * px);
+      }
+    }
+  },
+
+  /* ---- SHORELINE ------------------------------------------------------
+     The most-looked-at boundary on the map, so it gets its own treatment
+     rather than the generic fringe.
+
+     THE BEACH WIDTH WANDERS AND MAY PINCH TO NOTHING (SAND_MIN is 0 on
+     purpose): a uniform band around every lake is the single clearest
+     "tile-mapped" tell there is. Foam rides the water side with its own
+     profile, so the two irregular edges never trace each other. */
+  shoreBand(g, x, y, terr, wetAt) {
+    const TL = CFG.TILE, px = TL / 16, AP = ART.PALETTE;
+    const t = terr[MapGen.idx(x, y)];
+    const iAmWet = wetAt(x, y);
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + ox, ny = y + oy;
+      if (!MapGen.inB(nx, ny)) continue;
+      if (wetAt(nx, ny) === iAmWet) continue;           // both dry or both wet
+      // reclaimed ground grows no beach — a man-made isthmus must not shallow
+      // the sea it was pushed into
+      const landX = iAmWet ? nx : x, landY = iAmWet ? ny : y;
+      if (S.map.reclaimed && S.map.reclaimed[MapGen.idx(landX, landY)]) continue;
+      for (let i = 0; i < 16; i++) {
+        const wx = ox ? x + (ox > 0 ? 1 : 0) : x + (i + 0.5) / 16;
+        const wy = oy ? y + (oy > 0 ? 1 : 0) : y + (i + 0.5) / 16;
+        const n = this.landSand(wx * 3.1, wy * 3.1);
+        if (iAmWet) {
+          /* THE BEACH SPILLS ACROSS THE SEAM. Banding only the land side
+             leaves the waterline running along the tile edges, so a coast
+             stays a 90-degree staircase however pretty the sand is. Letting
+             sand eat a hashed distance INTO the water tile is what actually
+             breaks the stair: the waterline stops agreeing with the grid. */
+          const spill = Math.round(n * n * 4.2);
+          const strip = (col, from, len) => {
+            g.fillStyle = col;
+            if (ox === 1) g.fillRect(x * TL + TL - (from + len) * px, y * TL + i * px, len * px, px);
+            else if (ox === -1) g.fillRect(x * TL + from * px, y * TL + i * px, len * px, px);
+            else if (oy === 1) g.fillRect(x * TL + i * px, y * TL + TL - (from + len) * px, px, len * px);
+            else g.fillRect(x * TL + i * px, y * TL + from * px, px, len * px);
+          };
+          if (spill > 0) strip(AP.bone[2], 0, spill);            // sand over the line
+          strip(n > 0.62 ? AP.water[4] : AP.water[3], spill, 1 + ((n * 2.2) | 0));   // foam beyond it
+        } else {
+          // SAND on the land side — width rides the noise and may vanish
+          const w = Math.round(LAND.SAND_MIN + n * (LAND.SAND_MAX - LAND.SAND_MIN));
+          if (w <= 0) continue;
+          for (let d = 0; d < w; d++) {
+            g.fillStyle = d === w - 1 ? AP.soil[3] : AP.bone[2];
+            if (ox === 1) g.fillRect(x * TL + TL - (d + 1) * px, y * TL + i * px, px, px);
+            else if (ox === -1) g.fillRect(x * TL + d * px, y * TL + i * px, px, px);
+            else if (oy === 1) g.fillRect(x * TL + i * px, y * TL + TL - (d + 1) * px, px, px);
+            else g.fillRect(x * TL + i * px, y * TL + d * px, px, px);
+          }
+        }
+      }
+    }
+  },
+
   /* stamp supplied ground art into one tile. Scaled to the tile from
      WHATEVER it was authored at — 32, 64, 128 — so the art can carry more
      detail than the grid, and drawn with smoothing OFF so it stays crisp
@@ -108,7 +601,8 @@ const R = {
        continuous — which is the same reason the procedural floor is shared. */
     if (window.Assets && Assets.hasTerrainArt(T.GRASS)) {
       this.blitTile(g, Assets.terrainImg(T.GRASS, h >>> 3), x, y);
-      return;
+      this.groundTint(g, x, y, S.map.seenTerrain || S.map.terrain);
+      return;                       // …supplied art gets the tone layer TOO
     }
     g.fillStyle = AP.grass[2];
     g.fillRect(x * TL, y * TL, TL, TL);
@@ -126,6 +620,7 @@ const R = {
       g.fillStyle = AP.grass[3];
       g.fillRect(x * TL + ((h >> 6) & 15) * px, y * TL + ((h >> 10) & 15) * px, px, px * 2);
     }
+    this.groundTint(g, x, y, S.map.seenTerrain || S.map.terrain);
   },
 
   // WATER — calm and smooth. A flat body colour with long, LOW-contrast swells
@@ -135,9 +630,60 @@ const R = {
   // foam / fish animation layers on top at frame time.
   paintWater(g, x, y, shore) {
     const TL = CFG.TILE, px = TL / 16, W = ART.PALETTE.water;
-    const body = shore ? W[2] : W[1], dark = shore ? W[1] : W[0], lite = shore ? W[3] : W[2];
-    g.fillStyle = body;
+    const dark = shore ? W[1] : W[0], lite = shore ? W[3] : W[2];
+    /* SHALLOWNESS IS A FIELD, NOT A FLAG. The body colour used to switch
+       wholesale on "does this tile touch land", which paints a hard rectangle
+       into the middle of every lake — the same grid-drawing mistake as a
+       per-tile tone. It is now bilinear from the tile's corners (each corner
+       being how much land meets there) and resolved per sub-cell, so a bay
+       shelves gradually and the step edges wander instead of following the
+       tile boundaries. */
+    g.fillStyle = W[1];
     g.fillRect(x * TL, y * TL, TL, TL);
+    {
+      const terr = S.map.seenTerrain || S.map.terrain;
+      const lc = (cx, cy) => {
+        let land = 0, n = 0;
+        for (let oy = -1; oy <= 0; oy++) for (let ox = -1; ox <= 0; ox++) {
+          const nx = cx + ox, ny = cy + oy;
+          if (!MapGen.inB(nx, ny)) continue;
+          n++;
+          const v = terr[MapGen.idx(nx, ny)];
+          if (v !== T.WATER && v !== T.MOAT) land++;
+        }
+        return n ? land / n : 0;
+      };
+      const a00 = lc(x, y), a10 = lc(x + 1, y), a01 = lc(x, y + 1), a11 = lc(x + 1, y + 1);
+      if (a00 || a10 || a01 || a11) {
+        const N = LAND.TONE_SUB, cell = TL / N;
+        for (let j = 0; j < N; j++) {
+          const v = (j + 0.5) / N;
+          for (let i = 0; i < N; i++) {
+            const u = (i + 0.5) / N;
+            const top = a00 + (a10 - a00) * u, bot = a01 + (a11 - a01) * u;
+            const sh = top + (bot - top) * v;
+            if (sh < 0.22) continue;
+            g.fillStyle = sh > 0.6 ? W[2] : 'rgba(70,140,175,0.55)';
+            g.fillRect(x * TL + i * cell, y * TL + j * cell, cell, cell);
+          }
+        }
+      }
+    }
+    /* DEPTH. The same tonal field the land uses, so a body of water is lighter
+       over its shallows and darker out in the middle instead of one flat blue.
+       Quantized like the ground's tone and just as gently. */
+    {
+      // PER SUB-CELL, exactly as the ground's tone is — one sample per tile
+      // puts the depth steps on the tile boundaries and draws the grid in the
+      // middle of the lake, which is the thing this whole layer exists to stop.
+      const N = LAND.TONE_SUB, cell = TL / N;
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        const d3 = Math.min(2, (this.landTone(x + (i + 0.5) / N, y + (j + 0.5) / N) * 3) | 0);
+        if (d3 === 1) continue;
+        g.fillStyle = d3 > 1 ? 'rgba(150,205,225,0.06)' : 'rgba(4,16,30,0.08)';
+        g.fillRect(x * TL + i * cell, y * TL + j * cell, cell, cell);
+      }
+    }
     for (let jy = 0; jy < 16; jy++) for (let jx = 0; jx < 16; jx++) {
       const wx = x + jx / 16, wy = y + jy / 16;
       // three long slow sine swells, wavelengths of several tiles, gently angled
@@ -460,21 +1006,12 @@ const R = {
       g.drawImage(img, x * TL, y * TL);           // water / barren / ruin / camp / mound base
     }
 
-    if (wet(t)) {
-      // wet-sand rim + pale foam line along every LAND-facing edge (never between
-      // water and a moat, or between two moats — those blend seamlessly)
-      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        if (!shoreLand(x + ox, y + oy)) continue;   // natural coast only — reclaimed land grows no beach
-        const band = (col, off) => {
-          g.fillStyle = col;
-          if (ox === 1) g.fillRect(x * TL + TL - (off + 1) * px, y * TL, px, TL);
-          else if (ox === -1) g.fillRect(x * TL + off * px, y * TL, px, TL);
-          else if (oy === 1) g.fillRect(x * TL, y * TL + TL - (off + 1) * px, TL, px);
-          else g.fillRect(x * TL, y * TL + off * px, TL, px);
-        };
-        band(AP.bone[2], 0);
-        band(AP.water[4], 1);
-      }
+    if (wet(t) || shoreLand(x + 1, y) || shoreLand(x - 1, y) || shoreLand(x, y + 1) || shoreLand(x, y - 1) ||
+        wet(at(x + 1, y)) || wet(at(x - 1, y)) || wet(at(x, y + 1)) || wet(at(x, y - 1))) {
+      // the beach and its foam — variable width, may pinch to nothing
+      this.shoreBand(g, x, y, terr, (xx, yy) => MapGen.inB(xx, yy) && wet(terr[MapGen.idx(xx, yy)]));
+    }
+    if (t === T.TRENCH) {
     } else if (t === T.TRENCH) {
       // scattered clods of overturned soil, placed from the tile's own map hash so
       // no two ditch tiles share a pattern — a wide floor never shows a grid
@@ -523,42 +1060,21 @@ const R = {
       }
       if (!mnd(at(x + 1, y))) { g.fillStyle = AP.leaf[1]; g.fillRect(bx + TL - (ri + 2) * px, by + ti * px, 2 * px, hgt); g.fillStyle = AP.ink[0]; g.fillRect(bx + TL - (ri + 1) * px, by + ti * px, px, hgt); }   // shaded right slope + dark edge
       if (!mnd(at(x, y + 1))) { g.fillStyle = AP.leaf[1]; g.fillRect(bx + li * px, by + TL - (bi + 2) * px, w, 2 * px); g.fillStyle = AP.ink[0]; g.fillRect(bx + li * px, by + TL - bi * px, w, px); }            // shaded foot
-    } else if (Sprites.blendCol[t]) {
-      // dithered checker where a differently-grounded biome touches — no hard seams
-      const own = Sprites.blendCol[t];
-      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const tt = at(x + ox, y + oy);
-        if (tt === t) continue;
-        const c = Sprites.blendCol[tt];
-        if (!c || c === own) continue;
-        g.fillStyle = c;
-        for (let i2 = (x + y) & 1; i2 < 16; i2 += 2) {
-          if (ox === 1) g.fillRect(x * TL + TL - px, y * TL + i2 * px, px, px);
-          else if (ox === -1) g.fillRect(x * TL, y * TL + i2 * px, px, px);
-          else if (oy === 1) g.fillRect(x * TL + i2 * px, y * TL + TL - px, px, px);
-          else g.fillRect(x * TL + i2 * px, y * TL, px, px);
-        }
-      }
     }
+    // IRREGULAR FRINGES at every land boundary (replaces the old 1px dithered
+    // checker, which only ran between differing floor colours and was invisible)
+    this.terrainEdges(g, x, y, terr);
   },
 
   // live terrain changed (depletion, ruins, terraforming) — only players watching see it
   updateTile(x, y) {
     if (!G.visibleAt(x, y)) return;   // hidden changes stay hidden until revisited
     S.map.seenTerrain[MapGen.idx(x, y)] = S.map.terrain[MapGen.idx(x, y)];
+    // drawTileAt repaints the whole 3x3 (ground, then decals) — a tile's edge
+    // art comes from its neighbours and the scatter spills over borders, so the
+    // ring is never optional. It used to be a hand-rolled 4-neighbour loop here,
+    // which is what left the moat "squares" a reload had to clear.
     this.drawTileAt(x, y);
-    // a tile's edge art (trench/ditch walls, water foam, biome blends) is computed
-    // from its 4 neighbours, so a change here can leave a stale seam on each of
-    // them (e.g. a ditch wall that should vanish once the next tile is dug, or a
-    // foam rim between two moat tiles). Repaint every EXPLORED neighbour — gating on
-    // current visibility left seams on tiles that were dug next to an already-fogged
-    // neighbour (the moat "squares" that only a reload rebuild cleared). The cache
-    // holds remembered terrain and fog is a separate overlay, so baking a fogged-
-    // but-seen neighbour is safe and correct.
-    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nx = x + ox, ny = y + oy;
-      if (MapGen.inB(nx, ny) && S.map.explored[MapGen.idx(nx, ny)]) this.drawTileAt(nx, ny);
-    }
   },
   /* (re)bake the whole terrain layer. Called once per new game, and again
      whenever supplied ground art decodes — the map is a baked cache, so a
@@ -575,10 +1091,65 @@ const R = {
     this.terrainCache.width = px; this.terrainCache.height = px;
     const g = this.terrainCache.getContext('2d');
     g.imageSmoothingEnabled = false;
+    const terr = S.map.seenTerrain || S.map.terrain;
+    // TWO PASSES, and they may not be merged: decals overhang their tile, so
+    // every tile's ground must be down before any decal is laid — otherwise a
+    // neighbour's ground, painted later, erases the spill.
     for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) this.drawTile(g, x, y);
+    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) this.landDecals(g, x, y, terr);
+  },
+
+  /* REPAINT A TILE AND ITS RING, GROUND FIRST THEN DECALS. A tile's own look
+     is computed from its neighbours (edge fringes, shore, ditch walls, forest
+     density) and the decal scatter spills across tile borders, so a change is
+     never confined to one tile. Callers ask for the tile that changed; the
+     3x3 and the phase order are this function's business, which is why they
+     no longer hand-roll neighbour loops of their own. */
+  /* MANY TILES AT ONCE, EACH PAINTED ONCE. A fog reveal changes hundreds of
+     tiles in a single tick, and calling drawTileAt for each would repaint
+     every one of them nine times over for the ground and twenty-five for the
+     decals — the neighbourhoods overlap almost completely. Collecting the
+     union first turns that back into roughly one paint per tile. (This is not
+     a micro-optimisation: done naively it slowed the game enough to fail
+     tests/raider-camps.mjs, which runs a long real-time simulation.) */
+  drawTilesAt(list) {
+    if (!this.terrainCache || !list || !list.length) return;
+    const g = this.terrainCache.getContext('2d');
+    const terr = S.map.seenTerrain || S.map.terrain;
+    const W = CFG.W, ground = new Set(), deco = new Set();
+    for (const [x, y] of list) {
+      for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) {
+        const nx = x + ox, ny = y + oy;
+        if (!MapGen.inB(nx, ny)) continue;
+        deco.add(ny * W + nx);
+        if (ox >= -1 && ox <= 1 && oy >= -1 && oy <= 1) ground.add(ny * W + nx);
+      }
+    }
+    for (const k of ground) this.drawTile(g, k % W, (k / W) | 0);
+    for (const k of deco) this.landDecals(g, k % W, (k / W) | 0, terr);
   },
 
   drawTileAt(x, y) {
+    if (!this.terrainCache) return;
+    const g = this.terrainCache.getContext('2d');
+    const terr = S.map.seenTerrain || S.map.terrain;
+    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+      const nx = x + ox, ny = y + oy;
+      if (MapGen.inB(nx, ny)) this.drawTile(g, nx, ny);
+    }
+    /* THE DECAL PASS REACHES ONE RING FURTHER THAN THE GROUND PASS. Repainting
+       the ring wipes the ground there — including decals that spilled IN from
+       the ring outside it, which the ground pass never touches. Redrawing only
+       the 3x3's decals leaves those gaps behind: measured as 64px of stale
+       seam against a full rebake. Re-stamping a decal whose ground was not
+       repainted is idempotent, so the wider pass is free of side effects. */
+    for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) {
+      const nx = x + ox, ny = y + oy;
+      if (MapGen.inB(nx, ny)) this.landDecals(g, nx, ny, terr);
+    }
+  },
+
+  drawTileOnly(x, y) {
     if (this.terrainCache) this.drawTile(this.terrainCache.getContext('2d'), x, y);
   },
 
