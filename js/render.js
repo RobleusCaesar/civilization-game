@@ -195,11 +195,11 @@ const LAND = {
      why only the small stuff is allowed past the line at all (ROCK_FRINGE
      thins the last band, and SCREE puts loose chips on the ground beyond
      it). --- */
-  ROCK_STEP: 10,
+  ROCK_STEP: 12,
   ROCK_JIT: 3.4,
-  ROCK_MIN: 6,
-  ROCK_MAX: 13,
-  ROCK_GROW: 2.6,
+  ROCK_MIN: 8,
+  ROCK_MAX: 14,
+  ROCK_GROW: 3.2,
   ROCK_WANDER: 0.26,
   ROCK_EDGE_F: 0.85,
   ROCK_FRINGE: 0.82,     // coverage below which rocks start dropping out
@@ -231,7 +231,7 @@ const MTN = {
   OUTLINE_JITTER: 0.24,  // tiles
   SEG_MAX: 0.55,         // tiles — subdivide until every segment is shorter
   FRACTURE_LEVELS: 4,
-  FRACTURE_AMP: 0.34,    // fraction of the segment's own length, at the first level
+  FRACTURE_AMP: 0.26,    // fraction of the segment's own length, at the first level
   FRACTURE_DECAY: 0.82,
   FRACTURE_CAP: 0.85,     // tiles — the longest a single displacement may reach
   FRACTURE_SKEW: 0.5,    // how far off centre a break may fall (0 = midpoints)
@@ -244,8 +244,8 @@ const MTN = {
   STEPS: 7,
   BASE: 0.46,
   RISE: 0.30,
-  LIGHT: 0.42,           // the FACE's own tilt — the main light
-  MACRO: 0.38,           // the massif's broad form, from the height field
+  LIGHT: 0.34,           // each facet's own tilt
+  MACRO: 0.50,           // the massif's broad form, from the height field
   LIGHT_REACH: 5,        // px the macro gradient is measured over
   RIM: 0.30,
   CREASE: 0.055,         // tiles — how wide the dark line between two faces is
@@ -264,12 +264,32 @@ const MTN = {
   GRAIN_F: 3.1,
   GRAIN_AMP: 0.16,
 
-  /* ROOM TO OVERHANG. The art leaves its footprint — upward most of all,
-     because that is where a cliff face and a peak go. Gameplay is unaffected;
-     what the player is owed instead is the contact edge below. */
+  /* THE LIFT (phase 3) — the extrusion that fakes height in top-down. Every
+     column of the plateau draws shifted north by E and the gap down to the
+     true south boundary is filled with a vertical FACE; E is what the eye
+     reads as elevation. NORMALIZED PER REGION, never raw depth: each region
+     spends the LIFT band on its own depth range, so a thin depth-2 ridge
+     still gets a real face (LIFT_MIN is the floor that guarantees it) and a
+     massif towers over it. Raise LIFT_MAX if big ranges still read low,
+     LIFT_MIN if thin ridges read as ledges; SHADOW_K/SHADOW_A are the cast
+     shadow's reach and weight on the ground below the face. */
+  LIFT_MIN: 0.6,         // tiles — the floor: even a wall gets a real cliff
+  LIFT_MAX: 1.55,        // tiles — what a region's deepest column earns
+  LIFT_GAMMA: 1.25,      // how fast the lift climbs with normalized depth
+  PEAK_LIFT: 0.85,       // tiles of extra lift at a summit, before its own roll
+  SHADOW_K: 0.5,         // shadow length as a fraction of the face height
+  SHADOW_A: 0.45,        // its peak opacity (kept under 0.5 — it is a shadow)
+  MERGE_GAP: 10,         // px — a notch narrower than this is a crevice, not a cliff
+  SNOW: 1,               // pale caps on the highest tops (0 switches them off)
+  SNOW_MIND: 3,          // …only for regions at least this deep
+  SNOW_ABOVE: 0.86,      // …and only above this normalized height
+  /* ROOM TO OVERHANG. The art leaves its footprint — NORTH most of all,
+     because that is where the extrusion lifts it (PAD_UP must clear
+     LIFT_MAX + PEAK_LIFT). Gameplay is unaffected; the face's foot sits on
+     the true south boundary, which is what keeps the picture honest. */
   PAD_UP: 3,             // tiles
   PAD_SIDE: 1,
-  PAD_DOWN: 1,
+  PAD_DOWN: 2,
   OUTCROP_N: 4,          // boulders per cell of a 1-2 cell outcrop
   OUTCROP_MIN: 10,
   OUTCROP_MAX: 14,
@@ -697,17 +717,29 @@ const R = {
         && this._lh(gx, gy, 7) > (cov - 0.5) / (LAND.ROCK_FRINGE - 0.5)) continue;
       const rr = Math.max(LAND.ROCK_MIN, Math.min(LAND.ROCK_MAX,
         Math.round(LAND.ROCK_MIN + (cov - 0.75) * LAND.ROCK_GROW)));
-      const kind = (this._lh(gx, gy, 8) * Sprites.ROCK_KINDS) | 0;
-      const mix = Sprites.STONE_MIX;
-      const pal = mix[(this._lh(gx, gy, 9) * mix.length) | 0];
-      const vs = (this._lh(gx, gy, 10) * 4) | 0;
-      rocks.push([px2, py, rr, kind, pal, vs]);
+      const vs = (this._lh(gx, gy, 10) * 6) | 0;
+      rocks.push([px2, py, rr, vs]);
     }
-    // back to front, so a rock in front occludes the one behind it and its own
-    // foot shadow reads as the crevice between the two
+    /* A WORKABLE TILE IS NEVER INVISIBLE. A lone seeded tile (the start
+       guarantee plants singles) reads a bilinear depth well under the fringe
+       gate, and with the sparser ore lattice it could come up EMPTY — a
+       harvestable resource with nothing drawn on it, the exact lie the
+       readability rule exists to prevent. Any hills tile the lattice left
+       bare gets one centred boulder of its own. */
+    if (!rocks.length) {
+      const jx = (this._lh(x, y, 21) - 0.5) * 8, jy = (this._lh(x, y, 22) - 0.5) * 6;
+      rocks.push([(x + 0.5) * TL + jx, (y + 0.5) * TL + jy,
+        LAND.ROCK_MIN + ((this._lh(x, y, 23) * 3) | 0), (this._lh(x, y, 24) * 6) | 0]);
+    }
+    // back to front, so a boulder in front occludes the one behind it
     rocks.sort((a, b) => a[1] - b[1]);
-    for (const [px2, py, rr, kind, pal, vs] of rocks) {
-      const st = Sprites.rockStamp(kind, rr, pal, vs);
+    /* ORE, NOT RUBBLE (Part B1): the deposit is built from Sprites.oreStamp —
+       round, bright, clean-outlined boulders with a quarried face — while the
+       mountains keep the angular rockStamp. The contrast is deliberate: at a
+       glance, round-and-bright is a resource you cut, sharp-and-dark is a
+       wall you walk around. */
+    for (const [px2, py, rr, vs] of rocks) {
+      const st = Sprites.oreStamp(rr, vs, false);
       g.drawImage(st, Math.round(px2) - st._ox, Math.round(py) - st._oy);
     }
   },
@@ -752,14 +784,16 @@ const R = {
     if (!near) return;
     let hh = (Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ this.landSeed()) >>> 0;
     const rnd = () => { hh = Math.imul(hh ^ (hh >>> 15), 0x2c1b3c6d); hh = (hh ^ (hh >>> 12)) >>> 0; return hh / 4294967295; };
-    const pal = [AP.granite, AP.slate, AP.sandst];
-    for (let i = 0; i < 5; i++) {
+    const P = AP.ore;
+    for (let i = 0; i < 4; i++) {
       if (rnd() > LAND.ROCK_SCREE) continue;
-      const P = pal[(rnd() * pal.length) | 0];
       const cx = x * TL + ((rnd() * TL) | 0), cy = y * TL + ((rnd() * TL) | 0);
-      const w = 1 + ((rnd() * 2) | 0);
-      g.fillStyle = P[1]; g.fillRect(cx, cy + 1, w, 1);
-      g.fillStyle = P[3]; g.fillRect(cx, cy, w, 1);
+      const w = 2 + ((rnd() * 2) | 0);
+      // a round pebble in the deposit's own bright ramp — the spill that says
+      // "the ore is over there", in the ore's own language
+      g.fillStyle = P[1]; g.fillRect(cx, cy + 1, w, 2);
+      g.fillStyle = P[3]; g.fillRect(cx, cy, w, 2);
+      g.fillStyle = P[5]; g.fillRect(cx, cy, 1, 1);
     }
   },
 
@@ -1140,8 +1174,17 @@ const R = {
       let nx = -(b[1] - a[1]), ny = (b[0] - a[0]);
       const len = Math.hypot(nx, ny) || 1;
       nx /= len; ny /= len;
-      const d = (this._latRead(this._latOne.edge, p[0] * LAND.SHORE_NOISE_F, p[1] * LAND.SHORE_NOISE_F) - 0.5)
-        * 2 * amp;
+      /* TWO OCTAVES, THE COARSE ONE DOMINANT. One octave at SHORE_NOISE_F
+         put the lattice period at about two point-spacings along the curve —
+         textbook aliasing, invisible on a curved shore where the chord
+         directions scramble it, but on a dead-straight run it resolved into
+         a REGULAR SAWTOOTH: a zigzag waterline with clockwork teeth eaten
+         out of the beach, seen the day map generation started making long
+         straight lake edges. The coarse octave carries the wander well above
+         the sample spacing; the old frequency stays as a small detail term. */
+      const d = ((this._latRead(this._latOne.edge, p[0] * LAND.SHORE_NOISE_F * 0.38, p[1] * LAND.SHORE_NOISE_F * 0.38) - 0.5)
+        * 1.5 + (this._latRead(this._latOne.edge, p[0] * LAND.SHORE_NOISE_F + 40, p[1] * LAND.SHORE_NOISE_F + 40) - 0.5) * 0.5)
+        * amp;
       out[i] = [p[0] + nx * d, p[1] + ny * d];
     }
     return out;
@@ -2077,6 +2120,40 @@ const R = {
       r.seed = (Math.imul(r.cells.length, 0x9e3779b1)
         ^ Math.imul(x0 * 73856093 ^ y0 * 19349663, 0x85ebca6b) ^ this.landSeed()) >>> 0;
       r.loops = r.loops.map((l, i) => this.fractureLoop(l, r.seed + i * 7919, r.cls, outAt, depthAt));
+      /* PEAKS — the field's local maxima, thinned so no two crowd, capped by
+         class: a range carries several at varied heights along its ridge, a
+         mountain one or two, a crag at most one, and only where there is
+         genuine depth to stand them on. Each rolls its own height and width
+         from the region seed, so a range's silhouette never repeats one
+         shape. They feed the lift (drawMtnRegion's E) as gaussian bumps —
+         a peak IS a taller extrusion, not a pasted-on triangle. */
+      {
+        const hsh = (a, b3) => this._lh(a | 0, b3 | 0, (r.seed & 511) + 601);
+        const cand = [];
+        for (const k of r.cells) {
+          if (field[k] < 2) continue;
+          const cx = k % W, cy = (k / W) | 0;
+          let isMax = true;
+          for (let oy = -1; oy <= 1 && isMax; oy++) for (let ox = -1; ox <= 1; ox++) {
+            if (!ox && !oy) continue;
+            const nx = cx + ox, ny = cy + oy;
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            const dj = field[ny * W + nx];
+            if (dj > field[k] || (dj === field[k] && (oy < 0 || (oy === 0 && ox < 0)))) { isMax = false; break; }
+          }
+          if (isMax) cand.push({ x: cx + 0.5 + (hsh(cx, cy) - 0.5) * 0.6, y: cy + 0.5, d: field[k] });
+        }
+        cand.sort((a, b3) => b3.d - a.d);
+        const capN = r.cls === 3 ? Math.min(5, 1 + ((r.cells.length / 22) | 0)) : r.cls === 2 ? 2 : 1;
+        r.peaks = [];
+        for (const c of cand) {
+          if (r.peaks.length >= capN) break;
+          if (r.peaks.some(p => Math.hypot(p.x - c.x, p.y - c.y) < 2.4)) continue;
+          c.h = MTN.PEAK_LIFT * (0.55 + 0.5 * c.d / r.maxD) * (0.75 + hsh(c.x * 13, c.y * 7) * 0.5);
+          c.sg = 0.45 + hsh(c.x * 5, c.y * 17) * 0.65;
+          r.peaks.push(c);
+        }
+      }
     }
     this._mtn = regions; this._mtnKey = key; this._mtnH = field; this._mtnOut = outD;
     return regions;
@@ -2172,8 +2249,8 @@ const R = {
      the gradient jumps, which is exactly a crease. Coarse on purpose: fine
      faceting is mush at play zoom and is another reason previous attempts
      read as noise. */
-  mtnFacetSites(seed, x0, y0, x1, y1) {
-    const g = MTN.FACET_CELL, sites = [];
+  mtnFacetSites(seed, x0, y0, x1, y1, scale) {
+    const g = MTN.FACET_CELL * (scale || 1), sites = [];
     const i0 = Math.floor(x0 / g) - 1, i1 = Math.ceil(x1 / g) + 1;
     const j0 = Math.floor(y0 / g) - 1, j1 = Math.ceil(y1 / g) + 1;
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
@@ -2199,53 +2276,48 @@ const R = {
 
      Values are quantized to MTN.STEPS hard steps of the `crag` ramp. No
      gradients, no anti-aliasing: the same language as the building art. */
-  buildMtnLayer() {
-    /* ONCE PER MAP, AND EACH REGION INTO ITS OWN CANVAS. Mountains never move
-       in a run, so the art is a pure function of the map — and the terrain
-       cache is rebuilt for all sorts of reasons (supplied art decoding, a fog
-       sweep, a resize), so re-rendering every region each time would be the
-       most expensive thing this module could do.
+  /* ---- THE LAYER: ONCE PER MAP, EACH REGION AS ROW STRIPS ---------------
+     Mountains never move in a run, so the art is a pure function of the map.
+     What changed in phase 3 is WHERE it lives: it is no longer composited
+     into the terrain cache at all, because an extruded mountain has to
+     OCCLUDE — a unit walking behind a ridge is hidden by it, one walking in
+     front draws over it — and art baked under the unit pass can never do
+     that. Each region's art is cut into ROW STRIPS, one per footprint row
+     (`owner`, stamped during the warp: every pixel knows which ground row it
+     stands on), and the frame's unit pass interleaves strips and units by
+     row. Cheap: a few dozen visible drawImage calls a frame.
 
-       Per REGION rather than one map-sized layer, for two reasons the shore
-       layer does not share: a mountain covers a small fraction of the map, so
-       a map-sized canvas is 17MB of mostly nothing on an xlarge board; and
-       blitting a small source rect out of one measured at 2.7ms of a 3.2ms
-       tile edit, where a whole small canvas costs almost nothing. */
-    const W = CFG.W, H = CFG.H, TL = CFG.TILE;
+     Rebuilt when the SEEN mountains change (fog reveals go through
+     drawTilesAt, which flags `_mtnDirty` when a repainted tile is mountain),
+     and the key check inside makes a spurious rebuild a no-op. */
+  buildMtnLayer() {
+    const W = CFG.W, H = CFG.H;
     const key = this.mtnKey();
     if (this._mtnLayerKey === key && this._mtnArt) return;
     this._mtnLayerKey = key;
     const regions = this.mtnRegions();
-    this._mtnArt = [];
+    this._mtnArt = []; this._mtnStrips = [];
     this._mtnCover = new Uint8Array(W * H);
+    this._mtnOcc = new Set();
     if (!regions.length) return;
     if (window.Assets && Assets.terrainImg(T.MOUNTAIN, 0)) return;   // supplied art wins
     this.landLattices();
+    const terr = (S.map.seenTerrain || S.map.terrain);
     for (const r of regions) {
-      const [rx0, ry0, rx1, ry1] = r.box;
-      for (let ty = ry0 - MTN.PAD_UP; ty <= ry1 + MTN.PAD_DOWN; ty++)
-        for (let tx = rx0 - MTN.PAD_SIDE; tx <= rx1 + MTN.PAD_SIDE; tx++)
-          if (tx >= 0 && ty >= 0 && tx < W && ty < H) this._mtnCover[ty * W + tx] = 1;
       const art = (r.cls === 0) ? this.drawMtnOutcrop(r) : this.drawMtnRegion(r);
-      if (art) this._mtnArt.push(art);
+      if (!art) continue;
+      this._mtnArt.push(art);
+      for (const s of art.strips) this._mtnStrips.push(s);
+      for (const k of art.cover) {
+        this._mtnCover[k] = 1;
+        if (terr[k] !== T.MOUNTAIN) this._mtnOcc.add(k);   // art over walkable ground
+      }
     }
+    this._mtnStrips.sort((a, b) => a.row - b.row);
   },
-
-  /* composite every region that reaches into the given tile patch. The board
-     clip goes on here rather than inside each region's own canvas: the rim is
-     the world's hard border and nothing may be painted on it. */
-  compositeMtn(g, x0, y0, x1, y1) {
-    if (!this._mtnArt) this.buildMtnLayer();
-    if (!this._mtnArt || !this._mtnArt.length) return;
-    const TL = CFG.TILE;
-    g.save();
-    g.beginPath(); g.rect(TL, TL, (CFG.W - 2) * TL, (CFG.H - 2) * TL); g.clip();
-    for (const a of this._mtnArt) {
-      if (a.x + a.c.width <= x0 * TL || a.x >= (x1 + 1) * TL) continue;
-      if (a.y + a.c.height <= y0 * TL || a.y >= (y1 + 1) * TL) continue;
-      g.drawImage(a.c, a.x, a.y);
-    }
-    g.restore();
+  mtnStrips() {
+    if (!this._mtnArt || this._mtnDirty) { this._mtnDirty = false; this.buildMtnLayer(); }
+    return this._mtnStrips || [];
   },
 
   drawMtnOutcrop(r) {
@@ -2258,15 +2330,20 @@ const R = {
     const g = c.getContext('2d');
     g.imageSmoothingEnabled = false;
     g.translate(-ax, -ay);
-    const put = [];
+    const put = [], cover = new Set();
     for (const k of r.cells) {
       const cx = k % W, cy = (k / W) | 0;
+      cover.add(k);
       const n = MTN.OUTCROP_N + ((this._lh(cx, cy, 3) * 2) | 0);
       for (let i = 0; i < n; i++) {
         const a = this._lh(cx * 31 + i, cy, 11), b = this._lh(cx, cy * 31 + i, 13);
-        const c = this._lh(cx + i, cy + i, 17), d = this._lh(cx * 7 + i, cy * 5, 19);
-        const rr = MTN.OUTCROP_MIN + ((c * (MTN.OUTCROP_MAX - MTN.OUTCROP_MIN + 1)) | 0);
-        put.push([cx * TL + 3 + a * (TL - 6), cy * TL + 3 + b * (TL - 6), rr,
+        const c2 = this._lh(cx + i, cy + i, 17), d = this._lh(cx * 7 + i, cy * 5, 19);
+        const rr = MTN.OUTCROP_MIN + ((c2 * (MTN.OUTCROP_MAX - MTN.OUTCROP_MIN + 1)) | 0);
+        /* a boulder's whole stamp (body + padding) stays within OUT_MAX of
+           its own cell — a rock lying on the neighbour's walkable grass is
+           the lie the bound exists to prevent */
+        const slack = MTN.OUT_MAX * TL - 4, lo = Math.max(rr + 3 - slack, 4), hi = TL - (rr + 3) + slack;
+        put.push([cx * TL + lo + a * Math.max(1, hi - lo), cy * TL + lo + b * Math.max(1, hi - lo), rr,
           (d * Sprites.ROCK_KINDS) | 0, Sprites.STONE_MIX[(a * Sprites.STONE_MIX.length) | 0],
           (b * 4) | 0]);
       }
@@ -2276,21 +2353,24 @@ const R = {
       const st = Sprites.rockStamp(kind, rr, pal, vs);
       g.drawImage(st, Math.round(x) - st._ox, Math.round(y) - st._oy);
     }
-    return { c, x: ax, y: ay };
+    // one strip: a boulder cluster stands at ground level and occludes like
+    // any other row of stone — its ground row is its bottom cell
+    return { c, x: ax, y: ay, cover, kind: 'outcrop', strips: [{ row: by1, x: ax, y: ay, c }] };
   },
 
   drawMtnRegion(r) {
     const TL = CFG.TILE, W = CFG.W, AP = ART.PALETTE, C = AP.crag, field = this._mtnH;
     const one = this._latOne;
     const [bx0, by0, bx1, by1] = r.box;
-    // the box the art may occupy: the footprint, plus room to overhang
+    // the box the art may occupy: the footprint, the side slack, and the
+    // NORTH headroom the extrusion lifts into
     const px0 = Math.max(0, Math.floor((bx0 - MTN.PAD_SIDE) * TL));
     const py0 = Math.max(0, Math.floor((by0 - MTN.PAD_UP) * TL));
     const px1 = Math.min(CFG.W * TL, Math.ceil((bx1 + 1 + MTN.PAD_SIDE) * TL));
     const py1 = Math.min(CFG.H * TL, Math.ceil((by1 + 1 + MTN.PAD_DOWN) * TL));
     const w = px1 - px0, h = py1 - py0;
     if (w <= 0 || h <= 0) return null;
-    // ---- the mask: rasterise the fractured polygon once, then read its alpha
+    // ---- the SOURCE mask: rasterise the fractured polygon once
     const mc = document.createElement('canvas');
     mc.width = w; mc.height = h;
     const mg = mc.getContext('2d');
@@ -2304,26 +2384,25 @@ const R = {
     }
     mg.fill();
     const mask = mg.getImageData(0, 0, w, h).data;
-    /* AND THE SILHOUETTE IS CLAMPED TO ITS OWN GROUND. Turning a displacement
+    /* THE SILHOUETTE IS CLAMPED TO ITS OWN GROUND. Turning a displacement
        inward when it would leave the footprint (fractureLoop's `keep`) is a
        per-vertex rule, and per-vertex rules compound: a corner nudged out,
        then its two midpoints nudged further, then theirs, threw thin glassy
        SPIKES a tile and a half into the grass. The mask is where the bound
        can be made unarguable — a pixel more than OUT_MAX outside the true
-       tiles is simply not part of the mountain. The trimmed edge is an offset
-       of the footprint rather than a tile line, so what is left still reads
-       as rock rather than as a square. */
+       tiles is simply not part of the mountain. (The EXTRUSION then lifts
+       this mask north, which is the one direction the art may genuinely
+       leave its tiles — the warp moves nothing sideways or south, so the
+       clamp holds in those directions by construction.) */
     const outside = this.mtnOutsideFn();
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
       const m = (j * w + i) * 4;
       if (mask[m + 3] < 128) continue;
       if (outside((px0 + i + 0.5) / TL, (py0 + j + 0.5) / TL) > MTN.OUT_MAX) mask[m + 3] = 0;
     }
-    /* …and DETACHED CRUMBS ARE SWEPT UP. Clamping the outline trims spikes,
-       and a trimmed spike can leave a few dozen pixels of rock stranded in
-       the grass, which reads as a flying shard rather than as a mountain. Any
-       piece of the mask smaller than MIN_PIECE that is not part of the main
-       body is dropped. */
+    /* …and DETACHED CRUMBS ARE SWEPT UP. Trimming a spike can leave a few
+       dozen pixels of rock stranded in the grass, which reads as a flying
+       shard rather than as a mountain. */
     {
       const lab = new Int32Array(w * h).fill(-1), stack = [];
       let comp = 0;
@@ -2344,7 +2423,7 @@ const R = {
       if (comp > 1) for (let k = 0; k < w * h; k++)
         if (lab[k] >= 0 && sizes[lab[k]] < MTN.MIN_PIECE) mask[k * 4 + 3] = 0;
     }
-    // ---- the height buffer
+    // ---- the height buffer (SOURCE space — the unlifted plateau)
     const hgt = new Float32Array(w * h);
     const fAt = (x, y) => (x < 0 || y < 0 || x >= CFG.W || y >= CFG.H) ? 0 : field[y * W + x];
     const samp = (wx, wy) => {                       // bilinear over tile centres
@@ -2354,7 +2433,11 @@ const R = {
       const t1 = fAt(x0, y0 + 1) + (fAt(x0 + 1, y0 + 1) - fAt(x0, y0 + 1)) * fx;
       return t0 + (t1 - t0) * fy;
     };
-    const F = this.mtnFacetSites(r.seed, px0 / TL - 1, py0 / TL - 1, px1 / TL + 1, py1 / TL + 1);
+    /* facet size grows with the class: a massif is built of broad slabs, a
+       crag of small ones — one cell size across every scale is exactly the
+       cobblestone failure coming back through the side door */
+    const fcScale = r.cls === 3 ? 1.55 : r.cls === 2 ? 1.2 : 1;
+    const F = this.mtnFacetSites(r.seed, px0 / TL - 1, py0 / TL - 1, px1 / TL + 1, py1 / TL + 1, fcScale);
     const cells = F.iw, gs = F.g;
     const lit = new Float32Array(w * h), crease = new Uint8Array(w * h);
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
@@ -2381,43 +2464,238 @@ const R = {
         + (this._latRead(one.rock, wx * MTN.GRAIN_F, wy * MTN.GRAIN_F) - 0.5) * 2 * MTN.GRAIN_AMP;
       if (Math.sqrt(d2) - Math.sqrt(d1) < MTN.CREASE) crease[k] = 1;
     }
-    // ---- shade it
-    const out = mg.createImageData(w, h), o = out.data;
+    // ---- shade the TOP SURFACE (still in source space; the warp lifts it)
+    const src = mg.createImageData(w, h), sd = src.data;
     const rgb = C.map(c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]);
+    const pk = AP.peak.map(c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]);
     const steps = Math.min(MTN.STEPS, C.length);
     const full = Math.max(1.2, r.maxD * MTN.DEPTH_FULL);
+    const snowy = MTN.SNOW && r.maxD >= MTN.SNOW_MIND;
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
       const m = (j * w + i) * 4;
       if (mask[m + 3] < 128) continue;
       const k = j * w + i;
-      // …the big form still reads through the faces: a broad light across the
-      // massif from the height field itself, so a flank has an overall lit and
-      // an overall shadowed side however its own faces happen to lie
+      // the big form still reads through the faces: a broad light across the
+      // massif from the height field itself
       const e = MTN.LIGHT_REACH;
       const xl = Math.max(0, i - e), xr = Math.min(w - 1, i + e);
       const yu = Math.max(0, j - e), yd = Math.min(h - 1, j + e);
       const macro = -((hgt[j * w + xr] - hgt[j * w + xl]) + (hgt[yd * w + i] - hgt[yu * w + i]));
+      /* the dark rim marks where the plateau ENDS — but never on the south
+         edge, which the warp turns into the LIP above the cliff: a dark line
+         there sits directly over the face's rim highlight and reads as a
+         crack along every clifftop */
       let rim = 0;
       if (mask[(j * w + Math.max(0, i - 1)) * 4 + 3] < 128 || mask[(j * w + Math.min(w - 1, i + 1)) * 4 + 3] < 128
-        || mask[(Math.max(0, j - 1) * w + i) * 4 + 3] < 128 || mask[(Math.min(h - 1, j) * w + i) * 4 + 3] < 128) rim = 1;
+        || mask[(Math.max(0, j - 1) * w + i) * 4 + 3] < 128) rim = 1;
       let v = MTN.BASE + Math.min(1, hgt[k] / full) * MTN.RISE
         + lit[k] * MTN.LIGHT + macro * MTN.MACRO;
       if (crease[k]) v -= MTN.CREASE_DARK;
       if (rim) v -= MTN.RIM;
       let idx = Math.round(v * (steps - 1));
       if (idx < 0) idx = 0; if (idx > steps - 1) idx = steps - 1;
-      const c = rgb[idx];
-      o[m] = c[0]; o[m + 1] = c[1]; o[m + 2] = c[2]; o[m + 3] = 255;
+      /* SNOW, high and lit only, behind a constant. Drawn from the same value
+         the rock would have taken, so the caps follow the lit crests rather
+         than sitting as a painted-on disc. */
+      const c = (snowy && v > MTN.SNOW_ABOVE && idx >= 4) ? pk[Math.min(5, idx - 1)] : rgb[idx];
+      sd[m] = c[0]; sd[m + 1] = c[1]; sd[m + 2] = c[2]; sd[m + 3] = 255;
     }
+    /* ---- THE LIFT — the structural move that fakes height in top-down.
+       Every column of the plateau is drawn shifted NORTH by E, and the gap
+       between the shifted plateau and the true southern boundary is filled
+       with a VERTICAL ROCK FACE. That band IS the height: it is what the eye
+       reads as elevation, and its bottom edge sits exactly on the true tile
+       boundary, which is what keeps the picture honest about where the
+       walkable ground stops.
+
+       E IS NORMALIZED TO THE REGION, NEVER RAW DEPTH (A0.2): a thin ridge
+       has almost no interior, and keyed off absolute depth its cliff came
+       out three pixels tall — a failed cliff. Each region spends the same
+       LIFT_MIN..LIFT_MAX band on its OWN depth range, scaled by class, so a
+       depth-2 wall still gets a real face and a massif still towers over it.
+       Peaks ride on top as gaussian bumps at the field's local maxima. */
+    const E = new Float32Array(w);
+    {
+      const cw = bx1 - bx0 + 1;
+      const colD = new Float32Array(cw);
+      for (const k of r.cells) {
+        const cx = k % W;
+        if (field[k] > colD[cx - bx0]) colD[cx - bx0] = field[k];
+      }
+      const clsK = r.cls === 1 ? 0.72 : r.cls === 3 ? 1.12 : 1;
+      for (let i = 0; i < w; i++) {
+        const wx = (px0 + i + 0.5) / TL;
+        const cc = Math.min(cw - 1, Math.max(0, wx - bx0 - 0.5));
+        const c0 = Math.floor(cc), fx = cc - c0;
+        const dcol = colD[c0] + ((colD[Math.min(cw - 1, c0 + 1)] || 0) - colD[c0]) * fx;
+        const nd = Math.min(1, dcol / r.maxD);
+        let e2 = TL * (MTN.LIFT_MIN + Math.pow(nd, MTN.LIFT_GAMMA) * (MTN.LIFT_MAX - MTN.LIFT_MIN)) * clsK;
+        for (const p of (r.peaks || [])) {
+          const dx = wx - p.x;
+          e2 += TL * p.h * Math.exp(-(dx * dx) / (2 * p.sg * p.sg));
+        }
+        e2 += (this._latRead(one.rock, wx * 2.9 + 31, r.id * 7.3) - 0.5) * 2 * TL * 0.10;
+        E[i] = e2;
+      }
+      // one box smooth so the top edge undulates instead of stepping
+      const sm = new Float32Array(w);
+      for (let i = 0; i < w; i++) {
+        let s2 = 0, n2 = 0;
+        for (let o = -3; o <= 3; o++) { const q = i + o; if (q >= 0 && q < w) { s2 += E[q]; n2++; } }
+        sm[i] = Math.max(TL * MTN.LIFT_MIN * 0.7, Math.min(MTN.PAD_UP * TL - 3, s2 / n2));
+      }
+      E.set(sm);
+    }
+    // ---- THE WARP: per column, per run — top lifted, face below, shadow last
+    const out = mg.createImageData(w, h), od = out.data;
+    const owner = new Int16Array(w * h).fill(-1);
+    const shC = [12, 15, 11];                        // the cast shadow's dark green-black
+    /* RUNS FIRST, THEN THE FOOT LINE. Each column's rock is a list of RUNS
+       (top..bottom spans of the mask), and two things have to be cleaned
+       before any pixel lands. Small notches between runs are BRIDGED
+       (MERGE_GAP): the fractured outline bites concave nicks into the mass,
+       and warped naively every nick grew a full-height cliff dropping into a
+       three-pixel sliver of grass — stacked teeth all over the interior. And
+       the SOUTHMOST FOOT of each column is smoothed across its neighbours:
+       the fracture noise that makes a fine silhouette makes a terrible
+       ground line, jittering the face bottom per pixel; the foot is a line
+       the eye follows, so it wanders gently (clamped to the true mask foot
+       +2px, so the honesty bound holds). */
+    const runsAt = new Array(w), footRaw = new Float32Array(w).fill(-1);
+    for (let i = 0; i < w; i++) {
+      const runs = [];
+      let j = 0;
+      while (j < h) {
+        while (j < h && mask[(j * w + i) * 4 + 3] < 128) j++;
+        if (j >= h) break;
+        const y0r = j;
+        while (j < h && mask[(j * w + i) * 4 + 3] >= 128) j++;
+        const prev = runs[runs.length - 1];
+        if (prev && y0r - prev[1] < MTN.MERGE_GAP) prev[1] = j;
+        else runs.push([y0r, j]);
+      }
+      runsAt[i] = runs;
+      if (runs.length) footRaw[i] = runs[runs.length - 1][1];
+    }
+    const foot = new Float32Array(w);
+    for (let i = 0; i < w; i++) {
+      if (footRaw[i] < 0) { foot[i] = -1; continue; }
+      let s2 = 0, n2 = 0;
+      for (let o = -6; o <= 6; o++) { const q = i + o; if (q >= 0 && q < w && footRaw[q] >= 0) { s2 += footRaw[q]; n2++; } }
+      foot[i] = Math.min(footRaw[i], Math.max(footRaw[i] - 10, s2 / n2));
+    }
+    for (let i = 0; i < w; i++) {
+      const Ei = Math.max(3, Math.round(E[i]));
+      const colSt = (this._lh((px0 + i) >> 1, r.id, 77) - 0.5) * 2;  // striation at 2px pitch — 1px reads as corduroy
+      const crack = this._lh((px0 + i) >> 1, r.id * 3 + 1, 91) < 0.045;  // an occasional dark column
+      const runs = runsAt[i];
+      for (let ri = 0; ri < runs.length; ri++) {
+        const y0r = runs[ri][0];
+        const y1r = ri === runs.length - 1 ? Math.round(foot[i]) : runs[ri][1];
+        const ownerRow = Math.min(CFG.H - 1, Math.max(0, ((py0 + y1r - 1) / TL) | 0));
+        // TOP SURFACE — the shaded plateau, lifted. A bridged notch has no
+        // source pixel of its own; the nearest shaded rock below stands in.
+        for (let q = Math.max(0, y0r - Ei); q < y1r - Ei; q++) {
+          let so = ((q + Ei) * w + i) * 4;
+          if (!sd[so + 3]) {
+            for (let step = 1; step <= MTN.MERGE_GAP && !sd[so + 3]; step++)
+              if (q + Ei + step < h) so = ((q + Ei + step) * w + i) * 4;
+            if (!sd[so + 3]) continue;
+          }
+          const oo = (q * w + i) * 4;
+          od[oo] = sd[so]; od[oo + 1] = sd[so + 1]; od[oo + 2] = sd[so + 2]; od[oo + 3] = 255;
+          owner[q * w + i] = ownerRow;
+        }
+        // THE FACE — vertical rock from the plateau's lip down to the ground.
+        // Value separation does the work: the face lives in the ramp's dark
+        // half while the top surface keeps the light one. Structure is
+        // VERTICAL (per-column striation, occasional crack columns) because
+        // vertical structure reads as a wall and horizontal banding as ground.
+        for (let q = Math.max(0, y1r - Ei); q < Math.min(h, y1r); q++) {
+          const d0 = q - (y1r - Ei), d1 = y1r - 1 - q;
+          const frac = d0 / Ei;
+          let fi;
+          if (d0 <= 2) fi = colSt > 0.2 ? 7 : 6;                  // rim light along the lip
+          else if (d1 <= 1) fi = 0;                               // ambient occlusion at the foot
+          else if (d1 <= 3) fi = ((i + q) & 1) ? 0 : 1;           // …dithered up out of it
+          else {
+            /* a WALL, not a curtain: per-column striation carries the
+               vertical structure, a wobble that varies down the face keeps
+               the columns from being ruled, and broken STRATA seams — one
+               dark pixel row at hashed heights, offset per column so no seam
+               runs level — are what make it masonry-of-the-mountain rather
+               than hanging cloth */
+            const wob = (this._latRead(one.clump, (px0 + i) / TL * 2.2, (py0 + q) / TL * 1.6 + 5) - 0.5) * 1.4;
+            const band = ((d0 * 7 + ((colSt * 13) | 0) + (this._lh((px0 + i) >> 4, r.id, 111) * 40) | 0) % 23);
+            fi = Math.round(3.4 - frac * 1.6 + colSt * 0.55 + wob);
+            if (band === 0) fi -= 1.5;                            // a strata seam
+            if (fi < 1) fi = 1; if (fi > 4) fi = 4;
+            if (crack) fi = Math.max(0, fi - 1);
+            fi = Math.round(fi);
+          }
+          const oo = (q * w + i) * 4, c = rgb[fi];
+          od[oo] = c[0]; od[oo + 1] = c[1]; od[oo + 2] = c[2]; od[oo + 3] = 255;
+          owner[q * w + i] = ownerRow;
+        }
+        // CAST SHADOW on the ground south of the face — translucent, length
+        // proportional to the face, edge roughened per column. Later (more
+        // southern) runs of rock simply overwrite it.
+        /* length from the LOW-FREQUENCY lattice, never a per-column hash —
+           independent column lengths comb the shadow's edge into drips */
+        const shLen = Math.round(Ei * MTN.SHADOW_K *
+          (0.75 + (this._latRead(one.rock, (px0 + i) / TL * 1.3 + 71, r.id * 3.7) - 0.5) * 0.7));
+        for (let q = y1r; q < Math.min(h, y1r + shLen); q++) {
+          const t2 = (q - y1r) / shLen;
+          const a = MTN.SHADOW_A * 255 * Math.pow(1 - t2, 1.5);
+          const oo = (q * w + i) * 4;
+          if (a > od[oo + 3]) {
+            od[oo] = shC[0]; od[oo + 1] = shC[1]; od[oo + 2] = shC[2]; od[oo + 3] = a;
+            owner[q * w + i] = ownerRow;
+          }
+        }
+      }
+    }
+    // the board's own clip, applied to the pixels: the rim is off-map void
+    // and nothing may be painted there (the strips draw with no clip path)
+    const cover = new Set();
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const oo = (j * w + i) * 4;
+      if (!od[oo + 3]) continue;
+      const xw = px0 + i, yw = py0 + j;
+      if (xw < TL || xw >= (CFG.W - 1) * TL || yw < TL || yw >= (CFG.H - 1) * TL) { od[oo + 3] = 0; owner[j * w + i] = -1; continue; }
+      if (od[oo + 3] >= 128) cover.add(((yw / TL) | 0) * W + ((xw / TL) | 0));
+    }
+    // ---- cut the art into ROW STRIPS for the frame's occlusion interleave
+    const rowBox = new Map();
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const ow = owner[j * w + i];
+      if (ow < 0 || !od[(j * w + i) * 4 + 3]) continue;
+      let bb = rowBox.get(ow);
+      if (!bb) rowBox.set(ow, bb = { x0: i, x1: i, y0: j, y1: j });
+      if (i < bb.x0) bb.x0 = i; if (i > bb.x1) bb.x1 = i;
+      if (j < bb.y0) bb.y0 = j; if (j > bb.y1) bb.y1 = j;
+    }
+    const strips = [];
+    for (const [row, bb] of rowBox) {
+      const sw = bb.x1 - bb.x0 + 1, sh = bb.y1 - bb.y0 + 1;
+      const sc = document.createElement('canvas');
+      sc.width = sw; sc.height = sh;
+      const sg = sc.getContext('2d');
+      const im = sg.createImageData(sw, sh);
+      for (let j = 0; j < sh; j++) for (let i = 0; i < sw; i++) {
+        const kk = (bb.y0 + j) * w + (bb.x0 + i);
+        if (owner[kk] !== row) continue;
+        const so = kk * 4, oo = (j * sw + i) * 4;
+        im.data[oo] = od[so]; im.data[oo + 1] = od[so + 1];
+        im.data[oo + 2] = od[so + 2]; im.data[oo + 3] = od[so + 3];
+      }
+      sg.putImageData(im, 0, 0);
+      strips.push({ row, x: px0 + bb.x0, y: py0 + bb.y0, c: sc });
+    }
+    // …and the whole-region composite, which is what the contract measures
+    mg.clearRect(0, 0, w, h);
     mg.putImageData(out, 0, 0);
-    // ---- THE CONTACT EDGE, at the TRUE tile footprint.
-    /* The art may sit off the lattice and (from phase 3) reach past it, so
-       the player is owed an unmistakable line where the ground actually
-       stops being walkable. It is drawn from the TILE DATA — the same array
-       movement reads — never from the traced polygon, so it cannot drift out
-       of agreement with the rule it signals. */
-    this.drawMtnContact(mg, r, mask, px0, py0, w, h);
-    return { c: mc, x: px0, y: py0 };
+    return { c: mc, x: px0, y: py0, cover, kind: 'region', box: r.box, strips };
   },
 
   /* the exact sub-tile distance from a point to the mountain footprint, in
@@ -2444,65 +2722,6 @@ const R = {
       return best;
     };
   },
-
-  drawMtnContact(g, r, mask, px0, py0, mw, mh) {
-    const TL = CFG.TILE, W = CFG.W, H = CFG.H, C = ART.PALETTE.crag;
-    g.save(); g.translate(-px0, -py0);
-    const terr = (S.map.seenTerrain || S.map.terrain);
-    const isM = (x, y) => x >= 0 && y >= 0 && x < W && y < H && terr[y * W + x] === T.MOUNTAIN;
-    for (const k of r.cells) {
-      const cx = k % W, cy = (k / W) | 0;
-      if (!MapGen.onBoard(cx, cy)) continue;
-      /* ONLY THE NORTHERN EDGE. The silhouette is clamped to within OUT_MAX
-         of its own tiles on the other three sides, so there its own dark rim
-         already IS the contact edge. North is the one side the art genuinely
-         reaches across — that is where the cliff and the peaks rise — so that
-         is the one side that needs a line saying where the walkable ground
-         really starts again. */
-      if (isM(cx, cy - 1)) continue;
-      const X = cx * TL, Y = cy * TL, t = MTN.CONTACT;
-      /* …and only where the rock ACTUALLY reaches across it. Drawn wherever
-         the footprint said so, the line appeared on bare grass anywhere the
-         silhouette had bitten inward, which reads as a dropped dash. The mask
-         is the honest test: if there is no rock above this boundary there is
-         nothing for the line to explain. */
-      const mi = Math.round(X + TL / 2) - px0, mj = Math.round(Y - 3) - py0;
-      if (mi < 0 || mj < 0 || mi >= mw || mj >= mh) continue;
-      if (mask[(mj * mw + mi) * 4 + 3] < 128) continue;
-      /* DITHERED, not a ruled line. Two solid pixels of near-black across a
-         lit rock face read as a scratch on the picture; the same pixels at
-         half density read as the shadow in the crease where the overhang
-         leaves the ground, which is what it actually is. */
-      g.fillStyle = C[0];
-      for (let dx2 = 0; dx2 < TL; dx2++) {
-        if (((dx2 + cx * TL) & 1) === 0) g.fillRect(X + dx2, Y, 1, t);
-        else g.fillRect(X + dx2, Y, 1, 1);
-      }
-    }
-    g.restore();
-  },
-
-  /* composite the mountain layer over a patch of the terrain cache — the
-     same contract blitShore keeps, and for the same reason: the layer is
-     re-derived only when the MOUNTAINS themselves change, which in a normal
-     run is once. */
-  blitMtn(g, x0, y0, w, h) {
-    /* MOST REPAINTS ARE NOWHERE NEAR A MOUNTAIN, and the coverage byte turns
-       those into an array read. */
-    const cov = this._mtnCover;
-    if (!cov) { this.buildMtnLayer(); }
-    if (this._mtnCover) {
-      let hit = false;
-      for (let ty = y0 - MTN.PAD_UP; ty <= y0 + h + MTN.PAD_DOWN && !hit; ty++)
-        for (let tx = x0 - MTN.PAD_SIDE; tx <= x0 + w + MTN.PAD_SIDE; tx++) {
-          if (tx < 0 || ty < 0 || tx >= CFG.W || ty >= CFG.H) continue;
-          if (this._mtnCover[ty * CFG.W + tx]) { hit = true; break; }
-        }
-      if (!hit) return;
-    }
-    this.compositeMtn(g, x0 - MTN.PAD_SIDE, y0 - MTN.PAD_UP, x0 + w + MTN.PAD_SIDE, y0 + h + MTN.PAD_DOWN);
-  },
-
 
   drawTile(g, x, y) {
     // THE MAP EDGE — the outermost ring is the hard border no unit may enter and
@@ -2579,7 +2798,8 @@ const R = {
          cue, which the GROUND_GRAIN branch below lays down. */
     } else if (t !== T.MOUNTAIN) img = variants[(x * 7 + y * 13) % variants.length];
     // MOUNTAIN is drawn procedurally from a height field in the ground-layer step
-    // below — the region layer (blitMtn) draws the rock itself, so no img here.
+    // below — the mountain strips draw the rock itself, in the frame's unit
+    // pass, so it can OCCLUDE (see buildMtnLayer); no img is selected here.
 
     // GROUND LAYER. Grass and every grass-floored resource (forest, fertile,
     // hills, mountain, stumps, pebbles) share ONE continuous painted grass floor
@@ -2601,9 +2821,9 @@ const R = {
       this.paintGround(g, x, y, h);                               // grass floor under the irregular rocky footprint
       if (ovr) this.blitTile(g, ovr, x, y);
       // …and the ROCK is not drawn here at all. A mountain is one object with
-      // a traced outline and a height field, painted into its own layer and
-      // composited over the ground (R.mtnRegions / blitMtn) — a tile has
-      // nowhere to put height, which is the whole reason for the rewrite.
+      // a traced outline and a height field, drawn as row strips in the
+      // frame's unit pass (R.mtnRegions / buildMtnLayer / mtnStrips) — a tile
+      // has nowhere to put height, which is the whole reason for the rewrite.
     } else if (wet(t)) {
       /* …and the water itself is NOT painted here. It goes down in one
          clipped pass afterwards (paintWaterIn), because clipping to the
@@ -2741,14 +2961,11 @@ const R = {
     // …then the traced coast over the top, from its own cached layer
     this.buildShoreLayer();
     g.drawImage(this.shoreLayer, 0, 0);
-    /* …and the mountains last, because they OVERHANG: their art leaves the
-       footprint and must sit over the ground of the tiles it reaches across.
-       Composited per REGION rather than as one full-map blit — on a normal
-       map the mountains cover a small fraction of it, and pushing four
-       million transparent pixels through the compositor for the sake of a
-       few hundred thousand opaque ones is most of what this layer costs. */
-    this.buildMtnLayer();
-    this.compositeMtn(g, 0, 0, CFG.W - 1, CFG.H - 1);
+    /* …and the mountains NOT AT ALL. Their art lives outside the cache now —
+       drawn as row strips interleaved with the units every frame, because an
+       extruded mountain must OCCLUDE what stands behind it, and art baked
+       under the unit pass never can. The bake only flags them fresh. */
+    this._mtnDirty = true;
   },
 
   /* REPAINT A TILE AND ITS RING, GROUND FIRST THEN DECALS. A tile's own look
@@ -2841,10 +3058,11 @@ const R = {
       if (cx < x0) x0 = cx; if (cx > x1) x1 = cx;
       if (cy < y0) y0 = cy; if (cy > y1) y1 = cy;
     }
-    if (x1 >= x0) {
-      this.blitShore(g, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
-      this.blitMtn(g, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
-    }
+    if (x1 >= x0) this.blitShore(g, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+    // a fog reveal that uncovered mountain re-derives the strip layer (its
+    // regions read seenTerrain); everything else leaves it alone
+    for (const [x, y] of list)
+      if (terr[y * W + x] === T.MOUNTAIN) { this._mtnDirty = true; break; }
   },
 
   drawTileAt(x, y) {
@@ -2883,7 +3101,7 @@ const R = {
       }
     });
     this.blitShore(g, x - 2, y - 2, 5, 5);
-    this.blitMtn(g, x - 2, y - 2, 5, 5);
+    if (terr[y * CFG.W + x] === T.MOUNTAIN) this._mtnDirty = true;
   },
 
   /* put the traced coast back over a patch that was just repainted. The layer
@@ -2909,6 +3127,7 @@ const R = {
     this._mtn = null; this._mtnKey = '';                         // re-trace the mountain regions for the new map
     this._mtnH = null;                                           // …and their height field (the same fact)
     this._mtnArt = null; this._mtnLayerKey = ''; this._mtnCover = null;     // …and the art they were drawn into
+    this._mtnStrips = null; this._mtnOcc = null; this._mtnDirty = true;
     this._hillH = null; this._hillKey = '';                      // hills move (a quarry works one out), so this is keyed, not one-shot
     this._sideMask = null; this._sideKey = '';
     this._mixC = null;
@@ -5889,8 +6108,29 @@ const R = {
       }
       g.restore();
     }
+    /* THE MOUNTAINS DRAW HERE, interleaved with the units by ground row —
+       the whole point of cutting each region into row strips (buildMtnLayer).
+       A strip whose ground row is north of a unit's feet draws BEFORE it
+       (the unit walks in front of that rock); one south of it draws AFTER
+       (the unit is behind the ridge and the cliff hides it). Units are
+       already sorted by y, so this is one pointer walked forward — never a
+       sort, never a per-pixel test. Buildings all drew earlier, which lands
+       right too: a building north of a range is behind it and the strips
+       cover it, one south of the range is clear of the art entirely. */
+    const mstrips = this.mtnStrips();
+    let msI = 0;
+    const msL = this.cam.x - TL * 2, msR = this.cam.x + this.viewW() / this.cam.z + TL * 2;
+    const msT = this.cam.y - TL * 4, msB = this.cam.y + this.viewH() / this.cam.z + TL * 2;
+    const msFlush = (uptoY) => {
+      while (msI < mstrips.length && mstrips[msI].row + 1 <= uptoY) {
+        const st = mstrips[msI++];
+        if (st.x > msR || st.x + st.c.width < msL || st.y > msB || st.y + st.c.height < msT) continue;
+        g.drawImage(st.c, st.x, st.y);
+      }
+    };
     const units = S.units.slice().sort((a, b) => a.y - b.y);
     for (const u of units) {
+      msFlush(u.y);
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
       const ux = u.x * TL - TL / 2, uy = u.y * TL - TL / 2 - CFG.SPRITE_LIFT;
       if (selIds && selIds.has(u.id)) {
@@ -5959,6 +6199,44 @@ const R = {
       }
       if (u.hp < u.maxhp) this.bar(g, ux + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');
+    }
+    msFlush(1e9);
+    /* A UNIT BEHIND A MOUNTAIN IS HIDDEN, NOT LOST. Anyone standing on
+       ground the lifted art covers (`_mtnOcc` — walkable tiles only, stamped
+       at bake) just vanished under the strips above, which is the depth cue
+       working — but they must stay selectable and legible, so they come back
+       as a quiet silhouette: the sprite at low alpha, the selection ring,
+       and the health bar when it matters. */
+    if (this._mtnOcc && this._mtnOcc.size) for (const u of units) {
+      if (!this._mtnOcc.has(((u.y | 0) * CFG.W) + (u.x | 0))) continue;
+      if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
+      const ux = u.x * TL - TL / 2, uy = u.y * TL - TL / 2 - CFG.SPRITE_LIFT;
+      if (selIds && selIds.has(u.id)) {
+        g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;
+        g.beginPath(); g.ellipse(u.x * TL, u.y * TL + 10, 10, 5, 0, 0, Math.PI * 2); g.stroke();
+      }
+      g.globalAlpha = 0.32;
+      g.drawImage(this.unitSprite(u), ux, uy, TL, TL);
+      g.globalAlpha = 1;
+      if (u.hp < u.maxhp) this.bar(g, ux + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
+        u.owner === 'P' ? '#7dbb5e' : '#e06550');
+    }
+    /* …and the PLACEMENT GRID keeps the last word over the rock (the hard
+       rule from the phase-2 brief: the grid reads from tile data and renders
+       ON TOP of overhanging mountain art). The main grid pass drew under the
+       buildings, where the town reads over it; here it is drawn again,
+       clipped to exactly the tiles the mountain art covers — those pixels'
+       first coat is buried under opaque rock, so nothing doubles up. */
+    if (window.UI && UI.placing && UI.placing !== 'wall' && this._mtnCover) {
+      const c0x = Math.max(0, (msL / TL) | 0), c1x = Math.min(CFG.W - 1, Math.ceil(msR / TL));
+      const c0y = Math.max(0, (msT / TL) | 0), c1y = Math.min(CFG.H - 1, Math.ceil(msB / TL));
+      let any = false;
+      g.save();
+      g.beginPath();
+      for (let ty = c0y; ty <= c1y; ty++) for (let tx = c0x; tx <= c1x; tx++)
+        if (this._mtnCover[ty * CFG.W + tx]) { g.rect(tx * TL, ty * TL, TL, TL); any = true; }
+      if (any) { g.clip(); this.drawPlaceGrid(g); }
+      g.restore();
     }
 
     // cast lines: every settled shore-fisher shows a rod, a line, and a

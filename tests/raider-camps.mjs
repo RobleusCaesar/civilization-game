@@ -50,7 +50,11 @@ p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text(
    any check on its outcome is a coin toss. Seeding it makes this suite
    reproducible; the RNG is installed before any game code runs. (S.rngState —
    the game's OWN seeded RNG — is untouched, so nothing about a seed's rolls
-   changes.) */
+   changes.) The seed is only half of it: the test body also re-zeroes the
+   module-level cadence clocks (Combat.scanT, Units.herdClock) beside the
+   re-seed — they are not in S, so newGame carries the demo's machine-timed
+   accumulation into the fixed-step sims, and a drifting phase there spends
+   the seeded stream differently on every run. */
 await p.addInitScript(() => {
   let s = 0x9e3779b9 >>> 0;
   Math.random = () => {
@@ -70,6 +74,20 @@ await p.waitForTimeout(900);
 
 const out = await p.evaluate(() => {
     window.__seedRandom(0x9e3779b9);   // one stream, one starting point, every run
+  /* …and the same BEAT. Combat.scanT (the 0.4s acquire cadence) and
+     Units.herdClock (the herds' shared breath) live on their modules, not in
+     S, so newGame never resets them — they arrive still carrying whatever the
+     title's demo world accumulated on this machine's clock. Every fixed-step
+     sim below then runs its target scans and its grazing on a different phase
+     each run, the herds spend a different number of the seeded Math.random
+     draws, and the one shared stream drifts — measured as identical worlds
+     (S.rngState in lockstep at every check) whose Math.random stream never
+     re-synced after the first Units.update loop. Section 9c then began at an
+     arbitrary stream point, and on some points the purge's first march fails
+     inside the raid break-off window while its motive (two ledger entries,
+     15-day horizon) ages out: the camp never burns. The third wall-clock
+     dependency in this suite, after the loop bound and the pause. */
+  Combat.scanT = 0; Units.herdClock = 0;
   const res = {}, fails = [];
   const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
   const campsOf = () => Bld.list('R').filter(z => z.key === 'raidercamp');
@@ -284,7 +302,13 @@ const out = await p.evaluate(() => {
     ck('tappingItOrdersTheAttack',
       s2.task && s2.task.type === 'attackBld' && s2.tBld === camp.id,
       s2.task ? s2.task.type + ' / tBld ' + s2.tBld : 'no order given');
-    // …and the blows land, and it comes down
+    // …and the blows land, and it comes down. The TENDERS are stood down
+    // first: this section pins the ORDER path (tap → attackBld → hp → gone),
+    // not the yard fight — camp bands roll 1-3 strong on moderate, and on a
+    // 3-tender roll they beat a seven-spear party fair and square, which is
+    // the camp doing its job, not the order failing (section 4 owns the
+    // tenders' own behaviour).
+    for (const td of G.campTenders(camp).slice()) Units.despawn(td);
     const hp0 = camp.hp;
     for (let i = 0; i < 6; i++) {
       const q = Units.spawn('defender', 'P', spot.x, spot.y);
@@ -598,8 +622,16 @@ const out = await p.evaluate(() => {
       if (!S.buildings.includes(camp)) burned = true;
     }
     ck('theCampBurns', burned, 'day ' + S.day + ' — the ground is won for good (tickRaiderCamps never remans it)');
-    for (let i = 0; i < 220; i++) step(0.12);
-    ck('andTheErrandEnds', S.units.filter(u => u.owner === 'A' && u.task && u.task.type === 'raid').length === 0,
+    /* the walk home is REAL GROUND: since the massifs arrived a party can
+       have a genuine detour to march, so the drain waits for the CONDITION
+       (no soldier still carrying the camp objective) up to a generous step
+       budget rather than assuming 26 sim-seconds is always enough — and it
+       measures the ERRAND (the camp objective cleared), not "no raid task
+       anywhere", because on a long window the chief may legitimately open an
+       ordinary raid of its own. */
+    const errandDone = () => S.units.every(u => !(u.owner === 'A' && u.raidObj && u.raidObj.type === 'camp'));
+    for (let i = 0; i < 2500 && !errandDone(); i++) step(0.12);
+    ck('andTheErrandEnds', errandDone(),
       'the camp gone ends the raid — nobody stands admiring the ashes');
     ck('onACooldownNotAConveyor', (S.ai.purgeCd || 0) > S.day - 25,
       'a mauled expedition must not be re-raised daily');

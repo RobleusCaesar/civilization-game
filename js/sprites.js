@@ -511,6 +511,7 @@ const Sprites = {
      AND IT LOOKS MINABLE. Cracks, strata lines, chipped corners and pale
      fresh-quarried scars are what say "there is stone in here to take" as
      against "here is a decorative boulder". ---- */
+  const QUARTZ_ORE = ['#5c5c55', '#8c8b80', '#a8a79a', '#c2c1b3', '#dcdbcc', '#f6f5ea'];
   const STONE_PALS = [AP.granite, AP.slate, AP.sandst];
   /* WEIGHTED, not an even draw. An even three-way mix put as much blue-grey
      in a field as neutral stone and the whole deposit read cold and purple —
@@ -737,6 +738,87 @@ const Sprites = {
      is one whole rock spilling into its neighbour rather than two cut halves
      that have to be drawn to match. Building each stamp once and blitting it
      is what keeps that affordable. */
+  /* ---- ORE THAT READS AS TREASURE, NOT RUBBLE ---------------------------
+     The quarriable deposits (HILLS, and the gold seam) deliberately BREAK the
+     "rock is angular" rule the mountains follow: ore is ROUND — the tree
+     canopy's shape language on stone. Simple, confident silhouettes with a
+     clean dark outline, a broad lit cap upper-left, a shadowed underside —
+     and a straight QUARRIED facet of fresh pale stone, which is the one cue
+     that says "somebody will cut this" rather than "a decorative boulder".
+     Fewer, LARGER forms: many small chips is exactly what read as gravel.
+     The contrast with the angular mountain rock is the point: at a glance,
+     round-and-bright is a resource, sharp-and-dark is a wall. */
+  function oreBoulder(f, cx, cy, rr, St, seed, gold) {
+    const r2 = ART.rng((seed | 1) >>> 0);
+    const ph = r2() * 6.283, lump = 0.09 + r2() * 0.05;
+    const radAt = (a2) => rr * (0.94 + lump * Math.sin(a2 * 3 + ph) + 0.04 * Math.sin(a2 * 5 - ph));
+    // the quarried facet: a chord across the upper-right, showing fresh stone
+    const fa = -0.9 + r2() * 0.7, fd = rr * (0.45 + r2() * 0.2);
+    const fx = Math.cos(fa), fy = Math.sin(fa);
+    const inside = (dx, dy, m) => {
+      const d = Math.hypot(dx, dy);
+      if (d < 0.01) return true;
+      return d <= radAt(Math.atan2(dy, dx)) - m;
+    };
+    // contact shadow first, so the boulder sits on the ground
+    const sy = cy + Math.round(rr * 0.82);
+    for (let dx = -rr + 1; dx <= rr - 1; dx++)
+      if (Math.abs(dx) < rr * 0.85) f(cx + dx, sy, 1, 1, AP.grass[0]);
+    for (let dy = -rr - 1; dy <= rr + 1; dy++) for (let dx = -rr - 1; dx <= rr + 1; dx++) {
+      if (!inside(dx, dy, 0)) continue;
+      const facet = dx * fx + dy * fy > fd;
+      let c;
+      if (!inside(dx, dy, 1.1)) c = (dx + dy > 0) ? St[0] : St[1];    // clean outline, darkest away from the light
+      else if (facet) c = (dx * fx + dy * fy > fd + 1.4) ? St[5] : St[1];   // the quarried face + its cut edge
+      else {
+        const t2 = dx + dy;
+        c = t2 < -rr * 0.62 ? St[5] : t2 < -rr * 0.15 ? St[4] : t2 < rr * 0.35 ? St[3] : St[2];
+      }
+      f(cx + dx, cy + dy, 1, 1, c);
+    }
+    // a round sunlit cap, the canopy trick — one confident highlight
+    const hx = cx - (rr * 0.3) | 0, hy = cy - (rr * 0.34) | 0, hr = Math.max(1, (rr * 0.3) | 0);
+    for (let dy = -hr; dy <= hr; dy++) for (let dx = -hr; dx <= hr; dx++)
+      if (dx * dx + dy * dy <= hr * hr && inside(hx - cx + dx, hy - cy + dy, 1.4))
+        f(hx + dx, hy + dy, 1, 1, St[5]);
+    if (gold) {
+      /* the METAL: two or three fat nuggets and a short vein, in the real
+         gold ramp — warm glints on cool stone, unmistakably valuable */
+      const GD = AP.gold;
+      for (let n = 0; n < 3; n++) {
+        const a2 = r2() * 6.283, d = r2() * rr * 0.55;
+        const nx = cx + Math.cos(a2) * d | 0, ny = cy + Math.sin(a2) * d | 0;
+        if (!inside(nx - cx, ny - cy, 2)) continue;
+        f(nx, ny, 2, 2, GD[1]); f(nx, ny, 1, 1, GD[2]);
+        if (r2() < 0.6) f(nx + 1, ny - 1, 1, 1, GD[3]);
+      }
+      const vx = cx - (rr * 0.15 | 0), vy = cy + (rr * 0.1 | 0);
+      for (let k = 0; k < 3; k++) if (inside(vx + k - cx, vy + k - cy, 2)) {
+        f(vx + k, vy + k, 1, 1, GD[2]);
+      }
+    } else if (r2() < 0.8) {
+      // a mineral glint or two even on plain stone — the "worth cutting" wink
+      const gx = cx + ((r2() * rr) | 0) - (rr / 2 | 0), gy = cy - ((r2() * rr * 0.5) | 0);
+      if (inside(gx - cx, gy - cy, 2)) f(gx, gy, 1, 1, St[5]);
+    }
+  }
+  // exported for the gold seam's own tile (null ramp = the quartz ore ramp)
+  Sprites.oreBoulder = (f, cx, cy, rr, St, seed, gold) => oreBoulder(f, cx, cy, rr, St || QUARTZ_ORE, seed, gold);
+  const _oreStamps = new Map();
+  Sprites.oreStamp = (rr, vseed, gold) => {
+    const key = (rr * 16 + vseed) * 2 + (gold ? 1 : 0);
+    const hit = _oreStamps.get(key);
+    if (hit) return hit;
+    const pad = 3, w = rr * 2 + pad * 2, hgt = rr * 2 + pad * 2 + 2;
+    const c = mk(w, hgt), g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    const f = (x, y, ww, hh, col) => { g.fillStyle = col; g.fillRect(x, y, ww || 1, hh || 1); };
+    oreBoulder(f, rr + pad, rr + pad, rr, gold ? QUARTZ_ORE : AP.ore, rr * 131 + vseed * 613, gold);
+    c._ox = rr + pad; c._oy = rr + pad;
+    _oreStamps.set(key, c);
+    return c;
+  };
+
   const _stamps = new Map();
   Sprites.rockStamp = (kind, rr, palIdx, vseed) => {
     // a NUMBER, not a string: this is looked up once per rock in the bake and
@@ -1043,39 +1125,16 @@ const Sprites = {
   const QUARTZ = ['#6a6a63', '#8c8b80', '#a8a79a', '#c2c1b3', '#dcdbcc', '#f2f1e4'];
   Sprites.terrain[T.GOLDORE] = [
     tile(p => {
-      const f = p.f, r = ART.rng(613), GD = AP.gold;
-      // the outcrop: one big block with two smaller shoulders, half buried
-      boulderBody(f, 14, 15, 9, QUARTZ);
-      boulderBody(f, 24, 20, 6, QUARTZ);
-      boulderBody(f, 6, 21, 5, QUARTZ);
-      /* THE GOLD — short veins that RUN, at the same 45° the facets break on,
-         so they read as metal in the rock rather than confetti on top of it.
-         Only on the quartz: a vein is sampled and skipped if it would land on
-         the open turf. */
-      const onRock = (x, y) => {
-        const d = (cx, cy, rr) => Math.hypot(x - cx, y - cy) < rr * 0.82;
-        return d(14, 15, 9) || d(24, 20, 6) || d(6, 21, 5);
-      };
-      for (let i = 0; i < 14; i++) {
-        const vx = 3 + ((r() * 26) | 0), vy = 7 + ((r() * 16) | 0);
-        if (!onRock(vx, vy)) continue;
-        const len = 2 + ((r() * 3) | 0), dn = r() < 0.5 ? 1 : -1;
-        for (let k = 0; k < len; k++) {
-          const x = vx + k, y = vy + k * dn;
-          if (!onRock(x, y)) break;
-          f(x, y, 1, 1, k === 0 ? GD[3] : GD[2]);
-          if (r() < 0.45) f(x, y + 1, 1, 1, GD[1]);      // the vein's shadowed under-edge
-        }
-      }
-      // a fat vein breaking the surface of the main block, the eye-catcher
-      f(11, 12, 4, 2, GD[2]); f(11, 12, 3, 1, GD[3]); f(12, 14, 2, 1, GD[1]);
-      // spoil at the foot: weathered nuggets and quartz chips in the turf
-      for (let i = 0; i < 6; i++) {
-        const nx = 4 + ((r() * 24) | 0), ny = 23 + ((r() * 6) | 0);
-        f(nx, ny, 2, 1, GD[1]); f(nx, ny, 1, 1, GD[2]);
-      }
-      for (let i = 0; i < 9; i++)
-        f(2 + ((r() * 28) | 0), 22 + ((r() * 8) | 0), 1, 1, r() < 0.55 ? QUARTZ[3] : AP.grass[4]);
+      /* THE SEAM, in the ore's own round language (Part B1): three fat
+         quartz boulders — the same confident silhouettes the stone deposits
+         wear, so ore reads as ONE family — struck through with real gold:
+         nuggets and a short vein in the gold ramp, warm metal on pale stone.
+         Transparent floor, like every resource node (render paints the
+         grass, and tests/gold-mine.mjs pins the transparency). */
+      const f = p.f;
+      Sprites.oreBoulder(f, 13, 15, 9, null, 613, true);
+      Sprites.oreBoulder(f, 24, 21, 6, null, 617, true);
+      Sprites.oreBoulder(f, 6, 23, 5, null, 619, true);
     }),
   ];
   /* the CAMP GROUND (tests/raider-camps.mjs) — trampled bare earth, churned by

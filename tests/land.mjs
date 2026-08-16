@@ -677,8 +677,22 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       }
       const f = uni ? diff/uni : 0; if (f<closest){closest=f; pair=a+'/'+b2;}
     }
+    // …and the MOUNTAIN rock, for the brightness comparison ore must win
+    R.mtnStrips();                              // the layer builds lazily now
+    let mMean = null;
+    if (R._mtnArt && R._mtnArt.length) {
+      const a = R._mtnArt.find(a2 => a2.kind === 'region') || R._mtnArt[0];
+      const dd2 = a.c.getContext('2d').getImageData(0, 0, a.c.width, a.c.height).data;
+      let ms = 0, mn = 0;
+      for (let i = 0; i < dd2.length; i += 8) {
+        if (dd2[i + 3] < 250) continue;
+        ms += lum(dd2[i], dd2[i + 1], dd2[i + 2]); mn++;
+      }
+      if (mn) mMean = ms / mn;
+    }
     return { cover, longest, kinds, pals, pair, closest:+closest.toFixed(3),
-             range:+(hi-lo).toFixed(1), mean:+(sum/n).toFixed(1), at:[bx,by] };`));
+             range:+(hi-lo).toFixed(1), mean:+(sum/n).toFixed(1),
+             mMean: mMean == null ? null : +mMean.toFixed(1), at:[bx,by] };`));
   const core = v.cover['3'] || v.cover['2'];
   ck('aRockCoreIsSolidStone', core && core.cov >= 0.96,
     'depth 1/2/3 tiles are ' + [1,2,3].map(k => v.cover[k] ? Math.round(v.cover[k].cov*100)+'%' : '-').join(' / ')
@@ -689,8 +703,16 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   ck('andRockIsBuiltOfFiveFormsInThreeStones', v.kinds >= 5 && v.pals >= 3 && v.closest > 0.25,
     v.kinds + ' silhouettes (closest pair ' + v.pair + ' differs over ' + Math.round(v.closest*100)
     + '% of the union of their masks), ' + v.pals + ' stone ramps');
-  ck('andTheMassHasRealValueContrast', v.range >= 120,
-    'the stone in a core tile spans ' + v.range + ' luminance, mean ' + v.mean);
+  /* Part B flipped this check's premise ON PURPOSE: the deposit is no longer
+     "stone that reads as stone" — that language (angular, near-black
+     crevices) moved to the MOUNTAINS, and ore now reads as TREASURE: round,
+     bright, clean-outlined. So the bar is brightness and form, not a dark
+     crevice: the deposit must sit clearly LIGHTER than the mountain rock
+     (that contrast is what says "resource, not wall" at a glance) and still
+     span real values from outline to highlight. */
+  ck('andOreOutshinesTheMountainRock',
+    v.range >= 70 && v.mean >= 115 && (v.mMean == null || v.mean > v.mMean + 25),
+    'ore core mean ' + v.mean + ' (span ' + v.range + ') against mountain rock mean ' + v.mMean);
   await p.close();
 }
 
@@ -933,8 +955,14 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     return { stale, moats, joined, added, inChannel, at:[sx,sy] };`));
   ck('aFloodedMoatJoinsTheWaterItCameFrom', v.skip || (v.moats > 0 && v.joined),
     v.skip ? 'no lake with a dry run beside it' : v.moats + ' moat tiles, one region with the lake');
-  ck('andNoBeachRunsDownTheMiddleOfIt', v.skip || (v.added === 0 && v.inChannel === 0),
-    v.skip ? 'skipped' : 'the dig added ' + v.added + ' sand pixels; the channel itself carries '
+  /* `added` tolerates a HANDFUL of moved pixels: joining the channel makes a
+     different loop, and the two-octave roughening (the straight-shore
+     sawtooth fix) lets that re-deal reach a little further along the lake's
+     own beach than the excluded mouth tile. That is the coast being one
+     traced curve; what stays absolute is the channel itself carrying NO
+     sand. */
+  ck('andNoBeachRunsDownTheMiddleOfIt', v.skip || (v.added <= 8 && v.inChannel === 0),
+    v.skip ? 'skipped' : 'the dig moved ' + v.added + ' sand pixels along the lake shore; the channel itself carries '
       + v.inChannel);
   ck('andDiggingItLeavesNoStaleShore', v.skip || v.stale === 0,
     v.skip ? 'skipped' : v.stale + ' tiles differ from a full rebake after the dig');

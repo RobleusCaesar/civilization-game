@@ -247,6 +247,13 @@ Tunables, all in the `LAND` block:
 | a mountain's outline still steps at right angles | raise `FRACTURE_AMP`, lower `SEG_MAX` |
 | a mountain throws thin spikes into the grass | lower `FRACTURE_CAP`, `OUT_MAX` |
 | a range reads flat | raise `RISE`, `LIGHT`, `MACRO` |
+| cliffs read low / timid | raise `LIFT_MAX` (and `PEAK_LIFT`) |
+| a thin ridge reads as a ledge | raise `LIFT_MIN` |
+| micro-cliffs stack all over the interior | raise `MERGE_GAP` |
+| the cliff face reads as hanging cloth | the strata seams own this — see the face paint in `drawMtnRegion` |
+| the cast shadow is invisible / too heavy | `SHADOW_A`, `SHADOW_K` |
+| snow reads wrong for the setting | `SNOW: 0` |
+| ore boulders read small / gravelly | raise `ROCK_MIN`/`ROCK_MAX`, lower `ROCK_STEP` |
 | the rock reads as cobblestones or cracked ceramic | see `mtnFacetSites` — this is a geometry bug, not a dial |
 | the faces are too big / too small | `FACET_CELL` |
 | the creases are too heavy | lower `CREASE_DARK`, `CREASE` |
@@ -281,27 +288,32 @@ carry none of that cue. A gold seam is meant to be unmistakable by being
 *gold*, not by pretending to be an obstruction — marking it blocked would be
 the exact lie the cue exists to prevent.
 
-### The rock field is not made of tiles
+### Ore is round, bright, and deliberately not rock
 
-`hills` is the one terrain with **no tile sprite at all**. Three sets picked
-by neighbour count can only ever draw a staircase of squares, so the stone is
-scattered in WORLD space from a lattice that knows nothing about the grid, out
-of five pre-rendered angular forms — boulder, cleaved slab, cracked block,
-jagged spire, rubble — in three six-step ramps (neutral granite, cool slate,
-warm sandstone). A boulder straddling a tile boundary is one whole rock
-spilling into its neighbour, not two halves drawn to match. How big a rock is
-and whether there is one at all come from how deep into the deposit it stands,
-sampled smoothly and then displaced by world-space noise, so the outline
-wanders rather than following tile edges.
+`hills` is an ORE DEPOSIT, and it breaks the "rock is angular" rule the
+mountains follow on purpose: at a glance, round-and-bright is a resource you
+cut, sharp-and-dark is a wall you walk around. The deposit is scattered in
+WORLD space (no tile sprite; a boulder straddling a boundary is one whole
+rock) out of pre-rendered ROUND boulders — the tree canopy's shape language
+on stone: clean dark outline, broad lit cap, a straight quarried facet of
+fresh pale stone, the odd glint — fewer and larger, because many small chips
+is exactly what reads as gravel. The gold seam wears the same round language
+in pale quartz with real gold nuggets and veins.
+
+Deposits themselves are few and compact — a handful of dense knots per map,
+seated against the mountains first, then at forest edges, then (small) in
+open grass — so if you are authoring a map, put the ore where the geology
+says.
 
 Supplying `assets/terrain/hills.png` **stands the whole scatter down** and
 your tile is drawn instead, the same rule grass, water and mountain follow.
 Author it dense, and remember it will be the only thing on that tile.
 
-Loose scree chips are drawn on the walkable ground just outside a deposit.
-That is deliberate and honest — scree at the foot of a crag is walkable — and
-it is the only stone allowed past the boundary, because a boulder standing on
-ground a unit can cross is a lie about the map.
+Loose round pebbles in the ore's own bright ramp lie on the walkable ground
+just outside a deposit. That is deliberate and honest — the spill says "the
+ore is over there" in the ore's own language — and it is the only stone
+allowed past the boundary, because a boulder standing on ground a unit can
+cross is a lie about the map.
 
 ### Mountains are objects, not tiles
 
@@ -311,19 +323,25 @@ HEIGHT, and a top-down tile grid has nowhere to put height — which is why
 every earlier attempt at drawing them tile by tile came out as a flat grey
 blob however good the individual tile was.
 
-Each contiguous mountain area is now ONE OBJECT: its cells are flooded into a
-region, its boundary traced into a polygon and then fractured off the lattice,
-and its interior shaded in hard value steps from a distance field that doubles
-as the height. Areas are drawn according to their SIZE — one or two cells is a
-boulder outcrop, not a mountain — and a range gets its silhouette, its faces
-and (from phase 3) its cliff and peaks from that same field.
+Each contiguous mountain area is ONE OBJECT: its cells are flooded into a
+region, its boundary traced into a polygon and fractured off the lattice, its
+interior shaded in hard value steps from a distance field that doubles as the
+height — and then the whole plateau is EXTRUDED: drawn shifted north, with the
+gap down to the true southern boundary filled by a tall vertical cliff face
+(striated, rim-lit, occluded at the foot, casting a real shadow on the ground
+below). Peaks are taller extrusions at the field's local maxima. Areas draw
+according to their SIZE — one or two cells is a boulder outcrop, not a
+mountain — and the cliff height is normalized per region, so even a thin
+ridge gets a real face.
 
 The art deliberately leaves its tiles, and there are hard rules about how far.
-Sideways and southward it stays within a fifth of a tile of the true footprint;
-northward it may reach further, because that is where a cliff face and a peak
-go, and where it does the northern tile edge carries a dithered contact line so
-the walkable ground is never in doubt. Nothing about this changes the rules:
-passability, placement, fishing and dock siting all still read the tile grid.
+Sideways and southward it stays within a fifth of a tile of the true
+footprint; northward it rises by the lift alone. Because the art is tall, it
+OCCLUDES: units and buildings behind a ridge are hidden by it (a hidden unit
+comes back as a faint silhouette, still selectable), ones in front draw over
+it, and the placement grid is re-drawn above the rock so ground truth is
+always inspectable. Nothing about this changes the rules: passability,
+placement, fishing and dock siting all still read the tile grid.
 
 Supplying `assets/terrain/mountain.png` **stands the whole thing down** and
 your tile is drawn instead, the same rule grass, water and hills follow. Be

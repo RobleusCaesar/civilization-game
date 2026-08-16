@@ -107,6 +107,43 @@ const MapGen = {
     const landform = lfRoll < 0.4 ? 'valley' : lfRoll < 0.6 ? 'lakeland'
       : lfRoll < 0.8 ? 'highlands' : 'islands';
 
+    /* A MASSIF, NOT A SPINE. The old mountain painter walked a ~3-wide brush
+       across the map, which laid WALLS: measured over every mountain-bearing
+       xlarge seed, the interior-depth histogram was 1:2086 2:551 3:21 4:1 —
+       almost nothing more than two tiles from an edge, so a range had no
+       interior for the renderer's height field to raise. A massif is painted
+       as a noisy ELLIPSE (a real interior by construction) plus a couple of
+       fat spur lobes off its long axis, so a range still runs in a direction
+       without thinning back into a wall. Never over a start, never over
+       water; the reachability clamp below still guarantees every way
+       through. */
+    const massif = (cx, cy, area, elong) => {
+      const th = rnd() * Math.PI, ca = Math.cos(th), sa = Math.sin(th);
+      const b0 = Math.max(2.2, Math.sqrt(area / (Math.PI * elong)));
+      const a0 = b0 * elong;
+      const lobes = [[cx, cy, a0, b0]];
+      const spurs = 1 + ((rnd() * 2) | 0);
+      for (let s = 0; s < spurs; s++) {                    // fat lobes off the long axis
+        const at = (rnd() < 0.5 ? -1 : 1) * (0.55 + rnd() * 0.45);
+        lobes.push([cx + ca * a0 * at, cy + sa * a0 * at,
+          a0 * (0.38 + rnd() * 0.2), b0 * (0.7 + rnd() * 0.3)]);
+      }
+      for (const [lx, ly, la, lb] of lobes) {
+        const rr = Math.ceil(Math.max(la, lb)) + 1;
+        const x0 = Math.max(1, (lx - rr) | 0), x1 = Math.min(W - 2, (lx + rr) | 0);
+        const y0 = Math.max(1, (ly - rr) | 0), y1 = Math.min(H - 2, (ly + rr) | 0);
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+          const dx = x - lx, dy = y - ly;
+          const u = (dx * ca + dy * sa) / la, v = (-dx * sa + dy * ca) / lb;
+          // rnd() per candidate tile keeps the rim ragged AND deterministic —
+          // the iteration order is fixed, so the same seed rolls the same rim
+          if (u * u + v * v + (rnd() - 0.5) * 0.45 > 1) continue;
+          if (nearStart(x, y) || t[id(x, y)] !== T.GRASS) continue;
+          t[id(x, y)] = T.MOUNTAIN;
+        }
+      }
+    };
+
     if (landform === 'islands') {
       t.fill(T.WATER);
       // land masses under both towns, a big one mid-map, plus a few wild
@@ -115,6 +152,13 @@ const MapGen = {
       for (const c of isles)
         blob(c.x, c.y, Math.round(46 * f), T.GRASS, null, [T.WATER]);
       blob(W / 2, H / 2, Math.round(60 * f), T.GRASS, null, [T.WATER]);
+      /* THE CENTRAL ISLE GETS A MOUNTAIN HEART (Part B3): a peak in the
+         middle of the big island, with the forest and the ore painted later
+         ringing it — an island worth sailing to, not a flat green disc. The
+         wild isles roll a small crag each about half the time. */
+      massif(W / 2, H / 2, 28 + rnd() * 22 * f, 1.2 + rnd() * 0.5);
+      for (const c of isles.slice(2))
+        if (rnd() < 0.55) massif(c.x, c.y, 8 + rnd() * 10, 1.1 + rnd() * 0.4);
       const causeway = (a, b) => {
         let x = a.x, y = a.y;
         let guard = 0;
@@ -138,25 +182,24 @@ const MapGen = {
       for (let i = 0; i < lakes; i++)
         blob(4 + rnd() * (W - 8) | 0, 4 + rnd() * (H - 8) | 0, (lakeSize + rnd() * 14) | 0, T.WATER, nearStart);
       if (landform === 'highlands') {
-        // impassable mountain ridges wander across the land
-        const ridges = Math.max(3, Math.round(4 * f));
-        for (let r = 0; r < ridges; r++) {
-          let x = (2 + rnd() * (W - 4)) | 0, y = (2 + rnd() * (H - 4)) | 0;
-          let dir = rnd() * Math.PI * 2;
-          const len = (W * (0.5 + rnd() * 0.4)) | 0;
-          for (let i = 0; i < len; i++) {
-            // a chunkier brush (~3 tiles wide) so ridges read as substantial ranges,
-            // not thin spines — the reachability clamp below still guarantees a way through
-            for (const [ox, oy] of [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1]]) {
-              const nx = (x | 0) + ox, ny = (y | 0) + oy;
-              if (MapGen.inB(nx, ny) && !nearStart(nx, ny) && t[id(nx, ny)] === T.GRASS)
-                t[id(nx, ny)] = T.MOUNTAIN;
-            }
-            dir += (rnd() - 0.5) * 0.5;
-            x += Math.cos(dir); y += Math.sin(dir);
-            if (!MapGen.inB(x | 0, y | 0)) break;
-          }
-        }
+        /* FEWER, BIGGER RANGES. The tile budget roughly matches the old
+           ridge-walk (~650 on xlarge) so map balance and the reachability
+           clamp see the same amount of stone — but it now stands in a
+           handful of massifs with real interiors instead of eleven walls.
+           One of them is deliberately MASSIVE: the map's landmark. */
+        const massifs = Math.max(2, Math.round(2.2 * f));
+        massif(6 + rnd() * (W - 12), 6 + rnd() * (H - 12), (150 + rnd() * 80) * f / 2.6, 1.6 + rnd() * 0.9);
+        for (let r = 1; r < massifs; r++)
+          massif(4 + rnd() * (W - 8), 4 + rnd() * (H - 8), (55 + rnd() * 60) * f / 2.6, 1.3 + rnd() * 1.1);
+      } else if (rnd() < 0.75) {
+        /* …and the OTHER inland landforms carry a little stone too (Part B3):
+           one or two modest crags, so most maps have a mountain for the ore
+           to sit against and the highlands stay the mountainous ones by a
+           clear margin. Deliberately small, and rolled at all only three
+           times in four — a bare valley is still a valley. */
+        const crags = 1 + (rnd() < 0.4 ? 1 : 0);
+        for (let r = 0; r < crags; r++)
+          massif(5 + rnd() * (W - 10), 5 + rnd() * (H - 10), (16 + rnd() * 26) * f / 2.6 + 8, 1.2 + rnd() * 0.7);
       }
     }
 
@@ -195,7 +238,55 @@ const MapGen = {
         blob(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0, 6, type, nearStart, [T.GRASS]);
     };
     paint(T.FOREST, 7, 5, 8);
-    paint(T.HILLS, 5, 4, 5);
+    /* ORE IS A CLAIM, NOT A CARPET (Part B2/B3). A settlement needs three to
+       five workable deposits, not sprawling fields — big fields are what read
+       as rubbish strewn across the map, and they made stone too cheap to
+       fight over. Each deposit is one COMPACT dense knot (a disc with a
+       ragged rim, so it has a real core), and the deposits have geological
+       logic: they seat FIRST against the mountains — that is where ore
+       belongs, and an island with a mountain heart gets its ring of deposits
+       for free — then at forest edges where a map is short of mountains, and
+       only then in open grass, small. The scarce-resource path above is
+       untouched: a stone-scarce map still gets its one lean 6-8 tile pocket
+       and nothing else. */
+    if (scarce.terrain !== T.HILLS) {
+      const oreKnot = (cx, cy) => {
+        const rad = 1.3 + rnd() * 0.9;
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+          const x = cx + dx, y = cy + dy;
+          if (!MapGen.inB(x, y) || nearStart(x, y) || t[id(x, y)] !== T.GRASS) continue;
+          if (Math.hypot(dx, dy) + (rnd() - 0.5) * 0.8 > rad) continue;
+          t[id(x, y)] = T.HILLS;
+        }
+      };
+      const nearTerr = (x, y, type, rr) => {
+        for (let dy = -rr; dy <= rr; dy++) for (let dx = -rr; dx <= rr; dx++) {
+          if (!MapGen.inB(x + dx, y + dy)) continue;
+          if (t[id(x + dx, y + dy)] === type) return true;
+        }
+        return false;
+      };
+      const wantDeposits = Math.max(3, Math.round(2.4 * f));
+      const seats = [];
+      const trySeat = (pred, tries) => {
+        let guard = 0;
+        while (seats.length < wantDeposits && guard++ < tries) {
+          const x = 3 + rnd() * (W - 6) | 0, y = 3 + rnd() * (H - 6) | 0;
+          if (t[id(x, y)] !== T.GRASS || nearStart(x, y)) continue;
+          if (!pred(x, y)) continue;
+          if (seats.some(s2 => Math.hypot(s2.x - x, s2.y - y) < 9)) continue;
+          seats.push({ x, y });
+        }
+      };
+      trySeat((x, y) => nearTerr(x, y, T.MOUNTAIN, 3), 900);      // PRIMARY: against the mountains
+      trySeat((x, y) => nearTerr(x, y, T.FOREST, 2), 500);        // fallback: the forest edge
+      trySeat(() => true, 300);                                    // last resort: open ground, still compact
+      for (const s2 of seats) oreKnot(s2.x, s2.y);
+      // floor: a map must never be starved of stone outright
+      let guard = 0;
+      while (countType(T.HILLS) < 9 && guard++ < 40)
+        oreKnot(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0);
+    } else paint(T.HILLS, 5, 4, 5);
     paint(T.FERTILE, 6, 3, 5);
 
     // guarantee some of each resource near both starts
@@ -238,12 +329,30 @@ const MapGen = {
        so a small map still gets its camps rather than none. */
     const TOWN_RING = 7;
     const wantClear = (RC.chaseR || 7) + TOWN_RING + 4;
-    for (const clear of [wantClear, wantClear - 4, 14, 10]) {
+    /* …AND A CAMP NEEDS ITS YARD. Tenders mill inside guardR and bands muster
+       around the fire, so the ground right around a camp must be OPEN — the
+       day the massifs arrived, a camp landed with a crag through its yard and
+       its tenders could neither reach prey standing two tiles away nor be
+       reached by the war party sent to burn them out. Solid terrain within 2
+       tiles disqualifies a spot; like the town clearance, the demand is
+       dropped (openNeed 1, then 0) before the camp count is, so a rough map
+       still seats its camps. */
+    const yardOpen = (x, y, need) => {
+      if (need <= 0) return true;
+      for (let dy = -need; dy <= need; dy++) for (let dx = -need; dx <= need; dx++) {
+        const v = t[id(x + dx, y + dy)];
+        if (v === T.MOUNTAIN || v === T.WATER) return false;
+      }
+      return true;
+    };
+    for (const [clear, openNeed] of [[wantClear, 2], [wantClear - 4, 2], [14, 1], [10, 0]]) {
       let guard = 0;
       while (camps.length < wantCamps && guard++ < 600) {
         const x = 3 + rnd() * (W - 6) | 0, y = 3 + rnd() * (H - 6) | 0;
         const dP = Math.hypot(x - player.x, y - player.y), dA = Math.hypot(x - ai.x, y - ai.y);
-        if (dP > clear && dA > clear && t[id(x, y)] === T.GRASS) { t[id(x, y)] = T.CAMP; camps.push({ x, y }); }
+        if (dP > clear && dA > clear && t[id(x, y)] === T.GRASS && yardOpen(x, y, openNeed)) {
+          t[id(x, y)] = T.CAMP; camps.push({ x, y });
+        }
       }
       if (camps.length >= wantCamps) break;
     }

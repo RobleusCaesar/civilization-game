@@ -98,7 +98,7 @@ node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring 
 node tests/placement.mjs       # ONE placement truth (canPlace codes); ghost+confirm flow; the seal clamp; AI parity
 node tests/boot.mjs            # frame one is the logo; no chrome before a game; the notch inset
 node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything
-node tests/mountain.mjs        # a mountain is ONE OBJECT with an outline and a height field; the art leaves its tiles, the rules never do
+node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -2288,6 +2288,14 @@ sand along it. The one tile deliberately left out of the sand sweep is the
 lake's own mouth tile: joining the channel makes a different loop, so the
 roughening lands a few pixels elsewhere along the lake's shore — that is the
 coast being one traced curve, not a beach appearing.
+**The roughening is TWO OCTAVES, the coarse one dominant** (`roughen`): one
+octave at `SHORE_NOISE_F` put the lattice period at about two point-spacings
+along the curve — textbook aliasing, invisible on a curved shore where the
+chord directions scramble it, but on a dead-straight run it resolved into a
+REGULAR SAWTOOTH waterline with clockwork teeth eaten out of the beach, seen
+the day map generation started making long straight lake edges. The coarse
+octave carries the wander well above the sample spacing; the old frequency
+stays as a small detail term.
 **The staircase is measured, not eyeballed** (`theCoastIsTracedNotTiled`): the
 share of ~1-tile chords whose bearing locks to a multiple of 45°. Untraced tile
 loops answer 100%; the traced coast answers ~43%. It is deliberately NOT held
@@ -2445,41 +2453,94 @@ the height BUFFER throws a bright line wherever two faces meet, and since faces
 tile the plane those lines join into a web and the mountain reads as cracked
 ceramic.
 
-**GAMEPLAY TRUTH IS TILE-BASED AND IS NOT TOUCHED.** The art sits off the
-lattice and (from phase 3) reaches past it; passability, placement, pathing,
-projectiles, fog and the rival AI all still read `S.map.terrain` and cannot
-tell. What the player is owed in exchange is honesty about where the ground
-really stops, and it is paid three ways. **The silhouette is CLAMPED**: no
-pixel may lie more than `MTN.OUT_MAX` (0.22 tiles) outside the footprint. That
-bound is enforced twice — `fractureLoop` turns a displacement inward when it
-would leave the tiles, and the MASK is trimmed against a sub-tile distance
-(`R.mtnOutsideFn`) — because the per-vertex rule alone compounds: a corner
-nudged out, then its two midpoints nudged further, then theirs, threw thin
-glassy SPIKES a tile and a half into the grass. **Detached crumbs are swept
-up** (`MTN.MIN_PIECE`): trimming a spike can strand a few dozen pixels of rock
-in the meadow, which reads as a flying shard. **And the contact edge is drawn
-from TILE DATA on the NORTH side only** (`R.drawMtnContact`) — north is the one
-side the art genuinely reaches across, so it is the one side that needs a line
-saying where walkable ground starts again; on the other three the clamped
-silhouette's own dark rim IS the contact edge. It is DITHERED, because two
-solid pixels of near-black across a lit rock face read as a scratch on the
-picture rather than as the shadow in a crease, and it is drawn only where the
-mask says rock actually covers the boundary — drawn wherever the footprint said
-so it appeared on bare grass anywhere the silhouette had bitten inward.
+**THE LIFT — HEIGHT IS AN EXTRUSION** (phase 3; `MTN.LIFT_*` and the warp in
+`drawMtnRegion`): the faceted plateau alone read as a rock TABLE seen from
+above, because nothing in a top-down frame says "tall" until something is
+drawn STANDING. So every column of the shaded plateau is drawn shifted NORTH
+by `E`, and the gap from the shifted plateau's lip down to the true southern
+boundary is filled with a VERTICAL ROCK FACE — that band IS the height, and
+its foot sits exactly on the true tile boundary, which is what keeps the
+picture honest about where walkable ground stops. `E` is **NORMALIZED TO THE
+REGION, never raw depth** (A0.2): each region spends the `LIFT_MIN..LIFT_MAX`
+band on its OWN depth range, scaled by class, so a thin depth-2 ridge still
+gets a real face (`LIFT_MIN` is the floor — a 3px cliff is a failed cliff)
+and a massif towers over it. The supporting cues compound: hard value
+separation (the face lives in the crag ramp's dark half, the lit plateau
+keeps the light one), per-column VERTICAL striation with broken strata seams
+(vertical structure reads as a wall; horizontal banding reads as ground — and
+the seams are what stop a tall face reading as hanging cloth), a rim light
+along the lip, dithered ambient occlusion at the foot, and a translucent CAST
+SHADOW on the ground south of the face, its length from the low-frequency
+lattice — a per-column hash combed its edge into drips. **PEAKS are taller
+extrusions, not pasted-on triangles**: gaussian bumps in `E` at the field's
+local maxima (`r.peaks`, capped by class, height and width rolled per summit
+so a range never repeats one silhouette), with optional snow on the highest
+lit crests behind `MTN.SNOW`. Three warp lessons, each paid for: runs are
+MERGED across notches narrower than `MTN.MERGE_GAP` (every concave nick
+otherwise grew a full-height cliff dropping into a three-pixel sliver of
+grass — stacked teeth all over the interior); the southmost FOOT of each
+column is smoothed across its neighbours (fracture noise that makes a fine
+skyline makes a terrible ground line) but never extended below the true mask
+bottom; and a bridged notch samples the nearest shaded rock below it, since
+it has no source pixel of its own.
 
-**IT IS RENDERED ONCE PER MAP, PER REGION** (`R.buildMtnLayer` /
-`compositeMtn` / `blitMtn`): mountains never move in a run, so the art is a
-pure function of the map — and the terrain cache is rebuilt for all sorts of
-reasons, so re-rendering every region each time would be the most expensive
-thing this module could do. Each region gets its OWN small canvas rather than
-one map-sized layer, for two reasons the shore layer does not share: a
-map-sized canvas is 17MB of mostly nothing on an xlarge board, and blitting a
-small source rect out of one measured at **2.7ms of a 3.2ms tile edit**, where
-a whole small canvas costs almost nothing. A per-tile coverage byte
-(`_mtnCover`) turns every repaint away from a mountain into an array read.
-Measured on a 632-mountain-tile xlarge map: first bake 256ms against the old
-painter's 256ms, repeat bake 240ms against 232ms, terrain edit p95 1.4ms
-against 0.8ms, frame p95 unchanged at 0.4ms.
+**GAMEPLAY TRUTH IS TILE-BASED AND IS NOT TOUCHED.** The art sits off the
+lattice and reaches well past it northward; passability, placement, pathing,
+projectiles, fog and the rival AI all still read `S.map.terrain` and cannot
+tell (`tests/mountain.mjs` proves rule-for-rule identity with the art drawn
+and stubbed). The honesty bounds: **sideways and south** no pixel may lie
+more than `MTN.OUT_MAX` (0.22 tiles) outside the footprint — enforced at the
+vertex (`fractureLoop` turns a stray displacement inward) AND on the mask
+(`R.mtnOutsideFn` trim), because the per-vertex rule alone compounds and
+threw glassy spikes into the grass; detached crumbs are swept (`MIN_PIECE`);
+outcrop boulder stamps obey the same bound. **North** the art may rise by the
+lift alone — the warp moves nothing sideways, so the bound holds there by
+construction, and the contract's `liftOk` pins it (footprint within `PAD_UP`
+tiles directly below every lifted pixel). The phase-2 dithered north contact
+line is GONE: under an extrusion it would cut across the middle of the lifted
+plateau, and the occlusion metaphor (below) says where the ground is now.
+
+**THE MOUNTAIN OCCLUDES, SO IT LEFT THE TERRAIN CACHE** (`buildMtnLayer` /
+`mtnStrips`, the strip interleave in `R.draw`'s unit pass): a unit walking
+north of a ridge must be HIDDEN by it and one walking south must draw over
+it, and art baked under the unit pass can never do either. Each region's art
+is cut into ROW STRIPS — every pixel stamped with the ground row it stands on
+(`owner`, the run's south edge) during the warp — and the frame interleaves
+strips and y-sorted units with one walked pointer: strip row+1 ≤ unit foot →
+strip first. Buildings all draw earlier, which lands right for free (a
+building north of a range is covered by the strips; one south of it is clear
+of the art entirely). **A hidden unit is not a lost unit**: anyone standing
+on `_mtnOcc` ground (walkable tiles the art covers, stamped at bake) comes
+back as a low-alpha silhouette with selection ring and health bar — pinned by
+`aUnitBehindTheCliffIsHiddenButNotLost`, measured on the actual frame. **The
+placement grid keeps the last word**: it is drawn again after the strips,
+clipped to exactly the covered tiles (whose first coat is buried under opaque
+rock, so nothing doubles). The strips draw with no clip path, so the board
+rim is enforced on the PIXELS at bake. Rebuilds ride `_mtnDirty` — set by
+`rebuildTerrain` and by any repaint touching a seen mountain tile (fog
+reveals) — never a per-frame key check, which would hash the whole terrain
+array every frame. Measured on a 611-mountain-tile xlarge: first bake 216ms
+against the phase-2 composite's 256ms (the mountains left the bake), repeat
+bake 211ms, terrain edit p95 0.7ms, frame med 0.1ms / p95 0.3ms at play zoom
+with the whole massif on screen.
+
+**THE GENERATION MAKES MASSIFS, NOT SPINES** (`massif()` in map.js): the old
+painter walked a ~3-wide brush and laid WALLS — measured over every
+mountain-bearing xlarge seed, the interior-depth histogram was
+`1:2086 2:551 3:21 4:1`, so there was no interior for the height field to
+raise. A massif is a noisy ELLIPSE (an interior by construction) plus fat
+spur lobes off its long axis; highlands seat a handful with one deliberately
+massive, the OTHER inland landforms roll one or two modest crags three times
+in four (so most maps have a mountain for the ore to sit against), and the
+islands' big central isle gets a mountain HEART with the wild isles rolling
+small crags half the time. After: `1:1569 2:789 3:309 4:83 5:7`, region max
+depths reaching 5, tile budget on highlands preserved (~435–640 vs ~630–710).
+**And a barbarian camp keeps its yard** (`yardOpen`): tenders mill in
+`guardR` and bands muster at the fire, so solid terrain within 2 tiles
+disqualifies a camp spot — the day the massifs arrived, a camp landed with a
+crag through its yard and its tenders could neither reach prey two tiles away
+nor be reached by the party sent to burn them out. Relaxed (2 → 1 → 0) before
+the camp count is, like the town clearance.
 
 **HILLS ARE READ AT THEIR EDGES** (`R.hillHeight` / `hillRelief` / `hillShadow`,
 pinned by `hillsAreStillOrdinaryGround`): a distance transform over contiguous
@@ -2592,26 +2653,44 @@ below every shape that does not reach it and read as an underline under a
 hovering stone. It is also OPAQUE, and that is not a style choice — see the
 repaint rule below.
 
-**AND THE MASS IS SCATTERED IN WORLD SPACE** (`R.rockMass` / `rockScree`,
-`LAND.ROCK_*`, pinned by `aRockCoreIsSolidStone` and
-`andItsOutlineIsNotTheTileGrid`): three tile sets picked by neighbour count can
-only ever draw a staircase of squares, and that is exactly what a deposit's
-edge was — hard vertical and horizontal runs with the same few stamps repeating
-along them. `Sprites.terrain[T.HILLS]` and its two density siblings are GONE;
-the field is now a lattice that knows nothing about tiles, blitting
-PRE-RENDERED stamps, so a boulder straddling a boundary is one whole rock
-spilling into its neighbour. Size and presence come from the HILL DISTANCE
-FIELD (`hillField`, already there for the relief), sampled BILINEARLY — which
-alone takes the boundary off the grid — and then displaced by world-space
-noise, the coastline's own trick. `ROCK_STEP` is the one density dial and must
-stay well under twice `ROCK_MIN` or grass shows through the core.
-**WHAT MAY CROSS THE LINE IS LIMITED ON PURPOSE**: a boulder standing on grass
-a unit can walk through is a lie about the map, so `ROCK_WANDER` stays well
-under half a tile, the last band thins out (`ROCK_FRINGE`) instead of ending on
-a wall, and past the boundary only loose SCREE chips lie on the ground — which
-is honest, because scree at the foot of a crag is walkable and always was.
-A supplied `assets/terrain/hills.png` still wins and stands the whole scatter
-down, the same rule grass, water and mountain follow.
+**AND THE DEPOSIT IS ORE, NOT RUBBLE** (`Sprites.oreStamp` / `oreBoulder`,
+`R.rockMass` / `rockScree`, `LAND.ROCK_*`, pinned by `aRockCoreIsSolidStone`,
+`andItsOutlineIsNotTheTileGrid` and `andOreOutshinesTheMountainRock`): the
+scatter machinery is the coastline's trick — a world-space lattice blitting
+pre-rendered stamps, size and presence from the bilinearly-sampled hill
+distance field displaced by noise, so a boulder straddling a tile boundary is
+one whole rock and the deposit's outline never follows the grid
+(`Sprites.terrain[T.HILLS]` and its density siblings are gone). What the
+stamps SAY changed in Part B: ore deliberately BREAKS the "rock is angular"
+rule the mountains follow. An ore boulder is ROUND — the tree canopy's shape
+language on stone: a clean dark outline, a broad lit cap, a straight QUARRIED
+facet of fresh pale stone (the cue that says "somebody will cut this"), a
+glint — in the bright `ore` ramp, FEWER and LARGER (many small chips is
+exactly what read as gravel). The contrast is the point and it is measured:
+ore core mean luminance 143 against the mountain rock's 88 — at a glance,
+round-and-bright is a resource, sharp-and-dark is a wall. The GOLD SEAM wears
+the same round language in pale quartz with nuggets and a vein in the real
+gold ramp, so ore reads as one family and gold as its rich cousin.
+**A WORKABLE TILE IS NEVER INVISIBLE**: a lone seeded hills tile reads a
+bilinear depth under the fringe gate and could come up EMPTY — a harvestable
+resource with nothing drawn on it — so any tile the lattice leaves bare gets
+one centred boulder of its own.
+**WHAT MAY CROSS THE LINE IS LIMITED ON PURPOSE**: `ROCK_WANDER` stays well
+under half a tile, the fringe thins out (`ROCK_FRINGE`), and past the
+boundary only round SCREE pebbles in the ore's own bright ramp lie on the
+ground — the spill that says "the ore is over there", in the ore's own
+language. A supplied `assets/terrain/hills.png` still wins and stands the
+whole scatter down.
+**ORE IS A CLAIM, NOT A CARPET** (map.js, Part B2/B3): a settlement needs
+three to five workable deposits, not sprawling fields — measured across 42
+seed/size combos the totals fell from ~550 tiles to 12–76, each deposit one
+compact dense KNOT (a ragged disc with a real core). Placement has geological
+logic: knots seat FIRST against the mountains, then at forest edges, then
+(small) in open grass; the islands' central mountain gets its ring for free.
+The scarce-stone map keeps its one lean 6–8 tile pocket untouched, the
+`START_RESOURCE` floor still guarantees every seat 3 workable tiles in
+radius 14 (verified: worst seat across all 42 combos = exactly 3), and the
+per-map floor (9 tiles) keeps a bad roll from starving stone outright.
 **AN OVERLAPPING LAYER CAN ONLY BE REPAIRED INSIDE THE GROUND THAT WAS ERASED**
 (`R.clipTiles`, pinned by `andDiggingItLeavesNoStaleShore`): rocks from
 neighbouring tiles overlap and the bake composites them in ONE global row-major
@@ -2799,6 +2878,18 @@ longboat whatever the camps rolled) are built while the world is being set
 up, not as a one-frame hitch at first sighting. The plot() seal-clamp storm —
 the biggest of the five — is documented at **The ring must never seal the
 town in** above.
+
+**MODULE-LEVEL CLOCKS ARE THE THIRD WALL-CLOCK DEPENDENCY** (the
+raider-camps flake, fixed after several passes of hiding): `Combat.scanT`
+(the 0.4s acquire cadence) and `Units.herdClock` (the herds' shared breath)
+live on their modules, not in `S`, so `G.newGame` never resets them — the
+title's demo world advances them on real rAF time before a test's evaluate
+runs, and every fixed-step sim then runs its scans and its grazing on a
+machine-timing-dependent phase. The suite's seeded `Math.random` stream was
+measured drifting from check #9 onward (identical worlds, different draw
+counts) while `S.rngState` stayed in lockstep. The test re-zeroes both clocks
+beside its re-seed; any future suite that drives `Units.update`/`Combat.update`
+directly wants the same three lines (seed, `scanT`, `herdClock`).
 
 **A contract sweep must key on EXIT CODES, never on grepping the output**
 (learned the hard way): every `tests/*.mjs` exits non-zero on failure, but the

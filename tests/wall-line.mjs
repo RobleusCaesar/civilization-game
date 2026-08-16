@@ -350,7 +350,11 @@ const out = await p.evaluate(() => {
     for (const b of S.buildings.slice())
       if (b.owner === 'A' && b.key !== 'tc') Bld.removeToRuin(b);
     const CH = tc.x - 6;                      // the channel, four tiles wide
-    for (let y = tc.y - 12; y <= tc.y + 12; y++)
+    /* …cut across the WHOLE board, not just the flattened patch: the old
+       25-tile cut leaned on the seed's own terrain to seal its ends, and the
+       day map generation changed (massifs) a hand could simply walk around
+       it — the far bank stopped being far and the scenario measured nothing */
+    for (let y = 1; y <= CFG.H - 2; y++)
       for (let x = CH - 3; x <= CH; x++)
         if (MapGen.onBoard(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.WATER;
     Bld._block = null; AI._gallery = null; AI._reachDay = -1;
@@ -439,7 +443,10 @@ const out = await p.evaluate(() => {
     for (let y = tc.y - 12; y <= tc.y + 12; y++) for (let x = tc.x - 16; x <= tc.x + 16; x++)
       if (MapGen.onBoard(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.GRASS;
     const CH = tc.x - 6;
-    for (let y = tc.y - 12; y <= tc.y + 12; y++) for (let x = CH - 3; x <= CH; x++)
+    // the full-board cut, for the same reason as the gallery scenario above:
+    // a channel whose ends the seed's own terrain no longer seals is a bank
+    // any hand can walk around, and the scenario stops measuring anything
+    for (let y = 1; y <= CFG.H - 2; y++) for (let x = CH - 3; x <= CH; x++)
       if (MapGen.onBoard(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.WATER;
     Bld._block = null; AI._gallery = null;
     S.ai.res = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };

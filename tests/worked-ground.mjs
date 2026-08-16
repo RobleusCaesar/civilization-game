@@ -299,7 +299,33 @@ const out = await p.evaluate(() => {
     ck('withNoSpearsNobodyLeavesTheCamp',
       lone.length > 0 && lone.every(u => AI.safeWork(u.task.x, u.task.y)),
       lone.length + ' parties, all inside the camp’s own protection');
-    // give it spears and the far ground opens up again — each trip escorted
+    // give it spears and the far ground opens up again — each trip escorted.
+    // FAR WORK IS PLANTED, not hoped for: ore went from carpets to a few
+    // compact deposits, so on this seed every workable tile can now sit
+    // inside the safe rings and the check would measure an empty set. A
+    // small stand outside the rings is the scenario's own fixture.
+    {
+      const cx = Bld.cx(atc), cy = Bld.cy(atc);
+      /* …and the SAFE ring is cleared of work: the seat's shelter thicket
+         gives the hall more close forest than nine hands can use, so nobody
+         would ever need to range and the check would measure an empty set.
+         With the near work gone and one stand planted past the rings, the
+         far trip is the only trip there is — which is the situation the
+         check exists to pin. */
+      for (let y = Math.max(1, Math.round(cy) - AI.WORK_SAFE - 1); y <= Math.min(CFG.H - 2, Math.round(cy) + AI.WORK_SAFE + 1); y++)
+        for (let x = Math.max(1, Math.round(cx) - AI.WORK_SAFE - 1); x <= Math.min(CFG.W - 2, Math.round(cx) + AI.WORK_SAFE + 1); x++) {
+          const t2 = S.map.terrain[MapGen.idx(x, y)];
+          if (t2 === T.FOREST || t2 === T.FERTILE || t2 === T.HILLS)
+            S.map.terrain[MapGen.idx(x, y)] = T.GRASS;
+        }
+      const fx = cx + AI.WORK_SAFE + 2, fy = cy;
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+        const x = Math.round(fx + dx), y = Math.round(fy + dy);
+        if (MapGen.onBoard(x, y) && S.map.terrain[MapGen.idx(x, y)] === T.GRASS)
+          S.map.terrain[MapGen.idx(x, y)] = T.FOREST;
+      }
+      Bld._block = null;
+    }
     for (const u of S.units) if (u.owner === 'A' && Units.isVillager(u)) u.task = null;
     for (let i = 0; i < 4; i++) {
       const sp = MapGen.findNear(atc.x + 2, atc.y, 6, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
