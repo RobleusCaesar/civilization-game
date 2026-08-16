@@ -2134,15 +2134,31 @@ flattening the layer. **The lattices are baked, not hashed per sample** — the
 octaves are low-frequency, so their lattices are a few hundred numbers; that
 one change took the xlarge bake from 131ms to a fraction of it. A whole-tile
 fast path (all four corners in one step) covers the common case.
-**2. DECALS** (`R.landDecals` / `drawDecal`). Tufts, clover, ferns, flowers,
-pebbles, stones, twigs, leaf litter, reeds, scuffs — context-chosen from the
-neighbourhood. **Sub-tile position is the whole point**: each sits at an
-arbitrary pixel offset and MAY OVERHANG its tile, because decoration that
-lands on tile centres draws the lattice. Placement is gated on a low-frequency
-CLUMP field, not a per-tile roll: most of the map grows nothing, and that
-emptiness is what makes the patches read as natural. **Every decal gets a dark
-contact pixel** — the first version drew two thousand decals in greens either
-side of the grass base and nobody could see one of them.
+**2. DECALS** (`R.landDecals` / `drawDecal`). Tufts, clover, flowers, pebbles,
+stones, twigs, scuffs on open ground; ferns and leaf litter on the forest
+fringe; reeds and damp grass by water. **Sub-tile position is the whole
+point**: each sits at an arbitrary pixel offset and MAY OVERHANG its tile,
+because decoration that lands on tile centres draws the lattice. Placement is
+gated on a low-frequency CLUMP field, not a per-tile roll: most of the map
+grows nothing, and that emptiness is what makes the patches read as natural.
+**Every decal gets a dark contact pixel** — the first version drew two
+thousand decals in greens either side of the grass base and nobody could see
+one of them; the second drew that shadow as a BAR as wide as the splay, and
+the flattened tufts read as dark dashes lying in the grass. One pixel.
+**DEPTH COMES FROM TONE AND EDGES, NOT OBJECT COUNT** — the rule this layer
+keeps failing. Open grass carries FLAT, ground-level things only: `R.DECAL_OPEN`
+is the whitelist and nothing with a trunk or a canopy is in it. Tufts were
+originally three blades rising to a bright centre, which at 2px a unit is a
+small green triangle with a dark foot — a SAPLING — and scattered over a
+meadow they read as scrub competing with the real woods. They are now wider
+than they are tall. Foliage (`R.DECAL_FOLIAGE`: fern, leaf litter) is an
+UNDERGROWTH FRINGE and may appear only on a tile that actually touches
+forest, never out in the open. `LAND.DECAL_DENSITY` is the ONE dial for the
+whole scatter and `DECAL_GATE` widens the empty ground between patches; when
+the map looks busy rather than deep, those are the two numbers to cut.
+`tests/land.mjs` holds the runtime to both whitelists — and scopes "open
+meadow" to tiles with no wood, water or crag anywhere around them, since
+reeds by a lake and scree below a crag belong where they are.
 **3. TRANSITIONS** (`R.terrainEdges`). Irregular fringes at every land
 boundary, replacing a 1px dithered checker that only ran between differing
 floor colours and was invisible. **The mask is code, the material is the

@@ -180,7 +180,54 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   await p.close();
 }
 
-// ---- 6. the tone steps must NOT land on tile boundaries ----
+/* ---- 6. NOTHING WITH A TRUNK GROWS IN OPEN GRASS ----
+   Depth is meant to come from the tone layer and the shading at forest
+   edges, not from object count. Open ground therefore carries flat,
+   ground-level decals ONLY; ferns and leaf litter are an undergrowth fringe
+   and may appear only on a tile that actually touches forest. Measured by
+   watching every decal the map draws and where it landed. */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(boot + `
+    const terr=S.map.terrain, g=R.terrainCache.getContext('2d');
+    const bad=[], foliageOffFringe=[]; let open=0, fringe=0;
+    const realDraw=R.drawDecal.bind(R), realLand=R.landDecals.bind(R);
+    /* OPEN MEADOW means open: no wood, no water, no crag anywhere around it.
+       Reeds by a lake and scree below a crag are context decals and belong
+       where they are — the rule under test is about bare grassland. */
+    let wood=0, near=0;
+    R.landDecals=(gg,x,y,t)=>{
+      wood=0; near=0;
+      for(const[ox,oy]of NEIGH8){const nx=x+ox,ny=y+oy;
+        if(!MapGen.inB(nx,ny)) continue;
+        const v=t[MapGen.idx(nx,ny)];
+        if(v===T.FOREST){wood++;near++;}
+        else if(v===T.WATER||v===T.MOAT||v===T.HILLS||v===T.MOUNTAIN||v===T.PEBBLES||v===T.STUMPS) near++;
+      }
+      return realLand(gg,x,y,t);
+    };
+    R.drawDecal=(gg,dx,dy,kind,px,rnd)=>{
+      if(wood>=1) fringe++;
+      else if(near===0){
+        open++;
+        if(!R.DECAL_OPEN.has(kind) && bad.length<6) bad.push(kind);
+      }
+      if(R.DECAL_FOLIAGE.has(kind) && wood===0 && foliageOffFringe.length<6) foliageOffFringe.push(kind);
+      return realDraw(gg,dx,dy,kind,px,rnd);
+    };
+    for(let y=0;y<CFG.H;y++) for(let x=0;x<CFG.W;x++) R.landDecals(g,x,y,terr);
+    R.drawDecal=realDraw; R.landDecals=realLand;
+    return { open, fringe, bad, foliageOffFringe, density: LAND.DECAL_DENSITY };`));
+  ck('onlyFlatThingsGrowInOpenGrass', v.bad.length === 0,
+    v.bad.length ? 'found ' + v.bad.join('/') + ' out in the meadow' : v.open + ' open-ground decals, all flat kinds');
+  ck('andFoliageKeepsToTheForestFringe', v.foliageOffFringe.length === 0,
+    v.foliageOffFringe.length ? v.foliageOffFringe.join('/') + ' with no forest neighbour'
+      : v.fringe + ' fringe decals beside real wood');
+  ck('andTheScatterHasOneDial', v.density > 0 && v.density <= 1, 'LAND.DECAL_DENSITY = ' + v.density);
+  await p.close();
+}
+
+// ---- 7. the tone steps must NOT land on tile boundaries ----
 {
   const p = await page();
   const v = await p.evaluate(new Function(boot + `

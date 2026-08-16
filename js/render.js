@@ -21,6 +21,13 @@ const DECAL_GROUND = new Set([T.GRASS, T.MOUND]);
    own material, an edge tile is left alone, and the deposit reads as one mass
    thinning outward instead of a uniform block. */
 const CORE_SCATTER = { [T.FERTILE]: 'crop', [T.PEBBLES]: 'pebble', [T.GOLDORE]: 'vein' };
+/* WHAT MAY GROW WHERE. Open ground carries FLAT, ground-level things only —
+   nothing with a trunk or a canopy, because a small green silhouette out in a
+   meadow reads as scrub and competes with the real woods for the eye. Foliage
+   is an UNDERGROWTH FRINGE and belongs only on a tile that actually touches
+   forest. Declared here so tests/land.mjs can hold the runtime to it. */
+const DECAL_OPEN = new Set(['tuft', 'tuft2', 'clover', 'flower', 'twig', 'pebble', 'scuff', 'stone']);
+const DECAL_FOLIAGE = new Set(['fern', 'leaf']);
 
 /* ---------------------------------------------------------------------------
    LAND — the tunable constants for how the ground LOOKS. Everything here is
@@ -46,11 +53,17 @@ const LAND = {
   SHADE_ROCK: 0.055,    // beside hills / mountain
   SHADE_SHORE: 0.030,   // the damp band immediately inland from water
   // --- Part 2: decal scatter ---------------------------------------------
-  DECAL_DENSITY: 1.0,   // ONE dial for the whole scatter. 0 disables it.
+  /* THE ONE DIAL for the whole scatter — turn it down to quieten the ground,
+     0 to switch decoration off entirely. Depth is meant to come from the TONE
+     layer and the shading at forest edges, not from object count; when the
+     map looks busy rather than deep, this is the number to cut. */
+  DECAL_DENSITY: 0.5,
   DECAL_CLUMP: 0.115,   // clump-field frequency: lower = bigger patches
-  DECAL_GATE: 0.44,     // clump value a tile must beat to grow anything at all —
-                        // this is what leaves real empty ground between patches
-  DECAL_MAX: 6,         // most decals on one tile
+  DECAL_GATE: 0.58,     // clump value a tile must beat to grow anything at all.
+                        // RAISING IT WIDENS THE EMPTY GROUND between patches,
+                        // which is what makes the patches read as natural —
+                        // most of an open field should carry nothing at all
+  DECAL_MAX: 4,         // most decals on one tile
   // --- Part 3: transitions ------------------------------------------------
   EDGE_MAX: 5,          // deepest an edge fringe reaches into a tile, in 1/16ths
   EDGE_FREQ: 1.6,       // how fast a boundary wanders. Sampled in WORLD space so
@@ -168,6 +181,7 @@ const R = {
      those few hundred numbers over and over; building them once and reading
      them back took the full xlarge bake from 131ms to a fraction of it.
      Rebuilt when the seed or the map size changes, and nowhere else. */
+  DECAL_OPEN, DECAL_FOLIAGE,
   _lat: null, _latKey: '', _latOne: null,
   _mkLat(f, salt) {
     const w = Math.ceil(CFG.W * f) + 3, h = Math.ceil(CFG.H * f) + 3;
@@ -364,11 +378,15 @@ const R = {
       const dy = y * TL + Math.round(rnd() * (TL + 6)) - 3;
       const r = rnd();
       let kind;
+      /* FOLIAGE LIVES ONLY ON THE FOREST'S DOORSTEP. Ferns and leaf litter
+         are an UNDERGROWTH FRINGE that softens a wood's edge — one tile deep,
+         never out in the meadow, where anything with a stem reads as scrub.
+         Open ground gets flat, ground-level, low-contrast things only. */
       if (wet >= 2 && r < 0.55) kind = r < 0.3 ? 'reed' : 'damp';
-      else if (wood >= 2 && r < 0.6) kind = r < 0.25 ? 'leaf' : r < 0.45 ? 'twig' : 'fern';
+      else if (wood >= 1 && r < 0.7) kind = r < 0.28 ? 'leaf' : r < 0.5 ? 'twig' : 'fern';
       else if (rock >= 2 && r < 0.6) kind = r < 0.3 ? 'pebble' : 'stone';
-      else kind = r < 0.34 ? 'tuft' : r < 0.55 ? 'tuft2' : r < 0.72 ? 'clover'
-        : r < 0.86 ? 'flower' : r < 0.94 ? 'pebble' : 'scuff';
+      else kind = r < 0.30 ? 'tuft' : r < 0.50 ? 'tuft2' : r < 0.66 ? 'clover'
+        : r < 0.80 ? 'flower' : r < 0.88 ? 'twig' : r < 0.95 ? 'pebble' : 'scuff';
       this.drawDecal(g, dx, dy, kind, px, rnd);
     }
   },
@@ -413,13 +431,24 @@ const R = {
        shape reads at a glance. */
     const D = AP.grass[0];                    // the shadow every one of them casts
     switch (kind) {
-      case 'tuft':                                                  // three blades
-        q(1, 3, 1, 1, D);
-        q(0, 1, 1, 2, AP.grass[3]); q(1, 0, 1, 3, AP.grass[4]); q(2, 1, 1, 2, AP.grass[3]); break;
-      case 'tuft2':                                                 // a wider, leaning clump
-        q(1, 4, 2, 1, D);
-        q(0, 2, 1, 2, AP.grass[3]); q(1, 1, 1, 3, AP.grass[4]);
-        q(2, 0, 1, 3, AP.grass[4]); q(3, 2, 1, 2, AP.grass[3]); break;
+      /* OPEN-GROUND DECALS ARE FLAT AND WIDE. These were drawn as three
+         blades rising to a bright centre — which at 2px a unit is a small
+         green triangle with a dark foot, i.e. a SAPLING. Scattered over a
+         meadow they read as scrub and compete with the real woods. A tuft
+         lying in grass is wider than it is tall; the silhouette is what
+         decides whether the eye files it as ground texture or as an object. */
+      /* the contact shadow is ONE pixel, not a bar. Flattened, these decals
+         are a single row of blades, so a shadow as wide as the splay outweighs
+         it and the tuft reads as a dark dash lying in the grass. */
+      case 'tuft':                                                  // a low splay
+        q(1, 1, 1, 1, D);
+        q(0, 0, 1, 1, AP.grass[3]); q(1, 0, 1, 1, AP.grass[4]);
+        q(2, 0, 1, 1, AP.grass[4]); q(3, 0, 1, 1, AP.grass[3]); break;
+      case 'tuft2':                                                 // wider, broken
+        q(2, 1, 1, 1, D);
+        q(0, 0, 1, 1, AP.grass[3]); q(1, 0, 1, 1, AP.grass[4]);
+        q(3, 0, 1, 1, AP.grass[4]); q(4, 0, 1, 1, AP.grass[3]);
+        q(5, 0, 1, 1, AP.grass[3]); break;
       case 'clover':
         q(1, 1, 1, 1, D);
         q(0, 0, 1, 1, AP.grass[4]); q(2, 0, 1, 1, AP.grass[4]); q(1, 0, 1, 1, AP.grass[3]); break;
@@ -427,10 +456,10 @@ const R = {
         q(1, 4, 1, 1, D);
         q(1, 0, 1, 4, AP.leaf[3]); q(0, 1, 1, 1, AP.leaf[2]); q(2, 1, 1, 1, AP.leaf[2]);
         q(0, 3, 1, 1, AP.leaf[1]); q(2, 3, 1, 1, AP.leaf[1]); break;
-      case 'flower': {
+      case 'flower': {                                              // a clump, not a plant
         const pet = [AP.bloom[0], AP.bloom[1], AP.bloom[2], AP.gold[2], AP.bloom[3]][(rnd() * 5) | 0];
-        q(1, 3, 1, 1, D);
-        q(1, 1, 1, 2, AP.grass[4]); q(1, 0, 1, 1, pet); q(0, 0, 1, 1, pet); q(2, 0, 1, 1, pet); break;
+        q(1, 1, 1, 1, D);
+        q(0, 0, 1, 1, pet); q(1, 0, 1, 1, pet); q(3, 0, 1, 1, pet); break;
       }
       case 'pebble':
         q(0, 2, 2, 1, D);

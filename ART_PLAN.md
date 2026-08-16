@@ -164,7 +164,12 @@ regression most likely to slip through):
 
 - the **tonal layer** — broad seeded blotches, quantized to hard steps
 - **contextual shade** — under wood, at crags, inland of water
-- the **decal scatter** — tufts, flowers, pebbles, reeds, leaf litter
+- the **decal scatter** — flat, ground-level things on open grass (tufts,
+  clover, flowers, pebbles, twigs, scuffs); ferns and leaf litter only in the
+  one-tile undergrowth fringe beside real forest; reeds only by water. Nothing
+  with a trunk or a canopy stands in open meadow. Turn the whole layer up or
+  down with `LAND.DECAL_DENSITY`, and widen the bare ground between patches
+  with `LAND.DECAL_GATE`
 - **irregular edge fringes** where your terrain meets another
 - **shore sand and foam** where it meets water
 
