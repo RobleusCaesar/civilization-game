@@ -45,10 +45,31 @@ const b = await pw.chromium.launch();
 const p = await b.newPage({ viewport: { width: 430, height: 880 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
+/* DETERMINISM FOR THE SIMULATION. Gameplay calls Math.random 21 times across
+   units.js/combat.js, so a long simulated run diverges between invocations and
+   any check on its outcome is a coin toss. Seeding it makes this suite
+   reproducible; the RNG is installed before any game code runs. (S.rngState —
+   the game's OWN seeded RNG — is untouched, so nothing about a seed's rolls
+   changes.) */
+await p.addInitScript(() => {
+  let s = 0x9e3779b9 >>> 0;
+  Math.random = () => {
+    s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0;
+    return s / 4294967296;
+  };
+  /* RE-SEEDABLE, and the test body re-seeds before it starts. Installing the
+     RNG at load is not enough on its own: the title runs a DEMO WORLD while
+     the harness waits for the page, and it burns a machine-dependent number
+     of draws in that window — so the suite would begin from a different point
+     in the stream on every run, which is what made a long simulated section
+     bimodal (the camp burned on day 4, or never). */
+  window.__seedRandom = (n) => { s = (n >>> 0) || 1; };
+});
 await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(900);
 
 const out = await p.evaluate(() => {
+    window.__seedRandom(0x9e3779b9);   // one stream, one starting point, every run
   const res = {}, fails = [];
   const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
   const campsOf = () => Bld.list('R').filter(z => z.key === 'raidercamp');
@@ -556,15 +577,25 @@ const out = await p.evaluate(() => {
       party.every(u => u.raidLane === 'purge' && u.raidObj && u.raidObj.type === 'camp'),
       party.length + ' spears, lane purge');
     ck('andTheRosterRefusesADoubleMarch', AI.maybePurge({ underThreat: false }) === false, '');
-    // drive it: the camp burns, and the walkers come home
-    S.paused = false;
+    /* drive it: the camp burns, and the walkers come home.
+       S.paused STAYS TRUE. step() advances the world itself, so unpausing
+       only lets the browser's own rAF loop advance it AS WELL, at whatever
+       rate the machine happens to manage — a second wall-clock dependency on
+       top of the loop bound, and the other half of this suite's flakiness. */
+    S.paused = true;
     const step = (dt) => { S.dayT += dt * 1000; while (S.dayT >= CFG.DAY_MS) { S.dayT -= CFG.DAY_MS; G.dayTick(); }
       Bld.update(dt * 1000 / CFG.DAY_MS); Units.update(dt); Combat.update(dt);
       const t = Bld.tcOf('P'); if (t) { t.maxhp = 1e9; t.hp = 1e9; } S.over = null; };
-    const t0 = Date.now(); let burned = false;
-    while (Date.now() - t0 < 90000) {
+    /* BOUNDED BY SIMULATED STEPS, NEVER BY THE WALL CLOCK. This loop used to
+       run `while (Date.now() - t0 < 90000)`, which makes the amount of
+       simulation depend on how fast the machine is and what else it is doing —
+       the test then passes on an idle box and fails under a parallel sweep,
+       which is exactly the flake that has been hiding regressions here. A step
+       budget is the same amount of game on every machine. */
+    let burned = false;
+    for (let i = 0; i < 40000 && !burned; i++) {
       step(0.12);
-      if (!S.buildings.includes(camp)) { burned = true; break; }
+      if (!S.buildings.includes(camp)) burned = true;
     }
     ck('theCampBurns', burned, 'day ' + S.day + ' — the ground is won for good (tickRaiderCamps never remans it)');
     for (let i = 0; i < 220; i++) step(0.12);

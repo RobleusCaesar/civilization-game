@@ -97,6 +97,7 @@ node tests/footprint.mjs       # the primary works stand on 2×2; old saves keep
 node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring rule; ?dev=1 preview = the shipping path
 node tests/placement.mjs       # ONE placement truth (canPlace codes); ghost+confirm flow; the seal clamp; AI parity
 node tests/boot.mjs            # frame one is the logo; no chrome before a game; the notch inset
+node tests/land.mjs            # the coast is TRACED, not tiled — and tile data still decides everything
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -2167,14 +2168,73 @@ and picks up a dropped-in override for free. The depth profile is sampled in
 WORLD space so both sides of a seam agree and a long boundary reads as one
 wandering edge. `R.bleedRank` (a property of the material, not a list of
 pairs) decides which side gives way.
-**4. SHORELINE** (`R.shoreBand`, `paintWater`). The beach width wanders and may
-PINCH TO NOTHING (`SAND_MIN` is 0 on purpose). **Sand spills across the seam
-into the water tile** — banding only the land side leaves the waterline running
-along tile edges, so a coast stays a 90° staircase however pretty the sand is.
-Foam rides the water side on its own profile. **Shallowness is a FIELD, not a
-flag**: the body colour used to switch wholesale on "does this tile touch
-land", painting a hard rectangle into every lake; it is now bilinear from the
-corners and resolved per sub-cell, so a bay shelves.
+**4. SHORELINE — TRACED, NOT TILED** (`R.waterRegions` / `chaikin` / `roughen`
+/ `buildShoreLayer` / `blitShore` / `waterKey`). A coast drawn per tile CANNOT
+escape the tile grid, however pretty the band on each tile is: the earlier
+version wandered its beach width, spilled sand across the seam and shelved the
+water from a bilinear corner field, and the waterline was still a 45° staircase,
+because a contour of a piecewise-bilinear function on the tile lattice can only
+ever turn at 45°. So the geometry moved off the grid entirely, in four steps:
+
+  1  **FLOOD** the water (`T.WATER` + `T.MOAT`) 4-connected into REGIONS
+  2  **TRACE** each region's boundary as closed polygons, from directed unit
+     edges chained head-to-tail — an outer shore and every island's shore come
+     out as separate loops of the same region
+  3  **SMOOTH ABOVE TILE SCALE** — Chaikin corner-cutting (`SHORE_SMOOTH`),
+     which is the step that dissolves the staircase into a sweep
+  4  **ROUGHEN BELOW IT** — displace along the normal from world-space noise
+     (`SHORE_NOISE`). **You need both**: smoothing alone is a clean vector arc
+     and reads synthetic; noise alone leaves the steps underneath
+
+Every band is then OFFSET FROM THAT CURVE — the shelf (`SHELF_STEPS` stacked
+translucent ribbons reaching `SHELF_REACH` into the water, so it pales
+continuously instead of ending on a rim), the foam lip, the beach (whose width
+still rides its own noise along the run and still pinches to nothing —
+`SAND_MIN` is 0 on purpose) and the wet-rock shoal. `paintWater` therefore
+draws NO shallows at all any more, and took its `shore` flag out with them: a
+whole-tile switch on the swell/glint palette lit a run of shore tiles up
+together as a pale rectangle several tiles across in the middle of a bay — the
+same grid-drawing fault wearing different clothes.
+**IT IS A DRAWING OF THE WATER, NOT A DEFINITION OF IT.** Tile data is
+untouched, and everything that decides anything still reads it: passability,
+dock siting, dock ORIENTATION, fishing, naval movement, shallowness for the
+fishery. `tests/land.mjs` pins that invariance directly — every one of those
+answers, over every water tile on a real map, identical with the drawn coast
+and without it — and pins that the tracer writes to no map array.
+**Caching.** Regions are re-traced only when the WATER MOVES (`R.waterKey`
+hashes the wet tiles), the bands bake into their own transparent layer, and an
+ordinary edit — felling a stand, laying a wall — costs one `blitShore`
+rectangle and no tracing at all. Keeping the layer SEPARATE is what makes an
+incremental repaint exact: a changed tile re-blits its own rectangle instead of
+trying to re-derive a curve that belongs to a whole region.
+**The clip is the rule.** `buildShoreLayer` clips to the board
+(`MapGen.onBoard`'s ring), because the layer composites AFTER `drawTile` has
+painted the off-map rim black and a sea that reaches the edge would otherwise
+lay its beach over the world's border. Five offsets from one curve is five
+places to clamp; one clip is the honest version. (`R.clipBoard` does the same
+for the decal passes, which were strewing tufts across the void — the scatter
+was asking what TERRAIN a rim tile held and the rim's terrain is ordinary
+grass underneath.)
+**Reclaimed land raises no shore** — the rule `drawTile`'s old `shoreLand`
+carried, moved into the tracer as `natural`/`natS`: where a sapper filled water
+in, the sea beyond the new isthmus must read exactly as it did before it was
+built, so the beach, the foam and the shelf all fade out along that stretch.
+**The staircase is measured, not eyeballed** (`theCoastIsTracedNotTiled`): the
+share of ~1-tile chords whose bearing locks to a multiple of 45°. Untraced tile
+loops answer 100%; the traced coast answers ~43%. It is deliberately NOT held
+near the 27% an unbiased scatter would give — some lock is HONEST, since a
+coast that really does run east-west should read axis-aligned. The bar is the
+distance from the raw control.
+**5b. ROCKY SHOALS.** Where the land off the curve is hills/mountain/pebbles
+the beach gives way to wet dark rock and scattered stones (`stony` → `rockS`,
+smoothed over `SHOAL_BLEND` points so the changeover is a give-way rather than
+a join at the tile where the terrain changes). Two things this cost: the wet
+rock at `0.85` alpha read as an INKED OUTLINE around the whole coast
+(`SHOAL_ALPHA` is 0.40), and stepping a fixed stride at a flat chance threaded
+the stones along the curve at even spacing — a necklace of beads. The rate is
+biased by its own density field along the run (`SHOAL_FREQ`, `SHOAL_GATE`) so
+they gather into drifts with bare stretches between, each thrown a random
+distance either side of the waterline so some sit in the water.
 **5. RESOURCE CLUSTERS.** Forest and ore already thicken toward their heart via
 whole sprite sets picked by enclosure. Fertile, pebbles and gold have one set
 each, so `R.coreScatter` gives them the same gradient ADDITIVELY — a core tile
@@ -2188,10 +2248,72 @@ spilled IN from the ring outside it, measured as 64px of stale seam against a
 full rebake. Re-stamping a decal whose ground was not repainted is idempotent.
 Callers just name the tile that changed; they no longer hand-roll neighbour
 loops (that is what left the moat "squares" a reload had to clear).
-**Cost**: the xlarge (65²) bake went 45ms → ~120ms, once, at load, beside
-~150ms of map generation. A terrain edit is 0.5ms.
-Mountains keep their current rendering — they want a silhouette treatment, not
-tiles, and that is a separate job.
+**Cost**: the xlarge (65²) bake is ~130ms, once, at load, beside ~150ms of map
+generation — of which the traced coast is ~28ms. A terrain edit is 0.5ms.
+**A MOUNTAIN TILE IS BAKED ONCE PER MAP** (`R._mtnTile`, `_paintMountain`):
+each of its 1024 pixels costs about eighty integer-hash noise evaluations
+(five `crag` calls, four `vnoise` octaves apiece, four lattice hashes each) and
+measures at ~1.3ms — so a range-heavy map spent 840ms of its bake on mountains
+alone and every re-bake paid it again. The output is a pure function of the
+height field, the ridge segments, the summits and (x, y), all fixed for the
+life of a map, so it is memoised into a small per-tile canvas: pixel-identical,
+no visual change, cleared beside `mtnH` in `onNewGame` because the height field
+and the cache are the same fact. Measured on a 632-mountain xlarge: 964ms →
+135ms. The FIRST bake still pays the arithmetic (~1.09s on that map) — cutting
+that means changing how mountains are drawn, which is a separate job.
+Mountains otherwise keep their current rendering — they want a silhouette
+treatment, not tiles.
+
+**A WOOD IS FOUR TREES** (`Sprites.tree` / `KINDS` / `pickKind` / `rampFor`,
+pinned by `tests/land.mjs`): the forest was one shaded disc, jittered in radius
+and picked from three greens — which reads as ONE STAMP REPEATED, because at a
+crown of ten to sixteen pixels the eye files SILHOUETTE first and colour a
+distant second. There are four kinds now, chosen to differ in OUTLINE: a
+broadleaf **dome**, a **conifer** spire (a stack of drooping tiers — the STEPS
+are the whole silhouette; drawn as one smooth triangle it reads as a chevron),
+a spreading **oak** (a taller centre on two low shoulders, so the outline is
+lumpy with a dip on top) and a slender **birch** (the one kind whose TRUNK is
+part of the silhouette, which is what makes a thin tree read as thin rather
+than merely small). Ramps follow the shape rather than leading it — `LEAF_P`
+darkest for conifer, `LEAF_B` brightest for birch — which keeps a mixed stand
+from reading as a colour wheel.
+**A wood grows in STANDS**: each tile draws a dominant kind and most of its
+trees take it, so there are patches of pine and patches of oak instead of an
+even mix everywhere, which is its own kind of uniform. Every kind keeps the two
+rules the original tree was built on — the DARK UNDERSIDE RIM (drop it and
+neighbouring crowns merge into soup) and the tight ground shadow.
+Three things this cost, each of them the same lesson: **the oak's shoulders**
+started at eight tenths of the radius, which stopped being one crown and became
+two trees side by side, and a wood of them matted into a hedge with no grass
+showing through (half a radius keeps it barely wider than the dome it varies);
+**the birch's rim** cannot be `ramp[0]`, since its own ramp starts light and
+the tree dissolved into whatever stood behind it (it is named explicitly); and
+**the birch's trunk** was two columns of the palest colour in the wood, which
+stopped reading as a trunk and started reading as a dropped item — one pixel
+wide reads as a stem. Size jitter went from 5..6 (one pixel at this scale, i.e.
+none) to 4..8, skewed to the middle by taking the lesser of two rolls, so a
+stand is mostly ordinary trees with the odd sapling and the odd giant. Sparse
+and medium tiles still contain every tree WHOLLY within the tile — measured on
+the conifer's own taller bounding box, or a spire's leader is cut off at the
+fringe, which is the one place a whole tree matters.
+
+**THE GROUND MAY NOT SPEAK THE RESOURCE LANGUAGE** (`R.DECAL_RESERVED`, pinned
+by `noGroundDecalWearsAReservedColour`): the map has a colour LANGUAGE and
+ground texture does not get to speak it. `gold` is the seam, the resource bar
+and the `+gold` float; `fire` is a building burning, which is the only
+unprompted alarm in the game; `berry` is forage worth walking to. The meadow
+flower drew from `bloom[2]` and `gold[2]` — bright yellows a couple of percent
+apart, the second of them literally the gold colour — so the map was scattered
+with two-pixel specks that read as dropped loot, and the leaf litter along a
+treeline drew from `fire[1]`/`fire[2]` and read as small fires. Petals are
+muted ochre and cream now, litter is russet and ochre, and the reed's head is a
+dull seed head rather than bright brass. **The check measures the DRAWN PIXELS,
+not the source**, so it still catches a colour arrived at some other way, and
+it fails on NEAR as well as exact — the two yellows were 20 apart and
+indistinguishable. The darkest step of each reserved ramp is exempt from the
+near test: a ramp's index 0 is its shadow, and every shadow in this palette is
+the same dark earthy brown, so `gold[0]` sits a few units from honest wood.
+What the eye reads as gold, fire or berry is the bright end.
 
 **And the GROUND takes art the same way** (`tests/art-pipeline.mjs`):
 `assets/terrain/{name}.png`, plus `{name}-2.png`, `-3` … for variants —

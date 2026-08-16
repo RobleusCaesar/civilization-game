@@ -28,6 +28,16 @@ const CORE_SCATTER = { [T.FERTILE]: 'crop', [T.PEBBLES]: 'pebble', [T.GOLDORE]: 
    forest. Declared here so tests/land.mjs can hold the runtime to it. */
 const DECAL_OPEN = new Set(['tuft', 'tuft2', 'clover', 'flower', 'twig', 'pebble', 'scuff', 'stone']);
 const DECAL_FOLIAGE = new Set(['fern', 'leaf']);
+/* COLOURS THE GROUND MAY NOT WEAR. The map has a colour LANGUAGE and ground
+   texture does not get to speak it: `gold` is the gold seam, the resource bar
+   and the +gold float; `fire` is a building burning, which is the only
+   unprompted alarm in the game; `berry` is forage worth walking to. A decal
+   in one of those ramps is a two-pixel promise the ground cannot keep — the
+   meadow was scattered with yellow specks that read as dropped loot, and the
+   leaf litter along a treeline read as small fires. Ground decals draw from
+   grass / leaf / soil / stone / wood / thatch / bone / hide and the two
+   muted blooms, and nothing else. Pinned by tests/land.mjs. */
+const DECAL_RESERVED = ['gold', 'fire', 'berry'];
 
 /* ---------------------------------------------------------------------------
    LAND — the tunable constants for how the ground LOOKS. Everything here is
@@ -73,6 +83,41 @@ const LAND = {
   SAND_MAX: 5,          // MIN 0 is what lets a shore pinch out to bare rock
   SAND_FREQ: 0.30,     // how fast the beach width wanders along a shore
   FOAM_FREQ: 0.42,
+  /* --- shoreline region tracing. SHORE_SMOOTH is the dial that decides
+     whether a coast reads as a curve or as a staircase: it is corner-cutting
+     at a scale LARGER than a tile, so raising it sweeps harder and lowering
+     it lets the tile steps back through. SHORE_NOISE puts the ragged back
+     afterwards — drop it to zero and the coast becomes a clean vector arc,
+     which reads as synthetic. You need both. --- */
+  SHORE_SMOOTH: 4,      // Chaikin iterations over the TILE lattice
+  SHORE_NOISE: 0.16,    // tiles of ragged displacement after smoothing
+  SHORE_NOISE_F: 2.6,   // how fine that raggedness is
+  SHORE_MAXPTS: 9000,   // per-loop cap, so a vast lake stops subdividing
+  /* THE SHELF IS MEASURED FROM THE TRACED CURVE, never from the tile grid.
+     Stacked translucent bands offset into the water: each adds its own alpha,
+     so the water pales continuously toward the shore instead of stepping at a
+     tile edge. SHELF_REACH is how far out the shallows go (1/16ths of a tile);
+     raise SHELF_STEPS if the ladder is visible as rings, lower SHELF_ALPHA if
+     the shallows read as milky. */
+  SHELF_STEPS: 5,
+  SHELF_REACH: 11,
+  SHELF_ALPHA: 0.085,
+  FOAM_W: 1.3,          // the wet lip right at the waterline, in 1/16ths
+  SHOAL_BLEND: 6,       // points of running average across a rock/sand changeover
+  SHOAL_W: 1.9,         // wet-rock band where a stony coast meets the water
+  SHOAL_ALPHA: 0.40,    // …kept low: at 0.85 it reads as an inked outline
+  SHOAL_STEP: 2,        // stone scatter stride along a rocky run
+  SHOAL_STONES: 0.5,    // peak chance of a stone at each of those, inside a drift
+  /* WHAT KEEPS THE STONES OFF A NECKLACE. A fixed stride and a flat chance
+     thread beads along the curve at even spacing. SHOAL_FREQ is how fast the
+     density field varies ALONG a shore (period is 1/f tiles — too low and the
+     rate is constant over a whole bay, which is the bead string) and
+     SHOAL_GATE is how much of the run it silences outright. Raise the gate if
+     the coast looks cobbled end to end; lower the frequency if the drifts
+     start looking like regular clumps of their own. */
+  SHOAL_FREQ: 0.55,
+  SHOAL_GATE: 0.5,
+  SHOAL_THROW: 11,      // 1/16ths of spread either side of the waterline
 };
 
 const R = {
@@ -83,6 +128,7 @@ const R = {
   bottomReserve: 0,              // measured open build-menu bar height (CSS px) to keep clear at the bottom
   topReserve: 0,                 // measured top status-bar height (CSS px) so the map's top edge never hides behind it
   terrainCache: null,
+  shoreLayer: null,
   fogCv: null, fogG: null, fogDirty: true,
   floats: [],                    // {x,y,txt,col,t}
   particles: [],                 // transient impact debris/fire/smoke {x,y,vx,vy,t,life,col,sz,g}
@@ -181,7 +227,7 @@ const R = {
      those few hundred numbers over and over; building them once and reading
      them back took the full xlarge bake from 131ms to a fraction of it.
      Rebuilt when the seed or the map size changes, and nowhere else. */
-  DECAL_OPEN, DECAL_FOLIAGE,
+  DECAL_OPEN, DECAL_FOLIAGE, DECAL_RESERVED,
   _lat: null, _latKey: '', _latOne: null,
   _mkLat(f, salt) {
     const w = Math.ceil(CFG.W * f) + 3, h = Math.ceil(CFG.H * f) + 3;
@@ -210,7 +256,7 @@ const R = {
       out.push(Object.assign(this._mkLat(LAND.TONE_OCT[i][0], i + 1), { wt: LAND.TONE_OCT[i][1] }));
     this._lat = out; this._latKey = key;
     this._latOne = { clump: this._mkLat(LAND.DECAL_CLUMP, 41), sand: this._mkLat(LAND.SAND_FREQ, 57),
-                     edge: this._mkLat(LAND.EDGE_FREQ, 73) };
+                     edge: this._mkLat(LAND.EDGE_FREQ, 73), shoal: this._mkLat(LAND.SHOAL_FREQ, 97) };
     return out;
   },
   /* the CLUMP FIELD — what decides where things grow at all. Nature clumps:
@@ -347,6 +393,14 @@ const R = {
      scatter is identical on every reload and through every save. */
   landDecals(g, x, y, terr) {
     if (LAND.DECAL_DENSITY <= 0) return;
+    /* NOTHING IS WORKED IN THE BLACK. The outermost ring is off-map void —
+       drawTile paints it flat black and returns — but the scatter was asking
+       only what TERRAIN a tile held, and the rim's terrain is ordinary grass
+       underneath, so tufts and pebbles were being strewn across the world's
+       edge. MapGen.onBoard is the single declaration of that rule (CLAUDE.md,
+       "Nothing is worked in the BLACK"); this layer had not been asking it.
+       The spill from row 1 is clipped separately, where the pass is run. */
+    if (!MapGen.onBoard(x, y)) return;
     const t = terr[MapGen.idx(x, y)];
     if (CORE_SCATTER[t]) { this.coreScatter(g, x, y, terr, t); return; }
     if (!DECAL_GROUND.has(t)) return;                 // only open, walkable ground
@@ -457,7 +511,13 @@ const R = {
         q(1, 0, 1, 4, AP.leaf[3]); q(0, 1, 1, 1, AP.leaf[2]); q(2, 1, 1, 1, AP.leaf[2]);
         q(0, 3, 1, 1, AP.leaf[1]); q(2, 3, 1, 1, AP.leaf[1]); break;
       case 'flower': {                                              // a clump, not a plant
-        const pet = [AP.bloom[0], AP.bloom[1], AP.bloom[2], AP.gold[2], AP.bloom[3]][(rnd() * 5) | 0];
+        /* NOT THE ACCENT RAMPS. This drew from bloom[2] and gold[2] — bright
+           yellows a couple of percent apart, and gold[2] IS the colour of the
+           gold seam, the gold in the resource bar and the +gold float. A
+           two-pixel yellow speck in a meadow therefore read as something the
+           player could pick up, scattered a thousand times over the map. The
+           petals are muted ochre and cream now (see DECAL_RESERVED). */
+        const pet = [AP.bloom[0], AP.bloom[1], AP.thatch[0], AP.bone[1], AP.bloom[0]][(rnd() * 5) | 0];
         q(1, 1, 1, 1, D);
         q(0, 0, 1, 1, pet); q(1, 0, 1, 1, pet); q(3, 0, 1, 1, pet); break;
       }
@@ -470,13 +530,16 @@ const R = {
       case 'twig':
         q(1, 2, 2, 1, D);
         q(0, 1, 3, 1, AP.wood[3]); q(2, 0, 1, 1, AP.wood[2]); q(3, 1, 1, 1, AP.wood[1]); break;
-      case 'leaf':
+      case 'leaf':                                                  // dead leaf litter
+        // russet and ochre, NOT the fire ramp it used to borrow: an orange
+        // speck at the treeline is the game's own "this building is burning"
+        // signal, which is the last thing ground texture may imitate.
         q(0, 1, 1, 1, D);
-        q(0, 0, 2, 1, AP.fire[1]); q(1, 0, 1, 1, AP.fire[2]); break;
+        q(0, 0, 2, 1, AP.hide[2]); q(1, 0, 1, 1, AP.thatch[0]); break;
       case 'reed':
         q(1, 5, 1, 1, D);
         q(0, 2, 1, 3, AP.leaf[3]); q(1, 0, 1, 5, AP.grass[4]); q(2, 1, 1, 4, AP.leaf[3]);
-        q(1, 0, 1, 1, AP.thatch[2]); break;
+        q(1, 0, 1, 1, AP.thatch[0]); break;   // a dull seed head — never the bright brass
       case 'damp':
         q(0, 0, 2, 1, AP.leaf[1]); q(1, 1, 1, 1, AP.leaf[2]); break;
       case 'scuff':
@@ -552,61 +615,299 @@ const R = {
     }
   },
 
-  /* ---- SHORELINE ------------------------------------------------------
-     The most-looked-at boundary on the map, so it gets its own treatment
-     rather than the generic fringe.
+  /* =====================================================================
+     SHORELINE BY REGION TRACING
 
-     THE BEACH WIDTH WANDERS AND MAY PINCH TO NOTHING (SAND_MIN is 0 on
-     purpose): a uniform band around every lake is the single clearest
-     "tile-mapped" tell there is. Foam rides the water side with its own
-     profile, so the two irregular edges never trace each other. */
-  shoreBand(g, x, y, terr, wetAt) {
-    const TL = CFG.TILE, px = TL / 16, AP = ART.PALETTE;
-    const t = terr[MapGen.idx(x, y)];
-    const iAmWet = wetAt(x, y);
-    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nx = x + ox, ny = y + oy;
-      if (!MapGen.inB(nx, ny)) continue;
-      if (wetAt(nx, ny) === iAmWet) continue;           // both dry or both wet
-      // reclaimed ground grows no beach — a man-made isthmus must not shallow
-      // the sea it was pushed into
-      const landX = iAmWet ? nx : x, landY = iAmWet ? ny : y;
-      if (S.map.reclaimed && S.map.reclaimed[MapGen.idx(landX, landY)]) continue;
-      for (let i = 0; i < 16; i++) {
-        const wx = ox ? x + (ox > 0 ? 1 : 0) : x + (i + 0.5) / 16;
-        const wy = oy ? y + (oy > 0 ? 1 : 0) : y + (i + 0.5) / 16;
-        const n = this.landSand(wx * 3.1, wy * 3.1);
-        if (iAmWet) {
-          /* THE BEACH SPILLS ACROSS THE SEAM. Banding only the land side
-             leaves the waterline running along the tile edges, so a coast
-             stays a 90-degree staircase however pretty the sand is. Letting
-             sand eat a hashed distance INTO the water tile is what actually
-             breaks the stair: the waterline stops agreeing with the grid. */
-          const spill = Math.round(n * n * 4.2);
-          const strip = (col, from, len) => {
-            g.fillStyle = col;
-            if (ox === 1) g.fillRect(x * TL + TL - (from + len) * px, y * TL + i * px, len * px, px);
-            else if (ox === -1) g.fillRect(x * TL + from * px, y * TL + i * px, len * px, px);
-            else if (oy === 1) g.fillRect(x * TL + i * px, y * TL + TL - (from + len) * px, px, len * px);
-            else g.fillRect(x * TL + i * px, y * TL + from * px, px, len * px);
-          };
-          if (spill > 0) strip(AP.bone[2], 0, spill);            // sand over the line
-          strip(n > 0.62 ? AP.water[4] : AP.water[3], spill, 1 + ((n * 2.2) | 0));   // foam beyond it
-        } else {
-          // SAND on the land side — width rides the noise and may vanish
-          const w = Math.round(LAND.SAND_MIN + n * (LAND.SAND_MAX - LAND.SAND_MIN));
-          if (w <= 0) continue;
-          for (let d = 0; d < w; d++) {
-            g.fillStyle = d === w - 1 ? AP.soil[3] : AP.bone[2];
-            if (ox === 1) g.fillRect(x * TL + TL - (d + 1) * px, y * TL + i * px, px, px);
-            else if (ox === -1) g.fillRect(x * TL + d * px, y * TL + i * px, px, px);
-            else if (oy === 1) g.fillRect(x * TL + i * px, y * TL + TL - (d + 1) * px, px, px);
-            else g.fillRect(x * TL + i * px, y * TL + d * px, px, px);
-          }
+     A coast drawn PER TILE cannot stop looking like tiles. Irregular fringes
+     and wandering widths help, but the staircase underneath is tile-SCALE, so
+     no amount of within-tile detail removes it — the eye reads the 45-degree
+     run of corners straight through the decoration. The only fix is to stop
+     drawing the edge tile by tile and start drawing it as a CURVE.
+
+     So each contiguous body of water is treated as one region:
+
+       1. FLOOD  4-connected water cells into regions (WATER and MOAT alike).
+       2. TRACE  the boundary as closed loops of unit edges — one loop for the
+                 outer shore, one more for every island inside it.
+       3. SMOOTH with Chaikin, several iterations, operating on the TILE-scale
+                 lattice. This is the step that does the work: corner-cutting
+                 at a scale LARGER than a tile turns a staircase into a
+                 sweeping curve. Smoothing inside a tile would achieve nothing.
+       4. RAGGED again — displace the smoothed points along their normals with
+                 fine sub-tile noise. Smooth alone is a clean vector curve and
+                 reads as synthetic; noise alone leaves the staircase. Both.
+
+     The bands (sand, shelf, foam) are then offset OUTWARD and INWARD from
+     that curve, not from tile edges, and the beach width rides its own noise
+     along the run so it still swells and pinches to nothing.
+
+     TILE DATA IS NOT TOUCHED. This is a drawing of the water, not a
+     definition of it: passability, dock siting, shore orientation, fishing
+     and naval movement all keep reading the tile grid, so the drawn sand may
+     spill across a seam and the traced curve may cut inside a tile without
+     any of them noticing. tests/land.mjs pins that invariance.
+
+     Everything is cached: regions trace once per water change, the bands bake
+     into a layer that is blitted, and nothing here runs per frame. ===== */
+
+  _shore: null, _shoreKey: '',
+  /* a cheap signature of WHERE THE WATER IS. Regions are re-traced only when
+     this changes — a sapper flooding a ditch, a bridge, reclaimed land. */
+  waterKey() {
+    const terr = (S.map.seenTerrain || S.map.terrain);
+    let h = 0x811c9dc5 ^ this.landSeed();
+    for (let i = 0; i < terr.length; i++) {
+      const t = terr[i];
+      if (t === T.WATER || t === T.MOAT) { h ^= i; h = Math.imul(h, 0x01000193); }
+    }
+    return (h >>> 0) + ':' + CFG.W + 'x' + CFG.H;
+  },
+
+  waterRegions() {
+    const key = this.waterKey();
+    if (this._shoreKey === key && this._shore) return this._shore;
+    const W = CFG.W, H = CFG.H, terr = (S.map.seenTerrain || S.map.terrain);
+    const wet = (x, y) => {
+      if (x < 0 || y < 0 || x >= W || y >= H) return false;
+      const t = terr[y * W + x];
+      return t === T.WATER || t === T.MOAT;
+    };
+    const seen = new Uint8Array(W * H), regions = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (!wet(x, y) || seen[y * W + x]) continue;
+      // ---- 1. FLOOD (4-connected) ----
+      const cells = [], st = [y * W + x];
+      seen[y * W + x] = 1;
+      while (st.length) {
+        const k = st.pop(), cx = k % W, cy = (k / W) | 0;
+        cells.push(k);
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = cx + ox, ny = cy + oy;
+          if (!wet(nx, ny) || seen[ny * W + nx]) continue;
+          seen[ny * W + nx] = 1; st.push(ny * W + nx);
         }
       }
+      // ---- 2. TRACE: every water/land edge, directed so loops chain ----
+      const edges = new Map();                 // "x,y" -> [x2,y2]
+      const add = (ax, ay, bx, by) => { edges.set(ax + ',' + ay, [ax, ay, bx, by]); };
+      for (const k of cells) {
+        const cx = k % W, cy = (k / W) | 0;
+        if (!wet(cx, cy - 1)) add(cx, cy, cx + 1, cy);              // top    →
+        if (!wet(cx + 1, cy)) add(cx + 1, cy, cx + 1, cy + 1);      // right  ↓
+        if (!wet(cx, cy + 1)) add(cx + 1, cy + 1, cx, cy + 1);      // bottom ←
+        if (!wet(cx - 1, cy)) add(cx, cy + 1, cx, cy);              // left   ↑
+      }
+      const loops = [];
+      while (edges.size) {
+        const first = edges.keys().next().value;
+        const loop = [];
+        let cur = first;
+        while (edges.has(cur)) {
+          const e = edges.get(cur); edges.delete(cur);
+          loop.push([e[0], e[1]]);
+          cur = e[2] + ',' + e[3];
+        }
+        if (loop.length >= 4) loops.push(loop);   // a degenerate stub is not a shore
+      }
+      // ---- 3 + 4. SMOOTH ABOVE TILE SCALE, THEN ROUGHEN BELOW IT ----
+      const shaped = loops.map(l => this.roughen(this.chaikin(l, LAND.SHORE_SMOOTH)));
+      regions.push({ id: regions.length, cells, loops: shaped });
     }
+    this._shore = regions; this._shoreKey = key;
+    return regions;
   },
+
+  /* CHAIKIN on a CLOSED loop. Each pass replaces every edge with points at
+     1/4 and 3/4 of it, so corners are cut and the outline converges on a
+     smooth curve. Run over the tile lattice, this is what dissolves a
+     45-degree staircase into a sweep. */
+  chaikin(pts, iters) {
+    let p = pts;
+    for (let it = 0; it < iters; it++) {
+      const out = [];
+      for (let i = 0; i < p.length; i++) {
+        const a = p[i], b = p[(i + 1) % p.length];
+        out.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25]);
+        out.push([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
+      }
+      p = out;
+      if (p.length > LAND.SHORE_MAXPTS) break;      // a huge lake needs no more detail
+    }
+    return p;
+  },
+
+  /* …and put the ragged back. A Chaikin curve is a clean vector arc; a real
+     waterline is not. Displaced along the normal from noise sampled in WORLD
+     space, so the wobble is continuous along the run and identical on reload. */
+  roughen(pts) {
+    this.landLattices();
+    const n = pts.length, out = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = pts[(i - 1 + n) % n], b = pts[(i + 1) % n], p = pts[i];
+      let nx = -(b[1] - a[1]), ny = (b[0] - a[0]);
+      const len = Math.hypot(nx, ny) || 1;
+      nx /= len; ny /= len;
+      const d = (this._latRead(this._latOne.edge, p[0] * LAND.SHORE_NOISE_F, p[1] * LAND.SHORE_NOISE_F) - 0.5)
+        * 2 * LAND.SHORE_NOISE;
+      out[i] = [p[0] + nx * d, p[1] + ny * d];
+    }
+    return out;
+  },
+
+  /* ---- THE BANDS, OFFSET FROM THE TRACED CURVE ------------------------
+     Baked ONCE into its own transparent layer, which is then blitted over
+     the tiles. Keeping it separate is what makes an incremental repaint
+     exact: a changed tile re-blits its own rectangle of this layer instead
+     of trying to re-derive a curve that belongs to the whole region.
+
+     Widths ride their own noise along the run, so the beach still swells and
+     pinches to nothing — but now along the curve rather than along the grid.
+     Rocky coasts are handled here too (see landAt / the shoal branch). */
+  buildShoreLayer() {
+    const W = CFG.W, H = CFG.H, TL = CFG.TILE, AP = ART.PALETTE;
+    const px = TL / 16;
+    if (!this.shoreLayer) this.shoreLayer = document.createElement('canvas');
+    this.shoreLayer.width = W * TL; this.shoreLayer.height = H * TL;
+    const g = this.shoreLayer.getContext('2d');
+    g.clearRect(0, 0, W * TL, H * TL);
+    /* NOTHING IS DRAWN IN THE BLACK. The outermost ring is off-map void
+       (MapGen.onBoard — the single declaration), painted flat black by
+       drawTile; this layer is composited AFTERWARDS, so a sea that reaches
+       the rim would lay its beach and its foam straight over the border.
+       Every band is offset from a curve that can itself run along the rim,
+       so clamping the geometry would mean clamping five different offsets —
+       one clip is the honest version of the same rule. */
+    g.save();
+    g.beginPath(); g.rect(TL, TL, (W - 2) * TL, (H - 2) * TL); g.clip();
+    const terr = (S.map.seenTerrain || S.map.terrain);
+    const wetT = (x, y) => {
+      if (x < 0 || y < 0 || x >= W || y >= H) return false;
+      const t = terr[y * W + x]; return t === T.WATER || t === T.MOAT;
+    };
+    /* which side is land? Decided by SAMPLING, not by winding order: a traced
+       loop may be an outer shore or an island's, and the two wind opposite
+       ways. Ask the map. */
+    const outward = (p, a, b) => {
+      let nx = -(b[1] - a[1]), ny = (b[0] - a[0]);
+      const len = Math.hypot(nx, ny) || 1; nx /= len; ny /= len;
+      if (wetT(Math.floor(p[0] + nx * 0.6), Math.floor(p[1] + ny * 0.6))) { nx = -nx; ny = -ny; }
+      return [nx, ny];
+    };
+    // the land tile this point looks out onto, or -1 off the board
+    const landAt = (p, nx, ny) => {
+      const lx = Math.floor(p[0] + nx * 0.8), ly = Math.floor(p[1] + ny * 0.8);
+      return (lx < 0 || ly < 0 || lx >= W || ly >= H) ? -1 : ly * W + lx;
+    };
+    // is the land off this point stony? -> a shoal, not a beach (Part 3)
+    const stony = (p, nx, ny) => {
+      const k = landAt(p, nx, ny);
+      if (k < 0) return 0;
+      const t = terr[k];
+      return (t === T.HILLS || t === T.MOUNTAIN || t === T.PEBBLES) ? 1 : 0;
+    };
+    /* ONLY NATURAL LAND RAISES A SHORE. Where a sapper filled water in, the
+       sea beyond the new isthmus must read exactly as it did before it was
+       built — no beach appears on ground that was open water last week, and
+       the deep stays deep against it. This rule used to live in drawTile's
+       `shoreLand`; the shore moved to the traced curve and it came with it. */
+    const natural = (p, nx, ny) => {
+      const k = landAt(p, nx, ny);
+      if (k < 0) return 1;
+      return (S.map.reclaimed && S.map.reclaimed[k]) ? 0 : 1;
+    };
+    const ribbon = (pts, offs, col) => {                 // fill between base and offset
+      if (pts.length < 3) return;
+      g.beginPath();
+      g.moveTo(pts[0][0] * TL, pts[0][1] * TL);
+      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0] * TL, pts[i][1] * TL);
+      for (let i = offs.length - 1; i >= 0; i--) g.lineTo(offs[i][0] * TL, offs[i][1] * TL);
+      g.closePath(); g.fillStyle = col; g.fill();
+    };
+
+    for (const reg of this.waterRegions()) for (const loop of reg.loops) {
+      const n = loop.length;
+      if (n < 4) continue;
+      const nrm = new Array(n), rock = new Array(n), nat = new Array(n);
+      for (let i = 0; i < n; i++) {
+        const a = loop[(i - 1 + n) % n], b = loop[(i + 1) % n];
+        nrm[i] = outward(loop[i], a, b);
+        rock[i] = stony(loop[i], nrm[i][0], nrm[i][1]);
+        nat[i] = natural(loop[i], nrm[i][0], nrm[i][1]);
+      }
+      /* BLEND THE CHANGEOVERS along the coast. Switching at the tile where the
+         terrain changes puts a hard join in the middle of a curve; a short
+         running average makes one give way to the other. Both the rock/sand
+         changeover and the natural/reclaimed one are smoothed this way. */
+      const R2 = LAND.SHOAL_BLEND;
+      const smooth = (src) => {
+        const o = new Array(n);
+        for (let i = 0; i < n; i++) {
+          let s = 0, c = 0;
+          for (let k = -R2; k <= R2; k++) { s += src[(i + k + n) % n]; c++; }
+          o[i] = s / c;
+        }
+        return o;
+      };
+      const rockS = smooth(rock), natS = smooth(nat);
+      /* the beach's own width wanders along the run — the same noise the old
+         per-tile band used, now sampled along the CURVE, so a shore still
+         swells and pinches to nothing without any reference to the grid. */
+      const wAt = i => this._latRead(this._latOne.sand,
+        loop[i][0] * LAND.SAND_FREQ * 3.1, loop[i][1] * LAND.SAND_FREQ * 3.1);
+      // an offset polyline: + is outward onto the land, - is out into the water
+      const off = (fn) => {
+        const o = new Array(n);
+        for (let i = 0; i < n; i++) {
+          const p = loop[i], nn = nrm[i], d = fn(i) / 16;
+          o[i] = [p[0] + nn[0] * d, p[1] + nn[1] * d];
+        }
+        return o;
+      };
+      /* THE SHELF, STACKED. One band would put a hard rim wherever it ended;
+         several translucent bands of decreasing reach each add their own alpha,
+         so the water pales continuously from deep to shore. Painted widest
+         first, and every one of them measured from the curve. */
+      for (let k = LAND.SHELF_STEPS; k >= 1; k--) {
+        const f = k / LAND.SHELF_STEPS;
+        ribbon(loop, off(i => -(0.8 + wAt(i) * 0.55) * LAND.SHELF_REACH * f * natS[i]),
+          'rgba(126,192,216,' + LAND.SHELF_ALPHA.toFixed(3) + ')');
+      }
+      ribbon(loop, off(i => -(0.5 + wAt(i)) * LAND.FOAM_W * natS[i]), AP.water[4]);  // the wet lip
+      ribbon(loop, off(i => {                                              // the beach
+        const w = wAt(i);
+        return (LAND.SAND_MIN + w * w * (LAND.SAND_MAX - LAND.SAND_MIN)) * (1 - rockS[i]) * natS[i];
+      }), AP.bone[2]);
+      ribbon(loop, off(i => LAND.SHOAL_W * rockS[i] * natS[i]),            // wet rock
+        'rgba(58,66,64,' + LAND.SHOAL_ALPHA.toFixed(2) + ')');
+      /* THE STONES THEMSELVES. Stepping a fixed stride and rolling a fixed
+         chance threads them along the curve at even spacing — a necklace of
+         beads, which is exactly what a rocky shore is not. The roll is biased
+         by a low-frequency field along the run instead, so they GATHER into
+         drifts with bare stretches between, and each one is thrown a random
+         distance either side of the waterline so some sit in the water. */
+      for (let i = 0; i < n; i += LAND.SHOAL_STEP) {
+        if (rockS[i] < 0.35 || natS[i] < 0.5) continue;
+        const p = loop[i], [nx, ny] = nrm[i];
+        let hh = (Math.imul(Math.round(p[0] * 16), 0x27d4eb2d)
+          ^ Math.imul(Math.round(p[1] * 16), 0x165667b1) ^ this.landSeed()) >>> 0;
+        const rnd = () => { hh = Math.imul(hh ^ (hh >>> 15), 0x2c1b3c6d); hh = (hh ^ (hh >>> 12)) >>> 0; return hh / 4294967295; };
+        const drift = this._latRead(this._latOne.shoal, p[0], p[1]);
+        const gate = drift <= LAND.SHOAL_GATE ? 0 : (drift - LAND.SHOAL_GATE) / (1 - LAND.SHOAL_GATE);
+        if (rnd() > LAND.SHOAL_STONES * rockS[i] * gate) continue;
+        const d = (rnd() - 0.45) * LAND.SHOAL_THROW / 16;
+        this.drawDecal(g, (p[0] + nx * d) * TL, (p[1] + ny * d) * TL,
+          rnd() < 0.55 ? 'pebble' : 'stone', px * (0.8 + rnd() * 0.9), rnd);
+      }
+    }
+    g.restore();
+  },
+
+  /* (the per-tile `shoreBand` that used to draw the beach lived here. It is
+     gone, not disabled: it was the LAST thing on the grid at the water's
+     edge, and once every band came off the traced curve — moats and sappers'
+     ditches included, since they flood into water regions like anything else
+     — nothing called it. `landSand` stays: the beach's width still rides that
+     same noise, sampled along the curve instead of along a tile edge.) */
 
   /* stamp supplied ground art into one tile. Scaled to the tile from
      WHATEVER it was authored at — 32, 64, 128 — so the art can carry more
@@ -657,9 +958,17 @@ const R = {
   // can never show a per-tile pattern), plus a few hash-scattered wave dashes and
   // pinpoint glints. Shore tiles use the lighter shallow ramp; the live sparkle /
   // foam / fish animation layers on top at frame time.
-  paintWater(g, x, y, shore) {
+  /* ONE WATER, ONE SWELL. This used to take a `shore` flag — true if the tile
+     touched land — and brighten the swell crests and glints on it. That is a
+     WHOLE-TILE switch, so a run of shore tiles lit up together as a pale
+     rectangle several tiles across sitting in the middle of a bay: the same
+     grid-drawing fault as the old shelf, wearing different clothes. The
+     near-shore lightening is the TRACED SHELF's job now (buildShoreLayer),
+     and it is measured off a curve, so the body of the water can simply be
+     uniform. */
+  paintWater(g, x, y) {
     const TL = CFG.TILE, px = TL / 16, W = ART.PALETTE.water;
-    const dark = shore ? W[1] : W[0], lite = shore ? W[3] : W[2];
+    const dark = W[0], lite = W[2];
     /* SHALLOWNESS IS A FIELD, NOT A FLAG. The body colour used to switch
        wholesale on "does this tile touch land", which paints a hard rectangle
        into the middle of every lake — the same grid-drawing mistake as a
@@ -669,35 +978,15 @@ const R = {
        tile boundaries. */
     g.fillStyle = W[1];
     g.fillRect(x * TL, y * TL, TL, TL);
-    {
-      const terr = S.map.seenTerrain || S.map.terrain;
-      const lc = (cx, cy) => {
-        let land = 0, n = 0;
-        for (let oy = -1; oy <= 0; oy++) for (let ox = -1; ox <= 0; ox++) {
-          const nx = cx + ox, ny = cy + oy;
-          if (!MapGen.inB(nx, ny)) continue;
-          n++;
-          const v = terr[MapGen.idx(nx, ny)];
-          if (v !== T.WATER && v !== T.MOAT) land++;
-        }
-        return n ? land / n : 0;
-      };
-      const a00 = lc(x, y), a10 = lc(x + 1, y), a01 = lc(x, y + 1), a11 = lc(x + 1, y + 1);
-      if (a00 || a10 || a01 || a11) {
-        const N = LAND.TONE_SUB, cell = TL / N;
-        for (let j = 0; j < N; j++) {
-          const v = (j + 0.5) / N;
-          for (let i = 0; i < N; i++) {
-            const u = (i + 0.5) / N;
-            const top = a00 + (a10 - a00) * u, bot = a01 + (a11 - a01) * u;
-            const sh = top + (bot - top) * v;
-            if (sh < 0.22) continue;
-            g.fillStyle = sh > 0.6 ? W[2] : 'rgba(70,140,175,0.55)';
-            g.fillRect(x * TL + i * cell, y * TL + j * cell, cell, cell);
-          }
-        }
-      }
-    }
+    /* THE SHALLOWS ARE NOT DRAWN HERE. They used to be: a bilinear field of
+       "how much land meets this corner", resolved per sub-cell. Making it a
+       field rather than a per-tile flag fixed the hard rectangles, but it could
+       never fix the STAIRCASE — a contour of a piecewise-bilinear function on
+       the tile lattice can only ever turn at 45 degrees, so the shelf's own
+       edge stepped down the grid in the middle of a bay, in plain sight beside
+       a coastline that no longer did. Shelving is now measured from the TRACED
+       SHORE POLYGON (buildShoreLayer), which is the only geometry in this file
+       that is not made of tile corners. */
     /* DEPTH. The same tonal field the land uses, so a body of water is lighter
        over its shallows and darker out in the middle instead of one flat blue.
        Quantized like the ground's tone and just as gently. */
@@ -732,7 +1021,7 @@ const R = {
       hh = (Math.imul(hh ^ (hh >>> 15), 0xc2b2ae35) >>> 0);
       const gx = hh & 15, gy = (hh >> 4) & 15;
       if (k < 2) { g.fillStyle = lite; g.fillRect(x * TL + Math.min(gx, 13) * px, y * TL + gy * px, px * (2 + (hh >> 9 & 1)), px); }
-      else if ((hh & 3) === 0) { g.fillStyle = shore ? W[4] : W[3]; g.fillRect(x * TL + gx * px, y * TL + gy * px, px, px); }
+      else if ((hh & 3) === 0) { g.fillStyle = W[3]; g.fillRect(x * TL + gx * px, y * TL + gy * px, px, px); }
     }
   },
 
@@ -799,8 +1088,32 @@ const R = {
   // faces lit top-left / shadowed bottom-right by the surface gradient, faceted
   // crag texture, scree at the footprint, snow on the tallest summits, and an
   // irregular rocky edge where it meets grass. Chunky 2px blocks keep the rough style.
+  /* A MOUNTAIN TILE IS BAKED ONCE PER MAP, THEN STAMPED. Its 1024 pixels each
+     cost about eighty integer-hash noise evaluations (five `crag` calls, four
+     `vnoise` octaves apiece, four lattice hashes each), which measures at
+     ~1.3ms a tile — on a range-heavy xlarge map that is 630 tiles and 840ms of
+     the terrain bake, dwarfing everything else the ground draws. The output is
+     a pure function of (height field, ridge segments, summits, x, y), all of
+     which are fixed for the life of a map, so it is memoised into a small
+     per-tile canvas: PIXEL-IDENTICAL, no visual change at all, and every
+     re-bake after the first (supplied art decoding, a size change, a reload of
+     the same world) pays a stamp instead of the arithmetic. Cleared beside
+     `mtnH` in onNewGame — the height field and the cache are the same fact. */
   drawMountain(g, x, y) {
     if (!this.mtnH) this.computeMountainHeight();
+    if (!this._mtnTile) this._mtnTile = new Map();
+    const ck = y * CFG.W + x, hit = this._mtnTile.get(ck);
+    if (hit) { g.drawImage(hit, x * CFG.TILE, y * CFG.TILE); return; }
+    const tile = document.createElement('canvas');
+    tile.width = tile.height = CFG.TILE;
+    const tg = tile.getContext('2d');
+    tg.imageSmoothingEnabled = false;
+    tg.translate(-x * CFG.TILE, -y * CFG.TILE);      // the body below draws in map space
+    this._paintMountain(tg, x, y);
+    this._mtnTile.set(ck, tile);
+    g.drawImage(tile, x * CFG.TILE, y * CFG.TILE);
+  },
+  _paintMountain(g, x, y) {
     // Author on the FINE 1px grid (N=32) for crisp rock detail. The look is built from
     // two scales: a smooth macro dome (the distance field) that carries the big lit/shadow
     // volume + ridgelines, and a fine crag surface (value-noise octaves) that carves
@@ -953,14 +1266,9 @@ const R = {
     // only NATURAL land makes a shore (shallows + foam). Reclaimed land — where a
     // sapper filled water into ground — must NOT shallow the deep water it abuts:
     // the sea beyond a man-made isthmus reads exactly as it did before it was built.
-    const shoreLand = (xx, yy) => MapGen.inB(xx, yy) && !wet(at(xx, yy)) &&
-      !(S.map.reclaimed && S.map.reclaimed[MapGen.idx(xx, yy)]);
-    let waterShore = false;
     if (t === T.GRASS && h % 61 === 0)
       img = Sprites.terrainRare[T.GRASS][h % Sprites.terrainRare[T.GRASS].length];   // rare flower meadow
     else if (wet(t)) {
-      waterShore = shoreLand(x + 1, y) || shoreLand(x - 1, y) ||
-                   shoreLand(x, y + 1) || shoreLand(x, y - 1);
       // water is painted procedurally in the ground-layer step below (paintWater):
       // calm world-space swells that run across tile borders, so no per-tile pattern
     } else if (t === T.MOUND) {
@@ -1024,7 +1332,7 @@ const R = {
       else this.drawMountain(g, x, y);                            // real textured slopes from the height field
     } else if (wet(t)) {
       if (ovr) this.blitTile(g, ovr, x, y);
-      else this.paintWater(g, x, y, waterShore);                  // calm continuous water, no tile pattern
+      else this.paintWater(g, x, y);                  // calm continuous water, no tile pattern
     } else if (GROUND_GRAIN.has(t)) {
       this.paintGround(g, x, y, h);               // continuous floor...
       if (ovr) this.blitTile(g, ovr, x, y);       // ...then the transparent-floored resource on top
@@ -1035,13 +1343,15 @@ const R = {
       g.drawImage(img, x * TL, y * TL);           // water / barren / ruin / camp / mound base
     }
 
-    if (wet(t) || shoreLand(x + 1, y) || shoreLand(x - 1, y) || shoreLand(x, y + 1) || shoreLand(x, y - 1) ||
-        wet(at(x + 1, y)) || wet(at(x - 1, y)) || wet(at(x, y + 1)) || wet(at(x, y - 1))) {
-      // the beach and its foam — variable width, may pinch to nothing
-      this.shoreBand(g, x, y, terr, (xx, yy) => MapGen.inB(xx, yy) && wet(terr[MapGen.idx(xx, yy)]));
-    }
+    /* THE NATURAL COAST IS NOT DRAWN HERE. It comes from the traced region
+       curve (buildShoreLayer) — a per-tile band cannot escape the tile grid,
+       which is the whole reason the tracing exists. The rule this branch used
+       to carry, that RECLAIMED land raises no shore, went with it: see `nat`
+       in buildShoreLayer. */
+    /* (an empty `if (t === T.TRENCH) {}` stood here since fa08f38, which made
+       the branch below unreachable — a dug ditch has been drawing its bare
+       floor with no clods and no earth walls ever since.) */
     if (t === T.TRENCH) {
-    } else if (t === T.TRENCH) {
       // scattered clods of overturned soil, placed from the tile's own map hash so
       // no two ditch tiles share a pattern — a wide floor never shows a grid
       let hh = h;
@@ -1125,7 +1435,14 @@ const R = {
     // every tile's ground must be down before any decal is laid — otherwise a
     // neighbour's ground, painted later, erases the spill.
     for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) this.drawTile(g, x, y);
-    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) this.landDecals(g, x, y, terr);
+    // …decals clipped to the board, since one may overhang its own tile and
+    // the tile beside the rim would throw a tuft out onto the black
+    this.clipBoard(g, () => {
+      for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) this.landDecals(g, x, y, terr);
+    });
+    // …then the traced coast over the top, from its own cached layer
+    this.buildShoreLayer();
+    g.drawImage(this.shoreLayer, 0, 0);
   },
 
   /* REPAINT A TILE AND ITS RING, GROUND FIRST THEN DECALS. A tile's own look
@@ -1141,6 +1458,15 @@ const R = {
      union first turns that back into roughly one paint per tile. (This is not
      a micro-optimisation: done naively it slowed the game enough to fail
      tests/raider-camps.mjs, which runs a long real-time simulation.) */
+  /* run a drawing pass with the off-map ring masked off. The rim is the
+     world's hard border and the only thing that may be painted there is the
+     void's own black — see MapGen.onBoard, the single declaration. */
+  clipBoard(g, fn) {
+    const TL = CFG.TILE;
+    g.save();
+    g.beginPath(); g.rect(TL, TL, (CFG.W - 2) * TL, (CFG.H - 2) * TL); g.clip();
+    try { fn(); } finally { g.restore(); }
+  },
   drawTilesAt(list) {
     if (!this.terrainCache || !list || !list.length) return;
     const g = this.terrainCache.getContext('2d');
@@ -1155,7 +1481,14 @@ const R = {
       }
     }
     for (const k of ground) this.drawTile(g, k % W, (k / W) | 0);
-    for (const k of deco) this.landDecals(g, k % W, (k / W) | 0, terr);
+    this.clipBoard(g, () => { for (const k of deco) this.landDecals(g, k % W, (k / W) | 0, terr); });
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const k of deco) {
+      const cx = k % W, cy = (k / W) | 0;
+      if (cx < x0) x0 = cx; if (cx > x1) x1 = cx;
+      if (cy < y0) y0 = cy; if (cy > y1) y1 = cy;
+    }
+    if (x1 >= x0) this.blitShore(g, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
   },
 
   drawTileAt(x, y) {
@@ -1172,10 +1505,27 @@ const R = {
        the 3x3's decals leaves those gaps behind: measured as 64px of stale
        seam against a full rebake. Re-stamping a decal whose ground was not
        repainted is idempotent, so the wider pass is free of side effects. */
-    for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) {
-      const nx = x + ox, ny = y + oy;
-      if (MapGen.inB(nx, ny)) this.landDecals(g, nx, ny, terr);
-    }
+    this.clipBoard(g, () => {
+      for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) {
+        const nx = x + ox, ny = y + oy;
+        if (MapGen.inB(nx, ny)) this.landDecals(g, nx, ny, terr);
+      }
+    });
+    this.blitShore(g, x - 2, y - 2, 5, 5);
+  },
+
+  /* put the traced coast back over a patch that was just repainted. The layer
+     is re-derived only if the WATER ITSELF changed (waterKey), so an ordinary
+     edit — felling a tree, laying a wall — costs one blit and no tracing. */
+  blitShore(g, x0, y0, w, h) {
+    if (this._shoreKey !== this.waterKey() || !this.shoreLayer) this.buildShoreLayer();
+    if (!this.shoreLayer) return;
+    const TL = CFG.TILE;
+    const sx = Math.max(0, x0 * TL), sy = Math.max(0, y0 * TL);
+    const sw = Math.min(this.shoreLayer.width - sx, w * TL);
+    const sh = Math.min(this.shoreLayer.height - sy, h * TL);
+    if (sw <= 0 || sh <= 0) return;
+    g.drawImage(this.shoreLayer, sx, sy, sw, sh, sx, sy, sw, sh);
   },
 
   drawTileOnly(x, y) {
@@ -1185,6 +1535,7 @@ const R = {
   onNewGame() {
     this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
     this.mtnH = null;                                            // recompute the mountain height field for the new map
+    this._mtnTile = null;                                        // …and with it the baked mountain tiles (same fact)
     this.placePoofs = [];                                        // no dust carried across runs (the R.collapses rule)
     // pre-render the full terrain layer once
     this.rebuildTerrain();

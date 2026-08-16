@@ -125,21 +125,131 @@ const Sprites = {
 
   const LEAF_D = [AP.leaf[0], AP.leaf[0], AP.leaf[1], AP.leaf[2], AP.leaf[3]];   // shade tree
   const LEAF_L = [AP.leaf[1], AP.leaf[2], AP.leaf[3], AP.leaf[4], AP.leaf[4]];   // sunlit tree
-  // ONE tree, drawn to stay READABLE even when packed tight: a trunk, a rounded
-  // crown, a DARK underside rim (the key — it rings the bottom of every crown so
-  // neighbouring trees never merge into a blob), a sunlit top-left cap and a top
-  // glint. Trees are drawn back-to-front so front trunks/rims overlap the crowns
-  // behind, exactly like a real stand seen from above.
-  function tree(f, cx, cy, rr, ramp) {
-    f(cx - 1, cy + rr + 1, 4, 1, AP.grass[0]); f(cx, cy + rr + 2, 2, 1, AP.grass[0]);   // tight ground shadow on the grass
-    f(cx, cy + rr - 2, 2, 5, AP.wood[1]); f(cx, cy + rr - 2, 1, 5, AP.wood[2]);   // trunk
-    ART.shadedCircle(f, cx, cy, rr, ramp, 2);                            // crown body
-    for (let a = 0.4; a <= 2.75; a += 0.28)                             // dark underside rim -> separation
-      f((cx + Math.cos(a) * rr) | 0, (cy + Math.sin(a) * rr) | 0, 1, 1, ramp[0]);
-    ART.shadedCircle(f, cx - 1, cy - 1, Math.max(1, (rr * 0.5) | 0), ramp, 3);    // sunlit cap
+  const LEAF_P = [AP.leaf[0], AP.leaf[0], AP.leaf[1], AP.leaf[1], AP.leaf[2]];   // conifer — darkest, low contrast
+  const LEAF_B = [AP.leaf[1], AP.leaf[2], AP.leaf[4], AP.grass[4], AP.grass[4]];  // birch — bright, yellow-green
+  /* ---- FOUR CANOPIES, NOT ONE ------------------------------------------
+     A wood built from a single shaded disc reads as ONE STAMP REPEATED
+     however hard its radius and its green are jittered: at a crown of ten to
+     sixteen pixels the eye files SILHOUETTE first and colour a distant
+     second, so two hundred discs in slightly different greens are two
+     hundred of the same tree. The four kinds here are therefore chosen to
+     differ in OUTLINE — a broadleaf dome, a conifer spire, a spreading oak
+     with a notched crown on two low lobes, and a slender birch on a pale
+     trunk. Their ramps follow the shape rather than leading it (the conifer
+     is darkest, the birch lightest), which is what keeps a mixed stand from
+     reading as a colour wheel.
+
+     Every kind keeps the two rules the original tree was built on, because
+     they are what let a wood pack tight without turning to soup: a DARK
+     UNDERSIDE RIM ringing the bottom of the crown, so neighbouring trees
+     never merge, and a tight ground shadow that plants it on the grass.
+     Trees are drawn back to front, so a front trunk overlaps the crown
+     behind it exactly as a real stand does seen from above. ---- */
+  const KINDS = ['round', 'conifer', 'oak', 'birch'];
+  function treeShadow(f, cx, cy, rr) {
+    f(cx - 1, cy + rr + 1, 4, 1, AP.grass[0]); f(cx, cy + rr + 2, 2, 1, AP.grass[0]);
+  }
+  function trunk(f, cx, cy, rr, pale) {
+    if (pale) {
+      /* ONE PIXEL WIDE. A birch's bark is the palest thing in a wood, and two
+         columns of it under a dark canopy stops reading as a trunk and starts
+         reading as a dropped item lying in the grass — the same failure the
+         open-ground decals had. A single line reads as a slender stem, which
+         is what the tree is for. */
+      f(cx, cy + rr - 2, 1, 5, AP.bone[1]);
+      f(cx, cy + rr, 1, 1, AP.wood[0]); f(cx, cy + rr + 2, 1, 1, AP.wood[0]);   // bark ticks
+      return;
+    }
+    f(cx, cy + rr - 2, 2, 5, AP.wood[1]);
+    f(cx, cy + rr - 2, 1, 5, AP.wood[2]);
+  }
+  // the rim is what separates one crown from the next — never drop it
+  function crownRim(f, cx, cy, rr, ramp, squash, col) {
+    for (let a = 0.4; a <= 2.75; a += 0.28)
+      f((cx + Math.cos(a) * rr) | 0, (cy + Math.sin(a) * rr * (squash || 1)) | 0, 1, 1, col || ramp[0]);
+  }
+  function tree(f, cx, cy, rr, ramp, kind) {
+    if (kind === 'conifer') {
+      /* A SPIRE OF TIERS. A cone drawn as one smooth triangle reads as a
+         chevron; real spruce at this size is a stack of drooping tiers, and
+         the STEPS between them are the whole silhouette. */
+      const h = Math.max(6, Math.round(rr * 2.3)), top = cy - Math.round(rr * 1.15);
+      treeShadow(f, cx, cy, Math.round(rr * 0.75));
+      f(cx, top + h - 1, 2, 4, AP.wood[1]); f(cx, top + h - 1, 1, 4, AP.wood[2]);
+      const tiers = rr >= 6 ? 4 : 3, th = Math.max(2, Math.round(h / tiers));
+      for (let t = 0; t < tiers; t++) {
+        const ty = top + Math.round((h - th) * t / (tiers - 1));
+        const base = Math.max(1, Math.round(rr * (0.42 + 0.62 * (t + 1) / tiers)));
+        for (let j = 0; j < th; j++) {
+          const hw = Math.max(0, Math.round(base * (0.25 + 0.75 * j / (th - 1))));
+          f(cx - hw, ty + j, hw * 2 + 1, 1, j < th * 0.45 ? ramp[3] : ramp[2]);
+          f(cx - hw, ty + j, Math.max(1, hw), 1, j < th * 0.45 ? ramp[4] : ramp[3]);   // lit left flank
+        }
+        f(cx - base, ty + th - 1, base * 2 + 1, 1, ramp[0]);            // the drooping edge of each tier
+      }
+      f(cx, top, 1, 1, AP.leaf[4]);                                     // leader glint
+      return;
+    }
+    if (kind === 'oak') {
+      /* A SPREADING CROWN — a taller centre sitting on two lower shoulders, so
+         the outline is LUMPY with a dip on top rather than circular. That
+         lumpiness is the only thing telling it from the plain dome at this
+         size, which is also why the shoulders are kept TIGHT: pushed out to
+         eight tenths of the radius they stop being one crown and become two
+         trees side by side, and a wood of them mats into a hedge with no
+         grass showing through. Half a radius keeps it barely wider than the
+         dome it is a variation on. */
+      const w = Math.max(1, Math.round(rr * 0.6)), lob = Math.max(2, rr - 2);
+      treeShadow(f, cx, cy, rr);
+      trunk(f, cx, cy, rr, false);
+      ART.shadedCircle(f, cx - w, cy + 2, lob, ramp, 2);
+      ART.shadedCircle(f, cx + w, cy + 2, lob, ramp, 2);
+      ART.shadedCircle(f, cx, cy - 3, Math.max(2, rr - 1), ramp, 2);
+      crownRim(f, cx - w, cy + 2, lob, ramp);
+      crownRim(f, cx + w, cy + 2, lob, ramp);
+      ART.shadedCircle(f, cx - w, cy, Math.max(1, (rr * 0.4) | 0), ramp, 3);   // sunlit cap
+      f(cx - w, cy - rr - 2, 1, 1, AP.leaf[4]);
+      return;
+    }
+    if (kind === 'birch') {
+      /* SLENDER, AND STANDING UP. Narrow crown on a visible pale trunk — the
+         one kind whose TRUNK is part of the silhouette, which is what makes a
+         thin tree read as thin instead of just small. */
+      const rw = Math.max(2, Math.round(rr * 0.62));
+      treeShadow(f, cx, cy, Math.round(rr * 0.7));
+      trunk(f, cx, cy + 2, rr, true);
+      for (let dy = -rr; dy <= rr; dy++) {
+        const k = 1 - (dy * dy) / ((rr + 0.5) * (rr + 0.5));
+        if (k <= 0) continue;
+        const hw = Math.max(0, Math.round(rw * Math.sqrt(k)));
+        f(cx - hw, cy + dy, hw * 2 + 1, 1, dy < -rr * 0.2 ? ramp[3] : ramp[2]);
+        f(cx - hw, cy + dy, Math.max(1, hw), 1, dy < -rr * 0.2 ? ramp[4] : ramp[3]);
+      }
+      // the birch's own ramp starts LIGHT, so its rim has to be named: taking
+      // ramp[0] would ring a pale crown in another pale green and the tree
+      // would dissolve into whatever stands behind it.
+      crownRim(f, cx, cy, rw, ramp, rr / rw, AP.leaf[1]);
+      f(cx - 1, cy - rr, 1, 1, AP.leaf[4]);
+      return;
+    }
+    treeShadow(f, cx, cy, rr);                                          // 'round' — the broadleaf dome
+    trunk(f, cx, cy, rr, false);
+    ART.shadedCircle(f, cx, cy, rr, ramp, 2);                           // crown body
+    crownRim(f, cx, cy, rr, ramp);
+    ART.shadedCircle(f, cx - 1, cy - 1, Math.max(1, (rr * 0.5) | 0), ramp, 3);   // sunlit cap
     f(cx - (rr * 0.4 | 0), cy - rr, 1, 1, AP.leaf[4]);                  // crown glint
   }
   const leafPick = r => { const u = r(); return u < 0.32 ? LEAF_D : u > 0.8 ? LEAF_L : AP.leaf; };
+  /* A WOOD GROWS IN STANDS. Rolling the kind freely per tree gives an even
+     mix everywhere, which is its own kind of uniform — real woodland comes in
+     patches of pine, patches of oak. So each TILE draws a dominant kind and
+     most of its trees take it; the rest are the mix. The ramp follows the
+     kind for the two that have one of their own, so a stand of conifer reads
+     dark and a stand of birch reads bright. */
+  function pickKind(r, dom) { return r() < 0.7 ? dom : KINDS[(r() * KINDS.length) | 0]; }
+  function rampFor(kind, r) {
+    return kind === 'conifer' ? LEAF_P : kind === 'birch' ? LEAF_B : leafPick(r);
+  }
   // FOREST at three densities (level 0 sparse / 1 medium / 2 dense). Trees sit
   // directly ON the grass — NO tile-shaped floor tint (that printed hard square
   // corners) — so the grass shows between them and the wood reads as trees on a
@@ -150,15 +260,27 @@ const Sprites = {
   function forestTile(p, seed, level) {
     const f = p.f, r = ART.rng(seed | 1);
     const trees = [];
+    const dom = KINDS[(r() * KINDS.length) | 0];          // this tile's dominant kind
+    /* SIZE JITTER THAT SHOWS. The old range was 5..6 — a 20% spread, which at
+       a ten-pixel crown is one pixel and reads as no variation at all. It is
+       4..8 now (a doubling from smallest to largest), skewed toward the middle
+       by taking the lesser of two rolls so a stand is mostly ordinary trees
+       with the odd sapling and the odd giant, rather than an even spread of
+       four distinct sizes. */
+    const radius = () => 4 + Math.min((r() * 5) | 0, (r() * 5) | 0) + ((r() < 0.18) ? 1 : 0);
     if (level === 2) {
       // DENSE interior only (used when a tile is fully surrounded by forest): a
       // straddling grid whose crowns overhang every edge. Half-cut trees are fine
       // here — every edge abuts more forest that covers them.
-      const step = 10, rad = 5, drop = 0.24;
+      const step = 10, drop = 0.24;
       for (let gy = 0, row = 0; gy <= 32; gy += step, row++)
         for (let gx = (row & 1) ? 5 : 0; gx <= 32; gx += step) {
           if (r() < drop) continue;
-          trees.push([gx + ((r() * 5) | 0) - 2, gy + ((r() * 5) | 0) - 2, rad + (r() * 2 | 0), leafPick(r)]);
+          const k = pickKind(r, dom);
+          /* the jitter is deliberately WIDER than the gap between grid points,
+             so crowns overlap their neighbours instead of sitting in cells —
+             a lattice you can still count is a lattice however jittered. */
+          trees.push([gx + ((r() * 7) | 0) - 3, gy + ((r() * 7) | 0) - 3, radius(), rampFor(k, r), k]);
         }
     } else {
       // EDGE tiles (sparse fringe / medium perimeter): every tree FULLY CONTAINED
@@ -166,14 +288,19 @@ const Sprites = {
       // visible border always shows whole trees on grass — never a half tree.
       const n = level === 1 ? 7 + (r() * 3 | 0) : 1 + (r() * 3 | 0);   // medium packs a fuller clump
       for (let i = 0; i < n; i++) {
-        const rr = 5 + (r() * 2 | 0);
+        const k = pickKind(r, dom);
+        const rr = radius();
+        /* a conifer is TALLER than it is wide, so containment is measured on
+           its own bounding box — clamped to a disc, a spire's leader would be
+           cut off at the fringe, which is the one place a whole tree matters. */
+        const up = k === 'conifer' ? Math.round(rr * 1.15) + rr : rr;
         const cx = rr + (r() * (32 - 2 * rr)) | 0;                     // crown fits in [0,31] (may touch, never cut)
-        const cy = rr + (r() * (30 - 2 * rr)) | 0;                     // crown + trunk fit in [0,31]
-        trees.push([cx, cy, rr, leafPick(r)]);
+        const cy = up + (r() * Math.max(1, 30 - up - rr)) | 0;         // crown + trunk fit in [0,31]
+        trees.push([cx, cy, rr, rampFor(k, r), k]);
       }
     }
     trees.sort((a, b) => a[1] - b[1]);
-    for (const [cx, cy, rr, ramp] of trees) tree(f, cx, cy, rr, ramp);
+    for (const [cx, cy, rr, ramp, kind] of trees) tree(f, cx, cy, rr, ramp, kind);
   }
   // CHARACTER tiles — one-offs sprinkled rarely deep in the wood for flavour: a
   // fallen mossy log, a logged clearing of cut stumps, an overgrown bramble patch.
@@ -197,6 +324,12 @@ const Sprites = {
       }
     }
   }
+  /* the four canopies, reachable for art review (tests/land.mjs, and the
+     scratch viewer that judges a silhouette on its own instead of guessing
+     it out of a screenshot of a whole wood). */
+  Sprites.TREE_KINDS = KINDS;
+  Sprites._treeProbe = (f, cx, cy, rr, k) =>
+    tree(f, cx, cy, rr, rampFor(KINDS[k], ART.rng(7)), KINDS[k]);
   const forestSet = (base, lvl, n) => { const a = []; for (let i = 0; i < n; i++) { const s = base + i * 37; a.push(tile(p => forestTile(p, s, lvl))); } return a; };
   Sprites.terrain[T.FOREST] = forestSet(11, 0, 8);                     // sparse — the outer fringe (complete trees)
   Sprites.terrainMed = { [T.FOREST]: forestSet(400, 1, 8) };          // medium — the perimeter (complete trees)

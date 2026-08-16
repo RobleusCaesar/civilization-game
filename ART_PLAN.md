@@ -171,10 +171,53 @@ regression most likely to slip through):
   down with `LAND.DECAL_DENSITY`, and widen the bare ground between patches
   with `LAND.DECAL_GATE`
 - **irregular edge fringes** where your terrain meets another
-- **shore sand and foam** where it meets water
+- **the traced coast** — shelf, foam, beach and rocky shoal where it meets
+  water (see below)
 
 So author a FLAT, even tile. Do not bake lighting, blotches or scatter into
 it: the engine's layers will land on top and the two will fight. Tunables for
 all of it live in the `LAND` block at the top of `js/render.js`.
+
+### The coast is not made of tiles
+
+Worth knowing before you draw a `water.png`, because it is the one layer that
+does not follow the grid at all.
+
+The waterline is **traced**, not banded per tile. The engine floods the water
+into connected REGIONS, walks each region's boundary into closed polygons
+(an outer shore and every island's shore come out separately), smooths them
+with Chaikin corner-cutting at a scale **larger than one tile** — which is
+what turns a 45° staircase into a sweep — and then displaces the result with
+fine world-space noise, which is what stops the sweep reading as a clean
+vector arc. Both halves are needed; either alone looks wrong in its own way.
+
+Everything you see at the water's edge is then **offset from that curve**: a
+stack of translucent shelf bands reaching into the water, a foam lip, the
+beach, and wet dark rock with scattered stones where the land behind it is
+hills, mountain or pebbles. So a supplied `water.png` supplies the BODY of
+the water; the edge treatment is drawn over it from the curve and is not
+something a tile can carry. A supplied land tile is likewise unaffected —
+the beach lands on top of whatever you drew.
+
+None of this touches tile DATA. Where a boat may sail, where a dock may
+stand and which way it faces, where a villager may fish, what is passable —
+all of it still reads the tile grid, so the painted waterline is free to cut
+inside a tile without any rule noticing.
+
+Tunables, all in the `LAND` block:
+
+| symptom | dial |
+|---|---|
+| the coast still steps at 45° | raise `SHORE_SMOOTH` |
+| the coast reads as a clean vector arc | raise `SHORE_NOISE` |
+| the wobble is too fine / too coarse | `SHORE_NOISE_F` |
+| the shallows are milky, or read as rings | `SHELF_ALPHA`, `SHELF_STEPS` |
+| the shallows reach too far out | `SHELF_REACH` |
+| beaches too wide, or never pinch out | `SAND_MAX`, `SAND_MIN`, `SAND_FREQ` |
+| the rocky coast reads as an inked outline | lower `SHOAL_ALPHA` |
+| shore stones look like beads on a string | raise `SHOAL_GATE`, lower `SHOAL_FREQ` |
+| too many / too few shore stones | `SHOAL_STONES`, `SHOAL_STEP` |
+| the ground looks busy rather than deep | lower `DECAL_DENSITY`, raise `DECAL_GATE` |
+| a tile grid is visible in flat ground | `TONE_SUB` (must stay above 1), `TONE_STEPS` |
 
 Re-uploading a changed file under a name it already had? Bump `CFG.ART_V`.
