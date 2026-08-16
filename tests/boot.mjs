@@ -320,7 +320,11 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       up, readyAt, ready: Boot.ready, doneLate: Boot.done,
     };
   });
-  // long enough to read the logo, short enough that it never feels like a wait
+  /* Long enough to take in the glen, short enough that it never feels like a
+     wait. 3s is the FLOOR, not a soft preference: below it the scene reads as
+     a flash before the menu rather than a moment of its own, and the pop-in
+     starts before the eye has settled. A further cut is a real decision and
+     should have to change this bound to make it. */
   ck('theHoldIsAFullBeat', mid.hold >= 3000 && mid.hold <= 5000, mid.hold + 'ms');
   ck('andTheFadeIsACrossFadeNotACut', mid.fade >= 200 && mid.fade <= 900, mid.fade + 'ms');
   ck('andAFailsafeAlwaysStartsTheGame', mid.fail > mid.hold, mid.fail + 'ms');
