@@ -17,6 +17,15 @@ const ART = (function () {
     water:   ['#1c4258', '#265674', '#2e6b8a', '#4589ab', '#7fc0d8'],
     stone:   ['#4a4a44', '#6f6f66', '#8f8f86', '#adada2', '#c9c9bf'],
     ore:     ['#55544d', '#6f6e65', '#88867b', '#a09e91', '#b8b5a6', '#d0cdbe'],   // ORE boulders: light muted grey (lifted so deposits pop against the grass at a glance), cooler/greyer than the brown mountain `mrock` so they stay readable as mineable stone
+    /* the DEPOSIT ramp — the ore knots that hug the mountain base draw in
+       this, a couple of shades darker than `ore` so a deposit sits in the
+       mountain's own tonal family (it lives in the crevasses at the foot of
+       the rock) while the ROUND silhouette, the quarried facet and the glint
+       keep it unmistakably a resource. `ore` itself is untouched: it still
+       backs the spent-quarry boulders and a ground decal. Darken this
+       further and tests/land.mjs's andOreOutshinesTheMountainRock will say
+       when it stops reading as a find. */
+    oreD:    ['#494841', '#5e5d55', '#747266', '#8b887b', '#a3a091', '#bdbaab'],
     rock:    ['#443b31', '#655a49', '#877b66', '#a89a82', '#c9bca2'],   // warm earthy stone (terrain boulders — shares hue with soil)
     /* QUARRIABLE STONE — three ramps for the rock fields, each SIX hard steps
        from a near-black crevice (index 0) to a bright cleaved face (index 5).

@@ -266,7 +266,15 @@ const MapGen = {
         }
         return false;
       };
-      const wantDeposits = Math.max(3, Math.round(2.4 * f));
+      /* FAR FEWER, and IN THE CREVASSES (a player report: deposits felt
+         strewn about). A deposit belongs in the fold at the mountain's
+         base, so the primary pass is a SCORED SEARCH, not rejection
+         sampling: every grass tile TOUCHING the rock (r1) is scored by how
+         much mountain wraps it within r2, and the deepest re-entrants win.
+         A knot only ever paints grass, so a crevasse-seated deposit
+         conforms around the rock's own foot. The seeded jitter breaks tie
+         runs so two equal notches don't always resolve in scan order. */
+      const wantDeposits = Math.max(2, Math.round(1.3 * f));
       const seats = [];
       const trySeat = (pred, tries) => {
         let guard = 0;
@@ -278,7 +286,23 @@ const MapGen = {
           seats.push({ x, y });
         }
       };
-      trySeat((x, y) => nearTerr(x, y, T.MOUNTAIN, 3), 900);      // PRIMARY: against the mountains
+      {                                                            // PRIMARY: the crevasses of the mountain base
+        const cands = [];
+        for (let y = 3; y < H - 3; y++) for (let x = 3; x < W - 3; x++) {
+          if (t[id(x, y)] !== T.GRASS || nearStart(x, y)) continue;
+          if (!nearTerr(x, y, T.MOUNTAIN, 1)) continue;
+          let n = 0;
+          for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++)
+            if (MapGen.inB(x + dx, y + dy) && t[id(x + dx, y + dy)] === T.MOUNTAIN) n++;
+          cands.push({ x, y, s: n + rnd() * 0.5 });
+        }
+        cands.sort((a, b) => b.s - a.s);
+        for (const c of cands) {
+          if (seats.length >= wantDeposits) break;
+          if (seats.some(s2 => Math.hypot(s2.x - c.x, s2.y - c.y) < 9)) continue;
+          seats.push({ x: c.x, y: c.y });
+        }
+      }
       trySeat((x, y) => nearTerr(x, y, T.FOREST, 2), 500);        // fallback: the forest edge
       trySeat(() => true, 300);                                    // last resort: open ground, still compact
       for (const s2 of seats) oreKnot(s2.x, s2.y);

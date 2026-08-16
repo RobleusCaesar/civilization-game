@@ -20,7 +20,14 @@ const DECAL_GROUND = new Set([T.GRASS, T.MOUND]);
    same gradient additively: a core tile is enriched with extra scatter of its
    own material, an edge tile is left alone, and the deposit reads as one mass
    thinning outward instead of a uniform block. */
-const CORE_SCATTER = { [T.FERTILE]: 'crop', [T.PEBBLES]: 'pebble', [T.GOLDORE]: 'vein' };
+/* FERTILE is deliberately NOT here any more. Its 'crop' tussock was added
+   when the forage was a soft dull mound and the core needed a richness cue —
+   but the fruit itself carries that cue now (a dense thicket tile bears an
+   order of magnitude more fruit than a sparse one), and brown stems painted
+   OVER a closed canopy read as mud smeared across the thicket, which is
+   exactly the "fades into the background" report that forced the forage
+   redesign. Dirt on top of leaves enriches nothing. */
+const CORE_SCATTER = { [T.PEBBLES]: 'pebble', [T.GOLDORE]: 'vein' };
 /* WHAT MAY GROW WHERE. Open ground carries FLAT, ground-level things only —
    nothing with a trunk or a canopy, because a small green silhouette out in a
    meadow reads as scrub and competes with the real woods for the eye. Foliage
@@ -646,20 +653,13 @@ const R = {
       const dx = x * TL + Math.round(rnd() * (TL - 6)) + 1;
       const dy = y * TL + Math.round(rnd() * (TL - 6)) + 1;
       const q = (ox, oy, w, h, c) => { g.fillStyle = c; g.fillRect(dx + ox * px, dy + oy * px, w * px, h * px); };
+      /* Note `vein` KEEPS the gold ramp and is not a colour-audit
+         collision — it is drawn only on a gold seam, where gold is exactly
+         what is being promised. (FERTILE's old 'crop' tussock — once a
+         wheat sheaf as bright as brass, then muted dry stems — is retired
+         with the forage redesign; see the CORE_SCATTER table.) */
       if (kind === 'pebble') { q(1, 2, 2, 1, AP.stone[0]); q(0, 0, 3, 2, AP.stone[2]); q(0, 0, 1, 1, AP.stone[3]); }
       else if (kind === 'vein') { q(0, 1, 3, 1, AP.gold[0]); q(0, 0, 2, 1, AP.gold[2]); q(2, 0, 1, 1, AP.gold[3]); }
-      /* DRY GRASS, NOT A SHEAF OF WHEAT. This drew a standing four-pixel
-         sheaf in thatch[1]/thatch[2] — bright brass, as big on screen as the
-         berry bush beside it and taller than it was wide, so the eye read a
-         golden OBJECT lying in the orchard rather than ground texture, and
-         could not tell whether it was a resource, a harvestable or litter.
-         It is now a low tussock of dry stems in muted browns: the same job
-         (rich ground reads richer at its core) with nothing in it that says
-         "pick me up". Note `vein` KEEPS the gold ramp and is not a
-         collision — it is drawn only on a gold seam, where gold is exactly
-         what is being promised. */
-      else { q(0, 2, 4, 1, AP.soil[1]); q(0, 1, 1, 1, AP.wood[3]); q(1, 0, 1, 2, AP.soil[3]);
-             q(2, 1, 1, 1, AP.wood[3]); q(3, 1, 1, 1, AP.soil[3]); }
     }
   },
 
@@ -784,13 +784,14 @@ const R = {
     if (!near) return;
     let hh = (Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ this.landSeed()) >>> 0;
     const rnd = () => { hh = Math.imul(hh ^ (hh >>> 15), 0x2c1b3c6d); hh = (hh ^ (hh >>> 12)) >>> 0; return hh / 4294967295; };
-    const P = AP.ore;
+    const P = AP.oreD;
     for (let i = 0; i < 4; i++) {
       if (rnd() > LAND.ROCK_SCREE) continue;
       const cx = x * TL + ((rnd() * TL) | 0), cy = y * TL + ((rnd() * TL) | 0);
       const w = 2 + ((rnd() * 2) | 0);
-      // a round pebble in the deposit's own bright ramp — the spill that says
-      // "the ore is over there", in the ore's own language
+      // a round pebble in the deposit's OWN ramp (oreD, the darker deposit
+      // stone) — the spill that says "the ore is over there", in the ore's
+      // own language
       g.fillStyle = P[1]; g.fillRect(cx, cy + 1, w, 2);
       g.fillStyle = P[3]; g.fillRect(cx, cy, w, 2);
       g.fillStyle = P[5]; g.fillRect(cx, cy, 1, 1);

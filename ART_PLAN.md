@@ -288,28 +288,33 @@ carry none of that cue. A gold seam is meant to be unmistakable by being
 *gold*, not by pretending to be an obstruction — marking it blocked would be
 the exact lie the cue exists to prevent.
 
-### Ore is round, bright, and deliberately not rock
+### Ore is round, and deliberately not rock
 
 `hills` is an ORE DEPOSIT, and it breaks the "rock is angular" rule the
-mountains follow on purpose: at a glance, round-and-bright is a resource you
+mountains follow on purpose: at a glance, round-and-lighter is a resource you
 cut, sharp-and-dark is a wall you walk around. The deposit is scattered in
 WORLD space (no tile sprite; a boulder straddling a boundary is one whole
 rock) out of pre-rendered ROUND boulders — the tree canopy's shape language
 on stone: clean dark outline, broad lit cap, a straight quarried facet of
 fresh pale stone, the odd glint — fewer and larger, because many small chips
-is exactly what reads as gravel. The gold seam wears the same round language
-in pale quartz with real gold nuggets and veins.
+is exactly what reads as gravel. The boulders draw in `oreD`, a couple of
+shades darker than the original bright ore ramp, so a deposit sits in the
+mountain's own tonal family (it lives at the mountain's foot) while the round
+silhouette and the facet keep it plainly a find, not a wall. The gold seam
+wears the same round language in pale quartz with real gold nuggets and
+veins.
 
-Deposits themselves are few and compact — a handful of dense knots per map,
-seated against the mountains first, then at forest edges, then (small) in
-open grass — so if you are authoring a map, put the ore where the geology
-says.
+Deposits themselves are few and compact — two or three dense knots per map,
+seated IN THE CREVASSES of the mountain base first (the grass tile the most
+mountain wraps around wins, so a knot conforms to the fold of the rock's own
+foot), then at forest edges, then (small) in open grass — so if you are
+authoring a map, put the ore where the geology says.
 
 Supplying `assets/terrain/hills.png` **stands the whole scatter down** and
 your tile is drawn instead, the same rule grass, water and mountain follow.
 Author it dense, and remember it will be the only thing on that tile.
 
-Loose round pebbles in the ore's own bright ramp lie on the walkable ground
+Loose round pebbles in the deposit's own ramp lie on the walkable ground
 just outside a deposit. That is deliberate and honest — the spill says "the
 ore is over there" in the ore's own language — and it is the only stone
 allowed past the boundary, because a boulder standing on ground a unit can

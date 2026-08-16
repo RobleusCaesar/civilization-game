@@ -90,11 +90,24 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
         return c;
       };
       // skip the border ring: the outermost tiles are drawn as the off-map
-      // void (#0d0b08), so a sample taken there measures the rim, not ground
-      const idxOf = (want) => {
-        for (let y = 2; y < CFG.H - 2; y++) for (let x = 2; x < CFG.W - 2; x++)
-          if (S.map.terrain[MapGen.idx(x, y)] === want) return { x, y };
-        return null;
+      // void (#0d0b08), so a sample taken there measures the rim, not ground.
+      // For GRASS prefer a tile whose whole neighbourhood is grass: the
+      // contextual shade (darker under wood, damp by water) and the fringe
+      // scatter both land on boundary tiles, and "the first grass tile on
+      // the map" once fell beside a wood and drifted a channel just past
+      // the sample tolerance — a fixture artifact, not an override failure.
+      const idxOf = (want, quiet) => {
+        let any = null;
+        for (let y = 2; y < CFG.H - 2; y++) for (let x = 2; x < CFG.W - 2; x++) {
+          if (S.map.terrain[MapGen.idx(x, y)] !== want) continue;
+          any = any || { x, y };
+          if (!quiet) return { x, y };
+          let open = true;
+          for (let oy = -1; oy <= 1 && open; oy++) for (let ox = -1; ox <= 1; ox++)
+            if (S.map.terrain[MapGen.idx(x + ox, y + oy)] !== want) { open = false; break; }
+          if (open) return { x, y };
+        }
+        return any;
       };
       /* Sample the MEAN of a tile's middle, and compare with a tolerance: the
          ground now carries a tonal overlay and a decal scatter ON TOP of
@@ -120,7 +133,7 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
         return +(100 * hit / n).toFixed(1);
       };
       const magenta = (r, gg, bb) => r > 140 && gg < 110 && bb > 110;
-      const gAt = idxOf(T.GRASS), fAt = idxOf(T.FOREST);
+      const gAt = idxOf(T.GRASS, true), fAt = idxOf(T.FOREST);
       if (gAt && fAt && R.terrainCache) {
         const before = sample(gAt);
         Assets.terrain = {};                                   // start from the shipped state

@@ -470,11 +470,26 @@ const out = await p.evaluate(() => {
     ck('aGuttedOneIsPassedOver',
       band.tUnit !== vic.id && (!tb || tb.owner !== 'A'),
       'tUnit ' + band.tUnit + ' / tBld ' + (tb ? tb.owner + ':' + tb.key : 'none'));
-    // …but a camp's own tenders are DEFENDING, not choosing a town to sack
-    const camp = campsOf()[0];
-    const tender = G.campTenders(camp)[0];
-    const tsp = MapGen.findNear(camp.x + 2, camp.y, 3,
-      (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+    // …but a camp's own tenders are DEFENDING, not choosing a town to sack.
+    // The stray's spot has to be one the tender can actually REACH: the
+    // terrain deal is free to wall a camp's flank with rock and wood (the
+    // ore knots hug the mountains now, and one seed put hills hard against
+    // this camp), and a villager parked behind a boulder proves nothing
+    // about the ease exemption — the tender's decline there is the
+    // pathfinding rule working. canReach's best-effort path side effect is
+    // dropped before the real seek runs.
+    let camp = null, tender = null, tsp = null;
+    for (const c2 of campsOf()) {
+      const td = G.campTenders(c2)[0];
+      if (!td) continue;
+      // probe the tile CENTRE (+0.5): that is where the spawned stray will
+      // stand, and the corner is reachable from tiles the centre is not
+      const sp2 = MapGen.findNear(c2.x + 2, c2.y, 3, (x, y) =>
+        Path.passable(x, y, 'A') && !Bld.at(x, y) &&
+        Combat.canReach(td, x + 0.5, y + 0.5, 1.6));
+      td.path = null;
+      if (sp2) { camp = c2; tender = td; tsp = sp2; break; }
+    }
     const stray = Units.spawn('villager', 'A', tsp.x, tsp.y);
     tender.tUnit = 0;
     Combat.raiderSeek(tender);

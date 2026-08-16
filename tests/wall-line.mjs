@@ -216,6 +216,17 @@ const out = await p.evaluate(() => {
     // pathological sealed state to prove the detection and the cure
     // (openTheGate) still work on a town that got sealed some other way
     // (an old save, razed gates).
+    // the deal is free to park water, wood or a mountain massif hard against
+    // the ring, and then no cut can free the town — but a terrain-pocketed
+    // town is corkedGround's business (its own scenario), not openTheGate's.
+    // This scenario is about the WALL's seal, so make the ring the only
+    // barrier: open ground on the ring and the one-tile band outside it.
+    for (const [x, y] of AI.wallRing(tc))
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        const nx = x + ox, ny = y + oy;
+        if (Math.max(Math.abs(nx - cx), Math.abs(ny - cy)) < R) continue;   // the town inside stays as dealt
+        if (MapGen.onBoard(nx, ny) && !Bld.at(nx, ny)) G.clearFootprint(nx, ny, 'wall');
+      }
     let laid = 0;
     for (const [x, y] of AI.wallRing(tc)) {
       if (!MapGen.inB(x, y) || Bld.at(x, y)) continue;

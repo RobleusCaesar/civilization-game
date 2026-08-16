@@ -813,7 +813,7 @@ const Sprites = {
     const c = mk(w, hgt), g = c.getContext('2d');
     g.imageSmoothingEnabled = false;
     const f = (x, y, ww, hh, col) => { g.fillStyle = col; g.fillRect(x, y, ww || 1, hh || 1); };
-    oreBoulder(f, rr + pad, rr + pad, rr, gold ? QUARTZ_ORE : AP.ore, rr * 131 + vseed * 613, gold);
+    oreBoulder(f, rr + pad, rr + pad, rr, gold ? QUARTZ_ORE : AP.oreD, rr * 131 + vseed * 613, gold);
     c._ox = rr + pad; c._oy = rr + pad;
     _oreStamps.set(key, c);
     return c;
@@ -855,11 +855,21 @@ const Sprites = {
          exact colour a burning building wears: the one unprompted alarm in
          the game, dotted through the canopy of every second orchard. Apples
          and plums say "food" truthfully; a golden apple said "gold" and
-         "fire" at once and meant neither. */
-      const fruit = fr() < 0.5 ? AP.red[2] : AP.berry[3];           // apples on some trees, plums on others
-      for (let i = 0; i < 8; i++)                                   // ripe fruit dotted in the crown
-        f(cx - rr + 1 + ((fr() * (rr * 2 - 1)) | 0), cy - rr + 1 + ((fr() * (rr * 2 - 1)) | 0), 1, 1,
-          fr() < 0.7 ? fruit : AP.red[3]);
+         "fire" at once and meant neither.
+         AND FRUIT IS FAT: one-pixel fruit vanished into the busier ground
+         (a reported screenshot circled an orchard nobody could find), so
+         each fruit is a 2×2 with a lit corner — fewer of them, each one
+         readable — hung INSIDE the crown's own circle, never on the square
+         around it where a stray pixel floats on grass. */
+      const fruit = fr() < 0.5 ? AP.berry[1] : AP.berry[3];         // vivid apples on some trees, plums on others
+      const hi = fruit === AP.berry[1] ? AP.red[3] : AP.berry[2];
+      const nf = 4 + (fr() * 2 | 0);
+      for (let i = 0; i < nf; i++) {
+        const a2 = fr() * 6.283, d = fr() * (rr - 1.6);
+        const px2 = cx + Math.cos(a2) * d | 0, py = cy + Math.sin(a2) * d | 0;
+        f(px2, py, 2, 2, fruit);
+        f(px2, py, 1, 1, hi);                                       // the lit corner sells the sphere
+      }
     };
     // core tiles pack in and MAY straddle the edge (a cut crown always abuts
     // more orchard); fringe tiles keep every tree whole and inside the tile
@@ -871,23 +881,49 @@ const Sprites = {
     for (let i = 0; i < nt; i++)
       fruitTree(base + (r() * span) | 0, (level === 2 ? -1 : 8) + (r() * (level === 2 ? 34 : 13)) | 0,
         seed + i * 23 + 11);
-    f(13, 27, 1, 1, AP.red[1]); f(27, 12, 1, 1, AP.red[2]);         // windfall fruit
+    f(13, 27, 2, 1, AP.berry[1]); f(27, 12, 2, 1, AP.berry[3]);     // windfall fruit
   }
   function berryTile(p, seed, level) {
     const f = p.f, r = ART.rng(seed + 7);          // transparent floor — render paints the grass ground
     level = level || 0;
+    /* THE BUSH SPEAKS THE CANOPY'S AND THE ORE'S LANGUAGE (a reported
+       screenshot: forage "fades into the background a little" on the busier
+       ground). Three stacked shadedCircles gave a soft mound with no edge,
+       and one-pixel berries disappeared into it. A bush is now built exactly
+       the way an ore boulder and a tree crown are: a lumpy round body with a
+       CLEAN DARK OUTLINE (darkest away from the light — the rim is what
+       separates it from the grass), hard value steps inside, one confident
+       lit cap upper-left, and FAT 2×2 berry clusters with a pink sheen on
+       the lit corner — fewer berries than the twelve specks before, every
+       one of them readable at play zoom. */
     const bush = (cx, cy, s2) => {
-      const rr = (level === 2 ? 4 : 3) + (r() * 3 | 0);             // varied size
+      const rr = (level === 2 ? 5 : 4) + (r() * 2 | 0);             // a shade bigger — it has fruit to carry
       f(cx - rr, cy + rr + 1, rr * 2 + 1, 1, AP.leaf[0]);           // ground shadow
-      ART.shadedCircle(f, cx + 1, cy + 1, rr, [AP.leaf[0], AP.leaf[0], AP.leaf[0]], 1);   // dark underside
-      ART.shadedCircle(f, cx, cy, rr, AP.leaf, 2);                  // green bush
-      ART.shadedCircle(f, cx - 1, cy - 1, (rr * 0.6) | 0, AP.leaf, 3);   // sunlit crown
       const br = ART.rng(s2);
+      const ph = br() * 6.283, lump = 0.10 + br() * 0.06;
+      const radAt = (a2) => rr * (0.92 + lump * Math.sin(a2 * 3 + ph) + 0.05 * Math.sin(a2 * 5 - ph));
+      const inside = (dx, dy, m) => { const d = Math.hypot(dx, dy);
+        return d < 0.01 || d <= radAt(Math.atan2(dy, dx)) - m; };
+      for (let dy = -rr - 1; dy <= rr + 1; dy++) for (let dx = -rr - 1; dx <= rr + 1; dx++) {
+        if (!inside(dx, dy, 0)) continue;
+        let c;
+        if (!inside(dx, dy, 1.1)) c = (dx + dy > 0) ? AP.leaf[0] : AP.leaf[1];   // clean outline
+        else { const t2 = dx + dy;
+          c = t2 < -rr * 0.55 ? AP.leaf[3] : t2 < rr * 0.3 ? AP.leaf[2] : AP.leaf[1]; }
+        f(cx + dx, cy + dy, 1, 1, c);
+      }
+      const hx = cx - (rr * 0.3) | 0, hy = cy - (rr * 0.34) | 0, hr = Math.max(1, (rr * 0.32) | 0);
+      for (let dy = -hr; dy <= hr; dy++) for (let dx = -hr; dx <= hr; dx++)      // the lit cap
+        if (dx * dx + dy * dy <= hr * hr && inside(hx - cx + dx, hy - cy + dy, 1.3))
+          f(hx + dx, hy + dy, 1, 1, AP.leaf[4]);
       const hue = br() < 0.5 ? AP.berry[1] : AP.berry[3];           // whole bush reads red OR purple
-      for (let i = 0; i < 12; i++) {                                // dense, vivid clustered berries
-        const bx = cx - rr + ((br() * (rr * 2)) | 0), by = cy - rr + 1 + ((br() * (rr * 2 - 1)) | 0);
-        f(bx, by, 1, 1, br() < 0.75 ? hue : AP.berry[0]);
-        if (br() < 0.3) f(bx, by - 1, 1, 1, AP.berry[2]);           // bright pink highlight
+      const nCl = 4 + (br() * 3 | 0);
+      for (let i = 0; i < nCl; i++) {                               // fat 2×2 berry clusters
+        const a2 = br() * 6.283, d = br() * (rr - 2);
+        const bx = cx + Math.cos(a2) * d | 0, by = cy + Math.sin(a2) * d | 0;
+        if (!inside(bx - cx + 1, by - cy + 1, 1)) continue;
+        f(bx, by, 2, 2, br() < 0.8 ? hue : AP.berry[0]);
+        f(bx, by, 1, 1, AP.berry[2]);                               // pink sheen on the lit corner
       }
     };
     const nb = level === 2 ? 56 + (r() * 10 | 0) : level === 1 ? 16 + (r() * 5 | 0) : 3 + (r() * 2 | 0);
@@ -895,7 +931,7 @@ const Sprites = {
     for (let i = 0; i < nb; i++)
       bush(base + (r() * span) | 0, (level === 2 ? -1 : 6) + (r() * (level === 2 ? 34 : 19)) | 0,
         seed + i * 17 + 3);
-    f(27, 26, 1, 1, AP.berry[1]); f(4, 17, 1, 1, AP.berry[3]);      // dropped berries
+    f(27, 26, 2, 1, AP.berry[1]); f(4, 17, 2, 1, AP.berry[3]);      // dropped berries
   }
   /* FERTILE BLOCKS MOVEMENT TOO — a standing orchard or a berry thicket is
      something you walk around — so it takes the forest's and the ore's

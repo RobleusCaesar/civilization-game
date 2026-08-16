@@ -2619,6 +2619,27 @@ hard `cnt === 8` gate on purpose and is never noised: those tiles carry crowns
 CUT BY THE TILE EDGE and only match up because every neighbour is the same
 kind, so promoting one to the border shows half a tree against open grass.
 
+**FORAGE READS AS FRUIT** (`berryTile` / `orchardTile` in sprites.js, from a
+screenshot report: "hard to tell when something is a berry bush or orchard —
+it fades into the background"): the busier ground swallowed the old forage,
+whose bushes were three stacked shadedCircles (a soft mound with no edge) and
+whose fruit was single pixels. A berry bush is now built exactly the way an
+ore boulder and a tree crown are — a lumpy round body with a CLEAN DARK
+OUTLINE (darkest away from the light; the rim is what separates it from the
+grass), hard value steps inside, one confident lit cap upper-left — and
+slightly bigger. FRUIT IS FAT: 2×2 clusters with a lit corner, fewer than the
+twelve specks before but every one readable at play zoom, hung INSIDE the
+crown's own circle (a square scatter floats stray pixels on the grass at the
+corners). Berries are `berry[1]` red or `berry[3]` purple per bush with a
+`berry[2]` pink sheen; orchard apples moved from `red[2]` to the brighter
+`berry[1]` (a berry-ramp member, so the colour audit's FERTILE exemption
+covers it), plums stay `berry[3]`. Fruit still NEVER wears the fire ramp.
+The `coreScatter` 'crop' tussock is RETIRED with this (see the audit block
+below): the fruit gradient itself now says where the core is — a dense tile
+bears an order of magnitude more fruit than a sparse one — and brown stems
+painted over a closed canopy read as mud, which was half of the original
+"fades into the background" complaint.
+
 **STONE THAT READS AS STONE** (`Sprites.rockStamp` / `facetFill` / `facetShade`
 / `angPts` / `ROCK_KINDS`, `AP.granite` / `slate` / `sandst`, pinned by
 `andRockIsBuiltOfFiveFormsInThreeStones` and `andTheMassHasRealValueContrast`):
@@ -2665,10 +2686,16 @@ stamps SAY changed in Part B: ore deliberately BREAKS the "rock is angular"
 rule the mountains follow. An ore boulder is ROUND — the tree canopy's shape
 language on stone: a clean dark outline, a broad lit cap, a straight QUARRIED
 facet of fresh pale stone (the cue that says "somebody will cut this"), a
-glint — in the bright `ore` ramp, FEWER and LARGER (many small chips is
-exactly what read as gravel). The contrast is the point and it is measured:
-ore core mean luminance 143 against the mountain rock's 88 — at a glance,
-round-and-bright is a resource, sharp-and-dark is a wall. The GOLD SEAM wears
+glint — FEWER and LARGER (many small chips is exactly what read as gravel).
+The stamps draw in `AP.oreD`, a couple of shades darker than the original
+`ore` ramp: a deposit lives in the crevasses at the mountain's foot, so it
+sits in the mountain's own tonal family, while the ROUND silhouette and the
+facet keep it unmistakably a resource (`AP.ore` itself is untouched — it
+still backs the spent-quarry boulders and a ground decal). The contrast is
+still measured: ore core mean luminance 131.9 against the mountain rock's
+88 — at a glance, round-and-lighter is a resource, sharp-and-dark is a wall.
+Darken `oreD` further and `andOreOutshinesTheMountainRock` (mean ≥ 115, and
+≥ mountain + 25) says when it stops reading as a find. The GOLD SEAM wears
 the same round language in pale quartz with nuggets and a vein in the real
 gold ramp, so ore reads as one family and gold as its rich cousin.
 **A WORKABLE TILE IS NEVER INVISIBLE**: a lone seeded hills tile reads a
@@ -2677,20 +2704,25 @@ resource with nothing drawn on it — so any tile the lattice leaves bare gets
 one centred boulder of its own.
 **WHAT MAY CROSS THE LINE IS LIMITED ON PURPOSE**: `ROCK_WANDER` stays well
 under half a tile, the fringe thins out (`ROCK_FRINGE`), and past the
-boundary only round SCREE pebbles in the ore's own bright ramp lie on the
-ground — the spill that says "the ore is over there", in the ore's own
+boundary only round SCREE pebbles in the deposit's own `oreD` ramp lie on
+the ground — the spill that says "the ore is over there", in the ore's own
 language. A supplied `assets/terrain/hills.png` still wins and stands the
 whole scatter down.
-**ORE IS A CLAIM, NOT A CARPET** (map.js, Part B2/B3): a settlement needs
-three to five workable deposits, not sprawling fields — measured across 42
-seed/size combos the totals fell from ~550 tiles to 12–76, each deposit one
-compact dense KNOT (a ragged disc with a real core). Placement has geological
-logic: knots seat FIRST against the mountains, then at forest edges, then
-(small) in open grass; the islands' central mountain gets its ring for free.
-The scarce-stone map keeps its one lean 6–8 tile pocket untouched, the
-`START_RESOURCE` floor still guarantees every seat 3 workable tiles in
-radius 14 (verified: worst seat across all 42 combos = exactly 3), and the
-per-map floor (9 tiles) keeps a bad roll from starving stone outright.
+**ORE IS A CLAIM, NOT A CARPET — AND IT SITS IN THE CREVASSES** (map.js,
+Part B2/B3, tightened again on a player report that deposits felt strewn
+about): a settlement needs a FEW workable deposits, not sprawling fields —
+`wantDeposits` is `max(2, round(1.3 × f))`, each one a compact dense KNOT (a
+ragged disc with a real core). The primary seating is a SCORED SEARCH, not
+rejection sampling: every grass tile TOUCHING the mountain (r1) is scored by
+how much mountain wraps it within r2, and the deepest re-entrants win — so a
+knot sits in the fold at the mountain's base and, since a knot only ever
+paints grass, it conforms around the rock's own foot. Fallbacks (forest
+edge, then open grass) keep a mountainless map supplied. Measured across 42
+seed/size combos the totals now run 12–44 tiles. The scarce-stone map keeps
+its one lean 6–8 tile pocket untouched, the `START_RESOURCE` floor still
+guarantees every seat 3 workable tiles in radius 14 (verified: worst seat
+across all 42 combos = exactly 3), and the per-map floor (9 tiles) keeps a
+bad roll from starving stone outright.
 **AN OVERLAPPING LAYER CAN ONLY BE REPAIRED INSIDE THE GROUND THAT WAS ERASED**
 (`R.clipTiles`, pinned by `andDiggingItLeavesNoStaleShore`): rocks from
 neighbouring tiles overlap and the bake composites them in ONE global row-major
@@ -2781,8 +2813,10 @@ What the eye reads as gold, fire or berry is the bright end.
 found by eye were spread across all three layers. `R.coreScatter`'s `crop` drew
 a standing four-pixel SHEAF in `thatch[1]`/`thatch[2]`, as big on screen as the
 berry bush beside it, so the eye read a golden OBJECT lying in the orchard and
-could not tell whether it was a resource, a harvestable or litter (now a low
-tussock of dry stems in muted browns). `orchardTile` bore half its fruit in
+could not tell whether it was a resource, a harvestable or litter (first muted
+to a tussock of dry stems, now RETIRED outright with the forage redesign —
+brown stems painted over a closed canopy read as mud, and the fruit itself now
+carries the core-richness cue). `orchardTile` bore half its fruit in
 `fire[2]` with `fire[3]` highlights — the exact colour of a burning building,
 the one unprompted alarm in the game, dotted through every second canopy (now
 apples and plums, which say "food" truthfully). `drawStump`'s cut face was
