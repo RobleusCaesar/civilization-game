@@ -111,6 +111,30 @@ no longer is.) Covers
 `wallRelocate` / `mendWallLine` / `maybeWalls` / `playerLanes` / `foeSoftDoors`,
 `Bld.tileFree` / `canPlace` / `blockAt`, and `Path.passable`. `AI.WALL_R` is the
 single source of truth for where the line runs — never hard-code the radius.
+**THE JAR OPENS WHEN THE WAR IS AT THE DOOR** (`AI.fortUrgent` /
+`affordFort` / `read.foeSiegeKnown`, same test — from a real day-217 save):
+the chief died with 2,278 gold banked and not ONE wall laid in the whole
+run. The TC3 savings jar (`ai.goal` via `affordFree`) refused every stone —
+the "ring never raids the war chest" rule, held absolute, killed the town
+the other way round from the failure it was written for. `fortUrgent`
+(threat at the hall, a DEFEND posture, or the player's siege train KNOWN)
+now lets fortifications pay from the jar: `maybeWalls`' budget gate and the
+breach-mend both go through `affordFort`, and the tower utility passes
+`tryBuild('tower', fortNow)`. A siege train, once seen, stays known for 30
+days (`ai.memory.siegeSeen` → `read.foeSiegeKnown`) — `foeSiegeSeen` was
+this-frame vision, so a catapult that rolled behind a hill un-counted
+itself the same day; fog-honest, since the memory is of something its own
+eyes saw. `foeSiegeKnown` also adds heavily to the tower (+40) and wall
+(+34) utilities and their upgrade twins, `wallCap` rose from `6 + lv*3` to
+`12 + lv*6` (+quarries) so a ring can actually close (a full WALL_R ring is
+40 tiles and the old cap topped out at 12-15), tower re-tiering outranks
+the war halls while urgent (an L1 tower is one catapult volley from
+rubble), a threatened chief keeps an extra engine home (engines on watch
+fire by themselves — the defensive battery), and `counterMix` answers a
+seen siege train with bows for the parapet as well as riders. Verified on
+the save: 0 walls → 6 sections + a fourth tower within 25 days; a fresh
+passive run on the same seed holds 7 finished sections and four L2 towers
+by day 140 against the original run's NOTHING at day 217.
 **A SHOOTING GALLERY IS NOT A BUILDING SITE** (`AI.inGallery` /
 `galleryMask`, same test): a real day-146 game had the player park two
 catapults on the far bank of a channel and shell the rival's shoreline tower —
@@ -516,6 +540,17 @@ post is forgotten on arrival. The subtle half: death cleanup (`Units.damage` /
 `despawn` / the plague fall) clears every attacker's `tUnit` directly, so the
 combat branch's "target gone → return" NEVER fires on a kill — each cleanup
 site sends defending hunters home itself, or they idle at the kill site.
+**Where a frightened villager runs** (`Units.fleeSpot`, same test): BEHIND
+the nearest of their own soldiers first — a spear between you and the raider
+is better cover than a long sprint to the hall, and it walks the fight into
+the army instead of scattering the workforce across open ground — and the
+Town Center only when nobody is under arms (`FLEE_GUARD_R` 16 is how far
+they'll look). The hiding spot is a step PAST the soldier on the far side
+from the threat, so the villager genuinely puts the fighter between
+themselves and it. Owner-agnostic: both `Units.damage` flee branches and the
+rival's idle threat-scurry share the one helper. Naval hulls never count as
+cover, and an armed player village (lodge L3 spears) still stands and fights
+as before.
 
 **Work order** (`tests/work-order.mjs`): a line of walls or trenches must never
 box the worker in, or box it out of its own remaining work — "if I do spot 2

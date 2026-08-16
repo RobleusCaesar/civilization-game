@@ -173,6 +173,35 @@ const out = await p.evaluate(() => {
     ck('breachCounted', (S.ai.wallFix || {}).breach === 1, JSON.stringify(S.ai.wallFix));
   }
 
+  /* ---- 4b. THE JAR OPENS WHEN THE WAR IS AT THE DOOR (a real day-217
+     save): the chief died with 2,278 gold banked and not one wall laid —
+     the TC3 savings jar (ai.goal via affordFree) refused every stone while
+     the player's six catapults ground the town flat. AI.fortUrgent /
+     affordFort arbitrate now: calm keeps saving, but threat at the hall, a
+     DEFEND posture, or the player's siege train KNOWN opens the jar for
+     fortifications — and a siege train, once seen, stays known for 30 days
+     (foeSiegeKnown), because engines don't evaporate by rolling out of
+     sight. Fog-honest: the memory is of something the chief's own eyes saw. */
+  {
+    setup('wg4b');
+    S.ai.res = { food: 500, wood: 300, stone: 300, gold: 300 };
+    S.ai.goal = { cost: { wood: 600, stone: 450, gold: 120 }, until: S.day + 60 };
+    S.ai.posture = 'CONSOLIDATE';
+    S.ai.read = Object.assign({}, S.ai.read, { underThreat: false, foeSiegeKnown: false });
+    ck('theJarStillGuardsInPeace', !AI.affordFree({ wood: 15 }) && !AI.affordFort({ wood: 15 }),
+      'calm: the wall wood stays reserved for the hall');
+    S.ai.read.underThreat = true;
+    ck('fortUrgentOpensTheJar', AI.fortUrgent() && AI.affordFort({ wood: 15 }),
+      'threatened: the same wood pays for stone');
+    // a siege train seen ten days ago — and out of sight since — is still known
+    S.ai.read.underThreat = false;
+    (S.ai.memory = S.ai.memory || {}).siegeSeen = S.day - 10;
+    AI.assess();
+    ck('aSeenSiegeTrainIsRemembered',
+      S.ai.read.foeSiegeKnown === true && AI.fortUrgent(),
+      'foeSiegeKnown holds 30 days past the sighting');
+  }
+
   // ---- 5. SOFT DOOR on the PLAYER's ring lowers that lane's defence ----
   {
     const tc = setup('wg5');

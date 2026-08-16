@@ -749,9 +749,14 @@ const AI = {
      that never moved. So the ring is capped by what the STONE economy can
      maintain: quarries buy you wall. */
   wallCap(tc) {
+    /* Raised from 6 + lv*3 (the day-217 save): a full WALL_R ring is 40
+       tiles, and the old cap topped out at 12-15 sections without quarries —
+       a ring that could never close, so the "finish before extending" rule
+       had nothing to finish. The cap still scales with the hall (each tier
+       is more ring to re-face) and quarries (stone to re-face it with). */
     const P = this.persona();
     const q = Bld.list('A').filter(b => b.key === 'quarry' && Bld.done(b)).length;
-    return 6 + (tc.level || 1) * 3 + q * 4 + (P.walls ? 6 : 0);
+    return 12 + (tc.level || 1) * 6 + q * 4 + (P.walls ? 6 : 0);
   },
 
   /* RULE 3 — WALK THE LINE. Classify every tile of the intended ring, so the
@@ -1101,7 +1106,9 @@ const AI = {
       if (laid > 0) { fix.detour++; return true; }
     }
     for (const h of audit.breach) {
-      if (!this.affordFree(CFG.BUILDINGS.wall.levels[0].cost)) break;
+      // a breach under an urgent threat is re-closed from the jar if it must
+      // be (affordFort) — a hole in the ring is the one thing a siege exploits
+      if (!this.affordFort(CFG.BUILDINGS.wall.levels[0].cost)) break;
       // …but a "breach" that is the town's LAST WAY OUT is a gate, not a hole
       if (this.wallWouldSeal(tc, h.x, h.y) || this.corkedGround(tc, h)) continue;
       if (Bld.canPlace('A', 'wall', h.x, h.y).ok && Bld.place('A', 'wall', h.x, h.y)) { fix.breach++; return true; }
@@ -1137,8 +1144,10 @@ const AI = {
     const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0;
     const gaps = this.perimeterGaps(cx, cy, 5);
     if (!gaps.length) return;                       // terrain already seals the town
-    // how many tiles to lay this call — a real budget, not a flat 3
-    let budget = 3 + (P.walls ? 2 : 0) + (ai.posture === 'DEFEND' ? 2 : 0) + (read.underThreat ? 2 : 0);
+    // how many tiles to lay this call — a real budget, not a flat 3. A siege
+    // train known to exist doubles the urgency: stone is the only answer to it
+    let budget = 3 + (P.walls ? 2 : 0) + (ai.posture === 'DEFEND' ? 2 : 0) + (read.underThreat ? 2 : 0)
+      + (read.foeSiegeKnown ? 3 : 0);
     /* THE GATE MUST OPEN ONTO SOMEWHERE. The widest seam's midpoint was taken on
        trust, and a real game gated the one ring tile whose far side was a lake —
        a door into deep water, with the host shut in behind it. Walk the seam for
@@ -1181,11 +1190,14 @@ const AI = {
         // from >= 24 tiles of marchable ground is refused (gates exempt: a
         // gate opens for its owner)
         if (!isGate && (this.wallWouldSeal(tc, x, y) || this.corkedGround(tc, { x, y }))) continue;
-        // THE RING NEVER RAIDS THE WAR CHEST. Walling ran outside the savings
-        // reservation, so a chief saving for its next Town Center tier spent the
-        // fund on palisade a fistful at a time and never got there (a real game
-        // sat at Lv 2 to day 159, so no workshop, no engines, no elites).
-        if (!this.affordFree(CFG.BUILDINGS[key].levels[0].cost)) return;
+        // THE RING NEVER RAIDS THE WAR CHEST — except when the war is at the
+        // door. Walling ran outside the savings reservation, so a chief saving
+        // for its next Town Center tier spent the fund on palisade a fistful at
+        // a time and never got there (a real game sat at Lv 2 to day 159). But
+        // held ABSOLUTE, the same jar killed a town the other way: the day-217
+        // save died walless with the fund untouched. affordFort arbitrates —
+        // urgent (threatened / DEFEND / siege known) spends the jar, calm saves.
+        if (!this.affordFort(CFG.BUILDINGS[key].levels[0].cost, read)) return;
         if (!Bld.canPlace('A', key, x, y).ok) continue;
         Bld.place('A', key, x, y);
         placed++;
@@ -1346,6 +1358,23 @@ const AI = {
       if ((ai.res[k] || 0) - cost[k] < reserve) return false;
     }
     return Bld.canAfford(cost, ai.res);
+  },
+
+  /* WHEN THE WAR IS AT THE DOOR, FORTIFY FIRST (tests/wall-line.mjs, from a
+     real day-217 save): the chief died with 2,278 gold banked and not one
+     wall laid in the whole run — the TC3 savings jar (ai.goal) outranked
+     every stone while the player's six catapults ground the town flat.
+     Threat at the hall, a DEFEND posture, or the player's siege train KNOWN
+     (foeSiegeKnown — seen within 30 days; engines don't evaporate because
+     they rolled out of sight) makes fortification URGENT: towers, walls and
+     their upgrades may then pay from the jar, because the hall tier the jar
+     is saving for is worthless if the town is razed first. */
+  fortUrgent(read) {
+    read = read || (S.ai && S.ai.read) || {};
+    return !!(read.underThreat || read.foeSiegeKnown || (S.ai && S.ai.posture === 'DEFEND'));
+  },
+  affordFort(cost, read) {
+    return this.fortUrgent(read) ? Bld.canAfford(cost, S.ai.res) : this.affordFree(cost);
   },
 
   tryBuild(key, ignoreGoal) {
@@ -2200,6 +2229,13 @@ const AI = {
     const strikeWindow = kFresh && foePower >= 2 &&
       (foeAway >= foeHome + 3 || (foeHome === 0 && foeAway >= 2));
 
+    // A SIEGE TRAIN, ONCE SEEN, IS KNOWN (the day-217 save): foeSiegeSeen is
+    // this-frame vision, so a catapult that rolled behind a hill un-counted
+    // itself and every fortification utility relaxed the same day. Engines
+    // don't evaporate — remember the sighting for 30 days, fog-honestly (the
+    // memory is of something its own eyes saw).
+    if (foeSiege > 0) (ai.memory = ai.memory || {}).siegeSeen = S.day;
+
     ai.read = {
       day: S.day,
       knownTC: knownTC ? { x: knownTC.x, y: knownTC.y, seen: knownTC.seen } : null, scouted: !!knownTC,
@@ -2211,6 +2247,8 @@ const AI = {
       foeCavHeavy: foeCav >= 2 && foeCav >= foeArch && foeCav >= foeMelee,
       foeArchHeavy: foeArch >= 2 && foeArch > foeCav && foeArch >= foeMelee,
       foeSiegeSeen: foeSiege > 0,
+      foeSiegeKnown: foeSiege > 0 ||
+        !!(ai.memory && ai.memory.siegeSeen != null && S.day - ai.memory.siegeSeen <= 30),
       exposed, softCount: exposed.length,
       myEcon, foeEcon: foeEconEst, econEdge: myEcon - foeEconEst,
       myBld, foeBld: known.length, underCon,
@@ -2333,6 +2371,9 @@ const AI = {
       if (cav && (k === 'defender' || k === 'archer' || k === 'longbow' || k === 'elite')) x *= 1.9;
       if (arch && (k === 'rider' || k === 'horsearcher' || k === 'lancer')) x *= 1.9;
       if (siege && (k === 'rider' || k === 'horsearcher' || k === 'lancer')) x *= 1.4;
+      // …and bows to man the walls the siege read is about to raise — arrows
+      // over a parapet are what make the stone cost the attacker something
+      if (siege && (k === 'archer' || k === 'longbow' || k === 'marksman')) x *= 1.5;
       return [k, x];
     });
     const tot = out.reduce((a, [, w]) => a + w, 0) || 1;
@@ -2584,18 +2625,27 @@ const AI = {
     // threatened one builds toward covering its whole frontage. Coverage-aware
     // placement (towerSpot) means each new tower earns its keep.
     const threatened = read.underThreat || read.foeRush || read.threat > 0 || post === 'DEFEND';
+    // THE PLAYER'S SIEGE TRAIN IS THE LOUDEST ALARM THERE IS (the day-217
+    // save): six catapults ground a walless town flat while the tower/wall
+    // utilities scored like any calm day. foeSiegeKnown (seen within 30 days)
+    // now outranks nearly everything — engines are slow, stone is the answer,
+    // and the window to raise it is before they roll up. fortUrgent also lets
+    // these spend the savings jar (tryBuild's second arg / affordFort).
+    const fortNow = this.fortUrgent(read);
     add(18 + (P.walls ? 14 : 0) + (post === 'DEFEND' ? 38 : 0) + (read.underThreat ? 20 : 0) +
-        (read.foeRush ? 16 : 0) + (threatened ? Math.min(18, (read.homeExposed || 0) * 1.4) : 0) -
-        (have.tower || 0) * 5,
-      () => this.tryBuild('tower'));
+        (read.foeRush ? 16 : 0) + (read.foeSiegeKnown ? 40 : 0) +
+        (threatened ? Math.min(18, (read.homeExposed || 0) * 1.4) : 0) -
+        (have.tower || 0) * 3,
+      () => this.tryBuild('tower', fortNow));
     // WALLS scale with THREAT and posture — a wall-persona or a threatened chief
     // fortifies; a safe non-wall chief doesn't burn wood ringing open ground
     // against nobody (that starves the offence against a passive foe).
-    // ...and a MATURE town closes its seams whatever the persona — by day 60 an
+    // ...and a MATURE town closes its seams whatever the persona — by day 45 an
     // open village is an invitation, and every chief knows it
-    if ((S.day >= 18 || read.foeRush) && read.homeGapCount > 0 && (P.walls || threatened || S.day >= 60)) {
-      const wu = (P.walls ? 26 : 10) + (post === 'DEFEND' ? 34 : 0) + (read.underThreat ? 26 : 0) +
-        (read.foeRush ? 18 : 0) + (threatened ? Math.min(22, read.homeExposed * 2) : 0);
+    if ((S.day >= 18 || read.foeRush) && read.homeGapCount > 0 && (P.walls || threatened || S.day >= 45)) {
+      const wu = (P.walls ? 26 : 16) + (post === 'DEFEND' ? 40 : 0) + (read.underThreat ? 30 : 0) +
+        (read.foeRush ? 18 : 0) + (read.foeSiegeKnown ? 34 : 0) +
+        (threatened ? Math.min(22, read.homeExposed * 2) : 0);
       add(wu, () => { this.maybeWalls(tc); return true; });
     }
 
@@ -2661,6 +2711,11 @@ const AI = {
     const ups = Bld.list('A').filter(b => b.key !== 'tc' && Bld.canUpgrade(b).ok);
     if (ups.length) {
       const prio = { barracks: 3, range: 3, stable: 3, siege: 2, tower: 2, dock: 2 };
+      // STRONG TOWERS, NOT MORE KINDLING: with the enemy's engines known or
+      // the town under threat, re-tiering a standing tower outranks the war
+      // halls — an L1 tower is one catapult volley from rubble, an L3 one
+      // holds long enough for the garrison to answer
+      if (this.fortUrgent(read)) prio.tower = 5;
       ups.sort((a, b2) => (prio[b2.key] || 1) - (prio[a.key] || 1));
       const sapUp = (stalledClear || stalledBridge) && ups.find(b => b.key === 'sapper');
       // the hall we're saving for outranks the rest of the queue — that tier is
@@ -2679,13 +2734,13 @@ const AI = {
     // turtling or under threat, and a wall-persona always values it.
     if (Bld.aiCanUpgradeWalls()) {
       const wallUp = 22 + (P.walls ? 18 : 0) + (post === 'DEFEND' ? 20 : 0) +
-        (read.underThreat ? 22 : 0) + (read.foeSiege > 0 ? 16 : 0);
+        (read.underThreat ? 22 : 0) + (read.foeSiegeKnown ? 28 : 0);
       add(wallUp, () => Bld.aiUpgradeWalls());
     } else if (tc.level >= 2 && Bld.forts('A').some(b => (b.level || 1) < Math.min(3, tc.level))) {
       // can't re-face the whole ring in one go (few rivals ever can) — re-face
       // the most exposed stretch instead, so the palisade keeps turning to stone
       const wallUp = 20 + (P.walls ? 16 : 0) + (post === 'DEFEND' ? 18 : 0) +
-        (read.underThreat ? 20 : 0) + (read.foeSiege > 0 ? 14 : 0);
+        (read.underThreat ? 20 : 0) + (read.foeSiegeKnown ? 24 : 0);
       add(wallUp, () => Bld.aiRefaceWalls(4));
     }
 
@@ -2742,7 +2797,7 @@ const AI = {
        a fortified town with nothing to break it — the exact reason an assault
        stalls at the gate. Once the workshop stands, it keeps a small battery on
        hand: engines are the answer to towers as well as walls. */
-    if (read.foeWall >= 2 || (read.foeTower || 0) > 0 || ai.posture === 'PUSH') {
+    if (read.foeWall >= 2 || (read.foeTower || 0) > 0 || ai.posture === 'PUSH' || this.fortUrgent(read)) {
       const ws = S.buildings.find(b => b.owner === 'A' && b.key === 'siege' &&
         Bld.done(b) && !b.upgrading && b.queue.length === 0);
       if (ws) {
@@ -2750,8 +2805,12 @@ const AI = {
         // a lone engine only pecks at a fortress — scale the siege TRAIN to how much
         // wall there is to break, and a full PUSH brings one more. So a heavily
         // fortified hall meets three or four engines pounding a segment, not one.
+        // fortUrgent counts too: an engine standing home is a DEFENSIVE battery
+        // (engines on watch fire by themselves — tests/defend-hold.mjs), so a
+        // threatened chief keeps a couple behind its towers.
         const towered = (read.foeTower || 0) > 0 ? 1 : 0;
-        const wantBreak = Math.min(4, 1 + Math.floor(read.foeWall / 2) + towered + (ai.posture === 'PUSH' ? 1 : 0));
+        const wantBreak = Math.min(4, 1 + Math.floor(read.foeWall / 2) + towered +
+          (ai.posture === 'PUSH' ? 1 : 0) + (this.fortUrgent(read) ? 1 : 0));
         if (breakers < wantBreak) {
           if (ws.level >= 3 && ai.res.gold >= 70) Bld.train(ws, 'trebuchet');
           else Bld.train(ws, 'catapult');

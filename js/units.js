@@ -1203,11 +1203,15 @@ const Units = {
           u.fleeT = 0.4;
           const foe = Combat.nearestUnit(u.x, u.y, 5,
             o => (o.owner === 'P' && this.isMilitary(o)) || (o.owner === 'R' && !this.isTransport(o)));
-          if (foe && tc && Math.hypot(u.x - Bld.cx(tc), u.y - Bld.cy(tc)) > 2.5) {
-            const sx = tc.x + ((Math.random() * 5) | 0) - 2, sy = tc.y + Bld.size('tc') + ((Math.random() * 3) | 0) - 1;
-            if (Path.passable(sx, sy, 'A')) this.setPath(u, sx, sy);
-            u.wanderT = 2 + Math.random() * 2;
-            continue;
+          if (foe) {
+            // behind the nearest soldier first, the hall only when nobody is
+            // under arms (fleeSpot) — the same cover rule the flee branch uses
+            const spot = this.fleeSpot(u, foe.x, foe.y);
+            if (spot && Math.hypot(u.x - spot.x, u.y - spot.y) > 2.5) {
+              if (Path.passable(spot.x, spot.y, 'A')) this.setPath(u, spot.x, spot.y);
+              u.wanderT = 2 + Math.random() * 2;
+              continue;
+            }
           }
         }
         u.wanderT -= dt;
@@ -1838,6 +1842,33 @@ const Units = {
     }
   },
 
+  /* WHERE A FRIGHTENED VILLAGER RUNS (tests/defend-hold.mjs): BEHIND the
+     nearest of their own soldiers first — a spear between you and the raider
+     is better cover than a long sprint to the hall, and it walks the fight
+     into the army instead of scattering the workforce across open ground —
+     and the Town Center only when nobody is under arms. The hiding spot is a
+     step PAST the soldier on the far side from the threat, so the villager
+     genuinely puts the fighter between themselves and it. Shared by the
+     damage() flee branches (both tribes) and the rival's idle scurry. */
+  FLEE_GUARD_R: 16,   // how far a villager will look for a soldier to shelter behind
+  fleeSpot(u, ax, ay) {
+    let best = null, bd = this.FLEE_GUARD_R;
+    for (const o of S.units) {
+      if (o === u || o.owner !== u.owner || !this.isMilitary(o) || this.isNaval(o)) continue;
+      const d = Math.hypot(o.x - u.x, o.y - u.y);
+      if (d < bd) { bd = d; best = o; }
+    }
+    if (best) {
+      const dx = best.x - (ax == null ? u.x : ax), dy = best.y - (ay == null ? u.y : ay);
+      const dd = Math.hypot(dx, dy) || 1;
+      const spot = MapGen.findNear(Math.round(best.x + dx / dd * 1.5),
+        Math.round(best.y + dy / dd * 1.5), 3, (x, y) => Path.passable(x, y, u.owner));
+      if (spot) return spot;
+    }
+    const tc = Bld.tcOf(u.owner);
+    return tc ? { x: tc.x, y: tc.y + Bld.size(tc) } : null;
+  },
+
   damage(u, amt, attackerId, attackerOwner) {
     u.hp -= Math.max(1, amt);
     const attacker = attackerId ? this.get(attackerId) : null;
@@ -1918,15 +1949,16 @@ const Units = {
     }
     if (!attacker) return;
     if (this.isVillager(u) && u.owner === 'P' && !this.villagerArmed()) {
-      const tc = Bld.tcOf('P');
-      if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + Bld.size(tc)); }
+      const spot = this.fleeSpot(u, attacker.x, attacker.y);
+      if (spot) { u.task = { type: 'flee' }; this.setPath(u, spot.x, spot.y); }
     } else if (this.isVillager(u) && u.owner === 'A') {
       // a townsfolk militiaman stands and fights (see Combat.acquire);
-      // otherwise the rival's people run for their hall when struck
+      // otherwise the rival's people run for cover when struck (fleeSpot:
+      // behind the nearest soldier, the hall only when nobody is under arms)
       if (u.militia) { u.tUnit = attacker.id; }
       else {
-        const tc = Bld.tcOf('A');
-        if (tc) { u.task = { type: 'flee' }; this.setPath(u, tc.x, tc.y + Bld.size(tc)); }
+        const spot = this.fleeSpot(u, attacker.x, attacker.y);
+        if (spot) { u.task = { type: 'flee' }; this.setPath(u, spot.x, spot.y); }
       }
     } else if (this.isMilitary(u) || this.isWild(u) || this.isVillager(u) || this.isRaider(u)) {
       // ABSOLUTE FOCUS (tests/army-strategies.mjs): a strike-stance soldier

@@ -286,6 +286,39 @@ const out = await p.evaluate(() => {
     ck('weaponlessHullNeverPokes', !locked, `tUnit=${st.tUnit}`);
   }
 
+  /* ---- 10b. WHERE A FRIGHTENED VILLAGER RUNS (Units.fleeSpot): BEHIND the
+     nearest of their own soldiers first — a spear between you and the raider
+     is better cover than a long sprint to the hall, and it walks the fight
+     into the army instead of scattering the workforce — and the Town Center
+     only when nobody is under arms. The hiding spot is a step PAST the
+     soldier on the far side from the threat. Owner-agnostic: the rival's
+     townsfolk run by the same rule. ---- */
+  {
+    const { tc } = setup('dh14');
+    S.units = [];
+    const guard = Units.spawn('defender', 'P', tc.x + 8, tc.y);
+    const raider = Units.spawn('raider', 'R', tc.x + 14, tc.y);
+    const vil = Units.spawn('villager', 'P', tc.x + 11, tc.y);
+    Units.damage(vil, 3, raider.id);
+    const dest = vil.path && vil.path.length ? vil.path[vil.path.length - 1] : { x: vil.x, y: vil.y };
+    const dGuard = Math.hypot(dest.x - guard.x, dest.y - guard.y);
+    const behind = Math.hypot(dest.x - raider.x, dest.y - raider.y) >
+                   Math.hypot(guard.x - raider.x, guard.y - raider.y);
+    ck('aVillagerHidesBehindTheSpear',
+      vil.task && vil.task.type === 'flee' && dGuard <= 4 && behind,
+      `flees to ${dGuard.toFixed(1)} tiles of the guard, on the far side from the raider`);
+    // …and with nobody under arms, the old rule stands: run for the hall
+    S.units = S.units.filter(u => u !== guard);
+    const vil2 = Units.spawn('villager', 'P', tc.x + 11, tc.y + 1);
+    const raider2 = Units.spawn('raider', 'R', tc.x + 14, tc.y + 1);
+    Units.damage(vil2, 3, raider2.id);
+    const dest2 = vil2.path && vil2.path.length ? vil2.path[vil2.path.length - 1] : { x: vil2.x, y: vil2.y };
+    ck('theHallOnlyWhenNobodyIsUnderArms',
+      vil2.task && vil2.task.type === 'flee' &&
+      Math.hypot(dest2.x - Bld.cx(tc), dest2.y - Bld.cy(tc)) < 5,
+      'no soldier standing — the run goes home');
+  }
+
   // ---- 11. the Defend button belongs to the defended ground: a soldier out
   //          past the bounds is attacking, not defending — the button goes,
   //          Stop takes its place. Stand Down stays available anywhere. ----
