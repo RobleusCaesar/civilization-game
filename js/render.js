@@ -71,7 +71,7 @@ const LAND = {
      back toward the grass it sits on, which is the dial that actually decides
      whether the eye stops on one. --- */
   DECAL_MUTE: 0.42,
-  DECAL_MUTE_WET: 0.18,   // shore stones / streamside reeds stay a touch crisper
+  DECAL_MUTE_WET: 0.18,   // a wet shore stone stays a touch crisper than a meadow tuft
   /* THE ONE DIAL for the whole scatter — turn it down to quieten the ground,
      0 to switch decoration off entirely. Depth is meant to come from the TONE
      layer and the shading at forest edges, not from object count; when the
@@ -168,30 +168,43 @@ const LAND = {
   BLOCK_SHADE: 0.16,
   BLOCK_FADE: 1.15,
   BLOCK_SUB: 6,
-  /* --- DECORATIVE STREAMS. Pure texture: they are not water tiles and have
-     no gameplay effect whatsoever (see R.streams). STREAM_DENSITY is the
-     count on a 65x65 map, scaled by area and jittered so some maps get none
-     — raise it if the world looks dry, but keep it low: a creek is a detail
-     you notice once, not a feature. STREAM_MIN_RUN is how far from the sea a
-     spring must be to be worth following. WANDER trades directness for
-     meander; SMOOTH/NOISE are the coastline's two-step applied to an open
-     path. STREAM_W is the thread's width in 1/16ths of a tile — well under
-     one tile, or it starts reading as real water. --- */
-  STREAM_DENSITY: 1.7,
-  STREAM_MIN_RUN: 7,
-  STREAM_IDEAL_RUN: 11,
-  STREAM_APART: 12,
-  STREAM_WANDER: 7.5,
-  STREAM_SIDE_MAX: 2,   // how many sideways steps in a row a meander may take
-  STREAM_SIDE_COST: 1.6,
-  STREAM_SMOOTH: 3,
-  STREAM_NOISE: 0.11,
-  STREAM_NOISE_F: 2.1,
-  STREAM_W: 1.1,
-  STREAM_W_VAR: 0.9,
-  STREAM_DAMP: 1.1,   // 1/16ths of damp ground either side of the thread
-  STREAM_DECAL_STEP: 5,
-  STREAM_DECAL: 0.22,
+  /* --- THE ROCK MASS (R.rockMass). A stone field is scattered in WORLD
+     space, not stamped per tile: the lattice ignores the tile grid, so a
+     boulder straddling a boundary is ONE whole rock spilling into its
+     neighbour instead of two halves cut to match. That is what breaks the
+     grid, and it is why the old per-tile sets are gone.
+
+     ROCK_STEP is the lattice pitch in 1/32nds of a tile and is the one dial
+     for density — it must stay WELL BELOW the diameter of the rocks it
+     places (2 x ROCK_MIN at the very least) or bare grass starts showing
+     through the core, which is the whole thing this exists to prevent.
+     ROCK_JIT knocks the lattice off square; drop it to 0 and the mass reads
+     as a bead curtain.
+
+     Size comes from how deep into the deposit the rock stands (the hill
+     distance field): ROCK_MIN at the fringe growing by ROCK_GROW per tile of
+     depth up to ROCK_MAX at the core — big overlapping boulders in the
+     middle, mid rocks in the ring, small stones at the edge.
+
+     THE OUTLINE IS THE SHORELINE'S TRICK. The depth field is sampled
+     bilinearly (so the boundary is already off the grid) and then displaced
+     by world-space noise: ROCK_WANDER is how far in TILES the drawn edge may
+     leave the tile edge, ROCK_EDGE_F how fast it wanders. Raise WANDER and
+     the outline gets wilder, but keep it well under 0.5 — a big rock landing
+     on genuinely walkable grass is a lie about where a unit may go, which is
+     why only the small stuff is allowed past the line at all (ROCK_FRINGE
+     thins the last band, and SCREE puts loose chips on the ground beyond
+     it). --- */
+  ROCK_STEP: 10,
+  ROCK_JIT: 3.4,
+  ROCK_MIN: 6,
+  ROCK_MAX: 13,
+  ROCK_GROW: 2.6,
+  ROCK_WANDER: 0.26,
+  ROCK_EDGE_F: 0.85,
+  ROCK_FRINGE: 0.82,     // coverage below which rocks start dropping out
+  ROCK_SCREE: 0.34,     // chance of a loose chip on the ground just outside
+  DENSE_WANDER: 2.2,    // …and how far the woods'/orchards' own density step wanders
 };
 
 const R = {
@@ -330,7 +343,8 @@ const R = {
       out.push(Object.assign(this._mkLat(LAND.TONE_OCT[i][0], i + 1), { wt: LAND.TONE_OCT[i][1] }));
     this._lat = out; this._latKey = key;
     this._latOne = { clump: this._mkLat(LAND.DECAL_CLUMP, 41), sand: this._mkLat(LAND.SAND_FREQ, 57),
-                     edge: this._mkLat(LAND.EDGE_FREQ, 73), shoal: this._mkLat(LAND.SHOAL_FREQ, 97) };
+                     edge: this._mkLat(LAND.EDGE_FREQ, 73), shoal: this._mkLat(LAND.SHOAL_FREQ, 97),
+                     rock: this._mkLat(LAND.ROCK_EDGE_F, 113) };
     return out;
   },
   /* the CLUMP FIELD — what decides where things grow at all. Nature clumps:
@@ -556,6 +570,126 @@ const R = {
     }
   },
 
+  /* ---- THE ROCK MASS ----------------------------------------------------
+     A stone field is NOT a grid of tile sprites. Three tile sets picked by
+     neighbour count could never do better than a staircase of squares —
+     which is exactly what a rock deposit looked like: hard vertical and
+     horizontal edges, square corners, and the same handful of stamps
+     repeating along them. So the mass is scattered in WORLD space instead,
+     from one lattice that knows nothing about tiles, and every rock is
+     PRE-RENDERED (Sprites.rockStamp) so scattering it is a blit.
+
+     HOW BIG A ROCK IS, AND WHETHER THERE IS ONE AT ALL, both come from the
+     hill distance field — the same field the hill relief already keys on, so
+     no new bookkeeping. It is sampled BILINEARLY, which alone takes the
+     boundary off the tile grid, and then displaced by world-space noise, the
+     coastline's own trick: smooth above the tile, roughened below it.
+
+     WHAT MAY CROSS THE LINE IS LIMITED ON PURPOSE. A boulder standing on
+     grass a unit can walk through is a lie about the map, and this game's
+     governing readability rule says the drawn world may not tell one. So the
+     wander is well under half a tile, the last band thins out rather than
+     ending on a wall, and past the boundary only loose SCREE chips lie on
+     the ground — which is honest, because scree at the foot of a crag is
+     walkable and always was. ---- */
+  rockMass(g, x, y, terr) {
+    if (terr[MapGen.idx(x, y)] !== T.HILLS) { this.rockScree(g, x, y, terr); return; }
+    if (window.Assets && Assets.terrainImg(T.HILLS, 0)) return;   // supplied art wins, as everywhere
+    const TL = CFG.TILE, W = CFG.W, H = CFG.H, d = this.hillField();
+    const step = LAND.ROCK_STEP, jit = LAND.ROCK_JIT;
+    // depth in TILES at a fractional tile position — bilinear over tile centres
+    const depth = (wx, wy) => {
+      const sx = wx - 0.5, sy = wy - 0.5;
+      const ix = Math.floor(sx), iy = Math.floor(sy), fx = sx - ix, fy = sy - iy;
+      const at = (a, b) => (a < 0 || b < 0 || a >= W || b >= H) ? 0 : d[b * W + a];
+      const t0 = at(ix, iy) + (at(ix + 1, iy) - at(ix, iy)) * fx;
+      const t1 = at(ix, iy + 1) + (at(ix + 1, iy + 1) - at(ix, iy + 1)) * fx;
+      return t0 + (t1 - t0) * fy;
+    };
+    if (!this._latOne) this.landLattices();      // not per tile: it hashes a key
+    const lat = this._latOne.rock;
+    const rocks = [];
+    const g0 = Math.floor(x * TL / step) - 1, g1 = Math.ceil((x + 1) * TL / step) + 1;
+    const h0 = Math.floor(y * TL / step) - 1, h1 = Math.ceil((y + 1) * TL / step) + 1;
+    for (let gy = h0; gy <= h1; gy++) for (let gx = g0; gx <= g1; gx++) {
+      const jx = (this._lh(gx, gy, 5) - 0.5) * 2 * jit, jy = (this._lh(gx, gy, 6) - 0.5) * 2 * jit;
+      const px2 = gx * step + jx, py = gy * step + jy;
+      // each rock belongs to exactly ONE tile — the one its centre falls in —
+      // so the 5x5 pass never draws the same stone twice
+      if (px2 < x * TL || px2 >= (x + 1) * TL || py < y * TL || py >= (y + 1) * TL) continue;
+      const wx = px2 / TL, wy = py / TL;
+      const cov = depth(wx, wy) + (this._latRead(lat, wx, wy) - 0.5) * 2 * LAND.ROCK_WANDER;
+      if (cov <= 0.5) continue;
+      if (cov < LAND.ROCK_FRINGE
+        && this._lh(gx, gy, 7) > (cov - 0.5) / (LAND.ROCK_FRINGE - 0.5)) continue;
+      const rr = Math.max(LAND.ROCK_MIN, Math.min(LAND.ROCK_MAX,
+        Math.round(LAND.ROCK_MIN + (cov - 0.75) * LAND.ROCK_GROW)));
+      const kind = (this._lh(gx, gy, 8) * Sprites.ROCK_KINDS) | 0;
+      const mix = Sprites.STONE_MIX;
+      const pal = mix[(this._lh(gx, gy, 9) * mix.length) | 0];
+      const vs = (this._lh(gx, gy, 10) * 4) | 0;
+      rocks.push([px2, py, rr, kind, pal, vs]);
+    }
+    // back to front, so a rock in front occludes the one behind it and its own
+    // foot shadow reads as the crevice between the two
+    rocks.sort((a, b) => a[1] - b[1]);
+    for (const [px2, py, rr, kind, pal, vs] of rocks) {
+      const st = Sprites.rockStamp(kind, rr, pal, vs);
+      g.drawImage(st, Math.round(px2) - st._ox, Math.round(py) - st._oy);
+    }
+  },
+  /* THE SAME CORE-DENSE / EDGE-SPARSE LOGIC, for the deposits that are made
+     of AUTHORED whole-tile art rather than scattered stamps — the woods and
+     the orchard/berry ground. Their density still steps sparse -> medium ->
+     dense, but the step from sparse to medium used to fall exactly on "four
+     neighbours of my own kind", which is a property of the tile grid and
+     drew it: a ring of medium tiles in a tidy square around every core.
+     Displacing the threshold with the same world-space noise the rock
+     outline uses makes that ring wander instead.
+
+     The FULL set keeps its hard `cnt === 8` gate and is deliberately not
+     noised: those tiles carry crowns CUT BY THE TILE EDGE, and they only
+     match up because every neighbour is the same kind. Promote one to the
+     border and the wood shows half a tree against open grass. */
+  denseEdge(x, y, cnt) {
+    if (cnt >= 6) return true;
+    if (cnt < 3) return false;
+    if (!this._latOne) this.landLattices();
+    return cnt + (this._latRead(this._latOne.rock, x + 0.5, y + 0.5) - 0.5) * 2 * LAND.DENSE_WANDER >= 4;
+  },
+
+  /* LOOSE CHIPS ON THE GROUND OUTSIDE. Scree is what a crag sheds, it is
+     walkable, and it is what lets the deposit's outline fade instead of
+     stopping at a line. Only ever 1-2px, and only on ground that touches the
+     deposit — never a boulder, which would read as an obstruction. */
+  rockScree(g, x, y, terr) {
+    const AP = ART.PALETTE, TL = CFG.TILE, W = CFG.W, H = CFG.H;
+    const t = terr[MapGen.idx(x, y)];
+    if (t !== T.GRASS && t !== T.STUMPS && t !== T.BARREN && t !== T.PEBBLES) return;
+    /* an INDEXED neighbour walk, not `for (const [ox, oy] of NEIGH8)`. This
+       runs on every tile of the map in the bake, and destructuring an array
+       of pairs allocates an iterator and a pair per neighbour — 34,000
+       allocations a bake, measured at 11ms of it. */
+    let near = false;
+    for (let oy = -1; oy <= 1 && !near; oy++) for (let ox = -1; ox <= 1; ox++) {
+      if (!ox && !oy) continue;
+      const nx = x + ox, ny = y + oy;
+      if (nx >= 0 && ny >= 0 && nx < W && ny < H && terr[ny * W + nx] === T.HILLS) { near = true; break; }
+    }
+    if (!near) return;
+    let hh = (Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ this.landSeed()) >>> 0;
+    const rnd = () => { hh = Math.imul(hh ^ (hh >>> 15), 0x2c1b3c6d); hh = (hh ^ (hh >>> 12)) >>> 0; return hh / 4294967295; };
+    const pal = [AP.granite, AP.slate, AP.sandst];
+    for (let i = 0; i < 5; i++) {
+      if (rnd() > LAND.ROCK_SCREE) continue;
+      const P = pal[(rnd() * pal.length) | 0];
+      const cx = x * TL + ((rnd() * TL) | 0), cy = y * TL + ((rnd() * TL) | 0);
+      const w = 1 + ((rnd() * 2) | 0);
+      g.fillStyle = P[1]; g.fillRect(cx, cy + 1, w, 1);
+      g.fillStyle = P[3]; g.fillRect(cx, cy, w, 1);
+    }
+  },
+
   /* one decal, in the world's own palette. Pixel shapes only — a few
      fillRects at the tile's own 1/16 unit, so they sit in the same rendering
      language as everything drawn beside them. */
@@ -564,9 +698,9 @@ const R = {
     /* EVERY GROUND DECAL IS PULLED TOWARD THE GRASS IT LIES ON. Muting at the
        point of drawing rather than by re-picking every colour by hand means
        one dial governs the whole layer and no decal can be forgotten — and it
-       applies to the shore stones and the streamside reeds too, which come
-       through the same door. The shore/stream callers pass their own mute so
-       a wet stone can stay a little crisper than a tuft in a meadow. */
+       applies to the shore stones too, which come through the same door.
+       The shore caller passes its own mute so a wet stone can stay a little
+       crisper than a tuft in a meadow. */
     const M = (this._decalMute == null ? LAND.DECAL_MUTE : this._decalMute);
     // …memoised, because this runs several times per decal and thousands of
     // times per bake, and re-parsing two hex strings each time to arrive at an
@@ -1681,222 +1815,6 @@ const R = {
     }
   },
 
-  /* ===== DECORATIVE STREAMS =============================================
-     Small creeks that wander down off high ground and end at the sea. They
-     are PURE DECORATION and that is a hard rule, not a caveat: they are not
-     water tiles, they write to NO map array, and nothing in the game may
-     notice them. Movement, docks, fishing, naval hulls, bridges, sappers,
-     the reachability clamp and the minimap all read S.map.terrain, which
-     this code only ever READS. tests/land.mjs pins the whole of that by
-     running every one of those answers with the streams drawn and without.
-
-     Routing is a descent of the DISTANCE-TO-WATER field, which buys three of
-     the rules for free: a stream can never run uphill (the field strictly
-     decreases), it always reaches water (the field is a gradient toward it),
-     and it never has to be told where to stop. Mountains are excluded from
-     the field, so a creek routes around a range rather than through it.
-     Sources are picked beside hills or crags and far from the sea, so a run
-     has somewhere to come from and somewhere to go. ===== */
-  _streams: null, _streamKey: '',
-  streams() {
-    const W = CFG.W, H = CFG.H, terr = (S.map.seenTerrain || S.map.terrain);
-    let k = 0x811c9dc5 ^ this.landSeed();
-    for (let i = 0; i < terr.length; i++) {
-      const t = terr[i];
-      if (t === T.WATER || t === T.MOAT || t === T.HILLS || t === T.MOUNTAIN) {
-        k ^= i * (t + 1); k = Math.imul(k, 0x01000193);
-      }
-    }
-    const key = (k >>> 0) + ':' + W + 'x' + H;
-    if (this._streamKey === key && this._streams) return this._streams;
-
-    const wet = (x, y) => { const t = terr[y * W + x]; return t === T.WATER || t === T.MOAT; };
-    const mtn = (x, y) => terr[y * W + x] === T.MOUNTAIN;
-    // distance to the nearest water, over routable land only
-    const dist = new Int32Array(W * H).fill(0x7fffffff), q = [];
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++)
-      if (wet(x, y)) { dist[y * W + x] = 0; q.push(y * W + x); }
-    for (let head = 0; head < q.length; head++) {
-      const i = q[head], cx = i % W, cy = (i / W) | 0, nd = dist[i] + 1;
-      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = cx + ox, ny = cy + oy;
-        if (!MapGen.onBoard(nx, ny) || mtn(nx, ny)) continue;
-        const j = ny * W + nx;
-        if (dist[j] > nd) { dist[j] = nd; q.push(j); }
-      }
-    }
-    let hh = this.landSeed() ^ 0x5bf03635;
-    const rnd = () => { hh = Math.imul(hh ^ (hh >>> 15), 0x2c1b3c6d); hh = (hh ^ (hh >>> 12)) >>> 0; return hh / 4294967295; };
-    // how many this map gets — scaled by area, and honestly allowed to be none
-    const area = (W * H) / (65 * 65);
-    const want = Math.max(0, Math.round(LAND.STREAM_DENSITY * area + (rnd() - 0.62)));
-    // sources: beside high ground, far enough from the sea to be worth a run
-    const src = [];
-    for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
-      const d = dist[y * W + x];
-      if (d < LAND.STREAM_MIN_RUN || d === 0x7fffffff) continue;
-      if (wet(x, y) || mtn(x, y)) continue;
-      let high = 0;
-      for (const [ox, oy] of NEIGH8) {
-        const t = terr[(y + oy) * W + (x + ox)];
-        if (t === T.HILLS || t === T.MOUNTAIN) high++;
-      }
-      if (high) src.push({ x, y, d, high });
-    }
-    /* A CREEK, NOT A RIVER. Sorting by "furthest from the sea" picks springs
-       in the far corner of the map and runs them twenty-odd tiles across it,
-       which reads as a major river and dominates the ground it crosses.
-       Sources are scored on being WELL PLACED instead: hard against high
-       ground, and about STREAM_IDEAL_RUN from water rather than as far from
-       it as the board allows. */
-    src.sort((a, b) => (b.high * 3 - Math.abs(b.d - LAND.STREAM_IDEAL_RUN))
-                     - (a.high * 3 - Math.abs(a.d - LAND.STREAM_IDEAL_RUN)));
-    const runs = [], used = [];
-    for (const s of src) {
-      if (runs.length >= want) break;
-      if (used.some(u => Math.hypot(u.x - s.x, u.y - s.y) < LAND.STREAM_APART)) continue;
-      // …descend the field, wandering, never uphill
-      /* WANDERING, BUT NEVER UPHILL. A strict descent of the field always
-         takes the shortest way to the water, which draws a creek as a ruled
-         line straight down the slope. Steps that stay at the SAME distance
-         are allowed too — sideways along a contour — which is where the
-         meander comes from; they are rationed (SIDE_MAX in a row) and no
-         tile may be used twice, so the run still terminates and can still
-         never climb. */
-      const path = [[s.x + 0.5, s.y + 0.5]];
-      const seen2 = new Set([s.y * W + s.x]);
-      let cx = s.x, cy = s.y, guard = 0, sideRun = 0;
-      while (dist[cy * W + cx] > 0 && guard++ < 400) {
-        const here = dist[cy * W + cx];
-        let best = null, bs = -1e9, bestSide = false;
-        for (const [ox, oy] of NEIGH8) {
-          const nx = cx + ox, ny = cy + oy;
-          if (!MapGen.onBoard(nx, ny) || mtn(nx, ny)) continue;
-          const j = ny * W + nx;
-          if (seen2.has(j)) continue;
-          const nd = dist[j];
-          const side = nd === here;
-          if (nd > here) continue;                                 // never uphill
-          if (side && sideRun >= LAND.STREAM_SIDE_MAX) continue;
-          const wob = this._latRead(this._latOne.clump, nx * 1.7, ny * 1.7);
-          const sc = -nd * 4 + wob * LAND.STREAM_WANDER - (side ? LAND.STREAM_SIDE_COST : 0);
-          if (sc > bs) { bs = sc; best = [nx, ny]; bestSide = side; }
-        }
-        if (!best) break;
-        sideRun = bestSide ? sideRun + 1 : 0;
-        cx = best[0]; cy = best[1];
-        seen2.add(cy * W + cx);
-        path.push([cx + 0.5, cy + 0.5]);
-      }
-      if (path.length < LAND.STREAM_MIN_RUN) continue;
-      used.push(s);
-      // smooth well above tile scale, then put a little ragged back — the
-      // same two-step the coastline uses, on an OPEN path rather than a loop
-      runs.push(this.roughenOpen(this.chaikinOpen(path, LAND.STREAM_SMOOTH)));
-    }
-    this._streams = runs; this._streamKey = key;
-    return runs;
-  },
-  // Chaikin / roughen for an OPEN path: the endpoints are pinned, because a
-  // stream must still start at its spring and end exactly at the waterline.
-  chaikinOpen(pts, iters) {
-    let p = pts;
-    for (let it = 0; it < iters && p.length < 4000; it++) {
-      const out = [p[0]];
-      for (let i = 0; i < p.length - 1; i++) {
-        const a = p[i], b = p[i + 1];
-        out.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25]);
-        out.push([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
-      }
-      out.push(p[p.length - 1]);
-      p = out;
-    }
-    return p;
-  },
-  roughenOpen(pts) {
-    this.landLattices();
-    const n = pts.length, out = new Array(n);
-    for (let i = 0; i < n; i++) {
-      if (i === 0 || i === n - 1) { out[i] = pts[i]; continue; }
-      const a = pts[i - 1], b = pts[i + 1], p = pts[i];
-      let nx = -(b[1] - a[1]), ny = (b[0] - a[0]);
-      const len = Math.hypot(nx, ny) || 1; nx /= len; ny /= len;
-      const d = (this._latRead(this._latOne.edge, p[0] * LAND.STREAM_NOISE_F, p[1] * LAND.STREAM_NOISE_F) - 0.5)
-        * 2 * LAND.STREAM_NOISE;
-      out[i] = [p[0] + nx * d, p[1] + ny * d];
-    }
-    return out;
-  },
-
-  /* …and the drawing. Damp ground either side, the thread itself, and a few
-     stones and reeds along the run from the ordinary decal scatter. Low
-     contrast on purpose: this is texture, not a feature, and a bright ribbon
-     across a meadow would read as something the player can use.
-
-     A point is skipped where a BUILDING stands — a creek running under a
-     house looks like a bug — and where the tile is already water, which is
-     what terminates the run cleanly at the traced waterline instead of
-     letting it overlap the shore bands. */
-  drawStreams(g, x0, y0, x1, y1) {
-    const TL = CFG.TILE, AP = ART.PALETTE, px = TL / 16;
-    const terr = (S.map.seenTerrain || S.map.terrain);
-    const W = CFG.W, H = CFG.H;
-    const blocked = (tx, ty) => {
-      if (tx < 0 || ty < 0 || tx >= W || ty >= H) return true;
-      const t = terr[ty * W + tx];
-      if (t === T.WATER || t === T.MOAT) return true;
-      return !!(typeof Bld !== 'undefined' && Bld.at && Bld.at(tx, ty));
-    };
-    /* RASTERISED ALONG THE PATH, NOT STAMPED AT ITS POINTS. Filling a little
-       square at every point draws a chain of beads — the points sit about a
-       quarter of a tile apart and the squares are smaller than the gap — so
-       the run reads as a zip rather than as running water. Each SEGMENT is
-       walked in one-pixel steps instead, which is also the only way to keep
-       the thread a consistent width where the path turns.
-
-       Kept deliberately low-contrast and thin: a bright ribbon across a
-       meadow reads as something the player can use, and this is texture. */
-    for (const run of this.streams()) {
-      for (let i = 1; i < run.length; i++) {
-        const p = run[i - 1], q = run[i];
-        const ax = p[0] * TL, ay = p[1] * TL, bx = q[0] * TL, by = q[1] * TL;
-        const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay)));
-        for (let k = 0; k <= steps; k++) {
-          const f = k / steps, wx = ax + (bx - ax) * f, wy = ay + (by - ay) * f;
-          const tx = (wx / TL) | 0, ty = (wy / TL) | 0;
-          if (tx < x0 - 1 || ty < y0 - 1 || tx > x1 + 1 || ty > y1 + 1) continue;
-          if (blocked(tx, ty)) continue;
-          const wob = this._latRead(this._latOne.sand, wx / TL * 2.3, wy / TL * 2.3);
-          const half = (LAND.STREAM_W + wob * LAND.STREAM_W_VAR) * 0.5 * px;
-          const damp = half + LAND.STREAM_DAMP * px;
-          const rx = Math.round(wx), ry = Math.round(wy);
-          g.fillStyle = AP.grass[0];                              // damp ground either side
-          g.fillRect(rx - Math.round(damp), ry - Math.round(damp),
-            Math.round(damp) * 2 + 1, Math.round(damp) * 2 + 1);
-          g.fillStyle = AP.water[1];                              // the thread itself
-          g.fillRect(rx - Math.round(half), ry - Math.round(half),
-            Math.round(half) * 2 + 1, Math.round(half) * 2 + 1);
-          if (wob > 0.80 && (k & 3) === 0) { g.fillStyle = AP.water[2]; g.fillRect(rx, ry, 1, 1); }
-        }
-      }
-      // …and the odd stone or stand of reeds on the bank
-      for (let i = 0; i < run.length; i += LAND.STREAM_DECAL_STEP) {
-        const p = run[i], tx = Math.floor(p[0]), ty = Math.floor(p[1]);
-        if (tx < x0 - 1 || ty < y0 - 1 || tx > x1 + 1 || ty > y1 + 1) continue;
-        if (blocked(tx, ty)) continue;
-        let s2 = (Math.imul(Math.round(p[0] * 16), 0x27d4eb2d)
-          ^ Math.imul(Math.round(p[1] * 16), 0x9e3779b1) ^ this.landSeed()) >>> 0;
-        const rr = () => { s2 = Math.imul(s2 ^ (s2 >>> 15), 0x2c1b3c6d); s2 = (s2 ^ (s2 >>> 12)) >>> 0; return s2 / 4294967295; };
-        if (rr() > LAND.STREAM_DECAL) continue;
-        const side = rr() < 0.5 ? -1 : 1, off = (1.8 + rr() * 1.6) * side;
-        this._decalMute = LAND.DECAL_MUTE_WET;
-        this.drawDecal(g, p[0] * TL + off * px, p[1] * TL + (rr() - 0.5) * 2 * px,
-          rr() < 0.5 ? 'reed' : 'pebble', px * 0.9, rr);
-        this._decalMute = null;
-      }
-    }
-  },
-
   computeMountainHeight() {
     const W = CFG.W, H = CFG.H, T_ = S.map.terrain, d = new Int32Array(W * H), q = [];
     for (let i = 0; i < W * H; i++) { if (T_[i] === T.MOUNTAIN) d[i] = 1e6; else { d[i] = 0; q.push(i); } }
@@ -2158,7 +2076,7 @@ const R = {
       // complete-tree edge sets, so the forest's border never shows a half tree.
       const set = cnt === 8
         ? (hp % 11 === 0 ? Sprites.terrainRare[T.FOREST] : Sprites.terrainFull[T.FOREST])
-        : cnt >= 4 ? Sprites.terrainMed[T.FOREST] : Sprites.terrain[T.FOREST];
+        : this.denseEdge(x, y, cnt) ? Sprites.terrainMed[T.FOREST] : Sprites.terrain[T.FOREST];
       img = set[hp % set.length];
     } else if (Sprites.terrainFull[t] && Sprites.terrainMed[t] && t !== T.HILLS) {
       /* ANY terrain that ships all three density sets takes the forest's
@@ -2171,21 +2089,14 @@ const R = {
         if (MapGen.inB(x + ox, y + oy) && terr[MapGen.idx(x + ox, y + oy)] === t) cnt++;
       const hp = (h ^ (h >>> 13)) >>> 0;
       const set = cnt === 8 ? Sprites.terrainFull[t]
-        : cnt >= 4 ? Sprites.terrainMed[t] : Sprites.terrain[t];
+        : this.denseEdge(x, y, cnt) ? Sprites.terrainMed[t] : Sprites.terrain[t];
       img = set[hp % set.length];
-    } else if (t === T.HILLS && Sprites.terrainFull[T.HILLS]) {
-      // ORE gets the forest's density gradient: a lone/edge tile is a few
-      // half-buried stones, a perimeter tile a chunky cluster, and only a
-      // fully-enclosed core tile uses the packed straddling set (its cut
-      // sides always abut more ore) — so a deposit reads as one rocky mass
-      // thickening toward its heart, not a grid of repeated tiles.
-      let cnt = 0;
-      for (const [ox, oy] of NEIGH8)
-        if (MapGen.inB(x + ox, y + oy) && terr[MapGen.idx(x + ox, y + oy)] === T.HILLS) cnt++;
-      const hp = (h ^ (h >>> 13)) >>> 0;
-      const set = cnt === 8 ? Sprites.terrainFull[T.HILLS]
-        : cnt >= 4 ? Sprites.terrainMed[T.HILLS] : Sprites.terrain[T.HILLS];
-      img = set[hp % set.length];
+    } else if (t === T.HILLS) {
+      /* NO TILE SPRITE. The rock field is scattered in world space by
+         R.rockMass in its own pass, because three sets picked by neighbour
+         count can only ever draw a staircase of squares — see rockMass. What
+         this branch still owes the tile is its grass floor and the blocked
+         cue, which the GROUND_GRAIN branch below lays down. */
     } else if (t !== T.MOUNTAIN) img = variants[(x * 7 + y * 13) % variants.length];
     // MOUNTAIN is drawn procedurally from a height field in the ground-layer step
     // below (drawMountain) — real slopes, not a sprite — so no img is selected here.
@@ -2225,7 +2136,7 @@ const R = {
       this.paintGround(g, x, y, h);               // continuous floor...
       this.blockShade(g, x, y, terr);             // ...the "you cannot walk here" ground...
       if (ovr) this.blitTile(g, ovr, x, y);       // ...then the transparent-floored resource on top
-      else g.drawImage(img, x * TL, y * TL);
+      else if (img) g.drawImage(img, x * TL, y * TL);   // (hills have no tile sprite — see rockMass)
     } else if (ovr) {
       this.blitTile(g, ovr, x, y);
     } else {
@@ -2337,8 +2248,12 @@ const R = {
     // …decals clipped to the board, since one may overhang its own tile and
     // the tile beside the rim would throw a tuft out onto the black
     this.clipBoard(g, () => {
+      /* THE ROCK PASS RUNS WITH THE DECALS, and for the same reason: a stone
+         overhangs its own tile, so every tile's ground has to be down before
+         any of them is laid. It goes FIRST of the two — a tuft in the grass
+         belongs in front of the crag it grows beside, not behind it. */
+      for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) this.rockMass(g, x, y, terr);
       for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) this.landDecals(g, x, y, terr);
-      this.drawStreams(g, 0, 0, CFG.W - 1, CFG.H - 1);
     });
     // …then the traced coast over the top, from its own cached layer
     this.buildShoreLayer();
@@ -2361,6 +2276,26 @@ const R = {
   /* run a drawing pass with the off-map ring masked off. The rim is the
      world's hard border and the only thing that may be painted there is the
      void's own black — see MapGen.onBoard, the single declaration. */
+  /* AN OVERLAPPING LAYER CAN ONLY BE REPAIRED INSIDE THE GROUND THAT WAS
+     ERASED. Rocks from neighbouring tiles overlap, and the bake composites
+     them in one global row-major order — so redrawing a tile's stone on top
+     of a neighbour that was NOT redrawn puts it on the wrong side of that
+     neighbour, and the patch comes out different from a rebake (measured at
+     8 tiles after a single moat dig, six tiles away from it, where the water
+     repaint's own outer ring happened to cross a deposit).
+
+     Clipping the pass to the tiles whose ground was actually repainted makes
+     it exact: every rock that covers any of that ground is redrawn, in the
+     same order the bake would, and no pixel outside it is touched — the
+     spill that was already there stays as the bake left it. */
+  clipTiles(g, keys, fn) {
+    const TL = CFG.TILE, W = CFG.W;
+    g.save();
+    g.beginPath();
+    for (const k of keys) g.rect((k % W) * TL, ((k / W) | 0) * TL, TL, TL);
+    g.clip();
+    try { fn(); } finally { g.restore(); }
+  },
   clipBoard(g, fn) {
     const TL = CFG.TILE;
     g.save();
@@ -2383,10 +2318,20 @@ const R = {
         if (ox >= -1 && ox <= 1 && oy >= -1 && oy <= 1) ground.add(ny * W + nx);
       }
     }
-    for (const k of ground) this.drawTile(g, k % W, (k / W) | 0);
+    /* ROW-MAJOR, LIKE THE FULL BAKE. A Set iterates in insertion order, and
+       the insertion order here is "each tile in the caller's list, then its
+       ring" — nothing like the y-then-x order rebuildTerrain paints in. That
+       does not matter for a layer whose pieces never overlap, and it matters
+       a great deal for one whose pieces do: two rocks from neighbouring
+       tiles composite in whichever order they are drawn, so an incremental
+       repaint of a stone field came out different from a rebake (measured at
+       8 tiles after one moat dig). The keys ARE y*W+x, so a numeric sort is
+       exactly row-major. */
+    const groundL = [...ground].sort((a, b) => a - b), decoL = [...deco].sort((a, b) => a - b);
+    for (const k of groundL) this.drawTile(g, k % W, (k / W) | 0);
     {
       let gx0 = 1e9, gy0 = 1e9, gx1 = -1e9, gy1 = -1e9;
-      for (const k of ground) {
+      for (const k of groundL) {
         const cx = k % W, cy = (k / W) | 0;
         if (cx < gx0) gx0 = cx; if (cx > gx1) gx1 = cx;
         if (cy < gy0) gy0 = cy; if (cy > gy1) gy1 = cy;
@@ -2394,17 +2339,13 @@ const R = {
       if (gx1 >= gx0) this.paintWaterIn(g, gx0, gy0, gx1, gy1);
     }
     this.clipBoard(g, () => {
-      for (const k of deco) this.landDecals(g, k % W, (k / W) | 0, terr);
-      let sx0 = 1e9, sy0 = 1e9, sx1 = -1e9, sy1 = -1e9;
-      for (const k of deco) {
-        const cx = k % W, cy = (k / W) | 0;
-        if (cx < sx0) sx0 = cx; if (cx > sx1) sx1 = cx;
-        if (cy < sy0) sy0 = cy; if (cy > sy1) sy1 = cy;
-      }
-      if (sx1 >= sx0) this.drawStreams(g, sx0, sy0, sx1, sy1);
+      this.clipTiles(g, groundL, () => {
+        for (const k of decoL) this.rockMass(g, k % W, (k / W) | 0, terr);
+      });
+      for (const k of decoL) this.landDecals(g, k % W, (k / W) | 0, terr);
     });
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-    for (const k of deco) {
+    for (const k of decoL) {
       const cx = k % W, cy = (k / W) | 0;
       if (cx < x0) x0 = cx; if (cx > x1) x1 = cx;
       if (cy < y0) y0 = cy; if (cy > y1) y1 = cy;
@@ -2433,11 +2374,19 @@ const R = {
        seam against a full rebake. Re-stamping a decal whose ground was not
        repainted is idempotent, so the wider pass is free of side effects. */
     this.clipBoard(g, () => {
+      const inner = [];
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++)
+        if (MapGen.inB(x + ox, y + oy)) inner.push((y + oy) * CFG.W + (x + ox));
+      this.clipTiles(g, inner, () => {          // …only the ground this call erased
+        for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) {
+          const nx = x + ox, ny = y + oy;
+          if (MapGen.inB(nx, ny)) this.rockMass(g, nx, ny, terr);
+        }
+      });
       for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) {
         const nx = x + ox, ny = y + oy;
         if (MapGen.inB(nx, ny)) this.landDecals(g, nx, ny, terr);
       }
-      this.drawStreams(g, x - 2, y - 2, x + 2, y + 2);
     });
     this.blitShore(g, x - 2, y - 2, 5, 5);
   },
@@ -2465,7 +2414,6 @@ const R = {
     this.mtnH = null;                                            // recompute the mountain height field for the new map
     this._mtnTile = null;                                        // …and with it the baked mountain tiles (same fact)
     this._hillH = null; this._hillKey = '';                      // hills move (a quarry works one out), so this is keyed, not one-shot
-    this._streams = null; this._streamKey = '';
     this._sideMask = null; this._sideKey = '';
     this._mixC = null;
     this._bodyPath = null; this._bodyKey = '';

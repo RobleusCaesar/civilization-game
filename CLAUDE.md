@@ -97,7 +97,7 @@ node tests/footprint.mjs       # the primary works stand on 2×2; old saves keep
 node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring rule; ?dev=1 preview = the shipping path
 node tests/placement.mjs       # ONE placement truth (canPlace codes); ghost+confirm flow; the seal clamp; AI parity
 node tests/boot.mjs            # frame one is the logo; no chrome before a game; the notch inset
-node tests/land.mjs            # the coast is TRACED, not tiled; streams are a DRAWING; tile data still decides everything
+node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -2407,29 +2407,23 @@ the two passes run on every tile of the map. The three entry points re-key at
 the top; everything inside reads what they settled on. Measured: 169ms of bake
 back down to 154ms.
 
-**DECORATIVE STREAMS** (`R.streams` / `chaikinOpen` / `roughenOpen` /
-`drawStreams`, `LAND.STREAM_*`, pinned by `andHaveNoGameplayEffectWhatever`):
-creeks that wander down off high ground and end at the sea. They are PURE
-DECORATION and that is a hard rule, not a caveat — not water tiles, writing to
-NO map array, and nothing in the game may notice them. Routing is a DESCENT OF
-THE DISTANCE-TO-WATER FIELD, which buys three rules for free: a stream can
-never run uphill (the field strictly decreases), it always reaches water, and
-it never has to be told where to stop. Mountains are excluded from the field,
-so a creek routes around a range rather than through it. Steps that stay at the
-SAME distance are allowed too — sideways along a contour, rationed and with no
-tile used twice — because a strict descent draws a ruled line straight down the
-slope and that is where the meander comes from. Sources are scored on being
-WELL PLACED (hard against high ground, about `STREAM_IDEAL_RUN` from water)
-rather than furthest from the sea, which picked springs in the far corner and
-ran them twenty tiles across the map as a major river.
-**Rasterised along the path, not stamped at its points** — the points sit a
-quarter of a tile apart and a square at each one draws a chain of beads.
-Suppressed where a BUILDING stands (a creek under a house looks like a bug) and
-where the tile is already water, which is what terminates the run cleanly at
-the traced waterline instead of overlapping the shore bands. `Bld.place` now
-repaints its own footprint so that suppression actually takes effect — nothing
-dirtied those tiles before unless the TERRAIN under them happened to change too.
-Deterministic from the seed; most maps get one or two, some get none.
+**THE DECORATIVE STREAM WAS REMOVED** (pinned by
+`andTheDecorativeStreamIsGone`): creeks that wandered down off high ground to
+the sea, drawn as a thin low-contrast thread, PURE decoration writing to no map
+array. They are gone, machinery and `LAND.STREAM_*` dials together, and the
+reason is worth keeping because it will come up again for any "texture that
+looks like a resource". Measured at play zoom, only **10.8%** of a stream's
+pixels were bluer than they were green — mean (54, 81, 46) against real water's
+(39, 88, 118) — so it did not read as water at all; and on the reference seed
+EVERY run sprang out of a rock field, because the source hunt scores high
+ground and high ground is where the crags are. The first fault is a tuning
+problem, the second is a routing bug, but the two together are not: subtle
+enough to be honest is an olive smear, and vivid enough to read as water is a
+LIE ABOUT A TILE — nobody can fish it, bridge it, sail it or be stopped by it.
+This file already refuses to let the ground speak a resource's language when it
+is not that resource (**THE GROUND MAY NOT SPEAK THE RESOURCE LANGUAGE**); a
+whole watercourse that is not water is the same fault, larger. If it ever comes
+back it needs real water tiles behind it, not a better shade of blue.
 
 **BLOCKED GROUND HAS TO ANNOUNCE ITSELF** (`R.blockShade`, `Path.blocksLand`,
 pinned by `theBlockedCueIsDerivedFromTheMovementRule`): the decoration layers
@@ -2452,31 +2446,108 @@ AND buildable (tests/gold-mine.mjs). A seam wearing the blocked signature would
 be exactly the lie the signature exists to prevent. Gold is made unmistakable
 by being gold. Spent quarries and felled stands are walkable too, and likewise
 stay unmarked.
-**AND THE CORES ARE CLOSED** (`rockField` / `forestTile` / `orchardTile` /
-`berryTile`, all three taking a density level): a wood's interior was three
-quarters bare grass and an ore field was a few evenly-spaced identical stamps
-with turf showing between them — which is what a player reads as walkable. The
-core of every blocking resource is now a packed, straddling mass (measured at
-**95–99% of the tile covered**), tapering out through a near-solid perimeter to
-a thinned fringe whose rocks and crowns stay whole and inside their tile, since
-that is the edge actually seen against grass. **The taper has to be GENTLE**:
-a solid core beside a two-thirds-bare perimeter puts a hard square of stone in
-the middle of a deposit and the tile boundary becomes the most visible line on
-screen — worse than the scattered stamps it replaced.
-**Four rocks, chosen to differ in OUTLINE** (`ROCK_KINDS`): an angular chunk,
-a rounded dome, a cracked slab and a knot of rubble, each picking its own stone
-ramp so the mass has depth instead of reading as one flat grey shape, all laid
-down shadows-first and back-to-front. The slab is built from an ELLIPSE — drawn
-as a rectangle it read as masonry, a built thing, which is the wrong signal
-entirely on wild ground.
+**AND THE CORES ARE CLOSED** (`forestTile` / `orchardTile` / `berryTile`, each
+taking a density level; the rock field has its own scatter, below): a wood's
+interior was three quarters bare grass and an ore field was a few evenly-spaced
+identical stamps with turf showing between them — which is what a player reads
+as walkable. The core of every blocking resource is a packed, straddling mass
+(measured on the RENDERED MAP at **80–99% of the tile covered**), tapering out
+through a near-solid perimeter to a thinned fringe. **The taper has to be
+GENTLE**: a solid core beside a two-thirds-bare perimeter puts a hard square of
+stone in the middle of a deposit and the tile boundary becomes the most visible
+line on screen. **And the sparse/medium step is NOISE-DISPLACED**
+(`R.denseEdge`, `LAND.DENSE_WANDER`): it used to fall exactly on "four
+neighbours of my own kind", which is a property of the tile grid and drew it —
+a tidy square ring of medium tiles around every core. The DENSE set keeps its
+hard `cnt === 8` gate on purpose and is never noised: those tiles carry crowns
+CUT BY THE TILE EDGE and only match up because every neighbour is the same
+kind, so promoting one to the border shows half a tree against open grass.
+
+**STONE THAT READS AS STONE** (`Sprites.rockStamp` / `facetFill` / `facetShade`
+/ `angPts` / `ROCK_KINDS`, `AP.granite` / `slate` / `sandst`, pinned by
+`andRockIsBuiltOfFiveFormsInThreeStones` and `andTheMassHasRealValueContrast`):
+rock fields read as pale rounded lumps of near-uniform value — bread rolls, not
+ground you would quarry. Every rule here exists to say ROCK instead.
+**ANGULAR, NEVER ROUND**: each form is a POLYGON with hard corners, flat planes
+meeting at sharp edges, chipped facets. The soft outline was the single biggest
+reason the mass read as cotton, so nothing is drawn from a circle any more.
+**HARD VALUE STEPS, NO GRADIENTS**: light is top-left (the locked STYLE
+direction), so a body is cut by two cleave lines along `s = dx + dy` — lit
+plane, front plane, shadow plane, with an extra step at each extreme for the
+crest and the deep shade — and a near-black CREVICE (ramp index 0) runs along
+each cleave and round the rim, which is also what keeps two rocks apart where
+they overlap. The rim is near-black only where the rock turns AWAY from the
+light; an even black outline all round turns a small stone into a blot.
+**THREE SIX-STEP RAMPS**, much wider in value than the old `ore`/`stone` band —
+`granite` (neutral), `slate` (cool blue-grey), `sandst` (warm sand-grey) —
+**weighted** (`Sprites.STONE_MIX`), because an even three-way draw made every
+deposit read cold and purple. **FIVE SILHOUETTES**, chosen to differ in OUTLINE
+as the trees are: angular boulder, cleaved slab (wide and low), cracked block
+(tall and narrow), jagged spire, rubble cluster. Three of them cost a lesson
+each — a near-rectangle wearing full-width horizontal bands is a BARREL, a
+smooth symmetric cone is a WITCH'S HAT, and a bright unbroken top plane over a
+dark front is a POT LID; the cures are short staggered bedding seams at the
+rock's own dip, a leaning apex with notched flanks at different heights, and a
+top folded into two facets. **MINERAL CHARACTER** — cracks, bedding, chipped
+corners and pale fresh-quarried scars — is what says "there is stone in here to
+take" rather than "here is a decorative boulder".
+**The contact shadow is TRACED off the finished alpha** (`rockFoot`), not
+guessed from the radius: drawn as a bar at the rock's nominal foot it floated
+below every shape that does not reach it and read as an underline under a
+hovering stone. It is also OPAQUE, and that is not a style choice — see the
+repaint rule below.
+
+**AND THE MASS IS SCATTERED IN WORLD SPACE** (`R.rockMass` / `rockScree`,
+`LAND.ROCK_*`, pinned by `aRockCoreIsSolidStone` and
+`andItsOutlineIsNotTheTileGrid`): three tile sets picked by neighbour count can
+only ever draw a staircase of squares, and that is exactly what a deposit's
+edge was — hard vertical and horizontal runs with the same few stamps repeating
+along them. `Sprites.terrain[T.HILLS]` and its two density siblings are GONE;
+the field is now a lattice that knows nothing about tiles, blitting
+PRE-RENDERED stamps, so a boulder straddling a boundary is one whole rock
+spilling into its neighbour. Size and presence come from the HILL DISTANCE
+FIELD (`hillField`, already there for the relief), sampled BILINEARLY — which
+alone takes the boundary off the grid — and then displaced by world-space
+noise, the coastline's own trick. `ROCK_STEP` is the one density dial and must
+stay well under twice `ROCK_MIN` or grass shows through the core.
+**WHAT MAY CROSS THE LINE IS LIMITED ON PURPOSE**: a boulder standing on grass
+a unit can walk through is a lie about the map, so `ROCK_WANDER` stays well
+under half a tile, the last band thins out (`ROCK_FRINGE`) instead of ending on
+a wall, and past the boundary only loose SCREE chips lie on the ground — which
+is honest, because scree at the foot of a crag is walkable and always was.
+A supplied `assets/terrain/hills.png` still wins and stands the whole scatter
+down, the same rule grass, water and mountain follow.
+**AN OVERLAPPING LAYER CAN ONLY BE REPAIRED INSIDE THE GROUND THAT WAS ERASED**
+(`R.clipTiles`, pinned by `andDiggingItLeavesNoStaleShore`): rocks from
+neighbouring tiles overlap and the bake composites them in ONE global row-major
+order, so redrawing a tile's stone on top of a neighbour that was not redrawn
+puts it on the wrong side of that neighbour. Measured at 8 stale tiles after a
+single moat dig SIX TILES AWAY, where the water repaint's own outer ring
+happened to cross a deposit. Two rules together fix it: `drawTilesAt` walks its
+tile sets in numeric key order (which IS row-major, since the keys are
+`y*W+x` — a Set iterates in insertion order, which is nothing like it), and the
+rock pass is CLIPPED to the tiles whose ground the same call repainted. Then
+every rock covering that ground is redrawn in the bake's own order and no pixel
+outside it is touched. The stamps must also be fully OPAQUE for the same
+family of reasons the decals are — a translucent contact shadow would darken a
+little more on every pass.
 **Measured, not eyeballed** (`andOutShoutsDecoratedGrass`): the quietest
-blocked terrain sits 15.7 luminance from bare grass where a fully decorated
-meadow tile sits 2.0 — a 7.9× separation, and only 6% of that meadow tile reads
-as anything but grass.
+blocked terrain sits 16.7 luminance from bare grass where a fully decorated
+meadow tile sits 2.0 — an 8× separation, and only 6% of that meadow tile reads
+as anything but grass. **And the coverage figure is a DIFF, on the rendered
+map** (`impassableGroundIsVisiblyOccupied`): the map is baked twice, once with
+every resource's own drawing suppressed, and a pixel counts as occupied when
+the two differ. A colour test cannot stand in for the old sprite alpha — a
+wood's canopy is as green as the grass it stands on, so "not grass-coloured"
+scores a dense forest at ZERO — and the rock mass has no sprite to read an
+alpha from at all. The patches are also PLANTED rather than hunted for: the
+reference map has 24 forest tiles on it and not one 3x3 block of them, which is
+how the old sprite-sheet version of this check hid the fact that it was never
+looking at the map.
 **AND DECORATION RECEDES** (`LAND.DECAL_MUTE`): every ground decal is pulled
 toward the grass it lies on at the point of drawing, so ONE dial governs the
-whole layer and no decal can be forgotten — including the shore stones and the
-streamside reeds, which come through the same door and pass their own
+whole layer and no decal can be forgotten — including the shore stones, which
+come through the same door and pass their own
 `DECAL_MUTE_WET` so a wet stone stays a touch crisper. Density and the empty
 ground between patches were cut again with it. The mix is memoised per
 (colour, mute): it runs several times per decal and thousands of times per

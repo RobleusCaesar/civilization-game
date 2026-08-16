@@ -486,97 +486,277 @@ const Sprites = {
      than in shade: an ANGULAR chunk, a ROUNDED dome, a cracked SLAB and a
      knot of RUBBLE. Each rock also picks its own stone ramp, so the mass has
      depth instead of reading as one flat grey shape. ---- */
-  const ROCK_PALS = [AP.ore, AP.rock, AP.stone];
-  function rockRound(f, cx, cy, rr, pal) {
-    const St = pal || AP.ore;
-    ART.shadedCircle(f, cx, cy, rr, [St[0], St[1], St[2], St[3], St[4] || St[3]], 2);
-    for (let a2 = 0.35; a2 <= 2.8; a2 += 0.24)                       // dark underside rim
-      f((cx + Math.cos(a2) * rr) | 0, (cy + Math.sin(a2) * rr) | 0, 1, 1, St[0]);
-    ART.shadedCircle(f, cx - 1, cy - 1, Math.max(1, (rr * 0.45) | 0), St, 4);   // crown glint
-  }
-  function rockSlab(f, cx, cy, rr, pal) {
-    /* A CRACKED SLAB — a low, wide, SPLIT boulder. Built from an ellipse
-       rather than a rectangle, because anything with four straight sides and
-       square corners reads as MASONRY, a built thing, which is the wrong
-       signal entirely on wild ground (the first version of this was
-       indistinguishable from a dropped block of stone). Wide and flat is what
-       makes it a slab; the crack is what makes it a split one. */
-    const St = pal || AP.rock, w = rr + 2, hgt = Math.max(2, (rr * 0.58) | 0);
-    const r2 = ART.rng((cx * 41 + cy * 23 + rr) | 1);
-    for (let dy = -hgt; dy <= hgt; dy++) {
-      const k = 1 - (dy * dy) / ((hgt + 0.7) * (hgt + 0.7));
-      if (k <= 0) continue;
-      const hw = Math.max(1, Math.round(w * Math.sqrt(k) - r2() * 1.3));
-      f(cx - hw, cy + dy, hw * 2, 1, dy < -hgt * 0.25 ? St[3] : St[2]);
-      f(cx - hw, cy + dy, 1, 1, St[1]);
-      f(cx + hw - 1, cy + dy, 1, 1, St[0]);
-      if (dy >= hgt - 1) f(cx - hw, cy + dy, hw * 2, 1, St[0]);      // dark foot
-    }
-    const cr = ((cx * 7 + cy * 13) & 3) - 1;                          // the split
-    f(cx + cr, cy - hgt + 1, 1, hgt * 2 - 1, St[0]);
-    f(cx + cr + 1, cy - hgt + 2, 1, hgt, St[1]);
-  }
-  function rockRubble(f, cx, cy, rr, pal) {
-    const St = pal || AP.stone, r2 = ART.rng((cx * 31 + cy * 17 + rr) | 1);
-    const n = 3 + ((r2() * 3) | 0);
-    for (let i = 0; i < n; i++) {
-      const ox = ((r2() * 2 - 1) * rr) | 0, oy = ((r2() * 2 - 1) * rr * 0.7) | 0;
-      const sr = Math.max(1, ((rr * 0.45) * (0.6 + r2() * 0.8)) | 0);
-      f(cx + ox - sr, cy + oy - sr + 1, sr * 2 + 1, sr * 2, St[2]);
-      f(cx + ox - sr, cy + oy - sr + 1, sr * 2 + 1, 1, St[3]);
-      f(cx + ox - sr, cy + oy + sr, sr * 2 + 1, 1, St[0]);
-    }
-  }
-  const ROCK_KINDS = [boulderBody, rockRound, rockSlab, rockRubble];
-  Sprites.ROCK_KINDS = ROCK_KINDS.length;
-  /* level 0 = fringe, 1 = perimeter, 2 = core. The core's lattice step is
-     SMALLER than the rocks it places, which is what makes the mass close up;
-     raise ROCK_STEP or lower ROCK_RAD and bare grass starts showing through,
-     which is the whole thing this exists to prevent. */
-  function rockField(p, seed, level) {
-    const f = p.f, r = ART.rng(seed + 3);
-    const rocks = [];
-    /* THE TAPER HAS TO BE GENTLE OR IT DRAWS THE GRID. A core tile packed
-       solid beside a perimeter tile that is two thirds bare turf puts a hard
-       square of stone in the middle of a deposit — the tile boundary becomes
-       the most visible line on screen, which is worse than the scattered
-       stamps this replaced. The perimeter therefore sits CLOSE to the core
-       (and may straddle its edges, since a tile with four or more ore
-       neighbours is nowhere near the deposit's border); only the FRINGE keeps
-       every rock whole and inside its tile, because that is the edge the
-       player actually sees against grass. */
-    if (level >= 1) {
-      const step = level === 2 ? 8 : 10;
-      const lo = level === 2 ? 7 : 6, hi = level === 2 ? 4 : 4;
-      for (let gy = -2, row = 0; gy <= 34; gy += step, row++)
-        for (let gx = (row & 1) ? -6 : -2; gx <= 34; gx += step) {
-          if (level === 1 && r() < 0.22) continue;          // a little air on the perimeter
-          const rr = lo + ((r() * hi) | 0);
-          rocks.push([gx + ((r() * 7) | 0) - 3, gy + ((r() * 7) | 0) - 3, rr,
-            ROCK_KINDS[(r() * ROCK_KINDS.length) | 0], ROCK_PALS[(r() * ROCK_PALS.length) | 0]]);
+  /* ---- STONE THAT READS AS STONE ---------------------------------------
+     The old rocks were rounded, pale and near-uniform in value — soft blobby
+     silhouettes in a narrow light band, which reads as bread rolls, not as
+     ground you would quarry. Every rule below exists to say ROCK instead.
+
+     ANGULAR, NOT ROUND. Each form is a POLYGON with hard corners: flat planes
+     meeting at sharp edges, chipped facets, cleaved faces. The soft outline
+     was the single biggest reason the mass read as cotton, so nothing here
+     is drawn from a circle.
+
+     HARD VALUE STEPS, NO GRADIENTS. Light is top-left (the locked STYLE
+     direction), so the body is cut by two cleave lines along the 45-degree
+     axis `s = dx + dy`: a lit plane above the first, a front plane between,
+     a shadow plane below the second, with an extra step at each extreme for
+     the crest and the deep shade. A near-black CREVICE (index 0) runs along
+     each cleave and around the whole rim — which is also what keeps two
+     rocks apart when they overlap in a dense mass.
+
+     HUE VARIES BETWEEN ROCKS. Each takes one of three six-step ramps
+     (granite / slate / sandstone), so the mass has depth rather than one
+     flat tone.
+
+     AND IT LOOKS MINABLE. Cracks, strata lines, chipped corners and pale
+     fresh-quarried scars are what say "there is stone in here to take" as
+     against "here is a decorative boulder". ---- */
+  const STONE_PALS = [AP.granite, AP.slate, AP.sandst];
+  /* WEIGHTED, not an even draw. An even three-way mix put as much blue-grey
+     in a field as neutral stone and the whole deposit read cold and purple —
+     the hue variation is meant to give the mass depth, not to make it look
+     like three different minerals in equal measure. Granite is the rock;
+     sandstone and slate are the variation. */
+  Sprites.STONE_MIX = [0, 0, 0, 2, 2, 1];
+  Sprites.STONE_PALS = STONE_PALS.length;
+  /* Scanline-fill a closed polygon, colouring each pixel through `shade`.
+     Polygons are the whole vocabulary here: everything angular in a rock
+     field comes out of this one function. */
+  function facetFill(f, cx, cy, pts, shade) {
+    let y0 = 1e9, y1 = -1e9;
+    for (const q of pts) { if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }
+    for (let y = Math.round(y0); y <= Math.round(y1); y++) {
+      const xs = [];
+      for (let i = 0; i < pts.length; i++) {
+        const a2 = pts[i], b2 = pts[(i + 1) % pts.length];
+        if ((a2[1] <= y && b2[1] > y) || (b2[1] <= y && a2[1] > y))
+          xs.push(a2[0] + (y - a2[1]) / (b2[1] - a2[1]) * (b2[0] - a2[0]));
+      }
+      if (xs.length < 2) continue;
+      xs.sort((p2, q) => p2 - q);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const xa = Math.round(xs[k]), xb = Math.round(xs[k + 1]);
+        for (let x = xa; x <= xb; x++) {
+          const c = shade(x, y, x <= xa || x >= xb, y <= Math.round(y0) || y >= Math.round(y1));
+          if (c) f(cx + x, cy + y, 1, 1, c);
         }
-    } else {
-      const n = 3 + ((r() * 3) | 0);
-      for (let i = 0; i < n; i++) {
-        const rr = 4 + ((r() * 3) | 0);
-        const cx = rr + 1 + ((r() * (30 - 2 * rr)) | 0);
-        const cy = rr + 1 + ((r() * (29 - 2 * rr)) | 0);
-        rocks.push([cx, cy, rr, ROCK_KINDS[(r() * ROCK_KINDS.length) | 0],
-          ROCK_PALS[(r() * ROCK_PALS.length) | 0]]);
       }
     }
-    // shadows first, bodies after, back to front — so an overlapping mass
-    // composites cleanly and every rock still sits ON the ground
-    rocks.sort((a2, b2) => a2[1] - b2[1]);
-    for (const [cx, cy, rr] of rocks) boulderShadow(f, cx, cy, rr);
-    for (const [cx, cy, rr, draw, pal] of rocks) draw(f, cx, cy, rr, pal);
-    if (level < 2) for (let i = 0; i < 5; i++)                       // scree chips at the fringe
-      f((r() * 30) | 0, (r() * 30) | 0, 1, 1, r() < 0.6 ? AP.ore[2] : AP.grass[4]);
   }
-  const rockSet = (base, lvl, n) => { const a2 = []; for (let i = 0; i < n; i++) a2.push(tile(p => rockField(p, base + i * 53, lvl))); return a2; };
-  Sprites.terrain[T.HILLS] = rockSet(31, 0, 8);        // SPARSE — the deposit's soft fringe
-  Sprites.terrainMed[T.HILLS] = rockSet(33, 1, 8);     // MEDIUM — chunky clusters, none cut
-  Sprites.terrainFull[T.HILLS] = rockSet(41, 2, 8);    // DENSE — the packed, straddling core
+  /* the standard facet shader: two cleave lines across the 45-degree axis,
+     a third break down the right flank, hard steps at every boundary. */
+  function facetShade(St, rr, s1, s2, tc, extra) {
+    const crest = rr * 0.55, deep = rr * 0.5;
+    return (x, y, edge) => {
+      // the rim is near-black where the rock turns AWAY from the light and only
+      // a deep shade where it faces it — an even black outline all round turns
+      // a small stone into a blot
+      if (edge) return x + y > 0 ? St[0] : St[1];
+      const s = x + y, t2 = x - y;
+      if (Math.abs(s - s1) < 0.9 || Math.abs(s - s2) < 0.9) return St[0];   // crevice along the cleave
+      let i;
+      if (s < s1) i = s < s1 - crest ? 5 : 4;                   // lit plane, brightest at the crest
+      else if (s < s2) i = 3;                                   // front plane
+      else i = s > s2 + deep ? 1 : 2;                           // shadow plane, deepest at the foot
+      if (t2 > tc && i > 1) i -= 1;                             // the right flank turns away
+      if (extra) { const e = extra(x, y, i); if (e) return e; }
+      return St[i];
+    };
+  }
+  // an angular outline: n vertices at jittered radii, one corner chipped flat
+  function angPts(rr, n, r2, squash, rough) {
+    const pts = [], a0 = r2() * 6.283, chip = (r2() * n) | 0;
+    for (let i = 0; i < n; i++) {
+      const a2 = a0 + (i / n) * 6.283;
+      let rad = rr * (1 - rough * 0.5 + r2() * rough);
+      if (i === chip) rad *= 0.62;                              // a chipped, cleaved corner
+      pts.push([Math.cos(a2) * rad, Math.sin(a2) * rad * squash]);
+    }
+    return pts;
+  }
+  // a pale fresh-broken face: hard-edged, never blended, and only ever a
+  // patch of the rock — this is what says the stone has been struck
+  function scarAt(St, r2, rr) {
+    if (r2() > 0.45) return null;
+    const sx = -rr * 0.5 + r2() * rr * 0.6, sy = -rr * 0.4 + r2() * rr * 0.7;
+    const w = 1 + ((rr * (0.2 + r2() * 0.25)) | 0), hgt = 1 + ((rr * (0.2 + r2() * 0.3)) | 0);
+    return (x, y) => (x >= sx && x < sx + w && y >= sy && y < sy + hgt
+      && (x - sx) + (y - sy) < w + hgt - 2) ? St[5] : null;
+  }
+  function rkBoulder(f, cx, cy, rr, St, r2) {
+    const pts = angPts(rr, 7, r2, 0.88, 0.34);
+    const s1 = -rr * (0.15 + r2() * 0.3), s2 = rr * (0.2 + r2() * 0.3);
+    facetFill(f, cx, cy, pts, facetShade(St, rr, s1, s2, rr * 0.45, scarAt(St, r2, rr)));
+    f(cx + ((r2() * rr - rr * 0.5) | 0), cy - ((rr * 0.3) | 0), 1, Math.max(2, (rr * 0.7) | 0), St[0]);   // fissure
+  }
+  function rkSlab(f, cx, cy, rr, St, r2) {
+    /* A CLEAVED SLAB: a low wedge with a broad LIT top plane and a steep dark
+       front, split by one hard break. Two things keep it a rock rather than a
+       pot lid — the top is TILTED (so the break line is not level) and both
+       the top edge and the foot are ragged. Symmetry is what read as an
+       object somebody made. */
+    // WIDE and low — the flattest thing in the field, and far enough from the
+    // boulder's proportions that the two never read as the same stone
+    const w = rr * (1.35 + r2() * 0.3), hgt = rr * 0.5;
+    const tilt = (r2() - 0.5) * 0.55;                            // the bedding plane's dip
+    const pts = [[-w, -hgt * 0.15 + w * tilt], [-w * 0.62, -hgt * 0.85 + w * tilt * 0.6],
+      [-w * 0.1, -hgt * (0.6 + r2() * 0.4)], [w * 0.55, -hgt * 0.8 - w * tilt * 0.6],
+      [w, -hgt * 0.05 - w * tilt], [w * 0.72, hgt * 0.85], [-w * 0.2, hgt],
+      [-w * 0.78, hgt * 0.8]];
+    const brk = (x) => -hgt * 0.08 - x * tilt;                   // the break follows the dip
+    // …and the TOP is two facets, not one bright cap. One continuous lit
+    // plane over one dark front is the shape of a pot lid; a bedding plane
+    // that steps partway across is the shape of a rock.
+    const fold = -w * (0.05 + r2() * 0.4);
+    facetFill(f, cx, cy, pts, (x, y, edge) => {
+      if (edge) return x + y > 0 ? St[0] : St[1];
+      const b = brk(x);
+      if (Math.abs(y - b) < 0.9) return St[0];                   // the cleave, seen edge-on
+      if (y < b) return x < fold ? (x + y < -rr * 0.5 ? St[5] : St[4]) : St[3];
+      return y > hgt * 0.6 ? St[1] : (x > rr * 0.35 ? St[1] : St[2]);
+    });
+    // two broken cleave lines down the face, of different lengths
+    for (let i = 0; i < 2; i++) {
+      const cl = ((r2() * w * 1.6) | 0) - ((w * 0.8) | 0);
+      f(cx + cl, cy + brk(cl) + 1, 1, Math.max(1, ((hgt * (0.4 + r2() * 0.5)) | 0)), St[0]);
+    }
+  }
+  function rkBlock(f, cx, cy, rr, St, r2) {
+    /* A CRACKED BLOCK of bedded stone. The first version of this was a
+       near-rectangle wearing full-width horizontal bands, and it read as a
+       BARREL — four straight sides and evenly-stacked hoops is the vocabulary
+       of a made thing, which is the wrong signal entirely on wild ground.
+       So the outline is a leaning irregular chunk and the STRATA are SHORT
+       BROKEN SEGMENTS at the bedding's own dip, none of them spanning the
+       face, staggered so no two line up. That is what real bedded rock does
+       and what a barrel never does. */
+    // TALL and narrow, deliberately: drawn at the boulder's own proportions
+    // the two silhouettes came within 20% of each other and the field lost a
+    // form. A block stands on end; a boulder sits wide.
+    const w = rr * (0.6 + r2() * 0.25), hgt = rr * (1.0 + r2() * 0.3);
+    const lean = (r2() - 0.5) * 0.5;
+    const notch = 0.35 + r2() * 0.3;                             // a corner cleaved clean off
+    const pts = [[-w * 0.75, -hgt * 0.9], [w * 0.2, -hgt], [w * notch, -hgt * 0.45],
+      [w, -hgt * 0.2], [w * 0.85, hgt * 0.55], [w * 0.1, hgt],
+      [-w * 0.8, hgt * 0.7], [-w, -hgt * 0.1]];
+    facetFill(f, cx, cy, pts, (x, y, edge) => {
+      if (edge) return x + y > 0 ? St[0] : St[1];
+      const s = x + y;
+      if (s < -rr * 0.45) return St[4];
+      if (s < rr * 0.15) return St[3];
+      return s > rr * 0.75 ? St[1] : St[2];
+    });
+    /* THE BEDDING IS THE WHOLE CHARACTER, and it must never be a cross. The
+       first pass drew one long vertical crack over one long horizontal seam,
+       and at this size every block wore a dagger scratched down its face.
+       Short seams only, all at the bedding's own dip, staggered in x so no
+       two line up — and no crack cutting across them. */
+    const beds = 3 + ((r2() * 2) | 0);
+    for (let i = 0; i < beds; i++) {
+      const by = -hgt * 0.6 + (i + 0.2 + r2() * 0.5) * (hgt * 1.35 / beds);
+      const x0 = -w * (0.15 + r2() * 0.75), len = Math.max(2, (w * (0.35 + r2() * 0.6)) | 0);
+      for (let k = 0; k < len; k++) {
+        const xx = x0 + k, yy = by + xx * lean;
+        f(cx + Math.round(xx), cy + Math.round(yy), 1, 1, k === 0 || k === len - 1 ? St[2] : St[1]);
+      }
+    }
+  }
+  function rkSpire(f, cx, cy, rr, St, r2) {
+    /* A JAGGED SHARD standing on end — not a cone. It leans, its two flanks
+       are notched at different heights, and its foot is broad: drawn smooth
+       and symmetric it reads as a witch's hat, which is what the first
+       version did. */
+    const w = rr * (0.8 + r2() * 0.3), hgt = rr * (0.95 + r2() * 0.3);
+    const ln = (0.25 + r2() * 0.5) * w * (r2() < 0.5 ? -1 : 1);  // which way the shard leans
+    /* THE NOTCH IS WHAT STOPS IT BEING A CONE. Both flanks step in, at
+       DIFFERENT heights, and a broken shoulder juts out of one of them —
+       drawn as two clean slopes to an apex it read as a witch's hat. */
+    const sh = 0.3 + r2() * 0.35;                                // where the broken shoulder sits
+    const pts = [[ln, -hgt], [ln + w * 0.34, -hgt * 0.62], [ln + w * 0.12, -hgt * 0.42],
+      [w * 0.6, -hgt * sh], [w * 0.44, hgt * 0.05], [w, hgt * 0.5], [w * 0.72, hgt * 0.88],
+      [-w * 0.1, hgt], [-w * 0.88, hgt * 0.8], [-w * 0.5, hgt * 0.1],
+      [ln - w * 0.62, -hgt * (sh * 0.5)], [ln - w * 0.2, -hgt * 0.5]];
+    const ridge = (y) => ln * (1 - (y + hgt) / (hgt * 2)) + 0.5;   // the arête, following the lean
+    facetFill(f, cx, cy, pts, (x, y, edge) => {
+      if (edge) return x > ridge(y) ? St[0] : St[1];
+      const rdg = ridge(y);
+      if (x < rdg - 1) return x + y < -rr * 0.75 ? St[5] : St[4];  // lit left face
+      if (x < rdg + 1) return St[0];                              // the arête
+      return y > hgt * 0.4 ? St[1] : St[2];                       // shadowed right face
+    });
+  }
+  function rkRubble(f, cx, cy, rr, St, r2) {
+    // a knot of broken stone: a few CHUNKS, not gravel — small and dark and it
+    // stops reading as rock at all and starts reading as spilled dirt
+    const n = 3 + ((r2() * 2) | 0);
+    const put = [];
+    for (let i = 0; i < n; i++) {
+      const ox = ((r2() * 2 - 1) * rr * 0.7) | 0, oy = ((r2() * 2 - 1) * rr * 0.5) | 0;
+      const sr = Math.max(3, ((rr * 0.6) * (0.75 + r2() * 0.55)) | 0);
+      put.push([ox, oy, sr, angPts(sr, 5, r2, 0.85, 0.42)]);
+    }
+    put.sort((a2, b2) => a2[1] - b2[1]);
+    for (const [ox, oy, sr, pts] of put)
+      facetFill(f, cx + ox, cy + oy, pts, facetShade(St, sr, -sr * 0.25, sr * 0.35, sr * 0.6, null));
+  }
+  const ROCK_KINDS = [rkBoulder, rkSlab, rkBlock, rkSpire, rkRubble];
+  Sprites.ROCK_KINDS = ROCK_KINDS.length;
+  /* THE CONTACT SHADOW IS OPAQUE, AND THAT IS NOT A STYLE CHOICE. Rock stamps
+     are re-stamped by the incremental repaint over ground that was not itself
+     repainted (the same rule the decals follow), so every pixel must be
+     idempotent — a translucent shadow would darken a little more on every
+     pass. A solid row hugging the foot plus a dithered row below reads as a
+     contact shadow over grass and as a crevice over the rock behind it, which
+     is exactly what is wanted in both places. */
+  /* THE CONTACT SHADOW IS TRACED OFF THE ROCK, not guessed from its radius.
+     Drawn as a bar at cy+rr it floated below every shape that does not reach
+     its own radius (the slab, the rubble) and read as an underline ruled
+     under a hovering stone. Reading the finished alpha and hanging one dark
+     pixel off the lowest opaque row of each column follows any silhouette
+     exactly, and dithering it keeps it a shadow rather than a line — the
+     dither is opaque, so re-stamping is still idempotent. */
+  function rockFoot(g, w, hgt, St) {
+    const d = g.getImageData(0, 0, w, hgt), a = d.data;
+    const low = new Int32Array(w).fill(-1);
+    let x0 = w, x1 = -1;
+    for (let x = 0; x < w; x++) for (let y = hgt - 1; y >= 0; y--)
+      if (a[(y * w + x) * 4 + 3] > 128) { low[x] = y; if (x < x0) x0 = x; if (x > x1) x1 = x; break; }
+    if (x1 < x0) return;
+    const mid = (x0 + x1) / 2, half = (x1 - x0) / 2 + 0.5;
+    g.fillStyle = St[0];
+    for (let x = x0; x <= x1; x++) {
+      if (low[x] < 0 || low[x] >= hgt - 1) continue;
+      const t2 = 1 - ((x - mid) * (x - mid)) / (half * half);
+      if (t2 <= 0.12) continue;
+      g.fillRect(x, low[x] + 1, 1, 1);
+      if (t2 > 0.55 && ((x + low[x]) & 1) === 0) g.fillRect(x, low[x] + 2, 1, 1);
+    }
+  }
+  /* ONE ROCK, PRE-RENDERED. render.js scatters these in WORLD space — the
+     lattice ignores the tile grid entirely, so a rock straddling a boundary
+     is one whole rock spilling into its neighbour rather than two cut halves
+     that have to be drawn to match. Building each stamp once and blitting it
+     is what keeps that affordable. */
+  const _stamps = new Map();
+  Sprites.rockStamp = (kind, rr, palIdx, vseed) => {
+    // a NUMBER, not a string: this is looked up once per rock in the bake and
+    // building a few thousand key strings a repaint is pure waste
+    const key = ((kind * 64 + rr) * 8 + palIdx) * 8 + vseed;
+    const hit = _stamps.get(key);
+    if (hit) return hit;
+    const pad = 3, w = rr * 2 + pad * 2, hgt = rr * 2 + pad * 2 + 2;
+    const c = mk(w, hgt), g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    const f = (x, y, ww, hh, col) => { g.fillStyle = col; g.fillRect(x, y, ww || 1, hh || 1); };
+    const St = STONE_PALS[palIdx % STONE_PALS.length];
+    const r2 = ART.rng((kind * 7919 + rr * 131 + palIdx * 37 + vseed * 613) | 1);
+    const cx = rr + pad, cy = rr + pad;
+    ROCK_KINDS[kind % ROCK_KINDS.length](f, cx, cy, rr, St, r2);
+    rockFoot(g, w, hgt, St);
+    c._ox = cx; c._oy = cy;                    // where the rock's centre sits in the stamp
+    _stamps.set(key, c);
+    return c;
+  };
 
   // wild fertile ground: fruit orchards and berry thickets, mixed across the
   // map — the village forages these long before it tills its first farm
@@ -601,7 +781,10 @@ const Sprites = {
     };
     // core tiles pack in and MAY straddle the edge (a cut crown always abuts
     // more orchard); fringe tiles keep every tree whole and inside the tile
-    const nt = level === 2 ? 22 + (r() * 6 | 0) : level === 1 ? 9 + (r() * 4 | 0) : 2 + (r() * 2 | 0);
+    // the DENSE count is measured, not guessed: a fully-enclosed tile of a
+    // thicket must close up like the rock core does, or the heart of an
+    // orchard reads as open ground you could walk through
+    const nt = level === 2 ? 38 + (r() * 8 | 0) : level === 1 ? 11 + (r() * 4 | 0) : 2 + (r() * 2 | 0);
     const span = level === 2 ? 34 : 18, base = level === 2 ? -1 : 7;
     for (let i = 0; i < nt; i++)
       fruitTree(base + (r() * span) | 0, (level === 2 ? -1 : 8) + (r() * (level === 2 ? 34 : 13)) | 0,
@@ -625,7 +808,7 @@ const Sprites = {
         if (br() < 0.3) f(bx, by - 1, 1, 1, AP.berry[2]);           // bright pink highlight
       }
     };
-    const nb = level === 2 ? 34 + (r() * 8 | 0) : level === 1 ? 13 + (r() * 5 | 0) : 3 + (r() * 2 | 0);
+    const nb = level === 2 ? 56 + (r() * 10 | 0) : level === 1 ? 16 + (r() * 5 | 0) : 3 + (r() * 2 | 0);
     const span = level === 2 ? 34 : 22, base = level === 2 ? -1 : 5;
     for (let i = 0; i < nb; i++)
       bush(base + (r() * span) | 0, (level === 2 ? -1 : 6) + (r() * (level === 2 ? 34 : 19)) | 0,

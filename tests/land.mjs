@@ -29,11 +29,17 @@
       naval movement and shallowness all still read the tile grid, and none of
       them may notice that the painted waterline left it.
 
+   8. AND THE ROCK FIELD IS SCATTERED, NOT TILED. Stone is blitted in world
+      space from a lattice that ignores the grid, so a deposit's outline
+      wanders — and none of it may reach the rules, or move a pixel an
+      incremental repaint would not also move.
+
    Run after touching: R.landTone / groundTint / cornerShade / landDecals /
-   drawDecal / terrainEdges / paintWater / paintGround /
-   waterRegions / chaikin / roughen / buildShoreLayer / blitShore / waterKey /
-   rebuildTerrain / drawTileAt / drawTilesAt / clipBoard, Sprites.tree and the
-   forest sets, or the LAND constants.
+   drawDecal / terrainEdges / paintWater / paintGround / rockMass / rockScree /
+   denseEdge / waterRegions / chaikin / roughen / buildShoreLayer / blitShore /
+   waterKey / rebuildTerrain / drawTileAt / drawTilesAt / clipBoard /
+   clipTiles, Sprites.tree, Sprites.rockStamp and the forest/fertile sets, or
+   the LAND constants.
 
      node tests/land.mjs      # exits non-zero on any regression */
 let pw;
@@ -523,16 +529,24 @@ const seaBoot = `Boot.force(); G.newGame('scenes1','moderate','xlarge');
   await p.close();
 }
 
-/* ---- 9. DECORATIVE STREAMS HAVE NO GAMEPLAY EFFECT AT ALL -------------
-   The whole point of the feature is that it is a drawing. A stream is not a
-   water tile: it does not block movement, does not count as water for docks,
-   fishing, naval hulls, bridges, sappers or the reachability clamp, does not
-   appear on the minimap as water, and writes to no map array. Units and
-   buildings pass over it freely.
+/* ---- 9. THE ROCK MASS IS A DRAWING, AND THE STREAM IS GONE -----------
+   The stone field is scattered in WORLD space now (R.rockMass), not stamped
+   per tile, so a boulder crosses tile borders freely and the deposit's
+   outline wanders. None of that may reach the rules: a hill is exactly as
+   passable, as buildable and as dockable as it was when it was three sprite
+   sets.
 
-   This is measured the only way it can honestly be measured — run every one
-   of those answers over the tiles a stream actually crosses, with the streams
-   drawn and with them switched off, and require the two to be identical. ---- */
+   THE DECORATIVE STREAM WAS REMOVED, and this pins that it stays removed.
+   It was measured at play zoom and only 10.8% of its pixels were bluer than
+   they were green — mean (54,81,46) against real water's (39,88,118) — so it
+   did not read as water at all; and every run on the reference seed sprang
+   out of a rock field, because the source hunt scored high ground and high
+   ground is where the crags are. The dilemma is structural rather than a
+   tuning failure: subtle enough to be honest is an olive smear, and vivid
+   enough to read as water is a lie about a tile nobody can fish, bridge or
+   sail. This codebase already refuses to let the ground speak a resource's
+   language when it is not that resource (noGroundSurfaceMakesAFalsePromise);
+   a whole watercourse that is not water is the same fault, larger. ---- */
 const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   Screens._demo=false; Screens.show('playing'); S.paused=true;
   for (let i=0;i<S.map.explored.length;i++){S.map.explored[i]=1; if(S.map.seenTerrain)S.map.seenTerrain[i]=S.map.terrain[i];}
@@ -540,11 +554,17 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
 {
   const p = await page();
   const v = await p.evaluate(new Function(wetBoot + `
-    const runs = R.streams();
-    // the tiles a stream crosses, which is where an effect would show up
+    const W=CFG.W, H=CFG.H;
+    // every tile a rock can reach: the deposits and two rings around them
     const on = new Set();
-    for (const r of runs) for (const pt of r) on.add((Math.floor(pt[1]))*CFG.W + Math.floor(pt[0]));
-    const tiles = [...on].map(k => [k % CFG.W, (k / CFG.W) | 0]);
+    for (let y=1;y<H-1;y++) for (let x=1;x<W-1;x++) {
+      if (S.map.terrain[y*W+x] !== T.HILLS) continue;
+      for (let oy=-2;oy<=2;oy++) for (let ox=-2;ox<=2;ox++) {
+        const nx=x+ox, ny=y+oy;
+        if (nx>0 && ny>0 && nx<W-1 && ny<H-1) on.add(ny*W+nx);
+      }
+    }
+    const tiles = [...on].map(k => [k % W, (k / W) | 0]);
     const sig = () => {
       const m = S.map, parts = [];
       for (const k of ['terrain','seenTerrain','explored','reclaimed','seenB'])
@@ -564,40 +584,113 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       Terraform && Terraform.diggable ? (Terraform.diggable(x,y) ? 1 : 0) : 0,
     ].join(',')).join(';');
     const before = { sig: sig(), ans: answers() };
-    // …now switch the drawing off entirely and ask again
-    const dens = LAND.STREAM_DENSITY;
-    LAND.STREAM_DENSITY = 0; R._streamKey = ''; R.streams(); R.rebuildTerrain();
-    const off = { sig: sig(), ans: answers(), runs: R.streams().length };
-    LAND.STREAM_DENSITY = dens; R._streamKey = ''; R.rebuildTerrain();
-    // and the minimap must not paint a stream as water
-    const mini = (() => {
-      R.drawMini && R.drawMini();
-      if (!R.mini) return 'no minimap';
-      const g = R.mini.getContext('2d');
-      const d = g.getImageData(0,0,R.mini.width,R.mini.height).data;
-      const wc = ART.PALETTE.water;
-      const px = (x,y) => { const sx=Math.round(x/CFG.W*R.mini.width), sy=Math.round(y/CFG.H*R.mini.height);
-        const i=(sy*R.mini.width+sx)*4; return [d[i],d[i+1],d[i+2]]; };
-      let asWater = 0;
-      for (const [x,y] of tiles) {
-        const t = S.map.terrain[MapGen.idx(x,y)];
-        if (t === T.WATER || t === T.MOAT) continue;      // genuinely water — not our business
-        const [r,g2,b] = px(x,y);
-        if (b > r + 25 && b > g2 + 10) asWater++;          // painted blue on dry land
-      }
-      return asWater;
-    })();
-    return { tiles: tiles.length, runs: runs.length, wrote: before.sig !== off.sig,
-             moved: before.ans !== off.ans, offRuns: off.runs, miniAsWater: mini };`));
-  ck('aStreamCrossesRealGround', v.tiles >= 12 && v.runs > 0,
-    v.runs + ' streams over ' + v.tiles + ' tiles');
-  ck('andStreamsWriteToNoMapArray', !v.wrote, 'every map array identical');
-  ck('andHaveNoGameplayEffectWhatever', !v.moved && v.offRuns === 0,
+    const rm = R.rockMass, rs = R.rockScree;
+    R.rockMass = () => {}; R.rockScree = () => {}; R.rebuildTerrain();
+    const off = { sig: sig(), ans: answers() };
+    R.rockMass = rm; R.rockScree = rs; R.rebuildTerrain();
+    // …and the stream is gone, machinery and tunables together
+    const streamApi = ['streams','drawStreams','chaikinOpen','roughenOpen'].filter(k => typeof R[k] === 'function');
+    const streamDials = Object.keys(LAND).filter(k => k.startsWith('STREAM'));
+    return { tiles: tiles.length, wrote: before.sig !== off.sig, moved: before.ans !== off.ans,
+             streamApi, streamDials };`));
+  ck('theRockMassWritesToNoMapArray', !v.wrote, 'every map array identical');
+  ck('andTheRockMassChangesNoRule', !v.moved,
     'land/naval/rival passability, dock siting, buildable ground, house placement, '
-    + 'fishing, shallowness, bridgeability and diggability all identical with the '
-    + 'streams drawn and with them off');
-  ck('andTheMinimapNeverShowsThemAsWater', v.miniAsWater === 0,
-    v.miniAsWater + ' stream tiles painted as water on the minimap');
+    + 'fishing, shallowness, bridgeability and diggability all identical over '
+    + v.tiles + ' tiles with the stone drawn and with it off');
+  ck('andTheDecorativeStreamIsGone', v.streamApi.length === 0 && v.streamDials.length === 0,
+    v.streamApi.concat(v.streamDials).join(', ') || 'no stream drawing, no stream dials');
+  await p.close();
+}
+
+/* ---- 9b. STONE READS AS STONE, AND ITS OUTLINE IS NOT THE TILE GRID ---
+   The reported fault: rock fields read as pale rounded lumps of near-uniform
+   value — bread rolls, not stone you would quarry — inside a region whose
+   edge was a staircase of squares.
+
+   Both halves are measured on the RENDERED MAP, and what counts as "rock" is
+   established by DIFFING two bakes, one with R.rockMass stubbed out. That is
+   exact where a colour test is not: a deposit stands on the same painted
+   grass floor as everything else, and half the map's other decoration is
+   grey too. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(wetBoot + `
+    const W=CFG.W, H=CFG.H, TL=CFG.TILE, d=R.hillField();
+    const px = W*TL;
+    const g = R.terrainCache.getContext('2d');
+    const on = g.getImageData(0,0,px,px).data;
+    const rm = R.rockMass, rs = R.rockScree;
+    R.rockMass=()=>{}; R.rockScree=()=>{}; R.rebuildTerrain();
+    const off = R.terrainCache.getContext('2d').getImageData(0,0,px,px).data;
+    R.rockMass=rm; R.rockScree=rs; R.rebuildTerrain();
+    const isRock = (x,y) => { const i=(y*px+x)*4;
+      return on[i]!==off[i] || on[i+1]!==off[i+1] || on[i+2]!==off[i+2]; };
+    // 1. THE CORE IS SOLID — no bare ground left showing through its heart
+    const cover = {};
+    for (let ty=1;ty<H-1;ty++) for (let tx=1;tx<W-1;tx++) {
+      const dep = d[ty*W+tx]; if (!dep) continue;
+      let n=0; for (let j2=0;j2<TL;j2++) for (let i2=0;i2<TL;i2++) if (isRock(tx*TL+i2, ty*TL+j2)) n++;
+      const k = Math.min(dep,3);
+      (cover[k]=cover[k]||{n:0,cov:0}); cover[k].n++; cover[k].cov += n/(TL*TL);
+    }
+    for (const k in cover) cover[k].cov = +(cover[k].cov/cover[k].n).toFixed(3);
+    // 2. THE OUTLINE IS NOT THE GRID. Walk the left silhouette of the biggest
+    //    deposit row by row: a tile-quantized edge holds the same x for a
+    //    whole tile at a time, so the longest constant run gives it away.
+    let bx=0, by=0, best=-1;
+    for (let y=5;y<H-5;y++) for (let x=5;x<W-5;x++) {
+      let c=0; for (let oy=-3;oy<=3;oy++) for (let ox=-3;ox<=3;ox++) if (S.map.terrain[(y+oy)*W+x+ox]===T.HILLS) c++;
+      if (c>best){best=c;bx=x;by=y;}
+    }
+    const edge = [];
+    for (let r=(by-4)*TL; r<(by+4)*TL; r++) {
+      for (let c=(bx-6)*TL; c<(bx+6)*TL; c++)
+        if (isRock(c,r)) { edge.push(c); break; }
+    }
+    let run=1, longest=1;
+    for (let i=1;i<edge.length;i++) { if (edge[i]===edge[i-1]) { run++; if (run>longest) longest=run; } else run=1; }
+    // 3. FIVE SILHOUETTES, THREE RAMPS, and real value contrast in the mass
+    const kinds = Sprites.ROCK_KINDS, pals = Sprites.STONE_PALS;
+    const lum = (r,gg,bb) => 0.299*r + 0.587*gg + 0.114*bb;
+    let lo=999, hi=-1, n=0, sum=0;
+    for (let j2=0;j2<TL;j2++) for (let i2=0;i2<TL;i2++) {
+      const x=bx*TL+i2, y=by*TL+j2; if (!isRock(x,y)) continue;
+      const i=(y*px+x)*4, l=lum(on[i],on[i+1],on[i+2]);
+      if (l<lo) lo=l; if (l>hi) hi=l; sum+=l; n++;
+    }
+    const mask = (k) => {
+      const st = Sprites.rockStamp(k, 10, 0, 1);
+      const c2 = document.createElement('canvas'); c2.width=st.width; c2.height=st.height;
+      const g2 = c2.getContext('2d'); g2.drawImage(st,0,0);
+      const dd = g2.getImageData(0,0,st.width,st.height).data;
+      const m=[]; for (let i=3;i<dd.length;i+=4) m.push(dd[i]>128?1:0);
+      return m;
+    };
+    const ms=[]; for (let k=0;k<kinds;k++) ms.push(mask(k));
+    let closest=1, pair='';
+    for (let a=0;a<kinds;a++) for (let b2=a+1;b2<kinds;b2++) {
+      let uni=0, diff=0;
+      for (let i=0;i<Math.min(ms[a].length,ms[b2].length);i++) {
+        if (ms[a][i]||ms[b2][i]) uni++;
+        if (ms[a][i]!==ms[b2][i]) diff++;
+      }
+      const f = uni ? diff/uni : 0; if (f<closest){closest=f; pair=a+'/'+b2;}
+    }
+    return { cover, longest, kinds, pals, pair, closest:+closest.toFixed(3),
+             range:+(hi-lo).toFixed(1), mean:+(sum/n).toFixed(1), at:[bx,by] };`));
+  const core = v.cover['3'] || v.cover['2'];
+  ck('aRockCoreIsSolidStone', core && core.cov >= 0.96,
+    'depth 1/2/3 tiles are ' + [1,2,3].map(k => v.cover[k] ? Math.round(v.cover[k].cov*100)+'%' : '-').join(' / ')
+    + ' stone — packed at the core, thinning at the fringe');
+  ck('andItsOutlineIsNotTheTileGrid', v.longest < 12,
+    "the longest straight run down the deposit's silhouette is " + v.longest
+    + 'px, against the 32px a tile-quantized edge gives');
+  ck('andRockIsBuiltOfFiveFormsInThreeStones', v.kinds >= 5 && v.pals >= 3 && v.closest > 0.25,
+    v.kinds + ' silhouettes (closest pair ' + v.pair + ' differs over ' + Math.round(v.closest*100)
+    + '% of the union of their masks), ' + v.pals + ' stone ramps');
+  ck('andTheMassHasRealValueContrast', v.range >= 120,
+    'the stone in a core tile spans ' + v.range + ' luminance, mean ' + v.mean);
   await p.close();
 }
 
@@ -642,24 +735,70 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   const v = await p.evaluate(new Function(wetBoot + `
     const TL = 32;
     const lum = (r,g2,b) => 0.299*r + 0.587*g2 + 0.114*b;
-    // draw one tile of a terrain over the grass floor, the way the map does
-    const sample = (t, dense) => {
-      const c = document.createElement('canvas'); c.width = c.height = TL;
-      const g = c.getContext('2d');
-      g.fillStyle = ART.PALETTE.grass[2]; g.fillRect(0,0,TL,TL);
-      const set = dense && Sprites.terrainFull[t] ? Sprites.terrainFull[t] : Sprites.terrain[t];
-      const img = set[0];
-      // alpha coverage is the honest "how much of this tile is the resource"
-      const ac = document.createElement('canvas'); ac.width = ac.height = TL;
-      const ag = ac.getContext('2d'); ag.drawImage(img, 0, 0);
-      const ad = ag.getImageData(0,0,TL,TL).data;
-      let cov = 0; for (let i=3;i<ad.length;i+=4) if (ad[i] > 100) cov++;
-      g.drawImage(img, 0, 0);
-      const d = g.getImageData(0,0,TL,TL).data;
+    /* MEASURED ON THE RENDERED MAP, and COVERAGE IS A DIFF. The rock mass has
+       no tile sprite any more — R.rockMass scatters stamps in world space —
+       so asking Sprites.terrainFull[T.HILLS] would measure something the
+       player never sees. And a colour test cannot stand in for the sprite's
+       old alpha: a wood's canopy is as green as the grass it stands on, so
+       "not grass-coloured" scores a dense forest at zero.
+
+       So the map is baked twice, once with every resource's own drawing
+       suppressed, and a pixel counts as occupied when the two differ. That is
+       exact for all three, and it reads the same bake the player is looking
+       at — blocked-ground shade and all. */
+    const W = CFG.W, H = CFG.H, px = W*TL;
+    /* AND THE PATCHES ARE PLANTED, not hunted for. The reference map has 24
+       forest tiles on it and not one 3x3 block of them, so "find a core tile
+       of this terrain" quietly measured nothing — which is exactly how the
+       old sprite-sheet version of this check hid the fact that it was never
+       looking at the map at all. A 5x5 patch of each kind is laid on open
+       grass and the map baked around it, which is the real pipeline and is
+       the same on every seed. */
+    const spots = [];
+    for (let y=6;y<H-7;y++) { if (spots.length>=3) break;
+      for (let x=6;x<W-7;x++) {
+        if (spots.length>=3) break;
+        if (spots.some(s2 => Math.abs(s2[0]-x) < 10 && Math.abs(s2[1]-y) < 10)) continue;
+        let clear = true;
+        for (let oy=-3;oy<=3&&clear;oy++) for (let ox=-3;ox<=3;ox++)
+          if (S.map.terrain[(y+oy)*W+x+ox] !== T.GRASS || (Bld.at && Bld.at(x+ox,y+oy))) { clear = false; break; }
+        if (clear) spots.push([x,y]);
+      }
+    }
+    if (spots.length < 3) return { tooCrowded: spots.length };
+    const kindAt = {};
+    ['FOREST','HILLS','FERTILE'].forEach((n2,i) => {
+      const [x,y] = spots[i]; kindAt[n2] = [x,y];
+      for (let oy=-2;oy<=2;oy++) for (let ox=-2;ox<=2;ox++) {
+        S.map.terrain[(y+oy)*W+x+ox] = T[n2];
+        if (S.map.seenTerrain) S.map.seenTerrain[(y+oy)*W+x+ox] = T[n2];
+      }
+    });
+    R.rebuildTerrain();
+    const on = R.terrainCache.getContext('2d').getImageData(0,0,px,px).data;
+    const blank = (() => { const c=document.createElement('canvas'); c.width=c.height=TL; return [c]; })();
+    const keep = {}, rm = R.rockMass, rs = R.rockScree;
+    for (const t of [T.FOREST, T.FERTILE]) {
+      keep[t] = [Sprites.terrain[t], Sprites.terrainMed[t], Sprites.terrainFull[t], Sprites.terrainRare[t]];
+      Sprites.terrain[t] = Sprites.terrainMed[t] = Sprites.terrainFull[t] = Sprites.terrainRare[t] = blank;
+    }
+    R.rockMass=()=>{}; R.rockScree=()=>{}; R.rebuildTerrain();
+    const off = R.terrainCache.getContext('2d').getImageData(0,0,px,px).data;
+    for (const t of [T.FOREST, T.FERTILE]) {
+      [Sprites.terrain[t], Sprites.terrainMed[t], Sprites.terrainFull[t], Sprites.terrainRare[t]] = keep[t];
+    }
+    R.rockMass=rm; R.rockScree=rs;
+    const sample = (n2) => {
+      const at = kindAt[n2];
+      if (!at) return { cov: 0, farPct: 0, meanDelta: 0, missing: 1 };
       const base = lum(...['1','3','5'].map(k=>parseInt(ART.PALETTE.grass[2].slice(+k,+k+2),16)));
-      let far = 0, sum = 0;
-      for (let i=0;i<d.length;i+=4){ const dl = Math.abs(lum(d[i],d[i+1],d[i+2]) - base);
-        sum += dl; if (dl > 18) far++; }
+      let cov = 0, far = 0, sum = 0;
+      for (let j=0;j<TL;j++) for (let i2=0;i2<TL;i2++) {
+        const k = ((at[1]*TL+j)*px + at[0]*TL+i2)*4;
+        if (on[k]!==off[k] || on[k+1]!==off[k+1] || on[k+2]!==off[k+2]) cov++;
+        const dl = Math.abs(lum(on[k],on[k+1],on[k+2]) - base);
+        sum += dl; if (dl > 18) far++;
+      }
       return { cov: cov/(TL*TL), farPct: far/(TL*TL), meanDelta: sum/(TL*TL) };
     };
     // a DECORATED open-grass tile, the thing blocked ground must out-shout
@@ -682,7 +821,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       return { farPct: far/(TL*TL), meanDelta: sum/(TL*TL) };
     })();
     const names = ['FOREST','HILLS','FERTILE'];
-    const blocked = names.map(n => Object.assign({ n }, sample(T[n], true)));
+    const blocked = names.map(n => Object.assign({ n }, sample(n)));
     // …and the cue itself must be DERIVED from the movement rule, not a list
     const cue = [];
     for (const key in T) {

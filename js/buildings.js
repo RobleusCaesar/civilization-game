@@ -1006,12 +1006,9 @@ const Bld = {
       }
     }
     /* REPAINT THE GROUND THE BUILDING NOW STANDS ON. The terrain layer draws
-       decoration that a footprint is meant to suppress — the decal scatter
-       and the decorative streams both skip a tile a building stands on — but
-       until now nothing dirtied those tiles unless the TERRAIN under them
-       happened to change too, so the suppression only took effect on the next
-       full rebake. (Mostly invisible for decals, which the building's own art
-       covers; not so for a stream, which would run out from under the walls.) */
+       decoration a footprint is meant to suppress, and until now nothing
+       dirtied those tiles unless the TERRAIN under them happened to change
+       too, so the suppression only took effect on the next full rebake. */
     if (window.R && R.drawTilesAt) {
       const sz = this.size(key), tiles = [];
       for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) tiles.push([x + dx, y + dy]);

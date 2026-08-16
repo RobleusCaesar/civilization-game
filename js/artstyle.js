@@ -18,6 +18,18 @@ const ART = (function () {
     stone:   ['#4a4a44', '#6f6f66', '#8f8f86', '#adada2', '#c9c9bf'],
     ore:     ['#55544d', '#6f6e65', '#88867b', '#a09e91', '#b8b5a6', '#d0cdbe'],   // ORE boulders: light muted grey (lifted so deposits pop against the grass at a glance), cooler/greyer than the brown mountain `mrock` so they stay readable as mineable stone
     rock:    ['#443b31', '#655a49', '#877b66', '#a89a82', '#c9bca2'],   // warm earthy stone (terrain boulders — shares hue with soil)
+    /* QUARRIABLE STONE — three ramps for the rock fields, each SIX hard steps
+       from a near-black crevice (index 0) to a bright cleaved face (index 5).
+       They are deliberately much wider in value than `ore`/`stone`, whose
+       narrow pale band is what made a rock field read as piles of bread.
+       Index 0 is the crevice where forms meet, 1 the deep shadow, 2 the
+       shadowed plane, 3 the front plane, 4 the lit plane, 5 the crest and the
+       fresh-quarried scar. Hue varies between them — neutral, cool blue-grey
+       and warm sand-grey — so a mass built of all three has depth rather than
+       reading as one flat tone. */
+    granite: ['#17171a', '#2e2f31', '#4a4b4c', '#6e6f6d', '#97968f', '#c2c0b4'],
+    slate:   ['#141820', '#282f3b', '#3f4a5a', '#5d6b7e', '#8794a6', '#b4bfcd'],
+    sandst:  ['#1c1710', '#342b1e', '#52452f', '#77664a', '#a2906f', '#cfc2a0'],
     peak:    ['#3a3a46', '#54545f', '#727280', '#9a9aa4', '#c2c2ca', '#eef0f6'],   // MOUNTAIN snow ramp: cool blue-grey -> near-white (top shades used for snow caps)
     mrock:   ['#4a4337', '#5d5546', '#6f6656', '#857b68', '#9d937e', '#bbb098'],   // MOUNTAIN rock body: warm brown-grey, 6 steps crevice->weathered — lifted + compressed so shadows/outline stay soft and the ranges blend into the world (distinct from cooler grey ore `stone`)
 

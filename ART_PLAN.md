@@ -238,10 +238,12 @@ Tunables, all in the `LAND` block:
 | hills read flat | raise `HILL_SHADOW`, `HILL_SHADOW_MAX` |
 | a hill starts looking like a mountain | lower the same two |
 | a hill's edges read as ruled lines | raise `HILL_SHADOW_WOBBLE` |
-| the world looks dry | raise `STREAM_DENSITY` |
-| a creek reads as a river | lower `STREAM_IDEAL_RUN` |
-| a creek runs too straight | raise `STREAM_WANDER`, `STREAM_SIDE_MAX` |
-| a creek is too loud | lower `STREAM_W`, `STREAM_DAMP` |
+| bare grass shows through a rock core | lower `ROCK_STEP`, raise `ROCK_MIN` |
+| a rock field reads as a bead curtain | raise `ROCK_JIT` |
+| a deposit's edge is a straight line | raise `ROCK_WANDER` (keep it under 0.5) |
+| the fringe ends on a wall | lower `ROCK_FRINGE` |
+| stone sits on ground you can walk through | lower `ROCK_WANDER`, `ROCK_SCREE` |
+| a wood/thicket has a tidy square ring of medium tiles | raise `DENSE_WANDER` |
 
 ### Readability comes before atmosphere
 
@@ -253,10 +255,13 @@ looks on its own.
 
 What the engine does to keep it true:
 
-- The **core of every blocking resource is closed** — 95–99% of the tile is
+- The **core of every blocking resource is closed** — 80–99% of the tile is
   covered at the heart of a wood, an ore body or a thicket, tapering out
   through a near-solid perimeter to a thinned fringe. If you supply art for
-  forest, hills or fertile, author it dense.
+  forest, hills or fertile, author it dense. (Measured by baking the map
+  twice, once with each resource's drawing suppressed, and counting the
+  pixels that differ — a colour test cannot do it, because a wood's canopy is
+  as green as the grass it stands on.)
 - **Blocked ground carries a shared cue** — a darker, dithered patch beneath
   the cluster. It is derived from `Path.blocksLand`, the same predicate
   movement asks, so it can never disagree with the rules. It is drawn under
@@ -269,13 +274,29 @@ carry none of that cue. A gold seam is meant to be unmistakable by being
 *gold*, not by pretending to be an obstruction — marking it blocked would be
 the exact lie the cue exists to prevent.
 
-### Two things on the ground that are not what they look like
+### The rock field is not made of tiles
 
-**Streams are a drawing.** They are not water tiles and have no gameplay
-effect of any kind — no blocking, no docks, no fishing, no naval movement, no
-bridges, no sappers, not on the minimap. They write to no map array. If you
-supply terrain art, streams are drawn over it and change nothing about how
-that tile behaves.
+`hills` is the one terrain with **no tile sprite at all**. Three sets picked
+by neighbour count can only ever draw a staircase of squares, so the stone is
+scattered in WORLD space from a lattice that knows nothing about the grid, out
+of five pre-rendered angular forms — boulder, cleaved slab, cracked block,
+jagged spire, rubble — in three six-step ramps (neutral granite, cool slate,
+warm sandstone). A boulder straddling a tile boundary is one whole rock
+spilling into its neighbour, not two halves drawn to match. How big a rock is
+and whether there is one at all come from how deep into the deposit it stands,
+sampled smoothly and then displaced by world-space noise, so the outline
+wanders rather than following tile edges.
+
+Supplying `assets/terrain/hills.png` **stands the whole scatter down** and
+your tile is drawn instead, the same rule grass, water and mountain follow.
+Author it dense, and remember it will be the only thing on that tile.
+
+Loose scree chips are drawn on the walkable ground just outside a deposit.
+That is deliberate and honest — scree at the foot of a crag is walkable — and
+it is the only stone allowed past the boundary, because a boulder standing on
+ground a unit can cross is a lie about the map.
+
+### One thing on the ground that is not what it looks like
 
 **Hills are shaded only at their edges** — a catch-light on the northern rim
 and a cast shadow on the ground to the south. Nothing shades a hill's middle,
@@ -283,5 +304,11 @@ because on these map scales a hill is one or two tiles deep and there is no
 interior to shade; every attempt at one came out as tile-shaped rectangles.
 Author a `hills.png` as flat ground with rocks on it and let the edges do the
 elevation.
+
+(There used to be a second entry here: decorative streams, thin creeks drawn
+over the ground with no gameplay meaning. They were removed — measured at play
+zoom only 10.8% of a stream's pixels read as bluer than green, and a version
+vivid enough to read as water would have been a promise the tile could not
+keep. See CLAUDE.md if the idea comes back.)
 
 Re-uploading a changed file under a name it already had? Bump `CFG.ART_V`.
