@@ -32,6 +32,13 @@ const ART = (function () {
     sandst:  ['#1c1710', '#342b1e', '#52452f', '#77664a', '#a2906f', '#cfc2a0'],
     peak:    ['#3a3a46', '#54545f', '#727280', '#9a9aa4', '#c2c2ca', '#eef0f6'],   // MOUNTAIN snow ramp: cool blue-grey -> near-white (top shades used for snow caps)
     mrock:   ['#4a4337', '#5d5546', '#6f6656', '#857b68', '#9d937e', '#bbb098'],   // MOUNTAIN rock body: warm brown-grey, 6 steps crevice->weathered — lifted + compressed so shadows/outline stay soft and the ranges blend into the world (distinct from cooler grey ore `stone`)
+    /* THE MOUNTAIN RAMP — eight hard steps from a near-black crevice to a pale
+       sunlit crest. Deliberately much wider in value than `mrock`, whose
+       compressed band is a large part of why a range read as a flat grey
+       blob: without a real dark and a real light there is no volume to see.
+       Slightly cool, so rock never reads as soil, and the top two steps are
+       held back for lit crests and caps. */
+    crag:    ['#15161a', '#24262d', '#363942', '#4b4f5a', '#646975', '#838996', '#a5abb8', '#c8ceda'],
 
     // materials
     wood:    ['#3e2c14', '#5c421f', '#6e5024', '#8a6b3a', '#a5854d'],

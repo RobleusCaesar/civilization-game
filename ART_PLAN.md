@@ -244,6 +244,13 @@ Tunables, all in the `LAND` block:
 | the fringe ends on a wall | lower `ROCK_FRINGE` |
 | stone sits on ground you can walk through | lower `ROCK_WANDER`, `ROCK_SCREE` |
 | a wood/thicket has a tidy square ring of medium tiles | raise `DENSE_WANDER` |
+| a mountain's outline still steps at right angles | raise `FRACTURE_AMP`, lower `SEG_MAX` |
+| a mountain throws thin spikes into the grass | lower `FRACTURE_CAP`, `OUT_MAX` |
+| a range reads flat | raise `RISE`, `LIGHT`, `MACRO` |
+| the rock reads as cobblestones or cracked ceramic | see `mtnFacetSites` — this is a geometry bug, not a dial |
+| the faces are too big / too small | `FACET_CELL` |
+| the creases are too heavy | lower `CREASE_DARK`, `CREASE` |
+| a one-tile mountain looks like a shard | `CLS_OUTCROP`, `OUTCROP_*` |
 
 ### Readability comes before atmosphere
 
@@ -295,6 +302,34 @@ Loose scree chips are drawn on the walkable ground just outside a deposit.
 That is deliberate and honest — scree at the foot of a crag is walkable — and
 it is the only stone allowed past the boundary, because a boulder standing on
 ground a unit can cross is a lie about the map.
+
+### Mountains are objects, not tiles
+
+`mountain` is the second terrain with **no tile sprite** (the first is
+`hills`), and for a stronger reason. A mountain is the only terrain with real
+HEIGHT, and a top-down tile grid has nowhere to put height — which is why
+every earlier attempt at drawing them tile by tile came out as a flat grey
+blob however good the individual tile was.
+
+Each contiguous mountain area is now ONE OBJECT: its cells are flooded into a
+region, its boundary traced into a polygon and then fractured off the lattice,
+and its interior shaded in hard value steps from a distance field that doubles
+as the height. Areas are drawn according to their SIZE — one or two cells is a
+boulder outcrop, not a mountain — and a range gets its silhouette, its faces
+and (from phase 3) its cliff and peaks from that same field.
+
+The art deliberately leaves its tiles, and there are hard rules about how far.
+Sideways and southward it stays within a fifth of a tile of the true footprint;
+northward it may reach further, because that is where a cliff face and a peak
+go, and where it does the northern tile edge carries a dithered contact line so
+the walkable ground is never in doubt. Nothing about this changes the rules:
+passability, placement, fishing and dock siting all still read the tile grid.
+
+Supplying `assets/terrain/mountain.png` **stands the whole thing down** and
+your tile is drawn instead, the same rule grass, water and hills follow. Be
+aware you are giving up the height treatment when you do — a mountain tile is
+the one place where a supplied tile is likely to look worse than the generated
+mass, not better.
 
 ### One thing on the ground that is not what it looks like
 

@@ -98,6 +98,7 @@ node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring 
 node tests/placement.mjs       # ONE placement truth (canPlace codes); ghost+confirm flow; the seal clamp; AI parity
 node tests/boot.mjs            # frame one is the logo; no chrome before a game; the notch inset
 node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything
+node tests/mountain.mjs        # a mountain is ONE OBJECT with an outline and a height field; the art leaves its tiles, the rules never do
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -2373,8 +2374,9 @@ no visual change, cleared beside `mtnH` in `onNewGame` because the height field
 and the cache are the same fact. Measured on a 632-mountain xlarge: 964ms →
 135ms. The FIRST bake still pays the arithmetic (~1.09s on that map) — cutting
 that means changing how mountains are drawn, which is a separate job.
-Mountains otherwise keep their current rendering — they want a silhouette
-treatment, not tiles.
+(That memo is now HISTORY: `drawMountain`, `_paintMountain` and `_mtnTile` are
+gone with the per-tile approach — see **MOUNTAINS ARE OBJECTS, NOT TILES**
+above.)
 
 **LIFE IN THE ROCKY SHALLOWS** (`R.drawDecal`'s `kelp`/`coral`/`sunkrock`,
 `LAND.LIFE_*`): a sand shelf carries nothing worth drawing at this scale; a
@@ -2385,6 +2387,99 @@ BEFORE the shelf ribbons, so the five translucent bands of shallow water wash
 over them: that is what actually puts them under the surface, and it costs
 nothing. Drawing them on top and hand-desaturating each colour would be the
 same picture arrived at by guesswork.
+
+**MOUNTAINS ARE OBJECTS, NOT TILES** (`tests/mountain.mjs`; `MTN.*` and the
+`R.mtnRegions` block in render.js): every previous attempt at mountains failed
+for an ARCHITECTURAL reason rather than an artistic one. They were drawn as a
+grid of tiles, and a mountain is the only terrain in the game with real HEIGHT
+— which a top-down tile grid has nowhere to put. Whatever is drawn inside one
+tile's square, the mass it belongs to still ends on the lattice, so it reads as
+a flat grey blob however good the individual tile is; sharpening the texture
+only makes a busier blob. So a mountain is no longer a set of tiles. Each
+contiguous MOUNTAIN area is ONE OBJECT with a traced outline and an internal
+height field, rendered once into its own canvas and composited over the ground.
+**`Sprites.terrain[T.MOUNTAIN]` does not exist and `drawMountain` is gone.**
+
+  1. FLOOD  contiguous cells (4-connected) into regions and TRACE each one's
+            boundary into closed polygons — `R.floodTrace`, the SAME machinery
+            the coast uses, factored out of `waterRegions` so there is one
+            tracer and one place for the vertex-list rule that keeps a
+            diagonal pinch from losing an edge.
+  2. FIELD  `R.mtnField` — a distance transform: how far each mountain cell is
+            from the nearest non-mountain cell. This one array is the backbone
+            of everything. It IS the height (edges low, deep cells high), its
+            local maxima are the ridge and the peak candidates, and its maximum
+            says how big the range is. 8-connected on purpose: a 4-connected
+            transform grows diamonds and puts a visible cross through every
+            summit. **OFF THE MAP COUNTS AS MOUNTAIN** — the wavefront starts
+            only at in-bounds cells — so a range running into the border stays
+            tall and reads as continuing past it rather than tapering into the
+            black rim.
+  3. CLASS  by cell count (`MTN.CLS_*`): 1–2 cells an OUTCROP, 3–8 a CRAG,
+            9–25 a MOUNTAIN, more a RANGE. **A single tile straining to look
+            like a mountain is a large part of why this has always failed**, so
+            an outcrop is drawn as what it is — a cluster of big angular
+            boulders from the SAME `Sprites.rockStamp` the rock fields use, so
+            the map has one vocabulary for stone at every scale.
+  4. SHAPE  `R.fractureLoop` — collapse the traced loop to its corners,
+            displace them off the lattice, then subdivide with displacement
+            along the segment NORMAL until nothing is longer than
+            `MTN.SEG_MAX`. **Nothing is smoothed**: Chaikin is right for a
+            coastline and is exactly what turns rock into soft rolling hills.
+  5. SHADE  hard value steps of the new `crag` ramp (eight steps, near-black
+            crevice to pale crest — `mrock`'s compressed band is a large part
+            of why a range read as flat), from the height field, the face's own
+            tilt and the massif's broad form.
+
+**THE FACETS ARE PLANES, NOT NOISE** (`R.mtnFacetSites`): smooth value noise
+added to the height field gives soft blobby plateaus — amoebas, not rock —
+however hard the steps that quantize it. The mass is broken into irregular
+cells (nearest of a jittered lattice, a Worley F1 partition whose boundaries
+are STRAIGHT lines) and each cell gets its own base height AND its own tilt.
+Inside a cell the surface is a plane, so the light over it is constant; between
+cells the gradient jumps, which is a CREASE. Two traps: an unweighted distance
+is essential — a multiplicative weight varies face sizes but bends every
+bisector into an arc and the mass came out as cobblestones with grouting; and
+the light must come from the face's own TILT, because lighting the gradient of
+the height BUFFER throws a bright line wherever two faces meet, and since faces
+tile the plane those lines join into a web and the mountain reads as cracked
+ceramic.
+
+**GAMEPLAY TRUTH IS TILE-BASED AND IS NOT TOUCHED.** The art sits off the
+lattice and (from phase 3) reaches past it; passability, placement, pathing,
+projectiles, fog and the rival AI all still read `S.map.terrain` and cannot
+tell. What the player is owed in exchange is honesty about where the ground
+really stops, and it is paid three ways. **The silhouette is CLAMPED**: no
+pixel may lie more than `MTN.OUT_MAX` (0.22 tiles) outside the footprint. That
+bound is enforced twice — `fractureLoop` turns a displacement inward when it
+would leave the tiles, and the MASK is trimmed against a sub-tile distance
+(`R.mtnOutsideFn`) — because the per-vertex rule alone compounds: a corner
+nudged out, then its two midpoints nudged further, then theirs, threw thin
+glassy SPIKES a tile and a half into the grass. **Detached crumbs are swept
+up** (`MTN.MIN_PIECE`): trimming a spike can strand a few dozen pixels of rock
+in the meadow, which reads as a flying shard. **And the contact edge is drawn
+from TILE DATA on the NORTH side only** (`R.drawMtnContact`) — north is the one
+side the art genuinely reaches across, so it is the one side that needs a line
+saying where walkable ground starts again; on the other three the clamped
+silhouette's own dark rim IS the contact edge. It is DITHERED, because two
+solid pixels of near-black across a lit rock face read as a scratch on the
+picture rather than as the shadow in a crease, and it is drawn only where the
+mask says rock actually covers the boundary — drawn wherever the footprint said
+so it appeared on bare grass anywhere the silhouette had bitten inward.
+
+**IT IS RENDERED ONCE PER MAP, PER REGION** (`R.buildMtnLayer` /
+`compositeMtn` / `blitMtn`): mountains never move in a run, so the art is a
+pure function of the map — and the terrain cache is rebuilt for all sorts of
+reasons, so re-rendering every region each time would be the most expensive
+thing this module could do. Each region gets its OWN small canvas rather than
+one map-sized layer, for two reasons the shore layer does not share: a
+map-sized canvas is 17MB of mostly nothing on an xlarge board, and blitting a
+small source rect out of one measured at **2.7ms of a 3.2ms tile edit**, where
+a whole small canvas costs almost nothing. A per-tile coverage byte
+(`_mtnCover`) turns every repaint away from a mountain into an array read.
+Measured on a 632-mountain-tile xlarge map: first bake 256ms against the old
+painter's 256ms, repeat bake 240ms against 232ms, terrain edit p95 1.4ms
+against 0.8ms, frame p95 unchanged at 0.4ms.
 
 **HILLS ARE READ AT THEIR EDGES** (`R.hillHeight` / `hillRelief` / `hillShadow`,
 pinned by `hillsAreStillOrdinaryGround`): a distance transform over contiguous
