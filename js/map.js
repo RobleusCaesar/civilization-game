@@ -369,12 +369,31 @@ const MapGen = {
       }
       return true;
     };
-    for (const [clear, openNeed] of [[wantClear, 2], [wantClear - 4, 2], [14, 1], [10, 0]]) {
+    /* THE WILDS DO NOT GANG UP. Nothing above stopped two camps landing side
+       by side — only distance from the TOWNS was checked — so a bad roll
+       could (and did) seat three bands within sight of each other, reading
+       as barbarians allied with each other rather than hostile to
+       everybody. A camp's own tenders already hold ground out to chaseR
+       (RAIDER_CAMPS.chaseR — see "a camp stands in the WILD COUNTRY" above),
+       so two camps need AT LEAST that same clearance between them to keep
+       their yards from overlapping — reusing the tier's own town-clearance
+       number rather than a second hand-picked one, and relaxing in step
+       with it so a crowded map still seats every camp. */
+    const campsFar = (x, y, clear) => camps.every(c => Math.hypot(x - c.x, y - c.y) > clear);
+    /* AND THE WILDS PRESS ON BOTH TRIBES EQUALLY. Alternate which seat each
+       new camp must fall nearer to (by straight-line distance — the two
+       seats sit on opposite ground, so "nearer to" reads as "that side of
+       the board"), so the wild country is never lopsided onto one player's
+       doorstep. Dropped in the loosest tiers, same as yardOpen's demand —
+       seating every camp still outranks a perfectly even split. */
+    for (const [clear, openNeed, enforceSide] of [[wantClear, 2, true], [wantClear - 4, 2, true], [14, 1, false], [10, 0, false]]) {
       let guard = 0;
       while (camps.length < wantCamps && guard++ < 600) {
         const x = 3 + rnd() * (W - 6) | 0, y = 3 + rnd() * (H - 6) | 0;
         const dP = Math.hypot(x - player.x, y - player.y), dA = Math.hypot(x - ai.x, y - ai.y);
-        if (dP > clear && dA > clear && t[id(x, y)] === T.GRASS && yardOpen(x, y, openNeed)) {
+        const sideOk = !enforceSide || ((camps.length % 2 === 0) ? dP <= dA : dP > dA);
+        if (dP > clear && dA > clear && sideOk && t[id(x, y)] === T.GRASS &&
+            yardOpen(x, y, openNeed) && campsFar(x, y, clear)) {
           t[id(x, y)] = T.CAMP; camps.push({ x, y });
         }
       }
