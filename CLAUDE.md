@@ -2117,10 +2117,23 @@ read as top-justified, even though each was correctly centred inside its
 own (short) box. `html, body` take `height: 100dvh` under `@supports` — a
 supplement to the `100%` fallback, never a replacement — and the splash
 carries `min-height:100dvh` INLINE, because it must cover the screen before
-any stylesheet parses. The canvas needs no change (it sizes off
-`window.innerHeight`, which already tracks, with a resize listener), and
-every absolutely-anchored layer (`#c`, `#shell`, `.screen`, `#bottombar`)
-hangs off the body box and follows it for free.
+any stylesheet parses. Every absolutely-anchored layer (`#c`, `#shell`,
+`.screen`, `#bottombar`) hangs off the body box and follows it for free.
+**AND THE PAGE IS SIZED BY MEASUREMENT, NOT BY CSS UNITS** (same test,
+`andThePageIsSizedByMeasurement` — from the report that beat the dvh fix): on
+the user's device `100dvh` STILL resolved ~60pt short of the screen while a
+`position:fixed; inset:0` element (the splash) demonstrably filled it — the
+fixed-positioning viewport was the one box the browser got right. So an
+inline script in index.html keeps a hidden fixed full-bleed PROBE in the
+document, measures its `offsetHeight/Width`, pins `documentElement` and
+`body` to those PIXELS inline, and dispatches a `cf-fit` event; it re-fires
+on resize / orientationchange / `visualViewport` resize plus two settle
+timers (250ms/1000ms), and only writes when the number actually moved. The
+dvh rules stay as the no-JS fallback, never removed. `R.resize` reads
+`document.documentElement.clientWidth/Height` (the pinned box) rather than
+`window.innerWidth/Height` — the inner size is the very number that lied —
+and `R.init` listens for `cf-fit`, so the canvas snaps to the measured box
+the moment it settles.
 **The notch is ONE variable**: `--safe-top` = `max(env(safe-area-inset-top,
 0px), var(--safe-min))`, read by every top-anchored rule. Two hardenings live
 in it — env()'s own DEFAULT, without which an unknown `env()` invalidates the
@@ -2652,9 +2665,13 @@ hard-refuses enemy owners across the footprint (code `shadow` — every
 rival build path funnels through canPlace), the barbarian-camp seating
 clamps on it UN-RELAXABLY (the yard clamps relax on a crowded board; this
 one never does, because a camp the art hides is a camp the player cannot
-find), and the gold-seam scatter skips it. The PLAYER stays free — they
-can see their own placement ghost, so hiding a building is a choice, not
-a trap.
+find), and the gold-seam scatter skips it — in the RELAXATION pass as well
+as the primary one (a reported day-9 calm map: the primary scatter came up
+one seam short, the relax loop reseeded without the clamp, and the map's
+second seam landed square behind a mountain — the exact map is pinned in
+tests/mountain.mjs, seed 250355541 calm/medium). The PLAYER stays free —
+they can see their own placement ghost, so hiding a building is a choice,
+not a trap.
 **THE MOUNTAIN OCCLUDES, SO IT LEFT THE TERRAIN CACHE** (`buildMtnLayer` /
 `mtnStrips`, the strip interleave in `R.draw`'s unit pass): a unit walking
 north of a ridge must be HIDDEN by it and one walking south must draw over

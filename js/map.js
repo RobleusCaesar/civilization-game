@@ -687,6 +687,10 @@ const MapGen = {
           const x = 2 + rnd() * (W - 4) | 0, y = 2 + rnd() * (H - 4) | 0;
           const i = id(x, y);
           if (t[i] !== T.GRASS || !reach[i]) continue;
+          // the mountain-shadow clamp NEVER relaxes (a reported day-9 calm
+          // map: the primary pass found one seam, and the relaxation seated
+          // the second behind a cliff) — a nearer seam beats an invisible one
+          if (MapGen.mtnShadow(x, y, t)) continue;
           if (Math.hypot(x - player.x, y - player.y) < far / relax * 2) continue;
           if (Math.hypot(x - ai.x, y - ai.y) < far / relax * 2) continue;
           if (seams.some(s => Math.hypot(s.x - x, s.y - y) < relax)) continue;

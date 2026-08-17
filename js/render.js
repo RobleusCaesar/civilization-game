@@ -338,13 +338,24 @@ const R = {
     this.mini = document.getElementById('mini');
     this.mg = this.mini.getContext('2d');
     window.addEventListener('resize', () => this.resize());
+    // the measured-viewport fit (index.html's boot block) re-pins the page
+    // height and announces it — the canvas must follow the same measurement
+    window.addEventListener('cf-fit', () => this.resize());
     this.resize();
   },
 
   resize() {
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
-    this.cv.width = Math.round(innerWidth * this.dpr);
-    this.cv.height = Math.round(innerHeight * this.dpr);
+    /* SIZE FROM THE PAGE BOX, NOT THE WINDOW (the bottom-band report): the
+       boot block pins html/body to the MEASURED fixed-position viewport —
+       the box a `position:fixed; inset:0` element actually gets, which is
+       the one geometry proven to reach the screen's true bottom edge on
+       iOS (the splash uses it). innerHeight disagreed with it on device,
+       and a canvas sized from innerHeight inside a taller body stretches. */
+    const w = document.documentElement.clientWidth || innerWidth;
+    const h = document.documentElement.clientHeight || innerHeight;
+    this.cv.width = Math.round(w * this.dpr);
+    this.cv.height = Math.round(h * this.dpr);
   },
 
   // a loose V of little seagull "M" silhouettes, wings flapping out of phase

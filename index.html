@@ -1002,6 +1002,40 @@
 })();
 </script>
 
+<script>
+/* THE PAGE IS SIZED BY MEASUREMENT, NOT BY CSS UNITS (the bottom-band
+   report). On the reporting iPhone a `position:fixed; inset:0` element (the
+   splash) reached the screen's true bottom edge while html/body at 100% AND
+   at 100dvh both stopped ~60pt short — every scene sat on a black band. So
+   the page stops arguing units with the browser: a hidden fixed probe IS
+   that proven full-bleed box, and html/body are pinned to its measured
+   height (inline px outrank every stylesheet rule). Re-measured on every
+   resize/orientation/visualViewport change; `cf-fit` tells the canvas to
+   follow (R.resize reads the same pinned box). The CSS dvh rules stay as
+   the no-JS fallback. */
+(function () {
+  var probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;visibility:hidden;pointer-events:none;z-index:-1';
+  document.body.appendChild(probe);
+  var lastH = 0, lastW = 0;
+  var fit = function () {
+    var h = probe.offsetHeight || window.innerHeight;
+    var w = probe.offsetWidth || window.innerWidth;
+    if (h === lastH && w === lastW) return;
+    lastH = h; lastW = w;
+    document.documentElement.style.height = h + 'px';
+    document.body.style.height = h + 'px';
+    try { window.dispatchEvent(new Event('cf-fit')); } catch (e) {}
+  };
+  fit();
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', function () { setTimeout(fit, 60); });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', fit);
+  // iOS settles its viewport a beat after load in standalone — measure again
+  setTimeout(fit, 250); setTimeout(fit, 1000);
+})();
+</script>
+
 <canvas id="c"></canvas>
 
 <div id="topbar">

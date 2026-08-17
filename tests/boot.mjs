@@ -80,6 +80,16 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     'html/body take 100dvh where supported');
   ck('andSoDoesTheSplash', /style="[^"]*min-height:100dvh/.test(tag),
     'inline, ahead of every stylesheet');
+  /* …AND THE PAGE IS SIZED BY MEASUREMENT (the bottom-band report): on a
+     real iPhone the fixed-position viewport reached the screen's bottom
+     edge while 100% and 100dvh both stopped short. A hidden fixed probe is
+     measured and html/body pinned to it in px; `cf-fit` tells the canvas
+     to follow. The dvh rules above stay as the no-JS fallback. */
+  ck('andThePageIsSizedByMeasurement',
+    /position:fixed;top:0;left:0;right:0;bottom:0;visibility:hidden/.test(html) &&
+    /documentElement\.style\.height = h \+ 'px'/.test(html) &&
+    /cf-fit/.test(html),
+    'a fixed probe pins html/body to the real viewport box');
   ck('itPaintsOnTheGamesOwnGround', /background:\s*#0d0b08/.test(tag),
     'the dark theme ground — never a white or transparent flash');
   // …and the viewport opts into the notch

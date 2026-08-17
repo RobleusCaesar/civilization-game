@@ -379,8 +379,12 @@ const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' 
     const pTry = Bld.canPlace('P', 'house', mx, my - 1);
     // generation honours it: mountain-bearing seeds seat no camp or seam in shadow
     let bad = 0, checked = 0;
-    for (const sd of ['mtn2', 'scenes1', 'omega', 'k1']) {
-      G.newGame(sd, 'hard', 'xlarge');
+    // 250355541/calm/medium is the reported day-9 map: its primary seam pass
+    // finds only one seam, so it exercises the RELAXATION path — which is
+    // exactly where the shadow clamp was once missing
+    for (const [sd, md, sz] of [['mtn2', 'hard', 'xlarge'], ['scenes1', 'hard', 'xlarge'],
+        ['omega', 'hard', 'xlarge'], ['k1', 'hard', 'xlarge'], ['250355541', 'calm', 'medium']]) {
+      G.newGame(sd, md, sz);
       const t2 = S.map.terrain;
       for (let y2 = 1; y2 < CFG.H - 1; y2++) for (let x2 = 1; x2 < CFG.W - 1; x2++) {
         const tt = t2[MapGen.idx(x2, y2)];
