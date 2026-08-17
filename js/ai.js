@@ -1862,7 +1862,10 @@ const AI = {
       if (u.owner !== 'A' || !Units.isVillager(u)) continue;
       if (!u.task || u.task.type !== 'gather') continue;
       const foe = Combat.nearestUnit(u.x, u.y, this.WORK_FLEE,
-        o => (o.owner === 'P' && Units.isMilitary(o)) || (o.owner === 'R' && !Units.isTransport(o)));
+        // at PEACE a passing player soldier is a visitor, not a reason to
+        // drop the basket and run (the militia's truce-leak lesson)
+        o => (o.owner === 'P' && Units.isMilitary(o) && Combat.hostile('A', 'P')) ||
+             (o.owner === 'R' && !Units.isTransport(o)));
       if (!foe) continue;
       u.task = { type: 'flee' }; u.tUnit = 0; u.tBld = 0;
       Units.setPath(u, tc.x, tc.y + Bld.size('tc'));
@@ -2212,7 +2215,10 @@ const AI = {
       const mcx = Bld.cx(tc), mcy = Bld.cy(tc);
       for (const u of S.units) {
         if (Units.isNaval(u) || Math.hypot(u.x - mcx, u.y - mcy) > 11) continue;
-        if ((u.owner === 'P' && Units.isMilitary(u)) || (u.owner === 'R' && !Units.isTransport(u)))
+        // a player soldier only counts as a THREAT when the tribes are at war
+        // — at peace it must not flip the chief to DEFEND and stall the race
+        if ((u.owner === 'P' && Units.isMilitary(u) && Combat.hostile('A', 'P')) ||
+            (u.owner === 'R' && !Units.isTransport(u)))
           threat += (u.kind === 'elite' || u.kind === 'lancer' || u.kind === 'brute') ? 2 : 1;
       }
     }
@@ -2419,7 +2425,8 @@ const AI = {
     if (tc) {
       const cx = Bld.cx(tc), cy = Bld.cy(tc);
       let src = (ai.alarm && S.day - ai.alarm.day <= 2) ? { x: ai.alarm.x + 0.5, y: ai.alarm.y + 0.5 } : null;
-      if (!src) { let bd = 11; for (const u of S.units) { if (!(u.owner === 'P' && Units.isMilitary(u)) || Units.isNaval(u)) continue; const d = Math.hypot(u.x - cx, u.y - cy); if (d < bd) { bd = d; src = { x: u.x, y: u.y }; } } }
+      // peace-gated: a rider trotting past at peace is not "where we are hit"
+      if (!src) { let bd = 11; for (const u of S.units) { if (!(u.owner === 'P' && Units.isMilitary(u) && Combat.hostile('A', 'P')) || Units.isNaval(u)) continue; const d = Math.hypot(u.x - cx, u.y - cy); if (d < bd) { bd = d; src = { x: u.x, y: u.y }; } } }
       if (src) {
         const ddx = src.x - cx, ddy = src.y - cy;   // zero out near-axis components so a due-E hit reads {1,0}, not {1,1}
         const dx = Math.abs(ddx) < 1 ? 0 : Math.sign(ddx), dy = Math.abs(ddy) < 1 ? 0 : Math.sign(ddy);

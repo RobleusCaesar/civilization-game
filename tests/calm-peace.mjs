@@ -81,6 +81,33 @@ const out = await p.evaluate(() => {
       'barbarians stay everyone\'s problem');
   }
 
+  // ---- 2b. THE MILITIA LEAK (a real day-4 save): the rival's townsfolk
+  //      militia read "player military near the hall" through a hand-rolled
+  //      owner check that never asked hostileUnits — so a rider merely riding
+  //      past the rival hall at peace raised the militia, the villagers
+  //      stabbed it, and the damage net blamed the player for the war.
+  //      townUnderSiege and the militia acquire now share Combat.militiaFoe,
+  //      whose P case goes through the peace-gated hostile() funnel. ----
+  {
+    fresh('calm');
+    const atc = Bld.tcOf('A');
+    const cx = Bld.cx(atc), cy = Bld.cy(atc);
+    S.units = S.units.filter(u => !(u.owner === 'A' && Units.isMilitary(u)));
+    const rider = Units.spawn('rider', 'P', cx + 2, cy);
+    const near = Units.spawn('villager', 'A', cx + 1, cy);
+    ck('aVisitingRiderIsNotASiege', Combat.townUnderSiege() === false,
+      'a soldier of a tribe we are not at war with is a visitor');
+    Combat.scanT = 0; Combat.acquire();
+    ck('andRaisesNoMilitia', !near.tUnit && !near.militia,
+      'villager holds ' + (near.tUnit || 'nothing'));
+    // the same ground at WAR: the militia rises exactly as before
+    G.breakPeace();
+    ck('atWarTheSameGroundIsASiege', Combat.townUnderSiege() === true, '');
+    Combat.acquire();
+    ck('andTheTownsfolkTakeUpArms', near.tUnit === rider.id && near.militia === true,
+      'war behavior unchanged — four villagers can still drag down a lone attacker');
+  }
+
   // ---- 3. the first strike ends it, permanently and loudly ----
   {
     fresh('calm');

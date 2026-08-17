@@ -181,16 +181,28 @@ const Combat = {
   // lone attacker, and a tribe should never watch its heart fall without a
   // fight. Computed once per scan (drives the villager-militia branch below).
   MILITIA_RANGE: 9,
+  /* What raises the militia. THE ONE PREDICATE, shared by townUnderSiege and
+     the villager-militia acquire — it was two hand-rolled copies of
+     `o.owner === 'P' && isMilitary`, which never asked hostileUnits, and that
+     was THE CALM TRUCE's one leak (tests/calm-peace.mjs, a real day-4 save):
+     a player rider merely RIDING PAST the rival hall at peace read as a
+     siege, the townsfolk took up arms and stabbed it, and the damage safety
+     net then declared the truce broken BY THE PLAYER. A soldier of a tribe
+     we are not at war with is a visitor, not an attacker — so the P case
+     asks hostile('A','P'), the peace-gated funnel. Barbarians signed
+     nothing and still raise the militia. */
+  militiaFoe(o) {
+    return (o.owner === 'P' && Units.isMilitary(o) && this.hostile('A', 'P')) ||
+           (o.owner === 'R' && !Units.isTransport(o));
+  },
   townUnderSiege() {
     const tc = Bld.tcOf('A');
     if (!tc) return false;
     const cx = Bld.cx(tc), cy = Bld.cy(tc), R = this.MILITIA_RANGE;
-    const isAttacker = o => (o.owner === 'P' && Units.isMilitary(o)) ||
-      (o.owner === 'R' && !Units.isTransport(o));
     let foes = 0, guards = 0;
     for (const o of S.units) {
       if (Units.isNaval(o) || Math.hypot(o.x - cx, o.y - cy) > R) continue;
-      if (isAttacker(o)) foes++;
+      if (this.militiaFoe(o)) foes++;
       else if (o.owner === 'A' && Units.isMilitary(o)) guards++;
     }
     return foes > 0 && guards < foes;
@@ -322,9 +334,9 @@ const Combat = {
         if (this._militiaOn) {
           const tc = Bld.tcOf('A');
           if (tc && Math.hypot(u.x - Bld.cx(tc), u.y - Bld.cy(tc)) <= this.MILITIA_RANGE + 1) {
+            // militiaFoe, never a hand-rolled owner check — the truce leak
             const e = this.nearestUnit(u.x, u.y, this.MILITIA_RANGE,
-              o => ((o.owner === 'P' && Units.isMilitary(o)) ||
-                    (o.owner === 'R' && !Units.isTransport(o))) && this.canEngage(u, o));
+              o => this.militiaFoe(o) && this.canEngage(u, o));
             if (e) { u.tUnit = e.id; u.militia = true; }
           }
         } else if (u.militia) {

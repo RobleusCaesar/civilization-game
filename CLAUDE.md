@@ -1306,6 +1306,22 @@ attack-order path (the four unit-attack tap/drag sites in ui.js,
 in `Units.damage`, logs plainly at every difficulty, and is permanent.
 Barbarians and the wilds sign nothing — camps, waves and wolves behave
 exactly as always, on both tribes.
+**THE MILITIA WAS THE ONE LEAK** (a real day-4 save, same test): the rival's
+townsfolk-militia pair — `Combat.townUnderSiege` and the villager-militia
+acquire — read "player military near the hall" through two hand-rolled
+`o.owner === 'P' && isMilitary` checks that never asked `hostileUnits`, so a
+rider merely RIDING PAST the rival hall at peace read as a siege, the
+villagers took up arms and stabbed it, and the damage safety net then
+declared the truce broken BY THE PLAYER. Both sites now share ONE predicate,
+`Combat.militiaFoe(o)`, whose P case asks the peace-gated `hostile('A','P')`
+funnel — barbarians still raise the militia, and at war it rises against the
+player exactly as before. Never hand-roll a cross-tribe hostility check
+anywhere; ask the funnel. Three AI decision reads took the same gate so a
+visiting soldier doesn't distort peace behavior: `workTheLand`'s gather-flee
+(rival workers no longer scatter when a player scout trots by), `assess`'s
+hall-threat count (a visitor must not flip the chief to DEFEND and stall the
+wonder race), and `learn`'s hit-direction memory (a peaceful ride-past is
+not "where we are hit").
 **The chief at peace never postures for war**: `choosePosture` short-circuits
 to REBUILD / DEFEND (barbarians still come) / EXPAND, so PUSH and PRESSURE
 are unreachable; `stormTheHall`, `secondFront`, `wonderWatch` and the harass
