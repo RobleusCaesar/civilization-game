@@ -346,14 +346,16 @@ const R = {
 
   resize() {
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
-    /* SIZE FROM THE PAGE BOX, NOT THE WINDOW (the bottom-band report): the
-       boot block pins html/body to the MEASURED fixed-position viewport —
-       the box a `position:fixed; inset:0` element actually gets, which is
-       the one geometry proven to reach the screen's true bottom edge on
-       iOS (the splash uses it). innerHeight disagreed with it on device,
-       and a canvas sized from innerHeight inside a taller body stretches. */
-    const w = document.documentElement.clientWidth || innerWidth;
-    const h = document.documentElement.clientHeight || innerHeight;
+    /* SIZE FROM THE PINNED BODY BOX, NOT THE WINDOW (the bottom-band
+       report): the boot block measures the real screen and pins html/body
+       to it in inline px — in iOS standalone that can be TALLER than every
+       viewport number the browser reports (innerHeight, and even
+       documentElement.clientHeight, which is special-cased to return the
+       lying viewport rather than the pinned style). body.clientHeight is
+       the pinned box itself; the fallbacks only carry a page whose fit
+       script never ran. */
+    const w = document.body.clientWidth || document.documentElement.clientWidth || innerWidth;
+    const h = document.body.clientHeight || document.documentElement.clientHeight || innerHeight;
     this.cv.width = Math.round(w * this.dpr);
     this.cv.height = Math.round(h * this.dpr);
   },

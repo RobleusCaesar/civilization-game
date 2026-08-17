@@ -44,6 +44,13 @@
        still report a zero inset (the clock-over-the-food-counter bug). */
     --safe-min: 0px;
     --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-min));
+    /* the BOTTOM mirrors it: when the standalone screen-height clamp (the fit
+       script) stretches the page to the true hardware edge, the same broken
+       geometry reporting that shorted the viewport also zeroed
+       env(safe-area-inset-bottom) — so the clamp raises --safe-bmin and every
+       bottom-anchored rule keeps its home-indicator clearance. */
+    --safe-bmin: 0px;
+    --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-bmin));
     /* the title's display face (self-hosted, OFL, latin subset, wght 400-700) */
     --pxfont: 'Pixelify Sans', -apple-system, "Segoe UI", Roboto, sans-serif;
     /* the MENU face: inscriptional Roman caps, matching the lettering on the
@@ -176,7 +183,7 @@
     backdrop-filter: blur(4px);
     /* hug the buttons: keep just enough home-indicator clearance, not a full
        safe-area gap of blank wood below the build menu */
-    padding: 6px 6px calc(env(safe-area-inset-bottom) / 2 + 4px) 6px;
+    padding: 6px 6px calc(var(--safe-bottom) / 2 + 4px) 6px;
   }
   #bmToggle {
     position: absolute; top: -22px; left: 8px;
@@ -338,7 +345,7 @@
   .sbody {
     flex: 1 1 0; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y;
     width: 100%; max-width: 560px; margin: 0 auto;
-    padding: 4px 16px calc(env(safe-area-inset-bottom) + 20px) 16px;
+    padding: 4px 16px calc(var(--safe-bottom) + 20px) 16px;
   }
   .sbody.center { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; }
   .lbl { font-size: 12px; font-weight: 800; color: var(--gold); margin: 14px 0 6px; }
@@ -351,7 +358,7 @@
      is unreliable on iOS) and only scrolls if it genuinely overflows. */
   #scrPaused .sbody { display: flex; flex-direction: column; }
   #scrPaused .pauseMenu { width: 100%; max-width: 560px; margin: auto;
-    padding: calc(var(--safe-top) + 6px) 0 calc(env(safe-area-inset-bottom) + 6px); }
+    padding: calc(var(--safe-top) + 6px) 0 calc(var(--safe-bottom) + 6px); }
   #scrPaused .pauseMenu .mrow, #scrPaused .pauseMenu .trow2 { margin-bottom: 10px; }
   #btnResign.danger, #btnQuitTitle.danger { border-color: #a4522e; background: #4a2a1c; }
   .trow3 .abtn { min-height: 48px; font-size: 12px; padding: 4px 6px; }
@@ -373,7 +380,7 @@
     position: relative; z-index: 1; flex: 1 1 0; min-height: 0;
     display: flex; flex-direction: column; align-items: center;
     justify-content: center; width: 100%;
-    padding: calc(var(--safe-top) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 18px);
+    padding: calc(var(--safe-top) + 12px) 16px calc(var(--safe-bottom) + 18px);
   }
   /* the wordmark is a CARVED BLOCK, not tinted text: a full 8-direction dark
      outline gives it mass and holds its edge over the busy beach/water band
@@ -594,7 +601,7 @@
   }
   /* short viewports (landscape phones): compact so nothing clips */
   @media (max-height: 600px) {
-    #scrTitle .tcol { padding: calc(var(--safe-top) + 6px) 16px calc(env(safe-area-inset-bottom, 0px) + 40px); }
+    #scrTitle .tcol { padding: calc(var(--safe-top) + 6px) 16px calc(var(--safe-bottom) + 40px); }
     /* 400 below 40px: Pixelify's C closes at small sizes on any heavier cut */
     .logo { font-size: 36px; font-weight: 400; }
     #logoArt { width: min(240px, 60vw); }
@@ -641,7 +648,7 @@
      content and centres in the padded body, so the whole outline is always
      on screen with breathing room on every side. */
   #scrEndgame.defeatMode .sbody.center { justify-content: center;
-    padding: calc(var(--safe-top) + 12px) 14px calc(env(safe-area-inset-bottom) + 12px); }
+    padding: calc(var(--safe-top) + 12px) 14px calc(var(--safe-bottom) + 12px); }
     #defeatScene, #victoryScene { width: 100%; max-width: 440px; position: relative;
     /* margin:auto — vertical AUTO margins centre the pane inside the flex
        scroll body even where iOS refuses to resolve percentage heights */
@@ -663,7 +670,7 @@
   #scrEndgame.victoryMode { background:
       radial-gradient(130% 75% at 50% 18%, #2b2416 0%, #171208 52%, #0b0804 100%); }
   #scrEndgame.victoryMode .sbody.center { justify-content: center;
-    padding: calc(var(--safe-top) + 12px) 14px calc(env(safe-area-inset-bottom) + 12px); }
+    padding: calc(var(--safe-top) + 12px) 14px calc(var(--safe-bottom) + 12px); }
   #vicRank { color: var(--gold); font-weight: 900; letter-spacing: 3px; font-size: 13px;
     text-align: center; margin: 12px auto 0; }
   #vicMeta { color: #8d8368; font-size: 11px; letter-spacing: 0.5px; text-align: center; margin: 8px auto 0; }
@@ -680,7 +687,7 @@
   /* the tally page: one centred, evenly-spaced column */
   #victoryPane { display: flex; flex-direction: column; align-items: center; gap: 7px;
     width: 100%; max-width: 380px; margin: 0 auto;
-    padding: calc(var(--safe-top) + 12px) 8px calc(env(safe-area-inset-bottom) + 12px); }
+    padding: calc(var(--safe-top) + 12px) 8px calc(var(--safe-bottom) + 12px); }
   #victoryPane #btnScoreBack { width: 100%; max-width: 330px; margin-top: 6px; }
 
   .defeatFrame { position: relative; border-radius: 7px; overflow: visible;
@@ -886,13 +893,13 @@
   }
   #howPanels section {
     flex: 0 0 100%; scroll-snap-align: center; overflow-y: auto; touch-action: pan-x pan-y;
-    padding: 8px 24px calc(env(safe-area-inset-bottom) + 30px);
+    padding: 8px 24px calc(var(--safe-bottom) + 30px);
   }
   #howPanels h3 { color: var(--gold); font-size: 15px; margin-bottom: 8px; }
   #howPanels p { font-size: 12.5px; color: var(--text); line-height: 1.55; margin: 7px 0; }
   #howPanels p b { color: var(--gold); }
   .swipeHint { text-align: center; color: var(--dim); font-size: 11px;
-    padding-bottom: calc(env(safe-area-inset-bottom) + 10px); }
+    padding-bottom: calc(var(--safe-bottom) + 10px); }
 </style>
 </head>
 <body>
@@ -1004,15 +1011,27 @@
 
 <script>
 /* THE PAGE IS SIZED BY MEASUREMENT, NOT BY CSS UNITS (the bottom-band
-   report). On the reporting iPhone a `position:fixed; inset:0` element (the
-   splash) reached the screen's true bottom edge while html/body at 100% AND
-   at 100dvh both stopped ~60pt short — every scene sat on a black band. So
-   the page stops arguing units with the browser: a hidden fixed probe IS
-   that proven full-bleed box, and html/body are pinned to its measured
-   height (inline px outrank every stylesheet rule). Re-measured on every
-   resize/orientation/visualViewport change; `cf-fit` tells the canvas to
-   follow (R.resize reads the same pinned box). The CSS dvh rules stay as
-   the no-JS fallback. */
+   report). html/body at 100% AND at 100dvh both stopped ~60pt short of the
+   reporting iPhone's screen — every scene sat on a black band. So the page
+   stops arguing units with the browser: a hidden fixed probe measures the
+   real box and html/body are pinned to its height (inline px outrank every
+   stylesheet rule). Re-measured on every resize/orientation/visualViewport
+   change; `cf-fit` tells the canvas to follow (R.resize reads the pinned
+   body box). The CSS dvh rules stay as the no-JS fallback.
+
+   AND IN STANDALONE, THE SCREEN OUTRANKS EVERY VIEWPORT NUMBER (the report
+   that beat the probe): on that device the fixed probe came back exactly as
+   short as innerHeight — the band survived — because iOS standalone was
+   under-reporting the whole viewport by about a status bar while PAINTING
+   the full screen (the same lie already documented at the TOP: content under
+   the clock with env(safe-area-inset-top) reporting 0, the --safe-min bug).
+   The hardware size is the one honest figure, so standalone takes
+   max(probe, screen) — orientation-proofed because iOS has reported
+   screen.width/height portrait-fixed on some builds — capped at 120px of
+   disagreement so a resizable window (iPad multitasking) can never blow the
+   page up to full-display size. When the clamp actually stretches, the same
+   broken reporting zeroed env(safe-area-inset-bottom), so it raises
+   --safe-bmin and the HUD keeps its home-indicator clearance. */
 (function () {
   var probe = document.createElement('div');
   probe.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;visibility:hidden;pointer-events:none;z-index:-1';
@@ -1021,10 +1040,19 @@
   var fit = function () {
     var h = probe.offsetHeight || window.innerHeight;
     var w = probe.offsetWidth || window.innerWidth;
+    if (navigator.standalone === true && window.screen) {
+      var hwH = h >= w ? Math.max(screen.width, screen.height)
+                       : Math.min(screen.width, screen.height);
+      if (hwH > h && hwH - h <= 120) {
+        h = hwH;
+        document.documentElement.style.setProperty('--safe-bmin', '20px');
+      }
+    }
     if (h === lastH && w === lastW) return;
     lastH = h; lastW = w;
     document.documentElement.style.height = h + 'px';
     document.body.style.height = h + 'px';
+    window.scrollTo(0, 0);
     try { window.dispatchEvent(new Event('cf-fit')); } catch (e) {}
   };
   fit();

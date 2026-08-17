@@ -90,6 +90,34 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     /documentElement\.style\.height = h \+ 'px'/.test(html) &&
     /cf-fit/.test(html),
     'a fixed probe pins html/body to the real viewport box');
+  /* …and in STANDALONE the hardware screen outranks every viewport number:
+     the report that beat the probe — iOS under-reported the whole viewport
+     (fixed probe included) by ~a status bar while painting the full screen.
+     The clamp is standalone-gated, orientation-proofed (max/min of
+     screen.width/height, since iOS has reported them portrait-fixed),
+     delta-capped so an iPad multitasking window can't blow up to
+     full-display size, and raises the --safe-bmin floor so the HUD keeps
+     its home-indicator clearance when env(safe-area-inset-bottom) was part
+     of the same lie. R.resize must read the pinned BODY box —
+     documentElement.clientHeight is special-cased to the (lying) viewport. */
+  ck('andStandaloneTrustsTheScreenOverTheViewport',
+    /navigator\.standalone === true && window\.screen/.test(html) &&
+    /Math\.max\(screen\.width, screen\.height\)/.test(html) &&
+    /hwH - h <= 120/.test(html) &&
+    /--safe-bmin', '20px'/.test(html),
+    'the standalone screen-size clamp with cap and safe-bottom floor');
+  const rjs = readFileSync(join(root, 'js/render.js'), 'utf8');
+  ck('andTheCanvasFollowsThePinnedBodyBox',
+    /document\.body\.clientWidth \|\| document\.documentElement\.clientWidth/.test(rjs) &&
+    /document\.body\.clientHeight \|\| document\.documentElement\.clientHeight/.test(rjs),
+    'R.resize reads body.clientHeight first — the root clientHeight is the lying viewport');
+  /* every bottom-anchored rule must read var(--safe-bottom) — a raw env()
+     inside a calc() padding dodges the floor. The only legitimate raw uses
+     are the --safe-bottom definition itself and explanatory comments. */
+  ck('andTheBottomChromeReadsTheFlooredInset',
+    /--safe-bottom: max\(env\(safe-area-inset-bottom, 0px\), var\(--safe-bmin\)\)/.test(html) &&
+    !/calc\([^;{}]*env\(safe-area-inset-bottom/.test(html),
+    'a calc() still reads raw env(safe-area-inset-bottom) — it dodges the --safe-bmin floor');
   ck('itPaintsOnTheGamesOwnGround', /background:\s*#0d0b08/.test(tag),
     'the dark theme ground — never a white or transparent flash');
   // …and the viewport opts into the notch
@@ -442,6 +470,44 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   const then = await p.evaluate(() => { Boot.markReady(); return Boot.done; });
   ck('andGoesTheInstantItIs', then, '');
   await p.close();
+}
+{
+  /* 3d. THE STANDALONE CLAMP, MEASURED. Spoof the reported iOS lie: every
+     viewport number (and the fixed probe with them) says 792 while the
+     hardware screen says 852. Standalone must pin body AND canvas to the
+     hardware 852 and raise the --safe-bmin floor; a plain browser page with
+     the identical geometry must stay on the viewport's 792 untouched. */
+  const p = await b.newPage({ viewport: { width: 393, height: 792 } });
+  await p.addInitScript(() => {
+    Object.defineProperty(navigator, 'standalone', { get: () => true });
+    Object.defineProperty(window, 'screen', { get: () => ({ width: 393, height: 852 }) });
+  });
+  await p.goto(url, { waitUntil: 'commit' });
+  await p.waitForFunction(() => window.R && R.cv && R.cv.height > 0, null, { timeout: 8000 });
+  await p.waitForTimeout(1200);   // past the fit script's settle timers
+  const s = await p.evaluate(() => ({
+    bodyH: document.body.clientHeight,
+    bmin: document.documentElement.style.getPropertyValue('--safe-bmin'),
+    cvH: Math.round(R.cv.height / R.dpr),
+    scrollY: window.scrollY,
+  }));
+  await p.close();
+  const p2 = await b.newPage({ viewport: { width: 393, height: 792 } });
+  await p2.goto(url, { waitUntil: 'commit' });
+  await p2.waitForFunction(() => window.R && R.cv && R.cv.height > 0, null, { timeout: 8000 });
+  await p2.waitForTimeout(1200);
+  const n = await p2.evaluate(() => ({
+    bodyH: document.body.clientHeight,
+    bmin: document.documentElement.style.getPropertyValue('--safe-bmin'),
+    cvH: Math.round(R.cv.height / R.dpr),
+  }));
+  await p2.close();
+  ck('standaloneStretchesToTheHardwareScreen',
+    s.bodyH === 852 && s.cvH === 852 && s.bmin === '20px' && s.scrollY === 0,
+    `body ${s.bodyH}, canvas ${s.cvH}, --safe-bmin '${s.bmin}', scroll ${s.scrollY}`);
+  ck('andABrowserTabIsLeftOnItsOwnViewport',
+    n.bodyH === 792 && n.cvH === 792 && n.bmin === '',
+    `body ${n.bodyH}, canvas ${n.cvH}, --safe-bmin '${n.bmin}'`);
 }
 
 /* ---- 4. THE CHROME COMES BACK WITH A GAME, and goes when it ends ---- */
