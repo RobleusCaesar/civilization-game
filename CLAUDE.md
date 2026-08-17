@@ -2120,38 +2120,20 @@ carries `min-height:100dvh` INLINE, because it must cover the screen before
 any stylesheet parses. Every absolutely-anchored layer (`#c`, `#shell`,
 `.screen`, `#bottombar`) hangs off the body box and follows it for free.
 **AND THE PAGE IS SIZED BY MEASUREMENT, NOT BY CSS UNITS** (same test,
-`andThePageIsSizedByMeasurement` — from the report that beat the dvh fix): an
+`andThePageIsSizedByMeasurement` — from the report that beat the dvh fix): on
+the user's device `100dvh` STILL resolved ~60pt short of the screen while a
+`position:fixed; inset:0` element (the splash) demonstrably filled it — the
+fixed-positioning viewport was the one box the browser got right. So an
 inline script in index.html keeps a hidden fixed full-bleed PROBE in the
 document, measures its `offsetHeight/Width`, pins `documentElement` and
 `body` to those PIXELS inline, and dispatches a `cf-fit` event; it re-fires
 on resize / orientationchange / `visualViewport` resize plus two settle
 timers (250ms/1000ms), and only writes when the number actually moved. The
-dvh rules stay as the no-JS fallback, never removed. `R.init` listens for
-`cf-fit`, so the canvas snaps to the measured box the moment it settles.
-**AND IN STANDALONE, THE HARDWARE SCREEN OUTRANKS EVERY VIEWPORT NUMBER**
-(`standaloneStretchesToTheHardwareScreen`, from the report that beat the
-probe): on the reporting iPhone the fixed probe came back exactly as short
-as `innerHeight` — the "splash filled the screen" evidence was near-black
-splash over black band, an illusion — because iOS standalone under-reports
-the WHOLE viewport by about a status bar while painting the full screen (the
-same lie already documented at the TOP: content under the clock with
-`env(safe-area-inset-top)` reporting 0, the `--safe-min` bug). So in
-standalone (`navigator.standalone`) the fit takes max(probe, hardware
-screen) — orientation-proofed via max/min of `screen.width/height`, since
-iOS has reported them portrait-fixed — capped at 120px of disagreement so an
-iPad multitasking window can never blow up to full-display size. When the
-clamp actually stretches, the same broken reporting zeroed
-`env(safe-area-inset-bottom)`, so it raises `--safe-bmin`, and EVERY
-bottom-anchored rule reads `--safe-bottom` =
-`max(env(safe-area-inset-bottom), var(--safe-bmin))` — the mirror of
-`--safe-top`; a raw bottom `env()` in a calc() dodges the floor and the test
-refuses it. `R.resize` reads `document.body.clientWidth/Height` FIRST — the
-pinned box itself. NOT `documentElement.clientHeight`, which is
-special-cased by browsers to return the (lying) viewport rather than the
-element's own pinned style; that subtlety silently no-oped the first version
-of this fix. The whole clamp is measured end-to-end in tests/boot.mjs with a
-spoofed standalone geometry (viewport 792, screen 852 → body and canvas at
-852, floor raised; a plain tab with identical geometry stays on 792).
+dvh rules stay as the no-JS fallback, never removed. `R.resize` reads
+`document.documentElement.clientWidth/Height` (the pinned box) rather than
+`window.innerWidth/Height` — the inner size is the very number that lied —
+and `R.init` listens for `cf-fit`, so the canvas snaps to the measured box
+the moment it settles.
 **The notch is ONE variable**: `--safe-top` = `max(env(safe-area-inset-top,
 0px), var(--safe-min))`, read by every top-anchored rule. Two hardenings live
 in it — env()'s own DEFAULT, without which an unknown `env()` invalidates the
