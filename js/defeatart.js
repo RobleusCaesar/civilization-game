@@ -1,14 +1,24 @@
 "use strict";
 /* Defeat — the Game Over scene: "The Last Fire". A fresh grave with a wooden
    marker and two ravens keeps the foreground; a dead campfire smoulders beside
-   it; the ruined village stands on the midground. The SETTING changes with the
-   map you fell on — a forested valley, a land of still lakes, rugged highlands,
-   or a drowning chain of islands — and the LIGHT changes with the difficulty:
-   bright day on Calm, a burning dusk on Moderate, deep night on Hard. Drawn at
-   native pixel resolution (CSS-upscaled, pixelated) so it reads as handcrafted
-   art. No score is shown for a defeat — the clan passes quietly into history. */
+   it; the ruined village stands on the midground, under a forested valley
+   sky. The LIGHT changes with the difficulty: bright day on Calm, a burning
+   dusk on Moderate, deep night on Hard — exactly one fixed look per
+   difficulty, no other variation. Drawn at native pixel resolution
+   (CSS-upscaled, pixelated) so it reads as handcrafted art. No score is
+   shown for a defeat — the clan passes quietly into history.
+
+   A hand-authored picture SITS ON TOP of this: assets/endgame/loss/{calm|
+   moderate|hard}/*.png (assets/endgame/README.md). begin() picks one at
+   random if the bucket has anything in it; draw() then shows that picture
+   instead of the procedural scene, full stop — the procedural drawing above
+   is only what's left when a difficulty has no art yet. */
 const Defeat = {
   W: 200, H: 150,
+  HI_W: 800, HI_H: 600,   // backing-store size while showing a real picture —
+                           // big enough that the canvas's own `image-rendering:
+                           // pixelated` CSS rule (index.html) doesn't crush a
+                           // photo down to nearest-neighbour blocks
 
   TITLES: [
     'THE FIRE HAS GONE OUT',
@@ -16,34 +26,24 @@ const Defeat = {
     'YOUR CLAN IS NO MORE',
     'SWALLOWED BY THE DARK',
   ],
-  // the poetic subtitle now answers to the LAND that outlived you
-  SUB_BY_LF: {
-    valley: [
+  // the poetic subtitle answers to the DIFFICULTY now — one small pool apiece
+  SUB_BY_MODE: {
+    calm: [
       'The forest takes back what was borrowed.',
       'The valley forgets. Grass grows over the ashes.',
+      'Nature remembers no kingdoms.',
+    ],
+    moderate: [
       'The trees close over the last of the paths.',
+      'Your people became a story.',
+      'The last hearth is cold, and no one came.',
     ],
-    lakeland: [
-      'The still water keeps your reflection, and nothing else.',
-      'The lakes drink the last of the smoke.',
-      'Reeds lean over where the hearths once burned.',
-    ],
-    highlands: [
+    hard: [
       'The mountains outlast every crown.',
-      'The high stones forget your name first.',
-      'The peaks were here before you, and shall remain.',
-    ],
-    islands: [
-      'The ocean claims its own.',
       'The tide takes the last footprint from the sand.',
       'The sea rises, patient, and remembers no one.',
     ],
   },
-  SUBTITLES: [   // fallback when the landform is unknown
-    'Nature remembers no kingdoms.',
-    'Your people became a story.',
-    'The last hearth is cold, and no one came.',
-  ],
   EPITAPHS: [
     'From ash, we began. From memory, we return.',
     'History begins with someone trying again.',
@@ -52,58 +52,56 @@ const Defeat = {
   pick(arr) { return arr[(Math.random() * arr.length) | 0]; },
   epitaph() { return this.pick(this.EPITAPHS); },
   title() { return this.pick(this.TITLES); },
-  subtitle() {
-    const pool = this.SUB_BY_LF[this.landform] || this.SUBTITLES;
-    return this.pick(pool);
-  },
+  subtitle() { return this.pick(this.SUB_BY_MODE[this.mode] || this.SUB_BY_MODE.moderate); },
 
-  // capture the fallen game's SETTING (landform) and LIGHT (time of day by
-  // difficulty), called once as the Game Over screen opens
-  begin(landform, mode) {
-    this.landform = landform && this.SUB_BY_LF[landform] ? landform : 'valley';
-    this.tod = mode === 'calm' ? 'day' : mode === 'hard' ? 'night' : 'dusk';
+  // capture the difficulty (the only input this scene takes now) and pick a
+  // hand-authored picture for it if one has been uploaded; called once as
+  // the Game Over screen opens
+  begin(mode) {
+    this.mode = CFG.MODES && CFG.MODES[mode] ? mode : 'moderate';
+    this.tod = this.mode === 'calm' ? 'day' : this.mode === 'hard' ? 'night' : 'dusk';
+    const imgs = window.Assets ? Assets.endgameImgs('loss', this.mode) : [];
+    this.img = imgs.length ? this.pick(imgs) : null;
     this._seed();
   },
 
-  /* ---- time-of-day palettes: the same scene under three skies ---- */
+  /* ---- time-of-day palettes: the same scene under three skies, one per
+     difficulty ---- */
   TOD: {
     day: {   // Calm — a clear, gentle daylight
       sky: ['#8db6e0', '#cfe4f2'], starA: 0,
       orb: { x: 150, y: 30, r: 13, body: '#fff6d2', shade: '#f4e79a', glow: '#fff2c0', crown: '#ffffff', maria: false, ray: true },
       cloud: ['#eef4fb', '#ffffff', 0.75],
-      ridge: ['#8aa0c0', '#6f86a6'], jag: ['#8a94a4', '#6e7889'],
+      ridge: ['#8aa0c0', '#6f86a6'],
       fog: '#e2eef6', fogA: 0.10,
       sil: '#3b4a3c', silEdge: '#54684f',
       rim: '#f2e4ac',                                   // warm sunlight highlight
       grass: ['#5a8646', '#2e4a24'], tuft: ['#74ad56', '#33512a'],
       earth: ['#3a2a18', '#513c24', '#6c5030'],
-      water: ['#4f88b6', '#2f6a97'], foam: '#dceff6',
       vignette: '#16240f', vigA: 0.05,
     },
     dusk: {   // Moderate — a low, burning sunset
       sky: ['#33305e', '#e79457'], starA: 0.45,
       orb: { x: 150, y: 58, r: 16, body: '#ffcf7a', shade: '#ef9540', glow: '#f0895a', crown: '#ffe6a6', maria: false, ray: true },
       cloud: ['#6a4560', '#8a5a62', 0.55],
-      ridge: ['#5a4664', '#392c46'], jag: ['#4e3e56', '#332740'],
+      ridge: ['#5a4664', '#392c46'],
       fog: '#cf9d86', fogA: 0.09,
       sil: '#281a2b', silEdge: '#40283c',
       rim: '#f4ac64',                                   // warm sunset rim
       grass: ['#4c5a34', '#1c2014'], tuft: ['#63713e', '#222818'],
       earth: ['#271b11', '#37281b', '#4a3626'],
-      water: ['#7a5a78', '#432f52'], foam: '#e6bfa0',
       vignette: '#1a0d12', vigA: 0.09,
     },
     night: {   // Hard — deep moonlit dark (the original mood)
       sky: ['#0a0c1a', '#1b2338'], starA: 1,
       orb: { x: 162, y: 30, r: 15, body: '#f2eeda', shade: '#e6e0c6', glow: '#aeb6c8', crown: '#fbf7e6', maria: true, ray: false },
       cloud: ['#232c42', '#2c3752', 0.5],
-      ridge: ['#1a2233', '#141a28'], jag: ['#1c2536', '#141b29'],
+      ridge: ['#1a2233', '#141a28'],
       fog: '#8b93a6', fogA: 0.06,
       sil: '#0c0f18', silEdge: '#182031',
       rim: '#5c4527',                                   // cool moonlit wood edge
       grass: ['#28402a', '#0c130d'], tuft: ['#3a5638', '#132015'],
       earth: ['#1c150c', '#2b2013', '#3a2c1a'],
-      water: ['#1c3550', '#0e2138'], foam: '#7f97ad',
       vignette: '#04060c', vigA: 0.10,
     },
   },
@@ -122,6 +120,16 @@ const Defeat = {
     for (let dy = -rh; dy <= rh; dy++) for (let dx = -rw; dx <= rw; dx++)
       if (dx * dx * rh2 + dy * dy * rw2 <= rw2 * rh2) g.fillRect((cx + dx) | 0, (cy + dy) | 0, 1, 1);
   },
+  // draw a real picture to COVER the whole canvas (crop overflow, keep
+  // aspect) — used only while a hand-authored PNG is standing in
+  _drawCover(g, cv, img) {
+    const cw = cv.width, ch = cv.height;
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    const s = Math.max(cw / iw, ch / ih);
+    const dw = iw * s, dh = ih * s;
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    g.drawImage(img, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+  },
 
   // stable scatter (stars / embers / grass) so the scene doesn't shimmer randomly
   _seed() {
@@ -133,10 +141,17 @@ const Defeat = {
 
   draw(cv, t) {
     const g = cv.getContext('2d');
+    if (this.img) {
+      if (cv.width !== this.HI_W) { cv.width = this.HI_W; cv.height = this.HI_H; }
+      cv.classList.add('cfArtPhoto');
+      this._drawCover(g, cv, this.img);
+      return;
+    }
+    cv.classList.remove('cfArtPhoto');
     if (cv.width !== this.W) { cv.width = this.W; cv.height = this.H; }
     g.imageSmoothingEnabled = false;
     const W = this.W, H = this.H, HZ = 92;
-    const th = this.theme(), lf = this.landform || 'valley';
+    const th = this.theme();
 
     // --- sky ---
     for (let y = 0; y < HZ; y++) g.fillStyle = this.lerp(th.sky[0], th.sky[1], y / HZ), g.fillRect(0, y, W, 1);
@@ -145,32 +160,21 @@ const Defeat = {
     this._orb(g, th, t);
     this._clouds(g, th, t);
 
-    // --- background terrain, by landform ---
-    if (lf === 'highlands') this._peaks(g, th);
-    else this._ridges(g, th);
+    // --- background terrain: a forested valley, always ---
+    this._ridges(g, th);
 
     // fog band settling over the horizon
     for (let k = 0; k < 6; k++) { const fx = ((t / 40 + k * 40) % (W + 90)) - 45; g.globalAlpha = th.fogA; g.fillStyle = th.fog; this.blob(g, fx, HZ - 2 + (k % 2) * 4, 40, 4); }
     g.globalAlpha = 1;
 
-    // --- landform signature feature ---
-    if (lf === 'valley') this._pines(g, th, t);
-    let groundTop = HZ, spit = false;
-    if (lf === 'lakeland') this._lake(g, th, t);
-    else if (lf === 'islands') { this._sea(g, th, t); groundTop = H - 24; spit = true; }
+    this._pines(g, th, t);
 
-    // --- the ruined village (perched on the far isle for islands, on the midground else) ---
-    if (lf === 'islands') this._ruins(g, th, t, 30, HZ - 1, 0.5, false);
-    else this._ruins(g, th, t, 24, HZ, 1, true);
+    // --- the ruined village, on the midground ---
+    this._ruins(g, th, t, 24, HZ, 1, true);
 
     // --- ground floor: moonlit/sunlit grass fading to shadow at our feet ---
-    for (let y = groundTop; y < H; y++) g.fillStyle = this.lerp(th.grass[0], th.grass[1], (y - groundTop) / Math.max(1, H - groundTop)), g.fillRect(0, y, W, 1);
-    if (spit) {   // an island: the grass is a last shrinking spit, water lapping its edge
-      g.fillStyle = th.foam; g.globalAlpha = 0.5;
-      for (let x = 0; x < W; x++) { const e = groundTop + (Math.sin(t / 600 + x * 0.3) * 1.2) + (Math.sin(x * 0.7) * 1.5); g.fillRect(x, e | 0, 1, 1); }
-      g.globalAlpha = 1;
-    }
-    for (const tf of this._tufts) { if (tf.y < groundTop) continue; g.fillStyle = tf.lit ? th.tuft[0] : th.tuft[1]; g.fillRect(tf.x, tf.y, 1, tf.h); }
+    for (let y = HZ; y < H; y++) g.fillStyle = this.lerp(th.grass[0], th.grass[1], (y - HZ) / Math.max(1, H - HZ)), g.fillRect(0, y, W, 1);
+    for (const tf of this._tufts) { if (tf.y < HZ) continue; g.fillStyle = tf.lit ? th.tuft[0] : th.tuft[1]; g.fillRect(tf.x, tf.y, 1, tf.h); }
 
     // --- foreground focus: grave, dead campfire, ravens (the constant of every loss) ---
     this._grave(g, th, t);
@@ -209,7 +213,7 @@ const Defeat = {
     g.globalAlpha = 1;
   },
 
-  // soft rolling ridges (valley / lakeland / islands base)
+  // soft rolling ridges behind the treeline
   _ridges(g, th) {
     const HZ = 92, W = this.W;
     const ridge = (bx, peak, halfw) => {
@@ -223,23 +227,7 @@ const Defeat = {
     ridge(40, 20, 42); ridge(120, 26, 40); ridge(184, 22, 30);
   },
 
-  // rugged, jagged highland peaks — tall, sharp, snow-flecked
-  _peaks(g, th) {
-    const HZ = 92, W = this.W;
-    const peak = (bx, h, hw, snow) => {
-      for (let dx = -hw; dx <= hw; dx++) {
-        const x = bx + dx; if (x < 0 || x >= W) continue;
-        const jag = (Math.abs(dx) % 5 < 2 ? 2 : 0);
-        const top = (HZ - h * (1 - Math.abs(dx) / hw) + jag) | 0;
-        g.fillStyle = dx > 0 ? th.jag[1] : th.jag[0];
-        for (let y = top; y < HZ; y++) g.fillRect(x, y, 1, 1);
-        if (snow && dx <= 1) { g.fillStyle = th.tod === 'night' ? '#c8d2e2' : '#eef2f8'; for (let y = top; y < top + 3 + (2 - Math.abs(dx)); y++) g.fillRect(x, y, 1, 1); }
-      }
-    };
-    peak(46, 44, 34, true); peak(120, 52, 30, true); peak(180, 38, 26, true);
-  },
-
-  // a pine treeline crowding the horizon (valley)
+  // a pine treeline crowding the horizon
   _pines(g, th, t) {
     const HZ = 92;
     for (let i = 0; i < 26; i++) {
@@ -248,44 +236,6 @@ const Defeat = {
       for (let r = 0; r < 4; r++) { const w = r * 2 + 1; g.fillRect(x - r, base - h + r * (h / 4), w, (h / 4) | 0 + 1); }
       g.fillStyle = th.silEdge; g.fillRect(x - 2, base - 2, 1, 2);
     }
-  },
-
-  // a still lake band mirroring the sky (lakeland)
-  _lake(g, th, t) {
-    const HZ = 92, W = this.W, y0 = HZ, y1 = HZ + 18;
-    for (let y = y0; y < y1; y++) g.fillStyle = this.lerp(th.water[0], th.water[1], (y - y0) / (y1 - y0)), g.fillRect(0, y, W, 1);
-    // the orb's long reflection shivering on the surface
-    const o = th.orb;
-    g.globalAlpha = 0.4; g.fillStyle = o.body;
-    for (let y = y0; y < y1; y++) { const w = 2 + ((y - y0) % 3 === 0 ? 2 : 0); g.fillRect((o.x - w + Math.sin(t / 300 + y) * 1.5) | 0, y, w * 2, 1); }
-    g.globalAlpha = 1;
-    // ripple highlights
-    g.globalAlpha = 0.25; g.fillStyle = th.foam;
-    for (let k = 0; k < 5; k++) { const ry = y0 + 3 + k * 3, off = (t / 200 + k * 20) % W; g.fillRect(off | 0, ry, 6, 1); g.fillRect(((off + 40) % W) | 0, ry, 4, 1); }
-    g.globalAlpha = 1;
-    // reeds along the near bank
-    g.fillStyle = th.sil; for (let i = 0; i < 12; i++) { const x = 6 + i * 16 + ((i * 7) % 4), lean = Math.sin(t / 700 + i) * 1; g.fillRect((x + lean) | 0, y1 - 6, 1, 6); g.fillRect((x + lean * 1.5) | 0, y1 - 7, 1, 1); }
-  },
-
-  // the sea, drowning the midground — waves rolling to a low far shore (islands)
-  _sea(g, th, t) {
-    const HZ = 92, W = this.W, y0 = HZ, y1 = this.H - 24;
-    for (let y = y0; y < y1; y++) g.fillStyle = this.lerp(th.water[0], th.water[1], (y - y0) / (y1 - y0)), g.fillRect(0, y, W, 1);
-    // the orb's broken reflection
-    const o = th.orb;
-    g.globalAlpha = 0.35; g.fillStyle = o.body;
-    for (let y = y0 + 2; y < y1; y += 2) { const w = 3; g.fillRect((o.x - w + Math.sin(t / 260 + y) * 2.5) | 0, y, w * 2, 1); }
-    g.globalAlpha = 1;
-    // rolling wave crests (moving rows of foam)
-    g.fillStyle = th.foam;
-    for (let k = 0; k < 8; k++) {
-      const wy = y0 + 3 + k * ((y1 - y0 - 4) / 8), drift = (t / (120 + k * 20) + k * 30) % (W + 30);
-      g.globalAlpha = 0.16 + 0.05 * (k / 8);
-      for (let s = 0; s < 3; s++) { const x = (drift + s * 60) % (W + 30) - 15; g.fillRect(x | 0, wy | 0, 7, 1); g.fillRect((x + 3) | 0, (wy + 1) | 0, 3, 1); }
-    }
-    g.globalAlpha = 1;
-    // a lonely far isle on the horizon, carrying the ruins on the left
-    g.fillStyle = th.ridge[1]; this.blob(g, 34, HZ + 1, 30, 5);
   },
 
   // the abandoned village — a caved cabin with one breathing chimney, broken

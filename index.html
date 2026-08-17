@@ -664,6 +664,11 @@
   #defeatCanvas, #victoryCanvas { display: block; width: 100%; height: auto; aspect-ratio: 200 / 150;
     image-rendering: pixelated; border-radius: 7px;
     box-shadow: inset 0 0 0 2px rgba(8,10,18,0.9), inset 0 0 0 3px rgba(150,124,66,0.14); }
+  /* a hand-authored win/loss picture (assets/endgame/) wants to look like a
+     real picture, not blocky pixel art — js/defeatart.js and js/victoryart.js
+     add this class only while showing one (their own procedural scenes keep
+     the pixelated rule above, untouched) */
+  #defeatCanvas.cfArtPhoto, #victoryCanvas.cfArtPhoto { image-rendering: auto; }
 
   #defeatTitle, #victoryTitle { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
     font-size: 26px; font-weight: 700; letter-spacing: 3px; line-height: 1.1;

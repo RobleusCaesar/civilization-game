@@ -591,9 +591,9 @@ const Screens = {
       vic.style.display = 'none';
       def.style.display = 'flex';   // flex column (see CSS) — centres content vertically in the frame
       this._score = null; this._submitted = false; this._leaveWarned = false;
-      // the scene answers to the map you fell on (landform) and the difficulty
-      // (time of day): set that up BEFORE the subtitle, which is landform-flavoured
-      if (window.Defeat) Defeat.begin(S.map && S.map.landform, S.mode);
+      // the scene answers to the difficulty alone now: set that up BEFORE the
+      // subtitle, which is difficulty-flavoured (js/defeatart.js)
+      if (window.Defeat) Defeat.begin(S.mode);
       // two voices: the headline and the poetic, land-specific subtitle
       this.el('defeatTitleText').textContent = window.Defeat ? Defeat.title() : 'THE FIRE HAS GONE OUT';
       this.el('defeatEpitaph').textContent = window.Defeat ? Defeat.subtitle() : '';
@@ -623,10 +623,9 @@ const Screens = {
     this._submitted = false;
     this._leaveWarned = false;
     this._winMsg = opts.msg || '';
-    // the scene answers to the land you won and the difficulty you conquered,
-    // under a fresh sky (morning / midday / evening) each victory
+    // the scene answers to the difficulty you conquered alone now (js/victoryart.js)
     if (window.VictoryArt) {
-      VictoryArt.begin(S.map && S.map.landform, S.mode);
+      VictoryArt.begin(S.mode);
       this.el('victoryTitleText').textContent = VictoryArt.title();
       this.el('victoryEpitaph').textContent = VictoryArt.subtitle();
       for (const c of vs.querySelectorAll('canvas[data-vicon]')) VictoryArt.drawIcon(c, c.dataset.vicon);

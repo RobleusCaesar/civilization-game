@@ -1,16 +1,25 @@
 "use strict";
 /* Victory — "A New Dawn": the celebration scene. The mirror of js/defeatart.js:
    a handcrafted pixel canvas (400×300, CSS-upscaled), alive — smoke from warm
-   chimneys, waving banners, villagers in the lanes. The SCENE answers to the
-   difficulty you conquered: Calm shows a simple thriving hamlet (or fisherfolk
-   hauling their catch), Moderate a developed town (or a house being raised),
-   Hard a fortified town with its army mustered. Each difficulty owns a couple
-   of variations, and the LIGHT is drawn fresh each victory — morning, midday
-   or evening. The poetic subtitle answers to the land you won.
+   chimneys, waving banners, villagers in the lanes. Exactly one fixed scene
+   per difficulty, under one fixed sky: Calm a thriving hamlet at morning,
+   Moderate a developed town at midday, Hard a fortified stronghold at a
+   triumphant evening. No randomness, no landform — the poetic subtitle
+   answers to the difficulty too.
    Second draft: double resolution, layered depth (far haze → near detail),
-   textured timber/thatch/stone, and people with real limbs and jobs. */
+   textured timber/thatch/stone, and people with real limbs and jobs.
+
+   A hand-authored picture SITS ON TOP of this: assets/endgame/win/{calm|
+   moderate|hard}/*.png (assets/endgame/README.md). begin() picks one at
+   random if the bucket has anything in it; draw() then shows that picture
+   instead of the procedural scene, full stop — the procedural drawing above
+   is only what's left when a difficulty has no art yet. */
 const VictoryArt = {
   W: 400, H: 300,
+  HI_W: 800, HI_H: 600,   // backing-store size while showing a real picture —
+                           // big enough that the canvas's own `image-rendering:
+                           // pixelated` CSS rule (index.html) doesn't crush a
+                           // photo down to nearest-neighbour blocks
 
   TITLES: [
     'A NEW DAWN RISES',
@@ -18,60 +27,52 @@ const VictoryArt = {
     'YOUR FIRE BURNS BRIGHT',
     'A CLAN OF LEGEND',
   ],
-  // the positive mirror of the defeat subtitles — the land now serves you
-  SUB_BY_LF: {
-    valley: [
+  // the positive mirror of the defeat subtitles — one small pool per difficulty
+  SUB_BY_MODE: {
+    calm: [
       'The forest bows to axe and hearth.',
       'Every path in the valley leads to your door.',
+      'History will remember this valley.',
+    ],
+    moderate: [
       'The trees part, and keep your roads open.',
-    ],
-    lakeland: [
-      'The still water carries your fires home.',
       'Every shore lights a friendly lamp tonight.',
-      'The lakes mirror a hundred hearth-fires.',
+      'Your people became a legend.',
     ],
-    highlands: [
-      'The high stones learn your name, and keep it.',
+    hard: [
       'Your banners fly above the peaks.',
       'Even the mountains make way.',
-    ],
-    islands: [
-      'The tide brings tribute now.',
       'Every sail on the horizon is yours.',
-      'The sea keeps your roads open.',
     ],
   },
-  SUBTITLES: [
-    'History will remember this valley.',
-    'Your people became a legend.',
-    'The hearth is warm, and the gates stand open.',
-  ],
   pick(arr) { return arr[(Math.random() * arr.length) | 0]; },
   title() { return this.pick(this.TITLES); },
-  subtitle() { return this.pick(this.SUB_BY_LF[this.landform] || this.SUBTITLES); },
+  subtitle() { return this.pick(this.SUB_BY_MODE[this.mode] || this.SUB_BY_MODE.moderate); },
 
-  // which scenes each difficulty can roll — a couple of variations apiece
-  SCENES: {
-    calm: ['hamlet', 'fishing'],
-    moderate: ['town', 'raising'],
-    hard: ['muster', 'stronghold'],
-  },
+  // the one scene each difficulty shows — no roll, no alternates
+  SCENE_BY_MODE: { calm: 'hamlet', moderate: 'town', hard: 'stronghold' },
+  TOD_BY_MODE: { calm: 'morning', moderate: 'midday', hard: 'evening' },
 
-  begin(landform, mode, force) {
-    force = force || {};
-    this.landform = landform && this.SUB_BY_LF[landform] ? landform : 'valley';
-    this.tod = force.tod || this.pick(['morning', 'midday', 'evening']);
-    this.scene = force.scene || this.pick(this.SCENES[mode] || this.SCENES.moderate);
+  // capture the difficulty (the only input this scene takes now) and pick a
+  // hand-authored picture for it if one has been uploaded; called once as
+  // the victory screen opens
+  begin(mode) {
+    this.mode = CFG.MODES && CFG.MODES[mode] ? mode : 'moderate';
+    this.tod = this.TOD_BY_MODE[this.mode] || 'midday';
+    this.scene = this.SCENE_BY_MODE[this.mode] || 'hamlet';
+    const imgs = window.Assets ? Assets.endgameImgs('win', this.mode) : [];
+    this.img = imgs.length ? this.pick(imgs) : null;
     this._seed();
   },
 
-  /* ---- time-of-day palettes: the same celebration under three skies ---- */
+  /* ---- time-of-day palettes: the same celebration under three skies, one
+     per difficulty ---- */
   TOD: {
-    morning: {   // a pale gold sunrise, mist still on the fields
+    morning: {   // Calm — a pale gold sunrise, mist still on the fields
       sky: ['#6f8fbf', '#f5d9a8'], starA: 0,
       orb: { x: 84, y: 92, r: 24, body: '#fff3c8', crown: '#ffffff', glow: '#ffe9b0', ray: true },
       cloud: ['#f4e3d0', '#fff5e8', 0.7],
-      ridge: ['#7d92b5', '#63799c'], jag: ['#7d88a0', '#5f6b84'],
+      ridge: ['#7d92b5', '#63799c'],
       fog: '#f2dfc2', fogA: 0.12,
       sil: '#3f5240', silEdge: '#5b7355',
       grass: ['#5f8c49', '#31502a'], tuft: ['#7cb35c', '#3a5a2e'],
@@ -82,11 +83,11 @@ const VictoryArt = {
       metal: '#c9ced4', helm: '#59616e', skin: '#e0af80',
       smoke: '#d9dee2', vignette: '#241d0f', vigA: 0.05,
     },
-    midday: {   // clear bright noon, hard light and long sight
+    midday: {   // Moderate — clear bright noon, hard light and long sight
       sky: ['#5f9fd8', '#cfe9f5'], starA: 0,
       orb: { x: 208, y: 48, r: 20, body: '#fff8d8', crown: '#ffffff', glow: '#fff2c0', ray: true },
       cloud: ['#eef6fc', '#ffffff', 0.8],
-      ridge: ['#7f9ac2', '#6480a8'], jag: ['#8b95a6', '#6d788c'],
+      ridge: ['#7f9ac2', '#6480a8'],
       fog: '#e8f2f8', fogA: 0.07,
       sil: '#3a4e39', silEdge: '#567350',
       grass: ['#619448', '#2f4f26'], tuft: ['#7fbc58', '#38582c'],
@@ -97,11 +98,11 @@ const VictoryArt = {
       metal: '#d4dae0', helm: '#5e6774', skin: '#e2b184',
       smoke: '#e2e6ea', vignette: '#1b2410', vigA: 0.04,
     },
-    evening: {   // a triumphant amber sunset, first stars out
+    evening: {   // Hard — a triumphant amber sunset, first stars out
       sky: ['#453a6e', '#f0a45c'], starA: 0.35,
       orb: { x: 304, y: 108, r: 26, body: '#ffcf7a', crown: '#ffe6a6', glow: '#f0955a', ray: true },
       cloud: ['#755470', '#96636a', 0.55],
-      ridge: ['#5f4d70', '#41334f'], jag: ['#564663', '#3a2f4a'],
+      ridge: ['#5f4d70', '#41334f'],
       fog: '#d8a887', fogA: 0.09,
       sil: '#2e2233', silEdge: '#463049',
       grass: ['#57603a', '#232a18'], tuft: ['#6f7a44', '#2a331c'],
@@ -130,6 +131,16 @@ const VictoryArt = {
     for (let dy = -rh; dy <= rh; dy++) for (let dx = -rw; dx <= rw; dx++)
       if (dx * dx * rh2 + dy * dy * rw2 <= rw2 * rh2) g.fillRect((cx + dx) | 0, (cy + dy) | 0, 1, 1);
   },
+  // draw a real picture to COVER the whole canvas (crop overflow, keep
+  // aspect) — used only while a hand-authored PNG is standing in
+  _drawCover(g, cv, img) {
+    const cw = cv.width, ch = cv.height;
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    const s = Math.max(cw / iw, ch / ih);
+    const dw = iw * s, dh = ih * s;
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    g.drawImage(img, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+  },
 
   _seed() {
     this._stars = []; for (let i = 0; i < 70; i++) this._stars.push({ x: (Math.random() * this.W) | 0, y: (Math.random() * 120) | 0, p: Math.random() * 6.28, b: 0.4 + Math.random() * 0.6 });
@@ -140,10 +151,17 @@ const VictoryArt = {
 
   draw(cv, t) {
     const g = cv.getContext('2d');
+    if (this.img) {
+      if (cv.width !== this.HI_W) { cv.width = this.HI_W; cv.height = this.HI_H; }
+      cv.classList.add('cfArtPhoto');
+      this._drawCover(g, cv, this.img);
+      return;
+    }
+    cv.classList.remove('cfArtPhoto');
     if (cv.width !== this.W) { cv.width = this.W; cv.height = this.H; }
     g.imageSmoothingEnabled = false;
     const W = this.W, H = this.H, HZ = 184;
-    const th = this.theme(), lf = this.landform || 'valley';
+    const th = this.theme();
 
     // --- sky: vertical wash + a warm glow band low over the horizon ---
     for (let y = 0; y < HZ; y++) { g.fillStyle = this.lerp(th.sky[0], th.sky[1], y / HZ); g.fillRect(0, y, W, 1); }
@@ -154,21 +172,16 @@ const VictoryArt = {
     this._orb(g, th, t);
     this._clouds(g, th, t);
 
-    // --- background terrain by landform (far haze layer, then near) ---
-    if (lf === 'highlands') this._peaks(g, th);
-    else this._ridges(g, th);
-    if (lf === 'valley') this._pines(g, th);
+    // --- background terrain: rolling hills + a pine treeline, always ---
+    this._ridges(g, th);
+    this._pines(g, th);
 
     // drifting morning mist over the horizon line
     for (let k = 0; k < 6; k++) { const fx = ((t / 45 + k * 74) % (W + 180)) - 90; g.globalAlpha = th.fogA; g.fillStyle = th.fog; this.blob(g, fx, HZ - 4 + (k % 2) * 7, 74, 7); }
     g.globalAlpha = 1;
 
-    // a glinting lake band for the water lands (the fishing scene brings its own)
-    const sceneHasWater = this.scene === 'fishing';
-    if ((lf === 'lakeland' || lf === 'islands') && !sceneHasWater) this._lakeBand(g, th, t, HZ, 20);
-
     // --- ground: gradient + hash mottle + tufts (+ flowers when bright) ---
-    const groundTop = (lf === 'lakeland' || lf === 'islands') && !sceneHasWater ? HZ + 20 : HZ;
+    const groundTop = HZ;
     for (let y = groundTop; y < H; y++) { g.fillStyle = this.lerp(th.grass[0], th.grass[1], (y - groundTop) / Math.max(1, H - groundTop)); g.fillRect(0, y, W, 1); }
     for (let i = 0; i < 900; i++) {
       const mx = (this.hsh(i, 7) * W) | 0, my = (groundTop + this.hsh(i, 13) * (H - groundTop)) | 0;
@@ -244,31 +257,6 @@ const VictoryArt = {
       if (this.hsh(x, yTop) < 0.06) { g.fillStyle = this.shade(th.ridge[1], -0.15); g.fillRect(x, yTop + 4 + (this.hsh(x, 3) * 10 | 0), 1, 2); }
     }
   },
-  // highland massifs: a hazed far wall, then three faceted snow peaks
-  _peaks(g, th) {
-    const HZ = 184, W = this.W;
-    g.fillStyle = this.lerp(th.jag[0], th.sky[1], 0.5);
-    for (let x = 0; x < W; x++) {
-      const yTop = (HZ - 52 - 26 * Math.sin(x / 60 + 1) - 10 * Math.sin(x / 23)) | 0;
-      g.fillRect(x, yTop, 1, HZ - yTop);
-    }
-    const peak = (bx, h, hw) => {
-      for (let dx = -hw; dx <= hw; dx++) {
-        const x = bx + dx; if (x < 0 || x >= W) continue;
-        const jag = (this.hsh(x, bx) * 5) | 0;
-        const top = (HZ - h * (1 - Math.abs(dx) / hw) + jag) | 0;
-        const lit = dx < -hw * 0.08;
-        g.fillStyle = lit ? th.jag[0] : th.jag[1];
-        g.fillRect(x, top, 1, HZ - top);
-        if (Math.abs(dx + hw * 0.08) < 1.2) { g.fillStyle = this.shade(th.jag[1], -0.22); g.fillRect(x, top, 1, HZ - top); }   // the spine
-        // snow: the top third, with a ragged lower hem and a couloir streak
-        const snowLen = (h * 0.34 - Math.abs(dx) * 0.5 + this.hsh(x, 5) * 6) | 0;
-        if (snowLen > 0) { g.fillStyle = lit ? '#f3f6fa' : '#c9d3e2'; g.fillRect(x, top, 1, Math.min(snowLen, HZ - top)); }
-        if ((x - bx) % 9 === 0 && Math.abs(dx) < hw * 0.6) { g.fillStyle = this.shade(th.jag[1], -0.1); g.fillRect(x, top + Math.max(1, snowLen), 1, 5); }
-      }
-    };
-    peak(92, 88, 68); peak(240, 104, 60); peak(360, 76, 52);
-  },
   // pine treelines: a hazed back row, a full-colour front row. Each tree is a
   // true jagged cone — width swelling row by row with stepped bough tips —
   // over a short trunk, lit up one flank.
@@ -290,15 +278,6 @@ const VictoryArt = {
     const back = this.lerp(th.sil, th.sky[1], 0.4), backE = this.lerp(th.silEdge, th.sky[1], 0.4);
     for (let i = 0; i < 24; i++) tree(8 + i * 17 + ((i * 37) % 9), HZ - 3, 11 + ((i * 53) % 6), back, backE);
     for (let i = 0; i < 19; i++) tree(4 + i * 22 + ((i * 61) % 11), HZ + 3, 16 + ((i * 47) % 9), th.sil, th.silEdge);
-  },
-  _lakeBand(g, th, t, y0, hgt) {
-    const W = this.W, y1 = y0 + hgt;
-    for (let y = y0; y < y1; y++) { g.fillStyle = this.lerp(th.water[0], th.water[1], (y - y0) / hgt); g.fillRect(0, y, W, 1); }
-    g.globalAlpha = 0.35; g.fillStyle = th.orb.body;
-    for (let y = y0; y < y1; y++) g.fillRect((th.orb.x - 3 + Math.sin(t / 300 + y * 0.7) * 2.5) | 0, y, 6, 1);
-    g.globalAlpha = 0.25; g.fillStyle = th.foam;
-    for (let k = 0; k < 6; k++) { const ry = y0 + 3 + k * 3, off = (t / 220 + k * 60) % W; g.fillRect(off | 0, ry, 10, 1); g.fillRect(((off + 170) % W) | 0, ry, 6, 1); }
-    g.globalAlpha = 1;
   },
 
   /* ---- shared set-dressing (all at the new scale) ---- */
@@ -504,7 +483,7 @@ const VictoryArt = {
 
   /* ================= THE SCENES ================= */
 
-  // CALM A — a thriving hamlet: two warm homes, combed crop rows, wash on the
+  // CALM — a thriving hamlet: two warm homes, combed crop rows, wash on the
   // line, a haystack, hens in the yard and folk idling up the lane
   _sc_hamlet(g, th, t) {
     this._lane(g, th, 76, 250, 190);
@@ -554,73 +533,7 @@ const VictoryArt = {
     this._dude(g, th, 84, 276, '#5a7a44', { cheer: true });
   },
 
-  // CALM B — fisherfolk on the river: a jetty out over the water, bent rods,
-  // ripple rings, leaping fish and a basket of silver
-  _sc_fishing(g, th, t) {
-    const y0 = 214, y1 = 258;
-    // banks: a dark wet lip above and below the water
-    g.fillStyle = this.shade(th.grass[1], -0.28); g.fillRect(0, y0 - 2, this.W, 2);
-    for (let y = y0; y < y1; y++) { g.fillStyle = this.lerp(th.water[0], th.water[1], (y - y0) / (y1 - y0)); g.fillRect(0, y, this.W, 1); }
-    g.fillStyle = this.shade(th.grass[1], -0.28); g.fillRect(0, y1, this.W, 2);
-    // the sun's glitter on the current: broken sparkles scattered under the orb
-    g.fillStyle = th.orb.body;
-    for (let y = y0 + 2; y < y1 - 2; y += 2) {
-      const sp = 6 + this.hsh(y, 1) * 14;
-      g.globalAlpha = 0.14 + 0.2 * this.hsh(y, 2) + 0.1 * Math.sin(t / 300 + y);
-      g.fillRect((th.orb.x - sp + Math.sin(t / 420 + y * 1.7) * 3) | 0, y, 3 + (this.hsh(y, 3) * 4 | 0), 1);
-      g.globalAlpha = 0.14 + 0.2 * this.hsh(y, 5) + 0.1 * Math.cos(t / 340 + y);
-      g.fillRect((th.orb.x + sp * 0.5 + Math.sin(t / 380 + y * 2.3) * 3) | 0, y, 2 + (this.hsh(y, 7) * 3 | 0), 1);
-    }
-    g.globalAlpha = 0.3; g.fillStyle = th.foam;
-    for (let k = 0; k < 7; k++) { const ry = y0 + 4 + k * 6, off = (t / 190 + k * 52) % this.W; g.fillRect(off | 0, ry, 12, 1); g.fillRect(((off + 120) % this.W) | 0, ry, 7, 1); }
-    g.globalAlpha = 1;
-    // reeds along both banks
-    for (let i = 0; i < 14; i++) {
-      const rx = (this.hsh(i, 41) * this.W) | 0, top = i % 2 ? y0 - 8 : y1 + 2;
-      g.fillStyle = th.tuft[1]; g.fillRect(rx, top, 1, 8);
-      g.fillStyle = th.wood[3]; g.fillRect(rx, top, 1, 2);
-    }
-    // far-bank cabin, smoking
-    this._house(g, th, 30, 208, 38, 22, { t, smoke: true });
-    // the jetty: planks on posts, a fisher at its end
-    g.fillStyle = th.wood[2]; g.fillRect(266, y0 + 6, 1, 10); g.fillRect(286, y0 + 10, 1, 10);
-    for (let i = 0; i < 3; i++) { g.fillStyle = i % 2 ? th.wood[1] : this.shade(th.wood[1], 0.08); g.fillRect(258, y0 + 2 + i, 36, 1); }
-    g.fillStyle = this.shade(th.wood[1], -0.25); g.fillRect(258, y0 + 5, 36, 1);
-    const bend = Math.sin(t / 500) * 2;
-    // fisher on the jetty (line down to the water, ripple rings at the float)
-    this._dude(g, th, 276, y0 + 2, '#5a6a8a', { rod: true, face: 1 });
-    g.fillStyle = th.wood[3];
-    for (let i = 0; i < 12; i++) g.fillRect(280 + i, y0 - 8 - (i > 7 ? (i - 7) : 0) + (i * i) / 22, 1, 1);
-    g.fillStyle = '#cfd8de'; g.fillRect(292, (y0 + 2 + bend) | 0, 1, Math.max(2, (10 - bend) | 0));
-    for (let r = 0; r < 3; r++) {
-      const ph = ((t / 900) + r * 0.33) % 1;
-      g.globalAlpha = 0.35 * (1 - ph); g.fillStyle = th.foam;
-      const rr = 1 + ph * 5;
-      g.fillRect((292 - rr) | 0, (y0 + 12) | 0, (rr * 2) | 0, 1);
-      g.globalAlpha = 1;
-    }
-    // a second fisher sitting on the near bank
-    this._dude(g, th, 96, y1 + 4, '#7a5a34', { rod: true, face: -1, sit: true });
-    g.fillStyle = th.wood[3]; for (let i = 0; i < 10; i++) g.fillRect(94 - i, y1 - 6 + (i * i) / 18, 1, 1);
-    g.fillStyle = '#cfd8de'; g.fillRect(84, y1 - 8, 1, 6);
-    // leaping fish, silver in the light
-    for (let f = 0; f < 2; f++) {
-      const ph = ((t / 1400) + f * 0.5) % 1;
-      const fx = 170 + f * 64 + ph * 40, fy = y0 + 18 - Math.sin(Math.PI * ph) * 17;
-      g.fillStyle = '#dfe8ee'; g.fillRect(fx | 0, fy | 0, 5, 2);
-      g.fillRect((fx + (ph > 0.5 ? -2 : 5)) | 0, (fy - 1) | 0, 2, 1);
-      g.fillStyle = '#aebbc6'; g.fillRect((fx + 2) | 0, (fy + 1) | 0, 2, 1);
-      if (ph > 0.85 || ph < 0.1) { g.globalAlpha = 0.5; g.fillStyle = th.foam; g.fillRect((170 + f * 64 + 40) | 0, y0 + 16, 4, 2); g.globalAlpha = 1; }
-    }
-    // the day's catch: a woven basket brimming with silver
-    g.fillStyle = th.wood[1]; g.fillRect(216, 272, 18, 10);
-    g.fillStyle = th.wood[0]; for (let yy = 0; yy < 10; yy += 3) g.fillRect(216, 272 + yy, 18, 1);
-    g.fillStyle = th.wood[2]; g.fillRect(215, 271, 20, 2);
-    g.fillStyle = '#d4dde4'; g.fillRect(218, 268, 6, 3); g.fillRect(226, 267, 6, 3); g.fillRect(222, 265, 4, 3);
-    g.fillStyle = '#aebbc6'; g.fillRect(219, 269, 2, 1); g.fillRect(228, 268, 2, 1);
-  },
-
-  // MODERATE A — a developed town: the great hall flying colours over a lane
+  // MODERATE — a developed town: the great hall flying colours over a lane
   // of houses, a striped market, the town well, and folk about their business
   _sc_town(g, th, t) {
     this._lane(g, th, 196, 236, 160);
@@ -685,104 +598,7 @@ const VictoryArt = {
     g.fillRect(dogx + 1, 291, 1, 1); g.fillRect(dogx + 4, 291, 1, 1);
   },
 
-  // MODERATE B — raising a new house: the skeleton frame with rafters and
-  // braces, a scaffold, swinging builders, a sawyer, the log pile
-  _sc_raising(g, th, t) {
-    this._house(g, th, 34, 240, 42, 26, { t, smoke: true });
-    const fx = 170, fy = 246, fw = 68, fh = 30;
-    // fresh-cut frame: corner posts, mid studs, tie beam, king post, rafters
-    g.fillStyle = th.wood[3];
-    g.fillRect(fx, fy - fh, 3, fh); g.fillRect(fx + fw - 3, fy - fh, 3, fh);
-    g.fillRect(fx + (fw >> 1) - 1, fy - fh, 2, fh);
-    g.fillRect(fx, fy - fh, fw, 2);
-    g.fillRect(fx + (fw >> 1) - 1, fy - fh - 12, 2, 12);
-    g.fillStyle = this.shade(th.wood[3], -0.18);
-    g.fillRect(fx + 2, fy - fh, 1, fh); g.fillRect(fx + fw - 1, fy - fh, 1, fh);
-    // rafters down both slopes + purlins
-    for (let i = 0; i <= (fw >> 1); i++) {
-      const ry = fy - fh - 12 + ((i * 12) / (fw >> 1)) | 0;
-      if (i % 6 === 0) { g.fillStyle = th.wood[3]; g.fillRect(fx + (fw >> 1) - 1 - i, ry, 2, 2); g.fillRect(fx + (fw >> 1) - 1 + i, ry, 2, 2); }
-      else if (i % 2 === 0) { g.fillStyle = this.shade(th.wood[3], -0.1); g.fillRect(fx + (fw >> 1) - 1 - i, ry, 1, 1); g.fillRect(fx + (fw >> 1) + i, ry, 1, 1); }
-    }
-    // diagonal corner braces
-    g.fillStyle = th.wood[2];
-    for (let i = 0; i < 8; i++) { g.fillRect(fx + 3 + i, fy - 8 - i, 1, 1); g.fillRect(fx + fw - 4 - i, fy - 8 - i, 1, 1); }
-    // scaffold on trestles + a ladder
-    g.fillStyle = th.wood[1]; g.fillRect(fx - 8, fy - 16, fw + 16, 2);
-    g.fillStyle = th.wood[2]; g.fillRect(fx - 6, fy - 14, 2, 14); g.fillRect(fx + fw + 4, fy - 14, 2, 14);
-    g.fillStyle = th.wood[2]; g.fillRect(fx + fw + 10, fy - 26, 1, 26); g.fillRect(fx + fw + 15, fy - 26, 1, 26);
-    for (let yy = 0; yy < 5; yy++) { g.fillStyle = th.wood[1]; g.fillRect(fx + fw + 10, fy - 23 + yy * 5, 6, 1); }
-    // builders: one up top mid-swing, one at the sawhorse, a hauler crossing
-    this._dude(g, th, fx + 12, fy - 17, '#a06a4a', { hammer: t / 180 });
-    this._dude(g, th, fx + fw - 16, fy - 17, '#5a6a8a', { hammer: t / 180 + 2.2 });
-    const hx2 = (100 + ((t / 55) % 130)) | 0;
-    this._dude(g, th, hx2, 282, '#7a5a34', { plank: true, walk: t / 230 });
-    // sawhorse, log and saw — chips on the grass
-    g.fillStyle = th.wood[2]; g.fillRect(120, 262, 2, 8); g.fillRect(134, 262, 2, 8); g.fillRect(119, 261, 18, 2);
-    g.fillStyle = th.wood[3]; g.fillRect(116, 258, 24, 3);
-    g.fillStyle = th.metal; g.fillRect(126, 254, 1, 5); g.fillStyle = this.shade(th.metal, -0.3); g.fillRect(126, 258, 1, 1);
-    this._dude(g, th, 128, 272, '#5a7a44', { hammer: t / 240 + 1 });
-    for (let i = 0; i < 8; i++) { g.fillStyle = th.wood[3]; g.fillRect(114 + ((this.hsh(i, 3) * 30) | 0), 272 + ((this.hsh(i, 9) * 6) | 0), 1, 1); }
-    // the log pile: end-grain rounds, dark-barked with a faint ring
-    const log = (lx, ly) => {
-      g.fillStyle = th.wood[0]; this.disc(g, lx, ly, 4);
-      g.fillStyle = th.wood[2]; this.disc(g, lx, ly, 3);
-      g.fillStyle = this.shade(th.wood[2], -0.2); this.disc(g, lx, ly, 1);
-      g.fillStyle = this.shade(th.wood[2], 0.15); g.fillRect(lx - 1, ly - 2, 1, 1);
-    };
-    log(292, 276); log(302, 276); log(312, 276); log(297, 269); log(307, 269); log(302, 262);
-  },
-
-  // HARD A — the muster: ranked spears before the palisade, the standard high,
-  // a mounted captain, the town smoking peacefully behind the wall
-  _sc_muster(g, th, t) {
-    // rooflines peeking over the wall (eaves tucked behind the palisade) + smoke
-    for (const [rx, rw] of [[52, 30], [110, 26], [186, 34], [252, 26], [306, 30]]) {
-      for (let i = 0; i <= (rw >> 1); i++) {
-        g.fillStyle = i % 4 === 0 ? th.roof[0] : (i % 4 === 2 ? this.shade(th.roof[1], 0.06) : th.roof[1]);
-        g.fillRect(rx + i, 212 - (rw >> 1) + i, rw - i * 2, 1);
-      }
-      g.fillStyle = th.thatchHi; g.fillRect(rx + (rw >> 1) - 1, 212 - (rw >> 1), 3, 1);
-    }
-    this._smokeCol(g, th, 66, 196, t); this._smokeCol(g, th, 200, 192, t + 400); this._smokeCol(g, th, 320, 196, t + 900);
-    // palisade + gate + flanking towers
-    this._wallRun(g, th, 16, 384, 224, 18);
-    g.fillStyle = th.wood[0]; g.fillRect(186, 206, 26, 18);
-    g.fillStyle = th.wood[2]; g.fillRect(186, 206, 26, 1); g.fillRect(198, 206, 2, 18);
-    for (let i = 0; i < 9; i++) { g.fillStyle = this.shade(th.wood[0], 0.1); g.fillRect(188 + i * 2, 208 + i, 1, 1); g.fillRect(210 - i * 2, 208 + i, 1, 1); }
-    this._towerV(g, th, 152, 224, 26, t);
-    this._towerV(g, th, 236, 224, 26, t + 300);
-    // the rear rank first (drawn behind), staggered between the front files
-    for (let i = 0; i < 11; i++) {
-      const sx = 63 + i * 26;
-      if (sx > 290) break;
-      this._dude(g, th, sx, 276, '#4e5a76', { helm: true, spear: true });
-    }
-    // the front rank: a dressed shield-wall, every shield the clan's colour
-    for (let i = 0; i < 11; i++) {
-      const sx = 50 + i * 26, sway = Math.sin(t / 600 + i) * 0.8;
-      if (sx > 296) break;
-      this._dude(g, th, (sx + sway) | 0, 290, '#5a6a8a', { helm: true, spear: true, shield: th.banner });
-    }
-    // colours, horn and drum at the centre
-    this._dude(g, th, 196, 262, '#8a3a3a', { helm: true });
-    this._flag(g, th, 202, 262, 28, th.banner2, t);
-    this._dude(g, th, 174, 288, '#6a5a3a');
-    g.fillStyle = th.wood[1]; g.fillRect(178, 282, 6, 5); g.fillStyle = th.wood[0]; g.fillRect(178, 282, 6, 1);
-    // the mounted captain on the right flank
-    const mx = 330, my = 280, bob = Math.sin(t / 420) * 0.8;
-    g.globalAlpha = 0.22; g.fillStyle = '#000000'; g.fillRect(mx - 7, my, 16, 1); g.globalAlpha = 1;
-    g.fillStyle = th.wood[2];
-    g.fillRect(mx - 6, (my - 8 + bob) | 0, 13, 5);
-    g.fillRect(mx + 6, (my - 12 + bob) | 0, 3, 5); g.fillRect(mx + 8, (my - 13 + bob) | 0, 3, 3);
-    g.fillStyle = th.wood[0]; g.fillRect(mx - 6, (my - 9 + bob) | 0, 2, 2); g.fillRect(mx + 6, (my - 13 + bob) | 0, 1, 3);
-    g.fillStyle = '#241a10';
-    g.fillRect(mx - 5, (my - 3 + bob) | 0, 1, 3); g.fillRect(mx - 1, (my - 3 + bob) | 0, 1, 3);
-    g.fillRect(mx + 3, (my - 3 + bob) | 0, 1, 3); g.fillRect(mx + 5, (my - 3 + bob) | 0, 1, 3);
-    this._dude(g, th, mx - 2, (my - 10 + bob) | 0, '#8a3a3a', { helm: true, spear: true });
-  },
-
-  // HARD B — the stronghold: a stone keep and curtain wall, braziers burning,
+  // HARD — the stronghold: a stone keep and curtain wall, braziers burning,
   // the patrol on the wall-walk, a catapult standing down at the gate
   _sc_stronghold(g, th, t) {
     const st0 = this.lerp(th.helm, '#ffffff', 0.30), st1 = this.lerp(th.helm, '#ffffff', 0.12), st2 = this.shade(th.helm, -0.25);

@@ -173,6 +173,24 @@ paths listed in `Assets.PROPS` (currently one: the hall's dooryard campfire,
 `assets/misc/campfire-tc.png` → `misc/campfireTc`). Adding a prop key is a
 one-line entry there — still no manifest.
 
+## Win / loss screen art
+
+`assets/endgame/{win|loss}/{calm|moderate|hard}/{n}.png` — full details and
+what to author in `assets/endgame/README.md`. One bucket per (outcome,
+difficulty) pair, six total; drop as many numbered PNGs (`1.png`, `2.png`, …
+up to `Assets.ENDGAME_MAX`) into a bucket as you like and one is picked at
+random each time that screen shows (`js/defeatart.js` / `js/victoryart.js`).
+Probes cascade like ground art — `1.png` first, `2.png` only once `1.png`
+hit. Difficulty is derived from `CFG.MODES`, never hand-kept.
+
+The built-in painted scene for each of the six buckets is also just ONE
+fixed look now (no landform, no time-of-day roll, no random scene pick) — a
+supplied picture replaces it outright; an empty bucket leaves it standing.
+
+**Not wired into the `?dev=1` live-preview panel** — that panel only lists
+the `{id}-l{level}.png` / `camp-{tribe}.png` building slots. Preview an
+endgame picture by dropping the file into `assets/endgame/…/` and reloading.
+
 ## Ground art
 
 `assets/terrain/{name}.png`, plus `{name}-2.png`, `-3` … for variants.

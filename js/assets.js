@@ -107,6 +107,49 @@ const Assets = {
   // rectangle. One fixed URL per prop key; same swap-in rules as buildings.
   PROPS: { 'misc/campfireTc': 'assets/misc/campfire-tc.png' },
 
+  /* ---- ENDGAME ART: one folder per (outcome, difficulty), any number of
+     pictures (assets/endgame/README.md) ----
+
+       assets/endgame/win/{calm|moderate|hard}/1.png, 2.png, 3.png, …
+       assets/endgame/loss/{calm|moderate|hard}/1.png, 2.png, 3.png, …
+
+     Drop as many numbered PNGs as you like into a bucket; js/defeatart.js
+     and js/victoryart.js each pick one at random when that screen opens. An
+     empty/missing bucket leaves the procedural scene exactly as it always
+     drew — real art SITS ON TOP of (replaces) the procedural fallback, never
+     a hard requirement. Difficulty is derived from CFG.MODES, never a
+     hand-kept list, so a new mode gets a bucket for free.
+
+     Probing CASCADES like ground art: only 1.png is tried for every bucket
+     at startup, 2.png only once 1.png hit, and so on — a bare repo pays one
+     404 per bucket (6 requests total), not ENDGAME_MAX of them. */
+  ENDGAME_DIR: 'assets/endgame/',
+  ENDGAME_MAX: 12,                 // most pictures probed per bucket
+  ENDGAME_OUTCOMES: ['win', 'loss'],
+  endgameModes() { return Object.keys(CFG.MODES); },
+  endgame: {},                     // 'win/calm' -> [img, …] in the order they were found
+  endgameKey(outcome, mode) { return outcome + '/' + mode; },
+  endgameUrl(outcome, mode, n) {
+    return this.ENDGAME_DIR + outcome + '/' + mode + '/' + n + '.png?v=' + (CFG.ART_V || 1);
+  },
+  _tryEndgame(outcome, mode, n) {
+    if (n > this.ENDGAME_MAX) return;
+    const img = new Image();
+    img.onload = () => { this.setEndgameArt(outcome, mode, img); this._tryEndgame(outcome, mode, n + 1); };
+    img.onerror = () => { /* no more pictures in this bucket — the ones already found still stand */ };
+    img.src = this.endgameUrl(outcome, mode, n);
+  },
+  setEndgameArt(outcome, mode, img) {
+    const k = this.endgameKey(outcome, mode);
+    const a = this.endgame[k] || (this.endgame[k] = []);
+    if (a.indexOf(img) < 0) a.push(img);
+    this.loaded['endgame/' + k] = true;
+    return true;
+  },
+  // every picture loaded for this bucket, or an empty array — Defeat/
+  // VictoryArt pick one of these themselves (their own seeded `pick()`)
+  endgameImgs(outcome, mode) { return this.endgame[this.endgameKey(outcome, mode)] || []; },
+
   /* ---- GROUND ART: the same deal as buildings, for the map itself ----
 
        assets/terrain/{name}.png        the whole terrain
@@ -166,6 +209,8 @@ const Assets = {
   async init() {
     for (const s of this.artSlots()) this._tryLoad(s.id, s.lv);
     for (const tribe of this.campTribes()) this._tryLoadCamp(tribe);
+    for (const outcome of this.ENDGAME_OUTCOMES)
+      for (const mode of this.endgameModes()) this._tryEndgame(outcome, mode, 1);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key]);
     for (const k of Object.keys(T)) this._tryTerrain(T[k], 1);
     this.ready = true;
