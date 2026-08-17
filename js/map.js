@@ -25,6 +25,24 @@ const MapGen = {
      spelled out by hand in five places and the sapper's tools were not among
      them, so a trench or a mound could be queued out in the black. */
   onBoard(x, y) { return x > 0 && y > 0 && x < CFG.W - 1 && y < CFG.H - 1; },
+  /* THE MOUNTAIN'S SHADOW (tests/mountain.mjs): the rock is drawn as an
+     EXTRUSION — the plateau shifts north and a cliff face fills the gap — so
+     the art covers up to ~two tiles of walkable ground NORTH of a mountain
+     tile (buildings draw before the occlusion strips, which is what hides
+     them). Ground the art covers is legal to WALK (the strips ghost a hidden
+     unit), but an ENEMY building seated there is invisible to the player —
+     a reported day-57 game found a barbarian camp only by the sliver of
+     tent peeking past the ridge. One declaration; the camp seating and the
+     rival's placement truth (Bld.canPlace) both ask it. */
+  mtnShadow(x, y, terr) {
+    terr = terr || (typeof S !== 'undefined' && S && S.map && S.map.terrain);
+    if (!terr) return false;
+    for (let dy = 1; dy <= 2; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx, ny = y + dy;
+      if (this.inB(nx, ny) && terr[this.idx(nx, ny)] === T.MOUNTAIN) return true;
+    }
+    return false;
+  },
   /* SHALLOWS — a water tile touching land, which is exactly what the renderer
      shades as shore. The leaner half of the fishery (CFG.FISH_STOCK), used
      both when a map is generated and when a fished-out shoal returns
@@ -392,7 +410,11 @@ const MapGen = {
         const x = 3 + rnd() * (W - 6) | 0, y = 3 + rnd() * (H - 6) | 0;
         const dP = Math.hypot(x - player.x, y - player.y), dA = Math.hypot(x - ai.x, y - ai.y);
         const sideOk = !enforceSide || ((camps.length % 2 === 0) ? dP <= dA : dP > dA);
+        // the mountain-shadow clamp is HARD — it never relaxes with the tiers,
+        // because a camp the art hides is a camp the player cannot find
+        // (MapGen.mtnShadow; a reported day-57 game)
         if (dP > clear && dA > clear && sideOk && t[id(x, y)] === T.GRASS &&
+            !MapGen.mtnShadow(x, y, t) &&
             yardOpen(x, y, openNeed) && campsFar(x, y, clear)) {
           t[id(x, y)] = T.CAMP; camps.push({ x, y });
         }
@@ -648,6 +670,7 @@ const MapGen = {
         const x = 2 + rnd() * (W - 4) | 0, y = 2 + rnd() * (H - 4) | 0;
         const i = id(x, y);
         if (t[i] !== T.GRASS || !reach[i]) continue;
+        if (MapGen.mtnShadow(x, y, t)) continue;   // a seam the art hides is a seam nobody finds
         if (Math.hypot(x - player.x, y - player.y) < far) continue;
         if (Math.hypot(x - ai.x, y - ai.y) < far) continue;
         if (seams.some(s => Math.hypot(s.x - x, s.y - y) < 6)) continue;   // never two in one pocket

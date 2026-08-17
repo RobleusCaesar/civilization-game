@@ -350,6 +350,59 @@ const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' 
   await p.close();
 }
 
+/* ---- NO ENEMY BUILDING HIDES IN THE MOUNTAIN'S SHADOW ------------------
+   The extruded rock art covers up to ~two tiles of walkable ground NORTH of
+   a mountain (buildings draw before the occlusion strips), and a reported
+   day-57 game found a barbarian camp only by the sliver of tent peeking
+   past the ridge. MapGen.mtnShadow is the ONE declaration; Bld.canPlace
+   hard-refuses enemy owners across the footprint (code 'shadow'), the camp
+   seating clamps on it un-relaxably, and the gold-seam scatter skips it.
+   The PLAYER stays free: they can see their own placement ghost, so hiding
+   a building is a choice, not a trap. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(boot + `
+    const W = CFG.W, terr = S.map.terrain;
+    // carve a clean fixture: a 3-wide mountain wall with open grass around it
+    const mx = 20, my = 20;
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++)
+      if (!Bld.at(mx + dx, my + dy)) terr[MapGen.idx(mx + dx, my + dy)] = T.GRASS;
+    for (let dx = -1; dx <= 1; dx++) terr[MapGen.idx(mx + dx, my)] = T.MOUNTAIN;
+    S.map.explored.fill(1);
+    if (S.map.seenTerrain) for (let i = 0; i < terr.length; i++) S.map.seenTerrain[i] = terr[i];
+    Bld._block = null;
+    const shadow1 = MapGen.mtnShadow(mx, my - 1);   // one tile north — covered
+    const shadow2 = MapGen.mtnShadow(mx, my - 2);   // two north — still covered
+    const clear3 = MapGen.mtnShadow(mx, my - 3);    // three north — clear
+    const south = MapGen.mtnShadow(mx, my + 1);     // south of the rock — in plain view
+    const aiTry = Bld.canPlace('A', 'house', mx, my - 1);
+    const pTry = Bld.canPlace('P', 'house', mx, my - 1);
+    // generation honours it: mountain-bearing seeds seat no camp or seam in shadow
+    let bad = 0, checked = 0;
+    for (const sd of ['mtn2', 'scenes1', 'omega', 'k1']) {
+      G.newGame(sd, 'hard', 'xlarge');
+      const t2 = S.map.terrain;
+      for (let y2 = 1; y2 < CFG.H - 1; y2++) for (let x2 = 1; x2 < CFG.W - 1; x2++) {
+        const tt = t2[MapGen.idx(x2, y2)];
+        if (tt !== T.CAMP && tt !== T.GOLDORE) continue;
+        checked++;
+        if (MapGen.mtnShadow(x2, y2, t2)) bad++;
+      }
+    }
+    return { shadow1, shadow2, clear3, south,
+      aiCode: aiTry.code || 'ok', pOk: pTry.ok !== false || pTry.code !== 'shadow',
+      bad, checked };`));
+  ck('theShadowIsTheTwoTilesNorth',
+    v.shadow1 === true && v.shadow2 === true && v.clear3 === false && v.south === false,
+    'covered at 1-2 north of the rock, clear at 3 and to the south');
+  ck('anEnemyBuildingIsRefusedThere', v.aiCode === 'shadow', 'canPlace code ' + v.aiCode);
+  ck('thePlayerStaysFree', v.pOk === true,
+    'the player can see their own ghost — hiding is a choice, not a trap');
+  ck('andGenerationSeatsNothingInIt', v.checked > 10 && v.bad === 0,
+    v.bad + ' of ' + v.checked + ' camps/seams in shadow across four mountain seeds');
+  await p.close();
+}
+
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL MOUNTAIN CHECKS PASS');
 await b.close();

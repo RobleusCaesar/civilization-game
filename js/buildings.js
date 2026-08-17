@@ -755,6 +755,18 @@ const Bld = {
       // out of (tests/worked-ground.mjs). Owner-agnostic: the chief obeys it too.
       const gnd = this.stationGround(key, x, y);
       if (!gnd.ok) { gnd.code = gnd.code || 'ground'; return gnd; }
+      /* NO ENEMY BUILDING HIDES IN THE MOUNTAIN'S SHADOW (tests/mountain.mjs):
+         the extruded rock art covers the tiles just north of a range, and a
+         rival or barbarian building seated there is INVISIBLE to the player —
+         a reported day-57 game found a camp only by the sliver of tent
+         peeking past the ridge. Enemy owners are hard-refused across the
+         whole footprint; the PLAYER stays free — they can see their own
+         ghost while placing, so hiding a building is a choice, not a trap. */
+      if (owner !== 'P') {
+        for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++)
+          if (MapGen.mtnShadow(x + dx, y + dy))
+            return { ok: false, code: 'shadow', why: 'Hidden behind the mountain' };
+      }
     }
     // TC-level gate (player only — the rival's scripted build order sets its own pace)
     if (owner === 'P' && d.reqTC) {

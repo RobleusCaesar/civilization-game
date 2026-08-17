@@ -2000,7 +2000,7 @@ confirm's re-validation, `Bld.place`'s callers and every rival-AI site ask IT
 (the one historical bypass, `maybeWonder`'s raw `Bld.place`, now asks first).
 Every refusal carries a machine-readable `code` beside its human `why`
 (`blocked`/`ash`/`seam`/`needSeam`/`ground`/`reqTC`/`unexplored`/`unique`/
-`max`/`anchor`/`staging`/`edge`/`water`/`shore`/`sealed`/`cost`), so UI styles
+`max`/`anchor`/`staging`/`edge`/`water`/`shore`/`sealed`/`shadow`/`cost`), so UI styles
 by code, never by string-matching. Two opts, both about WHO pays for what:
 `noCost` (affordability is a separate STATE — the amber "scout the spot
 you're saving for" grid, ✓ disabled, missing goods named — never a tile
@@ -2644,6 +2644,17 @@ tiles directly below every lifted pixel). The phase-2 dithered north contact
 line is GONE: under an extrusion it would cut across the middle of the lifted
 plateau, and the occlusion metaphor (below) says where the ground is now.
 
+**NO ENEMY BUILDING HIDES IN THE MOUNTAIN'S SHADOW** (`MapGen.mtnShadow`,
+same test): the extrusion covers up to ~two tiles of walkable ground NORTH
+of a mountain, and a reported day-57 game found a barbarian camp only by
+the sliver of tent peeking past the ridge. One declaration; `Bld.canPlace`
+hard-refuses enemy owners across the footprint (code `shadow` — every
+rival build path funnels through canPlace), the barbarian-camp seating
+clamps on it UN-RELAXABLY (the yard clamps relax on a crowded board; this
+one never does, because a camp the art hides is a camp the player cannot
+find), and the gold-seam scatter skips it. The PLAYER stays free — they
+can see their own placement ghost, so hiding a building is a choice, not
+a trap.
 **THE MOUNTAIN OCCLUDES, SO IT LEFT THE TERRAIN CACHE** (`buildMtnLayer` /
 `mtnStrips`, the strip interleave in `R.draw`'s unit pass): a unit walking
 north of a ridge must be HIDDEN by it and one walking south must draw over
