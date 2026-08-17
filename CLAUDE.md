@@ -98,6 +98,7 @@ node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring 
 node tests/placement.mjs       # ONE placement truth (canPlace codes); ghost+confirm flow; the seal clamp; AI parity
 node tests/boot.mjs            # frame one is the logo; no chrome before a game; the notch inset
 node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything
+node tests/calm-peace.mjs      # Calm starts at PEACE: nobody auto-engages until the player's first strike; the rival races for its own wonder
 node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do
 ```
 
@@ -1288,6 +1289,51 @@ the defeat scene has its own staging.
 `Assets`, `Cards`, `Backend`, `Screens`, `Terraform`, `Score`, `Defeat` and
 `VictoryArt` are actually put on `window`. A `window.G &&` guard silently
 disables whatever it guards.
+
+**THE CALM TRUCE** (`tests/calm-peace.mjs`): a Calm run starts at PEACE with
+the rival — the mode's whole promise is that a player may skip the war and
+race for the Wonder. `S.peace` (set from `CFG.MODES[mode].peace`, in every
+save; a pre-truce save backfills FALSE — the truce is a new-run promise,
+never something a mid-war save wakes up inside) gates ONE predicate:
+`Combat.hostile('P','A')` is false while it holds, and since unit
+acquisition AND tower fire both funnel through it (`hostileUnits` /
+`hostileToBld`), neither tribe's units, hulls or towers auto-engage the
+other — in EITHER direction, because the player's own towers must not start
+the war the player never ordered. Explicit orders don't ask the predicate:
+they END the truce instead — `G.breakPeace()` fires from every player
+attack-order path (the four unit-attack tap/drag sites in ui.js,
+`Units.orderAttackBuilding`, `orderAttackBridge`) plus a damage safety net
+in `Units.damage`, logs plainly at every difficulty, and is permanent.
+Barbarians and the wilds sign nothing — camps, waves and wolves behave
+exactly as always, on both tribes.
+**The chief at peace never postures for war**: `choosePosture` short-circuits
+to REBUILD / DEFEND (barbarians still come) / EXPAND, so PUSH and PRESSURE
+are unreachable; `stormTheHall`, `secondFront`, `wonderWatch` and the harass
+block carry explicit peace gates. The wonder alarm is KEPT while gated — if
+the player later breaks the peace, the works are known ground.
+**And it RACES for its own Wonder** — the rival winning by monument is the
+peace run's clock. Four levers make the race real rather than theoretical:
+(1) `CFG.WONDER.aiCostFrac` (0.12) — the rival's per-hand economy could
+never pay the player-scale 15k bill; its bill is FOODLESS (a live town EATS
+its food, so a food term made the race land anywhere between day 330 and
+460 across sims of one seed) and STONE-LIGHT (×0.35 — stone is the map's
+one finite resource and the chief's seams are spent by day 300).
+(2) THE WONDER JAR — from 60 days before its gate (later starves TC3) a
+peace chief runs the hall-tier reservation for the monument
+(`ai.goal.wonder`), ordinary upgrades stand down (they pay with plain
+`canAfford` and would eat the jar forever — the Trading Post alone is
+exempt, its upgrade multiplies the caravans filling the jar), and WONDER
+CARAVANS buy the worst shortfall with gold. (3) `MODES.calm.aiWonderDay`
+(330) pulls Calm's gate below the global `WONDER.aiDay`. (4) **`maybeWonder`
+runs on the FRESH action budget** — it used to run before the day's
+`ai.acts` refill, asking with yesterday's leftover budget (usually zero), so
+the day-350 gate was a door that never opened in a live game on ANY mode.
+**The countdown is the warning**: the site is revealed to the player the day
+ground is broken (`Bld.place` → `_revealCampToFoe` + the standing log line),
+and `UI.tickWonderWarn` pins a `#wonderWarn` banner with the days of work
+left until the works finish or fall. Verified: a 400-day passive calm sim
+holds peace with ZERO cross-tribe engagements, EXPAND throughout, ground
+broken ~day 361 and the countdown live — the finish lands "around day 400".
 
 **The seam is CLAIMED, not built** (`tests/gold-mine.mjs`): the Gold Mine has
 no button in the build menu (`CFG.BUILDINGS.mine.noMenu`, and `UI.buildMenu`

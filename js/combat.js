@@ -43,6 +43,16 @@ const Combat = {
   // hostility matrix: P<->A, P<->R, P<->W, A<->W
   hostile(a, b) {
     if (a === b) return false;
+    /* THE CALM TRUCE (tests/calm-peace.mjs): while S.peace holds, the two
+       TRIBES are not at war — no auto-acquisition, no tower fire, no hull
+       broadsides, in EITHER direction (the player's own towers must not
+       start the war the player never ordered). This is the one predicate
+       both unit acquisition and building fire funnel through
+       (hostileUnits / hostileToBld), which is why the gate lives here.
+       Explicit orders don't ask it — they break the peace instead
+       (G.breakPeace at every order site, plus the damage safety net).
+       Barbarians and the wilds are untouched: the truce is between towns. */
+    if (S && S.peace && ((a === 'P' && b === 'A') || (a === 'A' && b === 'P'))) return false;
     if ((a === 'P' && b !== 'P')) return true;
     if ((b === 'P' && a !== 'P')) return true;
     if ((a === 'A' && b === 'W') || (a === 'W' && b === 'A')) return true;

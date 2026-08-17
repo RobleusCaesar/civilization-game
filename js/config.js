@@ -498,6 +498,13 @@ const CFG = {
     aiDay: 350,        // the rival may not LAY a wonder before this day
     marvelMs: 7000,    // how long the finished monument is left on screen before the win screen
     alarmR: 40,        // how far the chief's whole host is called in from when the works are seen
+    /* the RIVAL's wonder bill, as a fraction of the player's. Its whole
+       economy is an abstraction paid per living hand at a fraction of
+       player-scale income, so at the full 15k-per-resource price the chief
+       could never lay one outside a test harness — the day-350 gate was a
+       door that never opened. The bill is scaled the way its income is;
+       the player never sees the rival's stockpile, only the countdown. */
+    aiCostFrac: 0.12,
   },
 
   UNITS: {
@@ -886,6 +893,15 @@ const CFG = {
     calm: {
       name: 'Calm', icon: '🌿', desc: 'Nearly peaceful — the odd wild animal keeps you sharp; raids are rare.',
       gather: 1, output: 1,
+      /* THE TRUCE (tests/calm-peace.mjs): a Calm run starts at PEACE with the
+         rival — neither tribe's units, hulls or towers auto-engage the other,
+         and the chief never postures for war; it expands and races for its
+         own Wonder instead (aiWonderDay, earlier than the global gate so the
+         race lands inside a sitting's play). The FIRST attack order the
+         player gives against the rival breaks the truce for good and Calm
+         plays as it always did. Barbarians and wildlife are outside the
+         truce entirely — the wilds sign nothing. */
+      peace: true, aiWonderDay: 330,
       // Softened after a playtest read Calm as "a little too hard": the sword
       // arm is dialed well back (later first wave, rarer and smaller bands, a
       // much later and smaller rival army that commits reluctantly) while the

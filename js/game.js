@@ -179,6 +179,9 @@ const G = {
                walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0, originBonus: 0 },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
+      // THE CALM TRUCE (tests/calm-peace.mjs): true while neither tribe may
+      // auto-engage the other; broken for good by the player's first attack
+      peace: !!CFG.MODES[mode].peace,
       peakTown: { P: 0, A: 0 },
       workLost: { P: [], A: [] },  // the ease's loss ledger (G.noteWorkLost)
       eased: { P: false, A: false },             // biggest each town ever stood (G.barbEase)
@@ -353,6 +356,17 @@ const G = {
     if (S.log.length > 60) S.log.pop();
     const chance = this.modeCfg().foeNoteChance;
     if (chance == null || chance >= 1 || this.rand() < chance) UI.toast(msg, true, ms, true);
+  },
+
+  /* THE TRUCE BREAKS ONCE (tests/calm-peace.mjs). Called from every player
+     attack-order path against the rival, plus the damage safety net — the
+     first hostile act ends the peace for the rest of the run (S.peace rides
+     in the save, so there is no walking it back). Plain G.log, never
+     foeNote: this is the player's own declaration, told at every difficulty. */
+  breakPeace() {
+    if (!S || !S.peace) return;
+    S.peace = false;
+    this.log('⚔️ The truce is broken! From this day the rival fights back — warriors, hulls and towers alike.', true);
   },
 
   reveal(cx, cy, r) {
@@ -1403,6 +1417,9 @@ const G = {
     }
     if (!data.garrison) data.garrison = [];
     if (!data.armies) data.armies = {};   // pre-army saves: no standing banners
+    // pre-truce saves: whatever fighting was underway continues — the truce
+    // is a NEW-RUN promise, never something a mid-war save wakes up inside
+    if (data.peace == null) data.peace = false;
     if (!Array.isArray(data.ashes)) data.ashes = [];   // pre-burn saves: no smouldering ground
     // pre-sapper saves: no bridges, and rebuild the fast passability mirror
     if (!Array.isArray(data.bridges)) data.bridges = [];

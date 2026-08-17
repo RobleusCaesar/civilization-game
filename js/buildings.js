@@ -914,7 +914,32 @@ const Bld = {
   // what a placement really costs — ORIGIN CARDS discounts (Mason forts,
   // Nomad first-buildings) apply on top of the base spec
   effCost(owner, key) {
-    const cost = this.buildSpec(key, owner).lv.cost;
+    let cost = this.buildSpec(key, owner).lv.cost;
+    /* THE RIVAL'S WONDER BILL IS SCALED THE WAY ITS INCOME IS (CFG.WONDER
+       .aiCostFrac, tests/calm-peace.mjs): its whole economy is an
+       abstraction paid per living hand at a fraction of player-scale
+       income, so at the full 15k-a-resource price the day-350 gate was a
+       door that never opened outside a test harness. The player never sees
+       the rival's stockpile — only the countdown. */
+    if (owner === 'A' && key === 'wonder' && CFG.WONDER.aiCostFrac) {
+      const sc = {};
+      /* stone weighs a THIRD of the others' fraction: it is the map's one
+         finite resource (tests/ore-finite.mjs) and the rival's per-hand
+         economy has no late-game stone income at all — its quarry seams are
+         spent by day 300 and the gold→goods caravan rate is deliberately
+         awful (tests/trade-post.mjs), so a stone bill matched to the other
+         resources is a gate that never opens. Measured: a 400-day peace sim
+         banked 3.4k wood and 15k gold against 1.5k stone. */
+      /* …and FOODLESS: food is the one resource a live town CONSUMES, so the
+         chief's granary oscillates with upkeep and hiring and a food term
+         made the race land anywhere between day 330 and day 460 across
+         sims of the same seed. The tribe's food feeds the builders; the
+         monument bill is the durable goods. */
+      for (const k in cost)
+        sc[k] = k === 'food' ? 0
+          : Math.round(cost[k] * CFG.WONDER.aiCostFrac * (k === 'stone' ? 0.35 : 1));
+      cost = sc;
+    }
     return window.Cards ? Cards.buildCost(owner, key, cost) : cost;
   },
 

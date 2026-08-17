@@ -957,6 +957,8 @@ const Units = {
   },
 
   orderAttackBuilding(u, b) {
+    // the player's first strike at the rival ends the calm truce (calm-peace)
+    if (u.owner === 'P' && b.owner === 'A') G.breakPeace();
     u.task = { type: 'attackBld' };
     u.tBld = b.id; u.tUnit = 0;
     u.anchor = { x: b.x + 0.5, y: b.y + 0.5 };   // the siege line is home now
@@ -965,6 +967,7 @@ const Units = {
   // send a unit to hack down a bridge (own or enemy — demolishing your own is a
   // valid defensive move); Combat's tBridge branch does the pathing + damage
   orderAttackBridge(u, br) {
+    if (u.owner === 'P' && br.owner === 'A') G.breakPeace();
     u.task = { type: 'attack' }; u.tBridge = { x: br.x, y: br.y }; u.tUnit = 0; u.tBld = 0;
     const s = Combat.tileAdjOpen(br.x, br.y, u.owner); if (s) this.setPath(u, s.x, s.y);
   },
@@ -1872,6 +1875,11 @@ const Units = {
   damage(u, amt, attackerId, attackerOwner) {
     u.hp -= Math.max(1, amt);
     const attacker = attackerId ? this.get(attackerId) : null;
+    { // the truce's safety net: any P<->A blood ends it, whatever path landed it
+      const ao = attackerOwner || (attacker && attacker.owner);
+      if (S.peace && ((ao === 'P' && u.owner === 'A') || (ao === 'A' && u.owner === 'P')))
+        G.breakPeace();
+    }
     if (u.hp <= 0) {
       S.units.splice(S.units.indexOf(u), 1);
       // BACK TO YOUR POST: death cleanup clears every attacker's lock directly,

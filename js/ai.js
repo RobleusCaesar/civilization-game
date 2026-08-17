@@ -1558,6 +1558,7 @@ const AI = {
   },
   // every hand on the hall. Naval units and siege towers keep their own jobs.
   stormTheHall(ptc) {
+    if (S.peace) return 0;                     // the truce holds until the player breaks it
     const tc = Bld.tcOf('P') || ptc; if (!tc) return 0;
     const aim = { type: 'tc', x: tc.x, y: tc.y };
     let n = 0;
@@ -1594,6 +1595,12 @@ const AI = {
     // razed, or finished — either way the alarm is over (if it finished, the
     // run is already decided and nothing here matters)
     if (!w || w.owner !== 'P' || w.key !== 'wonder') { ai.wonderAlarm = null; return false; }
+    /* the truce covers the wonder too — a player at peace may raise theirs
+       unmolested, and races the chief's own instead. Gated AFTER the retire
+       housekeeping above (clearing a dead alarm is bookkeeping, not war);
+       the alarm on a LIVE site is KEPT, so if the player later breaks the
+       peace the works are known ground and the host comes as it always did. */
+    if (S.peace) return false;
     ai.knownB = ai.knownB || {};
     ai.knownB[MapGen.idx(w.x, w.y)] = { key: 'wonder', level: 1, owner: 'P', x: w.x, y: w.y, seen: S.day };
     return this.stormTheWonder(w) > 0;
@@ -1629,9 +1636,13 @@ const AI = {
      happens; the path exists so the door is not one-way. */
   maybeWonder() {
     const ai = S.ai; if (!ai) return false;
-    if (S.day < (CFG.WONDER.aiDay || 350)) return false;
+    // a mode may pull the rival's wonder EARLIER than the global gate — Calm
+    // does (aiWonderDay 330), so the peace run's race fits inside a sitting
+    const gate = G.modeCfg().aiWonderDay != null ? G.modeCfg().aiWonderDay : (CFG.WONDER.aiDay || 350);
+    if (S.day < gate) return false;
     if (Bld.list('A').some(b => b.key === 'wonder')) return false;
-    if (!Bld.canAfford(CFG.BUILDINGS.wonder.levels[0].cost, ai.res)) return false;
+    // effCost, not the raw table: the rival pays its scaled bill (aiCostFrac)
+    if (!Bld.canAfford(Bld.effCost('A', 'wonder'), ai.res)) return false;
     const spot = this.plotWonder();
     if (!spot) return false;
     // THE ONE PLACEMENT TRUTH (tests/placement.mjs): this was the single AI
@@ -2314,6 +2325,17 @@ const AI = {
 
   choosePosture() {
     const ai = S.ai, r = ai.read, pl = this.plan(), m = G.modeCfg();
+    /* THE CALM TRUCE (tests/calm-peace.mjs): a chief at peace never postures
+       for war. It rebuilds if sacked, digs in if something is at its hall
+       (barbarians are outside the truce and still come), and otherwise
+       EXPANDS — all of its appetite goes into the homestead and the wonder
+       race. PUSH/PRESSURE are unreachable until the player breaks the peace. */
+    if (S.peace) {
+      ai.posture = r.sacked ? 'REBUILD'
+        : (r.underThreat && r.threat > this._homeGuard()) ? 'DEFEND' : 'EXPAND';
+      ai.postureSince = ai.postureSince || S.day;
+      return ai.posture;
+    }
     // difficulty is APPETITE, not decision quality: it scales how readily the
     // chief commits, never whether it reads the board (which it always does)
     const app = m.aiAggro || 1;
@@ -2709,20 +2731,27 @@ const AI = {
     const stalledClear = ai.stallClearT && S.day - ai.stallClearT <= 6;
     const stalledBridge = ai.stallBridgeT && S.day - ai.stallBridgeT <= 6;
     const ups = Bld.list('A').filter(b => b.key !== 'tc' && Bld.canUpgrade(b).ok);
-    if (ups.length) {
+    // Bld.upgrade pays with a plain canAfford, so it walks straight past the
+    // savings jar — while the WONDER goal is set, ordinary upgrades stand
+    // down or they eat the monument's stone forever (tests/calm-peace.mjs).
+    // The TRADING POST alone is exempt: its upgrade multiplies the caravan
+    // throughput that is FILLING the jar, so it pays for itself in the race
+    const wj = ai.goal && ai.goal.wonder;
+    const ups2 = wj ? ups.filter(b => b.key === 'trade') : ups;
+    if (ups2.length) {
       const prio = { barracks: 3, range: 3, stable: 3, siege: 2, tower: 2, dock: 2 };
       // STRONG TOWERS, NOT MORE KINDLING: with the enemy's engines known or
       // the town under threat, re-tiering a standing tower outranks the war
       // halls — an L1 tower is one catapult volley from rubble, an L3 one
       // holds long enough for the garrison to answer
       if (this.fortUrgent(read)) prio.tower = 5;
-      ups.sort((a, b2) => (prio[b2.key] || 1) - (prio[a.key] || 1));
-      const sapUp = (stalledClear || stalledBridge) && ups.find(b => b.key === 'sapper');
+      ups2.sort((a, b2) => (prio[b2.key] || 1) - (prio[a.key] || 1));
+      const sapUp = (stalledClear || stalledBridge) && ups2.find(b => b.key === 'sapper');
       // the hall we're saving for outranks the rest of the queue — that tier is
       // the veteran unlock, and veterans are worth double their number
       const vetHall = ai.goal && ai.goal.vet &&
-        ups.find(b => ['barracks', 'range', 'stable'].includes(b.key) && (b.level || 1) < 3);
-      const b = sapUp || vetHall || ups[0];
+        ups2.find(b => ['barracks', 'range', 'stable'].includes(b.key) && (b.level || 1) < 3);
+      const b = sapUp || vetHall || ups2[0];
       add(24 + (prio[b.key] || 1) * 6 + (post === 'PUSH' ? 18 : 0) - (post === 'EXPAND' ? 10 : 0) +
           (sapUp ? 40 : 0) + (b === vetHall ? 34 : 0),
         () => Bld.upgrade(b));
@@ -2732,11 +2761,12 @@ const AI = {
     // Town-Center wall upgrade). A chief sitting on stone with a flimsy L1 ring and
     // the TC tech to improve it should stiffen the walls — heavily so when it's
     // turtling or under threat, and a wall-persona always values it.
-    if (Bld.aiCanUpgradeWalls()) {
+    if (Bld.aiCanUpgradeWalls() && !(ai.goal && ai.goal.wonder)) {
       const wallUp = 22 + (P.walls ? 18 : 0) + (post === 'DEFEND' ? 20 : 0) +
         (read.underThreat ? 22 : 0) + (read.foeSiegeKnown ? 28 : 0);
       add(wallUp, () => Bld.aiUpgradeWalls());
-    } else if (tc.level >= 2 && Bld.forts('A').some(b => (b.level || 1) < Math.min(3, tc.level))) {
+    } else if (tc.level >= 2 && !(ai.goal && ai.goal.wonder) &&
+               Bld.forts('A').some(b => (b.level || 1) < Math.min(3, tc.level))) {
       // can't re-face the whole ring in one go (few rivals ever can) — re-face
       // the most exposed stretch instead, so the palisade keeps turning to stone
       const wallUp = 20 + (P.walls ? 16 : 0) + (post === 'DEFEND' ? 18 : 0) +
@@ -4068,6 +4098,7 @@ const AI = {
      spare, and on its own long cooldown so it can't become a boat parade. */
   secondFront(read) {
     const ai = S.ai;
+    if (S.peace) return false;                 // no fronts at all while the truce holds
     if (!read.knownTC) return false;
     if (!(ai.stall && S.day - (ai.stall.t || 0) <= 6)) return false;      // the land route is open — no need
     if ((ai.seaCd || 0) > 0) { ai.seaCd--; return false; }
@@ -4096,7 +4127,10 @@ const AI = {
     // run before the day's spending, so the alarm cannot be crowded out by a
     // macro-action budget that has already been used on huts.
     this.wonderWatch();
-    this.maybeWonder();          // …and past day 350 the chief may raise one of its own
+    // maybeWonder moved BELOW the acts refill (tests/calm-peace.mjs): laying
+    // the site spends a macro action (Bld.place → aiAct), and here it was
+    // asking with YESTERDAY'S leftover budget — usually zero, so the day-350
+    // gate was a door that never opened in a live game.
     this.maybeMine();            // the map's GOLD SEAMS are contested too (tests/gold-mine.mjs)
     this.maybeProspect(read);    // …and a chief that can see none goes LOOKING
     this.workTheLand(read);      // spare hands FELL, QUARRY and HARVEST (tests/worked-ground.mjs)
@@ -4112,6 +4146,9 @@ const AI = {
     // (Bld.aiAct), so it does the best-scored few things a human could — the
     // utility layers still decide WHAT, this only decides HOW MUCH per day.
     ai.acts = m.aiActions != null ? m.aiActions : 2;
+    // FIRST CALL on the fresh budget: the monument. Anything later in the day
+    // can be crowded out by caravans and huts; the endgame plan may not be.
+    this.maybeWonder();
 
     // small base income so the AI never fully stalls (scaled by difficulty).
     // A boom-opening chief works the fields harder in the first minutes.
@@ -4246,6 +4283,25 @@ const AI = {
       }
     }
 
+    /* THE WONDER CARAVANS (tests/calm-peace.mjs): with the monument goal set,
+       gold buys the shortfall. STONE is the wall the race runs into — it is
+       the map's one finite resource and the seams are long spent by day 300,
+       so a peace chief's last leg is a purchasing problem: a 400-day sim
+       banked 12k food and 10k gold against 385 stone and never broke ground.
+       The buy rate is deliberately awful; a treasury with nothing else to
+       buy pays it. Famine (above) still outranks the monument. */
+    if (ai.goal && ai.goal.wonder && (ai.res.gold || 0) > 800 && (ai.res.food || 0) >= 250) {
+      for (const b of Bld.list('A')) {
+        if (b.key !== 'trade' || !Bld.done(b) || b.upgrading || b.caravan) continue;
+        let want = null, worst = 0;
+        for (const k of ['stone', 'wood', 'food']) {
+          const deficit = (ai.goal.cost[k] || 0) - (ai.res[k] || 0);
+          if (deficit > worst) { worst = deficit; want = k; }
+        }
+        if (want) Bld.startTrade(b, want, 'gold');
+      }
+    }
+
     // …and a chief sitting on a gold hoard while the woodpile is bare BUYS its
     // way out: gold → wood through the post. The buy rate is deliberately
     // awful, but an awful rate beats a treasury nobody can spend — a real
@@ -4334,8 +4390,24 @@ const AI = {
        single best-scored construction/upgrade; (d) posture- and
        counter-weighted training plus navy. No fixed order — the choice is
        continuous, so behavior shifts smoothly instead of on cliff edges. ---- */
-    if (ai.goal && ((ai.goal.book || ai.goal.hall || ai.goal.vet) ? S.day > ai.goal.until
+    if (ai.goal && ((ai.goal.book || ai.goal.hall || ai.goal.vet || ai.goal.wonder) ? S.day > ai.goal.until
         : (tc.level >= 3 || tc.upgrading || S.day > ai.goal.until))) ai.goal = null;
+    /* THE WONDER JAR (tests/calm-peace.mjs): a chief at peace spends wood and
+       stone the day they arrive — perpetual upgrades ate every plank, and a
+       345-day sim banked 10k food and 10k gold against 45 wood, so the
+       monument gate was open and the treasury could never walk through it.
+       From 60 days before its wonder gate (late enough that the hall-tier
+       goals have had their run — an earlier jar starved TC3 and the food
+       economy with it), the peace chief runs the same
+       reservation the hall tiers use — it outranks the TC goal (the wonder
+       needs no hall, and a peace run's endgame IS the monument). */
+    {
+      const wGate = G.modeCfg().aiWonderDay != null ? G.modeCfg().aiWonderDay : (CFG.WONDER.aiDay || 350);
+      if (S.peace && S.day >= wGate - 60 && !Bld.list('A').some(b => b.key === 'wonder')) {
+        if (!ai.goal || !ai.goal.wonder)
+          ai.goal = { cost: Bld.effCost('A', 'wonder'), until: wGate + 150, wonder: true };
+      }
+    }
     if (!ai.goal && tc.level < 3 && !tc.upgrading && S.day > P.tcDays[tc.level - 1])
       ai.goal = { cost: CFG.BUILDINGS.tc.levels[tc.level].cost, until: S.day + 20 };
     /* SAVE FOR THE VETERAN UNLOCK. Champions, lancers and fire archers all
@@ -4731,7 +4803,7 @@ const AI = {
     }
     if (ai.harassCd == null) ai.harassCd = 0;
     if (ai.harassCd > 0) ai.harassCd--;
-    if (m.aiHarass && read.knownTC && ai.harassCd <= 0 && !read.underThreat &&
+    if (m.aiHarass && !S.peace && read.knownTC && ai.harassCd <= 0 && !read.underThreat &&
         ai.posture !== 'DEFEND' && ai.posture !== 'REBUILD' &&
         S.day >= Math.max(16, (m.aiRaidDay || 40) - 16)) {
       const targets = (read.exposed || []);

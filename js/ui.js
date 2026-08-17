@@ -88,6 +88,9 @@ const UI = {
     try { this.helpHidden = localStorage.getItem('neo-unit-help') === '1'; } catch (e) { this.helpHidden = false; }
     // saved-army heartbeat: banners follow their soldiers (see tickArmies)
     setInterval(() => { try { this.tickArmies(); } catch (e) {} }, 900);
+    // rival-wonder countdown (tests/calm-peace.mjs): a standing warning while
+    // the enemy monument rises — the days on it are the whole endgame clock
+    setInterval(() => { try { this.tickWonderWarn(); } catch (e) {} }, 900);
     // procedural UI chrome (ARTSTYLE): a dark plank texture generated once and
     // handed to CSS — panels, bars, and cards all share it. No image files.
     {
@@ -1039,6 +1042,7 @@ const UI = {
       const anyStrike = ids.some(id => { const o = Units.get(id); return o && o.strat === 'strike'; });
       if (hitUnit && hitUnit.owner !== 'P') {
         if (anySiege) { this.toast('Siege targets structures — Chaos or Strike to hunt units', true); return; }
+        if (hitUnit.owner === 'A') G.breakPeace();   // the first strike ends the calm truce
         for (const id of ids) {
           const u = Units.get(id);
           if (Units.isTransport(u)) continue;
@@ -1085,6 +1089,7 @@ const UI = {
     const sel = Units.get(this.sel.id);
     if (!sel || sel.owner !== 'P') return;
     if (hitUnit && hitUnit.owner !== 'P' && Combat.canEngage(sel, hitUnit)) {
+      if (hitUnit.owner === 'A') G.breakPeace();   // the first strike ends the calm truce
       sel.task = { type: 'attack' }; sel.tUnit = hitUnit.id; sel.tBld = 0;
       sel.anchor = { x: hitUnit.x, y: hitUnit.y };
       sel.defend = false; sel.assault = true;
@@ -1224,6 +1229,7 @@ const UI = {
       // the tap when hit dead-on (transports stay easy to board)
       const tapUnit = (hitUnit && hitUnit.owner === 'P' && !deadOn && !Units.isTransport(hitUnit)) ? null : hitUnit;
       if (tapUnit && tapUnit.owner !== 'P') {
+        if (tapUnit.owner === 'A') G.breakPeace();   // the first strike ends the calm truce
         for (const id of ids) {
           const u = Units.get(id);
           if (Units.isTransport(u)) continue;   // troop hulls hold back — they don't charge with their cargo aboard
@@ -1280,6 +1286,7 @@ const UI = {
       const steal = deadOn && !(gatherAim && unitD > 0.32);
       const tapUnit = (hitUnit && hitUnit.owner === 'P' && !steal && !Units.isTransport(hitUnit)) ? null : hitUnit;
       if (tapUnit && tapUnit.owner !== 'P') {
+        if (tapUnit.owner === 'A') G.breakPeace();   // the first strike ends the calm truce
         sel.task = { type: 'attack' }; sel.tUnit = tapUnit.id; sel.tBld = 0;
         sel.anchor = { x: tapUnit.x, y: tapUnit.y };
         sel.defend = false;   // taking direct control ends the guard stance
@@ -1864,6 +1871,25 @@ const UI = {
       bar.appendChild(btn);
     }
   },
+  /* THE RIVAL-WONDER COUNTDOWN (tests/calm-peace.mjs). The moment the enemy
+     monument's ground is broken it is revealed on the map (Bld.place →
+     _revealCampToFoe) and logged at every difficulty — this is the standing
+     half of that warning: a pinned banner with the days of work left on the
+     works, held until the monument finishes (the run ends) or its site is
+     destroyed. Reads S.buildings fresh each beat, so it survives save/load
+     with no bookkeeping of its own. */
+  tickWonderWarn() {
+    const el = document.getElementById('wonderWarn');
+    if (!el || !window.S || !S.buildings) return;
+    const w = S.buildings.find(b => b.owner === 'A' && b.key === 'wonder' && b.construction > 0);
+    if (!w) { if (el.style.display !== 'none') el.style.display = 'none'; return; }
+    const days = Math.max(1, Math.ceil(w.construction));
+    const txt = '🏛️ The rival\'s Wonder rises — ' + days + ' day' + (days === 1 ? '' : 's') +
+      ' of work left. Finish yours, or stop theirs.';
+    if (el.textContent !== txt) el.textContent = txt;
+    if (el.style.display !== 'block') el.style.display = 'block';
+  },
+
   // ~1s heartbeat from init(): fallen soldiers leave their banner, an army
   // wiped out takes its button with it — and a new/loaded game re-syncs
   tickArmies() {

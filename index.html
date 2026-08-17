@@ -304,7 +304,21 @@
   body:not(.ingame) #miniToggle,
   body:not(.ingame) #armyBar,
   body:not(.ingame) #toasts,
+  body:not(.ingame) #wonderWarn,
   body:not(.ingame) #placeUI { display: none !important; }
+  /* the rival-wonder countdown (tests/calm-peace.mjs): a standing warning,
+     not a toast — it holds the screen for as long as the monument rises,
+     because the days on it are the whole endgame clock */
+  #wonderWarn {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    top: calc(var(--safe-top) + 84px); z-index: 9; pointer-events: none;
+    background: rgba(38,12,10,0.92); border: 1px solid #c9563e;
+    border-left: 3px solid #e88a3a; color: #f4dfc0;
+    font-size: 12px; font-weight: 700; letter-spacing: 0.3px;
+    padding: 6px 12px; border-radius: 6px; white-space: nowrap;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    display: none;
+  }
 
   /* ---- game shell: full-viewport screens over the canvas ---- */
   #shell { position: absolute; inset: 0; z-index: 30; display: none; }
@@ -1006,6 +1020,7 @@
 </div>
 
 <div id="toasts"></div>
+<div id="wonderWarn"></div>
 
 <div id="miniWrap"><canvas id="mini" width="80" height="80"></canvas></div>
 <button id="miniToggle">▴</button>
