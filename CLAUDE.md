@@ -1420,6 +1420,15 @@ invasion. **The stranded-'R' backstop in units.js must skip them** (`!u.campId`)
 — it melts any land raider that stands still for 8 seconds, which is exactly
 what a tender at its own fire does, and without the exemption every camp on the
 map empties within a minute of the game starting.
+**And a tender never marches to the WATERLINE to glare across it** (same
+test, from a real day-20 save): the wolf camp on the north island probed
+villagers working the far side of the channel every scan — `canReach`
+failed, water between them, but its documented SIDE EFFECT set a
+best-effort path toward the prey, so the band walked to its own bank and
+stood at the town's doorstep "attacking but never entering", oscillating
+with the amble-home. The probe's failure now DROPS the best-effort route
+(`u.path = null`, the same lesson the leaving-branch learned first), so a
+band with unreachable prey keeps milling at its fire.
 **And the CHASE is leashed too** (`Combat.campLeash`, same test): keeping a
 tender's ACQUISITION inside its ground was only half the rule. With a mark in
 hand the chase ran on the generic 10-tile `u.anchor` leash in `Combat.update` —
@@ -2383,6 +2392,30 @@ gives (0,1), pointing down into the cell, and the same holds for the other
 three and for an island's loop. Chaikin and the roughening preserve point
 order, so they preserve the tangent, so they preserve this. It is a fact about
 how the loop was built and it cannot flip.
+**CALM WATER** (tests/land.mjs §12, from a reported screenshot: "messy
+water… fake"): three artifacts, three rules. **The swell draws CRESTS
+only** — the navy trough pixels (`water[0]`) chained along the sine bands
+into diagonal SCRATCHES across every channel; open water carries light
+crests and glints, never the darkest step. **A far offset is RELAXED
+before it is filled** (`off()` in buildShoreLayer): where the roughened
+base loop zigzags at point scale, a deep offset ring FOLDS — the fold
+cancels the nonzero winding and punches an unpainted radial sliver through
+every stacked shelf ribbon at once, a comb of dark hairline SPOKES fanning
+out from the shore (the prune only catches a fold that has fully
+reversed). Rings offset more than 0.25 tiles get two 1-2-1 smoothing
+passes — same point count, so the base/offset index alignment the annulus
+fill depends on is untouched; the beach and foam lip keep their fine
+ragged edge, their offsets are too small to fold. **The depth field is
+slower and quieter over water** (`paintWater`): sampled at the land's own
+frequency it made tile-and-a-half dark BLOBS that read as dirt smudges —
+the ground has grass texture to absorb its tone steps, open water has
+nothing — so the field is stretched (~×0.4) and the steps softened. Also
+here: the underwater life (kelp/coral/sunkrock) is muted hard toward the
+WATER body (`LIFE_MUTE` 0.55 via `_decalMuteTo`), not gently toward
+GRASS — pulled toward the wrong medium a kelp bed was a near-black smudge
+floating on the blue — and the shelf ladder is 8 × 0.055 rather than
+5 × 0.085 (the coarser steps showed as scalloped rings, exactly as the
+SHELF_STEPS note predicts).
 **A BAND CANNOT REACH FURTHER THAN ITS LOOP'S RADIUS** (`R.loopRadius`,
 `LAND.BAND_CAP` / `SHORE_NOISE_CAP`, same test): the second, separate failure —
 a ONE-TILE POND has a radius of about 0.4 tiles and the shelf reaches 0.69, so

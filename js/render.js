@@ -126,9 +126,14 @@ const LAND = {
      tile edge. SHELF_REACH is how far out the shallows go (1/16ths of a tile);
      raise SHELF_STEPS if the ladder is visible as rings, lower SHELF_ALPHA if
      the shallows read as milky. */
-  SHELF_STEPS: 5,
+  /* 8 × 0.055 rather than 5 × 0.085 (a reported screenshot: "messy water…
+     fake"): the coarser ladder showed each step as a scalloped RING arcing
+     along every shore — exactly the failure the note above predicts. Total
+     shallowing is nearly unchanged (0.44 vs 0.425); the steps are just too
+     small to see individually. */
+  SHELF_STEPS: 8,
   SHELF_REACH: 11,
-  SHELF_ALPHA: 0.085,
+  SHELF_ALPHA: 0.055,
   FOAM_W: 1.3,          // the wet lip right at the waterline, in 1/16ths
   SHOAL_BLEND: 6,       // points of running average across a rock/sand changeover
   SHOAL_W: 1.9,         // wet-rock band where a stony coast meets the water
@@ -153,6 +158,12 @@ const LAND = {
   LIFE_CHANCE: 0.52,
   LIFE_GATE: 0.45,
   LIFE_REACH: 7,
+  /* how hard the underwater life is pulled toward the WATER's own colour.
+     At the shore stones' gentle 0.18 mute — and mixed toward GRASS, the
+     wrong medium entirely — a kelp bed was a near-black smudge floating on
+     the blue, which is what read as dirt in a reported screenshot. Muted
+     hard toward the water body it reads as a shape UNDER the surface. */
+  LIFE_MUTE: 0.55,
   /* --- HILLS ARE RAISED GROUND, and must stay clearly less than a mountain.
      They are read at their EDGES: hillRelief draws the catch-light along the
      northern rim, hillShadow the cast shadow on the ground to the south, and
@@ -810,18 +821,22 @@ const R = {
        The shore caller passes its own mute so a wet stone can stay a little
        crisper than a tuft in a meadow. */
     const M = (this._decalMute == null ? LAND.DECAL_MUTE : this._decalMute);
+    // WHAT the mute pulls toward is the medium the decal lies ON — grass for
+    // the meadow scatter, but the underwater life passes the water body
+    // instead (this._decalMuteTo): a kelp frond pulled toward GREEN while
+    // lying on blue water just goes dark, which is a smudge, not a shadow.
+    const MT = this._decalMuteTo || AP.grass[2];
     // …memoised, because this runs several times per decal and thousands of
     // times per bake, and re-parsing two hex strings each time to arrive at an
-    // answer that only ever depends on (colour, mute) is pure waste
+    // answer that only ever depends on (colour, mute, target) is pure waste
     if (!this._mixC) this._mixC = new Map();
     const cache = this._mixC;
     const mix = (c) => {
       if (!M) return c;
-      const k = c + '|' + M;
+      const k = c + '|' + M + '|' + MT;
       let v = cache.get(k);
       if (v) return v;
-      const G0 = AP.grass[2];
-      const gr = [parseInt(G0.slice(1, 3), 16), parseInt(G0.slice(3, 5), 16), parseInt(G0.slice(5, 7), 16)];
+      const gr = [parseInt(MT.slice(1, 3), 16), parseInt(MT.slice(3, 5), 16), parseInt(MT.slice(5, 7), 16)];
       const r0 = parseInt(c.slice(1, 3), 16), g0 = parseInt(c.slice(3, 5), 16), b0 = parseInt(c.slice(5, 7), 16);
       const f2 = (a, b) => Math.round(a + (b - a) * M).toString(16).padStart(2, '0');
       v = '#' + f2(r0, gr[0]) + f2(g0, gr[1]) + f2(b0, gr[2]);
@@ -1413,12 +1428,37 @@ const R = {
       const cap = this.loopRadius(loop) * LAND.BAND_CAP * 16;
       const off = (fn) => {
         const o = new Array(n);
+        let maxd = 0;
         for (let i = 0; i < n; i++) {
           const p = loop[i], nn = nrm[i];
           let d = fn(i);
           if (d > cap) d = cap; else if (d < -cap) d = -cap;
           d /= 16;
+          if (Math.abs(d) > maxd) maxd = Math.abs(d);
           o[i] = [p[0] + nn[0] * d, p[1] + nn[1] * d];
+        }
+        /* A FAR OFFSET IS RELAXED BEFORE IT IS FILLED (a reported screenshot:
+           thin dark streaks fanning out from every shore, through the whole
+           shelf, along the normals). Where the roughened base zigzags at
+           point scale, the normals of neighbouring points CROSS once the
+           offset is deep enough — the ring folds, the fold cancels the
+           nonzero winding, and an UNFILLED radial sliver is punched through
+           the band. Every stacked shelf ribbon shares the same base, so the
+           slivers line up into one hairline of un-painted water per fold: a
+           comb of dark spokes. The prune above only catches a fold that has
+           fully REVERSED; a light 1-2-1 smoothing of the deep rings (same
+           point count, so the base/offset index alignment the fill depends on
+           is untouched) opens the near-folds instead. Shallow rings — the
+           beach, the foam lip — keep their fine ragged edge: their offsets
+           are too small to fold in the first place. */
+        if (maxd > 0.25) {
+          for (let pass2 = 0; pass2 < 2; pass2++) {
+            const s = o.map((p, i) => {
+              const a = o[(i - 1 + n) % n], b2 = o[(i + 1) % n];
+              return [(a[0] + 2 * p[0] + b2[0]) / 4, (a[1] + 2 * p[1] + b2[1]) / 4];
+            });
+            for (let i = 0; i < n; i++) o[i] = s[i];
+          }
         }
         return prune(o);
       };
@@ -1445,10 +1485,11 @@ const R = {
         if (rnd() > LAND.LIFE_CHANCE * rockS[i] * gate) continue;
         const d = -(1.5 + rnd() * LAND.LIFE_REACH) / 16;      // out into the shallows
         const u = rnd();
-        this._decalMute = LAND.DECAL_MUTE_WET;
+        // pulled hard toward the WATER, not the grass — see LIFE_MUTE
+        this._decalMute = LAND.LIFE_MUTE; this._decalMuteTo = ART.PALETTE.water[1];
         this.drawDecal(g, (p[0] + nx * d) * TL, (p[1] + ny * d) * TL,
           u < 0.4 ? 'kelp' : u < 0.72 ? 'coral' : 'sunkrock', px * (0.75 + rnd() * 0.7), rnd);
-        this._decalMute = null;
+        this._decalMute = null; this._decalMuteTo = null;
       }
       for (let k = LAND.SHELF_STEPS; k >= 1; k--) {
         const f = k / LAND.SHELF_STEPS;
@@ -1706,7 +1747,7 @@ const R = {
      uniform. */
   paintWater(g, x, y) {
     const TL = CFG.TILE, px = TL / 16, W = ART.PALETTE.water;
-    const dark = W[0], lite = W[2];
+    const lite = W[2];
     /* SHALLOWNESS IS A FIELD, NOT A FLAG. The body colour used to switch
        wholesale on "does this tile touch land", which paints a hard rectangle
        into the middle of every lake — the same grid-drawing mistake as a
@@ -1727,16 +1768,19 @@ const R = {
        that is not made of tile corners. */
     /* DEPTH. The same tonal field the land uses, so a body of water is lighter
        over its shallows and darker out in the middle instead of one flat blue.
-       Quantized like the ground's tone and just as gently. */
+       SLOWER AND QUIETER THAN THE GROUND'S (a reported screenshot: "messy
+       water… fake"): sampled at the land's own frequency the field made
+       tile-and-a-half dark BLOBS, which over water read as dirt smudges or
+       drowned shadows — the ground has grass texture to absorb its tone
+       steps, open water has nothing. The field is stretched (~×0.4, so a
+       feature spans several tiles and reads as a deep basin, not a stain)
+       and the steps are softer. */
     {
-      // PER SUB-CELL, exactly as the ground's tone is — one sample per tile
-      // puts the depth steps on the tile boundaries and draws the grid in the
-      // middle of the lake, which is the thing this whole layer exists to stop.
       const N = LAND.TONE_SUB, cell = TL / N;
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-        const d3 = Math.min(2, (this.landTone(x + (i + 0.5) / N, y + (j + 0.5) / N) * 3) | 0);
+        const d3 = Math.min(2, (this.landTone((x + (i + 0.5) / N) * 0.4, (y + (j + 0.5) / N) * 0.4) * 3) | 0);
         if (d3 === 1) continue;
-        g.fillStyle = d3 > 1 ? 'rgba(150,205,225,0.06)' : 'rgba(4,16,30,0.08)';
+        g.fillStyle = d3 > 1 ? 'rgba(150,205,225,0.045)' : 'rgba(4,16,30,0.05)';
         g.fillRect(x * TL + i * cell, y * TL + j * cell, cell, cell);
       }
     }
@@ -1745,11 +1789,14 @@ const R = {
       // three long slow sine swells, wavelengths of several tiles, gently angled
       const v = Math.sin(wx * 1.7 + wy * 0.55 + 1.3) + Math.sin(wx * 0.4 - wy * 1.35 + 4.1)
         + Math.sin((wx + wy) * 0.75 + 2.2) * 0.8;
-      // per-pixel hash softens the band edges so the swell never reads as stripes
+      // per-pixel hash softens the band edges so the swell never reads as stripes.
+      // CRESTS ONLY: the navy trough pixels used to draw too (v < -2.15), and
+      // chained along the sine bands they read as diagonal SCRATCHES across the
+      // water — dark debris, not swell. Light catching a crest is the honest
+      // cue; the trough is simply the body colour (same report as the depth fix).
       let hh = (Math.imul(x * 16 + jx, 73856093) ^ Math.imul(y * 16 + jy, 19349663)) >>> 0;
       hh = ((Math.imul(hh ^ (hh >>> 13), 0x85ebca6b) >>> 0) >>> 8) / 16777215;
       if (v > 2.05 + (hh - 0.5) * 0.5) g.fillStyle = lite;
-      else if (v < -2.15 - (hh - 0.5) * 0.5) g.fillStyle = dark;
       else continue;
       g.fillRect(x * TL + jx * px, y * TL + jy * px, px, px);
     }

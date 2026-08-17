@@ -736,15 +736,29 @@ const Combat = {
         // Re-stamping the anchor every scan keeps that ratchet from ever
         // starting: a tender's home never drifts off its own camp.
         u.anchor = { x: hx, y: hy };
+        /* A TENDER NEVER MARCHES TO THE WATERLINE TO GLARE ACROSS IT (a real
+           day-20 save: the wolf camp on the north island probed villagers
+           working the far side of the channel every scan — canReach failed,
+           water between them, but its SIDE EFFECT set a best-effort path
+           toward the prey, so the band walked to its own bank and stood at
+           the town's doorstep "not entering", oscillating with the amble-home
+           below). The leaving-branch above learned this same lesson first:
+           when the probe fails, DROP the best-effort route. */
         // anyone hacking at the camp itself is the first business of the day
         const atCamp = this.nearestUnit(hx, hy, cR,
           o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o));
-        if (atCamp && this.canReach(u, atCamp.x, atCamp.y, 1.6)) { u.tUnit = atCamp.id; return; }
+        if (atCamp) {
+          if (this.canReach(u, atCamp.x, atCamp.y, 1.6)) { u.tUnit = atCamp.id; return; }
+          u.path = null;
+        }
         // …then anything that has strayed into the camp's ground
         const near = this.nearestUnit(u.x, u.y, cR,
           o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o) &&
                Math.hypot(o.x - hx, o.y - hy) <= cR + 2);
-        if (near && this.canReach(u, near.x, near.y, 1.6)) { u.tUnit = near.id; return; }
+        if (near) {
+          if (this.canReach(u, near.x, near.y, 1.6)) { u.tUnit = near.id; return; }
+          u.path = null;
+        }
         u.tUnit = 0; u.tBld = 0;
         const d = Math.hypot(u.x - hx, u.y - hy);
         if (d > gR) {                                  // strayed too far — amble home

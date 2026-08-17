@@ -969,6 +969,72 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   await p.close();
 }
 
+/* ---- 12. CALM WATER (a reported screenshot: "messy water… fake"). Three
+   artifacts, three rules. THE SWELL DRAWS CRESTS ONLY: the navy trough
+   pixels (water[0]) chained along the sine bands into diagonal SCRATCHES —
+   open water may carry light crests and glints, never the darkest step.
+   THE SHELF HAS NO DARK SPOKES: where the roughened base loop zigzags at
+   point scale, a deep offset ring FOLDS, the fold cancels the nonzero
+   winding, and an unpainted radial sliver is punched through every stacked
+   ribbon at once — a comb of dark hairlines fanning out from the shore.
+   The far offsets are relaxed (1-2-1, same point count) before filling;
+   this measures the RESULT: no shelf sample darker than both its
+   along-shore neighbours by more than a sliver's contrast. (The depth
+   field is also slower and quieter over water — blobs at the land's
+   frequency read as dirt smudges — but that is tuning, not a contract.) ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(boot + `
+    const W = CFG.W, TL = CFG.TILE, terr = S.map.terrain;
+    const g = R.terrainCache.getContext('2d');
+    const rgb = (h) => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+    const W0 = rgb(ART.PALETTE.water[0]);
+    // deep water only: no land within 2 tiles, so shoals/kelp/shore bands are out
+    let trough = 0, deepTiles = 0;
+    for (let y = 3; y < CFG.H - 3; y++) for (let x = 3; x < CFG.W - 3; x++) {
+      if (terr[y * W + x] !== T.WATER) continue;
+      let deep = true;
+      for (let oy = -2; oy <= 2 && deep; oy++) for (let ox = -2; ox <= 2; ox++)
+        if (terr[(y + oy) * W + x + ox] !== T.WATER) { deep = false; break; }
+      if (!deep) continue;
+      deepTiles++;
+      const d = g.getImageData(x * TL, y * TL, TL, TL).data;
+      for (let i = 0; i < d.length; i += 4)
+        if (d[i] === W0[0] && d[i+1] === W0[1] && d[i+2] === W0[2]) trough++;
+    }
+    // spokes: sample the shelf at half reach along the inward normal, and
+    // compare with the same sample a few points along the shore either way
+    const lum = (x, y) => { const d = g.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+      return (d[0] + d[1] + d[2]) / 3; };
+    let spokes = 0, samples = 0;
+    const reach = (0.8 * (LAND.SHELF_REACH || 11) * 0.5) / 16;
+    for (const reg of R.waterRegions()) for (const loop of reg.loops) {
+      const n = loop.length;
+      if (n < 24) continue;
+      for (let i = 0; i < n; i += 2) {
+        const a = loop[(i - 1 + n) % n], b2 = loop[(i + 1) % n];
+        let dx = b2[0] - a[0], dy = b2[1] - a[1];
+        const dd = Math.hypot(dx, dy) || 1;
+        const nx = -dy / dd, ny = dx / dd;              // water on the left-hand normal
+        const at = (j) => { const q = loop[((j % n) + n) % n];
+          const qa = loop[((j - 1) % n + n) % n], qb = loop[((j + 1) % n + n) % n];
+          let ex = qb[0] - qa[0], ey = qb[1] - qa[1];
+          const ed = Math.hypot(ex, ey) || 1;
+          return lum((q[0] - ey / ed * reach) * TL, (q[1] + ex / ed * reach) * TL); };
+        const c = at(i), l = at(i - 4), r2 = at(i + 4);
+        samples++;
+        if (Math.min(l, r2) - c > 14) spokes++;
+      }
+    }
+    return { trough, deepTiles, spokes, samples };`));
+  ck('openWaterCarriesNoNavyTroughs', v.deepTiles > 10 && v.trough === 0,
+    v.trough + ' water[0] pixels over ' + v.deepTiles + ' deep tiles — the swell draws crests only');
+  ck('andTheShelfHasNoDarkSpokes', v.samples > 200 && v.spokes <= Math.ceil(v.samples * 0.01),
+    v.spokes + ' of ' + v.samples + ' shelf samples darker than both shore-wise neighbours' +
+    ' (the folded offset rings used to punch a comb of them)');
+  await p.close();
+}
+
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL LAND CHECKS PASS');
 await b.close();

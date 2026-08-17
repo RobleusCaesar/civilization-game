@@ -742,6 +742,44 @@ const out = await p.evaluate(() => {
       campsOf().every(c => G.campTenders(c).every(u => u.tribe === c.tribe)), '');
   }
 
+  /* ---- 12. A TENDER NEVER MARCHES TO THE WATERLINE TO GLARE ACROSS IT ----
+     From a real day-20 save: the wolf camp on the north island probed
+     villagers working the far side of the channel every scan. canReach
+     failed — water between them — but its documented SIDE EFFECT set a
+     best-effort path toward the prey, so the band walked to its own bank and
+     stood at the town's doorstep "attacking but never entering", oscillating
+     with the amble-home. The probe's failure now DROPS the best-effort route
+     (the same lesson the leaving-branch learned first), so a band with
+     unreachable prey keeps milling at its fire. */
+  {
+    G.newGame('rc-water', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    Combat.scanT = 0; Units.herdClock = 0;
+    const camp = campsOf()[0];
+    const gR = CFG.RAIDER_CAMPS.guardR, cR = CFG.RAIDER_CAMPS.chaseR;
+    // an uncrossable channel: a 2-wide water column the full height of the
+    // board, 6 tiles from the camp (outside guardR, inside the probe reach)
+    const colX = Math.min(CFG.W - 4, camp.x + 6), dir = colX > camp.x ? 1 : -1;
+    for (let y = 1; y < CFG.H - 1; y++) for (const dx of [0, 1]) {
+      const i = MapGen.idx(colX + dx, y);
+      if (!Bld.at(colX + dx, y)) { S.map.terrain[i] = T.WATER; S.map.seenTerrain[i] = T.WATER; }
+    }
+    Bld._block = null;
+    // bait on the far bank: within the camp-ground measure (cR + 2) so the
+    // tender's scan genuinely keeps offering it, but forever unreachable
+    const bait = Units.spawn('villager', 'P', colX + 2 * dir, camp.y);
+    bait.hp = 9e9;
+    const tenders = G.campTenders(camp);
+    let maxD = 0;
+    for (let t = 0; t < 300; t++) {
+      Units.update(0.1); Combat.update(0.1);
+      for (const u of tenders) maxD = Math.max(maxD, Math.hypot(u.x - (camp.x + 0.5), u.y - (camp.y + 0.5)));
+    }
+    ck('unreachablePreyLeavesTheBandAtItsFire',
+      tenders.length > 0 && maxD <= gR + 1,
+      tenders.length + ' tenders, furthest ' + maxD.toFixed(1) + ' of guardR ' + gR +
+      ' (the dropped canReach route used to walk them to the bank at ' + (cR - 1) + '+)');
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));
