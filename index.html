@@ -69,6 +69,17 @@
     touch-action: none; overscroll-behavior: none;
     -webkit-user-select: none; user-select: none;
   }
+  /* iOS Safari resolves `height: 100%` against the SMALL viewport — with the
+     toolbar retracted, the strip it frees at the bottom lies OUTSIDE the page,
+     so every shell scene (title, splash, the defeat card) sat visually high
+     over a black band and read as top-justified (a reported screenshot set).
+     The DYNAMIC viewport unit tracks the toolbar live, so the page always
+     reaches the true bottom edge and the centred layouts centre on the
+     PHONE, not on a box that stops short. Browsers without dvh keep the
+     100% fallback above; the canvas needs no change — it sizes off
+     window.innerHeight, which already tracks, and every absolutely-anchored
+     layer (#c, #shell, .screen, #bottombar) hangs off the body box. */
+  @supports (height: 100dvh) { html, body { height: 100dvh; } }
   #c { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
   /* ---- top resource bar ---- */
@@ -879,7 +890,12 @@
      is exactly the flash it is meant to hide. Nothing below it is visible
      (every piece of HUD is gated on `body.ingame`), so the first frame is the
      logo on the game's own dark ground and nothing else. Boot lifts it. -->
-<div id="splash" style="position:fixed;inset:0;z-index:200;background:#0d0b08;display:flex;align-items:center;justify-content:center;opacity:1;transition:opacity .45s ease">
+<!-- min-height:100dvh — the splash is fixed with inset:0, and on iOS Safari
+     that box is the SMALL viewport: the glen stopped above the toolbar's
+     retracted strip and the boot showed a black band at the foot of the
+     screen. Inline like the rest, so it holds before any stylesheet parses;
+     browsers without dvh simply drop the declaration. -->
+<div id="splash" style="position:fixed;inset:0;min-height:100dvh;z-index:200;background:#0d0b08;display:flex;align-items:center;justify-content:center;opacity:1;transition:opacity .45s ease">
   <!-- THE LOADING SCREEN IS THE TITLE'S OWN GLEN. Same file, same
        `object-fit: cover`, same full-bleed box as #scrTitle's .tbg — so when
        the splash fades there is NO transition of the background at all: the

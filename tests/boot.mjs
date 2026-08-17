@@ -68,6 +68,18 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   ck('theLoadingScreenIsTheGlen', /assets\/ui\/title-bg\.jpg/.test(tag), '');
   ck('andItIsDrawnLikeTheTitleIs', /object-fit:\s*cover/.test(tag),
     'contain would letterbox it and the fade would jump');
+  /* THE SHELL TRACKS THE DYNAMIC VIEWPORT. iOS Safari resolves height:100%
+     against the SMALL viewport, so with the toolbar retracted every shell
+     scene sat high over a black band at the foot of the screen (a reported
+     screenshot set: "all three scenes seem top justified"). html/body take
+     100dvh where supported — a supplement to the 100% fallback, never a
+     replacement — and the splash carries the same rule INLINE, because it
+     must cover the screen before any stylesheet parses. */
+  ck('theShellTracksTheDynamicViewport',
+    /@supports\s*\(height:\s*100dvh\)\s*{\s*html,\s*body\s*{\s*height:\s*100dvh/.test(html),
+    'html/body take 100dvh where supported');
+  ck('andSoDoesTheSplash', /style="[^"]*min-height:100dvh/.test(tag),
+    'inline, ahead of every stylesheet');
   ck('itPaintsOnTheGamesOwnGround', /background:\s*#0d0b08/.test(tag),
     'the dark theme ground — never a white or transparent flash');
   // …and the viewport opts into the notch

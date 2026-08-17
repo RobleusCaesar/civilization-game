@@ -2054,6 +2054,18 @@ never `playing`), so there is ONE rule for "is there a game to wear chrome
 for". `R.topReserve`/`bottomReserve` need no change: they learn lazily and
 only latch a measurement above their sanity floor, so a hidden bar simply
 re-measures once it returns.
+**THE SHELL TRACKS THE DYNAMIC VIEWPORT** (same test): iOS Safari resolves
+`height: 100%` against the SMALL viewport, so with the toolbar retracted the
+strip it frees at the bottom lay OUTSIDE the page — every shell scene
+(title, splash, the defeat card) sat visually high over a black band and
+read as top-justified, even though each was correctly centred inside its
+own (short) box. `html, body` take `height: 100dvh` under `@supports` — a
+supplement to the `100%` fallback, never a replacement — and the splash
+carries `min-height:100dvh` INLINE, because it must cover the screen before
+any stylesheet parses. The canvas needs no change (it sizes off
+`window.innerHeight`, which already tracks, with a resize listener), and
+every absolutely-anchored layer (`#c`, `#shell`, `.screen`, `#bottombar`)
+hangs off the body box and follows it for free.
 **The notch is ONE variable**: `--safe-top` = `max(env(safe-area-inset-top,
 0px), var(--safe-min))`, read by every top-anchored rule. Two hardenings live
 in it — env()'s own DEFAULT, without which an unknown `env()` invalidates the
