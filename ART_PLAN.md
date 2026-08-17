@@ -6,7 +6,8 @@ manifest, no code change, no registration. Drop a correctly named file into
 drawing comes back. The old atlas manifest (`assets/manifest.js`) is gone.
 
 Contract test: `node tests/art-pipeline.mjs` — run it after touching
-`js/assets.js`, `js/dev.js`, `R.blitBld` / `R.artRect` / `R.bldSprite`, or
+`js/assets.js`, `js/dev.js`, `R.blitBld` / `R.artRect` / `R.bldSprite`, the
+fog-of-war ghost lookup or `G.updateVisibility`'s `S.map.seenB` snapshot, or
 `UI.iconInto`.
 
 ## The filename convention
@@ -40,22 +41,65 @@ Every valid filename (46 slots):
 | trade | 3 | `trade-l1.png` `trade-l2.png` `trade-l3.png` |
 | warcamp | 1 | `warcamp-l1.png` |
 
-**Not in the convention, on purpose:**
+**Not in the `{id}-l{level}.png` convention, on purpose:**
 - `wall`, `gate` — they tile from 16-mask atlases; one rectangle cannot be a
   curtain that auto-joins its neighbours.
 - `wonder` — its art is per-monument, rolled per run (ten monuments share the
   one `wonder` building id); a single PNG would stamp all ten.
-- `raidercamp` — a camp's look belongs to its **people** (`Sprites.camp`, five
-  looks for one id).
+- `raidercamp` — a camp's look belongs to its **people**, not its building id.
+  It has its own convention instead — see below.
 - A dock PNG overrides **all four shore orientations** with the same image;
   the per-shore procedural faces only serve while no PNG exists.
 - A tower PNG covers the **free-standing** Watchtower. A tower bonded into a
   wall line keeps its procedural mural-tower self, because that drawing has to
   match the curtain it joins.
 
-Both tribes share each image (the same deal the shipped hall art always made):
-banners fly the tribe's dye and the owner pip marks the rival, so the
+Both factions share each image (the same deal the shipped hall art always
+made): banners fly the tribe's dye and the owner pip marks the rival, so the
 architecture itself is faction-neutral.
+
+## Raider camps: one PNG per people, not per building id
+
+```
+assets/buildings/camp-{tribe}.png
+```
+
+A raider camp is owned by neither faction — it is the home of one of the
+**five peoples of the wild country** (`CFG.TRIBES`), dealt to each camp when
+the map is made and kept for the camp's whole life. One building id
+(`raidercamp`) therefore needs **five different looks**, which the
+`{id}-l{level}.png` convention has no way to express — so it gets its own,
+parallel filename shape instead.
+
+`{tribe}` is a `CFG.TRIBES` key, **derived, never hand-kept** — a tribe added
+to `CFG.TRIBES` gets a slot for free, no code change:
+
+| tribe | name | file |
+|---|---|---|
+| wolf | Wolfskins | `camp-wolf.png` |
+| flint | Flintfolk | `camp-flint.png` |
+| broken | the Broken | `camp-broken.png` |
+| woad | Woadkin | `camp-woad.png` |
+| sea | the Sea Folk | `camp-sea.png` |
+
+Same rules as building art in every other respect: all-lowercase filenames,
+loaded image-first with the procedural `Sprites.camp[tribe]` look as fallback
+(a 404 changes nothing), the same `_cfArt` marker and the same `R.artRect`
+anchoring, the same optional sidecar (`camp-{tribe}.json`, same shape), the
+same `?v=` cache-buster, and the same `?dev=1` live-preview path — drop a
+`camp-wolf.png` on the window and it slots in exactly like a `barracks-l2.png`
+would, no picker needed. `Assets.setCampArt` is the install point (the analog
+of `setBuildingArt`); it writes straight into `Sprites.camp[tribe]`, which is
+the one place `R.bldSprite` and the building panel's icon already read a
+live camp's look from — so no other rendering code needed to change for a
+dropped PNG to appear on a placed camp. The one place that DID need a change
+is the **fog-of-war ghost** (a remembered building, drawn from `S.map.seenB`
+after it passes out of sight): that lookup read `Sprites.building`/
+`Sprites.buildingA` directly rather than going through `R.bldSprite`, so a
+remembered camp always showed the generic fallback look regardless of tribe.
+The snapshot written in `G.updateVisibility` now carries `tribe` alongside
+`key`/`level`/`owner`, and the fog-ghost lookup in `render.js` special-cases
+`raidercamp` the same way `bldSprite` does.
 
 ## The anchoring rule (one rule, no per-building tuning)
 

@@ -664,8 +664,20 @@ const out = await p.evaluate(() => {
     ck('everyOneOfThemIsDrawn',
       keys.every(k => Sprites.camp[k] && Sprites.barbFor(k).raider[0].idle.length),
       'a people with no art falls back to the wolfskins and stops being a people');
-    // …and no two of them draw the same picture
-    const px = (cv) => { const g = cv.getContext('2d'); return g.getImageData(0, 0, cv.width, cv.height).data.join(','); };
+    // …and no two of them draw the same picture. Sprites.camp[k] may now be
+    // hand-authored art (an HTMLImageElement) rather than the procedural
+    // canvas it always used to be — a file:// image taints any canvas it is
+    // drawn onto (SecurityError on getImageData, same reason R.darkOf/ashOf
+    // in render.js wrap their own reads in try/catch), so pixel comparison
+    // only works for the procedural case. A real PNG's own URL is already a
+    // perfectly good distinctness key — five different files are trivially
+    // five different pictures, and this test's job is to catch a COPY-PASTE
+    // (two tribes pointing at the same drawable), which a distinct src still
+    // catches for real art exactly as pixel data catches it for procedural.
+    const px = (cv) => {
+      if (cv instanceof HTMLImageElement) return 'img:' + cv.src;
+      const g = cv.getContext('2d'); return g.getImageData(0, 0, cv.width, cv.height).data.join(',');
+    };
     const camps = new Set(keys.map(k => px(Sprites.camp[k])));
     ck('andNoTwoCampsLookAlike', camps.size === keys.length, camps.size + '/' + keys.length + ' distinct');
     const men = new Set(keys.map(k => px(Sprites.barbFor(k).raider[0].idle[0])));

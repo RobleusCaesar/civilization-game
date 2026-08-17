@@ -54,6 +54,25 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
   if (!ok) fails.push('theRebuildGuardsOnTheRealMapField');
 }
 
+/* THE FOG-GHOST LOOKUP MUST ASK WHICH PEOPLE HELD THE CAMP. A remembered
+   raidercamp is drawn from S.map.seenB, and that lookup reads
+   Sprites.building/Sprites.buildingA directly rather than going through
+   R.bldSprite — so it is easy to "fix" a camp's live look and never notice
+   the ghost of one still shows the generic fallback. Measured on the source
+   for the same reason as the guard above: a wrong branch here is a visual
+   regression a headless pixel check would have to get lucky to catch, not a
+   thrown error. */
+{
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(join(root, 'js/render.js'), 'utf8');
+  const anchor = src.indexOf('remembered buildings (ghosts in the grey fog)');
+  const fn = anchor < 0 ? '' : src.slice(anchor, anchor + 1500)
+    .split('\n').filter(l => !/^\s*(\/\/|\/\*|\*)/.test(l)).join('\n');
+  const ok = fn.length > 20 && /snap\.tribe/.test(fn) && /Sprites\.camp/.test(fn);
+  res.theFogGhostLookupReadsTheCampsTribe = ok ? 'PASS' : 'FAIL — the ghost lookup no longer special-cases raidercamp/tribe';
+  if (!ok) fails.push('theFogGhostLookupReadsTheCampsTribe');
+}
+
 // ---------- pass 1: the player page (no dev flag) ----------
 {
   const p = await b.newPage({ viewport: { width: 430, height: 880 } });
@@ -169,6 +188,19 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
     ck('everyUrlCarriesTheCacheBuster',
       slots.every(s => Assets.artUrl(s.id, s.lv).includes('?v=')), Assets.artUrl('tc', 1));
 
+    // ---- 1b. camp art has its OWN convention: one PNG per PEOPLE, not per
+    // building id (ART_PLAN.md) — tribes are DERIVED from CFG.TRIBES, never
+    // a hand-kept list, so a sixth people needs no code change here ----
+    ck('campTribesAreDerivedFromCfgTribes',
+      JSON.stringify(Assets.campTribes()) === JSON.stringify(CFG.TRIBES.map(t => t.key)),
+      Assets.campTribes().join(','));
+    ck('campFilenamesFollowTheirOwnShape',
+      Assets.campTribes().every(t => Assets.campName(t) === 'camp-' + t + '.png'), '');
+    ck('campFilenamesAreLowercase',
+      Assets.campTribes().every(t => Assets.campName(t) === Assets.campName(t).toLowerCase()), '');
+    ck('campUrlsCarryTheCacheBuster',
+      Assets.campTribes().every(t => Assets.campUrl(t).includes('?v=')), Assets.campUrl('wolf'));
+
     // ---- 2. shipped art loads by convention, into BOTH tribes' tables ----
     const tc1 = Assets.art['tc-l1'];
     ck('shippedHallArtLoadsByFilename', !!tc1 && !!tc1._cfArt,
@@ -186,6 +218,53 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
       missKey || 'every slot has shipped art — nothing left to check');
     ck('theCampfirePropStillArrives', !!Assets.resolve('misc/campfireTc') &&
       Assets.isImage('misc/campfireTc'), '');
+
+    // ---- 2b. shipped camp art loads by ITS convention, straight into
+    // Sprites.camp[tribe] — the one place R.bldSprite and the panel icon
+    // already read a live camp's look from, so nothing else has to change
+    // for a dropped PNG to appear on a placed camp ----
+    {
+      const campShipped = Assets.campTribes().find(t => Assets.art[Assets.campSlotKey(t)]);
+      ck('shippedCampArtLoadsByFilename',
+        !!campShipped && !!Assets.art[Assets.campSlotKey(campShipped)]._cfArt,
+        campShipped || 'no camp PNG shipped yet');
+      ck('shippedCampArtInstallsIntoSpritesCamp',
+        !campShipped || Sprites.camp[campShipped] === Assets.art[Assets.campSlotKey(campShipped)],
+        '');
+      const campMissing = Assets.campTribes().find(t => Assets.art[Assets.campSlotKey(t)] === null);
+      ck('aMissingCampFileStaysProcedural',
+        !campMissing || (!Sprites.camp[campMissing]._cfArt &&
+          Sprites.camp[campMissing] instanceof HTMLCanvasElement),
+        campMissing || 'every tribe has shipped art — nothing left to check');
+
+      // R.bldSprite hands a live camp back its people's own art — same
+      // routing a dock/tower/wall already get, exercised the same way
+      // section 5 below exercises the dock override
+      const fakeCamp = document.createElement('canvas'); fakeCamp.width = fakeCamp.height = 64;
+      const savedWolf = Sprites.camp.wolf;
+      Assets.setCampArt('wolf', fakeCamp, null);
+      ck('bldSpriteHandsBackTheTribesCampArt',
+        R.bldSprite({ key: 'raidercamp', owner: 'R', level: 1, tribe: 'wolf' }) === fakeCamp, '');
+      Sprites.camp.wolf = savedWolf;   // restore the shipped state for what follows
+    }
+
+    // ---- 2c. the fog-of-war ghost of a raider camp keeps its PEOPLE, not a
+    // generic fallback (a real gap this convention closed: the ghost lookup
+    // read Sprites.building directly and never asked which tribe held the
+    // fire). Two halves: the DATA (G.updateVisibility stamps tribe into the
+    // S.map.seenB snapshot) and the SOURCE (the render.js lookup actually
+    // reads it) — the source check because a wrong branch here fails
+    // SILENTLY, the same reasoning the window.S guard check at the top of
+    // this file uses. ----
+    G.newGame('artcamp', 'moderate', 'large');
+    Screens._demo = false; S.paused = true;
+    const cx = 20, cy = 20, ci = MapGen.idx(cx, cy);
+    S.buildings.push({ id: 987654, key: 'raidercamp', owner: 'R', level: 1, x: cx, y: cy, tribe: 'flint', hp: 420 });
+    S.units.push({ id: 987655, owner: 'P', kind: 'villager', x: cx, y: cy, hp: 1, maxHp: 1 });
+    G.updateVisibility();
+    const snap = S.map.seenB[ci];
+    ck('fogMemorySnapshotsTheCampsTribe',
+      !!snap && snap.key === 'raidercamp' && snap.tribe === 'flint', JSON.stringify(snap));
 
     // ---- 3. the ONE anchoring rule (R.artRect / blitBld) ----
     const tall = document.createElement('canvas'); tall.width = 100; tall.height = 200;
@@ -257,15 +336,23 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
 
     // ---- filename inference: normalized, never guessed ----
     ck('conventionNamesParse', JSON.stringify(DevArt.parseName('barracks-l2.png')) ===
-      JSON.stringify({ id: 'barracks', lv: 2 }), '');
+      JSON.stringify({ kind: 'building', id: 'barracks', lv: 2 }), '');
     ck('caseIsNormalizedNotRejected', JSON.stringify(DevArt.parseName('Barracks-L2.PNG')) ===
-      JSON.stringify({ id: 'barracks', lv: 2 }), 'people are not case-sensitive; Pages is');
+      JSON.stringify({ kind: 'building', id: 'barracks', lv: 2 }), 'people are not case-sensitive; Pages is');
     ck('unknownIdsAreNeverGuessed', DevArt.parseName('fortress-l1.png') === null, '');
     ck('outOfRangeLevelsAreRefused', DevArt.parseName('warcamp-l2.png') === null &&
       DevArt.parseName('tc-l4.png') === null, '');
     ck('excludedIdsAreRefused', DevArt.parseName('wall-l1.png') === null, '');
     ck('freeformNamesGoToThePicker', DevArt.parseName('my cool barracks.png') === null, '');
     ck('canonicalNamesAreLowercase', DevArt.canonicalName('range', 2) === 'range-l2.png', '');
+
+    // ---- camp filename inference: its own shape, same normalization rules ----
+    ck('campConventionNamesParse', JSON.stringify(DevArt.parseName('camp-wolf.png')) ===
+      JSON.stringify({ kind: 'camp', tribe: 'wolf' }), '');
+    ck('campCaseIsNormalizedNotRejected', JSON.stringify(DevArt.parseName('Camp-WOLF.PNG')) ===
+      JSON.stringify({ kind: 'camp', tribe: 'wolf' }), '');
+    ck('unknownTribesAreNeverGuessed', DevArt.parseName('camp-orcs.png') === null, '');
+    ck('campCanonicalNameIsLowercase', Assets.campName('flint') === 'camp-flint.png', '');
 
     // ---- inject / revert round-trip through the shipping path. The slot's
     // shipped state is whatever it is TODAY (procedural, or a real PNG that
@@ -296,6 +383,25 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
     ck('revertAllClearsEveryOverride', Object.keys(DevArt.overrides).length === 0 &&
       Sprites.building.house[0] === h1 && Sprites.building.house[1] === h2, '');
 
+    // ---- camp inject / revert round-trip — same shipping path (Assets.
+    // setCampArt), same override bookkeeping, but ONE sprite per tribe
+    // rather than a level pair, so revert has its own branch to prove out ----
+    {
+      const beforeCamp = Sprites.camp.woad;
+      const loadedBeforeCamp = !!Assets.loaded['camp-woad'];
+      const fakeCamp = document.createElement('canvas'); fakeCamp.width = 90; fakeCamp.height = 140;
+      DevArt.injectCamp('woad', fakeCamp, 'draft-woad.png');
+      ck('campInjectionReplacesTheLiveSlot',
+        Sprites.camp.woad === fakeCamp && !!fakeCamp._cfArt, '');
+      ck('thePanelListsTheCampOverride',
+        document.getElementById('devArtList').textContent.includes('camp-woad'), '');
+      DevArt.revert('camp-woad');
+      ck('campRevertRestoresTheShippedState',
+        Sprites.camp.woad === beforeCamp && !DevArt.overrides['camp-woad'] &&
+        !!Assets.loaded['camp-woad'] === loadedBeforeCamp,
+        loadedBeforeCamp ? 'shipped PNG restored' : 'procedural restored');
+    }
+
     // ---- a REAL drop event lands end-to-end (a genuine PNG File, a genuine
     // DragEvent on the window — the whole glue, not just the API below it) ----
     {
@@ -312,6 +418,23 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
         !!DevArt.overrides['stable-l1'] && spr instanceof HTMLImageElement && !!spr._cfArt,
         DevArt.overrides['stable-l1'] || 'drop never landed');
       ck('theDropUsesTheShippingAnchor', spr._cfArt && spr.height === 48 && spr.width === 32, '');
+      DevArt.revertAll();
+    }
+
+    // ---- and a camp-{tribe}.png drop lands the same way, into Sprites.camp ----
+    {
+      const cnv = document.createElement('canvas'); cnv.width = 40; cnv.height = 60;
+      const blob = await new Promise(r => cnv.toBlob(r, 'image/png'));
+      const file = new File([blob], 'camp-sea.png', { type: 'image/png' });
+      const dt = new DataTransfer(); dt.items.add(file);
+      dispatchEvent(new DragEvent('drop', { dataTransfer: dt }));
+      for (let i = 0; i < 40 && !DevArt.overrides['camp-sea']; i++)
+        await new Promise(r => setTimeout(r, 50));
+      const spr = Sprites.camp.sea;
+      ck('aDroppedCampPngLandsInItsSlot',
+        !!DevArt.overrides['camp-sea'] && spr instanceof HTMLImageElement && !!spr._cfArt,
+        DevArt.overrides['camp-sea'] || 'drop never landed');
+      ck('theCampDropUsesTheShippingAnchor', spr._cfArt && spr.height === 60 && spr.width === 40, '');
       DevArt.revertAll();
     }
 

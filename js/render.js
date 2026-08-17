@@ -5852,8 +5852,12 @@ const R = {
       if (gx < gvx0 || gx > gvx1 || gy < gvy0 || gy > gvy1) continue;
       if ((G.vis && G.vis[i]) || !S.map.explored[i]) continue;
       const snap = S.map.seenB[k];
+      // a remembered camp is still the home of whichever people held it —
+      // same routing bldSprite uses live (render.js:4136), keyed off the
+      // tribe stamped into the snapshot at G.updateVisibility time
       const spr = snap.key === 'wall' ? Sprites.wallMask[snap.level - 1][this.wallMaskAt(gx, gy)]
         : snap.key === 'gate' ? Sprites.gateMask[snap.level - 1][this.gateVerticalAt(gx, gy) ? 1 : 0]
+        : (snap.key === 'raidercamp' && Sprites.camp && Sprites.camp[snap.tribe]) ? Sprites.camp[snap.tribe]
         : (snap.owner === 'A' ? Sprites.buildingA : Sprites.building)[snap.key][snap.level - 1];
       const gs = Bld.size(snap) * TL;
       // a remembered tower keeps its bond to the line, same as the wall

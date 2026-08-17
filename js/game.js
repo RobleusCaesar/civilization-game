@@ -432,7 +432,10 @@ const G = {
         const ti = MapGen.idx(b.x, b.y);
         const sb = S.map.seenB[ti];
         if (!sb || sb.key !== b.key || sb.level !== b.level)
-          S.map.seenB[ti] = { key: b.key, level: b.level, owner: b.owner };
+          // tribe rides along for a raider camp — a fog ghost of one keeps
+          // showing its people's own look (render.js fog-ghost loop), not
+          // a generic fallback; undefined for every other building, harmless
+          S.map.seenB[ti] = { key: b.key, level: b.level, owner: b.owner, tribe: b.tribe };
         if (i !== ti && S.map.seenB[i]) delete S.map.seenB[i];
       } else if (S.map.seenB[i]) delete S.map.seenB[i];
     }

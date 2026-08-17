@@ -21,15 +21,19 @@
     overrides: {},   // slot key -> dropped filename (what the panel lists)
     _saved: {},      // slot key -> { p, a } — the SHIPPED drawables, for revert
 
-    // filename -> {id, lv} per the convention, or null (case-insensitive in,
-    // canonical lowercase out — Pages is case-sensitive, people are not)
+    // filename -> {kind:'building', id, lv} or {kind:'camp', tribe} per the
+    // two conventions, or null (case-insensitive in, canonical lowercase out
+    // — Pages is case-sensitive, people are not)
     parseName(name) {
-      const m = String(name).toLowerCase().match(/^([a-z0-9]+)-l(\d+)\.png$/);
+      const lower = String(name).toLowerCase();
+      const mc = lower.match(/^camp-([a-z0-9]+)\.png$/);
+      if (mc) return Assets.campTribes().indexOf(mc[1]) < 0 ? null : { kind: 'camp', tribe: mc[1] };
+      const m = lower.match(/^([a-z0-9]+)-l(\d+)\.png$/);
       if (!m) return null;
       const id = m[1], lv = +m[2];
       if (Assets.artIds().indexOf(id) < 0) return null;
       if (lv < 1 || lv > CFG.BUILDINGS[id].levels.length) return null;
-      return { id, lv };
+      return { kind: 'building', id, lv };
     },
     canonicalName(id, lv) { return Assets.artName(id, lv); },
 
@@ -43,9 +47,30 @@
       this._renderPanel();
       return true;
     },
+    // a camp's slot is one PNG for the whole people, not an {id,lv} pair —
+    // same shipping path (Assets.setCampArt), same override/revert bookkeeping
+    injectCamp(tribe, img, name) {
+      const k = Assets.campSlotKey(tribe);
+      if (!this._saved[k])
+        this._saved[k] = { spr: Sprites.camp[tribe], art: Assets.art[k], loaded: !!Assets.loaded[k] };
+      if (!Assets.setCampArt(tribe, img, null)) return false;
+      this.overrides[k] = name || Assets.campName(tribe);
+      this._renderPanel();
+      return true;
+    },
     revert(k) {
       const s = this._saved[k];
       if (!s) return false;
+      if (k.indexOf('camp-') === 0) {
+        const tribe = k.slice('camp-'.length);
+        Sprites.camp[tribe] = s.spr;
+        if (s.loaded) { Assets.art[k] = s.art; Assets.loaded[k] = true; }
+        else { delete Assets.art[k]; delete Assets.loaded[k]; if (s.art === null) Assets.art[k] = null; }
+        delete this._saved[k];
+        delete this.overrides[k];
+        this._renderPanel();
+        return true;
+      }
       const m = k.match(/^(.+)-l(\d+)$/), id = m[1], lv = +m[2];
       Sprites.building[id][lv - 1] = s.p;
       Sprites.buildingA[id][lv - 1] = s.a;
@@ -57,6 +82,21 @@
       return true;
     },
     revertAll() { for (const k of Object.keys(this.overrides)) this.revert(k); },
+
+    // every slot the picker / canonical-filename dropdown can offer, building
+    // and camp alike — value is 'b|id|lv' or 'c|tribe', label the canonical
+    // filename each would ship under
+    _allSlots() {
+      const out = Assets.artSlots().map(s => ({ value: 'b|' + s.id + '|' + s.lv, label: Assets.artName(s.id, s.lv) }));
+      for (const tribe of Assets.campTribes()) out.push({ value: 'c|' + tribe, label: Assets.campName(tribe) });
+      return out;
+    },
+    // inject whatever the picker/panel dropdown's value string names
+    _injectByValue(v, img, name) {
+      if (v.indexOf('c|') === 0) return this.injectCamp(v.slice(2), img, name);
+      const [, id, lv] = v.split('|');
+      return this.inject(id, +lv, img, name);
+    },
 
     _pickQueue: [],
     _queuePicker(name, img) {
@@ -74,10 +114,10 @@
       box.style.cssText = 'background:#2a2118;border:1px solid #6b5636;padding:14px 16px;max-width:320px';
       const sel = document.createElement('select');
       sel.style.cssText = 'width:100%;margin:8px 0;font:13px monospace';
-      for (const s of Assets.artSlots()) {
+      for (const s of this._allSlots()) {
         const o = document.createElement('option');
-        o.value = s.id + '|' + s.lv;
-        o.textContent = this.canonicalName(s.id, s.lv);
+        o.value = s.value;
+        o.textContent = s.label;
         sel.appendChild(o);
       }
       const mk = (label, fn) => {
@@ -93,11 +133,10 @@
         this._showPicker();          // next queued file, if any
       };
       box.innerHTML = '<div>"' + job.name.replace(/[<>&]/g, '') +
-        '" doesn’t match {id}-l{level}.png — pick its slot:</div>';
+        '" doesn’t match {id}-l{level}.png or camp-{tribe}.png — pick its slot:</div>';
       box.appendChild(sel);
       box.appendChild(mk('Use this slot', () => {
-        const [id, lv] = sel.value.split('|');
-        this.inject(id, +lv, job.img, job.name);
+        this._injectByValue(sel.value, job.img, job.name);
         done();
       }));
       box.appendChild(mk('Skip', done));
@@ -143,8 +182,9 @@
         const img = new Image();
         img.onload = () => {
           const slot = DevArt.parseName(f.name);
-          if (slot) DevArt.inject(slot.id, slot.lv, img, f.name);
-          else DevArt._queuePicker(f.name, img);
+          if (!slot) { DevArt._queuePicker(f.name, img); return; }
+          if (slot.kind === 'camp') DevArt.injectCamp(slot.tribe, img, f.name);
+          else DevArt.inject(slot.id, slot.lv, img, f.name);
         };
         img.src = URL.createObjectURL(f);   // in-memory only; gone on refresh
       }
@@ -168,16 +208,18 @@
     document.body.appendChild(p);
     DevArt._panel = p;
     const sel = p.querySelector('#devArtSlot');
-    for (const s of Assets.artSlots()) {
+    for (const s of DevArt._allSlots()) {
       const o = document.createElement('option');
-      o.value = s.id + '|' + s.lv;
-      o.textContent = DevArt.canonicalName(s.id, s.lv);
+      o.value = s.value;
+      o.textContent = s.label;
       sel.appendChild(o);
     }
     p.querySelector('#devArtRevertAll').onclick = () => DevArt.revertAll();
     p.querySelector('#devArtCopy').onclick = async () => {
-      const [id, lv] = sel.value.split('|');
-      const name = DevArt.canonicalName(id, +lv);
+      const v = sel.value;
+      let name;
+      if (v.indexOf('c|') === 0) name = Assets.campName(v.slice(2));
+      else { const [, id, lv] = v.split('|'); name = DevArt.canonicalName(id, +lv); }
       try { await navigator.clipboard.writeText(name); }
       catch (e) {
         // clipboard API needs a secure context — fall back to a selectable box

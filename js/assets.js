@@ -29,6 +29,11 @@
    ?dev=1 (js/dev.js) drops PNGs into these same slots live, through
    setBuildingArt below, so the preview is byte-for-byte what ships.
 
+   A raider camp is the one exception to "one id, one PNG": its look belongs
+   to its PEOPLE (wolf/flint/broken/woad/sea — CFG.TRIBES, not to be confused
+   with the two player factions above), so it gets its own parallel
+   convention, assets/buildings/camp-{tribe}.png, just below.
+
    The legacy `_slot` key grammar and drawSprite() survive for the
    procedural tables they address (misc/ work-site art, ui/card motifs) —
    only the atlas manifest is gone. */
@@ -41,12 +46,63 @@ const Assets = {
   ui: { card: {} },  // ui/card/<key> drawables (Origin Cards art)
 
   ART_DIR: 'assets/buildings/',
-  /* what the convention does NOT cover, and why (ART_PLAN.md): walls and
-     gates tile from 16-mask atlases (one rectangle cannot be a curtain);
-     the wonder's art is per-monument, rolled per run (one PNG would stamp
-     all ten); a raider camp's look belongs to its PEOPLE (Sprites.camp by
-     tribe, five looks for one building id). */
+  /* what the {id}-l{level}.png convention does NOT cover, and why
+     (ART_PLAN.md): walls and gates tile from 16-mask atlases (one rectangle
+     cannot be a curtain); the wonder's art is per-monument, rolled per run
+     (one PNG would stamp all ten); a raider camp's look belongs to its
+     PEOPLE, not its building id — it has its OWN convention just below
+     (camp-{tribe}.png), because one id would otherwise need five looks. */
   EXCLUDE: ['wall', 'gate', 'wonder', 'raidercamp'],
+
+  /* ---- CAMP ART: one PNG per PEOPLE, not per building id ----
+
+       assets/buildings/camp-{tribe}.png
+
+     {tribe} is a CFG.TRIBES key (wolf, flint, broken, woad, sea today) —
+     derived, never hand-kept, so a new tribe added to CFG.TRIBES gets a slot
+     for free. A hit replaces Sprites.camp[tribe] (the drawable R.bldSprite
+     and the panel icon already read by tribe — see render.js/ui.js); a miss
+     leaves the procedural TRIBE_CAMP look. Same _cfArt marker, same sidecar,
+     same cache-buster, same ?dev=1 injection path as building art — just a
+     different filename shape and a different install point. */
+  campTribes() { return CFG.TRIBES.map(t => t.key); },
+  campSlotKey(tribe) { return 'camp-' + tribe; },
+  campName(tribe) { return this.campSlotKey(tribe).toLowerCase() + '.png'; },
+  campUrl(tribe) { return this.ART_DIR + this.campName(tribe) + '?v=' + (CFG.ART_V || 1); },
+
+  _tryLoadCamp(tribe) {
+    const img = new Image();
+    const k = this.campSlotKey(tribe);
+    img.onload = async () => {
+      let meta = null;
+      if (location.protocol !== 'file:') try {
+        const r = await fetch(this.ART_DIR + k + '.json?v=' + (CFG.ART_V || 1));
+        if (r.ok) meta = await r.json();
+      } catch (e) { /* no sidecar — defaults */ }
+      if (window.DevArt && DevArt.overrides && DevArt.overrides[k]) return;
+      this.setCampArt(tribe, img, meta);
+    };
+    img.onerror = () => { this.art[k] = null; };
+    img.src = this.campUrl(tribe);
+  },
+
+  /* install a PNG as one people's camp look — startup and ?dev=1 both land
+     HERE. Sprites.camp[tribe] is what R.bldSprite (render.js) and the panel
+     icon (ui.js) already read by tribe; no other code needed to change for
+     the swap to take. */
+  setCampArt(tribe, img, meta) {
+    if (this.campTribes().indexOf(tribe) < 0 || !Sprites.camp) return false;
+    img._cfArt = {
+      ox: (meta && isFinite(+meta.offsetX)) ? +meta.offsetX : 0,
+      oy: (meta && isFinite(+meta.offsetY)) ? +meta.offsetY : 0,
+      scale: (meta && isFinite(+meta.scale) && +meta.scale > 0) ? +meta.scale : 1,
+    };
+    Sprites.camp[tribe] = img;
+    const k = this.campSlotKey(tribe);
+    this.art[k] = img;
+    this.loaded[k] = true;
+    return true;
+  },
   // standalone PROPS — composited sprites that are not a building's own
   // rectangle. One fixed URL per prop key; same swap-in rules as buildings.
   PROPS: { 'misc/campfireTc': 'assets/misc/campfire-tc.png' },
@@ -109,10 +165,11 @@ const Assets = {
 
   async init() {
     for (const s of this.artSlots()) this._tryLoad(s.id, s.lv);
+    for (const tribe of this.campTribes()) this._tryLoadCamp(tribe);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key]);
     for (const k of Object.keys(T)) this._tryTerrain(T[k], 1);
     this.ready = true;
-    return { ok: true, data: { slots: this.artSlots().length } };
+    return { ok: true, data: { slots: this.artSlots().length + this.campTribes().length } };
   },
 
   /* probe one ground slot; on a hit, install it and reach for the next
