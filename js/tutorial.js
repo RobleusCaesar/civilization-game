@@ -66,7 +66,7 @@ const Tutorial = {
     gold: 'Your hall trickles a little <b>gold</b> each day. Gold seams lie far out in wild country — rich, and held by whoever dares.',
     train: 'Tap your Town Center and <b>train a new villager</b>. Hands are the tribe’s real wealth — keep food ahead of mouths.',
     house: 'Open the <b>Build</b> menu and raise a <b>House</b>. Each roof shelters four more of your people.',
-    fog: 'The dark holds more than you can see — <b>wild bands</b>, beasts that take lone wanderers, deep water. Scout carefully, and don’t walk far alone.',
+    fog: 'All that <b>darkness</b> is land your people have not walked yet — and it is not empty: wild bands and beasts roam it. Scout carefully, and don’t send anyone far alone.',
     tcPath: 'The hall rises on the town’s shoulders: finish <b>three buildings</b> at its level and it may take a second storey.',
     winCond: () => (S.peace
       ? 'Two roads to victory: raze the rival’s hall, or raise the <b>Ancient Wonder</b> and win without a war. The rival is racing for their own.'
@@ -171,7 +171,11 @@ const Tutorial = {
       anchor() { const tc = Tutorial._tc(); return tc && { x: tc.x + 1, y: tc.y + 1, r: 1.5 }; },
       adv: () => S.stats.trained > 0 ||
         S.buildings.some(b => b.owner === 'P' && b.queue && b.queue.length > 0) },
-    { id: 'fog', anchor: () => ({ sel: '#miniWrap' }) },
+    // the fog lesson BORROWS THE CAMERA: with the town filling the screen the
+    // "darkness" it names is nowhere in sight and the note reads as abstract —
+    // so it glides the zoom out until the black edges show, and hands the
+    // zoom back when answered. Any touch cancels both (the player's camera).
+    { id: 'fog', anchor: null, zoomOut: true },
     { id: 'tcPath',
       anchor() { const tc = Tutorial._tc(); return tc && { x: tc.x + 1, y: tc.y + 1, r: 1.5 }; } },
     { id: 'winCond', anchor: null },
@@ -282,7 +286,7 @@ const Tutorial = {
   // of transient state so nothing (a pan, a memo, a shown note) leaks across
   onWorldChange() {
     this.simScale = 1;
-    this._show = null; this._pan = null; this._memo = {};
+    this._show = null; this._pan = null; this._zRestore = 0; this._memo = {};
     this._advT = this._evT = this._gapT = 0; this._skipArm = 0; this._lastEvAt = -1e9;
     this._removeDom();
   },
@@ -395,10 +399,37 @@ const Tutorial = {
       const n = this.STEPS.findIndex(s => s.id === id);
       this._el.num.textContent = (n + 1) + '/' + this.STEPS.length;
     } else this._el.num.textContent = '';
-    // glide to a world anchor the player can't currently see
+    // glide to a world anchor the player can't currently see — or, for the
+    // fog lesson, glide the ZOOM out until the unexplored dark is in frame
+    if (def && def.zoomOut) { this._zoomToFog(); return; }
     const a = this._anchor();
     if (a && a.u !== undefined) { const u = Units.get(a.u); if (u) this._panTo(u.x, u.y); }
     else if (a && a.x !== undefined) this._panTo(a.x, a.y);
+  },
+
+  // widen the view until the explored ground plus a band of fog fits on
+  // screen, centered on the hall; remember the zoom so the answered note can
+  // hand it back. Only ever zooms OUT, never past the pinch floor (0.5).
+  _zoomToFog() {
+    const tc = this._tc();
+    if (!tc) return;
+    const ex = S.map.explored;
+    let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
+    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++)
+      if (ex[y * CFG.W + x]) {
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+    if (x1 < 0) return;
+    const M = 5;   // tiles of darkness shown beyond the known ground
+    const bw = (x1 - x0 + 1 + M * 2) * CFG.TILE;
+    const bh = (y1 - y0 + 1 + M * 2) * CFG.TILE;
+    const usableH = Math.max(160, R.viewH() - (R.topReserve || 0) - (R.bottomReserve || 0));
+    let tz = Math.min(R.viewW() / bw, usableH / bh);
+    tz = Math.max(0.5, Math.min(R.cam.z, tz));
+    if (tz >= R.cam.z - 0.02) return;   // the dark is already in frame
+    this._zRestore = R.cam.z;
+    this._pan = { t: 0, dur: 0.6, cx: tc.x + 1, cy: tc.y + 1, sz: R.cam.z, tz };
   },
 
   _defOf() {
@@ -422,6 +453,12 @@ const Tutorial = {
     UI.cue('ok');
     this._show = null;
     this._gapT = this.BREATH;   // a beat before the next note appears
+    // a note that borrowed the zoom hands it back on its way out
+    if (this._zRestore) {
+      const tc = this._tc();
+      if (tc) this._pan = { t: 0, dur: 0.6, cx: tc.x + 1, cy: tc.y + 1, sz: R.cam.z, tz: this._zRestore };
+      this._zRestore = 0;
+    }
     this._hideAll();
     // guidance has run its course → go fully cold (zero further cost)
     if (t.phase === 2 && (S.day > 150 || this.EVENTS.every(e => t.fired[e.id]))) {
@@ -534,6 +571,7 @@ const Tutorial = {
     // and any touch cancels the camera glide (the player owns the camera)
     this._onPtr = e => {
       this._pan = null;
+      this._zRestore = 0;   // the player took the camera — never yank it back
       if (this._show && performance.now() - this._shownAt > 800) this._released = true;
     };
     (R.cv || document.getElementById('c')).addEventListener('pointerdown', this._onPtr, { passive: true });
@@ -566,17 +604,21 @@ const Tutorial = {
     this._ensureDom();
     const el = this._el;
     el.ui.style.display = 'block';
-    // the camera glide (cancelled by any touch)
+    // the camera glide (cancelled by any touch) — a plain pan, or the fog
+    // lesson's zoom, which re-centers on its point at every interpolated z
     if (this._pan) {
       const p = this._pan;
       p.t += dt / p.dur;
-      if (p.t >= 1) { R.cam.x = p.tx; R.cam.y = p.ty; this._pan = null; }
-      else {
-        const k = 1 - Math.pow(1 - p.t, 3);   // ease-out cubic
+      const k = p.t >= 1 ? 1 : 1 - Math.pow(1 - p.t, 3);   // ease-out cubic
+      if (p.tz !== undefined) {
+        R.cam.z = p.sz + (p.tz - p.sz) * k;
+        R.centerOn(p.cx, p.cy);                            // clamps itself
+      } else {
         R.cam.x = p.sx + (p.tx - p.sx) * k;
         R.cam.y = p.sy + (p.ty - p.sy) * k;
+        R.clampCam();
       }
-      R.clampCam();
+      if (p.t >= 1) this._pan = null;
     }
     const a = this._anchor();
     let hole = null, offDir = null;

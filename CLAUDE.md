@@ -3249,7 +3249,13 @@ an entry, `UI.sel` holding a villager), never counters captured at show
 time. **It never takes control**: input is never blocked, the camera glide
 is ~0.45s and any touch cancels it, and the sim runs SLOW (×0.2 via
 `Tutorial.simScale`, read in `G.frame`) while a note is up — never paused,
-and a canvas touch 800ms after the note releases full speed. **Zero cost
+and a canvas touch 800ms after the note releases full speed. **The fog
+lesson BORROWS the camera** (`zoomOut: true` → `Tutorial._zoomToFog`):
+with the town filling the screen the "darkness" it names is nowhere in
+sight, so the note glides the zoom out until the explored ground plus a
+band of fog fits the view (only ever OUT, never past the pinch floor 0.5)
+and hands the zoom back when answered (`_zRestore`); any touch cancels
+both and the restore is forfeited — the player took the camera. **Zero cost
 off**: everything gates on `S.tut && S.tut.on` at the G.frame call sites;
 no DOM, no listeners, no scans exist until a run opts in, and skip/completion
 remove them again. **State split**: `S.tut` (phase/step/done/fired/the

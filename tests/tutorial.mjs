@@ -294,6 +294,33 @@ const out = await p.evaluate(async () => {
       JSON.stringify(Tutorial._show));
   }
 
+  // ---- the fog lesson borrows the camera, and gives it back ----
+  {
+    fresh('116', 'calm', true);
+    for (const st of Tutorial.STEPS)
+      if (['welcome', 'resources', 'tapVillager', 'gatherWood', 'gatherFood',
+           'gatherStone', 'gold', 'house', 'train'].includes(st.id)) S.tut.done[st.id] = 1;
+    const z0 = R.cam.z;
+    tick(2, 0.3);                    // presents fog…
+    tick(30, 0.05);                  // …and the glide runs out
+    ck('fogShowsAndZoomsOut', Tutorial._show && Tutorial._show.id === 'fog' && R.cam.z < z0 - 0.05,
+      JSON.stringify(Tutorial._show) + ' z ' + z0.toFixed(2) + '→' + R.cam.z.toFixed(2));
+    // the darkness is genuinely in frame: some visible tile is unexplored
+    const seesDark = (() => {
+      const TL = CFG.TILE, z = R.cam.z;
+      const tx0 = Math.max(0, (R.cam.x / TL) | 0), ty0 = Math.max(0, (R.cam.y / TL) | 0);
+      const tx1 = Math.min(CFG.W - 1, ((R.cam.x + R.viewW() / z) / TL) | 0);
+      const ty1 = Math.min(CFG.H - 1, ((R.cam.y + R.viewH() / z) / TL) | 0);
+      for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++)
+        if (!S.map.explored[y * CFG.W + x]) return true;
+      return false;
+    })();
+    ck('theDarkIsOnScreen', seesDark, 'view holds no unexplored tile');
+    clickNext();                     // answers it; the give-back glide runs in these ticks
+    tick(10, 0.1);
+    ck('zoomHandedBack', Math.abs(R.cam.z - z0) < 0.05, 'z ' + R.cam.z.toFixed(2) + ' vs ' + z0.toFixed(2));
+  }
+
   // ---- phase-2 practice notes: the first wall, the first siege sign ----
   {
     fresh('115', 'moderate', true);
