@@ -114,8 +114,8 @@ const out = await p.evaluate(async () => {
     // THE BREATH: answering a note leaves a quiet beat before the next one
     document.getElementById('tutNext').click();
     tick(1, 0.1);
-    ck('breathAfterNext', Tutorial._show === null && Tutorial._gapT > 0,
-      JSON.stringify(Tutorial._show) + ' gap=' + Tutorial._gapT.toFixed(2));
+    ck('breathAfterNext', Tutorial._show === null && Tutorial._gapT > 0 && Tutorial.BREATH === 1.0,
+      JSON.stringify(Tutorial._show) + ' gap=' + Tutorial._gapT.toFixed(2) + ' BREATH=' + Tutorial.BREATH);
     tick(6, 0.3);
     ck('nextAdvances', S.tut.done.welcome === 1 && S.tut.step === 1, JSON.stringify(S.tut.done));
     ck('secondStepShows', Tutorial._show && Tutorial._show.id === 'resources', '');
@@ -185,6 +185,27 @@ const out = await p.evaluate(async () => {
                  return Math.abs(r.left - (c.left - 5)) < 2 && Math.abs(r.width - (c.width + 10)) < 4; })();
       ck('houseRingsTheCard', !!okAnchor,
         card ? 'card visible=' + (card.offsetParent !== null) + ' ring=' + ring.style.display : 'no card');
+    }
+    // …and the lesson's first house is raised in a blink: place a REAL site
+    // and the next scan finishes it — once, and only once
+    {
+      const tc = S.buildings.find(o => o.owner === 'P' && o.key === 'tc');
+      S.res.wood = 500;
+      const put = () => {
+        for (let r = 2; r < 9; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+          const x = tc.x + dx, y = tc.y + dy;
+          if (Bld.canPlace('P', 'house', x, y).ok) return Bld.place('P', 'house', x, y);
+        }
+        return null;
+      };
+      const h1 = put();
+      tick(2, 0.2);
+      ck('firstHouseInstant', !!h1 && !(h1.construction > 0) && h1.hp === h1.maxhp && S.tut.houseGiven === 1,
+        h1 ? 'construction=' + h1.construction + ' given=' + S.tut.houseGiven : 'no site placed');
+      const h2 = put();
+      tick(2, 0.2);
+      ck('secondHouseBuildsForReal', !!h2 && h2.construction > 0,
+        h2 ? 'construction=' + h2.construction : 'no site placed');
     }
   }
 

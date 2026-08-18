@@ -3236,12 +3236,18 @@ stretches (a held step, phase 2), ≥25s apart — except the scout, whose
 spacing gate initializes to `-1e9`, NEVER 0 — `performance.now()` starts
 near zero, so a 0 initial value silently blocks every note for the first
 25 seconds of a page load (found by the contract test, invisible in play).
-**And every answered note leaves A BREATH** (`Tutorial.BREATH`, 1.4s of
+**And every answered note leaves A BREATH** (`Tutorial.BREATH`, 1s of
 `_gapT`): completing one note and presenting the next in the same frame
 read as being rushed (playtest feedback), so both presentation gates hold
 for the beat — the spotlight drops, the world runs at full speed, then the
 next note arrives. Any test that answers a note and asserts the next one
-must tick THROUGH the breath.
+must tick THROUGH the breath. **The lesson's first house is raised in a
+blink** (`S.tut.houseGiven`, the check at the top of `_scanSteps`): the
+house step leads straight into training, which needs the roof FINISHED
+for the room it grants — so the first house site laid while the house
+step is untaught completes via the real `Bld.finish` on the next scan.
+One house only, tutorial only, and a start-package house that satisfied
+the step early earns nothing; every later house builds at its real pace.
 **Out-of-order tolerance**: every later step's `adv` is scanned in the
 background, so a deed done early skips its telling — which is why advance
 conditions are STATELESS reads of S (a task on a forest tile, a queue with

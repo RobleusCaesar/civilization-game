@@ -37,7 +37,7 @@ const Tutorial = {
   /* ---- transient state (never saved; onWorldChange resets all of it) ---- */
   simScale: 1,        // read by G.frame; 0.2 while a note is up and unreleased
   SLOW: 0.2,
-  BREATH: 1.4,        // quiet seconds between one note answered and the next
+  BREATH: 1.0,        // quiet seconds between one note answered and the next
                       // appearing — instant chaining read as being rushed
   _dom: false,        // overlay elements exist
   _show: null,        // {kind:'step'|'event', id} currently displayed
@@ -334,6 +334,17 @@ const Tutorial = {
     if (this._show && this._show.kind === 'step') {
       const def = this.STEPS.find(s => s.id === this._show.id);
       if (def && def.when && !def.when()) { this._show = null; this._hideAll(); }
+    }
+    // THE LESSON'S FIRST HOUSE IS RAISED IN A BLINK: the house step leads
+    // straight into training, and training needs the roof FINISHED for the
+    // room it grants — waiting out a real build read as the tutorial
+    // stalling. One house only, and only the one the lesson asked for
+    // (a start-package house that satisfied the step early earns nothing);
+    // every later house builds at its real pace. Runs BEFORE the adv scan,
+    // so the site the player just laid is finished before the step books it.
+    if (!t.houseGiven && !t.done.house) {
+      const site = S.buildings.find(b => b.owner === 'P' && b.key === 'house' && b.construction > 0);
+      if (site) { t.houseGiven = 1; Bld.finish(site); }
     }
     // OUT-OF-ORDER: anything already done in the world is done in the book
     for (let i = t.step; i < this.STEPS.length; i++) {
