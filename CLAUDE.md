@@ -259,6 +259,14 @@ half the time), and both go back to the seam. Coming back lives in
 `Bld.finishUpgrade` → `Bld.resumeCrew`, not in the builder's own tick: with two
 builders only one crosses the finish line, and which one got there first must
 not decide who keeps their job.
+**And a crew stands SIDE BY SIDE, never in a stack** (same test): every
+builder paths to the same goal tile, so a multi-hand site drew ONE villager
+and the crew size was unreadable. Builders sharing a tile ease apart to
+sub-tile slots (0.25/0.75 for a pair — the station's own two-hand rule —
+evenly between for more, alternate rows staggered), in the build task's
+standing branch in units.js. Only within the tile they already legally stand
+on, and a slot that would carry a builder past the at-site distance check is
+skipped — taking it would flip the builder back into pathing and jitter.
 
 **Foe notes** (`tests/foe-notes.mjs`): telegraphs of the rival's plans
 (campaigns, war camps, marching hosts, harassment sorties) and barbarian

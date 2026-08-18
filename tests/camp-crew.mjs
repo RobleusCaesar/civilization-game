@@ -124,6 +124,41 @@ const out = await p.evaluate(() => {
     const bn = S.units.filter(u => u.owner === 'P' && u.task && u.task.type === 'build' && u.task.id === camp.id).length;
     ck('empty camp pulls a builder', bn === 1, `${bn} builder(s)`);
   }
+
+  /* A CREW STANDS SIDE BY SIDE, NEVER IN A STACK (a reported QoL ask): every
+     builder paths to the same goal tile, so a multi-hand site drew ONE
+     villager and the crew size was unreadable. Builders sharing a tile now
+     ease apart to sub-tile slots, the station's own two-hand rule — and only
+     within the tile they already stand on, so nothing about pathing or the
+     at-site distance check moves. */
+  {
+    G.newGame('cw5', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.res = { food: 9000, wood: 9000, stone: 9000, gold: 9000 };
+    const tc = Bld.tcOf('P');
+    const spot = MapGen.findNear(tc.x + 4, tc.y + 4, 12, (x, y) => Bld.tileFree(x, y) && !Bld.at(x, y));
+    const site = Bld.place('P', 'house', spot.x, spot.y);   // a real work site, not instant
+    for (const u of S.units) if (u.owner === 'P' && Units.isVillager(u)) u.task = null;
+    const hands = [];
+    for (let i = 0; i < 3; i++) {
+      const v = Units.spawn('villager', 'P', site.x + 0.5, site.y - 1 + 0.5);
+      Units.assignBuild(v, site); hands.push(v);
+    }
+    site.construction = 999;   // hold the site open while they settle
+    let t = 0; const dt = 1 / 30;
+    while (t < 6) { Units.update(dt); t += dt; }
+    let minGap = 1e9, sameTile = 0;
+    for (let i = 0; i < hands.length; i++) for (let j = i + 1; j < hands.length; j++) {
+      const a = hands[i], z = hands[j];
+      minGap = Math.min(minGap, Math.hypot(a.x - z.x, a.y - z.y));
+      if ((a.x | 0) === (z.x | 0) && (a.y | 0) === (z.y | 0)) sameTile++;
+    }
+    ck('a building crew spreads out', minGap >= 0.18,
+      `closest pair ${minGap.toFixed(2)} tiles apart (${sameTile} pair(s) share a tile)`);
+    const atSite = hands.every(u =>
+      Math.hypot(Bld.cx(site) - u.x, Bld.cy(site) - u.y) <= 1.55 + Bld.reach(site));
+    ck('and every hand still works the site', atSite && hands.every(u => u.task && u.task.type === 'build'),
+      'the spread never carries a builder out of working range');
+  }
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

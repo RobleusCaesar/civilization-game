@@ -1491,6 +1491,28 @@ const Units = {
           else if (!this.setPath(u, b.x, b.y)) u.task = null;
         } else {
           u.path = null;
+          /* A CREW STANDS SIDE BY SIDE, NEVER IN A STACK. Every builder paths
+             to the same goal tile, so a two-hand site drew ONE villager and
+             the player couldn't count the crew. Same cure as the station's
+             two-hand rule above: builders sharing a TILE ease apart to
+             sub-tile slots (0.25/0.75 for a pair, evenly between for more,
+             alternate rows staggered so three don't read as a picket line).
+             Only within the tile they already legally stand on — nobody is
+             walked anywhere — and a slot is skipped when taking it would
+             carry the builder out of working range of the site (the ease
+             would fight the distance check above and jitter). */
+          const mates = S.units.filter(o => o !== u && o.task && o.task.type === 'build' &&
+            o.task.id === b.id && (o.x | 0) === (u.x | 0) && (o.y | 0) === (u.y | 0));
+          if (mates.length) {
+            const crew = [u, ...mates].sort((a, z) => a.id - z.id);
+            const i = crew.indexOf(u), n = crew.length;
+            const fx = (u.x | 0) + 0.25 + 0.5 * i / (n - 1);
+            const fy = (u.y | 0) + 0.55 + (n > 2 ? ((i % 2) ? 0.14 : -0.1) : 0);
+            if (Math.hypot(Bld.cx(b) - fx, Bld.cy(b) - fy) <= 1.55 + Bld.reach(b)) {
+              u.x += (fx - u.x) * Math.min(1, dt * 4);
+              u.y += (fy - u.y) * Math.min(1, dt * 4);
+            }
+          }
           const dtDays = dt * 1000 / CFG.DAY_MS;
           if (b.construction > 0) {
             b.construction -= dtDays;
