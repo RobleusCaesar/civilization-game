@@ -103,6 +103,42 @@ const Assets = {
     this.loaded[k] = true;
     return true;
   },
+  /* ---- CAMP PROP ART: override ONE prop of one people's dressing ----
+
+       assets/buildings/camp-{tribe}-prop{1..4}.png
+
+     The index is the prop's position in that people's set — the order
+     CLAUDE.md lists them in (e.g. wolf: 1 skull pike, 2 pelt frame, 3 bone
+     heap, 4 strung game). A hit replaces exactly that prop; the other three
+     keep their procedural look, so a set can be upgraded one file at a
+     time. Drawn by R.drawCampDress into a ONE-TILE box — author at 64 or
+     128px square on a transparent ground, feet at the bottom. Same
+     cache-buster and the same ?dev=1 injection path as every other PNG. */
+  CAMP_PROP_N: 4,
+  campPropSlotKey(tribe, i) { return 'camp-' + tribe + '-prop' + i; },
+  campPropName(tribe, i) { return this.campPropSlotKey(tribe, i).toLowerCase() + '.png'; },
+  campPropUrl(tribe, i) { return this.ART_DIR + this.campPropName(tribe, i) + '?v=' + (CFG.ART_V || 1); },
+  campProps: {},               // tribe -> { [1..4]: img }
+  _tryLoadCampProp(tribe, i) {
+    const img = new Image();
+    const k = this.campPropSlotKey(tribe, i);
+    img.onload = () => {
+      if (window.DevArt && DevArt.overrides && DevArt.overrides[k]) return;
+      this.setCampPropArt(tribe, i, img);
+    };
+    img.onerror = () => { this.art[k] = null; };
+    img.src = this.campPropUrl(tribe, i);
+  },
+  setCampPropArt(tribe, i, img) {
+    if (this.campTribes().indexOf(tribe) < 0) return false;
+    i = +i;
+    if (!(i >= 1 && i <= this.CAMP_PROP_N)) return false;
+    (this.campProps[tribe] = this.campProps[tribe] || {})[i] = img;
+    const k = this.campPropSlotKey(tribe, i);
+    this.art[k] = img;
+    this.loaded[k] = true;
+    return true;
+  },
   // standalone PROPS — composited sprites that are not a building's own
   // rectangle. One fixed URL per prop key; same swap-in rules as buildings.
   PROPS: { 'misc/campfireTc': 'assets/misc/campfire-tc.png' },
@@ -208,7 +244,10 @@ const Assets = {
 
   async init() {
     for (const s of this.artSlots()) this._tryLoad(s.id, s.lv);
-    for (const tribe of this.campTribes()) this._tryLoadCamp(tribe);
+    for (const tribe of this.campTribes()) {
+      this._tryLoadCamp(tribe);
+      for (let i = 1; i <= this.CAMP_PROP_N; i++) this._tryLoadCampProp(tribe, i);
+    }
     for (const outcome of this.ENDGAME_OUTCOMES)
       for (const mode of this.endgameModes()) this._tryEndgame(outcome, mode, 1);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key]);

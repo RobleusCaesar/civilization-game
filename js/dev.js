@@ -26,6 +26,10 @@
     // — Pages is case-sensitive, people are not)
     parseName(name) {
       const lower = String(name).toLowerCase();
+      // the PROP pattern first — the plain camp match would eat it otherwise
+      const mp = lower.match(/^camp-([a-z0-9]+)-prop([0-9])\.png$/);
+      if (mp) return (Assets.campTribes().indexOf(mp[1]) < 0 || +mp[2] < 1 || +mp[2] > Assets.CAMP_PROP_N)
+        ? null : { kind: 'campProp', tribe: mp[1], i: +mp[2] };
       const mc = lower.match(/^camp-([a-z0-9]+)\.png$/);
       if (mc) return Assets.campTribes().indexOf(mc[1]) < 0 ? null : { kind: 'camp', tribe: mc[1] };
       const m = lower.match(/^([a-z0-9]+)-l(\d+)\.png$/);
@@ -58,9 +62,34 @@
       this._renderPanel();
       return true;
     },
+    // one prop of one people's dressing — same shipping path
+    // (Assets.setCampPropArt), same override/revert bookkeeping
+    injectCampProp(tribe, i, img, name) {
+      const k = Assets.campPropSlotKey(tribe, i);
+      if (!this._saved[k])
+        this._saved[k] = { prop: (Assets.campProps[tribe] || {})[i],
+                           art: Assets.art[k], loaded: !!Assets.loaded[k] };
+      if (!Assets.setCampPropArt(tribe, i, img)) return false;
+      this.overrides[k] = name || Assets.campPropName(tribe, i);
+      this._renderPanel();
+      return true;
+    },
     revert(k) {
       const s = this._saved[k];
       if (!s) return false;
+      // the PROP branch first — the camp branch's prefix test would eat it
+      const kp = k.match(/^camp-([a-z0-9]+)-prop([0-9])$/);
+      if (kp) {
+        const tribe = kp[1], i = +kp[2];
+        if (s.prop) Assets.campProps[tribe][i] = s.prop;
+        else if (Assets.campProps[tribe]) delete Assets.campProps[tribe][i];
+        if (s.loaded) { Assets.art[k] = s.art; Assets.loaded[k] = true; }
+        else { delete Assets.art[k]; delete Assets.loaded[k]; if (s.art === null) Assets.art[k] = null; }
+        delete this._saved[k];
+        delete this.overrides[k];
+        this._renderPanel();
+        return true;
+      }
       if (k.indexOf('camp-') === 0) {
         const tribe = k.slice('camp-'.length);
         Sprites.camp[tribe] = s.spr;
@@ -88,11 +117,16 @@
     // filename each would ship under
     _allSlots() {
       const out = Assets.artSlots().map(s => ({ value: 'b|' + s.id + '|' + s.lv, label: Assets.artName(s.id, s.lv) }));
-      for (const tribe of Assets.campTribes()) out.push({ value: 'c|' + tribe, label: Assets.campName(tribe) });
+      for (const tribe of Assets.campTribes()) {
+        out.push({ value: 'c|' + tribe, label: Assets.campName(tribe) });
+        for (let i = 1; i <= Assets.CAMP_PROP_N; i++)
+          out.push({ value: 'p|' + tribe + '|' + i, label: Assets.campPropName(tribe, i) });
+      }
       return out;
     },
     // inject whatever the picker/panel dropdown's value string names
     _injectByValue(v, img, name) {
+      if (v.indexOf('p|') === 0) { const [, tribe, i] = v.split('|'); return this.injectCampProp(tribe, +i, img, name); }
       if (v.indexOf('c|') === 0) return this.injectCamp(v.slice(2), img, name);
       const [, id, lv] = v.split('|');
       return this.inject(id, +lv, img, name);
@@ -183,7 +217,8 @@
         img.onload = () => {
           const slot = DevArt.parseName(f.name);
           if (!slot) { DevArt._queuePicker(f.name, img); return; }
-          if (slot.kind === 'camp') DevArt.injectCamp(slot.tribe, img, f.name);
+          if (slot.kind === 'campProp') DevArt.injectCampProp(slot.tribe, slot.i, img, f.name);
+          else if (slot.kind === 'camp') DevArt.injectCamp(slot.tribe, img, f.name);
           else DevArt.inject(slot.id, slot.lv, img, f.name);
         };
         img.src = URL.createObjectURL(f);   // in-memory only; gone on refresh

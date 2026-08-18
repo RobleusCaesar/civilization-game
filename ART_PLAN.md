@@ -101,6 +101,34 @@ The snapshot written in `G.updateVisibility` now carries `tribe` alongside
 `key`/`level`/`owner`, and the fog-ghost lookup in `render.js` special-cases
 `raidercamp` the same way `bldSprite` does.
 
+### Camp dressing: one PNG per prop, one prop at a time
+
+```
+assets/buildings/camp-{tribe}-prop{1..4}.png
+```
+
+Each people strews **four props** on the worn yard around its tent
+(`Sprites.campPropsFor`, drawn by `R.drawCampDress`). A dropped PNG replaces
+**exactly one prop of one people** — the other three keep their procedural
+look, so a set can be upgraded file by file. The index is the prop's position
+in the people's set:
+
+| tribe | prop1 | prop2 | prop3 | prop4 |
+|---|---|---|---|---|
+| wolf | wolf-skull pike | pelt on a frame | bone heap | game on a tripod |
+| flint | antler totem | fish-drying rack | knapping floor | shell midden |
+| broken | prisoner cage | looted crates | torn banner | arms rack |
+| woad | two-skull pike | woad-daubed stone | wicker idol | shield + carnyx |
+| sea | beached prow | plunder + amphorae | net rack | horned helm |
+
+Each prop is drawn into a **one-tile box** — author square (64 or 128px) on a
+transparent ground with the prop's feet at the bottom edge. Same lowercase
+rule, same `?v=` cache-buster, same `?dev=1` drag-and-drop preview (the
+filename routes itself; the picker lists every prop slot).
+`Assets.setCampPropArt(tribe, i, img)` is the install point; unknown tribes
+and out-of-range indices are refused. No sidecar — a prop has no footprint to
+offset against.
+
 ## The anchoring rule (one rule, no per-building tuning)
 
 Every PNG is drawn the same way (`R.blitBld` → `R.artRect`):

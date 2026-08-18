@@ -1512,6 +1512,16 @@ pike, woad-daubed stone, wicker idol, painted shield with carnyx), Medinet
 Habu's Sherden (beached prow with oars, plunder chest and amphorae, net
 rack, the horned helm with its sun-disc). House style holds: hard value
 steps, plainly dead but never gory.
+**And every prop takes a PNG override, one file at a time**
+(`assets/buildings/camp-{tribe}-prop{1..4}.png`, index = position in the
+set, table in ART_PLAN.md; pinned in tests/art-pipeline.mjs): a hit
+replaces exactly that prop via `Assets.setCampPropArt`, the other three
+stay procedural, `R.drawCampDress` prefers the override at draw — keyed on
+the RESOLVED tribe, so an unknown-tribe camp wearing the wolf fallback
+wears the wolf overrides too. Same cache-buster, and the `?dev=1` preview
+routes `camp-wolf-prop2.png` by filename — the PROP pattern must be
+matched BEFORE the plain camp pattern in dev.js's parseName AND revert, or
+`camp-` prefix logic eats it.
 **The trampled ground is DARK trodden earth on a live grass floor** (a
 reported day-166 screenshot: "a red tint around the barbarian buildings"):
 the old whole-tile dither of `AP.soil[3]` over grass read as a warm tan-red

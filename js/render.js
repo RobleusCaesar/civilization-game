@@ -5476,6 +5476,11 @@ const R = {
      what remains (the T.CAMP tile). Render-only: nothing here touches S. */
   drawCampDress(g, b) {
     const props = Sprites.campPropsFor(b.tribe);
+    /* a dropped-in PNG wins the slot, one prop at a time — the override keys
+       on the RESOLVED tribe (the wolf fallback), so an unknown-tribe camp
+       wearing the Wolfskins' look also wears their overrides */
+    const tk = Assets.campTribes().indexOf(b.tribe) >= 0 ? b.tribe : 'wolf';
+    const over = (Assets.campProps && Assets.campProps[tk]) || {};
     const TL = CFG.TILE;
     let s = (b.id * 2654435761) >>> 0;
     const r = () => ((s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296);
@@ -5491,7 +5496,7 @@ const R = {
       const ob = Bld.at(x, y);
       if (ob && ob !== b) continue;
       const ox = ((r() - 0.5) * 8) | 0, oy = ((r() - 0.5) * 6) | 0;
-      g.drawImage(props[k], x * TL + ox, y * TL + oy, TL, TL);
+      g.drawImage(over[k + 1] || props[k], x * TL + ox, y * TL + oy, TL, TL);   // files are 1-based
       k++;
     }
   },

@@ -201,6 +201,49 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
     ck('campUrlsCarryTheCacheBuster',
       Assets.campTribes().every(t => Assets.campUrl(t).includes('?v=')), Assets.campUrl('wolf'));
 
+    // ---- 1c. the camp DRESSING takes PNGs one prop at a time:
+    // camp-{tribe}-prop{1..4}.png replaces exactly that prop of that people's
+    // set; the other three keep their procedural look ----
+    ck('campPropFilenamesFollowTheShape',
+      Assets.campPropName('wolf', 1) === 'camp-wolf-prop1.png' &&
+      Assets.campPropUrl('sea', 4).includes('?v='),
+      Assets.campPropUrl('wolf', 1));
+    ck('campPropIndicesAreBounded',
+      Assets.setCampPropArt('wolf', 0, document.createElement('canvas')) === false &&
+      Assets.setCampPropArt('wolf', Assets.CAMP_PROP_N + 1, document.createElement('canvas')) === false &&
+      Assets.setCampPropArt('nosuchtribe', 1, document.createElement('canvas')) === false,
+      'out-of-range and unknown-tribe installs are refused');
+    {
+      // a dropped-in prop is what the dressing draws — measured on the pixels
+      const mark = document.createElement('canvas');
+      mark.width = mark.height = 8;
+      const mg2 = mark.getContext('2d');
+      mg2.fillStyle = '#ff00c8'; mg2.fillRect(0, 0, 8, 8);
+      ck('aDroppedPropInstalls', Assets.setCampPropArt('wolf', 1, mark) === true, '');
+      G.newGame('ap-props', 'moderate', 'large');
+      for (const c of Bld.list('R').filter(z => z.key === 'raidercamp')) Bld.removeToRuin(c);
+      S.units = S.units.filter(u => u.owner !== 'R');
+      const tc2 = Bld.tcOf('P');
+      for (let x = tc2.x + 4; x <= tc2.x + 10; x++) for (let y = tc2.y + 4; y <= tc2.y + 10; y++)
+        if (MapGen.inB(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.GRASS;
+      Bld._block = null;
+      const cc2 = G.plantRaiderCamp(tc2.x + 7, tc2.y + 7, 'wolf');
+      const sc2 = document.createElement('canvas');
+      sc2.width = sc2.height = 3 * CFG.TILE;
+      const sg2 = sc2.getContext('2d');
+      sg2.imageSmoothingEnabled = false;
+      sg2.translate(-(cc2.x - 1) * CFG.TILE, -(cc2.y - 1) * CFG.TILE);
+      R.drawCampDress(sg2, cc2);
+      const px2 = sc2.getContext('2d').getImageData(0, 0, sc2.width, sc2.height).data;
+      let magenta = 0;
+      for (let i = 0; i < px2.length; i += 4)
+        if (px2[i] > 220 && px2[i + 1] < 60 && px2[i + 2] > 160) magenta++;
+      ck('andTheDressingDrawsIt', magenta > 40, magenta + ' marker pixels on the yard');
+      // clean up the injected override so nothing leaks into later checks
+      delete Assets.campProps.wolf;
+      delete Assets.art['camp-wolf-prop1']; delete Assets.loaded['camp-wolf-prop1'];
+    }
+
     // ---- 2. shipped art loads by convention, into BOTH tribes' tables ----
     const tc1 = Assets.art['tc-l1'];
     ck('shippedHallArtLoadsByFilename', !!tc1 && !!tc1._cfArt,
