@@ -1176,18 +1176,32 @@ const Sprites = {
   /* the CAMP GROUND (tests/raider-camps.mjs) — trampled bare earth, churned by
      feet and scattered with the litter of a band. The camp ITSELF is a
      building drawn on top of this (B_DRAW.raidercamp), because it can be
-     pulled down: when it burns, this ground is what is left. */
+     pulled down: when it burns, this ground is what is left.
+     DARK TRODDEN EARTH, NEVER THE LIGHT SOIL DITHER (a reported day-166
+     screenshot: "a red tint around the barbarian buildings"): the old
+     whole-tile dither of AP.soil[3] over grass read as a warm tan-red BLOB
+     under every camp, and its soil-family border dither bled a further ring
+     onto the neighbouring grass. The wear is now a ragged CENTRAL patch in
+     the build yards' own chocolate family (the SITE_EARTH tones — trodden
+     ground this game already renders well), on a live grass floor
+     (GROUND_GRAIN paints it; blendCol says grass so the border dithers
+     nothing). The camp PNGs carry their own painted ground at the tent's
+     foot — the terrain only has to say "worn ground", not recolour it. */
   Sprites.terrain[T.CAMP] = [
     tile(p => {
       const f = p.f, r = ART.rng(41);
-      ART.dither(p, 0, 0, 16, 16, AP.soil[3], AP.grass[2]);          // trampled dirt
-      for (let i = 0; i < 16; i++) f((r() * 32) | 0, (r() * 32) | 0, 1, 1, r() < 0.5 ? AP.soil[1] : AP.soil[2]);
-      for (let i = 0; i < 5; i++) {                                   // boot-churned hollows
-        const hx = 2 + ((r() * 26) | 0), hy = 2 + ((r() * 26) | 0);
-        f(hx, hy, 3, 2, AP.soil[1]); f(hx, hy, 3, 1, AP.soil[2]);
+      const E = ['#3a2418', '#482820', '#503020', '#5a3c28'];
+      for (let i = 0; i < 150; i++) {                 // ragged trodden centre
+        const a = r() * Math.PI * 2, d = Math.pow(r(), 0.6) * 11;
+        const x = (15 + Math.cos(a) * d) | 0, y = (16 + Math.sin(a) * d * 0.85) | 0;
+        f(x, y, 2, 1, E[(r() * E.length) | 0]);
       }
-      for (let i = 0; i < 4; i++) {                                   // gnawed bones and broken shafts
-        const bx = 3 + ((r() * 24) | 0), by = 3 + ((r() * 24) | 0);
+      for (let i = 0; i < 5; i++) {                   // boot-churned hollows
+        const hx = 7 + ((r() * 17) | 0), hy = 7 + ((r() * 16) | 0);
+        f(hx, hy, 3, 2, E[0]); f(hx, hy, 3, 1, E[2]);
+      }
+      for (let i = 0; i < 3; i++) {                   // gnawed bones and broken shafts
+        const bx = 8 + ((r() * 15) | 0), by = 8 + ((r() * 15) | 0);
         if (r() < 0.5) { f(bx, by, 3, 1, AP.bone[1]); f(bx, by, 1, 1, AP.bone[2]); }
         else f(bx, by, 1, 3, AP.wood[1]);
       }
@@ -1200,7 +1214,7 @@ const Sprites = {
     [T.GRASS]: AP.grass[2], [T.FOREST]: AP.grass[2], [T.HILLS]: AP.grass[2],
     [T.FERTILE]: AP.grass[2], [T.STUMPS]: AP.grass[2], [T.PEBBLES]: AP.grass[2],
     [T.MOUNTAIN]: AP.grass[2],
-    [T.BARREN]: AP.soil[3], [T.RUIN]: AP.stone[1], [T.CAMP]: AP.soil[3],
+    [T.BARREN]: AP.soil[3], [T.RUIN]: AP.stone[1], [T.CAMP]: AP.grass[2],   // camp ground lives on grass now — no soil fringe bleeding past the tent
     [T.GOLDORE]: AP.grass[2],   // the seam stands ON grass, like the other nodes
   };
 

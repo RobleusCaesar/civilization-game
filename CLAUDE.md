@@ -1494,6 +1494,17 @@ the ground — `T.CAMP` terrain, a wave muster point, and nothing you could ever
 do about it. It is now a BUILDING (`raidercamp`) owned by `'R'`, standing on
 that trampled ground, and the terrain sprite was stripped back to bare churned
 earth because that is what is LEFT when the camp burns. Four rules.
+**The trampled ground is DARK trodden earth on a live grass floor** (a
+reported day-166 screenshot: "a red tint around the barbarian buildings"):
+the old whole-tile dither of `AP.soil[3]` over grass read as a warm tan-red
+BLOB under every camp, and its soil-family `blendCol` bled a border-dither
+ring past the tent onto the neighbouring grass. The wear is now a ragged
+central patch in the build yards' own chocolate family (`SITE_EARTH` tones),
+`T.CAMP` joined `GROUND_GRAIN` (the grass paints under it — a
+transparent-floored terrain outside that set composites BLACK), and
+`blendCol[T.CAMP]` is grass so the biome border dithers nothing. The camp
+PNGs carry their own painted ground at the tent's foot; the terrain only has
+to say "worn ground", never recolour it.
 **Tended, always**: `G.plantRaiderCamp` mans each camp the day the map is made
 from the mode's `campGuard` band, and `G.tickRaiderCamps` (once a day from
 `G.dayTick`) replaces a fallen tender after `CFG.RAIDER_CAMPS.remanDays`. The

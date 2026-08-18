@@ -9,7 +9,7 @@
    shows the BARE CACHE CANVAS, which composites as black: exactly the "gold
    seam is mostly black" bug. Sprites.blendCol is the matching declaration of
    what floor each one stands on; the two tables must agree. */
-const GROUND_GRAIN = new Set([T.FOREST, T.FERTILE, T.HILLS, T.MOUNTAIN, T.STUMPS, T.PEBBLES, T.GOLDORE]);
+const GROUND_GRAIN = new Set([T.FOREST, T.FERTILE, T.HILLS, T.MOUNTAIN, T.STUMPS, T.PEBBLES, T.GOLDORE, T.CAMP]);
 const NEIGH8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
 /* ground the decal scatter is allowed to dress. Resource tiles carry their own
    art and are left alone; so is anything dug, flooded, burnt or trampled. */
