@@ -386,11 +386,17 @@ const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' 
         ['omega', 'hard', 'xlarge'], ['k1', 'hard', 'xlarge'], ['250355541', 'calm', 'medium']]) {
       G.newGame(sd, md, sz);
       const t2 = S.map.terrain;
+      /* seams by terrain; camps by their ANCHORS (spawns.camps) — the worn
+         3×3 yard also carries T.CAMP now, and a ring tile brushing a shadow
+         hides nothing: the clamp's promise is about the camp BUILDING. */
       for (let y2 = 1; y2 < CFG.H - 1; y2++) for (let x2 = 1; x2 < CFG.W - 1; x2++) {
-        const tt = t2[MapGen.idx(x2, y2)];
-        if (tt !== T.CAMP && tt !== T.GOLDORE) continue;
+        if (t2[MapGen.idx(x2, y2)] !== T.GOLDORE) continue;
         checked++;
         if (MapGen.mtnShadow(x2, y2, t2)) bad++;
+      }
+      for (const c of (S.map.spawns.camps || [])) {
+        checked++;
+        if (MapGen.mtnShadow(c.x, c.y, t2)) bad++;
       }
     }
     return { shadow1, shadow2, clear3, south,

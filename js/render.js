@@ -5467,6 +5467,35 @@ const R = {
          { lv: 2, x: 16 / 32, y: 31 / 32 },       // the L2 longhouse's dooryard, between its doors
          { lv: 3, x: 16 / 32, y: 30.5 / 32 }],    // the L3 hall's threshold
   },
+  /* CAMP DRESSING (tests/raider-camps.mjs): the props a people strews about
+     its own fire — Sprites.campPropsFor(tribe), four per people. Placement is
+     SEEDED by the camp's id so a camp reads the same way every visit: each
+     prop takes one of the eight yard tiles (skipping water and any solid
+     building) with a small sub-tile drift. Drawn only for a STANDING camp —
+     burn the camp out and the litter goes with the band; the worn ground is
+     what remains (the T.CAMP tile). Render-only: nothing here touches S. */
+  drawCampDress(g, b) {
+    const props = Sprites.campPropsFor(b.tribe);
+    const TL = CFG.TILE;
+    let s = (b.id * 2654435761) >>> 0;
+    const r = () => ((s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296);
+    const ring = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
+    for (let i = ring.length - 1; i > 0; i--) { const j = (r() * (i + 1)) | 0; const t2 = ring[i]; ring[i] = ring[j]; ring[j] = t2; }
+    let k = 0;
+    for (const [dx, dy] of ring) {
+      if (k >= props.length) break;
+      const x = b.x + dx, y = b.y + dy;
+      if (!MapGen.inB(x, y)) continue;
+      const t = S.map.terrain[MapGen.idx(x, y)];
+      if (t === T.WATER || t === T.MOAT || t === T.MOUNTAIN) continue;
+      const ob = Bld.at(x, y);
+      if (ob && ob !== b) continue;
+      const ox = ((r() - 0.5) * 8) | 0, oy = ((r() - 0.5) * 6) | 0;
+      g.drawImage(props[k], x * TL + ox, y * TL + oy, TL, TL);
+      k++;
+    }
+  },
+
   drawCampfire(g, b, bx, by, bw) {
     const a = this.smokeAnchor(this.CAMPFIRE_AT, b.key, b.level);
     if (!a || b.construction > 0) return;
@@ -6104,6 +6133,9 @@ const R = {
         // a drawbridge that falls to the FAR side lies beyond the wall, so it
         // goes down before the gatehouse does and is occluded by it
         if (b.key === 'gate') this.drawDrawbridge(g, b, bx, by, bw, dt, false);
+        // a war band's yard is strewn with its own people's litter — drawn
+        // before the tent so nothing rides over its silhouette
+        if (b.key === 'raidercamp') this.drawCampDress(g, b);
         // the blaze breaking out BEHIND the ridge goes down first too, so the
         // roof's own silhouette occludes its foot (tests/burn-down.mjs)
         this.drawBurnBack(g, b, bx, by, bw);

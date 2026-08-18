@@ -174,6 +174,10 @@ const drag = async (from, to) => {
 // ---- 6. released on an ENEMY: the drag is an attack order ----
 {
   const sc = await setup('dm6', tc => {
+    // the arena must hold ONLY the two actors: a wild cow grazing at the drop
+    // point once stole the release (hunting an animal under the finger is a
+    // legal order, so the drag "worked" — at the wrong target)
+    S.units = S.units.filter(z => z.owner !== 'W');
     const u = Units.spawn('defender', 'P', tc.x + 3, tc.y + 3);
     const foe = Units.spawn('raider', 'R', tc.x + 5, tc.y + 4); foe.hostileTo = 'P';
     UI.select('unit', u.id);

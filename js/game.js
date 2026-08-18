@@ -1258,6 +1258,17 @@ const G = {
   plantRaiderCamp(x, y, tribe) {
     if (!MapGen.inB(x, y) || Bld.at(x, y)) return null;
     S.map.terrain[MapGen.idx(x, y)] = T.CAMP;
+    /* THE WHOLE YARD IS WORN GROUND (tests/raider-camps.mjs): a band lives
+       AROUND its fire, not on one tile of it — the camp's props stand on the
+       ring, so the trampling extends under them. Grass only: a yard tile of
+       forest, water or rock keeps what it is, and the seating clamps already
+       guarantee most of the ring is open. Burning the camp out leaves the
+       whole worn yard behind, which is the point — the ground remembers. */
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const yx = x + dx, yy = y + dy;
+      if (MapGen.inB(yx, yy) && S.map.terrain[MapGen.idx(yx, yy)] === T.GRASS && !Bld.at(yx, yy))
+        S.map.terrain[MapGen.idx(yx, yy)] = T.CAMP;
+    }
     const b = Bld.place('R', 'raidercamp', x, y, { free: true, instant: true });
     if (!b) return null;
     /* A CAMP KEEPS ITS PEOPLE FOR ITS WHOLE LIFE. Everything raised here wears

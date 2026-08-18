@@ -1494,6 +1494,24 @@ the ground — `T.CAMP` terrain, a wave muster point, and nothing you could ever
 do about it. It is now a BUILDING (`raidercamp`) owned by `'R'`, standing on
 that trampled ground, and the terrain sprite was stripped back to bare churned
 earth because that is what is LEFT when the camp burns. Four rules.
+**A CAMP IS A COMPOUND, NOT A LONE TENT** (same test, a QA request): rarer on
+the map (`campMult` 0.4/0.65/1.0), harder-held (`campGuard` +1 at every
+difficulty: 2–3 calm, 2–4 moderate, 3–4 hard — meeting one should hurt), and
+each people strews its OWN litter on a worn 3×3 yard
+(`G.plantRaiderCamp` paints the ring's grass to `T.CAMP`; other terrain
+keeps what it is). The props are `Sprites.campPropsFor(tribe)` — four per
+people, lazy-built with the wolf fallback (the `barbFor` rule), drawn by
+`R.drawCampDress` from the building loop, seeded by the camp's id, ring
+tiles only (water/solid skipped), RENDER-ONLY (nothing lands in `S`; burn
+the camp and the litter goes with the band, the worn yard is what remains).
+Each set is drawn from what the people really kept: úlfheðnar (skull pike,
+pelt frame, bone heap, game on a tripod), Star Carr Mesolithic (antler
+totem, fish rack, knapping floor, midden), deserters (a PRISONER CAGE,
+loot, a torn banner, an arms rack), the Roquepertuse head cult (two-skull
+pike, woad-daubed stone, wicker idol, painted shield with carnyx), Medinet
+Habu's Sherden (beached prow with oars, plunder chest and amphorae, net
+rack, the horned helm with its sun-disc). House style holds: hard value
+steps, plainly dead but never gory.
 **The trampled ground is DARK trodden earth on a live grass floor** (a
 reported day-166 screenshot: "a red tint around the barbarian buildings"):
 the old whole-tile dither of `AP.soil[3]` over grass read as a warm tan-red

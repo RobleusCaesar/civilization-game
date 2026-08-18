@@ -3523,6 +3523,212 @@ const Sprites = {
   for (const k of Object.keys(TRIBE_CAMP))
     Sprites.camp[k] = ART.outline(tileB(p => TRIBE_CAMP[k](p)), 1);
 
+  /* ---- CAMP DRESSING (tests/raider-camps.mjs) — the yard around the fire.
+     Each people strews its OWN litter on the trampled ground: four props per
+     tribe, drawn from what these groups really kept about their tents —
+       wolf    úlfheðnar wolf-warriors: a wolf-skull pike, a pelt on a
+               stretching frame, a bone heap, game strung from a tripod
+       flint   Mesolithic hunters (the Star Carr antler frontlets): an antler
+               totem, a fish-drying rack, a knapping floor, a shell midden
+       broken  deserters of a fallen village: a prisoner cage, looted crates,
+               a torn war banner, an arms rack of mismatched weapons
+       woad    Celts of the head cult (Roquepertuse): a two-skull trophy
+               pike, a woad-daubed standing stone, a wicker idol, a painted
+               shield with a carnyx
+       sea     Sherden of the Sea Peoples (Medinet Habu): a beached prow with
+               oars, a plunder chest and amphorae, a net rack, the horned
+               helm with its sun-disc on a trophy post
+     House style holds: hard value steps, dark edges away from the light,
+     plainly dead but never gory. Built LAZILY per tribe (the barbFor rule);
+     an unknown key falls back to the Wolfskins. R.drawCampDress places them
+     on the camp's own worn yard, seeded by the camp's id. */
+  Sprites.campProps = {};
+  Sprites.campPropsFor = function (key) {
+    if (!TRIBE_CAMP[key]) key = 'wolf';
+    if (Sprites.campProps[key]) return Sprites.campProps[key];
+    const WD = AP.wood, BN = AP.bone, ST = AP.stone, TH = AP.thatch, IK = AP.ink;
+    const GR = AP.granite, WA = AP.water, GD = AP.gold, SO = AP.soil, RD = AP.red;
+    const foot = (p, x0, x1) => p.hi(x0, 29, x1 - x0 + 1, 1, IK[1]);   // contact shadow
+    const pole = (p, x, y0, y1, col) => p.hi(x, y0, 2, y1 - y0 + 1, col || WD[1]);
+    const diag = (p, x0, y0, x1, y1, col) => {           // 1px stepped line
+      const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+      for (let i = 0; i <= n; i++)
+        p.hi(Math.round(x0 + (x1 - x0) * i / n), Math.round(y0 + (y1 - y0) * i / n), 1, 1, col);
+    };
+    const D = {
+      wolf: [
+        (p) => {                                        // wolf-skull pike
+          foot(p, 13, 19); pole(p, 15, 10, 29);
+          p.hi(14, 10, 4, 2, TH[1]);                    // lashing
+          p.hi(12, 4, 7, 5, BN[1]); p.hi(12, 4, 7, 2, BN[2]);   // braincase
+          p.hi(18, 6, 4, 2, BN[2]); p.hi(21, 7, 1, 1, IK[0]);   // snout + nostril
+          p.hi(13, 6, 2, 2, IK[0]);                     // eye socket
+          p.hi(12, 3, 1, 1, BN[1]); p.hi(17, 3, 1, 1, BN[1]);   // ear stubs
+          p.hi(14, 12, 2, 4, ST[1]); p.hi(14, 15, 1, 2, ST[0]); // hide tassel
+        },
+        (p) => {                                        // pelt on a stretching frame
+          foot(p, 6, 25); pole(p, 6, 12, 29); pole(p, 24, 12, 29);
+          p.hi(6, 12, 20, 2, WD[2]); p.hi(6, 27, 20, 1, WD[2]);
+          p.hi(9, 15, 14, 11, ST[1]);                   // the pelt
+          p.hi(12, 17, 8, 7, ST[2]);                    // pale belly
+          p.hi(10, 16, 2, 2, ST[0]); p.hi(19, 22, 3, 2, ST[0]); // mottling
+          p.hi(9, 25, 3, 2, ST[0]);                     // tail stub
+          for (const [lx, ly] of [[9, 14], [21, 14], [9, 25], [21, 25]]) p.hi(lx, ly, 1, 1, TH[1]);
+        },
+        (p) => {                                        // bone heap
+          foot(p, 8, 24);
+          p.hi(9, 26, 15, 3, BN[1]); p.hi(11, 24, 11, 2, BN[1]); p.hi(13, 22, 6, 2, BN[2]);
+          p.hi(10, 21, 4, 3, BN[1]); p.hi(11, 22, 2, 1, IK[0]);  // a skull in the heap
+          diag(p, 17, 20, 21, 23, BN[2]); diag(p, 20, 19, 23, 22, BN[2]); // rib arcs
+          p.hi(6, 28, 3, 1, BN[2]); p.hi(25, 27, 2, 1, BN[2]);   // strays
+        },
+        (p) => {                                        // game strung from a tripod
+          foot(p, 8, 24);
+          diag(p, 9, 29, 16, 8, WD[1]); diag(p, 23, 29, 16, 8, WD[1]); pole(p, 16, 8, 29, WD[0]);
+          p.hi(14, 7, 4, 2, TH[1]);                     // lash at the apex
+          p.hi(13, 12, 6, 8, SO[3]); p.hi(13, 12, 3, 8, SO[2]); // the carcass, head down
+          p.hi(14, 20, 3, 3, SO[2]); p.hi(14, 23, 2, 1, IK[1]); // head
+          diag(p, 14, 12, 15, 10, SO[1]); diag(p, 17, 12, 16, 10, SO[1]); // trussed legs
+        },
+      ],
+      flint: [
+        (p) => {                                        // antler totem (Star Carr)
+          foot(p, 13, 19); pole(p, 15, 11, 29);
+          diag(p, 15, 11, 9, 4, BN[2]); diag(p, 11, 7, 8, 8, BN[1]); diag(p, 12, 6, 10, 2, BN[2]);
+          diag(p, 16, 11, 22, 5, BN[2]); diag(p, 20, 7, 23, 9, BN[1]);
+          p.hi(14, 11, 4, 2, TH[1]);
+        },
+        (p) => {                                        // fish-drying rack
+          foot(p, 6, 26); pole(p, 6, 14, 29); pole(p, 24, 14, 29);
+          p.hi(6, 14, 20, 2, WD[2]);
+          for (const fx of [10, 15, 20]) {
+            p.hi(fx, 16, 1, 2, TH[1]);                  // the hanging line
+            p.hi(fx - 1, 18, 3, 5, ST[3]); p.hi(fx, 18, 1, 5, BN[2]);   // the fish
+            p.hi(fx - 1, 23, 1, 2, ST[3]); p.hi(fx + 1, 23, 1, 2, ST[3]); // forked tail
+          }
+        },
+        (p) => {                                        // knapping floor — flat
+          foot(p, 8, 24);
+          let s = 977; const r = () => (s = (s * 16807 + 11) % 2147483647) / 2147483647;
+          for (let i = 0; i < 26; i++) {
+            const a = r() * Math.PI * 2, d = Math.sqrt(r()) * 8;
+            p.hi((15 + Math.cos(a) * d) | 0, (25 + Math.sin(a) * d * 0.45) | 0, 1, 1,
+              r() < 0.5 ? BN[2] : ST[3]);
+          }
+          p.hi(13, 23, 4, 3, ST[2]); p.hi(13, 23, 2, 1, ST[4]);  // the core, one struck facet
+        },
+        (p) => {                                        // shell-and-bone midden
+          foot(p, 9, 23);
+          p.hi(10, 25, 13, 4, SO[1]); p.hi(12, 23, 9, 2, SO[2]);
+          for (const [sx, sy] of [[11, 26], [14, 24], [17, 26], [20, 24], [15, 27], [19, 27]])
+            p.hi(sx, sy, 2, 1, BN[2]);
+          diag(p, 14, 22, 12, 18, BN[2]); diag(p, 18, 22, 20, 19, BN[1]);  // antler tines
+        },
+      ],
+      broken: [
+        (p) => {                                        // the prisoner cage
+          foot(p, 8, 24);
+          p.hi(9, 27, 15, 2, WD[1]);                    // floor
+          p.hi(13, 16, 3, 3, BN[1]);                    // the captive: bowed head…
+          p.hi(12, 19, 6, 7, ST[1]); p.hi(12, 24, 3, 2, ST[0]);  // …and slumped shoulders
+          pole(p, 8, 10, 28, WD[1]); pole(p, 23, 10, 28, WD[1]);
+          p.hi(8, 10, 17, 2, WD[2]);                    // top rail
+          for (const bx2 of [11, 14, 17, 20]) p.hi(bx2, 12, 1, 15, WD[2]);   // bars OVER the figure
+          p.hi(21, 14, 2, 2, TH[1]);                    // the door lash
+        },
+        (p) => {                                        // looted crates and a sack
+          foot(p, 7, 26);
+          p.hi(8, 20, 9, 9, WD[2]); p.hi(8, 20, 9, 2, WD[3]);
+          p.hi(8, 24, 9, 1, WD[1]); p.hi(12, 20, 1, 9, WD[1]);   // planks
+          p.hi(9, 21, 5, 1, GD[2]); p.hi(10, 21, 1, 1, GD[3]);   // gold in the seam
+          p.hi(19, 23, 7, 6, TH[1]); p.hi(20, 22, 4, 2, TH[0]);  // the sack, tied neck
+          p.hi(20, 25, 3, 2, TH[2]);
+        },
+        (p) => {                                        // torn war banner
+          foot(p, 9, 13);
+          diag(p, 10, 29, 18, 8, WD[1]); diag(p, 11, 29, 19, 8, WD[0]);
+          p.hi(18, 9, 8, 5, RD[1]); p.hi(18, 9, 8, 2, RD[2]);    // the cloth
+          p.hi(19, 14, 2, 2, RD[1]); p.hi(23, 14, 2, 3, RD[1]);  // ragged tails
+          p.hi(21, 11, 2, 2, RD[0]);                    // a tear
+        },
+        (p) => {                                        // arms rack, mismatched
+          foot(p, 7, 25);
+          diag(p, 8, 29, 16, 12, WD[1]); diag(p, 24, 29, 16, 12, WD[1]);
+          diag(p, 11, 28, 14, 10, WD[2]); p.hi(13, 8, 2, 2, ST[3]);     // spears
+          diag(p, 18, 28, 17, 10, WD[2]); p.hi(16, 8, 2, 2, ST[3]);
+          p.hi(20, 20, 7, 7, WD[3]); p.hi(20, 20, 7, 1, WD[1]); p.hi(26, 20, 1, 7, WD[1]);
+          p.hi(23, 23, 2, 2, IK[2]); p.hi(20, 25, 2, 2, IK[1]);  // boss + a dent
+        },
+      ],
+      woad: [
+        (p) => {                                        // the two-skull trophy pike
+          foot(p, 13, 19); pole(p, 15, 8, 29);
+          p.hi(12, 4, 7, 4, BN[1]); p.hi(12, 4, 7, 1, BN[2]);
+          p.hi(13, 6, 2, 1, IK[0]); p.hi(16, 6, 2, 1, IK[0]);
+          p.hi(13, 13, 6, 4, BN[1]); p.hi(14, 15, 1, 1, IK[0]); p.hi(16, 15, 1, 1, IK[0]);
+          p.hi(14, 12, 4, 1, TH[1]);                    // its lashing
+        },
+        (p) => {                                        // woad-daubed standing stone
+          foot(p, 10, 22);
+          p.hi(11, 10, 10, 19, GR[3]); p.hi(11, 10, 5, 10, GR[4]);
+          p.hi(19, 10, 2, 19, GR[1]); p.hi(20, 10, 1, 19, GR[0]);
+          p.hi(12, 8, 8, 2, GR[3]);                     // the crown lean
+          for (const [qx, qy] of [[14, 15], [15, 14], [16, 14], [17, 15], [17, 17], [16, 19],
+            [15, 19], [14, 18], [15, 16], [16, 16]]) p.hi(qx, qy, 1, 1, WA[3]);   // the spiral
+          p.hi(15, 22, 2, 2, WA[3]); p.hi(15, 12, 1, 1, WA[4]);
+        },
+        (p) => {                                        // the wicker idol
+          foot(p, 10, 21);
+          p.hi(12, 8, 8, 2, TH[1]); p.hi(12, 8, 1, 6, TH[1]); p.hi(19, 8, 1, 6, TH[1]);   // hollow head
+          p.hi(12, 13, 8, 1, TH[0]);
+          for (let y2 = 14; y2 <= 25; y2++) p.hi(11, y2, 10, 1, (y2 % 2) ? TH[1] : TH[0]);   // woven torso
+          p.hi(8, 16, 3, 2, TH[1]); p.hi(21, 16, 3, 2, TH[1]);   // stub arms
+          pole(p, 12, 26, 29, WD[1]); pole(p, 18, 26, 29, WD[1]);
+        },
+        (p) => {                                        // painted shield + carnyx
+          foot(p, 10, 26); pole(p, 14, 14, 29);
+          p.hi(10, 12, 10, 10, WA[2]); p.hi(11, 11, 8, 1, BN[2]); p.hi(11, 22, 8, 1, BN[2]);
+          p.hi(10, 12, 1, 10, BN[2]); p.hi(19, 12, 1, 10, BN[2]);   // the rim
+          p.hi(14, 16, 2, 2, IK[1]); p.hi(12, 13, 2, 1, WA[4]);     // boss + sheen
+          diag(p, 24, 29, 26, 10, GD[1]); p.hi(25, 8, 3, 3, GD[2]); // the carnyx, boar-head up
+        },
+      ],
+      sea: [
+        (p) => {                                        // beached prow and oars
+          foot(p, 7, 25);
+          p.hi(8, 26, 16, 3, WD[1]);                    // the keel fragment
+          diag(p, 10, 26, 13, 12, WD[2]); diag(p, 11, 26, 14, 12, WD[3]);   // the stem
+          p.hi(13, 8, 3, 4, WD[2]); p.hi(15, 7, 2, 2, WD[3]);     // its curl
+          diag(p, 24, 28, 18, 10, WD[3]); p.hi(17, 7, 3, 4, WD[2]);   // an oar, blade up
+          diag(p, 26, 28, 21, 12, WD[2]); p.hi(20, 9, 3, 4, WD[1]);
+        },
+        (p) => {                                        // plunder: chest + amphorae
+          foot(p, 7, 26);
+          p.hi(8, 21, 9, 8, WD[2]); p.hi(8, 20, 9, 2, WD[3]);
+          p.hi(9, 22, 7, 1, GD[2]); p.hi(11, 22, 1, 1, GD[3]);    // the open seam glints
+          p.hi(12, 21, 1, 8, IK[2]);                    // iron band
+          p.hi(19, 18, 4, 9, SO[3]); p.hi(19, 18, 2, 9, SO[2]);   // standing amphora
+          p.hi(20, 16, 2, 2, SO[2]); p.hi(19, 27, 4, 1, SO[1]); p.hi(20, 28, 2, 1, SO[1]);
+          p.hi(24, 25, 6, 3, SO[3]); p.hi(24, 25, 6, 1, SO[2]); p.hi(29, 26, 1, 1, SO[1]); // one on its side
+        },
+        (p) => {                                        // the net rack
+          foot(p, 6, 26); pole(p, 6, 12, 29); pole(p, 24, 12, 29);
+          p.hi(6, 12, 20, 2, WD[2]);
+          for (let k = 0; k < 6; k++) { diag(p, 8 + k * 3, 14, 11 + k * 3, 24, TH[0]); diag(p, 11 + k * 3, 14, 8 + k * 3, 24, TH[0]); }
+          p.hi(10, 18, 2, 4, ST[3]); p.hi(18, 20, 2, 4, ST[3]);   // fish in the mesh
+        },
+        (p) => {                                        // the horned helm on its post
+          foot(p, 13, 19); pole(p, 15, 13, 29);
+          p.hi(12, 8, 8, 5, GD[1]); p.hi(12, 8, 8, 2, GD[2]);     // the bronze helm
+          diag(p, 12, 7, 10, 3, BN[2]); diag(p, 19, 7, 21, 3, BN[2]);   // the horns
+          p.hi(15, 4, 2, 2, GD[3]);                     // the Sherden sun-disc
+        },
+      ],
+    };
+    Sprites.campProps[key] = D[key].map(fn => ART.outline(tileB(p => fn(p)), 1));
+    return Sprites.campProps[key];
+  };
+
   // [east-west face, north-south flank] — two authored views (see drawGate)
   Sprites.gateMask = [0, 1, 2].map(li =>
     [Sprites.building.gate[li], tileB(p => drawGate(p, li + 1, true))]);

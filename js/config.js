@@ -920,7 +920,7 @@ const CFG = {
       // at 5 so the late game stays gentle) every ~27-38 days (gapMult 1.9),
       // still at 0.75x stats — light pressure on BOTH tribes, not silence.
       waveFirst: 85, waveGapMult: 1.9, waveSizeAdd: 0, barbMult: 0.75, bandCap: 5,
-      campMult: 0.6, campGuard: [1, 2],
+      campMult: 0.4, campGuard: [2, 3],   // rarer, harder camps: meeting one should hurt
       deathEvery: [34, 52],   // days between villager deaths (tests/mortality.mjs)
       animalMax: 2, animalChance: 0.15, aiRaidDay: 110,
       aiBuildEvery: 2, aiOutput: 1.0, aiArmyCap: 5, aiArmyDiv: 14, aiEliteShare: 0.1, aiAggro: 0.4,
@@ -936,7 +936,7 @@ const CFG = {
       name: 'Moderate', icon: '⚔️', desc: 'The intended experience.',
       gather: 1, output: 1, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
       waveFirst: 40, waveGapMult: 1.5, waveSizeAdd: 0, barbMult: 1,
-      campMult: 1, campGuard: [1, 3],
+      campMult: 0.65, campGuard: [2, 4],   // rarer, harder camps: meeting one should hurt
       deathEvery: [25, 40],   // days between villager deaths (tests/mortality.mjs)
       animalMax: 3, animalChance: 0.2, aiRaidDay: 50,
       // army volume dialed back ~20% from the original 9/8 tuning — playtesting
@@ -972,7 +972,7 @@ const CFG = {
       // waves a shade heavier and closer together.
       gather: 0.90, output: 1.0, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
       waveFirst: 33, waveGapMult: 0.85, waveSizeAdd: 1, barbMult: 1.15, barbSpacing: true, bandCap: 9,
-      campMult: 1.5, campGuard: [2, 3],
+      campMult: 1.0, campGuard: [3, 4],   // rarer, harder camps: meeting one should hurt
       deathEvery: [18, 28],   // days between villager deaths (tests/mortality.mjs)
       animalMax: 4, animalChance: 0.3, aiRaidDay: 32,
       aiBuildEvery: 1, aiOutput: 1.25, aiArmyCap: 15, aiArmyDiv: 5, aiEliteShare: 0.8, aiAggro: 1.2,

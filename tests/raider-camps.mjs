@@ -780,6 +780,73 @@ const out = await p.evaluate(() => {
       ' (the dropped canReach route used to walk them to the bank at ' + (cR - 1) + '+)');
   }
 
+  /* ---- CAMP COMPOUNDS (a QA request): a camp is a PLACE, not a lone tent.
+     Rarer on the map, harder-held, and each people strews its own litter —
+     skull pikes, pelt frames, middens, a prisoner cage, plunder — on a worn
+     3×3 yard around the fire. ---- */
+  {
+    // rarer, harder: bands +1 at every difficulty, counts cut back
+    const m = CFG.MODES;
+    ck('theBandsGrewByOne',
+      m.calm.campGuard[0] === 2 && m.calm.campGuard[1] === 3 &&
+      m.moderate.campGuard[0] === 2 && m.moderate.campGuard[1] === 4 &&
+      m.hard.campGuard[0] === 3 && m.hard.campGuard[1] === 4,
+      'calm ' + m.calm.campGuard + ', moderate ' + m.moderate.campGuard + ', hard ' + m.hard.campGuard);
+    ck('andTheCampsGrewRare',
+      m.calm.campMult <= 0.4 && m.moderate.campMult <= 0.65 && m.hard.campMult <= 1.0,
+      'campMult ' + [m.calm.campMult, m.moderate.campMult, m.hard.campMult].join('/') +
+      ' — meeting one should be the event, not the wallpaper');
+
+    // the yard is worn ground, grass only — other terrain keeps what it is
+    G.newGame('cc-yard', 'moderate', 'large');
+    for (const c of Bld.list('R').filter(z => z.key === 'raidercamp')) Bld.removeToRuin(c);
+    S.units = S.units.filter(u => u.owner !== 'R');
+    for (let x = 28; x <= 34; x++) for (let y = 28; y <= 34; y++) S.map.terrain[MapGen.idx(x, y)] = T.GRASS;
+    S.map.terrain[MapGen.idx(30, 30)] = T.WATER;   // one wet corner survives
+    Bld._block = null;
+    const cc = G.plantRaiderCamp(31, 31, 'woad');
+    let worn = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+      if (S.map.terrain[MapGen.idx(31 + dx, 31 + dy)] === T.CAMP) worn++;
+    ck('theYardIsWornGround', !!cc && worn === 8 &&
+      S.map.terrain[MapGen.idx(30, 30)] === T.WATER,
+      worn + ' of 9 tiles worn; the water corner kept its water');
+
+    // each people dresses its own camp — four props apiece, no two sets alike
+    const hash = (cv) => {
+      const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      let h = 0, n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 40) { h = (h * 31 + d[i] + d[i + 1] * 7 + d[i + 2] * 13) >>> 0; n++; }
+      return { h, n };
+    };
+    const sigs = {};
+    let allDrawn = true;
+    for (const t of ['wolf', 'flint', 'broken', 'woad', 'sea']) {
+      const set = Sprites.campPropsFor(t);
+      if (!set || set.length < 4) { allDrawn = false; break; }
+      let sig = 0;
+      for (const cv of set) { const { h, n } = hash(cv); if (n < 40) allDrawn = false; sig = (sig * 37 + h) >>> 0; }
+      sigs[t] = sig;
+    }
+    const uniq = new Set(Object.values(sigs));
+    ck('eachPeopleDressesItsOwnCamp', allDrawn && uniq.size === 5,
+      uniq.size + ' distinct prop sets of 5; every prop carries real pixels');
+    ck('anUnknownPeopleFallsBackToTheWolfskins',
+      Sprites.campPropsFor('???') === Sprites.campProps.wolf, 'the barbFor rule');
+
+    // the dressing draws, and draws render-side only — nothing lands in S
+    const before2 = JSON.stringify({ b: S.buildings.length, u: S.units.length });
+    const scratch = document.createElement('canvas');
+    scratch.width = scratch.height = 256;
+    const sg = scratch.getContext('2d');
+    sg.translate(-29 * CFG.TILE, -29 * CFG.TILE);   // the dressing draws in world px
+    R.drawCampDress(sg, cc);
+    const after2 = JSON.stringify({ b: S.buildings.length, u: S.units.length });
+    const drawn = hash(scratch).n;
+    ck('theDressingIsDrawnAndDrawnOnly', drawn > 100 && before2 === after2,
+      drawn + ' prop pixels on the scratch canvas, state untouched');
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));
