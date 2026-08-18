@@ -393,6 +393,25 @@ beach along the sail (nearest soft building wins; +8 inside a finished
 tower's/war camp's range, +2.5 per wall/gate within 3 tiles) so longboats
 beach at the soft underbelly instead of the fortified gate the shortest sail
 happened to end at.
+**ONE BLOCKED OUTPOST IS NOT A BLOCKED WORLD** (`Combat.RAID_TRIES` 8, same
+test — a QA day-110 calm lakes save with ZERO barbarian contact): the loose-
+band seek tried only the crow-flight-NEAREST building, so a single outpost
+across a lake made a wave declare EVERYTHING unreachable and walk off the
+map — with both towns provably walkable the long way round. Candidates are
+now tried nearest-first up to `RAID_TRIES` deep; a fully walled town still
+fails all its tries, which is what the per-owner wall-batter fallback is
+for. **And the wave MUSTERS where it can find a fight** (`spawnWave`'s
+FIGHT NET): the muster spot must sit on ground connected to a tile beside
+some P/A building — "beside a building", never "at the hall doorstep",
+because a sealed ring's doorstep floods only its own inside while a
+raider's business is battering the ring from outside. A rolled corner
+outside the net widens across the whole map until it is in it. **And CALM'S
+WAVES ARE REAL NOW** (`CFG.MODES.calm`, pinned in tests/calm-peace.mjs):
+with the truce on, the wilds are calm's whole sword arm — the old
+`waveSizeAdd -2` sent a LONE soft raider for each of the first four waves,
+39–56 days apart, which is a run with no combat in it. Calm bands muster
+2–4 strong (sizeAdd 0, `bandCap` 5) every ~27–38 days (gapMult 1.9), still
+at 0.75× stats.
 
 **Rival crossing** (`tests/rival-crossing.mjs`): why a 400-day game ended with
 the rival's whole army idle at its own gate, never bridging or landing. Three

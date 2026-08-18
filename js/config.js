@@ -906,12 +906,20 @@ const CFG = {
          truce entirely — the wilds sign nothing. */
       peace: true, aiWonderDay: 330,
       // Softened after a playtest read Calm as "a little too hard": the sword
-      // arm is dialed well back (later first wave, rarer and smaller bands, a
-      // much later and smaller rival army that commits reluctantly) while the
-      // rival's HOMESTEAD grows richer — more villagers trained sooner, more
-      // build actions, full output — so the town you eventually visit is a
-      // living farm sprawl, not a war camp. Calm = watch it farm, not fight.
-      waveFirst: 85, waveGapMult: 2.8, waveSizeAdd: -2, barbMult: 0.75,
+      // arm is dialed well back (later first wave, a much later and smaller
+      // rival army that commits reluctantly) while the rival's HOMESTEAD
+      // grows richer — more villagers trained sooner, more build actions,
+      // full output — so the town you eventually visit is a living farm
+      // sprawl, not a war camp.
+      // THEN THE TRUCE MADE THE WILDS CALM'S WHOLE SWORD ARM (a QA day-110
+      // save with ZERO barbarian contact): the old waveSizeAdd -2 sent a
+      // LONE raider for each of the first four waves, 39-56 days apart, and
+      // one soft raider crossing an xlarge map dies to anything before the
+      // player ever sees it. With the rival at peace, that was a run with no
+      // combat in it at all. Bands now muster 2-4 strong (sizeAdd 0, capped
+      // at 5 so the late game stays gentle) every ~27-38 days (gapMult 1.9),
+      // still at 0.75x stats — light pressure on BOTH tribes, not silence.
+      waveFirst: 85, waveGapMult: 1.9, waveSizeAdd: 0, barbMult: 0.75, bandCap: 5,
       campMult: 0.6, campGuard: [1, 2],
       deathEvery: [34, 52],   // days between villager deaths (tests/mortality.mjs)
       animalMax: 2, animalChance: 0.15, aiRaidDay: 110,

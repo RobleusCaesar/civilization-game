@@ -108,6 +108,41 @@ const out = await p.evaluate(() => {
       'war behavior unchanged — four villagers can still drag down a lone attacker');
   }
 
+  // ---- 2c. THE WILDS ARE CALM'S SWORD ARM (a QA day-110 save with zero
+  //      barbarian contact): the pre-truce nerf sent a LONE soft raider for
+  //      each of the first four waves, 39-56 days apart — one raider crossing
+  //      an xlarge map dies to anything before the player ever sees it, and
+  //      with the rival at peace that was a run with no combat at all. A calm
+  //      wave must muster a real (if small) band, and the next must be weeks
+  //      away, not months. ----
+  {
+    fresh('calm');
+    const m = G.modeCfg();
+    /* jumping straight to day 85 on a day-1 world trips the cradle-clock
+       ease (BARB_EASE.slowStart) and stretches the very gap under test — so
+       first make both towns what they would really be by then: established
+       past minPeak, with hands alive. The ease must read a healthy world. */
+    for (const o of ['P', 'A']) {
+      const tc = Bld.tcOf(o);
+      for (let i = 0; i < 8; i++) {
+        const s = MapGen.findNear(tc.x + 3, tc.y + 3, 14, (x, y) => Bld.tileFree(x, y) && !Bld.at(x, y));
+        if (s) Bld.place(o, 'house', s.x, s.y, { free: true, instant: true });
+      }
+    }
+    G.notePeaks(); G._easeC = {};
+    S.day = m.waveFirst; S.wave.next = S.day;
+    if (G.barbEase('P') || G.barbEase('A')) ck('theEaseReadsAHealthyWorld', false, 'setup left a town eased');
+    const before = S.units.filter(u => u.owner === 'R').length;
+    Combat.maybeWave();
+    const band = S.units.filter(u => u.owner === 'R').length - before;
+    ck('aCalmWaveIsABand', band >= 2, band + ' raider(s) mustered — one is invisible');
+    ck('andTheNextIsWeeksAway', S.wave.next - S.day <= 40,
+      'next wave in ' + (S.wave.next - S.day) + ' days');
+    ck('butStillSofterThanModerate',
+      (m.barbMult || 1) < 1 && (m.bandCap || 6) <= (CFG.MODES.moderate.bandCap || 6),
+      'calm keeps its soft stats and small late-game cap');
+  }
+
   // ---- 3. the first strike ends it, permanently and loudly ----
   {
     fresh('calm');

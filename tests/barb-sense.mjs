@@ -122,6 +122,36 @@ const out = await p.evaluate(() => {
     ck('bystanderSapperUntouched', S.units.includes(sap) && sap.hp === sap.maxhp, `sapper hp=${sap.hp}`);
   }
 
+  // ---- 3b. ONE BLOCKED OUTPOST IS NOT A BLOCKED WORLD (a QA day-110 lakes
+  //      map): the seek tried only the crow-flight-nearest building, so a
+  //      single P outpost across a lake made a band declare EVERYTHING
+  //      unreachable and walk off the map — with the whole town provably
+  //      walkable. The candidate ladder (RAID_TRIES) must fall past the
+  //      island to the reachable town instead of leaving. ----
+  {
+    const tc = setup('bs3b');
+    // a P house on a one-tile island — the nearest attackable thing by air
+    for (let y = 22; y <= 26; y++) for (let x = 22; x <= 26; x++) T2(x, y, T.WATER);
+    T2(24, 24, T.GRASS);
+    // …and a guaranteed-reachable house by the town for the ladder to find,
+    // with a carved corridor so the seed's own terrain can't wall the band off
+    // (the scenario is about the ISLAND being blocked, nothing else)
+    const ms = MapGen.findNear(tc.x + 3, tc.y + 3, 10, (x, y) => Bld.tileFree(x, y) && !Bld.at(x, y));
+    for (let x = 27; x <= Math.max(ms ? ms.x : 0, tc.x) + 2; x++)
+      for (let y = 22; y <= 24; y++) if (!Bld.at(x, y)) T2(x, y, T.GRASS);
+    Bld._block = null;
+    const isle = Bld.place('P', 'house', 24, 24, { free: true, instant: true });
+    const home = Bld.place('P', 'house', ms.x, ms.y, { free: true, instant: true });
+    // the band stands on open ground beside the island, far from the town
+    const rs = MapGen.findNear(28, 23, 8, (x, y) => Path.passable(x, y, 'R') && !Bld.at(x, y));
+    const r = Units.spawn('raider', 'R', rs.x, rs.y); r.hostileTo = 'P';
+    Combat.raiderSeek(r);
+    const mark = r.tBld && Bld.get(r.tBld);
+    ck('theLadderFallsPastTheIsland',
+      !!mark && mark.id !== isle.id && !r.leaving,
+      mark ? `marches on ${mark.key} at ${mark.x},${mark.y}` : 'no mark — the band gave up');
+  }
+
   // ---- 4. a raider marooned ON open water (illegal state, however it got
   //         there) despawns rather than standing on the waves forever ----
   {

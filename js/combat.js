@@ -356,6 +356,9 @@ const Combat = {
   SIEGE_PROTECT: 4,   // threats within this range of a siege post get engaged
   RAID_SHELL_R: 12,   // how far a raider with no orders looks for the enemy's own
                       // stonework before it gives up and marches home
+  RAID_TRIES: 8,      // how many nearest buildings a loose band paths at before
+                      // deciding the world is unreachable (one blocked outpost
+                      // must never read as "nothing left to attack")
 
   /* CHAOS — attack anything in reach, in the player's stated order:
      civilians → soldiers → resource buildings → military halls → towers →
@@ -828,24 +831,37 @@ const Combat = {
     const bldPred = u.owner === 'R'
       ? (bb => bb.key !== 'tc' || (finishTC && bb.owner === 'P'))
       : null;
-    let b = null;
-    for (const ow of owners) {
-      const cand = this.nearestBuilding(u.x, u.y, ow, bldPred);
-      if (cand && (!b || Math.hypot(cand.x - u.x, cand.y - u.y) < Math.hypot(b.x - u.x, b.y - u.y)))
-        b = cand;
+    /* ONE BLOCKED BUILDING IS NOT A BLOCKED WORLD (a QA day-110 lakes map):
+       the seek used to try only the single crow-flight-NEAREST building —
+       and when that one outpost sat across a lake, the band declared
+       EVERYTHING unreachable and walked off the map, with both towns
+       provably walkable the long way round. Candidates are now tried
+       nearest-first up to RAID_TRIES deep; the first whose path actually
+       lands wins. A fully WALLED town still fails all its tries — that is
+       what the wall-batter fallback below is for, per failed owner. */
+    const cands = [];
+    for (const ow of owners) for (const bb of S.buildings) {
+      if (bb.owner !== ow || !Bld.attackable(bb)) continue;
+      if (bldPred && !bldPred(bb)) continue;
+      cands.push(bb);
     }
-    if (b) {
-      // try to reach the target; if walls are in the way the path stops short —
-      // then batter the closest wall or gate instead
+    cands.sort((a, z) =>
+      (Math.hypot(Bld.cx(a) - u.x, Bld.cy(a) - u.y) - Bld.reach(a)) -
+      (Math.hypot(Bld.cx(z) - u.x, Bld.cy(z) - u.y) - Bld.reach(z)));
+    const tried = cands.slice(0, this.RAID_TRIES);
+    for (const b of tried) {
+      // walk the path; if it lands beside the target, that's the mark
       Units.setPath(u, b.x, b.y);
       const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x, y: u.y };
       if (Math.hypot(end.x + 0.5 - Bld.cx(b), end.y + 0.5 - Bld.cy(b)) <= 1.6 + Bld.reach(b)) { u.tBld = b.id; return; }
-      // target's out of reach — batter through a wall or gate ONLY if we can get
-      // to one; a wall we can't even reach means this pocket is sealed off from us
-      const wall = this.nearestBuilding(u.x, u.y, b.owner, bb => bb.key === 'wall' || bb.key === 'gate');
-      if (wall && this.canReach(u, wall.x, wall.y, 1.6 + Bld.reach(wall))) { u.tBld = wall.id; return; }
-      // everything worth attacking is cut off — fall through and leave the board
     }
+    // every try stopped short — batter through a wall or gate ONLY if we can
+    // get to one; a wall we can't even reach means the pocket is sealed off
+    for (const ow of [...new Set(tried.map(bb => bb.owner))]) {
+      const wall = this.nearestBuilding(u.x, u.y, ow, bb => bb.key === 'wall' || bb.key === 'gate');
+      if (wall && this.canReach(u, wall.x, wall.y, 1.6 + Bld.reach(wall))) { u.tBld = wall.id; return; }
+    }
+    // everything worth attacking is cut off — fall through and leave the board
     // nothing left to attack (or all of it unreachable) — raiders leave, AI goes home
     if (u.owner === 'R') { this.raiderLeave(u); return; }
     if (u.owner === 'A') {
@@ -1328,7 +1344,32 @@ const Combat = {
     // least CLEAR tiles from every player building, so on island maps a wave
     // rolled near the player's shore relocates across the water instead of
     // landing on their beach.
-    const inNet = (x, y) => Path.passable(x, y) && (!open || open[MapGen.idx(x, y)]);
+    /* …AND (c) THE BAND CAN ACTUALLY FIND A FIGHT (a QA day-110 lakes map:
+       the wolf camp's corner is border-open but water-locked away from BOTH
+       towns, so its wave marched nowhere, decided everything was unreachable
+       and walked off the map — every wave from that muster was born dead,
+       silently). The FIGHT NET is the ground connected to a tile you can
+       stand on BESIDE any P/A building — deliberately "beside a building",
+       never "at the hall doorstep", because a fully walled town's doorstep
+       floods only the inside of its own ring while a raider's business is
+       battering the ring from outside. A muster inside the net always has
+       SOMETHING raiderSeek can path to; when the rolled corner isn't in it,
+       the findNear chain below widens across the whole map until it is —
+       which is exactly "their radius expands to find me". */
+    const fightSeeds = [];
+    for (const fb of S.buildings) {
+      if (fb.owner !== 'P' && fb.owner !== 'A') continue;
+      const sz = Bld.size(fb);
+      for (let i = -1; i <= sz; i++) {
+        for (const [ox, oy] of [[i, -1], [i, sz], [-1, i], [sz, i]]) {
+          const x = fb.x + ox, y = fb.y + oy;
+          if (MapGen.inB(x, y) && Path.passable(x, y)) fightSeeds.push({ x, y });
+        }
+      }
+    }
+    const fight = fightSeeds.length ? Path.reachFrom(fightSeeds) : null;
+    const inNet = (x, y) => Path.passable(x, y) && (!open || open[MapGen.idx(x, y)]) &&
+      (!fight || fight[MapGen.idx(x, y)]);
     const CLEAR = 10;
     const farOk = (x, y) => {
       if (!inNet(x, y)) return false;
