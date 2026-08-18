@@ -37,11 +37,14 @@ const Tutorial = {
   /* ---- transient state (never saved; onWorldChange resets all of it) ---- */
   simScale: 1,        // read by G.frame; 0.2 while a note is up and unreleased
   SLOW: 0.2,
+  BREATH: 1.4,        // quiet seconds between one note answered and the next
+                      // appearing — instant chaining read as being rushed
   _dom: false,        // overlay elements exist
   _show: null,        // {kind:'step'|'event', id} currently displayed
   _shownAt: 0,        // performance.now() when it appeared
   _released: false,   // player touched the world → full speed again
   _advT: 0, _evT: 0,  // check throttles (s)
+  _gapT: 0,           // the breath: seconds left before the next note may show
   _pan: null,         // eased camera glide toward an offscreen anchor
   _memo: {},          // per-step anchor memos (nearest-tile scans, 1s ttl)
   _skipArm: 0,        // two-tap skip confirm (performance.now deadline)
@@ -155,7 +158,14 @@ const Tutorial = {
     // the house comes BEFORE training on purpose: a start package can open at
     // the population cap, and a train order refused for room would deadlock
     // the spine — a roof always buys the room the next order needs
-    { id: 'house', anchor: () => ({ sel: '#bmToggle' }),
+    { id: 'house',
+      // point at the HOUSE CARD itself while the menu is open; only a closed
+      // menu falls back to ringing the toggle that opens it
+      anchor() {
+        const btn = document.querySelector('.bbtn[data-key="house"]');
+        if (btn && btn.offsetParent !== null) return { sel: '.bbtn[data-key="house"]' };
+        return { sel: '#bmToggle' };
+      },
       adv: () => S.buildings.some(b => b.owner === 'P' && b.key === 'house') },
     { id: 'train',
       anchor() { const tc = Tutorial._tc(); return tc && { x: tc.x + 1, y: tc.y + 1, r: 1.5 }; },
@@ -273,7 +283,7 @@ const Tutorial = {
   onWorldChange() {
     this.simScale = 1;
     this._show = null; this._pan = null; this._memo = {};
-    this._advT = this._evT = 0; this._skipArm = 0; this._lastEvAt = -1e9;
+    this._advT = this._evT = this._gapT = 0; this._skipArm = 0; this._lastEvAt = -1e9;
     this._removeDom();
   },
 
@@ -296,6 +306,7 @@ const Tutorial = {
     if (!window.S || !S.tut || !S.tut.on) return;   // belt and braces — the call site gates too
     if (S.over) { this.simScale = 1; this._hideAll(); return; }
     this._scoutTick(dt);
+    if (this._gapT > 0) this._gapT -= dt;   // the breath between notes
     this._advT -= dt;
     if (this._advT <= 0) { this._advT = 0.15; this._scanSteps(); }
     // THE SPINE HAS RIGHT OF WAY: contextual notes fill the quiet stretches
@@ -327,6 +338,7 @@ const Tutorial = {
         t.done[st.id] = 1;
         if (this._show && this._show.kind === 'step' && this._show.id === st.id) {
           UI.cue('ok'); this._show = null;
+          this._gapT = this.BREATH;   // a beat before the next note appears
         }
       }
     }
@@ -341,6 +353,7 @@ const Tutorial = {
       if (ev && ev.adv && ev.adv()) this._completeShow();
       return;
     }
+    if (this._gapT > 0) return;                               // the breath holds here too
     if (performance.now() - this._lastEvAt < 25000) return;   // never stack notes
     for (const ev of this.EVENTS) {
       if (t.fired[ev.id]) continue;
@@ -356,6 +369,7 @@ const Tutorial = {
   /* ---- what is on show right now ---- */
   _updateDisplay() {
     if (this._show) return;                       // one thing at a time
+    if (this._gapT > 0) return;                   // let the last one land first
     const t = S.tut;
     if (t.phase !== 1 || t.step >= this.STEPS.length) return;   // phase 2 is events-only
     const st = this.STEPS[t.step];
@@ -407,6 +421,7 @@ const Tutorial = {
     }
     UI.cue('ok');
     this._show = null;
+    this._gapT = this.BREATH;   // a beat before the next note appears
     this._hideAll();
     // guidance has run its course → go fully cold (zero further cost)
     if (t.phase === 2 && (S.day > 150 || this.EVENTS.every(e => t.fired[e.id]))) {
@@ -588,20 +603,29 @@ const Tutorial = {
                         ang: Math.atan2(sy - vh / 2, sx - vw / 2) };
       }
     }
-    // the dim + ring around whatever the note points at
+    // the dim + ring around whatever the note points at. A UI target's hole
+    // is a RECTANGLE hugging the element — the circle version, sized to a
+    // bar's whole width, read as a giant half-circle clipped by the screen
     if (hole) {
       el.dim.style.display = 'block';
-      el.dim.style.left = (hole.x - hole.r) + 'px';
-      el.dim.style.top = (hole.y - hole.r) + 'px';
-      el.dim.style.width = el.dim.style.height = hole.r * 2 + 'px';
       el.ring.style.display = 'block';
       if (hole.rect) {   // a UI target keeps its own shape
+        const pad = 6;
+        el.dim.style.borderRadius = '12px';
+        el.dim.style.left = (hole.rect.left - pad) + 'px';
+        el.dim.style.top = (hole.rect.top - pad) + 'px';
+        el.dim.style.width = (hole.rect.width + pad * 2) + 'px';
+        el.dim.style.height = (hole.rect.height + pad * 2) + 'px';
         el.ring.style.borderRadius = '10px';
         el.ring.style.left = (hole.rect.left - 5) + 'px';
         el.ring.style.top = (hole.rect.top - 5) + 'px';
         el.ring.style.width = (hole.rect.width + 10) + 'px';
         el.ring.style.height = (hole.rect.height + 10) + 'px';
       } else {
+        el.dim.style.borderRadius = '50%';
+        el.dim.style.left = (hole.x - hole.r) + 'px';
+        el.dim.style.top = (hole.y - hole.r) + 'px';
+        el.dim.style.width = el.dim.style.height = hole.r * 2 + 'px';
         el.ring.style.borderRadius = '50%';
         el.ring.style.left = (hole.x - hole.r) + 'px';
         el.ring.style.top = (hole.y - hole.r) + 'px';
@@ -618,15 +642,26 @@ const Tutorial = {
         el.arrow.style.transform = 'rotate(' + offDir.ang + 'rad)';
       } else el.arrow.style.display = 'none';
     }
-    // the panel sits opposite the target, clear of the top bar and the build menu
+    // the panel's seat: a UI target gets the card RIGHT BESIDE it (under the
+    // resource bar, above the build-menu card — the note and the thing it
+    // names read as one); a world target keeps the opposite-half rule so the
+    // card never covers the spotlight
     const vh2 = window.innerHeight || R.viewH();
-    const topBar = document.getElementById('topbar');
-    const botBar = document.getElementById('bottombar');
-    const topPad = (topBar ? topBar.offsetHeight : 0) + 10;
-    const botPad = (botBar ? botBar.offsetHeight : 0) + 10;
-    const targetHigh = hole ? hole.y < vh2 * 0.48 : false;
-    if (targetHigh) { el.panel.style.top = 'auto'; el.panel.style.bottom = botPad + 'px'; }
-    else { el.panel.style.top = topPad + 'px'; el.panel.style.bottom = 'auto'; }
+    if (hole && hole.rect) {
+      if (hole.rect.top + hole.rect.height / 2 < vh2 * 0.5) {
+        el.panel.style.top = (hole.rect.bottom + 12) + 'px'; el.panel.style.bottom = 'auto';
+      } else {
+        el.panel.style.bottom = (vh2 - hole.rect.top + 12) + 'px'; el.panel.style.top = 'auto';
+      }
+    } else {
+      const topBar = document.getElementById('topbar');
+      const botBar = document.getElementById('bottombar');
+      const topPad = (topBar ? topBar.offsetHeight : 0) + 10;
+      const botPad = (botBar ? botBar.offsetHeight : 0) + 10;
+      const targetHigh = hole ? hole.y < vh2 * 0.48 : false;
+      if (targetHigh) { el.panel.style.top = 'auto'; el.panel.style.bottom = botPad + 'px'; }
+      else { el.panel.style.top = topPad + 'px'; el.panel.style.bottom = 'auto'; }
+    }
   },
 
   _panTo(tx, ty) {

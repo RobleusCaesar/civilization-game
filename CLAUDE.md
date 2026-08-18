@@ -3236,6 +3236,12 @@ stretches (a held step, phase 2), ≥25s apart — except the scout, whose
 spacing gate initializes to `-1e9`, NEVER 0 — `performance.now()` starts
 near zero, so a 0 initial value silently blocks every note for the first
 25 seconds of a page load (found by the contract test, invisible in play).
+**And every answered note leaves A BREATH** (`Tutorial.BREATH`, 1.4s of
+`_gapT`): completing one note and presenting the next in the same frame
+read as being rushed (playtest feedback), so both presentation gates hold
+for the beat — the spotlight drops, the world runs at full speed, then the
+next note arrives. Any test that answers a note and asserts the next one
+must tick THROUGH the breath.
 **Out-of-order tolerance**: every later step's `adv` is scanned in the
 background, so a deed done early skips its telling — which is why advance
 conditions are STATELESS reads of S (a task on a forest tile, a queue with
@@ -3259,7 +3265,14 @@ that grabs it, and it despawns after its loop or 2 days. **The overlay**
 (`#tutDim` at z8, `#tutUI` at z15) darkens only the WORLD — the dim sits
 below the HUD's z10, so every button stays bright and tappable — and both
 elements are in the `body:not(.ingame)` hide list, so shell screens cover
-them for free. The title's old "Tutorial" button was renamed **"Guide"**
+them for free. **A UI target's spotlight is a RECTANGLE hugging the
+element, with the card seated right beside it** (under the resource bar,
+above a build-menu card): the circular hole, sized to a bar's whole width,
+drew a giant half-circle clipped by the screen edge — reported from a real
+phone playtest as "confusing". World targets keep the circle and the
+opposite-half card rule. **The house step rings the HOUSE CARD itself**
+(`.bbtn[data-key="house"]`) whenever the build menu is open, and only a
+closed menu falls back to ringing the toggle. The title's old "Tutorial" button was renamed **"Guide"**
 (it opens the static manual) so the two never collide — "How to play"
 measured 0.4px too wide for its plaque at 320px, which
 `noTitleLabelRunsOffItsPlaque` catches and nothing else does.

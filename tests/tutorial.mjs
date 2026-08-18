@@ -71,7 +71,10 @@ const out = await p.evaluate(async () => {
     if (tut) Tutorial.maybeStart();
   };
   const tick = (n, dt) => { for (let i = 0; i < (n || 1); i++) Tutorial.tick(dt || 1); };
-  const clickNext = () => { const el = document.getElementById('tutNext'); if (el) el.click(); };
+  const clickNext = () => {
+    const el = document.getElementById('tutNext'); if (el) el.click();
+    tick(6, 0.3);                       // through the BREATH between notes
+  };
   const txtOf = id => { const el = document.getElementById(id); return el ? el.textContent : '(no #' + id + ')'; };
 
   // ---- 1. zero residue when the checkbox is off ----
@@ -108,10 +111,28 @@ const out = await p.evaluate(async () => {
     ck('counterHonest', txtOf('tutNum') === '1/' + Tutorial.STEPS.length,
       txtOf('tutNum'));
     ck('slowWhileShown', Tutorial.simScale === Tutorial.SLOW, String(Tutorial.simScale));
-    clickNext();
-    tick(2, 0.3);
+    // THE BREATH: answering a note leaves a quiet beat before the next one
+    document.getElementById('tutNext').click();
+    tick(1, 0.1);
+    ck('breathAfterNext', Tutorial._show === null && Tutorial._gapT > 0,
+      JSON.stringify(Tutorial._show) + ' gap=' + Tutorial._gapT.toFixed(2));
+    tick(6, 0.3);
     ck('nextAdvances', S.tut.done.welcome === 1 && S.tut.step === 1, JSON.stringify(S.tut.done));
     ck('secondStepShows', Tutorial._show && Tutorial._show.id === 'resources', '');
+    // …and the RESOURCES spotlight is a rectangle hugging the top bar, with
+    // the card seated right below it — never the screen-wide clipped circle
+    {
+      const dim = document.getElementById('tutDim');
+      const bar = document.getElementById('topbar').getBoundingClientRect();
+      const d = dim.getBoundingClientRect();
+      ck('uiSpotlightIsARect', dim.style.borderRadius === '12px' &&
+        Math.abs(d.left - (bar.left - 6)) < 2 && Math.abs(d.width - (bar.width + 12)) < 4 &&
+        Math.abs(d.height - (bar.height + 12)) < 4,
+        dim.style.borderRadius + ' ' + JSON.stringify({ d: [d.left, d.width, d.height], bar: [bar.left, bar.width, bar.height] }));
+      const panel = document.getElementById('tutPanel').getBoundingClientRect();
+      ck('cardSitsUnderTheBar', panel.top > bar.bottom && panel.top < bar.bottom + 40,
+        'panel.top=' + panel.top + ' bar.bottom=' + bar.bottom);
+    }
   }
 
   // ---- 4 + 5. out-of-order satisfaction and action-gated advance ----
@@ -134,7 +155,7 @@ const out = await p.evaluate(async () => {
     clickNext(); tick(2, 0.3);   // resources
     ck('tapVillagerShown', Tutorial._show && Tutorial._show.id === 'tapVillager', JSON.stringify(Tutorial._show));
     UI.sel = { type: 'unit', id: v.id };
-    tick(3, 0.3);
+    tick(8, 0.3);
     ck('selectionSatisfies', S.tut.done.tapVillager === 1, JSON.stringify(S.tut.done));
     UI.sel = null;
     // …and when the pointer walks on, the early-done stone step is skipped
@@ -146,11 +167,25 @@ const out = await p.evaluate(async () => {
       for (let i = 0; i < S.map.terrain.length; i++)
         if (S.map.terrain[i] === T_.FERTILE) return { x: i % CFG.W, y: (i / CFG.W) | 0 };
     })();
-    v.task = { type: 'gather', x: wood.x, y: wood.y }; tick(2, 0.3);
-    v.task = { type: 'gather', x: fert.x, y: fert.y }; tick(2, 0.3);
+    v.task = { type: 'gather', x: wood.x, y: wood.y }; tick(8, 0.3);
+    v.task = { type: 'gather', x: fert.x, y: fert.y }; tick(8, 0.3);
     v.task = null;
+    tick(8, 0.3);
     ck('pointerSkipsTheDone', Tutorial._show && Tutorial._show.id === 'gold',
       JSON.stringify(Tutorial._show) + ' step=' + S.tut.step);
+    // the HOUSE step rings the House card in the open build menu, not the
+    // toggle that opens it
+    clickNext();
+    ck('houseShows', Tutorial._show && Tutorial._show.id === 'house', JSON.stringify(Tutorial._show));
+    {
+      const card = document.querySelector('.bbtn[data-key="house"]');
+      const ring = document.getElementById('tutRing');
+      const okAnchor = card && card.offsetParent !== null && ring.style.display !== 'none' &&
+        (() => { const c = card.getBoundingClientRect(), r = ring.getBoundingClientRect();
+                 return Math.abs(r.left - (c.left - 5)) < 2 && Math.abs(r.width - (c.width + 10)) < 4; })();
+      ck('houseRingsTheCard', !!okAnchor,
+        card ? 'card visible=' + (card.offsetParent !== null) + ' ring=' + ring.style.display : 'no card');
+    }
   }
 
   // ---- 6. slow while shown, full speed when dormant ----
@@ -244,11 +279,13 @@ const out = await p.evaluate(async () => {
     Tutorial._show = null;
     tick(3, 0.3);
     ck('capstoneShows', Tutorial._show && Tutorial._show.id === 'capstone', JSON.stringify(Tutorial._show));
+    // mark every other note told BEFORE answering the capstone — clickNext
+    // ticks through the breath now, and an unfired note (dock) would take
+    // the stage during those ticks
+    for (const e of Tutorial.EVENTS) if (e.id !== 'trade') S.tut.fired[e.id] = 1;
     clickNext();
     ck('capstoneOpensPhase2', S.tut.phase === 2 && S.tut.done.capstone === 1, JSON.stringify(S.tut));
-    // Trading Post note at TC3, one-shot (other notes already told, so the
-    // priority walk cannot hand the stage to an earlier one)
-    for (const e of Tutorial.EVENTS) if (e.id !== 'trade') S.tut.fired[e.id] = 1;
+    // Trading Post note at TC3, one-shot
     tc.level = 3; Tutorial._lastEvAt = -1e9; tick(2, 0.6);
     ck('tradeNoteAtTc3', Tutorial._show && Tutorial._show.id === 'trade', JSON.stringify(Tutorial._show));
     clickNext();
