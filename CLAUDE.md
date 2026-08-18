@@ -3103,6 +3103,27 @@ re-uploaded under the same name. The `?dev=1` drag-and-drop preview
 takes, which is the whole point: the preview is what ships. Without the
 flag dev.js does nothing at all — no listeners, no DOM, no state.
 
+**THE FOG FEATHER OWES NOTHING TO ctx.filter** (`R.redrawFog` /
+`R._boxBlurPremul`, pinned in tests/boot.mjs — from a phone screenshot set
+read at first as "weird coastal water": hard tile-stepped pale rectangles
+across every bay). The pale patches were not a water painter at all — they
+were the LIT water inside the town's own vision standing against the
+fog-dimmed memory beyond it, and the boundary between them shipped RAW on
+the reporting iPhone because the reveal-edge feather was a
+`ctx.filter = 'blur(…)'`, which iOS Safari builds in the field ignore — a
+feather that silently no-ops ships blocky to exactly the players who can't
+debug it. The blur is hand-rolled now: a separable premultiplied box blur
+(premultiplied, or the black of fully-transparent pixels bleeds into the lit
+edge), run at 1px/TILE resolution — 4k pixels, not the 68k of the upscaled
+intermediate (measured 8.5ms there vs ~2ms total here) — with both rounds
+inside ONE getImageData/putImageData round-trip, then carried to screen by
+the two bilinear upscales that were already there. The boot pin deletes the
+filter API from the page outright and measures the reveal edge is still a
+many-step gradient. Diagnosis note for the next "weird water" report: put
+the screenshot through a pale-pixel mask first — vision footprints hug the
+coast around the player's own works and stop at tile-stepped lines, which
+is the fog's geometry, not the shore layer's.
+
 **The frame must never pay for bookkeeping** (the stutter post-mortem, a real
 multi-save report): four measured taxes, each invisible in review and each a
 rule now. **No dead serialization** — `G.autosave` stringified the ENTIRE

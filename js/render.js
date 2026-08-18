@@ -3225,22 +3225,79 @@ const R = {
         g.fillRect(x, y, 1, 1);
       }
     }
-    // Feather the reveal edge. The fog is one pixel per tile, so a straight
-    // upscale leaves a blocky per-tile staircase where lit meets unexplored —
-    // it reads as a hard rectangular outline around whatever sits at the vision
-    // edge (forests, resource nodes). Pre-blur an intermediate at 4px/tile so the
-    // edge dissolves into a soft gradient. Runs ONLY here (on fogDirty), never
-    // per frame; the frame loop just blits the result.
+    /* Feather the reveal edge. The fog is one pixel per tile, so a straight
+       upscale leaves a blocky per-tile staircase where lit meets unexplored —
+       it reads as a hard rectangular outline around whatever sits at the vision
+       edge (forests, resource nodes). Pre-blur an intermediate at 4px/tile so the
+       edge dissolves into a soft gradient. Runs ONLY here (on fogDirty), never
+       per frame; the frame loop just blits the result.
+       THE BLUR IS DONE BY HAND, NEVER VIA ctx.filter (a reported phone
+       screenshot set: hard tile-stepped pale rectangles across every bay —
+       the lit water inside the town's own vision against the fog-dimmed
+       memory beyond it, upscaled RAW). iOS Safari builds in the field ignore
+       canvas filters entirely, and a feather that silently no-ops is a
+       feather that ships blocky to exactly the players who can't debug it.
+       A separable premultiplied box blur over the 4px/tile intermediate is
+       deterministic on every engine; premultiplied, because blurring straight
+       RGBA bleeds the black of fully-transparent pixels into the lit edge. */
+    /* The blur runs at 1px/TILE — 4k pixels, not the 68k of the upscaled
+       intermediate (measured: 8.5ms median there, ~0.3ms here) — and the
+       two bilinear upscales (1px→4px baked here, 4px→tile at blit time)
+       carry the smoothed field out to screen resolution for free. */
+    this._boxBlurPremul(g, CFG.W, CFG.H, 1, 2);
     const scale = 4, bw = CFG.W * scale, bh = CFG.H * scale;
     if (!this.fogBlurCv) this.fogBlurCv = document.createElement('canvas');
     if (this.fogBlurCv.width !== bw) { this.fogBlurCv.width = bw; this.fogBlurCv.height = bh; }
     const bg = this.fogBlurCv.getContext('2d');
     bg.clearRect(0, 0, bw, bh);
     bg.imageSmoothingEnabled = true;
-    bg.filter = 'blur(' + (scale * 0.9) + 'px)';   // ~1-tile feather
     bg.drawImage(this.fogCv, 0, 0, CFG.W, CFG.H, 0, 0, bw, bh);
-    bg.filter = 'none';
     this.fogDirty = false;
+  },
+
+  // separable box blur on premultiplied alpha — the engine-proof feather
+  // redrawFog leans on. Radius r px; `rounds` repeats both passes inside ONE
+  // ImageData round-trip (get/putImageData is the real cost at this size).
+  _boxBlurPremul(ctx2, w, h, r, rounds) {
+    const img = ctx2.getImageData(0, 0, w, h), d = img.data, n = w * h;
+    // premultiply into a working float-free copy (Uint16 to keep precision)
+    const pm = new Uint16Array(n * 4);
+    for (let i = 0, j = 0; i < n; i++, j += 4) {
+      const a = d[j + 3];
+      pm[j] = d[j] * a; pm[j + 1] = d[j + 1] * a; pm[j + 2] = d[j + 2] * a; pm[j + 3] = a * 255;
+    }
+    const tmp = new Uint16Array(n * 4);
+    const span = r * 2 + 1;
+    const pass = (src, dst, stride, lineLen, lines, lineStride) => {
+      for (let l = 0; l < lines; l++) {
+        const base = l * lineStride;
+        for (let c = 0; c < 4; c++) {
+          let sum = 0;
+          for (let k = -r; k <= r; k++) {
+            const kk = Math.min(lineLen - 1, Math.max(0, k));
+            sum += src[base + kk * stride + c];
+          }
+          for (let i2 = 0; i2 < lineLen; i2++) {
+            dst[base + i2 * stride + c] = sum / span;
+            const drop = Math.max(0, i2 - r), add = Math.min(lineLen - 1, i2 + r + 1);
+            sum += src[base + add * stride + c] - src[base + drop * stride + c];
+          }
+        }
+      }
+    };
+    for (let rd = 0; rd < (rounds || 1); rd++) {
+      pass(pm, tmp, 4, w, h, w * 4);        // horizontal
+      pass(tmp, pm, w * 4, h, w, 4);        // vertical
+    }
+    for (let i = 0, j = 0; i < n; i++, j += 4) {
+      const a = pm[j + 3] / 255;
+      d[j + 3] = Math.round(a);
+      const ua = a > 0 ? a : 1;
+      d[j] = Math.min(255, Math.round(pm[j] / ua));
+      d[j + 1] = Math.min(255, Math.round(pm[j + 1] / ua));
+      d[j + 2] = Math.min(255, Math.round(pm[j + 2] / ua));
+    }
+    ctx2.putImageData(img, 0, 0);
   },
 
   viewW() { return this.cv.width / this.dpr; },

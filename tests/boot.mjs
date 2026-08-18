@@ -444,6 +444,43 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   await p.close();
 }
 
+{
+  /* 3d. THE FOG FEATHER OWES NOTHING TO ctx.filter (a reported phone
+     screenshot set: hard tile-stepped pale rectangles across every bay —
+     the lit water inside the town's own vision against the fog-dimmed
+     memory beyond it, upscaled RAW, because iOS Safari builds in the field
+     ignore canvas filters). redrawFog blurs by hand now; this page deletes
+     the filter API outright and the reveal edge must still be a gradient. */
+  const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+  await p.addInitScript(() => {
+    Object.defineProperty(CanvasRenderingContext2D.prototype, 'filter',
+      { get: () => 'none', set: () => {}, configurable: true });
+  });
+  await p.goto(url, { waitUntil: 'commit' });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 8000 });
+  const r = await p.evaluate(() => {
+    G.newGame('fogfeather', 'moderate', 'large');
+    Screens._demo = false; Screens.show('playing'); S.paused = true;
+    // an explored world with one visible pocket — the user's own situation
+    S.map.explored.fill(1);
+    const vis = new Uint8Array(CFG.W * CFG.H);
+    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++)
+      if (Math.hypot(x - 30, y - 30) < 6) vis[MapGen.idx(x, y)] = 1;
+    G.vis = vis; R.fogDirty = true; R.redrawFog();
+    const g2 = R.fogBlurCv.getContext('2d');
+    const scale = R.fogBlurCv.width / CFG.W;
+    const row = g2.getImageData(0, Math.round(30.5 * scale), R.fogBlurCv.width, 1).data;
+    const a = (tx) => row[Math.round(tx * scale) * 4 + 3];
+    const steps = new Set();
+    for (let x = Math.round(22 * scale); x <= Math.round(30 * scale); x++) steps.add(row[x * 4 + 3]);
+    return { steps: steps.size, centre: a(30.5), far: a(18) };
+  });
+  await p.close();
+  ck('theFogFeatherOwesNothingToCtxFilter',
+    r.steps >= 5 && r.centre < 40 && r.far > 60,
+    `boundary carries ${r.steps} alpha steps (lit centre a=${r.centre}, remembered a=${r.far}) with the filter API deleted`);
+}
+
 /* ---- 4. THE CHROME COMES BACK WITH A GAME, and goes when it ends ---- */
 {
   const p = await b.newPage({ viewport: { width: 390, height: 844 } });
