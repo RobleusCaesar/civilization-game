@@ -305,6 +305,8 @@
   body:not(.ingame) #armyBar,
   body:not(.ingame) #toasts,
   body:not(.ingame) #wonderWarn,
+  body:not(.ingame) #tutDim,
+  body:not(.ingame) #tutUI,
   body:not(.ingame) #placeUI { display: none !important; }
   /* the rival-wonder countdown (tests/calm-peace.mjs): a standing warning,
      not a toast — it holds the screen for as long as the monument rises,
@@ -318,6 +320,45 @@
     padding: 6px 12px; border-radius: 6px; white-space: nowrap;
     box-shadow: 0 2px 10px rgba(0,0,0,0.5);
     display: none;
+  }
+
+  /* ---- THE TUTORIAL (js/tutorial.js, tests/tutorial.mjs) ----
+     #tutDim sits BELOW the HUD (z8 < topbar's z10) so the spotlight darkens
+     only the world and every button stays bright and tappable; the ring,
+     arrow and text card ride above the bars at z15. Nothing here takes a
+     pointer event except the card's own buttons. */
+  #tutDim {
+    position: fixed; z-index: 8; pointer-events: none; border-radius: 50%;
+    box-shadow: 0 0 0 9999px rgba(10,8,5,0.42); display: none;
+  }
+  #tutUI { position: fixed; inset: 0; z-index: 15; pointer-events: none; display: none; }
+  #tutRing {
+    position: absolute; border: 3px solid #e8b64c; border-radius: 50%;
+    box-shadow: 0 0 12px rgba(232,182,76,0.65), inset 0 0 10px rgba(232,182,76,0.35);
+    animation: tutPulse 1.6s ease-in-out infinite; display: none;
+  }
+  @keyframes tutPulse {
+    0%, 100% { transform: scale(1); opacity: 0.9; }
+    50% { transform: scale(1.06); opacity: 0.55; }
+  }
+  #tutArrow {
+    position: absolute; font-size: 26px; color: #e8b64c; display: none;
+    text-shadow: 0 2px 6px #000; animation: tutPulse 1.2s ease-in-out infinite;
+  }
+  #tutPanel {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    width: min(92vw, 400px); pointer-events: auto;
+    background: rgba(28,20,11,0.95); border: 1px solid #5c421f; border-radius: 10px;
+    color: #f4dfc0; padding: 10px 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.55);
+    font-size: 13px; line-height: 1.45;
+  }
+  #tutTxt b { color: #ffd77e; }
+  #tutRow { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  #tutNext { min-height: 44px; flex: 0 0 auto; padding: 0 18px; }
+  #tutNum { color: #a8916b; font-size: 11px; }
+  #tutSkip {
+    margin-left: auto; background: none; border: none; color: #a8916b;
+    font-size: 12px; min-height: 44px; padding: 0 6px; text-decoration: underline;
   }
 
   /* ---- game shell: full-viewport screens over the canvas ---- */
@@ -1089,7 +1130,7 @@
         <button class="abtn big" id="btnTitleBoard"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><rect x="2" y="2" width="12" height="2" fill="#8a5f23"/><rect x="4" y="2" width="8" height="6" fill="#f2cd62"/><rect x="2" y="3" width="2" height="3" fill="#d9a83f"/><rect x="12" y="3" width="2" height="3" fill="#d9a83f"/><rect x="4" y="2" width="8" height="1" fill="#f7e39a"/><rect x="5" y="8" width="6" height="1" fill="#d9a83f"/><rect x="6" y="9" width="4" height="1" fill="#b98a2e"/><rect x="7" y="10" width="2" height="2" fill="#d9a83f"/><rect x="4" y="12" width="8" height="2" fill="#8a5f23"/></svg>Leaderboard</span></button>
         <div class="trow2 trow3">
           <button class="abtn" id="btnTitleSettings"><span class="blab">Settings</span></button>
-          <button class="abtn" id="btnTitleHow"><span class="blab">Tutorial</span></button>
+          <button class="abtn" id="btnTitleHow"><span class="blab">Guide</span></button>
           <button class="abtn" id="btnTitleLoad"><span class="blab">Load</span></button>
         </div>
       </div>
@@ -1133,6 +1174,7 @@
       <div id="draftCards"></div>
       <p class="hint" id="draftHint"></p>
       <div id="draftRival"></div>
+      <button class="abtn" id="btnTutToggle" style="max-width:330px;min-height:44px">🎓 Start with a tutorial: Off</button>
       <button class="abtn big gold" id="btnDraftGo" style="display:none">🏕 Begin</button>
     </div>
     <button class="abtn" id="btnDraftHelp">?</button>
@@ -1376,6 +1418,7 @@
 <script src="js/victoryart.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/screens.js"></script>
+<script src="js/tutorial.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>

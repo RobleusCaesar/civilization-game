@@ -187,6 +187,7 @@ const G = {
       eased: { P: false, A: false },             // biggest each town ever stood (G.barbEase)
       ai: null,
       boons: { P: {}, A: {} },   // ORIGIN CARDS: each side's kept-card modifiers
+      tut: null,                 // THE TUTORIAL (js/tutorial.js): armed only by the draft screen's checkbox
       log: [],
     };
     Bld._block = null;
@@ -281,6 +282,7 @@ const G = {
     UI.settingRally = null;
     UI._healLog = {};   // real-time heal-spam limit is UI-local — a fresh game must not
                          // inherit a stale cooldown on whatever unit id collides with an old one
+    if (window.Tutorial) Tutorial.onWorldChange();   // drop any old run's overlay/pan/slow
     document.getElementById('btnPause').textContent = '⏸';
     // opening notes linger twice as long — there's a lot to take in on day 1
     const LAND = { valley: 'a green valley', lakeland: 'a land of lakes', highlands: 'rugged highlands', islands: 'a chain of islands' };
@@ -1203,6 +1205,7 @@ const G = {
     // NEVER foeNote: that is difficulty-gated enemy intel. A death in the
     // village is the player's own news and is told at every difficulty.
     this.log('☠ ' + cause.line, true, 5200);
+    if (window.Tutorial) Tutorial.note('mortality');   // the tutorial explains the first one
     S.nextDeath = S.day + this.rollDeathGap();
     return cause;
   },
@@ -1534,6 +1537,7 @@ const G = {
           if (u.female == null) u.female = Math.random() < 0.5;
         }
     }
+    if (data.tut === undefined) data.tut = null;      // pre-tutorial saves: no guidance mid-run
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.hunted) data.map.hunted = {};       // pre-worked-ground saves: the record starts empty
     if (!data.corpses) data.corpses = [];             // pre-corpse saves: no remains on the ground yet
@@ -1585,6 +1589,7 @@ const G = {
     UI.deselect();
     if (UI.exitPlacement) UI.exitPlacement();   // a load mid-placement cancels the mode whole
     UI._healLog = {};   // see newGame — a loaded save must not inherit a stale cooldown
+    if (window.Tutorial) Tutorial.onWorldChange();   // transient overlay state never crosses a load
     this._marvel = false;   // a save loaded mid-marvel is just a save
     this._dying = null;     // …and an announced-but-unfallen villager lives
     this._easeC = null;    // the ease day-cache must not leak across runs (day numbers collide)
@@ -1620,10 +1625,16 @@ const G = {
     const dt = Math.min(0.1, (t - G.lastT) / 1000 || 0.016);
     G.lastT = t;
     if (S && !S.paused && !S.over) {
-      const dtDays = dt * 1000 / CFG.DAY_MS;
+      /* THE TUTORIAL's slow-motion (js/tutorial.js): while a note is up the
+         SIM runs at Tutorial.simScale (×0.2) so a new player can read without
+         the world running away — render and UI below stay on real dt, so the
+         game never looks frozen. Scale 1 (a single multiply) whenever the
+         tutorial is off, which is every run without the checkbox. */
+      const sdt = dt * ((S.tut && S.tut.on && window.Tutorial && Tutorial.simScale) || 1);
+      const dtDays = sdt * 1000 / CFG.DAY_MS;
       S.playtime = (S.playtime || 0) + dt;
       G._safe(() => {
-        S.dayT += dt * 1000;
+        S.dayT += sdt * 1000;
         let guard = 0;
         while (S.dayT >= CFG.DAY_MS && guard++ < 4) {
           S.dayT -= CFG.DAY_MS;
@@ -1633,13 +1644,13 @@ const G = {
       }, 'day');
       if (S && !S.over) {
         G._safe(() => Bld.update(dtDays), 'buildings');
-        G._safe(() => Units.update(dt), 'units');
-        G._safe(() => Combat.update(dt), 'combat');
+        G._safe(() => Units.update(sdt), 'units');
+        G._safe(() => Combat.update(sdt), 'combat');
         G._safe(() => {
-          G.dyingTick(dt);       // the villager whose death was announced a beat ago
-          G.krakenTick(dt);
-          G.dragonTick(dt);
-          G.dragonT = (G.dragonT || 0) - dt;
+          G.dyingTick(sdt);      // the villager whose death was announced a beat ago
+          G.krakenTick(sdt);
+          G.dragonTick(sdt);
+          G.dragonT = (G.dragonT || 0) - sdt;
           if (G.dragonT <= 0) {
             G.dragonT = 1.3;   // the special-event pulse: each maybe* self-gates on its armed state
             G.maybeDragon(); G.maybeSons();
@@ -1660,6 +1671,10 @@ const G = {
     if (S) {
       G._safe(() => R.draw(dt), 'render');
       G._safe(() => UI.refresh(dt), 'ui');
+      // THE TUTORIAL (js/tutorial.js): a run without the checkbox pays this
+      // one falsy check and nothing else — no DOM, no listeners, no scans
+      if (S.tut && S.tut.on && window.Tutorial)
+        G._safe(() => Tutorial.tick(dt), 'tutorial');
     }
     requestAnimationFrame(G.frame);
   },

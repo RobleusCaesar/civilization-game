@@ -1,0 +1,342 @@
+/* TUTORIAL CONTRACT (js/tutorial.js) — the game teaches itself, and the
+   teaching must cost nothing when it is off.
+
+   What is pinned here:
+
+   1. ZERO RESIDUE OFF. A run without the Origin-screen checkbox has
+      S.tut === null, no tutorial DOM, and full-speed sim (simScale 1).
+   2. THE ONE ENTRY POINT. Tutorial.maybeStart() arms only with the stored
+      checkbox on, a fresh non-demo world and no S.tut already; the scout's
+      day hashes off the SEED (9–13) and never off the run's RNG.
+   3. THE ORDERED SPINE. The first step presents with its text and Next;
+      answering it advances the pointer; the step counter is honest.
+   4. OUT-OF-ORDER TOLERANCE. A deed done early (gathering stone while the
+      wood step is up) marks its later step done in the background, and the
+      pointer skips it when it gets there.
+   5. ACTION-GATED ADVANCE. Selecting a villager satisfies tapVillager with
+      no button press.
+   6. SLOW, NEVER STOPPED. A shown note puts Tutorial.simScale at 0.2;
+      dormancy and completion restore 1.
+   7. IT RIDES IN THE SAVE. Save mid-tutorial, load it back: phase / step /
+      done survive; transient display state does not.
+   8. SKIP IS CLEAN. skip() removes every element, kills a live scout,
+      restores speed, and stays off (S.tut.on false, skipped true).
+   9. THE SCRIPTED SCOUT. Spawns on its day as a rival rider with
+      strat 'strike' + scouting (it looks, it never fights), moves under the
+      steer, S.rngState is untouched by its whole life, and it is gone after
+      its ride. Seen beside the town, its note fires in the rival's colour.
+  10. CALM ONLY WHERE CALM. The neutrality note never fires at war
+      (moderate); it fires on calm after the scout.
+  11. THE CAPSTONE ends phase 1 (TC level 2 → congratulate → phase 2), and
+      phase-2 notes fire one-shot: the Trading Post at TC3, mortality via
+      G's hook, the win nudge off a standing army.
+
+   Run this after touching any of:
+     tutorial.js — everything
+     game.js — G.frame's sim-scale/tick hooks, newGame/loadJSON's
+               onWorldChange calls, tickMortality's note
+     screens.js — btnDraftGo / btnTutToggle / syncTutToggle
+     index.html — the #tut* CSS/DOM, the draft-screen toggle
+
+     node tests/tutorial.mjs      # exits non-zero on any regression
+
+   If a feature genuinely needs different behaviour, update this file in the
+   same commit and say so in the commit message. */
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+let pw;
+try { pw = (await import('playwright')).default; }
+catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const b = await pw.chromium.launch();
+const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+const errs = []; p.on('pageerror', e => errs.push(String(e)));
+p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
+await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+await p.waitForTimeout(900);
+
+const out = await p.evaluate(async () => {
+  const res = {}, fails = [];
+  const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
+  const T_ = T;   // top-level const — reachable bare, never as window.T
+
+  // the module-clock rule: fixed-step work must not inherit the title demo's phase
+  const fresh = (seed, mode, tut) => {
+    try { localStorage.setItem('neo-tutorial-ask', tut ? '1' : '0'); } catch (e) {}
+    G.newGame(seed, mode || 'calm', 'medium');
+    Screens._demo = false;
+    Screens.show('playing');
+    S.paused = true;
+    Combat.scanT = 0; Units.herdClock = 0;
+    if (tut) Tutorial.maybeStart();
+  };
+  const tick = (n, dt) => { for (let i = 0; i < (n || 1); i++) Tutorial.tick(dt || 1); };
+  const clickNext = () => { const el = document.getElementById('tutNext'); if (el) el.click(); };
+  const txtOf = id => { const el = document.getElementById(id); return el ? el.textContent : '(no #' + id + ')'; };
+
+  // ---- 1. zero residue when the checkbox is off ----
+  {
+    fresh('101', 'moderate', false);
+    ck('offMeansNull', S.tut === null, String(S.tut));
+    ck('offMeansNoDom', !document.getElementById('tutUI') && !document.getElementById('tutDim'), '');
+    ck('offMeansFullSpeed', Tutorial.simScale === 1, String(Tutorial.simScale));
+  }
+
+  // ---- 2. the entry point and the seed-hashed scout day ----
+  {
+    fresh('202', 'calm', true);
+    ck('checkboxArms', !!S.tut && S.tut.on === true && S.tut.phase === 1, JSON.stringify(S.tut));
+    const d1 = S.tut.scoutDay;
+    ck('scoutDayInBand', d1 >= 9 && d1 <= 13, String(d1));
+    const rng = S.rngState;
+    fresh('202', 'calm', true);
+    ck('scoutDayDeterministic', S.tut.scoutDay === d1, S.tut.scoutDay + ' vs ' + d1);
+    ck('armDrawsNoRng', S.rngState === rng, '');
+    // demo worlds and already-armed runs never re-arm
+    const t0 = S.tut; Tutorial.maybeStart();
+    ck('neverReArms', S.tut === t0, '');
+  }
+
+  // ---- 3. the spine presents, and Next advances ----
+  {
+    fresh('303', 'calm', true);
+    tick(2, 0.3);
+    ck('welcomeShows', Tutorial._show && Tutorial._show.id === 'welcome',
+      JSON.stringify(Tutorial._show));
+    const panel = document.getElementById('tutPanel');
+    ck('panelExists', !!panel && panel.textContent.includes('Town Center'), '');
+    ck('counterHonest', txtOf('tutNum') === '1/' + Tutorial.STEPS.length,
+      txtOf('tutNum'));
+    ck('slowWhileShown', Tutorial.simScale === Tutorial.SLOW, String(Tutorial.simScale));
+    clickNext();
+    tick(2, 0.3);
+    ck('nextAdvances', S.tut.done.welcome === 1 && S.tut.step === 1, JSON.stringify(S.tut.done));
+    ck('secondStepShows', Tutorial._show && Tutorial._show.id === 'resources', '');
+  }
+
+  // ---- 4 + 5. out-of-order satisfaction and action-gated advance ----
+  {
+    fresh('404', 'calm', true);
+    tick(2, 0.3);
+    // do the STONE step's deed while welcome is still up
+    const hills = (() => {
+      for (let i = 0; i < S.map.terrain.length; i++)
+        if (S.map.terrain[i] === T_.HILLS) return { x: i % CFG.W, y: (i / CFG.W) | 0 };
+      return null;
+    })();
+    const v = S.units.find(u => u.owner === 'P' && u.kind === 'villager');
+    v.task = { type: 'gather', x: hills.x, y: hills.y };
+    tick(3, 0.3);
+    ck('earlyDeedMarksLaterStep', S.tut.done.gatherStone === 1, JSON.stringify(S.tut.done));
+    v.task = null;
+    // selecting a villager satisfies tapVillager with no button
+    clickNext(); tick(2, 0.3);   // welcome
+    clickNext(); tick(2, 0.3);   // resources
+    ck('tapVillagerShown', Tutorial._show && Tutorial._show.id === 'tapVillager', JSON.stringify(Tutorial._show));
+    UI.sel = { type: 'unit', id: v.id };
+    tick(3, 0.3);
+    ck('selectionSatisfies', S.tut.done.tapVillager === 1, JSON.stringify(S.tut.done));
+    UI.sel = null;
+    // …and when the pointer walks on, the early-done stone step is skipped
+    const wood = (() => {
+      for (let i = 0; i < S.map.terrain.length; i++)
+        if (S.map.terrain[i] === T_.FOREST) return { x: i % CFG.W, y: (i / CFG.W) | 0 };
+    })();
+    const fert = (() => {
+      for (let i = 0; i < S.map.terrain.length; i++)
+        if (S.map.terrain[i] === T_.FERTILE) return { x: i % CFG.W, y: (i / CFG.W) | 0 };
+    })();
+    v.task = { type: 'gather', x: wood.x, y: wood.y }; tick(2, 0.3);
+    v.task = { type: 'gather', x: fert.x, y: fert.y }; tick(2, 0.3);
+    v.task = null;
+    ck('pointerSkipsTheDone', Tutorial._show && Tutorial._show.id === 'gold',
+      JSON.stringify(Tutorial._show) + ' step=' + S.tut.step);
+  }
+
+  // ---- 6. slow while shown, full speed when dormant ----
+  {
+    fresh('505', 'calm', true);
+    tick(2, 0.3);
+    ck('shownIsSlow', Tutorial.simScale === Tutorial.SLOW, '');
+    // a held step (tcReady before the support exists) shows nothing and runs free
+    for (const st of Tutorial.STEPS) if (st.id !== 'tcReady' && st.id !== 'capstone') S.tut.done[st.id] = 1;
+    Tutorial._show = null;
+    tick(3, 0.3);
+    ck('dormantIsFullSpeed', Tutorial.simScale === 1 && !Tutorial._show,
+      Tutorial.simScale + ' ' + JSON.stringify(Tutorial._show));
+  }
+
+  // ---- 7. it rides in the save ----
+  {
+    fresh('606', 'calm', true);
+    tick(2, 0.3);
+    clickNext(); tick(2, 0.3);
+    const json = G.saveJSON();
+    fresh('707', 'moderate', false);           // some other run in between
+    G.loadJSON(json);
+    ck('saveCarriesTut', !!S.tut && S.tut.on && S.tut.step === 1 && S.tut.done.welcome === 1,
+      JSON.stringify(S.tut));
+    ck('loadResetsTransients', Tutorial._show === null && Tutorial.simScale === 1, '');
+    Screens._demo = false; Screens.show('playing'); S.paused = true;
+    tick(2, 0.3);
+    ck('resumesWhereItStood', Tutorial._show && Tutorial._show.id === 'resources',
+      JSON.stringify(Tutorial._show));
+    // …and a pre-tutorial save backfills null
+    const bare = JSON.parse(json); delete bare.tut;
+    G.loadJSON(JSON.stringify(bare));
+    ck('legacyBackfillsNull', S.tut === null, String(S.tut));
+  }
+
+  // ---- 9. the scripted scout ----
+  {
+    fresh('808', 'calm', true);
+    S.day = S.tut.scoutDay;
+    const rng = S.rngState;
+    tick(1, 0.1);
+    const scout = S.units.find(u => u.tutScout);
+    ck('scoutSpawns', !!scout && scout.owner === 'A' && scout.kind === 'rider', '');
+    ck('scoutIsPassive', scout.strat === 'strike' && scout.scouting === true, '');
+    ck('scoutDrawsNoRng', S.rngState === rng, '');
+    // the steer moves it
+    const sx = scout.x, sy = scout.y;
+    for (let i = 0; i < 30; i++) { Tutorial.tick(1); Units.update(0.4); }
+    ck('scoutRides', Math.hypot(scout.x - sx, scout.y - sy) > 1.2,
+      'moved ' + Math.hypot(scout.x - sx, scout.y - sy).toFixed(2));
+    // seen beside the town, its note names the rival's colour
+    const tc = S.buildings.find(o => o.owner === 'P' && o.key === 'tc');
+    scout.x = tc.x + 3.5; scout.y = tc.y + 0.5; scout.path = null;
+    G.updateVisibility();
+    Tutorial._lastEvAt = -1e9; Tutorial._show = null;
+    tick(2, 0.6);
+    ck('scoutNoteFires', Tutorial._show && Tutorial._show.id === 'scout', JSON.stringify(Tutorial._show));
+    ck('noteWearsTheirColour', txtOf('tutTxt').includes(G.tunicOf('A')),
+      txtOf('tutTxt'));
+    // overstaying ends the ride
+    S.day = S.tut.scoutDay + 3;
+    tick(1, 0.1);
+    ck('scoutLeaves', !S.units.some(u => u.tutScout) && S.tut.scoutId === 0, '');
+  }
+
+  // ---- 10. neutrality is calm's note alone ----
+  {
+    fresh('909', 'moderate', true);
+    for (const st of Tutorial.STEPS) S.tut.done[st.id] = 1;
+    S.tut.step = Tutorial.STEPS.length;               // dormant — notes may flow
+    S.tut.fired.scout = 1; Tutorial._lastEvAt = -1e9;
+    tick(2, 0.6);
+    ck('noPeaceNoteAtWar', !(Tutorial._show && Tutorial._show.id === 'neutrality'),
+      JSON.stringify(Tutorial._show));
+    fresh('910', 'calm', true);
+    for (const st of Tutorial.STEPS) S.tut.done[st.id] = 1;
+    S.tut.step = Tutorial.STEPS.length;
+    S.tut.fired.scout = 1; Tutorial._lastEvAt = -1e9;
+    tick(2, 0.6);
+    ck('peaceNoteOnCalm', Tutorial._show && Tutorial._show.id === 'neutrality',
+      JSON.stringify(Tutorial._show));
+  }
+
+  // ---- 11. the capstone ends phase 1; phase 2 fires one-shot ----
+  {
+    fresh('111', 'calm', true);
+    for (const st of Tutorial.STEPS) if (!st.end) S.tut.done[st.id] = 1;
+    const tc = S.buildings.find(o => o.owner === 'P' && o.key === 'tc');
+    tc.level = 2;
+    Tutorial._show = null;
+    tick(3, 0.3);
+    ck('capstoneShows', Tutorial._show && Tutorial._show.id === 'capstone', JSON.stringify(Tutorial._show));
+    clickNext();
+    ck('capstoneOpensPhase2', S.tut.phase === 2 && S.tut.done.capstone === 1, JSON.stringify(S.tut));
+    // Trading Post note at TC3, one-shot (other notes already told, so the
+    // priority walk cannot hand the stage to an earlier one)
+    for (const e of Tutorial.EVENTS) if (e.id !== 'trade') S.tut.fired[e.id] = 1;
+    tc.level = 3; Tutorial._lastEvAt = -1e9; tick(2, 0.6);
+    ck('tradeNoteAtTc3', Tutorial._show && Tutorial._show.id === 'trade', JSON.stringify(Tutorial._show));
+    clickNext();
+    Tutorial._lastEvAt = -1e9; tick(2, 0.6);
+    ck('tradeNoteOnce', !(Tutorial._show && Tutorial._show.id === 'trade') && S.tut.fired.trade === 1,
+      JSON.stringify(Tutorial._show));
+  }
+
+  // ---- phase-2 practice notes: the first wall, the first siege sign ----
+  {
+    fresh('115', 'moderate', true);
+    S.tut.phase = 2; S.tut.step = Tutorial.STEPS.length;
+    for (const e of Tutorial.EVENTS) if (e.id !== 'defensePractice' && e.id !== 'siegePractice') S.tut.fired[e.id] = 1;
+    S.stats.walls = 1;                                 // the first wall laid
+    Tutorial._lastEvAt = -1e9; tick(2, 0.6);
+    ck('wallPracticeOnFirstWall', Tutorial._show && Tutorial._show.id === 'defensePractice',
+      JSON.stringify(Tutorial._show));
+    clickNext();
+    S.map.seenB[42] = { key: 'wall', level: 1, owner: 'A' };   // enemy stone, seen
+    Tutorial._lastEvAt = -1e9; tick(2, 0.6);
+    ck('siegePracticeOnEnemyWalls', Tutorial._show && Tutorial._show.id === 'siegePractice',
+      JSON.stringify(Tutorial._show));
+  }
+
+  // ---- phase-2 extras: mortality via the hook, the win nudge ----
+  {
+    fresh('112', 'calm', true);
+    S.tut.phase = 2; S.tut.step = Tutorial.STEPS.length;
+    for (const e of Tutorial.EVENTS) if (e.id !== 'mortality' && e.id !== 'winNudge') S.tut.fired[e.id] = 1;
+    Tutorial.note('mortality');
+    // …and the note still fires on a save RESUMED in phase 2 (a run that
+    // finished phase 1 in an earlier session)
+    G.loadJSON(G.saveJSON());
+    Screens._demo = false; Screens.show('playing'); S.paused = true;
+    Tutorial._lastEvAt = -1e9; tick(2, 0.6);
+    ck('mortalityNoteViaHook', Tutorial._show && Tutorial._show.id === 'mortality',
+      JSON.stringify(Tutorial._show));
+    clickNext();
+    const tc = S.buildings.find(o => o.owner === 'P' && o.key === 'tc');
+    for (let i = 0; i < 8; i++) Units.spawn('defender', 'P', tc.x - 2, tc.y + 3 + (i % 3));
+    Tutorial._lastEvAt = -1e9; tick(2, 0.6);
+    ck('winNudgeOffAnArmy', Tutorial._show && Tutorial._show.id === 'winNudge' && S.tut.nudge === 'war',
+      JSON.stringify(Tutorial._show) + ' ' + S.tut.nudge);
+    ck('nudgeSpeaksWar', txtOf('tutTxt').includes('engines'), '');
+  }
+
+  // ---- 8. skip is clean, both phases ----
+  {
+    fresh('113', 'calm', true);
+    S.day = S.tut.scoutDay; tick(1, 0.1);           // a live scout to clean up
+    tick(2, 0.3);                                    // a note on show
+    Tutorial.skip();
+    ck('skipTurnsOff', S.tut.on === false && S.tut.skipped === true, JSON.stringify(S.tut));
+    ck('skipRemovesDom', !document.getElementById('tutUI') && !document.getElementById('tutDim'), '');
+    ck('skipKillsScout', !S.units.some(u => u.tutScout), '');
+    ck('skipRestoresSpeed', Tutorial.simScale === 1, String(Tutorial.simScale));
+  }
+
+  // ---- losing mid-tutorial goes quiet, never errors ----
+  {
+    fresh('114', 'calm', true);
+    tick(2, 0.3);
+    S.over = 'lost';
+    tick(2, 0.3);
+    ck('defeatGoesQuiet', Tutorial.simScale === 1, String(Tutorial.simScale));
+    S.over = null;
+  }
+
+  // ---- the draft screen's toggle remembers itself ----
+  {
+    try { localStorage.setItem('neo-tutorial-ask', '1'); } catch (e) {}
+    Screens.syncTutToggle();
+    const btn = document.getElementById('btnTutToggle');
+    ck('toggleExists', !!btn, '');
+    ck('toggleReadsOn', btn.classList.contains('sel') && /On$/.test(btn.textContent), btn.textContent);
+    btn.click();
+    ck('toggleFlipsOff', !btn.classList.contains('sel') && /Off$/.test(btn.textContent) &&
+      localStorage.getItem('neo-tutorial-ask') === '0', btn.textContent);
+  }
+
+  try { localStorage.setItem('neo-tutorial-ask', '0'); } catch (e) {}
+  return { res, fails };
+});
+
+let bad = out.fails.length;
+for (const [k, v] of Object.entries(out.res)) console.log((v.startsWith('PASS') ? '  ✅' : '  ❌'), k, '—', v);
+const real = errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e));
+if (real.length) { bad++; console.log('  ❌ page errors:', real.join(' | ')); }
+await b.close();
+if (bad) { console.log(`\n${bad} FAILURE(S) — the tutorial contract is broken`); process.exit(1); }
+console.log('\nAll tutorial contract checks passed.');

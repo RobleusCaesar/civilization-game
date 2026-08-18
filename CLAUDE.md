@@ -100,6 +100,7 @@ node tests/boot.mjs            # frame one is the logo; no chrome before a game;
 node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything
 node tests/calm-peace.mjs      # Calm starts at PEACE: nobody auto-engages until the player's first strike; the rival races for its own wonder
 node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do
+node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-order tolerant, saves mid-lesson, the scout draws no RNG
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -3207,6 +3208,61 @@ suites do not share a failure vocabulary — `tap-audit.mjs` ends with
 NEITHER of (`FAILURES` needs the S, and `FAIL\b` fails on the `U` of FAILURE).
 A sweep written that way reported 39/39 green while tap-audit had been red for
 four commits. Use `if node "$f" >/dev/null 2>&1; then pass; else fail; fi`.
+
+**THE TUTORIAL** (`tests/tutorial.mjs`, all of `js/tutorial.js`): two
+playtesters could not find the game under the interface, so the game teaches
+itself — but only when asked. **The checkbox on the Origin Card screen**
+(`#btnTutToggle`, persisted as localStorage `neo-tutorial-ask`) is the only
+way in: `Tutorial.maybeStart()` is called from the draft screen's Begin
+button alone, so a loaded save, the pause screen's Resume and the title demo
+can never start one. **ALL COPY LIVES IN `Tutorial.TEXT`** — one entry per
+step/event id, ≤2 short sentences, `<b>` emphasis allowed, a function entry
+for dynamic bits (the rival's tunic colour, the calm/war win conditions).
+Edit copy there and nowhere else.
+**The engine is data-driven**: `Tutorial.STEPS` is phase 1's ordered spine
+(hall → resources → select → the three gathers → gold → house → train → fog
+→ the hall's path → win conditions → the TC2 capstone; the HOUSE comes
+BEFORE training because a start package can open at the population cap, and
+a train order refused for room would deadlock the spine). `Tutorial.EVENTS`
+is everything contextual — the scripted scout, the calm truce, worked
+ground → stations, military/defense/dock/sapper notes, and phase 2's
+one-shots (Trading Post at TC3, siege and wall practice, the win nudge,
+mortality via `Tutorial.note` from `G.tickMortality`). A step with `adv` is
+action-gated and completes itself; one without carries the Got-it button;
+`when` holds a step silently (the world runs free while nothing is on show).
+**THE SPINE HAS RIGHT OF WAY**: contextual notes fire only in the quiet
+stretches (a held step, phase 2), ≥25s apart — except the scout, whose
+`urgent` flag lets it preempt, because it is on screen NOW. The `_lastEvAt`
+spacing gate initializes to `-1e9`, NEVER 0 — `performance.now()` starts
+near zero, so a 0 initial value silently blocks every note for the first
+25 seconds of a page load (found by the contract test, invisible in play).
+**Out-of-order tolerance**: every later step's `adv` is scanned in the
+background, so a deed done early skips its telling — which is why advance
+conditions are STATELESS reads of S (a task on a forest tile, a queue with
+an entry, `UI.sel` holding a villager), never counters captured at show
+time. **It never takes control**: input is never blocked, the camera glide
+is ~0.45s and any touch cancels it, and the sim runs SLOW (×0.2 via
+`Tutorial.simScale`, read in `G.frame`) while a note is up — never paused,
+and a canvas touch 800ms after the note releases full speed. **Zero cost
+off**: everything gates on `S.tut && S.tut.on` at the G.frame call sites;
+no DOM, no listeners, no scans exist until a run opts in, and skip/completion
+remove them again. **State split**: `S.tut` (phase/step/done/fired/the
+scout's schedule) rides in every save — `loadJSON` backfills `null` — while
+everything transient (DOM refs, pan lerp, throttles, `simScale`) lives on
+the Tutorial module and is reset by `Tutorial.onWorldChange()` from
+newGame/loadJSON, the `R.collapses` rule. **The scripted scout** never
+touches `G.rand` (its day, 9–13, hashes off the seed string — the
+`G.rollWonder` rule) and never fights: `u.strat = 'strike'` keeps it out of
+`Combat.acquire`, `u.scouting` keeps the rival AI's defend-stamp off it, the
+steer re-asserts its fixed-geometry ride every ~0.7s against anything else
+that grabs it, and it despawns after its loop or 2 days. **The overlay**
+(`#tutDim` at z8, `#tutUI` at z15) darkens only the WORLD — the dim sits
+below the HUD's z10, so every button stays bright and tappable — and both
+elements are in the `body:not(.ingame)` hide list, so shell screens cover
+them for free. The title's old "Tutorial" button was renamed **"Guide"**
+(it opens the static manual) so the two never collide — "How to play"
+measured 0.4px too wide for its plaque at 320px, which
+`noTitleLabelRunsOffItsPlaque` catches and nothing else does.
 
 **Four hulls, and one of them is a siege engine** (`tests/boats-moat-scuttle.mjs`
 covers the hulls; the roster lives in `CFG.BUILDINGS.dock.train`): the dock

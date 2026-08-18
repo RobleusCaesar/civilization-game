@@ -252,6 +252,17 @@ const Screens = {
     let seen = false;
     try { seen = !!localStorage.getItem('neo-draft-help'); } catch (e) {}
     this.el('draftOverlay').style.display = seen ? 'none' : 'flex';
+    this.syncTutToggle();
+  },
+
+  // the "Start with a tutorial" choice remembers itself across runs
+  syncTutToggle() {
+    const b = this.el('btnTutToggle');
+    if (!b) return;
+    let v = false;
+    try { v = localStorage.getItem('neo-tutorial-ask') === '1'; } catch (e) {}
+    b.classList.toggle('sel', v);
+    b.textContent = '🎓 Start with a tutorial: ' + (v ? 'On' : 'Off');
   },
 
   draftTap(i, el) {
@@ -823,7 +834,19 @@ const Screens = {
       }));
     on('btnStart', () => this.startNewGame());
     // the origin draft
-    on('btnDraftGo', () => this.enterGame());
+    // THE TUTORIAL's one entry point (js/tutorial.js): only the Begin that
+    // follows a fresh draft may arm it — a loaded save or the pause screen's
+    // Resume also pass through enterGame, and must never start one
+    on('btnDraftGo', () => {
+      this.enterGame();
+      if (window.Tutorial) Tutorial.maybeStart();
+    });
+    on('btnTutToggle', () => {
+      let v = false;
+      try { v = localStorage.getItem('neo-tutorial-ask') === '1'; } catch (e) {}
+      try { localStorage.setItem('neo-tutorial-ask', v ? '0' : '1'); } catch (e) {}
+      this.syncTutToggle();
+    });
     on('btnDraftHelp', () => { this.el('draftOverlay').style.display = 'flex'; });
     on('btnDraftGotIt', () => {
       this.el('draftOverlay').style.display = 'none';
