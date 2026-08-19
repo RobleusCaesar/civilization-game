@@ -65,9 +65,12 @@ const Tutorial = {
     gatherStone: 'Hills of <b>loose rock</b> yield stone — send a hand to break some out. The great mountains are walls, not quarries; nothing walks through them.',
     gold: 'Your hall trickles a little <b>gold</b> each day. Gold seams lie far out in wild country — rich, and held by whoever dares.',
     train: 'Tap your Town Center and <b>train a new villager</b>. Hands are the tribe’s real wealth — keep food ahead of mouths.',
-    house: 'Open the <b>Build</b> menu and raise a <b>House</b>. Each roof shelters four more of your people.',
+    house: 'Tap a <b>villager</b>, open their <b>Build</b> menu, and raise a House. Each roof shelters four more of your people.',
     fog: 'All that <b>darkness</b> is land your people have not walked yet — and it is not empty: wild bands and beasts roam it. Scout carefully, and don’t send anyone far alone.',
-    barracks: 'Raise a <b>Barracks</b> — its defenders are the spears that hold your line. A foundation needs hands: an idle villager comes on their own, or tap a <b>villager</b>, then the site.',
+    minimap: 'Tap the <b>map</b> to unfold it — it keeps everything your people have seen. The picture grows as you explore, and when the rival tribe is found, they will show there too.',
+    barracks: 'Tap a <b>villager</b>, open their Build menu, and raise a <b>Barracks</b> — its defenders are the spears that hold your line.',
+    soldier: 'Tap the Barracks and train a <b>Defender</b> to stand between your workers and the wild. Your first spear answers the call at once.',
+    guard: 'Tap your <b>defender</b>, then the ground where a raid would come in — they hold wherever you set them. Keep your spears between the wild and your workers.',
     buildHands: 'That foundation is waiting for <b>hands</b>. Tap a villager, then the site, and they will raise it.',
     tower: 'Raise a <b>Watchtower</b> where the road into your town runs — it watches and shoots for itself. Stone tiers see and strike farther.',
     wall: 'A run of <b>wall</b> across a narrow place turns a raid aside — even a short line buys time. Tap a finished section to build a <b>gate</b> through it: a door only your people may pass.',
@@ -79,8 +82,8 @@ const Tutorial = {
     /* contextual notes */
     scout: () => 'A rider in <b>' + G.tunicOf('A') + '</b> — the rival tribe’s scout, sizing you up. They grow stronger with every season you give them.',
     neutrality: 'The rival keeps the <b>peace</b> for now — neither side strikes until you do. Race them in quiet, or start the war yourself.',
-    workedGround: 'Ground worked bare can carry a <b>station</b> — a Lumber Camp on stumps, a Quarry on broken rock, a Farm on spent soil. Each is built from <b>other</b> goods: a camp costs stone, a quarry wood.',
-    station: 'A station only pays while hands <b>work</b> it. Tap a villager, then the plot, to put them on.',
+    workedGround: 'That worked-bare ground can carry a <b>Lumber Camp</b> — tap a villager, open <b>Build</b>, and set the camp on the stumps. Stations rise from <b>other</b> goods: a camp costs stone, a quarry wood.',
+    station: 'A station pays only while hands <b>work</b> it — tap a villager, then the camp, to crew it. Its steady wood is what raises every building after.',
     dock: 'That water can work for you — a <b>Dock</b> trains fishing boats, and transports to carry your people across.',
     sapperE: 'The <b>Sappers’ Camp</b> trains engineers who reshape the land — trenches, causeways, bridges over water. The map itself is a weapon.',
     trade: 'The <b>Trading Post</b> turns surplus into anything else — dearly. When the stone runs out, it is often the only stone there is.',
@@ -166,7 +169,7 @@ const Tutorial = {
     // a note asking for something the player cannot do teaches only doubt.
     { id: 'house',
       when: () => Tutorial._afford('house'),
-      anchor: () => Tutorial._menuCard('house'),
+      anchor: () => Tutorial._buildAnchor('house'),
       adv: () => S.buildings.some(b => b.owner === 'P' && b.key === 'house') },
     { id: 'train',
       // holds until there is genuinely ROOM as well as food: a big start
@@ -180,20 +183,49 @@ const Tutorial = {
     // so it glides the zoom out until the black edges show, and hands the
     // zoom back when answered. Any touch cancels both (the player's camera).
     { id: 'fog', anchor: null, zoomOut: true },
+    // …and the MAP is taught right after the darkness it draws. The tutorial
+    // starts with the minimap FOLDED (maybeStart) to cut the day-one clutter;
+    // this step rings the toggle and completes when the player unfolds it
+    { id: 'minimap',
+      anchor: () => ({ sel: '#miniToggle' }),
+      adv: () => !UI.miniCollapsed },
     // THE TOWN BEFORE THE HALL (playtest): barracks, tower and wall are each
     // taught as a step of their own, and only then is the upgrade mentioned —
     // once — when the support AND the goods are both really there
     { id: 'barracks',
       when: () => Tutorial._afford('barracks'),
-      anchor: () => Tutorial._menuCard('barracks'),
+      anchor: () => Tutorial._buildAnchor('barracks'),
       adv: () => S.buildings.some(b => b.owner === 'P' && b.key === 'barracks') },
+    // train the first spear (raised in a blink — S.tut.soldierGiven), then
+    // walk them to where they can actually protect the settlement
+    { id: 'soldier',
+      when() {
+        if (!S.buildings.some(b => b.owner === 'P' && b.key === 'barracks' && !(b.construction > 0))) return false;
+        const c = ((CFG.BUILDINGS.barracks.train || {}).defender || {}).cost || {};
+        return Bld.canAfford(c, S.res);
+      },
+      anchor() {
+        const t = document.querySelector('#panel [data-act="train"][data-unit="defender"]');
+        if (t && t.offsetParent !== null) return { sel: '#panel [data-act="train"][data-unit="defender"]' };
+        const b = S.buildings.find(o => o.owner === 'P' && o.key === 'barracks' && !(o.construction > 0));
+        return b && { x: Bld.cx(b), y: Bld.cy(b), r: 1.4 };
+      },
+      adv: () => S.units.some(u => u.owner === 'P' && u.kind === 'defender') },
+    { id: 'guard',
+      when: () => S.units.some(u => u.owner === 'P' && u.kind === 'defender'),
+      anchor() {
+        const u = S.units.find(o => o.owner === 'P' && o.kind === 'defender');
+        return u && { u: u.id };
+      },
+      adv: () => S.units.some(u => u.owner === 'P' && Units.isMilitary(u) &&
+        u.task && u.task.type === 'move') },
     { id: 'tower',
       when: () => Tutorial._afford('tower'),
-      anchor: () => Tutorial._menuCard('tower'),
+      anchor: () => Tutorial._buildAnchor('tower'),
       adv: () => S.buildings.some(b => b.owner === 'P' && b.key === 'tower') },
     { id: 'wall',
       when: () => Tutorial._afford('wall'),
-      anchor: () => Tutorial._menuCard('wall'),
+      anchor: () => Tutorial._buildAnchor('wall'),
       adv: () => S.stats.walls > 0 || S.buildings.some(b => b.owner === 'P' && b.key === 'wall') },
     { id: 'winCond', anchor: null },
     { id: 'tcReady',
@@ -239,13 +271,23 @@ const Tutorial = {
       adv: () => S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'build') ||
         !S.buildings.some(b => b.owner === 'P' && b.construction > 0) },
     { id: 'workedGround',
+      // an ACTION, not a lecture (playtest): guide the whole chain to a real
+      // Lumber Camp on the player's own stumps — and only once it is payable
       when() {
+        if (!Tutorial._afford('lumber')) return false;
         const terr = S.map.terrain, ex = S.map.explored;
         for (let i = 0; i < terr.length; i++)
           if (ex[i] && (terr[i] === T.STUMPS || terr[i] === T.PEBBLES || terr[i] === T.BARREN)) return true;
         return false;
       },
-      anchor: () => Tutorial._nearTile('workedGround', [T.STUMPS, T.PEBBLES, T.BARREN]),
+      anchor() {
+        // the same guided chain as the build steps, landing on the stumps
+        const btn = document.querySelector('.bbtn[data-key="lumber"]');
+        if (btn && btn.offsetParent !== null) return { sel: '.bbtn[data-key="lumber"]' };
+        const gb = document.querySelector('#panel [data-act="gobuild"]');
+        if (gb && gb.offsetParent !== null) return { sel: '#panel [data-act="gobuild"]' };
+        return Tutorial._nearTile('workedGround', [T.STUMPS, T.PEBBLES, T.BARREN]);
+      },
       adv: () => S.buildings.some(b => b.owner === 'P' && Tutorial._stationKeys[b.key]) },
     { id: 'station',
       when: () => S.buildings.some(b => b.owner === 'P' && Tutorial._stationKeys[b.key] && !(b.construction > 0)),
@@ -315,18 +357,42 @@ const Tutorial = {
     S.res.wood = Math.max(S.res.wood, 200);
     S.res.stone = Math.max(S.res.stone, 100);
     S.res.gold = Math.max(S.res.gold, 20);
+    // the lesson opens with the MAP FOLDED (playtest: day-one clutter) —
+    // the minimap step after the fog lesson teaches unfolding it.
+    // Bare UI, NEVER window.UI: UI is a script-level const, so window.UI is
+    // undefined and that guard silently skips the fold (the window.G trap)
+    if (UI.setMiniCollapsed) UI.setMiniCollapsed(true);
   },
 
   // may the player pay for this building right now? (card discounts included)
   _afford(key) {
     return Bld.canAfford(Bld.effCost('P', key), S.res);
   },
-  // point at a build-menu CARD itself while the menu is open; only a closed
-  // menu falls back to ringing the toggle that opens it
-  _menuCard(key) {
+  // THE GUIDED BUILD CHAIN (playtest: the barracks note rang the Build tab
+  // while the hall's panel was open). A build step points at wherever the
+  // player actually is in the chain: the CARD when the menu is open, the
+  // villager panel's Build button when a villager is selected, and a
+  // VILLAGER in the world when neither — select the hands first
+  _buildAnchor(key) {
     const btn = document.querySelector('.bbtn[data-key="' + key + '"]');
     if (btn && btn.offsetParent !== null) return { sel: '.bbtn[data-key="' + key + '"]' };
+    const gb = document.querySelector('#panel [data-act="gobuild"]');
+    if (gb && gb.offsetParent !== null) return { sel: '#panel [data-act="gobuild"]' };
+    const v = this._nearVillager();
+    if (v) return { u: v.id };
     return { sel: '#bmToggle' };
+  },
+  // the nearest own villager to the hall, idle hands strongly preferred
+  _nearVillager() {
+    const tc = this._tc();
+    if (!tc) return null;
+    let best = null, bd = 1e9;
+    for (const u of S.units) {
+      if (u.owner !== 'P' || u.kind !== 'villager') continue;
+      const d = (u.x - tc.x) * (u.x - tc.x) + (u.y - tc.y) * (u.y - tc.y) - (u.task ? 0 : 1e6);
+      if (d < bd) { bd = d; best = u; }
+    }
+    return best;
   },
 
   // from G.newGame and G.loadJSON: the world was replaced — drop every piece
@@ -393,6 +459,14 @@ const Tutorial = {
     if (!t.houseGiven && !t.done.house) {
       const site = S.buildings.find(b => b.owner === 'P' && b.key === 'house' && b.construction > 0);
       if (site) { t.houseGiven = 1; Bld.finish(site); }
+    }
+    // …AND THE FIRST SPEAR ANSWERS AT ONCE: the first defender queued during
+    // the lesson trains in a blink — the timer is zeroed and the REAL trainer
+    // spawns them (spot-finding, the ready log, the stats tally all ordinary)
+    if (!t.soldierGiven) {
+      const b = S.buildings.find(o => o.owner === 'P' && o.key === 'barracks' &&
+        o.queue && o.queue.length && o.queue[0].unit === 'defender');
+      if (b) { t.soldierGiven = 1; b.queue[0].t = 0.0001; }
     }
     // OUT-OF-ORDER: anything already done in the world is done in the book
     for (let i = t.step; i < this.STEPS.length; i++) {

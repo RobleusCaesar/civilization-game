@@ -3244,10 +3244,23 @@ for dynamic bits (the rival's tunic colour, the calm/war win conditions).
 Edit copy there and nowhere else.
 **The engine is data-driven**: `Tutorial.STEPS` is phase 1's ordered spine
 (hall → resources → select → the three gathers → gold → house → train → fog
-→ **barracks → tower → wall** → win conditions → the TC2 upgrade → the
-capstone; the HOUSE comes BEFORE training because a start package can open
-at the population cap, and the TOWN comes before the hall — a playtest
-found the upgrade being talked about twice and offered unaffordably).
+→ **the map** → **barracks → soldier → guard → tower → wall** → win
+conditions → the TC2 upgrade → the capstone; the HOUSE comes BEFORE
+training because a start package can open at the population cap, and the
+TOWN comes before the hall — a playtest found the upgrade being talked
+about twice and offered unaffordably). **The lesson opens with the minimap
+FOLDED** (`UI.setMiniCollapsed(true)` in maybeStart — bare `UI`, never
+`window.UI`, the window.G trap) and the `minimap` step after the fog
+lesson rings the 🗺 toggle until the player unfolds it. **Build steps use
+the GUIDED CHAIN anchor** (`Tutorial._buildAnchor`): the menu CARD when
+the build menu is open, the villager panel's `[data-act="gobuild"]` Build
+button when a villager is selected, and the nearest villager in the world
+when neither — a playtest found the barracks note ringing the Build tab
+while the hall's panel covered the menu. **The first spear answers at
+once** (`S.tut.soldierGiven`, beside houseGiven in `_scanSteps`): the
+first defender queued during the lesson has its timer zeroed and the REAL
+trainer spawns it; the `guard` step then asks for a real walk order
+(task `move` on any own military unit).
 `Tutorial.EVENTS` is everything contextual — the scripted scout, the calm
 truce, worked ground → stations, dock/sapper notes, **the builder lesson**
 (`buildHands`, `urgent` like the scout: a foundation standing 5s with no

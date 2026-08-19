@@ -363,6 +363,72 @@ const out = await p.evaluate(async () => {
     clickNext();                     // answers it; the give-back glide runs in these ticks
     tick(10, 0.1);
     ck('zoomHandedBack', Math.abs(R.cam.z - z0) < 0.05, 'z ' + R.cam.z.toFixed(2) + ' vs ' + z0.toFixed(2));
+    // …and the MAP lesson follows the darkness it draws
+    ck('mapStartsFolded', UI.miniCollapsed === true, String(UI.miniCollapsed));
+    tick(6, 0.3);
+    ck('minimapStepAfterFog', Tutorial._show && Tutorial._show.id === 'minimap',
+      JSON.stringify(Tutorial._show));
+    {
+      const tog = document.getElementById('miniToggle').getBoundingClientRect();
+      const ring = document.getElementById('tutRing').getBoundingClientRect();
+      ck('mapToggleIsRinged', Math.abs(ring.left - (Math.max(10, tog.left) - 5)) < 3,
+        'ring.left=' + ring.left + ' tog.left=' + tog.left);
+    }
+    document.getElementById('miniToggle').click();     // the REAL unfold
+    tick(3, 0.3);
+    ck('unfoldingAnswersIt', S.tut.done.minimap === 1 && !UI.miniCollapsed,
+      JSON.stringify(S.tut.done) + ' collapsed=' + UI.miniCollapsed);
+  }
+
+  // ---- the first spear: train at the barracks, then walk it on guard ----
+  {
+    fresh('119', 'calm', true);
+    for (const st of Tutorial.STEPS)
+      if (['welcome', 'resources', 'tapVillager', 'gatherWood', 'gatherFood', 'gatherStone',
+           'gold', 'house', 'train', 'fog', 'minimap'].includes(st.id)) S.tut.done[st.id] = 1;
+    for (const e of Tutorial.EVENTS) S.tut.fired[e.id] = 1;   // the spine alone is under test
+    const tc = S.buildings.find(o => o.owner === 'P' && o.key === 'tc');
+    // the barracks step guides the CHAIN: a selected villager rings the
+    // panel's Build button, not the hidden menu
+    S.res.wood = 300; S.res.stone = 150; S.res.gold = 30; S.res.food = 300;
+    tick(3, 0.3);
+    ck('barracksStepShows', Tutorial._show && Tutorial._show.id === 'barracks', JSON.stringify(Tutorial._show));
+    const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u));
+    UI.select('unit', v.id);
+    tick(1, 0.1);
+    {
+      const gb = document.querySelector('#panel [data-act="gobuild"]');
+      const ring = document.getElementById('tutRing').getBoundingClientRect();
+      const ok = gb && (() => { const c = gb.getBoundingClientRect();
+        return Math.abs(ring.left - (Math.max(10, c.left) - 5)) < 3 && Math.abs(ring.top - (Math.max(10, c.top) - 5)) < 3; })();
+      ck('selectedVillagerRingsBuildButton', !!ok, gb ? 'gobuild at ' + JSON.stringify(gb.getBoundingClientRect()) : 'no gobuild btn');
+    }
+    UI.deselect();
+    // a finished barracks → the SOLDIER step, ringing the hall
+    let bk = null;
+    outer:
+    for (let r = 2; r < 12; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const x = tc.x + dx, y = tc.y + dy;
+      if (Bld.canPlace('P', 'barracks', x, y, { noCost: true }).ok) {
+        bk = Bld.place('P', 'barracks', x, y, { instant: true, free: true });
+        break outer;
+      }
+    }
+    tick(8, 0.3);
+    ck('soldierStepShows', Tutorial._show && Tutorial._show.id === 'soldier', JSON.stringify(Tutorial._show));
+    // a REAL training order — and the first spear answers at once
+    const ok = Bld.train(bk, 'defender');
+    tick(2, 0.2);                                    // the scan zeroes the timer…
+    G._safe(() => Bld.update(0.001), 'bld');         // …and the real trainer spawns them
+    tick(8, 0.3);
+    const spear = S.units.find(u => u.owner === 'P' && u.kind === 'defender');
+    ck('firstSpearAnswersAtOnce', !!ok && !!spear && S.tut.soldierGiven === 1 && S.tut.done.soldier === 1,
+      'trained=' + ok + ' spear=' + !!spear + ' given=' + S.tut.soldierGiven);
+    ck('guardStepShows', Tutorial._show && Tutorial._show.id === 'guard', JSON.stringify(Tutorial._show));
+    // a REAL walk order posts them — and answers the lesson
+    Units.moveTo(spear, (spear.x | 0) + 4, (spear.y | 0));
+    tick(3, 0.3);
+    ck('walkingThePostAnswersIt', S.tut.done.guard === 1, JSON.stringify(S.tut.done));
   }
 
   // ---- the taught town: barracks → tower → wall, each held until payable,
@@ -370,8 +436,8 @@ const out = await p.evaluate(async () => {
   {
     fresh('117', 'calm', true);
     for (const st of Tutorial.STEPS)
-      if (['welcome', 'resources', 'tapVillager', 'gatherWood', 'gatherFood',
-           'gatherStone', 'gold', 'house', 'train', 'fog'].includes(st.id)) S.tut.done[st.id] = 1;
+      if (['welcome', 'resources', 'tapVillager', 'gatherWood', 'gatherFood', 'gatherStone',
+           'gold', 'house', 'train', 'fog', 'minimap', 'soldier', 'guard'].includes(st.id)) S.tut.done[st.id] = 1;
     for (const e of Tutorial.EVENTS) S.tut.fired[e.id] = 1;   // the spine alone is under test
     const tc = S.buildings.find(o => o.owner === 'P' && o.key === 'tc');
     const put = (key) => {
@@ -446,7 +512,9 @@ const out = await p.evaluate(async () => {
     Units.assignBuild(v, site);                      // the taught action answers it
     tick(3, 0.3);
     ck('assigningABuilderAnswersIt', S.tut.fired.buildHands === 1, JSON.stringify(S.tut.fired));
-    ck('theBarracksCopyTeachesIt', /villager/i.test(Tutorial.TEXT.barracks) && /site|foundation/i.test(Tutorial.TEXT.barracks),
+    // the barracks copy teaches the CHAIN (villager → Build menu); the
+    // foundation-hands teaching lives in the buildHands note above
+    ck('theBarracksCopyTeachesIt', /villager/i.test(Tutorial.TEXT.barracks) && /build/i.test(Tutorial.TEXT.barracks),
       Tutorial.TEXT.barracks);
   }
 
