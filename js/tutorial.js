@@ -95,8 +95,8 @@ const Tutorial = {
           ? 'Put your villagers on wood and stone; you still need ' + need.join(', ') + '.'
           : 'You have everything it asks — tap the Town Center and start it.');
     },
-    tcReady: 'Your town has earned a <b>second storey</b>. Tap the Town Center, start the upgrade, then send a <b>villager</b> to raise the works.',
-    capstone: 'A second storey stands — and with it the Range, the Stable, the Dock and the sappers. Keep growing toward a <b>third</b>: that is where the Trading Post and the great works wait.',
+    tcReady: 'Your town has earned a <b>second level</b>. Tap the Town Center, start the upgrade, then send a <b>villager</b> to raise the works.',
+    capstone: 'Your hall stands at <b>Level 2</b> — and with it the Range, the Stable, the Dock and the sappers. Keep growing toward <b>Level 3</b>: that is where the Trading Post and the great works wait.',
     /* contextual notes */
     scout: () => 'A rider in <b>' + G.tunicOf('A') + '</b> — the rival tribe’s scout, sizing you up. They grow stronger with every season you give them.',
     neutrality: 'The rival keeps the <b>peace</b> for now — neither side strikes until you do. Race them in quiet, or start the war yourself.',
