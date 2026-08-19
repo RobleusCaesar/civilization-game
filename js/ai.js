@@ -366,6 +366,35 @@ const AI = {
     return false;
   },
 
+  /* THE GROUND REMEMBERS WHOSE HANDS MADE IT (tests/worked-ground.mjs, from a
+     real day-25 CALM save: a rival lumber camp finished 4.5 tiles from the
+     player's hall). Worked-out ground is the only ground a station may stand
+     on, and early in a run the only spent tiles on the whole map are the
+     PLAYER'S — so the chief's 26-tile station scan found them, and the
+     foreignHome clamp never fired because it is gated on a KNOWN hall and a
+     peaceful chief that never scouts has knownTC null. Its villager then
+     marched through the town square it "couldn't see" to build there.
+
+     So every depleted tile is stamped with its maker (S.map.workedBy, written
+     where the gather task spends the tile, cleared when the ground regrows,
+     backfilled on old saves by the nearer hall) and the chief may only raise
+     stations on ground ITS OWN tribe worked out. Foreign-made ground is
+     claimable only as a CONQUEST: the maker no longer stands anywhere near it
+     (their buildings within HOME_GROUND_R are gone — a truth-read, but one
+     that only ever REFUSES more, which hidden state may safely do) AND the
+     chief's own eyes have actually seen the ground (ai.seen). A blind chief
+     never squats; a victorious one may settle the ground it emptied. */
+  groundIsAnothers(x, y) {
+    const wb = S.map.workedBy;
+    const who = wb && wb[MapGen.idx(x, y)];
+    if (!who || who === 'A') return false;
+    for (const b of S.buildings)
+      if (b.owner === who && Math.hypot(x - Bld.cx(b), y - Bld.cy(b)) <= Bld.HOME_GROUND_R)
+        return true;   // the maker still holds their ground
+    const seen = S.ai && S.ai.seen;
+    return !(seen && seen[MapGen.idx(x, y)]);   // driven off — but only SEEN ground is claimable
+  },
+
   /* find a plot with some character instead of spiral-filling a square:
      terrain-hunters sit beside their bonus terrain, towers push toward the
      player, everything else scatters at a random angle from the hall */
@@ -472,6 +501,12 @@ const AI = {
       // Anchor-only ON PURPOSE: every station is 1×1, and its `onWorked`
       // terrain is a statement about the tile it stands on, not a 2×2 area.
       Bld.stationGround(key, x, y).ok &&
+      // …and only ever on ground ITS OWN hands made (tests/worked-ground.mjs):
+      // the maker's mark on spent ground outranks every other clamp here,
+      // because foreignHome is gated on a KNOWN hall and a blind chief at
+      // peace has never seen one — which is exactly how a real day-25 calm
+      // game got a rival lumber camp 4.5 tiles from the player's door
+      !this.groundIsAnothers(x, y) &&
       // …and REACHABLE is a `some`, not an `every`: a builder has to be able to
       // stand beside the works, not beside all four corners of them.
       (() => { for (let dy = 0; dy < FSZ; dy++) for (let dx = 0; dx < FSZ; dx++)

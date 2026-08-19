@@ -459,6 +459,83 @@ const out = await p.evaluate(() => {
       'the tile is not forbidden — only the free pass into somebody else’s town');
   }
 
+  /* ---- 10. THE GROUND REMEMBERS WHOSE HANDS MADE IT ----
+     From a real day-25 CALM save: a rival lumber camp finished 4.5 tiles from
+     the player's hall, because foreignHome is gated on a KNOWN hall and a
+     peaceful chief that never scouts has knownTC null — the fog-honest gate
+     was the hole. Every depleted tile now carries its maker's mark
+     (S.map.workedBy) and the chief may only raise stations on ground its own
+     tribe worked out; foreign-made ground is claimable only as a conquest
+     (the maker's buildings near it are gone AND the chief has seen the
+     ground). */
+  {
+    G.newGame('wg-f', 'calm', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    Combat.scanT = 0; Units.herdClock = 0;
+    const ptc = Bld.tcOf('P'), atc = Bld.tcOf('A');
+    // a REAL gather to depletion stamps the maker
+    const wood = MapGen.findNear(ptc.x, ptc.y, 10, (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.FOREST);
+    const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u));
+    Units.assignGather(v, wood.x, wood.y);
+    v.x = v.task.sx + 0.5; v.y = v.task.sy + 0.5; v.path = null;
+    const wi = MapGen.idx(wood.x, wood.y);
+    S.map.resAmount[wi] = 0.5;
+    for (let i = 0; i < 40 && S.map.terrain[wi] === T.FOREST; i++) Units.update(0.3);
+    ck('theSpentTileIsStamped', S.map.terrain[wi] === T.STUMPS && S.map.workedBy[wi] === 'P',
+      'terrain=' + S.map.terrain[wi] + ' workedBy=' + S.map.workedBy[wi]);
+    // the truth table: the maker holds their ground while anything of theirs stands near
+    ck('theMakersGroundIsRefused', AI.groundIsAnothers(wood.x, wood.y) === true, '');
+    S.map.workedBy[wi] = 'A';
+    ck('itsOwnMakeIsFree', AI.groundIsAnothers(wood.x, wood.y) === false, '');
+    delete S.map.workedBy[wi];
+    ck('wildGroundIsFree', AI.groundIsAnothers(wood.x, wood.y) === false, '');
+    S.map.workedBy[wi] = 'P';
+    // THE BLIND CHIEF NEVER SQUATS — the reported save's exact shape: the
+    // refusal must hold with the hall UNKNOWN (knownTC null)
+    S.ai.knownB = {};
+    ck('theHallIsUnknown', !AI.knownPlayerTC(), '');
+    const stumps = [];
+    for (let i = 0; i < 6; i++) {
+      const t = MapGen.findNear(ptc.x + 3, ptc.y - 3, 7, (x, y) =>
+        Bld.tileFree(x, y) && !Bld.at(x, y) && S.map.terrain[MapGen.idx(x, y)] !== T.STUMPS);
+      if (t) {
+        S.map.terrain[MapGen.idx(t.x, t.y)] = T.STUMPS;
+        S.map.workedBy[MapGen.idx(t.x, t.y)] = 'P';
+        stumps.push(t);
+      }
+    }
+    Bld._block = null;
+    let inYard = 0;
+    for (let i = 0; i < 15; i++) {
+      const s = AI.plot('lumber');
+      if (s && Math.hypot(s.x - ptc.x, s.y - ptc.y) <= Bld.HOME_GROUND_R) inYard++;
+    }
+    ck('theBlindChiefNeverSquats', inYard === 0, inYard + ' offers inside the unseen player yard');
+    // CONQUEST: the maker gone from the ground, and the ground actually seen
+    const far = { x: Math.min(CFG.W - 3, atc.x + 6), y: Math.min(CFG.H - 3, atc.y + 6) };
+    const fi = MapGen.idx(far.x, far.y);
+    S.map.terrain[fi] = T.STUMPS; S.map.workedBy[fi] = 'P';   // P-made, but P stands nowhere near
+    // ai.seen is built lazily; absent it reads as UNSEEN, which is the
+    // conservative direction (a fresh chief has seen nothing)
+    S.ai.seen = S.ai.seen || new Uint8Array(CFG.W * CFG.H);
+    S.ai.seen[fi] = 0;
+    ck('unseenGroundIsNeverClaimed', AI.groundIsAnothers(far.x, far.y) === true, '');
+    S.ai.seen[fi] = 1;
+    ck('theConquerorMaySettleSeenEmptyGround', AI.groundIsAnothers(far.x, far.y) === false, '');
+    // REGROWTH FORGETS THE MAKER
+    S.map.decay[wi] = S.day - 1;
+    G.dayTick();
+    ck('regrownGroundForgetsItsMaker', S.map.workedBy[wi] === undefined,
+      'workedBy=' + S.map.workedBy[wi] + ' terrain=' + S.map.terrain[wi]);
+    // A PRE-MAKER SAVE IS DEALT THE MARK by the nearer hall, working range only
+    const json = JSON.parse(G.saveJSON());
+    delete json.map.workedBy;
+    G.loadJSON(JSON.stringify(json));
+    const ptc2 = Bld.tcOf('P');
+    const nearIdx = stumps.length ? MapGen.idx(stumps[0].x, stumps[0].y) : null;
+    ck('legacySavesDealTheMark', nearIdx !== null && S.map.workedBy[nearIdx] === 'P',
+      'workedBy=' + (nearIdx !== null ? S.map.workedBy[nearIdx] : 'n/a'));
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

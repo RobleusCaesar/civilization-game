@@ -157,6 +157,7 @@ const G = {
         decay: {},                          // idx -> day the depleted/ruined tile regrows to grass
         fishBack: {},                       // idx -> day a fished-out shoal restocks (tests/fishery.mjs)
         hunted: {},                         // idx -> day an animal fell here (a lodge's ground)
+        workedBy: {},                       // idx -> 'P'|'A' whose hands spent this tile (tests/worked-ground.mjs)
         reclaimed: {},                      // idx -> 1 where a sapper filled water into land (never counts as shore again)
         explored: new Array(CFG.W * CFG.H).fill(0),
         seenTerrain: gen.terrain.slice(),   // what the player last saw, per tile
@@ -615,6 +616,7 @@ const G = {
           S.map.terrain[i] = T.GRASS;
           R.updateTile(i % CFG.W, (i / CFG.W) | 0);
         }
+        if (S.map.workedBy) delete S.map.workedBy[k];   // regrown ground forgets its maker
         delete S.map.decay[k];
       }
       if (regrown && !S.regrowSeen) {
@@ -1540,6 +1542,30 @@ const G = {
     if (data.tut === undefined) data.tut = null;      // pre-tutorial saves: no guidance mid-run
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.hunted) data.map.hunted = {};       // pre-worked-ground saves: the record starts empty
+    /* PRE-MAKER saves (tests/worked-ground.mjs): spent ground carries no
+       maker's mark yet, so deal one by the only honest guess left — the
+       nearer hall, within its working range. The point of the backfill is
+       LIVE saves: a rival mid-march toward the player's stumps stands down
+       the moment the save loads, instead of only for ground spent from now
+       on. Tiles near neither town stay unstamped — wild ground, first come
+       first served, exactly as before. */
+    if (!data.map.workedBy) {
+      data.map.workedBy = {};
+      const halls = (data.buildings || []).filter(b => b && b.key === 'tc');
+      const DEP = { };
+      for (const t of [T.STUMPS, T.PEBBLES, T.BARREN]) DEP[t] = 1;
+      const w2 = data.map.W || 40;
+      for (let i = 0; i < data.map.terrain.length; i++) {
+        if (!DEP[data.map.terrain[i]]) continue;
+        const x = i % w2, y = (i / w2) | 0;
+        let best = null, bd = 16;   // within a town's real working range only
+        for (const h of halls) {
+          const d = Math.hypot(x - (h.x + 1), y - (h.y + 1));
+          if (d < bd) { bd = d; best = h.owner; }
+        }
+        if (best) data.map.workedBy[i] = best;
+      }
+    }
     if (!data.corpses) data.corpses = [];             // pre-corpse saves: no remains on the ground yet
     if (!data.workLost) data.workLost = { P: [], A: [] };   // pre-ease-reshape saves: empty ledger
     if (!data.eased) data.eased = { P: false, A: false };   // …and no latch held

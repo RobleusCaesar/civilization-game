@@ -1318,6 +1318,10 @@ const Units = {
             // from here on, the ONE kind of ground that station belongs on
             S.map.resAmount[idx] = 0;
             S.map.terrain[idx] = CFG.DEPLETED[terr];
+            // THE GROUND REMEMBERS WHOSE HANDS MADE IT (tests/worked-ground.mjs):
+            // spent ground carries its maker's mark, and the rival AI may only
+            // raise stations on ground its own tribe worked out (AI.groundIsAnothers)
+            (S.map.workedBy || (S.map.workedBy = {}))[idx] = u.owner;
             G.scheduleRevert(idx);
             R.updateTile(t.x, t.y);
             if (u.owner === 'P') {

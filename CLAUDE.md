@@ -1995,6 +1995,29 @@ exactly that reason — over that long the rival found the test's scars, raised
 camps on them and lost them to raiders, which read as "the forest never came
 back".
 
+**THE GROUND REMEMBERS WHOSE HANDS MADE IT** (same test — from a real day-25
+CALM save: a rival lumber camp finished 4.5 tiles from the player's hall):
+`foreignHome` below is gated on a KNOWN hall, and a peaceful chief that
+never scouts has `knownTC` null — so the fog-honest gate was itself the
+hole, and the chief's villager marched through the town square it
+"couldn't see" to build on the player's stumps, which early in a run are
+the only spent ground on the whole map. Every depleted tile now carries
+its maker's mark (`S.map.workedBy`, idx → owner: stamped where the gather
+task spends the tile in units.js, cleared when the ground regrows in
+`G.dayTick`, in every save; a pre-mark save is backfilled by the NEARER
+HALL within working range 16 — so a live save's mid-march squatter stands
+down at load, not just for ground spent from then on). `AI.groundIsAnothers`
+is the rule and `AI.plot`'s station clause asks it: the chief may only
+raise stations on ground ITS OWN tribe worked out. Foreign-made ground is
+claimable only as a CONQUEST — the maker's buildings within
+`Bld.HOME_GROUND_R` of the tile are all gone (a truth-read, allowed
+because hidden state may always REFUSE more, never permit more) AND the
+chief's own eyes have seen the ground (`ai.seen`; absent reads as unseen,
+the conservative direction). A blind chief never squats; a victorious one
+may settle the ground it emptied. The player is deliberately untouched by
+the maker's mark — their refusals stay exactly the `foreignHome` rule
+below, so no new placement message exists to explain.
+
 **And nobody works another tribe's yard** (same test): the rule's own blind
 spot, reported from a real day-33 game. Worked-out ground is the only ground a
 station may stand on, and early in a run the only worked ground on the whole
