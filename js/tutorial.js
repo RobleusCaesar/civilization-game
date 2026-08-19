@@ -127,7 +127,10 @@ const Tutorial = {
   STEPS: [
     { id: 'welcome',
       anchor() { const tc = Tutorial._tc(); return tc && { x: tc.x + 1, y: tc.y + 1, r: 1.5 }; } },
-    { id: 'resources', anchor: () => ({ sel: '#topbar' }) },
+    // the union of the four resource CHIPS, never the whole top bar: a
+    // full-bleed bar puts the ring's top/left/right edges offscreen and all
+    // that survives is its bottom edge — "a floating gold bar" (playtest)
+    { id: 'resources', anchor: () => ({ union: ['#rFood', '#rWood', '#rStone', '#rGold'] }) },
     { id: 'tapVillager',
       anchor() {
         const tc = Tutorial._tc(); if (!tc) return null;
@@ -154,7 +157,7 @@ const Tutorial = {
     { id: 'gatherStone',
       anchor: () => Tutorial._nearTile('gatherStone', [T.HILLS]),
       adv: () => Tutorial._gatherOn(T.HILLS) },
-    { id: 'gold', anchor: () => ({ sel: '#rGold' }) },
+    { id: 'gold', anchor: () => ({ union: ['#rGold'] }) },   // the gold CHIP, not just its number
     // the house comes BEFORE training on purpose: a start package can open at
     // the population cap, and a train order refused for room would deadlock
     // the spine — a roof always buys the room the next order needs.
@@ -678,13 +681,37 @@ const Tutorial = {
     }
     const a = this._anchor();
     let hole = null, offDir = null;
-    if (a && a.sel) {
-      const t = document.querySelector(a.sel);
-      if (t && t.offsetParent !== null) {
-        const r = t.getBoundingClientRect();
-        hole = { x: r.left + r.width / 2, y: r.top + r.height / 2,
-                 r: Math.max(r.width, r.height) / 2 + 8, rect: r };
+    // a UI rect is CLAMPED into the viewport (4px margin): a full-bleed
+    // element otherwise puts three of the ring's four edges offscreen and
+    // all that survives is one floating gold bar (playtest)
+    const uiHole = (rc) => {
+      const vw = window.innerWidth || R.viewW(), vh = window.innerHeight || R.viewH();
+      // margin 10 = 4px of visible screen edge + the 6px the drawn dim/ring
+      // pad OUTWARD from this rect — clamp the final pixels, not the input
+      const left = Math.max(10, rc.left), top = Math.max(10, rc.top);
+      const right = Math.min(vw - 10, rc.right), bottom = Math.min(vh - 10, rc.bottom);
+      if (right <= left || bottom <= top) return null;
+      const rect = { left, top, right, bottom, width: right - left, height: bottom - top };
+      return { x: left + rect.width / 2, y: top + rect.height / 2,
+               r: Math.max(rect.width, rect.height) / 2 + 8, rect };
+    };
+    if (a && a.union) {
+      // the union of several chips (each ringed at its bordered wrapper) —
+      // a tight box around exactly the things the note names
+      let L = 1e9, T2 = 1e9, R2 = -1e9, B = -1e9, any = false;
+      for (const sel of a.union) {
+        const el2 = document.querySelector(sel);
+        const chip = el2 && (el2.closest('.res') || el2);
+        if (!chip || chip.offsetParent === null) continue;
+        const r = chip.getBoundingClientRect();
+        L = Math.min(L, r.left); T2 = Math.min(T2, r.top);
+        R2 = Math.max(R2, r.right); B = Math.max(B, r.bottom);
+        any = true;
       }
+      if (any) hole = uiHole({ left: L, top: T2, right: R2, bottom: B });
+    } else if (a && a.sel) {
+      const t = document.querySelector(a.sel);
+      if (t && t.offsetParent !== null) hole = uiHole(t.getBoundingClientRect());
     } else if (a) {
       let wx = a.x, wy = a.y, rr = a.r || 0.8;
       if (a.u !== undefined) {

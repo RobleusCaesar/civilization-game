@@ -122,19 +122,37 @@ const out = await p.evaluate(async () => {
     tick(6, 0.3);
     ck('nextAdvances', S.tut.done.welcome === 1 && S.tut.step === 1, JSON.stringify(S.tut.done));
     ck('secondStepShows', Tutorial._show && Tutorial._show.id === 'resources', '');
-    // …and the RESOURCES spotlight is a rectangle hugging the top bar, with
-    // the card seated right below it — never the screen-wide clipped circle
+    // …and the RESOURCES spotlight is a tight rectangle around the four
+    // resource CHIPS — never the full-bleed bar, whose ring survives only as
+    // one floating gold line — with ALL FOUR of the ring's sides on screen
     {
       const dim = document.getElementById('tutDim');
-      const bar = document.getElementById('topbar').getBoundingClientRect();
+      const ring = document.getElementById('tutRing').getBoundingClientRect();
+      let L = 1e9, T2 = 1e9, R2 = -1e9, B = -1e9;
+      for (const id of ['rFood', 'rWood', 'rStone', 'rGold']) {
+        const chip = document.getElementById(id).closest('.res');
+        const r = chip.getBoundingClientRect();
+        L = Math.min(L, r.left); T2 = Math.min(T2, r.top);
+        R2 = Math.max(R2, r.right); B = Math.max(B, r.bottom);
+      }
       const d = dim.getBoundingClientRect();
+      const vw = window.innerWidth, vh = window.innerHeight;
+      // the drawn box hugs the chips ±6, clamped 4px inside the viewport —
+      // a full-bleed rect never puts a ring edge offscreen again
+      const ex = { left: Math.max(4, L - 6), top: Math.max(4, T2 - 6),
+                   right: Math.min(vw - 4, R2 + 6), bottom: Math.min(vh - 4, B + 6) };
       ck('uiSpotlightIsARect', dim.style.borderRadius === '12px' &&
-        Math.abs(d.left - (bar.left - 6)) < 2 && Math.abs(d.width - (bar.width + 12)) < 4 &&
-        Math.abs(d.height - (bar.height + 12)) < 4,
-        dim.style.borderRadius + ' ' + JSON.stringify({ d: [d.left, d.width, d.height], bar: [bar.left, bar.width, bar.height] }));
+        Math.abs(d.left - ex.left) < 3 && Math.abs(d.top - ex.top) < 3 &&
+        Math.abs(d.right - ex.right) < 3 && Math.abs(d.bottom - ex.bottom) < 3,
+        dim.style.borderRadius + ' dim=' + JSON.stringify([d.left, d.top, d.right, d.bottom]) +
+        ' expected=' + JSON.stringify(ex));
+      ck('allFourRingSidesOnScreen',
+        ring.left >= 0 && ring.top >= 0 && ring.right <= vw && ring.bottom <= vh &&
+        ring.width < vw - 2,   // tighter than the full-bleed bar
+        JSON.stringify([ring.left, ring.top, ring.right, ring.bottom]) + ' vw=' + vw);
       const panel = document.getElementById('tutPanel').getBoundingClientRect();
-      ck('cardSitsUnderTheBar', panel.top > bar.bottom && panel.top < bar.bottom + 40,
-        'panel.top=' + panel.top + ' bar.bottom=' + bar.bottom);
+      ck('cardSitsUnderTheChips', panel.top > B && panel.top < B + 40,
+        'panel.top=' + panel.top + ' chips.bottom=' + B);
     }
   }
 
@@ -185,7 +203,9 @@ const out = await p.evaluate(async () => {
       const ring = document.getElementById('tutRing');
       const okAnchor = card && card.offsetParent !== null && ring.style.display !== 'none' &&
         (() => { const c = card.getBoundingClientRect(), r = ring.getBoundingClientRect();
-                 return Math.abs(r.left - (c.left - 5)) < 2 && Math.abs(r.width - (c.width + 10)) < 4; })();
+                 // the ring hugs the card through the same 10px viewport clamp
+                 const hl = Math.max(10, c.left), hr = Math.min(window.innerWidth - 10, c.right);
+                 return Math.abs(r.left - (hl - 5)) < 2 && Math.abs(r.width - ((hr - hl) + 10)) < 4; })();
       ck('houseRingsTheCard', !!okAnchor,
         card ? 'card visible=' + (card.offsetParent !== null) + ' ring=' + ring.style.display : 'no card');
     }
