@@ -52,8 +52,21 @@ const UI = {
   // paint a sprite into an icon canvas: back it at 64px and scale the WHOLE
   // sprite in (sprites are now 64px — a naive drawImage would clip to a corner),
   // so menu/panel thumbnails read clearly whatever the source resolution.
+  /* THE ART IS THE ICON, ALWAYS (tests/art-pipeline.mjs). Every icon in the
+     game is painted straight from the SAME drawable the map draws, so a
+     redesigned building — procedural edit or a dropped-in PNG — shows up in
+     the build menu and the panel with no manifest and no code change.
+
+     Painting is IDEMPOTENT: a canvas remembers the sprite it currently holds
+     and re-drawing the same one costs nothing. That is what lets the callers
+     below simply ask on every frame instead of trying to guess WHEN art
+     changed — and guessing is exactly what was broken, since building PNGs
+     decode asynchronously LONG after the menu was laid out at boot, so the
+     icon kept the procedural drawing for the whole session. */
   iconInto(ic, spr) {
     if (!spr) return;
+    if (ic._cfIcon === spr) return;   // already showing this exact drawable
+    ic._cfIcon = spr;
     ic.width = 64; ic.height = 64;
     const g = ic.getContext('2d');
     // hand-authored PNG art keeps its aspect in the menu too — fit within the
@@ -137,9 +150,7 @@ const UI = {
       // difficulty has been chosen
       if (key === 'wonder') btn.style.display = 'none';
       const ic = document.createElement('canvas');
-      const lv = this.menuIconLevel(key);
-      this.iconInto(ic, Sprites.building[key][lv - 1]);
-      btn.dataset.lv = lv;
+      this.iconInto(ic, this.menuIconSprite(key));
       btn.appendChild(ic);
       const nm = document.createElement('div'); nm.className = 'bname'; nm.textContent = d.name;
       const co = document.createElement('div'); co.className = 'bcost'; co.textContent = Bld.costStr(Bld.effCost('P', key));
@@ -174,6 +185,29 @@ const UI = {
     return Math.min(n, Math.max(1, spec.level || 1));
   },
 
+  /* The drawable a build-menu button shows: the building this key would
+     actually raise, at the tier it would be raised at (menuIconLevel). It
+     reads the LIVE sprite family — which is where Assets.setBuildingArt
+     installs hand-authored PNGs — so new art lands here automatically.
+     The wonder is the one key whose art is rolled per run. */
+  menuIconSprite(key) {
+    if (key === 'wonder') return (Sprites.building.wonder || [])[0];
+    const fam = Sprites.building[key] || [];
+    return fam[Math.min(fam.length, this.menuIconLevel(key)) - 1];
+  },
+
+  /* The drawable a BUILDING's panel icon shows. A work site follows its
+     raising stage; a camp wears its people's art; everything else is simply
+     the building at its level — read live, so redesigned art lands here too.
+     R.bldSprite is deliberately NOT used: it hands a wall or gate its
+     AUTO-TILED mask, which is the wrong picture for an icon. */
+  panelIconSprite(b) {
+    if (b.construction > 0 && Bld.stageOf(b) < 3) return R.stageIcon(b);
+    if (b.key === 'raidercamp' && Sprites.camp && Sprites.camp[b.tribe]) return Sprites.camp[b.tribe];
+    const fam = Sprites.building[b.key] || [];
+    return fam[Math.min(fam.length, b.level) - 1];
+  },
+
   /* Is the ANCIENT WONDER offered in the build menu right now? The wonder
      RULES work on every difficulty — nothing in Bld/AI/G asks what mode you
      are in — but for now only Calm SHOWS the button, because Calm is the mode
@@ -193,11 +227,10 @@ const UI = {
         const show = this.wonderOffered();
         b.style.display = show ? '' : 'none';
         if (!show) { if (this.placing === 'wonder') this.exitPlacement(); return; }
-        // the icon (and the name) follow THIS RUN's monument
+        // the NAME follows THIS RUN's monument (the icon is repainted below,
+        // with every other key's, by the one rule)
         if (b.dataset.wonder !== S.wonder) {
           b.dataset.wonder = S.wonder;
-          const ic = b.querySelector('canvas');
-          if (ic) this.iconInto(ic, Sprites.building.wonder[0]);
           const nm = b.querySelector('.bname');
           if (nm) nm.textContent = CFG.BUILDINGS.wonder.name;
         }
@@ -211,13 +244,13 @@ const UI = {
         const txt = Bld.costStr(cost);
         if (co.textContent !== txt) co.textContent = txt;
       }
-      // the wall's art follows its tier — repaint only when it actually changes
-      const lv = this.menuIconLevel(key);
-      if (key !== 'wonder' && +b.dataset.lv !== lv) {
-        b.dataset.lv = lv;
-        const ic = b.querySelector('canvas');
-        if (ic) this.iconInto(ic, Sprites.building[key][lv - 1]);
-      }
+      /* THE ICON FOLLOWS THE ART, every frame. iconInto no-ops unless the
+         drawable actually changed, so this covers all of it with one rule:
+         a PNG that decoded after boot, the ?dev=1 live preview swapping art
+         under the running game, the wall's tier stepping to stone, and this
+         run's rolled monument. */
+      const ic = b.querySelector('canvas');
+      if (ic) this.iconInto(ic, this.menuIconSprite(key));
     });
   },
 
@@ -2057,6 +2090,13 @@ const UI = {
       const wu = Units.get(this.sel.id);
       if (wk && wu && wu.owner === 'P') wk.innerHTML = this.workLine(wu);
     }
+    // the panel icon follows the art too (a PNG that decoded after the panel
+    // was laid out, or the ?dev=1 preview swapping it under a live game) —
+    // iconInto no-ops unless the drawable actually changed
+    if (this.sel.type === 'bld') {
+      const pb = Bld.get(this.sel.id), pic = document.getElementById('pIcon');
+      if (pb && pic) this.iconInto(pic, this.panelIconSprite(pb));
+    }
     const hc = document.getElementById('healCost');
     if (hc && this.sel.type === 'unit') {
       const u = Units.get(this.sel.id);
@@ -2278,16 +2318,7 @@ const UI = {
       const ic = panel.querySelector('#pIcon');
       // the panel icon follows the work-site stage (tests/build-stages.mjs):
       // ground broken → the raising → the (nearly finished) building itself
-      const iconStage = b.construction > 0 ? Bld.stageOf(b) : 3;
-      this.iconInto(ic, iconStage < 3
-        // a work site's icon follows the stage the map shows — bespoke or
-        // derived, R.stageIcon takes the same routing the building draw does
-        ? R.stageIcon(b)
-        // …and a camp shows the art of the people whose fire it is. Only
-        // the camp is routed this way: R.bldSprite hands a wall or gate its
-        // AUTO-TILED mask, which is the wrong picture for a panel icon.
-        : (b.key === 'raidercamp' && Sprites.camp && Sprites.camp[b.tribe]
-            ? Sprites.camp[b.tribe] : Sprites.building[b.key][b.level - 1]));
+      this.iconInto(ic, this.panelIconSprite(b));
       panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => {
         const b2 = Bld.get(this.sel.id);
         if (!b2) return;

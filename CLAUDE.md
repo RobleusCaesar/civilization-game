@@ -3144,6 +3144,25 @@ map draws as a swallowed render error (the same trap `window.G` /
 the SOURCE, because a wrong guard there fails silently — the frame loop
 catches it and the game keeps running.
 
+**EVERY ICON IS THE ART ITSELF** (same test): the build menu used to paint
+its icons ONCE, at boot, straight out of the procedural table — and
+building PNGs decode asynchronously LONG after that, so a redesigned
+level-1 house kept its old icon for the whole session while the map showed
+the new art. Icons now resolve the LIVE drawable through one helper each
+(`UI.menuIconSprite` for the build menu — the key at the tier it would
+actually be raised at, `Bld.buildSpec`, so the wall button follows the
+village's fort tier; `UI.panelIconSprite` for the selection panel — the
+raising stage on a work site, the people's art on a camp, otherwise the
+building at its level) and repaint on every refresh. Affordable because
+**`UI.iconInto` is IDEMPOTENT**: the canvas remembers the drawable it holds
+(`ic._cfIcon`) and re-drawing the same one costs nothing, which is what
+lets the callers simply ask each frame instead of guessing WHEN art
+changed — and guessing is what was broken. The PLACEMENT GHOST needed no
+change: it already went through `R.bldSprite`, which is why the ghost was
+right while the menu was stale. Neither icon may use `R.bldSprite`
+directly — it hands a wall or gate its AUTO-TILED mask, the wrong picture
+for a 64px icon.
+
 **Art lands by FILENAME, never by manifest** (`tests/art-pipeline.mjs`, full
 rules in `ART_PLAN.md`): `assets/buildings/{id}-l{level}.png` — all lowercase
 (Pages is case-sensitive), tried for every valid slot at startup, swapped in

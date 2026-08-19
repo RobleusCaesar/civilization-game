@@ -352,6 +352,46 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
     const bDock = { key: 'dock', owner: 'P', level: 1, x: 5, y: 5 };
     ck('dockArtOverridesAllOrientations', R.bldSprite(bDock) === fake, '');
 
+    /* ---- 5b. EVERY ICON IS THE ART ITSELF ----
+       The build menu used to paint its icons ONCE, at boot, straight out of
+       the procedural table — and building PNGs decode asynchronously long
+       after that, so a redesigned house kept its old icon for the whole
+       session while the map showed the new art. Icons now resolve the LIVE
+       drawable and repaint whenever it changes: drop in new art and the
+       menu, the placement ghost and the panel all follow with no code
+       change and no manifest. */
+    {
+      G.newGame('articon', 'calm', 'medium');
+      Screens._demo = false; Screens.show('playing'); S.paused = true;
+      for (let i = 0; i < 4; i++) UI.refresh(0.3);   // refresh() is throttled at 0.25s
+      const btn = document.querySelector('.bbtn[data-key="house"]');
+      const ic = btn && btn.querySelector('canvas');
+      const art = document.createElement('canvas'); art.width = art.height = 64;
+      { const g2 = art.getContext('2d'); g2.fillStyle = '#ff00ff'; g2.fillRect(0, 0, 64, 64); }
+      Assets.setBuildingArt('house', 1, art, null);
+      ck('theMenuResolvesTheLiveArt', UI.menuIconSprite('house') === art, '');
+      for (let i = 0; i < 4; i++) UI.refresh(0.3);
+      ck('theMenuIconFollowsNewArt', !!ic && ic._cfIcon === art, '');
+      // …and the GHOST the player positions is the same drawable
+      const ghostB = { key: 'house', owner: 'P', level: 1, x: 4, y: 4, construction: 0 };
+      ck('theGhostIsTheSameArt', R.bldSprite(ghostB, 1) === art, '');
+      // …and a LATER redesign lands everywhere again (the ?dev=1 live loop)
+      const art2 = document.createElement('canvas'); art2.width = art2.height = 64;
+      { const g2 = art2.getContext('2d'); g2.fillStyle = '#123456'; g2.fillRect(0, 0, 64, 64); }
+      Assets.setBuildingArt('house', 1, art2, null);
+      for (let i = 0; i < 4; i++) UI.refresh(0.3);
+      ck('aLaterRedesignLandsToo', !!ic && ic._cfIcon === art2, '');
+      ck('theGhostFollowsTheRedesign', R.bldSprite(ghostB, 1) === art2, '');
+      // repainting the SAME drawable is free — that is what makes asking
+      // every frame affordable
+      let paints = 0;
+      const realDraw = CanvasRenderingContext2D.prototype.drawImage;
+      CanvasRenderingContext2D.prototype.drawImage = function (...a) { paints++; return realDraw.apply(this, a); };
+      UI.iconInto(ic, art2); UI.iconInto(ic, art2);
+      CanvasRenderingContext2D.prototype.drawImage = realDraw;
+      ck('repaintingTheSameArtIsFree', paints === 0, paints + ' redundant draws');
+    }
+
     // ---- 6. no dev surface without the flag ----
     ck('noDevPanelForPlayers', !document.getElementById('devArtPanel') &&
       window.DevArt && DevArt.on === false, '');
