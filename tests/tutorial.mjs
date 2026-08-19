@@ -463,9 +463,31 @@ const out = await p.evaluate(async () => {
     ck('thenWall', Tutorial._show && Tutorial._show.id === 'wall', JSON.stringify(Tutorial._show));
     put('wall'); tick(8, 0.3);
     ck('thenWinCond', Tutorial._show && Tutorial._show.id === 'winCond', JSON.stringify(Tutorial._show));
-    // THE REPORTED BUG: support met, purse empty → the upgrade note must wait
     put('house');                                    // support: barracks+tower+house = 3
     clickNext();                                     // answer winCond
+    /* THE STANDING GOAL closes the silent gap: after the win conditions the
+       lesson names the hall as the objective, prices it, and counts what is
+       still missing — even while the purse is empty. */
+    S.res.wood = 0; S.res.stone = 0; S.res.gold = 0;
+    tick(4, 0.3);
+    ck('goalStepShows', Tutorial._show && Tutorial._show.id === 'tcGoal', JSON.stringify(Tutorial._show));
+    {
+      const t = txtOf('tutTxt');
+      const cost = CFG.BUILDINGS.tc.levels[1].cost;
+      ck('theGoalNamesTheHallAndThePrice',
+        /Level 2/i.test(t) && t.indexOf(String(cost.wood)) >= 0 && t.indexOf(String(cost.stone)) >= 0, t);
+      ck('theGoalCountsTheShortfall', /still need/i.test(t) && /wood/.test(t) && /stone/.test(t), t);
+      // and it points at the hall, whose panel carries the upgrade
+      const tcB = S.buildings.find(o => o.owner === 'P' && o.key === 'tc');
+      const a = Tutorial._upgradeAnchor();
+      ck('theGoalPointsAtTheHall', !!a && Math.abs(a.x - (tcB.x + 1)) < 0.01, JSON.stringify(a));
+    }
+    // …and with the goods in hand its second sentence flips to "go and do it"
+    S.res.wood = 900; S.res.stone = 900; S.res.gold = 300;
+    Tutorial._show = null; tick(4, 0.3);
+    ck('theGoalTurnsIntoAnOrderWhenPayable', /tap the Town Center/i.test(txtOf('tutTxt')), txtOf('tutTxt'));
+    clickNext();                                     // answer the goal
+    // THE REPORTED BUG: support met, purse empty → the upgrade note must wait
     S.res.wood = 0; S.res.stone = 0; S.res.gold = 0;
     tick(4, 0.3);
     ck('upgradeNoteWaitsForTheGoods', Tutorial._show === null,
@@ -512,6 +534,21 @@ const out = await p.evaluate(async () => {
     Units.assignBuild(v, site);                      // the taught action answers it
     tick(3, 0.3);
     ck('assigningABuilderAnswersIt', S.tut.fired.buildHands === 1, JSON.stringify(S.tut.fired));
+    // AN UPGRADE IS WORKS TOO: Bld.upgrade only drafts an IDLE villager, and
+    // by this point in the lesson every hand is out gathering
+    {
+      const tc2 = S.buildings.find(o => o.owner === 'P' && o.key === 'tc');
+      for (const u of S.units) if (u.owner === 'P' && Units.isVillager(u))
+        u.task = { type: 'gather', x: u.x | 0, y: u.y | 0 };   // nobody idle, nobody building
+      tc2.upgrading = 3;
+      S.tut.fired.buildHands = 0; Tutorial._show = null;
+      Tutorial._stuckSince = performance.now() - 6000;
+      Tutorial._lastEvAt = -1e9;
+      tick(3, 0.3);
+      ck('anUpgradeWithNoHandsIsAStallToo', Tutorial._show && Tutorial._show.id === 'buildHands',
+        JSON.stringify(Tutorial._show));
+      tc2.upgrading = 0;
+    }
     // the barracks copy teaches the CHAIN (villager → Build menu); the
     // foundation-hands teaching lives in the buildHands note above
     ck('theBarracksCopyTeachesIt', /villager/i.test(Tutorial.TEXT.barracks) && /build/i.test(Tutorial.TEXT.barracks),

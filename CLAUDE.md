@@ -3245,7 +3245,15 @@ Edit copy there and nowhere else.
 **The engine is data-driven**: `Tutorial.STEPS` is phase 1's ordered spine
 (hall → resources → select → the three gathers → gold → house → train → fog
 → **the map** → **barracks → soldier → guard → tower → wall** → win
-conditions → the TC2 upgrade → the capstone; the HOUSE comes BEFORE
+conditions → **the standing goal** → the TC2 upgrade → the capstone;
+the GOAL step is what closes the silent gap a playtest reported ("it feels
+like the training ends abruptly"): after the win conditions the spine used
+to go quiet until the hall happened to become affordable, so `tcGoal` now
+names the objective, prices it from `CFG.BUILDINGS.tc.levels`, counts the
+LIVE shortfall (goods and missing support buildings both), and flips its
+second sentence to "tap the Town Center and start it" the moment it is
+payable — an info step on purpose, so it never holds the world in slow
+motion while the player goes and gathers; the HOUSE comes BEFORE
 training because a start package can open at the population cap, and the
 TOWN comes before the hall — a playtest found the upgrade being talked
 about twice and offered unaffordably). **The lesson opens with the minimap

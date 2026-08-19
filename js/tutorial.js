@@ -71,14 +71,31 @@ const Tutorial = {
     barracks: 'Tap a <b>villager</b>, open their Build menu, and raise a <b>Barracks</b> — its defenders are the spears that hold your line.',
     soldier: 'Tap the Barracks and train a <b>Defender</b> to stand between your workers and the wild. Your first spear answers the call at once.',
     guard: 'Tap your <b>defender</b>, then the ground where a raid would come in — they hold wherever you set them. Keep your spears between the wild and your workers.',
-    buildHands: 'That foundation is waiting for <b>hands</b>. Tap a villager, then the site, and they will raise it.',
+    buildHands: 'Those works are waiting for <b>hands</b>. Tap a villager, then the site, and they will raise it.',
     tower: 'Raise a <b>Watchtower</b> where the road into your town runs — it watches and shoots for itself. Stone tiers see and strike farther.',
     wall: 'A run of <b>wall</b> across a narrow place turns a raid aside — even a short line buys time. Tap a finished section to build a <b>gate</b> through it: a door only your people may pass.',
     winCond: () => (S.peace
       ? 'Two roads to victory: raze the rival’s hall, or raise the <b>Ancient Wonder</b> and win without a war. The rival is racing for their own.'
       : 'To win, <b>raze the rival’s Town Center</b>. They build, arm and grow bolder with every season — so should you.'),
-    tcReady: 'Three finished buildings — and the goods to pay — have earned your hall a <b>second storey</b>. Tap the Town Center and start the upgrade.',
-    capstone: 'A second storey stands — your tribe is no longer small. The tutorial ends here; a few more notes will come as you unlock new works.',
+    tcGoal: () => {
+      const tc = Tutorial._tc();
+      const cost = (((CFG.BUILDINGS.tc.levels || [])[tc ? tc.level : 1]) || {}).cost || {};
+      const price = ['wood', 'stone', 'gold'].filter(k => cost[k])
+        .map(k => cost[k] + ' ' + k).join(', ');
+      const short = ['wood', 'stone', 'gold']
+        .map(k => ({ k, n: Math.ceil((cost[k] || 0) - (S.res[k] || 0)) }))
+        .filter(o => o.n > 0).map(o => o.n + ' ' + o.k);
+      const sup = tc ? Bld.TC_SUPPORT - Bld.tcSupport(tc) : Bld.TC_SUPPORT;
+      const need = [];
+      if (short.length) need.push(short.join(' and '));
+      if (sup > 0) need.push(sup + ' more building' + (sup > 1 ? 's' : '') + ' at Lv 1');
+      return 'Your goal now: raise the hall to <b>Level 2</b> — ' + price + '. ' +
+        (need.length
+          ? 'Put your villagers on wood and stone; you still need ' + need.join(', ') + '.'
+          : 'You have everything it asks — tap the Town Center and start it.');
+    },
+    tcReady: 'Your town has earned a <b>second storey</b>. Tap the Town Center, start the upgrade, then send a <b>villager</b> to raise the works.',
+    capstone: 'A second storey stands — and with it the Range, the Stable, the Dock and the sappers. Keep growing toward a <b>third</b>: that is where the Trading Post and the great works wait.',
     /* contextual notes */
     scout: () => 'A rider in <b>' + G.tunicOf('A') + '</b> — the rival tribe’s scout, sizing you up. They grow stronger with every season you give them.',
     neutrality: 'The rival keeps the <b>peace</b> for now — neither side strikes until you do. Race them in quiet, or start the war yourself.',
@@ -228,12 +245,21 @@ const Tutorial = {
       anchor: () => Tutorial._buildAnchor('wall'),
       adv: () => S.stats.walls > 0 || S.buildings.some(b => b.owner === 'P' && b.key === 'wall') },
     { id: 'winCond', anchor: null },
+    /* THE STANDING GOAL (playtest: "it feels like the training ends abruptly
+       and it's not totally clear what you should be working towards"). After
+       the win conditions the spine used to go SILENT until the hall happened
+       to become affordable — which on a lean map is many days of nothing. So
+       the lesson names the goal out loud, with the price and the live
+       shortfall in it, and hands the player back the world knowing exactly
+       what they are gathering FOR. An info step on purpose: it must not hold
+       the world in slow motion while they go and do it. */
+    { id: 'tcGoal', anchor: () => Tutorial._upgradeAnchor() },
     { id: 'tcReady',
       // Bld.canUpgrade carries the WHOLE gate — three finished buildings at
       // the hall's level AND the resources to pay — so this note can never
       // point at a button that answers 'Not enough resources'
       when() { const tc = Tutorial._tc(); return !!tc && tc.level === 1 && Bld.canUpgrade(tc).ok; },
-      anchor() { const tc = Tutorial._tc(); return tc && { x: tc.x + 1, y: tc.y + 1, r: 1.5 }; },
+      anchor: () => Tutorial._upgradeAnchor(),
       adv() { const tc = Tutorial._tc(); return !!tc && (tc.upgrading > 0 || tc.level >= 2); } },
     { id: 'capstone', end: true,
       when() { const tc = Tutorial._tc(); return !!tc && tc.level >= 2; },
@@ -257,7 +283,11 @@ const Tutorial = {
     // RIGHT NOW, and waiting for a quiet stretch would miss the moment.
     { id: 'buildHands', urgent: true,
       when() {
-        const stuck = S.buildings.some(b => b.owner === 'P' && b.construction > 0) &&
+        // an UPGRADE counts as works too (Bld.upgrade only auto-dispatches an
+        // IDLE villager, and by now the lesson has sent every hand out
+        // gathering — so the hall can sit at `upgrading` with nobody on it)
+        const stuck = S.buildings.some(b => b.owner === 'P' &&
+            (b.construction > 0 || b.upgrading > 0)) &&
           !S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'build');
         if (!stuck) { Tutorial._stuckSince = 0; return false; }
         const now = performance.now();
@@ -265,11 +295,11 @@ const Tutorial = {
         return now - Tutorial._stuckSince > 5000;   // give the auto-dispatch its chance first
       },
       anchor() {
-        const b = S.buildings.find(o => o.owner === 'P' && o.construction > 0);
+        const b = S.buildings.find(o => o.owner === 'P' && (o.construction > 0 || o.upgrading > 0));
         return b && { x: Bld.cx(b), y: Bld.cy(b), r: 1.1 };
       },
       adv: () => S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'build') ||
-        !S.buildings.some(b => b.owner === 'P' && b.construction > 0) },
+        !S.buildings.some(b => b.owner === 'P' && (b.construction > 0 || b.upgrading > 0)) },
     { id: 'workedGround',
       // an ACTION, not a lecture (playtest): guide the whole chain to a real
       // Lumber Camp on the player's own stumps — and only once it is payable
@@ -382,6 +412,16 @@ const Tutorial = {
     if (v) return { u: v.id };
     return { sel: '#bmToggle' };
   },
+  // the hall's upgrade lives on its own PANEL, not in the build menu — so the
+  // chain is: the panel's Upgrade button once the hall is selected, else the
+  // hall itself in the world (tap it and the panel opens)
+  _upgradeAnchor() {
+    const up = document.querySelector('#panel [data-act="upgrade"]');
+    if (up && up.offsetParent !== null) return { sel: '#panel [data-act="upgrade"]' };
+    const tc = this._tc();
+    return tc && { x: tc.x + 1, y: tc.y + 1, r: 1.5 };
+  },
+
   // the nearest own villager to the hall, idle hands strongly preferred
   _nearVillager() {
     const tc = this._tc();
