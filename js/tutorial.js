@@ -67,7 +67,8 @@ const Tutorial = {
     train: 'Tap your Town Center and <b>train a new villager</b>. Hands are the tribe’s real wealth — keep food ahead of mouths.',
     house: 'Open the <b>Build</b> menu and raise a <b>House</b>. Each roof shelters four more of your people.',
     fog: 'All that <b>darkness</b> is land your people have not walked yet — and it is not empty: wild bands and beasts roam it. Scout carefully, and don’t send anyone far alone.',
-    barracks: 'Raise a <b>Barracks</b> — its defenders are the spears that hold your line. Bows, riders and engines come later, each from a hall of its own.',
+    barracks: 'Raise a <b>Barracks</b> — its defenders are the spears that hold your line. A foundation needs hands: an idle villager comes on their own, or tap a <b>villager</b>, then the site.',
+    buildHands: 'That foundation is waiting for <b>hands</b>. Tap a villager, then the site, and they will raise it.',
     tower: 'Raise a <b>Watchtower</b> where the road into your town runs — it watches and shoots for itself. Stone tiers see and strike farther.',
     wall: 'A run of <b>wall</b> across a narrow place turns a raid aside — even a short line buys time. Tap a finished section to build a <b>gate</b> through it: a door only your people may pass.',
     winCond: () => (S.peace
@@ -214,6 +215,26 @@ const Tutorial = {
       anchor() { const u = Tutorial._scout(); return u && { u: u.id }; } },
     { id: 'neutrality',
       when: () => !!S.peace && !!S.tut.fired.scout, anchor: null },
+    // A FOUNDATION WITH NO HANDS ON IT (playtest): placing a site is only
+    // half the deed — a villager has to raise it, and with every hand out
+    // gathering (which the tutorial just taught) the site sits at nothing
+    // and reads as a bug. URGENT like the scout: the confusion is happening
+    // RIGHT NOW, and waiting for a quiet stretch would miss the moment.
+    { id: 'buildHands', urgent: true,
+      when() {
+        const stuck = S.buildings.some(b => b.owner === 'P' && b.construction > 0) &&
+          !S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'build');
+        if (!stuck) { Tutorial._stuckSince = 0; return false; }
+        const now = performance.now();
+        if (!Tutorial._stuckSince) { Tutorial._stuckSince = now; return false; }
+        return now - Tutorial._stuckSince > 5000;   // give the auto-dispatch its chance first
+      },
+      anchor() {
+        const b = S.buildings.find(o => o.owner === 'P' && o.construction > 0);
+        return b && { x: Bld.cx(b), y: Bld.cy(b), r: 1.1 };
+      },
+      adv: () => S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'build') ||
+        !S.buildings.some(b => b.owner === 'P' && b.construction > 0) },
     { id: 'workedGround',
       when() {
         const terr = S.map.terrain, ex = S.map.explored;
@@ -310,6 +331,7 @@ const Tutorial = {
   onWorldChange() {
     this.simScale = 1;
     this._show = null; this._pan = null; this._zRestore = 0; this._memo = {};
+    this._stuckSince = 0;
     this._advT = this._evT = this._gapT = 0; this._skipArm = 0; this._lastEvAt = -1e9;
     this._removeDom();
   },

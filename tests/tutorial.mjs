@@ -397,6 +397,39 @@ const out = await p.evaluate(async () => {
     ck('oneUpgradeMention', mentions.length === 1 && mentions[0] === 'tcReady', mentions.join(','));
   }
 
+  // ---- a foundation with no hands on it gets the builder lesson ----
+  {
+    fresh('118', 'calm', true);
+    tick(2, 0.3);                                    // welcome is up — urgent must preempt it
+    for (const u of S.units) if (u.owner === 'P' && Units.isVillager(u)) {
+      u.task = { type: 'gather', x: u.x | 0, y: u.y | 0 };   // every hand busy
+    }
+    const tc = S.buildings.find(o => o.owner === 'P' && o.key === 'tc');
+    let site = null;
+    outer:
+    for (let r = 2; r < 9; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const x = tc.x + dx, y = tc.y + dy;
+      if (Bld.canPlace('P', 'barracks', x, y, { noCost: true }).ok) {
+        site = Bld.place('P', 'barracks', x, y, { free: true });   // a REAL site, unbuilt
+        break outer;
+      }
+    }
+    Tutorial._lastEvAt = -1e9;
+    tick(2, 0.3);
+    ck('handsNoteWaitsForAutoDispatch', !(Tutorial._show && Tutorial._show.id === 'buildHands'),
+      JSON.stringify(Tutorial._show));               // the 5s grace: idle hands get their chance
+    Tutorial._stuckSince = performance.now() - 6000; // …which has now passed
+    tick(2, 0.3);
+    ck('handsNoteFires', Tutorial._show && Tutorial._show.id === 'buildHands' && !!site,
+      JSON.stringify(Tutorial._show));
+    const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u));
+    Units.assignBuild(v, site);                      // the taught action answers it
+    tick(3, 0.3);
+    ck('assigningABuilderAnswersIt', S.tut.fired.buildHands === 1, JSON.stringify(S.tut.fired));
+    ck('theBarracksCopyTeachesIt', /villager/i.test(Tutorial.TEXT.barracks) && /site|foundation/i.test(Tutorial.TEXT.barracks),
+      Tutorial.TEXT.barracks);
+  }
+
   // ---- the phase-2 siege note fires on the first enemy stone seen ----
   {
     fresh('115', 'moderate', true);

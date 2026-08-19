@@ -3249,7 +3249,11 @@ capstone; the HOUSE comes BEFORE training because a start package can open
 at the population cap, and the TOWN comes before the hall — a playtest
 found the upgrade being talked about twice and offered unaffordably).
 `Tutorial.EVENTS` is everything contextual — the scripted scout, the calm
-truce, worked ground → stations, dock/sapper notes, and phase 2's
+truce, worked ground → stations, dock/sapper notes, **the builder lesson**
+(`buildHands`, `urgent` like the scout: a foundation standing 5s with no
+villager building it — the auto-dispatch's grace — fires "tap a villager,
+then the site" ringed on the site itself, because with every hand out
+gathering the site sits at nothing and reads as a bug), and phase 2's
 one-shots (Trading Post at TC3, siege practice, the win nudge, mortality
 via `Tutorial.note` from `G.tickMortality`); the old military/defense/
 wall-practice notes are RETIRED — the spine's own barracks/tower/wall
