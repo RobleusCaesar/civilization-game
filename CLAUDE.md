@@ -3221,15 +3221,26 @@ for dynamic bits (the rival's tunic colour, the calm/war win conditions).
 Edit copy there and nowhere else.
 **The engine is data-driven**: `Tutorial.STEPS` is phase 1's ordered spine
 (hall → resources → select → the three gathers → gold → house → train → fog
-→ the hall's path → win conditions → the TC2 capstone; the HOUSE comes
-BEFORE training because a start package can open at the population cap, and
-a train order refused for room would deadlock the spine). `Tutorial.EVENTS`
-is everything contextual — the scripted scout, the calm truce, worked
-ground → stations, military/defense/dock/sapper notes, and phase 2's
-one-shots (Trading Post at TC3, siege and wall practice, the win nudge,
-mortality via `Tutorial.note` from `G.tickMortality`). A step with `adv` is
+→ **barracks → tower → wall** → win conditions → the TC2 upgrade → the
+capstone; the HOUSE comes BEFORE training because a start package can open
+at the population cap, and the TOWN comes before the hall — a playtest
+found the upgrade being talked about twice and offered unaffordably).
+`Tutorial.EVENTS` is everything contextual — the scripted scout, the calm
+truce, worked ground → stations, dock/sapper notes, and phase 2's
+one-shots (Trading Post at TC3, siege practice, the win nudge, mortality
+via `Tutorial.note` from `G.tickMortality`); the old military/defense/
+wall-practice notes are RETIRED — the spine's own barracks/tower/wall
+steps carry that teaching now, gates included. A step with `adv` is
 action-gated and completes itself; one without carries the Got-it button;
 `when` holds a step silently (the world runs free while nothing is on show).
+**EVERY BUYING STEP HOLDS UNTIL IT IS PAYABLE** (a playtest met "Not
+enough resources" behind the upgrade note): house/barracks/tower/wall ask
+`Tutorial._afford` (effCost + canAfford), train asks for pop ROOM and
+food, and tcReady asks `Bld.canUpgrade(tc).ok` — which carries the whole
+gate, three finished buildings AND the goods. **The lesson's larder**
+(`maybeStart`): a tutorial start is topped up to wood 200 / stone 100 /
+gold 20 — enough for the taught builds, a top-up never a cut, and never
+enough for the hall upgrade, because earning that is the lesson's arc.
 **THE SPINE HAS RIGHT OF WAY**: contextual notes fire only in the quiet
 stretches (a held step, phase 2), ≥25s apart — except the scout, whose
 `urgent` flag lets it preempt, because it is on screen NOW. The `_lastEvAt`

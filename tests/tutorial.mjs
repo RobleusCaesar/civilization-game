@@ -98,6 +98,9 @@ const out = await p.evaluate(async () => {
     // demo worlds and already-armed runs never re-arm
     const t0 = S.tut; Tutorial.maybeStart();
     ck('neverReArms', S.tut === t0, '');
+    // the lesson's larder: a tutorial start affords the taught builds
+    ck('larderToppedUp', S.res.wood >= 200 && S.res.stone >= 100 && S.res.gold >= 20,
+      JSON.stringify(S.res));
   }
 
   // ---- 3. the spine presents, and Next advances ----
@@ -342,20 +345,70 @@ const out = await p.evaluate(async () => {
     ck('zoomHandedBack', Math.abs(R.cam.z - z0) < 0.05, 'z ' + R.cam.z.toFixed(2) + ' vs ' + z0.toFixed(2));
   }
 
-  // ---- phase-2 practice notes: the first wall, the first siege sign ----
+  // ---- the taught town: barracks → tower → wall, each held until payable,
+  //      and the upgrade note only when Bld.canUpgrade says YES ----
+  {
+    fresh('117', 'calm', true);
+    for (const st of Tutorial.STEPS)
+      if (['welcome', 'resources', 'tapVillager', 'gatherWood', 'gatherFood',
+           'gatherStone', 'gold', 'house', 'train', 'fog'].includes(st.id)) S.tut.done[st.id] = 1;
+    for (const e of Tutorial.EVENTS) S.tut.fired[e.id] = 1;   // the spine alone is under test
+    const tc = S.buildings.find(o => o.owner === 'P' && o.key === 'tc');
+    const put = (key) => {
+      for (let r = 2; r < 12; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        const x = tc.x + dx, y = tc.y + dy;
+        if (Bld.canPlace('P', key, x, y, { noCost: true }).ok)
+          return Bld.place('P', key, x, y, { instant: true, free: true });
+      }
+      return null;
+    };
+    // broke → the barracks note HOLDS (nothing shows, full speed)
+    S.res.wood = 0; S.res.stone = 0; S.res.gold = 0;
+    tick(3, 0.3);
+    ck('brokeHoldsTheNote', Tutorial._show === null && Tutorial.simScale === 1,
+      JSON.stringify(Tutorial._show));
+    S.res.wood = 300; S.res.stone = 150; S.res.gold = 30;
+    tick(3, 0.3);
+    ck('paidShowsBarracks', Tutorial._show && Tutorial._show.id === 'barracks',
+      JSON.stringify(Tutorial._show));
+    put('barracks'); tick(8, 0.3);
+    ck('thenTower', Tutorial._show && Tutorial._show.id === 'tower', JSON.stringify(Tutorial._show));
+    put('tower'); tick(8, 0.3);
+    ck('thenWall', Tutorial._show && Tutorial._show.id === 'wall', JSON.stringify(Tutorial._show));
+    put('wall'); tick(8, 0.3);
+    ck('thenWinCond', Tutorial._show && Tutorial._show.id === 'winCond', JSON.stringify(Tutorial._show));
+    // THE REPORTED BUG: support met, purse empty → the upgrade note must wait
+    put('house');                                    // support: barracks+tower+house = 3
+    clickNext();                                     // answer winCond
+    S.res.wood = 0; S.res.stone = 0; S.res.gold = 0;
+    tick(4, 0.3);
+    ck('upgradeNoteWaitsForTheGoods', Tutorial._show === null,
+      JSON.stringify(Tutorial._show) + ' support=' + Bld.tcSupport(tc));
+    S.res.wood = 400; S.res.stone = 300; S.res.gold = 60;
+    tick(3, 0.3);
+    ck('upgradeNoteWhenPayable', Tutorial._show && Tutorial._show.id === 'tcReady',
+      JSON.stringify(Tutorial._show) + ' canUp=' + JSON.stringify(Bld.canUpgrade(tc)));
+    // …and it is the ONLY step that speaks of the upgrade
+    const mentions = Tutorial.STEPS.filter(st => {
+      const t = Tutorial.TEXT[st.id];
+      const str = typeof t === 'function' ? '' : (t || '');
+      return /upgrade/i.test(str);
+    }).map(st => st.id);
+    ck('oneUpgradeMention', mentions.length === 1 && mentions[0] === 'tcReady', mentions.join(','));
+  }
+
+  // ---- the phase-2 siege note fires on the first enemy stone seen ----
   {
     fresh('115', 'moderate', true);
     S.tut.phase = 2; S.tut.step = Tutorial.STEPS.length;
-    for (const e of Tutorial.EVENTS) if (e.id !== 'defensePractice' && e.id !== 'siegePractice') S.tut.fired[e.id] = 1;
-    S.stats.walls = 1;                                 // the first wall laid
-    Tutorial._lastEvAt = -1e9; tick(2, 0.6);
-    ck('wallPracticeOnFirstWall', Tutorial._show && Tutorial._show.id === 'defensePractice',
-      JSON.stringify(Tutorial._show));
-    clickNext();
+    for (const e of Tutorial.EVENTS) if (e.id !== 'siegePractice') S.tut.fired[e.id] = 1;
     S.map.seenB[42] = { key: 'wall', level: 1, owner: 'A' };   // enemy stone, seen
     Tutorial._lastEvAt = -1e9; tick(2, 0.6);
     ck('siegePracticeOnEnemyWalls', Tutorial._show && Tutorial._show.id === 'siegePractice',
       JSON.stringify(Tutorial._show));
+    // …and the retired notes are genuinely gone
+    ck('redundantNotesRetired', !Tutorial.EVENTS.some(e => e.id === 'defensePractice' || e.id === 'military' || e.id === 'defense'),
+      Tutorial.EVENTS.map(e => e.id).join(','));
   }
 
   // ---- phase-2 extras: mortality via the hook, the win nudge ----

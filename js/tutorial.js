@@ -67,24 +67,23 @@ const Tutorial = {
     train: 'Tap your Town Center and <b>train a new villager</b>. Hands are the tribe’s real wealth — keep food ahead of mouths.',
     house: 'Open the <b>Build</b> menu and raise a <b>House</b>. Each roof shelters four more of your people.',
     fog: 'All that <b>darkness</b> is land your people have not walked yet — and it is not empty: wild bands and beasts roam it. Scout carefully, and don’t send anyone far alone.',
-    tcPath: 'The hall rises on the town’s shoulders: finish <b>three buildings</b> at its level and it may take a second storey.',
+    barracks: 'Raise a <b>Barracks</b> — its defenders are the spears that hold your line. Bows, riders and engines come later, each from a hall of its own.',
+    tower: 'Raise a <b>Watchtower</b> where the road into your town runs — it watches and shoots for itself. Stone tiers see and strike farther.',
+    wall: 'A run of <b>wall</b> across a narrow place turns a raid aside — even a short line buys time. Tap a finished section to build a <b>gate</b> through it: a door only your people may pass.',
     winCond: () => (S.peace
       ? 'Two roads to victory: raze the rival’s hall, or raise the <b>Ancient Wonder</b> and win without a war. The rival is racing for their own.'
       : 'To win, <b>raze the rival’s Town Center</b>. They build, arm and grow bolder with every season — so should you.'),
-    tcReady: 'Your town can carry a greater hall now. Tap the Town Center and start the <b>upgrade</b>.',
+    tcReady: 'Three finished buildings — and the goods to pay — have earned your hall a <b>second storey</b>. Tap the Town Center and start the upgrade.',
     capstone: 'A second storey stands — your tribe is no longer small. The tutorial ends here; a few more notes will come as you unlock new works.',
     /* contextual notes */
     scout: () => 'A rider in <b>' + G.tunicOf('A') + '</b> — the rival tribe’s scout, sizing you up. They grow stronger with every season you give them.',
     neutrality: 'The rival keeps the <b>peace</b> for now — neither side strikes until you do. Race them in quiet, or start the war yourself.',
     workedGround: 'Ground worked bare can carry a <b>station</b> — a Lumber Camp on stumps, a Quarry on broken rock, a Farm on spent soil. Each is built from <b>other</b> goods: a camp costs stone, a quarry wood.',
     station: 'A station only pays while hands <b>work</b> it. Tap a villager, then the plot, to put them on.',
-    military: 'Spears from the <b>Barracks</b>, bows from the Range, riders from the Stable, engines from the Workshop. Spears hold, bows reach, riders run down bows — no one arm wins alone.',
-    defense: '<b>Walls</b> turn a raid and <b>towers</b> make it bleed — even a short line across a narrow place buys the town time. Tap a wall section to build a <b>gate</b> through it.',
     dock: 'That water can work for you — a <b>Dock</b> trains fishing boats, and transports to carry your people across.',
     sapperE: 'The <b>Sappers’ Camp</b> trains engineers who reshape the land — trenches, causeways, bridges over water. The map itself is a weapon.',
     trade: 'The <b>Trading Post</b> turns surplus into anything else — dearly. When the stone runs out, it is often the only stone there is.',
     siegePractice: 'Walls fall to <b>engines</b>, not to swords. Catapults outrange towers; keep foot soldiers between your guns and the gate.',
-    defensePractice: 'A wall is only as strong as its <b>line</b> — close the gaps, and put a tower where it sees the road in. Tap a wall section to build a gate through it.',
     winNudgeWar: 'Your war camp is strong. When you march, bring <b>engines</b> for their walls and spears to screen them — and strike the hall, not the stones.',
     winNudgeWonder: 'Your town is rich and the land is quiet. The <b>Ancient Wonder</b> waits in your build menu — raise it and win without a war.',
     mortality: 'A villager has died — age, mischance, the usual ways of the world. Their <b>post stands empty</b>; send another pair of hands.',
@@ -157,17 +156,18 @@ const Tutorial = {
     { id: 'gold', anchor: () => ({ sel: '#rGold' }) },
     // the house comes BEFORE training on purpose: a start package can open at
     // the population cap, and a train order refused for room would deadlock
-    // the spine — a roof always buys the room the next order needs
+    // the spine — a roof always buys the room the next order needs.
+    // EVERY BUYING STEP HOLDS UNTIL IT IS PAYABLE (playtest: "this screen
+    // shouldn't show until the player actually has the resources for it") —
+    // a note asking for something the player cannot do teaches only doubt.
     { id: 'house',
-      // point at the HOUSE CARD itself while the menu is open; only a closed
-      // menu falls back to ringing the toggle that opens it
-      anchor() {
-        const btn = document.querySelector('.bbtn[data-key="house"]');
-        if (btn && btn.offsetParent !== null) return { sel: '.bbtn[data-key="house"]' };
-        return { sel: '#bmToggle' };
-      },
+      when: () => Tutorial._afford('house'),
+      anchor: () => Tutorial._menuCard('house'),
       adv: () => S.buildings.some(b => b.owner === 'P' && b.key === 'house') },
     { id: 'train',
+      // holds until there is genuinely ROOM as well as food: a big start
+      // package can sit at the cap even with the lesson's house up
+      when: () => Units.popUsed('P') < Bld.popCap('P') && S.res.food >= 50,
       anchor() { const tc = Tutorial._tc(); return tc && { x: tc.x + 1, y: tc.y + 1, r: 1.5 }; },
       adv: () => S.stats.trained > 0 ||
         S.buildings.some(b => b.owner === 'P' && b.queue && b.queue.length > 0) },
@@ -176,12 +176,27 @@ const Tutorial = {
     // so it glides the zoom out until the black edges show, and hands the
     // zoom back when answered. Any touch cancels both (the player's camera).
     { id: 'fog', anchor: null, zoomOut: true },
-    { id: 'tcPath',
-      anchor() { const tc = Tutorial._tc(); return tc && { x: tc.x + 1, y: tc.y + 1, r: 1.5 }; } },
+    // THE TOWN BEFORE THE HALL (playtest): barracks, tower and wall are each
+    // taught as a step of their own, and only then is the upgrade mentioned —
+    // once — when the support AND the goods are both really there
+    { id: 'barracks',
+      when: () => Tutorial._afford('barracks'),
+      anchor: () => Tutorial._menuCard('barracks'),
+      adv: () => S.buildings.some(b => b.owner === 'P' && b.key === 'barracks') },
+    { id: 'tower',
+      when: () => Tutorial._afford('tower'),
+      anchor: () => Tutorial._menuCard('tower'),
+      adv: () => S.buildings.some(b => b.owner === 'P' && b.key === 'tower') },
+    { id: 'wall',
+      when: () => Tutorial._afford('wall'),
+      anchor: () => Tutorial._menuCard('wall'),
+      adv: () => S.stats.walls > 0 || S.buildings.some(b => b.owner === 'P' && b.key === 'wall') },
     { id: 'winCond', anchor: null },
     { id: 'tcReady',
-      when() { const tc = Tutorial._tc(); return !!tc && tc.level === 1 && !(tc.upgrading > 0) &&
-        Bld.tcSupport(tc) >= Bld.TC_SUPPORT; },
+      // Bld.canUpgrade carries the WHOLE gate — three finished buildings at
+      // the hall's level AND the resources to pay — so this note can never
+      // point at a button that answers 'Not enough resources'
+      when() { const tc = Tutorial._tc(); return !!tc && tc.level === 1 && Bld.canUpgrade(tc).ok; },
       anchor() { const tc = Tutorial._tc(); return tc && { x: tc.x + 1, y: tc.y + 1, r: 1.5 }; },
       adv() { const tc = Tutorial._tc(); return !!tc && (tc.upgrading > 0 || tc.level >= 2); } },
     { id: 'capstone', end: true,
@@ -215,14 +230,6 @@ const Tutorial = {
         return b && { x: b.x + 0.5, y: b.y + 0.5, r: 0.9 };
       },
       adv: () => S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'work') },
-    { id: 'military',
-      when() {
-        if (S.buildings.some(b => b.owner === 'P' &&
-          (b.key === 'barracks' || b.key === 'range' || b.key === 'stable' || b.key === 'siege'))) return true;
-        const c = ((CFG.BUILDINGS.barracks.levels[0] || {}).cost || {});
-        return S.day >= 7 && S.res.wood >= (c.wood || 0) && S.res.food >= (c.food || 0);
-      }, anchor: () => ({ sel: '#bmToggle' }) },
-    { id: 'defense', when: () => !!S.tut.fired.military && S.day >= 9, anchor: null },
     { id: 'dock',
       when() {
         const tc = Tutorial._tc(); if (!tc || tc.level < 2) return false;
@@ -247,9 +254,6 @@ const Tutorial = {
         }
         return false;
       }, anchor: null },
-    { id: 'defensePractice',
-      when: () => S.stats.walls > 0 || S.buildings.some(b => b.owner === 'P' && b.key === 'wall'),
-      anchor: null },
     { id: 'winNudge',
       when() {
         const mil = S.units.filter(u => u.owner === 'P' && Units.isMilitary && Units.isMilitary(u)).length;
@@ -280,6 +284,25 @@ const Tutorial = {
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
     S.tut = { on: true, phase: 1, step: 0, done: {}, fired: {},
               scoutDay: 9 + (Math.abs(h) % 5), scoutSpawned: 0, scoutId: 0, scoutLeg: 0 };
+    // THE LESSON'S LARDER (playtest): a tutorial start must afford the builds
+    // it teaches — a couple of roofs, the barracks, a tower, a few sections
+    // of wall — whatever package the cards rolled. A TOP-UP, never a cut,
+    // and never the hall upgrade: earning THAT is the lesson's whole arc.
+    S.res.wood = Math.max(S.res.wood, 200);
+    S.res.stone = Math.max(S.res.stone, 100);
+    S.res.gold = Math.max(S.res.gold, 20);
+  },
+
+  // may the player pay for this building right now? (card discounts included)
+  _afford(key) {
+    return Bld.canAfford(Bld.effCost('P', key), S.res);
+  },
+  // point at a build-menu CARD itself while the menu is open; only a closed
+  // menu falls back to ringing the toggle that opens it
+  _menuCard(key) {
+    const btn = document.querySelector('.bbtn[data-key="' + key + '"]');
+    if (btn && btn.offsetParent !== null) return { sel: '.bbtn[data-key="' + key + '"]' };
+    return { sel: '#bmToggle' };
   },
 
   // from G.newGame and G.loadJSON: the world was replaced — drop every piece
