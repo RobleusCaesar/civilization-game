@@ -393,6 +393,43 @@ const out = await p.evaluate(async () => {
     S.res.wood = 300; S.res.stone = 150; S.res.gold = 30; S.res.food = 300;
     tick(3, 0.3);
     ck('barracksStepShows', Tutorial._show && Tutorial._show.id === 'barracks', JSON.stringify(Tutorial._show));
+    /* THE RINGED CARD IS BROUGHT INTO VIEW. The build menu scrolls
+       horizontally and the barracks sits past the fold, so opening Build used
+       to show a highlight the player could not see. */
+    {
+      const wrap = document.getElementById('buildmenu');
+      const card = document.querySelector('.bbtn[data-key="barracks"]');
+      const seen = () => {
+        const wr = wrap.getBoundingClientRect(), br = card.getBoundingClientRect();
+        return br.left >= wr.left - 1 && br.right <= wr.right + 1;
+      };
+      // THE REAL FLOW: the menu is shut, the player taps Build. (Closing it
+      // re-arms the one-shot — the anchor falls back off the card — so each
+      // OPENING centres afresh while scrolling within one opening is free.)
+      UI.setMenuCollapsed(true); UI.refresh(0.3); Tutorial.tick(0.3);
+      UI.setMenuCollapsed(false); UI.refresh(0.3);
+      wrap.scrollLeft = 0;
+      const scrolls = wrap.scrollWidth > wrap.clientWidth + 1;
+      ck('theBarracksSitsPastTheFold', scrolls && !seen(),
+        'scrollable=' + scrolls + ' visibleAt0=' + seen());
+      Tutorial.tick(0.3);
+      await new Promise(res => setTimeout(res, 500));
+      const wr = wrap.getBoundingClientRect(), br = card.getBoundingClientRect();
+      ck('theRingedCardIsScrolledIntoView', seen(), 'card left=' + Math.round(br.left) + ' menu right=' + Math.round(wr.right));
+      ck('andItLandsInTheMiddle',
+        Math.abs((br.left + br.width / 2) - (wr.left + wr.width / 2)) < 6,
+        'off centre by ' + Math.round((br.left + br.width / 2) - (wr.left + wr.width / 2)) + 'px');
+      // …and a player who scrolls elsewhere is NOT fought
+      wrap.scrollLeft = 0;
+      for (let i = 0; i < 3; i++) Tutorial.tick(0.3);
+      await new Promise(res => setTimeout(res, 300));
+      ck('itDoesNotFightThePlayersScroll', wrap.scrollLeft === 0, 'scrollLeft=' + wrap.scrollLeft);
+      // …but closing and reopening the menu centres it afresh
+      UI.setMenuCollapsed(true); UI.refresh(0.3); Tutorial.tick(0.3);
+      UI.setMenuCollapsed(false); UI.refresh(0.3); Tutorial.tick(0.3);
+      await new Promise(res => setTimeout(res, 500));
+      ck('reopeningTheMenuCentresItAgain', seen(), 'visible=' + seen());
+    }
     const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u));
     UI.select('unit', v.id);
     tick(1, 0.1);

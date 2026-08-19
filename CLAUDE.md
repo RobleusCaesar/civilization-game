@@ -3360,7 +3360,15 @@ element, with the card seated right beside it** (under the resource bar,
 above a build-menu card): the circular hole, sized to a bar's whole width,
 drew a giant half-circle clipped by the screen edge — reported from a real
 phone playtest as "confusing". World targets keep the circle and the
-opposite-half card rule. **The house step rings the HOUSE CARD itself**
+opposite-half card rule. **A ringed build-menu CARD is scrolled into the middle of the menu**
+(`Tutorial._scrollCardIntoView`, from a playtest: the barracks card sits
+past the fold of the horizontally-scrolling menu, so opening Build showed
+a highlight the player could not see). ONE SHOT per opening — the
+tutorial never takes control, so a player who scrolls elsewhere is left
+alone; the one-shot re-arms on any frame whose anchor is NOT a menu card
+(closing the menu makes `_buildAnchor` fall back to the villager), so
+each fresh opening centres again.
+**The house step rings the HOUSE CARD itself**
 (`.bbtn[data-key="house"]`) whenever the build menu is open, and only a
 closed menu falls back to ringing the toggle. The title's old "Tutorial" button was renamed **"Guide"**
 (it opens the static manual) so the two never collide — "How to play"
