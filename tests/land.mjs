@@ -969,6 +969,64 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   await p.close();
 }
 
+/* ---- 12b. THE CACHE NEVER DRIFTS FROM THE BAKE ------------------------
+   The day-108 lakeland report: after ~100 days of felling, depleting and
+   building along the shores, every lake had curdled into opaque pale
+   platforms with hard tile seams and comb-fold "planks" — while a reload
+   looked perfect, because a reload rebakes. The shore bands are TRANSLUCENT,
+   so any repaint that composites them over ground it did not just reset
+   stacks the ribbons a step darker, forever; the wide band re-blit that
+   compensated for decal restamps was exactly such a composite. The rules
+   that close the class (all in drawTileAt / drawTilesAt / paintGround /
+   hillsDirty): RESET ONCE, COMPOSITE ONCE — every pass paints clipped to the
+   ground the same call erased; drawTile is box-exact (the grass blade used
+   to write 2px into the tile below); a hills/pebbles membership change
+   repaints its whole cluster (the rock scatter and relief are properties of
+   the cluster's field, hillsDirty beside waterDirty); and the ground reset
+   reaches ±2 with decals restamped from ±3, because a decal's look depends
+   on terrain within one tile of its anchor and its paint reaches under one
+   tile past it — a fern whose forest burned used to orphan its overhang one
+   ring out where nothing ever erased it. The check is the disease's own
+   shape: hammer every shore-adjacent land tile twice, then fell forest and
+   quarry hills through the real updateTile path, and demand the cache equal
+   a fresh rebake BYTE FOR BYTE. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(boot + `
+    const W=CFG.W,H=CFG.H,TL=CFG.TILE;
+    const wet=t=>t===T.WATER||t===T.MOAT;
+    const terr=S.map.terrain;
+    // 1. the session hammer: repaint every land tile within 2 of water, twice
+    const shore=[];
+    for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+      if(wet(terr[y*W+x]))continue;
+      let near=false;
+      for(let oy=-2;oy<=2&&!near;oy++)for(let ox=-2;ox<=2;ox++){const nx=x+ox,ny=y+oy;
+        if(nx>=0&&ny>=0&&nx<W&&ny<H&&wet(terr[ny*W+nx])){near=true;break;}}
+      if(near)shore.push([x,y]);
+    }
+    for(let r=0;r<2;r++)for(const [x,y] of shore)R.drawTileAt(x,y);
+    // 2. real terrain changes through the real path: fell forest (the fern
+    //    orphan), quarry hills (the cluster field), deplete fertile
+    const vis=G.visibleAt; G.visibleAt=()=>true;
+    let flipped=0;
+    const flip=(from,to,n)=>{let c=0;
+      for(let i=0;i<W*H&&c<n;i++)if(terr[i]===from){terr[i]=to;R.updateTile(i%W,(i/W)|0);c++;flipped++;}};
+    flip(T.FOREST,T.STUMPS,3); flip(T.HILLS,T.PEBBLES,3); flip(T.FERTILE,T.BARREN,3);
+    G.visibleAt=vis;
+    const inc=R.terrainCache.getContext('2d').getImageData(0,0,W*TL,H*TL).data;
+    R.rebuildTerrain();
+    const full=R.terrainCache.getContext('2d').getImageData(0,0,W*TL,H*TL).data;
+    let bad=0;
+    for(let k=0;k<inc.length;k+=4)
+      if(inc[k]!==full[k]||inc[k+1]!==full[k+1]||inc[k+2]!==full[k+2])bad++;
+    return {shore:shore.length,flipped,bad};`));
+  ck('aSessionOfRepaintsNeverCurdlesTheWater', v.bad === 0,
+    v.shore + ' shore tiles hammered twice, ' + v.flipped + ' terrain flips — '
+      + v.bad + ' pixels drift from a fresh rebake');
+  await p.close();
+}
+
 /* ---- 12. CALM WATER (a reported screenshot: "messy water… fake"). Three
    artifacts, three rules. THE SWELL DRAWS CRESTS ONLY: the navy trough
    pixels (water[0]) chained along the sine bands into diagonal SCRATCHES —

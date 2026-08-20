@@ -1596,6 +1596,60 @@ const R = {
      genuinely unchanged — the tracer walks the same cell edges and the
      roughening is sampled in WORLD space, so a point far from the junction
      gets the same displacement whichever region it now belongs to. */
+  /* THE HILLS HAVE THE SAME CONTRACT, SMALLER. The rock scatter and the
+     relief/shadow cues are driven by the hill distance FIELD, which is a
+     property of a hills CLUSTER — quarrying one tile of a knot re-deepens the
+     whole knot and moves stones and shadows up to two tiles past it, while
+     the ordinary repaint ring only resets one. So a change in hills/pebbles
+     membership repaints the affected cluster whole, plus the scatter's own
+     reach — the waterDirty rule scaled down to a field whose influence is
+     local rather than loop-global (measured: a fog reveal that synced a
+     quarried knot into memory left 10px of stale rock/shadow two tiles
+     outside its repaint ring). Consume-once, baselined in rebuildTerrain,
+     exactly like the water mask. */
+  _hillMask: null,
+  hillsDirty() {
+    const W = CFG.W, H = CFG.H, terr = (S.map.seenTerrain || S.map.terrain);
+    const now = new Uint8Array(W * H);
+    for (let i = 0; i < now.length; i++) {
+      const t = terr[i];
+      if (t === T.HILLS || t === T.PEBBLES) now[i] = 1;
+    }
+    const was = this._hillMask;
+    this._hillMask = now;
+    if (!was || was.length !== now.length) return null;
+    const changed = [];
+    for (let i = 0; i < now.length; i++) if (now[i] !== was[i]) changed.push(i);
+    if (!changed.length) return null;
+    // flood the touched clusters (8-connected, like the field itself), over
+    // the union of old and new membership so a shrunk knot repaints whole
+    const inC = i => now[i] || was[i];
+    const seen = new Set(), out = [], outK = new Set();
+    const push = (cx, cy) => {
+      for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) {
+        const nx = cx + ox, ny = cy + oy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const k = ny * W + nx;
+        if (outK.has(k)) continue;
+        outK.add(k); out.push([nx, ny]);
+      }
+    };
+    for (const c of changed) {
+      if (seen.has(c)) continue;
+      const st = [c]; seen.add(c);
+      while (st.length) {
+        const k = st.pop(), cx = k % W, cy = (k / W) | 0;
+        push(cx, cy);
+        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+          const nx = cx + ox, ny = cy + oy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const nk = ny * W + nx;
+          if (!seen.has(nk) && inC(nk)) { seen.add(nk); st.push(nk); }
+        }
+      }
+    }
+    return out.length ? out : null;
+  },
   _waterMask: null,
   waterDirty() {
     const W = CFG.W, H = CFG.H, terr = (S.map.seenTerrain || S.map.terrain);
@@ -1738,7 +1792,12 @@ const R = {
     }
     if ((h & 3) === 0) {                          // a short blade on ~1/4 of tiles for texture
       g.fillStyle = AP.grass[3];
-      g.fillRect(x * TL + ((h >> 6) & 15) * px, y * TL + ((h >> 10) & 15) * px, px, px * 2);
+      /* the blade is 2 sub-cells TALL, so its row is capped at 14 — at 15 it
+         wrote 2px into the tile below, which the bake covers (the southern
+         neighbour paints later) but an incremental repaint leaves stamped on
+         ground it never resets. drawTile must stay box-exact: it is the one
+         pass the repaint paths cannot clip-and-restamp their way around. */
+      g.fillRect(x * TL + ((h >> 6) & 15) * px, y * TL + Math.min((h >> 10) & 15, 14) * px, px, px * 2);
     }
     this.groundTint(g, x, y, S.map.seenTerrain || S.map.terrain);
   },
@@ -3002,6 +3061,7 @@ const R = {
     const terr = S.map.seenTerrain || S.map.terrain;
     this.hillHeight();                       // re-key the hill field ONCE for this repaint
     this.waterDirty();                       // …and re-baseline the water mask
+    this.hillsDirty();                       // …and the hills mask beside it
     // TWO PASSES, and they may not be merged: decals overhang their tile, so
     // every tile's ground must be down before any decal is laid — otherwise a
     // neighbour's ground, painted later, erases the spill.
@@ -3073,16 +3133,27 @@ const R = {
     if (!this.terrainCache || !list || !list.length) return;
     const moved = this.waterDirty();
     if (moved) list = list.concat(moved);
+    const movedH = this.hillsDirty();        // a quarried knot repaints whole
+    if (movedH) list = list.concat(movedH);
     const g = this.terrainCache.getContext('2d');
     const terr = S.map.seenTerrain || S.map.terrain;
     this.hillHeight();                       // re-key the hill field ONCE for this repaint
+    /* THE GROUND RESET REACHES ±2, THE DECAL RESTAMP ±3 — and the bound is
+       derived, not padding: a decal's LOOK depends on terrain within one tile
+       of its anchor (the fern's touches-forest gate is the widest read), and
+       its paint reaches under one tile past that anchor, so a changed tile's
+       pixels end inside ±2. A ±1 reset left ORPHANS — a fern whose forest
+       burned kept its overhang pixels one ring out, where nothing ever erased
+       them (found as 8px of stale frond after a fog reveal synced a felled
+       stand into memory). Every pass below is clipped to the reset ground, so
+       widening the rings keeps the reset-once/composite-once rule exact. */
     const W = CFG.W, ground = new Set(), deco = new Set();
     for (const [x, y] of list) {
-      for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) {
+      for (let oy = -3; oy <= 3; oy++) for (let ox = -3; ox <= 3; ox++) {
         const nx = x + ox, ny = y + oy;
         if (!MapGen.inB(nx, ny)) continue;
         deco.add(ny * W + nx);
-        if (ox >= -1 && ox <= 1 && oy >= -1 && oy <= 1) ground.add(ny * W + nx);
+        if (ox >= -2 && ox <= 2 && oy >= -2 && oy <= 2) ground.add(ny * W + nx);
       }
     }
     /* ROW-MAJOR, LIKE THE FULL BAKE. A Set iterates in insertion order, and
@@ -3095,29 +3166,41 @@ const R = {
        8 tiles after one moat dig). The keys ARE y*W+x, so a numeric sort is
        exactly row-major. */
     const groundL = [...ground].sort((a, b) => a - b), decoL = [...deco].sort((a, b) => a - b);
-    for (const k of groundL) this.drawTile(g, k % W, (k / W) | 0);
-    {
-      let gx0 = 1e9, gy0 = 1e9, gx1 = -1e9, gy1 = -1e9;
-      for (const k of groundL) {
-        const cx = k % W, cy = (k / W) | 0;
-        if (cx < gx0) gx0 = cx; if (cx > gx1) gx1 = cx;
-        if (cy < gy0) gy0 = cy; if (cy > gy1) gy1 = cy;
-      }
-      if (gx1 >= gx0) this.paintWaterIn(g, gx0, gy0, gx1, gy1);
+    // the ground pass is clipped to its own tiles too: a painter that strays a
+    // pixel past its box is covered by its neighbour in the bake's full sweep,
+    // but an incremental repaint has no later neighbour coming to cover it
+    this.clipTiles(g, groundL, () => {
+      for (const k of groundL) this.drawTile(g, k % W, (k / W) | 0);
+    });
+    let gx0 = 1e9, gy0 = 1e9, gx1 = -1e9, gy1 = -1e9;
+    for (const k of groundL) {
+      const cx = k % W, cy = (k / W) | 0;
+      if (cx < gx0) gx0 = cx; if (cx > gx1) gx1 = cx;
+      if (cy < gy0) gy0 = cy; if (cy > gy1) gy1 = cy;
     }
+    /* EVERYTHING BELOW IS CLIPPED TO THE GROUND THAT WAS ACTUALLY RESET.
+       The shore bands are TRANSLUCENT, so "reset, then composite once" is the
+       only order that reproduces the bake — compositing them over ground that
+       was NOT just erased stacks the ribbons a step darker every repaint (the
+       day-108 lakeland report: a hundred days of felling and building along a
+       shore hammered the nearby water into opaque platforms with comb-fold
+       "planks"; measured at 476 stale tiles after three passes over the shore
+       ring). The decal restamp takes the same clip for the same reason: a
+       decal is opaque on its OWN pixels, but restamped over un-reset water it
+       COVERS the bands that the bake draws on top of it — which is exactly
+       why the blit used to be wider, and the wider blit is what stacked the
+       ribbons. Rocks learned this first (the moat-dig measurement); now all
+       three passes obey it, and the hammer scenario in tests/land.mjs pins
+       cache == rebake byte for byte. */
+    if (gx1 >= gx0) this.clipTiles(g, groundL, () => this.paintWaterIn(g, gx0, gy0, gx1, gy1));
     this.clipBoard(g, () => {
       this.clipTiles(g, groundL, () => {
         for (const k of decoL) this.rockMass(g, k % W, (k / W) | 0, terr);
+        for (const k of decoL) this.landDecals(g, k % W, (k / W) | 0, terr);
       });
-      for (const k of decoL) this.landDecals(g, k % W, (k / W) | 0, terr);
     });
-    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-    for (const k of decoL) {
-      const cx = k % W, cy = (k / W) | 0;
-      if (cx < x0) x0 = cx; if (cx > x1) x1 = cx;
-      if (cy < y0) y0 = cy; if (cy > y1) y1 = cy;
-    }
-    if (x1 >= x0) this.blitShore(g, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+    if (gx1 >= gx0) this.clipTiles(g, groundL, () =>
+      this.blitShore(g, gx0, gy0, gx1 - gx0 + 1, gy1 - gy0 + 1));
     // a fog reveal that uncovered mountain re-derives the strip layer (its
     // regions read seenTerrain); everything else leaves it alone
     for (const [x, y] of list)
@@ -3126,40 +3209,50 @@ const R = {
 
   drawTileAt(x, y) {
     if (!this.terrainCache) return;
-    /* if the WATER moved, this is no longer a local repaint — hand the whole
-       affected stretch of shore to drawTilesAt, which paints each tile once */
-    const moved = this.waterDirty();
-    if (moved) { moved.push([x, y]); this.drawTilesAt(moved); return; }
+    /* if the WATER or a HILLS cluster moved, this is no longer a local
+       repaint — hand the whole affected stretch to drawTilesAt, which paints
+       each tile once */
+    const moved = this.waterDirty(), movedH = this.hillsDirty();
+    if (moved || movedH) {
+      const all = (moved || []).concat(movedH || []);
+      all.push([x, y]);
+      this.drawTilesAt(all);
+      return;
+    }
     const g = this.terrainCache.getContext('2d');
     const terr = S.map.seenTerrain || S.map.terrain;
     this.hillHeight();                       // re-key the hill field ONCE for this repaint
-    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
-      const nx = x + ox, ny = y + oy;
-      if (MapGen.inB(nx, ny)) this.drawTile(g, nx, ny);
-    }
-    this.paintWaterIn(g, x - 1, y - 1, x + 1, y + 1);
-    /* THE DECAL PASS REACHES ONE RING FURTHER THAN THE GROUND PASS. Repainting
-       the ring wipes the ground there — including decals that spilled IN from
-       the ring outside it, which the ground pass never touches. Redrawing only
-       the 3x3's decals leaves those gaps behind: measured as 64px of stale
-       seam against a full rebake. Re-stamping a decal whose ground was not
-       repainted is idempotent, so the wider pass is free of side effects. */
+    // ground reset ±2, decals ±3, everything clipped to the reset — the bound
+    // and the reset-once/composite-once rule are derived in drawTilesAt above
+    const inner5 = [];
+    for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++)
+      if (MapGen.inB(x + ox, y + oy)) inner5.push((y + oy) * CFG.W + (x + ox));
+    this.clipTiles(g, inner5, () => {
+      for (const k of inner5) this.drawTile(g, k % CFG.W, (k / CFG.W) | 0);
+    });
+    this.paintWaterIn(g, x - 2, y - 2, x + 2, y + 2);
+    /* THE DECAL PASS REACHES ONE RING FURTHER THAN THE GROUND PASS — a decal
+       anchored in the ring spills INTO the erased ground and must be
+       restamped — but it paints CLIPPED TO THE GROUND THIS CALL ERASED,
+       exactly like the rock pass. A decal is opaque on its own pixels, but
+       restamped over un-reset water it covers the shore bands the bake draws
+       on top of it — and the wide band re-blit that used to compensate is
+       what stacked the translucent ribbons a step darker on every repaint
+       (the day-108 lakeland report; see drawTilesAt). Reset once, composite
+       once: the shore blit covers the same ground and nothing outside it. */
     this.clipBoard(g, () => {
-      const inner = [];
-      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++)
-        if (MapGen.inB(x + ox, y + oy)) inner.push((y + oy) * CFG.W + (x + ox));
-      this.clipTiles(g, inner, () => {          // …only the ground this call erased
-        for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) {
+      this.clipTiles(g, inner5, () => {         // …only the ground this call erased
+        for (let oy = -3; oy <= 3; oy++) for (let ox = -3; ox <= 3; ox++) {
           const nx = x + ox, ny = y + oy;
           if (MapGen.inB(nx, ny)) this.rockMass(g, nx, ny, terr);
         }
+        for (let oy = -3; oy <= 3; oy++) for (let ox = -3; ox <= 3; ox++) {
+          const nx = x + ox, ny = y + oy;
+          if (MapGen.inB(nx, ny)) this.landDecals(g, nx, ny, terr);
+        }
       });
-      for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) {
-        const nx = x + ox, ny = y + oy;
-        if (MapGen.inB(nx, ny)) this.landDecals(g, nx, ny, terr);
-      }
     });
-    this.blitShore(g, x - 2, y - 2, 5, 5);
+    this.clipTiles(g, inner5, () => this.blitShore(g, x - 2, y - 2, 5, 5));
     if (terr[y * CFG.W + x] === T.MOUNTAIN) this._mtnDirty = true;
   },
 
