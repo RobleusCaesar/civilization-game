@@ -1723,7 +1723,13 @@ const UI = {
      the feature. Hiding is not a silent failure (the tap contract's rule 4):
      absence of an impossible order is the panel telling the truth. */
   unitBusy(u) {
-    return !!(u.task || (u.path && u.path.length) || u.tUnit || u.tBld ||
+    /* A SPENT PATH IS NOT A MARCH (a reported day-145 screenshot: a sapper
+       reading "Idle", standing still, wearing a Stop button). Arriving does
+       not null u.path — it only runs pathI out to the end, which is exactly
+       what Units.moving measures — so a raw `u.path.length` test answers YES
+       for any unit that has ever walked anywhere, forever. Ask the same
+       predicate the mover asks, or the panel disagrees with its own hint. */
+    return !!(u.task || Units.moving(u) || u.tUnit || u.tBld ||
       u.tBridge || u.strat || u.assault || (u.jobs && u.jobs.length));
   },
   // is there anyone in reach this unit could actually band with? Same domain

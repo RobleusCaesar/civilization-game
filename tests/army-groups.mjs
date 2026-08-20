@@ -307,6 +307,25 @@ const out = await p.evaluate(() => {
     q('[data-act="stop"]').click();
     ck('haltClearsTheDoctrine', !a1.strat && !q('[data-act="stop"]'), '');
 
+    /* A SPENT PATH IS NOT A MARCH (a reported day-145 screenshot: a sapper
+       reading "Idle", standing still, wearing a Stop button). Arriving does
+       not null u.path — it only runs pathI out to the end — so unitBusy has
+       to ask Units.moving, not u.path.length, or every unit that has ever
+       walked anywhere wears the button for the rest of the game. */
+    {
+      const w = mk('sapper', far.x + 2, far.y + 2);
+      UI.select('unit', w.id);
+      Units.moveTo(w, far.x + 4, far.y + 2);
+      for (let k = 0; k < 400 && Units.moving(w); k++) Units.update(0.05);
+      ck('anArrivedWalkerIsNotBusy',
+        !Units.moving(w) && !w.task && !UI.unitBusy(w),
+        'path ' + JSON.stringify(w.path) + ' pathI ' + w.pathI);
+      UI.renderPanel();
+      ck('andWearsNoStopButton', !q('[data-act="stop"]'),
+        'the panel must agree with its own Idle hint');
+      S.units = S.units.filter(u => u.id !== w.id);
+    }
+
     // single unit: same predicate, same behaviour
     S.units = S.units.filter(u => u.id !== a2.id);
     UI.select('unit', a1.id);
