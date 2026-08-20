@@ -631,13 +631,26 @@ const CFG = {
      you staffed and forgot about occasionally needs a hand put back on it.
      `deathEvery` is the day band between deaths, per difficulty (Calm waits
      longest, Hard shortest); MORTALITY.every is the fallback for a mode that
-     names none. Never the LAST villager — a random roll must not be able to
-     end a run the player is still playing. Player-side only: the rival hires
-     its workforce back on a timer of its own, so mortality there would be
-     invisible bookkeeping that only re-tunes its economy. */
+     names none. Player-side only: the rival hires its workforce back on a
+     timer of its own, so mortality there would be invisible bookkeeping that
+     only re-tunes its economy.
+
+     AND IT SLEEPS WHILE THE VILLAGE IS ON ITS KNEES (`floor`). Mortality is
+     a chore generator — a plot you staffed on day forty wants a hand back —
+     and a chore is only interesting for a village that has hands to spare.
+     At three villagers or fewer every one of them is load-bearing, so a
+     random death there is not a chore, it is a punishment for having just
+     been raided (reported exactly that way: survived an attack down to one
+     hand, spent several minutes earning a second, and it died of mushrooms
+     the moment it drew breath). The clock is RE-ROLLED while it sleeps, not
+     merely held, so a village that claws its way back to four gets a whole
+     fresh band before anything can happen — an overdue clock firing on the
+     new arrival IS the reported bug. The old never-the-last-hand rule is
+     derived from this now rather than written twice: the guard is
+     `max(1, floor)`, so a floor of 0 still never takes the last villager. */
   //  warnMs — the beat between the NEWS and the fall, so the player has time
   //           to look up and actually see it happen (G.tickMortality → dyingTick)
-  MORTALITY: { every: [25, 40], animMs: 1500, warnMs: 1000 },
+  MORTALITY: { every: [25, 40], animMs: 1500, warnMs: 1000, floor: 3 },
 
   /* HOW THEY WENT. Keyed by what the villager was DOING — the station it was
      stationed at, the resource it was gathering, whether it was building or

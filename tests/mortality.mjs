@@ -12,8 +12,12 @@
                   save; a pre-mortality save rolls a fresh gap on its next
                   tick rather than firing immediately.
 
-     NEVER THE    It will not take the last villager. A random roll must not be
-     LAST         able to end a run the player is still playing.
+     THE FLOOR    It SLEEPS at CFG.MORTALITY.floor villagers or fewer, and
+                  re-rolls the clock a full band while it does — a village on
+                  its knees is not given a chore, and the hand the player just
+                  spent minutes earning is not what an overdue clock spends
+                  itself on. Never-the-last-hand is DERIVED from the same
+                  guard (max(1, floor)), not written twice.
 
      PLAYER-SIDE  The rival is untouched: it hires its workforce back on a
                   timer of its own, so mortality there would be invisible
@@ -184,18 +188,46 @@ const out = await p.evaluate(() => {
     ck('theClockRewinds', S.nextDeath > S.day, 'next on day ' + S.nextDeath);
   }
 
-  // ---- 4. never the last villager, and never the rival's ----
+  // ---- 4. the floor, the last hand, and never the rival's ----
   {
-    while (S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length > 1) {
-      const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u));
-      S.units.splice(S.units.indexOf(v), 1);
+    const vills = () => S.units.filter(u => u.owner === 'P' && Units.isVillager(u));
+    const cull = (to) => { while (vills().length > to) {
+      const v = vills()[0]; S.units.splice(S.units.indexOf(v), 1); } };
+    const floor = CFG.MORTALITY.floor;
+    ck('theFloorIsDeclared', floor >= 1, 'CFG.MORTALITY.floor = ' + floor);
+
+    /* AT THE FLOOR AND BELOW, NOBODY GOES. Walk the whole band from the floor
+       down to one hand: every one of those villages must be left alone, and
+       every refusal must push the clock a FULL band forward rather than
+       parking it overdue — the overdue clock is what spent itself on the
+       villager the player had just earned back. */
+    let slept = 0, tokenPush = 0;
+    for (let n = floor; n >= 1; n--) {
+      cull(n);
+      S.nextDeath = S.day;
+      const got = G.tickMortality();
+      if (!got && vills().length === n) slept++;
+      if (S.nextDeath <= S.day + 3) tokenPush++;    // a token push is the bug
+    }
+    ck('theDynamicSleepsAtTheFloorAndBelow', slept === floor,
+      slept + '/' + floor + ' thin villages left alone (' + floor + ' hands down to 1)');
+    ck('andEachRefusalReRollsAFullBand', tokenPush === 0,
+      'an overdue clock is what fires on the hand the player just earned');
+    ck('neverTheLastHand', vills().length === 1,
+      'a random roll cannot end a run the player is still playing');
+
+    /* AND IT WAKES UP AGAIN once the village is genuinely back on its feet —
+       the pause is a pause, not a retirement. */
+    while (vills().length <= floor) {
+      const tc = Bld.tcOf('P');
+      Units.spawn('villager', 'P', tc.x + 1, tc.y + 2);
     }
     S.nextDeath = S.day;
-    const got = G.tickMortality();
-    ck('neverTheLastHand',
-      !got && S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length === 1,
-      'a random roll cannot end a run the player is still playing');
-    ck('andItTriesAgainSoon', S.nextDeath > S.day && S.nextDeath <= S.day + 3, 'day ' + S.nextDeath);
+    const woke = G.tickMortality();
+    for (let i = 0; i < 40 && G._dying; i++) G.dyingTick(0.05);
+    ck('andItWakesOnceTheVillageCanSpareOne', !!woke,
+      'at ' + (floor + 1) + ' hands the dynamic is live again');
+    cull(1);
     // give the rival a workforce and run a long stretch — it must be untouched
     const atc = Bld.tcOf('A');
     for (let i = 0; i < 6; i++) Units.spawn('villager', 'A', atc.x + (i % 3), atc.y + 2 + ((i / 3) | 0));

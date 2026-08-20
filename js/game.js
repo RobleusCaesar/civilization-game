@@ -1158,11 +1158,14 @@ const G = {
      of the whole feature: a station you staffed on day forty and forgot about
      will, sooner or later, want a hand put back on it.
 
-     Two deliberate limits. It never takes the LAST villager — a random roll
-     must not be able to end a run the player is still playing — and it is
-     player-side only: the rival hires its workforce back on a timer of its
-     own, so mortality there would be invisible bookkeeping that only re-tunes
-     its economy. */
+     Two deliberate limits. It SLEEPS while the village is on its knees
+     (CFG.MORTALITY.floor, 3) — at three hands or fewer every one of them is
+     load-bearing, so a death there is not a chore to answer but a punishment
+     for having just been raided, and the never-the-last-hand rule falls out
+     of the same guard rather than being written twice. And it is player-side
+     only: the rival hires its workforce back on a timer of its own, so
+     mortality there would be invisible bookkeeping that only re-tunes its
+     economy. */
   rollDeathGap() {
     const band = this.modeCfg().deathEvery || (CFG.MORTALITY || {}).every || [25, 40];
     return Math.max(1, Math.round(band[0] + this.rand() * (band[1] - band[0])));
@@ -1193,8 +1196,15 @@ const G = {
     if (!S.nextDeath) { S.nextDeath = S.day + this.rollDeathGap(); return; }
     if (S.day < S.nextDeath) return;
     const pool = S.units.filter(u => u.owner === 'P' && Units.isVillager(u));
-    // never the last hand — try again in a couple of days
-    if (pool.length < 2) { S.nextDeath = S.day + 2; return; }
+    /* THE DYNAMIC SLEEPS BELOW THE FLOOR, AND THE CLOCK IS RE-ROLLED WHILE IT
+       DOES. Pushing the due day forward a token amount is what produced the
+       reported frustration: the clock sat overdue through the whole recovery
+       and spent itself on the very hand the player had just spent minutes
+       earning. A full fresh band means climbing back to four buys a real
+       stretch of quiet. max(1, …) keeps never-the-last-hand true even if the
+       floor is ever configured away. */
+    const floor = Math.max(1, (CFG.MORTALITY || {}).floor || 0);
+    if (pool.length <= floor) { S.nextDeath = S.day + this.rollDeathGap(); return; }
     const u = pool[(this.rand() * pool.length) | 0];
     const cause = this.deathCause(u);
     /* THE NEWS COMES FIRST (CFG.MORTALITY.warnMs). The fall itself is a

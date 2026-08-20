@@ -1865,11 +1865,23 @@ villager simply dies — Calm waits longest (34–52), Moderate is the stated ba
 (25–40), Hard shortest (18–28). It exists for ONE mechanical reason: a station
 staffed on day forty and forgotten will sooner or later want a hand put back on
 it, so the post is left EMPTY and re-staffing is the player's problem.
-**Two deliberate limits.** It never takes the LAST villager (`pool.length < 2`
-→ try again in two days) — a random roll must not end a run the player is still
-playing — and it is PLAYER-SIDE ONLY: the rival hires its workforce back on a
-timer of its own, so mortality there would be invisible bookkeeping that only
-re-tunes its economy. `S.nextDeath` rides in every save; `0`/`null`/`undefined`
+**Two deliberate limits.** It SLEEPS while the village is on its knees
+(`CFG.MORTALITY.floor`, 3) and it is PLAYER-SIDE ONLY: the rival hires its
+workforce back on a timer of its own, so mortality there would be invisible
+bookkeeping that only re-tunes its economy.
+**The floor** (reported: "survived an attack, down to one villager, spent
+several minutes getting a second, and it immediately died of mushroom
+poisoning"): mortality is a CHORE GENERATOR — a plot you staffed on day forty
+wants a hand put back on it — and a chore is only interesting for a village
+with hands to spare. At three villagers or fewer every one of them is
+load-bearing, so a death there is not a chore, it is a punishment for having
+just been raided. **And the clock is RE-ROLLED a full band while it sleeps,
+never merely nudged**: the old rule pushed the due day two days on and left it
+overdue through the whole recovery, so it spent itself on the very hand the
+player had just earned — the overdue clock IS the reported bug. The old
+never-the-last-hand rule is DERIVED from the same guard rather than written
+twice (`max(1, floor)`, so a floor of 0 would still never take the last
+villager). `S.nextDeath` rides in every save; `0`/`null`/`undefined`
 all mean "not rolled yet", so a pre-mortality save rolls a fresh gap on its next
 tick instead of burying someone the instant it loads.
 **The cause fits the work** (`CFG.DEATHS`, `G.deathCause`): keyed by what the
