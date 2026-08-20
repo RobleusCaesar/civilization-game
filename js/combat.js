@@ -216,6 +216,40 @@ const Combat = {
      Same radius, same reach rules as the nearest-pick it replaces; only the
      CHOICE within them is smarter. Player units are player-commanded and
      keep the plain nearest pick. */
+  /* WHAT A FOE IS WORTH KILLING FIRST — in tiles of distance it may outweigh.
+
+     From a real day-299 hard game: the player parked one catapult seven
+     tiles off the rival's hall and shelled it flat while SIX defenders piled
+     onto the swordsman standing at their feet. The old scorer gave a siege
+     engine a flat +4, and an engine stands 5.5–8 tiles back BY DESIGN — its
+     whole reason for existing — so the bonus could never outweigh the
+     stand-off. The garrison always fought whatever was nearest, which is the
+     one thing that was not killing the town.
+
+     The measure of "doing the most damage to our town" is not a taste
+     number: it is the unit's OWN anti-building stat. bldAtk is exactly that
+     — catapult 110, trebuchet 200, bombard 190, against zero for every
+     swordsman — so the ladder is DERIVED from the roster and any engine
+     added later joins it for free, in proportion. A sapper carries no bldAtk
+     yet breaches walls, so it is floored by hand; everything else adds its
+     bite against our people and a tile for reaching us before we reach it.
+
+     Memoised per KIND: it is a pure function of the roster, and this runs
+     for every candidate of every scanning unit. */
+  THREAT_BLD: 12,     // tiles of pull per point of building damage (110 → ~9)
+  THREAT_SAPPER: 6,   // no bldAtk of its own, but it opens the wall
+  _threatT: {},
+  threatOf(o) {
+    const memo = this._threatT;
+    if (memo[o.kind] !== undefined) return memo[o.kind];
+    const b = CFG.UNITS[o.kind] || {};
+    let t = (b.bldAtk || 0) / this.THREAT_BLD;
+    if (Units.isSapper(o)) t = Math.max(t, this.THREAT_SAPPER);
+    t += (b.atk || 0) / 8;          // what it does to our people
+    if (b.rng) t += 1;              // …and it strikes before we can close
+    return (memo[o.kind] = t);
+  },
+
   bestFoe(u, cx, cy, maxD, pred) {
     let best = null, bs = 1e9;
     for (const o of S.units) {
@@ -224,8 +258,9 @@ const Combat = {
       if (d > maxD) continue;
       if (!pred(o)) continue;
       const base = CFG.UNITS[o.kind] || {};
-      const val = (Units.isSiege(o) || o.kind === 'ballista') ? 4 : Units.isSapper(o) ? 3 : (base.rng ? 1.5 : 0);
-      const s = d - (1 - o.hp / (o.maxhp || base.hp || 1)) * 3 - val;
+      // distance still decides between equals, and a nearly-dead foe is worth
+      // finishing — but THREAT now leads, which is the whole point
+      const s = d - (1 - o.hp / (o.maxhp || base.hp || 1)) * 3 - this.threatOf(o);
       if (s < bs) { bs = s; best = o; }
     }
     return best;

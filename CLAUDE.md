@@ -528,6 +528,32 @@ feet (stumps regrow to forest, channels flood to moats), so any land unit ON
 a tile that now blocks it slides to the nearest open tile — orders intact, a
 mid-march path re-planned from the new footing.
 
+**THE GARRISON STRIKES WHAT IS KILLING THE TOWN** (`Combat.threatOf` /
+`bestFoe`, pinned in `tests/defend-hold.mjs`): from a real day-299 HARD
+game — the player parked a catapult seven tiles off the rival hall and
+shelled it flat while SIX defenders piled onto the swordsman at their
+feet. `bestFoe` scored a siege engine at a flat **+4 tiles**, and an engine
+stands 5.5–8 tiles back BY DESIGN — its whole reason for existing — so the
+bonus could never outweigh the stand-off and the garrison always fought
+whatever was nearest, which is the one thing not killing the town
+(measured on that save: catapult 1.76 vs swordsman 1.59, so the swordsman
+won). The measure of "doing the most damage to our town" is not a taste
+number — it is the unit's OWN `bldAtk` (catapult 110, trebuchet 200,
+bombard 190, zero for every swordsman), so `Combat.threatOf` DERIVES the
+ladder from the roster and any engine added later joins it in proportion,
+for free. A sapper carries no bldAtk yet opens the wall, so it is floored
+by hand (`THREAT_SAPPER`); everything else adds its bite against our
+people (`atk / 8`) and one tile for striking before we can close.
+Memoised per KIND — a pure function of the roster, asked for every
+candidate of every scanning unit. Distance and blood still decide between
+equals (a nearly-dead foe at the same range still wins). This re-ORDERS
+candidates only: every bound stays exactly where it was, so the garrison
+does NOT sortie — the ring, the chase leash and the wall ceiling below are
+untouched, which is what keeps guards from dying piecemeal. `bestFoe` is
+the RIVAL's scorer alone; the player's auto-defense keeps `nearestUnit`,
+because the player commands their own army. Replayed on the save: all
+seven defenders switch from the swordsman to the catapult.
+
 **Defend hold** (`tests/defend-hold.mjs`): Defend means the DEFENSES, not the
 landscape. `Units.holdRadius` used to stretch the watch to natural barriers
 (forest/water/mountain, up to `maxNatural` 14) — "the island is the fort" —

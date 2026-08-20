@@ -344,6 +344,63 @@ const out = await p.evaluate(() => {
     UI.deselect();
   }
 
+  /* ---- 13. THE GARRISON STRIKES WHAT IS KILLING THE TOWN ----
+     From a real day-299 hard game: the player parked a catapult seven tiles
+     off the rival hall and shelled it flat while SIX defenders piled onto the
+     swordsman at their feet. A siege engine stands well back BY DESIGN, so a
+     flat distance bonus could never outweigh the stand-off; the threat is
+     DERIVED from the unit's own anti-building stat instead, which is exactly
+     the measure of "doing the most damage to our town". The rival is the side
+     that scores this way (Combat.bestFoe) — the player commands their own. */
+  {
+    const { tc } = setup('dh13');
+    S.units = [];
+    const atc = Bld.tcOf('A');
+    atc.x = tc.x; atc.y = tc.y + 14; Bld._block = null;   // an arena for the rival
+    for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) {
+      const x = atc.x + dx, y = atc.y + dy;
+      if (MapGen.inB(x, y) && !Bld.at(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.GRASS;
+    }
+    const grd = Units.spawn('defender', 'A', atc.x, atc.y + 2); grd.defend = true;
+    const g = Units.guardCenter(grd);
+    // the swordsman at their feet, and the engine at its working distance
+    const sword = Units.spawn('elite', 'P', (g.x | 0) + 1, (g.y | 0) + 1);
+    const cat = Units.spawn('catapult', 'P', (g.x | 0) + 4, (g.y | 0) + 4);
+    const dS = Math.hypot(sword.x - g.x, sword.y - g.y);
+    const dC = Math.hypot(cat.x - g.x, cat.y - g.y);
+    ck('theEngineStandsFurtherOff', dC > dS + 1.5,
+      `sword ${dS.toFixed(1)} tiles, engine ${dC.toFixed(1)} tiles`);
+    // the ladder is DERIVED from the roster, not hand-picked per kind
+    const tCat = Combat.threatOf({ kind: 'catapult' }), tTre = Combat.threatOf({ kind: 'trebuchet' });
+    const tEli = Combat.threatOf({ kind: 'elite' }), tSap = Combat.threatOf({ kind: 'sapper' });
+    ck('threatIsDerivedFromBuildingDamage',
+      tCat > tEli * 3 && tTre > tCat && tSap > tEli,
+      `elite ${tEli.toFixed(1)} < sapper ${tSap.toFixed(1)} < catapult ${tCat.toFixed(1)} < trebuchet ${tTre.toFixed(1)}`);
+    ck('andItOutweighsARealStandOff', tCat > dC - dS + 2,
+      `catapult worth ${tCat.toFixed(1)} tiles against a ${(dC - dS).toFixed(1)}-tile stand-off`);
+    grd.tUnit = 0; grd.tBld = 0; grd.task = null;
+    Combat.scanT = 0; Combat.acquire();
+    ck('theGarrisonPicksTheEngine', grd.tUnit === cat.id,
+      grd.tUnit === sword.id ? 'went for the swordsman at its feet' : 'tUnit=' + grd.tUnit);
+    // …but it still does NOT leave the defended ground to do it
+    const px = grd.x, py = grd.y;
+    run(6, () => false);
+    ck('andStillHoldsTheRing', Math.hypot(grd.x - g.x, grd.y - g.y) <= g.r1 + (g.chase || 0) + 0.9,
+      `drifted to ${Math.hypot(grd.x - g.x, grd.y - g.y).toFixed(1)} (ring ${g.r1} + chase ${g.chase})`);
+    /* …and threat does not become the ONLY term: with no engine on the field
+       a nearly-dead foe still outranks a healthy one at the same distance.
+       A FRESH arena — the run above left the ground fought-over. */
+    S.units = [];   // the engine won that exchange — a fresh garrison, fresh field
+    const grd2 = Units.spawn('defender', 'A', atc.x, atc.y + 2); grd2.defend = true;
+    grd2.x = g.x; grd2.y = g.y;
+    const healthy = Units.spawn('elite', 'P', (g.x | 0) + 1, (g.y | 0) + 1);
+    const hurt = Units.spawn('defender', 'P', (g.x | 0) + 1, (g.y | 0) + 1);
+    hurt.hp = 4;
+    Combat.scanT = 0; Combat.acquire();
+    ck('bloodAndDistanceStillCount', grd2.tUnit === hurt.id,
+      'picked ' + (grd2.tUnit === healthy.id ? 'the healthy elite' : 'id ' + grd2.tUnit));
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));
