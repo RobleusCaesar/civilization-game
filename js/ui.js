@@ -1562,7 +1562,7 @@ const UI = {
       .map(o => o.id);
     if (ids.length <= 1) { this.select('unit', hit.id); return; }   // it's the only one — just select it
     this.sel = { type: 'group', ids };
-    this.builderFor = null; this.confirmDemolish = 0; this.terraMode = null; this.panelHidden = false;
+    this.builderFor = null; this.confirmDemolish = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
     const label = Units.isTransport(hit) ? 'transport' : CFG.UNITS[hit.kind].name.toLowerCase();
     this.toast(`Selected ${ids.length} ${label}${ids.length > 1 ? 's' : ''} nearby`);
@@ -1575,11 +1575,12 @@ const UI = {
     this.terraMode = null;      // a fresh selection drops any armed sapper tool
     this.tradeNeed = null;      // …and rewinds the Trading Post to "what do you need?"
     this.panelHidden = false;   // a fresh selection brings its panel back
+    this.tacticsOpen = false;   // …and starts the Tactics expander closed
     this.renderPanel();
   },
   selectBridge(x, y) {
     this.sel = { type: 'bridge', x, y };
-    this.builderFor = null; this.confirmDemolish = 0; this.terraMode = null; this.panelHidden = false;
+    this.builderFor = null; this.confirmDemolish = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
   },
   deselect() {
@@ -1588,33 +1589,33 @@ const UI = {
     this.settingRally = null;
     this.terraMode = null;
     this.panelHidden = false;
+    this.tacticsOpen = false;
     document.getElementById('panel').classList.remove('show');
     document.getElementById('buildmenu').style.display = this.menuCollapsed ? 'none' : 'flex';
     this.syncBottomToggle();
   },
 
-  // Is the bottom-bar toggle a plain PANEL minimize right now (▾/▴), rather than
-  // the Build-menu toggle? True whenever a NON-VILLAGER is selected — a boat,
-  // soldier, sapper, siege engine, or a whole war party can't build, so offering
-  // "🔨 Build" there is meaningless and made minimizing take two taps. Villagers
-  // (who do build) and the no-selection state keep the Build toggle untouched.
-  panelMinMode() {
-    if (!this.sel) return false;
-    if (this.sel.type === 'group') return true;
-    if (this.sel.type === 'unit') {
-      const u = Units.get(this.sel.id);
-      return !!(u && u.owner === 'P' && !Units.isVillager(u));
-    }
-    return false;
-  },
-  // set the toggle's glyph to match the current mode/state (called on select,
-  // renderPanel, deselect, and after a minimize)
+  /* Is the bottom-bar toggle a plain PANEL minimize right now, rather than
+     the Build-menu toggle? True whenever ANYTHING is selected: with a
+     selection the bar shows the selection's panel — never the build menu —
+     so the tab can only mean "tuck this panel away / bring it back". (It
+     used to exempt villagers "because they build", but a selected villager's
+     Build lives on their own panel button; the tab flipping menuCollapsed
+     instead just relabeled itself "🔨 Build" over a panel it would restore —
+     a label that lied, reported from a playtest as confusing.) */
+  panelMinMode() { return !!this.sel; },
+  /* THE ONE LABEL AUTHORITY (called on select, renderPanel, deselect, and
+     after any minimize — setMenuCollapsed defers here too, so no second
+     writer can disagree). A CLOSED state names what tapping brings back
+     ("🔨 Build ▴" / "▴ Panel"); the OPEN state says what tapping does
+     ("▾ Hide") — the bare ▾ read as decoration, not a control, in the same
+     playtest that found the six-button war party filling the screen. */
   syncBottomToggle() {
     const t = document.getElementById('bmToggle');
     if (!t) return;
     t.textContent = this.panelMinMode()
-      ? (this.panelHidden ? '▴' : '▾')                       // one panel minimize/restore
-      : (this.menuCollapsed ? '🔨 Build ▴' : '▾');           // the Build-menu toggle
+      ? (this.panelHidden ? '▴ Panel' : '▾ Hide')            // one panel minimize/restore
+      : (this.menuCollapsed ? '🔨 Build ▴' : '▾ Hide');      // the Build-menu toggle
   },
   // minimize/restore the selection panel for a non-villager (keeps the selection
   // live so the unit still answers taps on the open board below)
@@ -1643,8 +1644,6 @@ const UI = {
 
   setMenuCollapsed(v, keepPlacing) {
     this.menuCollapsed = v;
-    const t = document.getElementById('bmToggle');
-    t.textContent = v ? '🔨 Build ▴' : '▾';
     if (this.sel) {
       // the ▾ tucks the selection panel away but KEEPS the selection — the
       // villager/soldier still answers taps on the open ground below
@@ -1654,6 +1653,7 @@ const UI = {
     } else {
       document.getElementById('buildmenu').style.display = v ? 'none' : 'flex';
     }
+    this.syncBottomToggle();   // the label has ONE writer — and it reads panelHidden, set above
     if (v && !keepPlacing && this.placing) this.exitPlacement();
     // opening the build menu: capture its bar height so the camera reserves that
     // much clear space at the bottom (see R.clampCam), then re-clamp to apply it
@@ -1674,6 +1674,37 @@ const UI = {
 
   /* ---------------- selection panel ---------------- */
   _panelSig: '',
+  /* THE PANEL SHOWS ONLY WHAT CAN ACT (tests/army-groups.mjs). A button whose
+     only possible answer is "nothing to do" is clutter, not control — the
+     playtest that asked for this had a war party's six buttons plus the open
+     map covering two thirds of the board. So Halt/Stop render only while
+     unitBusy says there is anything to stop, and this one predicate is what
+     they render by. Defend is deliberately NOT "busy": Stand Down is that
+     stance's own control, and Halt vanishing on a quietly-holding garrison is
+     the feature. Hiding is not a silent failure (the tap contract's rule 4):
+     absence of an impossible order is the panel telling the truth. */
+  unitBusy(u) {
+    return !!(u.task || (u.path && u.path.length) || u.tUnit || u.tBld ||
+      u.tBridge || u.strat || u.assault || (u.jobs && u.jobs.length));
+  },
+  // is there anyone in reach this unit could actually band with? Same domain
+  // filter the Group button's own handler uses, so the button only renders
+  // when tapping it would form something instead of toasting a refusal
+  groupmatesNear(u) {
+    if (!u || u.owner !== 'P') return false;
+    const naval = Units.isNaval(u);
+    if (!(Units.isFleetable(u) || (Units.isMilitary(u) && !naval))) return false;
+    return S.units.some(o => o.owner === 'P' && o.id !== u.id &&
+      (naval ? Units.isFleetable(o) : (Units.isMilitary(o) && !Units.isNaval(o))) &&
+      Math.hypot(o.x - u.x, o.y - u.y) <= CFG.GROUP_R);
+  },
+  /* THE TACTICS EXPANDER (tests/army-strategies.mjs): the three assault
+     doctrines live behind one ⚔ Tactics button, CLOSED by default — they are
+     the war party panel's biggest block and the rarest-used, and a doctrine
+     in force is still never invisible because the closed label carries it
+     ("⚔ Tactics: Siege", lit). Transient UI state, never in a save; every
+     fresh selection starts closed. */
+  tacticsOpen: false,
   /* ---------------- SAVED ARMIES (tests/army-groups.mjs) ----------------
      Up to three war parties saved to numbered banners. Save from the group
      panel (auto-assigned the lowest free slot of 1-3), recall from the
@@ -1769,7 +1800,7 @@ const UI = {
     }
     if (!seen) R.centerOn(cx / alive.length, cy / alive.length);
     this.sel = { type: 'group', ids: alive.slice() };
-    this.builderFor = null; this.confirmDemolish = 0; this.terraMode = null; this.panelHidden = false;
+    this.builderFor = null; this.confirmDemolish = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
   },
   // Centurion helmet, front view, 21x28 — tall serrated crest on a dark
@@ -1995,7 +2026,14 @@ const UI = {
       const defEl = mem.filter(o => Units.canDefend(o) && (o.defend || Units.inDefendBounds(o))).length;
       const land = mem.filter(o => Units.canDefend(o) && !Units.isNaval(o));
       const gStrat = land.length && land.every(o => o.strat === land[0].strat) ? (land[0].strat || '-') : 'mix';
-      return 'g|' + mem.length + '|' + (defEl > 0) + '|' + mem.every(o => !Units.canDefend(o) || !o.defend) + '|' + gStrat;
+      // Halt renders only while there is anything to halt; Siege only while
+      // the party could lay one; Unload-all only while anyone is aboard —
+      // all three move without a tap, so all three live in the signature
+      const busy = mem.some(o => this.unitBusy(o));
+      const siegeable = land.length > 0 && Units.siegeArtillery(land).length > 0;
+      const aboard = mem.reduce((n, o) => n + (Units.isTransport(o) && o.cargo ? o.cargo.length : 0), 0);
+      return 'g|' + mem.length + '|' + (defEl > 0) + '|' + mem.every(o => !Units.canDefend(o) || !o.defend) + '|' + gStrat +
+        '|' + busy + '|' + siegeable + '|' + (aboard > 0);
     }
     if (this.sel.type === 'bridge') {
       const br = Bld.bridgeAt(this.sel.x, this.sel.y);
@@ -2016,6 +2054,8 @@ const UI = {
     const sig = ['u', u.id, u.hp < u.maxhp, stack, u.cargo ? u.cargo.length : 0,
       !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u), Bld.inHealZone(u), this.healThrottled(u),
       Units.canDefend(u) && (u.defend || Units.inDefendBounds(u)),   // Defend button follows the bounds
+      u.owner === 'P' && !Units.isVillager(u) && this.unitBusy(u),   // Stop renders only while there is anything to stop
+      this.groupmatesNear(u),                // …and Group only while there is anyone to band with
       this.armyOfUnit(u)];   // …and Remove Army appears the moment this one is the last of it
     // villager resource-station upgrade state (level, phase, affordability) — the
     // continuously-shrinking day count is NOT here; refreshPanel ticks it in place
@@ -2517,19 +2557,31 @@ const UI = {
       const armyN = gMil.length ? this.armyOf(this.sel.ids) : 0;
       const armySlot = gMil.length && !armyN ? this.nextArmySlot() : 0;
       // ARMY STRATEGIES (tests/army-strategies.mjs) — the land army's three
-      // assault doctrines; the lit button is the one in force, tap it again
-      // to stand the doctrine down
+      // assault doctrines, folded behind ONE ⚔ Tactics expander (closed by
+      // default; a doctrine in force shows in the closed label, lit). Siege
+      // renders only for a party that could lay one — the SAME artillery
+      // pick siegeOrder itself makes, so bows keep the button when there are
+      // no engines and only a pure-melee (or all-horse) party loses it.
+      const gAll = this.sel.ids.map(id => Units.get(id)).filter(Boolean);
+      const gBusy = gAll.some(o => this.unitBusy(o));
       const gLand = gMil.filter(o => !Units.isNaval(o));
       const gStrat = gLand.length && gLand.every(o => o.strat === gLand[0].strat) ? (gLand[0].strat || '') : '';
-      const stratBtns = !fleet && gLand.length ? (
-        `<button class="abtn ${gStrat === 'siege' ? 'sel' : ''}" data-act="gstrat" data-strat="siege">⚙️ Siege<small>the line shields the guns</small></button>` +
+      const gSiegeable = gLand.length > 0 && Units.siegeArtillery(gLand).length > 0;
+      const STRAT_NAME = { siege: 'Siege', chaos: 'Chaos', strike: 'Strike' };
+      const armed = STRAT_NAME[gStrat] || '';
+      const tacticsBtn = !fleet && gLand.length ?
+        `<button class="abtn ${armed ? 'sel' : ''}" data-act="gtactics">⚔ Tactics${armed ? ': ' + armed : ''} ${this.tacticsOpen ? '▾' : '▸'}` +
+        `<small>${this.tacticsOpen ? (armed ? 'tap the lit doctrine to stand it down' : 'how shall they fight?')
+          : armed ? 'in force — tap to change' : 'Siege · Chaos · Strike'}</small></button>` : '';
+      const stratBtns = tacticsBtn && this.tacticsOpen ? (
+        (gSiegeable ? `<button class="abtn ${gStrat === 'siege' ? 'sel' : ''}" data-act="gstrat" data-strat="siege">⚙️ Siege<small>the line shields the guns</small></button>` : '') +
         `<button class="abtn ${gStrat === 'chaos' ? 'sel' : ''}" data-act="gstrat" data-strat="chaos">🔥 Chaos<small>attack all within reach</small></button>` +
         `<button class="abtn ${gStrat === 'strike' ? 'sel' : ''}" data-act="gstrat" data-strat="strike">⚡ Strike<small>everyone on ONE target</small></button>`) : '';
       html += `<div class="pactions">${this.helpHidden ? '' : `<span class="psub">${fleet ? 'Tap water to sail together, or an enemy ship / coastal target to attack.' : 'Tap a tile to march (melee front, archers behind), or an enemy / rival building to attack together.'}</span>`}` +
         (gLaden.length ? `<button class="abtn" data-act="gunload">⚓ Unload all<small>${gAboard} aboard</small></button>` : '') +
         (gDefEligible.length ? `<button class="abtn ${gAllDef ? 'sel' : ''}" data-act="gdefend">${gAllDef ? '🛡 Stand Down' : '🛡 Defend'}</button>` : '') +
-        `<button class="abtn" data-act="stop">✋ Halt</button>` +
-        stratBtns +
+        (gBusy ? `<button class="abtn" data-act="stop">✋ Halt</button>` : '') +
+        tacticsBtn + stratBtns +
         (armyN ? `<button class="abtn" data-act="garmyremove">🪖 Remove Army ${armyN}<small>frees its banner</small></button>`
           : armySlot ? `<button class="abtn" data-act="garmysave">🪖 Save as Army ${armySlot}<small>recall it from the banner</small></button>`
           : gMil.length ? `<button class="abtn cant" data-act="garmysave">🪖 Armies full<small>remove one to save</small></button>` : '') +
@@ -2544,12 +2596,18 @@ const UI = {
       });
       const gremove = panel.querySelector('[data-act="garmyremove"]');
       if (gremove) gremove.addEventListener('click', () => this.removeArmy(armyN));
-      panel.querySelector('[data-act="stop"]').addEventListener('click', () => {
+      const gstop = panel.querySelector('[data-act="stop"]');   // renders only while gBusy
+      if (gstop) gstop.addEventListener('click', () => {
         for (const id of this.sel.ids) {
           const u2 = Units.get(id);
-          if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; u2.defend = false; u2.strat = null; u2.siegePost = null; }
+          if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.tBridge = null; u2.path = null; u2.defend = false; u2.strat = null; u2.siegePost = null; u2.assault = false; }
         }
         this.toast('War party halted');
+        this.renderPanel();
+      });
+      const gtac = panel.querySelector('[data-act="gtactics"]');
+      if (gtac) gtac.addEventListener('click', () => {
+        this.tacticsOpen = !this.tacticsOpen;
         this.renderPanel();
       });
       panel.querySelectorAll('[data-act="gstrat"]').forEach(btn => btn.addEventListener('click', () => {
@@ -2567,6 +2625,8 @@ const UI = {
           : mode === 'siege' ? '⚙️ Siege — tap a building to bombard; the line shields the guns'
           : mode === 'chaos' ? '🔥 Chaos — the army falls on everything within reach'
           : '⚡ Strike — tap ONE target; the whole army hits it and nothing else');
+        // the choice is made — the expander folds and its closed label wears it
+        this.tacticsOpen = false;
         this.renderPanel();
       }));
       const gunload = panel.querySelector('[data-act="gunload"]');
@@ -2612,7 +2672,7 @@ const UI = {
         : u.kind === 'fishboat' ? 'Tap water where fish jump 🐟 to fish, or open water to row there.'
         : u.kind === 'catapult' ? 'Slow, but stone breaks stone — tap a rival wall, tower, or building to bombard it.'
         : u.kind === 'siegetower' ? 'Roll it flush against an enemy wall — nearby soldiers climb over, one per second. Only melee and marksmen can harm it.'
-        : Units.isTransport(u) ? 'Select soldiers or villagers and tap this hull to board. Tap a shore tile to land them, or water to row.'
+        : Units.isTransport(u) ? `Select soldiers or villagers and tap this hull to board — it carries ${CFG.UNITS[u.kind].cap}. Tap a shore tile to land them, or water to row.`
         : Units.isNaval(u) ? 'Tap an enemy or rival building near the shore to attack, or water to sail.'
         : 'Tap a tile to move, or an enemy to attack.';
       if (!own && !Units.isPassive(u)) {
@@ -2642,9 +2702,11 @@ const UI = {
         const sub = throttled ? 'Cooldown…' : inZone ? Bld.costStr({ food: hc }) : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center');
         html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${sub}</small></button>`;
       }
-      if (own && Units.isTransport(u)) {
-        const cap = CFG.UNITS[u.kind].cap, aboard = (u.cargo || []).length;
-        html += `<button class="abtn ${aboard ? '' : 'cant'}" data-act="unload">⚓ Unload here<small>${aboard}/${cap} aboard</small></button>`;
+      // Unload renders only with someone aboard — an empty hull's button could
+      // only toast a refusal, and the capacity now rides in the hint line
+      if (own && Units.isTransport(u) && (u.cargo || []).length) {
+        const cap = CFG.UNITS[u.kind].cap;
+        html += `<button class="abtn" data-act="unload">⚓ Unload here<small>${u.cargo.length}/${cap} aboard</small></button>`;
       }
       // SCUTTLE (tests/boats-moat-scuttle.mjs): any own hull can be sunk on
       // purpose — no resources come back, but its place in the population is
@@ -2698,18 +2760,20 @@ const UI = {
             `<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;
         }
       }
-      if (own && (Units.isFleetable(u) || (Units.isMilitary(u) && !Units.isNaval(u))))
+      // Group renders only with somebody in reach to band with (groupmatesNear
+      // is the handler's own filter — the button never offers an empty muster)
+      if (own && this.groupmatesNear(u))
         html += `<button class="abtn" data-act="group">${Units.isNaval(u) ? '⚓ Group fleet' : '👥 Group nearby'}</button>`;
-      // Military units (land soldiers + warships) get DEFEND in place of Stop — a
-      // held perimeter round the Town Center / Dock. Stop remains for villagers'
-      // absence, transports, and working sappers.
-      const sapperWorking = u.kind === 'sapper' && !!(u.task || (u.jobs && u.jobs.length));
+      // Military units (land soldiers + warships) get DEFEND in place of Stop —
+      // a held perimeter round the Town Center / Dock. Stop renders only while
+      // unitBusy says there is anything to stop (the sapper's old working-only
+      // Stop was this rule already; it now holds for every unit).
       // Defend is offered only on ground the stance would actually hold — a
       // soldier out beyond the defended bounds is attacking, not defending
       // (a unit already in the stance keeps Stand Down wherever it is)
       if (own && Units.canDefend(u) && (u.defend || Units.inDefendBounds(u)))
         html += `<button class="abtn ${u.defend ? 'sel' : ''}" data-act="defend">${u.defend ? '🛡 Stand Down' : '🛡 Defend'}</button>`;
-      else if (own && !Units.isVillager(u) && (u.kind !== 'sapper' || sapperWorking))
+      else if (own && !Units.isVillager(u) && this.unitBusy(u))
         html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
       /* THE LAST OF AN ARMY (tests/army-groups.mjs). A war party ground down to
          one soldier still flies its banner, but a one-member group renders as
@@ -2729,7 +2793,11 @@ const UI = {
       const stop = panel.querySelector('[data-act="stop"]');
       if (stop) stop.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
-        if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.path = null; u2.jobs = null; }   // drop any queued sapper line too
+        // Stop clears everything unitBusy counts (the button renders by that
+        // predicate, so anything left uncleared would leave a Stop that does
+        // nothing) — doctrine included, the group Halt's own rule
+        if (u2) { u2.task = null; u2.tUnit = 0; u2.tBld = 0; u2.tBridge = null; u2.path = null; u2.jobs = null;
+          u2.strat = null; u2.siegePost = null; u2.assault = false; }
         this.terraMode = null;   // downing tools stops the terraform tool too
         this.renderPanel();
       });
@@ -2843,6 +2911,7 @@ const UI = {
           .map(o => o.id);
         if (ids.length < 2) { this.toast(naval ? 'No other ships within reach' : 'No other soldiers within reach', true); return; }
         this.sel = { type: 'group', ids };
+        this.confirmDemolish = 0; this.tacticsOpen = false;   // a fresh group starts clean
         this.renderPanel();
         this.toast(`${naval ? 'Fleet' : 'War party'} formed: ${this.groupComposition(ids)}`);
       });

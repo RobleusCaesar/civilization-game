@@ -901,14 +901,23 @@ const Units = {
      between the guns and the target and stands its ground; bows and horses
      not on the guns post just behind the line as the reaction force. Nobody
      free-hunts: siegeGuard only engages what comes to the line. */
+  /* Who would serve as the guns? Engines first; with none, the ranges' bows
+     stand in — never cavalry, who won't stand a battery. This is the ONE
+     answer to "can this party lay a siege at all": siegeOrder asks it, and so
+     does the group panel's Siege button, so the button can never offer a
+     doctrine the order itself would refuse (tests/army-strategies.mjs). */
+  siegeArtillery(mem) {
+    const isEngine = o => (this.isSiege(o) || o.kind === 'ballista') && CFG.UNITS[o.kind].atk > 0;
+    const isCav = o => o.kind === 'rider' || o.kind === 'lancer' || o.kind === 'horsearcher';
+    const engines = mem.filter(isEngine);
+    return engines.length ? engines : mem.filter(o => !isEngine(o) && !isCav(o) && CFG.UNITS[o.kind].rng);
+  },
   siegeOrder(ids, b) {
     const mem = ids.map(id => this.get(id)).filter(o => o && this.isMilitary(o) && !this.isNaval(o));
     if (!mem.length) return false;
     const isEngine = o => (this.isSiege(o) || o.kind === 'ballista') && CFG.UNITS[o.kind].atk > 0;
     const isCav = o => o.kind === 'rider' || o.kind === 'lancer' || o.kind === 'horsearcher';
-    const engines = mem.filter(isEngine);
-    const bows = mem.filter(o => !isEngine(o) && !isCav(o) && CFG.UNITS[o.kind].rng);
-    const artillery = engines.length ? engines : bows;
+    const artillery = this.siegeArtillery(mem);
     if (!artillery.length) return false;   // nothing that can lay a siege — caller falls back
     const line = mem.filter(o => !isEngine(o) && !isCav(o) && !CFG.UNITS[o.kind].rng);
     const support = mem.filter(o => artillery.indexOf(o) < 0 && line.indexOf(o) < 0);

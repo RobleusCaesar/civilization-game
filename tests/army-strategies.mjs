@@ -27,7 +27,8 @@
      combat.js — acquire's strat branches, chaosSeek, siegeGuard, the siege
                  leash in update, the tBld fight-back gate, aiRaidSeek
      units.js — siegeOrder, resolveAfterFight, setDefend
-     ui.js — the gstrat buttons, the group tap flow's stance handling
+     ui.js — the ⚔ Tactics expander + gstrat buttons, the group tap flow's
+             stance handling
      ai.js — _assaultStance, _launchCampRaid, _commitMain
 
      node tests/army-strategies.mjs      # exits non-zero on any regression
@@ -161,18 +162,44 @@ const out = await p.evaluate(() => {
     ck('arrowsWorkTheTarget', bar.hp < hp0 && !lineBattered, `barracks ${Math.round(bar.hp)}/${bar.maxhp}`);
   }
 
-  // ---- 5. the group panel offers the three doctrines and arms them ----
+  // ---- 5. the doctrines live behind ONE ⚔ Tactics expander, closed by
+  //         default (they were the war party panel's biggest block and its
+  //         rarest-used — a playtest had six buttons plus the open map
+  //         covering two thirds of the board). A doctrine in force is still
+  //         never invisible: the CLOSED label wears it, lit. And Siege is
+  //         offered only to a party that could lay one — the SAME artillery
+  //         pick siegeOrder itself makes (Units.siegeArtillery), so bows keep
+  //         the button when there are no engines and only a pure-melee (or
+  //         all-horse) party loses it. ----
   {
     setup('as5');
     const party = [mk('defender', 'P', 22, 25), mk('archer', 'P', 22, 26)];
     UI.sel = { type: 'group', ids: party.map(u => u.id) };
+    UI.tacticsOpen = false;
     UI.renderPanel();
+    ck('doctrinesFoldedByDefault', !document.querySelector('#panel [data-act="gstrat"]') &&
+      !!document.querySelector('#panel [data-act="gtactics"]'), '');
+    document.querySelector('#panel [data-act="gtactics"]').click();
     const btns = [...document.querySelectorAll('#panel [data-act="gstrat"]')].map(b2 => b2.dataset.strat);
     ck('panelOffersThreeDoctrines', btns.join(',') === 'siege,chaos,strike', btns.join(','));
     document.querySelector('#panel [data-act="gstrat"][data-strat="strike"]').click();
     ck('tapArmsTheDoctrine', party.every(u => u.strat === 'strike'), '');
+    const gt = document.querySelector('#panel [data-act="gtactics"]');
+    ck('armingFoldsAndTheLabelWearsIt', !document.querySelector('#panel [data-act="gstrat"]') &&
+      /Tactics: Strike/.test(gt.textContent) && gt.classList.contains('sel'), gt.textContent.trim());
+    document.querySelector('#panel [data-act="gtactics"]').click();
     document.querySelector('#panel [data-act="gstrat"][data-strat="strike"]').click();
     ck('secondTapStandsItDown', party.every(u => !u.strat), '');
+    // a party with nothing that can serve as artillery is offered no Siege —
+    // and the gate is siegeOrder's own answer, never a hand-rolled second rule
+    const blades = [mk('defender', 'P', 24, 25), mk('defender', 'P', 24, 26)];
+    UI.sel = { type: 'group', ids: blades.map(u => u.id) };
+    UI.tacticsOpen = true; UI.renderPanel();
+    const b3 = [...document.querySelectorAll('#panel [data-act="gstrat"]')].map(b4 => b4.dataset.strat);
+    ck('pureMeleeIsOfferedNoSiege', b3.join(',') === 'chaos,strike', b3.join(','));
+    ck('theGateIsSiegeOrdersOwnPick',
+      Units.siegeArtillery(blades).length === 0 && Units.siegeArtillery(party).length > 0, '');
+    UI.deselect();
   }
 
   // ---- 6. the rival fights under the same flags ----

@@ -582,11 +582,12 @@ player who wants soldiers further out turns Defend off; that is the toggle's
 meaning. (`guardCenter` now carries `owner`; `_isDefBarrier` is gone.)
 **The Defend button belongs to the defended ground** (same test): a soldier
 out past its bounds (hold + chase + slack, `Units.inDefendBounds`) is
-attacking, not defending — the button disappears (Stop replaces it; group
-panels only offer Defend to members on defended ground, and turning it on
-never yanks the far half of a mixed party home). A unit already IN the
-stance keeps Stand Down wherever it is. Eligibility is in `panelSig`, so the
-button follows the party's feet.
+attacking, not defending — the button disappears (Stop stands in only while
+`UI.unitBusy` says there is anything to stop — see **The panel shows only
+what can act** below; group panels only offer Defend to members on defended
+ground, and turning it on never yanks the far half of a mixed party home). A
+unit already IN the stance keeps Stand Down wherever it is. Eligibility is
+in `panelSig`, so the button follows the party's feet.
 **Back to your post** (same test): a defending unit remembers where it STOOD
 when a fight began (`u.guardPost`, stamped at acquisition in `Combat.acquire`)
 and resolves back to that exact spot after the kill or an abandoned chase —
@@ -691,10 +692,47 @@ army): `UI.ARMY_SHIP`, the same 21×28 footprint and dulled palette as
 `ARMY_HELM`, square sail on its yard, masthead pennant, shielded gunwale, and
 water under the keel. One banner per soldier — saving units into a
 new army pulls them out of any old one.
+**THE PANEL SHOWS ONLY WHAT CAN ACT** (same test, section 8 — from a playtest
+where a war party's six buttons plus the open map covered two thirds of the
+board): a button whose only possible answer is "nothing to do" is clutter,
+not control. `UI.unitBusy` is the ONE predicate (task, path, any target,
+doctrine, assault, queued sapper jobs — Defend deliberately NOT in it, Stand
+Down is that stance's own control): the group's Halt and the single unit's
+Stop render only while it answers yes, and both CLEAR everything it counts
+(doctrine included — a Stop that left `u.strat` set would keep rendering a
+button that does nothing). Same rule everywhere else something could only
+refuse: Unload renders only with someone aboard (the hull's capacity moved
+into the hint line), Group nearby/fleet only with somebody in reach to band
+with (`UI.groupmatesNear`, the handler's own domain filter). Hiding is NOT a
+silent failure under the tap contract's rule 4 — absence of an impossible
+order is the panel telling the truth — and every one of these moves without
+a tap, so every one lives in `panelSig` (busy/siegeable/aboard bits on the
+group sig, busy/groupmates on the unit sig) and appears/vanishes through the
+ordinary refresh. Greyed-not-hidden stays the rule where the disabled state
+TEACHES (sapper tools name the camp tier that unlocks them; train buttons
+show the price you can't yet pay).
+**And the bottom-bar toggle tells the truth** (same test): `syncBottomToggle`
+is the label's ONE writer (`setMenuCollapsed` defers to it — it used to write
+its own, and the two disagreed), closed states NAME what tapping brings back
+("🔨 Build ▴" / "▴ Panel") and the open state says what tapping does
+("▾ Hide" — the bare ▾ read as decoration). `panelMinMode` is now simply
+"is anything selected": the old villager exemption relabeled the tab
+"🔨 Build" over a panel it would actually restore — a label that lied.
 
 **Army strategies** (`tests/army-strategies.mjs`): three assault doctrines on
 the group panel (`u.strat`, toggled by the `gstrat` buttons; tap the lit one
-to stand it down; Halt and Defend clear it). **Strike** — ABSOLUTE focus: the
+to stand it down; Halt and Defend clear it). **The doctrines live behind ONE
+⚔ Tactics expander** (`UI.tacticsOpen`, transient — reset on every fresh
+selection, never in a save), CLOSED by default: they were the war party
+panel's biggest block and its rarest-used (the playtest complaint that
+started **The panel shows only what can act**, below). A doctrine in force
+is never invisible — the closed label wears it, lit ("⚔ Tactics: Siege") —
+and arming one folds the expander again. **Siege renders only for a party
+that could lay one**: the gate is `Units.siegeArtillery`, factored out of
+`siegeOrder`'s own artillery pick so the button and the order can never
+disagree — bows keep it when there are no engines (they stand in as the
+battery), and only a pure-melee or all-horse party loses it.
+**Strike** — ABSOLUTE focus: the
 whole army hits the one chosen object; the tBld fight-back/mending-hand
 switches are off, `Units.damage` retaliation is off, `acquire()` skips them,
 and when the target falls they hold their ground and wait (assault autonomy

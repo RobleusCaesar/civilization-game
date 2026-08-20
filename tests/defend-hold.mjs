@@ -320,8 +320,10 @@ const out = await p.evaluate(() => {
   }
 
   // ---- 11. the Defend button belongs to the defended ground: a soldier out
-  //          past the bounds is attacking, not defending — the button goes,
-  //          Stop takes its place. Stand Down stays available anywhere. ----
+  //          past the bounds is attacking, not defending — the button goes.
+  //          Stop stands in only while there is anything to stop (UI.unitBusy,
+  //          tests/army-groups.mjs owns that rule): an IDLE soldier afield
+  //          gets neither. Stand Down stays available anywhere. ----
   {
     const { tc } = setup('dh13');
     S.units = [];
@@ -331,7 +333,12 @@ const out = await p.evaluate(() => {
     const far = Units.spawn('defender', 'P', tc.x + 14, tc.y);
     UI.select('unit', far.id);
     ck('defendGoneAfield', !document.querySelector('#panel [data-act="defend"]') &&
-      !!document.querySelector('#panel [data-act="stop"]'), 'Stop offered instead');
+      !document.querySelector('#panel [data-act="stop"]'), 'idle afield — nothing to stop, nothing offered');
+    Units.moveTo(far, tc.x + 16, tc.y);
+    UI.renderPanel();
+    ck('stopStandsInWhileBusy', !document.querySelector('#panel [data-act="defend"]') &&
+      !!document.querySelector('#panel [data-act="stop"]'), 'Stop offered while marching');
+    far.task = null; far.path = null;
     far.defend = true;   // already in the stance out there — Stand Down must survive
     UI.renderPanel();
     const btn = document.querySelector('#panel [data-act="defend"]');

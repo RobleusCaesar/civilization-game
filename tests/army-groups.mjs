@@ -16,11 +16,17 @@
      save file. One banner per soldier — saving units into a new army pulls
      them out of any old one.
 
+   · THE PANEL SHOWS ONLY WHAT CAN ACT (section 8) — Halt/Stop render only
+     while UI.unitBusy says there is anything to stop, Unload only with
+     someone aboard, Group only with somebody in reach; the bottom-bar toggle
+     has one label authority and its closed states name what they restore.
+
    Run this after touching any of:
      units.js — formationMove / groupMove
      ui.js — armyAlive/pruneArmies/armyOf/nextArmySlot/saveArmy/removeArmy/
              selectArmy/armyIsNaval/drawShip/drawHelmet/drawArmyIcon/
-             renderArmyBar/tickArmies, the group panel buttons
+             renderArmyBar/tickArmies, the group panel buttons, unitBusy/
+             groupmatesNear/panelSig, syncBottomToggle/setMenuCollapsed
      render.js — onScreen
      game.js — S.armies init in newGame, the loadJSON armies migration
      index.html — #armyBar
@@ -264,6 +270,90 @@ const out = await p.evaluate(() => {
     G.loadJSON(json);
     ck('armiesSurviveSaveLoad', !!S.armies && !!S.armies[1] && JSON.stringify(S.armies[1]) === JSON.stringify(ids),
       'army 1: ' + JSON.stringify(S.armies && S.armies[1]));
+  }
+
+  /* ---- 8. THE PANEL SHOWS ONLY WHAT CAN ACT ----
+     A button whose only possible answer is "nothing to do" is clutter, not
+     control (a playtest had a war party's six buttons plus the open map
+     covering two thirds of the board). One predicate, UI.unitBusy, decides
+     Halt/Stop for groups and single units alike; Unload renders only with
+     someone aboard; Group only with somebody in reach to band with. Hiding is
+     NOT a silent failure (the tap contract's rule 4): absence of an
+     impossible order is the panel telling the truth. All of these move
+     without a tap, so all of them live in panelSig — the buttons must
+     appear/vanish through the ordinary refresh. The doctrines' Tactics
+     expander is pinned in tests/army-strategies.mjs. */
+  {
+    const tc = setup('ag8');
+    const far = { x: tc.x + 14, y: tc.y + 8 };   // out past every defend bound
+    const q = s => document.querySelector('#panel ' + s);
+    const a1 = mk('defender', far.x, far.y), a2 = mk('archer', far.x + 1, far.y);
+    UI.sel = { type: 'group', ids: [a1.id, a2.id] };
+    UI.renderPanel();
+    const sig0 = UI.panelSig();
+    ck('anIdlePartyOffersNoHalt', !q('[data-act="stop"]'), '');
+    for (const u of [a1, a2]) Units.moveTo(u, far.x + 5, far.y + 5);
+    ck('theMarchIsInTheSignature', UI.panelSig() !== sig0, 'sig must move or the button never appears');
+    UI.renderPanel();
+    ck('haltAppearsOnTheMarch', !!q('[data-act="stop"]'), '');
+    q('[data-act="stop"]').click();
+    ck('haltStopsEverythingAndGoes', !q('[data-act="stop"]') &&
+      [a1, a2].every(u => !u.task && !u.path && !u.strat && !u.assault), '');
+    // a doctrine alone is something to stop — and Halt clears it (the
+    // army-strategies rule "Halt and Defend clear it")
+    a1.strat = 'chaos'; a2.strat = 'chaos';
+    UI.renderPanel();
+    ck('aDoctrineAloneIsBusy', !!q('[data-act="stop"]'), '');
+    q('[data-act="stop"]').click();
+    ck('haltClearsTheDoctrine', !a1.strat && !q('[data-act="stop"]'), '');
+
+    // single unit: same predicate, same behaviour
+    S.units = S.units.filter(u => u.id !== a2.id);
+    UI.select('unit', a1.id);
+    ck('anIdleSoldierOffersNoStop', !q('[data-act="stop"]'), '');
+    ck('aLoneSoldierOffersNoGroup', !q('[data-act="group"]'), '');
+    Units.moveTo(a1, far.x + 6, far.y);
+    UI.renderPanel();
+    ck('stopAppearsOnTheOrder', !!q('[data-act="stop"]'), '');
+    q('[data-act="stop"]').click();
+    ck('stopClearsAndGoes', !a1.task && !a1.path && !q('[data-act="stop"]'), '');
+    a1.strat = 'strike';
+    UI.renderPanel();
+    q('[data-act="stop"]').click();
+    ck('singleStopClearsTheDoctrineToo', !a1.strat && !a1.siegePost, '');
+    const mate = mk('defender', far.x + 1, far.y);
+    UI.renderPanel();
+    ck('groupAppearsWithAMateInReach', !!q('[data-act="group"]'), '');
+
+    // transports: Unload renders only with someone aboard; the hull's
+    // capacity rides in the hint line instead of a dead button
+    const tr = Units.spawn('transport', 'P', far.x + 3, far.y + 3);
+    UI.select('unit', tr.id);
+    ck('anEmptyHullOffersNoUnload', !q('[data-act="unload"]'), '');
+    ck('theHintCarriesTheCapacity',
+      new RegExp('carries ' + CFG.UNITS.transport.cap).test(document.getElementById('panel').textContent), '');
+    tr.cargo = [{ kind: 'defender' }, { kind: 'archer' }];
+    UI.renderPanel();
+    ck('aLadenHullUnloads', !!q('[data-act="unload"]') && /2\//.test(q('[data-act="unload"]').textContent), '');
+
+    /* the bottom-bar toggle tells the truth: ONE label authority
+       (syncBottomToggle — setMenuCollapsed defers to it), closed states NAME
+       what tapping brings back, and a selection's tab is a panel minimize for
+       EVERY selection — the old villager exemption relabeled the tab
+       "🔨 Build" over a panel it would actually restore. */
+    const tog = () => document.getElementById('bmToggle').textContent;
+    UI.deselect(); UI.setMenuCollapsed(false);
+    ck('openMenuSaysHide', tog() === '▾ Hide', tog());
+    UI.setMenuCollapsed(true);
+    ck('closedMenuSaysBuild', /Build/.test(tog()), tog());
+    UI.select('unit', a1.id);
+    document.getElementById('bmToggle').click();
+    ck('aTuckedPanelSaysPanel', tog() === '▴ Panel' &&
+      !document.getElementById('panel').classList.contains('show'), tog());
+    document.getElementById('bmToggle').click();
+    ck('theTapRestoresThePanelItNamed', tog() === '▾ Hide' &&
+      document.getElementById('panel').classList.contains('show'), tog());
+    UI.deselect();
   }
 
   return { res, fails };
