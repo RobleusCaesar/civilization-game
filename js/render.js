@@ -3061,43 +3061,106 @@ const R = {
      PNG that lands after the world was built would otherwise not show until
      something else happened to dirty its tile. Safe before a map exists:
      there is nothing to draw and nothing to invalidate. */
+  /* THE BAKE IS A LIST OF STEPS, AND THE LIST IS THE ONLY COPY OF THE ORDER.
+     rebuildTerrain runs every step back to back — the whole-map bake exactly
+     as it always was — and tickBake runs the same steps a few at a time under
+     a time budget. Because both walk ONE list, a sliced bake and a full bake
+     are byte-identical by construction rather than by care; there is no second
+     ordering to keep in sync (tests/land.mjs pins it).
+
+     Why slice at all: founding a run is most of a second of solid painting on
+     a big map, and it used to land in one lump. Off the Begin press (see
+     R.deferBake) that lump moved behind the draft screen, where the player is
+     reading cards — and spread over that screen's frames it stops being a
+     freeze at all. */
+  BAKE_ROWS: 2,                    // tile rows per slice — one band is a few ms
+  _bake: null,                     // the live plan: {steps, i}
+  _bakeSteps() {
+    if (!S || !S.map || !S.map.terrain) return [];
+    const steps = [], W = CFG.W, H = CFG.H, R0 = this.BAKE_ROWS;
+    let g = null;
+    /* THE COSTLY ONE-OFFS GET A STEP EACH. Steps are atomic — the budget can
+       only stop BETWEEN them — so anything measured in tens of milliseconds
+       is worth standing on its own rather than riding on a band that would
+       otherwise be a few ms. Each of these is a cache fill the passes below
+       would trigger anyway on first use; doing it here only decides WHEN. */
+    steps.push(() => {
+      const px = W * CFG.TILE;
+      if (!this.terrainCache) this.terrainCache = document.createElement('canvas');
+      this.terrainCache.width = px; this.terrainCache.height = px;
+      g = this.terrainCache.getContext('2d');
+      g.imageSmoothingEnabled = false;
+    });
+    steps.push(() => this.hillHeight());     // re-key the hill field ONCE for this repaint
+    steps.push(() => { this.waterDirty(); this.hillsDirty(); });   // …re-baseline both masks
+    steps.push(() => this.waterRegions());   // trace the coast once (cached on _shoreKey)
+    steps.push(() => this.waterBodyPath());  // …and the outline the water is painted inside
+    /* TWO PASSES, and they may not be merged: decals overhang their tile, so
+       every tile's ground must be down before any decal is laid — otherwise a
+       neighbour's ground, painted later, erases the spill. (Which is also why
+       each pass is banded SEPARATELY, whole-map, rather than one band doing
+       ground-then-decals: banding them together would be the merge.) */
+    const band = (fn) => { for (let y0 = 0; y0 < H; y0 += R0) {
+      const a = y0, b = Math.min(H, y0 + R0);
+      steps.push(() => fn(a, b));
+    } };
+    band((a, b) => { for (let y = a; y < b; y++) for (let x = 0; x < W; x++) this.drawTile(g, x, y); });
+    // the water bands paint through the SAME cached body path, so splitting
+    // the one call into rows changes nothing but when it happens
+    band((a, b) => this.paintWaterIn(g, 0, a, W - 1, b - 1));
+    /* …decals clipped to the board, since one may overhang its own tile and
+       the tile beside the rim would throw a tuft out onto the black.
+       THE ROCK PASS RUNS WITH THE DECALS, and for the same reason: a stone
+       overhangs its own tile, so every tile's ground has to be down before
+       any of them is laid. It goes FIRST of the two — a tuft in the grass
+       belongs in front of the crag it grows beside, not behind it. */
+    const terr = () => S.map.seenTerrain || S.map.terrain;
+    band((a, b) => this.clipBoard(g, () => {
+      for (let y = a; y < b; y++) for (let x = 0; x < W; x++) this.rockMass(g, x, y, terr());
+    }));
+    band((a, b) => this.clipBoard(g, () => {
+      for (let y = a; y < b; y++) for (let x = 0; x < W; x++) this.landDecals(g, x, y, terr());
+    }));
+    // …then the traced coast over the top, from its own cached layer. One
+    // step: the tracer's work belongs to whole regions, not to rows.
+    steps.push(() => { this.buildShoreLayer(); g.drawImage(this.shoreLayer, 0, 0); });
+    /* …and the mountains NOT AT ALL. Their art lives outside the cache now —
+       drawn as row strips interleaved with the units every frame, because an
+       extruded mountain must OCCLUDE what stands behind it, and art baked
+       under the unit pass never can. The bake only flags them fresh. */
+    steps.push(() => { this._mtnDirty = true; });
+    /* …and their strips are CUT here rather than in the first frame that
+       wants them. buildMtnLayer is lazy by design (a fog reveal or a quarried
+       tile re-flags it mid-game), but on a fresh world it is a guaranteed
+       ~180ms — measured landing inside the first draw behind the draft, which
+       is exactly the frame this whole plan exists to keep free. Doing it here
+       only decides WHEN; the laziness elsewhere is untouched. */
+    steps.push(() => { this._mtnDirty = false; this.buildMtnLayer(); });
+    return steps;
+  },
   rebuildTerrain() {
     // NOT `window.S` — S is a script-level var, so window.S is undefined and
     // the guard would be permanently true (the same trap window.G/window.Sprites
     // set, documented in CLAUDE.md). Reference it directly.
     if (!S || !S.map || !S.map.terrain) return;
-    const px = CFG.W * CFG.TILE;
-    if (!this.terrainCache) this.terrainCache = document.createElement('canvas');
-    this.terrainCache.width = px; this.terrainCache.height = px;
-    const g = this.terrainCache.getContext('2d');
-    g.imageSmoothingEnabled = false;
-    const terr = S.map.seenTerrain || S.map.terrain;
-    this.hillHeight();                       // re-key the hill field ONCE for this repaint
-    this.waterDirty();                       // …and re-baseline the water mask
-    this.hillsDirty();                       // …and the hills mask beside it
-    // TWO PASSES, and they may not be merged: decals overhang their tile, so
-    // every tile's ground must be down before any decal is laid — otherwise a
-    // neighbour's ground, painted later, erases the spill.
-    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) this.drawTile(g, x, y);
-    this.paintWaterIn(g, 0, 0, CFG.W - 1, CFG.H - 1);
-    // …decals clipped to the board, since one may overhang its own tile and
-    // the tile beside the rim would throw a tuft out onto the black
-    this.clipBoard(g, () => {
-      /* THE ROCK PASS RUNS WITH THE DECALS, and for the same reason: a stone
-         overhangs its own tile, so every tile's ground has to be down before
-         any of them is laid. It goes FIRST of the two — a tuft in the grass
-         belongs in front of the crag it grows beside, not behind it. */
-      for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) this.rockMass(g, x, y, terr);
-      for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) this.landDecals(g, x, y, terr);
-    });
-    // …then the traced coast over the top, from its own cached layer
-    this.buildShoreLayer();
-    g.drawImage(this.shoreLayer, 0, 0);
-    /* …and the mountains NOT AT ALL. Their art lives outside the cache now —
-       drawn as row strips interleaved with the units every frame, because an
-       extruded mountain must OCCLUDE what stands behind it, and art baked
-       under the unit pass never can. The bake only flags them fresh. */
-    this._mtnDirty = true;
+    this._bake = null; this._bakeDue = false;    // a full bake supersedes any plan
+    for (const step of this._bakeSteps()) step();
+  },
+  // run a due bake a slice at a time. Steps are atomic, so the budget is a
+  // floor on the work done, not a ceiling — BAKE_ROWS is what keeps a band small.
+  tickBake(budgetMs) {
+    if (!this._bake) {
+      if (!this._bakeDue) return false;
+      this._bakeDue = false;
+      this._bake = { steps: this._bakeSteps(), i: 0 };
+    }
+    const b = this._bake, t0 = performance.now();
+    while (b.i < b.steps.length) {
+      b.steps[b.i++]();
+      if (performance.now() - t0 >= budgetMs) break;
+    }
+    if (b.i >= b.steps.length) { this._bake = null; return false; }
+    return true;
   },
 
   /* REPAINT A TILE AND ITS RING, GROUND FIRST THEN DECALS. A tile's own look
@@ -3287,6 +3350,40 @@ const R = {
     if (this.terrainCache) this.drawTile(this.terrainCache.getContext('2d'), x, y);
   },
 
+  /* A WORLD BEING ASSEMBLED IS NOT A WORLD BEING LOOKED AT.
+     G.newGame / G.loadJSON lay a hall, plant camps and paint camp ground
+     BEFORE they call onNewGame — and every one of those goes through
+     Bld.place → R.updateTile → drawTileAt, which happily painted those tiles
+     into the PREVIOUS run's terrain cache (the title demo's, on a fresh
+     start). Wrong map, wrong data, and thrown away seconds later by the full
+     bake at the end of onNewGame anyway. Worse than wasted: each of those
+     repaints re-traces the coast and re-bakes the shore layer, so the cost is
+     nothing like a tile — measured at ~370ms of a ~1.0s newGame on xlarge,
+     which is most of the freeze between the Begin press and the draft screen.
+
+     Every incremental painter already early-returns without a cache
+     (drawTileAt / drawTilesAt / updateTile all guard on it), so dropping it
+     is the whole mechanism: the world assembles in silence and onNewGame's
+     rebuildTerrain paints the finished thing, once. */
+  holdTerrain() { this.terrainCache = null; },
+  /* …AND THE BAKE ITSELF NEED NOT BLOCK THE PRESS THAT ASKED FOR THE WORLD.
+     The full terrain bake is most of a second on a big map, and founding a
+     run used to spend it INSIDE the Begin handler, before the draft screen
+     had ever been shown — so the wait was the player's, on a dead screen.
+     But the draft is a screen you READ: several seconds of cards, over a
+     backdrop, with the map nowhere in sight. That is the honest place for it.
+
+     `deferBake` is opt-in and set by ONE caller (Screens' new-run flow), so
+     every other path — loads, tests, the title demo — bakes synchronously in
+     onNewGame exactly as before. When it is set the bake is only marked DUE;
+     ensureTerrain performs it, and draw() calls ensureTerrain before it
+     touches the cache, so a due bake can never reach the screen unbaked
+     however the player got there. */
+  deferBake: false,
+  _bakeDue: false,
+  ensureTerrain() {
+    while (this.tickBake(1e9)) { /* finish whatever is left, now */ }
+  },
   onNewGame() {
     this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
     this._mtn = null; this._mtnKey = '';                         // re-trace the mountain regions for the new map
@@ -3299,8 +3396,11 @@ const R = {
     this._bodyPath = null; this._bodyKey = '';
     this._waterMask = null;
     this.placePoofs = [];                                        // no dust carried across runs (the R.collapses rule)
-    // pre-render the full terrain layer once
-    this.rebuildTerrain();
+    // pre-render the full terrain layer once — or mark it due, when the
+    // caller has somewhere better to spend the wait (see deferBake)
+    this._bakeDue = false;
+    if (this.deferBake) { this.terrainCache = null; this._bakeDue = true; }
+    else this.rebuildTerrain();
     this.fogCv = document.createElement('canvas');
     this.fogCv.width = CFG.W; this.fogCv.height = CFG.H;
     this.fogG = this.fogCv.getContext('2d');
@@ -6271,10 +6371,17 @@ const R = {
 
   draw(dt) {
     if (!S) return;
+    /* A DUE BAKE IS PAID IN FULL BEFORE THE WORLD IS PLAYED, and only then.
+       On a shell screen — the draft, which is where founding a run leaves it
+       (R.deferBake) — the frame loop spreads it over frames with tickBake
+       instead, and the map fills in behind the cards. Entering the game can
+       never show a half-painted world, because this forces the rest. */
+    if (window.Screens && Screens.current === 'playing') this.ensureTerrain();
     const g = this.g, TL = CFG.TILE, z = this.cam.z * this.dpr;
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.fillStyle = '#0d0b08';
     g.fillRect(0, 0, this.cv.width, this.cv.height);
+    if (!this.terrainCache) return;          // the bake has not laid its canvas yet
     g.setTransform(z, 0, 0, z, -this.cam.x * z, -this.cam.y * z);
     g.imageSmoothingEnabled = false;
 

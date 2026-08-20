@@ -3454,6 +3454,63 @@ the screenshot through a pale-pixel mask first — vision footprints hug the
 coast around the player's own works and stop at tile-stepped lines, which
 is the fog's geometry, not the shore layer's.
 
+**THE BEGIN PRESS ANSWERS IN THE FRAME IT HAPPENS IN** (`tests/land.mjs`
+section 13, from a report that picking difficulty/size/map type and tapping
+Begin "stutters and doesn't start right away"). Founding a run is most of a
+second of solid main-thread painting on a big map, and every bit of it ran
+INSIDE the click handler — a handler that never returns paints nothing, so
+the plaque never lit, the screen never changed, and the app read as hung.
+Four rules, measured on an xlarge islands map (the worst case: 3,140 water
+tiles).
+**A WORLD BEING ASSEMBLED IS NOT A WORLD BEING LOOKED AT** (`R.holdTerrain`,
+called at the top of `G.newGame` and — only after the file is known good —
+`G.loadJSON`): both lay a hall, plant camps and paint camp ground BEFORE
+they call `R.onNewGame`, and every one of those went through `Bld.place` →
+`updateTile` → `drawTileAt` into the PREVIOUS run's cache (the title demo's,
+on a fresh start). Wrong map, wrong data, thrown away by the full bake
+seconds later — and each such repaint re-traces the coast and re-bakes the
+shore layer, so it cost ~370ms of a ~1.0s newGame, not a tile's worth. Every
+incremental painter already early-returns without a cache, so dropping it is
+the whole mechanism.
+**THE BAKE IS A LIST OF STEPS, AND THE LIST IS THE ONLY COPY OF THE ORDER**
+(`R._bakeSteps` / `rebuildTerrain` / `tickBake` / `ensureTerrain`):
+`rebuildTerrain` runs every step back to back — the whole-map bake exactly as
+before, which is what every test and every other caller still gets —
+and `tickBake(ms)` runs the same steps a few at a time under a budget. A
+sliced bake and a full bake are byte-identical BY CONSTRUCTION rather than by
+care, because there is no second ordering to keep in sync. Ground, water,
+rock and decal passes are banded `BAKE_ROWS` (2) tile rows at a time, each
+pass whole-map before the next (decals overhang their tile, so banding the
+two passes TOGETHER would be the merge the bake has always forbidden); the
+costly one-offs get a step each — the canvas, `hillHeight`, the two dirty
+masks, `waterRegions`, `waterBodyPath`, the shore layer, and `buildMtnLayer`
+(lazy everywhere else, but a guaranteed ~180ms on a fresh world, and it was
+landing inside the first draw behind the draft).
+**AND THE WAIT IS SPENT ON A SCREEN THE PLAYER IS READING** (`R.deferBake`,
+set by ONE caller — `Screens.foundRun`): the bake is only marked DUE there,
+and paid behind the DRAFT screen, which is several seconds of cards. Every
+other path — loads, tests, the title demo — bakes synchronously in
+`onNewGame` as before. `R.draw` forces `ensureTerrain` when
+`Screens.current === 'playing'`, so entering a game can never show a
+half-painted world however the player got there. `Screens.startNewGame` does
+the one cheap thing a handler can — say what it is doing (`.abtn.busy`, a
+CSS-only pulse; "🏕 Founding the valley…") — and hands the work to the frame
+after the next PAINT, which takes two rAFs, since the first fires before the
+browser paints. `_founding` swallows a second press.
+**A WORLD NOBODY IS PLAYING IS DRAWN AT A GLANCE RATE** (`G.SHELL_DRAW_MS`
+130): every shell screen sits over the world and shows it only through a
+heavy gradient, and drawing a big map costs real milliseconds a frame —
+measured at 751ms across the ~2s the draft was up, MORE than the whole bake
+it was competing with. Behind a shell screen the world repaints a few times
+a second, and while a bake is actually in flight it is not drawn at all
+(there is nothing to see through the gradient but a half-painted map). The
+playing screen is untouched.
+Measured end to end: the click handler returns in **0.2ms** with the plaque
+lit, against a 1,455ms frozen frame before; total main-thread work from press
+to a finished world fell from ~1.9s to ~0.9s, and the worst single hitch from
+1,455ms to ~200ms (the shore layer and the mountain strips, the two steps
+that belong to whole regions rather than rows).
+
 **The frame must never pay for bookkeeping** (the stutter post-mortem, a real
 multi-save report): four measured taxes, each invisible in review and each a
 rule now. **No dead serialization** — `G.autosave` stringified the ENTIRE

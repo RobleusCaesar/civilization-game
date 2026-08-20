@@ -123,6 +123,8 @@ const G = {
   },
 
   newGame(seed, modeKey, sizeKey, persona, tunic) {
+    // nothing painted while the world is being assembled (R.holdTerrain)
+    R.holdTerrain();
     const mode = CFG.MODES[modeKey] ? modeKey : 'moderate';
     const size = CFG.SIZES[sizeKey] ? sizeKey : 'medium';
     CFG.W = CFG.H = CFG.SIZES[size];
@@ -1412,6 +1414,10 @@ const G = {
     // legacy field gets a default), then plays on the current engine
     if ((data.v || 1) > CFG.SAVE_VERSION)
       throw new Error('save is from a newer version of the game');
+    // …and only once the file is known good: nothing painted while the world
+    // is being assembled (R.holdTerrain). A refused load leaves the running
+    // game's cache exactly as it was.
+    R.holdTerrain();
     const w = data.map.W || 40, h = data.map.H || 40;
     if (data.map.terrain.length !== w * h)
       throw new Error('not a Clanfire save file');
@@ -1647,6 +1653,7 @@ const G = {
       }
     }
   },
+  SHELL_DRAW_MS: 130,     // how often the world is repainted behind a shell screen
   frame(t) {
     const dt = Math.min(0.1, (t - G.lastT) / 1000 || 0.016);
     G.lastT = t;
@@ -1695,7 +1702,27 @@ const G = {
       }
     }
     if (S) {
-      G._safe(() => R.draw(dt), 'render');
+      // a terrain bake left DUE by founding a run is spread over these frames
+      // (R.deferBake / R.tickBake) instead of freezing the press that asked
+      G._safe(() => R.tickBake(6), 'bake');
+      /* A WORLD NOBODY IS PLAYING IS DRAWN AT A GLANCE RATE, NOT A GAME RATE.
+         Every shell screen — title, new game, the draft — sits over the world
+         and shows it only through a heavy gradient, and drawing a big map
+         costs real milliseconds a frame (measured at 751ms across the ~2s the
+         draft was up on an xlarge island map — more than the whole terrain
+         bake it was competing with). At a few frames a second the backdrop
+         looks the same and the thread is free for the bake and the cards. The
+         PLAYING screen is untouched: it draws every frame, as it must. */
+      let skip = false;
+      if (!(window.Screens && Screens.current === 'playing')) {
+        // …and a world still being BAKED is not drawn behind a shell screen at
+        // all: there is nothing worth showing through the gradient but a
+        // half-painted map, and the frames are wanted for the baking
+        if (R._bake || R._bakeDue) skip = true;
+        else if (t - (G._shellDrawT || 0) < G.SHELL_DRAW_MS) skip = true;
+        else G._shellDrawT = t;
+      }
+      if (!skip) G._safe(() => R.draw(dt), 'render');
       G._safe(() => UI.refresh(dt), 'ui');
       // THE TUTORIAL (js/tutorial.js): a run without the checkbox pays this
       // one falsy check and nothing else — no DOM, no listeners, no scans

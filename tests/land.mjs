@@ -1093,6 +1093,59 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   await p.close();
 }
 
+/* ---- 13. A SLICED BAKE IS THE SAME BAKE ----
+   Founding a run marks the terrain bake DUE (R.deferBake) and pays it a slice
+   at a time behind the draft screen, so the Begin press answers in the frame
+   it happens in instead of freezing for most of a second. That is only sound
+   while the sliced path and the all-at-once path paint the SAME PICTURE — and
+   they do by construction, because both walk the one list R._bakeSteps
+   returns. This is the check that keeps it that way: any future step that
+   carries state between phases, or a band whose order stops mattering, shows
+   up here as a difference and nowhere else. Byte for byte, like every other
+   invalidation rule in this file. */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(`
+    const hash = () => { const c = R.terrainCache, g = c.getContext('2d');
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      let h = 0x811c9dc5; for (let i = 0; i < d.length; i += 3) { h ^= d[i]; h = Math.imul(h, 0x01000193); }
+      return (h >>> 0).toString(16); };
+    Boot.force(); Screens._demo = false;
+    // the all-at-once bake every other caller takes
+    G.newGame('sliced1', 'moderate', 'large');
+    Screens.show('playing'); S.paused = true;
+    R.rebuildTerrain();
+    const whole = hash();
+    // …and the same world founded with the bake deferred, run out in slices
+    R.deferBake = true; G.newGame('sliced1', 'moderate', 'large'); R.deferBake = false;
+    const due = R._bakeDue, cacheHeld = !R.terrainCache;
+    let slices = 0;
+    while (R.tickBake(4)) { slices++; if (slices > 5000) break; }
+    const sliced = hash();
+    // …and a run that never ticks: draw() must still refuse to show a world
+    // it has not finished painting (ensureTerrain, forced on the play screen)
+    R.deferBake = true; G.newGame('sliced1', 'moderate', 'large'); R.deferBake = false;
+    R.ensureTerrain();
+    const forced = hash();
+    return { whole, sliced, forced, due, cacheHeld, slices, steps: R._bakeSteps().length,
+             planLeft: !!R._bake, dueLeft: R._bakeDue };`));
+  ck('foundingARunMarksTheBakeDue', v.due && v.cacheHeld,
+    'deferBake must leave it DUE and paint nothing — due ' + v.due + ', cache held ' + v.cacheHeld);
+  /* The plan must genuinely DIVIDE. The step count is the structural half
+     (bands of BAKE_ROWS rows across four passes, plus the one-off caches);
+     the slice count is the measured half, and it is deliberately a loose
+     bound — how many steps fit in 4ms is a fact about the machine, not about
+     the code. A plan that collapsed back into one lump fails both. */
+  ck('andThePlanReallyDivides', v.steps > 40 && v.slices > 3,
+    v.steps + ' steps, ' + v.slices + ' slices at a 4ms budget');
+  ck('aSlicedBakeIsTheSameBake', v.sliced === v.whole,
+    'sliced ' + v.sliced + ' vs whole ' + v.whole);
+  ck('andForcingItWholeIsTooCarries', v.forced === v.whole,
+    'ensureTerrain ' + v.forced + ' vs whole ' + v.whole);
+  ck('andTheBakeIsFinishedWhenItSaysSo', !v.planLeft && !v.dueLeft, '');
+  await p.close();
+}
+
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL LAND CHECKS PASS');
 await b.close();

@@ -263,6 +263,14 @@
   }
   .abtn:active { background: var(--btn-hi); }
   .abtn.cant { opacity: 0.45; }
+  /* THE WORKING STATE (Screens.startNewGame). Founding a run ties the main
+     thread up for most of a second, so the press has to SAY so before it
+     does — and the saying has to be paintable without JS: a plain colour and
+     a slow pulse, no animation frame required. Pointer events are off so a
+     second press cannot land while the first one is still building. */
+  .abtn.busy { pointer-events: none; animation: btnBusy 1s ease-in-out infinite; }
+  @keyframes btnBusy { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
+  @media (prefers-reduced-motion: reduce) { .abtn.busy { animation: none; filter: brightness(1.2); } }
   .abtn.danger { border-color: var(--danger); }
   .abtn.sel { border-color: var(--gold); background: #514627; }
   #panelClose { position: absolute; right: 10px; margin-top: -2px; }

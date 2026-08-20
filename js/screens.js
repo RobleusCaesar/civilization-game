@@ -194,7 +194,36 @@ const Screens = {
     }
   },
 
+  /* THE PRESS ANSWERS IN THE FRAME IT HAPPENS IN.
+     Founding a run is most of a second of solid main-thread work on a big
+     map — the seed hunt for a wished landform, generation, the spawns, and
+     the full terrain bake — and it all used to run INSIDE the click handler.
+     A handler that never returns paints nothing: the plaque never lit, the
+     screen never changed, and the app read as hung until the draft appeared
+     (reported as "stuttering and not starting right away"). Nothing about
+     that work got slower than the eye can take; it simply had no way to say
+     it had started.
+
+     So the handler does the one cheap thing it can — say what it is doing —
+     and hands the work to the frame AFTER the next paint. It takes TWO rAFs:
+     the first fires before the browser paints, so work scheduled there is
+     still in front of the pixels that announce it. `_founding` swallows a
+     second press, which would otherwise found two worlds over each other. */
   startNewGame() {
+    if (this._founding) return;
+    this._founding = true;
+    const btn = this.el('btnStart');
+    const was = btn ? btn.textContent : '';
+    if (btn) { btn.classList.add('busy'); btn.textContent = '🏕 Founding the valley…'; }
+    const done = () => {
+      this._founding = false;
+      if (btn) { btn.classList.remove('busy'); btn.textContent = was; }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try { this.foundRun(); } finally { done(); }
+    }));
+  },
+  foundRun() {
     const p = this.newPrefs;
     let seed = '';
     if (p.landform !== 'random') {
@@ -211,7 +240,15 @@ const Screens = {
     // your people's tunic is rolled at random; red stays the rival tribe's colour
     const pool = (Sprites.villagerTunics || ['blue']).filter(t => t !== 'red');
     const tunic = pool[(Math.random() * pool.length) | 0];
-    G.newGame(seed, p.mode, p.size, undefined, tunic);     // the rival chief is always a fresh roll
+    /* THE TERRAIN BAKE WAITS FOR THE DRAFT (R.deferBake). It is the single
+       biggest piece of founding a run, and the draft screen that comes next
+       is one the player READS — so the bake is marked due here and paid on
+       the first frame drawn behind the cards, instead of in front of a
+       player staring at the screen they just left. R.draw pays it before it
+       touches the cache, so it can never be skipped. */
+    R.deferBake = true;
+    try { G.newGame(seed, p.mode, p.size, undefined, tunic); }   // the rival chief is always a fresh roll
+    finally { R.deferBake = false; }
     Backend.markActiveSlot(null);          // fresh run: no cloud slot until first save
     Backend.activeName = null;
     this.lastSavedDay = 1;
