@@ -1133,7 +1133,7 @@ const UI = {
         return;
       }
       if (hitBridge && hitBridge.owner !== 'P') {
-        for (const id of ids) { const u = Units.get(id); if (u && Units.isMilitary(u)) { u.defend = false; Units.orderAttackBridge(u, hitBridge); } }
+        for (const id of ids) { const u = Units.get(id); if (u && (Units.isMilitary(u) || Units.isLevied(u))) { u.defend = false; Units.orderAttackBridge(u, hitBridge); } }
         this.toast('⚔️ War party moves to sever the bridge');
         return;
       }
@@ -1163,20 +1163,22 @@ const UI = {
       return;
     }
     const foeB = foeBldNear();
-    if (foeB && Units.isMilitary(sel)) {
+    if (foeB && (Units.isMilitary(sel) || Units.isLevied(sel))) {
       sel.defend = false; sel.assault = true;
       Units.orderAttackBuilding(sel, foeB);
       this.toast('⚔️ Attacking ' + Bld.def(foeB.key).name);
       return;
     }
-    if (hitBridge && hitBridge.owner !== 'P' && Units.isMilitary(sel)) {
+    if (hitBridge && hitBridge.owner !== 'P' && (Units.isMilitary(sel) || Units.isLevied(sel))) {
       sel.defend = false; Units.orderAttackBridge(sel, hitBridge);
       this.toast('Moving to sever the bridge');
       return;
     }
     // a villager dropped square on a resource goes to gather it (near-miss
     // snapping like a tap, and same dispatch: job handed off → deselect)
-    if (Units.isVillager(sel) && explored) {
+    if (Units.isVillager(sel) && explored && !Units.isLevied(sel)) {
+      // (a LEVIED hand dragged onto a resource falls through to the plain
+      // walk below — the drag is movement-first, and the work is impossible)
       let rt = CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]] && S.map.resAmount[MapGen.idx(tile.x, tile.y)] > 0
         ? { x: tile.x, y: tile.y }
         : this.snapNear(wx, wy, (x, y) => S.map.explored[MapGen.idx(x, y)] &&
@@ -1321,7 +1323,7 @@ const UI = {
         return;
       }
       if (hitBridge && hitBridge.owner !== 'P') {
-        for (const id of ids) { const u = Units.get(id); if (u && Units.isMilitary(u)) { u.defend = false; Units.orderAttackBridge(u, hitBridge); } }
+        for (const id of ids) { const u = Units.get(id); if (u && (Units.isMilitary(u) || Units.isLevied(u))) { u.defend = false; Units.orderAttackBridge(u, hitBridge); } }
         this.toast('⚔️ War party moves to sever the bridge');
         return;
       }
@@ -1366,16 +1368,16 @@ const UI = {
       // camp alike. A mine is never a target (Bld.attackable) — tapping a seam
       // with soldiers walks them onto it, which is how you actually take it.
       const foeBld = Bld.foeBld(hitBld, 'P') ? hitBld
-        : (!hitBld && !tapUnit && Units.isMilitary(sel)
+        : (!hitBld && !tapUnit && (Units.isMilitary(sel) || Units.isLevied(sel))
             ? bldNear(0.42, b2 => Bld.foeBld(b2, 'P')) : null);
-      if (foeBld && Units.isMilitary(sel)) {
+      if (foeBld && (Units.isMilitary(sel) || Units.isLevied(sel))) {
         sel.defend = false;
         sel.assault = true;
         Units.orderAttackBuilding(sel, foeBld);
         this.toast('Attacking ' + Bld.def(foeBld.key).name);
         return;
       }
-      if (hitBridge && hitBridge.owner !== 'P' && Units.isMilitary(sel)) {
+      if (hitBridge && hitBridge.owner !== 'P' && (Units.isMilitary(sel) || Units.isLevied(sel))) {
         sel.defend = false;
         Units.orderAttackBridge(sel, hitBridge);
         this.toast('Moving to sever the bridge');
@@ -1390,6 +1392,7 @@ const UI = {
             : null);
       if (ownBld && ownBld.owner === 'P' && Units.isVillager(sel) &&
           (ownBld.construction > 0 || ownBld.upgrading > 0 || ownBld.hp < ownBld.maxhp)) {
+        if (this.levyBlocks(sel)) return;
         Units.assignBuild(sel, ownBld);
         this.toast(ownBld.hp < ownBld.maxhp && !ownBld.construction && !ownBld.upgrading
           ? 'Villager sent to repair' : 'Villager sent to build');
@@ -1417,6 +1420,7 @@ const UI = {
           }
           return;
         }
+        if (this.levyBlocks(sel)) return;
         sel.task = { type: 'work', id: ownBld.id }; sel.tUnit = 0; sel.tBld = 0;
         Units.setPath(sel, ownBld.x, ownBld.y);
         this.toast('Villager stationed at the ' + Bld.def(ownBld.key).name);
@@ -1442,6 +1446,7 @@ const UI = {
             : this.snapNear(wx, wy, (x, y) => S.map.explored[MapGen.idx(x, y)] &&
                 CFG.GATHER[S.map.terrain[MapGen.idx(x, y)]] && S.map.resAmount[MapGen.idx(x, y)] > 0);
           if (gt) {
+            if (this.levyBlocks(sel)) return;
             // the finger may have landed in the INTERIOR of the stand, where
             // there is nothing to stand on — take the nearest tile of the same
             // stand that can be worked before refusing (see gatherFallback)
@@ -1456,6 +1461,7 @@ const UI = {
            order. It sits after the gather branch — a seam is in no GATHER
            table, so the two can never contend for the same tap. */
         if (Units.isVillager(sel) && Bld.seamAt(tile.x, tile.y)) {
+          if (this.levyBlocks(sel)) return;
           const c = Bld.canClaimSeam('P', tile.x, tile.y);
           if (!c.ok) { this.toast(c.why, true); return; }
           const held = Bld.at(tile.x, tile.y);
@@ -1470,6 +1476,7 @@ const UI = {
         if (Units.isVillager(sel) && S.map.terrain[MapGen.idx(tile.x, tile.y)] === T.WATER) {
           // shore fishing — but only where the fish actually are
           if (MapGen.shoal(tile.x, tile.y) && S.map.resAmount[MapGen.idx(tile.x, tile.y)] > 0) {
+            if (this.levyBlocks(sel)) return;
             if (Units.assignShoreFish(sel, tile.x, tile.y)) { this.toast('Line out — fishing from the shore 🎣'); this.dispatchedWorker(); }
             else this.toast('No clear shore to fish from', true);
           } else this.toast('No fish here — watch for fish breaking the surface', true);
@@ -1538,6 +1545,7 @@ const UI = {
     // convenience: tap a resource tile (or a jumping-fish shoal) with nothing
     // selected → send an idle villager
     if (explored && CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]] && !this.sel) {
+      if (S.levy) { this.toast('⚔ The levy is under arms — stand it down first', true); return; }
       const idle = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
       if (idle && Units.assignGather(idle, tile.x, tile.y)) {
         this.toast('Idle villager sent to gather');
@@ -1546,6 +1554,7 @@ const UI = {
     }
     // …and the same convenience on a gold seam nobody has claimed yet
     if (explored && !this.sel && Bld.seamAt(tile.x, tile.y) && !Bld.at(tile.x, tile.y)) {
+      if (S.levy) { this.toast('⚔ The levy is under arms — stand it down first', true); return; }
       const idle = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
       if (idle && Units.assignMine(idle, tile.x, tile.y)) {
         this.toast('Idle villager sent to claim the gold seam ⛏');
@@ -1553,6 +1562,7 @@ const UI = {
       }
     }
     if (explored && !this.sel && MapGen.shoal(tile.x, tile.y) && S.map.resAmount[MapGen.idx(tile.x, tile.y)] > 0) {
+      if (S.levy) { this.toast('⚔ The levy is under arms — stand it down first', true); return; }
       const idle = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
       if (idle && Units.assignShoreFish(idle, tile.x, tile.y)) {
         this.toast('Idle villager sent to fish the shoal 🎣');
@@ -1572,7 +1582,17 @@ const UI = {
   // can a unit anchor a double-tap group? only army/fleet units — the same set the
   // "Group nearby / Group fleet" button forms (soldiers & siege on land; warships,
   // fireships & transports at sea). Villagers, sappers and fishing boats are left out.
-  groupable(u) { return Units.isMilitary(u) || Units.isFleetable(u); },
+  groupable(u) { return Units.isMilitary(u) || Units.isFleetable(u) || Units.isLevied(u); },
+
+  /* A WORK ORDER ON A LEVIED HAND IS REFUSED WITH THE REASON (the tap
+     contract's rule 4, tests/levy.mjs): the mode must be stood down first,
+     and the toast says exactly that. Attack and walk orders pass untouched —
+     a levy is FOR fighting and marching. */
+  levyBlocks(u) {
+    if (!Units.isLevied(u)) return false;
+    this.toast('⚔ Under arms — stand the levy down before they work', true);
+    return true;
+  },
 
   // DOUBLE-TAP: select every like unit (see sameSelType) within the grouping sphere
   // of the tapped one — a trebuchet line, a wing of cavalry, a flotilla of transports
@@ -1735,12 +1755,15 @@ const UI = {
   // is there anyone in reach this unit could actually band with? Same domain
   // filter the Group button's own handler uses, so the button only renders
   // when tapping it would form something instead of toasting a refusal
+  // a LAND FIGHTER for grouping purposes: a soldier ashore, or a levied hand —
+  // the levy bands and fights exactly as a war party does (tests/levy.mjs)
+  landFighter(o) { return (Units.isMilitary(o) && !Units.isNaval(o)) || Units.isLevied(o); },
   groupmatesNear(u) {
     if (!u || u.owner !== 'P') return false;
     const naval = Units.isNaval(u);
-    if (!(Units.isFleetable(u) || (Units.isMilitary(u) && !naval))) return false;
+    if (!(Units.isFleetable(u) || this.landFighter(u))) return false;
     return S.units.some(o => o.owner === 'P' && o.id !== u.id &&
-      (naval ? Units.isFleetable(o) : (Units.isMilitary(o) && !Units.isNaval(o))) &&
+      (naval ? Units.isFleetable(o) : this.landFighter(o)) &&
       Math.hypot(o.x - u.x, o.y - u.y) <= CFG.GROUP_R);
   },
   /* THE TACTICS EXPANDER (tests/army-strategies.mjs): the three assault
@@ -2054,12 +2077,13 @@ const UI = {
       if (b.key === 'tc') {
         // visibility bits: pointless buttons unrender the moment they empty
         const vills = S.units.some(u => u.owner === 'P' && Units.isVillager(u));
-        const idle = S.units.some(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
+        const idle = S.units.some(u => u.owner === 'P' && Units.isVillager(u) && !Units.isLevied(u) && !u.task && !u.tUnit);
         // the upgrade button's reason counts the town up ("have 2 of 3") — that
         // number changes without `ok` flipping, so it has to be in the signature
         sig += '|' + Bld.tcSupport(b) + '|' + (S.wallLevel || 1) + '|' + Bld.forts().length +
                '|' + vills + '|' + (S.garrison.length > 0) +
                '|' + (Units.hornPending('P') > 0) + '|' + idle +
+               '|' + (S.levy ? 'L' : '-') +   // the levy lever flips label + villager panels
                '|' + (b.wallUp > 0 ? 'w' + b.wallUpTarget : '-');
       }
       // Trading Post: caravan out/in flips the whole panel; per-good affordability
@@ -2076,7 +2100,7 @@ const UI = {
       // Defend eligibility moves with the party's feet — the button must
       // appear/vanish as they march in and out of the defended ground
       const defEl = mem.filter(o => Units.canDefend(o) && (o.defend || Units.inDefendBounds(o))).length;
-      const land = mem.filter(o => Units.canDefend(o) && !Units.isNaval(o));
+      const land = mem.filter(o => (Units.canDefend(o) && !Units.isNaval(o)) || Units.isLevied(o));
       const gStrat = land.length && land.every(o => o.strat === land[0].strat) ? (land[0].strat || '-') : 'mix';
       // Halt renders only while there is anything to halt; Siege only while
       // the party could lay one; Unload-all only while anyone is aboard —
@@ -2108,6 +2132,7 @@ const UI = {
       Units.canDefend(u) && (u.defend || Units.inDefendBounds(u)),   // Defend button follows the bounds
       u.owner === 'P' && !Units.isVillager(u) && this.unitBusy(u),   // Stop renders only while there is anything to stop
       this.groupmatesNear(u),                // …and Group only while there is anyone to band with
+      Units.isLevied(u),                     // under arms: Build hides, the hint changes
       this.armyOfUnit(u)];   // …and Remove Army appears the moment this one is the last of it
     // villager resource-station upgrade state (level, phase, affordability) — the
     // continuously-shrinking day count is NOT here; refreshPanel ticks it in place
@@ -2226,7 +2251,12 @@ const UI = {
       if (rlN) rlN.textContent = this.hornBackLine();
       const idN = document.getElementById('idleN');
       if (idN) idN.textContent =
-        S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit).length + ' idle — muster here';
+        S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !Units.isLevied(u) && !u.task && !u.tUnit).length + ' idle — muster here';
+      const lvN = document.getElementById('levyN');
+      if (lvN) {
+        const lv = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
+        lvN.textContent = `${lv} hand${lv === 1 ? '' : 's'} take up arms — they eat like soldiers`;
+      }
       const upw = panel.querySelector('[data-act="upwalls"]');
       if (upw) upw.classList.toggle('cant', !Bld.canUpgradeWalls().ok);
       // tick a Trading Post caravan's return countdown in place
@@ -2275,7 +2305,7 @@ const UI = {
     if (this.sel.type === 'group') return this.groupComposition(this.sel.ids);
     if (this.sel.type === 'bridge') { const br = Bld.bridgeAt(this.sel.x, this.sel.y); return br ? `HP ${Math.ceil(br.hp)}/${br.maxhp} · a crossing over water` : ''; }
     const u = Units.get(this.sel.id);
-    return u ? `HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${u.def}` : '';
+    return u ? `HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${Units.effDef(u)}` : '';
   },
   renderPanel() {
     const panel = document.getElementById('panel');
@@ -2308,7 +2338,9 @@ const UI = {
         if (b.level < 3 && !b.construction && d.levels[b.level] && b.key !== 'wall' && b.key !== 'gate') {
           const up = Bld.canUpgrade(b);
           const cost = d.levels[b.level].cost;
-          html += `<button class="abtn wide ${up.ok ? '' : 'cant'}" data-act="upgrade">⬆ Upgrade to Lv ${b.level + 1}<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;
+          // the TC's upgrade shares its row with Train Villager (the levy took
+          // the old slot) — every other building keeps the full-width button
+          html += `<button class="abtn ${b.key === 'tc' ? '' : 'wide '}${up.ok ? '' : 'cant'}" data-act="upgrade">⬆ Upgrade to Lv ${b.level + 1}<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;
         }
         if ((b.key === 'wall' || b.key === 'gate') && !b.construction && b.level < 3)
           html += `<span class="psub">Walls upgrade together — use the Town Center.</span>`;
@@ -2340,6 +2372,15 @@ const UI = {
           // stays packed — pointless buttons below simply don't render
           if (b.key === 'tc') {
             const vills = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
+            /* THE LEVY (tests/levy.mjs): the village called to arms — the
+               last-ditch lever for a town whose army is gone. It rides where
+               Train Villager used to sit (Train moved up beside Upgrade), so
+               the TC's two emergency calls — the levy and the horn — share a
+               row. The lit stand-down is the mode's standing visibility. */
+            if (S.levy)
+              html += `<button class="abtn sel" data-act="levy">⚔ Stand down<small>tools come out — Back to work returns them</small></button>`;
+            else if (vills)
+              html += `<button class="abtn" data-act="levy">⚔ Raise the levy<small id="levyN">${vills} hand${vills === 1 ? '' : 's'} take up arms — they eat like soldiers</small></button>`;
             if (vills) html += `<button class="abtn" data-act="shelter">🔔 Sound the horn<small id="shelterN">${vills} at work — all to shelter</small></button>`;
           }
           html += `<span class="psub" id="qLine">Queue: ${b.queue.length}/${Bld.queueCap(b)}</span>`;
@@ -2357,7 +2398,8 @@ const UI = {
           const back = Units.hornPending('P');
           if (S.garrison.length || back)
             html += `<button class="abtn" data-act="release">🔨 Back to work<small id="releaseN">${this.hornBackLine()}</small></button>`;
-          const idle = S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit).length;
+          // a levied hand is under arms, not idle labor — it neither counts nor musters
+          const idle = S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !Units.isLevied(u) && !u.task && !u.tUnit).length;
           if (idle)
             html += `<button class="abtn" data-act="callidle">📣 Call idle<small id="idleN">${idle} idle — muster here</small></button>`;
           if (b.wallUp > 0) {
@@ -2461,13 +2503,13 @@ const UI = {
         }
         else if (btn.dataset.act === 'sendworker') {
           const v = Units.nearestIdleVillager(b2.x, b2.y);
-          if (!v) this.toast('No idle villager — free one up first', true);
+          if (!v) this.toast(S.levy ? '⚔ The levy is under arms — stand it down first' : 'No idle villager — free one up first', true);
           else if (Units.assignBuild(v, b2)) this.toast('Villager on the way');
         }
         else if (btn.dataset.act === 'staff') {
           if (Bld.workersAssigned(b2) >= Bld.maxWorkers(b2)) { this.toast('Fully staffed', true); return; }
           const v = Units.nearestIdleVillager(b2.x, b2.y);
-          if (!v) this.toast('No idle villager — free one up first', true);
+          if (!v) this.toast(S.levy ? '⚔ The levy is under arms — stand it down first' : 'No idle villager — free one up first', true);
           else {
             v.task = { type: 'work', id: b2.id }; v.tUnit = 0; v.tBld = 0;
             Units.setPath(v, b2.x, b2.y);
@@ -2482,6 +2524,18 @@ const UI = {
           this.toast(b2.rally
             ? 'Tap a new spot to move the rally — or tap the building to clear it'
             : 'Tap a spot to rally — new units head there (tap the building to cancel)');
+        }
+        else if (btn.dataset.act === 'levy') {
+          if (S.levy) {
+            const n = Units.standDownLevy();
+            this.toast(`🕊 The levy stands down — ${n} hand${n === 1 ? '' : 's'} may go back to work`);
+          } else {
+            const n = Units.raiseLevy();
+            if (!n) { this.toast('No villagers to call to arms', true); return; }
+            R.startHorn(Bld.cx(b2), Bld.cy(b2));
+            this.toast(`⚔ ${n} villager${n > 1 ? 's' : ''} take up arms — the levy eats like soldiers`);
+          }
+          this.renderPanel();
         }
         else if (btn.dataset.act === 'shelter') {
           const n = Units.soundHorn('P');
@@ -2501,7 +2555,7 @@ const UI = {
         else if (btn.dataset.act === 'callidle') {
           let n = 0;
           for (const u of S.units)
-            if (u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit) {
+            if (u.owner === 'P' && Units.isVillager(u) && !Units.isLevied(u) && !u.task && !u.tUnit) {
               const spot = MapGen.findNear(b2.x, b2.y + Bld.size(b2) + 1, 3, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: b2.x, y: b2.y + Bld.size(b2) + 1 };
               Units.moveTo(u, spot.x, spot.y);
               n++;
@@ -2614,8 +2668,9 @@ const UI = {
       // put everyone ashore in one order (each hull lands beside wherever it sits)
       const gLaden = this.sel.ids.map(id => Units.get(id)).filter(o => o && Units.isTransport(o) && o.cargo && o.cargo.length);
       const gAboard = gLaden.reduce((n, o) => n + o.cargo.length, 0);
+      const levyBand = !fleet && this.sel.ids.every(id => { const o = Units.get(id); return o && Units.isLevied(o); });
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
-        <div class="ptitle">${fleet ? '⚓ Fleet' : '⚔️ War Party'} <span style="color:var(--gold)">(${this.sel.ids.length})</span></div>
+        <div class="ptitle">${fleet ? '⚓ Fleet' : levyBand ? '🪓 The Levy' : '⚔️ War Party'} <span style="color:var(--gold)">(${this.sel.ids.length})</span></div>
         <div class="psub">${this.groupComposition(this.sel.ids)}</div></div>
         <button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button><button class="abtn" id="panelClose">✕</button></div>`;
       // SAVED ARMIES (tests/army-groups.mjs): a military group can be saved to
@@ -2631,7 +2686,9 @@ const UI = {
       // no engines and only a pure-melee (or all-horse) party loses it.
       const gAll = this.sel.ids.map(id => Units.get(id)).filter(Boolean);
       const gBusy = gAll.some(o => this.unitBusy(o));
-      const gLand = gMil.filter(o => !Units.isNaval(o));
+      // the levy fights under the same doctrines (minus Siege, which the
+      // artillery gate below refuses on its own — a levy has no battery)
+      const gLand = gAll.filter(o => (Units.canDefend(o) && !Units.isNaval(o)) || Units.isLevied(o));
       const gStrat = gLand.length && gLand.every(o => o.strat === gLand[0].strat) ? (gLand[0].strat || '') : '';
       const gSiegeable = gLand.length > 0 && Units.siegeArtillery(gLand).length > 0;
       const STRAT_NAME = { siege: 'Siege', chaos: 'Chaos', strike: 'Strike' };
@@ -2659,7 +2716,9 @@ const UI = {
       const gsave = panel.querySelector('[data-act="garmysave"]');
       if (gsave) gsave.addEventListener('click', () => {
         if (gsave.classList.contains('cant')) { this.toast('All three banners are taken — remove one first', true); return; }
-        this.saveArmy(this.sel.ids);
+        // a banner outlives the levy, so only real soldiers are banked —
+        // levied hands go back to the fields when the mode ends
+        this.saveArmy(this.sel.ids.filter(id => { const o = Units.get(id); return o && Units.isMilitary(o); }));
       });
       const gremove = panel.querySelector('[data-act="garmyremove"]');
       if (gremove) gremove.addEventListener('click', () => this.removeArmy(armyN));
@@ -2679,10 +2738,14 @@ const UI = {
       });
       panel.querySelectorAll('[data-act="gstrat"]').forEach(btn => btn.addEventListener('click', () => {
         const mode = btn.dataset.strat;
-        const mem = this.sel.ids.map(id => Units.get(id)).filter(o => o && Units.isMilitary(o) && !Units.isNaval(o));
+        const mem = this.sel.ids.map(id => Units.get(id)).filter(o => o && this.landFighter(o));
         if (!mem.length) return;
         const on = !mem.every(o => o.strat === mode);   // tapping the lit button stands it down
         for (const o of mem) {
+          // SIEGE never lands on a levied hand: siegeOrder's own member pick
+          // excludes them, so the stamp would light a doctrine no code then
+          // honours — the hands hold the line by their own levy branch instead
+          if (on && mode === 'siege' && Units.isLevied(o)) continue;
           o.strat = on ? mode : null;
           o.defend = false; o.assault = false;
           if (!on || mode !== 'siege') o.siegePost = null;
@@ -2735,6 +2798,7 @@ const UI = {
            (tests/banish.mjs): the panel's hint line is where this unit's
            options are explained, and a caption under every button turns the
            action row into a wall of small print. */
+        : Units.isLevied(u) ? 'Under arms — the levy. They fight for the village with the tools in their hands, eat like soldiers, and will not gather or build. Stand the levy down at the Town Center to send them back to work.'
         : Units.isVillager(u) ? 'Tap forest 🌲 / hills 🪨 / an orchard to gather, jumping fish 🐟 to fish off the shore, a work site to build, or a tile to walk. Banish sends them out of the valley for good — nothing is returned, but their place in the population is freed.'
         : u.kind === 'fishboat' ? 'Tap water where fish jump 🐟 to fish, or open water to row there.'
         : u.kind === 'catapult' ? 'Slow, but stone breaks stone — tap a rival wall, tower, or building to bombard it.'
@@ -2757,7 +2821,7 @@ const UI = {
       const helpBtn = own ? `<button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button>` : '';
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : '☠ '}${nm}</div>
-        <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${u.def}</div>
+        <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${Units.effDef(u)}</div>
         <div class="pwork" id="pWork">${own ? this.workLine(u) : ''}</div></div>
         ${helpBtn}<button class="abtn" id="panelClose">✕</button></div>
         <div class="pactions">${own && this.helpHidden ? '' : `<span class="psub">${hint}</span>`}`;
@@ -2804,7 +2868,9 @@ const UI = {
          same confirm pattern the hulls and demolition use, because it cannot
          be undone once they reach the rim. */
       if (own && Units.isVillager(u)) {
-        html += `<button class="abtn" data-act="gobuild">🔨 Build</button>`;
+        // under arms there is nothing Build could answer — the panel shows
+        // only what can act; the hint line carries the why
+        if (!Units.isLevied(u)) html += `<button class="abtn" data-act="gobuild">🔨 Build</button>`;
         html += this.confirmDemolish === u.id
           ? `<button class="abtn danger" data-act="banish">⚠️ Confirm — send them away</button>`
           : `<button class="abtn" data-act="banish">👋 Banish</button>`;
@@ -2840,7 +2906,7 @@ const UI = {
       // (a unit already in the stance keeps Stand Down wherever it is)
       if (own && Units.canDefend(u) && (u.defend || Units.inDefendBounds(u)))
         html += `<button class="abtn ${u.defend ? 'sel' : ''}" data-act="defend">${u.defend ? '🛡 Stand Down' : '🛡 Defend'}</button>`;
-      else if (own && !Units.isVillager(u) && this.unitBusy(u))
+      else if (own && (!Units.isVillager(u) || Units.isLevied(u)) && this.unitBusy(u))
         html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
       /* THE LAST OF AN ARMY (tests/army-groups.mjs). A war party ground down to
          one soldier still flies its banner, but a one-member group renders as
@@ -2973,7 +3039,7 @@ const UI = {
         // troops; the two can't march/sail together
         const naval = Units.isNaval(u2);
         const ids = S.units
-          .filter(o => o.owner === 'P' && (naval ? Units.isFleetable(o) : (Units.isMilitary(o) && !Units.isNaval(o))) &&
+          .filter(o => o.owner === 'P' && (naval ? Units.isFleetable(o) : this.landFighter(o)) &&
             Math.hypot(o.x - u2.x, o.y - u2.y) <= CFG.GROUP_R)
           .map(o => o.id);
         if (ids.length < 2) { this.toast(naval ? 'No other ships within reach' : 'No other soldiers within reach', true); return; }

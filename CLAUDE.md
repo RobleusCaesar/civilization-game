@@ -102,6 +102,7 @@ node tests/calm-peace.mjs      # Calm starts at PEACE: nobody auto-engages until
 node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do
 node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-order tolerant, saves mid-lesson, the scout draws no RNG
 node tests/muster-horn.mjs   # one tap calls the workforce in, one tap sends it back to its posts
+node tests/levy.mjs          # the village under arms: derived membership, soldier's upkeep, works nothing, holds the town
 node tests/tree-fall.mjs     # a felled wood goes over on screen — every tree about its own foot
 ```
 
@@ -1350,6 +1351,77 @@ shares the villager panel's row with Build; **villagers only for now** —
 once in the villager's hint line, where the rest of that unit's options are
 explained, because a caption under every button turns the action row into a
 wall of small print.
+
+**The levy** (`tests/levy.mjs`): the village called to arms — the player's
+mirror of the rival's townsfolk militia, and the last-ditch lever for a town
+whose army is gone. `S.levy` is ONE BIT (in every save; legacy saves backfill
+false) and `Units.isLevied` DERIVES membership — nothing is stamped on a
+unit, so a villager trained mid-levy is levied, a save round-trip loses
+nothing, and stand-down has nothing to restore. The lever lives on the TC
+panel where Train Villager used to sit (Train moved up beside a compact
+Upgrade — TC only, every other building keeps the wide button), so the two
+emergency calls — the levy and the horn — share a row.
+**The stats are the tool in their hands**: `effAtk` answers
+`max(atk, CFG.LEVY.atk)` — the lodge-L3 armed village (base+4) still counts
+for MORE, never less — and `Units.effDef` adds `CFG.LEVY.def` on top of the
+stamped stat, read at the damage formulas (the only places def decides
+anything; the UI stat lines read it too, so the panel tells the truth).
+**The price is the larder**: a levied hand eats at the MILITARY rate
+(`foodUpkeep`) for as long as the mode holds — a stance, not a free upgrade.
+**The levy works nothing**: every work order refuses while under arms — the
+assign* gates return false, `UI.levyBlocks` toasts the reason at the tap
+sites (rule 4), a DRAG onto a resource degrades to the plain walk
+(movement-first by design), `nearestIdleVillager` skips levied hands (so
+auto-dispatch and staff/sendworker never poach them, and those handlers'
+"no idle villager" toast names the levy while it holds), and `offDuty` is
+false for a levied hand so Back to work can never pull a fighter off the
+line. Raising the levy stamps every working hand's post (`rememberPost`, the
+horn's own memory); standing down drops doctrines/marks and hands the whole
+workforce to Back to work.
+**It holds the town, it does not range**: auto-acquisition (a levy branch in
+`Combat.acquire`, beside the rival militia's) is bounded by
+`Combat.MILITIA_RANGE` of the hall BOTH ways — the hand and the foe. It asks
+`hostileUnits`, the peace-gated funnel, so a levy raised at peace threatens
+only the wilds. A struck levied hand stands and fights (the flee branch
+gates on `!isLevied`). Explicit orders are the player's business: attack
+taps/drags accept levied villagers (`isMilitary || isLevied` at the
+building-attack AND bridge-attack gates; unit-attack orders were never
+gated), and the perimeter does not apply to them.
+**And the CHASE is leashed, not just the acquisition** (from the adversarial
+review of the first cut): a villager is neither wild nor military, so the
+generic chase leash in `Combat.update` answered **0** and a foe that brushed
+the perimeter and withdrew dragged every idle levied hand across the whole
+map — measured at 33 tiles from the hall, against the branch's own "never
+ranges" promise. The leash line now includes `isLevied` (10 tiles, ordered
+attacks exempt — the same terms soldiers chase under) and the levy branch
+re-stamps `u.anchor` at acquisition so the pursuit is bounded from the
+town side out. **And a SPENT ORDER IS SPENT**: an explicit attack's task
+(`'attack'`/`'attackBld'`) outlives its kill — nothing clears it at death
+cleanup — and it wedged the hand out of its own acquire branch forever with
+a Stop button lit over it. The levy branch clears a spent order on sight
+(reaching it with one still set PROVES it is spent — a live mark is skipped
+at the top of the scan), and `standDownLevy` clears both types, the path
+with them, and the doctrines of villagers riding below deck in a transport.
+**The mirror reflects both ways**: `Combat.militiaFoe`'s P case counts a
+levied hand like a soldier, so a levy marched on the rival hall raises its
+townsfolk militia exactly as a war party would — still through the
+peace-gated funnel. Siege is never STAMPED on a levied hand (the gstrat
+handler skips them for that one mode): `siegeOrder`'s own member pick
+excludes villagers, so the doctrine would light with no code honouring it —
+a mixed band's catapults take the siege, the hands hold the line by their
+own branch. Save Army banks only real soldiers (a banner outlives the levy).
+The idle count/Call idle/convenience-dispatch taps all exclude levied hands
+(under arms is not idle labor — and the nothing-selected resource taps toast
+the levy instead of failing silently); a rally point that lands on a
+resource falls back to the plain walk when the gather is refused; the site
+log names the levy when no builder will come; `hornPosts` promises no posts
+while the levy holds (a released hand comes out under arms, not sent).
+**It bands and fights under doctrine**: `UI.landFighter` (soldier ashore OR
+levied hand) is the grouping domain, a band of only levied hands is titled
+"🪓 The Levy", and the Tactics expander offers Strike and Chaos — never
+Siege, which the existing `siegeArtillery` gate refuses for a band with no
+battery. `panelSig` carries `S.levy` on the TC/unit/group signatures, so the
+lever's label, the Build button and the tactics all flip without a reselect.
 
 **The muster horn** (`tests/muster-horn.mjs`): the Town Center's lever, and
 the same bargain the gate makes — one tap and the whole workforce downs tools

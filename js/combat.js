@@ -192,7 +192,11 @@ const Combat = {
      asks hostile('A','P'), the peace-gated funnel. Barbarians signed
      nothing and still raise the militia. */
   militiaFoe(o) {
-    return (o.owner === 'P' && Units.isMilitary(o) && this.hostile('A', 'P')) ||
+    // a LEVIED player villager counts like a soldier (tests/levy.mjs): a levy
+    // marched on the rival hall must raise its townsfolk exactly as a war
+    // party would — the mirror reflects both ways, and still through the
+    // peace-gated funnel
+    return (o.owner === 'P' && (Units.isMilitary(o) || Units.isLevied(o)) && this.hostile('A', 'P')) ||
            (o.owner === 'R' && !Units.isTransport(o));
   },
   townUnderSiege() {
@@ -376,6 +380,42 @@ const Combat = {
           }
         } else if (u.militia) {
           u.militia = false;   // the siege has lifted — back to the lanes
+        }
+      } else if (Units.isLevied(u)) {
+        /* THE LEVY (tests/levy.mjs): the player's mirror of the branch above.
+           A villager under arms holds the TOWN'S OWN GROUND — auto-
+           acquisition is perimeter-bound BOTH ways (the hand and the foe
+           must each stand within MILITIA_RANGE of the hall), so the levy
+           never ranges after a runner; an explicit order is the player's
+           business and takes whatever bounds the player gives it. A doctrine
+           in force is honoured exactly as a soldier's: chaos hunts by its
+           own ladder, strike waits for the one ordered mark. hostileUnits is
+           the peace-gated funnel, so a levy raised at peace threatens only
+           the wilds until the player breaks the calm themselves. */
+        if (u.strat === 'strike') continue;
+        if (u.strat === 'chaos') { this.chaosSeek(u); continue; }
+        /* A SPENT ORDER IS SPENT. An explicit attack sets task
+           {type:'attack'|'attackBld'}, and nothing clears it on the kill —
+           reaching this line with one still on means the marks are gone
+           (a live tUnit/tBld is skipped at the top of the scan), so the
+           order is finished and the hand is the levy's again. Left in
+           place it wedged the villager forever: this branch read "busy",
+           and unitBusy kept a Stop button lit over a hand doing nothing. */
+        if (u.task && (u.task.type === 'attack' || u.task.type === 'attackBld')) {
+          u.task = null; u.path = null;
+        }
+        if (u.task) continue;                       // walking / sheltering — busy
+        const tc = Bld.tcOf('P');
+        if (tc) {
+          const cx = Bld.cx(tc), cy = Bld.cy(tc);
+          if (Math.hypot(u.x - cx, u.y - cy) <= this.MILITIA_RANGE + 1) {
+            const e = this.nearestUnit(u.x, u.y, this.MILITIA_RANGE,
+              o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o) &&
+                   Math.hypot(o.x - cx, o.y - cy) <= this.MILITIA_RANGE);
+            // the anchor is where they STOOD — the chase leash above measures
+            // from it, so the pursuit is bounded from the town side out
+            if (e) { u.anchor = { x: u.x, y: u.y }; u.tUnit = e.id; }
+          }
         }
       }
     }
@@ -997,8 +1037,13 @@ const Combat = {
           // guards give up long chases and go home; wild animals lose interest even
           // sooner. Player-ordered attacks are exempt — no leash yanks a soldier
           // back home mid-charge while the rest of the party fights.
+          // …and the LEVY is leashed like a guard (tests/levy.mjs): a
+          // villager is neither wild nor military, so without this line its
+          // chase had leash 0 — a foe that brushed the perimeter and withdrew
+          // dragged the whole levy across the map, the exact ranging the
+          // perimeter exists to forbid. Ordered attacks stay exempt.
           const leash = Units.isWild(u) ? CFG.ANIMALS.leash
-            : (Units.isMilitary(u) && !(u.task && (u.task.type === 'raid' || u.task.type === 'attack'))) ? 10 : 0;
+            : ((Units.isMilitary(u) || Units.isLevied(u)) && !(u.task && (u.task.type === 'raid' || u.task.type === 'attack'))) ? 10 : 0;
           if (leash && Math.hypot(u.x - u.anchor.x, u.y - u.anchor.y) > leash) {
             u.tUnit = 0;
             Units.setPath(u, u.anchor.x | 0, u.anchor.y | 0);
@@ -1043,7 +1088,7 @@ const Combat = {
           }
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
-          const dmg = Math.max(1, Math.round(Units.effAtk(u) - tgt.def));
+          const dmg = Math.max(1, Math.round(Units.effAtk(u) - Units.effDef(tgt)));
           if (CFG.UNITS[u.kind].proj) {
             this.launch(u, tgt.x, tgt.y, { kind: 'unit', id: tgt.id, dmg, srcId: u.id });
           } else {
@@ -1193,7 +1238,7 @@ const Combat = {
         if (l1tower && G.rand() < 1 / 3) {
           R.float(tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf');
         } else {
-          const dmg = Math.max(1, lv.atk - tgt.def);
+          const dmg = Math.max(1, lv.atk - Units.effDef(tgt));
           R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f0d27a');
           Units.damage(tgt, dmg, 0, b.owner);
         }

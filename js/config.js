@@ -652,6 +652,25 @@ const CFG = {
   //           to look up and actually see it happen (G.tickMortality → dyingTick)
   MORTALITY: { every: [25, 40], animMs: 1500, warnMs: 1000, floor: 3 },
 
+  /* THE LEVY (tests/levy.mjs) — the whole village called to arms, the
+     player's answer to the rival's townsfolk militia and the last-ditch
+     button for a town whose army is gone. One tap at the Town Center and
+     every villager downs tools and fights with what they are holding; one
+     tap and they stand down, with Back to work waiting to send each hand to
+     the exact post it left (the muster horn's own memory).
+       atk — a hand with an axe fights at this, whoever they were (the lodge
+             L3 armed-village bonus still wins where it is higher: the levy
+             never LOWERS anyone)
+       def — a jerkin is not armor, but a raised tool turns a blow
+     The COST is upkeep, not gold: a levied hand eats at the MILITARY rate
+     (CFG.FOOD_UPKEEP.military, 1.5× a villager) for as long as the mode
+     holds — keeping the levy up drains the stores, which is what makes it a
+     stance and not a free upgrade. Auto-engagement is bounded by
+     Combat.MILITIA_RANGE of the hall both ways (the hand AND the foe), the
+     same perimeter the rival's militia holds — the levy defends the town,
+     it does not range. Explicit orders are the player's business. */
+  LEVY: { atk: 5, def: 1 },
+
   /* HOW THEY WENT. Keyed by what the villager was DOING — the station it was
      stationed at, the resource it was gathering, whether it was building or
      fishing — so the news reads like a small story rather than a dice roll.

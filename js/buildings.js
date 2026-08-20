@@ -1007,6 +1007,7 @@ const Bld = {
           : null;
         if (!v) v = Units.nearestIdleVillager(x, y);
         if (v && Units.assignBuild(v, b)) G.log(`${d.name} site laid out — a villager heads over`);
+        else if (S.levy) G.log(`${d.name} site laid out — the levy is under arms; the works wait for the stand-down`, true);
         else G.log(`${d.name} needs a builder — tap a villager, then the site`, true);
       }
     }
@@ -1372,10 +1373,12 @@ const Bld = {
           // rally point: fresh units head there; villagers rallied onto a
           // resource tile (or boats onto stocked water) start gathering immediately
           if (b.owner === 'P' && b.rally) {
-            if (Units.isVillager(nu) && CFG.GATHER[S.map.terrain[MapGen.idx(b.rally.x, b.rally.y)]])
-              Units.assignGather(nu, b.rally.x, b.rally.y);
-            else if (nu.kind === 'fishboat' && Units.canFish(b.rally.x, b.rally.y))
-              Units.assignFish(nu, b.rally.x, b.rally.y);
+            // a refused work order (a levied hand, a claimed shoal) falls back
+            // to the plain walk — a rally point always MEANS "go there"
+            if (Units.isVillager(nu) && CFG.GATHER[S.map.terrain[MapGen.idx(b.rally.x, b.rally.y)]] &&
+                Units.assignGather(nu, b.rally.x, b.rally.y)) { /* gathering there */ }
+            else if (nu.kind === 'fishboat' && Units.canFish(b.rally.x, b.rally.y) &&
+                Units.assignFish(nu, b.rally.x, b.rally.y)) { /* fishing there */ }
             else Units.moveTo(nu, b.rally.x, b.rally.y);
           }
         }

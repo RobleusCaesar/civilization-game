@@ -86,7 +86,10 @@ const Units = {
     if (owner === 'P' && S.garrison) f += S.garrison.length * U.military;
     for (const u of S.units) {
       if (u.owner !== owner) continue;
-      if (this.isVillager(u) || this.isSapper(u)) f += U.villager;
+      if (this.isVillager(u) || this.isSapper(u))
+        // a levied hand eats at the military rate — the mode's whole price,
+        // and why the levy is a stance you hold, not a free upgrade
+        f += this.isLevied(u) ? U.military : U.villager;
       else if (u.kind === 'rider' || u.kind === 'horsearcher' || u.kind === 'lancer') f += U.cavalry;
       else if (this.isSiege(u) || u.kind === 'ballista') f += U.siege;
       else if (u.kind === 'fishboat' || this.isTransport(u)) {
@@ -193,9 +196,17 @@ const Units = {
   villagerArmed() {
     return S.buildings.some(b => b.owner === 'P' && b.key === 'lodge' && b.level >= 3 && Bld.done(b));
   },
+  /* THE LEVY (tests/levy.mjs): membership is DERIVED, never stamped — S.levy
+     is the one bit (in every save), and every stat, upkeep and behavior read
+     asks this predicate live. No per-unit flag to set on training, none to
+     clear on stand-down, nothing for a save round-trip to lose. */
+  isLevied(u) { return !!(S.levy && u.owner === 'P' && this.isVillager(u)); },
   effAtk(u) {
     let atk = u.atk;
     if (u.owner === 'P' && this.isVillager(u) && this.villagerArmed()) atk += 4;
+    // the levy fights at its own figure — max(), so an armed village's lodge
+    // spears (base 2 + 4, above) still count for more, never less
+    if (this.isLevied(u)) atk = Math.max(atk, (CFG.LEVY || {}).atk || 5);
     if (u.owner === 'P' && this.isMilitary(u)) {
       // Watchtower L3 signal fire aura
       for (const b of S.buildings)
@@ -210,6 +221,9 @@ const Units = {
     }
     return atk;
   },
+  // a raised tool turns a blow: the levy's def rides on top of the stamped
+  // stat, read at the damage formula (the only place def decides anything)
+  effDef(u) { return (u.def || 0) + (this.isLevied(u) ? ((CFG.LEVY || {}).def || 1) : 0); },
 
   /* ---- WHAT AM I DOING, AND WHAT AM I NETTING? (tests/work-report.mjs) ----
      The panel's live line. Everything static about a unit (HP, ATK, DEF) you
@@ -230,6 +244,8 @@ const Units = {
     const per = (rate, res) => ({ res, n: rate * this.dayLen() });
     if (u.tUnit) return { icon: '⚔️', what: 'In combat', rate: null, working: true };
     if (u.tBld) return { icon: '⚔️', what: 'Attacking a building', rate: null, working: true };
+    if (this.isLevied(u) && !t)
+      return { icon: '⚔', what: 'Under arms — the levy', rate: null, working: false };
     if (!t) {
       if (u.stance === 'guard') return { icon: '🛡️', what: 'Defending', rate: null, working: true };
       return { icon: '💤', what: 'Idle', rate: null, working: false };
@@ -469,6 +485,7 @@ const Units = {
   },
 
   assignGather(u, tx, ty) {
+    if (this.isLevied(u)) return false;   // under arms — the levy works nothing (tests/levy.mjs)
     const g = CFG.GATHER[S.map.terrain[MapGen.idx(tx, ty)]];
     if (!g) return false;
     const best = this.gatherEdge(u, tx, ty);
@@ -490,6 +507,7 @@ const Units = {
      tile itself has to be walkable, which it is by construction (T.GOLDORE is
      in no BLOCK_TERR set, and Bld.solid leaves worker plots open). */
   assignMine(u, tx, ty) {
+    if (this.isLevied(u)) return false;   // under arms — the levy works nothing (tests/levy.mjs)
     if (!this.isVillager(u) || !Bld.seamAt(tx, ty)) return false;
     const b = Bld.at(tx, ty);
     if (b && b.key === 'mine' && b.owner === u.owner) {
@@ -540,6 +558,7 @@ const Units = {
 
   // villagers can line-fish a shoal from the beach beside it
   assignShoreFish(u, tx, ty) {
+    if (this.isLevied(u)) return false;   // under arms — the levy works nothing (tests/levy.mjs)
     if (!this.isVillager(u) || !MapGen.shoal(tx, ty) || S.map.resAmount[MapGen.idx(tx, ty)] <= 0)
       return false;
     let best = null, bd = 1e9;
@@ -791,7 +810,7 @@ const Units = {
   nearestIdleVillager(x, y) {
     let best = null, bd = 1e9;
     for (const u of S.units) {
-      if (u.owner !== 'P' || !this.isVillager(u) || u.task || u.tUnit) continue;
+      if (u.owner !== 'P' || !this.isVillager(u) || this.isLevied(u) || u.task || u.tUnit) continue;   // a levied hand is not idle labor
       const d = Math.hypot(u.x - x - 0.5, u.y - y - 0.5);
       if (d < bd) { bd = d; best = u; }
     }
@@ -800,6 +819,7 @@ const Units = {
 
   // send a villager to construct or repair a building; frees up when done
   assignBuild(u, b) {
+    if (this.isLevied(u)) return false;   // under arms — the levy works nothing (tests/levy.mjs)
     u.task = { type: 'build', id: b.id };
     u.tUnit = 0; u.tBld = 0;
     return this.setPath(u, b.x, b.y);
@@ -1919,7 +1939,9 @@ const Units = {
     u.post = { type: t.type, id: t.id, x: t.x, y: t.y };
   },
   // idle, fleeing or sheltering — nobody who is actually working
-  offDuty(u) { return !u.task || u.task.type === 'flee' || u.task.type === 'garrison'; },
+  // …and a levied hand is UNDER ARMS, not off duty: Back to work must never
+  // pull a fighter off the line — the mode stands down first (tests/levy.mjs)
+  offDuty(u) { return !this.isLevied(u) && (!u.task || u.task.type === 'flee' || u.task.type === 'garrison'); },
   /* Send them back to it. Every road home is VALIDATED rather than trusted:
      the camp may have burned, the stand may have been felled by somebody
      else, another hand may have taken the last place on the plot. A post
@@ -1953,6 +1975,47 @@ const Units = {
      is that the second call is real. Villagers only (soldiers keep their
      posts — the same line Units.canBanish draws), and owner-agnostic in
      shape, though only the player has a horn to sound. */
+  /* RAISE THE LEVY (tests/levy.mjs): every villager downs tools where they
+     stand and takes up arms. The interruption REMEMBERS (rememberPost, the
+     muster horn's own memory), so standing down later hands the whole
+     workforce back to Back to work. They do not muster anywhere — they hold
+     the ground they are on, and Combat.acquire's levy branch finds them
+     their marks inside the town's perimeter. */
+  raiseLevy() {
+    if (S.levy) return 0;
+    let n = 0;
+    for (const u of S.units) {
+      if (u.owner !== 'P' || !this.isVillager(u)) continue;
+      this.rememberPost(u);
+      u.task = null; u.path = null; u.tUnit = 0; u.tBld = 0;
+      n++;
+    }
+    if (n) S.levy = true;
+    return n;
+  },
+  // …and stand it down: tools come back out, doctrines and marks drop, and
+  // every hand with a remembered post is Back to work's to send
+  standDownLevy() {
+    S.levy = false;
+    let n = 0;
+    for (const u of S.units) {
+      if (u.owner === 'P' && this.isTransport(u) && u.cargo) {
+        // hands below deck carry their doctrine with them — clear it there
+        // too, or an unloaded villager fights on under a stance nobody can
+        // reach (no panel offers a levied doctrine to a plain villager)
+        for (const c of u.cargo) if (c.kind === 'villager') { c.strat = null; c.assault = false; }
+      }
+      if (u.owner !== 'P' || !this.isVillager(u)) continue;
+      u.tUnit = 0; u.tBld = 0; u.strat = null; u.assault = false;
+      // BOTH explicit-order types — orderAttackBuilding writes 'attackBld',
+      // and leaving it standing marched a stood-down hand on into the enemy
+      // town (and left Units.moving() true over a villager going nowhere)
+      if (u.task && (u.task.type === 'attack' || u.task.type === 'attackBld')) u.task = null;
+      u.path = null; u.pathI = 0;
+      n++;
+    }
+    return n;
+  },
   soundHorn(owner) {
     const tc = Bld.tcOf(owner);
     if (!tc) return 0;
@@ -2000,7 +2063,9 @@ const Units = {
   // gets to promise. A sheltered hand with no post is simply let out.
   hornPosts(owner) {
     let n = 0;
-    if (owner === 'P' && S.garrison) for (const gv of S.garrison) if (gv.post) n++;
+    // under the levy a released hand comes out UNDER ARMS and is not sent to
+    // any post — so the label may not promise one (tests/levy.mjs)
+    if (owner === 'P' && S.garrison && !S.levy) for (const gv of S.garrison) if (gv.post) n++;
     for (const u of S.units)
       if (u.owner === owner && this.isVillager(u) && this.offDuty(u) && u.post) n++;
     return n;
@@ -2116,7 +2181,7 @@ const Units = {
       return;
     }
     if (!attacker) return;
-    if (this.isVillager(u) && u.owner === 'P' && !this.villagerArmed()) {
+    if (this.isVillager(u) && u.owner === 'P' && !this.villagerArmed() && !this.isLevied(u)) {
       const spot = this.fleeSpot(u, attacker.x, attacker.y);
       // …and the work they are running from is REMEMBERED (see rememberPost):
       // one "back to work" is what puts a scattered village back on its jobs
