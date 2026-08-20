@@ -101,6 +101,8 @@ node tests/land.mjs            # the coast is TRACED and the rock field SCATTERE
 node tests/calm-peace.mjs      # Calm starts at PEACE: nobody auto-engages until the player's first strike; the rival races for its own wonder
 node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do
 node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-order tolerant, saves mid-lesson, the scout draws no RNG
+node tests/muster-horn.mjs   # one tap calls the workforce in, one tap sends it back to its posts
+node tests/tree-fall.mjs     # a felled wood goes over on screen — every tree about its own foot
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -1348,6 +1350,47 @@ shares the villager panel's row with Build; **villagers only for now** —
 once in the villager's hint line, where the rest of that unit's options are
 explained, because a caption under every button turns the action row into a
 wall of small print.
+
+**The muster horn** (`tests/muster-horn.mjs`): the Town Center's lever, and
+the same bargain the gate makes — one tap and the whole workforce downs tools
+and runs for the hall, one tap and every one of them goes back to the exact
+job it was called off. Sheltering already existed; **putting them back was the
+laborious half** — twenty hands, tapped one at a time, onto the plots and
+stands they had just left — and that is the half this adds.
+**THE INTERRUPTION REMEMBERS.** `u.post` (in every save; absent means none, so
+a pre-horn save needs no migration) is stamped in exactly two places, both of
+them "the work was interrupted": `Units.damage`'s villager flee branches and
+`Units.soundHorn`. It is deliberately NOT written by every `assign*` call — a
+post recorded the moment the tools go down IS the last real order, so there is
+nothing to keep in sync and nothing to clear when the player gives a fresh
+one. `rememberPost` refuses to overwrite with a flee/garrison task
+(`Units.POST_TASKS` is the whitelist): a villager frightened twice must still
+remember the seam it was working, or the promise evaporates in a long raid.
+**And BACK TO WORK never yanks anybody off a job** — `Units.backToWork` moves
+only hands `Units.offDuty` calls off duty (idle, fleeing, sheltering), which is
+also what makes a stale post harmless: it is never read, and the next
+interruption overwrites it. That one rule is what lets the post live in ONE
+place instead of being cleared at a dozen order sites.
+**Every road home is validated** (`Units.returnToPost`): the camp may have
+burned, the stand may have been felled by somebody else, another hand may have
+taken the last place on the plot. A post that no longer exists is not an error
+— the villager stands down where they are, which is what an honest "there is
+no job there any more" looks like. **The sheltered carry theirs inside**: a
+villager who reaches the hall leaves `S.units` entirely, so the post rides on
+the `S.garrison` entry and comes back out with them.
+**The panel offers only what can act** (the army-groups rule):
+`Units.hornPending` is how many hands a back-to-work would actually MOVE — the
+button's own gate — and `hornPosts` how many have a job to go back to, which
+is what the label may promise (`UI.hornBackLine` is its one writer, shared by
+the render and the in-place refresh, and `hornPending` rides in `panelSig` so
+the button appears and vanishes without a reselect). VILLAGERS ONLY, the line
+`Units.canBanish` already draws — an army has its own stances.
+**The horn is heard, not just obeyed** (`R.startHorn` / `drawHorns`): three
+widening rings of hard gold pixel dots over the village (never a smooth
+stroked circle — the ground under them is drawn in hard steps and a soft ring
+reads as UI laid over the scene), plus `R.startle`, so sounding it throws
+every bird in the valley up. Render state only, cleared in `R.onNewGame` — the
+`R.collapses` rule.
 
 **The Ancient Wonder** (`tests/wonder.mjs`): the SECOND way to win, and the
 only one that isn't a war — raise the monument and the run is yours. **Ten**
@@ -3230,6 +3273,50 @@ stand is mostly ordinary trees with the odd sapling and the odd giant. Sparse
 and medium tiles still contain every tree WHOLLY within the tile — measured on
 the conifer's own taller bounding box, or a spire's leader is cut off at the
 fringe, which is the one place a whole tree matters.
+
+**THE STAND COMES DOWN** (`tests/tree-fall.mjs`): felling a wood is the
+most-watched work in the early game and its payoff was a tile POPPING from
+canopy to stumps between two frames. A tree that falls is the same trade the
+tower's collapse makes — a second of animation for a minute of work.
+**The frames are CUT FROM THE TILE'S OWN FOREST ART** (`R.fallSheet`, cached
+per artwork per direction in a WeakMap), exactly the way `collapseSheet` cuts a
+tower out of its sprite, so all eight forest variants, the three densities, the
+rare character tiles and a dropped-in `assets/terrain/forest.png` all topple
+for free with no art authored. `R.forestSpriteAt` is the ONE answer to "which
+stand stands here", factored out of `drawTile` and shared with the fall — or
+the stand that topples would not be the stand that was standing.
+**EVERY TREE GOES OVER ABOUT ITS OWN FOOT.** The obvious implementation —
+rotate the tile's art rigidly about a pivot — is plainly wrong and was the
+first thing tried: what you see is A SQUARE OF FOREST SPINNING, because a rigid
+rotation moves a tree on the left of the tile through a completely different
+arc from one on the right and carries the tile's own edge round with it. The
+honest transform is a **SHEAR**: a source row keeps its x — so every trunk
+stays where it was rooted — and only its HEIGHT is projected, a row `hh` up
+landing `hh·sin θ` to the side and `hh·cos θ` above the ground line. That is
+each tree pivoting about its own base, all of them together, which is exactly
+what a stand being felled looks like. Rows are drawn top-first so the roots
+paint last and stay in front of the crown lying past them, and the easing
+accelerates (a felled tree hangs on the hinge of uncut wood and then goes)
+without spending the first frames of the sheet standing still. The test
+measures the distinction directly: mid-swing both feet are still two separate
+feet and neither has left its stump, while the crown sweeps out a side of a
+tile and comes to rest on the ground.
+**It fires where a wood actually LEAVES a tile** — the gather task's
+exhaustion branch and `Terraform.clear`, nowhere else — and **BEFORE the
+terrain flips**, the same ordering `startCollapse` needs before
+`removeToRuin`: a moment later there is no forest there to cut the fall from.
+It goes over AWAY from the hand that felled it; with nobody standing there (a
+sapper's lane, a tile spent off screen) the tile's own hash decides.
+Owner-agnostic — the rival fells timber too. **Fog-gated at the trigger**
+(timber nobody can see is drawn for nobody) and **capped** (a sapper clearing a
+lane is a scene, not a whiteout). `R.treefalls` is render state and NEVER in a
+save, cleared in `R.onNewGame`. And it is a PICTURE: the tile is stumps in
+STATE the instant it is spent — passability, the maker's mark and the regrowth
+clock are all exactly as they were.
+**The trap this cost**: `startTreeFall` guarded itself with `window.G &&` — and
+`G` is a script-level `const`, so `window.G` is **undefined** and the guard
+silently disabled the whole feature (the same trap `window.Sprites` and
+`window.S` set). Reference `G` bare.
 
 **THE GROUND MAY NOT SPEAK THE RESOURCE LANGUAGE** (`R.DECAL_RESERVED`, pinned
 by `noGroundSurfaceMakesAFalsePromise`): the map has a colour LANGUAGE and

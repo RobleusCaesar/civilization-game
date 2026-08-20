@@ -1326,6 +1326,11 @@ const Units = {
             // now PASSABLE (felling the wood opens a new route through it) and,
             // from here on, the ONE kind of ground that station belongs on
             S.map.resAmount[idx] = 0;
+            // THE STAND COMES DOWN (tests/tree-fall.mjs). Before the flip —
+            // the fall is cut from the tile's own forest art, and a moment
+            // later there is no forest there to cut. It goes over away from
+            // the hand that felled it.
+            if (terr === T.FOREST && window.R && R.startTreeFall) R.startTreeFall(t.x, t.y, u.x, u.y);
             S.map.terrain[idx] = CFG.DEPLETED[terr];
             // THE GROUND REMEMBERS WHOSE HANDS MADE IT (tests/worked-ground.mjs):
             // spent ground carries its maker's mark, and the rival AI may only
@@ -1576,7 +1581,7 @@ const Units = {
           if (this.moving(u)) this.followPath(u, dt);
           else if (!this.setPath(u, tc.x, tc.y)) u.task = null;
         } else {
-          S.garrison.push({ hp: u.hp, maxhp: u.maxhp });
+          S.garrison.push({ hp: u.hp, maxhp: u.maxhp, post: u.post || null });
           if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
           S.units.splice(i, 1);
         }
@@ -1888,6 +1893,118 @@ const Units = {
      step PAST the soldier on the far side from the threat, so the villager
      genuinely puts the fighter between themselves and it. Shared by the
      damage() flee branches (both tribes) and the rival's idle scurry. */
+  /* ============ THE POST A HAND WAS CALLED AWAY FROM ============
+     (tests/muster-horn.mjs.) Fleeing a raid, or answering the muster horn,
+     is the easy half — every villager in the village drops what they are
+     doing in one frame. Putting them BACK was the laborious half: twenty
+     hands, tapped one at a time, onto the exact plots and stands they had
+     just left. So the interruption REMEMBERS.
+
+     `u.post` is stamped only where work is genuinely interrupted — the flee
+     branches below and the horn — and it is deliberately NOT stamped by
+     every assign* call: a post recorded at the moment the tools go down IS
+     the last real order, so there is nothing to keep in sync and nothing to
+     clear when the player gives a fresh one. `rememberPost` refuses to
+     overwrite with a flee/garrison task for the same reason — a villager
+     frightened twice must still remember the seam it was working.
+
+     The counterpart rule is that BACK TO WORK never yanks anyone off a job:
+     it moves only hands that are off duty (idle, fleeing, sheltering), so a
+     stale post on a villager the player has since re-tasked is simply never
+     read, and the next interruption overwrites it. */
+  POST_TASKS: { work: 1, gather: 1, build: 1, fish: 1, shorefish: 1, claim: 1 },
+  rememberPost(u) {
+    const t = u.task;
+    if (!t || !this.POST_TASKS[t.type]) return;
+    u.post = { type: t.type, id: t.id, x: t.x, y: t.y };
+  },
+  // idle, fleeing or sheltering — nobody who is actually working
+  offDuty(u) { return !u.task || u.task.type === 'flee' || u.task.type === 'garrison'; },
+  /* Send them back to it. Every road home is VALIDATED rather than trusted:
+     the camp may have burned, the stand may have been felled by somebody
+     else, another hand may have taken the last place on the plot. A post
+     that no longer exists is not an error — the villager simply stands
+     down where they are, which is what an honest "there is no job there
+     any more" looks like. */
+  returnToPost(u) {
+    const p = u.post;
+    u.post = null;
+    if (!p) return false;
+    u.tUnit = 0; u.tBld = 0;
+    if (p.type === 'work' || p.type === 'build') {
+      const b = Bld.get(p.id);
+      if (!b || b.owner !== u.owner) return false;
+      if (p.type === 'build') return b.construction > 0 && this.assignBuild(u, b);
+      if (b.construction > 0 || !Bld.def(b.key).needsWorker) return false;
+      if (Bld.workersAssigned(b) >= Bld.maxWorkers(b)) return false;   // somebody took the place
+      u.task = { type: 'work', id: b.id };
+      this.setPath(u, b.x, b.y);
+      return true;
+    }
+    if (p.type === 'gather') return this.assignGather(u, p.x, p.y);
+    if (p.type === 'claim') return this.assignMine(u, p.x, p.y);
+    if (p.type === 'fish') return this.assignFish(u, p.x, p.y);
+    if (p.type === 'shorefish') return this.assignShoreFish(u, p.x, p.y);
+    return false;
+  },
+  /* THE MUSTER HORN. One tap and the whole workforce downs tools and runs for
+     the hall; one tap and they all go back. The recall is the shelter order
+     that already existed — what makes it a LEVER rather than a panic button
+     is that the second call is real. Villagers only (soldiers keep their
+     posts — the same line Units.canBanish draws), and owner-agnostic in
+     shape, though only the player has a horn to sound. */
+  soundHorn(owner) {
+    const tc = Bld.tcOf(owner);
+    if (!tc) return 0;
+    let n = 0;
+    for (const u of S.units) {
+      if (u.owner !== owner || !this.isVillager(u)) continue;
+      this.rememberPost(u);
+      u.task = { type: 'garrison' }; u.tUnit = 0; u.tBld = 0;
+      this.setPath(u, tc.x, tc.y);
+      n++;
+    }
+    return n;
+  },
+  backToWork(owner) {
+    const tc = Bld.tcOf(owner);
+    let out = 0, sent = 0;
+    // the sheltered come out FIRST, carrying the post they took inside with
+    // them, so the loop below sends them on with everybody else
+    if (owner === 'P' && tc && S.garrison && S.garrison.length) {
+      for (const gv of S.garrison) {
+        const spot = MapGen.findNear(tc.x, tc.y + Bld.size(tc), 4,
+          (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: tc.x, y: tc.y + Bld.size(tc) };
+        const v = this.spawn('villager', 'P', spot.x, spot.y);
+        v.hp = Math.min(gv.hp, v.maxhp);
+        v.post = gv.post || null;
+        out++;
+      }
+      S.garrison = [];
+    }
+    for (const u of S.units) {
+      if (u.owner !== owner || !this.isVillager(u) || !this.offDuty(u)) continue;
+      if (this.returnToPost(u)) sent++;
+      else if (u.task) { u.task = null; u.path = null; }   // no job to go back to — stand down here
+    }
+    return { out, sent };
+  },
+  // how many hands a BACK TO WORK would actually MOVE (the panel's own gate)…
+  hornPending(owner) {
+    let n = (owner === 'P' && S.garrison) ? S.garrison.length : 0;
+    for (const u of S.units)
+      if (u.owner === owner && this.isVillager(u) && this.offDuty(u) && u.post) n++;
+    return n;
+  },
+  // …and how many of them have a JOB to go back to, which is what the button
+  // gets to promise. A sheltered hand with no post is simply let out.
+  hornPosts(owner) {
+    let n = 0;
+    if (owner === 'P' && S.garrison) for (const gv of S.garrison) if (gv.post) n++;
+    for (const u of S.units)
+      if (u.owner === owner && this.isVillager(u) && this.offDuty(u) && u.post) n++;
+    return n;
+  },
   FLEE_GUARD_R: 16,   // how far a villager will look for a soldier to shelter behind
   fleeSpot(u, ax, ay) {
     let best = null, bd = this.FLEE_GUARD_R;
@@ -1981,6 +2098,7 @@ const Units = {
       const spot = MapGen.findNear(tx, ty, 5, (x, y) => Path.passable(x, y, u.owner));
       if (spot) {
         u.tUnit = 0; u.tBld = 0;
+        this.rememberPost(u);
         u.task = { type: 'flee' };
         this.setPath(u, spot.x, spot.y);
         return;
@@ -2000,7 +2118,9 @@ const Units = {
     if (!attacker) return;
     if (this.isVillager(u) && u.owner === 'P' && !this.villagerArmed()) {
       const spot = this.fleeSpot(u, attacker.x, attacker.y);
-      if (spot) { u.task = { type: 'flee' }; this.setPath(u, spot.x, spot.y); }
+      // …and the work they are running from is REMEMBERED (see rememberPost):
+      // one "back to work" is what puts a scattered village back on its jobs
+      if (spot) { this.rememberPost(u); u.task = { type: 'flee' }; this.setPath(u, spot.x, spot.y); }
     } else if (this.isVillager(u) && u.owner === 'A') {
       // a townsfolk militiaman stands and fights (see Combat.acquire);
       // otherwise the rival's people run for cover when struck (fleeSpot:
@@ -2008,7 +2128,7 @@ const Units = {
       if (u.militia) { u.tUnit = attacker.id; }
       else {
         const spot = this.fleeSpot(u, attacker.x, attacker.y);
-        if (spot) { u.task = { type: 'flee' }; this.setPath(u, spot.x, spot.y); }
+        if (spot) { this.rememberPost(u); u.task = { type: 'flee' }; this.setPath(u, spot.x, spot.y); }
       }
     } else if (this.isMilitary(u) || this.isWild(u) || this.isVillager(u) || this.isRaider(u)) {
       // ABSOLUTE FOCUS (tests/army-strategies.mjs): a strike-stance soldier

@@ -1065,6 +1065,9 @@ const Terraform = {
   clear(x, y) {
     if (!this.isClearable(x, y)) return false;
     const i = MapGen.idx(x, y);
+    // a sapper cutting a lane fells real trees too (tests/tree-fall.mjs) —
+    // fired BEFORE the flip, while there is still a stand to cut the fall from
+    if (S.map.terrain[i] === T.FOREST && window.R && R.startTreeFall) R.startTreeFall(x, y);
     S.map.terrain[i] = T.GRASS;
     if (S.map.resAmount) S.map.resAmount[i] = 0;
     // seenTerrain left to updateTile/updateVisibility (see dig) — a rival sapper

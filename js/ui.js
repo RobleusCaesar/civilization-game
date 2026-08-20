@@ -2023,6 +2023,12 @@ const UI = {
     return `${w.icon} ${esc(w.what)}${extra}`;
   },
 
+  // what BACK TO WORK is actually offering — one writer, so the rendered
+  // button and the in-place refresh can never disagree
+  hornBackLine() {
+    const posts = Units.hornPosts('P');
+    return posts ? posts + ' to their posts' : S.garrison.length + ' sheltered — send them out';
+  },
   panelSig() {
     if (!this.sel) return '';
     if (this.sel.type === 'bld') {
@@ -2046,7 +2052,8 @@ const UI = {
         // the upgrade button's reason counts the town up ("have 2 of 3") — that
         // number changes without `ok` flipping, so it has to be in the signature
         sig += '|' + Bld.tcSupport(b) + '|' + (S.wallLevel || 1) + '|' + Bld.forts().length +
-               '|' + vills + '|' + (S.garrison.length > 0) + '|' + idle +
+               '|' + vills + '|' + (S.garrison.length > 0) +
+               '|' + (Units.hornPending('P') > 0) + '|' + idle +
                '|' + (b.wallUp > 0 ? 'w' + b.wallUpTarget : '-');
       }
       // Trading Post: caravan out/in flips the whole panel; per-good affordability
@@ -2208,9 +2215,9 @@ const UI = {
         btn.classList.toggle('cant', !Bld.canTrain(b, btn.dataset.unit).ok));
       const shN = document.getElementById('shelterN');
       if (shN) shN.textContent =
-        S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length + ' outside';
+        S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length + ' at work — all to shelter';
       const rlN = document.getElementById('releaseN');
-      if (rlN) rlN.textContent = S.garrison.length + ' sheltered';
+      if (rlN) rlN.textContent = this.hornBackLine();
       const idN = document.getElementById('idleN');
       if (idN) idN.textContent =
         S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit).length + ' idle — muster here';
@@ -2327,7 +2334,7 @@ const UI = {
           // stays packed — pointless buttons below simply don't render
           if (b.key === 'tc') {
             const vills = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
-            if (vills) html += `<button class="abtn" data-act="shelter">🛖 Shelter villagers<small id="shelterN">${vills} outside</small></button>`;
+            if (vills) html += `<button class="abtn" data-act="shelter">🔔 Sound the horn<small id="shelterN">${vills} at work — all to shelter</small></button>`;
           }
           html += `<span class="psub" id="qLine">Queue: ${b.queue.length}/${Bld.queueCap(b)}</span>`;
           html += b.rally
@@ -2335,8 +2342,15 @@ const UI = {
             : `<button class="abtn" data-act="rally">🚩 Set rally<small>tap ground within ${CFG.RALLY_RANGE} tiles</small></button>`;
         }
         if (b.key === 'tc' && !b.construction) {
-          if (S.garrison.length)
-            html += `<button class="abtn" data-act="release">🚪 Release all<small id="releaseN">${S.garrison.length} sheltered</small></button>`;
+          /* THE HORN'S SECOND CALL (tests/muster-horn.mjs). Sounding it was
+             never the laborious half — putting twenty hands back on the exact
+             plots and stands they were called off was. This releases whoever
+             is sheltered AND walks every off-duty villager back to the post
+             they were remembered at; with nobody to send it does not render,
+             like every other button that could only refuse. */
+          const back = Units.hornPending('P');
+          if (S.garrison.length || back)
+            html += `<button class="abtn" data-act="release">🔨 Back to work<small id="releaseN">${this.hornBackLine()}</small></button>`;
           const idle = S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit).length;
           if (idle)
             html += `<button class="abtn" data-act="callidle">📣 Call idle<small id="idleN">${idle} idle — muster here</small></button>`;
@@ -2464,25 +2478,18 @@ const UI = {
             : 'Tap a spot to rally — new units head there (tap the building to cancel)');
         }
         else if (btn.dataset.act === 'shelter') {
-          let n = 0;
-          for (const u of S.units)
-            if (u.owner === 'P' && Units.isVillager(u)) {
-              u.task = { type: 'garrison' }; u.tUnit = 0; u.tBld = 0;
-              Units.setPath(u, b2.x, b2.y);
-              n++;
-            }
-          this.toast(n ? `${n} villager${n > 1 ? 's' : ''} heading to shelter` : 'No villagers on the map', !n);
+          const n = Units.soundHorn('P');
+          if (n) R.startHorn(Bld.cx(b2), Bld.cy(b2));
+          this.toast(n ? `🔔 ${n} villager${n > 1 ? 's' : ''} down tools and run for the hall` : 'No villagers on the map', !n);
+          this.renderPanel();
         }
         else if (btn.dataset.act === 'release') {
-          const n = S.garrison.length;
-          if (!n) { this.toast('Nobody is sheltered inside', true); return; }
-          for (const gv of S.garrison) {
-            const spot = MapGen.findNear(b2.x, b2.y + Bld.size(b2), 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: b2.x, y: b2.y + Bld.size(b2) };
-            const v = Units.spawn('villager', 'P', spot.x, spot.y);
-            v.hp = Math.min(gv.hp, v.maxhp);
-          }
-          S.garrison = [];
-          this.toast(`${n} villager${n > 1 ? 's' : ''} back outside`);
+          if (!S.garrison.length && !Units.hornPending('P')) { this.toast('Nobody to call back', true); return; }
+          const r = Units.backToWork('P');
+          R.startHorn(Bld.cx(b2), Bld.cy(b2));
+          this.toast(r.sent
+            ? `🔨 ${r.sent} villager${r.sent > 1 ? 's' : ''} back to their posts`
+            : `${r.out} villager${r.out === 1 ? '' : 's'} back outside — no posts to return to`);
           this.renderPanel();
         }
         else if (btn.dataset.act === 'callidle') {

@@ -778,6 +778,30 @@ const R = {
      noised: those tiles carry crowns CUT BY THE TILE EDGE, and they only
      match up because every neighbour is the same kind. Promote one to the
      border and the wood shows half a tree against open grass. */
+  /* WHICH STAND STANDS HERE. Density from how enclosed the tile is: a
+     lone/edge tile is SPARSE, a perimeter tile MEDIUM, a fully-surrounded
+     core tile DENSE — a natural gradient of individual trees, thickening
+     toward the heart of the wood, with a rare character tile (fallen log /
+     cut stumps / bramble) deep inside for flavour. ONLY a tile fully ringed
+     by forest (cnt === 8) may use the dense straddling set (whose crowns are
+     cut by the tile edge) or a character tile — its cut edges always abut
+     more forest; any tile touching a non-forest neighbour uses the
+     complete-tree edge sets, so the wood's visible border never shows half a
+     tree. Mixed hash for both variant and density, so there is no diagonal
+     grid. Factored out of drawTile because startTreeFall needs the SAME
+     answer — the stand that topples has to be the stand that was standing. */
+  forestSpriteAt(x, y, terr) {
+    terr = terr || S.map.seenTerrain || S.map.terrain;
+    const h = (x * 73856093 ^ y * 19349663) >>> 0;
+    let cnt = 0;
+    for (const [ox, oy] of NEIGH8)
+      if (MapGen.inB(x + ox, y + oy) && terr[MapGen.idx(x + ox, y + oy)] === T.FOREST) cnt++;
+    const hp = (h ^ (h >>> 13)) >>> 0;
+    const set = cnt === 8
+      ? (hp % 11 === 0 ? Sprites.terrainRare[T.FOREST] : Sprites.terrainFull[T.FOREST])
+      : this.denseEdge(x, y, cnt) ? Sprites.terrainMed[T.FOREST] : Sprites.terrain[T.FOREST];
+    return set[hp % set.length];
+  },
   denseEdge(x, y, cnt) {
     if (cnt >= 6) return true;
     if (cnt < 3) return false;
@@ -2883,18 +2907,7 @@ const R = {
       // Deep in the interior a rare character tile (fallen log / stumps / bramble)
       // rolls in for flavour. Mixed hash for both variant and density so there's
       // no diagonal grid.
-      let cnt = 0;
-      for (const [ox, oy] of NEIGH8)
-        if (MapGen.inB(x + ox, y + oy) && terr[MapGen.idx(x + ox, y + oy)] === T.FOREST) cnt++;
-      const hp = (h ^ (h >>> 13)) >>> 0;
-      // ONLY a tile fully ringed by forest (cnt === 8) may use the dense straddling
-      // set (where crowns are cut by the edge) or a character tile — its cut edges
-      // always abut more forest. Any tile touching a non-forest neighbour uses the
-      // complete-tree edge sets, so the forest's border never shows a half tree.
-      const set = cnt === 8
-        ? (hp % 11 === 0 ? Sprites.terrainRare[T.FOREST] : Sprites.terrainFull[T.FOREST])
-        : this.denseEdge(x, y, cnt) ? Sprites.terrainMed[T.FOREST] : Sprites.terrain[T.FOREST];
-      img = set[hp % set.length];
+      img = this.forestSpriteAt(x, y, terr);
     } else if (Sprites.terrainFull[t] && Sprites.terrainMed[t] && t !== T.HILLS) {
       /* ANY terrain that ships all three density sets takes the forest's
          gradient — sparse at the fringe, medium on the perimeter, and the
@@ -3294,6 +3307,8 @@ const R = {
     this.fogDirty = true;
     this.floats = [];
     this.collapses = [];       // render-side only — never in a save (same rule as _fighting)
+    this.treefalls = [];       // …so are the woods going over…
+    this.horns = [];           // …and the horn's rings…
     this.deaths = [];          // …so are villagers going over…
     this.marvel = null;        // …and so is the wonder's held frame
     this._dbA = {};            // …and each gate's drawbridge swing (reused ids
@@ -5110,6 +5125,199 @@ const R = {
       const sz = 0.3 * bw;
       Assets.drawSprite(g, 'misc/flameSmall/' + ((beat + i * 2 + b.id) % 4),
         bx + fires[i][0] * bw - sz / 2, by + fires[i][1] * bw - sz * 0.9, { w: sz, h: sz });
+    }
+  },
+
+  /* ============ THE STAND COMES DOWN (tests/tree-fall.mjs) ============
+     Felling a wood is the most-watched work in the early game, and until now
+     its payoff was a tile POPPING from canopy to stumps between two frames.
+     A tree that falls is the same trade the tower's collapse makes: a second
+     of animation for a minute of work.
+
+     The frames are CUT FROM THE TILE'S OWN FOREST ART, exactly the way
+     collapseSheet cuts a tower out of its sprite — so every one of the eight
+     forest variants, all three densities, the rare character tiles and a
+     dropped-in `assets/terrain/forest.png` override all topple for free, with
+     no art authored and nothing to keep in sync. The stand pivots about the
+     tile's own GROUND LINE (its bottom edge) rather than a break part way up:
+     a tree comes out of the earth, a tower snaps.
+
+     Three rules it shares with the rest of the effects layer: it is FOG-GATED
+     at the trigger (timber nobody can see is drawn for nobody), it is CAPPED
+     (a sapper clearing a lane is a scene, not a whiteout), and it lives on R
+     and NEVER in a save — same rule as R.collapses and R._fighting.
+
+     It fires from the ONE place a wood actually leaves a tile: the gather
+     task's exhaustion branch in units.js, and Terraform.clear. Owner-agnostic
+     — the rival fells timber too, and its woods fall the same way. */
+  TREEFALL: { frames: 10, ms: 1150, lean: 1.45 },
+  // how much roomier than the tile a fall frame is: a 32px stand lying flat
+  // reaches a whole tile to the side, and the dust rolls out past its crown
+  TREEFALL_PAD: { w: 2.6, h: 1.75, x: 0.8, y: 0.55 },
+  treefalls: [],                 // live one-shots: {x,y,spr,t,right} — never in S
+
+  startTreeFall(x, y, byX, byY) {
+    if (!G.visibleAt(x, y)) return;               // timber nobody can see
+    const h = (x * 73856093 ^ y * 19349663) >>> 0;
+    const spr = (window.Assets && Assets.terrainImg(T.FOREST, h >>> 3))
+      || this.forestSpriteAt(x, y, S.map.terrain);
+    if (!spr || !spr.width) return;
+    if (this.treefalls.length > 10) this.treefalls.shift();
+    // it goes over AWAY from whoever felled it; with nobody standing there
+    // (a sapper's cleared lane, a tile spent off screen) the tile decides
+    const right = byX == null ? (h & 1) === 1 : byX < x + 0.5;
+    this.treefalls.push({ x, y, spr, t: 0, right });
+    this.startle(x + 0.5, y + 0.5, 7);        // the crack throws the birds up
+  },
+
+  _fallCache: new WeakMap(),
+  fallSheet(base, right) {
+    let e = this._fallCache.get(base);
+    if (!e) { e = {}; this._fallCache.set(base, e); }
+    const key = right ? 'r' : 'l';
+    if (e[key]) return e[key];
+    const cfg = this.TREEFALL, N = cfg.frames, W = base.width, H = base.height;
+    const PD = this.TREEFALL_PAD;
+    const cw = Math.ceil(W * PD.w), ch = Math.ceil(H * PD.h);
+    const ox = W * PD.x, oy = H * PD.y;
+    const px = W / 32;                        // one authored pixel
+    const Q = (v) => Math.round(v / px) * px;  // every particle on the pixel grid
+    const gy = oy + H;                        // the tile's own ground line
+    const pivX = ox + W * 0.5, sgn = right ? 1 : -1;
+    const AP = ART.PALETTE, LF = AP.leaf, WDp = AP.wood, SO = AP.soil, INK = AP.ink;
+    const sheet = [];
+    for (let i = 0; i < N; i++) {
+      const p = i / (N - 1);
+      const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+      const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+
+      /* --- 1. EVERY TREE GOES OVER ABOUT ITS OWN FOOT. Rotating the tile's
+         art rigidly about one pivot was the first thing tried and it is
+         plainly wrong: what you see is a SQUARE OF FOREST SPINNING, because a
+         rigid rotation moves a tree on the left of the tile through a
+         completely different arc from one on the right, and it carries the
+         tile's own edge round with it.
+
+         The honest transform is a SHEAR. A source row keeps its x — so every
+         trunk stays where it was rooted — and only its HEIGHT above the
+         ground is projected: a row `hh` up lands `hh·sin θ` to the side and
+         `hh·cos θ` above the ground line. That is each tree pivoting about
+         its own base, all of them together, which is exactly what a stand
+         being felled looks like. Rows are drawn top-first so the roots paint
+         last and stay in front of the crown lying past them.
+
+         The easing accelerates (a felled tree hangs on the hinge of uncut
+         wood and then goes) but not so slowly that the first frames of a
+         nine-frame sheet are spent standing still. --- */
+      const ease = Math.min(1, Math.pow(p / 0.88, 1.55));
+      const th = cfg.lean * ease, sn = Math.sin(th), cs = Math.cos(th);
+      const gone = Math.max(0, (p - 0.84) / 0.16);   // …then it settles into the stumps
+      if (gone < 1) {
+        g.save();
+        g.globalAlpha = 1 - gone * 0.9;
+        const rowH = Math.max(1, Math.ceil(cs) + 1);
+        for (let sy = 0; sy < H; sy++) {
+          const hh = H - sy;                          // how far up the stand this row sits
+          g.drawImage(base, 0, sy, W, 1,
+            Math.round(ox + sgn * hh * sn), Math.round(gy - hh * cs), W, rowH);
+        }
+        g.restore();
+      }
+
+      /* --- 2. leaves and chips torn loose, thrown along the sweep --- */
+      const rc = ART.rng(4211);
+      for (let k = 0; k < 16; k++) {
+        const a0 = rc(), a1 = rc(), a2 = rc(), a3 = rc();
+        const t = (p - (0.16 + a0 * 0.42)) / 0.52;
+        if (t <= 0 || t >= 1) continue;
+        const reach = (0.25 + a1 * 0.85) * H;
+        const fx = Q(pivX + sgn * reach * t);
+        const fy = Q(gy - H * (0.25 + a2 * 0.5) * (1 - t) - H * 0.16 * 4 * t * (1 - t));
+        g.globalAlpha = Math.min(1, (1 - t) * 1.6);
+        g.fillStyle = a3 < 0.72 ? LF[1 + ((k % 3) | 0)] : WDp[2];
+        g.fillRect(fx, fy, px, px);
+      }
+      g.globalAlpha = 1;
+
+      /* --- 3. the DUST the crown throws when it lands. Pixel dust: quantized
+         alpha in three steps, hard squares — the same language the placement
+         and destruction poofs speak, never a smooth-graded balloon. --- */
+      const land = Math.max(0, (p - 0.58) / 0.42);
+      if (land > 0) {
+        const rd = ART.rng(8677);
+        for (let k = 0; k < 30; k++) {
+          const b0 = rd(), b1 = rd(), b2 = rd();
+          if (b0 > land * 1.2) continue;
+          const along = (0.12 + b1 * 0.95) * H;
+          const dx = Q(pivX + sgn * along + (b2 - 0.5) * px * 5);
+          const dy = Q(gy - px * (1 + b2 * 5) * land);
+          const a = 0.42 * (1 - land) + 0.12;
+          g.globalAlpha = Math.round(a * 3) / 3;    // three steps, like the poof
+          g.fillStyle = b2 < 0.4 ? SO[3] : b2 < 0.75 ? SO[2] : INK[1];
+          g.fillRect(dx, dy, px * (1 + (k % 2)), px);
+        }
+        g.globalAlpha = 1;
+      }
+      sheet.push(c);
+    }
+    e[key] = sheet;
+    return sheet;
+  },
+
+  drawTreeFalls(g, dt) {
+    if (!this.treefalls.length) return;
+    const TL = CFG.TILE, cfg = this.TREEFALL, PD = this.TREEFALL_PAD;
+    for (let i = this.treefalls.length - 1; i >= 0; i--) {
+      const f = this.treefalls[i];
+      f.t += dt;
+      const p = f.t / (cfg.ms / 1000);
+      if (p >= 1) { this.treefalls.splice(i, 1); continue; }
+      const sheet = this.fallSheet(f.spr, f.right);
+      const fr = sheet[Math.min(sheet.length - 1, (p * sheet.length) | 0)];
+      // the art may be authored at any resolution (a supplied PNG is often
+      // 64 or 128) — land it on the tile the same way blitTile would
+      const k = TL / f.spr.width;
+      g.drawImage(fr, f.x * TL - f.spr.width * PD.x * k, f.y * TL - f.spr.height * PD.y * k,
+        fr.width * k, fr.height * k);
+    }
+  },
+
+  /* ============ THE MUSTER HORN (tests/muster-horn.mjs) ============
+     What a horn looks like from above: rings of sound going out over the
+     village, and every bird in the valley leaving. Three waves of hard pixel
+     dots (never a smooth stroked circle — the ground beneath them is drawn in
+     hard steps and a soft ring reads as UI laid over the scene), fading as
+     they widen. Render state only, like every other one-shot here. */
+  HORN: { ms: 1600, rings: 3, reach: 12 },
+  horns: [],
+  startHorn(x, y) {
+    if (this.horns.length > 3) this.horns.shift();
+    this.horns.push({ x, y, t: 0 });
+    this.startle(x, y, 11);
+  },
+  drawHorns(g, dt) {
+    if (!this.horns.length) return;
+    const TL = CFG.TILE, cfg = this.HORN, px = Math.max(2, Math.round(TL / 8));
+    for (let i = this.horns.length - 1; i >= 0; i--) {
+      const hn = this.horns[i];
+      hn.t += dt;
+      const p = hn.t / (cfg.ms / 1000);
+      if (p >= 1) { this.horns.splice(i, 1); continue; }
+      const cx = hn.x * TL, cy = hn.y * TL;
+      for (let k = 0; k < cfg.rings; k++) {
+        const q = (p - k * 0.17) / (1 - k * 0.17);
+        if (q <= 0 || q >= 1) continue;
+        const rad = cfg.reach * TL * Math.pow(q, 0.6);
+        const a = (1 - q) * 0.6;
+        if (a <= 0.03 || rad < px) continue;
+        g.fillStyle = 'rgba(240,212,126,' + a.toFixed(2) + ')';
+        const n = Math.max(16, Math.round(rad / px * 1.7));
+        for (let sIdx = 0; sIdx < n; sIdx++) {
+          const th = sIdx / n * Math.PI * 2;
+          g.fillRect(Math.round((cx + Math.cos(th) * rad) / px) * px,
+            Math.round((cy + Math.sin(th) * rad) / px) * px, px, px);
+        }
+      }
     }
   },
 
@@ -7172,6 +7380,8 @@ const R = {
     }
 
     // buildings coming DOWN — over the units, so the dust rolls across them
+    this.drawTreeFalls(g, dt);
+    this.drawHorns(g, dt);
     this.drawCollapses(g, dt);
     this.drawDeaths(g, dt);     // …and villagers keeling over where they stood
 
