@@ -847,6 +847,99 @@ const out = await p.evaluate(() => {
       drawn + ' prop pixels on the scratch canvas, state untouched');
   }
 
+  /* ---- THE GROUND REMEMBERS ITS DEAD (a real day-136 collapse) ----
+     The rival's gold mine stood 6.3 tiles from a camp — inside the tenders'
+     chase reach, past a villager's 3-tile sight — so campGround never fired
+     (the camp never entered ai.seen) and maybeMine sent a fresh hand to die
+     there every ~4 days for months, each 50-food re-hire eating the day's
+     income: the town starved at 0 food on a full treasury. Every rival LAND
+     unit lost now stamps its tile (Units.damage → AI.noteDeath, the tribe's
+     own experience, fog-honest by construction); DEAD_N deaths in a 3x3
+     inside DEAD_DAYS and AI.deadGround refuses the ground to stations, seam
+     claims, field work and prospecting. The memory ages out, and it rides in
+     the save. Replayed on the save: villager field deaths stop entirely
+     within a week of the ledger tripping, and day 170 ends at 15 villagers +
+     15 defenders on 456 food against the original run's 0 units and 0 food. */
+  {
+    G.newGame('rc-dead', 'moderate', 'large');
+    Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.units = S.units.filter(u => u.owner !== 'R');
+    const spotD = { x: 30, y: 30 };
+    ck('freshGroundIsNotDeadGround', !AI.deadGround(spotD.x, spotD.y), '');
+    // two deaths in the 3x3, through the REAL path — the killer is irrelevant
+    for (let i = 0; i < 2; i++) {
+      const v = Units.spawn('villager', 'A', spotD.x + (i % 2), spotD.y);
+      Units.damage(v, 9999, 0, 'R');
+    }
+    ck('twoDeathsMarkTheGround', AI.deadGround(spotD.x, spotD.y) &&
+      AI.deadGround(spotD.x + 1, spotD.y + 1) && !AI.deadGround(spotD.x + 5, spotD.y), '');
+    // …and the mine claim refuses it: a seam planted on the killing ground
+    // is invisible to plotMine while the memory holds
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+      if (Bld.at(spotD.x + dx, spotD.y + dy)) Bld.removeToRuin(Bld.at(spotD.x + dx, spotD.y + dy));
+    S.map.terrain[MapGen.idx(spotD.x, spotD.y)] = T.GOLDORE;
+    S.ai.seen = S.ai.seen || [];
+    S.ai.seen[MapGen.idx(spotD.x, spotD.y)] = 1;
+    S.day = Math.max(S.day, (CFG.GOLD_SEAMS && CFG.GOLD_SEAMS.aiDay) || 40);
+    const offered = AI.plotMine();
+    ck('theMineClaimRefusesTheKillingGround',
+      !offered || offered.x !== spotD.x || offered.y !== spotD.y,
+      offered ? 'offered ' + offered.x + ',' + offered.y : 'no claim offered');
+    // the memory AGES OUT — ground the danger has left is fair again
+    S.day += AI.DEAD_DAYS + 1;
+    ck('theMemoryAgesOut', !AI.deadGround(spotD.x, spotD.y), '');
+    S.day -= AI.DEAD_DAYS + 1;
+    // …and it rides in the save
+    const json2 = G.saveJSON();
+    G.loadJSON(json2);
+    ck('theLedgerRidesInTheSave', !!(S.ai && S.ai.deadAt) &&
+      AI.deadGround(spotD.x, spotD.y), '');
+    /* desertion is NOT a death on the ground — it happens at home, and
+       stamping it would poison the town's own yard */
+    const d0 = JSON.stringify(S.ai.deadAt);
+    const hungry = Units.spawn('defender', 'A', spotD.x + 8, spotD.y + 8);
+    Units.despawn(hungry);
+    ck('aDesertionStampsNothing', JSON.stringify(S.ai.deadAt) === d0, '');
+  }
+
+  /* ---- AND THE MINER TAKES A SPEAR (same collapse) ---- workTheLand has
+     always priced an escort into every trip past the safe rings; the mine
+     dispatch — the longest walk a lone 40hp hand is ever ordered to make —
+     bypassed it. Past the rings the claim now goes out only with a soldier
+     free to stand at the works, and with none to spare it waits. */
+  {
+    G.newGame('rc-escort', 'moderate', 'large');
+    Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.units = S.units.filter(u => u.owner !== 'A' && u.owner !== 'R');
+    const tcA = Bld.tcOf('A');
+    // a seam well past every safe ring, with a carved corridor so the walk is
+    // genuinely possible — the gate under test is the ESCORT, never the reach
+    const dir = tcA.x > CFG.W / 2 ? -1 : 1;
+    const fx = tcA.x + dir * 16, fy = tcA.y;
+    for (let k = 0; k <= 17; k++) for (let dy = -1; dy <= 1; dy++) {
+      const cx = tcA.x + dir * k, cy = fy + dy;
+      if (!MapGen.inB(cx, cy)) continue;
+      S.map.terrain[MapGen.idx(cx, cy)] = T.GRASS;
+      const bAt = Bld.at(cx, cy);
+      if (bAt && bAt.key !== 'tc') Bld.removeToRuin(bAt);
+    }
+    S.map.terrain[MapGen.idx(fx, fy)] = T.GOLDORE;
+    Bld._block = null;
+    S.ai.seen = S.ai.seen || [];
+    S.ai.seen[MapGen.idx(fx, fy)] = 1;
+    S.day = Math.max(S.day, (CFG.GOLD_SEAMS && CFG.GOLD_SEAMS.aiDay) || 40);
+    const hand = Units.spawn('villager', 'A', tcA.x, tcA.y + 3);
+    ck('farSeamIsPastTheRings', !AI.safeWork(fx, fy), '');
+    ck('noSpearNoClaim', AI.maybeMine() === false && (!hand.task || hand.task.type !== 'claim'),
+      'the hand stays home until an escort is free');
+    const spear = Units.spawn('defender', 'A', tcA.x + 1, tcA.y + 3);
+    const went = AI.maybeMine();
+    const escorted = spear.task && spear.task.type === 'move' &&
+      Math.hypot(spear.task.x - fx, spear.task.y - fy) <= 4;
+    ck('withASpearTheClaimGoesOut', !!went && hand.task && hand.task.type === 'claim' && escorted,
+      'claim=' + !!(hand.task && hand.task.type === 'claim') + ' escortPosted=' + !!escorted);
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

@@ -427,7 +427,16 @@ verifies the hand can STAND at the works — three days unreachable and an
 unstarted site is abandoned (refunded) for re-siting; an upgrade just waits.
 **Famine**: the same save sat at 0 food for months on 15k wood — the Trading
 Post only ever bought gold. A chief under 250 food now sends the caravan for
-FOOD first. **No hiring into a kill zone** (same test, a real day-156 save):
+FOOD first. **And the jar never outranks the larder** (same test, a real
+day-136 collapse): the caravan valve lives on the Trading Post, which wants a
+level-3 hall — unreachable code for exactly the chief that starves. That
+chief sat at 0 food on 274 wood and could not build a 60-wood farm, because
+`affordFree` held the whole pile for the hall's next tier — the day-217 walls
+fault, starved the other way round. A HUNGRY chief (food under
+`AI.FOOD_URGENT` 250, the caravan's own threshold) lets the food works —
+farm, lodge, dock — pay from the jar in `tryBuild`; everything else keeps
+saving, and a fed chief saves as before.
+**No hiring into a kill zone** (same test, a real day-156 save):
 the player parked two marksmen and a catapult at a beaten rival's hall
 doorstep, and the forage valve fed them a fresh villager every few days —
 free kills, and a recovery that could never start. Enemy soldiers within 10
@@ -1655,6 +1664,31 @@ run. `AI.plot`'s `free()` (non-fort keys only; walls sit on the seam and have
 their own clamps) and `AI.plotMine` both refuse that ground. Fog-honest like
 every other read the chief makes — only camps it has actually seen — and only
 ones still STANDING, so burning the camp out hands the ground back.
+**AND THE GROUND REMEMBERS ITS DEAD** (`AI.noteDeath` / `deadGround`, same
+test — a real day-136 collapse): campGround's blind spot is a camp that kills
+from just past its victims' sight. The rival's gold mine stood 6.3 tiles from
+a camp — inside the tenders' chase reach (8), past a villager's 3-tile
+vision — so the camp never entered `ai.seen`, campGround never fired, and
+`maybeMine` sent the nearest free hand to die there every ~4 days for months;
+each 50-food re-hire ate the day's whole income, so the town starved at 0
+food on a full treasury and its army was never rebuilt after day 72. Every
+rival LAND unit lost now stamps its tile on the chief's own ledger
+(`Units.damage`'s death branch → `noteDeath`; desertions go through `despawn`
+and stamp nothing — poisoning the town's own yard is the failure mode);
+`DEAD_N` (2) deaths in a 3×3 inside `DEAD_DAYS` (50) and `deadGround` refuses
+the ground to stations (`plot`'s free()), seam claims (`plotMine`), field
+work (`workTheLand`'s pick) and prospecting alike. Fog-honest BY
+CONSTRUCTION — the corpse is the tribe's own experience — and it ages out,
+so ground the danger has left is fair again. Rides in the save on
+`ai.deadAt`. **And the miner takes a spear like every other party** (same
+test): workTheLand prices an escort into every trip past the safe rings; the
+mine dispatch — the longest walk a lone 40hp hand is ever ordered to make —
+bypassed it. Past the rings, `maybeMine` now sends the claim out only with a
+free soldier walking escort to the works (its own acquire() does the rest);
+with none to spare the claim waits for tomorrow. Replayed on the day-108
+save: villager field deaths stop entirely within a week of the ledger
+tripping, and day 170 ends at 15 villagers + 15 defenders on 456 food and
+posture PRESSURE, against the real run's 0 units, 0 food and REBUILD.
 **Burnable**: it has hp, so a war party can pull it down. `Bld.damage`'s `'R'`
 branch logs it; the standing band goes loose the next time `raiderSeek` runs
 (no camp, no post); `tickRaiderCamps` raises nothing there again; and the wave
@@ -2689,15 +2723,42 @@ each, so `R.coreScatter` gives them the same gradient ADDITIVELY — a core tile
 is enriched with extra material, an edge tile left alone. Thinning the edge
 instead would mean erasing authored art back to the floor, which reads as
 damage.
-**INVALIDATION IS EXACT, AND WIDER THAN IT LOOKS.** `R.drawTileAt` owns the
-neighbourhood: ground pass over the 3×3, then a decal pass over the **5×5**.
-The wider decal pass is not padding — repainting the ring wipes decals that
-spilled IN from the ring outside it, measured as 64px of stale seam against a
-full rebake. Re-stamping a decal whose ground was not repainted is idempotent.
+**INVALIDATION IS EXACT: RESET ONCE, COMPOSITE ONCE** (the day-108 lakeland
+report, pinned by `aSessionOfRepaintsNeverCurdlesTheWater` in tests/land.mjs).
+After ~100 days of felling, depleting and building along the shores, every
+lake had curdled into opaque pale platforms with hard tile seams and comb-fold
+"planks" — while a reload looked perfect, because a reload rebakes. The shore
+bands are TRANSLUCENT, so any repaint that composites them over ground it did
+not just erase stacks the ribbons a step darker, forever — and the old wide
+band re-blit (5×5 around a 3×3 ground reset; a whole bbox in the batch path)
+was exactly such a composite, measured at 476 stale tiles after three passes
+over one map's shore ring. Four rules close the class, all in
+`drawTileAt`/`drawTilesAt`/`paintGround`:
+ 1  every pass paints CLIPPED to the ground the same call erased (`clipTiles`
+    — rocks learned this first, decals and the shore blit now obey it too;
+    "re-stamping is idempotent" holds for a decal's own pixels but a restamp
+    over un-reset water COVERS the bands the bake draws on top of it, which
+    is why the blit was ever wide)
+ 2  `drawTile` is BOX-EXACT — the grass blade used to write 2px into the tile
+    below, which the bake covers (the southern neighbour paints later) and an
+    incremental repaint leaves stamped forever
+ 3  the GROUND RESET reaches ±2 with decals restamped from ±3 — derived, not
+    padding: a decal's look depends on terrain within one tile of its anchor
+    (the fern's touches-forest gate) and its paint reaches under one tile
+    past it, so a changed tile's pixels end inside ±2; at ±1 a fern whose
+    forest burned ORPHANED its overhang one ring out where nothing erased it
+ 4  a hills/pebbles membership change repaints its whole CLUSTER plus ring 2
+    (`R.hillsDirty`, waterDirty's twin — the rock scatter and relief are
+    properties of the cluster's field, not of the edited tile)
 Callers just name the tile that changed; they no longer hand-roll neighbour
-loops (that is what left the moat "squares" a reload had to clear).
+loops (that is what left the moat "squares" a reload had to clear). The pin
+is the disease's own shape: hammer every shore-adjacent land tile twice, fell
+forest / quarry hills / deplete fertile through the real updateTile path, and
+the cache must equal a fresh rebake BYTE FOR BYTE.
 **Cost**: the xlarge (65²) bake is ~130ms, once, at load, beside ~150ms of map
-generation — of which the traced coast is ~28ms. A terrain edit is 0.5ms.
+generation — of which the traced coast is ~28ms. A terrain edit is ~2.8ms
+with the ±2 rings (event-driven — a tree falls, soil spends — never per
+frame; the batch path shares overlapping rings).
 **A MOUNTAIN TILE IS BAKED ONCE PER MAP** (`R._mtnTile`, `_paintMountain`):
 each of its 1024 pixels costs about eighty integer-hash noise evaluations
 (five `crag` calls, four `vnoise` octaves apiece, four lattice hashes each) and

@@ -252,6 +252,42 @@ const out = await p.evaluate(() => {
       JSON.stringify(post.caravan));
   }
 
+  /* ---- 5d. THE JAR NEVER OUTRANKS THE LARDER (a real day-136 collapse):
+     at 0 food the chief sat on 274 wood and could not build a 60-wood farm —
+     affordFree held the whole pile for the hall's next tier while soldiers
+     famine-deserted, and the famine caravan could not help because the
+     Trading Post wants a level-3 hall. The same fault fortUrgent was written
+     for, starved the other way round: a HUNGRY chief (food under
+     AI.FOOD_URGENT, the famine caravan's own threshold) lets the food works
+     — farm, lodge, dock — pay from the jar. Everything else keeps saving. ---- */
+  {
+    const atc = setup('rc5d');
+    // spent soil beside the hall so a farm has legal ground to stand on
+    for (let k = 0; k < 3; k++) {
+      const i = MapGen.idx(atc.x + 3 + k, atc.y + 3);
+      S.map.terrain[i] = T.BARREN; S.map.resAmount[i] = 0;
+      if (S.map.workedBy) S.map.workedBy[i] = 'A';
+    }
+    Bld._block = null;
+    // a hand to crew it, a jar reserving more wood than the pile holds
+    Units.spawn('villager', 'A', atc.x, atc.y + 3);
+    S.ai.goal = { key: 'tc', cost: { wood: 300, stone: 225, gold: 45 } };
+    S.ai.res = { food: 0, wood: 120, stone: 60, gold: 800 };
+    S.ai._free = false;
+    ck('theJarHoldsAgainstOrdinaryWants', !AI.affordFree(CFG.BUILDINGS.farm.levels[0].cost),
+      'the reserve outranks a farm on a fed day');
+    const built = AI.tryBuild('farm');
+    ck('aStarvingChiefRaidsTheJarForAFarm', built === true &&
+      Bld.list('A').some(b2 => b2.key === 'farm' && b2.construction > 0),
+      'farm laid from a reserved woodpile at 0 food');
+    // …but only the FOOD works: a hut still waits on the jar
+    S.ai.res.wood = 120;
+    ck('aHutStillWaitsOnTheJar', AI.tryBuild('house') === false, '');
+    // …and a FED chief's farm waits too — the release is the famine's alone
+    S.ai.res = { food: 5000, wood: 120, stone: 60, gold: 800 };
+    ck('aFedChiefKeepsSaving', AI.tryBuild('farm') === false, '');
+  }
+
   // ---- 6. the breach lane detours around KNOWN tower fire: with a tower
   //         guarding the near span, the chief bridges the far one ----
   {

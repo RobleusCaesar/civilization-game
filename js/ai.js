@@ -348,13 +348,51 @@ const AI = {
     return n >= this.LOST_N;
   },
 
+  /* ---- AND THE GROUND REMEMBERS ITS DEAD (tests/raider-camps.mjs) ----
+     The burnedGround rule for PEOPLE, and the backstop for every kill zone
+     the chief's other reads cannot measure. A real day-136 collapse: the
+     rival's gold mine stood 6.3 tiles from a barbarian camp — inside the
+     tenders' chase reach, but past a villager's 3-tile sight, so the camp
+     never entered ai.seen and campGround (below) never fired. plotMine kept
+     offering the chief's own under-crewed mine, maybeMine sent the nearest
+     free hand every day, and the tenders killed one villager every ~4 days
+     for months — a 50-food re-hire each time, which is exactly why the town
+     starved at 0 food while its gold piled up dead. Every rival LAND unit
+     lost stamps its tile (Units.damage's death branch); DEAD_N deaths in a
+     3x3 inside DEAD_DAYS and the chief stops sending hands to that ground —
+     stations, seam claims, field work and prospecting alike. Fog-honest BY
+     CONSTRUCTION: the corpse is the tribe's own experience, no hidden state
+     is read, and the memory ages out so ground the danger has left is fair
+     again. Rides in the save on `ai.deadAt`. */
+  DEAD_N: 2,
+  DEAD_DAYS: 50,
+  noteDeath(x, y) {
+    const ai = S.ai; if (!ai) return;
+    if (!ai.deadAt) ai.deadAt = {};
+    const k = (x | 0) + ',' + (y | 0), e = ai.deadAt[k];
+    if (e && S.day - e.day > this.DEAD_DAYS) { e.n = 0; }
+    ai.deadAt[k] = { n: ((e && e.n) || 0) + 1, day: S.day };
+  },
+  deadGround(x, y) {
+    const ai = S.ai, dead = ai && ai.deadAt;
+    if (!dead) return false;
+    let n = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const e = dead[(x + dx) + ',' + (y + dy)];
+      if (e && S.day - e.day <= this.DEAD_DAYS) n += e.n;
+    }
+    return n >= this.DEAD_N;
+  },
+
   /* NOBODY WORKS IN A WAR BAND'S YARD (tests/raider-camps.mjs). A barbarian
      camp's tenders hold the ground around their fire, so a station — or a gold
      seam claim — laid inside it is a hand sent to die, and the chief sends
      another the moment it does: a conveyor that cost one rival town a villager
      every four days for the back half of a 200-day run. Fog-honest, like every
      other read the chief makes: only camps it has actually laid eyes on, and
-     only ones still standing (burn the camp and the ground is ordinary again). */
+     only ones still standing (burn the camp and the ground is ordinary again).
+     A camp that kills from just past its victims' sight is the hole in this
+     read — that is what `deadGround` above exists to close. */
   campGround(x, y) {
     const seen = S.ai && S.ai.seen;
     const cR = (CFG.RAIDER_CAMPS || {}).chaseR || 7;
@@ -494,6 +532,8 @@ const AI = {
       // layout) — a town backed against an unreachable bank still has to be
       // built somewhere — but twice-burned ground is a hard refusal.
       !(!isFortKey && this.burnedGround(x, y)) &&
+      // …nor ground that has eaten two of our PEOPLE (the day-136 conveyor)
+      !(!isFortKey && this.deadGround(x, y)) &&
       // …and never inside somebody else's town, whatever was worked out of it
       !(!isFortKey && Bld.foreignHome('A', x, y));
     const free = (x, y) => everyTile(x, y, freeTile) &&
@@ -1412,6 +1452,20 @@ const AI = {
     return this.fortUrgent(read) ? Bld.canAfford(cost, S.ai.res) : this.affordFree(cost);
   },
 
+  /* AND THE JAR NEVER OUTRANKS THE LARDER (the day-136 collapse, tests/
+     rival-crossing.mjs): the same fault fortUrgent was written for, starved
+     the other way round. At 0 food the chief sat on 274 wood and could not
+     build a 60-wood farm — affordFree held the whole pile for the hall's next
+     tier while soldiers famine-deserted and every replacement hire ate the
+     day's income. (The famine caravan can't help either: the Trading Post
+     wants a level-3 hall, unreachable code for exactly the chief that needs
+     it.) A HUNGRY chief — food under FOOD_URGENT, the famine caravan's own
+     threshold — lets the food works (farm, lodge, dock) pay from the jar,
+     because the hall tier the jar is saving for is worthless to a town that
+     starves before it stands. */
+  FOOD_URGENT: 250,
+  foodUrgent() { return !!(S.ai && S.ai.res && (S.ai.res.food || 0) < this.FOOD_URGENT); },
+
   tryBuild(key, ignoreGoal) {
     // WORKFORCE-AWARE GROWTH: don't sprawl worker stations the village can't
     // crew — a field of empty farms is how a chief LOOKS busy while starving.
@@ -1424,7 +1478,10 @@ const AI = {
       if (slots >= pool + 1) return false;
     }
     const cost = CFG.BUILDINGS[key].levels[0].cost;
-    if (ignoreGoal ? !Bld.canAfford(cost, S.ai.res) : !this.affordFree(cost)) return false;
+    // a starving chief's food works pay from the jar — see foodUrgent above
+    const openJar = ignoreGoal ||
+      ((key === 'farm' || key === 'lodge' || key === 'dock') && this.foodUrgent());
+    if (openJar ? !Bld.canAfford(cost, S.ai.res) : !this.affordFree(cost)) return false;
     const spot = this.plot(key);
     if (!spot || !Bld.canPlace('A', key, spot.x, spot.y).ok) return false;
     return !!Bld.place('A', key, spot.x, spot.y);   // null = out of daily actions
@@ -1743,6 +1800,29 @@ const AI = {
       if (dd < bd) { bd = dd; best = u; }
     }
     if (!best) return false;
+    /* THE MINER TAKES A SPEAR, LIKE EVERY OTHER PARTY (the day-136 conveyor):
+       workTheLand prices an escort into every trip past the safe rings, and
+       the mine dispatch — routinely the LONGEST walk the chief ever orders a
+       lone 40hp hand to make — bypassed it entirely. Same bargain now: a seam
+       inside the rings is claimed as before; past them the hand goes only if
+       a spear is free to walk out and stand at the works, and with none to
+       spare the claim waits for tomorrow rather than feeding the ground
+       another villager. The escort needs no special combat code — standing
+       at the seam, its own acquire() takes whatever comes near. */
+    if (!this.safeWork(spot.x, spot.y)) {
+      const guard = S.units.find(u => u.owner === 'A' && Units.isMilitary(u) &&
+        !Units.isNaval(u) && !Units.isSiege(u) && !u.tUnit && !u.tBld &&
+        !(u.task && (u.task.type === 'raid' || u.task.type === 'move')));
+      if (!guard) return false;
+      const post = MapGen.findNear(spot.x, spot.y, 3,
+        (gx, gy) => Path.passable(gx, gy, 'A') && !Bld.at(gx, gy));
+      if (post) {
+        guard.defend = false; guard.tUnit = 0; guard.tBld = 0;
+        guard.task = { type: 'move', x: post.x, y: post.y };
+        guard.anchor = { x: post.x + 0.5, y: post.y + 0.5 };
+        Units.setPath(guard, post.x, post.y);
+      }
+    }
     return Units.assignMine(best, spot.x, spot.y);
   },
   /* The nearest seam worth walking to: one it has SEEN, one its hands can
@@ -1763,6 +1843,7 @@ const AI = {
       if (b && b.owner === 'A' && Bld.workersAssigned(b) >= Bld.maxWorkers(b)) continue;
       if (!seen[i]) continue;                    // never a seam it has not laid eyes on
       if (this.campGround(x, y)) continue;       // …and never one in a war band's yard
+      if (this.deadGround(x, y)) continue;       // …nor one its miners keep dying at
       if (reach && !reach[i]) {                  // …and never one no hand of its can stand at
         let side = false;
         for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
@@ -1870,6 +1951,7 @@ const AI = {
         if (!g || !S.map.resAmount[i]) continue;
         if (claimed.has(i)) continue;
         if (this.campGround(x, y)) continue;          // never in a war band's yard
+        if (this.deadGround(x, y)) continue;          // …nor where the last hands died
         if (Bld.foreignHome('A', x, y)) continue;     // …nor in the enemy's village
         if (safeOnly && !this.safeWork(x, y, rings)) continue;   // no spear to spare today
         const d = Math.hypot(x - cx, y - cy);
@@ -1977,6 +2059,7 @@ const AI = {
       if (!MapGen.onBoard(x, y) || seen[i] || !Path.passable(x, y, 'A')) continue;
       if (reach && !reach[i]) continue;              // ground no hand of ours can walk to
       if (this.campGround(x, y)) continue;           // a lone prospector is not sent into a camp
+      if (this.deadGround(x, y)) continue;           // …nor across a killing field
       // FAR from home, but no further from the walker than it has to be: the
       // errand is to open new country, not to march a villager off the map
       const d = Math.hypot(x - tc.x, y - tc.y);

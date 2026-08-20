@@ -1927,6 +1927,13 @@ const Units = {
           S.stats.kills = (S.stats.kills || 0) + 1;
       }
       if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
+      /* THE GROUND REMEMBERS ITS DEAD (tests/raider-camps.mjs): every rival
+         LAND unit lost stamps its tile on the chief's own ledger — the
+         corpse is the tribe's experience, so the read is fog-honest by
+         construction. AI.deadGround is what stops the day-136 conveyor:
+         a hand sent every few days to die at ground no other read of the
+         chief's could know was a kill zone. */
+      if (u.owner === 'A' && !this.isNaval(u)) AI.noteDeath(u.x, u.y);
       if (u.owner === 'P') G.log(`${CFG.UNITS[u.kind].name} was killed`, true);
       if (u.owner === 'P' && this.isTransport(u) && u.cargo && u.cargo.length)
         G.log(`💀 ${u.cargo.length} soldier${u.cargo.length > 1 ? 's' : ''} lost with the hull`, true);
