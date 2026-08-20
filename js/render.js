@@ -3765,6 +3765,156 @@ const R = {
       g.drawImage(fam[fr], bx, by, bw, bw * 2);
     }
   },
+  /* ---- THE EARLY GATES WORK TOO (tests/drawbridge.mjs) ----
+     The drawbridge's little ceremony turned out to be the good part, so the
+     first two tiers got mechanisms of their own: L1 swings its two door
+     leaves outward, L2 winches a wood-and-iron portcullis straight up (just
+     far enough that you can SEE it is up). Drawn here rather than baked,
+     because they move — chunky fine-grid rects painted straight onto the
+     world canvas, sharing the drawbridge's eased `_dbA` (1 = sealed) and its
+     two passes: leaves that swing AWAYS from the camera go down on the back
+     pass so the gate's own art occludes their near ends.
+
+     The CLOSED L1 face draws nothing — the baked sprite's braced door IS the
+     closed state, and the swing takes over the moment the door starts to
+     move. The L2 face is ALWAYS overdrawn while the gate stands finished:
+     its closure is the portcullis itself, so the grate replaces the baked
+     plank door in the world (fog-memory ghosts keep the sprite, which is
+     all a memory ever holds). Outward comes from Bld.gateOutside — away
+     from the hall, or from the war camp that stands nearer. */
+  drawGateWorks(g, b, bx, by, bw, dt, front) {
+    // PLAYER gates only: the rival never works a lever, and its always-open
+    // state drawn literally would show the player a passage they cannot use —
+    // the rival's gate keeps the baked closed-door art it has always worn
+    if (!Bld.canGateToggle(b) || b.level >= 3 || b.owner !== 'P') return;
+    const vert = this.gateVerticalAt(b.x, b.y);
+    const dir = Bld.gateOutside(b);
+    // ease on the BACK pass (always runs first); the front pass reads it
+    const tgt = b.raised ? 1 : 0;
+    let a = this._dbA[b.id];
+    if (a == null) a = tgt;
+    else if (!front && a !== tgt) {
+      const step = Math.max(0, Math.min(0.2, dt || 0)) * this.DB_SPEED;
+      a = tgt > a ? Math.min(tgt, a + step) : Math.max(tgt, a - step);
+    }
+    if (!front) this._dbA[b.id] = a;
+    const o = 1 - a;                                     // openness
+    const AP = ART.PALETTE, WD = AP.wood, IN = AP.ink[0], SO = AP.soil;
+    const px = bw / 32;
+    const cell = (cx, cy, w, h, col) => { g.fillStyle = col; g.fillRect(bx + cx * px, by + cy * px, w * px, h * px); };
+
+    if (b.level === 2) {
+      /* THE PORTCULLIS. Face: the passage is painted open behind it and the
+         grate slides in the arch — never fully out of sight, so a raised
+         gate still says "portcullis" at a glance. Flank: the grate lives at
+         the OUTWARD mouth; shut it bars the slot, open its toothed edge
+         stands proud of the coping. */
+      if (!vert) {
+        if (!front) return;
+        cell(12, 13, 8, 17, IN);                          // the open passage
+        cell(12, 26, 8, 4, SO[2]); cell(12, 26, 8, 1, SO[1]);   // the road through
+        const h = Math.max(4, Math.round(4 + a * 13));    // grate: 4 cells showing even fully up
+        cell(11, 13, 1, h, WD[2]); cell(20, 13, 1, h, WD[2]);   // the frame in its grooves
+        for (const gx of [13, 15, 17, 19]) cell(gx, 13, 1, h, WD[1]);   // upright bars
+        for (let gy = 13; gy < 13 + h - 1; gy += 4) { cell(11, gy, 10, 1, WD[0]); }  // iron-dark rails
+        cell(11, 13 + h - 1, 10, 1, WD[0]);               // the foot rail…
+        for (const gx of [13, 15, 17, 19]) cell(gx, 13 + h, 1, 1, IN);  // …and its spike tips
+      } else {
+        if (!front) return;
+        // the outward mouth: JUST PROUD of the block's edge (block G0..G1 =
+        // 7..24), so the dark grate reads against grass, not wood-on-wood
+        const mx = dir > 0 ? 24.5 : 5.5;
+        const rise = Math.round(o * 7);                   // how far the foot has climbed the slot
+        if (o > 0.4) { cell(dir > 0 ? 25 : 5, 20, 2, 4, SO[2]); }   // open: lit ground through the mouth
+        if (rise < 7) {                                   // the grate still in the slot
+          cell(mx, 17, 2, 1, WD[2]);                      // its lintel groove
+          cell(mx, 18, 2, 8 - rise, WD[0]);
+          cell(mx, 18 + (8 - rise), 2, 1, IN);            // its toothed foot
+        }
+        const up = Math.round(o * 6);                     // …and its edge above the coping
+        if (up > 0) { cell(mx, 4 - up, 2, up, WD[0]); cell(mx, 3 - up, 2, 1, IN); }
+      }
+      return;
+    }
+
+    /* L1 — TWO DOOR LEAVES SWING OUTWARD. Fully shut the baked sprite's own
+       braced door is the drawing; the moment it moves, the passage is
+       painted open and the leaves take over. */
+    if (a >= 0.995) {
+      // the flank keeps a visible closed door bar in its outward mouth — the
+      // baked flank art has only a shadow there, and a door you can work
+      // should read as a door from every side
+      if (vert && front) {
+        // just proud of the block's edge (block G0..G1 = 8..23), against the
+        // grass — inside it, wood-on-wood, the door disappeared entirely
+        const mx = dir > 0 ? 23.5 : 6.5;
+        cell(mx, 17.5, 2, 9, WD[1]); cell(mx, 17.5, 2, 1, WD[3]);
+        cell(mx + 0.5, 17.5, 1, 9, WD[2]);                // the two leaves' seam line
+        cell(mx, 21.5, 2, 1, AP.thatch[1]);               // the lashing
+        cell(mx, 25.5, 2, 1, WD[0]);                      // the dark foot
+      }
+      return;
+    }
+    // swing angle: capped at ~62°, NOT 90 — at square-open cos→0 stacks every
+    // column back on its hinge and the leaves vanish into slivers
+    const th = Math.min(1, o * 1.15) * 1.08;
+    const cs = Math.cos(th), sn = Math.sin(th);
+    if (!vert) {
+      const away = dir < 0;
+      if (front) {
+        cell(11, 9, 10, 21, IN);                          // the open gap
+        cell(11, 25, 10, 5, SO[2]); cell(11, 25, 10, 1, SO[1]);   // the road through
+      }
+      if (!away && front) {
+        // leaves swinging TOWARD you: honest vertical-hinge foreshortening —
+        // the leaf narrows to width·cos(θ), walked over SCREEN columns so the
+        // panel stays solid (source-indexed columns collide when cos is small
+        // and the door dissolved into slivers), with the free edge dropping
+        // toward the camera as it comes
+        const leafW = 5, proj = Math.max(1, Math.round(leafW * cs));
+        for (const [hx, sgn] of [[11, 1], [21, -1]]) {
+          for (let j = proj; j >= 1; j--) {
+            const f = j / proj;                           // 0 hinge → 1 free edge
+            const cx = hx + sgn * j;
+            const dTop = f * leafW * sn * 0.5, dBot = f * leafW * sn * 0.95;
+            const y0 = 9 + dTop, y1 = 30 + dBot;
+            cell(cx, y0, 1, y1 - y0, j % 2 ? WD[1] : WD[2]);
+            cell(cx, y0, 1, 1, WD[3]);                    // the lit top edge
+            cell(cx, y1 - 1, 1, 1, WD[0]);                // the dark foot
+            g.fillStyle = 'rgba(24,18,12,0.35)';          // its shadow on the ground
+            g.fillRect(bx + cx * px, by + (y1 + 0.4) * px, px, px);
+          }
+          cell(hx + sgn * proj, 9 + leafW * sn * 0.5, 1,
+               21 + leafW * sn * 0.45, WD[0]);            // the dark free edge
+          cell(hx, 9, 1, 21, WD[0]);                      // the hinge post edge
+        }
+      } else if (away && front) {
+        // leaves swung AWAY: plan view on the ground beyond the wall — drawn
+        // on the FRONT pass, since ground north of the band is open grass and
+        // a back-pass draw hid them under the sprite entirely
+        for (const [hx, sgn] of [[11.5, 1], [20.5, -1]]) {
+          for (let s = 0; s < 6; s++) {
+            const cx = hx + sgn * s * cs - 1, cy = 10 - s * sn - 1;
+            cell(cx, cy, 2, 2, s % 2 ? WD[1] : WD[2]);
+            cell(cx, cy + 1.4, 2, 0.6, WD[0]);            // the under-edge
+          }
+        }
+      }
+    } else {
+      if (!front) return;
+      // the flank: plan-view leaves at the OUTWARD mouth, sweeping east or
+      // west, one from each jamb — the classic double door seen from above
+      const mx = (dir > 0 ? 23.5 : 8.5);   // the block's own face (G0..G1 = 8..23)
+      for (const [hy, sgn] of [[18.5, 1], [25.5, -1]]) {
+        for (let s = 0; s < 4; s++) {
+          const cx = mx + dir * (0.5 + s * sn) - 1, cy = hy + sgn * s * cs - 1;
+          cell(cx, cy, 2, 2, s % 2 ? WD[1] : WD[2]);
+          cell(cx, cy + 1.4, 2, 0.6, WD[0]);
+        }
+      }
+      if (o > 0.4) { cell(dir > 0 ? 22 : 8, 20, 2, 4, SO[2]); }   // lit ground through the mouth
+    }
+  },
   gateVerticalAt(x, y) {
     const score = (xx, yy) => {
       if (!MapGen.inB(xx, yy)) return 0;
@@ -6229,8 +6379,9 @@ const R = {
         // connecting stubs, under its body — one unbroken castle wall
         if (b.key === 'tower') this.drawTowerBond(g, b, bx, by, bw);
         // a drawbridge that falls to the FAR side lies beyond the wall, so it
-        // goes down before the gatehouse does and is occluded by it
-        if (b.key === 'gate') this.drawDrawbridge(g, b, bx, by, bw, dt, false);
+        // goes down before the gatehouse does and is occluded by it — and so
+        // do L1 door leaves swinging away from the camera (drawGateWorks)
+        if (b.key === 'gate') { this.drawDrawbridge(g, b, bx, by, bw, dt, false); this.drawGateWorks(g, b, bx, by, bw, dt, false); }
         // a war band's yard is strewn with its own people's litter — drawn
         // before the tent so nothing rides over its silhouette
         if (b.key === 'raidercamp') this.drawCampDress(g, b);
@@ -6240,8 +6391,9 @@ const R = {
         this.blitBld(g, spr, bx, by, bw, bw);
         // …and the walk running south out of it meets its flank at WALK height
         if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);
-        // …and one that falls toward us swings over its own archway
-        if (b.key === 'gate') this.drawDrawbridge(g, b, bx, by, bw, dt, true);
+        // …and one that falls toward us swings over its own archway — the
+        // early tiers' doors and portcullis ride the same two passes
+        if (b.key === 'gate') { this.drawDrawbridge(g, b, bx, by, bw, dt, true); this.drawGateWorks(g, b, bx, by, bw, dt, true); }
         /* Owner tag. On a FORTIFICATION the tile's top-left corner is bare
            ground — the curtain runs down the middle of the tile — so the pip
            floated out on the grass beside the wall like a UI glitch, one per

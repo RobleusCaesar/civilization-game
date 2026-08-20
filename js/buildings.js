@@ -50,18 +50,26 @@ const Bld = {
   // an ordinary solid building never makes a wall grow a stub toward it
   fortAt(x, y) { const c = this.blockAt(x, y); return c === 1 || c === 2 || c === 3; },
 
-  /* ---- THE DRAWBRIDGE (tests/drawbridge.mjs) ----
-     A level-3 gatehouse has a bridge on chains. Raised, the deck stands
-     against the arch and the gate is simply WALL — nobody passes, the owner
-     least of all, which is what makes it a decision rather than a free
-     upgrade. Lowered, it is the door it always was.
+  /* ---- EVERY GATE WORKS (tests/drawbridge.mjs) ----
+     The drawbridge began as the third tier's lever, and the playtest verdict
+     was that working it is the good part — an immediate hand on the board.
+     So every FINISHED gate now opens and closes, each tier with its own
+     mechanism: L1 swings its two door leaves outward, L2 raises and drops a
+     wood-and-iron portcullis, L3 keeps the drawbridge on chains. `b.raised`
+     means the same thing at every tier — THE GATE IS SEALED (block code 1,
+     which shuts out the owner too; that is what makes the lever a decision)
+     — the mechanism is only what the seal LOOKS like.
 
-     Levels 1 and 2 have no bridge: the winch, the chains and the gallery to
-     hang them from are exactly what the third tier buys. A gate raising or
-     upgrading has no working lever yet either. */
-  canDrawbridge(b) {
-    return !!b && b.key === 'gate' && b.level >= 3 &&
+     A gate still raising or upgrading has no working door yet. What stays
+     the third tier's alone is the DECK: the winch, the chains and the
+     gallery to hang them from are exactly what that tier buys, and only a
+     drawbridge spans the ditch beyond the gate (canDrawbridge, below). */
+  canGateToggle(b) {
+    return !!b && b.key === 'gate' &&
       !(b.construction > 0) && !(b.upgrading > 0);
+  },
+  canDrawbridge(b) {
+    return this.canGateToggle(b) && b.level >= 3;
   },
   bridgeRaised(b) { return !!(b && b.key === 'gate' && b.raised); },
 
@@ -110,42 +118,26 @@ const Bld = {
   },
 
   /* ---- WHICH SIDE OF A GATE IS THE OUTSIDE? (tests/drawbridge.mjs) ----
-     A drawbridge falls OUTWARD. It has to: a deck dropping into the courtyard
-     is not a bridge over anything, and it reads as the castle opening
-     backwards. But "outward" cannot be read off the wall line, because a
-     stronghold is only PARTLY built — the cheap way to enclose ground is to
-     let the map do half the work and run your wall between a lake and a
-     mountain. So the question is answered by looking at the ground itself.
-
-     Flood the two sides the passage joins, treating as barriers the things
-     that actually enclose: deep water, mountain, a sapper's trench or moat,
-     and the tribe's OWN finished walls, gates and towers. Never through this
-     gate. Then, in order:
-
-       1. the side the tribe's HALL is on is the inside. This is the whole
-          answer nearly always, and it is the one that survives a leaky ring:
-          if the wall doesn't quite close, both floods run to the wide world
-          and the hall still tells you which way you are facing.
-       2. failing that, the ENCLOSED side is the inside — the other one ran to
-          the map's edge or past the search cap.
-       3. failing that, whichever side holds more of the tribe's own works.
-       4. and failing everything, the old default (south / east).
-
-     Harvestable ground — woods, crags, orchards — is deliberately NOT a
-     barrier even though it blocks movement: a woodcutter finishing a stand
-     would otherwise turn a castle inside out. Owner-agnostic; the rival's
-     gates are read the same way.
+     A gate opens OUTWARD — a drawbridge dropping into the courtyard, or door
+     leaves swinging into it, read as the castle opening backwards. The
+     answer used to be a ground flood (barriers, hall side, enclosure), and
+     it still guessed wrong on part-built rings the player could see plainly.
+     The simple rule replaced it (user direction): OUTWARD IS AWAY FROM THE
+     TOWN'S OWN ANCHOR — the HALL, or the nearest own finished WAR CAMP when
+     that camp is nearer to the gate than the hall is. A forward gate belongs
+     to the war camp that planted it, and its outside faces the enemy, not
+     home. Pure geometry along the passage axis; a gate dead level with its
+     anchor keeps the old default.
 
      Returns +1 (south for a gate in an east-west wall, east for one in a
-     north-south wall) or -1 (north / west). Cached against _blockGen, so it
-     is recomputed only when the walls actually change. */
-  GATE_FLOOD_CAP: 900,
+     north-south wall) or -1 (north / west). Owner-agnostic. Cached against
+     _blockGen, so a war camp raised later re-aims the gates it should. */
   _outDir: {},
   gateOutside(b) {
     if (!b || b.key !== 'gate') return 1;
-    // build the block grid FIRST: the flood reads it (via gateVerticalAt), and
-    // a rebuild bumps the generation — read it after and we would stamp the
-    // cache with a number already out of date, recomputing on every call
+    // build the block grid FIRST: gateVerticalAt reads it, and a rebuild
+    // bumps the generation — read it after and we would stamp the cache
+    // with a number already out of date, recomputing on every call
     if (!this._block) this.rebuildBlock();
     const gen = this._blockGen || 0;
     const c = this._outDir[b.id];
@@ -156,50 +148,20 @@ const Bld = {
   },
   _computeOutside(b) {
     const vert = window.R && R.gateVerticalAt ? R.gateVerticalAt(b.x, b.y) : false;
-    const neg = vert ? { x: b.x - 1, y: b.y } : { x: b.x, y: b.y - 1 };   // west / north
-    const pos = vert ? { x: b.x + 1, y: b.y } : { x: b.x, y: b.y + 1 };   // east / south
-    const A = this._floodSide(b, neg), C = this._floodSide(b, pos);
-    if (A.hall !== C.hall) return A.hall ? 1 : -1;      // the hall's side is the inside
-    if (A.open !== C.open) return A.open ? -1 : 1;      // the side that runs away is the outside
-    if (A.own !== C.own) return A.own > C.own ? 1 : -1; // …or the side with the town on it
-    return 1;
-  },
-  _floodSide(b, s) {
-    const out = { hall: false, open: false, own: 0, n: 0 };
-    if (!MapGen.inB(s.x, s.y)) { out.open = true; return out; }
-    const owner = b.owner, cap = this.GATE_FLOOD_CAP;
-    const wall = (t) => t === T.WATER || t === T.MOUNTAIN || t === T.MOAT || t === T.TRENCH;
-    const blocked = (x, y) => {
-      if (x === b.x && y === b.y) return true;                        // never back through this gate
-      if (wall(S.map.terrain[MapGen.idx(x, y)])) return true;         // what the map walls off
-      const o = this.at(x, y);
-      return !!(o && o.owner === owner && !(o.construction > 0) &&
-        (o.key === 'wall' || o.key === 'gate' || o.key === 'tower')); // …and what the tribe raised
-    };
-    if (blocked(s.x, s.y)) return out;                                // that side is solid: enclosed by definition
-    const seen = new Uint8Array(CFG.W * CFG.H), q = [s.x, s.y];
-    seen[MapGen.idx(s.x, s.y)] = 1;
-    while (q.length) {
-      if (out.n >= cap) { out.open = true; break; }
-      const y = q.pop(), x = q.pop();
-      out.n++;
-      if (x <= 1 || y <= 1 || x >= CFG.W - 2 || y >= CFG.H - 2) out.open = true;
-      const o = this.at(x, y);
-      if (o && o.owner === owner) { out.own++; if (o.key === 'tc') out.hall = true; }
-      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = x + ox, ny = y + oy;
-        if (!MapGen.inB(nx, ny)) { out.open = true; continue; }
-        const i = MapGen.idx(nx, ny);
-        if (seen[i]) continue;
-        seen[i] = 1;
-        if (blocked(nx, ny)) continue;
-        q.push(nx, ny);
-      }
+    const tc = this.tcOf(b.owner);
+    let anchor = tc;
+    let ad = tc ? Math.hypot(b.x + 0.5 - this.cx(tc), b.y + 0.5 - this.cy(tc)) : 1e9;
+    for (const o of S.buildings) {
+      if (o.owner !== b.owner || o.key !== 'warcamp' || o.construction > 0) continue;
+      const d = Math.hypot(b.x + 0.5 - this.cx(o), b.y + 0.5 - this.cy(o));
+      if (d < ad) { ad = d; anchor = o; }
     }
-    return out;
+    if (!anchor) return 1;                     // no hall, no camp: the old default
+    const delta = vert ? (b.x + 0.5 - this.cx(anchor)) : (b.y + 0.5 - this.cy(anchor));
+    return delta >= 0 ? 1 : -1;                // away from the anchor
   },
   toggleDrawbridge(b) {
-    if (!this.canDrawbridge(b)) return false;
+    if (!this.canGateToggle(b)) return false;
     b.raised = !b.raised;
     this._block = null;
     // shutting the gate on somebody standing in the passage would wedge them
@@ -207,8 +169,14 @@ const Bld = {
     // footprint clears itself
     if (b.raised) this.stepOffFootprint(b);
     if (b.owner === 'P')
-      G.log(b.raised ? '⛓ The drawbridge is hauled up — the gate is shut fast'
-                     : '⛓ The drawbridge is lowered — the gate stands open');
+      G.log(b.level >= 3
+        ? (b.raised ? '⛓ The drawbridge is hauled up — the gate is shut fast'
+                    : '⛓ The drawbridge is lowered — the gate stands open')
+        : b.level === 2
+          ? (b.raised ? '⛓ The portcullis drops — the gate is shut fast'
+                      : '⛓ The portcullis is winched up — the gate stands open')
+          : (b.raised ? '🚪 The gates are barred shut'
+                      : '🚪 The gates swing open'));
     return true;
   },
 
@@ -1057,13 +1025,15 @@ const Bld = {
   finish(b, builder) {
     b.construction = 0;
     b.hp = b.maxhp;
-    /* A PLAYER GATE FINISHED AT THE DRAWBRIDGE TIER STARTS WITH THE BRIDGE UP
-       (tests/drawbridge.mjs): a deck nobody chose to lower must never be a
-       road into the castle — the player opens it, and the first lowering
-       runs the ordinary toggle path with its block/deck rebuild. Player only:
-       the rival's chief never works a winch, so a raised gate of its own
-       would seal its army in for good. */
-    if (b.key === 'gate' && b.owner === 'P' && b.level >= 3) b.raised = true;
+    /* A PLAYER GATE IS BORN CLOSED (tests/drawbridge.mjs) — every tier, the
+       drawbridge rule generalized: a door nobody chose to open must never be
+       a road into the castle, and the first opening runs the ordinary toggle
+       path with its block/deck rebuild. Player only: the rival's chief never
+       works a door, so a shut gate of its own would seal its army in for
+       good. (Upgrades PRESERVE the state the player set — only the L3
+       arrival is born up, finishWallUpgrade's own rule, for the deck-grid
+       reason documented there.) */
+    if (b.key === 'gate' && b.owner === 'P') b.raised = true;
     if (this.solid(b.key)) {
       // the building just became solid (rebuildBlock skips it while raising) —
       // and anyone standing on its footprint steps off, ties broken toward

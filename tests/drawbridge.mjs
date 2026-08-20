@@ -1,12 +1,23 @@
-/* DRAWBRIDGE CONTRACT — the level-3 gatehouse's bridge on chains.
+/* GATE CONTRACT — every tier's door, and the level-3 gatehouse's bridge on
+   chains.
 
    The rules, all of which this file pins:
 
-     THE THIRD TIER OWNS IT   Bld.canDrawbridge is true only for a FINISHED
-                              level-3 gate. L1 and L2 have no winch, no
-                              gallery to hang the chains from, and no lever
-                              on the panel; a gate still being raised has
-                              none either. That is what the tier buys.
+     EVERY TIER HAS A DOOR    Bld.canGateToggle is true for ANY finished gate:
+                              L1 swings two door leaves outward, L2 winches a
+                              portcullis straight up and down, L3 keeps the
+                              drawbridge. `b.raised` means the same thing at
+                              every tier — THE GATE IS SEALED — and the
+                              mechanism is only what the seal looks like. A
+                              gate still being raised (or upgrading) has no
+                              working door yet.
+
+     THE THIRD TIER OWNS THE  Bld.canDrawbridge is true only for a FINISHED
+     DECK                     level-3 gate. The winch, the chains and the
+                              gallery to hang them from are what that tier
+                              buys — and only a drawbridge SPANS the ditch
+                              beyond the gate (drawbridgeSpan / deckAt stay
+                              third-tier facts).
 
      RAISED IS A WALL         Bld.rebuildBlock writes block code 1 for a
                               raised gate — the code that stops EVERYONE,
@@ -71,25 +82,32 @@
                               north-south self (it lies east), on canvases of
                               different shapes. Neither is the other rotated.
 
-     IT FALLS OUTWARD         And never into the courtyard. Which way that is
-                              cannot be read off the wall line, because a
-                              stronghold is only PARTLY built — the cheap way
-                              to enclose ground is to run your wall between a
-                              lake and a mountain and let the map do the rest.
-                              So Bld.gateOutside reads the GROUND: flood both
-                              sides of the passage, barriers being deep water,
-                              mountain, trench, moat and the tribe's own
-                              finished walls/gates/towers, then take the side
-                              the HALL is on as the inside (falling back to
-                              whichever side is enclosed, then to whichever
-                              holds more of the tribe's works). Harvestable
-                              ground is deliberately NOT a barrier: a
-                              woodcutter finishing a stand must not turn a
-                              castle inside out.
+     IT FALLS OUTWARD         And never into the courtyard. The flood-fill
+                              ground read that used to answer this is GONE —
+                              too clever, and it got it wrong in ways nobody
+                              could predict from the map. The rule is now
+                              plain geometry (user direction): OUTWARD IS
+                              AWAY FROM THE TOWN'S OWN ANCHOR — the HALL, or
+                              the nearest own finished WAR CAMP when that
+                              camp is nearer to the gate than the hall is (a
+                              forward gate belongs to the camp that planted
+                              it, and its outside faces the enemy, not
+                              home). Bld.gateOutside caches per gate against
+                              _blockGen, so a war camp raised later re-aims
+                              the gates it should.
                               A west-falling flank deck is the east one
                               MIRRORED (a picture-plane rotation, so a mirror
                               is exact); a north-falling face deck is authored
                               (deckFaceAway) and drawn UNDER the gate.
+
+     BORN CLOSED              A PLAYER gate finishes with its door SHUT at
+                              every tier — a door nobody chose to open must
+                              never be a road into the castle. Upgrades
+                              preserve the state the player set (only the L3
+                              arrival is born up, finishWallUpgrade's own
+                              deck-grid rule). The rival's gates are never
+                              born shut: no chief works a door, and a sealed
+                              gate of its own would trap its army for good.
 
      THE SWING IS RENDER      R._dbA (the eased angle) lives on R and never on
      STATE                    the building or in S — same rule as R._fighting,
@@ -99,10 +117,11 @@
                               already shut starts settled, not slamming.
 
    Run this after touching any of:
-     buildings.js — rebuildBlock / canDrawbridge / toggleDrawbridge /
-                    stepOffFootprint / finish
-     buildings.js — gateOutside / _computeOutside / _floodSide / _blockGen
-     render.js    — drawDrawbridge / _dbA / gateVerticalAt / the building draw
+     buildings.js — rebuildBlock / canGateToggle / canDrawbridge /
+                    toggleDrawbridge / stepOffFootprint / finish
+     buildings.js — gateOutside / _computeOutside / _blockGen
+     render.js    — drawDrawbridge / drawGateWorks / _dbA / gateVerticalAt /
+                    the building draw
      sprites.js   — deckFace / deckSide / tileDB / the drawbridge atlas
      ui.js        — panelSig / renderPanel's gate branch / the drawbridge act
 
@@ -204,21 +223,30 @@ const out = await p.evaluate(() => {
   const vGate = S.buildings.find(bb => bb.key === 'gate' && bb.x === cx + 8);
   ck('twoGatesForTheTest', !!gate && !!vGate, '');
 
-  // ---- 2a. the third tier owns it ----
+  // ---- 2a. every tier has a door; the third tier owns the DECK ----
   {
-    const lvls = {};
-    for (const L of [1, 2, 3]) { gate.level = L; lvls[L] = Bld.canDrawbridge(gate); }
-    ck('onlyLevelThreeHasAWinch', !lvls[1] && !lvls[2] && lvls[3],
-      'L1 ' + lvls[1] + ' · L2 ' + lvls[2] + ' · L3 ' + lvls[3]);
+    const door = {}, deck = {};
+    for (const L of [1, 2, 3]) {
+      gate.level = L;
+      door[L] = Bld.canGateToggle(gate); deck[L] = Bld.canDrawbridge(gate);
+    }
+    ck('everyTierHasADoor', door[1] && door[2] && door[3],
+      'L1 ' + door[1] + ' · L2 ' + door[2] + ' · L3 ' + door[3]);
+    ck('onlyLevelThreeHasAWinch', !deck[1] && !deck[2] && deck[3],
+      'the deck is what the tier buys — L1 ' + deck[1] + ' · L2 ' + deck[2] + ' · L3 ' + deck[3]);
     gate.level = 3;
     gate.construction = 2;
-    const raising = Bld.canDrawbridge(gate);
+    const raising = Bld.canGateToggle(gate) || Bld.canDrawbridge(gate);
     gate.construction = 0;
     ck('noLeverWhileItIsStillBeingRaised', !raising, '');
+    gate.upgrading = 3;
+    const upgrading = Bld.canGateToggle(gate);
+    delete gate.upgrading;
+    ck('norWhileItIsBeingReinforced', !upgrading, '');
     // a WALL never grows one, whatever its level
     const wall = S.buildings.find(bb => bb.key === 'wall');
     wall.level = 3;
-    ck('aWallHasNoDrawbridge', !Bld.canDrawbridge(wall), '');
+    ck('aWallHasNoDrawbridge', !Bld.canGateToggle(wall) && !Bld.canDrawbridge(wall), '');
   }
 
   // ---- 2b. raised is a WALL, for everyone ----
@@ -241,11 +269,19 @@ const out = await p.evaluate(() => {
     ck('theLeverGoesBothWays',
       Bld.toggleDrawbridge(gate) === true && gate.raised === false &&
       Bld.blockAt(gate.x, gate.y) === 2 && Path.passable(gate.x, gate.y, 'P'), '');
-    // a level-2 gate refuses the order outright rather than sealing silently
-    gate.level = 2; Bld._block = null;
-    const refused = Bld.toggleDrawbridge(gate);
+    // the EARLY TIERS work their own doors now — an L1 gate bars its leaves
+    // and an L2 gate drops its portcullis, and sealed is code 1 for them too
+    for (const L of [1, 2]) {
+      gate.level = L; gate.raised = false; Bld._block = null;
+      const took = Bld.toggleDrawbridge(gate);
+      const shut = Bld.blockAt(gate.x, gate.y);
+      const opened = Bld.toggleDrawbridge(gate) && !gate.raised &&
+        Path.passable(gate.x, gate.y, 'P');
+      ck('aLevel' + (L === 1 ? 'One' : 'Two') + 'GateWorksItsOwnDoor',
+        took === true && shut === 1 && opened,
+        'seals at code ' + shut + ' and opens again');
+    }
     gate.level = 3; gate.raised = false; Bld._block = null;
-    ck('aLevelTwoGateRefusesTheOrder', refused === false && !gate.raised, '');
   }
 
   // ---- 2c. nobody is wedged in the passage ----
@@ -281,13 +317,34 @@ const out = await p.evaluate(() => {
     ck('theOrderLandsFromTheButton', gate.raised === true && Bld.blockAt(gate.x, gate.y) === 1, '');
     // the signature must MOVE, or refreshPanel would leave the stale label up
     ck('panelSigCarriesTheDeck', sigDown !== sigUp, '');
-    // a level-1 gate shows no lever at all
+    // every tier's lever speaks its own mechanism — a portcullis is DROPPED
+    // to shut and RAISED to open (the opposite sense from the drawbridge),
+    // and the palisade gate has no machinery at all, only doors
+    gate.raised = false; gate.level = 2; Bld._block = null;
+    UI.renderPanel();
+    const l2open = label();
+    document.querySelector('#panel [data-act="drawbridge"]').click();
+    const l2shut = label();
+    ck('theLeverSpeaksPortcullisAtLevelTwo',
+      !!l2open && /Drop the portcullis/i.test(l2open) &&
+      !!l2shut && /Raise the portcullis/i.test(l2shut) &&
+      gate.raised === true && Bld.blockAt(gate.x, gate.y) === 1,
+      String(l2open) + ' → ' + String(l2shut));
     gate.raised = false; gate.level = 1; Bld._block = null;
     UI.renderPanel();
-    ck('noLeverOnAnEarlyGate', label() === null, '');
-    gate.level = 3; Bld._block = null;
+    const l1open = label();
+    const sig1a = UI.panelSig();
+    document.querySelector('#panel [data-act="drawbridge"]').click();
+    const l1shut = label();
+    ck('theLeverSpeaksDoorsAtLevelOne',
+      !!l1open && /Close the gates/i.test(l1open) &&
+      !!l1shut && /Open the gates/i.test(l1shut) &&
+      gate.raised === true && Bld.blockAt(gate.x, gate.y) === 1,
+      String(l1open) + ' → ' + String(l1shut));
+    ck('panelSigCarriesTheEarlyDoorToo', sig1a !== UI.panelSig(), '');
+    gate.raised = false; gate.level = 3; Bld._block = null;
     UI.renderPanel();
-    ck('theLeverIsBackAtLevelThree', label() !== null, '');
+    ck('theLeverIsOnEveryFinishedGate', label() !== null, '');
   }
 
   // ---- 2e. the swing is RENDER state, and the seal does not wait for it ----
@@ -455,6 +512,24 @@ const out = await p.evaluate(() => {
     S.map.terrain[MapGen.idx(X0 - 1, cy2)] = T.GRASS;
     const ag = Bld.place('A', 'gate', X0 - 1, cy2, { free: true, instant: true });
     ck('theRivalsGateIsNotBornUp', ag.level === 3 && !ag.raised, 'no winch, no self-seal');
+    // …and the EARLY tiers are born closed too — the door rule generalized:
+    // a door nobody chose to open is never a road into the castle
+    S.wallLevel = 1;
+    S.map.terrain[MapGen.idx(X1 + 2, cy2)] = T.GRASS;
+    const f1 = Bld.place('P', 'gate', X1 + 2, cy2, {});
+    Bld.finish(f1);
+    ck('aFreshGateIsBornClosedAtEveryTier',
+      f1.level === 1 && f1.raised === true && Bld.blockAt(f1.x, f1.y) === 1,
+      'a level-1 gate finishes barred');
+    // a REINFORCEMENT keeps the door as the player left it — only the L3
+    // arrival is born up (the deck-grid rule above); L1→L2 changes the
+    // mechanism, never the state
+    Bld.toggleDrawbridge(f1);                              // the player opens it
+    t.wallUpTarget = 2;
+    Bld.finishWallUpgrade(t);
+    ck('aReinforcementKeepsTheDoorAsThePlayerLeftIt',
+      f1.level === 2 && f1.raised === false && Path.passable(f1.x, f1.y, 'P'),
+      'opened before the works, open after them');
   }
 
   /* ---- 2f-ii. IT FALLS OUTWARD, whatever the stronghold is made of ---- */
@@ -496,9 +571,11 @@ const out = await p.evaluate(() => {
         'N ' + d('N') + ' · S ' + d('S') + ' · W ' + d('W') + ' · E ' + d('E'));
     }
     /* A STRONGHOLD THE MAP HALF-BUILT: a lake walls the north and east, crags
-       close the south, and a short wall shuts the west with one gate. The hall
-       is east of that gate, so the bridge falls WEST — and no wall line
-       anywhere says so. This is the case the whole rule exists for. */
+       close the south, and a short wall shuts the west with one gate. The
+       hall is east of that gate, so the bridge falls WEST — and no wall
+       line, lake or crag has to be read to know it: away from the hall IS
+       the answer, which is why the flood-fill this rule used to run is
+       gone. Terrain never votes. */
     {
       const g0 = build('db-lake', (t) => {
         for (let y = t.y - 8; y <= t.y + 8; y++) for (let x = t.x - 6; x <= t.x + 8; x++)
@@ -512,41 +589,33 @@ const out = await p.evaluate(() => {
         }
         return g;
       });
-      ck('aLakeAndACragCountAsWalls', Bld.gateOutside(g0) === -1,
+      ck('awayFromTheHallAnswersTheHalfBuiltFort', Bld.gateOutside(g0) === -1,
         'the bridge falls ' + (Bld.gateOutside(g0) < 0 ? 'west, away from the town' : 'EAST, into it'));
     }
-    /* A LEAKY RING: the wall does not quite close, so BOTH sides run to the
-       wide world and the enclosure test cannot answer. The hall still can. */
+    /* A FORWARD GATE BELONGS TO ITS WAR CAMP: with a finished camp standing
+       nearer the gate than the hall, the outside faces away from the CAMP —
+       the camp planted the gate, and the door opens toward the war, not
+       toward home. An UNFINISHED camp anchors nothing. */
     {
-      const g0 = build('db-leak', (t) => {
+      let camp = null;
+      const g0 = build('db-camp', (t) => {
+        S.buildings = S.buildings.filter(z => z.key === 'tc' ||
+          z.x < t.x - 4 || z.x > t.x + 4 || z.y < t.y + 4 || z.y > t.y + 11);
         let g = null;
-        for (let d = -5; d <= 5; d++) {
-          if (d === 4) continue;                       // the gap
-          const nb = Bld.place('P', d === 0 ? 'gate' : 'wall', t.x + 5, t.y + d, { instant: true });
+        for (let d = -3; d <= 3; d++) {
+          const nb = Bld.place('P', d === 0 ? 'gate' : 'wall', t.x + d, t.y + 5, { instant: true });
           if (d === 0) g = nb;
         }
+        camp = Bld.place('P', 'warcamp', t.x - 1, t.y + 8, { free: true, instant: true });
         return g;
       });
-      ck('anUnclosedRingStillKnowsItsInside', Bld.gateOutside(g0) === 1,
-        'the hall answers it when enclosure cannot');
-    }
-    /* HARVESTABLE GROUND IS NOT A WALL. Ring the hall in forest and the answer
-       must not change — otherwise a woodcutter finishing a stand would turn a
-       castle inside out on the day the last tree came down. */
-    {
-      const g0 = build('db-wood', (t) => {
-        for (let d = -5; d <= 5; d++)
-          for (const [x, y] of [[t.x + d, t.y - 5], [t.x + d, t.y + 5], [t.x - 5, t.y + d]])
-            if (MapGen.inB(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.FOREST;
-        let g = null;
-        for (let d = -5; d <= 5; d++) {
-          const nb = Bld.place('P', d === 0 ? 'gate' : 'wall', t.x + 5, t.y + d, { instant: true });
-          if (d === 0) g = nb;
-        }
-        return g;
-      });
-      ck('woodsAreNotFortifications', Bld.gateOutside(g0) === 1,
-        'a stand of trees must not decide which way a castle faces');
+      ck('aWarCampGateOpensAwayFromTheCamp', !!camp && Bld.gateOutside(g0) === -1,
+        'camp south of the gate → the door swings north, toward its enemy');
+      camp.construction = 5;
+      Bld._block = null; Bld.blockAt(1, 1);
+      ck('anUnfinishedCampAnchorsNothing', Bld.gateOutside(g0) === 1,
+        'a site is not a fort — back to "away from the hall"');
+      camp.construction = 0;
     }
     // …and the answer is CACHED against the wall generation, not recomputed
     {

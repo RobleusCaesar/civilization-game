@@ -89,7 +89,7 @@ node tests/wonder.mjs          # the second way to win: one of ten 3×3 monument
 node tests/gold-mine.mjs       # gold seams are found, claimed, worked and held — and the seam outlives the mine
 node tests/raider-camps.mjs    # barbarian camps are standing, tended, burnable ground — the wild country has owners
 node tests/mortality.mjs       # a villager dies every so often, of something apt — and their post is left empty
-node tests/drawbridge.mjs      # a Lv3 gate's bridge on chains: raised, the gate is a WALL — to its owner too
+node tests/drawbridge.mjs      # every gate's door works: L1 leaves, L2 portcullis, L3 drawbridge; sealed is a WALL — to its owner too; born closed; opens away from the hall/war camp
 node tests/tc-upgrade.mjs      # the hall rises on the town's shoulders — 3 buildings at its own level
 node tests/banish.mjs          # a villager can be sent away for good — the pop cap is all you get back
 node tests/worked-ground.mjs   # a station stands only on ground its own resource was taken out of
@@ -1864,47 +1864,71 @@ ordinary unit sprite, so they draw through the identical box at the identical
 `SPRITE_LIFT` offset. `R.deaths` is render-side only and never reaches a save
 (same rule as `R.collapses`).
 
-**The drawbridge** (`tests/drawbridge.mjs`): the level-3 gatehouse hangs its
-bridge on chains, and the panel carries ONE button whose label is the ACTION
-rather than the state — "⬆ Raise the drawbridge" while the deck is down, "⬇
-Lower the drawbridge" while it is up (`data-act="drawbridge"` →
-`Bld.toggleDrawbridge`). **Raised, the gate is a WALL**: `Bld.rebuildBlock`
-writes block code **1** for `b.raised`, the code that stops EVERYONE — its
-owner included — instead of the 2/3 that passes its own tribe. That is what
-makes the lever a decision and not a free upgrade: you shut your own door and
-live with it. Only the third tier has the winch (`Bld.canDrawbridge`: finished,
-`level >= 3`); L1 and L2 show no button at all, and `b.raised` rides in every
-save (`loadJSON` backfills `false`, so a pre-drawbridge save's gates load open).
-**A PLAYER gate that ARRIVES at the third tier is BORN UP** (`Bld.finish` and
-`Bld.finishWallUpgrade`, tests/drawbridge.mjs): a deck the player never chose
-to lower must not be an open road into the castle — and the born-"down" deck
-was a lie anyway (a reported bug): the deck grid caches against `_blockGen`,
-which a mere level bump never moved, so the lowered-looking bridge carried
-nobody until the winch was worked twice. Born shut, the first lowering IS the
-first winch-work, through the toggle's own invalidate-then-step-off order.
-Player only — the rival's chief never works a winch, and a raised gate of its
-own would seal its army in for good.
+**Every gate has a door** (`tests/drawbridge.mjs`): the gate's satisfying
+open/close lever, once the L3 drawbridge's alone, now works at EVERY tier —
+L1 swings its two door leaves outward, L2 winches a wood-and-iron portcullis
+straight up and down, L3 keeps the drawbridge. `Bld.canGateToggle` (any
+finished gate, not raising, not upgrading) gates the panel button and
+`Bld.toggleDrawbridge`; `Bld.canDrawbridge` (= canGateToggle && `level >= 3`)
+still owns the DECK — `drawbridgeSpan`/`rebuildDeck`/`deckAt` stay third-tier
+facts, since only a drawbridge spans the ditch beyond the gate. `b.raised`
+means THE GATE IS SEALED at every tier; the mechanism is only what the seal
+looks like. The panel button's label is the ACTION in the tier's own words —
+"⬆ Raise the drawbridge"/"⬇ Lower…", "⬇ Drop the portcullis"/"⬆ Raise…",
+"🚪 Close the gates"/"🚪 Open…" (`data-act="drawbridge"` at every tier).
+**Raised, the gate is a WALL**: `Bld.rebuildBlock` writes block code **1**
+for `b.raised`, the code that stops EVERYONE — its owner included — instead
+of the 2/3 that passes its own tribe. That is what makes the lever a decision
+and not a free upgrade: you shut your own door and live with it. `b.raised`
+rides in every save (`loadJSON` backfills `false`, so a pre-drawbridge save's
+gates load open).
+**A PLAYER gate is BORN CLOSED — every tier** (`Bld.finish`): a door nobody
+chose to open must never be a road into the castle, and the first opening
+runs the ordinary toggle path. Player only — the rival's chief never works a
+door, and a sealed gate of its own would trap its army for good. Upgrades
+PRESERVE the state the player set, with ONE exception: **a gate that ARRIVES
+at the third tier is born UP** (`Bld.finishWallUpgrade`) — the born-"down"
+deck was a lie anyway (a reported bug): the deck grid caches against
+`_blockGen`, which a mere level bump never moved, so the lowered-looking
+bridge carried nobody until the winch was worked twice. Born shut, the first
+lowering IS the first winch-work, through the toggle's own
+invalidate-then-step-off order.
 Shutting the gate on somebody standing in the passage steps them clear via
 `Bld.stepOffFootprint` — the step-off `Bld.finish` already did for a footprint
-that turns solid, now factored out and shared. `UI.panelSig` carries `b.raised`
-so the label flips the moment the order lands.
-**A drawbridge falls OUTWARD** (same test): never into the courtyard. Which way
-that is cannot be read off the wall line, because a stronghold is only PARTLY
-built — the cheap way to enclose ground is to run a wall between a lake and a
-mountain and let the map do the rest. `Bld.gateOutside` therefore reads the
-GROUND: flood the two sides the passage joins, with deep water, mountain,
-trench, moat and the tribe's OWN finished walls/gates/towers as barriers (never
-back through this gate), then take the side the HALL is on as the inside —
-falling back to whichever side is ENCLOSED (the other ran to the map's edge or
-past `GATE_FLOOD_CAP`), then to whichever holds more of the tribe's works, then
-to the old default. The hall test is primary because it is the one that
-survives a LEAKY ring, where both floods reach the wide world. Harvestable
-ground — woods, crags, orchards — is deliberately NOT a barrier even though it
-blocks movement: a woodcutter finishing a stand would otherwise turn a castle
-inside out the day the last tree came down. Owner-agnostic, and CACHED against
-`Bld._blockGen` (bumped in `rebuildBlock`), so two floods run only when the
-walls actually change — build the block grid BEFORE reading the generation or
-the cache is stamped with a number already stale.
+that turns solid, now factored out and shared. `UI.panelSig` carries the
+canGateToggle/raised pair so the label flips the moment the order lands.
+**A gate opens OUTWARD** (same test): never into the courtyard. The
+flood-fill ground read that used to answer this is GONE — too clever, and it
+guessed wrong in ways nobody could predict from the map (a reported
+opens-inward bug). The rule is now plain geometry (user direction): outward
+is AWAY FROM THE TOWN'S OWN ANCHOR — the hall, or the nearest own FINISHED
+war camp when that camp is nearer to the gate than the hall is, because a
+forward gate belongs to the camp that planted it and its outside faces the
+enemy, not home. `Bld._computeOutside` takes the sign of the gate-to-anchor
+delta along the passage axis (`R.gateVerticalAt` picks the axis); dead level
+keeps the old default (+1). Owner-agnostic, and CACHED per gate against
+`Bld._blockGen` (bumped in `rebuildBlock`) so a war camp raised later
+re-aims the gates it should — build the block grid BEFORE reading the
+generation or the cache is stamped with a number already stale.
+**The early tiers' doors are an OVERLAY, not new sprites**
+(`R.drawGateWorks`, called beside `drawDrawbridge` on both building-loop
+passes): the baked gate sprites are untouched (wall-tower-bond.mjs pins
+them), and the overlay paints in fine-grid cells over/under them, easing
+through the same `R._dbA` render-state convention (never in a save, settled
+on first sight, cleared in `onNewGame`). L2's face ALWAYS overdraws while
+finished — its closure IS the portcullis grate sliding in the arch, never
+fully out of sight even raised; the flank slides a dark grate rod up the
+block's outward edge, standing proud of the coping when open. L1 fully
+closed keeps the baked braced door; the moment it moves the passage is
+painted open and the leaves take over — the toward-camera face walks SCREEN
+columns with honest cos(θ) foreshortening (source-indexed columns collide
+when cos is small and the door dissolved into slivers), capped at ~62° so
+open leaves never vanish; the away face draws plan-view leaves on the FRONT
+pass (under the sprite they were invisible); the flanks hang their hardware
+half a cell PROUD of the block's edge, against grass — inside it,
+wood-on-wood, the door disappeared entirely. PLAYER gates only: the rival's
+always-open state drawn literally would show a passage the player cannot
+use, so its gates keep the baked closed-door art they have always worn.
 **Which strip, and where it is drawn** (same test): a west-falling flank deck is
 the east one MIRRORED about the tile's centre line (a picture-plane rotation, so
 a mirror is exact); a north-falling FACE deck cannot be mirrored at all — flipped,

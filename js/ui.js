@@ -2036,9 +2036,9 @@ const UI = {
         b.level < 3 && Bld.canUpgrade(b).ok, b.hp < b.maxhp, Bld.hasWorker(b),
         d.needsWorker ? Bld.workersAssigned(b) + '/' + Bld.workersActive(b) : '-',
         !!b.rally, this.confirmDemolish === b.id,
-        // the drawbridge lever reads the OPPOSITE of the deck's state, so the
+        // the gate lever reads the OPPOSITE of the door's state, so the
         // label has to flip the moment the order lands (tests/drawbridge.mjs)
-        Bld.canDrawbridge(b) ? (b.raised ? 'up' : 'down') : '-'].join('|');
+        Bld.canGateToggle(b) ? (b.raised ? 'up' : 'down') : '-'].join('|');
       if (b.key === 'tc') {
         // visibility bits: pointless buttons unrender the moment they empty
         const vills = S.units.some(u => u.owner === 'P' && Units.isVillager(u));
@@ -2299,14 +2299,24 @@ const UI = {
         }
         if ((b.key === 'wall' || b.key === 'gate') && !b.construction && b.level < 3)
           html += `<span class="psub">Walls upgrade together — use the Town Center.</span>`;
-        /* THE DRAWBRIDGE LEVER (tests/drawbridge.mjs). One button, and it says
-           what pulling it will DO — raise the deck when it is down, lower it
-           when it is up — so the gate's state is readable from the button
-           alone. Only the third tier has the winch to work it. */
-        if (Bld.canDrawbridge(b))
-          html += b.raised
-            ? `<button class="abtn wide" data-act="drawbridge">⬇ Lower the drawbridge<small>the gate opens — your people pass again</small></button>`
-            : `<button class="abtn wide" data-act="drawbridge">⬆ Raise the drawbridge<small>shuts the gate fast — to your own people too</small></button>`;
+        /* THE GATE LEVER (tests/drawbridge.mjs). One button on every finished
+           gate, and it says what pulling it will DO — open the door when it
+           is shut, shut it when it is open — so the gate's state is readable
+           from the button alone. Each tier works its own mechanism: L1
+           swings its door leaves, L2 winches a portcullis, L3 hauls the
+           drawbridge. Sealed is sealed for EVERYONE, the owner included. */
+        if (Bld.canGateToggle(b))
+          html += b.level >= 3
+            ? (b.raised
+              ? `<button class="abtn wide" data-act="drawbridge">⬇ Lower the drawbridge<small>the gate opens — your people pass again</small></button>`
+              : `<button class="abtn wide" data-act="drawbridge">⬆ Raise the drawbridge<small>shuts the gate fast — to your own people too</small></button>`)
+            : b.level === 2
+              ? (b.raised
+                ? `<button class="abtn wide" data-act="drawbridge">⬆ Raise the portcullis<small>the gate opens — your people pass again</small></button>`
+                : `<button class="abtn wide" data-act="drawbridge">⬇ Drop the portcullis<small>shuts the gate fast — to your own people too</small></button>`)
+              : (b.raised
+                ? `<button class="abtn wide" data-act="drawbridge">🚪 Open the gates<small>the doors swing out — your people pass again</small></button>`
+                : `<button class="abtn wide" data-act="drawbridge">🚪 Close the gates<small>bars the door fast — to your own people too</small></button>`);
         if (d.train && !b.construction) {
           for (const [uk, spec] of Object.entries(d.train)) {
             const ct = Bld.canTrain(b, uk);
@@ -2502,10 +2512,15 @@ const UI = {
           this.renderPanel();
         }
         else if (btn.dataset.act === 'drawbridge') {
-          if (!Bld.toggleDrawbridge(b2)) { this.toast('This gate has no winch — only a Lv 3 gatehouse does', true); return; }
-          this.toast(b2.raised
-            ? 'Drawbridge up — nobody comes through, yourself included'
-            : 'Drawbridge down — the gate is open');
+          if (!Bld.toggleDrawbridge(b2)) { this.toast('The gate is still being worked on — no door to work yet', true); return; }
+          this.toast(b2.level >= 3
+            ? (b2.raised ? 'Drawbridge up — nobody comes through, yourself included'
+                         : 'Drawbridge down — the gate is open')
+            : b2.level === 2
+              ? (b2.raised ? 'Portcullis down — nobody comes through, yourself included'
+                           : 'Portcullis up — the gate is open')
+              : (b2.raised ? 'Gates barred — nobody comes through, yourself included'
+                           : 'Gates open — your people pass'));
           this.renderPanel();
           return;
         }
