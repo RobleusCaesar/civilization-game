@@ -516,8 +516,20 @@ destination ring, drawn in render.js) → `UI.commitMoveDrag` on release. The
 release NEVER re-selects. Semantics are movement-first but honour intent:
 enemy under the finger → attack, own transport → board, enemy building /
 bridge → attack/sever, villager onto a resource → gather (dispatch deselects,
-as taps do), explored ground → walk (green `UI.moveFlash` confirm pulse),
-unexplored → refused. Sub-threshold presses fall through to the ordinary tap
+as taps do), explored ground → walk (green `UI.moveFlash` confirm pulse).
+**THE FOG IS NOT A WALL** (same test §8, taps and drags alike — from a
+playtest: pushing a scout forward felt "stilted", because the vision frontier
+is ragged and a tap that LOOKS just past the faded edge landed on black and
+got "Unexplored"): a WALK order tolerates the dark. The FIRST RANK of
+unexplored tiles beside explored ground is directly orderable (you can see
+its near edge), a point DEEPER in the black clamps to the nearest pointable
+tile (`UI.fogWalkTarget`, spiral out to `UI.FOG_REACH` 14 — "as far as you
+know" is the graceful answer to "go there"), and only a tap into deep void
+with nothing known in reach still refuses, selection kept. ONLY the plain
+walk gets this tolerance: gather/claim/fish/terraform orders read what a tile
+HOLDS, which the fog exists to hide, so they keep the hard explored gate (an
+unexplored tap with a villager goes straight to the clamped walk, never into
+those branches). Sub-threshold presses fall through to the ordinary tap
 byte-for-byte (tap-audit still rules); drags starting OFF the selection still
 pan; wall/terraform line-drags keep right of way at pointerdown.
 

@@ -1036,6 +1036,32 @@ const UI = {
     return null;
   },
 
+  /* THE FOG IS NOT A WALL (tests/drag-move.mjs §8 — from a playtest: pushing
+     a scout forward felt "stilted", because the vision frontier is ragged and
+     a tap that LOOKS just past the faded edge lands on black and got a
+     refusal). A WALK order now tolerates the dark: explored ground works as
+     it always did, the FIRST RANK of unexplored tiles beside it counts as
+     ground you can point at (you can see its near edge), and a tap DEEPER
+     into the black walks the unit to the nearest pointable tile instead of
+     refusing — "as far as you know" is the graceful answer to "go there".
+     Only the plain walk gets this tolerance: gather/claim/fish/terraform
+     orders all read what a tile HOLDS, which the fog exists to hide, so they
+     keep the hard explored gate. A tap into deep void with nothing known
+     within FOG_REACH still refuses — there is no intent to honour out there. */
+  FOG_REACH: 14,
+  fogWalkTarget(tile) {
+    const expl = S.map.explored;
+    const open = (x, y) => {
+      if (!MapGen.inB(x, y)) return false;
+      if (expl[MapGen.idx(x, y)]) return true;
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++)
+        if (MapGen.inB(x + ox, y + oy) && expl[MapGen.idx(x + ox, y + oy)]) return true;
+      return false;
+    };
+    if (open(tile.x, tile.y)) return tile;
+    return MapGen.findNear(tile.x, tile.y, this.FOG_REACH, open);
+  },
+
   commitMoveDrag(sx, sy) {
     if (!S || S.over || !this.sel) return;
     const tile = R.screenToTile(sx, sy);
@@ -1060,7 +1086,7 @@ const UI = {
       }, 0.42);
       return n ? Bld.at(n.x, n.y) : null;
     };
-    const flash = () => { this.moveFlash = { x: tile.x, y: tile.y, t: 0.9, life: 0.9 }; };
+    const flash = (at) => { const p2 = at || tile; this.moveFlash = { x: p2.x, y: p2.y, t: 0.9, life: 0.9 }; };
 
     if (this.sel.type === 'group') {
       const ids = this.sel.ids.filter(id => Units.get(id));
@@ -1111,10 +1137,11 @@ const UI = {
         this.toast('⚔️ War party moves to sever the bridge');
         return;
       }
-      if (!explored) { this.toast('Unexplored', true); return; }
+      const wt = explored ? tile : this.fogWalkTarget(tile);   // the fog is not a wall
+      if (!wt) { this.toast('Unexplored', true); return; }
       for (const id of ids) { const u = Units.get(id); if (u) u.defend = false; }
-      Units.groupMove(ids, tile.x, tile.y);
-      flash();
+      Units.groupMove(ids, wt.x, wt.y);
+      flash(wt);
       return;
     }
 
@@ -1166,10 +1193,11 @@ const UI = {
       this.toast('Making for that shore — soldiers will land there');
       return;
     }
-    if (!explored) { this.toast('Unexplored', true); return; }
+    const wt = explored ? tile : this.fogWalkTarget(tile);   // the fog is not a wall
+    if (!wt) { this.toast('Unexplored', true); return; }
     sel.defend = false;
-    Units.moveTo(sel, tile.x, tile.y);
-    flash();
+    Units.moveTo(sel, wt.x, wt.y);
+    flash(wt);
   },
 
   handleTap(sx, sy) {
@@ -1298,9 +1326,10 @@ const UI = {
         return;
       }
       if (!tapUnit && !hitBld) {
-        if (!explored) { this.toast('Unexplored', true); return; }
+        const wt = explored ? tile : this.fogWalkTarget(tile);   // the fog is not a wall
+        if (!wt) { this.toast('Unexplored', true); return; }
         for (const id of ids) { const u = Units.get(id); if (u) u.defend = false; }
-        Units.groupMove(ids, tile.x, tile.y);
+        Units.groupMove(ids, wt.x, wt.y);
         this.toast(fleet ? '⚓ Fleet sailing out' : 'War party moving — melee front, archers behind');
         return;
       }
@@ -1395,7 +1424,17 @@ const UI = {
         return;
       }
       if (!tapUnit && (!hitBld || hitBld.owner !== 'P')) {
-        if (!explored) { this.toast('Unexplored', true); return; }
+        if (!explored) {
+          /* THE FOG IS NOT A WALL — but only for the plain WALK. Every branch
+             below reads what the tile HOLDS (a resource, a seam, a shoal, a
+             bridge), which is exactly what the fog exists to hide, so an
+             unexplored tap goes straight to the clamped walk instead. */
+          const wt = this.fogWalkTarget(tile);
+          if (!wt) { this.toast('Unexplored', true); return; }
+          sel.defend = false;
+          Units.moveTo(sel, wt.x, wt.y);
+          return;
+        }
         if (Units.isVillager(sel)) {
           // the tapped tile itself, or — forgiving a sliver of a miss — the
           // nearest gatherable neighbour the finger clearly aimed at

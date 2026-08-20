@@ -15,7 +15,9 @@
      · enemy building / bridge            → attack / sever
      · villager onto a standing resource  → gather (dispatch deselects, as taps do)
      · anything else on explored ground   → walk there (green confirm pulse)
-     · unexplored ground                  → refused with a toast
+     · unexplored ground                  → the fog is not a wall (§8): the
+       first dark rank beside explored ground is orderable, deeper black
+       clamps to the nearest pointable tile, only the deep void refuses
    And the surrounding input modes are undisturbed:
      · a press that never crosses the drag threshold is an ordinary TAP —
        selection behaviour is byte-for-byte the old one (tap-audit still rules)
@@ -212,22 +214,77 @@ const drag = async (from, to) => {
   ck('gatherDispatchDeselects', r.sel === 'null', r.sel);
 }
 
-// ---- 8. dragging toward the FOG is refused, with the selection kept ----
+/* ---- 8. THE FOG IS NOT A WALL (from a playtest: pushing a scout forward
+   felt "stilted" — the vision frontier is ragged, so a tap that LOOKS just
+   past the faded edge landed on black and got "Unexplored"). A WALK order
+   tolerates the dark: the FIRST RANK of unexplored tiles beside explored
+   ground is directly orderable (you can see its near edge), a point DEEPER
+   in the black clamps to the nearest pointable tile (UI.fogWalkTarget — "as
+   far as you know" is the graceful answer to "go there"), and only a tap
+   into deep void with nothing known within UI.FOG_REACH still refuses, with
+   the selection kept. Non-walk orders (gather/claim/fish/terraform) keep the
+   hard explored gate — they read what a tile HOLDS, which the fog hides. ---- */
 {
+  // (a) the first line of the darkness is orderable ground
   const sc = await setup('dm8', tc => {
     const u = Units.spawn('defender', 'P', tc.x + 3, tc.y + 3);
     UI.select('unit', u.id);
     // hand-darken an onscreen tile (paused game: visibility won't re-mark it)
     const dark = { x: tc.x + 7, y: tc.y + 5 };
     S.map.explored[MapGen.idx(dark.x, dark.y)] = 0;
-    return { id: u.id, pts: { from: { x: u.x, y: u.y, lift: 1 }, to: { x: dark.x + 0.5, y: dark.y + 0.5 } } };
+    return { id: u.id, dark, pts: { from: { x: u.x, y: u.y, lift: 1 }, to: { x: dark.x + 0.5, y: dark.y + 0.5 } } };
   });
   await drag(sc.screen.from, sc.screen.to);
-  const r = await p.evaluate(({ id }) => {
+  const r = await p.evaluate(({ id, dark }) => {
     const u = Units.get(id);
-    return { task: u.task && u.task.type, sel: JSON.stringify(UI.sel), moving: !!(u.path && u.pathI < u.path.length) };
-  }, { id: sc.id });
-  ck('fogDragRefusedSelectionKept', !r.task && !r.moving && r.sel === JSON.stringify({ type: 'unit', id: sc.id }), JSON.stringify(r));
+    const end = u.path && u.path.length ? u.path[u.path.length - 1] : null;
+    return { task: u.task && u.task.type, end, dark };
+  }, { id: sc.id, dark: sc.dark });
+  ck('theFirstLineOfDarknessIsOrderable', r.task === 'move' && !!r.end &&
+    Math.hypot(r.end.x - r.dark.x, r.end.y - r.dark.y) < 1.5, JSON.stringify(r));
+
+  // (b) deeper black clamps to the nearest pointable tile; (c) deep void refuses
+  const r2 = await p.evaluate(() => {
+    G.newGame('dm8b', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const tc = Bld.tcOf('P');
+    for (let dy = -2; dy <= 8; dy++) for (let dx = -2; dx <= 10; dx++)
+      if (MapGen.inB(tc.x + dx, tc.y + dy) && !Bld.at(tc.x + dx, tc.y + dy))
+        S.map.terrain[MapGen.idx(tc.x + dx, tc.y + dy)] = T.GRASS;
+    // knowledge is ONLY a small pocket around the unit — everything else is night
+    S.map.explored.fill(0);
+    const u = Units.spawn('defender', 'P', tc.x + 3, tc.y + 3);
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++)
+      if (MapGen.inB(u.x + dx, u.y + dy)) S.map.explored[MapGen.idx((u.x | 0) + dx, (u.y | 0) + dy)] = 1;
+    UI.sel = { type: 'unit', id: u.id }; UI.renderPanel();
+    R.centerOn(u.x, u.y); R.cam.z = 1.2; R.clampCam();
+    const at = (wx, wy) => ({ x: (wx * CFG.TILE - R.cam.x) * R.cam.z, y: (wy * CFG.TILE - R.cam.y) * R.cam.z });
+    // aim toward the map's interior so the deep points stay ON the board —
+    // a tap off the board is dropped before any fog rule runs
+    const dir = (u.x | 0) > CFG.W / 2 ? -1 : 1;
+    // (b) eight tiles into the black — well past the frontier, well inside FOG_REACH
+    const deep = { x: (u.x | 0) + dir * 8, y: u.y | 0 };
+    let s = at(deep.x + 0.5, deep.y + 0.5);
+    UI.commitMoveDrag(s.x, s.y);
+    const endB = u.path && u.path.length ? u.path[u.path.length - 1] : null;
+    const clamped = { task: u.task && u.task.type, end: endB };
+    // the destination sits in the KNOWN band (explored or its first dark rank)
+    const pointable = endB && (() => {
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++)
+        if (MapGen.inB(endB.x + ox, endB.y + oy) && S.map.explored[MapGen.idx(endB.x + ox, endB.y + oy)]) return true;
+      return false;
+    })();
+    // (c) the deep void — nothing known within FOG_REACH — still refuses
+    u.task = null; u.path = null;
+    const voidT = { x: (u.x | 0) + dir * (UI.FOG_REACH + 6), y: u.y | 0 };
+    s = at(voidT.x + 0.5, voidT.y + 0.5);
+    UI.commitMoveDrag(s.x, s.y);
+    return { clamped, pointable,
+      voidRefused: !u.task && !(u.path && u.path.length), sel: JSON.stringify(UI.sel), uid: u.id };
+  });
+  ck('deeperBlackClampsToTheKnownBand', r2.clamped.task === 'move' && !!r2.clamped.end && r2.pointable,
+    JSON.stringify(r2.clamped));
+  ck('theDeepVoidStillRefuses', r2.voidRefused && r2.sel === JSON.stringify({ type: 'unit', id: r2.uid }),
+    'no order, selection kept');
 }
 
 console.log(JSON.stringify(res, null, 1));
