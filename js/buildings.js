@@ -1321,6 +1321,108 @@ const Bld = {
     return { need: c.need || 'gold', pay: c.pay || c.res, amt: c.amt != null ? c.amt : (c.gold || 0) };
   },
 
+  /* WHERE A FRESH UNIT STANDS, AND WHAT HAPPENS WHEN THERE IS NOWHERE
+     (tests/train-spawn.mjs). A trained unit used to be dropped at the first
+     open tile within THREE of the yard and, failing that, on a HARD-CODED
+     `{ b.x, b.y + 1 }` that nothing ever checked — so a yard hemmed in by
+     water, a wall line or its own neighbours spawned soldiers INSIDE blocked
+     ground, where they stood forever and no order could move them (reported
+     from a real day-100 game: a training yard against the shore).
+
+     Two rules replace it. A spawn tile must be REALLY open — passable in the
+     unit's own domain, no building on it, and with at least one passable
+     neighbour, because a one-tile pocket traps a unit exactly as surely as a
+     wall does. And when the whole search comes up empty NOBODY IS SPAWNED:
+     the unit is held in reserve (b.hold), the player is told why in as many
+     words, and the moment a tile opens the reserve walks out in the order it
+     was trained. Nothing is lost and nothing is stuck — the two failure modes
+     the old fallback chose between. */
+  SPAWN_R: 6,
+
+  spawnRoom(owner, dom, x, y) {
+    if (!Path.passable(x, y, owner, dom) || this.at(x, y)) return false;
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+      if (Path.passable(x + ox, y + oy, owner, dom)) return true;
+    return false;                       // a one-tile pocket is not open ground
+  },
+
+  /* the nearest tile to (sx, sy) a unit of `kind` may really be put down on,
+     or null when there is none in reach. Shared by every spawn that stands a
+     unit next to something: the training yards, the start extras and the
+     Town Center's two-survivor reprieve all used to carry their own
+     unchecked `|| { x, y + 1 }` fallback. */
+  spawnSpotAt(owner, kind, sx, sy, r) {
+    const dom = (CFG.UNITS[kind] && CFG.UNITS[kind].naval) ? 'water' : 'land';
+    return MapGen.findNear(sx, sy, r || this.SPAWN_R,
+      (x, y) => this.spawnRoom(owner, dom, x, y));
+  },
+
+  /* …and where a trained unit musters: land units at the yard's DOORSTEP
+     (below its footprint), hulls at the quay itself — the two starts the old
+     code used, kept. */
+  spawnSpot(b, kind) {
+    const naval = !!(CFG.UNITS[kind] && CFG.UNITS[kind].naval);
+    return this.spawnSpotAt(b.owner, kind, b.x, naval ? b.y : b.y + this.size(b));
+  },
+
+  /* put a finished unit on the ground and hand it its first orders */
+  releaseTrained(b, kind, spot) {
+    const nu = Units.spawn(kind, b.owner, spot.x, spot.y);
+    if (b.owner === 'P') {
+      G.log(`${CFG.UNITS[kind].name} ready`);
+      if (S.stats) S.stats.trained++;
+    }
+    // the rival's fresh fishing boats put their nets straight out
+    if (b.owner === 'A' && nu.kind === 'fishboat') {
+      const fs = MapGen.findNear(b.x, b.y, 5, (x, y) => Units.canFish(x, y));
+      if (fs) Units.assignFish(nu, fs.x, fs.y);
+    }
+    // rally point: fresh units head there; villagers rallied onto a
+    // resource tile (or boats onto stocked water) start gathering immediately
+    if (b.owner === 'P' && b.rally) {
+      // a refused work order (a levied hand, a claimed shoal) falls back
+      // to the plain walk — a rally point always MEANS "go there"
+      if (Units.isVillager(nu) && CFG.GATHER[S.map.terrain[MapGen.idx(b.rally.x, b.rally.y)]] &&
+          Units.assignGather(nu, b.rally.x, b.rally.y)) { /* gathering there */ }
+      else if (nu.kind === 'fishboat' && Units.canFish(b.rally.x, b.rally.y) &&
+          Units.assignFish(nu, b.rally.x, b.rally.y)) { /* fishing there */ }
+      else Units.moveTo(nu, b.rally.x, b.rally.y);
+    }
+    return nu;
+  },
+
+  /* nowhere to stand: the unit is BUILT and waits at the gate. `b.hold` rides
+     in the save with the building; absent means none, so an older save needs
+     no migration (the u.post convention). The warning is said ONCE per spell
+     of being blocked — it is a standing condition, not an event, and a line
+     every few seconds would bury the log it is trying to be seen in. */
+  holdTrained(b, item) {
+    (b.hold = b.hold || []).push(item);
+    if (b.owner === 'P' && !b.holdWarn) {
+      b.holdWarn = true;
+      // G.log already toasts (see G.log -> UI.toast); `warn` makes it the
+      // red one, since this is a thing the player has to go and fix
+      G.log(`No open ground to release the ${CFG.UNITS[item.unit].name} — ` +
+        `it waits at the ${this.def(b.key).name}. Clear a path beside it.`, true);
+    }
+  },
+
+  /* the ground opened: the reserve walks out in the order it was trained.
+     Units share tiles, so one open tile releases the whole reserve — they can
+     each step off it under their own orders. */
+  releaseHeld(b) {
+    while (b.hold.length) {
+      const item = b.hold[0];
+      const spot = this.spawnSpot(b, item.unit);
+      if (!spot) return;                       // still hemmed in — wait
+      b.hold.shift();
+      this.releaseTrained(b, item.unit, spot);
+      if (b.owner === 'P' && b.holdWarn && !b.hold.length)
+        G.log(`The way is clear — the ${this.def(b.key).name} releases its reserve`);
+    }
+    b.holdWarn = false;
+  },
+
   /* continuous updates: construction/upgrade progress + training (measured in days) */
   update(dtDays) {
     for (const b of S.buildings) {
@@ -1351,36 +1453,16 @@ const Bld = {
         b.wallUp -= dtDays;
         if (b.wallUp <= 0) this.finishWallUpgrade(b);
       }
+      // anyone finished while the ground outside was blocked waits at the gate
+      // — the moment there is somewhere to stand, they come out (see holdTrained)
+      if (b.hold && b.hold.length) this.releaseHeld(b);
       if (b.queue.length && !b.upgrading && !(b.wallUp > 0)) {   // level-up / wall works pause the training yard
         b.queue[0].t -= dtDays;
         if (b.queue[0].t <= 0) {
           const item = b.queue.shift();
-          const naval = !!CFG.UNITS[item.unit].naval;
-          const spot = (naval
-            ? MapGen.findNear(b.x, b.y, 3, (x, y) => Path.passable(x, y, b.owner, 'water') && !Bld.at(x, y))
-            : MapGen.findNear(b.x, b.y + Bld.size(b), 3, (x, y) => Path.passable(x, y) && !Bld.at(x, y)))
-            || { x: b.x, y: b.y + 1 };
-          const nu = Units.spawn(item.unit, b.owner, spot.x, spot.y);
-          if (b.owner === 'P') {
-            G.log(`${CFG.UNITS[item.unit].name} ready`);
-            if (S.stats) S.stats.trained++;
-          }
-          // the rival's fresh fishing boats put their nets straight out
-          if (b.owner === 'A' && nu.kind === 'fishboat') {
-            const fs = MapGen.findNear(b.x, b.y, 5, (x, y) => Units.canFish(x, y));
-            if (fs) Units.assignFish(nu, fs.x, fs.y);
-          }
-          // rally point: fresh units head there; villagers rallied onto a
-          // resource tile (or boats onto stocked water) start gathering immediately
-          if (b.owner === 'P' && b.rally) {
-            // a refused work order (a levied hand, a claimed shoal) falls back
-            // to the plain walk — a rally point always MEANS "go there"
-            if (Units.isVillager(nu) && CFG.GATHER[S.map.terrain[MapGen.idx(b.rally.x, b.rally.y)]] &&
-                Units.assignGather(nu, b.rally.x, b.rally.y)) { /* gathering there */ }
-            else if (nu.kind === 'fishboat' && Units.canFish(b.rally.x, b.rally.y) &&
-                Units.assignFish(nu, b.rally.x, b.rally.y)) { /* fishing there */ }
-            else Units.moveTo(nu, b.rally.x, b.rally.y);
-          }
+          const spot = this.spawnSpot(b, item.unit);
+          if (spot) this.releaseTrained(b, item.unit, spot);
+          else this.holdTrained(b, item);
         }
       }
     }

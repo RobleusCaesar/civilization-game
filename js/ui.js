@@ -2193,6 +2193,18 @@ const UI = {
     return (b && b.owner === 'P' && Bld.def(b.key).needsWorker && !b.construction) ? b : null;
   },
   // cheap periodic update: rewrite the sub-line only, rebuild DOM when structure changes
+  /* THE YARD'S QUEUE LINE, AND WHAT IS WAITING ON IT (tests/train-spawn.mjs).
+     ONE writer, shared by the panel render and the in-place refresh (the
+     hornBackLine convention) — the two used to hold their own copy of this
+     string. A unit that finished with nowhere to stand is BUILT and waiting
+     at the gate, so the panel says so; it is patched in place, so the count
+     falls to nothing on its own the moment the ground clears. */
+  queueLine(b) {
+    const held = (b.hold && b.hold.length) || 0;
+    return `Queue: ${b.queue.length}/${Bld.queueCap(b)}` +
+      (held ? ` — ⚠ ${held} waiting for open ground` : '');
+  },
+
   refreshPanel() {
     if (!this.sel) return;
     const sig = this.panelSig();
@@ -2241,7 +2253,7 @@ const UI = {
       if (!b) return;
       const panel = document.getElementById('panel');
       const q = document.getElementById('qLine');
-      if (q) q.textContent = `Queue: ${b.queue.length}/${Bld.queueCap(b)}`;
+      if (q) q.textContent = this.queueLine(b);
       panel.querySelectorAll('[data-act="train"]').forEach(btn =>
         btn.classList.toggle('cant', !Bld.canTrain(b, btn.dataset.unit).ok));
       const shN = document.getElementById('shelterN');
@@ -2383,7 +2395,7 @@ const UI = {
               html += `<button class="abtn" data-act="levy">⚔ Raise the levy<small id="levyN">${vills} hand${vills === 1 ? '' : 's'} take up arms — they eat like soldiers</small></button>`;
             if (vills) html += `<button class="abtn" data-act="shelter">🔔 Sound the horn<small id="shelterN">${vills} at work — all to shelter</small></button>`;
           }
-          html += `<span class="psub" id="qLine">Queue: ${b.queue.length}/${Bld.queueCap(b)}</span>`;
+          html += `<span class="psub" id="qLine">${this.queueLine(b)}</span>`;
           html += b.rally
             ? `<button class="abtn" data-act="rally">🚩 Move rally<small>tap a new spot, or the building to clear</small></button>`
             : `<button class="abtn" data-act="rally">🚩 Set rally<small>tap ground within ${CFG.RALLY_RANGE} tiles</small></button>`;

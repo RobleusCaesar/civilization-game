@@ -105,6 +105,7 @@ node tests/muster-horn.mjs   # one tap calls the workforce in, one tap sends it 
 node tests/levy.mjs          # the village under arms: derived membership, soldier's upkeep, works nothing, holds the town
 node tests/tree-fall.mjs     # a felled wood goes over on screen — every tree about its own foot
 node tests/rival-strength.mjs # the rewritten war brain: the anchor, the inner market, the engine road, the sea patrol — and 3 fortified towns razed end to end
+node tests/train-spawn.mjs   # a trained unit stands on REALLY open ground, or waits in reserve until there is some
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -497,6 +498,35 @@ the player's forward war camp — against 80 more days of standing still without
 it. The army famine the replay also surfaced (Bronze Champions deserting,
 day 357–375) is the food-upkeep economy correcting an over-mustered army and
 recovers on its own — deliberately not patched here.
+
+**A trained unit stands on open ground** (`tests/train-spawn.mjs`): a fresh
+unit used to be dropped at the first open tile within THREE of its yard and,
+failing that, on a HARD-CODED `{ b.x, b.y + 1 }` that nothing ever checked —
+so a yard hemmed in against the shore or a wall line spawned soldiers INSIDE
+blocked ground, where they stood forever and no order could move them (a
+reported day-100 game). Both of that fallback's outcomes are wrong: a unit in
+solid ground is lost, and a unit in a one-tile pocket is stuck.
+**REALLY OPEN** is now the test (`Bld.spawnRoom`): passable in the unit's own
+domain, no building on the tile, AND at least one passable neighbour — a
+pocket traps a unit as surely as a wall does. `Bld.spawnSpotAt` is the ONE
+room-checked search (`SPAWN_R` 6, land units at the yard's doorstep, hulls at
+the quay); the start extras and the Town Center's two-survivor reprieve each
+carried their own copy of the same unchecked fallback and now share it — the
+reprieve in particular used to spend its one-shot rescue standing two
+villagers inside rock, and now simply waits for ground instead of being
+consumed (`S.reprieveUsed` is not set, so it fires the day a tile opens).
+**AND NOBODY IS LOST**: with nowhere at all in reach the unit is NOT spawned
+— it is BUILT and held in reserve (`b.hold`, riding in the save with its
+building; absent means none, so an older save needs no migration — the
+`u.post` convention), the player is told why in as many words (`G.log`, which
+already toasts), and the moment a tile opens `Bld.releaseHeld` walks the
+reserve out in the order it was trained. The warning is said ONCE per spell
+of being blocked, never once per frame: it is a standing condition, not an
+event, and a line every few seconds buries the log it is trying to be seen
+in. The panel carries the count on its own queue line (`UI.queueLine`, the
+ONE writer shared by the render and the in-place refresh — the
+`hornBackLine` convention), so it falls to nothing by itself once the ground
+clears.
 
 **Rival strength** (`tests/rival-strength.mjs` — the rewrite's flagship, born
 of a 12-seed survey that measured 28% of ai.js as dead code: 1,384 lines

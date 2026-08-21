@@ -316,10 +316,13 @@ const G = {
 
   // the rare start extras: a spearman, a scout, a standing workplace, a rich cache
   applyStartExtra(ex, p, gen) {
-    const below = MapGen.findNear(p.x + 2, p.y + Bld.size('tc'), 4,
-      (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: p.x, y: p.y + 3 };
-    if (ex === 'defender') Units.spawn('defender', 'P', below.x, below.y);
-    else if (ex === 'scout') Units.spawn('rider', 'P', below.x, below.y);
+    // room-checked, like every other spawn (Bld.spawnSpotAt): the old
+    // `|| { p.x, p.y + 3 }` was never tested for being walkable, so a hall
+    // hemmed in by water or rock started the run with a unit inside it
+    const below = Bld.spawnSpotAt('P', ex === 'scout' ? 'rider' : 'defender',
+      p.x + 2, p.y + Bld.size('tc'), 8);
+    if (below && ex === 'defender') Units.spawn('defender', 'P', below.x, below.y);
+    else if (below && ex === 'scout') Units.spawn('rider', 'P', below.x, below.y);
     else if (ex === 'building') {
       const key = gen.scarce === 'wood' ? 'lumber' : gen.scarce === 'stone' ? 'quarry' : 'farm';
       const spot = MapGen.findNear(p.x + 3, p.y + 1, 5, (x, y) => Bld.tileFree(x, y));
@@ -713,11 +716,12 @@ const G = {
         S.garrison.length === 0 &&
         !tc.queue.some(q => q.unit === 'villager');
       const gaveReprieve = noVills && !(m.finishTC && S.reprieveUsed);
-      if (gaveReprieve) {
-        for (let i = 0; i < 2; i++) {
-          const spot = MapGen.findNear(tc.x, tc.y + Bld.size(tc), 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)) || { x: tc.x, y: tc.y + Bld.size(tc) };
-          Units.spawn('villager', 'P', spot.x, spot.y);
-        }
+      // the reprieve needs REAL ground to put them on — its old fallback was
+      // unchecked, so a walled-in hall spent the one-shot rescue standing two
+      // villagers inside solid ground (Bld.spawnSpotAt, tests/train-spawn.mjs)
+      const rSpot = gaveReprieve && Bld.spawnSpotAt('P', 'villager', tc.x, tc.y + Bld.size(tc), 10);
+      if (gaveReprieve && rSpot) {
+        for (let i = 0; i < 2; i++) Units.spawn('villager', 'P', rSpot.x, rSpot.y);
         S.reprieveUsed = true;
         this.log('🛖 Two villagers emerge from the Town Center — the tribe endures', true);
       }
