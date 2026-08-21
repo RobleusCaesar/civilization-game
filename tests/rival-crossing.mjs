@@ -342,53 +342,61 @@ const out = await p.evaluate(() => {
       JSON.stringify(ctx && ctx.breach));
   }
 
-  /* ---- 7. THE BLIND CHIEF (a real day-320 save): knownTC was STILL null after
-     320 days — the player's hall sat across water, outside the reach-limited
-     hunt — and every attack system gated on it. choosePosture demoted PUSH to
-     CONSOLIDATE, campaignSelect returned before selecting, so TIDEWRACK and
-     MUDLARK were unreachable code for the one chief that needed them most:
-     the whole army walked to the waterline and stood there for 200 days.
-     AI.attackAnchor is the stand-in — the known player building nearest the
-     centroid of everything the chief has actually seen — and it is EVIDENCE-
-     GATED (AI.warStuck): it exists only once the war is provably parked, so a
-     young chief still hunts before it besieges. ---- */
+  /* ---- 7. THE ANCHOR (superseding the old evidence-gated attackAnchor):
+     ANY known player building anchors the war, ungated — a town is where its
+     buildings are, and finding one is the first day of the war, not a
+     precondition to it. The real day-171 save proved the old rule absurd:
+     the chief REMEMBERED nine player buildings, two of them towers within
+     four tiles of the player's hall, and still reported "never found them"
+     because none of the nine was the 2x2 hall tile. read.anchor is built by
+     AI.assess from ai.knownB (the chief's own memory — fog-honest by
+     construction), sits at the known building nearest the cluster's own
+     centroid, and the hall, once genuinely seen, still outranks it. ---- */
   {
     setup('rc7');
     const cluster = () => {
       S.ai.knownB = {
-        a: { x: 30, y: 30, key: 'warcamp', owner: 'P', level: 1 },
-        b: { x: 32, y: 31, key: 'tower', owner: 'P', level: 2 },
-        c: { x: 31, y: 33, key: 'farm', owner: 'P', level: 1 },
+        a: { x: 30, y: 30, key: 'warcamp', owner: 'P', level: 1, seen: S.day },
+        b: { x: 32, y: 31, key: 'tower', owner: 'P', level: 2, seen: S.day },
+        c: { x: 31, y: 33, key: 'farm', owner: 'P', level: 1, seen: S.day },
       };
     };
+    // 7a. nothing known → no anchor: the hunt still has to find SOMETHING
+    S.ai.knownB = {};
+    let read7 = AI.assess();
+    ck('nothingKnownIsNoAnchor', !read7.anchor, '');
+    // 7b. a known cluster IS the anchor, ungated — no stall, no worn lane needed
     cluster();
-    // 7a. an UNSTUCK war never invents an anchor — the hunt keeps hunting
     S.ai.stall = null; if (S.ai.memory) S.ai.memory.laneDef = null;
-    ck('warNotStuckByDefault', !AI.warStuck(), '');
-    ck('noAnchorWhileTheHuntStillRuns', AI.attackAnchor({ knownTC: null }) === null, '');
-    // 7b. a fresh stall IS a stuck war, and the anchor is one of the SEEN works
-    S.ai.stall = { x: 20, y: 20, t: S.day };
-    ck('freshStallMeansStuck', AI.warStuck(), '');
-    const a = AI.attackAnchor({ knownTC: null });
-    ck('anchorIsAKnownWork', !!a && ['warcamp', 'tower', 'farm'].includes(a.key), a && a.key);
-    // 7c. the real hall always outranks the stand-in
-    const tcRead = { x: 5, y: 5, key: 'tc' };
-    ck('theRealHallOutranksTheAnchor', AI.attackAnchor({ knownTC: tcRead }) === tcRead, '');
-    // 7d. one building is a sighting, not a town — no anchor from a lone glimpse
-    S.ai.knownB = { a: { x: 30, y: 30, key: 'tower', owner: 'P' } };
-    ck('oneSightingIsNoAnchor', AI.attackAnchor({ knownTC: null }) === null, '');
-    // 7e. a stall gone stale (>20 days) stands the whole thing down again…
+    read7 = AI.assess();
+    ck('anyKnownClusterAnchorsTheWar', !!read7.anchor && read7.anchor.est,
+      JSON.stringify(read7.anchor));
+    ck('theAnchorSitsInsideTheCluster',
+      !!read7.anchor && Math.hypot(read7.anchor.x - 31, read7.anchor.y - 31.3) <= 3,
+      JSON.stringify(read7.anchor));
+    // 7c. even ONE building anchors — a sighting is a thread to pull
+    S.ai.knownB = { a: { x: 30, y: 30, key: 'tower', owner: 'P', seen: S.day } };
+    read7 = AI.assess();
+    ck('oneSightingIsAnAnchorNow', !!read7.anchor && read7.anchor.x === 30, '');
+    // 7d. the fortification count reads around the ANCHOR, not a null hall —
+    // this is what let the chief finally train engines (12/12 surveyed seeds
+    // had trained NONE, because foeTower was only counted around knownTC)
     cluster();
-    S.ai.stall = { x: 20, y: 20, t: S.day - 30 };
-    ck('aStaleStallIsNotStuck', !AI.warStuck(), '');
-    ck('staleStallDropsTheAnchor', AI.attackAnchor({ knownTC: null }) === null, '');
-    // 7f. …but a hunt lane worn down by fruitless marches counts as stuck too
-    S.ai.memory = S.ai.memory || {}; S.ai.memory.laneDef = { hunt: 2 };
-    ck('aWornHuntLaneIsStuck', AI.warStuck(), '');
-    // 7g. probeAssault answers with the anchor — this returning null was what
+    read7 = AI.assess();
+    ck('fortsAreCountedAroundTheAnchor', read7.foeTower > 0,
+      'foeTower ' + read7.foeTower);
+    // 7e. the real hall outranks the stand-in
+    S.ai.knownB.tc1 = { x: 20, y: 20, key: 'tc', owner: 'P', seen: S.day };
+    read7 = AI.assess();
+    ck('theRealHallOutranksTheAnchor',
+      !!read7.anchor && !read7.anchor.est && read7.anchor.x === 20, JSON.stringify(read7.anchor));
+    // 7f. probeAssault answers with the anchor — this returning null was what
     // made campaignSelect bail before it could ever pick a crossing plan
-    const ctx7 = AI.probeAssault({ knownTC: null }, AI.aiLandReach());
+    S.ai.knownB = {}; cluster();
+    const read7f = AI.assess();
+    const ctx7 = AI.probeAssault(read7f, AI.aiLandReach());
     ck('probeAssaultSeesTheAnchor', !!ctx7 && !!ctx7.ptc, '');
+    S.ai.knownB = {};
   }
 
   /* ---- 8. THE WOOD WEDGE: the TC3 savings jar (ai.goal) starved the crossing
@@ -436,7 +444,10 @@ const out = await p.evaluate(() => {
     S.ai.posture = 'PUSH';
     S.ai.stall = { x: bx - 3, y: by, t: S.day };
     S.ai.camp = null;
-    AI.campaignSelect({ knownTC: null, weakFlank: null });
+    // the real read carries the anchor now — built by assess from knownB
+    const read9 = AI.assess();
+    ck('theIslandClusterAnchors', !!read9.anchor, JSON.stringify(read9.anchor));
+    AI.campaignSelect(read9);
     ck('aBlindStuckChiefStillPicksACrossingPlan',
       !!(S.ai.camp && S.ai.camp.strat), S.ai.camp && S.ai.camp.strat);
   }

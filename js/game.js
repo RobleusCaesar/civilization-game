@@ -173,6 +173,7 @@ const G = {
       corpses: [],                          // fallen game: {x,y,kind,day} — carcass then skeleton, the lodge-ground cue (tests/wild-life.mjs)
       garrison: [],                         // villagers sheltered inside the Town Center
       levy: false,                          // the village under arms (tests/levy.mjs)
+      scarce: gen.scarce || null,           // the map's lean resource — both tribes plan around it
       armies: {},                           // saved war parties: slot (1-3) → [unit ids] (see UI.saveArmy)
       reprieveUsed: false,                  // the one-time "two survivors emerge" reprieve (competitive modes)
       breachedP: false,                     // set when the player loses a building to enemy fire — gates the positive specials
@@ -1450,6 +1451,7 @@ const G = {
     }
     if (!data.garrison) data.garrison = [];
     if (data.levy == null) data.levy = false;   // pre-levy saves load at peace with their tools
+    if (data.scarce === undefined) data.scarce = null;   // pre-scarce saves: the AI just skips the bias
     if (!data.armies) data.armies = {};   // pre-army saves: no standing banners
     // pre-truce saves: whatever fighting was underway continues — the truce
     // is a NEW-RUN promise, never something a mid-war save wakes up inside

@@ -671,6 +671,28 @@ const CFG = {
      it does not range. Explicit orders are the player's business. */
   LEVY: { atk: 5, def: 1 },
 
+  /* THE RIVAL'S INNER MARKET (tests/rival-strength.mjs) — the approved cheat.
+     The old economy could starve on one resource while a hoard of another
+     rotted (a real day-171 save: 7,000 food and 3,500 gold against 20 wood,
+     for 120 straight days) because the only converter — the Trading Post —
+     wants a level-3 hall the starving chief can never reach. Rather than
+     forcing the AI through that building, it converts INTERNALLY at the
+     post's own published rates and a caravan-like delay: goods swap 3:1 (the
+     L2 post), gold buys at the post's buy rate, selling FOR gold pays the
+     post's deliberately awful gold rate. One exchange in flight at a time,
+     lot-sized, so it is a lifeline, not a printing press — stations remain
+     the real economy. Invisible to the player by design. */
+  AI_CONVERT: {
+    lot: 60,          // goods delivered per exchange (the floor)
+    lotMax: 240,      // …scaling with the hoard: deep surplus trades in bulk
+    delay: 2.5,       // days in transit (the L3 caravan's own clock)
+    swap: 3.0,        // goods paid per good received (the L2 post's rate)
+    buy: 2.2,         // goods received per gold paid (the L2 post's rate)
+    goldRate: 0.14,   // gold received per good paid (deliberately awful)
+    keep: 250,        // never pay a resource down past this
+    floor: { food: 200, wood: 160, stone: 120, gold: 0 },   // standing needs
+  },
+
   /* HOW THEY WENT. Keyed by what the villager was DOING — the station it was
      stationed at, the resource it was gathering, whether it was building or
      fishing — so the news reads like a small story rather than a dice roll.

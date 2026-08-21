@@ -104,6 +104,7 @@ node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-
 node tests/muster-horn.mjs   # one tap calls the workforce in, one tap sends it back to its posts
 node tests/levy.mjs          # the village under arms: derived membership, soldier's upkeep, works nothing, holds the town
 node tests/tree-fall.mjs     # a felled wood goes over on screen — every tree about its own foot
+node tests/rival-strength.mjs # the rewritten war brain: the anchor, the inner market, the engine road, the sea patrol — and 3 fortified towns razed end to end
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -468,14 +469,20 @@ both far sides, and always will.
 CONSOLIDATE, `campaignSelect`/`campaignLaunch`/`probeAssault`/`breachToPlayer`/
 `_launchAmphib` all returned early, so TIDEWRACK (boats) and MUDLARK (bridges)
 were unreachable code for the one chief that needed them most: the whole army
-walked to the waterline and stood there for two hundred days. Two rules fix it.
-**`AI.attackAnchor(read)`** — the known player building nearest the centroid of
-everything the chief has actually seen (`ai.knownB`, its own memory, so it is
-fog-honest by construction) stands in for the hall at every one of those gates;
-a town is where its buildings are. It is EVIDENCE-GATED by **`AI.warStuck()`**
-(a fresh `ai.stall` within 20 days, or the hunt lane's `laneDef.hunt` worn to
-2+): no anchor while the hunt still runs, so a young chief still scouts before
-it besieges, and the real hall always outranks the stand-in. **The wood wedge**
+walked to the waterline and stood there for two hundred days. The first cut of
+the fix was an EVIDENCE-GATED stand-in (`AI.attackAnchor`, unlocked by
+`AI.warStuck()`) — and a real day-171 save showed the gate was itself the
+hole: the chief REMEMBERED nine player buildings, towers 3.6 tiles from the
+player's hall among them, and still reported "never found them", because the
+stall evidence never accrued while the army had nothing to march at. So the
+stand-in became **THE ANCHOR** (see **Rival strength** below,
+tests/rival-strength.mjs): `read.anchor` is built unconditionally in
+`AI.assess` from `ai.knownB` — the hall when it is truly known, else the known
+player building nearest the cluster's centroid — and every one of those gates
+asks the anchor now. `AI.attackAnchor` is deleted; `AI.warStuck()` survives
+only as the jar-bypass trigger. `stormTheHall` alone still demands the
+genuinely SEEN hall (tests/endgame-doom-ai.mjs — the no-way-back verdict may
+never run on a guess). **The wood wedge**
 is the other half: the TC3 savings jar (`ai.goal` via `affordFree`) plus the
 `armyFirst` treadmill (a 30-wood spear hired every day) meant the 60-wood dock
 and 120-wood sappers' camp were never affordable — so while the war is stuck
@@ -490,6 +497,84 @@ the player's forward war camp — against 80 more days of standing still without
 it. The army famine the replay also surfaced (Bronze Champions deserting,
 day 357–375) is the food-upkeep economy correcting an over-mustered army and
 recovers on its own — deliberately not patched here.
+
+**Rival strength** (`tests/rival-strength.mjs` — the rewrite's flagship, born
+of a 12-seed survey that measured 28% of ai.js as dead code: 1,384 lines
+behind `read.knownTC`, 0 executions in 2,000 sim days, and NOT ONE siege
+workshop ever raised). Five rules, one goal the user set: the chief reaches
+TC3 every game, walls and towers up, finds the player by their BUILDINGS
+without obsessing over the hall, and answers a fortified town with engines
+and a razing campaign.
+**THE ANCHOR**: `read.anchor` (`{x, y, seen, est}`) is computed in `assess`
+from `ai.knownB` alone — fog-honest by construction. The hall when known;
+otherwise the remembered player building nearest the centroid of everything
+remembered, `est: true`. A town is where its buildings are: fort counts
+(`read.foeWall`/`foeTower`), vulnerability reads and every campaign gate key
+on the anchor, so one glimpsed lumber camp is a war worth planning. ~18 gates
+moved off `knownTC`; the scout emergency retires on ANY known building, and
+the blind scout gap is capped at 18 days (it used to back off past 40).
+**THE INNER MARKET** (`CFG.AI_CONVERT`, `AI.autoConvert` — the user-approved
+cheat, replacing "force it to build a Trading Post"): the chief converts
+internally at the Trading Post's own published rates (swap 3:1, gold buys at
+1/2.2, selling FOR gold at the awful 0.14) with a 2.5-day caravan delay, ONE
+load in flight (`ai.convert` rides in the save), lot scaled to half the spare
+hoard (60..240), triggered by deficit against floors
+(`food:200/wood:160/stone:120`) or the active savings goal, and a `keep: 250`
+floor on the paying resource so a conversion never starves the payer.
+Invisible to the player; the delay and the rates are what keep it honest.
+Called in `daily` right after `Bld.dailyProduction('A')`.
+**THE ENGINE ROAD** (`read.heldForEngines`): a raid that retreats with its
+objective unrazed within 9 of a known tower stamps `mem.towerStop` — cleared
+ONLY by a razing success, never by a timer (a timer re-released the same
+doomed charge cyclically). While at war, committed (PUSH/PRESSURE), towers
+known and no engine alive: the basic drill stands down (`trainArmy` returns
+false — the spear treadmill was eating every plank the market delivered),
+`bestBuild` gets commanding workshop/TC-upgrade candidates, a workshop
+savings goal (`ai.goal.ws`) runs at TC3, and the main assault HOLDS until an
+engine exists (`push && towered && burnt && !hasEngine → strong = false`).
+Instrumented before the fix: nine workshop attempts in 120 days, all failing
+`affordFree`. **The hold is ONE named predicate** (`AI.engineHold(read)`,
+which `daily` stamps `ai.heldForEngines` from) so the contract pins the real
+rule and not a copy of it. **And it never leaves the town open**
+(`AI.HOLD_FLOOR` 3): measured over six seeds, a hold runs 70–92 days where it
+bites, and on one of them the rival's standing army reached ZERO while it
+climbed to its workshop — a posture flip does release the hold once the town
+is genuinely threatened, which is why that seed still won, but that is
+relying on the emergency to arrive in time. Below the floor the basic drill
+resumes whatever the plan; the flap this invites is the harmless kind (one
+spear, re-arm, back to saving). Re-measured: the worst hold fell 92 → 26 days
+and the army minimum 0 → 3, with the workshop and engines still arriving.
+**THE SEA PATROL** (`AI.waterBody`, the sea block in `daily`): while blind
+(`!read.anchor`, day ≥ 10) a standing patrol charts the water — any idle hull
+is drafted (a fishing boat comes off its nets), a blind chief with a dock
+lays a keel, and each leg sails to the farthest unseen water IN THE HULL'S
+OWN BODY (`waterBody`'s 4-connected flood over WATER+MOAT — the first cut
+picked unreachable water and re-failed the same order daily, a deadlock).
+Fully-charted water coasts the tile bordering the most unseen land.
+**The drafted boat is GIVEN BACK** the day an anchor exists: the rival's
+fishing boats are put on the water exactly once, when they are trained
+(`Bld.update`'s fresh-fishboat branch), and nothing else in the game
+re-employs an idle one — so a hull left standing off after the search
+succeeds is a food source lost for the rest of the run, and it goes on
+counting against `P.boats` so no replacement is laid down either.
+`_buildDock` prefers the biggest water body — scanning with `noSeal` and
+running the seal clamp on the PICK a few deep (`pickSealFree`'s own rule:
+289 candidates each flooding the clamp is exactly the storm that measured
+918ms day ticks), and flooding each water body ONCE, its size stamped across
+its own tiles. `bestBuild` carries a blind-dock candidate (day ≥ 25) so the
+circular trap — blind → no PUSH → no dock boost → no patrol → blind — cannot
+close.
+**THE SCARCE BIAS**: `S.scarce` (the generator's scarce resource, in every
+save, `loadJSON` backfills null) — `growthKey` wishes the scarce station one
+tier deeper and `towerSpot` pays +2.2 to cover scarce stations/mines, +0.7
+for the rest: the chief protects what the map made precious.
+Measured on the fortified-town scenario (a pre-built player town: TC3, eight
+L2/L3 towers, a wall line, four marksmen — the user's own play shape, then
+passive): the old chief razed NOTHING on any seed; the new one razes 7 of 8
+towns, anchor by d42–60, TC3 d113–176, walls L2/L3, engines trained when the
+towers stop the first raid. The contract runs three seeds of it end to end,
+seeded (`Math.random` + `Combat.scanT = 0` + `Units.herdClock = 0`) so the
+bars are deterministic.
 
 **Finished run & Continue** (`tests/finished-run-continue.mjs`): winning (or
 losing) must never eat a manual save, and must actually retire Continue.
@@ -1578,6 +1663,14 @@ and `UI.tickWonderWarn` pins a `#wonderWarn` banner with the days of work
 left until the works finish or fall. Verified: a 400-day passive calm sim
 holds peace with ZERO cross-tribe engagements, EXPAND throughout, ground
 broken ~day 361 and the countdown live — the finish lands "around day 400".
+**THE INNER MARKET MOVED THAT CLOCK, DELIBERATELY** (see **Rival strength**):
+the market pays the wonder jar's shortfall like any other savings goal, so a
+peace chief now breaks ground on `aiWonderDay` (330) ITSELF rather than
+saving another month past it, and finishes near day 375 — which is the
+design's own floor (the gate plus the monument's 45-day raising), not a
+number that can drift lower. The PLAYER'S warning is unchanged, since it is
+the build time: ~45 days of countdown either way. Re-measured on a passive
+calm run: peace held end to end, ground day 330, finished day 376.
 
 **The seam is CLAIMED, not built** (`tests/gold-mine.mjs`): the Gold Mine has
 no button in the build menu (`CFG.BUILDINGS.mine.noMenu`, and `UI.buildMenu`
