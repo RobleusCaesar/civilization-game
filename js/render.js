@@ -119,6 +119,17 @@ const LAND = {
   BAND_CAP: 0.55,
   BAND_PINCH: 0.12,     // what a collapsed band keeps, so its two rings never touch
   WATER_DIRTY_R: 3,     // tiles of repaint around water that appeared or vanished
+  /* HOW MUCH OF A WATER/HILLS REPAINT IS PAID IN THE FRAME THAT ASKED FOR IT
+     (R.tickRepaint). A sapper's spadeful that joins a lake makes a NEW traced
+     loop, and the roughening is sampled along it, so the drawn shore can move
+     a few pixels anywhere on that lake — which is why the whole region is
+     repainted and not a radius (see waterDirty). On a big lake that is ~2,500
+     tiles: measured at 300ms per dug tile on a desktop, and a trench is a LINE
+     of dug tiles, which is the reported freeze ("it always happens with the
+     sapper"). So the near work is done at once and the far tail is spread over
+     the following frames, exactly as the startup bake is (R.tickBake). */
+  REPAINT_NOW: 260,     // tiles repainted immediately; beyond this the tail is queued
+  REPAINT_CHUNK: 48,    // tiles per slice while draining
   SHORE_MAXPTS: 9000,   // per-loop cap, so a vast lake stops subdividing
   /* THE SHELF IS MEASURED FROM THE TRACED CURVE, never from the tile grid.
      Stacked translucent bands offset into the water: each adds its own alpha,
@@ -3144,6 +3155,7 @@ const R = {
     // set, documented in CLAUDE.md). Reference it directly.
     if (!S || !S.map || !S.map.terrain) return;
     this._bake = null; this._bakeDue = false;    // a full bake supersedes any plan
+    this._repaintQ = null;                       // …and any queued repaint tail with it
     for (const step of this._bakeSteps()) step();
   },
   // run a due bake a slice at a time. Steps are atomic, so the budget is a
@@ -3205,12 +3217,78 @@ const R = {
     g.beginPath(); g.rect(TL, TL, (CFG.W - 2) * TL, (CFG.H - 2) * TL); g.clip();
     try { fn(); } finally { g.restore(); }
   },
-  drawTilesAt(list) {
+  /* THE SLOW TAIL OF A TERRAIN REPAINT, PAID OVER THE NEXT FEW FRAMES.
+     `drawTilesAt` is correct and must stay so — reset once, composite once,
+     row-major — but a water edit hands it the whole affected REGION, and on a
+     big lake that is thousands of tiles in one synchronous call. Nothing about
+     the picture requires it to land in a single frame: the tiles the caller
+     actually changed are painted at once (that is what the player is looking
+     at), and the rest of the region drains under a budget. Anyone who needs
+     the cache exact right now calls flushRepaint; rebuildTerrain supersedes the
+     queue outright. Render state only — never in a save (the R.collapses rule). */
+  _repaintQ: null,
+  pendRepaint(tiles) {
+    if (!tiles || !tiles.length) return;
+    (this._repaintQ = this._repaintQ || []).push(...tiles);
+  },
+  /* the ONE place that decides how much of a grown repaint is paid now. Both
+     entry points (drawTileAt for a single tile, drawTilesAt for a batch) ask
+     it, so they can never drift apart — which they did on the first cut of
+     this fix: drawTileAt expanded the region itself and handed the whole
+     thing over as an ordinary list, and the split never saw it. */
+  splitGrow(grew) {
+    if (!grew || !grew.length) return null;
+    if (grew.length <= LAND.REPAINT_NOW) return grew;
+    const W = CFG.W;
+    grew.sort((a, b) => (a[1] * W + a[0]) - (b[1] * W + b[0]));   // row-major: coherent slices
+    this.pendRepaint(grew);
+    return null;
+  },
+  _drainRepaint(n) {
+    const q = this._repaintQ;
+    if (!q || !q.length) return false;
+    /* CUT THE SLICE ON A ROW BOUNDARY. The queue is sorted row-major, and the
+       full bake paints row by row — so a slice that is a whole number of rows
+       composites its overlapping pieces (rocks and decals straddle tiles) in
+       exactly the order the bake would. Splitting mid-row does not, and that
+       shows up as a few stray pixels against a fresh rebake. */
+    let k = Math.min(n, q.length);
+    while (k < q.length && q[k][1] === q[k - 1][1]) k++;      // …finish the row
+    const chunk = q.splice(0, k);
+    if (!q.length) this._repaintQ = null;
+    this.drawTilesAt(chunk, true);          // true: this IS the tail, never re-queue
+    return !!this._repaintQ;
+  },
+  tickRepaint(budgetMs) {
+    if (!this._repaintQ) return false;
+    const t0 = performance.now();
+    let more = true;
+    while (more && performance.now() - t0 < budgetMs) more = this._drainRepaint(LAND.REPAINT_CHUNK);
+    return more;
+  },
+  flushRepaint() {
+    // drained in the SAME slices the live path uses, so what the contract
+    // measures is what the player actually gets
+    while (this._drainRepaint(LAND.REPAINT_CHUNK)) { /* to the last tile */ }
+  },
+
+  drawTilesAt(list, isTail) {
     if (!this.terrainCache || !list || !list.length) return;
     const moved = this.waterDirty();
-    if (moved) list = list.concat(moved);
     const movedH = this.hillsDirty();        // a quarried knot repaints whole
-    if (movedH) list = list.concat(movedH);
+    const grew = (moved || []).concat(movedH || []);
+    /* IF THAT GREW INTO A WHOLE REGION, PAINT WHAT THE PLAYER IS LOOKING AT
+       AND QUEUE THE REST. The split is by LOCALITY, not by count: every pass
+       below is bounded by the BOUNDING BOX of the tiles it is given (the water
+       fill and the shore blit both work in that rect), so 260 tiles scattered
+       the length of a lake cost as much as the whole lake. The caller's own
+       tiles are one small neighbourhood; the region's far cells are sorted
+       row-major before queueing, so each drained slice is a contiguous band
+       with a small box of its own. */
+    if (grew.length) {
+      const now = isTail ? grew : this.splitGrow(grew);
+      if (now) list = list.concat(now);
+    }
     const g = this.terrainCache.getContext('2d');
     const terr = S.map.seenTerrain || S.map.terrain;
     this.hillHeight();                       // re-key the hill field ONCE for this repaint
@@ -3290,9 +3368,11 @@ const R = {
        each tile once */
     const moved = this.waterDirty(), movedH = this.hillsDirty();
     if (moved || movedH) {
-      const all = (moved || []).concat(movedH || []);
-      all.push([x, y]);
-      this.drawTilesAt(all);
+      // the same split the batch path takes: the far cells of a whole region
+      // are queued, this tile and any near ones are painted now
+      const now = this.splitGrow((moved || []).concat(movedH || [])) || [];
+      now.push([x, y]);
+      this.drawTilesAt(now, true);     // the change is already consumed above
       return;
     }
     const g = this.terrainCache.getContext('2d');
@@ -3396,6 +3476,7 @@ const R = {
     this._bodyPath = null; this._bodyKey = '';
     this._waterMask = null;
     this.placePoofs = [];                                        // no dust carried across runs (the R.collapses rule)
+    this._repaintQ = null;                                       // …nor a half-drained repaint tail
     // pre-render the full terrain layer once — or mark it due, when the
     // caller has somewhere better to spend the wait (see deferBake)
     this._bakeDue = false;

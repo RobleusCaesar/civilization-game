@@ -3095,6 +3095,37 @@ over them: that is what actually puts them under the surface, and it costs
 nothing. Drawing them on top and hand-desaturating each colour would be the
 same picture arrived at by guesswork.
 
+**A SPADEFUL DOES NOT FREEZE THE FRAME** (`R.splitGrow` / `pendRepaint` /
+`tickRepaint` / `flushRepaint`, pinned by `aSpadefulDoesNotFreezeTheFrame` in
+tests/land.mjs — from a report: "major game freezes… it always happens with
+the sapper"). A dug tile that reaches water makes a NEW traced loop, and the
+roughening is sampled along it, so the drawn shore can move a few pixels
+anywhere on that lake — which is why `waterDirty` returns the whole REGION and
+not a radius, and why that rule must stay. Paying it in one synchronous call
+was measured on the reported save at **~300ms per dug tile** on a desktop
+(~2,500 tiles repainted: 1,729 water + 771 land), and a trench is a LINE of
+dug tiles, on a phone. Three changes, none of which alter what is drawn:
+**the tail is sliced** — the tiles the caller actually changed are painted at
+once, the region's far cells are queued (`LAND.REPAINT_NOW` 260) and drained
+by the frame loop under a budget (`R.tickRepaint(5)`, beside `tickBake`), the
+same pattern the startup bake uses; **the split is ONE rule** (`R.splitGrow`),
+because the first cut put it only in `drawTilesAt`, and `drawTileAt` expands
+the region itself and sailed straight past it; and **`Terraform.dig` floods
+BEFORE it paints** — it used to paint the dry trench and then let `floodMoats`
+repaint the flooded channel, doing that whole-region work TWICE for every
+spadeful that reaches water. Measured end to end on the reported save:
+**~300ms → ~75ms** per dug tile, and the tail no longer blocks the frame.
+The queue is render state (`R._repaintQ`) — cleared in `onNewGame`, superseded
+by `rebuildTerrain`, never in a save (the `R.collapses` rule).
+**One honest caveat**: on a long dig line into a big lake the incrementally
+repainted cache is NOT byte-identical to a fresh rebake — measured at 88 stray
+pixels over 52 tiles, against **56 over 37 in the build before this change**.
+The gap is pre-existing and of the same order, not something the slicing
+introduced (row-aligned slices were tried and moved it by one pixel).
+tests/land.mjs's own hammer scenario still holds cache == rebake byte for
+byte, and any full rebake or reload clears the drift — worth closing properly
+if the shore is ever touched again.
+
 **MOUNTAINS ARE OBJECTS, NOT TILES** (`tests/mountain.mjs`; `MTN.*` and the
 `R.mtnRegions` block in render.js): every previous attempt at mountains failed
 for an ARCHITECTURAL reason rather than an artistic one. They were drawn as a

@@ -1723,6 +1723,10 @@ const G = {
       // a terrain bake left DUE by founding a run is spread over these frames
       // (R.deferBake / R.tickBake) instead of freezing the press that asked
       G._safe(() => R.tickBake(6), 'bake');
+      // …and the slow TAIL of a terrain repaint (a sapper joining a lake hands
+      // drawTilesAt a whole water region) drains here too, so the spadeful
+      // that asked for it does not freeze the frame — see R.tickRepaint
+      G._safe(() => R.tickRepaint(5), 'repaint');
       /* A WORLD NOBODY IS PLAYING IS DRAWN AT A GLANCE RATE, NOT A GAME RATE.
          Every shell screen — title, new game, the draft — sits over the world
          and shows it only through a heavy gradient, and drawing a big map

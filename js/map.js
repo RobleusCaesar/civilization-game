@@ -1021,8 +1021,14 @@ const Terraform = {
     // an AI sapper clearing a resource in the player's FOG mark the tile "grass"
     // in memory while the cache still drew the old rock/bush — so the perimeter
     // looked solid but was passable, and enemies walked straight through it.
-    if (window.R && R.updateTile) R.updateTile(x, y);
+    /* FLOOD FIRST, THEN PAINT ONCE. Painting the dry trench here and letting
+       floodMoats paint the flooded channel a moment later did the SAME work
+       twice for every spadeful that reaches water — and that work is a whole
+       water region (see R.waterDirty), measured at ~300ms a tile on a desktop
+       and seconds on a phone. floodMoats paints what it converts, so the tile
+       only needs painting here when it stayed a dry ditch. */
     this.floodMoats(x, y);
+    if (S.map.terrain[i] === T.TRENCH && window.R && R.updateTile) R.updateTile(x, y);
     return true;
   },
 

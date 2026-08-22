@@ -1146,6 +1146,57 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   await p.close();
 }
 
+/* ---- 15. A SPADEFUL DOES NOT FREEZE THE FRAME (R.tickRepaint) ----
+   Reported: "I'm getting major game freezes… it always happens with the
+   sapper." A dug tile that reaches water makes a new traced loop, so the whole
+   region's shore is repainted (see waterDirty) — measured at ~300ms per tile
+   on a desktop, seconds on a phone, once per tile of a trench LINE. The near
+   ground is painted at once and the far tail drains over the following frames.
+   This pins the cost, and that the tail really does finish. */
+{
+  const p2 = await b.newPage({ viewport: { width: 430, height: 880 } });
+  await p2.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+  await p2.waitForTimeout(900);
+  const v = await p2.evaluate(() => {
+    G.newGame('freeze1', 'moderate', 'large');
+    Screens._demo = false; Screens.show('playing'); S.paused = true;
+    G.freeVis = true; G.updateVisibility(); R.rebuildTerrain();
+    const W = CFG.W, H = CFG.H, idx = MapGen.idx, terr = S.map.terrain;
+    // a grass tile on a big lake's shore with room to dig inland
+    let start = null, bestN = 0;
+    for (let y = 3; y < H - 8; y++) for (let x = 3; x < W - 8; x++) {
+      const i = idx(x, y); if (terr[i] !== T.GRASS) continue;
+      let nw = 0;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+        if (terr[idx(x + ox, y + oy)] === T.WATER) nw++;
+      if (!nw) continue;
+      let ok = true;
+      for (let k = 1; k <= 4; k++) if (terr[idx(x, y + k)] !== T.GRASS) { ok = false; break; }
+      if (ok && nw > bestN) { bestN = nw; start = { x, y }; }
+    }
+    if (!start) return { skip: true };
+    const t0 = performance.now();
+    Terraform.dig(start.x, start.y);
+    const digMs = performance.now() - t0;
+    const queued = (R._repaintQ || []).length;
+    // the tail drains under a budget, and it ENDS
+    let slices = 0;
+    while (R.tickRepaint(4) && slices < 400) slices++;
+    return { skip: false, digMs, queued, slices, left: (R._repaintQ || []).length,
+      flooded: S.map.terrain[idx(start.x, start.y)] === T.MOAT };
+  });
+  if (v.skip) ck('aSpadefulDoesNotFreezeTheFrame', true, 'no lakeside dig site on this map — skipped');
+  else {
+    ck('aSpadefulDoesNotFreezeTheFrame', v.digMs < 140,
+      'one dug tile cost ' + v.digMs.toFixed(0) + 'ms (was ~300ms before the tail was sliced)');
+    ck('andTheFarShoreIsQueuedNotPainted', !v.flooded || v.queued > 0,
+      v.queued + ' tiles queued for the following frames');
+    ck('andTheTailActuallyFinishes', v.left === 0,
+      v.slices + ' slices, ' + v.left + ' tiles left');
+  }
+  await p2.close();
+}
+
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL LAND CHECKS PASS');
 await b.close();
