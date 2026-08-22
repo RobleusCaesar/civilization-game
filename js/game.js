@@ -1727,6 +1727,9 @@ const G = {
       // drawTilesAt a whole water region) drains here too, so the spadeful
       // that asked for it does not freeze the frame — see R.tickRepaint
       G._safe(() => R.tickRepaint(5), 'repaint');
+      // …and watch for the ground having been thrown away under us (iOS purges
+      // canvas pixels in the background — R.watchCache)
+      G._safe(() => R.watchCache(t), 'cache');
       /* A WORLD NOBODY IS PLAYING IS DRAWN AT A GLANCE RATE, NOT A GAME RATE.
          Every shell screen — title, new game, the draft — sits over the world
          and shows it only through a heavy gradient, and drawing a big map
@@ -1765,6 +1768,18 @@ window.addEventListener('load', () => {
       if (document.hidden && window.S && !S.over &&
           !(window.Screens && Screens._demo)) Backend.autosaveNow('hide');
     });
+  }
+  /* COMING BACK TO THE TAB IS WHEN THE GROUND IS FOUND MISSING (R.watchCache).
+     iOS throws canvas pixels away while the game is in the background, so the
+     first frame back is the one that must notice — checked here at once rather
+     than waiting out the heartbeat, and on pageshow too, which is what fires
+     when Safari restores the page from its back/forward cache. Deliberately
+     NOT gated on Backend existing: the ground going black has nothing to do
+     with saving. */
+  {
+    const look = () => { if (!document.hidden && window.R && R.cacheReturned) R.cacheReturned(); };
+    document.addEventListener('visibilitychange', look);
+    window.addEventListener('pageshow', look);
   }
   Screens.init();
   Screens.show('title');   // builds the demo world behind the logo

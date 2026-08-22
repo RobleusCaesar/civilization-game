@@ -47,6 +47,8 @@ try { pw = (await import('playwright')).default ?? await import('playwright'); }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
 import { writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIR = join(root, 'assets/terrain');
@@ -1195,6 +1197,73 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       v.slices + ' slices, ' + v.left + ' tiles left');
   }
   await p2.close();
+}
+
+/* ---- 16. THE GROUND CAME BACK BLACK (R.cacheState / cacheReturned) ----
+   Reported with a day-107 screenshot: every building and unit drawn, the whole
+   map behind them empty. Nothing in the game clears the terrain cache — iOS
+   Safari PURGES CANVAS BACKING STORES under memory pressure, most often while
+   the tab is in the background, and hands back a canvas with its size and no
+   pixels. So the loss is detected and the layers rebuilt.
+
+   Served over HTTP on an ephemeral port, because a canvas that has had a PNG
+   drawn into it from file:// is TAINTED and getImageData throws — which is
+   also why cacheState has a third answer, and why 'unknown' must be treated
+   as lost when the player comes back to the tab. */
+{
+  const dir = root;
+  const types = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png',
+    '.webp': 'image/webp', '.jpg': 'image/jpeg', '.css': 'text/css', '.json': 'application/json',
+    '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
+  const srv = createServer(async (rq, rs) => {
+    try {
+      const u = decodeURIComponent(rq.url.split('?')[0]);
+      const f = join(dir, u === '/' ? 'index.html' : u.replace(/^\/+/, ''));
+      if (!f.startsWith(dir)) { rs.writeHead(403); rs.end(); return; }
+      const body = await readFile(f);
+      const ext = f.slice(f.lastIndexOf('.'));
+      rs.writeHead(200, { 'content-type': types[ext] || 'application/octet-stream' });
+      rs.end(body);
+    } catch (e) { rs.writeHead(404); rs.end(); }
+  });
+  await new Promise(r => srv.listen(0, '127.0.0.1', r));
+  const port = srv.address().port;
+  const p3 = await b.newPage({ viewport: { width: 430, height: 880 } });
+  await p3.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'domcontentloaded' });
+  await p3.waitForTimeout(1200);
+  const v = await p3.evaluate(() => {
+    G.newGame('purge1', 'moderate', 'large');
+    Screens._demo = false; Screens.show('playing'); S.paused = true;
+    R.rebuildTerrain();
+    // how much of a band across the middle of the screen is ground, not void
+    const groundPct = () => {
+      R.draw();
+      const d = R.cv.getContext('2d').getImageData(0, (R.cv.height * 0.45) | 0, R.cv.width, 60).data;
+      let lit = 0;
+      for (let i = 0; i < d.length; i += 4)
+        if (d[i] > 24 || d[i + 1] > 24 || d[i + 2] > 24) lit++;
+      return +(lit / (d.length / 4) * 100).toFixed(1);
+    };
+    const before = groundPct(), healthy = R.cacheState();
+    // exactly what iOS does: the canvas object lives, its pixels are gone
+    for (const cv of [R.terrainCache, R.shoreLayer])
+      if (cv) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+    const afterPurge = groundPct(), state = R.cacheState();
+    const revived = R.cacheReturned();          // what returning to the tab does
+    return { before, healthy, afterPurge, state, revived, after: groundPct(),
+      idle: R.cacheReturned() };                // a healthy cache must not rebake again
+  });
+  ck('aHealthyGroundReadsHealthy', v.healthy === 'ok' && v.before > 90,
+    v.healthy + ', ' + v.before + '% ground');
+  ck('aPurgedCanvasIsTheBlackMap', v.afterPurge < v.before - 40,
+    v.before + '% -> ' + v.afterPurge + '% ground');
+  ck('andItIsSeenForWhatItIs', v.state === 'lost', 'cacheState ' + v.state);
+  ck('comingBackRebuildsTheGround', v.revived && v.after > 90,
+    'revived ' + v.revived + ', ' + v.after + '% ground');
+  ck('andAHealthyCacheIsLeftAlone', v.idle === false,
+    'a needless rebake on every return is its own hitch');
+  await p3.close();
+  await new Promise(r => srv.close(r));
 }
 
 console.log(JSON.stringify(res, null, 1));

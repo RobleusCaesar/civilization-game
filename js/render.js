@@ -3445,6 +3445,77 @@ const R = {
      (drawTileAt / drawTilesAt / updateTile all guard on it), so dropping it
      is the whole mechanism: the world assembles in silence and onNewGame's
      rebuildTerrain paints the finished thing, once. */
+  /* THE GROUND CAME BACK BLACK (reported with a day-107 screenshot: every
+     building and unit drawn, the whole map behind them empty). Nothing in the
+     game had cleared it. iOS Safari PURGES CANVAS BACKING STORES under memory
+     pressure — most often while the tab is in the background — and the canvas
+     object survives with its width, its height and no pixels. Everything this
+     game draws per frame (buildings, units, decals) is unaffected; the layers
+     that live in a canvas between frames are exactly what vanishes, and on an
+     xlarge map those are the two biggest objects it owns (the terrain cache
+     and the shore layer, 16.5MB each).
+
+     There is no event for it, so it is DETECTED: a few pixels of the cache are
+     sampled about once a second, and a cache that is transparent at every one
+     of them has been thrown away (a baked cache is opaque everywhere — even
+     the off-map rim is painted black). Cheap enough at that rate, and the read
+     is wrapped because a tainted canvas throws rather than answering. The
+     revive drops the keys of every layer that went with it, or blitShore would
+     happily composite a shore layer whose pixels are gone and the coast would
+     be missing instead. */
+  CACHE_WATCH_MS: 1000,
+  _cacheCheckAt: 0,
+  /* 'ok' | 'lost' | 'unknown'. THE THIRD ANSWER IS THE IMPORTANT ONE: drawing
+     a PNG into a canvas TAINTS it when the art is not same-origin (every
+     file:// page, and any future CDN), and getImageData then THROWS rather
+     than answering. Reported as a boolean, that read would come back "not
+     lost" forever and the recovery would be dead code exactly where it could
+     never be noticed — the swallowed-guard trap this file keeps relearning.
+     So "I cannot tell" is its own answer, and the caller decides. */
+  cacheState() {
+    const c = this.terrainCache;
+    if (!c || !c.width || !c.height) return 'ok';            // nothing baked yet is not "lost"
+    let g;
+    try { g = c.getContext('2d'); } catch (e) { return 'unknown'; }
+    const w = c.width, h = c.height;
+    const pts = [[w >> 1, h >> 1], [w >> 2, h >> 2], [(w * 3) >> 2, h >> 1], [w >> 1, (h * 3) >> 2]];
+    for (const [x, y] of pts) {
+      let d;
+      try { d = g.getImageData(x, y, 1, 1).data; } catch (e) { return 'unknown'; }
+      if (d[3] !== 0) return 'ok';                           // still painted somewhere — fine
+    }
+    return 'lost';
+  },
+  reviveTerrain() {
+    // every cached layer shares the cache's fate — drop their keys so each one
+    // is rebuilt rather than blitted from pixels that are no longer there
+    this._layerKey = ''; this._shoreKey = '';
+    this._mtnLayerKey = ''; this._mtnDirty = true;
+    this._waterMask = null; this._hillKey = '';
+    this._repaintQ = null;
+    this.rebuildTerrain();
+    this.fogDirty = true;
+  },
+  /* the heartbeat only acts on a DEFINITE loss — an 'unknown' every second
+     would rebake the world every second on a tainted page */
+  watchCache(now) {
+    if (!this.terrainCache) return;
+    if (now - this._cacheCheckAt < this.CACHE_WATCH_MS) return;
+    this._cacheCheckAt = now;
+    if (this.cacheState() === 'lost') this.reviveTerrain();
+  },
+  /* COMING BACK TO THE TAB. This is where the pixels are actually found
+     missing, and where 'unknown' must be treated as lost: the cost of a
+     needless rebake on return is one beat the player spends re-orienting
+     anyway, and the cost of guessing wrong the other way is the black map
+     they reported. */
+  cacheReturned() {
+    if (!this.terrainCache) return false;
+    if (this.cacheState() === 'ok') return false;
+    this.reviveTerrain();
+    return true;
+  },
+
   holdTerrain() { this.terrainCache = null; },
   /* …AND THE BAKE ITSELF NEED NOT BLOCK THE PRESS THAT ASKED FOR THE WORLD.
      The full terrain bake is most of a second on a big map, and founding a

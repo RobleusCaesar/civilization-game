@@ -3095,6 +3095,44 @@ over them: that is what actually puts them under the surface, and it costs
 nothing. Drawing them on top and hand-desaturating each colour would be the
 same picture arrived at by guesswork.
 
+**THE GROUND CAME BACK BLACK** (`R.cacheState` / `cacheReturned` /
+`reviveTerrain` / `watchCache`, pinned by `aPurgedCanvasIsTheBlackMap` and its
+neighbours in tests/land.mjs — reported with a day-107 screenshot: every
+building and unit drawn, the whole map behind them empty). Nothing in the game
+clears the terrain cache. **iOS Safari PURGES CANVAS BACKING STORES under
+memory pressure** — most often while the tab is in the background — and hands
+back a canvas with its width, its height and no pixels. Everything drawn per
+frame (buildings, units, decals) is unaffected, which is exactly why the
+screenshot looks the way it does; the layers that live in a canvas BETWEEN
+frames are what vanish, and on an xlarge map those are the two biggest objects
+the renderer owns (the terrain cache and the shore layer, 16.5MB each, ~40MB
+of canvas in total).
+There is no event for it, so it is DETECTED: `cacheState()` samples four
+pixels of the cache — a baked cache is opaque everywhere, even the off-map rim
+is painted black — and a cache transparent at every one of them has been
+thrown away. **It answers 'ok' | 'lost' | 'unknown', and the third answer is
+the load-bearing one**: drawing a PNG into a canvas TAINTS it when the art is
+not same-origin (every `file://` page, and any future CDN), and `getImageData`
+then THROWS rather than answering. Reported as a boolean that read would come
+back "not lost" forever and the whole recovery would be dead code exactly
+where nobody could see it — the swallowed-guard trap this file keeps
+relearning. So the two callers decide for themselves: the once-a-second
+heartbeat (`watchCache`, from the frame loop) acts only on a DEFINITE loss,
+because an 'unknown' every second would rebake the world every second on a
+tainted page; **coming back to the tab** (`cacheReturned`, on
+`visibilitychange` and `pageshow`) treats 'unknown' as lost, because a
+needless rebake costs one beat the player spends re-orienting anyway and
+guessing the other way costs them the black map. `reviveTerrain` drops the
+KEYS of every layer that shared the cache's fate (`_layerKey`/`_shoreKey`,
+`_mtnLayerKey`, `_waterMask`, `_hillKey`) — without that `blitShore` would
+cheerfully composite a shore layer whose pixels are gone and the coast would
+be missing instead of black. Measured on the reported save's map: 100% ground
+→ 5% after a purge → 100% after the revive, and a healthy cache is left alone.
+**The contract serves the game over HTTP on an ephemeral port** for this one
+section, since under `file://` every canvas is tainted and no pixel can be
+read at all.
+
+
 **A SPADEFUL DOES NOT FREEZE THE FRAME** (`R.splitGrow` / `pendRepaint` /
 `tickRepaint` / `flushRepaint`, pinned by `aSpadefulDoesNotFreezeTheFrame` in
 tests/land.mjs — from a report: "major game freezes… it always happens with
