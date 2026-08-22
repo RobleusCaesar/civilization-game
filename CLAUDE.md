@@ -693,6 +693,31 @@ the RIVAL's scorer alone; the player's auto-defense keeps `nearestUnit`,
 because the player commands their own army. Replayed on the save: all
 seven defenders switch from the swordsman to the catapult.
 
+**The player's ring is bounded ABSOLUTELY** (`CFG.GUARD.hold` 3 /
+`CFG.GUARD.leash` 5, same test — from a playtest: "too often they get out too
+wide and then get ambushed and killed"): a player guard never STANDS further
+than `hold` from its hall, and never FIGHTS further than `leash`, chase
+included. Nothing may push past them — not the per-class doctrine (`r1` is
+clamped in `guardCenter`), not a tower lane (`holdRadius` clamps the lane
+extension), and not the trail allowance, which is now simply what is LEFT of
+the leash once the ring is spent (`chase = min(classChase, leash - r1)`), so
+hold + chase can never exceed it however the classes are tuned. Raise `hold`
+and the per-class ordering reappears underneath it (blades 5, bows 4, engines
+3); at 3 they all share one ring. The wall ceiling still applies on top and
+can only TIGHTEN it (its own 1.5-tile floor still keeps a doorstep wall from
+pinning the garrison onto the hall).
+**The bound is the PLAYER'S ALONE**, for exactly the reason `Combat.bestFoe`
+is the RIVAL's scorer alone: the player commands their own army and can
+sortie by hand; a chief cannot be told to. So the rival's garrison keeps its
+doctrine ring and still meets the guns (**THE GARRISON STRIKES WHAT IS
+KILLING THE TOWN**, below), and the lane extension and wall ceiling are
+measured in the contract on a RIVAL guard (`setupA`) — the path they still
+ship on. **The deliberate cost**: a player garrison on Defend cannot answer a
+siege engine standing off past the leash, because an engine's whole job is to
+work from 5.5–8 tiles. Killing a siege train is an ATTACK order, not a
+defensive one — which is the same trade the toggle has always made, now with
+a number on it.
+
 **Defend hold** (`tests/defend-hold.mjs`): Defend means the DEFENSES, not the
 landscape. `Units.holdRadius` used to stretch the watch to natural barriers
 (forest/water/mountain, up to `maxNatural` 14) — "the island is the fort" —

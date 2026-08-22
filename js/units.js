@@ -361,6 +361,21 @@ const Units = {
       const cls = this.guardClass(u);
       r1 = Math.min((G2.holdByClass && G2.holdByClass[cls]) || G2.radius, G2.maxRadius || 8);
       chase = (G2.chaseByClass && G2.chaseByClass[cls] != null) ? G2.chaseByClass[cls] : 1.8;
+      /* THE HARD BOUND (CFG.GUARD.hold / .leash): the doctrine says where a
+         guard wants to stand, these say how far it is ever allowed to. The
+         trail allowance is what is LEFT of the leash once the ring is spent,
+         so hold + chase can never exceed it however the classes are tuned.
+         THE PLAYER'S GUARDS ONLY, and for the reason bestFoe is the rival's
+         scorer alone: the player commands their own army. A tight ring is
+         safe from the ambush it was asked for, and it deliberately cannot
+         answer a siege engine standing off past the leash — that is an
+         attack order, which a player can give and a chief cannot be told to.
+         The rival keeps its own doctrine ring so its garrison still meets
+         the guns (Combat.threatOf, tests/defend-hold.mjs). */
+      if (u.owner === 'P') {
+        if (G2.hold != null) r1 = Math.min(r1, G2.hold);
+        if (G2.leash != null) chase = Math.max(0, Math.min(chase, G2.leash - r1));
+      }
     }
     return { x: cx, y: cy, r1, chase, r2: r1 + Math.max(1.2, r1 * G2.sortie), naval: !!naval, owner: u.owner };
   },
@@ -398,6 +413,11 @@ const Units = {
       if (Math.abs(tx * uy - ty * ux) > rng + 1) continue;
       hold = Math.max(hold, Math.min(MAXR, along + rng * 0.7));
     }
+    // …but never past the player's hard bound: a lane may pull the watch out
+    // to the edge of its own tower's cover, and that was still wide enough to
+    // be cut off and ambushed. The wall ceiling below may only tighten it
+    // further. (Owner-gated for the reason guardCenter gives.)
+    if (g.owner === 'P' && CFG.GUARD.hold != null) hold = Math.min(hold, CFG.GUARD.hold);
     // the own wall line caps the hold INSIDE it — walk the ray at half-tiles
     // so a diagonal line can't be stepped over
     for (let s = 1; s <= Math.min(MAXR, hold + 1.5); s += 0.5) {

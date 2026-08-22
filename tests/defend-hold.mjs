@@ -20,6 +20,19 @@
        meets what comes through.
      · Want soldiers further out? Turn Defend off — that's the toggle.
 
+   AND THE PLAYER'S RING IS BOUNDED ABSOLUTELY (CFG.GUARD.hold 3 /
+   .leash 5), from a later playtest: "too often they get out too wide and
+   then get ambushed and killed". Nothing may push a player guard past
+   those — not the per-class doctrine, not a tower lane, not the trail
+   allowance, which is simply what is LEFT of the leash once the ring is
+   spent. The wall ceiling still applies on top and can only tighten it.
+   The bound is the PLAYER'S, for the same reason Combat.bestFoe is the
+   RIVAL's scorer alone: the player commands their own army and can sortie
+   by hand, a chief cannot be told to. So the lane extension and the wall
+   ceiling are measured here on a rival guard (setupA), which is the path
+   they still ship on. The deliberate cost: a player garrison cannot answer
+   a siege engine standing off past the leash — that is an attack order.
+
    Run this after touching any of:
      units.js — guardCenter, holdRadius, returnToGuard
      combat.js — the defend branches in acquire() and update()
@@ -63,6 +76,22 @@ const out = await p.evaluate(() => {
     const g = Units.guardCenter(u);
     return { tc, u, g };
   };
+  /* the RIVAL's own arena. The tower-lane extension and the wall ceiling are
+     still shipping behaviour — they are the CHIEF's now, since the player's
+     ring is bounded absolutely (CFG.GUARD.hold / .leash, section 6a). So the
+     scenarios that measure that machinery are run on a rival guard. */
+  const setupA = (seed) => {
+    const { tc } = setup(seed);
+    const atc = Bld.tcOf('A');
+    atc.x = tc.x; atc.y = tc.y + 16; Bld._block = null;
+    for (let dy = -10; dy <= 10; dy++) for (let dx = -14; dx <= 14; dx++) {
+      const x = atc.x + dx, y = atc.y + dy;
+      if (MapGen.inB(x, y) && !Bld.at(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.GRASS;
+    }
+    const u = Units.spawn('defender', 'A', atc.x, atc.y + 2);
+    u.defend = true;
+    return { tc: atc, u, g: Units.guardCenter(u) };
+  };
   const run = (secs, pred) => {
     let t = 0; const dt = 0.1;
     while (t < secs && !(pred && pred())) { Units.update(dt); Combat.update(dt); t += dt; }
@@ -79,13 +108,19 @@ const out = await p.evaluate(() => {
 
   // ---- 2. a finished tower extends the watch along ITS lane, and only its lane ----
   {
-    const { tc, g } = setup('dh2');
-    const tw = Bld.place('P', 'tower', tc.x + 6, tc.y, { free: true, instant: true });
-    const east = Units.holdRadius(g, g.x + 12, g.y);
-    const north = Units.holdRadius(g, g.x, g.y - 12);
-    const expect = Math.hypot(Bld.cx(tw) - g.x, Bld.cy(tw) - g.y) + CFG.BUILDINGS.tower.levels[0].range * 0.7;
+    const A = setupA('dh2');
+    const tw = Bld.place('A', 'tower', A.tc.x + 6, A.tc.y, { free: true, instant: true });
+    const east = Units.holdRadius(A.g, A.g.x + 12, A.g.y);
+    const north = Units.holdRadius(A.g, A.g.x, A.g.y - 12);
+    const expect = Math.hypot(Bld.cx(tw) - A.g.x, Bld.cy(tw) - A.g.y) + CFG.BUILDINGS.tower.levels[0].range * 0.7;
     ck('towerExtendsItsOwnLane', Math.abs(east - expect) < 0.6, `east=${east.toFixed(1)} expected≈${expect.toFixed(1)}`);
-    ck('offLaneStaysTight', north <= g.r1 + 0.01, `north=${north.toFixed(1)} r1=${g.r1.toFixed(1)}`);
+    ck('offLaneStaysTight', north <= A.g.r1 + 0.01, `north=${north.toFixed(1)} r1=${A.g.r1.toFixed(1)}`);
+    // …and the SAME tower may not pull a PLAYER guard out past its bound
+    const { tc, g } = setup('dh2b');
+    Bld.place('P', 'tower', tc.x + 6, tc.y, { free: true, instant: true });
+    const pEast = Units.holdRadius(g, g.x + 12, g.y);
+    ck('aLaneNeverPullsThePlayerPastTheBound', pEast <= CFG.GUARD.hold + 0.01,
+      `east=${pEast.toFixed(1)} vs hold ${CFG.GUARD.hold}`);
   }
 
   // ---- 3. a half-built tower extends nothing ----
@@ -98,22 +133,34 @@ const out = await p.evaluate(() => {
 
   // ---- 4. the own wall line is a ceiling; an enemy wall is not ----
   {
-    const { tc, g } = setup('dh4');
-    Bld.place('P', 'tower', tc.x + 6, tc.y, { free: true, instant: true });
-    for (let dy = -2; dy <= 2; dy++) Bld.place('P', 'wall', tc.x + 8, tc.y + dy, { free: true, instant: true });
+    const { tc: atc, g } = setupA('dh4');
+    Bld.place('A', 'tower', atc.x + 6, atc.y, { free: true, instant: true });
+    for (let dy = -2; dy <= 2; dy++) Bld.place('A', 'wall', atc.x + 8, atc.y + dy, { free: true, instant: true });
     const east = Units.holdRadius(g, g.x + 12, g.y);
-    ck('ownWallCapsTheHold', east < (tc.x + 8) - g.x, `east=${east.toFixed(1)} wall at dx=${((tc.x + 8) - g.x).toFixed(1)}`);
+    ck('ownWallCapsTheHold', east < (atc.x + 8) - g.x, `east=${east.toFixed(1)} wall at dx=${((atc.x + 8) - g.x).toFixed(1)}`);
     // tear the wall down — the ceiling lifts back to the tower's watch
-    for (const w of S.buildings.filter(b2 => b2.key === 'wall' && b2.owner === 'P').slice()) Bld.removeToRuin(w);
+    for (const w of S.buildings.filter(b2 => b2.key === 'wall' && b2.owner === 'A').slice()) Bld.removeToRuin(w);
     const after = Units.holdRadius(g, g.x + 12, g.y);
     ck('breachLiftsTheCeiling', after > east + 1, `after breach=${after.toFixed(1)}`);
   }
   {
-    const { tc, g } = setup('dh5');
-    Bld.place('P', 'tower', tc.x + 6, tc.y, { free: true, instant: true });
-    for (let dy = -2; dy <= 2; dy++) Bld.place('A', 'wall', tc.x + 8, tc.y + dy, { free: true, instant: true });
+    const { tc: atc, g } = setupA('dh5');
+    Bld.place('A', 'tower', atc.x + 6, atc.y, { free: true, instant: true });
+    for (let dy = -2; dy <= 2; dy++) Bld.place('P', 'wall', atc.x + 8, atc.y + dy, { free: true, instant: true });
     const east = Units.holdRadius(g, g.x + 12, g.y);
-    ck('enemyWallIsNoCeiling', east > (tc.x + 8) - g.x, `east=${east.toFixed(1)}`);
+    ck('enemyWallIsNoCeiling', east > (atc.x + 8) - g.x, `east=${east.toFixed(1)}`);
+  }
+  /* the ceiling still bites for the PLAYER — it can only ever TIGHTEN the
+     ring, so a wall raised inside the bound holds the garrison inside it */
+  {
+    const { tc, g } = setup('dh5b');
+    for (let dy = -2; dy <= 2; dy++) Bld.place('P', 'wall', tc.x + 2, tc.y + dy, { free: true, instant: true });
+    const east = Units.holdRadius(g, g.x + 12, g.y);
+    // (the ceiling has its own 1.5-tile floor — a wall on the doorstep must
+    // not pin the garrison onto the hall itself — so the rule to measure is
+    // simply that it tightens the ring BELOW the hard bound)
+    ck('aCloseWallStillCapsThePlayersRing', east < CFG.GUARD.hold,
+      `east=${east.toFixed(1)} vs hold ${CFG.GUARD.hold}`);
   }
 
   // ---- 5. THE story: behind a wall, the garrison waits for the breach ----
@@ -163,12 +210,35 @@ const out = await p.evaluate(() => {
     const { tc } = setup('dh7');
     const mk = (kind) => { const u2 = Units.spawn(kind, 'P', tc.x, tc.y + 2); u2.defend = true; return Units.guardCenter(u2); };
     const gm = mk('defender'), gr = mk('archer'), gs = mk('catapult'), gb = mk('ballista');
-    ck('classHolds', gm.r1 === 5 && gr.r1 === 4 && gs.r1 === 3 && gb.r1 === 3,
-      `melee=${gm.r1} ranged=${gr.r1} catapult=${gs.r1} ballista=${gb.r1}`);
-    ck('classChase', gm.chase === 2 && gr.chase === 1 && gs.chase === 0 && gb.chase === 0,
+    const H = CFG.GUARD.hold;
+    /* THE PLAYER'S RING IS THE HARD BOUND, WHATEVER THE DOCTRINE. From a
+       playtest: "too often they get out too wide and then get ambushed and
+       killed". CFG.GUARD.hold caps every class, so at 3 the blades, bows and
+       engines share one tight ring; raise it and the ordering below reappears
+       underneath (blades 5, bows 4, engines 3). */
+    ck('classHolds', gm.r1 === Math.min(5, H) && gr.r1 === Math.min(4, H) &&
+      gs.r1 === Math.min(3, H) && gb.r1 === Math.min(3, H),
+      `melee=${gm.r1} ranged=${gr.r1} catapult=${gs.r1} ballista=${gb.r1} (hold ${H})`);
+    // …and the trail allowance is what is LEFT of the leash, so nobody ever
+    // fights further out than CFG.GUARD.leash
+    const L = CFG.GUARD.leash;
+    ck('classChase',
+      gm.chase === Math.min(2, L - gm.r1) && gr.chase === Math.min(1, L - gr.r1) &&
+      gs.chase === 0 && gb.chase === 0,
       `melee=${gm.chase} ranged=${gr.chase} catapult=${gs.chase} ballista=${gb.chase}`);
+    ck('noPlayerGuardEverFightsPastTheLeash',
+      [gm, gr, gs, gb].every(gg => gg.r1 + gg.chase <= L + 0.001),
+      [gm, gr, gs, gb].map(gg => (gg.r1 + gg.chase)).join(',') + ' vs leash ' + L);
     ck('openGroundHoldIsTheClassHold',
-      Units.holdRadius(gm, gm.x + 12, gm.y) === 5 && Units.holdRadius(gs, gs.x + 12, gs.y) === 3, '');
+      Units.holdRadius(gm, gm.x + 12, gm.y) === Math.min(5, H) &&
+      Units.holdRadius(gs, gs.x + 12, gs.y) === Math.min(3, H), '');
+    // the RIVAL keeps its own doctrine ring — the player commands their own
+    // army and can sortie by hand; a chief cannot be told to (the reason
+    // Combat.bestFoe is the rival's scorer alone)
+    const atc = Bld.tcOf('A');
+    const ga = (() => { const u3 = Units.spawn('defender', 'A', atc.x, atc.y + 2); u3.defend = true; return Units.guardCenter(u3); })();
+    ck('theRivalKeepsItsDoctrineRing', ga.r1 === CFG.GUARD.holdByClass.melee,
+      `rival melee ring ${ga.r1} vs player ${gm.r1}`);
   }
 
   // ---- 7. an engine on Defend opens fire BY ITSELF — no order needed ----
@@ -236,6 +306,13 @@ const out = await p.evaluate(() => {
     ck('bladeEngagesAtTheRing', engaged && raider.hp < raider.maxhp, `engaged=${engaged} raider hp=${raider.hp}`);
     ck('bladeTrailsTwoTilesNoMore', maxD <= g.r1 + (g.chase || 0) + 0.9,
       `max ${maxD.toFixed(1)} vs bound ${(g.r1 + (g.chase || 0)).toFixed(1)}`);
+    /* THE ASKED-FOR RULE, MEASURED ABSOLUTELY (not derived from g, so a
+       future change to the doctrine cannot quietly widen it): a player guard
+       chasing a retreating foe never gets further from the hall than
+       CFG.GUARD.leash. This is the check that stands for "too often they get
+       out too wide and then get ambushed and killed". */
+    ck('aPlayerGuardNeverPassesTheLeash', maxD <= CFG.GUARD.leash + 0.5,
+      `max ${maxD.toFixed(1)} from the hall vs leash ${CFG.GUARD.leash}`);
     const t2 = run(10, () => Math.hypot(u.x - g.x, u.y - g.y) <= g.r1);
     ck('bladeComesHomeAfterTheChase', Math.hypot(u.x - g.x, u.y - g.y) <= g.r1 + 0.2,
       `back inside after ${t2}s, at ${Math.hypot(u.x - g.x, u.y - g.y).toFixed(1)}`);
@@ -247,7 +324,11 @@ const out = await p.evaluate(() => {
   {
     const { tc, u, g } = setup('dh12');
     S.units = [u];
-    const px = g.x + 3, py = g.y - 3;   // a distinct post, well off the ring's center line
+    // a distinct post, off the ring's centre line but INSIDE the bound — a
+    // post beyond it is not a post the stance would ever have stood at, and
+    // returnToGuard rightly falls back to the ring (CFG.GUARD.hold)
+    const off = Math.max(1, (CFG.GUARD.hold - 0.6) / Math.SQRT2);
+    const px = g.x + off, py = g.y - off;
     u.x = px; u.y = py; u.path = null;
     const pin = (r2, x, y) => { r2.x = x; r2.y = y; r2.path = null; r2.task = null; r2.tUnit = 0; r2.tBld = 0; };
     // the kill: a raider breaches the far side of the ring — cut it down, walk home

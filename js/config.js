@@ -1063,5 +1063,20 @@ const CFG = {
     sortie: 0.12,     // a slim leash past the hold radius before it's reined back in
     // ceiling for tower-lane extensions of the watch (see Units.holdRadius)
     maxNatural: 14,
+    /* THE HARD BOUND ON THE DEFENDED RING (tests/defend-hold.mjs). Everything
+       above sets where a guard WANTS to stand; these two say how far it is
+       ever ALLOWED to, measured from the hall, and nothing may exceed them —
+       not the per-class doctrine, not a tower lane, not the trail allowance.
+       From a playtest: "too often they get out too wide and then get ambushed
+       and killed". A tower lane could stretch the watch most of the way to
+       maxNatural, and a blade's own ring plus its trail put it eight tiles
+       out on open ground — far enough to be cut off from the rest of the
+       garrison, which is exactly how a defence dies piecemeal.
+         hold  — no land guard ever STANDS further out than this
+         leash — …and never FIGHTS further out than this, chase included
+       Raise `hold` and the per-class ordering below reappears underneath it
+       (blades outside bows outside engines); at 3 they all share the ring. */
+    hold: 3,
+    leash: 5,
   },
 };
