@@ -3496,13 +3496,37 @@ const R = {
     this.rebuildTerrain();
     this.fogDirty = true;
   },
-  /* the heartbeat only acts on a DEFINITE loss — an 'unknown' every second
-     would rebake the world every second on a tainted page */
+  /* THE WATCHDOG MUST NOT BECOME THE DISEASE (measured: with the OS taking the
+     pixels back every 0.7s, an un-paced revive rebaked 19 times in 20 seconds,
+     spent 11.5s of that on baking and dragged a DESKTOP to 20fps — on a phone
+     mid-battle that is the reported "seizing and a really low frame rate").
+     Losing the ground is not always a one-off: a big fight is exactly when the
+     renderer allocates the most new canvases (burn variants, collapse sheets,
+     dust), which is exactly when a phone is most likely to take some back. So
+     each revive at least doubles the wait before the next, up to REVIVE_MAX_MS.
+     A single purge still recovers within the second; a storm of them costs a
+     rebake now and then instead of a treadmill, and the game stays playable —
+     which is the whole point of recovering at all. Staying healthy for a good
+     stretch forgets the backoff, so an ordinary purge tomorrow is answered as
+     promptly as the first one was. */
+  REVIVE_MIN_MS: 1500,
+  REVIVE_MAX_MS: 30000,
+  _reviveAt: 0,
+  _reviveGap: 0,
   watchCache(now) {
     if (!this.terrainCache) return;
     if (now - this._cacheCheckAt < this.CACHE_WATCH_MS) return;
     this._cacheCheckAt = now;
-    if (this.cacheState() === 'lost') this.reviveTerrain();
+    if (this.cacheState() !== 'lost') {
+      // healthy well past the last backoff — the pressure has passed
+      if (this._reviveGap && now - this._reviveAt > this._reviveGap * 2) this._reviveGap = 0;
+      return;
+    }
+    const gap = this._reviveGap || this.REVIVE_MIN_MS;
+    if (now - this._reviveAt < gap) return;          // still inside the backoff
+    this._reviveAt = now;
+    this._reviveGap = Math.min(this.REVIVE_MAX_MS, gap * 2);
+    this.reviveTerrain();
   },
   /* COMING BACK TO THE TAB. This is where the pixels are actually found
      missing, and where 'unknown' must be treated as lost: the cost of a
@@ -3512,6 +3536,11 @@ const R = {
   cacheReturned() {
     if (!this.terrainCache) return false;
     if (this.cacheState() === 'ok') return false;
+    // a real return to the tab is rare and deliberate, so it is answered at
+    // once — and it clears the backoff, because whatever pressure was on the
+    // page while it was hidden is a different situation from this one
+    this._reviveAt = (typeof performance !== 'undefined' ? performance.now() : 0);
+    this._reviveGap = this.REVIVE_MIN_MS;
     this.reviveTerrain();
     return true;
   },

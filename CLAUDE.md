@@ -3128,6 +3128,20 @@ KEYS of every layer that shared the cache's fate (`_layerKey`/`_shoreKey`,
 cheerfully composite a shore layer whose pixels are gone and the coast would
 be missing instead of black. Measured on the reported save's map: 100% ground
 → 5% after a purge → 100% after the revive, and a healthy cache is left alone.
+**AND THE WATCHDOG MUST NOT BECOME THE DISEASE** (`REVIVE_MIN_MS` 1500 /
+`REVIVE_MAX_MS` 30000, pinned by `aPurgeStormIsNotARebakeTreadmill` — from
+the very next report, "I made an attack on the enemy and suddenly the game
+started seizing"): losing the ground is not always a one-off. A big fight is
+exactly when the renderer allocates the most new canvases (burn variants,
+collapse sheets, dust), which is exactly when a phone is most likely to take
+some back — so the first cut of this recovery, which rebaked whenever it saw
+a loss, was measured rebaking **19 times in 20 seconds, spending 11.5s of it
+baking and pulling a DESKTOP down to 20fps**. Each revive now at least
+DOUBLES the wait before the next, to a 30s ceiling; staying healthy well past
+the last backoff forgets it, so an ordinary purge tomorrow is answered as
+promptly as the first. Same storm re-measured: 3 rebakes, 1.8s of baking,
+53fps. Coming back to the tab is exempt — it is rare, deliberate, and the
+player is looking at the black map right then.
 **The contract serves the game over HTTP on an ephemeral port** for this one
 section, since under `file://` every canvas is tainted and no pixel can be
 read at all.

@@ -1231,6 +1231,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   const p3 = await b.newPage({ viewport: { width: 430, height: 880 } });
   await p3.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'domcontentloaded' });
   await p3.waitForTimeout(1200);
+  const R_MIN_GUESS = 1500;
   const v = await p3.evaluate(() => {
     G.newGame('purge1', 'moderate', 'large');
     Screens._demo = false; Screens.show('playing'); S.paused = true;
@@ -1262,6 +1263,37 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     'revived ' + v.revived + ', ' + v.after + '% ground');
   ck('andAHealthyCacheIsLeftAlone', v.idle === false,
     'a needless rebake on every return is its own hitch');
+
+  /* AND THE WATCHDOG MUST NOT BECOME THE DISEASE. Losing the ground is not
+     always a one-off — a big fight is exactly when the renderer allocates the
+     most new canvases, which is exactly when a phone is most likely to take
+     some back. Un-paced, the revive rebaked 19 times in 20 seconds and pulled
+     a DESKTOP down to 20fps. Each revive now at least doubles the wait before
+     the next one. */
+  const v2 = await p3.evaluate(async () => {
+    G.newGame('purge2', 'moderate', 'large');
+    Screens._demo = false; Screens.show('playing'); S.paused = true;
+    R.rebuildTerrain();
+    R._reviveAt = 0; R._reviveGap = 0; R._cacheCheckAt = 0;
+    let rebakes = 0;
+    const rb = R.rebuildTerrain;
+    R.rebuildTerrain = function (...a) { rebakes++; return rb.apply(this, a); };
+    // an OS that keeps taking the pixels back, and a heartbeat that keeps looking
+    let now = 1e6;
+    for (let i = 0; i < 40; i++) {
+      for (const cv of [R.terrainCache, R.shoreLayer])
+        if (cv) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+      now += 700;                       // …0.7s apart, for 28 seconds
+      R._cacheCheckAt = 0;              // the heartbeat is due every time
+      R.watchCache(now);
+    }
+    R.rebuildTerrain = rb;
+    return { rebakes, gap: R._reviveGap };
+  });
+  ck('aPurgeStormIsNotARebakeTreadmill', v2.rebakes <= 8,
+    v2.rebakes + ' rebakes over 28s of relentless purging (was 40 un-paced)');
+  ck('andTheWaitBacksOff', v2.gap > R_MIN_GUESS,
+    'backoff reached ' + v2.gap + 'ms');
   await p3.close();
   await new Promise(r => srv.close(r));
 }
