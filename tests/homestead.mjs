@@ -231,6 +231,27 @@ const out = await p.evaluate(() => {
     ck('andBothAreInGold',
       /var\(--gold\)/.test(farmLine) && /var\(--gold\)/.test(houseLine),
       'the colour the game keeps for something special');
+
+    /* AND IT REACHES THE SCREEN AS GOLD, NOT AS MARKUP. panelSub is composed
+       as HTML and has TWO writers — renderPanel drops it into the div, and
+       refreshPanel patches it in place every tick. The second one used to set
+       textContent, so the span was escaped and the player was shown the raw
+       `<span style="color:var(--gold)">` (reported with a screenshot). The
+       string-level check above passed the whole time; only reading the
+       rendered DOM catches it. */
+    const domSub = () => {
+      UI.renderPanel();
+      UI.refreshPanel();                      // the in-place writer gets the last word
+      const el = document.querySelector('#panel .phead .psub');
+      return { text: el ? el.textContent : '', gold: !!(el && el.querySelector('[style*="--gold"]')) };
+    };
+    UI.sel = { type: 'bld', id: h.id };
+    const dom = domSub();
+    ck('theGoldReachesTheScreenAsGold', dom.gold,
+      'a real element in the panel, not text that says span');
+    ck('andNoMarkupIsEverShownToThePlayer',
+      !/[<>]|style=|span/i.test(dom.text) && /Homestead/.test(dom.text),
+      dom.text.slice(-70));
   }
 
   /* ---- 9. THE HINT: the reward is findable BEFORE it is earned ---- */

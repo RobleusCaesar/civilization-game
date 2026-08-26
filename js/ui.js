@@ -2256,8 +2256,14 @@ const UI = {
     const sig = this.panelSig();
     if (sig === 'gone') { this.deselect(); return; }
     if (sig !== this._panelSig) { this.renderPanel(); return; }
+    /* panelSub is composed as HTML (renderPanel drops it straight into the
+       .psub div), so this SECOND writer has to put it back the same way —
+       setting textContent here escaped the homestead's gold span and printed
+       the markup at the player. Same string, same treatment, one meaning.
+       Everything in it is game-generated (names from CFG, numbers we
+       computed); no player text ever reaches this line. */
     const el = document.querySelector('#panel .phead .psub');
-    if (el) el.textContent = this.panelSub();
+    if (el) { const sub = this.panelSub(); if (el.innerHTML !== sub) el.innerHTML = sub; }
     // THE LIVE LINE: what the unit is doing and what it is netting, patched in
     // place every tick so it can change without relaying out the whole panel
     if (this.sel.type === 'unit') {
@@ -2353,7 +2359,10 @@ const UI = {
       else if (lv.out) {
         const crew = Bld.def(b.key).needsWorker ? Math.min(Bld.workersActive(b), Bld.maxWorkers(b)) : 1;
         const shown = Bld.def(b.key).needsWorker ? (crew || 1) : 1;   // preview per-worker rate when idle
-        sub += ' — ' + Object.entries(lv.out).map(([k, v]) => `+${Math.round(v * shown * Bld.nearBonus(b) * 10) / 10} ${k}/day`).join(', ');
+        // the rate shown is the rate it is REALLY producing — the homestead's
+        // share included, with the gold line below saying where it came from
+        const hs = Bld.homesteadMult(b);
+        sub += ' — ' + Object.entries(lv.out).map(([k, v]) => `+${Math.round(v * shown * Bld.nearBonus(b) * hs * 10) / 10} ${k}/day`).join(', ');
         if (Bld.maxWorkers(b) > 1) sub += crew ? '' : ' (per worker)';
       }
       if (lv.pop) sub += ` — +${lv.pop} pop`;
@@ -2364,9 +2373,8 @@ const UI = {
          forget to clear. */
       if (Bld.isHomestead(b)) {
         const pct = Math.round(((CFG.HOMESTEAD.food || 1) - 1) * 100);
-        sub += b.key === 'farm'
-          ? ` — <span style="color:var(--gold)">🌾 Homestead +${pct}% food</span>`
-          : ` — <span style="color:var(--gold)">🌾 Homestead +${CFG.HOMESTEAD.pop} villager</span>`;
+        const gain = b.key === 'farm' ? `+${pct}% food` : `+${CFG.HOMESTEAD.pop} villager`;
+        sub += ` — <b style="color:var(--gold)">🌾 Homestead ${gain}</b>`;
       }
       if (lv.bonus) sub += ` — ${lv.bonus}`;
       return sub;

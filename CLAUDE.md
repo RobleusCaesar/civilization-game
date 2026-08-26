@@ -1596,7 +1596,17 @@ lighting effect rather than treasure — so every mark is a hard gold pixel in
 the game's own `--gold`, with one hot pixel on top and a deep skirt beneath,
 lifting only gently so the ring stays a ring.
 **Both panels say it, in gold** (`UI.panelSub`), and the bond bit rides in
-`panelSig` so the line appears and vanishes without a reselect. **And the
+`panelSig` so the line appears and vanishes without a reselect. The bonded
+farm's rate is shown BOOSTED (`+16.5 food/day`, not the base 15) so the buff
+is visible in the figure itself, with the gold line saying where it came from.
+**`panelSub` IS COMPOSED AS HTML AND HAS TWO WRITERS** — `renderPanel` drops
+it into the `.psub` div, and `refreshPanel` patches it in place every tick —
+and the second one set `textContent`, so the gold span was escaped and the
+player was shown the raw `<span style="color:var(--gold)">` (reported with a
+screenshot). Both write it the same way now. The string-level contract check
+passed the whole time it was broken: only reading the RENDERED DOM catches
+this class of fault, which is what `theGoldReachesTheScreenAsGold` and
+`andNoMarkupIsEverShownToThePlayer` do. **And the
 reward is hinted BEFORE it is earned** (`UI.placeWouldBond`): a bonus you
 discover by accident once in ten games is a bonus nobody plays for, so a valid
 ghost that would bond says so on the placement chip — asking the same
