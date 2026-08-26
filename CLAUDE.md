@@ -106,6 +106,7 @@ node tests/levy.mjs          # the village under arms: derived membership, soldi
 node tests/tree-fall.mjs     # a felled wood goes over on screen — every tree about its own foot
 node tests/rival-strength.mjs # the rewritten war brain: the anchor, the inner market, the engine road, the sea patrol — and 3 fortified towns razed end to end
 node tests/train-spawn.mjs   # a trained unit stands on REALLY open ground, or waits in reserve until there is some
+node tests/homestead.mjs     # a house broadside-on to a farm bonds the two: +10% food, +1 villager, gold sparks — and it all goes away with either half
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -1562,6 +1563,51 @@ levied hand) is the grouping domain, a band of only levied hands is titled
 Siege, which the existing `siegeArtillery` gate refuses for a band with no
 battery. `panelSig` carries `S.levy` on the TC/unit/group signatures, so the
 lever's label, the Build button and the tactics all flip without a reselect.
+
+**The homestead** (`tests/homestead.mjs`): a house raised BROADSIDE-ON to a
+farm bonds the two — the field is worked by the folk who sleep beside it. The
+farm gives `CFG.HOMESTEAD.food` (+10%) and the house holds `pop` (+1) more.
+Four rules and they are the whole feature. **BROADSIDE ONLY**: the footprints
+must share an EDGE (`Bld.broadside`) — a corner touch is two neighbours, not
+one household. **ONE TO ONE**: every building is in at most one bond, so
+ringing a farm with houses buys nothing after the first. **OLDEST WINS**: ids
+rise with placement, so the earliest-standing pair takes the tie — the bonus
+goes to the first one built. **DERIVED**: `Bld.homesteadMap` is computed from
+the board every time it is asked and deliberately NOT cached — it is a handful
+of houses against a handful of farms, and a razed half must drop its bonus on
+the frame it falls; a cache would buy nothing measurable and would be one more
+thing that can go stale, which is the whole failure this feature is written to
+avoid. What rides in the save (`S.homesteads`) is ONLY the memory of which
+bonds have already been CELEBRATED, seeded quietly in `newGame`/`loadJSON` so
+a town that loads already bonded keeps its bonus without throwing confetti.
+Owner-agnostic like the tower's miss chance — the rival's fields feed its town
+by the same rule — but the celebration is the player's alone.
+**The celebration is EDGE-TRIGGERED, the bonus is not** (`syncHomesteads`,
+called from `finish`, `place` and `removeToRuin` — every path by which the set
+can change; `place` matters because `opts.instant` never goes through
+`finish`, so a start-package or card-placed pair would bond in silence).
+`R.startBondSpark` throws ONE burst on the SEAM the pair shares (a burst over
+each read as two unrelated circles), `UI.cue('bond')` sounds a rising G-B-E
+chime with a double haptic tap, and `G.log` says why. **The ring is made OF
+sparks, not drawn as a hoop**: a stroked arc upscaled through the pixelation
+step comes out as the one soft-edged thing on a hard-edged screen and
+swallows the sparks inside it, and near-white cores over green grass read as a
+lighting effect rather than treasure — so every mark is a hard gold pixel in
+the game's own `--gold`, with one hot pixel on top and a deep skirt beneath,
+lifting only gently so the ring stays a ring.
+**Both panels say it, in gold** (`UI.panelSub`), and the bond bit rides in
+`panelSig` so the line appears and vanishes without a reselect. **And the
+reward is hinted BEFORE it is earned** (`UI.placeWouldBond`): a bonus you
+discover by accident once in ten games is a bonus nobody plays for, so a valid
+ghost that would bond says so on the placement chip — asking the same
+`Bld.broadside` rule the bonus does, against a stand-in for the building about
+to be placed, so the hint and the reward can never disagree. A partner already
+spoken for promises nothing.
+**The trap this cost**: `celebrateHomestead` guarded its chime with
+`window.UI &&` — and `UI` is a script-level const, so `window.UI` is
+**undefined** and the sound silently never played (the `window.G` /
+`window.Sprites` trap again). Reference `UI` bare.
+
 
 **The muster horn** (`tests/muster-horn.mjs`): the Town Center's lever, and
 the same bargain the gate makes — one tap and the whole workforce downs tools

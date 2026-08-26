@@ -671,6 +671,20 @@ const CFG = {
      it does not range. Explicit orders are the player's business. */
   LEVY: { atk: 5, def: 1 },
 
+  /* THE HOMESTEAD (tests/homestead.mjs). A house raised broadside-on to a farm
+     — north, south, east or west, never a corner — bonds the two: the field is
+     worked by the folk who sleep beside it. The farm gives `food` more, the
+     house holds `pop` more. ONE farm to ONE house: no compounding, and the
+     earliest-standing pair wins the tie, so a house between two farms bonds
+     with the older field. The bond is DERIVED from the board every time it is
+     asked (Bld.homesteadMap), so nothing can go stale — what rides in the save
+     is only the memory of which bonds have already been celebrated. */
+  HOMESTEAD: {
+    food: 1.10,       // the bonded farm's output multiplier
+    pop: 1,           // …and the extra villager the bonded house holds
+    sparkMs: 800,     // the golden burst, in ms (half a second to a second)
+  },
+
   /* THE RIVAL'S INNER MARKET (tests/rival-strength.mjs) — the approved cheat.
      The old economy could starve on one resource while a hoard of another
      rotted (a real day-171 save: 7,000 food and 3,500 gold against 20 wood,

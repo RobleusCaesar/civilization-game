@@ -173,6 +173,7 @@ const G = {
       corpses: [],                          // fallen game: {x,y,kind,day} — carcass then skeleton, the lodge-ground cue (tests/wild-life.mjs)
       garrison: [],                         // villagers sheltered inside the Town Center
       levy: false,                          // the village under arms (tests/levy.mjs)
+      homesteads: {},                       // bonds already CELEBRATED: houseId -> farmId (the bonus itself is derived — tests/homestead.mjs)
       scarce: gen.scarce || null,           // the map's lean resource — both tribes plan around it
       armies: {},                           // saved war parties: slot (1-3) → [unit ids] (see UI.saveArmy)
       reprieveUsed: false,                  // the one-time "two survivors emerge" reprieve (competitive modes)
@@ -296,6 +297,9 @@ const G = {
     this.log(`Scouts report: ${gen.scarce} is scarce in this valley — claim it before the rival does.`, false, 6400);
     this.log('First barbarian raids expected around day ' + S.wave.next, false, 6400);
     this.warmTribes();
+    // seed the homestead memory QUIETLY: a town that starts or loads already
+    // bonded keeps its bonus without celebrating bonds it has had for days
+    Bld.syncHomesteads(true);
   },
 
   /* build the sprite rigs for the peoples actually ON this map, now, while
@@ -1455,6 +1459,10 @@ const G = {
     }
     if (!data.garrison) data.garrison = [];
     if (data.levy == null) data.levy = false;   // pre-levy saves load at peace with their tools
+    // pre-homestead saves: seeded quietly below, so a town that loads already
+    // bonded keeps its bonus without throwing confetti for bonds it has had
+    // for a hundred days
+    if (!data.homesteads) data.homesteads = {};
     if (data.scarce === undefined) data.scarce = null;   // pre-scarce saves: the AI just skips the bias
     if (!data.armies) data.armies = {};   // pre-army saves: no standing banners
     // pre-truce saves: whatever fighting was underway continues — the truce
@@ -1649,6 +1657,9 @@ const G = {
     R.onNewGame();
     this.updateVisibility();
     this.warmTribes();      // build the resident peoples' rigs here, not on first sighting
+    // seed the homestead memory QUIETLY: a town that loads already bonded keeps
+    // its bonus without celebrating bonds it has had for a hundred days
+    Bld.syncHomesteads(true);
     if (S.over) UI.showEnd(S.over.win, S.over.msg);
   },
 

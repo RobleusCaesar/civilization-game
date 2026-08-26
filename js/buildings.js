@@ -1020,6 +1020,12 @@ const Bld = {
       for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) tiles.push([x + dx, y + dy]);
       R.drawTilesAt(tiles);
     }
+    /* A building that lands ALREADY FINISHED (opts.instant — the start
+       package, an origin card, the rival's own instant works) never goes
+       through finish(), so the homestead it may have just made would form
+       silently. The bonus is derived either way; this is what makes the
+       CELEBRATION fire on both roads (tests/homestead.mjs). */
+    if (!b.construction && (key === 'house' || key === 'farm')) this.syncHomesteads();
     return b;
   },
 
@@ -1067,6 +1073,9 @@ const Bld = {
     // THE SECOND WAY TO WIN: the monument is up, the run is decided
     // (tests/wonder.mjs). Last, so the building is fully finished first.
     if (b.key === 'wonder') G.wonderRaised(b);
+    // a finished house or farm may have just made a homestead (or completed
+    // the other half of one) — see syncHomesteads
+    if (b.key === 'house' || b.key === 'farm') this.syncHomesteads();
   },
 
   // any of the OWNER'S villagers currently working this site (construction/upgrade/repair)?
@@ -1253,10 +1262,124 @@ const Bld = {
     return true;
   },
 
+  /* ================= THE HOMESTEAD (tests/homestead.mjs) =================
+     A house raised BROADSIDE-ON to a farm bonds the two — the field is worked
+     by the folk who sleep beside it, so it gives more, and the house holds one
+     more pair of hands. Four rules, and they are the whole feature:
+
+       BROADSIDE ONLY   the footprints must share an EDGE. A corner touch is
+                        two neighbours, not one household.
+       ONE TO ONE       every building is in at most one bond. No compounding:
+                        ringing a farm with houses buys nothing after the first.
+       OLDEST WINS      ids rise with placement, so the earliest-standing pair
+                        takes the tie — "the bonus goes to the first one built".
+       DERIVED          nothing is stored. The bond is computed from the board
+                        every time it is asked, so a razed house, a demolished
+                        farm or a loaded save can never leave a stale bonus
+                        behind. What rides in the save (S.homesteads) is only
+                        the memory of which bonds have already been CELEBRATED.
+
+     Owner-agnostic, like the tower's miss chance: the rival's fields feed its
+     town by the same rule. Only the celebration is the player's. */
+
+  // do two footprints share an EDGE? (touching at a corner is not broadside)
+  broadside(a, b) {
+    const as = this.size(a), bs = this.size(b);
+    const ax0 = a.x, ax1 = a.x + as - 1, ay0 = a.y, ay1 = a.y + as - 1;
+    const bx0 = b.x, bx1 = b.x + bs - 1, by0 = b.y, by1 = b.y + bs - 1;
+    const xOver = ax0 <= bx1 && bx0 <= ax1;      // columns overlap
+    const yOver = ay0 <= by1 && by0 <= ay1;      // rows overlap
+    if (xOver && (by0 === ay1 + 1 || ay0 === by1 + 1)) return true;   // stacked N/S
+    if (yOver && (bx0 === ax1 + 1 || ax0 === bx1 + 1)) return true;   // side by side E/W
+    return false;
+  },
+
+  /* every bond on the board right now: building id -> partner id, both ways.
+     Deliberately NOT cached. It is a handful of houses against a handful of
+     farms, and the callers (production, the pop cap, the panel) need it to be
+     true THIS instant — a razed house must drop its bonus on the frame it
+     falls. A cache here would buy nothing measurable and would be one more
+     thing that can go stale, which is the failure this whole feature is
+     written to avoid. */
+  homesteadMap() {
+    const houses = [], farms = [];
+    for (const b of S.buildings) {
+      if (!this.done(b) || b.construction > 0) continue;
+      if (b.key === 'house') houses.push(b);
+      else if (b.key === 'farm') farms.push(b);
+    }
+    const pairs = [];
+    for (const h of houses) for (const f of farms)
+      if (h.owner === f.owner && this.broadside(h, f))
+        pairs.push({ h, f, age: Math.max(h.id, f.id) });
+    // OLDEST STANDING PAIR FIRST — ids rise with placement, so the pair whose
+    // newer half is oldest is the one that has stood together longest
+    pairs.sort((p, q) => p.age - q.age || p.h.id - q.h.id);
+    const map = {};
+    for (const p of pairs) {
+      if (map[p.h.id] != null || map[p.f.id] != null) continue;   // already spoken for
+      map[p.h.id] = p.f.id; map[p.f.id] = p.h.id;
+    }
+    return map;
+  },
+  homesteadOf(b) {
+    if (!b || (b.key !== 'house' && b.key !== 'farm')) return null;
+    const id = this.homesteadMap()[b.id];
+    return id == null ? null : this.get(id);
+  },
+  isHomestead(b) { return !!this.homesteadOf(b); },
+  // the bonded farm's output multiplier, and the bonded house's extra room
+  homesteadMult(b) {
+    return (b.key === 'farm' && this.isHomestead(b)) ? (CFG.HOMESTEAD.food || 1) : 1;
+  },
+  homesteadPop(b) {
+    return (b.key === 'house' && this.isHomestead(b)) ? (CFG.HOMESTEAD.pop || 0) : 0;
+  },
+
+  /* THE CELEBRATION IS EDGE-TRIGGERED, THE BONUS IS NOT. The bonus is derived
+     and always current; this only spots bonds that are NEW since the last look
+     so the sparks and the chime fire once, for the player, at the moment the
+     second building is finished. Called from finish / removeToRuin / demolish
+     — every path by which the set can change — and seeded QUIETLY on newGame
+     and load, so a town that arrives already bonded does not throw confetti. */
+  syncHomesteads(quiet) {
+    if (!S) return;
+    const map = this.homesteadMap();
+    const was = S.homesteads || {};
+    const now = {};
+    for (const k in map) {
+      const b = this.get(+k);
+      if (b && b.key === 'house') now[k] = map[k];      // one entry per bond
+    }
+    if (!quiet) {
+      for (const k in now) {
+        if (was[k] === now[k]) continue;                 // this bond is not new
+        const h = this.get(+k), f = this.get(now[k]);
+        if (!h || !f || h.owner !== 'P') continue;       // the rival keeps its bonus, quietly
+        this.celebrateHomestead(h, f);
+      }
+    }
+    S.homesteads = now;
+  },
+  celebrateHomestead(h, f) {
+    /* ONE burst, on the SEAM the two share — the bond is the join, not the two
+       buildings, and a burst over each read as two unrelated circles. */
+    if (window.R && R.startBondSpark)
+      R.startBondSpark((h.x + this.size(h) / 2 + f.x + this.size(f) / 2) / 2,
+                       (h.y + this.size(h) / 2 + f.y + this.size(f) / 2) / 2);
+    // NOT `window.UI` — UI is a script-level const, so window.UI is undefined
+    // and the chime would silently never sound (the window.G / window.Sprites
+    // trap, documented in CLAUDE.md). Reference it bare, as units.js does.
+    if (typeof UI !== 'undefined' && UI.cue) UI.cue('bond');
+    const pct = Math.round(((CFG.HOMESTEAD.food || 1) - 1) * 100);
+    G.log(`\u{1F33E} A homestead takes root — folk who sleep beside a field tend it ` +
+      `like their own. +${pct}% food, and room for one more.`);
+  },
+
   popCap(owner) {
     let cap = 0;
     for (const b of this.list(owner))
-      if (this.done(b)) cap += this.lv(b).pop || 0;
+      if (this.done(b)) cap += (this.lv(b).pop || 0) + this.homesteadPop(b);
     // the Town Center sets a hard ceiling — houses only help up to it
     const tc = this.tcOf(owner);
     const ceil = tc ? CFG.TC_POP_CAP[tc.level - 1] : CFG.TC_POP_CAP[0];
@@ -1542,7 +1665,7 @@ const Bld = {
                              : (aiCrew[b.id] || 0);
         if (!crew) continue;
       }
-      const mult = crew * this.nearBonus(b) * tcBoost * modeMult *
+      const mult = crew * this.nearBonus(b) * tcBoost * modeMult * this.homesteadMult(b) *
         (window.Cards ? Cards.prodMult(owner, b) : 1);   // ORIGIN CARDS: Harvest Lord farms
       for (const k in out) res[k] += out[k] * mult;
     }
@@ -1553,6 +1676,7 @@ const Bld = {
   removeToRuin(b) {
     S.buildings.splice(S.buildings.indexOf(b), 1);
     this._block = null;
+    if (b.key === 'house' || b.key === 'farm') this.syncHomesteads();
     const sz = this.size(b);
     for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) {
       const idx = MapGen.idx(b.x + dx, b.y + dy);

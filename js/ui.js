@@ -676,6 +676,22 @@ const UI = {
     el.style.display = show ? 'block' : 'none';
     this._placeUIVisible = show;
   },
+  /* would a house/farm dropped on this ghost bond with a neighbour? Asks the
+     SAME broadside rule the bonus does (Bld.broadside), against a stand-in for
+     the building about to be placed, so the hint and the reward can never
+     disagree. Only a partner that is FREE counts — the bonus is one-to-one, so
+     a farm whose house is already spoken for promises nothing. */
+  placeWouldBond(g) {
+    if (!g || (this.placing !== 'house' && this.placing !== 'farm')) return false;
+    const want = this.placing === 'house' ? 'farm' : 'house';
+    const ghost = { x: g.x, y: g.y, key: this.placing, sz: Bld.size(this.placing) };
+    for (const o of Bld.list('P')) {
+      if (o.key !== want || !Bld.done(o) || o.construction > 0) continue;
+      if (Bld.isHomestead(o)) continue;            // already spoken for
+      if (Bld.broadside(ghost, o)) return true;
+    }
+    return false;
+  },
   _placeDomSync() {
     const g = this.placeGhost, v = this.placeVerdict;
     if (!g) { if (this._placeUIVisible) this._placeDom(false); return; }
@@ -715,6 +731,12 @@ const UI = {
     // a WARNING rides a valid spot (sealing your own town in is allowed —
     // the chip just says what it means, so the choice is an informed one)
     else if (v && v.warn) msg = '⚠ ' + v.warnWhy;
+    /* THE HOMESTEAD IS HINTED BEFORE IT IS EARNED (tests/homestead.mjs). The
+       reward is only a reward if you can find it, and a bond you discover by
+       accident once in ten games is a bonus nobody plays for. On a valid spot
+       that WOULD bond, the chip says so — the same gold the panels use, on the
+       one screen where the choice is still yours to move. */
+    else if (v && v.ok && this.placeWouldBond(g)) msg = '🌾 Homestead — beside the field';
     if (msg) {
       why.style.display = 'block';
       if (why.textContent !== msg) why.textContent = msg;
@@ -759,11 +781,32 @@ const UI = {
       if (localStorage.getItem('neo-sfx') === '0') return;
     } catch (e) {}
     try {
-      if (navigator.vibrate) navigator.vibrate(kind === 'bad' ? 16 : 8);
+      // the homestead gets a small DOUBLE tap — a reward should not feel like
+      // the same nudge every other tap gives you
+      if (navigator.vibrate) navigator.vibrate(kind === 'bond' ? [14, 45, 22] : kind === 'bad' ? 16 : 8);
     } catch (e) {}
     try {
       const ctx = this._sfx || (this._sfx = new (window.AudioContext || window.webkitAudioContext)());
       if (ctx.state === 'suspended') ctx.resume();
+      /* THE HOMESTEAD'S CHIME (Bld.celebrateHomestead): not a tick but a small
+         RISING THIRD — three bell notes a beat apart, each a soft sine with a
+         quick decay. Everything else this makes is one blip that says "heard
+         you"; this one has to say "well done", and the only way a shape this
+         small says that is by going UP. */
+      if (kind === 'bond') {
+        const notes = [784, 988, 1319];              // G5 - B5 - E6, an open rising chord
+        notes.forEach((hz, i) => {
+          const t0 = ctx.currentTime + i * 0.085;
+          const o2 = ctx.createOscillator(), g2 = ctx.createGain();
+          o2.type = 'sine'; o2.frequency.value = hz;
+          g2.gain.setValueAtTime(0.0001, t0);
+          g2.gain.exponentialRampToValueAtTime(0.05, t0 + 0.012);
+          g2.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.34);
+          o2.connect(g2).connect(ctx.destination);
+          o2.start(t0); o2.stop(t0 + 0.36);
+        });
+        return;
+      }
       const o = ctx.createOscillator(), gn = ctx.createGain();
       o.type = 'triangle';
       const f = kind === 'bad' ? 196 : kind === 'confirm' ? 660 : 440;
@@ -2073,7 +2116,10 @@ const UI = {
         !!b.rally, this.confirmDemolish === b.id,
         // the gate lever reads the OPPOSITE of the door's state, so the
         // label has to flip the moment the order lands (tests/drawbridge.mjs)
-        Bld.canGateToggle(b) ? (b.raised ? 'up' : 'down') : '-'].join('|');
+        Bld.canGateToggle(b) ? (b.raised ? 'up' : 'down') : '-',
+        // the homestead line comes and goes without a tap — a razed partner
+        // must take the gold text with it (tests/homestead.mjs)
+        Bld.isHomestead(b) ? 'hs' : '-'].join('|');
       if (b.key === 'tc') {
         // visibility bits: pointless buttons unrender the moment they empty
         const vills = S.units.some(u => u.owner === 'P' && Units.isVillager(u));
@@ -2311,6 +2357,17 @@ const UI = {
         if (Bld.maxWorkers(b) > 1) sub += crew ? '' : ' (per worker)';
       }
       if (lv.pop) sub += ` — +${lv.pop} pop`;
+      /* THE HOMESTEAD, IN GOLD (tests/homestead.mjs). Both halves say what the
+         bond is worth, in the colour the game reserves for something special,
+         and both lines are DERIVED — raze either building and the text is gone
+         the next time the panel is written, because there is nothing stored to
+         forget to clear. */
+      if (Bld.isHomestead(b)) {
+        const pct = Math.round(((CFG.HOMESTEAD.food || 1) - 1) * 100);
+        sub += b.key === 'farm'
+          ? ` — <span style="color:var(--gold)">🌾 Homestead +${pct}% food</span>`
+          : ` — <span style="color:var(--gold)">🌾 Homestead +${CFG.HOMESTEAD.pop} villager</span>`;
+      }
       if (lv.bonus) sub += ` — ${lv.bonus}`;
       return sub;
     }

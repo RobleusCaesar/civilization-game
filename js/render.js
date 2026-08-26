@@ -3576,6 +3576,7 @@ const R = {
     this._bodyPath = null; this._bodyKey = '';
     this._waterMask = null;
     this.placePoofs = [];                                        // no dust carried across runs (the R.collapses rule)
+    this.bondSparks = [];                                        // …nor a homestead's gold
     this._repaintQ = null;                                       // …nor a half-drained repaint tail
     // pre-render the full terrain layer once — or mark it due, when the
     // caller has somewhere better to spend the wait (see deferBake)
@@ -4624,6 +4625,101 @@ const R = {
      zero; the frame index is clamped ≥ 0 so a stray negative can never index
      frames[-1]. opts.scale draws the same sheet smaller/larger about the
      footprint's center (the residual puff is a 0.65 echo of the first). */
+  /* ================= THE HOMESTEAD'S GOLDEN BURST =================
+     (Bld.celebrateHomestead, tests/homestead.mjs.) The placement dust's twin,
+     in gold: a ring of sparks thrown outward from the pair, saying "that was
+     worth doing" the instant a house and a field bond. Built exactly like
+     poofSheet — pre-rendered frames, PIXEL sparks (drawn at half resolution
+     with alpha quantized to three steps, then blitted up nearest-neighbour),
+     because a smooth glow would be the only soft-edged thing on screen.
+
+     What makes it read as REWARD rather than debris: it rises instead of
+     hugging the ground, the ring is a clean expanding circle rather than a
+     billow, and every spark is a hard two-pixel gleam with a bright core. */
+  BOND_FRAMES: 12,
+  _bondSheet: null,
+  bondSheet() {
+    if (this._bondSheet) return this._bondSheet;
+    const TL = CFG.TILE, pad = TL, side = TL + pad * 2;
+    const frames = [];
+    const r = ART.rng(613);
+    /* THE RING IS MADE OF SPARKS, not drawn as a hoop. A stroked arc upscaled
+       through the pixelation step comes out as a soft blurred circle — the one
+       smooth-edged thing on a hard-edged screen, and it swallows the sparks
+       inside it. Twenty-odd hard gold pixels thrown outward on a common radius
+       read as what was actually asked for: a ring of sparks. */
+    const N = 22;
+    const seeds = [];
+    for (let i = 0; i < N; i++)
+      seeds.push({ a: (i / N) * Math.PI * 2 + r() * 0.22, sp: 0.86 + r() * 0.28,
+        sz: 0.7 + r() * 0.8, rise: 0.16 + r() * 0.26, lag: r() * 0.05 });
+    /* SATURATED gold, not pale. The first cut leaned on near-white for the
+       spark core and thin low-alpha strokes for the ring, and over green grass
+       that reads as a soft white glow — a lighting effect, not treasure. The
+       body of every mark is the game's own gold (--gold, #e8c15a) with only a
+       one-pixel hot core above it. */
+    const GOLD = ['#8a6410', '#d8a52c', '#e8c15a', '#ffe9a3'];
+    const K = 2;                                   // the same pixelation factor as the dust
+    const qa = a => Math.round(a * 3) / 3;
+    for (let f = 0; f < this.BOND_FRAMES; f++) {
+      const t = f / (this.BOND_FRAMES - 1);
+      const lo = document.createElement('canvas'); lo.width = lo.height = Math.ceil(side / K);
+      const q = lo.getContext('2d');
+      q.scale(1 / K, 1 / K);
+      const cx = side / 2, cy = side / 2;
+      const spread = Math.sin(Math.min(1, t * 1.1) * Math.PI / 2);
+      const fade = t < 0.3 ? 1 : 1 - (t - 0.3) / 0.7;
+      // THE SPARKS ARE the ring: each rides outward on a common radius and
+      // LIFTS as it goes, so the circle opens and drifts up rather than
+      // splashing flat the way the placement dust does
+      for (const sp of seeds) {
+        const st = Math.max(0, Math.min(1, (t - sp.lag) / (1 - sp.lag)));
+        const sprd = Math.sin(Math.min(1, st * 1.1) * Math.PI / 2);
+        const dist = 3 + sprd * sp.sp * TL * 0.62;
+        const px = cx + Math.cos(sp.a) * dist;
+        // only a GENTLE lift: enough to say the sparks are rising rather than
+        // splashing, not so much that the ring stops being a ring
+        const py = cy + Math.sin(sp.a) * dist * 0.82 - sprd * sp.rise * TL * 0.34;
+        const w = Math.max(2, Math.round(sp.sz * 3 * (1 - t * 0.45)));
+        const X = Math.round(px), Y = Math.round(py);
+        q.globalAlpha = qa(fade);
+        q.fillStyle = GOLD[2];                     // the spark's BODY is gold…
+        q.fillRect(X, Y, w, w);
+        q.fillStyle = GOLD[3];                     // …with one hot pixel in it
+        q.fillRect(X, Y, Math.max(1, w - 1), 1);
+        q.globalAlpha = qa(0.67 * fade);           // and a deep skirt beneath
+        q.fillStyle = GOLD[0];
+        q.fillRect(X - 1, Y + w, w + 1, 1);
+      }
+      q.globalAlpha = 1;
+      const hi = document.createElement('canvas'); hi.width = hi.height = side;
+      const h = hi.getContext('2d');
+      h.imageSmoothingEnabled = false;
+      h.drawImage(lo, 0, 0, side, side);
+      frames.push(hi);
+    }
+    this._bondSheet = { frames, pad };
+    return this._bondSheet;
+  },
+  // x,y are TILE coordinates of the burst's centre
+  startBondSpark(x, y) {
+    if (!this.bondSparks) this.bondSparks = [];
+    if (this.bondSparks.length > 8) this.bondSparks.shift();
+    this.bondSparks.push({ x, y, t: 0 });
+  },
+  drawBondSparks(g, dt) {
+    if (!this.bondSparks || !this.bondSparks.length) return;
+    const TL = CFG.TILE, MS = (CFG.HOMESTEAD && CFG.HOMESTEAD.sparkMs) || 800;
+    const sheet = this.bondSheet();
+    for (let i = this.bondSparks.length - 1; i >= 0; i--) {
+      const p = this.bondSparks[i];
+      p.t += dt * 1000;
+      if (p.t >= MS) { this.bondSparks.splice(i, 1); continue; }
+      const f = Math.max(0, Math.min(this.BOND_FRAMES - 1, (p.t / MS * this.BOND_FRAMES) | 0));
+      g.drawImage(sheet.frames[f], p.x * TL - sheet.pad - TL / 2, p.y * TL - sheet.pad - TL / 2);
+    }
+  },
+
   startPlacePoof(x, y, sz, opts) {
     if (this.placePoofs.length > 16) this.placePoofs.shift();   // a razed town block stays a scene, not a whiteout
     opts = opts || {};
@@ -7485,6 +7581,8 @@ const R = {
     // construction-start dust — drawn over the units, so the cloud rolls
     // over whoever is standing at the new site (the collapse-dust rule)
     this.drawPlacePoofs(g, dt);
+    // the homestead's gold rides above the dust — it is a reward, not debris
+    this.drawBondSparks(g, dt);
 
     // placement ghost
     if (UI.placing === 'wall' && UI.wallGhost && UI.wallGhost.length) {
