@@ -2,3 +2,6 @@
 _spritelab.html
 art-review/
 assets/review/
+
+# Local playwright install for running tests/ (no package.json on purpose)
+node_modules/

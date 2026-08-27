@@ -143,6 +143,58 @@ const Assets = {
   // rectangle. One fixed URL per prop key; same swap-in rules as buildings.
   PROPS: { 'misc/campfireTc': 'assets/misc/campfire-tc.png' },
 
+  /* ---- ORIGIN CARD ICONS: one PNG per MOTIF, not per card ----
+
+       assets/icons/origins/{motif}.png
+
+     {motif} is a Cards.DEFS motif key (hearth, spears, rider, …) — DERIVED
+     from the card table, never hand-kept, so a new card gets a slot for
+     free. A hit installs into the ui/card/<cardKey> slot of EVERY card
+     wearing that motif (1:1 today, but shared motifs stay correct), which
+     is exactly what Cards.drawMotif already prefers over the procedural
+     64-grid drawing — so every render site (draft screen, rival reveal)
+     takes the image with zero code at the call sites. A 404 keeps the
+     procedural motif, the same deal every other convention makes. Same
+     lowercase rule, same ?v= cache-buster. */
+  ORIGIN_DIR: 'assets/icons/origins/',
+  originMotifs() {
+    if (!window.Cards || !Cards.DEFS) return [];
+    const seen = {}, out = [];
+    for (const k of Object.keys(Cards.DEFS)) {
+      const m = Cards.DEFS[k].motif;
+      if (m && !seen[m]) { seen[m] = true; out.push(m); }
+    }
+    return out;
+  },
+  // the canonical filename — ALWAYS lowercase; Pages serves case-sensitively
+  originName(motif) { return String(motif).toLowerCase() + '.png'; },
+  originUrl(motif) { return this.ORIGIN_DIR + this.originName(motif) + '?v=' + (CFG.ART_V || 1); },
+  _tryLoadOrigin(motif) {
+    const img = new Image();
+    img.onload = () => { this.setOriginArt(motif, img); };
+    img.onerror = () => { /* no icon — the procedural motif stands */ };
+    img.src = this.originUrl(motif);
+  },
+  /* install a PNG as a motif's card icon. Cards draw ONCE into DOM
+     canvases (not per frame), so an image that decodes after a card was
+     dealt must repaint it — drawMotif stamps `_cfCardKey` on every canvas
+     it paints, and this walks them. */
+  setOriginArt(motif, img) {
+    if (!window.Cards || !Cards.DEFS) return false;
+    let hit = false;
+    for (const k of Object.keys(Cards.DEFS)) {
+      if (Cards.DEFS[k].motif !== motif) continue;
+      if (this._place('ui/card/' + k, img)) { this.loaded['ui/card/' + k] = true; hit = true; }
+    }
+    if (hit && typeof document !== 'undefined') {
+      for (const c of document.querySelectorAll('canvas')) {
+        const ck = c._cfCardKey;
+        if (ck && Cards.DEFS[ck] && Cards.DEFS[ck].motif === motif) Cards.drawMotif(c, ck);
+      }
+    }
+    return hit;
+  },
+
   /* ---- ENDGAME ART: one folder per (outcome, difficulty), any number of
      pictures (assets/endgame/README.md) ----
 
@@ -251,6 +303,7 @@ const Assets = {
     for (const outcome of this.ENDGAME_OUTCOMES)
       for (const mode of this.endgameModes()) this._tryEndgame(outcome, mode, 1);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key]);
+    for (const m of this.originMotifs()) this._tryLoadOrigin(m);
     for (const k of Object.keys(T)) this._tryTerrain(T[k], 1);
     this.ready = true;
     return { ok: true, data: { slots: this.artSlots().length + this.campTribes().length } };

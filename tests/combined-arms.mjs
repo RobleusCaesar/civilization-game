@@ -5,10 +5,15 @@
 //  4. engines never march with the feint
 //  5. aim points rotate: a door that didn't give way isn't used twice running
 //  6. feints that never pull are abandoned on this player (scorecard)
-import pw from '/opt/node22/lib/node_modules/playwright/index.js';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+let pw;
+try { pw = (await import('playwright')).default; }
+catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const b = await pw.chromium.launch(); const p = await b.newPage({ viewport: { width: 900, height: 900 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
-await p.goto('file:///home/user/civilization-game/index.html', { waitUntil: 'domcontentloaded' });
+await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(900);
 const out = await p.evaluate(() => {
   const res = {};

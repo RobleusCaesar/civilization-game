@@ -73,6 +73,31 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
   if (!ok) fails.push('theFogGhostLookupReadsTheCampsTribe');
 }
 
+/* THE SHIPPED ORIGIN-ICON SET IS COMPLETE AND WELL-FORMED — one 128x128
+   true-alpha PNG per motif named in js/cards.js, at
+   assets/icons/origins/{motif}.png (all lowercase; Pages is
+   case-sensitive). Measured on the committed files, because a missing or
+   miscased file is a SILENT fallback to the procedural motif — exactly the
+   failure the building convention documents. */
+{
+  const { readFileSync, existsSync } = await import('node:fs');
+  const src = readFileSync(join(root, 'js/cards.js'), 'utf8');
+  const motifs = [...new Set([...src.matchAll(/motif:\s*'([a-z]+)'/g)].map(m => m[1]))];
+  const bad = [];
+  for (const m of motifs) {
+    const f = join(root, 'assets/icons/origins', m + '.png');
+    if (!existsSync(f)) { bad.push(m + ': missing'); continue; }
+    const buf = readFileSync(f);
+    const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20), ct = buf[25];
+    if (w !== 128 || h !== 128) bad.push(m + ': ' + w + 'x' + h);
+    else if (ct !== 6 && !(ct === 3 && buf.includes('tRNS'))) bad.push(m + ': colorType ' + ct + ' has no alpha');
+  }
+  const ok = motifs.length >= 26 && !bad.length;
+  res.everyOriginMotifShipsATrueAlphaIcon = ok ? 'PASS'
+    : 'FAIL — ' + (bad.join('; ') || 'motif scan found only ' + motifs.length);
+  if (!ok) fails.push('everyOriginMotifShipsATrueAlphaIcon');
+}
+
 // ---------- pass 1: the player page (no dev flag) ----------
 {
   const p = await b.newPage({ viewport: { width: 430, height: 880 } });
@@ -82,6 +107,10 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
   // give the convention loader time to resolve the shipped PNGs / 404s
   await p.waitForFunction(() => window.Assets && Assets.art['tc-l1'] !== undefined &&
     Assets.art['house-l1'] !== undefined, null, { timeout: 8000 }).catch(() => {});
+  // …and the origin-icon probes (one per motif; all ship, so all must land)
+  await p.waitForFunction(() => window.Assets && window.Cards &&
+    Object.keys(Cards.DEFS).every(k => Assets.isImage('ui/card/' + k)),
+    null, { timeout: 8000 }).catch(() => {});
   const out = await p.evaluate(() => {
     const res = {}, fails = [];
     const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
@@ -242,6 +271,66 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
       // clean up the injected override so nothing leaks into later checks
       delete Assets.campProps.wolf;
       delete Assets.art['camp-wolf-prop1']; delete Assets.loaded['camp-wolf-prop1'];
+    }
+
+    // ---- 1d. origin card icons have their OWN convention: one PNG per
+    // MOTIF (assets/icons/origins/{motif}.png) — motifs are DERIVED from
+    // Cards.DEFS, never a hand-kept list, so a 27th card gets a slot for
+    // free. A hit installs into ui/card/<cardKey>, which is what
+    // Cards.drawMotif already prefers over the procedural 64-grid motif —
+    // so the draft screen and the rival reveal take the image with zero
+    // code at the call sites ----
+    {
+      const motifs = Assets.originMotifs();
+      const defKeys = Object.keys(Cards.DEFS);
+      ck('originMotifsAreDerivedFromTheCardTable',
+        motifs.length > 0 && defKeys.every(k => motifs.includes(Cards.DEFS[k].motif)),
+        motifs.length + ' motifs across ' + defKeys.length + ' cards');
+      ck('originFilenamesAreLowercase',
+        motifs.every(m => Assets.originName(m) === m.toLowerCase() + '.png'), '');
+      ck('originUrlsCarryTheCacheBuster',
+        motifs.every(m => Assets.originUrl(m).includes('?v=')), Assets.originUrl('hearth'));
+      // the shipped set is COMPLETE: every card's icon really loaded (the
+      // page-level wait above gave the probes time to resolve)
+      const unloaded = defKeys.filter(k => !Assets.isImage('ui/card/' + k));
+      ck('everyShippedOriginIconLoads', unloaded.length === 0,
+        unloaded.join(',') || 'all ' + defKeys.length + ' cards iconed');
+      // an installed icon is what drawMotif paints — measured on the pixels
+      const key = defKeys[0], motif = Cards.DEFS[key].motif;
+      const prevImg = Assets.ui.card[key];   // the shipped icon — restored below
+      const mark = document.createElement('canvas');
+      mark.width = mark.height = 8;
+      const mg3 = mark.getContext('2d');
+      mg3.fillStyle = '#ff00c8'; mg3.fillRect(0, 0, 8, 8);
+      ck('aDroppedOriginIconInstalls', Assets.setOriginArt(motif, mark) === true, '');
+      const mc = document.createElement('canvas');
+      mc.width = mc.height = 64;
+      Cards.drawMotif(mc, key);
+      ck('theCardCanvasAdoptsTheIconsNativeSize', mc.width === 8 && mc.height === 8,
+        mc.width + 'px backing store');
+      const mpx = mc.getContext('2d').getImageData(0, 0, 8, 8).data;
+      ck('andDrawMotifPaintsTheIcon', mpx[0] > 220 && mpx[1] < 60 && mpx[2] > 160,
+        [mpx[0], mpx[1], mpx[2]].join(','));
+      // a LATE-decoding icon repaints an already-dealt card: drawMotif
+      // stamps the card key on every canvas it paints, and setOriginArt
+      // walks the stamps — cards draw ONCE into DOM canvases, so without
+      // this a slow network's draft screen keeps the procedural motif
+      document.body.appendChild(mc);
+      const mark2 = document.createElement('canvas');
+      mark2.width = mark2.height = 8;
+      const mg4 = mark2.getContext('2d');
+      mg4.fillStyle = '#00ff37'; mg4.fillRect(0, 0, 8, 8);
+      Assets.setOriginArt(motif, mark2);
+      const rpx = mc.getContext('2d').getImageData(0, 0, 8, 8).data;
+      ck('aLateIconRepaintsTheDealtCard', rpx[1] > 220 && rpx[0] < 60,
+        [rpx[0], rpx[1], rpx[2]].join(','));
+      mc.remove();
+      ck('unknownMotifsAreRefused', Assets.setOriginArt('nosuchmotif', mark) === false, '');
+      // restore the shipped icon so nothing leaks into later checks
+      if (prevImg) Assets.setOriginArt(motif, prevImg);
+      else for (const k of defKeys) if (Cards.DEFS[k].motif === motif) {
+        delete Assets.ui.card[k]; delete Assets.loaded['ui/card/' + k];
+      }
     }
 
     // ---- 2. shipped art loads by convention, into BOTH tribes' tables ----

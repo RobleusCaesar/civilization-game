@@ -835,10 +835,22 @@ const Cards = {
   /* ---------------- placeholder card art ----------------
      PLACEHOLDER: procedural motifs in the house palette (ART ramps, top-left
      light, hard value steps, ink outline) until real card art lands. Real
-     art drops in through the manifest as `ui/card/<key>` (see ASSET_SPEC.md)
-     with zero code change — drawMotif prefers the image when it exists. */
+     art loads by FILENAME (assets/icons/origins/{motif}.png — see
+     Assets.setOriginArt) into `ui/card/<key>` with zero code change here —
+     drawMotif prefers the image when it exists. The `_cfCardKey` stamp is
+     how a late-decoding icon finds an already-dealt card to repaint. */
   drawMotif(canvas, key) {
+    canvas._cfCardKey = key;
     if (window.Assets && Assets.isImage && Assets.isImage('ui/card/' + key)) {
+      /* the backing store adopts the image's NATIVE size (CSS keeps the
+         shown size; image-rendering: pixelated does the final scale) — a
+         128px icon squeezed into the rival reveal's 96px canvas with
+         smoothing off would drop every fourth row, and a high-DPR phone
+         gets the full source instead of a pre-shrunk copy. */
+      const img = Assets.resolve('ui/card/' + key);
+      if (img && img.width && (canvas.width !== img.width || canvas.height !== img.height)) {
+        canvas.width = img.width; canvas.height = img.height;
+      }
       const g0 = canvas.getContext('2d');
       g0.imageSmoothingEnabled = false;
       g0.clearRect(0, 0, canvas.width, canvas.height);

@@ -22,12 +22,17 @@
 
    Legacy saves carry a caravan of the OLD shape ({res, gold}); caravanHaul
    must keep paying those out as gold. */
-import pw from '/opt/node22/lib/node_modules/playwright/index.js';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+let pw;
+try { pw = (await import('playwright')).default; }
+catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const b = await pw.chromium.launch();
 const p = await b.newPage({ viewport: { width: 430, height: 880 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
-await p.goto('file:///home/user/civilization-game/index.html', { waitUntil: 'domcontentloaded' });
+await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(900);
 const out = await p.evaluate(() => {
   const res = {}, fails = [];

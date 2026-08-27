@@ -201,6 +201,42 @@ paths listed in `Assets.PROPS` (currently one: the hall's dooryard campfire,
 `assets/misc/campfire-tc.png` → `misc/campfireTc`). Adding a prop key is a
 one-line entry there — still no manifest.
 
+## Origin Card icons: one PNG per motif
+
+```
+assets/icons/origins/{motif}.png       128×128, true alpha
+```
+
+`{motif}` is a `Cards.DEFS` motif key (hearth, spears, rider, … — 26 today),
+**derived from the card table, never hand-kept** — a new card gets a slot for
+free. A hit installs into the `ui/card/<cardKey>` slot of every card wearing
+that motif, which is exactly what `Cards.drawMotif` already prefers over the
+procedural 64-grid drawing — so the draft screen and the rival reveal take the
+image with zero code at the call sites, and a 404 keeps the procedural motif.
+Same lowercase rule, same `?v=` cache-buster (bump `ART_V` on a re-upload
+under the same name).
+
+Authoring rules (these are ICONS, not buildings): flat frontal view, zero
+perspective, no ground plane or cast shadow, one bold centered silhouette
+(max ~3 elements), nothing touching the canvas edges, hard-edged shading with
+3–5 tones per material, thin dark outline, the low-saturation earthy palette
+(pale timber, thatch gold, fieldstone grey, dark chocolate), and it must read
+at the 64px the card shows it at. Hard alpha only — no anti-aliased fringe,
+or it halos on the card's wood panel.
+
+The shown size stays the CSS size; `drawMotif` adopts the image's NATIVE size
+as the canvas backing store (128 ≥ any shown-size × devicePixelRatio in play),
+so icons stay crisp on a 3× phone and the 96px rival-reveal canvas never
+nearest-neighbor-crushes a 128px source. Cards draw ONCE into DOM canvases,
+so a late-decoding icon repaints any dealt card through the `_cfCardKey`
+stamp (`Assets.setOriginArt` walks them). Contract: the 1d section of
+`tests/art-pipeline.mjs`, plus a node-side completeness check that every
+motif named in js/cards.js ships a well-formed 128×128 true-alpha PNG.
+
+A contact sheet of the whole set lives at
+`assets/review/origin-icons-sheet.png` (untracked — `assets/review/` is the
+local review harness).
+
 ## Win / loss screen art
 
 `assets/endgame/{win|loss}/{calm|moderate|hard}/{n}.png` — full details and

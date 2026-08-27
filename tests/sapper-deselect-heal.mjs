@@ -27,7 +27,9 @@
 
    If a feature genuinely needs different behaviour, update this file in the
    same commit and say so in the commit message. */
-const root = '/home/user/civilization-game';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let pw;
 try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }

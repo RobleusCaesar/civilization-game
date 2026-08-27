@@ -1648,8 +1648,12 @@ boons (gather/tcGold/farm) keep their engine hooks — an old save's boons
 still pay. The card is still the rival's persona (`lean` must name one of
 the six `AI.PERSONAS`), and the six classic keys stay forceable for tests.
 **The motifs are 64-grid now** (4× the pixel count of the 32-grid set),
-shown at 64px so one art cell is one CSS pixel; real art still supersedes by
-filename (`ui/card/<key>`). **The outline guard was `window.ART &&` — and
+shown at 64px so one art cell is one CSS pixel — but they are the FALLBACK:
+**real 128px icons ship for all 26 motifs** by filename convention
+(`assets/icons/origins/{motif}.png` → the `ui/card/<cardKey>` slot
+`drawMotif` prefers; motifs derived from `Cards.DEFS`, never hand-kept;
+ART_PLAN.md has the authoring rules and the icon-pipeline contract lives in
+`tests/art-pipeline.mjs` §1d). **The outline guard was `window.ART &&` — and
 ART is a script-level const**, so window.ART is undefined and the ink-edge
 pass had been silently OFF since the day it was written (the window.G trap
 again); it runs bare now. Card headlines stay ≤60 chars — longer clips

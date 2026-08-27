@@ -35,7 +35,7 @@ import { fileURLToPath } from 'node:url';
 let pw;
 try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
-const root = '/home/user/civilization-game';
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const b = await pw.chromium.launch();
 const p = await b.newPage({ viewport: { width: 430, height: 880 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));

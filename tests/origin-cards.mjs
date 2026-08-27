@@ -43,6 +43,10 @@ const p = await b.newPage({ viewport: { width: 430, height: 880 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(1000);
+// give the origin-icon probes time to resolve (assets/icons/origins/{motif}.png)
+await p.waitForFunction(() => window.Assets && window.Cards &&
+  Object.keys(Cards.DEFS).every(k => Assets.isImage('ui/card/' + k)),
+  null, { timeout: 8000 }).catch(() => {});
 
 const out = await p.evaluate(() => {
   const res = {}, fails = [];
@@ -197,11 +201,24 @@ const out = await p.evaluate(() => {
 
   // ---- 5. the face: every key draws, and no headline outruns its card ----
   {
-    let blank = null, longText = null, nan = null;
+    let blank = null, longText = null, nan = null, noIcon = null;
     G.newGame('77', 'calm', 'medium');
     for (const key of Cards.keys()) {
+      // the shipped 128px icon loaded for every card (the origin-icon
+      // convention — assets/icons/origins/{motif}.png; art-pipeline §1d
+      // owns the deeper checks, this pins set completeness per card)
+      if (!(window.Assets && Assets.isImage('ui/card/' + key))) noIcon = noIcon || key;
+      // …and the procedural 64-grid motif underneath stays a real drawing —
+      // it is what a 404 falls back to. Measured with the icon flag masked:
+      // drawing a file://-loaded icon here would TAINT the canvas and
+      // getImageData throws (the CLAUDE.md file:// trap), so the fallback
+      // path is measured explicitly, which is also the path this check was
+      // written to pin.
+      const hadIcon = window.Assets && Assets.loaded['ui/card/' + key];
+      if (hadIcon) delete Assets.loaded['ui/card/' + key];
       const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
       Cards.drawMotif(cv, key);
+      if (hadIcon) Assets.loaded['ui/card/' + key] = hadIcon;
       const d = cv.getContext('2d').getImageData(0, 0, 128, 128).data;
       let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 96) n++;
       if (n < 400) blank = blank || (key + ' (' + n + 'px)');
@@ -216,6 +233,7 @@ const out = await p.evaluate(() => {
         }
       }
     }
+    ck('everyKeyShipsAnIcon', !noIcon, noIcon || '26 icons loaded');
     ck('everyKeyDrawsAMotif', !blank, blank || '26 motifs, 64-grid');
     ck('noHeadlineOutrunsItsCard', !longText, longText || 'all ≤ 60 chars');
     ck('everyValIsAFiniteReward', !nan, nan || '');
