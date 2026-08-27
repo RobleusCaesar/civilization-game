@@ -107,6 +107,7 @@ node tests/tree-fall.mjs     # a felled wood goes over on screen — every tree 
 node tests/rival-strength.mjs # the rewritten war brain: the anchor, the inner market, the engine road, the sea patrol — and 3 fortified towns razed end to end
 node tests/train-spawn.mjs   # a trained unit stands on REALLY open ground, or waits in reserve until there is some
 node tests/homestead.mjs     # a house broadside-on to a farm bonds the two: +10% food, +1 villager, gold sparks — and it all goes away with either half
+node tests/origin-cards.mjs  # the 26-card draft: ten strategy-openers plant real buildings; every boon reads through a named hook; 64-grid motifs
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -1618,6 +1619,42 @@ spoken for promises nothing.
 **undefined** and the sound silently never played (the `window.G` /
 `window.Sprites` trap again). Reference `UI` bare.
 
+
+**Origin Cards** (`tests/origin-cards.mjs`): the 26-card draft — grown from a
+20-card pool of resource piles into STRATEGY OPENERS, ten of which plant a
+real building on day one, several AHEAD of their tech gate (the gift is the
+DOOR: CFG prices, rates and gates are untouched). Bowyer (an Archery Range +
+archers), Delver (a Sappers' Camp — Lv 2 on Calm, bridges from the first
+morning), Caravan Master (a Trading Post three hall-tiers early — trade what
+the map denies you, at the post's own stingy rates), Warden (a Watchtower +
+all towers see farther, read in G.updateVisibility's building mark), Master
+of the Hunt (ground bloodied via G.noteHunt, a worked lodge on it, game
+driven near), Sea-Reaver (the old Fire Warship at anchor and NO dock behind
+her — lose her and the sea is closed until you build one), Timberwright (a
+stand felled by hand to STUMPS, then the worked Lumber Camp raised on it —
+completing the station trio with Grainkeeper's farm and Stoneheart's quarry).
+Hearthbond (was Harvest Lord) DOUBLES the homestead bond, read through
+Bld.homesteadMult/homesteadPop so the boon stays as DERIVED as the bond;
+Forager's quick feet and Horselord's saddle-born cavalry are STAMPED on the
+unit at spawn (Cards.onSpawn — the Ironhand convention, never read per
+frame, so they ride in saves for free); the Prospector marks every gold seam
+(player: G.reveal; rival: pre-written ai.seen — the chief's memory, which is
+what maybeMine reads) and its mines pay through Cards.prodMult.
+**`Bld.place` with free+instant validates NOTHING**, so `Cards._prebuild`
+carries the whole footprint check itself — the 2×2 gifts (range/camp/post)
+would otherwise land inside somebody's house. `needsShore` gates the warship
+(open water within 11 of the hall, checked per side in the offer). Legacy
+boons (gather/tcGold/farm) keep their engine hooks — an old save's boons
+still pay. The card is still the rival's persona (`lean` must name one of
+the six `AI.PERSONAS`), and the six classic keys stay forceable for tests.
+**The motifs are 64-grid now** (4× the pixel count of the 32-grid set),
+shown at 64px so one art cell is one CSS pixel; real art still supersedes by
+filename (`ui/card/<key>`). **The outline guard was `window.ART &&` — and
+ART is a script-level const**, so window.ART is undefined and the ink-edge
+pass had been silently OFF since the day it was written (the window.G trap
+again); it runs bare now. Card headlines stay ≤60 chars — longer clips
+silently against the card's own bottom edge on a 320px phone, where the
+359px media query also drops the flavor line and deals a taller card.
 
 **The muster horn** (`tests/muster-horn.mjs`): the Town Center's lever, and
 the same bargain the gate makes — one tap and the whole workforce downs tools

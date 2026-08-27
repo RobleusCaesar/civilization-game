@@ -1330,10 +1330,14 @@ const Bld = {
   isHomestead(b) { return !!this.homesteadOf(b); },
   // the bonded farm's output multiplier, and the bonded house's extra room
   homesteadMult(b) {
-    return (b.key === 'farm' && this.isHomestead(b)) ? (CFG.HOMESTEAD.food || 1) : 1;
+    if (b.key !== 'farm' || !this.isHomestead(b)) return 1;
+    // ORIGIN CARDS: Hearthbond deepens the bond — additive on the base rate,
+    // and gone with the bond exactly as the base bonus is (derived, never stored)
+    return (CFG.HOMESTEAD.food || 1) + (window.Cards ? Cards.homeAdd(b.owner) : 0);
   },
   homesteadPop(b) {
-    return (b.key === 'house' && this.isHomestead(b)) ? (CFG.HOMESTEAD.pop || 0) : 0;
+    if (b.key !== 'house' || !this.isHomestead(b)) return 0;
+    return (CFG.HOMESTEAD.pop || 0) + (window.Cards ? Cards.homePop(b.owner) : 0);
   },
 
   /* THE CELEBRATION IS EDGE-TRIGGERED, THE BONUS IS NOT. The bonus is derived

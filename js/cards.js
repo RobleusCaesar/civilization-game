@@ -1,6 +1,6 @@
 "use strict";
 /* ORIGIN CARDS — the unified draft (player + rival).
-   At game start both tribes are dealt 3 cards from one 20-card pool and keep
+   At game start both tribes are dealt 3 cards from one 26-card pool and keep
    one. A card is a clean single-sided boon; for the rival it ALSO sets the
    behavioral persona (the card IS the persona now — AI.PERSONAS are the six
    behavior profiles the cards lean on).
@@ -94,12 +94,17 @@ const Cards = {
       flavor: 'The horizon belongs to the mounted.',
       whisper: 'Hoofprints circle far beyond their fields.',
       roll() { const D = Cards.diff();
-        return { r: Math.round((10 + (G.rand() * 4 | 0)) * D.mag), onB: D.kick }; },
-      text(r) { return `a scout + wide sight (${r.r})${r.onB ? ` + ${r.onB} free rider${r.onB > 1 ? 's' : ''} at the stable` : ''}`; },
-      val(r) { return 60 + r.r * 4 + r.onB * 70; },
+        return { r: Math.round((10 + (G.rand() * 4 | 0)) * D.mag), onB: D.kick,
+                 cm: 1 + Math.round(8 * D.mag) / 100 }; },
+      text(r) { return `a scout + far sight; swifter riders${r.onB ? `, ${r.onB} free at the stable` : ''}`; },
+      val(r) { return 60 + r.r * 4 + r.onB * 70 + (r.cm - 1) * 500; },
       apply(side, r) {
+        Cards._boon(side).cav = { mult: r.cm };   // stamped at spawn — see onSpawn
         Cards._crew(side, 'rider', 1);
         Cards._onBuild(side, 'stable', 'rider', r.onB);
+        for (const u of S.units) if (u.owner === side &&
+          (u.kind === 'rider' || u.kind === 'horsearcher' || u.kind === 'lancer'))
+          u.speed = Math.round(u.speed * r.cm * 100) / 100;
         if (side === 'P') { const tc = Bld.tcOf('P'); if (tc) G.reveal(Bld.cx(tc) | 0, Bld.cy(tc) | 0, r.r); }
       },
     },
@@ -142,18 +147,23 @@ const Cards = {
       name: 'Forager', motif: 'basket', axis: null, syn: [],
       cat: 'econ', lean: 'forager', bias: 'spread',
       flavor: 'The land gives to those who look.',
-      whisper: 'Their gatherers fan out in every direction.',
+      whisper: 'Their gatherers range farther than most dare.',
       roll() { const D = Cards.diff();
         return { food: Math.round((16 + (G.rand() * 14 | 0)) * D.mag),
                  wood: Math.round((16 + (G.rand() * 14 | 0)) * D.mag),
                  stone: Math.round((10 + (G.rand() * 14 | 0)) * D.mag),
-                 kick: 30 * D.kick, gm: 1 + 0.12 * D.mag, until: 22 + ((G.rand() * 9) | 0) }; },
-      text(r) { return `mixed stores + all gathering +${Math.round((r.gm - 1) * 100)}%`; },
-      val(r) { return r.food + r.wood + 0.8 * r.stone + (r.kick || 0) + (r.gm - 1) * 400; },
+                 kick: 30 * D.kick, pm: 1 + Math.round(8 * D.mag + 3) / 100 }; },
+      text(r) { return `mixed stores; your folk walk ${Math.round((r.pm - 1) * 100)}% faster for good`; },
+      val(r) { return r.food + r.wood + 0.8 * r.stone + (r.kick || 0) + (r.pm - 1) * 900; },
       apply(side, r) {
         const res = Cards._res(side);
         res.food += r.food + (r.kick || 0); res.wood += r.wood; res.stone += r.stone;
-        Cards._boon(side).gather = { res: null, mult: r.gm, until: r.until };
+        // QUICK FEET, not a gather multiplier: the pace is STAMPED on the unit
+        // at spawn (and on the hands already standing), never read per frame —
+        // the same spawn-time convention Ironhand's toughness uses
+        Cards._boon(side).pace = { mult: r.pm };
+        for (const u of S.units) if (u.owner === side && u.kind === 'villager')
+          u.speed = Math.round(u.speed * r.pm * 100) / 100;
       },
     },
     timberwright: {
@@ -164,9 +174,25 @@ const Cards = {
       roll() { const D = Cards.diff();
         return { wood: Math.round((32 + (G.rand() * 30 | 0)) * D.mag) + 40 * D.kick,
                  gm: 1 + 0.22 * D.mag, until: 25 + ((G.rand() * 11) | 0) }; },
-      text(r) { return `+${r.wood} wood; wood-cutting +${Math.round((r.gm - 1) * 100)}%`; },
-      val(r) { return r.wood + (r.gm - 1) * 300; },
+      text(r) { return `a worked Lumber Camp on a felled stand + ${r.wood} wood`; },
+      val(r) { return 130 + r.wood + (r.gm - 1) * 260; },
       apply(side, r) {
+        /* fell ONE stand by hand so the camp keeps the worked-ground rule's
+           spirit: the stand is SPENT (stumps), then the camp is raised on it —
+           the trio is complete now (Grainkeeper=farm, Stoneheart=quarry) */
+        const tc = Bld.tcOf(side);
+        const stand = tc && MapGen.findNear(tc.x, tc.y, 7, (x, y) =>
+          S.map.terrain[MapGen.idx(x, y)] === T.FOREST);
+        let camp = null;
+        if (stand) {
+          const ti = MapGen.idx(stand.x, stand.y);
+          S.map.terrain[ti] = T.STUMPS;
+          if (S.map.resAmount) S.map.resAmount[ti] = 0;
+          if (window.R && R.updateTile) R.updateTile(stand.x, stand.y);
+          camp = Bld.place(side, 'lumber', stand.x, stand.y, { free: true, instant: true, noAutoAssign: true });
+        }
+        if (camp) { const v = Cards._crew(side, 'villager', 1)[0]; if (v && side === 'P') v.task = { type: 'work', id: camp.id }; }
+        else r.wood += 60;   // no stand in reach — a taller wood pile instead
         Cards._res(side).wood += r.wood;
         Cards._boon(side).gather = { res: 'wood', mult: r.gm, until: r.until };
       },
@@ -205,18 +231,21 @@ const Cards = {
       },
     },
     tradewind: {
-      name: 'Tradewind', motif: 'coins', axis: 'gold', syn: [],
+      name: 'Caravan Master', motif: 'cart', axis: null, syn: ['gold'],
       cat: 'econ', lean: 'homesteader', bias: 'boom',
-      flavor: 'Gold has no season.',
-      whisper: 'Strange traders come and go from their camp.',
+      flavor: 'Everything is for sale somewhere.',
+      whisper: 'Laden carts already creak out of their camp.',
       roll() { const D = Cards.diff();
-        return { gold: Math.round((28 + (G.rand() * 20 | 0)) * D.mag) + 25 * D.kick,
-                 add: 3 + D.kick, until: 35 + ((G.rand() * 11) | 0) }; },
-      text(r) { return `+${r.gold} gold; +${r.add} gold/day until day ${r.until}`; },
-      val(r) { return r.gold * 0.9 + r.add * r.until * 0.5; },
+        return { gold: Math.round((30 + (G.rand() * 16 | 0)) * D.mag) + 20 * D.kick }; },
+      text(r) { return `a Trading Post from day one + ${r.gold} gold`; },
+      val(r) { return 200 + r.gold * 0.9; },
       apply(side, r) {
+        /* the post normally waits on a level-3 hall — the caravan that never
+           left home doesn't. Trade what the map denies you, at the post's own
+           stingy rates (CFG.TRADE untouched: the gift is the DOOR, not the price) */
+        const post = Cards._prebuild(side, 'trade');
+        if (!post) r.gold += 120;   // nowhere to stand it — a fat purse instead
         Cards._res(side).gold += r.gold;
-        Cards._boon(side).tcGold = { add: r.add, until: r.until };
       },
     },
     houndmaster: {
@@ -343,15 +372,22 @@ const Cards = {
       },
     },
     harvestlord: {
-      name: 'Harvest Lord', motif: 'sickle', axis: 'food', syn: [],
+      name: 'Hearthbond', motif: 'bond', axis: null, syn: ['food'],
       cat: 'econ', lean: 'homesteader', bias: 'boom',
-      flavor: 'The soil answers to me.',
-      whisper: 'Their fields stand taller than the season allows.',
+      flavor: 'The field loves the family that sleeps beside it.',
+      whisper: 'Their houses go up beside their fields, always.',
       roll() { const D = Cards.diff();
-        return { mult: 1 + (0.18 + G.rand() * 0.10) * D.mag, food: 40 * D.kick }; },
-      text(r) { return `farms yield +${Math.round((r.mult - 1) * 100)}% for good`; },
-      val(r) { return (r.mult - 1) * 480 + (r.food || 0); },
-      apply(side, r) { Cards._boon(side).farm = { mult: r.mult }; Cards._res(side).food += r.food || 0; },
+        return { food: Math.round(10 * D.mag) / 100, pop: 1, kick: 30 * D.kick }; },
+      text(r) { return `homesteads bond double: +${Math.round((0.10 + r.food) * 100)}% food & +${1 + r.pop} folk`; },
+      val(r) { return 150 + r.food * 900 + r.pop * 60 + (r.kick || 0); },
+      apply(side, r) {
+        /* the town-planning card: every house-beside-farm bond (the homestead,
+           tests/homestead.mjs) runs deeper for this tribe — the boon reads
+           through Bld.homesteadMult/homesteadPop, so it is as DERIVED as the
+           bond itself and vanishes with either half exactly as the base does */
+        Cards._boon(side).home = { food: r.food, pop: r.pop };
+        Cards._res(side).food += r.kick || 0;
+      },
     },
     nomad: {
       name: 'Nomad', motif: 'tent', axis: null, syn: ['wood'],
@@ -363,6 +399,130 @@ const Cards = {
       text(r) { return `first ${r.left} buildings ${Math.round((1 - r.costMult) * 100)}% cheaper & fast`; },
       val(r) { return r.left * (1 - r.costMult) * 90; },
       apply(side, r) { Cards._boon(side).nomad = { left: r.left, costMult: r.costMult, timeMult: r.timeMult }; },
+    },
+    /* ---- the strategy-openers: each plants a BUILDING the tech tree would
+       make you wait for, so the run starts already leaning a direction ---- */
+    bowyer: {
+      name: 'Bowyer', motif: 'bow', axis: null, syn: ['wood'],
+      cat: 'def', lean: 'warlord', bias: null,
+      flavor: 'A wall of air and arrows.',
+      whisper: 'Straw targets stand bristling outside their camp.',
+      roll() { const D = Cards.diff(); return { n: 1 + (D.kick > 1 ? 1 : 0) }; },
+      text(r) { return `an Archery Range stands built + ${r.n} archer${r.n > 1 ? 's' : ''}`; },
+      val(r) { return 150 + r.n * 75; },
+      apply(side, r) {
+        // the range normally waits on a level-2 hall; the bowyer brought his own
+        const b = Cards._prebuild(side, 'range');
+        if (!b) Cards._res(side).wood += 90;
+        Cards._crew(side, 'archer', r.n);
+      },
+    },
+    seareaver: {
+      name: 'Sea-Reaver', motif: 'warship', axis: null, syn: [],
+      cat: 'naval', lean: 'mariner', bias: 'sea', needsShore: true,
+      flavor: 'We did not walk here.',
+      whisper: 'A war-hull rides at anchor off their shore.',
+      roll() { const D = Cards.diff(); return { hpMult: D.mag, raft: D.kick > 1 ? 1 : 0 }; },
+      text(r) { return `the old Fire Warship${r.raft ? ' + a transport' : ''} — no dock behind her`; },
+      val(r) { return 200 * r.hpMult + r.raft * 60; },
+      apply(side, r) {
+        /* the hull that carried the tribe here — a dock-L2 warship on day one,
+           and the other edge of that sword: no yard stands behind her. Lose
+           her and the sea is closed until you build one yourself */
+        const tc = Bld.tcOf(side);
+        const at = tc && MapGen.findNear(tc.x, tc.y, 11, (x, y) =>
+          S.map.terrain[MapGen.idx(x, y)] === T.WATER);
+        if (!at) { Cards._res(side).wood += 120; return; }   // gated at offer; belt & braces
+        const ship = Units.spawn('fireship', side, at.x, at.y);
+        ship.maxhp = Math.round(ship.maxhp * r.hpMult); ship.hp = ship.maxhp;
+        if (r.raft) {
+          const at2 = MapGen.findNear(at.x, at.y, 3, (x, y) =>
+            (x !== at.x || y !== at.y) && S.map.terrain[MapGen.idx(x, y)] === T.WATER) || at;
+          Units.spawn('transport', side, at2.x, at2.y);
+        }
+        if (side === 'P') G.reveal(at.x, at.y, 4);
+      },
+    },
+    delver: {
+      name: 'Delver', motif: 'spade', axis: null, syn: ['stone'],
+      cat: 'def', lean: 'mason', bias: 'turtle',
+      flavor: 'The ground is only a suggestion.',
+      whisper: 'Fresh-turned earth scars the land around their camp.',
+      roll() { const D = Cards.diff(); return { lv: D.kick > 1 ? 2 : 1 }; },
+      text(r) { return `a Sappers' Camp${r.lv > 1 ? ' (Lv 2)' : ''} + a sapper, from day one`; },
+      val(r) { return 170 + (r.lv - 1) * 70; },
+      apply(side, r) {
+        // the camp normally waits on a level-2 hall — moats and causeways
+        // from the first morning are this hand's whole identity
+        const camp = Cards._prebuild(side, 'sapper', undefined, { level: r.lv });
+        if (!camp) Cards._res(side).stone += 80;
+        Cards._crew(side, 'sapper', 1);
+      },
+    },
+    prospector: {
+      name: 'Prospector', motif: 'vein', axis: null, syn: ['gold'],
+      cat: 'explore', lean: 'horselord', bias: 'scout',
+      flavor: 'The mountain whispers where it bleeds.',
+      whisper: 'They tap every rock they pass, listening.',
+      roll() { const D = Cards.diff();
+        return { mm: 1 + Math.round(45 * D.mag) / 100, gold: 15 * D.kick + Math.round(10 * D.mag) }; },
+      text(r) { return `every gold seam marked on the map; mines +${Math.round((r.mm - 1) * 100)}%`; },
+      val(r) { return 90 + (r.mm - 1) * 260 + r.gold; },
+      apply(side, r) {
+        Cards._res(side).gold += r.gold;
+        Cards._boon(side).mine = { mult: r.mm };
+        const terr = S.map.terrain;
+        if (side === 'P') {
+          for (let i = 0; i < terr.length; i++)
+            if (terr[i] === T.GOLDORE) G.reveal(i % CFG.W, (i / CFG.W) | 0, 2);
+        } else if (S.ai) {
+          /* the rival plays fogless, but its CHIEF acts only on remembered
+             ground (ai.seen — tests/gold-mine.mjs) — the prospector's gift is
+             that memory, pre-written, so maybeMine can race for the seams */
+          if (!S.ai.seen || S.ai.seen.length !== terr.length) S.ai.seen = new Array(terr.length).fill(0);
+          for (let i = 0; i < terr.length; i++) if (terr[i] === T.GOLDORE) S.ai.seen[i] = 1;
+        }
+      },
+    },
+    warden: {
+      name: 'Warden', motif: 'watchtower', axis: null, syn: ['stone'],
+      cat: 'def', lean: 'mason', bias: 'turtle',
+      flavor: 'Nothing crosses the bounds unseen.',
+      whisper: 'A tower already watches from their boundary.',
+      roll() { const D = Cards.diff(); return { add: Math.max(1, Math.round(2 * D.mag)) }; },
+      text(r) { return `a Watchtower stands; all towers see +${r.add} farther`; },
+      val(r) { return 130 + r.add * 45; },
+      apply(side, r) {
+        const t = Cards._prebuild(side, 'tower');
+        if (!t) Cards._res(side).stone += 60;
+        Cards._boon(side).sight = { add: r.add };   // read in G.updateVisibility
+      },
+    },
+    huntlord: {
+      name: 'Master of the Hunt', motif: 'horn', axis: null, syn: ['food'],
+      cat: 'econ', lean: 'forager', bias: 'spread',
+      flavor: 'Meat walks. We follow.',
+      whisper: 'Horns and hounds sound from their woods at dawn.',
+      roll() { const D = Cards.diff();
+        return { hm: 1.2 + Math.round(15 * D.mag) / 100, game: 2 + D.kick }; },
+      text(r) { return `a worked Hunter's Lodge, game near, hunts ×${r.hm.toFixed(1)}`; },
+      val(r) { return 120 + (r.hm - 1) * 200 + r.game * 15; },
+      apply(side, r) {
+        const tc = Bld.tcOf(side);
+        // blood the ground first — a lodge stands only on a killing ground
+        let lodge = null;
+        if (tc) {
+          const spot = MapGen.findNear(tc.x, tc.y, 7, (x, y) => Bld.tileFree(x, y));
+          if (spot) {
+            G.noteHunt(spot.x, spot.y);
+            lodge = Bld.place(side, 'lodge', spot.x, spot.y, { free: true, instant: true, noAutoAssign: true });
+          }
+        }
+        if (lodge) { const v = Cards._crew(side, 'villager', 1)[0]; if (v && side === 'P') v.task = { type: 'work', id: lodge.id }; }
+        else Cards._res(side).food += 60;
+        if (tc) Units.seedGameNear(tc.x, tc.y, r.game);
+        Cards._boon(side).hunt = { mult: r.hm, until: 100000 };   // a life's craft, not a season's
+      },
     },
   },
 
@@ -381,6 +541,7 @@ const Cards = {
       if (d.axis === 'crew' && (pk.villagers <= vLo || pk.villagers >= vHi)) continue;  // crew variance is variance too
       if (d.needsWater && !water) continue;
       if (d.needsDock && !this._dockable(side)) continue;
+      if (d.needsShore && !this._shore(side)) continue;   // a warship needs water at the door
       if (pk.econ + this._floorDelta(d) < CFG.OPENING.minEcon) continue;          // winnability clamp
       let w = d.axis ? 1 : 1.6;                                                   // orthogonal preferred
       if (d.landFav && S.map.landform === 'islands') w *= 0.45;                   // map gates
@@ -398,7 +559,7 @@ const Cards = {
     if (leans.length) hand.push(draw(leans));                                     // ≥1 lean-in
     while (hand.length < 3) {
       const pool = cand.filter(c => !hand.includes(c.key));
-      if (!pool.length) break;    // can't happen with a 20-card pool, but never loop
+      if (!pool.length) break;    // can't happen with a 26-card pool, but never loop
       hand.push(draw(pool));
     }
     return hand;
@@ -412,6 +573,12 @@ const Cards = {
   _dockable(side) {
     const tc = Bld.tcOf(side);
     return !!(tc && MapGen.findNear(tc.x, tc.y, 9, (x, y) => Bld.dockSiteOk(x, y, side).ok));
+  },
+  // open water within a warship's reach of the hall — the Sea-Reaver's gate
+  _shore(side) {
+    const tc = Bld.tcOf(side);
+    return !!(tc && MapGen.findNear(tc.x, tc.y, 11, (x, y) =>
+      S.map.terrain[MapGen.idx(x, y)] === T.WATER));
   },
 
   /* deal both hands, resolve the rival's pick (the pick sets its persona and
@@ -497,23 +664,40 @@ const Cards = {
     }
     return out;
   },
-  // a finished workplace beside the hall — near its bonus terrain if any is close
-  _prebuild(side, key, terr) {
+  /* a finished workplace beside the hall — near its bonus terrain if any is
+     close. FOOTPRINT-AWARE: the primary works claim 2×2 (tests/footprint.mjs)
+     and Bld.place with free+instant validates NOTHING, so every tile of the
+     plot is checked here or a gifted range lands inside somebody's house. */
+  _prebuild(side, key, terr, opts) {
     const tc = Bld.tcOf(side);
     if (!tc) return null;
+    const sz = Bld.size(key);
+    const fits = (x, y) => {
+      for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++)
+        if (!Bld.tileFree(x + dx, y + dy)) return false;
+      return true;
+    };
     let spot = null;
     if (terr !== undefined) {
       spot = MapGen.findNear(tc.x, tc.y, 7, (x, y) => {
-        if (!Bld.tileFree(x, y)) return false;
+        if (!fits(x, y)) return false;
         for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++)
           if (MapGen.inB(x + ox, y + oy) && S.map.terrain[MapGen.idx(x + ox, y + oy)] === terr) return true;
         return false;
       });
       if (key === 'quarry' && !spot) return null;   // Stoneheart: no hills → the stone pile instead
     }
-    if (!spot) spot = MapGen.findNear(tc.x + 2, tc.y + 1, 6, (x, y) => Bld.tileFree(x, y));
+    if (!spot) spot = MapGen.findNear(tc.x + 2, tc.y + 1, 6 + sz, fits);
     if (!spot) return null;
-    return Bld.place(side, key, spot.x, spot.y, { free: true, instant: true, noAutoAssign: true });
+    const b = Bld.place(side, key, spot.x, spot.y, { free: true, instant: true, noAutoAssign: true });
+    // an origin gift can arrive a tier up (the Delver's Lv 2 camp on Calm)
+    if (b && opts && opts.level > 1) {
+      const lv = Math.min(opts.level, Bld.def(key).levels.length);
+      b.level = lv;
+      const spec = Bld.def(key).levels[lv - 1];
+      b.maxhp = spec.hp; b.hp = spec.hp;
+    }
+    return b;
   },
   // register a "when you first build X, N free units muster" kicker
   _onBuild(side, key, kind, n) {
@@ -583,13 +767,19 @@ const Cards = {
     for (const k in cost) out[k] = Math.max(0, Math.round(cost[k] * b.train.costMult));
     return out;
   },
-  // Ironhand: tougher soldiers (every military spawn for the holder)
+  // spawn-time stat stamps: Ironhand toughness, Forager quick feet,
+  // Horselord saddle-born cavalry — stamped ONCE, never read per frame
   onSpawn(u) {
     const b = this._b(u.owner);
-    if (b && b.train && Units.isMilitary(u)) {
+    if (!b) return;
+    if (b.train && Units.isMilitary(u)) {
       u.hp = Math.round(u.hp * b.train.hpMult);
       u.maxhp = Math.round(u.maxhp * b.train.hpMult);
     }
+    if (b.pace && u.kind === 'villager')
+      u.speed = Math.round(u.speed * b.pace.mult * 100) / 100;
+    if (b.cav && (u.kind === 'rider' || u.kind === 'horsearcher' || u.kind === 'lancer'))
+      u.speed = Math.round(u.speed * b.cav.mult * 100) / 100;
   },
   // Forager (all) / Timberwright (wood) gather pace
   gatherMult(owner, res) {
@@ -612,11 +802,20 @@ const Cards = {
     const b = this._b(owner);
     return !!(b && b.peace && S.day <= b.peace.until);
   },
-  // Harvest Lord farms
+  // legacy Harvest Lord farms + the Prospector's mines
   prodMult(owner, bld) {
     const b = this._b(owner);
-    return b && b.farm && bld.key === 'farm' ? b.farm.mult : 1;
+    if (!b) return 1;
+    if (b.farm && bld.key === 'farm') return b.farm.mult;
+    if (b.mine && bld.key === 'mine') return b.mine.mult;
+    return 1;
   },
+  // Hearthbond: every homestead bond runs deeper for its holder — read through
+  // Bld.homesteadMult/homesteadPop so the boon stays as DERIVED as the bond
+  homeAdd(owner) { const b = this._b(owner); return b && b.home ? b.home.food : 0; },
+  homePop(owner) { const b = this._b(owner); return b && b.home ? b.home.pop : 0; },
+  // Warden: towers watch farther (read in G.updateVisibility's building mark)
+  towerSight(owner) { const b = this._b(owner); return b && b.sight ? b.sight.add : 0; },
   // Tradewind trickle (called from dailyProduction)
   dailyExtras(owner, res) {
     const b = this._b(owner);
@@ -634,8 +833,8 @@ const Cards = {
   },
 
   /* ---------------- placeholder card art ----------------
-     PLACEHOLDER: simple procedural motifs in the house palette (ART ramps,
-     top-left light, chunky 16-bit shapes) until real card art lands. Real
+     PLACEHOLDER: procedural motifs in the house palette (ART ramps, top-left
+     light, hard value steps, ink outline) until real card art lands. Real
      art drops in through the manifest as `ui/card/<key>` (see ASSET_SPEC.md)
      with zero code change — drawMotif prefers the image when it exists. */
   drawMotif(canvas, key) {
@@ -649,169 +848,503 @@ const Cards = {
     const C = ART.PALETTE;
     const g = canvas.getContext('2d');
     g.imageSmoothingEnabled = false;
-    const W = canvas.width, s = W / 32;   // 32-cell grid — higher fidelity than the old 24
+    const W = canvas.width, s = W / 64;   // 64-cell grid — 4× the pixel count of the old 32
     g.clearRect(0, 0, W, canvas.height);
-    // plot on the 32-grid; drawn on transparency so the outline pass frames
+    // plot on the 64-grid; drawn on transparency so the outline pass frames
     // every shape crisply against the card's wood panel
     const p = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect((x * s) | 0, (y * s) | 0, Math.ceil(w * s), Math.ceil(h * s)); };
     const M = this._MOTIFS[this.DEFS[key] ? this.DEFS[key].motif : 'hearth'] || this._MOTIFS.hearth;
     M(p, C, ART);
-    if (window.ART && ART.outline) ART.outline(canvas);   // 1px dark ink edge = clarity
+    /* the ink edge. NOT guarded with `window.ART &&` — ART is a script-level
+       const, so window.ART is UNDEFINED and that guard silently disabled the
+       whole outline pass (the window.G / window.Sprites / window.UI trap,
+       again). ART.PALETTE is already read bare five lines up. */
+    ART.outline(canvas);
   },
-  /* Higher-resolution placeholder motifs (32-grid, top-left light, 2–3
-     shades each + an outline pass). Each reads clearly as the thing it
-     represents. Real art still supersedes these via `ui/card/<key>`. */
+  /* 64-grid motifs (finer than the 32-grid set they replace): top-left light,
+     3+ hard value steps each, a dark under-rim where mass meets ground, and
+     the outline pass for the ink edge. Each reads as the thing it names at
+     the 64px the card shows it at. Real art still supersedes these via
+     `ui/card/<key>`. */
   _MOTIFS: {
-    hearth(p, C, A) {                                   // a home with its fire lit
-      A.shadedRect(p, 8, 15, 15, 13, C.wood, 2);        // hut body
-      for (let i = 0; i < 9; i++) p(6 + i, 14 - i, 20 - 2 * i, 1, i < 3 ? C.thatch[3] : C.thatch[2]);  // roof
-      p(5, 14, 22, 2, C.thatch[1]);                     // eaves
-      p(9, 16, 13, 1, C.wood[3]);                        // lit wall top
-      p(18, 19, 5, 9, C.wood[1]);                        // window/shutter
-      p(11, 20, 5, 8, C.ink[0]); p(12, 21, 3, 6, C.fire[1]);  // doorway, fire-glow within
-      A.shadedCircle(p, 13, 25, 3, C.fire, 1); p(12, 21, 2, 4, C.fire[2]); p(13, 19, 1, 3, C.fire[3]);
+    hearth(p, C, A) {                                   // a roundhouse, hearth lit, smoke rising
+      p(12, 57, 40, 2, C.ink[1]);                        // ground shadow
+      A.shadedRect(p, 14, 36, 36, 21, C.wood, 2);        // wattle wall
+      for (let x = 17; x < 48; x += 6) p(x, 38, 1, 18, C.wood[1]);   // stakes
+      for (let i = 0; i < 25; i++) {                     // conical thatch roof
+        const w = 4 + i * 2.1, y = 12 + i;
+        p(32 - w / 2, y, w, 1, i < 7 ? C.thatch[3] : (i % 5 === 4 ? C.thatch[1] : C.thatch[2]));
+      }
+      p(6, 36, 52, 3, C.thatch[1]);                      // deep eaves
+      p(6, 36, 26, 1, C.thatch[2]);                      // lit eave edge
+      p(30, 8, 4, 5, C.thatch[1]);                       // smoke-hole collar
+      p(27, 44, 10, 13, C.ink[0]);                       // doorway
+      p(29, 47, 6, 10, C.fire[1]);                       // hearth-glow within
+      p(30, 49, 4, 8, C.fire[2]); p(31, 51, 2, 5, C.fire[3]);
+      p(28, 44, 1, 13, C.wood[3]); p(35, 44, 1, 13, C.wood[3]);   // door posts
+      for (const [sx, sy] of [[33, 5], [35, 2], [30, 1]]) p(sx, sy, 2, 2, C.bone[1]);   // smoke
     },
-    spears(p, C, A) {                                   // crossed spears over a shield
-      for (let i = 0; i < 26; i++) { p(4 + i, 29 - i, 2, 1, C.wood[3]); p(28 - i, 29 - i, 2, 1, C.wood[1]); }
-      p(27, 3, 3, 4, C.stone[4]); p(28, 2, 2, 3, C.stone[3]);   // right spearhead
-      p(3, 3, 3, 4, C.stone[4]); p(2, 2, 2, 3, C.stone[3]);     // left spearhead
-      A.shadedCircle(p, 16, 17, 7, C.wood, 2);           // round shield
-      A.shadedCircle(p, 16, 17, 3, C.gold, 1); p(15, 12, 2, 10, C.wood[1]);
+    spears(p, C, A) {                                   // crossed spears behind a bossed shield
+      for (let i = 0; i < 48; i++) {                     // the two shafts
+        p(8 + i, 58 - i, 3, 1, C.wood[3]);
+        p(53 - i, 58 - i, 3, 1, C.wood[1]);
+      }
+      p(52, 8, 6, 8, C.slate[4]); p(54, 4, 3, 6, C.slate[5]); p(53, 6, 2, 4, C.bone[2]);  // right head
+      p(6, 8, 6, 8, C.slate[4]); p(7, 4, 3, 6, C.slate[5]);                               // left head
+      A.shadedCircle(p, 32, 34, 15, C.wood, 2);          // round shield
+      for (let a = 0; a < 8; a++) {                      // iron rim studs
+        const th = a * Math.PI / 4 + 0.4;
+        p(32 + Math.round(Math.cos(th) * 12), 34 + Math.round(Math.sin(th) * 12), 2, 2, C.slate[3]);
+      }
+      A.shadedCircle(p, 32, 34, 6, C.gold, 1);           // the boss
+      p(29, 30, 3, 3, C.gold[3]);                        // boss glint
+      p(20, 34, 24, 1, C.wood[1]);                       // plank seam
     },
-    rider(p, C, A) {                                    // horse and rider in profile
-      A.shadedRect(p, 7, 15, 15, 6, C.hide, 2);          // barrel
-      p(20, 10, 5, 6, C.hide[2]); p(23, 8, 3, 4, C.hide[3]); p(24, 7, 3, 2, C.hide[1]);  // neck, head, ear
-      p(8, 21, 3, 6, C.hide[1]); p(12, 21, 3, 6, C.hide[2]); p(18, 21, 3, 6, C.hide[1]); p(15, 21, 3, 6, C.hide[2]);  // legs
-      p(3, 13, 4, 6, C.hide[3]);                          // tail
-      p(12, 9, 5, 6, C.skin[2]); p(12, 6, 5, 3, C.hair[1]); p(14, 3, 2, 3, C.hair[2]);   // rider torso + head
-      p(17, 11, 3, 2, C.wood[2]);                         // arm/rein
+    rider(p, C, A) {                                    // horse and rider at the trot
+      p(10, 56, 46, 2, C.ink[1]);
+      A.shadedRect(p, 14, 32, 25, 12, C.hide, 2);        // barrel
+      for (let i = 0; i < 16; i++) p(35 + (i * 0.65 | 0), 31 - i, 7, 4, C.hide[2]);   // arched neck
+      p(46, 12, 10, 8, C.hide[3]);                       // head, below the rider's
+      p(54, 16, 5, 5, C.hide[1]);                        // muzzle
+      p(57, 19, 2, 2, C.ink[1]);                         // nostril
+      p(52, 20, 4, 3, C.hide[2]);                        // jaw
+      p(46, 7, 3, 6, C.hide[1]);                         // ear
+      p(50, 14, 2, 2, C.ink[0]);                         // eye
+      for (let i = 0; i < 16; i++) p(34 + (i * 0.65 | 0), 29 - i, 3, 2, C.pelt[0]);   // mane down the neck
+      p(16, 43, 4, 12, C.hide[1]); p(22, 43, 4, 12, C.hide[2]);      // hind legs
+      p(31, 43, 4, 12, C.hide[2]); p(37, 40, 4, 9, C.hide[1]);       // forelegs, one lifted
+      p(16, 54, 4, 2, C.ink[1]); p(22, 54, 4, 2, C.ink[1]); p(31, 54, 4, 2, C.ink[1]);   // hooves
+      for (let i = 0; i < 12; i++) p(10 + (i / 3 | 0), 28 + i, 3, 2, C.pelt[1]);     // tail
+      p(20, 30, 14, 3, C.red[1]);                        // saddle-cloth
+      p(23, 32, 3, 9, C.red[1]);                         // rider's near leg
+      A.shadedRect(p, 21, 16, 11, 15, C.red, 2);         // rider tunic
+      p(21, 16, 3, 15, C.red[3]);                        // lit shoulder
+      p(26, 22, 2, 2, C.gold[2]);                        // belt clasp
+      p(23, 8, 7, 7, C.skin[2]); p(23, 6, 7, 3, C.hair[1]);          // head + hair — the highest thing
+      p(31, 19, 8, 3, C.skin[2]);                        // rein arm to the crest
+      for (let i = 0; i < 8; i++) p(39 + i * 2, 21 - (i / 3 | 0), 2, 1, C.hide[0]);  // the rein
     },
-    longboat(p, C, A) {                                 // longboat with a sail on the water
-      for (let i = 0; i < 26; i++) p(3 + i, 24 + (i % 4 < 2 ? 1 : 0), 1, 2, C.water[i % 3 + 1]);  // waves
-      A.shadedRect(p, 6, 19, 20, 4, C.wood, 2);          // hull
-      p(4, 17, 4, 3, C.wood[3]); p(24, 17, 4, 3, C.wood[3]);   // prow + stern rise
-      p(15, 5, 2, 14, C.wood[1]);                         // mast
-      A.shadedRect(p, 17, 6, 8, 9, C.bone, 1); p(17, 6, 8, 1, C.red[2]);  // sail with a red stripe
-      p(15, 5, 10, 1, C.wood[3]);                         // yard
+    longboat(p, C, A) {                                 // fishing longboat under sail
+      for (let i = 0; i < 56; i++)                       // swell
+        p(4 + i, 50 + (Math.sin(i * 0.5) > 0.2 ? 1 : 0), 1, 3, C.water[1 + (i % 3)]);
+      for (let i = 0; i < 6; i++) p(8 + i * 2, 44 + i, 48 - i * 4, 1, C.wood[2 - (i > 3 ? 1 : 0)]);  // hull sweep
+      p(10, 42, 44, 3, C.wood[3]);                       // gunwale
+      p(6, 34, 5, 10, C.wood[3]); p(53, 34, 5, 10, C.wood[3]);   // prow + stern posts
+      p(6, 32, 3, 4, C.wood[4]);                         // prow curl
+      p(31, 8, 2, 34, C.wood[1]);                        // mast
+      p(20, 9, 25, 2, C.wood[3]);                        // yard
+      A.shadedRect(p, 21, 11, 23, 18, C.bone, 1);        // sail
+      p(21, 15, 23, 3, C.red[2]); p(21, 22, 23, 3, C.red[2]);    // stripes
+      p(21, 11, 2, 18, C.bone[0]);                       // sail shade at the luff
+      for (const x of [16, 26, 38, 48]) p(x, 40, 2, 4, C.slate[2]);   // oars shipped
+      p(33, 4, 6, 3, C.red[1]);                          // masthead pennant
     },
-    chisel(p, C, A) {                                   // dressed block, chisel and mallet
-      A.shadedRect(p, 5, 15, 13, 13, C.stone, 2);        // stone block
-      p(6, 16, 11, 1, C.stone[4]); p(6, 21, 11, 1, C.stone[1]); p(11, 16, 1, 12, C.stone[1]);  // courses
-      for (let i = 0; i < 9; i++) p(16 + i, 13 - i, 2, 2, C.stone[3]);   // chisel shaft
-      p(14, 14, 4, 3, C.stone[4]);                        // chisel tip on the block
-      A.shadedRect(p, 22, 3, 7, 5, C.wood, 2); p(25, 7, 2, 6, C.wood[1]);  // mallet head + handle
+    chisel(p, C, A) {                                   // the mason at his block
+      p(6, 56, 40, 2, C.ink[1]);
+      // the block: lit top face, two working faces, one corner chiselled away
+      A.shadedRect(p, 8, 26, 32, 30, C.granite, 3);
+      p(9, 26, 30, 3, C.granite[4]);                     // lit crown
+      p(9, 26, 30, 1, C.granite[5]);
+      for (let i = 0; i < 7; i++) p(8, 28 + i * 4, 2, 2, C.granite[2]);   // rough undressed west edge
+      p(8, 44, 13, 1, C.granite[1]); p(25, 44, 15, 1, C.granite[1]);      // broken course joint
+      p(30, 30, 10, 10, C.bone[2]);                      // the fresh-cut scar
+      p(31, 31, 7, 3, C.bone[1]);
+      for (let i = 0; i < 14; i++) p(37 + i, 29 - i, 4, 4, C.slate[3]);   // chisel, thick, biting the corner
+      p(37, 27, 4, 4, C.slate[5]);                       // the edge at the stone
+      p(33, 24, 3, 3, C.bone[2]); p(29, 21, 2, 2, C.bone[1]); p(36, 18, 2, 2, C.bone[2]);   // struck chips
+      A.shadedRect(p, 46, 34, 12, 9, C.wood, 2);         // mallet at rest
+      p(49, 43, 4, 13, C.wood[1]);
+      p(47, 35, 10, 2, C.wood[3]);
+      p(12, 50, 5, 3, C.granite[2]); p(20, 52, 4, 2, C.granite[1]);   // spall on the ground
     },
     basket(p, C, A) {                                   // a basket heaped with forage
-      A.shadedCircle(p, 15, 11, 3, C.bloom, 0); A.shadedCircle(p, 11, 12, 2, C.fire, 1);
-      A.shadedCircle(p, 19, 12, 2, [C.leaf[1], C.leaf[2], C.leaf[3]], 1); A.shadedCircle(p, 15, 9, 2, C.gold, 2);
-      A.shadedRect(p, 8, 14, 16, 12, C.thatch, 1);        // basket body
-      p(8, 14, 16, 2, C.wood[2]);                         // rim
-      for (let i = 0; i < 4; i++) p(9 + i * 4, 16, 1, 10, C.wood[1]);   // weave verticals
-      p(8, 20, 16, 1, C.wood[3]); p(8, 23, 16, 1, C.wood[3]);          // weave bands
+      p(10, 57, 44, 2, C.ink[1]);
+      A.shadedCircle(p, 25, 27, 5, C.berry, 1);          // heap: dark berries
+      A.shadedCircle(p, 36, 25, 5, C.berry, 2); p(34, 23, 2, 2, C.berry[3]);
+      A.shadedCircle(p, 45, 29, 4, [C.leaf[1], C.leaf[2], C.leaf[3]], 1);   // greens
+      A.shadedCircle(p, 18, 30, 4, C.gold, 2); p(17, 28, 2, 2, C.gold[3]);  // wild apple
+      p(30, 17, 2, 5, C.wood[1]); p(28, 15, 6, 3, C.leaf[2]);              // a sprig
+      A.shadedRect(p, 12, 30, 40, 26, C.thatch, 1);      // basket body
+      p(12, 30, 40, 3, C.wood[2]); p(12, 30, 20, 1, C.wood[3]);            // rim
+      for (let i = 0; i < 7; i++) p(15 + i * 6, 34, 2, 22, C.wood[1]);     // weave ribs
+      p(12, 39, 40, 2, C.thatch[3]); p(12, 47, 40, 2, C.thatch[3]);        // weave bands
+      p(12, 54, 40, 2, C.thatch[0]);                     // under-rim shade
     },
-    axe(p, C, A) {                                      // axe buried in a log
-      A.shadedRect(p, 4, 18, 22, 8, C.wood, 2);          // log
-      A.shadedCircle(p, 9, 22, 2, C.wood[1]); A.shadedCircle(p, 20, 22, 2, C.wood[1]);  // end grain rings
-      for (let i = 0; i < 12; i++) p(14 + i, 17 - i, 2, 2, C.wood[3]);   // haft
-      A.shadedRect(p, 9, 10, 8, 8, C.stone, 3);          // axe head
-      p(8, 11, 2, 6, C.stone[4]);                         // bit edge (lit)
-      p(6, 26, 3, 2, C.wood[0]); p(22, 26, 3, 2, C.wood[0]);   // chips
-    },
-    wheat(p, C, A) {                                    // a bound sheaf
-      for (const [dx, sh] of [[10, 2], [16, 3], [22, 1]]) {
-        p(dx, 6, 2, 16, C.thatch[sh]);                   // stalk
-        for (let i = 0; i < 5; i++) { p(dx - 2, 6 + i * 2, 2, 2, C.thatch[3]); p(dx + 2, 7 + i * 2, 2, 2, C.thatch[2]); }
-        p(dx, 3, 2, 3, C.thatch[3]);                     // top grain
+    axe(p, C, A) {                                      // the felling axe in a stump
+      p(12, 57, 40, 2, C.ink[1]);
+      A.shadedRect(p, 16, 36, 32, 21, C.wood, 2);        // stump body
+      for (let x = 19; x < 46; x += 5) p(x, 40, 1, 14, C.wood[1]);   // bark ribs
+      p(18, 32, 28, 6, C.bone[1]);                       // cut face (pale heartwood)
+      p(20, 33, 24, 1, C.bone[2]);
+      for (let r = 3; r < 12; r += 4) {                  // growth rings
+        p(32 - r, 34, r * 2, 1, C.bone[0]);
       }
-      p(8, 21, 18, 3, C.wood[2]); p(8, 24, 18, 1, C.wood[1]);   // binding cord
+      for (let i = 0; i < 20; i++) p(38 + (i * 0.8 | 0), 30 - i, 4, 3, C.wood[3]);   // haft
+      A.shadedRect(p, 26, 20, 13, 12, C.slate, 3);       // axe head, hung on the haft
+      p(37, 22, 4, 4, C.wood[1]);                        // the eye where they meet
+      p(24, 22, 3, 10, C.bone[2]);                       // honed bit, buried in the cut
+      p(24, 30, 4, 3, C.bone[1]);
+      p(8, 52, 5, 3, C.wood[0]); p(52, 50, 4, 3, C.wood[0]);   // chips
+      p(10, 50, 3, 2, C.bone[1]);
     },
-    boulder(p, C, A) {                                  // a great cracked rock
-      A.shadedCircle(p, 16, 17, 10, C.stone, 2);
-      p(10, 10, 5, 3, C.stone[4]); p(20, 22, 5, 3, C.stone[1]);   // lit crown / shaded base
-      for (let i = 0; i < 6; i++) p(16 + i, 11 + i, 1, 2, C.stone[0]);   // crack
-      p(12, 20, 3, 1, C.stone[0]); p(9, 15, 2, 1, C.stone[0]);           // chips
+    wheat(p, C, A) {                                    // the bound sheaves
+      p(12, 57, 40, 2, C.ink[1]);
+      for (const [dx, sh, tall] of [[20, 2, 0], [32, 3, 3], [44, 1, 1]]) {
+        p(dx - 1, 16 - tall, 3, 40 + tall, C.thatch[sh]);          // stalk bundle
+        p(dx - 4, 20 - tall, 2, 32 + tall, C.thatch[sh === 3 ? 2 : 1]);
+        p(dx + 3, 20 - tall, 2, 32 + tall, C.thatch[sh === 1 ? 2 : 1]);
+        for (let i = 0; i < 7; i++) {                    // grain head + awns
+          p(dx - 3 - (i % 2), 8 - tall + i * 2, 3, 2, C.thatch[3]);
+          p(dx + 1 + (i % 2), 9 - tall + i * 2, 3, 2, C.thatch[2]);
+        }
+        p(dx - 1, 4 - tall, 3, 4, C.thatch[3]);
+      }
+      A.shadedRect(p, 14, 42, 36, 5, C.wood, 2);         // binding cord
+      p(30, 40, 4, 9, C.wood[1]);                        // the knot
     },
-    coins(p, C, A) {                                    // a spilling coin pouch
-      A.shadedRect(p, 9, 12, 12, 13, C.hide, 1);         // pouch
-      p(10, 11, 10, 2, C.wood[1]); p(13, 9, 4, 3, C.wood[2]);   // drawstring neck
-      for (const [cx, cy, b] of [[7, 24, 2], [12, 26, 1], [18, 25, 2], [24, 24, 1], [15, 6, 2]])
-        { A.shadedCircle(p, cx, cy, 2, C.gold, b); p(cx, cy, 1, 1, C.gold[3]); }   // coins
+    boulder(p, C, A) {                                  // the great cracked rock
+      p(10, 56, 44, 3, C.ink[1]);
+      // angular mass: three planes, never a circle (the rock language)
+      for (let i = 0; i < 20; i++) p(16 - (i > 12 ? i - 12 : 0), 18 + i, 34 + i, 1, C.granite[3]);   // body
+      for (let i = 0; i < 18; i++) p(12, 38 + i, 42 - (i > 12 ? (i - 12) * 2 : 0), 1, C.granite[2]); // base plane
+      for (let i = 0; i < 9; i++) p(20 + i, 14 + i, 22 - i, 1, C.granite[5]);   // lit crown plane
+      for (let i = 0; i < 22; i++) p(40 + (i / 3 | 0), 22 + i, 8 - (i / 4 | 0), 1, C.granite[1]);   // shadow plane
+      for (let i = 0; i < 16; i++) p(30 + (i % 5 < 2 ? 1 : 0), 20 + i, 2, 1, C.granite[0]);   // the crack
+      p(28, 36, 3, 2, C.granite[0]); p(33, 40, 2, 2, C.granite[0]);
+      p(14, 34, 8, 6, C.bone[2]); p(15, 35, 5, 2, C.bone[1]);    // quarried pale scar
+      p(8, 52, 4, 3, C.granite[2]); p(52, 50, 5, 4, C.granite[1]);   // fallen chips
     },
-    hound(p, C, A) {                                    // an alert seated hound
-      A.shadedRect(p, 9, 16, 8, 9, C.pelt, 2);           // haunch/body
-      p(15, 9, 6, 8, C.pelt[1]); p(19, 7, 4, 5, C.pelt[2]);   // chest, head
-      p(18, 4, 2, 4, C.pelt[0]); p(22, 5, 2, 4, C.pelt[0]);   // ears
-      p(21, 9, 2, 2, C.fire[2]);                          // eye-shine
-      p(10, 25, 3, 4, C.pelt[0]); p(15, 24, 3, 5, C.pelt[1]);  // forelegs
-      for (let i = 0; i < 6; i++) p(6 - i, 14 + i, 2, 2, C.pelt[2]);   // curved tail
+    cart(p, C, A) {                                     // the laden trade cart
+      p(4, 56, 56, 2, C.ink[1]);
+      A.shadedCircle(p, 19, 43, 12, C.wood, 2);          // wheels — big, spoked
+      A.shadedCircle(p, 45, 43, 12, C.wood, 2);
+      for (const cx of [19, 45]) {
+        A.shadedCircle(p, cx, 43, 8, [C.ink[1], C.ink[1], C.ink[1]], 1);   // between rim and hub
+        p(cx - 1, 33, 2, 21, C.wood[2]);                 // spokes
+        p(cx - 10, 42, 21, 2, C.wood[2]);
+        A.shadedCircle(p, cx, 43, 3, C.rust, 2);         // iron hub
+      }
+      A.shadedRect(p, 6, 22, 52, 9, C.wood, 2);          // the bed over the axles
+      p(7, 23, 50, 2, C.wood[3]);
+      p(6, 29, 52, 2, C.wood[1]);
+      A.shadedCircle(p, 17, 17, 7, C.hide, 2);           // grain sacks
+      A.shadedCircle(p, 29, 14, 7, C.hide, 1); p(26, 10, 4, 3, C.hide[3]);
+      p(27, 8, 3, 3, C.wood[1]);                          // tied sack neck
+      A.shadedRect(p, 39, 8, 9, 15, C.rust, 2);          // amphora
+      p(41, 5, 5, 4, C.rust[3]); p(40, 9, 2, 12, C.rust[3]);
+      A.shadedCircle(p, 52, 18, 4, C.gold, 2); p(51, 16, 2, 2, C.gold[3]);   // the purse on top
+      for (let i = 0; i < 8; i++) p(57 + (i / 2 | 0), 24 + i, 3, 2, C.wood[3]);   // pull-pole, grounded
     },
-    tracks(p, C, A) {                                   // a compass rose
-      A.shadedCircle(p, 16, 16, 11, C.wood, 2); A.shadedCircle(p, 16, 16, 8, C.bone, 1);
-      for (let i = 0; i < 9; i++) { p(16, 5 + i, 2, 1, C.red[2]); }   // N needle
-      for (let i = 0; i < 8; i++) { p(16, 16 + i, 2, 1, C.stone[2]); }  // S needle
-      p(13, 7, 6, 3, C.red[1]);                           // N head
-      p(15, 15, 3, 3, C.gold[2]);                          // hub
-      p(16, 3, 1, 2, C.ink[0]); p(16, 27, 1, 2, C.ink[0]);
+    hound(p, C, A) {                                    // the great guard-beast, seated
+      p(12, 56, 42, 2, C.ink[1]);
+      A.shadedCircle(p, 42, 42, 14, C.pelt, 2);          // haunches
+      for (let i = 0; i < 14; i++) p(28 + i, 28 + (i / 2 | 0), 10, 4, C.pelt[2]);   // sloping back
+      A.shadedRect(p, 20, 28, 14, 24, C.pelt, 2);        // chest
+      p(20, 30, 4, 20, C.pelt[3]);                       // lit breast
+      p(16, 12, 16, 13, C.pelt[2]);                      // skull, broad
+      p(16, 12, 4, 13, C.pelt[3]);
+      p(8, 18, 9, 6, C.pelt[1]);                         // muzzle, reaching left
+      p(9, 24, 6, 2, C.pelt[0]);                         // jaw
+      p(7, 19, 3, 3, C.ink[0]);                          // nose
+      for (let i = 0; i < 9; i++) p(17 + (i / 4 | 0), 12 - i, 4, 2, C.pelt[1]);     // near ear
+      for (let i = 0; i < 8; i++) p(27 + (i / 4 | 0), 13 - i, 4, 2, C.pelt[0]);     // far ear (a gap between)
+      p(20, 16, 3, 3, C.fire[2]); p(21, 16, 2, 2, C.fire[3]);    // eye-shine, watching
+      p(20, 26, 12, 3, C.rust[2]); p(25, 26, 3, 3, C.gold[2]);   // collar + stud
+      p(21, 50, 5, 6, C.pelt[1]); p(29, 50, 5, 6, C.pelt[2]);    // forelegs
+      p(19, 55, 8, 2, C.pelt[0]); p(28, 55, 7, 2, C.pelt[0]);    // paws
+      for (let i = 0; i < 14; i++) p(52 + (i / 5 | 0), 48 - i, 3, 2, C.pelt[1]);    // tail swept up
+      p(54, 33, 3, 3, C.pelt[3]);                        // tail tip, lit
     },
-    campfire(p, C, A) {                                 // stacked logs and a tall flame
-      p(6, 24, 20, 3, C.wood[2]); p(9, 23, 14, 1, C.wood[3]);   // log pile
-      for (let i = 0; i < 5; i++) p(8 + i * 4, 24, 2, 3, C.wood[0]);   // log ends
-      A.shadedCircle(p, 16, 18, 5, C.fire, 1);
-      p(13, 10, 4, 8, C.fire[2]); p(14, 6, 3, 5, C.fire[3]); p(15, 4, 2, 3, C.gold[3]);   // flame tongues
-      p(19, 13, 2, 4, C.fire[2]);
+    tracks(p, C, A) {                                   // the wayfinder's compass
+      A.shadedCircle(p, 32, 32, 23, C.wood, 2);          // case
+      A.shadedCircle(p, 32, 32, 19, C.bone, 1);          // face
+      for (let a = 0; a < 8; a++) {                      // the winds
+        const th = a * Math.PI / 4;
+        const x = 32 + Math.round(Math.cos(th) * 16), y = 32 + Math.round(Math.sin(th) * 16);
+        p(x, y, 2, 2, a % 2 ? C.ink[1] : C.wood[1]);
+      }
+      for (let i = 0; i < 18; i++) {                     // north needle (red kite)
+        const w = 1 + (i / 3 | 0);
+        p(32 - w / 2 + 1, 13 + i, w, 1, C.red[2]);
+      }
+      p(31, 10, 3, 4, C.red[3]);
+      for (let i = 0; i < 16; i++) {                     // south needle (pale)
+        const w = 6 - (i / 3 | 0);
+        p(32 - w / 2 + 1, 34 + i, w, 1, C.stone[3]);
+      }
+      A.shadedCircle(p, 32, 32, 3, C.gold, 2); p(31, 31, 2, 1, C.gold[3]);   // hub
     },
-    antlers(p, C, A) {                                  // a stag's head
-      A.shadedRect(p, 12, 17, 8, 9, C.hide, 2); p(13, 24, 6, 3, C.hide[1]);   // muzzle
-      p(11, 14, 10, 4, C.hide[3]);                        // brow
-      p(10, 20, 2, 2, C.ink[0]); p(20, 20, 2, 2, C.ink[0]);   // eyes
-      for (const [ox, dir] of [[12, -1], [19, 1]]) {     // antlers
-        for (let i = 0; i < 10; i++) p(ox + dir * (i < 5 ? 0 : i - 5), 14 - i, 2, 1, C.bone[1]);
-        p(ox + dir * 3, 6, 2, 4, C.bone[2]); p(ox + dir, 9, 2, 3, C.bone[2]); p(ox + dir * 4, 3, 2, 3, C.bone[1]);
+    campfire(p, C, A) {                                 // the builders' fire, banked high
+      p(10, 57, 44, 2, C.ink[1]);
+      for (const [cx, r] of [[14, 3], [24, 3], [34, 3], [44, 3], [51, 3]])
+        A.shadedCircle(p, cx, 54, r, C.granite, 2);      // stone ring
+      for (let i = 0; i < 16; i++) { p(14 + i, 50 - (i / 4 | 0), 3, 3, C.wood[2]); p(46 - i, 50 - (i / 4 | 0), 3, 3, C.wood[1]); }  // crossed logs
+      p(12, 48, 5, 4, C.wood[0]); p(47, 48, 5, 4, C.wood[0]);   // log ends
+      for (let i = 0; i < 26; i++) {                     // the flame, layered
+        const w = 22 - Math.abs(i - 8) * 1.6;
+        if (w > 0) p(32 - w / 2, 46 - i, w, 1, C.fire[1]);
+      }
+      for (let i = 0; i < 22; i++) {
+        const w = 14 - Math.abs(i - 6) * 1.4;
+        if (w > 0) p(32 - w / 2 + 1, 42 - i, w, 1, C.fire[2]);
+      }
+      for (let i = 0; i < 14; i++) {
+        const w = 8 - Math.abs(i - 4);
+        if (w > 0) p(32 - w / 2 + 1, 36 - i, w, 1, C.fire[3]);
+      }
+      p(31, 26, 3, 5, C.gold[3]);                        // white heart
+      p(24, 12, 2, 2, C.fire[3]); p(40, 8, 2, 2, C.fire[2]); p(34, 4, 2, 2, C.gold[3]);   // sparks
+    },
+    antlers(p, C, A) {                                  // the stag, head-on
+      A.shadedRect(p, 27, 30, 10, 16, C.hide, 2);        // face
+      p(27, 30, 3, 16, C.hide[3]);                       // lit cheek
+      p(28, 46, 8, 6, C.hide[1]);                        // muzzle
+      p(30, 49, 4, 3, C.ink[0]);                         // nose
+      p(28, 35, 3, 3, C.ink[0]); p(34, 35, 3, 3, C.ink[0]);     // eyes
+      p(29, 35, 1, 1, C.bone[2]); p(35, 35, 1, 1, C.bone[2]);
+      for (let i = 0; i < 6; i++) { p(20 - i, 32 + i, 7, 3, C.hide[1]); p(38 + i, 32 + i, 7, 3, C.hide[2]); }   // ears, dropped
+      for (const [ox, dir, tall] of [[26, -1, 0], [38, 1, 3]]) { // the rack — swept, branched, uneven
+        for (let i = 0; i < 24; i++)                     // main beam: up and boldly OUT
+          p(ox + dir * (i * 0.9 | 0), 28 - i - tall, 3, 3, C.bone[1]);
+        for (let i = 0; i < 24; i += 3)                  // lit fore-edge
+          p(ox + dir * (i * 0.9 | 0), 28 - i - tall, 1, 2, C.bone[2]);
+        for (const [t, len] of [[6, 7], [12, 8], [18, 6]])         // tines branching inward-up
+          for (let j = 0; j < len; j++)
+            p(ox + dir * ((t * 0.9 | 0) - j), 28 - t - tall - j - 1, 2, 2, C.bone[2]);
       }
     },
-    crowd(p, C, A) {                                    // a gathering of newcomers
-      for (const [ox, oy, sk] of [[6, 13, 1], [22, 13, 3], [13, 10, 2]]) {
-        p(ox + 1, oy - 5, 5, 5, C.skin[sk]); p(ox + 1, oy - 7, 5, 2, C.hair[1]);   // head + hair
-        A.shadedRect(p, ox, oy, 7, 11, C.hide, sk === 2 ? 2 : 1);                   // body/cloak
+    crowd(p, C, A) {                                    // the newcomers on the road
+      p(4, 56, 56, 2, C.ink[1]);
+      // the one behind, road-worn
+      p(11, 17, 8, 7, C.skin[1]); p(11, 14, 8, 4, C.hair[0]);
+      A.shadedRect(p, 9, 24, 12, 28, C.hide, 1);
+      p(11, 52, 3, 4, C.ink[1]); p(16, 52, 3, 4, C.ink[1]);
+      // the lead, bundle on the shoulder, staff in hand
+      p(29, 11, 9, 8, C.skin[2]); p(29, 8, 9, 4, C.hair[1]);
+      A.shadedRect(p, 26, 19, 15, 33, C.hide, 2);
+      p(26, 19, 4, 33, C.hide[3]);                       // lit cloak edge
+      A.shadedCircle(p, 42, 15, 6, C.thatch, 2);         // the bundle
+      p(40, 9, 3, 3, C.wood[1]);                         // its tie
+      p(45, 12, 2, 42, C.wood[2]);                       // the staff
+      p(29, 52, 4, 4, C.ink[1]); p(35, 52, 4, 4, C.ink[1]);
+      // the child, hurrying to keep up
+      p(52, 26, 6, 6, C.skin[3]); p(52, 23, 6, 4, C.hair[2]);
+      A.shadedRect(p, 50, 32, 9, 20, C.rust, 1);
+      p(51, 32, 2, 20, C.rust[2]);
+      p(52, 52, 3, 4, C.ink[1]);
+    },
+    reeds(p, C, A) {                                    // the shallows: reeds and a leaping fish
+      for (let i = 0; i < 56; i++)                       // water band
+        p(4 + i, 46 + (Math.sin(i * 0.6) > 0.3 ? 1 : 0), 1, 4, C.water[1 + (i % 3)]);
+      p(4, 50, 56, 6, C.water[1]);
+      for (const [dx, h, sh] of [[10, 26, 2], [15, 32, 3], [48, 28, 2], [54, 22, 1]]) {
+        p(dx, 46 - h, 2, h, C.leaf[sh]);                 // reed stems
+        p(dx - 1, 42 - h, 4, 6, C.soil[2]);              // cattail heads
+        p(dx - 1, 42 - h, 4, 1, C.soil[3]);
+      }
+      // the fish, hanging in the air over the shallows
+      for (let i = 0; i < 18; i++) {                     // lens-shaped body, nose-up tilt
+        const h = Math.round(Math.sin((i + 1) / 19 * Math.PI) * 5);
+        p(22 + i, 22 - (i / 4 | 0) - h, 1, h * 2, C.blue[2]);
+      }
+      for (let i = 0; i < 18; i++) {
+        const h = Math.round(Math.sin((i + 1) / 19 * Math.PI) * 5);
+        p(22 + i, 22 - (i / 4 | 0) - h, 1, 2, C.blue[3]);   // lit back
+      }
+      p(38, 15, 3, 4, C.blue[3]);                        // head tip
+      p(37, 16, 2, 2, C.ink[0]);                         // eye
+      p(28, 10, 4, 4, C.blue[1]);                        // dorsal fin
+      p(18, 22, 4, 4, C.blue[1]); p(18, 26, 4, 3, C.blue[2]);   // forked tail
+      p(24, 40, 3, 2, C.bone[2]); p(30, 38, 2, 2, C.bone[1]);   // spray beneath
+      p(20, 42, 3, 2, C.bone[2]); p(26, 44, 2, 2, C.bone[2]); p(33, 43, 2, 2, C.bone[1]);   // splash
+    },
+    eye(p, C, A) {                                      // the seer's unblinking eye
+      for (let i = 0; i < 25; i++) {                     // the lids — an almond
+        const h = Math.round(Math.sin((i + 1) / 26 * Math.PI) * 11);
+        p(8 + i * 2, 32 - h, 2, h * 2, C.bone[1]);
+      }
+      for (let i = 0; i < 25; i++) {
+        const h = Math.round(Math.sin((i + 1) / 26 * Math.PI) * 11);
+        p(8 + i * 2, 32 - h, 2, 2, C.bone[2]);           // lit upper lid
+      }
+      A.shadedCircle(p, 32, 32, 8, C.water, 2);          // iris
+      A.shadedCircle(p, 32, 32, 4, [C.ink[0], C.ink[0], C.ink[0]], 1);   // pupil
+      p(29, 28, 3, 3, C.bone[2]);                        // the glint
+      for (const [sx, sy] of [[32, 6], [10, 12], [54, 12], [12, 52], [52, 52]]) {   // stars
+        p(sx, sy - 2, 2, 6, C.gold[2]); p(sx - 2, sy, 6, 2, C.gold[2]);
+        p(sx, sy, 2, 2, C.gold[3]);
       }
     },
-    reeds(p, C, A) {                                    // reeds and a leaping fish
-      for (let i = 0; i < 28; i++) p(2 + i, 23 + (i % 5 < 2 ? 1 : 0), 1, 3, C.water[i % 3 + 1]);
-      for (const [dx, h] of [[7, 15], [10, 18], [23, 16], [26, 13]]) {
-        p(dx, 24 - h, 2, h, C.leaf[2]); p(dx, 24 - h - 2, 2, 3, C.soil[2]);   // reed + cattail
+    anvil(p, C, A) {                                    // the anvil under the hammer
+      p(10, 57, 44, 2, C.ink[1]);
+      A.shadedRect(p, 20, 48, 26, 9, C.wood, 1);         // the stump base
+      p(21, 49, 24, 2, C.wood[2]);
+      p(24, 38, 16, 10, C.slate[1]);                     // waist
+      A.shadedRect(p, 14, 28, 36, 10, C.slate, 3);       // body
+      p(15, 28, 34, 3, C.slate[5]);                      // the face, lit
+      for (let i = 0; i < 10; i++) p(13 - i, 29 + (i / 2 | 0), 3, 6 - (i / 2 | 0), C.slate[2]);   // the horn
+      p(50, 30, 6, 6, C.slate[2]);                       // the heel
+      for (let i = 0; i < 14; i++) p(40 + (i * 0.7 | 0), 20 - i, 3, 2, C.wood[3]);   // hammer haft
+      A.shadedRect(p, 32, 8, 12, 8, C.slate, 4);         // hammer head
+      p(26, 22, 3, 3, C.gold[3]); p(22, 18, 2, 2, C.fire[3]); p(31, 19, 2, 2, C.fire[2]);   // sparks off the face
+      p(19, 24, 2, 2, C.gold[2]);
+    },
+    bond(p, C, A) {                                     // house and field, bonded in gold
+      p(4, 55, 56, 2, C.ink[1]);
+      // the house, left
+      A.shadedRect(p, 7, 34, 20, 21, C.wood, 2);
+      for (let i = 0; i < 12; i++) p(5 + i, 33 - i, 24 - i * 2, 1, i < 4 ? C.thatch[3] : C.thatch[2]);   // roof
+      p(4, 33, 26, 2, C.thatch[1]);                      // eaves
+      p(13, 44, 6, 11, C.ink[0]);                        // door — facing the field
+      p(14, 46, 4, 9, C.fire[1]);
+      // the field, right
+      A.shadedRect(p, 36, 36, 24, 19, C.soil, 2);
+      for (let r = 0; r < 5; r++) {
+        p(36, 38 + r * 4, 24, 1, C.soil[0]);             // furrows
+        for (let x = 38; x < 58; x += 4) p(x, 36 + r * 4, 2, 2, C.leaf[2]);   // sprouting rows
       }
-      A.shadedRect(p, 13, 12, 8, 4, C.blue, 2); p(20, 12, 4, 4, C.blue[1]);   // fish body + tail
-      p(14, 13, 1, 1, C.bone[2]); p(13, 11, 3, 2, C.blue[3]);                  // eye, splash
+      p(36, 36, 24, 1, C.leaf[3]);
+      // the seam of gold between them — the homestead spark, standing still
+      for (const [gy, hot] of [[30, 0], [36, 1], [42, 0], [48, 1], [52, 0]]) {
+        p(31, gy, 2, 2, C.gold[2]);
+        if (hot) p(31, gy, 1, 1, C.gold[3]);
+        p(33, gy + 2, 1, 1, C.gold[1]);
+      }
+      p(30, 24, 3, 3, C.gold[3]); p(31, 25, 1, 1, C.bone[2]);   // the crown spark
     },
-    eye(p, C, A) {                                      // an all-seeing eye ringed in stars
-      for (let i = 0; i < 9; i++) { p(7 + i, 16 - (i < 5 ? i : 8 - i), 2, 1, C.bone[2]); p(7 + i, 16 + (i < 5 ? i : 8 - i), 2, 1, C.bone[1]); }
-      A.shadedCircle(p, 16, 16, 4, C.water, 2);
-      p(14, 14, 3, 3, C.ink[0]); p(15, 15, 1, 1, C.bone[2]);   // pupil + glint
-      for (const [sx, sy] of [[16, 4], [6, 8], [26, 8], [8, 24], [24, 24]])   // stars
-        { p(sx, sy - 1, 1, 3, C.gold[2]); p(sx - 1, sy, 3, 1, C.gold[2]); }
+    tent(p, C, A) {                                     // the nomad camp at dusk
+      p(8, 56, 40, 2, C.ink[1]);
+      for (let i = 0; i < 22; i++) {                     // the hide tent, seamed
+        const w = 3 + i * 2;
+        p(30 - w / 2, 12 + i * 2, w, 2, i % 4 === 3 ? C.hide[1] : C.hide[2]);
+      }
+      for (let i = 0; i < 22; i++) p(30 - (3 + i * 2) / 2, 12 + i * 2, 2, 2, C.hide[3]);   // lit west face
+      p(26, 40, 9, 16, C.ink[0]);                        // door flap
+      p(28, 43, 5, 13, C.hide[0]);
+      p(29, 4, 3, 9, C.wood[2]); p(25, 6, 11, 2, C.wood[1]);    // crossed poles at the peak
+      A.shadedCircle(p, 52, 51, 4, C.fire, 1);           // the fire beside
+      p(51, 44, 2, 6, C.fire[2]); p(52, 41, 1, 4, C.fire[3]);
+      p(48, 55, 9, 2, C.wood[1]);                        // its log
     },
-    anvil(p, C, A) {                                    // anvil, hammer and sparks
-      A.shadedRect(p, 6, 14, 18, 4, C.stone, 2);         // face
-      p(4, 14, 4, 2, C.stone[3]); p(23, 15, 3, 3, C.stone[1]);   // horn / heel
-      p(12, 18, 6, 4, C.stone[0]); A.shadedRect(p, 9, 22, 12, 4, C.wood, 1);   // waist + base
-      for (let i = 0; i < 8; i++) p(20 + i, 10 - i, 2, 2, C.wood[3]);   // hammer haft
-      A.shadedRect(p, 16, 6, 6, 4, C.stone, 3);          // hammer head
-      p(9, 11, 2, 2, C.gold[3]); p(13, 9, 1, 1, C.fire[3]); p(7, 13, 1, 1, C.gold[2]);   // sparks
+    bow(p, C, A) {                                      // the bowyer's work, drawn
+      for (let i = 0; i < 48; i++) {                     // the stave — a working recurve
+        const bend = Math.round(Math.sin((i + 1) / 49 * Math.PI) * 14);
+        p(24 + bend, 8 + i, 3, 1, C.wood[3]);
+        p(24 + bend + 2, 8 + i, 1, 1, C.wood[1]);        // shaded back
+      }
+      p(22, 6, 4, 4, C.wood[2]); p(22, 54, 4, 4, C.wood[2]);    // nocks
+      p(23, 8, 1, 48, C.bone[2]);                        // the string, taut
+      p(36, 29, 6, 6, C.rust[2]);                        // the grip wrap
+      // the arrow, nocked and level
+      p(10, 31, 34, 2, C.wood[2]);
+      p(44, 30, 5, 4, C.slate[4]); p(48, 31, 3, 2, C.slate[5]);  // head
+      p(10, 29, 4, 2, C.red[2]); p(10, 33, 4, 2, C.red[1]);      // fletching
+      p(8, 31, 3, 2, C.red[2]);
     },
-    sickle(p, C, A) {                                   // a sickle over cut grain
-      for (let i = 0; i < 14; i++) { const y = 6 + ((i * i) / 11 | 0); p(8 + i, y, 2, 2, C.stone[3]); p(8 + i, y - 1, 1, 1, C.stone[4]); }
-      p(20, 15, 3, 3, C.stone[3]);                        // blade root
-      for (let i = 0; i < 8; i++) p(20 - i, 16 + i, 2, 2, C.wood[3]);   // handle
-      for (const dx of [10, 14, 18]) { p(dx, 22, 2, 5, C.thatch[2]); p(dx - 1, 21, 4, 2, C.thatch[3]); }   // grain sheaf
+    warship(p, C, A) {                                  // the fire warship, brazier lit
+      for (let i = 0; i < 56; i++)
+        p(4 + i, 52 + (Math.sin(i * 0.5) > 0.2 ? 1 : 0), 1, 3, C.water[1 + (i % 3)]);
+      for (let i = 0; i < 6; i++) p(8 + i * 2, 46 + i, 48 - i * 4, 1, C.wood[1]);   // dark war hull
+      p(10, 44, 44, 3, C.wood[2]);
+      for (const x of [16, 24, 32, 40, 48]) {            // shield row on the gunwale
+        A.shadedCircle(p, x, 44, 3, x % 16 ? C.red : C.gold, 1);
+      }
+      p(6, 34, 5, 12, C.wood[2]); p(53, 36, 5, 10, C.wood[2]);   // prow + stern
+      p(33, 6, 2, 38, C.wood[1]);                        // tall mast
+      p(22, 7, 25, 2, C.wood[3]);                        // yard
+      A.shadedRect(p, 23, 9, 23, 20, C.bone, 1);         // sail, full
+      p(23, 13, 23, 4, C.red[1]); p(23, 21, 23, 4, C.red[1]);   // war stripes
+      p(23, 9, 2, 20, C.bone[0]);
+      p(35, 2, 7, 3, C.red[2]);                          // war pennant
+      // the brazier at the prow — the ship's whole name
+      p(5, 28, 7, 5, C.rust[1]);                         // iron basket
+      p(6, 24, 5, 4, C.fire[1]); p(7, 21, 3, 4, C.fire[2]); p(8, 18, 2, 3, C.fire[3]);
+      p(3, 16, 2, 2, C.fire[2]); p(10, 13, 2, 2, C.gold[3]);    // embers on the wind
     },
-    tent(p, C, A) {                                     // a nomad's tent by the fire
-      for (let i = 0; i < 11; i++) { p(15 - i, 6 + i * 2, 1, 2, C.hide[3]); p(16 + i, 6 + i * 2, 1, 2, C.hide[1]); }
-      for (let i = 1; i < 11; i++) p(16 - i, 6 + i * 2, 2 * i, 2, i % 2 ? C.hide[2] : C.hide[1]);   // fill
-      p(14, 18, 4, 8, C.ink[0]);                          // door flap
-      p(15, 3, 2, 4, C.wood[2]); p(13, 4, 6, 1, C.wood[1]);   // pole + ties
-      A.shadedCircle(p, 25, 24, 2, C.fire, 1); p(25, 21, 1, 3, C.fire[3]);   // campfire
+    spade(p, C, A) {                                    // the delver's cut, water finding it
+      // the ground in section: turf over earth, and a trench cut clean through
+      A.shadedRect(p, 4, 38, 20, 18, C.soil, 2);         // left bank
+      A.shadedRect(p, 40, 38, 20, 18, C.soil, 2);        // right bank
+      p(4, 36, 20, 3, C.leaf[2]); p(40, 36, 20, 3, C.leaf[2]);   // the turf line
+      p(4, 36, 8, 1, C.leaf[3]); p(40, 36, 8, 1, C.leaf[3]);
+      p(24, 38, 16, 18, C.soil[0]);                      // the cut walls
+      p(26, 40, 12, 16, C.ink[0]);
+      p(26, 48, 12, 8, C.water[2]);                      // water finding the trench
+      p(27, 48, 8, 2, C.water[4]);                       // glint
+      p(24, 36, 2, 3, C.soil[3]); p(38, 36, 2, 3, C.soil[3]);   // fresh-cut lips
+      A.shadedCircle(p, 12, 32, 6, C.soil, 1);           // the thrown-up spoil
+      A.shadedCircle(p, 19, 34, 4, C.soil, 2);
+      p(9, 27, 3, 2, C.soil[3]); p(16, 29, 3, 2, C.soil[3]);    // clods
+      p(46, 8, 3, 26, C.wood[3]);                        // the spade, standing in the bank
+      p(47, 8, 1, 26, C.wood[1]);
+      p(42, 4, 11, 4, C.wood[2]); p(42, 4, 11, 1, C.wood[4]);   // T-handle
+      A.shadedRect(p, 44, 32, 7, 9, C.slate, 3);         // the blade, bitten in
+      p(44, 39, 7, 2, C.slate[5]);
+    },
+    vein(p, C, A) {                                     // the seam in the rock face
+      p(8, 56, 48, 3, C.ink[1]);
+      // the face: two hard planes of dark rock
+      for (let i = 0; i < 44; i++) {                     // a ragged-edged face, not a slab
+        const l = 10 + (i % 9 < 3 ? 2 : 0) - (i > 34 ? 2 : 0);
+        const r = 54 - (i % 7 < 2 ? 3 : 0) - (i < 8 ? 4 : 0);
+        p(l, 12 + i, r - l, 1, C.granite[2]);
+      }
+      for (let i = 0; i < 20; i++) p(36 + (i / 2 | 0), 14 + i * 2, 16 - (i / 2 | 0), 2, C.granite[1]);   // shadow plane
+      p(12, 13, 38, 3, C.granite[4]);                    // lit brow
+      p(12, 13, 12, 2, C.granite[5]);
+      for (let i = 0; i < 12; i++) p(44 - i, 24 + i * 2, 2, 1, C.granite[0]);   // a dry crack
+      // THE VEIN — a live zigzag of gold through the face
+      let vx = 17;
+      for (let i = 0; i < 40; i++) {
+        vx += (i % 9 < 4 ? 0.9 : -0.35);
+        p(vx, 14 + i, 4, 2, C.gold[2]);
+        p(vx + 1, 14 + i, 2, 1, C.gold[3]);
+        if (i % 7 === 3) { p(vx - 2, 14 + i, 8, 2, C.gold[2]); p(vx, 14 + i, 3, 1, C.gold[3]); }   // nugget bulges
+      }
+      p(30, 20, 2, 2, C.gold[3]); p(27, 38, 2, 2, C.gold[3]);   // glints
+      A.shadedCircle(p, 15, 53, 3, C.gold, 2);           // spilled nuggets at the foot
+      A.shadedCircle(p, 50, 54, 2, C.gold, 1);
+    },
+    watchtower(p, C, A) {                               // the warden's tower, beacon lit
+      p(16, 57, 32, 2, C.ink[1]);
+      A.shadedRect(p, 24, 24, 16, 33, C.granite, 3);     // the shaft
+      p(25, 25, 3, 31, C.granite[5]);                    // lit western face
+      for (let y = 28; y < 56; y += 6) p(24, y, 16, 1, C.granite[1]);   // courses
+      p(30, 48, 5, 9, C.ink[0]);                         // the door
+      p(30, 48, 1, 9, C.granite[4]);
+      p(29, 36, 2, 4, C.ink[0]); p(34, 36, 2, 4, C.ink[0]);     // arrow slits
+      A.shadedRect(p, 20, 16, 24, 8, C.wood, 2);         // timber hoarding at the crown
+      for (let x = 21; x < 43; x += 4) p(x, 13, 3, 4, C.wood[3]);   // the parapet, crenellated
+      p(20, 16, 24, 2, C.wood[3]);
+      // the beacon — lit, always
+      p(29, 8, 6, 4, C.rust[1]);                         // fire-basket
+      p(30, 4, 4, 4, C.fire[2]); p(31, 1, 2, 4, C.fire[3]);
+      p(26, 3, 2, 2, C.fire[2]); p(37, 5, 2, 2, C.gold[3]);     // thrown light
+    },
+    horn(p, C, A) {                                     // the master's hunting horn
+      // the crescent: mouthpiece high, the bell swinging down and under
+      for (let i = 0; i <= 30; i++) {
+        const a = -1.5 + (i / 30) * 3.0;                 // -86°..+86° about the centre
+        const cx = 27 + Math.round(Math.cos(a) * 21);
+        const cy = 28 + Math.round(Math.sin(a) * 21);
+        A.shadedCircle(p, cx, cy, 2 + Math.round((i / 30) * 5), C.bone, 1);
+      }
+      for (let i = 0; i <= 30; i += 2) {                 // lit outer edge along the sweep
+        const a = -1.5 + (i / 30) * 3.0;
+        const cx = 27 + Math.round(Math.cos(a) * (23 + (i / 30) * 4));
+        const cy = 28 + Math.round(Math.sin(a) * (23 + (i / 30) * 4));
+        p(cx, cy, 2, 2, C.bone[2]);
+      }
+      p(26, 3, 6, 5, C.wood[2]); p(26, 3, 6, 2, C.wood[3]);     // mouthpiece
+      A.shadedCircle(p, 27, 51, 8, [C.wood[0], C.wood[1], C.wood[2]], 1);   // the bell rim
+      p(23, 47, 8, 7, C.ink[0]);                         // its dark mouth
+      p(44, 16, 6, 6, C.gold[2]); p(45, 16, 4, 2, C.gold[3]);   // gold band, high
+      p(46, 36, 7, 6, C.gold[2]); p(47, 36, 5, 2, C.gold[3]);   // gold band at the swell
+      p(12, 22, 2, 12, C.red[1]);                        // the cord
+      p(10, 34, 6, 5, C.red[2]); p(11, 39, 4, 4, C.red[1]);     // tassel
     },
   },
+
 };
 
 // classic-script global (const declarations are not window properties)

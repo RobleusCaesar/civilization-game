@@ -2372,8 +2372,11 @@ const UI = {
          the next time the panel is written, because there is nothing stored to
          forget to clear. */
       if (Bld.isHomestead(b)) {
-        const pct = Math.round(((CFG.HOMESTEAD.food || 1) - 1) * 100);
-        const gain = b.key === 'farm' ? `+${pct}% food` : `+${CFG.HOMESTEAD.pop} villager`;
+        // read the DERIVED figures, never CFG — the Hearthbond origin deepens
+        // the bond, and the panel must say what is actually being paid
+        const gain = b.key === 'farm'
+          ? `+${Math.round((Bld.homesteadMult(b) - 1) * 100)}% food`
+          : `+${Bld.homesteadPop(b)} villager${Bld.homesteadPop(b) > 1 ? 's' : ''}`;
         sub += ` — <b style="color:var(--gold)">🌾 Homestead ${gain}</b>`;
       }
       if (lv.bonus) sub += ` — ${lv.bonus}`;

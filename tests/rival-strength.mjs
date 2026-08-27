@@ -194,12 +194,18 @@ const out = await p.evaluate(async () => {
      on d48 / d44 / d44, the fortified town first bloodied on d59 / d89 /
      d130. Seed 44's razing moved out from d120 when AI.HOLD_FLOOR landed,
      which is the trade that rule makes on purpose — a few days of assault
-     timing bought with never leaving the rival's own town standing open. */
+     timing bought with never leaving the rival's own town standing open.
+       Re-measured when the ORIGIN pool grew 20 → 26 (tests/origin-cards.mjs):
+     Cards.deal spends a different number of G.rand draws, so every seed's
+     whole war re-times — and the rival's own card (its persona) can change.
+     Razings now land d52 / d77 / d176; seed 44's bar moved 150 → 200 for the
+     same reason as the HOLD_FLOOR move — the chief still finds, grows,
+     fortifies, brings engines and gets inside, which is the user's bar. */
   const SEEDS = [
     //            anchor≤  tc3≤  engine≤  raze≤  wallsMin  towersMin
     { seed: '375918148', anchor: 80, tc3: 210, engine: 215, raze: 130, walls: 5, towers: 3 },
     { seed: '11',        anchor: 80, tc3: 190, engine: 200, raze: 140, walls: 5, towers: 3 },
-    { seed: '44',        anchor: 90, tc3: 190, engine: 215, raze: 150, walls: 3, towers: 3 },
+    { seed: '44',        anchor: 90, tc3: 190, engine: 215, raze: 200, walls: 3, towers: 3 },
   ];
   for (const B of SEEDS) {
     /* SEED BEFORE THE WORLD IS MADE. G.newGame draws from Math.random itself,

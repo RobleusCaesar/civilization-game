@@ -891,12 +891,22 @@
     display: flex; flex-direction: column; align-items: center;
     gap: 3px; padding: 8px 5px 6px;
   }
-  .ofront canvas { width: 52px; height: 52px; image-rendering: pixelated; flex: 0 0 auto; }
+  /* the motif canvas: 128px backing on a 64-cell grid, shown at 64px so each
+     art cell maps 1:1 to a CSS pixel (crisp at every DPR). Small phones step
+     down via the vw clamp rather than starving the text below. */
+  .ofront canvas { width: min(18vw, 64px); height: min(18vw, 64px); image-rendering: pixelated; flex: 0 0 auto; }
   .oname { font-size: 12px; font-weight: 900; color: var(--gold); text-align: center; line-height: 1.1; }
   .oboon { font-size: 9.5px; font-weight: 700; text-align: center; line-height: 1.3; }
   .oflavor { font-size: 8.5px; color: var(--dim); font-style: italic; text-align: center;
     line-height: 1.25; margin-top: auto; }
   #draftHint { min-height: 16px; margin: 0; }
+  /* the narrowest phones: taller cards + a slightly smaller motif, so the
+     wordiest boon never clips against the card's own bottom edge */
+  @media (max-width: 359px) {
+    .ocard { aspect-ratio: 5 / 9; }
+    .ofront canvas { width: 16vw; height: 16vw; }
+    .oflavor { display: none; }   /* the flourish yields; the boon never clips */
+  }
   #draftRival {
     display: none; align-items: center; gap: 10px; max-width: 340px;
     background: rgba(0,0,0,0.32); border: 1px solid #241d15; border-radius: 12px;

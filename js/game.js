@@ -427,7 +427,10 @@ const G = {
       // goes up the fog stays close, lit by the builder alone (the reward for
       // finishing is the wider view). Upgrades keep their current sight.
       for (const b of S.buildings)
-        if (b.owner === 'P' && Bld.done(b)) mark(b.x, b.y, Bld.lv(b).vision || 4);
+        if (b.owner === 'P' && Bld.done(b))
+          mark(b.x, b.y, (Bld.lv(b).vision || 4) +
+            // ORIGIN CARDS: the Warden's towers watch farther
+            (b.key === 'tower' && window.Cards ? Cards.towerSight('P') : 0));
       for (const u of S.units)
         if (u.owner === 'P') mark(u.x | 0, u.y | 0, CFG.UNITS[u.kind].vision || CFG.UNIT_VISION);
       // ORIGIN CARDS: the Seer's far-seeing eye never closes
