@@ -333,6 +333,61 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
       }
     }
 
+    // ---- 1e. formation art has its OWN convention: multi-tile pieces over
+    // terrain REGIONS (js/formations.js; ART_PLAN.md) —
+    // assets/terrain/formations/{terrain}/{terrain}-{W}x{H}-{shape}-{letter}.png,
+    // footprint in the name, image width bound to it, coverage mask derived
+    // from the alpha channel, discovery from a known stem list ----
+    {
+      ck('formationTerrainsAreRealTerrains',
+        Assets.formationTerrains().every(n => T[n.toUpperCase()] !== undefined),
+        Assets.formationTerrains().join(','));
+      ck('formationFilenamesAreLowercase',
+        Assets.formationName('Mountain-4x3-Ridge-A') === 'mountain-4x3-ridge-a.png', '');
+      ck('formationUrlsCarryTheCacheBuster',
+        Assets.formationUrl('mountain', 'mountain-4x3-ridge-a').includes('?v=') &&
+        Assets.formationUrl('mountain', 'mountain-4x3-ridge-a').startsWith('assets/terrain/formations/mountain/'),
+        Assets.formationUrl('mountain', 'mountain-4x3-ridge-a'));
+      const good = Assets.parseFormationStem('mountain-4x3-ridge-a', null);
+      ck('theStemCarriesTheFootprint',
+        !!good && good.tId === T.MOUNTAIN && good.w === 4 && good.h === 3 &&
+        good.shape === 'ridge' && good.letter === 'a', JSON.stringify(good));
+      ck('badStemsAreRefused',
+        Assets.parseFormationStem('dragon-2x2-peak-a', null) === null &&      // no such terrain
+        Assets.parseFormationStem('mountain-2x2-peak', null) === null &&      // no letter
+        Assets.parseFormationStem('mountain-0x2-peak-a', null) === null &&    // zero footprint
+        Assets.parseFormationStem('mountain-2x2-peak-a', 'forest') === null,  // wrong directory
+        '');
+      // a stand-in piece: install, mask from alpha, width validation, removal
+      const mkPiece = (w, h, hole) => {
+        const c = document.createElement('canvas');
+        c.width = w * Assets.FORMATION_PX; c.height = h * Assets.FORMATION_PX + 32;
+        const g2 = c.getContext('2d');
+        g2.fillStyle = '#ff00c8'; g2.fillRect(0, 0, c.width, c.height);
+        if (hole) g2.clearRect(hole[0] * Assets.FORMATION_PX, 32 + hole[1] * Assets.FORMATION_PX,
+          Assets.FORMATION_PX, Assets.FORMATION_PX);
+        return c;
+      };
+      ck('aFormationPieceInstalls',
+        Assets.setFormationArt('mountain', 'mountain-2x2-test-z', mkPiece(2, 2), null) === true &&
+        !!Assets.formationPiece('mountain', 'mountain-2x2-test-z'), '');
+      ck('theMaskComesFromTheAlphaChannel',
+        Assets.setFormationArt('mountain', 'mountain-2x2-test-y', mkPiece(2, 2, [1, 1]), null) === true &&
+        Assets.formationPiece('mountain', 'mountain-2x2-test-y').maskN === 3,
+        'L-piece maskN=' + (Assets.formationPiece('mountain', 'mountain-2x2-test-y') || {}).maskN);
+      ck('aLyingWidthIsRefused',
+        Assets.setFormationArt('mountain', 'mountain-3x2-test-x', mkPiece(2, 2), null) === false, '');
+      ck('removalRestoresAbsence',
+        Assets.removeFormationArt('mountain', 'mountain-2x2-test-z') === true &&
+        Assets.removeFormationArt('mountain', 'mountain-2x2-test-y') === true &&
+        !Assets.formationPiece('mountain', 'mountain-2x2-test-z') &&
+        !Formations.artTerrain(T.MOUNTAIN), '');
+      // 404 tolerance: probing a stem with no file behind it records the miss
+      // and throws nothing — absence is never an error
+      Assets._tryLoadFormation('mountain', 'mountain-9x9-nofile-q');
+      ck('aMissingPieceIsSilent', true, 'probe dispatched; noPageErrors below settles it');
+    }
+
     // ---- 2. shipped art loads by convention, into BOTH tribes' tables ----
     const tc1 = Assets.art['tc-l1'];
     ck('shippedHallArtLoadsByFilename', !!tc1 && !!tc1._cfArt,
@@ -525,6 +580,35 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
       JSON.stringify({ kind: 'camp', tribe: 'wolf' }), '');
     ck('unknownTribesAreNeverGuessed', DevArt.parseName('camp-orcs.png') === null, '');
     ck('campCanonicalNameIsLowercase', Assets.campName('flint') === 'camp-flint.png', '');
+
+    // ---- formation filename inference: its own shape again — validated by
+    // the loader's parser, and deliberately catalog-independent, so an artist
+    // can preview a brand-new stem before it is listed ----
+    ck('formationConventionNamesParse', JSON.stringify(DevArt.parseName('mountain-4x3-ridge-a.png')) ===
+      JSON.stringify({ kind: 'formation', terrain: 'mountain', stem: 'mountain-4x3-ridge-a' }), '');
+    ck('formationCaseIsNormalizedNotRejected', JSON.stringify(DevArt.parseName('Mountain-4X3-Ridge-A.PNG')) ===
+      JSON.stringify({ kind: 'formation', terrain: 'mountain', stem: 'mountain-4x3-ridge-a' }), '');
+    ck('unknownFormationTerrainsAreNeverGuessed', DevArt.parseName('dragon-4x3-ridge-a.png') === null, '');
+
+    // ---- formation inject / revert round-trip — mask derived on the drop,
+    // revert restores absence (nothing shipped in this slot) ----
+    {
+      const fm = document.createElement('canvas');
+      fm.width = 2 * Assets.FORMATION_PX; fm.height = 2 * Assets.FORMATION_PX + 40;
+      const fg = fm.getContext('2d');
+      fg.fillStyle = '#ff00c8'; fg.fillRect(0, 0, fm.width, fm.height);
+      ck('aDroppedFormationPieceLandsInItsSlot',
+        DevArt.injectFormation('mountain', 'mountain-2x2-test-w', fm, 'Mountain-2x2-TEST-W.png') === true &&
+        !!Assets.formationPiece('mountain', 'mountain-2x2-test-w') &&
+        Assets.formationPiece('mountain', 'mountain-2x2-test-w').maskN === 4, '');
+      ck('thePanelListsTheFormationOverride',
+        document.getElementById('devArtList').textContent.includes('mountain-2x2-test-w'), '');
+      DevArt.revert(Assets.formationSlotKey('mountain', 'mountain-2x2-test-w'));
+      ck('formationRevertRestoresAbsence',
+        !Assets.formationPiece('mountain', 'mountain-2x2-test-w') &&
+        !Formations.artTerrain(T.MOUNTAIN) &&
+        !DevArt.overrides[Assets.formationSlotKey('mountain', 'mountain-2x2-test-w')], '');
+    }
 
     // ---- inject / revert round-trip through the shipping path. The slot's
     // shipped state is whatever it is TODAY (procedural, or a real PNG that

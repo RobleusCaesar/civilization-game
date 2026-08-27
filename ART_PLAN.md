@@ -6,9 +6,10 @@ manifest, no code change, no registration. Drop a correctly named file into
 drawing comes back. The old atlas manifest (`assets/manifest.js`) is gone.
 
 Contract test: `node tests/art-pipeline.mjs` — run it after touching
-`js/assets.js`, `js/dev.js`, `R.blitBld` / `R.artRect` / `R.bldSprite`, the
-fog-of-war ghost lookup or `G.updateVisibility`'s `S.map.seenB` snapshot, or
-`UI.iconInto`.
+`js/assets.js`, `js/dev.js`, `js/formations.js`, `R.blitBld` / `R.artRect` /
+`R.bldSprite`, the fog-of-war ghost lookup or `G.updateVisibility`'s
+`S.map.seenB` snapshot, or `UI.iconInto`. Formation-art changes also want
+`node tests/land.mjs` (§17) and `node tests/mountain.mjs`.
 
 ## The filename convention
 
@@ -254,6 +255,94 @@ supplied picture replaces it outright; an empty bucket leaves it standing.
 **Not wired into the `?dev=1` live-preview panel** — that panel only lists
 the `{id}-l{level}.png` / `camp-{tribe}.png` building slots. Preview an
 endgame picture by dropping the file into `assets/endgame/…/` and reloading.
+
+## Formation art: multi-tile pieces over terrain REGIONS
+
+```
+assets/terrain/formations/{terrain}/{terrain}-{W}x{H}-{shape}-{letter}.png
+e.g.  assets/terrain/formations/mountain/mountain-4x3-ridge-a.png
+```
+
+The per-tile override below scales ONE texture to ONE tile — the wrong
+primitive for a landform spanning 6×5 tiles. Formation art is the right one:
+contiguous same-terrain regions are flooded (the shoreline tracer's own
+flood), and hand-drawn PIECES are packed over each region by a deterministic
+solver. Generic over terrain — mountains are the first consumer; forest, ore
+and future terrain can join by shipping a catalog. `js/formations.js` owns
+regions, the solver and drawing; `js/assets.js` owns loading.
+
+**The filename carries the truth.** All lowercase. `{W}x{H}` is the ground
+footprint in tiles. Image width MUST equal `W × 128` (`Assets.FORMATION_PX`;
+a lying width is refused with a console warning — it would claim the wrong
+ground). Image height MAY exceed `H × 128`: the excess is upward overhang —
+peaks rising north of the footprint — and the bottom edge is the baseline.
+`{shape}` is a free word (`ridge`, `peak`, `crag`, …); `skirt`/`talus`/
+`scree`/`taper`/`edge` mark EDGE pieces the solver prefers at a region's
+boundary so a massif tapers into the grass. `{letter}` separates variants.
+Optional sidecar `{same-name}.json` beside the PNG — `offsetX`/`offsetY`
+(footprint fractions) and `scale`, the building sidecar's exact shape.
+
+**Discovery is a known stem list, not a manifest**: `Assets.FORMATION_CATALOG`
+lists the stems per terrain (filenames only — footprint, shape and mask are
+all derived from the name and the pixels). A 404 is a piece that does not
+exist yet, never an error; a partial catalog covers what it can and the
+procedural drawing fills the rest. `?v=` cache-buster as everywhere.
+
+**The coverage mask comes from the ALPHA CHANNEL — never hand-authored.** On
+decode the bottom `H × 128` band is downsampled to a W×H grid; a cell counts
+as covered when its mean alpha coverage exceeds `Assets.FORMATION_MASK_MIN`
+(0.35). An L-shaped or tapered massif therefore packs as its real shape, not
+its bounding rectangle. (On `file://` the pixels are taint-locked and the
+mask degrades to the full rectangle; `?dev=1` drops use object URLs and keep
+real masks.)
+
+**Placement is derived, never persisted.** The solver is seeded from
+(S.seed, region signature): the same map packs the same pieces on every
+reload and across save/load, and nothing about it enters a save file.
+Greedy largest-first with a seeded tie-shuffle, no same-variant adjacency
+where an alternative fits, skirts at the boundary, 1×1 pieces for leftover
+tiles, and a hard attempt bound that fails SOFT to procedural (logged). An
+edit re-solves ONLY the region whose signature changed — cached solutions
+keep every other region exactly as it was.
+
+**Drawing**: bottom-anchored at the footprint, `128px → one tile`, aspect
+preserved, smoothing off, pieces within a region in ascending baseline
+order (southern pieces overlap northern ones). Two consumers:
+
+- **generic layer** — each region composes into one canvas, blitted right
+  after the terrain cache: above the ground, below bridges/buildings/units,
+  and under the fog (regions are read from `seenTerrain`, so an unexplored
+  massif places nothing at all). Upward overhang is CAPPED at 1.5 tiles
+  here (`FORM.OVERHANG_MAX`), and units always draw over the art.
+- **mountains** — pieces feed `R.buildMtnLayer` as row strips instead, so
+  formation mountains keep the shipped occlusion (a unit behind a ridge is
+  hidden; the strip interleave in the unit pass is untouched). Overhang is
+  NOT capped there — strips occlude honestly. Mountains use the 'region'
+  fallback policy: a region the solver cannot FULLY cover keeps the whole
+  procedural extrusion, because that extrusion is ONE object and cannot mix
+  with pieces. (Per-tile terrains default to the 'tile' policy: art covers
+  what it can, leftover tiles keep their sprite.)
+
+**Gameplay safety is pinned, not promised**: the system writes to no map
+array and flips no rule answer — tests/land.mjs §17 measures map-array
+signatures, rule answers and the terrain cache byte-for-byte with
+formations on vs off, determinism across reloads, full coverage, no-spill,
+the single-region re-solve (<5ms) and 404 tolerance; tests/art-pipeline.mjs
+§1e pins the convention, the alpha mask, width validation and the ?dev=1
+drop path.
+
+**A NEW terrain joining the system** needs: a directory + stems in
+`FORMATION_CATALOG`, and — for terrains whose tile sprite paints the
+resource itself (forest canopies, ore boulders) — a floor-only branch in
+`R.drawTile` so the baked sprite does not show through the piece's gaps
+(mountain already paints floor-only; that is why it consumes formations
+cleanly). Watch total canvas memory for large-coverage terrains: each
+region holds a bbox-sized canvas.
+
+`?dev=1` accepts formation PNGs like everything else: a convention-named
+file takes its slot silently (and needs NO catalog entry — preview a
+brand-new stem before listing it), anything else opens the picker, per-slot
+revert and revert-all restore the shipped state.
 
 ## Ground art
 

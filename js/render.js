@@ -2453,11 +2453,20 @@ const R = {
     this._mtnCover = new Uint8Array(W * H);
     this._mtnOcc = new Set();
     if (!regions.length) return;
-    if (window.Assets && Assets.terrainImg(T.MOUNTAIN, 0)) return;   // supplied art wins
+    /* which art dresses a region, in order of preference: FORMATION pieces
+       (hand-drawn multi-tile artwork, js/formations.js — strips cut per
+       placed piece so the occlusion interleave below still holds), then a
+       supplied mountain.png tile override (stands the whole layer down, the
+       old rule), then the procedural extrusion. A region the solver cannot
+       FULLY cover keeps the procedural drawing — the extrusion is one
+       object and cannot mix with pieces (the 'region' fallback policy). */
+    const haveFormations = window.Formations && Formations.artTerrain(T.MOUNTAIN);
+    if (!haveFormations && window.Assets && Assets.terrainImg(T.MOUNTAIN, 0)) return;   // supplied tile art wins
     this.landLattices();
     const terr = (S.map.seenTerrain || S.map.terrain);
     for (const r of regions) {
-      const art = (r.cls === 0) ? this.drawMtnOutcrop(r) : this.drawMtnRegion(r);
+      let art = haveFormations ? Formations.mtnRegionStrips(r) : null;
+      if (!art) art = (r.cls === 0) ? this.drawMtnOutcrop(r) : this.drawMtnRegion(r);
       if (!art) continue;
       this._mtnArt.push(art);
       for (const s of art.strips) this._mtnStrips.push(s);
@@ -3359,6 +3368,8 @@ const R = {
     // regions read seenTerrain); everything else leaves it alone
     for (const [x, y] of list)
       if (terr[y * W + x] === T.MOUNTAIN) { this._mtnDirty = true; break; }
+    // …and the formation layer tracks membership the same way, per terrain
+    if (window.Formations) for (const [x, y] of list) Formations.noteTile(x, y);
   },
 
   drawTileAt(x, y) {
@@ -3410,6 +3421,7 @@ const R = {
     });
     this.clipTiles(g, inner5, () => this.blitShore(g, x - 2, y - 2, 5, 5));
     if (terr[y * CFG.W + x] === T.MOUNTAIN) this._mtnDirty = true;
+    if (window.Formations) Formations.noteTile(x, y);
   },
 
   /* put the traced coast back over a patch that was just repainted. The layer
@@ -3493,6 +3505,7 @@ const R = {
     this._mtnLayerKey = ''; this._mtnDirty = true;
     this._waterMask = null; this._hillKey = '';
     this._repaintQ = null;
+    if (window.Formations) Formations.reviveArt();   // its canvases were purged too
     this.rebuildTerrain();
     this.fogDirty = true;
   },
@@ -3575,6 +3588,7 @@ const R = {
     this._mixC = null;
     this._bodyPath = null; this._bodyKey = '';
     this._waterMask = null;
+    if (window.Formations) Formations.onNewGame();               // regions/placements are per-map
     this.placePoofs = [];                                        // no dust carried across runs (the R.collapses rule)
     this.bondSparks = [];                                        // …nor a homestead's gold
     this._repaintQ = null;                                       // …nor a half-drained repaint tail
@@ -6664,6 +6678,11 @@ const R = {
 
     // terrain
     g.drawImage(this.terrainCache, 0, 0);
+    // formation art — multi-tile drawn landforms composed over whole regions
+    // (js/formations.js): above the baked ground, below bridges, buildings,
+    // units and the fog blit. Mountains are NOT drawn here — their formation
+    // pieces feed the strip layer below so they keep occluding.
+    if (window.Formations) Formations.drawLayer(g);
     // …but a tower still coming down keeps the ground it stood on (startCollapse)
     if (this.collapses.length) this.drawCollapseGround(g);
 

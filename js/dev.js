@@ -32,6 +32,14 @@
         ? null : { kind: 'campProp', tribe: mp[1], i: +mp[2] };
       const mc = lower.match(/^camp-([a-z0-9]+)\.png$/);
       if (mc) return Assets.campTribes().indexOf(mc[1]) < 0 ? null : { kind: 'camp', tribe: mc[1] };
+      // formation pieces: {terrain}-{W}x{H}-{shape}-{letter}.png — validated
+      // by the same parser the loader uses; the stem needs no catalog entry,
+      // so an artist can preview a brand-new piece before it is listed
+      if (/^[a-z]+-\d+x\d+-[a-z0-9]+-[a-z]\.png$/.test(lower)) {
+        const stem = lower.slice(0, -4);
+        const pf = Assets.parseFormationStem(stem, null);
+        return pf ? { kind: 'formation', terrain: pf.tName, stem } : null;
+      }
       const m = lower.match(/^([a-z0-9]+)-l(\d+)\.png$/);
       if (!m) return null;
       const id = m[1], lv = +m[2];
@@ -74,10 +82,35 @@
       this._renderPanel();
       return true;
     },
+    // one formation piece — same shipping path (Assets.setFormationArt, so
+    // the drop derives its coverage mask from the alpha exactly as a shipped
+    // file would), same override/revert bookkeeping
+    injectFormation(terrain, stem, img, name) {
+      const k = Assets.formationSlotKey(terrain, stem);
+      if (!this._saved[k])
+        this._saved[k] = { piece: Assets.formationPiece(terrain, stem),
+                           art: Assets.art[k], loaded: !!Assets.loaded[k] };
+      if (!Assets.setFormationArt(terrain, stem, img, null)) return false;
+      this.overrides[k] = name || Assets.formationName(stem);
+      this._renderPanel();
+      return true;
+    },
     revert(k) {
       const s = this._saved[k];
       if (!s) return false;
-      // the PROP branch first — the camp branch's prefix test would eat it
+      // the FORMATION branch first — its key carries its own 'fm|' prefix
+      if (k.indexOf('fm|') === 0) {
+        const [, terrain, stem] = k.split('|');
+        if (s.piece) Formations.addPiece(s.piece);
+        else Assets.removeFormationArt(terrain, stem);
+        if (s.loaded) { Assets.art[k] = s.art; Assets.loaded[k] = true; }
+        else { delete Assets.art[k]; delete Assets.loaded[k]; if (s.art === null) Assets.art[k] = null; }
+        delete this._saved[k];
+        delete this.overrides[k];
+        this._renderPanel();
+        return true;
+      }
+      // the PROP branch next — the camp branch's prefix test would eat it
       const kp = k.match(/^camp-([a-z0-9]+)-prop([0-9])$/);
       if (kp) {
         const tribe = kp[1], i = +kp[2];
@@ -122,10 +155,14 @@
         for (let i = 1; i <= Assets.CAMP_PROP_N; i++)
           out.push({ value: 'p|' + tribe + '|' + i, label: Assets.campPropName(tribe, i) });
       }
+      for (const tName of Assets.formationTerrains())
+        for (const stem of Assets.FORMATION_CATALOG[tName])
+          out.push({ value: 'fm|' + tName + '|' + stem, label: Assets.formationName(stem) });
       return out;
     },
     // inject whatever the picker/panel dropdown's value string names
     _injectByValue(v, img, name) {
+      if (v.indexOf('fm|') === 0) { const [, terrain, stem] = v.split('|'); return this.injectFormation(terrain, stem, img, name); }
       if (v.indexOf('p|') === 0) { const [, tribe, i] = v.split('|'); return this.injectCampProp(tribe, +i, img, name); }
       if (v.indexOf('c|') === 0) return this.injectCamp(v.slice(2), img, name);
       const [, id, lv] = v.split('|');
@@ -219,6 +256,7 @@
           if (!slot) { DevArt._queuePicker(f.name, img); return; }
           if (slot.kind === 'campProp') DevArt.injectCampProp(slot.tribe, slot.i, img, f.name);
           else if (slot.kind === 'camp') DevArt.injectCamp(slot.tribe, img, f.name);
+          else if (slot.kind === 'formation') DevArt.injectFormation(slot.terrain, slot.stem, img, f.name);
           else DevArt.inject(slot.id, slot.lv, img, f.name);
         };
         img.src = URL.createObjectURL(f);   // in-memory only; gone on refresh
@@ -253,7 +291,9 @@
     p.querySelector('#devArtCopy').onclick = async () => {
       const v = sel.value;
       let name;
-      if (v.indexOf('c|') === 0) name = Assets.campName(v.slice(2));
+      if (v.indexOf('fm|') === 0) name = Assets.formationName(v.split('|')[2]);
+      else if (v.indexOf('p|') === 0) { const [, tribe, i] = v.split('|'); name = Assets.campPropName(tribe, +i); }
+      else if (v.indexOf('c|') === 0) name = Assets.campName(v.slice(2));
       else { const [, id, lv] = v.split('|'); name = DevArt.canonicalName(id, +lv); }
       try { await navigator.clipboard.writeText(name); }
       catch (e) {

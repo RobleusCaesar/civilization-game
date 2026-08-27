@@ -1298,6 +1298,225 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   await new Promise(r => srv.close(r));
 }
 
+/* ---- 17. FORMATIONS: multi-tile drawn artwork over terrain regions ------
+   (js/formations.js, loaded via Assets.setFormationArt — ART_PLAN.md). The
+   system is PURELY VISUAL and derived: no map array is written, placement
+   is a pure function of (map seed, region signature, catalog), an edit
+   re-solves only its own region, and a missing catalog leaves the
+   procedural path byte-identical. Pieces here are stand-in canvases
+   injected the way a decoded PNG is (the art-pipeline pattern), on a
+   PLANTED pebbles region — planted, not hunted for, per section 11's rule.
+   Mountains route through the strip layer instead; 17g pins that seam. */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(boot + `
+    const W = CFG.W, res = {};
+    // -- stand-in pieces: solid 2x2 (64px overhang), L-shaped 2x2, 2x1 skirt, 1x1
+    const mkP = (w, h, col, hole, over) => {
+      const c = document.createElement('canvas');
+      c.width = w * 128; c.height = h * 128 + (over || 0);
+      const g = c.getContext('2d');
+      g.fillStyle = col; g.fillRect(0, 0, c.width, c.height);
+      if (hole) g.clearRect(hole[0] * 128, (over || 0) + hole[1] * 128, 128, 128);
+      return c;
+    };
+    Assets.setFormationArt('pebbles', 'pebbles-2x2-blob-a', mkP(2, 2, '#ff00c8', null, 64), null);
+    Assets.setFormationArt('pebbles', 'pebbles-2x2-blob-b', mkP(2, 2, '#c800ff', [1, 0]), null);
+    Assets.setFormationArt('pebbles', 'pebbles-2x1-skirt-a', mkP(2, 1, '#00c8ff'), null);
+    Assets.setFormationArt('pebbles', 'pebbles-1x1-crag-a', mkP(1, 1, '#c8ff00'), null);
+    res.lMask = Formations.catalogs[T.PEBBLES]['pebbles-2x2-blob-b'].maskN;   // the alpha hole = 3 cells
+
+    // -- plant TWO pebbles regions well apart (section 11's planting rule)
+    const spots = [];
+    for (let y = 6; y < CFG.H - 12 && spots.length < 2; y++) for (let x = 6; x < W - 12 && spots.length < 2; x++) {
+      let ok = true;
+      for (let oy = -1; oy < 7 && ok; oy++) for (let ox = -1; ox < 8 && ok; ox++)
+        if (S.map.terrain[(y + oy) * W + x + ox] !== T.GRASS || Bld.at(x + ox, y + oy)) ok = false;
+      if (ok && spots.every(s => Math.hypot(s.x - x, s.y - y) > 14)) spots.push({ x, y });
+    }
+    if (spots.length < 2) return { skip: 'no room to plant two regions' };
+    const vis = G.visibleAt; G.visibleAt = () => true;
+    const plant = (s, tail) => {
+      for (let oy = 0; oy < 4; oy++) for (let ox = 0; ox < 4; ox++) {
+        S.map.terrain[(s.y + oy) * W + s.x + ox] = T.PEBBLES;
+        R.updateTile(s.x + ox, s.y + oy);
+      }
+      if (tail) for (const [ox, oy] of [[4, 1], [5, 1]]) {
+        S.map.terrain[(s.y + oy) * W + s.x + ox] = T.PEBBLES;
+        R.updateTile(s.x + ox, s.y + oy);
+      }
+    };
+    plant(spots[0], true); plant(spots[1], false);
+    G.visibleAt = vis;
+
+    const regionAt = (s) => Formations.regionsFor(T.PEBBLES).find(r => r.set.has(s.y * W + s.x));
+    const rA = regionAt(spots[0]), rB = regionAt(spots[1]);
+    if (!rA || !rB) return { skip: 'planted regions not found' };
+    const sA = Formations.solve(rA), sB = Formations.solve(rB);
+
+    // -- 17a coverage + no-spill (data level: masks land only on region tiles)
+    res.coveredPlusHoles = sA.covered.size + sA.holes.length === rA.area &&
+                           sB.covered.size + sB.holes.length === rB.area;
+    res.fullCover = sA.holes.length === 0 && sB.holes.length === 0;
+    let spill = 0;
+    for (const [r, s] of [[rA, sA], [rB, sB]])
+      for (const pl of s.placements)
+        for (const [dx, dy] of pl.piece.maskCells)
+          if (!r.set.has((pl.ty + dy) * W + pl.tx + dx)) spill++;
+    res.spill = spill;
+    // the composed canvas stays inside bbox + the capped overhang band
+    const rec = Formations.regionCanvas(rA, sA);
+    res.canvasBounded = rec.x === rA.box[0] * 32 &&
+      rec.c.width === (rA.box[2] - rA.box[0] + 1) * 32 &&
+      rec.y === rA.box[1] * 32 - Math.ceil(1.5 * 32) &&
+      rec.c.height === (rA.box[3] - rA.box[1] + 1) * 32 + Math.ceil(1.5 * 32);
+
+    // -- 17b determinism: same signature, same placements, across cache drops
+    const key = (s) => s.placements.map(pl => pl.stem + '@' + pl.tx + ',' + pl.ty).join('|');
+    const kA = key(sA);
+    Formations._solutions = new Map(); Formations._canvases = new Map();
+    res.deterministic = key(Formations.solve(regionAt(spots[0]))) === kA;
+
+    // -- 17c tile-data invariance: solving + drawing writes NO map array and
+    // flips NO rule answer; the terrain cache itself is byte-untouched
+    const sig = () => {
+      let h = 0x811c9dc5;
+      const mix = (x2) => { h ^= (x2 == null ? 251 : x2 & 255); h = Math.imul(h, 0x01000193); };
+      for (const f of ['terrain', 'seenTerrain', 'explored']) for (const x2 of (S.map[f] || [])) mix(x2);
+      for (const k2 of Object.keys(S.map.reclaimed || {}).sort()) mix(+k2);
+      return h >>> 0;
+    };
+    const answers = () => {
+      const out = [];
+      for (const r of [rA, rB]) for (const k of r.cells) {
+        const x2 = k % W, y2 = (k / W) | 0;
+        out.push(Path.passable(x2, y2, 'P'), Path.passable(x2, y2, 'P', 'naval'),
+          Bld.tileFree(x2, y2), Bld.canPlace('P', 'house', x2, y2, { noCost: 1 }).code);
+      }
+      return out.join(',');
+    };
+    const cacheHash = () => {
+      const d = R.terrainCache.getContext('2d')
+        .getImageData(rA.box[0] * 32 - 16, rA.box[1] * 32 - 16, 6 * 32, 6 * 32).data;
+      let h = 0x811c9dc5;
+      for (let i = 0; i < d.length; i += 5) { h ^= d[i]; h = Math.imul(h, 0x01000193); }
+      return h >>> 0;
+    };
+    const before = { sig: sig(), ans: answers(), cache: cacheHash() };
+    R.draw(1 / 60);                                     // layer really draws
+    const cats = Formations.catalogs;
+    Formations.catalogs = {}; R.rebuildTerrain(); R.draw(1 / 60);
+    const off = { sig: sig(), ans: answers(), cache: cacheHash() };
+    Formations.catalogs = cats; R.rebuildTerrain();
+    res.mapUntouched = before.sig === off.sig;
+    res.rulesUntouched = before.ans === off.ans;
+    res.cacheUntouched = before.cache === off.cache && before.cache === cacheHash();
+
+    // -- 17d single-region re-solve: an edit in A re-solves A alone, under
+    // budget; B keeps its exact solution OBJECT (never re-shuffled)
+    const sB1 = Formations.solve(regionAt(spots[1]));
+    G.visibleAt = () => true;
+    S.map.terrain[spots[0].y * W + spots[0].x] = T.GRASS;
+    R.updateTile(spots[0].x, spots[0].y);
+    G.visibleAt = vis;
+    const rA2 = Formations.regionsFor(T.PEBBLES).find(r => r.set.has((spots[0].y + 1) * W + spots[0].x));
+    res.editChangedSig = rA2 && rA2.sig !== rA.sig;
+    const t0 = performance.now();
+    const sA2 = Formations.solve(rA2);
+    const resolveMs = performance.now() - t0;
+    res.resolveUnderBudget = resolveMs < 5;
+    res._resolveMs = resolveMs.toFixed(2);
+    res.resolveCovers = sA2.holes.length === 0;
+    res.neighbourUntouched = Formations.solve(regionAt(spots[1])) === sB1;
+
+    // -- 17e absence degrades to procedural, exactly
+    Assets.removeFormationArt('pebbles', 'pebbles-2x2-blob-a');
+    Assets.removeFormationArt('pebbles', 'pebbles-2x2-blob-b');
+    Assets.removeFormationArt('pebbles', 'pebbles-2x1-skirt-a');
+    Assets.removeFormationArt('pebbles', 'pebbles-1x1-crag-a');
+    res.emptyCatalogInert = !Formations.any();
+    R.rebuildTerrain(); R.draw(1 / 60);
+    res.noErrorsAfterRemoval = true;
+    return res;
+  `));
+  if (v.skip) {
+    ck('formationsSkipped', true, v.skip);
+  } else {
+    ck('anAlphaHoleShrinksTheMask', v.lMask === 3, 'L-piece maskN=' + v.lMask);
+    ck('everyRegionTileIsCoveredOrprocedural', v.coveredPlusHoles, '');
+    ck('aFullCatalogLeavesNoHoles', v.fullCover, '');
+    ck('noPieceSpillsOffItsRegion', v.spill === 0, v.spill + ' mask cells astray');
+    ck('theRegionCanvasIsBboxPlusOverhang', v.canvasBounded, '');
+    ck('theSameSeedPacksTheSamePieces', v.deterministic, '');
+    ck('formationsWriteToNoMapArray', v.mapUntouched, '');
+    ck('andFlipNoRuleAnswer', v.rulesUntouched, '');
+    ck('andNeverTouchTheTerrainCache', v.cacheUntouched, '');
+    ck('anEditReSolvesItsOwnRegionOnly', v.editChangedSig && v.neighbourUntouched,
+      'sig moved, neighbour solution object kept');
+    ck('andTheReSolveIsUnderBudget', v.resolveUnderBudget, v._resolveMs + 'ms (budget 5)');
+    ck('andStillCoversTheNewShape', v.resolveCovers, '');
+    ck('anEmptyCatalogIsInert', v.emptyCatalogInert && v.noErrorsAfterRemoval, '');
+  }
+  await p.close();
+}
+
+/* ---- 17g. the MOUNTAIN consumer: formation pieces ride the strip layer —
+   full occlusion kept — and a region the solver cannot fully cover keeps
+   the whole procedural extrusion (the 'region' policy: one object, never a
+   mix). scenes1 xlarge is the range-heavy fixture mountain.mjs uses. */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(`
+    Boot.force(); G.newGame('scenes1','moderate','xlarge');
+    Screens._demo=false; Screens.show('playing'); S.paused=true;
+    for (let i=0;i<S.map.explored.length;i++){S.map.explored[i]=1; if(S.map.seenTerrain)S.map.seenTerrain[i]=S.map.terrain[i];}
+    R.rebuildTerrain();
+    const res = {};
+    res.proceduralStrips = R.mtnStrips().length;
+    const mkP = (w, h, col, over) => {
+      const c = document.createElement('canvas');
+      c.width = w * 128; c.height = h * 128 + (over || 0);
+      const g = c.getContext('2d');
+      g.fillStyle = col; g.fillRect(0, 0, c.width, c.height);
+      return c;
+    };
+    Assets.setFormationArt('mountain', 'mountain-2x2-peak-a', mkP(2, 2, '#666a75', 128), null);
+    Assets.setFormationArt('mountain', 'mountain-2x1-skirt-a', mkP(2, 1, '#4b4f5a'), null);
+    Assets.setFormationArt('mountain', 'mountain-1x2-ridge-a', mkP(1, 2, '#5a5f6a', 64), null);
+    Assets.setFormationArt('mountain', 'mountain-1x1-crag-a', mkP(1, 1, '#83899a', 32), null);
+    const strips = R.mtnStrips();
+    res.allFormation = R._mtnArt.length > 0 && R._mtnArt.every(a => a.kind === 'formation');
+    res.stripCount = strips.length;
+    let sorted = true;
+    for (let i = 1; i < strips.length; i++) if (strips[i].row < strips[i - 1].row) sorted = false;
+    res.sorted = sorted;
+    // cover is exactly the mountain cells — formations never spill onto
+    // walkable ground, so the occluded-walkable set is empty
+    res.coverExact = R._mtnCover.reduce((a, v2) => a + v2, 0) ===
+                     R.mtnRegions().reduce((a, r) => a + r.cells.length, 0);
+    res.occEmpty = R._mtnOcc.size === 0;
+    // without the 1x1 some regions cannot fully cover -> those whole regions
+    // revert to procedural; nothing renders half-and-half
+    Assets.removeFormationArt('mountain', 'mountain-1x1-crag-a');
+    R.mtnStrips();
+    const kinds = new Set(R._mtnArt.map(a => a.kind || 'region'));
+    res.mixedIsPerRegion = kinds.has('formation') && (kinds.has('region') || kinds.has('outcrop'));
+    // full removal -> the procedural layer returns whole
+    Assets.removeFormationArt('mountain', 'mountain-2x2-peak-a');
+    Assets.removeFormationArt('mountain', 'mountain-2x1-skirt-a');
+    Assets.removeFormationArt('mountain', 'mountain-1x2-ridge-a');
+    res.proceduralReturns = R.mtnStrips().length === res.proceduralStrips;
+    return res;
+  `));
+  ck('mountainFormationsRideTheStripLayer', v.allFormation && v.stripCount > 0 && v.sorted,
+    v.stripCount + ' strips, sorted by ground row');
+  ck('theCoverIsExactlyTheMountain', v.coverExact && v.occEmpty,
+    'no spill, no occluded-walkable tiles');
+  ck('aRegionIsFormationOrProceduralNeverBoth', v.mixedIsPerRegion, '');
+  ck('removingTheCatalogRestoresTheExtrusion', v.proceduralReturns, '');
+  await p.close();
+}
+
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL LAND CHECKS PASS');
 await b.close();

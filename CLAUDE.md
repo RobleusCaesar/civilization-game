@@ -97,7 +97,7 @@ node tests/footprint.mjs       # the primary works stand on 2×2; old saves keep
 node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring rule; ?dev=1 preview = the shipping path
 node tests/placement.mjs       # ONE placement truth (canPlace codes); ghost+confirm flow; the seal clamp; AI parity
 node tests/boot.mjs            # frame one is the logo; no chrome before a game; the notch inset
-node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything
+node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything; formation art (§17) writes no map array, packs deterministically, re-solves one region per edit
 node tests/calm-peace.mjs      # Calm starts at PEACE: nobody auto-engages until the player's first strike; the rival races for its own wonder
 node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do
 node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-order tolerant, saves mid-lesson, the scout draws no RNG

@@ -282,6 +282,158 @@ const Assets = {
   },
   hasTerrainArt(t) { const a = this.terrain[t]; return !!(a && a.length); },
 
+  /* ---- FORMATION ART: multi-tile drawn pieces over terrain REGIONS ----
+
+       assets/terrain/formations/{terrain}/{terrain}-{W}x{H}-{shape}-{letter}.png
+       e.g.  assets/terrain/formations/mountain/mountain-4x3-ridge-a.png
+
+     The per-tile override above scales ONE texture to ONE tile; a landform
+     spanning 6x5 tiles needs the opposite primitive — hand-drawn PIECES
+     packed over whole regions (js/formations.js owns regions, the solver
+     and drawing; ART_PLAN.md has the authoring rules). All lowercase.
+     {W}x{H} is the ground footprint in tiles; image width MUST equal
+     W * FORMATION_PX, image height MAY exceed H * FORMATION_PX — the
+     excess is upward overhang (peaks rising north of the footprint), and
+     the bottom edge is the baseline. Optional sidecar {same-name}.json
+     with offsetX/offsetY (footprint fractions) and scale — the building
+     sidecar's exact shape.
+
+     DISCOVERY is a known stem list per terrain (FORMATION_CATALOG below —
+     a list of filenames in code, not a manifest of metadata: everything
+     else is derived from the name and the pixels). A 404 = piece absent,
+     never an error; a partial catalog covers what it can and procedural
+     art fills the rest. Same ?v= cache-buster as everything.
+
+     THE COVERAGE MASK IS DERIVED FROM THE ALPHA CHANNEL, never
+     hand-authored: on decode the bottom H*FORMATION_PX band is downsampled
+     to a WxH grid and a cell counts as covered when its mean alpha
+     coverage exceeds FORMATION_MASK_MIN — so an L-shaped or tapered massif
+     packs as its real shape, not its bounding rectangle. On file:// the
+     pixels are unreadable (canvas taint); the mask degrades to the full
+     rectangle there, which only ever OVER-claims ground — dev drops use
+     object URLs and keep real masks. */
+  FORMATION_DIR: 'assets/terrain/formations/',
+  FORMATION_PX: 128,
+  FORMATION_MASK_MIN: 0.35,
+  // the known stem list per terrain directory. Phase 2 fills mountain.
+  FORMATION_CATALOG: {
+    mountain: [],
+  },
+  formationStemRe: /^([a-z]+)-(\d+)x(\d+)-([a-z0-9]+)-([a-z])$/,
+  formationTerrains() { return Object.keys(this.FORMATION_CATALOG); },
+  formationName(stem) { return String(stem).toLowerCase() + '.png'; },
+  formationUrl(tName, stem) {
+    return this.FORMATION_DIR + tName + '/' + this.formationName(stem) + '?v=' + (CFG.ART_V || 1);
+  },
+  formationSlotKey(tName, stem) { return 'fm|' + tName + '|' + stem; },
+  // parse a stem into {tName, tId, w, h, shape, letter} — null if malformed,
+  // if the terrain is not a real T member, or if the stem's terrain does not
+  // match the directory it claims to live in
+  parseFormationStem(stem, tName) {
+    const m = this.formationStemRe.exec(String(stem).toLowerCase());
+    if (!m) return null;
+    if (tName && m[1] !== tName) return null;
+    const tId = T[m[1].toUpperCase()];
+    if (tId === undefined) return null;
+    const w = +m[2], h = +m[3];
+    if (!(w >= 1 && h >= 1 && w <= 12 && h <= 12)) return null;
+    return { tName: m[1], tId, w, h, shape: m[4], letter: m[5] };
+  },
+  _tryLoadFormation(tName, stem) {
+    const img = new Image();
+    img.onload = async () => {
+      let meta = null;
+      if (location.protocol !== 'file:') try {
+        const r = await fetch(this.FORMATION_DIR + tName + '/' + stem + '.json?v=' + (CFG.ART_V || 1));
+        if (r.ok) meta = await r.json();
+      } catch (e) { /* no sidecar — defaults */ }
+      if (window.DevArt && DevArt.overrides && DevArt.overrides[this.formationSlotKey(tName, stem)]) return;
+      this.setFormationArt(tName, stem, img, meta);
+    };
+    img.onerror = () => { this.art[this.formationSlotKey(tName, stem)] = null; };
+    img.src = this.formationUrl(tName, stem);
+  },
+  /* downsample the footprint band of the alpha channel to a WxH coverage
+     grid. Mean alpha per cell against FORMATION_MASK_MIN; a taint error
+     (file://) falls back to the full rectangle. */
+  deriveFormationMask(img, w, h) {
+    const mask = new Uint8Array(w * h);
+    try {
+      const S2 = 16;                       // samples per cell side
+      const c = document.createElement('canvas');
+      c.width = w * S2; c.height = h * S2;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.imageSmoothingEnabled = true;      // averaging IS the point here
+      const bandH = Math.min(img.height, h * this.FORMATION_PX);
+      g.drawImage(img, 0, img.height - bandH, img.width, bandH,
+        0, (h * S2) * (1 - bandH / (h * this.FORMATION_PX)), w * S2, (h * S2) * (bandH / (h * this.FORMATION_PX)));
+      const d = g.getImageData(0, 0, w * S2, h * S2).data;
+      for (let cy = 0; cy < h; cy++) for (let cx = 0; cx < w; cx++) {
+        let sum = 0;
+        for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++)
+          sum += d[((cy * S2 + y) * w * S2 + cx * S2 + x) * 4 + 3];
+        if (sum / (S2 * S2 * 255) >= this.FORMATION_MASK_MIN) mask[cy * w + cx] = 1;
+      }
+    } catch (e) {
+      mask.fill(1);                        // file:// taint — full-rect claim
+    }
+    return mask;
+  },
+  /* install one piece — startup and the ?dev=1 drop both land HERE. Returns
+     false (with a one-shot warning) for a malformed stem or a width that
+     does not match the declared footprint: a wrong-width piece would scale
+     to the wrong number of tiles and lie about the ground it stands on. */
+  setFormationArt(tName, stem, img, meta) {
+    if (!window.Formations) return false;
+    stem = String(stem).toLowerCase();
+    const p = this.parseFormationStem(stem, null);
+    if (!p || (p.tName !== String(tName).toLowerCase())) return false;
+    if (!img || img.width !== p.w * this.FORMATION_PX) {
+      const k = 'fmw:' + stem;
+      if (!this._fmWarned) this._fmWarned = {};
+      if (!this._fmWarned[k]) {
+        this._fmWarned[k] = 1;
+        console.warn('Formation piece ' + stem + ': width ' + (img && img.width) +
+          ' != ' + (p.w * this.FORMATION_PX) + ' (' + p.w + ' tiles x ' + this.FORMATION_PX + 'px) — refused');
+      }
+      return false;
+    }
+    const mask = this.deriveFormationMask(img, p.w, p.h);
+    const maskCells = [];
+    for (let dy = 0; dy < p.h; dy++) for (let dx = 0; dx < p.w; dx++)
+      if (mask[dy * p.w + dx]) maskCells.push([dx, dy]);
+    if (!maskCells.length) return false;   // fully transparent footprint
+    Formations.addPiece({
+      t: p.tId, stem, w: p.w, h: p.h, shape: p.shape, letter: p.letter,
+      img, mask, maskCells, maskN: maskCells.length,
+      sidecar: meta ? {
+        ox: isFinite(+meta.offsetX) ? +meta.offsetX : 0,
+        oy: isFinite(+meta.offsetY) ? +meta.offsetY : 0,
+        scale: (isFinite(+meta.scale) && +meta.scale > 0) ? +meta.scale : 1,
+      } : null,
+      _strip: null,
+    });
+    const k = this.formationSlotKey(p.tName, stem);
+    this.art[k] = img;
+    this.loaded[k] = true;
+    return true;
+  },
+  removeFormationArt(tName, stem) {
+    if (!window.Formations) return false;
+    const p = this.parseFormationStem(stem, String(tName).toLowerCase());
+    if (!p) return false;
+    const k = this.formationSlotKey(p.tName, stem);
+    delete this.art[k];
+    delete this.loaded[k];
+    return Formations.removePiece(p.tId, String(stem).toLowerCase());
+  },
+  formationPiece(tName, stem) {
+    const p = this.parseFormationStem(stem, String(tName).toLowerCase());
+    if (!p || !window.Formations) return null;
+    const c = Formations.catalogs[p.tId];
+    return (c && c[String(stem).toLowerCase()]) || null;
+  },
+
   artIds() { return Object.keys(CFG.BUILDINGS).filter(k => this.EXCLUDE.indexOf(k) < 0); },
   artSlots() {
     const out = [];
@@ -304,6 +456,8 @@ const Assets = {
       for (const mode of this.endgameModes()) this._tryEndgame(outcome, mode, 1);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key]);
     for (const m of this.originMotifs()) this._tryLoadOrigin(m);
+    for (const tName of this.formationTerrains())
+      for (const stem of this.FORMATION_CATALOG[tName]) this._tryLoadFormation(tName, stem);
     for (const k of Object.keys(T)) this._tryTerrain(T[k], 1);
     this.ready = true;
     return { ok: true, data: { slots: this.artSlots().length + this.campTribes().length } };
