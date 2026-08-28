@@ -394,7 +394,7 @@
       document.body.appendChild(p);
       c0.panel = p;
       const wSel = p.querySelector('#dcW'), hSel = p.querySelector('#dcH');
-      for (let i = 1; i <= 8; i++) {
+      for (let i = 1; i <= 16; i++) {
         wSel.appendChild(new Option(i, i));
         hSel.appendChild(new Option(i, i));
       }

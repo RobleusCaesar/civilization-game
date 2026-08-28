@@ -356,8 +356,13 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
         Assets.parseFormationStem('dragon-2x2-peak-a', null) === null &&      // no such terrain
         Assets.parseFormationStem('mountain-2x2-peak', null) === null &&      // no letter
         Assets.parseFormationStem('mountain-0x2-peak-a', null) === null &&    // zero footprint
+        Assets.parseFormationStem('mountain-17x2-peak-a', null) === null &&   // past the 16-tile ceiling
         Assets.parseFormationStem('mountain-2x2-peak-a', 'forest') === null,  // wrong directory
         '');
+      ck('aToweringRangeIsARealPiece',
+        !!Assets.parseFormationStem('mountain-16x9-range-a', null) &&
+        Assets.parseFormationStem('mountain-16x9-range-a', null).w === 16,
+        '16 tiles wide parses — the ceiling moved for the hero ranges');
       // a stand-in piece: install, mask from alpha, width validation, removal
       const mkPiece = (w, h, hole) => {
         const c = document.createElement('canvas');
