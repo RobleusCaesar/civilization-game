@@ -21,6 +21,18 @@
     overrides: {},   // slot key -> dropped filename (what the panel lists)
     _saved: {},      // slot key -> { p, a } — the SHIPPED drawables, for revert
 
+    /* ---- the formation workbench ----
+       maskOverlay: draw the derived per-cell coverage grid over placed
+       pieces (render.js consults it behind the DevArt.on gate).
+       formationPin: {terrain, stem} — R.buildMtnLayer pins that piece onto
+       the LARGEST region, solver be damned, so a big piece is viewable on a
+       map whose regions are all small.
+       _formInfo: stem -> plain-words contract report, rendered in the panel
+       (never the console — the artist is on a phone). */
+    maskOverlay: false,
+    formationPin: null,
+    _formInfo: {},
+
     // filename -> {kind:'building', id, lv} or {kind:'camp', tribe} per the
     // two conventions, or null (case-insensitive in, canonical lowercase out
     // — Pages is case-sensitive, people are not)
@@ -84,16 +96,100 @@
     },
     // one formation piece — same shipping path (Assets.setFormationArt, so
     // the drop derives its coverage mask from the alpha exactly as a shipped
-    // file would), same override/revert bookkeeping
+    // file would), same override/revert bookkeeping. Every drop leaves a
+    // plain-words contract report in the panel, accepted or refused.
     injectFormation(terrain, stem, img, name) {
       const k = Assets.formationSlotKey(terrain, stem);
-      if (!this._saved[k])
-        this._saved[k] = { piece: Assets.formationPiece(terrain, stem),
-                           art: Assets.art[k], loaded: !!Assets.loaded[k] };
-      if (!Assets.setFormationArt(terrain, stem, img, null)) return false;
+      const prior = { piece: Assets.formationPiece(terrain, stem),
+                      art: Assets.art[k], loaded: !!Assets.loaded[k] };
+      const ok = Assets.setFormationArt(terrain, stem, img, null);
+      this._formInfo[stem] = this._formationReport(terrain, stem, img, ok);
+      if (!ok) { this._renderPanel(); return false; }
+      if (!this._saved[k]) this._saved[k] = prior;
       this.overrides[k] = name || Assets.formationName(stem);
       this._renderPanel();
       return true;
+    },
+    /* the contract, in plain words: what the filename promises vs what the
+       pixels deliver. Width must equal W*FORMATION_PX; every footprint cell
+       should carry at least FORMATION_MASK_MIN mean alpha or its tile shows
+       bare ground under the art. */
+    _formationReport(terrain, stem, img, accepted) {
+      const pf = Assets.parseFormationStem(stem, terrain);
+      if (!pf) return 'refused — the name does not match {terrain}-{W}x{H}-{shape}-{letter}.png';
+      const wantW = pf.w * Assets.FORMATION_PX;
+      if (!img || img.width !== wantW)
+        return 'refused — image is ' + (img && img.width) + 'px wide but the name says ' +
+          pf.w + ' tile' + (pf.w > 1 ? 's' : '') + ' (' + pf.w + '×' + Assets.FORMATION_PX + ' = ' + wantW + 'px)';
+      const min = Assets.FORMATION_MASK_MIN;
+      const fr = Assets.formationCoverage(img, pf.w, pf.h);
+      const over = Math.max(0, img.height - pf.h * Assets.FORMATION_PX);
+      const overNote = over ? ' · +' + (over / Assets.FORMATION_PX).toFixed(1) + ' tiles of peak overhang' : '';
+      if (!fr) return (accepted ? '' : 'refused — ') + img.width + '×' + img.height +
+        ' — pixels unreadable here (file://), mask assumed the full ' + pf.w + '×' + pf.h + overNote;
+      const low = [];
+      let covered = 0;
+      for (let cy = 0; cy < pf.h; cy++) for (let cx = 0; cx < pf.w; cx++) {
+        const f = fr[cy * pf.w + cx];
+        if (f >= min) covered++;
+        else low.push('(col ' + (cx + 1) + ', row ' + (cy + 1) + ') ' + Math.round(f * 100) + '%');
+      }
+      if (!accepted)
+        return 'refused — the footprint band is effectively empty: best cell ' +
+          Math.round(Math.max(0, ...fr) * 100) + '% painted, needs ' + Math.round(min * 100) + '%';
+      if (!low.length)
+        return '✓ ' + img.width + '×' + img.height + ' — mask covers all ' +
+          (pf.w * pf.h) + ' cells (footprint ' + pf.w + '×' + pf.h + ')' + overNote;
+      return '⚠ mask ' + covered + '/' + (pf.w * pf.h) + ' cells' + overNote +
+        ' — under ' + Math.round(min * 100) + '% painted: ' + low.join(', ') +
+        '; those tiles will show bare ground under the art';
+    },
+    // pin/unpin one dropped piece onto the largest mountain region — the
+    // solver is bypassed for that region until unpinned (R.buildMtnLayer)
+    setFormationPin(terrain, stem) {
+      const cur = this.formationPin;
+      this.formationPin = (cur && cur.stem === stem) ? null : (stem ? { terrain, stem } : null);
+      if (window.R) { R._mtnLayerKey = ''; R._mtnDirty = true; }
+      this._renderPanel();
+    },
+    /* the coverage grid: green = cells the derived mask claims, red =
+       footprint cells it does NOT claim (bare ground will show there).
+       Drawn from the same solutions the renderer used — the pinned piece on
+       its region, solved placements everywhere else. */
+    drawMasks(g) {
+      if (!window.Formations || !window.R || !window.S || !S.map || !S.map.terrain) return;
+      const t = T.MOUNTAIN, TL = CFG.TILE;
+      const pin = this.formationPin;
+      if (!Formations.artTerrain(t)) return;
+      const regions = R.mtnRegions();
+      let pinRegion = null;
+      if (pin) for (const r of regions)
+        if (!pinRegion || r.cells.length > pinRegion.cells.length) pinRegion = r;
+      g.save();
+      g.lineWidth = 1;
+      for (const r of regions) {
+        let placements = null;
+        if (r === pinRegion) {
+          const pl = Formations.pinPlacement(r, pin.stem);
+          if (pl) placements = [pl];
+        } else {
+          const sol = Formations.solve(Formations.regionFromCells(r.cells, t));
+          if (sol.placements.length && !sol.holes.length) placements = sol.placements;
+        }
+        if (!placements) continue;
+        for (const pl of placements) {
+          const pc = pl.piece;
+          for (let dy = 0; dy < pc.h; dy++) for (let dx = 0; dx < pc.w; dx++) {
+            const covered = pc.mask[dy * pc.w + dx];
+            const x = (pl.tx + dx) * TL, y = (pl.ty + dy) * TL;
+            g.fillStyle = covered ? 'rgba(90,220,130,0.22)' : 'rgba(230,80,80,0.30)';
+            g.fillRect(x, y, TL, TL);
+            g.strokeStyle = covered ? 'rgba(90,220,130,0.9)' : 'rgba(230,80,80,0.9)';
+            g.strokeRect(x + 0.5, y + 0.5, TL - 1, TL - 1);
+          }
+        }
+      }
+      g.restore();
     },
     revert(k) {
       const s = this._saved[k];
@@ -105,6 +201,8 @@
         else Assets.removeFormationArt(terrain, stem);
         if (s.loaded) { Assets.art[k] = s.art; Assets.loaded[k] = true; }
         else { delete Assets.art[k]; delete Assets.loaded[k]; if (s.art === null) Assets.art[k] = null; }
+        delete this._formInfo[stem];
+        if (this.formationPin && this.formationPin.stem === stem) this.setFormationPin(null, null);
         delete this._saved[k];
         delete this.overrides[k];
         this._renderPanel();
@@ -204,7 +302,8 @@
         this._showPicker();          // next queued file, if any
       };
       box.innerHTML = '<div>"' + job.name.replace(/[<>&]/g, '') +
-        '" doesn’t match {id}-l{level}.png or camp-{tribe}.png — pick its slot:</div>';
+        '" doesn’t match {id}-l{level}.png, camp-{tribe}.png or ' +
+        '{terrain}-{W}x{H}-{shape}-{letter}.png — pick its slot:</div>';
       box.appendChild(sel);
       box.appendChild(mk('Use this slot', () => {
         this._injectByValue(sel.value, job.img, job.name);
@@ -230,12 +329,39 @@
         const label = document.createElement('span');
         label.textContent = k + ' ← ' + this.overrides[k];
         label.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        row.appendChild(label);
+        // formation rows get the force-place pin — the solver is bypassed
+        // and the piece lands on the largest mountain region
+        if (k.indexOf('fm|') === 0) {
+          const [, terrain, stem] = k.split('|');
+          const pinned = this.formationPin && this.formationPin.stem === stem;
+          const pin = document.createElement('button');
+          pin.textContent = pinned ? 'unpin' : 'pin';
+          pin.style.cssText = 'font:11px monospace' + (pinned ? ';background:#8a6a1e;color:#fff' : '');
+          pin.onclick = () => this.setFormationPin(terrain, stem);
+          row.appendChild(pin);
+        }
         const rv = document.createElement('button');
         rv.textContent = 'revert';
         rv.style.cssText = 'font:11px monospace';
         rv.onclick = () => this.revert(k);
-        row.appendChild(label); row.appendChild(rv);
+        row.appendChild(rv);
         list.appendChild(row);
+      }
+      // the formation contract reports — accepted and refused drops alike
+      const info = this._panel.querySelector('#devFormInfo');
+      if (info) {
+        const stems = Object.keys(this._formInfo).sort();
+        info.style.display = stems.length ? '' : 'none';
+        info.innerHTML = '';
+        for (const stem of stems) {
+          const line = document.createElement('div');
+          line.style.cssText = 'margin:3px 0;word-break:break-word' +
+            (/^refused/.test(this._formInfo[stem]) ? ';color:#e88'
+              : /^⚠/.test(this._formInfo[stem]) ? ';color:#e8c15a' : ';color:#9d9');
+          line.textContent = stem + ': ' + this._formInfo[stem];
+          info.appendChild(line);
+        }
       }
     },
   };
@@ -243,11 +369,12 @@
   if (!on) return;   // players: nothing below this line ever runs
 
   const boot = () => {
-    // ---- the drop target: the whole window ----
-    addEventListener('dragover', e => { e.preventDefault(); });
-    addEventListener('drop', e => {
-      e.preventDefault();
-      const files = Array.from((e.dataTransfer && e.dataTransfer.files) || [])
+    /* ---- ONE intake for every route a PNG can arrive by: the desktop
+       drag-drop AND the file-picker button (mobile Safari has no drag-drop —
+       the picker is how an artist works from a phone). Same inference, same
+       injection, same object-URL lifetime. */
+    const handleFiles = (fileList) => {
+      const files = Array.from(fileList || [])
         .filter(f => f.type === 'image/png' || /\.png$/i.test(f.name));
       for (const f of files) {
         const img = new Image();
@@ -261,6 +388,14 @@
         };
         img.src = URL.createObjectURL(f);   // in-memory only; gone on refresh
       }
+    };
+    DevArt._handleFiles = handleFiles;      // the contract test drives this
+
+    // ---- the drop target: the whole window ----
+    addEventListener('dragover', e => { e.preventDefault(); });
+    addEventListener('drop', e => {
+      e.preventDefault();
+      handleFiles(e.dataTransfer && e.dataTransfer.files);
     });
 
     // ---- the panel ----
@@ -272,14 +407,25 @@
     p.innerHTML =
       '<div style="font-weight:bold;margin-bottom:4px">ART DEV — drop PNGs to preview</div>' +
       '<div id="devArtList"></div>' +
-      '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' +
-      '<button id="devArtRevertAll" style="font:11px monospace">revert all</button></div>' +
+      '<div id="devFormInfo" style="display:none;margin-top:6px;border-top:1px solid #4a3c28;padding-top:4px;font:11px monospace"></div>' +
+      '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
+      '<button id="devArtRevertAll" style="font:11px monospace">revert all</button>' +
+      '<button id="devArtFileBtn" style="font:11px monospace">load PNGs…</button>' +
+      '<input type="file" id="devArtFile" accept="image/png,.png" multiple style="display:none">' +
+      '<label style="font:11px monospace;display:flex;align-items:center;gap:3px">' +
+      '<input type="checkbox" id="devArtMaskTgl">coverage grid</label></div>' +
+      '<div style="margin-top:4px;opacity:.55;font:10px monospace">formations: {terrain}-{W}x{H}-{shape}-{letter}.png, width = W×128</div>' +
       '<div style="margin-top:8px;border-top:1px solid #4a3c28;padding-top:6px">' +
       'canonical filename:<br><select id="devArtSlot" style="width:100%;font:11px monospace;margin:4px 0"></select>' +
       '<button id="devArtCopy" style="font:11px monospace">copy filename</button>' +
       '<span id="devArtCopied" style="margin-left:6px;opacity:0">copied ✓</span></div>';
     document.body.appendChild(p);
     DevArt._panel = p;
+    // the phone route: no drag-drop in mobile Safari, so a real file input
+    const fileInput = p.querySelector('#devArtFile');
+    p.querySelector('#devArtFileBtn').onclick = () => fileInput.click();
+    fileInput.onchange = () => { handleFiles(fileInput.files); fileInput.value = ''; };
+    p.querySelector('#devArtMaskTgl').onchange = (e) => { DevArt.maskOverlay = !!e.target.checked; };
     const sel = p.querySelector('#devArtSlot');
     for (const s of DevArt._allSlots()) {
       const o = document.createElement('option');

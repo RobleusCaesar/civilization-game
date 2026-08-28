@@ -2461,11 +2461,21 @@ const R = {
        FULLY cover keeps the procedural drawing — the extrusion is one
        object and cannot mix with pieces (the 'region' fallback policy). */
     const haveFormations = window.Formations && Formations.artTerrain(T.MOUNTAIN);
+    /* the ?dev=1 force-place pin: the workbench pins one dropped piece onto
+       the LARGEST region, solver be damned — a 5x4 range is unviewable on
+       the 2-cell crags the solver would leave it. Gated on DevArt.on, so
+       normal play never takes this branch. */
+    const pin = (window.DevArt && DevArt.on && DevArt.formationPin && haveFormations)
+      ? DevArt.formationPin : null;
+    let pinRegion = null;
+    if (pin) for (const r of regions)
+      if (!pinRegion || r.cells.length > pinRegion.cells.length) pinRegion = r;
     if (!haveFormations && window.Assets && Assets.terrainImg(T.MOUNTAIN, 0)) return;   // supplied tile art wins
     this.landLattices();
     const terr = (S.map.seenTerrain || S.map.terrain);
     for (const r of regions) {
-      let art = haveFormations ? Formations.mtnRegionStrips(r) : null;
+      let art = (r === pinRegion) ? Formations.pinnedStrips(r, pin.stem) : null;
+      if (!art && haveFormations) art = Formations.mtnRegionStrips(r);
       if (!art) art = (r.cls === 0) ? this.drawMtnOutcrop(r) : this.drawMtnRegion(r);
       if (!art) continue;
       this._mtnArt.push(art);
@@ -7736,6 +7746,10 @@ const R = {
     g.imageSmoothingEnabled = true;
     g.drawImage(this.fogBlurCv, 0, 0, this.fogBlurCv.width, this.fogBlurCv.height, 0, 0, CFG.W * TL, CFG.H * TL);
     g.imageSmoothingEnabled = false;
+
+    // ?dev=1 formation workbench: the per-cell coverage grid over placed
+    // pieces, above the fog so it always reads. One short-circuit in play.
+    if (window.DevArt && DevArt.on && DevArt.maskOverlay) DevArt.drawMasks(g);
 
     // SPECIAL EVENT — the long winter's pall: a cold blue cast and drifting
     // snow over the whole view while the freeze holds

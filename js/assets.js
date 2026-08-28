@@ -315,7 +315,8 @@ const Assets = {
   FORMATION_DIR: 'assets/terrain/formations/',
   FORMATION_PX: 128,
   FORMATION_MASK_MIN: 0.35,
-  // the known stem list per terrain directory. Phase 2 fills mountain.
+  // the known stem list per terrain directory. Empty until the hand-authored
+  // catalog lands — preview unlisted pieces live via the ?dev=1 workbench.
   FORMATION_CATALOG: {
     mountain: [],
   },
@@ -353,11 +354,10 @@ const Assets = {
     img.onerror = () => { this.art[this.formationSlotKey(tName, stem)] = null; };
     img.src = this.formationUrl(tName, stem);
   },
-  /* downsample the footprint band of the alpha channel to a WxH coverage
-     grid. Mean alpha per cell against FORMATION_MASK_MIN; a taint error
-     (file://) falls back to the full rectangle. */
-  deriveFormationMask(img, w, h) {
-    const mask = new Uint8Array(w * h);
+  /* mean alpha coverage of each footprint cell, as fractions 0..1 —
+     the ?dev=1 workbench reports these in plain words. Null on a taint
+     error (file://), where the pixels cannot be read. */
+  formationCoverage(img, w, h) {
     try {
       const S2 = 16;                       // samples per cell side
       const c = document.createElement('canvas');
@@ -368,15 +368,26 @@ const Assets = {
       g.drawImage(img, 0, img.height - bandH, img.width, bandH,
         0, (h * S2) * (1 - bandH / (h * this.FORMATION_PX)), w * S2, (h * S2) * (bandH / (h * this.FORMATION_PX)));
       const d = g.getImageData(0, 0, w * S2, h * S2).data;
+      const fr = new Float32Array(w * h);
       for (let cy = 0; cy < h; cy++) for (let cx = 0; cx < w; cx++) {
         let sum = 0;
         for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++)
           sum += d[((cy * S2 + y) * w * S2 + cx * S2 + x) * 4 + 3];
-        if (sum / (S2 * S2 * 255) >= this.FORMATION_MASK_MIN) mask[cy * w + cx] = 1;
+        fr[cy * w + cx] = sum / (S2 * S2 * 255);
       }
+      return fr;
     } catch (e) {
-      mask.fill(1);                        // file:// taint — full-rect claim
+      return null;
     }
+  },
+  /* downsample the footprint band of the alpha channel to a WxH coverage
+     grid. Mean alpha per cell against FORMATION_MASK_MIN; a taint error
+     (file://) falls back to the full rectangle. */
+  deriveFormationMask(img, w, h) {
+    const mask = new Uint8Array(w * h);
+    const fr = this.formationCoverage(img, w, h);
+    if (!fr) { mask.fill(1); return mask; }   // file:// taint — full-rect claim
+    for (let i = 0; i < w * h; i++) if (fr[i] >= this.FORMATION_MASK_MIN) mask[i] = 1;
     return mask;
   },
   /* install one piece — startup and the ?dev=1 drop both land HERE. Returns

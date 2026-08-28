@@ -381,6 +381,41 @@ const Formations = {
     }
     return { strips, cover: new Set(r.cells), kind: 'formation' };
   },
+  /* ---- the ?dev=1 force-place seam ----
+     A dropped piece larger than any region the solver would give it is
+     unviewable; the workbench pins it onto ONE region instead: footprint
+     centered on the region's bbox, baseline on the bbox's bottom row,
+     ignoring masks, coverage and the solver entirely. Dev-only callers
+     (js/dev.js sets DevArt.formationPin; R.buildMtnLayer consults it only
+     behind the DevArt.on gate) — nothing in normal play reaches these. */
+  pinPlacement(r, stem) {
+    const c = this.catalogs[T.MOUNTAIN];
+    const p = c && c[stem];
+    if (!p || !p.img) return null;
+    const box = r.box;
+    if (!box) return null;
+    const tx = Math.max(0, Math.min(CFG.W - p.w, Math.round((box[0] + box[2] + 1 - p.w) / 2)));
+    const ty = Math.max(0, box[3] - p.h + 1);
+    return { stem, piece: p, tx, ty };
+  },
+  pinnedStrips(r, stem) {
+    const pl = this.pinPlacement(r, stem);
+    if (!pl) return null;
+    const cnv = this._pieceStrip(pl.piece);
+    if (!cnv) return null;
+    const TL = CFG.TILE;
+    return {
+      strips: [{
+        row: pl.ty + pl.piece.h - 1,
+        x: pl.tx * TL + cnv._dx,
+        y: (pl.ty + pl.piece.h) * TL - cnv.height + cnv._dy,
+        c: cnv,
+      }],
+      cover: new Set(r.cells),
+      kind: 'formation-pin',
+    };
+  },
+
   // a piece pre-scaled to tile resolution, cached — strips blit dozens of
   // times a frame and must never rescale the 128px master each time
   _pieceStrip(p) {

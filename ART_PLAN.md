@@ -339,10 +339,22 @@ resource itself (forest canopies, ore boulders) — a floor-only branch in
 cleanly). Watch total canvas memory for large-coverage terrains: each
 region holds a bbox-sized canvas.
 
-`?dev=1` accepts formation PNGs like everything else: a convention-named
-file takes its slot silently (and needs NO catalog entry — preview a
-brand-new stem before listing it), anything else opens the picker, per-slot
-revert and revert-all restore the shipped state.
+`?dev=1` is the formation WORKBENCH — the artist's whole loop without a
+commit. A convention-named PNG takes its slot silently (and needs NO
+catalog entry — preview a brand-new stem before it is listed), by
+drag-drop or by the panel's **load PNGs…** button (mobile Safari has no
+drag-drop; the button is how you author from a phone). Every drop leaves a
+plain-words contract report in the panel — accepted or refused: a width
+that does not match the name's footprint is refused and told why; cells of
+the footprint under the mask threshold are listed per cell with their
+painted percentage ("those tiles will show bare ground under the art").
+The **coverage grid** checkbox draws the derived per-cell mask over every
+placed piece (green = claimed, red = footprint the alpha did not earn).
+**pin** on a formation row force-places that piece onto the LARGEST
+mountain region on the current map, solver bypassed — a 5×4 range is
+otherwise unviewable on a map of small crags; unpin or revert restores the
+solver's own placement. Per-slot revert and revert-all as everywhere.
+Dropped pieces re-solve and repaint the affected regions immediately.
 
 ## Ground art
 

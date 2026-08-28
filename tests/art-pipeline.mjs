@@ -610,6 +610,95 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
         !DevArt.overrides[Assets.formationSlotKey('mountain', 'mountain-2x2-test-w')], '');
     }
 
+    // ---- the formation WORKBENCH: the artist's whole loop without a commit.
+    // A file-picker button (mobile Safari has no drag-drop — the phone is the
+    // primary authoring device), plain-words contract reports in the PANEL
+    // (never the console), the per-cell coverage grid, and the force-place
+    // pin that bypasses the solver so a big piece is viewable on any map ----
+    {
+      ck('theWorkbenchControlsExist',
+        !!document.getElementById('devArtFileBtn') &&
+        !!document.getElementById('devArtMaskTgl') &&
+        !!document.getElementById('devFormInfo') &&
+        (document.getElementById('devArtFile') || {}).type === 'file' &&
+        /png/.test(document.getElementById('devArtFile').accept) &&
+        document.getElementById('devArtFile').multiple, '');
+      // the file-picker route — a synthetic File through the ONE intake both
+      // routes share, exactly as a phone-picked PNG arrives
+      const mkFile = async (w, h, name, paint) => {
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const g2 = c.getContext('2d');
+        g2.fillStyle = '#6e7280';
+        if (paint) paint(g2, w, h); else g2.fillRect(0, 0, w, h);
+        const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+        return new File([blob], name, { type: 'image/png' });
+      };
+      DevArt._handleFiles([
+        await mkFile(256, 320, 'Mountain-2x2-Test-U.PNG'),                      // good, case-normalized
+        await mkFile(400, 256, 'mountain-4x2-test-t.png'),                      // width liar
+        await mkFile(256, 256, 'mountain-2x2-test-s.png',
+          (g2) => g2.fillRect(0, 0, 128, 128)),                                 // one painted cell of four
+      ]);
+      for (let i = 0; i < 40 && !DevArt._formInfo['mountain-2x2-test-s']; i++)
+        await new Promise(r => setTimeout(r, 50));
+      ck('aPickedFileLandsInItsSlot',
+        !!DevArt.overrides[Assets.formationSlotKey('mountain', 'mountain-2x2-test-u')] &&
+        /✓/.test(DevArt._formInfo['mountain-2x2-test-u'] || ''),
+        DevArt._formInfo['mountain-2x2-test-u']);
+      ck('aLyingWidthIsRefusedInPlainWords',
+        /refused/.test(DevArt._formInfo['mountain-4x2-test-t'] || '') &&
+        /512px/.test(DevArt._formInfo['mountain-4x2-test-t'] || '') &&
+        !DevArt.overrides[Assets.formationSlotKey('mountain', 'mountain-4x2-test-t')],
+        DevArt._formInfo['mountain-4x2-test-t']);
+      ck('aSparseMaskIsFlaggedPerCell',
+        /⚠ mask 1\/4/.test(DevArt._formInfo['mountain-2x2-test-s'] || '') &&
+        /bare ground/.test(DevArt._formInfo['mountain-2x2-test-s'] || ''),
+        DevArt._formInfo['mountain-2x2-test-s']);
+      ck('theReportsRenderInThePanelNotTheConsole',
+        document.getElementById('devFormInfo').textContent.includes('refused') &&
+        document.getElementById('devFormInfo').textContent.includes('✓'), '');
+
+      // the pin: plant a mountain block, prove the solver alone leaves it
+      // procedural (one piece cannot cover it), then pin and see it placed
+      Boot.force(); G.newGame('ap-pin', 'moderate', 'medium');
+      const W2 = CFG.W;
+      let px2 = 3, py2 = 3;
+      outer2: for (let y = 4; y < CFG.H - 10; y++) for (let x = 4; x < W2 - 10; x++) {
+        let ok = true;
+        for (let oy = 0; oy < 6 && ok; oy++) for (let ox = 0; ox < 7 && ox < W2 && ok; ox++)
+          if (Bld.at(x + ox, y + oy)) ok = false;
+        if (ok) { px2 = x; py2 = y; break outer2; }
+      }
+      for (let oy = 0; oy < 5; oy++) for (let ox = 0; ox < 6; ox++)
+        S.map.terrain[(py2 + oy) * W2 + px2 + ox] = T.MOUNTAIN;
+      for (let i = 0; i < S.map.explored.length; i++) { S.map.explored[i] = 1; S.map.seenTerrain[i] = S.map.terrain[i]; }
+      Bld._block = null;
+      R._mtnKey = ''; R._mtn = null; R._mtnLayerKey = ''; R._mtnDirty = true;
+      R.rebuildTerrain();
+      R.mtnStrips();
+      const unpinnedKinds = new Set(R._mtnArt.map(a => a.kind || 'region'));
+      ck('anUncoverableRegionStaysProcedural', !unpinnedKinds.has('formation-pin'),
+        [...unpinnedKinds].join(','));
+      DevArt.setFormationPin('mountain', 'mountain-2x2-test-u');
+      R.mtnStrips();
+      const pinnedKinds = new Set(R._mtnArt.map(a => a.kind || 'region'));
+      ck('thePinPlacesThePieceRegardless', pinnedKinds.has('formation-pin'),
+        [...pinnedKinds].join(','));
+      // the coverage grid draws through the render hook without error
+      DevArt.maskOverlay = true;
+      R.draw(1 / 60);
+      DevArt.maskOverlay = false;
+      ck('theCoverageGridDraws', true, '');
+      // revert-all: overrides gone, pin cleared, procedural back
+      DevArt.revertAll();
+      R._mtnLayerKey = ''; R._mtnDirty = true;
+      R.mtnStrips();
+      ck('workbenchRevertAllStandsEverythingDown',
+        Object.keys(DevArt.overrides).length === 0 && DevArt.formationPin === null &&
+        !Formations.artTerrain(T.MOUNTAIN) &&
+        R._mtnArt.every(a => (a.kind || 'region') !== 'formation-pin'), '');
+    }
+
     // ---- inject / revert round-trip through the shipping path. The slot's
     // shipped state is whatever it is TODAY (procedural, or a real PNG that
     // has since landed in assets/buildings/) — revert restores exactly it. ----
