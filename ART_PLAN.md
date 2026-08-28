@@ -358,7 +358,7 @@ Dropped pieces re-solve and repaint the affected regions immediately.
 
 **conform raw PNG…** turns art of ANY size and filename into a
 contract-true piece, phone-first, no image editor: pick the file, choose
-the footprint (W×H, 1–16 each — the target width W×128 and the overhang
+the footprint (W×H, 1–24 each — the target width W×128 and the overhang
 implied by the source aspect are shown live), and dial the DENSITY — the
 source is nearest-downsampled to N art-pixels per tile and
 integer-upscaled back onto the 128px/tile grid, so external fine detail

@@ -337,9 +337,9 @@ const Assets = {
     const tId = T[m[1].toUpperCase()];
     if (tId === undefined) return null;
     const w = +m[2], h = +m[3];
-    // 16 tiles is the ceiling — a towering range is a real piece, but a
-    // footprint wider than a medium map's playable ground is a typo
-    if (!(w >= 1 && h >= 1 && w <= 16 && h <= 16)) return null;
+    // 24 tiles is the ceiling — room for a range that spans half an xlarge
+    // map; anything past it is a typo, not a mountain
+    if (!(w >= 1 && h >= 1 && w <= 24 && h <= 24)) return null;
     return { tName: m[1], tId, w, h, shape: m[4], letter: m[5] };
   },
   _tryLoadFormation(tName, stem) {
