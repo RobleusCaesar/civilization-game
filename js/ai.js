@@ -2466,6 +2466,25 @@ const AI = {
     // memory is of something its own eyes saw).
     if (foeSiege > 0) (ai.memory = ai.memory || {}).siegeSeen = S.day;
 
+    /* --- THE SEA THREAT, read separately. Hulls are excluded from every
+       land-power number on purpose (they cannot take ground) — but a SEEN
+       armed player hull, or worse a TRANSPORT (an invasion in a box), is a
+       fact the coast has to answer: fighting hulls at the yard, hulls on
+       Defend off the dock. Fog-honest (canSee only), remembered the same
+       GUN_MEMORY days a shore battery is, so a sail that ducks into the fog
+       does not un-happen daily. Fishing boats are food, not threat. --- */
+    let navalSeen = 0;
+    for (const u of S.units) {
+      if (u.owner !== 'P' || !Units.isNaval(u) || u.kind === 'fishboat' || !this.canSee(u)) continue;
+      navalSeen++;
+    }
+    if (navalSeen > 0) {
+      (ai.memory = ai.memory || {}).navalSeen = S.day;
+      ai.memory.navalN = navalSeen;
+    }
+    const navalThreat =
+      !!(ai.memory && ai.memory.navalSeen != null && S.day - ai.memory.navalSeen <= this.GUN_MEMORY);
+
     ai.read = {
       day: S.day,
       knownTC: knownTC ? { x: knownTC.x, y: knownTC.y, seen: knownTC.seen } : null, scouted: !!knownTC,
@@ -2485,6 +2504,7 @@ const AI = {
       myBld, foeBld: known.length, underCon,
       aheadPower: myPower - foePower, aheadTempo: myBld - known.length,
       threat, underThreat: threat >= 3,
+      navalThreat, navalSeen,
       homeGapCount: homeGaps.length, homeGapWidest: homeGaps[0] ? homeGaps[0].width : 0, homeExposed,
       sacked: ai.peakBld >= 5 && myBld < ai.peakBld * 0.5,
     };
@@ -2793,12 +2813,19 @@ const AI = {
        coastal scan costs one flood per sea rather than one per candidate. */
     const cands = [];
     const bodySz = new Map();                     // tile idx → its body's size
+    const laneBodies = new Set();                 // tiles of the body holding the assault lane
+    const laneT = this._assaultLane;
+    const laneIdx = laneT ? laneT.y * CFG.W + laneT.x : -1;
     const sizeAt = (nx, ny) => {
       const i = ny * CFG.W + nx;
       if (bodySz.has(i)) return bodySz.get(i);
       const wb = this.waterBody(nx, ny);
       if (!wb) { bodySz.set(i, 0); return 0; }
-      for (let j = 0; j < wb.mask.length; j++) if (wb.mask[j]) bodySz.set(j, wb.size);
+      const laneHere = laneIdx >= 0 && wb.mask[laneIdx];
+      for (let j = 0; j < wb.mask.length; j++) if (wb.mask[j]) {
+        bodySz.set(j, wb.size);
+        if (laneHere) laneBodies.add(j);
+      }
       return wb.size;
     };
     for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) {
@@ -2806,13 +2833,20 @@ const AI = {
       if (!MapGen.inB(x, y)) continue;
       if (!Bld.dockSiteOk(x, y, 'A').ok || this.onWallLine(x, y, tc)) continue;
       if (!Bld.canPlace('A', 'dock', x, y, { noSeal: true }).ok) continue;
-      let sz = 0;
+      let sz = 0, onLane = false;
       for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const nx = x + ox, ny = y + oy;
-        if (MapGen.inB(nx, ny) && S.map.terrain[ny * CFG.W + nx] === T.WATER)
+        if (MapGen.inB(nx, ny) && S.map.terrain[ny * CFG.W + nx] === T.WATER) {
           sz = Math.max(sz, sizeAt(nx, ny));
+          /* the ASSAULT LANE wins over the mere biggest body: a fleet built
+             on the wrong sea never reaches the beach (probeAssault stamps
+             one lane tile; the dock's flood and the assault's flood were
+             never reconciled before, so a yard on a landlocked lake could
+             "support" a landing its hulls could not sail to). */
+          if (laneBodies.has(ny * CFG.W + nx)) onLane = true;
+        }
       }
-      cands.push({ x, y, sc: sz - Math.hypot(dx, dy) * 2 });
+      cands.push({ x, y, sc: sz - Math.hypot(dx, dy) * 2 + (onLane ? 5000 : 0) });
     }
     cands.sort((a, b) => b.sc - a.sc);
     for (const c of cands.slice(0, 8))            // the clamp runs on the pick, a few deep
@@ -2832,7 +2866,9 @@ const AI = {
     // (a workshop for the engines, a dock for the landing, a sappers' camp to breach).
     const camp = ai.camp && ai.camp.strat;
     if (camp === 'IRONBELLY' || camp === 'HIGHREACH') { if (!have.siege && tc.level >= 3) add(95, () => this.tryBuild('siege')); }
-    if (camp === 'TIDEWRACK' && !have.dock && tc.level >= 2) add(95, () => this._buildDock());
+    if ((camp === 'TIDEWRACK' ||
+         (this._seaOnly && (post === 'PUSH' || post === 'PRESSURE'))) &&
+        !have.dock && tc.level >= 2) add(95, () => this._buildDock());
     if (camp === 'MUDLARK' && !have.sapper && tc.level >= 2) add(95, () => this.tryBuild('sapper'));
 
     /* A BLIND CHIEF BUILDS A DOCK TO GO LOOKING (tests/rival-strength.mjs).
@@ -2872,6 +2908,18 @@ const AI = {
       const wsN = S.buildings.find(b => b.owner === 'A' && b.key === 'siege' && Bld.done(b));
       if (wsN && wsN.level < 3 && !wsN.upgrading && Bld.canUpgrade(wsN).ok)
         add(100, () => { Bld.upgrade(wsN); return true; });     // level 3 is what throws a trebuchet
+    }
+
+    /* A SAIL ON THE HORIZON READIES THE COAST. A seen player hull — above
+       all a transport — is an invasion telegraphing itself; the yard, and
+       the level that floats a fighting hull, are the answer. Below the guns
+       (a battery firing NOW outranks a landing that may come), above the
+       ordinary auction. Stands down when the naval memory fades. */
+    if (read.navalThreat && !this.underBombardment()) {
+      if (!have.dock && tc.level >= 2) add(85, () => this._buildDock());
+      const dkC = S.buildings.find(b => b.owner === 'A' && b.key === 'dock' && Bld.done(b));
+      if (dkC && dkC.level < 2 && !dkC.upgrading && Bld.canUpgrade(dkC).ok)
+        add(80, () => { Bld.upgrade(dkC); return true; });
     }
 
     // income buildings — but NOT while raiders are in the yard: a farm started
@@ -3166,6 +3214,12 @@ const AI = {
           else Bld.train(wsG, 'catapult');
         }
       }
+    }
+    /* …and the yard answers a SEEN SAIL the same way it answers the guns:
+       fighting hulls in the water before the landing lands. Same cap, same
+       honest payment; the engine half above stays bombardment-only (a land
+       engine cannot meet a boat). */
+    if (this.underBombardment() || read.navalThreat) {
       const dkG = S.buildings.find(b => b.owner === 'A' && b.key === 'dock' &&
         Bld.done(b) && !b.upgrading && b.queue.length === 0);
       if (dkG && dkG.level >= 2) {
@@ -3235,7 +3289,7 @@ const AI = {
        right there and no way to use it. A stalled land attack is itself the
        reason to put boats in the water. */
     const beachedNow = ai.stall && S.day - (ai.stall.t || 0) <= 6;
-    if ((campStrat === 'TIDEWRACK' || beachedNow) && dock && !dock.upgrading && dock.queue.length === 0) {
+    if ((campStrat === 'TIDEWRACK' || beachedNow || this._seaOnly) && dock && !dock.upgrading && dock.queue.length === 0) {
       const key = 'transport';                       // one troop hull now
       const cap = CFG.UNITS.transport.cap || 5;
       // enough hulls to put a DECISIVE wave ashore in a single crossing rather than
@@ -3664,6 +3718,16 @@ const AI = {
     ctx.openSeam = (ctx.lane && ctx.landToTown) ? { width: ctx.lane.width, def: ctx.lane.def } : null;
     // a building embedded in their ring is a door, not a wall — storming beats siege
     ctx.softDoor = (ctx.lane && ctx.lane.door) || 0;
+    /* SEA-ONLY WAR (island starts): a known target, no land road to it, and
+       no breach a sapper could ever cut — the fleet stops being the grudging
+       last resort and becomes the ONLY resort. One flag, read by the
+       campaign scores, the grind order, and (mirrored on AI._seaOnly,
+       refreshed here daily while the war is on) the dock/transport
+       priorities — so the chief tools up to DELIVER an army before it
+       stockpiles one it cannot deliver. */
+    ctx.seaOnly = !!(ctx.shore && !ctx.landToTown && !ctx.breach);
+    this._seaOnly = ctx.seaOnly;
+    this._assaultLane = (ctx.shore && ctx.shore.lane) || null;   // _buildDock steers onto this water
     return ctx;
   },
 
@@ -3681,7 +3745,10 @@ const AI = {
       }
       case 'TIDEWRACK': { // a landing shines against an undefended shore, dies against towers
         if (!ctx.shore) return 0;
-        return Math.max(0.5, 9 - (ctx.shoreTowers || 0) * 3);
+        // when the sea is the ONLY road (no land route, nothing to breach)
+        // the fleet's fit rises past every land plan's best — towers still bite
+        const base = ctx.seaOnly ? 13 : 9;
+        return Math.max(0.5, base - (ctx.shoreTowers || 0) * 3);
       }
       case 'HIGHREACH': { // long wall, few towers → pour over the top where nothing shoots
         if (!ctx.meleeWall) return 0;
@@ -3731,7 +3798,9 @@ const AI = {
     if (!land) return null;
     let embark = null;
     for (const s of seeds) for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const lx = s.x + ox, ly = s.y + oy; if (rc(lx, ly)) { embark = { x: lx, y: ly }; break; } }
-    return { land, embark };
+    // `lane` is one water tile of the assault body — _buildDock steers the
+    // yard onto THIS water so the hulls it floats can actually reach the beach
+    return { land, embark, lane: seeds[0] };
   },
 
   _campViable(k, ctx, tc) {
@@ -3852,7 +3921,10 @@ const AI = {
   // which then makes a wall reachable and Ironbelly takes over. `tried` demotes a
   // fallback that couldn't assemble its force, cycling back to Ironbelly when spent.
   _grindFallback(ctx, tc, best, tried) {
-    const order = ['IRONBELLY', 'MUDLARK', 'TIDEWRACK'];
+    // an island war grinds by SEA first — battering and bridging assume
+    // ground the army can stand on, and there is none on the far shore
+    const order = ctx.seaOnly ? ['TIDEWRACK', 'IRONBELLY', 'MUDLARK']
+                              : ['IRONBELLY', 'MUDLARK', 'TIDEWRACK'];
     return order.find(k => this._campViable(k, ctx, tc) && tried.indexOf(k) < 0)
         || order.find(k => this._campViable(k, ctx, tc))
         || best;
@@ -3967,10 +4039,22 @@ const AI = {
       case 'IRONBELLY': return (cnt('catapult') + cnt('trebuchet')) >= 1 + eng && infantry >= 3 + foot;
       case 'HIGHREACH': return cnt('siegetower') >= 1 + eng && infantry >= 4 + foot;
       case 'TIDEWRACK': {
-        // hold until enough hull capacity AND a real landing party have gathered, so
-        // the crossing puts a decisive wave on the beach instead of a doomed trickle.
-        let cap = 0; for (const u of S.units) if (u.owner === 'A' && Units.isTransport(u)) cap += Units.cargoCap(u);
-        return cap >= 5 + foot && infantry >= 5 + foot;
+        /* hold until enough hull capacity AND a real landing party have
+           gathered, so the crossing puts a decisive wave on the beach
+           instead of a doomed trickle. Capacity counts hulls a launch can
+           actually USE (idle ones — a hull mid-unload is committed), and
+           troops already sitting in an idle hold count toward the party:
+           they sail again the moment the launch re-dispatches the hull.
+           Counting every hull while the launch demanded empty ones was the
+           readiness/launch mismatch that idled a campaign for 40 days. */
+        let cap = 0, aboard = 0;
+        for (const u of S.units) {
+          if (u.owner !== 'A' || !Units.isTransport(u)) continue;
+          if (u.task && u.task.type === 'unload') continue;
+          cap += Units.cargoCap(u);
+          aboard += (u.cargo || []).length;
+        }
+        return cap >= 5 + foot && (infantry + aboard) >= 5 + foot;
       }
       case 'MUDLARK':   return Units.sapperTier('A') >= 2;
       case 'WARHORN':   return infantry >= 6 + foot;
@@ -4218,7 +4302,9 @@ const AI = {
      take-what-you-can behavior, which IS the chaos priority ladder). */
   _assaultStance(party, strat) {
     if (party.some(u => (Units.isSiege(u) || u.kind === 'ballista') && CFG.UNITS[u.kind].atk > 0)) return 'siege';
-    if (strat === 'WARHORN' || strat === 'MUDLARK') return 'strike';
+    // TIDEWRACK's landing party is infantry by construction (engines never
+    // board) — a beachhead lives or dies on the beeline, same as a storm
+    if (strat === 'WARHORN' || strat === 'MUDLARK' || strat === 'TIDEWRACK') return 'strike';
     return 'chaos';
   },
 
@@ -4342,11 +4428,18 @@ const AI = {
     const ai = S.ai, ptc = read.knownTC || read.anchor, ctx = this.probeAssault(read);
     if (!ptc || !ctx || !ctx.shore || !ctx.shore.land) return false;
     const land = ctx.shore.land;
-    const transports = S.units.filter(u => u.owner === 'A' && Units.isTransport(u) && (!u.cargo || !u.cargo.length) && !(u.task && u.task.type === 'unload'));
-    if (!transports.length) return false;
+    const idleHull = u => u.owner === 'A' && Units.isTransport(u) && !(u.task && u.task.type === 'unload');
+    /* a hull still holding a previous wave sails FIRST — its cargo is a
+       landing party already paid for. (The stranded-hold leak: readiness
+       counted these troops while the launch refused any non-empty hull, and
+       the campaign idled for forty days owning the war band.) */
+    const loaded = S.units.filter(u => idleHull(u) && u.cargo && u.cargo.length);
+    const transports = S.units.filter(u => idleHull(u) && (!u.cargo || !u.cargo.length));
+    if (!transports.length && !loaded.length) return false;
     const troops = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) && !Units.isNaval(u) &&
       u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
-    if (troops.length < 3) return false;
+    const aboard = loaded.reduce((a, tr) => a + tr.cargo.length, 0);
+    if (troops.length + aboard < 3) return false;
     // BEACHHEAD OBJECTIVE: a light landing party can't crack a walled hall, but it
     // CAN put the undefended economy behind the shore to the torch — which is how a
     // sea raid actually hurts. Aim for the nearest exposed farm / lodge / camp the
@@ -4358,6 +4451,15 @@ const AI = {
       if (best) obj = { type: best.bld ? 'econ' : 'tc', x: Math.round(best.x), y: Math.round(best.y) };
     }
     let ti = 0, sailed = 0;
+    // re-dispatch the already-loaded hulls to the new beach — their people
+    // take the fresh objective on the way over
+    for (const tr of loaded) {
+      for (const c of tr.cargo) {
+        c.raidObj = { type: obj.type, x: obj.x, y: obj.y };
+        c.assault = true;
+      }
+      Units.orderUnload(tr, land.x, land.y); sailed++;
+    }
     for (const tr of transports) {
       const cap = Units.cargoCap(tr); tr.cargo = tr.cargo || [];
       let n = 0;
@@ -4373,8 +4475,11 @@ const AI = {
       if (ti >= troops.length) break;
     }
     if (!sailed) return false;
-    // warship / fireship screen stands off the landing zone and covers the beach
-    for (const sh of S.units.filter(u => u.owner === 'A' && (u.kind === 'warship' || u.kind === 'fireship') && !(u.task && u.task.type === 'unload'))) {
+    /* the fighting-hull screen stands off the landing zone and covers the
+       beach. Fireships and bombards — the hulls that exist; the old filter
+       asked for a 'warship' kind that was removed, so bombards never
+       screened a landing at all. */
+    for (const sh of S.units.filter(u => u.owner === 'A' && (u.kind === 'fireship' || u.kind === 'bombard') && !(u.task && u.task.type === 'unload'))) {
       const wspot = MapGen.findNear(land.x, land.y, 6, (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.WATER && !Bld.at(x, y));
       if (wspot) { sh.task = { type: 'move', x: wspot.x, y: wspot.y }; sh.tUnit = 0; sh.tBld = 0; Units.setPath(sh, wspot.x, wspot.y); }
     }
@@ -4403,7 +4508,7 @@ const AI = {
     if (!(ai.stall && S.day - (ai.stall.t || 0) <= 6)) return false;      // the land route is open — no need
     if ((ai.seaCd || 0) > 0) { ai.seaCd--; return false; }
     const hulls = S.units.filter(u => u.owner === 'A' && Units.isTransport(u) &&
-      (!u.cargo || !u.cargo.length) && !(u.task && u.task.type === 'unload'));
+      !(u.task && u.task.type === 'unload'));               // a loaded idle hull re-sails
     if (!hulls.length) return false;
     const reserve = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) && !Units.isNaval(u) &&
       u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
@@ -5081,6 +5186,22 @@ const AI = {
     const campOwns = storming || this.campaignLaunch(read, m);
     // …and while that plan grinds at the ditch, the reserve can go by sea
     this.secondFront(read);
+    /* ---- COASTAL WATCH. A player sail has been seen (read.navalThreat, the
+       GUN_MEMORY-remembered fog-honest sighting): idle fighting hulls take
+       the Defend stance and hold the water off the dock — the same
+       owner-agnostic garrison rules every soldier plays by — instead of
+       drifting while a landing runs in. Stood down when the memory fades,
+       so a chief that saw one sail a season ago goes back to fishing wars.
+       Transports and fishing boats are never drafted: one is the invasion
+       barge, the other is dinner. ---- */
+    for (const u of S.units) {
+      if (u.owner !== 'A' || !Units.isNaval(u) || u.kind === 'fishboat' || Units.isTransport(u)) continue;
+      if (read.navalThreat) {
+        if (!u.defend && !u.task) Units.setDefend(u, true);
+      } else if (u.defend) {
+        Units.setDefend(u, false);
+      }
+    }
     /* ---- LAYER 2 drives IF we attack; the read drives WHEN. Only the
        attack postures march, and a real opening (foeVuln) beats any day
        timer — so the rival strikes an undefended player on the state of

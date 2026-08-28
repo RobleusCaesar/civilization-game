@@ -95,8 +95,17 @@ const out = await p.evaluate(() => {
         const seams = seamsOf();
         if (!seams.length) probs.push('gm-' + size + s + ' has NO seam');
         const ptc = Bld.tcOf('P'), atc = Bld.tcOf('A');
+        /* the 10-tile stand-off exists so a seam is CONTESTED ground, not a
+           doorstep freebie. On a SEA-DIVIDED map each seat's island runs its
+           own seam pass, and a small island may geometrically have no tile
+           ten out — the relaxation may then seat one as close as five, which
+           is fine: gold on your own private island is uncontested at any
+           distance. Connected maps keep the full stand-off. */
+        const seaMap = !!(S.map.spawns && S.map.spawns.seaStarts);
         for (const sm of seams) {
-          minD = Math.min(minD, Math.hypot(sm.x - ptc.x, sm.y - ptc.y), Math.hypot(sm.x - atc.x, sm.y - atc.y));
+          const d = Math.min(Math.hypot(sm.x - ptc.x, sm.y - ptc.y), Math.hypot(sm.x - atc.x, sm.y - atc.y));
+          if (!seaMap) minD = Math.min(minD, d);
+          else if (d < 5 - 0.01) probs.push('gm-' + size + s + ': an island seam only ' + d.toFixed(1) + ' from a town');
           if (!Path.passable(sm.x, sm.y, 'P')) probs.push('a seam is not walkable');
           if (!Bld.tileFree(sm.x, sm.y)) probs.push('a seam is not buildable');
         }

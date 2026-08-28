@@ -299,6 +299,27 @@ const out = await p.evaluate(() => {
     const spanA = { x: bx - 1, y: by };          // nearest the "hall"
     const spanB = { x: bx - 1, y: by + 8 };      // the long way round
     carveIsland(bx, by, [spanA.y, spanB.y]);
+    /* the rolled ground between the corps and the channel was never part of
+       this contract — it just happened to be walkable on every old roll. Map
+       gen may legitimately leave water there now (the sea is no longer
+       bulldozed), so walk an explicit grass corridor to the west shore,
+       routed around the island's seal (never inside the carve window). */
+    {
+      const paint = (x, y) => {
+        if (x >= bx - 2 && x <= bx + 5 && y >= by - 4 && y <= by + 12) return;   // the seal is sacred
+        if (MapGen.inB(x, y)) { T2(x, y, T.GRASS); T2(x, y + 1, T.GRASS); }
+      };
+      const legs = [[bx - 3, Math.min(CFG.H - 2, by + 15)], [bx - 3, by]];
+      let cx2 = atc.x + 2, cy2 = atc.y + 2, guard = 0;
+      for (const [gx, gy] of legs) {
+        while ((cx2 !== gx || cy2 !== gy) && guard++ < 1000) {
+          if (cx2 !== gx) cx2 += cx2 < gx ? 1 : -1;
+          else cy2 += cy2 < gy ? 1 : -1;
+          paint(cx2, cy2);
+        }
+      }
+      Bld._block = null;
+    }
     G.updateVisibility();
     const read = { knownTC: { x: bx, y: by, seen: S.day } };
     S.ai.posture = 'PUSH';

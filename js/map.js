@@ -189,9 +189,18 @@ const MapGen = {
           else if (y !== b.y) y += y < b.y ? 1 : -1;
         }
       };
+      /* REAL ISLANDS NOW. Each leg of the old player→mid→ai causeway chain
+         rolls for itself, so some maps keep an isthmus route, some keep half
+         of one, and some are open sea end to end — the reachability clamp
+         below no longer bridges the difference by land: it asserts a NAVAL
+         route instead (dock-capable coast on both shores of one ocean) and
+         only falls back to a causeway when the sea itself cannot carry the
+         game. The wild isles never had a causeway; now they actually stay
+         islands instead of being annexed by a resource carve. */
       const mid = { x: (W / 2) | 0, y: (H / 2) | 0 };
-      causeway(player, mid);
-      causeway(mid, ai);
+      const joinP = rnd() < 0.55, joinA = rnd() < 0.55;
+      if (joinP) causeway(player, mid);
+      if (joinA) causeway(mid, ai);
     } else {
       const lakes = landform === 'lakeland'
         ? Math.round((7 + rnd() * 3) * f)
@@ -456,14 +465,18 @@ const MapGen = {
       }
     }
 
-    /* REACHABILITY CLAMP — no sealed spawns, no soft-locked resources. Now that
-       forest/hills/fertile block movement too, a bad roll could wall a tribe in
-       or ring a needed resource behind impassable ground. So: flood-fill the
-       open land from a spawn; if the rival can't be reached, carve a causeway;
-       and make sure every resource TYPE has at least one HARVESTABLE tile (a
-       resource tile with an open neighbour to stand on) reachable from each
-       spawn — carving a minimal seam to the nearest one if not. Harvesting is
-       what opens terrain, so a route to the wood is a route through it. */
+    /* REACHABILITY CLAMP — no sealed spawns, no soft-locked resources, and —
+       new — no sea bulldozed into a land bridge just to satisfy a land-only
+       test. The verdict is LAND OR SEA now: if the seats share dry ground,
+       a lane is carved along a DRY route (never through water); if the sea
+       genuinely divides them, the map holds when both seats' islands offer a
+       dock-capable coast on one shared ocean and stand on enough land to
+       live on (the viability floor) — and only when the sea itself cannot
+       carry the game does the old water-crossing causeway return, as the
+       last resort. Resource guarantees follow the same rule: carve along dry
+       ground on your own island, PLANT what the island does not hold —
+       never annex the isle across the strait. */
+    var seaStarts = false;
     {
       const BLOCKS = v => v === T.WATER || v === T.MOUNTAIN || v === T.FOREST || v === T.HILLS || v === T.FERTILE;
       const open4 = i => !BLOCKS(t[i]);
@@ -482,16 +495,62 @@ const MapGen = {
         }
         return seen;
       };
-      // walk a→b clearing blockers into a lane. `preserve` (optional) spares a
-      // terrain type: when opening a route TO a scarce resource we clear the
-      // rock/orchard in the way but NEVER bulldoze the very wood we're carving
-      // to (that would "reach" it by destroying it). `stopAdj` halts one tile
-      // short of b — stand beside the resource, don't consume it.
-      const carve = (a, b, preserve, stopAdj) => {
+      /* the shortest DRY route a→b (never through water; optionally never
+         through `preserve` either, so a lane to a scarce wood cannot be
+         forced through its own stands), or null when only the sea connects
+         them. BFS on the tile lattice, deterministic — no rnd. */
+      const dryPath = (a, b, preserve, stopAdj) => {
+        const prev = new Int32Array(W * H).fill(-1);
+        const si = id(a.x, a.y), q2 = [si];
+        prev[si] = si;
+        for (let h2 = 0; h2 < q2.length; h2++) {
+          const cur = q2[h2], cx = cur % W, cy = (cur / W) | 0;
+          if ((cx === b.x && cy === b.y) ||
+              (stopAdj && Math.abs(cx - b.x) + Math.abs(cy - b.y) <= 1)) {
+            const path = [];
+            for (let i2 = cur; i2 !== si; i2 = prev[i2]) path.push(i2);
+            path.push(si);
+            return path.reverse();
+          }
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = cx + dx, ny = cy + dy;
+            if (!MapGen.inB(nx, ny)) continue;
+            const ni = id(nx, ny);
+            if (prev[ni] >= 0 || t[ni] === T.WATER) continue;
+            if (preserve != null && t[ni] === preserve) continue;
+            prev[ni] = cur; q2.push(ni);
+          }
+        }
+        return null;
+      };
+      // clear a lane along a dry route with the same 3-tile L brush the old
+      // walk used; water is never touched. False when no dry route exists.
+      const carveDry = (a, b, preserve, stopAdj) => {
+        const path = dryPath(a, b, preserve, stopAdj);
+        if (!path) return false;
+        for (const i2 of path) {
+          const cx = i2 % W, cy = (i2 / W) | 0;
+          for (const [ox, oy] of [[0, 0], [1, 0], [0, 1]]) {
+            const nx = cx + ox, ny = cy + oy;
+            if (!MapGen.inB(nx, ny)) continue;
+            const v = t[id(nx, ny)];
+            if (v !== T.WATER && BLOCKS(v) && v !== preserve) t[id(nx, ny)] = T.GRASS;
+          }
+        }
+        return true;
+      };
+      /* the classic randomized walk, in two flavours. carveWalk spares
+         water (the sea is a fact now) but rolls the SAME rnd sequence the
+         old carve did, so a map whose lanes never crossed water generates
+         byte-identically to before this change. carveSea is the old
+         water-bulldozing walk, kept as the LAST resort for a map whose sea
+         cannot carry the game (no shared dock-capable ocean). */
+      const walk = (a, b, preserve, stopAdj, clearWater) => {
         let x = a.x, y = a.y, guard2 = 0;
         const clear = (cx, cy) => {
           if (!MapGen.inB(cx, cy)) return;
           const v = t[id(cx, cy)];
+          if (!clearWater && v === T.WATER) return;
           if (BLOCKS(v) && v !== preserve) t[id(cx, cy)] = T.GRASS;
         };
         while (guard2++ < W * H) {
@@ -502,14 +561,112 @@ const MapGen = {
           else if (y !== b.y) y += y < b.y ? 1 : -1;
         }
       };
-      // (a) the two tribes must be able to reach each other. Spare the precious
-      //     SCARCE resource first (clear the abundant obstacles instead); only
-      //     bulldoze through it as a last resort if that still won't connect.
+      const carveWalk = (a, b, preserve, stopAdj) => walk(a, b, preserve, stopAdj, false);
+      const carveSea = (a, b) => walk(a, b, null, false, true);
+      // connected non-water areas, labeled — which shores belong together
+      const landLabel = () => {
+        const lab = new Int32Array(W * H).fill(-1);
+        const area = [];
+        for (let i2 = 0; i2 < W * H; i2++) {
+          if (t[i2] === T.WATER || lab[i2] >= 0) continue;
+          const q2 = [i2]; lab[i2] = area.length;
+          let n2 = 0;
+          for (let h2 = 0; h2 < q2.length; h2++) {
+            const cur = q2[h2], cx = cur % W, cy = (cur / W) | 0;
+            n2++;
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+              const nx = cx + dx, ny = cy + dy;
+              if (!MapGen.inB(nx, ny)) continue;
+              const ni = id(nx, ny);
+              if (lab[ni] >= 0 || t[ni] === T.WATER) continue;
+              lab[ni] = lab[i2]; q2.push(ni);
+            }
+          }
+          area.push(n2);
+        }
+        return { lab, area };
+      };
+      // connected water, labeled with sizes — the navigable bodies
+      const waterLabel = () => {
+        const lab = new Int32Array(W * H).fill(-1);
+        const size = [];
+        for (let i2 = 0; i2 < W * H; i2++) {
+          if (t[i2] !== T.WATER || lab[i2] >= 0) continue;
+          const q2 = [i2]; lab[i2] = size.length;
+          let n2 = 0;
+          for (let h2 = 0; h2 < q2.length; h2++) {
+            const cur = q2[h2], cx = cur % W, cy = (cur / W) | 0;
+            n2++;
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+              const nx = cx + dx, ny = cy + dy;
+              if (!MapGen.inB(nx, ny)) continue;
+              const ni = id(nx, ny);
+              if (lab[ni] >= 0 || t[ni] !== T.WATER) continue;
+              lab[ni] = lab[i2]; q2.push(ni);
+            }
+          }
+          size.push(n2);
+        }
+        return { lab, size };
+      };
+      /* every water body a landmass could dock on: a 2×2 of open water,
+         fully on the board, in a body of at least CFG.DOCK_MIN_WATER tiles,
+         with an open tile of THIS landmass on an orthogonal flank —
+         Bld.dockSiteOk's own rules, asked of the raw terrain. */
+      const dockBodies = (lmLab, lmId, wLab, wSize) => {
+        const MINW = (CFG.DOCK_MIN_WATER || 6);
+        const out = new Set();
+        for (let y = 1; y < H - 2; y++) for (let x = 1; x < W - 2; x++) {
+          let wet = true, body = -1;
+          for (let dy = 0; dy < 2 && wet; dy++) for (let dx = 0; dx < 2; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (!MapGen.onBoard(nx, ny) || t[id(nx, ny)] !== T.WATER) { wet = false; break; }
+            body = wLab[id(nx, ny)];
+          }
+          if (!wet || body < 0 || wSize[body] < MINW || out.has(body)) continue;
+          for (const [fx, fy] of [[x - 1, y], [x - 1, y + 1], [x + 2, y], [x + 2, y + 1],
+                                  [x, y - 1], [x + 1, y - 1], [x, y + 2], [x + 1, y + 2]]) {
+            if (!MapGen.inB(fx, fy)) continue;
+            const fi = id(fx, fy);
+            if (lmLab[fi] === lmId && !BLOCKS(t[fi])) { out.add(body); break; }
+          }
+        }
+        return out;
+      };
+      // (a) the two tribes must be able to reach each other — BY LAND OR BY
+      //     SEA. The classic walks first (sparing the scarce resource, then
+      //     not — same rnd stream as ever, water spared now), then a BFS dry
+      //     detour the straight walk cannot find, then the sea verdict, and
+      //     the causeway only when the sea fails too.
       let reach = flood(player.x, player.y);
       if (!reach[id(ai.x, ai.y)]) {
-        carve(player, ai, scarce.terrain);
+        carveWalk(player, ai, scarce.terrain);
         reach = flood(player.x, player.y);
-        if (!reach[id(ai.x, ai.y)]) { carve(player, ai); reach = flood(player.x, player.y); }
+        if (!reach[id(ai.x, ai.y)]) { carveWalk(player, ai); reach = flood(player.x, player.y); }
+      }
+      if (!reach[id(ai.x, ai.y)]) {
+        if (carveDry(player, ai, scarce.terrain) || carveDry(player, ai, null))
+          reach = flood(player.x, player.y);
+      }
+      if (!reach[id(ai.x, ai.y)]) {
+        const LM = landLabel(), WB = waterLabel();
+        const pl = LM.lab[id(player.x, player.y)], al = LM.lab[id(ai.x, ai.y)];
+        const pb = dockBodies(LM.lab, pl, WB.lab, WB.size);
+        const ab = dockBodies(LM.lab, al, WB.lab, WB.size);
+        let shared = false;
+        for (const b2 of pb) if (ab.has(b2)) { shared = true; break; }
+        /* the VIABILITY FLOOR: a seat island must be a country, not a rock —
+           enough standing land for a town and its stations. Below it (or
+           with no shared ocean) the map is not sea-playable and the causeway
+           returns. 70 tiles ≈ a 5×5 town plot plus three stations of each
+           kind plus room to be walled and fought over. */
+        const FLOOR = 70;
+        if (shared && LM.area[pl] >= FLOOR && LM.area[al] >= FLOOR) {
+          seaStarts = true;
+        } else {
+          carveSea(player, ai);
+          reach = flood(player.x, player.y);
+        }
       }
       // (b) every resource type harvestable + reachable for each tribe. If none
       //     of a type is reachable, open a lane to STAND BESIDE the nearest one,
@@ -530,7 +687,21 @@ const MapGen = {
             const d = Math.hypot(rx - s.x, ry - s.y);
             if (d < nearD) { nearD = d; near = { x: rx, y: ry }; }
           }
-          if (!ok && near) carve(s, near, rt, true);
+          /* a lane is carved only along DRY ground — the classic walk first
+             (same rnd stream as ever, water spared now), then the BFS detour
+             when water stopped the walk. A stand genuinely across the sea
+             stays where it is: (c)'s planting provides, never a bulldozed
+             strait. */
+          if (!ok && near) {
+            carveWalk(s, near, rt, true);
+            const again = flood(s.x, s.y);
+            let opened = false;
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+              const nx = near.x + dx, ny = near.y + dy;
+              if (MapGen.inB(nx, ny) && again[id(nx, ny)]) { opened = true; break; }
+            }
+            if (!opened) carveDry(s, near, rt, true);
+          }
         }
       }
       /* (c) THREE OF EACH, WITHIN A WALK (tests/worked-ground.mjs).
@@ -575,16 +746,35 @@ const MapGen = {
             spots.push({ x, y, d });
           }
           spots.sort((a, b2) => a.d - b2.d);
-          for (let k = 0; k < spots.length && have.length < SR.min; k++) {
-            // spread them out a little — three tiles in one clump is one camp's
-            // worth of ground, not three
-            const sp = spots[k];
-            let clash = false;
-            for (let dy = -1; dy <= 1 && !clash; dy++) for (let dx = -1; dx <= 1; dx++)
-              if (t[id(sp.x + dx, sp.y + dy)] === rt) { clash = true; break; }
-            if (clash) continue;
-            t[id(sp.x, sp.y)] = rt;
-            have.push(1);
+          const plant = (list) => {
+            for (let k = 0; k < list.length && have.length < SR.min; k++) {
+              // spread them out a little — three tiles in one clump is one
+              // camp's worth of ground, not three
+              const sp = list[k];
+              let clash = false;
+              for (let dy = -1; dy <= 1 && !clash; dy++) for (let dx = -1; dx <= 1; dx++)
+                if (t[id(sp.x + dx, sp.y + dy)] === rt) { clash = true; break; }
+              if (clash) continue;
+              t[id(sp.x, sp.y)] = rt;
+              have.push(1);
+            }
+          };
+          plant(spots);
+          /* an ISLAND seat can roll an annulus with no room in it at all —
+             widen the walk before giving up, because a start whose island
+             simply lacks a resource kind is a stranding, not a lean game.
+             Only runs on a shortfall, so ordinary maps are untouched. */
+          if (have.length < SR.min) {
+            const wide = [];
+            for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+              if (t[id(x, y)] !== T.GRASS) continue;
+              const d = Math.hypot(x - s.x, y - s.y);
+              if (d <= SR.r || d > SR.r * 2) continue;
+              if (!sreach[id(x, y)]) continue;
+              wide.push({ x, y, d });
+            }
+            wide.sort((a, b2) => a.d - b2.d);
+            plant(wide);
           }
         }
       }
@@ -647,9 +837,9 @@ const MapGen = {
     {
       const GS = CFG.GOLD_SEAMS || { count: 4, perTile: 0.0015, minFromTown: 10 };
       const want = Math.max(2, Math.round((GS.count || 4) + (GS.perTile || 0) * W * H));
-      const reach = (() => {                       // the open land the player can walk
+      const walkFrom = (s) => {                    // the open land a seat can walk
         const BLOCKS2 = v => v === T.WATER || v === T.MOUNTAIN || v === T.FOREST || v === T.HILLS || v === T.FERTILE;
-        const seen = new Uint8Array(W * H), q = [id(player.x, player.y)];
+        const seen = new Uint8Array(W * H), q = [id(s.x, s.y)];
         seen[q[0]] = 1;
         for (let h = 0; h < q.length; h++) {
           const cur = q[h], cx = cur % W, cy = (cur / W) | 0;
@@ -662,47 +852,60 @@ const MapGen = {
           }
         }
         return seen;
-      })();
+      };
+      /* one plan when the seats share their land (the original single pass,
+         byte for byte); when the SEA divides them, each seat's country runs
+         its own pass for its own share — or the rival's whole late game
+         would sit on the player's island. */
+      const plans = seaStarts
+        ? [{ reach: walkFrom(player), want: Math.max(2, Math.ceil(want / 2)) },
+           { reach: walkFrom(ai), want: Math.max(2, Math.ceil(want / 2)) }]
+        : [{ reach: walkFrom(player), want }];
       const seams = [];
       const far = GS.minFromTown || 10;
-      let guard3 = 0;
-      while (seams.length < want && guard3++ < 3000) {
-        const x = 2 + rnd() * (W - 4) | 0, y = 2 + rnd() * (H - 4) | 0;
-        const i = id(x, y);
-        if (t[i] !== T.GRASS || !reach[i]) continue;
-        if (MapGen.mtnShadow(x, y, t)) continue;   // a seam the art hides is a seam nobody finds
-        if (Math.hypot(x - player.x, y - player.y) < far) continue;
-        if (Math.hypot(x - ai.x, y - ai.y) < far) continue;
-        if (seams.some(s => Math.hypot(s.x - x, s.y - y) < 6)) continue;   // never two in one pocket
-        t[i] = T.GOLDORE; resAmount[i] = 0;
-        seams.push({ x, y });
-      }
-      // A MAP WITH NO SEAM AT ALL is a map with the whole feature switched off,
-      // and a tight or watery roll can genuinely produce one. Relax the rules in
-      // order — the spacing first, then the distance from the towns — rather
-      // than leaving the player nothing to find.
-      for (const relax of [4, 2]) {
-        let g4 = 0;
-        while (seams.length < 2 && g4++ < 3000) {
+      for (const plan of plans) {
+        let mine = 0;
+        let guard3 = 0;
+        while (mine < plan.want && guard3++ < 3000) {
           const x = 2 + rnd() * (W - 4) | 0, y = 2 + rnd() * (H - 4) | 0;
           const i = id(x, y);
-          if (t[i] !== T.GRASS || !reach[i]) continue;
-          // the mountain-shadow clamp NEVER relaxes (a reported day-9 calm
-          // map: the primary pass found one seam, and the relaxation seated
-          // the second behind a cliff) — a nearer seam beats an invisible one
-          if (MapGen.mtnShadow(x, y, t)) continue;
-          if (Math.hypot(x - player.x, y - player.y) < far / relax * 2) continue;
-          if (Math.hypot(x - ai.x, y - ai.y) < far / relax * 2) continue;
-          if (seams.some(s => Math.hypot(s.x - x, s.y - y) < relax)) continue;
+          if (t[i] !== T.GRASS || !plan.reach[i]) continue;
+          if (MapGen.mtnShadow(x, y, t)) continue;   // a seam the art hides is a seam nobody finds
+          if (Math.hypot(x - player.x, y - player.y) < far) continue;
+          if (Math.hypot(x - ai.x, y - ai.y) < far) continue;
+          if (seams.some(s => Math.hypot(s.x - x, s.y - y) < 6)) continue;   // never two in one pocket
           t[i] = T.GOLDORE; resAmount[i] = 0;
           seams.push({ x, y });
+          mine++;
+        }
+        // A COUNTRY WITH NO SEAM AT ALL is one with the whole feature switched
+        // off, and a tight or watery roll can genuinely produce one. Relax the
+        // rules in order — the spacing first, then the distance from the
+        // towns — rather than leaving that side nothing to find.
+        for (const relax of [4, 2]) {
+          let g4 = 0;
+          while (mine < 2 && g4++ < 3000) {
+            const x = 2 + rnd() * (W - 4) | 0, y = 2 + rnd() * (H - 4) | 0;
+            const i = id(x, y);
+            if (t[i] !== T.GRASS || !plan.reach[i]) continue;
+            // the mountain-shadow clamp NEVER relaxes (a reported day-9 calm
+            // map: the primary pass found one seam, and the relaxation seated
+            // the second behind a cliff) — a nearer seam beats an invisible one
+            if (MapGen.mtnShadow(x, y, t)) continue;
+            if (Math.hypot(x - player.x, y - player.y) < far / relax * 2) continue;
+            if (Math.hypot(x - ai.x, y - ai.y) < far / relax * 2) continue;
+            if (seams.some(s => Math.hypot(s.x - x, s.y - y) < relax)) continue;
+            t[i] = T.GOLDORE; resAmount[i] = 0;
+            seams.push({ x, y });
+            mine++;
+          }
         }
       }
       var goldSeams = seams;
     }
 
     return { terrain: t, resAmount, scarce: scarce.name, landform,
-      spawns: { player, ai, camps, gold: goldSeams } };
+      spawns: { player, ai, camps, gold: goldSeams, seaStarts } };
   },
 
   // a shoal: shore water where fish school close enough to catch from land.

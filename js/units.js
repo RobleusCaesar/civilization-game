@@ -1072,8 +1072,24 @@ const Units = {
       u.task = null;
       if (u.owner === 'P') G.log('No shore to land on — sail the transport up against the coast', true);
       else if (u.owner === 'R') this.sailOff(u);   // the raid is off — never park a full longboat forever
+      /* a RIVAL hull that cannot find the hostile beach brings its people
+         HOME instead of anchoring forever with a hold full of soldiers —
+         the stranded-hold leak: the troops were out of S.units, still eating
+         food, and nothing ever retried a loaded hull. One homing attempt
+         (its own fresh unloadTries budget); a hull that cannot even reach
+         its own coast waits idle and the next launch re-dispatches it. */
+      else if (u.owner === 'A' && !u.homed) {
+        const tc = Bld.tcOf('A');
+        const home = tc && MapGen.findNear(tc.x, tc.y, 24, (x, y) =>
+          S.map.terrain[MapGen.idx(x, y)] === T.WATER && !Bld.at(x, y) && this._shoreBeside(x, y, u.owner));
+        if (home && this.setPath(u, home.x, home.y)) {
+          u.homed = 1;                          // one homing voyage per stranding
+          u.task = { type: 'unload', x: home.x, y: home.y };
+        }
+      }
       return;
     }
+    u.homed = 0;                                // the hull found A shore — the stranding is over
     // beached — put each soldier on its own open shore tile right beside the hull
     // (used-set = no stacking; radius 2 keeps them at the waterline, never far out)
     const used = new Set();

@@ -108,6 +108,8 @@ node tests/rival-strength.mjs # the rewritten war brain: the anchor, the inner m
 node tests/train-spawn.mjs   # a trained unit stands on REALLY open ground, or waits in reserve until there is some
 node tests/homestead.mjs     # a house broadside-on to a farm bonds the two: +10% food, +1 villager, gold sparks — and it all goes away with either half
 node tests/origin-cards.mjs  # the 26-card draft: ten strategy-openers plant real buildings; every boon reads through a named hook; 64-grid motifs
+node tests/island-maps.mjs   # the sea is never bulldozed: land-OR-sea reachability, dock-capable coasts on a shared ocean, the island viability floor, per-seat resources+gold
+node tests/amphibious.mjs    # the rival fights across the sea: the sea-only read, TIDEWRACK outranking land plans, the crossing end to end in the real sim, stranded hulls sail home, the coast answers a seen sail
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
