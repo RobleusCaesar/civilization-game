@@ -188,8 +188,262 @@
             g.strokeRect(x + 0.5, y + 0.5, TL - 1, TL - 1);
           }
         }
+        // the BASELINE of a pinned piece, in gold: where the image's bottom
+        // edge meets the footprint's southern edge (the conform tool's
+        // "show me where that line falls")
+        if (r === pinRegion && placements.length) {
+          const pl0 = placements[0];
+          g.strokeStyle = '#e8c15a'; g.lineWidth = 2;
+          g.beginPath();
+          g.moveTo(pl0.tx * TL, (pl0.ty + pl0.piece.h) * TL);
+          g.lineTo((pl0.tx + pl0.piece.w) * TL, (pl0.ty + pl0.piece.h) * TL);
+          g.stroke();
+          g.lineWidth = 1;
+        }
       }
       g.restore();
+    },
+
+    /* ---- CONFORM: raw art of ANY size and name → a contract-true piece,
+       from a phone, with no image editor. The pipeline is pure canvas:
+       optionally key a flat corner-colour background, trim transparent
+       margins, nearest-downsample so the trimmed width spans W tiles at N
+       art-pixels each, then integer-upscale back onto the 128px/tile grid
+       (N is a divisor of 128 — 8/16/32/64/128 — so the upscale factor is
+       whole and every art pixel lands crisp; 32 is the game's own density,
+       where one art pixel is one map pixel at base zoom). The trimmed
+       bottom edge IS the baseline — the southern edge of the footprint.
+       The result previews live on a real region through the ordinary
+       formation machinery (a temporary piece, force-pinned), and exports
+       as a correctly named PNG at exactly W×128 wide. The filename stays
+       the only source of footprint truth — this tool only produces files
+       that tell it. */
+    _conform: null,
+    DENSITIES: [8, 16, 32, 64, 128],
+    openConform(src, name) {
+      this._conformClose();
+      this._conform = {
+        src, name: name || 'raw.png', W: 2, H: 2, N: 32,
+        keyBg: false, shape: 'wip', letter: 'a',
+        tempStem: null, centered: false, prevMask: this.maskOverlay,
+      };
+      // suggest keying when the corner is opaque — external art loves a backdrop
+      try {
+        const c = document.createElement('canvas'); c.width = c.height = 1;
+        const g = c.getContext('2d');
+        g.drawImage(src, 0, 0);
+        if (g.getImageData(0, 0, 1, 1).data[3] > 0) this._conform.keyBg = true;
+      } catch (e) { /* unreadable pixels — leave the key off */ }
+      this.maskOverlay = true;                 // the grid is the point here
+      this._conformPanel();
+      this._conformApply();
+    },
+    _conformClose() {
+      const c0 = this._conform;
+      if (!c0) return;
+      if (c0.tempStem) {
+        Assets.removeFormationArt('mountain', c0.tempStem);
+        delete this._formInfo[c0.tempStem];
+        if (this.formationPin && this.formationPin.stem === c0.tempStem)
+          this.setFormationPin(null, null);
+      }
+      this.maskOverlay = c0.prevMask;
+      if (c0.panel) c0.panel.remove();
+      this._conform = null;
+      this._renderPanel();
+    },
+    _conformStem() {
+      const c0 = this._conform;
+      const shape = (c0.shape || '').toLowerCase().replace(/[^a-z0-9]/g, '') || 'wip';
+      const letter = ((c0.letter || '').toLowerCase().replace(/[^a-z]/g, '')[0]) || 'a';
+      return 'mountain-' + c0.W + 'x' + c0.H + '-' + shape + '-' + letter;
+    },
+    _conformBuild() {
+      const c0 = this._conform;
+      if (!c0) return null;
+      const src = c0.src, w = src.width, h = src.height;
+      if (!w || !h) return null;
+      const work = document.createElement('canvas');
+      work.width = w; work.height = h;
+      const g = work.getContext('2d', { willReadFrequently: true });
+      g.drawImage(src, 0, 0);
+      let d;
+      try { d = g.getImageData(0, 0, w, h).data; }
+      catch (e) { return null; }               // tainted source — cannot conform
+      if (c0.keyBg && d[3] > 0) {
+        // edge-flood the corner colour to transparency (the finish-pilot rule)
+        const bg = [d[0], d[1], d[2]], tol = 4;
+        const isBg = i => d[i + 3] > 0 && Math.abs(d[i] - bg[0]) <= tol &&
+          Math.abs(d[i + 1] - bg[1]) <= tol && Math.abs(d[i + 2] - bg[2]) <= tol;
+        const gone = new Uint8Array(w * h), q = [];
+        const seed = k => { if (!gone[k] && isBg(k * 4)) { gone[k] = 1; q.push(k); } };
+        for (let x = 0; x < w; x++) { seed(x); seed((h - 1) * w + x); }
+        for (let y = 0; y < h; y++) { seed(y * w); seed(y * w + w - 1); }
+        while (q.length) {
+          const k = q.pop(), x = k % w, y = (k / w) | 0;
+          if (x > 0) seed(k - 1);
+          if (x < w - 1) seed(k + 1);
+          if (y > 0) seed(k - w);
+          if (y < h - 1) seed(k + w);
+        }
+        const id2 = g.getImageData(0, 0, w, h);
+        for (let k = 0; k < w * h; k++) if (gone[k]) id2.data[k * 4 + 3] = 0;
+        g.putImageData(id2, 0, 0);
+        d = g.getImageData(0, 0, w, h).data;
+      }
+      // trim transparent margins — the trimmed bottom edge becomes the baseline
+      let x0 = w, x1 = -1, y0 = h, y1 = -1;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++)
+        if (d[(y * w + x) * 4 + 3] >= 16) {
+          if (x < x0) x0 = x; if (x > x1) x1 = x;
+          if (y < y0) y0 = y; if (y > y1) y1 = y;
+        }
+      if (x1 < 0) return null;                 // nothing but transparency
+      const tw = x1 - x0 + 1, th = y1 - y0 + 1;
+      // nearest-downsample: trimmed width spans W tiles at N art-px per tile
+      const PX = Assets.FORMATION_PX || 128;
+      const dw = c0.W * c0.N;
+      const dh = Math.max(1, Math.round(th * dw / tw));
+      const down = document.createElement('canvas');
+      down.width = dw; down.height = dh;
+      const gd = down.getContext('2d');
+      gd.imageSmoothingEnabled = false;
+      gd.drawImage(work, x0, y0, tw, th, 0, 0, dw, dh);
+      // integer upscale back onto the 128px/tile grid
+      const k2 = PX / c0.N;
+      const out = document.createElement('canvas');
+      out.width = dw * k2; out.height = dh * k2;
+      const go = out.getContext('2d');
+      go.imageSmoothingEnabled = false;
+      go.drawImage(down, 0, 0, out.width, out.height);
+      const foot = c0.H * PX;
+      return {
+        canvas: out,
+        overhangTiles: Math.max(0, (out.height - foot) / PX),
+        shortTiles: Math.max(0, (foot - out.height) / PX),
+        trimmed: tw + '×' + th + ' of ' + w + '×' + h,
+      };
+    },
+    // rebuild and live-preview: the conformed piece is a real (temporary)
+    // formation piece, force-pinned onto the largest region — every control
+    // change lands on actual ground within a frame
+    _conformApply() {
+      const c0 = this._conform;
+      if (!c0) return;
+      if (c0.tempStem) {
+        Assets.removeFormationArt('mountain', c0.tempStem);
+        delete this._formInfo[c0.tempStem];
+        c0.tempStem = null;
+      }
+      c0.built = this._conformBuild();
+      if (c0.built) {
+        const stem = this._conformStem();
+        if (Assets.setFormationArt('mountain', stem, c0.built.canvas, null)) {
+          c0.tempStem = stem;
+          this._formInfo[stem] = this._formationReport('mountain', stem, c0.built.canvas, true);
+          this.formationPin = { terrain: 'mountain', stem };
+          if (window.R) { R._mtnLayerKey = ''; R._mtnDirty = true; }
+          if (!c0.centered && window.S && S.map && S.map.terrain && window.R && R.mtnRegions) {
+            let big = null;
+            for (const r of R.mtnRegions()) if (!big || r.cells.length > big.cells.length) big = r;
+            if (big) {
+              R.centerOn((big.box[0] + big.box[2]) / 2 + 0.5, (big.box[1] + big.box[3]) / 2 + 0.5);
+              c0.centered = true;
+            }
+          }
+        }
+      }
+      this._conformRender();
+      this._renderPanel();
+    },
+    _conformDownload() {
+      const c0 = this._conform;
+      if (!c0 || !c0.built) return;
+      const a = document.createElement('a');
+      a.download = this._conformStem() + '.png';
+      a.href = c0.built.canvas.toDataURL('image/png');
+      document.body.appendChild(a); a.click(); a.remove();
+    },
+    _conformPanel() {
+      const c0 = this._conform;
+      const p = document.createElement('div');
+      p.id = 'devConform';
+      p.style.cssText = 'position:fixed;right:8px;top:120px;z-index:9999;background:rgba(26,20,14,.94);' +
+        'border:1px solid #6b5636;padding:8px 10px;font:12px monospace;color:#e8dfc8;' +
+        'width:min(300px,86vw);max-height:70vh;overflow:auto;border-radius:4px';
+      p.innerHTML =
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+        '<b>CONFORM — raw art → piece</b><button id="dcClose" style="font:12px monospace">×</button></div>' +
+        '<div id="dcSrc" style="opacity:.7;margin-bottom:6px;word-break:break-word"></div>' +
+        '<div style="display:flex;gap:8px;align-items:center;margin:4px 0">footprint ' +
+        'W <select id="dcW" style="font:12px monospace"></select> × ' +
+        'H <select id="dcH" style="font:12px monospace"></select></div>' +
+        '<div style="margin:6px 0">density <span id="dcNLabel"></span><br>' +
+        '<input id="dcN" type="range" min="0" max="4" step="1" style="width:100%"></div>' +
+        '<label style="display:flex;gap:4px;align-items:center;margin:4px 0">' +
+        '<input type="checkbox" id="dcKey"> key flat background (corner colour)</label>' +
+        '<label style="display:flex;gap:4px;align-items:center;margin:4px 0">' +
+        '<input type="checkbox" id="dcMask"> coverage grid + gold baseline</label>' +
+        '<div id="dcInfo" style="margin:6px 0;color:#9d9"></div>' +
+        '<div style="display:flex;gap:6px;align-items:center;margin:6px 0">' +
+        'shape <input id="dcShape" style="font:12px monospace;width:80px" value="wip"> ' +
+        'letter <input id="dcLetter" style="font:12px monospace;width:28px" maxlength="1" value="a"></div>' +
+        '<div id="dcName" style="margin:4px 0;word-break:break-all;color:#e8c15a"></div>' +
+        '<button id="dcDownload" style="font:12px monospace;padding:4px 10px">download PNG</button>' +
+        '<div id="dcHint" style="opacity:.6;margin-top:6px"></div>';
+      document.body.appendChild(p);
+      c0.panel = p;
+      const wSel = p.querySelector('#dcW'), hSel = p.querySelector('#dcH');
+      for (let i = 1; i <= 8; i++) {
+        wSel.appendChild(new Option(i, i));
+        hSel.appendChild(new Option(i, i));
+      }
+      wSel.value = c0.W; hSel.value = c0.H;
+      const nR = p.querySelector('#dcN');
+      nR.value = this.DENSITIES.indexOf(c0.N);
+      p.querySelector('#dcKey').checked = c0.keyBg;
+      p.querySelector('#dcMask').checked = this.maskOverlay;
+      const re = () => this._conformApply();
+      wSel.onchange = () => { c0.W = +wSel.value; re(); };
+      hSel.onchange = () => { c0.H = +hSel.value; re(); };
+      nR.oninput = () => { c0.N = this.DENSITIES[+nR.value]; re(); };
+      p.querySelector('#dcKey').onchange = e => { c0.keyBg = !!e.target.checked; re(); };
+      p.querySelector('#dcMask').onchange = e => { this.maskOverlay = !!e.target.checked; };
+      p.querySelector('#dcShape').oninput = e => { c0.shape = e.target.value; this._conformRename(); };
+      p.querySelector('#dcLetter').oninput = e => { c0.letter = e.target.value; this._conformRename(); };
+      p.querySelector('#dcDownload').onclick = () => this._conformDownload();
+      p.querySelector('#dcClose').onclick = () => this._conformClose();
+      this._conformRender();
+    },
+    // the temp piece rides the WIP stem; renaming shape/letter re-installs it
+    // under the new stem so the preview and the export never disagree
+    _conformRename() { this._conformApply(); },
+    _conformRender() {
+      const c0 = this._conform;
+      if (!c0 || !c0.panel) return;
+      const p = c0.panel, PX = (window.Assets && Assets.FORMATION_PX) || 128;
+      p.querySelector('#dcSrc').textContent = c0.name + ' — ' + c0.src.width + '×' + c0.src.height + 'px source';
+      p.querySelector('#dcNLabel').textContent =
+        c0.N + ' art-px / tile' + (c0.N === 32 ? ' (game-native)' : c0.N > 32 ? ' (finer than the world)' : ' (chunkier)');
+      const info = p.querySelector('#dcInfo');
+      if (!c0.built) {
+        info.style.color = '#e88';
+        info.textContent = 'nothing to conform — the source is empty or unreadable';
+      } else {
+        const b2 = c0.built;
+        info.style.color = b2.shortTiles > 0.5 ? '#e8c15a' : '#9d9';
+        info.textContent = '→ ' + b2.canvas.width + '×' + b2.canvas.height + 'px (' +
+          c0.W + '×' + c0.H + ' tiles' +
+          (b2.overhangTiles ? ' + ' + b2.overhangTiles.toFixed(1) + ' overhang' : '') + ') · trimmed ' +
+          b2.trimmed + ' · baseline = image bottom = footprint south edge' +
+          (b2.shortTiles > 0.5 ? ' · ⚠ art is ' + b2.shortTiles.toFixed(1) + ' tiles SHORTER than the footprint' : '');
+      }
+      p.querySelector('#dcName').textContent = this._conformStem() + '.png';
+      p.querySelector('#dcDownload').disabled = !c0.built;
+      p.querySelector('#dcHint').textContent =
+        (window.Screens && Screens.current === 'playing')
+          ? 'previewing pinned on the largest mountain region — the panel report below-left grades the mask'
+          : 'start a game to see the live preview on real ground';
     },
     revert(k) {
       const s = this._saved[k];
@@ -309,6 +563,11 @@
         this._injectByValue(sel.value, job.img, job.name);
         done();
       }));
+      box.appendChild(mk('Conform as formation piece', () => {
+        const img = job.img, name = job.name;
+        done();
+        this.openConform(img, name);
+      }));
       box.appendChild(mk('Skip', done));
       ov.appendChild(box);
       document.body.appendChild(ov);
@@ -411,7 +670,9 @@
       '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
       '<button id="devArtRevertAll" style="font:11px monospace">revert all</button>' +
       '<button id="devArtFileBtn" style="font:11px monospace">load PNGs…</button>' +
+      '<button id="devArtConformBtn" style="font:11px monospace">conform raw PNG…</button>' +
       '<input type="file" id="devArtFile" accept="image/png,.png" multiple style="display:none">' +
+      '<input type="file" id="devArtConformFile" accept="image/png,.png" style="display:none">' +
       '<label style="font:11px monospace;display:flex;align-items:center;gap:3px">' +
       '<input type="checkbox" id="devArtMaskTgl">coverage grid</label></div>' +
       '<div style="margin-top:4px;opacity:.55;font:10px monospace">formations: {terrain}-{W}x{H}-{shape}-{letter}.png, width = W×128</div>' +
@@ -425,6 +686,17 @@
     const fileInput = p.querySelector('#devArtFile');
     p.querySelector('#devArtFileBtn').onclick = () => fileInput.click();
     fileInput.onchange = () => { handleFiles(fileInput.files); fileInput.value = ''; };
+    // the CONFORM route: any PNG, any size, any name — straight to the tool
+    const conformInput = p.querySelector('#devArtConformFile');
+    p.querySelector('#devArtConformBtn').onclick = () => conformInput.click();
+    conformInput.onchange = () => {
+      const f = conformInput.files && conformInput.files[0];
+      conformInput.value = '';
+      if (!f) return;
+      const img = new Image();
+      img.onload = () => DevArt.openConform(img, f.name);
+      img.src = URL.createObjectURL(f);
+    };
     p.querySelector('#devArtMaskTgl').onchange = (e) => { DevArt.maskOverlay = !!e.target.checked; };
     const sel = p.querySelector('#devArtSlot');
     for (const s of DevArt._allSlots()) {

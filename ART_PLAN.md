@@ -356,6 +356,25 @@ otherwise unviewable on a map of small crags; unpin or revert restores the
 solver's own placement. Per-slot revert and revert-all as everywhere.
 Dropped pieces re-solve and repaint the affected regions immediately.
 
+**conform raw PNG…** turns art of ANY size and filename into a
+contract-true piece, phone-first, no image editor: pick the file, choose
+the footprint (W×H, 1–8 each — the target width W×128 and the overhang
+implied by the source aspect are shown live), and dial the DENSITY — the
+source is nearest-downsampled to N art-pixels per tile and
+integer-upscaled back onto the 128px/tile grid, so external fine detail
+becomes honest chunky pixels instead of noise at map zoom. N is a divisor
+of 128 (8/16/32/64/128; **32 is the game's own density** — one art pixel
+per map pixel at base zoom — start there and dial by eye against the
+trees and units). A flat corner-colour backdrop can be keyed off
+(suggested automatically when the corner is opaque); transparent margins
+are trimmed, and the trimmed bottom edge IS the baseline — drawn in gold
+on the live preview, which pins the conformed piece on the largest
+mountain region and re-runs on every control change, coverage grid
+toggleable. Fields for {shape} and {letter} name the export, and
+**download PNG** saves `mountain-{W}x{H}-{shape}-{letter}.png` at exactly
+W×128 wide, ready to commit. The filename remains the only source of
+footprint truth — the tool only produces files that tell it.
+
 ## Ground art
 
 `assets/terrain/{name}.png`, plus `{name}-2.png`, `-3` … for variants.

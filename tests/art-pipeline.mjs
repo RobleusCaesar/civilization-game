@@ -697,6 +697,64 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
         Object.keys(DevArt.overrides).length === 0 && DevArt.formationPin === null &&
         !Formations.artTerrain(T.MOUNTAIN) &&
         R._mtnArt.every(a => (a.kind || 'region') !== 'formation-pin'), '');
+
+      // ---- CONFORM: raw art of any size/name → a contract-true piece.
+      // The pipeline is what's pinned: key the flat backdrop, trim margins,
+      // land on the 128px/tile grid at the chosen density (N divides 128,
+      // so blocks are k×k uniform), baseline on the bottom edge, width
+      // exactly W×128, live temp piece pinned, clean close ----
+      {
+        const raw = document.createElement('canvas');
+        raw.width = 620; raw.height = 700;
+        const rg = raw.getContext('2d');
+        rg.fillStyle = '#8a8a8a'; rg.fillRect(0, 0, 620, 700);          // flat backdrop
+        rg.fillStyle = '#4b4f5a';
+        rg.beginPath(); rg.moveTo(90, 600); rg.lineTo(310, 80); rg.lineTo(530, 600);
+        rg.closePath(); rg.fill();
+        DevArt.openConform(raw, 'Some External Export (2).PNG');
+        const c0 = DevArt._conform;
+        ck('conformOpensWithTheBackdropKeySuggested',
+          !!document.getElementById('devConform') && c0.keyBg === true && DevArt.maskOverlay === true, '');
+        const onGrid = (cnv, k) => {
+          const d = cnv.getContext('2d').getImageData(0, 0, cnv.width, cnv.height).data;
+          for (let by = 0; by < cnv.height; by += k) for (let bx = 0; bx < cnv.width; bx += k) {
+            const i0 = (by * cnv.width + bx) * 4;
+            for (let dy = 0; dy < k; dy++) for (let dx = 0; dx < k; dx++) {
+              const i = ((by + dy) * cnv.width + bx + dx) * 4;
+              if (d[i] !== d[i0] || d[i + 3] !== d[i0 + 3]) return false;
+            }
+          }
+          return true;
+        };
+        const b1 = c0.built;
+        const d1 = b1 && b1.canvas.getContext('2d').getImageData(0, 0, b1.canvas.width, b1.canvas.height).data;
+        let bottomArt = 0;
+        if (b1) for (let x = 0; x < b1.canvas.width; x++)
+          if (d1[((b1.canvas.height - 1) * b1.canvas.width + x) * 4 + 3] >= 16) bottomArt++;
+        ck('conformLandsOnTheGameGrid',
+          !!b1 && b1.canvas.width === 2 * Assets.FORMATION_PX && onGrid(b1.canvas, 4),
+          b1 ? b1.canvas.width + 'px wide at N=32 (4px blocks)' : 'no build');
+        ck('theBackdropIsKeyedAndTheBaselineHolds',
+          !!b1 && d1[3] === 0 && bottomArt > 0,
+          'corner alpha 0, ' + bottomArt + ' art px on the bottom row');
+        ck('theTempPieceIsPinnedLive',
+          !!c0.tempStem && DevArt.formationPin && DevArt.formationPin.stem === c0.tempStem &&
+          !!Assets.formationPiece('mountain', c0.tempStem), c0.tempStem);
+        // density and footprint re-target live; shape/letter sanitize into the name
+        c0.N = 8; DevArt._conformApply();
+        ck('densityRetargetsTheGrid', !!c0.built && onGrid(c0.built.canvas, 16), '');
+        c0.W = 3; c0.H = 2; c0.shape = 'Ridge!'; c0.letter = 'Q'; DevArt._conformApply();
+        ck('footprintAndNameFollowTheControls',
+          c0.built.canvas.width === 3 * Assets.FORMATION_PX &&
+          DevArt._conformStem() === 'mountain-3x2-ridge-q' &&
+          c0.tempStem === 'mountain-3x2-ridge-q', DevArt._conformStem());
+        DevArt._conformClose();
+        R._mtnLayerKey = ''; R._mtnDirty = true;
+        R.mtnStrips();
+        ck('conformCloseStandsEverythingDown',
+          !document.getElementById('devConform') && DevArt.formationPin === null &&
+          !Formations.artTerrain(T.MOUNTAIN) && DevArt.maskOverlay === false, '');
+      }
     }
 
     // ---- inject / revert round-trip through the shipping path. The slot's
