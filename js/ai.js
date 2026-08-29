@@ -3748,7 +3748,18 @@ const AI = {
         // when the sea is the ONLY road (no land route, nothing to breach)
         // the fleet's fit rises past every land plan's best — towers still bite
         const base = ctx.seaOnly ? 13 : 9;
-        return Math.max(0.5, base - (ctx.shoreTowers || 0) * 3);
+        /* AN INFANTRY LANDING CANNOT CRACK A FORTRESS (the s11 bench,
+           traced: the beach-learning pass found the town's one untowered
+           beach, the open-sand read scored the landing past the commitment
+           bar, and the chief sat on TIDEWRACK from day 60 to 102 — zero
+           hulls, zero rounds — with eight known towers behind the sand).
+           A landing party is infantry by construction, so where land roads
+           exist it answers for the WHOLE town it would face, not just its
+           beach — the same fog-honest tower count every other score reads.
+           A sea-only war keeps the unpenalized fit: with no other road the
+           fleet is not optional, and the round accountability owns the rest. */
+        const fort = ctx.seaOnly ? 0 : Math.min(6, (ctx.towers || 0) * 0.5 + (ctx.wallReachLen ? 1 : 0));
+        return Math.max(0.5, base - (ctx.shoreTowers || 0) * 3 - fort);
       }
       case 'HIGHREACH': { // long wall, few towers → pour over the top where nothing shoots
         if (!ctx.meleeWall) return 0;
