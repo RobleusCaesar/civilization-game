@@ -203,6 +203,19 @@ const Units = {
   isLevied(u) { return !!(S.levy && u.owner === 'P' && this.isVillager(u)); },
   effAtk(u) {
     let atk = u.atk;
+    /* WOLFSKIN PACK TACTICS (tests/tribe-traits.mjs): the hunting people
+       strike as one animal — with two of the band within packR of the blow
+       it lands half again as hard. Scattered, they are just men with
+       spears. Counted at the strike (cooldown-gated), so it stays cheap. */
+    if (u.owner === 'R' && u.tribe === 'wolf') {
+      const RC = CFG.RAIDER_CAMPS || {};
+      let pack = 0;
+      for (const o of S.units) {
+        if (o !== u && o.owner === 'R' && o.tribe === 'wolf' && !this.isNaval(o) &&
+            Math.hypot(o.x - u.x, o.y - u.y) <= (RC.packR || 3) && ++pack >= 2) break;
+      }
+      if (pack >= 2) atk *= (RC.packMult || 1.5);
+    }
     if (u.owner === 'P' && this.isVillager(u) && this.villagerArmed()) atk += 4;
     // the levy fights at its own figure — max(), so an armed village's lodge
     // spears (base 2 + 4, above) still count for more, never less
@@ -2145,6 +2158,12 @@ const Units = {
           S.stats.kills = (S.stats.kills || 0) + 1;
       }
       if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
+      /* THE PEOPLES TAKE MORE THAN GROUND (G.campTakes, tests/tribe-traits.mjs):
+         a camp-band kill can convert instead of merely thinning the tribe —
+         the Woadkin take a villager caught alone, the Broken turn the one
+         soldier left standing over the dead. */
+      if (attacker && attacker.owner === 'R' && attacker.campId && u.owner === 'P')
+        G.campTakes(attacker, u);
       /* THE GROUND REMEMBERS ITS DEAD (tests/raider-camps.mjs): every rival
          LAND unit lost stamps its tile on the chief's own ledger — the
          corpse is the tribe's experience, so the read is fog-honest by

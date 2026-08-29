@@ -2406,6 +2406,10 @@ const UI = {
         <div class="ptitle">${b.owner === 'A' ? 'Rival ' : ''}${nm} <span style="color:var(--gold)">Lv ${b.level}</span></div>
         <div class="psub">${sub}</div></div>
         <button class="abtn" id="panelClose">✕</button></div>`;
+      // …and each people's one signature habit, so learning a camp's danger
+      // is as simple as walking up and reading its fire (tests/tribe-traits.mjs)
+      if (b.key === 'raidercamp' && b.tribe && G.tribeDef(b.tribe).trait)
+        html += `<div class="psub" style="padding:2px 10px 6px">${G.tribeDef(b.tribe).trait}</div>`;
       html += '<div class="pactions">';
       if (b.owner === 'P') {
         const worker = Bld.hasWorker(b);

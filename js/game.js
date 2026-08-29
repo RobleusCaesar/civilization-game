@@ -233,7 +233,7 @@ const G = {
        to both tribes, and burnable. Each is manned at once, so the wild
        country is dangerous from day one and a lone villager sent across the
        map is a villager sent past somebody's spears. */
-    for (const c of (gen.spawns.camps || [])) this.plantRaiderCamp(c.x, c.y);
+    this.plantTribalCamps(gen.spawns.camps || []);
     // …and a band within reach of EACH seat, so both sides start with a hunt
     // they could go and make (a lodge needs a killing ground — CFG.START_RESOURCE)
     {
@@ -1285,6 +1285,168 @@ const G = {
   },
   tribeName(key) { return this.tribeDef(key).name; },
 
+  /* ================= THE PEOPLES KEEP THEIR HOME GROUND =================
+     (tests/tribe-traits.mjs.) MapGen seats the camps for spacing and
+     fairness; WHICH people takes which fire — and exactly where it burns —
+     is settled here, because each people wants its own country:
+
+       sea     the coast — the longboat hauled ashore, stern still wet
+       wolf    a carved ALCOVE in the woods — the hunting people in the trees
+       flint   under hills and mountain shadow — the stone country
+       woad    the fertile meadows — the painted folk of the moors
+       broken  camped over a gold seam — looters sitting on wealth
+
+     The RNG contract: exactly one rollTribe() draw per seat, in seat order —
+     the same draws the old per-plant rolls consumed — so everything dealt
+     before the camps (cards, openings) is untouched; only the PAIRING of
+     peoples to seats and the final coordinates move. Assignment is greedy
+     best-fit (the coast- and forest-hungry peoples pick first), then each
+     camp WALKS toward its ground: a bounded nearest-first flood over
+     walkable land from the MapGen seat, taking the first tile that is on
+     home ground AND keeps the seat's own manners — never meaningfully
+     nearer a town than the seat was (floor 13), never inside another
+     camp's chase ground, never in mountain shadow, always with room to
+     muster. No fit found = the MapGen seat stands; a map is never failed
+     over flavor. The seat list (S.map.spawns.camps — spawnWave's muster
+     points) is updated in place to wherever the fire actually burns. */
+  plantTribalCamps(sites) {
+    const idx = MapGen.idx, terr = S.map.terrain;
+    const rolled = sites.map(() => this.rollTribe());
+    const FEAT = {
+      sea:    t => t === T.WATER,
+      flint:  t => t === T.HILLS || t === T.MOUNTAIN,
+      wolf:   t => t === T.FOREST,
+      woad:   t => t === T.FERTILE,
+      broken: t => t === T.GOLDORE,
+    };
+    const featDist = (x, y, m) => {
+      let best = 99;
+      for (let dy = -20; dy <= 20; dy++) for (let dx = -20; dx <= 20; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (!MapGen.inB(nx, ny) || !m(terr[idx(nx, ny)])) continue;
+        const d = Math.max(Math.abs(dx), Math.abs(dy));
+        if (d < best) best = d;
+      }
+      return best;
+    };
+    const PRIO = { sea: 0, wolf: 1, flint: 2, woad: 3, broken: 4 };
+    const order = rolled.map((tr, i) => ({ tr, i }))
+      .sort((a, b) => (PRIO[a.tr] != null ? PRIO[a.tr] : 9) - (PRIO[b.tr] != null ? PRIO[b.tr] : 9) || a.i - b.i);
+    const seats = sites.map((s, i) => ({ x: s.x, y: s.y, i, taken: false }));
+    const finals = [];
+    for (const { tr } of order) {
+      let best = null, bd = 1e9;
+      for (const s of seats) {
+        if (s.taken) continue;
+        const d = featDist(s.x, s.y, FEAT[tr] || (() => false));
+        if (d < bd) { bd = d; best = s; }
+      }
+      if (!best) break;
+      best.taken = true;
+      const spot = this.campHomeSpot(best, tr, finals);
+      // MapGen stamped the seat's tile T.CAMP — a moved fire un-stamps it
+      if ((spot.x !== best.x || spot.y !== best.y) && terr[idx(best.x, best.y)] === T.CAMP)
+        terr[idx(best.x, best.y)] = T.GRASS;
+      const b = this.plantRaiderCamp(spot.x, spot.y, tr) ||
+                this.plantRaiderCamp(best.x, best.y, tr);   // seating refused: the MapGen seat stands
+      const fx = b ? b.x : best.x, fy = b ? b.y : best.y;
+      // spawnWave's muster list must point at the fire that actually burns
+      sites[best.i].x = fx; sites[best.i].y = fy;
+      finals.push({ x: fx, y: fy });
+    }
+  },
+  _tileCount(x, y, r, tt) {
+    const idx = MapGen.idx, terr = S.map.terrain;
+    let n = 0;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const nx = x + dx, ny = y + dy;
+      if (MapGen.inB(nx, ny) && terr[idx(nx, ny)] === tt) n++;
+    }
+    return n;
+  },
+  // is (x, y) ON this people's home ground? The sea's reach is the 3x3 yard's
+  // own edge (the compound art touches the waterline); the wolves demand a
+  // real stand of trees, not a lone sapling.
+  campOnHomeGround(x, y, tribe) {
+    switch (tribe) {
+      case 'sea':    return this._tileCount(x, y, 2, T.WATER) >= 1;
+      case 'flint':  return (this._tileCount(x, y, 2, T.HILLS) + this._tileCount(x, y, 2, T.MOUNTAIN)) >= 1;
+      case 'wolf':   return this._tileCount(x, y, 2, T.FOREST) >= 5;
+      case 'woad':   return this._tileCount(x, y, 2, T.FERTILE) >= 1;
+      case 'broken': return this._tileCount(x, y, 3, T.GOLDORE) >= 1;
+    }
+    return true;
+  },
+  CAMP_HOME_R: { sea: 20, wolf: 14, flint: 14, woad: 14, broken: 14 },
+  campHomeSpot(site, tribe, placed) {
+    const idx = MapGen.idx, terr = S.map.terrain;
+    if (this.campOnHomeGround(site.x, site.y, tribe)) return { x: site.x, y: site.y };
+    /* the walk may never carry a fire meaningfully nearer a town than
+       MapGen seated it — floored just past chaseR + a town's building ring
+       (raider-camps.mjs pins `> 14` across boards), and never binding
+       tighter than the seat itself on a map whose tiers relaxed below it */
+    const P0 = S.map.spawns.player, A0 = S.map.spawns.ai;
+    const needP = Math.min(Math.hypot(site.x - P0.x, site.y - P0.y), 14.2);
+    const needA = Math.min(Math.hypot(site.x - A0.x, site.y - A0.y), 14.2);
+    const chase = (CFG.RAIDER_CAMPS || {}).chaseR || 7;
+    const mannered = (x, y) => (
+      Math.hypot(x - P0.x, y - P0.y) >= needP && Math.hypot(x - A0.x, y - A0.y) >= needA &&
+      placed.every(p => Math.hypot(x - p.x, y - p.y) > chase) &&
+      !MapGen.mtnShadow(x, y, terr));
+    const ok = (x, y) => {
+      if (terr[idx(x, y)] !== T.GRASS || !mannered(x, y)) return false;
+      let openN = 0;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+        if (MapGen.inB(x + ox, y + oy) && Path.passable(x + ox, y + oy)) openN++;
+      return openN >= 3 && this.campOnHomeGround(x, y, tribe);
+    };
+    const R = this.CAMP_HOME_R[tribe] || 14;
+    const seen = new Set([idx(site.x, site.y)]), q = [{ x: site.x, y: site.y }];
+    let h = 0;
+    while (h < q.length) {
+      const c = q[h++];
+      if (ok(c.x, c.y)) return c;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = c.x + ox, ny = c.y + oy;
+        if (Math.abs(nx - site.x) > R || Math.abs(ny - site.y) > R) continue;
+        const i = idx(nx, ny);
+        if (!MapGen.inB(nx, ny) || seen.has(i) || !Path.passable(nx, ny)) continue;
+        seen.add(i); q.push({ x: nx, y: ny });
+      }
+    }
+    /* THE WOLFSKINS CARVE. No natural clearing sits in the trees, so cut
+       one — a pocket in the nearest thick stand, opened onto walkable
+       country so the band (and the war party sent to burn it out) can come
+       and go. Bounded, and undone when a cut spot fails its manners; a map
+       with no woods worth the name just keeps the MapGen seat. */
+    if (tribe === 'wolf') {
+      const cand = [];
+      for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+        const x = site.x + dx, y = site.y + dy;
+        if (!MapGen.inB(x, y) || terr[idx(x, y)] !== T.FOREST) continue;
+        if (this._tileCount(x, y, 2, T.FOREST) < 8) continue;
+        if (![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ox, oy]) =>
+          MapGen.inB(x + ox, y + oy) && Path.passable(x + ox, y + oy))) continue;
+        cand.push({ x, y, d: Math.max(Math.abs(dx), Math.abs(dy)) });
+      }
+      cand.sort((a, b) => a.d - b.d);
+      for (const c of cand.slice(0, 40)) {
+        const undo = [];
+        for (const [ox, oy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const x = c.x + ox, y = c.y + oy, i = idx(x, y);
+          if (MapGen.inB(x, y) && terr[i] === T.FOREST) {
+            undo.push([i, S.map.resAmount[i]]);
+            terr[i] = T.GRASS; S.map.resAmount[i] = 0;
+          }
+        }
+        if (terr[idx(c.x, c.y)] === T.GRASS && mannered(c.x, c.y) &&
+            Path.find(c.x, c.y, site.x, site.y, 'R')) return { x: c.x, y: c.y };
+        for (const [i, res] of undo) { terr[i] = T.FOREST; S.map.resAmount[i] = res; }
+      }
+    }
+    return { x: site.x, y: site.y };
+  },
+
   plantRaiderCamp(x, y, tribe) {
     if (!MapGen.inB(x, y) || Bld.at(x, y)) return null;
     S.map.terrain[MapGen.idx(x, y)] = T.CAMP;
@@ -1310,6 +1472,7 @@ const G = {
     // re-mans back up to, so a band you cut down comes back the same size
     b.reman = 0;
     b.quota = this.campQuota();
+    b.quota0 = b.quota;   // the rolled size — campTakes may grow quota a little past it, never far
     this.manRaiderCamp(b, b.quota);
     return b;
   },
@@ -1326,12 +1489,41 @@ const G = {
   // so the seek logic keeps them home (Combat.raiderSeek) and the
   // stranded-raider backstop in units.js never melts them away
   manRaiderCamp(b, n) {
+    const RC = CFG.RAIDER_CAMPS || {};
     let put = 0;
     for (let i = 0; i < n; i++) {
+      /* THE SEA FOLK KEEP HULLS AT ANCHOR (tests/tribe-traits.mjs): every
+         third soul a coastal Sea Folk camp raises is a boat on the water
+         beside it — a transport first (the sortie's legs, G.seaSortie),
+         then a fire warship (the anchorage's teeth) — capped at one of
+         each afloat. A sea camp seated inland (no coast within the
+         relocation's reach) just raises spears like anybody else. */
+      if (b.tribe === 'sea') {
+        b.navRot = (b.navRot || 0) + 1;
+        const nav = this.campTenders(b).filter(u => Units.isNaval(u));
+        if (b.navRot % 3 === 0 && nav.length < 2) {
+          const w = MapGen.findNear(b.x, b.y, 3, (sx, sy) =>
+            S.map.terrain[MapGen.idx(sx, sy)] === T.WATER && !Bld.at(sx, sy) &&
+            Path.passable(sx, sy, null, 'water'));
+          if (w) {
+            const kind = nav.some(u => Units.isTransport(u)) ? 'fireship' : 'transport';
+            const s = Units.spawn(kind, 'R', w.x, w.y);
+            s.tribe = b.tribe;   // spawn() only stamps raider/brute — a hull wears its people too
+            if (kind === 'transport') s.cargo = [];
+            s.hostileTo = 'ALL';
+            s.campId = b.id;
+            s.anchor = { x: b.x + 0.5, y: b.y + 0.5 };
+            put++; continue;
+          }
+        }
+      }
       const spot = MapGen.findNear(b.x, b.y, 3, (sx, sy) =>
         Path.passable(sx, sy, 'R') && !Bld.at(sx, sy));
       if (!spot) break;
-      const kind = this.rand() < 0.25 ? 'brute' : 'raider';
+      // FLINTFOLK BREED BRUTES (tests/tribe-traits.mjs): the antler-crowned
+      // old blood fields the big folk at more than twice the common rate
+      const bruteP = b.tribe === 'flint' ? (RC.fleshBruteP || 0.6) : 0.25;
+      const kind = this.rand() < bruteP ? 'brute' : 'raider';
       const u = Units.spawn(kind, 'R', spot.x, spot.y, { tribe: b.tribe });
       u.hostileTo = 'ALL';          // a camp band answers to nobody
       u.campId = b.id;
@@ -1353,6 +1545,94 @@ const G = {
       if (have >= b.quota) { b.reman = 0; continue; }
       b.reman = (b.reman || 0) + 1;
       if (b.reman >= (RC.remanDays || 6)) { b.reman = 0; this.manRaiderCamp(b, 1); }
+    }
+    // …and the Sea Folk look to their boats (checked whether the camp is
+    // full or thin — a sortie is about who is READY, not who is missing)
+    for (const b of Bld.list('R'))
+      if (b.key === 'raidercamp' && !(b.construction > 0) && b.tribe === 'sea') this.seaSortie(b);
+  },
+
+  /* ================= THE SEA FOLK SORTIE (tests/tribe-traits.mjs) =========
+     A Sea Folk camp does not only guard its fire. Every couple of weeks, if
+     a transport swings at anchor and enough of the band stands ready, they
+     push the longboat out and take the war TO a town — by water, like the
+     crews they are. The launch RELEASES the party (campId cleared): from
+     the beach on they are an ordinary loose band under Combat.raiderSeek —
+     a sortie is spent strength, not a leashed patrol — and the emptied camp
+     re-mans itself over the following days (tickRaiderCamps). One-way by
+     design: longboat crews raid until they are done, not until recalled. */
+  seaSortie(b) {
+    const RC = CFG.RAIDER_CAMPS || {};
+    if (!b.sortieDay) { b.sortieDay = S.day + Math.ceil((RC.sortieDays || 12) / 2) + (b.id % 5); return; }
+    if (S.day < b.sortieDay) return;
+    const tenders = this.campTenders(b);
+    const tr = tenders.find(u => Units.isTransport(u) && (!u.cargo || !u.cargo.length) &&
+      !(u.task && u.task.type === 'unload'));
+    const land = tenders.filter(u => !Units.isNaval(u));
+    if (!tr || land.length < (RC.sortieMin || 3)) return;         // not ready — the tide waits
+    const tgts = ['P', 'A'].filter(o => !this.barbEase(o)).map(o => Bld.tcOf(o)).filter(Boolean);
+    if (!tgts.length) { b.sortieDay = S.day + 6; return; }        // nothing left worth taking today
+    const tgt = tgts.sort((p, q) =>
+      Math.hypot(p.x - b.x, p.y - b.y) - Math.hypot(q.x - b.x, q.y - b.y))[0];
+    const route = Path.find(tr.x | 0, tr.y | 0, tgt.x, tgt.y, 'R', 'water');
+    const landing = Combat.pickLanding(
+      [{ x: tr.x | 0, y: tr.y | 0 }].concat(route || []), tgt, Combat.openNet());
+    if (!landing) { b.sortieDay = S.day + 10; return; }           // a landlocked mark — try again later
+    const cap = CFG.UNITS[tr.kind].cap || 5;
+    tr.cargo = tr.cargo || [];
+    for (const u of land.slice(0, cap)) {
+      u.campId = 0; u.task = null; u.path = null; u.tUnit = 0; u.tBld = 0;
+      S.units.splice(S.units.indexOf(u), 1);                      // they ride in the hull
+      tr.cargo.push(u);
+    }
+    tr.campId = 0;                                                // the hull is the war party's now
+    Units.orderUnload(tr, landing.x, landing.y);
+    b.sortieDay = S.day + (RC.sortieDays || 12) + (b.id % 5);
+    this.foeNote('⛵ The Sea Folk push their longboat out — a war party is on the water!');
+  },
+
+  /* ================= THE PEOPLES TAKE MORE THAN GROUND ====================
+     (tests/tribe-traits.mjs.) Two of the five convert instead of merely
+     killing — the thing that makes losing a fight to them FEEL different:
+       WOADKIN  a villager cut down with no soldier near is not mourned but
+                TAKEN — painted, and a new spear stands up at their fire.
+       BROKEN   when they finish a soldier and exactly one of yours is left
+                standing alone at the fight, that survivor deserts — walks
+                into the fog and joins the band that broke their shieldwall.
+     Bounded on purpose: a cooldown per camp, a hard cap on how far a band
+     grows past its rolled quota, and never while the levy is up (a village
+     under arms does not lose people quietly). Called from Units.damage. */
+  campTakes(attacker, victim) {
+    const RC = CFG.RAIDER_CAMPS || {};
+    const b = Bld.get(attacker.campId);
+    if (!b || b.key !== 'raidercamp' || b.owner !== 'R' || b.construction > 0) return;
+    if (S.levy) return;
+    if (S.day - (b.tookDay != null ? b.tookDay : -99) < (RC.takeCooldown || 2)) return;
+    if (b.quota0 == null) b.quota0 = b.quota;
+    if (b.quota >= b.quota0 + (RC.takeQuotaCap || 3)) return;
+    const loneR = RC.loneR || 6;
+    const guardsNear = (x, y, r) => S.units.filter(o => o.owner === 'P' &&
+      Units.isMilitary(o) && !Units.isNaval(o) && Math.hypot(o.x - x, o.y - y) <= r);
+    if (b.tribe === 'woad' && Units.isVillager(victim)) {
+      if (guardsNear(victim.x, victim.y, loneR).length) return;
+      b.tookDay = S.day; b.quota++;
+      this.manRaiderCamp(b, 1);
+      this.log('🌀 A villager is taken — painted, and gone to the Woadkin fire.', true);
+      return;
+    }
+    if (b.tribe === 'broken' && Units.isMilitary(victim) && !Units.isNaval(victim)) {
+      const left = guardsNear(victim.x, victim.y, loneR + 2)
+        .filter(o => !Units.isSiege(o) && o.kind !== 'ballista');
+      if (left.length !== 1) return;
+      const d = left[0];
+      b.tookDay = S.day; b.quota++;
+      d.owner = 'R'; d.tribe = 'broken'; d.campId = b.id; d.hostileTo = 'ALL';
+      d.task = null; d.path = null; d.tUnit = 0; d.tBld = 0; d.defend = false;
+      d.assault = 0; d.raidObj = null;
+      d.anchor = { x: b.x + 0.5, y: b.y + 0.5 };
+      if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === d.id) UI.deselect();
+      Units.setPath(d, b.x, b.y);
+      this.log(`🏳 Your ${CFG.UNITS[d.kind].name} stands alone over the dead — and lays down the banner. The fog takes them to the Broken.`, true);
     }
   },
 

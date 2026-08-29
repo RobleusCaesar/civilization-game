@@ -828,7 +828,19 @@ const CFG = {
      start should be hard, not dead. */
   START_RESOURCE: { min: 3, r: 14, game: 4 },
 
-  RAIDER_CAMPS: { perArea: 2, min: 2, guardR: 5, remanDays: 6, chaseR: 7 },
+  RAIDER_CAMPS: { perArea: 2, min: 2, guardR: 5, remanDays: 6, chaseR: 7,
+    /* TRIBE TRAITS (tests/tribe-traits.mjs) — the knobs behind each people's
+       one signature habit, so tuning never means hunting magic numbers:
+       packR/packMult    Wolfskins strike harder with two of the band beside them
+       fleshBruteP       Flintfolk bands breed brutes (vs the 0.25 baseline)
+       takeCooldown      days between a camp's conversions (Broken / Woadkin)
+       takeQuotaCap      how far above its rolled quota a camp can grow by taking
+       loneR             "alone" = no friendly military within this of the victim
+       sortieDays        Sea Folk days between longboat sorties (± camp jitter)
+       sortieMin         land tenders a sortie needs before it sails */
+    packR: 3, packMult: 1.5, fleshBruteP: 0.6,
+    takeCooldown: 2, takeQuotaCap: 3, loneR: 6,
+    sortieDays: 12, sortieMin: 3 },
 
   /* THE FIVE PEOPLES OF THE WILD COUNTRY (tests/raider-camps.mjs). The wild
      country is not one undifferentiated mass of "barbarians": five distinct
@@ -838,12 +850,21 @@ const CFG = {
      every time you go back — and burning that camp out takes those people off
      the board. Every entry needs matching art in sprites.js (TRIBE_ART):
      miss one and the unit falls back to the wolfskins. */
+  /* Each people also has a HOME GROUND (`haunt` — where its camp seeks to
+     stand, G.plantTribalCamps) and one signature HABIT (`trait` — the line
+     the camp's panel shows; the mechanics live in tests/tribe-traits.mjs's
+     subjects: Units.effAtk, G.manRaiderCamp, G.campTakes, G.seaSortie). */
   TRIBES: [
-    { key: 'wolf',   name: 'Wolfskins',    note: 'Pelt-hooded raiders who take the wolf as a war-mask' },
-    { key: 'flint',  name: 'Flintfolk',    note: 'Old blood of the stone country, antler-crowned' },
-    { key: 'broken', name: 'the Broken',   note: 'What is left of a third village, still in its ragged mail' },
-    { key: 'woad',   name: 'Woadkin',      note: 'Painted fighters with hair limed white' },
-    { key: 'sea',    name: 'the Sea Folk', note: 'Plumed crews off the water, come to take what floats' },
+    { key: 'wolf',   name: 'Wolfskins',    note: 'Pelt-hooded raiders who take the wolf as a war-mask',
+      trait: 'Pack tactics — they strike half again as hard side by side.' },
+    { key: 'flint',  name: 'Flintfolk',    note: 'Old blood of the stone country, antler-crowned',
+      trait: 'Stone-country blood — their bands breed brutes.' },
+    { key: 'broken', name: 'the Broken',   note: 'What is left of a third village, still in its ragged mail',
+      trait: 'The deserter’s toll — a soldier left standing alone may lay down your banner.' },
+    { key: 'woad',   name: 'Woadkin',      note: 'Painted fighters with hair limed white',
+      trait: 'The painting — a villager caught alone is taken to their fire.' },
+    { key: 'sea',    name: 'the Sea Folk', note: 'Plumed crews off the water, come to take what floats',
+      trait: 'Longboat sorties — their war parties come by water.' },
   ],
 
   MEAT_DROP: 25,               // fallback: food when a wild animal has no MEAT entry

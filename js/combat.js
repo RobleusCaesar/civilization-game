@@ -791,6 +791,27 @@ const Combat = {
     return true;
   },
 
+  /* the open wilderness network: ground reachable from the map border — or,
+     on all-water-border island maps, from beside each camp and the rival's
+     town (the camp tile itself is a BUILDING now, and buildings are solid —
+     seed the flood from the open ground BESIDE each camp, or the network
+     comes back empty; tests/raider-camps.mjs). Shared by spawnWave's musters
+     and the Sea Folk sortie's landings (G.seaSortie). */
+  openNet() {
+    let open = Path.borderReach();
+    if (!open) {
+      const seeds = [];
+      for (const c of (S.map.spawns.camps || [])) {
+        const near = MapGen.findNear(c.x, c.y, 3, (x, y) => Path.passable(x, y));
+        if (near) seeds.push(near);
+      }
+      const atc0 = Bld.tcOf('A');
+      if (atc0) seeds.push({ x: atc0.x, y: atc0.y + 2 });
+      open = Path.reachFrom(seeds);
+    }
+    return open;
+  },
+
   raiderSeek(u) {
     if (u.owner === 'A') return this.aiRaidSeek(u);   // rival parties think tactically
     const disp = u.owner === 'R' ? (u.hostileTo || 'P') : 'P';
@@ -836,6 +857,20 @@ const Combat = {
         // Re-stamping the anchor every scan keeps that ratchet from ever
         // starting: a tender's home never drifts off its own camp.
         u.anchor = { x: hx, y: hy };
+        /* A SEA FOLK HULL RIDES AT ANCHOR (tests/tribe-traits.mjs): the fire
+           warship answers whatever drifts into its own arc — a harbor gun,
+           no pursuit, never a land path — and a transport just swings on
+           its line until the sortie calls it (G.seaSortie). */
+        if (Units.isNaval(u)) {
+          u.tUnit = 0; u.tBld = 0;
+          if ((CFG.UNITS[u.kind].atk || 0) > 0) {
+            const arc = (CFG.UNITS[u.kind].rng || 2) + 0.5;
+            const prey = this.nearestUnit(u.x, u.y, arc,
+              o => this.hostileUnits(u, o) && this.canEngage(u, o));
+            if (prey) u.tUnit = prey.id;
+          }
+          return;
+        }
         /* A TENDER NEVER MARCHES TO THE WATERLINE TO GLARE ACROSS IT (a real
            day-20 save: the wolf camp on the north island probed villagers
            working the far side of the channel every scan — canReach failed,
@@ -1347,20 +1382,7 @@ const Combat = {
 
     // the open wilderness network (see below) — also gates beach landings so
     // sea raiders can't step off inside someone's sealed walls
-    let open = Path.borderReach();
-    if (!open) {
-      // the camp tile itself is a BUILDING now, and buildings are solid — seed
-      // the flood from the open ground BESIDE each camp, or an island map's
-      // wilderness network comes back empty (tests/raider-camps.mjs)
-      const seeds = [];
-      for (const c of (S.map.spawns.camps || [])) {
-        const near = MapGen.findNear(c.x, c.y, 3, (x, y) => Path.passable(x, y));
-        if (near) seeds.push(near);
-      }
-      const atc0 = Bld.tcOf('A');
-      if (atc0) seeds.push({ x: atc0.x, y: atc0.y + 2 });
-      open = Path.reachFrom(seeds);
-    }
+    let open = this.openNet();
 
     // seaborne raid: when open water touches the map edge, some bands arrive
     // by boat like viking raiders — sails first, then a landing on the beach
