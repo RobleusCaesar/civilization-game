@@ -102,6 +102,21 @@ The snapshot written in `G.updateVisibility` now carries `tribe` alongside
 `key`/`level`/`owner`, and the fog-ghost lookup in `render.js` special-cases
 `raidercamp` the same way `bldSprite` does.
 
+**Shipped (2026-08-29): all five camps are COMPOUND pieces.** Each
+`camp-{tribe}.png` is one composed scene — a dominant central structure,
+3–4 shorter peripherals from the people's own prop lore, and a ragged
+organic stain of trampled earth — authored 192px (the 192 masters live in
+`assets/masters/`), shipped at 2× nearest-neighbor (384). The sidecar
+(`{"scale": 3, "offsetY": 1}`) renders it 3×3 tiles centered on the 1×1
+footprint through the ordinary `artRect` path; footprint, pathing and
+hit-testing are untouched. `R.drawCampDress` stands its procedural litter
+down when the installed camp art declares compound scale (> 1.5), so a
+compound is never double-dressed — delete the PNG (or ship one without the
+sidecar) and the litter comes back. Recipe that worked: PixelLab pro with
+the shipped `tc-l3.png` as a labelled camera reference and the approved
+Wolfskins piece as the style reference (plain pixen kept baking isometric
+diorama plinths); hard-alpha QC + dither-trim of edge contacts.
+
 ### Camp dressing: one PNG per prop, one prop at a time
 
 ```

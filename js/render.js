@@ -6327,6 +6327,13 @@ const R = {
      burn the camp out and the litter goes with the band; the worn ground is
      what remains (the T.CAMP tile). Render-only: nothing here touches S. */
   drawCampDress(g, b) {
+    /* a COMPOUND camp PNG (sidecar scale past ~1.5 footprints) paints its own
+       yard — lodge, trophies, fire and clearing in one composed piece — so
+       the procedural strewing stands down rather than double-dressing it.
+       Keyed off the installed art's own sidecar, not a hand-kept list: a
+       tribe whose PNG ships without the compound scale keeps its litter. */
+    const own = Sprites.camp && Sprites.camp[b.tribe];
+    if (own && own._cfArt && (own._cfArt.scale || 1) > 1.5) return;
     const props = Sprites.campPropsFor(b.tribe);
     /* a dropped-in PNG wins the slot, one prop at a time — the override keys
        on the RESOLVED tribe (the wolf fallback), so an unknown-tribe camp
