@@ -292,14 +292,14 @@ const Screens = {
     this.syncTutToggle();
   },
 
-  // the "Start with a tutorial" choice remembers itself across runs
+  // the Tutorial choice remembers itself across runs. The button carries its
+  // own checkmark span (.tik) — state is the .sel class, never rewritten text
   syncTutToggle() {
     const b = this.el('btnTutToggle');
     if (!b) return;
     let v = false;
     try { v = localStorage.getItem('neo-tutorial-ask') === '1'; } catch (e) {}
     b.classList.toggle('sel', v);
-    b.textContent = '🎓 Start with a tutorial: ' + (v ? 'On' : 'Off');
   },
 
   draftTap(i, el) {
@@ -893,6 +893,19 @@ const Screens = {
     on('btnPauseLoad', () => { this.backTo = 'paused'; this.show('load'); });
     on('btnPauseSettings', () => { this.backTo = 'paused'; this.show('settings'); });
     on('btnPauseHow', () => { this.backTo = 'paused'; this.show('howto'); });
+    // guide page dots — one per panel, lit by scroll position
+    {
+      const panels = this.el('howPanels'), dots = this.el('howDots');
+      if (panels && dots) {
+        dots.innerHTML = Array.from(panels.children, () => '<i></i>').join('');
+        const mark = () => {
+          const i = Math.round(panels.scrollLeft / Math.max(1, panels.clientWidth));
+          Array.from(dots.children).forEach((d, k) => d.classList.toggle('on', k === i));
+        };
+        panels.addEventListener('scroll', () => requestAnimationFrame(mark), { passive: true });
+        mark();
+      }
+    }
     on('btnQuitTitle', () => this.quitToTitle());
     on('btnResign', () => this.resign());
     on('btnDoomResign', () => this.doomResign());

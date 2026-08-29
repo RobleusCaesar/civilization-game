@@ -976,20 +976,45 @@
   #draftOverlay p { font-size: 14px; line-height: 1.6; max-width: 330px; }
   #draftOverlay b { color: var(--gold); }
 
-  /* how-to-play swipe panels */
+  /* the tutorial switch: one word, one green check. On = the lit gold-rim
+     state with the check; off = the same button a shade darker, check gone —
+     the state reads at a glance instead of in a sentence */
+  .tutbtn { flex-direction: row; gap: 8px; font-weight: 800; font-size: 14px; padding: 4px 22px; }
+  .tutbtn .tik { color: #7fc45a; font-weight: 900; font-size: 16px; display: none; }
+  .tutbtn.sel .tik { display: inline; }
+  .tutbtn:not(.sel) { filter: brightness(0.72); color: var(--dim); }
+
+  /* THE GUIDE: swipe pages, each one picture + a few lines, centred like a
+     card — a pitch for the game, not a manual. The icon is PixelLab art in
+     the origin-card style (authored 128px, shown 96px, pixelated), carrying
+     the same carved drop shadow the plaques do. Its ground is near-solid:
+     the default screen gradient leaves a bright demo meadow fighting the
+     text, and a pitch has to be READ. */
+  #scrHowto { background: linear-gradient(rgba(13,11,8,0.93), rgba(13,11,8,0.97)); }
   #howPanels {
     flex: 1 1 0; display: flex; overflow-x: auto; overflow-y: hidden;
     scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; touch-action: pan-x;
   }
   #howPanels section {
     flex: 0 0 100%; scroll-snap-align: center; overflow-y: auto; touch-action: pan-x pan-y;
-    padding: 8px 24px calc(env(safe-area-inset-bottom) + 30px);
+    display: flex; flex-direction: column;
+    padding: 8px 26px calc(env(safe-area-inset-bottom) + 8px);
   }
-  #howPanels h3 { color: var(--gold); font-size: 15px; margin-bottom: 8px; }
-  #howPanels p { font-size: 12.5px; color: var(--text); line-height: 1.55; margin: 7px 0; }
+  /* auto margins centre the card when there's room and yield to normal flow
+     when a page genuinely overflows (same iOS-safe pattern as .pauseMenu) */
+  #howPanels .gpage { margin: auto; text-align: center; max-width: 360px; }
+  #howPanels .gart { width: 96px; height: 96px; image-rendering: pixelated;
+    filter: drop-shadow(0 4px 0 rgba(20,12,4,0.45)) drop-shadow(0 8px 14px rgba(0,0,0,0.4));
+    margin-bottom: 14px; }
+  #howPanels h3 { font-family: var(--menufont); font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px;
+    color: var(--gold); font-size: 17px; margin-bottom: 10px; }
+  #howPanels p { font-size: 13px; color: var(--text); line-height: 1.6; margin: 7px 0; }
   #howPanels p b { color: var(--gold); }
-  .swipeHint { text-align: center; color: var(--dim); font-size: 11px;
-    padding-bottom: calc(env(safe-area-inset-bottom) + 10px); }
+  #howDots { display: flex; justify-content: center; gap: 7px;
+    padding: 10px 0 calc(env(safe-area-inset-bottom) + 14px); }
+  #howDots i { width: 7px; height: 7px; border-radius: 50%; background: #4a3f2a; }
+  #howDots i.on { background: var(--gold); }
 </style>
 </head>
 <body>
@@ -1230,7 +1255,7 @@
       <div id="draftCards"></div>
       <p class="hint" id="draftHint"></p>
       <div id="draftRival"></div>
-      <button class="abtn" id="btnTutToggle" style="max-width:330px;min-height:44px">🎓 Start with a tutorial: Off</button>
+      <button class="abtn tutbtn" id="btnTutToggle" style="max-width:200px;min-height:44px">Tutorial<span class="tik">✓</span></button>
       <button class="abtn big gold" id="btnDraftGo" style="display:none">🏕 Begin</button>
     </div>
     <button class="abtn" id="btnDraftHelp">?</button>
@@ -1405,51 +1430,107 @@
   </div>
 
   <div class="screen" id="scrHowto">
-    <header class="shead"><button class="abtn back" id="howBack">‹</button><h2>How to play</h2></header>
+    <header class="shead"><button class="abtn back" id="howBack">‹</button><h2>Guide</h2></header>
     <div id="howPanels">
-      <section>
-        <h3>🏕 The basics</h3>
-        <p>Drag to pan, pinch to zoom, tap to select.</p>
-        <p>Tap a build button, then a tile, to place a building. Construction needs a
-          villager — an idle one is sent automatically, or tap a villager and then the site.</p>
-        <p>Tap a villager, then a <b>forest</b>, <b>hill</b>, <b>orchard</b> or <b>berry</b>
-          tile to gather. Tiles run dry and turn to stumps or pebbles — worked-out land
-          regrows in time, but slowly.</p>
-      </section>
-      <section>
-        <h3>🌾 Feeding the tribe</h3>
-        <p>Farms, hunting lodges, lumber camps and quarries only produce while a villager
-          is <b>stationed</b> there — tap the building, then "station a villager".</p>
-        <p>Villagers can also fish from the shore — but only where fish jump. Watch the
-          water, or build fishing boats at the <b>Dock</b> for deeper waters.</p>
-        <p>Every valley is short on one resource. Scouts tell you which on day one —
-          claim it before the rival does.</p>
-      </section>
-      <section>
-        <h3>⚔️ Keeping it</h3>
-        <p>Wolves, bears and barbarian raiders roam the wilds. Barbarians land in boats,
-          burn what they find, and leave — they fight <b>everyone</b>, including your rival.</p>
-        <p>Train defenders at the <b>Barracks</b>, archers at the <b>Range</b>, riders at
-          the <b>Stable</b>, siege at the <b>Workshop</b>. Each hall unlocks a new unit at
-          every level — mix strengths to cover weaknesses.</p>
-        <p>Villagers shelter inside the Town Center when raiders come knocking.</p>
-      </section>
-      <section>
-        <h3>⛵ The water</h3>
-        <p>The <b>Dock</b> builds fishing boats, warships and troop transports. Transports
-          carry your soldiers across water to distant shores — and enemy shores.</p>
-        <p>Old sailors speak of something vast beneath open water. Keep your fishing
-          boats close to home... or send two warships as escort.</p>
-      </section>
-      <section>
-        <h3>🏆 Winning</h3>
-        <p><b>Win:</b> destroy the rival tribe's Town Center.
-          <b>Lose:</b> yours falls. Nothing else ends the game — build up, then go get them.</p>
-        <p>Saves live in the cloud automatically (see Settings), and you can always
-          download a save file as a backup.</p>
-      </section>
+      <section><div class="gpage">
+        <img class="gart" src="assets/ui/guide/campfire.png" alt="" width="96" height="96">
+        <h3>Welcome to the valley</h3>
+        <p>A campfire, a handful of villagers, a wild green valley — and a rival
+          chief across the map who wants all of it.</p>
+        <p><b>Drag</b> to look around, <b>pinch</b> to zoom, <b>tap</b> to act.
+          That's every control in the game.</p>
+      </div></section>
+      <section><div class="gpage">
+        <img class="gart" src="assets/ui/guide/hall.png" alt="" width="96" height="96">
+        <h3>Raise your village</h3>
+        <p>Tap a building, tap the ground — your villagers do the rest.</p>
+        <p>Everything grows from the <b>Town Center</b>. Raise it through three
+          levels and each one unlocks new buildings, new soldiers, new tricks.</p>
+      </div></section>
+      <section><div class="gpage">
+        <img class="gart" src="assets/ui/guide/gather.png" alt="" width="96" height="96">
+        <h3>Gather everything</h3>
+        <p>Tap a villager, then a forest, a hill or a gold seam — off they go.
+          <b>Wood</b> builds, <b>stone</b> fortifies, <b>gold</b> pays for the
+          sharp stuff.</p>
+        <p>Every valley is short on one resource, and your scouts name it on day
+          one. Claim it before the rival does.</p>
+      </div></section>
+      <section><div class="gpage">
+        <img class="gart" src="assets/ui/guide/wheat.png" alt="" width="96" height="96">
+        <h3>Feed the tribe</h3>
+        <p>Hungry villagers down tools. Plant <b>farms</b> by fertile soil, hunt
+          the woods, fish where the fish jump.</p>
+        <p>Station a villager at a farm, lodge or quarry and it works all day —
+          a fed village runs itself.</p>
+      </div></section>
+      <section><div class="gpage">
+        <img class="gart" src="assets/ui/guide/cards.png" alt="" width="96" height="96">
+        <h3>Choose your Origin</h3>
+        <p>Every game deals you three <b>Origin cards</b> — keep one. It's the
+          gift your people start with: faster axes, braver spears, deeper purses.</p>
+        <p>Your rival drafts one too. On Hard you won't know which…</p>
+      </div></section>
+      <section><div class="gpage">
+        <img class="gart" src="assets/ui/guide/wolf.png" alt="" width="96" height="96">
+        <h3>The wilds bite back</h3>
+        <p>Wolves hunt the pines, bears own the deep forest, and boars charge
+          anyone who steps too close.</p>
+        <p><b>Barbarian tribes</b> — the Wolfskins, the Woadkin, the Sea Folk —
+          land in boats, burn what they find, and leave. They raid your rival
+          just as happily.</p>
+      </div></section>
+      <section><div class="gpage">
+        <img class="gart" src="assets/ui/guide/arms.png" alt="" width="96" height="96">
+        <h3>Raise an army</h3>
+        <p>Defenders from the <b>Barracks</b>, archers from the <b>Range</b>,
+          riders from the <b>Stable</b>, catapults and trebuchets from the
+          <b>Siege Workshop</b>.</p>
+        <p>Higher halls train fiercer troops — up to the <b>Bronze Champion</b>.
+          Spears, bows and horses each cover another's weakness. Mix them.</p>
+      </div></section>
+      <section><div class="gpage">
+        <img class="gart" src="assets/ui/guide/horn.png" alt="" width="96" height="96">
+        <h3>March as one</h3>
+        <p>Muster your soldiers into an <b>army</b> under one banner — tap the
+          banner and the whole host answers as one.</p>
+        <p>Sound the horn to call every idle blade to a spot. And when raiders
+          reach the walls, raise the <b>levy</b> — the whole village takes up arms.</p>
+      </div></section>
+      <section><div class="gpage">
+        <img class="gart" src="assets/ui/guide/tower.png" alt="" width="96" height="96">
+        <h3>Hold the line</h3>
+        <p><b>Walls</b> turn raiders, <b>gates</b> let your own people through,
+          and <b>watchtowers</b> shoot anything that comes close.</p>
+        <p>Villagers shelter inside the Town Center when trouble knocks.
+          Stone buys time — and time builds armies.</p>
+      </div></section>
+      <section><div class="gpage">
+        <img class="gart" src="assets/ui/guide/ship.png" alt="" width="96" height="96">
+        <h3>Rule the water</h3>
+        <p>The <b>Dock</b> floats fishing boats, transport rafts for your
+          soldiers, fire warships and bombard ships that break coasts.</p>
+        <p>Some valleys are islands, and the whole war crosses by sea. Old
+          sailors swear something vast moves under open water…</p>
+      </div></section>
+      <section><div class="gpage">
+        <img class="gart" src="assets/ui/guide/banner.png" alt="" width="96" height="96">
+        <h3>Know your rival</h3>
+        <p>Across the valley a rival chief builds, schemes and remembers. Every
+          game they roll a different temperament — hoarder, raider, sea-wolf.</p>
+        <p>Scout them early and watch how they probe your defenses. They are
+          certainly watching yours.</p>
+      </div></section>
+      <section><div class="gpage">
+        <img class="gart" src="assets/ui/guide/laurel.png" alt="" width="96" height="96">
+        <h3>Two roads to glory</h3>
+        <p>Break the rival's <b>Town Center</b> and the valley is yours.</p>
+        <p>Or out-build them entirely: raise an <b>Ancient Wonder</b> — one of
+          ten monuments — and win without a war. Either road ends on the
+          leaderboard.</p>
+      </div></section>
     </div>
-    <p class="swipeHint">‹ swipe for more ›</p>
+    <div id="howDots"></div>
   </div>
 
 </div>

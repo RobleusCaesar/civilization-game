@@ -656,10 +656,12 @@ const out = await p.evaluate(async () => {
     Screens.syncTutToggle();
     const btn = document.getElementById('btnTutToggle');
     ck('toggleExists', !!btn, '');
-    ck('toggleReadsOn', btn.classList.contains('sel') && /On$/.test(btn.textContent), btn.textContent);
+    // state is the .sel class + the green check (.tik) — the label never changes
+    const tik = () => getComputedStyle(btn.querySelector('.tik')).display !== 'none';
+    ck('toggleReadsOn', btn.classList.contains('sel') && tik(), btn.className);
     btn.click();
-    ck('toggleFlipsOff', !btn.classList.contains('sel') && /Off$/.test(btn.textContent) &&
-      localStorage.getItem('neo-tutorial-ask') === '0', btn.textContent);
+    ck('toggleFlipsOff', !btn.classList.contains('sel') && !tik() &&
+      localStorage.getItem('neo-tutorial-ask') === '0', btn.className);
   }
 
   try { localStorage.setItem('neo-tutorial-ask', '0'); } catch (e) {}

@@ -238,6 +238,20 @@ A contact sheet of the whole set lives at
 `assets/review/origin-icons-sheet.png` (untracked — `assets/review/` is the
 local review harness).
 
+## Guide page icons
+
+```
+assets/ui/guide/{key}.png              128×128, true alpha
+```
+
+One per Guide swipe page (`#howPanels` in index.html — campfire, hall,
+gather, wheat, cards, wolf, arms, horn, tower, ship, banner, laurel today).
+Referenced by plain `<img>` tags, shown at 96px with `image-rendering:
+pixelated` — no loader, no manifest; a new page is an `<img>` + a PNG.
+Authored to the SAME rules as the Origin Card icons above (flat frontal,
+centered single silhouette, hard alpha, thin dark outline, the earthy
+palette) — PixelLab pixen, `no_background: true`, one generation each.
+
 ## Win / loss screen art
 
 `assets/endgame/{win|loss}/{calm|moderate|hard}/{n}.png` — full details and
