@@ -6700,6 +6700,9 @@ const R = {
     // units and the fog blit. Mountains are NOT drawn here — their formation
     // pieces feed the strip layer below so they keep occluding.
     if (window.Formations) Formations.drawLayer(g);
+    // the WILDERNESS RELIC lies in the land the same way (js/relics.js):
+    // above the ground, below everything that moves or stands
+    if (window.Relics) Relics.draw(g);
     // …but a tower still coming down keeps the ground it stood on (startCollapse)
     if (this.collapses.length) this.drawCollapseGround(g);
 
@@ -7911,6 +7914,8 @@ const R = {
       g.fillStyle = u.owner === 'P' ? '#c0e8ff' : u.owner === 'A' ? '#ffb0a8' : u.owner === 'R' ? '#3fd0b0' : '#e8d8a0';
       g.fillRect((u.x * 2) | 0, (u.y * 2) | 0, 2, 2);
     }
+    // a DISCOVERED wilderness relic is a landmark worth finding again
+    if (window.Relics) Relics.drawMini(g);
     // camera rect
     const TL = CFG.TILE;
     g.strokeStyle = '#f0e6d0'; g.lineWidth = 1;

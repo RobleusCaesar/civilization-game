@@ -234,6 +234,9 @@ const G = {
        country is dangerous from day one and a lone villager sent across the
        map is a villager sent past somebody's spears. */
     this.plantTribalCamps(gen.spawns.camps || []);
+    // …and the wild country hides ONE thing worth stumbling on (js/relics.js —
+    // reads the finished map, writes nothing to it, seeded off the map seed)
+    if (window.Relics) Relics.place(gen);
     // …and a band within reach of EACH seat, so both sides start with a hunt
     // they could go and make (a lodge needs a killing ground — CFG.START_RESOURCE)
     {
@@ -472,6 +475,8 @@ const G = {
     }
     R.fogDirty = true;
     if (dirty.length) R.drawTilesAt(dirty);
+    // a fog reveal is the one moment a WILDERNESS RELIC can be found
+    if (window.Relics) Relics.checkDiscovery();
   },
 
   // which tunic colour a village wears (defaults keep player blue / rival red)

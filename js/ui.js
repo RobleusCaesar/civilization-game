@@ -1578,6 +1578,8 @@ const UI = {
     if (hitUnit) { this.select('unit', hitUnit.id); return; }
     if (hitBld) { this.select('bld', hitBld.id); return; }
     if (hitBridge) { this.selectBridge(hitBridge.x, hitBridge.y); return; }
+    // a DISCOVERED wilderness relic reads like a building: tap it, read it
+    if (window.Relics && Relics.hitAt(tile.x, tile.y)) { this.select('relic', 0); return; }
     // near-miss: a tap a sliver off a building's plot still opens it (resource
     // tiles keep their tap — the idle-villager convenience below wants them)
     if (!(explored && CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]])) {
@@ -2103,6 +2105,7 @@ const UI = {
   },
   panelSig() {
     if (!this.sel) return '';
+    if (this.sel.type === 'relic') return 'relic' + ((S.relic && S.relic.found) || 0);
     if (this.sel.type === 'bld') {
       const b = Bld.get(this.sel.id);
       if (!b) return 'gone';
@@ -2392,6 +2395,29 @@ const UI = {
     if (!this.sel) { this.deselect(); return; }
     this._panelSig = this.panelSig();
     let html = '';
+    /* A RELIC'S PANEL IS FOR READING (js/relics.js) — same chrome as a
+       building's, no actions at all: the name, the art, the story, and the
+       line recording what was found there. Reachable any time after the
+       discovery, not just at the moment of it. */
+    if (this.sel.type === 'relic') {
+      const r = S.relic, def = r && Relics.DEFS[r.key];
+      if (!r || !r.found || !def) { this.deselect(); return; }
+      html += `<div class="phead"><canvas id="pIcon"></canvas><div>
+        <div class="ptitle">${def.name}</div>
+        <div class="psub">A work of a vanished people</div></div>
+        <button class="abtn" id="panelClose">✕</button></div>`;
+      html += `<div class="psub" style="padding:4px 10px 2px;line-height:1.5">${def.flavor}</div>`;
+      html += `<div class="psub" style="padding:6px 10px 8px;color:var(--gold)">Found here on day ${r.found} — +${r.amount} ${def.res}.</div>`;
+      panel.innerHTML = html;
+      const ic = document.getElementById('pIcon');
+      if (ic) this.iconInto(ic, Relics.art(r.key));
+      const close = panel.querySelector('#panelClose');
+      if (close) close.addEventListener('click', () => this.deselect());
+      panel.classList.toggle('show', !this.panelHidden);
+      document.getElementById('buildmenu').style.display = 'none';
+      this.syncBottomToggle();
+      return;
+    }
     if (this.sel.type === 'bld') {
       const b = Bld.get(this.sel.id);
       if (!b) { this.deselect(); return; }

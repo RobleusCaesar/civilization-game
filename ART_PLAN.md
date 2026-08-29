@@ -164,6 +164,27 @@ optional sidecar, and `?dev=1` drop path (`wonder-{key}.png` routes itself).
 The `_cfArt` marker rides along, so a tall monument (the obelisk) authors a
 taller canvas and overhangs upward rather than being squashed into the 3×3.
 
+## Wilderness relic decor: the formation conventions, zero gameplay weight
+
+```
+assets/features/relic/relic-{W}x{H}-{key}-{letter}.png
+```
+
+One hidden relic per map (js/relics.js — `Relics.DEFS` holds the ten).
+Relics are a DECOR category on the formation pipeline's rules: footprint in
+the filename, 128 art-px per tile, `?v=` cache-busting, and the same
+`?dev=1` paths — a correctly named drop routes itself, and the CONFORM tool
+has a `relic decor` target that locks W×H to the relic's own def (the
+footprint placement actually measured; art may never disagree with it, and
+a mismatched name is refused). The conform preview stands a temporary found
+relic at the camera's centre and restores everything on close. The alpha is
+a silhouette only — the blocked set is EMPTY, nothing touches passability
+or any map array, and a 404 leaves the procedural weathered-stone
+placeholder standing. Contract: `tests/relics.mjs`. Author to land near 32
+art-px per tile after the conform pass, same as the trees; camera is HIGH
+TOP-DOWN (these lie IN the land) with a ragged organic ground edge — never
+a straight line, never a diamond.
+
 ## The anchoring rule (one rule, no per-building tuning)
 
 Every PNG is drawn the same way (`R.blitBld` → `R.artRect`):

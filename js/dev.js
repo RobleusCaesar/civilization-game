@@ -47,6 +47,13 @@
       // wonder art: one PNG per monument (wonder-{key}.png), same deal as camps
       const mw = lower.match(/^wonder-([a-z0-9]+)\.png$/);
       if (mw) return Assets.wonderKeys().indexOf(mw[1]) < 0 ? null : { kind: 'wonder', wkey: mw[1] };
+      // relic decor: relic-{W}x{H}-{key}-{letter}.png — the footprint in the
+      // name must match the relic def's own, or the drop is refused outright
+      const mr = lower.match(/^relic-(\d+)x(\d+)-([a-z0-9]+)-([a-z])\.png$/);
+      if (mr) {
+        const d = window.Relics && Relics.DEFS[mr[3]];
+        return (d && d.w === +mr[1] && d.h === +mr[2]) ? { kind: 'relic', rkey: mr[3] } : null;
+      }
       // formation pieces: {terrain}-{W}x{H}-{shape}-{letter}.png — validated
       // by the same parser the loader uses; the stem needs no catalog entry,
       // so an artist can preview a brand-new piece before it is listed
@@ -98,6 +105,17 @@
       return true;
     },
     // one formation piece — same shipping path (Assets.setFormationArt, so
+    // a relic's slot is one PNG per Relics.DEFS key — same shipping path
+    // (Assets.setRelicArt), same override/revert bookkeeping
+    injectRelic(rkey, img, name) {
+      const k = Assets.relicSlotKey(rkey);
+      if (!this._saved[k])
+        this._saved[k] = { art: Assets.relicArt[rkey], slot: Assets.art[k], loaded: !!Assets.loaded[k] };
+      if (!Assets.setRelicArt(rkey, img)) return false;
+      this.overrides[k] = name || (Assets.relicStem(rkey) + '.png');
+      this._renderPanel();
+      return true;
+    },
     // a monument's slot is one PNG per CFG.WONDERS key — same shipping path
     // (Assets.setWonderArt), same override/revert bookkeeping as a camp's
     injectWonder(wkey, img, name) {
@@ -239,6 +257,9 @@
       this._conform = {
         src, name: name || 'raw.png', W: 2, H: 2, N: 32,
         keyBg: false, shape: 'wip', letter: 'a',
+        target: 'mountain',
+        rkey: (window.Relics && Object.keys(Relics.DEFS)[0]) || 'aqueduct',
+        relicStash: null,
         tempStem: null, centered: false, prevMask: this.maskOverlay,
       };
       // suggest keying when the corner is opaque — external art loves a backdrop
@@ -261,6 +282,12 @@
         if (this.formationPin && this.formationPin.stem === c0.tempStem)
           this.setFormationPin(null, null);
       }
+      // a relic preview leaves NOTHING behind: art and S.relic both restored
+      if (c0.relicStash) {
+        if (c0.relicStash.art) Assets.relicArt[c0.rkey] = c0.relicStash.art;
+        else Assets.removeRelicArt(c0.rkey);
+        S.relic = c0.relicStash.relic;
+      }
       this.maskOverlay = c0.prevMask;
       if (c0.panel) c0.panel.remove();
       this._conform = null;
@@ -268,8 +295,15 @@
     },
     _conformStem() {
       const c0 = this._conform;
-      const shape = (c0.shape || '').toLowerCase().replace(/[^a-z0-9]/g, '') || 'wip';
       const letter = ((c0.letter || '').toLowerCase().replace(/[^a-z]/g, '')[0]) || 'a';
+      // relic target: the footprint and the shape ARE the def's — only the
+      // letter is the author's to choose, so the name can never disagree
+      // with the placement footprint the game actually uses
+      if (c0.target === 'relic') {
+        const d = window.Relics && Relics.DEFS[c0.rkey];
+        return d ? ('relic-' + d.w + 'x' + d.h + '-' + d.key + '-' + letter) : 'relic-wip';
+      }
+      const shape = (c0.shape || '').toLowerCase().replace(/[^a-z0-9]/g, '') || 'wip';
       return 'mountain-' + c0.W + 'x' + c0.H + '-' + shape + '-' + letter;
     },
     _conformBuild() {
@@ -349,6 +383,27 @@
         delete this._formInfo[c0.tempStem];
         c0.tempStem = null;
       }
+      /* RELIC TARGET: the conformed piece installs as the relic's live art
+         (Assets.setRelicArt), and a TEMPORARY found relic is stood at the
+         camera's centre so the preview lands on real ground within a frame.
+         Both are stashed once and restored on close — in-memory only. */
+      if (c0.target === 'relic') {
+        const d = window.Relics && Relics.DEFS[c0.rkey];
+        c0.built = this._conformBuild();
+        if (d && c0.built) {
+          if (!c0.relicStash) c0.relicStash = { art: Assets.relicArt[c0.rkey], relic: S.relic };
+          Assets.setRelicArt(c0.rkey, c0.built.canvas);
+          if (window.S && S.map) {
+            const TL = CFG.TILE;
+            const cx = Math.round((R.cam.x + R.viewW() / R.cam.z / 2) / TL - d.w / 2);
+            const cy = Math.round((R.cam.y + R.viewH() / R.cam.z / 2) / TL - d.h / 2);
+            S.relic = { key: d.key, x: cx, y: cy, w: d.w, h: d.h, found: S.day || 1, amount: 0, devPreview: 1 };
+          }
+        }
+        this._conformRender();
+        this._renderPanel();
+        return;
+      }
       c0.built = this._conformBuild();
       if (c0.built) {
         const stem = this._conformStem();
@@ -389,6 +444,10 @@
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
         '<b>CONFORM — raw art → piece</b><button id="dcClose" style="font:12px monospace">×</button></div>' +
         '<div id="dcSrc" style="opacity:.7;margin-bottom:6px;word-break:break-word"></div>' +
+        '<div style="display:flex;gap:6px;align-items:center;margin:4px 0">target ' +
+        '<select id="dcTarget" style="font:12px monospace">' +
+        '<option value="mountain">mountain piece</option><option value="relic">relic decor</option></select>' +
+        '<select id="dcRelic" style="font:12px monospace;display:none"></select></div>' +
         '<div style="display:flex;gap:8px;align-items:center;margin:4px 0">footprint ' +
         'W <select id="dcW" style="font:12px monospace"></select> × ' +
         'H <select id="dcH" style="font:12px monospace"></select></div>' +
@@ -418,6 +477,33 @@
       p.querySelector('#dcKey').checked = c0.keyBg;
       p.querySelector('#dcMask').checked = this.maskOverlay;
       const re = () => this._conformApply();
+      /* the RELIC target: which relic is being dressed (its def pins the
+         footprint — a relic's art may never disagree with the ground its
+         placement actually measured, so W/H lock to the def) */
+      const tSel = p.querySelector('#dcTarget'), rSel = p.querySelector('#dcRelic');
+      if (window.Relics) for (const rk of Object.keys(Relics.DEFS)) rSel.appendChild(new Option(rk, rk));
+      rSel.value = c0.rkey;
+      tSel.value = c0.target;
+      const relicRestore = () => {
+        if (!c0.relicStash) return;
+        if (c0.relicStash.art) Assets.relicArt[c0.rkey] = c0.relicStash.art;
+        else Assets.removeRelicArt(c0.rkey);
+        S.relic = c0.relicStash.relic;
+        c0.relicStash = null;
+      };
+      const syncTarget = () => {
+        const rel = c0.target === 'relic';
+        rSel.style.display = rel ? '' : 'none';
+        p.querySelector('#dcShape').disabled = rel;
+        wSel.disabled = rel; hSel.disabled = rel;
+        if (rel && window.Relics && Relics.DEFS[c0.rkey]) {
+          c0.W = Relics.DEFS[c0.rkey].w; c0.H = Relics.DEFS[c0.rkey].h;
+          wSel.value = c0.W; hSel.value = c0.H;
+        }
+      };
+      syncTarget();
+      tSel.onchange = () => { relicRestore(); c0.target = tSel.value; syncTarget(); re(); };
+      rSel.onchange = () => { relicRestore(); c0.rkey = rSel.value; syncTarget(); re(); };
       wSel.onchange = () => { c0.W = +wSel.value; re(); };
       hSel.onchange = () => { c0.H = +hSel.value; re(); };
       nR.oninput = () => { c0.N = this.DENSITIES[+nR.value]; re(); };
@@ -489,6 +575,15 @@
         this._renderPanel();
         return true;
       }
+      if (k.indexOf('rl|') === 0) {
+        const rkey = k.slice(3);
+        if (s.art) Assets.relicArt[rkey] = s.art; else delete Assets.relicArt[rkey];
+        if (s.loaded) { Assets.art[k] = s.slot; Assets.loaded[k] = true; }
+        else { delete Assets.art[k]; delete Assets.loaded[k]; if (s.slot === null) Assets.art[k] = null; }
+        delete this.overrides[k];
+        this._renderPanel();
+        return true;
+      }
       if (k.indexOf('wonder-') === 0) {
         const wkey = k.slice('wonder-'.length);
         Sprites.wonders[wkey] = s.spr;
@@ -541,6 +636,7 @@
       if (v.indexOf('fm|') === 0) { const [, terrain, stem] = v.split('|'); return this.injectFormation(terrain, stem, img, name); }
       if (v.indexOf('p|') === 0) { const [, tribe, i] = v.split('|'); return this.injectCampProp(tribe, +i, img, name); }
       if (v.indexOf('c|') === 0) return this.injectCamp(v.slice(2), img, name);
+      if (v.indexOf('rl|') === 0) return this.injectRelic(v.slice(3), img, name);
       const [, id, lv] = v.split('|');
       return this.inject(id, +lv, img, name);
     },
@@ -667,6 +763,7 @@
           if (slot.kind === 'campProp') DevArt.injectCampProp(slot.tribe, slot.i, img, f.name);
           else if (slot.kind === 'camp') DevArt.injectCamp(slot.tribe, img, f.name);
           else if (slot.kind === 'wonder') DevArt.injectWonder(slot.wkey, img, f.name);
+          else if (slot.kind === 'relic') DevArt.injectRelic(slot.rkey, img, f.name);
           else if (slot.kind === 'formation') DevArt.injectFormation(slot.terrain, slot.stem, img, f.name);
           else DevArt.inject(slot.id, slot.lv, img, f.name);
         };

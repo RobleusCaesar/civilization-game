@@ -409,6 +409,61 @@ const Assets = {
     img.onerror = () => { this.art[this.formationSlotKey(tName, stem)] = null; };
     img.src = this.formationUrl(tName, stem);
   },
+  /* ---- WILDERNESS RELIC ART (js/relics.js): the formation conventions
+     pointed at a DECOR directory ----
+
+       assets/features/relic/relic-{W}x{H}-{key}-{letter}.png
+
+     The stem carries the footprint exactly as a formation's does, the same
+     128 art-px-per-tile rule applies, and the same ?v= cache-buster rides
+     the URL. The footprint in the name must MATCH the relic def's own
+     (placement used the def; art that disagrees is refused with one plain
+     warning and the procedural placeholder keeps standing). A relic is
+     decor by definition: its alpha is a silhouette, never a passability —
+     the blocked set is EMPTY and nothing here can touch a map array. */
+  RELIC_DIR: 'assets/features/relic/',
+  relicArt: {},
+  relicKeys() { return window.Relics ? Object.keys(Relics.DEFS) : []; },
+  relicStem(key) {
+    const d = window.Relics && Relics.DEFS[key];
+    return d ? ('relic-' + d.w + 'x' + d.h + '-' + key + '-a') : null;
+  },
+  relicSlotKey(key) { return 'rl|' + key; },
+  relicUrl(key) { return this.RELIC_DIR + this.relicStem(key) + '.png?v=' + (CFG.ART_V || 1); },
+  _tryLoadRelic(key) {
+    const img = new Image();
+    const k = this.relicSlotKey(key);
+    img.onload = () => {
+      if (window.DevArt && DevArt.overrides && DevArt.overrides[k]) return;
+      this.setRelicArt(key, img);
+    };
+    img.onerror = () => { this.art[k] = null; };
+    img.src = this.relicUrl(key);
+  },
+  setRelicArt(key, img) {
+    const d = window.Relics && Relics.DEFS[key];
+    if (!d || !img) return false;
+    if (img.width !== d.w * this.FORMATION_PX) {
+      if (!this._relicWarned) this._relicWarned = {};
+      if (!this._relicWarned[key]) {
+        this._relicWarned[key] = 1;
+        console.warn('[relic art] ' + key + ': width ' + img.width + ' ≠ footprint ' +
+          d.w + '×128 = ' + (d.w * this.FORMATION_PX) + ' — refused, placeholder stands');
+      }
+      return false;
+    }
+    this.relicArt[key] = img;
+    const k = this.relicSlotKey(key);
+    this.art[k] = img;
+    this.loaded[k] = true;
+    return true;
+  },
+  removeRelicArt(key) {
+    delete this.relicArt[key];
+    const k = this.relicSlotKey(key);
+    delete this.art[k]; delete this.loaded[k];
+  },
+
   /* mean alpha coverage of each footprint cell, as fractions 0..1 —
      the ?dev=1 workbench reports these in plain words. Null on a taint
      error (file://), where the pixels cannot be read. */
@@ -519,6 +574,7 @@ const Assets = {
       for (let i = 1; i <= this.CAMP_PROP_N; i++) this._tryLoadCampProp(tribe, i);
     }
     for (const w of this.wonderKeys()) this._tryLoadWonder(w);
+    for (const k of this.relicKeys()) this._tryLoadRelic(k);
     for (const outcome of this.ENDGAME_OUTCOMES)
       for (const mode of this.endgameModes()) this._tryEndgame(outcome, mode, 1);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key]);
