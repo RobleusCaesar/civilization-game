@@ -243,9 +243,11 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       /@font-face[^}]*url\('assets\/ui\/cinzel\.woff2'\)/.test(html) &&
       mf.slice(0, 4).toString() === 'wOF2' && mf.length < 60 * 1024,
       Math.round(mf.length / 1024) + 'KB woff2');
+    // the plaque styles are shared (.plaques — title AND pause wear them)
     ck('andTheButtonsAreSetInIt',
-      /#scrTitle \.abtn \{[^}]*font-family:\s*var\(--menufont\)/.test(html) &&
-      /#scrTitle \.abtn \{[^}]*text-transform:\s*uppercase/.test(html),
+      /\.plaques \.abtn \{[^}]*font-family:\s*var\(--menufont\)/.test(html) &&
+      /\.plaques \.abtn \{[^}]*text-transform:\s*uppercase/.test(html) &&
+      /class="tmenu plaques"/.test(html) && /class="pauseMenu plaques"/.test(html),
       'Roman caps on the plaques');
   }
 }

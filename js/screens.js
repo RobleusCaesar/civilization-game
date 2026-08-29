@@ -537,11 +537,12 @@ const Screens = {
   /* ---------------- settings ---------------- */
   onSettings() {
     this.renderLog();          // the event log lives on this page now
-    const cad = this.el('setCadence');
-    cad.value = String(window.Backend ? Backend.autosaveDays : 2);
+    const days = String(window.Backend ? Backend.autosaveDays : 2);
+    for (const b of this.el('setCadence').querySelectorAll('.abtn'))
+      b.classList.toggle('sel', b.dataset.v === days);
     const idBox = this.el('setIdentity');
     idBox.textContent = window.Backend && Backend.uid
-      ? Backend.villageName(Backend.uid) : 'cloud saves not connected';
+      ? 'Your village: ' + Backend.villageName(Backend.uid) : 'cloud saves not connected';
     if (window.Backend && Backend.isReady())
       Backend.getProfile().then(r => {
         if (r.ok && r.data && r.data.chief_name) this.el('chiefInput').value = r.data.chief_name;
@@ -552,14 +553,11 @@ const Screens = {
   onPaused() {
     this.backTo = 'paused';
     if (window.S) S.paused = true;
-    this.el('pauseSeed').textContent =
-      `${G.modeCfg().icon} ${G.modeCfg().name} · ${S.sizeKey} map · day ${S.day} · seed ${S.seed}` +
-      (G.lastFrameError ? '  ·  ⚠️ recovered a glitch (details in log)' : '');
     const q = this.el('btnQuitTitle');
-    q.textContent = '🏕 Quit to title';
+    q.textContent = 'Quit to title';
     q.classList.remove('danger');
     const r = this.el('btnResign');
-    if (r) { r.textContent = '🏳 Resign'; r.classList.remove('danger'); }
+    if (r) { r.textContent = 'Resign'; r.classList.remove('danger'); }
     this._confirmResign = false;
   },
 
@@ -598,11 +596,11 @@ const Screens = {
     const r = this.el('btnResign');
     if (!force && !this._confirmResign) {
       this._confirmResign = true;
-      if (r) { r.textContent = '⚠ Concede the valley — tap again'; r.classList.add('danger'); }
+      if (r) { r.textContent = 'Concede — tap again'; r.classList.add('danger'); }
       return;
     }
     this._confirmResign = false;
-    if (r) { r.textContent = '🏳 Resign'; r.classList.remove('danger'); }
+    if (r) { r.textContent = 'Resign'; r.classList.remove('danger'); }
     S.resigned = true;
     G.end(false, 'You struck your banner and left the valley.');
   },
@@ -612,7 +610,7 @@ const Screens = {
     if (unsaved && !this._confirmQuit) {
       this._confirmQuit = true;
       const q = this.el('btnQuitTitle');
-      q.textContent = '⚠ Unsaved progress — tap again to quit';
+      q.textContent = 'Unsaved — tap again';
       q.classList.add('danger');
       if (window.Backend) Backend.snapshotLocal(G.saveJSON());   // belt and braces
       return;
@@ -917,10 +915,14 @@ const Screens = {
     on('btnVicTitle', goTitle);
     on('btnDefeatAgain', goNew);     // "The Last Fire" defeat buttons — same actions
     on('btnDefeatTitle', goTitle);
-    // settings
-    this.el('setCadence').addEventListener('change', e => {
-      Backend.autosaveDays = +e.target.value;
-      try { localStorage.setItem('neo-autosave-days', e.target.value); } catch (err) {}
+    // settings — the cadence is a segmented row now, same idiom as the
+    // new-game pickers, so it reads as a game option instead of a form field
+    this.el('setCadence').addEventListener('click', e => {
+      const b = e.target.closest('[data-v]'); if (!b) return;
+      Backend.autosaveDays = +b.dataset.v;
+      try { localStorage.setItem('neo-autosave-days', b.dataset.v); } catch (err) {}
+      for (const x of this.el('setCadence').querySelectorAll('.abtn'))
+        x.classList.toggle('sel', x === b);
     });
     this.el('chiefInput').addEventListener('change', e => {
       if (window.Backend && Backend.isReady()) Backend.setChiefName(e.target.value);

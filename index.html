@@ -278,7 +278,7 @@
 
   .mrow { display: flex; gap: 8px; margin: 8px 0; align-items: center; }
   .mrow .abtn { flex: 1; }
-  #seedInput, #chiefInput, #setCadence {
+  #seedInput, #chiefInput {
     flex: 1; min-height: 44px; border-radius: 8px; border: 1px solid #55492f;
     background: #201b12; color: var(--text); padding: 0 10px; font-size: 14px;
     -webkit-user-select: text; user-select: text;
@@ -397,13 +397,50 @@
   .trow2 .abtn { flex: 1; }
   /* PAUSE: a centred menu. The body is the scroll container, so the menu is
      centred with vertical auto margins (min-height:100% inside a flex scroller
-     is unreliable on iOS) and only scrolls if it genuinely overflows. */
+     is unreliable on iOS) and only scrolls if it genuinely overflows.
+     It wears the title's carved plaques (.plaques) at the title menu's width,
+     over the dimmed live game — stepping out to camp, not into a form. */
   #scrPaused .sbody { display: flex; flex-direction: column; }
-  #scrPaused .pauseMenu { width: 100%; max-width: 560px; margin: auto;
+  #scrPaused .pauseMenu { width: min(340px, 90vw); margin: auto;
     padding: calc(var(--safe-top) + 6px) 0 calc(env(safe-area-inset-bottom) + 6px); }
-  #scrPaused .pauseMenu .mrow, #scrPaused .pauseMenu .trow2 { margin-bottom: 10px; }
-  #btnResign.danger, #btnQuitTitle.danger { border-color: #a4522e; background: #4a2a1c; }
+  #scrPaused .pauseMenu .mrow, #scrPaused .pauseMenu .trow2 { margin-bottom: 11px; }
+  /* the word PAUSED is cut from the same block as the wordmark, one size down */
+  #scrPaused .pauseTitle {
+    font-family: var(--pxfont); font-weight: 500; font-size: 34px; letter-spacing: 1px;
+    color: #f7d97a; text-align: center; margin: 0 0 20px;
+    text-shadow:
+      1px 0 0 #3a2410, -1px 0 0 #3a2410, 0 1px 0 #3a2410, 0 -1px 0 #3a2410,
+      1px 1px 0 #3a2410, -1px 1px 0 #3a2410, 1px -1px 0 #3a2410, -1px -1px 0 #3a2410,
+      0 4px 0 #9c7226, 0 7px 0 #2c1f0e, 0 10px 16px rgba(0,0,0,0.6);
+  }
+  /* the confirm step (resign / unsaved quit) re-cuts the plaque in scorched
+     wood — same carve, ember face, so danger reads without leaving the style */
+  .plaques .abtn.danger { color: #ffd9c0; }
+  .plaques .abtn.danger::before {
+    background:
+      repeating-linear-gradient(90deg, rgba(30,10,4,0.05) 0 2px, rgba(30,10,4,0) 2px 13px),
+      repeating-linear-gradient(90deg, rgba(30,10,4,0.035) 0 3px, rgba(30,10,4,0) 3px 31px),
+      linear-gradient(#8a4a2a 0%, #763a1e 45%, #622e14 58%, #50240e 100%);
+    box-shadow:
+      inset 0 0 0 2px #1c0c04,
+      inset 0 0 0 4px #c97a3e,
+      inset 0 0 0 6px #8a5028,
+      inset 0 0 0 7px #241005,
+      inset 0 11px 0 rgba(240,200,150,0.13),
+      inset 0 -8px 0 rgba(0,0,0,0.26),
+      inset 8px 0 0 rgba(240,200,150,0.05),
+      inset -8px 0 0 rgba(0,0,0,0.12);
+    filter: drop-shadow(0 4px 0 rgba(10,7,3,0.55)) drop-shadow(0 8px 14px rgba(0,0,0,0.4));
+  }
   .trow3 .abtn { min-height: 48px; font-size: 12px; padding: 4px 6px; }
+  /* settings: the plumbing lives behind folds so the page is three quiet rows */
+  #setCadence .abtn { flex: 1 1 22%; min-height: 44px; font-size: 13px; }
+  .setfold { margin-top: 18px; border-top: 1px solid #2e2a1e; padding-top: 8px; }
+  .setfold summary { font-size: 12px; font-weight: 800; color: var(--gold);
+    cursor: pointer; padding: 6px 0; list-style: none; -webkit-user-select: none; user-select: none; }
+  .setfold summary::-webkit-details-marker { display: none; }
+  .setfold summary::before { content: '▸ '; }
+  .setfold[open] summary::before { content: '▾ '; }
 
   /* ---- title: the painted glen ----
      The backdrop is supplied art (assets/ui/title-bg, webp served / jpg
@@ -469,7 +506,8 @@
   #scrTitle.hasLogoArt .logo,
   #scrTitle.hasLogoArt .tagline { display: none; }
 
-  /* THE CARVED WOODEN PLAQUE (title menu only).
+  /* THE CARVED WOODEN PLAQUE (.plaques menus — the title and the pause screen,
+     so pausing feels like stepping back out to the same camp).
      The corners are a STEPPED CHAMFER, never border-radius: a smooth
      anti-aliased arc is the loudest "web button" tell there is next to pixel
      art. clip-path cuts the silhouette, which means the face, the rim and
@@ -480,7 +518,7 @@
      Layers, outermost in: dark outline → gold rim highlight → rim base →
      dark separator → top/bottom/side bevels → wood grain → face gradient,
      then the studs on ::after. */
-  #scrTitle .abtn {
+  .plaques .abtn {
     --chamfer: polygon(
       0 6px, 3px 6px, 3px 3px, 6px 3px, 6px 0,
       calc(100% - 6px) 0, calc(100% - 6px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 6px, 100% 6px,
@@ -496,7 +534,7 @@
     text-transform: uppercase; letter-spacing: 1.4px;
     text-shadow: 0 2px 0 rgba(20,12,4,0.85), 0 0 4px rgba(20,12,4,0.5);
   }
-  #scrTitle .abtn::before {
+  .plaques .abtn::before {
     content: ''; position: absolute; inset: 0; z-index: -1;
     clip-path: var(--chamfer);
     /* grain on two CO-PRIME periods so the beat never repeats visibly —
@@ -519,7 +557,7 @@
   /* four square nailheads. SOLID, not two-tone: at 3px a diagonal split is
      a triangle, not a lit-and-shaded stud. The lower pair sits a shade
      darker, which is all the lighting this size can carry. */
-  #scrTitle .abtn::after {
+  .plaques .abtn::after {
     content: ''; position: absolute; inset: 0; pointer-events: none;
     background:
       linear-gradient(#e8c47a, #e8c47a), linear-gradient(#e8c47a, #e8c47a),
@@ -528,14 +566,14 @@
     background-repeat: no-repeat;
     background-position: 11px 11px, calc(100% - 11px) 11px, 11px calc(100% - 11px), calc(100% - 11px) calc(100% - 11px);
   }
-  #scrTitle .abtn.big { min-height: 58px; }
-  #scrTitle .abtn small {
+  .plaques .abtn.big { min-height: 58px; }
+  .plaques .abtn small {
     font-family: var(--menufont); font-weight: 400; font-size: 10px;
     text-transform: uppercase; letter-spacing: 0.8px;
     color: rgba(240,230,208,0.72); margin-top: 2px;
   }
   /* Continue: the green banner plaque with the gold rim */
-  #scrTitle .abtn.gold::before {
+  .plaques .abtn.gold::before {
     background:
       repeating-linear-gradient(90deg, rgba(16,26,8,0.05) 0 2px, rgba(16,26,8,0) 2px 13px),
       repeating-linear-gradient(90deg, rgba(16,26,8,0.035) 0 3px, rgba(16,26,8,0) 3px 31px),
@@ -554,8 +592,8 @@
      bevel inverts (dark now on top), face darkens a step. The whole button
      translates, so the studs and the icon go down and darken WITH it —
      ornament that stays lit while its plank sinks reads as stuck on. */
-  #scrTitle .abtn:active:not(.cant) { transform: translateY(3px); filter: brightness(0.78); }
-  #scrTitle .abtn:active:not(.cant)::before {
+  .plaques .abtn:active:not(.cant) { transform: translateY(3px); filter: brightness(0.78); }
+  .plaques .abtn:active:not(.cant)::before {
     box-shadow:
       inset 0 0 0 2px #1a1006,
       inset 0 0 0 4px #8a6730,
@@ -565,7 +603,7 @@
       inset 0 -6px 0 rgba(240,214,150,0.06);
     filter: drop-shadow(0 1px 0 rgba(10,7,3,0.55));
   }
-  #scrTitle .abtn.gold:active:not(.cant)::before {
+  .plaques .abtn.gold:active:not(.cant)::before {
     box-shadow:
       inset 0 0 0 2px #14200a,
       inset 0 0 0 4px #9d8140,
@@ -578,8 +616,8 @@
      drop shadow goes and the lit top bevel inverts, which is the same
      posture the pressed state uses. Washed, never ghosted: the global
      .cant opacity reads as a rendering fault on a solid carved object. */
-  #scrTitle .abtn.cant { opacity: 1; filter: saturate(0.35) brightness(0.82); }
-  #scrTitle .abtn.cant::before {
+  .plaques .abtn.cant { opacity: 1; filter: saturate(0.35) brightness(0.82); }
+  .plaques .abtn.cant::before {
     filter: none;
     box-shadow:
       inset 0 0 0 2px #1a1006,
@@ -589,7 +627,7 @@
       inset 0 9px 0 rgba(0,0,0,0.26),
       inset 0 -6px 0 rgba(255,255,255,0.05);
   }
-  #scrTitle .abtn.cant .pxi { filter: grayscale(1) brightness(0.85); }
+  .plaques .abtn.cant .pxi { filter: grayscale(1) brightness(0.85); }
   .blab { display: flex; align-items: center; justify-content: center; gap: 10px; }
   .pxi { width: 27px; height: 27px; flex: 0 0 auto; filter: drop-shadow(0 2px 0 rgba(0,0,0,0.35)); }
   /* THE THREE-ACROSS ROW MUST NEVER RUN OFF ITS PLAQUES. Roman caps are
@@ -603,10 +641,10 @@
      reads as fine print next to the three big buttons — the secondary row
      is better served by a label that can simply be READ. The three hero
      plaques keep their icons, which is also what marks them as primary. */
-  #scrTitle .trow3 .abtn { min-height: 48px; font-size: 13px; letter-spacing: 0.8px; padding: 4px 4px; }
-  #scrTitle .trow3 .blab { gap: 0; white-space: nowrap; }
+  .plaques .trow3 .abtn { min-height: 48px; font-size: 13px; letter-spacing: 0.8px; padding: 4px 4px; }
+  .plaques .trow3 .blab { gap: 0; white-space: nowrap; }
   @media (max-width: 359px) {
-    #scrTitle .trow3 .abtn { font-size: 11.5px; letter-spacing: 0.4px; padding: 4px 2px; }
+    .plaques .trow3 .abtn { font-size: 11.5px; letter-spacing: 0.4px; padding: 4px 2px; }
   }
   /* THE POP-IN. The loading screen IS this screen's backdrop, so the boot has
      no scene change in it: the glen is up from frame one and the chrome
@@ -649,8 +687,8 @@
     #logoArt { width: min(240px, 60vw); }
     .tagline { display: none; }
     .tmenu { margin-top: 12px; gap: 7px; }
-    #scrTitle .abtn.big { min-height: 44px; }
-    #scrTitle .trow3 .abtn { min-height: 40px; }
+    .plaques .abtn.big { min-height: 44px; }
+    .plaques .trow3 .abtn { min-height: 40px; }
   }
 
   /* new-game option rows */
@@ -1142,7 +1180,7 @@
         <h1 class="logo">CLANFIRE</h1>
         <p class="tagline">GATHER · EXPAND · CONQUER</p>
       </div>
-      <div class="tmenu">
+      <div class="tmenu plaques">
         <button class="abtn big gold" id="btnContinue"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><polygon points="3,2 14,8 3,14" fill="#2c1f0e"/><polygon points="4,4 12,8 4,12" fill="#f7d364"/><polygon points="4,8 12,8 4,12" fill="#d9a83f"/></svg>Continue</span><small>looking for saves…</small></button>
         <button class="abtn big" id="btnTitleNew"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><rect x="7" y="0" width="2" height="3" fill="#8a6a3c"/><rect x="6" y="1" width="4" height="1" fill="#8a6a3c"/><polygon points="8,2 15,8 1,8" fill="#2c1f0e"/><polygon points="8,3 13.5,7.4 2.5,7.4" fill="#e3c079"/><polygon points="8,3 13.5,7.4 8,7.4" fill="#c8a15c"/><rect x="2.5" y="5" width="11" height="0.6" fill="#a8834a"/><rect x="4" y="6.4" width="8" height="0.6" fill="#a8834a"/><rect x="2" y="8" width="12" height="7" fill="#2c1f0e"/><rect x="3" y="9" width="10" height="5" fill="#d9bd86"/><rect x="3" y="9" width="10" height="1" fill="#efdcaf"/><rect x="6" y="10" width="4" height="5" fill="#2c1f0e"/><rect x="6.6" y="10.6" width="2.8" height="4.4" fill="#4a3117"/></svg>New game</span></button>
         <button class="abtn big" id="btnTitleBoard"><span class="blab"><svg class="pxi" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><rect x="2" y="2" width="12" height="2" fill="#8a5f23"/><rect x="4" y="2" width="8" height="6" fill="#f2cd62"/><rect x="2" y="3" width="2" height="3" fill="#d9a83f"/><rect x="12" y="3" width="2" height="3" fill="#d9a83f"/><rect x="4" y="2" width="8" height="1" fill="#f7e39a"/><rect x="5" y="8" width="6" height="1" fill="#d9a83f"/><rect x="6" y="9" width="4" height="1" fill="#b98a2e"/><rect x="7" y="10" width="2" height="2" fill="#d9a83f"/><rect x="4" y="12" width="8" height="2" fill="#8a5f23"/></svg>Leaderboard</span></button>
@@ -1216,55 +1254,55 @@
     </div>
   </div>
 
+  <!-- SETTINGS is three quiet rows: autosave, your chief's name, and where you
+       stand. The plumbing (recovery token, save-file export) and the running
+       chronicle fold away — present for whoever needs them, invisible until asked. -->
   <div class="screen" id="scrSettings">
     <header class="shead"><button class="abtn back" id="setBack">‹</button><h2>Settings</h2></header>
     <div class="sbody">
-      <p class="lbl">Cloud autosave</p>
-      <div class="mrow">
-        <select id="setCadence">
-          <option value="0">Off</option>
-          <option value="1">Every day</option>
-          <option value="2">Every 2 days</option>
-          <option value="5">Every 5 days</option>
-        </select>
+      <p class="lbl">Autosave</p>
+      <div class="orow" id="setCadence">
+        <button class="abtn" data-v="0">Off</button>
+        <button class="abtn" data-v="1">Daily</button>
+        <button class="abtn" data-v="2">2 days</button>
+        <button class="abtn" data-v="5">5 days</button>
       </div>
-      <p class="hint">Autosaves go to the slot this game was saved to or loaded from,
-        plus a local emergency snapshot on this device.</p>
-      <p class="lbl">Your village</p>
+      <p class="lbl">Chief's name</p>
+      <div class="mrow"><input id="chiefInput" placeholder="Name your chief"></div>
       <p class="hint" id="setIdentity">…</p>
-      <div class="mrow"><input id="chiefInput" placeholder="name your chief (optional)"></div>
-      <div class="mrow">
-        <button class="abtn" id="btnExportId">🔑 Copy recovery token</button>
-        <button class="abtn" id="btnImportId">📥 Restore identity</button>
-      </div>
-      <p class="hint">The recovery token brings your cloud saves to another device.
-        Treat it like a password — anyone holding it can play as you.</p>
-      <p class="lbl">Save file</p>
-      <div class="mrow"><button class="abtn" id="btnExportFile">💾 Download current game as a file</button></div>
-      <!-- the running chronicle lives here now, so the pause screen stays a
-           clean menu instead of a wall of combat lines -->
-      <p class="lbl">📜 Event log</p>
-      <div id="logList"></div>
+      <details class="setfold">
+        <summary>Backup &amp; recovery</summary>
+        <div class="mrow"><button class="abtn" id="btnExportFile">💾 Download save file</button></div>
+        <div class="mrow">
+          <button class="abtn" id="btnExportId">🔑 Copy recovery token</button>
+          <button class="abtn" id="btnImportId">📥 Restore identity</button>
+        </div>
+        <p class="hint">The token moves your cloud saves to another device.
+          Treat it like a password.</p>
+      </details>
+      <details class="setfold">
+        <summary>Event log</summary>
+        <div id="logList"></div>
+      </details>
     </div>
   </div>
 
   <div class="screen" id="scrPaused">
-    <header class="shead"><h2>⏸ Paused</h2></header>
     <div class="sbody">
-      <div class="pauseMenu">
-        <p class="hint" id="pauseSeed"></p>
-        <div class="mrow"><button class="abtn big gold" id="btnPauseResume">▶ Resume</button></div>
+      <div class="pauseMenu plaques">
+        <h2 class="pauseTitle">PAUSED</h2>
+        <div class="mrow"><button class="abtn big gold" id="btnPauseResume">Resume</button></div>
         <div class="trow2">
-          <button class="abtn big" id="btnPauseSave">💾 Save</button>
-          <button class="abtn big" id="btnPauseLoad">📂 Load</button>
+          <button class="abtn big" id="btnPauseSave">Save</button>
+          <button class="abtn big" id="btnPauseLoad">Load</button>
         </div>
         <div class="trow2">
-          <button class="abtn big" id="btnPauseSettings">⚙ Settings</button>
-          <button class="abtn big" id="btnPauseHow">📖 How to play</button>
+          <button class="abtn big" id="btnPauseSettings">Settings</button>
+          <button class="abtn big" id="btnPauseHow">Guide</button>
         </div>
-        <div class="trow2">
-          <button class="abtn" id="btnResign">🏳 Resign</button>
-          <button class="abtn" id="btnQuitTitle">🏕 Quit to title</button>
+        <div class="trow2 trow3">
+          <button class="abtn" id="btnResign">Resign</button>
+          <button class="abtn" id="btnQuitTitle">Quit to title</button>
         </div>
       </div>
     </div>
