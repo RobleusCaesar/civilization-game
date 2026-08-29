@@ -180,10 +180,32 @@ a mismatched name is refused). The conform preview stands a temporary found
 relic at the camera's centre and restores everything on close. The alpha is
 a silhouette only — the blocked set is EMPTY, nothing touches passability
 or any map array, and a 404 leaves the procedural weathered-stone
-placeholder standing. Contract: `tests/relics.mjs`. Author to land near 32
-art-px per tile after the conform pass, same as the trees; camera is HIGH
-TOP-DOWN (these lie IN the land) with a ragged organic ground edge — never
-a straight line, never a diamond.
+placeholder standing. Contract: `tests/relics.mjs`. Ragged organic ground
+edge always — never a straight line, never a diamond, never a terrain slab.
+
+**THE CAMERA IS THE CAMPS' CAMERA** (operator-approved on the shipped
+pieces, overriding the earlier high-top-down idea): dead-on frontal,
+slightly above, screen-aligned orthographic, uprights vertical, standing
+on the flat ragged worn-ground stain — a relic reads like a camp compound
+that nobody has tended for a thousand years.
+
+**THE RECIPE THAT WORKS** (aqueduct + leviathan shipped this way; use it
+for the remaining eight): PixelLab `create_image_pro`, one call per relic
+(~20 generations each), canvas `W*64 × H*64` (the camp density; 2× NN to
+the shipped `W*128`), with TWO labelled references —
+`https://clanfire.online/assets/buildings/tc-l3.png` for "camera angle
+and lighting only", and the approved wolf camp master
+(`assets/masters/camp-wolf-192.png` via raw.githubusercontent) for "art
+style, palette, outline weight, shading and the flat ragged ground-stain
+treatment". Prompt must still spell out: flat ragged stain like a decal,
+NO platform/slab/plinth/diamond/isometric, verticals vertical, empty
+margins on all four sides. QC: zero semi-alpha pixels, zero edge
+contacts (dither-trim strays), then 2× nearest-neighbor and install.
+DO NOT use pixen or pixflux for this category: pixen bakes isometric
+diorama slabs on ruins (three straight failures), and pixflux's
+transparent mode deletes semi-alpha ground fades. Hand-authored
+procedural masters were tried and rejected by the operator — generate,
+don't draw. 192 masters in `assets/masters/relic-{key}-256.png`.
 
 ## The anchoring rule (one rule, no per-building tuning)
 

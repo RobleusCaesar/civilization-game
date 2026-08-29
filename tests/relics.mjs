@@ -182,9 +182,15 @@ const out = await p.evaluate(() => {
   }
 
   // ---- 6. art: the 404 placeholder, the fog gate, the minimap pip ----
+  // Hand art now SHIPS for some relics, and on file:// a loaded PNG is
+  // TAINTED — drawing it would poison every getImageData below. This
+  // section is about the 404 path and the draw gates, so the hand art is
+  // stashed away for its duration: the placeholder path is what's pinned.
   {
     G.newGame('rq3', 'moderate', 'large');
     Screens._demo = false; S.paused = true;
+    const savedArt = Assets.relicArt;
+    Assets.relicArt = {};
     const r = S.relic;
     const ph = Relics.art(r.key);
     ck('a404StandsAPlaceholderUp', ph instanceof HTMLCanvasElement && ph.width === r.w * 32,
@@ -217,6 +223,12 @@ const out = await p.evaluate(() => {
       (DevArt.parseName(`relic-${d.w}x${d.h}-${r.key}-a.png`) || {}).kind === 'relic' &&
       DevArt.parseName(`relic-${d.w + 1}x${d.h}-${r.key}-a.png`) === null &&
       DevArt.parseName('relic-2x2-atlantis-a.png') === null, '');
+    Assets.relicArt = savedArt;
+    // …and where hand art DID ship, the loader holds it at the footprint width
+    const shipped = Object.keys(Assets.relicArt || {});
+    ck('shippedRelicArtKeepsItsFootprint',
+      shipped.every(k => Assets.relicArt[k].width === Relics.DEFS[k].w * Assets.FORMATION_PX),
+      shipped.length ? shipped.join(', ') : 'no relic art shipped yet');
   }
 
   return { res, fails };
