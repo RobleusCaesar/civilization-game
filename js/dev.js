@@ -44,6 +44,9 @@
         ? null : { kind: 'campProp', tribe: mp[1], i: +mp[2] };
       const mc = lower.match(/^camp-([a-z0-9]+)\.png$/);
       if (mc) return Assets.campTribes().indexOf(mc[1]) < 0 ? null : { kind: 'camp', tribe: mc[1] };
+      // wonder art: one PNG per monument (wonder-{key}.png), same deal as camps
+      const mw = lower.match(/^wonder-([a-z0-9]+)\.png$/);
+      if (mw) return Assets.wonderKeys().indexOf(mw[1]) < 0 ? null : { kind: 'wonder', wkey: mw[1] };
       // formation pieces: {terrain}-{W}x{H}-{shape}-{letter}.png — validated
       // by the same parser the loader uses; the stem needs no catalog entry,
       // so an artist can preview a brand-new piece before it is listed
@@ -95,6 +98,17 @@
       return true;
     },
     // one formation piece — same shipping path (Assets.setFormationArt, so
+    // a monument's slot is one PNG per CFG.WONDERS key — same shipping path
+    // (Assets.setWonderArt), same override/revert bookkeeping as a camp's
+    injectWonder(wkey, img, name) {
+      const k = Assets.wonderSlotKey(wkey);
+      if (!this._saved[k])
+        this._saved[k] = { spr: Sprites.wonders[wkey], art: Assets.art[k], loaded: !!Assets.loaded[k] };
+      if (!Assets.setWonderArt(wkey, img, null)) return false;
+      this.overrides[k] = name || Assets.wonderArtName(wkey);
+      this._renderPanel();
+      return true;
+    },
     // the drop derives its coverage mask from the alpha exactly as a shipped
     // file would), same override/revert bookkeeping. Every drop leaves a
     // plain-words contract report in the panel, accepted or refused.
@@ -475,6 +489,16 @@
         this._renderPanel();
         return true;
       }
+      if (k.indexOf('wonder-') === 0) {
+        const wkey = k.slice('wonder-'.length);
+        Sprites.wonders[wkey] = s.spr;
+        if (window.S && S.wonder === wkey && Sprites.useWonder) Sprites.useWonder(wkey);
+        if (s.loaded) { Assets.art[k] = s.art; Assets.loaded[k] = true; }
+        else { delete Assets.art[k]; delete Assets.loaded[k]; if (s.art === null) Assets.art[k] = null; }
+        delete this.overrides[k];
+        this._renderPanel();
+        return true;
+      }
       if (k.indexOf('camp-') === 0) {
         const tribe = k.slice('camp-'.length);
         Sprites.camp[tribe] = s.spr;
@@ -642,6 +666,7 @@
           if (!slot) { DevArt._queuePicker(f.name, img); return; }
           if (slot.kind === 'campProp') DevArt.injectCampProp(slot.tribe, slot.i, img, f.name);
           else if (slot.kind === 'camp') DevArt.injectCamp(slot.tribe, img, f.name);
+          else if (slot.kind === 'wonder') DevArt.injectWonder(slot.wkey, img, f.name);
           else if (slot.kind === 'formation') DevArt.injectFormation(slot.terrain, slot.stem, img, f.name);
           else DevArt.inject(slot.id, slot.lv, img, f.name);
         };

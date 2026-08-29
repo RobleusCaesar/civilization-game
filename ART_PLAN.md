@@ -46,7 +46,8 @@ Every valid filename (46 slots):
 - `wall`, `gate` — they tile from 16-mask atlases; one rectangle cannot be a
   curtain that auto-joins its neighbours.
 - `wonder` — its art is per-monument, rolled per run (ten monuments share the
-  one `wonder` building id); a single PNG would stamp all ten.
+  one `wonder` building id); a single PNG would stamp all ten. It has its
+  own per-monument convention instead — see below.
 - `raidercamp` — a camp's look belongs to its **people**, not its building id.
   It has its own convention instead — see below.
 - A dock PNG overrides **all four shore orientations** with the same image;
@@ -144,6 +145,24 @@ filename routes itself; the picker lists every prop slot).
 `Assets.setCampPropArt(tribe, i, img)` is the install point; unknown tribes
 and out-of-range indices are refused. No sidecar — a prop has no footprint to
 offset against.
+
+## Wonder art: one PNG per monument, not per building id
+
+```
+assets/buildings/wonder-{key}.png
+```
+
+`{key}` is a `CFG.WONDERS` key (henge, colossus, moai, pyramid, obelisk,
+temple, sphinx, flame, totems, sundial) — **derived, never hand-kept**; an
+eleventh monument gets a slot for free. A hit lands in
+`Sprites.wonders[key]` (`Assets.setWonderArt`, the analog of `setCampArt`) —
+the dictionary `Sprites.useWonder` copies the run's rolled monument out of —
+so the build menu, panel, `R.bldSprite`, burn variants, fog ghost and the
+scaffold's stage-three reveal all take the image with no call-site changes.
+A 404 keeps the procedural drawing. Same lowercase rule, `?v=` cache-buster,
+optional sidecar, and `?dev=1` drop path (`wonder-{key}.png` routes itself).
+The `_cfArt` marker rides along, so a tall monument (the obelisk) authors a
+taller canvas and overhangs upward rather than being squashed into the 3×3.
 
 ## The anchoring rule (one rule, no per-building tuning)
 

@@ -95,13 +95,23 @@ await p.evaluate(() => {
     ck('everyWonderHasAName',
       CFG.WONDERS.every(w => w.key && w.name && w.blurb) &&
       new Set(CFG.WONDERS.map(w => w.key)).size === 10, '');
+    /* a monument's art is either its hand PNG (wonder-{key}.png — an
+       HTMLImageElement wearing the _cfArt anchor, TAINTED on file:// so it
+       can never be pixel-read here; its alpha was QC'd offline before it
+       shipped) or the 192px procedural plate. Both must be real and no two
+       may be the same picture — an image signs itself by its own file. */
+    const isImg = c => typeof HTMLImageElement !== 'undefined' && c instanceof HTMLImageElement;
     ck('everyWonderIsDrawn',
-      CFG.WONDERS.every(w => Sprites.wonders[w.key] && Sprites.wonders[w.key].width === 192), '');
+      CFG.WONDERS.every(w => { const c = Sprites.wonders[w.key];
+        return c && (isImg(c) ? (!!c._cfArt && c.width >= 192) : c.width === 192); }),
+      'a _cfArt-anchored PNG at least 192 wide, or the 192 procedural plate');
     ck('theyAreRealDrawings',
-      CFG.WONDERS.every(w => px(Sprites.wonders[w.key]) > 192 * 192 * 0.06),
+      CFG.WONDERS.every(w => { const c = Sprites.wonders[w.key];
+        return isImg(c) ? c.width * c.height >= 192 * 192 : px(c) > 192 * 192 * 0.06; }),
       'each fills a real part of its 3×3 plot');
     ck('noTwoAlike',
-      new Set(CFG.WONDERS.map(w => Sprites.wonders[w.key].toDataURL())).size === 10, '');
+      new Set(CFG.WONDERS.map(w => { const c = Sprites.wonders[w.key];
+        return isImg(c) ? 'img:' + c.src : c.toDataURL(); })).size === 10, '');
     // the roll is stable per seed, spreads across the ten, and — crucially —
     // does not touch the run's RNG
     const a = G.rollWonder('alpha').key, a2 = G.rollWonder('alpha').key;

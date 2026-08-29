@@ -139,6 +139,59 @@ const Assets = {
     this.loaded[k] = true;
     return true;
   },
+  /* ---- WONDER ART: one PNG per MONUMENT, not per building id ----
+
+       assets/buildings/wonder-{key}.png
+
+     {key} is a CFG.WONDERS key (henge, colossus, moai, …) — DERIVED, never
+     hand-kept, so an eleventh monument gets a slot for free. The single
+     `wonder` building id serves all ten (rolled per run), which is exactly
+     why it was left out of the {id}-l{level}.png convention — one PNG would
+     stamp every monument. This shape keys the art the way the game keys the
+     roll. A hit lands in Sprites.wonders[key] — the dictionary
+     Sprites.useWonder copies the run's monument out of — so the menu icon,
+     panel, R.bldSprite, burn variants, fog ghost and the scaffold's
+     stage-three reveal all take it with no call-site changes; a 404 keeps
+     the procedural drawing. The _cfArt marker rides along so a TALL
+     monument (the obelisk) keeps its aspect and overhangs upward through
+     artRect instead of being squashed into the 3x3 square. */
+  wonderKeys() { return (CFG.WONDERS || []).map(w => w.key); },
+  wonderSlotKey(key) { return 'wonder-' + key; },
+  wonderArtName(key) { return this.wonderSlotKey(key).toLowerCase() + '.png'; },
+  wonderArtUrl(key) { return this.ART_DIR + this.wonderArtName(key) + '?v=' + (CFG.ART_V || 1); },
+  _tryLoadWonder(key) {
+    const img = new Image();
+    const k = this.wonderSlotKey(key);
+    img.onload = async () => {
+      let meta = null;
+      if (location.protocol !== 'file:') try {
+        const r = await fetch(this.ART_DIR + k + '.json?v=' + (CFG.ART_V || 1));
+        if (r.ok) meta = await r.json();
+      } catch (e) { /* no sidecar — defaults */ }
+      if (window.DevArt && DevArt.overrides && DevArt.overrides[k]) return;
+      this.setWonderArt(key, img, meta);
+    };
+    img.onerror = () => { this.art[k] = null; };
+    img.src = this.wonderArtUrl(key);
+  },
+  setWonderArt(key, img, meta) {
+    // bare `Sprites`, never window.Sprites — it is a script-level const (the
+    // same trap G.setWonder's comment records)
+    if (this.wonderKeys().indexOf(key) < 0 || typeof Sprites === 'undefined' || !Sprites.wonders) return false;
+    img._cfArt = {
+      ox: (meta && isFinite(+meta.offsetX)) ? +meta.offsetX : 0,
+      oy: (meta && isFinite(+meta.offsetY)) ? +meta.offsetY : 0,
+      scale: (meta && isFinite(+meta.scale) && +meta.scale > 0) ? +meta.scale : 1,
+    };
+    Sprites.wonders[key] = img;
+    // the run's monument may already be standing — re-point the live slot
+    if (window.S && S.wonder === key && Sprites.useWonder) Sprites.useWonder(key);
+    const k = this.wonderSlotKey(key);
+    this.art[k] = img;
+    this.loaded[k] = true;
+    return true;
+  },
+
   // standalone PROPS — composited sprites that are not a building's own
   // rectangle. One fixed URL per prop key; same swap-in rules as buildings.
   PROPS: { 'misc/campfireTc': 'assets/misc/campfire-tc.png' },
@@ -465,6 +518,7 @@ const Assets = {
       this._tryLoadCamp(tribe);
       for (let i = 1; i <= this.CAMP_PROP_N; i++) this._tryLoadCampProp(tribe, i);
     }
+    for (const w of this.wonderKeys()) this._tryLoadWonder(w);
     for (const outcome of this.ENDGAME_OUTCOMES)
       for (const mode of this.endgameModes()) this._tryEndgame(outcome, mode, 1);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key]);

@@ -440,6 +440,36 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
       Sprites.camp.wolf = savedWolf;   // restore the shipped state for what follows
     }
 
+    // ---- 2b½. wonder art loads by ITS convention — one PNG per MONUMENT
+    // (wonder-{key}.png, CFG.WONDERS-derived), landing in Sprites.wonders[key],
+    // the dictionary Sprites.useWonder copies the run's rolled monument out
+    // of — so the menu icon, panel, bldSprite, burn variants and fog ghost
+    // all take it through the existing wonder slot with no call-site change ----
+    {
+      const wShipped = Assets.wonderKeys().find(k => Assets.art[Assets.wonderSlotKey(k)]);
+      ck('shippedWonderArtLoadsByFilename',
+        !!wShipped && !!Assets.art[Assets.wonderSlotKey(wShipped)]._cfArt,
+        wShipped || 'no wonder PNG shipped yet');
+      ck('shippedWonderArtInstallsIntoSpritesWonders',
+        !wShipped || Sprites.wonders[wShipped] === Assets.art[Assets.wonderSlotKey(wShipped)], '');
+      ck('anUnknownMonumentIsRefused',
+        Assets.setWonderArt('atlantis', document.createElement('canvas'), null) === false, '');
+      // useWonder hands the LIVE slot the installed art — and a late-loading
+      // PNG re-points a monument already standing (the S.wonder re-apply)
+      const savedPyr = Sprites.wonders.pyramid;
+      const fakeW = document.createElement('canvas'); fakeW.width = 96; fakeW.height = 128;
+      S.wonder = 'pyramid';
+      Assets.setWonderArt('pyramid', fakeW, null);
+      ck('aLateLoadingWonderRePointsTheLiveSlot',
+        Sprites.building.wonder[0] === fakeW && !!fakeW._cfArt, '');
+      Sprites.wonders.pyramid = savedPyr;
+      if (savedPyr) Sprites.useWonder('pyramid');
+      // the ?dev=1 filename router knows the shape (and refuses a stranger)
+      ck('theDevRouterKnowsWonderFilenames',
+        (DevArt.parseName('Wonder-Sphinx.PNG') || {}).kind === 'wonder' &&
+        DevArt.parseName('wonder-atlantis.png') === null, '');
+    }
+
     // ---- 2c. the fog-of-war ghost of a raider camp keeps its PEOPLE, not a
     // generic fallback (a real gap this convention closed: the ghost lookup
     // read Sprites.building directly and never asked which tribe held the
