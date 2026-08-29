@@ -24,6 +24,14 @@
    7. THE COAST ANSWERS: a SEEN player fighting hull sets read.navalThreat
       (remembered GUN_MEMORY days, fog-honest), and idle rival fighting
       hulls take the Defend stance while it holds.
+   8. THE FLEET LEARNS THE COAST: a beach where a landing died is shunned
+      (BEACH_R tiles, BEACH_GRUDGE days, then the grudge fades and the front
+      door reopens), and a kill pocket ringed with trees — no room to move
+      off the sand — is never picked as a beach at all.
+   9. THE LEDGER IS HONEST AT SEA: a launched party (spliced into the hulls'
+      cargo, invisible to the raid-task filter) is still on the round's
+      books, and a wave annihilated ashore condemns its beach MID-round —
+      the very next wave sails for different coast.
 
    Run after touching AI.probeAssault/_assaultShore/_campScore/_grindFallback/
    campaignSelect/campaignReady/_launchAmphib/secondFront, the naval-threat
@@ -236,6 +244,62 @@ const out = await p.evaluate(() => {
     Units.spawn('fishboat', 'P', w.x + 1, w.y);
     read = AI.assess();
     ck('aFishingBoatIsNotAnInvasion', !read.navalThreat, '');
+  }
+
+  // ---- 8. the fleet learns the coast ----
+  {
+    const { ptc } = setup('amph6');
+    const read = AI.assess();
+    const first = AI.probeAssault(read).shore.land;
+    ck('theFrontDoorHasRoom', AI._beachRoom(first.x, first.y) >= AI.BEACH_ROOM,
+      'room=' + AI._beachRoom(first.x, first.y));
+    // the landing died there: the next read must pick a different stretch of coast
+    AI._noteBeach({ x: first.x, y: first.y });
+    const second = AI.probeAssault(read).shore.land;
+    const moved = Math.max(Math.abs(second.x - first.x), Math.abs(second.y - first.y));
+    ck('aBurnedBeachIsShunned', moved > AI.BEACH_R,
+      `first=${first.x},${first.y} second=${second.x},${second.y} moved=${moved}`);
+    // …and the grudge fades, so the old front door reopens
+    S.ai.memory.beaches[0].day = S.day - (AI.BEACH_GRUDGE + 1);
+    const third = AI.probeAssault(read).shore.land;
+    ck('theGrudgeFades', Math.max(Math.abs(third.x - first.x), Math.abs(third.y - first.y)) <= AI.BEACH_R,
+      JSON.stringify(third));
+    // wall the front door with trees: a kill pocket floods to nothing and the
+    // read skips it without ever having to lose a wave there
+    S.ai.memory.beaches = [];
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const x = first.x + ox, y = first.y + oy, i = MapGen.idx(x, y);
+      if (MapGen.inB(x, y) && S.map.terrain[i] !== T.WATER) S.map.terrain[i] = T.FOREST;
+    }
+    ck('aTreePocketHasNoRoom', AI._beachRoom(first.x, first.y) < AI.BEACH_ROOM,
+      'room=' + AI._beachRoom(first.x, first.y));
+    const fourth = AI.probeAssault(read).shore.land;
+    ck('theFleetSkipsThePocket', !(fourth.x === first.x && fourth.y === first.y),
+      JSON.stringify(fourth));
+  }
+
+  // ---- 9. the ledger is honest at sea ----
+  {
+    const { atc } = setup('amph7');
+    giveDock(atc);
+    for (let i = 0; i < 6; i++) Units.spawn('defender', 'A', atc.x + 2, atc.y + 2);
+    const spot = MapGen.findNear(atc.x, atc.y, 10, (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.WATER && !Bld.at(x, y));
+    const tr = Units.spawn('transport', 'A', spot.x, spot.y); tr.cargo = [];
+    S.ai.camp = { strat: 'TIDEWRACK', since: S.day, rounds: 0, tried: [], surge: 0, dry: 0 };
+    S.ai.raidCd = 0;
+    AI.campaignLaunch(AI.assess(), G.modeCfg());
+    const camp = S.ai.camp;
+    ck('theSeaPartyIsOnTheBooks', (camp.partyN || 0) >= 3 && !!camp.beach,
+      `partyN=${camp.partyN} beach=${JSON.stringify(camp.beach)}`);
+    // fake the wave annihilated ashore: empty holds, ids no living unit answers
+    // to — the tripwire must condemn the beach before the next wave sails
+    for (const u of S.units) if (u.owner === 'A' && Units.isTransport(u)) u.cargo = [];
+    camp.inIds = []; camp.roundBaseCore = AI._foeCoreCount();
+    const beach = { x: camp.beach.x, y: camp.beach.y };
+    S.ai.raidCd = 0;
+    AI.campaignLaunch(AI.assess(), G.modeCfg());
+    ck('aWipedWaveCondemnsTheBeachAtOnce', AI._beachBurned(beach.x, beach.y),
+      JSON.stringify((S.ai.memory && S.ai.memory.beaches) || []));
   }
 
   return { res, fails };

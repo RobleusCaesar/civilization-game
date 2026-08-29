@@ -3785,22 +3785,94 @@ const AI = {
     for (const s of seeds) { const i = idx(s.x, s.y); if (!wr[i]) { wr[i] = 1; q.push(i); } }
     let h = 0;
     while (h < q.length) { const c = q[h++], cx = c % W, cy = (c / W) | 0; for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = cx + ox, ny = cy + oy; if (water(nx, ny) && !wr[idx(nx, ny)]) { wr[idx(nx, ny)] = 1; q.push(idx(nx, ny)); } } }
-    let land = null, best = 1e9;
+    /* every FAR-shore tile the fleet could beach on — not just the closest.
+       The closest beach used to be the whole rule, and it made the chief a
+       creature of habit: wave after wave onto the same tree-ringed pocket,
+       shot flat by the same defenders. Each candidate now answers for
+       itself — is there ROOM to move off the sand, has a landing DIED there
+       lately, does a KNOWN tower cover it — and the 20-tile leash to the
+       hall only holds while an unburned beach remains inside it. When the
+       whole near coast has failed, the fleet rounds the island. */
+    const cseen = new Uint8Array(W * H), cands = [];
     for (let i = 0; i < wr.length; i++) {
       if (!wr[i]) continue; const x = i % W, y = (i / W) | 0;
       for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const lx = x + ox, ly = y + oy;
         if (!MapGen.inB(lx, ly) || !Path.passable(lx, ly) || rc(lx, ly)) continue;   // the FAR (player) shore
-        const d = Math.hypot(lx - ptc.x, ly - ptc.y);
-        if (d < best && d < 20) { best = d; land = { x: lx, y: ly }; }
+        const li = idx(lx, ly);
+        if (cseen[li]) continue; cseen[li] = 1;
+        cands.push({ x: lx, y: ly, d: Math.hypot(lx - ptc.x, ly - ptc.y) });
       }
     }
+    if (!cands.length) return null;
+    // a beach a KNOWN tower covers ranks behind open sand — probe for the
+    // stretch of coast where nothing shoots before running the gauntlet
+    const twr = [];
+    const kb = (S.ai && S.ai.knownB) || {};
+    for (const k in kb) if (kb[k] && kb[k].key === 'tower') twr.push({ x: (+k) % W, y: ((+k) / W) | 0 });
+    for (const c of cands) {
+      let g = 0; for (const t of twr) if (Math.hypot(t.x - c.x, t.y - c.y) <= 7) g++;
+      c.score = c.d + g * 10;
+    }
+    cands.sort((a, b) => a.score - b.score);
+    const room = new Map();
+    const roomy = c => { const i = idx(c.x, c.y); if (!room.has(i)) room.set(i, this._beachRoom(c.x, c.y)); return room.get(i) >= this.BEACH_ROOM; };
+    const land = cands.find(c => c.d < 20 && roomy(c) && !this._beachBurned(c.x, c.y))   // the front door: near, open, unbloodied
+              || cands.find(c => roomy(c) && !this._beachBurned(c.x, c.y))               // every near beach failed — round the island
+              || cands.find(c => c.d < 20 && roomy(c))                                   // ALL beaches have failed: retry the least bad
+              || cands.find(c => c.d < 20)                                               // a coast of pockets — the old closest-tile rule
+              || null;
     if (!land) return null;
     let embark = null;
     for (const s of seeds) for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const lx = s.x + ox, ly = s.y + oy; if (rc(lx, ly)) { embark = { x: lx, y: ly }; break; } }
     // `lane` is one water tile of the assault body — _buildDock steers the
     // yard onto THIS water so the hulls it floats can actually reach the beach
     return { land, embark, lane: seeds[0] };
+  },
+
+  /* ROOM OFF THE SAND — flood out from a candidate beach over passable ground,
+     capped tight. A tile ringed by trees floods to two or three tiles: a kill
+     pocket where the party stands in the surf and dies to whoever walks up.
+     Eight connected tiles within four of the beach is enough ground to form
+     up and march inland. */
+  BEACH_ROOM: 8,
+  _beachRoom(x0, y0) {
+    const idx = MapGen.idx, seen = new Set([idx(x0, y0)]), q = [[x0, y0]];
+    let n = 0;
+    while (q.length && n < this.BEACH_ROOM) {
+      const [x, y] = q.shift(); n++;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + ox, ny = y + oy;
+        if (Math.abs(nx - x0) > 4 || Math.abs(ny - y0) > 4) continue;
+        if (!MapGen.inB(nx, ny) || !Path.passable(nx, ny)) continue;
+        const i = idx(nx, ny);
+        if (seen.has(i)) continue;
+        seen.add(i); q.push([nx, ny]);
+      }
+    }
+    return n;
+  },
+
+  /* THE BEACH SCORECARD — where a landing has already died. A wave that put
+     nobody inside and razed nothing has condemned the BEACH, not just the
+     plan: the next fleet must not run the same surf into the same spears.
+     A burned beach is shunned for BEACH_GRUDGE days — the board changes (a
+     tower falls, a garrison marches off), so nothing is written off forever —
+     and "the same beach" means anywhere within BEACH_R tiles, so the fleet
+     shifts to a genuinely different stretch of coast, not one tile down. */
+  BEACH_R: 5,
+  BEACH_GRUDGE: 45,
+  _noteBeach(b) {
+    const mem = S.ai.memory || (S.ai.memory = {});
+    const bl = mem.beaches || (mem.beaches = []);
+    const e = bl.find(o => Math.max(Math.abs(o.x - b.x), Math.abs(o.y - b.y)) <= this.BEACH_R);
+    if (e) { e.n++; e.day = S.day; e.x = b.x; e.y = b.y; }
+    else { bl.push({ x: b.x, y: b.y, n: 1, day: S.day }); if (bl.length > 12) bl.shift(); }
+  },
+  _beachBurned(x, y) {
+    const bl = (S.ai.memory && S.ai.memory.beaches) || [];
+    return bl.some(e => S.day - e.day < this.BEACH_GRUDGE &&
+      Math.max(Math.abs(e.x - x), Math.abs(e.y - y)) <= this.BEACH_R);
   },
 
   _campViable(k, ctx, tc) {
@@ -3897,6 +3969,7 @@ const AI = {
     camp.roundEnd = null; camp.pushDay = S.day; camp.evalDay = S.day;
     camp.deep = null; camp.inIds = []; camp.partyIds = []; camp.partyN = 0;
     camp.aim = null; camp.pending = null; camp.mudReach = null;
+    camp.beach = null; camp.sailIds = null;
     camp.baseBld = Bld.list('P').length;
   },
   _campLearn(k) {
@@ -4110,6 +4183,9 @@ const AI = {
       if (wiped && !broke) { camp.surge = (camp.surge || 0) + 1; camp.surgeMax = Math.max(camp.surgeMax || 0, camp.surge); }
       else if (broke) camp.surge = 0;
       this._noteStrat(strat, verdict, camp.deep);    // remember how this plan fared, and how far in
+      // a landing that died on the sand condemns the BEACH as well as the
+      // plan — the next fleet, this campaign or a later one, lands elsewhere
+      if (strat === 'TIDEWRACK' && camp.beach && !broke && (verdict === 'DRY' || wiped)) this._noteBeach(camp.beach);
       // …and whether the door we chose actually let us THROUGH, so the next
       // assault either returns to it or tries a different one (composeAssault)
       if (ai.memory) ai.memory.lastMainWorked = broke;
@@ -4179,10 +4255,16 @@ const AI = {
          died to the last man could leave the army LARGER than it started. Track
          the actual men committed and see how many of them come home.
          The WHOLE host — a two-pronged launch has only the feint in the field on
-         day one, with the main column still held back in camp.pending. */
+         day one, with the main column still held back in camp.pending. And the
+         men ALREADY IN THE HULLS: a sea launch splices its party into the
+         transports' cargo before the round opens, so the raid-task filter
+         alone booked an amphibious round at zero men — and a wave annihilated
+         on the beach never read as a wipe at all. */
       camp.partyIds = S.units.filter(u => u.owner === 'A' && u.task && u.task.type === 'raid').map(u => u.id)
-        .concat((camp.pending && camp.pending.ids) || []);
+        .concat((camp.pending && camp.pending.ids) || [])
+        .concat(camp.sailIds || []);
       camp.partyN = camp.partyIds.length;
+      camp.sailIds = null;
     };
     // MUDLARK — carve the lane a tile a day; when the road finally reaches the town,
     // stand the campaign down so an ordinary raid pours through the new gap.
@@ -4195,6 +4277,18 @@ const AI = {
     if (ai.raidCd > 0) return owns;
     // TIDEWRACK — put to sea once a hull and a landing party are ready
     if (strat === 'TIDEWRACK') {
+      /* MID-ROUND TRIPWIRE: the wave was annihilated on the sand — nobody
+         inside, nothing razed, no hull still carrying men — so don't wait
+         twelve days for the round to be scored before admitting it. Condemn
+         the beach NOW, and the relaunch below already sails for other coast. */
+      if (camp.roundEnd != null && camp.beach && (camp.inIds || []).length < 2 &&
+          !(camp.roundBaseCore != null && this._foeCoreCount() < camp.roundBaseCore) &&
+          !this._beachBurned(camp.beach.x, camp.beach.y) &&
+          !S.units.some(u => u.owner === 'A' && Units.isTransport(u) && u.cargo && u.cargo.length)) {
+        let alive = 0;
+        for (const id of (camp.partyIds || [])) if (Units.get(id)) alive++;
+        if ((camp.partyN || 0) >= 3 && alive <= Math.floor(camp.partyN * 0.3)) this._noteBeach(camp.beach);
+      }
       if (!this.campaignReady('TIDEWRACK')) return owns && (camp.dry || 0) < 1;
       if (this._launchAmphib(read)) { startRound(); ai.raidDay = S.day; ai.raidFoeBld = Bld.list('P').length; ai.raidCd = Math.max(6, Math.round(this.persona().raidCd)); }
       return true;
@@ -4451,12 +4545,14 @@ const AI = {
       if (best) obj = { type: best.bld ? 'econ' : 'tc', x: Math.round(best.x), y: Math.round(best.y) };
     }
     let ti = 0, sailed = 0;
+    const sailIds = [];   // the men committed to the sea — startRound's ledger
     // re-dispatch the already-loaded hulls to the new beach — their people
     // take the fresh objective on the way over
     for (const tr of loaded) {
       for (const c of tr.cargo) {
         c.raidObj = { type: obj.type, x: obj.x, y: obj.y };
         c.assault = true;
+        sailIds.push(c.id);
       }
       Units.orderUnload(tr, land.x, land.y); sailed++;
     }
@@ -4469,7 +4565,7 @@ const AI = {
         u.assault = true;                                     // then cascade on to the next mark
         u.task = null; u.tUnit = 0; u.tBld = 0; u.defend = false;
         S.units.splice(S.units.indexOf(u), 1);            // aboard the hull
-        tr.cargo.push(u); n++;
+        tr.cargo.push(u); sailIds.push(u.id); n++;
       }
       if (n > 0) { Units.orderUnload(tr, land.x, land.y); sailed++; }
       if (ti >= troops.length) break;
@@ -4487,6 +4583,8 @@ const AI = {
     // objectives, so it must not overwrite the land assault's bookkeeping
     if (!parallel) {
       ai.raidObj = obj; ai.raidLane = 'TIDEWRACK'; ai.raidN = Math.min(troops.length, ti); ai.raidDay = S.day;
+      // the beach this round answers for, and the men who sailed for it
+      if (ai.camp) { ai.camp.beach = { x: land.x, y: land.y }; ai.camp.sailIds = sailIds; }
       G.foeNote(this.CAMPAIGN_CRY.TIDEWRACK);
     } else {
       G.foeNote('⛵ Rival sails slip past the moat — a second force is landing on your shore!');
