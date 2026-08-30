@@ -224,7 +224,7 @@ promotes it to master. The masters:
 | Asset class                     | Style master (fixed)                   |
 | ------------------------------- | -------------------------------------- |
 | Buildings / camps / relics      | `assets/masters/camp-wolf-192.png`     |
-| Animals (and later characters)  | first approved animal — file recorded here on approval, then FROZEN |
+| Animals (and later characters)  | `assets/masters/animal-deer-96.png` (the approved stag, 2026-08-30 — FROZEN; doubles as the character-class camera master) |
 
 **2. THE CAMERA REFERENCE MUST BE CLASS-MATCHED.**
 `https://clanfire.online/assets/buildings/tc-l3.png` is the camera
