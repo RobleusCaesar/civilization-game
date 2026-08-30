@@ -113,6 +113,7 @@ node tests/amphibious.mjs    # the rival fights across the sea: the sea-only rea
 node tests/tribe-traits.mjs  # each people keeps its home ground (sea=coast, wolf=carved forest alcove, flint=stone, woad=meadow, broken=gold) and its one habit: wolf pack tactics, flint brutes, the Broken's deserter toll, the Woadkin painting, Sea Folk longboat sorties end to end
 node tests/relics.mjs        # the wilderness relic: tile data bit-identical on/off, seed-deterministic placement with manners, discovery grants once (gold on its own scale) and rides the save, the AI stays blind, 404 art falls back to the placeholder
 node tests/variants.mjs      # 16 landform variants: classic byte-identical, every combo×size playable+symmetric, difficulty leans the size, tutorial forces Valley·Classic, saves carry the world's name
+node tests/animal-art.mjs    # character-class art path: 8-way facing from real displacement (WeakMap, never in a save), strip sheets slice+set playback, per-lookup fallback to the procedural cast
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's

@@ -464,6 +464,73 @@ const Assets = {
     delete this.art[k]; delete this.loaded[k];
   },
 
+  /* ================= UNIT SHEETS: the CHARACTER-CLASS art path =================
+     (tests/animal-art.mjs.) The first PNG pipeline for things that MOVE.
+     Animals are the test case before villagers get the same treatment
+     (ART_PLAN's reference doctrine): 8 directions, real frame counts, and
+     a fidelity bar ABOVE the procedural cast — that mismatch is intentional.
+
+     One file per (kind, direction, pose), a HORIZONTAL STRIP of square
+     frames — frame size = strip height, frame count = width/height:
+
+       assets/units/unit-{kind}-{dir}-{pose}.png     dir ∈ s,se,e,ne,n,nw,w,sw
+
+     Frames install into Assets.unitArt[kind].dirs[dir][pose] as sliced
+     canvases; R.unitSprite prefers them (facing from R.unitFacing) and
+     falls back per-LOOKUP to the procedural sheet, so a kind with only a
+     south walk shipped still animates every other way it always did.
+     Character sprites carry NO ground stain, plate or baked shadow — the
+     renderer's own contact pass draws that. A non-integer strip width is
+     refused with one plain warning and the procedural look stands. */
+  UNIT_DIR: 'assets/units/',
+  UNIT_DIRS8: ['s', 'se', 'e', 'ne', 'n', 'nw', 'w', 'sw'],
+  // kinds and the poses each may ship — probed at boot, 404s are the norm
+  UNIT_ART: { deer: ['walk', 'idle'] },
+  unitArt: {},
+  unitStem(kind, dir, pose) { return 'unit-' + kind + '-' + dir + '-' + pose; },
+  unitUrl(kind, dir, pose) {
+    return this.UNIT_DIR + this.unitStem(kind, dir, pose) + '.png?v=' + (CFG.ART_V || 1);
+  },
+  _tryLoadUnit(kind, dir, pose) {
+    const img = new Image();
+    img.onload = () => { this.setUnitFrames(kind, dir, pose, img); };
+    img.onerror = () => {};                    // absent art is the default state
+    img.src = this.unitUrl(kind, dir, pose);
+  },
+  setUnitFrames(kind, dir, pose, img) {
+    if (!img || !img.height) return false;
+    const fh = img.height, n = Math.floor(img.width / fh);
+    if (n < 1 || img.width !== n * fh) {
+      if (!this._unitWarned) this._unitWarned = {};
+      const wk = kind + '|' + dir + '|' + pose;
+      if (!this._unitWarned[wk]) {
+        this._unitWarned[wk] = 1;
+        console.warn('[unit art] ' + wk + ': strip ' + img.width + '×' + fh +
+          ' is not a whole number of square frames — refused, procedural stands');
+      }
+      return false;
+    }
+    const frames = [];
+    for (let i = 0; i < n; i++) {
+      const c = document.createElement('canvas');
+      c.width = fh; c.height = fh;
+      c.getContext('2d').drawImage(img, i * fh, 0, fh, fh, 0, 0, fh, fh);
+      frames.push(c);
+    }
+    const ua = this.unitArt[kind] || (this.unitArt[kind] = { dirs: {} });
+    const d = ua.dirs[dir] || (ua.dirs[dir] = {});
+    d[pose] = frames;
+    /* playback rate: a full walk cycle takes ~0.9s REGARDLESS of how many
+       frames it ships — more frames buy smoothness, never slow motion.
+       Derived once from the south walk strip so every direction agrees. */
+    // Sprites is a script-level const — `window.Sprites` is undefined (the
+    // same trap G, AI and MapGen carry); typeof is the safe guard
+    if (pose === 'walk' && dir === 's' && typeof Sprites !== 'undefined' && Sprites.animFps)
+      Sprites.animFps[kind] = Math.max(4, Math.round(n / 0.9));
+    return true;
+  },
+  removeUnitArt(kind) { delete this.unitArt[kind]; },
+
   /* mean alpha coverage of each footprint cell, as fractions 0..1 —
      the ?dev=1 workbench reports these in plain words. Null on a taint
      error (file://), where the pixels cannot be read. */
@@ -575,6 +642,9 @@ const Assets = {
     }
     for (const w of this.wonderKeys()) this._tryLoadWonder(w);
     for (const k of this.relicKeys()) this._tryLoadRelic(k);
+    for (const kind of Object.keys(this.UNIT_ART))
+      for (const dir of this.UNIT_DIRS8)
+        for (const pose of this.UNIT_ART[kind]) this._tryLoadUnit(kind, dir, pose);
     for (const outcome of this.ENDGAME_OUTCOMES)
       for (const mode of this.endgameModes()) this._tryEndgame(outcome, mode, 1);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key]);

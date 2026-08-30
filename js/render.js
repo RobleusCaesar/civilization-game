@@ -6658,7 +6658,49 @@ const R = {
     }
     return 'idle';
   },
+  /* ============== 8-WAY FACING (tests/animal-art.mjs) ==============
+     Derived at DRAW time from how the unit has actually displaced, and
+     kept in a WeakMap keyed by the unit object — never on the unit, so
+     nothing here can ride into a save, the seeded sim, or a fixture.
+     The anchor point only moves when the unit has covered ~0.02 tiles
+     since the last read: micro-jitter (collision shoves, path snaps)
+     can't flip the facing, slow drift still accumulates into an honest
+     direction, and a unit that stops HOLDS its last facing. Y grows
+     downward on the map, so +y is south. */
+  _faceMap: new WeakMap(),
+  FACE8: ['e', 'se', 's', 'sw', 'w', 'nw', 'n', 'ne'],   // atan2 octants, y-down
+  unitFacing(u) {
+    let f = this._faceMap.get(u);
+    if (!f) { f = { x: u.x, y: u.y, dir: 's' }; this._faceMap.set(u, f); return f.dir; }
+    const dx = u.x - f.x, dy = u.y - f.y;
+    if (dx * dx + dy * dy >= 0.0004) {                    // ≥ 0.02 tiles of real travel
+      const oct = ((Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) % 8) + 8) % 8;
+      f.dir = this.FACE8[oct];
+      f.x = u.x; f.y = u.y;
+    }
+    return f.dir;
+  },
+
   unitSprite(u) {
+    /* CHARACTER-CLASS PNG SHEETS (Assets.unitArt — animals first, the
+       villagers later): 8 directions × real frame counts, preferred over
+       the procedural sheet PER LOOKUP — a kind shipping only its south
+       walk still falls back everywhere else, and deleting the PNGs
+       restores the procedural cast untouched. */
+    const ua = window.Assets && Assets.unitArt && Assets.unitArt[u.kind];
+    if (ua) {
+      const d = ua.dirs[this.unitFacing(u)] || ua.dirs.s;
+      if (d) {
+        const pose = this.unitPose(u);
+        // the sheet's own pose first; a missing pose borrows sensibly
+        // (fight falls to walk — motion — and gather-ish poses to idle)
+        const fr2 = d[pose] || (pose === 'fight' ? d.walk : d.idle) || d.walk || d.idle;
+        if (fr2 && fr2.length) {
+          const fps2 = (Sprites.animFps && Sprites.animFps[u.kind]) || 8;
+          return fr2[((u.animT * fps2) | 0) % fr2.length];
+        }
+      }
+    }
     let sheet;
     if (u.kind === 'villager') {
       const tunic = G.tunicOf(u.owner);
