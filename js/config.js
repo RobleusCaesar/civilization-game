@@ -1022,7 +1022,10 @@ const CFG = {
       wonderMenu: true,
     },
     moderate: {
-      name: 'Moderate', icon: '⚔️', desc: 'The intended experience.',
+      // 🏹 everywhere Moderate is named (picker card, endgame line, boards) —
+      // ⚔️ was the title glyph on the trial screen, and 🛡️ already means the
+      // Defend stance; the bow is the one war icon nothing else has claimed
+      name: 'Moderate', icon: '🏹', desc: 'The intended experience.',
       gather: 1, output: 1, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
       waveFirst: 40, waveGapMult: 1.5, waveSizeAdd: 0, barbMult: 1,
       campMult: 0.65, campGuard: [2, 4],   // rarer, harder camps: meeting one should hurt

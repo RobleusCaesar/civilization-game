@@ -82,6 +82,13 @@ const Screens = {
   /* ---------------- title ---------------- */
   ensureDemo() {
     if (window.S && this._demo) return;
+    /* A PENDING DRAFT OUTRANKS THE DEMO. Backing all the way to the title
+       with a founded world and an un-kept hand must not roll the demo over
+       it — that was a four-tap free re-deal (title round trip → same trial
+       → fresh cards). The title simply drifts over the pending world
+       instead; New game → the same trial resumes it, any explicit act that
+       replaces S (Continue, Load, a different trial) forfeits it honestly. */
+    if (window.S && S.draft && !S.draft.done && !S.over) return;
     this._demo = true;
     G.newGame(String((Math.random() * 1e9) | 0), 'moderate', 'large');
     Cards.pick((Math.random() * 3) | 0);   // the demo world drafts for itself
@@ -189,9 +196,17 @@ const Screens = {
   },
 
   /* ---------------- new game ---------------- */
+  // what each trial actually changes — shown under the cards for the
+  // SELECTED one only, so reading all three costs three taps
+  MODE_DESC: {
+    calm: 'Begins at peace — no one attacks until you do. Raids are rare, your scouts always bring warning, and the land rolls wide.',
+    moderate: 'The intended game. The rival presses, raids come on their own clock, and a warning reaches you half the time.',
+    hard: 'An aggressive rival, frequent raids, and no warnings at all. The land rolls small — contact comes early.',
+  },
   onNewgame() {
     this.el('ngMode').querySelectorAll('.dcard').forEach(b =>
       b.classList.toggle('sel', b.dataset.v === this.newPrefs.mode));
+    this.el('ngDesc').textContent = this.MODE_DESC[this.newPrefs.mode] || '';
   },
 
   /* THE PRESS ANSWERS IN THE FRAME IT HAPPENS IN.
@@ -211,10 +226,17 @@ const Screens = {
      second press, which would otherwise found two worlds over each other. */
   startNewGame() {
     if (this._founding) return;
+    /* BACKING OUT IS NOT A REROLL. The draft's back button returns here
+       with the world already founded and the hand already dealt; pressing
+       on with the SAME trial resumes that exact draft — map, cards and
+       all. A fresh roll is only ever paid for with a different trial, so
+       there is no free re-draw loop. */
+    if (window.S && !this._demo && S.draft && !S.draft.done &&
+        S.mode === this.newPrefs.mode) { this.show('draft'); return; }
     this._founding = true;
     const btn = this.el('btnStart');
     const was = btn ? btn.textContent : '';
-    if (btn) { btn.classList.add('busy'); btn.textContent = '🏕 Founding the valley…'; }
+    if (btn) { btn.classList.add('busy'); btn.textContent = 'Founding the valley…'; }
     const done = () => {
       this._founding = false;
       if (btn) { btn.classList.remove('busy'); btn.textContent = was; }
@@ -299,10 +321,18 @@ const Screens = {
   onDraft() {
     const D = window.S && S.draft;
     if (!D || D.done || !D.hand.length) { this.enterGame(); return; }   // nothing to draft
+    this.el('btnDraftBack').style.display = '';    // the keep-tap hides it
     // NAME THE WORLD — the draft is the arrival moment, the rolled country
     // visible behind the cards. Without the name the variety is invisible.
     const wn = this.worldLabel();
     this.el('draftWorld').textContent = wn ? '🗺 ' + wn : '';
+    /* A RESUMED DRAFT DOES NOT RE-DEAL. Backing out to the trial screen and
+       returning keeps the same hand (startNewGame's resume) — but replaying
+       the deal-and-flip theater made it LOOK like a fresh deal, which is
+       precisely the impression "backing out is never a reroll" exists to
+       kill. The choreography plays once per run; a return finds the cards
+       already standing face-up. */
+    const replay = this._dealtFor === S.seed;
     const box = this.el('draftCards');
     box.innerHTML = '';
     this.el('draftHint').textContent = 'Tap a card to look it over';
@@ -322,9 +352,11 @@ const Screens = {
       Cards.drawMotif(el.querySelector('canvas'), c.key);
       el.addEventListener('click', () => this.draftTap(i, el));
       box.appendChild(el);
+      if (replay) { el.classList.add('dealt', 'flip'); return; }
       setTimeout(() => el.classList.add('dealt'), 60 + i * 130);        // deal in…
       setTimeout(() => el.classList.add('flip'), 560 + i * 150);        // …then flip
     });
+    this._dealtFor = S.seed;
     let seen = false;
     try { seen = !!localStorage.getItem('neo-draft-help'); } catch (e) {}
     this.el('draftOverlay').style.display = seen ? 'none' : 'flex';
@@ -360,6 +392,12 @@ const Screens = {
        old Begin): a loaded save and the pause screen's Resume also pass
        through enterGame and must never arm one. */
     Cards.pick(i);
+    /* THE KEEP SEALS THE DOOR. The pick is applied and the run is committed
+       — the burn is the transition INTO the game, not a screen the player
+       is still on. The back button disappears the same instant, or a
+       mid-burn tap on it would strand a committed run outside the game
+       (and startNewGame's resume only knows un-kept drafts). */
+    this.el('btnDraftBack').style.display = 'none';
     const kids = Array.from(this.el('draftCards').children);
     kids.forEach((o, j) => {
       o.classList.remove('lift');
@@ -368,8 +406,13 @@ const Screens = {
       this._burnCard(o, j);                         // real pixel fire eats it away
     });
     this.el('draftHint').textContent = '';
+    /* the timer knows WHICH run it belongs to: the seed is captured at arm
+       time and re-checked at fire time, so a timer from an abandoned world
+       can never walk the player into a different one (the screen-name guard
+       alone stopped matching reality the day the draft could be left) */
+    const runSeed = S.seed;
     setTimeout(() => {
-      if (!window.S || this.current !== 'draft') return;   // the player left mid-burn
+      if (!window.S || S.seed !== runSeed || this.current !== 'draft') return;
       this.enterGame();
       // the rival's origin is a NOTIFICATION now, difficulty-gated, and it
       // has to land in-game: toasts are hidden on every shell screen
@@ -862,7 +905,7 @@ const Screens = {
   },
 
   /* ---------------- leaderboard ---------------- */
-  MODE_ICON: { calm: '🌿', moderate: '⚔️', hard: '💀' },
+  MODE_ICON: { calm: '🌿', moderate: '🏹', hard: '💀' },   // matches CFG.MODES + the trial cards
   renderBoard(rows, into, meIdx, lastRank) {
     if (!rows.length) { into.innerHTML = '<p class="hint">No chiefs on the board yet — be the first.</p>'; return; }
     into.innerHTML = rows.map((r, i) =>
@@ -916,6 +959,8 @@ const Screens = {
       this.syncTutToggle();
     });
     on('btnDraftHelp', () => { this.el('draftOverlay').style.display = 'flex'; });
+    // back to the trial pick; the pending draft rides S and resumes intact
+    on('btnDraftBack', () => this.show('newgame'));
     on('btnDraftGotIt', () => {
       this.el('draftOverlay').style.display = 'none';
       try { localStorage.setItem('neo-draft-help', '1'); } catch (e) {}
