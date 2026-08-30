@@ -240,9 +240,13 @@ shadow baked into the art — the renderer draws the contact shadow.
 
 ## Character-class sprites: native density, and what generation really costs
 
-**AUTHOR EVERY ANIMAL AT 64×64.** Units are drawn into a `CFG.TILE` (32px)
-box, and the whole procedural cast authors at 64 — an exact **2:1 integer
-downscale**, 2 art-px per world-px. The first deer shipped at 104px (3.25:1)
+**EVERY ANIMAL SHIPS ON A 64×64 FRAME — so REQUEST ~60px, not 64.** Units are
+drawn into a `CFG.TILE` (32px) box, and the whole procedural cast authors at
+64: an exact **2:1 integer downscale**, 2 art-px per world-px. 64 is the
+*window*, not the ask — the composer crops content into it and hard-errors if
+the art does not fit, so generate at ~56–60px and let it seat with a little
+air. (Asking for 64 outright risks content that overflows the window and
+stops the build.) The first deer shipped at 104px (3.25:1)
 and the nearest-neighbour pass threw away ~69% of it: 1px antler tines and
 legs sampled in and out as the camera moved, which reads as shimmer. Worse,
 at default zoom (`cam.z` 1.5, dpr capped at 2) the game UPSCALES everything

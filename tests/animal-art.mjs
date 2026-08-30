@@ -150,22 +150,50 @@ const out = await p.evaluate(async () => {
       !!d && Object.keys(d.dirs).length === 8 &&
       Assets.UNIT_DIRS8.every(k => d.dirs[k] && d.dirs[k].walk && d.dirs[k].idle),
       d ? Object.keys(d.dirs).sort().join(',') : 'no art loaded');
-    ck('everyShippedStripIsTwelveSquareFrames',
+    ck('everyShippedStripIsSquareFramesAtItsOwnCount',
       !!d && Assets.UNIT_DIRS8.every(k =>
-        d.dirs[k].walk.length === 12 && d.dirs[k].idle.length === 12 &&
+        d.dirs[k].walk.length === 12 && d.dirs[k].idle.length === 8 &&
         d.dirs[k].walk[0].width === d.dirs[k].walk[0].height),
-      '12-frame walk + 12-frame graze, every direction');
+      '12-frame walk + 8-frame graze, every direction — a slow loop needs fewer');
     Sprites.animFps.deer = bootFps;   // the suite's 4-frame strip changed it
     ck('theShippedWalkSetsTheRate', bootFps === Math.max(4, Math.round(12 / 0.9)),
       'fps ' + bootFps + ' — one stride ≈ 0.9s at 12 frames');
-    /* THE SHADOW GATE. Every procedural sprite bakes its own contact
-       shadow (villagers, soldiers, hulls, beasts); character-class PNGs
-       carry none and get the renderer's. If this gate ever opens for the
-       procedural cast, the whole map wears two shadows. */
-    ck('onlySheetUnitsTakeTheRenderersShadow',
-      R.sheetUnit({ kind: 'deer' }) === true &&
-      ['villager', 'boar', 'bear', 'wolf', 'cow', 'spearman'].every(k => R.sheetUnit({ kind: k }) === false),
-      'deer draws from sheets; the procedural cast keeps its own baked shadow');
+    /* THE SHADOW GATE, ASSERTED AS AN INVARIANT rather than as a roster.
+       Every procedural sprite bakes its own contact shadow (villagers,
+       soldiers, hulls, beasts); character PNGs carry none and get the
+       renderer's. The rule that must hold for ALL time is: the gate is
+       open EXACTLY when the sprite actually came from a sheet. Written
+       as a list of kinds it would invert — and fail on a correct change
+       — the day villager or bear art ships. Checked across kinds AND
+       directions, because sheets resolve per (direction, pose) and the
+       strips load asynchronously: a kind whose facing has not arrived
+       yet draws procedurally and must NOT be shadowed. */
+    // "came from a sheet" is asked of the SHEETS themselves, never of the
+    // procedural sets: a villager's sheet is picked by the run's randomly
+    // rolled tunic, so naming one would test the tunic, not the gate
+    const inSheets = (spr) => {
+      for (const kk in Assets.unitArt) {
+        const dd = Assets.unitArt[kk].dirs;
+        for (const dir in dd) for (const pose in dd[dir])
+          if (dd[dir][pose].includes(spr)) return true;
+      }
+      return false;
+    };
+    let gateHolds = true, probed = 0;
+    for (const kind of ['deer', 'villager', 'boar', 'bear', 'wolf', 'cow', 'spearman']) {
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1]]) {
+        const u = { id: 950000 + probed, kind, owner: 'P', x: 20, y: 20, animT: 0 };
+        R.unitFacing(u); u.x += dx * 0.2; u.y += dy * 0.2;   // establish a heading
+        if (R.sheetUnit(u) !== inSheets(R.unitSprite(u))) gateHolds = false;
+        probed++;
+      }
+    }
+    ck('theShadowGateIsOpenExactlyWhenTheSpriteCameFromASheet', gateHolds,
+      probed + ' kind x direction probes — never a second shadow under the procedural cast');
+    ck('theShippedFramesSitOnTheNativeGrid',
+      Assets.UNIT_DIRS8.every(k => d.dirs[k].walk[0].width === 64 && d.dirs[k].idle[0].width === 64),
+      'a ' + d.dirs.s.walk[0].width + 'px frame into a ' + CFG.TILE +
+      'px box — the integer 2:1 the whole procedural cast authors at');
   }
 
   return { res, fails };

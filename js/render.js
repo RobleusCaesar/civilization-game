@@ -6689,10 +6689,24 @@ const R = {
      reference doctrine keeps character art off the ground), so the renderer
      owes them one — and owes the whole existing cast nothing, or every
      villager on the map gets a second shadow under the first. */
-  sheetUnit(u) {
+  /* ONE RESOLVER, so the gate and the sprite can never disagree. A
+     kind-level gate was wrong: sheets resolve per (direction, pose), and
+     a deer whose facing direction has not loaded yet — the 16 strips
+     arrive asynchronously, in any order — falls through to its
+     procedural frames, which carry a baked shadow. Gating on "the kind
+     has some art" then painted a second shadow under it for the length
+     of the load. Returns the frame list or null; both callers use it. */
+  sheetFrames(u) {
     const ua = window.Assets && Assets.unitArt && Assets.unitArt[u.kind];
-    return !!(ua && ua.dirs);
+    if (!ua) return null;
+    const d = ua.dirs[this.unitFacing(u)] || ua.dirs.s;
+    if (!d) return null;
+    const pose = this.unitPose(u);
+    // the sheet's own pose first; a missing pose borrows sensibly
+    // (fight falls to walk — motion — and gather-ish poses to idle)
+    return d[pose] || (pose === 'fight' ? d.walk : d.idle) || d.walk || d.idle || null;
   },
+  sheetUnit(u) { return !!this.sheetFrames(u); },
   // the shadow itself: a flat ellipse at the feet, in the same ink and
   // alpha the procedural beasts use, so a sheet animal and a drawn one
   // sit on the ground identically
@@ -6710,19 +6724,10 @@ const R = {
        the procedural sheet PER LOOKUP — a kind shipping only its south
        walk still falls back everywhere else, and deleting the PNGs
        restores the procedural cast untouched. */
-    const ua = window.Assets && Assets.unitArt && Assets.unitArt[u.kind];
-    if (ua) {
-      const d = ua.dirs[this.unitFacing(u)] || ua.dirs.s;
-      if (d) {
-        const pose = this.unitPose(u);
-        // the sheet's own pose first; a missing pose borrows sensibly
-        // (fight falls to walk — motion — and gather-ish poses to idle)
-        const fr2 = d[pose] || (pose === 'fight' ? d.walk : d.idle) || d.walk || d.idle;
-        if (fr2 && fr2.length) {
-          const fps2 = (Sprites.animFps && Sprites.animFps[u.kind]) || 8;
-          return fr2[((u.animT * fps2) | 0) % fr2.length];
-        }
-      }
+    const fr2 = this.sheetFrames(u);
+    if (fr2 && fr2.length) {
+      const fps2 = (Sprites.animFps && Sprites.animFps[u.kind]) || 8;
+      return fr2[((u.animT * fps2) | 0) % fr2.length];
     }
     let sheet;
     if (u.kind === 'villager') {
