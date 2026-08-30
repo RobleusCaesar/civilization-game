@@ -36,6 +36,15 @@ const out = await p.evaluate(async () => {
   const res = {}, fails = [];
   const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
 
+  /* REAL deer art ships now, and on file:// a loaded PNG is TAINTED —
+     drawing it poisons every getImageData below (the relics test learned
+     the same). The suite runs against its OWN data-URL sheets, with the
+     boot-loaded art stashed; the stash is inspected structurally (no
+     pixel reads) at the end. */
+  const bootArt = Assets.unitArt;
+  const bootFps = Sprites.animFps.deer;   // set by the shipped south walk at load
+  Assets.unitArt = {};
+
   // ---- 1. facing ----
   {
     const u = { id: 900001, kind: 'deer', x: 10, y: 10, animT: 0 };
@@ -131,6 +140,24 @@ const out = await p.evaluate(async () => {
     ck('allEightDirectionsAreProbed', Assets.UNIT_DIRS8.length === 8 &&
       new Set(Assets.UNIT_DIRS8).size === 8, '');
     ck('theRosterListsTheDeer', !!Assets.UNIT_ART.deer, 'first character-class kind');
+  }
+
+  // ---- 5. the SHIPPED art, inspected structurally (tainted on file://) ----
+  {
+    Assets.unitArt = bootArt;
+    const d = bootArt.deer;
+    ck('theShippedDeerCarriesAllEightDirections',
+      !!d && Object.keys(d.dirs).length === 8 &&
+      Assets.UNIT_DIRS8.every(k => d.dirs[k] && d.dirs[k].walk && d.dirs[k].idle),
+      d ? Object.keys(d.dirs).sort().join(',') : 'no art loaded');
+    ck('everyShippedStripIsTwelveSquareFrames',
+      !!d && Assets.UNIT_DIRS8.every(k =>
+        d.dirs[k].walk.length === 12 && d.dirs[k].idle.length === 12 &&
+        d.dirs[k].walk[0].width === d.dirs[k].walk[0].height),
+      '12-frame walk + 12-frame graze, every direction');
+    Sprites.animFps.deer = bootFps;   // the suite's 4-frame strip changed it
+    ck('theShippedWalkSetsTheRate', bootFps === Math.max(4, Math.round(12 / 0.9)),
+      'fps ' + bootFps + ' — one stride ≈ 0.9s at 12 frames');
   }
 
   return { res, fails };

@@ -16,7 +16,7 @@ const T = {
 
 const CFG = {
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 4,            // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 5,            // cache-buster on every art URL (?v=N) — bump when a PNG in
                        // assets/ is RE-UPLOADED under the same name, so the Pages
                        // CDN stops serving the stale copy. New filenames don't need it.
                        // v2: the de-fringed camp-woad/broken/sea PNGs — regenerated
