@@ -619,12 +619,31 @@ const Cards = {
     S.ai.opening = { bias: cd.bias || null, fired: true, until: 13 + ((G.rand() * 8) | 0), card: pickKey };
     this.apply('A', pickA);
 
-    // intel per difficulty; the whisper carries the behavior hint everywhere
-    if (S.draft.intel === 'full')
-      G.log(`🃏 Rival origin: ${cd.name} — ${cd.text(pickA.roll)}`, false, 6400);
-    else if (S.draft.intel === 'name')
-      G.log(`🃏 Rival origin: ${cd.name}.`, false, 6400);
-    G.log('🕵 Scouts whisper of the rival chief: ' + AI.persona().blurb + ' ' + cd.whisper, false, 6400);
+  },
+
+  /* WHAT THE VILLAGE LEARNS ABOUT THE RIVAL, and WHEN (Screens.draftTap).
+     This used to fire from deal(), which meant it fired while the draft
+     screen was still up — and `body:not(.ingame) #toasts` hides every toast
+     there, so the intel the difficulty promised was posted to a screen that
+     could not show it. It is announced from the first in-game moment
+     instead, where a notification is actually a notification.
+
+     The difficulty rule, unchanged: calm tells you the card AND what it
+     does, moderate names it, and HARD SAYS NOTHING AT ALL — not even that
+     something is being withheld. On hard the only early read is the
+     scouts' whisper below, which reports the chief's BEHAVIOR (how they
+     open, what they hoard), never their card — that is the tell the design
+     leaves for a player who watches. */
+  announceRival() {
+    const D = S && S.draft;
+    if (!D || !D.rival || !D.rival.pick) return;
+    const cd = this.DEFS[D.rival.pick.key];
+    if (!cd) return;
+    if (D.intel === 'full')
+      G.log(`🃏 Rival origin: ${cd.name} — ${cd.text(D.rival.pick.roll)}`, 'note', 6400);
+    else if (D.intel === 'name')
+      G.log(`🃏 Rival origin: ${cd.name}.`, 'note', 6400);
+    G.log('🕵 Scouts whisper of the rival chief: ' + AI.persona().blurb + ' ' + cd.whisper, 'note', 6400);
   },
 
   // the player keeps card i (the draft screen calls this; tests/demo auto-pick)

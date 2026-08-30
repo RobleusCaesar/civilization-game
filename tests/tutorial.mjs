@@ -35,7 +35,8 @@
      tutorial.js — everything
      game.js — G.frame's sim-scale/tick hooks, newGame/loadJSON's
                onWorldChange calls, tickMortality's note
-     screens.js — btnDraftGo / btnTutToggle / syncTutToggle
+     screens.js — draftTap's game start (the old btnDraftGo) /
+                  btnTutToggle / syncTutToggle
      index.html — the #tut* CSS/DOM, the draft-screen toggle
 
      node tests/tutorial.mjs      # exits non-zero on any regression

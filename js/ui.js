@@ -3215,8 +3215,14 @@ const UI = {
   // recorded in the event log instead of popping a toast, so the screen stays
   // calm. A near-identical note within a few seconds is also collapsed
   // ("House under attack!" ×9 → one), so even alerts never spam.
+  /* THREE LEVELS, not two. `warn` is the gate AND the styling, so anything
+     that wanted to be SEEN had to look like an alarm: false = event log
+     only, true = the red danger stripe, and now 'note' = shown in the
+     game's own gold — for intel that matters (the rival's origin at the
+     first in-game moment, Cards.announceRival) but is not a warning. */
   toast(msg, warn, ms) {
     if (!warn) return;                       // routine notes live only in the event log
+    const alarm = warn !== 'note';
     const key = msg.replace(/\d+/g, '#');
     const now = performance.now();
     if (now - (this._toastAt[key] || -1e9) < 6000) return;
@@ -3224,7 +3230,7 @@ const UI = {
     const hold = ms || 3200;
     const box = document.getElementById('toasts');
     const el = document.createElement('div');
-    el.className = 'toast' + (warn ? ' warn' : '');
+    el.className = 'toast' + (alarm ? ' warn' : '');
     el.textContent = msg;
     box.appendChild(el);
     while (box.children.length > 5) box.removeChild(box.firstChild);

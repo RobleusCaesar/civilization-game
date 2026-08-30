@@ -265,8 +265,11 @@ Hard-won pitfalls (each cost a debugging session):
    `goto` — never let a test reach the network.
 9. Since ORIGIN CARDS, the New-game button lands on the **draft screen**, not
    `playing` — UI tests must wait for `Screens.current === 'draft'`, hide
-   `#draftOverlay`, wait for three `.ocard.flip`, double-click a card, then
-   click `#btnDraftGo`. Direct `G.newGame(...)` calls leave `S.draft` pending
+   `#draftOverlay`, wait for three `.ocard.flip`, then double-click a card —
+   the second tap KEEPS it and starts the game itself (there is no Begin
+   button; `Screens.DRAFT_BURN_MS` is the beat before `enterGame`, and the
+   rival's origin arrives in-game as a difficulty-gated notification via
+   `Cards.announceRival`). Direct `G.newGame(...)` calls leave `S.draft` pending
    (fine for AI/engine tests — no player card is applied); call
    `Cards.pick(i)` when the test needs the player's boon.
 

@@ -264,8 +264,6 @@ const Screens = {
     if (!D || D.done || !D.hand.length) { this.enterGame(); return; }   // nothing to draft
     const box = this.el('draftCards');
     box.innerHTML = '';
-    this.el('draftRival').style.display = 'none';
-    this.el('btnDraftGo').style.display = 'none';
     this.el('draftHint').textContent = 'Tap a card to look it over';
     this._draftSel = -1;
     D.hand.forEach((c, i) => {
@@ -313,7 +311,14 @@ const Screens = {
         'Tap again to keep ' + Cards.DEFS[D.hand[i].key].name;
       return;
     }
-    Cards.pick(i);                                 // second tap: kept
+    /* SECOND TAP: kept — AND THE GAME BEGINS. There is no Begin button and
+       no rival panel: keeping a card is the decision, so asking for a third
+       tap to confirm a confirmation was a toll on every single run. The
+       burn plays for a beat so the choice still lands, then the world
+       opens. THE TUTORIAL'S ONE ENTRY POINT lives here now (it was on the
+       old Begin): a loaded save and the pause screen's Resume also pass
+       through enterGame and must never arm one. */
+    Cards.pick(i);
     const kids = Array.from(this.el('draftCards').children);
     kids.forEach((o, j) => {
       o.classList.remove('lift');
@@ -322,9 +327,16 @@ const Screens = {
       this._burnCard(o, j);                         // real pixel fire eats it away
     });
     this.el('draftHint').textContent = '';
-    this.revealRival();
-    this.el('btnDraftGo').style.display = '';
+    setTimeout(() => {
+      if (!window.S || this.current !== 'draft') return;   // the player left mid-burn
+      this.enterGame();
+      // the rival's origin is a NOTIFICATION now, difficulty-gated, and it
+      // has to land in-game: toasts are hidden on every shell screen
+      if (window.Cards) Cards.announceRival();
+      if (window.Tutorial) Tutorial.maybeStart();
+    }, this.DRAFT_BURN_MS);
   },
+  DRAFT_BURN_MS: 780,   // long enough to see the fire take, short enough to feel instant
 
   /* an unchosen card is consumed by a pixel fire that climbs it and throws
      ash into the wind. Each card gets its own seed + wind (outward from the
@@ -437,23 +449,6 @@ const Screens = {
       requestAnimationFrame(drift);
     };
     requestAnimationFrame(step);
-  },
-
-  revealRival() {
-    const D = S.draft, box = this.el('draftRival');
-    const cd = Cards.DEFS[D.rival.pick.key];
-    if (D.intel === 'none') {
-      box.innerHTML = `<div class="omini hid">❂</div>
-        <div>The rival's Origin is <b>hidden</b>. Watch how they move —
-        your scouts will whisper what they see.</div>`;
-    } else {
-      const known = D.intel === 'full';
-      box.innerHTML = `<div class="omini"><canvas width="96" height="96"></canvas></div>
-        <div>Rival origin: <b>${this.esc(cd.name)}</b>${known
-          ? ' — ' + this.esc(cd.text(D.rival.pick.roll)) : ''}</div>`;
-      Cards.drawMotif(box.querySelector('canvas'), D.rival.pick.key);
-    }
-    box.style.display = 'flex';
   },
 
   /* ---------------- load / save slots ---------------- */
@@ -868,14 +863,8 @@ const Screens = {
         this.onNewgame();
       }));
     on('btnStart', () => this.startNewGame());
-    // the origin draft
-    // THE TUTORIAL's one entry point (js/tutorial.js): only the Begin that
-    // follows a fresh draft may arm it — a loaded save or the pause screen's
-    // Resume also pass through enterGame, and must never start one
-    on('btnDraftGo', () => {
-      this.enterGame();
-      if (window.Tutorial) Tutorial.maybeStart();
-    });
+    // the origin draft — keeping a card starts the game (see draftTap;
+    // that is also the tutorial's one entry point now)
     on('btnTutToggle', () => {
       let v = false;
       try { v = localStorage.getItem('neo-tutorial-ask') === '1'; } catch (e) {}
