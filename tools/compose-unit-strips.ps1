@@ -46,41 +46,54 @@ Add-Type -AssemblyName System.Drawing
 $files = Get-ChildItem $InDir -Filter '*.png'
 if (-not $files) { throw "no frames in $InDir" }
 
-# --- union opaque bbox across EVERY frame (alpha >= 128 counts as opaque) ---
-$minX = [int]::MaxValue; $minY = [int]::MaxValue; $maxX = -1; $maxY = -1
+# --- union opaque bbox PER DIRECTION (alpha >= 128 counts as opaque) ---
+# One window SIZE for everything (scale coherence), but the window POSITION
+# is computed per direction: PixelLab places each direction independently on
+# its canvas (measured: no single wolf frame was wider than 58px, yet the
+# all-directions union spanned 66 purely from positional drift), and there
+# is no cross-direction registration to preserve. Within a direction, walk
+# and idle DO share the window, so an animal that stops never teleports.
+$dirBox = @{}
 $cw = 0; $ch = 0
 foreach ($f in $files) {
+  $dir = ($f.BaseName -split '-')[0]
   $img = [System.Drawing.Bitmap]::FromFile($f.FullName)
   $cw = $img.Width; $ch = $img.Height
+  if (-not $dirBox[$dir]) { $dirBox[$dir] = @{ minX = [int]::MaxValue; minY = [int]::MaxValue; maxX = -1; maxY = -1 } }
+  $b = $dirBox[$dir]
   for ($y = 0; $y -lt $img.Height; $y++) {
     for ($x = 0; $x -lt $img.Width; $x++) {
       if ($img.GetPixel($x, $y).A -ge 128) {
-        if ($x -lt $minX) { $minX = $x }; if ($x -gt $maxX) { $maxX = $x }
-        if ($y -lt $minY) { $minY = $y }; if ($y -gt $maxY) { $maxY = $y }
+        if ($x -lt $b.minX) { $b.minX = $x }; if ($x -gt $b.maxX) { $b.maxX = $x }
+        if ($y -lt $b.minY) { $b.minY = $y }; if ($y -gt $b.maxY) { $b.maxY = $y }
       }
     }
   }
   $img.Dispose()
 }
-$bw = $maxX - $minX + 1; $bh = $maxY - $minY + 1
-Write-Output "union bbox ${bw}x${bh} in ${cw}x${ch} frames; window ${Target}px"
-if ($bw -gt $Target -or $bh -gt $Target) {
-  throw ("content ${bw}x${bh} does not fit the ${Target}px window. REGENERATE SMALLER. " +
-         "Never rescale here: a fractional resample is the exact defect the fixed window prevents.")
+$win = @{}
+foreach ($dir in $dirBox.Keys) {
+  $b = $dirBox[$dir]
+  $bw = $b.maxX - $b.minX + 1; $bh = $b.maxY - $b.minY + 1
+  if ($bw -gt $Target -or $bh -gt $Target) {
+    throw ("direction '$dir': content ${bw}x${bh} does not fit the ${Target}px window. REGENERATE SMALLER. " +
+           "Never rescale here: a fractional resample is the exact defect the fixed window prevents.")
+  }
+  # anchored off the bbox itself, NOT off a reconstructed centre: deriving a
+  # centre and subtracting Target/2 loses the rightmost column at exactly
+  # Target-wide content (32 columns left of centre, only 31 right)
+  $win[$dir] = @{
+    x0 = $b.minX - [Math]::Floor(($Target - $bw) / 2)
+    y0 = $b.maxY + 1 - $Target       # bottom-anchored: feet sit 1px off the edge
+  }
+  Write-Output ("dir {0,-3} bbox {1}x{2} window origin ({3},{4})" -f $dir, $bw, $bh, $win[$dir].x0, $win[$dir].y0)
 }
-
-# --- one window for everything ---
-# Anchored off the bbox itself, NOT off a reconstructed centre: deriving a
-# centre and subtracting Target/2 loses the rightmost column when the content
-# is exactly Target wide (32 columns left of centre, only 31 right), which is
-# precisely the size the 64px rule drives every animal toward.
-$x0 = $minX - [Math]::Floor(($Target - $bw) / 2)
-$y0 = $maxY + 1 - $Target          # bottom-anchored: feet sit 1px off the edge
-Write-Output "window origin ($x0,$y0) for bbox x $minX..$maxX y $minY..$maxY"
 
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 $groups = $files | Group-Object { ($_.BaseName -replace '-\d+$', '') }
 foreach ($grp in $groups) {
+  $gdir = ($grp.Name -split '-')[0]
+  $x0 = $win[$gdir].x0; $y0 = $win[$gdir].y0
   $frames = $grp.Group | Sort-Object { [int]($_.BaseName -replace '.*-(\d+)$', '$1') }
   $n = $frames.Count
   $strip = New-Object System.Drawing.Bitmap ($n * $Target), $Target

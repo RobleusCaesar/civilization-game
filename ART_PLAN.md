@@ -258,6 +258,19 @@ A bigger animal is a draw-box question, not a canvas question: a 96px sheet
 into a 48px box is also exact 2:1. That needs a per-kind draw scale in the
 renderer — wanted before the bear, not built yet.
 
+**HORIZONTAL QUADRUPEDS ROTATE FROM A 54px REFERENCE, NOT 60.** Measured,
+twice: the wolf's walk union came out 67px wide and the boar's 68 from a
+60px character — v3 animations stride a long-bodied animal ~13% wider than
+its standing master, and the composer's fit check refuses both. The tall
+deer fit at 60 only because its axis is vertical (57×60). And the shrink
+CANNOT be asked for via `size`: **v3 ignores the size parameter when given
+a reference URL** and locks the character to the reference image's own
+dimensions (size 54 requested → 60×60 characters and 84px canvases came
+back). The working mechanism: keep the frozen 60px master as the style
+document, and rotate from a `animal-{kind}-ref54.png` — a high-quality
+downscale used ONLY as a generative guide for v3's redraw; no shipped
+pixel is ever resampled.
+
 **CHARACTER ART CARRIES NO SHADOW.** The procedural cast bakes a contact
 shadow into every frame; sheet units get one from the renderer instead
 (`R.sheetUnit` gates `R.drawUnitShadow` — the gate exists so the existing
