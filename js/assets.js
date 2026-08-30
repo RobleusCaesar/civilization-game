@@ -484,8 +484,10 @@ const Assets = {
      refused with one plain warning and the procedural look stands. */
   UNIT_DIR: 'assets/units/',
   UNIT_DIRS8: ['s', 'se', 'e', 'ne', 'n', 'nw', 'w', 'sw'],
-  // kinds and the poses each may ship — probed at boot, 404s are the norm
-  UNIT_ART: { deer: ['walk', 'idle'] },
+  // kinds and the poses each may ship — probed at boot, 404s are the norm.
+  // 'idle' is each species' standing life: the deer and cow graze, the boar
+  // roots, the wolf scents the air (fight borrows walk via R.sheetFrames)
+  UNIT_ART: { deer: ['walk', 'idle'], wolf: ['walk', 'idle'], boar: ['walk', 'idle'], cow: ['walk', 'idle'] },
   unitArt: {},
   unitStem(kind, dir, pose) { return 'unit-' + kind + '-' + dir + '-' + pose; },
   unitUrl(kind, dir, pose) {

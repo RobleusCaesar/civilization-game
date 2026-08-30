@@ -263,6 +263,40 @@ shadow into every frame; sheet units get one from the renderer instead
 (`R.sheetUnit` gates `R.drawUnitShadow` — the gate exists so the existing
 cast never gets a second shadow under its first).
 
+**THE CONTRAST DOCTRINE (character class — every animal, and the villagers
+when their turn comes).** This is the rule that actually made the deer
+work, and it is measurable, not taste:
+
+- **The body sits WELL AWAY from the grass floor in value.** The painted
+  floor is `#4d7c33`, luminance ~102, and the body's median luminance must
+  land clearly off it — normally BELOW (the approved stag reads 24), so the
+  animal is one dark mass against green. The first deer failed at 129 — 27
+  above grass — and disappeared into the field. The cow is the one
+  sanctioned LIGHT exception (operator call): a white coat far above the
+  floor separates just as hard, and its unbroken dark outline is what
+  holds the shape.
+- **ONE HUE PER SPECIES, so the roster reads apart at a glance** (operator
+  palette split): deer = russet brown · wolf = grey · boar = deep red ·
+  cow = white · bear (the final animal, reserved) = dark brown. Never let
+  two species share a hue family.
+- **Near-white is rationed to a 1–2px specular on the SINGLE most
+  structural element of the species** — antler beams, tusks, horn tips —
+  and nowhere else. The failed deer's bone-white antler filigree carried
+  five times the body's contrast, so the eye landed on speckle instead of
+  a silhouette.
+- **Legs minimum 2px with dark feet.** Thinner vanishes in the 2:1
+  downscale and the animal floats.
+- **A continuous dark outline all the way round — belly and legs
+  included.** One closed shape is what reads at 32 world px; the villager
+  has always worked because it is one dark mass with one outline.
+- **The SILHOUETTE differentiates the species, never colour or detail.**
+  Committed splits: deer = high antler crown; wolf = low and long,
+  horizontal back, head at shoulder height, brush tail carried low;
+  boar = front-heavy wedge, high shoulder hump falling to the rear, no
+  visible neck; cow (an aurochs — dark, per the body rule) = tall level
+  rectangle, squared muzzle, forward horns. Judge every new species as a
+  black shape first.
+
 **v3 BILLS ON THE PADDED CANVAS, NOT THE SIZE YOU ASK FOR.** `create_character`
 returns a canvas ~40% larger than the requested size to leave animation room,
 and `animate_character` charges `ceil(canvas² × frames / 65536)` per direction
