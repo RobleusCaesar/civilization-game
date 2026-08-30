@@ -207,6 +207,37 @@ transparent mode deletes semi-alpha ground fades. Hand-authored
 procedural masters were tried and rejected by the operator — generate,
 don't draw. 192 masters in `assets/masters/relic-{key}-256.png`.
 
+## Reference doctrine: designated masters, never chains
+
+Two rules govern EVERY PixelLab reference, for every asset class, and
+they exist because each closes a real failure mode:
+
+**1. ANCHOR EVERY GENERATION IN A SERIES TO THE SAME DESIGNATED STYLE
+MASTER. NEVER CHAIN.** Chaining (A is approved, so B references A; B is
+approved, so C references B…) compounds drift silently — each hop copies
+the last piece's small deviations plus its own, and nobody notices until
+piece eight no longer matches piece one. The designated master is a
+FIXED file, named here per asset class; every piece in the class
+references that file directly, and approval of a new piece never
+promotes it to master. The masters:
+
+| Asset class                     | Style master (fixed)                   |
+| ------------------------------- | -------------------------------------- |
+| Buildings / camps / relics      | `assets/masters/camp-wolf-192.png`     |
+| Animals (and later characters)  | first approved animal — file recorded here on approval, then FROZEN |
+
+**2. THE CAMERA REFERENCE MUST BE CLASS-MATCHED.**
+`https://clanfire.online/assets/buildings/tc-l3.png` is the camera
+master for BUILDINGS AND OTHER GROUNDED OBJECTS only — it teaches the
+frontal orthographic building projection AND the no-ground-plate rule
+for things that stand still. Characters and animals move across the
+terrain: they take a CHARACTER-CLASS camera master (the animal style
+master doubles as it once approved), and NEVER a building — a building
+reference drags in grounded-object framing (baseline weight, plate
+logic, static lighting) that a walking sprite must not have. Character
+sprites also get NO ground stain of any kind: no decal, no plate, no
+shadow baked into the art — the renderer draws the contact shadow.
+
 ## The anchoring rule (one rule, no per-building tuning)
 
 Every PNG is drawn the same way (`R.blitBld` → `R.artRect`):
