@@ -224,7 +224,7 @@ promotes it to master. The masters:
 | Asset class                     | Style master (fixed)                   |
 | ------------------------------- | -------------------------------------- |
 | Buildings / camps / relics      | `assets/masters/camp-wolf-192.png`     |
-| Animals (and later characters)  | `assets/masters/animal-deer-96.png` (the approved stag, 2026-08-30 — FROZEN; doubles as the character-class camera master) |
+| Animals (and later characters)  | `assets/masters/animal-deer-60.png` (the native-density stag — FROZEN; doubles as the character-class camera master). The earlier 96px master was RETIRED, not referenced: it carried the flaws this one fixes (mid-brown body barely separated from grass, bone-white 1px antler filigree that aliased into specks). Retire and replace, never chain off a piece you are correcting. |
 
 **2. THE CAMERA REFERENCE MUST BE CLASS-MATCHED.**
 `https://clanfire.online/assets/buildings/tc-l3.png` is the camera
