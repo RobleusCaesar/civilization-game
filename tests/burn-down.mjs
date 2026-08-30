@@ -253,13 +253,21 @@ const out = await p.evaluate(() => {
 
   /* ---- 8. THE COLLAPSE: a destroyed tower topples once, in dust ---- */
   {
-    // 8a. the registry IS the feature, and only the tower is in it
+    // 8a. the registry IS the feature: a kind topples only by being listed
     const cfg = R.COLLAPSE.tower;
     ck('towerIsRegisteredToCollapse', !!cfg, '');
     ck('collapseIsFiveToTenFrames', cfg.frames >= 5 && cfg.frames <= 10, cfg.frames + ' frames');
-    ck('nothingElseCollapsesYet',
-      Object.keys(R.COLLAPSE).join() === 'tower',
+    /* The barbarian camp joined the tower: a razed compound comes apart on
+       screen instead of blinking out, and its whole worn yard turns to
+       rubble (tests/raider-camps.mjs owns that half). Both are cut from the
+       building's OWN sprite, so the hand-authored camp art topples without a
+       frame being drawn for it. Everything else still just falls. */
+    ck('onlyTheRegisteredKindsCollapse',
+      Object.keys(R.COLLAPSE).sort().join() === 'raidercamp,tower',
       'walls, gates and every other building come down as before');
+    ck('theCampTopplesLikeWhatItIs',
+      R.COLLAPSE.raidercamp.ms < cfg.ms && R.COLLAPSE.raidercamp.lean < cfg.lean,
+      'hide and lashed poles: quicker, and a shorter sweep than falling masonry');
 
     // 8b. frames are cut from the building's own sprite: roomier than the
     // tile, starting whole and ending with the tower gone

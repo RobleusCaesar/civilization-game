@@ -244,9 +244,39 @@ const out = await p.evaluate(() => {
     const camp = Bld.get(window.__camp);
     const band = G.campTenders(camp).slice();
     const before = campsOf().length;
+    const cx = camp.x, cy = camp.y;
+    // what the yard was BEFORE the fire — only tiles that were actually worn
+    // ground can be expected to fall in with it
+    let wornBefore = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+      if (MapGen.inB(cx + dx, cy + dy) && S.map.terrain[MapGen.idx(cx + dx, cy + dy)] === T.CAMP) wornBefore++;
     Bld.damage(camp, 999999);
     ck('aCampCanBeBurnedOut',
       campsOf().length === before - 1 && !Bld.get(window.__camp), '');
+    /* THE YARD FALLS WITH THE CAMP. The camp is a 1×1 building in a 3×3 worn
+       yard, and only its own tile used to become ruin — so a razed camp left
+       eight tiles of trodden ground standing, and that ground has ONE tile
+       variant picked by a pure function of x,y: the same brown blob stamped
+       nine times in a grid, which is all a player saw once the compound art
+       was gone. The whole yard is rubble now, thrown a little clear of the
+       square so the scar ends on a ragged edge, and it heals on the ordinary
+       ruin clock — the ground still remembers, it just doesn't stamp. */
+    let campLeft = 0, ruinNow = 0, scheduled = 0;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      if (!MapGen.inB(cx + dx, cy + dy)) continue;
+      const i = MapGen.idx(cx + dx, cy + dy);
+      if (S.map.terrain[i] === T.CAMP) campLeft++;
+      if (S.map.terrain[i] === T.RUIN) { ruinNow++; if (S.map.decay && S.map.decay[i] != null) scheduled++; }
+    }
+    ck('noWornStampSurvivesTheFire', campLeft === 0,
+      campLeft + ' worn tiles left of ' + wornBefore);
+    ck('theYardIsRubbleInstead', ruinNow >= wornBefore, ruinNow + ' rubble tiles');
+    ck('andTheRubbleIsThrownClearOfTheSquare', ruinNow > wornBefore,
+      'the scar spills past the 3×3, so its outline is not a rectangle');
+    ck('everyRubbleTileHealsInItsOwnTime', scheduled === ruinNow,
+      scheduled + ' of ' + ruinNow + ' on the ruin clock');
+    ck('andTheCompoundComesDownOnScreen', !!(R.COLLAPSE && R.COLLAPSE.raidercamp),
+      'a camp topples like the towers do — hide and poles, not masonry');
     for (const u of band) Combat.raiderSeek(u);
     ck('itsBandGoesLoose', band.every(u => !u.campId),
       'no post to hold — they hunt like any other band now');

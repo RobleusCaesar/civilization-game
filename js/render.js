@@ -5756,6 +5756,12 @@ const R = {
     //   lean    radians the toppling block sweeps through
     //   spread  how far the dust rolls, in sprite widths
     tower: { frames: 8, ms: 1500, pivot: 0.62, lean: 1.55, spread: 1.15 },
+    /* A CAMP DOESN'T TOPPLE LIKE A TOWER — it comes apart. Hide, lashed poles
+       and a skull standard have no masonry to swing over: the break is high
+       (the standard and the lodge's crown go first), the lean is a short
+       sideways slump rather than a felled trunk, and the debris spreads wide
+       and low because what falls is light. Quicker than stone, too. */
+    raidercamp: { frames: 7, ms: 1050, pivot: 0.34, lean: 0.85, spread: 1.35 },
   },
   // how much ROOMIER than the building's own footprint a collapse frame is —
   // shared by the generated sheet and by any authored `<key>Fall` art

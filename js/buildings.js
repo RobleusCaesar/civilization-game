@@ -1701,6 +1701,50 @@ const Bld = {
         R.updateTile(b.x + dx, b.y + dy);
       }
     }
+    /* A BURNED-OUT CAMP LEAVES RUBBLE, NOT A STAMP (tests/raider-camps.mjs).
+       The camp is a 1×1 building sitting in a 3×3 worn YARD (G.plantRaiderCamp
+       stamps T.CAMP over the ring), and only the building's own tile became
+       ruin — so a razed camp left eight tiles of trodden-earth ground behind
+       with nothing standing on them. That ground has exactly ONE tile variant
+       and the picker is a pure function of x,y over the variant list, so the
+       leftover read as the same brown blob stamped nine times in a grid — the
+       more obvious now a standing camp's compound art covers its own yard,
+       which means those tiles are only ever SEEN after the burn.
+       The yard now falls with the camp: T.RUIN, the game's own rubble (three
+       variants — scorched earth, ash drifts, stone clusters, charred beams),
+       on the ordinary ruin clock, so the ground still remembers and then
+       quietly heals like every other ruin. Only the camp's OWN worn ground is
+       touched: water, rock and woods keep whatever they are. */
+    if (b.key === 'raidercamp') {
+      const rubble = (yx, yy) => {
+        if (!MapGen.inB(yx, yy)) return;
+        const yi = MapGen.idx(yx, yy);
+        S.map.terrain[yi] = T.RUIN;
+        if (S.map.resAmount) S.map.resAmount[yi] = 0;
+        G.scheduleRevert(yi);
+        R.updateTile(yx, yy);
+      };
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const yx = b.x + dx, yy = b.y + dy;
+        if (MapGen.inB(yx, yy) && S.map.terrain[MapGen.idx(yx, yy)] === T.CAMP) rubble(yx, yy);
+      }
+      /* …AND THE SCAR IS NOT A SQUARE. Nine tiles of rubble is a hard brown
+         rectangle in open grass — one geometric artifact traded for another.
+         A little of the wreck is thrown clear, onto whatever OPEN GRASS the
+         ring outside the yard offers, so the ruin ends on a ragged organic
+         outline. Which tiles is HASHED off the camp's own id, never rolled:
+         it costs the seeded stream nothing and a save reloads the same ruin.
+         Grass only — woods, water and rock keep whatever they are. */
+      const h = (b.id * 2654435761) >>> 0;
+      const ring = [];
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++)
+        if (Math.max(Math.abs(dx), Math.abs(dy)) === 2) ring.push([dx, dy]);
+      for (let k = 0; k < ring.length; k++) {
+        if (((h >>> (k % 30)) & 7) !== 0) continue;              // ~1 tile in 8
+        const yx = b.x + ring[k][0], yy = b.y + ring[k][1];
+        if (MapGen.inB(yx, yy) && S.map.terrain[MapGen.idx(yx, yy)] === T.GRASS) rubble(yx, yy);
+      }
+    }
     for (const u of S.units) if (u.tBld === b.id) u.tBld = 0;
     if (UI.sel && UI.sel.type === 'bld' && UI.sel.id === b.id) UI.deselect();
   },
