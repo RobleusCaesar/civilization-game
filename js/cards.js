@@ -639,10 +639,11 @@ const Cards = {
     if (!D || !D.rival || !D.rival.pick) return;
     const cd = this.DEFS[D.rival.pick.key];
     if (!cd) return;
+    // 🎲 not 🃏 — the joker is a modern invention this world never made
     if (D.intel === 'full')
-      G.log(`🃏 Rival origin: ${cd.name} — ${cd.text(D.rival.pick.roll)}`, 'note', 6400);
+      G.log(`🎲 Rival origin: ${cd.name} — ${cd.text(D.rival.pick.roll)}`, 'note', 6400);
     else if (D.intel === 'name')
-      G.log(`🃏 Rival origin: ${cd.name}.`, 'note', 6400);
+      G.log(`🎲 Rival origin: ${cd.name}.`, 'note', 6400);
     G.log('🕵 Scouts whisper of the rival chief: ' + AI.persona().blurb + ' ' + cd.whisper, 'note', 6400);
   },
 
@@ -656,7 +657,7 @@ const Cards = {
     D.done = true; D.pickI = i;
     if (S.stats) S.stats.leanIn = (D.leanKeys || []).includes(c.key) ? 1 : 0;
     const d = this.DEFS[c.key];
-    G.log(`🃏 Origin chosen: ${d.name} — ${d.text(c.roll)}`, false, 6400);
+    G.log(`🎲 Origin chosen: ${d.name} — ${d.text(c.roll)}`, false, 6400);
     if (window.DEBUG_OPENINGS) console.log('[draft:pick]', c.key, JSON.stringify(c.roll));
     return c;
   },

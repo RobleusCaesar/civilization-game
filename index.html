@@ -889,7 +889,10 @@
   #draftSub { margin: 0; max-width: 340px; }
   #draftCards {
     display: flex; justify-content: center; width: 100%;
-    perspective: 900px; margin: 6px 0; position: relative;   /* anchors the fire overlays */
+    perspective: 900px; position: relative;   /* anchors the fire overlays */
+    /* headroom for the tapped card's lift (translateY(-10px) + scale) — it
+       must never ride up into the world-name line above */
+    margin: 22px 0 10px;
   }
   .ocard {
     width: min(29vw, 118px); margin: 0 5px; aspect-ratio: 5 / 8; position: relative;
@@ -949,7 +952,10 @@
      plank: same width, same aspect, same face. Each carries only an icon,
      the name and one line; the full description sits BELOW the row and
      follows the selection, so reading all three costs three taps. ---- */
-  #ngMode { display: flex; justify-content: center; width: 100%; margin: 10px 0 4px; }
+  /* same headroom rule as #draftCards: the selected card's lift stays clear
+     of the line above */
+  #ngMode { display: flex; justify-content: center; width: 100%; margin: 18px 0 4px; }
+  #ngHint { min-height: 16px; margin: 2px 0 0; }
   .dcard {
     width: min(29vw, 118px); margin: 0 5px; aspect-ratio: 5 / 8;
     border: 2px solid #5c421f; border-radius: 12px;
@@ -1270,14 +1276,16 @@
           <div class="dline">No warnings, no mercy.</div>
         </div>
       </div>
+      <!-- no button: tapping a trial twice starts the game, the same
+           two-tap grammar the origin cards teach on the next screen -->
+      <p class="hint" id="ngHint"></p>
       <p id="ngDesc"></p>
-      <div class="mrow"><button class="abtn big gold" id="btnStart">Choose Your Origin</button></div>
     </div>
   </div>
 
   <div class="screen" id="scrDraft">
     <div class="sbody center">
-      <h2 id="draftTitle">🃏 Choose your Origin</h2>
+      <h2 id="draftTitle">🎲 Choose your Origin</h2>
       <p class="hint" id="draftSub">The gift your people begin with — your rival is choosing too.</p>
       <p id="draftWorld"></p>
       <div id="draftCards"></div>

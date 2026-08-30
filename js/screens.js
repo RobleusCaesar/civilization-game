@@ -207,6 +207,10 @@ const Screens = {
     this.el('ngMode').querySelectorAll('.dcard').forEach(b =>
       b.classList.toggle('sel', b.dataset.v === this.newPrefs.mode));
     this.el('ngDesc').textContent = this.MODE_DESC[this.newPrefs.mode] || '';
+    // entering the screen disarms any half-made choice: the remembered
+    // trial shows selected, but starting always takes the two taps
+    this._trialArmed = null;
+    this.el('ngHint').textContent = '';
   },
 
   /* THE PRESS ANSWERS IN THE FRAME IT HAPPENS IN.
@@ -227,20 +231,19 @@ const Screens = {
   startNewGame() {
     if (this._founding) return;
     /* BACKING OUT IS NOT A REROLL. The draft's back button returns here
-       with the world already founded and the hand already dealt; pressing
-       on with the SAME trial resumes that exact draft — map, cards and
+       with the world already founded and the hand already dealt; a second
+       tap on the SAME trial resumes that exact draft — map, cards and
        all. A fresh roll is only ever paid for with a different trial, so
        there is no free re-draw loop. */
     if (window.S && !this._demo && S.draft && !S.draft.done &&
         S.mode === this.newPrefs.mode) { this.show('draft'); return; }
     this._founding = true;
-    const btn = this.el('btnStart');
-    const was = btn ? btn.textContent : '';
-    if (btn) { btn.classList.add('busy'); btn.textContent = 'Founding the valley…'; }
-    const done = () => {
-      this._founding = false;
-      if (btn) { btn.classList.remove('busy'); btn.textContent = was; }
-    };
+    // the founding announcement now lives on the hint line the second tap
+    // just used — same spot the eye is already on (the next screen entry
+    // clears it via onNewgame)
+    const hint = this.el('ngHint');
+    if (hint) hint.textContent = '🏕 Founding the valley…';
+    const done = () => { this._founding = false; };
     requestAnimationFrame(() => requestAnimationFrame(() => {
       try { this.foundRun(); } finally { done(); }
     }));
@@ -944,12 +947,18 @@ const Screens = {
     on('btnTitleHow', () => { this.backTo = 'title'; this.show('howto'); });
     for (const id of ['ngBack', 'loadBack', 'setBack', 'howBack'])
       on(id, () => this.show(this.backTo === 'paused' ? 'paused' : 'title'));
-    // the difficulty cards — the only choice a new game asks for
+    /* the difficulty cards — the only choice a new game asks for, and it
+       speaks the SAME two-tap grammar the origin cards teach next: first
+       tap selects and shows what the trial means, the second tap on the
+       same card starts. No button. */
     this.el('ngMode').querySelectorAll('.dcard').forEach(b => b.addEventListener('click', () => {
-      this.newPrefs.mode = b.dataset.v;
-      this.onNewgame();
+      const v = b.dataset.v;
+      if (this._trialArmed === v) { this.startNewGame(); return; }   // second tap: begin
+      this.newPrefs.mode = v;
+      this.onNewgame();                       // select + describe (also disarms)
+      this._trialArmed = v;
+      this.el('ngHint').textContent = 'Tap again to select your trial';
     }));
-    on('btnStart', () => this.startNewGame());
     // the origin draft — keeping a card starts the game (see draftTap;
     // that is also the tutorial's one entry point now)
     on('btnTutToggle', () => {

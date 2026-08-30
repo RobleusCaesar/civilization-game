@@ -263,8 +263,11 @@ Hard-won pitfalls (each cost a debugging session):
    tests should drive `Screens` and real clicks. Mock the backend by setting
    `window.__NEO_BACKEND_MOCK = { auth, rest }` in an `addInitScript` BEFORE
    `goto` — never let a test reach the network.
-9. Since ORIGIN CARDS, the New-game button lands on the **draft screen**, not
-   `playing` — UI tests must wait for `Screens.current === 'draft'`, hide
+9. Since ORIGIN CARDS, starting a run lands on the **draft screen**, not
+   `playing` — and the trial screen has NO start button: double-click a
+   `.dcard` in `#ngMode` (the same two-tap grammar as the origin cards) or
+   call `Screens.foundRun()` directly. UI tests must then wait for
+   `Screens.current === 'draft'`, hide
    `#draftOverlay`, wait for three `.ocard.flip`, then double-click a card —
    the second tap KEEPS it and starts the game itself (there is no Begin
    button; `Screens.DRAFT_BURN_MS` is the beat before `enterGame`, and the
