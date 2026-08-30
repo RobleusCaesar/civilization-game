@@ -938,6 +938,41 @@
   .oflavor { font-size: 8.5px; color: var(--dim); font-style: italic; text-align: center;
     line-height: 1.25; margin-top: auto; }
   #draftHint { min-height: 16px; margin: 0; }
+  /* the world's name — shown at the arrival moment (draft) and on pause */
+  #draftWorld, #pauseWorld {
+    margin: 0; min-height: 15px; font-size: 12px; font-weight: 800;
+    color: var(--gold); text-align: center; letter-spacing: 0.4px;
+  }
+  #pauseWorld { margin: -12px 0 16px; }
+
+  /* ---- the DIFFICULTY CARDS (scrNewgame) — cut from the origin cards'
+     plank: same face, same gold name / bold boon / italic flavor ladder,
+     no flip. Tap to select; the chosen trial lifts and glows. ---- */
+  #ngMode { display: flex; justify-content: center; width: 100%; margin: 8px 0 4px; }
+  .dcard {
+    width: min(29vw, 122px); margin: 0 5px; aspect-ratio: 5 / 8;
+    border: 2px solid #5c421f; border-radius: 12px;
+    background: var(--panel-bg); background-image: var(--wood-tex);
+    box-shadow: inset 0 0 0 1px rgba(232,200,140,0.22), 0 3px 10px rgba(0,0,0,0.55);
+    display: flex; flex-direction: column; align-items: center;
+    gap: 5px; padding: 10px 6px 8px; cursor: pointer;
+    transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+  }
+  .dcard.sel {
+    border-color: var(--gold); transform: translateY(-6px) scale(1.04);
+    box-shadow: inset 0 0 0 1px rgba(232,200,140,0.3),
+      0 0 14px rgba(247,217,122,0.35), 0 6px 14px rgba(0,0,0,0.6);
+  }
+  .dicon { font-size: 30px; line-height: 1; margin-top: 2px; }
+  .dname { font-size: 13px; font-weight: 900; color: var(--gold); text-align: center; line-height: 1.1; }
+  .dboon { font-size: 9.5px; font-weight: 700; text-align: center; line-height: 1.35; }
+  .dflavor { font-size: 8.5px; color: var(--dim); font-style: italic; text-align: center;
+    line-height: 1.25; margin-top: auto; }
+  #ngTitle { color: var(--gold); margin-bottom: 2px; }
+  @media (max-width: 359px) {
+    .dcard { aspect-ratio: 5 / 9; }
+    .dflavor { display: none; }   /* same yield the origin cards make */
+  }
   /* the narrowest phones: taller cards + a slightly smaller motif, so the
      wordiest boon never clips against the card's own bottom edge */
   @media (max-width: 359px) {
@@ -1202,30 +1237,32 @@
 
   <div class="screen" id="scrNewgame">
     <header class="shead"><button class="abtn back" id="ngBack">‹</button><h2>New game</h2></header>
-    <div class="sbody">
-      <p class="lbl">Difficulty</p>
-      <div class="orow" id="ngMode">
-        <button class="abtn" data-v="calm">🌿<small>Calm</small></button>
-        <button class="abtn" data-v="moderate">⚔️<small>Moderate</small></button>
-        <button class="abtn" data-v="hard">💀<small>Hard</small></button>
+    <div class="sbody center">
+      <h2 id="ngTitle">⚔ Choose your Trial</h2>
+      <p class="hint">How hard the world pushes back. Everything else is rolled.</p>
+      <div id="ngMode">
+        <div class="dcard" data-v="calm">
+          <div class="dicon">🌿</div>
+          <div class="dname">Calm</div>
+          <div class="dboon">Begins at peace — no one attacks until you do. Rare raids, and your scouts always bring warning. The land rolls wide.</div>
+          <div class="dflavor">The valley forgives. For a while.</div>
+        </div>
+        <div class="dcard" data-v="moderate">
+          <div class="dicon">⚔️</div>
+          <div class="dname">Moderate</div>
+          <div class="dboon">The intended game. The rival presses, raids come on their own clock, and a warning reaches you half the time.</div>
+          <div class="dflavor">Fair winds, sharp spears.</div>
+        </div>
+        <div class="dcard" data-v="hard">
+          <div class="dicon">💀</div>
+          <div class="dname">Hard</div>
+          <div class="dboon">An aggressive rival, frequent raids, and no warnings at all. The land rolls small — contact comes early.</div>
+          <div class="dflavor">Nobody is coming to help you.</div>
+        </div>
       </div>
-      <p class="lbl">Map size</p>
-      <div class="orow" id="ngSize">
-        <button class="abtn" data-v="medium">🏞<small>Medium</small></button>
-        <button class="abtn" data-v="large">🗺<small>Large</small></button>
-        <button class="abtn" data-v="xlarge">🌍<small>Extra Large</small></button>
-      </div>
-      <p class="lbl">Landform</p>
-      <div class="orow" id="ngLand">
-        <button class="abtn" data-v="random">🎲<small>Any</small></button>
-        <button class="abtn" data-v="valley">🌄<small>Valley</small></button>
-        <button class="abtn" data-v="lakeland">💧<small>Lakes</small></button>
-        <button class="abtn" data-v="highlands">⛰<small>Highlands</small></button>
-        <button class="abtn" data-v="islands">🏝<small>Islands</small></button>
-      </div>
-      <p class="hint" style="margin-top:14px">Every game rolls a fresh map, a random
-        villager tunic for your people, and a rival chief with their own temperament —
-        scouts will size them up on day one.</p>
+      <p class="hint" style="max-width:340px">Every game rolls a fresh world — its shape, its
+        waters, what it is short of. You won't know what you've drawn until you
+        arrive. Your people wear a random tunic; the rival chief has their own temper.</p>
       <div class="mrow"><button class="abtn big gold" id="btnStart">🏕 Begin</button></div>
     </div>
   </div>
@@ -1234,6 +1271,7 @@
     <div class="sbody center">
       <h2 id="draftTitle">🃏 Choose your Origin</h2>
       <p class="hint" id="draftSub">The gift your people begin with. Your rival is choosing too.</p>
+      <p id="draftWorld"></p>
       <div id="draftCards"></div>
       <p class="hint" id="draftHint"></p>
       <!-- no Begin button and no rival panel: keeping a card IS starting the
@@ -1299,6 +1337,7 @@
     <div class="sbody">
       <div class="pauseMenu plaques">
         <h2 class="pauseTitle">PAUSED</h2>
+        <p id="pauseWorld"></p>
         <div class="mrow"><button class="abtn big gold" id="btnPauseResume">Resume</button></div>
         <div class="trow2">
           <button class="abtn big" id="btnPauseSave">Save</button>

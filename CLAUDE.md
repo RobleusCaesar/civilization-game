@@ -112,6 +112,7 @@ node tests/island-maps.mjs   # the sea is never bulldozed: land-OR-sea reachabil
 node tests/amphibious.mjs    # the rival fights across the sea: the sea-only read, TIDEWRACK outranking land plans, the crossing end to end in the real sim, stranded hulls sail home, the coast answers a seen sail
 node tests/tribe-traits.mjs  # each people keeps its home ground (sea=coast, wolf=carved forest alcove, flint=stone, woad=meadow, broken=gold) and its one habit: wolf pack tactics, flint brutes, the Broken's deserter toll, the Woadkin painting, Sea Folk longboat sorties end to end
 node tests/relics.mjs        # the wilderness relic: tile data bit-identical on/off, seed-deterministic placement with manners, discovery grants once (gold on its own scale) and rides the save, the AI stays blind, 404 art falls back to the placeholder
+node tests/variants.mjs      # 16 landform variants: classic byte-identical, every combo×size playable+symmetric, difficulty leans the size, tutorial forces Valley·Classic, saves carry the world's name
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's

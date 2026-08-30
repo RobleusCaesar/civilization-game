@@ -156,6 +156,8 @@ const G = {
 
         scarce: gen.scarce,
         landform: gen.landform,
+        variant: gen.variant,               // the landform's rolled face (MapGen.VARIANTS)
+        worldName: gen.worldName,           // "Highlands · Karst" — the draft + pause screens show it
         decay: {},                          // idx -> day the depleted/ruined tile regrows to grass
         fishBack: {},                       // idx -> day a fished-out shoal restocks (tests/fishery.mjs)
         hunted: {},                         // idx -> day an animal fell here (a lodge's ground)

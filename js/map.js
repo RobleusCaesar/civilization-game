@@ -125,6 +125,75 @@ const MapGen = {
     const landform = lfRoll < 0.4 ? 'valley' : lfRoll < 0.6 ? 'lakeland'
       : lfRoll < 0.8 ? 'highlands' : 'islands';
 
+    /* LANDFORM VARIANTS (tests/variants.mjs) — the same landform, dramatically
+       different worlds. A variant is a PARAMETER SET for this generator and
+       nothing more: every knob it turns (blob counts, massif sizes, water
+       shape, per-resource abundance, what the openings roll near a seat)
+       already existed; no variant introduces a terrain type or a new system.
+
+       Rolled from a SIDE STREAM (seed + '::variant' — the relics trick), so
+       the main rnd sequence is untouched by the roll itself: on 'classic'
+       every value below is exactly what the code shipped with, expression for
+       expression, and the map generates BYTE-IDENTICALLY to before variants
+       existed. Uniform 25% across the four of each landform — the variety is
+       the feature, and classic is just one face of it.
+
+       Balance is not the variant's job: the scarce-resource pocket, the
+       per-seat START_RESOURCE guarantee, the resource floors and the
+       land-or-sea reachability clamp all run AFTER these knobs and arbitrate
+       exactly as before — a variant may starve a resource, but it starves
+       both seats equally, and no variant can produce an unreachable one. */
+    /* TESTS ONLY: a contract test whose fixture seeds were tuned against
+       the pre-variant generator pins FORCE_VARIANT = 'classic' — classic is
+       byte-identical to that generator, so those fixture worlds regenerate
+       exactly. Never set it outside tests/; the other fifteen worlds are
+       held by their own contract (tests/variants.mjs). */
+    const vrnd = mulberry32(hashSeed(String(seedStr) + '::variant'));
+    const variant = MapGen.FORCE_VARIANT ||
+      (typeof window !== 'undefined' && window.__CLASSIC_WORLDS ? 'classic' : null) ||
+      MapGen.VARIANTS[landform][(vrnd() * 4) | 0];
+    const V = {
+      // waters: lakeland lakes / the other inland landforms' lakes
+      lakeN: [7, 3], lakeNIn: [3, 2], lakeSize: 18, lakeSizeIn: 14, lakeGrow: 14,
+      centralLake: 0,                       // Great Lake: one dominant body first
+      // highlands: how the stone stands — count, the landmark, the rest
+      massifN: 2.2, landmark: [150, 80], landmarkE: [1.6, 0.9],
+      massif: [55, 60], massifE: [1.3, 1.1], cragChance: 0.75,
+      // resource paints (count, sizeMin, sizeVar) + floors + the ore deposits
+      forest: [7, 5, 8], forestFloor: 12, fertile: [6, 3, 5],
+      oreWant: 1.3, oreFloor: 9,
+      // what the openings roll near each seat (base, +rnd*var) — always the
+      // same for BOTH seats; the scarce override to 1 tile still outranks it
+      nearWood: [4, 5], nearStone: [2, 4], nearFood: [2, 5],
+      // islands: seat/central/wild isle sizes, how many wilds, the causeways
+      isleSeat: 46, isleMid: 60, wildN: 2, wildSize: 46,
+      joinChance: 0.55, joinAlways: 0, inletN: 0,
+      // Old Country: ancient rubble strewn where someone was before
+      ruinN: 0,
+    };
+    Object.assign(V, {
+      // ---- valley ----
+      steppe:      { forest: [2, 4, 4], forestFloor: 9, fertile: [11, 4, 7], oreWant: 0.8,
+                     cragChance: 0.35, lakeNIn: [2, 2],
+                     nearWood: [1, 3], nearStone: [1, 3], nearFood: [4, 6] },
+      greatforest: { forest: [17, 8, 12], forestFloor: 44, fertile: [5, 3, 5], nearWood: [6, 5] },
+      oldcountry:  { oreWant: 2.3, oreFloor: 16, nearStone: [3, 4], ruinN: 8 },
+      // ---- lakeland ----
+      delta:       { lakeN: [15, 6], lakeSize: 9, lakeGrow: 6, fertile: [9, 4, 6] },
+      greatlake:   { centralLake: 1, lakeN: [2, 2], lakeSize: 10, lakeGrow: 8 },
+      pondlands:   { lakeN: [13, 5], lakeSize: 4, lakeGrow: 4 },
+      // ---- highlands ----
+      karst:       { massifN: 7, landmark: null, massif: [9, 12], massifE: [1.1, 0.5] },
+      highpasses:  { massifN: 1.0, landmark: [260, 120], landmarkE: [2.0, 1.0],
+                     massif: [140, 80], oreWant: 2.0, oreFloor: 14 },
+      foothills:   { massifN: 1.1, landmark: [60, 40], landmarkE: [1.3, 0.6],
+                     massif: [26, 26], oreWant: 2.2, oreFloor: 15 },
+      // ---- islands ----
+      fjord:       { joinAlways: 1, inletN: 7, wildN: 0, isleSeat: 52, isleMid: 85 },
+      archipelago: { wildN: 5, wildSize: 24, isleMid: 30, joinChance: 0.15 },
+      greatisle:   { isleMid: 110, joinAlways: 1, wildN: 3, wildSize: 18 },
+    }[variant] || {});
+
     /* A MASSIF, NOT A SPINE. The old mountain painter walked a ~3-wide brush
        across the map, which laid WALLS: measured over every mountain-bearing
        xlarge seed, the interior-depth histogram was 1:2086 2:551 3:21 4:1 —
@@ -165,11 +234,14 @@ const MapGen = {
     if (landform === 'islands') {
       t.fill(T.WATER);
       // land masses under both towns, a big one mid-map, plus a few wild
-      // isles scattered along the outer band, joined by causeways
-      const isles = [player, ai, ringSpot(), ringSpot()];
-      for (const c of isles)
-        blob(c.x, c.y, Math.round(46 * f), T.GRASS, null, [T.WATER]);
-      blob(W / 2, H / 2, Math.round(60 * f), T.GRASS, null, [T.WATER]);
+      // isles scattered along the outer band, joined by causeways.
+      // (Variants turn the same dials: the seat isles NEVER shrink below the
+      // classic size — the sea-viability FLOOR below leans on their area.)
+      const isles = [player, ai];
+      for (let wi = 0; wi < V.wildN; wi++) isles.push(ringSpot());
+      for (let ii = 0; ii < isles.length; ii++)
+        blob(isles[ii].x, isles[ii].y, Math.round((ii < 2 ? V.isleSeat : V.wildSize) * f), T.GRASS, null, [T.WATER]);
+      blob(W / 2, H / 2, Math.round(V.isleMid * f), T.GRASS, null, [T.WATER]);
       /* THE CENTRAL ISLE GETS A MOUNTAIN HEART (Part B3): a peak in the
          middle of the big island, with the forest and the ore painted later
          ringing it — an island worth sailing to, not a flat green disc. The
@@ -198,27 +270,46 @@ const MapGen = {
          game. The wild isles never had a causeway; now they actually stay
          islands instead of being annexed by a resource carve. */
       const mid = { x: (W / 2) | 0, y: (H / 2) | 0 };
-      const joinP = rnd() < 0.55, joinA = rnd() < 0.55;
+      const joinP = V.joinAlways ? true : rnd() < V.joinChance;
+      const joinA = V.joinAlways ? true : rnd() < V.joinChance;
       if (joinP) causeway(player, mid);
       if (joinA) causeway(mid, ai);
+      /* FJORD COAST: the joined mass is then deeply CUT — water blobs eaten
+         back into the grass, never over a seat. Land-connected in theory;
+         walking around an inlet takes far longer than sailing across it. */
+      for (let i = 0; i < V.inletN; i++)
+        blob(4 + rnd() * (W - 8) | 0, 4 + rnd() * (H - 8) | 0, (8 + rnd() * 10) | 0, T.WATER, nearStart, [T.GRASS]);
     } else {
       const lakes = landform === 'lakeland'
-        ? Math.round((7 + rnd() * 3) * f)
-        : Math.round((3 + rnd() * 2) * f);
-      const lakeSize = landform === 'lakeland' ? 18 : 14;
+        ? Math.round((V.lakeN[0] + rnd() * V.lakeN[1]) * f)
+        : Math.round((V.lakeNIn[0] + rnd() * V.lakeNIn[1]) * f);
+      const lakeSize = landform === 'lakeland' ? V.lakeSize : V.lakeSizeIn;
+      // GREAT LAKE: one dominant central body laid first; the loop below only
+      // adds a couple of side waters. Play happens around the rim.
+      if (V.centralLake)
+        blob(W / 2 + rnd() * 6 - 3, H / 2 + rnd() * 6 - 3, Math.round((85 + rnd() * 30) * f), T.WATER, nearStart);
       for (let i = 0; i < lakes; i++)
-        blob(4 + rnd() * (W - 8) | 0, 4 + rnd() * (H - 8) | 0, (lakeSize + rnd() * 14) | 0, T.WATER, nearStart);
+        blob(4 + rnd() * (W - 8) | 0, 4 + rnd() * (H - 8) | 0, (lakeSize + rnd() * V.lakeGrow) | 0, T.WATER, nearStart);
       if (landform === 'highlands') {
         /* FEWER, BIGGER RANGES. The tile budget roughly matches the old
            ridge-walk (~650 on xlarge) so map balance and the reachability
            clamp see the same amount of stone — but it now stands in a
            handful of massifs with real interiors instead of eleven walls.
            One of them is deliberately MASSIVE: the map's landmark. */
-        const massifs = Math.max(2, Math.round(2.2 * f));
-        massif(6 + rnd() * (W - 12), 6 + rnd() * (H - 12), (150 + rnd() * 80) * f / 2.6, 1.6 + rnd() * 0.9);
-        for (let r = 1; r < massifs; r++)
-          massif(4 + rnd() * (W - 8), 4 + rnd() * (H - 8), (55 + rnd() * 60) * f / 2.6, 1.3 + rnd() * 1.1);
-      } else if (rnd() < 0.75) {
+        // variants re-cut the stone: KARST scatters many small crags (no
+        // landmark at all), HIGH PASSES stands two enormous walls, FOOTHILLS
+        // rolls low and few — all through the same massif painter
+        const massifs = Math.max(2, Math.round(V.massifN * f));
+        let r0 = 0;
+        if (V.landmark) {
+          massif(6 + rnd() * (W - 12), 6 + rnd() * (H - 12),
+            (V.landmark[0] + rnd() * V.landmark[1]) * f / 2.6, V.landmarkE[0] + rnd() * V.landmarkE[1]);
+          r0 = 1;
+        }
+        for (let r = r0; r < massifs; r++)
+          massif(4 + rnd() * (W - 8), 4 + rnd() * (H - 8),
+            (V.massif[0] + rnd() * V.massif[1]) * f / 2.6, V.massifE[0] + rnd() * V.massifE[1]);
+      } else if (rnd() < V.cragChance) {
         /* …and the OTHER inland landforms carry a little stone too (Part B3):
            one or two modest crags, so most maps have a mountain for the ore
            to sit against and the highlands stay the mountainous ones by a
@@ -238,7 +329,7 @@ const MapGen = {
     // scarce pocket is pinned to 6–8 tiles and every normal resource gets a
     // floor comfortably above it, keeping the scarce one genuinely the rarest.
     const countType = (type) => { let c = 0; for (let i = 0; i < W * H; i++) if (t[i] === type) c++; return c; };
-    const paint = (type, normalN, sizeMin, sizeVar) => {
+    const paint = (type, normalN, sizeMin, sizeVar, floor) => {
       if (scarce.terrain === type) {
         // one lean pocket, exactly 6–8 tiles, grown one tile at a time so
         // terrain can't eat it down to nothing (and it can't balloon either)
@@ -259,12 +350,15 @@ const MapGen = {
       const n = Math.max(2, Math.round(normalN * f));
       for (let i = 0; i < n; i++)
         blob(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0, (sizeMin + rnd() * sizeVar) | 0, type, nearStart, [T.GRASS]);
-      // floor: never let mountains/lakes starve a normal resource either
+      // floor: never let mountains/lakes starve a normal resource either.
+      // Variant floors only move UP from the scarce pocket's 6-8 (a variant
+      // that leans a resource must still leave more of it than the map's
+      // scarce one) or up toward abundance (Great Forest's 44).
       let guard = 0;
-      while (countType(type) < 12 && guard++ < 40)
+      while (countType(type) < (floor || 12) && guard++ < 40)
         blob(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0, 6, type, nearStart, [T.GRASS]);
     };
-    paint(T.FOREST, 7, 5, 8);
+    paint(T.FOREST, V.forest[0], V.forest[1], V.forest[2], V.forestFloor);
     /* ORE IS A CLAIM, NOT A CARPET (Part B2/B3). A settlement needs three to
        five workable deposits, not sprawling fields — big fields are what read
        as rubbish strewn across the map, and they made stone too cheap to
@@ -301,7 +395,7 @@ const MapGen = {
          A knot only ever paints grass, so a crevasse-seated deposit
          conforms around the rock's own foot. The seeded jitter breaks tie
          runs so two equal notches don't always resolve in scan order. */
-      const wantDeposits = Math.max(2, Math.round(1.3 * f));
+      const wantDeposits = Math.max(2, Math.round(V.oreWant * f));
       const seats = [];
       const trySeat = (pred, tries) => {
         let guard = 0;
@@ -335,10 +429,10 @@ const MapGen = {
       for (const s2 of seats) oreKnot(s2.x, s2.y);
       // floor: a map must never be starved of stone outright
       let guard = 0;
-      while (countType(T.HILLS) < 9 && guard++ < 40)
+      while (countType(T.HILLS) < V.oreFloor && guard++ < 40)
         oreKnot(2 + rnd() * (W - 4) | 0, 2 + rnd() * (H - 4) | 0);
     } else paint(T.HILLS, 5, 4, 5);
-    paint(T.FERTILE, 6, 3, 5);
+    paint(T.FERTILE, V.fertile[0], V.fertile[1], V.fertile[2], 12);
 
     // guarantee some of each resource near both starts
     function seedNear(cx, cy, type, n) {
@@ -353,14 +447,36 @@ const MapGen = {
     // distance rolls per game — some starts are forest-hugged, some must
     // range for everything. The scarce resource always stays a single tile.
     for (const s of [player, ai]) {
-      seedNear(s.x, s.y, T.FOREST, scarce.terrain === T.FOREST ? 1 : 4 + (rnd() * 5 | 0));
-      seedNear(s.x, s.y, T.HILLS, scarce.terrain === T.HILLS ? 1 : 2 + (rnd() * 4 | 0));
-      seedNear(s.x, s.y, T.FERTILE, scarce.terrain === T.FERTILE ? 1 : 2 + (rnd() * 5 | 0));
+      seedNear(s.x, s.y, T.FOREST, scarce.terrain === T.FOREST ? 1 : V.nearWood[0] + (rnd() * V.nearWood[1] | 0));
+      seedNear(s.x, s.y, T.HILLS, scarce.terrain === T.HILLS ? 1 : V.nearStone[0] + (rnd() * V.nearStone[1] | 0));
+      seedNear(s.x, s.y, T.FERTILE, scarce.terrain === T.FERTILE ? 1 : V.nearFood[0] + (rnd() * V.nearFood[1] | 0));
     }
     // clear the immediate start plots
     for (const s of [player, ai])
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++)
         t[id(s.x + dx, s.y + dy)] = T.GRASS;
+
+    /* OLD COUNTRY: someone was here before. Ancient rubble — the game's own
+       T.RUIN, the razed-building scar — strewn in singles and pairs across
+       the open ground, away from both seats. Painted at generation it is
+       never put on the decay clock, so unlike a battle scar it NEVER heals:
+       the old country stays old. Walkable, buildable-over, worth nothing —
+       pure testimony. */
+    if (V.ruinN) {
+      const wantRuin = Math.round(V.ruinN * f);
+      let laid = 0, rg = 0;
+      while (laid < wantRuin && rg++ < 400) {
+        const x = 3 + rnd() * (W - 6) | 0, y = 3 + rnd() * (H - 6) | 0;
+        if (t[id(x, y)] !== T.GRASS || nearStart(x, y)) continue;
+        t[id(x, y)] = T.RUIN;
+        if (rnd() < 0.5) {
+          const nx = x + ((rnd() * 3 | 0) - 1), ny = y + ((rnd() * 3 | 0) - 1);
+          if (MapGen.inB(nx, ny) && t[id(nx, ny)] === T.GRASS && !nearStart(nx, ny))
+            t[id(nx, ny)] = T.RUIN;
+        }
+        laid++;
+      }
+    }
 
     /* BARBARIAN CAMPS (tests/raider-camps.mjs), far from both starts — more on
        bigger maps, and more where the mode is harsher. The tile only carries
@@ -904,8 +1020,32 @@ const MapGen = {
       var goldSeams = seams;
     }
 
-    return { terrain: t, resAmount, scarce: scarce.name, landform,
+    return { terrain: t, resAmount, scarce: scarce.name, landform, variant,
+      worldName: MapGen.worldName(landform, variant),
       spawns: { player, ai, camps, gold: goldSeams, seaStarts } };
+  },
+
+  /* the four faces of each landform — see the LANDFORM VARIANTS block in
+     generate(). Order matters: the roll indexes this table. */
+  VARIANTS: {
+    valley: ['classic', 'steppe', 'greatforest', 'oldcountry'],
+    lakeland: ['classic', 'delta', 'greatlake', 'pondlands'],
+    highlands: ['classic', 'karst', 'highpasses', 'foothills'],
+    islands: ['classic', 'fjord', 'archipelago', 'greatisle'],
+  },
+  // display names — "Highlands · Karst". Without a name the variety is
+  // invisible and every map just feels like "a map".
+  WORLD_NAMES: {
+    valley: 'Valley', lakeland: 'Lakeland', highlands: 'Highlands', islands: 'Islands',
+    classic: 'Classic', steppe: 'Steppe', greatforest: 'Great Forest', oldcountry: 'Old Country',
+    delta: 'Braided Delta', greatlake: 'Great Lake', pondlands: 'Pondlands',
+    karst: 'Karst', highpasses: 'High Passes', foothills: 'Foothills',
+    fjord: 'Fjord Coast', archipelago: 'Archipelago', greatisle: 'Great Isle',
+  },
+  worldName(landform, variant) {
+    const lf = this.WORLD_NAMES[landform] || landform || '';
+    if (!variant || !this.WORLD_NAMES[variant]) return lf;
+    return lf + ' · ' + this.WORLD_NAMES[variant];
   },
 
   // a shoal: shore water where fish school close enough to catch from land.

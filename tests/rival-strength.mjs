@@ -56,6 +56,9 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const b = await pw.chromium.launch();
 const p = await b.newPage({ viewport: { width: 500, height: 700 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
+// the s-seed fixtures were tuned against the pre-variant generator; classic
+// regenerates those exact worlds (map.js FORCE_VARIANT / __CLASSIC_WORLDS)
+await p.addInitScript(() => { window.__CLASSIC_WORLDS = 1; });
 await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(1000);
 

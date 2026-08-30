@@ -11,7 +11,10 @@ const Screens = {
   lastSavedDay: 0,          // quit-guard: unsaved progress since this day
   _demo: false,             // S currently holds the title's demo world
   _confirmQuit: false,
-  newPrefs: { mode: 'moderate', size: 'large', landform: 'random' },
+  // difficulty is the ONLY choice a new game asks for — the world (landform,
+  // variant, size) is rolled in foundRun. Arriving somewhere unknown is the
+  // feature; there is no preview and no picker.
+  newPrefs: { mode: 'moderate' },
 
   el(id) { return document.getElementById(id); },
 
@@ -187,11 +190,8 @@ const Screens = {
 
   /* ---------------- new game ---------------- */
   onNewgame() {
-    for (const row of ['ngMode', 'ngSize', 'ngLand']) {
-      const key = { ngMode: 'mode', ngSize: 'size', ngLand: 'landform' }[row];
-      this.el(row).querySelectorAll('.abtn').forEach(b =>
-        b.classList.toggle('sel', b.dataset.v === this.newPrefs[key]));
-    }
+    this.el('ngMode').querySelectorAll('.dcard').forEach(b =>
+      b.classList.toggle('sel', b.dataset.v === this.newPrefs.mode));
   },
 
   /* THE PRESS ANSWERS IN THE FRAME IT HAPPENS IN.
@@ -223,18 +223,44 @@ const Screens = {
       try { this.foundRun(); } finally { done(); }
     }));
   },
+  /* the size lean per difficulty — soft, never hard: every size stays
+     possible at every difficulty. Calm gets room to build; Hard runs
+     cramped, so contact comes early. (tests/variants.mjs) */
+  SIZE_LEAN: {
+    calm: [['xlarge', 0.40], ['large', 0.40], ['medium', 0.20]],
+    moderate: [['large', 0.40], ['medium', 0.35], ['xlarge', 0.25]],
+    hard: [['medium', 0.45], ['large', 0.35], ['xlarge', 0.20]],
+  },
   foundRun() {
     const p = this.newPrefs;
+    /* THE WORLD IS ROLLED, NOT PICKED. Landform lands uniform across the
+       four (the generator's own seed-roll leans valley-heavy, so the wish
+       is enforced the way the old landform picker enforced it: roll seeds
+       until the draw comes up — generation is cheap). The variant rides the
+       seed itself (map.js), so whatever seed satisfies the landform brings
+       its own variant honestly. Size leans by difficulty (SIZE_LEAN).
+
+       THE TUTORIAL NEVER GAMBLES: a first game with the teacher on is
+       forced onto Valley · Classic at medium — its lessons anchor to
+       forest, water and open ground, and a player learning the game should
+       not be learning it on an archipelago. */
+    let tut = false;
+    try { tut = localStorage.getItem('neo-tutorial-ask') === '1'; } catch (e) {}
+    const lean = this.SIZE_LEAN[p.mode] || this.SIZE_LEAN.moderate;
+    let roll = Math.random(), size = lean[0][0];
+    for (const [k, w] of lean) { if ((roll -= w) <= 0) { size = k; break; } }
+    if (tut) size = 'medium';
+    const wantLf = tut ? 'valley'
+      : ['valley', 'lakeland', 'highlands', 'islands'][(Math.random() * 4) | 0];
     let seed = '';
-    if (p.landform !== 'random') {
-      // roll seeds until the wished landform comes up (generation is cheap)
-      for (let i = 0; i < 90; i++) {
-        const s = String((Math.random() * 1e9) | 0);
-        CFG.W = CFG.H = CFG.SIZES[p.size];
-        if (MapGen.generate(s).landform === p.landform) { seed = s; break; }
-      }
+    CFG.W = CFG.H = CFG.SIZES[size];
+    for (let i = 0; i < 160; i++) {
+      const s = String((Math.random() * 1e9) | 0);
+      const g = MapGen.generate(s);
+      if (g.landform === wantLf && (!tut || g.variant === 'classic')) { seed = s; break; }
     }
-    if (!seed) seed = String((Math.random() * 1e9) | 0);
+    if (!seed) seed = String((Math.random() * 1e9) | 0);   // the roll stands anyway
+    p.size = size;   // what G.newGame founds with (and the save records)
     this._demo = false;
     G.freeVis = false;
     // your people's tunic is rolled at random; red stays the rival tribe's colour
@@ -259,9 +285,24 @@ const Screens = {
      Three face-down cards deal in, flip staggered, tap to lift, tap again
      to keep. The chosen card steps forward, the rest burn away; the rival's
      card is revealed per difficulty (full / name / face-down). */
+  // what world did we draw? "Highlands · Karst" — generated maps carry
+  // worldName; saves from before variants carry only the landform, and the
+  // title's demo world shows nothing
+  worldLabel() {
+    const m = window.S && S.map;
+    if (!m || this._demo) return '';
+    // MapGen is a script-level const — `window.MapGen` is undefined, the
+    // same trap G, AI and Sprites carry; reference it directly
+    return m.worldName || MapGen.worldName(m.landform) || '';
+  },
+
   onDraft() {
     const D = window.S && S.draft;
     if (!D || D.done || !D.hand.length) { this.enterGame(); return; }   // nothing to draft
+    // NAME THE WORLD — the draft is the arrival moment, the rolled country
+    // visible behind the cards. Without the name the variety is invisible.
+    const wn = this.worldLabel();
+    this.el('draftWorld').textContent = wn ? '🗺 ' + wn : '';
     const box = this.el('draftCards');
     box.innerHTML = '';
     this.el('draftHint').textContent = 'Tap a card to look it over';
@@ -548,6 +589,10 @@ const Screens = {
   onPaused() {
     this.backTo = 'paused';
     if (window.S) S.paused = true;
+    // the world's name lives under the plaque — the pause menu is where a
+    // player asks "where am I again?"
+    const wn = this.worldLabel();
+    this.el('pauseWorld').textContent = wn ? '🗺 ' + wn : '';
     const q = this.el('btnQuitTitle');
     q.textContent = 'Quit to title';
     q.classList.remove('danger');
@@ -856,12 +901,11 @@ const Screens = {
     on('btnTitleHow', () => { this.backTo = 'title'; this.show('howto'); });
     for (const id of ['ngBack', 'loadBack', 'setBack', 'howBack'])
       on(id, () => this.show(this.backTo === 'paused' ? 'paused' : 'title'));
-    // new-game option rows
-    for (const [rowId, key] of [['ngMode', 'mode'], ['ngSize', 'size'], ['ngLand', 'landform']])
-      this.el(rowId).querySelectorAll('.abtn').forEach(b => b.addEventListener('click', () => {
-        this.newPrefs[key] = b.dataset.v;
-        this.onNewgame();
-      }));
+    // the difficulty cards — the only choice a new game asks for
+    this.el('ngMode').querySelectorAll('.dcard').forEach(b => b.addEventListener('click', () => {
+      this.newPrefs.mode = b.dataset.v;
+      this.onNewgame();
+    }));
     on('btnStart', () => this.startNewGame());
     // the origin draft — keeping a card starts the game (see draftTap;
     // that is also the tutorial's one entry point now)

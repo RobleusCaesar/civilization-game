@@ -54,9 +54,13 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIR = join(root, 'assets/terrain');
 const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] });
 
+// this suite's fixture seeds were tuned against the pre-variant generator;
+// classic regenerates those worlds byte-identically (map.js FORCE_VARIANT note)
+const classicWorlds = (pg) => pg.addInitScript(() => { window.__CLASSIC_WORLDS = 1; });
 const page = async () => {
   const p = await b.newPage({ viewport: { width: 600, height: 500 } });
   p.on('pageerror', e => console.log('PAGEERROR', String(e).slice(0, 200)));
+  await classicWorlds(p);
   await p.goto('file://' + join(root, 'index.html'));
   await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 20000 });
   return p;
@@ -1157,6 +1161,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
    This pins the cost, and that the tail really does finish. */
 {
   const p2 = await b.newPage({ viewport: { width: 430, height: 880 } });
+  await classicWorlds(p2);
   await p2.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
   await p2.waitForTimeout(900);
   const v = await p2.evaluate(() => {
@@ -1229,6 +1234,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
   const port = srv.address().port;
   const p3 = await b.newPage({ viewport: { width: 430, height: 880 } });
+  await classicWorlds(p3);
   await p3.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'domcontentloaded' });
   await p3.waitForTimeout(1200);
   const R_MIN_GUESS = 1500;
