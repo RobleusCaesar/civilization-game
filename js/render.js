@@ -6681,6 +6681,29 @@ const R = {
     return f.dir;
   },
 
+  /* DOES THIS KIND DRAW FROM AN INSTALLED PNG SHEET? (tests/animal-art.mjs)
+     The gate for the contact-shadow pass below, and the reason it exists:
+     EVERY procedural sprite in the game bakes its own contact shadow into
+     its frames — villagers, soldiers, hulls and the procedural beasts alike
+     (js/sprites.js). Character-class PNGs deliberately carry none (the
+     reference doctrine keeps character art off the ground), so the renderer
+     owes them one — and owes the whole existing cast nothing, or every
+     villager on the map gets a second shadow under the first. */
+  sheetUnit(u) {
+    const ua = window.Assets && Assets.unitArt && Assets.unitArt[u.kind];
+    return !!(ua && ua.dirs);
+  },
+  // the shadow itself: a flat ellipse at the feet, in the same ink and
+  // alpha the procedural beasts use, so a sheet animal and a drawn one
+  // sit on the ground identically
+  drawUnitShadow(g, u) {
+    const TL = CFG.TILE;
+    g.fillStyle = 'rgba(20,16,10,0.26)';
+    g.beginPath();
+    g.ellipse(u.x * TL, u.y * TL + 11, 8, 3, 0, 0, Math.PI * 2);
+    g.fill();
+  },
+
   unitSprite(u) {
     /* CHARACTER-CLASS PNG SHEETS (Assets.unitArt — animals first, the
        villagers later): 8 directions × real frame counts, preferred over
@@ -7271,6 +7294,9 @@ const R = {
         if (lk > 0.65) { g.fillStyle = F[2]; g.fillRect(cx2 - 3 + ph * 5, cy2 - hh - 7, 2, 2); }   // sparks
         g.globalAlpha = 1;
       } else {
+        // sheet units get the renderer's shadow; the procedural cast has
+        // its own baked in and must never receive a second (sheetUnit)
+        if (this.sheetUnit(u)) this.drawUnitShadow(g, u);
         g.drawImage(this.unitSprite(u), ux, uy, TL, TL);
       }
       if (u.cargo && u.cargo.length) {                 // one pip per soldier aboard

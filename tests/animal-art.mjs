@@ -158,6 +158,14 @@ const out = await p.evaluate(async () => {
     Sprites.animFps.deer = bootFps;   // the suite's 4-frame strip changed it
     ck('theShippedWalkSetsTheRate', bootFps === Math.max(4, Math.round(12 / 0.9)),
       'fps ' + bootFps + ' — one stride ≈ 0.9s at 12 frames');
+    /* THE SHADOW GATE. Every procedural sprite bakes its own contact
+       shadow (villagers, soldiers, hulls, beasts); character-class PNGs
+       carry none and get the renderer's. If this gate ever opens for the
+       procedural cast, the whole map wears two shadows. */
+    ck('onlySheetUnitsTakeTheRenderersShadow',
+      R.sheetUnit({ kind: 'deer' }) === true &&
+      ['villager', 'boar', 'bear', 'wolf', 'cow', 'spearman'].every(k => R.sheetUnit({ kind: k }) === false),
+      'deer draws from sheets; the procedural cast keeps its own baked shadow');
   }
 
   return { res, fails };

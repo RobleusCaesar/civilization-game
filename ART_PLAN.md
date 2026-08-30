@@ -238,6 +238,34 @@ logic, static lighting) that a walking sprite must not have. Character
 sprites also get NO ground stain of any kind: no decal, no plate, no
 shadow baked into the art — the renderer draws the contact shadow.
 
+## Character-class sprites: native density, and what generation really costs
+
+**AUTHOR EVERY ANIMAL AT 64×64.** Units are drawn into a `CFG.TILE` (32px)
+box, and the whole procedural cast authors at 64 — an exact **2:1 integer
+downscale**, 2 art-px per world-px. The first deer shipped at 104px (3.25:1)
+and the nearest-neighbour pass threw away ~69% of it: 1px antler tines and
+legs sampled in and out as the camera moved, which reads as shimmer. Worse,
+at default zoom (`cam.z` 1.5, dpr capped at 2) the game UPSCALES everything
+~1.5× — a 104px sprite was the only thing on screen being squeezed down.
+`tools/compose-unit-strips.ps1` enforces the window and REFUSES to rescale;
+content that does not fit is a regeneration, never a resample.
+
+A bigger animal is a draw-box question, not a canvas question: a 96px sheet
+into a 48px box is also exact 2:1. That needs a per-kind draw scale in the
+renderer — wanted before the bear, not built yet.
+
+**CHARACTER ART CARRIES NO SHADOW.** The procedural cast bakes a contact
+shadow into every frame; sheet units get one from the renderer instead
+(`R.sheetUnit` gates `R.drawUnitShadow` — the gate exists so the existing
+cast never gets a second shadow under its first).
+
+**v3 BILLS ON THE PADDED CANVAS, NOT THE SIZE YOU ASK FOR.** `create_character`
+returns a canvas ~40% larger than the requested size to leave animation room,
+and `animate_character` charges `ceil(canvas² × frames / 65536)` per direction
+against THAT number. The deer was quoted 2/direction from its requested 96 and
+actually billed 4/direction from the padded 132 — **quoted costs run about 2×
+low**. Estimate with the padded figure: `ceil((size × 1.4)² × frames / 65536)`.
+
 ## The anchoring rule (one rule, no per-building tuning)
 
 Every PNG is drawn the same way (`R.blitBld` → `R.artRect`):
