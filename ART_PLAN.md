@@ -349,6 +349,25 @@ or club"). Expect the full arc to blow the 64px window sideways on
 rung ("stubby... never reaching further forward than the knees", then
 "tool head never passing beyond the elbows") recovers each for 1 gen.
 
+**AUDIT THE STAGED FRAMES BEFORE THE FIRST COMPOSE** (the archer line's
+efficiency lesson — the operator's standing order is to bank every
+PixelLab win): compose failures surface ONE direction at a time in hash
+order, so iterating compose→fail→re-roll→compose costs a full cycle per
+offender. Instead, after staging run `span-report` (width) and
+`top-report` (ground-anchored top overflow) across ALL 8 directions
+FIRST, and fire every needed re-roll as ONE wave. Keep the helper
+scripts' pose lists complete — span-report silently omitted 'fight' and
+mis-blamed a width failure. BOW-CLASS LADDERS (archers, and any future
+tall-weapon kind): raised-tip TOP overflow (~1/char, ne/n quadrant) —
+"the bow tips NEVER rising above the top of his head", then "held
+nearly horizontal, level between shoulder and waist" for a stubborn ne;
+extended-draw WIDTH overflow (~1-2 dirs/char) — the proven
+"elbows tucked to the ribs, the bow limbs never reaching far from the
+torso" rung. COST TEMPLATE for a 3-pose military character (idle 8fr /
+walk 12fr / fight 12fr, all 8 dirs): 25 master + 1 rotation + 24 anims
++ ~1.3 re-rolls ≈ 51 gens — the archer trio landed at ~152 total
+against the villager program's ~148 PER character.
+
 **PIXELLAB OPS TRAPS (all hit in one session):** (1) the server DEDUPES
 an animate_character call with an identical action_description — a
 re-fire after a silent truncation returns "already queued or complete"
