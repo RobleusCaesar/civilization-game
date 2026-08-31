@@ -265,6 +265,22 @@ box has always ended so feet never move, and the shadow, health bar, and
 death fall all ride the kind's box). The bear ships on it, operator-approved:
 96px window (`compose-unit-strips.ps1 -Target 96`) into a 48px box.
 
+**THE WINDOW IS GROUND-ANCHORED, AND A STRIKE MAY FOLLOW THROUGH BELOW
+IT** (learned on the bear's fight sheet): the composer anchors each
+direction's window bottom on the STANDING poses' feet (walk+idle union),
+not on the union of everything — a strike pose legitimately lands 2-5px
+below the animal's own feet, and anchoring on that floated the walking
+bear above its shadow. Sub-ground strike pixels crop at the ground line
+(where the slam lands anyway); width and top overflow stay hard errors.
+And FIGHT WIDTH is the pose that blows the window: a natural swipe
+swings the paw far outside the standing silhouette (south came back
+112px in a 96 window). The wording that converged: "strikes straight
+DOWNWARD with one front paw held close in front of its chest, elbows
+tucked, never swinging out sideways" — and for away-facing views where
+a rear-up reads poorly anyway, a grounded head-lunge strike ("does NOT
+rear up, the back stays level") holds both axes. Expect two or three
+re-rolls per problem direction; they cost 2 generations each.
+
 **HORIZONTAL QUADRUPEDS ROTATE FROM A 54px REFERENCE, NOT 60.** Measured,
 twice: the wolf's walk union came out 67px wide and the boar's 68 from a
 60px character — v3 animations stride a long-bodied animal ~13% wider than

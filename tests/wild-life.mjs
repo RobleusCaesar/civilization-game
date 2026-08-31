@@ -294,11 +294,16 @@ const out = await p.evaluate(() => {
       wolf ? 'wolf at ' + (wolf.x | 0) + ',' + (wolf.y | 0) +
              (bear ? ' and bear at ' + (bear.x | 0) + ',' + (bear.y | 0) : ' but no bear')
            : 'no wolf in 240 tries — the treeline gate is refusing everything again');
-    if (bear) {
-      Units.update(0.1);   // the rescue slide frees a tree-spawned beast at once
-      ck('theBeastStepsOutOfTheTreeline', Path.passable(bear.x | 0, bear.y | 0),
-        'standing at ' + bear.x.toFixed(1) + ',' + bear.y.toFixed(1));
-    }
+    /* …and it lands IN THE OPEN NET, not merely on passable ground: a
+       seal-tree spawn slid by the net-blind rescue could land inside a
+       walled pocket (adversarial review) — the spawn now goes straight
+       onto the netted treeline tile, so the net answers for it directly */
+    const net = Path.borderReach();
+    const inNet = (u) => !net || !!net[MapGen.idx(u.x | 0, u.y | 0)];
+    ck('theBeastStandsInTheOpenCountry',
+      (!wolf || (Path.passable(wolf.x | 0, wolf.y | 0) && inNet(wolf))) &&
+      (!bear || (Path.passable(bear.x | 0, bear.y | 0) && inNet(bear))),
+      'both on open, border-reachable ground — never inside a sealed pocket');
   }
 
   /* ---- 2b⁴. THE KILL LEAVES ITS MARK. A carcass with meat on it for

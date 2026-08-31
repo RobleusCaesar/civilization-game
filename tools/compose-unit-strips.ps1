@@ -71,22 +71,50 @@ foreach ($f in $files) {
   }
   $img.Dispose()
 }
+# --- THE GROUND LINE IS THE ANCHOR (learned on the bear's fight sheet) ---
+# The window bottom sits 1px under the STANDING poses' feet (walk+idle union),
+# not under the union of everything: a strike pose legitimately follows
+# through BELOW the ground line (the bear's slam lands 2-5px under its own
+# feet), and anchoring on that would float the walking animal above its
+# shadow. Sub-ground strike pixels are CROPPED at the ground instead - which
+# is where a slam lands anyway. A crop is not a resample; width overflow and
+# TOP overflow are still hard errors.
+$standBox = @{}
+foreach ($f in $files) {
+  $parts = $f.BaseName -split '-'
+  $dir = $parts[0]; $pose = $parts[1]
+  if ($pose -ne 'walk' -and $pose -ne 'idle') { continue }
+  $img = [System.Drawing.Bitmap]::FromFile($f.FullName)
+  if (-not $standBox[$dir]) { $standBox[$dir] = @{ maxY = -1 } }
+  for ($y = $img.Height - 1; $y -ge 0; $y--) {
+    $hit = $false
+    for ($x = 0; $x -lt $img.Width; $x++) { if ($img.GetPixel($x, $y).A -ge 128) { $hit = $true; break } }
+    if ($hit) { if ($y -gt $standBox[$dir].maxY) { $standBox[$dir].maxY = $y }; break }
+  }
+  $img.Dispose()
+}
 $win = @{}
 foreach ($dir in $dirBox.Keys) {
   $b = $dirBox[$dir]
-  $bw = $b.maxX - $b.minX + 1; $bh = $b.maxY - $b.minY + 1
-  if ($bw -gt $Target -or $bh -gt $Target) {
-    throw ("direction '$dir': content ${bw}x${bh} does not fit the ${Target}px window. REGENERATE SMALLER. " +
+  $bw = $b.maxX - $b.minX + 1
+  $groundY = if ($standBox[$dir]) { $standBox[$dir].maxY } else { $b.maxY }
+  $y0 = $groundY + 1 - $Target
+  $topOver = $y0 - $b.minY
+  if ($bw -gt $Target) {
+    throw ("direction '$dir': content ${bw}px wide does not fit the ${Target}px window. REGENERATE SMALLER. " +
            "Never rescale here: a fractional resample is the exact defect the fixed window prevents.")
   }
-  # anchored off the bbox itself, NOT off a reconstructed centre: deriving a
-  # centre and subtracting Target/2 loses the rightmost column at exactly
-  # Target-wide content (32 columns left of centre, only 31 right)
+  if ($topOver -gt 0) {
+    throw ("direction '$dir': content rises ${topOver}px above the ground-anchored ${Target}px window. " +
+           "REGENERATE SMALLER. Never rescale here.")
+  }
+  $cropped = $b.maxY - $groundY
   $win[$dir] = @{
     x0 = $b.minX - [Math]::Floor(($Target - $bw) / 2)
-    y0 = $b.maxY + 1 - $Target       # bottom-anchored: feet sit 1px off the edge
+    y0 = $y0                         # ground-anchored: standing feet sit 1px off the edge
   }
-  Write-Output ("dir {0,-3} bbox {1}x{2} window origin ({3},{4})" -f $dir, $bw, $bh, $win[$dir].x0, $win[$dir].y0)
+  $note = if ($cropped -gt 0) { "  (cropping ${cropped}px of below-ground strike)" } else { "" }
+  Write-Output ("dir {0,-3} bbox {1}x{2} window origin ({3},{4}){5}" -f $dir, $bw, ($b.maxY - $b.minY + 1), $win[$dir].x0, $win[$dir].y0, $note)
 }
 
 New-Item -ItemType Directory -Force $OutDir | Out-Null

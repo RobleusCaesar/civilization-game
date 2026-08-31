@@ -6645,11 +6645,17 @@ const R = {
        building branch below has always had. A unit still CLOSING on its
        mark walks; it was invisible while fight borrowed the walk sheet,
        but the bear's real fight sheet rears it up on its hind legs, and
-       a bear galloping across the map mid-roar reads as broken. */
+       a bear galloping across the map mid-roar reads as broken. The
+       cheap answer comes first: a STANDING unit with a target is at
+       range or waiting out its swing — fight, no target lookup. Only a
+       MOVER pays the O(n) Units.get, and movers-with-targets are the
+       few dozen chasers, not the whole brawl (adversarial review timed
+       the unguarded version at the render loop's worst moment). */
     if (u.tUnit) {
+      if (!Units.moving(u)) return vil ? 'guard' : 'fight';
       const ft = Units.get(u.tUnit);
       const rng = (CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE || 1.5) + 0.3;
-      if (!ft || Math.hypot(ft.x - u.x, ft.y - u.y) <= rng || !Units.moving(u))
+      if (!ft || Math.hypot(ft.x - u.x, ft.y - u.y) <= rng)
         return vil ? 'guard' : 'fight';
       return 'walk';
     }
@@ -6727,13 +6733,19 @@ const R = {
     return c[owner] = tbl[lv] || 1;
   },
   /* the key a unit's sheet art resolves under. Every kind is its own key —
-     except the villager, whose art varies by (faction, tier, gender):
-     villager-{p|a}-l{tier}-{m|f}. ONE key function feeds sheetFrames, so
-     the sprite and the shadow gate can never disagree (the deer's lesson,
-     pinned in tests/animal-art.mjs). */
+     except the villager, whose art varies by (faction, TUNIC, tier,
+     gender): villager-{p|a}-{tunic}-l{tier}-{m|f}. THE TUNIC IS IN THE
+     KEY on purpose (adversarial review): the frames are recolored to the
+     rolled tunic at install, tunics re-roll every run, and unitArt
+     survives across runs in one browser session — a tunic-less key served
+     the PREVIOUS run's colors and let in-flight installs from the old run
+     race the new one. Keys that carry the tunic can never go stale: a new
+     run's key simply misses and re-asks. ONE key function feeds
+     sheetFrames, so the sprite and the shadow gate can never disagree
+     (the deer's lesson, pinned in tests/animal-art.mjs). */
   unitArtKey(u) {
     if (u.kind !== 'villager') return u.kind;
-    return 'villager-' + (u.owner === 'A' ? 'a' : 'p') +
+    return 'villager-' + (u.owner === 'A' ? 'a' : 'p') + '-' + G.tunicOf(u.owner) +
       '-l' + this.villagerTier(u.owner) + (u.female ? '-f' : '-m');
   },
   sheetFrames(u) {
@@ -6764,11 +6776,18 @@ const R = {
   /* the square box a unit's sprite draws into, in world px. CFG.TILE for
      the whole cast; a character-class kind may declare a bigger one
      (Assets.UNIT_BOX — the bear's 48) at the same exact 2:1 sheet
-     density. Feet stay put: every box is bottom-aligned where the 32px
-     box has always ended, so the extra size rises and widens from the
-     feet and a bigger animal never floats or sinks. */
+     density. THE BIG BOX APPLIES ONLY WHEN THE SPRITE ACTUALLY CAME FROM
+     A SHEET (adversarial review): the procedural fallback is authored
+     for the 32px box, and stretching it 1.5× into 48 is the exact
+     non-integer resample the density doctrine exists to prevent — during
+     an async strip load (or with the PNGs deleted) the procedural bear
+     draws at its own native 32 instead. Feet stay put either way: every
+     box is bottom-aligned where the 32px box has always ended, so the
+     extra size rises and widens from the feet and a bigger animal never
+     floats or sinks. */
   unitBox(u) {
-    return (window.Assets && Assets.UNIT_BOX && Assets.UNIT_BOX[u.kind]) || CFG.TILE;
+    const b = window.Assets && Assets.UNIT_BOX && Assets.UNIT_BOX[u.kind];
+    return (b && this.sheetUnit(u)) ? b : CFG.TILE;
   },
   // the shadow itself: a flat ellipse at the feet, in the same ink and
   // alpha the procedural beasts use, so a sheet animal and a drawn one
@@ -6811,7 +6830,8 @@ const R = {
       const mil = Sprites.militaryFor && Sprites.militaryFor(G.tunicOf(u.owner));
       sheet = (mil && mil[u.kind]) || Sprites.unit[u.kind] || Sprites.unit.villager;
     }
-    const pose = sheet[this.unitPose(u)] ? this.unitPose(u) : (sheet.walk ? 'walk' : 'idle');
+    const up = this.unitPose(u);   // once — the pose gate does real work now
+    const pose = sheet[up] ? up : (sheet.walk ? 'walk' : 'idle');
     const fr = sheet[pose];
     // beasts run their longer cycles faster than a villager's four frames a
     // second, so an 8-frame stride still reads as one stride (Sprites.animFps)

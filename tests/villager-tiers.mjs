@@ -61,13 +61,20 @@ const out = await p.evaluate(() => {
   {
     const u = Units.spawn('villager', 'P', 10, 10); u.female = false;
     const uf = Units.spawn('villager', 'A', 12, 10); uf.female = true;
-    ck('theKeyCarriesFactionTierAndGender',
-      R.unitArtKey(u) === 'villager-p-l1-m' && R.unitArtKey(uf) === 'villager-a-l1-f',
+    // the tunic rides IN the key (the anti-staleness rule: tunics re-roll
+    // per run, unitArt survives the session, so a tunic-less key would
+    // serve last run's baked colors — adversarial review)
+    ck('theKeyCarriesFactionTunicTierAndGender',
+      R.unitArtKey(u) === 'villager-p-blue-l1-m' && R.unitArtKey(uf) === 'villager-a-red-l1-f',
       R.unitArtKey(u) + ' / ' + R.unitArtKey(uf));
     const d = Units.spawn('deer', 'W', 20, 20);
     ck('everyOtherKindIsItsOwnKey', R.unitArtKey(d) === 'deer', '');
     Bld.tcOf('P').level = 3; R._vTier = null;
-    ck('theKeyMovesWithTheHall', R.unitArtKey(u) === 'villager-p-l3-m', R.unitArtKey(u));
+    ck('theKeyMovesWithTheHall', R.unitArtKey(u) === 'villager-p-blue-l3-m', R.unitArtKey(u));
+    // …and with the tunic: a re-rolled run can never hit last run's keys
+    S.tunic.P = 'teal';
+    ck('theKeyMovesWithTheTunic', R.unitArtKey(u) === 'villager-p-teal-l3-m', R.unitArtKey(u));
+    S.tunic.P = 'blue';
     Bld.tcOf('P').level = 1; R._vTier = null;
     S.units = S.units.filter(z => z !== u && z !== uf && z !== d);
   }
@@ -82,7 +89,7 @@ const out = await p.evaluate(() => {
     Bld.finishUpgrade(tc);             // the single choke point where a TC levels
     const after = R.unitArtKey(u);
     ck('theUpgradeReskinsTheLivingMap',
-      before === 'villager-p-l1-m' && after === 'villager-p-l2-m',
+      before === 'villager-p-blue-l1-m' && after === 'villager-p-blue-l2-m',
       before + ' -> ' + after + ' with no respawn and no reload');
     tc.level = 1; R._vTier = null;
     S.units = S.units.filter(z => z !== u);
@@ -162,11 +169,11 @@ const out = await p.evaluate(() => {
     };
     // a deliberately ragged catalog: l2 male gets s+e walk, l2 female gets
     // s walk only, l3 male gets s idle only — everything else is absent
-    Assets.setUnitFrames('villager-p-l2-m', 's', 'walk', fakeStrip(4));
-    Assets.setUnitFrames('villager-p-l2-m', 'e', 'walk', fakeStrip(4));
-    Assets.setUnitFrames('villager-p-l2-f', 's', 'walk', fakeStrip(4));
-    Assets.setUnitFrames('villager-p-l3-m', 's', 'idle', fakeStrip(4));
-    ['villager-p-l2-m', 'villager-p-l2-f', 'villager-p-l3-m'].forEach(k => installed.add(k));
+    Assets.setUnitFrames('villager-p-blue-l2-m', 's', 'walk', fakeStrip(4));
+    Assets.setUnitFrames('villager-p-blue-l2-m', 'e', 'walk', fakeStrip(4));
+    Assets.setUnitFrames('villager-p-blue-l2-f', 's', 'walk', fakeStrip(4));
+    Assets.setUnitFrames('villager-p-blue-l3-m', 's', 'idle', fakeStrip(4));
+    ['villager-p-blue-l2-m', 'villager-p-blue-l2-f', 'villager-p-blue-l3-m'].forEach(k => installed.add(k));
     const u = Units.spawn('villager', 'P', 10, 10);
     const tc = Bld.tcOf('P');
     let agree = true, sheetHits = 0, probes = 0, firstBad = '';
@@ -187,7 +194,7 @@ const out = await p.evaluate(() => {
             const gate = R.sheetUnit(u);
             const spr = R.unitSprite(u);
             R.unitPose = realPose; R.unitFacing = realFace;
-            const key = 'villager-p-l' + R.villagerTier('P') + (female ? '-f' : '-m');
+            const key = 'villager-p-blue-l' + R.villagerTier('P') + (female ? '-f' : '-m');
             const ua = Assets.unitArt[key];
             const fromSheet = !!ua && !!(ua.dirs[dir] || ua.dirs.s) && spr && spr.width === 96;
             if (gate !== fromSheet) {
@@ -213,13 +220,13 @@ const out = await p.evaluate(() => {
   {
     const c = document.createElement('canvas');
     c.width = 96 * 12; c.height = 96;
-    Assets.setUnitFrames('villager-p-l2-m', 's', 'walk', c);
+    Assets.setUnitFrames('villager-p-blue-l2-m', 's', 'walk', c);
     ck('sheetFpsRidesTheVariantKey',
-      Sprites.animFps['villager-p-l2-m'] === Math.max(4, Math.round(12 / 0.9)) &&
+      Sprites.animFps['villager-p-blue-l2-m'] === Math.max(4, Math.round(12 / 0.9)) &&
       Sprites.animFps.villager === undefined,
-      'variant at ' + Sprites.animFps['villager-p-l2-m'] + 'fps; the 2-frame procedural villager untouched');
-    delete Sprites.animFps['villager-p-l2-m'];
-    Assets.removeUnitArt('villager-p-l2-m');
+      'variant at ' + Sprites.animFps['villager-p-blue-l2-m'] + 'fps; the 2-frame procedural villager untouched');
+    delete Sprites.animFps['villager-p-blue-l2-m'];
+    Assets.removeUnitArt('villager-p-blue-l2-m');
   }
 
   /* ---- 7. tier is DERIVED: a loaded save recomputes, stores nothing ---- */
@@ -241,6 +248,14 @@ const out = await p.evaluate(() => {
     const bearBox = R.unitBox({ kind: 'bear' });
     ck('theAnimalsFeltNothing',
       R.unitArtKey(d) === 'deer' && bearBox === 48 && R.unitBox(d) === 32, '');
+    // the 48 box applies ONLY when the sprite actually came from a sheet:
+    // the procedural fallback is authored for 32, and stretching it 1.5x
+    // is the resample the density doctrine forbids (adversarial review)
+    const savedBear = Assets.unitArt.bear;
+    delete Assets.unitArt.bear;
+    ck('theBigBoxFollowsTheSheet', R.unitBox({ kind: 'bear' }) === 32,
+      'no sheet, no 48 — the procedural bear draws at its own native density');
+    Assets.unitArt.bear = savedBear;
     S.units = S.units.filter(z => z !== d);
   }
 

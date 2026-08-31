@@ -2329,14 +2329,21 @@ const Units = {
          but a predator spawns ON forest, forest is impassable, and the
          border flood never marks an impassable tile. Every wolf, boar and
          bear the daily roll ever granted was refused right here, and the
-         wilds went quietly extinct. A beast standing in the trees steps
-         out via the ground-truth rescue (update's slide), so the honest
-         question is whether the tile TOUCHES the open net: itself, or any
-         of its four neighbours. A pocket sealed inside walls still fails
-         — its neighbours are exactly as closed as it is. */
-      if (open && !open[MapGen.idx(x, y)] &&
-          ![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ox, oy]) =>
-            MapGen.inB(x + ox, y + oy) && open[MapGen.idx(x + ox, y + oy)])) continue;
+         wilds went quietly extinct. The beast now spawns ON THE NETTED
+         NEIGHBOUR itself — padding out of the trees onto open ground the
+         flood has provably reached — never inside the woods. (An earlier
+         cut spawned in the trees and trusted the rescue slide to free it,
+         but the slide is net-blind and scans north-rows-first: a seal
+         tree on a walled town's south flank slid the predator INSIDE the
+         walls. Adversarial review caught it before it shipped.) A pocket
+         sealed inside walls still fails: none of its ground is in the
+         net. */
+      if (open && !open[MapGen.idx(x, y)]) {
+        const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(([ox, oy]) =>
+          MapGen.inB(x + ox, y + oy) && open[MapGen.idx(x + ox, y + oy)] && !Bld.at(x + ox, y + oy));
+        if (!nb) continue;
+        return this.spawn(kind, 'W', x + nb[0], y + nb[1]);
+      }
       return this.spawn(kind, 'W', x, y);
     }
     return null;

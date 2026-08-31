@@ -545,7 +545,10 @@ const Assets = {
     const fac = owner === 'A' ? 'a' : 'p';
     const tunic = G.tunicOf(owner);
     for (const sex of ['m', 'f']) for (const dir of this.UNIT_DIRS8) for (const pose of this.VILLAGER_POSES) {
-      const key = 'villager-' + fac + '-l' + tier + '-' + sex;
+      // the tunic rides IN the key (matching R.unitArtKey): a new run's
+      // fresh tunic can never be served last run's baked colors, and an
+      // install still in flight from the old run lands under the old key
+      const key = 'villager-' + fac + '-' + tunic + '-l' + tier + '-' + sex;
       if (this.unitArt[key] && this.unitArt[key].dirs[dir] && this.unitArt[key].dirs[dir][pose]) continue;
       const img = new Image();
       img.onload = () => { this.setUnitFrames(key, dir, pose, img, tunic); };

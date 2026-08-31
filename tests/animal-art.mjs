@@ -218,10 +218,27 @@ const out = await p.evaluate(async () => {
     }
     ck('theShadowGateIsOpenExactlyWhenTheSpriteCameFromASheet', gateHolds,
       probed + ' kind x direction probes — never a second shadow under the procedural cast');
-    ck('theShippedFramesSitOnTheNativeGrid',
-      Assets.UNIT_DIRS8.every(k => d.dirs[k].walk[0].width === 64 && d.dirs[k].idle[0].width === 64),
-      'a ' + d.dirs.s.walk[0].width + 'px frame into a ' + CFG.TILE +
-      'px box — the integer 2:1 the whole procedural cast authors at');
+    // EVERY sheet kind, at ITS OWN box: 2:1 native density is the law for
+    // the whole roster — the deer's 64px frames into the 32px box, and the
+    // bear's 96px frames into its 48px box (Assets.UNIT_BOX). A kind whose
+    // frames are not exactly twice its draw box shimmers at every zoom.
+    {
+      let gridOk = true; const offGrid = [];
+      for (const kk in Assets.unitArt) {
+        if (kk.indexOf('villager') === 0) continue;   // villager variants ride their own suite
+        const box = (Assets.UNIT_BOX && Assets.UNIT_BOX[kk]) || CFG.TILE;
+        const dd = Assets.unitArt[kk].dirs;
+        for (const dir in dd) for (const pose in dd[dir])
+          if (dd[dir][pose][0].width !== box * 2) { gridOk = false; offGrid.push(kk + '/' + dir + '/' + pose + '=' + dd[dir][pose][0].width); }
+      }
+      ck('theShippedFramesSitOnTheNativeGrid', gridOk && Object.keys(Assets.unitArt).length >= 5,
+        gridOk ? Object.keys(Assets.unitArt).length + ' kinds, every frame exactly twice its own draw box'
+               : 'off-grid: ' + offGrid.slice(0, 4).join(', '));
+      ck('theBearShipsItsFightSheet',
+        !!(Assets.unitArt.bear && Assets.unitArt.bear.dirs.s && Assets.unitArt.bear.dirs.s.fight &&
+           Assets.unitArt.bear.dirs.s.fight.length >= 4 && Assets.unitArt.bear.dirs.s.fight[0].width === 96),
+        'the roster\'s first real fight pose — 12 frames of rear-up-and-swipe at the 96px window');
+    }
   }
 
   return { res, fails };

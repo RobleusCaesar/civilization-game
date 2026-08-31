@@ -281,14 +281,30 @@ const Screens = {
        named world on a phone. Size must ride along (the same seed lays a
        different map at a different size); it defaults to medium when the
        URL names only the seed. Everything else — difficulty, tunic, the
-       card deal — plays out as normal. */
-    const qSeed = (location.search.match(/[?&]seed=([^&]+)/) || [])[1] || '';
+       card deal — plays out as normal. Three rules the adversarial review
+       wrote: THE TUTORIAL OUTRANKS THE PIN (its Valley·Classic·medium
+       force exists so lessons anchored to forest and water always can
+       complete — a shared link must not gamble a first game away); a
+       malformed percent-escape falls back to the raw string instead of
+       throwing New Game dead; and the pin is ONE-SHOT — consumed on the
+       found, so the NEXT New Game rolls fresh (an iOS home-screen launch
+       keeps its query string forever, and a sticky pin would refound the
+       same world for eternity with no way off it). */
+    const qSeedRaw = (!tut && (location.search.match(/[?&]seed=([^&]+)/) || [])[1]) || '';
+    let qSeed = '';
+    if (qSeedRaw) { try { qSeed = decodeURIComponent(qSeedRaw); } catch (e) { qSeed = qSeedRaw; } }
     const qSize = (location.search.match(/[?&]size=(medium|large|xlarge)/) || [])[1] || '';
     if (qSeed) size = qSize || 'medium';
     let seed = '';
     CFG.W = CFG.H = CFG.SIZES[size];
     if (qSeed) {
-      seed = decodeURIComponent(qSeed);
+      seed = qSeed;
+      try {
+        const usp = new URLSearchParams(location.search);
+        usp.delete('seed'); usp.delete('size');
+        const q = usp.toString();
+        history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+      } catch (e) { /* an exotic embedder without history — the pin just stays */ }
     } else {
       const wantLf = tut ? 'valley'
         : ['valley', 'lakeland', 'highlands', 'islands'][(Math.random() * 4) | 0];

@@ -257,15 +257,20 @@ const out = await p.evaluate(() => {
     ck('leanVariantSeedsExist', !!sSeed && !!gSeed, sSeed + ' / ' + gSeed);
     if (sSeed && gSeed) {
       /* KNOWN, DELIBERATELY UNFIXED (reported at ship time): on Steppe the
-         rival SURVIVES but builds slowly — measured +1 finished work by day
-         45 against Great Forest's +6. The chain: wood-scarce ground → the
-         economy brain under-weights wood gathering → no houses → pop-capped
-         at its starting hands. The variant is NOT rebalanced to suit the AI
-         (the brief forbids it); the fix belongs in AI.daily's gather
-         weighting, as its own change. This check pins SURVIVAL and floors
-         the stall so a regression to actual collapse still fails loudly. */
+         rival SURVIVES but builds slowly. The chain: wood-scarce ground →
+         the economy brain under-weights wood gathering → no houses →
+         pop-capped at its starting hands. The variant is NOT rebalanced to
+         suit the AI (the brief forbids it); the fix belongs in AI.daily's
+         gather weighting, as its own change. This check pins SURVIVAL —
+         hall standing, starting hands alive — so a regression to actual
+         collapse still fails loudly. The old +1-work growth floor is GONE,
+         honestly: it was measured while a spawn bug kept every wild
+         predator extinct (2fc132b..the restock), and with the wilds alive
+         again the day-45 build count on wood-starved ground swings 0-4
+         under wildlife pressure. Growth belongs to the gather-weighting
+         fix, not to this pin. */
       const st = simTown(sSeed);
-      ck('theRivalSurvivesTheSteppe', st.rivalAlive && st.villagers >= 3 && st.grew >= 1,
+      ck('theRivalSurvivesTheSteppe', st.rivalAlive && st.villagers >= 3,
         '+' + st.grew + ' works by day 45, ' + st.villagers + ' hands, wood ' + st.wood +
         ' [' + st.kinds + '] — slow growth is the KNOWN stall, collapse would be a regression');
       const gf = simTown(gSeed);
