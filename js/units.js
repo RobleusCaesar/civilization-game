@@ -2324,7 +2324,19 @@ const Units = {
       if (t !== T.FOREST && !(passive && t === T.GRASS)) continue;
       if (Bld.at(x, y)) continue;
       if (tc && Math.hypot(x - tc.x, y - tc.y) < minDistTC) continue;
-      if (open && !open[MapGen.idx(x, y)]) continue;
+      /* THE TREELINE COUNTS AS THE OPEN COUNTRY (a real extinction): the
+         sealed-walls gate asked the open net about the spawn tile ITSELF —
+         but a predator spawns ON forest, forest is impassable, and the
+         border flood never marks an impassable tile. Every wolf, boar and
+         bear the daily roll ever granted was refused right here, and the
+         wilds went quietly extinct. A beast standing in the trees steps
+         out via the ground-truth rescue (update's slide), so the honest
+         question is whether the tile TOUCHES the open net: itself, or any
+         of its four neighbours. A pocket sealed inside walls still fails
+         — its neighbours are exactly as closed as it is. */
+      if (open && !open[MapGen.idx(x, y)] &&
+          ![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ox, oy]) =>
+            MapGen.inB(x + ox, y + oy) && open[MapGen.idx(x + ox, y + oy)])) continue;
       return this.spawn(kind, 'W', x, y);
     }
     return null;

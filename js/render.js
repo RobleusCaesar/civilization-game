@@ -6027,6 +6027,7 @@ const R = {
     this.deaths.push({
       x: u.x, y: u.y, t: 0,
       spr: this.unitSprite(u),                   // snapshot: they are about to be gone
+      box: this.unitBox(u),                      // …at the kind's own draw box (the bear falls big)
       flip: (u.id & 1) === 1,                    // half of them fall the other way
     });
   },
@@ -6040,10 +6041,11 @@ const R = {
       if (!G.visibleAt(d.x | 0, d.y | 0)) continue;
       const sheet = this.deathSheet(d.spr);
       const f = Math.min(sheet.length - 1, (p * sheet.length) | 0);
-      const ux = d.x * TL - TL / 2, uy = d.y * TL - TL / 2 - CFG.SPRITE_LIFT;
+      const B = d.box || TL;
+      const ux = d.x * TL - B / 2, uy = d.y * TL + TL / 2 - CFG.SPRITE_LIFT - B;
       g.save();
-      if (d.flip) { g.translate(ux + TL / 2, 0); g.scale(-1, 1); g.translate(-(ux + TL / 2), 0); }
-      g.drawImage(sheet[f], ux, uy, TL, TL);
+      if (d.flip) { g.translate(ux + B / 2, 0); g.scale(-1, 1); g.translate(-(ux + B / 2), 0); }
+      g.drawImage(sheet[f], ux, uy, B, B);
       g.restore();
     }
   },
@@ -6637,8 +6639,19 @@ const R = {
 
   unitPose(u) {
     const vil = u.kind === 'villager';
-    // in a fight: villagers swing a pickaxe (guard), soldiers thrust a spear
-    if (u.tUnit) return vil ? 'guard' : 'fight';
+    /* in a fight: villagers swing a pickaxe (guard), soldiers thrust a
+       spear — but only within striking distance, the same gate the
+       building branch below has always had. A unit still CLOSING on its
+       mark walks; it was invisible while fight borrowed the walk sheet,
+       but the bear's real fight sheet rears it up on its hind legs, and
+       a bear galloping across the map mid-roar reads as broken. */
+    if (u.tUnit) {
+      const ft = Units.get(u.tUnit);
+      const rng = (CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE || 1.5) + 0.3;
+      if (!ft || Math.hypot(ft.x - u.x, ft.y - u.y) <= rng || !Units.moving(u))
+        return vil ? 'guard' : 'fight';
+      return 'walk';
+    }
     const fb = u.tBld && Bld.get(u.tBld);
     if (fb && Math.hypot(Bld.cx(fb) - u.x, Bld.cy(fb) - u.y) < 1.5 + Bld.reach(fb)) return vil ? 'guard' : 'fight';
     if (Units.moving(u)) return 'walk';
@@ -6716,14 +6729,23 @@ const R = {
     return fr;
   },
   sheetUnit(u) { return !!this.sheetFrames(u); },
+  /* the square box a unit's sprite draws into, in world px. CFG.TILE for
+     the whole cast; a character-class kind may declare a bigger one
+     (Assets.UNIT_BOX — the bear's 48) at the same exact 2:1 sheet
+     density. Feet stay put: every box is bottom-aligned where the 32px
+     box has always ended, so the extra size rises and widens from the
+     feet and a bigger animal never floats or sinks. */
+  unitBox(u) {
+    return (window.Assets && Assets.UNIT_BOX && Assets.UNIT_BOX[u.kind]) || CFG.TILE;
+  },
   // the shadow itself: a flat ellipse at the feet, in the same ink and
   // alpha the procedural beasts use, so a sheet animal and a drawn one
-  // sit on the ground identically
+  // sit on the ground identically (scaled with the kind's draw box)
   drawUnitShadow(g, u) {
-    const TL = CFG.TILE;
+    const TL = CFG.TILE, s = this.unitBox(u) / TL;
     g.fillStyle = 'rgba(20,16,10,0.26)';
     g.beginPath();
-    g.ellipse(u.x * TL, u.y * TL + 11, 8, 3, 0, 0, Math.PI * 2);
+    g.ellipse(u.x * TL, u.y * TL + 11, 8 * s, 3 * s, 0, 0, Math.PI * 2);
     g.fill();
   },
 
@@ -7251,7 +7273,10 @@ const R = {
     for (const u of units) {
       msFlush(u.y);
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
-      const ux = u.x * TL - TL / 2, uy = u.y * TL - TL / 2 - CFG.SPRITE_LIFT;
+      // B: the kind's draw box (unitBox). Bottom edges align across sizes —
+      // for B === TILE these are exactly the coordinates they always were.
+      const B = this.unitBox(u);
+      const ux = u.x * TL - B / 2, uy = u.y * TL + TL / 2 - CFG.SPRITE_LIFT - B;
       if (selIds && selIds.has(u.id)) {
         g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;
         g.beginPath(); g.ellipse(u.x * TL, u.y * TL + 10, 10, 5, 0, 0, Math.PI * 2); g.stroke();
@@ -7269,7 +7294,7 @@ const R = {
         g.translate(cx3, cy3 + p2 * 5);
         g.rotate((u.id % 2 ? 1 : -1) * Math.min(1, p2 * 1.5) * Math.PI / 2 +
           Math.sin(u.animT * 7) * 0.06 * (1 - p2));            // a last sway before the fall
-        g.drawImage(this.unitSprite(u), -TL / 2, -TL / 2 - CFG.SPRITE_LIFT, TL, TL);
+        g.drawImage(this.unitSprite(u), -B / 2, TL / 2 - CFG.SPRITE_LIFT - B, B, B);
         g.globalAlpha = fade2 * 0.35 * Math.min(1, p2 * 2);    // the sickness's green cast
         g.fillStyle = '#86b04a';
         g.fillRect(-TL / 2 + 6, -TL / 2, TL - 12, TL - 6);
@@ -7290,7 +7315,7 @@ const R = {
         g.translate(cx2, cy2 + p * 4);
         if (engine) g.scale(1, 1 - p * 0.35);                        // the timber frame sags and collapses
         else g.rotate((u.id % 2 ? 1 : -1) * Math.pow(p, 1.4) * Math.PI / 2);   // toppling over
-        g.drawImage(this.unitSprite(u), -TL / 2, -TL / 2 - CFG.SPRITE_LIFT, TL, TL);
+        g.drawImage(this.unitSprite(u), -B / 2, TL / 2 - CFG.SPRITE_LIFT - B, B, B);
         if (engine) {                                                // blackening timber
           g.globalAlpha = fade * 0.6 * p;
           g.fillStyle = '#14100c';
@@ -7312,14 +7337,15 @@ const R = {
         // sheet units get the renderer's shadow; the procedural cast has
         // its own baked in and must never receive a second (sheetUnit)
         if (this.sheetUnit(u)) this.drawUnitShadow(g, u);
-        g.drawImage(this.unitSprite(u), ux, uy, TL, TL);
+        g.drawImage(this.unitSprite(u), ux, uy, B, B);
       }
       if (u.cargo && u.cargo.length) {                 // one pip per soldier aboard
         g.fillStyle = u.owner === 'P' ? '#c0e8ff' : '#ffb0a0';
         for (let ci = 0; ci < u.cargo.length; ci++)
           g.fillRect(ux + 7 + ci * 4, uy - 1, 3, 3);
       }
-      if (u.hp < u.maxhp) this.bar(g, ux + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
+      // the bar keeps the cast's own width, centred over the kind's box
+      if (u.hp < u.maxhp) this.bar(g, ux + (B - TL) / 2 + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');
     }
     msFlush(1e9);
@@ -7332,15 +7358,16 @@ const R = {
     if (this._mtnOcc && this._mtnOcc.size) for (const u of units) {
       if (!this._mtnOcc.has(((u.y | 0) * CFG.W) + (u.x | 0))) continue;
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
-      const ux = u.x * TL - TL / 2, uy = u.y * TL - TL / 2 - CFG.SPRITE_LIFT;
+      const B = this.unitBox(u);
+      const ux = u.x * TL - B / 2, uy = u.y * TL + TL / 2 - CFG.SPRITE_LIFT - B;
       if (selIds && selIds.has(u.id)) {
         g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;
         g.beginPath(); g.ellipse(u.x * TL, u.y * TL + 10, 10, 5, 0, 0, Math.PI * 2); g.stroke();
       }
       g.globalAlpha = 0.32;
-      g.drawImage(this.unitSprite(u), ux, uy, TL, TL);
+      g.drawImage(this.unitSprite(u), ux, uy, B, B);
       g.globalAlpha = 1;
-      if (u.hp < u.maxhp) this.bar(g, ux + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
+      if (u.hp < u.maxhp) this.bar(g, ux + (B - TL) / 2 + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');
     }
     /* …and the PLACEMENT GRID keeps the last word over the rock (the hard

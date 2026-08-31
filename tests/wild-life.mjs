@@ -275,6 +275,32 @@ const out = await p.evaluate(() => {
       'townBldNear consulted ' + asked + ' times for an animal with no company');
   }
 
+  /* ---- 2b³c. THE WILDS ACTUALLY RESTOCK (a real extinction). The
+     sealed-walls gate (2fc132b) asked the border-reach net about the spawn
+     tile itself — but predators spawn ON forest, forest is impassable, and
+     a flood never marks an impassable tile: every daily wolf, boar and
+     bear was silently refused from that commit on. The gate now accepts a
+     tile that TOUCHES the net (itself or a 4-neighbour), which also pins
+     spawns to the treeline — where the ground-truth rescue slide can
+     always free the beast on the next tick. Real map, no arena flatten:
+     this test needs genuine forest and a genuine border flood. ---- */
+  {
+    G.newGame('wl-spawn', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.units = S.units.filter(u => u.owner !== 'W');   // clear the day-one herds
+    let wolf = null, bear = null;
+    for (let i = 0; i < 6 && !wolf; i++) wolf = Units.spawnWild('wolf', CFG.ANIMALS.minDistTC);
+    for (let i = 0; i < 6 && !bear; i++) bear = Units.spawnWild('bear', CFG.ANIMALS.minDistTC);
+    ck('aPredatorCanStillBeGranted', !!wolf && !!bear,
+      wolf ? 'wolf at ' + (wolf.x | 0) + ',' + (wolf.y | 0) +
+             (bear ? ' and bear at ' + (bear.x | 0) + ',' + (bear.y | 0) : ' but no bear')
+           : 'no wolf in 240 tries — the treeline gate is refusing everything again');
+    if (bear) {
+      Units.update(0.1);   // the rescue slide frees a tree-spawned beast at once
+      ck('theBeastStepsOutOfTheTreeline', Path.passable(bear.x | 0, bear.y | 0),
+        'standing at ' + bear.x.toFixed(1) + ',' + bear.y.toFixed(1));
+    }
+  }
+
   /* ---- 2b⁴. THE KILL LEAVES ITS MARK. A carcass with meat on it for
      CFG.CORPSE_DAYS.meat days, then a skeleton until .bone — the standing
      visual cue for where a Hunter's Lodge may rise, so the killing grounds

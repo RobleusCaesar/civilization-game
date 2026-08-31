@@ -487,7 +487,14 @@ const Assets = {
   // kinds and the poses each may ship — probed at boot, 404s are the norm.
   // 'idle' is each species' standing life: the deer and cow graze, the boar
   // roots, the wolf scents the air (fight borrows walk via R.sheetFrames)
-  UNIT_ART: { deer: ['walk', 'idle'], wolf: ['walk', 'idle'], boar: ['walk', 'idle'], cow: ['walk', 'idle'] },
+  UNIT_ART: { deer: ['walk', 'idle'], wolf: ['walk', 'idle'], boar: ['walk', 'idle'], cow: ['walk', 'idle'],
+              bear: ['walk', 'idle', 'fight'] },   // the bear carries the roster's first real fight sheet
+  /* the DRAW BOX per kind, in world px — default CFG.TILE (32). A bigger
+     animal is a draw-box question, not a canvas question (ART_PLAN): the
+     bear ships 96px frames into a 48px box, the same exact 2:1 native
+     density as the rest of the cast, just a genuinely bigger animal on
+     the map. Operator-approved before the bear was built. */
+  UNIT_BOX: { bear: 48 },
   unitArt: {},
   unitStem(kind, dir, pose) { return 'unit-' + kind + '-' + dir + '-' + pose; },
   unitUrl(kind, dir, pose) {

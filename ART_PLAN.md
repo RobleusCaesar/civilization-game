@@ -228,6 +228,7 @@ promotes it to master. The masters:
 | ------------------------------- | -------------------------------------- |
 | Buildings / camps / relics      | `assets/masters/camp-wolf-192.png`     |
 | Animals (and later characters)  | `assets/masters/animal-deer-60.png` (the native-density stag — FROZEN; doubles as the character-class camera master). The earlier 96px master was RETIRED, not referenced: it carried the flaws this one fixes (mid-brown body barely separated from grass, bone-white 1px antler filigree that aliased into specks). Retire and replace, never chain off a piece you are correcting. |
+| The bear (its own strips only)  | `assets/masters/animal-bear-84.png` — the bear's OWN identity master (84×89 content on a 96 canvas, feet at y=91), itself anchored to the stag at generation time. Referenced only for bear poses; every OTHER animal still anchors to the stag. Lesson recorded: pro `reference_images` pull IDENTITY (a 16-candidate batch labelled "style master" came back all deer) — anchor a NEW species with `style_image_url` + `style_copy: [outline, detail, shading]` (never color_palette: each species keeps its own hue), and size the canvas so the model's natural ~75% subject ratio lands the content where you need it, because "fill the frame" prompting does nothing. |
 
 **2. THE CAMERA REFERENCE MUST BE CLASS-MATCHED.**
 `https://clanfire.online/assets/buildings/tc-l3.png` is the camera
@@ -258,8 +259,11 @@ at default zoom (`cam.z` 1.5, dpr capped at 2) the game UPSCALES everything
 content that does not fit is a regeneration, never a resample.
 
 A bigger animal is a draw-box question, not a canvas question: a 96px sheet
-into a 48px box is also exact 2:1. That needs a per-kind draw scale in the
-renderer — wanted before the bear, not built yet.
+into a 48px box is also exact 2:1. The per-kind draw scale is BUILT
+(`Assets.UNIT_BOX` → `R.unitBox`; boxes are bottom-aligned where the 32px
+box has always ended so feet never move, and the shadow, health bar, and
+death fall all ride the kind's box). The bear ships on it, operator-approved:
+96px window (`compose-unit-strips.ps1 -Target 96`) into a 48px box.
 
 **HORIZONTAL QUADRUPEDS ROTATE FROM A 54px REFERENCE, NOT 60.** Measured,
 twice: the wolf's walk union came out 67px wide and the boar's 68 from a
@@ -310,7 +314,10 @@ work, and it is measurable, not taste:
   horizontal back, head at shoulder height, brush tail carried low;
   boar = front-heavy wedge, high shoulder hump falling to the rear, no
   visible neck; cow (an aurochs — dark, per the body rule) = tall level
-  rectangle, squared muzzle, forward horns. Judge every new species as a
+  rectangle, squared muzzle, forward horns; bear = massive round-backed
+  dome, high rounded shoulder, broad head carried low and forward, small
+  round ears, no visible tail — read apart from the boar by sheer mass
+  and the rounded (not wedge-shaped) back. Judge every new species as a
   black shape first.
 
 **v3 BILLS ON THE PADDED CANVAS, NOT THE SIZE YOU ASK FOR.** `create_character`

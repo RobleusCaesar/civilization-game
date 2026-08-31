@@ -275,16 +275,30 @@ const Screens = {
     let roll = Math.random(), size = lean[0][0];
     for (const [k, w] of lean) { if ((roll -= w) <= 0) { size = k; break; } }
     if (tut) size = 'medium';
-    const wantLf = tut ? 'valley'
-      : ['valley', 'lakeland', 'highlands', 'islands'][(Math.random() * 4) | 0];
+    /* A PINNED WORLD (?seed=…&size=…): the URL names the seed and the run
+       founds exactly that world instead of rolling one — the replay door
+       for a seed read off the victory screen, and the only way to reach a
+       named world on a phone. Size must ride along (the same seed lays a
+       different map at a different size); it defaults to medium when the
+       URL names only the seed. Everything else — difficulty, tunic, the
+       card deal — plays out as normal. */
+    const qSeed = (location.search.match(/[?&]seed=([^&]+)/) || [])[1] || '';
+    const qSize = (location.search.match(/[?&]size=(medium|large|xlarge)/) || [])[1] || '';
+    if (qSeed) size = qSize || 'medium';
     let seed = '';
     CFG.W = CFG.H = CFG.SIZES[size];
-    for (let i = 0; i < 160; i++) {
-      const s = String((Math.random() * 1e9) | 0);
-      const g = MapGen.generate(s);
-      if (g.landform === wantLf && (!tut || g.variant === 'classic')) { seed = s; break; }
+    if (qSeed) {
+      seed = decodeURIComponent(qSeed);
+    } else {
+      const wantLf = tut ? 'valley'
+        : ['valley', 'lakeland', 'highlands', 'islands'][(Math.random() * 4) | 0];
+      for (let i = 0; i < 160; i++) {
+        const s = String((Math.random() * 1e9) | 0);
+        const g = MapGen.generate(s);
+        if (g.landform === wantLf && (!tut || g.variant === 'classic')) { seed = s; break; }
+      }
+      if (!seed) seed = String((Math.random() * 1e9) | 0);   // the roll stands anyway
     }
-    if (!seed) seed = String((Math.random() * 1e9) | 0);   // the roll stands anyway
     p.size = size;   // what G.newGame founds with (and the save records)
     this._demo = false;
     G.freeVis = false;
