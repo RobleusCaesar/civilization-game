@@ -31,6 +31,11 @@ const Combat = {
     }
     R.impact(p.x2, p.y2, p.kind);
   },
+  // the kinds whose melee strike is a SWORD stroke — the blood-slash gate.
+  // The Bronze Champion is the roster's only sworded trainable today; the
+  // sword-armed barbarian peoples (broken/woad/sea) can join once their
+  // people key rides the unit (their raider/brute kinds are shared).
+  SWORD_KINDS: { elite: 1 },
   // a fumbled arrow FLIES anyway — past the mark. The endpoint slides 0.9
   // tiles on down the flight line so the miss reads on screen (an arrow
   // that stops dead on the man it missed looks like a hit), and the expiry
@@ -1191,6 +1196,12 @@ const Combat = {
               R.float(tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf');
             } else {
               R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f08a7a');
+              // A LANDED SWORD DRAWS BLOOD (operator: small, never grotesque):
+              // sword-armed kinds only — the Bronze Champion today — nick a
+              // short crimson slash at the blade's reach. Render-side only,
+              // zero G.rand draws, so every seeded combat stream is untouched.
+              if (this.SWORD_KINDS[u.kind] && window.R && R.meleeSlash)
+                R.meleeSlash(u.x, u.y, tgt.x, tgt.y);
               Units.damage(tgt, dmg, u.id);
             }
           }

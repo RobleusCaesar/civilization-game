@@ -568,7 +568,10 @@ const Assets = {
      still in flight — friend and foe would stop reading apart. */
   MILITARY_ART: { archer:   ['idle', 'walk', 'fight'],
                   longbow:  ['idle', 'walk', 'fight'],
-                  marksman: ['idle', 'walk', 'fight'] },
+                  marksman: ['idle', 'walk', 'fight'],
+                  defender: ['idle', 'walk', 'fight'],
+                  axeman:   ['idle', 'walk', 'fight'],
+                  elite:    ['idle', 'walk', 'fight'] },
   loadMilitaryArt(owner) {
     // typeof guards — G is a script-level const (window.G is undefined)
     if (!window.R || typeof G === 'undefined') return;

@@ -45,8 +45,8 @@ const out = await p.evaluate(() => {
       R.unitArtKey(l) === 'longbow-a-' + ta &&
       R.unitArtKey(m) === 'marksman-p-' + tp,
       R.unitArtKey(a) + ' / ' + R.unitArtKey(l));
-    const s = Units.spawn('axeman', 'P', 16, 10);
-    ck('unlistedKindsStayPlain', R.unitArtKey(s) === 'axeman', '');
+    const s = Units.spawn('rider', 'P', 16, 10);
+    ck('unlistedKindsStayPlain', R.unitArtKey(s) === 'rider', '');
     S.units = S.units.filter(z => z !== a && z !== l && z !== m && z !== s);
   }
 
@@ -103,6 +103,25 @@ const out = await p.evaluate(() => {
     ck('theOvershootIsDeterministic',
       Math.abs(sh.x2 - 3.54) < 1e-9 && Math.abs(sh.y2 - 4.72) < 1e-9 && sh.miss === true,
       sh.x2.toFixed(3) + ',' + sh.y2.toFixed(3));
+  }
+
+  /* ---- 5b. the sword slash: sword kinds only, capped, render-side ---- */
+  {
+    R.slashes.length = 0;
+    const e = Units.spawn('elite', 'P', 30, 30);
+    const d = Units.spawn('defender', 'P', 30.4, 30.4);
+    const v = Units.spawn('brute', 'R', 30.9, 30); v.hp = 9999;
+    // the strike tick: cd expired, standing in range
+    e.tUnit = v.id; d.tUnit = v.id; e.cd = 0; d.cd = 0;
+    const before = R.slashes.length;
+    Combat.update(0.02);
+    ck('onlyTheSwordDrawsBlood', R.slashes.length === before + 1,
+      'elite + defender struck together, ' + (R.slashes.length - before) + ' slash(es)');
+    for (let i = 0; i < 30; i++) R.meleeSlash(30, 30, 31, 30);
+    ck('theSlashPoolIsCapped', R.slashes.length <= 10, R.slashes.length + ' held of 30+');
+    R.slashes.length = 0;
+    e.tUnit = 0; d.tUnit = 0;
+    S.units = S.units.filter(z => z !== e && z !== d && z !== v);
   }
 
   /* ---- 6. fire-arrow strikes pool, capped, and drain on expiry ---- */

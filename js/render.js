@@ -3623,6 +3623,7 @@ const R = {
     this._workFloatAt = {};    // …and the per-worker "+wood" tick throttle
     this.particles = [];
     this.arrowFires = [];      // …and last run's guttering fire-arrow strikes
+    this.slashes = [];         // …and its sword nicks
     Combat.shots.length = 0; Combat.projectiles.length = 0;
     const tc = Bld.tcOf('P');
     if (tc) this.centerOn(tc.x + 0.5, tc.y + 0.5);
@@ -3844,6 +3845,32 @@ const R = {
   arrowStrike(x, y) {
     this.impact(x, y, 'flame');
     if (this.arrowFires.length < 12) this.arrowFires.push({ x, y, t: 0 });
+  },
+  /* ---- SWORD SLASHES (the operator's "tiny amount of realism") ----
+     A short crimson nick at the sword's reach when a blade lands — one
+     bowed stroke in the berry ramp plus two flicked droplets, 0.18s and
+     gone. Small by design: the brief was noticeable, never grotesque.
+     Fired from the melee strike tick for sword-armed kinds only; zero
+     G.rand draws (Math.random, the impact-burst precedent), render-side
+     state only, so every seeded combat stream stays byte-identical. */
+  slashes: [],
+  SLASH_LIFE: 0.18,
+  _slashFlip: 1,
+  meleeSlash(ax, ay, tx, ty) {
+    const dx = tx - ax, dy = ty - ay, dl = Math.hypot(dx, dy) || 1;
+    const reach = Math.max(0.2, Math.min(dl * 0.72, dl - 0.12));
+    const x = ax + dx / dl * reach, y = ay + dy / dl * reach - 0.35;
+    this._slashFlip = -this._slashFlip;
+    const ang = Math.atan2(dy, dx) + this._slashFlip * Math.PI / 3;
+    if (this.slashes.length >= 10) this.slashes.shift();
+    this.slashes.push({ x, y, ang, t: 0 });
+    const AP = ART.PALETTE;
+    for (let i = 0; i < 2; i++) {
+      if (this.particles.length >= 220) break;
+      this.particles.push({ x, y, vx: dx / dl * 1.4 + (Math.random() - 0.5) * 1.6,
+        vy: -0.8 - Math.random() * 1.2, t: 1, life: 0.3 + Math.random() * 0.15,
+        col: i ? AP.berry[0] : AP.berry[1], sz: 1.4, g: 9 });
+    }
   },
   // impact burst at (x,y): 'stone'/'bolt' throw pale dust + dark debris that
   // fall and fade; 'flame' throws rising fire embers + a puff of grey smoke.
@@ -7768,6 +7795,37 @@ const R = {
       g.fillRect(pt.x * TL - s / 2, pt.y * TL - s / 2, s, s);
     }
     g.globalAlpha = 1; g.lineWidth = 1.5;
+
+    // ---- sword slashes: a short bowed crimson nick at the blade's reach,
+    // opening over two frames and gone in 0.18s — dark berry underlay with
+    // a bright core, round caps. Small on purpose. ----
+    if (this.slashes.length) {
+      const AP = ART.PALETTE;
+      g.lineCap = 'round';
+      for (let i = this.slashes.length - 1; i >= 0; i--) {
+        const sl = this.slashes[i];
+        sl.t += dt;
+        const k = sl.t / this.SLASH_LIFE;
+        if (k >= 1) { this.slashes.splice(i, 1); continue; }
+        const grow = Math.min(1, sl.t * 25);
+        const half = 4 * grow;                          // 8 world px full length
+        const px = sl.x * TL, py = sl.y * TL;
+        const ux = Math.cos(sl.ang), uy = Math.sin(sl.ang);
+        const bx = px - uy * 2.2, by = py + ux * 2.2;   // control point bows the stroke
+        g.globalAlpha = 1 - k * k;
+        g.strokeStyle = AP.berry[0]; g.lineWidth = 3;
+        g.beginPath();
+        g.moveTo(px - ux * half, py - uy * half);
+        g.quadraticCurveTo(bx, by, px + ux * half, py + uy * half);
+        g.stroke();
+        g.strokeStyle = AP.berry[1]; g.lineWidth = 1.5;
+        g.beginPath();
+        g.moveTo(px - ux * half, py - uy * half);
+        g.quadraticCurveTo(bx, by, px + ux * half, py + uy * half);
+        g.stroke();
+      }
+      g.globalAlpha = 1; g.lineCap = 'butt'; g.lineWidth = 1.5;
+    }
 
     // living water: drifting sparkles, blinking shoreline foam, jumping fish.
     // Viewport-only, a few fillRects per water tile — stays well inside budget.
