@@ -3622,6 +3622,7 @@ const R = {
                                //    must not inherit another run's deck angle)
     this._workFloatAt = {};    // …and the per-worker "+wood" tick throttle
     this.particles = [];
+    this.arrowFires = [];      // …and last run's guttering fire-arrow strikes
     Combat.shots.length = 0; Combat.projectiles.length = 0;
     const tc = Bld.tcOf('P');
     if (tc) this.centerOn(tc.x + 0.5, tc.y + 0.5);
@@ -3829,6 +3830,21 @@ const R = {
     return true;
   },
 
+  /* ---- FIRE-ARROW GROUND STRIKES (the operator's showpiece) ----
+     Where a flaming arrow's flight ends — a struck man's feet, a wall's
+     base, a fumbled shot's dirt — the ground catches for a heartbeat:
+     an instant ember-and-smoke burst (the shared impact pool) plus a
+     LINGERING guttering flame drawn from the same 4-frame flameSmall
+     sprites the burning houses wear, over a small scorch that fades as
+     the flame dies. A micro-pool of plain literals, hard-capped: a
+     volley that lands twelve fire arrows in one second simply stops
+     adding tongues — nobody counts flames in a firestorm. */
+  arrowFires: [],
+  ARROWFIRE_LIFE: 1.25,
+  arrowStrike(x, y) {
+    this.impact(x, y, 'flame');
+    if (this.arrowFires.length < 12) this.arrowFires.push({ x, y, t: 0 });
+  },
   // impact burst at (x,y): 'stone'/'bolt' throw pale dust + dark debris that
   // fall and fade; 'flame' throws rising fire embers + a puff of grey smoke.
   // Particles are spawned once per hit (not per frame) and capped, so no
@@ -6660,7 +6676,12 @@ const R = {
       return 'walk';
     }
     const fb = u.tBld && Bld.get(u.tBld);
-    if (fb && Math.hypot(Bld.cx(fb) - u.x, Bld.cy(fb) - u.y) < 1.5 + Bld.reach(fb)) return vil ? 'guard' : 'fight';
+    // ranged units volley buildings from their OWN reach, not melee's: an
+    // archer loosing at a wall from five tiles is fighting, and with real
+    // shoot art it must look like it (the old 1.5-tile gate left ranged
+    // attackers idling through their own volleys)
+    if (fb && Math.hypot(Bld.cx(fb) - u.x, Bld.cy(fb) - u.y) <
+        Math.max(1.5, (CFG.UNITS[u.kind].rng || 0) + 0.3) + Bld.reach(fb)) return vil ? 'guard' : 'fight';
     if (Units.moving(u)) return 'walk';
     const t = u.task;
     if (t) {
@@ -6744,7 +6765,15 @@ const R = {
      sheetFrames, so the sprite and the shadow gate can never disagree
      (the deer's lesson, pinned in tests/animal-art.mjs). */
   unitArtKey(u) {
-    if (u.kind !== 'villager') return u.kind;
+    if (u.kind !== 'villager') {
+      // military kinds with sheet art resolve per (faction, tunic) — the
+      // same recolor law and the same tunic-in-key staleness armor as the
+      // villagers. An owner with no tunic (a raider save oddity) builds a
+      // key that simply never loads, and the procedural rig stands.
+      if (window.Assets && Assets.MILITARY_ART && Assets.MILITARY_ART[u.kind])
+        return u.kind + '-' + (u.owner === 'A' ? 'a' : 'p') + '-' + G.tunicOf(u.owner);
+      return u.kind;
+    }
     return 'villager-' + (u.owner === 'A' ? 'a' : 'p') + '-' + G.tunicOf(u.owner) +
       '-l' + this.villagerTier(u.owner) + (u.female ? '-f' : '-m');
   },
@@ -7609,9 +7638,12 @@ const R = {
     }
     g.textAlign = 'left'; g.textBaseline = 'alphabetic';
 
-    // arrows in flight (flaming ones burn orange with an ember at the head);
-    // catapult stones arc high and land hard
-    g.lineWidth = 1.5;
+    // ---- arrows in flight: a real shaft travels the line now (operator's
+    // "give the arrows weight"), on a shallow arc with a ground shadow —
+    // the siege-projectile grammar scaled down. Damage still lands the
+    // instant the shot is loosed (combat is untouched); at 0.24s of flight
+    // the eye never catches the gap. Flaming arrows carry a lagged ember
+    // trail and a burning head; catapult stones arc high and land hard.
     for (const s of Combat.shots) {
       if (s.rock) {
         const k = Math.max(0, 1 - s.t / 0.35);
@@ -7623,14 +7655,45 @@ const R = {
         g.fillRect(px - 3, py - 3, 3, 3);
         continue;
       }
-      const a = Math.min(1, s.t * 6);
-      g.strokeStyle = s.fire ? 'rgba(242,150,58,' + a + ')' : 'rgba(240,210,122,' + a + ')';
-      g.beginPath(); g.moveTo(s.x1 * TL, s.y1 * TL); g.lineTo(s.x2 * TL, s.y2 * TL); g.stroke();
+      const t0 = s.t0 || 0.15;
+      const k = Math.max(0, Math.min(1, 1 - s.t / t0));
+      const dx = s.x2 - s.x1, dy = s.y2 - s.y1, dl = Math.hypot(dx, dy) || 1;
+      const arc = Math.min(0.34, dl * 0.09);          // longer shots loft higher
+      const wx = s.x1 + dx * k, wy = s.y1 + dy * k - Math.sin(k * Math.PI) * arc;
+      const px = wx * TL, py = wy * TL;
+      // the shadow slides along the flat ground track under the lofted shaft
+      g.fillStyle = 'rgba(20,16,10,0.22)';
+      g.fillRect((s.x1 + dx * k) * TL - 2, (s.y1 + dy * k) * TL, 4, 2);
+      // a short fading wake behind the head, not the old full-length tracer
+      const kb = Math.max(0, k - 0.2);
+      g.strokeStyle = s.fire ? 'rgba(242,150,58,0.5)' : 'rgba(240,210,122,0.4)';
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.moveTo((s.x1 + dx * kb) * TL, (s.y1 + dy * kb - Math.sin(kb * Math.PI) * arc) * TL);
+      g.lineTo(px, py);
+      g.stroke();
+      // the shaft, aligned to the true flight tangent (the arc's slope rides
+      // in the y term) — wood-dark, 6px, with a bone fletch at the tail
+      const vy = dy - Math.cos(k * Math.PI) * Math.PI * arc;
+      const vl = Math.hypot(dx, vy) || 1, ux = dx / vl, uy = vy / vl;
+      g.strokeStyle = ART.PALETTE.wood[1]; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(px - ux * 6, py - uy * 6); g.lineTo(px, py); g.stroke();
+      g.fillStyle = ART.PALETTE.bone[1];
+      g.fillRect(px - ux * 6 - 1, py - uy * 6 - 1, 2, 2);
       if (s.fire) {
-        g.fillStyle = 'rgba(255,200,80,' + a + ')';
-        g.fillRect(s.x2 * TL - 2, s.y2 * TL - 2, 4, 4);
-        g.fillStyle = 'rgba(232,138,58,' + a + ')';
-        g.fillRect(s.x2 * TL - 1, s.y2 * TL - 1, 2, 2);
+        // three lagged embers trail the burning head down the arc
+        for (let j = 1; j <= 3; j++) {
+          const kk = Math.max(0, k - j * 0.07);
+          const es = 4 - j;
+          g.fillStyle = 'rgba(232,138,58,' + (0.55 - j * 0.14) + ')';
+          g.fillRect((s.x1 + dx * kk) * TL - es / 2,
+                     (s.y1 + dy * kk - Math.sin(kk * Math.PI) * arc) * TL - es / 2, es, es);
+        }
+        g.fillStyle = 'rgba(255,200,80,0.9)'; g.fillRect(px - 2.5, py - 2.5, 5, 5);
+        g.fillStyle = ART.PALETTE.fire[3];    g.fillRect(px - 1.5, py - 1.5, 3, 3);
+      } else {
+        g.fillStyle = ART.PALETTE.stone[4];   // flint head
+        g.fillRect(px - 1.5, py - 1.5, 3, 3);
       }
     }
 
@@ -7665,6 +7728,31 @@ const R = {
         g.fillStyle = ART.PALETTE.stone[3]; g.fillRect(px - 3, py - 3, 3, 3);       // lit top-left
         g.fillStyle = ART.PALETTE.stone[0]; g.fillRect(px + 1, py + 1, 2, 2);       // shaded
       }
+    }
+
+    // ---- fire-arrow ground strikes: a guttering tongue of flame where the
+    // arrow landed, over a scorch that fades with it. flameSmall on the
+    // wall-clock beat (the burning-house idiom), shrinking through the
+    // last third of its short life. ----
+    for (let i = this.arrowFires.length - 1; i >= 0; i--) {
+      const f = this.arrowFires[i];
+      f.t += dt;
+      const kf = f.t / this.ARROWFIRE_LIFE;
+      if (kf >= 1) { this.arrowFires.splice(i, 1); continue; }
+      const px = f.x * TL, py = f.y * TL;
+      const fade = kf < 0.7 ? 1 : 1 - (kf - 0.7) / 0.3;
+      // the scorch: near-opaque char (translucent grey over grass reads as
+      // moss — the ground-burn lesson), blooming fast and dying with the flame
+      g.globalAlpha = 0.55 * Math.min(1, f.t * 8) * fade;
+      g.fillStyle = '#1c140c';
+      g.beginPath(); g.ellipse(px, py + 1, TL * 0.16, TL * 0.10, 0, 0, Math.PI * 2); g.fill();
+      g.globalAlpha = 1;
+      // the flame itself, licking on the shared 130ms beat
+      const beat = (performance.now() / 130) | 0;
+      const fs = TL * 0.5 * (0.75 + 0.25 * Math.min(1, f.t * 6)) * fade;
+      if (fs > 2)
+        Assets.drawSprite(g, 'misc/flameSmall/' + ((beat + i) % 4),
+          px - fs / 2, py - fs * 0.85, { w: fs, h: fs });
     }
 
     // ---- impact particles: dust/debris fall & shrink, embers & smoke rise ----

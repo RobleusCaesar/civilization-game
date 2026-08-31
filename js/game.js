@@ -306,6 +306,7 @@ const G = {
     // every probe 404s and the procedural cast stands — that is the design)
     if (window.R) R._vTier = null;
     Assets.loadVillagerArt('P'); Assets.loadVillagerArt('A');
+    Assets.loadMilitaryArt('P'); Assets.loadMilitaryArt('A');
     // seed the homestead memory QUIETLY: a town that starts or loads already
     // bonded keeps its bonus without celebrating bonds it has had for days
     Bld.syncHomesteads(true);
@@ -1973,6 +1974,7 @@ const G = {
     // tier is DERIVED, never stored: a loaded save recomputes from its
     // Town Centers (onNewGame just dropped the cache) and re-asks for art
     Assets.loadVillagerArt('P'); Assets.loadVillagerArt('A');
+    Assets.loadMilitaryArt('P'); Assets.loadMilitaryArt('A');
     // seed the homestead memory QUIETLY: a town that loads already bonded keeps
     // its bonus without celebrating bonds it has had for a hundred days
     Bld.syncHomesteads(true);

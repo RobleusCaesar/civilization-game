@@ -557,6 +557,35 @@ const Assets = {
         '.png?v=' + (CFG.ART_V || 1);
     }
   },
+  /* ---- MILITARY SHEET ART (the archer line ships first) ----
+     Same recolor law as the villagers: files on disk are NEUTRAL
+     (unit-{kind}-{dir}-{pose}.png wearing the blue key ramp), installed
+     under a faction key ({kind}-{p|a}-{tunic}) with the tunic swapped
+     exactly once at install. Kinds listed here must NEVER also appear in
+     UNIT_ART: the boot probe would install un-recolored frames under the
+     plain kind slot, and sheetFrames' kind-level fallback would then
+     serve blue-keyed art to BOTH factions whenever a faction install was
+     still in flight — friend and foe would stop reading apart. */
+  MILITARY_ART: { archer:   ['idle', 'walk', 'fight'],
+                  longbow:  ['idle', 'walk', 'fight'],
+                  marksman: ['idle', 'walk', 'fight'] },
+  loadMilitaryArt(owner) {
+    // typeof guards — G is a script-level const (window.G is undefined)
+    if (!window.R || typeof G === 'undefined') return;
+    const fac = owner === 'A' ? 'a' : 'p';
+    const tunic = G.tunicOf(owner);
+    for (const kind in this.MILITARY_ART) for (const dir of this.UNIT_DIRS8) for (const pose of this.MILITARY_ART[kind]) {
+      // the tunic rides IN the key, same anti-staleness armor as the
+      // villager loader above: a new run's rolled color can never be
+      // served frames baked for last run's
+      const key = kind + '-' + fac + '-' + tunic;
+      if (this.unitArt[key] && this.unitArt[key].dirs[dir] && this.unitArt[key].dirs[dir][pose]) continue;
+      const img = new Image();
+      img.onload = () => { this.setUnitFrames(key, dir, pose, img, tunic); };
+      img.onerror = () => {};                  // absent art is the default state
+      img.src = this.UNIT_DIR + 'unit-' + kind + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1);
+    }
+  },
   unitArt: {},
   unitStem(kind, dir, pose) { return 'unit-' + kind + '-' + dir + '-' + pose; },
   unitUrl(kind, dir, pose) {

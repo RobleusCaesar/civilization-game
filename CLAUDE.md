@@ -114,6 +114,7 @@ node tests/tribe-traits.mjs  # each people keeps its home ground (sea=coast, wol
 node tests/relics.mjs        # the wilderness relic: tile data bit-identical on/off, seed-deterministic placement with manners, discovery grants once (gold on its own scale) and rides the save, the AI stays blind, 404 art falls back to the placeholder
 node tests/variants.mjs      # 16 landform variants: classic byte-identical, every combo×size playable+symmetric, difficulty leans the size, tutorial forces Valley·Classic, saves carry the world's name
 node tests/animal-art.mjs    # character-class art path: 8-way facing from real displacement (WeakMap, never in a save), strip sheets slice+set playback, per-lookup fallback to the procedural cast
+node tests/archer-art.mjs    # archer line plumbing: military sheet keys {kind}-{p|a}-{tunic} recolored at install, no kind in the boot probe, ranged fight pose vs buildings at reach, deterministic miss overshoot, capped fire-arrow ground strikes
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's

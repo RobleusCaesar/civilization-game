@@ -31,6 +31,16 @@ const Combat = {
     }
     R.impact(p.x2, p.y2, p.kind);
   },
+  // a fumbled arrow FLIES anyway — past the mark. The endpoint slides 0.9
+  // tiles on down the flight line so the miss reads on screen (an arrow
+  // that stops dead on the man it missed looks like a hit), and the expiry
+  // tick below throws a puff of dirt where it lands. Deterministic — no
+  // RNG draw, so the seeded combat stream (tests/tower-archer-miss.mjs)
+  // is untouched.
+  overshoot(s) {
+    const dx = s.x2 - s.x1, dy = s.y2 - s.y1, l = Math.hypot(dx, dy) || 1;
+    s.x2 += dx / l * 0.9; s.y2 += dy / l * 0.9; s.miss = true;
+  },
   // apply damage to a building + show it landing (shared by instant melee hits
   // and projectile impacts, so buildings always read the hit)
   hitBuilding(b, dmg, flame) {
@@ -1168,12 +1178,16 @@ const Combat = {
           if (CFG.UNITS[u.kind].proj) {
             this.launch(u, tgt.x, tgt.y, { kind: 'unit', id: tgt.id, dmg, srcId: u.id });
           } else {
+            let sh = null;
             if (CFG.UNITS[u.kind].rng)
-              this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: tgt.x, y2: tgt.y, t: 0.15, fire: !!CFG.UNITS[u.kind].fire });
+              this.shots.push(sh = { x1: u.x, y1: u.y - 0.3, x2: tgt.x, y2: tgt.y, t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire });
             // THE BASE ARCHER FUMBLES 1 IN 4 SHOTS — the cheap early bowman
             // trained straight off a Lv1 Range; the Lv2/Lv3 upgrades (longbow,
             // marksman) are untouched. Owner-agnostic, same as the tower nerf.
+            // (push-then-roll order is pinned by the seeded-stream tests; a
+            // miss retro-fits the already-pushed shot with the overshoot)
             if (u.kind === 'archer' && G.rand() < 1 / 4) {
+              if (sh) this.overshoot(sh);
               R.float(tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf');
             } else {
               R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f08a7a');
@@ -1264,12 +1278,14 @@ const Combat = {
             // damage on impact (with a dust or fire burst — see R.impact)
             this.launch(u, Bld.cx(b), Bld.cy(b), { kind: 'bld', id: b.id, dmg });
           } else {
+            let sh = null;
             if (CFG.UNITS[u.kind].rng)
-              this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: Bld.cx(b), y2: Bld.cy(b), t: 0.15, fire: !!CFG.UNITS[u.kind].fire });
+              this.shots.push(sh = { x1: u.x, y1: u.y - 0.3, x2: Bld.cx(b), y2: Bld.cy(b), t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire });
             // same base-archer fumble as the unit-target branch above — a
             // player CAN send an archer straight at a wall, so it has to miss
             // there too, not just when trading blows with soldiers.
             if (u.kind === 'archer' && G.rand() < 1 / 4) {
+              if (sh) this.overshoot(sh);
               R.float(Bld.cx(b), b.y - 0.15, 'Miss!', '#cfcfcf');
             } else {
               this.hitBuilding(b, dmg, !!CFG.UNITS[u.kind].fire);
@@ -1293,7 +1309,7 @@ const Combat = {
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
           const dmg = CFG.UNITS[u.kind].bldAtk || Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
-          if (CFG.UNITS[u.kind].rng) this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: bx, y2: by, t: 0.15, fire: !!CFG.UNITS[u.kind].fire });
+          if (CFG.UNITS[u.kind].rng) this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: bx, y2: by, t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire });
           R.float(bx, by - 0.3, '-' + dmg, '#e8d2a0');
           Bld.damageBridge(br, dmg);   // removes the span (and re-severs the crossing) at 0 hp
         }
@@ -1310,13 +1326,15 @@ const Combat = {
         o => this.hostileToBld(b, o) && !Units.isPassive(o) && o.kind !== 'siegetower');
       if (tgt) {
         b.cd = 1.4;
-        this.shots.push({ x1: cx, y1: cy - 0.6, x2: tgt.x, y2: tgt.y, t: 0.18 });
+        const sh = { x1: cx, y1: cy - 0.6, x2: tgt.x, y2: tgt.y, t: 0.24, t0: 0.24 };
+        this.shots.push(sh);
         // A LEVEL-1 TOWER FUMBLES 1 IN 3 SHOTS — the cheap early shield, not the
         // Lv2/Lv3 upgrades (untouched). A War Camp fires exactly like a Watchtower
         // L1 (see the comment above) so it shares the same miss rate; it has no
         // upgrade path of its own. Owner-agnostic: hits the rival's towers too.
         const l1tower = (b.key === 'tower' && b.level === 1) || b.key === 'warcamp';
         if (l1tower && G.rand() < 1 / 3) {
+          this.overshoot(sh);
           R.float(tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf');
         } else {
           const dmg = Math.max(1, lv.atk - Units.effDef(tgt));
@@ -1326,8 +1344,16 @@ const Combat = {
       } else b.cd = 0.3;
     }
     for (let i = this.shots.length - 1; i >= 0; i--) {
-      this.shots[i].t -= dt;
-      if (this.shots[i].t <= 0) this.shots.splice(i, 1);
+      const s = this.shots[i];
+      s.t -= dt;
+      if (s.t > 0) continue;
+      // the arrow LANDS: a fire arrow bursts into flame on the ground where
+      // its flight ends (hit or miss — the operator's ask), and a fumbled
+      // shaft kicks up a puff of dirt where it overshot. Same direct R.*
+      // calls the damage floats above have always made.
+      if (s.fire) R.arrowStrike(s.x2, s.y2);
+      else if (s.miss) R.impact(s.x2, s.y2, 'bolt');
+      this.shots.splice(i, 1);
     }
     // advance siege projectiles; when one lands, apply its damage + burst
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
