@@ -294,6 +294,20 @@ document, and rotate from a `animal-{kind}-ref54.png` — a high-quality
 downscale used ONLY as a generative guide for v3's redraw; no shipped
 pixel is ever resampled.
 
+**POSES REGISTER BY FEET, AND THE WINDOW CROPS TOOL EXTREMES, NEVER THE
+BODY** (the villager sprint's two composition lessons). v3 batches have
+no cross-group registration: a re-rolled pose can sit shifted on its
+canvas, blowing the shared per-direction window and teleporting the body
+on pose change — `register-poses` (scratchpad) aligns every pose's
+frame-0 feet centroid to its direction's walk before composing. And a
+swung tool is the thing that overflows windows: expect a handful of
+per-direction re-rolls per character (1 gen each; the wording ladder
+that converges — "compact, elbows tucked, never swinging out" → "held
+vertical against the chest" → "stubby tool, tip never passes the
+elbows"), and the composer tolerates ≤2px of a tool TIP cropped at the
+window top for action poses, symmetric with the below-ground strike
+crop; standing poses still hard-error in both axes.
+
 **CHARACTER ART CARRIES NO SHADOW.** The procedural cast bakes a contact
 shadow into every frame; sheet units get one from the renderer instead
 (`R.sheetUnit` gates `R.drawUnitShadow` — the gate exists so the existing

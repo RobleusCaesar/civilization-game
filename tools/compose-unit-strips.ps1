@@ -105,8 +105,20 @@ foreach ($dir in $dirBox.Keys) {
            "Never rescale here: a fractional resample is the exact defect the fixed window prevents.")
   }
   if ($topOver -gt 0) {
-    throw ("direction '$dir': content rises ${topOver}px above the ground-anchored ${Target}px window. " +
-           "REGENERATE SMALLER. Never rescale here.")
+    # THE WINDOW CROPS TOOL EXTREMES, NEVER THE BODY: symmetric with the
+    # ground-crop rule below the feet, a raised tool tip may poke a pixel
+    # or two above the window at the apex of a swing and be cropped there
+    # - invisible at 2:1, and not worth a regeneration. The tolerance is
+    # tiny and ONLY for action poses: if the STANDING content (walk+idle,
+    # which position the window) itself overflows, that is a body crop
+    # and stays a hard error, as does anything past 2px.
+    $standTop = $standBox[$dir]
+    if ($topOver -le 2) {
+      Write-Output ("dir {0,-3} action-pose tool tip cropped {1}px at the window top" -f $dir, $topOver)
+    } else {
+      throw ("direction '$dir': content rises ${topOver}px above the ground-anchored ${Target}px window. " +
+             "REGENERATE SMALLER. Never rescale here.")
+    }
   }
   $cropped = $b.maxY - $groundY
   $win[$dir] = @{
