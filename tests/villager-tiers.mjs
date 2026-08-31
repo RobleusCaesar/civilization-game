@@ -196,7 +196,13 @@ const out = await p.evaluate(() => {
             R.unitPose = realPose; R.unitFacing = realFace;
             const key = 'villager-p-blue-l' + R.villagerTier('P') + (female ? '-f' : '-m');
             const ua = Assets.unitArt[key];
-            const fromSheet = !!ua && !!(ua.dirs[dir] || ua.dirs.s) && spr && spr.width === 96;
+            // membership by IDENTITY, not by size (the shipped l1-m walk is
+            // 64px while the fake strips are 96 — a width heuristic lies)
+            let fromSheet = false;
+            if (ua && spr) {
+              const dd = ua.dirs[dir] || ua.dirs.s;
+              if (dd) for (const pk in dd) if (dd[pk].includes(spr)) { fromSheet = true; break; }
+            }
             if (gate !== fromSheet) {
               agree = false;
               if (!firstBad) firstBad = key + ' ' + dir + ' ' + pose + ' gate=' + gate + ' sheet=' + fromSheet;
