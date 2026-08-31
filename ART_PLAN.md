@@ -386,6 +386,22 @@ the crest/cap"; the tool-VISIBILITY clause that fixed the mine pose —
 single frame, never hidden behind the body" (absent-tool profiles and
 behind-the-back carries are the same failure family as the mallet).
 
+**THE SAPPER LINE'S THREE LESSONS** (cheapest program yet, ~44
+gens/character): (1) A THIN TOOL DIES IN A NARROW ROTATION REF — the
+L1 sapper's shovel haft faded out of its 27px-wide ref and two
+rotations came back empty-handed; the recovery that WORKED was
+re-describing the tool in every animation's action text ("the shovel
+plainly present in every frame"), which restored it consistently
+across all directions — cheaper than re-rolling rotations. (2) CRAFT
+POSES CAN EACH FIT THE WINDOW AND STILL BREAK IT TOGETHER: feet-anchor
+registration leaves each pose's tool leaning its own way, and the
+per-direction UNION exceeds 64 even when every pose alone fits —
+compute the union across ALL poses per direction before the first
+compose (the span audit must list every pose the character ships).
+(3) WORK POSES WHOSE STANDS ARE 4-EDGE ONLY ship the four cardinals —
+the sim's stand-tile rule makes the diagonal facings unreachable, and
+the anim bill halves.
+
 **PIXELLAB OPS TRAPS (all hit in one session):** (1) the server DEDUPES
 an animate_character call with an identical action_description — a
 re-fire after a silent truncation returns "already queued or complete"
