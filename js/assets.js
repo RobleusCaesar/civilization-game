@@ -488,13 +488,28 @@ const Assets = {
   // 'idle' is each species' standing life: the deer and cow graze, the boar
   // roots, the wolf scents the air (fight borrows walk via R.sheetFrames)
   UNIT_ART: { deer: ['walk', 'idle'], wolf: ['walk', 'idle'], boar: ['walk', 'idle'], cow: ['walk', 'idle'],
-              bear: ['walk', 'idle', 'fight'] },   // the bear carries the roster's first real fight sheet
+              bear: ['walk', 'idle', 'fight'],     // the bear carries the roster's first real fight sheet
+              /* the UNDYED hulls. Deliberately here and not MILITARY_ART:
+                 no plank of these boats wears a village colour, so one
+                 neutral sheet serves every owner — including the Sea
+                 Folk, whose 'R'-owned longboats ARE this transport (an
+                 accepted, flagged consequence: their hull matches yours;
+                 their plumed crew pips and red bar still read apart).
+                 'idle' is a derived at-anchor bob composed from the walk,
+                 not a generated sheet; 'gather' is the fishing haul. */
+              fishboat: ['walk', 'idle', 'gather'],
+              transport: ['walk', 'idle'],
+              fireship: ['walk', 'idle', 'fight'] },
   /* the DRAW BOX per kind, in world px — default CFG.TILE (32). A bigger
      animal is a draw-box question, not a canvas question (ART_PLAN): the
      bear ships 96px frames into a 48px box, the same exact 2:1 native
      density as the rest of the cast, just a genuinely bigger animal on
      the map. Operator-approved before the bear was built. */
-  UNIT_BOX: { bear: 48 },
+  /* the working hulls draw at 48 like the bear — a cog or a bombard ship
+     alongside a 32px fishing boat is a genuinely bigger vessel, same 2:1
+     density (96px frames). The fishboat STAYS 32: players raise dozens,
+     and a fleet of fat hulls would swallow every harbor. */
+  UNIT_BOX: { bear: 48, transport: 48, fireship: 48, bombard: 48 },
   /* ---- VILLAGER TIERS (phase 1 plumbing; the art arrives in phase 2) ----
      Appearance tier by Town Center level — a TABLE, deliberately, so tiers
      can lag or lead the TC later without touching the resolver. */
@@ -571,7 +586,10 @@ const Assets = {
                   marksman: ['idle', 'walk', 'fight'],
                   defender: ['idle', 'walk', 'fight'],
                   axeman:   ['idle', 'walk', 'fight'],
-                  elite:    ['idle', 'walk', 'fight'] },
+                  elite:    ['idle', 'walk', 'fight'],
+                  // the one dyed hull: the bombard ship flies its village's
+                  // colours on the stern banner (the ONLY keyed region)
+                  bombard:  ['idle', 'walk', 'fight'] },
   loadMilitaryArt(owner) {
     // typeof guards — G is a script-level const (window.G is undefined)
     if (!window.R || typeof G === 'undefined') return;

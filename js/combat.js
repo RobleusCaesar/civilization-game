@@ -14,6 +14,10 @@ const Combat = {
     const kind = CFG.UNITS[u.kind].proj;
     this.projectiles.push({
       kind, tgt, owner: u.owner,
+      // fx: an optional per-kind IMPACT dressing (the Bombard Ship's 'blast')
+      // — the projectile itself flies and lands identically, only the burst
+      // at the landing point grows. The catapult stays byte-identical.
+      fx: CFG.UNITS[u.kind].projFx || null,
       x1: u.x, y1: u.y - 0.35, x2: tx, y2: ty, t: 0,
       dur: kind === 'bolt' ? 0.26 : kind === 'flame' ? 0.72 : 0.5,   // flight time
       arc: kind === 'bolt' ? 0.4 : kind === 'flame' ? 3.0 : 1.6,      // peak height (tiles)
@@ -29,7 +33,7 @@ const Combat = {
       const tu = Units.get(t.id);
       if (tu) { R.float(tu.x, tu.y - 0.4, '-' + t.dmg, '#f08a7a'); Units.damage(tu, t.dmg, t.srcId || 0, p.owner); }
     }
-    R.impact(p.x2, p.y2, p.kind);
+    R.impact(p.x2, p.y2, p.kind, p.fx);
   },
   // the kinds whose melee strike is a SWORD stroke — the blood-slash gate.
   // The Bronze Champion is the roster's only sworded trainable today; the

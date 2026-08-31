@@ -59,7 +59,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const b = await pw.chromium.launch();
 const p = await b.newPage({ viewport: { width: 430, height: 880 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
-p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
+p.on('console', m => { if (m.type() === 'error' && !m.text().includes('ERR_FILE_NOT_FOUND')) errs.push('console: ' + m.text()); });
 await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(900);
 

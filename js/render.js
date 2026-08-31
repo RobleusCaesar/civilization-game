@@ -3625,6 +3625,7 @@ const R = {
     this.particles = [];
     this.arrowFires = [];      // …and last run's guttering fire-arrow strikes
     this.slashes = [];         // …and its sword nicks
+    this.blasts = [];          // …and its bombard craters
     Combat.shots.length = 0; Combat.projectiles.length = 0;
     const tc = Bld.tcOf('P');
     if (tc) this.centerOn(tc.x + 0.5, tc.y + 0.5);
@@ -3877,9 +3878,41 @@ const R = {
   // fall and fade; 'flame' throws rising fire embers + a puff of grey smoke.
   // Particles are spawned once per hit (not per frame) and capped, so no
   // allocation storms — the draw loop only mutates them in place.
-  impact(x, y, kind) {
+  /* ---- BOMBARD BLASTS (the operator's "big poof") ----
+     Where a Bombard Ship's stone lands — ground, wall or deck — the world
+     answers: a tripled dust-and-debris burst with rising smoke through the
+     shared particle pool, plus an expanding shockwave ring and a lingering
+     scorch from a micro-pool of its own (so one big landing never evicts
+     everyone else's particles). A stone landing on WATER swaps dust for
+     white spray and a ripple — stone dust never puffs on open sea. */
+  blasts: [],
+  BLAST_LIFE: 1.8,
+  impact(x, y, kind, fx) {
     const P = this.particles, AP = ART.PALETTE, add = (o) => { if (P.length < 220) P.push(o); };
     const rnd = (a, b) => a + Math.random() * (b - a);
+    if (fx === 'blast') {
+      const wet = (() => {
+        const t = S.map.terrain[MapGen.idx(x | 0, y | 0)];
+        return t === T.WATER || t === T.MOAT;
+      })();
+      for (let i = 0; i < 26; i++) {                     // the ring of thrown dust / spray
+        const a = rnd(-Math.PI, Math.PI), s = rnd(1.6, 4.6);
+        add({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.55 - rnd(0.4, 1.6), t: 1,
+              life: rnd(0.35, 0.7), col: wet ? (i & 1 ? '#dceef4' : '#b8dce8') : (i & 1 ? AP.stone[3] : AP.bone[1]),
+              sz: rnd(1.8, 3.4), g: wet ? 6 : 4 });
+      }
+      for (let i = 0; i < 12; i++) {                     // dark chunks, thrown hard
+        const a = rnd(-Math.PI, 0), s = rnd(2.5, 5.5);
+        add({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 1.4, t: 1, life: rnd(0.4, 0.8),
+              col: wet ? '#8fc3d6' : AP.stone[1], sz: rnd(1.8, 3), g: 8 });
+      }
+      for (let i = 0; i < 7; i++)                        // the poof: smoke, rising and fat
+        add({ x, y: y - 0.2, vx: rnd(-0.9, 0.9), vy: rnd(-1.8, -0.6), t: 1, life: rnd(0.8, 1.3),
+              col: wet ? '#cfe6ee' : (i & 1 ? '#6a6258' : '#8a8276'), sz: rnd(3.5, 6), g: -0.4, smoke: 1 });
+      if (this.blasts.length >= 8) this.blasts.shift();
+      this.blasts.push({ x, y, t: 0, wet });
+      return;
+    }
     if (kind === 'flame') {
       for (let i = 0; i < 12; i++) {                       // fire embers, rising
         const a = rnd(-Math.PI, 0), s = rnd(1.2, 3.4);
@@ -6824,8 +6857,13 @@ const R = {
       // same recolor law and the same tunic-in-key staleness armor as the
       // villagers. An owner with no tunic (a raider save oddity) builds a
       // key that simply never loads, and the procedural rig stands.
-      if (window.Assets && Assets.MILITARY_ART && Assets.MILITARY_ART[u.kind])
+      // OWNERS OUTSIDE P/A NEVER WEAR A VILLAGE DYE: tunicOf defaults any
+      // stranger to 'blue', so without this gate a Sea Folk hull of a
+      // military kind would sail in the player's livery.
+      if (window.Assets && Assets.MILITARY_ART && Assets.MILITARY_ART[u.kind]) {
+        if (u.owner !== 'P' && u.owner !== 'A') return u.kind;
         return u.kind + '-' + (u.owner === 'A' ? 'a' : 'p') + '-' + G.tunicOf(u.owner);
+      }
       return u.kind;
     }
     return 'villager-' + (u.owner === 'A' ? 'a' : 'p') + '-' + G.tunicOf(u.owner) +
@@ -6858,13 +6896,21 @@ const R = {
     if (!ua) return null;
     const pose = this.unitPose(u);
     let face = this.unitFacing(u);
+    /* A HULL HOLDS ITS HEADING. Every facing correction below is written
+       for people — turn to your mark, never show the camera your back.
+       A boat is not a person: it points where it last SAILED, because a
+       multi-ton hull snapping through the compass every time its target
+       circles reads as a toy, and its shot line is drawn to the target
+       regardless. So naval kinds keep the honest displacement facing
+       through combat and work alike. */
+    const afloat = typeof Units !== 'undefined' && Units.isNaval && Units.isNaval(u);
     // A FIGHTER FACES WHAT IT FIGHTS (operator report: a champion battering
     // a wall while looking due south). Combat facing derives from the live
     // TARGET, not from the last displacement — a duel tracks a circling
     // enemy, an archer turns with its mark, a wall-batterer squares up to
     // the wall. Honest facing, deliberately un-clamped: backs are correct
     // in combat when the enemy stands north.
-    if (pose === 'fight' || pose === 'guard') {
+    if (!afloat && (pose === 'fight' || pose === 'guard')) {
       let tx = null, ty = null;
       if (u.tUnit) { const ft = Units.get(u.tUnit); if (ft) { tx = ft.x; ty = ft.y; } }
       else if (u.tBld && typeof Bld !== 'undefined') {
@@ -6876,7 +6922,7 @@ const R = {
           face = this.FACE8[((Math.round(Math.atan2(fdy, fdx) / (Math.PI / 4)) % 8) + 8) % 8];
       }
     }
-    if (this.WORK_TURN[pose]) {
+    if (this.WORK_TURN[pose] && !afloat) {
       // a BUILDER faces his site, full stop — the operator's ruling: for
       // construction the PHYSICS win, a back turned to the camera is fine
       // when the site stands north (a mallet pointed away from the site
@@ -6944,6 +6990,8 @@ const R = {
   workLean(u) {
     if (typeof Bld === 'undefined') return null;
     if (!(u.task && u.task.type === 'build') && !u.tBld) return null;   // the cheap common case
+    // a hull never leans onto a building footprint — that padded ring is LAND
+    if (Units.isNaval && Units.isNaval(u)) return null;
     let b = null;
     const pose = this.unitPose(u);
     if (u.task && u.task.type === 'build') {
@@ -7013,7 +7061,10 @@ const R = {
          for sharp dwells) and sweeps quickly through the transitions —
          the same shape serves the wolf scenting the air and the bear's
          sway. Walks and fights stay on the straight clock. */
-      if (this._sheetPose === 'idle') {
+      // …but water never dwells: a boat's idle is a bob, and a bob that
+      // plateaus reads as running aground. Hulls ride the straight clock.
+      if (this._sheetPose === 'idle' &&
+          !(typeof Units !== 'undefined' && Units.isNaval && Units.isNaval(u))) {
         // 4×, not arbitrary: the double sin-warp's peak phase speed is 4×
         // its average, so a 4×-length cycle swings the head at EXACTLY the
         // walk-clock tempo it always had — only the holds got long.
@@ -7607,8 +7658,10 @@ const R = {
         g.globalAlpha = 1;
       } else {
         // sheet units get the renderer's shadow; the procedural cast has
-        // its own baked in and must never receive a second (sheetUnit)
-        if (this.sheetUnit(u)) this.drawUnitShadow(g, u, wx, wy);
+        // its own baked in and must never receive a second (sheetUnit).
+        // Naval sheets bake their own WATER shadow — a ground ellipse
+        // under a hull reads as a sandbar, so boats are skipped too.
+        if (this.sheetUnit(u) && !Units.isNaval(u)) this.drawUnitShadow(g, u, wx, wy);
         g.drawImage(this.unitSprite(u), ux, uy, B, B);
       }
       if (u.cargo && u.cargo.length) {                 // one pip per soldier aboard
@@ -7904,6 +7957,43 @@ const R = {
       if (fs > 2)
         Assets.drawSprite(g, 'misc/flameSmall/' + ((beat + i) % 4),
           px - fs / 2, py - fs * 0.85, { w: fs, h: fs });
+    }
+
+    // ---- bombard blasts: an expanding shockwave ring for the first beat,
+    // then a lingering scorch (or a fading ripple on water) ----
+    for (let i = this.blasts.length - 1; i >= 0; i--) {
+      const bl = this.blasts[i];
+      bl.t += dt;
+      const k = bl.t / this.BLAST_LIFE;
+      if (k >= 1) { this.blasts.splice(i, 1); continue; }
+      const px = bl.x * TL, py = bl.y * TL;
+      if (bl.t < 0.12) {                                 // the first instant: a hot flash
+        const fk = bl.t / 0.12;
+        g.globalAlpha = 0.85 * (1 - fk);
+        g.fillStyle = '#fff3d6';
+        const fr2 = TL * (0.28 + fk * 0.5);
+        g.beginPath(); g.ellipse(px, py, fr2, fr2 * 0.7, 0, 0, Math.PI * 2); g.fill();
+      }
+      if (bl.t < 0.45) {                                 // the poof ring
+        const rk = bl.t / 0.45;
+        const rad = TL * (0.3 + rk * 1.1);
+        g.globalAlpha = 0.55 * (1 - rk);
+        g.strokeStyle = bl.wet ? '#e4f2f8' : '#cfc4ae'; g.lineWidth = 3 - rk * 2;
+        g.beginPath(); g.ellipse(px, py, rad, rad * 0.62, 0, 0, Math.PI * 2); g.stroke();
+      }
+      if (!bl.wet) {                                     // the crater scorch, fading out
+        g.globalAlpha = 0.5 * (1 - k);
+        g.fillStyle = '#241a10';
+        g.beginPath(); g.ellipse(px, py, TL * 0.42, TL * 0.26, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#3d2f1e';
+        g.beginPath(); g.ellipse(px + 3, py + 2, TL * 0.24, TL * 0.14, 0, 0, Math.PI * 2); g.fill();
+      } else if (bl.t >= 0.3 && k < 0.7) {               // ripple rings on water
+        g.globalAlpha = 0.3 * (1 - k / 0.7);
+        g.strokeStyle = '#dceef4'; g.lineWidth = 1.5;
+        const rr = TL * (0.3 + k * 0.9);
+        g.beginPath(); g.ellipse(px, py, rr, rr * 0.55, 0, 0, Math.PI * 2); g.stroke();
+      }
+      g.globalAlpha = 1;
     }
 
     // ---- impact particles: dust/debris fall & shrink, embers & smoke rise ----

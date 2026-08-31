@@ -568,7 +568,7 @@ const CFG = {
        (hp 150, def 1, speed 1.6): a Fire Warship eats it. aggro 0 so it never
        chases; it fires when ordered, and on watch inside its own range. */
     bombard:   { name: 'Bombard Ship',  hp: 150, atk: 5,  def: 1, speed: 1.6, aggro: 0, naval: true,
-                 rng: 7.5, vision: 9, cdMult: 4.0, bldAtk: 190, proj: 'stone' },
+                 rng: 7.5, vision: 9, cdMult: 4.0, bldAtk: 190, proj: 'stone', projFx: 'blast' },
     // siege engines: slow, deliberate, decisive. The catapult lobs boulders
     // (bldAtk vs structures, cdMult stretches its reload); the siege tower
     // carries no weapon — parked on an enemy wall it ferries one nearby
