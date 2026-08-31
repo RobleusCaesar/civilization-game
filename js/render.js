@@ -6827,7 +6827,20 @@ const R = {
     if (!ua) return null;
     const pose = this.unitPose(u);
     let face = this.unitFacing(u);
-    if (this.WORK_TURN[pose]) face = this.AWAY_TO_FRONT[face] || face;
+    if (this.WORK_TURN[pose]) {
+      // a BUILDER faces his site — the work object is known and visible,
+      // so the swing lands on it (same operator report as the wall-lean)…
+      if (pose === 'build' && u.task && u.task.type === 'build' && typeof Bld !== 'undefined') {
+        const wb = Bld.get(u.task.id);
+        if (wb) {
+          const bdx = Bld.cx(wb) - u.x, bdy = Bld.cy(wb) - u.y;
+          if (bdx * bdx + bdy * bdy > 0.01)
+            face = this.FACE8[((Math.round(Math.atan2(bdy, bdx) / (Math.PI / 4)) % 8) + 8) % 8];
+        }
+      }
+      // …but never shows the player his back (the standing rule)
+      face = this.AWAY_TO_FRONT[face] || face;
+    }
     const d = ua.dirs[face] || ua.dirs.s;
     if (!d) return null;
     // the sheet's own pose first; a missing pose borrows sensibly
@@ -6857,6 +6870,37 @@ const R = {
      box is bottom-aligned where the 32px box has always ended, so the
      extra size rises and widens from the feet and a bigger animal never
      floats or sinks. */
+  /* THE BUILDER STANDS AT THE WALL (operator report, day 120): the sim
+     accepts a working spot anywhere inside ~1.55+reach of the site — the
+     right rule for crowds and pathing — but a mallet swung from the
+     middle of the next tile reads as striking air. So the DRAW leans:
+     a unit playing the build pose renders at the nearest point just
+     outside its site's footprint (capped, so a far worker leans rather
+     than teleports), while the sim position, taps and combat stay
+     exactly where they were. Returns the draw position or null. */
+  workLean(u) {
+    if (!u.task || u.task.type !== 'build') return null;
+    if (typeof Bld === 'undefined') return null;
+    const b = Bld.get(u.task.id);
+    if (!b) return null;
+    if (this.unitPose(u) !== 'build') return null;    // still walking up: no lean
+    const sz = (Bld.def(b.key) && Bld.def(b.key).size) || 1;
+    const pad = 0.38;                                  // sprite centre just off the wall
+    const x0 = b.x - pad, y0 = b.y - pad, x1 = b.x + sz + pad, y1 = b.y + sz + pad;
+    let lx = Math.max(x0, Math.min(u.x, x1));
+    let ly = Math.max(y0, Math.min(u.y, y1));
+    if (lx > x0 && lx < x1 && ly > y0 && ly < y1) {
+      // standing inside the padded ring (a site tile): push OUT the short way
+      const dl_ = Math.min(lx - x0, x1 - lx), dr_ = Math.min(ly - y0, y1 - ly);
+      if (dl_ <= dr_) lx = (lx - x0 < x1 - lx) ? x0 : x1;
+      else ly = (ly - y0 < y1 - ly) ? y0 : y1;
+    }
+    const dx = lx - u.x, dy = ly - u.y, dl = Math.hypot(dx, dy);
+    if (dl < 0.05) return null;                        // already at the wall
+    const CAP = 1.35;
+    if (dl > CAP) { lx = u.x + dx / dl * CAP; ly = u.y + dy / dl * CAP; }
+    return { x: lx, y: ly };
+  },
   unitBox(u) {
     const b = window.Assets && Assets.UNIT_BOX && Assets.UNIT_BOX[u.kind];
     return (b && this.sheetUnit(u)) ? b : CFG.TILE;
@@ -6864,11 +6908,11 @@ const R = {
   // the shadow itself: a flat ellipse at the feet, in the same ink and
   // alpha the procedural beasts use, so a sheet animal and a drawn one
   // sit on the ground identically (scaled with the kind's draw box)
-  drawUnitShadow(g, u) {
+  drawUnitShadow(g, u, wx, wy) {
     const TL = CFG.TILE, s = this.unitBox(u) / TL;
     g.fillStyle = 'rgba(20,16,10,0.26)';
     g.beginPath();
-    g.ellipse(u.x * TL, u.y * TL + 11, 8 * s, 3 * s, 0, 0, Math.PI * 2);
+    g.ellipse((wx != null ? wx : u.x) * TL, (wy != null ? wy : u.y) * TL + 11, 8 * s, 3 * s, 0, 0, Math.PI * 2);
     g.fill();
   },
 
@@ -7424,10 +7468,14 @@ const R = {
       // B: the kind's draw box (unitBox). Bottom edges align across sizes —
       // for B === TILE these are exactly the coordinates they always were.
       const B = this.unitBox(u);
-      const ux = u.x * TL - B / 2, uy = u.y * TL + TL / 2 - CFG.SPRITE_LIFT - B;
+      // a builder leans to his site's wall at draw time (workLean); the sim
+      // position — taps, combat, pathing — stays exactly where it was
+      const lean = this.workLean(u);
+      const wx = lean ? lean.x : u.x, wy = lean ? lean.y : u.y;
+      const ux = wx * TL - B / 2, uy = wy * TL + TL / 2 - CFG.SPRITE_LIFT - B;
       if (selIds && selIds.has(u.id)) {
         g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;
-        g.beginPath(); g.ellipse(u.x * TL, u.y * TL + 10, 10, 5, 0, 0, Math.PI * 2); g.stroke();
+        g.beginPath(); g.ellipse(wx * TL, wy * TL + 10, 10, 5, 0, 0, Math.PI * 2); g.stroke();
       }
       // draw every unit into a TILE-sized box: 32px sheets render 1:1 (unchanged),
       // while the hi-res 64px villager sheet shows at the SAME size but twice as crisp
@@ -7484,7 +7532,7 @@ const R = {
       } else {
         // sheet units get the renderer's shadow; the procedural cast has
         // its own baked in and must never receive a second (sheetUnit)
-        if (this.sheetUnit(u)) this.drawUnitShadow(g, u);
+        if (this.sheetUnit(u)) this.drawUnitShadow(g, u, wx, wy);
         g.drawImage(this.unitSprite(u), ux, uy, B, B);
       }
       if (u.cargo && u.cargo.length) {                 // one pip per soldier aboard

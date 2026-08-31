@@ -281,6 +281,36 @@ const out = await p.evaluate(() => {
     S.units = S.units.filter(z => z !== u);
   }
 
+  /* ---- 5c. BUILDERS LEAN TO THE WALL (operator report, day 120): a unit
+     playing the build pose DRAWS at the nearest point just outside its
+     site's footprint — capped, sim position untouched — and FACES the
+     site (front-clamped, the standing no-backs rule). ---- */
+  {
+    const u = Units.spawn('villager', 'P', 10, 10);
+    const tc = Bld.tcOf('P');           // any real building works as the site
+    // stand the builder 1 tile west of the hall's west wall, mid-height
+    u.x = tc.x - 1.4; u.y = tc.y + 1; u.path = null;
+    u.task = { type: 'build', id: tc.id };
+    const realPose = R.unitPose; R.unitPose = () => 'build';
+    const lean = R.workLean(u);
+    R.unitPose = realPose;
+    ck('theBuilderLeansToTheWall',
+      !!lean && Math.abs(lean.x - (tc.x - 0.38)) < 0.01 && Math.abs(lean.y - u.y) < 0.01,
+      lean ? lean.x.toFixed(2) + ',' + lean.y.toFixed(2) + ' vs wall at ' + (tc.x - 0.38).toFixed(2) : 'no lean');
+    // far away the lean is capped, not a teleport
+    u.x = tc.x - 4; const realPose2 = R.unitPose; R.unitPose = () => 'build';
+    const far = R.workLean(u);
+    R.unitPose = realPose2;
+    ck('aFarLeanIsCappedNotATeleport',
+      !!far && Math.hypot(far.x - u.x, far.y - u.y) <= 1.36,
+      far ? 'lean of ' + Math.hypot(far.x - u.x, far.y - u.y).toFixed(2) : 'no lean');
+    // a non-build task never leans
+    u.task = { type: 'gather', res: 'wood' };
+    ck('onlyBuildersLean', R.workLean(u) === null, '');
+    u.task = null;
+    S.units = S.units.filter(z => z !== u);
+  }
+
   /* ---- 6. fps rides the VARIANT key — the procedural cast keeps its 4fps ---- */
   {
     const c = document.createElement('canvas');
