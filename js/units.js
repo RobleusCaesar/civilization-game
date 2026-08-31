@@ -1800,9 +1800,42 @@ const Units = {
     return null;
   },
   spook(u, tx, ty) { u.spookT = 2.2 + Math.random() * 1.6; u.spookX = tx; u.spookY = ty; },
+  /* EVERY ANIMAL KEEPS ITS OWN TILE (the stacked-deer report: three heads
+     rounding onto one square read as a rendering glitch, not a herd). A
+     step target is refused when another of the SAME KIND already stands
+     on it — position, not path-goal, which is cheap and settles within a
+     breath — and an animal that finds itself SHARING a tile steps off to
+     the nearest open neighbour before doing anything else. Overlap in
+     motion (a panic, a crossing) stays legal; standing overlap does not. */
+  wildCrowded(u, tx, ty) {
+    for (const o of S.units) {
+      if (o === u || !this.isWild(o) || o.kind !== u.kind) continue;
+      if (Math.abs(o.x - (tx + 0.5)) < 0.75 && Math.abs(o.y - (ty + 0.5)) < 0.75) return o;
+    }
+    return null;
+  },
+  wildUnstack(u) {
+    let mate = null;
+    for (const o of S.units) {
+      if (o === u || !this.isWild(o) || o.kind !== u.kind) continue;
+      // the ELDER stands its ground; only the junior of a sharing pair moves
+      if (Math.hypot(o.x - u.x, o.y - u.y) < 0.5 && o.id < u.id) { mate = o; break; }
+    }
+    if (!mate) return false;
+    const a0 = Math.random() * Math.PI * 2;
+    for (let k = 0; k < 8; k++) {
+      const aa = a0 + k * (Math.PI / 4);
+      const tx = Math.round(u.x + Math.cos(aa) * 1.5), ty = Math.round(u.y + Math.sin(aa) * 1.5);
+      if (tx < 1 || ty < 1 || tx >= CFG.W - 1 || ty >= CFG.H - 1) continue;
+      if (!Path.passable(tx, ty) || this.wildCrowded(u, tx, ty)) continue;
+      if (this.setPath(u, tx, ty)) return true;
+    }
+    return false;
+  },
   wildIdle(u, dt) {
     if (this.isPassive(u)) return this.grazeIdle(u, dt);
     if (this.moving(u)) { this.followPath(u, dt); return; }
+    if (this.wildUnstack(u)) return;          // two wolves never share a stand
     u.wanderT -= dt;
     if (u.wanderT <= 0) {
       u.wanderT = 2 + Math.random() * 4;
@@ -1819,16 +1852,20 @@ const Units = {
       }
       const tx = (u.x | 0) + ((Math.random() * 9) | 0) - 4;
       const ty = (u.y | 0) + ((Math.random() * 9) | 0) - 4;
-      if (Path.passable(tx, ty) && !this.townBldNear(tx, ty)) this.setPath(u, tx, ty);
+      if (Path.passable(tx, ty) && !this.townBldNear(tx, ty) &&
+          !this.wildCrowded(u, tx, ty)) this.setPath(u, tx, ty);
     }
   },
   grazeIdle(u, dt) {
-    // already bolting — keep running until the fright wears off
+    // already bolting — keep running until the fright wears off. The bolt
+    // FANS: each animal jitters its own flee line, so a herd that panics
+    // off one tile spreads as it runs instead of landing restacked
     if (u.spookT > 0) {
       u.spookT -= dt;
       if (this.moving(u)) { this.followPath(u, dt); return; }
       const ax = u.x - u.spookX, ay = u.y - u.spookY, d = Math.hypot(ax, ay) || 1;
-      const tx = Math.round(u.x + ax / d * 6), ty = Math.round(u.y + ay / d * 6);
+      const tx = Math.round(u.x + ax / d * 6 + (Math.random() - 0.5) * 3);
+      const ty = Math.round(u.y + ay / d * 6 + (Math.random() - 0.5) * 3);
       if (!Path.passable(tx, ty) || !this.setPath(u, tx, ty)) u.spookT = 0;
       return;
     }
@@ -1854,6 +1891,7 @@ const Units = {
       }
     }
     if (this.moving(u)) { this.followPath(u, dt); return; }
+    if (this.wildUnstack(u)) return;   // three heads on one square is a glitch, not a herd
     // grazing: short steps on the herd's breath (see the note above)
     u.wanderT -= dt;
     if (u.wanderT > 0) return;
@@ -1919,6 +1957,7 @@ const Units = {
       const ty = Math.round(cy + Math.sin(aa) * r + (Math.random() - 0.5));
       if (tx < 1 || ty < 1 || tx >= CFG.W - 1 || ty >= CFG.H - 1) continue;
       if (foreigner(tx, ty)) continue;
+      if (this.wildCrowded(u, tx, ty)) continue;      // a herd-mate's stand is taken
       if (n && this.townBldNear(tx, ty)) continue;    // a herd gives a town its ground (TOWN_SHY)
       if (!Path.passable(tx, ty) || !this.setPath(u, tx, ty)) continue;
       if (lead === u) u.roamA = aa; else u.herdA = aa;

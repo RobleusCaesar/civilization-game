@@ -142,6 +142,34 @@ const out = await p.evaluate(async () => {
     ck('theRosterListsTheDeer', !!Assets.UNIT_ART.deer, 'first character-class kind');
   }
 
+  // ---- 4b. the wild keeps its spacing (the stacked-deer report) ----
+  {
+    Screens._demo = false;
+    G.newGame('aa-stack', 'moderate', 'medium');
+    S.paused = true;
+    // pile three deer and two wolves onto single tiles, then let them live
+    const tc = Bld.tcOf('P');
+    const spot = MapGen.findNear(tc.x + 8, tc.y + 8, 12, (x, y) => Path.passable(x, y));
+    const pile = [];
+    for (let i = 0; i < 3; i++) { const d = Units.spawn('deer', 'W', spot.x + 0.5, spot.y + 0.5); if (d) { d.x = spot.x + 0.5; d.y = spot.y + 0.5; pile.push(d); } }
+    // the wolves pile 9 tiles off — near enough to test their own unstacking,
+    // far enough that the deer are not held in perpetual panic
+    for (let i = 0; i < 2; i++) { const d = Units.spawn('wolf', 'W', spot.x + 9.5, spot.y + 0.5); if (d) { d.x = spot.x + 9.5; d.y = spot.y + 0.5; pile.push(d); } }
+    for (let t = 0; t < 60; t++) Units.update(0.4);   // 24 simulated seconds of wild life
+    let shared = 0;
+    for (const a of pile) for (const b2 of pile) {
+      if (a === b2 || a.kind !== b2.kind || a.id >= b2.id) continue;
+      if ((a.x | 0) === (b2.x | 0) && (a.y | 0) === (b2.y | 0)) shared++;
+    }
+    ck('noTwoOfAKindShareATile', shared === 0,
+      'three stacked deer and two stacked wolves spread to their own ground (' + shared + ' still sharing)');
+    // …and a wander target another of the kind stands on is refused outright
+    const a2 = pile[0], b3 = pile[1];
+    if (a2 && b3) ck('aTakenStandIsRefused',
+      Units.wildCrowded(a2, b3.x | 0, b3.y | 0) === b3 &&
+      Units.wildCrowded(a2, 1, 1) === null, '');
+  }
+
   // ---- 5. the SHIPPED art, inspected structurally (tainted on file://) ----
   {
     Assets.unitArt = bootArt;

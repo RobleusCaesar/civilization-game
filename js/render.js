@@ -6704,7 +6704,16 @@ const R = {
     const pose = this.unitPose(u);
     // the sheet's own pose first; a missing pose borrows sensibly
     // (fight falls to walk — motion — and gather-ish poses to idle)
-    return d[pose] || (pose === 'fight' ? d.walk : d.idle) || d.walk || d.idle || null;
+    const fr = d[pose] || (pose === 'fight' ? d.walk : d.idle) || d.walk || d.idle || null;
+    /* A STATIONARY POSE BORROWED FROM THE WALK IS HELD, NOT PLAYED (the
+       stuck-cow report: her graze sheets ship after the generation reset,
+       and until then a standing cow cycling her walk read as "walking
+       into the shed and never turning"). Motion poses may borrow motion;
+       a standing animal on borrowed legs stands still. */
+    if (fr && fr === d.walk && !d[pose] && pose !== 'fight' && pose !== 'walk')
+      this._sheetHold = true;
+    else this._sheetHold = false;
+    return fr;
   },
   sheetUnit(u) { return !!this.sheetFrames(u); },
   // the shadow itself: a flat ellipse at the feet, in the same ink and
@@ -6726,6 +6735,7 @@ const R = {
        restores the procedural cast untouched. */
     const fr2 = this.sheetFrames(u);
     if (fr2 && fr2.length) {
+      if (this._sheetHold) return fr2[0];   // standing on borrowed walk legs: hold the stance
       const fps2 = (Sprites.animFps && Sprites.animFps[u.kind]) || 8;
       return fr2[((u.animT * fps2) | 0) % fr2.length];
     }
