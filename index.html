@@ -952,12 +952,11 @@
   .oflavor { font-size: 8.5px; color: var(--dim); font-style: italic; text-align: center;
     line-height: 1.25; margin-top: auto; }
   #draftHint { min-height: 16px; margin: 0; }
-  /* the world's name — shown at the arrival moment (draft) and on pause */
-  #draftWorld, #pauseWorld {
+  /* the world's name — shown at the arrival moment (draft) */
+  #draftWorld {
     margin: 0; min-height: 15px; font-size: 12px; font-weight: 800;
     color: var(--gold); text-align: center; letter-spacing: 0.4px;
   }
-  #pauseWorld { margin: -12px 0 16px; }
 
   /* ---- the DIFFICULTY CARDS (scrNewgame) — cut from the origin cards'
      plank: same width, same aspect, same face. Each carries only an icon,
@@ -1370,7 +1369,6 @@
         <img id="pauseLogoArt" src="assets/ui/pause-logo.png" alt="PAUSED" decoding="async"
              onload="if(this.naturalWidth)document.getElementById('scrPaused').classList.add('hasPauseLogo')">
         <h2 class="pauseTitle">PAUSED</h2>
-        <p id="pauseWorld"></p>
         <div class="mrow"><button class="abtn big gold" id="btnPauseResume">Resume</button></div>
         <div class="trow2">
           <button class="abtn big" id="btnPauseSave">Save</button>
@@ -1382,7 +1380,7 @@
         </div>
         <div class="trow2 trow3">
           <button class="abtn" id="btnResign">Resign</button>
-          <button class="abtn" id="btnQuitTitle">Quit to title</button>
+          <button class="abtn" id="btnQuitTitle">Menu</button>
         </div>
       </div>
     </div>

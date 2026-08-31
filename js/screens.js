@@ -665,12 +665,10 @@ const Screens = {
   onPaused() {
     this.backTo = 'paused';
     if (window.S) S.paused = true;
-    // the world's name lives under the plaque — the pause menu is where a
-    // player asks "where am I again?"
-    const wn = this.worldLabel();
-    this.el('pauseWorld').textContent = wn ? '🗺 ' + wn : '';
+    // no world-name line here (operator: the landform label is not always
+    // an accurate read of the map, and the wordmark carries the screen)
     const q = this.el('btnQuitTitle');
-    q.textContent = 'Quit to title';
+    q.textContent = 'Menu';
     q.classList.remove('danger');
     const r = this.el('btnResign');
     if (r) { r.textContent = 'Resign'; r.classList.remove('danger'); }
