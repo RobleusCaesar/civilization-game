@@ -6812,15 +6812,29 @@ const R = {
       if (this._sheetHold) return fr2[0];   // standing on borrowed walk legs: hold the stance
       // fps by the SHEET's key (villager variants carry their own rate;
       // the 2-frame procedural villager below keeps its own 4fps default)
-      let fps2 = (Sprites.animFps && (Sprites.animFps[this._sheetKey] || Sprites.animFps[u.kind])) || 8;
-      /* THE IDLE BREATHES, IT DOESN'T CYCLE (operator report: deer heads
-         bobbing every second "like they're tweaking out"). animFps is
-         derived from the WALK — a full stride per 0.9s — and the graze
-         sheet inherited it, so a 12-frame head-down-head-up ran once a
-         second. A standing animal takes its cycle at a third the walk's
-         tempo: the deer's graze now spans ~2.7s, a wolf scents the air
-         unhurried, the bear sways slow. Walks and fights are untouched. */
-      if (this._sheetPose === 'idle') fps2 = Math.max(3, fps2 / 3);
+      const fps2 = (Sprites.animFps && (Sprites.animFps[this._sheetKey] || Sprites.animFps[u.kind])) || 8;
+      /* THE IDLE DWELLS AND SNAPS (two operator reports, one lesson).
+         First report: the walk-derived rate ran the 12-frame graze once a
+         second — "like they're tweaking out". A flat 3× slowdown answered
+         it and earned the second report: now the HEAD RISES in slow
+         motion. What reads natural is neither: an animal HOLDS its poses
+         and MOVES between them — long head-down eating, long head-up
+         watching, and the swing between at the old quick tempo. So the
+         idle runs on a warped clock: a 3×-length cycle whose phase
+         plateaus at its two opposite poses (the sin-warp, applied twice
+         for sharp dwells) and sweeps quickly through the transitions —
+         the same shape serves the wolf scenting the air and the bear's
+         sway. Walks and fights stay on the straight clock. */
+      if (this._sheetPose === 'idle') {
+        // 4×, not arbitrary: the double sin-warp's peak phase speed is 4×
+        // its average, so a 4×-length cycle swings the head at EXACTLY the
+        // walk-clock tempo it always had — only the holds got long.
+        const cyc = (fr2.length / fps2) * 4;
+        let ph = (u.animT % cyc) / cyc;
+        const w = (x) => x - Math.sin(4 * Math.PI * x) / (4 * Math.PI);
+        ph = w(w(ph));
+        return fr2[Math.min(fr2.length - 1, (ph * fr2.length) | 0)];
+      }
       return fr2[((u.animT * fps2) | 0) % fr2.length];
     }
     let sheet;
