@@ -209,6 +209,16 @@ const ART = (function () {
      Draws the darkest ink shade into transparent pixels adjacent to opaque
      ones. Run ONCE at sprite build time (cheap at 32×32), never per frame. */
   function outline(canvas, width) {
+    /* IDEMPOTENT, by tag. The blanket every-unit-frame outline pass in
+       sprites.js walks Sprites.unit — and Sprites.unit.villager is an
+       ALIAS of Sprites.villager.blue, whose frames framesU had already
+       outlined. The second pass saw its own ink (alpha 204 > the 96
+       threshold) as body and drew a ring around the ring: every run
+       where the player rolled blue shipped double-outlined villagers
+       and soldiers while the other eight tunics stayed clean. One ink
+       ring, ever, whoever calls. */
+    if (canvas._cfOutlined) return canvas;
+    canvas._cfOutlined = true;
     width = width || 1;                                  // 2 for high-res (64px) building canvases
     const g = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;

@@ -3589,6 +3589,7 @@ const R = {
   },
   onNewGame() {
     this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
+    this._vTier = null;                                          // villager tiers recompute from THIS run's Town Centers
     this._mtn = null; this._mtnKey = '';                         // re-trace the mountain regions for the new map
     this._mtnH = null;                                           // …and their height field (the same fact)
     this._mtnArt = null; this._mtnLayerKey = ''; this._mtnCover = null;     // …and the art they were drawn into
@@ -6709,8 +6710,39 @@ const R = {
      procedural frames, which carry a baked shadow. Gating on "the kind
      has some art" then painted a second shadow under it for the length
      of the load. Returns the frame list or null; both callers use it. */
+  /* VILLAGER TIERS (the tier overhaul, phase 1): a villager's appearance
+     tier derives from its owner's Town Center level — resolved through a
+     TABLE (Assets.VILLAGER_TIER_BY_TC), never hardcoded, so tiers can lag
+     or lead the TC later. Cached per owner; Bld.finishUpgrade and
+     R.onNewGame drop the cache, so an upgrade re-skins every villager on
+     the map the same frame and a loaded save recomputes from its TC. */
+  villagerTier(owner) {
+    const c = this._vTier || (this._vTier = {});
+    if (c[owner]) return c[owner];
+    // typeof, not window.: Bld is a script-level const (the same trap G,
+    // Sprites and MapGen carry — window.Bld is undefined)
+    const tc = typeof Bld !== 'undefined' && Bld.tcOf(owner);
+    const lv = (tc && tc.level) || 1;
+    const tbl = (window.Assets && Assets.VILLAGER_TIER_BY_TC) || {};
+    return c[owner] = tbl[lv] || 1;
+  },
+  /* the key a unit's sheet art resolves under. Every kind is its own key —
+     except the villager, whose art varies by (faction, tier, gender):
+     villager-{p|a}-l{tier}-{m|f}. ONE key function feeds sheetFrames, so
+     the sprite and the shadow gate can never disagree (the deer's lesson,
+     pinned in tests/animal-art.mjs). */
+  unitArtKey(u) {
+    if (u.kind !== 'villager') return u.kind;
+    return 'villager-' + (u.owner === 'A' ? 'a' : 'p') +
+      '-l' + this.villagerTier(u.owner) + (u.female ? '-f' : '-m');
+  },
   sheetFrames(u) {
-    const ua = window.Assets && Assets.unitArt && Assets.unitArt[u.kind];
+    // the variant key first, then the kind's own plain slot (a villager
+    // with no tiered art yet falls through to the procedural cast below)
+    const key = this.unitArtKey(u);
+    const ua = window.Assets && Assets.unitArt &&
+      (Assets.unitArt[key] || Assets.unitArt[u.kind]);
+    this._sheetKey = (window.Assets && Assets.unitArt && Assets.unitArt[key]) ? key : u.kind;
     if (!ua) return null;
     const d = ua.dirs[this.unitFacing(u)] || ua.dirs.s;
     if (!d) return null;
@@ -6758,7 +6790,9 @@ const R = {
     const fr2 = this.sheetFrames(u);
     if (fr2 && fr2.length) {
       if (this._sheetHold) return fr2[0];   // standing on borrowed walk legs: hold the stance
-      const fps2 = (Sprites.animFps && Sprites.animFps[u.kind]) || 8;
+      // fps by the SHEET's key (villager variants carry their own rate;
+      // the 2-frame procedural villager below keeps its own 4fps default)
+      const fps2 = (Sprites.animFps && (Sprites.animFps[this._sheetKey] || Sprites.animFps[u.kind])) || 8;
       return fr2[((u.animT * fps2) | 0) % fr2.length];
     }
     let sheet;

@@ -228,7 +228,7 @@ promotes it to master. The masters:
 | ------------------------------- | -------------------------------------- |
 | Buildings / camps / relics      | `assets/masters/camp-wolf-192.png`     |
 | Animals (and later characters)  | `assets/masters/animal-deer-60.png` (the native-density stag — FROZEN; doubles as the character-class camera master). The earlier 96px master was RETIRED, not referenced: it carried the flaws this one fixes (mid-brown body barely separated from grass, bone-white 1px antler filigree that aliased into specks). Retire and replace, never chain off a piece you are correcting. |
-| The bear (its own strips only)  | `assets/masters/animal-bear-84.png` — the bear's OWN identity master (84×89 content on a 96 canvas, feet at y=91), itself anchored to the stag at generation time. Referenced only for bear poses; every OTHER animal still anchors to the stag. Lesson recorded: pro `reference_images` pull IDENTITY (a 16-candidate batch labelled "style master" came back all deer) — anchor a NEW species with `style_image_url` + `style_copy: [outline, detail, shading]` (never color_palette: each species keeps its own hue), and size the canvas so the model's natural ~75% subject ratio lands the content where you need it, because "fill the frame" prompting does nothing. |
+| The bear (its own strips only)  | `assets/masters/animal-bear-84.png` — the bear's OWN identity master (84×89 content on a 96 canvas, feet at y=91), itself anchored to the stag at generation time. Referenced only for bear poses; every OTHER animal still anchors to the stag. Lesson recorded: pro `reference_images` pull IDENTITY (a 16-candidate batch labelled "style master" came back all deer) — anchor a NEW species with `style_image_url` + `style_copy: [outline, detail, shading]` (never color_palette: each species keeps its own hue), and size the canvas so the model's natural ~75% subject ratio lands the content where you need it, because "fill the frame" prompting does nothing. And THE CANVAS IS THE SIZE CONTROL for v3 rotation too: the rotation redraws at its own preferred fill of the reference CANVAS and ignores how small the content sits inside it (a 76px guide on a 96 canvas came back 90 wide with clipped edges) — a shrink-guide must be a SMALLER FILE (`animal-bear-ref84c.png`, 84×84), exactly why the wolf's ref54 was a 54px file. |
 
 **2. THE CAMERA REFERENCE MUST BE CLASS-MATCHED.**
 `https://clanfire.online/assets/buildings/tc-l3.png` is the camera
@@ -282,6 +282,42 @@ pixel is ever resampled.
 shadow into every frame; sheet units get one from the renderer instead
 (`R.sheetUnit` gates `R.drawUnitShadow` — the gate exists so the existing
 cast never gets a second shadow under its first).
+
+## Villager tiers: the recolor law (settled BEFORE the art sprint)
+
+Villager appearance tier derives from the owner's Town Center level
+(`Assets.VILLAGER_TIER_BY_TC` — a table, so tiers may lag or lead later),
+resolved per (faction, tier, gender) through `R.unitArtKey` → the ONE
+sheet resolver. Files are authored NEUTRAL as
+`assets/units/unit-villager-l{tier}-{m|f}-{dir}-{pose}.png` and installed
+per faction with the tunic recolor baked once at load
+(`Assets.loadVillagerArt` → `Assets.recolorTunic`).
+
+**THE MECHANISM IS DESIGNATED PALETTE KEYS** (chosen over a mask layer —
+which doubles the file count — and over per-color pre-bakes — 9 tunics
+would ×9 it): the tunic in every hand-authored villager frame wears the
+blue tunic's EXACT two-color ramp, and at install those two values (and
+only those) are swapped to the faction's rolled ramp. Proven lossless
+against the procedural cast itself before any art was generated:
+recolorTunic(blue procedural sheet → red) is byte-identical to the
+procedurally-drawn red sheet (tests/villager-tiers.mjs
+`theRecolorIsLossless`).
+
+**THE HARD AUTHORING CONSTRAINT this buys:**
+- The tunic region is EXACTLY two flat colors: body `#3f6d99`, accent
+  `#2c4e70` (`Assets.TUNIC_KEY`). No third shade, no gradient, no
+  anti-aliasing into neighbors — a computed in-between shade will not
+  recolor and will read as dirt on every non-blue faction.
+- Those two hex values may appear NOWHERE else in the frame — never on
+  skin, hair, tools, eyes or shadow. QC must verify exclusivity before
+  install (count key pixels, eyeball where they sit).
+- The tunic must wear this same ramp IN THE SAME ROLE across all six
+  masters (3 tiers × 2 genders) — body as the garment's lit face, accent
+  as its shade — or the recolor reads differently per tier.
+- Generated art must be POST-PROCESSED to snap near-ramp pixels to the
+  exact key values (the pipeline already snaps alpha hard-binary; the
+  tunic snap rides the same pass). The composer's hard-binary-alpha
+  contract also makes the recolor's canvas round-trip exact.
 
 **THE CONTRAST DOCTRINE (character class — every animal, and the villagers
 when their turn comes).** This is the rule that actually made the deer

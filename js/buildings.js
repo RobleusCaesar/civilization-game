@@ -1216,6 +1216,16 @@ const Bld = {
     if (b.owner === 'P' && S.stats) S.stats.upgrades = (S.stats.upgrades || 0) + 1;
     const lv = this.lv(b);
     b.maxhp = lv.hp; b.hp = lv.hp;
+    /* THE LIVE RE-SKIN (villager tiers): a hall reaching a new level
+       re-dresses its people ON THE MAP, this frame — not just new spawns.
+       This is the single choke point where a Town Center's level ever
+       rises, so the tier cache drops here and the new tier's sheets are
+       asked for; every villager resolves the new key on its next draw
+       (there is no per-unit sprite cache to invalidate — measured). */
+    if (b.key === 'tc') {
+      if (window.R) R._vTier = null;
+      if (window.Assets && Assets.loadVillagerArt) Assets.loadVillagerArt(b.owner);
+    }
     if (b.owner === 'P') {
       G.log(`${this.def(b.key).name} reached Lv ${b.level}!`);
       if (lv.vision) G.reveal(b.x, b.y, lv.vision);

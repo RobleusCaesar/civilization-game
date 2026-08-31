@@ -495,6 +495,65 @@ const Assets = {
      density as the rest of the cast, just a genuinely bigger animal on
      the map. Operator-approved before the bear was built. */
   UNIT_BOX: { bear: 48 },
+  /* ---- VILLAGER TIERS (phase 1 plumbing; the art arrives in phase 2) ----
+     Appearance tier by Town Center level — a TABLE, deliberately, so tiers
+     can lag or lead the TC later without touching the resolver. */
+  VILLAGER_TIER_BY_TC: { 1: 1, 2: 2, 3: 3 },
+  VILLAGER_POSES: ['idle', 'walk', 'gather', 'mine', 'farm', 'build', 'guard'],
+  /* THE RECOLOR KEY RAMP. Hand-authored villager sheets are authored
+     NEUTRAL, wearing the blue tunic's exact two-color ramp — and at load
+     time those two colors (and only those) are swapped to the faction's
+     rolled tunic ramp. Designated palette indices, not a mask layer and
+     not per-color pre-bakes: zero extra files, one lossless pass per
+     canvas, memoized per faction exactly like Sprites.militaryFor.
+     HARD AUTHORING CONSTRAINT (ART_PLAN): these two hex values may
+     appear NOWHERE in a villager frame except the tunic itself — never
+     on skin, hair, tools or shadow — and the tunic must wear this same
+     ramp in every master, or the recolor reads differently per tier. */
+  TUNIC_KEY: { body: '#3f6d99', accent: '#2c4e70' },
+  recolorTunic(canvas, tunic) {
+    // typeof, never window.: Sprites is a script-level const (the trap
+    // setUnitFrames below already documents — window.Sprites is undefined)
+    const t = typeof Sprites !== 'undefined' && Sprites.tunicCol && Sprites.tunicCol[tunic];
+    if (!t || tunic === 'blue') return canvas;         // blue IS the key — nothing to swap
+    const hx = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+    const kb = hx(this.TUNIC_KEY.body), ka = hx(this.TUNIC_KEY.accent);
+    const nb = hx(t.body), na = hx(t.accent);
+    const g = canvas.getContext('2d');
+    let d;
+    try { d = g.getImageData(0, 0, canvas.width, canvas.height); }
+    catch (e) { return canvas; }                       // tainted (file://) — recolor is a no-op there
+    const p = d.data;
+    for (let i = 0; i < p.length; i += 4) {
+      if (!p[i + 3]) continue;
+      if (p[i] === kb[0] && p[i + 1] === kb[1] && p[i + 2] === kb[2]) { p[i] = nb[0]; p[i + 1] = nb[1]; p[i + 2] = nb[2]; }
+      else if (p[i] === ka[0] && p[i + 1] === ka[1] && p[i + 2] === ka[2]) { p[i] = na[0]; p[i + 1] = na[1]; p[i + 2] = na[2]; }
+    }
+    g.putImageData(d, 0, 0);
+    return canvas;
+  },
+  /* fetch one faction's tier art: NEUTRAL files on disk
+     (unit-villager-l{tier}-{m|f}-{dir}-{pose}.png), installed under the
+     faction's own key (villager-{p|a}-l{tier}-{m|f}) with the tunic ramp
+     swapped to the faction's rolled color. Called when the tunics are
+     known (new game / load) and again when a Town Center levels up. A
+     missing file is the default state — the procedural villager stands. */
+  loadVillagerArt(owner) {
+    // typeof guards — G is a script-level const (window.G is undefined)
+    if (!window.R || typeof G === 'undefined') return;
+    const tier = R.villagerTier(owner);
+    const fac = owner === 'A' ? 'a' : 'p';
+    const tunic = G.tunicOf(owner);
+    for (const sex of ['m', 'f']) for (const dir of this.UNIT_DIRS8) for (const pose of this.VILLAGER_POSES) {
+      const key = 'villager-' + fac + '-l' + tier + '-' + sex;
+      if (this.unitArt[key] && this.unitArt[key].dirs[dir] && this.unitArt[key].dirs[dir][pose]) continue;
+      const img = new Image();
+      img.onload = () => { this.setUnitFrames(key, dir, pose, img, tunic); };
+      img.onerror = () => {};
+      img.src = this.UNIT_DIR + 'unit-villager-l' + tier + '-' + sex + '-' + dir + '-' + pose +
+        '.png?v=' + (CFG.ART_V || 1);
+    }
+  },
   unitArt: {},
   unitStem(kind, dir, pose) { return 'unit-' + kind + '-' + dir + '-' + pose; },
   unitUrl(kind, dir, pose) {
@@ -506,7 +565,7 @@ const Assets = {
     img.onerror = () => {};                    // absent art is the default state
     img.src = this.unitUrl(kind, dir, pose);
   },
-  setUnitFrames(kind, dir, pose, img) {
+  setUnitFrames(kind, dir, pose, img, tunic) {
     if (!img || !img.height) return false;
     const fh = img.height, n = Math.floor(img.width / fh);
     if (n < 1 || img.width !== n * fh) {
@@ -524,7 +583,9 @@ const Assets = {
       const c = document.createElement('canvas');
       c.width = fh; c.height = fh;
       c.getContext('2d').drawImage(img, i * fh, 0, fh, fh, 0, 0, fh, fh);
-      frames.push(c);
+      // villager variants bake their faction's tunic at install — once,
+      // here, and never again (the recolor-exactly-once rule)
+      frames.push(tunic ? this.recolorTunic(c, tunic) : c);
     }
     const ua = this.unitArt[kind] || (this.unitArt[kind] = { dirs: {} });
     const d = ua.dirs[dir] || (ua.dirs[dir] = {});
