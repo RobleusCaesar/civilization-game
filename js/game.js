@@ -304,9 +304,10 @@ const G = {
     this.warmTribes();
     // villager tier art for both halls, now the tunics are rolled (phase-1:
     // every probe 404s and the procedural cast stands — that is the design)
-    if (window.R) R._vTier = null;
+    if (window.R) { R._vTier = null; R._sTier = null; }
     Assets.loadVillagerArt('P'); Assets.loadVillagerArt('A');
     Assets.loadMilitaryArt('P'); Assets.loadMilitaryArt('A');
+    Assets.loadSapperArt('P'); Assets.loadSapperArt('A');
     // seed the homestead memory QUIETLY: a town that starts or loads already
     // bonded keeps its bonus without celebrating bonds it has had for days
     Bld.syncHomesteads(true);
@@ -1975,6 +1976,7 @@ const G = {
     // Town Centers (onNewGame just dropped the cache) and re-asks for art
     Assets.loadVillagerArt('P'); Assets.loadVillagerArt('A');
     Assets.loadMilitaryArt('P'); Assets.loadMilitaryArt('A');
+    Assets.loadSapperArt('P'); Assets.loadSapperArt('A');
     // seed the homestead memory QUIETLY: a town that loads already bonded keeps
     // its bonus without celebrating bonds it has had for a hundred days
     Bld.syncHomesteads(true);

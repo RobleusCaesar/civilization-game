@@ -1226,6 +1226,12 @@ const Bld = {
       if (window.R) R._vTier = null;
       if (window.Assets && Assets.loadVillagerArt) Assets.loadVillagerArt(b.owner);
     }
+    // …and a Sappers' Camp reaching a new level re-dresses its engineers
+    // the same way (the sapper tier reads the owner's best finished camp)
+    if (b.key === 'sapper') {
+      if (window.R) R._sTier = null;
+      if (window.Assets && Assets.loadSapperArt) Assets.loadSapperArt(b.owner);
+    }
     if (b.owner === 'P') {
       G.log(`${this.def(b.key).name} reached Lv ${b.level}!`);
       if (lv.vision) G.reveal(b.x, b.y, lv.vision);

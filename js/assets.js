@@ -589,6 +589,31 @@ const Assets = {
       img.src = this.UNIT_DIR + 'unit-' + kind + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1);
     }
   },
+  /* ---- SAPPER TIER ART: villager doctrine, camp-leveled, no sex axis ----
+     Neutral files unit-sapper-l{tier}-{dir}-{pose}.png install under
+     sapper-{p|a}-{tunic}-l{tier}. The four terraform crafts ship the four
+     CARDINAL directions only — the sim always stands a working sapper on
+     a 4-edge neighbor facing straight at its tile — while walk/idle ship
+     all eight. Called beside the other loaders and again when a Sappers'
+     Camp finishes an upgrade. */
+  SAPPER_POSE_DIRS: { idle: ['s','se','e','ne','n','nw','w','sw'],
+                      walk: ['s','se','e','ne','n','nw','w','sw'],
+                      dig: ['s','e','n','w'], bridge: ['s','e','n','w'],
+                      clear: ['s','e','n','w'], mound: ['s','e','n','w'] },
+  loadSapperArt(owner) {
+    if (!window.R || typeof G === 'undefined') return;
+    const tier = R.sapperTier(owner);
+    const fac = owner === 'A' ? 'a' : 'p';
+    const tunic = G.tunicOf(owner);
+    const key = 'sapper-' + fac + '-' + tunic + '-l' + tier;
+    for (const pose in this.SAPPER_POSE_DIRS) for (const dir of this.SAPPER_POSE_DIRS[pose]) {
+      if (this.unitArt[key] && this.unitArt[key].dirs[dir] && this.unitArt[key].dirs[dir][pose]) continue;
+      const img = new Image();
+      img.onload = () => { this.setUnitFrames(key, dir, pose, img, tunic); };
+      img.onerror = () => {};                  // absent art is the default state
+      img.src = this.UNIT_DIR + 'unit-sapper-l' + tier + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1);
+    }
+  },
   unitArt: {},
   unitStem(kind, dir, pose) { return 'unit-' + kind + '-' + dir + '-' + pose; },
   unitUrl(kind, dir, pose) {

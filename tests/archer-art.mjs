@@ -166,6 +166,49 @@ const out = await p.evaluate(() => {
     S.units = S.units.filter(z => z !== e && z !== foe && z !== m);
   }
 
+  /* ---- 5e. the SAPPER: tiers by its camp, four crafts by job, faces
+     its tile (physics-first), and the procedural rig folds the four
+     crafts back onto its 'work' swing ---- */
+  {
+    const sp = Units.spawn('sapper', 'P', 20, 20); sp.x = 20.5; sp.y = 20.5; sp.path = null;
+    ck('theSapperTiersByItsCamp', R.sapperTier('P') === 1 && R.unitArtKey(sp) === 'sapper-p-' + G.tunicOf('P') + '-l1',
+      R.unitArtKey(sp));
+    // a finished camp at level 3 lifts the tier once the cache drops
+    const camp = { id: 999901, key: 'sapper', owner: 'P', x: 5, y: 5, level: 3, hp: 560, maxhp: 560, construction: 0, upgrading: 0 };
+    S.buildings.push(camp);
+    R._sTier = null;
+    ck('aLeveledCampReskinsTheCorps', R.sapperTier('P') === 3 && R.unitArtKey(sp).endsWith('-l3'), R.unitArtKey(sp));
+    S.buildings = S.buildings.filter(b => b !== camp); R._sTier = null;
+    // the four crafts, by job — and bridgeup shares the bridge craft
+    const poses = {};
+    for (const job of ['dig', 'bridge', 'bridgeup', 'clear', 'mound']) {
+      sp.task = { type: 'terraform', job, x: 21, y: 20, sx: 20, sy: 20 };
+      poses[job] = R.unitPose(sp);
+    }
+    ck('fourCraftsByJob',
+      poses.dig === 'dig' && poses.bridge === 'bridge' && poses.bridgeup === 'bridge' &&
+      poses.clear === 'clear' && poses.mound === 'mound', JSON.stringify(poses));
+    // facing: the tile due EAST resolves the e sheet, un-clamped physics
+    const skey = R.unitArtKey(sp);
+    const strip = document.createElement('canvas');
+    strip.width = 96 * 4; strip.height = 96;
+    strip.getContext('2d').fillRect(0, 0, strip.width, strip.height);
+    for (const dir of ['s', 'e', 'n', 'w']) Assets.setUnitFrames(skey, dir, 'dig', strip, G.tunicOf('P'));
+    Assets.setUnitFrames(skey, 's', 'walk', strip, G.tunicOf('P'));
+    sp.task = { type: 'terraform', job: 'dig', x: 21, y: 20, sx: 20, sy: 20 };
+    R._faceMap.set(sp, { x: sp.x, y: sp.y, dir: 's' });
+    const ua = Assets.unitArt[skey];
+    let fr = R.sheetFrames(sp), hitE = null;
+    for (const dk in ua.dirs) for (const pk in ua.dirs[dk]) if (ua.dirs[dk][pk] === fr) hitE = dk + '.' + pk;
+    sp.task.x = 20; sp.task.y = 19;                    // tile due NORTH: physics wins
+    fr = R.sheetFrames(sp); let hitN = null;
+    for (const dk in ua.dirs) for (const pk in ua.dirs[dk]) if (ua.dirs[dk][pk] === fr) hitN = dk + '.' + pk;
+    ck('theSapperFacesItsTile', hitE === 'e.dig' && hitN === 'n.dig', hitE + ' / ' + hitN);
+    Assets.removeUnitArt(skey);
+    sp.task = null;
+    S.units = S.units.filter(z => z !== sp);
+  }
+
   /* ---- 6. fire-arrow strikes pool, capped, and drain on expiry ---- */
   {
     R.arrowFires.length = 0;

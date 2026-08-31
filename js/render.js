@@ -3590,6 +3590,7 @@ const R = {
   onNewGame() {
     this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
     this._vTier = null;                                          // villager tiers recompute from THIS run's Town Centers
+    this._sTier = null;                                          // …and sapper tiers from its Sappers' Camps
     this._mtn = null; this._mtnKey = '';                         // re-trace the mountain regions for the new map
     this._mtnH = null;                                           // …and their height field (the same fact)
     this._mtnArt = null; this._mtnLayerKey = ''; this._mtnCover = null;     // …and the art they were drawn into
@@ -6716,7 +6717,14 @@ const R = {
       if (t.type === 'gather')                                   // tool by resource
         return t.res === 'stone' ? 'mine' : t.res === 'food' ? 'farm' : 'gather';  // wood → axe (gather)
       if (t.type === 'build') return 'build';
-      if (t.type === 'terraform') return u.kind === 'sapper' ? 'work' : 'build';   // pick swing at the dig
+      if (t.type === 'terraform') {
+        // the sapper's craft, by JOB (the operator's four): trench-digging,
+        // bridge-laying (reinforcement shares it), clearing, mound-raising.
+        // TERRA_POSE also gates the sited tile-facing in sheetFrames, and
+        // the procedural fallback folds all four back onto its 'work' swing.
+        if (u.kind !== 'sapper') return 'build';
+        return this.TERRA_POSE[t.job] || 'dig';
+      }
       if (t.type === 'work') {                                   // stationed at a workplace → its craft
         const wb = Bld.get(t.id), k = wb && wb.key;
         return (k === 'quarry' || k === 'mine') ? 'mine' : k === 'farm' ? 'farm'
@@ -6780,6 +6788,21 @@ const R = {
     const tbl = (window.Assets && Assets.VILLAGER_TIER_BY_TC) || {};
     return c[owner] = tbl[lv] || 1;
   },
+  /* SAPPER TIER — appearance by the owner's best finished Sappers' Camp
+     (the operator's "one character per building level"). Same doctrine as
+     the villager tier: derived, cached, never stored; the cache drops on
+     new game / load (onNewGame) and when a camp finishes an upgrade
+     (Bld.finishUpgrade). No camp still resolves 1 — a living sapper
+     implies a camp existed, and the L1 look is the honest default. */
+  sapperTier(owner) {
+    const c = this._sTier || (this._sTier = {});
+    if (c[owner]) return c[owner];
+    let lv = 1;
+    if (typeof Bld !== 'undefined' && window.S && S.buildings)
+      for (const b of S.buildings)
+        if (b.key === 'sapper' && b.owner === owner && Bld.done(b) && (b.level || 1) > lv) lv = b.level;
+    return c[owner] = Math.min(3, lv);
+  },
   /* the key a unit's sheet art resolves under. Every kind is its own key —
      except the villager, whose art varies by (faction, TUNIC, tier,
      gender): villager-{p|a}-{tunic}-l{tier}-{m|f}. THE TUNIC IS IN THE
@@ -6793,6 +6816,10 @@ const R = {
      (the deer's lesson, pinned in tests/animal-art.mjs). */
   unitArtKey(u) {
     if (u.kind !== 'villager') {
+      // the sapper tiers by its camp like the villager tiers by its hall
+      if (u.kind === 'sapper')
+        return 'sapper-' + (u.owner === 'A' ? 'a' : 'p') + '-' + G.tunicOf(u.owner) +
+          '-l' + this.sapperTier(u.owner);
       // military kinds with sheet art resolve per (faction, tunic) — the
       // same recolor law and the same tunic-in-key staleness armor as the
       // villagers. An owner with no tunic (a raider save oddity) builds a
@@ -6815,8 +6842,12 @@ const R = {
      plain walking keep their honest facing; a spear thrust at the
      camera while the enemy stands behind you would be worse than a
      back. */
-  WORK_TURN: { gather: 1, mine: 1, farm: 1, build: 1, work: 1 },
+  WORK_TURN: { gather: 1, mine: 1, farm: 1, build: 1, work: 1,
+               dig: 1, bridge: 1, clear: 1, mound: 1 },
   AWAY_TO_FRONT: { n: 's', ne: 'e', nw: 'w' },
+  // terraform job → sheet pose (bridgeup reinforces a span: same craft)
+  TERRA_POSE: { dig: 'dig', bridge: 'bridge', bridgeup: 'bridge', clear: 'clear', mound: 'mound' },
+  TERRA_POSES: { dig: 1, bridge: 1, clear: 1, mound: 1 },
   sheetFrames(u) {
     // the variant key first, then the kind's own plain slot (a villager
     // with no tiered art yet falls through to the procedural cast below)
@@ -6859,6 +6890,16 @@ const R = {
             face = this.FACE8[((Math.round(Math.atan2(bdy, bdx) / (Math.PI / 4)) % 8) + 8) % 8];
             sited = true;
           }
+        }
+      }
+      // a SAPPER faces the tile it reshapes — same physics ruling. The sim
+      // already stands it on a 4-edge neighbor leaning in, so this facing
+      // is always an exact cardinal: the four work sheets ship n/e/s/w only.
+      if (this.TERRA_POSES[pose] && u.task && u.task.type === 'terraform') {
+        const tdx = u.task.x + 0.5 - u.x, tdy = u.task.y + 0.5 - u.y;
+        if (tdx * tdx + tdy * tdy > 0.01) {
+          face = this.FACE8[((Math.round(Math.atan2(tdy, tdx) / (Math.PI / 4)) % 8) + 8) % 8];
+          sited = true;
         }
       }
       if (!sited) face = this.AWAY_TO_FRONT[face] || face;
@@ -7000,7 +7041,10 @@ const R = {
       const mil = Sprites.militaryFor && Sprites.militaryFor(G.tunicOf(u.owner));
       sheet = (mil && mil[u.kind]) || Sprites.unit[u.kind] || Sprites.unit.villager;
     }
-    const up = this.unitPose(u);   // once — the pose gate does real work now
+    let up = this.unitPose(u);   // once — the pose gate does real work now
+    // the four terraform crafts exist only on the sapper's hand-drawn
+    // sheets; the procedural rig folds them back onto its 'work' swing
+    if (this.TERRA_POSES[up] && !sheet[up] && sheet.work) up = 'work';
     const pose = sheet[up] ? up : (sheet.walk ? 'walk' : 'idle');
     const fr = sheet[pose];
     // beasts run their longer cycles faster than a villager's four frames a

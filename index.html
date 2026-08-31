@@ -404,6 +404,17 @@
   #scrPaused .pauseMenu { width: min(340px, 90vw); margin: auto;
     padding: calc(var(--safe-top) + 6px) 0 calc(env(safe-area-inset-bottom) + 6px); }
   #scrPaused .pauseMenu .mrow, #scrPaused .pauseMenu .trow2 { margin-bottom: 11px; }
+  /* THE PAUSE WORDMARK IS SWAPPABLE BY FILENAME, exactly like the title's:
+     drop assets/ui/pause-logo.png in and it replaces the type on a
+     successful decode — authored art wins, the carved type is the
+     fallback, never both. It sits where the type sat, one size down from
+     the title logo, wearing the same drop shadow so the two menus read
+     as one hand. */
+  #pauseLogoArt { display: none; width: min(280px, 76vw); height: auto; margin: 0 auto 16px;
+    image-rendering: pixelated;
+    filter: drop-shadow(0 4px 0 rgba(20,12,4,0.55)) drop-shadow(0 10px 18px rgba(0,0,0,0.5)); }
+  #scrPaused.hasPauseLogo #pauseLogoArt { display: block; }
+  #scrPaused.hasPauseLogo .pauseTitle { display: none; }
   /* the word PAUSED is cut from the same block as the wordmark, one size down */
   #scrPaused .pauseTitle {
     font-family: var(--pxfont); font-weight: 500; font-size: 34px; letter-spacing: 1px;
@@ -1356,6 +1367,8 @@
   <div class="screen" id="scrPaused">
     <div class="sbody">
       <div class="pauseMenu plaques">
+        <img id="pauseLogoArt" src="assets/ui/pause-logo.png" alt="PAUSED" decoding="async"
+             onload="if(this.naturalWidth)document.getElementById('scrPaused').classList.add('hasPauseLogo')">
         <h2 class="pauseTitle">PAUSED</h2>
         <p id="pauseWorld"></p>
         <div class="mrow"><button class="abtn big gold" id="btnPauseResume">Resume</button></div>
