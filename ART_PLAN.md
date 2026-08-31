@@ -332,6 +332,37 @@ back-to-camera for the whole task). Two fixes, one per layer:
   honest facing. Pinned in tests/villager-tiers.mjs
   (`workersTurnToFaceThePlayer`).
 
+**THE TOOL MUST BE NAMED, AND THE TOOL ZOO BANNED BY NAME** (the
+woodcutting rebuild, operator round 3): "a small crude stone hand-axe"
+let the generator draw a PLUNGER on the l3 woman, a red mallet and a
+pickaxe on the l3 man, and unidentifiable blobs elsewhere — and a
+worker whose "axe" looks like a mallet is indistinguishable from the
+honest build pose (repair, station upgrade), which is exactly what the
+operator reported as a bug. The gather spec that ships: 12 frames, a
+full arc named phase by phase ("low carry at the thigh, up across the
+chest, wind-up with the blade just above the shoulder, strike at knee
+height straight out in front"), the tool described positively ("a wide
+flat pale stone wedge blade on a short brown wooden haft") AND the
+alternatives banned by name ("never a mallet, hammer, pickaxe, sickle
+or club"). Expect the full arc to blow the 64px window sideways on
+~1-2 directions per character (65-70px measured) — the compact fallback
+rung ("stubby... never reaching further forward than the knees", then
+"tool head never passing beyond the elbows") recovers each for 1 gen.
+
+**PIXELLAB OPS TRAPS (all hit in one session):** (1) the server DEDUPES
+an animate_character call with an identical action_description — a
+re-fire after a silent truncation returns "already queued or complete"
+and renders nothing; VARY THE WORDING to force a real re-render. (2)
+5-direction groups can silently truncate (arrive with 1-3 dirs at the
+wrong frame count) — count frames in the bundle, never trust the job
+list. (3) a character's `/download` bundle can serve a STALE zip while
+the character itself already holds the frames — `get_character` lists
+per-direction frame URLs (`animations/{animId}/{dir}/{n}.png`); download
+those and inject them into a local bundle copy (finish-villager.ps1
+`-LocalBundle`). (4) when duplicate animation names collide, the bundle
+disambiguates folders as `{name}-{groupid8}` — which no longer matches
+the `_{pose}[0-9]$` override regex; rename inside the local bundle.
+
 ## Villager tiers: the recolor law (settled BEFORE the art sprint)
 
 Villager appearance tier derives from the owner's Town Center level
