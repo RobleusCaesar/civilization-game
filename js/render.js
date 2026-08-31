@@ -6827,19 +6827,41 @@ const R = {
     if (!ua) return null;
     const pose = this.unitPose(u);
     let face = this.unitFacing(u);
+    // A FIGHTER FACES WHAT IT FIGHTS (operator report: a champion battering
+    // a wall while looking due south). Combat facing derives from the live
+    // TARGET, not from the last displacement — a duel tracks a circling
+    // enemy, an archer turns with its mark, a wall-batterer squares up to
+    // the wall. Honest facing, deliberately un-clamped: backs are correct
+    // in combat when the enemy stands north.
+    if (pose === 'fight' || pose === 'guard') {
+      let tx = null, ty = null;
+      if (u.tUnit) { const ft = Units.get(u.tUnit); if (ft) { tx = ft.x; ty = ft.y; } }
+      else if (u.tBld && typeof Bld !== 'undefined') {
+        const fb = Bld.get(u.tBld); if (fb) { tx = Bld.cx(fb); ty = Bld.cy(fb); }
+      }
+      if (tx != null) {
+        const fdx = tx - u.x, fdy = ty - u.y;
+        if (fdx * fdx + fdy * fdy > 0.01)
+          face = this.FACE8[((Math.round(Math.atan2(fdy, fdx) / (Math.PI / 4)) % 8) + 8) % 8];
+      }
+    }
     if (this.WORK_TURN[pose]) {
-      // a BUILDER faces his site — the work object is known and visible,
-      // so the swing lands on it (same operator report as the wall-lean)…
+      // a BUILDER faces his site, full stop — the operator's ruling: for
+      // construction the PHYSICS win, a back turned to the camera is fine
+      // when the site stands north (a mallet pointed away from the site
+      // is what's wrong). Only siteless work keeps the no-backs clamp.
+      let sited = false;
       if (pose === 'build' && u.task && u.task.type === 'build' && typeof Bld !== 'undefined') {
         const wb = Bld.get(u.task.id);
         if (wb) {
           const bdx = Bld.cx(wb) - u.x, bdy = Bld.cy(wb) - u.y;
-          if (bdx * bdx + bdy * bdy > 0.01)
+          if (bdx * bdx + bdy * bdy > 0.01) {
             face = this.FACE8[((Math.round(Math.atan2(bdy, bdx) / (Math.PI / 4)) % 8) + 8) % 8];
+            sited = true;
+          }
         }
       }
-      // …but never shows the player his back (the standing rule)
-      face = this.AWAY_TO_FRONT[face] || face;
+      if (!sited) face = this.AWAY_TO_FRONT[face] || face;
     }
     const d = ua.dirs[face] || ua.dirs.s;
     if (!d) return null;
@@ -6879,11 +6901,21 @@ const R = {
      than teleports), while the sim position, taps and combat stay
      exactly where they were. Returns the draw position or null. */
   workLean(u) {
-    if (!u.task || u.task.type !== 'build') return null;
     if (typeof Bld === 'undefined') return null;
-    const b = Bld.get(u.task.id);
+    if (!(u.task && u.task.type === 'build') && !u.tBld) return null;   // the cheap common case
+    let b = null;
+    const pose = this.unitPose(u);
+    if (u.task && u.task.type === 'build') {
+      if (pose !== 'build') return null;              // still walking up: no lean
+      b = Bld.get(u.task.id);
+    } else if (u.tBld && !CFG.UNITS[u.kind].rng && (pose === 'fight' || pose === 'guard')) {
+      // a MELEE attacker squares up to the wall it batters (operator report:
+      // a champion swinging from the middle of the next tile). Ranged kinds
+      // are excluded on purpose — their arrows spawn at the sim position,
+      // and a leaned archer would loose from behind its own sprite.
+      b = Bld.get(u.tBld);
+    }
     if (!b) return null;
-    if (this.unitPose(u) !== 'build') return null;    // still walking up: no lean
     const sz = (Bld.def(b.key) && Bld.def(b.key).size) || 1;
     const pad = 0.38;                                  // sprite centre just off the wall
     const x0 = b.x - pad, y0 = b.y - pad, x1 = b.x + sz + pad, y1 = b.y + sz + pad;

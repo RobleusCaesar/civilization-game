@@ -124,6 +124,48 @@ const out = await p.evaluate(() => {
     S.units = S.units.filter(z => z !== e && z !== d && z !== v);
   }
 
+  /* ---- 5d. a fighter FACES what it fights: combat facing derives from
+     the live target (unit or building), not the last displacement ---- */
+  {
+    const strip = document.createElement('canvas');
+    strip.width = 96 * 4; strip.height = 96;
+    strip.getContext('2d').fillRect(0, 0, strip.width, strip.height);
+    for (const dir of Assets.UNIT_DIRS8)
+      for (const pose of ['idle', 'walk', 'fight'])
+        Assets.setUnitFrames('elite-p-' + G.tunicOf('P'), dir, pose, strip, G.tunicOf('P'));
+    // spawn SLIDES to valid ground — position explicitly after spawning
+    const e = Units.spawn('elite', 'P', 40, 40); e.x = 40; e.y = 40; e.path = null;
+    const foe = Units.spawn('brute', 'R', 41, 40); foe.hp = 9999; foe.x = 41; foe.y = 40;
+    e.tUnit = foe.id;
+    R._faceMap.set(e, { x: e.x, y: e.y, dir: 's' });   // displacement says south
+    const key = 'elite-p-' + G.tunicOf('P');
+    const ua = Assets.unitArt[key];
+    const resolveDir = () => {
+      const fr = R.sheetFrames(e);
+      for (const dk in ua.dirs) for (const pk in ua.dirs[dk]) if (ua.dirs[dk][pk] === fr) return dk + '.' + pk;
+      return null;
+    };
+    const east = resolveDir();                          // foe due east
+    foe.x = 40; foe.y = 39;                             // foe circles due north
+    const north = resolveDir();
+    ck('aFighterFacesItsFoe', east === 'e.fight' && north === 'n.fight',
+      east + ' then ' + north + ' as the foe circles');
+    const atc = Bld.tcOf('A');
+    e.tUnit = 0; e.tBld = atc.id;
+    // stand just inside the melee building gate, read from the real reach
+    e.x = Bld.cx(atc) - (1.5 + Bld.reach(atc) - 0.2); e.y = Bld.cy(atc);
+    const atWall = resolveDir();
+    ck('aBattererSquaresUpToTheWall', atWall === 'e.fight', atWall + ' vs the hall due east');
+    // …and the melee batterer LEANS to the wall; a ranged one never does
+    const lean = R.workLean(e);
+    const m = Units.spawn('marksman', 'P', e.x, e.y); m.tBld = e.tBld;
+    ck('theBattererLeansTheArcherDoesNot', !!lean && R.workLean(m) === null,
+      lean ? 'melee leans ' + Math.hypot(lean.x - e.x, lean.y - e.y).toFixed(2) : 'no melee lean');
+    e.tBld = 0; m.tBld = 0;
+    Assets.removeUnitArt(key);
+    S.units = S.units.filter(z => z !== e && z !== foe && z !== m);
+  }
+
   /* ---- 6. fire-arrow strikes pool, capped, and drain on expiry ---- */
   {
     R.arrowFires.length = 0;
