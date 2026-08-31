@@ -16,7 +16,10 @@ const T = {
 
 const CFG = {
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 10,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 11,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+                       // v11: the mine-pose rebuild (l3-f all five visible dirs +
+                       // four other characters' worst rows) re-uploads villager
+                       // strips under the same names.
                        // v10: the woodcutting rebuild — gather strips for l1-m/f,
                        // l3-m/f and l2-f re-upload under the same names (the l3-f
                        // "axe" was authored as a mallet, half the cycles froze on
