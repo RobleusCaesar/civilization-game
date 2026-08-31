@@ -16,7 +16,11 @@ const T = {
 
 const CFG = {
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 9,            // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 10,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+                       // v10: the woodcutting rebuild — gather strips for l1-m/f,
+                       // l3-m/f and l2-f re-upload under the same names (the l3-f
+                       // "axe" was authored as a mallet, half the cycles froze on
+                       // two poses, and tools hung behind backs and legs).
                        // v9: the L1 woman rebuilt (operator: the first read as male)
                        // — her strips re-upload under the same names, and the bump
                        // also flushes any 404 a browser cached for the -f probes in
