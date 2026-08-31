@@ -1197,6 +1197,7 @@ const Units = {
   moving(u) { return u.path && u.pathI < u.path.length; },
 
   update(dt) {
+    this._frame = (this._frame || 0) + 1;          // frame stamp — Combat.repathOk's budget resets on it
     this.herdClock = (this.herdClock || 0) + dt;   // the shared slow beat every herd breathes to
     for (let i = S.units.length - 1; i >= 0; i--) {
       const u = S.units[i];

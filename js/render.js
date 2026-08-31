@@ -6762,6 +6762,7 @@ const R = {
     // the sheet's own pose first; a missing pose borrows sensibly
     // (fight falls to walk — motion — and gather-ish poses to idle)
     const fr = d[pose] || (pose === 'fight' ? d.walk : d.idle) || d.walk || d.idle || null;
+    this._sheetPose = (fr && fr === d.idle) ? 'idle' : pose;   // what actually resolved (for the idle tempo)
     /* A STATIONARY POSE BORROWED FROM THE WALK IS HELD, NOT PLAYED (the
        stuck-cow report: her graze sheets ship after the generation reset,
        and until then a standing cow cycling her walk read as "walking
@@ -6811,7 +6812,15 @@ const R = {
       if (this._sheetHold) return fr2[0];   // standing on borrowed walk legs: hold the stance
       // fps by the SHEET's key (villager variants carry their own rate;
       // the 2-frame procedural villager below keeps its own 4fps default)
-      const fps2 = (Sprites.animFps && (Sprites.animFps[this._sheetKey] || Sprites.animFps[u.kind])) || 8;
+      let fps2 = (Sprites.animFps && (Sprites.animFps[this._sheetKey] || Sprites.animFps[u.kind])) || 8;
+      /* THE IDLE BREATHES, IT DOESN'T CYCLE (operator report: deer heads
+         bobbing every second "like they're tweaking out"). animFps is
+         derived from the WALK — a full stride per 0.9s — and the graze
+         sheet inherited it, so a 12-frame head-down-head-up ran once a
+         second. A standing animal takes its cycle at a third the walk's
+         tempo: the deer's graze now spans ~2.7s, a wolf scents the air
+         unhurried, the bear sways slow. Walks and fights are untouched. */
+      if (this._sheetPose === 'idle') fps2 = Math.max(3, fps2 / 3);
       return fr2[((u.animT * fps2) | 0) % fr2.length];
     }
     let sheet;

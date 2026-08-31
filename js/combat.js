@@ -598,7 +598,7 @@ const Combat = {
         const threat = this.nearestUnit(eng.x, eng.y, this.SIEGE_PROTECT + 1.5,
           o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
         if (threat && this.canReach(u, threat.x, threat.y, 1.6)) { u.tUnit = threat.id; return; }
-        if (ed > 3.5) { if (u.repathT <= 0) { u.repathT = 0.8; Units.setPath(u, eng.x | 0, eng.y | 0); } }
+        if (ed > 3.5) { if (this.repathOk(u)) { u.repathT = 0.8; Units.setPath(u, eng.x | 0, eng.y | 0); } }
         else u.path = null;   // in position — stand with the guns
         return;
       }
@@ -1000,7 +1000,30 @@ const Combat = {
     }
   },
 
+  /* THE REPATH BUDGET (a real endgame freeze): an army ordered onto the
+     rival's hall acquires its building mark in the same scan, so sixty
+     soldiers' 0.8s repath timers expired on the same beat — sixty A*
+     calls in one frame, ~17ms on desktop and a rhythmic freeze on the
+     phone, every 0.8 seconds for the length of the assault. The budget
+     caps repaths per frame; a unit past its timer that misses the budget
+     simply goes next frame — and because each unit's NEXT expiry is 0.8s
+     after the repath it actually got, one burst through the budget
+     de-synchronizes the whole army permanently. Cadence per unit is
+     unchanged; the per-frame worst case is capped. */
+  REPATH_BUDGET: 6,
+  repathOk(u) {
+    if (u.repathT > 0) return false;
+    // self-resetting on the Units.update frame stamp: raiderSeek spends
+    // from this budget during the UNITS phase, before update() below runs
+    const f = (typeof Units !== 'undefined' && Units._frame) || 0;
+    if (this._rpFrame !== f) { this._rpFrame = f; this._rpBudget = this.REPATH_BUDGET; }
+    if (this._rpBudget <= 0) return false;   // spike cap — catch it next frame
+    this._rpBudget--;
+    return true;
+  },
+
   update(dt) {
+    this._rpBudget = this.REPATH_BUDGET;
     this.scanT -= dt;
     if (this.scanT <= 0) {
       this.scanT = 0.4; this.acquire();
@@ -1125,7 +1148,7 @@ const Combat = {
               d < 3 && Path.canStep(u.x, u.y, nx, ny, u.owner, Units.domain(u))) {
             u.x = nx; u.y = ny; u.path = null;
           } else {
-            if (u.repathT <= 0) {
+            if (this.repathOk(u)) {
               u.repathT = 0.5; Units.setPath(u, tgt.x | 0, tgt.y | 0);
               // a barbarian — or the rival's soldier — whose quarry slips
               // beyond reach (a crossing fell behind it, the woods regrew
@@ -1201,20 +1224,19 @@ const Combat = {
         // a gate just sat there, forever a hair out of reach, never landing a blow.
         const bReach = Math.max(1.55, CFG.UNITS[u.kind].rng || 0) + Bld.reach(b);
         if (d > bReach) {
-          if (u.repathT <= 0) {
+          if (this.repathOk(u)) {
             u.repathT = 0.8; Units.setPath(u, b.x, b.y);
-            // barbarians that can no longer reach their mark (the bridge they
-            // crossed is gone) give up the siege and leave, not shuffle forever
-            if (u.owner === 'R') {
-              const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x | 0, y: u.y | 0 };
-              if (Math.hypot(end.x + 0.5 - Bld.cx(b), end.y + 0.5 - Bld.cy(b)) > bReach + 0.6) { u.tBld = 0; continue; }
-            } else if (u.owner === 'P' && b.key !== 'wall' && b.key !== 'gate') {
-              // a PLAYER-ordered attack that stalls short of its mark is walled off:
-              // batter the blocking wall/gate open, remembering the real target so
-              // the unit resumes on it once the breach is made. Otherwise footmen
-              // just mill at the wall doing nothing.
-              const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x | 0, y: u.y | 0 };
-              if (Math.hypot(end.x + 0.5 - Bld.cx(b), end.y + 0.5 - Bld.cy(b)) > bReach + 0.6) {
+            const end = u.path && u.path.length ? u.path[u.path.length - 1] : { x: u.x | 0, y: u.y | 0 };
+            const landed = Math.hypot(end.x + 0.5 - Bld.cx(b), end.y + 0.5 - Bld.cy(b)) <= bReach + 0.6;
+            if (!landed) {
+              // barbarians that can no longer reach their mark (the bridge they
+              // crossed is gone) give up the siege and leave, not shuffle forever
+              if (u.owner === 'R') { u.tBld = 0; continue; }
+              if (u.owner === 'P' && b.key !== 'wall' && b.key !== 'gate') {
+                // a PLAYER-ordered attack that stalls short of its mark is walled off:
+                // batter the blocking wall/gate open, remembering the real target so
+                // the unit resumes on it once the breach is made. Otherwise footmen
+                // just mill at the wall doing nothing.
                 const wall = this.nearestBuilding(u.x, u.y, b.owner, bb => bb.key === 'wall' || bb.key === 'gate');
                 if (wall && wall.id !== u.tBld && this.canReach(u, wall.x, wall.y, 1.6 + Bld.reach(wall))) {
                   if (!u.task || u.task.type !== 'attackBld') u.task = { type: 'attackBld' };
@@ -1222,6 +1244,12 @@ const Combat = {
                   continue;   // canReach already set the path to the wall
                 }
               }
+              /* SEALED OFF FOR NOW — and this is the trench freeze: an A*
+                 that cannot land floods the whole reachable region before
+                 giving up, and a sapper's channel cutting the approach put
+                 every stalled attacker on that worst case EVERY 0.8s. Ease
+                 to three beats; the world reopening is caught soon enough. */
+              u.repathT = 2.4;
             }
           }
           Units.followPath(u, dt);
@@ -1260,7 +1288,7 @@ const Combat = {
         const bx = br.x + 0.5, by = br.y + 0.5, d = Math.hypot(bx - u.x, by - u.y);
         const reach = Math.max(1.3, CFG.UNITS[u.kind].rng || 0);
         if (d > reach) {
-          if (u.repathT <= 0) { u.repathT = 0.8; const s = this.tileAdjOpen(br.x, br.y, u.owner); if (s) Units.setPath(u, s.x, s.y); else { u.tBridge = null; continue; } }
+          if (this.repathOk(u)) { u.repathT = 0.8; const s = this.tileAdjOpen(br.x, br.y, u.owner); if (s) Units.setPath(u, s.x, s.y); else { u.tBridge = null; continue; } }
           Units.followPath(u, dt);
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
