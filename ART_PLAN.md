@@ -313,6 +313,25 @@ shadow into every frame; sheet units get one from the renderer instead
 (`R.sheetUnit` gates `R.drawUnitShadow` — the gate exists so the existing
 cast never gets a second shadow under its first).
 
+**TOOLS ARE CARRIED AT THE CHEST, AND WORKERS FACE THE PLAYER** (the
+operator's field report on the shipped set — the wood axe hung beside
+the legs, and a villager who walked north to its tile worked
+back-to-camera for the whole task). Two fixes, one per layer:
+
+- *Generation:* the gather wording that converged — "the axe rises just
+  above the shoulder and chops straight down in front of the chest,
+  stopping at waist height, the axe head never below the waist, elbows
+  tucked". "Never dropping below the waist" alone did NOT hold (half the
+  cycle still dipped to the knees); the shoulder-to-chest arc plus the
+  stubby-tool clause is the rung that works. Use it for every future
+  hand-tool action pose.
+- *Render:* `R.sheetFrames` turns the three away facings to the nearest
+  front-or-profile while a WORK pose plays (n→s, ne→e, nw→w —
+  `R.WORK_TURN`/`R.AWAY_TO_FRONT`); the displacement facing is untouched
+  and returns the moment the unit walks, and combat/walk keep their
+  honest facing. Pinned in tests/villager-tiers.mjs
+  (`workersTurnToFaceThePlayer`).
+
 ## Villager tiers: the recolor law (settled BEFORE the art sprint)
 
 Villager appearance tier derives from the owner's Town Center level
