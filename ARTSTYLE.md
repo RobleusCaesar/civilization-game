@@ -43,6 +43,25 @@ offline static site.
    - L2: better — timber frame, tighter thatch, +decoration, larger
    - L3: refined — stone foundation, wood-shingle roofs, faction banner,
      ember/glow details, largest footprint
+
+8b. **Material vocabulary is TIER-SCOPED for VILLAGER DRESS** (amended on
+    the record for the villager tier overhaul — this deliberately breaks
+    the old blanket "Neolithic only, no metal" reading, but ONLY for what
+    villagers wear; buildings, work-site tools, and military kit keep the
+    standing no-metal / no-sawn-lumber world until amended separately):
+    - **L1 villagers** — hide, fur, rough-spun cloth with a ragged raw
+      hem, cord and sinew; bone/antler/wood ornament only. No visible
+      weave, no leather craft, no metal of any kind.
+    - **L2 villagers** — woven cloth (a visible constructed garment:
+      straight hems, seamed shoulders), worked leather (belt, straps,
+      leg-wraps), fired-clay or bead ornament. Metal enters the world
+      here at RATION SIZE ONLY: a single 1–2px bronze buckle/pin glint,
+      nothing larger. Still no iron.
+    - **L3 villagers** — draped dyed cloth in the Mediterranean civic
+      language (fall of fabric, no waist cinch), leather sandals,
+      dressed hair; bronze at ration size (a fibula/brooch or arm-ring
+      glint, 1–2px each). The refined read comes from DRAPE AND BEARING,
+      never from hardware — no armor, no weapons, still no iron.
 9. **Animation discipline.** Static art is pre-rendered once (terrain to the
    offscreen cache, sprites to canvases at boot). Per-frame drawing is
    reserved for: units, water sparkle/foam overlays, smoke/ember particles,
