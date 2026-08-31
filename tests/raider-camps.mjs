@@ -527,6 +527,46 @@ const out = await p.evaluate(() => {
       'walking into a war band\'s fire is dangerous whoever you are');
   }
 
+  /* ---- 9a. A LEAVING BAND DOES NOT FREEZE BESIDE EASED PREY ----
+     A real day-175 save: the player's town gutted, the bands ordered off the
+     board — and five barbarians stood vibrating on one tile beside a mining
+     villager, forever. raiderSeek's hunt filtered eased owners, but the
+     leaving-march's "cut down whatever stands in the way" probe and the
+     generic acquire scan did not: either re-marked the eased villager, the
+     ease-drop in Combat.update cleared it the next frame, and every half of
+     the flip-flop re-planned the path — pathI pinned at 0, position never
+     advancing. Both probes now ask Combat.easedPrey. The band must WALK. */
+  {
+    G.newGame('rc-ease5', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    G.notePeaks();
+    S.peakTown.P = 14; G._easeC = null;               // the player's town reads gutted
+    // a campless band close to the west rim, with an eased villager at arm's length
+    const sp = MapGen.findNear(4, (CFG.H / 2) | 0, 12,
+      (x, y) => Path.passable(x, y, 'R') && !Bld.at(x, y));
+    const band = Units.spawn('raider', 'R', sp.x, sp.y);
+    band.hostileTo = 'P';
+    // ADJACENT, like the save (1.4 tiles): inside the leaving-probe's 2.5-tile
+    // arc, or the deadlock this test exists to pin is never even provoked
+    const vsp = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+      .map(([dx, dy]) => ({ x: sp.x + dx, y: sp.y + dy }))
+      .find(p => Path.passable(p.x, p.y, 'P') && !Bld.at(p.x, p.y))
+      || MapGen.findNear(sp.x + 1, sp.y, 2,
+        (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y) && !(x === sp.x && y === sp.y));
+    const vic = Units.spawn('villager', 'P', vsp.x, vsp.y);
+    const hp0 = vic.hp;
+    ck('theTrapIsSet', Math.hypot(vic.x - band.x, vic.y - band.y) < 2.5,
+      Math.hypot(vic.x - band.x, vic.y - band.y).toFixed(1) + ' tiles apart — inside the leaving probe');
+    // the real per-frame loop — acquire scans, seeks, marches, ease-drops and all
+    for (let f = 0; f < 12 * 60; f++) { Combat.update(1 / 60); Units.update(1 / 60); }
+    ck('theBandWalksOffTheBoard', !S.units.includes(band),
+      !S.units.includes(band) ? 'gone to the wilds within 12s'
+        : band.tUnit ? 'still fixed on unit ' + band.tUnit + ' at ' + band.x.toFixed(1) + ',' + band.y.toFixed(1)
+        : 'still on the board at ' + band.x.toFixed(1) + ',' + band.y.toFixed(1) +
+          (band.leaving ? ' (mid-exit, never arrived)' : ''));
+    ck('andTheEasedVillagerNeverBled', S.units.includes(vic) && vic.hp === hp0,
+      'hp ' + vic.hp + '/' + hp0);
+  }
+
   /* ---- 9b. THE EASE LEADS THE COLLAPSE (rate-of-loss prong + latch) ----
      A real day-320 game was gutted by one band over days 299-303 while both
      original prongs still read "healthy" — eleven works burned in five days,
@@ -827,20 +867,39 @@ const out = await p.evaluate(() => {
       'campMult ' + [m.calm.campMult, m.moderate.campMult, m.hard.campMult].join('/') +
       ' — meeting one should be the event, not the wallpaper');
 
-    // the yard is worn ground, grass only — other terrain keeps what it is
+    /* ONLY THE FIRE'S OWN TILE IS WORN (operator report, day 160): the old
+       3×3 ring drew the same single-variant brown stamp eight times around
+       every camp — the compound art carries its own trampled stain, so the
+       ring stays whatever it was. A LOADED save sweeps legacy rings back
+       to grass beside living camps. */
     G.newGame('cc-yard', 'moderate', 'large');
     for (const c of Bld.list('R').filter(z => z.key === 'raidercamp')) Bld.removeToRuin(c);
     S.units = S.units.filter(u => u.owner !== 'R');
     for (let x = 28; x <= 34; x++) for (let y = 28; y <= 34; y++) S.map.terrain[MapGen.idx(x, y)] = T.GRASS;
-    S.map.terrain[MapGen.idx(30, 30)] = T.WATER;   // one wet corner survives
+    S.map.terrain[MapGen.idx(30, 30)] = T.WATER;   // a wet corner stays wet either way
     Bld._block = null;
     const cc = G.plantRaiderCamp(31, 31, 'woad');
     let worn = 0;
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
       if (S.map.terrain[MapGen.idx(31 + dx, 31 + dy)] === T.CAMP) worn++;
-    ck('theYardIsWornGround', !!cc && worn === 8 &&
+    ck('onlyTheFiresOwnTileIsWorn', !!cc && worn === 1 &&
       S.map.terrain[MapGen.idx(30, 30)] === T.WATER,
-      worn + ' of 9 tiles worn; the water corner kept its water');
+      worn + ' worn tile (the fire itself); the ring keeps its grass and water');
+    // …and a legacy save's stamped ring is swept back to grass on load
+    {
+      Cards.pick(0);
+      const ring = [];
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const i = MapGen.idx(31 + dx, 31 + dy);
+        if (S.map.terrain[i] === T.GRASS) { S.map.terrain[i] = T.CAMP; ring.push(i); }   // fake the old stamp
+      }
+      G.loadJSON(G.saveJSON());
+      ck('aLegacyYardRingIsSweptOnLoad',
+        ring.every(i => S.map.terrain[i] === T.GRASS) &&
+        S.map.terrain[MapGen.idx(31, 31)] === T.CAMP,
+        ring.length + ' legacy ring tiles reverted; the fire tile kept its worn ground');
+    }
 
     // each people dresses its own camp — four props apiece, no two sets alike
     const hash = (cv) => {

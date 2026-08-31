@@ -357,7 +357,8 @@ const Combat = {
         const aggroR = (Units.isSiege(u) || u.kind === 'ballista')
           ? Math.max(base.aggro || 0, (CFG.UNITS[u.kind].atk > 0 ? (base.rng || 0) + 0.5 : 0))
           : base.aggro;
-        const lpred = o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o);
+        const lpred = o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o) &&
+          !this.easedPrey(u, o);   // eased townsfolk are not prey — see easedPrey
         const e = u.owner === 'A' ? this.bestFoe(u, u.x, u.y, aggroR, lpred)
           : this.nearestUnit(u.x, u.y, aggroR, lpred);
         if (e && Math.hypot(e.x - u.anchor.x, e.y - u.anchor.y) < 9) { u.tUnit = e.id; continue; }
@@ -791,6 +792,20 @@ const Combat = {
     return true;
   },
 
+  /* THE EASE REACHES EVERY FRESH ACQUISITION (a real day-175 save): raiderSeek's
+     hunt filtered eased owners, but two OTHER ways a campless barbarian takes a
+     mark did not — the leaving-march's "cut down whatever stands in the way"
+     probe, and the generic military acquire scan. Either one re-marked an eased
+     villager standing beside the exit road, the ease-drop in update() cleared
+     it the very next frame, and the band froze mid-stride vibrating on one tile
+     forever: acquire → drop → re-plan → acquire, position never advancing.
+     ONE PREDICATE (militiaFoe's lesson), asked at every fresh acquisition.
+     Tenders (campId) are exempt — their fight is the camp's, not the war's —
+     and Units.damage retaliation doesn't ask it: struck barbarians hit back. */
+  easedPrey(u, o) {
+    return u.owner === 'R' && !u.campId && o.owner !== 'R' && G.barbEase(o.owner);
+  },
+
   /* the open wilderness network: ground reachable from the map border — or,
      on all-water-border island maps, from beside each camp and the rival's
      town (the camp tile itself is a BUILDING now, and buildings are solid —
@@ -827,10 +842,13 @@ const Combat = {
     // this, the full seek below re-ran every frame and its best-effort setPath
     // calls stomped the exit route (canReach's side effect reads as "already
     // walking"), leaving the band pacing the shore forever. A departing band
-    // still cuts down whatever stands directly in its way, nothing more.
+    // still cuts down whatever stands directly in its way, nothing more —
+    // but never the people of an eased town (easedPrey): re-marking one only
+    // feeds the ease-drop in update() and the band vibrates in place forever.
     if (u.owner === 'R' && u.leaving) {
       const near = this.nearestUnit(u.x, u.y, 2.5,
-        o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o));
+        o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o) &&
+             !this.easedPrey(u, o));
       if (near && this.canReach(u, near.x, near.y, 1.6)) { u.tUnit = near.id; u.leaving = null; return; }
       if (near) u.path = null;   // drop canReach's best-effort route — it is NOT the exit march
       this.raiderLeave(u);

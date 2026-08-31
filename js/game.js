@@ -1456,18 +1456,14 @@ const G = {
 
   plantRaiderCamp(x, y, tribe) {
     if (!MapGen.inB(x, y) || Bld.at(x, y)) return null;
+    /* ONLY THE FIRE'S OWN TILE IS WORN GROUND (tests/raider-camps.mjs). The
+       yard used to stamp a 3×3 ring of T.CAMP, and because that terrain has
+       ONE tile variant the ring read as identical brown patches strewn
+       around every camp (operator report, day 160) — the compound ART
+       carries its own trampled stain now and does the whole job. The razed
+       camp still leaves an organic rubble scar: removeToRuin's ring-spill
+       throws wreck onto the surrounding grass regardless. */
     S.map.terrain[MapGen.idx(x, y)] = T.CAMP;
-    /* THE WHOLE YARD IS WORN GROUND (tests/raider-camps.mjs): a band lives
-       AROUND its fire, not on one tile of it — the camp's props stand on the
-       ring, so the trampling extends under them. Grass only: a yard tile of
-       forest, water or rock keeps what it is, and the seating clamps already
-       guarantee most of the ring is open. Burning the camp out leaves the
-       whole worn yard behind, which is the point — the ground remembers. */
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      const yx = x + dx, yy = y + dy;
-      if (MapGen.inB(yx, yy) && S.map.terrain[MapGen.idx(yx, yy)] === T.GRASS && !Bld.at(yx, yy))
-        S.map.terrain[MapGen.idx(yx, yy)] = T.CAMP;
-    }
     const b = Bld.place('R', 'raidercamp', x, y, { free: true, instant: true });
     if (!b) return null;
     /* A CAMP KEEPS ITS PEOPLE FOR ITS WHOLE LIFE. Everything raised here wears
@@ -1771,6 +1767,29 @@ const G = {
     }
     // pre-drawbridge saves: every gate stood open, and always could
     for (const b of data.buildings) if (b && b.key === 'gate' && b.raised == null) b.raised = false;
+    /* THE YARD RING GOES BACK TO GRASS. Camps used to stamp a 3×3 T.CAMP
+       yard, which read as identical brown patches strewn around every camp
+       (one tile variant, pure-function picker). New camps stamp only the
+       fire's own tile; a loaded save sweeps the old rings: any worn tile
+       beside a LIVING camp that is not the camp's own reverts to grass.
+       Rings of camps already razed are untouched — that ground legitimately
+       remembers (and rides its own rubble/heal rules). */
+    {
+      const camps = data.buildings.filter(b => b && b.key === 'raidercamp');
+      for (const c of camps) {
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const yx = c.x + dx, yy = c.y + dy;
+          if (yx < 0 || yy < 0 || yx >= w || yy >= h) continue;
+          const i = yy * w + yx;
+          if (data.map.terrain[i] === T.CAMP) {
+            data.map.terrain[i] = T.GRASS;
+            if (data.map.seenTerrain && data.map.seenTerrain[i] === T.CAMP)
+              data.map.seenTerrain[i] = T.GRASS;
+          }
+        }
+      }
+    }
     /* PRE-FOOTPRINT saves: the primary works (barracks, range, stable, siege,
        sapper, trade, warcamp, dock) were 1×1 when these towns were built, and
        their neighbours are packed against them accordingly. Stamp each one

@@ -108,9 +108,12 @@ The snapshot written in `G.updateVisibility` now carries `tribe` alongside
 3–4 shorter peripherals from the people's own prop lore, and a ragged
 organic stain of trampled earth — authored 192px (the 192 masters live in
 `assets/masters/`), shipped at 2× nearest-neighbor (384). The sidecar
-(`{"scale": 3, "offsetY": 1}`) renders it 3×3 tiles centered on the 1×1
-footprint through the ordinary `artRect` path; footprint, pathing and
-hit-testing are untouched. `R.drawCampDress` stands its procedural litter
+(`{"scale": 2, "offsetY": 1}`) renders it 2×2 tiles centered on the 1×1
+footprint through the ordinary `artRect` path (operator sized it down from
+3×3, day 160 — the compounds crowded their ground); footprint, pathing and
+hit-testing are untouched. Only the fire's own tile is T.CAMP — the old
+3×3 worn-yard stamp drew the same single-variant patch eight times around
+every camp and is gone; loads sweep legacy rings back to grass. `R.drawCampDress` stands its procedural litter
 down when the installed camp art declares compound scale (> 1.5), so a
 compound is never double-dressed — delete the PNG (or ship one without the
 sidecar) and the litter comes back. Recipe that worked: PixelLab pro with
