@@ -16,7 +16,11 @@ const T = {
 
 const CFG = {
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 8,            // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 9,            // cache-buster on every art URL (?v=N) — bump when a PNG in
+                       // v9: the L1 woman rebuilt (operator: the first read as male)
+                       // — her strips re-upload under the same names, and the bump
+                       // also flushes any 404 a browser cached for the -f probes in
+                       // the sprint window when only the male files existed.
                        // assets/ is RE-UPLOADED under the same name, so the Pages
                        // CDN stops serving the stale copy. New filenames don't need it.
                        // v2: the de-fringed camp-woad/broken/sea PNGs — regenerated

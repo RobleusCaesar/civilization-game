@@ -197,11 +197,17 @@ const out = await p.evaluate(() => {
             const key = 'villager-p-blue-l' + R.villagerTier('P') + (female ? '-f' : '-m');
             const ua = Assets.unitArt[key];
             // membership by IDENTITY, not by size (the shipped l1-m walk is
-            // 64px while the fake strips are 96 — a width heuristic lies)
+            // 64px while the fake strips are 96 — a width heuristic lies).
+            // Searched across ALL the key's directions: the resolver may
+            // legitimately serve a different direction than requested (the
+            // dirs.s fallback, and the work-pose turn-around below in 5b) —
+            // the property under test is came-from-THIS-sheet, not which dir.
             let fromSheet = false;
             if (ua && spr) {
-              const dd = ua.dirs[dir] || ua.dirs.s;
-              if (dd) for (const pk in dd) if (dd[pk].includes(spr)) { fromSheet = true; break; }
+              outer: for (const dk in ua.dirs) {
+                const dd = ua.dirs[dk];
+                for (const pk in dd) if (dd[pk].includes(spr)) { fromSheet = true; break outer; }
+              }
             }
             if (gate !== fromSheet) {
               agree = false;
@@ -219,6 +225,59 @@ const out = await p.evaluate(() => {
       sheetHits + '/' + probes + ' from sheets — the rest fell back with no error');
     tc.level = 1; R._vTier = null;
     for (const k of installed) Assets.removeUnitArt(k);
+    S.units = S.units.filter(z => z !== u);
+  }
+
+  /* ---- 5b. WORKERS TURN TO FACE THE PLAYER (operator report: a villager
+     who walked north to its tile worked the whole task back-to-camera).
+     While a WORK pose plays, away facings rotate to the nearest front or
+     profile — n→s, ne→e, nw→w — and motion/combat poses keep their honest
+     displacement facing. Pinned by frame-list identity. ---- */
+  {
+    const key = 'villager-p-blue-l2-m';
+    const mk = (frames) => {
+      const c = document.createElement('canvas');
+      c.width = 96 * frames; c.height = 96;
+      const g = c.getContext('2d');
+      g.fillStyle = '#654321'; g.fillRect(0, 0, c.width, c.height);
+      return c;
+    };
+    for (const dir of ['s', 'e', 'w', 'n', 'ne', 'nw'])
+      for (const pose of ['walk', 'gather', 'guard'])
+        Assets.setUnitFrames(key, dir, pose, mk(4));
+    const u = Units.spawn('villager', 'P', 10, 10);
+    const tc = Bld.tcOf('P');
+    tc.level = 2; R._vTier = null; u.female = false;
+    const ua = Assets.unitArt[key];
+    const resolve = (pose, dir) => {
+      const realPose = R.unitPose, realFace = R.unitFacing;
+      R.unitPose = () => pose; R.unitFacing = () => dir;
+      const fr = R.sheetFrames(u);
+      R.unitPose = realPose; R.unitFacing = realFace;
+      return fr;
+    };
+    const cases = [
+      ['gather', 'n',  's', 'gather'],   // full about-face
+      ['gather', 'ne', 'e', 'gather'],   // quarter-turn to profile
+      ['gather', 'nw', 'w', 'gather'],
+      ['gather', 's',  's', 'gather'],   // front work untouched
+      ['walk',   'n',  'n', 'walk'],     // motion keeps honest facing
+      ['guard',  'n',  'n', 'guard'],    // combat keeps honest facing
+    ];
+    let ok = true, bad = '';
+    for (const [pose, dir, wantDir, wantPose] of cases) {
+      const fr = resolve(pose, dir);
+      if (fr !== ua.dirs[wantDir][wantPose]) {
+        ok = false;
+        if (!bad) bad = pose + '+' + dir + ' did not resolve to dirs.' + wantDir + '.' + wantPose;
+        break;
+      }
+    }
+    ck('workersTurnToFaceThePlayer', ok,
+      ok ? 'n→s, ne→e, nw→w while working; walk and guard keep true facing' : bad);
+    tc.level = 1; R._vTier = null;
+    delete Sprites.animFps[key];
+    Assets.removeUnitArt(key);
     S.units = S.units.filter(z => z !== u);
   }
 

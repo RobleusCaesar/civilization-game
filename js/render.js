@@ -6748,6 +6748,19 @@ const R = {
     return 'villager-' + (u.owner === 'A' ? 'a' : 'p') + '-' + G.tunicOf(u.owner) +
       '-l' + this.villagerTier(u.owner) + (u.female ? '-f' : '-m');
   },
+  /* WORKERS NEVER SHOW THE PLAYER THEIR BACK (operator report: a
+     villager who walked NORTH to its work tile held that facing for the
+     whole task — minutes of shoulder blades). Facing is draw-time
+     cosmetics, so the turn lives here in the resolver, not in the sim:
+     while a WORK pose is playing, the three away facings rotate to the
+     nearest front-or-profile — n turns fully around, the diagonals turn
+     sideways — and the untouched _faceMap restores the true displacement
+     facing the moment the unit walks again. Combat (fight/guard) and
+     plain walking keep their honest facing; a spear thrust at the
+     camera while the enemy stands behind you would be worse than a
+     back. */
+  WORK_TURN: { gather: 1, mine: 1, farm: 1, build: 1, work: 1 },
+  AWAY_TO_FRONT: { n: 's', ne: 'e', nw: 'w' },
   sheetFrames(u) {
     // the variant key first, then the kind's own plain slot (a villager
     // with no tiered art yet falls through to the procedural cast below)
@@ -6756,9 +6769,11 @@ const R = {
       (Assets.unitArt[key] || Assets.unitArt[u.kind]);
     this._sheetKey = (window.Assets && Assets.unitArt && Assets.unitArt[key]) ? key : u.kind;
     if (!ua) return null;
-    const d = ua.dirs[this.unitFacing(u)] || ua.dirs.s;
-    if (!d) return null;
     const pose = this.unitPose(u);
+    let face = this.unitFacing(u);
+    if (this.WORK_TURN[pose]) face = this.AWAY_TO_FRONT[face] || face;
+    const d = ua.dirs[face] || ua.dirs.s;
+    if (!d) return null;
     // the sheet's own pose first; a missing pose borrows sensibly
     // (fight falls to walk — motion — and gather-ish poses to idle)
     const fr = d[pose] || (pose === 'fight' ? d.walk : d.idle) || d.walk || d.idle || null;
