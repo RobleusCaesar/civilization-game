@@ -368,6 +368,24 @@ walk 12fr / fight 12fr, all 8 dirs): 25 master + 1 rotation + 24 anims
 + ~1.3 re-rolls ≈ 51 gens — the archer trio landed at ~152 total
 against the villager program's ~148 PER character.
 
+**ARMOR AND ARMS: PROMPT LANGUAGE THAT FAILED, AND WHAT WON** (the
+barracks program — operator's standing order, bank every fight):
+"muscled bronze cuirass" reads as BARE MUSCLED SKIN (a shirtless
+bodybuilder in a kilt, two 25-gen batches lost to it); "blazon
+stripes/bars in [the key blues]" can flood the WHOLE shield face blue —
+which turned out to be a WIN, kept deliberately: a key-blue shield face
+dyes whole per faction (the rival champion carries a red shield), the
+strongest friend/foe read on the roster. Heroic-age bare-torso +
+crested helm + greaves + faction shield IS a legitimate premier-soldier
+read at 32px — the identity carriers are helm/crest/shield/sword, not
+a chest plate. Melee fight-cycle ladders (all one-gen recoveries):
+spear thrust width — "gripped at mid-shaft, the tip never further than
+one arm's length"; sword/axe top — "the blade tip never rising above
+the crest/cap"; the tool-VISIBILITY clause that fixed the mine pose —
+"the [tool] head always plainly VISIBLE in front of the torso in every
+single frame, never hidden behind the body" (absent-tool profiles and
+behind-the-back carries are the same failure family as the mallet).
+
 **PIXELLAB OPS TRAPS (all hit in one session):** (1) the server DEDUPES
 an animate_character call with an identical action_description — a
 re-fire after a silent truncation returns "already queued or complete"
