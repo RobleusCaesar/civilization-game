@@ -508,8 +508,11 @@ const Assets = {
   /* the working hulls draw at 48 like the bear — a cog or a bombard ship
      alongside a 32px fishing boat is a genuinely bigger vessel, same 2:1
      density (96px frames). The fishboat STAYS 32: players raise dozens,
-     and a fleet of fat hulls would swallow every harbor. */
-  UNIT_BOX: { bear: 48, transport: 48, fireship: 48, bombard: 48 },
+     and a fleet of fat hulls would swallow every harbor. The TALL siege
+     engines (a trebuchet's throwing beam, a belfry tower) take the big
+     box too; the squat catapult and ballista read fine at 32. */
+  UNIT_BOX: { bear: 48, transport: 48, fireship: 48, bombard: 48,
+              trebuchet: 48, siegetower: 48 },
   /* ---- VILLAGER TIERS (phase 1 plumbing; the art arrives in phase 2) ----
      Appearance tier by Town Center level — a TABLE, deliberately, so tiers
      can lag or lead the TC later without touching the resolver. */
@@ -589,7 +592,18 @@ const Assets = {
                   elite:    ['idle', 'walk', 'fight'],
                   // the one dyed hull: the bombard ship flies its village's
                   // colours on the stern banner (the ONLY keyed region)
-                  bombard:  ['idle', 'walk', 'fight'] },
+                  bombard:  ['idle', 'walk', 'fight'],
+                  /* the siege train: wooden machines with a keyed pennant
+                     (the only dyed region — a captured-looking engine is a
+                     friend/foe bug). No idle sheets on purpose: a machine
+                     that stops simply HOLDS its walk frame 0 (the
+                     stationary-borrow rule in R.sheetFrames); only water
+                     needed a bob. The siege tower never attacks, so it
+                     ships no fight sheet either. */
+                  catapult:   ['walk', 'fight'],
+                  ballista:   ['walk', 'fight'],
+                  trebuchet:  ['walk', 'fight'],
+                  siegetower: ['walk'] },
   loadMilitaryArt(owner) {
     // typeof guards — G is a script-level const (window.G is undefined)
     if (!window.R || typeof G === 'undefined') return;

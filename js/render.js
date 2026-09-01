@@ -3626,6 +3626,7 @@ const R = {
     this.arrowFires = [];      // …and last run's guttering fire-arrow strikes
     this.slashes = [];         // …and its sword nicks
     this.blasts = [];          // …and its bombard craters
+    this.blazes = [];          // …and its trebuchet ground fires
     Combat.shots.length = 0; Combat.projectiles.length = 0;
     const tc = Bld.tcOf('P');
     if (tc) this.centerOn(tc.x + 0.5, tc.y + 0.5);
@@ -3887,6 +3888,11 @@ const R = {
      white spray and a ripple — stone dust never puffs on open sea. */
   blasts: [],
   BLAST_LIFE: 1.8,
+  /* ---- TREBUCHET BLAZES ---- where the flaming ball lands, the ground
+     BURNS: three flame tongues over a wide scorch, alive for seconds —
+     the fire-arrow strike's big sibling, in its own capped micro-pool. */
+  blazes: [],
+  BLAZE_LIFE: 3.6,
   impact(x, y, kind, fx) {
     const P = this.particles, AP = ART.PALETTE, add = (o) => { if (P.length < 220) P.push(o); };
     const rnd = (a, b) => a + Math.random() * (b - a);
@@ -3911,6 +3917,22 @@ const R = {
               col: wet ? '#cfe6ee' : (i & 1 ? '#6a6258' : '#8a8276'), sz: rnd(3.5, 6), g: -0.4, smoke: 1 });
       if (this.blasts.length >= 8) this.blasts.shift();
       this.blasts.push({ x, y, t: 0, wet });
+      return;
+    }
+    if (fx === 'firestorm') {
+      // the trebuchet's ball lands: a fire-arrow strike scaled to siege — a
+      // wide ember splash, heavy smoke, and a BLAZE that burns on the ground
+      // long after (R.blazes below). The plain flame branch is untouched.
+      for (let i = 0; i < 22; i++) {
+        const a = rnd(-Math.PI, Math.PI), s = rnd(1.4, 4.2);
+        add({ x, y, vx: Math.cos(a) * s * 0.7, vy: Math.sin(a) * s * 0.5 - rnd(0.6, 1.8), t: 1,
+              life: rnd(0.5, 1.0), col: AP.fire[(Math.random() * 3 + 1) | 0], sz: rnd(1.8, 3.6), g: -1.2 });
+      }
+      for (let i = 0; i < 8; i++)
+        add({ x, y: y - 0.2, vx: rnd(-0.9, 0.9), vy: rnd(-1.9, -0.8), t: 1, life: rnd(0.9, 1.5),
+              col: i & 1 ? '#5a5248' : '#7a7268', sz: rnd(3.5, 6), g: -0.5, smoke: 1 });
+      if (this.blazes.length >= 6) this.blazes.shift();
+      this.blazes.push({ x, y, t: 0 });
       return;
     }
     if (kind === 'flame') {
@@ -7912,16 +7934,28 @@ const R = {
       g.fillStyle = 'rgba(20,16,10,0.28)';
       g.fillRect(wx * TL - sh, p.y2 * TL - 1, sh * 2, 2);            // shadow on the ground line
       if (p.kind === 'flame') {
-        for (let j = 1; j <= 3; j++) {                              // ember trail
+        // fx 'firestorm' (the trebuchet): the same flaming ball, just BIGGER —
+        // a longer ember wake, a fatter core, and a smoke smudge chasing it
+        const big = p.fx === 'firestorm' ? 1.7 : 1;
+        const trail = big > 1 ? 5 : 3;
+        for (let j = 1; j <= trail; j++) {                          // ember trail
           const kk = Math.max(0, k - j * 0.06);
           const tx = (p.x1 + (p.x2 - p.x1) * kk) * TL;
           const ty = (p.y1 + (p.y2 - p.y1) * kk - Math.sin(kk * Math.PI) * p.arc) * TL;
-          g.fillStyle = 'rgba(232,138,58,' + (0.5 - j * 0.13) + ')';
-          g.fillRect(tx - 2, ty - 2, 4, 4);
+          const es = Math.max(2, (4 - j * 0.4) * big);
+          g.fillStyle = 'rgba(232,138,58,' + Math.max(0.08, 0.5 - j * 0.09) + ')';
+          g.fillRect(tx - es / 2, ty - es / 2, es, es);
         }
-        g.fillStyle = ART.PALETTE.fire[1]; g.fillRect(px - 4, py - 4, 8, 8);   // outer glow
-        g.fillStyle = ART.PALETTE.fire[2]; g.fillRect(px - 3, py - 3, 6, 6);
-        g.fillStyle = ART.PALETTE.fire[3]; g.fillRect(px - 2, py - 3, 3, 3);   // hot core
+        if (big > 1) {                                              // the smoke smudge
+          const ks = Math.max(0, k - 0.1);
+          const sx = (p.x1 + (p.x2 - p.x1) * ks) * TL;
+          const sy = (p.y1 + (p.y2 - p.y1) * ks - Math.sin(ks * Math.PI) * p.arc) * TL;
+          g.fillStyle = 'rgba(90,82,72,0.35)';
+          g.fillRect(sx - 4, sy - 6, 8, 8);
+        }
+        g.fillStyle = ART.PALETTE.fire[1]; g.fillRect(px - 4 * big, py - 4 * big, 8 * big, 8 * big);   // outer glow
+        g.fillStyle = ART.PALETTE.fire[2]; g.fillRect(px - 3 * big, py - 3 * big, 6 * big, 6 * big);
+        g.fillStyle = ART.PALETTE.fire[3]; g.fillRect(px - 2 * big, py - 3 * big, 3 * big, 3 * big);   // hot core
       } else if (p.kind === 'bolt') {
         const dx = p.x2 - p.x1, dy = p.y2 - p.y1, dl = Math.hypot(dx, dy) || 1;
         g.strokeStyle = ART.PALETTE.wood[2]; g.lineWidth = 2;
@@ -7957,6 +7991,32 @@ const R = {
       if (fs > 2)
         Assets.drawSprite(g, 'misc/flameSmall/' + ((beat + i) % 4),
           px - fs / 2, py - fs * 0.85, { w: fs, h: fs });
+    }
+
+    // ---- trebuchet blazes: a REAL ground fire where the ball came down —
+    // one tall tongue flanked by two smaller ones, each on its own beat
+    // phase, over a wide char that blooms fast and outlasts the flames ----
+    for (let i = this.blazes.length - 1; i >= 0; i--) {
+      const f = this.blazes[i];
+      f.t += dt;
+      const kf = f.t / this.BLAZE_LIFE;
+      if (kf >= 1) { this.blazes.splice(i, 1); continue; }
+      const px = f.x * TL, py = f.y * TL;
+      const fade = kf < 0.65 ? 1 : 1 - (kf - 0.65) / 0.35;
+      g.globalAlpha = 0.6 * Math.min(1, f.t * 6) * Math.max(fade, 0.4);
+      g.fillStyle = '#1c140c';
+      g.beginPath(); g.ellipse(px, py + 1, TL * 0.42, TL * 0.24, 0, 0, Math.PI * 2); g.fill();
+      g.globalAlpha = 1;
+      const beat = (performance.now() / 130) | 0;
+      const grow = Math.min(1, f.t * 4);
+      const tongues = [[0, 0, 0.85], [-0.28, 0.06, 0.5], [0.26, 0.1, 0.44]];
+      for (let ti = 0; ti < 3; ti++) {
+        const [ox, oy, sc] = tongues[ti];
+        const fs = TL * sc * grow * fade;
+        if (fs > 2)
+          Assets.drawSprite(g, 'misc/flameSmall/' + ((beat + i + ti * 2) % 4),
+            px + ox * TL - fs / 2, py + oy * TL - fs * 0.85, { w: fs, h: fs });
+      }
     }
 
     // ---- bombard blasts: an expanding shockwave ring for the first beat,

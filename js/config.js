@@ -584,7 +584,10 @@ const CFG = {
     // vision 9: its spotters see at least as far as it throws (rng 8) — an
     // engine must never shell ground it can't watch (per-unit `vision`
     // overrides CFG.UNIT_VISION in G.updateVisibility / AI.assess).
-    trebuchet:  { name: 'Trebuchet',   hp: 160, atk: 6, def: 1, speed: 0.85, aggro: 0, rng: 8, vision: 9, cdMult: 4.0, bldAtk: 200, proj: 'flame', fire: true },
+    // projFx 'firestorm': the flaming ball flies BIGGER than a fire arrow and
+    // its landing leaves a real blaze on the ground (R.impact / R.blazes) —
+    // the operator's hero treatment for the Siege Workshop. Damage untouched.
+    trebuchet:  { name: 'Trebuchet',   hp: 160, atk: 6, def: 1, speed: 0.85, aggro: 0, rng: 8, vision: 9, cdMult: 4.0, bldAtk: 200, proj: 'flame', fire: true, projFx: 'firestorm' },
   },
 
   /* SAPPER terraforming — deliberate tactical work, protected by an army. Work
