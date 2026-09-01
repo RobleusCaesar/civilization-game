@@ -496,6 +496,72 @@ const out = await p.evaluate(() => {
     ck('walkingToWorkClaimsNothing', wr.rate === null && !wr.working, wr.what);
   }
 
+  /* ---- 6. the frozen-cow ruling (the operator's day-18 save, twice over):
+     a struck grazer BOLTS through the real spook machinery, a cornered
+     bolt turns along the wall, a straggler walled off from its herd
+     grazes its own pocket, and no spawn site may be a sealed pocket ---- */
+  {
+    // a struck cow bolts, and the herd goes with her — even when the hand
+    // that struck is a farmhand's (the look stays villager-blind; blood not)
+    arena('wl6');
+    const cow = Units.spawn('cow', 'W', 20, 20); cow.x = 20.5; cow.y = 20.5;
+    const mate = Units.spawn('cow', 'W', 22, 20); mate.x = 22.5; mate.y = 20.5;
+    const hunter = Units.spawn('villager', 'P', 19, 20); hunter.x = 19.5; hunter.y = 20.5;
+    Units.damage(cow, 2, hunter.id, 'P');
+    ck('aStruckGrazerBolts', cow.spookT > 0, 'spookT ' + Math.round(cow.spookT * 10) / 10);
+    ck('theHerdBoltsWithHer', mate.spookT > 0, '');
+    run(3);
+    ck('andSheActuallyRuns', Math.hypot(cow.x - 20.5, cow.y - 20.5) > 2 && cow.x > 20.5,
+      'to ' + (Math.round(cow.x * 10) / 10) + ',' + (Math.round(cow.y * 10) / 10) + ' — away from the axe');
+
+    // a CORNERED bolt turns along the wall instead of cancelling: forest at
+    // her back, attacker in front — dead-away is blocked, the quarter isn't
+    arena('wl6b');
+    for (let y = 0; y < CFG.H; y++) for (let x = 25; x < CFG.W; x++)
+      S.map.terrain[MapGen.idx(x, y)] = T.FOREST;                  // a wall the width of the world
+    const c2 = Units.spawn('cow', 'W', 24, 20); c2.x = 24.5; c2.y = 20.5;   // pressed against it
+    const h2 = Units.spawn('villager', 'P', 23, 20); h2.x = 23.5; h2.y = 20.5;
+    Units.damage(c2, 2, h2.id, 'P');
+    run(3);
+    ck('aCorneredBoltTurnsAlongTheWall', Math.hypot(c2.x - 24.5, c2.y - 20.5) > 2,
+      'moved to ' + (Math.round(c2.x * 10) / 10) + ',' + (Math.round(c2.y * 10) / 10) +
+      ' — the old single try died on the trees and left her standing');
+
+    // a straggler whose herd lies beyond ground she can walk grazes her own
+    // pocket instead of re-aiming at the unreachable band forever
+    arena('wl6c');
+    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++)
+      S.map.terrain[MapGen.idx(x, y)] = T.FOREST;
+    for (let y = 18; y <= 24; y++) for (let x = 18; x <= 24; x++)
+      S.map.terrain[MapGen.idx(x, y)] = T.GRASS;                   // her pocket: 7×7 grass
+    for (let y = 18; y <= 24; y++) for (let x = 30; x <= 36; x++)
+      S.map.terrain[MapGen.idx(x, y)] = T.GRASS;                   // the herd's field, walled off
+    const lone = Units.spawn('cow', 'W', 21, 21); lone.x = 21.5; lone.y = 21.5;
+    for (let i = 0; i < 3; i++) { const m = Units.spawn('cow', 'W', 32 + i, 21); m.x = 32.5 + i; m.y = 21.5; }
+    lone.wanderT = 0;
+    let moved = false;
+    for (let t = 0; t < 12 && !moved; t += 0.1) {
+      Units.update(0.1);
+      if (Math.hypot(lone.x - 21.5, lone.y - 21.5) > 0.6) moved = true;
+    }
+    ck('aWalledOffStragglerGrazesHerPocket', moved,
+      moved ? 'stepped off her tile' : 'stood 12s re-aiming at the herd beyond the wall — the day-18 freeze');
+
+    // no spawn site may be a sealed pocket: the room flood tells a nook
+    // from open country, and the seeder refuses ground without room
+    arena('wl6d');
+    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++)
+      S.map.terrain[MapGen.idx(x, y)] = T.FOREST;
+    S.map.terrain[MapGen.idx(30, 30)] = T.GRASS;                   // one lonely tile
+    for (let y = 10; y <= 14; y++) for (let x = 10; x <= 14; x++)
+      S.map.terrain[MapGen.idx(x, y)] = T.GRASS;                   // honest open ground
+    ck('aOneTileNookHasNoRoom', Units.wildRoom(30, 30, 6) === false, '');
+    ck('openCountryHasPlenty', Units.wildRoom(12, 12, 6) === true, '');
+    const put = Units.seedGameNear(30, 30, 3);                     // only the nook in reach
+    ck('nothingIsSeededIntoASealedPocket', put === 0,
+      put + ' seeded around a 1-tile nook (every stranded starting cow came from here)');
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

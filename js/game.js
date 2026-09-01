@@ -533,7 +533,11 @@ const G = {
     for (const u of S.units) {
       if ((u.x | 0) !== rx || (u.y | 0) !== ry) continue;
       if (Units.isNaval(u)) continue;   // boats live on water; terrain regrowth is a land thing
-      const spot = MapGen.findNear(rx, ry, 6, (x, y) => Path.passable(x, y, u.owner) && !Bld.blockAt(x, y));
+      // radius 10, not 6: a whole regrown stand matures on the same decay
+      // clock, so the nearest open ground can sit well past 6 tiles — and a
+      // shove that silently fails seals the animal inside the wood for good.
+      // Day-tick cadence, so the wider search costs nothing that matters.
+      const spot = MapGen.findNear(rx, ry, 10, (x, y) => Path.passable(x, y, u.owner) && !Bld.blockAt(x, y));
       if (spot) {
         u.x = spot.x + 0.5; u.y = spot.y + 0.5;
         u.path = null; u.pathI = 0; u.task = null; u.tUnit = 0; u.tBld = 0;

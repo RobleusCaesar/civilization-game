@@ -1864,10 +1864,21 @@ const Units = {
     if (u.spookT > 0) {
       u.spookT -= dt;
       if (this.moving(u)) { this.followPath(u, dt); return; }
-      const ax = u.x - u.spookX, ay = u.y - u.spookY, d = Math.hypot(ax, ay) || 1;
-      const tx = Math.round(u.x + ax / d * 6 + (Math.random() - 0.5) * 3);
-      const ty = Math.round(u.y + ay / d * 6 + (Math.random() - 0.5) * 3);
-      if (!Path.passable(tx, ty) || !this.setPath(u, tx, ty)) u.spookT = 0;
+      /* a blocked flee line TURNS the bolt instead of cancelling it: dead
+         away first, then quartering left and right — a cornered animal
+         runs along the wall it cannot run through. The old single try
+         gave up the whole fright on one bad tile, which left a cow with
+         a wood at her back standing still for a wolf (or an axe). */
+      const ax = u.x - u.spookX, ay = u.y - u.spookY;
+      const a0 = Math.atan2(ay, ax);
+      for (const off of [0, 0.9, -0.9, 1.8]) {
+        const tx = Math.round(u.x + Math.cos(a0 + off) * 6 + (Math.random() - 0.5) * 3);
+        const ty = Math.round(u.y + Math.sin(a0 + off) * 6 + (Math.random() - 0.5) * 3);
+        if (tx < 1 || ty < 1 || tx >= CFG.W - 1 || ty >= CFG.H - 1) continue;
+        if (!Path.passable(tx, ty) || !this.setPath(u, tx, ty)) continue;
+        return;
+      }
+      u.spookT = 0;   // truly nowhere to run — the fright passes on the spot
       return;
     }
     // a look up from the grass every half second: a predator, or anyone armed
@@ -1989,8 +2000,26 @@ const Units = {
       const d = Math.hypot(u.x - bx, u.y - by) || 1;
       const tx = Math.round(u.x + (u.x - bx) / d * 2.5);
       const ty = Math.round(u.y + (u.y - by) / d * 2.5);
-      if (tx >= 1 && ty >= 1 && tx < CFG.W - 1 && ty < CFG.H - 1 && Path.passable(tx, ty))
-        this.setPath(u, tx, ty);
+      if (tx >= 1 && ty >= 1 && tx < CFG.W - 1 && ty < CFG.H - 1 && Path.passable(tx, ty) &&
+          this.setPath(u, tx, ty)) return;
+    }
+    /* NOTHING pulled — every bearing around the herd centre failed and no
+       escape step applied. For a SEPARATED straggler this is the freeze
+       that pinned the operator's day-18 cow: her nearest herd-mates stood
+       beyond a forest wall, HERD_JOIN snapped the centre onto them, and
+       all four bearings re-aimed at the same unreachable ground on every
+       roll, forever. An animal that cannot walk to its band grazes where
+       it STANDS instead: short steps off its own feet, same manners
+       (species gap, taken stands), so a cut-off head keeps living on its
+       side of the wall instead of turning to stone against it. */
+    for (let k = 0; k < 4; k++) {
+      const aa = Math.random() * Math.PI * 2;
+      const tx = Math.round(u.x + Math.cos(aa) * 2 + (Math.random() - 0.5));
+      const ty = Math.round(u.y + Math.sin(aa) * 2 + (Math.random() - 0.5));
+      if (tx < 1 || ty < 1 || tx >= CFG.W - 1 || ty >= CFG.H - 1) continue;
+      if (foreigner(tx, ty) || this.wildCrowded(u, tx, ty)) continue;
+      if (!Path.passable(tx, ty) || !this.setPath(u, tx, ty)) continue;
+      return;
     }
   },
 
@@ -2267,12 +2296,23 @@ const Units = {
     // retaliation / flee
     if (u.tUnit || u.tBld) return;
     if (this.isPassive(u)) {
-      // game animals bolt away from whatever hurt them
+      /* game animals bolt away from whatever hurt them — through the SAME
+         spook machinery a scented predator trips, and the whole herd goes
+         with them. The old branch here was a one-shot setPath dead away
+         from the attacker with NO fallback: a cow struck from the open
+         side of a treeline computed a flee point in the wood (or off the
+         board), findNear returned null, and she stood absorbing hits
+         until dead — the operator's frozen-cow report, reproduced tick
+         for tick on his own day-18 save. spook() hands the escape to
+         grazeIdle's bolt, which re-aims every tick and now turns along
+         a blocked wall instead of cancelling. Villagers stay un-scary
+         to the LOOK (a farmhand working beside the herd), but a hand
+         that draws blood is a threat like any other. */
       const ax = attacker ? attacker.x : u.x + 1, ay = attacker ? attacker.y : u.y;
-      const d = Math.hypot(u.x - ax, u.y - ay) || 1;
-      const tx = Math.round(u.x + (u.x - ax) / d * 6), ty = Math.round(u.y + (u.y - ay) / d * 6);
-      const spot = MapGen.findNear(tx, ty, 4, (x, y) => Path.passable(x, y));
-      if (spot) this.setPath(u, spot.x, spot.y);
+      this.spook(u, ax, ay);
+      for (const o of S.units)
+        if (o !== u && this.isPassive(o) && Math.hypot(o.x - u.x, o.y - u.y) <= this.HERD_R)
+          this.spook(o, ax, ay);
       return;
     }
     if (!attacker) return;
@@ -2315,6 +2355,31 @@ const Units = {
     this.spawnWild(G.rand() < 0.6 ? 'wolf' : 'boar', CFG.ANIMALS.minDistTC);
   },
 
+  /* A SPAWN SPOT MUST OPEN ONTO REAL GROUND (the operator's pocketed-cow
+     report, seen more than once): a walkable tile sealed in a one- or
+     two-tile grass pocket passes every per-tile check and strands the
+     animal for the whole run — its own tile is passable, so the rescue
+     slide never fires, and every wander path dies at the pocket wall.
+     Flood a little room out from the spot before anything is allowed to
+     live there. Bounded: stops the moment `need` tiles are proven. */
+  wildRoom(x, y, need) {
+    if (!Path.passable(x, y)) return false;
+    const seen = new Set([x + ',' + y]), q = [[x, y]];
+    let found = 1;
+    while (q.length && found < need) {
+      const [cx, cy] = q.shift();
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + ox, ny = cy + oy, k = nx + ',' + ny;
+        if (seen.has(k) || !MapGen.onBoard(nx, ny)) continue;
+        seen.add(k);
+        if (!Path.passable(nx, ny) || Bld.at(nx, ny)) continue;
+        found++; q.push([nx, ny]);
+        if (found >= need) return true;
+      }
+    }
+    return found >= need;
+  },
+
   spawnWild(kind, minDistTC) {
     const passive = kind === 'deer' || kind === 'cow';
     const tc = Bld.tcOf('P');
@@ -2345,6 +2410,21 @@ const Units = {
         if (!nb) continue;
         return this.spawn(kind, 'W', x + nb[0], y + nb[1]);
       }
+      /* NO NET TO ASK (borderReach is null on all-water margins — the
+         island landforms): prove the ground the hard way instead of
+         skipping the gate. The spot itself must be walkable with real
+         room behind it, or — a forest candidate, impassable by
+         definition — a treeline neighbour must be, and the beast pads
+         out onto THAT, never into the woods. This closes the hole that
+         dropped island cows into sealed grass pockets (and onto forest
+         tiles outright), where they stood for the rest of the run. */
+      if (!open) {
+        if (this.wildRoom(x, y, 6)) return this.spawn(kind, 'W', x, y);
+        const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(([ox, oy]) =>
+          MapGen.inB(x + ox, y + oy) && !Bld.at(x + ox, y + oy) && this.wildRoom(x + ox, y + oy, 6));
+        if (!nb) continue;
+        return this.spawn(kind, 'W', x + nb[0], y + nb[1]);
+      }
       return this.spawn(kind, 'W', x, y);
     }
     return null;
@@ -2367,6 +2447,9 @@ const Units = {
       const ax = Math.round(x + (G.rand() * 2 - 1) * 9), ay = Math.round(y + (G.rand() * 2 - 1) * 9);
       if (!MapGen.onBoard(ax, ay) || !Path.passable(ax, ay) || Bld.at(ax, ay)) continue;
       if (Math.hypot(ax - x, ay - y) < 4) continue;      // not milling on the doorstep
+      // never seeded into a sealed pocket — this site checked ONLY the tile
+      // itself, which is where the operator's stranded starting cows came from
+      if (!this.wildRoom(ax, ay, 6)) continue;
       this.spawn(kind, 'W', ax, ay);
       put++;
     }
@@ -2384,6 +2467,9 @@ const Units = {
         const x = Math.round(first.x + G.rand() * 5 - 2.5), y = Math.round(first.y + G.rand() * 5 - 2.5);
         if (!Path.passable(x, y) || Bld.at(x, y)) continue;
         if (open && !open[MapGen.idx(x, y)]) continue;
+        // net gone (all-water margins): a mate can land in a pocket NEXT
+        // to the herd, across a wall of trees — prove its own room too
+        if (!open && !this.wildRoom(x, y, 4)) continue;
         this.spawn(kind, 'W', x, y); break;
       }
     }
