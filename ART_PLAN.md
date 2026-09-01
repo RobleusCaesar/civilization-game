@@ -519,6 +519,23 @@ sheets (stamp, tail swish, head toss — 8 gens/char); finish-boat's
 derived-idle step now fills only the gap, never clobbers a staged
 real idle.
 
+**THE SCALE PASS (operator rulings, twice in one day): READ RELATIVE
+SIZE AGAINST THE CAST BEFORE SHIPPING A NEW CLASS.** The 32-box
+cavalry shipped technically perfect and read as midgets on ponies
+beside their own footmen; the 32-box catapult and ballista read as
+toys beside the ships. The rebuild recipe is cheap and keeps the
+approved designs: 1-gen pixen re-render of the SAME master at 96
+output ("redraw the same X crisp and clean, larger, filling the
+frame") → ref84 on 96 → v3 re-rotation → re-anim at 2 gens/dir →
+compose Target 96 into the 48 box (~70 gens per kind). Watch the
+re-render: it can DROP identity features (the catapult lost pennant
+and crew; the ballista flipped to side view) — one corrective edit
+each. The projectile ladder held again everywhere: "the bolt gone
+instantly and never drawn in the air" fixed both ballista blowouts.
+Sizing rule of thumb going forward: anything a person RIDES or
+CREWS belongs in the 48 box; only the lone footman-scale kinds and
+the swarm-count fishboat stay 32.
+
 **⚠ POWERSHELL PIPELINE KILL (cost a broken install):** `script.ps1 |
 Select-Object -First 4` STOPS THE SCRIPT after 4 output lines — the
 snap pass silently processed 4 of 16 strips and the copy installed a
