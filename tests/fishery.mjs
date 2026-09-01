@@ -226,6 +226,33 @@ const out = await p.evaluate(() => {
       Units.fisherAt(parked.x | 0, parked.y | 0, null) === parked, '');
   }
 
+  /* ---- a dock goes where its water is (the operator's cleared-shore
+     report): a forest shore refuses, a sapper's clearing opens it, and
+     the far harbor places FREELY like a station on its worked ground —
+     stamped an outpost, a claim that anchors nothing ---- */
+  {
+    G.newGame('fish-shore', 'moderate', 'medium');
+    Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.map.explored.fill(1);
+    Bld.tcOf('P').level = 2;
+    const ptc = Bld.tcOf('P'), atc2 = Bld.tcOf('A');
+    let sx = -1, sy = -1;
+    outer: for (let y = 4; y < CFG.H - 10; y++) for (let x = 4; x < CFG.W - 10; x++) {
+      if (Math.hypot(x - ptc.x, y - ptc.y) < 14 || Math.hypot(x - atc2.x, y - atc2.y) < 14) continue;
+      sx = x; sy = y; break outer;
+    }
+    for (let y = sy; y < sy + 6; y++) for (let x = sx; x < sx + 6; x++) S.map.terrain[MapGen.idx(x, y)] = T.WATER;
+    for (let x = sx - 1; x < sx + 7; x++) S.map.terrain[MapGen.idx(x, sy + 6)] = T.FOREST;
+    const dx2 = sx + 2, dy2 = sy + 4;
+    ck('aForestShoreRefusesTheDock', Bld.canPlace('P', 'dock', dx2, dy2).code === 'shore', '');
+    Terraform.clear(dx2, sy + 6);
+    const opened = Bld.canPlace('P', 'dock', dx2, dy2);
+    ck('aClearedShoreOpensIt', opened.ok === true, JSON.stringify(opened));
+    const far = Bld.place('P', 'dock', dx2, dy2);
+    ck('theFarHarborIsAClaimNotATown', !!far && far.outpost === true,
+      'places free of the anchor, anchors nothing itself');
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

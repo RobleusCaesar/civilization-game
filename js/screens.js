@@ -336,6 +336,74 @@ const Screens = {
     this.show('draft');                    // ORIGIN CARDS: pick before the world moves
   },
 
+  /* REPLAY — the endgame's second chance (operator direction): the SAME
+     world, the SAME kept card, no new choices anywhere. The finished run's
+     state is still standing behind the end screen, so the seed, mode, size
+     and tunic are read straight off it; re-founding with the same seed
+     deals the same hand (the deal rides the seeded stream), and the
+     recorded pick (S.draft.pickI) is re-kept off-screen — no draft, no
+     burn theater. The card floats over the opening world for five seconds
+     as a reminder of what the tribe carries; a tap waves it away early.
+     A player who wants a FRESH world goes Menu → New Game. */
+  replayRun() {
+    const ok = window.S && S.seed != null && CFG.SIZES[S.sizeKey];
+    if (!ok) { this.backTo = 'title'; this.show('newgame'); return; }   // nothing to replay
+    const r = {
+      seed: S.seed, mode: S.mode, size: S.sizeKey,
+      tunic: S.tunic && S.tunic.P,
+      pickI: (S.draft && S.draft.pickI) | 0,
+    };
+    this._demo = false;
+    G.freeVis = false;
+    CFG.W = CFG.H = CFG.SIZES[r.size];
+    // the bake defers exactly as foundRun's does; with no draft screen to
+    // hide behind, R.draw pays it on the first game frame instead
+    R.deferBake = true;
+    try { G.newGame(r.seed, r.mode, r.size, undefined, r.tunic); }   // the rival chief re-rolls; the world does not
+    finally { R.deferBake = false; }
+    Backend.markActiveSlot(null);
+    Backend.activeName = null;
+    this.lastSavedDay = 1;
+    let kept = null;
+    const D = S.draft;
+    if (D && D.hand && D.hand.length)
+      kept = Cards.pick(Math.max(0, Math.min(D.hand.length - 1, r.pickI)));
+    this.enterGame();
+    if (window.Cards) Cards.announceRival();
+    // deliberately NO Tutorial.maybeStart: a replay is never a first game
+    if (kept) this._replayCardNote(kept);
+  },
+
+  // the kept origin, standing face-up over the opening world for a beat
+  _replayCardNote(c) {
+    const d = Cards.DEFS[c.key];
+    if (!d) return;
+    const old = this.el('replayCardNote');
+    if (old) old.remove();
+    const w = document.createElement('div');
+    w.id = 'replayCardNote';
+    w.innerHTML =
+      `<div class="ocard dealt flip"><div class="ocardIn">
+         <div class="oface oback">&#10050;</div>
+         <div class="oface ofront"><canvas width="128" height="128"></canvas>
+           <div class="oname">${this.esc(d.name)}</div>
+           <div class="oboon">${this.esc(d.text(c.roll))}</div>
+           <div class="oflavor">${this.esc(d.flavor)}</div></div>
+       </div></div>
+       <div class="rcnTip">Your origin, kept from last time &#8212; tap to dismiss</div>`;
+    Cards.drawMotif(w.querySelector('canvas'), c.key);
+    let dropped = false;
+    const drop = () => {
+      if (dropped) return;
+      dropped = true;
+      w.classList.add('fade');
+      setTimeout(() => w.remove(), 500);
+    };
+    w.addEventListener('click', drop);
+    setTimeout(drop, 5000);
+    document.body.appendChild(w);
+  },
+
   /* ---------------- ORIGIN CARDS: the draft ----------------
      Three face-down cards deal in, flip staggered, tap to lift, tap again
      to keep. The chosen card steps forward, the rest burn away; the rival's
@@ -1035,13 +1103,16 @@ const Screens = {
       }
       go();
     };
-    const goNew = () => leaveEnd(() => { this.backTo = 'title'; this.show('newgame'); });
+    // REPLAY, not Play Again (operator direction): "Play Again" rolled a
+    // DIFFERENT world, which reads as a broken replay — especially after a
+    // loss, when what the player wants is another go at the same one
+    const goReplay = () => leaveEnd(() => this.replayRun());
     const goTitle = () => leaveEnd(() => { this._demo = false; this.show('title'); });
     on('btnVicScore', () => this.openTally());   // "A New Dawn" victory buttons
     on('btnScoreBack', () => this.closeTally());
-    on('btnVicAgain', goNew);
+    on('btnVicAgain', goReplay);
     on('btnVicTitle', goTitle);
-    on('btnDefeatAgain', goNew);     // "The Last Fire" defeat buttons — same actions
+    on('btnDefeatAgain', goReplay);  // "The Last Fire" defeat buttons — same actions
     on('btnDefeatTitle', goTitle);
     // settings — the cadence is a segmented row now, same idiom as the
     // new-game pickers, so it reads as a game option instead of a form field

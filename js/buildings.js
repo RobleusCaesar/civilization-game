@@ -580,8 +580,9 @@ const Bld = {
       Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
     if (nearHome) return false;
     // a station out on its own worked ground (or a seam) is a CLAIM, not a
-    // second town: it stands there, but nothing may be anchored off it
-    if (this.needsWorkedGround(key)) return true;
+    // second town: it stands there, but nothing may be anchored off it —
+    // and a far harbor is the same claim on the water's edge
+    if (this.needsWorkedGround(key) || key === 'dock') return true;
     return mine.some(b => b.key === 'warcamp' && Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
   },
   // a forward camp shows up on the OTHER side's map — a bet, not a hidden win. A
@@ -775,7 +776,16 @@ const Bld = {
        inside their town because you felled one of their trees. */
     const theirYard = this.foreignHome(owner, x, y);
     const onItsGround = this.needsWorkedGround(key) && this.stationGround(key, x, y).ok && !theirYard;
-    const freePlace = d.freePlace || onItsGround || key === 'wall' || key === 'gate';
+    /* A DOCK GOES WHERE ITS WATER IS — the station ruling, verbatim: the
+       coast may lie far from every anchor, and a player who sent a sapper
+       to clear a distant shore only to hear "too far" has hit "I worked
+       this out and now I can't build on it" with a different tool (the
+       operator's report, day 35). Its site is already proven by
+       dockSiteOk above; like a far-flung camp it is a CLAIM, not a
+       second town — it anchors nothing (see _isOutpostSite) — and the
+       foreign-yard withdrawal applies the same as everywhere else. */
+    const onItsWater = key === 'dock' && !theirYard;
+    const freePlace = d.freePlace || onItsGround || onItsWater || key === 'wall' || key === 'gate';
     const homeAnchors = mine.filter(b => !b.outpost && b.key !== 'warcamp');
     const nearHome = homeAnchors.some(b => Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);
     const nearCamp = mine.some(b => b.key === 'warcamp' && Math.hypot(b.x - x, b.y - y) <= CFG.BUILD_RANGE);

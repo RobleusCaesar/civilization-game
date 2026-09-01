@@ -414,7 +414,16 @@ const out = await p.evaluate(async () => {
       ck('theBarracksSitsPastTheFold', scrolls && !seen(),
         'scrollable=' + scrolls + ' visibleAt0=' + seen());
       Tutorial.tick(0.3);
-      await new Promise(res => setTimeout(res, 500));
+      // the smooth scroll SETTLES rather than finishing on a clock — a fixed
+      // 500ms nap flaked whenever the machine was loaded (measured 29-53px
+      // still in flight). Poll until scrollLeft stops moving, up to 3s.
+      {
+        let last = -1, still = 0;
+        for (let k = 0; k < 30 && still < 3; k++) {
+          await new Promise(res => setTimeout(res, 100));
+          if (wrap.scrollLeft === last) still++; else { still = 0; last = wrap.scrollLeft; }
+        }
+      }
       const wr = wrap.getBoundingClientRect(), br = card.getBoundingClientRect();
       ck('theRingedCardIsScrolledIntoView', seen(), 'card left=' + Math.round(br.left) + ' menu right=' + Math.round(wr.right));
       ck('andItLandsInTheMiddle',

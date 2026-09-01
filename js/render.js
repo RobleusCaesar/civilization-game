@@ -7590,6 +7590,60 @@ const R = {
       }
       g.restore();
     }
+    // living water: drifting sparkles, blinking shoreline foam, jumping fish.
+    // Viewport-only, a few fillRects per water tile — stays well inside budget.
+    // Drawn HERE — before the mountains-and-units pass — on purpose: all of
+    // it lives ON the water's surface, so a hull floats OVER a jumping fish,
+    // never under one (the operator's transport-raft report).
+    this.fishClock = (this.fishClock || 0) + dt;
+    {
+      const t0 = this.fishClock;
+      const cyc = (t0 / 2.4) | 0, phase = (t0 / 2.4) % 1;
+      const fishFr = phase < 0.55 ? Sprites.misc.fish[phase < 0.3 ? 0 : 1] : null;
+      const terr = S.map.terrain;
+      // clamp to the PLAYABLE interior (1 … W-2): the outer ring is off-map black
+      // void, so no fish jump, no sparkle, no foam is drawn on it (see R.drawTile)
+      const x0 = Math.max(1, (this.cam.x / TL) | 0), y0 = Math.max(1, (this.cam.y / TL) | 0);
+      const x1 = Math.min(CFG.W - 2, ((this.cam.x + this.viewW() / this.cam.z) / TL) | 0);
+      const y1 = Math.min(CFG.H - 2, ((this.cam.y + this.viewH() / this.cam.z) / TL) | 0);
+      const wet = v => v === T.WATER || v === T.MOAT;   // moats animate like the lake
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        const i = MapGen.idx(x, y);
+        if (!wet(terr[i])) continue;
+        if (!G.visibleAt(x, y)) continue;
+        const h = (x * 73856093 ^ y * 19349663) >>> 0;
+        if (h % 3 === 0) {                                  // slow drifting sparkle dash
+          const ph = t0 * 0.6 + (h % 13);
+          const sx = x * TL + 4 + (Math.sin(ph) * 0.5 + 0.5) * (TL - 14);
+          const sy = y * TL + 5 + ((h >> 4) % (TL - 10));
+          g.fillStyle = 'rgba(190,224,238,0.45)';
+          g.fillRect(sx | 0, sy | 0, 5, 2);
+        }
+        const landN = !wet(terr[MapGen.idx(x, Math.max(0, y - 1))]);
+        const landS = y + 1 < CFG.H && !wet(terr[MapGen.idx(x, y + 1)]);
+        const landW = !wet(terr[MapGen.idx(Math.max(0, x - 1), y)]);
+        const landE = x + 1 < CFG.W && !wet(terr[MapGen.idx(x + 1, y)]);
+        if (landN || landS || landW || landE) {             // blinking foam dots on the shore side
+          const a = 0.22 + 0.2 * Math.sin(t0 * 1.7 + (h % 7));
+          g.fillStyle = 'rgba(235,244,248,' + Math.max(0, a).toFixed(2) + ')';
+          const o1 = 4 + (h % 3) * 8, o2 = 20 - (h % 5) * 3;
+          if (landN) { g.fillRect(x * TL + o1, y * TL + 2, 2, 2); g.fillRect(x * TL + o2, y * TL + 3, 2, 2); }
+          else if (landS) { g.fillRect(x * TL + o1, y * TL + TL - 4, 2, 2); g.fillRect(x * TL + o2, y * TL + TL - 5, 2, 2); }
+          else if (landW) { g.fillRect(x * TL + 2, y * TL + o1, 2, 2); g.fillRect(x * TL + 3, y * TL + o2, 2, 2); }
+          else { g.fillRect(x * TL + TL - 4, y * TL + o1, 2, 2); g.fillRect(x * TL + TL - 5, y * TL + o2, 2, 2); }
+        }
+        if (fishFr && S.map.resAmount[i]) {
+          // shoals (h % 3 shore tiles — the ones villagers can line-fish)
+          // show jumping fish often: that's the tell to watch for. Open deep
+          // water keeps only the rare splash; barren shore water shows none.
+          const hf = (h ^ cyc * 83492791) >>> 0;
+          const nearLand = landN || landS || landW || landE;
+          if (nearLand ? (h % 3 === 0 && hf % 5 < 2) : hf % 31 === 0)
+            g.drawImage(fishFr, x * TL, y * TL);
+        }
+      }
+    }
+
     /* THE MOUNTAINS DRAW HERE, interleaved with the units by ground row —
        the whole point of cutting each region into row strips (buildMtnLayer).
        A strip whose ground row is north of a unit's feet draws BEFORE it
@@ -8099,57 +8153,6 @@ const R = {
         g.stroke();
       }
       g.globalAlpha = 1; g.lineCap = 'butt'; g.lineWidth = 1.5;
-    }
-
-    // living water: drifting sparkles, blinking shoreline foam, jumping fish.
-    // Viewport-only, a few fillRects per water tile — stays well inside budget.
-    this.fishClock = (this.fishClock || 0) + dt;
-    {
-      const t0 = this.fishClock;
-      const cyc = (t0 / 2.4) | 0, phase = (t0 / 2.4) % 1;
-      const fishFr = phase < 0.55 ? Sprites.misc.fish[phase < 0.3 ? 0 : 1] : null;
-      const terr = S.map.terrain;
-      // clamp to the PLAYABLE interior (1 … W-2): the outer ring is off-map black
-      // void, so no fish jump, no sparkle, no foam is drawn on it (see R.drawTile)
-      const x0 = Math.max(1, (this.cam.x / TL) | 0), y0 = Math.max(1, (this.cam.y / TL) | 0);
-      const x1 = Math.min(CFG.W - 2, ((this.cam.x + this.viewW() / this.cam.z) / TL) | 0);
-      const y1 = Math.min(CFG.H - 2, ((this.cam.y + this.viewH() / this.cam.z) / TL) | 0);
-      const wet = v => v === T.WATER || v === T.MOAT;   // moats animate like the lake
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-        const i = MapGen.idx(x, y);
-        if (!wet(terr[i])) continue;
-        if (!G.visibleAt(x, y)) continue;
-        const h = (x * 73856093 ^ y * 19349663) >>> 0;
-        if (h % 3 === 0) {                                  // slow drifting sparkle dash
-          const ph = t0 * 0.6 + (h % 13);
-          const sx = x * TL + 4 + (Math.sin(ph) * 0.5 + 0.5) * (TL - 14);
-          const sy = y * TL + 5 + ((h >> 4) % (TL - 10));
-          g.fillStyle = 'rgba(190,224,238,0.45)';
-          g.fillRect(sx | 0, sy | 0, 5, 2);
-        }
-        const landN = !wet(terr[MapGen.idx(x, Math.max(0, y - 1))]);
-        const landS = y + 1 < CFG.H && !wet(terr[MapGen.idx(x, y + 1)]);
-        const landW = !wet(terr[MapGen.idx(Math.max(0, x - 1), y)]);
-        const landE = x + 1 < CFG.W && !wet(terr[MapGen.idx(x + 1, y)]);
-        if (landN || landS || landW || landE) {             // blinking foam dots on the shore side
-          const a = 0.22 + 0.2 * Math.sin(t0 * 1.7 + (h % 7));
-          g.fillStyle = 'rgba(235,244,248,' + Math.max(0, a).toFixed(2) + ')';
-          const o1 = 4 + (h % 3) * 8, o2 = 20 - (h % 5) * 3;
-          if (landN) { g.fillRect(x * TL + o1, y * TL + 2, 2, 2); g.fillRect(x * TL + o2, y * TL + 3, 2, 2); }
-          else if (landS) { g.fillRect(x * TL + o1, y * TL + TL - 4, 2, 2); g.fillRect(x * TL + o2, y * TL + TL - 5, 2, 2); }
-          else if (landW) { g.fillRect(x * TL + 2, y * TL + o1, 2, 2); g.fillRect(x * TL + 3, y * TL + o2, 2, 2); }
-          else { g.fillRect(x * TL + TL - 4, y * TL + o1, 2, 2); g.fillRect(x * TL + TL - 5, y * TL + o2, 2, 2); }
-        }
-        if (fishFr && S.map.resAmount[i]) {
-          // shoals (h % 3 shore tiles — the ones villagers can line-fish)
-          // show jumping fish often: that's the tell to watch for. Open deep
-          // water keeps only the rare splash; barren shore water shows none.
-          const hf = (h ^ cyc * 83492791) >>> 0;
-          const nearLand = landN || landS || landW || landE;
-          if (nearLand ? (h % 3 === 0 && hf % 5 < 2) : hf % 31 === 0)
-            g.drawImage(fishFr, x * TL, y * TL);
-        }
-      }
     }
 
     // ambient life: bird flocks glide over the forest, butterflies flutter over

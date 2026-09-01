@@ -925,6 +925,18 @@
     position: absolute; inset: 0; transform-style: preserve-3d;
     transition: transform .38s ease;
   }
+  /* the REPLAY's card reminder: the origin kept last time floats over the
+     opening world for a beat — tap it to wave it away early */
+  #replayCardNote {
+    position: fixed; left: 50%; top: 15%; transform: translateX(-50%);
+    z-index: 60; cursor: pointer; transition: opacity .45s ease;
+  }
+  #replayCardNote .ocard { opacity: 1; transform: none; margin: 0 auto; width: min(38vw, 132px); }
+  #replayCardNote .rcnTip {
+    text-align: center; color: #e8c88c; font-size: 12px; margin-top: 8px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+  }
+  #replayCardNote.fade { opacity: 0; pointer-events: none; }
   .ocard.flip .ocardIn { transform: rotateY(180deg); }
   .oface {
     position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden;
@@ -1418,12 +1430,12 @@
         </div>
         <button class="dbtn primary" id="btnDefeatAgain">
           <canvas class="dbIcon" data-icon="camp" aria-hidden="true"></canvas>
-          <span class="dbBody"><b>PLAY AGAIN</b><small>Start a new civilization</small></span>
+          <span class="dbBody"><b>REPLAY</b><small>The same world, the same card</small></span>
           <span class="dbArrow">&#8594;</span>
         </button>
         <button class="dbtn" id="btnDefeatTitle">
           <canvas class="dbIcon" data-icon="mountain" aria-hidden="true"></canvas>
-          <span class="dbBody"><b>TITLE SCREEN</b><small>Return to the main menu</small></span>
+          <span class="dbBody"><b>MENU</b><small>Back to the main menu</small></span>
           <span class="dbArrow">&#8594;</span>
         </button>
       </div>
@@ -1450,8 +1462,8 @@
           <span class="dbArrow">&#8594;</span>
         </button>
         <div class="vbRow">
-          <button class="dbtn sm" id="btnVicAgain"><span class="dbBody"><b>PLAY AGAIN</b></span></button>
-          <button class="dbtn sm" id="btnVicTitle"><span class="dbBody"><b>TITLE SCREEN</b></span></button>
+          <button class="dbtn sm" id="btnVicAgain"><span class="dbBody"><b>REPLAY</b></span></button>
+          <button class="dbtn sm" id="btnVicTitle"><span class="dbBody"><b>MENU</b></span></button>
         </div>
       </div>
       <!-- THE TALLY — the arcade rundown behind the Score button -->
