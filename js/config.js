@@ -16,7 +16,10 @@ const T = {
 
 const CFG = {
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 14,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 15,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+                       // v15: the scale pass — cavalry + catapult + ballista
+                       // rebuilt at 96px into the 48 box (the midget fix),
+                       // and the l2-f mine pick is single-headed again
                        // v14: the stable ships — 72 cavalry strips (rider/
                        // horsearcher/lancer x idle/walk/fight), ramp-snapped
                        // v13: the siege train ships — 56 engine strips (catapult 16,

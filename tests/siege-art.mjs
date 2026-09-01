@@ -52,9 +52,11 @@ const out = await p.evaluate(() => {
     t.owner = 'R';
     ck('aStrangersEngineNeverWearsYourColours', R.unitArtKey(t) === 'trebuchet', R.unitArtKey(t));
     t.owner = 'P';
-    ck('theTallEnginesTakeTheBigBox',
+    // the operator's ruling: the WHOLE siege train stands ship-sized —
+    // the first cut's 32-box catapult and ballista read as toys
+    ck('theWholeSiegeTrainTakesTheBigBox',
       Assets.UNIT_BOX.trebuchet === 48 && Assets.UNIT_BOX.siegetower === 48 &&
-      !Assets.UNIT_BOX.catapult && !Assets.UNIT_BOX.ballista,
+      Assets.UNIT_BOX.catapult === 48 && Assets.UNIT_BOX.ballista === 48,
       JSON.stringify({ t: Assets.UNIT_BOX.trebuchet, c: Assets.UNIT_BOX.catapult }));
     S.units = S.units.filter(z => z !== t);
   }

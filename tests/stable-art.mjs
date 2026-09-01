@@ -52,9 +52,11 @@ const out = await p.evaluate(() => {
     l.owner = 'R';
     ck('aStrangersHorseNeverWearsYourColours', R.unitArtKey(l) === 'lancer', R.unitArtKey(l));
     l.owner = 'A';
-    ck('cavalryDrawsInTheStandardBox',
-      !Assets.UNIT_BOX.rider && !Assets.UNIT_BOX.horsearcher && !Assets.UNIT_BOX.lancer,
-      'a 48-box horseman would tower over his own captain');
+    // the operator's ruling reversed the first cut: a 32-box horseman read
+    // as a midget on a pony beside his own footmen — cavalry rides at 48
+    ck('cavalryTakesTheBigBox',
+      Assets.UNIT_BOX.rider === 48 && Assets.UNIT_BOX.horsearcher === 48 && Assets.UNIT_BOX.lancer === 48,
+      'horse and rider stand taller than infantry');
     /* ---- 2. the horse archer is honest ranged cavalry ---- */
     ck('theHorseArcherShootsFromTheSaddle',
       CFG.UNITS.horsearcher.rng === 3 && !CFG.UNITS.horsearcher.proj,

@@ -508,11 +508,13 @@ const Assets = {
   /* the working hulls draw at 48 like the bear — a cog or a bombard ship
      alongside a 32px fishing boat is a genuinely bigger vessel, same 2:1
      density (96px frames). The fishboat STAYS 32: players raise dozens,
-     and a fleet of fat hulls would swallow every harbor. The TALL siege
-     engines (a trebuchet's throwing beam, a belfry tower) take the big
-     box too; the squat catapult and ballista read fine at 32. */
+     and a fleet of fat hulls would swallow every harbor. The WHOLE siege
+     train and the cavalry ride the big box too — the operator's ruling,
+     twice: an engine should stand ship-sized, and a horse and rider
+     must never read as a midget on a pony beside their own footmen. */
   UNIT_BOX: { bear: 48, transport: 48, fireship: 48, bombard: 48,
-              trebuchet: 48, siegetower: 48 },
+              trebuchet: 48, siegetower: 48, catapult: 48, ballista: 48,
+              rider: 48, horsearcher: 48, lancer: 48 },
   /* ---- VILLAGER TIERS (phase 1 plumbing; the art arrives in phase 2) ----
      Appearance tier by Town Center level — a TABLE, deliberately, so tiers
      can lag or lead the TC later without touching the resolver. */
