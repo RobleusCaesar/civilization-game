@@ -352,13 +352,19 @@ const Assets = {
      fine — supply `wild` alone and the kept/accent looks stay procedural;
      a 404 is the default state, never an error.
 
-     A file is a horizontal STRIP of 32×32 frames (the 32px tile grid — a
-     frame lands aligned to its tile, never jittered): width a multiple of
-     32, height exactly 32. Add more frames to one file, or more files via
-     the `-2`/`-3` cascade, and the picker hashes between all of them.
-     Alpha is snapped HARD BINARY at install (A<128 → 0, else 255) — the
-     cover bakes into the terrain cache, whose repaint discipline is built
-     on opaque idempotent restamps. Same ?v= cache-buster as everything. */
+     A file is a horizontal STRIP of 32×32 frames, ONE CLUMP PER FRAME:
+     width a multiple of 32, height exactly 32, the clump's ink wider than
+     it is tall (a taller-than-wide frame is dropped at install — the
+     sapling trap), authored at native density, 32 art px per tile. The
+     frame's opaque box is measured at install and R.grassCover draws it
+     bottom-anchored on the foot of the procedural sward it replaces — at
+     the same jittered anchor, in the same count, under the same gates —
+     so art changes what a sward looks like and never where it grows. Add
+     more frames to one file, or more files via the `-2`/`-3` cascade, and
+     the picker hashes between all of them. Alpha is snapped HARD BINARY at
+     install (A<128 → 0, else 255) — the cover bakes into the terrain
+     cache, whose repaint discipline is built on opaque idempotent
+     restamps. Same ?v= cache-buster as everything. */
   COVER_DIR: 'assets/terrain/cover/',
   COVER_SLOTS: ['wild', 'kept', 'accent'],
   COVER_CATALOG: ['grass'],       // terrains probed at startup (grass only today)
@@ -387,14 +393,30 @@ const Assets = {
       const g = c.getContext('2d');
       g.imageSmoothingEnabled = false;
       g.drawImage(img, i * PX, 0, PX, PX, 0, 0, PX, PX);
+      // the frame's opaque box: a clump is drawn bottom-anchored on the sward
+      // it replaces, so R.grassCover needs to know where the ink actually is
+      let bx = 0, by = 0, bw = PX, bh = PX;
       try {
         // hard binary alpha — the bake's restamp discipline needs opaque pixels
         const d = g.getImageData(0, 0, PX, PX);
-        for (let p = 3; p < d.data.length; p += 4) d.data[p] = d.data[p] < 128 ? 0 : 255;
+        let x0 = PX, y0 = PX, x1 = -1, y1 = -1;
+        for (let p = 3; p < d.data.length; p += 4) {
+          d.data[p] = d.data[p] < 128 ? 0 : 255;
+          if (d.data[p]) {
+            const k = (p - 3) >> 2, px = k % PX, py = (k / PX) | 0;
+            if (px < x0) x0 = px; if (px > x1) x1 = px;
+            if (py < y0) y0 = py; if (py > y1) y1 = py;
+          }
+        }
         g.putImageData(d, 0, 0);
+        if (x1 < 0) continue;                             // an empty frame is not a clump
+        bx = x0; by = y0; bw = x1 - x0 + 1; bh = y1 - y0 + 1;
+        if (bh > bw) continue;                            // the sapling trap: wider than tall, or not at all
       } catch (e) { /* tainted (file://) — ship as decoded; the QC gate is authoring-time */ }
+      c._bx = bx; c._by = by; c._bw = bw; c._bh = bh;
       frames.push(c);
     }
+    if (!frames.length) return false;
     const t = this.cover[tName] || (this.cover[tName] = {});
     (t[slot] || (t[slot] = [])).push(...frames);
     this.loaded[this.coverSlotKey(tName, slot)] = true;

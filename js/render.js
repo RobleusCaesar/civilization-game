@@ -913,20 +913,15 @@ const R = {
     const rnd = () => { hh = Math.imul(hh ^ (hh >>> 15), 0x2c1b3c6d); hh = (hh ^ (hh >>> 12)) >>> 0; return hh / 4294967295; };
     let n = Math.min(LAND.GRASS_MAX, Math.round(d * (2.6 + rnd() * 3.2)));
     if (n <= 0) { if (rnd() < d * 2) n = 1; else return; }
-    /* supplied cover art takes the tile whole, on the 32px grid — the frame
-       is a composed sward scene, so it lands aligned, never jittered. Still
-       gated by the same fields: the art appears exactly where the procedural
-       cover would, and bare ground stays bare. */
-    const art = window.Assets && Assets.coverImg && Assets.coverImg('grass', tame ? 'kept' : 'wild', hh >>> 4);
-    if (art) {
-      if (cap) { cap.img = art; return; }
-      g.drawImage(art, x * TL, y * TL, TL, TL);
-      if (!tame && rnd() < LAND.GRASS_ACCENT * 3) {
-        const acc = Assets.coverImg('grass', 'accent', hh >>> 7);
-        if (acc) g.drawImage(acc, x * TL, y * TL, TL, TL);
-      }
-      return;
-    }
+    /* SUPPLIED COVER ART REPLACES THE SILHOUETTE, NEVER THE SCATTER. A frame
+       from assets/terrain/cover/grass/{wild|kept}.png is one clump, drawn
+       bottom-anchored on the foot of the sward it stands in for — at the
+       same jittered anchor, in the same count, under the same gates — so
+       the art changes what a sward looks like and never where it grows.
+       The accent slot rides the same way, above a sward, at the accent
+       rate. Frames are clamped to the one-tile bound the repaint rings
+       derive from, so a wide frame never orphans pixels. */
+    const artSlot = (window.Assets && Assets.coverImg) ? (tame ? 'kept' : 'wild') : null;
     const AP = ART.PALETTE, GR = AP.grass;
     /* THE WILD IS WILD, THE KEPT IS KEPT (LAND_REFRESH 2.2 / 2.3) — opposite
        on three axes. HEIGHT: the wild draws from twelve silhouettes, the
@@ -967,6 +962,25 @@ const R = {
       const lit = dryOne ? AP.bone[1] : (wet || tame) ? GR[4] : vr < 0.5 ? GR[4] : GR[3];
       const deep = dryOne ? AP.soil[1] : GR[1];
       const w0 = SW[sil];
+      const fr = artSlot ? Assets.coverImg('grass', artSlot, (hh >>> 4) + i * 7) : null;
+      if (fr) {
+        // the frame's opaque box (measured at install) stands on the sward's
+        // foot row; both corners clamped inside one tile past the anchor
+        const fw = fr._bw || fr.width, fh = fr._bh || fr.height;
+        const ax = Math.max((x - 1) * TL, Math.min((x + 2) * TL - fw, cx0));
+        const ay = Math.max((y - 1) * TL, Math.min((y + 2) * TL - fh, cy0 + 4 * px - fh));
+        const rec = { x: ax, y: ay, w: fw, h: fh, img: fr, sx: fr._bx || 0, sy: fr._by || 0 };
+        if (cap) cap.rects.push(rec); else g.drawImage(fr, rec.sx, rec.sy, fw, fh, ax, ay, fw, fh);
+        const acc = (!tame && rnd() < LAND.GRASS_ACCENT * (1 - kept)) ? Assets.coverImg('grass', 'accent', hh >>> 7) : null;
+        if (acc) {
+          const aw = acc._bw || acc.width, ah = acc._bh || acc.height;
+          const bx = Math.max((x - 1) * TL, Math.min((x + 2) * TL - aw, ax + ((fw - aw) >> 1)));
+          const by = Math.max((y - 1) * TL, Math.min((y + 2) * TL - ah, ay + 2 * px - ah));
+          const arec = { x: bx, y: by, w: aw, h: ah, img: acc, sx: acc._bx || 0, sy: acc._by || 0 };
+          if (cap) cap.rects.push(arec); else g.drawImage(acc, arec.sx, arec.sy, aw, ah, bx, by, aw, ah);
+        }
+        continue;
+      }
       const q = cap
         ? (ox, oy, w, h, c) => cap.rects.push({ x: cx0 + (flip ? w0 - ox - w : ox) * px, y: cy0 + oy * px, w: w * px, h: h * px, c })
         : (ox, oy, w, h, c) => { g.fillStyle = c; g.fillRect(cx0 + (flip ? w0 - ox - w : ox) * px, cy0 + oy * px, w * px, h * px); };
@@ -1164,8 +1178,10 @@ const R = {
         if (p < 0) {
           // not reached yet — the wild sward still stands, drawn over the
           // already-kept bake so the ripple has something to knock down
-          if (td.cap.img) g.drawImage(td.cap.img, td.x * TL, td.y * TL, TL, TL);
-          else for (const r of td.cap.rects) { g.fillStyle = r.c; g.fillRect(r.x, r.y, r.w, r.h); }
+          for (const r of td.cap.rects) {
+            if (r.img) g.drawImage(r.img, r.sx, r.sy, r.w, r.h, r.x, r.y, r.w, r.h);
+            else { g.fillStyle = r.c; g.fillRect(r.x, r.y, r.w, r.h); }
+          }
           continue;
         }
         const ease = Math.min(1, Math.pow(p / 0.85, 1.4));
@@ -1174,15 +1190,13 @@ const R = {
         const push = ease * 3 * loud * (TL / 32);      // …and slide away from the build
         const a = p < 0.65 ? 1 : 1 - (p - 0.65) / 0.35;
         g.globalAlpha = a;
-        if (td.cap.img) {
-          const h = TL * flat;
-          g.drawImage(td.cap.img, td.x * TL + td.dir[0] * push, td.y * TL + (TL - h), TL, h);
-        } else {
-          for (const r of td.cap.rects) {
-            g.fillStyle = r.c;
-            g.fillRect(Math.round(r.x + td.dir[0] * push), Math.round(r.y + td.dir[1] * push * 0.6 + r.h * (1 - flat)),
-              r.w, Math.max(1, Math.round(r.h * flat)));
-          }
+        for (const r of td.cap.rects) {
+          // every rect — a procedural row or an art clump — settles toward
+          // its own foot and slides away from the build, together
+          const dx = Math.round(r.x + td.dir[0] * push), dy = Math.round(r.y + td.dir[1] * push * 0.6 + r.h * (1 - flat));
+          const dh = Math.max(1, Math.round(r.h * flat));
+          if (r.img) g.drawImage(r.img, r.sx, r.sy, r.w, r.h, dx, dy, r.w, dh);
+          else { g.fillStyle = r.c; g.fillRect(dx, dy, r.w, dh); }
         }
         /* loose blades thrown along the ripple — the tree fall's torn-leaf
            trick at meadow scale, and what makes a two-pixel sward's flatten

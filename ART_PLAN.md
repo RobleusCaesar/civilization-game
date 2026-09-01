@@ -931,14 +931,23 @@ rare seed-head overlay, wild ground only). A partial set is fine — supply
 `wild` alone and the other looks stay procedural; a 404 is the default
 state, never an error.
 
-**A file is a horizontal strip of 32×32 frames** — width a multiple of 32,
-height exactly 32, one frame landing aligned to its tile (the 32px grid;
-cover frames are composed sward scenes, never jittered). More frames in one
-file, or more files via the `-2`/`-3` cascade, and the picker hashes over
-all of them. **Alpha must be HARD BINARY** — the install snaps A<128 → 0,
-else 255, because the cover bakes into the terrain cache, whose exact
-repaint discipline is built on opaque idempotent restamps. Bump
-`CFG.ART_V` when re-uploading under a name a phone has cached.
+**A file is a horizontal strip of 32×32 frames, one CLUMP per frame** —
+width a multiple of 32, height exactly 32, native density (32 art px per
+tile, no exceptions), the clump bottom-anchored in its frame and its ink
+**wider than it is tall** (a taller-than-wide frame is dropped at install —
+the sapling trap binds art exactly as it binds the procedural sward). The
+install measures each frame's opaque box and `R.grassCover` draws it
+bottom-anchored on the foot of the procedural sward it replaces — same
+jittered anchor, same count, same gates — so **art changes what a sward
+looks like and never where it grows**. More frames in one file, or more
+files via the `-2`/`-3` cascade, and the picker hashes over all of them.
+**Alpha must be HARD BINARY** — the install snaps A<128 → 0, else 255,
+because the cover bakes into the terrain cache, whose exact repaint
+discipline is built on opaque idempotent restamps. Palette-snap every clump
+to the grass ramp before it ships (`reduce_colors` with the ramp as the
+palette image) so art never introduces a green the tone field does not
+already speak. Bump `CFG.ART_V` when re-uploading under a name a phone has
+cached.
 
 **`?dev=1`**: drop a file named `{terrain}-{slot}[-N].png` (e.g.
 `grass-wild.png`) and it installs live through `Assets.setCoverArt` — the

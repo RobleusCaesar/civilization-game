@@ -266,6 +266,33 @@ const out = await p.evaluate(() => {
     ck('anUnknownSlotIsRefused', Assets.setCoverArt('grass', 'lush', mk(32, 32)) === false, '');
     ck('absentArtIsTheDefaultState', Assets.coverImg('grass', 'kept', 3) === null ||
       Assets.coverImg('grass', 'kept', 3) instanceof HTMLCanvasElement, '');
+    // ONE CLUMP PER FRAME: the install measures each frame's ink box, and a
+    // sward tile captured with art in place lifts frames at the procedural
+    // anchors — art changes what a sward looks like, never where it grows
+    ck('aFrameKnowsItsInkBox', frames.every(f => f._bw > 0 && f._bh > 0 && f._bh <= f._bw), '');
+    {
+      const terr = S.map.terrain;
+      let artRects = 0, plainRects = 0, tiles = 0;
+      for (let y = 4; y < CFG.H - 4 && tiles < 40; y++) for (let x = 4; x < CFG.W - 4 && tiles < 40; x++) {
+        if (terr[MapGen.idx(x, y)] !== T.GRASS) continue;
+        const cap = { rects: [], img: null };
+        R.grassCover(null, x, y, terr, cap);
+        if (!cap.rects.length) continue;
+        tiles++;
+        for (const r of cap.rects) { if (r.img) artRects++; else plainRects++; }
+      }
+      ck('artStandsInForTheSward', tiles > 0 && artRects > 0 && plainRects === 0,
+        `${artRects} art clumps, ${plainRects} procedural rows over ${tiles} tiles`);
+    }
+    // a taller-than-wide frame is the sapling trap and is dropped at install
+    {
+      const c = document.createElement('canvas'); c.width = 32; c.height = 32;
+      const g2 = c.getContext('2d'); g2.fillStyle = '#4d7c33'; g2.fillRect(14, 4, 4, 24);
+      const nWas = ((Assets.cover.grass || {}).wild || []).length;
+      const ok = Assets.setCoverArt('grass', 'wild', c);
+      const nNow = ((Assets.cover.grass || {}).wild || []).length;
+      ck('aSaplingFrameIsRefused', ok === false && nNow === nWas, `${nWas} -> ${nNow} frames`);
+    }
     // restore the shipped state so nothing leaks into a later suite run
     if (Assets.cover.grass) { if (had) Assets.cover.grass.wild = had; else delete Assets.cover.grass.wild; }
     R.rebuildTerrain(); flushBake();
