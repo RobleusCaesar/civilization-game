@@ -603,7 +603,12 @@ const Assets = {
                   catapult:   ['walk', 'fight'],
                   ballista:   ['walk', 'fight'],
                   trebuchet:  ['walk', 'fight'],
-                  siegetower: ['walk'] },
+                  siegetower: ['walk'],
+                  // the stable: horse and rider dye through the saddle
+                  // cloth and tunic, same key ramp as the foot soldiers
+                  rider:       ['idle', 'walk', 'fight'],
+                  horsearcher: ['idle', 'walk', 'fight'],
+                  lancer:      ['idle', 'walk', 'fight'] },
   loadMilitaryArt(owner) {
     // typeof guards — G is a script-level const (window.G is undefined)
     if (!window.R || typeof G === 'undefined') return;

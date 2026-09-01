@@ -500,6 +500,25 @@ same rotate-a-vehicle pipeline, ~135 gens for four engines):
   (a drawn projectile IS the overflow), "nothing rising taller than
   the standing engine" cures walk-bounce top overflow.
 
+**THE STABLE LINE: CAVALRY IS JUST A TALL CHARACTER** (~118 gens for
+three mounted characters, ZERO window re-rolls — the cheapest military
+line yet): horse-and-rider rotates from a bow-on ref54 exactly like a
+footman (horses have a real frontal read — unlike a beam-machine, the
+foreshortened view keeps head/chest/legs). Pixen draws cavalry
+side-view no matter what `direction` says; the 1-gen "seen from the
+front, facing straight south, the horse's head and chest nearest the
+camera" edit converts faithfully. A pro cavalry batch can look
+DISMOUNTED at thumbnail scale — all 16 were mounted bow-on at full
+size; zoom before re-rolling. The zero-re-roll wording that landed
+every anim first try: gallops get "hooves staying under the horse and
+never reaching far out", lance/spear thrusts get the proven "gripped
+at mid-shaft, the tip never further than one arm's length", mounted
+bows get "limbs staying close in front of the chest, elbows tucked",
+idles get "within the standing footprint". Cavalry deserves REAL idle
+sheets (stamp, tail swish, head toss — 8 gens/char); finish-boat's
+derived-idle step now fills only the gap, never clobbers a staged
+real idle.
+
 **⚠ POWERSHELL PIPELINE KILL (cost a broken install):** `script.ps1 |
 Select-Object -First 4` STOPS THE SCRIPT after 4 output lines — the
 snap pass silently processed 4 of 16 strips and the copy installed a

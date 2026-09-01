@@ -16,7 +16,9 @@ const T = {
 
 const CFG = {
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 13,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 14,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+                       // v14: the stable ships — 72 cavalry strips (rider/
+                       // horsearcher/lancer x idle/walk/fight), ramp-snapped
                        // v13: the siege train ships — 56 engine strips (catapult 16,
                        // ballista 16, trebuchet 16, siegetower 8), pennants keyed
                        // v12: the dock line ships — 88 boat strips (fishboat 24,
