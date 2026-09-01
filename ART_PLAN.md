@@ -210,6 +210,40 @@ transparent mode deletes semi-alpha ground fades. Hand-authored
 procedural masters were tried and rejected by the operator — generate,
 don't draw. 192 masters in `assets/masters/relic-{key}-256.png`.
 
+## The gathering stations (lumber / quarry / lodge, L1–L3 — SHIPPED)
+
+Nine pieces on the camps recipe above (64×72 canvas, 16 candidates/call,
+tc-l3 camera ref + wolf-camp style ref, finish = alpha snap → border trim
+→ 2× NN → 128×144). Masters in `assets/masters/station-{key}-l{n}.png`.
+The composition rule that makes them work as WORKER PLOTS: the structure
+sits at the BACK and sides of the stain, the front-center of the yard
+stays open trampled ground — that is where the crew stands, so the art
+must read complete when empty and stay readable behind two villagers.
+
+Three traps this batch found, all prompt-level or rescue-level:
+
+- **"where a worker will stand" BAKES A WORKER.** Pro read the phrase as
+  set dressing and drew a villager front-center in most candidates (all
+  16, for quarry-l3). The refire clause that cleared it completely:
+  "COMPLETELY UNMANNED — no people, no figures, nobody anywhere", placed
+  EARLY in the prompt. Describe the open ground without mentioning who
+  will use it.
+- **THE ROLLED SHEET.** Two lumber/quarry batches came back with every
+  64×72 crop containing the bottom of one scene and the top of the next:
+  the model drew its 4×4 candidate sheet at a ~55px scene pitch and the
+  API sliced at 72. The candidates are NOT garbage — the crops are
+  contiguous column slices, so stitch each column (c_i, c_i+4, c_i+8,
+  c_i+12) into 64×288, segment on fully-transparent rows (≥2-row gaps),
+  drop segments touching the column ends, and re-anchor each complete
+  scene bottom-center on a fresh 64×72. Both rescues yielded 12–16 whole
+  scenes for zero extra generations.
+- **THE FULL-BLEED WALL.** "A taller cut rock face at the BACK" made pro
+  paint the rock face to all four canvas edges as a backdrop (whole
+  batch unusable, transparent-background flag ignored). The language
+  that fixed it: "a SMALL isolated outcrop … NOT a wall, NOT a backdrop,
+  nothing touches any canvas edge", plus extending the style ref's usage
+  note with "and how the scene floats isolated on transparency".
+
 ## Reference doctrine: designated masters, never chains
 
 Two rules govern EVERY PixelLab reference, for every asset class, and
