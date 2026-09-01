@@ -335,6 +335,82 @@ const Assets = {
   },
   hasTerrainArt(t) { const a = this.terrain[t]; return !!(a && a.length); },
 
+  /* ---- TERRAIN COVER ART: the wild grass and its tended cut ----
+
+       assets/terrain/cover/{terrain}/{slot}.png       (all lowercase)
+       e.g.  assets/terrain/cover/grass/wild.png
+
+     The per-tile terrain override above replaces the FLOOR; cover art
+     replaces what GROWS on it (R.grassCover — the wild sward layer and the
+     kept verge a standing building keeps). Terrain-generic by construction —
+     the convention takes any terrain name — but only the terrains in
+     COVER_CATALOG are probed, and today that is grass alone.
+
+     THREE SLOTS, three separate files: `wild` (the open meadow's sward),
+     `kept` (the cropped tended cut inside a building's verge), `accent`
+     (the rare seed-head/bloom overlay, wild ground only). A partial set is
+     fine — supply `wild` alone and the kept/accent looks stay procedural;
+     a 404 is the default state, never an error.
+
+     A file is a horizontal STRIP of 32×32 frames (the 32px tile grid — a
+     frame lands aligned to its tile, never jittered): width a multiple of
+     32, height exactly 32. Add more frames to one file, or more files via
+     the `-2`/`-3` cascade, and the picker hashes between all of them.
+     Alpha is snapped HARD BINARY at install (A<128 → 0, else 255) — the
+     cover bakes into the terrain cache, whose repaint discipline is built
+     on opaque idempotent restamps. Same ?v= cache-buster as everything. */
+  COVER_DIR: 'assets/terrain/cover/',
+  COVER_SLOTS: ['wild', 'kept', 'accent'],
+  COVER_CATALOG: ['grass'],       // terrains probed at startup (grass only today)
+  COVER_MAX: 6,                   // most variant files probed per slot
+  COVER_PX: 32,
+  cover: {},                      // tName -> slot -> [32×32 frames…]
+  coverUrl(tName, slot, n) {
+    return this.COVER_DIR + tName + '/' + (n > 1 ? slot + '-' + n : slot) + '.png?v=' + (CFG.ART_V || 1);
+  },
+  coverSlotKey(tName, slot) { return 'cv|' + tName + '|' + slot; },
+  _tryCover(tName, slot, n) {
+    if (n > this.COVER_MAX) return;
+    const img = new Image();
+    img.onload = () => { if (this.setCoverArt(tName, slot, img)) this._tryCover(tName, slot, n + 1); };
+    img.onerror = () => { /* no art at this slot — the procedural sward stands */ };
+    img.src = this.coverUrl(tName, slot, n);
+  },
+  setCoverArt(tName, slot, img) {
+    tName = String(tName).toLowerCase(); slot = String(slot).toLowerCase();
+    if (this.COVER_SLOTS.indexOf(slot) < 0) return false;
+    const PX = this.COVER_PX;
+    if (!img || !img.width || img.height !== PX || img.width % PX) return false;
+    const frames = [];
+    for (let i = 0; i < img.width / PX; i++) {
+      const c = document.createElement('canvas'); c.width = PX; c.height = PX;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.drawImage(img, i * PX, 0, PX, PX, 0, 0, PX, PX);
+      try {
+        // hard binary alpha — the bake's restamp discipline needs opaque pixels
+        const d = g.getImageData(0, 0, PX, PX);
+        for (let p = 3; p < d.data.length; p += 4) d.data[p] = d.data[p] < 128 ? 0 : 255;
+        g.putImageData(d, 0, 0);
+      } catch (e) { /* tainted (file://) — ship as decoded; the QC gate is authoring-time */ }
+      frames.push(c);
+    }
+    const t = this.cover[tName] || (this.cover[tName] = {});
+    (t[slot] || (t[slot] = [])).push(...frames);
+    this.loaded[this.coverSlotKey(tName, slot)] = true;
+    // the cover bakes into the terrain cache — a PNG landing after the world
+    // was built has to ask for the repaint, exactly as terrain art does
+    if (window.R && typeof R.rebuildTerrain === 'function') R.rebuildTerrain();
+    return true;
+  },
+  /* the frame for (terrain, slot) at hash i, or null to draw procedurally.
+     Wraps over every frame from every cascade file. */
+  coverImg(tName, slot, i) {
+    const t = this.cover[tName], a = t && t[slot];
+    if (!a || !a.length) return null;
+    return a[(i >>> 0) % a.length];
+  },
+
   /* ---- FORMATION ART: multi-tile drawn pieces over terrain REGIONS ----
 
        assets/terrain/formations/{terrain}/{terrain}-{W}x{H}-{shape}-{letter}.png
@@ -821,6 +897,8 @@ const Assets = {
     for (const tName of this.formationTerrains())
       for (const stem of this.FORMATION_CATALOG[tName]) this._tryLoadFormation(tName, stem);
     for (const k of Object.keys(T)) this._tryTerrain(T[k], 1);
+    for (const tName of this.COVER_CATALOG)
+      for (const slot of this.COVER_SLOTS) this._tryCover(tName, slot, 1);
     this.ready = true;
     return { ok: true, data: { slots: this.artSlots().length + this.campTribes().length } };
   },

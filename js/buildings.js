@@ -1036,6 +1036,11 @@ const Bld = {
        silently. The bonus is derived either way; this is what makes the
        CELEBRATION fire on both roads (tests/homestead.mjs). */
     if (!b.construction && (key === 'house' || key === 'farm')) this.syncHomesteads();
+    // an INSTANT building tames its ground with no ceremony — the kept state
+    // is derived, so only the repaint is owed (the flatten fires from finish()
+    // alone; a start package or an origin card plants into a world that reads
+    // as already lived-in)
+    if (!b.construction && window.R && R.tameDirty) R.tameDirty(b);
     return b;
   },
 
@@ -1078,6 +1083,13 @@ const Bld = {
         G.log(`${this.def(b.key).name} complete`);
       }
     }
+    /* TAMING ON BUILD (tests/wild-grass.mjs): the wild sward around the new
+       building goes down — captured BEFORE the repaint so the flatten lifts
+       what actually stood there — and the kept ground bakes in behind it.
+       This is the ONE place the animation fires: an instant placement, a
+       load and a rebake all show the derived kept state with no ceremony. */
+    if (window.R && R.startTaming) R.startTaming(b);
+    if (window.R && R.tameDirty) R.tameDirty(b);
     // ORIGIN CARDS: "N free units when you first build X" kickers fire here
     if (window.Cards) Cards.onBuildFinish(b.owner, b);
     // THE SECOND WAY TO WIN: the monument is up, the run is decided
@@ -1773,6 +1785,10 @@ const Bld = {
     }
     for (const u of S.units) if (u.tBld === b.id) u.tBld = 0;
     if (UI.sel && UI.sel.type === 'bld' && UI.sel.id === b.id) UI.deselect();
+    // the tended verge dies with its keeper — the kept-ground mask is derived
+    // from the standing buildings, so this repaint is where the wild grass
+    // grows back over the ground the building used to keep
+    if (window.R && R.tameDirty) R.tameDirty(b);
   },
 
   /* ---- BURNING (tests/burn-down.mjs) — how far gone is a damaged building?

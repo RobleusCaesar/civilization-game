@@ -62,6 +62,12 @@
         const pf = Assets.parseFormationStem(stem, null);
         return pf ? { kind: 'formation', terrain: pf.tName, stem } : null;
       }
+      // terrain cover: {terrain}-{wild|kept|accent}[-N].png ships under
+      // assets/terrain/cover/{terrain}/{slot}[-N].png — the drop carries the
+      // terrain in its name because a basename has no directory
+      const mv = lower.match(/^([a-z]+)-(wild|kept|accent)(?:-\d+)?\.png$/);
+      if (mv) return Assets.COVER_CATALOG.indexOf(mv[1]) < 0 ? null
+        : { kind: 'cover', tName: mv[1], slot: mv[2] };
       const m = lower.match(/^([a-z0-9]+)-l(\d+)\.png$/);
       if (!m) return null;
       const id = m[1], lv = +m[2];
@@ -113,6 +119,24 @@
         this._saved[k] = { art: Assets.relicArt[rkey], slot: Assets.art[k], loaded: !!Assets.loaded[k] };
       if (!Assets.setRelicArt(rkey, img)) return false;
       this.overrides[k] = name || (Assets.relicStem(rkey) + '.png');
+      this._renderPanel();
+      return true;
+    },
+    // one terrain-cover slot — same shipping path (Assets.setCoverArt), same
+    // override/revert bookkeeping. A drop REPLACES the slot's whole frame set
+    // (an artist previewing wants their file, not their file appended to the
+    // shipped one); revert restores whatever the startup cascade had loaded.
+    injectCover(tName, slot, img, name) {
+      const k = Assets.coverSlotKey(tName, slot);
+      const prior = { arr: (Assets.cover[tName] || {})[slot] || null, loaded: !!Assets.loaded[k] };
+      if (Assets.cover[tName]) Assets.cover[tName][slot] = [];
+      if (!Assets.setCoverArt(tName, slot, img)) {
+        // refused (wrong grid) — put the shipped frames back untouched
+        if (prior.arr && Assets.cover[tName]) Assets.cover[tName][slot] = prior.arr;
+        return false;
+      }
+      if (!this._saved[k]) this._saved[k] = prior;
+      this.overrides[k] = name || (tName + '-' + slot + '.png');
       this._renderPanel();
       return true;
     },
@@ -260,6 +284,7 @@
         target: 'mountain',
         rkey: (window.Relics && Object.keys(Relics.DEFS)[0]) || 'aqueduct',
         relicStash: null,
+        slot: 'wild', coverStash: null,
         tempStem: null, centered: false, prevMask: this.maskOverlay,
       };
       // suggest keying when the corner is opaque — external art loves a backdrop
@@ -288,6 +313,16 @@
         else Assets.removeRelicArt(c0.rkey);
         S.relic = c0.relicStash.relic;
       }
+      // …and neither does a cover preview: the slot's shipped frames return
+      if (c0.coverStash) {
+        const st = c0.coverStash, kk = Assets.coverSlotKey('grass', st.slot);
+        if (Assets.cover.grass) {
+          if (st.arr) Assets.cover.grass[st.slot] = st.arr;
+          else delete Assets.cover.grass[st.slot];
+        }
+        if (st.loaded) Assets.loaded[kk] = true; else delete Assets.loaded[kk];
+        if (window.R && R.rebuildTerrain) R.rebuildTerrain();
+      }
       this.maskOverlay = c0.prevMask;
       if (c0.panel) c0.panel.remove();
       this._conform = null;
@@ -303,10 +338,14 @@
         const d = window.Relics && Relics.DEFS[c0.rkey];
         return d ? ('relic-' + d.w + 'x' + d.h + '-' + d.key + '-' + letter) : 'relic-wip';
       }
+      // cover target: the drop convention's own name — grass-{slot}.png
+      if (c0.target === 'cover') return 'grass-' + (c0.slot || 'wild');
       const shape = (c0.shape || '').toLowerCase().replace(/[^a-z0-9]/g, '') || 'wip';
       return 'mountain-' + c0.W + 'x' + c0.H + '-' + shape + '-' + letter;
     },
-    _conformBuild() {
+    // key + trim, shared by every conform target: edge-flood the corner
+    // colour when asked, then measure the opaque content box
+    _conformKeyTrim() {
       const c0 = this._conform;
       if (!c0) return null;
       const src = c0.src, w = src.width, h = src.height;
@@ -347,7 +386,13 @@
           if (y < y0) y0 = y; if (y > y1) y1 = y;
         }
       if (x1 < 0) return null;                 // nothing but transparency
-      const tw = x1 - x0 + 1, th = y1 - y0 + 1;
+      return { work, w, h, x0, y0, tw: x1 - x0 + 1, th: y1 - y0 + 1 };
+    },
+    _conformBuild() {
+      const c0 = this._conform;
+      const kt = this._conformKeyTrim();
+      if (!kt) return null;
+      const work = kt.work, w = kt.w, h = kt.h, x0 = kt.x0, y0 = kt.y0, tw = kt.tw, th = kt.th;
       // nearest-downsample: trimmed width spans W tiles at N art-px per tile
       const PX = Assets.FORMATION_PX || 128;
       const dw = c0.W * c0.N;
@@ -372,6 +417,25 @@
         trimmed: tw + '×' + th + ' of ' + w + '×' + h,
       };
     },
+    /* the COVER build: any-size art → a {W frames × 32}×32 strip on the
+       32px grid, aspect preserved, bottom-anchored (a sward stands ON its
+       ground line). setCoverArt slices the frames back out and snaps the
+       alpha binary — the same door a shipped file comes through. */
+    _conformBuildCover() {
+      const c0 = this._conform;
+      const kt = this._conformKeyTrim();
+      if (!kt) return null;
+      const PXC = (window.Assets && Assets.COVER_PX) || 32;
+      const out = document.createElement('canvas');
+      out.width = c0.W * PXC; out.height = PXC;
+      const go = out.getContext('2d');
+      go.imageSmoothingEnabled = false;
+      const k = Math.min(out.width / kt.tw, PXC / kt.th);
+      const dw = Math.max(1, Math.round(kt.tw * k)), dh = Math.max(1, Math.round(kt.th * k));
+      go.drawImage(kt.work, kt.x0, kt.y0, kt.tw, kt.th, ((out.width - dw) / 2) | 0, PXC - dh, dw, dh);
+      return { canvas: out, overhangTiles: 0, shortTiles: 0,
+               trimmed: kt.tw + '×' + kt.th + ' of ' + kt.w + '×' + kt.h };
+    },
     // rebuild and live-preview: the conformed piece is a real (temporary)
     // formation piece, force-pinned onto the largest region — every control
     // change lands on actual ground within a frame
@@ -387,6 +451,23 @@
          (Assets.setRelicArt), and a TEMPORARY found relic is stood at the
          camera's centre so the preview lands on real ground within a frame.
          Both are stashed once and restored on close — in-memory only. */
+      /* COVER TARGET: the conformed strip installs as the live grass-cover
+         slot (Assets.setCoverArt — the shipping door), replacing the slot's
+         frames for the preview; stash once, restore on close. The rebake the
+         installer already requests is the live preview. */
+      if (c0.target === 'cover') {
+        c0.built = this._conformBuildCover();
+        if (c0.built) {
+          const kk = Assets.coverSlotKey('grass', c0.slot);
+          if (!c0.coverStash)
+            c0.coverStash = { slot: c0.slot, arr: (Assets.cover.grass || {})[c0.slot] || null, loaded: !!Assets.loaded[kk] };
+          if (Assets.cover.grass) Assets.cover.grass[c0.slot] = [];
+          Assets.setCoverArt('grass', c0.slot, c0.built.canvas);
+        }
+        this._conformRender();
+        this._renderPanel();
+        return;
+      }
       if (c0.target === 'relic') {
         const d = window.Relics && Relics.DEFS[c0.rkey];
         c0.built = this._conformBuild();
@@ -446,8 +527,11 @@
         '<div id="dcSrc" style="opacity:.7;margin-bottom:6px;word-break:break-word"></div>' +
         '<div style="display:flex;gap:6px;align-items:center;margin:4px 0">target ' +
         '<select id="dcTarget" style="font:12px monospace">' +
-        '<option value="mountain">mountain piece</option><option value="relic">relic decor</option></select>' +
-        '<select id="dcRelic" style="font:12px monospace;display:none"></select></div>' +
+        '<option value="mountain">mountain piece</option><option value="relic">relic decor</option>' +
+        '<option value="cover">grass cover</option></select>' +
+        '<select id="dcRelic" style="font:12px monospace;display:none"></select>' +
+        '<select id="dcSlot" style="font:12px monospace;display:none">' +
+        '<option value="wild">wild</option><option value="kept">kept</option><option value="accent">accent</option></select></div>' +
         '<div style="display:flex;gap:8px;align-items:center;margin:4px 0">footprint ' +
         'W <select id="dcW" style="font:12px monospace"></select> × ' +
         'H <select id="dcH" style="font:12px monospace"></select></div>' +
@@ -491,19 +575,38 @@
         S.relic = c0.relicStash.relic;
         c0.relicStash = null;
       };
+      /* the COVER target: which slot is being dressed. W becomes the FRAME
+         COUNT of the 32px strip; H and density are the convention's (1 tile
+         tall, game-native), so they lock. */
+      const sSel = p.querySelector('#dcSlot');
+      sSel.value = c0.slot || 'wild';
+      const coverRestore = () => {
+        if (!c0.coverStash) return;
+        const st = c0.coverStash, kk = Assets.coverSlotKey('grass', st.slot);
+        if (Assets.cover.grass) {
+          if (st.arr) Assets.cover.grass[st.slot] = st.arr;
+          else delete Assets.cover.grass[st.slot];
+        }
+        if (st.loaded) Assets.loaded[kk] = true; else delete Assets.loaded[kk];
+        c0.coverStash = null;
+      };
       const syncTarget = () => {
-        const rel = c0.target === 'relic';
+        const rel = c0.target === 'relic', cov = c0.target === 'cover';
         rSel.style.display = rel ? '' : 'none';
-        p.querySelector('#dcShape').disabled = rel;
-        wSel.disabled = rel; hSel.disabled = rel;
+        sSel.style.display = cov ? '' : 'none';
+        p.querySelector('#dcShape').disabled = rel || cov;
+        wSel.disabled = rel; hSel.disabled = rel || cov;
+        nR.disabled = cov;
         if (rel && window.Relics && Relics.DEFS[c0.rkey]) {
           c0.W = Relics.DEFS[c0.rkey].w; c0.H = Relics.DEFS[c0.rkey].h;
           wSel.value = c0.W; hSel.value = c0.H;
         }
+        if (cov) { c0.H = 1; hSel.value = 1; }
       };
       syncTarget();
-      tSel.onchange = () => { relicRestore(); c0.target = tSel.value; syncTarget(); re(); };
+      tSel.onchange = () => { relicRestore(); coverRestore(); c0.target = tSel.value; syncTarget(); re(); };
       rSel.onchange = () => { relicRestore(); c0.rkey = rSel.value; syncTarget(); re(); };
+      sSel.onchange = () => { coverRestore(); c0.slot = sSel.value; syncTarget(); re(); };
       wSel.onchange = () => { c0.W = +wSel.value; re(); };
       hSel.onchange = () => { c0.H = +hSel.value; re(); };
       nR.oninput = () => { c0.N = this.DENSITIES[+nR.value]; re(); };
@@ -557,6 +660,20 @@
         else { delete Assets.art[k]; delete Assets.loaded[k]; if (s.art === null) Assets.art[k] = null; }
         delete this._formInfo[stem];
         if (this.formationPin && this.formationPin.stem === stem) this.setFormationPin(null, null);
+        delete this._saved[k];
+        delete this.overrides[k];
+        this._renderPanel();
+        return true;
+      }
+      // the COVER branch — its key carries its own 'cv|' prefix
+      if (k.indexOf('cv|') === 0) {
+        const [, tName, slot] = k.split('|');
+        if (Assets.cover[tName]) {
+          if (s.arr) Assets.cover[tName][slot] = s.arr;
+          else delete Assets.cover[tName][slot];
+        }
+        if (s.loaded) Assets.loaded[k] = true; else delete Assets.loaded[k];
+        if (window.R && R.rebuildTerrain) R.rebuildTerrain();
         delete this._saved[k];
         delete this.overrides[k];
         this._renderPanel();
@@ -764,6 +881,7 @@
           else if (slot.kind === 'camp') DevArt.injectCamp(slot.tribe, img, f.name);
           else if (slot.kind === 'wonder') DevArt.injectWonder(slot.wkey, img, f.name);
           else if (slot.kind === 'relic') DevArt.injectRelic(slot.rkey, img, f.name);
+          else if (slot.kind === 'cover') DevArt.injectCover(slot.tName, slot.slot, img, f.name);
           else if (slot.kind === 'formation') DevArt.injectFormation(slot.terrain, slot.stem, img, f.name);
           else DevArt.inject(slot.id, slot.lv, img, f.name);
         };

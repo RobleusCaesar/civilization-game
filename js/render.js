@@ -90,6 +90,30 @@ const LAND = {
                         // which is what makes the patches read as natural —
                         // most of an open field should carry nothing at all
   DECAL_MAX: 3,         // most decals on one tile
+  /* --- Part 2b: WILD GRASS COVER (R.grassCover). The meadow itself, not its
+     ornaments: low swards of grass scattered over open ground, baked into the
+     terrain cache exactly like the decals. THE SAPLING TRAP IS SOLVED BY
+     CLUMP SHAPE, NOT HEIGHT — every silhouette is wider than it is tall, a
+     sward lying IN the grass rather than a plant standing on it (the same
+     ruling the tuft decals already carry, applied to the whole layer).
+     Deliberately NO wind animation: the cache is the whole budget. --- */
+  GRASS_DENSITY: 1.0,   // the one dial for the whole cover; 0 switches it off
+  GRASS_MACRO_F: 0.030, // the above-tile-scale richness field — patches of
+                        // lush and bald ground many tiles wide
+  GRASS_GATE: 0.34,     // macro value below which nothing grows at all —
+                        // a REAL share of the meadow stays bald, which is
+                        // what makes the lush valleys read as valleys
+  GRASS_MAX: 7,         // most swards on one wild tile
+  GRASS_ACCENT: 0.045,  // chance a wild sward carries a dull seed head
+  /* --- taming on build (R.tameMask / startTaming): the ground a standing
+     building keeps. DERIVED, NEVER STORED — the mask is a pure function of
+     the standing buildings and the land seed, so tile data is bit-identical
+     with the feature on or off and a razed building's ground simply grows
+     back on the next repaint. --- */
+  KEPT_DENSITY: 0.32,   // how much of the wild count a tended tile keeps
+  TAME_R: 2,            // tiles of tended ground beyond a building's footprint
+  TAME_R_FORT: 1,       // …a wall or gate section keeps only its own verge
+  TAME_WOBBLE: 1.5,     // tiles of ragged wander on the tended boundary
   // --- Part 3: transitions ------------------------------------------------
   EDGE_MAX: 5,          // deepest an edge fringe reaches into a tile, in 1/16ths
   EDGE_FREQ: 1.6,       // how fast a boundary wanders. Sampled in WORLD space so
@@ -477,7 +501,7 @@ const R = {
     this._lat = out; this._latKey = key;
     this._latOne = { clump: this._mkLat(LAND.DECAL_CLUMP, 41), sand: this._mkLat(LAND.SAND_FREQ, 57),
                      edge: this._mkLat(LAND.EDGE_FREQ, 73), shoal: this._mkLat(LAND.SHOAL_FREQ, 97),
-                     rock: this._mkLat(LAND.ROCK_EDGE_F, 113) };
+                     rock: this._mkLat(LAND.ROCK_EDGE_F, 113), grassM: this._mkLat(LAND.GRASS_MACRO_F, 131) };
     return out;
   },
   /* the CLUMP FIELD — what decides where things grow at all. Nature clumps:
@@ -693,6 +717,304 @@ const R = {
          with the forage redesign; see the CORE_SCATTER table.) */
       if (kind === 'pebble') { q(1, 2, 2, 1, AP.stone[0]); q(0, 0, 3, 2, AP.stone[2]); q(0, 0, 1, 1, AP.stone[3]); }
       else if (kind === 'vein') { q(0, 1, 3, 1, AP.gold[0]); q(0, 0, 2, 1, AP.gold[2]); q(2, 0, 1, 1, AP.gold[3]); }
+    }
+  },
+
+  /* ---- WILD GRASS COVER -------------------------------------------------
+     The meadow itself. Everything the decal layer learned applies here at
+     scale: sub-tile position with overhang, clustering with real bare ground
+     between the patches, and silhouettes that lie IN the grass — every sward
+     is wider than it is tall, which is the whole answer to the sapling trap.
+
+     BIODIVERSITY IS FOUR SEPARATE AXES, all seeded from (x, y, landSeed):
+     seven silhouettes; positional jitter; value jitter across the grass ramp
+     (with parched thatch blades where the macro field peaks dry); and an
+     ABOVE-TILE-SCALE richness field (grassM, many tiles wide) that makes one
+     valley lush and the next threadbare — variation no per-tile roll can
+     produce. Context rides the neighbourhood exactly as the decals read it:
+     damp ground grows thicker, ground under a crag thinner.
+
+     Baked into the terrain cache, so it draws UNDER units with no y-sorting,
+     costs the frame loop nothing, and respects fog for free (the cache reads
+     seenTerrain and the fog blits over it). NO wind animation — cut on
+     purpose: the cache IS the budget.
+
+     `cap` is the taming capture: instead of painting, record every rect the
+     tile's WILD swards would paint (cap.rects) so startTaming can lift them
+     into the flatten one-shot. Capture always renders the wild look — it is
+     asking what stood there before the builders came. */
+  grassCover(g, x, y, terr, cap) {
+    if (LAND.GRASS_DENSITY <= 0) return;
+    if (!MapGen.onBoard(x, y)) return;
+    const t = terr[MapGen.idx(x, y)];
+    if (t !== T.GRASS) return;
+    if (typeof Bld !== 'undefined' && Bld.at && Bld.at(x, y)) return;
+    this.landLattices();
+    const macro = this._latRead(this._latOne.grassM, x, y);
+    if (macro < LAND.GRASS_GATE) return;               // bald ground between valleys
+    const rich = (macro - LAND.GRASS_GATE) / (1 - LAND.GRASS_GATE);
+    // mid-scale clustering rides the decal clump field a half-phase off, so
+    // the two scatters never stack their bare patches on the same tiles
+    const mid = this._latRead(this._latOne.clump, x + 17.3, y + 9.1);
+    let wood = 0, rock = 0, wet = 0;
+    for (const [ox, oy] of NEIGH8) {
+      const nx = x + ox, ny = y + oy;
+      if (!MapGen.inB(nx, ny)) continue;
+      const nb = terr[MapGen.idx(nx, ny)];
+      if (nb === T.FOREST || nb === T.STUMPS) wood++;
+      else if (nb === T.HILLS || nb === T.MOUNTAIN || nb === T.PEBBLES) rock++;
+      else if (nb === T.WATER || nb === T.MOAT) wet++;
+    }
+    const tame = cap ? false : this.tamedAt(x, y);
+    // the curve is deliberately steep: a valley near the gate carries a few
+    // swards, a lush heart is thick with them — flat density is the sprinkle
+    // this whole layer exists to avoid
+    let d = LAND.GRASS_DENSITY * (0.28 + Math.pow(rich, 1.3) * 0.95) * (0.55 + mid * 0.9);
+    if (wet) d *= 1.25;                                // the damp band grows thick
+    if (rock >= 2) d *= 0.55;                          // thin soil below a crag
+    if (tame) d *= LAND.KEPT_DENSITY;                  // a tended verge is cropped
+    const TL = CFG.TILE, px = TL / 32;                 // ONE authored pixel — the 32 grid
+    let hh = (Math.imul(x, 0x51ed270b) ^ Math.imul(y, 0x85ebca6b) ^ this.landSeed()) >>> 0;
+    const rnd = () => { hh = Math.imul(hh ^ (hh >>> 15), 0x2c1b3c6d); hh = (hh ^ (hh >>> 12)) >>> 0; return hh / 4294967295; };
+    let n = Math.min(LAND.GRASS_MAX, Math.round(d * (2.6 + rnd() * 3.2)));
+    if (n <= 0) { if (rnd() < d * 2) n = 1; else return; }
+    /* supplied cover art takes the tile whole, on the 32px grid — the frame
+       is a composed sward scene, so it lands aligned, never jittered. Still
+       gated by the same fields: the art appears exactly where the procedural
+       cover would, and bare ground stays bare. */
+    const art = window.Assets && Assets.coverImg && Assets.coverImg('grass', tame ? 'kept' : 'wild', hh >>> 4);
+    if (art) {
+      if (cap) { cap.img = art; return; }
+      g.drawImage(art, x * TL, y * TL, TL, TL);
+      if (!tame && rnd() < LAND.GRASS_ACCENT * 3) {
+        const acc = Assets.coverImg('grass', 'accent', hh >>> 7);
+        if (acc) g.drawImage(acc, x * TL, y * TL, TL, TL);
+      }
+      return;
+    }
+    const AP = ART.PALETTE, GR = AP.grass;
+    const dry = macro > 0.80 && !wet;                  // the parched tops of the field
+    for (let i = 0; i < n; i++) {
+      // overhang −3…+3px past the tile, same bound as the decals: paint ends
+      // well inside one tile past the anchor, so the ±3 restamp ring covers it
+      const cx0 = x * TL + Math.round(rnd() * (TL + 6)) - 3;
+      const cy0 = y * TL + Math.round(rnd() * (TL + 6)) - 3;
+      // a tended sward keeps only the three shortest shapes
+      const sil = (rnd() * (tame ? 2.999 : 6.999)) | 0;
+      // value jitter: deep in the wood's shade, lit out in the open
+      const vr = rnd();
+      const body = wood >= 2 ? GR[2] : vr < 0.55 ? GR[3] : vr < 0.82 ? GR[2] : GR[4];
+      const lit = dry && rnd() < 0.5 ? AP.thatch[1] : GR[4];
+      const deep = GR[1];
+      const q = cap
+        ? (ox, oy, w, h, c) => cap.rects.push({ x: cx0 + ox * px, y: cy0 + oy * px, w: w * px, h: h * px, c })
+        : (ox, oy, w, h, c) => { g.fillStyle = c; g.fillRect(cx0 + ox * px, cy0 + oy * px, w * px, h * px); };
+      switch (sil) {
+        /* every shape: a LIT crown, a body wider than the whole thing is
+           tall, and a DARK FOOT — the contact pixel doctrine the decals
+           proved. A sward without its foot is invisible against the floor. */
+        case 0:                                        // a small sward
+          q(1, 0, 2, 1, lit); q(0, 1, 4, 1, body); q(1, 2, 2, 1, deep); break;
+        case 1:                                        // a broken row
+          q(0, 0, 2, 1, body); q(3, 0, 2, 1, body); q(1, 1, 3, 1, deep); break;
+        case 2:                                        // a mid sward, lit crown
+          q(1, 0, 3, 1, lit); q(0, 1, 6, 2, body); q(1, 3, 4, 1, deep); break;
+        case 3:                                        // a wide sward
+          q(2, 0, 4, 1, lit); q(0, 1, 8, 2, body); q(2, 3, 4, 1, deep); break;
+        case 4:                                        // an arc, thinning right
+          q(0, 0, 3, 1, body); q(4, 0, 2, 1, body); q(0, 1, 5, 1, deep); break;
+        case 5:                                        // a dashed fringe
+          q(0, 0, 2, 1, body); q(3, 0, 3, 1, body); q(7, 0, 1, 1, body); q(2, 1, 3, 1, deep); break;
+        case 6:                                        // a dense tussock
+          q(1, 0, 2, 1, lit); q(4, 0, 2, 1, body);
+          q(0, 1, 7, 2, body); q(1, 3, 5, 1, deep); break;
+      }
+      // the rare accent: a dull seed head, never the bright brass (the
+      // colour-language rule DECAL_RESERVED already states)
+      if (!tame && rnd() < LAND.GRASS_ACCENT) q(2, -1, 1, 1, AP.bone[1]);
+    }
+  },
+
+  /* ---- TAMING ON BUILD --------------------------------------------------
+     The ground a town stands on is ground somebody keeps. Around every
+     STANDING building the wild cover gives way to a cropped, tidier verge —
+     less of it, shorter shapes, no seed heads — inside a ragged organic
+     boundary (per-tile world noise on the distance, so it is never a disk,
+     and overlapping zones union into one smooth kept ground because every
+     tile's wobble is its own).
+
+     DERIVED, NEVER STORED. The mask is a pure function of the standing
+     buildings and the land seed: nothing rides a save, tile data is
+     bit-identical with the feature on or off (tests/wild-grass.mjs pins it),
+     and a razed building's verge simply grows wild again on the repaint its
+     removal already triggers. Construction sites keep nothing — the ground
+     is tamed by the FINISHED building, which is also what lets the flatten
+     animation fire exactly once, from Bld.finish. */
+  _tameKey: '', _tameMask: null,
+  tameMask() {
+    if (!S || !S.buildings || typeof Bld === 'undefined') return null;
+    let key = this.landSeed() + '|' + CFG.W + '|';
+    for (const b of S.buildings) {
+      if (b.construction > 0 || b.key === 'raidercamp') continue;   // a war band tends nothing
+      key += b.key + b.x + ',' + b.y + ';';
+    }
+    if (this._tameKey === key && this._tameMask) return this._tameMask;
+    const W = CFG.W, H = CFG.H, m = new Uint8Array(W * H);
+    for (const b of S.buildings) {
+      if (b.construction > 0 || b.key === 'raidercamp') continue;
+      const sz = Bld.size(b);
+      const R0 = (b.key === 'wall' || b.key === 'gate') ? LAND.TAME_R_FORT : LAND.TAME_R;
+      const reach = Math.ceil(R0 + LAND.TAME_WOBBLE);
+      for (let y = b.y - reach; y < b.y + sz + reach; y++) {
+        if (y < 0 || y >= H) continue;
+        for (let x = b.x - reach; x < b.x + sz + reach; x++) {
+          if (x < 0 || x >= W) continue;
+          if (m[y * W + x]) continue;
+          const dx = x < b.x ? b.x - x : x >= b.x + sz ? x - (b.x + sz - 1) : 0;
+          const dy = y < b.y ? b.y - y : y >= b.y + sz ? y - (b.y + sz - 1) : 0;
+          const dd = Math.hypot(dx, dy);
+          // the boundary's wobble belongs to the TILE, not the building —
+          // which is exactly why overlapping zones union without a seam
+          if (dd <= R0 - 0.75 + this._lh(x, y, 177) * LAND.TAME_WOBBLE) m[y * W + x] = 1;
+        }
+      }
+    }
+    this._tameKey = key; this._tameMask = m;
+    return m;
+  },
+  tamedAt(x, y) {
+    const m = this.tameMask();
+    return !!(m && m[y * CFG.W + x]);
+  },
+
+  /* a building appeared or vanished: repaint its whole kept zone (plus the
+     wobble's reach), through the ordinary exact-invalidation path. This is
+     the taming's OWN dirty call — ordinary repaints near a standing building
+     already derive the mask correctly, but only the building's arrival or
+     departure knows the zone's full extent. */
+  tameDirty(b) {
+    if (!this.terrainCache || !S || !S.map || typeof Bld === 'undefined') return;
+    const sz = Bld.size(b);
+    const reach = Math.ceil(((b.key === 'wall' || b.key === 'gate') ? LAND.TAME_R_FORT : LAND.TAME_R) + LAND.TAME_WOBBLE);
+    const tiles = [];
+    for (let y = b.y - reach; y < b.y + sz + reach; y++)
+      for (let x = b.x - reach; x < b.x + sz + reach; x++)
+        if (MapGen.inB(x, y)) tiles.push([x, y]);
+    if (tiles.length) this.drawTilesAt(tiles);
+  },
+
+  /* ---- the flatten: the wild sward goes down as the builders move in ----
+     One-shot, the tree-fall's little sibling. On completion the zone's WILD
+     swards are lifted — regenerated rect-for-rect by the same pure generator
+     that baked them, never read back from the canvas — and each tile's
+     swards flatten AWAY from the new building, staggered by distance so the
+     whole thing reads as one ripple rolling outward. Then the bake underneath
+     already shows the kept ground (tameDirty repainted it), so when the
+     lifted pixels fade the tended verge is what remains.
+
+     Fires from Bld.finish and NOWHERE else: never on load, never on an
+     instant placement, never on a scroll or a rebake — the same discipline
+     the tree fall keeps. Render state only, capped, never in a save. */
+  TAMING: { ms: 780, stagger: 0.085, cap: 6, tiles: 48 },
+  tamings: [],
+  startTaming(b) {
+    if (!S || !S.map || !this.terrainCache || typeof Bld === 'undefined') return;
+    const sz = Bld.size(b);
+    const R0 = (b.key === 'wall' || b.key === 'gate') ? LAND.TAME_R_FORT : LAND.TAME_R;
+    const reach = Math.ceil(R0 + LAND.TAME_WOBBLE);
+    const bcx = b.x + sz / 2, bcy = b.y + sz / 2;
+    const terr = S.map.seenTerrain || S.map.terrain;
+    /* what stood BEFORE this building finished: rebuild the mask with b
+       counted as a site, so ground a NEIGHBOUR already keeps is skipped —
+       lifting "wild" swards off already-kept ground would flatten grass that
+       was never standing (the union-smoothly rule, animated). */
+    const was = new Uint8Array((2 * reach + sz) * (2 * reach + sz));
+    {
+      const c0v = b.construction;
+      b.construction = 1; this._tameKey = '';
+      let i = 0;
+      for (let y = b.y - reach; y < b.y + sz + reach; y++)
+        for (let x = b.x - reach; x < b.x + sz + reach; x++, i++)
+          if (MapGen.inB(x, y) && this.tamedAt(x, y)) was[i] = 1;
+      b.construction = c0v; this._tameKey = '';
+    }
+    const tiles = [];
+    let wi = -1;
+    for (let y = b.y - reach; y < b.y + sz + reach; y++) {
+      for (let x = b.x - reach; x < b.x + sz + reach; x++) {
+        wi++;
+        if (!MapGen.inB(x, y) || !this.tamedAt(x, y)) continue;
+        if (was[wi]) continue;                         // a neighbour already kept it
+        if (!G.visibleAt(x, y)) continue;              // ground nobody can see
+        const cap = { rects: [], img: null };
+        this.grassCover(null, x, y, terr, cap);
+        if (!cap.rects.length && !cap.img) continue;
+        const ddx = x + 0.5 - bcx, ddy = y + 0.5 - bcy;
+        const dl = Math.hypot(ddx, ddy) || 1;
+        tiles.push({ x, y, cap, dir: [ddx / dl, ddy / dl], delay: dl * this.TAMING.stagger });
+      }
+    }
+    if (!tiles.length) return;
+    tiles.sort((a, c) => a.delay - c.delay);
+    if (tiles.length > this.TAMING.tiles) tiles.length = this.TAMING.tiles;
+    if (this.tamings.length >= this.TAMING.cap) this.tamings.shift();
+    this.tamings.push({ tiles, t: 0 });
+  },
+  drawTamings(g, dt) {
+    if (!this.tamings.length) return;
+    const cfg = this.TAMING, TL = CFG.TILE;
+    for (let i = this.tamings.length - 1; i >= 0; i--) {
+      const tm = this.tamings[i];
+      tm.t += dt;
+      let live = false;
+      for (const td of tm.tiles) {
+        const p = (tm.t - td.delay) / (cfg.ms / 1000);
+        if (p >= 1) continue;
+        live = true;
+        if (p < 0) {
+          // not reached yet — the wild sward still stands, drawn over the
+          // already-kept bake so the ripple has something to knock down
+          if (td.cap.img) g.drawImage(td.cap.img, td.x * TL, td.y * TL, TL, TL);
+          else for (const r of td.cap.rects) { g.fillStyle = r.c; g.fillRect(r.x, r.y, r.w, r.h); }
+          continue;
+        }
+        const ease = Math.min(1, Math.pow(p / 0.85, 1.4));
+        const flat = 1 - ease * 0.8;                   // rows settle toward the ground
+        const push = ease * 3 * (TL / 32);             // …and slide away from the build
+        const a = p < 0.65 ? 1 : 1 - (p - 0.65) / 0.35;
+        g.globalAlpha = a;
+        if (td.cap.img) {
+          const h = TL * flat;
+          g.drawImage(td.cap.img, td.x * TL + td.dir[0] * push, td.y * TL + (TL - h), TL, h);
+        } else {
+          for (const r of td.cap.rects) {
+            g.fillStyle = r.c;
+            g.fillRect(Math.round(r.x + td.dir[0] * push), Math.round(r.y + td.dir[1] * push * 0.6 + r.h * (1 - flat)),
+              r.w, Math.max(1, Math.round(r.h * flat)));
+          }
+        }
+        /* loose blades thrown along the ripple — the tree fall's torn-leaf
+           trick at meadow scale, and what makes a two-pixel sward's flatten
+           READ. Hashed off the tile, never rolled. */
+        const px1 = Math.max(1, Math.round(TL / 32));
+        let bh = (Math.imul(td.x, 0x27d4eb2d) ^ Math.imul(td.y, 0x9e3779b1)) >>> 0;
+        const br = () => { bh = Math.imul(bh ^ (bh >>> 15), 0x2c1b3c6d); bh = (bh ^ (bh >>> 12)) >>> 0; return bh / 4294967295; };
+        const GR2 = ART.PALETTE.grass;
+        for (let k = 0; k < 4; k++) {
+          const b0 = br(), b1 = br(), b2 = br();
+          const bt = (p - b0 * 0.3) / 0.7;
+          if (bt <= 0 || bt >= 1) continue;
+          const reach = (5 + b1 * 12) * px1 * bt;
+          const bx = td.x * TL + TL / 2 + td.dir[0] * reach + (b2 - 0.5) * 6 * px1;
+          const by = td.y * TL + TL / 2 + td.dir[1] * reach * 0.6
+            - px1 * 5 * 4 * bt * (1 - bt);             // a small arc up and back down
+          g.globalAlpha = Math.min(a, (1 - bt) * 1.5);
+          g.fillStyle = b2 < 0.6 ? GR2[3] : GR2[4];
+          g.fillRect(Math.round(bx), Math.round(by), px1, px1);
+        }
+        g.globalAlpha = 1;
+      }
+      if (!live && tm.t > 0) this.tamings.splice(i, 1);
     }
   },
 
@@ -3145,6 +3467,11 @@ const R = {
        any of them is laid. It goes FIRST of the two — a tuft in the grass
        belongs in front of the crag it grows beside, not behind it. */
     const terr = () => S.map.seenTerrain || S.map.terrain;
+    // the grass cover goes down FIRST of the three: stones and flowers sit on
+    // the meadow, never under it
+    band((a, b) => this.clipBoard(g, () => {
+      for (let y = a; y < b; y++) for (let x = 0; x < W; x++) this.grassCover(g, x, y, terr());
+    }));
     band((a, b) => this.clipBoard(g, () => {
       for (let y = a; y < b; y++) for (let x = 0; x < W; x++) this.rockMass(g, x, y, terr());
     }));
@@ -3368,6 +3695,7 @@ const R = {
     if (gx1 >= gx0) this.clipTiles(g, groundL, () => this.paintWaterIn(g, gx0, gy0, gx1, gy1));
     this.clipBoard(g, () => {
       this.clipTiles(g, groundL, () => {
+        for (const k of decoL) this.grassCover(g, k % W, (k / W) | 0, terr);
         for (const k of decoL) this.rockMass(g, k % W, (k / W) | 0, terr);
         for (const k of decoL) this.landDecals(g, k % W, (k / W) | 0, terr);
       });
@@ -3419,6 +3747,10 @@ const R = {
        once: the shore blit covers the same ground and nothing outside it. */
     this.clipBoard(g, () => {
       this.clipTiles(g, inner5, () => {         // …only the ground this call erased
+        for (let oy = -3; oy <= 3; oy++) for (let ox = -3; ox <= 3; ox++) {
+          const nx = x + ox, ny = y + oy;
+          if (MapGen.inB(nx, ny)) this.grassCover(g, nx, ny, terr);
+        }
         for (let oy = -3; oy <= 3; oy++) for (let ox = -3; ox <= 3; ox++) {
           const nx = x + ox, ny = y + oy;
           if (MapGen.inB(nx, ny)) this.rockMass(g, nx, ny, terr);
@@ -3616,6 +3948,8 @@ const R = {
     this.floats = [];
     this.collapses = [];       // render-side only — never in a save (same rule as _fighting)
     this.treefalls = [];       // …so are the woods going over…
+    this.tamings = [];         // …and the swards going down before the builders
+    this._tameKey = ''; this._tameMask = null;   // the kept-ground mask is the old run's
     this.horns = [];           // …and the horn's rings…
     this.deaths = [];          // …so are villagers going over…
     this.marvel = null;        // …and so is the wonder's held frame
@@ -7152,6 +7486,9 @@ const R = {
     // the WILDERNESS RELIC lies in the land the same way (js/relics.js):
     // above the ground, below everything that moves or stands
     if (window.Relics) Relics.draw(g);
+    // …and the swards flattening before a new building lie in the grass they
+    // came from — over the kept bake, under everything that moves or stands
+    this.drawTamings(g, dt);
     // …but a tower still coming down keeps the ground it stood on (startCollapse)
     if (this.collapses.length) this.drawCollapseGround(g);
 

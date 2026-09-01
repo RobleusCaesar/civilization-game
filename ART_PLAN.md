@@ -915,6 +915,42 @@ toggleable. Fields for {shape} and {letter} name the export, and
 W×128 wide, ready to commit. The filename remains the only source of
 footprint truth — the tool only produces files that tell it.
 
+## Ground COVER art: the wild grass and its tended cut
+
+    assets/terrain/cover/{terrain}/{slot}.png        (all lowercase)
+    e.g.  assets/terrain/cover/grass/wild.png
+
+The per-tile ground art below replaces the FLOOR; cover art replaces what
+GROWS on it (`R.grassCover` — the wild sward layer, and the kept verge a
+standing building derives around itself). Terrain-generic by convention,
+but only `grass` is probed today (`Assets.COVER_CATALOG`).
+
+**Three slots, three separate files**: `wild` (the open meadow's swards),
+`kept` (the cropped tended cut inside a building's verge), `accent` (the
+rare seed-head overlay, wild ground only). A partial set is fine — supply
+`wild` alone and the other looks stay procedural; a 404 is the default
+state, never an error.
+
+**A file is a horizontal strip of 32×32 frames** — width a multiple of 32,
+height exactly 32, one frame landing aligned to its tile (the 32px grid;
+cover frames are composed sward scenes, never jittered). More frames in one
+file, or more files via the `-2`/`-3` cascade, and the picker hashes over
+all of them. **Alpha must be HARD BINARY** — the install snaps A<128 → 0,
+else 255, because the cover bakes into the terrain cache, whose exact
+repaint discipline is built on opaque idempotent restamps. Bump
+`CFG.ART_V` when re-uploading under a name a phone has cached.
+
+**`?dev=1`**: drop a file named `{terrain}-{slot}[-N].png` (e.g.
+`grass-wild.png`) and it installs live through `Assets.setCoverArt` — the
+shipping path. The CONFORM tool has a `grass cover` target: any-size art is
+keyed, trimmed and gridded to a W-frame strip, previewed live on the real
+meadow, and downloads under the drop-convention name.
+
+Where the art appears is still the PROCEDURAL layer's decision — the macro
+richness field, the clump gate, the taming mask. Supplied art changes what
+a sward looks like, never where grass grows; bald ground stays bald.
+Contract: `tests/wild-grass.mjs`.
+
 ## Ground art
 
 `assets/terrain/{name}.png`, plus `{name}-2.png`, `-3` … for variants.
