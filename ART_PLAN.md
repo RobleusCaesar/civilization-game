@@ -1059,6 +1059,13 @@ Tunables, all in the `LAND` block:
 | the lush valleys do not read as valleys | lower `GRASS_MACRO_F` (bigger patches), raise `GRASS_GATE` |
 | the kept verge is not visibly kept | lower `KEPT_DENSITY`; `TAME_R`, `TAME_WOBBLE` for its reach and rag |
 | the flatten on build is too quiet / too loud | `TAME_LOUD` (0 silences the debris, 2+ is unmistakable) |
+| the kept verge stops at a ring / is not lush enough | `KEPT_SOFT` (tiles of fade), `KEPT_TINT` (the green wash) |
+| the wild is not wild enough / reads as scrub | `GRASS_TALL` (the tall splayed share), `GRASS_PARCH` (straw where richness runs dry) |
+| every screenshot is the same green | raise `HUE_AMP` (≤ 0.06 — a grade, not a paint job), lower `HUE_FREQ` for bigger patches |
+| the hue steps show a ruled seam | raise `HUE_DITHER` |
+| flowers do not gather where the sun is | `MEADOW_WARM` (residues of the meadow roll allowed in the warmest step) |
+| woods cast no direction | `SUN_BIAS` (0.2 = the 60/40 south-east cast; 0 = radial) |
+| bare grass is a flat fill at 1× | `GRAIN_N` (felt-grain dots per tile; 20 ≈ 8%) |
 
 **Tune through the bench, never by blind edits** (`?dev=1` → *land bench…*,
 LAND_REFRESH.md Phase 0): every whitelisted `LAND`/`MTN` dial retunes the

@@ -105,6 +105,10 @@ const LAND = {
                         // what makes the lush valleys read as valleys
   GRASS_MAX: 7,         // most swards on one wild tile
   GRASS_ACCENT: 0.045,  // chance a wild sward carries a dull seed head
+  GRASS_TALL: 1.0,      // how often the tall, splayed silhouettes are picked
+                        // (1 = the natural mix; 0 = short only; 2 = all tall)
+  GRASS_PARCH: 0.45,    // how strongly the sward bleaches where richness
+                        // runs dry — thatch blades along the bald margins
   /* --- taming on build (R.tameMask / startTaming): the ground a standing
      building keeps. DERIVED, NEVER STORED — the mask is a pure function of
      the standing buildings and the land seed, so tile data is bit-identical
@@ -114,9 +118,35 @@ const LAND = {
   TAME_R: 2,            // tiles of tended ground beyond a building's footprint
   TAME_R_FORT: 1,       // …a wall or gate section keeps only its own verge
   TAME_WOBBLE: 1.5,     // tiles of ragged wander on the tended boundary
-  TAME_LOUD: 1.0,       // the flatten's voice (drawTamings): blade count,
+  TAME_LOUD: 2.2,       // the flatten's voice (drawTamings): blade count,
                         // throw, arc, drop and slide all scale with it;
                         // 0 silences the debris, 2+ is unmistakable
+  KEPT_TINT: 0.14,      // the tended verge's lush green wash (R.hueTint):
+                        // alpha at full keptness, fading with the boundary
+  KEPT_SOFT: 1.2,       // tiles over which keptness fades from full to none
+                        // at the ragged boundary — the verge softens into
+                        // the wild instead of stopping at a ring
+  /* --- Part 2c: GROUND COLOUR (LAND_REFRESH Phase 2). The tone layer only
+     lightens and darkens one green; real meadows vary in HUE. A second, far
+     lower-frequency field (R.hueTint) shifts the ground between a warm
+     yellow-green and a cool blue-green — two chromatic overlays quantized
+     to HUE_STEPS hard steps with a hashed dither at every seam, applied
+     AFTER the sward and decal passes so the grass clumps take the meadow's
+     hue and sit in the same colour world as the ground under them. Water
+     ignores it: it has its own depth. --- */
+  HUE_AMP: 0.055,       // alpha of the warm / cool overlay at the extreme steps
+  HUE_FREQ: 0.02,       // per tile — meadow-sized patches, many tiles wide
+  HUE_STEPS: 3,         // hard steps; the middle one is the untinted ground
+  HUE_DITHER: 0.35,     // width of the hashed dither band at a step seam, as
+                        // a fraction of one step (0 = a ruled edge)
+  MEADOW_WARM: 3,       // flower-meadow residues allowed in the WARMEST hue
+                        // step: the plain roll is 1 in 61; 3 = three times
+                        // as many where the sun is. 1 switches it off
+  SUN_BIAS: 0.2,        // one sun for the whole map (cornerShade): a wood
+                        // darkens the ground to its S/E more than to its
+                        // N/W — 0.2 is the 60/40 split; 0 is radial
+  GRAIN_N: 20,          // felt-grain dots per tile in paintGround (10 was
+                        // nearly invisible; 20 ≈ 8% of the tile's cells)
   // --- Part 3: transitions ------------------------------------------------
   EDGE_MAX: 5,          // deepest an edge fringe reaches into a tile, in 1/16ths
   EDGE_FREQ: 1.6,       // how fast a boundary wanders. Sampled in WORLD space so
@@ -504,7 +534,8 @@ const R = {
     this._lat = out; this._latKey = key;
     this._latOne = { clump: this._mkLat(LAND.DECAL_CLUMP, 41), sand: this._mkLat(LAND.SAND_FREQ, 57),
                      edge: this._mkLat(LAND.EDGE_FREQ, 73), shoal: this._mkLat(LAND.SHOAL_FREQ, 97),
-                     rock: this._mkLat(LAND.ROCK_EDGE_F, 113), grassM: this._mkLat(LAND.GRASS_MACRO_F, 131) };
+                     rock: this._mkLat(LAND.ROCK_EDGE_F, 113), grassM: this._mkLat(LAND.GRASS_MACRO_F, 131),
+                     hue: this._mkLat(LAND.HUE_FREQ, 1301) };
     return out;
   },
   /* the CLUMP FIELD — what decides where things grow at all. Nature clumps:
@@ -606,18 +637,104 @@ const R = {
      it — that shared value is what makes the shade continuous across tile
      borders instead of stepping at them. */
   cornerShade(cx, cy, terr) {
-    let wood = 0, rock = 0, wet = 0, n = 0;
+    let wood = 0, rock = 0, wet = 0, n = 0, wsum = 0;
+    const bias = LAND.SUN_BIAS || 0;
     for (let oy = -1; oy <= 0; oy++) for (let ox = -1; ox <= 0; ox++) {
       const nx = cx + ox, ny = cy + oy;
       if (!MapGen.inB(nx, ny)) continue;
       const v = terr[MapGen.idx(nx, ny)];
       n++;
-      if (v === T.FOREST) wood++;
+      /* ONE SUN (LAND_REFRESH 2c). Light is locked top-left, so a wood casts
+         toward its south-east: the corner to a wood's SE — whose NW sample
+         the wood is — takes the most shade, the corner to its NW the least.
+         Weights are normalised over the samples actually on the map, so a
+         corner ringed by wood still returns exactly SHADE_FOREST and the
+         tone maths keeps its range; rock and water stay radial. */
+      const w = 1 + bias * ((ox === -1 && oy === -1) ? 1 : (ox === 0 && oy === 0) ? -1 : 0);
+      wsum += w;
+      if (v === T.FOREST) wood += w;
       else if (v === T.HILLS || v === T.MOUNTAIN) rock++;
       else if (v === T.WATER || v === T.MOAT) wet++;
     }
     if (!n) return 0;
-    return (wood / n) * LAND.SHADE_FOREST + (rock / n) * LAND.SHADE_ROCK + (wet / n) * LAND.SHADE_SHORE;
+    return (wood / wsum) * LAND.SHADE_FOREST + (rock / n) * LAND.SHADE_ROCK + (wet / n) * LAND.SHADE_SHORE;
+  },
+
+  /* ---- THE HUE OCTAVE (LAND_REFRESH Phase 2a) ----------------------------
+     The tone layer lightens and darkens; this one CHANGES COLOUR. One more
+     lattice, far lower in frequency than the tone octaves (HUE_FREQ 0.02 —
+     a 5×5 grid on an xlarge map, a few hundred bytes), shifts the ground
+     between a warm yellow-green and a cool blue-green: two chromatic
+     overlays quantized to HUE_STEPS hard steps, the middle step untinted.
+     The seams are DITHERED with a world-continuous hash (the blockShade
+     idiom), so a step boundary wanders as an organic stipple and never a
+     ruled line — and never on the tile grid, since the hash cell is the
+     sub-cell, not the tile.
+
+     Applied as the LAST ground pass — after the sward, the rocks and the
+     decals — so everything lying on the meadow takes the meadow's hue and
+     sits in the same colour world as the ground under it. Water ignores
+     it (it has its own depth); so does the off-board rim. The kept verge's
+     lush wash rides the same pass: one rect graded by keptness, whose
+     ragged fading boundary is the mask's own, so no ring is ever drawn.
+
+     Pure in (x, y, landSeed): incremental repaint equals rebake, and the
+     whole-tile fast path (four inset probes in one step, all clear of a
+     seam's dither band) keeps it to one fill on nearly every tile. */
+  hueAt(x, y) { this.landLattices(); return this._latRead(this._latOne.hue, x, y); },
+  // the undithered step at a point — the meadow roll's gate
+  hueStepAt(x, y) {
+    const S0 = LAND.HUE_STEPS;
+    return Math.min(S0 - 1, (this.hueAt(x, y) * S0) | 0);
+  },
+  /* the rare flower-meadow tile (drawTile, both the pick and the draw go
+     through HERE — a split brain drew `undefined`): 1 in 61 plain grass
+     tiles everywhere, and MEADOW_WARM residues in the warmest hue step —
+     colour mass where the sun is (LAND_REFRESH 2b). The h%61===0 tiles are
+     a subset, so ground outside the warm step is byte-identical to before. */
+  meadowRoll(x, y, h) {
+    const r = h % 61;
+    if (r === 0) return true;
+    return LAND.MEADOW_WARM > 1 && r < LAND.MEADOW_WARM &&
+      this.hueStepAt(x + 0.5, y + 0.5) === LAND.HUE_STEPS - 1;
+  },
+  hueTint(g, x, y, terr) {
+    if (!(LAND.HUE_AMP > 0) && !(LAND.KEPT_TINT > 0)) return;
+    if (!MapGen.onBoard(x, y)) return;
+    const t = terr[MapGen.idx(x, y)];
+    if (t === T.WATER || t === T.MOAT) return;          // the water has its own depth
+    const TL = CFG.TILE;
+    const kept = (LAND.KEPT_TINT > 0 && t === T.GRASS) ? this.keptAt(x, y) : 0;
+    if (kept > 0) {
+      g.fillStyle = 'rgba(64,164,58,' + (LAND.KEPT_TINT * kept).toFixed(3) + ')';
+      g.fillRect(x * TL, y * TL, TL, TL);
+    }
+    if (!(LAND.HUE_AMP > 0)) return;
+    const S0 = LAND.HUE_STEPS, N = LAND.TONE_SUB, cell = TL / N;
+    const mid = (S0 - 1) / 2;
+    const band = LAND.HUE_DITHER / S0;                 // the seam's dither half-band, in field units
+    const paint = (step, px0, py0, w, h) => {
+      const a = (step - mid) / mid * LAND.HUE_AMP;     // −AMP (cool) … +AMP (warm)
+      if (Math.abs(a) < 0.004) return;
+      g.fillStyle = a > 0 ? 'rgba(214,196,90,' + a.toFixed(3) + ')'
+                          : 'rgba(30,90,110,' + (-a).toFixed(3) + ')';
+      g.fillRect(px0, py0, w, h);
+    };
+    const stepOf = v => Math.min(S0 - 1, (v * S0) | 0);
+    const clear = v => { const f = v * S0 - Math.floor(v * S0); return f > band && f < 1 - band; };
+    const v00 = this.hueAt(x + 0.02, y + 0.02), v10 = this.hueAt(x + 0.98, y + 0.02);
+    const v01 = this.hueAt(x + 0.02, y + 0.98), v11 = this.hueAt(x + 0.98, y + 0.98);
+    const s00 = stepOf(v00);
+    if (s00 === stepOf(v10) && s00 === stepOf(v01) && s00 === stepOf(v11) &&
+        clear(v00) && clear(v10) && clear(v01) && clear(v11)) {
+      paint(s00, x * TL, y * TL, TL, TL);
+      return;
+    }
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const v = this.hueAt(x + (i + 0.5) / N, y + (j + 0.5) / N);
+      const dj = (this._lh(x * N + i, y * N + j, 1303) - 0.5) * 2 * band;
+      paint(stepOf(Math.min(0.9999, Math.max(0, v + dj))), x * TL + i * cell, y * TL + j * cell, cell, cell);
+    }
   },
 
   /* ---- DECAL SCATTER ----------------------------------------------------
@@ -690,6 +807,15 @@ const R = {
       else kind = r < 0.30 ? 'tuft' : r < 0.50 ? 'tuft2' : r < 0.66 ? 'clover'
         : r < 0.80 ? 'flower' : r < 0.88 ? 'twig' : r < 0.95 ? 'pebble' : 'scuff';
       this.drawDecal(g, dx, dy, kind, px, rnd);
+    }
+    /* MEADOW CHARACTER (LAND_REFRESH 2b): in the warmest hue step one more
+       flower comes through the same clump gate — colour mass where the sun
+       is. Drawn LAST so every other tile's stream is untouched; DECAL_MUTE
+       still governs it, so it reads as ground, not as an object. */
+    if (LAND.MEADOW_WARM > 1 && this.hueStepAt(x + 0.5, y + 0.5) === LAND.HUE_STEPS - 1) {
+      const dx = x * TL + Math.round(rnd() * (TL + 6)) - 3;
+      const dy = y * TL + Math.round(rnd() * (TL + 6)) - 3;
+      this.drawDecal(g, dx, dy, 'flower', px, rnd);
     }
   },
 
@@ -768,14 +894,20 @@ const R = {
       else if (nb === T.HILLS || nb === T.MOUNTAIN || nb === T.PEBBLES) rock++;
       else if (nb === T.WATER || nb === T.MOAT) wet++;
     }
-    const tame = cap ? false : this.tamedAt(x, y);
+    /* keptness is GRADED (tameMask): 0 wild … 1 the tended heart. A capture
+       renders what the bake drew BEFORE the new building (cap.kept), which
+       is why the flatten lifts exactly what stood there. The rnd stream is
+       the same at every keptness — kept changes what a sward looks like,
+       never how many rolls it takes. */
+    const kept = cap ? (cap.kept || 0) : this.keptAt(x, y);
+    const tame = kept > 0.5;                           // the tidy-set threshold
     // the curve is deliberately steep: a valley near the gate carries a few
     // swards, a lush heart is thick with them — flat density is the sprinkle
     // this whole layer exists to avoid
     let d = LAND.GRASS_DENSITY * (0.28 + Math.pow(rich, 1.3) * 0.95) * (0.55 + mid * 0.9);
     if (wet) d *= 1.25;                                // the damp band grows thick
     if (rock >= 2) d *= 0.55;                          // thin soil below a crag
-    if (tame) d *= LAND.KEPT_DENSITY;                  // a tended verge is cropped
+    d *= 1 - kept * (1 - LAND.KEPT_DENSITY);           // a tended verge is cropped, by degree
     const TL = CFG.TILE, px = TL / 32;                 // ONE authored pixel — the 32 grid
     let hh = (Math.imul(x, 0x51ed270b) ^ Math.imul(y, 0x85ebca6b) ^ this.landSeed()) >>> 0;
     const rnd = () => { hh = Math.imul(hh ^ (hh >>> 15), 0x2c1b3c6d); hh = (hh ^ (hh >>> 12)) >>> 0; return hh / 4294967295; };
@@ -796,26 +928,54 @@ const R = {
       return;
     }
     const AP = ART.PALETTE, GR = AP.grass;
-    const dry = macro > 0.80 && !wet;                  // the parched tops of the field
+    /* THE WILD IS WILD, THE KEPT IS KEPT (LAND_REFRESH 2.2 / 2.3) — opposite
+       on three axes. HEIGHT: the wild draws from twelve silhouettes, the
+       tall splayed ones weighted by GRASS_TALL; the verge keeps the three
+       shortest. COLOUR: the wild bleaches where richness runs dry (thatch
+       blades, GRASS_PARCH) and darkens under a wood; the verge is uniform
+       lush green. UNIFORMITY: the wild scatters anywhere with overhang; the
+       verge sits its swards on a loose lattice with a small jitter. Every
+       roll below is consumed on both roads, so the stream never forks. */
+    const parch = wet ? 0 : (1 - rich) * LAND.GRASS_PARCH * (1 - kept);
+    const tallBias = LAND.GRASS_TALL;
+    const SW = [4, 5, 6, 8, 6, 8, 7, 6, 9, 8, 9, 6];   // each silhouette's width, for the mirror
     for (let i = 0; i < n; i++) {
-      // overhang −3…+3px past the tile, same bound as the decals: paint ends
-      // well inside one tile past the anchor, so the ±3 restamp ring covers it
-      const cx0 = x * TL + Math.round(rnd() * (TL + 6)) - 3;
-      const cy0 = y * TL + Math.round(rnd() * (TL + 6)) - 3;
-      // a tended sward keeps only the three shortest shapes
-      const sil = (rnd() * (tame ? 2.999 : 6.999)) | 0;
-      // value jitter: deep in the wood's shade, lit out in the open
+      let cx0, cy0;
+      if (tame) {
+        cx0 = x * TL + (i & 1) * 16 + 3 + Math.round(rnd() * 8);
+        cy0 = y * TL + ((i >> 1) & 1) * 16 + 4 + Math.round(rnd() * 8);
+      } else {
+        // overhang −3…+3px past the tile, same bound as the decals: paint
+        // ends well inside one tile past the anchor, so the ±3 ring covers it
+        cx0 = x * TL + Math.round(rnd() * (TL + 6)) - 3;
+        cy0 = y * TL + Math.round(rnd() * (TL + 6)) - 3;
+      }
+      let sil = (rnd() * (tame ? 2.999 : 11.999)) | 0;
+      const rr = rnd();                              // the tall/short remap roll — always consumed
+      if (!tame) {
+        const tall = sil >= 6;
+        if (tallBias < 1 && tall && rr < 1 - tallBias) sil -= 6;
+        else if (tallBias > 1 && !tall && rr < tallBias - 1) sil += 6;
+      }
+      const flip = rnd() < 0.5;                      // a mirrored sward is a new sward
       const vr = rnd();
-      const body = wood >= 2 ? GR[2] : vr < 0.55 ? GR[3] : vr < 0.82 ? GR[2] : GR[4];
-      const lit = dry && rnd() < 0.5 ? AP.thatch[1] : GR[4];
-      const deep = GR[1];
+      const dryOne = rnd() < parch;                  // this sward is parched
+      // a parched sward is STRAW — grey-gold bone over dark ochre, never the
+      // bright thatch crown, which at play zoom read as a dropped object
+      const body = dryOne ? AP.thatch[0] : tame ? (vr < 0.6 ? GR[3] : GR[4])
+        : wood >= 2 ? GR[2] : vr < 0.55 ? GR[3] : vr < 0.82 ? GR[2] : GR[4];
+      const lit = dryOne ? AP.bone[1] : (wet || tame) ? GR[4] : vr < 0.5 ? GR[4] : GR[3];
+      const deep = dryOne ? AP.soil[1] : GR[1];
+      const w0 = SW[sil];
       const q = cap
-        ? (ox, oy, w, h, c) => cap.rects.push({ x: cx0 + ox * px, y: cy0 + oy * px, w: w * px, h: h * px, c })
-        : (ox, oy, w, h, c) => { g.fillStyle = c; g.fillRect(cx0 + ox * px, cy0 + oy * px, w * px, h * px); };
+        ? (ox, oy, w, h, c) => cap.rects.push({ x: cx0 + (flip ? w0 - ox - w : ox) * px, y: cy0 + oy * px, w: w * px, h: h * px, c })
+        : (ox, oy, w, h, c) => { g.fillStyle = c; g.fillRect(cx0 + (flip ? w0 - ox - w : ox) * px, cy0 + oy * px, w * px, h * px); };
       switch (sil) {
         /* every shape: a LIT crown, a body wider than the whole thing is
            tall, and a DARK FOOT — the contact pixel doctrine the decals
-           proved. A sward without its foot is invisible against the floor. */
+           proved. A sward without its foot is invisible against the floor.
+           Widest is 9, tallest 4 (plus the seed head above): from an anchor
+           at most 3px past the tile that is still inside one tile past it. */
         case 0:                                        // a small sward
           q(1, 0, 2, 1, lit); q(0, 1, 4, 1, body); q(1, 2, 2, 1, deep); break;
         case 1:                                        // a broken row
@@ -831,10 +991,21 @@ const R = {
         case 6:                                        // a dense tussock
           q(1, 0, 2, 1, lit); q(4, 0, 2, 1, body);
           q(0, 1, 7, 2, body); q(1, 3, 5, 1, deep); break;
+        case 7:                                        // a leaning tussock
+          q(3, 0, 2, 1, lit); q(1, 1, 5, 1, body); q(0, 2, 6, 1, body); q(1, 3, 3, 1, deep); break;
+        case 8:                                        // a splayed fan
+          q(1, 0, 2, 1, lit); q(5, 0, 2, 1, lit); q(0, 1, 9, 1, body); q(1, 2, 7, 1, body); q(3, 3, 3, 1, deep); break;
+        case 9:                                        // stalks, seed heads up
+          q(1, 0, 1, 1, lit); q(4, 0, 1, 1, lit); q(7, 0, 1, 1, lit);
+          q(0, 1, 8, 1, body); q(1, 2, 6, 1, body); q(2, 3, 4, 1, deep); break;
+        case 10:                                       // a low mound
+          q(2, 0, 4, 1, lit); q(0, 1, 9, 2, body); q(1, 3, 6, 1, deep); break;
+        case 11:                                       // a clump pair
+          q(0, 0, 2, 1, lit); q(4, 0, 2, 1, body); q(0, 1, 3, 1, body); q(3, 1, 3, 1, body); q(1, 2, 4, 1, deep); break;
       }
       // the rare accent: a dull seed head, never the bright brass (the
       // colour-language rule DECAL_RESERVED already states)
-      if (!tame && rnd() < LAND.GRASS_ACCENT) q(2, -1, 1, 1, AP.bone[1]);
+      if (!tame && rnd() < LAND.GRASS_ACCENT * (1 - kept)) q(2, -1, 1, 1, dryOne ? AP.bone[2] : AP.bone[1]);
     }
   },
 
@@ -872,13 +1043,21 @@ const R = {
         if (y < 0 || y >= H) continue;
         for (let x = b.x - reach; x < b.x + sz + reach; x++) {
           if (x < 0 || x >= W) continue;
-          if (m[y * W + x]) continue;
           const dx = x < b.x ? b.x - x : x >= b.x + sz ? x - (b.x + sz - 1) : 0;
           const dy = y < b.y ? b.y - y : y >= b.y + sz ? y - (b.y + sz - 1) : 0;
           const dd = Math.hypot(dx, dy);
           // the boundary's wobble belongs to the TILE, not the building —
           // which is exactly why overlapping zones union without a seam
-          if (dd <= R0 - 0.75 + this._lh(x, y, 177) * LAND.TAME_WOBBLE) m[y * W + x] = 1;
+          const inner = R0 - 0.75 + this._lh(x, y, 177) * LAND.TAME_WOBBLE;
+          if (dd > inner) continue;
+          /* KEPTNESS IS GRADED: full in the heart, fading over KEPT_SOFT
+             tiles to the ragged boundary, so the verge softens into the
+             wild instead of stopping at a ring. Inside the boundary it is
+             never 0 (tamedAt stays a clean yes/no), and overlapping zones
+             union at their fullest. */
+          const lv = Math.min(1, (inner - dd) / Math.max(0.05, LAND.KEPT_SOFT));
+          const k = Math.max(1, Math.round(lv * 255)), i = y * W + x;
+          if (k > m[i]) m[i] = k;
         }
       }
     }
@@ -888,6 +1067,11 @@ const R = {
   tamedAt(x, y) {
     const m = this.tameMask();
     return !!(m && m[y * CFG.W + x]);
+  },
+  // graded keptness 0..1 — what the sward and the lush wash actually read
+  keptAt(x, y) {
+    const m = this.tameMask();
+    return m ? m[y * CFG.W + x] / 255 : 0;
   },
 
   /* a building appeared or vanished: repaint its whole kept zone (plus the
@@ -938,7 +1122,7 @@ const R = {
       let i = 0;
       for (let y = b.y - reach; y < b.y + sz + reach; y++)
         for (let x = b.x - reach; x < b.x + sz + reach; x++, i++)
-          if (MapGen.inB(x, y) && this.tamedAt(x, y)) was[i] = 1;
+          if (MapGen.inB(x, y)) was[i] = Math.round(this.keptAt(x, y) * 255);
       b.construction = c0v; this._tameKey = '';
     }
     const tiles = [];
@@ -947,9 +1131,12 @@ const R = {
       for (let x = b.x - reach; x < b.x + sz + reach; x++) {
         wi++;
         if (!MapGen.inB(x, y) || !this.tamedAt(x, y)) continue;
-        if (was[wi]) continue;                         // a neighbour already kept it
+        // keptness is graded: lift only where the new building made the
+        // ground MORE kept than a neighbour already had it
+        const before = was[wi] / 255;
+        if (this.keptAt(x, y) <= before + 0.02) continue;
         if (!G.visibleAt(x, y)) continue;              // ground nobody can see
-        const cap = { rects: [], img: null };
+        const cap = { rects: [], img: null, kept: before };
         this.grassCover(null, x, y, terr, cap);
         if (!cap.rects.length && !cap.img) continue;
         const ddx = x + 0.5 - bcx, ddy = y + 0.5 - bcy;
@@ -2143,7 +2330,7 @@ const R = {
     g.fillStyle = AP.grass[2];
     g.fillRect(x * TL, y * TL, TL, TL);
     const lean = (Math.sin((x * 0.8 + y * 0.6) * 0.09) + Math.sin((x * 0.5 - y * 0.9) * 0.075)) * 0.2;
-    for (let k = 0; k < 10; k++) {
+    for (let k = 0; k < LAND.GRAIN_N; k++) {         // the felt grain — every dot ONE cell, inside the box
       let hh = (h ^ Math.imul(k + 1, 0x9e3779b1)) >>> 0;
       hh = Math.imul(hh ^ (hh >>> 15), 0x85ebca6b) >>> 0;
       hh = Math.imul(hh ^ (hh >>> 13), 0xc2b2ae35) >>> 0;
@@ -3249,7 +3436,7 @@ const R = {
     // only NATURAL land makes a shore (shallows + foam). Reclaimed land — where a
     // sapper filled water into ground — must NOT shallow the deep water it abuts:
     // the sea beyond a man-made isthmus reads exactly as it did before it was built.
-    if (t === T.GRASS && h % 61 === 0)
+    if (t === T.GRASS && this.meadowRoll(x, y, h))
       img = Sprites.terrainRare[T.GRASS][h % Sprites.terrainRare[T.GRASS].length];   // rare flower meadow
     else if (wet(t)) {
       // water is painted procedurally in the ground-layer step below (paintWater):
@@ -3301,7 +3488,7 @@ const R = {
        the trench clods, the fog — is untouched, so a dropped-in tile still
        gets the world's own edges drawn over it. */
     const ovr = window.Assets ? Assets.terrainImg(t, h >>> 3) : null;
-    if (t === T.GRASS && h % 61 === 0 && !ovr) {
+    if (t === T.GRASS && img && this.meadowRoll(x, y, h) && !ovr) {
       g.drawImage(img, x * TL, y * TL);           // rare flower meadow (self-contained)
     } else if (t === T.GRASS) {
       this.paintGround(g, x, y, h);               // plain grass (reads the override itself)
@@ -3482,6 +3669,12 @@ const R = {
     }));
     band((a, b) => this.clipBoard(g, () => {
       for (let y = a; y < b; y++) for (let x = 0; x < W; x++) this.landDecals(g, x, y, terr());
+    }));
+    // …then the HUE octave over everything lying on the ground (hueTint):
+    // last of the ground passes, so sward, stone and flower take the meadow's
+    // colour with it; water and the rim are skipped inside
+    band((a, b) => this.clipBoard(g, () => {
+      for (let y = a; y < b; y++) for (let x = 0; x < W; x++) this.hueTint(g, x, y, terr());
     }));
     // …then the traced coast over the top, from its own cached layer. One
     // step: the tracer's work belongs to whole regions, not to rows.
@@ -3723,6 +3916,9 @@ const R = {
         for (const k of decoL) this.grassCover(g, k % W, (k / W) | 0, terr);
         for (const k of decoL) this.rockMass(g, k % W, (k / W) | 0, terr);
         for (const k of decoL) this.landDecals(g, k % W, (k / W) | 0, terr);
+        // the hue coat paints inside its own tile only, so the RESET set is
+        // exactly the set that takes one coat — never the ring
+        for (const k of groundL) this.hueTint(g, k % W, (k / W) | 0, terr);
       });
     });
     if (gx1 >= gx0) this.clipTiles(g, groundL, () =>
@@ -3784,6 +3980,7 @@ const R = {
           const nx = x + ox, ny = y + oy;
           if (MapGen.inB(nx, ny)) this.landDecals(g, nx, ny, terr);
         }
+        for (const k of inner5) this.hueTint(g, k % CFG.W, (k / CFG.W) | 0, terr);   // one coat on the reset ground
       });
     });
     this.clipTiles(g, inner5, () => this.blitShore(g, x - 2, y - 2, 5, 5));
