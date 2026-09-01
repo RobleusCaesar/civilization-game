@@ -415,6 +415,57 @@ those and inject them into a local bundle copy (finish-villager.ps1
 `-LocalBundle`). (4) when duplicate animation names collide, the bundle
 disambiguates folders as `{name}-{groupid8}` — which no longer matches
 the `_{pose}[0-9]$` override regex; rename inside the local bundle.
+(5) job slots cap at 20 across the account — two 8-direction groups fill
+16, and the third call errors with "need 8 slots"; queue two groups,
+wait, queue the rest. (6) v3 animation cost scales with canvas AREA:
+1 gen/dir at 64px but 2 gens/dir at 96px — budget the 48-box kinds at
+double.
+
+**THE DOCK LINE: BOATS ROTATE LIKE CHARACTERS, AND THE SEA HAS ITS OWN
+RULES** (first vehicle program, ~140 gens for four hulls):
+
+- **v3 `create_character` rotation WORKS on a non-humanoid vehicle** —
+  no skeleton assumption bit. The contract: a TRUE bow-on, south-facing
+  reference plus "the hull pointing straight in the facing direction"
+  in the description; all 8 views came back consistent on the first
+  try. A double-ended hull (faering, knarr) is a free win: its e/w
+  profiles cannot read as sailing backwards. `create_8_direction_object`
+  was never needed.
+- **Getting the bow-on ref**: `create_image_pro` RESPECTS "bow pointing
+  south toward the viewer" (12/16 candidates complied); pixen drifts to
+  a 3/4 SW beauty shot no matter what `direction` says. But a 1-gen
+  `edit_image_pixen` "redraw the same ship seen bow-on, pointing
+  straight south toward the viewer" CONVERTS a 3/4 master faithfully —
+  cheaper than re-generating when the design is already right.
+- **The model believes ships sail.** A furled-sail reference fights the
+  prior: the rotator kept s/n furled (pinned by the ref) and sprouted a
+  half-set sail on every diagonal — a sail that pops in and out as the
+  hull turns. Either set the sail IN the ref (1-gen edit, then
+  re-rotate) or accept the pop. The ref pins south; the description
+  steers the other seven.
+- **No water in the sprite.** Pro + "transparent background, no water
+  around the hull" ships a clean hull; pixen ALWAYS bakes a water pool
+  (asked for a thin foam ring, painted a lake) — strip it with a 1-gen
+  edit: "remove the pool of blue water around the ship entirely... end
+  the hull cleanly at its dark waterline." The dark waterline row is
+  what seats the boat on the game's water — naval kinds skip
+  `drawUnitShadow` (a ground ellipse under a hull reads as a sandbar),
+  and on screen the hulls sit convincingly with no shadow at all.
+- **A pixen edit does ONE thing.** "Furl the sail AND mount a cannon"
+  landed only the cannon; the sail edit had to be its own call. Write
+  single-instruction edits.
+- **Idle is derived, never generated**: a boat's at-anchor bob is walk
+  frame 0 plus the same frame lifted ONE pixel (shift UP, so the
+  ground-anchor union never moves) — `finish-boat.ps1` builds it at
+  stage time, $0. Boats also skip the idle dwell-warp in the renderer
+  (a bob that plateaus reads as running aground) — R.unitSprite gates
+  on Units.isNaval.
+- **The registries split by DYE, not by job**: fishboat/transport/
+  fireship ship UNDYED in UNIT_ART (one neutral sheet serves every
+  owner — the Sea Folk's 'R' longboats ARE the transport, accepted and
+  flagged); the bombard alone is faction-dyed in MILITARY_ART, and
+  `unitArtKey` guards non-P/A owners from tunicOf's blue default
+  (tests/naval-art.mjs pins all of it).
 
 ## Villager tiers: the recolor law (settled BEFORE the art sprint)
 

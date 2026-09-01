@@ -226,7 +226,9 @@ const out = await p.evaluate(async () => {
       let gridOk = true; const offGrid = [];
       for (const kk in Assets.unitArt) {
         if (kk.indexOf('villager') === 0) continue;   // villager variants ride their own suite
-        const box = (Assets.UNIT_BOX && Assets.UNIT_BOX[kk]) || CFG.TILE;
+        // keyed art (bombard-p-blue, sapper-p-blue-l2) draws at its KIND's
+        // box — the key's first dash-segment names the kind
+        const box = (Assets.UNIT_BOX && Assets.UNIT_BOX[kk.split('-')[0]]) || CFG.TILE;
         const dd = Assets.unitArt[kk].dirs;
         for (const dir in dd) for (const pose in dd[dir])
           if (dd[dir][pose][0].width !== box * 2) { gridOk = false; offGrid.push(kk + '/' + dir + '/' + pose + '=' + dd[dir][pose][0].width); }

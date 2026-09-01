@@ -198,8 +198,11 @@ const out = await p.evaluate(() => {
   /* ---- 6. the big-box doctrine holds afloat: 48 with a sheet, native 32 without ---- */
   {
     const bo = Units.spawn('bombard', 'P', wx, wy); bo.x = wx; bo.y = wy;
-    ck('aProceduralHullDrawsAtItsNative32', R.unitBox(bo) === CFG.TILE, R.unitBox(bo) + 'px');
     const key = R.unitArtKey(bo);
+    // the real strips ship now, so the pre-art state is RECREATED for the
+    // procedural check — remove whatever the loaders installed first
+    Assets.removeUnitArt(key);
+    ck('aProceduralHullDrawsAtItsNative32', R.unitBox(bo) === CFG.TILE, R.unitBox(bo) + 'px');
     const strip = mkStrip(4);
     for (const dir of Assets.UNIT_DIRS8)
       for (const pose of ['idle', 'walk', 'fight']) Assets.setUnitFrames(key, dir, pose, strip, G.tunicOf('P'));

@@ -16,7 +16,10 @@ const T = {
 
 const CFG = {
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 11,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 12,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+                       // v12: the dock line ships — 88 boat strips (fishboat 24,
+                       // transport 16, fireship 24, bombard 24); the bump also
+                       // skips any CDN-cached 404 from the pre-art boot probes
                        // v11: the mine-pose rebuild (l3-f all five visible dirs +
                        // four other characters' worst rows) re-uploads villager
                        // strips under the same names.
