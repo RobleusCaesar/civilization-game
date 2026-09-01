@@ -467,6 +467,45 @@ RULES** (first vehicle program, ~140 gens for four hulls):
   `unitArtKey` guards non-P/A owners from tunicOf's blue default
   (tests/naval-art.mjs pins all of it).
 
+**THE SIEGE LINE'S FOUR LESSONS** (engines are boats that fight —
+same rotate-a-vehicle pipeline, ~135 gens for four engines):
+
+- **An 84-canvas pro batch can come back as a captioned VARIATIONS
+  SHEET**: every candidate arrived labeled ("Standard", "No Crew",
+  "Viewed from Behind") with the caption TEXT BAKED under the sprite —
+  find the row-occupancy gap and clip the caption band before using
+  any candidate. Unasked-for; assume it can happen to any pro batch.
+- **A machine whose identity is its PROFILE dies bow-on.** Two edit
+  attempts turned the trebuchet into a lifeguard chair — beam,
+  counterweight and crew all gone; foreshortening has nowhere to put
+  them. The rotate-from-3/4 path WORKS instead: feed the 3/4 master
+  as the south ref with "pointing straight in the facing direction"
+  and v3 normalizes the octants itself — no slot skew. Squat engines
+  (catapult, ballista, tower) still convert bow-on fine.
+- **A blurry ref ships a blurry SOUTH.** make-ref's bicubic UPSCALE
+  (67px content stretched to 84) left the pinned s frame soft while
+  the other seven re-rendered crisp, plus white rope streaks and a
+  drifted red pennant. Fix at the master, not the rotation: a 1-gen
+  pixen edit re-renders at a larger OUTPUT size crisp ("redraw the
+  same X crisp and clean, filling the frame") and can fix pennant
+  color and artifacts in the same pass.
+- **Pennant dye is per-kind calibration**: the standard banner gate
+  (B>R+40, B>G+25) missed the ballista's near-black navy (3,7,22) —
+  snap-banner takes -DR/-DG overrides; loosen ONLY after a histogram
+  proves nothing else in that kind's art leans blue. Engines ship NO
+  idle sheets (a stopped machine holds walk f0 via the
+  stationary-borrow rule) — delete the derived idle strips before
+  install, and their fight ladders are the tool ladders: "the stone
+  gone instantly and never drawn in the air" cures width blowouts
+  (a drawn projectile IS the overflow), "nothing rising taller than
+  the standing engine" cures walk-bounce top overflow.
+
+**⚠ POWERSHELL PIPELINE KILL (cost a broken install):** `script.ps1 |
+Select-Object -First 4` STOPS THE SCRIPT after 4 output lines — the
+snap pass silently processed 4 of 16 strips and the copy installed a
+mixed raw/snapped set. Never pipe a working script through -First;
+capture to a variable and slice that.
+
 ## Villager tiers: the recolor law (settled BEFORE the art sprint)
 
 Villager appearance tier derives from the owner's Town Center level
