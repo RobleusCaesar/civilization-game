@@ -226,6 +226,50 @@ const out = await p.evaluate(() => {
       Units.fisherAt(parked.x | 0, parked.y | 0, null) === parked, '');
   }
 
+  /* ---- the shoal economy (operator direction: shore fish ran out too
+     fast): a line-fishable shoal is one shore tile in NINE and carries a
+     BERRY PATCH's stock; a food-scarce map withholds the privilege ---- */
+  {
+    // the berry privilege only exists on maps NOT rolled food-scarce —
+    // hunt a seed whose world isn't (the first fixture seed tried rolled
+    // scarce=food and correctly showed lean shoals)
+    let tries = 0;
+    do { G.newGame('shoal-econ' + tries, 'moderate', 'large'); tries++; }
+    while (S.map.scarce === 'food' && tries < 8);
+    Screens._demo = false; Screens.show('playing'); S.paused = true;
+    ck('theFixtureWorldIsNotFoodScarce', S.map.scarce !== 'food', 'scarce=' + S.map.scarce);
+    const fr = CFG.RES_AMOUNT[T.FERTILE];
+    let shoals = 0, shore = 0, inBand = 0, minS = 1e9, maxS = 0;
+    for (let y = 1; y < CFG.H - 1; y++) for (let x = 1; x < CFG.W - 1; x++) {
+      if (S.map.terrain[MapGen.idx(x, y)] !== T.WATER) continue;
+      const isShore = [[1,0],[-1,0],[0,1],[0,-1]].some(([ox,oy]) =>
+        S.map.terrain[MapGen.idx(x+ox, y+oy)] !== T.WATER);
+      if (!isShore) continue;
+      shore++;
+      if (!MapGen.shoal(x, y)) continue;
+      shoals++;
+      const amt = S.map.resAmount[MapGen.idx(x, y)];
+      minS = Math.min(minS, amt); maxS = Math.max(maxS, amt);
+      if (amt >= fr[0] && amt <= fr[1]) inBand++;
+    }
+    ck('aShoalIsOneShoreTileInNine', shoals > 0 && shoals <= Math.ceil(shore / 6),
+      shoals + ' shoals of ' + shore + ' shore tiles');
+    ck('aShoalCarriesABerryPatch', shoals > 0 && inBand === shoals,
+      'stock ' + minS + '..' + maxS + ' vs fertile ' + fr[0] + '..' + fr[1]);
+    // …and it comes BACK rich (the return clock refills at the same worth)
+    let sx = -1, sy = -1;
+    outer2: for (let y = 1; y < CFG.H - 1; y++) for (let x = 1; x < CFG.W - 1; x++)
+      if (S.map.terrain[MapGen.idx(x, y)] === T.WATER && MapGen.shoal(x, y)) { sx = x; sy = y; break outer2; }
+    ck('aShoalReturnsRich', sx > 0 && G.fishStockAt(sx, sy) >= fr[0],
+      'restock ' + G.fishStockAt(sx, sy));
+    // the food-scarce withholding: fake the scarce flag and ask again
+    const wasScarce = S.map.scarce;
+    S.map.scarce = 'food';
+    ck('aFoodScarceMapWithholdsThePrivilege', sx > 0 && G.fishStockAt(sx, sy) < fr[0],
+      'scarce restock ' + G.fishStockAt(sx, sy) + ' — reachable fishing counts toward the scarcity');
+    S.map.scarce = wasScarce;
+  }
+
   /* ---- a dock goes where its water is (the operator's cleared-shore
      report): a forest shore refuses, a sapper's clearing opens it, and
      the far harbor places FREELY like a station on its worked ground —

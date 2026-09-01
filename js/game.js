@@ -501,6 +501,13 @@ const G = {
      CFG.FISH_RETURN_DAYS, at the stock its own water is worth (shallow
      shore water is the leaner half — CFG.FISH_STOCK). ---- */
   fishStockAt(x, y) {
+    // a SHOAL comes back at a berry patch's worth, exactly as at generation
+    // (one shore tile in nine; the food-scarce map withholds the privilege —
+    // reachable fishing counts toward the intended scarcity)
+    if (MapGen.shoal(x, y) && S.map.scarce !== 'food') {
+      const fr = CFG.RES_AMOUNT[T.FERTILE];
+      return Math.round((fr[0] + fr[1]) / 2);
+    }
     const r = CFG.RES_AMOUNT[T.WATER];
     const mult = MapGen.shallowWater(x, y) ? CFG.FISH_STOCK.shallow : CFG.FISH_STOCK.deep;
     // food-scarce maps keep lean waters, exactly as at generation

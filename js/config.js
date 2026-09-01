@@ -86,18 +86,23 @@ const CFG = {
     [T.FERTILE]: [80, 140],
     [T.WATER]:   [45, 85],    // fish — before the shallow/deep split below
   },
-  /* A FISHERY, NOT A MINE (tests/fishery.mjs). A shoal yields less than the
-     raw stock above — HALF in the SHALLOWS (water touching land: the shore
-     shoals a villager can line-fish and the coast a boat hugs) and three
-     quarters in DEEP water, so rowing out is worth more than paddling at the
-     edge — and a fished-out tile comes back after FISH_RETURN_DAYS. Fish are
-     the one resource that renews on a clock rather than by terrain regrowth:
-     the water never changes, only its stock. */
+  /* A FISHERY, NOT A MINE (tests/fishery.mjs). Ordinary water yields less
+     than the raw stock above — HALF in the SHALLOWS (water touching land)
+     and three quarters in DEEP water, so rowing out is worth more than
+     paddling at the edge — and a fished-out tile comes back after
+     FISH_RETURN_DAYS. Fish are the one resource that renews on a clock
+     rather than by terrain regrowth: the water never changes, only its
+     stock. THE SHOAL EXCEPTION (operator direction — shore fish ran out
+     too fast): the hash-picked line-fishable SHOALS, now one shore tile in
+     nine, carry a BERRY PATCH's stock (RES_AMOUNT[T.FERTILE]) instead of
+     the lean shallow cut — fewer good spots, each worth settling by. A
+     FOOD-SCARCE map withholds the privilege: reachable fishing counts
+     toward the intended scarcity (map.js gen pass + G.fishStockAt). */
   FISH_STOCK: { shallow: 0.5, deep: 0.75 },
   FISH_RETURN_DAYS: 120,
   FISH: { res: 'food', rate: 1.2 },   // fishing-boat harvest per second (12/day — a notch under a Lv1 farm's 15)
   SHORE_FISH: { rate: 1.0 },  // villager line-fishing off the shore — same pace as picking berries;
-                              // only works on shoals (about a third of shore water, where fish jump)
+                              // only works on shoals (one shore tile in nine, where fish jump)
   DOCK_MIN_WATER: 6,          // a dock needs a water body at least this big
   /* TRADING POST exchange — ANY resource for any other, and a stingy relief
      valve in every direction. One caravan at a time; `delay` game-days before

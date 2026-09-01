@@ -926,10 +926,19 @@ const MapGen = {
       }
       resAmount[i] = Math.round(resAmount[i] * (cnt === 8 ? 1.5 : cnt >= 4 ? 1 : 0.6));
     }
-    // THE SHALLOW/DEEP SPLIT (CFG.FISH_STOCK): water touching land is a shore
-    // shoal — easy to reach and the leanest fishing on the map; open water
+    // THE SHALLOW/DEEP SPLIT (CFG.FISH_STOCK): water touching land is shore
+    // water — easy to reach and the leanest fishing on the map; open water
     // keeps more. Uses the same "touches a non-water tile" rule the renderer
     // draws its shallows with, so the lean water is the water that LOOKS lean.
+    // THE SHOAL EXCEPTION (operator direction: shore fish ran out too fast):
+    // the few hash-picked SHOALS — the tiles a villager can line-fish, now
+    // one shore tile in nine — carry a BERRY PATCH's stock instead
+    // (CFG.RES_AMOUNT[T.FERTILE], so the two stay in sync): fewer good
+    // spots, each worth settling by. ON A FOOD-SCARCE MAP THE PRIVILEGE IS
+    // WITHHELD — reachable fishing counts toward the food budget, and a
+    // rich shoal by the start would quietly cancel the intended scarcity;
+    // scarce shoals stay ordinary lean shore water (and the ×0.5 food-
+    // scarce water cut above has already run).
     for (let i = 0; i < W * H; i++) {
       if (t[i] !== T.WATER) continue;
       const x = i % W, y = (i / W) | 0;
@@ -939,7 +948,16 @@ const MapGen = {
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         if (t[ny * W + nx] !== T.WATER) { shallow = true; break; }
       }
-      resAmount[i] = Math.round(resAmount[i] * (shallow ? CFG.FISH_STOCK.shallow : CFG.FISH_STOCK.deep));
+      const shoal = shallow && ((x * 73856093 ^ y * 19349663) >>> 0) % 9 === 0;
+      if (shoal && scarce.terrain !== T.FERTILE) {
+        // remap the tile's OWN base roll into the fertile range — no new
+        // rnd() draw, so the seeded stream (and every tuned fixture world
+        // downstream of it) is byte-identical to before
+        const wr = CFG.RES_AMOUNT[T.WATER], fr = CFG.RES_AMOUNT[T.FERTILE];
+        resAmount[i] = Math.round(fr[0] + (resAmount[i] - wr[0]) / (wr[1] - wr[0]) * (fr[1] - fr[0]));
+      } else {
+        resAmount[i] = Math.round(resAmount[i] * (shallow ? CFG.FISH_STOCK.shallow : CFG.FISH_STOCK.deep));
+      }
     }
 
     /* GOLD SEAMS (tests/gold-mine.mjs). Gold is the one resource with no
@@ -1049,8 +1067,10 @@ const MapGen = {
   },
 
   // a shoal: shore water where fish school close enough to catch from land.
-  // Hash-derived (~1/3 of shore tiles), so it needs no save data and matches
-  // the renderer's jumping-fish tell exactly — watch the water to find them.
+  // Hash-derived (~1/9 of shore tiles — the operator thinned them 3× when
+  // each shoal got berry-patch stock, see the gen pass), so it needs no save
+  // data and matches the renderer's jumping-fish tell exactly — watch the
+  // water to find them.
   shoal(x, y) {
     if (!this.onBoard(x, y)) return false;   // off-map rim
     if (S.map.terrain[this.idx(x, y)] !== T.WATER) return false;
@@ -1058,7 +1078,7 @@ const MapGen = {
     for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
       if (this.inB(x + ox, y + oy) && S.map.terrain[this.idx(x + ox, y + oy)] !== T.WATER) { shore = true; break; }
     if (!shore) return false;
-    return ((x * 73856093 ^ y * 19349663) >>> 0) % 3 === 0;
+    return ((x * 73856093 ^ y * 19349663) >>> 0) % 9 === 0;
   },
 
   // nearest tile matching pred, spiraling out from (cx,cy)
