@@ -45,7 +45,7 @@
 let pw;
 try { pw = (await import('playwright')).default ?? await import('playwright'); }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
-import { writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
+import { writeFileSync, mkdirSync, unlinkSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -1521,6 +1521,73 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   ck('aRegionIsFormationOrProceduralNeverBoth', v.mixedIsPerRegion, '');
   ck('removingTheCatalogRestoresTheExtrusion', v.proceduralReturns, '');
   await p.close();
+}
+
+/* ---- 18. THE PERF GATES (LAND_REFRESH.md) ----
+   The hard ceilings every beautification phase is held to: the FIRST bake
+   on the worst map we have (scenes1 xlarge, mountain-heavy) and on the
+   standard xlarge fixture; a terrain edit through the real repaint path;
+   the world pass of one frame at default zoom; and the static rule that
+   nothing in R.draw's own body creates a canvas or reads pixels back.
+   Headless Chromium is slower and noisier than a phone in hand, so every
+   timing gate carries a generous CI multiplier — the LIVE targets are
+   printed beside the numbers so a creeping regression shows in the log
+   long before it trips the gate. The bench (js/dev.js) is what tunes
+   against these; this is what stops a tuning session from shipping a
+   regression. */
+{
+  const CI = 4;                                   // headless multiplier on every live target
+  const LIVE = { bakeMs: 1300, editMs: 0.33 * 1.1, frameP95: 1.5 };
+  const p = await page();
+  const v = await p.evaluate(new Function(`
+    const out = {};
+    try {
+      const bakeOf = (seed) => {
+        G.newGame(seed, 'moderate', 'xlarge'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+        G.freeVis = true; G.updateVisibility();
+        // the FIRST bake, cold: every derived key dropped, then the whole plan
+        R.terrainCache = null;
+        const t0 = performance.now();
+        R.rebakeAll();
+        while (R.tickBake(1e9)) {} while (R.tickRepaint && R.tickRepaint(1e9)) {}
+        return performance.now() - t0;
+      };
+      out.bakeWorst = bakeOf('scenes1');
+      out.bakeStd = bakeOf('verify7');
+      // a terrain edit through the real path, on the standard map
+      const one = [];
+      for (let k = 0; k < 200; k++) { const t = performance.now(); R.drawTileAt(20 + (k % 9), 20 + ((k / 9) | 0) % 9); one.push(performance.now() - t); }
+      one.sort((a, b) => a - b);
+      out.editMed = one[100]; out.editP95 = one[190];
+      // the world pass at default zoom, framed on the town
+      R.cam.z = 1.5; const tc = Bld.tcOf('P'); if (tc) R.centerOn(tc.x + 0.5, tc.y + 0.5);
+      R.draw(0.016);                                // fog and any lazy layer settle first
+      const ft = [];
+      for (let k = 0; k < 60; k++) { const t = performance.now(); R.draw(0.016); ft.push(performance.now() - t); }
+      ft.sort((a, b) => a - b);
+      out.frameMed = ft[30]; out.frameP95 = ft[57];
+      out.err = G.lastFrameError ? String(G.lastFrameError) : '';
+    } catch (e) { out.thrown = String(e); }
+    return out;`));
+  await p.close();
+  const f1 = (n) => (n == null ? '?' : (+n).toFixed(2));
+  Object.assign(res, { _perfGates: { bakeWorstMs: f1(v.bakeWorst), bakeStdMs: f1(v.bakeStd),
+    editMedMs: f1(v.editMed), editP95Ms: f1(v.editP95), frameMedMs: f1(v.frameMed), frameP95Ms: f1(v.frameP95),
+    live: LIVE, ci: CI } });
+  ck('theFirstBakeStaysUnderTheCeiling', !v.thrown && v.bakeWorst < LIVE.bakeMs * CI,
+    v.thrown || (f1(v.bakeWorst) + 'ms worst map (live target ' + LIVE.bakeMs + 'ms), ' + f1(v.bakeStd) + 'ms standard'));
+  ck('aTerrainEditStaysWithinTenPercent', !v.thrown && v.editMed < LIVE.editMs * CI,
+    v.thrown || (f1(v.editMed) + 'ms median (live target ' + LIVE.editMs.toFixed(2) + 'ms)'));
+  ck('theWorldPassFrameStaysCheap', !v.thrown && v.frameP95 < LIVE.frameP95 * CI,
+    v.thrown || (f1(v.frameP95) + 'ms p95 (live target ' + LIVE.frameP95 + 'ms)'));
+  ck('andTheFrameLoopStaysClean', !v.thrown && !v.err, v.thrown || v.err);
+  // the static rule: R.draw's own body may not create a canvas or read pixels
+  const src = readFileSync(join(root, 'js/render.js'), 'utf8');
+  const d0 = src.indexOf('\n  draw(dt) {'), d1 = src.indexOf('this.drawMini(); }', d0);
+  const body = d0 >= 0 && d1 > d0 ? src.slice(d0, d1) : '';
+  ck('nothingInTheFrameLoopMakesACanvasOrReadsPixels',
+    body.length > 1000 && !/createElement\('canvas'\)|getImageData\(/.test(body),
+    body.length > 1000 ? '' : 'could not isolate R.draw');
 }
 
 console.log(JSON.stringify(res, null, 1));

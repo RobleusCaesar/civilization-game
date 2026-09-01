@@ -733,6 +733,327 @@
     },
     revertAll() { for (const k of Object.keys(this.overrides)) this.revert(k); },
 
+    /* ---- THE LAND BENCH (LAND_REFRESH.md Phase 0) ----
+       "Screenshots are the referee." Whitelisted LAND / MTN dials retune the
+       LIVE map through the same re-derive-and-bake path a terrain edit takes
+       (R.rebakeAll, debounced ~250ms — a full bake is up to a second on
+       xlarge, so never per slider tick); values that differ from their
+       defaults export as a JS object literal, which is how a tuning session
+       on the phone becomes a commit; two viewport snapshots flip BLIND
+       (labelled 1/2 in a shuffled order — reveal only after you have
+       chosen); a seed + camera bookmark makes before/after shots
+       pixel-comparable across reloads; and golden hour can be HELD
+       (DevArt.forceDayF, read by the dusk tint in R.draw) for the one warm
+       shot every phase owes.
+
+       Bench state lives on DevArt, never in `overrides` — revertAll is the
+       art's, and tests/art-pipeline.mjs expects it empty. Nothing here
+       touches S except the founding path, which is replayRun's own.
+
+       Whitelist entries: [group, key, min, max, step]. A dial is offered
+       only if its group object exists and carries the key, so a renamed
+       constant drops out of the bench instead of writing a stray field. */
+    BENCH_DIALS: [
+      ['LAND', 'TONE_STEPS', 2, 9, 1], ['LAND', 'TONE_AMP', 0, 0.3, 0.005], ['LAND', 'TONE_SUB', 1, 8, 1],
+      ['LAND', 'SHADE_FOREST', 0, 0.3, 0.005], ['LAND', 'SHADE_ROCK', 0, 0.3, 0.005], ['LAND', 'SHADE_SHORE', 0, 0.2, 0.005],
+      ['LAND', 'HUE_AMP', 0, 0.15, 0.005], ['LAND', 'HUE_FREQ', 0.005, 0.1, 0.0025], ['LAND', 'HUE_STEPS', 2, 5, 1],
+      ['LAND', 'SUN_BIAS', 0, 1, 0.05], ['LAND', 'GRAIN_N', 0, 40, 1], ['LAND', 'MEADOW_MOD', 5, 120, 1],
+      ['LAND', 'DECAL_MUTE', 0, 1, 0.02], ['LAND', 'DECAL_DENSITY', 0, 1.5, 0.02], ['LAND', 'DECAL_CLUMP', 0.02, 0.5, 0.005],
+      ['LAND', 'DECAL_GATE', 0, 1, 0.02], ['LAND', 'DECAL_MAX', 0, 6, 1],
+      ['LAND', 'GRASS_DENSITY', 0, 3, 0.05], ['LAND', 'GRASS_MACRO_F', 0.005, 0.2, 0.005], ['LAND', 'GRASS_GATE', 0, 1, 0.02],
+      ['LAND', 'GRASS_MAX', 0, 12, 1], ['LAND', 'GRASS_ACCENT', 0, 0.3, 0.005], ['LAND', 'GRASS_TALL', 0, 2, 0.05],
+      ['LAND', 'GRASS_PARCH', 0, 1, 0.02],
+      ['LAND', 'KEPT_DENSITY', 0, 1, 0.02], ['LAND', 'KEPT_TINT', 0, 0.3, 0.005], ['LAND', 'KEPT_SOFT', 0, 3, 0.1],
+      ['LAND', 'TAME_R', 0, 5, 1], ['LAND', 'TAME_R_FORT', 0, 3, 1], ['LAND', 'TAME_WOBBLE', 0, 3, 0.1], ['LAND', 'TAME_LOUD', 0, 4, 0.1],
+      ['LAND', 'EDGE_MAX', 0, 8, 1], ['LAND', 'EDGE_FREQ', 0.2, 4, 0.1],
+      ['LAND', 'SAND_MAX', 0, 8, 1], ['LAND', 'SHORE_SMOOTH', 0, 6, 1], ['LAND', 'SHORE_NOISE', 0, 0.5, 0.01],
+      ['LAND', 'SHELF_STEPS', 1, 12, 1], ['LAND', 'SHELF_REACH', 0, 24, 1], ['LAND', 'SHELF_ALPHA', 0, 0.2, 0.005],
+      ['LAND', 'LIFE_CHANCE', 0, 1, 0.02], ['LAND', 'LIFE_GATE', 0, 1, 0.02],
+      ['LAND', 'HILL_RIM', 0, 0.4, 0.01], ['LAND', 'HILL_SHADOW', 0, 0.8, 0.01], ['LAND', 'HILL_SHADOW_MAX', 0, 16, 1],
+      ['LAND', 'BLOCK_SHADE', 0, 0.5, 0.01],
+      ['LAND', 'ROCK_STEP', 4, 24, 1], ['LAND', 'ROCK_MIN', 4, 16, 1], ['LAND', 'ROCK_MAX', 6, 24, 1],
+      ['LAND', 'ROCK_WANDER', 0, 0.5, 0.01], ['LAND', 'ROCK_SCREE', 0, 1, 0.02],
+      ['MTN', 'STEPS', 3, 9, 1], ['MTN', 'BASE', 0, 1, 0.01], ['MTN', 'RISE', 0, 1, 0.01], ['MTN', 'LIGHT', 0, 1, 0.01],
+      ['MTN', 'MACRO', 0, 1, 0.01], ['MTN', 'RIM', 0, 1, 0.01], ['MTN', 'CREASE', 0, 0.2, 0.005],
+      ['MTN', 'FACET_AMP', 0, 1.5, 0.05], ['MTN', 'GRAIN_AMP', 0, 0.5, 0.01],
+      ['MTN', 'LIFT_MIN', 0, 2, 0.05], ['MTN', 'LIFT_MAX', 0, 3, 0.05], ['MTN', 'PEAK_LIFT', 0, 2, 0.05],
+      ['MTN', 'SHADOW_K', 0, 1.5, 0.05], ['MTN', 'SHADOW_A', 0, 1, 0.05],
+      ['MTN', 'SNOW', 0, 1, 1], ['MTN', 'SNOW_MIND', 0, 6, 1], ['MTN', 'SNOW_ABOVE', 0.5, 1, 0.01],
+    ],
+    BENCH_KEY: 'neo-dev-bench',           // localStorage: the seed + camera bookmark
+    GOLDEN_HOUR: 10.16,                   // dayF at the warm peak (R.draw's dusk block)
+    forceDayF: null,
+    _bench: null,
+    _benchGroup(g) {
+      try { return g === 'LAND' ? LAND : g === 'MTN' ? MTN : null; } catch (e) { return null; }
+    },
+    benchDials() {
+      const out = [];
+      for (const [g, k, min, max, step] of this.BENCH_DIALS) {
+        const o = this._benchGroup(g);
+        if (o && typeof o[k] === 'number') out.push({ g, k, min, max, step, o });
+      }
+      return out;
+    },
+    openBench() {
+      if (this._bench) { this._benchClose(); return; }
+      const defaults = {};
+      for (const d of this.benchDials()) defaults[d.g + '.' + d.k] = d.o[d.k];
+      this._bench = { panel: null, defaults, timer: 0, snaps: [null, null], order: [0, 1], showing: -1, filter: '', ab: null };
+      this._benchPanel();
+    },
+    _benchClose() {
+      const bn = this._bench;
+      if (!bn) return;
+      clearTimeout(bn.timer);
+      this._benchHideAB();
+      if (bn.panel) bn.panel.remove();
+      this._bench = null;
+    },
+    // a dial changed: re-derive and bake, debounced — the whole point of the
+    // debounce is that a full bake is the cost of one honest repaint
+    _benchSchedule() {
+      const bn = this._bench;
+      if (!bn) return;
+      clearTimeout(bn.timer);
+      bn.timer = setTimeout(() => { bn.timer = 0; this._benchApply(); }, 250);
+    },
+    _benchApply() {
+      if (!window.R || typeof S === 'undefined' || !S || !S.map) return;
+      R.rebakeAll();
+      if (window.Formations && Formations.onNewGame) { /* regions unchanged — nothing to re-solve */ }
+    },
+    // every dial that differs from its default, as the literal to paste into
+    // the LAND / MTN blocks
+    benchExport() {
+      const bn = this._bench, out = {};
+      if (!bn) return '{}';
+      for (const d of this.benchDials()) {
+        const v = d.o[d.k], def = bn.defaults[d.g + '.' + d.k];
+        if (v !== def) (out[d.g] || (out[d.g] = {}))[d.k] = v;
+      }
+      const lines = [];
+      for (const g of Object.keys(out)) {
+        lines.push('  ' + g + ': {');
+        for (const k of Object.keys(out[g])) lines.push('    ' + k + ': ' + out[g][k] + ',');
+        lines.push('  },');
+      }
+      return lines.length ? '{\n' + lines.join('\n') + '\n}' : '{}  // every dial at its default';
+    },
+    benchReset() {
+      const bn = this._bench;
+      if (!bn) return;
+      for (const d of this.benchDials()) d.o[d.k] = bn.defaults[d.g + '.' + d.k];
+      this._benchRows();
+      this._benchApply();
+    },
+    /* ---- blind A/B: two snapshots of the live canvas, flipped by tap ----
+       The canvas is copied whole (drawImage — a tainted source is fine for
+       drawing), so what you compare is exactly what the player would see,
+       HUD and all. The order the two are shown in is shuffled once both
+       exist; reveal maps the labels back after you have picked. */
+    benchSnap(i) {
+      const bn = this._bench;
+      if (!bn || !window.R || !R.cv) return;
+      const c = document.createElement('canvas');
+      c.width = R.cv.width; c.height = R.cv.height;
+      c.getContext('2d').drawImage(R.cv, 0, 0);
+      bn.snaps[i] = c;
+      if (bn.snaps[0] && bn.snaps[1]) bn.order = Math.random() < 0.5 ? [0, 1] : [1, 0];
+      this._benchRender();
+    },
+    benchFlip() {
+      const bn = this._bench;
+      if (!bn || !bn.snaps[0] || !bn.snaps[1]) return;
+      bn.showing = bn.showing < 0 ? 0 : 1 - bn.showing;
+      this._benchShowAB();
+    },
+    _benchShowAB() {
+      const bn = this._bench;
+      if (!bn) return;
+      if (!bn.ab) {
+        const ov = document.createElement('div');
+        ov.id = 'devBenchAB';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:9998;background:#000;cursor:pointer';
+        const cv = document.createElement('canvas');
+        cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%';
+        const tag = document.createElement('div');
+        tag.style.cssText = 'position:absolute;left:12px;top:12px;font:bold 22px monospace;color:#e8c15a;' +
+          'background:rgba(0,0,0,.55);padding:4px 10px;border-radius:4px;pointer-events:none';
+        ov.appendChild(cv); ov.appendChild(tag);
+        ov.onclick = () => this.benchFlip();
+        document.body.appendChild(ov);
+        bn.ab = { ov, cv, tag };
+      }
+      const which = bn.order[bn.showing];        // which SNAPSHOT this label shows
+      const src = bn.snaps[which];
+      const cv = bn.ab.cv;
+      cv.width = src.width; cv.height = src.height;
+      const g = cv.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.drawImage(src, 0, 0);
+      bn.ab.tag.textContent = String(bn.showing + 1) + '  (tap to flip · esc to close)';
+      if (!bn.ab.key) {
+        bn.ab.key = (e) => { if (e.key === 'Escape') this._benchHideAB(); };
+        addEventListener('keydown', bn.ab.key);
+      }
+    },
+    _benchHideAB() {
+      const bn = this._bench;
+      if (!bn || !bn.ab) return;
+      if (bn.ab.key) removeEventListener('keydown', bn.ab.key);
+      bn.ab.ov.remove();
+      bn.ab = null;
+      bn.showing = -1;
+    },
+    benchReveal() {
+      const bn = this._bench;
+      if (!bn || !bn.snaps[0] || !bn.snaps[1]) return 'take two snapshots first';
+      return '1 = snap ' + (bn.order[0] === 0 ? 'A' : 'B') + ', 2 = snap ' + (bn.order[1] === 0 ? 'A' : 'B');
+    },
+    /* ---- the same-view bookmark: seed, size, camera ----
+       Founding follows Screens.replayRun's own recipe (no draft, no cloud
+       slot, the HUD on), then the map is opened whole (G.freeVis) and
+       paused, so a bookmarked camera lands on identical pixels every reload.
+       localStorage in this project is always try/catch, `neo-` prefixed. */
+    benchBookmark() {
+      // the viewport rides along: clampCam pads by the HUD and the window, so
+      // a phone's bookmark on a desktop lands a few pixels off — say so
+      const b = { seed: S && S.seed, mode: S && S.mode, size: S && S.sizeKey, tunic: S && S.tunic && S.tunic.P,
+                  x: R.cam.x, y: R.cam.y, z: R.cam.z, vw: Math.round(R.viewW()), vh: Math.round(R.viewH()) };
+      try { localStorage.setItem(this.BENCH_KEY, JSON.stringify(b)); } catch (e) {}
+      return b;
+    },
+    benchLoadBookmark() {
+      try { return JSON.parse(localStorage.getItem(this.BENCH_KEY) || 'null'); } catch (e) { return null; }
+    },
+    benchFound(seed, size, mode, tunic) {
+      if (window.Screens && Screens._founding) return false;
+      this._conformClose();                    // its stashes belong to the old world
+      Screens._demo = false; G.freeVis = false;
+      G.newGame(String(seed), mode || 'moderate', size || 'medium', undefined, tunic || 'blue');
+      if (window.Backend) { Backend.markActiveSlot(null); Backend.activeName = null; }
+      Screens.lastSavedDay = 1;
+      if (window.Cards && S.draft && S.draft.hand && S.draft.hand.length && !S.draft.done) Cards.pick(0);
+      Screens.enterGame();
+      G.freeVis = true; G.updateVisibility(); R.fogDirty = true;
+      S.paused = true;
+      return true;
+    },
+    benchGo(bm) {
+      if (!bm) return false;
+      if (!S || String(S.seed) !== String(bm.seed) || S.sizeKey !== bm.size) this.benchFound(bm.seed, bm.size, bm.mode, bm.tunic);
+      if (bm.z) R.cam.z = bm.z;
+      if (bm.x != null) R.cam.x = bm.x;
+      if (bm.y != null) R.cam.y = bm.y;
+      R.clampCam();
+      return true;
+    },
+    _benchPanel() {
+      const bn = this._bench;
+      const p = document.createElement('div');
+      p.id = 'devBench';
+      p.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:9999;background:rgba(26,20,14,.94);' +
+        'border:1px solid #6b5636;padding:8px 10px;font:12px monospace;color:#e8dfc8;' +
+        'width:min(330px,92vw);max-height:62vh;overflow:auto;border-radius:4px';
+      p.innerHTML =
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+        '<b>LAND BENCH</b><button id="dbClose" style="font:12px monospace">×</button></div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0">' +
+        '<button id="dbSnapA" style="font:11px monospace">snap A</button>' +
+        '<button id="dbSnapB" style="font:11px monospace">snap B</button>' +
+        '<button id="dbFlip" style="font:11px monospace">A/B flip</button>' +
+        '<button id="dbReveal" style="font:11px monospace">reveal</button>' +
+        '<span id="dbABInfo" style="opacity:.7;font:11px monospace"></span></div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0">' +
+        'seed <input id="dbSeed" style="font:11px monospace;width:90px"> ' +
+        '<select id="dbSize" style="font:11px monospace"><option>medium</option><option>large</option><option>xlarge</option></select>' +
+        '<button id="dbFound" style="font:11px monospace">found</button>' +
+        '<button id="dbSave" style="font:11px monospace">save cam</button>' +
+        '<button id="dbGo" style="font:11px monospace">go</button>' +
+        '<label style="font:11px monospace;display:flex;align-items:center;gap:3px">' +
+        '<input type="checkbox" id="dbGolden">golden hour</label></div>' +
+        '<div id="dbBm" style="opacity:.6;font:10px monospace;margin:2px 0"></div>' +
+        '<div style="display:flex;gap:6px;align-items:center;margin:6px 0">' +
+        '<input id="dbFilter" placeholder="filter dials…" style="font:11px monospace;flex:1">' +
+        '<button id="dbReset" style="font:11px monospace">defaults</button>' +
+        '<button id="dbCopy" style="font:11px monospace">copy values</button></div>' +
+        '<textarea id="dbOut" style="display:none;width:100%;height:80px;font:10px monospace;background:#1a140e;color:#9d9;border:1px solid #4a3c28"></textarea>' +
+        '<div id="dbRows"></div>' +
+        '<div style="opacity:.55;font:10px monospace;margin-top:6px">a dial re-derives and bakes the whole map (~250ms after the last change)</div>';
+      document.body.appendChild(p);
+      bn.panel = p;
+      p.querySelector('#dbClose').onclick = () => this._benchClose();
+      p.querySelector('#dbSnapA').onclick = () => this.benchSnap(0);
+      p.querySelector('#dbSnapB').onclick = () => this.benchSnap(1);
+      p.querySelector('#dbFlip').onclick = () => this.benchFlip();
+      p.querySelector('#dbReveal').onclick = () => { p.querySelector('#dbABInfo').textContent = this.benchReveal(); };
+      const seedIn = p.querySelector('#dbSeed'), sizeSel = p.querySelector('#dbSize');
+      if (typeof S !== 'undefined' && S) { seedIn.value = S.seed || ''; sizeSel.value = S.sizeKey || 'medium'; }
+      p.querySelector('#dbFound').onclick = () => {
+        if (!seedIn.value) return;
+        this.benchFound(seedIn.value, sizeSel.value, 'moderate', (S && S.tunic && S.tunic.P) || 'blue');
+        this._benchRender();
+      };
+      p.querySelector('#dbSave').onclick = () => { this.benchBookmark(); this._benchRender(); };
+      p.querySelector('#dbGo').onclick = () => { this.benchGo(this.benchLoadBookmark()); this._benchRender(); };
+      p.querySelector('#dbGolden').onchange = (e) => { this.forceDayF = e.target.checked ? this.GOLDEN_HOUR : null; };
+      p.querySelector('#dbFilter').oninput = (e) => { bn.filter = e.target.value.toLowerCase(); this._benchRows(); };
+      p.querySelector('#dbReset').onclick = () => this.benchReset();
+      p.querySelector('#dbCopy').onclick = async () => {
+        const txt = this.benchExport();
+        const ta = p.querySelector('#dbOut');
+        ta.style.display = ''; ta.value = txt;
+        try { await navigator.clipboard.writeText(txt); } catch (e) { ta.select(); try { document.execCommand('copy'); } catch (e2) {} }
+      };
+      this._benchRows();
+      this._benchRender();
+    },
+    _benchRows() {
+      const bn = this._bench;
+      if (!bn || !bn.panel) return;
+      const box = bn.panel.querySelector('#dbRows');
+      box.innerHTML = '';
+      for (const d of this.benchDials()) {
+        const name = d.g + '.' + d.k;
+        if (bn.filter && name.toLowerCase().indexOf(bn.filter) < 0) continue;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:6px;align-items:center;margin:2px 0;font:11px monospace';
+        const lab = document.createElement('span');
+        lab.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        lab.textContent = name;
+        const def = bn.defaults[name];
+        if (d.o[d.k] !== def) lab.style.color = '#e8c15a';
+        const rng = document.createElement('input');
+        rng.type = 'range'; rng.min = d.min; rng.max = d.max; rng.step = d.step;
+        rng.value = d.o[d.k]; rng.style.width = '110px';
+        const val = document.createElement('span');
+        val.style.cssText = 'width:52px;text-align:right';
+        val.textContent = String(d.o[d.k]);
+        rng.oninput = () => {
+          const v = +rng.value;
+          d.o[d.k] = d.step >= 1 ? Math.round(v) : +v.toFixed(4);
+          val.textContent = String(d.o[d.k]);
+          lab.style.color = d.o[d.k] !== def ? '#e8c15a' : '';
+          this._benchSchedule();
+        };
+        row.appendChild(lab); row.appendChild(rng); row.appendChild(val);
+        box.appendChild(row);
+      }
+    },
+    _benchRender() {
+      const bn = this._bench;
+      if (!bn || !bn.panel) return;
+      const bm = this.benchLoadBookmark();
+      const vpOff = bm && bm.vw && window.R && (bm.vw !== Math.round(R.viewW()) || bm.vh !== Math.round(R.viewH()));
+      bn.panel.querySelector('#dbBm').textContent = bm
+        ? 'bookmark: ' + bm.seed + ' · ' + bm.size + ' · cam ' + Math.round(bm.x) + ',' + Math.round(bm.y) + ' @' + bm.z +
+          (vpOff ? ' · ⚠ saved at ' + bm.vw + '×' + bm.vh + ', not this viewport' : '')
+        : 'no bookmark saved';
+      const info = bn.panel.querySelector('#dbABInfo');
+      info.textContent = (bn.snaps[0] ? 'A✓ ' : 'A– ') + (bn.snaps[1] ? 'B✓' : 'B–');
+    },
+
     // every slot the picker / canonical-filename dropdown can offer, building
     // and camp alike — value is 'b|id|lv' or 'c|tribe', label the canonical
     // filename each would ship under
@@ -911,6 +1232,7 @@
       '<button id="devArtRevertAll" style="font:11px monospace">revert all</button>' +
       '<button id="devArtFileBtn" style="font:11px monospace">load PNGs…</button>' +
       '<button id="devArtConformBtn" style="font:11px monospace">conform raw PNG…</button>' +
+      '<button id="devArtBenchBtn" style="font:11px monospace">land bench…</button>' +
       '<input type="file" id="devArtFile" accept="image/png,.png" multiple style="display:none">' +
       '<input type="file" id="devArtConformFile" accept="image/png,.png" style="display:none">' +
       '<label style="font:11px monospace;display:flex;align-items:center;gap:3px">' +
@@ -938,6 +1260,8 @@
       img.src = URL.createObjectURL(f);
     };
     p.querySelector('#devArtMaskTgl').onchange = (e) => { DevArt.maskOverlay = !!e.target.checked; };
+    // the LAND BENCH: dials, blind A/B, the same-view bookmark (LAND_REFRESH.md Phase 0)
+    p.querySelector('#devArtBenchBtn').onclick = () => DevArt.openBench();
     const sel = p.querySelector('#devArtSlot');
     for (const s of DevArt._allSlots()) {
       const o = document.createElement('option');

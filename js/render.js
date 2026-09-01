@@ -114,6 +114,9 @@ const LAND = {
   TAME_R: 2,            // tiles of tended ground beyond a building's footprint
   TAME_R_FORT: 1,       // …a wall or gate section keeps only its own verge
   TAME_WOBBLE: 1.5,     // tiles of ragged wander on the tended boundary
+  TAME_LOUD: 1.0,       // the flatten's voice (drawTamings): blade count,
+                        // throw, arc, drop and slide all scale with it;
+                        // 0 silences the debris, 2+ is unmistakable
   // --- Part 3: transitions ------------------------------------------------
   EDGE_MAX: 5,          // deepest an edge fringe reaches into a tile, in 1/16ths
   EDGE_FREQ: 1.6,       // how fast a boundary wanders. Sampled in WORLD space so
@@ -979,8 +982,9 @@ const R = {
           continue;
         }
         const ease = Math.min(1, Math.pow(p / 0.85, 1.4));
-        const flat = 1 - ease * 0.8;                   // rows settle toward the ground
-        const push = ease * 3 * (TL / 32);             // …and slide away from the build
+        const loud = LAND.TAME_LOUD;                   // the bench's loudness dial
+        const flat = 1 - ease * Math.min(0.95, 0.8 * Math.max(0.5, loud));   // rows settle toward the ground
+        const push = ease * 3 * loud * (TL / 32);      // …and slide away from the build
         const a = p < 0.65 ? 1 : 1 - (p - 0.65) / 0.35;
         g.globalAlpha = a;
         if (td.cap.img) {
@@ -1000,17 +1004,18 @@ const R = {
         let bh = (Math.imul(td.x, 0x27d4eb2d) ^ Math.imul(td.y, 0x9e3779b1)) >>> 0;
         const br = () => { bh = Math.imul(bh ^ (bh >>> 15), 0x2c1b3c6d); bh = (bh ^ (bh >>> 12)) >>> 0; return bh / 4294967295; };
         const GR2 = ART.PALETTE.grass;
-        for (let k = 0; k < 4; k++) {
+        const nb = Math.round(4 * loud), bsz = px1 * (loud >= 2 ? 2 : 1);
+        for (let k = 0; k < nb; k++) {
           const b0 = br(), b1 = br(), b2 = br();
           const bt = (p - b0 * 0.3) / 0.7;
           if (bt <= 0 || bt >= 1) continue;
-          const reach = (5 + b1 * 12) * px1 * bt;
+          const reach = (5 + b1 * 12) * px1 * bt * loud;
           const bx = td.x * TL + TL / 2 + td.dir[0] * reach + (b2 - 0.5) * 6 * px1;
           const by = td.y * TL + TL / 2 + td.dir[1] * reach * 0.6
-            - px1 * 5 * 4 * bt * (1 - bt);             // a small arc up and back down
+            - px1 * 5 * 4 * bt * (1 - bt) * loud;      // a small arc up and back down
           g.globalAlpha = Math.min(a, (1 - bt) * 1.5);
           g.fillStyle = b2 < 0.6 ? GR2[3] : GR2[4];
-          g.fillRect(Math.round(bx), Math.round(by), px1, px1);
+          g.fillRect(Math.round(bx), Math.round(by), bsz, bsz);
         }
         g.globalAlpha = 1;
       }
@@ -3503,6 +3508,26 @@ const R = {
     this._bake = null; this._bakeDue = false;    // a full bake supersedes any plan
     this._repaintQ = null;                       // …and any queued repaint tail with it
     for (const step of this._bakeSteps()) step();
+  },
+  /* THE BENCH'S RE-DERIVE (js/dev.js, the ?dev=1 Land bench — LAND_REFRESH.md
+     Phase 0). A dial can change things rebuildTerrain alone never re-derives:
+     a lattice FREQUENCY (the baked lattices key on seed and size only), the
+     shore smoothing (the traced regions key on the wet tiles), the hill
+     field, the kept-ground mask, the decal colour memo, the mountain
+     classes and painter. Drop every derived key, then bake — the map comes
+     back as if this seed had always been dialled this way. Dev-only by use;
+     harmless anywhere, and never on the frame loop. */
+  rebakeAll() {
+    this._lat = null; this._latKey = ''; this._latOne = null;
+    this._shoreKey = ''; this._layerKey = ''; this._waterMask = null;
+    this._bodyPath = null; this._bodyKey = '';
+    this._hillH = null; this._hillKey = '';
+    this._tameKey = ''; this._tameMask = null;
+    this._mixC = null;
+    this._mtn = null; this._mtnKey = ''; this._mtnH = null;
+    this._mtnArt = null; this._mtnLayerKey = ''; this._mtnCover = null;
+    this._mtnStrips = null; this._mtnOcc = null; this._mtnDirty = true;
+    this.rebuildTerrain();
   },
   // run a due bake a slice at a time. Steps are atomic, so the budget is a
   // floor on the work done, not a ceiling — BAKE_ROWS is what keeps a band small.
@@ -8800,7 +8825,10 @@ const R = {
     // across ~2 days — one slow, calm breath, never a strobe. Screen-space
     // tint only; costs one or two fillRects.
     {
-      const dayF = ((S.day - 1) % 12) + Math.min(1, S.dayT / CFG.DAY_MS);
+      // the ?dev=1 Land bench can HOLD a moment of the cycle for a screenshot
+      // (DevArt.forceDayF — golden hour is 10.16); render-only, never in S
+      const dayF = (window.DevArt && DevArt.on && DevArt.forceDayF != null) ? +DevArt.forceDayF
+        : ((S.day - 1) % 12) + Math.min(1, S.dayT / CFG.DAY_MS);
       let k = 0;
       if (dayF > 10) k = Math.sin((dayF - 10) / 2 * Math.PI);
       if (k > 0.02) {

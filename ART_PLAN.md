@@ -1055,6 +1055,21 @@ Tunables, all in the `LAND` block:
 | the ground looks busy rather than deep | lower `DECAL_DENSITY`, raise `DECAL_GATE` |
 | impassable ground does not announce itself | raise `BLOCK_SHADE` |
 | the map looks blotchy | lower `BLOCK_SHADE` |
+| the meadow is threadbare / a carpet | `GRASS_DENSITY`, `GRASS_GATE` (the bald share), `GRASS_MAX` |
+| the lush valleys do not read as valleys | lower `GRASS_MACRO_F` (bigger patches), raise `GRASS_GATE` |
+| the kept verge is not visibly kept | lower `KEPT_DENSITY`; `TAME_R`, `TAME_WOBBLE` for its reach and rag |
+| the flatten on build is too quiet / too loud | `TAME_LOUD` (0 silences the debris, 2+ is unmistakable) |
+
+**Tune through the bench, never by blind edits** (`?dev=1` → *land bench…*,
+LAND_REFRESH.md Phase 0): every whitelisted `LAND`/`MTN` dial retunes the
+live map through `R.rebakeAll` — the same re-derive-and-bake a terrain edit
+would owe, debounced — *copy values* exports only what moved as the literal
+to paste into the block, *snap A / snap B / A/B flip* compares two viewport
+snapshots BLIND (labels shuffled; *reveal* after choosing), *save cam / go*
+bookmarks seed + camera so before/after shots are pixel-comparable across
+reloads, and *golden hour* holds the dusk cycle's warm peak for the one warm
+shot every phase owes. The perf gates in `tests/land.mjs` §18 are what stop a
+tuning session from shipping a regression.
 | a resource cluster shows tile-shaped patches | raise `BLOCK_FADE`, soften the density taper |
 | a tile grid is visible in flat ground | `TONE_SUB` (must stay above 1), `TONE_STEPS` |
 | hills read flat | raise `HILL_SHADOW`, `HILL_SHADOW_MAX` |

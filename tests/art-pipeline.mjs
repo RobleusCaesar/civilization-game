@@ -876,6 +876,31 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
       DevArt.revertAll();
     }
 
+    /* ---- the LAND BENCH (LAND_REFRESH.md Phase 0): dials over the live
+       LAND/MTN blocks, a values export that lists only what moved, blind
+       A/B snapshots, and nothing of it in the art's own override ledger ---- */
+    {
+      DevArt.openBench();
+      const panel = document.getElementById('devBench');
+      const dials = panel ? panel.querySelectorAll('#dbRows input[type=range]').length : 0;
+      ck('theBenchOpensWithItsDials', !!panel && dials > 20, dials + ' dials');
+      ck('atDefaultsTheExportIsEmpty', /^\{\}/.test(DevArt.benchExport()), DevArt.benchExport().slice(0, 40));
+      const was = LAND.GRASS_DENSITY;
+      LAND.GRASS_DENSITY = 0;
+      ck('aMovedDialIsWhatTheExportLists', /GRASS_DENSITY: 0/.test(DevArt.benchExport()) &&
+        !/TONE_AMP/.test(DevArt.benchExport()), '');
+      DevArt.benchReset();
+      ck('defaultsPutEveryDialBack', LAND.GRASS_DENSITY === was && /^\{\}/.test(DevArt.benchExport()), '');
+      DevArt.benchSnap(0); DevArt.benchSnap(1);
+      ck('twoSnapshotsFlipBlind', DevArt._bench.snaps[0] instanceof HTMLCanvasElement &&
+        DevArt._bench.snaps[1] instanceof HTMLCanvasElement && /^1 = snap [AB], 2 = snap [AB]$/.test(DevArt.benchReveal()), '');
+      DevArt.benchFlip();
+      ck('theFlipIsAnOverlay', !!document.getElementById('devBenchAB'), '');
+      DevArt._benchClose();
+      ck('closingTheBenchLeavesNothing', !document.getElementById('devBench') && !document.getElementById('devBenchAB') &&
+        DevArt._bench === null && Object.keys(DevArt.overrides).length === 0, '');
+    }
+
     return { res, fails };
   });
   merge(out);
