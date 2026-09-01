@@ -960,6 +960,43 @@ richness field, the clump gate, the taming mask. Supplied art changes what
 a sward looks like, never where grass grows; bald ground stays bald.
 Contract: `tests/wild-grass.mjs`.
 
+**THE FIRST ART PASS LOST TO THE PROCEDURAL SWARD, blind, at every gate
+(2026-09-01, 161 generations).** Recorded so nobody pays for it twice:
+
+- `create_1_direction_object` at ≤42px returns 64 candidates per call — the
+  candidate-grid trick works, and the packs were handsome on the sheet
+  (wild tussocks with straw and seed heads, tidy kept hedgelets, muted
+  bloom clusters). Style images must be ≤42px too, or the pack drops to
+  16; a base64 style image over ~500 chars was truncated in transit.
+- **A 40px canvas gets FILLED**: every wild clump came back 31–34 wide ×
+  31–37 tall — taller than wide, the sapling trap. A "squat, bottom third
+  of the frame" prompt fixed the aspect (32×16) but not the size.
+- **Scale is the killer, not style.** The procedural sward is 4–9 art px
+  wide; the smallest usable authored clump (24px canvas) is 17×17 and a
+  squat one is a full tile wide. Drawn at the sward's own count (up to
+  seven a tile) the meadow became a carpet of distinct objects — the
+  object-count failure the doctrine names — and the straw ones fought the
+  berry bushes for the eye. Procedural 8/10 vs art ~5/10 at 1.5.
+- Kept hedgelets (18×10, uniform) read as shrubs, not cropped pasture; the
+  procedural tidy lattice + lush wash won. Accent art only rides art
+  clumps, so it was moot once wild lost.
+- If this is ever retried: author at the sward's scale (an 8–12px clump on
+  a 16px canvas — the style image must be 16px too), or accept that art
+  on this layer is a different feature (a rarer, larger "landmark tussock"
+  at decal density, not the sward).
+- **Know the seat before you diagnose the sward.** Grey "slabs" beside a
+  test house on `refresh-ab` were chased through the cover art and then
+  the parched swards for an hour; they were the relic placeholder
+  (`S.relic`, `Relics._placeholder` — worked stones half-sunk in old
+  ground), because the seed's ruin site sits at (41,9), right where the
+  house went. Sample the canvas pixels and match them to a palette ramp
+  (`ART.PALETTE.stone` here) before touching any grass code; and check
+  `S.relic` when something un-grassy appears near the start.
+
+The engine door stays: `assets/terrain/cover/grass/{wild,kept,accent}.png`
+installs exactly as documented, one clump per frame, and a future set
+that beats procedural blind ships with a `CFG.ART_V` bump and nothing else.
+
 ## Ground art
 
 `assets/terrain/{name}.png`, plus `{name}-2.png`, `-3` … for variants.
