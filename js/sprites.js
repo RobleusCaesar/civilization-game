@@ -284,8 +284,16 @@ const Sprites = {
      no procedural shadow is added under them. A partial catalog composes
      with procedural filling the gaps; no catalog is the old wood untouched. */
   function doorTree(p, f, cx, cy, rr, ramp, kind, contained, seed) {
+    /* an UNCONTAINED context (the dense interior's straddling lattice, the
+       character tiles' framing ring) takes SMALL pieces only: a large stamp
+       on the 7px lattice overdraws its neighbours into one mud-dark mass
+       and its canvas-edge cut has no continuation in the next tile's
+       variant — a hard seam. Small stamps share the procedural crowns'
+       statistics, so the straddle keeps working; the large tier lives on
+       the contained fringe, where a single tree is actually read. */
     const art = (typeof Assets !== 'undefined' && Assets.treePiece)
-      ? Assets.treePiece(kind, rr, (cx * 73856093 ^ cy * 19349663 ^ (seed | 1) * 83492791) >>> 0) : null;
+      ? Assets.treePiece(kind, contained ? rr : Math.min(rr, 6),
+          (cx * 73856093 ^ cy * 19349663 ^ (seed | 1) * 83492791) >>> 0) : null;
     if (art) {
       const foot = cy + Math.round(rr * (kind === 'conifer' ? 0.75 : 1)) + 3;
       const ax = cx - (art.width >> 1), ay = foot - art.height;

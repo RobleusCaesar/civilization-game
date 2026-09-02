@@ -31,7 +31,7 @@ let pw;
 try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const b = await pw.chromium.launch();
+const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] });  // shipped PNGs bake into canvases the checks read — file:// must be same-origin
 
 const res = {}, fails = [];
 const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); };
@@ -233,10 +233,12 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
         }
         return op / n;
       };
+      // the page may have booted with REAL pieces from the repo: clear the
+      // catalog first, so "pristine" is the procedural wood by definition
+      Assets.trees = {}; Assets.treesRev = 0; Sprites.rebuildForest();
       const pristine = snap(allSets()), covBefore = denseCov();
       const terrHash = () => { const t = S.map && S.map.terrain; if (!t) return 'nomap'; let s = 0; for (let i = 0; i < t.length; i++) s = (Math.imul(s, 31) + t[i]) >>> 0; return s; };
       const terrBefore = terrHash();
-      Assets.trees = {}; Assets.treesRev = 0;
       Assets.setTreePiece('dome-l', piece(24, 28));
       Assets.setTreePiece('dome-s', piece(12, 14));
       const isMag = (d, k) => d[k] > 180 && d[k + 1] < 90 && d[k + 2] > 180;
