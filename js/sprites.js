@@ -277,7 +277,14 @@ const Sprites = {
   function forestTile(p, seed, level) {
     const f = p.f, r = ART.rng(seed | 1);
     const trees = [];
-    const dom = KINDS[(r() * KINDS.length) | 0];          // this tile's dominant kind
+    /* THE DOMINANT KIND comes from a HASH of the seed, not the LCG's first
+       draw. The LCG's first output is seed*16807/2^31 — under 0.009 for
+       every seed this file passes (11..1059) — so every variant rolled
+       KINDS[0] and every stand in the game shipped pure round-crown.
+       Hashing mixes the seed's low bits up high; consuming no r() draw
+       keeps every shipped tree position and size exactly where it was —
+       only the species mix changes. */
+    const dom = KINDS[(Math.imul((seed | 1) ^ 0x9e3779b9, 0x85ebca6b) >>> 13) % KINDS.length];
     /* SIZE JITTER THAT SHOWS. The old range was 5..6 — a 20% spread, which at
        a ten-pixel crown is one pixel and reads as no variation at all. It is
        4..8 now (a doubling from smallest to largest), skewed toward the middle
