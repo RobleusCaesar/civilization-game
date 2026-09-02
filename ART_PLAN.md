@@ -1128,6 +1128,9 @@ Tunables, all in the `LAND` block:
 | the heart never appears / a sea flattens into one navy | `DEEP_TOP_K` (share of the map's deepest tile the last edge sits at), `DEEP_TOP_MIN` (a map of ponds shows no heart below this) |
 | a step edge reads as a ring or a staircase | raise `DEPTH_WANDER`, `DEPTH_DITHER` (keep it under half a shore step); lower `DEPTH_WANDER_F` for a slower wander; `DEPTH_SUB` for finer cells |
 | the shallows read as a resort / the ramp is too loud | `DEEP_SAT` (saturation of every step), `DEEP_LIFT` (lightness nudge) — identity at 1 / 0. The ramp itself is muted by construction; these are the pull-backs |
+| the depth bands show their seams | `WATER_FADE`: 0 hard steps + stippled seams, 1 the same steps under a full-width ordered dither, 2 a continuous OKLab fade (rule 5's one sanctioned continuous surface — the water body only) |
+| a small body runs the wrong share of the ramp | `POND_BAND` (tiles of depth a body needs to keep the full run; shallower bodies compress in proportion) |
+| the pale end should be tealer / bluer | `DEEP_ALT` (0 = `deep`, the shipped bluer anchor; 1 = `deepAlt`, the tealer one) |
 | **every shoreline shelves at the same rate / a uniform ring at min zoom** | `SLOPE_VAR` (how much the slope varies from coast to coast), `SLOPE_FREQ` (how far a coast keeps its character) — 0 restores the plain distance field |
 | the open water wants bars, tongues and pockets | `BAR_AMP`, `BAR_FREQ`; `SLOPE_HOLD` is how far from the waterline both fields fade in |
 | a fishing shoal is invisible on the map | `SHOAL_BAR` (tiles of shallowing at a shoal), `SHOAL_BAR_R` (how far the bar reaches) |
