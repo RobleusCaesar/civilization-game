@@ -780,8 +780,10 @@
       ['LAND', 'DEPTH_DITHER', 0, 0.3, 0.01], ['LAND', 'DEPTH_SUB', 4, 16, 4], ['LAND', 'WATER_WHISPER', 0, 2, 0.1],
       ['LAND', 'SHORE_SHADOW', 0, 0.6, 0.02], ['LAND', 'SHORE_SHADOW_W', 0.3, 3, 0.1], ['LAND', 'SHORE_SHADOW_STEPS', 1, 6, 1],
       ['LAND', 'SHORE_SHADOW_SUN', 0, 1, 0.1], ['LAND', 'SHORE_LIP', 0, 0.8, 0.05], ['LAND', 'SHORE_LIP_W', 0.5, 4, 0.1],
-      ['LAND', 'FOAM_LINE', 0, 0.8, 0.01], ['LAND', 'FOAM_PULSE', 0, 1, 0.05], ['LAND', 'FOAM_SPEED', 0, 10, 0.25],
-      ['LAND', 'FOAM_MINZ', 0.5, 3.5, 0.1], ['LAND', 'FOAM_DOTS', 0, 2, 1],
+      ['LAND', 'FOAM_MINZ', 0.5, 3.5, 0.1],
+      ['LAND', 'SURF_ALPHA', 0, 0.5, 0.01], ['LAND', 'SURF_SPEED', 0, 12, 0.25], ['LAND', 'SURF_MINZ', 0.5, 3.5, 0.05],
+      ['LAND', 'SHIM_ALPHA', 0, 1, 0.02], ['LAND', 'SHIM_SPEED', 0, 16, 0.25], ['LAND', 'SHIM_MINZ', 0.5, 3.5, 0.05],
+      ['LAND', 'FOAMFX_ALPHA', 0, 1, 0.02], ['LAND', 'FOAMFX_SPACING', 10, 80, 2], ['LAND', 'FOAMFX_FPS', 2, 20, 0.5],
       ['LAND', 'FISH_RISE', 0, 12, 1], ['LAND', 'FISH_TIME', 0, 1, 0.05], ['LAND', 'SPARKLE_GOLD', 1, 3, 0.05],
       ['LAND', 'HILL_RIM', 0, 0.4, 0.01], ['LAND', 'HILL_SHADOW', 0, 0.8, 0.01], ['LAND', 'HILL_SHADOW_MAX', 0, 16, 1],
       ['LAND', 'BLOCK_SHADE', 0, 0.5, 0.01],
@@ -978,7 +980,7 @@
        MIN over 9 batches after two warm-ups. ~1,100 repaints of pixels that
        come out identical (the repaint is byte-exact), so a second or two
        and nothing visible. ---- */
-    EDIT_GATE: { grass: 1.01, shore: 2.56 },   // the desktop gate (tests/land.mjs §18), for the readout
+    EDIT_GATE: { grass: 1.01, shore: 2.88 },   // the desktop gate (tests/land.mjs §18), for the readout
     benchEditCost() {
       if (!window.R || !R.terrainCache || typeof S === 'undefined' || !S || !S.map) return 'no map';
       const W = CFG.W, H = CFG.H, terr = S.map.terrain;

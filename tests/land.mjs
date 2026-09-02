@@ -1582,7 +1582,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
    gets re-baselined against the truth. */
 {
   const LIVE = { bakeMs: 1300, frameP95: 1.5 };   // LAND_REFRESH's own ceilings, no multiplier
-  const EDIT = { grassMs: 1.01, shoreMs: 2.56 };  // in-suite baseline 0.92 / 2.33 + 10%, see above
+  const EDIT = { grassMs: 1.01, shoreMs: 2.88 };  // grass: baseline 0.92 + 10%. Shore: re-baselined 2026-09-02 for the SMOOTH fade default (the referee-picked mode paints more rects where depth varies fast): in-suite 2.42-2.62 across runs, worst + 10%
   const GRASS_AT = [12, 16], SHORE_AT = [41, 8];  // the two 7x7 workloads on verify7 xlarge
   const measure = async () => {
     const p = await page();
@@ -1643,7 +1643,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   ck('anOpenGroundEditStaysWithinTenPercent', !v.thrown && v.editGrass < EDIT.grassMs,
     v.thrown || (f1(v.editGrass) + 'ms per edit (gate ' + EDIT.grassMs + 'ms = baseline 0.92 + 10%)'));
   ck('aShoreEditStaysWithinTenPercent', !v.thrown && v.editShore < EDIT.shoreMs,
-    v.thrown || (f1(v.editShore) + 'ms per edit (gate ' + EDIT.shoreMs + 'ms = baseline 2.33 + 10%)'));
+    v.thrown || (f1(v.editShore) + 'ms per edit (gate ' + EDIT.shoreMs + 'ms = smooth-mode baseline 2.62 + 10%)'));
   ck('theWorldPassFrameStaysCheap', !v.thrown && v.frameP95 < LIVE.frameP95,
     v.thrown || (f1(v.frameP95) + 'ms p95 (ceiling ' + LIVE.frameP95 + 'ms)'));
   ck('andTheFrameLoopStaysClean', !v.thrown && !v.err, v.thrown || v.err);
@@ -1771,15 +1771,15 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       const passMs = (n) => { setT(); R.drawLivingWater(fg, 0.016); flush(); const t = performance.now(); for (let k = 0; k < n; k++) { R.drawLivingWater(fg, 0.016); flush(); } return (performance.now() - t) / n; };
       const flushMs = (n) => { flush(); const t = performance.now(); for (let k = 0; k < n; k++) flush(); return (performance.now() - t) / n; };
       const base = Math.min(flushMs(40), flushMs(40));
-      const was = { f: LAND.FOAM_LINE, t: LAND.FISH_TIME, s: LAND.SPARKLE_GOLD, d: LAND.FOAM_DOTS };
-      LAND.FOAM_LINE = 0; LAND.FISH_TIME = 0; LAND.SPARKLE_GOLD = 1; LAND.FOAM_DOTS = 2;
+      const was = { sa: LAND.SURF_ALPHA, ha: LAND.SHIM_ALPHA, fa: LAND.FOAMFX_ALPHA, t: LAND.FISH_TIME, s: LAND.SPARKLE_GOLD, r: LAND.RIPPLE };
+      LAND.SURF_ALPHA = 0; LAND.SHIM_ALPHA = 0; LAND.FOAMFX_ALPHA = 0; LAND.FISH_TIME = 0; LAND.SPARKLE_GOLD = 1; LAND.RIPPLE = 0;
       const off = Math.min(passMs(60), passMs(60)) - base;
-      LAND.FOAM_LINE = was.f; LAND.FISH_TIME = was.t; LAND.SPARKLE_GOLD = was.s; LAND.FOAM_DOTS = was.d;
-      R._prof = { foam: 0, tiles: 0, frames: 0 };
+      LAND.SURF_ALPHA = was.sa; LAND.SHIM_ALPHA = was.ha; LAND.FOAMFX_ALPHA = was.fa; LAND.FISH_TIME = was.t; LAND.SPARKLE_GOLD = was.s; LAND.RIPPLE = was.r;
+      R._prof = { foam: 0, tiles: 0, scroll: 0, frames: 0 };
       const on = Math.min(passMs(60), passMs(60)) - base;
       const pr = R._prof; R._prof = null;
       out.flushMs = base; out.frameOff = off; out.frameOn = on; out.newWork = on - off;
-      out.foamMs = pr.foam / pr.frames; out.tilesMs = pr.tiles / pr.frames; out.livingMs = on;
+      out.foamMs = pr.foam / pr.frames; out.tilesMs = pr.tiles / pr.frames; out.scrollMs = pr.scroll / pr.frames; out.livingMs = on;
       // …and framed on the water, where the shore is dense: reported, not gated at 0.4
       R.centerOn(41 + 3.5, 8 + 3.5); R.draw(0.016);
       const onW = Math.min(passMs(60), passMs(60)) - base;
@@ -1826,7 +1826,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   ck('ampZeroIsTheFlatBody', !v.thrown && v.tintedAtZero === 0, v.thrown || (v.tintedAtZero + ' ramp-coloured pixels at DEPTH_AMP 0'));
   ck('noShelfLeavesTheWaterOnAConcaveBay', !v.thrown && v.carved >= 1 && v.shelfOutside === 0,
     v.thrown || (v.shelfOutside + ' shelf pixels outside the body with ' + v.carved + ' inlets carved (' + v.shelfPxOnLand + ' on land-tile pixels inside it)'));
-  ck('theLivingWaterFitsItsBudget', !v.thrown && v.livingMs < 0.4 && v.newWork < 0.4,
+  ck('theLivingWaterFitsItsBudget', !v.thrown && v.livingMs < 0.4 && v.waterLivingMs < 0.4,
     v.thrown || ('the whole living-water pass, raster included: ' + f2(v.livingMs) + 'ms on the town view at z1.5 golden hour (was ' + f2(v.frameOff) + 'ms before 1b–1d: delta ' + f2(v.newWork) + 'ms; recorded foam ' + f2(v.foamMs) + ' + tiles ' + f2(v.tilesMs) + '); ' + f2(v.waterLivingMs) + 'ms on the water view; a flush alone ' + f2(v.flushMs) + 'ms'));
   ck('oneFishAtATimeOnTheWaterWorthFishing',
     !v.thrown && v.noLockstep && v.spots > 1 && v.distinctPicks > 1 && v.offShoal === 0 && v.poor === 0 && !v.err,

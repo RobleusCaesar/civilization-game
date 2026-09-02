@@ -487,6 +487,63 @@ const Assets = {
     return a.length ? a[(i >>> 0) % a.length] : null;
   },
 
+  /* ---- THE WATER'S MOTION PASS: three authored files -----------------
+
+       assets/terrain/water/surface.png   a seamless grayscale texture the
+                                          frame scrolls over the body at
+                                          MULTIPLY — near-white ground so
+                                          it modulates without recolouring
+       assets/terrain/water/shimmer.png   a seamless glint layer on PURE
+                                          black, scrolled under 'lighter'
+       assets/terrain/water/foam.png      a horizontal strip of square
+                                          frames — the shoreline foam lap
+
+     Each loads independently; a 404 leaves that one layer to the
+     procedural water, never an error. R.drawLivingWater builds ONE
+     CanvasPattern per installed texture and only moves the offset. Foam
+     frames get binary alpha enforced here, like every sprite. */
+  WATERFX_DIR: 'assets/terrain/water/',
+  waterFx: { surface: null, shimmer: null, foam: null },
+  waterFxUrl(name) { return this.WATERFX_DIR + name + '.png?v=' + (CFG.ART_V || 1); },
+  _tryWaterFx() {
+    for (const name of ['surface', 'shimmer', 'foam']) {
+      const img = new Image();
+      img.onload = () => this.setWaterFx(name, img);
+      img.onerror = () => { /* that layer stays procedural */ };
+      img.src = this.waterFxUrl(name);
+    }
+  },
+  setWaterFx(name, img) {
+    if (!img || !img.width || !img.height) return false;
+    if (name === 'foam') {
+      const PX = img.height;
+      if (img.width % PX) return false;
+      const frames = [];
+      for (let i = 0; i < img.width / PX; i++) {
+        const c = document.createElement('canvas'); c.width = PX; c.height = PX;
+        const g = c.getContext('2d');
+        g.imageSmoothingEnabled = false;
+        g.drawImage(img, i * PX, 0, PX, PX, 0, 0, PX, PX);
+        try {
+          const d = g.getImageData(0, 0, PX, PX);
+          for (let k = 3; k < d.data.length; k += 4) d.data[k] = d.data[k] >= 128 ? 255 : 0;
+          g.putImageData(d, 0, 0);
+        } catch (e) { /* tainted on file:// — the frames still draw */ }
+        frames.push(c);
+      }
+      if (!frames.length) return false;
+      this.waterFx.foam = frames;
+      return true;
+    }
+    if (name !== 'surface' && name !== 'shimmer') return false;
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, 0, 0);
+    this.waterFx[name] = c;
+    return true;
+  },
+
   /* ---- FORMATION ART: multi-tile drawn pieces over terrain REGIONS ----
 
        assets/terrain/formations/{terrain}/{terrain}-{W}x{H}-{shape}-{letter}.png
@@ -976,6 +1033,7 @@ const Assets = {
     for (const tName of this.COVER_CATALOG)
       for (const slot of this.COVER_SLOTS) this._tryCover(tName, slot, 1);
     this._tryFish(1);
+    this._tryWaterFx();
     this.ready = true;
     return { ok: true, data: { slots: this.artSlots().length + this.campTribes().length } };
   },

@@ -380,22 +380,45 @@ const LAND = {
   SHORE_LIP_W: 1.2,     // its width in 1/16ths of a tile
   /* --- Part 4c: LIVING WATER (LAND_REFRESH 1b–1d — R.drawLivingWater).
      FRAME work, viewport only, and every piece of it a dial that turns to
-     0. The waterline LAPS: a 1px broken foam line along the visible run of
-     every traced shore, its dashes creeping FOAM_SPEED px a second with a
-     gentle pulse — the loops are walked into 1px points ONCE per water
-     change (R.foamChunks) and the frame lights three points in eight as
-     1px rects, so it never builds a path or strokes a dash; the old
-     blinking foam dots drop to FOAM_DOTS per tile to make room. A FISH JUMPS instead of flashing: an arc FISH_RISE px high
+     0. The waterline FOAMS: authored sprites along the visible run of
+     every traced shore, staggered by hashed position (they replaced the
+     old point-line and the blinking dots when the motion pass landed).
+     A FISH JUMPS instead of flashing: an arc FISH_RISE px high
      over FISH_TIME seconds up and the same down, a squashed frame at the
      peak, the ripple ring and a few droplets on re-entry — on exactly the
      tiles and cycles the old gating chose (shoal-often, open-water-rare is
      the fishing tell, and it is untouched). At GOLDEN HOUR the drifting
      sparkle brightens by SPARKLE_GOLD and warms. --- */
-  FOAM_LINE: 0.4,       // alpha of the lapping foam line; 0 switches it off
-  FOAM_PULSE: 0.25,     // how much of that alpha breathes
-  FOAM_SPEED: 2,        // px per second the dashes creep along the shore
-  FOAM_MINZ: 1.0,       // below this zoom a 1px line is sub-pixel: skipped
-  FOAM_DOTS: 1,         // blinking foam dots per shore tile (was 2)
+  FOAM_MINZ: 1.0,       // below this zoom the shoreline foam stands down
+  /* --- the MOTION PASS (authored art, assets/terrain/water/): the
+     scrolling surface and shimmer textures and the shoreline foam
+     sprites, all frame-time and viewport-only. Absent art leaves the
+     water exactly as the bake painted it.
+
+     WHAT SHIPS ON BY DEFAULT, AND WHY. The budget is 0.4ms for the whole
+     living-water pass on the water-heavy view, raster included, on the
+     forced-flush harness — and that harness is SOFTWARE raster, which
+     prices a full-water-area composite at ~0.37ms per layer however low
+     its alpha (the area is the cost; a phone GPU composites the same
+     layer for close to nothing, but the honest instrument we have is the
+     CPU one). Measured per layer: surface 0.37, shimmer +0.37, foam
+     +0.18, and foam's cost barely responds to spacing — so no two of
+     them fit together. The brief's ladder drops the shimmer first and
+     then foam DENSITY, never foam itself: the foam replaced the old
+     blinking dots and lapping line outright, so it is the one layer the
+     shoreline cannot lose. FOAM ships on (0.24 with margin); the surface
+     and shimmer ship at 0 and are one dial away, judged at the gate. --- */
+  SURF_ALPHA: 0,        // opacity of the scrolling surface arcs; 0.16 is the
+                        // authored look — OFF by default: see the note above
+  SURF_SPEED: 3.5,      // px per second along its diagonal
+  SURF_MINZ: 0.75,      // below this zoom the surface stands down (the bake carries it)
+  SHIM_ALPHA: 0,        // opacity of the glint layer; 0.5 is the authored look —
+                        // the ladder's first casualty
+  SHIM_SPEED: 5.5,      // px per second, a different heading — never in sync
+  SHIM_MINZ: 1.0,       // the shimmer is the first LOD casualty too
+  FOAMFX_ALPHA: 0.8,    // alpha of the shoreline foam sprites; 0 off
+  FOAMFX_SPACING: 26,   // px of shoreline between sprites
+  FOAMFX_FPS: 9,        // frames per second through the lap animation
   FISH_RISE: 6,         // px a jumping fish clears the water
   FISH_TIME: 0.4,       // seconds up (and the same down); 0 = the old flat flash
   FISH_SIZE: 0.5,       // tiles across, for an AUTHORED fish (assets/fx/fish-N.png).
@@ -8575,23 +8598,70 @@ const R = {
     const TL = CFG.TILE;
     this.fishClock = (this.fishClock || 0) + dt;
     const t0 = this.fishClock, prof = this._prof;
-    // ---- 1b: the waterline laps — cached 1px points along the traced shore,
-    // lit three of every eight, the pattern creeping FOAM_SPEED px a second ----
-    if (LAND.FOAM_LINE > 0 && this.cam.z >= LAND.FOAM_MINZ) {
+    /* ---- THE MOVING SURFACE (the motion pass). Two seamless authored
+       textures scrolled over the body, clipped to the water: the SURFACE
+       (near-white ground, darker wavelet arcs — installed grayscale so
+       MULTIPLY modulates the ramp without recolouring it) on one slow
+       diagonal, and the SHIMMER (glints on pure black, which adds nothing
+       under 'lighter') on a different heading and speed — two rates never
+       in sync is the anti-tiling mechanism. Each pattern is created ONCE
+       per installed texture and only the offset moves; offsets snap to
+       whole pixels so the pattern never smears. LOD: the shimmer stands
+       down first (SHIM_MINZ), then the surface (SURF_MINZ) — the bake
+       carries the zoomed-out view. The dusk tint and the fog are painted
+       after this pass, so both apply to all of it for free. ---- */
+    const vx0 = this.cam.x - TL, vy0 = this.cam.y - TL;
+    const vx1 = this.cam.x + this.viewW() / this.cam.z + TL, vy1 = this.cam.y + this.viewH() / this.cam.z + TL;
+    const fx = (window.Assets && Assets.waterFx) || null;
+    if (fx && this.cam.z >= LAND.SURF_MINZ &&
+        ((fx.surface && LAND.SURF_ALPHA > 0) || (fx.shimmer && LAND.SHIM_ALPHA > 0 && this.cam.z >= LAND.SHIM_MINZ))) {
       const tA = prof ? performance.now() : 0;
-      const vx0 = this.cam.x - TL, vy0 = this.cam.y - TL;
-      const vx1 = this.cam.x + this.viewW() / this.cam.z + TL, vy1 = this.cam.y + this.viewH() / this.cam.z + TL;
-      const a = LAND.FOAM_LINE * (1 - LAND.FOAM_PULSE + LAND.FOAM_PULSE * (0.5 + 0.5 * Math.sin(t0 * 1.3)));
-      const creep = Math.round(t0 * LAND.FOAM_SPEED);
-      g.fillStyle = 'rgba(235,244,248,' + a.toFixed(3) + ')';
-      for (const c of this.foamChunks()) {
-        if (c.x1 < vx0 || c.x0 > vx1 || c.y1 < vy0 || c.y0 > vy1) continue;
-        if (!G.visibleAt(c.mx, c.my)) continue;
-        const P = c.pts;
-        for (let k = 0; k < P.length; k += 3)
-          if (((P[k + 2] + creep) & 7) < 3) g.fillRect(P[k], P[k + 1], 1, 1);
+      /* NOT A CLIP. Rasterizing the whole-map body path as a clip EVERY
+         FRAME cost over a millisecond on its own — the same lesson the
+         bake learnt at 740ms and solved the same way. The visible water
+         is gathered into per-row RUNS of wet tiles (a few dozen rects)
+         and each layer fills those directly; the traced line cuts at
+         most a corner sliver inside a shore tile, and at these alphas a
+         modulation layer spilling onto that sliver is invisible where a
+         clip would have been ruinous. */
+      const terrF = S.map.seenTerrain || S.map.terrain;
+      const wetF = v => v === T.WATER || v === T.MOAT;
+      const runs = this._fxRuns || (this._fxRuns = []);
+      runs.length = 0;
+      const tx0 = Math.max(1, (vx0 / TL) | 0), ty0 = Math.max(1, (vy0 / TL) | 0);
+      const tx1 = Math.min(CFG.W - 2, (vx1 / TL) | 0), ty1 = Math.min(CFG.H - 2, (vy1 / TL) | 0);
+      for (let ty = ty0; ty <= ty1; ty++) {
+        let run = -1;
+        for (let tx = tx0; tx <= tx1 + 1; tx++) {
+          const w = tx <= tx1 && wetF(terrF[ty * CFG.W + tx]);
+          if (w && run < 0) run = tx;
+          else if (!w && run >= 0) { runs.push(ty, run, tx); run = -1; }
+        }
       }
-      if (prof) prof.foam += performance.now() - tA;
+      if (runs.length) {
+        g.save();
+        g.imageSmoothingEnabled = false;
+        if (fx.surface && LAND.SURF_ALPHA > 0) {
+          if (this._surfPatFor !== fx.surface) { this._surfPat = g.createPattern(fx.surface, 'repeat'); this._surfPatFor = fx.surface; }
+          const o = t0 * LAND.SURF_SPEED, ox = Math.round(o * 0.7071), oy = Math.round(o * 0.7071);
+          g.globalAlpha = LAND.SURF_ALPHA;
+          g.translate(ox, oy); g.fillStyle = this._surfPat;
+          for (let k = 0; k < runs.length; k += 3)
+            g.fillRect(runs[k + 1] * TL - ox, runs[k] * TL - oy, (runs[k + 2] - runs[k + 1]) * TL, TL);
+          g.translate(-ox, -oy);
+        }
+        if (fx.shimmer && LAND.SHIM_ALPHA > 0 && this.cam.z >= LAND.SHIM_MINZ) {
+          if (this._shimPatFor !== fx.shimmer) { this._shimPat = g.createPattern(fx.shimmer, 'repeat'); this._shimPatFor = fx.shimmer; }
+          const o = t0 * LAND.SHIM_SPEED, ox = Math.round(-o * 0.5), oy = Math.round(o * 0.866);
+          g.globalAlpha = LAND.SHIM_ALPHA;
+          g.translate(ox, oy); g.fillStyle = this._shimPat;
+          for (let k = 0; k < runs.length; k += 3)
+            g.fillRect(runs[k + 1] * TL - ox, runs[k] * TL - oy, (runs[k + 2] - runs[k + 1]) * TL, TL);
+          g.translate(-ox, -oy);
+        }
+        g.restore();
+      }
+      if (prof) prof.scroll += performance.now() - tA;
     }
     // ---- the tile pass: drifting sparkle, foam dots, ripples, the one fish ----
     const tB = prof ? performance.now() : 0;
@@ -8633,19 +8703,8 @@ const R = {
         g.fillStyle = spark;
         g.fillRect(sx | 0, sy | 0, 5, 2);
       }
-      const landN = !wet(terr[MapGen.idx(x, Math.max(0, y - 1))]);
-      const landS = y + 1 < CFG.H && !wet(terr[MapGen.idx(x, y + 1)]);
-      const landW = !wet(terr[MapGen.idx(Math.max(0, x - 1), y)]);
-      const landE = x + 1 < CFG.W && !wet(terr[MapGen.idx(x + 1, y)]);
-      if ((landN || landS || landW || landE) && LAND.FOAM_DOTS > 0) {   // blinking foam dots on the shore side
-        const a = 0.22 + 0.2 * Math.sin(t0 * 1.7 + (h % 7));
-        g.fillStyle = 'rgba(235,244,248,' + Math.max(0, a).toFixed(2) + ')';
-        const o1 = 4 + (h % 3) * 8, o2 = 20 - (h % 5) * 3, two = LAND.FOAM_DOTS >= 2;
-        if (landN) { g.fillRect(x * TL + o1, y * TL + 2, 2, 2); if (two) g.fillRect(x * TL + o2, y * TL + 3, 2, 2); }
-        else if (landS) { g.fillRect(x * TL + o1, y * TL + TL - 4, 2, 2); if (two) g.fillRect(x * TL + o2, y * TL + TL - 5, 2, 2); }
-        else if (landW) { g.fillRect(x * TL + 2, y * TL + o1, 2, 2); if (two) g.fillRect(x * TL + 3, y * TL + o2, 2, 2); }
-        else { g.fillRect(x * TL + TL - 4, y * TL + o1, 2, 2); if (two) g.fillRect(x * TL + TL - 5, y * TL + o2, 2, 2); }
-      }
+      // (the blinking foam dots lived here; the authored foam sprites along
+      // the traced shoreline replaced them — drawn after the tile pass)
       // the ONE leap, on the good fishing water this epoch chose
       if (fishOn && x === pick[0] && y === pick[1]) this.drawFishJump(g, x, y, h, fishT);
       // …and the quiet surface everywhere else: a slow ring on its own clock
@@ -8662,7 +8721,35 @@ const R = {
         }
       }
     }
-    if (prof) { prof.tiles += performance.now() - tB; prof.frames++; }
+    if (prof) prof.tiles += performance.now() - tB;
+    /* ---- THE FOAM (the motion pass): authored sprites along the visible
+       traced shorelines, replacing the old blinking dots and the lapping
+       point-line. Anchors come from foamChunks' own 1px arc points — so a
+       dug channel or a reclaimed bank still raises no foam — one sprite
+       per FOAMFX_SPACING px of shoreline, each running the 17-frame lap
+       on a start frame hashed from its position so nothing pulses in
+       lockstep. Absent art leaves the shoreline to the shelf and the wet
+       lip: 404 is a look, never an error. ---- */
+    if (fx && fx.foam && LAND.FOAMFX_ALPHA > 0 && this.cam.z >= LAND.FOAM_MINZ) {
+      const tA = prof ? performance.now() : 0;
+      const F = fx.foam, NF = F.length, SP = 3 * Math.max(8, LAND.FOAMFX_SPACING | 0);
+      const half = F[0].width >> 1, ft = t0 * LAND.FOAMFX_FPS;
+      g.globalAlpha = LAND.FOAMFX_ALPHA;
+      for (const c of this.foamChunks()) {
+        if (c.x1 < vx0 || c.x0 > vx1 || c.y1 < vy0 || c.y0 > vy1) continue;
+        if (!G.visibleAt(c.mx, c.my)) continue;
+        const P = c.pts;
+        for (let k = 0; k < P.length; k += SP) {
+          const px = P[k], py = P[k + 1];
+          if (px < vx0 || px > vx1 || py < vy0 || py > vy1) continue;
+          const h2 = (px * 73856093 ^ py * 19349663) >>> 0;
+          g.drawImage(F[((ft + (h2 % NF)) | 0) % NF], px - half, py - half);
+        }
+      }
+      g.globalAlpha = 1;
+      if (prof) prof.foam += performance.now() - tA;
+    }
+    if (prof) prof.frames++;
   },
   /* THE WATER WORTH FISHING: the shoals whose stock is still a real share
      of the best one's. MapGen.shoal is a pure hash of the tile, so the set
