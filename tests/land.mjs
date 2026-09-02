@@ -1682,6 +1682,8 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       const W = CFG.W, H = CFG.H, TL = CFG.TILE, terr = S.map.terrain;
       const wet = t => t === T.WATER || t === T.MOAT;
       // ---- the field ----
+      // the step pins below are about the QUANTIZED machinery: hold fade 0
+      if (LAND.WATER_FADE) { LAND.WATER_FADE = 0; R.rebakeAll(); while (R.tickBake(1e9)) {} }
       const D = R.waterDepth();
       out.len = D.length; out.max = Math.max.apply(null, Array.from(D)); out.cap16 = LAND.DEPTH_CAP * 16;
       out.edges = Array.from(R._deepEdges).map(e => +e.toFixed(2)); out.depthMax = R._depthMax;
@@ -1911,8 +1913,60 @@ function LAND_STEPS(v) { return 16; }
     v.thrown || (v.movedPct + '% of ' + v.water + ' water cells move when SLOPE_VAR/BAR_AMP are turned up' +
       (v.deterministic ? ', identical on a second derive' : ', NOT DETERMINISTIC') +
       (v.shippedIsFlat ? '; the shipped field is the plain distance' : '; SHIPPED FIELD IS WARPED')));
+
   ck('everyShoalRidesASandbar', !v.thrown && v.shoals > 5 && v.barred === v.shoals && v.barCells >= v.shoals * 3,
     v.thrown || (v.barred + '/' + v.shoals + ' shoals shallowed, ' + v.barCells + ' cells raised by the bars'));
+}
+
+/* ---- 21b. THE FADE'S THREE MODES (rule 5 as amended twice) ----
+   Steps is the byte-pinned incumbent (every other water check runs on it).
+   SMOOTH must actually fade — many more distinct body colours than the
+   ramp has steps — and DITHER must fade while staying QUANTIZED: lots of
+   mixing, yet every body pixel still one of the sixteen ramp colours.
+   All three bake without error and swap live through the bench dial. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(boot + `
+    const out = {};
+    try {
+      const W = CFG.W, H = CFG.H, TL = CFG.TILE, terr = S.map.terrain;
+      const wet = t => t === T.WATER || t === T.MOAT;
+      const g = () => R.terrainCache.getContext('2d');
+      const countBody = () => {
+        const gg = g(), seen = new Set(); let cells = 0;
+        for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
+          const i = y * W + x;
+          // interior by the painter's own rule (all EIGHT neighbours wet):
+          // a diagonal-shore tile is painted under the body clip, and the
+          // grass floor showing past the traced line is not body colour
+          let interior = wet(terr[i]);
+          for (let oy = -1; oy <= 1 && interior; oy++) for (let ox = -1; ox <= 1; ox++)
+            if (!wet(terr[i + oy * W + ox])) { interior = false; break; }
+          if (!interior) continue;
+          cells++;
+          const d = gg.getImageData(x * TL + 4, y * TL + 4, 1, 1).data;
+          seen.add(d[0] + ',' + d[1] + ',' + d[2]);
+          const d2 = gg.getImageData(x * TL + 20, y * TL + 12, 1, 1).data;
+          seen.add(d2[0] + ',' + d2[1] + ',' + d2[2]);
+        }
+        return { seen, cells };
+      };
+      const bake = (mode) => { LAND.WATER_FADE = mode; R.rebakeAll(); while (R.tickBake(1e9)) {} return countBody(); };
+      const sm = bake(2); out.smoothColours = sm.seen.size; out.cells = sm.cells;
+      const di = bake(1); out.ditherColours = di.seen.size;
+      const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)].join(',');
+      const ramp = new Set(R._deepCols().fill.map(hex));
+      let off = 0; for (const c of di.seen) if (!ramp.has(c)) off++;
+      out.ditherOffRamp = off;
+      bake(0);
+      out.err = G.lastFrameError ? String(G.lastFrameError).slice(0, 200) : '';
+    } catch (e) { out.thrown = String(e && e.message || e).slice(0, 300); }
+    return out;`));
+  await p.close();
+  ck('theSmoothFadeActuallyFades', !v.thrown && v.cells > 40 && v.smoothColours > 40 && !v.err,
+    v.thrown || v.err || (v.smoothColours + ' distinct body colours over ' + v.cells + ' interior water cells (the ramp itself has 16)'));
+  ck('andTheWideDitherFadesWhileStayingQuantized', !v.thrown && v.ditherColours >= 8 && v.ditherColours <= 16 && v.ditherOffRamp === 0,
+    v.thrown || (v.ditherColours + ' body colours, ' + v.ditherOffRamp + ' off the ramp'));
 }
 
 /* ---- 20. THE DEEP RAMP ACROSS MAP SIZES (the Overhaul, Part 0) ----
@@ -1929,7 +1983,7 @@ function LAND_STEPS(v) { return 16; }
       const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
       const DR = ART.PALETTE.deep.map(hex), NC = DR.length;
       for (const [seed, size] of [['verify7', 'medium'], ['verify7', 'large'], ['verify7', 'xlarge'], ['scenes1', 'large'], ['pond1', 'xlarge']]) {
-        Boot.force(); G.newGame(seed, 'moderate', size); Screens._demo = false; Screens.show('playing'); S.paused = true;
+        Boot.force(); LAND.WATER_FADE = 0; G.newGame(seed, 'moderate', size); Screens._demo = false; Screens.show('playing'); S.paused = true;
         for (let i = 0; i < S.map.explored.length; i++) { S.map.explored[i] = 1; if (S.map.seenTerrain) S.map.seenTerrain[i] = S.map.terrain[i]; }
         R.rebakeAll(); while (R.tickBake(1e9)) {}
         const W = CFG.W, H = CFG.H, TL = CFG.TILE, terr = S.map.terrain, wet = t => t === T.WATER || t === T.MOAT;

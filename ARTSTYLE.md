@@ -32,8 +32,19 @@ offline static site.
    never meant "four bands." Water depth uses a **deep ramp** of 12–16
    hard steps with dithered seams — the `deep` ramp below — which reads as
    a continuous shore-to-depth transition at play zoom while every pixel
-   stays on a ramp colour. No linear gradient fills, no alpha fades:
-   steps and dither, just many more of them.
+   stays on a ramp colour.
+   *Amended again (the fade, 2026-09):* **water depth is the one
+   sanctioned continuous-shading surface in the game.** Depth is a real
+   physical continuum with no edges to protect, and the seams between its
+   sixteen steps were the last visibly banded thing on the map. The body
+   may therefore shade continuously along the `deep` ramp
+   (`LAND.WATER_FADE`: interpolated in OKLab through a baked LUT, or the
+   same sixteen steps under full-width ordered dithering). This sanction
+   covers the water BODY and nothing else — ground tone, hue steps,
+   mountain faces, sprites and UI stay quantized, and anything on or over
+   the water (crests, glints, foam, the shelf) still draws in ramp
+   colours. No alpha-fade shortcuts: the fade is colour computed from the
+   depth field, not translucency stacked until it blurs.
 6. **Materials come from the texture kit**: `thatchTexture`,
    `woodPlankTexture`, `stoneTexture`, `wattleTexture`, `foliageCluster`.
    Don't hand-roll a new thatch.

@@ -319,8 +319,24 @@ const LAND = {
      shore steps is untouched — a beach still reads as a beach, it just
      gets narrow on a small body. 0 switches the scaling off. --- */
   POND_BAND: 5,         // tiles of depth a body needs to keep the full ramp
-  DEEP_ALT: 0,          // which pale anchor: 0 = ART.PALETTE.deep (bluer),
-                        // 1 = deepAlt (tealer) — the bench A/B
+  DEEP_ALT: 0,          // which pale anchor: 0 = ART.PALETTE.deep (bluer, THE
+                        // PICK), 1 = deepAlt (tealer) — kept for the bench
+  /* --- THE FADE (ARTSTYLE rule 5 as amended twice: water depth is the one
+     sanctioned continuous-shading surface). How the body shades BETWEEN
+     the ramp's sixteen steps. The interpolation runs on the FIELD — every
+     sub-cell's own depth maps to a position along the ramp — so a tile
+     edge means nothing to it; a tile-locked gradient would only have
+     softened the grid instead of removing it. Smooth mode reads a
+     256-entry OKLab LUT baked once per colour change (_deepCols), so the
+     bake pays an array lookup per cell and never colourspace math; dither
+     mode keeps every pixel on a ramp colour and spreads an 8×8 ordered
+     dither across the FULL width of each transition instead of the 1px
+     stippled seam. Crest and glint lifts stay counted in steps — the
+     steps are equal ΔL by construction, so a step of lift IS the
+     equivalent ΔL lift in every mode. --- */
+  WATER_FADE: 0,        // 0 = hard steps, stippled seams (the shipped look);
+                        // 1 = the same steps under a full-width ordered dither;
+                        // 2 = the continuous OKLab fade. The pick round decides
   /* …and every GAMEPLAY SHOAL rides its own sandbar. A shoal is shore
      water where fish school close enough to line-fish from land
      (MapGen.shoal — a hash of the tile, unmoved by anything here); it
@@ -2549,9 +2565,50 @@ const R = {
     }
     // where the body blue sits on the ramp — the step the flat water uses
     const body = Math.max(0, DR.indexOf(W[1]));
-    this._deepC = { key, n, fill, crest, glint, body };
+    /* …AND THE FADE'S LUT: 256 colours along the ramp, adjacent steps mixed
+       in OKLab (the space the ramp was built in, so the fade inherits its
+       even lightness), baked here once per colour change. Smooth mode pays
+       an array lookup per cell; the colourspace math never runs in a bake
+       loop, let alone a frame. */
+    const lut = [];
+    {
+      const l2s = v => (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
+      const s2l = v => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+      const lab = (h) => {
+        const r = s2l(parseInt(h.slice(1, 3), 16) / 255), g2 = s2l(parseInt(h.slice(3, 5), 16) / 255), b2 = s2l(parseInt(h.slice(5, 7), 16) / 255);
+        const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g2 + 0.0514459929 * b2);
+        const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g2 + 0.1073969566 * b2);
+        const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g2 + 0.6299787005 * b2);
+        return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+                1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+                0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+      };
+      const rgb = ([L, a, b2]) => {
+        const l = (L + 0.3963377774 * a + 0.2158037573 * b2) ** 3;
+        const m = (L - 0.1055613458 * a - 0.0638541728 * b2) ** 3;
+        const s = (L - 0.0894841775 * a - 1.2914855480 * b2) ** 3;
+        const c = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+                   -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+                   -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s];
+        return '#' + c.map(v => Math.max(0, Math.min(255, Math.round(l2s(v) * 255))).toString(16).padStart(2, '0')).join('');
+      };
+      const labs = fill.map(lab);
+      for (let i = 0; i < 256; i++) {
+        const p = n < 2 ? 0 : i * (n - 1) / 255;
+        const k = Math.min(Math.max(0, n - 2), p | 0), f = p - k;
+        const A = labs[k], B = labs[Math.min(n - 1, k + 1)];
+        lut.push(rgb([A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f, A[2] + (B[2] - A[2]) * f]));
+      }
+    }
+    this._deepC = { key, n, fill, crest, glint, body, lut };
     return this._deepC;
   },
+  // the 8×8 ordered-dither thresholds (Bayer), 0..1 — indexed by WORLD cell
+  // coordinates, so a tile repainted alone still meshes with its neighbours
+  _BAYER8: [0, 32, 8, 40, 2, 34, 10, 42, 48, 16, 56, 24, 50, 18, 58, 26,
+            12, 44, 4, 36, 14, 46, 6, 38, 60, 28, 52, 20, 62, 30, 54, 22,
+            3, 35, 11, 43, 1, 33, 9, 41, 51, 19, 59, 27, 49, 17, 57, 25,
+            15, 47, 7, 39, 13, 45, 5, 37, 63, 31, 55, 23, 61, 29, 53, 21].map(v => (v + 0.5) / 64),
   /* THE SHORE SHADOW (Overhaul 2.3), painted into the SHORE LAYER — over
      the shelf wash — rather than into the body under it: the shelf's stacked
      pale ribbons lighten exactly the tiles the shadow darkens, and under
@@ -2954,7 +3011,22 @@ const R = {
         const lo = k > 0 ? d - E[k - 1] : 1e9, hi = k < NE ? E[k] - d : 1e9;
         return lo < hi ? lo : hi;
       };
+      const fade = LAND.WATER_FADE | 0;
+      /* the CONTINUOUS ramp position of a depth, in step units, band
+         centres landing exactly on their step so every mode agrees where
+         the middle of a band is. Piecewise linear through the fitted
+         edges; the heart extends at the last span's rate and clamps. */
+      const pos = (d) => {
+        let k = 0; while (k < NE && d >= E[k]) k++;
+        const lo = k > 0 ? E[k - 1] : 0.5;
+        const hi = k < NE ? E[k] : (NE > 1 ? E[NE - 1] * 2 - E[NE - 2] : lo + 1);
+        let f = hi > lo ? (d - lo) / (hi - lo) : 0.5;
+        if (f < 0) f = 0; else if (f > 1) f = 1;
+        const p = k + f - 0.5;
+        return p < 0 ? 0 : p > NS - 1 ? NS - 1 : p;
+      };
       const dc = depth(0.5, 0.5), b0 = stepOf(dc);
+      if (fade === 0) {
       let one = seamDist(dc, b0) > DI + 0.02;
       if (one) {
         const d1 = depth(0, 0), d2 = depth(1, 0), d3 = depth(0, 1), d4 = depth(1, 1);
@@ -2984,6 +3056,65 @@ const R = {
                 // cells, so a tile repainted alone still matches its neighbours
                 if (this._lh(x * N + i, y * N + j, 1309) < (DI - sd) / (2 * DI)) b = lo < hi ? b - 1 : b + 1;
               }
+              bands[j * N + i] = b;
+            }
+            if (b !== runB) {
+              if (runB >= 0) { g.fillStyle = cols.fill[runB]; g.fillRect(x * TL + run * cell, y * TL + j * cell, (i - run) * cell, cell); }
+              run = i; runB = b;
+            }
+          }
+        }
+      }
+      } else if (fade === 2) {
+        /* THE SMOOTH FADE: every cell reads the LUT at its own depth's ramp
+           position. A tile whose five probes land on one LUT entry is one
+           rect — most of a deep basin — and everything else merges runs on
+           the entry, which stays effective because a 256-level quantisation
+           makes neighbouring cells of slowly-varying depth identical. */
+        const lut = cols.lut, LN = lut.length - 1, SC = LN / (NS - 1);
+        const idx = (p) => (p * SC + 0.5) | 0;
+        const pc = pos(dc), i0 = idx(pc);
+        if (idx(pos(depth(0, 0))) === i0 && idx(pos(depth(1, 0))) === i0 &&
+            idx(pos(depth(0, 1))) === i0 && idx(pos(depth(1, 1))) === i0) {
+          uniform = Math.round(pc);
+          g.fillStyle = lut[i0];
+          g.fillRect(x * TL, y * TL, TL, TL);
+        } else {
+          uniform = -1;
+          for (let j = 0; j < N; j++) {
+            const v = (j + 0.5) / N;
+            let run = 0, runI = -2;
+            for (let i = 0; i <= N; i++) {
+              let li = -1;
+              if (i < N) {
+                const p = pos(depth((i + 0.5) / N, v));
+                li = idx(p);
+                bands[j * N + i] = (p + 0.5) | 0;          // the crest's step stays integer
+              }
+              if (li !== runI) {
+                if (runI >= 0) { g.fillStyle = lut[runI]; g.fillRect(x * TL + run * cell, y * TL + j * cell, (i - run) * cell, cell); }
+                run = i; runI = li;
+              }
+            }
+          }
+        }
+      } else {
+        /* THE WIDE DITHER: the same sixteen colours, but the mix between a
+           step and its neighbour is an ordered 8×8 dither spread across the
+           FULL width of the transition — at play zoom it reads as a fade
+           while every pixel stays on a ramp colour. Thresholds are indexed
+           by WORLD cell, so a lone repainted tile meshes with the bake. */
+        const BY = this._BAYER8;
+        uniform = -1;
+        for (let j = 0; j < N; j++) {
+          const v = (j + 0.5) / N, byRow = ((y * N + j) & 7) * 8;
+          let run = 0, runB = -2;
+          for (let i = 0; i <= N; i++) {
+            let b = -1;
+            if (i < N) {
+              const p = pos(depth((i + 0.5) / N, v));
+              const k = p | 0, f = p - k;
+              b = (f > BY[byRow + ((x * N + i) & 7)] && k < NS - 1) ? k + 1 : k;
               bands[j * N + i] = b;
             }
             if (b !== runB) {
