@@ -49,6 +49,27 @@ If a new feature genuinely needs different tap behaviour, update
 `tests/tap-audit.mjs` in the same commit and say so in the commit message —
 never leave the test failing or weaken a threshold without explaining why.
 
+## A red parity or regression check BLOCKS the merge
+
+Standing rule, no waivers. If a byte-parity check (`tests/wild-grass.mjs`'s
+raze-and-heal pair, `tests/land.mjs`'s cache-versus-rebake checks) or any
+regression check is red, the branch does not go to main — not with a note in
+the commit message, not as "pre-existing", not "tracked for later". Fix it, or
+revert the change that exposed it. "Pre-existing" is a claim about a specific
+commit and must be proven on that commit with the SAME probe before anyone
+leans on it, and even proven it does not license a merge: a check that is red
+after your change is your problem now.
+
+The reason is on the record: a renderer that reads `ART.PALETTE.deep` without a
+guard shipped to main and, on any phone holding a cached older `js/artstyle.js`
+beside the fresh `js/render.js`, threw inside the terrain bake — and a bake that
+throws dies mid-plan, so a real day-90 save lost every tree, rock, berry and
+gold seam and painted black holes where the ground should be. Two rules came out
+of it, both cheap: **every `js/` script tag in index.html carries `?v=CFG.ART_V`**
+so the files can never load at mixed versions, and **a painter stands down for
+art that isn't there** rather than throwing — a missing ramp, sprite or override
+degrades that one layer and the map still paints.
+
 ## Other checked-in contracts
 
 Same deal — run the one that covers what you touched, and update it in the same

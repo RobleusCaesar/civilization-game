@@ -2456,7 +2456,28 @@ const R = {
     const CL = Math.max(0, LAND.SWELL_LIFT | 0), GL = Math.max(0, LAND.GLINT_LIFT | 0);
     const key = amp + '|' + sat + '|' + lift + '|' + CL + '|' + GL;
     if (this._deepC && this._deepC.key === key) return this._deepC;
-    const W = ART.PALETTE.water, DR = ART.PALETTE.deep, n = DR.length;
+    /* THE PAINTER STANDS DOWN FOR ART THAT ISN'T THERE. This dereferenced
+       ART.PALETTE.deep bare, and a browser holding a CACHED OLDER
+       js/artstyle.js beside a fresh js/render.js — the script tags carried
+       no version, so the two files cache independently — got a TypeError
+       here, thrown from paintWaterIn INSIDE the terrain bake. A bake that
+       throws dies mid-plan: the decal, rock, cover and shore steps that
+       come after the water never run, so the map lost every tree, rock,
+       berry and gold seam, tiles whose band had not been reached stayed
+       unpainted black, and every later frame threw again and left the
+       previous frame's chrome smeared across the edges. Reported from a
+       real phone on a day-90 save.
+       A missing ramp is now simply a flat body, which is what this code
+       drew before the ramp existed — one layer degrades, nothing dies.
+       (index.html now versions its script tags too, so the mixed load
+       should not recur; this is the belt to that pair of braces.) */
+    const W = ART.PALETTE.water, DR = ART.PALETTE.deep;
+    if (!DR || !DR.length) {
+      const flatFill = [W[1]], flatCrest = [W[2]], flatGlint = [W[3]];
+      this._deepC = { key, n: 1, fill: flatFill, crest: flatCrest, glint: flatGlint, body: 0, absent: true };
+      return this._deepC;
+    }
+    const n = DR.length;
     const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
     const toHex = c => '#' + c.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
     const adjust = (c) => {
@@ -2836,7 +2857,8 @@ const R = {
     const cols = this._deepCols(), N = LAND.DEPTH_SUB, cell = TL / N, NS = cols.n;
     const bands = this._bandScr || (this._bandScr = new Uint8Array(256));
     let uniform = NS - 1;                   // the whole tile's step, or -1 when mixed
-    const flat = !D || LAND.DEPTH_AMP <= 0;
+    // …and with no ramp (a stale artstyle.js) the body is flat, not broken
+    const flat = !D || LAND.DEPTH_AMP <= 0 || cols.absent || !this._deepEdges;
     if (flat) uniform = cols.body;          // the body blue's own step, so crests keep their old shade
     let depth = null;
     if (flat) {

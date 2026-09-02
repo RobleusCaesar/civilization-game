@@ -1925,6 +1925,62 @@ function LAND_STEPS(v) { return 16; }
     v.thrown || Object.entries(S2).map(([k, s]) => k + ': pond of ' + s.pondCells + ' cells shows ' + s.pondSteps + ' steps').join('; '));
 }
 
+/* ---- 22. A MISSING PALETTE RAMP MAY NOT KILL THE BAKE ----
+   Reported from a real phone on a day-90 save: no trees, rocks, berries or
+   gold anywhere, black unpainted tiles, chrome smeared at the edges. The
+   cause was not the art — it was a browser holding a CACHED OLDER
+   js/artstyle.js beside a fresh js/render.js (the script tags carried no
+   version, so the two files cache independently). paintWater read
+   ART.PALETTE.deep bare, threw a TypeError inside the terrain bake, and a
+   bake that throws dies mid-plan: every step after the water — the cover,
+   the rocks, the decals, the shore — never ran.
+
+   So: a missing ramp degrades to the flat body this code drew before the
+   ramp existed. One layer stands down; the map still paints. index.html
+   versions its script tags now as well, but a renderer that dies on a
+   missing palette entry is a fault in its own right. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(`
+    const out = {};
+    try {
+      Boot.force();
+      delete ART.PALETTE.deep;                 // the stale artstyle.js
+      R._deepC = null;
+      G.newGame('scenes1', 'moderate', 'large');
+      Screens._demo = false; Screens.show('playing'); S.paused = true;
+      for (let i = 0; i < S.map.explored.length; i++) { S.map.explored[i] = 1; if (S.map.seenTerrain) S.map.seenTerrain[i] = S.map.terrain[i]; }
+      R.terrainCache = null;
+      R.rebakeAll(); while (R.tickBake(1e9)) {}
+      out.baked = true;
+      const W = CFG.W, H = CFG.H, TL = CFG.TILE, terr = S.map.terrain;
+      const c = R.terrainCache, g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height).data;
+      let unpainted = 0, painted = 0, forest = 0, flat = 0;
+      for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+        const o = ((y * TL + 16) * c.width + x * TL + 16) * 4;
+        if (d[o + 3] === 0 || (d[o] < 20 && d[o + 1] < 20 && d[o + 2] < 20)) unpainted++; else painted++;
+        if (terr[y * W + x] !== T.FOREST || forest >= 24) continue;
+        forest++;
+        let varied = 0;
+        for (let py = 4; py < TL - 4; py += 5) for (let px = 4; px < TL - 4; px += 5) {
+          const o2 = ((y * TL + py) * c.width + x * TL + px) * 4;
+          if (Math.abs(d[o2] - d[o]) > 8 || Math.abs(d[o2 + 1] - d[o + 1]) > 8) varied++;
+        }
+        if (!varied) flat++;
+      }
+      out.unpainted = unpainted; out.painted = painted; out.forest = forest; out.flatForest = flat;
+      R.cam.z = 1.5; const tc = Bld.tcOf('P'); if (tc) R.centerOn(tc.x + 0.5, tc.y + 0.5);
+      R.draw(0.016); out.drew = true;
+      out.err = G.lastFrameError ? String(G.lastFrameError).slice(0, 200) : '';
+    } catch (e) { out.thrown = String(e && e.message || e).slice(0, 300); }
+    return out;`));
+  await p.close();
+  ck('aStalePaletteDegradesInsteadOfKillingTheBake',
+    !v.thrown && v.baked && v.drew && v.unpainted === 0 && v.painted > 500 && v.forest > 5 && v.flatForest === 0 && !v.err,
+    v.thrown || (v.painted + ' tiles painted, ' + v.unpainted + ' unpainted, ' + v.forest + ' forest tiles checked with ' +
+      v.flatForest + ' missing their trees' + (v.err ? ' — frame error ' + v.err : '')));
+}
+
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL LAND CHECKS PASS');
 await b.close();
