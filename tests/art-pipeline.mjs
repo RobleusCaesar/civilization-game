@@ -910,6 +910,26 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
   await p.close();
 }
 
+/* ---- EVERY SCRIPT TAG CARRIES THE CURRENT ART_V ----
+   A phone holding a cached older js/artstyle.js beside a fresh js/render.js
+   threw inside the terrain bake and lost every tree, rock, berry and gold
+   seam on a real day-90 save (CLAUDE.md, "A red parity or regression check
+   BLOCKS the merge"). index.html versions its script tags so the files can
+   never load at mixed versions — and that only works if the version keeps
+   up with CFG.ART_V, which is easy to forget and silent when missed. */
+{
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(join(root, 'index.html'), 'utf8');
+  const V = (readFileSync(join(root, 'js/config.js'), 'utf8').match(/ART_V:\s*(\d+)/) || [])[1];
+  const tags = html.match(/<script src="js\/[^"]+"/g) || [];
+  const stale = tags.filter(t => !t.includes('?v=' + V));
+  const ok = !!V && tags.length > 10 && stale.length === 0;
+  res.everyScriptTagCarriesTheCurrentArtV = (ok ? 'PASS — ' : 'FAIL — ') + (stale.length
+    ? stale.length + ' of ' + tags.length + ' tags off v=' + V + ': ' + stale.slice(0, 3).join(' ')
+    : tags.length + ' tags at v=' + V);
+  if (!ok) fails.push('everyScriptTagCarriesTheCurrentArtV');
+}
+
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL ART-PIPELINE CHECKS PASS');
 await b.close();
