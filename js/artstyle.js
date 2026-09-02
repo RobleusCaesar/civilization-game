@@ -15,6 +15,17 @@ const ART = (function () {
     leaf:    ['#1d3a17', '#2e5c25', '#3c6f2d', '#417a33', '#569244'],
     soil:    ['#3c2c16', '#57431f', '#6b5433', '#82683f'],
     water:   ['#1c4258', '#265674', '#2e6b8a', '#4589ab', '#7fc0d8'],
+    /* THE BASIN — the water body's four hard depth bands (LAND_REFRESH
+       Phase 1a, R.paintWater), darkest → lightest: a navy deeper than
+       water[0] for the heart of a big lake (NOT water[0] itself, which the
+       swell contract counts as a trough scratch; every channel above 24 so
+       the fog-band test still sees lit ground), the body blue water[1]
+       unchanged, water[2] for the mid shallows, and one warm turquoise
+       between water[2] and the traced shelf so the shallows glow.
+       Saturation modest on purpose — a basin, not a resort. Only paintWater
+       reads this ramp; `water` keeps its indexes, which are load-bearing
+       across sprites, cards and the minimap. Documented in ARTSTYLE.md. */
+    basin:   ['#1b3c53', '#265674', '#2e6b8a', '#3a8b94'],
     stone:   ['#4a4a44', '#6f6f66', '#8f8f86', '#adada2', '#c9c9bf'],
     ore:     ['#55544d', '#6f6e65', '#88867b', '#a09e91', '#b8b5a6', '#d0cdbe'],   // ORE boulders: light muted grey (lifted so deposits pop against the grass at a glance), cooler/greyer than the brown mountain `mrock` so they stay readable as mineable stone
     /* the DEPOSIT ramp — the ore knots that hug the mountain base draw in

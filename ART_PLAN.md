@@ -1067,6 +1067,24 @@ the water; the edge treatment is drawn over it from the curve and is not
 something a tile can carry. A supplied land tile is likewise unaffected —
 the beach lands on top of whatever you drew.
 
+**The body has depth** (LAND_REFRESH Phase 1a). Inside that curve the water
+is no longer one flat blue: a baked distance-to-land field (a chamfer
+distance, so its contours are round) bands the body into four hard steps —
+a warm turquoise shallow, `water[2]`, the body blue, and a navy heart for
+the middle of a big lake — from the `basin` ramp in `js/artstyle.js`. Every
+band edge is sampled bilinearly, pushed about by world-space noise and
+stippled at the seam, so none of them can follow the tile grid; a moat is
+pinned to the shallow band so a dug channel meets the lake's own rim with
+no seam. `DEPTH_AMP 0` is the old flat body byte for byte. A supplied
+`water.png` replaces the whole body, bands included. And the surface LIVES
+(1b–1d, frame time, viewport only): the waterline laps — a 1px broken foam
+line creeping along the traced shore, drawn as cached 1px points rather
+than a dashed stroke, which a software rasterizer pays three times over —
+a fish that jumps rises in an arc
+and splashes down with the bombard's own ripple ring, and the drifting
+sparkle brightens and warms at golden hour. All of it is dials in the
+`LAND` block and can be turned to 0.
+
 None of this touches tile DATA. Where a boat may sail, where a dock may
 stand and which way it faces, where a villager may fish, what is passable —
 all of it still reads the tile grid, so the painted waterline is free to cut
@@ -1097,6 +1115,12 @@ Tunables, all in the `LAND` block:
 | too many / too few shore stones | `SHOAL_STONES`, `SHOAL_STEP` |
 | the shallows look barren on a rocky coast | raise `LIFE_CHANCE` |
 | kelp and coral look evenly sprinkled | raise `LIFE_GATE` |
+| the water is one flat blue / a lake has no basin | `DEPTH_AMP` (0 = the old flat body, 1 = the full `basin` ramp), `DEPTH_E1..E3` (tiles from land where each band falls) |
+| a band edge reads as a ring or a staircase | raise `DEPTH_WANDER`, `DEPTH_DITHER`; lower `DEPTH_WANDER_F` for a slower wander |
+| the shallows read as a resort | lower `DEPTH_AMP`, or pull `ART.PALETTE.basin[3]` toward `water[2]` |
+| the waterline does not lap / laps too loud | `FOAM_LINE` (0 off), `FOAM_PULSE`, `FOAM_SPEED`, `FOAM_MINZ` (the zoom it starts at), `FOAM_DOTS` |
+| the fish flash instead of jumping | `FISH_TIME` (0 = the old flash), `FISH_RISE` |
+| golden hour leaves the water dull | `SPARKLE_GOLD` |
 | a decal still reads as an object | raise `DECAL_MUTE` |
 | the ground looks busy rather than deep | lower `DECAL_DENSITY`, raise `DECAL_GATE` |
 | impassable ground does not announce itself | raise `BLOCK_SHADE` |

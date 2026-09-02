@@ -6049,6 +6049,20 @@ const Sprites = {
       f(10, 18, 12, 1, S[2]); f(9, 19, 14, 1, AP.water[4]);   // splash ring
       f(13, 16, 4, 1, S[1]); f(11, 15, 1, 1, S[2]); f(20, 15, 1, 1, S[2]);
     }),
+    // …and the PEAK of the jump (LAND_REFRESH 1c): the same fish squashed
+    // flat and wide at the top of its arc, tail fanned — a third authored
+    // frame rather than a scaled draw, which would shimmer at a
+    // non-integer scale with smoothing off
+    tile(p => {
+      const f = p.f, B = AP.water, S = AP.bone;
+      f(10, 13, 10, 2, S[1]); f(9, 14, 1, 1, S[1]);           // a wider, flatter body
+      f(10, 13, 9, 1, S[2]);                                  // lit back
+      f(19, 11, 3, 5, S[1]); f(21, 11, 1, 2, S[0]); f(21, 15, 1, 1, S[0]);   // the tail, fanned
+      f(13, 15, 4, 1, B[2]);                                  // belly shadow
+      f(12, 14, 1, 1, AP.ink[0]);                             // eye
+      f(14, 13, 2, 1, S[2]);                                  // glint
+      f(8, 17, 1, 1, S[2]); f(22, 17, 1, 1, S[2]); f(15, 10, 1, 1, S[2]);   // droplets
+    }),
   ];
 
   // TC L1 CAMPFIRE — a standalone stone-ring + flame prop, composited by

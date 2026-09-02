@@ -72,6 +72,21 @@ offline static site.
     viewport tiles only. If an effect can't stay cheap, it ships throttled or
     not at all.
 
+## Palette notes
+
+- **`basin`** (added 2026-09-01, LAND_REFRESH Phase 1a): the water body's
+  four hard depth bands, darkest → lightest — `#1b3c53` a navy deeper than
+  `water[0]` for the heart of a big lake (deliberately *not* `water[0]`,
+  which the swell contract treats as a trough scratch, and with every
+  channel above 24 so the fog-band test still reads it as lit ground);
+  `water[1]` the body blue, unchanged; `water[2]` for the mid shallows; and
+  `#3a8b94`, one warm turquoise between `water[2]` and the traced shelf so
+  the shallows glow. Saturation stays modest — a basin, not a resort. Only
+  `R.paintWater` reads it; `water` keeps its indexes, which are
+  load-bearing across sprites, cards and the minimap. Bands are hard steps
+  with a stippled seam (rule 5); `LAND.DEPTH_*` in `js/render.js` tune
+  them, and `DEPTH_AMP 0` restores the flat body byte for byte.
+
 ## Checklist for any new building / unit / icon
 
 - [ ] Colors: `ART.PALETTE` references only

@@ -192,14 +192,23 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     runs.sort((a,b)=>a-b);
     const ft=[]; for(let k=0;k<40;k++){const t=performance.now();G.frame(performance.now());ft.push(performance.now()-t);}
     ft.sort((a,b)=>a-b);
-    const one=[]; for(let k=0;k<200;k++){const t=performance.now();R.drawTileAt(20+(k%9),20+((k/9)|0)%9);one.push(performance.now()-t);}
+    /* edits in batches of 20 through the real path, each batch followed by
+       a 1x1 getImageData so the DEFERRED RASTER is paid inside the timing.
+       Headless Chromium records canvas work and rasterizes later, in
+       flushes of ~35ms every dozen-odd edits: an un-flushed single edit
+       measures the flush cadence, not the cost, and this check flipped on
+       whether 10 or 11 flushes landed among 200 edits (LAND_REFRESH Phase
+       1 added ~100 rects to a water edit and tipped it). Raster included,
+       a mixed water-and-grass edit on this patch is ~2.5ms flat. */
+    const g0=R.terrainCache.getContext('2d');
+    const one=[]; for(let b2=0;b2<10;b2++){const t=performance.now();for(let k=0;k<20;k++){const kk=b2*20+k;R.drawTileAt(20+(kk%9),20+((kk/9)|0)%9);}g0.getImageData(0,0,1,1);one.push((performance.now()-t)/20);}
     one.sort((a,b)=>a-b);
     return { bakeMed:+runs[2].toFixed(1), bakeMax:+runs[4].toFixed(1),
              frameMed:+ft[20].toFixed(2), frameP95:+ft[38].toFixed(2),
-             editMed:+one[100].toFixed(2), editP95:+one[190].toFixed(2), tiles:CFG.W*CFG.H };`));
+             editMed:+one[5].toFixed(2), editP95:+one[9].toFixed(2), tiles:CFG.W*CFG.H };`));
   Object.assign(res, { _perf: v });
   ck('theBakeStaysOffTheFrameLoop', v.frameP95 < 16, 'frame p95 ' + v.frameP95 + 'ms');
-  ck('andATerrainEditIsCheap', v.editP95 < 8, '3x3 repaint p95 ' + v.editP95 + 'ms');
+  ck('andATerrainEditIsCheap', v.editP95 < 8, '3x3 repaint, raster included: worst batch ' + v.editP95 + 'ms per edit');
   await p.close();
 }
 
@@ -1550,7 +1559,10 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
    pages on the baseline machine. The gate is that baseline + 10%, with no
    multiplier. Machine noise is filtered the honest way — a failing gate is
    re-measured ONCE on a fresh page and the better run counts; a real
-   regression fails both. Run it on a quiet machine.
+   regression fails both. Run it on a quiet machine. These are RECORDING
+   costs — headless Chromium defers canvas raster — which is what the
+   baseline measured too; §5 measures the same edits with the raster paid
+   (a forced flush per batch), and §19 does the same for the frame's water.
 
    BASELINE, 2026-09-01: AMD Ryzen 7 7730U @ 2.0GHz (16 threads), 15.4GB,
    Windows 11 Home; Node 24.14.0; Playwright 1.62.1 headless Chromium 151.
@@ -1631,14 +1643,161 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   ck('theWorldPassFrameStaysCheap', !v.thrown && v.frameP95 < LIVE.frameP95,
     v.thrown || (f1(v.frameP95) + 'ms p95 (ceiling ' + LIVE.frameP95 + 'ms)'));
   ck('andTheFrameLoopStaysClean', !v.thrown && !v.err, v.thrown || v.err);
-  // the static rule: R.draw's own body may not create a canvas or read pixels
+  // the static rule: R.draw's own body — and the living-water pass it hands
+  // the frame to — may not create a canvas or read pixels
   const src = readFileSync(join(root, 'js/render.js'), 'utf8');
   const d0 = src.indexOf('\n  draw(dt) {'), d1 = src.indexOf('this.drawMini(); }', d0);
-  const body = d0 >= 0 && d1 > d0 ? src.slice(d0, d1) : '';
+  const w0 = src.indexOf('\n  drawLivingWater(g, dt) {'), w1 = src.indexOf('\n  draw(dt) {', w0);
+  const body = (d0 >= 0 && d1 > d0 ? src.slice(d0, d1) : '') + (w0 >= 0 && w1 > w0 ? src.slice(w0, w1) : '');
   ck('nothingInTheFrameLoopMakesACanvasOrReadsPixels',
-    body.length > 1000 && !/createElement\('canvas'\)|getImageData\(/.test(body),
-    body.length > 1000 ? '' : 'could not isolate R.draw');
+    body.length > 1000 && w0 >= 0 && !/createElement\('canvas'\)|getImageData\(/.test(body),
+    body.length > 1000 && w0 >= 0 ? '' : 'could not isolate R.draw / R.drawLivingWater');
 }
+
+/* ---- 19. THE BASIN AND THE LIVING WATER (LAND_REFRESH Phase 1) ----
+   1a: the body is banded from a baked distance-to-land field — land is 0,
+   the first water tile is one tile (16 sixteenths), nothing exceeds the
+   cap, and a MOAT is pinned shallow. NO BAND EDGE MAY FOLLOW THE TILE
+   GRID: of every band change between horizontally adjacent 4px cells over
+   the water, the share that lands exactly on a tile boundary must be
+   about one cell in eight — the grid's own share — not most of them.
+   DEPTH_AMP 0 must be the old flat body: no basin navy, no turquoise
+   anywhere. 1e: with narrow inlets carved into the shores, not one
+   shelf-coloured pixel of the shore layer may lie outside the traced
+   water body. 1b–1d: the frame's water work, measured in isolation on the
+   town view at default zoom — the living-water pass timed on its own, and
+   the delta of all three motion features against the same frames with
+   them dialled off — must fit LAND_REFRESH's 0.4ms; the fish gating
+   expression is pinned verbatim, because shoal-often / open-water-rare is
+   the fishing tell and it may not drift. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(boot + `
+    const out = {};
+    try {
+      const W = CFG.W, H = CFG.H, TL = CFG.TILE, terr = S.map.terrain;
+      const wet = t => t === T.WATER || t === T.MOAT;
+      // ---- the field ----
+      const D = R.waterDepth();
+      out.len = D.length; out.max = Math.max.apply(null, Array.from(D));
+      let bad = 0, shoreOk = 0, shoreN = 0;
+      for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+        const i = y * W + x;
+        if (!wet(terr[i])) { if (D[i] !== 0) bad++; continue; }
+        const touches = !wet(terr[i - 1]) || !wet(terr[i + 1]) || !wet(terr[i - W]) || !wet(terr[i + W]);
+        if (touches) { shoreN++; if (D[i] === 16) shoreOk++; }
+        if (D[i] > LAND.DEPTH_CAP * 16) bad++;
+      }
+      out.bad = bad; out.shoreOk = shoreOk; out.shoreN = shoreN;
+      // a moat is pinned shallow: flood one tile beside a lake and re-derive
+      let mi = -1;
+      for (let i = W + 1; i < W * (H - 1) - 1 && mi < 0; i++) if (terr[i] === T.GRASS && terr[i + 1] === T.WATER && terr[i - 1] === T.GRASS && terr[i - W] === T.GRASS && terr[i + W] === T.GRASS) mi = i;
+      if (mi >= 0) { const was = terr[mi]; terr[mi] = T.MOAT; if (S.map.seenTerrain) S.map.seenTerrain[mi] = T.MOAT; out.moatD = R.waterDepth()[mi]; terr[mi] = was; if (S.map.seenTerrain) S.map.seenTerrain[mi] = was; R.waterDepth(); }
+      // ---- no band edge on the grid ----
+      const g = R.terrainCache.getContext('2d');
+      const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+      const cols = R._basinCols().fill.map(hex);
+      const img = g.getImageData(0, 0, W * TL, H * TL).data, RW = W * TL;
+      const bandAt = (px, py) => { const o = (py * RW + px) * 4; for (let b = 0; b < 4; b++) if (img[o] === cols[b][0] && img[o + 1] === cols[b][1] && img[o + 2] === cols[b][2]) return b; return -1; };
+      let changes = 0, onGrid = 0, bandsSeen = new Set();
+      for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
+        const i = y * W + x;
+        if (!wet(terr[i]) || !wet(terr[i - 1])) continue;
+        for (let cy = 0; cy < 8; cy++) for (let cx = 0; cx < 8; cx++) {
+          const px = x * TL + cx * 4 + 2, py = y * TL + cy * 4 + 2;
+          const b1 = bandAt(px, py), b0 = bandAt(px - 4, py);
+          if (b1 >= 0) bandsSeen.add(b1);
+          if (b1 < 0 || b0 < 0 || b1 === b0) continue;
+          changes++; if (cx === 0) onGrid++;
+        }
+      }
+      out.changes = changes; out.onGrid = onGrid; out.bands = [...bandsSeen].sort();
+      // ---- AMP 0 is the flat body ----
+      const ampWas = LAND.DEPTH_AMP; LAND.DEPTH_AMP = 0; R.rebakeAll(); while (R.tickBake(1e9)) {}
+      const flat = g.getImageData(0, 0, W * TL, H * TL).data;
+      const navy = hex(ART.PALETTE.basin[0]), turq = hex(ART.PALETTE.basin[3]);
+      let tinted = 0;
+      for (let o = 0; o < flat.length; o += 16) {
+        if ((flat[o] === navy[0] && flat[o + 1] === navy[1] && flat[o + 2] === navy[2]) || (flat[o] === turq[0] && flat[o + 1] === turq[1] && flat[o + 2] === turq[2])) tinted++;
+      }
+      out.tintedAtZero = tinted;
+      LAND.DEPTH_AMP = ampWas; R.rebakeAll(); while (R.tickBake(1e9)) {}
+      // ---- the bay pin: carve inlets, rebake, count shelf outside the body ----
+      let carved = 0;
+      for (let y = 6; y < H - 6 && carved < 6; y += 3) for (let x = 6; x < W - 6 && carved < 6; x += 5) {
+        if (terr[y * W + x] !== T.WATER) continue;
+        let ok = true;
+        for (let k = 1; k <= 3 && ok; k++) for (let dx = -1; dx <= 1; dx++) if (terr[(y - k) * W + x + dx] !== T.GRASS) ok = false;
+        if (!ok) continue;
+        for (let k = 1; k <= 3; k++) { terr[(y - k) * W + x] = T.WATER; if (S.map.seenTerrain) S.map.seenTerrain[(y - k) * W + x] = T.WATER; }
+        carved++;
+      }
+      out.carved = carved;
+      R.rebakeAll(); while (R.tickBake(1e9)) {}
+      const L = R.shoreLayer, lg = L.getContext('2d'); lg.setTransform(1, 0, 0, 1, 0, 0);
+      const path = R.waterBodyPath(), sd = lg.getImageData(0, 0, L.width, L.height).data;
+      let outside = 0, shelfPx = 0;
+      for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+        if (wet(terr[y * W + x])) continue;
+        for (let py = 0; py < TL; py++) for (let px = 0; px < TL; px++) {
+          const X = x * TL + px, Y = y * TL + py, o = (Y * L.width + X) * 4;
+          if (!(sd[o] === 126 && sd[o + 1] === 192 && sd[o + 2] === 216 && sd[o + 3] > 0)) continue;
+          shelfPx++;
+          if (!lg.isPointInPath(path, X + 0.5, Y + 0.5)) outside++;
+        }
+      }
+      out.shelfPxOnLand = shelfPx; out.shelfOutside = outside;
+      // ---- the frame work, isolated: the living-water pass alone, WITH ITS
+      // RASTER. Headless Chromium defers rasterization, so a recorded time is
+      // not a cost (the first dashed-stroke cut recorded 0.02ms and cost 0.34);
+      // every call here is followed by a 1x1 getImageData that forces the
+      // flush, and the flush alone is subtracted. Town view at default zoom,
+      // golden hour; then the water view for the record. ----
+      R.cam.z = 1.5; const tc = Bld.tcOf('P'); if (tc) R.centerOn(tc.x + 0.5, tc.y + 0.5);
+      G.freeVis = true; G.updateVisibility();
+      S.day = 11; S.dayT = 0.16 * CFG.DAY_MS;              // dayF 10.16, the warm peak
+      R.draw(0.016);
+      const fg = R.g, zz = R.cam.z * R.dpr;
+      const setT = () => fg.setTransform(zz, 0, 0, zz, -R.cam.x * zz, -R.cam.y * zz);
+      const flush = () => { fg.setTransform(1, 0, 0, 1, 0, 0); fg.getImageData(0, 0, 1, 1); setT(); };
+      const passMs = (n) => { setT(); R.drawLivingWater(fg, 0.016); flush(); const t = performance.now(); for (let k = 0; k < n; k++) { R.drawLivingWater(fg, 0.016); flush(); } return (performance.now() - t) / n; };
+      const flushMs = (n) => { flush(); const t = performance.now(); for (let k = 0; k < n; k++) flush(); return (performance.now() - t) / n; };
+      const base = Math.min(flushMs(40), flushMs(40));
+      const was = { f: LAND.FOAM_LINE, t: LAND.FISH_TIME, s: LAND.SPARKLE_GOLD, d: LAND.FOAM_DOTS };
+      LAND.FOAM_LINE = 0; LAND.FISH_TIME = 0; LAND.SPARKLE_GOLD = 1; LAND.FOAM_DOTS = 2;
+      const off = Math.min(passMs(60), passMs(60)) - base;
+      LAND.FOAM_LINE = was.f; LAND.FISH_TIME = was.t; LAND.SPARKLE_GOLD = was.s; LAND.FOAM_DOTS = was.d;
+      R._prof = { foam: 0, tiles: 0, frames: 0 };
+      const on = Math.min(passMs(60), passMs(60)) - base;
+      const pr = R._prof; R._prof = null;
+      out.flushMs = base; out.frameOff = off; out.frameOn = on; out.newWork = on - off;
+      out.foamMs = pr.foam / pr.frames; out.tilesMs = pr.tiles / pr.frames; out.livingMs = on;
+      // …and framed on the water, where the shore is dense: reported, not gated at 0.4
+      R.centerOn(41 + 3.5, 8 + 3.5); R.draw(0.016);
+      const onW = Math.min(passMs(60), passMs(60)) - base;
+      out.waterFrame = onW; out.waterLivingMs = onW;
+      setT();
+      out.gate = /nearLand \\? \\(h % 9 === 0 && hf % 5 < 2\\) : hf % 31 === 0/.test(R.drawLivingWater.toString());
+      out.err = G.lastFrameError ? String(G.lastFrameError) : '';
+    } catch (e) { out.thrown = String(e && e.stack || e); }
+    return out;`));
+  await p.close();
+  const f2 = (n) => (n == null ? '?' : (+n).toFixed(3));
+  ck('theDepthFieldIsDistanceToLand', !v.thrown && v.bad === 0 && v.shoreN > 50 && v.shoreOk === v.shoreN && v.max <= LAND_CAP_16(v),
+    v.thrown || (v.shoreOk + '/' + v.shoreN + ' shore tiles at one tile, max ' + v.max + '/16, ' + v.bad + ' bad cells'));
+  ck('andAMoatIsPinnedShallow', !v.thrown && v.moatD === 16, v.thrown || ('moat depth ' + v.moatD + '/16'));
+  ck('noBandEdgeFollowsTheTileGrid', !v.thrown && v.changes > 200 && v.onGrid <= v.changes * 0.25 && v.bands.length >= 3,
+    v.thrown || (v.onGrid + ' of ' + v.changes + ' band changes on a tile boundary (the grid share is 1 in 8); bands seen ' + JSON.stringify(v.bands)));
+  ck('ampZeroIsTheFlatBody', !v.thrown && v.tintedAtZero === 0, v.thrown || (v.tintedAtZero + ' basin-coloured pixels at DEPTH_AMP 0'));
+  ck('noShelfLeavesTheWaterOnAConcaveBay', !v.thrown && v.carved >= 1 && v.shelfOutside === 0,
+    v.thrown || (v.shelfOutside + ' shelf pixels outside the body with ' + v.carved + ' inlets carved (' + v.shelfPxOnLand + ' on land-tile pixels inside it)'));
+  ck('theLivingWaterFitsItsBudget', !v.thrown && v.livingMs < 0.4 && v.newWork < 0.4,
+    v.thrown || ('the whole living-water pass, raster included: ' + f2(v.livingMs) + 'ms on the town view at z1.5 golden hour (was ' + f2(v.frameOff) + 'ms before 1b–1d: delta ' + f2(v.newWork) + 'ms; recorded foam ' + f2(v.foamMs) + ' + tiles ' + f2(v.tilesMs) + '); ' + f2(v.waterLivingMs) + 'ms on the water view; a flush alone ' + f2(v.flushMs) + 'ms'));
+  ck('theFishGatingIsUntouched', !v.thrown && v.gate && !v.err, v.thrown || v.err || 'shoal-often / open-water-rare, verbatim');
+  Object.assign(res, { _water: { livingPassMs: f2(v.livingMs), livingPassBeforeMs: f2(v.frameOff), motionDeltaMs: f2(v.newWork),
+    recordedFoamMs: f2(v.foamMs), recordedTilesMs: f2(v.tilesMs), waterViewPassMs: f2(v.waterLivingMs), flushMs: f2(v.flushMs) } });
+}
+function LAND_CAP_16(v) { return 10 * 16; }
 
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL LAND CHECKS PASS');

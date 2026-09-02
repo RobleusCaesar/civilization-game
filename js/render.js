@@ -232,6 +232,62 @@ const LAND = {
      the blue, which is what read as dirt in a reported screenshot. Muted
      hard toward the water body it reads as a shape UNDER the surface. */
   LIFE_MUTE: 0.55,
+  /* --- Part 4b: THE BASIN (LAND_REFRESH Phase 1a — R.waterDepth, paintWater).
+     The body of the water used to be one flat W[1]. It is now painted in
+     FOUR HARD DEPTH BANDS from a baked distance-to-land field: a chamfer
+     distance over the wet tiles (near-round contours, not the squares an
+     8-neighbour count draws around every land corner), capped at DEPTH_CAP
+     tiles, held in one Uint8Array of sixteenths. Each tile samples it
+     bilinearly per sub-cell and pushes the answer about with the same
+     world-space noise the rock fields use (the ROCK_WANDER trick), so NO
+     BAND EDGE CAN FOLLOW THE TILE GRID; the seam takes a hashed stipple
+     DEPTH_DITHER tiles either side of the contour, never a gradient. The
+     shades come from ART.PALETTE.basin, each mixed toward the old body blue
+     by DEPTH_AMP — 0 is byte-for-byte the flat water of before, 1 the full
+     ramp. Swell crests and glints pick the band-local lighter shade. The
+     traced shelf, foam, beach, shoals and kelp are untouched and lie on
+     top. A MOAT is pinned to the shallow band: a dug channel is one flat
+     shallow cut, and it meets the lake's own shallow rim at the mouth with
+     no seam. LAND_REFRESH names these WATER_DEPTH = {EDGES, WANDER, AMP};
+     they are flattened here so the bench can hold them. --- */
+  /* the edges are cut to the lakes this generator actually makes: on a
+     large map the field tops out at 4 tiles and on xlarge at 4.7, so the
+     doc's 1.5 / 4 / 8 never reached the heart and left most of a lake in
+     the mid band (measured: 60% of the water). At 1.25 / 2.25 / 3.25 a
+     pond is rim and mid, a lake carries all four, and the biggest water
+     gets its navy heart. */
+  DEPTH_E1: 1.25,       // tiles from land where the shallow band ends…
+  DEPTH_E2: 2.25,       // …where the mid band ends…
+  DEPTH_E3: 3.25,       // …and where the body gives way to the deep heart
+  DEPTH_WANDER: 0.35,   // tiles the drawn contour may leave the true one
+  DEPTH_WANDER_F: 0.9,  // …how fast that wander turns, per tile
+  DEPTH_AMP: 0.85,      // 0 = the old flat body; 1 = the full basin ramp.
+                        // 0.85 won the colour A/B: at 1 the rim read bright
+                        // enough at min zoom to edge toward "resort"
+  DEPTH_DITHER: 0.22,   // half-width of the stippled seam, in tiles
+  DEPTH_SUB: 8,         // band samples per tile side (4px cells at 32px)
+  DEPTH_CAP: 10,        // tiles at which the field stops deepening
+  /* --- Part 4c: LIVING WATER (LAND_REFRESH 1b–1d — R.drawLivingWater).
+     FRAME work, viewport only, and every piece of it a dial that turns to
+     0. The waterline LAPS: a 1px broken foam line along the visible run of
+     every traced shore, its dashes creeping FOAM_SPEED px a second with a
+     gentle pulse — the loops are walked into 1px points ONCE per water
+     change (R.foamChunks) and the frame lights three points in eight as
+     1px rects, so it never builds a path or strokes a dash; the old
+     blinking foam dots drop to FOAM_DOTS per tile to make room. A FISH JUMPS instead of flashing: an arc FISH_RISE px high
+     over FISH_TIME seconds up and the same down, a squashed frame at the
+     peak, the ripple ring and a few droplets on re-entry — on exactly the
+     tiles and cycles the old gating chose (shoal-often, open-water-rare is
+     the fishing tell, and it is untouched). At GOLDEN HOUR the drifting
+     sparkle brightens by SPARKLE_GOLD and warms. --- */
+  FOAM_LINE: 0.4,       // alpha of the lapping foam line; 0 switches it off
+  FOAM_PULSE: 0.25,     // how much of that alpha breathes
+  FOAM_SPEED: 2,        // px per second the dashes creep along the shore
+  FOAM_MINZ: 1.0,       // below this zoom a 1px line is sub-pixel: skipped
+  FOAM_DOTS: 1,         // blinking foam dots per shore tile (was 2)
+  FISH_RISE: 6,         // px a jumping fish clears the water
+  FISH_TIME: 0.4,       // seconds up (and the same down); 0 = the old flat flash
+  SPARKLE_GOLD: 1.5,    // sparkle alpha at the warm peak of the dusk cycle, × normal
   /* --- HILLS ARE RAISED GROUND, and must stay clearly less than a mountain.
      They are read at their EDGES: hillRelief draws the catch-light along the
      northern rim, hillShadow the cast shadow on the ground to the south, and
@@ -535,7 +591,7 @@ const R = {
     this._latOne = { clump: this._mkLat(LAND.DECAL_CLUMP, 41), sand: this._mkLat(LAND.SAND_FREQ, 57),
                      edge: this._mkLat(LAND.EDGE_FREQ, 73), shoal: this._mkLat(LAND.SHOAL_FREQ, 97),
                      rock: this._mkLat(LAND.ROCK_EDGE_F, 113), grassM: this._mkLat(LAND.GRASS_MACRO_F, 131),
-                     hue: this._mkLat(LAND.HUE_FREQ, 1301) };
+                     hue: this._mkLat(LAND.HUE_FREQ, 1301), depth: this._mkLat(LAND.DEPTH_WANDER_F, 1307) };
     return out;
   },
   /* the CLUMP FIELD — what decides where things grow at all. Nature clumps:
@@ -1929,6 +1985,20 @@ const R = {
     for (const pass of [0, 1]) {
       g.save();
       g.clip(pass ? side.land : side.water);
+      /* …AND THE WATER-SIDE BANDS ARE PENNED INSIDE THE PAINTED BODY ITSELF
+         (LAND_REFRESH 1e, the concave-bay artifact). The tile mask above
+         allows one tile of slack past the water, and on a tight concave bay
+         the stacked shelf offsets cross the inlet's axis and land beyond the
+         far shore — inside that slack, so the clip let them through: pale
+         blue sprayed onto the grass ("blue shoreline artifacts"). Nested
+         clips intersect, and the body path is exactly where paintWaterIn
+         put the water, so a shelf can no longer exist where there is no
+         body under it. Not a tile-exact mask: Chaikin cuts every concave
+         corner, and the body legitimately lies over land-tile pixels there
+         — a tile clip would notch the shelf at every one. One clip per
+         layer bake, never per loop. The land-side pass keeps its slack:
+         its offsets are a few sixteenths and never fold. */
+      if (!pass) g.clip(this.waterBodyPath());
       for (const reg of this.waterRegions()) for (const loop of reg.loops) {
       const n = loop.length;
       if (n < 4) continue;
@@ -2034,7 +2104,23 @@ const R = {
             for (let i = 0; i < n; i++) o[i] = s[i];
           }
         }
-        return prune(o);
+        const pr = prune(o);
+        /* A RING THAT TURNED INSIDE OUT IS NOT A BAND (1e). The cap keeps an
+           offset inside a small pond's radius, and the prune pinches the
+           vertices that reversed — but a whole ring can still come out
+           wound the other way, or collapsed to nothing, in the neck of a
+           narrow inlet, and nonzero fill paints an inverted ring as a solid
+           blob. Its signed area says so at once: opposite in sign to the
+           base loop, or under a twentieth of it, and the band is dropped
+           rather than drawn wrong. */
+        const area = (pts) => {
+          let a = 0;
+          for (let i = 0, m = pts.length; i < m; i++) { const p = pts[i], q = pts[(i + 1) % m]; a += p[0] * q[1] - q[0] * p[1]; }
+          return a;
+        };
+        const aB = area(loop), aO = area(pr);
+        if (aB * aO < 0 || Math.abs(aO) < Math.abs(aB) * 0.05) return null;
+        return pr;
       };
       /* THE SHELF, STACKED. One band would put a hard rim wherever it ended;
          several translucent bands of decreasing reach each add their own alpha,
@@ -2125,6 +2211,82 @@ const R = {
      path, so the body of the water ends exactly where its own bands begin
      and there is nothing left to stick out. Cached on the same key the
      regions use, since that is precisely when it can change. */
+  /* THE DEPTH FIELD — how far every wet tile is from land, in sixteenths of
+     a tile, capped at DEPTH_CAP. A (3,4) chamfer distance in two raster
+     passes: within a few percent of Euclidean, so the iso-contours are
+     near-round before any noise touches them — an 8-neighbour count gives
+     Chebyshev distance, whose contours are axis-aligned squares around
+     every land corner, and no wander hides a square. Land is 0. The map's
+     edge counts as land, exactly as the tracer treats out-of-bounds as dry,
+     so a sea at the rim wears the same shallow the shelf already gives it.
+     A MOAT is overwritten with the shallow constant afterwards (a dug
+     channel has one depth). ONE global field, not one per region —
+     distance-to-land does not care which region a cell belongs to, and a
+     global answer is trivially consistent across a diagonal pinch.
+
+     Keyed on waterKey like the body path, so it re-derives exactly when the
+     wet tiles change and never otherwise; read once per repaint by
+     paintWaterIn (the hillHeight discipline: re-keying per TILE would be
+     ruinous, since the key itself walks the map). Typed array, ~4KB on
+     xlarge. */
+  _depthD: null, _depthKey: '',
+  waterDepth() {
+    const key = this.waterKey();
+    if (this._depthKey === key && this._depthD) return this._depthD;
+    const W = CFG.W, H = CFG.H, terr = (S.map.seenTerrain || S.map.terrain);
+    const wet = t => t === T.WATER || t === T.MOAT;
+    const BIG = 1 << 20, d = new Int32Array(W * H);
+    for (let i = 0; i < d.length; i++) d[i] = wet(terr[i]) ? BIG : 0;
+    // forward: left, up, up-left, up-right — a missing neighbour is land (3 / 4 away)
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (!d[i]) continue;
+      let m = d[i];
+      let c = x > 0 ? d[i - 1] + 3 : 3; if (c < m) m = c;
+      c = y > 0 ? d[i - W] + 3 : 3; if (c < m) m = c;
+      c = (x > 0 && y > 0) ? d[i - W - 1] + 4 : 4; if (c < m) m = c;
+      c = (x < W - 1 && y > 0) ? d[i - W + 1] + 4 : 4; if (c < m) m = c;
+      d[i] = m;
+    }
+    // backward: right, down, down-right, down-left
+    for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) {
+      const i = y * W + x;
+      if (!d[i]) continue;
+      let m = d[i];
+      let c = x < W - 1 ? d[i + 1] + 3 : 3; if (c < m) m = c;
+      c = y < H - 1 ? d[i + W] + 3 : 3; if (c < m) m = c;
+      c = (x < W - 1 && y < H - 1) ? d[i + W + 1] + 4 : 4; if (c < m) m = c;
+      c = (x > 0 && y < H - 1) ? d[i + W - 1] + 4 : 4; if (c < m) m = c;
+      d[i] = m;
+    }
+    const out = new Uint8Array(W * H), cap = LAND.DEPTH_CAP * 16;
+    for (let i = 0; i < d.length; i++) {
+      if (!d[i]) continue;
+      const v = Math.round(d[i] * 16 / 3);
+      out[i] = terr[i] === T.MOAT ? 16 : (v > cap ? cap : v);
+    }
+    this._depthD = out; this._depthKey = key;
+    return out;
+  },
+  /* the basin's shades at the current DEPTH_AMP: each band mixed from the
+     old body blue toward its ramp entry, with the crest and glint partners
+     that keep a swell readable over every band. Memoised on the amp. */
+  _basinC: null,
+  _basinCols() {
+    const amp = Math.max(0, Math.min(1, +LAND.DEPTH_AMP || 0));
+    if (this._basinC && this._basinC.amp === amp) return this._basinC;
+    const W = ART.PALETTE.water, B = ART.PALETTE.basin;
+    const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+    const mix = (a, b) => {
+      const A = hex(a), C = hex(b);
+      return '#' + [0, 1, 2].map(i => Math.round(A[i] + (C[i] - A[i]) * amp).toString(16).padStart(2, '0')).join('');
+    };
+    this._basinC = { amp,
+      fill: [mix(W[1], B[0]), mix(W[1], B[1]), mix(W[1], B[2]), mix(W[1], B[3])],
+      crest: [W[2], W[2], mix(W[2], W[3]), mix(W[2], W[3])],
+      glint: [W[3], W[3], mix(W[3], W[4]), mix(W[3], W[4])] };
+    return this._basinC;
+  },
   _bodyPath: null, _bodyKey: '',
   waterBodyPath() {
     const key = this.waterKey();
@@ -2378,9 +2540,8 @@ const R = {
      near-shore lightening is the TRACED SHELF's job now (buildShoreLayer),
      and it is measured off a curve, so the body of the water can simply be
      uniform. */
-  paintWater(g, x, y) {
+  paintWater(g, x, y, D) {
     const TL = CFG.TILE, px = TL / 16, W = ART.PALETTE.water;
-    const lite = W[2];
     /* SHALLOWNESS IS A FIELD, NOT A FLAG. The body colour used to switch
        wholesale on "does this tile touch land", which paints a hard rectangle
        into the middle of every lake — the same grid-drawing mistake as a
@@ -2388,8 +2549,91 @@ const R = {
        being how much land meets there) and resolved per sub-cell, so a bay
        shelves gradually and the step edges wander instead of following the
        tile boundaries. */
-    g.fillStyle = W[1];
-    g.fillRect(x * TL, y * TL, TL, TL);
+    /* THE BASIN (LAND_REFRESH Phase 1a). The body is painted in hard depth
+       bands read from the baked distance field D (waterDepth) — see the
+       LAND block's Part 4b for the design. The field is per tile centre;
+       this tile straddles four of its cells, so the read is bilinear over
+       the nine centres around it, plus the wander noise read at the tile's
+       corners and interpolated inside. A tile lying wholly in one band and
+       clear of every seam is ONE rect; a seam tile is painted per sub-cell
+       in row runs, with a hashed stipple where the contour passes. Every
+       band's colour comes from _basinCols, so at DEPTH_AMP 0 all of this
+       paints exactly the flat body it replaced. */
+    const cols = this._basinCols(), N = LAND.DEPTH_SUB, cell = TL / N;
+    const bands = this._bandScr || (this._bandScr = new Uint8Array(256));
+    let uniform = 1;                        // the whole tile's band, or -1 when mixed
+    if (!D || LAND.DEPTH_AMP <= 0) {
+      g.fillStyle = cols.fill[1];
+      g.fillRect(x * TL, y * TL, TL, TL);
+    } else {
+      const CW = CFG.W, CH = CFG.H;
+      const at = (cx, cy) => D[(cy < 0 ? 0 : cy >= CH ? CH - 1 : cy) * CW + (cx < 0 ? 0 : cx >= CW ? CW - 1 : cx)] / 16;
+      const d00 = at(x - 1, y - 1), d10 = at(x, y - 1), d20 = at(x + 1, y - 1);
+      const d01 = at(x - 1, y), d11 = at(x, y), d21 = at(x + 1, y);
+      const d02 = at(x - 1, y + 1), d12 = at(x, y + 1), d22 = at(x + 1, y + 1);
+      this.landLattices();
+      const lat = this._latOne.depth, WA = LAND.DEPTH_WANDER * 2;
+      const w00 = (this._latRead(lat, x, y) - 0.5) * WA, w10 = (this._latRead(lat, x + 1, y) - 0.5) * WA;
+      const w01 = (this._latRead(lat, x, y + 1) - 0.5) * WA, w11 = (this._latRead(lat, x + 1, y + 1) - 0.5) * WA;
+      const E1 = LAND.DEPTH_E1, E2 = LAND.DEPTH_E2, E3 = LAND.DEPTH_E3, DI = LAND.DEPTH_DITHER;
+      // depth at (u, v) inside the tile, 0..1 each, in tiles-from-land
+      const depth = (u, v) => {
+        const mid = u < 0.5 ? d01 + (d11 - d01) * (u + 0.5) : d11 + (d21 - d11) * (u - 0.5);
+        const far = v < 0.5
+          ? (u < 0.5 ? d00 + (d10 - d00) * (u + 0.5) : d10 + (d20 - d10) * (u - 0.5))
+          : (u < 0.5 ? d02 + (d12 - d02) * (u + 0.5) : d12 + (d22 - d12) * (u - 0.5));
+        const t = v < 0.5 ? 0.5 - v : v - 0.5;
+        const wn = (w00 + (w10 - w00) * u) * (1 - v) + (w01 + (w11 - w01) * u) * v;
+        return mid + (far - mid) * t + wn;
+      };
+      const bandOf = d => d < E1 ? 3 : d < E2 ? 2 : d < E3 ? 1 : 0;   // basin index: 0 deep … 3 shallow
+      const nearEdge = d => {
+        const a = d - E1, b = d - E2, c = d - E3;
+        const aa = a < 0 ? -a : a, bb = b < 0 ? -b : b, cc = c < 0 ? -c : c;
+        return aa < bb ? (aa < cc ? E1 : E3) : (bb < cc ? E2 : E3);
+      };
+      const dc = depth(0.5, 0.5), b0 = bandOf(dc);
+      let one = Math.abs(dc - nearEdge(dc)) > DI + 0.02;
+      if (one) {
+        const d1 = depth(0, 0), d2 = depth(1, 0), d3 = depth(0, 1), d4 = depth(1, 1);
+        one = bandOf(d1) === b0 && bandOf(d2) === b0 && bandOf(d3) === b0 && bandOf(d4) === b0
+          && Math.abs(d1 - nearEdge(d1)) > DI + 0.02 && Math.abs(d2 - nearEdge(d2)) > DI + 0.02
+          && Math.abs(d3 - nearEdge(d3)) > DI + 0.02 && Math.abs(d4 - nearEdge(d4)) > DI + 0.02;
+      }
+      if (one) {
+        uniform = b0;
+        g.fillStyle = cols.fill[b0];
+        g.fillRect(x * TL, y * TL, TL, TL);
+      } else {
+        uniform = -1;
+        for (let j = 0; j < N; j++) {
+          const v = (j + 0.5) / N;
+          let run = 0, runB = -2;
+          for (let i = 0; i <= N; i++) {
+            let b = -1;
+            if (i < N) {
+              const d = depth((i + 0.5) / N, v);
+              b = bandOf(d);
+              const e = nearEdge(d), s = d - e, as = s < 0 ? -s : s;
+              if (as < DI) {
+                // the stipple: the far side of the contour wins more often
+                // the nearer the cell lies to it — hashed per cell in WORLD
+                // cells, so a tile repainted alone still matches its neighbours
+                const other = s < 0 ? bandOf(e + 1e-4) : bandOf(e - 1e-4);
+                if (this._lh(x * N + i, y * N + j, 1309) < (DI - as) / (2 * DI)) b = other;
+              }
+              bands[j * N + i] = b;
+            }
+            if (b !== runB) {
+              if (runB >= 0) { g.fillStyle = cols.fill[runB]; g.fillRect(x * TL + run * cell, y * TL + j * cell, (i - run) * cell, cell); }
+              run = i; runB = b;
+            }
+          }
+        }
+      }
+    }
+    // the band under an art pixel (jx, jy in 0..15), for the crests and glints
+    const bandAt = (jx, jy) => uniform >= 0 ? uniform : bands[((jy * N) >> 4) * N + ((jx * N) >> 4)];
     /* THE SHALLOWS ARE NOT DRAWN HERE. They used to be: a bilinear field of
        "how much land meets this corner", resolved per sub-cell. Making it a
        field rather than a per-tile flag fixed the hard rectangles, but it could
@@ -2429,7 +2673,8 @@ const R = {
       // cue; the trough is simply the body colour (same report as the depth fix).
       let hh = (Math.imul(x * 16 + jx, 73856093) ^ Math.imul(y * 16 + jy, 19349663)) >>> 0;
       hh = ((Math.imul(hh ^ (hh >>> 13), 0x85ebca6b) >>> 0) >>> 8) / 16777215;
-      if (v > 2.05 + (hh - 0.5) * 0.5) g.fillStyle = lite;
+      // …in the band-local lighter shade, so a crest still reads over the deep
+      if (v > 2.05 + (hh - 0.5) * 0.5) g.fillStyle = cols.crest[bandAt(jx, jy)];
       else continue;
       g.fillRect(x * TL + jx * px, y * TL + jy * px, px, px);
     }
@@ -2438,8 +2683,8 @@ const R = {
     for (let k = 0; k < 3; k++) {
       hh = (Math.imul(hh ^ (hh >>> 15), 0xc2b2ae35) >>> 0);
       const gx = hh & 15, gy = (hh >> 4) & 15;
-      if (k < 2) { g.fillStyle = lite; g.fillRect(x * TL + Math.min(gx, 13) * px, y * TL + gy * px, px * (2 + (hh >> 9 & 1)), px); }
-      else if ((hh & 3) === 0) { g.fillStyle = W[3]; g.fillRect(x * TL + gx * px, y * TL + gy * px, px, px); }
+      if (k < 2) { g.fillStyle = cols.crest[bandAt(gx, gy)]; g.fillRect(x * TL + Math.min(gx, 13) * px, y * TL + gy * px, px * (2 + (hh >> 9 & 1)), px); }
+      else if ((hh & 3) === 0) { g.fillStyle = cols.glint[bandAt(gx, gy)]; g.fillRect(x * TL + gx * px, y * TL + gy * px, px, px); }
     }
   },
 
@@ -2465,14 +2710,43 @@ const R = {
     for (let y = y0; y <= y1 && !any; y++) for (let x = x0; x <= x1; x++)
       if (wet(terr[y * W + x])) { any = true; break; }
     if (!any) return;
+    const D = this.waterDepth();             // re-keyed ONCE per repaint, never per tile
+    /* TWO PASSES: THE INTERIOR UNCLIPPED, THE EDGE UNDER THE OUTLINE. The
+       traced curve runs along the wet/dry cell edges, and smoothing keeps
+       it inside the lattice polygon while the roughening moves it less
+       than a fifth of a tile — so a tile whose eight neighbours are all
+       wet can never meet it, and painting that tile without the clip is
+       byte-identical to painting it with one. It matters because the clip
+       is a several-thousand-point path and a rasterizer pays for it on
+       EVERY rect drawn under it: with the basin's seam tiles painted as
+       runs of small rects, the deferred raster of a shore edit came due in
+       35ms flushes (tests/land.mjs §5). The seams lie one to three tiles
+       from land, which is exactly the interior. */
+    const paint = (x, y) => {
+      const t = terr[y * W + x];
+      const h = (x * 73856093 ^ y * 19349663) >>> 0;
+      const ovr = window.Assets ? Assets.terrainImg(t, h >>> 3) : null;
+      if (ovr) this.blitTile(g, ovr, x, y); else this.paintWater(g, x, y, D);
+    };
+    const edgeOf = (x, y) => {
+      for (const [ox, oy] of NEIGH8) {
+        const nx = x + ox, ny = y + oy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= CFG.H || !wet(terr[ny * W + nx])) return true;
+      }
+      return false;
+    };
+    let edges = 0;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      if (!wet(terr[y * W + x]) || !MapGen.onBoard(x, y)) continue;
+      if (edgeOf(x, y)) { edges++; continue; }
+      paint(x, y);
+    }
+    if (!edges) return;
     g.save();
     g.clip(this.waterBodyPath());
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-      const t = terr[y * W + x];
-      if (!wet(t) || !MapGen.onBoard(x, y)) continue;
-      const h = (x * 73856093 ^ y * 19349663) >>> 0;
-      const ovr = window.Assets ? Assets.terrainImg(t, h >>> 3) : null;
-      if (ovr) this.blitTile(g, ovr, x, y); else this.paintWater(g, x, y);
+      if (!wet(terr[y * W + x]) || !MapGen.onBoard(x, y) || !edgeOf(x, y)) continue;
+      paint(x, y);
     }
     g.restore();
   },
@@ -3653,6 +3927,7 @@ const R = {
     steps.push(() => { this.waterDirty(); this.hillsDirty(); });   // …re-baseline both masks
     steps.push(() => this.waterRegions());   // trace the coast once (cached on _shoreKey)
     steps.push(() => this.waterBodyPath());  // …and the outline the water is painted inside
+    steps.push(() => this.waterDepth());     // …and the depth field the body is banded from
     /* TWO PASSES, and they may not be merged: decals overhang their tile, so
        every tile's ground must be down before any decal is laid — otherwise a
        neighbour's ground, painted later, erases the spill. (Which is also why
@@ -3728,6 +4003,7 @@ const R = {
     this._lat = null; this._latKey = ''; this._latOne = null;
     this._shoreKey = ''; this._layerKey = ''; this._waterMask = null;
     this._bodyPath = null; this._bodyKey = '';
+    this._depthD = null; this._depthKey = ''; this._basinC = null;
     this._hillH = null; this._hillKey = '';
     this._tameKey = ''; this._tameMask = null;
     this._mixC = null;
@@ -4079,7 +4355,7 @@ const R = {
   reviveTerrain() {
     // every cached layer shares the cache's fate — drop their keys so each one
     // is rebuilt rather than blitted from pixels that are no longer there
-    this._layerKey = ''; this._shoreKey = '';
+    this._layerKey = ''; this._shoreKey = ''; this._depthKey = '';
     this._mtnLayerKey = ''; this._mtnDirty = true;
     this._waterMask = null; this._hillKey = '';
     this._repaintQ = null;
@@ -7696,6 +7972,206 @@ const R = {
     return fr[((u.animT * fps) | 0) % fr.length];
   },
 
+  /* WHERE THE DAY IS in the dusk cycle, once per frame: after ~10 bright
+     days night eases in and out across ~2 (k), with a warm glow either side
+     of the dark (warm). The ?dev=1 Land bench can HOLD a moment of it for a
+     screenshot (DevArt.forceDayF — golden hour is 10.16); render-only,
+     never in S. Read by the dusk tint at the end of draw and by the
+     living water's sparkle (1d), which brightens and warms at the peak. */
+  dayPhase() {
+    const dayF = (window.DevArt && DevArt.on && DevArt.forceDayF != null) ? +DevArt.forceDayF
+      : ((S.day - 1) % 12) + Math.min(1, S.dayT / CFG.DAY_MS);
+    let k = 0;
+    if (dayF > 10) k = Math.sin((dayF - 10) / 2 * Math.PI);
+    const warm = k > 0.02 ? 0.07 * Math.sin(Math.min(1, k * 2) * Math.PI) : 0;   // dusk/dawn glow
+    return { dayF, k, warm };
+  },
+
+  /* THE FOAM LINE'S GEOMETRY (1b), cut once per water change and keyed like
+     the body path: every traced loop walked at ONE PIXEL of arc length,
+     each step a point (x, y, and its place in the 8px dash period), in
+     runs of FOAM_CHUNK points with a bounding box and a mid tile, so a
+     frame touches only the runs inside the viewport and the dash phase
+     carries across the cuts. NOT a dashed Path2D stroke: that was the
+     first cut, and with a forced flush it cost 0.34ms of software raster
+     on the water view against 0.10ms for the same dashes as 1px rects —
+     the dash machinery is what a rasterizer pays for, not the pixels.
+     Int16, ~6 bytes a point, ~60KB on the biggest map. Runs whose shore is
+     a dug channel or reclaimed ground raise no foam — the shore layer's
+     own rule for the wet lip. */
+  FOAM_CHUNK: 96,
+  _foam: null, _foamKey: '',
+  foamChunks() {
+    const key = this.waterKey();
+    if (this._foamKey === key && this._foam) return this._foam;
+    const TL = CFG.TILE, W = CFG.W, H = CFG.H, terr = (S.map.seenTerrain || S.map.terrain);
+    const natural = (p, a, b) => {
+      const nx = (b[1] - a[1]), ny = -(b[0] - a[0]);          // outward, as buildShoreLayer
+      const len = Math.hypot(nx, ny) || 1;
+      const ox = nx / len, oy = ny / len;
+      const wx = Math.floor(p[0] - ox * 0.8), wy = Math.floor(p[1] - oy * 0.8);
+      if (wx >= 0 && wy >= 0 && wx < W && wy < H && terr[wy * W + wx] === T.MOAT) return 0;
+      const lx = Math.floor(p[0] + ox * 0.8), ly = Math.floor(p[1] + oy * 0.8);
+      if (lx < 0 || ly < 0 || lx >= W || ly >= H) return 1;
+      return (S.map.reclaimed && S.map.reclaimed[ly * W + lx]) ? 0 : 1;
+    };
+    const out = [], N = this.FOAM_CHUNK;
+    let buf = new Int16Array(N * 3), fill = 0, natSum = 0, x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, mx = 0, my = 0;
+    const flush = () => {
+      if (fill >= 6 && natSum / (fill / 3) >= 0.5)
+        out.push({ pts: buf.slice(0, fill), x0, y0, x1, y1, mx, my });
+      buf = new Int16Array(N * 3); fill = 0; natSum = 0; x0 = 1e9; y0 = 1e9; x1 = -1e9; y1 = -1e9;
+    };
+    for (const reg of this.waterRegions()) for (const loop of reg.loops) {
+      const n = loop.length;
+      if (n < 8) continue;
+      let s = 0, next = 0;
+      for (let i = 0; i < n; i++) {
+        const a = loop[i], b = loop[(i + 1) % n];
+        const ax = a[0] * TL, ay = a[1] * TL, bx = b[0] * TL, by = b[1] * TL;
+        const len = Math.hypot(bx - ax, by - ay);
+        if (!(len > 0)) continue;
+        const nat = natural(a, loop[(i - 1 + n) % n], b);
+        while (next <= s + len) {
+          const t = (next - s) / len, px = Math.round(ax + (bx - ax) * t), py = Math.round(ay + (by - ay) * t);
+          if (fill === 0) { mx = Math.floor(a[0]); my = Math.floor(a[1]); }
+          buf[fill] = px; buf[fill + 1] = py; buf[fill + 2] = next & 7; fill += 3; natSum += nat;
+          if (px < x0) x0 = px; if (px > x1) x1 = px; if (py < y0) y0 = py; if (py > y1) y1 = py;
+          if (fill === N * 3) flush();
+          next++;
+        }
+        s += len;
+      }
+      flush();                                              // a loop never shares a run
+    }
+    this._foam = out; this._foamKey = key;
+    return out;
+  },
+
+  /* THE LIVING WATER (the frame's water pass — 1b, 1c, 1d). Viewport-only,
+     drawn before the mountains-and-units pass on purpose: all of it lives
+     ON the water's surface, so a hull floats OVER a jumping fish, never
+     under one (the operator's transport-raft report). R._prof, when a test
+     sets it, accumulates the foam stroke and the tile pass separately so
+     the new frame work can be measured in isolation. */
+  _prof: null,
+  drawLivingWater(g, dt) {
+    const TL = CFG.TILE;
+    this.fishClock = (this.fishClock || 0) + dt;
+    const t0 = this.fishClock, prof = this._prof;
+    // ---- 1b: the waterline laps — cached 1px points along the traced shore,
+    // lit three of every eight, the pattern creeping FOAM_SPEED px a second ----
+    if (LAND.FOAM_LINE > 0 && this.cam.z >= LAND.FOAM_MINZ) {
+      const tA = prof ? performance.now() : 0;
+      const vx0 = this.cam.x - TL, vy0 = this.cam.y - TL;
+      const vx1 = this.cam.x + this.viewW() / this.cam.z + TL, vy1 = this.cam.y + this.viewH() / this.cam.z + TL;
+      const a = LAND.FOAM_LINE * (1 - LAND.FOAM_PULSE + LAND.FOAM_PULSE * (0.5 + 0.5 * Math.sin(t0 * 1.3)));
+      const creep = Math.round(t0 * LAND.FOAM_SPEED);
+      g.fillStyle = 'rgba(235,244,248,' + a.toFixed(3) + ')';
+      for (const c of this.foamChunks()) {
+        if (c.x1 < vx0 || c.x0 > vx1 || c.y1 < vy0 || c.y0 > vy1) continue;
+        if (!G.visibleAt(c.mx, c.my)) continue;
+        const P = c.pts;
+        for (let k = 0; k < P.length; k += 3)
+          if (((P[k + 2] + creep) & 7) < 3) g.fillRect(P[k], P[k + 1], 1, 1);
+      }
+      if (prof) prof.foam += performance.now() - tA;
+    }
+    // ---- the tile pass: drifting sparkle, foam dots, the fish ----
+    const tB = prof ? performance.now() : 0;
+    const cyc = (t0 / 2.4) | 0, phase = (t0 / 2.4) % 1;
+    const jumping = phase < 0.55;                          // the window the old two-frame flash used
+    const fishFr = jumping ? Sprites.misc.fish[phase < 0.3 ? 0 : 1] : null;   // …and the flash itself, for FISH_TIME 0
+    // 1d, in two lines: at golden hour the sparkle brightens by SPARKLE_GOLD and warms
+    const wk = Math.min(1, (this._dusk || this.dayPhase()).warm / 0.07);
+    const spark = wk > 0.01 ? 'rgba(' + Math.round(190 + 65 * wk) + ',' + Math.round(224 - 10 * wk) + ',' + Math.round(238 - 88 * wk)
+      + ',' + (0.45 * (1 + (LAND.SPARKLE_GOLD - 1) * wk)).toFixed(3) + ')' : 'rgba(190,224,238,0.45)';
+    const terr = S.map.terrain;
+    // clamp to the PLAYABLE interior (1 … W-2): the outer ring is off-map black
+    // void, so no fish jump, no sparkle, no foam is drawn on it (see R.drawTile)
+    const x0 = Math.max(1, (this.cam.x / TL) | 0), y0 = Math.max(1, (this.cam.y / TL) | 0);
+    const x1 = Math.min(CFG.W - 2, ((this.cam.x + this.viewW() / this.cam.z) / TL) | 0);
+    const y1 = Math.min(CFG.H - 2, ((this.cam.y + this.viewH() / this.cam.z) / TL) | 0);
+    const wet = v => v === T.WATER || v === T.MOAT;   // moats animate like the lake
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const i = MapGen.idx(x, y);
+      if (!wet(terr[i])) continue;
+      if (!G.visibleAt(x, y)) continue;
+      const h = (x * 73856093 ^ y * 19349663) >>> 0;
+      if (h % 3 === 0) {                                  // slow drifting sparkle dash
+        const ph = t0 * 0.6 + (h % 13);
+        const sx = x * TL + 4 + (Math.sin(ph) * 0.5 + 0.5) * (TL - 14);
+        const sy = y * TL + 5 + ((h >> 4) % (TL - 10));
+        g.fillStyle = spark;
+        g.fillRect(sx | 0, sy | 0, 5, 2);
+      }
+      const landN = !wet(terr[MapGen.idx(x, Math.max(0, y - 1))]);
+      const landS = y + 1 < CFG.H && !wet(terr[MapGen.idx(x, y + 1)]);
+      const landW = !wet(terr[MapGen.idx(Math.max(0, x - 1), y)]);
+      const landE = x + 1 < CFG.W && !wet(terr[MapGen.idx(x + 1, y)]);
+      if ((landN || landS || landW || landE) && LAND.FOAM_DOTS > 0) {   // blinking foam dots on the shore side
+        const a = 0.22 + 0.2 * Math.sin(t0 * 1.7 + (h % 7));
+        g.fillStyle = 'rgba(235,244,248,' + Math.max(0, a).toFixed(2) + ')';
+        const o1 = 4 + (h % 3) * 8, o2 = 20 - (h % 5) * 3, two = LAND.FOAM_DOTS >= 2;
+        if (landN) { g.fillRect(x * TL + o1, y * TL + 2, 2, 2); if (two) g.fillRect(x * TL + o2, y * TL + 3, 2, 2); }
+        else if (landS) { g.fillRect(x * TL + o1, y * TL + TL - 4, 2, 2); if (two) g.fillRect(x * TL + o2, y * TL + TL - 5, 2, 2); }
+        else if (landW) { g.fillRect(x * TL + 2, y * TL + o1, 2, 2); if (two) g.fillRect(x * TL + 3, y * TL + o2, 2, 2); }
+        else { g.fillRect(x * TL + TL - 4, y * TL + o1, 2, 2); if (two) g.fillRect(x * TL + TL - 5, y * TL + o2, 2, 2); }
+      }
+      if (jumping && S.map.resAmount[i]) {
+        // shoals (h % 9 shore tiles — the ones villagers can line-fish;
+        // MapGen.shoal uses the SAME hash, so the tell never lies) show
+        // jumping fish often: that's the sign to watch for. Open deep
+        // water keeps only the rare splash; barren shore water shows none.
+        const hf = (h ^ cyc * 83492791) >>> 0;
+        const nearLand = landN || landS || landW || landE;
+        if (nearLand ? (h % 9 === 0 && hf % 5 < 2) : hf % 31 === 0) {
+          if (LAND.FISH_TIME > 0) this.drawFishJump(g, x, y, h, phase * 2.4);
+          else g.drawImage(fishFr, x * TL, y * TL);
+        }
+      }
+    }
+    if (prof) { prof.tiles += performance.now() - tB; prof.frames++; }
+  },
+  /* ONE FISH, ONE JUMP (1c): tw is seconds into the cycle's jump window.
+     A short per-tile delay so a lake full of shoals is not a metronome;
+     then the arc — FISH_RISE px at the top of a sine over FISH_TIME up and
+     the same down, the squashed frame around the peak — and on re-entry
+     the authored splash frame, the ripple ring the bombard's water hit
+     draws (same stroke, its own timeline: no pool, the tile hash and the
+     clock are the state), and two or three droplets. Everything here is a
+     stroke or a 2px rect, so the shore hooks in the bridge tests never
+     see a plank. */
+  drawFishJump(g, x, y, h, tw) {
+    const TL = CFG.TILE, F = Sprites.misc.fish;
+    const t = tw - ((h >>> 8) % 3) * 0.05;
+    if (t < 0) return;
+    const A = LAND.FISH_TIME * 2;
+    if (t < A) {
+      const k = t / A, rise = Math.round(Math.sin(k * Math.PI) * LAND.FISH_RISE);
+      const fr = (k > 0.35 && k < 0.65 && F[2]) ? F[2] : F[0];
+      g.drawImage(fr, x * TL, y * TL - rise);
+      return;
+    }
+    const k = (t - A) / 0.4;                               // the splash
+    if (k >= 1) return;
+    if (k < 0.5) g.drawImage(F[1], x * TL, y * TL);
+    const cx = x * TL + 15, cy = y * TL + 15, lw = g.lineWidth;
+    g.globalAlpha = 0.3 * (1 - k);
+    g.strokeStyle = '#dceef4'; g.lineWidth = 1.5;
+    // the bombard's ring at a fish's size: half a tile at most, not a shell's
+    const rr = TL * (0.15 + k * 0.35);
+    g.beginPath(); g.ellipse(cx, cy, rr, rr * 0.55, 0, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = ART.PALETTE.bone[2];
+    const nd = 2 + ((h >> 12) & 1);
+    for (let d = 0; d < nd; d++) {
+      const dx = ((h >> (14 + d * 3)) % 7) - 3;
+      const px = cx + dx * (2 + k * 6), py = cy - Math.sin(k * Math.PI) * (6 + d * 3) + k * 4;
+      g.fillRect(px | 0, py | 0, 2, 2);
+    }
+    g.globalAlpha = 1; g.lineWidth = lw;
+  },
+
   draw(dt) {
     if (!S) return;
     /* A DUE BAKE IS PAID IN FULL BEFORE THE WORLD IS PLAYED, and only then.
@@ -7709,6 +8185,7 @@ const R = {
     g.fillStyle = '#0d0b08';
     g.fillRect(0, 0, this.cv.width, this.cv.height);
     if (!this.terrainCache) return;          // the bake has not laid its canvas yet
+    this._dusk = this.dayPhase();            // read once: the sparkle and the dusk tint share it
     g.setTransform(z, 0, 0, z, -this.cam.x * z, -this.cam.y * z);
     g.imageSmoothingEnabled = false;
 
@@ -8163,60 +8640,13 @@ const R = {
       }
       g.restore();
     }
-    // living water: drifting sparkles, blinking shoreline foam, jumping fish.
-    // Viewport-only, a few fillRects per water tile — stays well inside budget.
+    // living water: the lapping waterline, drifting sparkles, blinking
+    // shoreline foam, jumping fish — viewport-only, in its own method so the
+    // frame's water work can be measured on its own (tests/land.mjs §19).
     // Drawn HERE — before the mountains-and-units pass — on purpose: all of
     // it lives ON the water's surface, so a hull floats OVER a jumping fish,
     // never under one (the operator's transport-raft report).
-    this.fishClock = (this.fishClock || 0) + dt;
-    {
-      const t0 = this.fishClock;
-      const cyc = (t0 / 2.4) | 0, phase = (t0 / 2.4) % 1;
-      const fishFr = phase < 0.55 ? Sprites.misc.fish[phase < 0.3 ? 0 : 1] : null;
-      const terr = S.map.terrain;
-      // clamp to the PLAYABLE interior (1 … W-2): the outer ring is off-map black
-      // void, so no fish jump, no sparkle, no foam is drawn on it (see R.drawTile)
-      const x0 = Math.max(1, (this.cam.x / TL) | 0), y0 = Math.max(1, (this.cam.y / TL) | 0);
-      const x1 = Math.min(CFG.W - 2, ((this.cam.x + this.viewW() / this.cam.z) / TL) | 0);
-      const y1 = Math.min(CFG.H - 2, ((this.cam.y + this.viewH() / this.cam.z) / TL) | 0);
-      const wet = v => v === T.WATER || v === T.MOAT;   // moats animate like the lake
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-        const i = MapGen.idx(x, y);
-        if (!wet(terr[i])) continue;
-        if (!G.visibleAt(x, y)) continue;
-        const h = (x * 73856093 ^ y * 19349663) >>> 0;
-        if (h % 3 === 0) {                                  // slow drifting sparkle dash
-          const ph = t0 * 0.6 + (h % 13);
-          const sx = x * TL + 4 + (Math.sin(ph) * 0.5 + 0.5) * (TL - 14);
-          const sy = y * TL + 5 + ((h >> 4) % (TL - 10));
-          g.fillStyle = 'rgba(190,224,238,0.45)';
-          g.fillRect(sx | 0, sy | 0, 5, 2);
-        }
-        const landN = !wet(terr[MapGen.idx(x, Math.max(0, y - 1))]);
-        const landS = y + 1 < CFG.H && !wet(terr[MapGen.idx(x, y + 1)]);
-        const landW = !wet(terr[MapGen.idx(Math.max(0, x - 1), y)]);
-        const landE = x + 1 < CFG.W && !wet(terr[MapGen.idx(x + 1, y)]);
-        if (landN || landS || landW || landE) {             // blinking foam dots on the shore side
-          const a = 0.22 + 0.2 * Math.sin(t0 * 1.7 + (h % 7));
-          g.fillStyle = 'rgba(235,244,248,' + Math.max(0, a).toFixed(2) + ')';
-          const o1 = 4 + (h % 3) * 8, o2 = 20 - (h % 5) * 3;
-          if (landN) { g.fillRect(x * TL + o1, y * TL + 2, 2, 2); g.fillRect(x * TL + o2, y * TL + 3, 2, 2); }
-          else if (landS) { g.fillRect(x * TL + o1, y * TL + TL - 4, 2, 2); g.fillRect(x * TL + o2, y * TL + TL - 5, 2, 2); }
-          else if (landW) { g.fillRect(x * TL + 2, y * TL + o1, 2, 2); g.fillRect(x * TL + 3, y * TL + o2, 2, 2); }
-          else { g.fillRect(x * TL + TL - 4, y * TL + o1, 2, 2); g.fillRect(x * TL + TL - 5, y * TL + o2, 2, 2); }
-        }
-        if (fishFr && S.map.resAmount[i]) {
-          // shoals (h % 9 shore tiles — the ones villagers can line-fish;
-          // MapGen.shoal uses the SAME hash, so the tell never lies) show
-          // jumping fish often: that's the sign to watch for. Open deep
-          // water keeps only the rare splash; barren shore water shows none.
-          const hf = (h ^ cyc * 83492791) >>> 0;
-          const nearLand = landN || landS || landW || landE;
-          if (nearLand ? (h % 9 === 0 && hf % 5 < 2) : hf % 31 === 0)
-            g.drawImage(fishFr, x * TL, y * TL);
-        }
-      }
-    }
+    this.drawLivingWater(g, dt);
 
     /* THE MOUNTAINS DRAW HERE, interleaved with the units by ground row —
        the whole point of cutting each region into row strips (buildMtnLayer).
@@ -9036,17 +9466,13 @@ const R = {
     // across ~2 days — one slow, calm breath, never a strobe. Screen-space
     // tint only; costs one or two fillRects.
     {
-      // the ?dev=1 Land bench can HOLD a moment of the cycle for a screenshot
-      // (DevArt.forceDayF — golden hour is 10.16); render-only, never in S
-      const dayF = (window.DevArt && DevArt.on && DevArt.forceDayF != null) ? +DevArt.forceDayF
-        : ((S.day - 1) % 12) + Math.min(1, S.dayT / CFG.DAY_MS);
-      let k = 0;
-      if (dayF > 10) k = Math.sin((dayF - 10) / 2 * Math.PI);
+      // read once at the top of the frame (R.dayPhase — the bench's golden
+      // hour hold lives there too); the living water's sparkle shares it
+      const { k, warm } = this._dusk || this.dayPhase();
       if (k > 0.02) {
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.fillStyle = 'rgba(22,28,64,' + (0.20 * k).toFixed(3) + ')';
         g.fillRect(0, 0, this.cv.width, this.cv.height);
-        const warm = 0.07 * Math.sin(Math.min(1, k * 2) * Math.PI);   // dusk/dawn glow
         if (warm > 0.01) {
           g.fillStyle = 'rgba(240,150,70,' + warm.toFixed(3) + ')';
           g.fillRect(0, 0, this.cv.width, this.cv.height);
