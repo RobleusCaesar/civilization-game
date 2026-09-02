@@ -265,7 +265,7 @@ const LAND = {
      shelf, foam, beach, shoals and kelp are untouched and lie on top. A
      MOAT is pinned to the shore step: a dug channel is one flat shallow
      cut that meets the lake's own rim with no seam. --- */
-  DEEP_STEPS: 14,       // steps in the ramp — ART.PALETTE.deep's length, for the record
+  DEEP_STEPS: 16,       // steps in the ramp — ART.PALETTE.deep's length, for the record
   DEEP_SHORE_STEP: 0.25,// tiles between the absolute shore steps…
   DEEP_SHORE_END: 2.0,  // …out to here, where the fitted deep steps take over
   DEEP_TOP_K: 0.92,     // the last edge sits at this share of the map's deepest tile
@@ -282,6 +282,46 @@ const LAND = {
   DEPTH_CAP: 15,        // tiles at which the field stops deepening (sea maps reach it)
   WATER_WHISPER: 0,     // the old tonal whisper over the ramp, as a share of its
                         // alpha (0 = off: it read as smudges; the flat body keeps it)
+  /* --- Part 4b″: THE BATHYMETRY (R.waterDepth). Distance-to-land alone
+     gives every shoreline the same shelf, so a map at min zoom wears a
+     uniform ring around every body — the symptom that the water has no
+     landform of its own. The distance is therefore WARPED by two seeded
+     world-space fields before the steps are cut from it: a LOW-frequency
+     one (SLOPE_FREQ, period ~1/f tiles) that scales the SLOPE, so one
+     coast shelves gently far out and the next drops off within a tile,
+     and a MID-frequency one (BAR_FREQ) that ADDS depth, putting bars and
+     tongues in open water and pockets near the shore. Both fade in over
+     SLOPE_HOLD tiles from the waterline and land-adjacent water is capped
+     inside the shore steps, so a beach still reads as a beach whatever
+     the fields say. Seeded from the map seed and sampled in world space:
+     deterministic, bake-only, and re-derived with the field whenever the
+     water changes. Turn SLOPE_VAR and BAR_AMP to 0 for the old, even
+     distance field. --- */
+  SLOPE_VAR: 0.55,      // ± share by which the slope is scaled (0 = even everywhere)
+  SLOPE_FREQ: 0.07,     // per tile — a coast keeps its character for ~14 tiles
+  BAR_AMP: 0.9,         // tiles of bar and pocket added on top…
+  BAR_FREQ: 0.16,       // …at this frequency: bars a few tiles across
+  SLOPE_HOLD: 1.5,      // tiles over which both fields fade in from the waterline
+  /* …and every GAMEPLAY SHOAL rides its own sandbar. A shoal is shore
+     water where fish school close enough to line-fish from land
+     (MapGen.shoal — a hash of the tile, unmoved by anything here); it
+     used to look like any other shore tile, and the pale patches players
+     took for shoals were in fact the swell. Each one now shallows the
+     water around it by SHOAL_BAR tiles over SHOAL_BAR_R, ragged rather
+     than round, so it reads as a bar rising toward the surface and the
+     fishing spot is legible from the map. Visual only. --- */
+  SHOAL_BAR: 0.9,       // tiles of shallowing at a shoal's own cell
+  SHOAL_BAR_R: 2.4,     // tiles the bar reaches out into the water
+  /* --- the SWELL, which is what those pale blobs in open water were:
+     three long sine waves whose interference peaks paint every pixel of a
+     rounded region a shade lighter, and at the old gate that region was
+     several tiles across. SWELL_GATE raises the bar so only the crest
+     line itself catches the light, and the lift is now counted in RAMP
+     STEPS — one step for a crest, two for a glint — so a swell can never
+     again be a patch of a different colour. --- */
+  SWELL_GATE: 2.45,     // sine sum a pixel must beat to catch the light
+  SWELL_LIFT: 1,        // ramp steps a crest pixel is lifted…
+  GLINT_LIFT: 2,        // …and a pinpoint glint
   /* --- Part 4b′: THE SHORE SHADOW AND THE LIT LIP (Overhaul 2.3). The
      single biggest reason a top-down lake reads as having BANKS: the water
      is darker where it meets them. A darker band SHORE_SHADOW_W tiles wide
@@ -293,8 +333,11 @@ const LAND = {
      0 is every shoreline, as specified; 1 is only those. And, behind its
      own dial, a one-pixel LIT LIP on the land side of the shores that face
      the sun — the bank's catch-light — drawn in the shore layer. --- */
-  SHORE_SHADOW: 0.45,   // alpha of the band at the waterline; 0 switches it off
-                        // (0.28 vanished under the shelf wash; 0.45 reads as a bank)
+  SHORE_SHADOW: 0,      // alpha of the band at the waterline; 0 switches it off.
+                        // OFF by default: it cut the bright shallows off from
+                        // the beach, so a shallow tongue off a headland read as
+                        // a detached blob. The bathymetry above does the same
+                        // job — "this water has a floor" — without the cut
   SHORE_SHADOW_W: 1.0,  // tiles it reaches out from the shore
   SHORE_SHADOW_STEPS: 3,// dithered levels between the waterline and its outer edge
   SHORE_SHADOW_SUN: 0,  // 0 = every shoreline; 1 = only banks to the north and west
@@ -320,6 +363,9 @@ const LAND = {
   FOAM_DOTS: 1,         // blinking foam dots per shore tile (was 2)
   FISH_RISE: 6,         // px a jumping fish clears the water
   FISH_TIME: 0.4,       // seconds up (and the same down); 0 = the old flat flash
+  FISH_SIZE: 1,         // tiles across, for an AUTHORED fish (assets/fx/fish-N.png):
+                        // 1 draws the 32px strip 1:1, 2 doubles it — whole
+                        // numbers only, or the pixels go soft
   SPARKLE_GOLD: 1.5,    // sparkle alpha at the warm peak of the dusk cycle, × normal
   /* --- HILLS ARE RAISED GROUND, and must stay clearly less than a mountain.
      They are read at their EDGES: hillRelief draws the catch-light along the
@@ -624,7 +670,8 @@ const R = {
     this._latOne = { clump: this._mkLat(LAND.DECAL_CLUMP, 41), sand: this._mkLat(LAND.SAND_FREQ, 57),
                      edge: this._mkLat(LAND.EDGE_FREQ, 73), shoal: this._mkLat(LAND.SHOAL_FREQ, 97),
                      rock: this._mkLat(LAND.ROCK_EDGE_F, 113), grassM: this._mkLat(LAND.GRASS_MACRO_F, 131),
-                     hue: this._mkLat(LAND.HUE_FREQ, 1301), depth: this._mkLat(LAND.DEPTH_WANDER_F, 1307) };
+                     hue: this._mkLat(LAND.HUE_FREQ, 1301), depth: this._mkLat(LAND.DEPTH_WANDER_F, 1307),
+                     slope: this._mkLat(LAND.SLOPE_FREQ, 1321), bar: this._mkLat(LAND.BAR_FREQ, 1327) };
     return out;
   },
   /* the CLUMP FIELD — what decides where things grow at all. Nature clumps:
@@ -2305,14 +2352,66 @@ const R = {
       c = (x > 0 && y < H - 1) ? d[i + W - 1] + 4 : 4; if (c < m) m = c;
       d[i] = m;
     }
+    /* …AND THE FLOOR IS NOT A CONTOUR MAP OF THE COAST. Pure distance gives
+       every shoreline the same shelf at the same rate, which is what put a
+       uniform ring around every body at min zoom. Two seeded world-space
+       fields warp it into a landform (see the LAND block's Part 4b″): the
+       slope is scaled by a low-frequency field, a mid-frequency field adds
+       bars and pockets, both fade in over SLOPE_HOLD tiles so the beach is
+       untouched, and land-adjacent water is capped inside the shore steps
+       whatever they say. Sampled in world space from the map's own
+       lattices: identical on reload, and re-derived with the field. */
     const out = new Uint8Array(W * H), cap = Math.min(255, LAND.DEPTH_CAP * 16);
-    let maxD = 0;
-    for (let i = 0; i < d.length; i++) {
+    const SV = +LAND.SLOPE_VAR || 0, BA = +LAND.BAR_AMP || 0;
+    const HOLD = Math.max(0.1, +LAND.SLOPE_HOLD || 1), shoreCap = LAND.DEEP_SHORE_END - 0.1;
+    if (SV > 0 || BA > 0) this.landLattices();
+    const latS = (SV > 0 && this._latOne) ? this._latOne.slope : null;
+    const latB = (BA > 0 && this._latOne) ? this._latOne.bar : null;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x;
       if (!d[i]) continue;
-      const v = Math.round(d[i] * 16 / 3);
+      const raw = d[i] / 3;                                  // chamfer units → tiles
+      let dw = raw;
+      if (latS || latB) {
+        const t = Math.min(1, Math.max(0, (raw - 0.5) / HOLD));
+        const sc = latS ? (this._latRead(latS, x, y) - 0.5) * 2 * SV : 0;
+        const bar = latB ? (this._latRead(latB, x, y) - 0.5) * 2 * BA : 0;
+        dw = raw + (raw * sc + bar) * t;
+      }
+      if (dw < 0.5) dw = 0.5;
+      if (raw <= 1.05 && dw > shoreCap) dw = shoreCap;       // a beach stays a beach
+      const v = Math.round(dw * 16);
       out[i] = terr[i] === T.MOAT ? 16 : (v > cap ? cap : v);
-      if (out[i] > maxD) maxD = out[i];
     }
+    /* EVERY GAMEPLAY SHOAL RIDES A SANDBAR. MapGen.shoal is a pure hash of
+       the tile — nothing here moves a fishing spot — and the bar is cut
+       into the field rather than painted over it, so it comes out as one
+       or two ramp steps of shallowing that the shelf, the life decals and
+       the swell all sit on top of, never as a floating pale patch. The
+       radius is jittered per cell so a bar is ragged, not a disc. */
+    // …NOT `window.MapGen`: MapGen is a script-level const, so the window
+    // lookup is undefined and the guard would silently skip every bar (the
+    // same trap window.S sets, documented in CLAUDE.md and in rebuildTerrain)
+    const SB = +LAND.SHOAL_BAR || 0, SR = +LAND.SHOAL_BAR_R || 0;
+    if (SB > 0 && SR > 0 && typeof MapGen !== 'undefined' && MapGen.shoal) {
+      const r = Math.ceil(SR);
+      for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+        if (!MapGen.shoal(x, y)) continue;
+        for (let oy = -r; oy <= r; oy++) for (let ox = -r; ox <= r; ox++) {
+          const nx = x + ox, ny = y + oy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const k = ny * W + nx;
+          if (!out[k] || terr[k] === T.MOAT) continue;      // a dug channel keeps its flat depth
+          const dist = Math.hypot(ox, oy) * (0.82 + this._lh(nx, ny, 1331) * 0.36);
+          if (dist >= SR) continue;
+          const f = 1 - dist / SR;
+          const cut = Math.round(SB * 16 * f * f * (3 - 2 * f));
+          out[k] = out[k] - cut < 8 ? 8 : out[k] - cut;
+        }
+      }
+    }
+    let maxD = 0;
+    for (let i = 0; i < out.length; i++) if (out[i] > maxD) maxD = out[i];
     /* THE SHORE SHADOW'S OWN FIELD: distance from land that lies to the
        north or west — the forward chamfer pass alone (left, up, up-left),
        which reaches a wet cell only through cells above or to its left.
@@ -2354,7 +2453,8 @@ const R = {
   _deepCols() {
     const amp = Math.max(0, Math.min(1, +LAND.DEPTH_AMP || 0));
     const sat = Math.max(0, +LAND.DEEP_SAT || 0), lift = Math.max(-1, Math.min(1, +LAND.DEEP_LIFT || 0));
-    const key = amp + '|' + sat + '|' + lift;
+    const CL = Math.max(0, LAND.SWELL_LIFT | 0), GL = Math.max(0, LAND.GLINT_LIFT | 0);
+    const key = amp + '|' + sat + '|' + lift + '|' + CL + '|' + GL;
     if (this._deepC && this._deepC.key === key) return this._deepC;
     const W = ART.PALETTE.water, DR = ART.PALETTE.deep, n = DR.length;
     const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
@@ -2367,13 +2467,20 @@ const R = {
     };
     const mixFrom = (base, target) => { const A = hex(base); return toHex(A.map((v, i) => v + (target[i] - v) * amp)); };
     const step = k => adjust(hex(DR[Math.max(0, Math.min(n - 1, k))]));
+    /* A CREST IS A STEP OF THE RAMP, NOT A COLOUR OF ITS OWN. Lifting the
+       swell toward water[4] put a near-white cyan over the shallow steps,
+       which is half of why the shallows shouted; a crest is now simply the
+       ramp one step lighter (a glint two), clamped at the top so nothing
+       brighter than the ramp's own shallow end can appear anywhere. */
     const fill = [], crest = [], glint = [];
     for (let k = 0; k < n; k++) {
       fill.push(mixFrom(W[1], step(k)));
-      crest.push(mixFrom(W[2], k >= 3 ? step(k - 3) : hex(W[4])));
-      glint.push(mixFrom(W[3], k >= 5 ? step(k - 5) : hex(W[4])));
+      crest.push(mixFrom(W[2], step(k - CL)));
+      glint.push(mixFrom(W[3], step(k - GL)));
     }
-    this._deepC = { key, n, fill, crest, glint };
+    // where the body blue sits on the ramp — the step the flat water uses
+    const body = Math.max(0, DR.indexOf(W[1]));
+    this._deepC = { key, n, fill, crest, glint, body };
     return this._deepC;
   },
   /* THE SHORE SHADOW (Overhaul 2.3), painted into the SHORE LAYER — over
@@ -2730,10 +2837,10 @@ const R = {
     const bands = this._bandScr || (this._bandScr = new Uint8Array(256));
     let uniform = NS - 1;                   // the whole tile's step, or -1 when mixed
     const flat = !D || LAND.DEPTH_AMP <= 0;
-    if (flat) uniform = 9;                  // the body blue's own step, so crests keep their old shade
+    if (flat) uniform = cols.body;          // the body blue's own step, so crests keep their old shade
     let depth = null;
     if (flat) {
-      g.fillStyle = cols.fill[9];
+      g.fillStyle = cols.fill[cols.body];
       g.fillRect(x * TL, y * TL, TL, TL);
     } else {
       const CW = CFG.W, CH = CFG.H, E = this._deepEdges, NE = E.length;
@@ -2853,7 +2960,7 @@ const R = {
       let hh = (Math.imul(x * 16 + jx, 73856093) ^ Math.imul(y * 16 + jy, 19349663)) >>> 0;
       hh = ((Math.imul(hh ^ (hh >>> 13), 0x85ebca6b) >>> 0) >>> 8) / 16777215;
       // …in the band-local lighter shade, so a crest still reads over the deep
-      if (v > 2.05 + (hh - 0.5) * 0.5) g.fillStyle = cols.crest[bandAt(jx, jy)];
+      if (v > LAND.SWELL_GATE + (hh - 0.5) * 0.5) g.fillStyle = cols.crest[bandAt(jx, jy)];
       else continue;
       g.fillRect(x * TL + jx * px, y * TL + jy * px, px, px);
     }
@@ -8326,8 +8433,18 @@ const R = {
     const t = tw - ((h >>> 8) % 3) * 0.05;
     if (t < 0) return;
     const A = LAND.FISH_TIME * 2;
+    // the authored leap, when a strip is installed: the sprite walks the
+    // SAME arc the procedural fish flew, so nothing about the path, the
+    // splash or the gating changes — only what the fish looks like
+    const art = (window.Assets && Assets.fishFrames) ? Assets.fishFrames(h >>> 5) : null;
     if (t < A) {
       const k = t / A, rise = Math.round(Math.sin(k * Math.PI) * LAND.FISH_RISE);
+      if (art) {
+        const n = art.length, fr = art[Math.min(n - 1, (k * n) | 0)];
+        const s = Math.round(TL * LAND.FISH_SIZE), o = (TL - s) >> 1;
+        g.drawImage(fr, 0, 0, fr.width, fr.height, x * TL + o, y * TL + o - rise, s, s);
+        return;
+      }
       const fr = (k > 0.35 && k < 0.65 && F[2]) ? F[2] : F[0];
       g.drawImage(fr, x * TL, y * TL - rise);
       return;

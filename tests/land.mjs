@@ -1685,12 +1685,14 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       const D = R.waterDepth();
       out.len = D.length; out.max = Math.max.apply(null, Array.from(D)); out.cap16 = LAND.DEPTH_CAP * 16;
       out.edges = Array.from(R._deepEdges).map(e => +e.toFixed(2)); out.depthMax = R._depthMax;
+      // land-adjacent water stays inside the shore steps however the
+      // bathymetry warps it — a beach still reads as a beach
       let bad = 0, shoreOk = 0, shoreN = 0;
       for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
         const i = y * W + x;
         if (!wet(terr[i])) { if (D[i] !== 0) bad++; continue; }
         const touches = !wet(terr[i - 1]) || !wet(terr[i + 1]) || !wet(terr[i - W]) || !wet(terr[i + W]);
-        if (touches) { shoreN++; if (D[i] === 16) shoreOk++; }
+        if (touches) { shoreN++; if (D[i] >= 8 && D[i] <= LAND.DEEP_SHORE_END * 16) shoreOk++; }
         if (D[i] > LAND.DEPTH_CAP * 16) bad++;
       }
       out.bad = bad; out.shoreOk = shoreOk; out.shoreN = shoreN;
@@ -1788,14 +1790,14 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   await p.close();
   const f2 = (n) => (n == null ? '?' : (+n).toFixed(3));
   ck('theDepthFieldIsDistanceToLand', !v.thrown && v.bad === 0 && v.shoreN > 50 && v.shoreOk === v.shoreN && v.max <= v.cap16,
-    v.thrown || (v.shoreOk + '/' + v.shoreN + ' shore tiles at one tile, max ' + v.max + '/16 (cap ' + v.cap16 + '), ' + v.bad + ' bad cells'));
+    v.thrown || (v.shoreOk + '/' + v.shoreN + ' shore tiles inside the shore steps, max ' + v.max + '/16 (cap ' + v.cap16 + '), ' + v.bad + ' bad cells'));
   ck('andAMoatIsPinnedShallow', !v.thrown && v.moatD === 16, v.thrown || ('moat depth ' + v.moatD + '/16'));
-  ck('theStepEdgesAreFittedToTheMap', !v.thrown && v.edges && v.edges.length === 13 && v.edges.every((e, i) => i === 0 || e > v.edges[i - 1])
-    && v.edges[12] <= v.depthMax && v.edges[12] >= Math.min(v.depthMax, 4) - 1e-6,
+  ck('theStepEdgesAreFittedToTheMap', !v.thrown && v.edges && v.edges.length === LAND_STEPS(v) - 1 && v.edges.every((e, i) => i === 0 || e > v.edges[i - 1])
+    && v.edges[v.edges.length - 1] <= v.depthMax && v.edges[v.edges.length - 1] >= Math.min(v.depthMax, 4) - 1e-6,
     v.thrown || ('edges ' + JSON.stringify(v.edges) + ' for a deepest tile of ' + (v.depthMax || 0).toFixed(2)));
   ck('noStepEdgeFollowsTheTileGrid', !v.thrown && v.changes > 200 && v.onGrid <= v.changes * 0.25,
     v.thrown || (v.onGrid + ' of ' + v.changes + ' step changes on a tile boundary (the grid share is 1 in 8)'));
-  ck('theRampShowsItsSteps', !v.thrown && v.bands.length >= 12,
+  ck('theRampShowsItsSteps', !v.thrown && v.bands.length >= 14,
     v.thrown || (v.bands.length + ' distinct steps painted of ' + LAND_STEPS(v) + ': ' + JSON.stringify(v.bands)));
   ck('ampZeroIsTheFlatBody', !v.thrown && v.tintedAtZero === 0, v.thrown || (v.tintedAtZero + ' ramp-coloured pixels at DEPTH_AMP 0'));
   ck('noShelfLeavesTheWaterOnAConcaveBay', !v.thrown && v.carved >= 1 && v.shelfOutside === 0,
@@ -1806,7 +1808,82 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   Object.assign(res, { _water: { livingPassMs: f2(v.livingMs), livingPassBeforeMs: f2(v.frameOff), motionDeltaMs: f2(v.newWork),
     recordedFoamMs: f2(v.foamMs), recordedTilesMs: f2(v.tilesMs), waterViewPassMs: f2(v.waterLivingMs), flushMs: f2(v.flushMs) } });
 }
-function LAND_STEPS(v) { return 14; }
+function LAND_STEPS(v) { return 16; }
+
+/* ---- 21. THE RAMP, THE BATHYMETRY AND THE SANDBARS ----
+   The ramp is EVEN, which is the whole reason it was rebuilt in OKLab:
+   adjacent steps differ by roughly equal LIGHTNESS. Bunch the steps and
+   the eye reads the few big jumps as bands and ignores the rest — which
+   is exactly how the first cut of this ramp failed, sixteen steps that
+   read as four. water[1] and water[2] must still land ON the ramp so
+   every other water reference in the world matches it, and nothing in it
+   may be lighter than its own shallow end (near-white belongs to the
+   glints, not the body).
+
+   The floor is a LANDFORM, not a contour map of the coast: the warp must
+   actually move most of the water off the plain distance, come out
+   identical on a second derive, and still leave land-adjacent water
+   inside the shore steps so a beach reads as a beach. And every gameplay
+   shoal rides a bar cut INTO the field, never painted over it. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(boot + `
+    const out = {};
+    try {
+      // ---- R1: the ramp, measured in OKLab on the shipped hexes ----
+      const lin = c => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+      const okL = (hx) => {
+        const r = lin(parseInt(hx.slice(1, 3), 16) / 255), g2 = lin(parseInt(hx.slice(3, 5), 16) / 255), b = lin(parseInt(hx.slice(5, 7), 16) / 255);
+        const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g2 + 0.0514459929 * b);
+        const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g2 + 0.1073969566 * b);
+        const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g2 + 0.6299787005 * b);
+        return 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
+      };
+      const DR = ART.PALETTE.deep, Ls = DR.map(okL), dd = [];
+      for (let i = 1; i < Ls.length; i++) dd.push(Ls[i - 1] - Ls[i]);
+      out.n = DR.length;
+      out.minD = Math.min.apply(null, dd); out.maxD = Math.max.apply(null, dd);
+      out.ratio = out.maxD / out.minD;
+      out.monotone = dd.every(x => x > 0);
+      out.w1 = DR.indexOf(ART.PALETTE.water[1]); out.w2 = DR.indexOf(ART.PALETTE.water[2]);
+      out.shallowestIsLightest = Ls.every(l => l <= Ls[0] + 1e-9);
+      // ---- R2: the bathymetry ----
+      const W = CFG.W, H = CFG.H, terr = S.map.terrain, wet = t => t === T.WATER || t === T.MOAT;
+      const snap = () => { R._depthKey = ''; return Array.from(R.waterDepth()); };
+      const warped = snap(), again = snap();
+      out.deterministic = warped.every((x, i) => x === again[i]);
+      const sv = LAND.SLOPE_VAR, ba = LAND.BAR_AMP, sb = LAND.SHOAL_BAR;
+      LAND.SLOPE_VAR = 0; LAND.BAR_AMP = 0; LAND.SHOAL_BAR = 0;
+      const plain = snap();
+      LAND.SLOPE_VAR = sv; LAND.BAR_AMP = ba;
+      const noBar = snap();                       // warped, bars still off
+      LAND.SHOAL_BAR = sb;
+      const bars = snap();                        // …and the shipped field
+      let water = 0, moved = 0;
+      for (let i = 0; i < bars.length; i++) { if (!wet(terr[i])) continue; water++; if (Math.abs(warped[i] - plain[i]) >= 8) moved++; }
+      out.water = water; out.movedPct = Math.round(moved * 1000 / Math.max(1, water)) / 10;
+      // ---- R3: the sandbars ----
+      let shoals = 0, barred = 0, cells = 0;
+      for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+        const i = y * W + x;
+        if (MapGen.shoal(x, y)) { shoals++; if (bars[i] < noBar[i] || bars[i] <= 8) barred++; }
+        if (wet(terr[i]) && bars[i] < noBar[i]) cells++;
+      }
+      out.shoals = shoals; out.barred = barred; out.barCells = cells;
+    } catch (e) { out.thrown = String(e && e.stack || e); }
+    return out;`));
+  await p.close();
+  ck('theRampIsPerceptuallyEven', !v.thrown && v.n >= 15 && v.ratio <= 1.5 && v.monotone && v.shallowestIsLightest,
+    v.thrown || (v.n + ' steps, lightness delta ' + (v.minD || 0).toFixed(4) + '–' + (v.maxD || 0).toFixed(4) +
+      ', max/min ' + (v.ratio || 0).toFixed(2) + ' (pin ≤ 1.5)'));
+  ck('andTheWorldsOtherBluesLandOnIt', !v.thrown && v.w1 >= 0 && v.w2 >= 0,
+    v.thrown || ('water[1] at step ' + v.w1 + ', water[2] at step ' + v.w2));
+  ck('theBathymetryIsALandformNotAContourMap', !v.thrown && v.movedPct >= 25 && v.deterministic,
+    v.thrown || (v.movedPct + '% of ' + v.water + ' water cells warped off the plain distance by half a step or more' +
+      (v.deterministic ? ', identical on a second derive' : ', NOT DETERMINISTIC')));
+  ck('everyShoalRidesASandbar', !v.thrown && v.shoals > 5 && v.barred === v.shoals && v.barCells >= v.shoals * 3,
+    v.thrown || (v.barred + '/' + v.shoals + ' shoals shallowed, ' + v.barCells + ' cells raised by the bars'));
+}
 
 /* ---- 20. THE DEEP RAMP ACROSS MAP SIZES (the Overhaul, Part 0) ----
    The deep steps are fitted per MAP, never per region: the darkest step

@@ -80,34 +80,44 @@ offline static site.
 
 ## Palette notes
 
-- **`deep`** (the Water & Shoreline Overhaul, 2026-09; it supersedes the
-  four-band `basin` of LAND_REFRESH Phase 1, which read as four flat
-  colours): the water body's shore-to-heart ramp, **lightest first**
-  because it runs from the waterline outward, fourteen hard steps:
+- **`deep`** (the Water & Shoreline Overhaul, 2026-09): the water body's
+  shore-to-heart ramp, **lightest first** because it runs from the
+  waterline outward. **Sixteen steps interpolated in OKLab**, so every
+  adjacent pair differs by the same lightness — ΔL 0.021–0.024, max/min
+  **1.14**, pinned at ≤ 1.5 by `tests/land.mjs` §21:
 
-  | step | value | reads as |
-  |---|---|---|
-  | 0 | `#9dd5be` | sand showing through — `bone[2]` tinted toward turquoise |
-  | 1 | `#74d3c2` | sand-through, deeper |
-  | 2 | `#43d0c7` | clear shallow turquoise |
-  | 3 | `#2fc6c6` | shallow |
-  | 4 | `#2ca7af` | turquoise |
-  | 5 | `#2b8b9c` | mid teal |
-  | 6 | `#2b748c` | teal-blue |
-  | 7 | `#2e6b8a` | = `water[2]` |
-  | 8 | `#295b7a` | blue |
-  | 9 | `#265674` | = `water[1]`, the body |
-  | 10 | `#244d6b` | steel |
-  | 11 | `#214868` | steel, deeper |
-  | 12 | `#1e4364` | navy |
-  | 13 | `#1d4060` | the heart — at `water[0]`'s luminance (57), never below it, since the swell contract treats `water[0]` itself as a trough scratch |
+  | step | value | ΔL | | step | value | ΔL |
+  |---|---|---|---|---|---|---|
+  | 0 | `#8ba6a6` | — | | 8 | `#36728f` | .022 |
+  | 1 | `#82a0a1` | .021 | | 9 | `#2e6b8a` | .023 = `water[2]` |
+  | 2 | `#759a9e` | .023 | | 10 | `#2a6483` | .023 |
+  | 3 | `#69949c` | .022 | | 11 | `#2a5d7b` | .022 |
+  | 4 | `#608d97` | .024 | | 12 | `#265674` | .023 = `water[1]` |
+  | 5 | `#578692` | .024 | | 13 | `#244f6c` | .023 |
+  | 6 | `#4c8090` | .021 | | 14 | `#264864` | .022 |
+  | 7 | `#407990` | .023 | | 15 | `#23415c` | .024 the heart |
 
-  Saturation is deliberately higher than the basin's. Only `R.paintWater`
-  reads it; `water` keeps its indexes, which are load-bearing across
-  sprites, cards and the minimap. The step edges are fitted to each map's
-  measured depth (`LAND.DEEP_*` in `js/render.js`), the seams are stippled
-  (rule 5 as amended), `DEEP_SAT` / `DEEP_LIFT` are the bench's pull-back
-  knobs (identity at their defaults, so what ships is this table), and
+  Two rules make it read as one continuous transition instead of a few
+  bands. **Even lightness**: an RGB interpolation bunches its steps at one
+  end and the eye reads the bunching as banding — the first cut of this
+  ramp had enormous jumps between four anchors and tiny steps within them,
+  and it read as four colours. **Muted throughout**: hue drifts gently
+  from a warm aqua (OKLab h 197°) to slate blue (247°) while chroma stays
+  in a narrow band — **0.030** at the shallow end, *below the sand ramp's
+  own 0.045*, so shallows sit quietly beside a beach, rising only to
+  `water[2]`'s 0.080 in the middle. The first cut pushed saturation and
+  came back neon cyan, the loudest thing on the map. No near-white lives
+  in the ramp; the glints are their own layer.
+
+  `water[2]` and `water[1]` land on steps 9 and 12, so every other water
+  reference in the world still matches; step 15 sits at `water[0]`'s own
+  lightness without being `water[0]`, which the swell contract counts as a
+  trough scratch. Only `R.paintWater` reads this ramp — `water` keeps its
+  indexes, load-bearing across sprites, cards and the minimap. The step
+  edges are cut from a warped bathymetry field fitted to each map
+  (`LAND.DEEP_*`, `SLOPE_*`, `BAR_*`), the seams are stippled (rule 5 as
+  amended), `DEEP_SAT` / `DEEP_LIFT` are the bench's pull-back knobs
+  (identity at their defaults, so what ships is this table), and
   `DEPTH_AMP 0` restores the flat body byte for byte.
 
 ## Checklist for any new building / unit / icon

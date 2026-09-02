@@ -1127,10 +1127,15 @@ Tunables, all in the `LAND` block:
 | a pond shows too few steps / the shore steps are too coarse | lower `DEEP_SHORE_STEP`; `DEEP_SHORE_END` is where the fitted deep steps take over |
 | the heart never appears / a sea flattens into one navy | `DEEP_TOP_K` (share of the map's deepest tile the last edge sits at), `DEEP_TOP_MIN` (a map of ponds shows no heart below this) |
 | a step edge reads as a ring or a staircase | raise `DEPTH_WANDER`, `DEPTH_DITHER` (keep it under half a shore step); lower `DEPTH_WANDER_F` for a slower wander; `DEPTH_SUB` for finer cells |
-| the shallows read as a resort / the ramp is too loud | `DEEP_SAT` (saturation of every step), `DEEP_LIFT` (lightness nudge) — identity at 1 / 0 |
+| the shallows read as a resort / the ramp is too loud | `DEEP_SAT` (saturation of every step), `DEEP_LIFT` (lightness nudge) — identity at 1 / 0. The ramp itself is muted by construction; these are the pull-backs |
+| **every shoreline shelves at the same rate / a uniform ring at min zoom** | `SLOPE_VAR` (how much the slope varies from coast to coast), `SLOPE_FREQ` (how far a coast keeps its character) — 0 restores the plain distance field |
+| the open water wants bars, tongues and pockets | `BAR_AMP`, `BAR_FREQ`; `SLOPE_HOLD` is how far from the waterline both fields fade in |
+| a fishing shoal is invisible on the map | `SHOAL_BAR` (tiles of shallowing at a shoal), `SHOAL_BAR_R` (how far the bar reaches) |
+| pale rounded patches float in open water | that is the SWELL, not a shoal: raise `SWELL_GATE` so only the crest line catches light, and lower `SWELL_LIFT` / `GLINT_LIFT` (ramp steps, never a colour of their own) |
 | open water wants the old tonal blotches back | `WATER_WHISPER` (0 = off under the ramp; they read as smudges over the dark steps) |
-| the banks read flat / no sense of height | `SHORE_SHADOW` (the dark band on the water side), `SHORE_SHADOW_W`, `SHORE_SHADOW_STEPS`; `SHORE_SHADOW_SUN` leans it to the north and west banks |
+| the banks read flat / no sense of height | `SHORE_SHADOW` (the dark band on the water side — OFF by default: it cut the shallows off from the beach), `SHORE_SHADOW_W`, `SHORE_SHADOW_STEPS`, `SHORE_SHADOW_SUN` |
 | the sun-facing banks want a catch-light | `SHORE_LIP` (0 = off), `SHORE_LIP_W` |
+| the jumping fish is too small / too big | `FISH_SIZE` (whole tiles only, or the pixels go soft), `FISH_RISE`, `FISH_TIME` |
 | the waterline does not lap / laps too loud | `FOAM_LINE` (0 off), `FOAM_PULSE`, `FOAM_SPEED`, `FOAM_MINZ` (the zoom it starts at), `FOAM_DOTS` |
 | the fish flash instead of jumping | `FISH_TIME` (0 = the old flash), `FISH_RISE` |
 | golden hour leaves the water dull | `SPARKLE_GOLD` |

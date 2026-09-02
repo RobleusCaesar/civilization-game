@@ -433,6 +433,60 @@ const Assets = {
     return a[(i >>> 0) % a.length];
   },
 
+  /* ---- THE JUMPING FISH: one animation strip per variant --------------
+
+       assets/fx/fish-1.png, fish-2.png …
+
+     A horizontal strip of FISH_PX square frames, one per beat of the leap
+     — out of the water, over the arc, back down. R.drawFishJump walks the
+     strip along the arc it already drew, so the sprite replaces the FISH
+     and never the path, the splash ring, the droplets or the frequency
+     gating (shoal-often, open-water-rare). A missing file leaves the
+     procedural fish jumping, and a variant is picked per tile so a lake is
+     never one cloned fish.
+
+     Authored at 64px and shipped at 32 — the character canon's 2:1
+     downscale, done offline where a box filter and a palette snap can be
+     applied. Binary alpha is enforced here too: a soft edge over water is
+     exactly the halo the doctrine forbids. */
+  FISH_DIR: 'assets/fx/',
+  FISH_PX: 32,
+  FISH_MAX: 4,                    // most variant strips probed
+  fishArt: [],                    // [variant] -> [frame canvases…]
+  fishUrl(n) { return this.FISH_DIR + 'fish-' + n + '.png?v=' + (CFG.ART_V || 1); },
+  _tryFish(n) {
+    if (n > this.FISH_MAX) return;
+    const img = new Image();
+    img.onload = () => { if (this.setFishArt(n, img)) this._tryFish(n + 1); };
+    img.onerror = () => { /* no strip at this slot — the procedural fish jumps */ };
+    img.src = this.fishUrl(n);
+  },
+  setFishArt(n, img) {
+    const PX = this.FISH_PX;
+    if (!img || !img.width || img.height !== PX || img.width % PX) return false;
+    const frames = [];
+    for (let i = 0; i < img.width / PX; i++) {
+      const c = document.createElement('canvas'); c.width = PX; c.height = PX;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.drawImage(img, i * PX, 0, PX, PX, 0, 0, PX, PX);
+      try {
+        const d = g.getImageData(0, 0, PX, PX);
+        for (let k = 3; k < d.data.length; k += 4) d.data[k] = d.data[k] >= 128 ? 255 : 0;
+        g.putImageData(d, 0, 0);
+      } catch (e) { /* tainted on file:// — the strip still draws, unsnapped */ }
+      frames.push(c);
+    }
+    if (!frames.length) return false;
+    this.fishArt[n - 1] = frames;
+    return true;
+  },
+  // the frames of one fish variant, or null while the procedural fish stands
+  fishFrames(i) {
+    const a = this.fishArt.filter(Boolean);
+    return a.length ? a[(i >>> 0) % a.length] : null;
+  },
+
   /* ---- FORMATION ART: multi-tile drawn pieces over terrain REGIONS ----
 
        assets/terrain/formations/{terrain}/{terrain}-{W}x{H}-{shape}-{letter}.png
@@ -921,6 +975,7 @@ const Assets = {
     for (const k of Object.keys(T)) this._tryTerrain(T[k], 1);
     for (const tName of this.COVER_CATALOG)
       for (const slot of this.COVER_SLOTS) this._tryCover(tName, slot, 1);
+    this._tryFish(1);
     this.ready = true;
     return { ok: true, data: { slots: this.artSlots().length + this.campTribes().length } };
   },

@@ -16,20 +16,29 @@ const ART = (function () {
     soil:    ['#3c2c16', '#57431f', '#6b5433', '#82683f'],
     water:   ['#1c4258', '#265674', '#2e6b8a', '#4589ab', '#7fc0d8'],
     /* THE DEEP RAMP — the water body's shore-to-heart ramp (the Water &
-       Shoreline Overhaul, Part 0; R.paintWater), LIGHTEST FIRST because it
-       runs from the waterline outward: two sand-through steps (the beach
-       bone[2] tinted toward turquoise, the floor showing through the
-       shallows), clear turquoise into mid teal, water[2] and the body blue
-       water[1] unchanged in their places, then steel, navy and a heart
-       that sits AT the swell-trough scratch value (water[0]'s luminance,
-       57) and never below it. Fourteen hard steps with dithered seams read
-       as a continuous transition at play zoom while every pixel stays on
-       a ramp colour — ARTSTYLE rule 5 as amended. Saturation deliberately
-       higher than the four-band basin this replaces, which undershot.
-       Only paintWater reads this ramp; `water` keeps its indexes, which
-       are load-bearing across sprites, cards and the minimap. */
-    deep:    ['#9dd5be', '#74d3c2', '#43d0c7', '#2fc6c6', '#2ca7af', '#2b8b9c', '#2b748c',
-              '#2e6b8a', '#295b7a', '#265674', '#244d6b', '#214868', '#1e4364', '#1d4060'],
+       Shoreline Overhaul; R.paintWater), LIGHTEST FIRST because it runs
+       from the waterline outward. SIXTEEN steps interpolated in OKLab so
+       every adjacent pair differs by the SAME lightness (ΔL 0.021–0.024,
+       max/min 1.14), which is what makes the ladder read as one continuous
+       transition instead of a few bands — an RGB interpolation bunches its
+       steps at one end and the eye sees the bunching as banding, which is
+       exactly how the first cut of this ramp failed.
+
+       Hue drifts gently from a warm aqua (OKLab h 197) to slate blue (247)
+       and CHROMA STAYS IN A NARROW BAND: 0.030 at the shallow end — below
+       the sand ramp's own 0.045, so the shallows sit quietly beside a
+       beach instead of glowing — rising only to water[2]'s 0.080 in the
+       middle. The first cut pushed saturation and the shallows came back
+       neon cyan, the loudest thing on the map. No near-white lives here:
+       the glints are Gate B's business.
+
+       water[2] and water[1] land ON the ramp, at steps 9 and 12, so every
+       other water reference in the world still matches; step 15 sits at
+       water[0]'s own lightness without being water[0], which the swell
+       contract counts as a trough scratch. `water` keeps its indexes,
+       which are load-bearing across sprites, cards and the minimap. */
+    deep:    ['#8ba6a6', '#82a0a1', '#759a9e', '#69949c', '#608d97', '#578692', '#4c8090', '#407990',
+              '#36728f', '#2e6b8a', '#2a6483', '#2a5d7b', '#265674', '#244f6c', '#264864', '#23415c'],
     stone:   ['#4a4a44', '#6f6f66', '#8f8f86', '#adada2', '#c9c9bf'],
     ore:     ['#55544d', '#6f6e65', '#88867b', '#a09e91', '#b8b5a6', '#d0cdbe'],   // ORE boulders: light muted grey (lifted so deposits pop against the grass at a glance), cooler/greyer than the brown mountain `mrock` so they stay readable as mineable stone
     /* the DEPOSIT ramp — the ore knots that hug the mountain base draw in
