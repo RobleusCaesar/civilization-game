@@ -363,9 +363,26 @@ const LAND = {
   FOAM_DOTS: 1,         // blinking foam dots per shore tile (was 2)
   FISH_RISE: 6,         // px a jumping fish clears the water
   FISH_TIME: 0.4,       // seconds up (and the same down); 0 = the old flat flash
-  FISH_SIZE: 1,         // tiles across, for an AUTHORED fish (assets/fx/fish-N.png):
-                        // 1 draws the 32px strip 1:1, 2 doubles it — whole
-                        // numbers only, or the pixels go soft
+  FISH_SIZE: 0.5,       // tiles across, for an AUTHORED fish (assets/fx/fish-N.png).
+                        // The strips ship at 16px, so 0.5 draws them 1:1 — keep
+                        // this on halves of a tile or the pixels go soft
+  /* --- ONE FISH AT A TIME. Every eligible tile used to run the same 2.4s
+     clock, so thirty fish leapt in lockstep — sillier than no fish at all.
+     The map now shows ONE leap every FISH_EVERY seconds, on a tile chosen
+     from the water that is actually worth fishing (a MapGen.shoal whose
+     stock is at least FISH_STOCK of the best shoal's), rotating through
+     them so the same spot never repeats. Every other stretch of water gets
+     the ripple below instead — the surface still moves everywhere, but
+     only the good fishing announces itself. --- */
+  FISH_EVERY: 30,       // seconds between leaps, for the whole map
+  FISH_STOCK: 0.5,      // share of the richest shoal's stock a spot must hold
+  /* …and the quiet surface: a slow expanding ring on a hash-chosen share of
+     the water, each tile on its own staggered clock, so the lake breathes
+     without anything leaping out of it. */
+  RIPPLE: 0.20,         // alpha of the ring at its birth; 0 switches it off
+  RIPPLE_GATE: 5,       // one water tile in this many ever ripples
+  RIPPLE_EVERY: 7,      // seconds between one tile's own rings
+  RIPPLE_LEN: 1.5,      // seconds a ring takes to open and fade
   SPARKLE_GOLD: 1.5,    // sparkle alpha at the warm peak of the dusk cycle, × normal
   /* --- HILLS ARE RAISED GROUND, and must stay clearly less than a mountain.
      They are read at their EDGES: hillRelief draws the catch-light along the
@@ -3009,7 +3026,17 @@ const R = {
      stair steps behind a correctly-traced pond. Clipping fixes it, and doing
      the clip ONCE for a whole repaint rather than per tile is what makes it
      affordable. Runs after the ground pass and before the decals. */
-  paintWaterIn(g, x0, y0, x1, y1) {
+  /* `only`, when given, is the exact set of tile keys this call may paint.
+     THE RESTRICTION IS A SET, NOT A CLIP, and that is the whole point: the
+     body is painted inside waterBodyPath, a traced CURVE, whose clip edge
+     the canvas antialiases. Nesting a second clip inside it — which
+     drawTilesAt used to do to keep the repaint inside its reset ground —
+     makes the rasterizer intersect two coverage masks and round the
+     boundary pixels differently from the bake, which clips to the curve
+     alone. That was worth up to a dozen pixels of drift per repaint along
+     the waterline, byte-visible against a rebake and caught by
+     tests/wild-grass.mjs. A membership test costs nothing and is exact. */
+  paintWaterIn(g, x0, y0, x1, y1, only) {
     const terr = (S.map.seenTerrain || S.map.terrain), W = CFG.W;
     const wet = t => t === T.WATER || t === T.MOAT;
     x0 = Math.max(0, x0); y0 = Math.max(0, y0);
@@ -3046,6 +3073,7 @@ const R = {
     let edges = 0;
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       if (!wet(terr[y * W + x]) || !MapGen.onBoard(x, y)) continue;
+      if (only && !only.has(y * W + x)) continue;
       if (edgeOf(x, y)) { edges++; continue; }
       paint(x, y);
     }
@@ -3054,6 +3082,7 @@ const R = {
     g.clip(this.waterBodyPath());
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       if (!wet(terr[y * W + x]) || !MapGen.onBoard(x, y) || !edgeOf(x, y)) continue;
+      if (only && !only.has(y * W + x)) continue;
       paint(x, y);
     }
     g.restore();
@@ -4508,7 +4537,8 @@ const R = {
        ribbons. Rocks learned this first (the moat-dig measurement); now all
        three passes obey it, and the hammer scenario in tests/land.mjs pins
        cache == rebake byte for byte. */
-    if (gx1 >= gx0) this.clipTiles(g, groundL, () => this.paintWaterIn(g, gx0, gy0, gx1, gy1));
+    // …the water restricted by SET, not by a nested clip: see paintWaterIn
+    if (gx1 >= gx0) this.paintWaterIn(g, gx0, gy0, gx1, gy1, ground);
     this.clipBoard(g, () => {
       this.clipTiles(g, groundL, () => {
         for (const k of decoL) this.grassCover(g, k % W, (k / W) | 0, terr);
@@ -8385,11 +8415,23 @@ const R = {
       }
       if (prof) prof.foam += performance.now() - tA;
     }
-    // ---- the tile pass: drifting sparkle, foam dots, the fish ----
+    // ---- the tile pass: drifting sparkle, foam dots, ripples, the one fish ----
     const tB = prof ? performance.now() : 0;
-    const cyc = (t0 / 2.4) | 0, phase = (t0 / 2.4) % 1;
-    const jumping = phase < 0.55;                          // the window the old two-frame flash used
-    const fishFr = jumping ? Sprites.misc.fish[phase < 0.3 ? 0 : 1] : null;   // …and the flash itself, for FISH_TIME 0
+    /* WHICH FISH, AND WHEN. One leap per FISH_EVERY seconds: the epoch picks
+       a spot out of the good fishing water (rebuilt each epoch, so a shoal
+       that has been fished out drops off the list), and only that tile
+       animates. Everything else ripples. */
+    const every = Math.max(1, +LAND.FISH_EVERY || 30);
+    const ep = Math.floor(t0 / every);
+    if (ep !== this._fishEpoch) {
+      this._fishEpoch = ep;
+      const spots = this.fishSpots();
+      this._fishPick = spots.length ? spots[(Math.imul(ep + 1, 0x9e3779b1) >>> 8) % spots.length] : null;
+    }
+    const pick = this._fishPick, fishT = t0 - ep * every;
+    const fishOn = !!pick && fishT < LAND.FISH_TIME * 2 + 0.6;
+    const RA = +LAND.RIPPLE || 0, RG = Math.max(1, LAND.RIPPLE_GATE | 0);
+    const RE = Math.max(0.5, +LAND.RIPPLE_EVERY || 7), RL = Math.max(0.2, +LAND.RIPPLE_LEN || 1.5);
     // 1d, in two lines: at golden hour the sparkle brightens by SPARKLE_GOLD and warms
     const wk = Math.min(1, (this._dusk || this.dayPhase()).warm / 0.07);
     const spark = wk > 0.01 ? 'rgba(' + Math.round(190 + 65 * wk) + ',' + Math.round(224 - 10 * wk) + ',' + Math.round(238 - 88 * wk)
@@ -8426,21 +8468,45 @@ const R = {
         else if (landW) { g.fillRect(x * TL + 2, y * TL + o1, 2, 2); if (two) g.fillRect(x * TL + 3, y * TL + o2, 2, 2); }
         else { g.fillRect(x * TL + TL - 4, y * TL + o1, 2, 2); if (two) g.fillRect(x * TL + TL - 5, y * TL + o2, 2, 2); }
       }
-      if (jumping && S.map.resAmount[i]) {
-        // shoals (h % 9 shore tiles — the ones villagers can line-fish;
-        // MapGen.shoal uses the SAME hash, so the tell never lies) show
-        // jumping fish often: that's the sign to watch for. Open deep
-        // water keeps only the rare splash; barren shore water shows none.
-        const hf = (h ^ cyc * 83492791) >>> 0;
-        const nearLand = landN || landS || landW || landE;
-        if (nearLand ? (h % 9 === 0 && hf % 5 < 2) : hf % 31 === 0) {
-          if (LAND.FISH_TIME > 0) this.drawFishJump(g, x, y, h, phase * 2.4);
-          else g.drawImage(fishFr, x * TL, y * TL);
+      // the ONE leap, on the good fishing water this epoch chose
+      if (fishOn && x === pick[0] && y === pick[1]) this.drawFishJump(g, x, y, h, fishT);
+      // …and the quiet surface everywhere else: a slow ring on its own clock
+      else if (RA > 0 && (h % RG) === 0) {
+        const ph = t0 / RE + ((h >>> 7) % 997) / 997;
+        const k = (ph - Math.floor(ph)) * RE;                // seconds into this tile's cycle
+        if (k < RL) {
+          const kk = k / RL, lw = g.lineWidth;
+          g.globalAlpha = RA * (1 - kk) * (1 - kk);
+          g.strokeStyle = '#cfe6ee'; g.lineWidth = 1;
+          const rr = TL * (0.08 + kk * 0.26);
+          g.beginPath(); g.ellipse(x * TL + 16, y * TL + 16, rr, rr * 0.55, 0, 0, Math.PI * 2); g.stroke();
+          g.globalAlpha = 1; g.lineWidth = lw;
         }
       }
     }
     if (prof) { prof.tiles += performance.now() - tB; prof.frames++; }
   },
+  /* THE WATER WORTH FISHING: the shoals whose stock is still a real share
+     of the best one's. MapGen.shoal is a pure hash of the tile, so the set
+     of spots never moves; the STOCK does, so this is rebuilt each epoch
+     (once every FISH_EVERY seconds — an O(map) scan at that rate is
+     nothing) and a fished-out shoal quietly drops out of the rotation. */
+  _fishEpoch: -1, _fishPick: null,
+  fishSpots() {
+    if (typeof MapGen === 'undefined' || !MapGen.shoal || !S || !S.map || !S.map.resAmount) return [];
+    const W = CFG.W, H = CFG.H, res = S.map.resAmount, all = [];
+    let best = 0;
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x;
+      if (!res[i] || !MapGen.shoal(x, y)) continue;
+      all.push([x, y, res[i]]);
+      if (res[i] > best) best = res[i];
+    }
+    const floor = best * Math.max(0, Math.min(1, +LAND.FISH_STOCK || 0));
+    const rich = all.filter(s => s[2] >= floor);
+    return (rich.length ? rich : all).map(s => [s[0], s[1]]);
+  },
+
   /* ONE FISH, ONE JUMP (1c): tw is seconds into the cycle's jump window.
      A short per-tile delay so a lake full of shoals is not a metronome;
      then the arc — FISH_RISE px at the top of a sine over FISH_TIME up and

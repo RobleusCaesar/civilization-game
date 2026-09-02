@@ -1783,7 +1783,29 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       const onW = Math.min(passMs(60), passMs(60)) - base;
       out.waterFrame = onW; out.waterLivingMs = onW;
       setT();
-      out.gate = /nearLand \\? \\(h % 9 === 0 && hf % 5 < 2\\) : hf % 31 === 0/.test(R.drawLivingWater.toString());
+      /* ONE FISH AT A TIME, ON THE WATER WORTH FISHING. Thirty fish leaping
+         in lockstep on the same 2.4s clock was the reported silliness; the
+         map now shows one leap per FISH_EVERY seconds, on a shoal whose
+         stock is a real share of the best one's, rotating between them.
+         Walk the epochs and check who gets picked. */
+      const spots = R.fishSpots();
+      out.spots = spots.length;
+      const seen = {}; let offShoal = 0, poor = 0;
+      const resA = S.map.resAmount;
+      let best = 0;
+      for (let i = 0; i < resA.length; i++) if (MapGen.shoal(i % CFG.W, (i / CFG.W) | 0) && resA[i] > best) best = resA[i];
+      for (let e = 0; e < 30; e++) {
+        R.fishClock = e * LAND.FISH_EVERY + 0.2; R._fishEpoch = -1;
+        R.draw(0);
+        const pk = R._fishPick;
+        if (!pk) continue;
+        seen[pk[0] + ',' + pk[1]] = 1;
+        if (!MapGen.shoal(pk[0], pk[1])) offShoal++;
+        if (resA[pk[1] * CFG.W + pk[0]] < best * LAND.FISH_STOCK) poor++;
+      }
+      out.distinctPicks = Object.keys(seen).length;
+      out.offShoal = offShoal; out.poor = poor;
+      out.noLockstep = !/hf % 5 < 2|hf % 31 === 0/.test(R.drawLivingWater.toString());
       out.err = G.lastFrameError ? String(G.lastFrameError) : '';
     } catch (e) { out.thrown = String(e && e.stack || e); }
     return out;`));
@@ -1804,7 +1826,10 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     v.thrown || (v.shelfOutside + ' shelf pixels outside the body with ' + v.carved + ' inlets carved (' + v.shelfPxOnLand + ' on land-tile pixels inside it)'));
   ck('theLivingWaterFitsItsBudget', !v.thrown && v.livingMs < 0.4 && v.newWork < 0.4,
     v.thrown || ('the whole living-water pass, raster included: ' + f2(v.livingMs) + 'ms on the town view at z1.5 golden hour (was ' + f2(v.frameOff) + 'ms before 1b–1d: delta ' + f2(v.newWork) + 'ms; recorded foam ' + f2(v.foamMs) + ' + tiles ' + f2(v.tilesMs) + '); ' + f2(v.waterLivingMs) + 'ms on the water view; a flush alone ' + f2(v.flushMs) + 'ms'));
-  ck('theFishGatingIsUntouched', !v.thrown && v.gate && !v.err, v.thrown || v.err || 'shoal-often / open-water-rare, verbatim');
+  ck('oneFishAtATimeOnTheWaterWorthFishing',
+    !v.thrown && v.noLockstep && v.spots > 1 && v.distinctPicks > 1 && v.offShoal === 0 && v.poor === 0 && !v.err,
+    v.thrown || v.err || (v.spots + ' spots worth fishing, ' + v.distinctPicks + ' different ones chosen over 30 leaps, ' +
+      v.offShoal + ' off a shoal, ' + v.poor + ' below the stock floor'));
   Object.assign(res, { _water: { livingPassMs: f2(v.livingMs), livingPassBeforeMs: f2(v.frameOff), motionDeltaMs: f2(v.newWork),
     recordedFoamMs: f2(v.foamMs), recordedTilesMs: f2(v.tilesMs), waterViewPassMs: f2(v.waterLivingMs), flushMs: f2(v.flushMs) } });
 }

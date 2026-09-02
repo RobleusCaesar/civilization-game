@@ -445,12 +445,12 @@ const Assets = {
      procedural fish jumping, and a variant is picked per tile so a lake is
      never one cloned fish.
 
-     Authored at 64px and shipped at 32 — the character canon's 2:1
+     Authored at 64px and shipped at 16 — a 4:1 box downscale, done
      downscale, done offline where a box filter and a palette snap can be
      applied. Binary alpha is enforced here too: a soft edge over water is
      exactly the halo the doctrine forbids. */
   FISH_DIR: 'assets/fx/',
-  FISH_PX: 32,
+  FISH_PX: 16,
   FISH_MAX: 4,                    // most variant strips probed
   fishArt: [],                    // [variant] -> [frame canvases…]
   fishUrl(n) { return this.FISH_DIR + 'fish-' + n + '.png?v=' + (CFG.ART_V || 1); },
