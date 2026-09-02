@@ -202,6 +202,64 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
       }
     }
 
+    /* ---- 0b. THE TREE DOOR: single pieces compose the forest tiles ----
+       assets/terrain/trees/{style}-{size}-{letter}.png. A synthetic magenta
+       piece is installed the way a decoded PNG is; the composed tiles must
+       carry it, the canopy must stay closed, the tile grid must not move,
+       and clearing the catalog must restore the procedural wood to the
+       byte. */
+    {
+      const piece = (w, h) => {
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const g = c.getContext('2d');
+        g.fillStyle = 'rgb(230,20,230)';
+        g.beginPath(); g.arc(w / 2, h * 0.4, w * 0.42, 0, 7); g.fill();
+        g.fillStyle = 'rgb(120,70,40)'; g.fillRect((w >> 1) - 1, (h * 0.62) | 0, 2, h - ((h * 0.62) | 0));
+        return c;
+      };
+      ck('theTreeUrlsFollowTheConvention',
+        /assets\/terrain\/trees\/dome-l-a\.png\?v=/.test(Assets.treeUrl('dome', 'l', 'a')),
+        Assets.treeUrl('dome', 'l', 'a'));
+      const allSets = () => [...Sprites.terrain[T.FOREST], ...Sprites.terrainMed[T.FOREST], ...Sprites.terrainFull[T.FOREST]];
+      const snap = (arr) => arr.map(c => {
+        const d = c.getContext('2d').getImageData(0, 0, 32, 32).data;
+        let s = 0; for (let k = 0; k < d.length; k++) s = (Math.imul(s, 31) + d[k]) >>> 0; return s;
+      });
+      const denseCov = () => {
+        let op = 0, n = 0;
+        for (const c of Sprites.terrainFull[T.FOREST]) {
+          const d = c.getContext('2d').getImageData(0, 0, 32, 32).data;
+          for (let k = 3; k < d.length; k += 4) { n++; if (d[k]) op++; }
+        }
+        return op / n;
+      };
+      const pristine = snap(allSets()), covBefore = denseCov();
+      const terrHash = () => { const t = S.map && S.map.terrain; if (!t) return 'nomap'; let s = 0; for (let i = 0; i < t.length; i++) s = (Math.imul(s, 31) + t[i]) >>> 0; return s; };
+      const terrBefore = terrHash();
+      Assets.trees = {}; Assets.treesRev = 0;
+      Assets.setTreePiece('dome-l', piece(24, 28));
+      Assets.setTreePiece('dome-s', piece(12, 14));
+      const isMag = (d, k) => d[k] > 180 && d[k + 1] < 90 && d[k + 2] > 180;
+      let tilesWith = 0;
+      for (const c of allSets()) {
+        const d = c.getContext('2d').getImageData(0, 0, 32, 32).data;
+        let hit = 0;
+        for (let k = 0; k < d.length; k += 4) if (isMag(d, k)) hit++;
+        if (hit > 6) tilesWith++;
+      }
+      ck('authoredTreePiecesLandInTheComposedTiles', tilesWith >= 8,
+        tilesWith + ' of 24 forest tiles carry the installed piece (dome stands only — the rest fall through)');
+      const covAfter = denseCov();
+      ck('andTheCanopyStaysClosed', covAfter >= covBefore * 0.85,
+        Math.round(covAfter * 100) + '% dense-tile coverage composed vs ' + Math.round(covBefore * 100) + '% procedural');
+      ck('andTheTileGridNeverMoves', terrHash() === terrBefore, 'terrain hash drifted across a recompose');
+      Assets.trees = {}; Assets.treesRev = 0; Sprites.rebuildForest();
+      const back = snap(allSets());
+      ck('andAnEmptyCatalogIsTheOldWoodToTheByte',
+        back.length === pristine.length && back.every((v, i) => v === pristine[i]),
+        back.filter((v, i) => v !== pristine[i]).length + ' of ' + pristine.length + ' recomposed tiles differ from pristine');
+    }
+
     // ---- 1. the manifest is gone; the convention enumerates the slots ----
     ck('manifestIsGone', window.ASSET_MANIFEST === undefined, '');
     const slots = Assets.artSlots();

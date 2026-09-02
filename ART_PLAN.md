@@ -1308,3 +1308,37 @@ vivid enough to read as water would have been a promise the tile could not
 keep. See CLAUDE.md if the idea comes back.)
 
 Re-uploading a changed file under a name it already had? Bump `CFG.ART_V`.
+
+## Tree pieces: the forest door (single trees composed into tiles)
+
+`assets/terrain/trees/{style}-{size}-{letter}.png` — style ∈ `dome | oak |
+conifer | birch | stump | snag | log`, size ∈ `s | l`, letters from `a`,
+all lowercase. A 404 ends that style-size run; a partial catalog composes
+with procedural trees filling the gaps; an empty catalog leaves the
+procedural wood byte-identical. Same `?v=` cache-buster as everything.
+
+WHAT A PIECE IS. One tree at WORLD scale — an `l` piece on a canvas
+around 24px (authored 48px at 2 art-px per world-px and box-downscaled by
+exactly 2), an `s` piece around 12px — trunk base ON the bottom edge,
+centred; hard binary alpha; its own small dark contact shadow baked in
+(the composer draws no shadow under authored pieces). Frontal with the
+game's slight top-down lean, zero isometric, no ground plate. Every
+installed piece also bakes its mirror, so one letter is two stamps.
+
+THE TINT RULE (settled at Part 3): `hueTint` is the ONLY tint that
+touches tree pixels at runtime, and it applies to authored pieces exactly
+as it does to procedural ones — biome warmth, autumn, whatever ships
+later, all of it lands at runtime. Pieces are therefore authored NEUTRAL
+green on the documented tree ramp: no pre-baked warm or cool casts, no
+autumn variants in the catalog. A piece that ships tinted double-tints.
+
+COMPOSITION. `Sprites.rebuildForest()` re-renders the 28 forest tile
+canvases (8 sparse / 8 medium / 8 dense / 4 rare) and the stump tiles
+through the same seeds, lattice, jitter and density gradient as the
+procedural wood — the catalog changes which trees are stamps, never
+where trees stand, so occupancy and the tile grid are untouched (pinned
+in tests). The sparse fringe and medium perimeter keep whole trees: an
+authored piece that would overhang a contained tile falls back to the
+procedural tree at that slot. Tree-fall shears whichever canvas the tile
+shows; the whole-tile `forest.png` override outranks composition where
+it exists, exactly as before.

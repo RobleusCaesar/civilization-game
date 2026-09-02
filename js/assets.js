@@ -552,6 +552,71 @@ const Assets = {
     return true;
   },
 
+  /* ---- THE TREE DOOR: single-tree pieces composed into the forest tiles ----
+
+       assets/terrain/trees/{style}-{size}-{letter}.png
+       style ∈ dome|oak|conifer|birch|stump|snag|log, size ∈ s|l, letters
+       from 'a', all lowercase. Pieces ship at WORLD scale (an l tree is a
+       ~24px canvas, an s tree ~12px) with the trunk base on the bottom
+       edge, hard binary alpha; every installed piece also bakes its
+       MIRROR, so a catalog letter is two stamps. Sprites.rebuildForest
+       recomposes the 28 forest tile canvases through the same lattice,
+       jitter and density gradient the procedural wood uses — a partial
+       catalog composes with procedural trees filling the gaps, and no
+       catalog at all leaves the wood byte-identical. 404 is a look,
+       never an error. hueTint coats these pixels at runtime like every
+       tree pixel, so pieces are authored NEUTRAL green — no pre-baked
+       warm or cool casts (ART_PLAN: the tint rule). */
+  TREES_DIR: 'assets/terrain/trees/',
+  TREE_STYLES: ['dome', 'oak', 'conifer', 'birch', 'stump', 'snag', 'log'],
+  trees: {}, treesRev: 0,
+  treeUrl(style, size, letter) { return this.TREES_DIR + style + '-' + size + '-' + letter + '.png?v=' + (CFG.ART_V || 1); },
+  _tryTrees() {
+    for (const style of this.TREE_STYLES) for (const size of ['s', 'l'])
+      this._tryTreePiece(style, size, 0);
+  },
+  _tryTreePiece(style, size, li) {
+    if (li >= 6) return;                          // letters a..f, the cascade stops at the first 404
+    const img = new Image();
+    img.onload = () => { this.setTreePiece(style + '-' + size, img); this._tryTreePiece(style, size, li + 1); };
+    img.onerror = () => { /* the catalog ends here — procedural fills the gaps */ };
+    img.src = this.treeUrl(style, size, String.fromCharCode(97 + li));
+  },
+  setTreePiece(key, img) {
+    if (!img || !img.width || !img.height) return false;
+    const cut = (flip) => {
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      if (flip) { g.translate(img.width, 0); g.scale(-1, 1); }
+      g.drawImage(img, 0, 0);
+      try {
+        const d = g.getImageData(0, 0, c.width, c.height);
+        for (let k = 3; k < d.data.length; k += 4) d.data[k] = d.data[k] >= 128 ? 255 : 0;
+        g.putImageData(d, 0, 0);
+      } catch (e) { /* tainted on file:// — the piece still draws */ }
+      return c;
+    };
+    const a = this.trees[key] || (this.trees[key] = []);
+    a.push(cut(false), cut(true));                // the piece and its pre-baked mirror
+    this.treesRev++;
+    // NOT `window.Sprites` — Sprites is a script-level const, so that guard
+    // is silently false forever (the cards.js ART lesson, again)
+    if (typeof Sprites !== 'undefined' && Sprites.rebuildForest) Sprites.rebuildForest();
+    if (typeof R !== 'undefined' && typeof R.rebuildTerrain === 'function') R.rebuildTerrain();
+    return true;
+  },
+  /* the composer's pick: a piece for this kind at this radius, or null.
+     rr under 7 reaches for the small tier, either tier stands in for a
+     missing other, and h picks the letter and mirror deterministically. */
+  treePiece(kind, rr, h) {
+    const style = kind === 'round' ? 'dome' : kind;
+    const a = this.trees[style + '-' + (rr >= 7 ? 'l' : 's')]
+      || this.trees[style + '-' + (rr >= 7 ? 's' : 'l')];
+    if (!a || !a.length) return null;
+    return a[(h >>> 0) % a.length];
+  },
+
   /* ---- FORMATION ART: multi-tile drawn pieces over terrain REGIONS ----
 
        assets/terrain/formations/{terrain}/{terrain}-{W}x{H}-{shape}-{letter}.png
@@ -1042,6 +1107,7 @@ const Assets = {
       for (const slot of this.COVER_SLOTS) this._tryCover(tName, slot, 1);
     this._tryFish(1);
     this._tryWaterFx();
+    this._tryTrees();
     this.ready = true;
     return { ok: true, data: { slots: this.artSlots().length + this.campTribes().length } };
   },

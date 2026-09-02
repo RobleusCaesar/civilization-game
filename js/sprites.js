@@ -274,6 +274,28 @@ const Sprites = {
   // tile edge, so foliage from both sides buries the boundary and neighbouring
   // tiles blend with no visible seam. Density = tree count (sparse edge -> dense
   // core), chosen per tile in render.js from how enclosed it is.
+  /* THE ART DOOR. An authored piece stands in for the procedural tree when
+     the catalog has one (Assets.treePiece — assets/terrain/trees/), anchored
+     where the procedural trunk meets the ground, letter and mirror picked
+     by a position hash so a stand never repeats one stamp in step. When
+     `contained` (the sparse fringe and medium perimeter, whose border must
+     show whole trees), a piece that would overhang the tile falls back to
+     the procedural tree. Authored pieces carry their own contact shadow, so
+     no procedural shadow is added under them. A partial catalog composes
+     with procedural filling the gaps; no catalog is the old wood untouched. */
+  function doorTree(p, f, cx, cy, rr, ramp, kind, contained, seed) {
+    const art = (typeof Assets !== 'undefined' && Assets.treePiece)
+      ? Assets.treePiece(kind, rr, (cx * 73856093 ^ cy * 19349663 ^ (seed | 1) * 83492791) >>> 0) : null;
+    if (art) {
+      const foot = cy + Math.round(rr * (kind === 'conifer' ? 0.75 : 1)) + 3;
+      const ax = cx - (art.width >> 1), ay = foot - art.height;
+      if (!contained || (ax >= 0 && ay >= 0 && ax + art.width <= 32 && foot <= 32)) {
+        p.g.drawImage(art, ax, ay);
+        return;
+      }
+    }
+    tree(f, cx, cy, rr, ramp, kind);
+  }
   function forestTile(p, seed, level) {
     const f = p.f, r = ART.rng(seed | 1);
     const trees = [];
@@ -331,14 +353,15 @@ const Sprites = {
       }
     }
     trees.sort((a, b) => a[1] - b[1]);
-    for (const [cx, cy, rr, ramp, kind] of trees) tree(f, cx, cy, rr, ramp, kind);
+    for (const [cx, cy, rr, ramp, kind] of trees)
+      doorTree(p, f, cx, cy, rr, ramp, kind, level !== 2, seed);
   }
   // CHARACTER tiles — one-offs sprinkled rarely deep in the wood for flavour: a
   // fallen mossy log, a logged clearing of cut stumps, an overgrown bramble patch.
   function forestChar(p, seed, kind) {
     const f = p.f, r = ART.rng(seed | 1);
     const ring = [[2, 3], [16, 1], [30, 4], [1, 18], [31, 20], [4, 30], [18, 31], [30, 30]];  // trees straddling edges frame the feature
-    for (const [gx, gy] of ring) { if (r() < 0.2) continue; tree(f, gx + ((r() * 3) | 0), gy + ((r() * 3) | 0), 5 + (r() * 2 | 0), leafPick(r)); }
+    for (const [gx, gy] of ring) { if (r() < 0.2) continue; doorTree(p, f, gx + ((r() * 3) | 0), gy + ((r() * 3) | 0), 5 + (r() * 2 | 0), leafPick(r), 'round', false, seed); }
     if (kind === 'log') {
       f(9, 18, 15, 3, AP.wood[1]); f(9, 17, 15, 1, AP.wood[3]); f(23, 17, 2, 2, AP.wood[4]);   // trunk + cut end
       f(12, 18, 1, 1, AP.leaf[3]); f(17, 19, 1, 1, AP.leaf[3]); f(20, 18, 1, 1, AP.leaf[4]);   // moss
@@ -372,6 +395,21 @@ const Sprites = {
     tile(p => forestChar(p, 71, 'log')), tile(p => forestChar(p, 133, 'stumps')),
     tile(p => forestChar(p, 209, 'brambles')), tile(p => forestChar(p, 288, 'log')),
   ];
+  /* THE DOOR'S REBUILD: recompose every forest-owned canvas through the
+     same builders, exactly as at load — called by Assets.setTreePiece when
+     a tree piece decodes (and by the ?dev=1 drop), then the render layer
+     is asked to repaint. Same seeds, same lattice, same density gradient:
+     the only thing that changes is which trees come from the catalog. */
+  Sprites.rebuildForest = () => {
+    Sprites.terrain[T.FOREST] = forestSet(11, 0, 8);
+    Sprites.terrainMed[T.FOREST] = forestSet(400, 1, 8);
+    Sprites.terrainFull[T.FOREST] = forestSet(800, 2, 8);
+    Sprites.terrainRare[T.FOREST] = [
+      tile(p => forestChar(p, 71, 'log')), tile(p => forestChar(p, 133, 'stumps')),
+      tile(p => forestChar(p, 209, 'brambles')), tile(p => forestChar(p, 288, 'log')),
+    ];
+    Sprites.terrain[T.STUMPS] = buildStumpTiles();
+  };
 
   // Water — the hero. [0] = shallow (near land, lighter), [1] = deep interior.
   // A rolling swell of four blues drawn at the fine grid: darker troughs, lighter
@@ -967,10 +1005,19 @@ const Sprites = {
     f(x + 1, y, 4, 1, AP.bone[1]); f(x + 2, y + 1, 2, 1, AP.wood[3]);   // rings
     f(x + 4, y + 2, 1, 2, AP.wood[0]);                            // axe notch
   }
-  Sprites.terrain[T.STUMPS] = [
-    tile(p => { drawStump(p, 5, 7); drawStump(p, 19, 17); drawStump(p, 9, 23); }),
-    tile(p => { drawStump(p, 17, 5); drawStump(p, 7, 15); drawStump(p, 23, 23); }),
+  // the stump slots are on the tree door too: an authored stump piece
+  // (assets/terrain/trees/stump-*.png) stands in per slot when it exists
+  const doorStump = (p, x, y) => {
+    const art = (typeof Assets !== 'undefined' && Assets.treePiece)
+      ? Assets.treePiece('stump', 4, (x * 73856093 ^ y * 19349663) >>> 0) : null;
+    if (art) p.g.drawImage(art, x - (art.width >> 1), y + 4 - art.height);
+    else drawStump(p, x, y);
+  };
+  const buildStumpTiles = () => [
+    tile(p => { doorStump(p, 5, 7); doorStump(p, 19, 17); doorStump(p, 9, 23); }),
+    tile(p => { doorStump(p, 17, 5); doorStump(p, 7, 15); doorStump(p, 23, 23); }),
   ];
+  Sprites.terrain[T.STUMPS] = buildStumpTiles();
   // spent quarry: a couple of leftover rocks, a cracked cut slab, loose scree
   Sprites.terrain[T.PEBBLES] = [
     tile(p => {
