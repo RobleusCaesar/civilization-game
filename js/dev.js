@@ -950,6 +950,55 @@
       R.clampCam();
       return true;
     },
+    /* ---- the edit-cost readout: tests/land.mjs §18's terrain-edit
+       measurement, run on THIS device against the map on screen. The gate
+       is baselined on a desktop in headless Chromium; the phone in hand is
+       the real target, and this is the one tap that puts its number beside
+       the gate's. Two 7x7 workloads are found on the current map — open
+       grass with no water within 8 tiles, and a shore patch of 15–34 water
+       tiles — each timed as whole batches of 49 drawTileAt (mean per edit:
+       performance.now() is clamped, so single edits cannot be timed), the
+       MIN over 9 batches after two warm-ups. ~1,100 repaints of pixels that
+       come out identical (the repaint is byte-exact), so a second or two
+       and nothing visible. ---- */
+    EDIT_GATE: { grass: 1.01, shore: 2.56 },   // the desktop gate (tests/land.mjs §18), for the readout
+    benchEditCost() {
+      if (!window.R || !R.terrainCache || typeof S === 'undefined' || !S || !S.map) return 'no map';
+      const W = CFG.W, H = CFG.H, terr = S.map.terrain;
+      const near = (cx, cy, r) => {
+        for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+          const x = cx + dx, y = cy + dy;
+          if (x >= 0 && y >= 0 && x < W && y < H && terr[y * W + x] === T.WATER) return true;
+        }
+        return false;
+      };
+      let gp = null, sp = null;
+      for (let y = 2; y < H - 9 && !(gp && sp); y++) for (let x = 2; x < W - 9 && !(gp && sp); x++) {
+        let grass = 0, water = 0;
+        for (let dy = 0; dy < 7; dy++) for (let dx = 0; dx < 7; dx++) {
+          const t = terr[(y + dy) * W + x + dx];
+          if (t === T.GRASS) grass++; else if (t === T.WATER) water++;
+        }
+        if (!gp && grass === 49 && !near(x + 3, y + 3, 8)) gp = [x, y];
+        if (!sp && water >= 15 && water <= 34) sp = [x, y];
+      }
+      const batch = (p) => {
+        const t = performance.now();
+        for (let dy = 0; dy < 7; dy++) for (let dx = 0; dx < 7; dx++) R.drawTileAt(p[0] + dx, p[1] + dy);
+        return (performance.now() - t) / 49;
+      };
+      const minOfMeans = (p) => {
+        if (!p) return null;
+        batch(p); batch(p);
+        let m = Infinity;
+        for (let k = 0; k < 9; k++) m = Math.min(m, batch(p));
+        return m;
+      };
+      const eg = minOfMeans(gp), es = minOfMeans(sp);
+      const f = v => v == null ? 'n/a' : v.toFixed(2) + 'ms';
+      return 'edit: grass ' + f(eg) + ' · shore ' + f(es) + '  (desktop gate ' +
+        this.EDIT_GATE.grass + ' / ' + this.EDIT_GATE.shore + ')';
+    },
     _benchPanel() {
       const bn = this._bench;
       const p = document.createElement('div');
@@ -981,10 +1030,18 @@
         '<button id="dbCopy" style="font:11px monospace">copy values</button></div>' +
         '<textarea id="dbOut" style="display:none;width:100%;height:80px;font:10px monospace;background:#1a140e;color:#9d9;border:1px solid #4a3c28"></textarea>' +
         '<div id="dbRows"></div>' +
+        '<div style="display:flex;gap:6px;align-items:center;margin:6px 0 2px">' +
+        '<button id="dbEdit" style="font:11px monospace">edit ms</button>' +
+        '<span id="dbPerf" style="opacity:.8;font:10px monospace"></span></div>' +
         '<div style="opacity:.55;font:10px monospace;margin-top:6px">a dial re-derives and bakes the whole map (~250ms after the last change)</div>';
       document.body.appendChild(p);
       bn.panel = p;
       p.querySelector('#dbClose').onclick = () => this._benchClose();
+      p.querySelector('#dbEdit').onclick = () => {
+        const el = p.querySelector('#dbPerf');
+        el.textContent = 'measuring…';
+        setTimeout(() => { el.textContent = this.benchEditCost(); }, 30);
+      };
       p.querySelector('#dbSnapA').onclick = () => this.benchSnap(0);
       p.querySelector('#dbSnapB').onclick = () => this.benchSnap(1);
       p.querySelector('#dbFlip').onclick = () => this.benchFlip();

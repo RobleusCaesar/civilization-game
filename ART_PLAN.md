@@ -1122,7 +1122,10 @@ snapshots BLIND (labels shuffled; *reveal* after choosing), *save cam / go*
 bookmarks seed + camera so before/after shots are pixel-comparable across
 reloads, and *golden hour* holds the dusk cycle's warm peak for the one warm
 shot every phase owes. The perf gates in `tests/land.mjs` §18 are what stop a
-tuning session from shipping a regression.
+tuning session from shipping a regression — and *edit ms* runs §18's
+terrain-edit measurement on the device in hand (an open-grass patch and a
+shore patch, batch-timed), because the gate is baselined on a desktop and
+the phone's number is the truth.
 | a resource cluster shows tile-shaped patches | raise `BLOCK_FADE`, soften the density taper |
 | a tile grid is visible in flat ground | `TONE_SUB` (must stay above 1), `TONE_STEPS` |
 | hills read flat | raise `HILL_SHADOW`, `HILL_SHADOW_MAX` |

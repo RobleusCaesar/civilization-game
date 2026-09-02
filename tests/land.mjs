@@ -1529,17 +1529,48 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
    standard xlarge fixture; a terrain edit through the real repaint path;
    the world pass of one frame at default zoom; and the static rule that
    nothing in R.draw's own body creates a canvas or reads pixels back.
-   Headless Chromium is slower and noisier than a phone in hand, so every
-   timing gate carries a generous CI multiplier — the LIVE targets are
-   printed beside the numbers so a creeping regression shows in the log
-   long before it trips the gate. The bench (js/dev.js) is what tunes
-   against these; this is what stops a tuning session from shipping a
-   regression. */
+   The bench (js/dev.js) is what tunes against these; this is what stops
+   a tuning session from shipping a regression.
+
+   HOW THE EDIT IS MEASURED, AND WHY THE OLD WAY COULD NOT FAIL.
+   performance.now() is clamped — 0.1ms in headless Chromium, 1ms in
+   WebKit — so timing ONE drawTileAt answers 0.6 or 0.7 and nothing between.
+   And the old 9x9 patch at (20,20) on verify7 was half grass, half water:
+   an open-ground edit is ~0.8ms here, an edit within two tiles of water is
+   2–4ms (paintWaterIn clips to the whole map's water outline), and a
+   per-call MEDIAN only ever saw the cheap half. With a 4x "CI multiplier"
+   stacked on top, the gate had never been able to trip on merit.
+
+   NOW: two NAMED workloads, each a 7x7 patch whose composition is asserted
+   so a generator change fails loudly instead of silently re-baselining —
+   open grass with no water within 8 tiles, and a shore patch of 15–34 water
+   tiles. Each is timed as WHOLE BATCHES of 49 edits (mean per edit) after
+   two warm-up batches, and the statistic is the MIN over 9 batches, which
+   is the one that repeats: ±3% on grass, ±7% on the shore across fresh
+   pages on the baseline machine. The gate is that baseline + 10%, with no
+   multiplier. Machine noise is filtered the honest way — a failing gate is
+   re-measured ONCE on a fresh page and the better run counts; a real
+   regression fails both. Run it on a quiet machine.
+
+   BASELINE, 2026-09-01: AMD Ryzen 7 7730U @ 2.0GHz (16 threads), 15.4GB,
+   Windows 11 Home; Node 24.14.0; Playwright 1.62.1 headless Chromium 151.
+   In THIS suite, at this point in the run (the harness state is part of
+   the measurement — a cold standalone page reads ~8% lower): grass
+   0.89–0.92ms, shore 2.27–2.33ms over three runs; standalone fresh pages
+   read grass 0.82–0.84ms, shore 2.12–2.28ms. The gate is the in-suite
+   worst + 10%. The nearest Safari proxy that runs here — Playwright WebKit
+   26.5 on the same machine, a software-rasterised Canvas 2D — measured
+   grass 1.1–1.5ms and shore 3.0–3.1ms; a data point, not a gate. The real
+   target is the phone in hand, and the bench's "edit ms" button runs this
+   exact measurement there (DevArt.benchEditCost), which is how the number
+   gets re-baselined against the truth. */
 {
-  const CI = 4;                                   // headless multiplier on every live target
-  const LIVE = { bakeMs: 1300, editMs: 0.33 * 1.1, frameP95: 1.5 };
-  const p = await page();
-  const v = await p.evaluate(new Function(`
+  const LIVE = { bakeMs: 1300, frameP95: 1.5 };   // LAND_REFRESH's own ceilings, no multiplier
+  const EDIT = { grassMs: 1.01, shoreMs: 2.56 };  // in-suite baseline 0.92 / 2.33 + 10%, see above
+  const GRASS_AT = [12, 16], SHORE_AT = [41, 8];  // the two 7x7 workloads on verify7 xlarge
+  const measure = async () => {
+    const p = await page();
+    const v = await p.evaluate(new Function(`
     const out = {};
     try {
       const bakeOf = (seed) => {
@@ -1554,11 +1585,16 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       };
       out.bakeWorst = bakeOf('scenes1');
       out.bakeStd = bakeOf('verify7');
-      // a terrain edit through the real path, on the standard map
-      const one = [];
-      for (let k = 0; k < 200; k++) { const t = performance.now(); R.drawTileAt(20 + (k % 9), 20 + ((k / 9) | 0) % 9); one.push(performance.now() - t); }
-      one.sort((a, b) => a - b);
-      out.editMed = one[100]; out.editP95 = one[190];
+      // the two edit workloads, through the real path, on the standard map
+      const W = CFG.W, H = CFG.H, terr = S.map.terrain;
+      const patch = (x0, y0) => { let grass = 0, water = 0; for (let dy = 0; dy < 7; dy++) for (let dx = 0; dx < 7; dx++) { const t = terr[(y0 + dy) * W + x0 + dx]; if (t === T.GRASS) grass++; if (t === T.WATER) water++; } return { grass, water }; };
+      const nearWater = (cx, cy, r) => { for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const x = cx + dx, y = cy + dy; if (x >= 0 && y >= 0 && x < W && y < H && terr[y * W + x] === T.WATER) return true; } return false; };
+      out.grassPatch = patch(${GRASS_AT[0]}, ${GRASS_AT[1]}); out.grassNearWater = nearWater(${GRASS_AT[0] + 3}, ${GRASS_AT[1] + 3}, 8);
+      out.shorePatch = patch(${SHORE_AT[0]}, ${SHORE_AT[1]});
+      const batch = (x0, y0) => { const t = performance.now(); for (let dy = 0; dy < 7; dy++) for (let dx = 0; dx < 7; dx++) R.drawTileAt(x0 + dx, y0 + dy); return (performance.now() - t) / 49; };
+      const minOfMeans = (x0, y0) => { batch(x0, y0); batch(x0, y0); let m = Infinity; for (let k = 0; k < 9; k++) m = Math.min(m, batch(x0, y0)); return m; };
+      out.editGrass = minOfMeans(${GRASS_AT[0]}, ${GRASS_AT[1]});
+      out.editShore = minOfMeans(${SHORE_AT[0]}, ${SHORE_AT[1]});
       // the world pass at default zoom, framed on the town
       R.cam.z = 1.5; const tc = Bld.tcOf('P'); if (tc) R.centerOn(tc.x + 0.5, tc.y + 0.5);
       R.draw(0.016);                                // fog and any lazy layer settle first
@@ -1569,17 +1605,31 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       out.err = G.lastFrameError ? String(G.lastFrameError) : '';
     } catch (e) { out.thrown = String(e); }
     return out;`));
-  await p.close();
+    await p.close();
+    return v;
+  };
+  let v = await measure();
+  const editsOk = (w) => !w.thrown && w.editGrass < EDIT.grassMs && w.editShore < EDIT.shoreMs;
+  if (!editsOk(v)) {                              // one honest retry against machine noise
+    const w = await measure();
+    if (!w.thrown) v = Object.assign({}, w, { editGrass: Math.min(v.editGrass ?? Infinity, w.editGrass), editShore: Math.min(v.editShore ?? Infinity, w.editShore),
+      bakeWorst: Math.min(v.bakeWorst ?? Infinity, w.bakeWorst), frameP95: Math.min(v.frameP95 ?? Infinity, w.frameP95), retried: true });
+  }
   const f1 = (n) => (n == null ? '?' : (+n).toFixed(2));
   Object.assign(res, { _perfGates: { bakeWorstMs: f1(v.bakeWorst), bakeStdMs: f1(v.bakeStd),
-    editMedMs: f1(v.editMed), editP95Ms: f1(v.editP95), frameMedMs: f1(v.frameMed), frameP95Ms: f1(v.frameP95),
-    live: LIVE, ci: CI } });
-  ck('theFirstBakeStaysUnderTheCeiling', !v.thrown && v.bakeWorst < LIVE.bakeMs * CI,
-    v.thrown || (f1(v.bakeWorst) + 'ms worst map (live target ' + LIVE.bakeMs + 'ms), ' + f1(v.bakeStd) + 'ms standard'));
-  ck('aTerrainEditStaysWithinTenPercent', !v.thrown && v.editMed < LIVE.editMs * CI,
-    v.thrown || (f1(v.editMed) + 'ms median (live target ' + LIVE.editMs.toFixed(2) + 'ms)'));
-  ck('theWorldPassFrameStaysCheap', !v.thrown && v.frameP95 < LIVE.frameP95 * CI,
-    v.thrown || (f1(v.frameP95) + 'ms p95 (live target ' + LIVE.frameP95 + 'ms)'));
+    editGrassMs: f1(v.editGrass), editShoreMs: f1(v.editShore), frameMedMs: f1(v.frameMed), frameP95Ms: f1(v.frameP95),
+    live: LIVE, edit: EDIT, retried: !!v.retried } });
+  ck('theFirstBakeStaysUnderTheCeiling', !v.thrown && v.bakeWorst < LIVE.bakeMs,
+    v.thrown || (f1(v.bakeWorst) + 'ms worst map (ceiling ' + LIVE.bakeMs + 'ms), ' + f1(v.bakeStd) + 'ms standard'));
+  ck('theEditWorkloadsAreWhatTheyClaim', !v.thrown && v.grassPatch && v.grassPatch.grass === 49 && !v.grassNearWater
+    && v.shorePatch && v.shorePatch.water >= 15 && v.shorePatch.water <= 34,
+    v.thrown || ('grass patch ' + JSON.stringify(v.grassPatch) + (v.grassNearWater ? ' NEAR WATER' : '') + ', shore patch ' + JSON.stringify(v.shorePatch)));
+  ck('anOpenGroundEditStaysWithinTenPercent', !v.thrown && v.editGrass < EDIT.grassMs,
+    v.thrown || (f1(v.editGrass) + 'ms per edit (gate ' + EDIT.grassMs + 'ms = baseline 0.92 + 10%)'));
+  ck('aShoreEditStaysWithinTenPercent', !v.thrown && v.editShore < EDIT.shoreMs,
+    v.thrown || (f1(v.editShore) + 'ms per edit (gate ' + EDIT.shoreMs + 'ms = baseline 2.33 + 10%)'));
+  ck('theWorldPassFrameStaysCheap', !v.thrown && v.frameP95 < LIVE.frameP95,
+    v.thrown || (f1(v.frameP95) + 'ms p95 (ceiling ' + LIVE.frameP95 + 'ms)'));
   ck('andTheFrameLoopStaysClean', !v.thrown && !v.err, v.thrown || v.err);
   // the static rule: R.draw's own body may not create a canvas or read pixels
   const src = readFileSync(join(root, 'js/render.js'), 'utf8');

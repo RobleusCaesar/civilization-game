@@ -17,7 +17,7 @@ The standing doctrines still bind: *depth comes from tone and edges, not object 
 **Hard perf gates (checked every phase):**
 
 - First bake ≤ 1.3s on the worst map (mountain-heavy baseline was ~1.1s).
-- Terrain-edit repaint within +10% of today's ~0.3ms.
+- Terrain-edit repaint within +10% of the re-baselined workloads (`tests/land.mjs` §18, 2026-09-01, headless Chromium on the baseline desktop): an open-ground edit **0.92ms → gate 1.01ms**; an edit within two tiles of water **2.33ms → gate 2.56ms** (in-suite baselines; a cold standalone page reads ~8% lower: 0.84 / 2.28). Timed as whole batches of 49 edits (`performance.now()` is clamped to 0.1ms, so single edits cannot be timed), min over 9 batches, no CI multiplier. The bench's *edit ms* button runs the same measurement on the phone; re-baseline from that when it disagrees.
 - World-pass frame p95 ≤ 1.5ms desktop; all new FRAME work combined ≤ 0.4ms at default zoom; 60fps on iPhone Safari stands.
 - New memory ≤ ~100KB total (typed arrays only — no new full-map canvases).
 - No canvas creation, sprite regeneration, or getImageData in the frame loop. Animated overlays iterate viewport tiles only.
