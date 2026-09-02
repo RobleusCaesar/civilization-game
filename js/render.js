@@ -2015,6 +2015,13 @@ const R = {
     this._layerKey = this.waterKey();
     const W = CFG.W, H = CFG.H, TL = CFG.TILE, AP = ART.PALETTE;
     const px = TL / 16;
+    this._beachStrips = [];       // the beach rings, captured for the wave clamp
+    if (!this._waveMaskC) {       // the clamp's scratch pair, allocated at bake
+      this._waveMaskC = document.createElement('canvas');
+      this._waveMaskC.width = 224; this._waveMaskC.height = 224;
+      this._waveScratchC = document.createElement('canvas');
+      this._waveScratchC.width = 224; this._waveScratchC.height = 224;
+    }
     if (!this.shoreLayer) this.shoreLayer = document.createElement('canvas');
     this.shoreLayer.width = W * TL; this.shoreLayer.height = H * TL;
     const g = this.shoreLayer.getContext('2d');
@@ -2316,10 +2323,28 @@ const R = {
       ribbon(loop, off(i => -(0.5 + wAt(i)) * LAND.FOAM_W * natS[i]), AP.water[4]);  // the wet lip
       continue;
       }
-      ribbon(loop, off(i => {                                              // the beach
+      const beach = off(i => {                                             // the beach
         const w = wAt(i);
         return (LAND.SAND_MIN + w * w * (LAND.SAND_MAX - LAND.SAND_MIN)) * (1 - rockS[i]) * natS[i];
-      }), AP.bone[2]);
+      });
+      /* THE WAVE CLAMP borrows this exact ring: drawLivingWater clips a wave
+         roll to water plus THIS band, so the crest may wash to the beach's
+         inland edge — the drawn one, pinch-outs and rock gating included —
+         and never a pixel past it. Captured as flat px pairs (base, then
+         offset) with a bbox for the pick-time reject. */
+      if (beach) {
+        const m = loop.length, bs = new Float32Array(m * 4);
+        let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
+        for (let i = 0; i < m; i++) {
+          const bpx = loop[i][0] * TL, bpy = loop[i][1] * TL;
+          bs[i * 4] = bpx; bs[i * 4 + 1] = bpy;
+          bs[i * 4 + 2] = beach[i][0] * TL; bs[i * 4 + 3] = beach[i][1] * TL;
+          if (bpx < bx0) bx0 = bpx; if (bpx > bx1) bx1 = bpx;
+          if (bpy < by0) by0 = bpy; if (bpy > by1) by1 = bpy;
+        }
+        this._beachStrips.push({ p: bs, x0: bx0 - 14, y0: by0 - 14, x1: bx1 + 14, y1: by1 + 14 });
+      }
+      ribbon(loop, beach, AP.bone[2]);
       /* THE LIT LIP (Overhaul 2.3, behind SHORE_LIP): the bank's catch-light,
          a pixel or so of pale along the land side of the shores that FACE
          the sun — light is top-left, so a bank whose land lies south or
@@ -4541,6 +4566,7 @@ const R = {
   rebakeAll() {
     this._lat = null; this._latKey = ''; this._latOne = null;
     this._shoreKey = ''; this._layerKey = ''; this._waterMask = null;
+    this._beachStrips = null; this._waveEpoch = -1; this._wavePick = null;
     this._bodyPath = null; this._bodyKey = '';
     this._depthD = null; this._shadowD = null; this._deepEdges = null; this._regionMax = null;
     this._depthKey = ''; this._deepC = null;
@@ -8766,17 +8792,40 @@ const R = {
         const env = Math.max(0, Math.min(1, p / 0.18) * Math.min(1, (1 - p) / 0.28));
         // landward over the first half, receding through the second, still by 7/8
         const push = LAND.WAVE_PUSH * Math.sin(Math.PI * Math.min(1, p * 1.15));
-        g.globalAlpha = LAND.WAVE_ALPHA * env;
+        // the crests render in a small scratch, are kept 'destination-in'
+        // the pick's beach mask (the clamp), and land on the frame as one
+        // little blit — see wavePick for why it is built this way
+        const sc = this._waveScratchC, drawTo = wp.mask ? sc.getContext('2d') : g;
+        if (wp.mask) {
+          drawTo.setTransform(1, 0, 0, 1, 0, 0);
+          drawTo.globalCompositeOperation = 'source-over';
+          drawTo.clearRect(0, 0, wp.mw, wp.mh);
+          drawTo.imageSmoothingEnabled = false;
+          drawTo.translate(-wp.mx0, -wp.my0);
+        } else {
+          g.globalAlpha = LAND.WAVE_ALPHA * env;
+        }
         for (const sg of wp.segs) {
           const F = wv[sg.v] || wv[0];
           const fr = F[Math.min(F.length - 1, (p * F.length) | 0)];
-          g.save();
-          g.translate(sg.x + sg.nx * push, sg.y + sg.ny * push);
-          g.rotate(sg.ang);
-          if (sg.m) g.scale(-1, 1);              // the second crest of a split mirrors
+          drawTo.save();
+          drawTo.translate(sg.x + sg.nx * push, sg.y + sg.ny * push);
+          drawTo.rotate(sg.ang);
+          if (sg.m) drawTo.scale(-1, 1);         // the second crest of a split mirrors
           // the crest line is authored ~70% down the canvas: anchor it on the shore
-          g.drawImage(fr, -(fr.width >> 1), -Math.round(fr.height * 0.7));
-          g.restore();
+          drawTo.drawImage(fr, -(fr.width >> 1), -Math.round(fr.height * 0.7));
+          drawTo.restore();
+        }
+        if (wp.mask) {
+          drawTo.setTransform(1, 0, 0, 1, 0, 0);
+          drawTo.globalCompositeOperation = 'destination-in';
+          drawTo.drawImage(this._waveMaskC, 0, 0, wp.mw, wp.mh, 0, 0, wp.mw, wp.mh);
+          drawTo.globalCompositeOperation = 'source-over';
+          g.globalAlpha = LAND.WAVE_ALPHA * env;
+          const sm = g.imageSmoothingEnabled;
+          g.imageSmoothingEnabled = false;      // a bilinear blit smears foam a
+          g.drawImage(sc, 0, 0, wp.mw, wp.mh, wp.mx0, wp.my0, wp.mw, wp.mh);
+          g.imageSmoothingEnabled = sm;         // pixel past the clamp's edge
         }
         g.globalAlpha = 1;
       }
@@ -8828,7 +8877,70 @@ const R = {
       const h = (P[k] * 73856093 ^ P[k + 1] * 19349663) >>> 0;
       segs.push({ x: P[k], y: P[k + 1], ang: Math.atan2(base.ty, base.tx), nx: base.nx, ny: base.ny, v: h % 2 });
     }
-    return { segs };
+    /* THE CLAMP. The roll may wash to the DRAWN beach's inland edge — the
+       exact rings buildShoreLayer filled, pinch-outs and rock gating
+       included — and never a pixel past it onto grass, trees or rock. The
+       eligible region (local water tiles plus the nearby stretch of each
+       captured ring as a quad-strip polygon) is filled ONCE per pick into a
+       small bake-allocated mask canvas; each live frame draws the crests
+       into a scratch of the same size, keeps them 'destination-in' the
+       mask, and blits — every per-frame op is bounded by the roll's own
+       little box. Never a terrain test per frame, never the whole-map body
+       path (the bake's 740ms lesson), never a canvas made in the loop. */
+    const mc = this._waveMaskC;
+    if (!mc) return { segs, mask: null };
+    // the box hugs the crests: half the sprite diagonal plus the push is
+    // every pixel a rotated crest can reach — the per-frame ops below are
+    // priced by THIS area, so it stays the size of the roll, not a pad
+    const pad = 42;
+    let cx0 = 1e9, cy0 = 1e9, cx1 = -1e9, cy1 = -1e9;
+    for (const sg of segs) {
+      if (sg.x - pad < cx0) cx0 = sg.x - pad; if (sg.x + pad > cx1) cx1 = sg.x + pad;
+      if (sg.y - pad < cy0) cy0 = sg.y - pad; if (sg.y + pad > cy1) cy1 = sg.y + pad;
+    }
+    if (cx1 - cx0 > mc.width) { const c = (cx0 + cx1) / 2; cx0 = c - mc.width / 2; cx1 = c + mc.width / 2; }
+    if (cy1 - cy0 > mc.height) { const c = (cy0 + cy1) / 2; cy0 = c - mc.height / 2; cy1 = c + mc.height / 2; }
+    cx0 = Math.floor(cx0); cy0 = Math.floor(cy0);
+    const mw = Math.min(mc.width, Math.ceil(cx1 - cx0)), mh = Math.min(mc.height, Math.ceil(cy1 - cy0));
+    const mg = mc.getContext('2d');
+    mg.setTransform(1, 0, 0, 1, 0, 0);
+    mg.clearRect(0, 0, mc.width, mc.height);
+    mg.translate(-cx0, -cy0);
+    mg.fillStyle = '#fff';
+    mg.beginPath();
+    const ctx0 = Math.max(0, (cx0 / TL) | 0), cty0 = Math.max(0, (cy0 / TL) | 0);
+    const ctx1 = Math.min(W - 1, (cx1 / TL) | 0), cty1 = Math.min(H - 1, (cy1 / TL) | 0);
+    for (let ty = cty0; ty <= cty1; ty++) for (let tx = ctx0; tx <= ctx1; tx++)
+      if (terr[ty * W + tx] === T.WATER) mg.rect(tx * TL, ty * TL, TL, TL);
+    for (const st of (this._beachStrips || [])) {
+      if (st.x1 < cx0 || st.x0 > cx1 || st.y1 < cy0 || st.y0 > cy1) continue;
+      const p2 = st.p, m = p2.length / 4;
+      let run = -1;
+      for (let i = 0; i <= m; i++) {
+        const ok = i < m && p2[i * 4] >= cx0 && p2[i * 4] <= cx1 && p2[i * 4 + 1] >= cy0 && p2[i * 4 + 1] <= cy1;
+        if (ok && run < 0) run = i;
+        else if (!ok && run >= 0) {
+          if (i - run >= 2) {
+            mg.moveTo(p2[run * 4], p2[run * 4 + 1]);
+            for (let j = run + 1; j < i; j++) mg.lineTo(p2[j * 4], p2[j * 4 + 1]);
+            for (let j = i - 1; j >= run; j--) mg.lineTo(p2[j * 4 + 2], p2[j * 4 + 3]);
+            mg.closePath();
+          }
+          run = -1;
+        }
+      }
+    }
+    mg.fill();
+    mg.setTransform(1, 0, 0, 1, 0, 0);
+    /* HARDEN THE EDGE. The fill antialiases, and a crest through a 30%-alpha
+       fringe pixel is still foam past the beach. Four destination-in
+       self-draws raise every alpha to its 16th power: the interior (1.0)
+       holds, the fringe collapses to nothing — the mask CONTRACTS by its
+       own antialiasing, which is the conservative direction. */
+    mg.globalCompositeOperation = 'destination-in';
+    for (let i = 0; i < 4; i++) mg.drawImage(mc, 0, 0, mw, mh, 0, 0, mw, mh);
+    mg.globalCompositeOperation = 'source-over';
+    return { segs, mask: true, mx0: cx0, my0: cy0, mw, mh };
   },
 
   /* The local shore frame at point k of a chunk polyline: unit tangent

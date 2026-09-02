@@ -1840,6 +1840,78 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       }
       out.waveRolls = wrolls; out.waveSegs = wsegs; out.waveBad = wbad;
       out.waveDistinct = Object.keys(wseen).length; out.waveSplits = wsplit; out.waveOversize = wover;
+      /* THE LAND CLAMP, CHECKED AGAINST THE PIXELS. For a handful of epochs
+         the frame is drawn twice at the same clock — wave off, wave on — and
+         every pixel the wave changed must sit on a wet tile or on the DRAWN
+         beach: shoreLayer painted there, and painted warm (sand, bone, lip
+         are r>b; the shelf blue and wet rock are not). This reads the real
+         bake, not the clamp's own geometry, so a clip that admits one grass
+         or tree pixel fails here. */
+      const LS = R.shoreLayer, Ld = LS.getContext('2d').getImageData(0, 0, LS.width, LS.height).data;
+      const cw = R.cv.width, ch = R.cv.height, zd = R.cam.z * R.dpr;
+      let wavePx = 0, dryPx = 0, clampedEpochs = 0;
+      out.drySamples = [];
+      const wasWA = LAND.WAVE_ALPHA, wasPaused = S.paused;
+      S.paused = true;                         // and the scan stays inside the
+      for (let e = 2; e < 26 && clampedEpochs < 6; e += 3) {   // roll's own box, so
+        R.fishClock = e * LAND.WAVE_EVERY + 1.1; R._waveEpoch = -1e9;   // nothing else
+        LAND.WAVE_ALPHA = 0; R.draw(0);                                 // that animates
+        const A = R.g.getImageData(0, 0, cw, ch).data;                  // pollutes the diff
+        LAND.WAVE_ALPHA = wasWA; R._waveEpoch = -1e9; R.draw(0);
+        const wp2 = R._wavePick;
+        if (!wp2) continue;
+        const B = R.g.getImageData(0, 0, cw, ch).data;
+        clampedEpochs++;
+        const MK = R._waveMaskC, Md = MK ? MK.getContext('2d').getImageData(0, 0, MK.width, MK.height).data : null;
+        const SC = R._waveScratchC, Sd = SC ? SC.getContext('2d').getImageData(0, 0, SC.width, SC.height).data : null;
+        let sx0 = 1e9, sy0 = 1e9, sx1 = -1e9, sy1 = -1e9;
+        for (const sg of wp2.segs) {
+          sx0 = Math.min(sx0, sg.x - 56); sx1 = Math.max(sx1, sg.x + 56);
+          sy0 = Math.min(sy0, sg.y - 56); sy1 = Math.max(sy1, sg.y + 56);
+        }
+        const py0 = Math.max(0, Math.floor((sy0 - R.cam.y) * zd)), py1 = Math.min(ch - 1, Math.ceil((sy1 - R.cam.y) * zd));
+        const px0 = Math.max(0, Math.floor((sx0 - R.cam.x) * zd)), px1 = Math.min(cw - 1, Math.ceil((sx1 - R.cam.x) * zd));
+        for (let py = py0; py <= py1; py++) for (let px2 = px0; px2 <= px1; px2++) {
+          const o = (py * cw + px2) * 4;
+          /* foam at WAVE_ALPHA moves a pixel by tens per channel; the ±1
+             antialiasing flutter of wall-clock decor (chimney smoke drifts
+             on real time even with the sim paused) is not the wave */
+          if (Math.abs(A[o] - B[o]) + Math.abs(A[o + 1] - B[o + 1]) + Math.abs(A[o + 2] - B[o + 2]) < 8) continue;
+          wavePx++;
+          const wx2 = R.cam.x + px2 / zd, wy2 = R.cam.y + py / zd;
+          /* the 3x3 world-px neighbourhood: a canvas pixel's footprint at
+             this zoom is under a world pixel, and the nearest-neighbour
+             blit can snap the clamp's edge by one — so a changed pixel
+             passes if ANY neighbour within a world pixel is wet or drawn
+             sand. Real escapes are whole crest chunks, pixels deep. */
+          let ok2 = false;
+          for (let dy2 = -1; dy2 <= 1 && !ok2; dy2++) for (let dx2 = -1; dx2 <= 1 && !ok2; dx2++) {
+            const nx2 = (wx2 | 0) + dx2, ny2 = (wy2 | 0) + dy2;
+            const tv2 = S.map.terrain[((ny2 / CFG.TILE) | 0) * CFG.W + ((nx2 / CFG.TILE) | 0)];
+            if (tv2 === T.WATER || tv2 === T.MOAT) { ok2 = true; break; }
+            const lo2 = (ny2 * LS.width + nx2) * 4;
+            if (Ld[lo2 + 3] > 0 && Ld[lo2] > Ld[lo2 + 2]) { ok2 = true; break; }
+          }
+          if (ok2) continue;
+          const tv = S.map.terrain[((wy2 / CFG.TILE) | 0) * CFG.W + ((wx2 / CFG.TILE) | 0)];
+          const lo = ((wy2 | 0) * LS.width + (wx2 | 0)) * 4;
+          dryPx++;
+          if (out.drySamples.length < 10) {
+            const mxx = (wx2 - wp2.mx0) | 0, myy = (wy2 - wp2.my0) | 0;
+            const mA = (Md && mxx >= 0 && myy >= 0 && mxx < MK.width && myy < MK.height)
+              ? Md[(myy * MK.width + mxx) * 4 + 3] : -1;
+            const sA = (Sd && mxx >= 0 && myy >= 0 && mxx < SC.width && myy < SC.height)
+              ? Sd[(myy * SC.width + mxx) * 4 + 3] : -1;
+            out.drySamples.push({ e, w: [+wx2.toFixed(1), +wy2.toFixed(1)], t: tv, maskA: mA, scrA: sA,
+              box: [wp2.mx0, wp2.my0, wp2.mw, wp2.mh],
+              seg: [Math.round(wp2.segs[0].x), Math.round(wp2.segs[0].y), wp2.segs.length],
+              shore: [Ld[lo], Ld[lo + 1], Ld[lo + 2], Ld[lo + 3]],
+              a: [A[o], A[o + 1], A[o + 2]], b: [B[o], B[o + 1], B[o + 2]] });
+          }
+        }
+      }
+      S.paused = wasPaused;
+      out.wavePx = wavePx; out.dryPx = dryPx; out.clampedEpochs = clampedEpochs;
       out.err = G.lastFrameError ? String(G.lastFrameError) : '';
     } catch (e) { out.thrown = String(e && e.stack || e); }
     return out;`));
@@ -1869,6 +1941,12 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     v.thrown || v.err || (v.waveRolls + ' rolls over 40 epochs (' + v.waveSegs + ' crests, ' + v.waveSplits +
       ' split on curves), ' + v.waveDistinct + ' distinct stretches, ' + v.waveBad +
       ' with rock/moat behind or no open water in front; wave live in the water-view budget frame: ' + v.waveInWaterFrame));
+  ck('andNoFoamPixelEscapesTheBeach',
+    !v.thrown && v.clampedEpochs >= 3 && v.wavePx > 200 && v.dryPx === 0 && !v.err,
+    v.thrown || v.err || (v.wavePx + ' wave pixels over ' + v.clampedEpochs +
+      ' rolls diffed against the same frame without the wave; ' + v.dryPx +
+      ' landed past the drawn beach (grass, trees or rock)' +
+      (v.dryPx ? ' — first offenders ' + JSON.stringify(v.drySamples) : '')));
   Object.assign(res, { _water: { livingPassMs: f2(v.livingMs), livingPassBeforeMs: f2(v.frameOff), motionDeltaMs: f2(v.newWork),
     recordedFoamMs: f2(v.foamMs), recordedTilesMs: f2(v.tilesMs), waterViewPassMs: f2(v.waterLivingMs), flushMs: f2(v.flushMs) } });
 }
