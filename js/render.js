@@ -334,9 +334,9 @@ const LAND = {
      stippled seam. Crest and glint lifts stay counted in steps — the
      steps are equal ΔL by construction, so a step of lift IS the
      equivalent ΔL lift in every mode. --- */
-  WATER_FADE: 0,        // 0 = hard steps, stippled seams (the shipped look);
-                        // 1 = the same steps under a full-width ordered dither;
-                        // 2 = the continuous OKLab fade. The pick round decides
+  WATER_FADE: 2,        // 0 = hard steps, stippled seams; 1 = the wide dither;
+                        // 2 = the continuous OKLab fade — THE SHIPPED MODE:
+                        // the referee picked smooth on the three-way blind
   /* …and every GAMEPLAY SHOAL rides its own sandbar. A shoal is shore
      water where fish school close enough to line-fish from land
      (MapGen.shoal — a hash of the tile, unmoved by anything here); it
