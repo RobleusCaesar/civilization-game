@@ -295,13 +295,32 @@ const LAND = {
      inside the shore steps, so a beach still reads as a beach whatever
      the fields say. Seeded from the map seed and sampled in world space:
      deterministic, bake-only, and re-derived with the field whenever the
-     water changes. Turn SLOPE_VAR and BAR_AMP to 0 for the old, even
-     distance field. --- */
-  SLOPE_VAR: 0.55,      // ± share by which the slope is scaled (0 = even everywhere)
+     water changes.
+
+     BOTH ARE OFF IN PRODUCTION. The warp read as blotches rather than as an
+     underwater landform, and the size-aware banding below turned out to be
+     the honest way to stop every body shelving alike. The dials stay for
+     later experiments — turn either one up in the bench and the field warps
+     again — but what ships is the plain distance. --- */
+  SLOPE_VAR: 0,         // ± share by which the slope is scaled (0 = even everywhere)
   SLOPE_FREQ: 0.07,     // per tile — a coast keeps its character for ~14 tiles
-  BAR_AMP: 0.9,         // tiles of bar and pocket added on top…
+  BAR_AMP: 0,           // tiles of bar and pocket added on top…
   BAR_FREQ: 0.16,       // …at this frequency: bars a few tiles across
   SLOPE_HOLD: 1.5,      // tiles over which both fields fade in from the waterline
+  /* …and THE BANDING SCALES TO THE BODY. The step edges are absolute tiles,
+     so a pond three tiles across never left the two palest steps while a
+     sea ran the whole ramp — every body wearing the same shelf at the same
+     rate is what put a uniform ring on the map. Each region's own deepest
+     point now compresses its ramp: a body at least POND_BAND tiles deep
+     keeps the full run exactly as before, and anything shallower has its
+     depth stretched across the ramp in proportion, so the reef band
+     tightens to a fraction of a tile and the pond's middle still reaches
+     the ramp's midpoint. The cap that keeps land-adjacent water inside the
+     shore steps is untouched — a beach still reads as a beach, it just
+     gets narrow on a small body. 0 switches the scaling off. --- */
+  POND_BAND: 5,         // tiles of depth a body needs to keep the full ramp
+  DEEP_ALT: 0,          // which pale anchor: 0 = ART.PALETTE.deep (bluer),
+                        // 1 = deepAlt (tealer) — the bench A/B
   /* …and every GAMEPLAY SHOAL rides its own sandbar. A shoal is shore
      water where fish school close enough to line-fish from land
      (MapGen.shoal — a hash of the tile, unmoved by anything here); it
@@ -2429,6 +2448,17 @@ const R = {
     }
     let maxD = 0;
     for (let i = 0; i < out.length; i++) if (out[i] > maxD) maxD = out[i];
+    /* …and EVERY BODY'S OWN DEEPEST POINT, stamped across its cells, so the
+       banding can scale to the water it is actually painting (POND_BAND).
+       The regions are already traced and keyed on the same water, so this
+       is a walk over cells, not a second flood. */
+    const rmax = new Uint8Array(W * H);
+    for (const reg of this.waterRegions()) {
+      let m = 0;
+      for (const c of reg.cells) if (out[c] > m) m = out[c];
+      for (const c of reg.cells) rmax[c] = m;
+    }
+    this._regionMax = rmax;
     /* THE SHORE SHADOW'S OWN FIELD: distance from land that lies to the
        north or west — the forward chamfer pass alone (left, up, up-left),
        which reaches a wet cell only through cells above or to its left.
@@ -2471,7 +2501,7 @@ const R = {
     const amp = Math.max(0, Math.min(1, +LAND.DEPTH_AMP || 0));
     const sat = Math.max(0, +LAND.DEEP_SAT || 0), lift = Math.max(-1, Math.min(1, +LAND.DEEP_LIFT || 0));
     const CL = Math.max(0, LAND.SWELL_LIFT | 0), GL = Math.max(0, LAND.GLINT_LIFT | 0);
-    const key = amp + '|' + sat + '|' + lift + '|' + CL + '|' + GL;
+    const key = amp + '|' + sat + '|' + lift + '|' + CL + '|' + GL + '|' + (LAND.DEEP_ALT ? 1 : 0);
     if (this._deepC && this._deepC.key === key) return this._deepC;
     /* THE PAINTER STANDS DOWN FOR ART THAT ISN'T THERE. This dereferenced
        ART.PALETTE.deep bare, and a browser holding a CACHED OLDER
@@ -2488,7 +2518,8 @@ const R = {
        drew before the ramp existed — one layer degrades, nothing dies.
        (index.html now versions its script tags too, so the mixed load
        should not recur; this is the belt to that pair of braces.) */
-    const W = ART.PALETTE.water, DR = ART.PALETTE.deep;
+    const W = ART.PALETTE.water;
+    const DR = (LAND.DEEP_ALT ? ART.PALETTE.deepAlt : ART.PALETTE.deep) || ART.PALETTE.deep;
     if (!DR || !DR.length) {
       const flatFill = [W[1]], flatCrest = [W[2]], flatGlint = [W[3]];
       this._deepC = { key, n: 1, fill: flatFill, crest: flatCrest, glint: flatGlint, body: 0, absent: true };
@@ -2892,6 +2923,21 @@ const R = {
       const w00 = (this._latRead(lat, x, y) - 0.5) * WA, w10 = (this._latRead(lat, x + 1, y) - 0.5) * WA;
       const w01 = (this._latRead(lat, x, y + 1) - 0.5) * WA, w11 = (this._latRead(lat, x + 1, y + 1) - 0.5) * WA;
       const DI = LAND.DEPTH_DITHER;
+      /* THE RAMP COMPRESSES TO THE BODY (POND_BAND). A pond three tiles
+         across never left the two palest steps while a sea ran the whole
+         ramp — the edges are absolute tiles. Scaling the tile's depth by
+         its own region's deepest point fixes that: a body at least
+         POND_BAND deep is untouched (inv 1), and a shallower one has its
+         depth stretched so its middle still reaches the ramp's middle and
+         its reef band tightens to a fraction of a tile. Per TILE, not per
+         sub-cell: a region's cells all share the factor and regions are
+         separated by land, so no seam can fall inside the scaling. */
+      let inv = 1;
+      const RM = this._regionMax, PB = +LAND.POND_BAND || 0;
+      if (RM && PB > 0) {
+        const rm = RM[y * CW + x] / 16;
+        if (rm > 0 && rm < PB) inv = PB / rm;
+      }
       // depth at (u, v) inside the tile, 0..1 each, in tiles-from-land
       depth = (u, v) => {
         const mid = u < 0.5 ? d01 + (d11 - d01) * (u + 0.5) : d11 + (d21 - d11) * (u - 0.5);
@@ -2900,7 +2946,7 @@ const R = {
           : (u < 0.5 ? d02 + (d12 - d02) * (u + 0.5) : d12 + (d22 - d12) * (u - 0.5));
         const t = v < 0.5 ? 0.5 - v : v - 0.5;
         const wn = (w00 + (w10 - w00) * u) * (1 - v) + (w01 + (w11 - w01) * u) * v;
-        return mid + (far - mid) * t + wn;
+        return (mid + (far - mid) * t + wn) * inv;
       };
       const stepOf = d => { let k = 0; while (k < NE && d >= E[k]) k++; return k; };   // 0 shore … NS-1 heart
       // distance to the nearest edge (no allocation: this runs per cell)
@@ -4340,7 +4386,8 @@ const R = {
     this._lat = null; this._latKey = ''; this._latOne = null;
     this._shoreKey = ''; this._layerKey = ''; this._waterMask = null;
     this._bodyPath = null; this._bodyKey = '';
-    this._depthD = null; this._shadowD = null; this._deepEdges = null; this._depthKey = ''; this._deepC = null;
+    this._depthD = null; this._shadowD = null; this._deepEdges = null; this._regionMax = null;
+    this._depthKey = ''; this._deepC = null;
     this._hillH = null; this._hillKey = '';
     this._tameKey = ''; this._tameMask = null;
     this._mixC = null;

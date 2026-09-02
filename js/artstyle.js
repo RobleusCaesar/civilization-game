@@ -37,8 +37,14 @@ const ART = (function () {
        water[0]'s own lightness without being water[0], which the swell
        contract counts as a trough scratch. `water` keeps its indexes,
        which are load-bearing across sprites, cards and the minimap. */
-    deep:    ['#8ba6a6', '#82a0a1', '#759a9e', '#69949c', '#608d97', '#578692', '#4c8090', '#407990',
-              '#36728f', '#2e6b8a', '#2a6483', '#2a5d7b', '#265674', '#244f6c', '#264864', '#23415c'],
+    deep:    ['#6aa4ad', '#629da7', '#5996a3', '#518fa0', '#49889a', '#428195', '#3b7a92', '#34728f',
+              '#2e6b8a', '#2a6483', '#2a5d7b', '#265674', '#224f6d', '#224865', '#21425d', '#1d3b56'],
+    /* the second pale anchor, for the bench's A/B (LAND.DEEP_ALT): the same
+       ramp with a TEALER light end (hue 201 rather than 208). Everything
+       from step 8 down is identical — only the shallows differ, which is
+       the only thing in question. */
+    deepAlt: ['#66a5a9', '#5e9ea3', '#5697a0', '#4d909d', '#468998', '#3f8293', '#387a91', '#33728f',
+              '#2e6b8a', '#2a6483', '#2a5d7b', '#265674', '#224f6d', '#224865', '#21425d', '#1d3b56'],
     stone:   ['#4a4a44', '#6f6f66', '#8f8f86', '#adada2', '#c9c9bf'],
     ore:     ['#55544d', '#6f6e65', '#88867b', '#a09e91', '#b8b5a6', '#d0cdbe'],   // ORE boulders: light muted grey (lifted so deposits pop against the grass at a glance), cooler/greyer than the brown mountain `mrock` so they stay readable as mineable stone
     /* the DEPOSIT ramp — the ore knots that hug the mountain base draw in

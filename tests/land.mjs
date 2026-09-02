@@ -1875,18 +1875,22 @@ function LAND_STEPS(v) { return 16; }
       // ---- R2: the bathymetry ----
       const W = CFG.W, H = CFG.H, terr = S.map.terrain, wet = t => t === T.WATER || t === T.MOAT;
       const snap = () => { R._depthKey = ''; return Array.from(R.waterDepth()); };
-      const warped = snap(), again = snap();
-      out.deterministic = warped.every((x, i) => x === again[i]);
+      const shipped = snap(), again = snap();
+      out.deterministic = shipped.every((x, i) => x === again[i]);
       const sv = LAND.SLOPE_VAR, ba = LAND.BAR_AMP, sb = LAND.SHOAL_BAR;
-      LAND.SLOPE_VAR = 0; LAND.BAR_AMP = 0; LAND.SHOAL_BAR = 0;
-      const plain = snap();
-      LAND.SLOPE_VAR = sv; LAND.BAR_AMP = ba;
-      const noBar = snap();                       // warped, bars still off
+      // the shipped field is the PLAIN distance: the warp is off in
+      // production (it read as blotches) and the size-aware banding carries
+      // the variation instead. The dials must still work when turned up.
+      LAND.SLOPE_VAR = 0.55; LAND.BAR_AMP = 0.9;
+      const warped = snap();
+      LAND.SLOPE_VAR = sv; LAND.BAR_AMP = ba; LAND.SHOAL_BAR = 0;
+      const noBar = snap();                       // shipped, bars off
       LAND.SHOAL_BAR = sb;
-      const bars = snap();                        // …and the shipped field
+      const bars = snap();                        // …and the shipped field again
       let water = 0, moved = 0;
-      for (let i = 0; i < bars.length; i++) { if (!wet(terr[i])) continue; water++; if (Math.abs(warped[i] - plain[i]) >= 8) moved++; }
+      for (let i = 0; i < bars.length; i++) { if (!wet(terr[i])) continue; water++; if (Math.abs(warped[i] - shipped[i]) >= 8) moved++; }
       out.water = water; out.movedPct = Math.round(moved * 1000 / Math.max(1, water)) / 10;
+      out.shippedIsFlat = LAND.SLOPE_VAR === 0 && LAND.BAR_AMP === 0;
       // ---- R3: the sandbars ----
       let shoals = 0, barred = 0, cells = 0;
       for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
@@ -1903,9 +1907,10 @@ function LAND_STEPS(v) { return 16; }
       ', max/min ' + (v.ratio || 0).toFixed(2) + ' (pin ≤ 1.5)'));
   ck('andTheWorldsOtherBluesLandOnIt', !v.thrown && v.w1 >= 0 && v.w2 >= 0,
     v.thrown || ('water[1] at step ' + v.w1 + ', water[2] at step ' + v.w2));
-  ck('theBathymetryIsALandformNotAContourMap', !v.thrown && v.movedPct >= 25 && v.deterministic,
-    v.thrown || (v.movedPct + '% of ' + v.water + ' water cells warped off the plain distance by half a step or more' +
-      (v.deterministic ? ', identical on a second derive' : ', NOT DETERMINISTIC')));
+  ck('theWarpDialsStillWorkThoughTheyShipOff', !v.thrown && v.movedPct >= 25 && v.deterministic && v.shippedIsFlat,
+    v.thrown || (v.movedPct + '% of ' + v.water + ' water cells move when SLOPE_VAR/BAR_AMP are turned up' +
+      (v.deterministic ? ', identical on a second derive' : ', NOT DETERMINISTIC') +
+      (v.shippedIsFlat ? '; the shipped field is the plain distance' : '; SHIPPED FIELD IS WARPED')));
   ck('everyShoalRidesASandbar', !v.thrown && v.shoals > 5 && v.barred === v.shoals && v.barCells >= v.shoals * 3,
     v.thrown || (v.barred + '/' + v.shoals + ' shoals shallowed, ' + v.barCells + ' cells raised by the bars'));
 }
