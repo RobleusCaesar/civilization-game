@@ -380,20 +380,30 @@ const LAND = {
   SHORE_LIP_W: 1.2,     // its width in 1/16ths of a tile
   /* --- Part 4c: LIVING WATER (LAND_REFRESH 1b–1d — R.drawLivingWater).
      FRAME work, viewport only, and every piece of it a dial that turns to
-     0. The waterline FOAMS: authored sprites along the visible run of
-     every traced shore, staggered by hashed position (they replaced the
-     old point-line and the blinking dots when the motion pass landed).
-     A FISH JUMPS instead of flashing: an arc FISH_RISE px high
-     over FISH_TIME seconds up and the same down, a squashed frame at the
-     peak, the ripple ring and a few droplets on re-entry — on exactly the
-     tiles and cycles the old gating chose (shoal-often, open-water-rare is
-     the fishing tell, and it is untouched). At GOLDEN HOUR the drifting
-     sparkle brightens by SPARKLE_GOLD and warms. --- */
-  FOAM_MINZ: 1.0,       // below this zoom the shoreline foam stands down
+     0. The shoreline follows the FISH MODEL — a quiet always-on layer and
+     a rare placed event, never ambience everywhere: the BASE WATERLINE is
+     the traced point-line back at low alpha (parallel to the shore by
+     construction, dashes creeping, alpha breathing — felt, not watched),
+     and a WAVE ROLL is an authored crest that breaks on one beach stretch
+     every WAVE_EVERY seconds, its long axis laid along the local shore
+     tangent and its motion along the shore normal. A FISH JUMPS the same
+     way: an arc FISH_RISE px high over FISH_TIME seconds up and the same
+     down, a squashed frame at the peak, the ripple ring and droplets on
+     re-entry — on exactly the tiles and cycles the old gating chose. At
+     GOLDEN HOUR the drifting sparkle brightens by SPARKLE_GOLD. --- */
+  FOAM_MINZ: 1.0,       // below this zoom the waterline AND the waves stand down
+  FOAM_LINE: 0.3,       // alpha of the resting waterline dashes; 0 off
+  FOAM_PULSE: 0.3,      // how much of that alpha breathes
+  FOAM_SPEED: 1.5,      // px per second the dashes creep along the shore
+  WAVE_ALPHA: 0.75,     // alpha of the rolling wave crest at its peak; 0 off
+  WAVE_EVERY: 14,       // seconds between rolls somewhere on the visible shore
+  WAVE_TIME: 2.8,       // seconds one roll lives, one pass through its frames
+  WAVE_PUSH: 2.5,       // px the crest translates landward before receding
   /* --- the MOTION PASS (authored art, assets/terrain/water/): the
-     scrolling surface and shimmer textures and the shoreline foam
-     sprites, all frame-time and viewport-only. Absent art leaves the
-     water exactly as the bake painted it.
+     scrolling surface and shimmer textures and the wave-roll crests, all
+     frame-time and viewport-only. Absent art leaves the water exactly as
+     the bake painted it (the base waterline above is procedural and needs
+     no art).
 
      WHAT SHIPS ON BY DEFAULT, AND WHY. The budget is 0.4ms for the whole
      living-water pass on the water-heavy view, raster included, on the
@@ -401,24 +411,16 @@ const LAND = {
      prices a full-water-area composite at ~0.37ms per layer however low
      its alpha (the area is the cost; a phone GPU composites the same
      layer for close to nothing, but the honest instrument we have is the
-     CPU one). Measured per layer: surface 0.37, shimmer +0.37, foam
-     +0.18, and foam's cost barely responds to spacing — so no two of
-     them fit together. The brief's ladder drops the shimmer first and
-     then foam DENSITY, never foam itself: the foam replaced the old
-     blinking dots and lapping line outright, so it is the one layer the
-     shoreline cannot lose. FOAM ships on (0.24 with margin); the surface
-     and shimmer ship at 0 and are one dial away, judged at the gate. --- */
+     CPU one). So the texture layers ship at 0 and are one dial away; the
+     default motion is the base waterline plus the wave events, which are
+     two or three small sprites at most and fit with room to spare. --- */
   SURF_ALPHA: 0,        // opacity of the scrolling surface arcs; 0.16 is the
                         // authored look — OFF by default: see the note above
   SURF_SPEED: 3.5,      // px per second along its diagonal
   SURF_MINZ: 0.75,      // below this zoom the surface stands down (the bake carries it)
-  SHIM_ALPHA: 0,        // opacity of the glint layer; 0.5 is the authored look —
-                        // the ladder's first casualty
+  SHIM_ALPHA: 0,        // opacity of the glint layer; 0.5 is the authored look
   SHIM_SPEED: 5.5,      // px per second, a different heading — never in sync
   SHIM_MINZ: 1.0,       // the shimmer is the first LOD casualty too
-  FOAMFX_ALPHA: 0.8,    // alpha of the shoreline foam sprites; 0 off
-  FOAMFX_SPACING: 26,   // px of shoreline between sprites
-  FOAMFX_FPS: 9,        // frames per second through the lap animation
   FISH_RISE: 6,         // px a jumping fish clears the water
   FISH_TIME: 0.4,       // seconds up (and the same down); 0 = the old flat flash
   FISH_SIZE: 0.5,       // tiles across, for an AUTHORED fish (assets/fx/fish-N.png).
@@ -8663,6 +8665,24 @@ const R = {
       }
       if (prof) prof.scroll += performance.now() - tA;
     }
+    // ---- 1b: the BASE WATERLINE — cached 1px points along the traced shore,
+    // lit three of every eight, the pattern creeping FOAM_SPEED px a second,
+    // the alpha breathing by FOAM_PULSE. Parallel to the shore because it IS
+    // the shore. Quiet everywhere; the wave roll below is the event. ----
+    if (LAND.FOAM_LINE > 0 && this.cam.z >= LAND.FOAM_MINZ) {
+      const tA = prof ? performance.now() : 0;
+      const a = LAND.FOAM_LINE * (1 - LAND.FOAM_PULSE + LAND.FOAM_PULSE * (0.5 + 0.5 * Math.sin(t0 * 1.3)));
+      const creep = Math.round(t0 * LAND.FOAM_SPEED);
+      g.fillStyle = 'rgba(235,244,248,' + a.toFixed(3) + ')';
+      for (const c of this.foamChunks()) {
+        if (c.x1 < vx0 || c.x0 > vx1 || c.y1 < vy0 || c.y0 > vy1) continue;
+        if (!G.visibleAt(c.mx, c.my)) continue;
+        const P = c.pts;
+        for (let k = 0; k < P.length; k += 3)
+          if (((P[k + 2] + creep) & 7) < 3) g.fillRect(P[k], P[k + 1], 1, 1);
+      }
+      if (prof) prof.foam += performance.now() - tA;
+    }
     // ---- the tile pass: drifting sparkle, foam dots, ripples, the one fish ----
     const tB = prof ? performance.now() : 0;
     /* WHICH FISH, AND WHEN. One leap per FISH_EVERY seconds: the epoch picks
@@ -8722,34 +8742,121 @@ const R = {
       }
     }
     if (prof) prof.tiles += performance.now() - tB;
-    /* ---- THE FOAM (the motion pass): authored sprites along the visible
-       traced shorelines, replacing the old blinking dots and the lapping
-       point-line. Anchors come from foamChunks' own 1px arc points — so a
-       dug channel or a reclaimed bank still raises no foam — one sprite
-       per FOAMFX_SPACING px of shoreline, each running the 17-frame lap
-       on a start frame hashed from its position so nothing pulses in
-       lockstep. Absent art leaves the shoreline to the shelf and the wet
-       lip: 404 is a look, never an error. ---- */
-    if (fx && fx.foam && LAND.FOAMFX_ALPHA > 0 && this.cam.z >= LAND.FOAM_MINZ) {
+    /* ---- THE WAVE ROLL (the motion pass): a wave is an EVENT, not
+       ambience — the fish model on the shoreline. Every WAVE_EVERY
+       seconds the epoch picks ONE eligible beach stretch from the shore
+       visible at that moment (wavePick: sandy, not rocky, not moat) and
+       an authored crest breaks there once: its long axis lies along the
+       LOCAL SHORE TANGENT — sampled from the traced polyline under the
+       placement — and its motion is along the shore normal, WAVE_PUSH px
+       landward and back. A curved stretch splits the roll into two short
+       crests, each on its own tangent. The line is parallel to shore;
+       the movement is onto shore; never the reverse. One pass through
+       the frames per roll, alpha enveloped in and out. Absent art means
+       no wave — the base waterline above carries the shore alone. ---- */
+    const wv = fx && fx.waves;
+    if (wv && wv.length && LAND.WAVE_ALPHA > 0 && this.cam.z >= LAND.FOAM_MINZ) {
       const tA = prof ? performance.now() : 0;
-      const F = fx.foam, NF = F.length, SP = 3 * Math.max(8, LAND.FOAMFX_SPACING | 0);
-      const half = F[0].width >> 1, ft = t0 * LAND.FOAMFX_FPS;
-      g.globalAlpha = LAND.FOAMFX_ALPHA;
-      for (const c of this.foamChunks()) {
-        if (c.x1 < vx0 || c.x0 > vx1 || c.y1 < vy0 || c.y0 > vy1) continue;
-        if (!G.visibleAt(c.mx, c.my)) continue;
-        const P = c.pts;
-        for (let k = 0; k < P.length; k += SP) {
-          const px = P[k], py = P[k + 1];
-          if (px < vx0 || px > vx1 || py < vy0 || py > vy1) continue;
-          const h2 = (px * 73856093 ^ py * 19349663) >>> 0;
-          g.drawImage(F[((ft + (h2 % NF)) | 0) % NF], px - half, py - half);
+      const wevery = Math.max(4, +LAND.WAVE_EVERY || 14);
+      const wep = Math.floor(t0 / wevery);
+      if (wep !== this._waveEpoch) { this._waveEpoch = wep; this._wavePick = this.wavePick(wep); }
+      const wp = this._wavePick, wt = t0 - wep * wevery, WT = Math.max(0.5, +LAND.WAVE_TIME || 2.8);
+      if (wp && wt < WT) {
+        const p = wt / WT;
+        const env = Math.max(0, Math.min(1, p / 0.18) * Math.min(1, (1 - p) / 0.28));
+        // landward over the first half, receding through the second, still by 7/8
+        const push = LAND.WAVE_PUSH * Math.sin(Math.PI * Math.min(1, p * 1.15));
+        g.globalAlpha = LAND.WAVE_ALPHA * env;
+        for (const sg of wp.segs) {
+          const F = wv[sg.v] || wv[0];
+          const fr = F[Math.min(F.length - 1, (p * F.length) | 0)];
+          g.save();
+          g.translate(sg.x + sg.nx * push, sg.y + sg.ny * push);
+          g.rotate(sg.ang);
+          if (sg.m) g.scale(-1, 1);              // the second crest of a split mirrors
+          // the crest line is authored ~70% down the canvas: anchor it on the shore
+          g.drawImage(fr, -(fr.width >> 1), -Math.round(fr.height * 0.7));
+          g.restore();
         }
+        g.globalAlpha = 1;
       }
-      g.globalAlpha = 1;
       if (prof) prof.foam += performance.now() - tA;
     }
     if (prof) prof.frames++;
+  },
+
+  /* THE BEACH WORTH BREAKING ON: candidate stretches of the shore visible
+     right now, rebuilt when the wave epoch turns (an O(visible shoreline)
+     walk every WAVE_EVERY seconds — nothing). A stretch qualifies when the
+     water side is open water (never a moat), the land behind it is not
+     rocky (no mountain, no hills), and the trace is straight enough at
+     crest scale to lie a sprite on. The pick carries everything the draw
+     needs precomputed: segment centres, angles, landward normals. */
+  _waveEpoch: -1, _wavePick: null,
+  wavePick(ep) {
+    if (!S || !S.map) return null;
+    const TL = CFG.TILE, W = CFG.W, H = CFG.H, terr = S.map.terrain;
+    const vx0 = this.cam.x - TL, vy0 = this.cam.y - TL;
+    const vx1 = this.cam.x + this.viewW() / this.cam.z + TL, vy1 = this.cam.y + this.viewH() / this.cam.z + TL;
+    const SPAN = 24 * 3, STRIDE = 48 * 3;         // tangent span and candidate spacing, in flat triplets
+    const cand = [];
+    for (const c of this.foamChunks()) {
+      if (c.x1 < vx0 || c.x0 > vx1 || c.y1 < vy0 || c.y0 > vy1) continue;
+      if (!G.visibleAt(c.mx, c.my)) continue;
+      const P = c.pts;
+      for (let k = SPAN; k < P.length - SPAN - 1; k += STRIDE) {
+        const px = P[k], py = P[k + 1];
+        if (px < vx0 || px > vx1 || py < vy0 || py > vy1) continue;
+        if (!this.waveTangent(P, k, SPAN, terr, W, H, TL)) continue;
+        cand.push([c, k]);
+      }
+    }
+    if (!cand.length) return null;
+    const [c, k] = cand[(Math.imul(ep + 1, 0x85ebca6b) >>> 8) % cand.length];
+    const P = c.pts, base = this.waveTangent(P, k, SPAN, terr, W, H, TL);
+    // curvature at crest scale: if the half-span tangents disagree hard,
+    // split the roll into two short crests, each on its own local tangent
+    const S2 = 18 * 3, OFF = 15 * 3;
+    const tA2 = this.waveTangent(P, Math.max(S2, k - OFF), S2, terr, W, H, TL);
+    const tB2 = this.waveTangent(P, Math.min(P.length - S2 - 1, k + OFF), S2, terr, W, H, TL);
+    const segs = [];
+    if (tA2 && tB2 && (tA2.tx * tB2.tx + tA2.ty * tB2.ty) < 0.94) {
+      const kA = Math.max(S2, k - OFF), kB = Math.min(P.length - S2 - 1, k + OFF);
+      segs.push({ x: P[kA], y: P[kA + 1], ang: Math.atan2(tA2.ty, tA2.tx), nx: tA2.nx, ny: tA2.ny, v: 2 });
+      segs.push({ x: P[kB], y: P[kB + 1], ang: Math.atan2(tB2.ty, tB2.tx), nx: tB2.nx, ny: tB2.ny, v: 2, m: -1 });
+    } else {
+      const h = (P[k] * 73856093 ^ P[k + 1] * 19349663) >>> 0;
+      segs.push({ x: P[k], y: P[k + 1], ang: Math.atan2(base.ty, base.tx), nx: base.nx, ny: base.ny, v: h % 2 });
+    }
+    return { segs };
+  },
+
+  /* The local shore frame at point k of a chunk polyline: unit tangent
+     along the trace and unit normal pointing LANDWARD (verified against
+     the terrain, not trusted from the winding). Returns null where the
+     trace folds too tightly, the land behind is rocky, or the water in
+     front is a moat — i.e. where no wave belongs. */
+  waveTangent(P, k, span, terr, W, H, TL) {
+    let tx = P[k + span] - P[k - span], ty = P[k + span + 1] - P[k - span + 1];
+    const tl = Math.hypot(tx, ty);
+    if (tl < span / 3 * 1.7) return null;          // folded back on itself
+    tx /= tl; ty /= tl;
+    let nx = ty, ny = -tx;                         // landward by the trace's winding…
+    const px = P[k], py = P[k + 1];
+    let lx = ((px + nx * 10) / TL) | 0, ly = ((py + ny * 10) / TL) | 0;
+    if (lx < 1 || ly < 1 || lx >= W - 1 || ly >= H - 1) return null;
+    let lt = terr[ly * W + lx];
+    if (lt === T.WATER || lt === T.MOAT) {         // …but verified, never trusted
+      nx = -nx; ny = -ny; tx = -tx; ty = -ty;
+      lx = ((px + nx * 10) / TL) | 0; ly = ((py + ny * 10) / TL) | 0;
+      if (lx < 1 || ly < 1 || lx >= W - 1 || ly >= H - 1) return null;
+      lt = terr[ly * W + lx];
+      if (lt === T.WATER || lt === T.MOAT) return null;
+    }
+    if (lt === T.MOUNTAIN || lt === T.HILLS) return null;
+    const wx = ((px - nx * 10) / TL) | 0, wy = ((py - ny * 10) / TL) | 0;
+    if (wx < 0 || wy < 0 || wx >= W || wy >= H || terr[wy * W + wx] !== T.WATER) return null;
+    return { tx, ty, nx, ny };
   },
   /* THE WATER WORTH FISHING: the shoals whose stock is still a real share
      of the best one's. MapGen.shoal is a pure hash of the tile, so the set

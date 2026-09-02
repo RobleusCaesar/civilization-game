@@ -495,18 +495,23 @@ const Assets = {
                                           it modulates without recolouring
        assets/terrain/water/shimmer.png   a seamless glint layer on PURE
                                           black, scrolled under 'lighter'
-       assets/terrain/water/foam.png      a horizontal strip of square
-                                          frames — the shoreline foam lap
+       assets/terrain/water/wave-{a,b,c}.png
+                                          the wave-roll crests: a horizontal
+                                          strip of frames, each frame FOUR
+                                          TIMES as wide as the strip is tall
+                                          (64x16 shipped), a = long crest,
+                                          b = medium, c = short — c is the
+                                          one a curved shore doubles up
 
      Each loads independently; a 404 leaves that one layer to the
      procedural water, never an error. R.drawLivingWater builds ONE
-     CanvasPattern per installed texture and only moves the offset. Foam
+     CanvasPattern per installed texture and only moves the offset. Wave
      frames get binary alpha enforced here, like every sprite. */
   WATERFX_DIR: 'assets/terrain/water/',
-  waterFx: { surface: null, shimmer: null, foam: null },
+  waterFx: { surface: null, shimmer: null, waves: [] },
   waterFxUrl(name) { return this.WATERFX_DIR + name + '.png?v=' + (CFG.ART_V || 1); },
   _tryWaterFx() {
-    for (const name of ['surface', 'shimmer', 'foam']) {
+    for (const name of ['surface', 'shimmer', 'wave-a', 'wave-b', 'wave-c']) {
       const img = new Image();
       img.onload = () => this.setWaterFx(name, img);
       img.onerror = () => { /* that layer stays procedural */ };
@@ -515,24 +520,27 @@ const Assets = {
   },
   setWaterFx(name, img) {
     if (!img || !img.width || !img.height) return false;
-    if (name === 'foam') {
-      const PX = img.height;
-      if (img.width % PX) return false;
+    if (name.startsWith('wave-')) {
+      const FW = img.height * 4;                   // the strip convention
+      if (img.width % FW) return false;
       const frames = [];
-      for (let i = 0; i < img.width / PX; i++) {
-        const c = document.createElement('canvas'); c.width = PX; c.height = PX;
+      for (let i = 0; i < img.width / FW; i++) {
+        const c = document.createElement('canvas'); c.width = FW; c.height = img.height;
         const g = c.getContext('2d');
         g.imageSmoothingEnabled = false;
-        g.drawImage(img, i * PX, 0, PX, PX, 0, 0, PX, PX);
+        g.drawImage(img, i * FW, 0, FW, img.height, 0, 0, FW, img.height);
         try {
-          const d = g.getImageData(0, 0, PX, PX);
+          const d = g.getImageData(0, 0, FW, img.height);
           for (let k = 3; k < d.data.length; k += 4) d.data[k] = d.data[k] >= 128 ? 255 : 0;
           g.putImageData(d, 0, 0);
         } catch (e) { /* tainted on file:// — the frames still draw */ }
         frames.push(c);
       }
       if (!frames.length) return false;
-      this.waterFx.foam = frames;
+      // a=0 b=1 c=2; a sparse catalog packs down so waves[] is dense
+      this.waterFx['_' + name] = frames;
+      this.waterFx.waves = ['wave-a', 'wave-b', 'wave-c']
+        .map(n => this.waterFx['_' + n]).filter(Boolean);
       return true;
     }
     if (name !== 'surface' && name !== 'shimmer') return false;

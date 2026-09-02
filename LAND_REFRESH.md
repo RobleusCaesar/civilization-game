@@ -54,9 +54,13 @@ Reference point: in the fishing game Rob admires, ~70% of the beauty is water �
 - New dials: `WATER_DEPTH = { EDGES, WANDER, AMP }` in the bench.
 - Swell-crest pixels and glints: unchanged logic, but pick the band-local lighter shade so crests still read over the deep band.
 
-### 1b. Foam that moves (FRAME)
+### 1b. Foam that moves (FRAME) — REVISED at the motion-pass gate (2026-09-02)
 
-Along the *visible* portion of each traced shore polyline, stroke a 1px broken foam line whose dash offset advances slowly (~2px/s) with a gentle alpha pulse — a lapping waterline. Halve the existing blinking foam-dot count in the living-water block (~line 7593) to compensate. One clipped stroke per visible region per frame; skip below a zoom threshold.
+The fish model on the shoreline: a quiet always-on layer plus a rare placed event.
+
+- **The base waterline** is the traced-polyline treatment shipped: 1px dashes (3 of every 8 arc points) creeping FOAM_SPEED px/s with a FOAM_PULSE alpha breath, low FOAM_LINE alpha — parallel to the shore by construction, felt not watched. No clip: the cached foamChunks points ARE the line.
+- **The wave roll** replaces ambience with an event: every WAVE_EVERY seconds ONE eligible beach stretch visible at that moment (sandy, never rocky, never a moat) hosts an authored crest (assets/terrain/water/wave-{a,b,c}.png) laid along the LOCAL SHORE TANGENT sampled from the polyline, translated WAVE_PUSH px along the shore normal landward and back, one pass through its frames, alpha enveloped. Curved stretches split the roll into two short crests on their own tangents. A crest LINE is parallel to shore; its MOVEMENT is onto shore — never the reverse (the referee bounced the first cut for exactly this).
+- The first cut — hash-staggered looping sprites every ~26px of every visible shoreline — was rejected at the gate: perpendicular chevrons, constant everywhere. Retired with the chevron sheet.
 
 ### 1c. Fish that actually jump (FRAME)
 

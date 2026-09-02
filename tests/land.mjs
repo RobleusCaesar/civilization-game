@@ -1771,10 +1771,14 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       const passMs = (n) => { setT(); R.drawLivingWater(fg, 0.016); flush(); const t = performance.now(); for (let k = 0; k < n; k++) { R.drawLivingWater(fg, 0.016); flush(); } return (performance.now() - t) / n; };
       const flushMs = (n) => { flush(); const t = performance.now(); for (let k = 0; k < n; k++) flush(); return (performance.now() - t) / n; };
       const base = Math.min(flushMs(40), flushMs(40));
-      const was = { sa: LAND.SURF_ALPHA, ha: LAND.SHIM_ALPHA, fa: LAND.FOAMFX_ALPHA, t: LAND.FISH_TIME, s: LAND.SPARKLE_GOLD, r: LAND.RIPPLE };
-      LAND.SURF_ALPHA = 0; LAND.SHIM_ALPHA = 0; LAND.FOAMFX_ALPHA = 0; LAND.FISH_TIME = 0; LAND.SPARKLE_GOLD = 1; LAND.RIPPLE = 0;
+      const was = { sa: LAND.SURF_ALPHA, ha: LAND.SHIM_ALPHA, fl: LAND.FOAM_LINE, wa: LAND.WAVE_ALPHA, t: LAND.FISH_TIME, s: LAND.SPARKLE_GOLD, r: LAND.RIPPLE };
+      LAND.SURF_ALPHA = 0; LAND.SHIM_ALPHA = 0; LAND.FOAM_LINE = 0; LAND.WAVE_ALPHA = 0; LAND.FISH_TIME = 0; LAND.SPARKLE_GOLD = 1; LAND.RIPPLE = 0;
       const off = Math.min(passMs(60), passMs(60)) - base;
-      LAND.SURF_ALPHA = was.sa; LAND.SHIM_ALPHA = was.ha; LAND.FOAMFX_ALPHA = was.fa; LAND.FISH_TIME = was.t; LAND.SPARKLE_GOLD = was.s; LAND.RIPPLE = was.r;
+      LAND.SURF_ALPHA = was.sa; LAND.SHIM_ALPHA = was.ha; LAND.FOAM_LINE = was.fl; LAND.WAVE_ALPHA = was.wa; LAND.FISH_TIME = was.t; LAND.SPARKLE_GOLD = was.s; LAND.RIPPLE = was.r;
+      // measure INSIDE a wave window (wt 0.2 → ~2.2 of WAVE_TIME 2.8 across the
+      // runs), with the pick recomputed for THIS viewport — the default-motion
+      // number must include an active roll or it is not the default's cost
+      R.fishClock = LAND.WAVE_EVERY * 3 + 0.2; R._waveEpoch = -1;
       R._prof = { foam: 0, tiles: 0, scroll: 0, frames: 0 };
       const on = Math.min(passMs(60), passMs(60)) - base;
       const pr = R._prof; R._prof = null;
@@ -1782,8 +1786,9 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       out.foamMs = pr.foam / pr.frames; out.tilesMs = pr.tiles / pr.frames; out.scrollMs = pr.scroll / pr.frames; out.livingMs = on;
       // …and framed on the water, where the shore is dense: reported, not gated at 0.4
       R.centerOn(41 + 3.5, 8 + 3.5); R.draw(0.016);
+      R.fishClock = LAND.WAVE_EVERY * 5 + 0.2; R._waveEpoch = -1;
       const onW = Math.min(passMs(60), passMs(60)) - base;
-      out.waterFrame = onW; out.waterLivingMs = onW;
+      out.waterFrame = onW; out.waterLivingMs = onW; out.waveInWaterFrame = !!R._wavePick;
       setT();
       /* ONE FISH AT A TIME, ON THE WATER WORTH FISHING. Thirty fish leaping
          in lockstep on the same 2.4s clock was the reported silliness; the
@@ -1808,6 +1813,33 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       out.distinctPicks = Object.keys(seen).length;
       out.offShoal = offShoal; out.poor = poor;
       out.noLockstep = !/hf % 5 < 2|hf % 31 === 0/.test(R.drawLivingWater.toString());
+      /* A WAVE IS AN EVENT, PARALLEL TO ITS SHORE. Walk the wave epochs the
+         way the fish epochs are walked: every pick must lie on beach (land
+         behind it never water, moat, mountain or hills; water in front of it
+         always open water — i.e. the crest's PUSH axis is the shore normal),
+         picks must rotate along the shore, and a roll is at most three short
+         crests, never a coastline. */
+      const wseen = {}; let wbad = 0, wsegs = 0, wsplit = 0, wover = 0, wrolls = 0;
+      for (let e = 0; e < 40; e++) {
+        R.fishClock = e * LAND.WAVE_EVERY + 0.2; R._waveEpoch = -1;
+        R.draw(0);
+        const wp = R._wavePick;
+        if (!wp) continue;
+        wrolls++;
+        if (wp.segs.length > 3) wover++;
+        if (wp.segs.length > 1) wsplit++;
+        for (const sg of wp.segs) {
+          wsegs++;
+          wseen[Math.round(sg.x / 16) + ',' + Math.round(sg.y / 16)] = 1;
+          const lx = (sg.x + sg.nx * 10) / TL | 0, ly = (sg.y + sg.ny * 10) / TL | 0;
+          const lt = S.map.terrain[ly * CFG.W + lx];
+          if (lt === T.WATER || lt === T.MOAT || lt === T.MOUNTAIN || lt === T.HILLS) wbad++;
+          const wx2 = (sg.x - sg.nx * 10) / TL | 0, wy2 = (sg.y - sg.ny * 10) / TL | 0;
+          if (S.map.terrain[wy2 * CFG.W + wx2] !== T.WATER) wbad++;
+        }
+      }
+      out.waveRolls = wrolls; out.waveSegs = wsegs; out.waveBad = wbad;
+      out.waveDistinct = Object.keys(wseen).length; out.waveSplits = wsplit; out.waveOversize = wover;
       out.err = G.lastFrameError ? String(G.lastFrameError) : '';
     } catch (e) { out.thrown = String(e && e.stack || e); }
     return out;`));
@@ -1832,6 +1864,11 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     !v.thrown && v.noLockstep && v.spots > 1 && v.distinctPicks > 1 && v.offShoal === 0 && v.poor === 0 && !v.err,
     v.thrown || v.err || (v.spots + ' spots worth fishing, ' + v.distinctPicks + ' different ones chosen over 30 leaps, ' +
       v.offShoal + ' off a shoal, ' + v.poor + ' below the stock floor'));
+  ck('aWaveRollsOnItsBeachParallelAndRare',
+    !v.thrown && v.waveRolls > 10 && v.waveBad === 0 && v.waveOversize === 0 && v.waveDistinct > 4 && v.waveInWaterFrame === true && !v.err,
+    v.thrown || v.err || (v.waveRolls + ' rolls over 40 epochs (' + v.waveSegs + ' crests, ' + v.waveSplits +
+      ' split on curves), ' + v.waveDistinct + ' distinct stretches, ' + v.waveBad +
+      ' with rock/moat behind or no open water in front; wave live in the water-view budget frame: ' + v.waveInWaterFrame));
   Object.assign(res, { _water: { livingPassMs: f2(v.livingMs), livingPassBeforeMs: f2(v.frameOff), motionDeltaMs: f2(v.newWork),
     recordedFoamMs: f2(v.foamMs), recordedTilesMs: f2(v.tilesMs), waterViewPassMs: f2(v.waterLivingMs), flushMs: f2(v.flushMs) } });
 }
