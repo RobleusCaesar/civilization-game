@@ -1067,16 +1067,24 @@ the water; the edge treatment is drawn over it from the curve and is not
 something a tile can carry. A supplied land tile is likewise unaffected —
 the beach lands on top of whatever you drew.
 
-**The body has depth** (LAND_REFRESH Phase 1a). Inside that curve the water
-is no longer one flat blue: a baked distance-to-land field (a chamfer
-distance, so its contours are round) bands the body into four hard steps —
-a warm turquoise shallow, `water[2]`, the body blue, and a navy heart for
-the middle of a big lake — from the `basin` ramp in `js/artstyle.js`. Every
-band edge is sampled bilinearly, pushed about by world-space noise and
-stippled at the seam, so none of them can follow the tile grid; a moat is
-pinned to the shallow band so a dug channel meets the lake's own rim with
-no seam. `DEPTH_AMP 0` is the old flat body byte for byte. A supplied
-`water.png` replaces the whole body, bands included. And the surface LIVES
+**The body has depth** (the Water & Shoreline Overhaul, Part 0 — it
+replaced LAND_REFRESH Phase 1's four bands, which read as four flat
+colours). Inside that curve the water is painted in **fourteen hard steps**
+of the `deep` ramp in `js/artstyle.js` — sand showing through at the
+waterline, clear turquoise, teal, the body blue, steel, navy, a heart —
+from a baked distance-to-land field (a chamfer distance, so its contours
+are round). The shore steps are absolute, a quarter tile apart, so even a
+pond shows three or four; the deep steps are fitted to each MAP's own
+deepest water, never per region, so the heart appears in the largest body
+at every map size and a sea does not flatten into one navy. Every step edge
+is sampled bilinearly, pushed about by world-space noise and stippled at the
+seam, so none can follow the tile grid (ARTSTYLE rule 5 as amended: many
+steps and dither, never a gradient). A **shore shadow** — a darker,
+dithered band on the water side of every bank — is what makes the banks
+read as having height, with an optional lit lip on the sun-facing land
+side. A moat is pinned to the shore step so a dug channel meets the lake's
+own rim with no seam. `DEPTH_AMP 0` is the old flat body byte for byte. A
+supplied `water.png` replaces the whole body, steps included. And the surface LIVES
 (1b–1d, frame time, viewport only): the waterline laps — a 1px broken foam
 line creeping along the traced shore, drawn as cached 1px points rather
 than a dashed stroke, which a software rasterizer pays three times over —
@@ -1115,9 +1123,14 @@ Tunables, all in the `LAND` block:
 | too many / too few shore stones | `SHOAL_STONES`, `SHOAL_STEP` |
 | the shallows look barren on a rocky coast | raise `LIFE_CHANCE` |
 | kelp and coral look evenly sprinkled | raise `LIFE_GATE` |
-| the water is one flat blue / a lake has no basin | `DEPTH_AMP` (0 = the old flat body, 1 = the full `basin` ramp), `DEPTH_E1..E3` (tiles from land where each band falls) |
-| a band edge reads as a ring or a staircase | raise `DEPTH_WANDER`, `DEPTH_DITHER`; lower `DEPTH_WANDER_F` for a slower wander |
-| the shallows read as a resort | lower `DEPTH_AMP`, or pull `ART.PALETTE.basin[3]` toward `water[2]` |
+| the water is one flat blue / a lake has no depth | `DEPTH_AMP` (0 = the old flat body, 1 = the full `deep` ramp) |
+| a pond shows too few steps / the shore steps are too coarse | lower `DEEP_SHORE_STEP`; `DEEP_SHORE_END` is where the fitted deep steps take over |
+| the heart never appears / a sea flattens into one navy | `DEEP_TOP_K` (share of the map's deepest tile the last edge sits at), `DEEP_TOP_MIN` (a map of ponds shows no heart below this) |
+| a step edge reads as a ring or a staircase | raise `DEPTH_WANDER`, `DEPTH_DITHER` (keep it under half a shore step); lower `DEPTH_WANDER_F` for a slower wander; `DEPTH_SUB` for finer cells |
+| the shallows read as a resort / the ramp is too loud | `DEEP_SAT` (saturation of every step), `DEEP_LIFT` (lightness nudge) — identity at 1 / 0 |
+| open water wants the old tonal blotches back | `WATER_WHISPER` (0 = off under the ramp; they read as smudges over the dark steps) |
+| the banks read flat / no sense of height | `SHORE_SHADOW` (the dark band on the water side), `SHORE_SHADOW_W`, `SHORE_SHADOW_STEPS`; `SHORE_SHADOW_SUN` leans it to the north and west banks |
+| the sun-facing banks want a catch-light | `SHORE_LIP` (0 = off), `SHORE_LIP_W` |
 | the waterline does not lap / laps too loud | `FOAM_LINE` (0 off), `FOAM_PULSE`, `FOAM_SPEED`, `FOAM_MINZ` (the zoom it starts at), `FOAM_DOTS` |
 | the fish flash instead of jumping | `FISH_TIME` (0 = the old flash), `FISH_RISE` |
 | golden hour leaves the water dull | `SPARKLE_GOLD` |

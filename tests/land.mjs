@@ -1058,6 +1058,10 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
 {
   const p = await page();
   const v = await p.evaluate(new Function(boot + `
+    // the spoke pin is about the SHELF's folded rings: the shore shadow's
+    // dithered levels (Overhaul 2.3) are darker cells by design, so the
+    // geometry is measured with the shadow off
+    LAND.SHORE_SHADOW = 0; R.rebakeAll(); while (R.tickBake(1e9)) {}
     const W = CFG.W, TL = CFG.TILE, terr = S.map.terrain;
     const g = R.terrainCache.getContext('2d');
     const rgb = (h) => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
@@ -1679,7 +1683,8 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       const wet = t => t === T.WATER || t === T.MOAT;
       // ---- the field ----
       const D = R.waterDepth();
-      out.len = D.length; out.max = Math.max.apply(null, Array.from(D));
+      out.len = D.length; out.max = Math.max.apply(null, Array.from(D)); out.cap16 = LAND.DEPTH_CAP * 16;
+      out.edges = Array.from(R._deepEdges).map(e => +e.toFixed(2)); out.depthMax = R._depthMax;
       let bad = 0, shoreOk = 0, shoreN = 0;
       for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
         const i = y * W + x;
@@ -1696,9 +1701,9 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       // ---- no band edge on the grid ----
       const g = R.terrainCache.getContext('2d');
       const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-      const cols = R._basinCols().fill.map(hex);
+      const cols = R._deepCols().fill.map(hex), NC = cols.length;
       const img = g.getImageData(0, 0, W * TL, H * TL).data, RW = W * TL;
-      const bandAt = (px, py) => { const o = (py * RW + px) * 4; for (let b = 0; b < 4; b++) if (img[o] === cols[b][0] && img[o + 1] === cols[b][1] && img[o + 2] === cols[b][2]) return b; return -1; };
+      const bandAt = (px, py) => { const o = (py * RW + px) * 4; for (let b = 0; b < NC; b++) if (img[o] === cols[b][0] && img[o + 1] === cols[b][1] && img[o + 2] === cols[b][2]) return b; return -1; };
       let changes = 0, onGrid = 0, bandsSeen = new Set();
       for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
         const i = y * W + x;
@@ -1715,11 +1720,10 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       // ---- AMP 0 is the flat body ----
       const ampWas = LAND.DEPTH_AMP; LAND.DEPTH_AMP = 0; R.rebakeAll(); while (R.tickBake(1e9)) {}
       const flat = g.getImageData(0, 0, W * TL, H * TL).data;
-      const navy = hex(ART.PALETTE.basin[0]), turq = hex(ART.PALETTE.basin[3]);
+      const DR = ART.PALETTE.deep, probe = [hex(DR[0]), hex(DR[2]), hex(DR[5]), hex(DR[DR.length - 1])];
       let tinted = 0;
-      for (let o = 0; o < flat.length; o += 16) {
-        if ((flat[o] === navy[0] && flat[o + 1] === navy[1] && flat[o + 2] === navy[2]) || (flat[o] === turq[0] && flat[o + 1] === turq[1] && flat[o + 2] === turq[2])) tinted++;
-      }
+      for (let o = 0; o < flat.length; o += 16)
+        for (const c of probe) if (flat[o] === c[0] && flat[o + 1] === c[1] && flat[o + 2] === c[2]) { tinted++; break; }
       out.tintedAtZero = tinted;
       LAND.DEPTH_AMP = ampWas; R.rebakeAll(); while (R.tickBake(1e9)) {}
       // ---- the bay pin: carve inlets, rebake, count shelf outside the body ----
@@ -1783,12 +1787,17 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     return out;`));
   await p.close();
   const f2 = (n) => (n == null ? '?' : (+n).toFixed(3));
-  ck('theDepthFieldIsDistanceToLand', !v.thrown && v.bad === 0 && v.shoreN > 50 && v.shoreOk === v.shoreN && v.max <= LAND_CAP_16(v),
-    v.thrown || (v.shoreOk + '/' + v.shoreN + ' shore tiles at one tile, max ' + v.max + '/16, ' + v.bad + ' bad cells'));
+  ck('theDepthFieldIsDistanceToLand', !v.thrown && v.bad === 0 && v.shoreN > 50 && v.shoreOk === v.shoreN && v.max <= v.cap16,
+    v.thrown || (v.shoreOk + '/' + v.shoreN + ' shore tiles at one tile, max ' + v.max + '/16 (cap ' + v.cap16 + '), ' + v.bad + ' bad cells'));
   ck('andAMoatIsPinnedShallow', !v.thrown && v.moatD === 16, v.thrown || ('moat depth ' + v.moatD + '/16'));
-  ck('noBandEdgeFollowsTheTileGrid', !v.thrown && v.changes > 200 && v.onGrid <= v.changes * 0.25 && v.bands.length >= 3,
-    v.thrown || (v.onGrid + ' of ' + v.changes + ' band changes on a tile boundary (the grid share is 1 in 8); bands seen ' + JSON.stringify(v.bands)));
-  ck('ampZeroIsTheFlatBody', !v.thrown && v.tintedAtZero === 0, v.thrown || (v.tintedAtZero + ' basin-coloured pixels at DEPTH_AMP 0'));
+  ck('theStepEdgesAreFittedToTheMap', !v.thrown && v.edges && v.edges.length === 13 && v.edges.every((e, i) => i === 0 || e > v.edges[i - 1])
+    && v.edges[12] <= v.depthMax && v.edges[12] >= Math.min(v.depthMax, 4) - 1e-6,
+    v.thrown || ('edges ' + JSON.stringify(v.edges) + ' for a deepest tile of ' + (v.depthMax || 0).toFixed(2)));
+  ck('noStepEdgeFollowsTheTileGrid', !v.thrown && v.changes > 200 && v.onGrid <= v.changes * 0.25,
+    v.thrown || (v.onGrid + ' of ' + v.changes + ' step changes on a tile boundary (the grid share is 1 in 8)'));
+  ck('theRampShowsItsSteps', !v.thrown && v.bands.length >= 12,
+    v.thrown || (v.bands.length + ' distinct steps painted of ' + LAND_STEPS(v) + ': ' + JSON.stringify(v.bands)));
+  ck('ampZeroIsTheFlatBody', !v.thrown && v.tintedAtZero === 0, v.thrown || (v.tintedAtZero + ' ramp-coloured pixels at DEPTH_AMP 0'));
   ck('noShelfLeavesTheWaterOnAConcaveBay', !v.thrown && v.carved >= 1 && v.shelfOutside === 0,
     v.thrown || (v.shelfOutside + ' shelf pixels outside the body with ' + v.carved + ' inlets carved (' + v.shelfPxOnLand + ' on land-tile pixels inside it)'));
   ck('theLivingWaterFitsItsBudget', !v.thrown && v.livingMs < 0.4 && v.newWork < 0.4,
@@ -1797,7 +1806,47 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   Object.assign(res, { _water: { livingPassMs: f2(v.livingMs), livingPassBeforeMs: f2(v.frameOff), motionDeltaMs: f2(v.newWork),
     recordedFoamMs: f2(v.foamMs), recordedTilesMs: f2(v.tilesMs), waterViewPassMs: f2(v.waterLivingMs), flushMs: f2(v.flushMs) } });
 }
-function LAND_CAP_16(v) { return 10 * 16; }
+function LAND_STEPS(v) { return 14; }
+
+/* ---- 20. THE DEEP RAMP ACROSS MAP SIZES (the Overhaul, Part 0) ----
+   The deep steps are fitted per MAP, never per region: the darkest step
+   must actually be painted in the largest body on every map size, and a
+   small pond — three or four tiles of water — must still show at least
+   three steps, because the shore steps are absolute. Both are measured
+   from the baked cache, not from the field. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(`
+    const out = { sizes: {} };
+    try {
+      const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+      const DR = ART.PALETTE.deep.map(hex), NC = DR.length;
+      for (const [seed, size] of [['verify7', 'medium'], ['verify7', 'large'], ['verify7', 'xlarge'], ['scenes1', 'large'], ['pond1', 'xlarge']]) {
+        Boot.force(); G.newGame(seed, 'moderate', size); Screens._demo = false; Screens.show('playing'); S.paused = true;
+        for (let i = 0; i < S.map.explored.length; i++) { S.map.explored[i] = 1; if (S.map.seenTerrain) S.map.seenTerrain[i] = S.map.terrain[i]; }
+        R.rebakeAll(); while (R.tickBake(1e9)) {}
+        const W = CFG.W, H = CFG.H, TL = CFG.TILE, terr = S.map.terrain, wet = t => t === T.WATER || t === T.MOAT;
+        const g = R.terrainCache.getContext('2d'), img = g.getImageData(0, 0, W * TL, H * TL).data, RW = W * TL;
+        const stepAt = (px, py) => { const o = (py * RW + px) * 4; for (let b = 0; b < NC; b++) if (img[o] === DR[b][0] && img[o + 1] === DR[b][1] && img[o + 2] === DR[b][2]) return b; return -1; };
+        const seen = new Set(); let heart = 0;
+        for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) { if (!wet(terr[y * W + x])) continue;
+          for (let cy = 2; cy < TL; cy += 4) for (let cx = 2; cx < TL; cx += 4) { const b = stepAt(x * TL + cx, y * TL + cy); if (b >= 0) seen.add(b); if (b === NC - 1) heart++; } }
+        // the smallest region of three or more cells: how many steps does it show?
+        const regs = R.waterRegions().filter(r => r.cells.length >= 3).sort((a, b) => a.cells.length - b.cells.length);
+        let pondSteps = null, pondN = 0;
+        if (regs.length) { const ps = new Set(); for (const c of regs[0].cells) { const x = c % W, y = (c / W) | 0; for (let cy = 2; cy < TL; cy += 4) for (let cx = 2; cx < TL; cx += 4) { const b = stepAt(x * TL + cx, y * TL + cy); if (b >= 0) ps.add(b); } } pondSteps = ps.size; pondN = regs[0].cells.length; }
+        out.sizes[seed + '/' + size] = { dims: W + 'x' + H, deepest: +R._depthMax.toFixed(2), steps: seen.size, heartPx: heart, pondCells: pondN, pondSteps };
+      }
+    } catch (e) { out.thrown = String(e && e.stack || e); }
+    return out;`));
+  await p.close();
+  const S2 = v.sizes || {};
+  const every = Object.values(S2);
+  ck('theHeartAppearsInTheLargestBodyOnEverySize', !v.thrown && every.length === 5 && every.every(s => s.heartPx > 0 && s.steps >= 12),
+    v.thrown || Object.entries(S2).map(([k, s]) => k + ': ' + s.steps + ' steps, heart ' + s.heartPx + ' cells, deepest ' + s.deepest).join('; '));
+  ck('andASmallPondStillShowsItsShoreSteps', !v.thrown && every.length === 5 && every.every(s => s.pondSteps == null || s.pondSteps >= 3),
+    v.thrown || Object.entries(S2).map(([k, s]) => k + ': pond of ' + s.pondCells + ' cells shows ' + s.pondSteps + ' steps').join('; '));
+}
 
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL LAND CHECKS PASS');

@@ -232,41 +232,74 @@ const LAND = {
      the blue, which is what read as dirt in a reported screenshot. Muted
      hard toward the water body it reads as a shape UNDER the surface. */
   LIFE_MUTE: 0.55,
-  /* --- Part 4b: THE BASIN (LAND_REFRESH Phase 1a — R.waterDepth, paintWater).
-     The body of the water used to be one flat W[1]. It is now painted in
-     FOUR HARD DEPTH BANDS from a baked distance-to-land field: a chamfer
-     distance over the wet tiles (near-round contours, not the squares an
-     8-neighbour count draws around every land corner), capped at DEPTH_CAP
-     tiles, held in one Uint8Array of sixteenths. Each tile samples it
-     bilinearly per sub-cell and pushes the answer about with the same
-     world-space noise the rock fields use (the ROCK_WANDER trick), so NO
-     BAND EDGE CAN FOLLOW THE TILE GRID; the seam takes a hashed stipple
-     DEPTH_DITHER tiles either side of the contour, never a gradient. The
-     shades come from ART.PALETTE.basin, each mixed toward the old body blue
-     by DEPTH_AMP — 0 is byte-for-byte the flat water of before, 1 the full
-     ramp. Swell crests and glints pick the band-local lighter shade. The
-     traced shelf, foam, beach, shoals and kelp are untouched and lie on
-     top. A MOAT is pinned to the shallow band: a dug channel is one flat
-     shallow cut, and it meets the lake's own shallow rim at the mouth with
-     no seam. LAND_REFRESH names these WATER_DEPTH = {EDGES, WANDER, AMP};
-     they are flattened here so the bench can hold them. --- */
-  /* the edges are cut to the lakes this generator actually makes: on a
-     large map the field tops out at 4 tiles and on xlarge at 4.7, so the
-     doc's 1.5 / 4 / 8 never reached the heart and left most of a lake in
-     the mid band (measured: 60% of the water). At 1.25 / 2.25 / 3.25 a
-     pond is rim and mid, a lake carries all four, and the biggest water
-     gets its navy heart. */
-  DEPTH_E1: 1.25,       // tiles from land where the shallow band ends…
-  DEPTH_E2: 2.25,       // …where the mid band ends…
-  DEPTH_E3: 3.25,       // …and where the body gives way to the deep heart
-  DEPTH_WANDER: 0.35,   // tiles the drawn contour may leave the true one
+  /* --- Part 4b: THE DEEP RAMP (the Water & Shoreline Overhaul, Part 0 —
+     R.waterDepth, paintWater). The body of the water is painted in
+     DEEP_STEPS HARD STEPS of ART.PALETTE.deep — a shore-to-heart ramp of
+     fourteen palette colours: sand showing through at the waterline, clear
+     turquoise, teal, the old body blue, steel, navy — read from a baked
+     distance-to-land field: a chamfer distance over the wet tiles (near-
+     round contours, not the squares an 8-neighbour count draws around
+     every land corner), capped at DEPTH_CAP tiles, held in one Uint8Array
+     of sixteenths. Each tile samples it bilinearly per sub-cell and pushes
+     the answer about with the same world-space noise the rock fields use
+     (the ROCK_WANDER trick), so NO STEP EDGE CAN FOLLOW THE TILE GRID;
+     every seam takes a hashed stipple DEPTH_DITHER tiles either side of
+     the contour. Many steps and dither, never a gradient — ARTSTYLE rule 5
+     as amended. (The four-band basin of LAND_REFRESH Phase 1 read as four
+     flat colours; this is what replaced it.)
+
+     THE STEPS ARE FITTED TO THE WATER THE MAP HAS. The shore steps are
+     absolute — DEEP_SHORE_STEP tiles apart out to DEEP_SHORE_END, so even a
+     pond three tiles across shows three or four of them — and the deep
+     steps are spread evenly from there to DEEP_TOP_K of the map's own
+     deepest tile. Never per region (a pond is not a basin), but per MAP:
+     measured, the field tops out at 4–6 tiles on a lake map and at the cap
+     on a sea map, so a fixed deep ramp either never reached the heart or
+     flattened a sea into one navy; fitted, the heart appears in the largest
+     body at every map size. Below DEEP_TOP_MIN the map's biggest water is
+     a pond and the heart stays away. DEPTH_AMP mixes the whole ramp toward
+     the old body blue (0 is byte-for-byte the flat water of before);
+     DEEP_SAT and DEEP_LIFT are the bench's pull-back knobs on the colours
+     themselves, identity at their defaults so what ships is the palette.
+     Swell crests and glints pick a step-local lighter shade. The traced
+     shelf, foam, beach, shoals and kelp are untouched and lie on top. A
+     MOAT is pinned to the shore step: a dug channel is one flat shallow
+     cut that meets the lake's own rim with no seam. --- */
+  DEEP_STEPS: 14,       // steps in the ramp — ART.PALETTE.deep's length, for the record
+  DEEP_SHORE_STEP: 0.25,// tiles between the absolute shore steps…
+  DEEP_SHORE_END: 2.0,  // …out to here, where the fitted deep steps take over
+  DEEP_TOP_K: 0.92,     // the last edge sits at this share of the map's deepest tile
+  DEEP_TOP_MIN: 4.0,    // …but never nearer than this: a map of ponds shows no heart
+  DEEP_SAT: 1,          // saturation of every step (1 = the palette; bench pull-back)
+  DEEP_LIFT: 0,         // lightness nudge of every step, -1..1 (0 = the palette)
+  DEPTH_WANDER: 0.3,    // tiles the drawn contour may leave the true one
   DEPTH_WANDER_F: 0.9,  // …how fast that wander turns, per tile
-  DEPTH_AMP: 0.85,      // 0 = the old flat body; 1 = the full basin ramp.
-                        // 0.85 won the colour A/B: at 1 the rim read bright
-                        // enough at min zoom to edge toward "resort"
-  DEPTH_DITHER: 0.22,   // half-width of the stippled seam, in tiles
-  DEPTH_SUB: 8,         // band samples per tile side (4px cells at 32px)
-  DEPTH_CAP: 10,        // tiles at which the field stops deepening
+  DEPTH_AMP: 1,         // 0 = the old flat body; 1 = the full deep ramp
+  DEPTH_DITHER: 0.05,   // half-width of the stippled seam, in tiles — a cell or
+                        // so either side of the contour; wider fragments every
+                        // shore step into single-cell rects and costs the edit gate
+  DEPTH_SUB: 8,         // samples per tile side (4px cells at 32px)
+  DEPTH_CAP: 15,        // tiles at which the field stops deepening (sea maps reach it)
+  WATER_WHISPER: 0,     // the old tonal whisper over the ramp, as a share of its
+                        // alpha (0 = off: it read as smudges; the flat body keeps it)
+  /* --- Part 4b′: THE SHORE SHADOW AND THE LIT LIP (Overhaul 2.3). The
+     single biggest reason a top-down lake reads as having BANKS: the water
+     is darker where it meets them. A darker band SHORE_SHADOW_W tiles wide
+     on the water side of every shoreline, its edge riding the same wander
+     noise as the steps and quantized to SHORE_SHADOW_STEPS dithered levels
+     — dark at the waterline, thinning outward — drawn over the ramp in
+     paintWater. SHORE_SHADOW_SUN leans it toward the banks the sun would
+     actually throw a shadow from (north and west, light being top-left):
+     0 is every shoreline, as specified; 1 is only those. And, behind its
+     own dial, a one-pixel LIT LIP on the land side of the shores that face
+     the sun — the bank's catch-light — drawn in the shore layer. --- */
+  SHORE_SHADOW: 0.45,   // alpha of the band at the waterline; 0 switches it off
+                        // (0.28 vanished under the shelf wash; 0.45 reads as a bank)
+  SHORE_SHADOW_W: 1.0,  // tiles it reaches out from the shore
+  SHORE_SHADOW_STEPS: 3,// dithered levels between the waterline and its outer edge
+  SHORE_SHADOW_SUN: 0,  // 0 = every shoreline; 1 = only banks to the north and west
+  SHORE_LIP: 0,         // alpha of the lit lip on the sun-facing land side; 0 = off (A/B)
+  SHORE_LIP_W: 1.2,     // its width in 1/16ths of a tile
   /* --- Part 4c: LIVING WATER (LAND_REFRESH 1b–1d — R.drawLivingWater).
      FRAME work, viewport only, and every piece of it a dial that turns to
      0. The waterline LAPS: a 1px broken foam line along the visible run of
@@ -2163,6 +2196,17 @@ const R = {
         const w = wAt(i);
         return (LAND.SAND_MIN + w * w * (LAND.SAND_MAX - LAND.SAND_MIN)) * (1 - rockS[i]) * natS[i];
       }), AP.bone[2]);
+      /* THE LIT LIP (Overhaul 2.3, behind SHORE_LIP): the bank's catch-light,
+         a pixel or so of pale along the land side of the shores that FACE
+         the sun — light is top-left, so a bank whose land lies south or
+         east of the water shows the lit top of its edge. Weighted by the
+         outward normal's lean toward south-east and smoothed along the run
+         like the other changeovers, so it fades in and out around a bay
+         rather than switching. */
+      if (LAND.SHORE_LIP > 0) {
+        const lipS = smooth(nrm.map(nn => Math.max(0, (nn[0] + nn[1]) * 0.7071)));
+        ribbon(loop, off(i => LAND.SHORE_LIP_W * lipS[i] * natS[i]), 'rgba(255,248,222,' + (+LAND.SHORE_LIP).toFixed(3) + ')');
+      }
       ribbon(loop, off(i => LAND.SHOAL_W * rockS[i] * natS[i]),            // wet rock
         'rgba(58,66,64,' + LAND.SHOAL_ALPHA.toFixed(2) + ')');
       /* THE STONES THEMSELVES. Stepping a fixed stride and rolling a fixed
@@ -2187,6 +2231,8 @@ const R = {
         this._decalMute = null;
       }
       }
+      // …and the shore shadow last on the water side, over the shelf wash
+      if (!pass) this.paintShoreShadow(g);
       g.restore();
     }
     g.restore();
@@ -2259,33 +2305,152 @@ const R = {
       c = (x > 0 && y < H - 1) ? d[i + W - 1] + 4 : 4; if (c < m) m = c;
       d[i] = m;
     }
-    const out = new Uint8Array(W * H), cap = LAND.DEPTH_CAP * 16;
+    const out = new Uint8Array(W * H), cap = Math.min(255, LAND.DEPTH_CAP * 16);
+    let maxD = 0;
     for (let i = 0; i < d.length; i++) {
       if (!d[i]) continue;
       const v = Math.round(d[i] * 16 / 3);
       out[i] = terr[i] === T.MOAT ? 16 : (v > cap ? cap : v);
+      if (out[i] > maxD) maxD = out[i];
     }
-    this._depthD = out; this._depthKey = key;
+    /* THE SHORE SHADOW'S OWN FIELD: distance from land that lies to the
+       north or west — the forward chamfer pass alone (left, up, up-left),
+       which reaches a wet cell only through cells above or to its left.
+       Capped at four tiles; the shadow never reaches that far. */
+    const dn = new Int32Array(W * H);
+    for (let i = 0; i < dn.length; i++) dn[i] = wet(terr[i]) ? BIG : 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (!dn[i]) continue;
+      let m = dn[i];
+      let c = x > 0 ? dn[i - 1] + 3 : 3; if (c < m) m = c;
+      c = y > 0 ? dn[i - W] + 3 : 3; if (c < m) m = c;
+      c = (x > 0 && y > 0) ? dn[i - W - 1] + 4 : 4; if (c < m) m = c;
+      dn[i] = m;
+    }
+    const sh = new Uint8Array(W * H);
+    for (let i = 0; i < dn.length; i++) if (dn[i]) { const v = Math.round(dn[i] * 16 / 3); sh[i] = v > 64 ? 64 : v; }
+    /* THE STEP EDGES, FITTED TO THIS MAP (see the LAND block): absolute
+       shore steps, then the deep steps spread to DEEP_TOP_K of the deepest
+       tile, never nearer than DEEP_TOP_MIN. Stored beside the field. */
+    const n = Math.max(2, (ART.PALETTE.deep || []).length || LAND.DEEP_STEPS), edges = new Float32Array(n - 1);
+    let k = 0;
+    // the waterline sits at d 0.5 (halfway between a land centre and a water
+    // centre), so the first step gets a real width before its first edge
+    for (let e = 0.5 + LAND.DEEP_SHORE_STEP * 0.6; e < LAND.DEEP_SHORE_END && k < n - 2; e += LAND.DEEP_SHORE_STEP) edges[k++] = e;
+    const from = LAND.DEEP_SHORE_END, rest = n - 1 - k;
+    const top = Math.max(from + 0.5, LAND.DEEP_TOP_MIN, (maxD / 16) * LAND.DEEP_TOP_K);   // always beyond the shore steps
+    for (let j = 0; j < rest; j++) edges[k + j] = from + (top - from) * (j + 1) / rest;
+    this._depthD = out; this._shadowD = sh; this._deepEdges = edges; this._depthMax = maxD / 16; this._depthKey = key;
     return out;
   },
-  /* the basin's shades at the current DEPTH_AMP: each band mixed from the
-     old body blue toward its ramp entry, with the crest and glint partners
-     that keep a swell readable over every band. Memoised on the amp. */
-  _basinC: null,
-  _basinCols() {
+  /* the ramp's shades at the current dials: every step of ART.PALETTE.deep
+     put through DEEP_SAT and DEEP_LIFT (identity at 1 / 0) and then mixed
+     from the old body blue by DEPTH_AMP, with the crest and glint partners
+     that keep a swell readable over every step — three and five steps
+     lighter, the two lightest shore steps taking the foam-lip white.
+     Memoised on the three dials. */
+  _deepC: null,
+  _deepCols() {
     const amp = Math.max(0, Math.min(1, +LAND.DEPTH_AMP || 0));
-    if (this._basinC && this._basinC.amp === amp) return this._basinC;
-    const W = ART.PALETTE.water, B = ART.PALETTE.basin;
+    const sat = Math.max(0, +LAND.DEEP_SAT || 0), lift = Math.max(-1, Math.min(1, +LAND.DEEP_LIFT || 0));
+    const key = amp + '|' + sat + '|' + lift;
+    if (this._deepC && this._deepC.key === key) return this._deepC;
+    const W = ART.PALETTE.water, DR = ART.PALETTE.deep, n = DR.length;
     const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-    const mix = (a, b) => {
-      const A = hex(a), C = hex(b);
-      return '#' + [0, 1, 2].map(i => Math.round(A[i] + (C[i] - A[i]) * amp).toString(16).padStart(2, '0')).join('');
+    const toHex = c => '#' + c.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+    const adjust = (c) => {
+      const m = (c[0] + c[1] + c[2]) / 3;
+      let o = c.map(v => m + (v - m) * sat);
+      if (lift > 0) o = o.map(v => v + (255 - v) * lift); else if (lift < 0) o = o.map(v => v * (1 + lift));
+      return o;
     };
-    this._basinC = { amp,
-      fill: [mix(W[1], B[0]), mix(W[1], B[1]), mix(W[1], B[2]), mix(W[1], B[3])],
-      crest: [W[2], W[2], mix(W[2], W[3]), mix(W[2], W[3])],
-      glint: [W[3], W[3], mix(W[3], W[4]), mix(W[3], W[4])] };
-    return this._basinC;
+    const mixFrom = (base, target) => { const A = hex(base); return toHex(A.map((v, i) => v + (target[i] - v) * amp)); };
+    const step = k => adjust(hex(DR[Math.max(0, Math.min(n - 1, k))]));
+    const fill = [], crest = [], glint = [];
+    for (let k = 0; k < n; k++) {
+      fill.push(mixFrom(W[1], step(k)));
+      crest.push(mixFrom(W[2], k >= 3 ? step(k - 3) : hex(W[4])));
+      glint.push(mixFrom(W[3], k >= 5 ? step(k - 5) : hex(W[4])));
+    }
+    this._deepC = { key, n, fill, crest, glint };
+    return this._deepC;
+  },
+  /* THE SHORE SHADOW (Overhaul 2.3), painted into the SHORE LAYER — over
+     the shelf wash — rather than into the body under it: the shelf's stacked
+     pale ribbons lighten exactly the tiles the shadow darkens, and under
+     them the band never read (measured: the waterline came out LIGHTER
+     with the shadow on). Per wet tile within reach: the same nine-centre
+     bilinear read of the depth field and the same wander as the steps, so
+     its edge follows no grid; quantized to SHORE_SHADOW_STEPS levels with
+     the stipple at each seam, darkest at the waterline; SHORE_SHADOW_SUN
+     leans it toward the banks the sun throws a shadow from (the forward-
+     pass field). Bake-time only: the layer is keyed on the water, the
+     bench's rebake drops its key, and blitShore carries it into every
+     repaint. Runs inside pass 0's clips, so it can never leave the body. */
+  paintShoreShadow(g) {
+    const SA = +LAND.SHORE_SHADOW || 0, SW = +LAND.SHORE_SHADOW_W || 0;
+    if (!(SA > 0 && SW > 0)) return;
+    const W = CFG.W, H = CFG.H, TL = CFG.TILE, terr = (S.map.seenTerrain || S.map.terrain);
+    const wet = t => t === T.WATER || t === T.MOAT;
+    const D = this.waterDepth(), SD = this._shadowD;
+    const N = LAND.DEPTH_SUB, cell = TL / N, DI = LAND.DEPTH_DITHER, LV = Math.max(1, LAND.SHORE_SHADOW_STEPS | 0);
+    const SUN = Math.max(0, Math.min(1, +LAND.SHORE_SHADOW_SUN || 0));
+    this.landLattices();
+    const lat = this._latOne.depth, WA = LAND.DEPTH_WANDER * 2;
+    const at = (F, cx, cy) => F[(cy < 0 ? 0 : cy >= H ? H - 1 : cy) * W + (cx < 0 ? 0 : cx >= W ? W - 1 : cx)] / 16;
+    // a bilinear sampler over the nine centres around (x, y), u/v in 0..1
+    const sampler = (F, x, y) => {
+      const d00 = at(F, x - 1, y - 1), d10 = at(F, x, y - 1), d20 = at(F, x + 1, y - 1);
+      const d01 = at(F, x - 1, y), d11 = at(F, x, y), d21 = at(F, x + 1, y);
+      const d02 = at(F, x - 1, y + 1), d12 = at(F, x, y + 1), d22 = at(F, x + 1, y + 1);
+      return (u, v) => {
+        const mid = u < 0.5 ? d01 + (d11 - d01) * (u + 0.5) : d11 + (d21 - d11) * (u - 0.5);
+        const far = v < 0.5
+          ? (u < 0.5 ? d00 + (d10 - d00) * (u + 0.5) : d10 + (d20 - d10) * (u - 0.5))
+          : (u < 0.5 ? d02 + (d12 - d02) * (u + 0.5) : d12 + (d22 - d12) * (u - 0.5));
+        const t = v < 0.5 ? 0.5 - v : v - 0.5;
+        return mid + (far - mid) * t;
+      };
+    };
+    const cols = [];
+    for (let lv = 1; lv <= LV; lv++) cols[lv] = 'rgba(8,22,38,' + (SA * lv / LV).toFixed(3) + ')';
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x;
+      if (!wet(terr[i]) || !MapGen.onBoard(x, y)) continue;
+      if (D[i] / 16 - WA * 0.5 > SW + 1.2) continue;               // beyond the band's reach
+      const dep = sampler(D, x, y), sun = SUN > 0 ? sampler(SD, x, y) : null;
+      const w00 = (this._latRead(lat, x, y) - 0.5) * WA, w10 = (this._latRead(lat, x + 1, y) - 0.5) * WA;
+      const w01 = (this._latRead(lat, x, y + 1) - 0.5) * WA, w11 = (this._latRead(lat, x + 1, y + 1) - 0.5) * WA;
+      for (let j = 0; j < N; j++) {
+        const v = (j + 0.5) / N;
+        let run = 0, runL = -1;
+        for (let k = 0; k <= N; k++) {
+          let lv = -1;
+          if (k < N) {
+            const u = (k + 0.5) / N;
+            const wn = (w00 + (w10 - w00) * u) * (1 - v) + (w01 + (w11 - w01) * u) * v;
+            let ds = dep(u, v) + wn;
+            if (sun) ds = ds + (sun(u, v) + wn - ds) * SUN;
+            const t = 1 - (ds - 0.5) / SW;                          // 1 at the waterline, 0 at the outer edge
+            if (t <= 0) lv = 0;
+            else {
+              const f = t * LV;
+              lv = Math.floor(f);
+              const frac = f - lv, dz = DI * LV / SW;
+              // the seam between two levels takes the stipple, like every other seam
+              if (frac > 0.5 - dz && frac < 0.5 + dz) { if (this._lh(x * N + k + 977, y * N + j + 977, 1311) < frac) lv++; }
+              else if (frac >= 0.5) lv++;
+              if (lv > LV) lv = LV;
+            }
+          }
+          if (lv !== runL) {
+            if (runL > 0) { g.fillStyle = cols[runL]; g.fillRect(x * TL + run * cell, y * TL + j * cell, (k - run) * cell, cell); }
+            run = k; runL = lv;
+          }
+        }
+      }
+    }
   },
   _bodyPath: null, _bodyKey: '',
   waterBodyPath() {
@@ -2549,24 +2714,29 @@ const R = {
        being how much land meets there) and resolved per sub-cell, so a bay
        shelves gradually and the step edges wander instead of following the
        tile boundaries. */
-    /* THE BASIN (LAND_REFRESH Phase 1a). The body is painted in hard depth
-       bands read from the baked distance field D (waterDepth) — see the
-       LAND block's Part 4b for the design. The field is per tile centre;
-       this tile straddles four of its cells, so the read is bilinear over
-       the nine centres around it, plus the wander noise read at the tile's
-       corners and interpolated inside. A tile lying wholly in one band and
-       clear of every seam is ONE rect; a seam tile is painted per sub-cell
-       in row runs, with a hashed stipple where the contour passes. Every
-       band's colour comes from _basinCols, so at DEPTH_AMP 0 all of this
-       paints exactly the flat body it replaced. */
-    const cols = this._basinCols(), N = LAND.DEPTH_SUB, cell = TL / N;
+    /* THE DEEP RAMP (the Overhaul's Part 0). The body is painted in hard
+       depth steps read from the baked distance field D (waterDepth) against
+       the step edges fitted to this map — see the LAND block's Part 4b for
+       the design. The field is per tile centre; this tile straddles four of
+       its cells, so the read is bilinear over the nine centres around it,
+       plus the wander noise read at the tile's corners and interpolated
+       inside. A tile lying wholly in one step and clear of every seam is
+       ONE rect; a seam tile is painted per sub-cell in row runs, with a
+       hashed stipple where each contour passes. Every step's colour comes
+       from _deepCols, so at DEPTH_AMP 0 all of this paints exactly the flat
+       body it replaced. Then the SHORE SHADOW (Part 4b′): the same cells,
+       darkened in a few dithered levels by their distance from the bank. */
+    const cols = this._deepCols(), N = LAND.DEPTH_SUB, cell = TL / N, NS = cols.n;
     const bands = this._bandScr || (this._bandScr = new Uint8Array(256));
-    let uniform = 1;                        // the whole tile's band, or -1 when mixed
-    if (!D || LAND.DEPTH_AMP <= 0) {
-      g.fillStyle = cols.fill[1];
+    let uniform = NS - 1;                   // the whole tile's step, or -1 when mixed
+    const flat = !D || LAND.DEPTH_AMP <= 0;
+    if (flat) uniform = 9;                  // the body blue's own step, so crests keep their old shade
+    let depth = null;
+    if (flat) {
+      g.fillStyle = cols.fill[9];
       g.fillRect(x * TL, y * TL, TL, TL);
     } else {
-      const CW = CFG.W, CH = CFG.H;
+      const CW = CFG.W, CH = CFG.H, E = this._deepEdges, NE = E.length;
       const at = (cx, cy) => D[(cy < 0 ? 0 : cy >= CH ? CH - 1 : cy) * CW + (cx < 0 ? 0 : cx >= CW ? CW - 1 : cx)] / 16;
       const d00 = at(x - 1, y - 1), d10 = at(x, y - 1), d20 = at(x + 1, y - 1);
       const d01 = at(x - 1, y), d11 = at(x, y), d21 = at(x + 1, y);
@@ -2575,9 +2745,9 @@ const R = {
       const lat = this._latOne.depth, WA = LAND.DEPTH_WANDER * 2;
       const w00 = (this._latRead(lat, x, y) - 0.5) * WA, w10 = (this._latRead(lat, x + 1, y) - 0.5) * WA;
       const w01 = (this._latRead(lat, x, y + 1) - 0.5) * WA, w11 = (this._latRead(lat, x + 1, y + 1) - 0.5) * WA;
-      const E1 = LAND.DEPTH_E1, E2 = LAND.DEPTH_E2, E3 = LAND.DEPTH_E3, DI = LAND.DEPTH_DITHER;
+      const DI = LAND.DEPTH_DITHER;
       // depth at (u, v) inside the tile, 0..1 each, in tiles-from-land
-      const depth = (u, v) => {
+      depth = (u, v) => {
         const mid = u < 0.5 ? d01 + (d11 - d01) * (u + 0.5) : d11 + (d21 - d11) * (u - 0.5);
         const far = v < 0.5
           ? (u < 0.5 ? d00 + (d10 - d00) * (u + 0.5) : d10 + (d20 - d10) * (u - 0.5))
@@ -2586,19 +2756,19 @@ const R = {
         const wn = (w00 + (w10 - w00) * u) * (1 - v) + (w01 + (w11 - w01) * u) * v;
         return mid + (far - mid) * t + wn;
       };
-      const bandOf = d => d < E1 ? 3 : d < E2 ? 2 : d < E3 ? 1 : 0;   // basin index: 0 deep … 3 shallow
-      const nearEdge = d => {
-        const a = d - E1, b = d - E2, c = d - E3;
-        const aa = a < 0 ? -a : a, bb = b < 0 ? -b : b, cc = c < 0 ? -c : c;
-        return aa < bb ? (aa < cc ? E1 : E3) : (bb < cc ? E2 : E3);
+      const stepOf = d => { let k = 0; while (k < NE && d >= E[k]) k++; return k; };   // 0 shore … NS-1 heart
+      // distance to the nearest edge (no allocation: this runs per cell)
+      const seamDist = (d, k) => {
+        const lo = k > 0 ? d - E[k - 1] : 1e9, hi = k < NE ? E[k] - d : 1e9;
+        return lo < hi ? lo : hi;
       };
-      const dc = depth(0.5, 0.5), b0 = bandOf(dc);
-      let one = Math.abs(dc - nearEdge(dc)) > DI + 0.02;
+      const dc = depth(0.5, 0.5), b0 = stepOf(dc);
+      let one = seamDist(dc, b0) > DI + 0.02;
       if (one) {
         const d1 = depth(0, 0), d2 = depth(1, 0), d3 = depth(0, 1), d4 = depth(1, 1);
-        one = bandOf(d1) === b0 && bandOf(d2) === b0 && bandOf(d3) === b0 && bandOf(d4) === b0
-          && Math.abs(d1 - nearEdge(d1)) > DI + 0.02 && Math.abs(d2 - nearEdge(d2)) > DI + 0.02
-          && Math.abs(d3 - nearEdge(d3)) > DI + 0.02 && Math.abs(d4 - nearEdge(d4)) > DI + 0.02;
+        one = stepOf(d1) === b0 && stepOf(d2) === b0 && stepOf(d3) === b0 && stepOf(d4) === b0
+          && seamDist(d1, b0) > DI + 0.02 && seamDist(d2, b0) > DI + 0.02
+          && seamDist(d3, b0) > DI + 0.02 && seamDist(d4, b0) > DI + 0.02;
       }
       if (one) {
         uniform = b0;
@@ -2613,14 +2783,14 @@ const R = {
             let b = -1;
             if (i < N) {
               const d = depth((i + 0.5) / N, v);
-              b = bandOf(d);
-              const e = nearEdge(d), s = d - e, as = s < 0 ? -s : s;
-              if (as < DI) {
+              b = stepOf(d);
+              const lo = b > 0 ? d - E[b - 1] : 1e9, hi = b < NE ? E[b] - d : 1e9;
+              const sd = lo < hi ? lo : hi;
+              if (sd < DI) {
                 // the stipple: the far side of the contour wins more often
                 // the nearer the cell lies to it — hashed per cell in WORLD
                 // cells, so a tile repainted alone still matches its neighbours
-                const other = s < 0 ? bandOf(e + 1e-4) : bandOf(e - 1e-4);
-                if (this._lh(x * N + i, y * N + j, 1309) < (DI - as) / (2 * DI)) b = other;
+                if (this._lh(x * N + i, y * N + j, 1309) < (DI - sd) / (2 * DI)) b = lo < hi ? b - 1 : b + 1;
               }
               bands[j * N + i] = b;
             }
@@ -2631,8 +2801,10 @@ const R = {
           }
         }
       }
+      // (the shore shadow is NOT painted here: it lives in the shore layer,
+      // over the shelf wash — see paintShoreShadow)
     }
-    // the band under an art pixel (jx, jy in 0..15), for the crests and glints
+    // the step under an art pixel (jx, jy in 0..15), for the crests and glints
     const bandAt = (jx, jy) => uniform >= 0 ? uniform : bands[((jy * N) >> 4) * N + ((jx * N) >> 4)];
     /* THE SHALLOWS ARE NOT DRAWN HERE. They used to be: a bilinear field of
        "how much land meets this corner", resolved per sub-cell. Making it a
@@ -2652,12 +2824,19 @@ const R = {
        steps, open water has nothing. The field is stretched (~×0.4, so a
        feature spans several tiles and reads as a deep basin, not a stain)
        and the steps are softer. */
-    {
-      const N = LAND.TONE_SUB, cell = TL / N;
+    /* …AND SILENT UNDER THE DEEP RAMP (WATER_WHISPER 0): fourteen steps
+       carry the depth now, and a fixed-alpha lift over the dark steps read
+       as pale smudges three tiles across in open water — the blob failure
+       the note above records, back in new clothes. Kept in full on the flat
+       body, so DEPTH_AMP 0 is still byte-for-byte the water of before. */
+    if (flat || LAND.WATER_WHISPER > 0) {
+      const N = LAND.TONE_SUB, cell = TL / N, wa = flat ? 1 : +LAND.WATER_WHISPER;
+      const lightC = flat ? 'rgba(150,205,225,0.045)' : 'rgba(150,205,225,' + (0.045 * wa).toFixed(3) + ')';
+      const darkC = flat ? 'rgba(4,16,30,0.05)' : 'rgba(4,16,30,' + (0.05 * wa).toFixed(3) + ')';
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         const d3 = Math.min(2, (this.landTone((x + (i + 0.5) / N) * 0.4, (y + (j + 0.5) / N) * 0.4) * 3) | 0);
         if (d3 === 1) continue;
-        g.fillStyle = d3 > 1 ? 'rgba(150,205,225,0.045)' : 'rgba(4,16,30,0.05)';
+        g.fillStyle = d3 > 1 ? lightC : darkC;
         g.fillRect(x * TL + i * cell, y * TL + j * cell, cell, cell);
       }
     }
@@ -4003,7 +4182,7 @@ const R = {
     this._lat = null; this._latKey = ''; this._latOne = null;
     this._shoreKey = ''; this._layerKey = ''; this._waterMask = null;
     this._bodyPath = null; this._bodyKey = '';
-    this._depthD = null; this._depthKey = ''; this._basinC = null;
+    this._depthD = null; this._shadowD = null; this._deepEdges = null; this._depthKey = ''; this._deepC = null;
     this._hillH = null; this._hillKey = '';
     this._tameKey = ''; this._tameMask = null;
     this._mixC = null;

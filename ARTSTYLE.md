@@ -28,6 +28,12 @@ offline static site.
    `ART.dropShadow` contact ellipse.
 5. **Ramp transitions dither.** Use `ART.dither` (2×2 checker) between
    adjacent color fields — no unrelated-color hard seams, no gradients.
+   *Amended (the Water & Shoreline Overhaul, 2026-09):* "no gradients"
+   never meant "four bands." Water depth uses a **deep ramp** of 12–16
+   hard steps with dithered seams — the `deep` ramp below — which reads as
+   a continuous shore-to-depth transition at play zoom while every pixel
+   stays on a ramp colour. No linear gradient fills, no alpha fades:
+   steps and dither, just many more of them.
 6. **Materials come from the texture kit**: `thatchTexture`,
    `woodPlankTexture`, `stoneTexture`, `wattleTexture`, `foliageCluster`.
    Don't hand-roll a new thatch.
@@ -74,18 +80,35 @@ offline static site.
 
 ## Palette notes
 
-- **`basin`** (added 2026-09-01, LAND_REFRESH Phase 1a): the water body's
-  four hard depth bands, darkest → lightest — `#1b3c53` a navy deeper than
-  `water[0]` for the heart of a big lake (deliberately *not* `water[0]`,
-  which the swell contract treats as a trough scratch, and with every
-  channel above 24 so the fog-band test still reads it as lit ground);
-  `water[1]` the body blue, unchanged; `water[2]` for the mid shallows; and
-  `#3a8b94`, one warm turquoise between `water[2]` and the traced shelf so
-  the shallows glow. Saturation stays modest — a basin, not a resort. Only
-  `R.paintWater` reads it; `water` keeps its indexes, which are
-  load-bearing across sprites, cards and the minimap. Bands are hard steps
-  with a stippled seam (rule 5); `LAND.DEPTH_*` in `js/render.js` tune
-  them, and `DEPTH_AMP 0` restores the flat body byte for byte.
+- **`deep`** (the Water & Shoreline Overhaul, 2026-09; it supersedes the
+  four-band `basin` of LAND_REFRESH Phase 1, which read as four flat
+  colours): the water body's shore-to-heart ramp, **lightest first**
+  because it runs from the waterline outward, fourteen hard steps:
+
+  | step | value | reads as |
+  |---|---|---|
+  | 0 | `#9dd5be` | sand showing through — `bone[2]` tinted toward turquoise |
+  | 1 | `#74d3c2` | sand-through, deeper |
+  | 2 | `#43d0c7` | clear shallow turquoise |
+  | 3 | `#2fc6c6` | shallow |
+  | 4 | `#2ca7af` | turquoise |
+  | 5 | `#2b8b9c` | mid teal |
+  | 6 | `#2b748c` | teal-blue |
+  | 7 | `#2e6b8a` | = `water[2]` |
+  | 8 | `#295b7a` | blue |
+  | 9 | `#265674` | = `water[1]`, the body |
+  | 10 | `#244d6b` | steel |
+  | 11 | `#214868` | steel, deeper |
+  | 12 | `#1e4364` | navy |
+  | 13 | `#1d4060` | the heart — at `water[0]`'s luminance (57), never below it, since the swell contract treats `water[0]` itself as a trough scratch |
+
+  Saturation is deliberately higher than the basin's. Only `R.paintWater`
+  reads it; `water` keeps its indexes, which are load-bearing across
+  sprites, cards and the minimap. The step edges are fitted to each map's
+  measured depth (`LAND.DEEP_*` in `js/render.js`), the seams are stippled
+  (rule 5 as amended), `DEEP_SAT` / `DEEP_LIFT` are the bench's pull-back
+  knobs (identity at their defaults, so what ships is this table), and
+  `DEPTH_AMP 0` restores the flat body byte for byte.
 
 ## Checklist for any new building / unit / icon
 
