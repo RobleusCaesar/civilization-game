@@ -1342,3 +1342,29 @@ authored piece that would overhang a contained tile falls back to the
 procedural tree at that slot. Tree-fall shears whichever canvas the tile
 shows; the whole-tile `forest.png` override outranks composition where
 it exists, exactly as before.
+
+### Tree pieces, Gate B additions (the dome-species set)
+
+THE BASELINE IS THE MASTER. `assets/masters/tree-dome-48.png` is the
+approved tree; every catalog piece anchors to it directly — variants are
+different INDIVIDUALS of that tree (crown lobe arrangement, slight
+height-to-width, trunk lean), never a new species and never a chain off
+another variant. The `s` tier is the integer 2:1 downscale of the
+matching `l` piece (hand-repaired where the downscale loses the crown
+specular or trunk base — never regenerated). The `xl` tier is the ELDER:
+one broader, older dome (2 variants), reserved for the rare character
+tiles alone — `treeXl`, never served through `treePiece`.
+
+THE SPECIES COLLAPSE. While the catalog carries any tree, every tree
+slot in the 28 composed tiles and 4 rares draws from the catalog's
+species — a kind with no pieces is served dome, and even the
+cannot-fit fallback draws a procedural DOME in the slot's own ramp. No
+stand mixes art trees with procedural trees of another species. Only an
+empty catalog restores the mixed-species procedural wood (which also
+remains the A/B baseline).
+
+ACCENTS. `stump-s`, `snag-s`, `log-s` render in the master's language:
+the stump tiles and the rare 'stumps' feature take the stump piece per
+slot; one hash-chosen ring slot on each rare tile stands a snag when one
+exists; the rare 'log' feature takes the log piece. All fall back to
+the procedural drawings piece-by-piece.
