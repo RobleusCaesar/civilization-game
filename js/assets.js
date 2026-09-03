@@ -618,6 +618,7 @@ const Assets = {
      READ small beside a peak, and halving is the only resize the density
      canon allows (an integer box downscale, never a resample) */
   MTN_KIT_DIV: { roll: 2, hill: 2 },
+  MTN_FLAT_TOP: 0.30,    // a peak wider than this a few rows below its top is a plateau
   setMtnPiece(kind, img) {
     if (!img || !img.width || !img.height) return false;
     const div = this.MTN_KIT_DIV[kind] || 1;
@@ -665,23 +666,48 @@ const Assets = {
        once here beats reading them per placement */
     let px = null;
     try { px = g.getImageData(0, 0, c.width, c.height).data; } catch (e) { px = null; }
-    /* A CLIPPED SUMMIT IS NOT A MOUNTAIN. Generated rock whose highest
-       pixels run off the top of its own canvas has had its peak sliced
-       flat, and no amount of placing will put it back — it reads as a
-       mesa in the back of every range it lands in. A piece that touches
-       its own top edge is refused here, once, rather than debugged in the
-       world later. The low bands are exempt: a rolling rise has no summit
-       to lose and is authored flush to its top. */
-    if (foot && kind !== 'roll' && kind !== 'hill' && kind !== 'foot') {
-      let touches = false;
-      for (let x = 0; x < c.width && !touches; x++) if (foot[x] >= 0) {
-        const d2 = g.getImageData(x, 0, 1, 1).data;
-        if (d2[3] > 0) touches = true;
-      }
-      if (touches) {
+    /* A MOUNTAIN MUST HAVE A SUMMIT. Two ways generated rock fails that, and
+       both are refused here rather than debugged in the world later:
+
+         CLIPPED — the highest pixels run off the top of the piece's own
+                   canvas, so the peak has been sliced flat by the frame.
+         FLAT    — the piece is already wide a few rows below its top, so
+                   it is a plateau or a dome rather than a peak.
+
+       Either reads as a mesa in the back of every range it lands in, and
+       no amount of placing will put the summit back. The low bands are
+       exempt by nature: a foothill, a rolling rise and the ground line all
+       have flat tops on purpose, and the bands in front of them hide the
+       join. Judged on the SHIPPED pixels, so a piece is measured exactly as
+       it will be drawn. */
+    if (px && (kind === 'peak' || kind === 'saddle')) {
+      let topRow = -1;
+      const rowW = (y) => {
+        let n = 0;
+        for (let x = 0; x < c.width; x++) if (px[(y * c.width + x) * 4 + 3] > 128) n++;
+        return n;
+      };
+      for (let y = 0; y < c.height && topRow < 0; y++) if (rowW(y) > 0) topRow = y;
+      const near = rowW(Math.min(c.height - 1, topRow + 4)) / c.width;
+      /* AND IT MUST BE A FREE-STANDING OBJECT. A mountain whose rock runs
+         to the left, right or bottom edge of its own canvas has been
+         CROPPED to the frame, not drawn on transparency, and it composites
+         as a rectangle of rock with hard straight sides — which is exactly
+         what every remaining straight edge in the world turned out to be.
+         Pieces have to be stickers: empty margin on every side, so they can
+         be laid over one another. */
+      const edge = (fn) => { let n = 0; for (let i = 0; i < (fn.n | 0); i++) if (fn.f(i)) n++; return n; };
+      const leftN = edge({ n: c.height, f: y => px[(y * c.width) * 4 + 3] > 128 });
+      const rightN = edge({ n: c.height, f: y => px[(y * c.width + c.width - 1) * 4 + 3] > 128 });
+      const botN = edge({ n: c.width, f: x => px[((c.height - 1) * c.width + x) * 4 + 3] > 128 });
+      const cropped = leftN > 4 || rightN > 4 || botN > 4;
+      const bad = topRow <= 0 ? 'summit runs off the top of the art'
+        : near > this.MTN_FLAT_TOP ? 'flat top (' + near.toFixed(2) + ' of the width four rows down)'
+        : cropped ? 'cropped to its frame (rock on the L/R/bottom edge: ' + leftN + '/' + rightN + '/' + botN + ') — not a free-standing object' : null;
+      if (bad) {
         if (!this._mtnWarned) this._mtnWarned = {};
-        const wk = kind + ':' + (this.mtnKit[kind] || []).length;
-        if (!this._mtnWarned[wk]) { this._mtnWarned[wk] = 1; console.warn('[mountain kit] ' + wk + ': summit runs off the top of the art — refused'); }
+        const wk = kind + ':' + ((this.mtnKit[kind] || []).length);
+        if (!this._mtnWarned[wk]) { this._mtnWarned[wk] = 1; console.warn('[mountain kit] ' + wk + ': ' + bad + ' — refused'); }
         return false;
       }
     }
