@@ -568,7 +568,11 @@ const Assets = {
        tree pixel, so pieces are authored NEUTRAL green — no pre-baked
        warm or cool casts (ART_PLAN: the tint rule). */
   TREES_DIR: 'assets/terrain/trees/',
-  TREE_STYLES: ['dome', 'oak', 'conifer', 'birch', 'stump', 'snag', 'log'],
+  // …the catalog outgrew its name: orchard and berry are the fertile
+  // ground's plants, stone and gold the ore deposits — all probed, muted
+  // and mirrored through the same machinery as the wood
+  TREE_STYLES: ['dome', 'oak', 'conifer', 'birch', 'stump', 'snag', 'log',
+    'orchard', 'berry', 'stone', 'gold'],
   trees: {}, treesRev: 0,
   treeUrl(style, size, letter) { return this.TREES_DIR + style + '-' + size + '-' + letter + '.png?v=' + (CFG.ART_V || 1); },
   _tryTrees() {
@@ -576,7 +580,7 @@ const Assets = {
       this._tryTreePiece(style, size, 0);   // xl exists only for dome (the elder) — 404s are free
   },
   _tryTreePiece(style, size, li) {
-    if (li >= 6) return;                          // letters a..f, the cascade stops at the first 404
+    if (li >= 12) return;                         // letters a..l, the cascade stops at the first 404
     const img = new Image();
     img.onload = () => { this.setTreePiece(style + '-' + size, img); this._tryTreePiece(style, size, li + 1); };
     img.onerror = () => { /* the catalog ends here — procedural fills the gaps */ };
@@ -637,7 +641,13 @@ const Assets = {
   _muteK: -1, _treesMuted: {},
   _muteRamps() {
     const AP = ART.PALETTE;
-    return { leaf: AP.leaf.slice(), warm: [AP.wood[1], AP.wood[2], AP.wood[3], AP.soil[1], AP.soil[2], AP.soil[3], AP.bone[1], AP.bone[2]] };
+    return { leaf: AP.leaf.slice(),
+      warm: [AP.wood[1], AP.wood[2], AP.wood[3], AP.soil[1], AP.soil[2], AP.soil[3], AP.bone[1], AP.bone[2]],
+      // the deposit and fruit targets: ore grey for slab rock, the gold
+      // ramp for veins and nuggets, the berry reds for fruit — so every
+      // piece family ends on its own documented world ramp
+      grey: AP.ore.slice(), gold: AP.gold.slice(),
+      red: [AP.berry[0], AP.berry[1], AP.berry[2], AP.red[3]] };
   },
   _muteCanvas(src, k, ramps) {
     const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
@@ -657,11 +667,11 @@ const Assets = {
               0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
     };
     const hex2lab = h => lab(parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16));
-    const leafL = ramps.leaf.map(hex2lab), warmL = ramps.warm.map(hex2lab);
     const hex2rgb = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-    const leafC = ramps.leaf.map(hex2rgb), warmC = ramps.warm.map(hex2rgb);
+    const mk = key => ({ L: ramps[key].map(hex2lab), C: ramps[key].map(hex2rgb) });
+    const sets = { leaf: mk('leaf'), warm: mk('warm'), grey: mk('grey'), gold: mk('gold'), red: mk('red') };
     // the world's green: the middle of the leaf ramp, where hue is nudged toward
-    const mid = leafL[2] || leafL[0];
+    const mid = sets.leaf.L[2] || sets.leaf.L[0];
     const hTarget = Math.atan2(mid[2], mid[1]);
     try {
       const d = g.getImageData(0, 0, c.width, c.height);
@@ -672,12 +682,18 @@ const Assets = {
         let h = Math.atan2(B, A);
         L *= 1 - 0.16 * k;                       // lightness down
         const C2 = C * (1 - 0.35 * k);           // chroma down
-        const green = h > 1.5 && h < 3.1;        // OKLab hue: the green range
-        if (green) { let dh = hTarget - h; if (dh > Math.PI) dh -= 2 * Math.PI; if (dh < -Math.PI) dh += 2 * Math.PI; h += dh * 0.5 * k; }
+        /* WHICH WORLD RAMP a pixel belongs to, by where it lives in OKLab:
+           near-neutral is slab rock (the ore greys); bright saturated
+           yellow is gold before green can claim it; magenta-to-red is
+           fruit; the green range is foliage (hue-nudged toward the world's
+           leaf); everything warm left over is trunk, soil and cut face. */
+        const fam = (C < 0.032 && L > 0.42) ? 'grey'
+          : (h > 1.05 && h < 1.85 && C > 0.11 && L > 0.5) ? 'gold'
+          : (h > -0.6 && h < 0.75 && C > 0.10) ? 'red'
+          : (h > 1.5 && h < 3.1) ? 'leaf' : 'warm';
+        if (fam === 'leaf') { let dh = hTarget - h; if (dh > Math.PI) dh -= 2 * Math.PI; if (dh < -Math.PI) dh += 2 * Math.PI; h += dh * 0.5 * k; }
         A = C2 * Math.cos(h); B = C2 * Math.sin(h);
-        // …then snap to the documented ramp: foliage to the leaf steps,
-        // everything warm (trunks, cut faces) to the wood/soil/bone set
-        const set = green ? leafL : warmL, cols = green ? leafC : warmC;
+        const set = sets[fam].L, cols = sets[fam].C;
         let bi = 0, bd = 1e9;
         for (let i = 0; i < set.length; i++) {
           const dd = (L - set[i][0]) ** 2 + (A - set[i][1]) ** 2 * 0.6 + (B - set[i][2]) ** 2 * 0.6;

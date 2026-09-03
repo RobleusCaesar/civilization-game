@@ -446,6 +446,12 @@ const Sprites = {
       tile(p => forestChar(p, 209, 'brambles')), tile(p => forestChar(p, 288, 'log')),
     ];
     Sprites.terrain[T.STUMPS] = buildStumpTiles();
+    // …and every other catalog-fed canvas: the fertile gradient (orchard
+    // trees and berry bushes through fertPiece) and the gold seam
+    Sprites.terrain[T.FERTILE] = fertSet(17, 0, 6);
+    Sprites.terrainMed[T.FERTILE] = fertSet(311, 1, 6);
+    Sprites.terrainFull[T.FERTILE] = fertSet(577, 2, 6);
+    Sprites.terrain[T.GOLDORE] = [goldTile()];
   };
 
   // Water — the hero. [0] = shallow (near land, lighter), [1] = deep interior.
@@ -924,11 +930,30 @@ const Sprites = {
 
   // wild fertile ground: fruit orchards and berry thickets, mixed across the
   // map — the village forages these long before it tills its first farm
+  /* the FERTILE ground's own door: an authored piece for this slot, drawn
+     and anchored like doorTree, or null — the caller then falls back to its
+     procedural drawing. Contained levels reject a piece that would overhang
+     the tile; the dense core may straddle, exactly like the wood. */
+  function fertPiece(p, style, cx, cy, rr, level, seed) {
+    const A = (typeof Assets !== 'undefined' && Assets.treePiece) ? Assets : null;
+    if (!A) return false;
+    const h = (cx * 73856093 ^ cy * 19349663 ^ (seed | 1) * 83492791) >>> 0;
+    const foot = cy + rr + 3;
+    const fits = a2 => { const ax = cx - (a2.width >> 1), ay = foot - a2.height; return ax >= 0 && ay >= 0 && ax + a2.width <= 32 && foot <= 32; };
+    let art = A.treePiece(style, level === 2 ? 8 : 8, h);
+    if (art && level !== 2 && !fits(art)) art = A.treePiece(style, 4, h);
+    if (art && (level === 2 || fits(art))) {
+      p.g.drawImage(art, cx - (art.width >> 1), foot - art.height);
+      return true;
+    }
+    return false;
+  }
   function orchardTile(p, seed, level) {
     const f = p.f, r = ART.rng(seed + 5);          // transparent floor — render paints the grass ground
     level = level || 0;
     const fruitTree = (cx, cy, s2) => {
       const rr = (level === 2 ? 5 : 4) + (r() * 2 | 0);
+      if (fertPiece(p, 'orchard', cx, cy, rr, level, seed)) return;   // the door; procedural below is the fallback
       f(cx - rr + 1, cy + rr + 2, rr + 2, 1, AP.leaf[0]);           // contact shadow
       tree(f, cx, cy, rr, r() < 0.5 ? AP.leaf : LEAF_L);          // trunk + fruiting crown
       const fr = ART.rng(s2 + 1);
@@ -980,6 +1005,7 @@ const Sprites = {
        one of them readable at play zoom. */
     const bush = (cx, cy, s2) => {
       const rr = (level === 2 ? 5 : 4) + (r() * 2 | 0);             // a shade bigger — it has fruit to carry
+      if (fertPiece(p, 'berry', cx, cy, rr, 0, seed)) return;       // the door (bushes never straddle)
       f(cx - rr, cy + rr + 1, rr * 2 + 1, 1, AP.leaf[0]);           // ground shadow
       const br = ART.rng(s2);
       const ph = br() * 6.283, lump = 0.10 + br() * 0.06;
@@ -1246,20 +1272,27 @@ const Sprites = {
      Authored on a TRANSPARENT floor like every other resource node: render.js
      paints the grass under it (GROUND_GRAIN). */
   const QUARTZ = ['#6a6a63', '#8c8b80', '#a8a79a', '#c2c1b3', '#dcdbcc', '#f2f1e4'];
-  Sprites.terrain[T.GOLDORE] = [
-    tile(p => {
-      /* THE SEAM, in the ore's own round language (Part B1): three fat
-         quartz boulders — the same confident silhouettes the stone deposits
-         wear, so ore reads as ONE family — struck through with real gold:
-         nuggets and a short vein in the gold ramp, warm metal on pale stone.
-         Transparent floor, like every resource node (render paints the
-         grass, and tests/gold-mine.mjs pins the transparency). */
-      const f = p.f;
-      Sprites.oreBoulder(f, 13, 15, 9, null, 613, true);
-      Sprites.oreBoulder(f, 24, 21, 6, null, 617, true);
-      Sprites.oreBoulder(f, 6, 23, 5, null, 619, true);
-    }),
-  ];
+  const goldTile = () => tile(p => {
+    /* THE SEAM. With the gold catalog installed (assets/terrain/trees/
+       gold-l-*.png — the referee's dark-host-bright-vein pick), one
+       authored deposit anchors the tile with a small procedural quartz
+       accent beside it; without art, the original three fat quartz
+       boulders stand unchanged. Transparent floor either way, like every
+       resource node (render paints the grass, and tests/gold-mine.mjs
+       pins the transparency). */
+    const f = p.f;
+    const A = (typeof Assets !== 'undefined' && Assets._muted) ? Assets._muted('gold-l') : null;
+    if (A && A.length) {
+      const art = A[613 % A.length];
+      p.g.drawImage(art, 15 - (art.width >> 1), 25 - art.height);
+      Sprites.oreBoulder(f, 26, 23, 4, null, 617, true);
+      return;
+    }
+    Sprites.oreBoulder(f, 13, 15, 9, null, 613, true);
+    Sprites.oreBoulder(f, 24, 21, 6, null, 617, true);
+    Sprites.oreBoulder(f, 6, 23, 5, null, 619, true);
+  });
+  Sprites.terrain[T.GOLDORE] = [goldTile()];
   /* the CAMP GROUND (tests/raider-camps.mjs) — trampled bare earth, churned by
      feet and scattered with the litter of a band. The camp ITSELF is a
      building drawn on top of this (B_DRAW.raidercamp), because it can be

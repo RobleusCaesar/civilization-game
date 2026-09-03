@@ -707,11 +707,18 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     }
     return { cover, longest, kinds, pals, pair, closest:+closest.toFixed(3),
              range:+(hi-lo).toFixed(1), mean:+(sum/n).toFixed(1),
-             mMean: mMean == null ? null : +mMean.toFixed(1), at:[bx,by] };`));
+             mMean: mMean == null ? null : +mMean.toFixed(1), at:[bx,by],
+             slabMode: !!(Assets._muted && (Assets._muted('stone-l') || []).length) };`));
   const core = v.cover['3'] || v.cover['2'];
-  ck('aRockCoreIsSolidStone', core && core.cov >= 0.96,
+  /* TWO CONTRACTS FOR THE CORE. The boulder field packs its heart to a
+     solid heap (>= 96%). The authored FLAT-SLAB deposit — the referee's
+     pick at the resource pass: bedrock breaking the turf, not boulders on
+     it — is a near-continuous rock sheet whose seams show turf by design,
+     so its core holds >= 80% (the occupancy rule's own floor) and still
+     thins toward the fringe like the field always did. */
+  ck('aRockCoreIsSolidStone', core && core.cov >= (v.slabMode ? 0.80 : 0.96),
     'depth 1/2/3 tiles are ' + [1,2,3].map(k => v.cover[k] ? Math.round(v.cover[k].cov*100)+'%' : '-').join(' / ')
-    + ' stone — packed at the core, thinning at the fringe');
+    + ' stone — packed at the core, thinning at the fringe' + (v.slabMode ? ' (slab mode)' : ''));
   ck('andItsOutlineIsNotTheTileGrid', v.longest < 12,
     "the longest straight run down the deposit's silhouette is " + v.longest
     + 'px, against the 32px a tile-quantized edge gives');

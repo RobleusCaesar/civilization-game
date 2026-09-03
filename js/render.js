@@ -1466,6 +1466,37 @@ const R = {
     if (terr[MapGen.idx(x, y)] !== T.HILLS) { this.rockScree(g, x, y, terr); return; }
     if (window.Assets && Assets.terrainImg(T.HILLS, 0)) return;   // supplied art wins, as everywhere
     const TL = CFG.TILE, W = CFG.W, H = CFG.H, d = this.hillField();
+    /* THE SLAB DOOR (the referee's flat-bedrock pick): with the stone
+       catalog installed a deposit tile lays a cracked slab flush with the
+       turf — rock BENEATH the ground, not boulders on it, and not-gold at
+       a glance. Hash-picked from the twelve (plus mirrors), jittered off
+       centre; a DEEP tile stacks a second smaller slab behind, so cluster
+       hearts still read heavier than their fringes. No catalog: the
+       boulder field below stands untouched. */
+    const slabs = (typeof Assets !== 'undefined' && Assets._muted) ? Assets._muted('stone-l') : null;
+    if (slabs && slabs.length) {
+      const h = (x * 73856093 ^ y * 19349663) >>> 0;
+      const dep = d[y * W + x];
+      // depth decides how much bedrock shows: a fringe tile breaks the turf
+      // with one slab, the heart of the deposit is a near-continuous sheet
+      const spots = dep > 1.4 ? [[16, 12], [7, 24], [25, 26], [15, 30]]
+        : dep > 0.8 ? [[12, 15], [22, 27], [26, 12]] : [[16, 22]];
+      for (let si = 0; si < spots.length; si++) {
+        const hs = (h ^ Math.imul(si + 1, 0x9E3779B1)) >>> 0;
+        const art = slabs[hs % slabs.length];
+        const cx = x * TL + spots[si][0] + ((hs >>> 5) % 7) - 3;
+        const foot = y * TL + spots[si][1] + ((hs >>> 8) % 5) - 2;
+        g.drawImage(art, cx - (art.width >> 1), foot - art.height);
+      }
+      // …and a few loose chips at the skirt, so the sheet frays into the
+      // grass instead of ending on a sprite edge
+      g.fillStyle = '#88867b';
+      for (let ci = 0; ci < 3; ci++) {
+        const hc = (h ^ Math.imul(ci + 9, 0x85EBCA6B)) >>> 0;
+        g.fillRect(x * TL + (hc % 28) + 2, y * TL + ((hc >>> 7) % 26) + 4, 2, 1);
+      }
+      return;
+    }
     const step = LAND.ROCK_STEP, jit = LAND.ROCK_JIT;
     // depth in TILES at a fractional tile position — bilinear over tile centres
     const depth = (wx, wy) => {
