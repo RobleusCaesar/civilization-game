@@ -780,6 +780,7 @@
       ['LAND', 'DEPTH_DITHER', 0, 0.3, 0.01], ['LAND', 'DEPTH_SUB', 4, 16, 4], ['LAND', 'WATER_WHISPER', 0, 2, 0.1],
       ['LAND', 'SHORE_SHADOW', 0, 0.6, 0.02], ['LAND', 'SHORE_SHADOW_W', 0.3, 3, 0.1], ['LAND', 'SHORE_SHADOW_STEPS', 1, 6, 1],
       ['LAND', 'SHORE_SHADOW_SUN', 0, 1, 0.1], ['LAND', 'SHORE_LIP', 0, 0.8, 0.05], ['LAND', 'SHORE_LIP_W', 0.5, 4, 0.1],
+      ['LAND', 'TREE_MUTE', 0, 1, 0.05],
       ['LAND', 'FOAM_MINZ', 0.5, 3.5, 0.1],
       ['LAND', 'FOAM_LINE', 0, 1, 0.02], ['LAND', 'FOAM_PULSE', 0, 1, 0.05], ['LAND', 'FOAM_SPEED', 0, 8, 0.25],
       ['LAND', 'WAVE_ALPHA', 0, 1, 0.02], ['LAND', 'WAVE_EVERY', 4, 40, 1], ['LAND', 'WAVE_TIME', 0.5, 6, 0.1],

@@ -39,7 +39,7 @@ let pw;
 try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const b = await pw.chromium.launch();
+const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] });  // shipped PNGs bake into canvases the checks read — file:// must be same-origin
 const p = await b.newPage({ viewport: { width: 500, height: 700 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });

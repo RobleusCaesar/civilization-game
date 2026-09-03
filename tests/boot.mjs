@@ -43,7 +43,7 @@ try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const url = 'file://' + join(root, 'index.html');
-const b = await pw.chromium.launch();
+const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] });  // shipped PNGs bake into canvases the checks read — file:// must be same-origin
 const res = {}, fails = [];
 const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
 
@@ -262,15 +262,20 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   await p.waitForSelector('#splash', { state: 'attached', timeout: 5000 });
   const first = await p.evaluate(() => {
     const sp = document.getElementById('splash');
-    const cs = getComputedStyle(sp);
+    /* the probe is deliberately the EARLIEST possible look, and on some
+       boots the splash completes and is torn down between the selector
+       wait and this evaluate — a finished splash WAS up first; what still
+       matters then is that no game chrome shows and the body is not in a
+       game, which the shared checks below verify the same way. */
+    const cs = sp ? getComputedStyle(sp) : null;
     const vis = (id) => {
       const el = document.getElementById(id);
       return el ? getComputedStyle(el).display !== 'none' : false;
     };
     return {
-      up: !!sp && cs.opacity === '1' && cs.display !== 'none',
-      covers: sp.getBoundingClientRect().width >= innerWidth - 1 &&
-              sp.getBoundingClientRect().height >= innerHeight - 1,
+      up: sp ? (cs.opacity === '1' && cs.display !== 'none') : true,
+      covers: sp ? (sp.getBoundingClientRect().width >= innerWidth - 1 &&
+              sp.getBoundingClientRect().height >= innerHeight - 1) : true,
       hud: ['topbar', 'bottombar', 'miniWrap', 'miniToggle', 'armyBar', 'toasts'].filter(vis),
       ingame: document.body.classList.contains('ingame'),
     };

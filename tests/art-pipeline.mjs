@@ -235,12 +235,16 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
       };
       // the page may have booted with REAL pieces from the repo: clear the
       // catalog first, so "pristine" is the procedural wood by definition
+      // …and pinned at TREE_MUTE 0: the install-time mute would re-quantize
+      // the synthetic magenta onto the leaf ramp and the probe goes blind
+      const wasMute = LAND.TREE_MUTE; LAND.TREE_MUTE = 0;
       Assets.trees = {}; Assets.treesRev = 0; Sprites.rebuildForest();
       const pristine = snap(allSets()), covBefore = denseCov();
       const terrHash = () => { const t = S.map && S.map.terrain; if (!t) return 'nomap'; let s = 0; for (let i = 0; i < t.length; i++) s = (Math.imul(s, 31) + t[i]) >>> 0; return s; };
       const terrBefore = terrHash();
       Assets.setTreePiece('dome-l', piece(24, 28));
       Assets.setTreePiece('dome-s', piece(12, 14));
+      Sprites.rebuildForest();                   // installs debounce their rebuild; the pin wants it NOW
       const isMag = (d, k) => d[k] > 180 && d[k + 1] < 90 && d[k + 2] > 180;
       let tilesWith = 0;
       for (const c of allSets()) {
@@ -249,13 +253,14 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
         for (let k = 0; k < d.length; k += 4) if (isMag(d, k)) hit++;
         if (hit > 6) tilesWith++;
       }
-      ck('authoredTreePiecesLandInTheComposedTiles', tilesWith >= 8,
-        tilesWith + ' of 24 forest tiles carry the installed piece (dome stands only — the rest fall through)');
+      ck('authoredTreePiecesLandInTheComposedTiles', tilesWith >= 22,
+        tilesWith + ' of 24 forest tiles carry the installed piece (the SPECIES COLLAPSE: with a dome-only catalog every stand composes dome, whatever its rolled species)');
       const covAfter = denseCov();
       ck('andTheCanopyStaysClosed', covAfter >= covBefore * 0.85,
         Math.round(covAfter * 100) + '% dense-tile coverage composed vs ' + Math.round(covBefore * 100) + '% procedural');
       ck('andTheTileGridNeverMoves', terrHash() === terrBefore, 'terrain hash drifted across a recompose');
       Assets.trees = {}; Assets.treesRev = 0; Sprites.rebuildForest();
+      LAND.TREE_MUTE = wasMute;
       const back = snap(allSets());
       ck('andAnEmptyCatalogIsTheOldWoodToTheByte',
         back.length === pristine.length && back.every((v, i) => v === pristine[i]),

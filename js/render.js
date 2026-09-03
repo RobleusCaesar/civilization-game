@@ -391,6 +391,9 @@ const LAND = {
      down, a squashed frame at the peak, the ripple ring and droplets on
      re-entry — on exactly the tiles and cycles the old gating chose. At
      GOLDEN HOUR the drifting sparkle brightens by SPARKLE_GOLD. --- */
+  TREE_MUTE: 0.5,       // the authored-tree mute (0 raw … 1 strong): OKLab
+                        // lightness/chroma down + hue toward the world greens,
+                        // re-quantized to the leaf ramp at install (assets.js)
   FOAM_MINZ: 1.0,       // below this zoom the waterline AND the waves stand down
   FOAM_LINE: 0.3,       // alpha of the resting waterline dashes; 0 off
   FOAM_PULSE: 0.3,      // how much of that alpha breathes
@@ -1559,6 +1562,121 @@ const R = {
     if (cnt < 3) return false;
     if (!this._latOne) this.landLattices();
     return cnt + (this._latRead(this._latOne.rock, x + 0.5, y + 0.5) - 0.5) * 2 * LAND.DENSE_WANDER >= 4;
+  },
+
+  /* ===== WORLD-SPACE FOREST STAMPING (the Gate B stand-down, part 3) =====
+     Self-contained tile canvases could never let a crown cross a tile edge,
+     and three density classes step where a wood should thicken smoothly —
+     both read as a grid once real art went in. With a tree catalog installed
+     the wood is drawn in WORLD SPACE instead: every forest tile derives its
+     own layout deterministically (landSeed + tile coords — no more 8 canned
+     variants), density is a CONTINUOUS count from the same enclosure+lattice
+     field the classes read, and stamps are y-sorted ACROSS tile boundaries
+     so crowns overlap and interleave with no rectangular seam anywhere.
+     TILE DATA IS NOT TOUCHED — this is a drawing of the wood, not a
+     definition of it: yields, occupancy, pathing and fog all keep reading
+     the grid. The RARE character tiles keep their whole canvas (feature,
+     elder and ring are a composition), a supplied whole-tile forest.png
+     override still outranks everything, and an EMPTY catalog never enters
+     this path at all — the procedural per-tile wood remains byte-identical
+     and remains the A/B baseline. */
+  _stampMode() {
+    return !!(typeof Assets !== 'undefined' && Assets.trees
+      && (Assets.trees['dome-l'] || Assets.trees['dome-s']));
+  },
+  forestRareAt(x, y, terr) {
+    const h = (x * 73856093 ^ y * 19349663) >>> 0;
+    let cnt = 0;
+    for (const [ox, oy] of NEIGH8)
+      if (MapGen.inB(x + ox, y + oy) && terr[MapGen.idx(x + ox, y + oy)] === T.FOREST) cnt++;
+    const hp = (h ^ (h >>> 13)) >>> 0;
+    return (cnt === 8 && hp % 11 === 0) ? Sprites.terrainRare[T.FOREST][hp % Sprites.terrainRare[T.FOREST].length] : null;
+  },
+  /* one tile's trees, in world pixels: pure in (landSeed, tile, neighbour
+     count, lattice) — the bake, the incremental repaint and the tree-fall
+     all call this and always agree. Foot anchors (wy is where trunk meets
+     ground); pickRr carries the dense-area small-pieces rule decided at
+     layout time, where the density is known. */
+  forestLayoutAt(tx, ty, terr) {
+    if (terr[MapGen.idx(tx, ty)] !== T.FOREST || this.forestRareAt(tx, ty, terr)) return [];
+    let cnt = 0;
+    for (const [ox, oy] of NEIGH8)
+      if (MapGen.inB(tx + ox, ty + oy) && terr[MapGen.idx(tx + ox, ty + oy)] === T.FOREST) cnt++;
+    if (!this._latOne) this.landLattices();
+    const wander = (this._latRead(this._latOne.rock, tx + 0.5, ty + 0.5) - 0.5) * 2 * LAND.DENSE_WANDER;
+    // a FULLY ENCLOSED tile is full density, full stop — the lattice wander
+    // shapes the fringe gradient, exactly as denseEdge only consulted it for
+    // the in-between counts; letting it thin the core opened the canopy the
+    // occupancy pin insists stays closed
+    const d = cnt >= 8 ? 1 : Math.max(0, Math.min(1, (cnt + wander) / 8));
+    const n = 2 + d * 23;                       // continuous: ~2 lone … all 25 cells packed
+    const KINDS = Sprites.TREE_KINDS;
+    // masked to 31 bits: a negative seed sends the Park-Miller step negative
+    // and every r() with it — measured as "roll >= keep" never trimming, so
+    // half the map's tiles packed all 25 cells whatever their density
+    const seed = ((this.landSeed() ^ Math.imul(tx + 7, 0x9E3779B1) ^ Math.imul(ty + 13, 0x85EBCA6B)) & 0x7fffffff) || 1;
+    const r = ART.rng(seed);
+    const dom = KINDS[(Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) >>> 13) % KINDS.length];
+    const out = [];
+    const step = 7, keep = n / 25;              // the 5x5 lattice, thinned to the count
+    for (let gy = 1, row = 0; gy <= 29; gy += step, row++)
+      for (let gx = (row & 1) ? 4 : 1; gx <= 29; gx += step) {
+        const roll = r(), jx = ((r() * 7) | 0) - 3, jy = ((r() * 7) | 0) - 3;
+        const rr = 4 + Math.min((r() * 5) | 0, (r() * 5) | 0) + ((r() < 0.18) ? 1 : 0) + (d > 0.8 ? 1 : 0);
+        const kind = r() < 0.7 ? dom : KINDS[(r() * KINDS.length) | 0];
+        const ramp = Sprites.treeRamp(kind, r);
+        if (roll >= keep) continue;             // every cell burns the same draws, kept or not
+        const lx = Math.max(2, Math.min(30, gx + jx)), ly = Math.max(3, Math.min(31, gy + jy));
+        // the CORE closes its canopy with the big tier from rr 7 up (half its
+        // slots — overlapping big crowns are what a closed canopy is, and the
+        // y-sort keeps them interleaving instead of Gate A's canvas mud); the
+        // in-between densities lean small, the open fringe takes rr as rolled
+        out.push({ wx: tx * CFG.TILE + lx, wy: ty * CFG.TILE + ly, rr,
+                   pickRr: d > 0.8 ? (rr >= 7 ? 8 : rr) : d > 0.6 ? Math.min(rr, 8) : rr, kind, ramp });
+      }
+    return out;
+  },
+  /* stamp a list of trees in global paint order (wy, then wx): an authored
+     piece from the catalog where one fits the slot, the slot's own
+     procedural DOME otherwise (the species collapse holds here too). */
+  _stampForest(g, trees) {
+    trees.sort((a, b) => (a.wy - b.wy) || (a.wx - b.wx));
+    const fG = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, (w || 1), (h || 1)); };
+    for (const t of trees) {
+      const h2 = (t.wx * 73856093 ^ t.wy * 19349663) >>> 0;
+      const art = Assets.treePiece(t.kind, t.pickRr, h2);
+      if (art) g.drawImage(art, t.wx - (art.width >> 1), t.wy - art.height);
+      else Sprites.drawTree(fG, t.wx, t.wy - t.rr - 3, t.rr, t.ramp, 'round');
+    }
+  },
+  // the full bake's band: trees whose BASE tile row is in [a, b) — bands run
+  // top to bottom and each band y-sorts internally, so the order is the
+  // global order, and a crown crossing up into the finished band above is
+  // exactly the nearer-tree-drawn-later rule
+  forestStampBand(g, a, b) {
+    if (!this._stampMode()) return;
+    const terr = S.map.seenTerrain || S.map.terrain;
+    const trees = [];
+    for (let ty = a; ty < b; ty++) for (let tx = 1; tx < CFG.W - 1; tx++)
+      if (terr[ty * CFG.W + tx] === T.FOREST) trees.push(...this.forestLayoutAt(tx, ty, terr));
+    if (trees.length) this._stampForest(g, trees);
+  },
+  // the incremental repaint's version: every tree based in the reset set or
+  // one ring out (a crown reaches under a tile) — the caller has the reset
+  // clip active, so pixels outside the erased ground never re-composite
+  forestStampsNear(g, tileKeys, terr) {
+    if (!this._stampMode()) return;
+    const W = CFG.W, seen = new Set(), trees = [];
+    for (const k of tileKeys) {
+      const x = k % W, y = (k / W) | 0;
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        const nx = x + ox, ny = y + oy, nk = ny * W + nx;
+        if (!MapGen.inB(nx, ny) || seen.has(nk)) continue;
+        seen.add(nk);
+        if (terr[nk] === T.FOREST) trees.push(...this.forestLayoutAt(nx, ny, terr));
+      }
+    }
+    if (trees.length) this._stampForest(g, trees);
   },
 
   /* LOOSE CHIPS ON THE GROUND OUTSIDE. Scree is what a crag sheds, it is
@@ -4303,7 +4421,12 @@ const R = {
       // Deep in the interior a rare character tile (fallen log / stumps / bramble)
       // rolls in for flavour. Mixed hash for both variant and density so there's
       // no diagonal grid.
-      img = this.forestSpriteAt(x, y, terr);
+      // WORLD-STAMP MODE: with a tree catalog installed the wood is stamped
+      // in world space (forestStampBand / forestStampsNear) so crowns cross
+      // tile edges — this branch then owes only the ground. Rare character
+      // tiles keep their whole canvas, and a supplied forest.png override
+      // (checked below as ovr) still outranks everything.
+      img = this._stampMode() ? this.forestRareAt(x, y, terr) : this.forestSpriteAt(x, y, terr);
     } else if (Sprites.terrainFull[t] && Sprites.terrainMed[t] && t !== T.HILLS) {
       /* ANY terrain that ships all three density sets takes the forest's
          gradient — sparse at the fringe, medium on the perimeter, and the
@@ -4502,6 +4625,11 @@ const R = {
       steps.push(() => fn(a, b));
     } };
     band((a, b) => { for (let y = a; y < b; y++) for (let x = 0; x < W; x++) this.drawTile(g, x, y); });
+    // …then the wood, stamped in world space where a catalog is installed —
+    // right where the tile canvases used to land, so every later pass
+    // (grass, rocks, decals, the hue coat) layers over trees exactly as
+    // it always did. Clipped to the board like every overhanging pass.
+    band((a, b) => this.clipBoard(g, () => this.forestStampBand(g, a, b)));
     // the water bands paint through the SAME cached body path, so splitting
     // the one call into rows changes nothing but when it happens
     band((a, b) => this.paintWaterIn(g, 0, a, W - 1, b - 1));
@@ -4745,6 +4873,9 @@ const R = {
     // but an incremental repaint has no later neighbour coming to cover it
     this.clipTiles(g, groundL, () => {
       for (const k of groundL) this.drawTile(g, k % W, (k / W) | 0);
+      // the wood re-stamped over the reset ground: trees based in the reset
+      // or one ring out, y-sorted — the clip keeps it byte-equal to a rebake
+      this.forestStampsNear(g, groundL, terr);
     });
     let gx0 = 1e9, gy0 = 1e9, gx1 = -1e9, gy1 = -1e9;
     for (const k of groundL) {
@@ -4812,6 +4943,7 @@ const R = {
       if (MapGen.inB(x + ox, y + oy)) inner5.push((y + oy) * CFG.W + (x + ox));
     this.clipTiles(g, inner5, () => {
       for (const k of inner5) this.drawTile(g, k % CFG.W, (k / CFG.W) | 0);
+      this.forestStampsNear(g, inner5, terr);   // same rule as the batch path
     });
     this.paintWaterIn(g, x - 2, y - 2, x + 2, y + 2);
     /* THE DECAL PASS REACHES ONE RING FURTHER THAN THE GROUND PASS — a decal
@@ -7073,13 +7205,46 @@ const R = {
   startTreeFall(x, y, byX, byY) {
     if (!G.visibleAt(x, y)) return;               // timber nobody can see
     const h = (x * 73856093 ^ y * 19349663) >>> 0;
+    // it goes over AWAY from whoever felled it; with nobody standing there
+    // (a sapper's cleared lane, a tile spent off screen) the tile decides
+    const right = byX == null ? (h & 1) === 1 : byX < x + 0.5;
+    /* THE INDIVIDUAL FALL (Gate B stand-down, part 4). With the wood
+       world-stamped, the tile-sheet shear read as a deflating balloon —
+       so an art tile fells its OWN trees: each stamp rotates about its
+       trunk-base pivot toward the fall direction, ease-in (slow tip,
+       fast crash), a canopy squash on impact, a few leaves off the
+       crown — start frames hash-staggered so a stand crackles down
+       rather than toppling in one motion. The layout is read BEFORE the
+       tile flips to stumps, so the falling trees are exactly the
+       standing ones. Procedural tiles (no catalog) keep the old shear. */
+    if (this._stampMode() && !(window.Assets && Assets.terrainImg(T.FOREST, h >>> 3))
+      && !this.forestRareAt(x, y, S.map.terrain)) {
+      const trees = this.forestLayoutAt(x, y, S.map.terrain);
+      if (trees.length) {
+        for (const t of trees) {
+          const h2 = (t.wx * 73856093 ^ t.wy * 19349663) >>> 0;
+          let spr = Assets.treePiece(t.kind, t.pickRr, h2);
+          if (!spr) {
+            // the procedural fallback tree, rasterized once for its fall
+            const w = t.rr * 2 + 10, hh2 = t.rr * 2 + 12;
+            const c = document.createElement('canvas'); c.width = w; c.height = hh2;
+            const g2 = c.getContext('2d');
+            const f2 = (px2, py2, ww, ph, col) => { g2.fillStyle = col; g2.fillRect(px2, py2, (ww || 1), (ph || 1)); };
+            Sprites.drawTree(f2, w >> 1, hh2 - t.rr - 3, t.rr, t.ramp, 'round');
+            spr = c;
+          }
+          this.treefalls.push({ solo: 1, wx: t.wx, wy: t.wy, spr, right,
+            t: -(((h2 >>> 6) % 25) / 100) });    // 0–0.24s hash stagger
+        }
+        if (this.treefalls.length > 60) this.treefalls.splice(0, this.treefalls.length - 60);
+        this.startle(x + 0.5, y + 0.5, 7);
+        return;
+      }
+    }
     const spr = (window.Assets && Assets.terrainImg(T.FOREST, h >>> 3))
       || this.forestSpriteAt(x, y, S.map.terrain);
     if (!spr || !spr.width) return;
     if (this.treefalls.length > 10) this.treefalls.shift();
-    // it goes over AWAY from whoever felled it; with nobody standing there
-    // (a sapper's cleared lane, a tile spent off screen) the tile decides
-    const right = byX == null ? (h & 1) === 1 : byX < x + 0.5;
     this.treefalls.push({ x, y, spr, t: 0, right });
     this.startle(x + 0.5, y + 0.5, 7);        // the crack throws the birds up
   },
@@ -7184,6 +7349,46 @@ const R = {
     for (let i = this.treefalls.length - 1; i >= 0; i--) {
       const f = this.treefalls[i];
       f.t += dt;
+      if (f.solo) {
+        /* the individual fall: pivot at the trunk base, ease-in rotation
+           (slow tip, fast crash), a canopy squash on impact, a fade — and
+           four leaf flecks off the crown as it lands. */
+        const D = 1.05, SQ = 0.12, FADE = 0.3, tt = f.t;
+        if (tt >= D + SQ + FADE) { this.treefalls.splice(i, 1); continue; }
+        const dir = f.right ? 1 : -1;
+        g.save();
+        g.imageSmoothingEnabled = false;
+        g.translate(f.wx, f.wy);
+        if (tt <= 0) {
+          g.drawImage(f.spr, -(f.spr.width >> 1), -f.spr.height);
+        } else if (tt < D) {
+          const p2 = tt / D;
+          g.rotate(dir * (Math.PI / 2) * p2 * p2);
+          g.drawImage(f.spr, -(f.spr.width >> 1), -f.spr.height);
+        } else {
+          const k2 = tt - D;
+          const sq = k2 < SQ ? 1 - 0.22 * Math.sin(Math.PI * k2 / SQ) : 1;
+          if (k2 > SQ) g.globalAlpha = Math.max(0, 1 - (k2 - SQ) / FADE);
+          g.rotate(dir * Math.PI / 2);
+          g.scale(1, sq);                        // the squash runs down the trunk axis
+          g.drawImage(f.spr, -(f.spr.width >> 1), -f.spr.height);
+          g.globalAlpha = 1;
+        }
+        g.restore();
+        if (tt > D - 0.05 && tt < D + 0.4) {     // leaves and a puff of dust off the crash
+          const lp = (tt - (D - 0.05)) / 0.45, h3 = (f.wx * 31 + f.wy * 17) >>> 0;
+          g.globalAlpha = 0.9 * (1 - lp);
+          for (let li = 0; li < 4; li++) {
+            const sp = 3 + ((h3 >> (li * 2)) & 7);
+            const lx = f.wx + dir * (f.spr.height * 0.6 + sp) + Math.sin(lp * 4 + li) * 2;
+            const ly = f.wy - 4 - sp * 0.4 + lp * 7;
+            g.fillStyle = li === 3 ? '#8a7f6a' : (li & 1 ? '#3c6f2d' : '#569244');
+            g.fillRect(lx | 0, ly | 0, 1, 1);
+          }
+          g.globalAlpha = 1;
+        }
+        continue;
+      }
       const p = f.t / (cfg.ms / 1000);
       if (p >= 1) { this.treefalls.splice(i, 1); continue; }
       const sheet = this.fallSheet(f.spr, f.right);

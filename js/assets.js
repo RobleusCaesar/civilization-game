@@ -572,8 +572,8 @@ const Assets = {
   trees: {}, treesRev: 0,
   treeUrl(style, size, letter) { return this.TREES_DIR + style + '-' + size + '-' + letter + '.png?v=' + (CFG.ART_V || 1); },
   _tryTrees() {
-    for (const style of this.TREE_STYLES) for (const size of ['s', 'l'])
-      this._tryTreePiece(style, size, 0);
+    for (const style of this.TREE_STYLES) for (const size of ['s', 'l', 'xl'])
+      this._tryTreePiece(style, size, 0);   // xl exists only for dome (the elder) — 404s are free
   },
   _tryTreePiece(style, size, li) {
     if (li >= 6) return;                          // letters a..f, the cascade stops at the first 404
@@ -600,21 +600,135 @@ const Assets = {
     const a = this.trees[key] || (this.trees[key] = []);
     a.push(cut(false), cut(true));                // the piece and its pre-baked mirror
     this.treesRev++;
-    // NOT `window.Sprites` — Sprites is a script-level const, so that guard
-    // is silently false forever (the cards.js ART lesson, again)
-    if (typeof Sprites !== 'undefined' && Sprites.rebuildForest) Sprites.rebuildForest();
-    if (typeof R !== 'undefined' && typeof R.rebuildTerrain === 'function') R.rebuildTerrain();
+    this._muteK = -1;                             // raw changed: the muted cache is stale
+    /* ONE recompose per burst, not one per piece: boot decodes a dozen
+       pieces in a blink, and recomposing the whole wood for each was a
+       dozen full rebuilds nobody saw between. A synchronous caller (the
+       door pin, a ?dev=1 drop that wants the result NOW) calls
+       Sprites.rebuildForest itself.
+       NOT `window.Sprites` — Sprites is a script-level const, so that
+       guard is silently false forever (the cards.js ART lesson, again). */
+    if (!this._treeRebuildDue) {
+      this._treeRebuildDue = true;
+      const run = () => {
+        // …and never during the splash: a full rebake on the boot thread
+        // freezes the fade's style recalcs, and the splash covers the map
+        // anyway — wait it out, then recompose once
+        if (document.getElementById('splash')) { setTimeout(run, 200); return; }
+        this._treeRebuildDue = false;
+        if (typeof Sprites !== 'undefined' && Sprites.rebuildForest) Sprites.rebuildForest();
+        if (typeof R !== 'undefined' && typeof R.rebuildTerrain === 'function') R.rebuildTerrain();
+      };
+      setTimeout(run, 40);
+    }
     return true;
+  },
+
+  /* ---- THE MUTE (Gate B stand-down, part 2). The generated set is too
+     bright for the world, so every piece the composer serves is passed
+     through a uniform OKLab transform — lightness down, chroma down, hue
+     nudged toward the muted world greens — and RE-QUANTIZED to the
+     documented ramps (leaf for foliage, wood/soil/bone for the rest), so
+     an authored tree ends strictly on the world's own colours. Strength
+     is LAND.TREE_MUTE (0 raw … 1 strong), on the bench; the transform
+     lives HERE, in the installer — the frozen master files are never
+     touched. `trees` holds the raw decoded pieces; the composer reads
+     the muted cache, rebuilt whenever the dial moves. ---- */
+  _muteK: -1, _treesMuted: {},
+  _muteRamps() {
+    const AP = ART.PALETTE;
+    return { leaf: AP.leaf.slice(), warm: [AP.wood[1], AP.wood[2], AP.wood[3], AP.soil[1], AP.soil[2], AP.soil[3], AP.bone[1], AP.bone[2]] };
+  },
+  _muteCanvas(src, k, ramps) {
+    const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(src, 0, 0);
+    if (k <= 0) return c;
+    const s2l = v => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+    const l2s = v => (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
+    const lab = (r, g2, b2) => {
+      r = s2l(r / 255); g2 = s2l(g2 / 255); b2 = s2l(b2 / 255);
+      const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g2 + 0.0514459929 * b2);
+      const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g2 + 0.1073969566 * b2);
+      const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g2 + 0.6299787005 * b2);
+      return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+              1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+              0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+    };
+    const hex2lab = h => lab(parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16));
+    const leafL = ramps.leaf.map(hex2lab), warmL = ramps.warm.map(hex2lab);
+    const hex2rgb = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+    const leafC = ramps.leaf.map(hex2rgb), warmC = ramps.warm.map(hex2rgb);
+    // the world's green: the middle of the leaf ramp, where hue is nudged toward
+    const mid = leafL[2] || leafL[0];
+    const hTarget = Math.atan2(mid[2], mid[1]);
+    try {
+      const d = g.getImageData(0, 0, c.width, c.height);
+      for (let o = 0; o < d.data.length; o += 4) {
+        if (!d.data[o + 3]) continue;
+        let [L, A, B] = lab(d.data[o], d.data[o + 1], d.data[o + 2]);
+        const C = Math.hypot(A, B);
+        let h = Math.atan2(B, A);
+        L *= 1 - 0.16 * k;                       // lightness down
+        const C2 = C * (1 - 0.35 * k);           // chroma down
+        const green = h > 1.5 && h < 3.1;        // OKLab hue: the green range
+        if (green) { let dh = hTarget - h; if (dh > Math.PI) dh -= 2 * Math.PI; if (dh < -Math.PI) dh += 2 * Math.PI; h += dh * 0.5 * k; }
+        A = C2 * Math.cos(h); B = C2 * Math.sin(h);
+        // …then snap to the documented ramp: foliage to the leaf steps,
+        // everything warm (trunks, cut faces) to the wood/soil/bone set
+        const set = green ? leafL : warmL, cols = green ? leafC : warmC;
+        let bi = 0, bd = 1e9;
+        for (let i = 0; i < set.length; i++) {
+          const dd = (L - set[i][0]) ** 2 + (A - set[i][1]) ** 2 * 0.6 + (B - set[i][2]) ** 2 * 0.6;
+          if (dd < bd) { bd = dd; bi = i; }
+        }
+        d.data[o] = cols[bi][0]; d.data[o + 1] = cols[bi][1]; d.data[o + 2] = cols[bi][2];
+      }
+      g.putImageData(d, 0, 0);
+    } catch (e) { /* tainted on file:// — the raw piece stands */ }
+    return c;
+  },
+  _remute() {
+    const k = (typeof LAND !== 'undefined' && typeof LAND.TREE_MUTE === 'number') ? LAND.TREE_MUTE : 0;
+    const ramps = this._muteRamps();
+    this._treesMuted = {};
+    for (const key of Object.keys(this.trees))
+      this._treesMuted[key] = this.trees[key].map(c => this._muteCanvas(c, k, ramps));
+    this._muteK = k; this._muteRev = this.treesRev;
+  },
+  _muted(key) {
+    const k = (typeof LAND !== 'undefined' && typeof LAND.TREE_MUTE === 'number') ? LAND.TREE_MUTE : 0;
+    // stale on a dial move OR any catalog change — a cleared catalog must
+    // never keep serving its old muted pieces from this cache
+    if (k !== this._muteK || this._muteRev !== this.treesRev) this._remute();
+    return this._treesMuted[key];
   },
   /* the composer's pick: a piece for this kind at this radius, or null.
      rr under 7 reaches for the small tier, either tier stands in for a
-     missing other, and h picks the letter and mirror deterministically. */
+     missing other, and h picks the letter and mirror deterministically.
+     THE SPECIES COLLAPSE (Gate B rule): a TREE kind the catalog lacks is
+     served from the dome set instead — a stand never mixes art trees
+     with procedural trees of another species; the species mix becomes a
+     variant and size mix. Ground accents (stump, snag, log) never
+     collapse: a missing stump must not sprout a whole tree. */
   treePiece(kind, rr, h) {
-    const style = kind === 'round' ? 'dome' : kind;
-    const a = this.trees[style + '-' + (rr >= 7 ? 'l' : 's')]
-      || this.trees[style + '-' + (rr >= 7 ? 's' : 'l')];
+    let style = kind === 'round' ? 'dome' : kind;
+    if ((style === 'conifer' || style === 'oak' || style === 'birch')
+      && !this.trees[style + '-l'] && !this.trees[style + '-s']) style = 'dome';
+    // rr >= 8, not 7: the l stamp sits at the very top of the procedural
+    // 9-22px distribution, so it stays the OCCASIONAL big tree (the Gate B
+    // stand-down's scale audit — most slots take the small)
+    const a = this._muted(style + '-' + (rr >= 8 ? 'l' : 's'))
+      || this._muted(style + '-' + (rr >= 8 ? 's' : 'l'));
     if (!a || !a.length) return null;
     return a[(h >>> 0) % a.length];
+  },
+  /* the ELDER: the xl dome, reserved for the rare character tiles — the
+     only slot that may draw it, and never served by treePiece above. */
+  treeXl(h) {
+    const a = this._muted('dome-xl');
+    return a && a.length ? a[(h >>> 0) % a.length] : null;
   },
 
   /* ---- FORMATION ART: multi-tile drawn pieces over terrain REGIONS ----

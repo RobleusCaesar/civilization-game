@@ -291,14 +291,25 @@ const Sprites = {
        variant — a hard seam. Small stamps share the procedural crowns'
        statistics, so the straddle keeps working; the large tier lives on
        the contained fringe, where a single tree is actually read. */
-    const art = (typeof Assets !== 'undefined' && Assets.treePiece)
-      ? Assets.treePiece(kind, contained ? rr : Math.min(rr, 6),
-          (cx * 73856093 ^ cy * 19349663 ^ (seed | 1) * 83492791) >>> 0) : null;
-    if (art) {
+    const A = (typeof Assets !== 'undefined' && Assets.treePiece) ? Assets : null;
+    if (A) {
+      const h = (cx * 73856093 ^ cy * 19349663 ^ (seed | 1) * 83492791) >>> 0;
       const foot = cy + Math.round(rr * (kind === 'conifer' ? 0.75 : 1)) + 3;
-      const ax = cx - (art.width >> 1), ay = foot - art.height;
-      if (!contained || (ax >= 0 && ay >= 0 && ax + art.width <= 32 && foot <= 32)) {
-        p.g.drawImage(art, ax, ay);
+      const fits = a2 => { const ax = cx - (a2.width >> 1), ay = foot - a2.height; return ax >= 0 && ay >= 0 && ax + a2.width <= 32 && foot <= 32; };
+      let art = A.treePiece(kind, contained ? rr : Math.min(rr, 6), h);
+      // a large piece that would overhang a contained tile tries the small
+      // tier before giving up — the slot stays in the catalog's species
+      if (art && contained && !fits(art)) art = A.treePiece(kind, 6, h);
+      if (art && (!contained || fits(art))) {
+        p.g.drawImage(art, cx - (art.width >> 1), foot - art.height);
+        return;
+      }
+      /* THE SPECIES COLLAPSE holds for the fallback too: while the catalog
+         has trees, a slot it cannot fill draws a procedural DOME in this
+         slot's own ramp — one species per stand, value variety intact.
+         Only an empty catalog gets the old mixed-species wood back. */
+      if (A.trees['dome-l'] || A.trees['dome-s']) {
+        tree(f, cx, cy, rr, ramp, 'round');
         return;
       }
     }
@@ -369,13 +380,42 @@ const Sprites = {
   function forestChar(p, seed, kind) {
     const f = p.f, r = ART.rng(seed | 1);
     const ring = [[2, 3], [16, 1], [30, 4], [1, 18], [31, 20], [4, 30], [18, 31], [30, 30]];  // trees straddling edges frame the feature
-    for (const [gx, gy] of ring) { if (r() < 0.2) continue; doorTree(p, f, gx + ((r() * 3) | 0), gy + ((r() * 3) | 0), 5 + (r() * 2 | 0), leafPick(r), 'round', false, seed); }
+    /* THE ELDER (Gate B): the xl dome is the rare tiles' signature — one
+       old tree beside the feature, hash-placed so no r() is consumed and
+       the empty-catalog tile stays byte-identical. A SNAG, when the
+       catalog carries one, takes over one hash-chosen ring slot the same
+       way — the dead tree stands among the living ones. */
+    const hh = ((seed | 1) * 2654435761) >>> 0;
+    const elder = (typeof Assets !== 'undefined' && Assets.treeXl) ? Assets.treeXl(hh) : null;
+    const snagAt = hh % ring.length;
+    const snags = (typeof Assets !== 'undefined' && Assets._muted) ? Assets._muted('snag-s') : null;
+    let ri = 0;
+    for (const [gx, gy] of ring) {
+      const idx = ri++;
+      if (r() < 0.2) continue;
+      const jx = gx + ((r() * 3) | 0), jy = gy + ((r() * 3) | 0), jr = 5 + (r() * 2 | 0), jRamp = leafPick(r);
+      if (snags && idx === snagAt) {
+        const sn = snags[(hh >>> 4) % snags.length];
+        p.g.drawImage(sn, jx - (sn.width >> 1), jy + jr + 3 - sn.height);
+      } else doorTree(p, f, jx, jy, jr, jRamp, 'round', false, seed);
+    }
+    if (elder) {
+      const spots = [[25, 9], [7, 8], [26, 24]];
+      const [ex, ey] = spots[(hh >>> 8) % spots.length];
+      p.g.drawImage(elder, ex - (elder.width >> 1), Math.max(-4, ey + 8 - elder.height));
+    }
     if (kind === 'log') {
-      f(9, 18, 15, 3, AP.wood[1]); f(9, 17, 15, 1, AP.wood[3]); f(23, 17, 2, 2, AP.wood[4]);   // trunk + cut end
-      f(12, 18, 1, 1, AP.leaf[3]); f(17, 19, 1, 1, AP.leaf[3]); f(20, 18, 1, 1, AP.leaf[4]);   // moss
-      f(9, 21, 15, 1, AP.leaf[0]);
+      const logs = (typeof Assets !== 'undefined' && Assets._muted) ? Assets._muted('log-s') : null;
+      if (logs) {
+        const lg = logs[(hh >>> 6) % logs.length];
+        p.g.drawImage(lg, 16 - (lg.width >> 1), 20 - lg.height);
+      } else {
+        f(9, 18, 15, 3, AP.wood[1]); f(9, 17, 15, 1, AP.wood[3]); f(23, 17, 2, 2, AP.wood[4]);   // trunk + cut end
+        f(12, 18, 1, 1, AP.leaf[3]); f(17, 19, 1, 1, AP.leaf[3]); f(20, 18, 1, 1, AP.leaf[4]);   // moss
+        f(9, 21, 15, 1, AP.leaf[0]);
+      }
     } else if (kind === 'stumps') {
-      drawStump(p, 10, 16); drawStump(p, 19, 20); drawStump(p, 14, 24);
+      doorStump(p, 10, 16); doorStump(p, 19, 20); doorStump(p, 14, 24);
       for (let i = 0; i < 6; i++) f(9 + (r() * 16) | 0, 15 + (r() * 12) | 0, 1, 1, AP.wood[2]);   // wood chips
     } else {                                                           // brambles
       for (let i = 0; i < 4; i++) {
@@ -395,6 +435,10 @@ const Sprites = {
   Sprites.TREE_KINDS = KINDS;
   Sprites._treeProbe = (f, cx, cy, rr, k) =>
     tree(f, cx, cy, rr, rampFor(KINDS[k], ART.rng(7)), KINDS[k]);
+  // the world-space stamper (render.js forestStampsIn) draws procedural
+  // fallback trees at arbitrary WORLD coordinates through these two doors
+  Sprites.drawTree = (f, cx, cy, rr, ramp, kind) => tree(f, cx, cy, rr, ramp, kind);
+  Sprites.treeRamp = (kind, r) => rampFor(kind, r);
   const forestSet = (base, lvl, n) => { const a = []; for (let i = 0; i < n; i++) { const s = base + i * 37; a.push(tile(p => forestTile(p, s, lvl))); } return a; };
   Sprites.terrain[T.FOREST] = forestSet(11, 0, 8);                     // sparse — the outer fringe (complete trees)
   Sprites.terrainMed = { [T.FOREST]: forestSet(400, 1, 8) };          // medium — the perimeter (complete trees)
@@ -1014,13 +1058,15 @@ const Sprites = {
     f(x + 4, y + 2, 1, 2, AP.wood[0]);                            // axe notch
   }
   // the stump slots are on the tree door too: an authored stump piece
-  // (assets/terrain/trees/stump-*.png) stands in per slot when it exists
-  const doorStump = (p, x, y) => {
+  // (assets/terrain/trees/stump-*.png) stands in per slot when it exists.
+  // A hoisted declaration: forestChar's stump tile calls this during the
+  // initial script-load build, before this line's position runs.
+  function doorStump(p, x, y) {
     const art = (typeof Assets !== 'undefined' && Assets.treePiece)
       ? Assets.treePiece('stump', 4, (x * 73856093 ^ y * 19349663) >>> 0) : null;
     if (art) p.g.drawImage(art, x - (art.width >> 1), y + 4 - art.height);
     else drawStump(p, x, y);
-  };
+  }
   const buildStumpTiles = () => [
     tile(p => { doorStump(p, 5, 7); doorStump(p, 19, 17); doorStump(p, 9, 23); }),
     tile(p => { doorStump(p, 17, 5); doorStump(p, 7, 15); doorStump(p, 23, 23); }),

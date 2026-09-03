@@ -99,15 +99,21 @@ const out = await p.evaluate(() => {
     };
     for (let k = 0; k < 80 && !seen; k++) Units.update(0.05);
     R.startTreeFall = orig;
-    ck('aFelledStandFalls', ok && !!seen && R.treefalls.length === 1,
+    // ONE fell raises ONE fall in tile-shear mode, or one fall PER TREE in
+    // the art catalog's individual-fall mode (every record marked solo, all
+    // from this tile) — either way the stand goes over exactly once
+    const soloOk = R.treefalls.length >= 1 && R.treefalls.every(f => f.solo
+      && ((f.wx / CFG.TILE) | 0) === fx && ((f.wy / CFG.TILE) | 0) === fy);
+    const shearOk = R.treefalls.length === 1 && !R.treefalls[0].solo;
+    ck('aFelledStandFalls', ok && !!seen && (soloOk || shearOk),
       'ok ' + ok + ' seen ' + JSON.stringify(seen) + ' live ' + R.treefalls.length);
     ck('andItIsCutBeforeTheGroundChanges',
       !!seen && seen.terr === T.FOREST, seen && seen.terr);
     ck('theTileIsStumpsWhenTheDustSettles',
       S.map.terrain[MapGen.idx(fx, fy)] === T.STUMPS, S.map.terrain[MapGen.idx(fx, fy)]);
     ck('itGoesOverAwayFromTheHand',
-      R.treefalls[0] && R.treefalls[0].right === true,
-      'villager x ' + v.x + ' tile ' + fx + ' right ' + (R.treefalls[0] || {}).right);
+      R.treefalls.length >= 1 && R.treefalls.every(f => f.right === true),
+      'villager x ' + v.x + ' tile ' + fx + ' rights ' + JSON.stringify(R.treefalls.map(f => f.right)));
   }
 
   // ---- …and from the other side it goes the other way ----
@@ -121,7 +127,7 @@ const out = await p.evaluate(() => {
     Units.assignGather(v, fx, fy);
     for (let k = 0; k < 80 && !R.treefalls.length; k++) Units.update(0.05);
     ck('aHandOnTheOtherSideDropsItTheOtherWay',
-      R.treefalls.length === 1 && R.treefalls[0].right === false,
+      R.treefalls.length >= 1 && R.treefalls.every(f => f.right === false),
       JSON.stringify(R.treefalls.map(f => f.right)));
   }
 
@@ -132,7 +138,7 @@ const out = await p.evaluate(() => {
     wood(fx, fy);
     G.updateVisibility();
     ck('aSappersLaneFellsThemToo',
-      Terraform.clear(fx, fy) && R.treefalls.length === 1, 'live ' + R.treefalls.length);
+      Terraform.clear(fx, fy) && R.treefalls.length >= 1, 'live ' + R.treefalls.length);
     ck('andTheGroundIsGrassBehindIt',
       S.map.terrain[MapGen.idx(fx, fy)] === T.GRASS, '');
     // …but clearing a hill or a field raises nothing: only a WOOD falls
@@ -159,7 +165,10 @@ const out = await p.evaluate(() => {
     R.treefalls = [];
     const fx = tc.x - 3, fy = tc.y - 3;
     for (let k = 0; k < 24; k++) { wood(fx, fy); R.startTreeFall(fx, fy); }
-    ck('aClearedLaneIsCapped', R.treefalls.length <= 12, 'live ' + R.treefalls.length);
+    // tile-shear mode holds ten records; the individual-fall mode holds
+    // sixty TREES (a couple of stands' worth) — either way a razed lane is
+    // a scene, not an unbounded whiteout
+    ck('aClearedLaneIsCapped', R.treefalls.length <= 60, 'live ' + R.treefalls.length);
   }
 
   // ============ 3. the frames are cut from the tile's own art ============
@@ -251,7 +260,7 @@ const out = await p.evaluate(() => {
     const fx = tc.x + 2, fy = tc.y;
     wood(fx, fy);
     R.startTreeFall(fx, fy, fx - 1, fy);
-    ck('aFallIsLive', R.treefalls.length === 1, '');
+    ck('aFallIsLive', R.treefalls.length >= 1, 'live ' + R.treefalls.length);
     ck('butNeverInTheSave', JSON.stringify(S).indexOf('treefall') < 0, '');
     R.onNewGame();
     ck('andANewRunInheritsNone', R.treefalls.length === 0 && R.horns.length === 0, '');

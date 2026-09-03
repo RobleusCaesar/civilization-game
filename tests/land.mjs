@@ -819,12 +819,17 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       keep[t] = [Sprites.terrain[t], Sprites.terrainMed[t], Sprites.terrainFull[t], Sprites.terrainRare[t]];
       Sprites.terrain[t] = Sprites.terrainMed[t] = Sprites.terrainFull[t] = Sprites.terrainRare[t] = blank;
     }
+    // …and the world-space stamps go dark the same way: with a catalog
+    // installed the trees come from forestStampBand, not the tile sets
+    const fsb = R.forestStampBand, fsn = R.forestStampsNear;
+    R.forestStampBand = () => {}; R.forestStampsNear = () => {};
     R.rockMass=()=>{}; R.rockScree=()=>{}; R.rebuildTerrain();
     const off = R.terrainCache.getContext('2d').getImageData(0,0,px,px).data;
     for (const t of [T.FOREST, T.FERTILE]) {
       [Sprites.terrain[t], Sprites.terrainMed[t], Sprites.terrainFull[t], Sprites.terrainRare[t]] = keep[t];
     }
     R.rockMass=rm; R.rockScree=rs;
+    R.forestStampBand = fsb; R.forestStampsNear = fsn;
     const sample = (n2) => {
       const at = kindAt[n2];
       if (!at) return { cov: 0, farPct: 0, meanDelta: 0, missing: 1 };
