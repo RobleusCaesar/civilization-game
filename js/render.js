@@ -4234,17 +4234,26 @@ const R = {
            behind it; the same for the rolling rises and for the ground line.
            Placed across the whole footprint instead they carpet open grass
            and the range reads as a debris field with a few peaks in it. */
+        /* …AND IT STANDS AT THE MOUNTAIN'S OWN FOOT, not at its own column's
+           southern edge. Reading its own edge put the foothills a hundred
+           pixels below the peaks they were meant to be covering, with open
+           grass in between: the rock a low piece belongs to is the only
+           thing that can tell it where the ground is. */
+        let hugFy = -1;
         if (kind !== 'peak' && kind !== 'saddle') {
-          let behind = false;
           for (const q of plan) {
             if (q.kind !== 'peak' && q.kind !== 'saddle') continue;
             const qs = q.tx, qe = q.tx + Math.round(q.piece.w / CFG.TILE);
-            if (x < qe && x + span > qs) { behind = true; break; }
+            /* a real overlap, not a touch: half this piece's span has to
+               stand under the mountain, or a foothill ends up marooned out
+               on the grass beside one */
+            const ov = Math.min(x + span, qe) - Math.max(x, qs);
+            if (ov >= span * 0.5 && q.fy > hugFy) hugFy = q.fy;
           }
-          if (!behind) { x += 1; continue; }
+          if (hugFy < 0) { x += 1; continue; }
         }
         if (kind === 'peak') nPeaks++;
-        plan.push({ piece, kind, tx: x, fy: fy + 1, up: rank.up, front: kind === 'foot' || rank === bands[bands.length - (foots ? 2 : 1)] });
+        plan.push({ piece, kind, tx: x, fy: hugFy >= 0 ? hugFy : fy + 1, up: rank.up, front: kind === 'foot' || rank === bands[bands.length - (foots ? 2 : 1)] });
         prevSaddle = (kind === 'saddle');
         any = true; slot++;
         /* the step is measured on the piece's TORN width — the tear takes
