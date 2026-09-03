@@ -603,12 +603,12 @@ const Assets = {
      Absent files are the default state — with no kit the procedural
      extrusion stands exactly as it always has. */
   MTN_KIT_DIR: 'assets/terrain/mountain/',
-  MTN_KIT_KINDS: ['peak', 'saddle', 'end'],
+  MTN_KIT_KINDS: ['peak', 'saddle', 'hill'],   // hill = the low front rank
   mtnKit: {}, mtnKitRev: 0,
   mtnKitUrl(kind, letter) { return this.MTN_KIT_DIR + kind + '-' + letter + '.png?v=' + (CFG.ART_V || 1); },
   _tryMtnKit() { for (const kind of this.MTN_KIT_KINDS) this._tryMtnPiece(kind, 0); },
   _tryMtnPiece(kind, li) {
-    if (li >= 12) return;                         // letters a..l; the cascade stops at the first 404
+    if (li >= 16) return;                         // letters a..p; the cascade stops at the first 404
     const img = new Image();
     img.onload = () => { this.setMtnPiece(kind, img); this._tryMtnPiece(kind, li + 1); };
     img.onerror = () => { /* the kit ends here */ };
@@ -633,8 +633,13 @@ const Assets = {
       for (let x = 0; x < c.width; x++) for (let y = c.height - 1; y >= 0; y--)
         if (d.data[(y * c.width + x) * 4 + 3] > 0) { foot[x] = y; break; }
     } catch (e) { /* tainted on file:// — the piece still draws, shadowless */ }
+    /* the pixels are kept alongside the canvas: the chain composites by
+       hand so it can TEAR each piece's exposed edges, and reading them back
+       once here beats reading them per placement */
+    let px = null;
+    try { px = g.getImageData(0, 0, c.width, c.height).data; } catch (e) { px = null; }
     const a = this.mtnKit[kind] || (this.mtnKit[kind] = []);
-    a.push({ c, w: c.width, h: c.height, foot });
+    a.push({ c, w: c.width, h: c.height, foot, px });
     this.mtnKitRev++;
     if (typeof R !== 'undefined' && R.rebakeAll) { R._mtnArt = null; R._mtnLayerKey = ''; R._mtnDirty = true; }
     return true;
