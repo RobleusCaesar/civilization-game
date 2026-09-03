@@ -591,6 +591,31 @@ const MTN = {
   PAD_UP: 3,             // tiles
   PAD_SIDE: 1,
   PAD_DOWN: 2,
+  /* ---- THE DRAWN KIT (the chosen path: art, never a procedure) ----
+     A region is dressed by CHAINING drawn massifs along its own southern
+     edge, west to east, each overlapping the last so their flanks — which
+     the art deliberately ends part-way up the slope — merge into one
+     continuous crest with a saddle at every join. KIT_OVERLAP is that
+     overlap as a share of a piece's width: under about a third the joins
+     read as separate mountains, over about a half the summits crowd.
+     RANK_STEP sets how far north the next rank sits on a deep region, so a
+     massif has depth instead of being one row of cardboard. */
+  KIT: 1,                // 0 stands the drawn kit down; the extrusion returns
+  KIT_OVERLAP: 0.34,
+  KIT_RANK_STEP: 3,      // tiles between peak ranks (bands stay touching)
+  KIT_RANK_MAX: 3,
+  KIT_SADDLE_EVERY: 0.42,// share of chain slots that take a low link
+  /* HOW MANY SUMMITS ONE REGION MAY CARRY. Strung past about this many the
+     range stops reading as a range and starts reading as wallpaper; the
+     rest of the footprint is carried by the low bands instead. 0 = no cap. */
+  KIT_MAX_PEAKS: 6,
+  KIT_LOW: 1,            // 0 drops the rolling/foothill bands entirely
+  KIT_PAD_UP: 10,         // tiles of northward headroom a drawn peak may use
+  KIT_TEAR: 16,           // px of the piece's own left/right/bottom edge torn away
+  KIT_COVER_MIN: 0.5,    // share of a tile the rock must hide before a unit on it is ghosted
+  KIT_SHORE_GAP: 1,      // tiles of grass kept between the art and any water
+  KIT_SHADOW: 10,        // px of ground shadow cast south of a piece's foot
+  KIT_SHADOW_A: 0.42,
   OUTCROP_N: 4,          // boulders per cell of a 1-2 cell outcrop
   OUTCROP_MIN: 10,
   OUTCROP_MAX: 14,
@@ -4034,6 +4059,12 @@ const R = {
     for (const r of regions) {
       let art = (r === pinRegion) ? Formations.pinnedStrips(r, pin.stem) : null;
       if (!art && haveFormations) art = Formations.mtnRegionStrips(r);
+      /* the DRAWN KIT outranks the extrusion wherever it is installed: a
+         region big enough to carry a chain of massifs gets art, a boulder
+         outcrop stays a boulder outcrop, and with no kit on disk nothing
+         below this line has changed at all. */
+      if (!art && MTN.KIT && r.cls > 0 && typeof Assets !== 'undefined' && Assets.mtnKitReady && Assets.mtnKitReady())
+        art = this.drawMtnChained(r);
       if (!art) art = (r.cls === 0) ? this.drawMtnOutcrop(r) : this.drawMtnRegion(r);
       if (!art) continue;
       this._mtnArt.push(art);
@@ -4044,6 +4075,9 @@ const R = {
       }
     }
     this._mtnStrips.sort((a, b) => a.row - b.row);
+  },
+  mtnKitOn() {
+    return !!(MTN.KIT && typeof Assets !== 'undefined' && Assets.mtnKitReady && Assets.mtnKitReady());
   },
   mtnStrips() {
     if (!this._mtnArt || this._mtnDirty) { this._mtnDirty = false; this.buildMtnLayer(); }
@@ -4086,6 +4120,374 @@ const R = {
     // one strip: a boulder cluster stands at ground level and occludes like
     // any other row of stone — its ground row is its bottom cell
     return { c, x: ax, y: ay, cover, kind: 'outcrop', strips: [{ row: by1, x: ax, y: ay, c }] };
+  },
+
+  /* ---- THE CHAINED KIT: a region dressed in drawn massifs -------------
+     The composition is an illustrator's, not a solver's, and it follows the
+     operator's rules for how a range is read:
+
+       SMALL IN FRONT, BIG BEHIND. You do not step from meadow to alp. The
+       southern edge — the edge nearest the camera — takes FOOTHILLS; the
+       big peaks stand in ranks behind them, drawn first so the small stuff
+       overlaps their feet. A region too shallow to hold both is foothills
+       and nothing else, which is what a low rocky region should be.
+
+       NO TWO SADDLES IN A ROW. A saddle is the low link BETWEEN summits;
+       two of them side by side is a dent, not a range.
+
+       NEVER OVER WATER, AND NEVER ONTO THE BEACH. Art may overhang bare
+       ground, but a mountain growing out of a lake is a lie, so the
+       overhang stops short of the water with a little grass to spare.
+
+       NO STRAIGHT LINES. Nothing is cut on a tile boundary: the art is
+       masked by the region's own FRACTURED polygon (organic by
+       construction) extended north per column, so every edge the player
+       sees is either drawn rock or a jagged outline.
+
+       TREES IN FRONT WIN. A wood standing south of the range is nearer the
+       camera than the rock is, so its crowns draw OVER the mountain's foot.
+       Trees behind it are hidden, as they should be. */
+  mtnChainPlan(r) {
+    const W = CFG.W, kit = Assets.mtnKit;
+    const peaks = kit.peak || [];
+    if (!peaks.length) return null;
+    const saddles = (kit.saddle && kit.saddle.length) ? kit.saddle : null;
+    const low = MTN.KIT_LOW !== 0;
+    const hills = (low && kit.hill && kit.hill.length) ? kit.hill : null;
+    const rolls = (low && kit.roll && kit.roll.length) ? kit.roll : null;
+    const foots = (kit.foot && kit.foot.length) ? kit.foot : null;
+    const [bx0, by0, bx1, by1] = r.box;
+    const cw = bx1 - bx0 + 1;
+    const north = new Int32Array(cw).fill(1e9), south = new Int32Array(cw).fill(-1);
+    for (const k of r.cells) {
+      const tx = (k % W) - bx0, ty = (k / W) | 0;
+      if (ty < north[tx]) north[tx] = ty;
+      if (ty > south[tx]) south[tx] = ty;
+    }
+    const hsh = (a, b) => this._lh(a | 0, b | 0, (r.seed & 511) + 811);
+    /* A MOUNTAIN IS NEVER PLACED WHERE THE WATER WOULD CUT IT. The wet ban
+       clears art drawn over a lake and its beach, and a peak whose summit
+       rose into that band came out with its top sliced flat — the rule was
+       protecting the shoreline and butchering the mountain. So the test
+       moves to PLACEMENT: if any tile this piece's rock would touch is
+       banned, the piece does not go there at all. A shorter one may still
+       fit, which is what the small pieces in the kit are for; if none fits,
+       the slot stays empty and the ground is simply left open. */
+    const TLp = CFG.TILE, Hp = CFG.H;
+    const terrP = (S.map.seenTerrain || S.map.terrain);
+    const wetAt = new Map();
+    const wet = (tx, ty) => {
+      if (tx < 0 || ty < 0 || tx >= W || ty >= Hp) return true;
+      const k = ty * W + tx;
+      const hit = wetAt.get(k);
+      if (hit !== undefined) return hit;
+      const t0 = terrP[k];
+      let v = false;
+      if (t0 !== T.MOUNTAIN) {
+        if (t0 === T.WATER || t0 === T.MOAT) v = true;
+        else {
+          const gap = MTN.KIT_SHORE_GAP | 0;
+          for (let oy = -gap; oy <= gap && !v; oy++) for (let ox = -gap; ox <= gap; ox++) {
+            const nx = tx + ox, ny = ty + oy;
+            if (nx < 0 || ny < 0 || nx >= W || ny >= Hp) continue;
+            const tt = terrP[ny * W + nx];
+            if (tt === T.WATER || tt === T.MOAT) { v = true; break; }
+          }
+        }
+      }
+      wetAt.set(k, v);
+      return v;
+    };
+    // every tile this piece's rock would touch, including its far edges
+    const clipped = (piece, tx, fyTile) => {
+      const bb = piece.bb;
+      if (!bb) return false;
+      const x0 = tx * TLp + bb.x0, x1 = tx * TLp + bb.x1;
+      const y0 = fyTile * TLp - piece.h + bb.y0, y1 = fyTile * TLp - piece.h + bb.y1;
+      for (let y = y0; ; y += TLp) {
+        const yy = Math.min(y, y1);
+        for (let x = x0; ; x += TLp) {
+          const xx = Math.min(x, x1);
+          if (wet((xx / TLp) | 0, (yy / TLp) | 0)) return true;
+          if (xx >= x1) break;
+        }
+        if (yy >= y1) break;
+      }
+      return false;
+    };
+    const plan = [];
+    /* THE BANDS, and why they are only a tile or two apart. A range is read
+       the way the forest is: the land does not jump from meadow to alp, it
+       THICKENS — small rolling rises first, then foothills, then the peaks
+       behind them — and each band must TOUCH the one behind it. The step is
+       therefore measured against the art's own height, not in whole ranks:
+       a foothill set one tile back still overlaps the rolling rise in front
+       of it, and the peak set two tiles behind still overlaps the foothill.
+       Any wider and grass shows between the bands, which is the tell that
+       gave the last round away. Bands are listed front to back and walked
+       BACK to front, so the plan is built in draw order. */
+    const bands = [];
+    if (rolls) bands.push({ up: 0, kind: 'roll' });
+    if (hills) bands.push({ up: 0, kind: 'hill' });
+    /* ALL THREE FRONT BANDS SHARE THE FOOT ROW. Setting the peaks even one
+       tile back left a strip of grass between them and the foothills — the
+       art's own opaque top sits a little below its canvas top, so a nominal
+       overlap was no overlap at all. Standing them on the SAME line and
+       letting the low bands (drawn last, and shorter) cover the peaks' feet
+       is what stacks them one on top of the other. */
+    const peakBase = 0;
+    for (let i = 0; i < MTN.KIT_RANK_MAX; i++) bands.push({ up: peakBase + i * MTN.KIT_RANK_STEP, kind: 'peak' });
+    bands.reverse();
+    // the ground line goes on absolutely last, over everything's feet
+    if (foots) bands.push({ up: 0, kind: 'foot' });
+    let slot = 0, nPeaks = 0;
+    for (const rank of bands) {
+      let x = bx0, prevSaddle = false, any = false;
+      while (x <= bx1) {
+        /* WHICH PIECE. The front bands are the low ground; behind them a
+           peak. The pool is tried in a hashed ROTATION and the first piece
+           that actually fits takes the slot — a tall mountain fails wherever
+           the water would clip it, and a smaller one steps in. If nothing in
+           the pool fits, the slot is left empty and the ground stays open,
+           which is far better than a summit sliced off by a lake. */
+        let pool = peaks, kind = 'peak';
+        if (rank.kind === 'foot') { pool = foots; kind = 'foot'; }
+        else if (rank.kind === 'roll') { pool = rolls; kind = 'roll'; }
+        else if (rank.kind === 'hill') { pool = hills; kind = 'hill'; }
+        else if (saddles && !prevSaddle && slot > 0 && hsh(slot, 13) < MTN.KIT_SADDLE_EVERY) { pool = saddles; kind = 'saddle'; }
+        if (kind === 'peak' && MTN.KIT_MAX_PEAKS > 0 && nPeaks >= MTN.KIT_MAX_PEAKS) { x += 1; continue; }
+        /* the rotation starts among the TALL pieces, so a big mountain is
+           tried wherever one will stand; the small knolls further down the
+           pool only get a slot when nothing taller fits — which is what they
+           are in the kit for */
+        const tallN = Math.max(1, pool.filter(pp => pp.h >= pool[0].h * 0.75).length);
+        const start = (hsh(slot, 29) * tallN) | 0;
+        let piece = null, useFy = -1;
+        for (let pi = 0; pi < pool.length; pi++) {
+          const cand = pool[(start + pi) % pool.length];
+          /* CEIL, not round: a 168px piece is 5.25 tiles wide, and rounding
+             down let a quarter-tile of rock hang past the footprint onto
+             walkable ground — which is precisely what the honesty pin
+             measures. Demand every tile the art spans. */
+          const span = Math.max(1, Math.ceil(cand.w / CFG.TILE));
+          /* THE FOOT goes on the NORTHERNMOST of the southern rows this piece
+             spans, pulled north by the rank: every column it covers then has
+             mountain at or below it, so no piece hangs off a ragged edge. */
+          let fy = 1e9, cols = 0;
+          for (let q = 0; q < span; q++) {
+            const cx = x - bx0 + q;
+            if (cx < 0 || cx >= cw || south[cx] < 0) continue;
+            cols++;
+            const f = south[cx] - rank.up;
+            if (f < fy) fy = f;
+          }
+          if (cols < span || fy >= 1e9 || fy < 0) continue;
+          let onRock = 0;
+          for (let q = 0; q < span; q++) {
+            const cx = x - bx0 + q;
+            if (cx >= 0 && cx < cw && south[cx] >= fy && north[cx] <= fy) onRock++;
+          }
+          if (onRock < span * 0.7) continue;
+          /* A TALL MOUNTAIN NEEDS DEEP GROUND UNDER IT. The honesty contract
+             lets art rise north of its footprint only by the lift's reach
+             (PAD_UP); stand a five-tile-tall drawing on a two-tile strip of
+             rock and its summit is floating over meadow with nothing beneath
+             it. So the ground each column spans must come up to within
+             PAD_UP tiles of the piece's own top — otherwise a shorter piece
+             takes the slot, which is what the knolls are for. */
+          const topTile = fy + 1 - Math.ceil(cand.h / CFG.TILE);
+          let deepEnough = true;
+          for (let q = 0; q < span && deepEnough; q++) {
+            const cx = x - bx0 + q;
+            if (cx < 0 || cx >= cw || south[cx] < 0) continue;
+            if (topTile + MTN.PAD_UP < north[cx]) deepEnough = false;
+          }
+          if (!deepEnough) continue;
+          /* THE LOW BANDS HUG THE ROCK, and stand at the MOUNTAIN'S own foot
+             rather than at their own column's southern edge — the rock a low
+             piece belongs to is the only thing that can tell it where the
+             ground is, and half its span has to sit under that rock or it
+             ends up marooned on the grass beside it. */
+          let hugFy = -1;
+          if (kind !== 'peak' && kind !== 'saddle') {
+            for (const q of plan) {
+              if (q.kind !== 'peak' && q.kind !== 'saddle') continue;
+              const qs = q.tx, qe = q.tx + Math.round(q.piece.w / CFG.TILE);
+              const ov = Math.min(x + span, qe) - Math.max(x, qs);
+              if (ov >= span * 0.5 && q.fy > hugFy) hugFy = q.fy;
+            }
+            if (hugFy < 0) continue;
+            /* …but never SOUTH of its own ground. A foothill takes the
+               mountain's foot row, and where the blob's edge steps north that
+               row can lie past the low piece's own columns — which is the last
+               place art was found hanging over open meadow. */
+            for (let q = 0; q < span; q++) {
+              const cx = x - bx0 + q;
+              if (cx >= 0 && cx < cw && south[cx] >= 0 && south[cx] + 1 < hugFy) { hugFy = -1; break; }
+            }
+            if (hugFy < 0) continue;
+          }
+          const fyTile = hugFy >= 0 ? hugFy : fy + 1;
+          if (clipped(cand, x, fyTile)) continue;      // the water would cut it
+          piece = cand; useFy = fyTile;
+          break;
+        }
+        if (!piece) { x += 1; continue; }
+        if (kind === 'peak') nPeaks++;
+        plan.push({ piece, kind, tx: x, fy: useFy, up: rank.up, front: kind === 'foot' || rank === bands[bands.length - (foots ? 2 : 1)] });
+        prevSaddle = (kind === 'saddle');
+        any = true; slot++;
+        /* the step is measured on the piece's TORN width — the tear takes
+           a bite out of both flanks, and stepping by the untorn width left a
+           strip of grass between every pair */
+        const bite = Math.max(2, Math.min(MTN.KIT_TEAR, Math.round(Math.min(piece.w, piece.h) * 0.17)));
+        x += Math.max(1, Math.round((piece.w - 2 * bite) * (1 - MTN.KIT_OVERLAP) / CFG.TILE));
+      }
+      if (!any && rank.up > 0) continue;      // no room for this rank; the shallower ones still stand
+    }
+    /* NO SUMMIT, NO KIT. A region too narrow to stand a single mountain in
+       was being dressed in foothills and ground lines alone, which left low
+       strips standing on open grass with nothing behind them. If the rock
+       cannot be the subject, the region keeps its old drawing. */
+    if (!nPeaks) return null;
+    return plan.length ? plan : null;
+  },
+
+  /* ONE PIECE, ONE STRIP. The earlier version composited every piece into a
+     region-sized canvas, masked that canvas to the footprint, then cut it
+     back apart into row strips — three chances to slice a mountain on a
+     straight line, and it took all three. This does none of it: each placed
+     piece becomes its own strip, drawn at its own foot row, keeping its own
+     silhouette. Overlap is just draw order, which the strip interleave
+     already gives us for free. The only pixels ever removed are the honest
+     ones: over water or its beach, and off the board. */
+  drawMtnChained(r) {
+    const TL = CFG.TILE, W = CFG.W, H = CFG.H;
+    const plan = this.mtnChainPlan(r);
+    if (!plan) return null;
+    const terrK = (S.map.seenTerrain || S.map.terrain);
+    const banCache = new Map();
+    const banned = (tx, ty) => {
+      if (tx < 0 || ty < 0 || tx >= W || ty >= H) return true;
+      const k = ty * W + tx;
+      let v = banCache.get(k);
+      if (v !== undefined) return v;
+      const t0 = terrK[k];
+      v = false;
+      if (t0 !== T.MOUNTAIN) {
+        if (t0 === T.WATER || t0 === T.MOAT) v = true;
+        else {
+          const gap = MTN.KIT_SHORE_GAP | 0;
+          for (let oy = -gap; oy <= gap && !v; oy++) for (let ox = -gap; ox <= gap; ox++) {
+            const nx = tx + ox, ny = ty + oy;
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            const tt = terrK[ny * W + nx];
+            if (tt === T.WATER || tt === T.MOAT) { v = true; break; }
+          }
+        }
+      }
+      banCache.set(k, v);
+      return v;
+    };
+    /* BACK TO FRONT: the deepest rank first, and within a rank by foot row.
+       The strips carry this order into the frame, so a nearer massif — and
+       the low ground in front of it — draws over the one behind. */
+    const placed = plan.map(p => ({ p, x: p.tx * TL, y: p.fy * TL - p.piece.h, foot: p.fy * TL }))
+      .sort((a, b) => (b.p.up - a.p.up) || (a.foot - b.foot));
+    const TEARMAX = Math.max(0, MTN.KIT_TEAR | 0);
+    const strips = [], cover = new Set(), hits = new Map();
+    let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
+    for (const q of placed) {
+      const pc = q.p.piece, sp = pc.px;
+      const sw = pc.w, sh = pc.h + (MTN.KIT_SHADOW | 0);
+      const sc = document.createElement('canvas');
+      sc.width = sw; sc.height = sh;
+      const sg = sc.getContext('2d');
+      sg.imageSmoothingEnabled = false;
+      if (!sp) { sg.drawImage(pc.c, 0, 0); }                   // tainted: draw it whole
+      else {
+        const im = sg.createImageData(sw, sh), d = im.data;
+        /* the tear takes the piece's exposed flanks — and its foot only on
+           the frontmost band, since a foot torn under another band opens a
+           window onto the grass between them. The top is never torn: that is
+           the summit, and a piece that needed one torn was refused at load. */
+        const tear = Math.max(2, Math.min(TEARMAX, Math.round(Math.min(pc.w, pc.h) * 0.17)));
+        for (let sy = 0; sy < pc.h; sy++) for (let sx = 0; sx < pc.w; sx++) {
+          const so = (sy * pc.w + sx) * 4;
+          if (sp[so + 3] < 128) continue;
+          if (tear > 0) {
+            const dd = q.p.front ? Math.min(sx, pc.w - 1 - sx, pc.h - 1 - sy) : Math.min(sx, pc.w - 1 - sx);
+            if (dd < tear && this._lh(((q.x + sx) / 5) | 0, ((q.y + sy) / 5) | 0, 61) > (dd + 0.5) / tear) continue;
+          }
+          if (banned(((q.x + sx) / TL) | 0, ((q.y + sy) / TL) | 0)) continue;
+          const oo = (sy * sw + sx) * 4;
+          d[oo] = sp[so]; d[oo + 1] = sp[so + 1]; d[oo + 2] = sp[so + 2]; d[oo + 3] = 255;
+        }
+        // the ground shadow, cast from what actually survived the tear
+        const len = MTN.KIT_SHADOW | 0;
+        if (len > 0 && q.p.kind !== 'foot') {
+          for (let sx = 0; sx < sw; sx++) {
+            let low = -1;
+            for (let sy = pc.h - 1; sy >= 0; sy--) if (d[(sy * sw + sx) * 4 + 3] >= 128) { low = sy; break; }
+            if (low < 0) continue;
+            for (let k = 1; k <= len; k++) {
+              const yy = low + k;
+              if (yy >= sh) break;
+              const oo = (yy * sw + sx) * 4;
+              if (d[oo + 3] >= 128) break;
+              if (banned(((q.x + sx) / TL) | 0, ((q.y + yy) / TL) | 0)) break;
+              const t = 1 - k / len;
+              d[oo] = 12; d[oo + 1] = 15; d[oo + 2] = 11;
+              d[oo + 3] = (MTN.KIT_SHADOW_A * t * t * 255) | 0;
+            }
+          }
+        }
+        sg.putImageData(im, 0, 0);
+        /* A TILE COUNTS AS COVERED ONLY WHEN THE ROCK ACTUALLY HIDES IT.
+           Marking every tile the art so much as grazes meant a unit standing
+           where a torn edge or a thin flank barely reached was ghosted to a
+           silhouette while still in plain sight — tests/mountain.mjs catches
+           exactly that, and it is right to. Half the tile has to be rock. */
+        for (let sy = 0; sy < pc.h; sy++) for (let sx = 0; sx < pc.w; sx++)
+          if (d[(sy * sw + sx) * 4 + 3] >= 128) {
+            const k = (((q.y + sy) / TL) | 0) * W + (((q.x + sx) / TL) | 0);
+            hits.set(k, (hits.get(k) || 0) + 1);
+          }
+      }
+      const row = Math.min(H - 1, Math.max(0, ((q.foot - 1) / TL) | 0));
+      strips.push({ row, x: q.x, y: q.y, c: sc });
+      if (q.x < bx0) bx0 = q.x; if (q.x + sw > bx1) bx1 = q.x + sw;
+      if (q.y < by0) by0 = q.y; if (q.y + sh > by1) by1 = q.y + sh;
+    }
+    if (!strips.length) return null;
+    { const need = TL * TL * MTN.KIT_COVER_MIN; for (const [k, n] of hits) if (n >= need) cover.add(k); }
+    /* THE WOOD IN FRONT. Trees standing south of a piece's foot are nearer
+       the camera than it is, so they draw over it; trees behind stay hidden.
+       Stamped onto the piece's own strip, which is what the frame draws. */
+    if (this._stampMode && this._stampMode() && this.forestLayoutAt) {
+      for (const st of strips) {
+        const trees = [];
+        const t0x = Math.max(1, (st.x / TL | 0) - 1), t1x = Math.min(W - 2, ((st.x + st.c.width) / TL | 0) + 1);
+        const t0y = Math.max(1, (st.y / TL | 0)), t1y = Math.min(H - 2, ((st.y + st.c.height) / TL | 0) + 1);
+        for (let ty = t0y; ty <= t1y; ty++) for (let tx = t0x; tx <= t1x; tx++) {
+          if (terrK[ty * W + tx] !== T.FOREST || ty < st.row) continue;
+          trees.push(...this.forestLayoutAt(tx, ty, terrK));
+        }
+        if (!trees.length) continue;
+        const g2 = st.c.getContext('2d');
+        g2.save(); g2.translate(-st.x, -st.y);
+        this._stampForest(g2, trees);
+        g2.restore();
+      }
+    }
+    // the whole-region composite, which is what the contract tests measure
+    const cw = Math.max(1, bx1 - bx0), ch = Math.max(1, by1 - by0);
+    const c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    for (const st of strips) g.drawImage(st.c, st.x - bx0, st.y - by0);
+    return { c, x: bx0, y: by0, cover, kind: 'chain', box: r.box, strips };
   },
 
   drawMtnRegion(r) {
@@ -4561,7 +4963,14 @@ const R = {
       if (edge) this.paintGround(g, x, y, h);
     } else if (GROUND_GRAIN.has(t)) {
       this.paintGround(g, x, y, h);               // continuous floor...
-      this.blockShade(g, x, y, terr);             // ...the "you cannot walk here" ground...
+      /* …and the "you cannot walk here" shade — EXCEPT under drawn mountain
+         art. That shade is a slab the size of the tile, and wherever the
+         kit's art does not happen to cover a mountain tile it showed through
+         as a grey RECTANGLE with hard edges: the straight lines that survived
+         every attempt to remove them from the art itself. With the kit
+         installed the ROCK is the cue, and bare ground under it reads as
+         ordinary ground, which the foothills and the wood then cover. */
+      if (!(t === T.MOUNTAIN && this.mtnKitOn())) this.blockShade(g, x, y, terr);
       if (ovr) this.blitTile(g, ovr, x, y);       // ...then the transparent-floored resource on top
       else if (img) g.drawImage(img, x * TL, y * TL);   // (hills have no tile sprite — see rockMass)
     } else if (ovr) {

@@ -579,6 +579,160 @@ const Assets = {
     for (const style of this.TREE_STYLES) for (const size of ['s', 'l', 'xl'])
       this._tryTreePiece(style, size, 0);   // xl exists only for dome (the elder) — 404s are free
   },
+  /* ---- THE MOUNTAIN KIT: drawn massifs, CHAINED into ranges ----
+
+       assets/terrain/mountain/{kind}-{letter}.png     kinds: peak | saddle | end
+
+     The third mountain attempt, and the one the operator chose: the rock is
+     DRAWN, never painted by a procedure. A region is dressed by chaining
+     pieces west to east along its own southern edge — each overlapping its
+     neighbour by MTN.KIT_OVERLAP, so the flanks (which the art deliberately
+     ends part-way up the slope) merge into one continuous crest with a
+     saddle at every join. Peaks carry the summits, saddles are the low links
+     between them.
+
+     ONE ART-PIXEL PER WORLD-PIXEL. These are placed, never scaled: the
+     density canon forbids resampling shipped pixels, so a piece is drawn at
+     1:1 or at an integer box ÷2 and at no other size.
+
+     NEVER MIRRORED. The light is locked to the upper left; a mirrored piece
+     lights from the upper right, and a range built of alternating mirrors
+     shows a butterfly seam at every join. Variety comes from having several
+     pieces, not from flipping one.
+
+     Absent files are the default state — with no kit the procedural
+     extrusion stands exactly as it always has. */
+  MTN_KIT_DIR: 'assets/terrain/mountain/',
+  MTN_KIT_KINDS: ['peak', 'saddle', 'hill', 'roll', 'foot'],   // hill/roll = the low front bands
+  mtnKit: {}, mtnKitRev: 0,
+  mtnKitUrl(kind, letter) { return this.MTN_KIT_DIR + kind + '-' + letter + '.png?v=' + (CFG.ART_V || 1); },
+  _tryMtnKit() { for (const kind of this.MTN_KIT_KINDS) this._tryMtnPiece(kind, 0); },
+  _tryMtnPiece(kind, li) {
+    if (li >= 16) return;                         // letters a..p; the cascade stops at the first 404
+    const img = new Image();
+    img.onload = () => { this.setMtnPiece(kind, img); this._tryMtnPiece(kind, li + 1); };
+    img.onerror = () => { /* the kit ends here */ };
+    img.src = this.mtnKitUrl(kind, String.fromCharCode(97 + li));
+  },
+  /* the low bands are drawn at half size — small rolling ground should
+     READ small beside a peak, and halving is the only resize the density
+     canon allows (an integer box downscale, never a resample) */
+  MTN_KIT_DIV: { roll: 2, hill: 2 },
+  MTN_FLAT_TOP: 0.30,    // a peak wider than this a few rows below its top is a plateau
+  setMtnPiece(kind, img) {
+    if (!img || !img.width || !img.height) return false;
+    const div = this.MTN_KIT_DIV[kind] || 1;
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, (img.width / div) | 0); c.height = Math.max(1, (img.height / div) | 0);
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    if (div === 1) g.drawImage(img, 0, 0);
+    else {
+      const s2 = document.createElement('canvas');
+      s2.width = img.width; s2.height = img.height;
+      const sg = s2.getContext('2d');
+      sg.imageSmoothingEnabled = false;
+      sg.drawImage(img, 0, 0);
+      try {
+        const sd = sg.getImageData(0, 0, img.width, img.height).data;
+        const od = g.createImageData(c.width, c.height);
+        for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+          let r2 = 0, g2 = 0, b2 = 0, n = 0;
+          for (let oy = 0; oy < div; oy++) for (let ox = 0; ox < div; ox++) {
+            const o = ((y * div + oy) * img.width + (x * div + ox)) * 4;
+            if (sd[o + 3] < 128) continue;
+            r2 += sd[o]; g2 += sd[o + 1]; b2 += sd[o + 2]; n++;
+          }
+          const oo = (y * c.width + x) * 4;
+          if (n * 2 >= div * div) { od.data[oo] = r2 / n; od.data[oo + 1] = g2 / n; od.data[oo + 2] = b2 / n; od.data[oo + 3] = 255; }
+        }
+        g.putImageData(od, 0, 0);
+      } catch (e) { g.drawImage(img, 0, 0, c.width, c.height); }
+    }
+    /* the FOOT PROFILE — the lowest opaque row in each column. It is what
+       the ground shadow is cast from and what decides which tile row owns
+       each column of the piece, so the occlusion strips stay honest. */
+    let foot = null;
+    try {
+      const d = g.getImageData(0, 0, c.width, c.height);
+      for (let k = 3; k < d.data.length; k += 4) d.data[k] = d.data[k] >= 128 ? 255 : 0;
+      g.putImageData(d, 0, 0);
+      foot = new Int32Array(c.width).fill(-1);
+      for (let x = 0; x < c.width; x++) for (let y = c.height - 1; y >= 0; y--)
+        if (d.data[(y * c.width + x) * 4 + 3] > 0) { foot[x] = y; break; }
+    } catch (e) { /* tainted on file:// — the piece still draws, shadowless */ }
+    /* the pixels are kept alongside the canvas: the chain composites by
+       hand so it can TEAR each piece's exposed edges, and reading them back
+       once here beats reading them per placement */
+    let px = null;
+    try { px = g.getImageData(0, 0, c.width, c.height).data; } catch (e) { px = null; }
+    /* A MOUNTAIN MUST HAVE A SUMMIT. Two ways generated rock fails that, and
+       both are refused here rather than debugged in the world later:
+
+         CLIPPED — the highest pixels run off the top of the piece's own
+                   canvas, so the peak has been sliced flat by the frame.
+         FLAT    — the piece is already wide a few rows below its top, so
+                   it is a plateau or a dome rather than a peak.
+
+       Either reads as a mesa in the back of every range it lands in, and
+       no amount of placing will put the summit back. The low bands are
+       exempt by nature: a foothill, a rolling rise and the ground line all
+       have flat tops on purpose, and the bands in front of them hide the
+       join. Judged on the SHIPPED pixels, so a piece is measured exactly as
+       it will be drawn. */
+    if (px && (kind === 'peak' || kind === 'saddle')) {
+      let topRow = -1;
+      const rowW = (y) => {
+        let n = 0;
+        for (let x = 0; x < c.width; x++) if (px[(y * c.width + x) * 4 + 3] > 128) n++;
+        return n;
+      };
+      for (let y = 0; y < c.height && topRow < 0; y++) if (rowW(y) > 0) topRow = y;
+      const near = rowW(Math.min(c.height - 1, topRow + 4)) / c.width;
+      /* AND IT MUST BE A FREE-STANDING OBJECT. A mountain whose rock runs
+         to the left, right or bottom edge of its own canvas has been
+         CROPPED to the frame, not drawn on transparency, and it composites
+         as a rectangle of rock with hard straight sides — which is exactly
+         what every remaining straight edge in the world turned out to be.
+         Pieces have to be stickers: empty margin on every side, so they can
+         be laid over one another. */
+      const edge = (fn) => { let n = 0; for (let i = 0; i < (fn.n | 0); i++) if (fn.f(i)) n++; return n; };
+      const leftN = edge({ n: c.height, f: y => px[(y * c.width) * 4 + 3] > 128 });
+      const rightN = edge({ n: c.height, f: y => px[(y * c.width + c.width - 1) * 4 + 3] > 128 });
+      const botN = edge({ n: c.width, f: x => px[((c.height - 1) * c.width + x) * 4 + 3] > 128 });
+      const cropped = leftN > 4 || rightN > 4 || botN > 4;
+      const bad = topRow <= 0 ? 'summit runs off the top of the art'
+        : near > this.MTN_FLAT_TOP ? 'flat top (' + near.toFixed(2) + ' of the width four rows down)'
+        : cropped ? 'cropped to its frame (rock on the L/R/bottom edge: ' + leftN + '/' + rightN + '/' + botN + ') — not a free-standing object' : null;
+      if (bad) {
+        if (!this._mtnWarned) this._mtnWarned = {};
+        const wk = kind + ':' + ((this.mtnKit[kind] || []).length);
+        if (!this._mtnWarned[wk]) { this._mtnWarned[wk] = 1; console.warn('[mountain kit] ' + wk + ': ' + bad + ' — refused'); }
+        return false;
+      }
+    }
+    /* the opaque bounding box, measured once: the placer needs to know
+       exactly where this piece's rock lives so it can refuse a spot where
+       the art would be clipped by water */
+    let bx0 = c.width, by0 = c.height, bx1 = -1, by1 = -1;
+    if (px) for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++)
+      if (px[(y * c.width + x) * 4 + 3] > 128) {
+        if (x < bx0) bx0 = x; if (x > bx1) bx1 = x;
+        if (y < by0) by0 = y; if (y > by1) by1 = y;
+      }
+    const bb = (bx1 < 0) ? { x0: 0, y0: 0, x1: c.width - 1, y1: c.height - 1 }
+      : { x0: bx0, y0: by0, x1: bx1, y1: by1 };
+    const a = this.mtnKit[kind] || (this.mtnKit[kind] = []);
+    a.push({ c, w: c.width, h: c.height, foot, px, bb });
+    // tallest first: the placer tries big rock before small, and only drops
+    // to a knoll where a mountain will not fit
+    a.sort((p, q) => q.h - p.h);
+    this.mtnKitRev++;
+    if (typeof R !== 'undefined' && R.rebakeAll) { R._mtnArt = null; R._mtnLayerKey = ''; R._mtnDirty = true; }
+    return true;
+  },
+  mtnKitReady() { return !!(this.mtnKit.peak && this.mtnKit.peak.length); },
+
   _tryTreePiece(style, size, li) {
     if (li >= 12) return;                         // letters a..l, the cascade stops at the first 404
     const img = new Image();
@@ -1340,6 +1494,7 @@ const Assets = {
     this._tryFish(1);
     this._tryWaterFx();
     this._tryTrees();
+    this._tryMtnKit();
     this.ready = true;
     return { ok: true, data: { slots: this.artSlots().length + this.campTribes().length } };
   },
