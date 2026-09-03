@@ -579,6 +579,68 @@ const Assets = {
     for (const style of this.TREE_STYLES) for (const size of ['s', 'l', 'xl'])
       this._tryTreePiece(style, size, 0);   // xl exists only for dome (the elder) — 404s are free
   },
+  /* ---- THE MOUNTAIN KIT: drawn massifs, CHAINED into ranges ----
+
+       assets/terrain/mountain/{kind}-{letter}.png     kinds: peak | saddle | end
+
+     The third mountain attempt, and the one the operator chose: the rock is
+     DRAWN, never painted by a procedure. A region is dressed by chaining
+     pieces west to east along its own southern edge — each overlapping its
+     neighbour by MTN.KIT_OVERLAP, so the flanks (which the art deliberately
+     ends part-way up the slope) merge into one continuous crest with a
+     saddle at every join. Peaks carry the summits, saddles are the low links
+     between them.
+
+     ONE ART-PIXEL PER WORLD-PIXEL. These are placed, never scaled: the
+     density canon forbids resampling shipped pixels, so a piece is drawn at
+     1:1 or at an integer box ÷2 and at no other size.
+
+     NEVER MIRRORED. The light is locked to the upper left; a mirrored piece
+     lights from the upper right, and a range built of alternating mirrors
+     shows a butterfly seam at every join. Variety comes from having several
+     pieces, not from flipping one.
+
+     Absent files are the default state — with no kit the procedural
+     extrusion stands exactly as it always has. */
+  MTN_KIT_DIR: 'assets/terrain/mountain/',
+  MTN_KIT_KINDS: ['peak', 'saddle', 'end'],
+  mtnKit: {}, mtnKitRev: 0,
+  mtnKitUrl(kind, letter) { return this.MTN_KIT_DIR + kind + '-' + letter + '.png?v=' + (CFG.ART_V || 1); },
+  _tryMtnKit() { for (const kind of this.MTN_KIT_KINDS) this._tryMtnPiece(kind, 0); },
+  _tryMtnPiece(kind, li) {
+    if (li >= 12) return;                         // letters a..l; the cascade stops at the first 404
+    const img = new Image();
+    img.onload = () => { this.setMtnPiece(kind, img); this._tryMtnPiece(kind, li + 1); };
+    img.onerror = () => { /* the kit ends here */ };
+    img.src = this.mtnKitUrl(kind, String.fromCharCode(97 + li));
+  },
+  setMtnPiece(kind, img) {
+    if (!img || !img.width || !img.height) return false;
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, 0, 0);
+    /* the FOOT PROFILE — the lowest opaque row in each column. It is what
+       the ground shadow is cast from and what decides which tile row owns
+       each column of the piece, so the occlusion strips stay honest. */
+    let foot = null;
+    try {
+      const d = g.getImageData(0, 0, c.width, c.height);
+      for (let k = 3; k < d.data.length; k += 4) d.data[k] = d.data[k] >= 128 ? 255 : 0;
+      g.putImageData(d, 0, 0);
+      foot = new Int32Array(c.width).fill(-1);
+      for (let x = 0; x < c.width; x++) for (let y = c.height - 1; y >= 0; y--)
+        if (d.data[(y * c.width + x) * 4 + 3] > 0) { foot[x] = y; break; }
+    } catch (e) { /* tainted on file:// — the piece still draws, shadowless */ }
+    const a = this.mtnKit[kind] || (this.mtnKit[kind] = []);
+    a.push({ c, w: c.width, h: c.height, foot });
+    this.mtnKitRev++;
+    if (typeof R !== 'undefined' && R.rebakeAll) { R._mtnArt = null; R._mtnLayerKey = ''; R._mtnDirty = true; }
+    return true;
+  },
+  mtnKitReady() { return !!(this.mtnKit.peak && this.mtnKit.peak.length); },
+
   _tryTreePiece(style, size, li) {
     if (li >= 12) return;                         // letters a..l, the cascade stops at the first 404
     const img = new Image();
@@ -1340,6 +1402,7 @@ const Assets = {
     this._tryFish(1);
     this._tryWaterFx();
     this._tryTrees();
+    this._tryMtnKit();
     this.ready = true;
     return { ok: true, data: { slots: this.artSlots().length + this.campTribes().length } };
   },
