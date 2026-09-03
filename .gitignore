@@ -5,3 +5,6 @@ assets/review/
 
 # Local playwright install for running tests/ (no package.json on purpose)
 node_modules/
+
+# Claude Code dev-server config — local only
+.claude/

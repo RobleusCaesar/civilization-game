@@ -1615,6 +1615,14 @@ const R = {
     return !!(typeof Assets !== 'undefined' && Assets.trees
       && (Assets.trees['dome-l'] || Assets.trees['dome-s']));
   },
+  /* which PLANT a fertile tile drew — the same variant arithmetic drawTile
+     uses (set of six, even indices orchard, odd berry), so the harvest pose
+     always matches the picture. Pure in (x, y). */
+  fertileKindAt(x, y) {
+    const h = (x * 73856093 ^ y * 19349663) >>> 0;
+    const hp = (h ^ (h >>> 13)) >>> 0;
+    return (hp % 6) & 1 ? 'berry' : 'orchard';
+  },
   forestRareAt(x, y, terr) {
     const h = (x * 73856093 ^ y * 19349663) >>> 0;
     let cnt = 0;
@@ -8456,8 +8464,22 @@ const R = {
     const t = u.task;
     if (t) {
       if (t.type === 'shorefish') return 'idle';                 // the rod overlay tells the story
-      if (t.type === 'gather')                                   // tool by resource
-        return t.res === 'stone' ? 'mine' : t.res === 'food' ? 'farm' : 'gather';  // wood → axe (gather)
+      if (t.type === 'gather') {                                 // tool by resource
+        if (t.res === 'stone') return 'mine';
+        if (t.res === 'food') {
+          /* FORAGING LOOKS LIKE FORAGING (the referee's live-play note: a
+             villager at a berry bush read as chopping until the floating
+             text said otherwise). On fertile ground the pose follows the
+             PLANT the tile actually drew: kneel and PICK at a berry bush,
+             stretch up and REACH into an orchard tree. Farm plots and
+             everything else keep the field pose, and a missing sheet
+             falls back gracefully in sheetFrames as every pose does. */
+          if (S.map.terrain[MapGen.idx(t.x, t.y)] === T.FERTILE)
+            return this.fertileKindAt(t.x, t.y) === 'berry' ? 'pick' : 'reach';
+          return 'farm';
+        }
+        return 'gather';                                         // wood → axe
+      }
       if (t.type === 'build') return 'build';
       if (t.type === 'terraform') {
         // the sapper's craft, by JOB (the operator's four): trench-digging,
@@ -8704,12 +8726,20 @@ const R = {
        the wood's tile centre, the same draw-time-only rule as the builder's
        wall lean below. Forest only: berries, stone and gold are gathered
        standing over them already. */
-    if (u.task && u.task.type === 'gather' && this.unitPose(u) === 'gather'
-      && S && S.map && S.map.terrain[u.task.y * CFG.W + u.task.x] === T.FOREST) {
-      const dx = (u.task.x + 0.5) - u.x, dy = (u.task.y + 0.5) - u.y;
-      const dd = Math.hypot(dx, dy) || 1;
-      const step = Math.min(0.34, Math.max(0, dd - 0.30));
-      if (step > 0.05) return { x: u.x + dx / dd * step, y: u.y + dy / dd * step };
+    if (u.task && u.task.type === 'gather' && S && S.map) {
+      const pose = this.unitPose(u);
+      const tt = S.map.terrain[u.task.y * CFG.W + u.task.x];
+      // …and a forager leans to the bush or under the bough the same way —
+      // a shorter step than the woodcutter's: the plant is smaller
+      const max = (pose === 'gather' && tt === T.FOREST) ? 0.34
+        : ((pose === 'pick' || pose === 'reach') && tt === T.FERTILE) ? 0.24 : 0;
+      if (max) {
+        const dx = (u.task.x + 0.5) - u.x, dy = (u.task.y + 0.5) - u.y;
+        const dd = Math.hypot(dx, dy) || 1;
+        const step = Math.min(max, Math.max(0, dd - 0.30));
+        if (step > 0.05) return { x: u.x + dx / dd * step, y: u.y + dy / dd * step };
+        return null;
+      }
       return null;
     }
     if (typeof Bld === 'undefined') return null;

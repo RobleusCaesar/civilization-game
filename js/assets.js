@@ -709,9 +709,73 @@ const Assets = {
     const k = (typeof LAND !== 'undefined' && typeof LAND.TREE_MUTE === 'number') ? LAND.TREE_MUTE : 0;
     const ramps = this._muteRamps();
     this._treesMuted = {};
-    for (const key of Object.keys(this.trees))
-      this._treesMuted[key] = this.trees[key].map(c => this._muteCanvas(c, k, ramps));
+    for (const key of Object.keys(this.trees)) {
+      this._treesMuted[key] = this.trees[key].map((c, i) => {
+        const m = this._muteCanvas(c, k, ramps);
+        // FRUIT IS FAT AND BRIGHT (the referee's live report, and the same
+        // lesson the procedural orchard learned once already): the 2:1
+        // downscale left one-pixel fruit and the mute sank it to the ramp's
+        // darkest crimson — invisible at play zoom, so the fertile ground
+        // read as plain trees. Repaint the fruit after the mute.
+        if (key.startsWith('orchard-') || key.startsWith('berry-'))
+          this._fruitPass(m, key, i);
+        return m;
+      });
+    }
     this._muteK = k; this._muteRev = this.treesRev;
+  },
+  /* find what fruit survived, fatten every cluster to a 2x2 with a lit
+     corner, and guarantee a minimum count by planting more on the crown —
+     deterministic per piece, so recomposes and repaints always agree. */
+  _fruitPass(c, key, idx) {
+    const AP = ART.PALETTE;
+    const body = AP.berry[1], lit = AP.berry[2];
+    const g = c.getContext('2d');
+    let d;
+    try { d = g.getImageData(0, 0, c.width, c.height); } catch (e) { return; }
+    const W = c.width, H = c.height, px = d.data;
+    const reddish = o => px[o + 3] > 0 && px[o] > px[o + 1] + 20 && px[o] > px[o + 2] + 10;
+    const greenish = o => px[o + 3] > 0 && px[o + 1] > px[o] + 10 && px[o + 1] > px[o + 2] + 10;
+    // clusters of surviving fruit (any reddish pixel not adjacent to an
+    // already-claimed one), plus the crown pixels fruit could sit on
+    const spots = [], crown = [];
+    const claimed = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const o = (y * W + x) * 4;
+      if (greenish(o)) crown.push(y * W + x);
+      if (!reddish(o) || claimed[y * W + x]) continue;
+      spots.push([x, y]);
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        const nx = x + ox, ny = y + oy;
+        if (nx >= 0 && ny >= 0 && nx < W && ny < H) claimed[ny * W + nx] = 1;
+      }
+    }
+    // …topped up from the crown to the piece's minimum, spaced apart
+    const want = key.startsWith('orchard-l') ? 5 : 3;
+    let h = (Math.imul(idx + 3, 0x9E3779B1) ^ key.length * 2654435761) >>> 0;
+    const rnd = () => { h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d); return (h >>> 0) / 4294967296; };
+    let guard = 0;
+    while (spots.length < want && crown.length && guard++ < 60) {
+      const k2 = crown[(rnd() * crown.length) | 0];
+      const x = k2 % W, y = (k2 / W) | 0;
+      if (y > H * 0.72) continue;                        // fruit hangs in the crown, not the trunk
+      if (spots.some(s => Math.abs(s[0] - x) + Math.abs(s[1] - y) < 4)) continue;
+      spots.push([x, y]);
+    }
+    const put = (x, y, w2, col) => { for (let oy = 0; oy < w2; oy++) for (let ox = 0; ox < w2; ox++) {
+      const nx = x + ox, ny = y + oy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const o = (ny * W + nx) * 4;
+      if (!px[o + 3]) continue;                          // fruit never floats off the silhouette
+      px[o] = col[0]; px[o + 1] = col[1]; px[o + 2] = col[2];
+    } };
+    const hex = s => [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
+    const bodyC = hex(body), litC = hex(lit);
+    for (const [x, y] of spots) {
+      put(x - 1, y - 1, 2, bodyC);
+      put(x - 1, y - 1, 1, litC);                        // the lit corner sells the sphere
+    }
+    g.putImageData(d, 0, 0);
   },
   _muted(key) {
     const k = (typeof LAND !== 'undefined' && typeof LAND.TREE_MUTE === 'number') ? LAND.TREE_MUTE : 0;
@@ -931,7 +995,7 @@ const Assets = {
      Appearance tier by Town Center level — a TABLE, deliberately, so tiers
      can lag or lead the TC later without touching the resolver. */
   VILLAGER_TIER_BY_TC: { 1: 1, 2: 2, 3: 3 },
-  VILLAGER_POSES: ['idle', 'walk', 'gather', 'mine', 'farm', 'build', 'guard'],
+  VILLAGER_POSES: ['idle', 'walk', 'gather', 'mine', 'farm', 'build', 'guard', 'pick', 'reach'],
   /* THE RECOLOR KEY RAMP. Hand-authored villager sheets are authored
      NEUTRAL, wearing the blue tunic's exact two-color ramp — and at load
      time those two colors (and only those) are swapped to the faction's
