@@ -734,8 +734,43 @@ const Assets = {
     let d;
     try { d = g.getImageData(0, 0, c.width, c.height); } catch (e) { return; }
     const W = c.width, H = c.height, px = d.data;
-    const reddish = o => px[o + 3] > 0 && px[o] > px[o + 1] + 20 && px[o] > px[o + 2] + 10;
+    /* TRUE CRIMSON ONLY (the referee's red-trunk report): warm trunk bark
+       also keeps red above green, but never this far — without the green
+       cap the old rule matched brown bark and studded orchard trunks with
+       fat fruit. Real fruit reds hold green under 60% of red. */
+    const reddish = o => px[o + 3] > 0 && px[o] > px[o + 1] + 20 && px[o] > px[o + 2] + 10 &&
+      px[o + 1] < px[o] * 0.6;
     const greenish = o => px[o + 3] > 0 && px[o + 1] > px[o] + 10 && px[o + 1] > px[o + 2] + 10;
+    const hex = s => [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
+    /* TRUNK SCRUB (orchard pieces): red below the crown line is not fruit —
+       it is generator noise on the trunk, and the mute keeps it red. Repaint
+       each such pixel with its commonest clean neighbour so the trunk reads
+       bark again; the crown-line rule matches the top-up planter's own. */
+    if (key.startsWith('orchard-')) {
+      const line = (H * 0.72) | 0;
+      const marked = [], mark = new Uint8Array(W * H);
+      for (let y = line; y < H; y++) for (let x = 0; x < W; x++) {
+        const o = (y * W + x) * 4;
+        if (reddish(o)) { marked.push([x, y]); mark[y * W + x] = 1; }
+      }
+      const woodC = hex(AP.wood[2]);
+      for (const [x, y] of marked) {
+        const tally = {};
+        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+          if (!ox && !oy) continue;
+          const nx = x + ox, ny = y + oy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H || mark[ny * W + nx]) continue;
+          const o = (ny * W + nx) * 4;
+          if (!px[o + 3] || reddish(o)) continue;
+          const k2 = px[o] + ',' + px[o + 1] + ',' + px[o + 2];
+          tally[k2] = (tally[k2] || 0) + 1;
+        }
+        const top = Object.entries(tally).sort((a, b2) => b2[1] - a[1])[0];
+        const col = top ? top[0].split(',').map(Number) : woodC;
+        const o = (y * W + x) * 4;
+        px[o] = col[0]; px[o + 1] = col[1]; px[o + 2] = col[2];
+      }
+    }
     // clusters of surviving fruit (any reddish pixel not adjacent to an
     // already-claimed one), plus the crown pixels fruit could sit on
     const spots = [], crown = [];
@@ -758,7 +793,8 @@ const Assets = {
     while (spots.length < want && crown.length && guard++ < 60) {
       const k2 = crown[(rnd() * crown.length) | 0];
       const x = k2 % W, y = (k2 / W) | 0;
-      if (y > H * 0.72) continue;                        // fruit hangs in the crown, not the trunk
+      if (y > H * 0.68) continue;                        // fruit hangs in the crown, not the trunk
+                                                         // (under the scrub line even after the 2x2 fatten)
       if (spots.some(s => Math.abs(s[0] - x) + Math.abs(s[1] - y) < 4)) continue;
       spots.push([x, y]);
     }
@@ -769,7 +805,6 @@ const Assets = {
       if (!px[o + 3]) continue;                          // fruit never floats off the silhouette
       px[o] = col[0]; px[o + 1] = col[1]; px[o + 2] = col[2];
     } };
-    const hex = s => [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
     const bodyC = hex(body), litC = hex(lit);
     for (const [x, y] of spots) {
       put(x - 1, y - 1, 2, bodyC);
