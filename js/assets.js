@@ -711,8 +711,22 @@ const Assets = {
         return false;
       }
     }
+    /* the opaque bounding box, measured once: the placer needs to know
+       exactly where this piece's rock lives so it can refuse a spot where
+       the art would be clipped by water */
+    let bx0 = c.width, by0 = c.height, bx1 = -1, by1 = -1;
+    if (px) for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++)
+      if (px[(y * c.width + x) * 4 + 3] > 128) {
+        if (x < bx0) bx0 = x; if (x > bx1) bx1 = x;
+        if (y < by0) by0 = y; if (y > by1) by1 = y;
+      }
+    const bb = (bx1 < 0) ? { x0: 0, y0: 0, x1: c.width - 1, y1: c.height - 1 }
+      : { x0: bx0, y0: by0, x1: bx1, y1: by1 };
     const a = this.mtnKit[kind] || (this.mtnKit[kind] = []);
-    a.push({ c, w: c.width, h: c.height, foot, px });
+    a.push({ c, w: c.width, h: c.height, foot, px, bb });
+    // tallest first: the placer tries big rock before small, and only drops
+    // to a knoll where a mountain will not fit
+    a.sort((p, q) => q.h - p.h);
     this.mtnKitRev++;
     if (typeof R !== 'undefined' && R.rebakeAll) { R._mtnArt = null; R._mtnLayerKey = ''; R._mtnDirty = true; }
     return true;
