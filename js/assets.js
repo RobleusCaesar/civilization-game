@@ -603,7 +603,7 @@ const Assets = {
      Absent files are the default state — with no kit the procedural
      extrusion stands exactly as it always has. */
   MTN_KIT_DIR: 'assets/terrain/mountain/',
-  MTN_KIT_KINDS: ['peak', 'saddle', 'hill'],   // hill = the low front rank
+  MTN_KIT_KINDS: ['peak', 'saddle', 'hill', 'roll'],   // hill/roll = the low front bands
   mtnKit: {}, mtnKitRev: 0,
   mtnKitUrl(kind, letter) { return this.MTN_KIT_DIR + kind + '-' + letter + '.png?v=' + (CFG.ART_V || 1); },
   _tryMtnKit() { for (const kind of this.MTN_KIT_KINDS) this._tryMtnPiece(kind, 0); },
@@ -614,13 +614,40 @@ const Assets = {
     img.onerror = () => { /* the kit ends here */ };
     img.src = this.mtnKitUrl(kind, String.fromCharCode(97 + li));
   },
+  /* the low bands are drawn at half size — small rolling ground should
+     READ small beside a peak, and halving is the only resize the density
+     canon allows (an integer box downscale, never a resample) */
+  MTN_KIT_DIV: { roll: 2, hill: 2 },
   setMtnPiece(kind, img) {
     if (!img || !img.width || !img.height) return false;
+    const div = this.MTN_KIT_DIV[kind] || 1;
     const c = document.createElement('canvas');
-    c.width = img.width; c.height = img.height;
+    c.width = Math.max(1, (img.width / div) | 0); c.height = Math.max(1, (img.height / div) | 0);
     const g = c.getContext('2d');
     g.imageSmoothingEnabled = false;
-    g.drawImage(img, 0, 0);
+    if (div === 1) g.drawImage(img, 0, 0);
+    else {
+      const s2 = document.createElement('canvas');
+      s2.width = img.width; s2.height = img.height;
+      const sg = s2.getContext('2d');
+      sg.imageSmoothingEnabled = false;
+      sg.drawImage(img, 0, 0);
+      try {
+        const sd = sg.getImageData(0, 0, img.width, img.height).data;
+        const od = g.createImageData(c.width, c.height);
+        for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+          let r2 = 0, g2 = 0, b2 = 0, n = 0;
+          for (let oy = 0; oy < div; oy++) for (let ox = 0; ox < div; ox++) {
+            const o = ((y * div + oy) * img.width + (x * div + ox)) * 4;
+            if (sd[o + 3] < 128) continue;
+            r2 += sd[o]; g2 += sd[o + 1]; b2 += sd[o + 2]; n++;
+          }
+          const oo = (y * c.width + x) * 4;
+          if (n * 2 >= div * div) { od.data[oo] = r2 / n; od.data[oo + 1] = g2 / n; od.data[oo + 2] = b2 / n; od.data[oo + 3] = 255; }
+        }
+        g.putImageData(od, 0, 0);
+      } catch (e) { g.drawImage(img, 0, 0, c.width, c.height); }
+    }
     /* the FOOT PROFILE — the lowest opaque row in each column. It is what
        the ground shadow is cast from and what decides which tile row owns
        each column of the piece, so the occlusion strips stay honest. */
