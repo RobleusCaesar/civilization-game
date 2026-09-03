@@ -605,6 +605,11 @@ const MTN = {
   KIT_RANK_STEP: 3,      // tiles between peak ranks (bands stay touching)
   KIT_RANK_MAX: 3,
   KIT_SADDLE_EVERY: 0.42,// share of chain slots that take a low link
+  /* HOW MANY SUMMITS ONE REGION MAY CARRY. Strung past about this many the
+     range stops reading as a range and starts reading as wallpaper; the
+     rest of the footprint is carried by the low bands instead. 0 = no cap. */
+  KIT_MAX_PEAKS: 6,
+  KIT_LOW: 1,            // 0 drops the rolling/foothill bands entirely
   KIT_PAD_UP: 10,         // tiles of northward headroom a drawn peak may use
   KIT_TEAR: 16,           // px of the piece's own left/right/bottom edge torn away
   KIT_SHORE_GAP: 1,      // tiles of grass kept between the art and any water
@@ -4143,8 +4148,10 @@ const R = {
     const peaks = kit.peak || [];
     if (!peaks.length) return null;
     const saddles = (kit.saddle && kit.saddle.length) ? kit.saddle : null;
-    const hills = (kit.hill && kit.hill.length) ? kit.hill : null;
-    const rolls = (kit.roll && kit.roll.length) ? kit.roll : null;
+    const low = MTN.KIT_LOW !== 0;
+    const hills = (low && kit.hill && kit.hill.length) ? kit.hill : null;
+    const rolls = (low && kit.roll && kit.roll.length) ? kit.roll : null;
+    const foots = (kit.foot && kit.foot.length) ? kit.foot : null;
     const [bx0, by0, bx1, by1] = r.box;
     const cw = bx1 - bx0 + 1;
     const north = new Int32Array(cw).fill(1e9), south = new Int32Array(cw).fill(-1);
@@ -4168,10 +4175,18 @@ const R = {
     const bands = [];
     if (rolls) bands.push({ up: 0, kind: 'roll' });
     if (hills) bands.push({ up: 0, kind: 'hill' });
-    const peakBase = (rolls || hills) ? 1 : 0;
+    /* ALL THREE FRONT BANDS SHARE THE FOOT ROW. Setting the peaks even one
+       tile back left a strip of grass between them and the foothills — the
+       art's own opaque top sits a little below its canvas top, so a nominal
+       overlap was no overlap at all. Standing them on the SAME line and
+       letting the low bands (drawn last, and shorter) cover the peaks' feet
+       is what stacks them one on top of the other. */
+    const peakBase = 0;
     for (let i = 0; i < MTN.KIT_RANK_MAX; i++) bands.push({ up: peakBase + i * MTN.KIT_RANK_STEP, kind: 'peak' });
     bands.reverse();
-    let slot = 0;
+    // the ground line goes on absolutely last, over everything's feet
+    if (foots) bands.push({ up: 0, kind: 'foot' });
+    let slot = 0, nPeaks = 0;
     for (const rank of bands) {
       let x = bx0, prevSaddle = false, any = false;
       while (x <= bx1) {
@@ -4179,7 +4194,8 @@ const R = {
            peak — unless the roll calls for the low link that joins two
            summits, and never two links running. */
         let pool = peaks, kind = 'peak';
-        if (rank.kind === 'roll') { pool = rolls; kind = 'roll'; }
+        if (rank.kind === 'foot') { pool = foots; kind = 'foot'; }
+        else if (rank.kind === 'roll') { pool = rolls; kind = 'roll'; }
         else if (rank.kind === 'hill') { pool = hills; kind = 'hill'; }
         else if (saddles && !prevSaddle && slot > 0 && hsh(slot, 13) < MTN.KIT_SADDLE_EVERY) { pool = saddles; kind = 'saddle'; }
         const piece = pool[(hsh(slot, 29) * pool.length) | 0];
@@ -4209,7 +4225,24 @@ const R = {
           if (cx >= 0 && cx < cw && south[cx] >= fy && north[cx] <= fy) onRock++;
         }
         if (onRock < span * 0.7) { x += 1; continue; }
-        plan.push({ piece, kind, tx: x, fy: fy + 1, up: rank.up, front: rank === bands[bands.length - 1] });
+        if (kind === 'peak' && MTN.KIT_MAX_PEAKS > 0 && nPeaks >= MTN.KIT_MAX_PEAKS) { x += 1; continue; }
+        /* THE LOW BANDS HUG THE ROCK. A foothill exists to cover the foot of
+           a mountain, so it is only placed where a mountain actually stands
+           behind it; the same for the rolling rises and for the ground line.
+           Placed across the whole footprint instead they carpet open grass
+           and the range reads as a debris field with a few peaks in it. */
+        if (kind !== 'peak' && kind !== 'saddle') {
+          let behind = false;
+          for (const q of plan) {
+            if (q.kind !== 'peak' && q.kind !== 'saddle' && kind === 'foot') { /* the ground line may also sit under a low band */ }
+            else if (q.kind !== 'peak' && q.kind !== 'saddle') continue;
+            const qs = q.tx, qe = q.tx + Math.round(q.piece.w / CFG.TILE);
+            if (x < qe && x + span > qs) { behind = true; break; }
+          }
+          if (!behind) { x += 1; continue; }
+        }
+        if (kind === 'peak') nPeaks++;
+        plan.push({ piece, kind, tx: x, fy: fy + 1, up: rank.up, front: kind === 'foot' || rank === bands[bands.length - (foots ? 2 : 1)] });
         prevSaddle = (kind === 'saddle');
         any = true; slot++;
         /* the step is measured on the piece's TORN width — the tear takes

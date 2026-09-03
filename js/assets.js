@@ -603,7 +603,7 @@ const Assets = {
      Absent files are the default state — with no kit the procedural
      extrusion stands exactly as it always has. */
   MTN_KIT_DIR: 'assets/terrain/mountain/',
-  MTN_KIT_KINDS: ['peak', 'saddle', 'hill', 'roll'],   // hill/roll = the low front bands
+  MTN_KIT_KINDS: ['peak', 'saddle', 'hill', 'roll', 'foot'],   // hill/roll = the low front bands
   mtnKit: {}, mtnKitRev: 0,
   mtnKitUrl(kind, letter) { return this.MTN_KIT_DIR + kind + '-' + letter + '.png?v=' + (CFG.ART_V || 1); },
   _tryMtnKit() { for (const kind of this.MTN_KIT_KINDS) this._tryMtnPiece(kind, 0); },
@@ -665,6 +665,26 @@ const Assets = {
        once here beats reading them per placement */
     let px = null;
     try { px = g.getImageData(0, 0, c.width, c.height).data; } catch (e) { px = null; }
+    /* A CLIPPED SUMMIT IS NOT A MOUNTAIN. Generated rock whose highest
+       pixels run off the top of its own canvas has had its peak sliced
+       flat, and no amount of placing will put it back — it reads as a
+       mesa in the back of every range it lands in. A piece that touches
+       its own top edge is refused here, once, rather than debugged in the
+       world later. The low bands are exempt: a rolling rise has no summit
+       to lose and is authored flush to its top. */
+    if (foot && kind !== 'roll' && kind !== 'hill' && kind !== 'foot') {
+      let touches = false;
+      for (let x = 0; x < c.width && !touches; x++) if (foot[x] >= 0) {
+        const d2 = g.getImageData(x, 0, 1, 1).data;
+        if (d2[3] > 0) touches = true;
+      }
+      if (touches) {
+        if (!this._mtnWarned) this._mtnWarned = {};
+        const wk = kind + ':' + (this.mtnKit[kind] || []).length;
+        if (!this._mtnWarned[wk]) { this._mtnWarned[wk] = 1; console.warn('[mountain kit] ' + wk + ': summit runs off the top of the art — refused'); }
+        return false;
+      }
+    }
     const a = this.mtnKit[kind] || (this.mtnKit[kind] = []);
     a.push({ c, w: c.width, h: c.height, foot, px });
     this.mtnKitRev++;
