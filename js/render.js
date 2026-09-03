@@ -1630,6 +1630,7 @@ const R = {
     const seed = ((this.landSeed() ^ Math.imul(tx + 7, 0x9E3779B1) ^ Math.imul(ty + 13, 0x85EBCA6B)) & 0x7fffffff) || 1;
     const r = ART.rng(seed);
     const dom = KINDS[(Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) >>> 13) % KINDS.length];
+    const young = ((seed >>> 9) & 3) === 0;     // one sparse tile in four is a growing stand
     const out = [];
     const step = 7, keep = n / 25;              // the 5x5 lattice, thinned to the count
     for (let gy = 1, row = 0; gy <= 29; gy += step, row++)
@@ -1643,8 +1644,13 @@ const R = {
         // the CORE closes its canopy with the big tier from rr 7 up (half its
         // slots — overlapping big crowns are what a closed canopy is, and the
         // y-sort keeps them interleaving instead of Gate A's canvas mud); the
-        // in-between densities lean small, the open fringe takes rr as rolled
-        const pickRr = d > 0.8 ? (rr >= 7 ? 8 : rr) : d > 0.6 ? Math.min(rr, 8) : rr;
+        // in-between densities lean small; the OPEN FRINGE stands TALL (the
+        // referee's live-play note: sparse stands are the same trees as the
+        // dense wood, just fewer — full crowns with visible trunks, clearly
+        // trees) except on the occasional YOUNG stand, one sparse tile in
+        // four, where the small tier reads as the forest growing
+        const pickRr = d > 0.8 ? (rr >= 7 ? 8 : rr) : d > 0.6 ? Math.min(rr, 8)
+          : (young ? rr : Math.max(rr, 8));
         const w2 = pickRr >= 8 ? 11 : 6, hh = pickRr >= 8 ? 22 : 12;   // the crown box
         if (sW && lx - w2 < SETBACK) continue;
         if (sE && lx + w2 > 32 - SETBACK) continue;
@@ -4654,11 +4660,6 @@ const R = {
       steps.push(() => fn(a, b));
     } };
     band((a, b) => { for (let y = a; y < b; y++) for (let x = 0; x < W; x++) this.drawTile(g, x, y); });
-    // …then the wood, stamped in world space where a catalog is installed —
-    // right where the tile canvases used to land, so every later pass
-    // (grass, rocks, decals, the hue coat) layers over trees exactly as
-    // it always did. Clipped to the board like every overhanging pass.
-    band((a, b) => this.clipBoard(g, () => this.forestStampBand(g, a, b)));
     // the water bands paint through the SAME cached body path, so splitting
     // the one call into rows changes nothing but when it happens
     band((a, b) => this.paintWaterIn(g, 0, a, W - 1, b - 1));
@@ -4677,6 +4678,13 @@ const R = {
     band((a, b) => this.clipBoard(g, () => {
       for (let y = a; y < b; y++) for (let x = 0; x < W; x++) this.rockMass(g, x, y, terr());
     }));
+    /* …then the WOOD, stamped in world space where a catalog is installed —
+       AFTER the stones on purpose (the referee's live-play note: a hillside
+       boulder was sitting on top of a neighbouring stand's overhanging
+       crown; the canopy covers ground clutter at its skirt, never the other
+       way round) and BEFORE the decals and the hue coat, so the fringe
+       ferns still read in front and the tint still lands on the leaves. */
+    band((a, b) => this.clipBoard(g, () => this.forestStampBand(g, a, b)));
     band((a, b) => this.clipBoard(g, () => {
       for (let y = a; y < b; y++) for (let x = 0; x < W; x++) this.landDecals(g, x, y, terr());
     }));
@@ -4902,9 +4910,6 @@ const R = {
     // but an incremental repaint has no later neighbour coming to cover it
     this.clipTiles(g, groundL, () => {
       for (const k of groundL) this.drawTile(g, k % W, (k / W) | 0);
-      // the wood re-stamped over the reset ground: trees based in the reset
-      // or one ring out, y-sorted — the clip keeps it byte-equal to a rebake
-      this.forestStampsNear(g, groundL, terr);
     });
     let gx0 = 1e9, gy0 = 1e9, gx1 = -1e9, gy1 = -1e9;
     for (const k of groundL) {
@@ -4932,6 +4937,10 @@ const R = {
       this.clipTiles(g, groundL, () => {
         for (const k of decoL) this.grassCover(g, k % W, (k / W) | 0, terr);
         for (const k of decoL) this.rockMass(g, k % W, (k / W) | 0, terr);
+        // the wood re-stamped in the bake's own layer slot — after the
+        // stones, before the decals — trees based in the reset or one ring
+        // out, y-sorted; the clip keeps it byte-equal to a rebake
+        this.forestStampsNear(g, groundL, terr);
         for (const k of decoL) this.landDecals(g, k % W, (k / W) | 0, terr);
         // the hue coat paints inside its own tile only, so the RESET set is
         // exactly the set that takes one coat — never the ring
@@ -4972,7 +4981,6 @@ const R = {
       if (MapGen.inB(x + ox, y + oy)) inner5.push((y + oy) * CFG.W + (x + ox));
     this.clipTiles(g, inner5, () => {
       for (const k of inner5) this.drawTile(g, k % CFG.W, (k / CFG.W) | 0);
-      this.forestStampsNear(g, inner5, terr);   // same rule as the batch path
     });
     this.paintWaterIn(g, x - 2, y - 2, x + 2, y + 2);
     /* THE DECAL PASS REACHES ONE RING FURTHER THAN THE GROUND PASS — a decal
@@ -4994,6 +5002,7 @@ const R = {
           const nx = x + ox, ny = y + oy;
           if (MapGen.inB(nx, ny)) this.rockMass(g, nx, ny, terr);
         }
+        this.forestStampsNear(g, inner5, terr);   // the bake's layer slot: after stones, before decals
         for (let oy = -3; oy <= 3; oy++) for (let ox = -3; ox <= 3; ox++) {
           const nx = x + ox, ny = y + oy;
           if (MapGen.inB(nx, ny)) this.landDecals(g, nx, ny, terr);
@@ -8657,6 +8666,21 @@ const R = {
      than teleports), while the sim position, taps and combat stay
      exactly where they were. Returns the draw position or null. */
   workLean(u) {
+    /* a WOODCUTTER leans INTO the stand (the referee's live-play note: the
+       axe should land on the trees, not swing at open grass beside them).
+       The sim keeps the villager on the walkable edge tile it stands on —
+       taps, pathing, combat all unchanged — only the sprite steps toward
+       the wood's tile centre, the same draw-time-only rule as the builder's
+       wall lean below. Forest only: berries, stone and gold are gathered
+       standing over them already. */
+    if (u.task && u.task.type === 'gather' && this.unitPose(u) === 'gather'
+      && S && S.map && S.map.terrain[u.task.y * CFG.W + u.task.x] === T.FOREST) {
+      const dx = (u.task.x + 0.5) - u.x, dy = (u.task.y + 0.5) - u.y;
+      const dd = Math.hypot(dx, dy) || 1;
+      const step = Math.min(0.34, Math.max(0, dd - 0.30));
+      if (step > 0.05) return { x: u.x + dx / dd * step, y: u.y + dy / dd * step };
+      return null;
+    }
     if (typeof Bld === 'undefined') return null;
     if (!(u.task && u.task.type === 'build') && !u.tBld) return null;   // the cheap common case
     // a hull never leans onto a building footprint — that padded ring is LAND

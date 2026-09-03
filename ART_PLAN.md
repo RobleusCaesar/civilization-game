@@ -1368,3 +1368,33 @@ the stump tiles and the rare 'stumps' feature take the stump piece per
 slot; one hash-chosen ring slot on each rare tile stands a snag when one
 exists; the rare 'log' feature takes the log piece. All fall back to
 the procedural drawings piece-by-piece.
+
+## THE FOREST STYLE CARD — reuse this for every future land mass
+
+Everything needed to author new vegetation (another biome's trees, an
+orchard, scrub for a new continent) in the shipped forest's voice:
+
+- MASTERS. `assets/masters/tree-dome-48.png` is the canopy voice;
+  `assets/masters/mountain-peak-256.png` the rock voice. Reference these
+  directly in generation (labelled refs) — never a chain off a variant.
+- SCALE. Author at 2 art-px per world-px, ship at world scale by integer
+  box-downscale. A large tree is ~44px art on a 48 canvas → 22px world;
+  small = the large's exact 2:1 downscale (hand-repair lost trunk/specular
+  pixels, never regenerate); an elder ~60px art → 30px world.
+- SILHOUETTE. Frontal with a slight top-down lean, zero isometric, no
+  ground plate; lit crescent upper-left, deep under-shade to the
+  south-east; trunk base ON the bottom edge with root flare and a small
+  dark contact shadow; hard binary alpha; dark outline.
+- COLOUR. Author NEUTRAL on the documented ramps (leaf
+  #1d3a17 #2e5c25 #3c6f2d #417a33 #569244; wood/soil for trunks; bone
+  for cut faces). The installer's OKLab mute (LAND.TREE_MUTE — lightness
+  x(1-0.16k), chroma x(1-0.35k), hue half-way to the leaf-ramp mid at
+  full k, then re-quantize to the ramps) does the world-fitting;
+  hueTint does the runtime seasons. Ship nothing pre-tinted.
+- COMPOSITION. World-space stamping (forestLayoutAt/forestStampBand):
+  continuous density from the enclosure field, y-sorted stamps across
+  tile edges, an 8px shoreline setback with green between sand and
+  crowns, one tree minimum per resource tile, sparse stands TALL (the
+  same trees, fewer) with one young stand in four, small pieces on the
+  packed lattice. Layer slot: after the stones, before the decals and
+  the hue coat.
