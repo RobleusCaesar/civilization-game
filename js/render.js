@@ -1610,6 +1610,19 @@ const R = {
     // occupancy pin insists stays closed
     const d = cnt >= 8 ? 1 : Math.max(0, Math.min(1, (cnt + wander) / 8));
     const n = 2 + d * 23;                       // continuous: ~2 lone … all 25 cells packed
+    /* THE SHORELINE SETBACK (the referee's merge note): there is always a
+       strip of green between the beach and the first crowns. Any side of
+       this tile that faces water — orthogonal or around a corner — culls
+       every tree whose crown box would reach within SETBACK px of that
+       edge; the trace's own wobble and the drawn sand live inside that
+       strip. Culled AFTER the cell's draws are burned, so the layout for
+       every inland tile is bit-for-bit what it was. */
+    const wetT2 = (x2, y2) => { if (!MapGen.inB(x2, y2)) return false; const t2 = terr[MapGen.idx(x2, y2)]; return t2 === T.WATER || t2 === T.MOAT; };
+    const sW = wetT2(tx - 1, ty) || wetT2(tx - 1, ty - 1) || wetT2(tx - 1, ty + 1);
+    const sE = wetT2(tx + 1, ty) || wetT2(tx + 1, ty - 1) || wetT2(tx + 1, ty + 1);
+    const sN = wetT2(tx, ty - 1) || wetT2(tx - 1, ty - 1) || wetT2(tx + 1, ty - 1);
+    const sS = wetT2(tx, ty + 1) || wetT2(tx - 1, ty + 1) || wetT2(tx + 1, ty + 1);
+    const SETBACK = 8;
     const KINDS = Sprites.TREE_KINDS;
     // masked to 31 bits: a negative seed sends the Park-Miller step negative
     // and every r() with it — measured as "roll >= keep" never trimming, so
@@ -1631,9 +1644,25 @@ const R = {
         // slots — overlapping big crowns are what a closed canopy is, and the
         // y-sort keeps them interleaving instead of Gate A's canvas mud); the
         // in-between densities lean small, the open fringe takes rr as rolled
-        out.push({ wx: tx * CFG.TILE + lx, wy: ty * CFG.TILE + ly, rr,
-                   pickRr: d > 0.8 ? (rr >= 7 ? 8 : rr) : d > 0.6 ? Math.min(rr, 8) : rr, kind, ramp });
+        const pickRr = d > 0.8 ? (rr >= 7 ? 8 : rr) : d > 0.6 ? Math.min(rr, 8) : rr;
+        const w2 = pickRr >= 8 ? 11 : 6, hh = pickRr >= 8 ? 22 : 12;   // the crown box
+        if (sW && lx - w2 < SETBACK) continue;
+        if (sE && lx + w2 > 32 - SETBACK) continue;
+        if (sN && ly - hh < SETBACK) continue;
+        if (sS && ly > 32 - SETBACK) continue;
+        out.push({ wx: tx * CFG.TILE + lx, wy: ty * CFG.TILE + ly, rr, pickRr, kind, ramp });
       }
+    /* A FOREST TILE ALWAYS SHOWS A TREE. The setback can cull a lone islet
+       or a thin coastal tile down to nothing, and a bare-looking tile that
+       blocks movement and yields wood is a lie the player acts on. One
+       small tree stands at the tile's most-inland valid spot — inside the
+       setback windows by construction. */
+    if (!out.length) {
+      const lx = sW && !sE ? 22 : sE && !sW ? 10 : 16;
+      const ly = sN && !sS ? 26 : 21;
+      out.push({ wx: tx * CFG.TILE + lx, wy: ty * CFG.TILE + ly, rr: 4 + (seed >>> 7) % 2,
+                 pickRr: 4, kind: dom, ramp: Sprites.treeRamp(dom, r) });
+    }
     return out;
   },
   /* stamp a list of trees in global paint order (wy, then wx): an authored

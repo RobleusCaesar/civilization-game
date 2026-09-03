@@ -181,7 +181,19 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
         return +(100 * hit / n).toFixed(1);
       };
       const magenta = (r, gg, bb) => r > 140 && gg < 110 && bb > 110;
-      const gAt = idxOf(T.GRASS, true), fAt = idxOf(T.FOREST);
+      const gAt = idxOf(T.GRASS, true);
+      /* the floor check wants the SPARSEST wood: a dense canopy legitimately
+         shows almost no ground (occupancy pins it near-closed), so the tile
+         with the fewest forest neighbours is where a supplied floor is
+         actually visible under the trees — in both compose modes */
+      let fAt = null, fBest = 9;
+      for (let y = 2; y < CFG.H - 2; y++) for (let x = 2; x < CFG.W - 2; x++) {
+        if (S.map.terrain[MapGen.idx(x, y)] !== T.FOREST) continue;
+        let c2 = 0;
+        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++)
+          if ((ox || oy) && S.map.terrain[MapGen.idx(x + ox, y + oy)] === T.FOREST) c2++;
+        if (c2 < fBest) { fBest = c2; fAt = { x, y }; if (!c2) break; }
+      }
       if (gAt && fAt && R.terrainCache) {
         const before = sample(gAt);
         Assets.terrain = {};                                   // start from the shipped state
