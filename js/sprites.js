@@ -968,8 +968,9 @@ const Sprites = {
          each fruit is a 2×2 with a lit corner — fewer of them, each one
          readable — hung INSIDE the crown's own circle, never on the square
          around it where a stray pixel floats on grass. */
-      const fruit = fr() < 0.5 ? AP.berry[1] : AP.berry[3];         // vivid apples on some trees, plums on others
-      const hi = fruit === AP.berry[1] ? AP.red[3] : AP.berry[2];
+      fr();                                                         // roll kept for stream stability; the plum
+      const fruit = AP.berry[1];                                    // branch is retired — purple fruit read as
+      const hi = AP.red[3];                                         // stray noise once the real fruit went bright
       const nf = 4 + (fr() * 2 | 0);
       for (let i = 0; i < nf; i++) {
         const a2 = fr() * 6.283, d = fr() * (rr - 1.6);
@@ -988,7 +989,7 @@ const Sprites = {
     for (let i = 0; i < nt; i++)
       fruitTree(base + (r() * span) | 0, (level === 2 ? -1 : 8) + (r() * (level === 2 ? 34 : 13)) | 0,
         seed + i * 23 + 11);
-    f(13, 27, 2, 1, AP.berry[1]); f(27, 12, 2, 1, AP.berry[3]);     // windfall fruit
+    f(13, 27, 2, 1, AP.berry[1]); f(27, 12, 2, 1, AP.berry[1]);     // windfall fruit
   }
   function berryTile(p, seed, level) {
     const f = p.f, r = ART.rng(seed + 7);          // transparent floor — render paints the grass ground
@@ -1024,7 +1025,8 @@ const Sprites = {
       for (let dy = -hr; dy <= hr; dy++) for (let dx = -hr; dx <= hr; dx++)      // the lit cap
         if (dx * dx + dy * dy <= hr * hr && inside(hx - cx + dx, hy - cy + dy, 1.3))
           f(hx + dx, hy + dy, 1, 1, AP.leaf[4]);
-      const hue = br() < 0.5 ? AP.berry[1] : AP.berry[3];           // whole bush reads red OR purple
+      br();                                                         // roll kept; every bush reads RED now —
+      const hue = AP.berry[1];                                      // the purple half read as noise at play zoom
       const nCl = 4 + (br() * 3 | 0);
       for (let i = 0; i < nCl; i++) {                               // fat 2×2 berry clusters
         const a2 = br() * 6.283, d = br() * (rr - 2);
@@ -1039,7 +1041,7 @@ const Sprites = {
     for (let i = 0; i < nb; i++)
       bush(base + (r() * span) | 0, (level === 2 ? -1 : 6) + (r() * (level === 2 ? 34 : 19)) | 0,
         seed + i * 17 + 3);
-    f(27, 26, 2, 1, AP.berry[1]); f(4, 17, 2, 1, AP.berry[3]);      // dropped berries
+    f(27, 26, 2, 1, AP.berry[1]); f(4, 17, 2, 1, AP.berry[1]);      // dropped berries
   }
   /* FERTILE BLOCKS MOVEMENT TOO — a standing orchard or a berry thicket is
      something you walk around — so it takes the forest's and the ore's

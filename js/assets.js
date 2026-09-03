@@ -1167,11 +1167,14 @@ const Assets = {
     d[pose] = frames;
     /* playback rate: a full walk cycle takes ~0.9s REGARDLESS of how many
        frames it ships — more frames buy smoothness, never slow motion.
-       Derived once from the south walk strip so every direction agrees. */
+       Derived once from the south walk strip so every direction agrees.
+       VILLAGERS RUN AT HALF THAT (the referee's live-play ruling: "everyone
+       looks like they're on speed") — one uniform 1.8s cycle across every
+       tier, sex and pose. Animals and military keep the 0.9s clock. */
     // Sprites is a script-level const — `window.Sprites` is undefined (the
     // same trap G, AI and MapGen carry); typeof is the safe guard
     if (pose === 'walk' && dir === 's' && typeof Sprites !== 'undefined' && Sprites.animFps)
-      Sprites.animFps[kind] = Math.max(4, Math.round(n / 0.9));
+      Sprites.animFps[kind] = Math.max(4, Math.round(n / (kind.startsWith('villager-') ? 1.8 : 0.9)));
     return true;
   },
   removeUnitArt(kind) { delete this.unitArt[kind]; },

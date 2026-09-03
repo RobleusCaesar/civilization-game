@@ -317,7 +317,9 @@ const out = await p.evaluate(() => {
     c.width = 96 * 12; c.height = 96;
     Assets.setUnitFrames('villager-p-blue-l2-m', 's', 'walk', c);
     ck('sheetFpsRidesTheVariantKey',
-      Sprites.animFps['villager-p-blue-l2-m'] === Math.max(4, Math.round(12 / 0.9)) &&
+      // half the animals' clock — the referee's live-play ruling (2026-09-03):
+      // every villager runs a uniform 1.8s cycle; beasts keep 0.9s
+      Sprites.animFps['villager-p-blue-l2-m'] === Math.max(4, Math.round(12 / 1.8)) &&
       Sprites.animFps.villager === undefined,
       'variant at ' + Sprites.animFps['villager-p-blue-l2-m'] + 'fps; the 2-frame procedural villager untouched');
     delete Sprites.animFps['villager-p-blue-l2-m'];
