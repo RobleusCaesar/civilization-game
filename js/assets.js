@@ -700,7 +700,11 @@ const Assets = {
       const leftN = edge({ n: c.height, f: y => px[(y * c.width) * 4 + 3] > 128 });
       const rightN = edge({ n: c.height, f: y => px[(y * c.width + c.width - 1) * 4 + 3] > 128 });
       const botN = edge({ n: c.width, f: x => px[((c.height - 1) * c.width + x) * 4 + 3] > 128 });
-      const cropped = leftN > 4 || rightN > 4 || botN > 4;
+      /* THE BOTTOM MAY TOUCH. The operator's rule: a flat bottom can be
+         hidden behind a foothill or a wood, so it is not a deal breaker —
+         a flat TOP cannot be hidden by anything. Sides still may not touch:
+         an uncovered flank is a ruled vertical cut with nothing to hide it. */
+      const cropped = leftN > 4 || rightN > 4;
       const bad = topRow <= 0 ? 'summit runs off the top of the art'
         : near > this.MTN_FLAT_TOP ? 'flat top (' + near.toFixed(2) + ' of the width four rows down)'
         : cropped ? 'cropped to its frame (rock on the L/R/bottom edge: ' + leftN + '/' + rightN + '/' + botN + ') — not a free-standing object' : null;
