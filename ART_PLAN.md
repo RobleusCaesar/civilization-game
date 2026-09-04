@@ -1391,6 +1391,15 @@ orchard, scrub for a new continent) in the shipped forest's voice:
   x(1-0.16k), chroma x(1-0.35k), hue half-way to the leaf-ramp mid at
   full k, then re-quantize to the ramps) does the world-fitting;
   hueTint does the runtime seasons. Ship nothing pre-tinted.
+- THE WORLD’S EARTH is one ramp, and drawn art is brought onto it rather
+  than authored against it: #1f1812 #312920 #443b2e #584e3e #6d624e (the
+  referee’s pick, “deep peat” — OKLab L 0.215-0.50, chroma under 0.033,
+  hue 67-81°). Warm pixels in a generated piece are remapped through it BY
+  THEIR OWN LIGHTNESS, so the art keeps every shading step it was drawn
+  with and only the colour of the earth moves; greys, greens and alpha are
+  never touched. Going dark AND saturated at a red hue is what reads as
+  chocolate rather than soil, which is why the chroma cap matters more than
+  the darkness does.
 - COMPOSITION. World-space stamping (forestLayoutAt/forestStampBand):
   continuous density from the enclosure field, y-sorted stamps across
   tile edges, an 8px shoreline setback with green between sand and

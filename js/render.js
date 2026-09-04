@@ -429,16 +429,25 @@ const LAND = {
   FISH_SIZE: 0.5,       // tiles across, for an AUTHORED fish (assets/fx/fish-N.png).
                         // The strips ship at 16px, so 0.5 draws them 1:1 — keep
                         // this on halves of a tile or the pixels go soft
-  /* --- ONE FISH AT A TIME. Every eligible tile used to run the same 2.4s
-     clock, so thirty fish leapt in lockstep — sillier than no fish at all.
-     The map now shows ONE leap every FISH_EVERY seconds, on a tile chosen
-     from the water that is actually worth fishing (a MapGen.shoal whose
-     stock is at least FISH_STOCK of the best shoal's), rotating through
-     them so the same spot never repeats. Every other stretch of water gets
-     the ripple below instead — the surface still moves everywhere, but
-     only the good fishing announces itself. --- */
-  FISH_EVERY: 30,       // seconds between leaps, for the whole map
-  FISH_STOCK: 0.5,      // share of the richest shoal's stock a spot must hold
+  /* --- A FEW FISH, WHERE THEY CAN BE SEEN. Every eligible tile used to
+     run the same 2.4s clock, so thirty fish leapt in lockstep — sillier
+     than no fish at all. The fix over-corrected: ONE leap every thirty
+     seconds, on a tile drawn from the whole map, means the chosen water is
+     almost never the water on screen, and the lake went dead. So the epoch
+     now draws its spots from the fishing water INSIDE THE VIEW (falling
+     back to the whole map when none is on screen), takes up to FISH_N of
+     them, and staggers their phases so they never leap together. Spots are
+     still the water actually worth fishing — a MapGen.shoal whose stock is
+     at least FISH_STOCK of the best shoal’s — so it is the good fishing
+     that announces itself; every other stretch gets the ripple below.
+     BOTH FISH SHOW. An authored strip (assets/fx/fish-N.png) used to
+     replace the small procedural leap wherever it was installed, which
+     quietly retired the older one. The tile hash now picks between them,
+     so the map shows some of each. --- */
+  FISH_EVERY: 14,       // seconds between leaps
+  FISH_N: 2,            // leaps per epoch, staggered — “sparingly”, not never
+  FISH_ART: 0.5,        // share of leaps that use the authored strip; the rest fly the small procedural fish
+  FISH_STOCK: 0.5,      // share of the richest shoal’s stock a spot must hold
   /* …and the quiet surface: a slow expanding ring on a hash-chosen share of
      the water, each tile on its own staggered clock, so the lake breathes
      without anything leaping out of it. */
@@ -512,6 +521,11 @@ const LAND = {
    Every dial for the mountain rewrite. See R.mtnRegions for the architecture;
    the short version is that a mountain is one OBJECT with a traced outline and
    an internal height field, not a grid of tiles. */
+/* the grain of the exposed-bedrock patch under a deposit slab: lattice
+   cycles per tile, so the patch edge crosses tile borders instead of
+   stopping on them */
+const MTN_ORE_GRAIN = 2.4;
+
 const MTN = {
   /* SIZE CLASSES, in cells. A single tile straining to look like a mountain
      is a large part of why this has failed before, so the small classes are
@@ -614,6 +628,7 @@ const MTN = {
   KIT_TEAR: 16,           // px of the piece's own left/right/bottom edge torn away
   KIT_COVER_MIN: 0.5,    // share of a tile the rock must hide before a unit on it is ghosted
   KIT_SHORE_GAP: 1,      // tiles of grass kept between the art and any water
+  KIT_HUG_DROP: 20,      // px a low piece is drawn BELOW the rock it hugs, so the mountain’s bottom edge never shows beside it
   KIT_SHADOW: 10,        // px of ground shadow cast south of a piece's foot
   KIT_SHADOW_A: 0.42,
   KIT_EDGE_TREES: 0.55,  // share of 2x2 apron patches that carry a stand
@@ -1492,33 +1507,88 @@ const R = {
      ending on a wall, and past the boundary only loose SCREE chips lie on
      the ground — which is honest, because scree at the foot of a crag is
      walkable and always was. ---- */
+  /* HOW WORKED-OUT A DEPOSIT IS, 0 (untouched) to 1 (spent). Read against
+     the stock the tile started with, which is why the world remembers it:
+     deposits are seeded 70-195 apiece, so a bare amount says nothing about
+     how much of THIS tile is gone. A tile with no record of its own start
+     — an older save — reads as untouched and wears from there. */
+  oreWear(x, y) {
+    const i = MapGen.idx(x, y), amt = S.map.resAmount, max = S.map.resMax;
+    if (!amt || !max || !(max[i] > 0)) return 0;
+    return Math.max(0, Math.min(1, 1 - amt[i] / max[i]));
+  },
+
   rockMass(g, x, y, terr) {
     if (terr[MapGen.idx(x, y)] !== T.HILLS) { this.rockScree(g, x, y, terr); return; }
     if (window.Assets && Assets.terrainImg(T.HILLS, 0)) return;   // supplied art wins, as everywhere
     const TL = CFG.TILE, W = CFG.W, H = CFG.H, d = this.hillField();
-    /* THE SLAB DOOR (the referee's flat-bedrock pick): with the stone
+    /* THE SLAB DOOR (the referee’s flat-bedrock pick): with the stone
        catalog installed a deposit tile lays a cracked slab flush with the
        turf — rock BENEATH the ground, not boulders on it, and not-gold at
-       a glance. Hash-picked from the twelve (plus mirrors), jittered off
-       centre; a DEEP tile stacks a second smaller slab behind, so cluster
-       hearts still read heavier than their fringes. No catalog: the
-       boulder field below stands untouched. */
-    const slabs = (typeof Assets !== 'undefined' && Assets._muted) ? Assets._muted('stone-l') : null;
+       a glance.
+       ONE SLAB TO A TILE. Stacking two and three of them filled the tile
+       corner to corner, and neighbouring tiles then butted their sheets
+       together into long straight seams — a drawn grid, which is the one
+       thing this whole layer exists to avoid. A single slab, jittered well
+       off centre and mirrored on a hash, leaves grass between the stones
+       and no two edges in line.
+       AND IT WEARS AS IT IS MINED. A felled wood drops its stand; a deposit
+       had nothing to show for the work. The catalog carries slabs at three
+       degrees of breakage, so a tile picks its stage from how much of its
+       own stock is gone — whole for the first third, split for the second,
+       shattered for the last — and a worked deposit reads as worked from
+       across the map. No catalog: the boulder field below stands untouched. */
+    const slabs = (typeof Assets !== 'undefined' && Assets.slabStage) ? Assets.slabStage(this.oreWear(x, y)) : null;
     if (slabs && slabs.length) {
       const h = (x * 73856093 ^ y * 19349663) >>> 0;
-      const dep = d[y * W + x];
-      // depth decides how much bedrock shows: a fringe tile breaks the turf
-      // with one slab, the heart of the deposit is a near-continuous sheet
-      const spots = dep > 1.4 ? [[16, 12], [7, 24], [25, 26], [15, 30]]
-        : dep > 0.8 ? [[12, 15], [22, 27], [26, 12]] : [[16, 22]];
-      for (let si = 0; si < spots.length; si++) {
-        const hs = (h ^ Math.imul(si + 1, 0x9E3779B1)) >>> 0;
-        const art = slabs[hs % slabs.length];
-        const cx = x * TL + spots[si][0] + ((hs >>> 5) % 7) - 3;
-        const foot = y * TL + spots[si][1] + ((hs >>> 8) % 5) - 2;
-        g.drawImage(art, cx - (art.width >> 1), foot - art.height);
+      const dep = d[y * W + x], AP = ART.PALETTE;
+      /* THE BEDROCK THE SLAB BREAKS THROUGH. One slab to a tile is what
+         kills the seams, but a lone slab covers barely a quarter of the
+         tile — and this ground BLOCKS, so leaving the rest reading as open
+         meadow is exactly the lie the readability rule forbids (land.mjs
+         holds blocked ground to 80% of its tile). The rest of the cover is
+         the rock itself showing through the turf: a patch of scraped stony
+         ground whose edge is read from the world-space lattice, so it never
+         lands on a tile boundary and never draws a straight line. How much
+         of the tile it takes follows the deposit’s own depth — the heart of
+         a deposit is a near-continuous sheet, the fringe is broken ground. */
+      if (!this._latOne) this.landLattices();
+      const sub = TL / 32, cov = Math.max(0.45, Math.min(0.94, 0.60 + dep * 0.20));
+      /* …and it FRAYS toward open ground. Filling a tile corner to corner
+         put the deposit’s silhouette back on the tile boundary wherever it
+         met grass — a 34px straight run against the 12px the outline rule
+         allows. Cover falls away toward any side with no deposit behind it,
+         so the sheet breaks up before it reaches the edge and the boundary
+         is drawn by the lattice, never by the grid. */
+      const hillNb = (ox, oy) => { const nx = x + ox, ny = y + oy;
+        return nx >= 0 && ny >= 0 && nx < W && ny < H && terr[ny * W + nx] === T.HILLS; };
+      const opW = !hillNb(-1, 0), opE = !hillNb(1, 0), opN = !hillNb(0, -1), opS = !hillNb(0, 1);
+      // the deposit reads as a FIND, so its ground takes the light end of the
+      // deposit ramp — the dark end put it below the brightness the resource
+      // rule holds it to, and a dark patch reads as a crevice, not a seam
+      const gr = [AP.oreD[2], AP.oreD[3], AP.oreD[4]];
+      for (let j2 = 0; j2 < 32; j2++) for (let i2 = 0; i2 < 32; i2++) {
+        let near = 32;
+        if (opW && i2 < near) near = i2;
+        if (opE && 31 - i2 < near) near = 31 - i2;
+        if (opN && j2 < near) near = j2;
+        if (opS && 31 - j2 < near) near = 31 - j2;
+        const fray = cov * (0.28 + 0.72 * Math.min(1, near / 11));
+        if (this._latRead(this._latOne.rock, (x + i2 / 32) * MTN_ORE_GRAIN, (y + j2 / 32) * MTN_ORE_GRAIN) > fray) continue;
+        // the TONE is hashed in 2px CLUMPS, not per pixel: per-pixel came
+        // out as loose gravel, and a fine lattice aliased into stripes —
+        // small stones is what stone showing through turf looks like
+        const t2 = this._lh((x * 32 + i2) >> 1, (y * 32 + j2) >> 1, 71);
+        g.fillStyle = gr[t2 < 0.3 ? 0 : t2 < 0.68 ? 1 : 2];
+        g.fillRect(x * TL + i2 * sub, y * TL + j2 * sub, sub, sub);
       }
-      // …and a few loose chips at the skirt, so the sheet frays into the
+      const art = slabs[(h >>> 3) % slabs.length];
+      // well off centre, and never the same offset as the tile next door:
+      // it is the jitter that keeps two slabs from lining up on a seam
+      const cx = x * TL + 8 + ((h >>> 5) % (TL - 16));
+      const foot = y * TL + 12 + ((h >>> 11) % (TL - 14));
+      g.drawImage(art, cx - (art.width >> 1), foot - art.height);
+      // …and a few loose chips at the skirt, so the stone frays into the
       // grass instead of ending on a sprite edge
       g.fillStyle = '#88867b';
       for (let ci = 0; ci < 3; ci++) {
@@ -4327,18 +4397,31 @@ const R = {
             if (topTile + MTN.PAD_UP < north[cx]) deepEnough = false;
           }
           if (!deepEnough) continue;
-          /* THE LOW BANDS HUG THE ROCK, and stand at the MOUNTAIN'S own foot
-             rather than at their own column's southern edge — the rock a low
-             piece belongs to is the only thing that can tell it where the
-             ground is, and half its span has to sit under that rock or it
-             ends up marooned on the grass beside it. */
+          /* THE LOW BANDS HUG THE ROCK, and stand at the FRONTMOST rock
+             they touch — the rock a low piece belongs to is the only thing
+             that can tell it where the ground is.
+             mountain’s foot row puts both bottom edges on the same line, so
+             the mountain’s skirt shows to either side of the foothill. The
+             drop is applied in PIXELS when the piece is drawn, not as a row
+             here: moving the foot a whole tile south made the placement
+             tests refuse pieces that no longer had ground under them, and
+             the holes they left opened grass between the bands — the one
+             tell this whole arrangement exists to avoid. */
+          const mid = x + span / 2;
           let hugFy = -1;
           if (kind !== 'peak' && kind !== 'saddle') {
             for (const q of plan) {
               if (q.kind !== 'peak' && q.kind !== 'saddle') continue;
               const qs = q.tx, qe = q.tx + Math.round(q.piece.w / CFG.TILE);
               const ov = Math.min(x + span, qe) - Math.max(x, qs);
-              if (ov >= span * 0.5 && q.fy > hugFy) hugFy = q.fy;
+              // the rock this piece STANDS IN FRONT OF: the one its middle
+              // falls inside, or failing that one it half covers. Half-span
+              // alone let a foothill that clipped the front massif anchor to
+              // whatever stood BEHIND it, and come out perched part way up
+              // the front slope; ANY overlap went too far the other way and
+              // pulled pieces off ground they had, breaking massifs apart.
+              if ((mid >= qs && mid <= qe) || ov >= span * 0.5)
+                if (q.fy > hugFy) hugFy = q.fy;
             }
             if (hugFy < 0) continue;
             /* …but never SOUTH of its own ground. A foothill takes the
@@ -4522,7 +4605,24 @@ const R = {
     /* BACK TO FRONT: the deepest rank first, and within a rank by foot row.
        The strips carry this order into the frame, so a nearer massif — and
        the low ground in front of it — draws over the one behind. */
-    const placed = plan.map(p => ({ p, x: p.tx * TL, y: p.fy * TL - p.piece.h, foot: p.fy * TL }))
+    /* EVERY PIECE STANDS ON ITS FOOT ROW, not on its canvas. The art is
+       authored as a sticker with empty margin all round — that framing is
+       what stops it being cropped — and the margin under the rock runs from
+       nothing to half a tile depending on the piece. Anchoring the CANVAS
+       bottom to the foot row therefore floated the padded pieces above it,
+       and since the foothills carry the most padding they came out perched
+       part way up the slope of the peak they were supposed to stand in
+       front of, with the peak’s own bottom edge showing below them. The
+       OPAQUE bottom lands on the foot row instead, so where a piece is
+       drawn no longer depends on how it was framed.
+       …and the low bands are drawn a little below the rock they hug on top
+       of that, so a massif’s bottom edge never shows beside the foothill in
+       front of it. Pixels, not rows: moving the foot a whole tile south made
+       the placement tests refuse pieces that no longer had ground under
+       them, and the holes they left opened grass between the bands. */
+    const drop = q => (q.kind === 'peak' || q.kind === 'saddle') ? 0 : (MTN.KIT_HUG_DROP | 0);
+    const placed = plan.map(p => ({ p, x: p.tx * TL,
+      y: p.fy * TL - 1 - p.piece.bb.y1 + drop(p), foot: p.fy * TL + drop(p) }))
       .sort((a, b) => (b.p.up - a.p.up) || (a.foot - b.foot));
     const TEARMAX = Math.max(0, MTN.KIT_TEAR | 0);
     const strips = [], cover = new Set(), hits = new Map();
@@ -9606,19 +9706,35 @@ const R = {
     }
     // ---- the tile pass: drifting sparkle, foam dots, ripples, the one fish ----
     const tB = prof ? performance.now() : 0;
-    /* WHICH FISH, AND WHEN. One leap per FISH_EVERY seconds: the epoch picks
-       a spot out of the good fishing water (rebuilt each epoch, so a shoal
-       that has been fished out drops off the list), and only that tile
-       animates. Everything else ripples. */
-    const every = Math.max(1, +LAND.FISH_EVERY || 30);
+    /* WHICH FISH, AND WHEN. Up to FISH_N leaps per FISH_EVERY seconds. The
+       epoch picks them out of the good fishing water that is ON SCREEN at
+       the moment it turns over — picking from the whole map is what made
+       the fish invisible — and gives each its own offset inside the epoch
+       so they never leap together. Everything else ripples. */
+    const every = Math.max(1, +LAND.FISH_EVERY || 14);
     const ep = Math.floor(t0 / every);
     if (ep !== this._fishEpoch) {
       this._fishEpoch = ep;
-      const spots = this.fishSpots();
-      this._fishPick = spots.length ? spots[(Math.imul(ep + 1, 0x9e3779b1) >>> 8) % spots.length] : null;
+      const all = this.fishSpots();
+      const seen = all.filter(s => s[0] * TL >= vx0 && s[0] * TL <= vx1 && s[1] * TL >= vy0 && s[1] * TL <= vy1 && G.visibleAt(s[0], s[1]));
+      const from = seen.length ? seen : all;
+      const want = Math.max(1, Math.min(LAND.FISH_N | 0 || 1, from.length));
+      const picks = [];
+      for (let k = 0; k < want; k++) {
+        const s = from[(Math.imul(ep + 1 + k * 7919, 0x9e3779b1) >>> 8) % from.length];
+        if (!picks.some(q => q[0] === s[0] && q[1] === s[1])) picks.push(s);
+      }
+      // each leap gets its own slot in the epoch, so two fish never share a frame
+      this._fishPicks = picks.map((s, k) => [s[0], s[1], (k + 0.15) * every / (picks.length + 0.4)]);
     }
-    const pick = this._fishPick, fishT = t0 - ep * every;
-    const fishOn = !!pick && fishT < LAND.FISH_TIME * 2 + 0.6;
+    const picks = this._fishPicks || [];
+    const fishT = t0 - ep * every, fishWin = LAND.FISH_TIME * 2 + 0.6;
+    /* …flattened before the tile loop. Walking the picks with for-of inside
+       it built an iterator for every visible water tile of every frame,
+       which measured as a fifth of a millisecond on the world pass. Two
+       integer arrays and an indexed loop allocate nothing. */
+    const pIdx = [], pOff = [];
+    for (let q = 0; q < picks.length; q++) { pIdx.push(picks[q][1] * CFG.W + picks[q][0]); pOff.push(picks[q][2]); }
     const RA = +LAND.RIPPLE || 0, RG = Math.max(1, LAND.RIPPLE_GATE | 0);
     const RE = Math.max(0.5, +LAND.RIPPLE_EVERY || 7), RL = Math.max(0.2, +LAND.RIPPLE_LEN || 1.5);
     // 1d, in two lines: at golden hour the sparkle brightens by SPARKLE_GOLD and warms
@@ -9646,10 +9762,17 @@ const R = {
       }
       // (the blinking foam dots lived here; the authored foam sprites along
       // the traced shoreline replaced them — drawn after the tile pass)
-      // the ONE leap, on the good fishing water this epoch chose
-      if (fishOn && x === pick[0] && y === pick[1]) this.drawFishJump(g, x, y, h, fishT);
+      // the leaps this epoch chose, each on its own offset inside it
+      let leapt = false;
+      for (let q = 0; q < pIdx.length; q++) {
+        if (pIdx[q] !== i) continue;
+        const lt = fishT - pOff[q];
+        if (lt >= 0 && lt < fishWin) { this.drawFishJump(g, x, y, h, lt); leapt = true; }
+        break;
+      }
+      if (leapt) continue;
       // …and the quiet surface everywhere else: a slow ring on its own clock
-      else if (RA > 0 && (h % RG) === 0) {
+      if (RA > 0 && (h % RG) === 0) {
         const ph = t0 / RE + ((h >>> 7) % 997) / 997;
         const k = (ph - Math.floor(ph)) * RE;                // seconds into this tile's cycle
         if (k < RL) {
@@ -9900,10 +10023,14 @@ const R = {
     const t = tw - ((h >>> 8) % 3) * 0.05;
     if (t < 0) return;
     const A = LAND.FISH_TIME * 2;
-    // the authored leap, when a strip is installed: the sprite walks the
-    // SAME arc the procedural fish flew, so nothing about the path, the
-    // splash or the gating changes — only what the fish looks like
-    const art = (window.Assets && Assets.fishFrames) ? Assets.fishFrames(h >>> 5) : null;
+    /* WHICH OF THE TWO FISH. An authored strip used to replace the small
+       procedural leap outright wherever it was installed, which quietly
+       retired the older fish. The tile hash chooses instead, so a share
+       FISH_ART of the leaps fly the authored fish and the rest fly the
+       small one. Both walk the SAME arc, so nothing about the path, the
+       splash or the gating differs — only what the fish looks like. */
+    const wantArt = ((h >>> 5) & 255) / 255 < (+LAND.FISH_ART || 0);
+    const art = (wantArt && window.Assets && Assets.fishFrames) ? Assets.fishFrames(h >>> 5) : null;
     if (t < A) {
       const k = t / A, rise = Math.round(Math.sin(k * Math.PI) * LAND.FISH_RISE);
       if (art) {

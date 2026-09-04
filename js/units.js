@@ -523,9 +523,16 @@ const Units = {
     if (!g) return false;
     const best = this.gatherEdge(u, tx, ty);
     if (!best) return false;
-    // stand at the NEAR edge of the chosen tile, hard up against the resource
-    // (offset the resting point toward the node, but stay within the tile)
-    const STAND = 0.4;
+    /* HOW CLOSE TO STAND. Hard up against the resource is right for a bush
+       or a rock, whose art keeps to its own tile: the villager touches what
+       it harvests instead of resting in the middle of the tile next door.
+       A WOOD IS DIFFERENT. Its crowns are stamped in world space and hang a
+       third of a tile past the edge, so a woodcutter eased 0.4 tiles in ends
+       up standing ON the canopy rather than beside it — which is exactly
+       what it looked like. Against forest the villager rests at the middle
+       of the tile it works from, which clears the overhang and still reads
+       as standing right next to the trees. */
+    const STAND = S.map.terrain[MapGen.idx(tx, ty)] === T.FOREST ? 0 : 0.4;
     u.task = {
       type: 'gather', x: tx, y: ty, sx: best.x, sy: best.y, res: g.res,
       stx: best.x + 0.5 + (tx - best.x) * STAND, sty: best.y + 0.5 + (ty - best.y) * STAND,
@@ -1389,6 +1396,18 @@ const Units = {
           store[g.res] += take;
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
+          /* A DEPOSIT SHOWS THE WORK. Stone cracks open in thirds as it is
+             mined (R.oreWear), so the tile has to be repainted when it
+             crosses a third — not only when it is finally spent, which is
+             the one repaint the exhaustion branch below already does. The
+             stage is compared before and after the bite, so this costs a
+             repaint twice in the life of a tile and nothing the rest of the
+             time. */
+          if (S.map.resMax && S.map.resMax[idx] > 0) {
+            const stg = v => Math.min(2, Math.floor((1 - v / S.map.resMax[idx]) * 3));
+            if (S.map.resAmount[idx] > 0 && stg(S.map.resAmount[idx] + take) !== stg(S.map.resAmount[idx]))
+              R.updateTile(t.x, t.y);
+          }
           // an occasional glance-tick, throttled per worker (R.workFloat)
           if ((before | 0) !== (store[g.res] | 0)) R.workFloat(u, '+' + g.res);
           if (S.map.resAmount[idx] <= 0.001) {

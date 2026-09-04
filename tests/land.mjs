@@ -1802,28 +1802,40 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       const onW = Math.min(passMs(60), passMs(60)) - base;
       out.waterFrame = onW; out.waterLivingMs = onW; out.waveInWaterFrame = !!R._wavePick;
       setT();
-      /* ONE FISH AT A TIME, ON THE WATER WORTH FISHING. Thirty fish leaping
-         in lockstep on the same 2.4s clock was the reported silliness; the
-         map now shows one leap per FISH_EVERY seconds, on a shoal whose
-         stock is a real share of the best one's, rotating between them.
-         Walk the epochs and check who gets picked. */
+      /* A FEW FISH, STAGGERED, ON THE WATER WORTH FISHING. Thirty fish
+         leaping in lockstep on the same 2.4s clock was the reported
+         silliness, and the first fix over-corrected to a single leap per
+         thirty seconds picked from the WHOLE map — so the chosen water was
+         almost never the water on screen and the referee reported the fish
+         had gone. The map now shows up to FISH_N leaps per FISH_EVERY
+         seconds, drawn from the fishing water in view, each on its own
+         offset inside the epoch so no two share a frame. What is pinned is
+         unchanged in substance: never every eligible tile, never in
+         lockstep, always a shoal whose stock is a real share of the best
+         one’s, and rotating between them. Walk the epochs and check.
+         (R._fishPick became R._fishPicks when the count went above one.) */
       const spots = R.fishSpots();
       out.spots = spots.length;
-      const seen = {}; let offShoal = 0, poor = 0;
+      const seen = {}; let offShoal = 0, poor = 0, tooMany = 0, sameFrame = 0;
       const resA = S.map.resAmount;
       let best = 0;
       for (let i = 0; i < resA.length; i++) if (MapGen.shoal(i % CFG.W, (i / CFG.W) | 0) && resA[i] > best) best = resA[i];
       for (let e = 0; e < 30; e++) {
         R.fishClock = e * LAND.FISH_EVERY + 0.2; R._fishEpoch = -1;
         R.draw(0);
-        const pk = R._fishPick;
-        if (!pk) continue;
-        seen[pk[0] + ',' + pk[1]] = 1;
-        if (!MapGen.shoal(pk[0], pk[1])) offShoal++;
-        if (resA[pk[1] * CFG.W + pk[0]] < best * LAND.FISH_STOCK) poor++;
+        const picks = R._fishPicks || [];
+        if (picks.length > (LAND.FISH_N | 0)) tooMany++;
+        const offs = {};
+        for (const pk of picks) {
+          seen[pk[0] + ',' + pk[1]] = 1;
+          if (!MapGen.shoal(pk[0], pk[1])) offShoal++;
+          if (resA[pk[1] * CFG.W + pk[0]] < best * LAND.FISH_STOCK) poor++;
+          const key = pk[2].toFixed(3);
+          if (offs[key]) sameFrame++; offs[key] = 1;
+        }
       }
       out.distinctPicks = Object.keys(seen).length;
-      out.offShoal = offShoal; out.poor = poor;
+      out.offShoal = offShoal; out.poor = poor; out.tooMany = tooMany; out.sameFrame = sameFrame;
       out.noLockstep = !/hf % 5 < 2|hf % 31 === 0/.test(R.drawLivingWater.toString());
       /* A WAVE IS AN EVENT, PARALLEL TO ITS SHORE. Walk the wave epochs the
          way the fish epochs are walked: every pick must lie on beach (land
@@ -1944,10 +1956,12 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     v.thrown || (v.shelfOutside + ' shelf pixels outside the body with ' + v.carved + ' inlets carved (' + v.shelfPxOnLand + ' on land-tile pixels inside it)'));
   ck('theLivingWaterFitsItsBudget', !v.thrown && v.livingMs < 0.4 && v.waterLivingMs < 0.4,
     v.thrown || ('the whole living-water pass, raster included: ' + f2(v.livingMs) + 'ms on the town view at z1.5 golden hour (was ' + f2(v.frameOff) + 'ms before 1b–1d: delta ' + f2(v.newWork) + 'ms; recorded foam ' + f2(v.foamMs) + ' + tiles ' + f2(v.tilesMs) + '); ' + f2(v.waterLivingMs) + 'ms on the water view; a flush alone ' + f2(v.flushMs) + 'ms'));
-  ck('oneFishAtATimeOnTheWaterWorthFishing',
-    !v.thrown && v.noLockstep && v.spots > 1 && v.distinctPicks > 1 && v.offShoal === 0 && v.poor === 0 && !v.err,
+  ck('aFewFishStaggeredOnTheWaterWorthFishing',
+    !v.thrown && v.noLockstep && v.spots > 1 && v.distinctPicks > 1 && v.offShoal === 0 && v.poor === 0
+      && v.tooMany === 0 && v.sameFrame === 0 && !v.err,
     v.thrown || v.err || (v.spots + ' spots worth fishing, ' + v.distinctPicks + ' different ones chosen over 30 leaps, ' +
-      v.offShoal + ' off a shoal, ' + v.poor + ' below the stock floor'));
+      v.offShoal + ' off a shoal, ' + v.poor + ' below the stock floor, ' + v.tooMany + ' epochs over the FISH_N cap, ' +
+      v.sameFrame + ' sharing a frame'));
   ck('aWaveRollsOnItsBeachParallelAndRare',
     !v.thrown && v.waveRolls > 10 && v.waveBad === 0 && v.waveOversize === 0 && v.waveDistinct > 4 && v.waveInWaterFrame === true && !v.err,
     v.thrown || v.err || (v.waveRolls + ' rolls over 40 epochs (' + v.waveSegs + ' crests, ' + v.waveSplits +

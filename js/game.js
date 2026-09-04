@@ -152,6 +152,7 @@ const G = {
         W: CFG.W, H: CFG.H,
         terrain: gen.terrain,
         resAmount: gen.resAmount,
+        resMax: gen.resMax,                 // what each tile held when the world was made
         fishStocked: true,                  // water tiles carry fish from generation
 
         scarce: gen.scarce,
@@ -350,6 +351,7 @@ const G = {
         const i = MapGen.idx(spot.x, spot.y);
         S.map.terrain[i] = terr;
         S.map.resAmount[i] = 170;                  // heavy with fruit / timber / stone
+        if (S.map.resMax) S.map.resMax[i] = 170;   // a fresh node starts unworked
         S.map.seenTerrain[i] = terr;
       }
     }
@@ -647,6 +649,7 @@ const G = {
           if (src === scarceTerr) amt *= 0.6;      // the scarce resource stays lean
           S.map.terrain[i] = src;
           S.map.resAmount[i] = Math.round(amt);
+          if (S.map.resMax) S.map.resMax[i] = Math.round(amt);   // regrowth is a new node, full for its size
           R.updateTile(rx, ry);
           this.pushOffBlocked(rx, ry);
           regrown = true;
@@ -673,6 +676,7 @@ const G = {
         // a shoal a sapper filled in is simply gone; so is one already restocked
         if (S.map.terrain[i] === T.WATER && !(S.map.resAmount[i] > 0)) {
           S.map.resAmount[i] = this.fishStockAt(fx, fy);
+          if (S.map.resMax) S.map.resMax[i] = S.map.resAmount[i];
           back = true;
         }
         delete S.map.fishBack[k];
@@ -1759,6 +1763,11 @@ const G = {
         const r = CFG.RES_AMOUNT[t];
         return r ? Math.round((r[0] + r[1]) / 2) : 0;
       });
+    }
+    if (!data.map.resMax) {
+      // pre-wear save: a tile is taken to be as full as it still is, so it
+      // starts uncracked and cracks from here as it is worked
+      data.map.resMax = data.map.resAmount.slice();
     }
     if (!data.garrison) data.garrison = [];
     if (data.levy == null) data.levy = false;   // pre-levy saves load at peace with their tools

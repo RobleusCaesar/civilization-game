@@ -1038,7 +1038,12 @@ const MapGen = {
       var goldSeams = seams;
     }
 
-    return { terrain: t, resAmount, scarce: scarce.name, landform, variant,
+    /* THE STOCK A TILE STARTED WITH. Kept beside the live amount because
+       how worked-out a tile IS can only be read against what it held: the
+       stone deposits crack open in thirds as they are mined, the way a
+       felled wood drops its stand. Written once, never edited. */
+    const resMax = resAmount.slice();
+    return { terrain: t, resAmount, resMax, scarce: scarce.name, landform, variant,
       worldName: MapGen.worldName(landform, variant),
       spawns: { player, ai, camps, gold: goldSeams, seaStarts } };
   },

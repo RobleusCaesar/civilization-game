@@ -1004,6 +1004,34 @@ const Assets = {
     }
     g.putImageData(d, 0, 0);
   },
+  /* THE THREE STAGES OF A WORKED DEPOSIT. The stone catalog carries slabs
+     at every degree of breakage, and which is which was read off the art,
+     not guessed at from a pixel count: a hairline in an otherwise whole
+     face and a slab split clean in two have nearly identical dark-pixel
+     shares, so no simple measure tells them apart. Letters map to the
+     cascade’s own load order — each letter contributes a piece AND its
+     mirror, so letter n owns entries 2n and 2n+1. Anything the catalog
+     does not carry drops out, and a stage left with nothing falls back to
+     the whole set, so a shorter catalog degrades instead of blanking. */
+  SLAB_STAGES: ['gijh', 'aklb', 'cdfe'],
+  slabStage(wear) {
+    const all = this._muted('stone-l');
+    if (!all || !all.length) return null;
+    /* RESOLVED FRESH, NEVER CACHED. The catalog decodes one letter at a
+       time and the terrain bakes before the cascade finishes, so a set
+       frozen on the first call is a set built out of the three or four
+       slabs that happened to have arrived — which is exactly what shipped
+       every stage the wrong art until the re-bake. Four letters of
+       arithmetic per deposit tile is cheaper than being wrong. */
+    const ls = this.SLAB_STAGES[wear < 1 / 3 ? 0 : wear < 2 / 3 ? 1 : 2];
+    const out = [];
+    for (let k = 0; k < ls.length; k++) {
+      const li = ls.charCodeAt(k) - 97;
+      if (2 * li + 1 < all.length) out.push(all[2 * li], all[2 * li + 1]);
+    }
+    return out.length ? out : all;
+  },
+
   _muted(key) {
     const k = (typeof LAND !== 'undefined' && typeof LAND.TREE_MUTE === 'number') ? LAND.TREE_MUTE : 0;
     // stale on a dial move OR any catalog change — a cleared catalog must

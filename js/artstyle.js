@@ -14,37 +14,40 @@ const ART = (function () {
     grass:   ['#31491f', '#41652a', '#4d7c33', '#5a8f3c', '#6da04a'],
     leaf:    ['#1d3a17', '#2e5c25', '#3c6f2d', '#417a33', '#569244'],
     soil:    ['#3c2c16', '#57431f', '#6b5433', '#82683f'],
-    water:   ['#17384f', '#1f4a69', '#275d7d', '#3a7599', '#5cabd2'],
+    water:   ['#133148', '#1a4160', '#215272', '#32678c', '#419bcf'],
     /* THE DEEP RAMP — the water body's shore-to-heart ramp (the Water &
        Shoreline Overhaul; R.paintWater), LIGHTEST FIRST because it runs
        from the waterline outward. SIXTEEN steps interpolated in OKLab so
-       every adjacent pair differs by the SAME lightness (ΔL 0.021–0.024,
-       max/min 1.14), which is what makes the ladder read as one continuous
-       transition instead of a few bands — an RGB interpolation bunches its
-       steps at one end and the eye sees the bunching as banding, which is
-       exactly how the first cut of this ramp failed.
+       every adjacent pair differs by near enough the SAME lightness (ΔL
+       0.016–0.021, max/min 1.32 against land.mjs’s ≤1.5 pin), which is what
+       makes the ladder read as one continuous transition instead of a few
+       bands — an RGB interpolation bunches its steps at one end and the eye
+       sees the bunching as banding, which is exactly how the first cut of
+       this ramp failed. Successive shade passes re-derive the ramp by
+       walking its own OKLab path and sampling at even lightness, so a hue
+       shift never costs the evenness.
 
-       Hue drifts gently from a warm aqua (OKLab h 197) to slate blue (247)
-       and CHROMA STAYS IN A NARROW BAND: 0.030 at the shallow end — below
-       the sand ramp's own 0.045, so the shallows sit quietly beside a
-       beach instead of glowing — rising only to water[2]'s 0.080 in the
-       middle. The first cut pushed saturation and the shallows came back
-       neon cyan, the loudest thing on the map. No near-white lives here:
-       the glints are Gate B's business.
+       Hue runs from a cool slate-teal at the waterline to a deep navy at the
+       heart, and CHROMA STAYS IN A NARROW BAND — kept below the sand ramp’s
+       own 0.045 at the shallow end, so the shallows sit quietly beside a
+       beach instead of glowing, rising only through the middle of the ramp.
+       The first cut pushed saturation and the shallows came back neon
+       cyan, the loudest thing on the map. No near-white lives here: the
+       glints are Gate B’s business.
 
        water[2] and water[1] land ON the ramp, at steps 9 and 12, so every
        other water reference in the world still matches; step 15 sits at
        water[0]'s own lightness without being water[0], which the swell
        contract counts as a trough scratch. `water` keeps its indexes,
        which are load-bearing across sprites, cards and the minimap. */
-    deep:    ['#5590a1', '#538999', '#4e8393', '#487c90', '#40768c', '#3a7087', '#346a84', '#2d6381',
-              '#275d7d', '#245677', '#235070', '#1f4a69', '#1c4462', '#1c3e5b', '#1b3953', '#18334d'],
+    deep:    ['#4b7f93', '#49798b', '#457386', '#406e83', '#386880', '#32637b', '#2d5d79', '#275776',
+              '#215272', '#1f4c6d', '#1e4767', '#1a4160', '#183c5a', '#183753', '#17324b', '#142d46'],
     /* the second pale anchor, for the bench's A/B (LAND.DEEP_ALT): the same
        ramp with a TEALER light end (hue 201 rather than 208). Everything
        from step 8 down is identical — only the shallows differ, which is
        the only thing in question. */
-    deepAlt: ['#548f9b', '#518894', '#4b8290', '#447b8d', '#3c7589', '#366f85', '#306882', '#2a6280',
-              '#275d7d', '#245677', '#235070', '#1f4a69', '#1c4462', '#1c3e5b', '#1b3953', '#18334d'],
+    deepAlt: ['#4a7e8d', '#477887', '#437383', '#3d6d81', '#36687e', '#30637a', '#2b5d78', '#255776',
+              '#215272', '#1f4c6d', '#1e4767', '#1a4160', '#183c5a', '#183753', '#17324b', '#142d46'],
     stone:   ['#4a4a44', '#6f6f66', '#8f8f86', '#adada2', '#c9c9bf'],
     ore:     ['#55544d', '#6f6e65', '#88867b', '#a09e91', '#b8b5a6', '#d0cdbe'],   // ORE boulders: light muted grey (lifted so deposits pop against the grass at a glance), cooler/greyer than the brown mountain `mrock` so they stay readable as mineable stone
     /* the DEPOSIT ramp — the ore knots that hug the mountain base draw in
