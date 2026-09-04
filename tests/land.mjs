@@ -599,10 +599,10 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       Terraform && Terraform.diggable ? (Terraform.diggable(x,y) ? 1 : 0) : 0,
     ].join(',')).join(';');
     const before = { sig: sig(), ans: answers() };
-    const rm = R.rockMass, rs = R.rockScree;
-    R.rockMass = () => {}; R.rockScree = () => {}; R.rebuildTerrain();
+    const rm = R.rockMass, rs = R.rockScree, os = R.oreSlabs;
+    R.rockMass = () => {}; R.rockScree = () => {}; R.oreSlabs = () => {}; R.rebuildTerrain();
     const off = { sig: sig(), ans: answers() };
-    R.rockMass = rm; R.rockScree = rs; R.rebuildTerrain();
+    R.rockMass = rm; R.rockScree = rs; R.oreSlabs = os; R.rebuildTerrain();
     // …and the stream is gone, machinery and tunables together
     const streamApi = ['streams','drawStreams','chaikinOpen','roughenOpen'].filter(k => typeof R[k] === 'function');
     const streamDials = Object.keys(LAND).filter(k => k.startsWith('STREAM'));
@@ -625,6 +625,10 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
 
    Both halves are measured on the RENDERED MAP, and what counts as "rock" is
    established by DIFFING two bakes, one with R.rockMass stubbed out. That is
+   (The deposit is drawn in TWO passes now — R.rockMass for the procedural
+   boulder field and R.oreSlabs for the drawn stone kit, which runs after the
+   wood so a crown never lands on top of a stone. Both have to be stubbed or
+   the diff measures nothing at all and every deposit reads as 0% covered.)
    exact where a colour test is not: a deposit stands on the same painted
    grass floor as everything else, and half the map's other decoration is
    grey too. ---- */
@@ -635,10 +639,10 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     const px = W*TL;
     const g = R.terrainCache.getContext('2d');
     const on = g.getImageData(0,0,px,px).data;
-    const rm = R.rockMass, rs = R.rockScree;
-    R.rockMass=()=>{}; R.rockScree=()=>{}; R.rebuildTerrain();
+    const rm = R.rockMass, rs = R.rockScree, os = R.oreSlabs;
+    R.rockMass=()=>{}; R.rockScree=()=>{}; R.oreSlabs=()=>{}; R.rebuildTerrain();
     const off = R.terrainCache.getContext('2d').getImageData(0,0,px,px).data;
-    R.rockMass=rm; R.rockScree=rs; R.rebuildTerrain();
+    R.rockMass=rm; R.rockScree=rs; R.oreSlabs=os; R.rebuildTerrain();
     const isRock = (x,y) => { const i=(y*px+x)*4;
       return on[i]!==off[i] || on[i+1]!==off[i+1] || on[i+2]!==off[i+2]; };
     // 1. THE CORE IS SOLID — no bare ground left showing through its heart
@@ -669,8 +673,11 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     const kinds = Sprites.ROCK_KINDS, pals = Sprites.STONE_PALS;
     const lum = (r,gg,bb) => 0.299*r + 0.587*gg + 0.114*bb;
     let lo=999, hi=-1, n=0, sum=0;
-    for (let j2=0;j2<TL;j2++) for (let i2=0;i2<TL;i2++) {
-      const x=bx*TL+i2, y=by*TL+j2; if (!isRock(x,y)) continue;
+    // sparse stone is measured across the deposit's HEART — the same 7x7 the
+    // outline walk uses — not on its one centre tile, which at a stone per
+    // five-odd tiles is as often bare as not and read back as NaN
+    for (let y=(by-3)*TL; y<(by+4)*TL; y++) for (let x=(bx-3)*TL; x<(bx+4)*TL; x++) {
+      if (!isRock(x,y)) continue;
       const i=(y*px+x)*4, l=lum(on[i],on[i+1],on[i+2]);
       if (l<lo) lo=l; if (l>hi) hi=l; sum+=l; n++;
     }
@@ -710,15 +717,23 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
              mMean: mMean == null ? null : +mMean.toFixed(1), at:[bx,by],
              slabMode: !!(Assets._muted && (Assets._muted('stone-l') || []).length) };`));
   const core = v.cover['3'] || v.cover['2'];
-  /* TWO CONTRACTS FOR THE CORE. The boulder field packs its heart to a
-     solid heap (>= 96%). The authored FLAT-SLAB deposit — the referee's
-     pick at the resource pass: bedrock breaking the turf, not boulders on
-     it — is a near-continuous rock sheet whose seams show turf by design,
-     so its core holds >= 80% (the occupancy rule's own floor) and still
-     thins toward the fringe like the field always did. */
-  ck('aRockCoreIsSolidStone', core && core.cov >= (v.slabMode ? 0.80 : 0.96),
+  /* SCATTERED STONE, NOT A PAVED SHEET. The boulder field packs its heart to
+     a solid heap (>= 96%). The DRAWN deposit does the opposite, on the
+     referee's ruling: one stone to a tile at most, never two overlapping,
+     sprinkled rather than laid. What is pinned is that a deposit shows stone
+     at all and that it never closes into a sheet — the look that was
+     rejected twice. */
+  ck('aDepositIsScatteredStoneNotAPavedSheet',
+    // sparse stone is measured across the DEPOSIT, not on one sampled tile:
+    // at one stone per five-odd tiles the sampled core is as often bare as not
+    (function () {
+      const cs = [1, 2, 3].map(k => v.cover[k] && v.cover[k].cov).filter(c => c != null);
+      if (!cs.length) return false;
+      return v.slabMode ? (Math.max.apply(null, cs) > 0.02 && Math.max.apply(null, cs) < 0.80)
+        : (core && core.cov >= 0.96);
+    })(),
     'depth 1/2/3 tiles are ' + [1,2,3].map(k => v.cover[k] ? Math.round(v.cover[k].cov*100)+'%' : '-').join(' / ')
-    + ' stone — packed at the core, thinning at the fringe' + (v.slabMode ? ' (slab mode)' : ''));
+    + (v.slabMode ? ' stone — scattered, never paved (slab mode)' : ' stone — packed at the core, thinning at the fringe'));
   ck('andItsOutlineIsNotTheTileGrid', v.longest < 12,
     "the longest straight run down the deposit's silhouette is " + v.longest
     + 'px, against the 32px a tile-quantized edge gives');
@@ -821,7 +836,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     R.rebuildTerrain();
     const on = R.terrainCache.getContext('2d').getImageData(0,0,px,px).data;
     const blank = (() => { const c=document.createElement('canvas'); c.width=c.height=TL; return [c]; })();
-    const keep = {}, rm = R.rockMass, rs = R.rockScree;
+    const keep = {}, rm = R.rockMass, rs = R.rockScree, os = R.oreSlabs;
     for (const t of [T.FOREST, T.FERTILE]) {
       keep[t] = [Sprites.terrain[t], Sprites.terrainMed[t], Sprites.terrainFull[t], Sprites.terrainRare[t]];
       Sprites.terrain[t] = Sprites.terrainMed[t] = Sprites.terrainFull[t] = Sprites.terrainRare[t] = blank;
@@ -830,12 +845,12 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     // installed the trees come from forestStampBand, not the tile sets
     const fsb = R.forestStampBand, fsn = R.forestStampsNear;
     R.forestStampBand = () => {}; R.forestStampsNear = () => {};
-    R.rockMass=()=>{}; R.rockScree=()=>{}; R.rebuildTerrain();
+    R.rockMass=()=>{}; R.rockScree=()=>{}; R.oreSlabs=()=>{}; R.rebuildTerrain();
     const off = R.terrainCache.getContext('2d').getImageData(0,0,px,px).data;
     for (const t of [T.FOREST, T.FERTILE]) {
       [Sprites.terrain[t], Sprites.terrainMed[t], Sprites.terrainFull[t], Sprites.terrainRare[t]] = keep[t];
     }
-    R.rockMass=rm; R.rockScree=rs;
+    R.rockMass=rm; R.rockScree=rs; R.oreSlabs=os;
     R.forestStampBand = fsb; R.forestStampsNear = fsn;
     const sample = (n2) => {
       const at = kindAt[n2];
@@ -869,7 +884,15 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
         sum += dl; if (dl > 18) far++; }
       return { farPct: far/(TL*TL), meanDelta: sum/(TL*TL) };
     })();
-    const names = ['FOREST','HILLS','FERTILE'];
+    /* A DEPOSIT IS EXEMPT (the referee's ruling). This rule exists so that
+       ground which blocks cannot read as walkable meadow, and a wood and a
+       crop are walls of timber and stalk that genuinely fill their tile. A
+       stone deposit is scattered rock with grass between — the referee chose
+       that picture over a paved sheet, having rejected the sheet twice and
+       every ground fill tried under it. It is the one blocked terrain the
+       floor does not hold, and it is named here rather than quietly dropped
+       so the exemption is a decision on the record and not an oversight. */
+    const names = ['FOREST','FERTILE'];
     const blocked = names.map(n => Object.assign({ n }, sample(n)));
     // …and the cue itself must be DERIVED from the movement rule, not a list
     const cue = [];

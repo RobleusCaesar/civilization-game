@@ -1400,6 +1400,26 @@ orchard, scrub for a new continent) in the shipped forest's voice:
   never touched. Going dark AND saturated at a red hue is what reads as
   chocolate rather than soil, which is why the chroma cap matters more than
   the darkness does.
+- THE STONE DEPOSITS are a drawn kit, not a texture: four boulder piles at
+  three degrees of breakage (assets/terrain/trees/stone-l-a..l), laid out so
+  letter n, n+4 and n+8 are THE SAME ROCK whole, cracked and smashed — which
+  is what lets a tile keep its own stone and watch it come apart as it is
+  mined. Authored 64x48, shipped at half by integer box downscale, with the
+  interior cracks THICKENED one pixel first (a one-pixel fracture is half a
+  pixel at world scale and the box filter eats it). Stone is EXEMPT from the
+  tree mute: that transform calls a pixel grey only when it is near-neutral
+  AND light, so a slab’s dark outline fell through to the warm ramp and came
+  back brown. Outlines are floored onto ink[0] instead.
+  SPRINKLED, NEVER PILED, NOTHING UNDERNEATH (the referee’s ruling): a tile
+  carries a stone only if its land hash beats its eight neighbours’ — pure
+  per tile, terrain-blind, so no two stones can ever overlap and a repaint
+  of one tile can never change another’s stone. No ground is painted under
+  them: a speckled patch read as gravel, bare soil as mud, worn turf too
+  faint, a pale shelf as concrete. The deposit is scattered rock on meadow,
+  and land.mjs exempts it from the blocked-ground floor by name. The pass
+  runs AFTER the wood so a crown never lands on a stone, and it is wired
+  into BOTH of drawTileAt’s repaint routines — the batch one and the
+  single-tile one — which is the lesson of the day-long cache drift.
 - COMPOSITION. World-space stamping (forestLayoutAt/forestStampBand):
   continuous density from the enclosure field, y-sorted stamps across
   tile edges, an 8px shoreline setback with green between sand and

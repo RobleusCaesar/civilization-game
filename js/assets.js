@@ -772,7 +772,7 @@ const Assets = {
   mtnKitReady() { return !!(this.mtnKit.peak && this.mtnKit.peak.length); },
 
   _tryTreePiece(style, size, li) {
-    if (li >= 12) return;                         // letters a..l, the cascade stops at the first 404
+    if (li >= 18) return;                         // letters a..r, the cascade stops at the first 404
     const img = new Image();
     img.onload = () => { this.setTreePiece(style + '-' + size, img); this._tryTreePiece(style, size, li + 1); };
     img.onerror = () => { /* the catalog ends here — procedural fills the gaps */ };
@@ -922,6 +922,15 @@ const Assets = {
     const ramps = this._muteRamps();
     this._treesMuted = {};
     for (const key of Object.keys(this.trees)) {
+      /* STONE IS NOT MUTED. The mute exists to drag GENERATED FOLIAGE onto
+         the world ramps, and its family test calls a pixel grey only when it
+         is near-neutral AND light (C < 0.032, L > 0.42). A slab’s dark
+         outline is near-neutral but nowhere near light, so it fell through
+         to the warm ramp and came back BROWN — which is the raised-lip the
+         referee kept seeing under the deposits. The slabs are drawn against
+         the mountain master and are already on the world’s rock, so they
+         ship exactly as authored. */
+      if (key.startsWith('stone-')) { this._treesMuted[key] = this.trees[key].slice(); continue; }
       this._treesMuted[key] = this.trees[key].map((c, i) => {
         const m = this._muteCanvas(c, k, ramps);
         // FRUIT IS FAT AND BRIGHT (the referee's live report, and the same
@@ -1024,16 +1033,17 @@ const Assets = {
     }
     g.putImageData(d, 0, 0);
   },
-  /* THE THREE STAGES OF A WORKED DEPOSIT. The stone catalog carries slabs
-     at every degree of breakage, and which is which was read off the art,
-     not guessed at from a pixel count: a hairline in an otherwise whole
-     face and a slab split clean in two have nearly identical dark-pixel
-     shares, so no simple measure tells them apart. Letters map to the
-     cascade’s own load order — each letter contributes a piece AND its
-     mirror, so letter n owns entries 2n and 2n+1. Anything the catalog
-     does not carry drops out, and a stage left with nothing falls back to
-     the whole set, so a shorter catalog degrades instead of blanking. */
-  SLAB_STAGES: ['gijh', 'aklb', 'cdfe'],
+  /* THE THREE STAGES OF A WORKED DEPOSIT. The catalog ships six rocks at
+     three degrees of breakage — whole, cracked, smashed apart by the pick —
+     laid out so that letter n, n+6 and n+12 are THE SAME ROCK. That is what
+     makes the wear read: a tile keeps its own stone and watches it come
+     apart, instead of swapping to a different one each third.
+     Letters map to the cascade’s own load order, and each letter contributes
+     a piece AND its mirror, so letter n owns entries 2n and 2n+1. Anything
+     the catalog does not carry drops out, and a stage left with nothing
+     falls back to the whole set, so a shorter catalog degrades instead of
+     blanking. */
+  SLAB_STAGES: ['abcd', 'efgh', 'ijkl'],
   slabStage(wear) {
     const all = this._muted('stone-l');
     if (!all || !all.length) return null;

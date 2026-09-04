@@ -1112,6 +1112,16 @@ const BLOCK_TERR = (() => {
   // friend and foe alike; that's the tradeoff of digging one. Ranged fire is
   // distance-based, so archers/siege still shoot over them: only movement is
   // blocked.
+  /* A STONE DEPOSIT STILL BLOCKS, and that was a measured choice. The drawn
+     deposit is scattered stone with grass between (the referee’s pick over
+     a paved sheet), which makes blocking it the one place the drawn world
+     understates the map. Letting it through was tried — the honest fix on
+     paper — and tests/variants.mjs showed the rival collapsing on the
+     steppe (5 hands by day 45 down to 1): the deposits are part of the
+     terrain that shapes its early game. So HILLS stays here, and the
+     readability floor in tests/land.mjs exempts deposits BY NAME instead of
+     pretending they meet it. If deposits ever stop blocking, re-run the
+     steppe before believing it. */
   for (const t of [T.WATER, T.MOUNTAIN, T.FOREST, T.HILLS, T.FERTILE, T.TRENCH, T.MOAT]) a[t] = 1;
   return a;
 })();

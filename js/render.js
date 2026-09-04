@@ -521,10 +521,11 @@ const LAND = {
    Every dial for the mountain rewrite. See R.mtnRegions for the architecture;
    the short version is that a mountain is one OBJECT with a traced outline and
    an internal height field, not a grid of tiles. */
-/* the grain of the exposed-bedrock patch under a deposit slab: lattice
-   cycles per tile, so the patch edge crosses tile borders instead of
-   stopping on them */
-const MTN_ORE_GRAIN = 2.4;
+
+/* how deep into a deposit the second stone starts being laid — the fringe
+   keeps a single stone in the grass, the heart becomes a sheet */
+/* how many of the neighbourhood-winning tiles carry a stone */
+const ORE_SPRINKLE = 1;       // …of those, how many carry one (the peak rule already spaces them)
 
 const MTN = {
   /* SIZE CLASSES, in cells. A single tile straining to look like a mountain
@@ -1518,85 +1519,67 @@ const R = {
     return Math.max(0, Math.min(1, 1 - amt[i] / max[i]));
   },
 
+  /* THE DEPOSIT: STONES SPRINKLED ON THE GROUND, AND NOTHING ELSE.
+
+     THE STONES ARE SPRINKLED, NEVER PILED. A tile carries a stone only if
+     its own hash is the highest in its neighbourhood — a local peak, which
+     is pure per tile and needs no bookkeeping, and which by construction
+     puts every stone at least a tile from the next. Two can therefore never
+     overlap however they are jittered, and a deposit reads as scattered
+     rock rather than a paved sheet.
+
+     NOTHING IS PAINTED UNDER THEM. A deposit blocks movement, and land.mjs
+     held blocked ground to 80% of its tile so the drawn world could not say
+     walkable about ground that is not. One of these plates carries about
+     half a tile and scattered stones carry far less, so four ground fills
+     were tried to make up the difference — speckled stone, bare soil, worn
+     turf, a pale rock shelf — and every one of them was a large flat area
+     competing with the stone that is supposed to be the subject. The
+     referee’s ruling is that a deposit is scattered stone on meadow and
+     the floor does not apply to it; land.mjs records that where it used to
+     hold the rule.
+
+     AND IT RUNS AFTER THE WOOD, so a crown that overhangs a deposit lands
+     behind the stone rather than on top of it. */
+  oreSlabs(g, x, y, terr) {
+    if (terr[MapGen.idx(x, y)] !== T.HILLS) return;
+    if (window.Assets && Assets.terrainImg(T.HILLS, 0)) return;   // supplied art wins, as everywhere
+    const slabs = (typeof Assets !== 'undefined' && Assets.slabStage) ? Assets.slabStage(this.oreWear(x, y)) : null;
+    if (!slabs || !slabs.length) return;
+    const TL = CFG.TILE, W = CFG.W, H = CFG.H;
+    const hill = (ox, oy) => {
+      const nx = x + ox, ny = y + oy;
+      return nx >= 0 && ny >= 0 && nx < W && ny < H && terr[ny * W + nx] === T.HILLS;
+    };
+    /* ONE STONE, ON THE TILES THAT WIN THEIR OWN NEIGHBOURHOOD — and the
+       contest is decided by the LAND HASH ALONE, never by which neighbours
+       happen to be deposit. Reading the neighbours’ terrain made a tile’s
+       stone depend on ground a repaint of that tile never touches: quarry
+       one tile and a neighbour two away silently gained or lost its stone,
+       outside the ring the repaint resets, so the cache drifted from a fresh
+       bake. A fixed field is pure per tile, still puts every stone at least
+       a tile from the next, and repaints exactly. */
+    const me = this._lh(x, y, 181);
+    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+      if (!ox && !oy) continue;
+      if (this._lh(x + ox, y + oy, 181) > me) return;    // a neighbour carries it instead
+    }
+    const h = (x * 73856093 ^ y * 19349663) >>> 0;
+    const art = slabs[(h >>> 3) % slabs.length];
+    const cx = x * TL + 8 + ((h >>> 5) % (TL - 16));
+    const foot = y * TL + 14 + ((h >>> 11) % (TL - 12));
+    g.drawImage(art, cx - (art.width >> 1), foot - art.height);
+  },
+
   rockMass(g, x, y, terr) {
     if (terr[MapGen.idx(x, y)] !== T.HILLS) { this.rockScree(g, x, y, terr); return; }
     if (window.Assets && Assets.terrainImg(T.HILLS, 0)) return;   // supplied art wins, as everywhere
     const TL = CFG.TILE, W = CFG.W, H = CFG.H, d = this.hillField();
-    /* THE SLAB DOOR (the referee’s flat-bedrock pick): with the stone
-       catalog installed a deposit tile lays a cracked slab flush with the
-       turf — rock BENEATH the ground, not boulders on it, and not-gold at
-       a glance.
-       ONE SLAB TO A TILE. Stacking two and three of them filled the tile
-       corner to corner, and neighbouring tiles then butted their sheets
-       together into long straight seams — a drawn grid, which is the one
-       thing this whole layer exists to avoid. A single slab, jittered well
-       off centre and mirrored on a hash, leaves grass between the stones
-       and no two edges in line.
-       AND IT WEARS AS IT IS MINED. A felled wood drops its stand; a deposit
-       had nothing to show for the work. The catalog carries slabs at three
-       degrees of breakage, so a tile picks its stage from how much of its
-       own stock is gone — whole for the first third, split for the second,
-       shattered for the last — and a worked deposit reads as worked from
-       across the map. No catalog: the boulder field below stands untouched. */
-    const slabs = (typeof Assets !== 'undefined' && Assets.slabStage) ? Assets.slabStage(this.oreWear(x, y)) : null;
-    if (slabs && slabs.length) {
-      const h = (x * 73856093 ^ y * 19349663) >>> 0;
-      const dep = d[y * W + x], AP = ART.PALETTE;
-      /* THE BEDROCK THE SLAB BREAKS THROUGH. One slab to a tile is what
-         kills the seams, but a lone slab covers barely a quarter of the
-         tile — and this ground BLOCKS, so leaving the rest reading as open
-         meadow is exactly the lie the readability rule forbids (land.mjs
-         holds blocked ground to 80% of its tile). The rest of the cover is
-         the rock itself showing through the turf: a patch of scraped stony
-         ground whose edge is read from the world-space lattice, so it never
-         lands on a tile boundary and never draws a straight line. How much
-         of the tile it takes follows the deposit’s own depth — the heart of
-         a deposit is a near-continuous sheet, the fringe is broken ground. */
-      if (!this._latOne) this.landLattices();
-      const sub = TL / 32, cov = Math.max(0.45, Math.min(0.94, 0.60 + dep * 0.20));
-      /* …and it FRAYS toward open ground. Filling a tile corner to corner
-         put the deposit’s silhouette back on the tile boundary wherever it
-         met grass — a 34px straight run against the 12px the outline rule
-         allows. Cover falls away toward any side with no deposit behind it,
-         so the sheet breaks up before it reaches the edge and the boundary
-         is drawn by the lattice, never by the grid. */
-      const hillNb = (ox, oy) => { const nx = x + ox, ny = y + oy;
-        return nx >= 0 && ny >= 0 && nx < W && ny < H && terr[ny * W + nx] === T.HILLS; };
-      const opW = !hillNb(-1, 0), opE = !hillNb(1, 0), opN = !hillNb(0, -1), opS = !hillNb(0, 1);
-      // the deposit reads as a FIND, so its ground takes the light end of the
-      // deposit ramp — the dark end put it below the brightness the resource
-      // rule holds it to, and a dark patch reads as a crevice, not a seam
-      const gr = [AP.oreD[2], AP.oreD[3], AP.oreD[4]];
-      for (let j2 = 0; j2 < 32; j2++) for (let i2 = 0; i2 < 32; i2++) {
-        let near = 32;
-        if (opW && i2 < near) near = i2;
-        if (opE && 31 - i2 < near) near = 31 - i2;
-        if (opN && j2 < near) near = j2;
-        if (opS && 31 - j2 < near) near = 31 - j2;
-        const fray = cov * (0.28 + 0.72 * Math.min(1, near / 11));
-        if (this._latRead(this._latOne.rock, (x + i2 / 32) * MTN_ORE_GRAIN, (y + j2 / 32) * MTN_ORE_GRAIN) > fray) continue;
-        // the TONE is hashed in 2px CLUMPS, not per pixel: per-pixel came
-        // out as loose gravel, and a fine lattice aliased into stripes —
-        // small stones is what stone showing through turf looks like
-        const t2 = this._lh((x * 32 + i2) >> 1, (y * 32 + j2) >> 1, 71);
-        g.fillStyle = gr[t2 < 0.3 ? 0 : t2 < 0.68 ? 1 : 2];
-        g.fillRect(x * TL + i2 * sub, y * TL + j2 * sub, sub, sub);
-      }
-      const art = slabs[(h >>> 3) % slabs.length];
-      // well off centre, and never the same offset as the tile next door:
-      // it is the jitter that keeps two slabs from lining up on a seam
-      const cx = x * TL + 8 + ((h >>> 5) % (TL - 16));
-      const foot = y * TL + 12 + ((h >>> 11) % (TL - 14));
-      g.drawImage(art, cx - (art.width >> 1), foot - art.height);
-      // …and a few loose chips at the skirt, so the stone frays into the
-      // grass instead of ending on a sprite edge
-      g.fillStyle = '#88867b';
-      for (let ci = 0; ci < 3; ci++) {
-        const hc = (h ^ Math.imul(ci + 9, 0x85EBCA6B)) >>> 0;
-        g.fillRect(x * TL + (hc % 28) + 2, y * TL + ((hc >>> 7) % 26) + 4, 2, 1);
-      }
-      return;
-    }
+    /* the DRAWN DEPOSIT is not laid here: it runs in its own pass after the
+       wood (R.oreSlabs), so a crown never lands on top of a stone. What is
+       left in rockMass is the procedural boulder field, for a world with no
+       stone catalog on disk. */
+    if (typeof Assets !== 'undefined' && Assets.slabStage && Assets.slabStage(0)) return;
     const step = LAND.ROCK_STEP, jit = LAND.ROCK_JIT;
     // depth in TILES at a fractional tile position — bilinear over tile centres
     const depth = (wx, wy) => {
@@ -5400,6 +5383,12 @@ const R = {
        way round) and BEFORE the decals and the hue coat, so the fringe
        ferns still read in front and the tint still lands on the leaves. */
     band((a, b) => this.clipBoard(g, () => this.forestStampBand(g, a, b)));
+    // …and the DRAWN DEPOSIT last of the ground passes: a crown that
+    // overhangs a stone belongs behind it, not painted across it
+    band((a, b) => this.clipBoard(g, () => {
+      const t = terr();
+      for (let y = a; y < b; y++) for (let x = 0; x < W; x++) this.oreSlabs(g, x, y, t);
+    }));
     band((a, b) => this.clipBoard(g, () => {
       for (let y = a; y < b; y++) for (let x = 0; x < W; x++) this.landDecals(g, x, y, terr());
     }));
@@ -5656,6 +5645,7 @@ const R = {
         // stones, before the decals — trees based in the reset or one ring
         // out, y-sorted; the clip keeps it byte-equal to a rebake
         this.forestStampsNear(g, groundL, terr);
+        for (const k of decoL) this.oreSlabs(g, k % W, (k / W) | 0, terr);
         for (const k of decoL) this.landDecals(g, k % W, (k / W) | 0, terr);
         // the hue coat paints inside its own tile only, so the RESET set is
         // exactly the set that takes one coat — never the ring
@@ -5718,6 +5708,17 @@ const R = {
           if (MapGen.inB(nx, ny)) this.rockMass(g, nx, ny, terr);
         }
         this.forestStampsNear(g, inner5, terr);   // the bake's layer slot: after stones, before decals
+        /* THE DEPOSIT, in this path too. drawTileAt has two repaint routines
+           — the batch one above and this single-tile one — and the deposit
+           pass was wired into only the first. A shore repaint therefore reset
+           a stone inside its ring and ran every other deco pass over the
+           bare ground but never this one, and the cache drifted one whole
+           stone from a fresh bake. Found by tracing the repaint of a single
+           shore tile pass by pass, not by reasoning about rings. */
+        for (let oy = -3; oy <= 3; oy++) for (let ox = -3; ox <= 3; ox++) {
+          const nx = x + ox, ny = y + oy;
+          if (MapGen.inB(nx, ny)) this.oreSlabs(g, nx, ny, terr);
+        }
         for (let oy = -3; oy <= 3; oy++) for (let ox = -3; ox <= 3; ox++) {
           const nx = x + ox, ny = y + oy;
           if (MapGen.inB(nx, ny)) this.landDecals(g, nx, ny, terr);
