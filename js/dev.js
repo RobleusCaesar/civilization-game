@@ -1172,10 +1172,14 @@
       for (const tName of Assets.formationTerrains())
         for (const stem of Assets.FORMATION_CATALOG[tName])
           out.push({ value: 'fm|' + tName + '|' + stem, label: Assets.formationName(stem) });
+      // the deposit stone, so a rock can be assigned from the picker even
+      // when the file arrived under a name the parser does not know
+      out.push({ value: 'st|', label: 'rock (deposit stone)' });
       return out;
     },
     // inject whatever the picker/panel dropdown's value string names
     _injectByValue(v, img, name) {
+      if (v === 'st|') return this.injectStone(img, name);
       if (v.indexOf('fm|') === 0) { const [, terrain, stem] = v.split('|'); return this.injectFormation(terrain, stem, img, name); }
       if (v.indexOf('p|') === 0) { const [, tribe, i] = v.split('|'); return this.injectCampProp(tribe, +i, img, name); }
       if (v.indexOf('c|') === 0) return this.injectCamp(v.slice(2), img, name);
