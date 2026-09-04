@@ -616,6 +616,11 @@ const MTN = {
   KIT_SHORE_GAP: 1,      // tiles of grass kept between the art and any water
   KIT_SHADOW: 10,        // px of ground shadow cast south of a piece's foot
   KIT_SHADOW_A: 0.42,
+  KIT_EDGE_TREES: 0.55,  // share of 2x2 apron patches that carry a stand
+  KIT_EDGE_CLUMP: 5,     // trees per wooded apron tile, on top of a floor of 2
+  KIT_EDGE_BAND: 14,     // px band inside the apron tile the stand plants in
+  KIT_EDGE_REACH: 2,     // tiles out from a piece's ground contact the apron covers
+  KIT_EDGE_ROCK: 0.25,   // share of a tile the art must cover for it to count as rock
   OUTCROP_N: 4,          // boulders per cell of a 1-2 cell outcrop
   OUTCROP_MIN: 10,
   OUTCROP_MAX: 14,
@@ -4373,6 +4378,111 @@ const R = {
     return plan.length ? plan : null;
   },
 
+  /* A WOOD AT THE FOOT. Real forest tiles already draw over the rock where
+     they stand (THE WOOD IN FRONT, below), but a massif rising straight out
+     of bare meadow reads as dropped onto the map. So the ground around the
+     rock grows a scatter of small stands whose crowns lap over its bottom
+     edge, the way a wood at the foot of a mountain does.
+     ANCHORED TO THE ART, NOT THE FOOTPRINT. A region's tiles and its drawn
+     rock are not the same shape — the solver places a handful of pieces
+     inside a footprint that can be several times their span, so an apron
+     measured from the region would seed woods in open meadow nowhere near a
+     mountain. The apron is measured from `hits`, the per-tile record of
+     where opaque rock actually landed: the open, dry tiles just south of
+     and beside a tile the art really covers, never behind it. That also
+     settles the depth for free — nothing in the region plants a foot south
+     of its own art — so the stands need no special ordering.
+     Art only. No tile becomes T.FOREST, none of this is harvestable and
+     none of it blocks; the stands claim no cover, so nothing standing among
+     them is hidden, and the map answers exactly as it did. The trees are
+     ordinary tree records handed to _stampForest, so they take the same
+     species, the same catalog art and the same procedural fallback as every
+     other tree in the world. One strip per row keeps the frame paying for a
+     handful of blits. */
+  mtnEdgeTrees(hits, placed, terrK, banned, strips) {
+    if (!(MTN.KIT_EDGE_TREES > 0)) return;
+    const TL = CFG.TILE, W = CFG.W, H = CFG.H;
+    const KINDS = Sprites.TREE_KINDS;
+    const need = TL * TL * MTN.KIT_EDGE_ROCK;
+    const rock = new Set();
+    for (const [k, n] of hits) if (n >= need) rock.add(k);
+    const byRow = new Map(), done = new Set();
+    const reach = MTN.KIT_EDGE_REACH | 0;
+    /* THE GROUND CONTACT, not the whole silhouette. A peak is two hundred
+       pixels of rock filed against the tiles it crosses, most of them high
+       on the mountain; an apron measured from those would seed woods in
+       mid-air behind the range. What a wood grows at is where the piece
+       MEETS THE GROUND — its foot row, across the columns it spans — so
+       the sweep starts there and reaches a tile or two out and down. */
+    for (const q of placed) {
+      const fr = Math.min(H - 1, Math.max(0, ((q.foot - 1) / TL) | 0));
+      const c0 = (q.x / TL) | 0, c1 = ((q.x + q.p.piece.w) / TL) | 0;
+      for (let tx = c0 - reach; tx <= c1 + reach; tx++)
+        for (let ay = fr; ay <= fr + reach; ay++) {
+          if (ay >= H - 1 || ay < 1 || tx < 1 || tx >= W - 1) continue;
+          const ak = ay * W + tx;
+          if (rock.has(ak) || done.has(ak)) continue;
+          done.add(ak);
+          const t0 = terrK[ak];
+          if (t0 === T.FOREST || banned(tx, ay)) continue;                    // open, dry ground the wood can take
+          if (this._lh(tx >> 1, ay >> 1, 181) > MTN.KIT_EDGE_TREES) continue; // stands, not an outline
+          const seed = ((this.landSeed() ^ Math.imul(tx + 31, 0x9E3779B1) ^ Math.imul(ay + 17, 0x85EBCA6B)) & 0x7fffffff) || 1;
+          const rng = ART.rng(seed);
+          const dom = KINDS[(Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) >>> 13) % KINDS.length];
+          const n = 2 + ((rng() * MTN.KIT_EDGE_CLUMP) | 0);
+          for (let i = 0; i < n; i++) {
+            const wx = tx * TL + 4 + ((rng() * (TL - 8)) | 0);
+            // high in the tile: the crowns lap over the bottom of the rock
+            const wy = ay * TL + 4 + ((rng() * MTN.KIT_EDGE_BAND) | 0);
+            const kind = rng() < 0.7 ? dom : KINDS[(rng() * KINDS.length) | 0];
+            const ramp = Sprites.treeRamp(kind, rng);
+            /* an OPEN stand: full crowns with visible trunks, the tier the
+               forest's own sparse fringe stands at. */
+            const rr = 7 + ((rng() * 2) | 0);
+            let a = byRow.get(ay);
+            if (!a) byRow.set(ay, a = []);
+            a.push({ wx, wy, rr, pickRr: rr >= 8 ? 8 : rr, kind, ramp });
+          }
+        }
+    }
+    const nRock = strips.length;                 // the stands scan the ROCK strips, not each other
+    for (const [row, trees] of byRow) {
+      let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+      for (const t of trees) {
+        const hw = 20, hh = 34;                              // room for the widest crown either tier draws
+        if (t.wx - hw < x0) x0 = t.wx - hw;
+        if (t.wx + hw > x1) x1 = t.wx + hw;
+        if (t.wy - hh < y0) y0 = t.wy - hh;
+        if (t.wy + 2 > y1) y1 = t.wy + 2;
+      }
+      const w = x1 - x0, h = y1 - y0;
+      if (w <= 0 || h <= 0) continue;
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.save(); g.translate(-x0, -y0);
+      this._stampForest(g, trees);
+      g.restore();
+      /* THE STAND DRAWS WITH THE ROCK IT HUGS. A piece is filed under the
+         row its foot lands in, but its body climbs a couple of hundred
+         pixels north of that, so a stand filed under its own row would be
+         painted over by any massif whose foot is further south — which,
+         beside a mountain, is most of them. A wood at the foot of a
+         mountain is in front of it: the stand takes the row of the
+         frontmost piece it overlaps, and draws just after it. This is the
+         same trade THE WOOD IN FRONT already makes for real forest tiles
+         standing against the rock. */
+      let row2 = row;
+      for (let s = 0; s < nRock; s++) {
+        const st = strips[s];
+        if (st.row > row2 && st.x < x1 && st.x + st.c.width > x0
+          && st.y < y1 && st.y + st.c.height > y0) row2 = st.row;
+      }
+      strips.push({ row: row2, x: x0, y: y0, c });
+    }
+  },
+
   /* ONE PIECE, ONE STRIP. The earlier version composited every piece into a
      region-sized canvas, masked that canvas to the footprint, then cut it
      back apart into row strips — three chances to slice a mountain on a
@@ -4507,6 +4617,10 @@ const R = {
     }
     if (!strips.length) return null;
     { const need = TL * TL * MTN.KIT_COVER_MIN; for (const [k, n] of hits) if (n >= need) cover.add(k); }
+    const nRockStrips = strips.length;           // the composite below measures ROCK, not the wood
+    this.mtnEdgeTrees(hits, placed, terrK, banned, strips);
+    strips.sort((a, b) => a.row - b.row);
+
     /* THE WOOD IN FRONT. Trees standing south of a piece's foot are nearer
        the camera than it is, so they draw over it; trees behind stay hidden.
        Stamped onto the piece's own strip, which is what the frame draws. */
@@ -4532,7 +4646,14 @@ const R = {
     c.width = cw; c.height = ch;
     const g = c.getContext('2d');
     g.imageSmoothingEnabled = false;
-    for (const st of strips) g.drawImage(st.c, st.x - bx0, st.y - by0);
+    /* THE COMPOSITE IS THE ROCK. Nothing draws it — the frame draws the
+       strips — but the mountain contract measures it, and what that
+       contract is about is where the ROCK may stand. The wood at the foot
+       is ordinary vegetation on ordinary ground, so it stays out of it. */
+    for (let s = 0; s < nRockStrips; s++) {
+      const st = strips[s];
+      g.drawImage(st.c, st.x - bx0, st.y - by0);
+    }
     return { c, x: bx0, y: by0, cover, kind: 'chain', box: r.box, strips };
   },
 

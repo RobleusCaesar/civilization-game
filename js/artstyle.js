@@ -14,7 +14,7 @@ const ART = (function () {
     grass:   ['#31491f', '#41652a', '#4d7c33', '#5a8f3c', '#6da04a'],
     leaf:    ['#1d3a17', '#2e5c25', '#3c6f2d', '#417a33', '#569244'],
     soil:    ['#3c2c16', '#57431f', '#6b5433', '#82683f'],
-    water:   ['#1c4258', '#265674', '#2e6b8a', '#4589ab', '#7fc0d8'],
+    water:   ['#17384f', '#1f4a69', '#275d7d', '#3a7599', '#5cabd2'],
     /* THE DEEP RAMP — the water body's shore-to-heart ramp (the Water &
        Shoreline Overhaul; R.paintWater), LIGHTEST FIRST because it runs
        from the waterline outward. SIXTEEN steps interpolated in OKLab so
@@ -37,14 +37,14 @@ const ART = (function () {
        water[0]'s own lightness without being water[0], which the swell
        contract counts as a trough scratch. `water` keeps its indexes,
        which are load-bearing across sprites, cards and the minimap. */
-    deep:    ['#6aa4ad', '#629da7', '#5996a3', '#518fa0', '#49889a', '#428195', '#3b7a92', '#34728f',
-              '#2e6b8a', '#2a6483', '#2a5d7b', '#265674', '#224f6d', '#224865', '#21425d', '#1d3b56'],
+    deep:    ['#5590a1', '#538999', '#4e8393', '#487c90', '#40768c', '#3a7087', '#346a84', '#2d6381',
+              '#275d7d', '#245677', '#235070', '#1f4a69', '#1c4462', '#1c3e5b', '#1b3953', '#18334d'],
     /* the second pale anchor, for the bench's A/B (LAND.DEEP_ALT): the same
        ramp with a TEALER light end (hue 201 rather than 208). Everything
        from step 8 down is identical — only the shallows differ, which is
        the only thing in question. */
-    deepAlt: ['#66a5a9', '#5e9ea3', '#5697a0', '#4d909d', '#468998', '#3f8293', '#387a91', '#33728f',
-              '#2e6b8a', '#2a6483', '#2a5d7b', '#265674', '#224f6d', '#224865', '#21425d', '#1d3b56'],
+    deepAlt: ['#548f9b', '#518894', '#4b8290', '#447b8d', '#3c7589', '#366f85', '#306882', '#2a6280',
+              '#275d7d', '#245677', '#235070', '#1f4a69', '#1c4462', '#1c3e5b', '#1b3953', '#18334d'],
     stone:   ['#4a4a44', '#6f6f66', '#8f8f86', '#adada2', '#c9c9bf'],
     ore:     ['#55544d', '#6f6e65', '#88867b', '#a09e91', '#b8b5a6', '#d0cdbe'],   // ORE boulders: light muted grey (lifted so deposits pop against the grass at a glance), cooler/greyer than the brown mountain `mrock` so they stay readable as mineable stone
     /* the DEPOSIT ramp — the ore knots that hug the mountain base draw in

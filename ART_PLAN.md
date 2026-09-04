@@ -1398,3 +1398,10 @@ orchard, scrub for a new continent) in the shipped forest's voice:
   same trees, fewer) with one young stand in four, small pieces on the
   packed lattice. Layer slot: after the stones, before the decals and
   the hue coat.
+  A drawn massif also grows its own wood: R.mtnEdgeTrees scatters stands on
+  the open ground around each placed piece's GROUND CONTACT (its foot row
+  across the columns it spans, never the tiles its tall body merely
+  crosses), and files each stand under the row of the rock it hugs so it
+  draws in front of it. Art only — no tile becomes forest and no stand
+  claims cover — and it stays out of the region composite, which the
+  mountain contract measures as ROCK.
