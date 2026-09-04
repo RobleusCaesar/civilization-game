@@ -16,7 +16,7 @@ const T = {
 
 const CFG = {
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 27,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 28,           // cache-buster on every art URL (?v=N) — bump when a PNG in
                        // v16: the gathering stations — lumber/quarry/lodge l1-l3
                        // as unmanned worked-yard scenes (structure at back,
                        // open stain front-center where the workers stand)

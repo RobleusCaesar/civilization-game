@@ -4241,6 +4241,17 @@ const R = {
     // the ground line goes on absolutely last, over everything's feet
     if (foots) bands.push({ up: 0, kind: 'foot' });
     let slot = 0, nPeaks = 0;
+    /* WHICH member of an only-one group this region gets, decided ONCE and
+       by the region's own seed. Left to the rotation alone the first member
+       always won and the second was never drawn at all: the exclusion only
+       bites after one is placed, so the later one never got a turn. */
+    const onlyPick = new Map();
+    for (const pl of (kit.peak || [])) {
+      if (!pl.only || onlyPick.has(pl.only)) continue;
+      const mates = (kit.peak || []).filter(q => q.only === pl.only);
+      onlyPick.set(pl.only, mates[(hsh(mates.length * 31, 71) * mates.length) | 0].stem);
+    }
+    const usedOnly = new Set();   // only-one groups already standing in this region
     for (const rank of bands) {
       let x = bx0, prevSaddle = false, any = false;
       while (x <= bx1) {
@@ -4265,6 +4276,12 @@ const R = {
         let piece = null, useFy = -1;
         for (let pi = 0; pi < pool.length; pi++) {
           const cand = pool[(start + pi) % pool.length];
+          /* a SPARING piece has to win a roll before it is even considered,
+             so it turns up here and there instead of carrying a whole range */
+          if (cand.rare < 1 && hsh(slot * 7 + pi, 53) > cand.rare) continue;
+          // …and at most one member of an ONLY-ONE group stands in a region:
+          // two pieces that are the same rock at the same size read as a copy
+          if (cand.only && (usedOnly.has(cand.only) || onlyPick.get(cand.only) !== cand.stem)) continue;
           /* CEIL, not round: a 168px piece is 5.25 tiles wide, and rounding
              down let a quarter-tile of rock hang past the footprint onto
              walkable ground — which is precisely what the honesty pin
@@ -4334,6 +4351,7 @@ const R = {
         }
         if (!piece) { x += 1; continue; }
         if (kind === 'peak') nPeaks++;
+        if (piece.only) usedOnly.add(piece.only);
         plan.push({ piece, kind, tx: x, fy: useFy, up: rank.up, front: kind === 'foot' || rank === bands[bands.length - (foots ? 2 : 1)] });
         prevSaddle = (kind === 'saddle');
         any = true; slot++;

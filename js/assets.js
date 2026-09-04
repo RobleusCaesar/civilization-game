@@ -610,7 +610,8 @@ const Assets = {
   _tryMtnPiece(kind, li) {
     if (li >= 16) return;                         // letters a..p; the cascade stops at the first 404
     const img = new Image();
-    img.onload = () => { this.setMtnPiece(kind, img); this._tryMtnPiece(kind, li + 1); };
+    const stem = kind + '-' + String.fromCharCode(97 + li);
+    img.onload = () => { this.setMtnPiece(kind, img, stem); this._tryMtnPiece(kind, li + 1); };
     img.onerror = () => { /* the kit ends here */ };
     img.src = this.mtnKitUrl(kind, String.fromCharCode(97 + li));
   },
@@ -619,7 +620,15 @@ const Assets = {
      canon allows (an integer box downscale, never a resample) */
   MTN_KIT_DIV: { roll: 2, hill: 2 },
   MTN_FLAT_TOP: 0.30,    // a peak wider than this a few rows below its top is a plateau
-  setMtnPiece(kind, img) {
+  /* PER-PIECE RULES, from the operator's own picks. RARE is how often a
+     piece may be chosen at all — one of the craggy peaks was asked for
+     'sparingly', and a piece that reads strongly should not carry a whole
+     range. ONLY_ONE names a group from which at most ONE member may appear
+     in any single region: the two small crags are the same rock at the same
+     size and standing them side by side reads as a copy-paste. */
+  MTN_KIT_RARE: { 'peak-h': 0.45 },
+  MTN_KIT_ONLY_ONE: { 'peak-i': 'smallcrag', 'peak-j': 'smallcrag' },
+  setMtnPiece(kind, img, stem) {
     if (!img || !img.width || !img.height) return false;
     const div = this.MTN_KIT_DIV[kind] || 1;
     const c = document.createElement('canvas');
@@ -727,10 +736,15 @@ const Assets = {
     const bb = (bx1 < 0) ? { x0: 0, y0: 0, x1: c.width - 1, y1: c.height - 1 }
       : { x0: bx0, y0: by0, x1: bx1, y1: by1 };
     const a = this.mtnKit[kind] || (this.mtnKit[kind] = []);
-    a.push({ c, w: c.width, h: c.height, foot, px, bb });
-    // tallest first: the placer tries big rock before small, and only drops
-    // to a knoll where a mountain will not fit
-    a.sort((p, q) => q.h - p.h);
+    a.push({ c, w: c.width, h: c.height, foot, px, bb, stem,
+      rare: (stem && this.MTN_KIT_RARE[stem]) || 1,
+      only: (stem && this.MTN_KIT_ONLY_ONE[stem]) || null });
+    /* TALLEST FIRST, then BY NAME. The placer tries big rock before small and
+       only drops to a knoll where a mountain will not fit — but pieces of
+       EQUAL height need a stable order too, or the pool ends up in whatever
+       sequence the images happened to decode in, and the same map draws
+       different mountains after a reload. The stem is the tiebreak. */
+    a.sort((p, q) => (q.h - p.h) || String(p.stem || '').localeCompare(String(q.stem || '')));
     this.mtnKitRev++;
     if (typeof R !== 'undefined' && R.rebakeAll) { R._mtnArt = null; R._mtnLayerKey = ''; R._mtnDirty = true; }
     return true;
