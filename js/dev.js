@@ -62,6 +62,11 @@
         const pf = Assets.parseFormationStem(stem, null);
         return pf ? { kind: 'formation', terrain: pf.tName, stem } : null;
       }
+      /* THE DEPOSIT STONE: rock-{anything}.png. One PNG replaces the whole
+         stone catalog, so every deposit on the map draws that rock — which
+         is the point: candidates get judged against each other in play, one
+         drop at a time, keeping whatever descriptive name they came with. */
+      if (/^rock-[a-z0-9][a-z0-9-]*[.]png$/.test(lower)) return { kind: 'stone' };
       // terrain cover: {terrain}-{wild|kept|accent}[-N].png ships under
       // assets/terrain/cover/{terrain}/{slot}[-N].png — the drop carries the
       // terrain in its name because a basename has no directory
@@ -126,6 +131,17 @@
     // override/revert bookkeeping. A drop REPLACES the slot's whole frame set
     // (an artist previewing wants their file, not their file appended to the
     // shipped one); revert restores whatever the startup cascade had loaded.
+    // one dropped rock, standing in for the whole deposit catalog
+    injectStone(img, name) {
+      const k = 'stone-l';
+      const prior = (Assets.trees[k] || []).slice();
+      if (!Assets.setStoneArt(img)) return false;
+      if (!this._saved[k]) this._saved[k] = { stone: prior };
+      this.overrides[k] = name || 'rock.png';
+      if (window.R && R.rebuildTerrain) R.rebuildTerrain();
+      this._renderPanel();
+      return true;
+    },
     injectCover(tName, slot, img, name) {
       const k = Assets.coverSlotKey(tName, slot);
       const prior = { arr: (Assets.cover[tName] || {})[slot] || null, loaded: !!Assets.loaded[k] };
@@ -662,6 +678,15 @@
         if (this.formationPin && this.formationPin.stem === stem) this.setFormationPin(null, null);
         delete this._saved[k];
         delete this.overrides[k];
+        this._renderPanel();
+        return true;
+      }
+      // the DEPOSIT branch — one key, the whole stone catalog
+      if (k === 'stone-l') {
+        Assets.restoreStoneArt(s.stone);
+        delete this._saved[k];
+        delete this.overrides[k];
+        if (window.R && R.rebuildTerrain) R.rebuildTerrain();
         this._renderPanel();
         return true;
       }
@@ -1282,6 +1307,7 @@
           else if (slot.kind === 'camp') DevArt.injectCamp(slot.tribe, img, f.name);
           else if (slot.kind === 'wonder') DevArt.injectWonder(slot.wkey, img, f.name);
           else if (slot.kind === 'relic') DevArt.injectRelic(slot.rkey, img, f.name);
+          else if (slot.kind === 'stone') DevArt.injectStone(img, f.name);
           else if (slot.kind === 'cover') DevArt.injectCover(slot.tName, slot.slot, img, f.name);
           else if (slot.kind === 'formation') DevArt.injectFormation(slot.terrain, slot.stem, img, f.name);
           else DevArt.inject(slot.id, slot.lv, img, f.name);

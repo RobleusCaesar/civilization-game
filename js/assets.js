@@ -778,6 +778,26 @@ const Assets = {
     img.onerror = () => { /* the catalog ends here — procedural fills the gaps */ };
     img.src = this.treeUrl(style, size, String.fromCharCode(97 + li));
   },
+  /* THE DEPOSIT SWAP (?dev=1 only, DevArt.injectStone). One dropped PNG
+     REPLACES the whole stone catalog, so every deposit on the map shows
+     that one rock and a candidate can be judged in play in a few seconds
+     rather than after a build. All three wear stages fall back to it too:
+     slabStage keeps only the letters the catalog actually carries, and with
+     one letter in it every stage resolves to the same piece.
+     In memory only — nothing is written, and a refresh restores the ship. */
+  setStoneArt(img) {
+    if (!img || !img.width || !img.height) return false;
+    const prior = this.trees['stone-l'];
+    this.trees['stone-l'] = [];
+    if (!this.setTreePiece('stone-l', img)) { this.trees['stone-l'] = prior; return false; }
+    this._slabCache = null;
+    return true;
+  },
+  /* …and back to the shipped catalog. */
+  restoreStoneArt(prior) {
+    this.trees['stone-l'] = prior || [];
+    this.treesRev++; this._muteK = -1; this._slabCache = null;
+  },
   setTreePiece(key, img) {
     if (!img || !img.width || !img.height) return false;
     const cut = (flip) => {
