@@ -618,7 +618,11 @@ const Assets = {
   /* the low bands are drawn at half size — small rolling ground should
      READ small beside a peak, and halving is the only resize the density
      canon allows (an integer box downscale, never a resample) */
-  MTN_KIT_DIV: { roll: 2, hill: 2 },
+  /* Halving is for pieces authored at double density. The foothills are
+     drawn at world scale and are MEANT to stand tall enough to cover the
+     bottom of the mountains behind them — halving them turned a 136px hill
+     into a 68px smudge at the foot of a 168px peak. */
+  MTN_KIT_DIV: { roll: 2 },
   MTN_FLAT_TOP: 0.30,    // a peak wider than this a few rows below its top is a plateau
   /* PER-PIECE RULES, from the operator's own picks. RARE is how often a
      piece may be chosen at all — one of the craggy peaks was asked for
@@ -736,7 +740,7 @@ const Assets = {
     const bb = (bx1 < 0) ? { x0: 0, y0: 0, x1: c.width - 1, y1: c.height - 1 }
       : { x0: bx0, y0: by0, x1: bx1, y1: by1 };
     const a = this.mtnKit[kind] || (this.mtnKit[kind] = []);
-    a.push({ c, w: c.width, h: c.height, foot, px, bb, stem,
+    a.push({ c, w: c.width, h: c.height, foot, bb, stem,
       rare: (stem && this.MTN_KIT_RARE[stem]) || 1,
       only: (stem && this.MTN_KIT_ONLY_ONE[stem]) || null });
     /* TALLEST FIRST, then BY NAME. The placer tries big rock before small and
@@ -748,6 +752,22 @@ const Assets = {
     this.mtnKitRev++;
     if (typeof R !== 'undefined' && R.rebakeAll) { R._mtnArt = null; R._mtnLayerKey = ''; R._mtnDirty = true; }
     return true;
+  },
+  /* THE PIXELS ARE LENT, NOT KEPT. The chain composites by hand so it can
+     tear each piece's exposed edges, which needs the raw pixels — but with
+     twenty-six pieces in the kit, holding an ImageData for every one of them
+     for the life of the run cost enough memory to show up in the frame
+     budget (tests/land.mjs caught it on the water pass, of all things). They
+     are read on demand now and released once the layer is built; a bake
+     happens about once a map, so the re-read is free. */
+  mtnPx(p) {
+    if (p.px) return p.px;
+    try { p.px = p.c.getContext('2d').getImageData(0, 0, p.w, p.h).data; }
+    catch (e) { p.px = null; }
+    return p.px;
+  },
+  releaseMtnPx() {
+    for (const k in this.mtnKit) for (const p of this.mtnKit[k]) p.px = null;
   },
   mtnKitReady() { return !!(this.mtnKit.peak && this.mtnKit.peak.length); },
 

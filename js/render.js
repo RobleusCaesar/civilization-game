@@ -4075,6 +4075,8 @@ const R = {
       }
     }
     this._mtnStrips.sort((a, b) => a.row - b.row);
+    // the borrowed pixel buffers go back now the layer is built
+    if (typeof Assets !== 'undefined' && Assets.releaseMtnPx) Assets.releaseMtnPx();
   },
   mtnKitOn() {
     return !!(MTN.KIT && typeof Assets !== 'undefined' && Assets.mtnKitReady && Assets.mtnKitReady());
@@ -4416,7 +4418,7 @@ const R = {
     const strips = [], cover = new Set(), hits = new Map();
     let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
     for (const q of placed) {
-      const pc = q.p.piece, sp = pc.px;
+      const pc = q.p.piece, sp = Assets.mtnPx(pc);
       const sw = pc.w, sh = pc.h + (MTN.KIT_SHADOW | 0);
       const sc = document.createElement('canvas');
       sc.width = sw; sc.height = sh;
@@ -4472,10 +4474,36 @@ const R = {
             hits.set(k, (hits.get(k) || 0) + 1);
           }
       }
+      /* TRIM THE STRIP TO ITS ROCK. Each piece is authored as a sticker with
+         a wide empty margin on every side — that framing is what stops the
+         art being cropped, but blitting the margin every frame is pure waste,
+         and with sixteen full-height foothills in the kit it showed up in the
+         frame budget. The strip carries only the opaque box, and its origin
+         moves to match. */
+      let tx0 = sw, ty0 = sh, tx1 = -1, ty1 = -1;
+      {
+        const td = sg.getImageData(0, 0, sw, sh).data;
+        for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++)
+          if (td[(y * sw + x) * 4 + 3]) {
+            if (x < tx0) tx0 = x; if (x > tx1) tx1 = x;
+            if (y < ty0) ty0 = y; if (y > ty1) ty1 = y;
+          }
+      }
+      if (tx1 < 0) continue;                       // nothing survived the bans
+      let outC = sc, ox = q.x, oy = q.y;
+      if (tx0 > 0 || ty0 > 0 || tx1 < sw - 1 || ty1 < sh - 1) {
+        const tw = tx1 - tx0 + 1, th = ty1 - ty0 + 1;
+        const tc = document.createElement('canvas');
+        tc.width = tw; tc.height = th;
+        const tg = tc.getContext('2d');
+        tg.imageSmoothingEnabled = false;
+        tg.drawImage(sc, tx0, ty0, tw, th, 0, 0, tw, th);
+        outC = tc; ox = q.x + tx0; oy = q.y + ty0;
+      }
       const row = Math.min(H - 1, Math.max(0, ((q.foot - 1) / TL) | 0));
-      strips.push({ row, x: q.x, y: q.y, c: sc });
-      if (q.x < bx0) bx0 = q.x; if (q.x + sw > bx1) bx1 = q.x + sw;
-      if (q.y < by0) by0 = q.y; if (q.y + sh > by1) by1 = q.y + sh;
+      strips.push({ row, x: ox, y: oy, c: outC });
+      if (ox < bx0) bx0 = ox; if (ox + outC.width > bx1) bx1 = ox + outC.width;
+      if (oy < by0) by0 = oy; if (oy + outC.height > by1) by1 = oy + outC.height;
     }
     if (!strips.length) return null;
     { const need = TL * TL * MTN.KIT_COVER_MIN; for (const [k, n] of hits) if (n >= need) cover.add(k); }
