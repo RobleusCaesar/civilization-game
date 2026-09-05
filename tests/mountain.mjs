@@ -237,14 +237,21 @@ const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' 
 }
 
 /* ---- 4. GAMEPLAY TRUTH IS TILE-BASED --------------------------------- */
-/* ---- EVERY MOUNTAIN TILE SHOWS ROCK (the operator's day-44 save: a
-   villager stopped by "nothing", which was seven rows of mountain drawn as
-   meadow). The kit's peak cap was shared across the ranks and spent by the
-   deep ones, so the range's southern edge got no pieces; and the kit has
-   nothing narrower than five tiles, so a narrow tail or the stair under a
-   piece's foot took none either. Both are held here on a highland world:
-   the layer's own record of where rock landed (R._mtnShow, KIT_SHOW_MIN of
-   a tile, or an outcrop's boulders) must mark every mountain cell. ---- */
+/* ---- THE KIT DRESSES THE RANGE (the operator's day-44 save: a villager
+   stopped by "nothing", which was seven rows of mountain drawn as meadow).
+   The kit's peak cap was shared across the ranks and spent by the deep
+   ones, so the range's southern edge got no pieces; held here on a
+   highland world through the layer's own record of where rock landed
+   (R._mtnShow, KIT_SHOW_MIN of a tile), against a floor per world set
+   from what the kit honestly reaches there: the broken regime measured
+   25% on the save's world and 42% on mtn40; the repaired planner reaches
+   82% and 69%, and the pieces are five tiles wide, so a narrow or
+   diagonal range keeps a share of cells no piece can stand on. The kit has nothing narrower than five tiles, so a narrow
+   tail or the stair under a piece's foot takes none — and by the
+   referee's ruling of 2026-09-05 those cells, and one- or two-cell
+   outcrops, stay BARE rather than wear procedural boulders until crag art
+   is drawn. They are counted, not hidden: the number is the size of that
+   debt. ---- */
 {
   const p = await page();
   const v = await p.evaluate(new Function(`
@@ -254,16 +261,22 @@ const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' 
       for (let i = 0; i < S.map.explored.length; i++) { S.map.explored[i] = 1; if (S.map.seenTerrain) S.map.seenTerrain[i] = S.map.terrain[i]; }
       R.rebuildTerrain(); R._mtnDirty = true; R.mtnStrips();
       const W = CFG.W, t = S.map.terrain, show = R._mtnShow;
-      let cells = 0, bare = 0; const ex = [];
-      for (let k = 0; k < t.length; k++) { if (t[k] !== T.MOUNTAIN) continue; cells++;
-        if (!show || !show[k]) { bare++; if (ex.length < 5) ex.push([k % W, (k / W) | 0]); } }
-      out[seed] = { world: S.map.worldName, cells, bare, ex };
+      let cells = 0, bare = 0, outcrop = 0, worst = 1;
+      for (const r of R.mtnRegions()) {
+        const shown = r.cells.filter(k => show && show[k]).length;
+        cells += r.cells.length;
+        if (r.cls === 0) { outcrop += r.cells.length; continue; }
+        bare += r.cells.length - shown;
+        if (r.cls === 3 && shown / r.cells.length < worst) worst = shown / r.cells.length;
+      }
+      out[seed] = { world: S.map.worldName, cells, bare, outcrop, worst: +worst.toFixed(3) };
     }
     return out;`));
-  const bad = Object.entries(v).filter(([, r]) => r.bare > 0);
-  ck('everyMountainTileShowsRock', bad.length === 0 && Object.values(v).some(r => r.cells > 100),
-    Object.entries(v).map(([sd, r]) => sd + ' (' + r.world + '): ' + r.cells + ' mountain cells, ' + r.bare + ' with no rock drawn'
-      + (r.bare ? ' e.g. ' + JSON.stringify(r.ex) : '')).join('; '));
+  const FLOOR = { '591760987': 0.70, 'mtn40': 0.60 };   // scenes1/large carries no class-3 range: reported, not gated
+  const bad = Object.entries(v).filter(([sd, r]) => FLOOR[sd] != null && r.worst < FLOOR[sd]);
+  ck('theKitDressesTheRange', bad.length === 0 && Object.values(v).some(r => r.cells > 100),
+    Object.entries(v).map(([sd, r]) => sd + ' (' + r.world + '): ' + r.cells + ' mountain cells, worst range '
+      + Math.round(r.worst * 100) + '% dressed, ' + r.bare + ' range cells bare by ruling, ' + r.outcrop + ' outcrop cells undrawn').join('; '));
   await p.close();
 }
 {
@@ -338,9 +351,31 @@ const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' 
 {
   const p = await page();
   const v = await p.evaluate(new Function(boot + `
-    R.mtnStrips();
-    if (!R._mtnOcc || !R._mtnOcc.size) return { skip: true };
     const W = CFG.W, TL = CFG.TILE;
+    /* THE WORLD IS WHICHEVER HAS A TILE TO MEASURE. With the kit grounded
+       on its own footprint the overhang over walkable ground is a sliver
+       by design; the boot world may have no walkable tile mostly behind
+       rock, and a check that skips forever measures nothing. Several
+       worlds are tried, the first with a mostly-hidden tile is measured,
+       and only when none has one is the skip honest. */
+    const worlds = [null, ['mtn40', 'large'], ['591760987', 'large'], ['scenes1', 'large'], ['high2', 'large']];
+    let k = null, best = 0, picked = 'boot';
+    for (const wsel of worlds) {
+      if (wsel) {
+        G.newGame(wsel[0], 'moderate', wsel[1]); Screens._demo = false; Screens.show('playing'); S.paused = true;
+        for (let i = 0; i < S.map.explored.length; i++) { S.map.explored[i] = 1; if (S.map.seenTerrain) S.map.seenTerrain[i] = S.map.terrain[i]; }
+        R.rebuildTerrain();
+      }
+      R.mtnStrips();
+      if (!R._mtnOcc || !R._mtnOcc.size) continue;
+      const hits0 = R._mtnHits || new Map();
+      const cs = [...R._mtnOcc].filter(k2 => Path.passable(k2 % W, (k2 / W) | 0, 'P'));
+      const sc = k2 => (hits0.get(k2) || 0) + (hits0.get(k2 - W) || 0);
+      cs.sort((a, b2) => sc(b2) - sc(a));
+      if (cs.length && sc(cs[0]) > best) best = sc(cs[0]);
+      if (cs.length && sc(cs[0]) >= 2 * TL * TL * 0.6) { k = cs[0]; picked = wsel ? wsel.join('/') : 'boot'; break; }
+    }
+    if (k == null) return { skip: true, why: 'no walkable tile mostly behind rock on any of ' + worlds.length + ' worlds (best ' + Math.round(100 * best / (2 * TL * TL)) + '%)' };
     /* an occluded walkable tile — the most occluded of them — and an open
        control tile far from any art. The check's premise is a unit MOSTLY
        behind rock; the first tile in set order was as often one the art
@@ -348,12 +383,6 @@ const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' 
        open and the measure is a coin toss (found when the kit's coverage
        change reshuffled the set). The rock over the tile and over the tile
        north of it, where the sprite's head stands, picks the tile. */
-    const hits = R._mtnHits || new Map();
-    const cands = [...R._mtnOcc].filter(k2 => Path.passable(k2 % W, (k2 / W) | 0, 'P'));
-    const score = k2 => (hits.get(k2) || 0) + (hits.get(k2 - W) || 0);
-    cands.sort((a, b2) => score(b2) - score(a));
-    const k = cands.length ? cands[0] : null;
-    if (k == null) return { skip: true };
     const ox = k % W + 0.5, oy = ((k / W) | 0) + 0.5;
     let cx = 0, cy = 0;
     for (let y = 2; y < CFG.H - 2 && !cx; y++) for (let x = 2; x < W - 2; x++)
@@ -368,9 +397,12 @@ const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' 
     };
     const grab = (bx) => R.cv.getContext('2d').getImageData(
       Math.max(0, bx[0]), Math.max(0, bx[1]), bx[2], bx[3]).data;
+    // the same sprite frame in every shot: one timestamp, so the clock
+    // advances once and the idle animation holds still for the comparison
+    const T0 = performance.now();
     const shot = (x, y, withUnit) => {
       u.x = withUnit ? x : -99; u.y = withUnit ? y : -99;
-      R.centerOn(x, y); R.clampCam(); G.frame(performance.now());
+      R.centerOn(x, y); R.clampCam(); G.frame(T0);
       return grab(box(x, y));
     };
     const diff = (a, b2) => { let n = 0; for (let i = 0; i < a.length; i += 4)
@@ -381,10 +413,10 @@ const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' 
     const openWith = shot(cx, cy, true), openWithout = shot(cx, cy, false);
     u.x = ux; u.y = uy; G.visibleAt = visWas;
     const occD = diff(occWith, occWithout), openD = diff(openWith, openWithout);
-    return { occD, openD, occTiles: R._mtnOcc.size };`));
+    return { occD, openD, occTiles: R._mtnOcc.size, picked };`));
   ck('aUnitBehindTheCliffIsHiddenButNotLost', v.skip || (v.occD > 0 && v.occD < v.openD),
-    v.skip ? 'no occluded walkable ground on this seed'
-      : v.occTiles + ' occluded tiles; the silhouette repaints ' + v.occD
+    v.skip ? (v.why || 'no occluded walkable ground on this seed')
+      : v.occTiles + ' occluded tiles on ' + v.picked + '; the silhouette repaints ' + v.occD
       + ' px where the full sprite would repaint ' + v.openD);
   await p.close();
 }

@@ -631,12 +631,12 @@ const MTN = {
      the whole foot drew as meadow, and a villager stood against a wall
      that was not there. 0 = no cap. */
   KIT_MAX_PEAKS: 6,
-  /* WHAT STILL SHOWS NO ROCK GETS BOULDERS. Every piece in the kit is five
-     tiles wide, so a tail narrower than that, or the stair a diagonal edge
-     leaves under a piece's foot, can never take one. A mountain tile that
-     ends up with less than this share of rock over it is dressed as an
-     outcrop instead — the same boulder scatter a one-cell crag already
-     wears — so no blocked tile is ever drawn as walkable ground. */
+  /* WHAT COUNTS AS DRESSED. A mountain tile with at least this share of a
+     tile of rock drawn over it is recorded as shown (R._mtnShow); the
+     coverage contract in tests/mountain.mjs reads that record. Every piece
+     in the kit is five tiles wide, so a tail narrower than that, or the
+     stair a diagonal edge leaves under a piece's foot, can never take one
+     — such cells are bare by the referee's ruling (buildMtnLayer). */
   KIT_SHOW_MIN: 0.15,
   KIT_LOW: 1,            // 0 drops the rolling/foothill bands entirely
   KIT_PAD_UP: 10,         // tiles of northward headroom a drawn peak may use
@@ -651,9 +651,6 @@ const MTN = {
   KIT_EDGE_BAND: 14,     // px band inside the apron tile the stand plants in
   KIT_EDGE_REACH: 2,     // tiles out from a piece's ground contact the apron covers
   KIT_EDGE_ROCK: 0.25,   // share of a tile the art must cover for it to count as rock
-  OUTCROP_N: 4,          // boulders per cell of a 1-2 cell outcrop
-  OUTCROP_MIN: 10,
-  OUTCROP_MAX: 14,
   MIN_PIECE: 260,        // px — anything smaller adrift from the body is a crumb
   CONTACT: 2,            // px of the dark line at the TRUE tile boundary (north side)
   OUT_MAX: 0.22,         // tiles the silhouette may bulge past its own footprint
@@ -4253,7 +4250,14 @@ const R = {
          below this line has changed at all. */
       if (!art && MTN.KIT && r.cls > 0 && typeof Assets !== 'undefined' && Assets.mtnKitReady && Assets.mtnKitReady())
         art = this.drawMtnChained(r);
-      if (!art) art = (r.cls === 0) ? this.drawMtnOutcrop(r) : this.drawMtnRegion(r);
+      /* A ONE- OR TWO-CELL OUTCROP DRAWS NOTHING. It used to wear a
+         scatter of procedural boulders, and so did every cell of a range
+         the kit could not dress — the referee's ruling (2026-09-05): they
+         read as fake, stood in lines along the foot, and are out until
+         crag art is drawn for them. Such a cell still blocks; it shows as
+         meadow until then, and the coverage contract in tests/mountain.mjs
+         counts every one of them. */
+      if (!art && r.cls > 0) art = this.drawMtnRegion(r);
       if (!art) continue;
       this._mtnArt.push(art);
       for (const s of art.strips) this._mtnStrips.push(s);
@@ -4261,27 +4265,16 @@ const R = {
         this._mtnCover[k] = 1;
         if (terr[k] !== T.MOUNTAIN) this._mtnOcc.add(k);   // art over walkable ground
       }
-      /* WHAT THE CHAIN LEFT BARE WEARS BOULDERS (KIT_SHOW_MIN). The kit's
-         pieces are all five tiles wide; a narrow tail or the stair under a
-         piece's foot on a diagonal edge takes none of them, and a mountain
-         tile with no rock drawn on it is a wall the player cannot see. */
+      /* THE RECORD OF WHAT THE KIT DRESSED (KIT_SHOW_MIN of a tile of rock
+         counts). The kit's pieces are all five tiles wide, so a narrow
+         tail or the stair under a piece's foot on a diagonal edge takes
+         none of them; those cells are the ones the coverage contract
+         reports, bare by the ruling above. */
       if (art.kind === 'chain' && art.hits) {
         for (const [k, n] of art.hits) this._mtnHits.set(k, (this._mtnHits.get(k) || 0) + n);
         const TL = CFG.TILE, need = TL * TL * MTN.KIT_SHOW_MIN;
         for (const k of r.cells) if ((art.hits.get(k) || 0) >= need) this._mtnShow[k] = 1;
-        const rest = r.cells.filter(k => !this._mtnShow[k]);
-        if (rest.length) {
-          let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-          for (const k of rest) { const cx = k % W, cy = (k / W) | 0;
-            if (cx < x0) x0 = cx; if (cx > x1) x1 = cx; if (cy < y0) y0 = cy; if (cy > y1) y1 = cy; }
-          const fill = this.drawMtnOutcrop({ cells: rest, box: [x0, y0, x1, y1], sparse: true });
-          if (fill) {
-            this._mtnArt.push(fill);
-            for (const s of fill.strips) this._mtnStrips.push(s);
-            for (const k of fill.cover) { this._mtnCover[k] = 1; this._mtnShow[k] = 1; }
-          }
-        }
-      } else for (const k of r.cells) this._mtnShow[k] = 1;   // the extrusion and an outcrop dress every cell
+      } else for (const k of r.cells) this._mtnShow[k] = 1;   // the extrusion dresses every cell
     }
     this._mtnStrips.sort((a, b) => a.row - b.row);
     // the borrowed pixel buffers go back now the layer is built
@@ -4293,46 +4286,6 @@ const R = {
   mtnStrips() {
     if (!this._mtnArt || this._mtnDirty) { this._mtnDirty = false; this.buildMtnLayer(); }
     return this._mtnStrips || [];
-  },
-
-  drawMtnOutcrop(r) {
-    const TL = CFG.TILE, W = CFG.W;
-    const [bx0, by0, bx1, by1] = r.box;
-    const ax = Math.max(0, (bx0 - MTN.PAD_SIDE) * TL), ay = Math.max(0, (by0 - MTN.PAD_UP) * TL);
-    const c = document.createElement('canvas');
-    c.width = (bx1 - bx0 + 1 + MTN.PAD_SIDE * 2) * TL;
-    c.height = (by1 - by0 + 1 + MTN.PAD_UP + MTN.PAD_DOWN) * TL;
-    const g = c.getContext('2d');
-    g.imageSmoothingEnabled = false;
-    g.translate(-ax, -ay);
-    const put = [], cover = new Set();
-    for (const k of r.cells) {
-      const cx = k % W, cy = (k / W) | 0;
-      cover.add(k);
-      // the kit's fill asks for SCREE — one or two stones a cell — where a
-      // crag of its own gets the full scatter
-      const n = (r.sparse ? 1 : MTN.OUTCROP_N) + ((this._lh(cx, cy, 3) * 2) | 0);
-      for (let i = 0; i < n; i++) {
-        const a = this._lh(cx * 31 + i, cy, 11), b = this._lh(cx, cy * 31 + i, 13);
-        const c2 = this._lh(cx + i, cy + i, 17), d = this._lh(cx * 7 + i, cy * 5, 19);
-        const rr = MTN.OUTCROP_MIN + ((c2 * (MTN.OUTCROP_MAX - MTN.OUTCROP_MIN + 1)) | 0);
-        /* a boulder's whole stamp (body + padding) stays within OUT_MAX of
-           its own cell — a rock lying on the neighbour's walkable grass is
-           the lie the bound exists to prevent */
-        const slack = MTN.OUT_MAX * TL - 4, lo = Math.max(rr + 3 - slack, 4), hi = TL - (rr + 3) + slack;
-        put.push([cx * TL + lo + a * Math.max(1, hi - lo), cy * TL + lo + b * Math.max(1, hi - lo), rr,
-          (d * Sprites.ROCK_KINDS) | 0, Sprites.STONE_MIX[(a * Sprites.STONE_MIX.length) | 0],
-          (b * 4) | 0]);
-      }
-    }
-    put.sort((a, b) => a[1] - b[1]);
-    for (const [x, y, rr, kind, pal, vs] of put) {
-      const st = Sprites.rockStamp(kind, rr, pal, vs);
-      g.drawImage(st, Math.round(x) - st._ox, Math.round(y) - st._oy);
-    }
-    // one strip: a boulder cluster stands at ground level and occludes like
-    // any other row of stone — its ground row is its bottom cell
-    return { c, x: ax, y: ay, cover, kind: 'outcrop', strips: [{ row: by1, x: ax, y: ay, c }] };
   },
 
   /* ---- THE CHAINED KIT: a region dressed in drawn massifs -------------
