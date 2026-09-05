@@ -317,11 +317,19 @@ const out = await p.evaluate(() => {
     c.width = 96 * 12; c.height = 96;
     Assets.setUnitFrames('villager-p-blue-l2-m', 's', 'walk', c);
     ck('sheetFpsRidesTheVariantKey',
-      // half the animals' clock — the referee's live-play ruling (2026-09-03):
-      // every villager runs a uniform 1.8s cycle; beasts keep 0.9s
-      Sprites.animFps['villager-p-blue-l2-m'] === Math.max(4, Math.round(12 / 1.8)) &&
+      /* TWO RATES PER VILLAGER (the referee’s ruling of 2026-09-04, refining
+         the uniform 1.8s of 2026-09-03): the FORAGING poses — kneeling to
+         pick a bush, reaching into an orchard — keep the 1.8s cycle he
+         judged those sheets at; everything else a villager does went half
+         way back toward the old clock at 1.35s, because at 1.8s a walk read
+         as wading. Beasts and military keep their 0.9s. */
+      Sprites.animFps['villager-p-blue-l2-m'] === Math.max(4, Math.round(12 / Assets.VILLAGER_CYCLE)) &&
+      Sprites.animFpsForage['villager-p-blue-l2-m'] === Math.max(4, Math.round(12 / Assets.FORAGE_CYCLE)) &&
+      Assets.FORAGE_CYCLE > Assets.VILLAGER_CYCLE &&
       Sprites.animFps.villager === undefined,
-      'variant at ' + Sprites.animFps['villager-p-blue-l2-m'] + 'fps; the 2-frame procedural villager untouched');
+      'variant at ' + Sprites.animFps['villager-p-blue-l2-m'] + 'fps walking, '
+      + Sprites.animFpsForage['villager-p-blue-l2-m'] + 'fps foraging; the 2-frame procedural villager untouched');
+    delete Sprites.animFpsForage['villager-p-blue-l2-m'];
     delete Sprites.animFps['villager-p-blue-l2-m'];
     Assets.removeUnitArt('villager-p-blue-l2-m');
   }

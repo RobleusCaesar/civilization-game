@@ -1043,6 +1043,12 @@ const Assets = {
      the catalog does not carry drops out, and a stage left with nothing
      falls back to the whole set, so a shorter catalog degrades instead of
      blanking. */
+  /* HOW LONG A VILLAGER’S CYCLE TAKES, in seconds, whatever the frame count
+     — more frames buy smoothness, never slow motion. Two rates: the
+     foraging poses (pick at a bush, reach into an orchard) run at
+     FORAGE_CYCLE, everything else at VILLAGER_CYCLE. */
+  VILLAGER_CYCLE: 1.35,
+  FORAGE_CYCLE: 1.8,
   SLAB_STAGES: ['abcd', 'efgh', 'ijkl'],
   slabStage(wear) {
     const all = this._muted('stone-l');
@@ -1453,13 +1459,23 @@ const Assets = {
     /* playback rate: a full walk cycle takes ~0.9s REGARDLESS of how many
        frames it ships — more frames buy smoothness, never slow motion.
        Derived once from the south walk strip so every direction agrees.
-       VILLAGERS RUN AT HALF THAT (the referee's live-play ruling: "everyone
-       looks like they're on speed") — one uniform 1.8s cycle across every
-       tier, sex and pose. Animals and military keep the 0.9s clock. */
+       VILLAGERS RUN SLOWER (the referee’s live-play ruling: “everyone looks
+       like they’re on speed”), but not uniformly. The FORAGING poses — a
+       picker kneeling at a bush, a picker reaching into an orchard — keep
+       the full 1.8s cycle, because that is the pace he judged those two
+       sheets at. Everything else a villager does went half-way back toward
+       the old clock at 1.35s: at 1.8s a walk read as wading. Animals and
+       military keep the original 0.9s. */
     // Sprites is a script-level const — `window.Sprites` is undefined (the
     // same trap G, AI and MapGen carry); typeof is the safe guard
-    if (pose === 'walk' && dir === 's' && typeof Sprites !== 'undefined' && Sprites.animFps)
-      Sprites.animFps[kind] = Math.max(4, Math.round(n / (kind.startsWith('villager-') ? 1.8 : 0.9)));
+    if (pose === 'walk' && dir === 's' && typeof Sprites !== 'undefined' && Sprites.animFps) {
+      const vill = kind.startsWith('villager-');
+      Sprites.animFps[kind] = Math.max(4, Math.round(n / (vill ? this.VILLAGER_CYCLE : 0.9)));
+      if (vill) {
+        if (!Sprites.animFpsForage) Sprites.animFpsForage = {};
+        Sprites.animFpsForage[kind] = Math.max(4, Math.round(n / this.FORAGE_CYCLE));
+      }
+    }
     return true;
   },
   removeUnitArt(kind) { delete this.unitArt[kind]; },

@@ -9494,7 +9494,13 @@ const R = {
       if (this._sheetHold) return fr2[0];   // standing on borrowed walk legs: hold the stance
       // fps by the SHEET's key (villager variants carry their own rate;
       // the 2-frame procedural villager below keeps its own 4fps default)
-      const fps2 = (Sprites.animFps && (Sprites.animFps[this._sheetKey] || Sprites.animFps[u.kind])) || 8;
+      /* …and FORAGING runs slower than the rest. The referee judged the
+         kneel-and-pick and the orchard reach at one pace and everything
+         else at another, so a villager carries two rates and the POSE picks
+         between them (Assets.FORAGE_CYCLE / VILLAGER_CYCLE). */
+      const forage = (this._sheetPose === 'pick' || this._sheetPose === 'reach') && Sprites.animFpsForage;
+      const fps2 = ((forage && (Sprites.animFpsForage[this._sheetKey] || Sprites.animFpsForage[u.kind]))
+        || (Sprites.animFps && (Sprites.animFps[this._sheetKey] || Sprites.animFps[u.kind]))) || 8;
       /* THE IDLE DWELLS AND SNAPS (two operator reports, one lesson).
          First report: the walk-derived rate ran the 12-frame graze once a
          second — "like they're tweaking out". A flat 3× slowdown answered
