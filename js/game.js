@@ -2073,7 +2073,10 @@ const G = {
     if (S) {
       // a terrain bake left DUE by founding a run is spread over these frames
       // (R.deferBake / R.tickBake) instead of freezing the press that asked
-      G._safe(() => R.tickBake(6), 'bake');
+      /* BEHIND THE SPLASH THE THREAD HAS NOTHING ELSE TO DO, so the held
+         bake runs in big slices there (a 6ms slice at a throttled phone's
+         frame rate stretched a one-second bake over twenty seconds). */
+      G._safe(() => R.tickBake(document.getElementById('splash') ? 40 : 6), 'bake');
       // …and the slow TAIL of a terrain repaint (a sapper joining a lake hands
       // drawTilesAt a whole water region) drains here too, so the spadeful
       // that asked for it does not freeze the frame — see R.tickRepaint
@@ -2099,6 +2102,11 @@ const G = {
         else G._shellDrawT = t;
       }
       if (!skip) G._safe(() => R.draw(dt), 'render');
+      /* the title is ready when its world is on the canvas — baked with the
+         art (R.holdBake) and drawn — and the splash may go (tests/boot.mjs).
+         Boot's own failsafe still covers a boot that never gets here. */
+      if (!skip && window.Boot && !Boot.ready && window.Screens && Screens.current === 'title'
+          && R.terrainCache && !R._bake && !R._bakeDue) Boot.markReady();
       G._safe(() => UI.refresh(dt), 'ui');
       // THE TUTORIAL (js/tutorial.js): a run without the checkbox pays this
       // one falsy check and nothing else — no DOM, no listeners, no scans
@@ -2141,9 +2149,6 @@ window.addEventListener('load', () => {
      between a cross-fade and a flash of empty ground. */
   requestAnimationFrame(t => {
     G.lastT = t;
-    requestAnimationFrame(ts => {
-      G.frame(ts);                                     // the title's first painted frame
-      if (window.Boot) Boot.markReady();               // …so the logo may go
-    });
+    requestAnimationFrame(ts => { G.frame(ts); });   // the loop starts; G.frame marks the title ready once its world is drawn
   });
 });

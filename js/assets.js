@@ -83,6 +83,7 @@ const Assets = {
       this.setCampArt(tribe, img, meta);
     };
     img.onerror = () => { this.art[k] = null; };
+    this._track(img, true);
     img.src = this.campUrl(tribe);
   },
 
@@ -127,6 +128,7 @@ const Assets = {
       this.setCampPropArt(tribe, i, img);
     };
     img.onerror = () => { this.art[k] = null; };
+    this._track(img, true);
     img.src = this.campPropUrl(tribe, i);
   },
   setCampPropArt(tribe, i, img) {
@@ -172,6 +174,7 @@ const Assets = {
       this.setWonderArt(key, img, meta);
     };
     img.onerror = () => { this.art[k] = null; };
+    this._track(img, true);
     img.src = this.wonderArtUrl(key);
   },
   setWonderArt(key, img, meta) {
@@ -226,6 +229,7 @@ const Assets = {
     const img = new Image();
     img.onload = () => { this.setOriginArt(motif, img); };
     img.onerror = () => { /* no icon — the procedural motif stands */ };
+    this._track(img, true);
     img.src = this.originUrl(motif);
   },
   /* install a PNG as a motif's card icon. Cards draw ONCE into DOM
@@ -278,6 +282,7 @@ const Assets = {
     const img = new Image();
     img.onload = () => { this.setEndgameArt(outcome, mode, img); this._tryEndgame(outcome, mode, n + 1); };
     img.onerror = () => { /* no more pictures in this bucket — the ones already found still stand */ };
+    try { img.fetchPriority = 'low'; } catch (e) {}
     img.src = this.endgameUrl(outcome, mode, n);
   },
   setEndgameArt(outcome, mode, img) {
@@ -378,11 +383,12 @@ const Assets = {
   _tryCover(tName, slot, n) {
     if (n > this.COVER_MAX) return;
     const img = new Image();
-    img.onload = () => { if (this.setCoverArt(tName, slot, img)) this._tryCover(tName, slot, n + 1); };
+    img.onload = () => { if (this.setCoverArt(tName, slot, img, true)) this._tryCover(tName, slot, n + 1); };
     img.onerror = () => { /* no art at this slot — the procedural sward stands */ };
+    this._track(this._prio(img, 'high'), true);
     img.src = this.coverUrl(tName, slot, n);
   },
-  setCoverArt(tName, slot, img) {
+  setCoverArt(tName, slot, img, fromCascade) {
     tName = String(tName).toLowerCase(); slot = String(slot).toLowerCase();
     if (this.COVER_SLOTS.indexOf(slot) < 0) return false;
     const PX = this.COVER_PX;
@@ -421,8 +427,10 @@ const Assets = {
     (t[slot] || (t[slot] = [])).push(...frames);
     this.loaded[this.coverSlotKey(tName, slot)] = true;
     // the cover bakes into the terrain cache — a PNG landing after the world
-    // was built has to ask for the repaint, exactly as terrain art does
-    if (window.R && typeof R.rebuildTerrain === 'function') R.rebuildTerrain();
+    // was built asks for the repaint the same way terrain art does: once,
+    // when the burst is over (_onIdle)
+    this.artRev++; this._worldDirty = true;
+    if (fromCascade) this._settleIfQuiet(); else this._onIdle();   // a direct install is asked for its picture now
     return true;
   },
   /* the frame for (terrain, slot) at hash i, or null to draw procedurally.
@@ -459,6 +467,7 @@ const Assets = {
     const img = new Image();
     img.onload = () => { if (this.setFishArt(n, img)) this._tryFish(n + 1); };
     img.onerror = () => { /* no strip at this slot — the procedural fish jumps */ };
+    this._track(this._prio(img, 'high'), true);
     img.src = this.fishUrl(n);
   },
   setFishArt(n, img) {
@@ -515,6 +524,7 @@ const Assets = {
       const img = new Image();
       img.onload = () => this.setWaterFx(name, img);
       img.onerror = () => { /* that layer stays procedural */ };
+      this._track(this._prio(img, 'high'), true);
       img.src = this.waterFxUrl(name);
     }
   },
@@ -613,6 +623,7 @@ const Assets = {
     const stem = kind + '-' + String.fromCharCode(97 + li);
     img.onload = () => { this.setMtnPiece(kind, img, stem); this._tryMtnPiece(kind, li + 1); };
     img.onerror = () => { /* the kit ends here */ };
+    this._track(this._prio(img, 'high'), true);
     img.src = this.mtnKitUrl(kind, String.fromCharCode(97 + li));
   },
   /* the low bands are drawn at half size — small rolling ground should
@@ -750,7 +761,14 @@ const Assets = {
        different mountains after a reload. The stem is the tiebreak. */
     a.sort((p, q) => (q.h - p.h) || String(p.stem || '').localeCompare(String(q.stem || '')));
     this.mtnKitRev++;
-    if (typeof R !== 'undefined' && R.rebakeAll) { R._mtnArt = null; R._mtnLayerKey = ''; R._mtnDirty = true; }
+    /* ONE LAYER REBUILD PER BURST. Every piece used to mark the layer dirty
+       as it decoded, and with the pieces arriving one behind the other the
+       frame rebuilt the whole layer — every region re-planned and
+       re-composited, ~180ms a time on a desktop — up to twenty-five times
+       while a world was on screen. The mark now lands when the burst is
+       over (_onIdle). A ?dev=1 drop marks the layer itself. */
+    this.artRev++; this._mtnKitDirty = true;
+    this._settleIfQuiet();
     return true;
   },
   /* THE PIXELS ARE LENT, NOT KEPT. The chain composites by hand so it can
@@ -776,6 +794,7 @@ const Assets = {
     const img = new Image();
     img.onload = () => { this.setTreePiece(style + '-' + size, img); this._tryTreePiece(style, size, li + 1); };
     img.onerror = () => { /* the catalog ends here — procedural fills the gaps */ };
+    this._track(this._prio(img, 'high'), true);
     img.src = this.treeUrl(style, size, String.fromCharCode(97 + li));
   },
   /* THE DEPOSIT SWAP (?dev=1 only, DevArt.injectStone). One dropped PNG
@@ -817,28 +836,18 @@ const Assets = {
     a.push(cut(false), cut(true));                // the piece and its pre-baked mirror
     this.treesRev++;
     this._muteK = -1;                             // raw changed: the muted cache is stale
-    /* ONE recompose per burst, not one per piece: boot decodes a dozen
-       pieces in a blink, and recomposing the whole wood for each was a
-       dozen full rebuilds nobody saw between. A synchronous caller (the
-       door pin, a ?dev=1 drop that wants the result NOW) calls
-       Sprites.rebuildForest itself.
-       NOT `window.Sprites` — Sprites is a script-level const, so that
-       guard is silently false forever (the cards.js ART lesson, again). */
-    if (!this._treeRebuildDue) {
-      this._treeRebuildDue = true;
-      const run = () => {
-        // …and never during the splash: a full rebake on the boot thread
-        // freezes the fade's style recalcs, and the splash covers the map
-        // anyway — wait it out, then recompose once
-        if (document.getElementById('splash')) { setTimeout(run, 200); return; }
-        this._treeRebuildDue = false;
-        if (typeof Sprites !== 'undefined' && Sprites.rebuildForest) Sprites.rebuildForest();
-        if (typeof R !== 'undefined' && typeof R.rebuildTerrain === 'function') R.rebuildTerrain();
-      };
-      setTimeout(run, 40);
-    }
+    /* ONE recompose per burst, not one per piece — and the burst is over
+       when no request is in flight (_onIdle), not after a timer: on a slow
+       link the pieces land one behind the other and a timer fired for
+       every one. A synchronous caller (the door pin, a ?dev=1 drop that
+       wants the result NOW) calls Sprites.rebuildForest itself. */
+    this.artRev++; this._treesDirty = true; this._worldDirty = true;   // settled once the burst is over (_onIdle)
+    this._settleIfQuiet();
     return true;
   },
+  /* the old per-burst timer is gone: the wood is recomposed and the world
+     rebaked (only if baked with an older catalog) in _onIdle, once the
+     burst is over — the same rule every world-art family follows */
 
   /* ---- THE MUTE (Gate B stand-down, part 2). The generated set is too
      bright for the world, so every piece the composer serves is passed
@@ -1174,6 +1183,7 @@ const Assets = {
       this.setFormationArt(tName, stem, img, meta);
     };
     img.onerror = () => { this.art[this.formationSlotKey(tName, stem)] = null; };
+    this._track(img, true);
     img.src = this.formationUrl(tName, stem);
   },
   /* ---- WILDERNESS RELIC ART (js/relics.js): the formation conventions
@@ -1205,6 +1215,7 @@ const Assets = {
       this.setRelicArt(key, img);
     };
     img.onerror = () => { this.art[k] = null; };
+    this._track(img, true);
     img.src = this.relicUrl(key);
   },
   setRelicArt(key, img) {
@@ -1340,7 +1351,9 @@ const Assets = {
       const img = new Image();
       img.onload = () => { this.setUnitFrames(key, dir, pose, img, tunic); };
       img.onerror = () => {};
+      this._track(this._prio(img, 'low'));
       img.src = this.UNIT_DIR + 'unit-villager-l' + tier + '-' + sex + '-' + dir + '-' + pose +
+        this._track(img);
         '.png?v=' + (CFG.ART_V || 1);
     }
   },
@@ -1392,6 +1405,7 @@ const Assets = {
       const img = new Image();
       img.onload = () => { this.setUnitFrames(key, dir, pose, img, tunic); };
       img.onerror = () => {};                  // absent art is the default state
+      this._track(this._prio(img, 'low'));
       img.src = this.UNIT_DIR + 'unit-' + kind + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1);
     }
   },
@@ -1417,6 +1431,7 @@ const Assets = {
       const img = new Image();
       img.onload = () => { this.setUnitFrames(key, dir, pose, img, tunic); };
       img.onerror = () => {};                  // absent art is the default state
+      this._track(this._prio(img, 'low'));
       img.src = this.UNIT_DIR + 'unit-sapper-l' + tier + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1);
     }
   },
@@ -1429,6 +1444,7 @@ const Assets = {
     const img = new Image();
     img.onload = () => { this.setUnitFrames(kind, dir, pose, img); };
     img.onerror = () => {};                    // absent art is the default state
+    this._track(this._prio(img, 'low'));
     img.src = this.unitUrl(kind, dir, pose);
   },
   setUnitFrames(kind, dir, pose, img, tunic) {
@@ -1583,6 +1599,76 @@ const Assets = {
   artName(id, lv) { return (String(id) + '-l' + lv + '.png').toLowerCase(); },
   artUrl(id, lv) { return this.ART_DIR + this.artName(id, lv) + '?v=' + (CFG.ART_V || 1); },
 
+  /* EVERY REQUEST IS COUNTED. Art used to arrive whenever it arrived, and
+     the world was built and shown with whatever had landed — the procedural
+     stand-ins first, the drawn art snapping in over them a few seconds
+     later, one full rebake per family (the operator's phone: "it freezes,
+     it shows me the poorly drawn procedural art for the first 1-5 seconds,
+     then snaps"). Each Image the loaders make passes through _track before
+     its src is set, AFTER its own handlers are attached: a cascade queues
+     its next probe inside onload, so the count never touches zero between
+     two links of a chain, and whenIdle() resolves only when every chain has
+     run to its 404. The game waits on that promise to bake a world
+     (Screens.ensureDemo, R.holdBake); the endgame gallery starts on it. */
+  pending: 0, _idle: [], _everIdle: false,
+  /* …AND THE WORLD'S ART COUNTED APART. The title's demo world needs the
+     ground, the wood, the deposits, the kit, the water and the buildings —
+     not the hundreds of unit strips a founded world also asks for, which
+     on a slow link are the long tail of the wait (the demo stood held for
+     ten seconds after the world's families had landed). The demo waits on
+     whenWorldIdle(); a real game (enterGame) waits on whenIdle(), which
+     is everything. A unit strip landing later installs on its own. */
+  pendingWorld: 0, _idleWorld: [],
+  whenWorldIdle() { return this.pendingWorld > 0 || !this.ready ? new Promise(r => this._idleWorld.push(r)) : Promise.resolve(); },
+  worldReady() { return this.ready && this.pendingWorld <= 0; },
+  /* THE WORLD FIRST. A hint, honoured by the browsers that schedule by it:
+     the ground, the wood, the deposits, the kit, the water and the town's
+     buildings before the hundreds of unit strips a founded world asks for
+     — on a cold cache those strips were what the stone and the kit queued
+     behind for a minute. */
+  _prio(img, p) { try { img.fetchPriority = p; } catch (e) {} return img; },
+  _track(img, world) {
+    this.pending++; if (world) this.pendingWorld++;
+    const done = () => {
+      this.pending--;
+      if (world) { this.pendingWorld--; if (this.pendingWorld <= 0) { this.pendingWorld = 0; this._onIdle(); const w = this._idleWorld; this._idleWorld = []; for (const r of w) r(); } }
+      if (this.pending <= 0) { this.pending = 0; this._everIdle = true; this._onIdle(); const w = this._idle; this._idle = []; for (const r of w) r(); }
+    };
+    img.addEventListener('load', done); img.addEventListener('error', done);
+    return img;
+  },
+  whenIdle() { return this.pending > 0 || !this.ready ? new Promise(r => this._idle.push(r)) : Promise.resolve(); },
+  /* ONE REBUILD PER BURST, WHATEVER THE NETWORK'S PACE. Every world-art
+     install — a tree piece, a kit piece, ground or cover art — used to ask
+     for its own rebuild as it landed (a full rebake, or the mountain layer
+     re-planned), and on a slow link the pieces land one behind the other:
+     twelve full rebakes and twenty-six layer rebuilds were measured during
+     one cold boot. An install now only raises a flag; the flags are acted
+     on here, when no request is in flight — which is what "the burst is
+     over" means — and a world that has not been baked yet simply bakes
+     with everything when its hold lifts. artRev counts world-art installs;
+     the bake stamps the revision it composed with (R._bakedArtRev), so a
+     world baked with the current catalog is never rebaked for nothing. */
+  artRev: 0, _treesDirty: false, _mtnKitDirty: false, _worldDirty: false,
+  /* an install with nothing in flight is its own burst: settle now (a
+     ?dev=1 drop into a quiet page, the dropped-tile contract) */
+  _settleIfQuiet() { if (this.pending <= 0 && this.ready) this._onIdle(); },
+  _onIdle() {
+    if (this._treesDirty) {
+      this._treesDirty = false;
+      if (typeof Sprites !== 'undefined' && Sprites.rebuildForest) Sprites.rebuildForest();
+    }
+    if (this._mtnKitDirty) {
+      this._mtnKitDirty = false;
+      if (typeof R !== 'undefined' && R.rebakeAll) { R._mtnArt = null; R._mtnLayerKey = ''; R._mtnDirty = true; }
+    }
+    if (this._worldDirty) {
+      this._worldDirty = false;
+      if (typeof R !== 'undefined' && typeof R.rebuildTerrain === 'function' && R.terrainCache && R._bakedArtRev !== this.artRev) R.rebuildTerrain();
+    }
+  },
+  artReady() { return this.ready && this.pending <= 0; },
+
   async init() {
     for (const s of this.artSlots()) this._tryLoad(s.id, s.lv);
     for (const tribe of this.campTribes()) {
@@ -1594,8 +1680,6 @@ const Assets = {
     for (const kind of Object.keys(this.UNIT_ART))
       for (const dir of this.UNIT_DIRS8)
         for (const pose of this.UNIT_ART[kind]) this._tryLoadUnit(kind, dir, pose);
-    for (const outcome of this.ENDGAME_OUTCOMES)
-      for (const mode of this.endgameModes()) this._tryEndgame(outcome, mode, 1);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key]);
     for (const m of this.originMotifs()) this._tryLoadOrigin(m);
     for (const tName of this.formationTerrains())
@@ -1608,6 +1692,17 @@ const Assets = {
     this._tryTrees();
     this._tryMtnKit();
     this.ready = true;
+    if (this.pending <= 0) { this._everIdle = true; const w = this._idle; this._idle = []; for (const r of w) r(); }
+    /* THE ENDGAME GALLERY GOES LAST. Fifty megabytes of pictures nobody sees
+       until a run ends were the first thing on the wire — three quarters of
+       all art bytes, competing with every tree, mountain and unit strip
+       the opening screen actually needs. They start once every other
+       request has settled, at low fetch priority, and a run that ends before
+       they land still gets whichever had arrived (endgameImgs). */
+    this.whenIdle().then(() => {
+      for (const outcome of this.ENDGAME_OUTCOMES)
+        for (const mode of this.endgameModes()) this._tryEndgame(outcome, mode, 1);
+    });
     return { ok: true, data: { slots: this.artSlots().length + this.campTribes().length } };
   },
 
@@ -1619,21 +1714,26 @@ const Assets = {
     if (!name || n > this.TERRAIN_MAX) return;
     const img = new Image();
     img.onload = () => {
-      this.setTerrainArt(t, img);
+      this.setTerrainArt(t, img, true);
       this._tryTerrain(t, n + 1);
     };
     img.onerror = () => { /* no art at this slot — the procedural tile stands */ };
+    this._track(this._prio(img, 'high'), true);
     img.src = this.terrainUrl(name, n);
   },
 
   /* install ground art. The map is baked into R.terrainCache, so a PNG that
      decodes after the world was built has to ask for a repaint or it will
      not show until something else happens to dirty a tile. */
-  setTerrainArt(t, img) {
+  setTerrainArt(t, img, fromCascade) {
     const a = this.terrain[t] || (this.terrain[t] = []);
     if (a.indexOf(img) < 0) a.push(img);
     this.loaded['terrain/' + this.terrainName(t)] = true;
-    if (window.R && typeof R.rebuildTerrain === 'function') R.rebuildTerrain();
+    this.artRev++; this._worldDirty = true;
+    /* a startup cascade's install settles once the burst is over
+       (_onIdle); a DIRECT install — a ?dev=1 drop, a contract — is asked
+       for its picture now, as it always was */
+    if (fromCascade) this._settleIfQuiet(); else this._onIdle();
     return true;
   },
 
@@ -1654,6 +1754,7 @@ const Assets = {
       this.setBuildingArt(id, lv, img, meta);
     };
     img.onerror = () => { this.art[this.slotKey(id, lv)] = null; };
+    this._track(this._prio(img, 'high'), true);
     img.src = this.artUrl(id, lv);
   },
 
@@ -1661,6 +1762,7 @@ const Assets = {
     const img = new Image();
     img.onload = () => { if (this._place(key, img)) this.loaded[key] = true; };
     img.onerror = () => { /* no art for this prop — its procedural fallback stands */ };
+    this._track(img, true);
     img.src = url + '?v=' + (CFG.ART_V || 1);
   },
 

@@ -1219,14 +1219,33 @@ const Path = {
     return open;
   },
 
+  /* THE SEARCH'S SCRATCH, KEPT. Every call used to allocate and fill a
+     W×H Int16Array and ask passable() up to twenty-four times per expanded
+     tile (each neighbour, plus the two squeeze checks). The visited map is
+     now a generation-stamped buffer that lives across calls — no
+     allocation, no fill — and a tile's passability is asked once per
+     search and remembered. The expansion order, the queue and the answer
+     are exactly what they were; passability cannot change during a search. */
+  _pfGen: 0, _pfPrev: null, _pfSeen: null, _pfPass: null, _pfPassGen: null,
   find(sx, sy, tx, ty, owner, domain) {
     sx |= 0; sy |= 0; tx |= 0; ty |= 0;
     if (!MapGen.inB(tx, ty)) return null;
-    const W = CFG.W, H = CFG.H, id = MapGen.idx;
+    const W = CFG.W, H = CFG.H, id = MapGen.idx, n = W * H;
     const start = id(sx, sy), target = id(tx, ty);
     if (start === target) return [{ x: tx, y: ty }];
-    const prev = new Int16Array(W * H).fill(-1);
-    prev[start] = start;
+    if (!this._pfPrev || this._pfPrev.length !== n) {
+      this._pfPrev = new Int32Array(n); this._pfSeen = new Int32Array(n);
+      this._pfPass = new Uint8Array(n); this._pfPassGen = new Int32Array(n); this._pfGen = 0;
+    }
+    const gen = ++this._pfGen, prev = this._pfPrev, seen = this._pfSeen, pass = this._pfPass, passGen = this._pfPassGen;
+    // passable, asked once per tile per search; off-board is not passable
+    const ok = (x, y) => {
+      if (x < 0 || y < 0 || x >= W || y >= H) return false;
+      const k = y * W + x;
+      if (passGen[k] !== gen) { passGen[k] = gen; pass[k] = this.passable(x, y, owner, domain) ? 1 : 0; }
+      return pass[k] === 1;
+    };
+    seen[start] = gen; prev[start] = start;
     const q = [start];
     const dirs = [1, 0, -1, 0, 0, 1, 0, -1, 1, 1, -1, -1, 1, -1, -1, 1];
     let head = 0, found = false;
@@ -1238,12 +1257,12 @@ const Path = {
       for (let d = 0; d < 8; d++) {
         const dx = dirs[d * 2], dy = dirs[d * 2 + 1];
         const nx = cx + dx, ny = cy + dy;
-        if (!this.passable(nx, ny, owner, domain)) continue;
+        if (!ok(nx, ny)) continue;
         // no diagonal squeezing between blocked tiles
-        if (dx && dy && (!this.passable(cx + dx, cy, owner, domain) || !this.passable(cx, cy + dy, owner, domain))) continue;
+        if (dx && dy && (!ok(cx + dx, cy) || !ok(cx, cy + dy))) continue;
         const ni = id(nx, ny);
-        if (prev[ni] !== -1) continue;
-        prev[ni] = cur;
+        if (seen[ni] === gen) continue;
+        seen[ni] = gen; prev[ni] = cur;
         q.push(ni);
         const dd = Math.hypot(nx - tx, ny - ty);
         if (dd < bestD) { bestD = dd; best = ni; }

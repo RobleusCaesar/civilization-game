@@ -107,8 +107,53 @@ const Combat = {
   // building vs unit (towers): does this unit threaten the building's tribe?
   hostileToBld(b, o) { return this.hostileUnits({ owner: b.owner }, o); },
 
+  /* THE ACQUIRE GRID. acquire() runs every 0.4s and asks nearestUnit or
+     bestFoe for every unit without a target — each a scan of every unit —
+     so a big fight paid n² hypots on a 0.4s beat (measured as a 10ms
+     hitch at 120 units on a phone-class CPU, growing with the square).
+     For the length of one acquire() pass the units are bucketed by tile;
+     a query gathers the buckets that can hold anything within its range
+     and walks those units IN S.units ORDER, so the first strictly-better
+     candidate — the tie rule of the full scan — is the same unit. Nothing
+     moves inside the pass; the grid is dropped at its end, and every other
+     caller (retaliation, a tower) still gets the full scan. A range that
+     would gather most of the map just scans. */
+  _grid: null, _gridW: 0,
+  _gridBuild() {
+    const W = CFG.W, H = CFG.H, a = S.units, m = new Map();
+    for (let i = 0; i < a.length; i++) {
+      const u = a[i];
+      let cx = Math.floor(u.x), cy = Math.floor(u.y);
+      if (!(cx >= 0 && cx < W && cy >= 0 && cy < H)) { cx = -1; cy = -1; }   // off-map or NaN: one bucket
+      const k = cy * W + cx;
+      const b = m.get(k); if (b) b.push(i); else m.set(k, [i]);
+    }
+    this._grid = m; this._gridW = W;
+  },
+  _gridCands(x, y, maxD) {
+    const g = this._grid; if (!g || !(maxD < Math.min(CFG.W, CFG.H) * 0.5)) return null;
+    const W = this._gridW, H = CFG.H;
+    const x0 = Math.max(0, Math.floor(x - maxD)), x1 = Math.min(W - 1, Math.floor(x + maxD));
+    const y0 = Math.max(0, Math.floor(y - maxD)), y1 = Math.min(H - 1, Math.floor(y + maxD));
+    const out = [];
+    for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { const b = g.get(cy * W + cx); if (b) for (const i of b) out.push(i); }
+    const off = g.get(-1 * W - 1); if (off) for (const i of off) out.push(i);
+    out.sort((p, q) => p - q);
+    return out;
+  },
   nearestUnit(x, y, maxD, pred) {
     let best = null, bd = maxD;
+    const c = this._gridCands(x, y, maxD);
+    if (c) {
+      const a = S.units;
+      for (let j = 0; j < c.length; j++) {
+        const u = a[c[j]];
+        if (!pred(u)) continue;
+        const d = Math.hypot(u.x - x, u.y - y);
+        if (d < bd) { bd = d; best = u; }
+      }
+      return best;
+    }
     for (const u of S.units) {
       if (!pred(u)) continue;
       const d = Math.hypot(u.x - x, u.y - y);
@@ -275,7 +320,10 @@ const Combat = {
 
   bestFoe(u, cx, cy, maxD, pred) {
     let best = null, bs = 1e9;
-    for (const o of S.units) {
+    const c = this._gridCands(cx, cy, maxD);
+    const a = S.units, n = c ? c.length : a.length;
+    for (let j = 0; j < n; j++) {
+      const o = c ? a[c[j]] : a[j];
       if (o === u || o.hp <= 0) continue;
       const d = Math.hypot(o.x - cx, o.y - cy);
       if (d > maxD) continue;
@@ -291,6 +339,10 @@ const Combat = {
 
   acquire() {
     this._militiaOn = this.townUnderSiege();
+    this._gridBuild();                        // one bucket pass; the queries below read it
+    try { this._acquireBody(); } finally { this._grid = null; }
+  },
+  _acquireBody() {
     for (const u of S.units) {
       if (u.tUnit || u.tBld) continue;
       const base = CFG.UNITS[u.kind];

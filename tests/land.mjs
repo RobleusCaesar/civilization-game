@@ -63,6 +63,9 @@ const page = async () => {
   await classicWorlds(p);
   await p.goto('file://' + join(root, 'index.html'));
   await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 20000 });
+  // the title's demo world holds its bake for the art (R.holdBake); the
+  // checks that read the demo's map want it baked, as it always was
+  await p.evaluate(() => { if (window.R && R.ensureTerrain) { R.holdBake = false; R.ensureTerrain(); } });
   return p;
 };
 const boot = `Boot.force(); G.newGame('verify7','moderate','xlarge');

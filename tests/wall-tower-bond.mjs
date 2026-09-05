@@ -62,6 +62,9 @@ const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('console', m => { if (m.type() === 'error' && !m.text().includes('ERR_FILE_NOT_FOUND')) errs.push('console: ' + m.text()); });
 await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(900);
+// the title's demo world holds its bake for the art (R.holdBake); this file draws it
+await p.waitForFunction(() => window.R && window.S && S.map, null, { timeout: 20000 });
+await p.evaluate(() => { R.holdBake = false; R.ensureTerrain(); });
 
 const out = await p.evaluate(() => {
   const res = {}, fails = [];

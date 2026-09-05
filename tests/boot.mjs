@@ -343,7 +343,10 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
        lift is the timer's call and the player never waits past the beat.
        Asserting it at 40% measures the machine (a loaded box needs ~1.3s to
        boot a world), not the boot sequence. */
-    const readyAt = await till(0.95);
+    /* the readiness budget: the beat, or 4s when the beat is shorter than
+       a world takes to bake on a loaded box (the bake now waits for the art
+       and runs in slices; on file:// the art is local and lands at once) */
+    const readyAt = await till(Math.max(0.95, 4000 / Boot.HOLD_MS));
     return {
       hold: Boot.HOLD_MS, fade: Boot.FADE_MS, fail: Boot.FAILSAFE_MS,
       up, readyAt, ready: Boot.ready, doneLate: Boot.done,
@@ -354,7 +357,11 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
      a flash before the menu rather than a moment of its own, and the pop-in
      starts before the eye has settled. A further cut is a real decision and
      should have to change this bound to make it. */
-  ck('theHoldIsAFullBeat', mid.hold >= 3000 && mid.hold <= 5000, mid.hold + 'ms');
+  /* 2026-09-05: the operator's direction is "things launch instantly (both
+     menu and game)". The beat is now 1.5s — still a moment of its own, not
+     a flash — and on a cold cache the ART gate (Assets.whenIdle, R.holdBake)
+     decides the lift, not the timer. A further cut is still a decision. */
+  ck('theHoldIsAFullBeat', mid.hold >= 1000 && mid.hold <= 5000, mid.hold + 'ms');
   ck('andTheFadeIsACrossFadeNotACut', mid.fade >= 200 && mid.fade <= 900, mid.fade + 'ms');
   ck('andAFailsafeAlwaysStartsTheGame', mid.fail > mid.hold, mid.fail + 'ms');
   ck('itHoldsThroughTheBeat', mid.up.at < mid.hold && !mid.up.done,
@@ -394,8 +401,9 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     Boot.held = false;
     const wasDone = Boot.done;
     dispatchEvent(new Event('pointerdown'));
+    const heldAtTap = Boot.held;   // the hold's state when the tap landed — the fade wait below may outlast a short hold
     await new Promise(r => setTimeout(r, Boot.FADE_MS + 200));
-    return { wasDone, held: Boot.held, done: Boot.done,
+    return { wasDone, held: heldAtTap, done: Boot.done,
       at: Math.round(performance.now() - Boot.t0), hold: Boot.HOLD_MS,
       gone: !document.getElementById('splash') };
   });

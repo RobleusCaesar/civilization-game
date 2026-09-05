@@ -2,7 +2,25 @@
 /* Units: villagers, defenders, wild animals, raiders — spawning, movement, tasks. */
 
 const Units = {
-  get(id) { return S.units.find(u => u.id === id); },
+  /* THE ID INDEX. get(id) was a linear find over every unit, and Combat
+     asks it for every unit that has a target, every frame — n² in a big
+     fight, on the phone's thread. The index is rebuilt once per
+     Units.update and every hit is VALIDATED against the array (the unit is
+     still where the index remembers it), so a unit spawned or removed since
+     the rebuild falls through to the same linear find and is answered
+     exactly as before. Outside a frame (a tap, a load) the fallback answers
+     too. Nothing about the answer changes; only the time it takes. */
+  _idx: new Map(),
+  reindex() {
+    const m = this._idx; m.clear();
+    const a = S.units;
+    for (let i = 0; i < a.length; i++) m.set(a[i].id, i);
+  },
+  get(id) {
+    const a = S.units, i = this._idx.get(id);
+    if (i !== undefined && i < a.length && a[i].id === id) return a[i];
+    return a.find(u => u.id === id);
+  },
 
   spawn(kind, owner, x, y, opts) {
     opts = opts || {};
@@ -1214,6 +1232,7 @@ const Units = {
 
   update(dt) {
     this._frame = (this._frame || 0) + 1;          // frame stamp — Combat.repathOk's budget resets on it
+    this.reindex();                                // the id index for this frame's lookups (get)
     this.herdClock = (this.herdClock || 0) + dt;   // the shared slow beat every herd breathes to
     for (let i = S.units.length - 1; i >= 0; i--) {
       const u = S.units[i];

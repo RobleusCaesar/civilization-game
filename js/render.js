@@ -5476,6 +5476,8 @@ const R = {
       this.terrainCache.width = px; this.terrainCache.height = px;
       g = this.terrainCache.getContext('2d');
       g.imageSmoothingEnabled = false;
+      // the art revision this bake composes with (Assets._onIdle reads it)
+      this._bakedArtRev = (window.Assets && Assets.artRev) || 0;
     });
     steps.push(() => this.hillHeight());     // re-key the hill field ONCE for this repaint
     steps.push(() => { this.waterDirty(); this.hillsDirty(); });   // …re-baseline both masks
@@ -5555,6 +5557,7 @@ const R = {
     // set, documented in CLAUDE.md). Reference it directly.
     if (!S || !S.map || !S.map.terrain) return;
     this._bake = null; this._bakeDue = false;    // a full bake supersedes any plan
+    this.holdBake = false;                       // …and any hold: this world is baked now
     this._repaintQ = null;                       // …and any queued repaint tail with it
     for (const step of this._bakeSteps()) step();
   },
@@ -5583,9 +5586,18 @@ const R = {
   },
   // run a due bake a slice at a time. Steps are atomic, so the budget is a
   // floor on the work done, not a ceiling — BAKE_ROWS is what keeps a band small.
+  /* A HELD BAKE WAITS FOR THE ART. The title's demo world is founded the
+     moment the page loads, and used to bake at once — procedural, since
+     no drawn art had landed yet — and then be rebaked family by family as
+     the PNGs decoded, each rebake a freeze and a visible snap. With
+     holdBake set the due bake simply does not start; Screens.ensureDemo
+     clears it when Assets.whenIdle() resolves (or its own floor elapses),
+     and the world bakes once, with everything. ensureTerrain ignores the
+     hold: a real game entered is drawn now, whatever has arrived. */
+  holdBake: false,
   tickBake(budgetMs) {
     if (!this._bake) {
-      if (!this._bakeDue) return false;
+      if (!this._bakeDue || this.holdBake) return false;
       this._bakeDue = false;
       this._bake = { steps: this._bakeSteps(), i: 0 };
     }
@@ -5973,6 +5985,12 @@ const R = {
   _reviveGap: 0,
   watchCache(now) {
     if (!this.terrainCache) return;
+    /* a bake that is due, held or under way leaves the cache blank on
+       purpose — reading it now said "purged" and rebaked the whole world
+       synchronously on top of the bake already coming (an 866ms readback
+       and an 862ms rebake, the two worst tasks of a game's first seconds
+       on a phone-class CPU). Nothing to watch until it is painted. */
+    if (this._bakeDue || this._bake || this.holdBake) return;
     if (now - this._cacheCheckAt < this.CACHE_WATCH_MS) return;
     this._cacheCheckAt = now;
     if (this.cacheState() !== 'lost') {
@@ -5992,7 +6010,7 @@ const R = {
      anyway, and the cost of guessing wrong the other way is the black map
      they reported. */
   cacheReturned() {
-    if (!this.terrainCache) return false;
+    if (!this.terrainCache || this._bakeDue || this._bake || this.holdBake) return false;   // not painted yet — nothing lost
     if (this.cacheState() === 'ok') return false;
     // a real return to the tab is rare and deliberate, so it is answered at
     // once — and it clears the backoff, because whatever pressure was on the
@@ -6020,6 +6038,7 @@ const R = {
   deferBake: false,
   _bakeDue: false,
   ensureTerrain() {
+    this.holdBake = false;
     while (this.tickBake(1e9)) { /* finish whatever is left, now */ }
   },
   onNewGame() {
@@ -6041,7 +6060,7 @@ const R = {
     this._repaintQ = null;                                       // …nor a half-drained repaint tail
     // pre-render the full terrain layer once — or mark it due, when the
     // caller has somewhere better to spend the wait (see deferBake)
-    this._bakeDue = false;
+    this._bakeDue = false; this.holdBake = false;   // a founding starts unheld; Screens holds it when it waits for art
     if (this.deferBake) { this.terrainCache = null; this._bakeDue = true; }
     else this.rebuildTerrain();
     this.fogCv = document.createElement('canvas');
@@ -9879,7 +9898,7 @@ const R = {
       const all = this.fishSpots();
       const seen = all.filter(s => s[0] * TL >= vx0 && s[0] * TL <= vx1 && s[1] * TL >= vy0 && s[1] * TL <= vy1 && G.visibleAt(s[0], s[1]));
       const from = seen.length ? seen : all;
-      const want = Math.max(1, Math.min(LAND.FISH_N | 0 || 1, from.length));
+      const want = from.length ? Math.max(1, Math.min(LAND.FISH_N | 0 || 1, from.length)) : 0;   // no water worth fishing: no leap (a held, unbaked world has no spots yet)
       const picks = [];
       for (let k = 0; k < want; k++) {
         const s = from[(Math.imul(ep + 1 + k * 7919, 0x9e3779b1) >>> 8) % from.length];

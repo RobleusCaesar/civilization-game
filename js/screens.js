@@ -80,6 +80,19 @@ const Screens = {
   },
 
   /* ---------------- title ---------------- */
+  /* the art, or a floor: resolves when Assets has no request in flight, or
+     after ms — whichever first. Without Assets (a test stub) it is now. */
+  DEMO_ART_FLOOR_MS: 20000,   // a dead link still gets a title; a slow one gets its art
+  GAME_ART_FLOOR_MS: 15000,
+  waitForArt(ms) {
+    if (!window.Assets || !Assets.whenIdle || Assets.artReady()) return Promise.resolve();
+    return Promise.race([Assets.whenIdle(), new Promise(r => setTimeout(r, ms))]);
+  },
+  // the world's own families only — what the demo's bake composes with
+  waitForWorldArt(ms) {
+    if (!window.Assets || !Assets.whenWorldIdle || Assets.worldReady()) return Promise.resolve();
+    return Promise.race([Assets.whenWorldIdle(), new Promise(r => setTimeout(r, ms))]);
+  },
   ensureDemo() {
     if (window.S && this._demo) return;
     /* A PENDING DRAFT OUTRANKS THE DEMO. Backing all the way to the title
@@ -90,7 +103,19 @@ const Screens = {
        replaces S (Continue, Load, a different trial) forfeits it honestly. */
     if (window.S && S.draft && !S.draft.done && !S.over) return;
     this._demo = true;
-    G.newGame(String((Math.random() * 1e9) | 0), 'moderate', 'large');
+    /* THE DEMO BAKES ONCE, WITH THE ART. Founded here at page load, it used
+       to bake at once — procedural, since no PNG had decoded yet — and then
+       be rebaked family by family as the art landed: the freeze-and-snap the
+       operator watched every launch. The bake is deferred and HELD
+       (R.holdBake) until every art request has settled, with a floor so a
+       dead network still gets a title; the frame loop then bakes it in
+       slices behind the logo, and Boot is told the title is ready from the
+       first frame that draws it (G.frame). */
+    R.deferBake = true;
+    try { G.newGame(String((Math.random() * 1e9) | 0), 'moderate', 'large'); }
+    finally { R.deferBake = false; }
+    R.holdBake = true;
+    this.waitForWorldArt(this.DEMO_ART_FLOOR_MS).then(() => { R.holdBake = false; });
     Cards.pick((Math.random() * 3) | 0);   // the demo world drafts for itself
     G.freeVis = true;         // newGame resets fog; the demo shows the whole map
     G.updateVisibility();
@@ -164,7 +189,7 @@ const Screens = {
     if (this._newestSlot === 'local') {
       const snap = Backend.readLocalSnapshot();
       if (!snap) return;
-      G.loadJSON(snap.json);
+      R.deferBake = true; try { G.loadJSON(snap.json); } finally { R.deferBake = false; }
       if (snap.slot) Backend.markActiveSlot(snap.slot);
       this.enterGame();
       UI.toast('Recovered your last session — save it to a slot to keep it');
@@ -176,7 +201,7 @@ const Screens = {
   },
 
   loadRow(row) {
-    G.loadJSON(typeof row.state === 'string' ? row.state : JSON.stringify(row.state));
+    R.deferBake = true; try { G.loadJSON(typeof row.state === 'string' ? row.state : JSON.stringify(row.state)); } finally { R.deferBake = false; }
     Backend.markActiveSlot(row.slot);
     Backend.activeName = row.name;
     this.lastSavedDay = S.day;
@@ -190,9 +215,49 @@ const Screens = {
   enterGame() {
     this._demo = false;
     G.freeVis = false;
+    /* THE WORLD IS PLAYED WITH ITS ART ON. A run founded on a cold cache
+       could reach this press before the strips and the kit had landed; it
+       used to enter anyway, procedural, and snap a few seconds in. Now the
+       press waits — behind a plaque that only appears when there is
+       something to wait for — for the art and for the held bake to finish
+       in slices, and only then shows the game. A warm cache never sees the
+       plaque: the art settled behind the title long before. */
+    const ready = () => window.Assets && Assets.artReady && Assets.artReady() && !R._bakeDue && !R._bake;
+    if (ready()) { this._enterNow(); return; }
+    this.showPrep(true);
+    this.waitForArt(this.GAME_ART_FLOOR_MS).then(() => {
+      R.holdBake = false;
+      const tick = () => {
+        if (!R._bakeDue && !R._bake) { this.showPrep(false); this._enterNow(); return; }
+        R.tickBake(30); requestAnimationFrame(tick);   // behind the plaque: big slices, the bar still moves
+      };
+      tick();
+    });
+  },
+  _enterNow() {
     S.paused = false;
     document.getElementById('btnPause').textContent = '⏸';
     this.show('playing');
+  },
+  /* the plaque: made on first use, inline-styled like the splash so it needs
+     no stylesheet, and it says what it waits for */
+  showPrep(on) {
+    let el = document.getElementById('prep');
+    if (!el && !on) return;
+    if (!el) {
+      el = document.createElement('div'); el.id = 'prep';
+      el.setAttribute('style', 'position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(13,11,8,0.55);pointer-events:none');
+      el.innerHTML = '<div style="padding:14px 22px;border-radius:10px;background:#1a1610;color:#e8dcc0;font:600 15px/1.4 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,0.5);text-align:center"><div>Preparing the world…</div><div id="prepBar" style="margin-top:10px;height:6px;width:180px;background:#3a3125;border-radius:3px;overflow:hidden"><div id="prepFill" style="height:100%;width:0;background:#e8c15a"></div></div></div>';
+      document.body.appendChild(el);
+    }
+    el.style.display = on ? 'flex' : 'none';
+    if (on) {
+      const fill = document.getElementById('prepFill');
+      const total = Math.max(1, (window.Assets && Assets.pending) || 1); this._prepTotal = Math.max(this._prepTotal || 0, total);
+      const step = () => { if (el.style.display === 'none') return; const left = (window.Assets && Assets.pending) || 0;
+        fill.style.width = Math.round(100 * (1 - left / this._prepTotal)) + '%'; requestAnimationFrame(step); };
+      step();
+    } else this._prepTotal = 0;
   },
 
   /* ---------------- new game ---------------- */
@@ -330,6 +395,10 @@ const Screens = {
     R.deferBake = true;
     try { G.newGame(seed, p.mode, p.size, undefined, tunic); }   // the rival chief is always a fresh roll
     finally { R.deferBake = false; }
+    // …and waits for the art before it bakes, so the world behind the cards
+    // is composed with everything (enterGame finishes it if the player is quicker)
+    R.holdBake = !(window.Assets && Assets.artReady && Assets.artReady());
+    if (R.holdBake) this.waitForArt(this.GAME_ART_FLOOR_MS).then(() => { R.holdBake = false; });
     Backend.markActiveSlot(null);          // fresh run: no cloud slot until first save
     Backend.activeName = null;
     this.lastSavedDay = 1;
@@ -1156,7 +1225,7 @@ const Screens = {
       const rd = new FileReader();
       rd.onload = () => {
         try {
-          G.loadJSON(rd.result);
+          R.deferBake = true; try { G.loadJSON(rd.result); } finally { R.deferBake = false; }
           Backend.markActiveSlot(null);
           this.lastSavedDay = S.day;
           this.enterGame();

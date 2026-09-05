@@ -162,6 +162,9 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
          whatever the floor is (that is the point — supplied art must get the
          same treatment as procedural ground), so an exact pixel match would
          only ever pass on a flat world. The override still has to DOMINATE. */
+      /* the title's demo world holds its bake until the art has landed
+         (R.holdBake); this check measures the map, so it bakes it now */
+      if (window.R && R.ensureTerrain) { R.holdBake = false; R.ensureTerrain(); }
       const sample = (at) => {
         const g = R.terrainCache.getContext('2d');
         const d = g.getImageData(at.x * CFG.TILE + 8, at.y * CFG.TILE + 8, CFG.TILE - 16, CFG.TILE - 16).data;

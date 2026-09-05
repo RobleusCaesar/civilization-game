@@ -2,6 +2,7 @@
 /* Procedurally drawn pixel-art sprites. Everything is generated on a 16x16
    logical grid scaled x2 onto 32x32 canvases at boot — no image files. */
 
+if (typeof performance !== 'undefined' && performance.mark) performance.mark('sprites:start');   // the boot harness reads what this file's parse-time work costs
 const Sprites = {
   terrain: {},   // terrain[t] = [canvas, ...variants]
   building: {},  // building[key] = [lv1, lv2, lv3]
@@ -6364,3 +6365,4 @@ const Sprites = {
 
   Sprites.iconFor = (key) => Sprites.icons[key];
 })();
+if (typeof performance !== 'undefined' && performance.mark) performance.mark('sprites:end');
