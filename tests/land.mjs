@@ -755,6 +755,66 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   await p.close();
 }
 
+/* ---- 9c. EVERY DEPOSIT SHOWS ITS STONE ------------------------------
+   The report: a villager "quarrying stone" on bare meadow — "a bunch of
+   invisible ore". The sprinkle rule picked a tile's stone by a hash contest
+   against all eight neighbours WITH GRASS COUNTED, so a one-tile deposit
+   drew a stone one time in nine and small deposits mostly drew nothing.
+   The contest is now among deposit tiles only, in rounds (R._oreCarries),
+   and this holds the two rulings together on a real world: no deposit tile
+   is further than a tile from a drawn stone, no two stones touch, and no
+   deposit is bare. Measured through R.oreStoneAt, the one entry point the
+   wood and the fallback drawer both go through, after the stone catalog
+   has landed — with no catalog every deposit is invisible, and that is a
+   failure here, not a pass. ---- */
+{
+  const p = await page();
+  await p.evaluate(new Function(boot));
+  await p.waitForFunction(() => window.Assets && Assets.slabStage && (Assets.slabStage(0) || []).length > 0, null, { timeout: 30000 }).catch(() => {});
+  const v = await p.evaluate(() => {
+    const W = CFG.W, H = CFG.H, t = S.map.terrain;
+    const has = new Uint8Array(W * H);
+    let dep = 0, stones = 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (t[y * W + x] !== T.HILLS) continue; dep++;
+      if (R.oreStoneAt(x, y, t)) { has[y * W + x] = 1; stones++; }
+    }
+    let bare = 0, touch = 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (t[y * W + x] !== T.HILLS) continue;
+      let near = 0;
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        const x2 = x + ox, y2 = y + oy;
+        if (x2 < 0 || y2 < 0 || x2 >= W || y2 >= H || !has[y2 * W + x2]) continue;
+        near++; if ((ox || oy) && has[y * W + x]) touch++;
+      }
+      if (!near) bare++;
+    }
+    const seen = new Uint8Array(W * H); let deposits = 0, empty = 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const k = y * W + x; if (t[k] !== T.HILLS || seen[k]) continue;
+      const st = [k]; seen[k] = 1; let any = false;
+      while (st.length) {
+        const q = st.pop(); if (has[q]) any = true;
+        const qx = q % W, qy = (q / W) | 0;
+        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+          const x2 = qx + ox, y2 = qy + oy;
+          if (x2 < 0 || y2 < 0 || x2 >= W || y2 >= H) continue;
+          const k2 = y2 * W + x2;
+          if (t[k2] === T.HILLS && !seen[k2]) { seen[k2] = 1; st.push(k2); }
+        }
+      }
+      deposits++; if (!any) empty++;
+    }
+    return { dep, stones, bare, touch: touch / 2, deposits, empty, rounds: R.ORE_ROUNDS };
+  });
+  ck('everyDepositShowsItsStone', v.dep > 0 && v.stones > 0 && v.bare === 0 && v.touch === 0 && v.empty === 0,
+    v.stones + ' stones on ' + v.dep + ' deposit tiles in ' + v.deposits + ' deposits (' + v.rounds
+      + ' rounds) — ' + v.bare + ' tiles with no stone within one, ' + v.touch + ' touching pairs, '
+      + v.empty + ' bare deposits');
+  await p.close();
+}
+
 /* ---- 10. HILLS ARE STILL ORDINARY GROUND -----------------------------
    The elevation hints are a DRAWING. A hill must stay exactly as passable
    and as buildable as it was before anything was shaded on it. ---- */
@@ -1619,7 +1679,20 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
    gets re-baselined against the truth. */
 {
   const LIVE = { bakeMs: 1300, frameP95: 1.5 };   // LAND_REFRESH's own ceilings, no multiplier
-  const EDIT = { grassMs: 1.01, shoreMs: 2.88 };  // grass: baseline 0.92 + 10%. Shore: re-baselined 2026-09-02 for the SMOOTH fade default (the referee-picked mode paints more rects where depth varies fast): in-suite 2.42-2.62 across runs, worst + 10%
+  /* SHORE, RE-BASELINED 2026-09-04 FOR THE DERIVED REPAINT RING. A repaint
+     used to reset ±2 around every changed tile; it now resets what the
+     change can actually reach (R.groundRing): ±3 when a wood stands within
+     two tiles (the walkable setback in forestLayoutAt reads two tiles out
+     and a crown reaches one past its tree) and ±4 when a deposit stands
+     within three (a stone is placed by a two-round contest among deposit
+     tiles, R._oreCarries, so its art can move with ground three tiles
+     away). Open ground keeps ±2 and its baseline. This shore patch is the
+     expensive case on purpose: forest within two of 37 of its 49 tiles and
+     deposit within three of 14, so most of its edits reset 49 or 81 tiles
+     where they reset 25 — measured in-suite 2.86ms at the old ring and
+     5.14ms at the derived one on the same machine and day. The gate is
+     that + 10%; the phone's "edit ms" button is still the truth. */
+  const EDIT = { grassMs: 1.01, shoreMs: 5.65 };  // grass: baseline 0.92 + 10%. Shore: derived-ring baseline 5.14 + 10% (history above; the smooth-fade baseline before it was 2.62)
   const GRASS_AT = [12, 16], SHORE_AT = [41, 8];  // the two 7x7 workloads on verify7 xlarge
   const measure = async () => {
     const p = await page();
@@ -1680,7 +1753,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   ck('anOpenGroundEditStaysWithinTenPercent', !v.thrown && v.editGrass < EDIT.grassMs,
     v.thrown || (f1(v.editGrass) + 'ms per edit (gate ' + EDIT.grassMs + 'ms = baseline 0.92 + 10%)'));
   ck('aShoreEditStaysWithinTenPercent', !v.thrown && v.editShore < EDIT.shoreMs,
-    v.thrown || (f1(v.editShore) + 'ms per edit (gate ' + EDIT.shoreMs + 'ms = smooth-mode baseline 2.62 + 10%)'));
+    v.thrown || (f1(v.editShore) + 'ms per edit (gate ' + EDIT.shoreMs + 'ms = derived-ring baseline 5.14 + 10%)'));
   ck('theWorldPassFrameStaysCheap', !v.thrown && v.frameP95 < LIVE.frameP95,
     v.thrown || (f1(v.frameP95) + 'ms p95 (ceiling ' + LIVE.frameP95 + 'ms)'));
   ck('andTheFrameLoopStaysClean', !v.thrown && !v.err, v.thrown || v.err);

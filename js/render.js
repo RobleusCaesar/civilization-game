@@ -451,6 +451,7 @@ const LAND = {
   /* …and the quiet surface: a slow expanding ring on a hash-chosen share of
      the water, each tile on its own staggered clock, so the lake breathes
      without anything leaping out of it. */
+  CANOPY_SPILL: 6,      // px a crown may hang past the wood’s edge onto open walkable ground
   RIPPLE: 0.20,         // alpha of the ring at its birth; 0 switches it off
   RIPPLE_GATE: 5,       // one water tile in this many ever ripples
   RIPPLE_EVERY: 7,      // seconds between one tile's own rings
@@ -1541,6 +1542,84 @@ const R = {
 
      AND IT RUNS AFTER THE WOOD, so a crown that overhangs a deposit lands
      behind the stone rather than on top of it. */
+  /* WHICH DEPOSIT TILES CARRY A STONE. Two rules, and they pull against
+     each other: no two stones on touching tiles (a deposit is sprinkled,
+     never piled — the referee’s ruling), and no deposit tile further than
+     a tile from a stone (a villager quarrying bare meadow was the report
+     that ended the previous rule — "a bunch of invisible ore"). That
+     previous rule made each tile beat all eight neighbours’ hashes with
+     GRASS COUNTED, so a one-tile deposit drew a stone one time in nine and
+     a small one usually drew nothing.
+
+     The contest is now among DEPOSIT tiles only — a peak beats every
+     deposit neighbour, and since a lone deposit tile has none it always
+     carries — in rounds: round two runs the same contest among the tiles
+     round one left uncovered (neither a peak nor next to one), and so on
+     for ORE_ROUNDS rounds. Within a round two winners can never touch;
+     across rounds a later winner is by construction not next to an earlier
+     one, so no two stones ever touch. Coverage is complete for every
+     deposit shape that does not chain hashes uphill for more than about
+     2·ORE_ROUNDS tiles, which is what the coverage contract in land.mjs
+     measures on real worlds rather than assumes.
+
+     READING THE NEIGHBOURS’ TERRAIN HAS A PRICE, paid deliberately: a
+     tile’s stone now depends on ground within ORE_RING tiles of it, so a
+     repaint that changes one tile must redraw that ring or the cache
+     drifts from a fresh bake. drawTileAt’s rings are sized from the same
+     dial, and the drift harness holds them to zero. */
+  ORE_ROUNDS: 2,
+  get ORE_RING() { return 2 * this.ORE_ROUNDS - 1; },
+  /* HOW FAR A REPAINT RESETS THE GROUND AROUND A CHANGED TILE. Derived per
+     tile from the widest read any deco pass makes on ground the change can
+     reach: a decal reads terrain one tile out and paints one tile past its
+     anchor (±2, the floor); a wood's layout reads two tiles out (the
+     walkable setback in forestLayoutAt) and its crowns reach one tile past
+     the tree (±3, when a forest tile stands within two of the change); a
+     deposit stone reads ORE_RING tiles out and its art reaches one tile
+     past its own (ORE_RING + 1, when a deposit tile stands within ORE_RING
+     of the change). A change that touches neither wood nor deposit — most
+     edits — keeps the ±2 floor and the cost land.mjs measures for it. The
+     decal restamp goes one ring further than the reset, as it always has.
+     Both repaint routines in drawTileAt size their rings from here. */
+  groundRing(x, y, terr) {
+    let r = 2;
+    const R0 = this.ORE_RING, reach = Math.max(2, R0);
+    for (let oy = -reach; oy <= reach; oy++) for (let ox = -reach; ox <= reach; ox++) {
+      const nx = x + ox, ny = y + oy;
+      if (!MapGen.inB(nx, ny)) continue;
+      const t = terr[MapGen.idx(nx, ny)], d = Math.max(Math.abs(ox), Math.abs(oy));
+      if (t === T.FOREST && d <= 2) r = Math.max(r, 3);
+      else if (t === T.HILLS && d <= R0) r = Math.max(r, R0 + 1);
+    }
+    return r;
+  },
+  _oreCarries(x, y, terr) {
+    const hills = (x2, y2) => MapGen.inB(x2, y2) && terr[MapGen.idx(x2, y2)] === T.HILLS;
+    if (!hills(x, y)) return false;
+    const K = this.ORE_ROUNDS;
+    // a round-r winner: a candidate that beats every candidate neighbour
+    const wins = (x2, y2, r) => {
+      if (!cand(x2, y2, r)) return false;
+      const me = this._lh(x2, y2, 181);
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        if (!ox && !oy) continue;
+        if (cand(x2 + ox, y2 + oy, r) && this._lh(x2 + ox, y2 + oy, 181) > me) return false;
+      }
+      return true;
+    };
+    // a round-r candidate: a deposit tile no earlier round covered
+    const cand = (x2, y2, r) => {
+      if (!hills(x2, y2)) return false;
+      for (let q = 1; q < r; q++) {
+        if (wins(x2, y2, q)) return false;
+        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++)
+          if ((ox || oy) && wins(x2 + ox, y2 + oy, q)) return false;
+      }
+      return true;
+    };
+    for (let r = 1; r <= K; r++) if (wins(x, y, r)) return true;
+    return false;
+  },
   /* WHERE A TILE’S STONE STANDS, or null — pure, so the wood can ask for it
      and composite the two together. */
   oreStoneAt(x, y, terr) {
@@ -1548,19 +1627,7 @@ const R = {
     if (window.Assets && Assets.terrainImg(T.HILLS, 0)) return null;   // supplied art wins, as everywhere
     const slabs = (typeof Assets !== 'undefined' && Assets.slabStage) ? Assets.slabStage(this.oreWear(x, y)) : null;
     if (!slabs || !slabs.length) return null;
-    /* ONE STONE, ON THE TILES THAT WIN THEIR OWN NEIGHBOURHOOD — and the
-       contest is decided by the LAND HASH ALONE, never by which neighbours
-       happen to be deposit. Reading the neighbours’ terrain made a tile’s
-       stone depend on ground a repaint of that tile never touches: quarry
-       one tile and a neighbour two away silently gained or lost its stone,
-       outside the ring the repaint resets, so the cache drifted from a fresh
-       bake. A fixed field is pure per tile, still puts every stone at least
-       a tile from the next, and repaints exactly. */
-    const me = this._lh(x, y, 181);
-    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
-      if (!ox && !oy) continue;
-      if (this._lh(x + ox, y + oy, 181) > me) return null;   // a neighbour carries it instead
-    }
+    if (!this._oreCarries(x, y, terr)) return null;
     const TL = CFG.TILE, h = (x * 73856093 ^ y * 19349663) >>> 0;
     return { wx: x * TL + 8 + ((h >>> 5) % (TL - 16)),
              wy: y * TL + 14 + ((h >>> 11) % (TL - 12)),
@@ -1753,6 +1820,35 @@ const R = {
     const sN = wetT2(tx, ty - 1) || wetT2(tx - 1, ty - 1) || wetT2(tx + 1, ty - 1);
     const sS = wetT2(tx, ty + 1) || wetT2(tx - 1, ty + 1) || wetT2(tx + 1, ty + 1);
     const SETBACK = 8;
+    /* …AND A SETBACK FROM WALKABLE GROUND (the referee’s “villagers standing
+       on trees”). A crown spilling onto the tile next door is right at the
+       wood’s outer edge — the spill is what makes an edge read as a wood
+       and not a hedge — but a walkable tile with wood on two or more sides
+       was being swallowed whole (measured: 66% canopy on a grass corridor
+       with forest on three sides), and a villager walking it stood in a
+       tree. Movement never put them there; the picture did. So a side that
+       faces OPEN ground — not forest, not ground that blocks — keeps its
+       crowns at most CANOPY_SPILL px past the edge, and a side that faces
+       an ENCLOSED open tile (forest on two or more of its four sides) takes
+       the full shoreline setback, so a corridor stays visibly grass from
+       end to end. Culled after the draws are burned, like the shoreline,
+       so every untouched tile keeps its layout bit for bit. */
+    const openT2 = (x2, y2) => { if (!MapGen.inB(x2, y2)) return false; const t2 = terr[MapGen.idx(x2, y2)]; return t2 !== T.FOREST && !Path.blocksLand(t2); };
+    const enclosed = (x2, y2) => { let n = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const x3 = x2 + dx, y3 = y2 + dy;
+        if (MapGen.inB(x3, y3) && terr[MapGen.idx(x3, y3)] === T.FOREST) n++; }
+      return n >= 2; };
+    // the setback a side owes its open neighbours: the strictest of the three
+    // tiles on that side (orthogonal and both corners), or null for none
+    const owed = (a, b2, c) => { let sb = null;
+      for (const [x2, y2] of [a, b2, c]) { if (!openT2(x2, y2)) continue;
+        const v = enclosed(x2, y2) ? SETBACK : -LAND.CANOPY_SPILL;
+        if (sb === null || v > sb) sb = v; }
+      return sb; };
+    const oW = owed([tx - 1, ty], [tx - 1, ty - 1], [tx - 1, ty + 1]);
+    const oE = owed([tx + 1, ty], [tx + 1, ty - 1], [tx + 1, ty + 1]);
+    const oN = owed([tx, ty - 1], [tx - 1, ty - 1], [tx + 1, ty - 1]);
+    const oS = owed([tx, ty + 1], [tx - 1, ty + 1], [tx + 1, ty + 1]);
     const KINDS = Sprites.TREE_KINDS;
     // masked to 31 bits: a negative seed sends the Park-Miller step negative
     // and every r() with it — measured as "roll >= keep" never trimming, so
@@ -1786,6 +1882,10 @@ const R = {
         if (sE && lx + w2 > 32 - SETBACK) continue;
         if (sN && ly - hh < SETBACK) continue;
         if (sS && ly > 32 - SETBACK) continue;
+        if (oW !== null && lx - w2 < oW) continue;
+        if (oE !== null && lx + w2 > 32 - oE) continue;
+        if (oN !== null && ly - hh < oN) continue;
+        if (oS !== null && ly > 32 - oS) continue;
         out.push({ wx: tx * CFG.TILE + lx, wy: ty * CFG.TILE + ly, rr, pickRr, kind, ramp });
       }
     /* A FOREST TILE ALWAYS SHOWS A TREE. The setback can cull a lone islet
@@ -5596,8 +5696,9 @@ const R = {
     const g = this.terrainCache.getContext('2d');
     const terr = S.map.seenTerrain || S.map.terrain;
     this.hillHeight();                       // re-key the hill field ONCE for this repaint
-    /* THE GROUND RESET REACHES ±2, THE DECAL RESTAMP ±3 — and the bound is
-       derived, not padding: a decal's LOOK depends on terrain within one tile
+    /* THE GROUND RESET REACHES groundRing() TILES, THE DECAL RESTAMP ONE
+       MORE — and the bound is derived, not padding (the deposit read is the
+       wider one today; see groundRing): a decal's LOOK depends on terrain within one tile
        of its anchor (the fern's touches-forest gate is the widest read), and
        its paint reaches under one tile past that anchor, so a changed tile's
        pixels end inside ±2. A ±1 reset left ORPHANS — a fern whose forest
@@ -5607,11 +5708,12 @@ const R = {
        widening the rings keeps the reset-once/composite-once rule exact. */
     const W = CFG.W, ground = new Set(), deco = new Set();
     for (const [x, y] of list) {
-      for (let oy = -3; oy <= 3; oy++) for (let ox = -3; ox <= 3; ox++) {
+      const GR = this.groundRing(x, y, terr), DR = GR + 1;
+      for (let oy = -DR; oy <= DR; oy++) for (let ox = -DR; ox <= DR; ox++) {
         const nx = x + ox, ny = y + oy;
         if (!MapGen.inB(nx, ny)) continue;
         deco.add(ny * W + nx);
-        if (ox >= -2 && ox <= 2 && oy >= -2 && oy <= 2) ground.add(ny * W + nx);
+        if (ox >= -GR && ox <= GR && oy >= -GR && oy <= GR) ground.add(ny * W + nx);
       }
     }
     /* ROW-MAJOR, LIKE THE FULL BAKE. A Set iterates in insertion order, and
@@ -5694,15 +5796,17 @@ const R = {
     const g = this.terrainCache.getContext('2d');
     const terr = S.map.seenTerrain || S.map.terrain;
     this.hillHeight();                       // re-key the hill field ONCE for this repaint
-    // ground reset ±2, decals ±3, everything clipped to the reset — the bound
-    // and the reset-once/composite-once rule are derived in drawTilesAt above
+    // ground reset groundRing(), decals one ring further, everything clipped
+    // to the reset — the bound and the reset-once/composite-once rule are
+    // derived in drawTilesAt above
+    const GR = this.groundRing(x, y, terr), DR = GR + 1;
     const inner5 = [];
-    for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++)
+    for (let oy = -GR; oy <= GR; oy++) for (let ox = -GR; ox <= GR; ox++)
       if (MapGen.inB(x + ox, y + oy)) inner5.push((y + oy) * CFG.W + (x + ox));
     this.clipTiles(g, inner5, () => {
       for (const k of inner5) this.drawTile(g, k % CFG.W, (k / CFG.W) | 0);
     });
-    this.paintWaterIn(g, x - 2, y - 2, x + 2, y + 2);
+    this.paintWaterIn(g, x - GR, y - GR, x + GR, y + GR);
     /* THE DECAL PASS REACHES ONE RING FURTHER THAN THE GROUND PASS — a decal
        anchored in the ring spills INTO the erased ground and must be
        restamped — but it paints CLIPPED TO THE GROUND THIS CALL ERASED,
@@ -5714,11 +5818,11 @@ const R = {
        once: the shore blit covers the same ground and nothing outside it. */
     this.clipBoard(g, () => {
       this.clipTiles(g, inner5, () => {         // …only the ground this call erased
-        for (let oy = -3; oy <= 3; oy++) for (let ox = -3; ox <= 3; ox++) {
+        for (let oy = -DR; oy <= DR; oy++) for (let ox = -DR; ox <= DR; ox++) {
           const nx = x + ox, ny = y + oy;
           if (MapGen.inB(nx, ny)) this.grassCover(g, nx, ny, terr);
         }
-        for (let oy = -3; oy <= 3; oy++) for (let ox = -3; ox <= 3; ox++) {
+        for (let oy = -DR; oy <= DR; oy++) for (let ox = -DR; ox <= DR; ox++) {
           const nx = x + ox, ny = y + oy;
           if (MapGen.inB(nx, ny)) this.rockMass(g, nx, ny, terr);
         }
@@ -5730,18 +5834,18 @@ const R = {
            bare ground but never this one, and the cache drifted one whole
            stone from a fresh bake. Found by tracing the repaint of a single
            shore tile pass by pass, not by reasoning about rings. */
-        for (let oy = -3; oy <= 3; oy++) for (let ox = -3; ox <= 3; ox++) {
+        for (let oy = -DR; oy <= DR; oy++) for (let ox = -DR; ox <= DR; ox++) {
           const nx = x + ox, ny = y + oy;
           if (MapGen.inB(nx, ny)) this.oreSlabs(g, nx, ny, terr);
         }
-        for (let oy = -3; oy <= 3; oy++) for (let ox = -3; ox <= 3; ox++) {
+        for (let oy = -DR; oy <= DR; oy++) for (let ox = -DR; ox <= DR; ox++) {
           const nx = x + ox, ny = y + oy;
           if (MapGen.inB(nx, ny)) this.landDecals(g, nx, ny, terr);
         }
         for (const k of inner5) this.hueTint(g, k % CFG.W, (k / CFG.W) | 0, terr);   // one coat on the reset ground
       });
     });
-    this.clipTiles(g, inner5, () => this.blitShore(g, x - 2, y - 2, 5, 5));
+    this.clipTiles(g, inner5, () => this.blitShore(g, x - GR, y - GR, 2 * GR + 1, 2 * GR + 1));   // the reset ground, whatever its ring
     if (terr[y * CFG.W + x] === T.MOUNTAIN) this._mtnDirty = true;
     if (window.Formations) Formations.noteTile(x, y);
   },
@@ -9371,6 +9475,21 @@ const R = {
           sited = true;
         }
       }
+      /* A MINER FACES THE ROCK (operator report: villagers chipping at a
+         deposit "at weird angles"). The mine pose had kept the facing of
+         its last few steps — the walk up to the stand point — so a miner
+         who arrived from the south-west stood beside the rock looking
+         south-east. The sim now stands a miner at the side or behind the
+         deposit (Units.gatherEdge); the facing follows the same physics
+         ruling as a builder: square up to the tile, no camera clamp. From
+         the side that is a profile, from behind it is the front view. */
+      if (pose === 'mine' && u.task && u.task.type === 'gather' && u.task.x != null) {
+        const mdx = u.task.x + 0.5 - u.x, mdy = u.task.y + 0.5 - u.y;
+        if (mdx * mdx + mdy * mdy > 0.01) {
+          face = this.FACE8[((Math.round(Math.atan2(mdy, mdx) / (Math.PI / 4)) % 8) + 8) % 8];
+          sited = true;
+        }
+      }
       if (!sited) face = this.AWAY_TO_FRONT[face] || face;
     }
     const d = ua.dirs[face] || ua.dirs.s;
@@ -9379,6 +9498,7 @@ const R = {
     // (fight falls to walk — motion — and gather-ish poses to idle)
     const fr = d[pose] || (pose === 'fight' ? d.walk : d.idle) || d.walk || d.idle || null;
     this._sheetPose = (fr && fr === d.idle) ? 'idle' : pose;   // what actually resolved (for the idle tempo)
+    this._sheetFace = face;                                      // the facing that resolved (probes, tests)
     /* A STATIONARY POSE BORROWED FROM THE WALK IS HELD, NOT PLAYED (the
        stuck-cow report: her graze sheets ship after the generation reset,
        and until then a standing cow cycling her walk read as "walking

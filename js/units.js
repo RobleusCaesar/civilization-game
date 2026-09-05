@@ -503,6 +503,15 @@ const Units = {
      never drift, or the tap layer starts promising work the task layer won't
      take. */
   gatherEdge(u, tx, ty) {
+    /* A MINER WORKS FROM THE SIDE, OR FROM BEHIND (the referee’s live-play
+       note: “standing at weird angles”). Work turns a villager toward the
+       tile it works, and a villager is never shown from behind — so one
+       standing SOUTH of a rock turned north to face it, was flipped to
+       face the camera instead, and swung a pick at nothing with the stone
+       at its back. From east or west the swing is a profile at the rock;
+       from the north it faces the camera AND the rock. The south edge is
+       taken only when nothing else is open. */
+    const mining = S.map.terrain[MapGen.idx(tx, ty)] === T.HILLS;
     let best = null, bd = 1e9;
     for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const x = tx + ox, y = ty + oy;
@@ -511,7 +520,7 @@ const Units = {
       // spreads around the resource instead of stacking on one side
       const taken = S.units.some(o => o !== u && o.task && o.task.type === 'gather' &&
         o.task.x === tx && o.task.y === ty && o.task.sx === x && o.task.sy === y);
-      const dd = Math.hypot(u.x - x, u.y - y) + (taken ? 100 : 0);
+      const dd = Math.hypot(u.x - x, u.y - y) + (taken ? 100 : 0) + (mining && oy === 1 ? 40 : 0);
       if (dd < bd) { bd = dd; best = { x, y }; }
     }
     return best;
