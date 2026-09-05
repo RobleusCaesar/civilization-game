@@ -599,10 +599,10 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       Terraform && Terraform.diggable ? (Terraform.diggable(x,y) ? 1 : 0) : 0,
     ].join(',')).join(';');
     const before = { sig: sig(), ans: answers() };
-    const rm = R.rockMass, rs = R.rockScree, os = R.oreSlabs;
-    R.rockMass = () => {}; R.rockScree = () => {}; R.oreSlabs = () => {}; R.rebuildTerrain();
+    const rm = R.rockMass, rs = R.rockScree, os = R.oreSlabs, oa = R.oreStoneAt;
+    R.rockMass = () => {}; R.rockScree = () => {}; R.oreSlabs = () => {}; R.oreStoneAt = () => null; R.rebuildTerrain();
     const off = { sig: sig(), ans: answers() };
-    R.rockMass = rm; R.rockScree = rs; R.oreSlabs = os; R.rebuildTerrain();
+    R.rockMass = rm; R.rockScree = rs; R.oreSlabs = os; R.oreStoneAt = oa; R.rebuildTerrain();
     // …and the stream is gone, machinery and tunables together
     const streamApi = ['streams','drawStreams','chaikinOpen','roughenOpen'].filter(k => typeof R[k] === 'function');
     const streamDials = Object.keys(LAND).filter(k => k.startsWith('STREAM'));
@@ -625,10 +625,12 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
 
    Both halves are measured on the RENDERED MAP, and what counts as "rock" is
    established by DIFFING two bakes, one with R.rockMass stubbed out. That is
-   (The deposit is drawn in TWO passes now — R.rockMass for the procedural
-   boulder field and R.oreSlabs for the drawn stone kit, which runs after the
-   wood so a crown never lands on top of a stone. Both have to be stubbed or
-   the diff measures nothing at all and every deposit reads as 0% covered.)
+   (The deposit is drawn BY THE WOOD now — forestStampBand hands its stones
+   to _stampForest so they y-sort in among the trees — with R.oreSlabs left
+   as the fallback for a world with no tree catalog. R.oreStoneAt is the one
+   entry point both go through, so THAT is what has to be stubbed; stubbing
+   the drawer alone leaves the stones on the map and the diff measures
+   nothing at all.)
    exact where a colour test is not: a deposit stands on the same painted
    grass floor as everything else, and half the map's other decoration is
    grey too. ---- */
@@ -639,10 +641,10 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     const px = W*TL;
     const g = R.terrainCache.getContext('2d');
     const on = g.getImageData(0,0,px,px).data;
-    const rm = R.rockMass, rs = R.rockScree, os = R.oreSlabs;
-    R.rockMass=()=>{}; R.rockScree=()=>{}; R.oreSlabs=()=>{}; R.rebuildTerrain();
+    const rm = R.rockMass, rs = R.rockScree, os = R.oreSlabs, oa = R.oreStoneAt;
+    R.rockMass=()=>{}; R.rockScree=()=>{}; R.oreSlabs=()=>{}; R.oreStoneAt=()=>null; R.rebuildTerrain();
     const off = R.terrainCache.getContext('2d').getImageData(0,0,px,px).data;
-    R.rockMass=rm; R.rockScree=rs; R.oreSlabs=os; R.rebuildTerrain();
+    R.rockMass=rm; R.rockScree=rs; R.oreSlabs=os; R.oreStoneAt=oa; R.rebuildTerrain();
     const isRock = (x,y) => { const i=(y*px+x)*4;
       return on[i]!==off[i] || on[i+1]!==off[i+1] || on[i+2]!==off[i+2]; };
     // 1. THE CORE IS SOLID — no bare ground left showing through its heart
@@ -836,7 +838,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     R.rebuildTerrain();
     const on = R.terrainCache.getContext('2d').getImageData(0,0,px,px).data;
     const blank = (() => { const c=document.createElement('canvas'); c.width=c.height=TL; return [c]; })();
-    const keep = {}, rm = R.rockMass, rs = R.rockScree, os = R.oreSlabs;
+    const keep = {}, rm = R.rockMass, rs = R.rockScree, os = R.oreSlabs, oa = R.oreStoneAt;
     for (const t of [T.FOREST, T.FERTILE]) {
       keep[t] = [Sprites.terrain[t], Sprites.terrainMed[t], Sprites.terrainFull[t], Sprites.terrainRare[t]];
       Sprites.terrain[t] = Sprites.terrainMed[t] = Sprites.terrainFull[t] = Sprites.terrainRare[t] = blank;
@@ -845,12 +847,12 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     // installed the trees come from forestStampBand, not the tile sets
     const fsb = R.forestStampBand, fsn = R.forestStampsNear;
     R.forestStampBand = () => {}; R.forestStampsNear = () => {};
-    R.rockMass=()=>{}; R.rockScree=()=>{}; R.oreSlabs=()=>{}; R.rebuildTerrain();
+    R.rockMass=()=>{}; R.rockScree=()=>{}; R.oreSlabs=()=>{}; R.oreStoneAt=()=>null; R.rebuildTerrain();
     const off = R.terrainCache.getContext('2d').getImageData(0,0,px,px).data;
     for (const t of [T.FOREST, T.FERTILE]) {
       [Sprites.terrain[t], Sprites.terrainMed[t], Sprites.terrainFull[t], Sprites.terrainRare[t]] = keep[t];
     }
-    R.rockMass=rm; R.rockScree=rs; R.oreSlabs=os;
+    R.rockMass=rm; R.rockScree=rs; R.oreSlabs=os; R.oreStoneAt=oa;
     R.forestStampBand = fsb; R.forestStampsNear = fsn;
     const sample = (n2) => {
       const at = kindAt[n2];

@@ -1541,16 +1541,13 @@ const R = {
 
      AND IT RUNS AFTER THE WOOD, so a crown that overhangs a deposit lands
      behind the stone rather than on top of it. */
-  oreSlabs(g, x, y, terr) {
-    if (terr[MapGen.idx(x, y)] !== T.HILLS) return;
-    if (window.Assets && Assets.terrainImg(T.HILLS, 0)) return;   // supplied art wins, as everywhere
+  /* WHERE A TILE’S STONE STANDS, or null — pure, so the wood can ask for it
+     and composite the two together. */
+  oreStoneAt(x, y, terr) {
+    if (terr[MapGen.idx(x, y)] !== T.HILLS) return null;
+    if (window.Assets && Assets.terrainImg(T.HILLS, 0)) return null;   // supplied art wins, as everywhere
     const slabs = (typeof Assets !== 'undefined' && Assets.slabStage) ? Assets.slabStage(this.oreWear(x, y)) : null;
-    if (!slabs || !slabs.length) return;
-    const TL = CFG.TILE, W = CFG.W, H = CFG.H;
-    const hill = (ox, oy) => {
-      const nx = x + ox, ny = y + oy;
-      return nx >= 0 && ny >= 0 && nx < W && ny < H && terr[ny * W + nx] === T.HILLS;
-    };
+    if (!slabs || !slabs.length) return null;
     /* ONE STONE, ON THE TILES THAT WIN THEIR OWN NEIGHBOURHOOD — and the
        contest is decided by the LAND HASH ALONE, never by which neighbours
        happen to be deposit. Reading the neighbours’ terrain made a tile’s
@@ -1562,13 +1559,24 @@ const R = {
     const me = this._lh(x, y, 181);
     for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
       if (!ox && !oy) continue;
-      if (this._lh(x + ox, y + oy, 181) > me) return;    // a neighbour carries it instead
+      if (this._lh(x + ox, y + oy, 181) > me) return null;   // a neighbour carries it instead
     }
-    const h = (x * 73856093 ^ y * 19349663) >>> 0;
-    const art = slabs[(h >>> 3) % slabs.length];
-    const cx = x * TL + 8 + ((h >>> 5) % (TL - 16));
-    const foot = y * TL + 14 + ((h >>> 11) % (TL - 12));
-    g.drawImage(art, cx - (art.width >> 1), foot - art.height);
+    const TL = CFG.TILE, h = (x * 73856093 ^ y * 19349663) >>> 0;
+    return { wx: x * TL + 8 + ((h >>> 5) % (TL - 16)),
+             wy: y * TL + 14 + ((h >>> 11) % (TL - 12)),
+             stone: slabs[(h >>> 3) % slabs.length] };
+  },
+  /* …and the fallback drawer, for a world with no tree catalog on disk. With
+     one installed the WOOD draws the stones (forestStampBand), y-sorted in
+     among the trees: ordering the two passes against each other can only
+     ever be wrong one way round — stones over the wood put a boulder on top
+     of the crown in front of it, wood over the stones put a crown on top of
+     the boulder in front of THAT. Row order is the only rule that is right
+     both times, and it is the rule the mountain strips already use. */
+  oreSlabs(g, x, y, terr) {
+    if (this._stampMode()) return;
+    const s = this.oreStoneAt(x, y, terr);
+    if (s) g.drawImage(s.stone, s.wx - (s.stone.width >> 1), s.wy - s.stone.height);
   },
 
   rockMass(g, x, y, terr) {
@@ -1800,6 +1808,8 @@ const R = {
     trees.sort((a, b) => (a.wy - b.wy) || (a.wx - b.wx));
     const fG = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, (w || 1), (h || 1)); };
     for (const t of trees) {
+      // a DEPOSIT STONE rides the same y-sorted stream as the trees
+      if (t.stone) { g.drawImage(t.stone, t.wx - (t.stone.width >> 1), t.wy - t.stone.height); continue; }
       const h2 = (t.wx * 73856093 ^ t.wy * 19349663) >>> 0;
       const art = Assets.treePiece(t.kind, t.pickRr, h2);
       if (art) g.drawImage(art, t.wx - (art.width >> 1), t.wy - art.height);
@@ -1814,8 +1824,11 @@ const R = {
     if (!this._stampMode()) return;
     const terr = S.map.seenTerrain || S.map.terrain;
     const trees = [];
-    for (let ty = a; ty < b; ty++) for (let tx = 1; tx < CFG.W - 1; tx++)
-      if (terr[ty * CFG.W + tx] === T.FOREST) trees.push(...this.forestLayoutAt(tx, ty, terr));
+    for (let ty = a; ty < b; ty++) for (let tx = 1; tx < CFG.W - 1; tx++) {
+      if (terr[ty * CFG.W + tx] === T.FOREST) { trees.push(...this.forestLayoutAt(tx, ty, terr)); continue; }
+      const st = this.oreStoneAt(tx, ty, terr);
+      if (st) trees.push(st);
+    }
     if (trees.length) this._stampForest(g, trees);
   },
   // the incremental repaint's version: every tree based in the reset set or
@@ -1830,7 +1843,9 @@ const R = {
         const nx = x + ox, ny = y + oy, nk = ny * W + nx;
         if (!MapGen.inB(nx, ny) || seen.has(nk)) continue;
         seen.add(nk);
-        if (terr[nk] === T.FOREST) trees.push(...this.forestLayoutAt(nx, ny, terr));
+        if (terr[nk] === T.FOREST) { trees.push(...this.forestLayoutAt(nx, ny, terr)); continue; }
+        const st = this.oreStoneAt(nx, ny, terr);
+        if (st) trees.push(st);
       }
     }
     if (trees.length) this._stampForest(g, trees);
