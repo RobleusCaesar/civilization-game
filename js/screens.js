@@ -75,7 +75,15 @@ const Screens = {
     else if (name === 'leaders') this.onLeaders();
     else if (name === 'endgame') this.onEndgame(opts);
     else if (name === 'doomed') this.onDoomed();
-    else if (name === 'playing') { if (window.S) S.paused = false; }
+    else if (name === 'playing') {
+      if (window.S) S.paused = false;
+      // a real game, settled in: the endgame gallery may start loading, one
+      // picture at a time, once the wire has been quiet for half a minute
+      if (window.S && !this._demo && window.Assets && Assets.startEndgameArt) {
+        clearTimeout(this._galleryT);
+        this._galleryT = setTimeout(() => { if (this.current === 'playing' && !this._demo) Assets.startEndgameArt(); }, 30000);
+      }
+    }
     if (name !== 'playing' && window.S && !this._demo) S.paused = true;
   },
 

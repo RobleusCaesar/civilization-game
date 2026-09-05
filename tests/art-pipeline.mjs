@@ -990,24 +990,27 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
   await p.close();
 }
 
-/* ---- EVERY SCRIPT TAG CARRIES THE CURRENT ART_V ----
+/* ---- THE SCRIPT TAGS SHARE ONE VERSION, NO OLDER THAN THE ART ----
    A phone holding a cached older js/artstyle.js beside a fresh js/render.js
    threw inside the terrain bake and lost every tree, rock, berry and gold
    seam on a real day-90 save (CLAUDE.md, "A red parity or regression check
    BLOCKS the merge"). index.html versions its script tags so the files can
-   never load at mixed versions — and that only works if the version keeps
-   up with CFG.ART_V, which is easy to forget and silent when missed. */
+   never load at mixed versions. Since 2026-09-05 the tags are the CODE
+   version and CFG.ART_V the ART version, bumped apart (scratchpad
+   bump.cjs): a JavaScript-only deploy keeps 66 MB of cached pictures. The
+   tags may run AHEAD of ART_V, never behind it — ART_V lives in
+   js/config.js, and only a moved tag makes a phone fetch the new one. */
 {
   const { readFileSync } = await import('node:fs');
   const html = readFileSync(join(root, 'index.html'), 'utf8');
-  const V = (readFileSync(join(root, 'js/config.js'), 'utf8').match(/ART_V:\s*(\d+)/) || [])[1];
+  const V = +(readFileSync(join(root, 'js/config.js'), 'utf8').match(/ART_V:\s*(\d+)/) || [])[1];
   const tags = html.match(/<script src="js\/[^"]+"/g) || [];
-  const stale = tags.filter(t => !t.includes('?v=' + V));
-  const ok = !!V && tags.length > 10 && stale.length === 0;
-  res.everyScriptTagCarriesTheCurrentArtV = (ok ? 'PASS — ' : 'FAIL — ') + (stale.length
-    ? stale.length + ' of ' + tags.length + ' tags off v=' + V + ': ' + stale.slice(0, 3).join(' ')
-    : tags.length + ' tags at v=' + V);
-  if (!ok) fails.push('everyScriptTagCarriesTheCurrentArtV');
+  const vers = [...new Set(tags.map(t => (t.match(/\?v=(\d+)/) || [])[1]).filter(Boolean))].map(Number);
+  const one = vers.length === 1 ? vers[0] : null;
+  const ok = !!V && tags.length > 10 && one !== null && one >= V;
+  res.theScriptTagsShareOneVersionNoOlderThanTheArt = (ok ? 'PASS — ' : 'FAIL — ')
+    + (one === null ? 'tags at mixed versions ' + JSON.stringify(vers) : tags.length + ' tags at code v=' + one + ', art v=' + V);
+  if (!ok) fails.push('theScriptTagsShareOneVersionNoOlderThanTheArt');
 }
 
 console.log(JSON.stringify(res, null, 1));

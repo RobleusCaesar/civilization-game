@@ -277,11 +277,11 @@ const Assets = {
   endgameUrl(outcome, mode, n) {
     return this.ENDGAME_DIR + outcome + '/' + mode + '/' + n + '.png?v=' + (CFG.ART_V || 1);
   },
-  _tryEndgame(outcome, mode, n) {
-    if (n > this.ENDGAME_MAX) return;
+  _tryEndgame(outcome, mode, n, onEnd) {
+    if (n > this.ENDGAME_MAX) { if (onEnd) onEnd(); return; }
     const img = new Image();
-    img.onload = () => { this.setEndgameArt(outcome, mode, img); this._tryEndgame(outcome, mode, n + 1); };
-    img.onerror = () => { /* no more pictures in this bucket — the ones already found still stand */ };
+    img.onload = () => { this.setEndgameArt(outcome, mode, img); this._tryEndgame(outcome, mode, n + 1, onEnd); };
+    img.onerror = () => { if (onEnd) onEnd(); /* no more pictures in this bucket — the ones already found still stand */ };
     try { img.fetchPriority = 'low'; } catch (e) {}
     img.src = this.endgameUrl(outcome, mode, n);
   },
@@ -1351,9 +1351,8 @@ const Assets = {
       const img = new Image();
       img.onload = () => { this.setUnitFrames(key, dir, pose, img, tunic); };
       img.onerror = () => {};
-      this._track(this._prio(img, 'low'));
+      this._track(this._prio(img, this.stripPrio()));
       img.src = this.UNIT_DIR + 'unit-villager-l' + tier + '-' + sex + '-' + dir + '-' + pose +
-        this._track(img);
         '.png?v=' + (CFG.ART_V || 1);
     }
   },
@@ -1405,7 +1404,7 @@ const Assets = {
       const img = new Image();
       img.onload = () => { this.setUnitFrames(key, dir, pose, img, tunic); };
       img.onerror = () => {};                  // absent art is the default state
-      this._track(this._prio(img, 'low'));
+      this._track(this._prio(img, this.stripPrio()));
       img.src = this.UNIT_DIR + 'unit-' + kind + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1);
     }
   },
@@ -1431,7 +1430,7 @@ const Assets = {
       const img = new Image();
       img.onload = () => { this.setUnitFrames(key, dir, pose, img, tunic); };
       img.onerror = () => {};                  // absent art is the default state
-      this._track(this._prio(img, 'low'));
+      this._track(this._prio(img, this.stripPrio()));
       img.src = this.UNIT_DIR + 'unit-sapper-l' + tier + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1);
     }
   },
@@ -1444,7 +1443,7 @@ const Assets = {
     const img = new Image();
     img.onload = () => { this.setUnitFrames(kind, dir, pose, img); };
     img.onerror = () => {};                    // absent art is the default state
-    this._track(this._prio(img, 'low'));
+    this._track(this._prio(img, this.stripPrio()));
     img.src = this.unitUrl(kind, dir, pose);
   },
   setUnitFrames(kind, dir, pose, img, tunic) {
@@ -1627,6 +1626,10 @@ const Assets = {
      — on a cold cache those strips were what the stone and the kit queued
      behind for a minute. */
   _prio(img, p) { try { img.fetchPriority = p; } catch (e) {} return img; },
+  /* a unit strip's place on the wire: LOW for the title's demo world,
+     which founds at page load and must not delay the world's own art;
+     HIGH for a real run, which needs its people drawn now */
+  stripPrio() { return (window.Screens && Screens._demo) ? 'low' : 'high'; },
   _track(img, world) {
     this.pending++; if (world) this.pendingWorld++;
     const done = () => {
@@ -1693,17 +1696,30 @@ const Assets = {
     this._tryMtnKit();
     this.ready = true;
     if (this.pending <= 0) { this._everIdle = true; const w = this._idle; this._idle = []; for (const r of w) r(); }
-    /* THE ENDGAME GALLERY GOES LAST. Fifty megabytes of pictures nobody sees
-       until a run ends were the first thing on the wire — three quarters of
-       all art bytes, competing with every tree, mountain and unit strip
-       the opening screen actually needs. They start once every other
-       request has settled, at low fetch priority, and a run that ends before
-       they land still gets whichever had arrived (endgameImgs). */
-    this.whenIdle().then(() => {
-      for (const outcome of this.ENDGAME_OUTCOMES)
-        for (const mode of this.endgameModes()) this._tryEndgame(outcome, mode, 1);
-    });
+    /* THE ENDGAME GALLERY GOES LAST — see startEndgameArt: a real game
+       asks for it once it has been playing a while, one picture at a time,
+       never the boot. Fifty megabytes of pictures nobody sees until a run
+       ends were the first thing on the wire; then, started on the boot's
+       first idle at the same low priority as the unit strips, they stood
+       in front of every villager strip a run founded after them asked for
+       (the operator: "fresh reload, villager art isn't loading"). */
     return { ok: true, data: { slots: this.artSlots().length + this.campTribes().length } };
+  },
+  /* THE GALLERY, ONE PICTURE AT A TIME. Called by Screens once a real game
+     has been playing for a while; waits for the wire to be quiet, then
+     walks the buckets in one serial chain — a single low-priority request
+     in flight at any moment, so nothing a game asks for later ever queues
+     behind it. A run that ends before the gallery is in still gets
+     whichever pictures had arrived (endgameImgs). Idempotent. */
+  _galleryStarted: false,
+  startEndgameArt() {
+    if (this._galleryStarted) return;
+    this._galleryStarted = true;
+    const buckets = [];
+    for (const outcome of this.ENDGAME_OUTCOMES) for (const mode of this.endgameModes()) buckets.push([outcome, mode]);
+    let bi = 0;
+    const nextBucket = () => { if (bi >= buckets.length) return; const [o, m] = buckets[bi++]; this._tryEndgame(o, m, 1, nextBucket); };
+    this.whenIdle().then(nextBucket);
   },
 
   /* probe one ground slot; on a hit, install it and reach for the next
