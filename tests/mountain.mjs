@@ -237,6 +237,35 @@ const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' 
 }
 
 /* ---- 4. GAMEPLAY TRUTH IS TILE-BASED --------------------------------- */
+/* ---- EVERY MOUNTAIN TILE SHOWS ROCK (the operator's day-44 save: a
+   villager stopped by "nothing", which was seven rows of mountain drawn as
+   meadow). The kit's peak cap was shared across the ranks and spent by the
+   deep ones, so the range's southern edge got no pieces; and the kit has
+   nothing narrower than five tiles, so a narrow tail or the stair under a
+   piece's foot took none either. Both are held here on a highland world:
+   the layer's own record of where rock landed (R._mtnShow, KIT_SHOW_MIN of
+   a tile, or an outcrop's boulders) must mark every mountain cell. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(`
+    const out = {};
+    for (const seed of ['591760987', 'mtn40', 'scenes1']) {
+      G.newGame(seed, 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+      for (let i = 0; i < S.map.explored.length; i++) { S.map.explored[i] = 1; if (S.map.seenTerrain) S.map.seenTerrain[i] = S.map.terrain[i]; }
+      R.rebuildTerrain(); R._mtnDirty = true; R.mtnStrips();
+      const W = CFG.W, t = S.map.terrain, show = R._mtnShow;
+      let cells = 0, bare = 0; const ex = [];
+      for (let k = 0; k < t.length; k++) { if (t[k] !== T.MOUNTAIN) continue; cells++;
+        if (!show || !show[k]) { bare++; if (ex.length < 5) ex.push([k % W, (k / W) | 0]); } }
+      out[seed] = { world: S.map.worldName, cells, bare, ex };
+    }
+    return out;`));
+  const bad = Object.entries(v).filter(([, r]) => r.bare > 0);
+  ck('everyMountainTileShowsRock', bad.length === 0 && Object.values(v).some(r => r.cells > 100),
+    Object.entries(v).map(([sd, r]) => sd + ' (' + r.world + '): ' + r.cells + ' mountain cells, ' + r.bare + ' with no rock drawn'
+      + (r.bare ? ' e.g. ' + JSON.stringify(r.ex) : '')).join('; '));
+  await p.close();
+}
 {
   const p = await page();
   const v = await p.evaluate(new Function(boot + `
@@ -312,8 +341,18 @@ const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' 
     R.mtnStrips();
     if (!R._mtnOcc || !R._mtnOcc.size) return { skip: true };
     const W = CFG.W, TL = CFG.TILE;
-    // an occluded walkable tile, and an open control tile far from any art
-    const k = [...R._mtnOcc].find(k2 => Path.passable(k2 % W, (k2 / W) | 0, 'P'));
+    /* an occluded walkable tile — the most occluded of them — and an open
+       control tile far from any art. The check's premise is a unit MOSTLY
+       behind rock; the first tile in set order was as often one the art
+       covered by half, where a sprite standing a tile tall is half in the
+       open and the measure is a coin toss (found when the kit's coverage
+       change reshuffled the set). The rock over the tile and over the tile
+       north of it, where the sprite's head stands, picks the tile. */
+    const hits = R._mtnHits || new Map();
+    const cands = [...R._mtnOcc].filter(k2 => Path.passable(k2 % W, (k2 / W) | 0, 'P'));
+    const score = k2 => (hits.get(k2) || 0) + (hits.get(k2 - W) || 0);
+    cands.sort((a, b2) => score(b2) - score(a));
+    const k = cands.length ? cands[0] : null;
     if (k == null) return { skip: true };
     const ox = k % W + 0.5, oy = ((k / W) | 0) + 0.5;
     let cx = 0, cy = 0;
