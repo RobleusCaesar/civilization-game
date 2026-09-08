@@ -670,12 +670,18 @@
     68%  { opacity: 1; transform: translateY(0)   scale(1.012); }
     to   { opacity: 1; transform: translateY(0)   scale(1); }
   }
-  #scrTitle.popIn .thead        { animation: popIn 0.44s cubic-bezier(.22,.9,.3,1) 0.02s both; }
-  #scrTitle.popIn .tmenu > *    { animation: popIn 0.40s cubic-bezier(.22,.9,.3,1) both; }
-  #scrTitle.popIn .tmenu > *:nth-child(1) { animation-delay: 0.16s; }
-  #scrTitle.popIn .tmenu > *:nth-child(2) { animation-delay: 0.23s; }
-  #scrTitle.popIn .tmenu > *:nth-child(3) { animation-delay: 0.30s; }
-  #scrTitle.popIn .tmenu > *:nth-child(4) { animation-delay: 0.37s; }
+  /* TIGHTENED 2026-09-05 alongside the HOLD_MS cut, same reason: the
+     stagger is non-blocking (every button is already tappable while it
+     plays) but it was still the largest visible "still arriving" stretch
+     after the splash goes — four buttons finishing ~0.77s apart on top of
+     the old 1500ms hold. Same shape (thead first, then the four buttons in
+     order, never all at once), roughly half the total settle time. */
+  #scrTitle.popIn .thead        { animation: popIn 0.32s cubic-bezier(.22,.9,.3,1) 0.02s both; }
+  #scrTitle.popIn .tmenu > *    { animation: popIn 0.30s cubic-bezier(.22,.9,.3,1) both; }
+  #scrTitle.popIn .tmenu > *:nth-child(1) { animation-delay: 0.08s; }
+  #scrTitle.popIn .tmenu > *:nth-child(2) { animation-delay: 0.13s; }
+  #scrTitle.popIn .tmenu > *:nth-child(3) { animation-delay: 0.18s; }
+  #scrTitle.popIn .tmenu > *:nth-child(4) { animation-delay: 0.23s; }
   /* a player who asks for less motion gets the arrival, not the movement */
   @media (prefers-reduced-motion: reduce) {
     #scrTitle.popIn .thead, #scrTitle.popIn .tmenu > * {
@@ -1124,7 +1130,7 @@
     return (window.performance && performance.now) ? performance.now() : Date.now();
   };
   var Boot = window.Boot = {
-    HOLD_MS: 1500,          // the beat the glen holds before it starts to go (2026-09-05: "things launch instantly" — the art gate, not the beat, now decides the lift on a cold cache)
+    HOLD_MS: 500,           // the beat the glen holds before it starts to go (2026-09-05, cut again: the operator's own device still read the 1500ms beat as "sits for a bit" on a warm cache, where the beat — not the art gate — is what the player actually waits on; the art gate still decides the lift on a cold one)
     FADE_MS: 450,           // matches the inline transition above
     FAILSAFE_MS: 9000,      // …but a game that never reports in still starts
     t0: now(),
@@ -1600,29 +1606,29 @@
 
 </div>
 
-<script src="js/config.js?v=40"></script>
-<script src="js/config.supabase.js?v=40"></script>
-<script src="js/vendor/supabase.js?v=40"></script>
-<script src="js/backend.js?v=40"></script>
-<script src="js/score.js?v=40"></script>
-<script src="js/cards.js?v=40"></script>
-<script src="js/artstyle.js?v=40"></script>
-<script src="js/sprites.js?v=40"></script>
-<script src="js/formations.js?v=40"></script>
-<script src="js/relics.js?v=40"></script>
-<script src="js/assets.js?v=40"></script>
-<script src="js/dev.js?v=40"></script>
-<script src="js/map.js?v=40"></script>
-<script src="js/buildings.js?v=40"></script>
-<script src="js/units.js?v=40"></script>
-<script src="js/combat.js?v=40"></script>
-<script src="js/ai.js?v=40"></script>
-<script src="js/render.js?v=40"></script>
-<script src="js/defeatart.js?v=40"></script>
-<script src="js/victoryart.js?v=40"></script>
-<script src="js/ui.js?v=40"></script>
-<script src="js/screens.js?v=40"></script>
-<script src="js/tutorial.js?v=40"></script>
-<script src="js/game.js?v=40"></script>
+<script src="js/config.js?v=41"></script>
+<script src="js/config.supabase.js?v=41"></script>
+<script src="js/vendor/supabase.js?v=41"></script>
+<script src="js/backend.js?v=41"></script>
+<script src="js/score.js?v=41"></script>
+<script src="js/cards.js?v=41"></script>
+<script src="js/artstyle.js?v=41"></script>
+<script src="js/sprites.js?v=41"></script>
+<script src="js/formations.js?v=41"></script>
+<script src="js/relics.js?v=41"></script>
+<script src="js/assets.js?v=41"></script>
+<script src="js/dev.js?v=41"></script>
+<script src="js/map.js?v=41"></script>
+<script src="js/buildings.js?v=41"></script>
+<script src="js/units.js?v=41"></script>
+<script src="js/combat.js?v=41"></script>
+<script src="js/ai.js?v=41"></script>
+<script src="js/render.js?v=41"></script>
+<script src="js/defeatart.js?v=41"></script>
+<script src="js/victoryart.js?v=41"></script>
+<script src="js/ui.js?v=41"></script>
+<script src="js/screens.js?v=41"></script>
+<script src="js/tutorial.js?v=41"></script>
+<script src="js/game.js?v=41"></script>
 </body>
 </html>

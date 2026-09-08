@@ -1638,9 +1638,24 @@ const R = {
     const slabs = (typeof Assets !== 'undefined' && Assets.slabStage) ? Assets.slabStage(this.oreWear(x, y)) : null;
     if (!slabs || !slabs.length) return null;
     if (!this._oreCarries(x, y, terr)) return null;
+    /* THE PILE STAYS INSIDE ITS OWN TILE (operator report, screenshot: a
+       miner "standing directly on" the deposit). Every installed rock-pile
+       sprite is 32x24 — the sprite is exactly one tile wide, TL wide, so
+       ANY horizontal offset used to run it past one edge or the other; the
+       old range (8..24 of a 32px tile) came from a narrower placeholder art
+       size and was never re-tuned when the pile settled at full tile width.
+       A miner stands roughly half a tile from the deposit's own edge
+       (Units.assignGather's STAND blend); a pile bleeding 7-8px into that
+       neighbor tile is what closed the gap and read as standing on it.
+       wx now only jitters a couple of px either side of dead centre — real
+       variety comes from which of 12 pile shapes and 3 wear stages draws,
+       not from where a same-width sprite sits in its own tile. wy keeps a
+       full TL-24=8px band, but shifted so the sprite's whole 24px height
+       — top to bottom — stays inside the tile instead of the old range,
+       which let it reach 10px north of the tile it belongs to. */
     const TL = CFG.TILE, h = (x * 73856093 ^ y * 19349663) >>> 0;
-    return { wx: x * TL + 8 + ((h >>> 5) % (TL - 16)),
-             wy: y * TL + 14 + ((h >>> 11) % (TL - 12)),
+    return { wx: x * TL + (TL >> 1) + ((h >>> 5) % 5) - 2,
+             wy: y * TL + 24 + ((h >>> 11) % (TL - 24)),
              stone: slabs[(h >>> 3) % slabs.length] };
   },
   /* …and the fallback drawer, for a world with no tree catalog on disk. With
@@ -6117,10 +6132,26 @@ const R = {
        deterministic on every engine; premultiplied, because blurring straight
        RGBA bleeds the black of fully-transparent pixels into the lit edge. */
     /* The blur runs at 1px/TILE — 4k pixels, not the 68k of the upscaled
-       intermediate (measured: 8.5ms median there, ~0.3ms here) — and the
-       two bilinear upscales (1px→4px baked here, 4px→tile at blit time)
-       carry the smoothed field out to screen resolution for free. */
-    this._boxBlurPremul(g, CFG.W, CFG.H, 1, 2);
+       intermediate — and the two bilinear upscales (1px→4px baked here,
+       4px→tile at blit time) carry the smoothed field out to screen
+       resolution for free.
+       RADIUS 3, THREE ROUNDS (2026-09-05, operator report: "the fog...
+       gives a weird checkered vibe"). The first hand-rolled blur (radius 1,
+       two rounds, ~1.2 tiles of standard deviation) was wide enough to kill
+       the literal 1px hard edge ctx.filter used to leave, but not wide
+       enough to read as GRADUAL — especially at the zoomed-out camera a
+       phone commonly plays at, where that already-thin band compresses to
+       a handful of real screen pixels. Vision is also the UNION of many
+       small circular discs (one per building and unit, js/game.js), so the
+       boundary is scalloped rather than one clean ring; a thin blur along a
+       scalloped edge reads as alternating light/dark arcs — the "checkered"
+       the report named — where a wide one merges the lobes into one smooth
+       contour. Box blur cost is O(w·h) PER ROUND regardless of radius (the
+       sliding-window sum below never re-sums the kernel), so radius is
+       free; only round count costs anything, and this buffer is at most
+       65×65 (xlarge, CFG.SIZES) either way — 3 rounds here measured under
+       0.5ms, against the 1.5s+ the player waits for a bake at that size. */
+    this._boxBlurPremul(g, CFG.W, CFG.H, 3, 3);
     const scale = 4, bw = CFG.W * scale, bh = CFG.H * scale;
     if (!this.fogBlurCv) this.fogBlurCv = document.createElement('canvas');
     if (this.fogBlurCv.width !== bw) { this.fogBlurCv.width = bw; this.fogBlurCv.height = bh; }
@@ -9513,15 +9544,16 @@ const R = {
           sited = true;
         }
       }
-      /* A MINER FACES THE ROCK (operator report: villagers chipping at a
-         deposit "at weird angles"). The mine pose had kept the facing of
-         its last few steps — the walk up to the stand point — so a miner
-         who arrived from the south-west stood beside the rock looking
-         south-east. The sim now stands a miner at the side or behind the
-         deposit (Units.gatherEdge); the facing follows the same physics
-         ruling as a builder: square up to the tile, no camera clamp. From
-         the side that is a profile, from behind it is the front view. */
-      if (pose === 'mine' && u.task && u.task.type === 'gather' && u.task.x != null) {
+      /* A WORKER FACES WHAT IT WORKS — the same physics ruling as a builder,
+         now covering every gather pose, not just the mine one it started
+         with. The 'mine' fix left wood-chopping on the old rule (a villager
+         keeps the facing of the walk that brought it to the tree), and a
+         woodcutter who arrived from the south-west stood south of the tree
+         chopping sideways at nothing (operator report). One condition, both
+         poses: 'gather' is wood only here (fishing and lumber-lodge crews
+         reach this pose through 'fish'/'work' task types, which this check
+         does not match, and naval units are excluded above by !afloat). */
+      if ((pose === 'mine' || pose === 'gather') && u.task && u.task.type === 'gather' && u.task.x != null) {
         const mdx = u.task.x + 0.5 - u.x, mdy = u.task.y + 0.5 - u.y;
         if (mdx * mdx + mdy * mdy > 0.01) {
           face = this.FACE8[((Math.round(Math.atan2(mdy, mdx) / (Math.PI / 4)) % 8) + 8) % 8];
