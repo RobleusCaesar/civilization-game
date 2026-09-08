@@ -113,6 +113,64 @@ N; `Backend.submitScore(name, entry)` inserts one victory row and stamps the
 arcade name onto the profile. Name validation (length, charset, profanity)
 lives in `Score.cleanName` and runs before submission.
 
+## Analytics — private, aggregate-only
+
+`/supabase/migrations/0003_reset_leaderboard_and_analytics.sql` does two
+things in one operator action: it **wipes the leaderboard** (0002 gave that
+table no delete policy on purpose, so a reset can only happen in the SQL
+editor) and it adds the analytics path.
+
+### What is collected
+
+One `telemetry` row per event, written by `Backend._emit` and never awaited
+by game code:
+
+| kind | when | carries |
+|---|---|---|
+| `run_start` | a founded run is entered (after the draft) | mode, landform, size, device, kept card, tutorial on/off, seed |
+| `run_end` | `G.end` — win, loss or struck banner | outcome, cause, day, seconds, town level, peak tribe, score, and a props bag (buildings, units, kills, walls, upgrades, explored %, wonder key, relic found) |
+| `session` | the tab hides or unloads | seconds on site, device |
+
+A `run_start` with no matching `run_end` **is** an abandoned run — that is
+how the dashboard measures drop-off.
+
+The identity is the same anonymous auth uid the saves already use. No name,
+no message text, no location, no third party; the row goes to our own
+Supabase table and nowhere else. `Backend.telemetryOn = false` switches the
+whole thing off at runtime.
+
+The demo world behind the title also calls `G.newGame`, and it must never be
+counted: `G._freshRun` (transient, never saved) is set by `newGame` and read
+once by `Screens._enterNow`, which is also why **loading a save is not a new
+run**.
+
+### How it is read
+
+- The `telemetry` table has RLS on and **no select policy at all**, so the
+  shipped publishable key cannot read one row of it.
+- The only read path is `analytics_summary(p_token, …filters)`, a
+  `security definer` function returning **aggregates only** — counts and
+  averages, never a row. A stolen passphrase still cannot expose one
+  player's history.
+- The passphrase never reaches the wire: `/analytics.html` sends
+  `sha256('clanfire-analytics-v1:' || passphrase)` and the database compares
+  a hash of *that* against `analytics_config.token_hash`.
+
+Set it once, in the SQL editor:
+
+```sql
+select public.set_analytics_token('a long passphrase');
+```
+
+Then open `/analytics.html` and sign in with the passphrase itself. Filters
+(date range, difficulty, landform, device, build version) are passed to the
+same function, so filtering also happens in the database.
+
+**What this is not:** GitHub Pages has no server, so this is not a login and
+there is no rate limiting beyond Supabase's own. The page is `noindex`, and
+the security boundary is the aggregate-only function plus a passphrase you
+choose. Use a long one.
+
 ## Error-handling contract
 
 Every public method resolves (never rejects) to:

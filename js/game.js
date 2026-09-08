@@ -200,6 +200,7 @@ const G = {
       log: [],
     };
     Bld._block = null;
+    this._freshRun = true;   // analytics: this world was founded, not loaded (Screens._enterNow logs it)
     this._marvel = false;
     this._dying = null;
     this._easeC = null;    // the ease day-cache must not leak across runs (day numbers collide)    // …and no announced death is left pending
@@ -1718,11 +1719,44 @@ const G = {
   },
   _marvel: false,   // render/flow only — never in S, so it can't survive a save
 
-  end(win, msg) {
+  end(win, msg, cause) {
     if (S.over) return;
     S.over = { win, msg };
     // the title screen's demo world ends quietly — the shell rolls a new one
     if (window.Screens && Screens._demo) return;
+    /* ANALYTICS (Backend.logRunEnd, /analytics.html): how this run ended, how
+       far it got and how it was played. Wrapped because a run must end
+       cleanly even if every one of these reads is somehow unavailable. */
+    try {
+      if (window.Backend && Backend.logRunEnd) {
+        const st = S.stats || {};
+        const tc = (typeof Bld !== 'undefined' && Bld.tcOf) ? Bld.tcOf('P') : null;
+        let seen = 0;
+        const ex = S.map && S.map.explored;
+        if (ex) { for (let i = 0; i < ex.length; i++) if (ex[i]) seen++; }
+        const card = (S.draft && S.draft.done && S.draft.hand && S.draft.pickI != null
+          && S.draft.hand[S.draft.pickI]) ? S.draft.hand[S.draft.pickI].key : null;
+        Backend.logRunEnd({
+          outcome: win ? 'win' : (cause === 'struck_banner' ? 'abandoned' : 'loss'),
+          cause: cause || (win ? 'win' : 'unknown'),
+          mode: S.mode, landform: S.map && S.map.landform, size: S.sizeKey,
+          day: S.day, seconds: Math.round(S.playtime || 0),
+          tcLevel: (tc && tc.level) || 0, peakPop: st.peakPop || 0,
+          score: (window.Score && Score.compute) ? (Score.compute(win).total || 0) : 0,
+          props: {
+            built: st.built || 0, trained: st.trained || 0, kills: st.kills || 0,
+            walls: st.walls || 0, upgrades: st.upgrades || 0, razed: st.razed || 0,
+            explored: ex && ex.length ? Math.round(100 * seen / ex.length) : 0,
+            tutorial: !!(S.tut && S.tut.on), card, origin: S.origin || null,
+            // S.wonder is the run's OFFERED wonder key, not a built flag —
+            // "did they raise it" is already carried by cause === 'wonder'
+            wonder_key: S.wonder || null,
+            // …and S.relic exists from generation; only .found means they got it
+            relic_found: !!(S.relic && S.relic.found),
+          },
+        });
+      }
+    } catch (e) { /* analytics may never break a finished run */ }
     S.paused = false;
     // the run is over: its save slot is stamped finished and the crash net
     // cleared — the title's Continue will not walk back into a told story
@@ -2123,6 +2157,7 @@ window.addEventListener('load', () => {
   if (window.Assets) Assets.init();   // async; image art swaps in as it decodes
   if (window.Backend) {
     Backend.init();   // async; the game never waits on the network
+    if (Backend.startSession) Backend.startSession();   // analytics: time on site
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && window.S && !S.over &&
           !(window.Screens && Screens._demo)) Backend.autosaveNow('hide');

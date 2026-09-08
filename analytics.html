@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Clanfire — Analytics</title>
+<!--
+  THE PRIVATE DASHBOARD. This page is served publicly (GitHub Pages has no
+  server to check a login), so the lock is not on the page — it is on the
+  DATA. Three things make that hold:
+
+    1. The telemetry table has RLS on and NO select policy, so the key this
+       page ships cannot read a single row of it. Ever.
+    2. The only read path is analytics_summary(), a security-definer function
+       that returns AGGREGATES ONLY — counts and averages, never a row. Even
+       a stolen passphrase cannot expose one player's history.
+    3. The passphrase is never in this file and never crosses the wire. The
+       browser hashes it (SHA-256, salted with a fixed label) and sends the
+       hash; the database compares a hash OF THAT against what it stores. A
+       leaked request log yields a token, not the passphrase.
+
+  What that is NOT: it is not a login, there is no rate limiting beyond
+  Supabase's own, and anyone with the passphrase can read the aggregates.
+  Use a long passphrase. Set it once, in the SQL editor:
+      select public.set_analytics_token('your long passphrase');
+-->
+<style>
+  :root{
+    --ink:#e8dcc0; --dim:#a2957a; --faint:#6f6650;
+    --bg:#141109; --panel:#1e1a11; --panel2:#262114; --line:#3a3125;
+    --gold:#e8c15a; --green:#7fa84a; --red:#c2603f; --blue:#5b8fa8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    padding:16px;max-width:1200px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 2px;letter-spacing:.5px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);
+    margin:26px 0 10px;font-weight:600}
+  .sub{color:var(--faint);font-size:12px;margin-bottom:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  /* ---- the gate ---- */
+  #gate{max-width:380px;margin:14vh auto}
+  #gate p{color:var(--dim);font-size:13px}
+  input,select,button{font:inherit;color:var(--ink);background:var(--panel2);
+    border:1px solid var(--line);border-radius:7px;padding:8px 10px}
+  input:focus,select:focus{outline:2px solid var(--gold);outline-offset:-1px}
+  button{background:var(--gold);color:#241d10;border:0;font-weight:700;cursor:pointer}
+  button:hover{filter:brightness(1.08)}
+  button.ghost{background:var(--panel2);color:var(--ink);border:1px solid var(--line);font-weight:500}
+  #gate input{width:100%;margin:10px 0}
+  #gate button{width:100%}
+  .err{color:var(--red);font-size:13px;min-height:18px;margin-top:8px}
+  /* ---- filters ---- */
+  #filters{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin-bottom:6px}
+  #filters label{display:flex;flex-direction:column;gap:4px;font-size:11px;
+    text-transform:uppercase;letter-spacing:.8px;color:var(--faint)}
+  /* ---- tiles ---- */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .tile .v{font-size:24px;font-weight:700;letter-spacing:-.5px;
+    font-variant-numeric:tabular-nums;line-height:1.1}
+  .tile .k{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin-top:4px}
+  .tile .n{font-size:11px;color:var(--faint);margin-top:2px}
+  .g{color:var(--green)} .r{color:var(--red)} .y{color:var(--gold)} .b{color:var(--blue)}
+  /* ---- tables ---- */
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px}
+  th:first-child,td:first-child{text-align:left}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint);font-weight:600}
+  tr:last-child td{border-bottom:0}
+  .wrap{overflow-x:auto}
+  /* ---- bars ---- */
+  .bar{position:relative;background:var(--panel2);border-radius:4px;height:22px;min-width:60px}
+  .bar>i{position:absolute;inset:0 auto 0 0;background:var(--gold);opacity:.55;border-radius:4px}
+  .bar>span{position:relative;padding:0 7px;line-height:22px;font-size:12px}
+  td.barcell{width:45%}
+  .muted{color:var(--faint)}
+  .foot{margin:30px 0 10px;color:var(--faint);font-size:11px;line-height:1.7}
+</style>
+</head>
+<body>
+
+<div id="gate" class="card" hidden>
+  <h1>Clanfire analytics</h1>
+  <p>Enter the dashboard passphrase.</p>
+  <input id="pass" type="password" autocomplete="current-password" placeholder="Passphrase" autofocus>
+  <button id="go">Unlock</button>
+  <div class="err" id="gateErr"></div>
+</div>
+
+<div id="app" hidden>
+  <h1>Clanfire analytics</h1>
+  <div class="sub" id="stamp">—</div>
+
+  <div id="filters" class="card">
+    <label>From<input type="date" id="fFrom"></label>
+    <label>To<input type="date" id="fTo"></label>
+    <label>Difficulty<select id="fMode"><option value="">All</option></select></label>
+    <label>Landform<select id="fLand"><option value="">All</option></select></label>
+    <label>Device<select id="fDev"><option value="">All</option></select></label>
+    <label>Version<select id="fVer"><option value="">All</option></select></label>
+    <button id="apply">Apply</button>
+    <button id="reset" class="ghost">Reset</button>
+    <button id="out" class="ghost">Lock</button>
+  </div>
+  <div class="err" id="appErr"></div>
+
+  <h2>The run in numbers</h2>
+  <div class="tiles" id="kpis"></div>
+
+  <h2>Engagement</h2>
+  <div class="tiles" id="engage"></div>
+
+  <h2>By difficulty</h2>
+  <div class="card wrap"><table id="tMode"></table></div>
+
+  <h2>How runs end</h2>
+  <div class="card wrap"><table id="tEnd"></table></div>
+
+  <h2>How far they get</h2>
+  <div class="card wrap"><table id="tDays"></table></div>
+
+  <h2>The opening — does it land?</h2>
+  <div class="tiles" id="funnel"></div>
+
+  <h2>Origin cards</h2>
+  <div class="card wrap"><table id="tCards"></table></div>
+
+  <h2>How they play</h2>
+  <div class="tiles" id="style"></div>
+
+  <h2>Landform</h2>
+  <div class="card wrap"><table id="tLand"></table></div>
+
+  <h2>Device</h2>
+  <div class="card wrap"><table id="tDev"></table></div>
+
+  <h2>Last 30 days</h2>
+  <div class="card wrap"><table id="tDaily"></table></div>
+
+  <h2>Build version</h2>
+  <div class="card wrap"><table id="tVer"></table></div>
+
+  <div class="foot">
+    Anonymous play data only: the same anonymous id the cloud saves use, plus
+    numbers about the run. No names, no messages, no location, no third party.
+    Aggregates are computed in the database and this page never receives a
+    single row.
+  </div>
+</div>
+
+<script src="js/config.supabase.js"></script>
+<script>
+"use strict";
+/* ------------------------------------------------------------------ gate */
+const $ = id => document.getElementById(id);
+const KEY = 'clanfire-analytics-token';
+let TOKEN = null;
+
+async function hashToken(passphrase) {
+  // the passphrase never leaves this function; what travels is its digest
+  const data = new TextEncoder().encode('clanfire-analytics-v1:' + passphrase);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function callRpc(token, filters) {
+  const body = {
+    p_token: token,
+    p_from: filters.from || null, p_to: filters.to || null,
+    p_mode: filters.mode || null, p_landform: filters.landform || null,
+    p_device: filters.device || null, p_version: filters.version || null,
+  };
+  const res = await fetch(SUPA_CFG.url + '/rest/v1/rpc/analytics_summary', {
+    method: 'POST',
+    headers: { apikey: SUPA_CFG.anonKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Request failed (' + res.status + ')');
+  return res.json();
+}
+
+/* ----------------------------------------------------------- rendering */
+const num = v => (v == null ? '—' : (+v).toLocaleString());
+const pct = v => (v == null ? '—' : (+v).toFixed(1) + '%');
+const mins = v => (v == null ? '—' : (+v).toFixed(1) + 'm');
+const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+
+function tiles(el, items) {
+  el.innerHTML = items.map(t =>
+    `<div class="tile"><div class="v ${t.cls || ''}">${esc(t.v)}</div>` +
+    `<div class="k">${esc(t.k)}</div>` +
+    (t.n ? `<div class="n">${esc(t.n)}</div>` : '') + '</div>').join('');
+}
+
+// a table whose first numeric column doubles as a bar, so shape reads at a glance
+function table(el, cols, rows, barCol) {
+  if (!rows || !rows.length) { el.innerHTML = '<tr><td class="muted">No data yet.</td></tr>'; return; }
+  const max = barCol != null ? Math.max(...rows.map(r => +r[barCol] || 0), 1) : 0;
+  el.innerHTML =
+    '<tr>' + cols.map(c => `<th>${esc(c)}</th>`).join('') + '</tr>' +
+    rows.map(r => '<tr>' + r.map((cell, i) => {
+      if (i === barCol) {
+        const w = Math.round(100 * (+cell || 0) / max);
+        return `<td class="barcell"><div class="bar"><i style="width:${w}%"></i>` +
+               `<span>${esc(num(cell))}</span></div></td>`;
+      }
+      return `<td>${esc(cell == null ? '—' : cell)}</td>`;
+    }).join('') + '</tr>').join('');
+}
+
+function render(d) {
+  const T = d.totals || {}, R = d.rates || {}, A = d.averages || {}, S = d.time_on_site || {};
+  $('stamp').textContent =
+    (T.first_event ? 'Data from ' + String(T.first_event).slice(0, 10) : 'No data yet') +
+    ' to ' + (T.last_event ? String(T.last_event).slice(0, 10) : '—') +
+    ' · ' + num(T.events) + ' events · generated ' + String(d.generated_at || '').slice(0, 19).replace('T', ' ');
+
+  tiles($('kpis'), [
+    { k: 'Games played', v: num(T.runs_started), n: num(T.runs_finished) + ' reached an ending' },
+    { k: 'Win rate', v: pct(R.win_pct), cls: 'g', n: num(T.wins) + ' wins' },
+    { k: 'Loss rate', v: pct(R.loss_pct), cls: 'r', n: num(T.losses) + ' losses' },
+    { k: 'Abandoned', v: pct(R.abandon_pct), n: num(T.runs_abandoned) + ' never ended' },
+    { k: 'Avg run length', v: mins(A.run_minutes), n: 'median ' + mins(A.run_minutes_median) },
+    { k: 'Avg day reached', v: num(A.day_reached), n: 'median ' + num(A.day_median) },
+    { k: 'Avg town level', v: num(A.tc_level), n: 'town centre' },
+    { k: 'Avg peak tribe', v: num(A.peak_pop), n: 'people at the height' },
+    { k: 'Avg winning score', v: num(A.win_score), n: 'wins only' },
+  ]);
+
+  tiles($('engage'), [
+    { k: 'Players', v: num(T.players), n: 'distinct devices' },
+    { k: 'Repeat players', v: pct(R.repeat_pct), cls: 'y', n: 'played more than once' },
+    { k: 'Runs per player', v: num(A.runs_per_player) },
+    { k: 'Sessions', v: num(T.sessions), n: num(A.sessions_per_player) + ' per player' },
+    { k: 'Avg time on site', v: mins(A.session_minutes), n: 'median ' + mins(S.median_minutes) },
+    { k: 'Top 10% sessions', v: mins(S.p90_minutes), n: 'the engaged tail' },
+    { k: 'Total time played', v: (S.total_hours == null ? '—' : (+S.total_hours).toFixed(1) + 'h') },
+  ]);
+
+  table($('tMode'), ['Difficulty', 'Games', 'Share', 'Win rate', 'Avg length', 'Avg day'],
+    (d.by_mode || []).map(r => [r.mode, r.starts, pct(r.share_pct), pct(r.win_pct), mins(r.avg_minutes), num(r.avg_day)]), 1);
+
+  table($('tEnd'), ['Outcome', 'Cause', 'Games', 'Avg day', 'Avg length'],
+    (d.endings || []).map(r => [r.outcome, r.cause, r.n, num(r.avg_day), mins(r.avg_minutes)]), 2);
+
+  table($('tDays'), ['Reached', 'Games', 'Win rate'],
+    (d.day_buckets || []).map(r => [r.label, r.n, pct(r.win_pct)]), 1);
+
+  const F = d.early_funnel || {};
+  tiles($('funnel'), [
+    { k: 'Quit before day 5', v: num(F.quit_before_day_5), cls: 'r' },
+    { k: 'Quit before day 10', v: num(F.quit_before_day_10) },
+    { k: 'Under 2 minutes', v: num(F.under_2_minutes), cls: 'r', n: 'bounced out of a run' },
+    { k: 'Reached day 50', v: num(F.reached_day_50), cls: 'g' },
+    { k: 'Tutorial on', v: num(F.tutorial_on), n: num(F.tutorial_off) + ' played without it' },
+    { k: 'Tutorial win rate', v: pct(F.tutorial_win_pct), cls: 'y' },
+  ]);
+
+  table($('tCards'), ['Origin card', 'Times picked', 'Win rate'],
+    (d.origin_cards || []).map(r => [r.card, r.picked, pct(r.win_pct)]), 1);
+
+  const P = d.play_style || {};
+  tiles($('style'), [
+    { k: 'Buildings raised', v: num(P.avg_buildings), n: 'per run' },
+    { k: 'Units trained', v: num(P.avg_units), n: 'per run' },
+    { k: 'Foes slain', v: num(P.avg_kills), n: 'per run' },
+    { k: 'Walls & gates', v: num(P.avg_walls), n: 'per run' },
+    { k: 'Upgrades', v: num(P.avg_upgrades), n: 'per run' },
+    { k: 'Map explored', v: (P.avg_explored_pct == null ? '—' : P.avg_explored_pct + '%') },
+    { k: 'Won by wonder', v: pct(P.wonder_win_pct), cls: 'b' },
+    { k: 'Found the relic', v: pct(P.relic_found_pct) },
+  ]);
+
+  table($('tLand'), ['Landform', 'Games', 'Win rate'],
+    (d.by_landform || []).map(r => [r.landform, r.starts, pct(r.win_pct)]), 1);
+
+  table($('tDev'), ['Device', 'Games', 'Players', 'Win rate', 'Avg length'],
+    (d.by_device || []).map(r => [r.device, r.starts, r.players, pct(r.win_pct), mins(r.avg_minutes)]), 1);
+
+  table($('tDaily'), ['Day', 'Runs started', 'Runs finished', 'Players'],
+    (d.daily || []).map(r => [r.day, r.starts, r.finishes, r.players]), 1);
+
+  table($('tVer'), ['Version', 'Events'],
+    (d.by_version || []).map(r => [r.version, r.events]), 1);
+
+  // the filter dropdowns describe the data that actually exists
+  const F2 = d.facets || {};
+  fillSelect($('fMode'), F2.modes); fillSelect($('fLand'), F2.landforms);
+  fillSelect($('fDev'), F2.devices); fillSelect($('fVer'), F2.versions);
+}
+
+function fillSelect(sel, values) {
+  const keep = sel.value;
+  const list = (values || []).filter(v => v != null).map(String).sort();
+  sel.innerHTML = '<option value="">All</option>' +
+    list.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  sel.value = keep;
+}
+
+/* ------------------------------------------------------------- plumbing */
+function filters() {
+  return {
+    from: $('fFrom').value || null,
+    to: $('fTo').value ? $('fTo').value + 'T23:59:59Z' : null,
+    mode: $('fMode').value || null, landform: $('fLand').value || null,
+    device: $('fDev').value || null, version: $('fVer').value || null,
+  };
+}
+
+async function load() {
+  $('appErr').textContent = '';
+  try {
+    const d = await callRpc(TOKEN, filters());
+    if (d && d.error) {
+      if (d.error === 'bad_token') { lock('That passphrase was not accepted.'); return; }
+      if (d.error === 'no_token_set') {
+        $('appErr').textContent = 'No passphrase is set yet. In the Supabase SQL editor run: ' +
+          "select public.set_analytics_token('your passphrase');";
+        return;
+      }
+      $('appErr').textContent = 'Error: ' + d.error; return;
+    }
+    render(d);
+  } catch (e) {
+    $('appErr').textContent = (e && e.message) || 'Could not reach the database.';
+  }
+}
+
+function show(which) {
+  $('gate').hidden = which !== 'gate';
+  $('app').hidden = which !== 'app';
+}
+function lock(msg) {
+  TOKEN = null;
+  try { sessionStorage.removeItem(KEY); } catch (e) {}
+  show('gate'); $('gateErr').textContent = msg || ''; $('pass').value = ''; $('pass').focus();
+}
+
+$('go').onclick = async () => {
+  const p = $('pass').value.trim();
+  if (!p) { $('gateErr').textContent = 'Enter the passphrase.'; return; }
+  $('gateErr').textContent = 'Checking…';
+  TOKEN = await hashToken(p);
+  const d = await callRpc(TOKEN, {}).catch(e => ({ error: (e && e.message) || 'network' }));
+  if (d && d.error) { lock(d.error === 'bad_token' ? 'That passphrase was not accepted.' : ('Error: ' + d.error)); return; }
+  // the tab remembers, the browser does not: sessionStorage dies with the tab
+  try { sessionStorage.setItem(KEY, TOKEN); } catch (e) {}
+  show('app'); render(d);
+};
+$('pass').addEventListener('keydown', e => { if (e.key === 'Enter') $('go').click(); });
+$('apply').onclick = load;
+$('reset').onclick = () => {
+  for (const id of ['fFrom', 'fTo']) $(id).value = '';
+  for (const id of ['fMode', 'fLand', 'fDev', 'fVer']) $(id).value = '';
+  load();
+};
+$('out').onclick = () => lock('');
+
+// a tab reopened mid-session walks straight back in; a new tab does not
+(async () => {
+  let saved = null;
+  try { saved = sessionStorage.getItem(KEY); } catch (e) {}
+  if (!saved) { show('gate'); return; }
+  TOKEN = saved;
+  const d = await callRpc(TOKEN, {}).catch(() => ({ error: 'network' }));
+  if (d && d.error) { lock(''); return; }
+  show('app'); render(d);
+})();
+</script>
+</body>
+</html>

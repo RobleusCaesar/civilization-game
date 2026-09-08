@@ -178,6 +178,109 @@ const Backend = {
     return { ok: true, data: { name: nm } };
   },
 
+  /* ---------------- telemetry ----------------
+     WHAT THIS IS FOR: /analytics.html — how many runs, how they end, how far
+     people get, what they pick. Nothing here changes what the player sees or
+     what the game does; every call is fire-and-forget and swallows its own
+     errors, so a blocked request, an ad blocker or a dead network can never
+     be felt in the game.
+
+     WHAT IT CARRIES: the same anonymous auth uid the saves already use, and
+     numbers about the RUN. No name, no chat, no free text the player typed,
+     no location, no third party — the row goes to our own Supabase table and
+     nowhere else. RLS gives that table insert-only access and no read policy
+     at all, so this data cannot be read back with the shipped key; only the
+     token-gated aggregate function can see it, and only in aggregate
+     (supabase/migrations/0003). */
+  telemetryOn: true,          // a single switch, for tests and for Settings
+  runId: null,                // ties a run_start to its run_end
+  _sessionT0: 0,
+  _sessionSent: false,
+
+  newRunId() {
+    try {
+      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    } catch (e) { /* fall through */ }
+    return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  },
+  deviceKind() {
+    try {
+      // the game is phone-first; "did this run happen on a phone" is the one
+      // device fact worth keeping, and it comes from width, not the UA string
+      return (window.matchMedia && matchMedia('(max-width: 820px)').matches) ? 'mobile' : 'desktop';
+    } catch (e) { return null; }
+  },
+
+  /* the one write path. Never awaited by game code, never retried (a lost
+     analytics row is worth nothing and a retry storm costs the player), and
+     keepalive so a row sent as the tab closes still lands. */
+  _emit(row) {
+    if (!this.telemetryOn || !this.isReady()) return;
+    const body = Object.assign({ user_id: this.uid, game_version: String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1) }, row);
+    try {
+      if (this.mock) { this.mock.rest('POST', '/telemetry', [body], null); return; }
+      fetch(SUPA_CFG.url + '/rest/v1/telemetry', {
+        method: 'POST',
+        keepalive: true,
+        headers: Object.assign(
+          { apikey: SUPA_CFG.anonKey, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          this.session ? { Authorization: 'Bearer ' + this.session.access_token } : {}),
+        body: JSON.stringify([body]),
+      }).catch(() => {});
+    } catch (e) { /* analytics may never be felt in the game */ }
+  },
+
+  // a run was founded. Called from G.newGame, once the world exists.
+  logRunStart(info) {
+    info = info || {};
+    this.runId = this.newRunId();
+    this._emit({
+      run_id: this.runId, kind: 'run_start',
+      mode: info.mode || null, landform: info.landform || null, size: info.size || null,
+      device: this.deviceKind(),
+      props: { tutorial: !!info.tutorial, card: info.card || null, origin: info.origin || null, seed: info.seed || null },
+    });
+    return { ok: true };
+  },
+
+  // …and how it ended. Called from G.end, for wins, losses and a struck banner
+  // alike — a run with no end row at all is an abandoned one, which is its own
+  // finding.
+  logRunEnd(info) {
+    info = info || {};
+    this._emit({
+      run_id: this.runId, kind: 'run_end',
+      outcome: info.outcome || null, cause: info.cause || null,
+      mode: info.mode || null, landform: info.landform || null, size: info.size || null,
+      device: this.deviceKind(),
+      day: info.day || 0, seconds: Math.round(info.seconds || 0),
+      tc_level: info.tcLevel || 0, peak_pop: info.peakPop || 0, score: info.score || 0,
+      props: info.props || {},
+    });
+    this.runId = null;
+    return { ok: true };
+  },
+
+  /* TIME ON SITE. Started at boot, sent once when the tab goes away —
+     'pagehide' and a hidden 'visibilitychange' both fire on iOS where
+     'beforeunload' does not, and _sessionSent keeps the pair to one row. */
+  startSession() {
+    if (this._sessionT0) return;
+    this._sessionT0 = Date.now();
+    const send = () => this.endSession();
+    try {
+      window.addEventListener('pagehide', send);
+      document.addEventListener('visibilitychange', () => { if (document.hidden) send(); });
+    } catch (e) { /* headless */ }
+  },
+  endSession() {
+    if (this._sessionSent || !this._sessionT0) return;
+    const secs = Math.round((Date.now() - this._sessionT0) / 1000);
+    if (secs < 3) return;                       // a bounce is not a session
+    this._sessionSent = true;
+    this._emit({ kind: 'session', seconds: secs, device: this.deviceKind() });
+  },
+
   /* ---------------- save slots ---------------- */
   async listSaves() {
     if (!this.isReady()) return this._err('not_ready', 'Not signed in');

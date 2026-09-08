@@ -318,6 +318,14 @@ Old sailors and older shepherds tell stories — of something vast beneath open
 water, and of a shadow that crosses the sun when a battle is already lost.
 Most games, nothing happens. Keep watch.
 
+## Analytics
+
+An anonymous, aggregate-only dashboard lives at `/analytics.html`, behind a
+passphrase. It answers how many runs are played, how they end, how far people
+get, which origin cards they keep and how long they stay — with filters for
+date range, difficulty, landform, device and build version. Nothing personal
+is collected and the page never receives an individual row; see BACKEND.md.
+
 ## Score & the global leaderboard
 
 Every run is tallied like an arcade cabinet when it ends: kills, razed rival

@@ -243,6 +243,21 @@ const Screens = {
     });
   },
   _enterNow() {
+    /* ANALYTICS: a run BEGINS here — after the draft, so the kept card is
+       known, and only for a world G.newGame just founded (G._freshRun), so
+       loading a save is never counted as a new run. A start with no matching
+       end is how the dashboard sees an abandoned run. */
+    try {
+      if (G._freshRun && !this._demo && window.Backend && Backend.logRunStart) {
+        G._freshRun = false;
+        const card = (S.draft && S.draft.done && S.draft.hand && S.draft.pickI != null
+          && S.draft.hand[S.draft.pickI]) ? S.draft.hand[S.draft.pickI].key : null;
+        Backend.logRunStart({
+          mode: S.mode, landform: S.map && S.map.landform, size: S.sizeKey,
+          tutorial: !!(S.tut && S.tut.on), card, origin: S.origin || null, seed: String(S.seed || ''),
+        });
+      }
+    } catch (e) { /* analytics may never keep a player out of their game */ }
     S.paused = false;
     document.getElementById('btnPause').textContent = '⏸';
     this.show('playing');
@@ -861,7 +876,7 @@ const Screens = {
     this._confirmResign = false;
     if (r) { r.textContent = 'Resign'; r.classList.remove('danger'); }
     S.resigned = true;
-    G.end(false, 'You struck your banner and left the valley.');
+    G.end(false, 'You struck your banner and left the valley.', 'struck_banner');
   },
 
   quitToTitle() {

@@ -1864,7 +1864,7 @@ const Bld = {
       if (owner === 'P') {
         S.breachedP = true;   // the line is broken — positive specials may now answer (G.positiveGate)
         G.log(`${name} destroyed!`, true);
-        if (key === 'tc') G.end(false, 'Your Town Center was destroyed.');
+        if (key === 'tc') G.end(false, 'Your Town Center was destroyed.', 'tc_destroyed');
       } else if (owner === 'A') {
         // …and the chief REMEMBERS where it lost this one (tests/wall-line.mjs):
         // twice-burned ground is never offered a third building
@@ -1873,7 +1873,7 @@ const Bld = {
         AI.noteLoss(b.x, b.y);
         G.log(`Rival ${name} destroyed!`);
         if (S.stats) S.stats.razed++;
-        if (key === 'tc') G.end(true, 'You razed the rival Town Center. The valley is yours!');
+        if (key === 'tc') G.end(true, 'You razed the rival Town Center. The valley is yours!', 'razed_rival_tc');
       } else if (owner === 'R' && key === 'raidercamp') {
         // the ground is won: no more spears raised here, and no wave musters
         // at it again (tests/raider-camps.mjs). Its band is loose from now on
