@@ -312,16 +312,25 @@ begin
     ),
 
     -- ---- how they actually play ----------------------------------------
+    -- the card is pulled out FIRST, into its own derived table, so the
+    -- win-rate subquery correlates on a plain column. Grouping by the
+    -- expression props->>'card' and then reaching for s.props inside the
+    -- subquery is the "subquery uses ungrouped column" error — Postgres
+    -- only lets you reference the grouping expression itself.
     'origin_cards', (
       select coalesce(jsonb_agg(x order by (x->>'picked')::int desc), '[]'::jsonb) from (
         select jsonb_build_object(
-          'card', coalesce(s.props->>'card', 'unknown'),
-          'picked', count(*),
+          'card', coalesce(c.card, 'unknown'),
+          'picked', c.picked,
           'win_pct', (select round(100.0 * count(*) filter (where e.outcome = 'win')
                              / nullif(count(*), 0), 1)
-                      from ends e where e.props->>'card' = s.props->>'card')
+                      from ends e
+                      where coalesce(e.props->>'card', 'unknown') = coalesce(c.card, 'unknown'))
         ) as x
-        from starts s group by s.props->>'card'
+        from (
+          select s.props->>'card' as card, count(*) as picked
+          from starts s group by s.props->>'card'
+        ) c
       ) q
     ),
 
