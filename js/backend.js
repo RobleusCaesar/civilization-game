@@ -243,6 +243,15 @@ const Backend = {
     return { ok: true };
   },
 
+  /* a generic, typed door to a Postgres RPC — for callers (the competition
+     panel) that live OUTSIDE this file and are forbidden from touching the
+     Supabase client themselves (rule zero). Feature files stay deletable;
+     this door stays, generic and harmless. */
+  async rpc(name, args) {
+    if (!this.configured) return this._err('not_configured', 'Cloud is not configured');
+    return this._rest('POST', '/rpc/' + name, args || {});
+  },
+
   // …and how it ended. Called from G.end, for wins, losses and a struck banner
   // alike — a run with no end row at all is an abandoned one, which is its own
   // finding.
@@ -257,6 +266,7 @@ const Backend = {
       tc_level: info.tcLevel || 0, peak_pop: info.peakPop || 0, score: info.score || 0,
       props: info.props || {},
     });
+    this.lastRunId = this.runId;   // the finished run's id, for whatever the end screen wants (the competition's one-entry-per-game key)
     this.runId = null;
     return { ok: true };
   },

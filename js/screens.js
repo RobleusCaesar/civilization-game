@@ -897,6 +897,7 @@ const Screens = {
   /* ---------------- endgame: the arcade tally ---------------- */
   showEnd(win, msg) {
     this.show('endgame', { win, msg });
+    if (window.Competition) Competition.offer(!!win);   // the prize draw (js/competition.js) — delete this line with the file
   },
   onEndgame(opts) {
     const def = this.el('defeatScene'), vic = this.el('victoryPane'), scr = this.el('scrEndgame');

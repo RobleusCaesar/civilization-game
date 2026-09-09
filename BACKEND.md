@@ -171,6 +171,46 @@ there is no rate limiting beyond Supabase's own. The page is `noindex`, and
 the security boundary is the aggregate-only function plus a passphrase you
 choose. Use a long one.
 
+## The prize-draw competition
+
+`js/competition.js` + `/supabase/migrations/0004_competition.sql`. The whole
+client feature lives in the one file behind one kill switch
+(`Competition.on`, ships `false`); removal is delete the file, its
+`<script>` tag, and the one `Competition.offer` line in `Screens.showEnd`
+(fourth, cosmetic: the marked COMPETITION panel block in analytics.html).
+
+**Eligibility** (client-side friction, not enforcement — accepted at this
+prize size): a finished run, win or loss, with `S.playtime ≥ MIN_SECONDS`
+and `Score.compute().total ≥ MIN_SCORE`. Below a gate: one quiet line naming
+what was missed. The demo world and loaded games are excluded the same way
+telemetry excludes them.
+
+**What the server enforces** (`enter_competition`, SECURITY DEFINER, the
+only write path — anon has NO direct privilege on either table):
+
+- up to **5 entries per email**, one per **distinct finished game** — the
+  entry's `game_session_id` is the telemetry run id, so entries
+  cross-reference against `telemetry` rows;
+- duplicates and over-cap submissions answer `{ok:true}`, create no entry,
+  and still record the feedback (`counted=false`) — nothing ever reveals
+  counts or whether an email exists;
+- emails are normalized (`lower(trim())`) so case cannot dodge the cap; an
+  advisory lock serializes same-email races.
+
+**The email list is sealed.** `competition_entries` has RLS with no
+policies and every privilege revoked; `competition_feedback` HAS NO EMAIL
+COLUMN. `analytics_summary` returns entry COUNTS and email-free feedback
+rows only — proven in the migration's harness by asserting no `@` appears
+anywhere in its output. Entries are read exactly one way: the SQL editor,
+when drawing a winner (a reference query ships in the migration).
+
+**Feedback**, required before the email, two taps: a 1-5 rating and one
+improvement pick (`too_hard / too_slow / confusing / not_enough_to_do /
+more_content / visuals / good`), plus an optional 500-char free text. The
+dashboard's competition panel shows entries over time, the rating histogram,
+the improvement breakdown, win/loss and score-band segments, and the free
+texts.
+
 ## Error-handling contract
 
 Every public method resolves (never rejects) to:

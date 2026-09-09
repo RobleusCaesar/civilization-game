@@ -131,6 +131,32 @@
   <h2>How they play</h2>
   <div class="tiles" id="style"></div>
 
+  <!-- ============ COMPETITION PANEL ============
+       The prize draw's read-only view. Removing the competition is three
+       steps in the game (js/competition.js, its script tag, its call line)
+       plus THIS block as the fourth: delete from this comment through the
+       matching END COMPETITION PANEL comment, and the render() lines marked
+       "competition" in the script below. Feedback only — the entry table
+       and its emails are unreadable from any client, this page included. -->
+  <div id="compSection" hidden>
+    <h2>Prize draw — entries</h2>
+    <div class="tiles" id="cKpis"></div>
+
+    <h2>Prize draw — what they told us</h2>
+    <div class="tiles" id="cRatings"></div>
+    <div class="card wrap" style="margin-top:10px"><table id="cChoices"></table></div>
+
+    <h2>Prize draw — segments</h2>
+    <div class="card wrap"><table id="cSegments"></table></div>
+
+    <h2>Prize draw — entries by day</h2>
+    <div class="card wrap"><table id="cDaily"></table></div>
+
+    <h2>Prize draw — in their words</h2>
+    <div class="card wrap"><table id="cTexts"></table></div>
+  </div>
+  <!-- ============ END COMPETITION PANEL ============ -->
+
   <h2>Landform</h2>
   <div class="card wrap"><table id="tLand"></table></div>
 
@@ -286,10 +312,48 @@ function render(d) {
   table($('tVer'), ['Version', 'Events'],
     (d.by_version || []).map(r => [r.version, r.events]), 1);
 
+  // competition (the prize draw) — the whole panel hides until 0004 is
+  // applied and the function starts returning the section
+  renderCompetition(d.competition);
+
   // the filter dropdowns describe the data that actually exists
   const F2 = d.facets || {};
   fillSelect($('fMode'), F2.modes); fillSelect($('fLand'), F2.landforms);
   fillSelect($('fDev'), F2.devices); fillSelect($('fVer'), F2.versions);
+}
+
+function renderCompetition(c) {
+  const box = $('compSection');
+  if (!c) { box.hidden = true; return; }
+  box.hidden = false;
+  tiles($('cKpis'), [
+    { k: 'Entries', v: num(c.entries_total), n: num(c.emails) + ' unique emails' },
+    { k: 'From wins', v: num(c.entry_wins), cls: 'g' },
+    { k: 'From losses', v: num(c.entry_losses), cls: 'r' },
+    { k: 'Feedback cards', v: num(c.feedback_total), n: num(c.repeat_feedback) + ' repeat / over-cap' },
+    { k: 'Avg rating', v: (c.avg_rating == null ? '—' : (+c.avg_rating).toFixed(2) + ' / 5'), cls: 'y' },
+  ]);
+  const ro = c.rating_by_outcome || {};
+  tiles($('cRatings'),
+    (c.rating_hist || []).map(r => ({ k: r.rating + ' star' + (r.rating > 1 ? 's' : ''), v: num(r.n) }))
+    .concat([
+      { k: 'Rating after a win', v: (ro.win_avg == null ? '—' : ro.win_avg + ' / 5'), n: num(ro.win_n) + ' cards', cls: 'g' },
+      { k: 'Rating after a loss', v: (ro.loss_avg == null ? '—' : ro.loss_avg + ' / 5'), n: num(ro.loss_n) + ' cards', cls: 'r' },
+    ]));
+  table($('cChoices'), ['What would most improve it?', 'Picked', 'From wins', 'From losses', 'Avg rating'],
+    (c.choices || []).map(r => [r.choice, r.n, r.wins, r.losses, (r.avg_rating == null ? '—' : r.avg_rating + ' / 5')]), 1);
+  table($('cSegments'), ['Score band', 'Feedback cards', 'Avg rating'],
+    (c.rating_by_band || []).map(r => [r.label, r.n, (r.avg_rating == null ? '—' : r.avg_rating + ' / 5')]), 1);
+  table($('cDaily'), ['Day', 'Entries'],
+    (c.entries_by_day || []).map(r => [r.day, r.entries]), 1);
+  const tx = $('cTexts');
+  if (!(c.free_texts || []).length) { tx.innerHTML = '<tr><td class="muted">No written feedback yet.</td></tr>'; }
+  else {
+    tx.innerHTML = '<tr><th>When</th><th>Rating</th><th>Pick</th><th>Win</th><th>Score</th><th>They wrote</th></tr>' +
+      c.free_texts.map(r => '<tr><td>' + esc(r.when) + '</td><td>' + esc(r.rating) + '</td><td>' + esc(r.choice) + '</td>' +
+        '<td>' + (r.win ? 'win' : 'loss') + '</td><td>' + esc(num(r.score)) + '</td>' +
+        '<td style="text-align:left;white-space:pre-wrap;max-width:420px">' + esc(r.text) + (r.counted ? '' : ' <span class="muted">(over cap)</span>') + '</td></tr>').join('');
+  }
 }
 
 function fillSelect(sel, values) {
