@@ -22,16 +22,35 @@
 
 const Competition = {
   /* ---- the dials ---- */
-  on: false,               // THE KILL SWITCH. Ship-ready; flip to launch.
+  on: true,                // THE KILL SWITCH. The window below decides the rest.
+  /* THE WINDOW. Opening and closing are DATES, not a switch somebody has to
+     remember to throw: before OPENS_AT and after CLOSES_AT nothing renders,
+     eligible or not. Both are enforced again server-side (the
+     competition_window table, migration 0004) — a wrong device clock can
+     neither open the draw early nor keep it open late.
+     America/Denver runs on MDT (UTC-6) through 1 November, so 7am Denver on
+     both these dates is -06:00. Change these two lines and the matching
+     table row together. */
+  OPENS_AT:  '2026-09-10T07:00:00-06:00',   // Thu 10 Sep, 7am Denver
+  CLOSES_AT: '2026-09-17T07:00:00-06:00',   // Thu 17 Sep, 7am Denver — SEVEN days
   MIN_SECONDS: 600,        // 10 real minutes of unpaused play (S.playtime)
-  /* E1 (operator confirms before launch): 2,000 was the opening number, and
-     the score model says it is effectively a WINS-ONLY gate — victory alone
-     banks 1,500-3,900 before any economy, while an honest 10-20 minute LOSS
-     tallies roughly 400-1,800 (and calm HALVES it). 500 passes any real
-     attempt on any mode and still fails an AFK run (~100). One number, one
-     line, awaiting the word. */
-  MIN_SCORE: 500,
-  PRIZE_LINE: 'Enter the prize draw',        // ← the operator's prize copy goes here
+  /* THE SCORE GATE, AND WHY IT SCALES WITH DIFFICULTY (operator item 1).
+     500 is confirmed, and it is a MODERATE number: CFG.SCORE.mult is
+     calm 0.5 / moderate 1.0 / hard 1.75, so gating the FINAL total would
+     ask a calm player for double the work of a moderate one and nearly
+     four times a hard one — backwards, since calm is where a new player
+     starts. Measured on the real model, an honest 12-minute calm loss
+     ("a few huts, a little scouting") totals 349 and would have been
+     turned away, while the same effort on hard totals 1,222 and sails in.
+     The bar is therefore the SAME EFFORT on every difficulty: the run's
+     pre-multiplier subtotal must reach MIN_SCORE. Expressed to the player
+     as the number they can actually see on their own end screen —
+     MIN_SCORE x their multiplier, so 250 on calm, 500 on moderate, 875 on
+     hard — which is the same sentence, just readable. A near-idle run
+     (subtotal ~310) still fails on every difficulty. */
+  MIN_SCORE: 500,          // pre-multiplier. Set GATE_PRE_MULTIPLIER false to gate the final total instead.
+  GATE_PRE_MULTIPLIER: true,
+  PRIZE_LINE: 'Win $50. One entry per finished game, up to five — the drawing closes Thu 17 Sep.',
   CHOICES: [
     ['too_hard',         'Too hard'],
     ['too_slow',         'Too slow'],
@@ -45,13 +64,33 @@ const Competition = {
   _state: null,
 
   /* the one game-facing call: Screens.showEnd(win) hands the ended run in */
+  /* open right now? Both ends are dates; a malformed one fails CLOSED, which
+     is the safe direction for a promotion that must not outlive its prize. */
+  isOpen() {
+    const now = Date.now();
+    const a = Date.parse(this.OPENS_AT), b = Date.parse(this.CLOSES_AT);
+    if (!isFinite(a) || !isFinite(b)) return false;
+    return now >= a && now < b;
+  },
+
   offer(win) {
     for (const el of document.querySelectorAll('.compRoot')) el.remove();
-    if (!this.on || !window.S || (window.Screens && Screens._demo)) return;
+    if (!this.on || !this.isOpen() || !window.S || (window.Screens && Screens._demo)) return;
     const scene = document.getElementById(win ? 'victoryScene' : 'defeatScene');
     if (!scene) return;
 
-    const score = (window.Score && Score.compute) ? (Score.compute(!!win).total || 0) : 0;
+    const sc = (window.Score && Score.compute) ? Score.compute(!!win) : { total: 0, subtotal: 0 };
+    const score = sc.total || 0;                       // the arcade score, stored as-is
+    // typeof, not window.: CFG is a script-level const, so window.CFG is
+    // undefined — the same trap G and Bld carry. Reading it through window
+    // silently returned 1 and told a calm player they needed 500 when the
+    // gate actually asked 250 of them.
+    const mult = (typeof CFG !== 'undefined' && CFG.SCORE && CFG.SCORE.mult && CFG.SCORE.mult[S.mode]) || 1;
+    // what the gate measures, and the same thing said in the player's own numbers
+    const gateHave = this.GATE_PRE_MULTIPLIER ? (sc.subtotal || 0) : score;
+    const gateNeed = this.MIN_SCORE;
+    const shownNeed = Math.round(this.GATE_PRE_MULTIPLIER ? this.MIN_SCORE * mult : this.MIN_SCORE);
+    const shownHave = score;
     const secs = Math.max(0, Math.round(S.playtime || 0));
     const sessionId = (window.Backend && Backend.lastRunId) ||
       ('s' + String(S.seed || '') + '-d' + (S.day || 0) + '-' + (win ? 'w' : 'l'));
@@ -65,13 +104,13 @@ const Competition = {
     const root = document.createElement('div');
     root.className = 'compRoot';
 
-    const eligible = secs >= this.MIN_SECONDS && score >= this.MIN_SCORE;
+    const eligible = secs >= this.MIN_SECONDS && gateHave >= gateNeed;
     if (!eligible) {
       /* below a gate: no button, nothing rendered but one quiet line naming
          what was missed */
       const need = [];
       if (secs < this.MIN_SECONDS) need.push(Math.ceil(this.MIN_SECONDS / 60) + '+ minutes played (this run: ' + Math.max(1, Math.round(secs / 60)) + 'm)');
-      if (score < this.MIN_SCORE) need.push('a score of ' + this.MIN_SCORE.toLocaleString() + '+ (this run: ' + score.toLocaleString() + ')');
+      if (gateHave < gateNeed) need.push('a score of ' + shownNeed.toLocaleString() + '+ (this run: ' + shownHave.toLocaleString() + ')');
       root.innerHTML = '<p class="compQuiet">Prize draw: needs ' + need.join(' and ') + '.</p>';
     } else if (this._entered(sessionId)) {
       root.innerHTML = '<p class="compQuiet compDone">✓ This game is in the draw.</p>';
@@ -144,9 +183,19 @@ const Competition = {
          alike — by design it never says which, and neither do we */
       if (r.ok && r.data && r.data.ok) {
         this._remember(st.sessionId);
+        /* THE INVITATION (operator item 3): driving replays is the point of
+           the draw, so the confirmation asks for another run rather than
+           merely confirming. STATIC TEXT ONLY — it never says how many
+           entries they have, never implies whether this one counted, and
+           never hints that the address was already known. Everyone sees
+           these same words, which is what keeps the uniform response
+           uniform. */
         ov.querySelector('.compCard').innerHTML =
-          '<h2>You&#8217;re in.</h2><p class="compSub">Thanks — the feedback goes straight into making the game better.</p>' +
-          '<div class="compRow"><button class="compCancel">Close</button></div>';
+          '<h2>You&#8217;re in.</h2>' +
+          '<p class="compSub">Thanks — the feedback goes straight into making the game better.</p>' +
+          '<p class="compAgain">Finish another game and it earns another entry, up to five in all. ' +
+          'More games, more chances.</p>' +
+          '<div class="compRow"><button class="compCancel">Play again</button></div>';
         ov.querySelector('.compCancel').onclick = () => { ov.remove(); this.offer(st.win); };
       } else {
         submit.disabled = false; submit.textContent = 'Enter the draw';
@@ -199,6 +248,8 @@ const Competition = {
       .compCancel{background:#262114;border:1px solid #3a3125;color:#cfc2a4;border-radius:8px;padding:9px 14px;font:inherit;cursor:pointer}
       .compSubmit{background:#e8c15a;border:0;color:#241d10;border-radius:8px;padding:9px 16px;font:inherit;font-weight:700;cursor:pointer}
       .compSubmit:disabled{opacity:.45;cursor:default}
+      .compAgain{background:#262114;border:1px solid #3a3125;border-radius:8px;
+        padding:10px 12px;margin:12px 0 0;color:#e8c15a;font-size:13px;line-height:1.5}
       .compErr{color:#c2603f;font-size:12.5px;min-height:16px;margin-top:8px}`;
     document.head.appendChild(s);
   },

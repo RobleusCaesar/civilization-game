@@ -179,11 +179,32 @@ client feature lives in the one file behind one kill switch
 `<script>` tag, and the one `Competition.offer` line in `Screens.showEnd`
 (fourth, cosmetic: the marked COMPETITION panel block in analytics.html).
 
+**THE WINDOW.** Opening and closing are dates, not a switch anyone has to
+remember to throw: `Competition.OPENS_AT` / `CLOSES_AT` for the UI, and the
+`competition_window` row for the truth. The server checks its own row before
+writing anything, so a wrong device clock can neither open the draw early nor
+keep it open late, and a missing row fails CLOSED. Moving a date means both
+places — the table (one `update`) and the two constants.
+
 **Eligibility** (client-side friction, not enforcement — accepted at this
 prize size): a finished run, win or loss, with `S.playtime ≥ MIN_SECONDS`
-and `Score.compute().total ≥ MIN_SCORE`. Below a gate: one quiet line naming
-what was missed. The demo world and loaded games are excluded the same way
-telemetry excludes them.
+and a score gate that is **the same effort on every difficulty**.
+
+That last part is the one non-obvious rule. `CFG.SCORE.mult` is
+calm 0.5 / moderate 1.0 / hard 1.75, so gating the FINAL total would ask a
+calm player for double the work of a moderate one — backwards, since calm is
+where a new player starts. Measured on the real model, an honest 12-minute
+calm loss ("a few huts, a little scouting") totals 349 and would have been
+turned away, while the identical effort on hard totals 1,222 and sails in.
+So the gate reads the run's **pre-multiplier subtotal** against
+`MIN_SCORE` (`GATE_PRE_MULTIPLIER`), and the quiet line quotes
+`MIN_SCORE × that mode's multiplier` — 250 calm, 500 moderate, 875 hard —
+which is the same bar said in the number the player can actually see on
+their own end screen. A near-idle run (subtotal ~310) still fails on every
+difficulty.
+
+Below a gate: one quiet line naming what was missed. The demo world and
+loaded games are excluded the same way telemetry excludes them.
 
 **What the server enforces** (`enter_competition`, SECURITY DEFINER, the
 only write path — anon has NO direct privilege on either table):
@@ -203,6 +224,25 @@ COLUMN. `analytics_summary` returns entry COUNTS and email-free feedback
 rows only — proven in the migration's harness by asserting no `@` appears
 anywhere in its output. Entries are read exactly one way: the SQL editor,
 when drawing a winner (a reference query ships in the migration).
+
+**The confirmation invites another run** — driving replays is the point of
+the draw. It is static text: it never states a count, never implies whether
+this particular entry counted, and never hints that the address was already
+known, because those are exactly the leaks the uniform response exists to
+prevent.
+
+**Drawing is weighted BY ENTRY, deliberately.** `order by random() limit 1`
+over `competition_entries` picks a row, and five entries is five rows, so a
+five-game player carries five chances. Drawing by person would need
+`select distinct email` first; the migration says so where the query lives,
+so it cannot be second-guessed later.
+
+**A trap worth keeping** (found and closed here, present in 0003 as shipped):
+Postgres grants EXECUTE on a new function to PUBLIC, and
+`revoke ... from anon, authenticated` does **not** remove the PUBLIC grant
+those roles inherit — measured, `has_function_privilege('anon', …)` still
+answered true. Every function is now `revoke ... from public` first and
+granted deliberately after. Check any new one the same way.
 
 **Feedback**, required before the email, two taps: a 1-5 rating and one
 improvement pick (`too_hard / too_slow / confusing / not_enough_to_do /

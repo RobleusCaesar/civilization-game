@@ -18,6 +18,22 @@
 --
 -- Re-running this file is safe: create-if-not-exists / create-or-replace
 -- throughout, and it deletes nothing.
+--
+-- IT ALSO REPAIRS A HOLE IN 0003 (section 0). Postgres grants EXECUTE on a
+-- new function to PUBLIC by default, and 0003 revoked set_analytics_token
+-- from "anon, authenticated" — which does NOT remove the PUBLIC grant those
+-- roles inherit. Measured, not assumed: with only that revoke,
+-- has_function_privilege('anon', 'set_analytics_token(text)', 'execute')
+-- still answers true. Anyone holding the publishable key the game ships
+-- could therefore set their own dashboard passphrase (and lock you out of
+-- yours). Every function below is revoked FROM PUBLIC first and then
+-- granted deliberately.
+
+-- ---------------------------------------------------------------------------
+-- 0. CLOSE THE 0003 HOLE
+-- ---------------------------------------------------------------------------
+revoke all on function public.set_analytics_token(text) from public;
+revoke all on function public.set_analytics_token(text) from anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 1. THE EMAIL LIST — sealed
@@ -76,6 +92,35 @@ create index if not exists competition_feedback_created_idx
   on public.competition_feedback (created_at desc);
 
 -- ---------------------------------------------------------------------------
+-- 2b. THE WINDOW — when the draw is open, decided server-side
+-- ---------------------------------------------------------------------------
+-- The game carries the same two timestamps for its own UI, but a device
+-- clock is not evidence: this row is what actually decides whether an entry
+-- may be created. A single row, no policies, no client privilege — read only
+-- by the security-definer function below.
+--
+-- WIRED: opens Thu 10 Sep 2026 07:00 America/Denver, closes Thu 17 Sep 2026
+-- 07:00 America/Denver — SEVEN days. Denver is on MDT (UTC-6) for both, so
+-- 07:00-06:00 is 13:00Z. To move either end, one statement:
+--     update public.competition_window
+--        set closes_at = '2026-09-12T07:00:00-06:00' where id = 1;
+--   (and change CLOSES_AT in js/competition.js to match, or the button will
+--    keep appearing after the server has stopped accepting entries)
+create table if not exists public.competition_window (
+  id         integer primary key default 1 check (id = 1),
+  opens_at   timestamptz not null,
+  closes_at  timestamptz not null,
+  check (closes_at > opens_at)
+);
+alter table public.competition_window enable row level security;
+revoke all on table public.competition_window from anon, authenticated;
+
+insert into public.competition_window (id, opens_at, closes_at)
+values (1, '2026-09-10T07:00:00-06:00', '2026-09-17T07:00:00-06:00')
+on conflict (id) do update
+  set opens_at = excluded.opens_at, closes_at = excluded.closes_at;
+
+-- ---------------------------------------------------------------------------
 -- 3. THE ONE WRITE PATH
 -- ---------------------------------------------------------------------------
 -- Validates, normalizes, enforces the cap and the one-per-game rule, stores
@@ -106,7 +151,17 @@ declare
   v_entry bigint;
   v_n     integer;
   v_score integer; v_secs integer; v_day integer;
+  v_open  boolean;
 begin
+  -- the window first: outside it nothing is written at all, feedback
+  -- included. A missing row fails CLOSED — a promotion must not outlive
+  -- its prize because a config row went astray.
+  select (now() >= w.opens_at and now() < w.closes_at) into v_open
+    from public.competition_window w where w.id = 1;
+  if v_open is not true then
+    return jsonb_build_object('ok', false, 'error', 'closed');
+  end if;
+
   v_email := lower(trim(coalesce(p_email, '')));
   -- shape checks only — the game validates before sending, so a failure here
   -- is a hand-rolled request, and 'bad_input' reveals nothing about the data
@@ -148,6 +203,11 @@ begin
   return jsonb_build_object('ok', true);
 end;
 $$;
+-- ITEM 4: revoked from PUBLIC first, so the grant below is the ONLY thing
+-- that admits anyone. Without the revoke the grant is decoration — Postgres
+-- had already granted EXECUTE to PUBLIC when the function was created.
+revoke all on function public.enter_competition(
+  text, text, integer, text, text, boolean, integer, integer, text, text, integer) from public;
 grant execute on function public.enter_competition(
   text, text, integer, text, text, boolean, integer, integer, text, text, integer)
   to anon, authenticated;
@@ -463,17 +523,24 @@ begin
         'loss_avg', (select round(avg(rating)::numeric, 2) from fb where win = false),
         'loss_n',   (select count(*) from fb where win = false)
       ),
+      -- ITEM 2: bands re-cut around the 500 gate so the LOSS population is
+      -- resolvable instead of collapsing into one bucket. The "under 500"
+      -- band is not dead weight: the score gate scales with difficulty
+      -- (js/competition.js — same effort on every mode), so a qualifying
+      -- calm entry can carry a final total as low as 250.
       'rating_by_band', (
         select coalesce(jsonb_agg(x order by (x->>'lo')::int), '[]'::jsonb) from (
           select jsonb_build_object(
             'lo', b.lo, 'label', b.label,
             'n', count(f.id),
+            'wins', count(f.id) filter (where f.win),
+            'losses', count(f.id) filter (where f.win = false),
             'avg_rating', round(avg(f.rating)::numeric, 2)
           ) as x
-          from (values (0,'0-1,999'), (2000,'2,000-4,999'),
-                       (5000,'5,000-9,999'), (10000,'10,000+')) as b(lo, label)
-          left join fb f on f.score >= b.lo and (b.lo = 10000 or f.score < case b.lo
-            when 0 then 2000 when 2000 then 5000 when 5000 then 10000 end)
+          from (values (0,'under 500'), (500,'500-1,499'), (1500,'1,500-4,999'),
+                       (5000,'5,000-14,999'), (15000,'15,000+')) as b(lo, label)
+          left join fb f on f.score >= b.lo and (b.lo = 15000 or f.score < case b.lo
+            when 0 then 500 when 500 then 1500 when 1500 then 5000 when 5000 then 15000 end)
           group by b.lo, b.label
         ) q
       ),
@@ -515,6 +582,7 @@ begin
 end;
 $$;
 
+revoke all on function public.analytics_summary(text, timestamptz, timestamptz, text, text, text, text) from public;
 grant execute on function public.analytics_summary(text, timestamptz, timestamptz, text, text, text, text)
   to anon, authenticated;
 
@@ -522,8 +590,42 @@ grant execute on function public.analytics_summary(text, timestamptz, timestampt
 -- 5. DRAWING A WINNER (for reference — run in the SQL editor when the time
 --    comes; the editor is the only place entries are readable)
 -- ---------------------------------------------------------------------------
+-- ITEM 5 — THE DRAW IS WEIGHTED BY ENTRY, DELIBERATELY. The second query
+-- picks a random ROW, and a player with five entries owns five rows, so
+-- they carry five chances against a one-entry player's one. That is the
+-- intent: replaying is what the draw is for. To draw by PERSON instead —
+-- one chance each however many games they finished — it would have to be
+--   select email from (select distinct email from public.competition_entries) t
+--   order by random() limit 1;
+-- which is NOT what is wired below.
+--
+--   -- 1. the ledger, for the fraud eyeball before drawing
 --   select email, count(*) entries, min(created_at) first, max(created_at) last,
---          array_agg(score order by created_at) scores
+--          array_agg(score order by created_at) scores,
+--          array_agg(round(seconds/60.0, 1) order by created_at) minutes,
+--          array_agg(win order by created_at) wins
 --   from public.competition_entries group by email order by last;
---   -- eyeball for fraud (see the stored context), then:
+--
+--   -- 2. the draw itself — one row, weighted by entry
 --   select email from public.competition_entries order by random() limit 1;
+--
+-- ---------------------------------------------------------------------------
+-- 6. VERIFY THE SEAL (paste after applying; every row should read as noted)
+-- ---------------------------------------------------------------------------
+--   -- no overload of the write path carries looser privileges: expect
+--   -- exactly ONE row, the 11-argument signature, anon_can = true
+--   select p.oid::regprocedure::text as signature,
+--          has_function_privilege('anon', p.oid, 'execute') as anon_can
+--   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--   where n.nspname = 'public' and p.proname = 'enter_competition';
+--
+--   -- …and the passphrase setter is reachable by nobody but the owner:
+--   -- expect false, false
+--   select has_function_privilege('anon','public.set_analytics_token(text)','execute'),
+--          has_function_privilege('authenticated','public.set_analytics_token(text)','execute');
+--
+--   -- the tables stay sealed: expect four falses
+--   select has_table_privilege('anon','public.competition_entries','select'),
+--          has_table_privilege('anon','public.competition_entries','insert'),
+--          has_table_privilege('anon','public.competition_feedback','select'),
+--          has_table_privilege('anon','public.competition_feedback','insert');
