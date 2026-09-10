@@ -1607,6 +1607,64 @@ const Assets = {
     return (c && c[String(stem).toLowerCase()]) || null;
   },
 
+  /* ---- WORK-SITE STAGE ART: three PNGs per building SLOT ----
+
+       assets/buildings/{id}-l{level}-b{1,2,3}.png
+
+     The shape-and-footprint set this replaces was rejected whole: shared by
+     FORM, its stages could not resolve into a particular building, and the
+     house's read as a conical teepee when the finished house is a round hut.
+     A stage is now authored against ONE slot's finished PNG and must resolve
+     into it — same footprint, same base ring, same post and corner positions,
+     same materials, same palette (ART_PLAN, the build-stage redo).
+
+     SHARING IS BY SLOT, NOT BY FORM. Where two finished buildings genuinely
+     are the same structure — the barracks yard and the archery range yard are
+     the same post-and-rail square — one slot owns the art and the other
+     borrows it by name. Nothing is guessed: a slot with no entry owns its
+     own. A borrowed set still has to resolve into the borrower, which is why
+     the table is an approved list and not a heuristic.
+
+     Every piece is optional and 404s quietly, and the fallbacks stack: this
+     art, then whatever the older shared set still has, then the derived
+     look. So a half-finished sprint is never a broken game. */
+  STAGE_N: 3,
+  STAGE_SHARE: {},
+  stageOwner(id, lv) { const k = this.slotKey(id, lv); return this.STAGE_SHARE[k] || k; },
+  stageName(id, lv, n) { return (String(id) + '-l' + lv + '-b' + n + '.png').toLowerCase(); },
+  stageUrl(id, lv, n) { return this.ART_DIR + this.stageName(id, lv, n) + '?v=' + (CFG.ART_V || 1); },
+  stages: {},
+  // the drawable for a slot's stage (n is 1-based), or null to fall back
+  stageArt(id, lv, n) {
+    const set = this.stages[this.stageOwner(id, lv)];
+    return (set && set[n - 1]) || null;
+  },
+  // every slot that OWNS art: the borrowers ride their owner's files
+  stageOwners() {
+    const seen = {}, out = [];
+    for (const s of this.artSlots().concat([{ id: 'warcamp', lv: 1 }])) {
+      const o = this.stageOwner(s.id, s.lv);
+      if (!seen[o]) { seen[o] = 1; out.push(o); }
+    }
+    return out;
+  },
+  _tryStage(owner, n) {
+    const m = String(owner).match(/^(.*)-l(\d+)$/);
+    if (!m) return;
+    const img = new Image();
+    img.onload = () => {
+      const set = this.stages[owner] || (this.stages[owner] = []);
+      set[n - 1] = img;
+      this.loaded['stage/' + owner + '/' + n] = true;
+    };
+    img.onerror = () => { /* no art for this stage — the fallbacks stand */ };
+    // NOT world art: the title's demo town is already standing, and three
+    // files per slot on the path to the menu buys nothing (the menu is held
+    // to three seconds). A real game still waits on whenIdle.
+    this._track(img, false);
+    img.src = this.stageUrl(m[1], +m[2], n);
+  },
+
   artIds() { return Object.keys(CFG.BUILDINGS).filter(k => this.EXCLUDE.indexOf(k) < 0); },
   artSlots() {
     const out = [];
@@ -1705,6 +1763,7 @@ const Assets = {
       for (const dir of this.UNIT_DIRS8)
         for (const pose of this.UNIT_ART[kind]) this._tryLoadUnit(kind, dir, pose);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key], !this.WORK_SITE_RE.test(key));
+    for (const o of this.stageOwners()) for (let n = 1; n <= this.STAGE_N; n++) this._tryStage(o, n);
     for (const m of this.originMotifs()) this._tryLoadOrigin(m);
     for (const tName of this.formationTerrains())
       for (const stem of this.FORMATION_CATALOG[tName]) this._tryLoadFormation(tName, stem);

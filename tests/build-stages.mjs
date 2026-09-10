@@ -239,8 +239,18 @@ const out = await p.evaluate(() => {
     const WS = Sprites.misc, wsKeep = {};
     const WS_KEYS = ['buildSite1', 'buildSite2', 'buildFrameHut1', 'buildFrameHut2',
       'buildFrameHall1', 'buildFrameHall2', 'buildFrameYard1', 'buildFrameYard2'];
-    const wsOff = () => { for (const k of WS_KEYS) { wsKeep[k] = WS[k]; WS[k] = undefined; } };
-    const wsOn = () => { for (const k of WS_KEYS) WS[k] = wsKeep[k]; };
+    /* the PER-SLOT set (Assets.stages) sits in front of both of these now, so
+       a test that wants to see the derived route has to lift it too — the
+       house ships real stage art and would otherwise never reach siteOf. */
+    let stageKeep = null;
+    const wsOff = () => {
+      for (const k of WS_KEYS) { wsKeep[k] = WS[k]; WS[k] = undefined; }
+      stageKeep = Assets.stages; Assets.stages = {};
+    };
+    const wsOn = () => {
+      for (const k of WS_KEYS) WS[k] = wsKeep[k];
+      if (stageKeep) Assets.stages = stageKeep;
+    };
     wsOff();
     const k0 = stageCalls(() => { site.construction = t * 0.9; });
     const k1 = stageCalls(() => { site.construction = t * 0.5; });
@@ -395,6 +405,28 @@ const out = await p.evaluate(() => {
         const w = R.stageIcon({ id: 780, key: 'wall', owner: 'P', x: 5, y: 5, level: 1, construction: 1, upgrading: 0 });
         WS.buildFrameHall1 = undefined; WS.buildSite1 = undefined;
         return w !== stub; })(), 'walls and gates skip the shared set');
+    /* THE PER-SLOT ROUTE, and the share table that feeds it. A slot draws its
+       OWN authored stages; a slot listed in STAGE_SHARE draws the art of the
+       slot it borrows from. Both are lent by hand so the check never rides on
+       which PNGs happen to have landed. */
+    {
+      const mine = document.createElement('canvas'); mine.width = mine.height = 8;
+      mine.getContext('2d').fillRect(0, 0, 8, 8);
+      const keepStages = Assets.stages, keepShare = Assets.STAGE_SHARE;
+      Assets.stages = { 'house-l1': [mine, mine, mine] };
+      Assets.STAGE_SHARE = {};
+      ck('aSlotDrawsItsOwnAuthoredStages',
+        R.stageArt('house', 1, 1, 0) === mine && R.stageArt('house', 1, 1, 2) === mine,
+        'all three stages come from the slot\x27s own set');
+      ck('anUnrelatedSlotIsUnaffected', R.stageArt('lodge', 1, 1, 0) !== mine, '');
+      Assets.STAGE_SHARE = { 'range-l1': 'barracks-l1' };
+      Assets.stages = { 'barracks-l1': [mine, mine, mine] };
+      ck('theShareTableRedirectsToTheOwner',
+        R.stageArt('range', 1, 2, 1) === mine && Assets.stageOwner('range', 1) === 'barracks-l1',
+        'range L1 draws the barracks L1 set');
+      ck('aSlotWithNoEntryOwnsItself', Assets.stageOwner('stable', 2) === 'stable-l2', '');
+      Assets.stages = keepStages; Assets.STAGE_SHARE = keepShare;
+    }
     wsOn();
     const twFake = { id: 778, key: 'tower', owner: 'P', x: 5, y: 5, level: 1, construction: tt * 0.9, upgrading: 0 };
     ck('stageIconHonoursBespokeArt', R.stageIcon(twFake) === M.towerBuild1, '');

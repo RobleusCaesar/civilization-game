@@ -7536,6 +7536,13 @@ const R = {
      generic are the two that took art; the one that was already specific
      keeps deriving. */
   stageArt(key, lv, sz, stage) {
+    // the slot's OWN authored set first (Assets.stageArt, per-slot with an
+    // approved share table), then whatever the older shape-and-footprint set
+    // still has, then the derived look. Each rung is optional.
+    if (typeof Assets !== 'undefined' && Assets.stageArt) {
+      const own = Assets.stageArt(key, lv, stage + 1);
+      if (own) return own;
+    }
     const M = (typeof Sprites !== 'undefined' && Sprites.misc) || null;
     if (!M) return null;
     if (stage === 0) return M['buildSite' + sz] || null;
