@@ -1629,7 +1629,19 @@ const Assets = {
      art, then whatever the older shared set still has, then the derived
      look. So a half-finished sprint is never a broken game. */
   STAGE_N: 3,
-  STAGE_SHARE: {},
+  /* THE APPROVED SHARE TABLE. A slot listed here draws the stage art of the
+     slot it borrows from. Sharing is allowed only where the two FINISHED
+     buildings genuinely are the same structure, because a borrowed stage that
+     resolves into the wrong building is worse than no art at all — the
+     barracks yard and the archery range yard are the same post-and-rail
+     square at every level, differing only in what is stood inside them once
+     the work is done, and that is exactly what the stages stop short of.
+     Everything not listed owns its own set. */
+  STAGE_SHARE: {
+    'range-l1': 'barracks-l1',
+    'range-l2': 'barracks-l2',
+    'range-l3': 'barracks-l3',
+  },
   stageOwner(id, lv) { const k = this.slotKey(id, lv); return this.STAGE_SHARE[k] || k; },
   stageName(id, lv, n) { return (String(id) + '-l' + lv + '-b' + n + '.png').toLowerCase(); },
   stageUrl(id, lv, n) { return this.ART_DIR + this.stageName(id, lv, n) + '?v=' + (CFG.ART_V || 1); },
