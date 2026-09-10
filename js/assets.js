@@ -195,9 +195,30 @@ const Assets = {
     return true;
   },
 
-  // standalone PROPS — composited sprites that are not a building's own
-  // rectangle. One fixed URL per prop key; same swap-in rules as buildings.
-  PROPS: { 'misc/campfireTc': 'assets/misc/campfire-tc.png' },
+  /* standalone PROPS — composited sprites that are not a building's own
+     rectangle. One fixed URL per prop key; same swap-in rules as buildings.
+
+     THE WORK-SITE SET is here too, and it is shared ON PURPOSE: a raising is
+     drawn per SHAPE and FOOTPRINT, never per building key, because that is
+     how sites actually differ (R.stageShape — round kinds raise a HUT,
+     roofed kinds a HALL, worker plots and ground-level yards a YARD). Eight
+     pieces cover all 46 key/level slots the derived route serves; barracks
+     L1 and range L1 share one, which is the pair the operator named. Each
+     is optional: a 404 leaves the derived look standing, and a building
+     with its OWN bespoke set (the tower) never reaches these at all. */
+  PROPS: {
+    'misc/campfireTc': 'assets/misc/campfire-tc.png',
+    'misc/buildSite1': 'assets/misc/build-site-1.png',
+    'misc/buildSite2': 'assets/misc/build-site-2.png',
+    'misc/buildFrameHut1': 'assets/misc/build-frame-hut-1.png',
+    'misc/buildFrameHut2': 'assets/misc/build-frame-hut-2.png',
+    'misc/buildFrameHall1': 'assets/misc/build-frame-hall-1.png',
+    'misc/buildFrameHall2': 'assets/misc/build-frame-hall-2.png',
+    'misc/buildFrameYard1': 'assets/misc/build-frame-yard-1.png',
+    'misc/buildFrameYard2': 'assets/misc/build-frame-yard-2.png',
+  },
+  // which PROPS are work-site art: off the demo world's critical path
+  WORK_SITE_RE: /^misc\/build(Site|Frame)/,
 
   /* ---- ORIGIN CARD ICONS: one PNG per MOTIF, not per card ----
 
@@ -1683,7 +1704,7 @@ const Assets = {
     for (const kind of Object.keys(this.UNIT_ART))
       for (const dir of this.UNIT_DIRS8)
         for (const pose of this.UNIT_ART[kind]) this._tryLoadUnit(kind, dir, pose);
-    for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key]);
+    for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key], !this.WORK_SITE_RE.test(key));
     for (const m of this.originMotifs()) this._tryLoadOrigin(m);
     for (const tName of this.formationTerrains())
       for (const stem of this.FORMATION_CATALOG[tName]) this._tryLoadFormation(tName, stem);
@@ -1774,11 +1795,16 @@ const Assets = {
     img.src = this.artUrl(id, lv);
   },
 
-  _tryProp(key, url) {
+  /* `world` marks a prop the TITLE'S DEMO WORLD needs before it can bake —
+     the TC's hearth is one. The work-site set is NOT: the demo founds a town
+     that is already standing, so eight more requests on the path to the menu
+     buy nothing and the menu is held to three seconds. They still ride
+     whenIdle(), so a real game waits for them before it can place anything. */
+  _tryProp(key, url, world) {
     const img = new Image();
     img.onload = () => { if (this._place(key, img)) this.loaded[key] = true; };
     img.onerror = () => { /* no art for this prop — its procedural fallback stands */ };
-    this._track(img, true);
+    this._track(img, world !== false);
     img.src = url + '?v=' + (CFG.ART_V || 1);
   },
 
@@ -1833,9 +1859,20 @@ const Assets = {
         const o = this.ui.card;
         return { get: () => o[p[2]], set: v => { o[p[2]] = v; } };
       }
-      case 'misc':       return p.length > 2
-        ? at((Sprites.misc[p[1]] || {}), +p[2])   // animated misc: misc/kraken/0
-        : at(Sprites.misc, p[1]);
+      case 'misc': {
+        /* AN ART-ONLY PROP has no procedural slot to address, and `at`
+           rejects an undefined one — which is the guard that catches typo'd
+           keys everywhere else, so it stays. A key declared in PROPS is
+           art-only BY DEFINITION (the work-site set), so it opens its own
+           slot; everything else must still name one that exists. */
+        if (p.length === 2 && this.PROPS[key] !== undefined && Sprites.misc[p[1]] === undefined) {
+          const o = Sprites.misc;
+          return { get: () => o[p[1]], set: v => { o[p[1]] = v; } };
+        }
+        return p.length > 2
+          ? at((Sprites.misc[p[1]] || {}), +p[2])   // animated misc: misc/kraken/0
+          : at(Sprites.misc, p[1]);
+      }
       default:           return null;
     }
   },

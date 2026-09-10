@@ -61,7 +61,7 @@ can go larger with the flagged render tweaks.
 | Category | Registration point | Renderer math (zoom 1) |
 |---|---|---|
 | **Building** | **Top-left of the footprint box**; art fills a `size×size` tile square, silhouette bottom-aligned with baked shadow near the base. | `drawImage(spr, b.x*32, b.y*32, size*32, size*32)` |
-| **Construction scaffold** | Same as building (fills footprint box). | `drawImage(misc/construction[Big], b.x*32, b.y*32, size*32, size*32)` |
+| **Work site** | Same as building (fills footprint box). | `drawImage(misc/buildSite<sz> or misc/buildFrame<Shape><sz>, b.x*32, b.y*32, size*32, size*32)` |
 | **Unit** | **Bottom-center-ish**: sprite's horizontal center sits on the unit's tile-x; sprite is lifted 4 px so the **feet rest just below the tile-y**. Keep feet at ~y30 of a 32 px sprite; keep 1–2 px of empty margin at top/sides for the outline. | `drawImage(spr, u.x*32 − 16, u.y*32 − 20)` (natural 32×32) |
 | **Terrain** | Top-left, tile-aligned; fills the tile exactly, seamless at edges (no bleed). | `drawTile → drawImage(spr, x*32, y*32)` into the cache |
 | **UI icon** | Centered in a square; transparent margin ok. | scaled into 16 / 40 / 44 / 64 canvases |
@@ -108,7 +108,8 @@ Walls & gates are a special case (full-tile, auto-tiling, neutral) — see §4.3
 
 - **States per building:** exactly **one static idle sprite per level** (no
   per-level idle animation). The "under construction / upgrading" state is a
-  **shared scaffold overlay** (`misc/construction*`, §7), not per-building art.
+  **shared work-site set** keyed by shape and footprint (`misc/buildSite*`,
+  `misc/buildFrame*`, §4.2), not per-building art.
   Small living flourishes (TC hearth flame, dock water ripple, hearth smoke) are
   **procedural render overlays**, not assets (§7 "procedural-only").
 - **Frames:** 1 (static). **fps:** n/a.
@@ -139,21 +140,56 @@ Walls & gates are a special case (full-tile, auto-tiling, neutral) — see §4.3
 > `building/siege/3`, `building_a/siege/3`.
 > **Count:** 12 types × 3 levels × 2 factions = **72 sprite keys.**
 
-### 4.2 Construction / upgrade scaffold (1×1 shared; 2×2 TC keyed by target level)
+### 4.2 Work sites: the three raising stages
 
-| Key | Used for | Source→Render | Frames | Notes |
-|---|---|---|---|---|
-| `misc/construction` | any **1×1** building being built or upgraded | 64→32 (→128) | 1 | Lashed timber scaffold, half-laid stone footing, materials, ladder. Drawn at the building's footprint; owner tag + progress bar are code. |
-| `misc/constructionBig` | the **2×2 TC** being raised toward **L2** (first build, and the L1→L2 upgrade) | 128→64 (→256) | 1 | **Timber long-hall going up**: laid stone footing, post-and-beam frame (front bays planked, right bays open), the long gable roof half-raised (thatch on the lit slope, bare rafters on the other), scaffold, gin-pole crane, stacked timber/thatch/stone. |
-| `misc/constructionBig3` | the **2×2 TC** being raised toward **L3** (the L2→L3 upgrade) | 128→64 (→256) | 1 | **Stone keep going up**: stepped dressed-stone plinth, coursed walls rising (front-left near full height with quoins, the right run stepping down), a corner tower stub with merlons + arrow-slit, first roof timbers, a gin-pole crane hoisting a dressed block, cut-stone stacks, a mortar tub. |
+A building under construction — or being upgraded — moves through THREE looks
+at exact 1/3 intervals of its build time (`Bld.stageOf`), then the finished
+sprite appears. The contract is `tests/build-stages.mjs`.
 
-> The renderer picks the 2×2 work-site by **target level** (`render.js`): the
-> level the TC will be once the work finishes — `constructionBig` for →L1/L2,
-> `constructionBig3` for →L3 — so the scaffold always matches the shape being
-> raised.
+| Stage | What it shows | Where the picture comes from |
+|---|---|---|
+| **0 — the cleared site** | A staked plot of trodden earth: corner stakes with cord strung between them, a stack of cut poles, a wicker basket, a wooden spade and an antler pick, loose clods. | **Authored**, shared by footprint: `misc/buildSite1` / `misc/buildSite2`. Falls back to the derived `R.siteOf`. |
+| **1 — the framing** | The skeleton going up in the shape the finished building will take — a pole cone, a post-and-beam hall, or a half-set fence with open post holes and spoil. | **Authored**, shared by shape × footprint: `misc/buildFrame{Hut,Hall,Yard}{1,2}`. Falls back to the derived `R.frameOf`. |
+| **2 — the partial build** | The target sprite with its top erased above the wall line, pale fresh-cut ends along the break, post stubs above it. | **Derived only** (`R.partialOf`). Deliberately never authored — see below. |
+
+**Why stage 2 takes no art.** The partial build IS each building's own
+finished sprite with the roof taken off, which is the only thing that makes it
+read as *that* building half-raised; a shared image cannot. An authored
+scaffold laid over the top was tried and cut: drawn to the footprint it hid
+the building it was dressing, and shrunk enough to see past it left 17px of
+mush on a 1×1.
+
+**The shape a raising takes** — `R.stageShape`, read off the same facts the
+derived frame already sorted by, so the routing carries no new per-key data:
+
+| Shape | Rule | Slots it serves |
+|---|---|---|
+| `Hut` | `R.stageRound` — the roundhouse levels | tc L1, house L1 |
+| `Hall` | roofed: not a worker plot, not a ground-level yard | tc L2/L3, house L2/L3, barracks L2/L3, stable, range L2/L3, warcamp, trade |
+| `Yard` | a worker plot or a ground-level yard (`R.stageRoof` false) | farm, lodge, lumber, quarry, mine, siege, sapper, **barracks L1, range L1** |
+
+Eight files cover all 46 key/level slots the derived route serves. The sharing
+is the design, not a shortcut: a fenced yard goes up like every other fenced
+yard whatever it will eventually hold, which is why barracks L1 and range L1
+take the same frame.
+
+**Files** (`assets/misc/`; 1×1 at 128, 2×2 at 256 per §1; filename alone, no
+manifest, and a 404 simply leaves the derived look standing):
+
+```
+build-site-1.png        build-site-2.png
+build-frame-hut-1.png   build-frame-hut-2.png
+build-frame-hall-1.png  build-frame-hall-2.png
+build-frame-yard-1.png  build-frame-yard-2.png
+```
+
+**Routing precedence**, for the map draw and the panel's `R.stageIcon` alike:
+a key's own bespoke set (`misc/<key>Build1..3` — the **tower** only) → the
+dock's four-facing jetty stages → the wonder's shared masons' stages → the
+authored shared set above → the derived generators.
 
 > Walls & gates **under construction** show a **55%-alpha ghost of their own
-> oriented sprite** (no separate asset).
+> oriented sprite** (no separate asset), and never pick up the shared set.
 
 ### 4.3 Walls & gates (full-tile, auto-tiling, neutral)
 
@@ -324,9 +360,8 @@ completeness so nothing is assumed missing.)
 
 | Key | Meaning | Source→Render | Frames | Cadence | Notes |
 |---|---|---|---|---|---|
-| `misc/construction` | 1×1 work-site scaffold | 64→footprint (→128) | 1 | — | see §4.2 |
-| `misc/constructionBig` | 2×2 TC work-site, →L2 (timber long-hall) | 128→footprint (→256) | 1 | — | see §4.2 |
-| `misc/constructionBig3` | 2×2 TC work-site, →L3 (stone keep) | 128→footprint (→256) | 1 | — | see §4.2 |
+| `misc/buildSite1` `misc/buildSite2` | the cleared site, by footprint | 128 / 256→footprint | 1 | — | see §4.2 |
+| `misc/buildFrameHut{1,2}` `misc/buildFrameHall{1,2}` `misc/buildFrameYard{1,2}` | the framing, by shape × footprint | 128 / 256→footprint | 1 | — | see §4.2 |
 | `misc/kraken/0..1` | sea kraken (special event) | 32→32 | **2** | slow | tentacled sea beast |
 | `misc/dragon/0..1` | black dragon (special event) | **96×48**→96×48 | **2** | wingbeat (~4 fps) | the two wing-beat frames |
 | `misc/fish/0..1` | jumping shore-fish | 32→32 | **2** | ~6–7 fps | breaches over shoals so the player can spot fishing spots |
@@ -429,7 +464,8 @@ sprite key → its rect (with `dw`/`dh` to downscale 4× masters).
 | `assets/fortifications.png` | `wall/<lv>/<mask>` (48) + `gate/<lv>/<h\|v>` (6) + menu `building[_a]/wall\|gate/<lv>` (12) @32 | 66 | ~512² |
 | `assets/units.png` | all `unit/<kind>/<pose>/<n>` @32 (from 128 masters via dw/dh) | 176 | ~768² |
 | `assets/terrain.png` | `terrain/<name>/<v>` + `terrain_rare/grass/<v>` @32 (or 64) | 25 | ~256²–512² |
-| `assets/effects.png` | `misc/construction`(128) `misc/constructionBig`(256) `misc/constructionBig3`(256) `misc/kraken`(2) `misc/dragon`(2×96×48) `misc/fish`(2) | 9 | ~512² |
+| `assets/misc/build-*.png` | `misc/buildSite{1,2}` `misc/buildFrame{Hut,Hall,Yard}{1,2}` — one file each, no sheet | 8 | 128 / 256 |
+| `assets/effects.png` | `misc/kraken`(2) `misc/dragon`(2×96×48) `misc/fish`(2) | 6 | ~512² |
 | `assets/icons.png` | `icon/<name>` @64 | 5 | ~192² |
 | `assets/cards.png` | `ui/card/<key>` @128 (20) | 20 | ~640² |
 
@@ -531,7 +567,8 @@ terrain/<name>/<variant>          <name> = grass forest water hills fertile camp
 terrain_rare/grass/<0|1>          rare flower meadows
 icon/<name>                       food wood stone gold pop
 ui/card/<cardKey>                 20 Origin Cards (§8)
-misc/<name>                       construction, constructionBig, constructionBig3
+misc/<name>                       buildSite1..2, buildFrameHut1..2,
+                                  buildFrameHall1..2, buildFrameYard1..2
 misc/<name>/<frame>               kraken/0..1, dragon/0..1, fish/0..1
 ```
 

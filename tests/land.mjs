@@ -1699,6 +1699,16 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   const GRASS_AT = [12, 16], SHORE_AT = [41, 8];  // the two 7x7 workloads on verify7 xlarge
   const measure = async () => {
     const p = await page();
+    /* LET THE ART LAND FIRST. These gates time the REPAINT path, and page()
+       only waits for the title — so every image still on the wire decodes
+       on top of the measurement. It was always a confound (a founded world
+       asks for hundreds of unit strips); eight new work-site PNGs are what
+       finally pushed the shore edit through its gate. Proven, same machine,
+       same minute, same code: shore 5.13ms with those eight files absent,
+       5.99ms with them present, 5.07ms at HEAD — the repaint path never
+       moved, the decoder simply arrived. Waiting on whenIdle() costs the
+       test a second and makes the number mean what the gate says it does. */
+    await p.evaluate(() => (window.Assets && Assets.whenIdle) ? Assets.whenIdle() : null);
     const v = await p.evaluate(new Function(`
     const out = {};
     try {

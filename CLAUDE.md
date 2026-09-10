@@ -65,10 +65,19 @@ guard shipped to main and, on any phone holding a cached older `js/artstyle.js`
 beside the fresh `js/render.js`, threw inside the terrain bake — and a bake that
 throws dies mid-plan, so a real day-90 save lost every tree, rock, berry and
 gold seam and painted black holes where the ground should be. Two rules came out
-of it, both cheap: **every `js/` script tag in index.html carries `?v=CFG.ART_V`**
-so the files can never load at mixed versions, and **a painter stands down for
-art that isn't there** rather than throwing — a missing ramp, sprite or override
-degrades that one layer and the map still paints.
+of it, both cheap: **every `js/` script tag in index.html carries the SAME
+`?v=`** so the files can never load at mixed versions, and **a painter stands
+down for art that isn't there** rather than throwing — a missing ramp, sprite
+or override degrades that one layer and the map still paints.
+
+That shared tag is the CODE version, and it is no longer `CFG.ART_V`: the two
+cache-busters were split so a JavaScript-only deploy stops throwing away the
+cached pictures. `CFG.ART_V` (in `js/config.js`) busts every PNG URL; the
+script tags bust the code. Bump with `scratchpad/bump.cjs code` for a JS/HTML
+change and `… art` when a PNG moves — and note an ART bump bumps BOTH, because
+`CFG.ART_V` lives inside a file the browser is holding under the old script
+tag. `tests/art-pipeline.mjs` keeps the invariant
+(`theScriptTagsShareOneVersionNoOlderThanTheArt`).
 
 ## Other checked-in contracts
 

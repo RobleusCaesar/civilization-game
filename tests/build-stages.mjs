@@ -230,6 +230,18 @@ const out = await p.evaluate(() => {
     const t = CFG.BUILDINGS.tc.levels[0].time || 1;
     const site = { id: 99871, key: 'tc', owner: 'P', x: tc.x + 3, y: tc.y, level: 1, hp: 100, construction: t, upgrading: 0 };
     S.buildings.push(site);
+    /* THE DERIVED SEQUENCE, WITH THE AUTHORED SET LIFTED OFF. Stages 0 and 1
+       now prefer authored work-site art (Assets.PROPS → misc/buildSite*,
+       misc/buildFrame*), so the derived generators are the FALLBACK. Both
+       halves are proven here, and the slots are emptied and lent by hand
+       rather than trusted to have loaded — whether a PNG has landed 900ms
+       into a file:// boot is a race, and a contract must not ride one. */
+    const WS = Sprites.misc, wsKeep = {};
+    const WS_KEYS = ['buildSite1', 'buildSite2', 'buildFrameHut1', 'buildFrameHut2',
+      'buildFrameHall1', 'buildFrameHall2', 'buildFrameYard1', 'buildFrameYard2'];
+    const wsOff = () => { for (const k of WS_KEYS) { wsKeep[k] = WS[k]; WS[k] = undefined; } };
+    const wsOn = () => { for (const k of WS_KEYS) WS[k] = wsKeep[k]; };
+    wsOff();
     const k0 = stageCalls(() => { site.construction = t * 0.9; });
     const k1 = stageCalls(() => { site.construction = t * 0.5; });
     const k2 = stageCalls(() => { site.construction = t * 0.1; });
@@ -238,6 +250,26 @@ const out = await p.evaluate(() => {
       k1.site === 0 && k1.frame === 1 && k1.partial === 0 &&
       k2.site === 0 && k2.frame === 0 && k2.partial === 1,
       'stage0 cleared site, stage1 framing, stage2 partial build');
+    /* …AND THE AUTHORED SET STEPS IN FRONT OF IT. A TC is 2×2 and round at
+       L1, so it takes buildSite2 then buildFrameHut2; the last third stays
+       DERIVED whatever is loaded, because the partial build is the target
+       sprite with its top erased and no shared image can be that. */
+    const stub = document.createElement('canvas'); stub.width = stub.height = 8;
+    stub.getContext('2d').fillRect(0, 0, 8, 8);
+    WS.buildSite2 = stub; WS.buildFrameHut2 = stub;
+    const a0 = stageCalls(() => { site.construction = t * 0.9; });
+    const a1 = stageCalls(() => { site.construction = t * 0.5; });
+    const a2 = stageCalls(() => { site.construction = t * 0.1; });
+    ck('authoredWorkSiteArtWinsWhenLoaded',
+      a0.site === 0 && a1.frame === 0 && a2.partial === 1,
+      'site and frame taken from art, the partial build still derived');
+    ck('workSiteArtRoutesByShapeAndFootprint',
+      R.stageShape('tc', 1) === 'Hut' && R.stageShape('tc', 2) === 'Hall' &&
+      R.stageShape('house', 1) === 'Hut' && R.stageShape('house', 2) === 'Hall' &&
+      R.stageShape('barracks', 1) === 'Yard' && R.stageShape('range', 1) === 'Yard' &&
+      R.stageShape('barracks', 2) === 'Hall',
+      'barracks L1 and range L1 share one frame, as the operator asked');
+    WS.buildSite2 = undefined; WS.buildFrameHut2 = undefined;
     ck('theOldGenericLooksAreGone',
       !Sprites.misc.construction1 && !Sprites.misc.constructionBig && !Sprites.misc.scaffold &&
       !Sprites.misc.upgrade1 && !Sprites.misc.upgradeScaffoldBig &&
@@ -333,10 +365,15 @@ const out = await p.evaluate(() => {
     const ht = CFG.BUILDINGS.house.levels[0].time;
     const h0 = stageCalls(() => { hh.construction = ht * 0.9; });
     const h2 = stageCalls(() => { hh.construction = ht * 0.1; });
-    ck('houseRendersDerivedStages',
+    ck('houseRendersDerivedStagesWithNoArt',
       h0.site >= 1 && h0.partial === 0 && h2.partial >= 1 && h2.site === 0 &&
       [...h0.keys, ...h2.keys].every(k => !/house(Build|Up)/.test(k)),
       'cleared site then partial build, no bespoke keys');
+    // …and a 1×1 key takes the 1×1 art when it is there
+    WS.buildSite1 = stub;
+    const hA = stageCalls(() => { hh.construction = ht * 0.9; });
+    WS.buildSite1 = undefined;
+    ck('houseTakesTheOneByOneSiteArt', hA.site === 0, 'misc/buildSite1 in front of siteOf');
     Bld.finish(hh);
 
     // ---- 6. the PANEL ICON follows the same routing (ui.js asks R.stageIcon) ----
@@ -347,6 +384,18 @@ const out = await p.evaluate(() => {
     ck('stageIconFollowsTheDerivedStages',
       icon0 === R.siteOf('house', Bld.size('house'), 1) &&
       icon2 === R.partialOf(R.bldSprite(hFake, 1)), '');
+    // the panel takes the authored piece exactly when the map does
+    WS.buildSite1 = stub;
+    hFake.construction = ht * 0.9;
+    ck('stageIconTakesTheAuthoredSite', R.stageIcon(hFake) === stub, '');
+    WS.buildSite1 = undefined;
+    // a fortification wears its own ghost and must never pick up a work site
+    ck('aFortificationTakesNoWorkSiteArt',
+      (() => { WS.buildFrameHall1 = stub; WS.buildSite1 = stub;
+        const w = R.stageIcon({ id: 780, key: 'wall', owner: 'P', x: 5, y: 5, level: 1, construction: 1, upgrading: 0 });
+        WS.buildFrameHall1 = undefined; WS.buildSite1 = undefined;
+        return w !== stub; })(), 'walls and gates skip the shared set');
+    wsOn();
     const twFake = { id: 778, key: 'tower', owner: 'P', x: 5, y: 5, level: 1, construction: tt * 0.9, upgrading: 0 };
     ck('stageIconHonoursBespokeArt', R.stageIcon(twFake) === M.towerBuild1, '');
     const wlFake = { id: 779, key: 'wall', owner: 'P', x: 5, y: 5, level: 1, construction: 1, upgrading: 0 };

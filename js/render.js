@@ -451,7 +451,7 @@ const LAND = {
   /* …and the quiet surface: a slow expanding ring on a hash-chosen share of
      the water, each tile on its own staggered clock, so the lake breathes
      without anything leaping out of it. */
-  CANOPY_SPILL: 6,      // px a crown may hang past the wood’s edge onto open walkable ground
+  CANOPY_SPILL: 0,      // px a crown may hang past the wood’s edge onto WALKABLE ground — 0, never (ground that BLOCKS is not constrained at all)
   RIPPLE: 0.20,         // alpha of the ring at its birth; 0 switches it off
   RIPPLE_GATE: 5,       // one water tile in this many ever ripples
   RIPPLE_EVERY: 7,      // seconds between one tile's own rings
@@ -1857,7 +1857,20 @@ const R = {
        an ENCLOSED open tile (forest on two or more of its four sides) takes
        the full shoreline setback, so a corridor stays visibly grass from
        end to end. Culled after the draws are burned, like the shoreline,
-       so every untouched tile keeps its layout bit for bit. */
+       so every untouched tile keeps its layout bit for bit.
+
+       THE SPILL NO LONGER CROSSES ONTO GROUND A VILLAGER CAN WALK (the
+       referee's "it allows people to pass, but it looks like a forest").
+       Measured on his own day-22 world: the spill was buying almost nothing
+       — canopy on walkable ground 0.3%, and zeroing it cost the wood's edge
+       tiles 2.7 points of cover (22.7% → 20%) while widening the clear
+       ribbon through a lane by 5px. Past zero the trade turns bad: +4 more
+       px of setback buys 1px of ribbon for another 2.7 points of edge. So
+       PASSABLE ground takes a hard zero — a crown may not cross onto it at
+       all — while ground that BLOCKS (rock, ore, a standing field) is never
+       consulted here and keeps its unbounded spill, which is where the
+       wood-not-a-hedge edge still needs one. The dial stays live: raise
+       CANOPY_SPILL to hand the walkable side its spill back. */
     const openT2 = (x2, y2) => { if (!MapGen.inB(x2, y2)) return false; const t2 = terr[MapGen.idx(x2, y2)]; return t2 !== T.FOREST && !Path.blocksLand(t2); };
     const enclosed = (x2, y2) => { let n = 0;
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const x3 = x2 + dx, y3 = y2 + dy;
@@ -7586,6 +7599,44 @@ const R = {
     const e = this.STAGE_ROUND[key];
     return !!(e && e.indexOf(lv || 1) >= 0);
   },
+  /* ---- AUTHORED WORK-SITE ART (the referee: "recreate the art work for
+     buildings under construction … okay to re-use good quality images for
+     things like land for under-construction buildings, or buildings with
+     similar fence like structures (level 1 barracks and level 1 archery
+     range)") ----
+
+     A raising is drawn per SHAPE AND FOOTPRINT, not per key, because that
+     is how building sites actually differ: a fenced yard goes up like every
+     other fenced yard whatever it will hold. The shape is the one the
+     derived frame already sorted by, so the routing adds no new per-key
+     facts — round kinds raise a HUT, roofed kinds a HALL, worker plots and
+     ground-level yards a YARD. Six frames and two sites cover all 46
+     key/level slots; barracks L1 and range L1 land in the same one, which
+     is the pair the referee named.
+
+     Every piece is OPTIONAL and addressed by filename alone (Assets.PROPS →
+     misc/buildSite1 …), so a missing file simply derives the old look —
+     the same deal every other art convention in the game makes. A key's OWN
+     bespoke set (the tower's) still wins ahead of both. */
+  stageShape(key, lv) {
+    return this.stageRound(key, lv) ? 'Hut' : this.stageRoof(key, lv) ? 'Hall' : 'Yard';
+  },
+  /* the authored piece for this slot, or null to derive. STAGE 2 IS NEVER
+     AUTHORED, and that is the finding rather than a gap: the partial build
+     IS the target sprite with its top erased, which is the only thing that
+     makes it read as THAT building half-raised. A shared image cannot, and
+     an authored SCAFFOLD laid over the top was tried and cut — drawn to the
+     footprint it hid the very building it was dressing, and shrinking it
+     enough to see past left 17px of mush on a 1×1. The two stages that were
+     generic are the two that took art; the one that was already specific
+     keeps deriving. */
+  stageArt(key, lv, sz, stage) {
+    const M = (typeof Sprites !== 'undefined' && Sprites.misc) || null;
+    if (!M) return null;
+    if (stage === 0) return M['buildSite' + sz] || null;
+    if (stage === 1) return M['buildFrame' + this.stageShape(key, lv) + sz] || null;
+    return null;
+  },
   /* the GROUND PLAN of a site — which shape of patch gets cleared. Derived
      from the target art: round kinds break a round plot, everything else a
      squared one as wide as its own art. lv may exceed the family (a wall
@@ -7952,6 +8003,13 @@ const R = {
     const fam = (b.key === 'wall' || b.key === 'gate') ? Sprites.building[b.key] : null;
     const base = fam ? fam[Math.min(tgt, fam.length) - 1] : this.bldSprite(b, tgt);
     const bs = Bld.size(b), tier = Math.min(3, tgt);
+    // the authored site/frame, same routing the map draw takes. Fortifications
+    // are skipped exactly as they are on the map: they wear their own ghost,
+    // never a work site.
+    if (!fam) {
+      const art = this.stageArt(b.key, tgt, bs, stage);
+      if (art) return art;
+    }
     if (stage === 0) return this.siteOf(b.key, bs, tier);
     if (stage === 1) return this.frameOf(base, tier, this.stageRoof(b.key, tgt), this.stageRound(b.key, tgt));
     return this.partialOf(base, !this.stageRoof(b.key, tgt));
@@ -10570,6 +10628,9 @@ const R = {
             // tests/build-stages.mjs): its own three raising sprites for ALL
             // three stages, no derived look
             Assets.drawSprite(g, 'misc/' + b.key + (up ? 'Up' : 'Build') + (stage + 1), bx, by, { w: bw, h: bw });
+          } else if (this.stageArt(b.key, up ? b.level + 1 : b.level, bs, stage)) {
+            // AUTHORED site and frame, shared by shape and footprint
+            g.drawImage(this.stageArt(b.key, up ? b.level + 1 : b.level, bs, stage), bx, by, bw, bw);
           } else {
             /* THE DERIVED STAGES (tests/build-stages.mjs): cleared site →
                framing → partial build, generated from the footprint, the
