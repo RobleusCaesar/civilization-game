@@ -885,6 +885,49 @@ const Units = {
   },
 
   // send a villager to construct or repair a building; frees up when done
+  /* NOBODY BUILDS FROM THE WATER (the operator, with the picture: a villager
+     sawing at a lakeside site while his own contact shadow sits on the lake).
+     A builder is never PATHED onto water — Path.find only ever enqueues
+     passable tiles — so one standing there arrived by some other road: a
+     shore-fisher eased out to the water line when his shoal ran dry and then
+     took the site beside him without needing to take a step, a save made
+     before a rule tightened, a tile flooded under him by a sapper. Whatever
+     the road, the picture is a lie and the rule is simple: while the work is
+     on, stand on ground you could stand on.
+
+     So a builder who finds himself somewhere he could not legally walk is
+     moved to the nearest tile he could — one still inside working range of
+     the site, which is what makes it a step and not a retreat. SHARING IS
+     ALLOWED AND EXPECTED (the operator: "even if they have to share a tile
+     with another villager that is also doing the construction"): with water
+     on one or two sides of a site the landward tiles are the only ones there
+     are, and the crew-ease below already spreads two or three builders
+     across a tile they share. A tile nobody is on is still preferred, so a
+     crew spreads out when it can and closes up when it cannot.
+
+     Snapped, not walked: he is standing somewhere he could never have walked
+     to, so there is no route out to follow. */
+  buildStand(u, b) {
+    const dom = this.domain(u);
+    if (Path.passable(u.x | 0, u.y | 0, u.owner, dom)) return;
+    const reach = 1.55 + Bld.reach(b);
+    const cx = Bld.cx(b), cy = Bld.cy(b);
+    const r = Math.ceil(reach) + 1;
+    let best = null, bestKey = null;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const x = (cx + dx) | 0, y = (cy + dy) | 0;
+      if (!MapGen.inB(x, y) || !Path.passable(x, y, u.owner, dom) || Bld.at(x, y)) continue;
+      if (Math.hypot(cx - (x + 0.5), cy - (y + 0.5)) > reach) continue;
+      // fewest neighbours first, then nearest to where he already is
+      const crowd = S.units.reduce((n, o) => n + (o !== u && (o.x | 0) === x && (o.y | 0) === y ? 1 : 0), 0);
+      const key = crowd * 1000 + Math.hypot(u.x - (x + 0.5), u.y - (y + 0.5));
+      if (bestKey === null || key < bestKey) { bestKey = key; best = { x, y }; }
+    }
+    if (!best) return;                      // no legal ground in reach — leave him be
+    u.x = best.x + 0.5; u.y = best.y + 0.5;
+    u.path = null; u.pathI = 0;
+  },
+
   assignBuild(u, b) {
     if (this.isLevied(u)) return false;   // under arms — the levy works nothing (tests/levy.mjs)
     u.task = { type: 'build', id: b.id };
@@ -1626,6 +1669,7 @@ const Units = {
           else if (!this.setPath(u, b.x, b.y)) u.task = null;
         } else {
           u.path = null;
+          this.buildStand(u, b);
           /* A CREW STANDS SIDE BY SIDE, NEVER IN A STACK. Every builder paths
              to the same goal tile, so a two-hand site drew ONE villager and
              the player couldn't count the crew. Same cure as the station's

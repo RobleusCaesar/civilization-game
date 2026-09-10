@@ -434,6 +434,147 @@ const MapGen = {
     } else paint(T.HILLS, 5, 4, 5);
     paint(T.FERTILE, V.fertile[0], V.fertile[1], V.fertile[2], 12);
 
+    /* A MOUNTAIN STANDS IN ITS OWN WOOD (the operator: "place actual resource
+       trees around the mountains … characters should not be able to walk under
+       them, and villagers should be able to cut them down for resources").
+
+       A massif used to get its skirt from the RENDERER — mtnEdgeTrees stamped
+       art-only stands on the open ground at its foot. They blocked nothing and
+       yielded nothing, and because that layer is interleaved with the units by
+       ground row (a strip at or south of a unit's feet draws OVER it), they
+       drew on top of anyone standing among them. That is what "walking under
+       the trees" was, and it is why every probe of the forest canopy came back
+       clean: the canopy bakes into the terrain cache, UNDER the units, and the
+       apron never went near it.
+
+       So the skirt is TERRAIN now. Real T.FOREST: it blocks, it yields wood to
+       an axe, it draws in the canopy pass beneath every unit, and the minimap
+       and the pathfinder both know it is there.
+
+       Four rules keep it honest:
+
+       IT ONLY TAKES GRASS, so the ore already seated in the crevasses above
+       (and every other field) keeps the ground it claimed.
+
+       IT PLANTS AT OR BELOW THE ROCK'S OWN ROW, never north of it. A drawn peak
+       climbs as much as KIT_PAD_UP tiles of northward headroom, so a wood
+       planted behind one is hidden by the art while still blocking — the
+       invisible-wall bug the stone deposits already taught us once.
+
+       AND A WOOD-SCARCE VALLEY KEEPS ITS SCARCITY. When the roll made wood the
+       rare resource its whole pocket is 6-8 tiles, and skirting every massif
+       would quietly undo the one thing that map was for.
+
+       AND IT NEVER SEALS A WAY THROUGH — the guard below, held to a number.
+       The reachability clamp that runs after this is NOT that guarantee and
+       measuring it said so: it keeps the seats and the resources reachable,
+       and a skirt can still cut the map in half underneath it. */
+    if (scarce.terrain !== T.FOREST) {
+      /* ITS OWN STREAM, salted off the same seed — the variant roll's trick.
+         Drawing from `rnd` would consume it, and every roll after this one
+         (the camps, the ruins, the difficulty bias, the reachability carve)
+         would land differently on a seed it has always landed the same way
+         on. With a private stream the skirt is PURELY ADDITIVE: every other
+         feature of every existing seed comes out byte-identical. */
+      const srnd = mulberry32(hashSeed(String(seedStr) + '::mtnskirt'));
+      const SKIRT_REACH = 2;                  // tiles out from the rock
+      const SKIRT_SHARE = 0.45;               // share of eligible tiles that take a stand
+      const rockAtOrAbove = (x, y) => {
+        for (let dy = -SKIRT_REACH; dy <= 0; dy++)
+          for (let dx = -SKIRT_REACH; dx <= SKIRT_REACH; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (!MapGen.inB(nx, ny)) continue;
+            if (t[id(nx, ny)] === T.MOUNTAIN) return true;
+          }
+        return false;
+      };
+      // collected first, planted second: growing a wood while the sweep is
+      // still reading would let one skirt tile seed the next and creep the
+      // fringe out across the meadow
+      const skirt = [];
+      for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+        if (t[id(x, y)] !== T.GRASS || nearStart(x, y)) continue;
+        if (rockAtOrAbove(x, y)) skirt.push(id(x, y));
+      }
+      /* AND IT NEVER WALLS ANYTHING OFF — held to a number, not a hope.
+         Blocking terrain is the one thing a generator cannot add carelessly:
+         an unguarded skirt cut seed rc7's walkable ground from one body
+         holding 95% of it down to 70%, and rc1's from 99% to 86%. A villager
+         left looking at wood he cannot reach, and the rival's crossing logic
+         reading a map sealed behind its back.
+
+         Local tests are not enough and I tried two. "Is this a one-tile gap"
+         passes both trees of a two-thick plug. Checking that a tile's open
+         neighbours still reach each other nearby passes a shelf route along a
+         cliff, where the detour is simply far away. What both miss is that
+         severing is a property of the whole map, so the guard is too:
+
+           THE LARGEST WALKABLE BODY, AFTER PLANTING, IS EXACTLY AS LARGE AS
+           IT WOULD HAVE BEEN WITH NO SKIRT AT ALL.
+
+         Planted tiles were all grass, so relaxing them back to open ground
+         gives the map as it stood. While the real largest body falls short of
+         that, fell the one tree that buys back the most and look again. It
+         must terminate: un-planting every tree restores the relaxed map
+         exactly. In practice a handful of trees come out, and only on the
+         seeds where the rock nearly divides the map on its own. */
+      const bodyOf = (relax) => {
+        const seen = new Uint8Array(W * H);
+        let big = 0;
+        const blocked = (i2) => relax && relax.has(i2) ? false : Path.blocksLand(t[i2]);
+        for (let i0 = 0; i0 < W * H; i0++) {
+          if (seen[i0] || blocked(i0)) continue;
+          let sz = 0; const q = [i0]; seen[i0] = 1;
+          for (let h = 0; h < q.length; h++) {
+            const cur = q[h]; sz++;
+            const cx = cur % W, cy = (cur / W) | 0;
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+              const nx = cx + dx, ny = cy + dy;
+              if (!MapGen.inB(nx, ny)) continue;
+              const ni = id(nx, ny);
+              if (seen[ni] || blocked(ni)) continue;
+              seen[ni] = 1; q.push(ni);
+            }
+          }
+          if (sz > big) big = sz;
+        }
+        return big;
+      };
+      // one roll per candidate in a fixed iteration order: ragged AND seed-stable
+      const planted = new Set();
+      for (const i of skirt) if (srnd() < SKIRT_SHARE) { t[i] = T.FOREST; planted.add(i); }
+      const target = bodyOf(planted);            // the map as it stood, before a tree went in
+      for (let guard = 0; guard < 200 && planted.size; guard++) {
+        if (bodyOf(null) >= target) break;
+        let bestI = -1, bestBody = -1;
+        for (const i of planted) {
+          t[i] = T.GRASS;
+          const body = bodyOf(null);
+          t[i] = T.FOREST;
+          if (body > bestBody) { bestBody = body; bestI = i; }
+        }
+        if (bestI < 0) break;
+        t[bestI] = T.GRASS; planted.delete(bestI);
+      }
+      /* NO CONFETTI. Independent rolls leave lone tiles standing in open
+         meadow, and a single sparse tile is drawn as one small tree while
+         still blocking a unit outright — exactly what the readability floor
+         in land.mjs §11 holds every other blocked terrain to. A planted tile
+         with no wood beside it goes back to grass, so the skirt reads as
+         stands rather than as scattered obstacles. Judged against a SNAPSHOT
+         taken before the first removal: read the live map and one removal
+         cascades into the next, unravelling the whole skirt from its edge. */
+      const snap = t.slice();
+      for (const i of skirt) {
+        if (t[i] !== T.FOREST) continue;
+        const x = i % W, y = (i / W) | 0;
+        const beside = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) =>
+          MapGen.inB(x + dx, y + dy) && snap[id(x + dx, y + dy)] === T.FOREST);
+        if (!beside) t[i] = T.GRASS;
+      }
+    }
+
+
     // guarantee some of each resource near both starts
     function seedNear(cx, cy, type, n) {
       let placed = 0, guard = 0;
