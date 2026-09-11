@@ -76,7 +76,20 @@ await p.waitForTimeout(900);
 const out = await p.evaluate(() => {
   const res = {}, fails = [];
   const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
-  const px = (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) n++; return n; };
+  /* A building slot holds a procedural CANVAS until its shipped PNG lands, and
+     an IMAGE after — which of the two this page has reached by now is a race
+     with the loader, and one that shifts every time the art set changes size.
+     The checks below care about the picture, not the box it came in, so read
+     both through one canvas. (file:// images are same-origin here: the launch
+     passes --allow-file-access-from-files, so this never taints.) */
+  const canvasOf = (c) => {
+    if (!c || c.getContext) return c;
+    const k = document.createElement('canvas');
+    k.width = c.naturalWidth || c.width; k.height = c.naturalHeight || c.height;
+    k.getContext('2d').drawImage(c, 0, 0);
+    return k;
+  };
+  const px = (c0) => { const c = canvasOf(c0); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) n++; return n; };
   const seamsOf = () => {
     const out2 = [];
     for (let i = 0; i < S.map.terrain.length; i++)
@@ -323,7 +336,7 @@ const out = await p.evaluate(() => {
       L.map(l => Math.round(worth(l.cost))).join(' → '));
     ck('everyTierWearsDifferentArt',
       Sprites.building.mine.length === 3 &&
-      new Set(Sprites.building.mine.map(c => c.toDataURL())).size === 3 &&
+      new Set(Sprites.building.mine.map(c => canvasOf(c).toDataURL())).size === 3 &&
       Sprites.building.mine.every(c => px(c) > 900), '');
     // the bespoke mineBuild set is RETIRED — the mine raises through the
     // DERIVED stages like every ordinary key (tests/build-stages.mjs):

@@ -1636,11 +1636,20 @@ const Assets = {
      barracks yard and the archery range yard are the same post-and-rail
      square at every level, differing only in what is stood inside them once
      the work is done, and that is exactly what the stages stop short of.
-     Everything not listed owns its own set. */
+
+     Everything not listed owns its own set — and a level whose OWN set was
+     never drawn falls to the authored shape-and-footprint work site and the
+     derived partial, which is right for it. That is deliberate: a lumber camp
+     grows a roof at level 2 and a mine grows a headframe at level 3, so level
+     1's stages would resolve into the wrong building, and no art beats wrong
+     art. */
   STAGE_SHARE: {
-    'range-l1': 'barracks-l1',
+    'range-l1': 'barracks-l1',   // the same post-and-rail square, at every level
     'range-l2': 'barracks-l2',
     'range-l3': 'barracks-l3',
+    'farm-l2': 'farm-l1',        // both are the same bare field: green rows, then ripe corn
+    'lodge-l3': 'lodge-l2',      // the same pitched-roof timber hut on the same plan
+    'sapper-l2': 'sapper-l1',    // the same earth square around the same shaft
   },
   stageOwner(id, lv) { const k = this.slotKey(id, lv); return this.STAGE_SHARE[k] || k; },
   stageName(id, lv, n) { return (String(id) + '-l' + lv + '-b' + n + '.png').toLowerCase(); },

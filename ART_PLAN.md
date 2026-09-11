@@ -244,6 +244,90 @@ Three traps this batch found, all prompt-level or rescue-level:
   nothing touches any canvas edge", plus extending the style ref's usage
   note with "and how the scene floats isolated on transparency".
 
+## The raising stages: three PNGs per building SLOT (SHIPPED)
+
+`assets/buildings/{id}-l{level}-b{1,2,3}.png`, loaded by `Assets.stages`
+and reached through `R.stageArt`. A stage is authored against ONE slot's
+finished PNG and has to resolve into it; the shape-and-footprint set that
+came before was rejected whole because art shared by FORM cannot.
+
+**Every stage prompt carries all of this.** Each clause is here because
+one defect made it necessary, and dropping any one brings that defect
+straight back.
+
+- **THE CAMERA — name what the shipped art SHOWS, not what it is not.**
+  "THE CAMERA IS EXACTLY SQUARE TO THE FRONT: the front face, plus the
+  wall-top and near roof slope foreshortened into a shallow band, and
+  NOTHING ELSE. NO side wall visible, NO edge receding, NO corner turned
+  toward you. NOT isometric, NOT a three-quarter view. Every vertical
+  exactly vertical." Asking for a flat front elevation alone gives a
+  cut-out lying on the ground; asking for volume alone goes straight back
+  to three-quarter. The roof band is the half that has to be named.
+  A top-down yard takes its own version — "THE CAMERA LOOKS STRAIGHT DOWN
+  ONTO THE YARD, the enclosing band drawn flat around all four sides" —
+  with ANOTHER shipped yard as the camera reference, never the tc-l3 one.
+- **FIVE CLAUSES, EVERY TIME.** (1) "COMPLETELY UNMANNED — no people, no
+  figures, nobody anywhere", early. (2) "Every gap is COMPLETELY EMPTY AND
+  TRANSPARENT — nothing behind it, NO sky, NO background, NO blue, NO fill
+  of any kind." (3) "NO text, NO labels, NO captions, no variation names."
+  (4) "Nothing touches any canvas edge; clear empty margin on all four
+  sides." (5) "no diamond ground plate, no platform, no plinth, no slab —
+  the ground is a flat ragged stain like a decal."
+- **THREE LABELLED REFERENCES, ALWAYS THREE, NEVER DE-DUPLICATED.** The
+  camera master, the slot's own finished PNG ("THE FINISHED BUILDING THIS
+  MUST RESOLVE INTO — match its FOOTPRINT WIDTH exactly, …"), and the
+  style master. Pass the camera reference even when it *is* the finished
+  PNG: the LABEL is what does the work, and dropping it as a duplicate is
+  exactly what sent the Town Centre's L3 stages isometric.
+- **SQUARE CANVASES ONLY.** 1×1 → 64×64 (16 candidates), 2×2 → 128×128
+  (4). A 64×72 canvas is what triggered the rolled sheet on all three mine
+  calls — the model's own scene pitch stopped matching the slice.
+- **SAY THE TIER LADDER OUT LOUD.** "the opening is about a FIFTH of the
+  rock's width" / "a THIRD" / "HALF". The mines came back with the hole
+  SHRINKING as the tier rose because nothing in the prompt said which way.
+- **ERA FOLLOWS THE UNLOCK TIER, not the earliest age in the game.** The
+  war camp needs a level-3 hall, so it builds in timber, canvas and
+  fieldstone — and getting that right closed a tone gap no palette work
+  could touch.
+
+**Finishing, in order — `installset.mjs` runs all of it.** Auto-pick a
+candidate that passes the alpha QC (no semi-alpha, nothing on an edge) →
+2× nearest-neighbour → `desky` (strip a baked background fill) →
+`decaption` (drop a stray ink block) → `despeck` (erase a tiny island, and
+sand a bright fleck sitting in flat colour — invisible at 64px, a glare at
+play zoom) → `fitstage` (re-canvas to the finished art's content box;
+never resample) → `palettise` (snap to the finished art's own colours,
+CONSERVATIVELY — only where a material is within ~20 units a channel, or
+it flattens the art).
+
+**When a batch fails, re-pick before you re-fire.** Sixteen candidates is
+a set, not a draft: the auto-pick takes the nearest-median-ink clean one,
+which is right most of the time and wrong exactly when the stage is meant
+to be an outlier (an empty site, a bare frame). Every rescue in this
+programme — a rolled sheet, a baked caption, a wrong-shaped rock, a hole
+that read as a window — came out of the candidates already paid for.
+
+**A SMALL BUILDING ON A BIG WORKED GROUND cannot be prompted; compose it.**
+Hand the model a farm whose field fills two thirds of the frame and it
+will fill the frame with the granary and shrink the field to a stripe —
+every candidate, every time — so the three stages land at three different
+scales and the posts walk about between them. `graft.mjs` keeps the
+finished art's own ground exactly as shipped, cuts the building out of
+each generated stage, scales it to the width the finished building
+actually is and stands it in the finished building's place. The ground is
+then identical across the set by construction and the building can only
+grow.
+
+**SHARING IS BY SLOT, NOT BY FORM** (`Assets.STAGE_SHARE`, an approved
+list and never a heuristic). Two slots share only where the FINISHED
+buildings genuinely are the same structure: the barracks yard and the
+archery range yard, the L1 and L2 farm fields, the L2 and L3 lodge huts,
+the L1 and L2 sapper shafts. A level whose own set was never drawn gets
+NO entry and falls to the authored shape-and-footprint work site plus the
+derived partial — which is right for it. A lumber camp grows a roof at
+level 2 and a mine grows a headframe at level 3, so level 1's stages would
+resolve into the wrong building, and no art beats wrong art.
+
 ## Reference doctrine: designated masters, never chains
 
 Two rules govern EVERY PixelLab reference, for every asset class, and
@@ -1427,10 +1511,10 @@ orchard, scrub for a new continent) in the shipped forest's voice:
   same trees, fewer) with one young stand in four, small pieces on the
   packed lattice. Layer slot: after the stones, before the decals and
   the hue coat.
-  A drawn massif also grows its own wood: R.mtnEdgeTrees scatters stands on
-  the open ground around each placed piece's GROUND CONTACT (its foot row
-  across the columns it spans, never the tiles its tall body merely
-  crosses), and files each stand under the row of the rock it hugs so it
-  draws in front of it. Art only — no tile becomes forest and no stand
-  claims cover — and it stays out of the region composite, which the
-  mountain contract measures as ROCK.
+  A drawn massif also grows its own wood, but NOT here: R.mtnEdgeTrees is
+  gone. Painted stands round a mountain were art only — they never blocked,
+  never held wood, and villagers walked straight under them, which is what
+  the referee saw and rejected. The skirt is now real terrain, planted in
+  MapGen ("A MOUNTAIN STANDS IN ITS OWN WOOD" in js/map.js): T.FOREST tiles
+  that block, that can be felled for wood, and that are thinned back by a
+  connectivity guarantee so a range can never seal the map.
