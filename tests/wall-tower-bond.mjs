@@ -139,7 +139,7 @@ const out = await p.evaluate(() => {
       const h = Sprites.gateMask[L][0], v = Sprites.gateMask[L][1];
       const mh = mix(h), mv = mix(v);
       ck('bothGatesAreBuilt' + (L + 1),
-        h.toDataURL() !== v.toDataURL() && Math.abs(mh.wood - mv.wood) < 0.12 && Math.abs(mh.stone - mv.stone) < 0.12,
+        canvasOf(h).toDataURL() !== canvasOf(v).toDataURL() && Math.abs(mh.wood - mv.wood) < 0.12 && Math.abs(mh.stone - mv.stone) < 0.12,
         'L' + (L + 1) + ' east-west ' + pct(mh) + ' · north-south ' + pct(mv));
     }
     // and it tells the SAME half-and-half story as the curtain it stands in
@@ -274,11 +274,15 @@ const out = await p.evaluate(() => {
       // …and the earlier tiers CLOSE theirs with a timber door, which is the
       // whole reason they no longer read as castles
       for (let L = 0; L < 2; L++) {
-        const c = Sprites.gateMask[L][0];
+        const c = canvasOf(Sprites.gateMask[L][0]);
         const d = c.getContext('2d').getImageData(24, 36, 16, 18).data;
         let n = 0, wood = 0;
         for (let i = 0; i < d.length; i += 4) {
           if (d[i + 3] < 96) continue;
+          // the straps, the ring and the plank seams are IRON and INK — neither
+          // timber nor masonry, and a drawn door has far more of them than the
+          // procedural one this threshold was set against
+          if (Math.max(d[i], d[i + 1], d[i + 2]) < 62) continue;
           n++;
           if (d[i] - d[i + 2] > 26) wood++;
         }
@@ -418,7 +422,7 @@ const out = await p.evaluate(() => {
         m1.stone < m2.stone && m2.stone < m3.stone,
         [m1, m2, m3].map(pct).join(' · '));
       ck('andItIsNotTheWatchtowerRedrawn',
-        Sprites.towerMural[1].toDataURL() !== Sprites.building.tower[1].toDataURL(), '');
+        canvasOf(Sprites.towerMural[1]).toDataURL() !== canvasOf(Sprites.building.tower[1]).toDataURL(), '');
     }
 
     // ---- 3. the bond is DRAWN: the curtain's own art, under the tower ----
