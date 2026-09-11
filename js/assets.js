@@ -1712,10 +1712,18 @@ const Assets = {
   FORT_DIR: 'assets/fort/',
   FORT_PIECES: ['gate-face', 'gate-flank'],
   FORT_TIERS: [1, 2, 3],
-  /* how much of the drawn tile's own wall-ends is thrown away at each side:
-     enough that the line the player sees is the wall atlas's, never the gate
-     artist's approximation of it */
-  FORT_GATE_CROP: 12,
+  /* How much of the drawn tile is thrown away at each side, so the line the
+     player sees at the seam is the wall atlas's and never the gate artist's
+     approximation of it.
+
+     THE TWO VIEWS NEED DIFFERENT AMOUNTS. A face is cut from its drawing by
+     the tall-structure crop before it ships, so its own curtain is already
+     gone and only a sliver is needed at the seam — and a level-3 gatehouse is
+     turret-gate-turret across the WHOLE tile, so a wide crop here shaves its
+     turrets off and the drawbridge ends up hanging over bare stonework. A
+     flank still carries the curtain the artist drew above and below the
+     block, and that is what has to go. */
+  FORT_GATE_CROP: { face: 2, flank: 12 },
   fort: {},
   fortName(lv, piece) {
     const m = String(piece).match(/^([a-z]+)-(.*)$/);
@@ -1745,6 +1753,7 @@ const Assets = {
     const li = lv - 1;
     if (!Sprites.gateMask || !Sprites.gateMask[li] || !Sprites.wallMask || !Sprites.wallMask[li]) return;
     const B = 64, CROP = this.FORT_GATE_CROP;
+    const crop = (vert) => (vert ? CROP.flank : CROP.face);
     // the curtain the gate stands in: a STRAIGHT RUN of the wall atlas on the
     // gate's own axis — east-west under a face, north-south under a flank
     const run = (vert) => Sprites.wallMask[li][vert ? (1 | 4) : (2 | 8)];
@@ -1752,7 +1761,8 @@ const Assets = {
       const c = this._fortCanvas(B), g = c.getContext('2d');
       if (base) g.drawImage(base, 0, 0, B, B);
       g.save(); g.beginPath();
-      if (vert) g.rect(0, CROP, B, B - 2 * CROP); else g.rect(CROP, 0, B - 2 * CROP, B);
+      const k = crop(vert);
+      if (vert) g.rect(0, k, B, B - 2 * k); else g.rect(k, 0, B - 2 * k, B);
       g.clip(); g.drawImage(top, 0, 0, B, B); g.restore();
       return c;
     };

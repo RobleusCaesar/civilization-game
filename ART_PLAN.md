@@ -328,6 +328,81 @@ derived partial — which is right for it. A lumber camp grows a roof at
 level 2 and a mine grows a headframe at level 3, so level 1's stages would
 resolve into the wrong building, and no art beats wrong art.
 
+## Fortifications: the gate, and the density ceiling (SHIPPED)
+
+```
+assets/buildings/tower-l{1,2,3}.png      the free-standing Watchtower
+assets/fort/gate-l{1,2,3}-face.png       the gatehouse across an east-west line
+assets/fort/gate-l{1,2,3}-flank.png      …and along a north-south one
+```
+
+The curtain and the bonded (mural) tower stay PROCEDURAL. A drawn curtain was
+built and rejected: sixteen junctions that have to butt together without a
+seam, read at a glance across a whole map, are a job the flat atlas does
+better, and the drawn one came back busy where the atlas reads clean.
+
+**THE DENSITY CEILING IS THE SLOT, AND FOR A GATE IT IS 2×.** A building PNG
+goes through `R.artRect` and is resampled at every zoom, so a 4× master there
+is correct and encouraged. A gate does not: it lands in `Sprites.gateMask` as
+a **64px canvas drawn into a 32px tile**, which is `tileB`'s own "DOUBLE the
+pixel density" and the most the slot can hold. Generate a castle gatehouse at
+128 and bring it down and the slot carries 4× worth of coursing, corbels,
+arrow loops and portcullis bars — it reads as GRAIN, not as masonry. Author
+at the shipped size instead: the model then draws with the pixels the slot
+actually has, it simplifies the content by itself, and a 64px canvas gets 16
+candidates for the same twenty generations.
+
+**Two ways down, and the piece picks one.** MEDIAN (the source pixel nearest
+the block's centre of gravity) keeps every shipped pixel one the artist drew
+and outlines thin — right for flat timber, where averaging a log with the
+black line beside it makes mud. SOFT, a true box supersample, is what
+ASSET_SPEC §1 means by "author 4×, supersample down": detail finer than the
+slot RESOLVES instead of surviving as speckle, which is what stone needs.
+
+**A GATE STANDS IN THE WALL, so the tile is composed, never replaced.**
+`Assets.buildFort` stamps a straight run of the REAL wall atlas and lays the
+drawn gatehouse over it with the wall-ends the artist drew cropped away. The
+line then runs unbroken through every gate for free — the same structural
+trick `drawGate` plays procedurally. The crop differs by view: a face has its
+own curtain cut away before it ships and needs only a sliver at the seam (and
+a level-3 gatehouse is turret-gate-turret across the WHOLE tile, so a wide
+crop shaves its turrets off), while a flank still carries the curtain the
+artist drew above and below its block.
+
+**THE DRAWBRIDGE IS AN OVERLAY, so the ARCH IS A LANDMARK.** The deck is not
+baked into the gate: it is an eight-frame atlas swung over it, hinged on the
+tile's front edge, spanning cells 11..20, with chains running to winches at
+cells 8 and 23. A drawn gatehouse is therefore only right if ITS arch lands
+where the deck stands — fit by bounding box and the bridge hangs over bare
+stonework. `installfort.mjs` finds the passage (the one thing in a gatehouse
+that is not stone) and scales the drawing so that run lands on those cells,
+anchoring the passage's FOOT on the threshold rather than the drawing's,
+because gate art usually has a course of stone under its door.
+
+> Finding the passage: a gateway BARRED BY A PORTCULLIS has no column that is
+> purely passage — bar, gap, bar, gap — so the longest pure run comes out two
+> pixels wide. Take the OUTER EXTENT of the columns carrying real darkness,
+> grouped across a few bars' width, then trim to firmly-passage endpoints.
+> Only the level-3 face is fitted this way; fitting level 2 by its arch
+> measured the dressed voussoirs as passage and shrank the gate to fit a
+> door-sized target.
+
+**TONE A GATE AGAINST ITS OWN TIER'S CURTAIN**, never against a building
+elsewhere — a gate a third darker than its wall reads as something parked in
+the line. Match mean lightness by GAMMA (black and white stay put, only the
+mid-tones move) and CLAMP the saturation change: matching a drawn gatehouse
+to a near-neutral procedural curtain outright bleached the gold trim and the
+torchlight out of it. Lift the clamp only when the COLOUR is genuinely wrong
+— the level-3 tower came back in warm sandstone against a cool grey curtain,
+and only a real desaturation moved it.
+
+**Every contract that reads a sprite assumes it is a CANVAS.** It is, only
+until that slot's PNG lands, so shipping fortification art broke `gold-mine`,
+`burn-down` and `wall-tower-bond` in four separate places. They all read
+canvas or image through one `canvasOf()` helper now. Expect this on any test
+calling `getContext` or `toDataURL` on `Sprites.*` the moment you ship art
+into a slot that had none.
+
 ## Reference doctrine: designated masters, never chains
 
 Two rules govern EVERY PixelLab reference, for every asset class, and
