@@ -8470,7 +8470,13 @@ const R = {
     sheet = [];
     for (let i = 0; i < N; i++) {
       const p = i / (N - 1);
-      const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+      /* ROUNDED, not left to the canvas. Assigning a fractional width or
+         height TRUNCATES it, so a sprite whose size happened not to divide
+         cleanly lost a row off every frame — invisible while every building
+         was a 64px square, a real off-by-one the moment a drawn PNG arrived
+         at 128x136. */
+      const c = document.createElement('canvas');
+      c.width = Math.round(cw); c.height = Math.round(ch);
       const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
 
       /* --- 1. the block ABOVE the break, sweeping down about the break ---

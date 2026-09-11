@@ -70,13 +70,34 @@ const out = await p.evaluate(() => {
   const res = {}, fails = [];
   const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
 
+  /* A fortification slot holds a procedural CANVAS until its shipped PNG
+     lands and an IMAGE after — which of the two this page has reached by now
+     is a race with the loader. These checks are about the PICTURE, not the
+     box it came in, so read either through one canvas. (file:// images are
+     same-origin here: the launch passes --allow-file-access-from-files.) */
+  const canvasOf = (c) => {
+    if (!c || c.getContext) return c;
+    const k = document.createElement('canvas');
+    k.width = c.naturalWidth || c.width; k.height = c.naturalHeight || c.height;
+    k.getContext('2d').drawImage(c, 0, 0);
+    return k;
+  };
   // warm brown = timber, neutral grey = masonry
-  const mix = (c) => {
+  const mix = (c0) => {
+    const c = canvasOf(c0);
     const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
     let wood = 0, stone = 0, n = 0;
     for (let i = 0; i < d.length; i += 4) {
       if (d[i + 3] < 96) continue;
       const R = d[i], G2 = d[i + 1], B = d[i + 2];
+      /* AN OUTLINE IS NEITHER WOOD NOR STONE. Near-black ink is desaturated
+         by definition, so a drawn piece's own outlines and its deepest
+         shadows were being counted as masonry — a hand-drawn palisade came
+         out "26% stone" without a stone in it. Masonry in this game is
+         MID-grey, never ink, so dropping the darkest pixels from the count
+         leaves the thing this check exists to catch (a tier that changed
+         material) exactly where it was. */
+      if (Math.max(R, G2, B) < 62) continue;
       n++;
       if (R - B > 26) wood++;
       else if (Math.abs(R - G2) < 22 && Math.abs(G2 - B) < 22) stone++;

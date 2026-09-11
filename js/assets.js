@@ -1686,6 +1686,136 @@ const Assets = {
     img.src = this.stageUrl(m[1], +m[2], n);
   },
 
+  /* ---- THE FORTIFICATION KIT ----
+
+       assets/fort/wall-l{lv}-ew.png       one tile of curtain, running east-west
+       assets/fort/wall-l{lv}-ns.png       …and one running north-south
+       assets/fort/tower-l{lv}-mural.png   the tower a wall is built onto
+       assets/fort/gate-l{lv}-face.png     the gatehouse across an east-west line
+       assets/fort/gate-l{lv}-flank.png    …and along a north-south one
+
+     A CASTLE IS A LINE, NOT A PICTURE. Sixteen junction sprites have to butt
+     together without a seam, and that is not a promise a drawing can make —
+     so only TWO of them are drawn, a straight east-west run and a straight
+     north-south one, and every junction is COMPOSED from those by clipping
+     the arms its mask asks for. The joins are then exact by construction: the
+     east arm of one tile and the west arm of the next are the same picture.
+
+     The gate is composed too. Its tile stamps the REAL curtain first and lays
+     the drawn gatehouse over it with the wall-ends the artist drew cropped
+     away, so the line runs unbroken through the gate — the same structural
+     trick drawGate already plays procedurally, for the same reason.
+
+     The mural tower is the one piece that stands alone: the renderer draws
+     the curtain arms into its tile itself (R.drawTowerBond), so the file is
+     the tower and nothing else.
+
+     Every piece is optional and 404s quietly, and a tier with no files keeps
+     the procedural castle it has always had — so a half-finished sprint can
+     never leave a wall with a hole in it. */
+  FORT_DIR: 'assets/fort/',
+  FORT_PIECES: ['wall-ew', 'wall-ns', 'tower-mural', 'gate-face', 'gate-flank'],
+  FORT_TIERS: [1, 2, 3],
+  fort: {},
+  fortName(lv, piece) {
+    const m = String(piece).match(/^([a-z]+)-(.*)$/);
+    return (m[1] + '-l' + lv + '-' + m[2] + '.png').toLowerCase();
+  },
+  fortUrl(lv, piece) { return this.FORT_DIR + this.fortName(lv, piece) + '?v=' + (CFG.ART_V || 1); },
+  _tryFort(lv, piece) {
+    const img = new Image();
+    img.onload = () => {
+      (this.fort[lv] || (this.fort[lv] = {}))[piece] = img;
+      this.loaded['fort/' + lv + '/' + piece] = true;
+      this.buildFort(lv);
+    };
+    img.onerror = () => { /* no art at this tier — the procedural castle stands */ };
+    this._track(img, true);          // WORLD art: a wall can be standing in the demo town
+    img.src = this.fortUrl(lv, piece);
+  },
+  _fortCanvas(n) {
+    const c = document.createElement('canvas');
+    c.width = c.height = n;
+    c.getContext('2d').imageSmoothingEnabled = false;
+    return c;
+  },
+  /* Mask bits: N=1 E=2 S=4 W=8. The curtain band is the middle third of the
+     tile — rows and columns 10..21 of 32, exactly where drawWallMask puts its
+     arms — so an arm is just the run clipped to the half it points at, hub
+     included. The north-south run goes down first and the east-west over it:
+     where two runs cross you are looking at the wall's FACE, and the face is
+     the east-west one. */
+  buildFort(lv) {
+    if (typeof Sprites === 'undefined' || typeof document === 'undefined') return;
+    const f = this.fort[lv]; if (!f) return;
+    const li = lv - 1;
+    const ew = f['wall-ew'], ns = f['wall-ns'];
+    if (ew && ns && Sprites.wallMask && Sprites.wallMask[li]) {
+      const N = 32, H0 = 10, H1 = 22;
+      for (let m = 0; m < 16; m++) {
+        const c = this._fortCanvas(N), g = c.getContext('2d');
+        const put = (img, x, y, w, h) => {
+          g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+          g.drawImage(img, 0, 0, N, N); g.restore();
+        };
+        if (!m) put(ew, H0, 0, H1 - H0, N);            // a lone stub of curtain
+        else {
+          if (m & 1) put(ns, 0, 0, N, H1);             // the arm north, hub and all
+          if (m & 4) put(ns, 0, H0, N, N - H0);        // …south
+          if (m & 8) put(ew, 0, 0, H1, N);             // …west
+          if (m & 2) put(ew, H0, 0, N - H0, N);        // …east
+        }
+        Sprites.wallMask[li][m] = c;
+      }
+      const run = Sprites.wallMask[li][2 | 8];          // the menu thumbnail is an east-west run
+      if (Sprites.building && Sprites.building.wall) Sprites.building.wall[li] = run;
+      if (Sprites.buildingA && Sprites.buildingA.wall) Sprites.buildingA.wall[li] = run;
+    }
+    /* THE GATEHOUSE OVER THE REAL CURTAIN. FORT_GATE_CROP is how much of the
+       drawn tile's own wall-ends is thrown away at each side: enough that the
+       line the player sees is the wall atlas's, never the gate artist's
+       approximation of it. */
+    if (Sprites.gateMask && Sprites.gateMask[li]) {
+      const B = 64, CROP = this.FORT_GATE_CROP;
+      const over = (base, top, vert) => {
+        const c = this._fortCanvas(B), g = c.getContext('2d');
+        if (base) g.drawImage(base, 0, 0, B, B);
+        g.save(); g.beginPath();
+        if (vert) g.rect(0, CROP, B, B - 2 * CROP); else g.rect(CROP, 0, B - 2 * CROP, B);
+        g.clip(); g.drawImage(top, 0, 0, B, B); g.restore();
+        return c;
+      };
+      if (f['gate-face']) {
+        const c = over(ew, f['gate-face'], false);
+        Sprites.gateMask[li][0] = c;
+        if (Sprites.building && Sprites.building.gate) Sprites.building.gate[li] = c;
+        if (Sprites.buildingA && Sprites.buildingA.gate) Sprites.buildingA.gate[li] = c;
+      }
+      if (f['gate-flank']) {
+        const c = over(ns, f['gate-flank'], true);
+        /* THE WALK PASSES BEHIND THE BLOCK, not over its roof — the shadow
+           the procedural flank has always laid on the curtain's own width at
+           the top of the tile (gateSideT1), kept here so an authored gate
+           reads the same way and tests/wall-tower-bond.mjs's seam check still
+           measures what it was written to measure. */
+        const g = c.getContext('2d');
+        g.fillStyle = 'rgba(24,18,12,0.55)';
+        g.fillRect(20, 0, 24, 4);
+        Sprites.gateMask[li][1] = c;
+      }
+    }
+    /* BAKED INTO A CANVAS, never handed over as the Image. Every fortification
+       sprite in the game is a canvas and the contracts read them as one
+       (tests/wall-tower-bond.mjs samples pixels straight off them); slipping
+       an <img> into the atlas is a race the rest of the code cannot see. */
+    if (f['tower-mural'] && Sprites.towerMural) {
+      const c = this._fortCanvas(64);
+      c.getContext('2d').drawImage(f['tower-mural'], 0, 0, 64, 64);
+      Sprites.towerMural[li] = c;
+    }
+  },
+  FORT_GATE_CROP: 12,
+
   artIds() { return Object.keys(CFG.BUILDINGS).filter(k => this.EXCLUDE.indexOf(k) < 0); },
   artSlots() {
     const out = [];
@@ -1785,6 +1915,7 @@ const Assets = {
         for (const pose of this.UNIT_ART[kind]) this._tryLoadUnit(kind, dir, pose);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key], !this.WORK_SITE_RE.test(key));
     for (const o of this.stageOwners()) for (let n = 1; n <= this.STAGE_N; n++) this._tryStage(o, n);
+    for (const lv of this.FORT_TIERS) for (const piece of this.FORT_PIECES) this._tryFort(lv, piece);
     for (const m of this.originMotifs()) this._tryLoadOrigin(m);
     for (const tName of this.formationTerrains())
       for (const stem of this.FORMATION_CATALOG[tName]) this._tryLoadFormation(tName, stem);

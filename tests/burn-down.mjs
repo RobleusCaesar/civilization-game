@@ -58,8 +58,22 @@ await p.waitForTimeout(900);
 const out = await p.evaluate(() => {
   const res = {}, fails = [];
   const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
-  const px = (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) n++; return n; };
-  const avgLum = (c) => {
+  /* A building slot holds a procedural CANVAS until its shipped PNG lands and
+     an IMAGE after — which of the two this page has reached by now is a race
+     with the loader, and the fortification art tipped it. These checks are
+     about the PICTURE, not the box it came in, so read either through one
+     canvas. (file:// images are same-origin here: the launch passes
+     --allow-file-access-from-files, so this never taints.) */
+  const canvasOf = (c) => {
+    if (!c || c.getContext) return c;
+    const k = document.createElement('canvas');
+    k.width = c.naturalWidth || c.width; k.height = c.naturalHeight || c.height;
+    k.getContext('2d').drawImage(c, 0, 0);
+    return k;
+  };
+  const px = (c0) => { const c = canvasOf(c0); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 10) n++; return n; };
+  const avgLum = (c0) => {
+    const c = canvasOf(c0);
     const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
     let s = 0, n = 0;
     for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 96) { s += d[i] + d[i + 1] + d[i + 2]; n++; }
@@ -281,7 +295,7 @@ const out = await p.evaluate(() => {
       'the dust needs room to roll: ' + sheet[0].width + 'x' + sheet[0].height);
     // the SOLID mass only — dust is deliberately translucent, and counting it
     // would say the last frame has more building in it than the first
-    const solid = (c) => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 200) n++; return n; };
+    const solid = (c0) => { const c = canvasOf(c0); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 200) n++; return n; };
     ck('itStartsStanding', solid(sheet[0]) >= solid(base) * 0.9, 'frame 0 is still the building');
     ck('itFalls',
       sheet.every((f, i) => i === 0 || f.toDataURL() !== sheet[i - 1].toDataURL()) &&
