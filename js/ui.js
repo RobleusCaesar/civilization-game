@@ -28,6 +28,9 @@ const UI = {
   miniCollapsed: false,  // minimap hidden
   builderFor: null,      // villager id that will build the next placed building
   confirmDemolish: 0,    // building id awaiting demolish confirmation
+  /* kept APART from confirmDemolish on purpose: a building can offer both
+     Cancel and Demolish, and one shared slot would arm the pair together */
+  confirmCancel: 0,      // building id awaiting cancel-the-works confirmation
   wallDrag: null,        // tile chain while dragging a wall line
   wallGhost: null,       // [{x,y,ok,mask}] preview of the dragged line
   terraDrag: null,       // tile chain while dragging a sapper dig/clear line
@@ -1666,7 +1669,7 @@ const UI = {
       .map(o => o.id);
     if (ids.length <= 1) { this.select('unit', hit.id); return; }   // it's the only one — just select it
     this.sel = { type: 'group', ids };
-    this.builderFor = null; this.confirmDemolish = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
+    this.builderFor = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
     const label = Units.isTransport(hit) ? 'transport' : CFG.UNITS[hit.kind].name.toLowerCase();
     this.toast(`Selected ${ids.length} ${label}${ids.length > 1 ? 's' : ''} nearby`);
@@ -1675,7 +1678,7 @@ const UI = {
   select(type, id) {
     this.sel = { type, id };
     this.builderFor = null;
-    this.confirmDemolish = 0;
+    this.confirmDemolish = 0; this.confirmCancel = 0;
     this.terraMode = null;      // a fresh selection drops any armed sapper tool
     this.tradeNeed = null;      // …and rewinds the Trading Post to "what do you need?"
     this.panelHidden = false;   // a fresh selection brings its panel back
@@ -1684,12 +1687,12 @@ const UI = {
   },
   selectBridge(x, y) {
     this.sel = { type: 'bridge', x, y };
-    this.builderFor = null; this.confirmDemolish = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
+    this.builderFor = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
   },
   deselect() {
     this.sel = null;
-    this.confirmDemolish = 0;
+    this.confirmDemolish = 0; this.confirmCancel = 0;
     this.settingRally = null;
     this.terraMode = null;
     this.panelHidden = false;
@@ -1913,7 +1916,7 @@ const UI = {
     }
     if (!seen) R.centerOn(cx / alive.length, cy / alive.length);
     this.sel = { type: 'group', ids: alive.slice() };
-    this.builderFor = null; this.confirmDemolish = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
+    this.builderFor = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
   },
   // Centurion helmet, front view, 21x28 — tall serrated crest on a dark
@@ -2114,6 +2117,7 @@ const UI = {
       // counts are deliberately NOT in the signature — refreshPanel updates
       // those in place so the layout doesn't jump every time you queue a unit
       let sig = ['b', b.id, b.level, b.construction > 0, b.upgrading > 0,
+        !!Bld.cancelWork(b), this.confirmCancel === b.id,
         b.level < 3 && Bld.canUpgrade(b).ok, b.hp < b.maxhp, Bld.hasWorker(b),
         d.needsWorker ? Bld.workersAssigned(b) + '/' + Bld.workersActive(b) : '-',
         !!b.rally, this.confirmDemolish === b.id,
@@ -2183,6 +2187,10 @@ const UI = {
       this.groupmatesNear(u),                // …and Group only while there is anyone to band with
       Units.isLevied(u),                     // under arms: Build hides, the hint changes
       this.armyOfUnit(u)];   // …and Remove Army appears the moment this one is the last of it
+    // the works this builder is on: the Cancel button rides its id, so it
+    // appears, arms and disappears with the site itself
+    const cw = this.villagerBuildSite(u);
+    sig.push(cw ? 'c' + cw.id + ':' + Bld.cancelWork(cw) + ':' + (this.confirmCancel === cw.id) : 'c0');
     // villager resource-station upgrade state (level, phase, affordability) — the
     // continuously-shrinking day count is NOT here; refreshPanel ticks it in place
     const wb = this.villagerResBld(u);
@@ -2240,6 +2248,30 @@ const UI = {
     if (u.task.type !== 'work' && u.task.type !== 'build') return null;
     const b = Bld.get(u.task.id);
     return (b && b.owner === 'P' && Bld.def(b.key).needsWorker && !b.construction) ? b : null;
+  },
+  /* THE WORKS THIS VILLAGER IS ON, if there are any to call off — a site
+     being raised or an upgrade being built. Walking there counts: the task is
+     set the moment the builder is sent, which is exactly the state a player
+     changes their mind in. */
+  villagerBuildSite(u) {
+    if (!u || u.owner !== 'P' || !u.task || u.task.type !== 'build') return null;
+    const b = Bld.get(u.task.id);
+    return b && Bld.cancelWork(b) ? b : null;
+  },
+  /* ONE WRITER for the button, because the villager's panel and the
+     building's own panel offer exactly the same action on exactly the same
+     works, and two copies would drift. */
+  cancelWorkButton(b) {
+    const kind = Bld.cancelWork(b);
+    if (!kind) return '';
+    const name = Bld.def(b.key).name;
+    const back = Bld.costStr(Bld.cancelRefund(b));
+    const what = kind === 'upgrade' ? `the ${name} upgrade` : `the ${name} site`;
+    return this.confirmCancel === b.id
+      ? `<button class="abtn danger wide" data-act="cancelbuild">⚠️ Confirm — call off ${what}` +
+        `<small>${back} comes back${kind === 'upgrade' ? ` · stays Lv ${b.level}` : ' · nothing is left on the ground'}</small></button>`
+      : `<button class="abtn wide" data-act="cancelbuild">🛑 Cancel ${kind === 'upgrade' ? 'upgrade' : 'build'}` +
+        `<small>${name} — everything paid comes back</small></button>`;
   },
   // cheap periodic update: rewrite the sub-line only, rebuild DOM when structure changes
   /* THE YARD'S QUEUE LINE, AND WHAT IS WAITING ON IT (tests/train-spawn.mjs).
@@ -2441,6 +2473,11 @@ const UI = {
         const worker = Bld.hasWorker(b);
         if ((b.construction > 0 || b.upgrading > 0) && !worker)
           html += `<button class="abtn" data-act="sendworker">👷 Send builder<small>needs an idle villager</small></button>`;
+        /* CALL IT OFF (tests/build-cancel.mjs). Offered on any works of your
+           own that have not finished — a site nobody has reached yet is the
+           very case a player wants it for. Nothing standing, nothing waiting:
+           no button, so a finished building's panel stays as clean as it was. */
+        html += this.cancelWorkButton(b);
         if (!b.construction && d.needsWorker && Bld.workersAssigned(b) < Bld.maxWorkers(b))
           html += `<button class="abtn" data-act="staff">🧑‍🌾 Station worker<small>${Bld.workersAssigned(b)}/${Bld.maxWorkers(b)} assigned</small></button>`;
         if (!b.construction && !b.upgrading && b.hp < b.maxhp && !worker)
@@ -2704,9 +2741,20 @@ const UI = {
         else if (btn.dataset.act === 'upwalls') {
           if (!Bld.upgradeWalls()) this.toast(Bld.canUpgradeWalls().why, true);
         }
+        else if (btn.dataset.act === 'cancelbuild') {
+          if (!Bld.cancelWork(b2)) { this.confirmCancel = 0; this.renderPanel(); return; }
+          if (this.confirmCancel !== b2.id) { this.confirmCancel = b2.id; this.renderPanel(); return; }
+          this.confirmCancel = 0;
+          // a cancelled SITE deselects itself on its way out (removeToRuin);
+          // a cancelled upgrade leaves the building standing and selected
+          if (Bld.cancelBuild(b2)) {
+            this.toast('Work called off — everything paid is back');
+            if (!Bld.get(b2.id)) { this.refreshMenu(); return; }
+          }
+        }
         else if (btn.dataset.act === 'demolish') {
           if (this.confirmDemolish !== b2.id) { this.confirmDemolish = b2.id; this.renderPanel(); return; }
-          this.confirmDemolish = 0;
+          this.confirmDemolish = 0; this.confirmCancel = 0;
           if (Bld.demolish(b2)) return;   // demolish deselects via removeToRuin
         }
         this.renderPanel();
@@ -2759,7 +2807,7 @@ const UI = {
       const demo = panel.querySelector('[data-act="brdemo"]');
       if (demo) demo.addEventListener('click', () => {
         if (this.confirmDemolish !== 'bridge') { this.confirmDemolish = 'bridge'; this.renderPanel(); return; }
-        this.confirmDemolish = 0;
+        this.confirmDemolish = 0; this.confirmCancel = 0;
         const b2 = Bld.bridgeAt(this.sel.x, this.sel.y); if (b2) Bld.removeBridge(b2);
         this.deselect();
       });
@@ -2984,6 +3032,11 @@ const UI = {
         html += this.confirmDemolish === u.id
           ? `<button class="abtn danger" data-act="banish">⚠️ Confirm — send them away</button>`
           : `<button class="abtn" data-act="banish">👋 Banish</button>`;
+        /* …and if they are raising something, the works can be called off
+           from right here — the same button the building's own panel shows,
+           gone the moment there is nothing being raised. */
+        const cw = this.villagerBuildSite(u);
+        if (cw) html += this.cancelWorkButton(cw);
       }
       // resource-station upgrade, right on the worker's panel
       const wb = own ? this.villagerResBld(u) : null;
@@ -3093,12 +3146,27 @@ const UI = {
         Units.disembark(u2);   // logs the outcome either way
         this.renderPanel();
       });
+      /* CALL THE WORKS OFF from the builder's own panel. Two taps, the same
+         confirm the demolition and the banishment use — and it reads the site
+         off the villager LIVE, so a works that finished between the render
+         and the tap simply finds nothing to call off. */
+      const canc = panel.querySelector('[data-act="cancelbuild"]');
+      if (canc) canc.addEventListener('click', () => {
+        const u2 = Units.get(this.sel.id);
+        const site = this.villagerBuildSite(u2);
+        if (!site) { this.confirmCancel = 0; this.renderPanel(); return; }
+        if (this.confirmCancel !== site.id) { this.confirmCancel = site.id; this.renderPanel(); return; }
+        this.confirmCancel = 0;
+        if (Bld.cancelBuild(site)) this.toast('Work called off — everything paid is back');
+        this.renderPanel();
+        this.refreshMenu();
+      });
       const ban = panel.querySelector('[data-act="banish"]');
       if (ban) ban.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
         if (!u2 || !Units.canBanish(u2)) return;
         if (this.confirmDemolish !== u2.id) { this.confirmDemolish = u2.id; this.renderPanel(); return; }
-        this.confirmDemolish = 0;
+        this.confirmDemolish = 0; this.confirmCancel = 0;
         Units.banish(u2);
         this.toast('Banished — they are walking out of the valley');
         this.deselect();
@@ -3154,7 +3222,7 @@ const UI = {
           .map(o => o.id);
         if (ids.length < 2) { this.toast(naval ? 'No other ships within reach' : 'No other soldiers within reach', true); return; }
         this.sel = { type: 'group', ids };
-        this.confirmDemolish = 0; this.tacticsOpen = false;   // a fresh group starts clean
+        this.confirmDemolish = 0; this.confirmCancel = 0; this.tacticsOpen = false;   // a fresh group starts clean
         this.renderPanel();
         this.toast(`${naval ? 'Fleet' : 'War party'} formed: ${this.groupComposition(ids)}`);
       });

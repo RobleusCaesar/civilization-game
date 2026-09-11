@@ -953,8 +953,13 @@ const Bld = {
     const res = owner === 'P' ? S.res : S.ai.res;
     // ORIGIN CARDS: discounts and haste read BEFORE the Nomad charge burns
     const tMult = window.Cards ? Cards.buildTimeMult(owner) : 1;
+    /* WHAT IT ACTUALLY COST, kept on the building. An Origin Card may have
+       discounted this site, and a cancelled site hands back what was PAID —
+       refunding the list price would mint resources out of nothing. */
+    let paid = null;
     if (!opts.free) {
-      this.pay(this.effCost(owner, key), res);
+      paid = this.effCost(owner, key);
+      this.pay(paid, res);
       if (window.Cards) Cards.notePlaced(owner);
     }
     // is this a FORWARD OUTPOST — a structure whose only anchor is a War Camp, out
@@ -974,6 +979,11 @@ const Bld = {
       maxhp: spec.lv.hp,
       construction: opts.instant ? 0 : spec.lv.time * tMult,   // days left
       upgrading: 0, queue: [], cd: 0, outpost,
+      /* ALWAYS PRESENT, even when it is empty: `{}` is "this cost nothing",
+         and only a building raised before this was recorded has no field at
+         all. Leaving it undefined for a free site made the cancel fall
+         through to the list price and mint resources out of a gift. */
+      paid: paid || {},
     };
     S.buildings.push(b);
     if (key === 'warcamp') this._revealCampToFoe(b);   // a forward camp shows on the enemy's map
@@ -1715,7 +1725,12 @@ const Bld = {
   },
 
   // remove a building and leave rubble behind (buildable like any depleted tile)
-  removeToRuin(b) {
+  /* `clean` is for work that was CALLED OFF rather than knocked down: the
+     ground is left exactly as it was found, because nothing ever stood on it
+     to leave a ruin behind. Everything else — the block cache, the homestead
+     bonds, whoever was targeting it, the kept-verge repaint — is identical,
+     which is the whole reason this takes a flag instead of a second copy. */
+  removeToRuin(b, clean) {
     S.buildings.splice(S.buildings.indexOf(b), 1);
     this._block = null;
     if (b.key === 'house' || b.key === 'farm') this.syncHomesteads();
@@ -1732,6 +1747,8 @@ const Bld = {
            that is precisely what makes a seam worth fighting over rather than
            worth burning. */
         R.updateTile(b.x + dx, b.y + dy);
+      } else if (clean) {
+        R.updateTile(b.x + dx, b.y + dy);       // called off — clean ground, no rubble
       } else {
         S.map.terrain[idx] = T.RUIN;
         if (S.map.resAmount) S.map.resAmount[idx] = 0;
@@ -1753,7 +1770,7 @@ const Bld = {
        on the ordinary ruin clock, so the ground still remembers and then
        quietly heals like every other ruin. Only the camp's OWN worn ground is
        touched: water, rock and woods keep whatever they are. */
-    if (b.key === 'raidercamp') {
+    if (b.key === 'raidercamp' && !clean) {
       const rubble = (yx, yy) => {
         if (!MapGen.inB(yx, yy)) return;
         const yi = MapGen.idx(yx, yy);
@@ -2056,6 +2073,69 @@ const Bld = {
         if (this.bridgeRaised(b)) this.stepOffFootprint(b);
     }
     G.log(`⚒ Every wall and gate reinforced to Lv ${S.wallLevel}!`);
+  },
+
+  /* ---- CALLING THE WORKS OFF (tests/build-cancel.mjs) ----
+
+     A player who laid out the wrong building, or started an upgrade they now
+     need the stone for, can call it off. This is NOT demolition and does not
+     share its refund rate: nothing was ever built, so nothing is lost. Every
+     resource comes back IN FULL, the ground is left as clean as it was found,
+     and every hand that downed tools goes back to what it was doing.
+
+     A NEW SITE disappears. AN UPGRADE simply stops — b.level is never raised
+     until finishUpgrade, so a half-done upgrade has nothing to undo and the
+     building is already standing at the level it started from. */
+  cancelWork(b) {
+    if (!b || b.owner !== 'P') return null;
+    if (b.upgrading > 0) return 'upgrade';
+    if (b.construction > 0) return 'site';
+    return null;
+  },
+  cancelRefund(b) {
+    const kind = this.cancelWork(b);
+    if (!kind) return {};
+    const d = this.def(b.key);
+    const cost = kind === 'upgrade'
+      ? ((d.levels[b.level] || {}).cost || {})
+      // what this site was PAID for — `{}` for a free one, and the list price
+      // only for a building raised before the field existed (an older save)
+      : (b.paid || (!('paid' in b) && d.levels[Math.max(0, b.level - 1)].cost) || {});
+    const out = {};
+    for (const k in cost) if (cost[k]) out[k] = cost[k];
+    return out;
+  },
+  /* Everyone who came to build, sent home. The station's own crew are put
+     back on the seam FIRST (resumeCrew, the same call finishUpgrade makes),
+     so only the hands that came to help are left to let go. */
+  releaseBuilders(b) {
+    let n = 0;
+    for (const u of S.units) {
+      if (!u.task || u.task.type !== 'build' || u.task.id !== b.id) continue;
+      u.task = null; u.path = null; u.pathI = 0; n++;
+    }
+    return n;
+  },
+  cancelBuild(b) {
+    const kind = this.cancelWork(b);
+    if (!kind) return false;
+    const refund = this.cancelRefund(b);
+    for (const k in refund) S.res[k] = (S.res[k] || 0) + refund[k];
+    const name = this.def(b.key).name, back = this.costStr(refund);
+    if (kind === 'upgrade') {
+      b.upgrading = 0; b.upgTotal = 0;
+      this.resumeCrew(b);
+      this.releaseBuilders(b);
+      G.log(`${name} upgrade called off — ${back} back, still Lv ${b.level}`);
+    } else {
+      this.releaseBuilders(b);
+      // word of a monument travels; word that it was abandoned travels too
+      if (b.key === 'wonder' && S.ai && S.ai.wonderAlarm && S.ai.wonderAlarm.id === b.id)
+        S.ai.wonderAlarm = null;
+      this.removeToRuin(b, true);
+      G.log(`${name} site called off — ${back} back`);
+    }
+    return true;
   },
 
   demolish(b) {
