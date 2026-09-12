@@ -60,6 +60,17 @@ const Backend = {
     this.configured = this.mock ? true :
       (typeof SUPA_CFG !== 'undefined' && SUPA_CFG.url && SUPA_CFG.anonKey &&
        !SUPA_CFG.url.includes('PASTE_') && !SUPA_CFG.anonKey.includes('PASTE_'));
+    /* A PAGE OPENED FROM DISK IS A DEVELOPER'S PAGE. Every test boot and every
+       art preview used to sign in as a brand-new anonymous player against the
+       LIVE project: sixty-odd fresh identities per suite run, a "session" row
+       each, and the odd scripted victory landing in the analytics as a real
+       win. Worse, the anonymous sign-in limit is per network address, so one
+       suite run could rate-limit the household for the next hour — a phone on
+       the same Wi-Fi then booted with no identity, and its victory had no
+       board to go to. The cloud is for the site; from disk the game runs
+       exactly as it does with placeholder keys (the test mock still works). */
+    if (this.configured && !this.mock && typeof location !== 'undefined' && location.protocol === 'file:')
+      this.configured = false;
     window.addEventListener('online', () => { this.online = true; this.emit(); });
     window.addEventListener('offline', () => { this.online = false; this.emit(); });
     try { this.activeSlot = +(localStorage.getItem('neo-active-slot') || 0) || null; } catch (e) {}
@@ -69,6 +80,12 @@ const Backend = {
     if (!this.mock) {
       this.client = window.supabase.createClient(SUPA_CFG.url, SUPA_CFG.anonKey);
     }
+    return this._signIn();
+  },
+  // the identity itself — resume the stored session or mint an anonymous one.
+  // Separate from _init so a boot that came up without one (offline for a
+  // moment, or rate-limited) can be given a second chance later (reconnect)
+  async _signIn() {
     const auth = this.mock ? this.mock.auth : this.client.auth;
     let sessionRes = await this._guard(() => auth.getSession());
     let session = sessionRes.ok && sessionRes.data && sessionRes.data.data
@@ -84,6 +101,17 @@ const Backend = {
     const prof = await this.ensureProfile();
     this.emit();
     return prof.ok ? { ok: true, data: { uid: this.uid } } : prof;
+  },
+
+  /* a boot that signed in is left alone; one that did not — the network was
+     down for a moment, or the sign-in was rate-limited — tries again. The
+     victory screen calls this before it posts a score, so a bad first second
+     of the session no longer costs the whole run its place on the board. */
+  async reconnect() {
+    if (this.isReady()) return { ok: true, data: { uid: this.uid } };
+    if (!this.configured) return this._err('not_configured', 'Cloud saves are not configured');
+    try { return await this._signIn(); }
+    catch (e) { this.emit(); return this._err('network', (e && e.message) || 'Sign-in failed'); }
   },
 
   /* ---------------- identity ---------------- */
@@ -157,8 +185,9 @@ const Backend = {
   // one victory → one row; the arcade name also lands on the profile so the
   // next victory pre-fills it. Validation (7 chars, profanity) happens in
   // Score.cleanName before this is ever called.
-  async submitScore(name, entry) {
+  async submitScore(name, entry, opts) {
     if (!this.isReady()) return this._err('not_ready', 'Not signed in');
+    opts = opts || {};
     const nm = String(name || '').slice(0, 7);
     // Scores are written ONLY through the submit_score RPC (a SECURITY DEFINER
     // Postgres function): it forces user_id = auth.uid() server-side and rejects
@@ -171,10 +200,13 @@ const Backend = {
       p_day: entry.day || null,
       p_map_seed: entry.seed || null,
       p_game_version: String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1),
-    });
+    }, null, { keepalive: !!opts.keepalive });
     if (!r.ok) return r;
-    this._rest('PATCH', '/profiles?id=eq.' + this.uid,
-      { arcade_name: nm }, { Prefer: 'return=minimal' });   // best-effort, don't block on it
+    // remember:false is the stand-in name a win goes up under when the chief
+    // never gave one — that must not become their name for the next victory
+    if (opts.remember !== false)
+      this._rest('PATCH', '/profiles?id=eq.' + this.uid,
+        { arcade_name: nm }, { Prefer: 'return=minimal' });   // best-effort, don't block on it
     return { ok: true, data: { name: nm } };
   },
 
@@ -215,7 +247,7 @@ const Backend = {
      analytics row is worth nothing and a retry storm costs the player), and
      keepalive so a row sent as the tab closes still lands. */
   _emit(row) {
-    if (!this.telemetryOn || !this.isReady()) return;
+    if (!this.telemetryOn || !this.isReady() || !this.uid) return;
     const body = Object.assign({ user_id: this.uid, game_version: String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1) }, row);
     try {
       if (this.mock) { this.mock.rest('POST', '/telemetry', [body], null); return; }
@@ -473,7 +505,7 @@ const Backend = {
   },
 
   // PostgREST over plain fetch — small, controllable, easy to mock
-  async _rest(method, path, body, headers) {
+  async _rest(method, path, body, headers, opts) {
     // a STRING body is already-serialized JSON (saveSlot's fast path) and goes
     // over the wire verbatim; the test mock still expects objects, so it gets
     // the parsed form (test-only — the real path never pays for this)
@@ -488,6 +520,9 @@ const Backend = {
         const res = await fetch(SUPA_CFG.url + '/rest/v1' + path, {
           method,
           signal: ctrl.signal,
+          // a post fired as the page closes (the victory screen's last word)
+          // must outlive the page; nothing else asks for this
+          keepalive: !!(opts && opts.keepalive),
           // apikey identifies the project; Authorization carries the user's
           // JWT. New-format sb_publishable_ keys are not JWTs, so with no
           // session we send apikey alone (legacy anon-JWT keys also accept

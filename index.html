@@ -873,7 +873,7 @@
   #hsBanner { color: var(--gold); font-weight: 900; letter-spacing: 3px; font-size: 13px; }
   .blink { animation: hsblink 0.85s steps(1) infinite; }
   @keyframes hsblink { 50% { opacity: 0.15; } }
-  #nameRow { width: 100%; max-width: 330px; margin: 2px 0; }
+  #nameRow { width: 100%; max-width: 330px; margin: 12px auto 0; }
   #arcadeName {
     flex: 1 1 0; min-width: 0; min-height: 46px; border-radius: 8px; border: 1px solid var(--gold);
     background: #201b12; color: var(--gold); padding: 0 8px;
@@ -881,7 +881,7 @@
     text-align: center; -webkit-user-select: text; user-select: text;
   }
   #nameRow .abtn { flex: 0 0 116px; min-height: 46px; }
-  #savedNote { color: var(--accent); font-size: 12px; font-weight: 700; margin: 2px 0; }
+  #savedNote { color: var(--accent); font-size: 12px; font-weight: 700; margin: 8px auto 0; text-align: center; }
   #scrEndgame .abtn.big { min-height: 48px; }
   /* leaderboard rows (shared by the board screen and the endgame mini-board) */
   .ldr {
@@ -1462,6 +1462,14 @@
         </div>
         <div id="vicRank" class="blink" style="display:none">★ GLOBAL RANK #1 ★</div>
         <p id="vicMeta"></p>
+        <!-- THE WORLD BOARD, on the scene itself: the name box (first win) or
+             the "on the board" line (every win). It sat behind SCORE once,
+             and first-time winners never found it (js/screens.js _offerSubmit) -->
+        <div class="mrow" id="nameRow" style="display:none">
+          <input id="arcadeName" maxlength="7" placeholder="YOUR NAME" autocomplete="off" autocapitalize="characters" enterkeyhint="done">
+          <button class="abtn gold" id="btnSubmitScore">💾 Save score</button>
+        </div>
+        <p id="savedNote" style="display:none"></p>
         <button class="dbtn primary vic" id="btnVicScore">
           <canvas class="dbIcon" data-vicon="trophy" aria-hidden="true"></canvas>
           <span class="dbBody"><b>SCORE</b><small>The full tally &amp; the world board</small></span>
@@ -1480,11 +1488,6 @@
         <p id="scoreMult"></p>
         <div id="scoreTotal">SCORE 0</div>
         <div id="hsBanner" class="blink" style="display:none">★ NEW HIGH SCORE ★</div>
-        <div class="mrow" id="nameRow" style="display:none">
-          <input id="arcadeName" maxlength="7" placeholder="YOUR NAME" autocomplete="off">
-          <button class="abtn gold" id="btnSubmitScore">💾 Save score</button>
-        </div>
-        <p id="savedNote" style="display:none"></p>
         <div id="endBoard"></div>
         <button class="abtn big" id="btnScoreBack">‹ Back</button>
       </div>
@@ -1606,30 +1609,30 @@
 
 </div>
 
-<script src="js/config.js?v=50"></script>
-<script src="js/config.supabase.js?v=50"></script>
-<script src="js/vendor/supabase.js?v=50"></script>
-<script src="js/backend.js?v=50"></script>
-<script src="js/competition.js?v=50"></script>
-<script src="js/score.js?v=50"></script>
-<script src="js/cards.js?v=50"></script>
-<script src="js/artstyle.js?v=50"></script>
-<script src="js/sprites.js?v=50"></script>
-<script src="js/formations.js?v=50"></script>
-<script src="js/relics.js?v=50"></script>
-<script src="js/assets.js?v=50"></script>
-<script src="js/dev.js?v=50"></script>
-<script src="js/map.js?v=50"></script>
-<script src="js/buildings.js?v=50"></script>
-<script src="js/units.js?v=50"></script>
-<script src="js/combat.js?v=50"></script>
-<script src="js/ai.js?v=50"></script>
-<script src="js/render.js?v=50"></script>
-<script src="js/defeatart.js?v=50"></script>
-<script src="js/victoryart.js?v=50"></script>
-<script src="js/ui.js?v=50"></script>
-<script src="js/screens.js?v=50"></script>
-<script src="js/tutorial.js?v=50"></script>
-<script src="js/game.js?v=50"></script>
+<script src="js/config.js?v=51"></script>
+<script src="js/config.supabase.js?v=51"></script>
+<script src="js/vendor/supabase.js?v=51"></script>
+<script src="js/backend.js?v=51"></script>
+<script src="js/competition.js?v=51"></script>
+<script src="js/score.js?v=51"></script>
+<script src="js/cards.js?v=51"></script>
+<script src="js/artstyle.js?v=51"></script>
+<script src="js/sprites.js?v=51"></script>
+<script src="js/formations.js?v=51"></script>
+<script src="js/relics.js?v=51"></script>
+<script src="js/assets.js?v=51"></script>
+<script src="js/dev.js?v=51"></script>
+<script src="js/map.js?v=51"></script>
+<script src="js/buildings.js?v=51"></script>
+<script src="js/units.js?v=51"></script>
+<script src="js/combat.js?v=51"></script>
+<script src="js/ai.js?v=51"></script>
+<script src="js/render.js?v=51"></script>
+<script src="js/defeatart.js?v=51"></script>
+<script src="js/victoryart.js?v=51"></script>
+<script src="js/ui.js?v=51"></script>
+<script src="js/screens.js?v=51"></script>
+<script src="js/tutorial.js?v=51"></script>
+<script src="js/game.js?v=51"></script>
 </body>
 </html>

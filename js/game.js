@@ -1714,7 +1714,8 @@ const G = {
     setTimeout(() => {
       G._marvel = false;
       if (window.R) R.marvel = null;
-      G.end(true, `You raised ${w.name}. ${w.blurb} Long after the last spear has rusted, it will still be standing.`);
+      // cause 'wonder' is what the analytics count as a wonder win (0003 wonder_win_pct) — it went out as plain 'win' until 2026-09-11
+      G.end(true, `You raised ${w.name}. ${w.blurb} Long after the last spear has rusted, it will still be standing.`, 'wonder');
     }, CFG.WONDER.marvelMs);
   },
   _marvel: false,   // render/flow only — never in S, so it can't survive a save

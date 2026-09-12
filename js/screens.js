@@ -911,7 +911,7 @@ const Screens = {
       scr.classList.add('defeatMode');
       vic.style.display = 'none';
       def.style.display = 'flex';   // flex column (see CSS) — centres content vertically in the frame
-      this._score = null; this._submitted = false; this._leaveWarned = false;
+      this._score = null; this._entry = null; this._submitted = false; this._leaveWarned = false;
       // the scene answers to the difficulty alone now: set that up BEFORE the
       // subtitle, which is difficulty-flavoured (js/defeatart.js)
       if (window.Defeat) Defeat.begin(S.mode);
@@ -941,6 +941,11 @@ const Screens = {
     vic.style.display = 'none';
     vs.style.display = 'flex';
     this._score = Score.compute(true);
+    /* THE RUN'S ENTRY, TAKEN NOW. A post can outlive this screen (REPLAY
+       fires one on the way out and the next world is founded a beat later),
+       so the board's row is captured here, not read off S when the network
+       finally answers. */
+    this._entry = { score: this._score.total, mode: S.mode, day: S.day, seed: S.seed };
     this._submitted = false;
     this._leaveWarned = false;
     this._winMsg = opts.msg || '';
@@ -1018,34 +1023,69 @@ const Screens = {
     this._tallyT = setInterval(step, 150);
   },
 
-  /* victories go to the global board AUTOMATICALLY — no button press. The
-     chief's saved arcade name posts the run the moment the tally lands. The
-     name row only surfaces when there's no name on file yet (the one time a
-     Save is still needed), or if the auto-post can't reach the board. */
-  _offerSubmit() {
-    if (!window.Backend || !Backend.isReady() || this._submitted) return;
-    const inp = this.el('arcadeName');
-    Backend.getProfile().then(r => {
+  /* EVERY VICTORY GOES ON THE WORLD BOARD. The chief's saved arcade name
+     posts the run the moment the scene lands; a first-time winner is asked
+     for a name ON THE SCENE — the box used to sit behind the SCORE button,
+     and a board wiped on 8 Sep had gained one name in eleven wins by the
+     11th: nothing on the celebration screen said a name was wanted, and the
+     prize draw's button (10 Sep) then stood above SCORE as the one thing to
+     tap. Leaving without a name no longer loses the win either — see
+     _postBeforeLeaving.
+
+     The cloud gets a second chance here too: a boot that failed to sign in
+     (offline for a moment, or the sign-in rate-limited) used to make this
+     return in silence, with no box, no note and no board. Now it reconnects,
+     and if that fails it SAYS so, with a Retry. */
+  async _offerSubmit() {
+    if (this._submitted || !this._entry || this._offering) return;
+    if (!window.Backend || !Backend.configured) return;   // no cloud in this build: nothing to promise
+    this._offering = true;
+    try {
+      if (!Backend.isReady()) {
+        this._note('Reaching the world board…', 'var(--dim)');
+        const r = await Backend.reconnect();
+        if (!r.ok || !Backend.isReady()) { this._promptName('The world board is out of reach — tap Retry', '↻ Retry'); return; }
+      }
+      const inp = this.el('arcadeName');
+      const r = await Backend.getProfile().catch(() => ({ ok: false }));
       const saved = r.ok && r.data && r.data.arcade_name;
-      if (saved) { if (!inp.value) inp.value = saved; this.submitScore(saved); }
+      if (saved) { if (!inp.value) inp.value = saved; await this.submitScore(saved); }
       else this._promptName('Name your chief to put this score on the board');
-    }).catch(() => this._promptName('Name your chief to put this score on the board'));
+    } finally { this._offering = false; }
   },
 
+  // the one line under the name box
+  _note(msg, color) {
+    const note = this.el('savedNote');
+    note.textContent = msg; note.style.color = color || ''; note.style.display = msg ? 'block' : 'none';
+  },
   // reveal the name + Save row (prefilled name kept), with a one-line note
-  _promptName(msg) {
+  _promptName(msg, label) {
     this.el('nameRow').style.display = 'flex';
     const btn = this.el('btnSubmitScore');
-    btn.textContent = '💾 Save score'; btn.classList.remove('cant');
-    if (msg) {
-      const note = this.el('savedNote');
-      note.textContent = msg; note.style.color = 'var(--dim)'; note.style.display = 'block';
-    }
+    btn.textContent = label || '💾 Save score'; btn.classList.remove('cant');
+    if (msg) this._note(msg, 'var(--dim)');
+  },
+
+  /* THE WIN GOES UP EVEN WITHOUT A NAME. REPLAY, MENU or closing the page
+     with the box still empty posts the run under the village's stand-in
+     name (Score.fallbackName) — never remembered as the chief's name, so the
+     next victory asks again. A name typed but never saved is used as typed.
+     Fired as the page closes, the post goes keepalive and skips the
+     pre-check so the request is on the wire before the page is gone. */
+  _postBeforeLeaving(unloading) {
+    if (!this._entry || this._submitted || this._posting) return;
+    if (!window.Backend || !Backend.isReady()) return;
+    const chk = Score.cleanName(this.el('arcadeName').value);
+    const name = chk.ok ? chk.name : Score.fallbackName(Backend.uid);
+    this.submitScore(name, { remember: chk.ok, fallback: !chk.ok, keepalive: !!unloading, quiet: true });
   },
 
   // auto === the saved name for the automatic post; a manual Save reads the box
-  async submitScore(auto) {
-    if (this._submitted || !this._score) return;
+  async submitScore(auto, opts) {
+    opts = opts || {};
+    if (this._submitted || !this._entry || this._posting) return;
+    const entry = this._entry;
     const chk = Score.cleanName(auto || this.el('arcadeName').value);
     if (!chk.ok) {
       if (auto) this._promptName('Name your chief to put this score on the board');
@@ -1054,33 +1094,38 @@ const Screens = {
     }
     const btn = this.el('btnSubmitScore');
     if (!auto) { btn.textContent = '…'; btn.classList.add('cant'); }
-    // idempotent: never double-post the same run — reopening a finished
-    // victory, or an auto-post that already landed, just shows the board
-    let already = false;
-    const pre = await Backend.topScores(50);
-    if (pre.ok) already = pre.data.some(x =>
-      x.name === chk.name && x.score === this._score.total && x.mode === S.mode);
-    if (!already) {
-      const sub = await Backend.submitScore(chk.name, {
-        score: this._score.total, mode: S.mode, day: S.day, seed: S.seed,
-      });
-      if (!sub.ok) {
-        if (auto) this._promptName('Couldn’t reach the board — tap Save to try again');
-        else { btn.textContent = '💾 Save score'; btn.classList.remove('cant');
-          UI.toast('Could not reach the board: ' + sub.error.message, true); }
-        return;
+    this._posting = true;
+    try {
+      // idempotent: never double-post the same run — reopening a finished
+      // victory, or an auto-post that already landed, just shows the board
+      let already = false;
+      if (!opts.keepalive) {
+        const pre = await Backend.topScores(50);
+        if (pre.ok) already = pre.data.some(x =>
+          x.name === chk.name && x.score === entry.score && x.mode === entry.mode);
       }
-    }
-    this._submitted = true;
+      if (!already) {
+        const sub = await Backend.submitScore(chk.name, entry,
+          { remember: opts.remember !== false, keepalive: !!opts.keepalive });
+        // the server refusing a DUPLICATE means the row is already up (a post
+        // whose answer was lost, retried) — that is success, not failure
+        if (!sub.ok && !/duplicate/i.test(sub.error.message || '')) {
+          if (auto) this._promptName('Couldn’t reach the board — tap Save to try again');
+          else { btn.textContent = '💾 Save score'; btn.classList.remove('cant');
+            UI.toast('Could not reach the board: ' + sub.error.message, true); }
+          return;
+        }
+      }
+      this._submitted = true;
+    } finally { this._posting = false; }
     this.el('nameRow').style.display = 'none';
-    const note = this.el('savedNote');
-    note.style.color = '';
-    note.textContent = `✓ On the board as ${chk.name.toUpperCase()} — safe to leave`;
-    note.style.display = 'block';
+    this._note(`✓ On the board as ${chk.name.toUpperCase()} — safe to leave`);
+    if (opts.fallback)
+      UI.toast(`On the board as ${chk.name.toUpperCase()} — name your chief next time to choose your own`, false, 4200);
     const top = await Backend.topScores(10);
     if (top.ok) {
       const mine = top.data.findIndex(r =>
-        r.name === chk.name && r.score === this._score.total);
+        r.name === chk.name && r.score === entry.score);
       // stay compact: top three, plus your row wherever it landed
       const rows = top.data.slice(0, 3);
       let meIdx = mine >= 0 && mine < 3 ? mine : -1;
@@ -1092,7 +1137,7 @@ const Screens = {
         // ...and the blinking rank lands on the celebration screen too
         this.el('vicRank').textContent = rankText; this.el('vicRank').style.display = 'block';
       }
-      UI.toast(mine >= 0 ? 'You made the board, chief!' : 'Score on the board');
+      if (!opts.quiet) UI.toast(mine >= 0 ? 'You made the board, chief!' : 'Score on the board');
     }
   },
 
@@ -1131,7 +1176,7 @@ const Screens = {
     on('btnTitleLoad', () => { this.backTo = 'title'; this.show('load'); });
     on('btnTitleBoard', () => { this.backTo = 'title'; this.show('leaders'); });
     on('ldrBack', () => this.show(this.backTo === 'paused' ? 'paused' : 'title'));
-    on('btnSubmitScore', () => this.submitScore());
+    on('btnSubmitScore', () => (window.Backend && Backend.isReady()) ? this.submitScore() : this._offerSubmit());
     on('btnTitleSettings', () => { this.backTo = 'title'; this.show('settings'); });
     on('btnTitleHow', () => { this.backTo = 'title'; this.show('howto'); });
     for (const id of ['ngBack', 'loadBack', 'setBack', 'howBack'])
@@ -1187,15 +1232,21 @@ const Screens = {
     on('btnDoomResign', () => this.doomResign());
     on('btnDoomStay', () => this.doomStay());
     // endgame
+    /* leaving a victory with the name box empty: one warning that says
+       exactly what the second tap does, then the win goes up under the
+       stand-in name on the way out (a typed name is used as typed, no
+       warning). Closing the page instead fires the same post keepalive. */
     const leaveEnd = (go) => {
-      if (this._score && this._score.win && !this._submitted &&
-          window.Backend && Backend.isReady() && !this._leaveWarned) {
+      if (this._entry && !this._submitted && window.Backend && Backend.isReady() && !this._leaveWarned
+          && !Score.cleanName(this.el('arcadeName').value).ok) {
         this._leaveWarned = true;
-        UI.toast('Name your chief to put this score on the board — or tap again to leave', true, 4200);
+        UI.toast(`Name your chief for the board — or tap again to leave and go up as ${Score.fallbackName(Backend.uid)}`, true, 4200);
         return;
       }
+      this._postBeforeLeaving(false);
       go();
     };
+    window.addEventListener('pagehide', () => { if (this.current === 'endgame') this._postBeforeLeaving(true); });
     // REPLAY, not Play Again (operator direction): "Play Again" rolled a
     // DIFFERENT world, which reads as a broken replay — especially after a
     // loss, when what the player wants is another go at the same one

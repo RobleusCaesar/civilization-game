@@ -105,13 +105,30 @@ The anon key ships in the client on purpose; it only grants the ability to
 
 `/supabase/migrations/0002_leaderboard.sql` adds `profiles.arcade_name`
 (≤ 7 chars) and a `leaderboard` table (name, score, mode, day, seed,
-version). RLS: **select for everyone** (it is a global board), **insert only
-as yourself**, and no update/delete at all — scores are history. The client
-is the score authority (this is a fully client-side game; the board is for
-friendly competition, not anti-cheat). `Backend.topScores(n)` reads the top
-N; `Backend.submitScore(name, entry)` inserts one victory row and stamps the
-arcade name onto the profile. Name validation (length, charset, profanity)
-lives in `Score.cleanName` and runs before submission.
+version). RLS: **select for everyone** (it is a global board) and no
+update/delete at all — scores are history. Direct INSERT is revoked: the one
+write path is the `submit_score` RPC
+(`/supabase/migrations/0005_submit_score_rpc.sql`, live since July 2026 and
+on the record since September), a SECURITY DEFINER function that forces
+`user_id = auth.uid()` and refuses only the implausible — a score above what
+the model could produce for that day and mode, more than 20 posts an hour,
+the same run twice in a day. **There is no minimum score and no
+one-row-per-player rule: every victory goes up** (operator ruling
+2026-09-11). The client is still the score authority (a fully client-side
+game; the board is for friendly competition, not anti-cheat).
+`Backend.topScores(n)` reads the top N; `Backend.submitScore(name, entry,
+{ remember, keepalive })` posts one victory row and, unless `remember:false`,
+stamps the arcade name onto the profile so the next win posts by itself.
+Name validation (length, charset, profanity) lives in `Score.cleanName`;
+`Score.fallbackName(uid)` is the village's stand-in name (HOLLOW4, RIDGE42)
+a win goes up under when the chief leaves the box empty — the victory
+screen (`Screens._offerSubmit` / `_postBeforeLeaving`) posts it on REPLAY,
+MENU or page close, and `tests/board-post.mjs` is the contract.
+
+`Backend.reconnect()` is the second chance at an identity: a boot whose
+sign-in failed (offline for a second, or the per-address anonymous sign-in
+limit) used to leave the whole session cloudless and silent; the victory
+screen now calls this before it posts.
 
 ## Analytics — private, aggregate-only
 
@@ -280,7 +297,16 @@ Every public method resolves (never rejects) to:
 
 ## Testing
 
-The suites never touch the network: setting `window.__NEO_BACKEND_MOCK =
-{ auth, rest }` before `Backend.init()` swaps the whole transport for an
-in-page fake (see `smoke37` for the reference mock: an in-memory table pair
-with upsert/select/delete semantics and a fake anonymous session).
+The suites never touch the network — and since 2026-09-11 that is enforced,
+not hoped for: **a page opened from `file://` never signs in**
+(`Backend._init` reports `not_configured`). Before that guard every one of
+the ~75 test boots minted a fresh anonymous player in the LIVE project, wrote
+a `session` telemetry row, and `finished-run-continue` logged a scripted
+victory as a real win in the analytics — and because the anonymous sign-in
+limit is per network address, a suite run could rate-limit the household
+for an hour, so a phone on the same Wi-Fi booted with no identity. A test
+that needs a cloud sets `window.__NEO_BACKEND_MOCK = { auth, rest }` before
+`Backend.init()` (an `addInitScript`), which swaps the whole transport for
+an in-page fake; `tests/board-post.mjs` carries the reference mock — a
+profile with an arcade name, the public board, and the `submit_score` RPC
+with its duplicate rule.

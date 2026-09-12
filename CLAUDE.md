@@ -123,6 +123,7 @@ node tests/drawbridge.mjs      # every gate's door works: L1 leaves, L2 portcull
 node tests/tc-upgrade.mjs      # the hall rises on the town's shoulders — 3 buildings at its own level
 node tests/banish.mjs          # a villager can be sent away for good — the pop cap is all you get back
 node tests/build-cancel.mjs    # works can be called off until they finish — everything paid comes back, clean ground, every hand freed
+node tests/board-post.mjs      # every victory goes on the world board — the name box is on the scene, leaving still posts, the cloud gets a second chance, file:// never touches the cloud
 node tests/worked-ground.mjs   # a station stands only on ground its own resource was taken out of
 node tests/footprint.mjs       # the primary works stand on 2×2; old saves keep the ground they were raised on
 node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring rule; ?dev=1 preview = the shipping path

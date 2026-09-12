@@ -72,6 +72,23 @@ const Score = {
     for (const w of this._EXACT) if (norm === w) return { ok: false, why: 'Pick a different name' };
     return { ok: true, name };
   },
+
+  /* THE NAME A WIN GOES UP UNDER WHEN THE CHIEF NEVER GAVE ONE. Every victory
+     belongs on the board (operator ruling, 2026-09-11) — a player who taps
+     REPLAY past the name box still won. The stand-in is their village's own
+     word, the one the save chip already calls them by ("Amber Hollow" →
+     HOLLOW), padded to the board's 7 characters with digits from the same
+     identity so two Hollows can be told apart: HOLLOW4, RIDGE42, FORD123.
+     Deterministic, and never remembered as their name (Backend.submitScore
+     remember:false), so the next victory asks again. */
+  fallbackName(uid) {
+    const village = (window.Backend && Backend.villageName) ? Backend.villageName(uid) : 'Chief';
+    const word = village.split(' ').pop().toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6) || 'CHIEF';
+    let h = 5381;
+    const s = String(uid || '');
+    for (let i = 0; i < s.length; i++) h = (Math.imul(h, 33) + s.charCodeAt(i)) >>> 0;
+    return (word + String(h % 1000).padStart(3, '0')).slice(0, 7);
+  },
 };
 
 // classic-script global
