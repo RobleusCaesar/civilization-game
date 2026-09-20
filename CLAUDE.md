@@ -142,6 +142,7 @@ node tests/homestead.mjs     # a house broadside-on to a farm bonds the two: +10
 node tests/origin-cards.mjs  # the 26-card draft: ten strategy-openers plant real buildings; every boon reads through a named hook; 64-grid motifs
 node tests/telemetry.mjs     # the board reports the SITE alone (https, shipped hosts, never ?dev=) and only a world somebody PLAYED
 node tests/desktop-layout.mjs # the world fills the window at every zoom (R.minZoom), a run opens at its own zoom, the desktop bars fill the width; the phone untouched
+node tests/moderate-dials.mjs # the retention pass's balance: Moderate's raid cadence / early army / harassment / first wave, a starving chief spends its gold, spare hands scale with the town, the Wonder's price, no massif at a seat's door
 node tests/island-maps.mjs   # the sea is never bulldozed: land-OR-sea reachability, dock-capable coasts on a shared ocean, the island viability floor, per-seat resources+gold
 node tests/amphibious.mjs    # the rival fights across the sea: the sea-only read, TIDEWRACK outranking land plans, the crossing end to end in the real sim, stranded hulls sail home, the coast answers a seen sail
 node tests/tribe-traits.mjs  # each people keeps its home ground (sea=coast, wolf=carved forest alcove, flint=stone, woad=meadow, broken=gold) and its one habit: wolf pack tactics, flint brutes, the Broken's deserter toll, the Woadkin painting, Sea Folk longboat sorties end to end
@@ -4352,6 +4353,61 @@ rather than dropping to "0% saved" the moment the player paid. Its
 position stays last: it is the end of the game. **The price itself is untouched here** — whether
 15,000 of each is reachable in a Calm run is Phase 4's question, argued
 with numbers there.
+
+**THE BALANCE PASS** (`tests/moderate-dials.mjs`, `tests/calm-peace.mjs` §6,
+the retention pass — 191 real games: Moderate won 6.5%, Calm 45.5%,
+Highlands 0 of 39, the Wonder never). The instrument was a scripted-player
+harness (`scratchpad/balance-sim.mjs` in the session, not shipped): a
+fixed-step sim with a bot at three skills — `none` (touches nothing),
+`econ` (hands, roofs, stations, no army), `basic` (econ + a barracks from
+day 8, defenders on Defend, a tower) and `good` (basic + upgrades, up to 14
+spears, marches on the rival hall at 10, lays the Wonder the day it can) —
+8–16 seeds per style, 200 days on medium, 400 on Calm. What it measured on
+Moderate BEFORE: the `none` town lost its hall by day ~61 in 83% of games,
+`econ` 75% (fell median day 61), `basic` 50–70% (median 102–117), `good`
+won 1 of 8. The first rival raid lands day 42–63 with a party of ~5 whatever
+the player does; before it arrives the harassment sorties (from day 34,
+every 8 days) had cut the workforce from 11 hands to 3; the Horselord and
+Warlord personas (raidCd 8–10) then ground a five-spear town down by day
+~120, while the Mason and Mariner rivals NEVER fielded a soldier. **Four
+dials answer the first half** (`CFG.MODES.moderate`): `aiEarly` 0.9 → 0.75,
+`aiRaidCdMult` 1.35 (a new mode multiplier on the persona's `raidCd`, read
+at the raid launch), `aiHarass` 12 with `aiHarassLead` 0 (the sorties start
+at the raid floor, not 16 days before it), `waveFirst` 40 → 52 (off the
+first raid's window), and `aiVulnDay` 25 — the earliest a scouted THIN town
+may be hit; Hard keeps 12. **The silent rival was a famine** (`AI.autoConvert`
+/ `AI.workTheLand`): a survey of 30 seeds found 14 rivals at ZERO food for
+20+ of their first 100 days with 250–360 gold banked — the market's `keep`
+floor (250 on the paying resource) refused to buy a loaf against a purse of
+270, and `WORK_SPARE` (2 hands kept home) sent nobody out from a town of
+two or three, so no ground was ever worked and no farm could rise. In
+FAMINE (the need is food, the larder under 0.4 × `FOOD_URGENT`) gold keeps a
+purse of 30 and the lot floor drops to 25; a town of three keeps ONE hand
+home and a starving one none. Owner-side only — the player's economy is
+untouched. **THE COLUMN AT PEACE** (`Combat.aiRaidSeek`, the hunt launch in
+`AI.daily`): on Calm the reconnaissance-in-force column launched at day 102
+with no war to hunt for, reached the player's fields, and its sapper/villager
+picks — hand-rolled `o.owner === 'P'` checks, the exact fault the militia
+leak already taught — stabbed the first hand it met; the damage net declared
+the truce broken and the chief PUSHed a town that had never lifted a spear
+(2 of 12 Calm sims, the hall razed by day 150–176). The hunt never launches
+at peace, and a column of the rival's with nothing hostile to seek walks
+home; the picks ask `hostileUnits`. **The Wonder is priced for a real
+economy**: 6,000 food / 6,000 wood / 4,000 stone / 1,500 gold (stone, the
+finite one, the smallest bill) — the `good` bot ended day 370 with 4–9k
+wood, 1.5–3.9k stone and 0–10k food against the old 15k × 3, while the
+rival finished its own at ~376 in 7 of 12 Calm games; `aiCostFrac` 0.12 →
+0.30 keeps the rival's absolute bill (1,800 wood) and so its clock. **And
+Highlands was NOT a generation fault the sims could find**: over 20 seeds
+per landform its seats have the MOST reachable forest, stone and food, both
+halls always sit in the main walkable body, a land route between them
+always exists, and the basic bot lost 75% there against 73% on Valley. What
+Highlands does to a HUMAN is put a massif at the door — 14 mountain tiles
+within ten of the seat on average, up to 40, the extruded art covering the
+town north of every ridge — so `MapGen.MTN_SEAT_R` (8) keeps every massif
+that far from either hall (the roll is still spent, other seeds untouched).
+A hypothesis, stated as one; the dashboard's landform × session-length
+split is the number that would confirm it.
 
 **Four hulls, and one of them is a siege engine** (`tests/boats-moat-scuttle.mjs`
 covers the hulls; the roster lives in `CFG.BUILDINGS.dock.train`): the dock

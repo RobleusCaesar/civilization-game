@@ -131,8 +131,10 @@ await p.evaluate(() => {
     ck('nothingElseIsThatBig',
       Object.keys(CFG.BUILDINGS).filter(k => k !== 'wonder')
         .every(k => (CFG.BUILDINGS[k].size || 1) <= 2), 'the hall is 2×2; everything else 1×1');
+    // re-priced in the retention pass (config.js carries the measurement):
+    // stone, the finite resource, carries the smallest bill
     ck('theFullPrice',
-      lv.cost.food === 15000 && lv.cost.wood === 15000 && lv.cost.stone === 15000 && lv.cost.gold === 4000,
+      lv.cost.food === 6000 && lv.cost.wood === 6000 && lv.cost.stone === 4000 && lv.cost.gold === 1500,
       JSON.stringify(lv.cost));
     const tc3 = CFG.BUILDINGS.tc.levels[2].time;
     ck('fourTimesTheHall', lv.time >= tc3 * 4, lv.time + ' days vs the level-3 hall\'s ' + tc3);

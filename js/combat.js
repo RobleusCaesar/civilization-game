@@ -706,6 +706,23 @@ const Combat = {
       if (u.repathT <= 0) { u.repathT = 0.8; Units.setPath(u, camp.x, camp.y); }
       return;
     }
+    /* THE TRUCE HOLDS HERE TOO (tests/calm-peace.mjs, the retention pass): a
+       column at peace has no war to seek. Every pick below aims at the
+       player — the works, a sapper, a villager, a bridge, a station, the
+       hall, the wall — and two of them asked `o.owner === 'P'` by hand
+       instead of the peace-gated funnel, so a reconnaissance column that
+       reached the player's fields on Calm stabbed the first villager it met,
+       the damage net declared the truce broken, and the chief PUSHed a town
+       that had never lifted a spear (measured: 2 of 12 Calm sims, the hall
+       razed by day 150–176). A raider with nothing hostile to seek walks
+       home; the purge (1a) is the one errand the wilds still allow. */
+    if (u.owner === 'A' && !this.hostile('A', 'P')) {
+      const home = Bld.tcOf(u.owner);
+      u.tUnit = 0; u.tBld = 0; u.raidObj = null;
+      if (home) { u.task = { type: 'move', x: home.x, y: home.y + Bld.size(home) }; Units.setPath(u, home.x, home.y + Bld.size(home)); }
+      else u.task = null;
+      return;
+    }
     /* 1b) AN ANCIENT WONDER UNDER CONSTRUCTION beats every other target on the
        board — finishing it simply wins the game, so once a raider is within
        striking distance of the works nothing else is worth a swing. Placed
@@ -722,9 +739,10 @@ const Combat = {
     //    value) is the juiciest, then isolated villagers, then undefended workplaces.
     //    Reachability again: villagers tucked behind the walls are NOT a target —
     //    fixating on them is exactly what left raiders idling at the gate.
-    const sap = strike ? null : this.nearestUnit(u.x, u.y, 8, o => o.owner === 'P' && Units.isSapper(o) && this.canEngage(u, o));
+    //    Never a hand-rolled owner check: the funnel is what the truce gates.
+    const sap = strike ? null : this.nearestUnit(u.x, u.y, 8, o => this.hostileUnits(u, o) && Units.isSapper(o) && this.canEngage(u, o));
     if (sap && this.canReach(u, sap.x, sap.y, 1.6)) { u.tUnit = sap.id; return; }
-    const soft = strike ? null : this.nearestUnit(u.x, u.y, 7, o => o.owner === 'P' && Units.isVillager(o) && this.canEngage(u, o));
+    const soft = strike ? null : this.nearestUnit(u.x, u.y, 7, o => this.hostileUnits(u, o) && Units.isVillager(o) && this.canEngage(u, o));
     if (soft && this.canReach(u, soft.x, soft.y, 1.6)) { u.tUnit = soft.id; return; }
     // a player BRIDGE within reach — cutting the crossing severs an expansion or
     // flanking route. Only worth it if we can actually stand beside it.

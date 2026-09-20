@@ -1347,6 +1347,18 @@ const AI = {
       if (d > worst) { worst = d; needR = r; }
     }
     if (!needR) return;
+    /* A STARVING TOWN SPENDS ITS GOLD (the retention pass — a survey of 30
+       Moderate seeds: 14 rivals sat at ZERO food for 20+ of their first 100
+       days with 250–360 gold banked, their villagers dying one by one, and
+       never fielded a soldier). The `keep` floor on the paying resource is
+       right for a fed town — a conversion must never starve the payer — but
+       held at 250 against a hoard of 270 it meant the market could not buy
+       a single loaf while the town died. In FAMINE (the need is food and the
+       larder is under the urgent line) gold keeps only a purse and the lot
+       floor drops, so the first caravan leaves the day the food runs out. */
+    const famine = needR === 'food' && (ai.res.food || 0) < (this.FOOD_URGENT || 250) * 0.4;
+    const keepOf = r => famine ? (r === 'gold' ? 30 : Math.min(C.keep, 120)) : C.keep;
+    const lotFloor = famine ? Math.min(C.lot, 25) : C.lot;
     // the post's own schedule: goods swap at `swap`:1, gold buys at `buy`
     // goods per coin, selling FOR gold pays the deliberately awful gold rate
     const payPer = pay => pay === 'gold' ? 1 / C.buy
@@ -1354,7 +1366,7 @@ const AI = {
     let payR = null, most = 0;
     for (const r of ['food', 'gold', 'wood', 'stone']) {
       if (r === needR) continue;
-      const spare = (ai.res[r] || 0) - Math.max(C.keep, want(r)) - C.lot * payPer(r);
+      const spare = (ai.res[r] || 0) - Math.max(keepOf(r), want(r)) - lotFloor * payPer(r);
       if (spare > most) { most = spare; payR = r; }
     }
     if (!payR) return;
@@ -1364,8 +1376,8 @@ const AI = {
        flight, still the post's own rates; half the spare at most, so the
        hoard drains over days, not in one cliff. */
     const per = payPer(payR);
-    const spare = (ai.res[payR] || 0) - Math.max(C.keep, want(payR));
-    const lot = Math.max(C.lot, Math.min(C.lotMax || 240, Math.floor(spare / per / 2)));
+    const spare = (ai.res[payR] || 0) - Math.max(keepOf(payR), want(payR));
+    const lot = Math.max(lotFloor, Math.min(C.lotMax || 240, Math.floor(spare / per / 2)));
     ai.res[payR] -= Math.ceil(lot * per);
     ai.convert = { need: needR, pay: payR, amt: lot, t: C.delay };
   },
@@ -1989,7 +2001,14 @@ const AI = {
     const busy = u => u.tUnit || u.tBld || u.scouting || u.prospecting ||
       (u.task && u.task.type !== 'flee');
     const hands = S.units.filter(u => u.owner === 'A' && Units.isVillager(u) && !busy(u));
-    if (hands.length <= this.WORK_SPARE) return false;
+    /* THE SPARE HANDS SCALE WITH THE TOWN (the retention pass): two kept back
+       for hammers is right for a village of eight and fatal for one of
+       three — with the rule flat, a rival down to two hands sent NOBODY out,
+       made no worked ground, could raise no farm, and starved with food at
+       zero for the rest of the run. A small town keeps one; a starving one
+       keeps none, because a hand at home with nothing to eat is not a spare. */
+    const spare = (ai.res.food || 0) < 30 ? 0 : hands.length <= 3 ? 1 : this.WORK_SPARE;
+    if (hands.length <= spare) return false;
     /* WHAT THE TOWN IS SHORT OF — the same reading the crew allocation uses,
        so the hands in the field and the hands at the stations are answering
        the same question. */
@@ -2067,7 +2086,7 @@ const AI = {
        ground or not, and with no soldiers at all the work stands down. */
     let sent = 0, far = 0, gi = 0;
     for (const u of hands) {
-      if (hands.length - sent <= this.WORK_SPARE) break;   // never strip the town
+      if (hands.length - sent <= spare) break;   // never strip the town
       if (hot && gi >= guards.length) break;               // no spear to spare, no party goes out
       const spear = gi < guards.length;
       let best = pick(this.WORK_R, !spear);
@@ -2686,8 +2705,10 @@ const AI = {
 
   // the standing-army target, shaped by difficulty AND posture appetite
   armyWant(m, post) {
+    // the cap climbs one spear every aiRampDays past day 60 (12 unless the
+    // mode says otherwise — Moderate ramps slower, see CFG.MODES.moderate)
     const cap = Math.min(Math.round((m.aiArmyCap || 8) * 2.5),
-      (m.aiArmyCap || 8) + Math.floor(Math.max(0, S.day - 60) / 12));
+      (m.aiArmyCap || 8) + Math.floor(Math.max(0, S.day - 60) / (m.aiRampDays || 12)));
     let want = Math.min(2 + Math.floor(S.day / (m.aiArmyDiv || 8)), cap);
     // BLIND: keep enough spears to send a search party out AND hold the hall —
     // finding the enemy is the gate on every offensive plan, so it outranks
@@ -5325,7 +5346,10 @@ const AI = {
     const aggro = Math.min(1.25, pl.aggression * (0.5 + 0.6 * (m.aiAggro || 1)));
     const boldness = Math.max(0.8,
       P.raidPower - aggro * 0.5 - ((read.foeVuln || read.strikeWindow) ? 0.35 : 0) - Math.max(0, S.day - 90) * 0.005);
-    const dayFloor = (read.foeVuln || read.strikeWindow) ? 12 : Math.max(16, m.aiRaidDay + P.raidDayAdd);
+    // a real opening beats the raid floor at every level — but how EARLY it
+    // may (aiVulnDay) is the mode's: a thin town on day 14 is the intended
+    // Hard experience and a new player's first game on Moderate
+    const dayFloor = (read.foeVuln || read.strikeWindow) ? (m.aiVulnDay || 12) : Math.max(16, m.aiRaidDay + P.raidDayAdd);
     // a SCOUTED strike window cuts the raid clock short: the enemy's army is
     // seen away from home NOW — waiting out a cooldown wastes the moment
     if (read.strikeWindow && attackPosture && ai.raidCd > 1 && mine > theirs) ai.raidCd = 1;
@@ -5409,8 +5433,11 @@ const AI = {
         ai.raidLane = mainLane ? mainLane.key : null;
         ai.raidFoeBld = Bld.list('P').length;
         mem.wallHit = 0;
-        // jitter the cooldown so raids don't arrive on a fixed metronome
-        ai.raidCd = Math.max(3, Math.round((push ? P.raidCd : Math.max(6, P.raidCd - 4)) * (1 + (G.rand() - 0.5) * 0.6 * cr)));
+        // jitter the cooldown so raids don't arrive on a fixed metronome —
+        // and the MODE paces it (aiRaidCdMult): a Horselord's every-eight-days
+        // riders on Moderate ground a five-spear town down by day 120 in every
+        // sim they appeared in
+        ai.raidCd = Math.max(3, Math.round((push ? P.raidCd : Math.max(6, P.raidCd - 4)) * (m.aiRaidCdMult || 1) * (1 + (G.rand() - 0.5) * 0.6 * cr)));
         ai.raidN = party.length;
         ai.raidDay = S.day;
         ai.raidExt = 0;
@@ -5436,7 +5463,9 @@ const AI = {
     this.maybePurge(read);
     // NOT gated on being unthreatened any more: a strong tribe that has never
     // found its enemy must go and look precisely BECAUSE someone is hitting it
-    if (!read.anchor && ai.raidCd <= 0 && !raiders.length &&
+    // — but never at PEACE (tests/calm-peace.mjs): a column with no war to
+    // hunt for walked into the player's fields on Calm and started one
+    if (!S.peace && !read.anchor && ai.raidCd <= 0 && !raiders.length &&
         S.day >= Math.max(20, (m.aiRaidDay || 40) - 8)) {
       const host = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
         !Units.isNaval(u) && u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
@@ -5485,9 +5514,12 @@ const AI = {
     }
     if (ai.harassCd == null) ai.harassCd = 0;
     if (ai.harassCd > 0) ai.harassCd--;
+    // aiHarassLead: how many days BEFORE the raid floor the riders start (16
+    // by default; Moderate's is 0 — the sorties bled a new town's gatherers
+    // from 11 hands to 3 before its first raid had even arrived)
     if (m.aiHarass && !S.peace && read.anchor && ai.harassCd <= 0 && !read.underThreat &&
         ai.posture !== 'DEFEND' && ai.posture !== 'REBUILD' &&
-        S.day >= Math.max(16, (m.aiRaidDay || 40) - 16)) {
+        S.day >= Math.max(16, (m.aiRaidDay || 40) - (m.aiHarassLead != null ? m.aiHarassLead : 16))) {
       const targets = (read.exposed || []);
       if (targets.length) {
         const free = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) && !Units.isNaval(u) &&

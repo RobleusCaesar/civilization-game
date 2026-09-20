@@ -25,6 +25,7 @@ const MapGen = {
      spelled out by hand in five places and the sapper's tools were not among
      them, so a trench or a mound could be queued out in the black. */
   onBoard(x, y) { return x > 0 && y > 0 && x < CFG.W - 1 && y < CFG.H - 1; },
+  MTN_SEAT_R: 8,   // no massif rises nearer than this to either hall (the doorstep rule in massif())
   /* THE MOUNTAIN'S SHADOW (tests/mountain.mjs): the rock is drawn as an
      EXTRUSION — the plateau shifts north and a cliff face fills the gap — so
      the art covers up to ~two tiles of walkable ground NORTH of a mountain
@@ -226,6 +227,16 @@ const MapGen = {
           // the iteration order is fixed, so the same seed rolls the same rim
           if (u * u + v * v + (rnd() - 0.5) * 0.45 > 1) continue;
           if (nearStart(x, y) || t[id(x, y)] !== T.GRASS) continue;
+          /* A SEAT KEEPS ITS DOORSTEP (the retention pass — Highlands won 0
+             of 39 logged games and the sims found no economic cause; what
+             Highlands does to a HUMAN is put a massif at the door: 14
+             mountain tiles within ten of the seat on average, up to 40, and
+             the extruded art covers the town north of every ridge). A
+             massif rises no nearer than MTN_SEAT_R to either hall — the
+             5×5 start clearance only ever kept the hall itself clear. The
+             roll is still spent, so every other seed is untouched. */
+          if (Math.hypot(x - player.x, y - player.y) < MapGen.MTN_SEAT_R ||
+              Math.hypot(x - ai.x, y - ai.y) < MapGen.MTN_SEAT_R) continue;
           t[id(x, y)] = T.MOUNTAIN;
         }
       }
