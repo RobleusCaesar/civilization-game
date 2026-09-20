@@ -156,6 +156,32 @@ no message text, no location, no third party; the row goes to our own
 Supabase table and nowhere else. `Backend.telemetryOn = false` switches the
 whole thing off at runtime.
 
+**The site alone reports** (`Backend.telemetryAllowed`, `tests/telemetry.mjs`):
+the write path refuses anywhere but `https://` on `clanfire.online` /
+`www.clanfire.online` / `robleuscaesar.github.io`, and never with `?dev=` in
+the URL. The disk gate in `init()` was not enough: a test served over HTTP,
+a local dev server and the art preview on the live site all signed in as
+real anonymous players, and the dashboard carried sixteen day-1 / 0.0-minute
+`run_end` rows that were contract tests (`finished-run-continue.mjs` ends a
+day-1 world with `G.end(true, 'test victory')` under a forced `isReady`), plus
+430px "mobile" sessions. The mock path is exempt so a test can read back what
+would be sent. **And only a PLAYED world is a game** — `S.played` is stamped
+by `Screens.show('playing')` for a real world and rides in the save (a
+pre-stamp save backfills `true`); `G.end` logs nothing for a world that was
+never entered (a hand backed out of at the draft, a replay's re-founding).
+
+**Migration 0006** (`0006_analytics_run_filters.sql`) adds two run filters to
+`analytics_summary` — `p_min_seconds` / `p_min_day`, the dashboard's "Runs"
+picker (default: drop 0-length runs) — and an `endings_by_bucket` table
+(every outcome/cause spread over the survival buckets with min/median/max),
+and relabels the buckets to what their edges do (`day 10-24`, not `day 11-25`).
+The signature changes, so the file DROPS the old function first: `create or
+replace` with a new parameter list makes an overload, and PostgREST answers
+an ambiguous RPC with 300. Paste the whole file into the SQL editor. Until it
+is applied the dashboard falls back to the old call and says so on the page —
+PostgREST resolves an RPC by the parameter NAMES it is sent, so an unknown one
+is a 404, never a default.
+
 The demo world behind the title also calls `G.newGame`, and it must never be
 counted: `G._freshRun` (transient, never saved) is set by `newGame` and read
 once by `Screens._enterNow`, which is also why **loading a save is not a new

@@ -144,6 +144,7 @@ const G = {
       rngState: hashSeed(String(seed)) | 0,
       day: 1, dayT: 0,
       paused: false, over: null,
+      played: false,                        // has the playing screen ever shown this world (Screens.show)
       res: Object.assign({}, CFG.START_RES),
       wallLevel: 1,                         // village-wide fortification tier (all walls & gates)
       wonder: null,                         // this run's ANCIENT WONDER key (set by G.setWonder, below)
@@ -1729,7 +1730,11 @@ const G = {
        far it got and how it was played. Wrapped because a run must end
        cleanly even if every one of these reads is somehow unavailable. */
     try {
-      if (window.Backend && Backend.logRunEnd) {
+      /* …and only a run the player actually ENTERED is a game (S.played,
+         stamped by Screens.show('playing')): a hand backed out of at the
+         draft, a test's scripted world, a replay's re-founding — none of
+         those were played, and none of them belongs on the board. */
+      if (window.Backend && Backend.logRunEnd && S.played) {
         const st = S.stats || {};
         const tc = (typeof Bld !== 'undefined' && Bld.tcOf) ? Bld.tcOf('P') : null;
         let seen = 0;
@@ -1899,6 +1904,7 @@ const G = {
     if (!data.draft)                                   // pre-cards save: the draft is history
       data.draft = { hand: [], leanKeys: [], rival: { hand: [], pick: null }, intel: 'none', done: true, pickI: null };
     if (!data.playtime) data.playtime = 0;
+    if (data.played === undefined) data.played = true;   // a save is a world somebody played
     if (!data.stats) data.stats = {};
     for (const k of ['trained', 'razed', 'gathered', 'kills', 'built', 'walls',
                      'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus', 'leanIn'])

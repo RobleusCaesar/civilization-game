@@ -101,6 +101,12 @@
     <label>Landform<select id="fLand"><option value="">All</option></select></label>
     <label>Device<select id="fDev"><option value="">All</option></select></label>
     <label>Version<select id="fVer"><option value="">All</option></select></label>
+    <label>Runs<select id="fMin">
+      <option value="1" selected>Real (drop 0-length)</option>
+      <option value="0">All (incl. 0-length)</option>
+      <option value="60">≥ 1 minute</option>
+      <option value="300">≥ 5 minutes</option>
+    </select></label>
     <button id="apply">Apply</button>
     <button id="reset" class="ghost">Reset</button>
     <button id="out" class="ghost">Lock</button>
@@ -121,6 +127,10 @@
 
   <h2>How far they get</h2>
   <div class="card wrap"><table id="tDays"></table></div>
+
+  <h2>How runs end — by the day they reached</h2>
+  <div class="sub">One row per ending, spread over the same day buckets as above: an average that sits in an empty bucket is two populations, not one.</div>
+  <div class="card wrap"><table id="tEndDays"></table></div>
 
   <h2>The opening — does it land?</h2>
   <div class="tiles" id="funnel"></div>
@@ -199,13 +209,28 @@ async function callRpc(token, filters) {
     p_mode: filters.mode || null, p_landform: filters.landform || null,
     p_device: filters.device || null, p_version: filters.version || null,
   };
-  const res = await fetch(SUPA_CFG.url + '/rest/v1/rpc/analytics_summary', {
+  /* THE RUN FILTER (migration 0006): PostgREST picks an RPC by the NAMES it is
+     sent, so a parameter the deployed function does not have is a 404, not a
+     default. It is sent only when set, and a failure with it is retried
+     without — the page then says the migration is still to be applied. */
+  const post = async (b) => fetch(SUPA_CFG.url + '/rest/v1/rpc/analytics_summary', {
     method: 'POST',
     headers: { apikey: SUPA_CFG.anonKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(b),
   });
+  let res, note = '';
+  if (filters.minSeconds > 0) {
+    res = await post(Object.assign({ p_min_seconds: filters.minSeconds }, body));
+    if (!res.ok && (res.status === 404 || res.status === 300)) {
+      note = 'The "Runs" filter needs migration 0006 (supabase/migrations/0006_analytics_run_filters.sql) applied in the SQL editor — showing ALL runs until then.';
+      res = null;
+    }
+  }
+  if (!res) res = await post(body);
   if (!res.ok) throw new Error('Request failed (' + res.status + ')');
-  return res.json();
+  const d = await res.json();
+  if (d && typeof d === 'object' && note) d.note = note;
+  return d;
 }
 
 /* ----------------------------------------------------------- rendering */
@@ -274,6 +299,10 @@ function render(d) {
 
   table($('tDays'), ['Reached', 'Games', 'Win rate'],
     (d.day_buckets || []).map(r => [r.label, r.n, pct(r.win_pct)]), 1);
+
+  table($('tEndDays'), ['Outcome', 'Cause', 'Games', 'day 0-9', 'day 10-24', 'day 25-49', 'day 50-99', 'day 100-199', 'day 200-399', 'day 400+', 'Min', 'Median', 'Max'],
+    (d.endings_by_bucket || []).map(r => [r.outcome, r.cause, r.n, r.d0_9, r.d10_24, r.d25_49, r.d50_99, r.d100_199, r.d200_399, r.d400p, num(r.min_day), num(r.median_day), num(r.max_day)]), 2);
+  $('appErr').textContent = d.note || '';
 
   const F = d.early_funnel || {};
   tiles($('funnel'), [
@@ -371,6 +400,7 @@ function filters() {
     to: $('fTo').value ? $('fTo').value + 'T23:59:59Z' : null,
     mode: $('fMode').value || null, landform: $('fLand').value || null,
     device: $('fDev').value || null, version: $('fVer').value || null,
+    minSeconds: +($('fMin').value || 0),
   };
 }
 
@@ -408,7 +438,9 @@ $('go').onclick = async () => {
   if (!p) { $('gateErr').textContent = 'Enter the passphrase.'; return; }
   $('gateErr').textContent = 'Checking…';
   TOKEN = await hashToken(p);
-  const d = await callRpc(TOKEN, {}).catch(e => ({ error: (e && e.message) || 'network' }));
+  // the picker's default is part of the first render too — an unlock that
+  // ignored it showed the junk rows under a label saying they were dropped
+  const d = await callRpc(TOKEN, filters()).catch(e => ({ error: (e && e.message) || 'network' }));
   if (d && d.error) { lock(d.error === 'bad_token' ? 'That passphrase was not accepted.' : ('Error: ' + d.error)); return; }
   // the tab remembers, the browser does not: sessionStorage dies with the tab
   try { sessionStorage.setItem(KEY, TOKEN); } catch (e) {}
@@ -419,6 +451,7 @@ $('apply').onclick = load;
 $('reset').onclick = () => {
   for (const id of ['fFrom', 'fTo']) $(id).value = '';
   for (const id of ['fMode', 'fLand', 'fDev', 'fVer']) $(id).value = '';
+  $('fMin').value = '1';   // the honest default: real runs
   load();
 };
 $('out').onclick = () => lock('');
@@ -429,7 +462,7 @@ $('out').onclick = () => lock('');
   try { saved = sessionStorage.getItem(KEY); } catch (e) {}
   if (!saved) { show('gate'); return; }
   TOKEN = saved;
-  const d = await callRpc(TOKEN, {}).catch(() => ({ error: 'network' }));
+  const d = await callRpc(TOKEN, filters()).catch(() => ({ error: 'network' }));
   if (d && d.error) { lock(''); return; }
   show('app'); render(d);
 })();

@@ -140,6 +140,7 @@ node tests/rival-strength.mjs # the rewritten war brain: the anchor, the inner m
 node tests/train-spawn.mjs   # a trained unit stands on REALLY open ground, or waits in reserve until there is some
 node tests/homestead.mjs     # a house broadside-on to a farm bonds the two: +10% food, +1 villager, gold sparks — and it all goes away with either half
 node tests/origin-cards.mjs  # the 26-card draft: ten strategy-openers plant real buildings; every boon reads through a named hook; 64-grid motifs
+node tests/telemetry.mjs     # the board reports the SITE alone (https, shipped hosts, never ?dev=) and only a world somebody PLAYED
 node tests/island-maps.mjs   # the sea is never bulldozed: land-OR-sea reachability, dock-capable coasts on a shared ocean, the island viability floor, per-seat resources+gold
 node tests/amphibious.mjs    # the rival fights across the sea: the sea-only read, TIDEWRACK outranking land plans, the crossing end to end in the real sim, stranded hulls sail home, the coast answers a seen sail
 node tests/tribe-traits.mjs  # each people keeps its home ground (sea=coast, wolf=carved forest alcove, flint=stone, woad=meadow, broken=gold) and its one habit: wolf pack tactics, flint brutes, the Broken's deserter toll, the Woadkin painting, Sea Folk longboat sorties end to end
@@ -1699,6 +1700,45 @@ pass had been silently OFF since the day it was written (the window.G trap
 again); it runs bare now. Card headlines stay ≤60 chars — longer clips
 silently against the card's own bottom edge on a 320px phone, where the
 359px media query also drops the flavor line and deals a taller card.
+
+**Telemetry reports the site, and only played worlds** (`tests/telemetry.mjs`):
+the dashboard's win-rate columns were carrying sixteen `run_end` rows at day 1
+/ 0.0 minutes — nine "wins", seven "losses" — and every one was a CONTRACT
+TEST. A page opened from disk used to sign in as a real anonymous player, and
+`finished-run-continue.mjs` ends a day-1 world with `G.end(true, 'test
+victory')` under a forced `isReady`: one real "win" per sweep run.
+`wonder.mjs`'s rival finish (`G.wonderRaised` → `this.end(false, …)`, the one
+`G.end` with no cause) is the "loss/unknown". And every test boots at 430px,
+so its "session" rows counted as MOBILE play. The `file:` gate in
+`Backend.init` (737d8fe) closed the disk door only; three stayed open — a test
+served over HTTP (tests/land.mjs runs one), a developer's local server, and
+`?dev=1` on the live site. **`Backend.telemetryAllowed`** is the rule now:
+https, one of `PROD_HOSTS`, never `?dev=`; `_emit` asks it on the real path
+and the MOCK path is exempt (a test that wants to see what would be sent
+installs the mock and reads it back). **And `S.played`** — stamped by
+`Screens.show('playing')` for a non-demo world, in every save, a pre-stamp
+save backfills `true` — gates the run_end log in `G.end`: a world never
+entered still ENDS (end screen, finalizeRun) but writes no row. Migration
+`0006_analytics_run_filters.sql` gives the dashboard `p_min_seconds`/`p_min_day`
+(the "Runs" picker) and a cause-by-day-bucket table; **its signature changes,
+so it DROPS the old function first** (an overload makes PostgREST answer 300),
+and `analytics.html` sends the new parameters only when the picker is set and
+falls back with a note until the migration lands (PostgREST resolves an RPC by
+parameter NAMES — an unknown one is a 404, never a default). The old bucket
+labels lied by one (`(10,'day 11-25')` held day 10); they say what their
+edges do now. **Supabase is unreachable from the sandbox** (403 on CONNECT),
+so true post-fix win rates come from reloading the dashboard, never from here.
+**Three contracts waited on a fixed timer where they meant a condition**
+(hardened in the same commit): `board-post.mjs`'s second "Play again" tap
+REPLAYS, and `enterGame` waits behind the prep plaque for the art and the
+sliced bake before it shows 'playing' — 400ms was a race; `animal-art.mjs`
+and `villager-tiers.mjs` read the SHIPPED strips 900ms after load, while the
+boot probes ~1,000 PNGs. All three wait for the thing itself now
+(`Screens.current` leaving 'endgame'; `Assets.artReady()`), bounded. On a
+loaded CPU (a contract sweep beside a review workflow's Chromiums) the
+land.mjs performance bars — "edit within 10%", "frame stays cheap", the
+budgeted-repaint pixel checks — fail as contention, not as regressions:
+rerun it alone before believing it.
 
 **The muster horn** (`tests/muster-horn.mjs`): the Town Center's lever, and
 the same bargain the gate makes — one tap and the whole workforce downs tools

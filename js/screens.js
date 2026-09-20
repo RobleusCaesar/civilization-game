@@ -77,6 +77,7 @@ const Screens = {
     else if (name === 'doomed') this.onDoomed();
     else if (name === 'playing') {
       if (window.S) S.paused = false;
+      if (window.S && !this._demo) S.played = true;   // analytics: this world is a game somebody played
       // a real game, settled in: the endgame gallery may start loading, one
       // picture at a time, once the wire has been quiet for half a minute
       if (window.S && !this._demo && window.Assets && Assets.startEndgameArt) {

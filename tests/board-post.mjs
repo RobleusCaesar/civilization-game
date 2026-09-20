@@ -180,7 +180,10 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     await new Promise(r => setTimeout(r, 100));
     const afterOne = { screen: Screens.current, posts: __MOCK.calls.filter(c => c.path.startsWith('/rpc/submit_score')).length, warned: Screens._leaveWarned };
     document.getElementById('btnVicAgain').click();
-    await new Promise(r => setTimeout(r, 400));
+    // the second tap REPLAYS: enterGame waits behind the prep plaque for the
+    // art and the sliced bake before it shows 'playing' — a fixed 400ms was a
+    // race on a slower machine, so wait for the screen to actually change
+    for (let i = 0; i < 200 && Screens.current === 'endgame'; i++) await new Promise(r => setTimeout(r, 100));
     const posts = __MOCK.calls.filter(c => c.path.startsWith('/rpc/submit_score'));
     return { fb, entry, afterOne, screen: Screens.current, posts, profile: __MOCK.profile.arcade_name, clean: Score.cleanName(fb) };
   });

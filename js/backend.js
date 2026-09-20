@@ -243,11 +243,33 @@ const Backend = {
     } catch (e) { return null; }
   },
 
+  /* THE SITE ALONE REPORTS (tests/telemetry.mjs). The disk gate in init()
+     disarms a file:// page, but that still leaves three doors into the live
+     table: a test served over HTTP (tests/land.mjs runs one), a developer's
+     local server, and the ?dev=1 art preview on the shipped site. Any of them
+     signs in as a real anonymous player, and its scripted endings land in the
+     dashboard as real games — measured on the board: nine day-1 "wins" and
+     seven day-1 "losses", every one a contract test's G.end(true, 'test')
+     with a forced isReady, plus a 430px test viewport's worth of "mobile"
+     sessions. So the write path asks WHERE it is running, and only the
+     shipped site answers yes. The mock path is exempt — a test that wants to
+     SEE what would be sent installs the mock and reads it back. */
+  PROD_HOSTS: ['clanfire.online', 'www.clanfire.online', 'robleuscaesar.github.io'],
+  telemetryAllowed(loc) {
+    loc = loc || (typeof location !== 'undefined' ? location : null);
+    if (!loc) return false;
+    if (loc.protocol !== 'https:') return false;
+    if (!this.PROD_HOSTS.includes(String(loc.hostname || '').toLowerCase())) return false;
+    if (/[?&]dev=/.test(String(loc.search || ''))) return false;   // the art preview is a developer's page
+    return true;
+  },
+
   /* the one write path. Never awaited by game code, never retried (a lost
      analytics row is worth nothing and a retry storm costs the player), and
      keepalive so a row sent as the tab closes still lands. */
   _emit(row) {
     if (!this.telemetryOn || !this.isReady() || !this.uid) return;
+    if (!this.mock && !this.telemetryAllowed()) return;
     const body = Object.assign({ user_id: this.uid, game_version: String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1) }, row);
     try {
       if (this.mock) { this.mock.rest('POST', '/telemetry', [body], null); return; }
