@@ -3427,6 +3427,44 @@ section, since under `file://` every canvas is tainted and no pixel can be
 read at all.
 
 
+**NOTHING IS DRAWN IN THE BLACK** (`R.boardPx` / `onBoardPx` / `clipBoard`,
+pinned by `theBlackBeyondTheBoardIsNeverPassable`,
+`andNothingIsEverDrawnOutThere` and `andTheProbeCanActuallySeeALeak` in
+tests/land.mjs — reported from a real day-17 phone game, with a photograph:
+a dashed grey line standing in the off-map void beside the map). The outer
+ring of tiles is off-map void; `MapGen.onBoard` declares where the RULES
+end and **`R.boardPx` where the PICTURE does** — one pair, and `clipBoard`
+is derived from the second so the two can never drift. Passability was
+never the hole (`Path.passable` opens with `MapGen.onBoard`, and the
+contract measures every rim tile × every owner × both domains at 0). The
+hole is always the same shape: a layer drawn from **GEOMETRY** rather than
+from tiles. A tile-driven pass clamps its loop to 1…W-2; a traced curve
+runs wherever the water does and has nothing to clamp. Three were live:
+ - **The foam line, and the wave roll anchored on it** (`R.foamChunks`,
+   `drawLivingWater`): the reported artifact. White foam at a low alpha
+   over `#0d0b08` reads as exactly that dash. `foamChunks` now drops a
+   point off the board and **FLUSHES the run** rather than merely skipping
+   it — `wavePick` reads spans of CONSECUTIVE points to take a tangent, so
+   a run with a hole in it lays a crest across the gap; the dash phase is
+   arc length along the loop and is unaffected. A foam mark is a 1px
+   STAMP, so `R.onBoardPx` is its question — and that predicate's far edge
+   is EXCLUSIVE, because `boardPx.x1` is the rim tile's FIRST column, which
+   `clipBoard` excludes and a `<= x1` test would paint. The
+   roll takes a plain `clipBoard`, because a crest is an 84px sprite
+   rotated and pushed `WAVE_PUSH` px along the normal.
+ - **The ambient birds and critters** (`R._drawFlock` / `_drawCritter`):
+   culled with `MapGen.inB`, which is only "inside the array" and INCLUDES
+   the rim — CLAUDE.md's own warning about that pair, paid for again. It is
+   `onBoard` now, plus a `clipBoard` around the pass, since a flock hugging
+   the last playable column still trails ~18px of wings.
+ - **The water sparkle** (`drawLivingWater`'s tile pass): `(h >> 4) % (TL - 10)`
+   — a SIGNED shift of an unsigned 32-bit hash goes negative for half of
+   them and the modulus follows, so the dash placed itself up to 21px ABOVE
+   its own tile. Invisible inland; from row 1 it drew into the void. `>>> 4`.
+The control check is the load-bearing one: ONE monkey-patch of `R.boardPx`
+widens every guard at once and the void must light up, or a probe that
+never sees the rim reads as a pass forever.
+
 **A SPADEFUL DOES NOT FREEZE THE FRAME** (`R.splitGrow` / `pendRepaint` /
 `tickRepaint` / `flushRepaint`, pinned by `aSpadefulDoesNotFreezeTheFrame` in
 tests/land.mjs — from a report: "major game freezes… it always happens with

@@ -34,10 +34,16 @@
       wanders — and none of it may reach the rules, or move a pixel an
       incremental repaint would not also move.
 
-   Run after touching: R.landTone / groundTint / cornerShade / landDecals /
+   9. AND THE BLACK BEYOND THE BOARD STAYS BLACK. The outer ring is off-map
+      void: nothing is passable there and nothing is drawn there, at any
+      camera, at any moment. MapGen.onBoard declares where the rules end and
+      R.boardPx where the picture does.
+
+   Run after touching: R.boardPx / onBoardPx / clipBoard / foamChunks /
+   drawLivingWater / wavePick, R.landTone / groundTint / cornerShade / landDecals /
    drawDecal / terrainEdges / paintWater / paintGround / rockMass / rockScree /
    denseEdge / waterRegions / chaikin / roughen / buildShoreLayer / blitShore /
-   waterKey / rebuildTerrain / drawTileAt / drawTilesAt / clipBoard /
+   waterKey / rebuildTerrain / drawTileAt / drawTilesAt /
    clipTiles, Sprites.tree, Sprites.rockStamp and the forest/fertile sets, or
    the LAND constants.
 
@@ -2463,6 +2469,111 @@ function LAND_STEPS(v) { return 16; }
     !v.thrown && v.baked && v.drew && v.unpainted === 0 && v.painted > 500 && v.forest > 5 && v.flatForest === 0 && !v.err,
     v.thrown || (v.painted + ' tiles painted, ' + v.unpainted + ' unpainted, ' + v.forest + ' forest tiles checked with ' +
       v.flatForest + ' missing their trees' + (v.err ? ' — frame error ' + v.err : '')));
+}
+
+/* ---- 23. NOTHING IS DRAWN IN THE BLACK ----
+   Reported from a real day-17 phone game, with a photograph: a dashed grey
+   line standing in the off-map void to the left of the map. It was the base
+   waterline — white foam at a low alpha over #0d0b08 reads as exactly that
+   dash — drawn along the traced coast where the coast runs out onto the rim.
+
+   The outer ring of tiles is off-map void. MapGen.onBoard says where the
+   RULES end and R.boardPx where the PICTURE does, and the two halves of the
+   promise are measured here together:
+
+     • nothing is PASSABLE out there, for any owner, in either domain;
+     • and nothing is DRAWN out there, at any camera, at any moment.
+
+   The second half is the one that keeps breaking, because the layers that
+   break it are the ones drawn from GEOMETRY rather than from tiles — a
+   traced loop runs wherever the water does, and a clamp to 1…W-2 has nothing
+   to clamp. Three of them were live when this was written: the foam line and
+   its wave roll (both cut to R.boardPx now), the ambient birds and critters
+   (culled on onBoard, never inB — inB INCLUDES the rim — and clipped besides,
+   since a flock trails wings past its own tile), and the water sparkle, whose
+   offset came out of a SIGNED shift of an unsigned hash and so could place
+   itself a tile ABOVE its own water.
+
+   The last check is the control: one monkey-patch of R.boardPx widens every
+   guard at once, and the void must light up. Without it a silent failure of
+   the probe itself — a camera that never sees the rim, a world with no coast
+   on it — would read as a pass forever. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(`
+    const out = { rows: [], control: null, thrown: '' };
+    // every bright pixel in the four off-board bands, over a walk of the rim
+    // at several zooms and several seconds of animation. The band stops one
+    // pixel short of the boundary: at a fractional zoom that pixel straddles
+    // the board edge and carries honest board content.
+    const sweep = () => {
+      const TL = CFG.TILE, W = CFG.W, H = CFG.H, cv = R.cv, g = R.g;
+      let worst = 0, where = '';
+      const cams = [[1.5, H / 2], [W - 2.5, H / 2], [W / 2, 1.5], [W / 2, H - 2.5]];
+      for (const [cx, cy] of cams) for (const z of [1.7, 1.0]) {
+        R.cam.z = z; R.centerOn(cx, cy);
+        const Z = R.cam.z * R.dpr;
+        const bands = [[0, 0, Math.floor((TL - R.cam.x) * Z) - 1, cv.height],
+                       [Math.ceil(((W - 1) * TL - R.cam.x) * Z) + 1, 0, cv.width, cv.height],
+                       [0, 0, cv.width, Math.floor((TL - R.cam.y) * Z) - 1],
+                       [0, Math.ceil(((H - 1) * TL - R.cam.y) * Z) + 1, cv.width, cv.height]]
+          .map(q => [Math.max(0, q[0]), Math.max(0, q[1]), Math.min(cv.width, q[2]), Math.min(cv.height, q[3])])
+          .filter(q => q[2] > q[0] && q[3] > q[1]);
+        if (!bands.length) continue;
+        for (let step = 0; step < 12; step++) {
+          R.draw(step === 0 ? 0.016 : 1.7);
+          for (const q of bands) {
+            const d = g.getImageData(q[0], q[1], q[2] - q[0], q[3] - q[1]).data;
+            let n = 0;
+            for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 90) n++;
+            if (n > worst) { worst = n; where = 'cam(' + cx.toFixed(0) + ',' + cy.toFixed(0) + ') z' + z + ' t' + step; }
+          }
+        }
+      }
+      return { worst, where };
+    };
+    const arm = (seed, size) => {
+      Boot.force(); G.newGame(seed, 'moderate', size);
+      Screens._demo = false; Screens.show('playing'); S.paused = true;
+      S.day = 5; S.dayT = 0;                       // mid-day: the dusk tint never lifts the void
+      for (let i = 0; i < S.map.explored.length; i++) { S.map.explored[i] = 1; if (S.map.seenTerrain) S.map.seenTerrain[i] = S.map.terrain[i]; }
+      G.updateVisibility(); if (G.vis) G.vis.fill(1);   // the living water only draws where it is SEEN
+      R.rebakeAll(); while (R.tickBake(1e9)) {}
+    };
+    try {
+      for (const w of [['verify7', 'xlarge'], ['scenes1', 'large'], ['void1', 'medium']]) {
+        arm(w[0], w[1]);
+        const TL = CFG.TILE, W = CFG.W, H = CFG.H;
+        let rimWet = 0, openRim = 0;
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          if (x !== 0 && y !== 0 && x !== W - 1 && y !== H - 1) continue;
+          const t = S.map.terrain[y * W + x];
+          if (t === T.WATER || t === T.MOAT) rimWet++;
+          for (const o of ['P', 'A', 'R', 'W']) for (const dm of ['land', 'water'])
+            if (Path.passable(x, y, o, dm)) openRim++;
+        }
+        const sw = sweep();
+        out.rows.push({ world: w[0] + '/' + w[1], kind: S.map.landform + '/' + S.map.variant,
+                        dims: W + 'x' + H, rimWet, openRim, bright: sw.worst, where: sw.where });
+      }
+      // THE CONTROL: widen the board and every guard stands down at once
+      arm('scenes1', 'large');
+      const real = R.boardPx;
+      R.boardPx = () => ({ x0: -1e9, y0: -1e9, x1: 1e9, y1: 1e9 });
+      R._foamKey = '';                              // the foam geometry is cached by water key
+      out.control = sweep().worst;
+      R.boardPx = real; R._foamKey = '';
+    } catch (e) { out.thrown = String(e && e.stack || e).slice(0, 400); }
+    return out;`));
+  await p.close();
+  const rows = v.rows || [], say = rows.map(r => r.world + ' (' + r.kind + ', ' + r.rimWet + ' wet rim tiles): '
+    + r.bright + ' bright px' + (r.where ? ' @' + r.where : '') + ', ' + r.openRim + ' passable rim states').join('; ');
+  ck('theBlackBeyondTheBoardIsNeverPassable',
+    !v.thrown && rows.length === 3 && rows.every(r => r.openRim === 0), v.thrown || say);
+  ck('andNothingIsEverDrawnOutThere',
+    !v.thrown && rows.length === 3 && rows.every(r => r.bright === 0), v.thrown || say);
+  ck('andTheProbeCanActuallySeeALeak',
+    !v.thrown && v.control > 0, v.thrown || ('control run painted ' + v.control + ' px in the void'));
 }
 
 console.log(JSON.stringify(res, null, 1));

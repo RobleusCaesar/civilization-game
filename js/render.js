@@ -5579,10 +5579,29 @@ const R = {
     g.clip();
     try { fn(); } finally { g.restore(); }
   },
-  clipBoard(g, fn) {
+  /* THE BOARD, IN PIXELS — the one declaration of where the PICTURE ends,
+     and the twin of MapGen.onBoard, which says where the RULES end. The
+     outermost ring of tiles is off-map void: drawTile paints it flat black
+     and nothing may stand, float or be drawn on it. Anything composited
+     AFTER that black — the shore bands, the decal passes, and every layer
+     drawn per frame from GEOMETRY rather than from tiles — has to ask, or
+     it sits on the void. Tile-driven passes clamp their loops to 1…W-2
+     instead; geometry-driven ones cannot, because a traced curve runs
+     wherever the water does. */
+  boardPx() {
     const TL = CFG.TILE;
+    return { x0: TL, y0: TL, x1: (CFG.W - 1) * TL, y1: (CFG.H - 1) * TL };
+  },
+  // …and "may a MARK go here": x1/y1 are the rim tile's first row and column,
+  // which clipBoard excludes, so the far edge is EXCLUSIVE
+  onBoardPx(px, py) {
+    const b = this.boardPx();
+    return px >= b.x0 && py >= b.y0 && px < b.x1 && py < b.y1;
+  },
+  clipBoard(g, fn) {
+    const b = this.boardPx();
     g.save();
-    g.beginPath(); g.rect(TL, TL, (CFG.W - 2) * TL, (CFG.H - 2) * TL); g.clip();
+    g.beginPath(); g.rect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); g.clip();
     try { fn(); } finally { g.restore(); }
   },
   /* THE SLOW TAIL OF A TERRAIN REPAINT, PAID OVER THE NEXT FEW FRAMES.
@@ -9798,6 +9817,10 @@ const R = {
       if (lx < 0 || ly < 0 || lx >= W || ly >= H) return 1;
       return (S.map.reclaimed && S.map.reclaimed[ly * W + lx]) ? 0 : 1;
     };
+    // a foam mark is a 1px STAMP, so R.onBoardPx is the question — its far
+    // edge is exclusive, because boardPx.x1 is the rim tile's first column.
+    // Hoisted out of the walk below: this runs for every point of every loop.
+    const bp = this.boardPx(), bx0 = bp.x0, by0 = bp.y0, bx1 = bp.x1, by1 = bp.y1;
     const out = [], N = this.FOAM_CHUNK;
     let buf = new Int16Array(N * 3), fill = 0, natSum = 0, x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, mx = 0, my = 0;
     const flush = () => {
@@ -9817,6 +9840,18 @@ const R = {
         const nat = natural(a, loop[(i - 1 + n) % n], b);
         while (next <= s + len) {
           const t = (next - s) / len, px = Math.round(ax + (bx - ax) * t), py = Math.round(ay + (by - ay) * t);
+          /* NOTHING IS DRAWN IN THE BLACK (reported from a real day-17 phone
+             game: a dashed grey line down the void left of the map — white
+             foam at a low alpha over the off-map black). The traced coast is
+             GEOMETRY and runs wherever the water does, the outer rim included;
+             the shore LAYER never shows there because buildShoreLayer clips to
+             the board, and this line is the same coast drawn per frame, so it
+             takes the same bound — R.boardPx, one declaration for both. It
+             FLUSHES the run rather than merely dropping the point: wavePick
+             reads spans of CONSECUTIVE points out of a run to take a tangent,
+             so a run with a hole in it would lay a crest across the gap. The
+             dash phase is arc length along the loop and is unaffected. */
+          if (px < bx0 || px >= bx1 || py < by0 || py >= by1) { flush(); next++; continue; }
           if (fill === 0) { mx = Math.floor(a[0]); my = Math.floor(a[1]); }
           buf[fill] = px; buf[fill + 1] = py; buf[fill + 2] = next & 7; fill += 3; natSum += nat;
           if (px < x0) x0 = px; if (px > x1) x1 = px; if (py < y0) y0 = py; if (py > y1) y1 = py;
@@ -9977,7 +10012,11 @@ const R = {
       if (h % 3 === 0) {                                  // slow drifting sparkle dash
         const ph = t0 * 0.6 + (h % 13);
         const sx = x * TL + 4 + (Math.sin(ph) * 0.5 + 0.5) * (TL - 14);
-        const sy = y * TL + 5 + ((h >> 4) % (TL - 10));
+        // >>> 4, NEVER >> 4: h is an unsigned 32-bit hash, so a SIGNED shift
+        // goes negative for half of them and the modulus follows it — the
+        // sparkle was landing up to 21px ABOVE its own tile, which is
+        // invisible inland and drew into the off-map black from row 1.
+        const sy = y * TL + 5 + ((h >>> 4) % (TL - 10));
         g.fillStyle = spark;
         g.fillRect(sx | 0, sy | 0, 5, 2);
       }
@@ -10026,7 +10065,13 @@ const R = {
       const wep = Math.floor(t0 / wevery);
       if (wep !== this._waveEpoch) { this._waveEpoch = wep; this._wavePick = this.wavePick(wep); }
       const wp = this._wavePick, wt = t0 - wep * wevery, WT = Math.max(0.5, +LAND.WAVE_TIME || 2.8);
-      if (wp && wt < WT) {
+      /* AND THE ROLL IS CUT TO THE BOARD TOO. Its crests are anchored on the
+         foam line, which is now on-board by construction — but a crest is an
+         84px sprite, rotated and pushed WAVE_PUSH px along the shore normal,
+         so one breaking on the first playable column still reaches into the
+         void. One clip covers both paths: the masked blit and the bare
+         crests an absent mask falls back to. */
+      if (wp && wt < WT) this.clipBoard(g, () => {
         const p = wt / WT;
         const env = Math.max(0, Math.min(1, p / 0.18) * Math.min(1, (1 - p) / 0.28));
         // landward over the first half, receding through the second, still by 7/8
@@ -10067,7 +10112,7 @@ const R = {
           g.imageSmoothingEnabled = sm;         // pixel past the clamp's edge
         }
         g.globalAlpha = 1;
-      }
+      });
       if (prof) prof.foam += performance.now() - tA;
     }
     if (prof) prof.frames++;
@@ -11303,7 +11348,7 @@ const R = {
         // is this a forest-edge grass tile? if so a critter can emerge from it
         let fx = 0, fy = 0, edge = false;
         for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
-          if (MapGen.inB(tx + ox, ty + oy) && S.map.terrain[MapGen.idx(tx + ox, ty + oy)] === T.FOREST) {
+          if (MapGen.onBoard(tx + ox, ty + oy) && S.map.terrain[MapGen.idx(tx + ox, ty + oy)] === T.FOREST) {
             fx = ox; fy = oy; edge = true; break;
           }
         }
@@ -11326,6 +11371,7 @@ const R = {
         break;
       }
     }
+    this.clipBoard(g, () => {
     for (let i = this.ambient.length - 1; i >= 0; i--) {
       const a = this.ambient[i];
       a.t += dt;
@@ -11349,7 +11395,13 @@ const R = {
         a.x += a.vx * dt; a.y += a.vy * dt + Math.sin((a.t + a.ph) * 5) * 0.010;
         if (Math.sin((a.t + a.ph) * 2.3) > 0.97) { a.vx = (Math.random() - 0.5) * 0.5; a.vy = (Math.random() - 0.5) * 0.4; }
       }
-      if (a.t > a.ttl || !MapGen.inB(a.x | 0, a.y | 0)) { this.ambient.splice(i, 1); continue; }
+      // onBoard, NEVER inB: inB only means "inside the array" and INCLUDES the
+      // off-map rim, so a bird gliding out of the world flapped on across the
+      // black for a tile before it was culled (CLAUDE.md's own warning about
+      // this pair). The clipBoard around this whole pass catches what a tile
+      // test cannot — a flock hugging the last playable column still trails
+      // ~18px of wings past its own tile.
+      if (a.t > a.ttl || !MapGen.onBoard(a.x | 0, a.y | 0)) { this.ambient.splice(i, 1); continue; }
       if (!G.visibleAt(a.x | 0, a.y | 0)) continue;
       const ax = a.x * TL, ay = a.y * TL;
       const fade = Math.min(1, Math.min(a.t, a.ttl - a.t) * 2);
@@ -11365,6 +11417,7 @@ const R = {
       }
       g.globalAlpha = 1;
     }
+    });
 
     // construction-start dust — drawn over the units, so the cloud rolls
     // over whoever is standing at the new site (the collapse-dust rule)
