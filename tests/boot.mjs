@@ -135,17 +135,17 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
      glen, not the bare dark screen the splash exists to prevent. */
   {
     const tag = body.slice(iSplash, iSplash + 2600);
-    const hasWebp = /srcset="[^"]*\.webp"/.test(tag);
+    const hasWebp = /srcset="[^"]*\.webp(\?v=\d+)?"/.test(tag);
     ck('theSplashIsServedLight', hasWebp, hasWebp ? 'webp source declared' : 'no webp');
-    const webpM = tag.match(/srcset="([^"]+\.webp)"/);
+    const webpM = tag.match(/srcset="([^"]+\.webp)(?:\?v=\d+)?"/);
     if (webpM) {
-      const wb = readFileSync(join(root, webpM[1])).length;
+      const wb = readFileSync(join(root, webpM[1].split('?')[0])).length;
       const fb = readFileSync(join(root, 'assets/ui/title-bg.jpg')).length;
       ck('andItIsGenuinelySmaller', wb < fb,
         Math.round(wb/1024) + 'KB webp vs ' + Math.round(fb/1024) + 'KB fallback');
     }
     ck('butTheBaselineStaysAsTheFallback',
-      /<img[^>]+src="assets\/ui\/title-bg\.jpg"/.test(tag), '');
+      /<img[^>]+src="assets\/ui\/title-bg\.jpg(\?v=\d+)?"/.test(tag), '');
   }
   ck('theTopInsetHasADefaultAndAFloor',
     /--safe-top:\s*max\(env\(safe-area-inset-top,\s*0px\)/.test(html) &&
@@ -161,8 +161,8 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     const iTitle = body.indexOf('id="scrTitle"');
     const title = body.slice(iTitle, body.indexOf('id="scrNewgame"'));
     ck('theTitleWearsThePaintedBackdrop',
-      /srcset="assets\/ui\/title-bg\.webp"/.test(title) &&
-      /<img[^>]+src="assets\/ui\/title-bg\.jpg"/.test(title),
+      /srcset="assets\/ui\/title-bg\.webp(\?v=\d+)?"/.test(title) &&
+      /<img[^>]+src="assets\/ui\/title-bg\.jpg(\?v=\d+)?"/.test(title),
       'webp source + jpg fallback in #scrTitle');
     const wb = readFileSync(join(root, 'assets/ui/title-bg.webp')).length;
     const jb = readFileSync(join(root, 'assets/ui/title-bg.jpg')).length;
@@ -204,8 +204,8 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
        still and only the chrome arrives. If these ever diverge the boot
        gains a visible jump-cut back. */
     ck('theLoadingScreenAndTheTitleShareTheirGround',
-      /srcset="assets\/ui\/title-bg\.webp"/.test(tag) &&
-      /srcset="assets\/ui\/title-bg\.webp"/.test(title),
+      /srcset="assets\/ui\/title-bg\.webp(\?v=\d+)?"/.test(tag) &&
+      /srcset="assets\/ui\/title-bg\.webp(\?v=\d+)?"/.test(title),
       'same art on both layers');
     /* THE POP-IN CAN NEVER STRAND AN INVISIBLE MENU. The hidden state lives
        ONLY in the keyframe's `from`, held through the delay by `both` — a
@@ -387,6 +387,26 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       tbgBg: tb ? getComputedStyle(tb).backgroundColor : '' };
   });
   ck('aWideWindowGetsItsOwnGlen', glen.wide, '');
+  /* AND THE GLEN'S OWN CACHE-BUSTER IS HAND-KEPT, SO IT IS MEASURED. Every
+     other picture in the game is fetched through Assets, which stamps
+     CFG.ART_V on the URL for it. These two <picture> blocks are MARKUP —
+     that is the whole point of them, the fetch has to start with the HTML
+     parse, behind the splash — so nothing stamps them at runtime, and
+     re-encoding the art under an unchanged filename reaches nobody who has
+     visited the site before. The query is therefore written by hand in
+     index.html, and this check is what keeps the two numbers from drifting
+     apart: bump CFG.ART_V for new glen art and restamp the markup with it. */
+  {
+    const want = await p.evaluate(() => (typeof CFG === 'undefined' ? null : CFG.ART_V));
+    const markup = readFileSync(join(root, 'index.html'), 'utf8');
+    const urls = (markup.match(/assets\/ui\/title-bg(?:-wide)?\.(?:webp|jpg)(\?v=\d+)?/g) || []);
+    const stamped = urls.filter(u => u.includes('?v='));
+    const agree = stamped.length === urls.length && urls.length >= 8 &&
+      stamped.every(u => +u.split('?v=')[1] === want);
+    ck('theGlenCarriesTheArtVersion', agree,
+      urls.length + ' glen urls, ' + stamped.length + ' stamped, CFG.ART_V=' + want +
+      (agree ? '' : ' — ' + [...new Set(urls)].join(' ')));
+  }
   ck('andTheSplashAndTitleStillShareTheirSources', glen.same, '');
   ck('andTheGroundBehindThePictureIsGreen', /rgb\(80, 92, 30\)/.test(glen.splashBg) && /rgb\(80, 92, 30\)/.test(glen.tbgBg), glen.splashBg + ' / ' + glen.tbgBg);
   ck('andTheFadeIsACrossFadeNotACut', mid.fade >= 200 && mid.fade <= 900, mid.fade + 'ms');

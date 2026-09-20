@@ -16,7 +16,16 @@ const T = {
 
 const CFG = {
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 39,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 40,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+                       // v40: the desktop glen is the supplied painting
+                       // (assets/ui/title-bg-wide.png, re-encoded to webp/jpg).
+                       // THE GLEN URLS IN index.html CARRY THIS NUMBER BY HAND
+                       // (?v=40 on both <picture> blocks): they are markup, not
+                       // Assets URLs, so nothing stamps them at runtime — and
+                       // re-encoding under an unchanged filename reaches nobody
+                       // who has visited before unless the query moves. Change
+                       // one and you must change the other; tests/boot.mjs's
+                       // theGlenCarriesTheArtVersion measures that they agree.
                        // v16: the gathering stations — lumber/quarry/lodge l1-l3
                        // as unmanned worked-yard scenes (structure at back,
                        // open stain front-center where the workers stand)

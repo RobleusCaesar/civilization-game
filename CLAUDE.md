@@ -1774,6 +1774,23 @@ Chromium's canvas since the sandbox has no image tools — and a phone the
 close crop; the browser picks before any script and fetches only the
 match; both carry the SAME sources so the lift has no scene change; and the
 box behind the picture is the art's own green (`#505c1e`), never black.
+**The wide glen is SUPPLIED ART** (`assets/ui/title-bg-wide.png`, the
+1672x941 master the author uploaded; the shipped `.webp`/`.jpg` beside it
+are that file re-encoded through Chromium's canvas at q0.82/q0.84 — 284KB
+and 369KB, both under what they replaced). It is full-bleed with no baked
+frame, so it takes no 20px crop, and its open meadow runs straight down the
+middle, which is the corridor `.tcol` centres the logo and menu in. The
+phone crop is untouched by any of this.
+**AND THE GLEN'S CACHE-BUSTER IS WRITTEN BY HAND** (`theGlenCarriesTheArtVersion`,
+tests/boot.mjs): every other picture in the game is fetched through
+`Assets`, which stamps `CFG.ART_V` on the URL for it — but these two
+`<picture>` blocks are MARKUP, which is the whole point of them (the fetch
+starts with the HTML parse, behind the splash), so nothing stamps them at
+runtime. Re-encoding art under an unchanged filename therefore reaches
+NOBODY who has visited the site before. The eight glen URLs in index.html
+carry `?v=N` written out in full, the contract measures that every one of
+them equals `CFG.ART_V`, and new glen art means bumping the constant and
+restamping the markup in the same commit.
 **The desktop layout** (`tests/desktop-layout.mjs`): `R.minZoom()` — derived
 from the live viewport and the map — floors every zoom (clampCam and the
 pinch), so the world always covers the window; `R.defaultZoom()` opens a
