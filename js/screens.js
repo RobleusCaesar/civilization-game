@@ -86,6 +86,9 @@ const Screens = {
       }
     }
     if (name !== 'playing' && window.S && !this._demo) S.paused = true;
+    // leaving the game takes the victory modal with it (it was stamped seen
+    // when shown, so it never comes back over a resumed or reloaded world)
+    if (name !== 'playing' && this.hideVictoryPaths) this.hideVictoryPaths();
   },
 
   /* ---------------- title ---------------- */
@@ -359,8 +362,7 @@ const Screens = {
        forced onto Valley · Classic at medium — its lessons anchor to
        forest, water and open ground, and a player learning the game should
        not be learning it on an archipelago. */
-    let tut = false;
-    try { tut = localStorage.getItem('neo-tutorial-ask') === '1'; } catch (e) {}
+    const tut = this.tutorialWanted();
     const lean = this.SIZE_LEAN[p.mode] || this.SIZE_LEAN.moderate;
     let roll = Math.random(), size = lean[0][0];
     for (const [k, w] of lean) { if ((roll -= w) <= 0) { size = k; break; } }
@@ -462,10 +464,124 @@ const Screens = {
     const D = S.draft;
     if (D && D.hand && D.hand.length)
       kept = Cards.pick(Math.max(0, Math.min(D.hand.length - 1, r.pickI)));
+    this.noteGameFounded();      // a replay is a game founded (tests/tutorial.mjs)
     this.enterGame();
     if (window.Cards) Cards.announceRival();
     // deliberately NO Tutorial.maybeStart: a replay is never a first game
     if (kept) this._replayCardNote(kept);
+  },
+
+  /* ================= THE FIRST TWO GAMES TEACH THEMSELVES =================
+     (tests/tutorial.mjs, the retention pass) The tutorial ran THREE times in
+     the first 191 real games: an opt-in checkbox on a screen a new player is
+     already reading past. It is on by default for a player's first two games
+     now and off from the third, on a LOCAL count of games founded (the two
+     founding sites below — keeping a card, and Replay). The checkbox stays
+     and still wins: an explicit choice ('1'/'0' in neo-tutorial-ask) is
+     honoured whatever the count says, and a two-tap Skip mid-lesson RECORDS
+     the opt-out (Tutorial.skip), so game two never re-arms a lesson the
+     player has already refused. A returning player with any local trace of
+     earlier play (a finished-run ledger, a bound slot, a crash snapshot, the
+     draft help dismissed) is seeded as a veteran — the first launch after
+     this ships must not teach the people who taught us. */
+  TUT_AUTO_GAMES: 2,
+  gamesFounded() {
+    let raw = null;
+    try { raw = localStorage.getItem('neo-games'); } catch (e) {}
+    if (raw != null) return +raw || 0;
+    // first read ever: seed from the evidence, then remember the seed
+    let veteran = false;
+    try {
+      veteran = !!(localStorage.getItem('neo-finished-seeds') || localStorage.getItem('neo-active-slot') ||
+        localStorage.getItem('neo-emergency') || localStorage.getItem('neo-draft-help'));
+    } catch (e) {}
+    const n = veteran ? this.TUT_AUTO_GAMES : 0;
+    try { localStorage.setItem('neo-games', String(n)); } catch (e) {}
+    return n;
+  },
+  noteGameFounded() {
+    const n = this.gamesFounded() + 1;
+    try { localStorage.setItem('neo-games', String(n)); } catch (e) {}
+    return n;
+  },
+  // the ONE read of "does this run get the teacher": the explicit switch, else the count
+  tutorialWanted() {
+    let v = null;
+    try { v = localStorage.getItem('neo-tutorial-ask'); } catch (e) {}
+    if (v === '1') return true;
+    if (v === '0') return false;
+    return this.gamesFounded() < this.TUT_AUTO_GAMES;
+  },
+
+  /* ================= TWO ROADS TO VICTORY (the Calm modal) =================
+     (tests/tutorial.mjs) Nobody has ever won by the Wonder — 0 of every Calm
+     game logged — and the tutorial's one line about it arrives fifteen steps
+     in, on a run that opted in. So the FIRST Calm game opens on a short
+     modal: the rival's hall on one side, this run's own monument on the
+     other, the price under it, and where the button is. Once per device
+     (neo-victory-seen, stamped when it is SHOWN, so a pause or a reload
+     never re-deals it), only where the mode actually offers the Wonder
+     (UI.wonderOffered — the same gate the build menu asks), dismissed by
+     its button, the backdrop or Escape. The tutorial holds its notes while
+     it is up (Screens.modalUp), so the two never stack. */
+  victoryPathsDue() {
+    if (!window.S || this._demo || S.over) return false;
+    // bare UI, NEVER window.UI — UI is a script-level const and window.UI is
+    // undefined, so that guard silently answers "no modal" forever (the
+    // window.G trap; the contract's Calm check is what caught it)
+    if (typeof UI === 'undefined' || !UI.wonderOffered || !UI.wonderOffered()) return false;
+    try { if (localStorage.getItem('neo-victory-seen')) return false; } catch (e) {}
+    return true;
+  },
+  modalUp() { return !!document.getElementById('victoryModal'); },
+  hideVictoryPaths() {
+    const el = document.getElementById('victoryModal');
+    if (el) el.remove();
+    if (this._vpKey) { document.removeEventListener('keydown', this._vpKey); this._vpKey = null; }
+  },
+  showVictoryPaths() {
+    this.hideVictoryPaths();
+    try { localStorage.setItem('neo-victory-seen', '1'); } catch (e) {}
+    const d = CFG.BUILDINGS.wonder, lv = (d.levels || [])[0] || {}, cost = lv.cost || {};
+    const price = Bld.costStr ? Bld.costStr(cost) : '';
+    const el = document.createElement('div');
+    el.id = 'victoryModal';
+    el.innerHTML =
+      '<div class="vpCard">' +
+        '<h3>Two roads to victory</h3>' +
+        '<div class="vpRoads">' +
+          '<div class="vpRoad"><canvas class="vpArt" data-art="hall"></canvas>' +
+            '<b>Raze their hall</b>' +
+            '<p>Find the rival tribe and bring down their <b>Town Center</b>.' +
+            (S.peace ? ' They keep the peace until you strike first.' : '') + '</p></div>' +
+          '<div class="vpRoad"><canvas class="vpArt" data-art="wonder"></canvas>' +
+            '<b>Raise the ' + (d.name || 'Ancient Wonder') + '</b>' +
+            '<p>Build it — <span class="vpPrice">' + price + '</span>, ' + (lv.time || 45) + ' days of work — and win without a war. ' +
+            'It waits at the <b>end of your Build menu</b>. The rival is racing for their own.</p></div>' +
+        '</div>' +
+        '<button class="abtn big gold" id="vpGotIt">Got it</button>' +
+      '</div>';
+    document.body.appendChild(el);
+    // the two pictures are the game's own art: the rival's red hall and
+    // THIS run's monument — the same drawables the build menu paints
+    const paint = (cv, spr) => {
+      if (!spr) return;
+      cv.width = 96; cv.height = 96;
+      const g = cv.getContext('2d');
+      g.imageSmoothingEnabled = !!spr._cfArt;
+      const s = Math.min(96 / spr.width, 96 / spr.height), w = spr.width * s, h = spr.height * s;
+      g.drawImage(spr, (96 - w) / 2, 96 - h, w, h);
+    };
+    const hallFam = (Sprites.buildingA && Sprites.buildingA.tc) || Sprites.building.tc || [];
+    paint(el.querySelector('[data-art="hall"]'), hallFam[Math.min(hallFam.length, 2) - 1] || hallFam[0]);
+    paint(el.querySelector('[data-art="wonder"]'), (Sprites.building.wonder || [])[0]);
+    const done = () => this.hideVictoryPaths();
+    el.querySelector('#vpGotIt').addEventListener('click', done);
+    el.addEventListener('click', e => { if (e.target === el) done(); });
+    this._vpKey = e => { if (e.key === 'Escape') done(); };
+    document.addEventListener('keydown', this._vpKey);
+    if (typeof UI !== 'undefined' && UI.cue) UI.cue('ok');
+    return el;
   },
 
   // the kept origin, standing face-up over the opening world for a beat
@@ -563,9 +679,7 @@ const Screens = {
   syncTutToggle() {
     const b = this.el('btnTutToggle');
     if (!b) return;
-    let v = false;
-    try { v = localStorage.getItem('neo-tutorial-ask') === '1'; } catch (e) {}
-    b.classList.toggle('sel', v);
+    b.classList.toggle('sel', this.tutorialWanted());   // the EFFECTIVE state: auto-on shows as on
   },
 
   draftTap(i, el) {
@@ -608,11 +722,21 @@ const Screens = {
     const runSeed = S.seed;
     setTimeout(() => {
       if (!window.S || S.seed !== runSeed || this.current !== 'draft') return;
+      this._demo = false;
+      /* THE TEACHER IS ARMED BEFORE THE RUN IS LOGGED: enterGame → _enterNow
+         writes the run_start row with `tutorial: !!(S.tut && S.tut.on)`, and
+         maybeStart used to run AFTER it — so the row said "no tutorial" for
+         every lesson that ever ran (the board's "3 in 191" was the count of
+         cold-cache runs where the art plaque happened to delay the log).
+         And the games-founded count steps AFTER the arming read, so game
+         two reads 1, not 2. */
+      if (window.Tutorial) Tutorial.maybeStart();
+      this.noteGameFounded();
       this.enterGame();
       // the rival's origin is a NOTIFICATION now, difficulty-gated, and it
       // has to land in-game: toasts are hidden on every shell screen
       if (window.Cards) Cards.announceRival();
-      if (window.Tutorial) Tutorial.maybeStart();
+      if (this.victoryPathsDue()) this.showVictoryPaths();
     }, this.DRAFT_BURN_MS);
   },
   DRAFT_BURN_MS: 780,   // long enough to see the fire take, short enough to feel instant
@@ -1198,8 +1322,8 @@ const Screens = {
     // the origin draft — keeping a card starts the game (see draftTap;
     // that is also the tutorial's one entry point now)
     on('btnTutToggle', () => {
-      let v = false;
-      try { v = localStorage.getItem('neo-tutorial-ask') === '1'; } catch (e) {}
+      // a tap is an EXPLICIT choice, the opposite of whatever the button showed
+      const v = this.tutorialWanted();
       try { localStorage.setItem('neo-tutorial-ask', v ? '0' : '1'); } catch (e) {}
       this.syncTutToggle();
     });

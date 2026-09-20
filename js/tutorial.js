@@ -372,8 +372,11 @@ const Tutorial = {
   // so a loaded save or the title demo can never start a tutorial by accident
   maybeStart() {
     if (!window.S || S.tut || (window.Screens && Screens._demo)) return;
+    // the ONE read (Screens.tutorialWanted): the explicit switch, else auto-on
+    // for the first two games founded on this device
     let on = false;
-    try { on = localStorage.getItem('neo-tutorial-ask') === '1'; } catch (e) {}
+    if (window.Screens && Screens.tutorialWanted) on = Screens.tutorialWanted();
+    else { try { on = localStorage.getItem('neo-tutorial-ask') === '1'; } catch (e) {} }
     if (!on) return;
     // the scout's day: 9–13, hashed off the seed string so it is fixed for
     // the run and never draws from the seeded RNG (the G.rollWonder rule)
@@ -481,6 +484,9 @@ const Tutorial = {
   skip() {
     if (!window.S || !S.tut) return;
     S.tut.on = false; S.tut.skipped = true;
+    // a skip is the player's answer for good: the auto-on for the first two
+    // games (Screens.tutorialWanted) must not re-arm a lesson twice refused
+    try { localStorage.setItem('neo-tutorial-ask', '0'); } catch (e) {}
     this._killScout();
     this.onWorldChange();   // removes the DOM, restores full speed
   },
@@ -558,6 +564,7 @@ const Tutorial = {
       return;
     }
     if (this._gapT > 0) return;                               // the breath holds here too
+    if (window.Screens && Screens.modalUp && Screens.modalUp()) return;   // a modal has the floor
     if (performance.now() - this._lastEvAt < 25000) return;   // never stack notes
     for (const ev of this.EVENTS) {
       if (t.fired[ev.id]) continue;
@@ -574,6 +581,9 @@ const Tutorial = {
   _updateDisplay() {
     if (this._show) return;                       // one thing at a time
     if (this._gapT > 0) return;                   // let the last one land first
+    // the Calm victory modal (Screens.showVictoryPaths) has the floor while
+    // it is up — a lesson note under a modal is two things to read at once
+    if (window.Screens && Screens.modalUp && Screens.modalUp()) return;
     const t = S.tut;
     if (t.phase !== 1 || t.step >= this.STEPS.length) return;   // phase 2 is events-only
     const st = this.STEPS[t.step];

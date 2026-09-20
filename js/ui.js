@@ -152,12 +152,25 @@ const UI = {
       // it (refreshMenu) — the menu is laid out once, at boot, long before a
       // difficulty has been chosen
       if (key === 'wonder') btn.style.display = 'none';
+      /* THE WONDER CARD READS AS THE GOAL, NOT AS A PRICE YOU CANNOT PAY
+         (tests/tutorial.mjs, the retention pass — 0 Wonder wins in every
+         Calm game logged): last in the row and greyed to 45% for the whole
+         run, it was the one card nobody ever scrolled to. It wears a gold
+         rim and a "victory" ribbon, and under the price it says how far the
+         town has SAVED toward it (refreshMenu) — a number that moves is a
+         goal; a greyed price is furniture. */
+      if (key === 'wonder') {
+        btn.classList.add('wonder');
+        const rib = document.createElement('div'); rib.className = 'bwin'; rib.textContent = '★ Victory';
+        btn.appendChild(rib);
+      }
       const ic = document.createElement('canvas');
       this.iconInto(ic, this.menuIconSprite(key));
       btn.appendChild(ic);
       const nm = document.createElement('div'); nm.className = 'bname'; nm.textContent = d.name;
       const co = document.createElement('div'); co.className = 'bcost'; co.textContent = Bld.costStr(Bld.effCost('P', key));
       btn.appendChild(nm); btn.appendChild(co);
+      if (key === 'wonder') { const pg = document.createElement('div'); pg.className = 'bprog'; btn.appendChild(pg); }
       btn.addEventListener('click', () => {
         if (this.placing === key) { this.exitPlacement(); return; }   // tapping the lit button quits cleanly
         const tc = Bld.tcOf('P');
@@ -221,6 +234,19 @@ const UI = {
     const m = G && G.modeCfg ? G.modeCfg() : null;
     return !!(m && m.wonderMenu);
   },
+  /* the Wonder card's second line: the fraction saved is the SCARCEST
+     resource's share of its price (you can only raise it when every pile is
+     there), floored, never over 100 — and "ready" once every pile is */
+  wonderSavedFrac() {
+    const cost = Bld.effCost('P', 'wonder') || {};
+    let frac = 1;
+    for (const k in cost) if (cost[k] > 0) frac = Math.min(frac, ((S && S.res && S.res[k]) || 0) / cost[k]);
+    return Math.max(0, Math.min(1, frac));
+  },
+  wonderSavedLine() {
+    const f = this.wonderSavedFrac();
+    return f >= 1 ? 'Ready to raise' : Math.floor(f * 100) + '% saved';
+  },
 
   refreshMenu() {
     const tc = Bld.tcOf('P');
@@ -236,6 +262,12 @@ const UI = {
           b.dataset.wonder = S.wonder;
           const nm = b.querySelector('.bname');
           if (nm) nm.textContent = CFG.BUILDINGS.wonder.name;
+        }
+        // how far the town has saved: the scarcest resource's share of its price
+        const pg = b.querySelector('.bprog');
+        if (pg) {
+          const txt = this.wonderSavedLine();
+          if (pg.textContent !== txt) pg.textContent = txt;
         }
       }
       const cost = Bld.effCost('P', key);   // card discounts show true prices

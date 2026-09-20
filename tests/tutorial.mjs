@@ -30,6 +30,21 @@
   11. THE CAPSTONE ends phase 1 (TC level 2 → congratulate → phase 2), and
       phase-2 notes fire one-shot: the Trading Post at TC3, mortality via
       G's hook, the win nudge off a standing army.
+  12. THE FIRST TWO GAMES TEACH THEMSELVES (Screens.tutorialWanted): with
+      the checkbox never touched, games one and two get the teacher and the
+      third does not (neo-games counts the foundings); an explicit '1'/'0'
+      wins over the count either way; a mid-lesson Skip records the '0';
+      a device with any trace of earlier play is seeded as a veteran; the
+      draft-screen toggle shows the EFFECTIVE state and a tap flips it into
+      an explicit choice; and the teacher is armed BEFORE the run_start
+      row is written, so the row tells the truth.
+  13. TWO ROADS TO VICTORY (Screens.showVictoryPaths): the first Calm game
+      opens on a modal — the rival's hall, this run's own monument with its
+      price — once per device, only where the mode offers the Wonder, never
+      on Moderate; the tutorial holds its notes while it is up and resumes
+      when it is dismissed; leaving the game removes it. And the Wonder's
+      build card is dressed as the goal: gold rim, a victory ribbon, a live
+      "% saved" line, never ghosted like an unaffordable hut.
 
    Run this after touching any of:
      tutorial.js — everything
@@ -672,6 +687,121 @@ const out = await p.evaluate(async () => {
     btn.click();
     ck('toggleFlipsOff', !btn.classList.contains('sel') && !tik() &&
       localStorage.getItem('neo-tutorial-ask') === '0', btn.className);
+  }
+
+  // ---- 12. the first two games teach themselves ----
+  {
+    const LS = ['neo-tutorial-ask', 'neo-games', 'neo-finished-seeds', 'neo-active-slot', 'neo-emergency', 'neo-draft-help', 'neo-victory-seen'];
+    const wipe = () => { for (const k of LS) { try { localStorage.removeItem(k); } catch (e) {} } };
+    wipe();
+    ck('aFreshDeviceHasFoundedNothing', Screens.gamesFounded() === 0, String(Screens.gamesFounded()));
+    ck('andGameOneGetsTheTeacher', Screens.tutorialWanted() === true, '');
+    Screens.noteGameFounded();
+    ck('andSoDoesGameTwo', Screens.gamesFounded() === 1 && Screens.tutorialWanted() === true, String(Screens.gamesFounded()));
+    Screens.noteGameFounded();
+    ck('butNotGameThree', Screens.gamesFounded() === 2 && Screens.tutorialWanted() === false, String(Screens.gamesFounded()));
+    try { localStorage.setItem('neo-tutorial-ask', '1'); } catch (e) {}
+    ck('anExplicitOnOutranksTheCount', Screens.tutorialWanted() === true, '');
+    wipe();
+    try { localStorage.setItem('neo-tutorial-ask', '0'); } catch (e) {}
+    ck('anExplicitOffOutranksTheCount', Screens.tutorialWanted() === false && Screens.gamesFounded() === 0, '');
+    // a device that has played before is seeded as a veteran on its first read
+    wipe();
+    try { localStorage.setItem('neo-finished-seeds', '["12345"]'); } catch (e) {}
+    ck('aReturningPlayerIsAVeteran', Screens.gamesFounded() === Screens.TUT_AUTO_GAMES && Screens.tutorialWanted() === false,
+      String(Screens.gamesFounded()));
+    // maybeStart reads the same predicate: auto-on with the checkbox untouched
+    wipe();
+    G.newGame('120', 'moderate', 'medium'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    Combat.scanT = 0; Units.herdClock = 0;
+    Tutorial.maybeStart();
+    ck('maybeStartArmsOnTheUntouchedFirstGame', !!(S.tut && S.tut.on), JSON.stringify(S.tut && S.tut.on));
+    // …and a Skip is the answer for good
+    Tutorial.skip();
+    ck('aSkipRecordsTheOptOut', localStorage.getItem('neo-tutorial-ask') === '0' && Screens.tutorialWanted() === false,
+      String(localStorage.getItem('neo-tutorial-ask')));
+    // the toggle shows the EFFECTIVE state (auto-on reads as on) and a tap makes it explicit
+    wipe();
+    Screens.syncTutToggle();
+    const tb = document.getElementById('btnTutToggle');
+    ck('theToggleShowsAutoOnAsOn', tb.classList.contains('sel'), tb.className);
+    tb.click();
+    ck('andATapMakesItAnExplicitOff', !tb.classList.contains('sel') && localStorage.getItem('neo-tutorial-ask') === '0', tb.className);
+    // the teacher is armed BEFORE the run is logged (draftTap's order), and
+    // the founding count steps AFTER the arming read
+    const srcTap = Screens.draftTap.toString();
+    const iStart = srcTap.indexOf('Tutorial.maybeStart()'), iNote = srcTap.indexOf('this.noteGameFounded()'), iEnter = srcTap.indexOf('this.enterGame()');
+    ck('theTeacherIsArmedBeforeTheRunIsLogged', iStart >= 0 && iNote > iStart && iEnter > iNote,
+      'maybeStart@' + iStart + ' noteGameFounded@' + iNote + ' enterGame@' + iEnter);
+    // and the row itself carries it: arm, then enter a fresh run with the log captured
+    wipe();
+    const rows = [];
+    const oldLog = Backend.logRunStart; const oldReady = Backend.isReady;
+    Backend.logRunStart = (r) => rows.push(r); Backend.isReady = () => true;
+    try {
+      G.newGame('121', 'moderate', 'medium'); Screens._demo = false; S.paused = true;
+      G._freshRun = true;
+      Tutorial.maybeStart();
+      Screens.enterGame();
+    } finally { Backend.logRunStart = oldLog; Backend.isReady = oldReady; }
+    ck('andTheRunStartRowSaysTutorial', rows.length === 1 && rows[0].tutorial === true, JSON.stringify(rows));
+    Tutorial.skip();
+    wipe();
+  }
+
+  // ---- 13. two roads to victory: the Calm modal and the Wonder card ----
+  {
+    const wipeSeen = () => { try { localStorage.removeItem('neo-victory-seen'); } catch (e) {} };
+    wipeSeen();
+    fresh('122', 'moderate', false);
+    ck('noModalOnModerate', Screens.victoryPathsDue() === false && !UI.wonderOffered(), String(UI.wonderOffered()));
+    fresh('123', 'calm', false);
+    ck('theFirstCalmGameIsDueAModal', Screens.victoryPathsDue() === true, '');
+    const modal = Screens.showVictoryPaths();
+    ck('theModalStands', !!document.getElementById('victoryModal') && Screens.modalUp(), '');
+    const txt = modal.textContent;
+    const wcost = CFG.BUILDINGS.wonder.levels[0].cost;
+    ck('itNamesBothRoads', /Town Center/.test(txt) && txt.includes(CFG.BUILDINGS.wonder.name) && txt.includes(String(wcost.wood)) && txt.includes(String(wcost.gold)),
+      txt.slice(0, 200));
+    const painted = (cv) => { try { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n; } catch (e) { return -1; } };
+    const arts = Array.from(modal.querySelectorAll('canvas.vpArt'));
+    ck('bothRoadsAreDrawn', arts.length === 2 && arts.every(c => painted(c) > 200), arts.map(painted).join('/'));
+    ck('itIsStampedSeenWhenShown', localStorage.getItem('neo-victory-seen') === '1', String(localStorage.getItem('neo-victory-seen')));
+    ck('andNeverDealtTwice', Screens.victoryPathsDue() === false, '');
+    // the tutorial holds its notes while the modal has the floor, then resumes
+    Screens.hideVictoryPaths();
+    wipeSeen();
+    fresh('124', 'calm', true);
+    Screens.showVictoryPaths();
+    tick(6, 0.3);
+    const tutUp = () => { const el = document.getElementById('tutUI'); return !!(el && el.style.display !== 'none'); };
+    ck('theTeacherHoldsUnderTheModal', Tutorial._show === null && !tutUp(), JSON.stringify(Tutorial._show));
+    document.getElementById('vpGotIt').click();
+    ck('gotItTakesItDown', !Screens.modalUp(), '');
+    tick(6, 0.3);
+    ck('andTheTeacherResumes', !!Tutorial._show && tutUp(), JSON.stringify(Tutorial._show));
+    // leaving the game removes it
+    wipeSeen();
+    Screens.showVictoryPaths();
+    Screens.show('paused');
+    ck('leavingTheGameRemovesIt', !Screens.modalUp(), '');
+    Screens.show('playing'); S.paused = true;
+    Tutorial.skip();
+    // the Wonder card reads as the goal
+    UI.refreshMenu();
+    const wb = document.querySelector('.bbtn[data-key="wonder"]');
+    ck('theWonderCardIsDressedAsTheGoal', !!wb && wb.classList.contains('wonder') && !!wb.querySelector('.bwin') && !!wb.querySelector('.bprog') && wb.style.display !== 'none',
+      wb ? wb.className + ' ' + wb.style.display : 'no card');
+    const prog = () => wb.querySelector('.bprog').textContent;
+    ck('itSaysHowFarTheTownHasSaved', /^\d+% saved$/.test(prog()), prog());
+    ck('andIsNeverGhostedLikeAHut', parseFloat(getComputedStyle(wb).opacity) >= 0.8, getComputedStyle(wb).opacity);
+    for (const k in wcost) S.res[k] = wcost[k];
+    UI.refreshMenu();
+    ck('paidInFullItSaysReady', prog() === 'Ready to raise', prog());
+    S.res.wood = Math.floor(wcost.wood / 2);
+    UI.refreshMenu();
+    ck('theScarcestPileSetsTheFigure', prog() === '50% saved', prog());
+    wipeSeen();
   }
 
   try { localStorage.setItem('neo-tutorial-ask', '0'); } catch (e) {}

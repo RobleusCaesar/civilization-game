@@ -204,6 +204,45 @@
   .bbtn canvas { width: 40px; height: 40px; image-rendering: pixelated; }
   .bbtn .bname { font-size: 9px; font-weight: 700; }
   .bbtn .bcost { font-size: 9px; color: var(--dim); }
+  /* THE WONDER CARD IS THE GOAL (UI.buildMenu, tests/tutorial.mjs): gold rim,
+     a victory ribbon, room for its four-resource price, and a live "% saved"
+     line — and it is never ghosted to 45% like an unaffordable hut, because
+     "saving for it" is the state it lives in for most of a run */
+  .bbtn.wonder { width: 86px; border-color: var(--gold); box-shadow: inset 0 1px 0 var(--edge), 0 0 8px rgba(232,193,90,0.35); }
+  .bbtn.wonder.cant { opacity: 0.85; }
+  .bbtn.wonder .bwin { font-size: 8px; font-weight: 900; color: var(--gold); letter-spacing: .05em; text-transform: uppercase; }
+  .bbtn.wonder .bprog { font-size: 9px; font-weight: 700; color: var(--gold); }
+
+  /* ---- TWO ROADS TO VICTORY (Screens.showVictoryPaths, tests/tutorial.mjs) ----
+     the first Calm game's opening modal: z25 — over the tutorial's card (z15)
+     and the placement chrome (z20), under the shell (z30) so pausing covers
+     it. The card speaks in the draft overlay's voice. */
+  #victoryModal {
+    position: fixed; inset: 0; z-index: 25; display: flex; align-items: center; justify-content: center;
+    background: rgba(13,11,8,0.72); padding: 16px;
+  }
+  #victoryModal .vpCard {
+    background: rgba(28,20,11,0.97); border: 1px solid #5c421f; border-radius: 12px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6); color: #f4dfc0; padding: 16px 16px 14px;
+    width: min(94vw, 560px); max-height: 92vh; overflow-y: auto; text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+  #victoryModal h3 { margin: 0; font-size: 18px; color: var(--gold); }
+  #victoryModal .vpRoads { display: flex; gap: 12px; width: 100%; }
+  #victoryModal .vpRoad {
+    flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    background: rgba(0,0,0,0.25); border: 1px solid #3a2a16; border-radius: 10px; padding: 10px 8px;
+  }
+  #victoryModal .vpArt { width: 96px; height: 96px; image-rendering: pixelated; }
+  #victoryModal .vpRoad > b { font-size: 14px; }
+  #victoryModal .vpRoad p { margin: 0; font-size: 12px; line-height: 1.45; color: #d9c4a0; }
+  #victoryModal .vpRoad p b { color: #ffd77e; }
+  #victoryModal .vpPrice { white-space: nowrap; }
+  #victoryModal #vpGotIt { max-width: 220px; min-height: 44px; }
+  @media (max-width: 420px) {
+    #victoryModal .vpRoads { flex-direction: column; }
+    #victoryModal .vpArt { width: 72px; height: 72px; }
+  }
 
   /* ---- placement mode: the ✓/✗ pair and the reason chip ---- */
   #placeUI { position: fixed; inset: 0; z-index: 20; pointer-events: none; display: none; }
@@ -1636,30 +1675,30 @@
 
 </div>
 
-<script src="js/config.js?v=52"></script>
-<script src="js/config.supabase.js?v=52"></script>
-<script src="js/vendor/supabase.js?v=52"></script>
-<script src="js/backend.js?v=52"></script>
-<script src="js/competition.js?v=52"></script>
-<script src="js/score.js?v=52"></script>
-<script src="js/cards.js?v=52"></script>
-<script src="js/artstyle.js?v=52"></script>
-<script src="js/sprites.js?v=52"></script>
-<script src="js/formations.js?v=52"></script>
-<script src="js/relics.js?v=52"></script>
-<script src="js/assets.js?v=52"></script>
-<script src="js/dev.js?v=52"></script>
-<script src="js/map.js?v=52"></script>
-<script src="js/buildings.js?v=52"></script>
-<script src="js/units.js?v=52"></script>
-<script src="js/combat.js?v=52"></script>
-<script src="js/ai.js?v=52"></script>
-<script src="js/render.js?v=52"></script>
-<script src="js/defeatart.js?v=52"></script>
-<script src="js/victoryart.js?v=52"></script>
-<script src="js/ui.js?v=52"></script>
-<script src="js/screens.js?v=52"></script>
-<script src="js/tutorial.js?v=52"></script>
-<script src="js/game.js?v=52"></script>
+<script src="js/config.js?v=53"></script>
+<script src="js/config.supabase.js?v=53"></script>
+<script src="js/vendor/supabase.js?v=53"></script>
+<script src="js/backend.js?v=53"></script>
+<script src="js/competition.js?v=53"></script>
+<script src="js/score.js?v=53"></script>
+<script src="js/cards.js?v=53"></script>
+<script src="js/artstyle.js?v=53"></script>
+<script src="js/sprites.js?v=53"></script>
+<script src="js/formations.js?v=53"></script>
+<script src="js/relics.js?v=53"></script>
+<script src="js/assets.js?v=53"></script>
+<script src="js/dev.js?v=53"></script>
+<script src="js/map.js?v=53"></script>
+<script src="js/buildings.js?v=53"></script>
+<script src="js/units.js?v=53"></script>
+<script src="js/combat.js?v=53"></script>
+<script src="js/ai.js?v=53"></script>
+<script src="js/render.js?v=53"></script>
+<script src="js/defeatart.js?v=53"></script>
+<script src="js/victoryart.js?v=53"></script>
+<script src="js/ui.js?v=53"></script>
+<script src="js/screens.js?v=53"></script>
+<script src="js/tutorial.js?v=53"></script>
+<script src="js/game.js?v=53"></script>
 </body>
 </html>

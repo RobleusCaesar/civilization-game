@@ -132,7 +132,7 @@ node tests/boot.mjs            # frame one is the logo; no chrome before a game;
 node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything; formation art (§17) writes no map array, packs deterministically, re-solves one region per edit
 node tests/calm-peace.mjs      # Calm starts at PEACE: nobody auto-engages until the player's first strike; the rival races for its own wonder
 node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do
-node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-order tolerant, saves mid-lesson, the scout draws no RNG
+node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-order tolerant, saves mid-lesson, the scout draws no RNG; auto-on for the first two games, the Calm victory modal, the Wonder card as the goal
 node tests/muster-horn.mjs   # one tap calls the workforce in, one tap sends it back to its posts
 node tests/levy.mjs          # the village under arms: derived membership, soldier's upkeep, works nothing, holds the town
 node tests/tree-fall.mjs     # a felled wood goes over on screen — every tree about its own foot
@@ -4216,6 +4216,61 @@ closed menu falls back to ringing the toggle. The title's old "Tutorial" button 
 (it opens the static manual) so the two never collide — "How to play"
 measured 0.4px too wide for its plaque at 320px, which
 `noTitleLabelRunsOffItsPlaque` catches and nothing else does.
+
+**THE FIRST TWO GAMES TEACH THEMSELVES** (`tests/tutorial.mjs` §12, the
+retention pass): the tutorial ran THREE times in the first 191 real games —
+an opt-in checkbox on a screen a new player is already reading past.
+`Screens.tutorialWanted()` is now the ONE read of "does this run get the
+teacher" (foundRun's Valley·Classic force, `syncTutToggle`, the toggle's
+tap and `Tutorial.maybeStart` all ask it): an explicit choice in
+`neo-tutorial-ask` ('1'/'0') wins outright; with the checkbox never touched
+the teacher is ON while the local count of games founded (`neo-games`,
+stepped by `noteGameFounded` at the two founding sites — keeping a card in
+`draftTap`, and `replayRun`) is under `TUT_AUTO_GAMES` (2), and off from the
+third game. Three rules around it. **A Skip records the opt-out**
+(`Tutorial.skip` writes '0'): game two must never re-arm a lesson the player
+refused twice over. **A returning player is a veteran**: the first read of
+`neo-games` on a device with any trace of earlier play (the finished-run
+ledger, a bound slot, a crash snapshot, the draft help dismissed) seeds the
+count at `TUT_AUTO_GAMES`, so the launch that shipped this did not teach
+the people who taught us. **The count steps AFTER the arming read** in
+`draftTap` (`maybeStart` → `noteGameFounded` → `enterGame`), or game two
+reads 2 and gets nothing. The toggle shows the EFFECTIVE state (auto-on
+reads as on) and a tap writes the opposite as an explicit choice.
+**And the run_start row tells the truth now**: `_enterNow` logs
+`tutorial: !!(S.tut && S.tut.on)`, and `maybeStart` used to run AFTER
+`enterGame` — so the board's "3 tutorials in 191 games" was really the
+count of cold-cache runs where the art plaque happened to delay the log
+past the arming. The order is pinned (`theTeacherIsArmedBeforeTheRunIsLogged`).
+
+**TWO ROADS TO VICTORY** (`tests/tutorial.mjs` §13, `Screens.showVictoryPaths`):
+nobody has ever won by the Wonder — 0 in every Calm game logged — and the
+tutorial's one line about it arrives fifteen steps in, on a run that opted
+in. So the FIRST Calm game opens on a short modal: the rival's red hall on
+one side, THIS run's own monument on the other (the same drawables the build
+menu paints — `Sprites.buildingA.tc`, `Sprites.building.wonder[0]`), the
+price and the 45 days under it, and where the button is. Once per device
+(`neo-victory-seen`, stamped when SHOWN, so a pause or a reload never
+re-deals it), only where the mode offers the Wonder (`UI.wonderOffered` —
+the build menu's own gate, so Moderate never sees it), dismissed by its
+button, the backdrop or Escape, removed by leaving the game
+(`Screens.show` → `hideVictoryPaths`). z25: over the tutorial's card (15)
+and the placement chrome (20), under the shell (30). **The tutorial holds
+its notes while it has the floor** (`Screens.modalUp` in `_updateDisplay`
+and `_checkEvents`) and resumes on dismissal — two things to read at once
+is the failure this exists to prevent. `victoryPathsDue` asks bare `UI`,
+never `window.UI` — the guard read `window.UI &&` for one commit and
+silently answered "no modal" forever (the window.G trap; the contract's
+Calm check caught it). **And the Wonder's build card is dressed as the
+goal** (`UI.buildMenu` / `refreshMenu` / `wonderSavedLine`): last in the row
+and greyed to 45% for the whole run, it was the one card nobody scrolled
+to. It wears a gold rim and a "★ Victory" ribbon, is never ghosted below
+0.85 (saving for it is the state it lives in), and under the price says how
+far the town has SAVED — the SCARCEST pile's share of its price, floored,
+"Ready to raise" once every pile is there. Its position stays last: it is
+the end of the game. **The price itself is untouched here** — whether
+15,000 of each is reachable in a Calm run is Phase 4's question, argued
+with numbers there.
 
 **Four hulls, and one of them is a siege engine** (`tests/boats-moat-scuttle.mjs`
 covers the hulls; the roster lives in `CFG.BUILDINGS.dock.train`): the dock
