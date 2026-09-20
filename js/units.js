@@ -268,6 +268,29 @@ const Units = {
      no resource (building, marching), `working` is false while still walking
      to the job, so "on the way" never claims income it isn't earning yet. */
   dayLen() { return CFG.DAY_MS / 1000; },     // seconds of real time in one in-game day
+
+  /* WHOSE HANDS THESE ARE (the retention pass, tests/moderate-dials.mjs).
+     `gather` is the PLAYER's difficulty dial — it is the whole of Hard's
+     stated "slower gathering" identity — and `aiOutput` is the rival's, the
+     pair production has always branched on (see the modeMult line in the
+     work task). Hand-gathering never made that branch: all three income
+     paths and both panel readouts multiplied by `gather` whatever the
+     gatherer's owner was, so on Hard the RIVAL paid the player's 10% tax on
+     every log, every stone and every fish it cut by hand.
+     That is not a small thing to get wrong, because AI.workTheLand is
+     load-bearing: hand-gathering is the only way the chief makes the worked
+     ground its stations must stand on, and stubbing it out leaves the rival
+     on one building and a level-1 hall at day 200. Hard was quietly handing
+     it a tax the design never wrote down.
+     ONE helper, asked by every rate in the game, so the two can never drift
+     apart again. `aiGather` is declared for symmetry with `aiOutput` and
+     defaults to 1: the rival's difficulty lives on its own dials, not on
+     the player's. */
+  gatherMode(u) {
+    const m = G.modeCfg();
+    return (u && u.owner === 'P') ? m.gather : (m.aiGather == null ? 1 : m.aiGather);
+  },
+
   workReport(u) {
     if (!u) return null;
     const t = u.task, at = (x, y) => (u.x | 0) === x && (u.y | 0) === y;
@@ -289,14 +312,14 @@ const Units = {
       const name = { wood: 'Felling timber', stone: 'Quarrying stone', food: 'Harvesting food' };
       const ico = { wood: '🪓', stone: '⛏️', food: '🧺' };
       if (!g) return { icon: '🚶', what: 'Heading out', rate: null, working: false };
-      const n = g.rate * this.dayLen() * mode.gather * (window.Cards ? Cards.gatherMult(u.owner, g.res) : 1);
+      const n = g.rate * this.dayLen() * this.gatherMode(u) * (window.Cards ? Cards.gatherMult(u.owner, g.res) : 1);
       return { icon: ico[g.res] || '🧺', what: on ? name[g.res] : 'Walking to the ' + g.res,
         rate: on ? { res: g.res, n } : null, working: on };
     }
     if (t.type === 'fish' || t.type === 'shorefish') {
       const shore = t.type === 'shorefish';
       const on = shore ? at(t.sx, t.sy) : at(t.x, t.y);
-      const n = (shore ? CFG.SHORE_FISH.rate : CFG.FISH.rate) * this.dayLen() * mode.gather *
+      const n = (shore ? CFG.SHORE_FISH.rate : CFG.FISH.rate) * this.dayLen() * this.gatherMode(u) *
         (window.Cards ? Cards.fishMult(u.owner) : 1);
       return { icon: '🎣', what: on ? (shore ? 'Line-fishing the shoal' : 'Nets out') : 'Rowing to the shoal',
         rate: on ? { res: 'food', n } : null, working: on };
@@ -1362,7 +1385,12 @@ const Units = {
         if (u.fleeT <= 0) {
           u.fleeT = 0.4;
           const foe = Combat.nearestUnit(u.x, u.y, 5,
-            o => (o.owner === 'P' && this.isMilitary(o)) || (o.owner === 'R' && !this.isTransport(o)));
+            // the truce gate its own sibling already carries (AI.workTheLand's
+            // gather-flee, ai.js): without it a player soldier merely riding
+            // past at peace sent the rival's townsfolk scurrying for the hall,
+            // which is the militia leak wearing working clothes
+            o => (o.owner === 'P' && this.isMilitary(o) && Combat.hostile('A', 'P')) ||
+                 (o.owner === 'R' && !this.isTransport(o)));
           if (foe) {
             // behind the nearest soldier first, the hall only when nobody is
             // under arms (fleeSpot) — the same cover rule the flee branch uses
@@ -1462,7 +1490,7 @@ const Units = {
           const store = u.owner === 'P' ? S.res : (S.ai && S.ai.res);
           if (!store) { u.task = null; continue; }
           const before = store[g.res];
-          const take = Math.min(S.map.resAmount[idx], g.rate * dt * G.modeCfg().gather *
+          const take = Math.min(S.map.resAmount[idx], g.rate * dt * this.gatherMode(u) *
             (window.Cards ? Cards.gatherMult(u.owner, g.res) : 1));   // ORIGIN CARDS pace
           store[g.res] += take;
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
@@ -1579,7 +1607,7 @@ const Units = {
           // fish feed whichever tribe cast the nets — the rival runs boats too
           const bag = u.owner === 'P' ? S.res : S.ai.res;
           const before = bag.food;
-          const take = Math.min(S.map.resAmount[idx], CFG.FISH.rate * dt * G.modeCfg().gather *
+          const take = Math.min(S.map.resAmount[idx], CFG.FISH.rate * dt * this.gatherMode(u) *
             (window.Cards ? Cards.fishMult(u.owner) : 1));   // ORIGIN CARDS: Riverborn nets
           bag.food += take;
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
@@ -1637,7 +1665,7 @@ const Units = {
           if (S.map.terrain[idx] !== T.WATER) { u.task = null; continue; }
           const bag = u.owner === 'P' ? S.res : S.ai.res;
           const before = bag.food;
-          const take = Math.min(S.map.resAmount[idx], CFG.SHORE_FISH.rate * dt * G.modeCfg().gather *
+          const take = Math.min(S.map.resAmount[idx], CFG.SHORE_FISH.rate * dt * this.gatherMode(u) *
             (window.Cards ? Cards.fishMult(u.owner) : 1));   // ORIGIN CARDS: Riverborn lines
           bag.food += take;
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
@@ -2301,12 +2329,32 @@ const Units = {
   damage(u, amt, attackerId, attackerOwner) {
     u.hp -= Math.max(1, amt);
     const attacker = attackerId ? this.get(attackerId) : null;
+    /* THE SOUND OF A FIGHT WE ARE IN. Either side of the blow being ours is
+       what makes it audible: a scrap between barbarians and the rival across
+       the map is not the player's to hear, and would be telling them where it
+       was. Throttled hard per kind in Sound (a blow every 0.11s, a voice cap
+       over the top), because a twenty-a-side melee lands dozens of these a
+       second and the cap is what keeps it a battle rather than a wall of
+       noise. A bow sounds different from a blade — that is most of what tells
+       you, without looking, what is happening to you. */
+    try {
+      if (typeof Sound !== 'undefined' &&
+          (u.owner === 'P' || (attacker && attacker.owner === 'P') || attackerOwner === 'P')) {
+        const rng = attacker && CFG.UNITS[attacker.kind] && CFG.UNITS[attacker.kind].rng;
+        Sound.play(rng >= 4 ? 'arrow' : 'hit');
+      }
+    } catch (e) {}
     { // the truce's safety net: any P<->A blood ends it, whatever path landed it
       const ao = attackerOwner || (attacker && attacker.owner);
       if (S.peace && ((ao === 'P' && u.owner === 'A') || (ao === 'A' && u.owner === 'P')))
         G.breakPeace();
     }
     if (u.hp <= 0) {
+      try {
+        if (typeof Sound !== 'undefined' &&
+            (u.owner === 'P' || (attacker && attacker.owner === 'P') || attackerOwner === 'P'))
+          Sound.play('die');
+      } catch (e) {}
       S.units.splice(S.units.indexOf(u), 1);
       // BACK TO YOUR POST: death cleanup clears every attacker's lock directly,
       // so the combat branch's "target gone" return never fires — send each

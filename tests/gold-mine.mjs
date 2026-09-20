@@ -396,6 +396,31 @@ const out = await p.evaluate(() => {
       Bld.canClaimSeam('A', s.x, s.y).why);
     const foe = Units.spawn('villager', 'A', stand.x, stand.y);
     ck('andTheRivalIsRefusedTheOrder', Units.assignMine(foe, s.x, s.y) === false, '');
+    /* AND THE RULE POINTS BOTH WAYS — the half this file never tried.
+       It only ever asked whether a PLAYER-manned mine refuses the rival,
+       which passed because the player's crews are real units holding a
+       `work` task. The rival holds NO work tasks, by design: its stations
+       are manned by the demand-driven deal in Bld.dailyProduction and
+       cards.js stamps a work task only `if (side === 'P')`. So counting
+       work tasks answered zero for every rival station, always, and a
+       player could walk onto a manned rival shaft and take it at whatever
+       level it stood — while the rival had to clear the player's hands off
+       first. Bld.crewOn asks each tribe in its own terms. */
+    {
+      const own = Bld.at(s.x, s.y);
+      const wasOwner = own.owner;
+      own.owner = 'A';                                  // the rival's shaft, crewed its own way
+      Bld._aiCrew = { [own.id]: 1 };
+      ck('andARivalMannedSeamCannotBeTakenEither',
+        Bld.canClaimSeam('P', s.x, s.y).ok === false &&
+        /clear them off/i.test(Bld.canClaimSeam('P', s.x, s.y).why),
+        Bld.canClaimSeam('P', s.x, s.y).why || 'the player walked onto a manned rival mine');
+      ck('norQuietlyThroughTheClaimItself', Bld.claimSeam('P', s.x, s.y) === null,
+        'the question and the deed must agree');
+      Bld._aiCrew = { [own.id]: 0 };                    // the chief pulled its hand off
+      ck('butAnEmptyRivalShaftIsFairGame', Bld.canClaimSeam('P', s.x, s.y).ok === true, '');
+      Bld._aiCrew = null; own.owner = wasOwner;
+    }
     Units.despawn(mine);
     ck('killTheMinerAndItIsFree', Bld.canClaimSeam('A', s.x, s.y).ok === true, '');
     Units.assignMine(foe, s.x, s.y);

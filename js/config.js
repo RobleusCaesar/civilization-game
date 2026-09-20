@@ -504,7 +504,15 @@ const CFG = {
         // the largest on the map by a wide margin — a work site still starts at
         // Bld.siteStartHp (40%), so the works CAN be broken and holding them is
         // the whole tension of the peaceful victory
-        { cost: { food: 15000, wood: 15000, stone: 15000, gold: 4000 },
+        /* THE PRICE WAS RE-MEASURED (the retention pass): 15,000 of each was
+           never raised in any logged Calm game, and a scripted player that
+           grows to 18 hands, upgrades its hall and stations and holds the
+           ground ends day 370 with 4–9k wood, 1.5–3.9k stone and 0–10k food
+           — while the rival finishes its own at ~376. Stone is the finite
+           one (quarry 3.5 a hand a day at L1), so it carries the smallest
+           bill. The RIVAL's bill is derived from this (CFG.WONDER.aiCostFrac,
+           re-set so its absolute cost is unchanged). */
+        { cost: { food: 6000, wood: 6000, stone: 4000, gold: 1500 },
           time: 45, hp: 15000, vision: 9 },
       ],
     },
@@ -547,7 +555,9 @@ const CFG = {
        could never lay one outside a test harness — the day-350 gate was a
        door that never opened. The bill is scaled the way its income is;
        the player never sees the rival's stockpile, only the countdown. */
-    aiCostFrac: 0.12,
+    // 0.12 of the old 15k bill was 1,800 wood; 0.30 of the 6k bill is the
+    // same 1,800 — the rival's clock did not move when the player's did
+    aiCostFrac: 0.30,
   },
 
   UNITS: {
@@ -1054,9 +1064,14 @@ const CFG = {
       waveFirst: 85, waveGapMult: 1.9, waveSizeAdd: 0, barbMult: 0.75, bandCap: 5,
       campMult: 0.4, campGuard: [2, 3],   // rarer, harder camps: meeting one should hurt
       deathEvery: [34, 52],   // days between villager deaths (tests/mortality.mjs)
-      animalMax: 2, animalChance: 0.15, aiRaidDay: 110,
+      animalMax: 2, animalChance: 0.15, aiRaidDay: 110, aiRampDays: 12,
       aiBuildEvery: 2, aiOutput: 1.0, aiArmyCap: 5, aiArmyDiv: 14, aiEliteShare: 0.1, aiAggro: 0.4,
       aiVillCap: 12, aiVillEvery: 11, aiActions: 2, aiHarass: 0,   // calm: no harassment parties
+      /* the earliest a SCOUTED thin town may be raided. Absent, this read
+         the code's default of 12 — Hard's number — so a Calm player who
+         broke the truce could be raided from day 12 despite a raid floor of
+         110. Every mode declares it now; no mode inherits another's. */
+      aiVulnDay: 70,
       foeNoteChance: 1,   // enemy/raider intel toasts (see G.foeNote) — Calm always warns you
       // THE WONDER (tests/wonder.mjs) works on EVERY difficulty — the rules
       // never ask what mode you are in. This flag only decides whether the
@@ -1070,7 +1085,7 @@ const CFG = {
       // Defend stance; the bow is the one war icon nothing else has claimed
       name: 'Moderate', icon: '🏹', desc: 'The intended experience.',
       gather: 1, output: 1, finishTC: true,   // one reprieve, then barbarians finish a collapsed clan
-      waveFirst: 40, waveGapMult: 1.5, waveSizeAdd: 0, barbMult: 1,
+      waveFirst: 52, waveGapMult: 1.5, waveSizeAdd: 0, barbMult: 1,
       campMult: 0.65, campGuard: [2, 4],   // rarer, harder camps: meeting one should hurt
       deathEvery: [25, 40],   // days between villager deaths (tests/mortality.mjs)
       animalMax: 3, animalChance: 0.2, aiRaidDay: 50,
@@ -1082,13 +1097,32 @@ const CFG = {
       // thousands of food it had no way to spend, because its army target
       // topped out around thirteen. A bigger standing force (and a faster ramp)
       // turns that dead granary into pressure without touching its judgement.
-      aiBuildEvery: 2, aiOutput: 1.0, aiArmyCap: 10, aiArmyDiv: 8, aiEliteShare: 0.45, aiAggro: 0.95, aiEarly: 0.9,
+      /* THE RETENTION PASS (measured on a scripted-player harness, 8–16
+         seeds per style, 200 days): a Moderate town with no spears by day
+         ~50 lost its hall by day ~60 in 75–83% of games; one holding five
+         defenders and a tower still lost 50–70%, ground down by raids every
+         8–10 days, its gatherers cut down in the field before the first raid
+         arrived (11 hands → 3 by day 60). Four dials, each on the thing the
+         sims showed: the standing army before day 100 (aiEarly 0.9 → 0.75),
+         the raid cadence (aiRaidCdMult 1.35 — a Horselord's raidCd 8 becomes
+         ~11), the harassment (12 days apart, from the raid floor rather than
+         16 days before it), and the first wave (40 → 52, off the first raid's
+         window). aiVulnDay is the earliest a scouted THIN town may be hit:
+         Hard keeps the old 12, Moderate waits for day 25. */
+      aiBuildEvery: 2, aiOutput: 1.0, aiArmyCap: 10, aiArmyDiv: 8, aiEliteShare: 0.45, aiAggro: 0.95, aiEarly: 0.75,
+      aiRaidCdMult: 1.35, aiVulnDay: 25,
+      // days per +1 on the standing-army CAP past day 60 (AI.armyWant). The
+      // code has always read a mode dial here and NO mode declared one, so
+      // every difficulty ramped at the hard-coded 12 while the comment beside
+      // it claimed Moderate ramped slower. Declared, so the lever is real.
+      aiRampDays: 18,
+      bandCap: 6,   // was an undeclared default sitting in combat.js — calm 5, moderate 6, hard 9
       // HUMANIZED THROUGHPUT (not intelligence): the rival's economy now runs on a
       // real villager workforce (aiVillCap / aiVillEvery — kill its workers, cut its
       // income) and it has one pair of hands: aiActions macro actions per day
       // (build/upgrade/train/caravan each spend one). Strategy layers untouched.
       aiVillCap: 15, aiVillEvery: 10, aiActions: 3,
-      aiHarass: 8,   // days between two-rider harassment sorties at scouted, exposed workers
+      aiHarass: 12, aiHarassLead: 0,   // days between two-rider harassment sorties at scouted, exposed workers; from the raid floor, not before it
       foeNoteChance: 0.5,   // enemy/raider intel toasts (see G.foeNote) — half get through
     },
     hard: {
@@ -1109,9 +1143,9 @@ const CFG = {
       waveFirst: 33, waveGapMult: 0.85, waveSizeAdd: 1, barbMult: 1.15, barbSpacing: true, bandCap: 9,
       campMult: 1.0, campGuard: [3, 4],   // rarer, harder camps: meeting one should hurt
       deathEvery: [18, 28],   // days between villager deaths (tests/mortality.mjs)
-      animalMax: 4, animalChance: 0.3, aiRaidDay: 32,
+      animalMax: 4, animalChance: 0.3, aiRaidDay: 32, aiRampDays: 12,
       aiBuildEvery: 1, aiOutput: 1.25, aiArmyCap: 15, aiArmyDiv: 5, aiEliteShare: 0.8, aiAggro: 1.2,
-      aiVillCap: 18, aiVillEvery: 8, aiActions: 4, aiHarass: 5,
+      aiVillCap: 18, aiVillEvery: 8, aiActions: 4, aiHarass: 5, aiVulnDay: 12,
       foeNoteChance: 0,   // enemy/raider intel toasts (see G.foeNote) — none get through: everything a surprise
     },
   },

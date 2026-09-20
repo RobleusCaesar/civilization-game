@@ -227,12 +227,33 @@ const Bld = {
     return S.units.filter(u => u.task && u.task.type === 'work' && u.task.id === b.id &&
       (owner === undefined || u.owner === owner)).length;
   },
+  /* IS ANYBODY ACTUALLY WORKING THIS PLOT — asked of whichever tribe owns it,
+     in that tribe's own terms. The player's crews are real units standing on
+     the tile and holding a `work` task. The RIVAL'S ARE NOT, and never have
+     been: its stations are manned by the demand-driven deal in
+     dailyProduction, one living villager to one crew slot, and cards.js only
+     ever stamps a work task `if (side === 'P')`. So counting work tasks
+     answered ZERO for every rival station, always — which quietly made the
+     gold mine's whole ownership rule one-way. A player could walk onto a
+     manned rival Lv3 shaft and take it, miners and all, while the rival had
+     to clear the player's hands off first. That is the exact thing the
+     contract says cannot happen ("you cannot walk up and take a manned
+     mine… The rival plays by every one of these rules").
+     Before the first deal of a run there is no answer yet, so we fall back
+     to the pool: hidden state may REFUSE more, never PERMIT more. */
+  crewOn(b) {
+    if (!b) return 0;
+    if (b.owner !== 'A') return this.workersActive(b);
+    const dealt = this._aiCrew;
+    if (dealt) return dealt[b.id] || 0;
+    return S.units.some(u => u.owner === 'A' && Units.isVillager(u)) ? 1 : 0;
+  },
   // can `owner` put a hand on the works standing here? (null = nothing to take)
   canClaimSeam(owner, x, y) {
     const b = this.at(x, y);
     if (!b || b.key !== 'mine') return { ok: true, why: '' };      // unclaimed seam
     if (b.owner === owner) return { ok: true, why: '' };
-    return this.mineHands(b, b.owner) > 0
+    return this.crewOn(b) > 0
       ? { ok: false, why: 'Their miners hold it — clear them off first' }
       : { ok: true, why: '' };
   },
@@ -248,7 +269,7 @@ const Bld = {
       return b;
     }
     if (b.owner === owner) return b;
-    if (this.mineHands(b, b.owner) > 0) return null;               // still held
+    if (this.crewOn(b) > 0) return null;                           // still held (crewOn, not the work task — see canClaimSeam)
     // TAKEN OVER, at whatever level it stands: nothing about the works
     // changes but whose banner is over them
     const was = b.owner;
@@ -1057,6 +1078,9 @@ const Bld = {
   finish(b, builder) {
     b.construction = 0;
     b.hp = b.maxhp;
+    // the good news, and one of the few sounds that is NOT throttled: a work
+    // finishing is a one-off the player has waited days for
+    if (b.owner === 'P' && typeof Sound !== 'undefined') Sound.play('done');
     /* A PLAYER GATE IS BORN CLOSED (tests/drawbridge.mjs) — every tier, the
        drawbridge rule generalized: a door nobody chose to open must never be
        a road into the castle, and the first opening runs the ordinary toggle
@@ -1543,6 +1567,7 @@ const Bld = {
   /* put a finished unit on the ground and hand it its first orders */
   releaseTrained(b, kind, spot) {
     const nu = Units.spawn(kind, b.owner, spot.x, spot.y);
+    if (b.owner === 'P' && typeof Sound !== 'undefined') Sound.play('train');
     if (b.owner === 'P') {
       G.log(`${CFG.UNITS[kind].name} ready`);
       if (S.stats) S.stats.trained++;
@@ -1704,6 +1729,13 @@ const Bld = {
         const out = this.lv(pick).out || {};   // credit a season's worth to the projection
         for (const k in out) proj[k] = (proj[k] || 0) + out[k] * 30;
       }
+      /* WHO THE CHIEF PUT WHERE, kept so anything else can ask (Bld.crewOn).
+         The deal is the ONLY place the rival's stations are manned, and it
+         used to be computed and thrown away inside this function — which
+         left every question about the rival's crews with no honest answer
+         but the work TASK, and the rival holds no work tasks by design.
+         Module state, re-dealt every day, never in a save (R.collapses). */
+      this._aiCrew = aiCrew;
     }
     for (const b of this.list(owner)) {
       if (!this.done(b) || b.upgrading) continue;

@@ -245,6 +245,43 @@ const out = await p.evaluate(() => {
     ck('andRetiresWhenTheWorksFall', el.style.display === 'none', '');
   }
 
+  // ---- 6. THE COLUMN AT PEACE (the retention pass, measured: 2 of 12 Calm
+  //         sims had the rival's reconnaissance column — launched at day 102,
+  //         no war, no anchor — reach the player's fields, stab the first
+  //         villager it met, trip the damage net, and PUSH a town that had
+  //         never lifted a spear) ----
+  {
+    fresh('calm');
+    const ptc = Bld.tcOf('P'), atc = Bld.tcOf('A');
+    // 6a. no hunt column launches at peace, however strong and blind the chief
+    for (let i = 0; i < 8; i++) Units.spawn('defender', 'A', atc.x - 1, atc.y + 2 + (i % 4));
+    S.ai.raidCd = 0; S.day = 120; S.ai.acts = 9; S.ai.read = S.ai.read || {}; S.ai.read.anchor = null; S.ai.knownB = {};
+    try { AI.daily(); } catch (e) { /* a one-day probe: the launch gate is what we measure */ }
+    const hunting = S.units.filter(u => u.owner === 'A' && u.task && u.task.type === 'raid' && u.raidLane === 'hunt').length;
+    ck('noReconnaissanceColumnMarchesAtPeace', S.peace === true && hunting === 0, hunting + ' hunters out, peace ' + S.peace);
+    // 6b. a raid-tasked column standing beside a player villager at peace picks
+    //     NOBODY and walks home — the soft-target picks ask the funnel now
+    const raider = Units.spawn('defender', 'A', ptc.x + 4, ptc.y + 1);
+    raider.task = { type: 'raid' }; raider.raidLane = 'hunt'; raider.raidObj = { type: 'tc', x: ptc.x, y: ptc.y };
+    const vil = Units.spawn('villager', 'P', ptc.x + 5, ptc.y + 1);
+    Combat.aiRaidSeek(raider);
+    ck('theColumnAtPeaceSeeksNothing', !raider.tUnit && !raider.tBld && !!(raider.task && raider.task.type === 'move'),
+      'tUnit ' + raider.tUnit + ' tBld ' + raider.tBld + ' task ' + JSON.stringify(raider.task));
+    ck('andTheTruceStillHolds', S.peace === true, '');
+    // 6c. the two picks that read `o.owner === 'P'` by hand ask hostileUnits now
+    const seekSrc = Combat.aiRaidSeek.toString();
+    ck('theSoftPicksAskTheFunnel', !/o\.owner === 'P' && Units\.is(Sapper|Villager)\(o\)/.test(seekSrc) &&
+      /this\.hostileUnits\(u, o\) && Units\.isSapper\(o\)/.test(seekSrc) && /this\.hostileUnits\(u, o\) && Units\.isVillager\(o\)/.test(seekSrc), '');
+    Units.despawn(raider); Units.despawn(vil);
+    // 6d. …and at WAR the same column takes the villager exactly as before
+    fresh('moderate');
+    const ptc2 = Bld.tcOf('P');
+    const r2 = Units.spawn('defender', 'A', ptc2.x + 4, ptc2.y + 1);
+    r2.task = { type: 'raid' }; r2.raidLane = 'main'; r2.raidObj = { type: 'tc', x: ptc2.x, y: ptc2.y };
+    const v2 = Units.spawn('villager', 'P', ptc2.x + 5, ptc2.y + 1);
+    Combat.aiRaidSeek(r2);
+    ck('atWarTheColumnStillTakesTheVillager', r2.tUnit === v2.id, 'tUnit ' + r2.tUnit + ' vs ' + v2.id);
+  }
   return { res, fails };
 });
 

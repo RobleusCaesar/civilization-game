@@ -57,6 +57,13 @@ const Combat = {
     R.float(Bld.cx(b), b.y - 0.15, '-' + dmg, flame ? '#f2963a' : '#e8d2a0');
     if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
       G.log(`${Bld.def(b.key).name} under attack!`, true);
+    /* THE HORN. This is the only unprompted defensive alarm the game has —
+       the log line beside it is deliberately ungated by difficulty for that
+       reason — so it is the one sound allowed to be big, and it rides the
+       SAME roll rather than firing on every blow: an alarm on each swing is
+       not an alarm, it is the sound of a building being hit. Its own gap in
+       Sound keeps a long siege from becoming a horn section. */
+    if (b.hp > 0 && b.owner === 'P' && typeof Sound !== 'undefined') Sound.play('raid');
   },
 
   // hostility matrix: P<->A, P<->R, P<->W, A<->W
@@ -513,7 +520,19 @@ const Combat = {
      a villager safe behind a wall doesn't freeze the hunter. */
   chaosSeek(u) {
     if (u.task && u.task.type === 'move') return;   // finish the walk first
-    const foe = u.owner === 'P' ? 'A' : 'P';
+    /* WHOSE BUILDINGS THIS PARTY MAY BURN — asked of the funnel, never
+       assumed (tests/calm-peace.mjs). The unit tiers below have always asked
+       `hostileUnits`; the building tiers flipped `u.owner === 'P' ? 'A' :
+       'P'` by hand, which is the exact shape the militia leak taught us to
+       stop writing. Two things were wrong with it. At PEACE a Calm player
+       who armed Chaos — a doctrine, not an order — had the party walk over
+       and set about a rival farm nobody told it to touch, and
+       orderAttackBuilding then declared the truce broken BY THE PLAYER; the
+       levy branch routes here too, under a comment promising a levy raised
+       at peace threatens only the wilds. And a flip between 'A' and 'P' can
+       never name 'R', so "attack anything in reach" quietly could not see a
+       barbarian camp standing in the middle of it. */
+    const foes = ['P', 'A', 'R'].filter(o => this.hostile(u.owner, o));
     const civ = this.nearestUnit(u.x, u.y, this.CHAOS_R, o => this.hostileUnits(u, o) &&
       !Units.isPassive(o) && (Units.isVillager(o) || Units.isSapper(o)) && this.canEngage(u, o));
     if (civ && this.canReach(u, civ.x, civ.y, 1.6)) { u.tUnit = civ.id; u.task = { type: 'attack' }; u.anchor = { x: u.x, y: u.y }; return; }
@@ -525,7 +544,14 @@ const Combat = {
     const tiers = [bb => ECON[bb.key], bb => MIL[bb.key], bb => bb.key === 'tower',
       bb => bb.key === 'wall' || bb.key === 'gate', bb => true];
     for (const pred of tiers) {
-      const bld = this.nearestReachableBld(u, foe, this.CHAOS_R, pred);
+      // nearest across every hostile owner, not the first owner that has one
+      let bld = null, bd = Infinity;
+      for (const o of foes) {
+        const c = this.nearestReachableBld(u, o, this.CHAOS_R, pred);
+        if (!c) continue;
+        const d = Math.hypot(Bld.cx(c) - u.x, Bld.cy(c) - u.y) - Bld.reach(c);
+        if (d < bd) { bd = d; bld = c; }
+      }
       if (bld) { Units.orderAttackBuilding(u, bld); return; }
     }
   },
@@ -706,6 +732,23 @@ const Combat = {
       if (u.repathT <= 0) { u.repathT = 0.8; Units.setPath(u, camp.x, camp.y); }
       return;
     }
+    /* THE TRUCE HOLDS HERE TOO (tests/calm-peace.mjs, the retention pass): a
+       column at peace has no war to seek. Every pick below aims at the
+       player — the works, a sapper, a villager, a bridge, a station, the
+       hall, the wall — and two of them asked `o.owner === 'P'` by hand
+       instead of the peace-gated funnel, so a reconnaissance column that
+       reached the player's fields on Calm stabbed the first villager it met,
+       the damage net declared the truce broken, and the chief PUSHed a town
+       that had never lifted a spear (measured: 2 of 12 Calm sims, the hall
+       razed by day 150–176). A raider with nothing hostile to seek walks
+       home; the purge (1a) is the one errand the wilds still allow. */
+    if (u.owner === 'A' && !this.hostile('A', 'P')) {
+      const home = Bld.tcOf(u.owner);
+      u.tUnit = 0; u.tBld = 0; u.raidObj = null;
+      if (home) { u.task = { type: 'move', x: home.x, y: home.y + Bld.size(home) }; Units.setPath(u, home.x, home.y + Bld.size(home)); }
+      else u.task = null;
+      return;
+    }
     /* 1b) AN ANCIENT WONDER UNDER CONSTRUCTION beats every other target on the
        board — finishing it simply wins the game, so once a raider is within
        striking distance of the works nothing else is worth a swing. Placed
@@ -722,9 +765,10 @@ const Combat = {
     //    value) is the juiciest, then isolated villagers, then undefended workplaces.
     //    Reachability again: villagers tucked behind the walls are NOT a target —
     //    fixating on them is exactly what left raiders idling at the gate.
-    const sap = strike ? null : this.nearestUnit(u.x, u.y, 8, o => o.owner === 'P' && Units.isSapper(o) && this.canEngage(u, o));
+    //    Never a hand-rolled owner check: the funnel is what the truce gates.
+    const sap = strike ? null : this.nearestUnit(u.x, u.y, 8, o => this.hostileUnits(u, o) && Units.isSapper(o) && this.canEngage(u, o));
     if (sap && this.canReach(u, sap.x, sap.y, 1.6)) { u.tUnit = sap.id; return; }
-    const soft = strike ? null : this.nearestUnit(u.x, u.y, 7, o => o.owner === 'P' && Units.isVillager(o) && this.canEngage(u, o));
+    const soft = strike ? null : this.nearestUnit(u.x, u.y, 7, o => this.hostileUnits(u, o) && Units.isVillager(o) && this.canEngage(u, o));
     if (soft && this.canReach(u, soft.x, soft.y, 1.6)) { u.tUnit = soft.id; return; }
     // a player BRIDGE within reach — cutting the crossing severs an expansion or
     // flanking route. Only worth it if we can actually stand beside it.

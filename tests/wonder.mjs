@@ -131,8 +131,10 @@ await p.evaluate(() => {
     ck('nothingElseIsThatBig',
       Object.keys(CFG.BUILDINGS).filter(k => k !== 'wonder')
         .every(k => (CFG.BUILDINGS[k].size || 1) <= 2), 'the hall is 2×2; everything else 1×1');
+    // re-priced in the retention pass (config.js carries the measurement):
+    // stone, the finite resource, carries the smallest bill
     ck('theFullPrice',
-      lv.cost.food === 15000 && lv.cost.wood === 15000 && lv.cost.stone === 15000 && lv.cost.gold === 4000,
+      lv.cost.food === 6000 && lv.cost.wood === 6000 && lv.cost.stone === 4000 && lv.cost.gold === 1500,
       JSON.stringify(lv.cost));
     const tc3 = CFG.BUILDINGS.tc.levels[2].time;
     ck('fourTimesTheHall', lv.time >= tc3 * 4, lv.time + ' days vs the level-3 hall\'s ' + tc3);
@@ -259,6 +261,19 @@ await p.evaluate(() => {
     const near = army[0];
     near.x = Bld.cx(w) + 1.2; near.y = Bld.cy(w);
     Units.spawn('villager', 'P', near.x + 0.5, near.y + 0.5);   // a juicier target, ordinarily
+    /* FIRST, THE TRUCE — this world is Calm and the checks above called
+       stormTheWonder DIRECTLY, which is a state a peaceful game cannot
+       actually reach: AI.wonderWatch is peace-gated on purpose ("a player at
+       peace may raise theirs unmolested, and races the chief's own"). A
+       column with nothing to be at war about walks home, so the seek is
+       measured on both sides of the line rather than only the far one. */
+    near.task = { type: 'raid' }; near.tBld = 0; near.tUnit = 0;
+    Combat.aiRaidSeek(near);
+    ck('andAtPeaceTheColumnGoesHomeInstead', S.peace === true && !near.tBld && !near.tUnit,
+      'tBld ' + near.tBld + ' tUnit ' + near.tUnit + ' — the truce covers the works too');
+    G.breakPeace();
+    near.task = { type: 'raid' }; near.tBld = 0; near.tUnit = 0;
+    near.raidLane = 'wonder'; near.raidObj = { type: 'tc', x: w.x, y: w.y };
     Combat.aiRaidSeek(near);
     ck('theWorksOutrankEverything', near.tBld === w.id && !near.tUnit,
       'a villager underfoot does not distract the column');
