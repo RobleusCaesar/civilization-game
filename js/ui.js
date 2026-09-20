@@ -815,47 +815,20 @@ const UI = {
      the platform has them. The game has no sound system yet, so the switch
      is a stored preference future settings can surface: localStorage
      neo-sfx = '0' silences everything. */
+  /* THE HAPTIC HALF OF A CUE. The SOUND moved to js/audio.js when the game
+     got a real voice — one door for every effect, so the mute switch, the
+     per-kind throttle and the voice cap cannot be forgotten at a call site —
+     and this keeps the buzz, which is a different sense and a different
+     switch on a phone. Kept as UI.cue because a dozen call sites say it and
+     they all still mean "acknowledge that". */
   cue(kind) {
     try {
-      if (localStorage.getItem('neo-sfx') === '0') return;
-    } catch (e) {}
-    try {
+      if (typeof Sound !== 'undefined' && !Sound.sfxOn()) return;
       // the homestead gets a small DOUBLE tap — a reward should not feel like
       // the same nudge every other tap gives you
       if (navigator.vibrate) navigator.vibrate(kind === 'bond' ? [14, 45, 22] : kind === 'bad' ? 16 : 8);
     } catch (e) {}
-    try {
-      const ctx = this._sfx || (this._sfx = new (window.AudioContext || window.webkitAudioContext)());
-      if (ctx.state === 'suspended') ctx.resume();
-      /* THE HOMESTEAD'S CHIME (Bld.celebrateHomestead): not a tick but a small
-         RISING THIRD — three bell notes a beat apart, each a soft sine with a
-         quick decay. Everything else this makes is one blip that says "heard
-         you"; this one has to say "well done", and the only way a shape this
-         small says that is by going UP. */
-      if (kind === 'bond') {
-        const notes = [784, 988, 1319];              // G5 - B5 - E6, an open rising chord
-        notes.forEach((hz, i) => {
-          const t0 = ctx.currentTime + i * 0.085;
-          const o2 = ctx.createOscillator(), g2 = ctx.createGain();
-          o2.type = 'sine'; o2.frequency.value = hz;
-          g2.gain.setValueAtTime(0.0001, t0);
-          g2.gain.exponentialRampToValueAtTime(0.05, t0 + 0.012);
-          g2.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.34);
-          o2.connect(g2).connect(ctx.destination);
-          o2.start(t0); o2.stop(t0 + 0.36);
-        });
-        return;
-      }
-      const o = ctx.createOscillator(), gn = ctx.createGain();
-      o.type = 'triangle';
-      const f = kind === 'bad' ? 196 : kind === 'confirm' ? 660 : 440;
-      o.frequency.value = f;
-      if (kind === 'confirm') o.frequency.exponentialRampToValueAtTime(990, ctx.currentTime + 0.09);
-      gn.gain.value = 0.045;
-      gn.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (kind === 'confirm' ? 0.12 : 0.06));
-      o.connect(gn).connect(ctx.destination);
-      o.start(); o.stop(ctx.currentTime + 0.13);
-    } catch (e) { /* no audio — the visuals carry it */ }
+    try { if (typeof Sound !== 'undefined') Sound.play(kind === 'ok' ? 'tick' : kind); } catch (e) {}
   },
 
   /* ---------------- sapper dig/clear line dragging ---------------- */

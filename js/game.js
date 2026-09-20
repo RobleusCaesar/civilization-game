@@ -297,6 +297,7 @@ const G = {
     UI._healLog = {};   // real-time heal-spam limit is UI-local — a fresh game must not
                          // inherit a stale cooldown on whatever unit id collides with an old one
     if (window.Tutorial) Tutorial.onWorldChange();   // drop any old run's overlay/pan/slow
+    if (window.Sound) Sound.onWorldChange();        // throttle clocks are per-world, like R's one-shots
     document.getElementById('btnPause').textContent = '⏸';
     // opening notes linger twice as long — there's a lot to take in on day 1
     const LAND = { valley: 'a green valley', lakeland: 'a land of lakes', highlands: 'rugged highlands', islands: 'a chain of islands' };
@@ -2032,7 +2033,8 @@ const G = {
     UI.deselect();
     if (UI.exitPlacement) UI.exitPlacement();   // a load mid-placement cancels the mode whole
     UI._healLog = {};   // see newGame — a loaded save must not inherit a stale cooldown
-    if (window.Tutorial) Tutorial.onWorldChange();   // transient overlay state never crosses a load
+    if (window.Tutorial) Tutorial.onWorldChange();
+    if (window.Sound) Sound.onWorldChange();        // throttle clocks are per-world, like R's one-shots
     this._marvel = false;   // a save loaded mid-marvel is just a save
     this._dying = null;     // …and an announced-but-unfallen villager lives
     this._easeC = null;    // the ease day-cache must not leak across runs (day numbers collide)
@@ -2185,6 +2187,9 @@ const G = {
 window.addEventListener('load', () => {
   R.init();
   UI.init();
+  // the gesture listeners that make audio possible at all under autoplay
+  // policy; it creates no AudioContext until something actually asks to play
+  if (window.Sound) Sound.init();
   if (window.Assets) Assets.init();   // async; image art swaps in as it decodes
   if (window.Backend) {
     Backend.init();   // async; the game never waits on the network

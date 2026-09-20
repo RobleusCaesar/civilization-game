@@ -983,6 +983,10 @@ const Screens = {
     const days = String(window.Backend ? Backend.autosaveDays : 2);
     for (const b of this.el('setCadence').querySelectorAll('.abtn'))
       b.classList.toggle('sel', b.dataset.v === days);
+    // the audio switches read their LIVE state, so the row tells the truth
+    // even when localStorage is unavailable and Sound is keeping the choice
+    // in memory for the session (Sound.lsGet's fallback)
+    this.paintAudioRows();
     const idBox = this.el('setIdentity');
     idBox.textContent = window.Backend && Backend.uid
       ? 'Your village: ' + Backend.villageName(Backend.uid) : 'cloud saves not connected';
@@ -990,6 +994,17 @@ const Screens = {
       Backend.getProfile().then(r => {
         if (r.ok && r.data && r.data.chief_name) this.el('chiefInput').value = r.data.chief_name;
       });
+  },
+
+  // ONE writer for both audio rows (the hornBackLine convention), shared by
+  // the settings render and every toggle, so they cannot drift apart
+  paintAudioRows() {
+    if (typeof Sound === 'undefined') return;
+    for (const [id, on] of [['setSfx', Sound.sfxOn()], ['setMusic', Sound.musicOn()]]) {
+      const row = this.el(id); if (!row) continue;
+      for (const b of row.querySelectorAll('.abtn'))
+        b.classList.toggle('sel', (b.dataset.v === '1') === on);
+    }
   },
 
   /* ---------------- pause ---------------- */
@@ -1431,6 +1446,18 @@ const Screens = {
     on('btnDefeatTitle', goTitle);
     // settings — the cadence is a segmented row now, same idiom as the
     // new-game pickers, so it reads as a game option instead of a form field
+    /* AUDIO. Sound owns the state and the persistence; these rows only ask
+       it and paint what it says, so there is one source of truth for "is
+       the music on" and the toggle can never disagree with the speaker. */
+    for (const [id, get] of [['setSfx', () => Sound.sfxOn()], ['setMusic', () => Sound.musicOn()]]) {
+      this.el(id).addEventListener('click', e => {
+        const b = e.target.closest('[data-v]'); if (!b) return;
+        const on = b.dataset.v === '1';
+        if (id === 'setSfx') { Sound.setSfx(on); if (on) Sound.play('tick'); }
+        else Sound.setMusic(on);
+        this.paintAudioRows();
+      });
+    }
     this.el('setCadence').addEventListener('click', e => {
       const b = e.target.closest('[data-v]'); if (!b) return;
       Backend.autosaveDays = +b.dataset.v;

@@ -150,6 +150,7 @@ node tests/relics.mjs        # the wilderness relic: tile data bit-identical on/
 node tests/variants.mjs      # 16 landform variants: classic byte-identical, every combo×size playable+symmetric, difficulty leans the size, tutorial forces Valley·Classic, saves carry the world's name
 node tests/animal-art.mjs    # character-class art path: 8-way facing from real displacement (WeakMap, never in a save), strip sheets slice+set playback, per-lookup fallback to the procedural cast
 node tests/archer-art.mjs    # archer line plumbing: military sheet keys {kind}-{p|a}-{tunic} recolored at install, no kind in the boot probe, ranged fight pose vs buildings at reach, deterministic miss overshoot, capped fire-arrow ground strikes
+node tests/audio.mjs         # the game's voice: nothing on the wire, two switches, throttled per kind, and the music is generated rather than looped
 node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map arrays, kept ground DERIVED from standing buildings (grows back on raze, byte-identical), the flatten fires from Bld.finish alone, the 32px cover-art door snaps alpha binary
 ```
 
@@ -4474,6 +4475,61 @@ design call, not a bug fix. The rival's free 5%/day repair is likewise
 deliberate and now says so in its own comment: the player can ORDER a repair
 at ten times the rate and a chief cannot be told to — the same reasoning that
 makes `Combat.bestFoe` the rival's scorer alone.
+
+**THE GAME'S VOICE** (`tests/audio.mjs`, all of `js/audio.js`): sound
+effects and a background bed, and **not one byte of audio ships**. Every
+sound is SYNTHESISED at runtime through Web Audio, which is the same bargain
+the rest of the game makes with its art — the procedural version IS the
+shipping version, it costs nothing on the wire, and a 2MB music file on the
+boot path would have undone the whole load-speed pass for a thing the player
+can switch off. The contract checks the REPO for audio files, because a
+dropped-in `.mp3` would pass every other check here.
+**TWO SWITCHES, ALL THE WAY DOWN**: separate gain buses, separate keys
+(`neo-sfx`, `neo-music`; absent means ON), separate rows in Settings. Plenty
+of people play with effects on and music off, and nobody should have to lose
+the axe to lose the flute — so the contract's cross-checks are the ones that
+matter, in both directions. The keys go through `Sound.lsGet/lsSet`, which
+falls back to a per-session map when localStorage THROWS (the iOS "Block All
+Cookies" failure `Screens.lsGet` already had to learn), or the toggle is a
+button that does nothing, forever.
+**ONE DOOR** (`Sound.play(kind)`): that is what makes the mute switch, the
+per-kind throttle and the voice cap impossible to forget at a call site. The
+throttle is the lesson `R.workFloat` already paid for — twenty villagers
+chopping is twenty axe-falls a second, which is not atmosphere — so every
+kind declares a minimum gap in REAL time and at most `MAX_VOICES` may sound
+at once. The work sounds RIDE `R.workFloat` itself rather than the gather
+step, so what you hear is exactly what you see float, already throttled to
+one glance per hand per ~20s. **PLAYER ONLY**: a chop from across the fog
+would tell the player something the fog exists to hide.
+**THE MUSIC IS GENERATED, NOT LOOPED** — "loopable" with no recording to
+loop. A scheduler writes the next bars AHEAD of the audio clock (a frame that
+takes 200ms cannot make it stutter, because the notes were already in the
+clock), over a drifting detuned drone, on a minor pentatonic with no
+semitone in it, so a random walk cannot play a wrong note. Three notes then
+a rest; the filter breathes over about ninety seconds.
+**LEVELS ARE MEASURED, NOT GUESSED**: `scratchpad/render-audio.mjs` renders
+this same module through an OfflineAudioContext and reports peak and RMS. The
+first cut peaked at **0.077 (-22dBFS)** — a game nobody can hear — and the
+fix is a master `DynamicsCompressor` that lets the buses run loud without
+hard-clipping when ten voices overlap. It now sits at -5.7dBFS peak, no
+clipped samples, the bed at about -20dBFS under the effects.
+**AND THAT RENDER CAUGHT A REAL BUG THE PAGE HID**: the bed came out
+DIGITALLY SILENT while the effects were fine, because **`ctx.resume()` is
+asynchronous** — `unlock()` called it and asked `ctx.state` in the next
+statement, read 'suspended' still, and `startMusic` bailed. On the first
+gesture. Every time. Which is the only gesture most players make before
+deciding the game has no music. `unlock` waits for the promise now, with a
+`statechange` listener as the belt to that brace, and `setMusic` routes
+through it so the two cannot drift. Pinned by
+`oneGestureIsEnoughToStartTheMusic`, which SUSPENDS the context by hand
+first — a file:// page is not always held by autoplay policy, and a check
+that never reaches the race would pass on the broken code too (verified: red
+on the old shape, green on the fix).
+**Nothing here reaches a save** — context, buses, scheduler and throttle
+clocks are all module state (the `R.collapses` rule), and
+`Sound.onWorldChange()` clears the clocks from `newGame`/`loadJSON`.
+`UI.cue` keeps the HAPTIC half (a different sense, a different switch on a
+phone) and hands the sound to this module.
 
 **Four hulls, and one of them is a siege engine** (`tests/boats-moat-scuttle.mjs`
 covers the hulls; the roster lives in `CFG.BUILDINGS.dock.train`): the dock
