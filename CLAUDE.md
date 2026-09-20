@@ -1737,9 +1737,32 @@ and `villager-tiers.mjs` read the SHIPPED strips 900ms after load, while the
 boot probes ~1,000 PNGs. All three wait for the thing itself now
 (`Screens.current` leaving 'endgame'; `Assets.artReady()`), bounded. On a
 loaded CPU (a contract sweep beside a review workflow's Chromiums) the
-land.mjs performance bars — "edit within 10%", "frame stays cheap", the
-budgeted-repaint pixel checks — fail as contention, not as regressions:
-rerun it alone before believing it.
+land.mjs performance bars — "frame stays cheap", the budgeted-repaint
+pixel checks — fail as contention, not as regressions: rerun it alone
+before believing it.
+**AND THE TWO EDIT GATES ARE RELATIVE NOW** (`anOpenGroundEditStaysWithinTenPercent`
+/ `aShoreEditStaysWithinTenPercent`, the `EDIT` constants in tests/land.mjs
+§18): they were absolute milliseconds calibrated once on the author's
+laptop, so every slower machine read them as a regression that was not one
+— a sandbox measured grass 1.09 against a 1.01 gate and shore 5.95 against
+5.65 with the repaint path untouched, and proved it by reading the same
+numbers on a clean checkout. A gate that fails on the hardware instead of
+on the diff teaches everyone to ignore it, which is worse than not having
+one. Each edit is now divided by a REFERENCE WORKLOAD the test owns and
+times on the same page through the same clamped clock (200 sprite blits
+into a clipped tile-sized box plus 50,000 rounds of integer hashing, the
+identical min-over-9-means-of-49 statistic). It calls nothing in render.js
+on purpose: a slow machine moves both numbers and the ratio holds, while a
+slow repaint moves only the numerator. The mix is deliberate — blits alone
+track canvas recording, hashing alone tracks the JS engine, and a repaint
+is both. Measured under CDP CPU throttling as the stand-in for slower
+hardware: at 1x/2x/4x the absolutes moved 4.5x (grass 1.10 → 5.01ms, shore
+5.98 → 27.63ms) while the ratios held at 0.94/0.94/0.94 and
+5.11/5.09/5.20. It still bites — wrapping `R.drawTileAt` with a hash loop
+of known cost, a 10% regression passes and a 19% one fails, on both gates,
+which is what 10% headroom means. The absolute milliseconds are still
+measured and still reported in `_perfGates`, because they are what the
+phone actually pays; they are simply no longer what fails the build.
 
 **The boot, measured** (`tests/boot.mjs`, the retention pass): time-to-menu
 was 3.4s on a desktop and 10s on a throttled phone, and nearly none of it

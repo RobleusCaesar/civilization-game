@@ -1660,10 +1660,15 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
    tiles. Each is timed as WHOLE BATCHES of 49 edits (mean per edit) after
    two warm-up batches, and the statistic is the MIN over 9 batches, which
    is the one that repeats: ±3% on grass, ±7% on the shore across fresh
-   pages on the baseline machine. The gate is that baseline + 10%, with no
-   multiplier. Machine noise is filtered the honest way — a failing gate is
-   re-measured ONCE on a fresh page and the better run counts; a real
-   regression fails both. Run it on a quiet machine. These are RECORDING
+   pages on the baseline machine. Machine noise is filtered the honest way
+   — a failing gate is re-measured ONCE on a fresh page and the better run
+   counts; a real regression fails both. Run it on a quiet machine.
+   AND THE GATE IS A RATIO, NOT A MILLISECOND COUNT (2026-09-20): both edit
+   numbers are divided by a reference workload this file owns and times on
+   the same page, so the gate follows the code rather than the hardware.
+   The argument, the CPU-throttling evidence and how to re-baseline are at
+   the EDIT constants themselves; the absolute milliseconds are still
+   measured and still reported, they are simply not what fails the build. These are RECORDING
    costs — headless Chromium defers canvas raster — which is what the
    baseline measured too; §5 measures the same edits with the raster paid
    (a forced flush per batch), and §19 does the same for the frame's water.
@@ -1695,7 +1700,46 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
      where they reset 25 — measured in-suite 2.86ms at the old ring and
      5.14ms at the derived one on the same machine and day. The gate is
      that + 10%; the phone's "edit ms" button is still the truth. */
-  const EDIT = { grassMs: 1.01, shoreMs: 5.65 };  // grass: baseline 0.92 + 10%. Shore: derived-ring baseline 5.14 + 10% (history above; the smooth-fade baseline before it was 2.62)
+  /* THE EDIT GATES ARE RELATIVE (2026-09-20). What they were is a lesson:
+     absolute milliseconds, calibrated once on the author's laptop, so every
+     slower machine read them as a regression that wasn't one — this sandbox
+     measured grass 1.09 against a 1.01 gate and shore 5.95 against 5.65 with
+     the repaint path untouched, and PROVED it by reading the same numbers on
+     a clean checkout. A gate that fails on the hardware instead of on the
+     diff teaches everyone to ignore it, which is worse than having none.
+     So the gate is now a RATIO against a reference workload measured on the
+     SAME page, in the same harness state, through the same clamped clock —
+     REF_BLITS sprite blits into a clipped tile-sized box plus REF_MATH
+     rounds of integer hashing, per unit, timed by the identical statistic
+     (min over 9 means of 49, two warm-ups). The reference is owned by this
+     file and calls NOTHING in render.js, which is the whole point: a
+     machine that is slow moves both numbers and the ratio holds, while a
+     repaint that gets slower moves only the numerator and the gate trips.
+     The mix is deliberate — blits alone track canvas recording, hashing
+     alone tracks the JS engine, and a repaint is both.
+     MEASURED, same machine, CDP CPU throttling as the stand-in for slower
+     hardware (scratchpad/refcal3.mjs): at 1x/2x/4x the absolute edits moved
+     1.10 -> 2.46 -> 5.01ms (grass) and 5.98 -> 13.28 -> 27.63ms (shore) —
+     4.5x, which is exactly what used to fail — while the ratios held at
+     0.94 / 0.94 / 0.94 and 5.11 / 5.09 / 5.20. Over four fresh pages the
+     ratios spread 0.90-0.98 and 4.93-5.23; the gate is that worst + 10%,
+     the same convention the absolute gates used. The reference is read
+     TWICE, before and after the edits, and the mean is the denominator —
+     it drifts about 4% across a page's life and averaging halves that.
+     The absolutes are still measured and still REPORTED in _perfGates,
+     because they are what the phone actually pays; they are simply no
+     longer what fails the build. Re-baseline by running this file on a
+     quiet machine and reading the printed ratio.
+     AND IT STILL HAS TEETH, which is the other half of the claim and was
+     measured the same way (scratchpad/gate-teeth.mjs: wrap R.drawTileAt
+     with a hash loop of a known cost and read the ratio back). Grass, at a
+     1.17ms reference: clean 0.94x, +10% 1.04x PASS, +19% 1.12x FAIL, +55%
+     1.46x FAIL. Shore: clean 5.09x, +10% 5.61x PASS, +19% 5.96x FAIL. A
+     gate with 10% headroom passes a 10% regression and fails a 19% one,
+     which is what 10% headroom means — if you want it tighter, tighten the
+     multiplier and expect the retry to earn its keep. */
+  const REF_BLITS = 200, REF_MATH = 50000;
+  const EDIT = { grassRel: 1.08, shoreRel: 5.75 };  // worst of 4 fresh pages (0.979 / 5.226) + 10%
   const GRASS_AT = [12, 16], SHORE_AT = [41, 8];  // the two 7x7 workloads on verify7 xlarge
   const measure = async () => {
     const p = await page();
@@ -1732,8 +1776,42 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       out.shorePatch = patch(${SHORE_AT[0]}, ${SHORE_AT[1]});
       const batch = (x0, y0) => { const t = performance.now(); for (let dy = 0; dy < 7; dy++) for (let dx = 0; dx < 7; dx++) R.drawTileAt(x0 + dx, y0 + dy); return (performance.now() - t) / 49; };
       const minOfMeans = (x0, y0) => { batch(x0, y0); batch(x0, y0); let m = Infinity; for (let k = 0; k < 9; k++) m = Math.min(m, batch(x0, y0)); return m; };
+      /* THE REFERENCE the two edit gates are measured AGAINST (see the block
+         above the constants). It calls nothing in render.js on purpose, so a
+         slow machine moves it in step with the edits while a slow repaint
+         does not move it at all. Same shape of work a repaint records —
+         clipped fills and sprite blits — plus integer hashing, so the number
+         tracks the JS engine as well as the canvas. Timed by the identical
+         statistic so the clock's clamp lands the same way on both. */
+      const refUnit = () => {
+        const c = document.createElement('canvas'); c.width = c.height = 512;
+        const g = c.getContext('2d');
+        const sp = document.createElement('canvas'); sp.width = sp.height = 32;
+        const sg = sp.getContext('2d');
+        for (let i = 0; i < 32; i++) { sg.fillStyle = (i & 1) ? '#3a5a20' : '#2e4a18'; sg.fillRect(0, i, 32, 1); }
+        let n = 0; out._refSink = 0;
+        return () => {
+          const x = (n * 37) % 448, y = (n * 53) % 448; n++;
+          let h = (n * 374761393) | 0, acc = 0;
+          for (let k = 0; k < ${REF_MATH}; k++) { h = (h ^ (h >>> 15)) * 2246822519 | 0; h = (h ^ (h >>> 13)) * 3266489917 | 0; acc += (h & 1023) / 1024; }
+          out._refSink += acc;                       // a sink the optimiser cannot fold away
+          g.save(); g.beginPath(); g.rect(x, y, 48, 48); g.clip();
+          g.fillStyle = '#4a6a28'; g.fillRect(x, y, 48, 48);
+          for (let k = 0; k < ${REF_BLITS}; k++) g.drawImage(sp, x + (k % 7) - 3, y + ((k / 7) | 0) % 7 - 3);
+          g.restore();
+        };
+      };
+      const refStat = () => { const one = refUnit();
+        const rb = () => { const t = performance.now(); for (let i = 0; i < 49; i++) one(); return (performance.now() - t) / 49; };
+        rb(); rb(); let m = Infinity; for (let k = 0; k < 9; k++) m = Math.min(m, rb()); return m; };
+      const refBefore = refStat();
       out.editGrass = minOfMeans(${GRASS_AT[0]}, ${GRASS_AT[1]});
       out.editShore = minOfMeans(${SHORE_AT[0]}, ${SHORE_AT[1]});
+      const refAfter = refStat();                    // read either side: it drifts ~4% across a page's life
+      out.refMs = (refBefore + refAfter) / 2;
+      out.refPair = [refBefore, refAfter];
+      out.relGrass = out.editGrass / out.refMs;
+      out.relShore = out.editShore / out.refMs;
       // the world pass at default zoom, framed on the town
       R.cam.z = 1.5; const tc = Bld.tcOf('P'); if (tc) R.centerOn(tc.x + 0.5, tc.y + 0.5);
       R.draw(0.016);                                // fog and any lazy layer settle first
@@ -1753,25 +1831,38 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     return v;
   };
   let v = await measure();
-  const editsOk = (w) => !w.thrown && w.editGrass < EDIT.grassMs && w.editShore < EDIT.shoreMs;
+  const editsOk = (w) => !w.thrown && w.relGrass < EDIT.grassRel && w.relShore < EDIT.shoreRel;
   if (!editsOk(v)) {                              // one honest retry against machine noise
     const w = await measure();
-    if (!w.thrown) v = Object.assign({}, w, { editGrass: Math.min(v.editGrass ?? Infinity, w.editGrass), editShore: Math.min(v.editShore ?? Infinity, w.editShore),
+    if (!w.thrown) v = Object.assign({}, w, { relGrass: Math.min(v.relGrass ?? Infinity, w.relGrass), relShore: Math.min(v.relShore ?? Infinity, w.relShore),
+      editGrass: Math.min(v.editGrass ?? Infinity, w.editGrass), editShore: Math.min(v.editShore ?? Infinity, w.editShore),
       bakeWorst: Math.min(v.bakeWorst ?? Infinity, w.bakeWorst), frameP95: Math.min(v.frameP95 ?? Infinity, w.frameP95), retried: true });
   }
   const f1 = (n) => (n == null ? '?' : (+n).toFixed(2));
   Object.assign(res, { _perfGates: { bakeWorstMs: f1(v.bakeWorst), bakeStdMs: f1(v.bakeStd),
-    editGrassMs: f1(v.editGrass), editShoreMs: f1(v.editShore), frameMedMs: f1(v.frameMed), frameP95Ms: f1(v.frameP95),
+    editGrassMs: f1(v.editGrass), editShoreMs: f1(v.editShore), refMs: f1(v.refMs),
+    editGrassRel: f1(v.relGrass), editShoreRel: f1(v.relShore), frameMedMs: f1(v.frameMed), frameP95Ms: f1(v.frameP95),
     live: LIVE, edit: EDIT, retried: !!v.retried } });
   ck('theFirstBakeStaysUnderTheCeiling', !v.thrown && v.bakeWorst < LIVE.bakeMs,
     v.thrown || (f1(v.bakeWorst) + 'ms worst map (ceiling ' + LIVE.bakeMs + 'ms), ' + f1(v.bakeStd) + 'ms standard'));
   ck('theEditWorkloadsAreWhatTheyClaim', !v.thrown && v.grassPatch && v.grassPatch.grass === 49 && !v.grassNearWater
     && v.shorePatch && v.shorePatch.water >= 15 && v.shorePatch.water <= 34,
     v.thrown || ('grass patch ' + JSON.stringify(v.grassPatch) + (v.grassNearWater ? ' NEAR WATER' : '') + ', shore patch ' + JSON.stringify(v.shorePatch)));
-  ck('anOpenGroundEditStaysWithinTenPercent', !v.thrown && v.editGrass < EDIT.grassMs,
-    v.thrown || (f1(v.editGrass) + 'ms per edit (gate ' + EDIT.grassMs + 'ms = baseline 0.92 + 10%)'));
-  ck('aShoreEditStaysWithinTenPercent', !v.thrown && v.editShore < EDIT.shoreMs,
-    v.thrown || (f1(v.editShore) + 'ms per edit (gate ' + EDIT.shoreMs + 'ms = derived-ring baseline 5.14 + 10%)'));
+  const rel = (r, ms, gate) => f1(r) + 'x the reference (gate ' + gate + 'x = worst baseline + 10%) — ' +
+    f1(ms) + 'ms per edit against a ' + f1(v.refMs) + 'ms reference on THIS machine';
+  ck('anOpenGroundEditStaysWithinTenPercent', !v.thrown && v.relGrass < EDIT.grassRel,
+    v.thrown || rel(v.relGrass, v.editGrass, EDIT.grassRel));
+  ck('aShoreEditStaysWithinTenPercent', !v.thrown && v.relShore < EDIT.shoreRel,
+    v.thrown || rel(v.relShore, v.editShore, EDIT.shoreRel));
+  /* The reference must land in a sane band, or the ratio means nothing: a
+     reference that failed to build (0) would pass every gate by dividing
+     into infinity, and one that got descheduled mid-measure would fail them
+     all. The band is wide on purpose — it is a smoke test for the
+     instrument, not a performance gate; a genuinely slow machine is the
+     case this whole scheme exists to let through. */
+  ck('andTheReferenceItselfIsSane', !v.thrown && v.refMs > 0.05 && v.refMs < 60 &&
+    Math.max(...(v.refPair || [1, 1])) / Math.min(...(v.refPair || [1, 1])) < 1.35,
+    v.thrown || ('reference ' + f1(v.refMs) + 'ms, the two readings ' + (v.refPair || []).map(f1).join(' / ')));
   ck('theWorldPassFrameStaysCheap', !v.thrown && v.frameP95 < LIVE.frameP95,
     v.thrown || (f1(v.frameP95) + 'ms p95 (ceiling ' + LIVE.frameP95 + 'ms)'));
   ck('andTheFrameLoopStaysClean', !v.thrown && !v.err, v.thrown || v.err);
