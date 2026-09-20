@@ -10,9 +10,15 @@
    rolled tunic at install (Assets.recolorTunic) — demonstrated here as
    LOSSLESS against the procedural cast itself, before any art is spent.
 
+   Section 9 adds the other half the quarry report asked for — the work
+   poses read the same at every tier, and the art for them exists at every
+   tier — because a tier that silently has no art for a job does not
+   throw: it falls back per lookup and stands about instead of working.
+
    Run after touching: render.js (villagerTier/unitArtKey/sheetFrames/
-   unitSprite), assets.js (VILLAGER_TIER_BY_TC/TUNIC_KEY/recolorTunic/
-   loadVillagerArt/setUnitFrames), buildings.js (finishUpgrade).
+   unitSprite/unitPose), assets.js (VILLAGER_TIER_BY_TC/TUNIC_KEY/
+   recolorTunic/loadVillagerArt/setUnitFrames), buildings.js
+   (finishUpgrade), or assets/units/unit-villager-*.
 
      node tests/villager-tiers.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
@@ -367,8 +373,62 @@ const out = await p.evaluate(() => {
     S.units = S.units.filter(z => z !== d);
   }
 
+  /* ---- 9. THE QUARRY ORDER READS THE SAME AT EVERY TIER --------------
+     From the quarry report, whose second half was "make sure this is
+     cleaned up for all three levels, not just level one villager". The
+     tier only chooses which SHEET a pose is read from — R.unitPose is
+     tier-blind by construction — so what is pinned in the page is that
+     property: a villager on a stone-gather task asks for the QUARRY pose
+     and for its OWN tier's sheet, at all three levels. Whether the art
+     for that pose exists at every tier is a question about files, and it
+     is measured on disk below rather than here, because the shipped
+     strips load lazily for the tier a hall is standing at. ---- */
+  {
+    const tc = Bld.tcOf('P');
+    const u = Units.spawn('villager', 'P', 20, 20);
+    u.task = { type: 'gather', x: 21, y: 20, sx: 20, sy: 20, res: 'stone' };
+    const got = [];
+    for (const lv of [1, 2, 3]) {
+      tc.level = lv; R._vTier = null;
+      got.push(R.unitPose(u) + '@' + R.unitArtKey(u));
+    }
+    tc.level = 1; R._vTier = null;
+    S.units = S.units.filter(z => z !== u);
+    const gk = u.female ? '-f' : '-m';   // whoever the spawn dealt; the tier is the subject here
+    const want = [1, 2, 3].map(l => 'mine@villager-p-' + G.tunicOf('P') + '-l' + l + gk);
+    ck('theQuarryPoseIsTheSameOrderAtEveryTier',
+      got.join('|') === want.join('|'), got.join(', '));
+  }
+
   return { res, fails };
 });
+
+/* …AND THE ART FOR THOSE POSES EXISTS AT EVERY TIER. A missing pose does
+   not throw: sheetFrames falls back per lookup and the villager stands
+   about instead of swinging, which is exactly the "it's not clear that
+   it's chopping stone" complaint wearing different clothes. Read off the
+   shipped directory, because the strips load lazily for the tier a hall
+   happens to be standing at and an in-page probe would only ever see one
+   of the three. */
+{
+  const { readdirSync } = await import('node:fs');
+  const files = new Set(readdirSync(join(root, 'assets/units')));
+  const WORK = ['mine', 'gather', 'farm', 'pick', 'reach', 'build'];
+  const DIRS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+  const miss = [];
+  let have = 0;
+  for (const lv of [1, 2, 3]) for (const g of ['m', 'f']) for (const pose of WORK) for (const d of DIRS) {
+    const f = 'unit-villager-l' + lv + '-' + g + '-' + d + '-' + pose + '.png';
+    if (files.has(f)) have++; else miss.push(f);
+  }
+  const quarry = miss.filter(f => f.endsWith('-mine.png'));
+  out.res.everyTierCarriesTheQuarryPose = (quarry.length ? 'FAIL — ' + quarry.join(', ')
+    : 'PASS — the quarry pose at 8 facings on all 3 tiers, both genders');
+  if (quarry.length) out.fails.push('everyTierCarriesTheQuarryPose');
+  out.res.andEveryOtherWorkPoseToo = (miss.length ? 'FAIL — ' + miss.slice(0, 6).join(', ')
+    : 'PASS — ' + have + ' tier/gender/pose/facing strips, none missing');
+  if (miss.length) out.fails.push('andEveryOtherWorkPoseToo');
+}
 
 console.log(JSON.stringify(out.res, null, 1).replace(/[{}",]/g, ''));
 if (errs.length) console.log('errors:', errs.slice(0, 6));

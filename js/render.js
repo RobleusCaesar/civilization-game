@@ -1632,7 +1632,6 @@ const R = {
     if (window.Assets && Assets.terrainImg(T.HILLS, 0)) return null;   // supplied art wins, as everywhere
     const slabs = (typeof Assets !== 'undefined' && Assets.slabStage) ? Assets.slabStage(this.oreWear(x, y)) : null;
     if (!slabs || !slabs.length) return null;
-    if (!this._oreCarries(x, y, terr)) return null;
     /* THE PILE STAYS INSIDE ITS OWN TILE (operator report, screenshot: a
        miner "standing directly on" the deposit). Every installed rock-pile
        sprite is 32x24 — the sprite is exactly one tile wide, TL wide, so
@@ -1649,9 +1648,67 @@ const R = {
        — top to bottom — stays inside the tile instead of the old range,
        which let it reach 10px north of the tile it belongs to. */
     const TL = CFG.TILE, h = (x * 73856093 ^ y * 19349663) >>> 0;
-    return { wx: x * TL + (TL >> 1) + ((h >>> 5) % 5) - 2,
-             wy: y * TL + 24 + ((h >>> 11) % (TL - 24)),
-             stone: slabs[(h >>> 3) % slabs.length] };
+    if (this._oreCarries(x, y, terr))
+      return { pile: 1, wx: x * TL + (TL >> 1) + ((h >>> 5) % 5) - 2,
+               wy: y * TL + 24 + ((h >>> 11) % (TL - 24)),
+               stone: slabs[(h >>> 3) % slabs.length] };
+    /* …AND EVERY OTHER DEPOSIT TILE CARRIES LOOSE STONE (the same report as
+       9c, one iteration on, with a photograph: a villager swinging a pick at
+       bare meadow — "it's not clear that it's chopping stone"). The sprinkle
+       ruling and the readability rule were held apart by "no deposit tile
+       further than a TILE from a stone", and that bound cannot do the job:
+       an order is given on ONE tile, the miner stands at ITS edge, and a
+       stone on the tile next door is a stone the miner is not touching.
+       Worse, the bound is structurally incapable of more — an independent
+       set in the 8-neighbour grid tops out near a quarter of the tiles, and
+       real worlds measured 41-60% carrying, so about half of every quarry
+       order put a villager in grass.
+       So coverage is total and the two rulings are held apart by SIZE
+       instead of by absence: a peak carries the authored pile, and every
+       tile between the peaks carries two or three loose boulders at a third
+       the mass. The deposit still reads as sprinkled — the piles are still
+       never adjacent — and there is no longer any ground in it a pick can
+       swing at for nothing. */
+    return { wx: x * TL + (TL >> 1) + ((h >>> 5) % 7) - 3,
+             wy: y * TL + 28 + ((h >>> 11) % 5),        // the stamp is 28 tall: 28..32 keeps it in-tile
+             stone: this.oreLooseStamp(h) };
+  },
+  /* THE LOOSE STONE between the piles: two or three small round boulders in
+     the deposit's own ore ramp — the language rockMass draws in when there
+     is no catalog on disk, and the language rockScree already sheds onto the
+     ground outside, so the deposit reads as one family at every size. Eight
+     arrangements, cached like Sprites.oreStamp's own (a pure function of the
+     variant — no world state in it, so nothing can go stale). */
+  _looseOre: null,
+  oreLooseStamp(h) {
+    const cache = this._looseOre || (this._looseOre = new Map());
+    const v = h % 8, hit = cache.get(v);
+    if (hit) return hit;
+    /* THE STAMP IS SIZED SO NOTHING IS CUT. oreStamp pads a boulder by 3 and
+       anchors it at its CENTRE, so a radius-r stone reaches r+3 left and up
+       of its point and r+4 below it. The bands below are the widest that
+       keep every pixel of every boulder inside a TLx28 canvas — a clipped
+       boulder reads as a rock sawn in half, and at this size that is the
+       one thing more wrong than drawing nothing. */
+    const TL = CFG.TILE, HT = 28;
+    const c = document.createElement('canvas');
+    c.width = TL; c.height = HT;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    const rnd = a => ((Math.imul(v + 1 + a * 9176, 0x9e3779b1) >>> 8) % 1024) / 1024;
+    const put = [];
+    for (let k = 0, n = 2 + (v & 1); k < n; k++)
+      put.push([8 + Math.round(rnd(k) * (TL - 16)),             // x: 8 … TL-8
+                10 + Math.round(rnd(k + 3) * 8),                 // y: 10 … 18, low in the band
+                4 + ((rnd(k + 6) * 2) | 0),                      // radius: a third of a pile
+                (rnd(k + 9) * 6) | 0]);                          // which boulder
+    put.sort((a, b) => a[1] - b[1]);                            // back to front
+    for (const [px, py, rr, vs] of put) {
+      const st = Sprites.oreStamp(rr, vs, false);
+      g.drawImage(st, px - st._ox, py - st._oy);
+    }
+    cache.set(v, c);
+    return c;
   },
   /* …and the fallback drawer, for a world with no tree catalog on disk. With
      one installed the WOOD draws the stones (forestStampBand), y-sorted in

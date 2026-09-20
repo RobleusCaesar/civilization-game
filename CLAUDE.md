@@ -3838,6 +3838,50 @@ its one lean 6–8 tile pocket untouched, the `START_RESOURCE` floor still
 guarantees every seat 3 workable tiles in radius 14 (verified: worst seat
 across all 42 combos = exactly 3), and the per-map floor (9 tiles) keeps a
 bad roll from starving stone outright.
+**EVERY DEPOSIT TILE SHOWS ITS OWN STONE** (`R.oreStoneAt` /
+`oreLooseStamp` / `_oreCarries`, pinned by `everyDepositTileShowsItsOwnStone`,
+`andNoTwoPilesTouch` and `andTheLooseStoneIsTheLesserOfTheTwo` in
+tests/land.mjs §9c — the SAME report twice, the second time with a
+photograph: a villager "quarrying stone" swinging a pick at bare meadow,
+"it's not clear that it's chopping stone… it should be right on the stone
+tile like all of the other villagers"). The first fix moved the sprinkle
+contest among deposit tiles only, in rounds, and held the two rulings apart
+with **"no deposit tile further than a TILE from a stone"**. That bound
+cannot do the job, for two reasons worth keeping: an order is given on ONE
+tile and the miner stands at ITS edge, so a stone next door is a stone the
+miner is not touching; and the bound is structurally incapable of more,
+since an independent set in the 8-neighbour grid tops out near a quarter of
+the tiles. Measured on five real worlds before the fix: **41–60%** of
+deposit tiles carried a stone, so about half of every quarry order put a
+villager in grass.
+So coverage is TOTAL and the two rulings are held apart by **SIZE instead
+of absence**: a `_oreCarries` peak carries the authored 32×24 pile
+(`pile: 1` on the entry), and every tile between the peaks carries two or
+three loose boulders at about a quarter of the mass — `R.oreLooseStamp`,
+drawn from `Sprites.oreStamp` in the deposit's own `AP.oreD` ramp, which is
+the language `rockMass` falls back to with no catalog and the language
+`rockScree` already sheds outside, so the deposit reads as one family at
+every size. Eight arrangements, cached like `Sprites.oreStamp`'s own (a
+pure function of the variant — no world state, nothing to go stale). The
+stamp's bands are derived from `oreStamp`'s own padding and centre anchor
+so **no boulder is ever clipped by its canvas**: a rock sawn in half is the
+one thing worse than drawing nothing. The sprinkle ruling is alive and now
+measured where it applies — no two PILES touch — and the contract reads the
+INK box, never the canvas, because a loose stamp is a full tile wide with
+its boulders inset. `R.oreStoneAt` stays the ONE entry point the wood, the
+fallback drawer and the contract all go through, so `groundRing`'s
+`ORE_RING` repaint rings are unchanged.
+**AND THE VILLAGER WAS NEVER THE FAULT** (`tests/villager-tiers.mjs` §9,
+the report's other half — "make sure this is cleaned up for all three
+levels, not just level one villager"): `R.unitPose` is tier-blind by
+construction — the tier only chooses which SHEET a pose is read from — so
+the way a tier can silently lose a job is having no art for that pose,
+which throws nothing and simply falls back per lookup. Pinned both ways: in
+the page, a stone-gather villager asks for the quarry pose and for its OWN
+tier's key at all three levels; and on DISK, all 288 tier/gender/pose/
+facing strips exist (the strips load lazily for the tier a hall is standing
+at, so an in-page probe would only ever see one of the three).
+
 **AN OVERLAPPING LAYER CAN ONLY BE REPAIRED INSIDE THE GROUND THAT WAS ERASED**
 (`R.clipTiles`, pinned by `andDiggingItLeavesNoStaleShore`): rocks from
 neighbouring tiles overlap and the bake composites them in ONE global row-major

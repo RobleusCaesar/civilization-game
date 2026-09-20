@@ -32,7 +32,9 @@
    8. AND THE ROCK FIELD IS SCATTERED, NOT TILED. Stone is blitted in world
       space from a lattice that ignores the grid, so a deposit's outline
       wanders — and none of it may reach the rules, or move a pixel an
-      incremental repaint would not also move.
+      incremental repaint would not also move. EVERY deposit tile shows
+      stone of its own: a tile a villager can be ordered to quarry and
+      cannot see is a lie about the map, whatever it does for the texture.
 
    9. AND THE BLACK BEYOND THE BOARD STAYS BLACK. The outer ring is off-map
       void: nothing is passable there and nothing is drawn there, at any
@@ -764,63 +766,91 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   await p.close();
 }
 
-/* ---- 9c. EVERY DEPOSIT SHOWS ITS STONE ------------------------------
-   The report: a villager "quarrying stone" on bare meadow — "a bunch of
-   invisible ore". The sprinkle rule picked a tile's stone by a hash contest
-   against all eight neighbours WITH GRASS COUNTED, so a one-tile deposit
-   drew a stone one time in nine and small deposits mostly drew nothing.
-   The contest is now among deposit tiles only, in rounds (R._oreCarries),
-   and this holds the two rulings together on a real world: no deposit tile
-   is further than a tile from a drawn stone, no two stones touch, and no
-   deposit is bare. Measured through R.oreStoneAt, the one entry point the
-   wood and the fallback drawer both go through, after the stone catalog
-   has landed — with no catalog every deposit is invisible, and that is a
-   failure here, not a pass. ---- */
+/* ---- 9c. EVERY DEPOSIT TILE SHOWS ITS OWN STONE ---------------------
+   The report, twice: a villager "quarrying stone" on bare meadow — the
+   second time with a photograph, "it's not clear that it's chopping
+   stone… it should be right on the stone tile like all of the other
+   villagers".
+
+   The first fix made the contest run among deposit tiles in rounds
+   (R._oreCarries) and held the sprinkle ruling and the readability rule
+   apart with "no deposit tile further than a TILE from a stone". That
+   bound cannot do the job. An order is given on ONE tile, the miner
+   stands at ITS edge, and a stone on the tile next door is a stone the
+   miner is not touching — and the bound is structurally incapable of
+   more, since an independent set in the 8-neighbour grid tops out near a
+   quarter of the tiles. Measured on five real worlds before this change:
+   41-60% of deposit tiles carried a stone, so about half of every quarry
+   order put a villager in grass.
+
+   So coverage is TOTAL and the two rulings are held apart by SIZE: a peak
+   carries the authored pile, every tile between the peaks carries two or
+   three loose boulders at about a third the mass. What is pinned here is
+   all three halves — every deposit tile carries something, no two PILES
+   touch (the sprinkle ruling, alive and now measured where it applies),
+   and the loose stone is genuinely the lesser of the two. Measured
+   through R.oreStoneAt, the one entry point the wood and the fallback
+   drawer both go through, after the stone catalog has landed — with no
+   catalog every deposit is invisible, and that is a failure here, not a
+   pass. ---- */
 {
   const p = await page();
   await p.evaluate(new Function(boot));
   await p.waitForFunction(() => window.Assets && Assets.slabStage && (Assets.slabStage(0) || []).length > 0, null, { timeout: 30000 }).catch(() => {});
   const v = await p.evaluate(() => {
     const W = CFG.W, H = CFG.H, t = S.map.terrain;
-    const has = new Uint8Array(W * H);
-    let dep = 0, stones = 0;
+    const pile = new Uint8Array(W * H);
+    /* MASS and the INK BOX, both read off the drawable's own alpha. The
+       canvas is not the measure of either: a loose stamp is a full tile
+       wide with its boulders inset, so a canvas-edge test would call a
+       stone that is comfortably inside its tile an overhang. */
+    const inkOf = (c) => {
+      const g2 = document.createElement('canvas'); g2.width = c.width; g2.height = c.height;
+      const cx = g2.getContext('2d'); cx.drawImage(c, 0, 0);
+      const d = cx.getImageData(0, 0, c.width, c.height).data;
+      let n = 0, x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1;
+      for (let yy = 0; yy < c.height; yy++) for (let xx = 0; xx < c.width; xx++) {
+        if (d[(yy * c.width + xx) * 4 + 3] <= 40) continue;
+        n++; if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy;
+      }
+      return { n, x0, x1, y0, y1 };
+    };
+    let dep = 0, bare = 0, piles = 0, loose = 0, pileMass = 0, looseMass = 0, outside = 0;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       if (t[y * W + x] !== T.HILLS) continue; dep++;
-      if (R.oreStoneAt(x, y, t)) { has[y * W + x] = 1; stones++; }
+      const st = R.oreStoneAt(x, y, t);
+      if (!st) { bare++; continue; }
+      const ink = inkOf(st.stone);
+      if (st.pile) { pile[y * W + x] = 1; piles++; pileMass += ink.n; }
+      else { loose++; looseMass += ink.n; }
+      /* …and every stone's INK stays on the tile it belongs to, give or take
+         the couple of pixels of jitter oreStoneAt documents for the pile. */
+      const TL = CFG.TILE, SL = 2;
+      const l = st.wx - (st.stone.width >> 1) + ink.x0, r = st.wx - (st.stone.width >> 1) + ink.x1;
+      const tp = st.wy - st.stone.height + ink.y0, bt = st.wy - st.stone.height + ink.y1;
+      if (l < x * TL - SL || r > (x + 1) * TL - 1 + SL
+        || tp < y * TL - SL || bt > (y + 1) * TL - 1 + SL) outside++;
     }
-    let bare = 0, touch = 0;
+    let touch = 0;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      if (t[y * W + x] !== T.HILLS) continue;
-      let near = 0;
+      if (!pile[y * W + x]) continue;
       for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        if (!ox && !oy) continue;
         const x2 = x + ox, y2 = y + oy;
-        if (x2 < 0 || y2 < 0 || x2 >= W || y2 >= H || !has[y2 * W + x2]) continue;
-        near++; if ((ox || oy) && has[y * W + x]) touch++;
+        if (x2 >= 0 && y2 >= 0 && x2 < W && y2 < H && pile[y2 * W + x2]) touch++;
       }
-      if (!near) bare++;
     }
-    const seen = new Uint8Array(W * H); let deposits = 0, empty = 0;
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const k = y * W + x; if (t[k] !== T.HILLS || seen[k]) continue;
-      const st = [k]; seen[k] = 1; let any = false;
-      while (st.length) {
-        const q = st.pop(); if (has[q]) any = true;
-        const qx = q % W, qy = (q / W) | 0;
-        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
-          const x2 = qx + ox, y2 = qy + oy;
-          if (x2 < 0 || y2 < 0 || x2 >= W || y2 >= H) continue;
-          const k2 = y2 * W + x2;
-          if (t[k2] === T.HILLS && !seen[k2]) { seen[k2] = 1; st.push(k2); }
-        }
-      }
-      deposits++; if (!any) empty++;
-    }
-    return { dep, stones, bare, touch: touch / 2, deposits, empty, rounds: R.ORE_ROUNDS };
+    return { dep, bare, piles, loose, touch: touch / 2, outside, rounds: R.ORE_ROUNDS,
+             pileAvg: piles ? Math.round(pileMass / piles) : 0,
+             looseAvg: loose ? Math.round(looseMass / loose) : 0 };
   });
-  ck('everyDepositShowsItsStone', v.dep > 0 && v.stones > 0 && v.bare === 0 && v.touch === 0 && v.empty === 0,
-    v.stones + ' stones on ' + v.dep + ' deposit tiles in ' + v.deposits + ' deposits (' + v.rounds
-      + ' rounds) — ' + v.bare + ' tiles with no stone within one, ' + v.touch + ' touching pairs, '
-      + v.empty + ' bare deposits');
+  const say = v.dep + ' deposit tiles: ' + v.piles + ' piles + ' + v.loose + ' loose, ' + v.bare
+    + ' bare, ' + v.touch + ' touching pile pairs, ' + v.outside + ' stones off their own tile '
+    + '(mass: pile ' + v.pileAvg + 'px, loose ' + v.looseAvg + 'px, ' + v.rounds + ' rounds)';
+  ck('everyDepositTileShowsItsOwnStone', v.dep > 0 && v.bare === 0 && v.piles > 0 && v.loose > 0, say);
+  ck('andNoTwoPilesTouch', v.dep > 0 && v.touch === 0, say);
+  ck('andTheLooseStoneIsTheLesserOfTheTwo',
+    v.looseAvg > 0 && v.looseAvg < v.pileAvg * 0.6 && v.outside === 0, say);
   await p.close();
 }
 
