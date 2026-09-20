@@ -9731,16 +9731,46 @@ const R = {
     const x0 = b.x - pad, y0 = b.y - pad, x1 = b.x + sz + pad, y1 = b.y + sz + pad;
     let lx = Math.max(x0, Math.min(u.x, x1));
     let ly = Math.max(y0, Math.min(u.y, y1));
+    /* THE LEAN LANDS ON GROUND HE COULD STAND ON (operator report, day 126,
+       with the picture: a farm's own hand, tools downed for the upgrade,
+       drawn knee-deep in the lake south of the field). The sim keeps every
+       builder on legal ground — buildStand sees to that — but the lean is
+       draw-time and answered to nobody: from inside a site it pushed the
+       sprite out the SHORT way whatever lay there, and from outside it
+       stepped up to CAP toward the wall across whatever lay between. Water,
+       a crag, the house next door. `stand` is the one question — the tile
+       the sprite would stand on is passable for the unit, or is his own —
+       and it is asked of every kind alike, since the lean is shared. */
+    const stand = (px, py) => {
+      const tx = px | 0, ty = py | 0;
+      if (tx === (u.x | 0) && ty === (u.y | 0)) return true;   // his own ground, whatever it is
+      return Path.passable(tx, ty, u.owner, 'land');
+    };
     if (lx > x0 && lx < x1 && ly > y0 && ly < y1) {
-      // standing inside the padded ring (a site tile): push OUT the short way
-      const dl_ = Math.min(lx - x0, x1 - lx), dr_ = Math.min(ly - y0, y1 - ly);
-      if (dl_ <= dr_) lx = (lx - x0 < x1 - lx) ? x0 : x1;
-      else ly = (ly - y0 < y1 - ly) ? y0 : y1;
+      // standing inside the padded ring (a site tile, or a plot's own hand):
+      // push OUT the short way — but only onto ground he could stand on. The
+      // four exits are tried shortest first; with none standable there is no
+      // lean, and a hand on its own plot simply works the plot.
+      const exits = [[x0, ly], [x1, ly], [lx, y0], [lx, y1]]
+        .map(e => ({ x: e[0], y: e[1], d: Math.hypot(e[0] - lx, e[1] - ly) }))
+        .sort((a, c) => a.d - c.d);
+      const ok = exits.find(e => stand(e.x, e.y));
+      if (!ok) return null;
+      lx = ok.x; ly = ok.y;
     }
-    const dx = lx - u.x, dy = ly - u.y, dl = Math.hypot(dx, dy);
+    let dx = lx - u.x, dy = ly - u.y, dl = Math.hypot(dx, dy);
     if (dl < 0.05) return null;                        // already at the wall
     const CAP = 1.35;
-    if (dl > CAP) { lx = u.x + dx / dl * CAP; ly = u.y + dy / dl * CAP; }
+    if (dl > CAP) { dx *= CAP / dl; dy *= CAP / dl; dl = CAP; lx = u.x + dx; ly = u.y + dy; }
+    // a step that would cross onto ground he could not stand on is cut
+    // short at the last standable point along it (a shore builder squares
+    // up to a dock from the sand, never from the shallows)
+    if (!stand(lx, ly)) {
+      let t = 1 - 0.08;
+      for (; t > 0; t -= 0.08) if (stand(u.x + dx * t, u.y + dy * t)) break;
+      if (t <= 0 || t * dl < 0.05) return null;
+      lx = u.x + dx * t; ly = u.y + dy * t;
+    }
     return { x: lx, y: ly };
   },
   unitBox(u) {

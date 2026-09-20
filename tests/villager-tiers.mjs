@@ -320,6 +320,117 @@ const out = await p.evaluate(() => {
     S.units = S.units.filter(z => z !== u);
   }
 
+  /* ---- 5d. THE LEAN LANDS ON GROUND HE COULD STAND ON (operator report,
+     day 126, with the picture: a farm's own hand, tools downed for the
+     upgrade, drawn knee-deep in the lake south of the field). The sim keeps
+     a builder on legal ground — buildStand — but the lean is draw-time and
+     answered to nobody: from inside a site it pushed the sprite out the
+     SHORT way whatever lay there, and from outside it stepped toward the
+     wall across whatever lay between. The lean is one routine shared by
+     every kind, so it is measured across kinds, footprints and sides —
+     "check other buildings" — and the drawn tile is what is judged: it must
+     be passable for the unit or be his own. The last two are the shape the
+     rule takes when there is nowhere to go: no lean at all, never a wade. ---- */
+  {
+    const W = CFG.W, terr = S.map.terrain, tc = Bld.tcOf('P');
+    const ox = tc.x + 6, oy = tc.y + 6;
+    const saved = terr.slice();
+    const clear = () => { for (let y = oy - 4; y <= oy + 6; y++) for (let x = ox - 4; x <= ox + 6; x++) terr[y * W + x] = T.GRASS; Bld._block = null; };
+    const okAt = (u, lean) => {
+      const lx = lean ? lean.x : u.x, ly = lean ? lean.y : u.y, tx = lx | 0, ty = ly | 0;
+      return Path.passable(tx, ty, 'P', 'land') || (tx === (u.x | 0) && ty === (u.y | 0));
+    };
+    const drop = (u, bb) => { S.units = S.units.filter(z => z !== u); S.buildings = S.buildings.filter(z => z !== bb); Bld._block = null; };
+    const bad = [];
+    // the report: a plot's own hand, water on each side in turn, standing on
+    // the plot's near edge to that side (the worst case for the push-out)
+    const DIR = { south: [0, 1], north: [0, -1], west: [-1, 0], east: [1, 0] };
+    let poses = 0;
+    for (const side in DIR) {
+      const [dx, dy] = DIR[side];
+      clear(); terr[oy * W + ox] = T.BARREN; terr[(oy + dy) * W + ox + dx] = T.WATER; Bld._block = null;
+      const bb = Bld.place('P', 'farm', ox, oy, { free: true, instant: true });
+      const u = Units.spawn('villager', 'P', ox, oy);
+      u.x = ox + 0.5 + dx * 0.25; u.y = oy + 0.5 + dy * 0.25;
+      u.task = { type: 'work', id: bb.id }; bb.upgrading = 4; bb.upgTotal = 4;
+      Units.assignBuild(u, bb); u.task.resumeWork = true;
+      for (let k = 0; k < 4; k++) Units.update(0.05);
+      if (R.unitPose(u) === 'build') poses++;
+      const lean = R.workLean(u);
+      if (!okAt(u, lean)) bad.push('farm/water ' + side + ' → ' + (lean ? lean.x.toFixed(2) + ',' + lean.y.toFixed(2) : 'none'));
+      drop(u, bb);
+    }
+    ck('aPlotsOwnHandNeverLeansIntoTheWater', poses === 4 && bad.length === 0,
+      bad.join('; ') || 'four sides, the real build pose, every lean on dry ground');
+    // every kind that raises a site the builder stands on, water south of it
+    const bad2 = [];
+    for (const key of ['house', 'tower', 'farm', 'lumber', 'quarry', 'barracks', 'range', 'trade', 'sapper']) {
+      const d = Bld.def(key); if (!d) continue;
+      clear();
+      const sz = d.size || 1;
+      if (d.onWorked) terr[oy * W + ox] = d.onWorked;
+      for (let x = ox; x < ox + sz; x++) terr[(oy + sz) * W + x] = T.WATER;
+      Bld._block = null;
+      const bb = Bld.place('P', key, ox, oy, { free: true });
+      if (!bb) { bad2.push(key + ' (not placed)'); continue; }
+      const u = Units.spawn('villager', 'P', ox + sz - 1, oy + sz - 1);
+      u.y = oy + sz - 1 + 0.8;
+      Units.assignBuild(u, bb);
+      for (let k = 0; k < 4; k++) Units.update(0.05);
+      if (R.unitPose(u) !== 'build') bad2.push(key + ' (pose ' + R.unitPose(u) + ')');
+      else if (!okAt(u, R.workLean(u))) bad2.push(key);
+      drop(u, bb);
+    }
+    ck('andNoKindsSiteLeansItsBuilderIntoTheWater', bad2.length === 0, bad2.join('; ') || 'nine kinds, 1x1 and 2x2, every lean on dry ground');
+    // a dock stands ON the water: its builder squares up from the sand
+    {
+      clear();
+      for (let y = oy; y < oy + 4; y++) for (let x = ox; x < ox + 4; x++) terr[y * W + x] = T.WATER;
+      Bld._block = null;
+      const bb = Bld.place('P', 'dock', ox, oy, { free: true });
+      let ok = false, say = 'dock not placed';
+      if (bb) {
+        const u = Units.spawn('villager', 'P', ox - 1, oy);
+        Units.assignBuild(u, bb);
+        for (let k = 0; k < 4; k++) Units.update(0.05);
+        const lean = R.workLean(u);
+        ok = R.unitPose(u) === 'build' && okAt(u, lean);
+        say = 'pose ' + R.unitPose(u) + ', drawn at ' + (lean ? lean.x.toFixed(2) + ',' + lean.y.toFixed(2) : 'the sim spot');
+        drop(u, bb);
+      }
+      ck('aDocksBuilderLeansFromTheSandNotTheShallows', ok, say);
+    }
+    // nowhere to lean: water on three sides, a finished house on the fourth
+    {
+      clear();
+      terr[(oy + 1) * W + ox] = T.WATER; terr[oy * W + ox - 1] = T.WATER; terr[oy * W + ox + 1] = T.WATER; Bld._block = null;
+      const wall = Bld.place('P', 'house', ox, oy - 1, { free: true, instant: true });
+      const bb = Bld.place('P', 'house', ox, oy, { free: true });
+      const u = Units.spawn('villager', 'P', ox, oy);
+      Units.assignBuild(u, bb);
+      for (let k = 0; k < 4; k++) Units.update(0.05);
+      const lean = R.workLean(u);
+      ck('withNowhereToLeanHeStaysOnTheSite', R.unitPose(u) === 'build' && lean === null,
+        lean ? 'leaned to ' + lean.x.toFixed(2) + ',' + lean.y.toFixed(2) : 'no lean, pose ' + R.unitPose(u));
+      drop(u, bb); S.buildings = S.buildings.filter(z => z !== wall); Bld._block = null;
+    }
+    // at reach of a 2x2 with water between him and the wall: no step across it
+    {
+      clear();
+      terr[oy * W + ox + 2] = T.WATER; terr[(oy + 1) * W + ox + 2] = T.WATER; Bld._block = null;
+      const bb = Bld.place('P', 'barracks', ox, oy, { free: true });
+      const u = Units.spawn('villager', 'P', ox + 3, oy + 1);
+      u.x = ox + 3.02;
+      u.task = { type: 'build', id: bb.id };
+      const lean = R.workLean(u);
+      ck('andAStepAcrossWaterIsCutAtTheShore', R.unitPose(u) === 'build' && okAt(u, lean),
+        (lean ? 'drawn at ' + lean.x.toFixed(2) + ',' + lean.y.toFixed(2) : 'no lean') + ', pose ' + R.unitPose(u));
+      drop(u, bb);
+    }
+    for (let i = 0; i < saved.length; i++) terr[i] = saved[i];   // a plain array, not a typed one
+    Bld._block = null;
+  }
+
   /* ---- 6. fps rides the VARIANT key — the procedural cast keeps its 4fps ---- */
   {
     const c = document.createElement('canvas');

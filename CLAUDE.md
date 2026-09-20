@@ -3882,6 +3882,29 @@ tier's key at all three levels; and on DISK, all 288 tier/gender/pose/
 facing strips exist (the strips load lazily for the tier a hall is standing
 at, so an in-page probe would only ever see one of the three).
 
+**THE BUILDER'S LEAN LANDS ON GROUND HE COULD STAND ON** (`R.workLean`'s
+`stand`, pinned by `aPlotsOwnHandNeverLeansIntoTheWater` and its four
+neighbours in tests/villager-tiers.mjs §5d — operator report, day 126, with
+the picture: a farm's own hand, tools downed for the upgrade, drawn
+knee-deep in the lake south of the field). The sim keeps every builder on
+legal ground — `Units.buildStand` snaps one found on water back to the
+nearest standable tile in reach — but the lean is DRAW-TIME and answered
+to nobody: a builder standing INSIDE a site's padded ring (every site is
+walkable while raising, and a plot's own hand stands on the plot) was
+pushed out the SHORT way whatever lay there, and one outside stepped up to
+`CAP` toward the wall across whatever lay between. Water, a crag, the
+house next door. So the sprite stood in the lake while the sim, and every
+tap, knew better. One question now — the tile the sprite would stand on is
+passable for the unit, or is his own — asked of the four exits shortest
+first from inside (none standable: no lean, a hand on its own plot simply
+works the plot), and of the landing point from outside (a step that would
+cross onto ground he could not stand on is cut at the last standable point
+along it). The lean is ONE routine shared by every kind and every melee
+wall-batterer, so the contract measures it across kinds, footprints and
+sides rather than patching the farm: nine kinds, four sides, the dock from
+the sand, and the two no-exit shapes that must answer "no lean" and never
+a wade. The ordinary lean to a wall is byte-for-byte what it was.
+
 **AN OVERLAPPING LAYER CAN ONLY BE REPAIRED INSIDE THE GROUND THAT WAS ERASED**
 (`R.clipTiles`, pinned by `andDiggingItLeavesNoStaleShore`): rocks from
 neighbouring tiles overlap and the bake composites them in ONE global row-major
