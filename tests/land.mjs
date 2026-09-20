@@ -1737,6 +1737,11 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       // the world pass at default zoom, framed on the town
       R.cam.z = 1.5; const tc = Bld.tcOf('P'); if (tc) R.centerOn(tc.x + 0.5, tc.y + 0.5);
       R.draw(0.016);                                // fog and any lazy layer settle first
+      /* …and the JIT with them: the gate is the STEADY-STATE frame, and the
+         first sixty frames after a cold bake are not that — measured on one
+         machine at p95 1.8–2.3ms across the first sixty, 0.8–1.0ms by the
+         third sixty, same code. Warm untimed, then time. */
+      for (let k = 0; k < 120; k++) R.draw(0.016);
       const ft = [];
       for (let k = 0; k < 60; k++) { const t = performance.now(); R.draw(0.016); ft.push(performance.now() - t); }
       ft.sort((a, b) => a - b);
@@ -1799,6 +1804,15 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
    the fishing tell and it may not drift. ---- */
 {
   const p = await page();
+  /* LET THE ART LAND FIRST (the rule §18 learned): the wave checks below
+     read Assets.waterFx.waves, and "absent art means no wave" — so a page
+     whose wave strips are still decoding when this evaluate begins rolls
+     NOTHING and reports 0 over 40 epochs. In isolation the strips are in by
+     the title; eight minutes into the suite, in a browser carrying a dozen
+     spent xlarge worlds, they are not. The wave frames are world-tier art,
+     and one synchronous evaluate can never see a decode that lands after
+     it starts. */
+  await p.evaluate(() => (window.Assets && Assets.whenWorldIdle) ? Assets.whenWorldIdle() : null);
   const v = await p.evaluate(new Function(boot + `
     const out = {};
     try {
