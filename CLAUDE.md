@@ -1763,6 +1763,22 @@ of known cost, a 10% regression passes and a 19% one fails, on both gates,
 which is what 10% headroom means. The absolute milliseconds are still
 measured and still reported in `_perfGates`, because they are what the
 phone actually pays; they are simply no longer what fails the build.
+**AND THE LIVING-WATER BUDGET WAS THE SAME FAULT WEARING A THIRD FACE**
+(`theLivingWaterFitsItsBudget`, §19): it read 0.22ms at 65fd88e against a
+0.4 ceiling and started failing about one run in four. The renderer had
+not changed — THE MEASUREMENT HAD. In the same base run the neighbouring
+wave check reported **0 rolls over 40 epochs**, which is the tell: the
+wave strips had not decoded when the evaluate began, so `drawLivingWater`
+was being timed with no waves to draw. Once the boot pass reordered the
+asset probe (terrain first, world art settling sooner) the strips are in
+by the time §19 runs — 40 rolls of 40 — and the pass pays its real cost,
+0.37-0.42ms, with a 0.4 ceiling sitting INSIDE that band. A budget
+calibrated against a measurement that was silently missing its art is not
+a budget. It is gated on the same kind of reference now (raster-paying,
+since `passMs` flushes), which in-suite is also the steadier statistic:
+0.336 / 0.337 / 0.345 across three runs where the milliseconds read 0.374
+/ 0.377 / 0.394. **The lesson generalises: when a perf gate starts
+flaking, check first whether the thing it measures got more honest.**
 
 **The boot, measured** (`tests/boot.mjs`, the retention pass): time-to-menu
 was 3.4s on a desktop and 10s on a throttled phone, and nearly none of it
