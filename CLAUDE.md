@@ -141,6 +141,7 @@ node tests/train-spawn.mjs   # a trained unit stands on REALLY open ground, or w
 node tests/homestead.mjs     # a house broadside-on to a farm bonds the two: +10% food, +1 villager, gold sparks — and it all goes away with either half
 node tests/origin-cards.mjs  # the 26-card draft: ten strategy-openers plant real buildings; every boon reads through a named hook; 64-grid motifs
 node tests/telemetry.mjs     # the board reports the SITE alone (https, shipped hosts, never ?dev=) and only a world somebody PLAYED
+node tests/desktop-layout.mjs # the world fills the window at every zoom (R.minZoom), a run opens at its own zoom, the desktop bars fill the width; the phone untouched
 node tests/island-maps.mjs   # the sea is never bulldozed: land-OR-sea reachability, dock-capable coasts on a shared ocean, the island viability floor, per-seat resources+gold
 node tests/amphibious.mjs    # the rival fights across the sea: the sea-only read, TIDEWRACK outranking land plans, the crossing end to end in the real sim, stranded hulls sail home, the coast answers a seen sail
 node tests/tribe-traits.mjs  # each people keeps its home ground (sea=coast, wolf=carved forest alcove, flint=stone, woad=meadow, broken=gold) and its one habit: wolf pack tactics, flint brutes, the Broken's deserter toll, the Woadkin painting, Sea Folk longboat sorties end to end
@@ -1739,6 +1740,50 @@ loaded CPU (a contract sweep beside a review workflow's Chromiums) the
 land.mjs performance bars — "edit within 10%", "frame stays cheap", the
 budgeted-repaint pixel checks — fail as contention, not as regressions:
 rerun it alone before believing it.
+
+**The boot, measured** (`tests/boot.mjs`, the retention pass): time-to-menu
+was 3.4s on a desktop and 10s on a throttled phone, and nearly none of it
+was the art the player would see. Three findings, three fixes. **The title's
+DEMO WORLD loaded the full villager, military and sapper strip sets for
+both tunics** (~800 PNGs, most of a 10MB boot) to stand behind an OPAQUE
+painted glen — `G.newGame` skips them under `Screens._demo` now (the other
+shell screens show the demo through a gradient, where the procedural cast
+is the documented fallback). **The splash lifted only after the demo's
+terrain BAKE, which was held until every world probe had settled** — over
+a picture that was already there; `Boot.markReady` fires on the first title
+frame with the glen decoded (`G.titleGlenUp`), falling back to the old
+baked-and-drawn rule only when there is no backdrop. **`Assets.init` probed
+terrain LAST**, behind hundreds of strips and props; the ground goes first
+now, and the wild beasts (`UNIT_ART`) are a LATE tier — probed once the
+world's art has settled, at low priority, never counted against
+`artReady()` (`Assets.allArtReady()` is the everything-landed read the art
+contracts wait on). And **`HOLD_MS` is 0** — the artificial beat is gone
+(3000 → 1500 → 500 → 0). `Boot.force` drops a splash that is already
+mid-fade, since a cut is a cut. Measured with gzip like Pages serves:
+desktop menu 3.4s → 1.3s, boot images 10.2MB → 5.1MB; phone (1.6Mbps, 4×
+CPU) menu 10.0s → 9.5s, art-settled 66s → 30s. **What is left on the phone
+is the JavaScript itself**: 900KB gzipped over 25 classic scripts
+(render.js alone 215KB) arrives at ~8.8s on that wire, and no attribute
+changes that — `defer` neither shrinks bytes nor parallelises execution,
+and the tags already download in parallel. Only splitting the code (a
+build step, or dynamic loading after the title) would, and that is not a
+cheap win. **Two glens** (`<source media>` on both the splash's and the
+title's `<picture>`): a wide window (≥900px, ≥4:3) gets
+`assets/ui/title-bg-wide` — the desktop painting, encoded through
+Chromium's canvas since the sandbox has no image tools — and a phone the
+close crop; the browser picks before any script and fetches only the
+match; both carry the SAME sources so the lift has no scene change; and the
+box behind the picture is the art's own green (`#505c1e`), never black.
+**The desktop layout** (`tests/desktop-layout.mjs`): `R.minZoom()` — derived
+from the live viewport and the map — floors every zoom (clampCam and the
+pinch), so the world always covers the window; `R.defaultZoom()` opens a
+run at 1.7 on a phone and 1.25 on a wide window (a played game used to
+inherit the title demo's leftover), set in `Screens.enterGame`; at ≥900px
+the four resource chips are capped and spread evenly and the build menu
+centres via auto-margin pseudo-elements (`justify-content: safe center`
+is dropped by Chromium); below 900px nothing changes. `boot.mjs` reads the
+splash as a fixed slice of the SOURCE — a long comment inside the element
+pushes the `<picture>` past it.
 
 **The muster horn** (`tests/muster-horn.mjs`): the Town Center's lever, and
 the same bargain the gate makes — one tap and the whole workforce downs tools

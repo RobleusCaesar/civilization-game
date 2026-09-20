@@ -1464,7 +1464,7 @@ const Assets = {
     const img = new Image();
     img.onload = () => { this.setUnitFrames(kind, dir, pose, img); };
     img.onerror = () => {};                    // absent art is the default state
-    this._track(this._prio(img, this.stripPrio()));
+    this._track(this._prio(img, 'low'), false, true);   // the LATE tier — see _track
     img.src = this.unitUrl(kind, dir, pose);
   },
   setUnitFrames(kind, dir, pose, img, tunic) {
@@ -1830,7 +1830,24 @@ const Assets = {
      which founds at page load and must not delay the world's own art;
      HIGH for a real run, which needs its people drawn now */
   stripPrio() { return (window.Screens && Screens._demo) ? 'low' : 'high'; },
-  _track(img, world) {
+  /* THREE TIERS ON THE WIRE. world: what the terrain bake composes with
+     (terrain, buildings, camps, props…) — the demo's bake and a founded run
+     wait for it. plain: the run's own people strips — a real game waits for
+     these too (artReady) so it is played with its art on. LATE: the wild
+     beasts and the undyed hulls (UNIT_ART) — probed only once the world's
+     art has settled, at low priority, and never counted against artReady:
+     a deer may arrive as a PNG a moment after it was procedural, and nobody
+     is held on a plaque for it. allArtReady() is the everything-landed read
+     the art contracts use. */
+  pendingLate: 0,
+  allArtReady() { return this.ready && this.pending <= 0 && this.pendingLate <= 0; },
+  _track(img, world, late) {
+    if (late) {
+      this.pendingLate++;
+      const doneLate = () => { this.pendingLate--; if (this.pendingLate < 0) this.pendingLate = 0; };
+      img.addEventListener('load', doneLate); img.addEventListener('error', doneLate);
+      return img;
+    }
     this.pending++; if (world) this.pendingWorld++;
     const done = () => {
       this.pending--;
@@ -1873,22 +1890,12 @@ const Assets = {
   artReady() { return this.ready && this.pending <= 0; },
 
   async init() {
-    for (const s of this.artSlots()) this._tryLoad(s.id, s.lv);
-    for (const tribe of this.campTribes()) {
-      this._tryLoadCamp(tribe);
-      for (let i = 1; i <= this.CAMP_PROP_N; i++) this._tryLoadCampProp(tribe, i);
-    }
-    for (const w of this.wonderKeys()) this._tryLoadWonder(w);
-    for (const k of this.relicKeys()) this._tryLoadRelic(k);
-    for (const kind of Object.keys(this.UNIT_ART))
-      for (const dir of this.UNIT_DIRS8)
-        for (const pose of this.UNIT_ART[kind]) this._tryLoadUnit(kind, dir, pose);
-    for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key], !this.WORK_SITE_RE.test(key));
-    for (const o of this.stageOwners()) for (let n = 1; n <= this.STAGE_N; n++) this._tryStage(o, n);
-    for (const lv of this.FORT_TIERS) for (const piece of this.FORT_PIECES) this._tryFort(lv, piece);
-    for (const m of this.originMotifs()) this._tryLoadOrigin(m);
-    for (const tName of this.formationTerrains())
-      for (const stem of this.FORMATION_CATALOG[tName]) this._tryLoadFormation(tName, stem);
+    /* THE GROUND GOES FIRST. The browser hands out connections in request
+       order, and the terrain — what every bake starts from — used to be
+       queued behind hundreds of strips and props. Terrain, cover, water,
+       trees and the mountain kit, then the buildings, then everything else
+       the bake composes with; the wild beasts (the LATE tier) only once the
+       world's art has settled, so they never stand in front of it. */
     for (const k of Object.keys(T)) this._tryTerrain(T[k], 1);
     for (const tName of this.COVER_CATALOG)
       for (const slot of this.COVER_SLOTS) this._tryCover(tName, slot, 1);
@@ -1896,7 +1903,28 @@ const Assets = {
     this._tryWaterFx();
     this._tryTrees();
     this._tryMtnKit();
+    for (const s of this.artSlots()) this._tryLoad(s.id, s.lv);
+    for (const o of this.stageOwners()) for (let n = 1; n <= this.STAGE_N; n++) this._tryStage(o, n);
+    for (const lv of this.FORT_TIERS) for (const piece of this.FORT_PIECES) this._tryFort(lv, piece);
+    for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key], !this.WORK_SITE_RE.test(key));
+    for (const tribe of this.campTribes()) {
+      this._tryLoadCamp(tribe);
+      for (let i = 1; i <= this.CAMP_PROP_N; i++) this._tryLoadCampProp(tribe, i);
+    }
+    for (const w of this.wonderKeys()) this._tryLoadWonder(w);
+    for (const k of this.relicKeys()) this._tryLoadRelic(k);
+    for (const m of this.originMotifs()) this._tryLoadOrigin(m);
+    for (const tName of this.formationTerrains())
+      for (const stem of this.FORMATION_CATALOG[tName]) this._tryLoadFormation(tName, stem);
     this.ready = true;
+    // the beasts and the undyed hulls: after the world's art, or after a
+    // beat on a wire so slow the world never settles — never before
+    const beasts = () => {
+      for (const kind of Object.keys(this.UNIT_ART))
+        for (const dir of this.UNIT_DIRS8)
+          for (const pose of this.UNIT_ART[kind]) this._tryLoadUnit(kind, dir, pose);
+    };
+    Promise.race([this.whenWorldIdle(), new Promise(r => setTimeout(r, 6000))]).then(beasts);
     if (this.pending <= 0) { this._everIdle = true; const w = this._idle; this._idle = []; for (const r of w) r(); }
     /* THE ENDGAME GALLERY GOES LAST — see startEndgameArt: a real game
        asks for it once it has been playing a while, one picture at a time,

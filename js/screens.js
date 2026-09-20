@@ -224,6 +224,7 @@ const Screens = {
   enterGame() {
     this._demo = false;
     G.freeVis = false;
+    R.cam.z = R.defaultZoom();   // never the demo's leftover (tests/desktop-layout.mjs)
     /* THE WORLD IS PLAYED WITH ITS ART ON. A run founded on a cold cache
        could reach this press before the strips and the kit had landed; it
        used to enter anyway, procedural, and snap a few seconds in. Now the

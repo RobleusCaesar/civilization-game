@@ -308,9 +308,18 @@ const G = {
     // villager tier art for both halls, now the tunics are rolled (phase-1:
     // every probe 404s and the procedural cast stands — that is the design)
     if (window.R) { R._vTier = null; R._sTier = null; }
-    Assets.loadVillagerArt('P'); Assets.loadVillagerArt('A');
-    Assets.loadMilitaryArt('P'); Assets.loadMilitaryArt('A');
-    Assets.loadSapperArt('P'); Assets.loadSapperArt('A');
+    /* THE DEMO WEARS NO STRIPS (tests/boot.mjs). The title's demo world
+       founds at page load and stands behind an OPAQUE painted glen; loading
+       its villagers, soldiers and sappers for both tunics was ~800 PNG
+       requests and most of a 10MB boot, for people nobody can see — and on a
+       phone they stood on the wire in front of the real run's own strips.
+       The other shell screens show the demo through a translucent gradient,
+       where the procedural cast is the documented fallback. */
+    if (!(window.Screens && Screens._demo)) {
+      Assets.loadVillagerArt('P'); Assets.loadVillagerArt('A');
+      Assets.loadMilitaryArt('P'); Assets.loadMilitaryArt('A');
+      Assets.loadSapperArt('P'); Assets.loadSapperArt('A');
+    }
     // seed the homestead memory QUIETLY: a town that starts or loads already
     // bonded keeps its bonus without celebrating bonds it has had for days
     Bld.syncHomesteads(true);
@@ -2064,6 +2073,12 @@ const G = {
     }
   },
   SHELL_DRAW_MS: 130,     // how often the world is repainted behind a shell screen
+  // the title's painted backdrop, decoded and on the page (same file the
+  // splash shows, so the cross-fade has no scene change in it)
+  titleGlenUp() {
+    const img = document.querySelector('#scrTitle .tbg img');
+    return !!(img && img.complete && img.naturalWidth > 0);
+  },
   frame(t) {
     const dt = Math.min(0.1, (t - G.lastT) / 1000 || 0.016);
     G.lastT = t;
@@ -2143,11 +2158,15 @@ const G = {
         else G._shellDrawT = t;
       }
       if (!skip) G._safe(() => R.draw(dt), 'render');
-      /* the title is ready when its world is on the canvas — baked with the
-         art (R.holdBake) and drawn — and the splash may go (tests/boot.mjs).
-         Boot's own failsafe still covers a boot that never gets here. */
-      if (!skip && window.Boot && !Boot.ready && window.Screens && Screens.current === 'title'
-          && R.terrainCache && !R._bake && !R._bakeDue) Boot.markReady();
+      /* the title is ready when the GLEN is on screen (tests/boot.mjs): the
+         painted backdrop is opaque, so the demo world behind it can bake
+         whenever its art lands — waiting for that bake held the splash on a
+         phone for the length of every world probe, over a picture that was
+         already there. Without the backdrop (no art) the demo IS the title,
+         and the old rule stands: baked with the art and drawn. Boot's own
+         failsafe still covers a boot that never gets here. */
+      if (window.Boot && !Boot.ready && window.Screens && Screens.current === 'title'
+          && (G.titleGlenUp() || (!skip && R.terrainCache && !R._bake && !R._bakeDue))) Boot.markReady();
       G._safe(() => UI.refresh(dt), 'ui');
       // THE TUTORIAL (js/tutorial.js): a run without the checkbox pays this
       // one falsy check and nothing else — no DOM, no listeners, no scans

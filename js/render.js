@@ -6128,8 +6128,29 @@ const R = {
   viewW() { return this.cv.width / this.dpr; },
   viewH() { return this.cv.height / this.dpr; },
 
+  /* THE WORLD COVERS THE VIEWPORT (tests/desktop-layout.mjs): the zoom may
+     never fall below the level at which the map is narrower or shorter than
+     the window — on a wide desktop a medium map at 1.0 left black void down
+     both sides, which read as letterboxing. The floor is derived from the
+     live viewport and the map, never a constant. */
+  ZOOM_MAX: 3.5,
+  minZoom() {
+    const vw = this.viewW(), vh = this.viewH();
+    if (!vw || !vh) return 0.5;
+    return Math.max(0.5, vw / (CFG.W * CFG.TILE), vh / (CFG.H * CFG.TILE));
+  },
+  /* the zoom a run OPENS at: a phone keeps its close 1.7 (a 32px tile at
+     54px); a wide window steps back to see more world, floored so the map
+     still fills it. A played game used to inherit whatever the title's demo
+     had left in cam.z — 1.7 on a 1900px desktop, which is why it read as
+     zoomed in too far. */
+  defaultZoom() {
+    const wide = this.viewW() >= 900;
+    return Math.min(this.ZOOM_MAX, Math.max(wide ? 1.25 : 1.7, this.minZoom()));
+  },
   clampCam() {
     const world = CFG.W * CFG.TILE;
+    if (this.cam.z < this.minZoom()) this.cam.z = this.minZoom();
     const vw = this.viewW() / this.cam.z, vh = this.viewH() / this.cam.z;
     // lazily learn the open build-menu bar's true height (once), so we can reserve
     // exactly that much at the bottom — measured, so it's right on any device/safe-area

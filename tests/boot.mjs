@@ -58,7 +58,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   ck('theSplashIsInTheDocument', iSplash > 0, iSplash > 0 ? '' : 'not declared in index.html');
   ck('andItIsTheFirstThingInTheBody', iSplash > 0 && iSplash < iCanvas,
     'ahead of the canvas and all chrome');
-  const tag = body.slice(iSplash - 60, iSplash + 1400);   // wide enough for the <picture> block
+  const tag = body.slice(iSplash - 60, iSplash + 2600);   // wide enough for the <picture> block and its two-glen sources
   ck('itCarriesItsOwnInlineStyles',
     /style="[^"]*position:fixed/.test(tag) && /style="[^"]*z-index:\s*\d/.test(tag),
     'it needs no stylesheet to cover the screen');
@@ -90,8 +90,11 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     /documentElement\.style\.height = h \+ 'px'/.test(html) &&
     /cf-fit/.test(html),
     'a fixed probe pins html/body to the real viewport box');
-  ck('itPaintsOnTheGamesOwnGround', /background:\s*#0d0b08/.test(tag),
-    'the dark theme ground — never a white or transparent flash');
+  /* 2026-09-20: the ground behind the picture is the GLEN'S OWN GREEN
+     (#505c1e, the art's dominant tone) — the operator's direction, so the
+     frame before the image decodes is the meadow, never black or white */
+  ck('itPaintsOnTheGamesOwnGround', /background:\s*#505c1e/.test(tag),
+    'the glen\'s own green — never a white, black or transparent flash');
   // …and the viewport opts into the notch
   ck('theViewportCoversTheNotch', /viewport-fit=cover/.test(html), '');
 
@@ -131,7 +134,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
      baseline format still behind it — a browser without WebP must get the
      glen, not the bare dark screen the splash exists to prevent. */
   {
-    const tag = body.slice(iSplash, iSplash + 1400);
+    const tag = body.slice(iSplash, iSplash + 2600);
     const hasWebp = /srcset="[^"]*\.webp"/.test(tag);
     ck('theSplashIsServedLight', hasWebp, hasWebp ? 'webp source declared' : 'no webp');
     const webpM = tag.match(/srcset="([^"]+\.webp)"/);
@@ -324,20 +327,25 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   // 3a. left alone, the splash holds its beat and then lifts by itself
   const p = await b.newPage({ viewport: { width: 390, height: 844 } });
   await p.goto(url, { waitUntil: 'commit' });
-  await p.waitForFunction(() => window.Boot && window.Boot.HOLD_MS, null, { timeout: 5000 });
+  await p.waitForFunction(() => window.Boot && window.Boot.HOLD_MS != null, null, { timeout: 5000 });   // 0 is a value, not an absence
   /* ONE round trip, and the wait is anchored to the PAGE's own clock
      (Boot.t0). Sampling on the harness's clock measures harness latency: two
      round-trips of startup lag on a loaded machine push a "45% of the hold"
      sample past the hold itself, and the splash is then reported as lifting
      early when it did exactly the right thing. */
   const mid = await p.evaluate(async () => {
-    const till = async (frac) => {
-      const target = Boot.t0 + Boot.HOLD_MS * frac;
-      while (performance.now() < target) await new Promise(r => setTimeout(r, 15));
+    /* 2026-09-20 (the retention pass): THE HOLD IS GONE. HOLD_MS is 0 — the
+       art takes long enough on its own, and the splash now lifts the moment
+       the title is ready. The old fractions-of-the-hold sampling divided by
+       it; the budget is an absolute 4s now, and what is pinned is that the
+       lift never outruns readiness: the two are the same instant. */
+    const till = async (ms) => {
+      const target = Boot.t0 + ms;
+      while (performance.now() < target && !Boot.ready) await new Promise(r => setTimeout(r, 15));
       return performance.now() - Boot.t0;
     };
-    const at = await till(0.4);
-    const up = { at, done: Boot.done };
+    const at = performance.now() - Boot.t0;
+    const up = { at, done: Boot.done, ready: Boot.ready };
     /* the READINESS budget is the whole hold, not a fraction of it: the
        promise is that the world is built and drawn BEHIND the logo, so the
        lift is the timer's call and the player never waits past the beat.
@@ -346,7 +354,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     /* the readiness budget: the beat, or 4s when the beat is shorter than
        a world takes to bake on a loaded box (the bake now waits for the art
        and runs in slices; on file:// the art is local and lands at once) */
-    const readyAt = await till(Math.max(0.95, 4000 / Boot.HOLD_MS));
+    const readyAt = await till(4000);
     return {
       hold: Boot.HOLD_MS, fade: Boot.FADE_MS, fail: Boot.FAILSAFE_MS,
       up, readyAt, ready: Boot.ready, doneLate: Boot.done,
@@ -365,7 +373,22 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
      only binds on a cold one). Cut again, to 500ms — still a beat of its
      own, not a same-frame flash, but no longer the dominant cost in the
      total boot-to-menu time the operator is holding to a 3s budget. */
-  ck('theHoldIsAFullBeat', mid.hold >= 300 && mid.hold <= 2000, mid.hold + 'ms');
+  ck('theHoldIsGone', mid.hold === 0, mid.hold + 'ms — the art is the only wait now');
+  /* 2026-09-20: TWO GLENS. A wide window gets the desktop painting, a phone
+     the close crop — chosen by <source media> at parse time, before any
+     script, and only the match is fetched; the splash and the title carry
+     the SAME sources, so the lift still has no scene change; and the box
+     behind the picture is the art's own green, never black. */
+  const glen = await p.evaluate(() => {
+    const srcs = el => [...el.querySelectorAll('source')].map(s => (s.getAttribute('media') || '') + '|' + s.getAttribute('srcset')).join(' ; ');
+    const sp = document.querySelector('#splash picture'), tb = document.querySelector('#scrTitle picture.tbg');
+    return { same: !!sp && !!tb && srcs(sp) === srcs(tb), wide: !!sp && [...sp.querySelectorAll('source')].some(s => /min-width/.test(s.getAttribute('media') || '') && /title-bg-wide/.test(s.getAttribute('srcset'))),
+      splashBg: getComputedStyle(document.getElementById('splash') || document.body).backgroundColor,
+      tbgBg: tb ? getComputedStyle(tb).backgroundColor : '' };
+  });
+  ck('aWideWindowGetsItsOwnGlen', glen.wide, '');
+  ck('andTheSplashAndTitleStillShareTheirSources', glen.same, '');
+  ck('andTheGroundBehindThePictureIsGreen', /rgb\(80, 92, 30\)/.test(glen.splashBg) && /rgb\(80, 92, 30\)/.test(glen.tbgBg), glen.splashBg + ' / ' + glen.tbgBg);
   ck('andTheFadeIsACrossFadeNotACut', mid.fade >= 200 && mid.fade <= 900, mid.fade + 'ms');
   ck('andAFailsafeAlwaysStartsTheGame', mid.fail > mid.hold, mid.fail + 'ms');
   /* 2026-09-05, the 500ms cut: measured directly (scratchpad/parsetime2.mjs,
@@ -383,12 +406,10 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
      so what actually matters here is unchanged: the splash must still be
      up the first moment this test can look, whichever condition turns out
      to be the binding one. */
-  ck('itHoldsThroughTheBeat', !mid.up.done,
-    mid.up.done ? 'gone already by ' + Math.round(mid.up.at) + 'ms (hold ' + mid.hold + 'ms)'
-      : 'still up at ' + Math.round(mid.up.at) + 'ms (hold ' + mid.hold + 'ms'
-        + (mid.up.at >= mid.hold ? ' — script parse + world init outran the hold before the page could even sample it, ready is the binding condition here, not the timer' : '') + ')');
+  ck('itNeverLiftsUnready', !mid.up.done || mid.up.ready,
+    mid.up.done && !mid.up.ready ? 'gone at ' + Math.round(mid.up.at) + 'ms before the title was ready' : 'sampled at ' + Math.round(mid.up.at) + 'ms');
   ck('theTitleIsReadyBehindIt', mid.ready,
-    'world built and drawn inside the ' + mid.hold + 'ms beat (by ' + Math.round(mid.readyAt) + 'ms)');
+    'the glen on screen (by ' + Math.round(mid.readyAt) + 'ms of a 4000ms budget)');
   // …and it is gone once the beat has passed
   await p.waitForFunction(() => Boot.done, null, { timeout: 8000 });
   await p.waitForFunction(() => !document.getElementById('splash'), null, { timeout: 4000 });

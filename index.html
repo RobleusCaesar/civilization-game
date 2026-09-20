@@ -460,7 +460,7 @@
      below the buttons. The old .screen gradient stays on the element itself
      as the no-image fallback (the live demo world still runs behind it). */
   #scrTitle { padding: 0; }
-  #scrTitle .tbg { position: absolute; inset: 0; z-index: 0; }
+  #scrTitle .tbg { position: absolute; inset: 0; z-index: 0; background: #505c1e; }   /* the glen's own tone, so no frame is ever black */
   #scrTitle .tbg img { width: 100%; height: 100%; object-fit: cover; display: block; }
   /* the logo + menu ride as ONE centred block: the art frames an open
      corridor down the middle, which is the ground the menu is meant to
@@ -695,6 +695,16 @@
   @media (min-width: 900px) {
     .logo { font-size: clamp(54px, 5vw, 68px); }
     .tagline { font-size: 15px; }
+    /* THE DESKTOP BARS (tests/desktop-layout.mjs). The resource chips are
+       flex: 1 — on a phone that packs the row; on a 1900px window each chip
+       was 450px of wood with a number in the middle, which read as gaps. A
+       wide window caps each chip and spreads the four evenly. The build
+       menu left a third of its width empty on the right: it centres now,
+       and `safe` keeps a menu wider than the bar scrolling from its start. */
+    .trow:first-child { justify-content: space-evenly; }   /* the four resources */
+    .res { flex: 0 1 240px; }
+    #rPopChip { flex: 0 0 auto; }                          /* row two keeps pop left, day + pause + menu right */
+    #buildmenu::before, #buildmenu::after { content: ''; margin: auto; }   /* centres; collapses to 0 when the row overflows, so it still scrolls from its start */
   }
   /* short viewports (landscape phones): compact so nothing clips */
   @media (max-height: 600px) {
@@ -1092,7 +1102,7 @@
      retracted strip and the boot showed a black band at the foot of the
      screen. Inline like the rest, so it holds before any stylesheet parses;
      browsers without dvh simply drop the declaration. -->
-<div id="splash" style="position:fixed;inset:0;min-height:100dvh;z-index:200;background:#0d0b08;display:flex;align-items:center;justify-content:center;opacity:1;transition:opacity .45s ease">
+<div id="splash" style="position:fixed;inset:0;min-height:100dvh;z-index:200;background:#505c1e;display:flex;align-items:center;justify-content:center;opacity:1;transition:opacity .45s ease">
   <!-- THE LOADING SCREEN IS THE TITLE'S OWN GLEN. Same file, same
        `object-fit: cover`, same full-bleed box as #scrTitle's .tbg — so when
        the splash fades there is NO transition of the background at all: the
@@ -1105,7 +1115,14 @@
        without WebP still gets the glen rather than a bare dark screen — the
        exact failure the splash exists to prevent. `display:contents` on the
        <picture> lets the <img> stay the flex item. -->
+  <!-- TWO GLENS, PICKED BY THE BROWSER before any script (tests/boot.mjs):
+       <source media> gives a wide window the desktop painting, a phone the
+       close crop, and only the match is fetched; the green behind is the
+       art's own tone, so no frame is black; the title's .tbg carries the
+       same sources, so the lift has no scene change in it. -->
   <picture style="display:contents">
+    <source srcset="assets/ui/title-bg-wide.webp" type="image/webp" media="(min-width: 900px) and (min-aspect-ratio: 4/3)">
+    <source srcset="assets/ui/title-bg-wide.jpg" type="image/jpeg" media="(min-width: 900px) and (min-aspect-ratio: 4/3)">
     <source srcset="assets/ui/title-bg.webp" type="image/webp">
     <img src="assets/ui/title-bg.jpg" alt="" decoding="sync" fetchpriority="high"
          style="width:100%;height:100%;object-fit:cover;image-rendering:pixelated;pointer-events:none;-webkit-user-select:none;user-select:none">
@@ -1130,7 +1147,7 @@
     return (window.performance && performance.now) ? performance.now() : Date.now();
   };
   var Boot = window.Boot = {
-    HOLD_MS: 500,           // the beat the glen holds before it starts to go (2026-09-05, cut again: the operator's own device still read the 1500ms beat as "sits for a bit" on a warm cache, where the beat — not the art gate — is what the player actually waits on; the art gate still decides the lift on a cold one)
+    HOLD_MS: 0,             // NO artificial hold (2026-09-20, retention pass): the art takes long enough on its own; the splash lifts the moment the title is ready, and the tap-skip stays armed for that wait. History 3000 → 1500 → 500 → 0 (2026-09-05: the operator's own device still read the 1500ms beat as "sits for a bit" on a warm cache, where the beat — not the art gate — is what the player actually waits on; the art gate still decides the lift on a cold one)
     FADE_MS: 450,           // matches the inline transition above
     FAILSAFE_MS: 9000,      // …but a game that never reports in still starts
     t0: now(),
@@ -1142,6 +1159,14 @@
     /* a game is starting (or a test drove straight in): go NOW, no fade */
     force: function () {
       this.ready = this.held = this.skipped = true;
+      /* a lift already mid-fade is DONE and _try would no-op, leaving the
+         fading element in front of the game for the rest of its fade — a
+         cut is a cut, so drop it now (tests/boot.mjs, entering a game) */
+      if (this.done) {
+        var el = document.getElementById('splash');
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+        return;
+      }
       this._try(true);
     },
     _try: function (instant) {
@@ -1255,6 +1280,8 @@
     <!-- painted backdrop: webp served, jpg fallback; the .screen gradient
          over the live demo world remains behind it as the no-image fallback -->
     <picture class="tbg">
+      <source srcset="assets/ui/title-bg-wide.webp" type="image/webp" media="(min-width: 900px) and (min-aspect-ratio: 4/3)">
+      <source srcset="assets/ui/title-bg-wide.jpg" type="image/jpeg" media="(min-width: 900px) and (min-aspect-ratio: 4/3)">
       <source srcset="assets/ui/title-bg.webp" type="image/webp">
       <img src="assets/ui/title-bg.jpg" alt="" decoding="async">
     </picture>
@@ -1609,30 +1636,30 @@
 
 </div>
 
-<script src="js/config.js?v=51"></script>
-<script src="js/config.supabase.js?v=51"></script>
-<script src="js/vendor/supabase.js?v=51"></script>
-<script src="js/backend.js?v=51"></script>
-<script src="js/competition.js?v=51"></script>
-<script src="js/score.js?v=51"></script>
-<script src="js/cards.js?v=51"></script>
-<script src="js/artstyle.js?v=51"></script>
-<script src="js/sprites.js?v=51"></script>
-<script src="js/formations.js?v=51"></script>
-<script src="js/relics.js?v=51"></script>
-<script src="js/assets.js?v=51"></script>
-<script src="js/dev.js?v=51"></script>
-<script src="js/map.js?v=51"></script>
-<script src="js/buildings.js?v=51"></script>
-<script src="js/units.js?v=51"></script>
-<script src="js/combat.js?v=51"></script>
-<script src="js/ai.js?v=51"></script>
-<script src="js/render.js?v=51"></script>
-<script src="js/defeatart.js?v=51"></script>
-<script src="js/victoryart.js?v=51"></script>
-<script src="js/ui.js?v=51"></script>
-<script src="js/screens.js?v=51"></script>
-<script src="js/tutorial.js?v=51"></script>
-<script src="js/game.js?v=51"></script>
+<script src="js/config.js?v=52"></script>
+<script src="js/config.supabase.js?v=52"></script>
+<script src="js/vendor/supabase.js?v=52"></script>
+<script src="js/backend.js?v=52"></script>
+<script src="js/competition.js?v=52"></script>
+<script src="js/score.js?v=52"></script>
+<script src="js/cards.js?v=52"></script>
+<script src="js/artstyle.js?v=52"></script>
+<script src="js/sprites.js?v=52"></script>
+<script src="js/formations.js?v=52"></script>
+<script src="js/relics.js?v=52"></script>
+<script src="js/assets.js?v=52"></script>
+<script src="js/dev.js?v=52"></script>
+<script src="js/map.js?v=52"></script>
+<script src="js/buildings.js?v=52"></script>
+<script src="js/units.js?v=52"></script>
+<script src="js/combat.js?v=52"></script>
+<script src="js/ai.js?v=52"></script>
+<script src="js/render.js?v=52"></script>
+<script src="js/defeatart.js?v=52"></script>
+<script src="js/victoryart.js?v=52"></script>
+<script src="js/ui.js?v=52"></script>
+<script src="js/screens.js?v=52"></script>
+<script src="js/tutorial.js?v=52"></script>
+<script src="js/game.js?v=52"></script>
 </body>
 </html>

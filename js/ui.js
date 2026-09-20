@@ -979,7 +979,7 @@ const UI = {
 
   zoomAt(sx, sy, factor) {
     const before = R.screenToWorld(sx, sy);
-    R.cam.z = Math.max(0.5, Math.min(3.5, R.cam.z * factor));
+    R.cam.z = Math.max(R.minZoom(), Math.min(R.ZOOM_MAX, R.cam.z * factor));
     const after = R.screenToWorld(sx, sy);
     R.cam.x += before.x - after.x; R.cam.y += before.y - after.y;
     R.clampCam();
