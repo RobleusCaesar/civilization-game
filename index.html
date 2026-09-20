@@ -237,9 +237,10 @@
   #victoryModal .vpRoad > b { font-size: 14px; }
   #victoryModal .vpRoad p { margin: 0; font-size: 12px; line-height: 1.45; color: #d9c4a0; }
   #victoryModal .vpRoad p b { color: #ffd77e; }
-  #victoryModal .vpPrice { white-space: nowrap; }
+  /* the price wraps between its icon-number PAIRS (Bld.costStr binds each
+     pair with an NBSP) — nowrap overflowed a 430px phone's two columns */
   #victoryModal #vpGotIt { max-width: 220px; min-height: 44px; }
-  @media (max-width: 420px) {
+  @media (max-width: 599px) {
     #victoryModal .vpRoads { flex-direction: column; }
     #victoryModal .vpArt { width: 72px; height: 72px; }
   }

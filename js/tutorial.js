@@ -486,7 +486,8 @@ const Tutorial = {
     S.tut.on = false; S.tut.skipped = true;
     // a skip is the player's answer for good: the auto-on for the first two
     // games (Screens.tutorialWanted) must not re-arm a lesson twice refused
-    try { localStorage.setItem('neo-tutorial-ask', '0'); } catch (e) {}
+    if (window.Screens && Screens.lsSet) Screens.lsSet('neo-tutorial-ask', '0');
+    else { try { localStorage.setItem('neo-tutorial-ask', '0'); } catch (e) {} }
     this._killScout();
     this.onWorldChange();   // removes the DOM, restores full speed
   },

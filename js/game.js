@@ -2088,7 +2088,12 @@ const G = {
          the world running away — render and UI below stay on real dt, so the
          game never looks frozen. Scale 1 (a single multiply) whenever the
          tutorial is off, which is every run without the checkbox. */
-      const sdt = dt * ((S.tut && S.tut.on && window.Tutorial && Tutorial.simScale) || 1);
+      let scale = (S.tut && S.tut.on && window.Tutorial && Tutorial.simScale) || 1;
+      // the first Calm game's victory modal has the floor: the same slow
+      // motion a tutorial note gets, so reading it costs the town nothing
+      // (Screens.showVictoryPaths; a flag, never a DOM query per frame)
+      if (window.Screens && Screens._modalUp) scale = Math.min(scale, (window.Tutorial && Tutorial.SLOW) || 0.2);
+      const sdt = dt * scale;
       const dtDays = sdt * 1000 / CFG.DAY_MS;
       S.playtime = (S.playtime || 0) + dt;
       G._safe(() => {

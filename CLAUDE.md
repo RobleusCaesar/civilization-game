@@ -4224,10 +4224,10 @@ an opt-in checkbox on a screen a new player is already reading past.
 teacher" (foundRun's Valley·Classic force, `syncTutToggle`, the toggle's
 tap and `Tutorial.maybeStart` all ask it): an explicit choice in
 `neo-tutorial-ask` ('1'/'0') wins outright; with the checkbox never touched
-the teacher is ON while the local count of games founded (`neo-games`,
-stepped by `noteGameFounded` at the two founding sites — keeping a card in
-`draftTap`, and `replayRun`) is under `TUT_AUTO_GAMES` (2), and off from the
-third game. Three rules around it. **A Skip records the opt-out**
+the teacher is ON while the local count of TEACHABLE games founded
+(`neo-games`, stepped by `noteGameFounded` in `draftTap` alone — a Replay
+never arms the teacher, so it spends no slot) is under `TUT_AUTO_GAMES` (2),
+and off from the third game. Six rules around it. **A Skip records the opt-out**
 (`Tutorial.skip` writes '0'): game two must never re-arm a lesson the player
 refused twice over. **A returning player is a veteran**: the first read of
 `neo-games` on a device with any trace of earlier play (the finished-run
@@ -4237,6 +4237,18 @@ the people who taught us. **The count steps AFTER the arming read** in
 `draftTap` (`maybeStart` → `noteGameFounded` → `enterGame`), or game two
 reads 2 and gets nothing. The toggle shows the EFFECTIVE state (auto-on
 reads as on) and a tap writes the opposite as an explicit choice.
+**THE MEMORY HAS A FALLBACK** (`Screens.lsGet` / `lsSet` / `_mem`, from the
+adversarial review): a storage that THROWS (iOS "Block All Cookies", a
+partitioned iframe) used to swallow every read into the auto-on default AND
+every write — the toggle could not turn it off, the count never stepped,
+the modal came back every game, forever. Those keys live in a per-session
+map when storage is unavailable, so the promise holds for the session and
+nothing is permanent. **THE PIN OUTRANKS THE AUTO-ON** (`foundRun`,
+`_pinnedRun`): "the tutorial outranks the pin" was written when `tut` meant
+the checkbox; a new player arriving by a shared `?seed=` link must get the
+world they were sent, so an AUTO want yields to the pin and the pinned run
+neither arms the teacher nor spends a slot — an EXPLICIT checkbox still
+wins and still forces Valley·Classic·medium.
 **And the run_start row tells the truth now**: `_enterNow` logs
 `tutorial: !!(S.tut && S.tut.on)`, and `maybeStart` used to run AFTER
 `enterGame` — so the board's "3 tutorials in 191 games" was really the
@@ -4255,10 +4267,21 @@ re-deals it), only where the mode offers the Wonder (`UI.wonderOffered` —
 the build menu's own gate, so Moderate never sees it), dismissed by its
 button, the backdrop or Escape, removed by leaving the game
 (`Screens.show` → `hideVictoryPaths`). z25: over the tutorial's card (15)
-and the placement chrome (20), under the shell (30). **The tutorial holds
+and the placement chrome (20), under the shell (30). **It is DUE in
+`draftTap` but SHOWN by `_enterNow`** (`_victoryPathsPending`): on a cold
+cache `enterGame` parks behind the art plaque for seconds, and a modal
+appended under the shell then was stamped seen, its Escape live, and
+invisible. **And it slows the world while it has the floor**
+(`Screens._modalUp`, a flag `G.frame` reads — never a DOM query per frame —
+at the tutorial's own `Tutorial.SLOW`): two paragraphs on day one must not
+hand the rival a day and a half. **The tutorial holds
 its notes while it has the floor** (`Screens.modalUp` in `_updateDisplay`
 and `_checkEvents`) and resumes on dismissal — two things to read at once
-is the failure this exists to prevent. `victoryPathsDue` asks bare `UI`,
+is the failure this exists to prevent. Half the monuments carry their own
+article ("The Sun Obelisk"), so the headline is "Raise " + the name, never
+"Raise the The …". The price wraps between its icon-number pairs (nowrap
+overflowed a 430px phone's two columns) and the roads stack below 600px.
+`victoryPathsDue` asks bare `UI`,
 never `window.UI` — the guard read `window.UI &&` for one commit and
 silently answered "no modal" forever (the window.G trap; the contract's
 Calm check caught it). **And the Wonder's build card is dressed as the
@@ -4267,8 +4290,10 @@ and greyed to 45% for the whole run, it was the one card nobody scrolled
 to. It wears a gold rim and a "★ Victory" ribbon, is never ghosted below
 0.85 (saving for it is the state it lives in), and under the price says how
 far the town has SAVED — the SCARCEST pile's share of its price, floored,
-"Ready to raise" once every pile is there. Its position stays last: it is
-the end of the game. **The price itself is untouched here** — whether
+"Ready to raise" once every pile is there — and once ground is broken the
+goods are SPENT, so it reports the works ("Rising — N days", then "Raised")
+rather than dropping to "0% saved" the moment the player paid. Its
+position stays last: it is the end of the game. **The price itself is untouched here** — whether
 15,000 of each is reachable in a Calm run is Phase 4's question, argued
 with numbers there.
 

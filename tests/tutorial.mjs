@@ -742,10 +742,53 @@ const out = await p.evaluate(async () => {
       G.newGame('121', 'moderate', 'medium'); Screens._demo = false; S.paused = true;
       G._freshRun = true;
       Tutorial.maybeStart();
-      Screens.enterGame();
+      Screens._enterNow();   // the row is written here; enterGame may park behind the art plaque
     } finally { Backend.logRunStart = oldLog; Backend.isReady = oldReady; }
     ck('andTheRunStartRowSaysTutorial', rows.length === 1 && rows[0].tutorial === true, JSON.stringify(rows));
     Tutorial.skip();
+    wipe();
+    // A REPLAY SPENDS NOTHING: it never arms the teacher, so it must not eat one of the two slots
+    ck('aReplaySpendsNoTeachingGame', !/this\.noteGameFounded\(/.test(Screens.replayRun.toString()), '');   // the CALL, not the comment naming it
+    // THE MEMORY HAS A FALLBACK: with storage throwing, the promise holds for the session
+    // and nothing is permanent — the count steps, the toggle answers, the modal shows once
+    {
+      const gi = Storage.prototype.getItem, si = Storage.prototype.setItem, ri = Storage.prototype.removeItem;
+      Storage.prototype.getItem = Storage.prototype.setItem = Storage.prototype.removeItem = function () { throw new Error('storage blocked'); };
+      Screens._mem = {};
+      try {
+        const a = Screens.gamesFounded() === 0 && Screens.tutorialWanted() === true;
+        Screens.noteGameFounded(); Screens.noteGameFounded();
+        const b2 = Screens.gamesFounded() === 2 && Screens.tutorialWanted() === false;
+        Screens.lsSet('neo-tutorial-ask', '1');
+        const c = Screens.tutorialWanted() === true;
+        Screens.syncTutToggle(); tb.click();
+        const d = Screens.tutorialWanted() === false;
+        const e = Screens.victoryPathsDue !== undefined && (Screens._mem['neo-victory-seen'] == null);
+        Screens.lsSet('neo-victory-seen', '1');
+        const f = Screens.lsGet('neo-victory-seen') === '1';
+        ck('blockedStorageFallsBackToTheSession', a && b2 && c && d && e && f, [a, b2, c, d, e, f].join('/'));
+      } finally { Storage.prototype.getItem = gi; Storage.prototype.setItem = si; Storage.prototype.removeItem = ri; Screens._mem = {}; }
+    }
+    wipe();
+    // THE PIN OUTRANKS THE AUTO-ON: a shared ?seed= founds its world and spends no slot;
+    // an EXPLICIT checkbox still outranks the pin
+    {
+      const here = location.pathname + location.hash;
+      Screens.newPrefs.mode = 'moderate';
+      history.replaceState(null, '', location.pathname + '?seed=4242&size=medium' + location.hash);
+      Screens.foundRun();
+      const pinnedWorld = S.seed === '4242' && Screens._pinnedRun === true && !/seed=/.test(location.search);
+      ck('aSharedSeedBeatsTheAutoOn', pinnedWorld, 'seed ' + S.seed + ' pinned ' + Screens._pinnedRun + ' search ' + location.search);
+      ck('andDraftTapArmsNothingForIt', /_pinnedRun/.test(Screens.draftTap.toString()), '');
+      Screens.lsSet('neo-tutorial-ask', '1');
+      history.replaceState(null, '', location.pathname + '?seed=4242&size=medium' + location.hash);
+      Screens.foundRun();
+      ck('butAnExplicitCheckboxStillOutranksIt', Screens._pinnedRun === false && S.seed !== '4242' && S.sizeKey === 'medium',
+        'seed ' + S.seed + ' pinned ' + Screens._pinnedRun);
+      history.replaceState(null, '', here);
+      Screens._pinnedRun = false;
+      Screens.show('playing'); S.paused = true;
+    }
     wipe();
   }
 
@@ -784,9 +827,23 @@ const out = await p.evaluate(async () => {
     wipeSeen();
     Screens.showVictoryPaths();
     Screens.show('paused');
-    ck('leavingTheGameRemovesIt', !Screens.modalUp(), '');
+    ck('leavingTheGameRemovesIt', !Screens.modalUp() && Screens._modalUp === false, '');
     Screens.show('playing'); S.paused = true;
     Tutorial.skip();
+    // it is SHOWN by _enterNow (deferred from draftTap), never under the art plaque
+    wipeSeen();
+    Screens._victoryPathsPending = true;
+    G._freshRun = false; Screens._enterNow();
+    ck('theModalIsShownWhenTheWorldIs', Screens.modalUp() && Screens._victoryPathsPending === false, '');
+    ck('andItSlowsTheWorldWhileItHasTheFloor', Screens._modalUp === true && /Screens\._modalUp/.test(G.frame.toString()), '');
+    // the price wraps between its pairs; nothing overflows the card at phone width
+    {
+      const card = document.querySelector('#victoryModal .vpCard'), price = document.querySelector('#victoryModal .vpPrice');
+      ck('thePriceWrapsInsideTheCard', !!card && !!price && getComputedStyle(price).whiteSpace !== 'nowrap' && card.scrollWidth <= card.clientWidth + 1,
+        card ? card.scrollWidth + '/' + card.clientWidth + ' ' + (price && getComputedStyle(price).whiteSpace) : 'no card');
+    }
+    document.getElementById('vpGotIt').click();
+    S.paused = true;
     // the Wonder card reads as the goal
     UI.refreshMenu();
     const wb = document.querySelector('.bbtn[data-key="wonder"]');
@@ -801,6 +858,20 @@ const out = await p.evaluate(async () => {
     S.res.wood = Math.floor(wcost.wood / 2);
     UI.refreshMenu();
     ck('theScarcestPileSetsTheFigure', prog() === '50% saved', prog());
+    // ground broken: the goods are spent, so the card reports the works, not "0% saved"
+    {
+      const tc = Bld.tcOf('P'); let site = null;
+      for (let r = 3; r <= 12 && !site; r++) for (let dy = -r; dy <= r && !site; dy++) for (let dx = -r; dx <= r && !site; dx++) {
+        const x = (tc.x + dx) | 0, y = (tc.y + dy) | 0;
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || !MapGen.onBoard(x, y)) continue;
+        const c = Bld.canPlace('P', 'wonder', x, y, { noCost: true, noSeal: true });
+        if (c && c.ok) site = Bld.place('P', 'wonder', x, y, { free: true });
+      }
+      UI.refreshMenu();
+      ck('onceGroundIsBrokenTheCardReportsTheWorks', !!site && /^Rising — \d+ days$/.test(prog()), site ? prog() : 'no site could be laid');
+      if (site) { site.construction = 0; UI.refreshMenu(); }
+      ck('andRaisedOnceItStands', !!site && prog() === 'Raised', prog());
+    }
     wipeSeen();
   }
 

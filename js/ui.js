@@ -244,6 +244,10 @@ const UI = {
     return Math.max(0, Math.min(1, frac));
   },
   wonderSavedLine() {
+    // once the ground is broken the goods are SPENT — the card would drop to
+    // "0% saved" the moment the player paid; it reports the works instead
+    const own = S && S.buildings && S.buildings.find(b => b.owner === 'P' && b.key === 'wonder');
+    if (own) return own.construction > 0 ? 'Rising — ' + Math.ceil(own.construction) + ' days' : 'Raised';
     const f = this.wonderSavedFrac();
     return f >= 1 ? 'Ready to raise' : Math.floor(f * 100) + '% saved';
   },
