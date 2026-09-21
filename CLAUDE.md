@@ -284,7 +284,7 @@ short seams a fresh pick put a gate on every leftover (three on a ten-tile
 ring). The gate seam lays its gate first; once any gate stands, every other
 tile is a wall. Replayed on the day-191 save: main's chief laid two more
 sections, met its cap at 28 and stopped with nine west tiles open and no
-gate; the fixed chief laid the gate at (36,43) and the ten remaining west
+gate; the fixed chief laid the gate at (36,42) and the ten remaining west
 sections in one pass — 37 sections, no seam left, none of them on a shore
 tile.
 
