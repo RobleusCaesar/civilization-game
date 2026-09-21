@@ -179,10 +179,17 @@ shifts smoothly instead of on cliff edges.
   drops that lane's defence rating, and `_campScore` raises **Warhorn** — storm
   the door rather than bring engines to the stone beside it.
 - **Real fortification — plug the seams, and invest.** `maybeWalls` closes the
-  **open seams** on the perimeter (`perimeterGaps`), sealing the **shortest seams
-  first** (a narrow gap is cheap to close completely and removes a whole route),
-  **gating the widest** as the sortie lane, and **reinforcing the attacked flank**
-  first (`mem.hitFlank`). Its per-call budget and the `bestBuild` wall utility both
+  **open seams** on the perimeter (`perimeterGaps`) — and a seam is only ground an
+  attacker could **step onto from beyond the ring** (`AI.ringExposed`: one of the
+  tile's four orthogonal neighbours outside the ring is passable; the pathfinder
+  never cuts a corner, so a diagonal cannot get in). A stretch of ring running
+  along a shore, or an alcove under a wood, is not frontage: the water is the
+  wall there, and no section is ever laid on it. Seams close **widest first**
+  (the big door is the one an army walks through; a one-tile seam left for last
+  is a chokepoint the towers can hold), the **widest is gated** as the sortie
+  lane, and the **attacked flank** comes first of all (`mem.hitFlank`). There is
+  **no cap** on closing the ring any more: the old `wallCap` was spent on six
+  shore sections in a real day-191 game while the whole west side stood open. Its per-call budget and the `bestBuild` wall utility both
   **scale with threat and posture** — a wall-persona or a threatened/turtling chief
   fortifies heavily and early; a safe chief doesn't burn wood ringing open ground
   against nobody. This is what makes Mason-type turtling smart *and* keeps the

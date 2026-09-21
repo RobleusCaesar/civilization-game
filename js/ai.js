@@ -157,6 +157,34 @@ const AI = {
   },
   isFort(b) { return !!b && (b.key === 'wall' || b.key === 'gate'); },
 
+  /* A RING TILE IS FRONTAGE ONLY IF SOMEBODY COULD STEP ONTO IT FROM OUTSIDE
+     (tests/wall-line.mjs §10 — a real day-191 save, with the picture: six
+     palisade sections along the SOUTH SHORE OF A POND, the water lapping the
+     far side of every one of them, while the whole west side of the ring
+     stood open and the player's twenty-strong war party walked in through
+     it). perimeterGaps counted every PASSABLE ring tile as a seam, so a
+     stretch of ring running along a shore read as open frontage and was
+     walled at the same price as the lane an army actually uses — and with
+     the old section cap binding (27 of 28), the shore sections were the
+     ones that spent it.
+     The pathfinder never cuts a corner (Path.canStep: a diagonal step needs
+     BOTH orthogonal tiles open), so the only way onto a ring tile from
+     outside is through one of its four orthogonal neighbours that lie
+     beyond the ring. If none of those is passable, the water (or the wood,
+     or the crag) IS the wall there and there is nothing to lay: such a tile
+     can only be entered along the ring, from a neighbour that is a door in
+     its own right. A read of the chief's own passability, like every other
+     ring read — and it heals itself: fell the wood beyond the ring, bridge
+     the pond, and the next daily read finds the tile exposed and closes it. */
+  ringExposed(x, y, cx, cy, R, owner) {
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + ox, ny = y + oy;
+      if (Math.max(Math.abs(nx - cx), Math.abs(ny - cy)) <= R) continue;   // on or inside the ring
+      if (MapGen.inB(nx, ny) && Path.passable(nx, ny, owner || 'A')) return true;
+    }
+    return false;
+  },
+
   /* ---- A SHOOTING GALLERY IS NOT A BUILDING SITE (tests/wall-line.mjs) ----
      A real day-146 game: the player parked two catapults on the far bank of a
      channel and shelled the rival's shoreline tower. The chief rebuilt it
@@ -774,9 +802,12 @@ const AI = {
 
   /* CHOKEPOINTS — the open seams on a town's perimeter ring. Impassable terrain
      (wood/rock/orchard/water/mountain) already walls most of the ring; the gaps
-     are where an attacker gets in. Returns each contiguous run of open ring
-     tiles as a seam {tiles, width, mid, dir}, sorted widest-first. This is the
-     map's tactical geometry: you plug seams, not open ground. */
+     are where an attacker gets in. A passable ring tile nobody can STEP ONTO
+     from beyond the ring — the stretch along a shore, the alcove under a
+     wood — is not a gap either (ringExposed): the water is the wall there.
+     Returns each contiguous run of open ring tiles as a seam {tiles, width,
+     mid, dir}, sorted widest-first. This is the map's tactical geometry:
+     you plug seams, not open ground. */
   perimeterGaps(cx, cy, R) {
     const ring = [];
     for (let dx = -R; dx <= R; dx++) ring.push([cx + dx, cy - R]);
@@ -784,7 +815,8 @@ const AI = {
     for (let dx = R - 1; dx >= -R; dx--) ring.push([cx + dx, cy + R]);
     for (let dy = R - 1; dy >= -R + 1; dy--) ring.push([cx - R, cy + dy]);
     const n = ring.length;
-    const open = ring.map(([x, y]) => MapGen.inB(x, y) && Path.passable(x, y, 'A') && Bld.blockAt(x, y) === 0);
+    const open = ring.map(([x, y]) => MapGen.inB(x, y) && Path.passable(x, y, 'A') && Bld.blockAt(x, y) === 0 &&
+      this.ringExposed(x, y, cx, cy, R));
     let start = open.findIndex(o => !o); if (start < 0) start = 0;   // anchor on a closed tile (cyclic)
     const runs = []; let cur = null;
     for (let k = 0; k < n; k++) {
@@ -871,23 +903,14 @@ const AI = {
      game ended with 35 sticks-and-grass sections, no quarry, and a wall tier
      that never moved. So the ring is capped by what the STONE economy can
      maintain: quarries buy you wall. */
-  wallCap(tc) {
-    /* Raised from 6 + lv*3 (the day-217 save): a full WALL_R ring is 40
-       tiles, and the old cap topped out at 12-15 sections without quarries —
-       a ring that could never close, so the "finish before extending" rule
-       had nothing to finish. The cap still scales with the hall (each tier
-       is more ring to re-face) and quarries (stone to re-face it with). */
-    const P = this.persona();
-    const q = Bld.list('A').filter(b => b.key === 'quarry' && Bld.done(b)).length;
-    return 12 + (tc.level || 1) * 6 + q * 4 + (P.walls ? 6 : 0);
-  },
-
   /* RULE 3 — WALK THE LINE. Classify every tile of the intended ring, so the
      chief can tell a wall from a hut standing where a wall should be, and a
      stretch terrain seals from a hole a razed section left behind:
        fort   — our own wall/gate: sealed, and it stops movement
        soft   — any OTHER friendly building: sealed to the eye, open to a boot
-       edge   — impassable ground (or someone else's building): sealed by nature
+       edge   — impassable ground, someone else's building, or passable ground
+                nobody can step onto from beyond the ring (ringExposed): sealed
+                by nature
        open   — passable and empty: honest frontage, not yet walled
      A `soft` tile the wall has already reached (a fort beside it) is an open
      door and gets fixed first; an `open` tile with forts on BOTH sides is a
@@ -896,12 +919,12 @@ const AI = {
     tc = tc || Bld.tcOf('A');
     const out = { soft: [], breach: [], forts: 0, open: 0 };
     if (!tc) return out;
-    const ring = this.wallRing(tc), n = ring.length;
+    const ring = this.wallRing(tc), n = ring.length, c = this.wallCenter(tc), R = this.WALL_R;
     const cls = ring.map(([x, y]) => {
       if (!MapGen.inB(x, y)) return 'edge';
       const b = Bld.at(x, y);
       if (b) return b.owner !== 'A' ? 'edge' : (this.isFort(b) ? 'fort' : 'soft');
-      return Path.passable(x, y, 'A') ? 'open' : 'edge';
+      return Path.passable(x, y, 'A') && this.ringExposed(x, y, c.cx, c.cy, R) ? 'open' : 'edge';
     });
     for (let i = 0; i < n; i++) {
       if (cls[i] === 'fort') out.forts++;
@@ -936,6 +959,17 @@ const AI = {
       const b = Bld.at(nx, ny);
       if (b) { if (this.isFort(b) && b.owner === 'A') continue; return null; }  // something else stands there
       if (!Path.passable(nx, ny, 'A')) continue;                               // terrain already seals it
+      // …and so does ground nobody can step in from: a bulge tile whose
+      // orthogonal neighbours beyond the bulge are all impassable is an
+      // alcove against the water, not a gap — ringExposed's rule read one
+      // ring further out, where the wrapped building and the tile's own
+      // bulge-mates are the inside, not the outside
+      if (![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([px, py]) => {
+        const mx = nx + px, my = ny + py;
+        if (Math.max(Math.abs(mx - x), Math.abs(my - y)) <= 1) return false;          // the building or a bulge-mate
+        if (Math.max(Math.abs(mx - c.cx), Math.abs(my - c.cy)) <= R) return false;     // the ring or inside it
+        return MapGen.inB(mx, my) && Path.passable(mx, my, 'A');
+      })) continue;
       if (!Bld.canPlace('A', 'wall', nx, ny).ok) return null;                  // open ground we can't build on
       out.push([nx, ny]);
     }
@@ -1253,10 +1287,14 @@ const AI = {
     if (S.day < 16 || ai.res.wood < 45) return;
     // RULES 2+3 — a hole in the standing ring outranks every metre of new frontage
     if (this.mendWallLine(tc)) return;
-    // a ring already at the limit of what this economy can re-tier: stop laying
-    // more sections and let the wood go to the works that raise the cap
+    /* NO CAP ON CLOSING THE RING. There used to be one (wallCap: 12 + 6 per
+       hall tier, plus quarries), raised once "so a ring can actually close"
+       — and a real day-191 town then spent 27 of its 28 sections with six of
+       them laid along a pond and its whole west side open (the picture in
+       tests/wall-line.mjs §10). A ring a cap leaves open is a ring nobody
+       should have paid for. What paces the stone is the wood gate above, the
+       re-tier rule below, the per-call budget and affordFort. */
     const forts = Bld.forts('A');
-    if (forts.length >= this.wallCap(tc)) return;
     /* FINISH THE RING BEFORE EXTENDING IT. An attacker only has to break ONE
        section, so a short ring of stone is worth far more than a long one of
        sticks — and every section laid is another to pay for at the next tier.
@@ -1275,36 +1313,58 @@ const AI = {
        trust, and a real game gated the one ring tile whose far side was a lake —
        a door into deep water, with the host shut in behind it. Walk the seam for
        a tile that actually has walkable ground beyond the ring, and gate that. */
-    const outFacing = ([x, y]) => {
-      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = x + ox, ny = y + oy;
-        if (Math.max(Math.abs(nx - cx), Math.abs(ny - cy)) <= 5) continue;
-        if (MapGen.inB(nx, ny) && Path.passable(nx, ny, 'A') && !Bld.at(nx, ny)) return true;
-      }
-      return false;
-    };
-    const gateSeam = gaps.find(g => g.tiles.some(outFacing)) || gaps[0];   // widest usable = the sortie lane
+    // (ringExposed is that same question, and every seam tile answers it now
+    // — the walk survives as the gate's own pick within the seam)
+    const outFacing = ([x, y]) => this.ringExposed(x, y, cx, cy, 5);
+    /* …AND ONTO THE TOWN. A gate whose inward neighbour is a house is a door
+       into a wall: the town cannot reach it, so the ring's last stone reads
+       as the sealing one and is refused forever — a constructed 40-tile ring
+       closed 39 and stood one tile open with its "gate" standing behind a
+       hut. The gate tile needs a passable orthogonal neighbour INSIDE the
+       ring as well (a corner tile has none — its inward step is a diagonal,
+       which the pathfinder refuses between two walls). */
+    const inFacing = ([x, y]) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ox, oy]) => {
+      const nx = x + ox, ny = y + oy;
+      return Math.max(Math.abs(nx - cx), Math.abs(ny - cy)) < 5 && MapGen.inB(nx, ny) && Path.passable(nx, ny, 'A');
+    });
+    const gateSeam = gaps.find(g => g.tiles.some(t => outFacing(t) && inFacing(t))) || gaps[0];   // widest usable = the sortie lane
     const gateMid = (() => {
-      const usable = gateSeam.tiles.filter(outFacing);
+      const usable = gateSeam.tiles.filter(t => outFacing(t) && inFacing(t));
       const t = usable.length ? usable[usable.length >> 1] : null;
       return t ? { x: t[0], y: t[1] } : gateSeam.mid;
     })();
-    // order seams: the flank the player keeps hitting first, then narrowest
-    // (cheapest full seals) — reinforce where it hurts, seal what's quick to close
+    /* ONE GATE, AND IT GOES DOWN FIRST. The gate tile used to be re-picked
+       every call as the middle of whatever seam was widest THAT day, and the
+       walls went down from the seam's end — so on a long seam the pick
+       receded ahead of the laying front call after call and no gate was ever
+       reached (a constructed 40-tile ring closed 36 sections with none), while
+       on short seams a fresh pick landed a gate on every leftover: three on a
+       ten-tile ring. A ring wants ONE sortie lane. So the gate seam lays its
+       gate tile first, and once any gate stands (finished or a site) every
+       other tile is a wall — the seal clamp below lets the last one close
+       because that gate is there. A razed gate is a breach mendWallLine
+       refuses to wall (its last-way-out rule), so it comes back as a gate
+       through this same pick. */
+    let hasGate = Bld.forts('A').some(b => b.key === 'gate');
+    // order seams: the flank the player keeps hitting first, then WIDEST first
+    // — the big door is the one an army walks through (the day-191 save closed
+    // a six-tile shore stretch and left a twelve-tile lane open), and a
+    // one-tile seam left for last is a chokepoint the towers can hold
     const hit = (ai.memory && ai.memory.hitFlank) || null;
     const order = gaps.slice().sort((a, b) => {
       const ha = hit ? (a.dir.x === hit.x && a.dir.y === hit.y ? -100 : 0) : 0;
       const hb = hit ? (b.dir.x === hit.x && b.dir.y === hit.y ? -100 : 0) : 0;
-      return (ha + a.width) - (hb + b.width);
+      return (ha - a.width) - (hb - b.width);
     });
     let placed = 0;
-    const cap = this.wallCap(tc);
     for (const g of order) {
-      for (const [x, y] of g.tiles) {
+      const tiles = (g === gateSeam && !hasGate)
+        ? [[gateMid.x, gateMid.y], ...g.tiles.filter(([x, y]) => x !== gateMid.x || y !== gateMid.y)]
+        : g.tiles;
+      for (const [x, y] of tiles) {
         if (placed >= budget) return;
-        if (Bld.forts('A').length >= cap) return;
         if (!MapGen.inB(x, y) || Bld.at(x, y)) continue;
-        const isGate = x === gateMid.x && y === gateMid.y;
+        const isGate = !hasGate && x === gateMid.x && y === gateMid.y;
         const key = isGate ? 'gate' : 'wall';
         // NEVER LAY THE STONE THAT SHUTS US IN. A gate is passable, so it can
         // always go up; a wall may not be the last section closing the ring.
@@ -1323,6 +1383,7 @@ const AI = {
         if (!this.affordFort(CFG.BUILDINGS[key].levels[0].cost, read)) return;
         if (!Bld.canPlace('A', key, x, y).ok) continue;
         Bld.place('A', key, x, y);
+        if (isGate) hasGate = true;
         placed++;
       }
     }

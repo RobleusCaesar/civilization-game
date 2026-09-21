@@ -11,7 +11,8 @@
    a house is not (AI.foeSoftDoors filters on Bld.solid).
 
    Run this after touching any of:
-     ai.js — plot, towerSpot, wallCenter/wallRing/onWallLine, wallAudit,
+     ai.js — plot, towerSpot, wallCenter/wallRing/onWallLine, ringExposed,
+             perimeterGaps, wallAudit,
              _detourTiles, wallDetour, wallRelocate, mendWallLine, maybeWalls,
              playerLanes, foeSoftDoors, _campScore
      buildings.js — tileFree, canPlace, blockAt, removeToRuin, forts
@@ -32,6 +33,10 @@
                     only avoided
      6. NO DOORS  — the end state that actually matters: no ring tile is
                     passable from outside AND inside at once
+     7. NO WALL AGAINST WATER (§10) — a ring tile nobody can step onto from
+                    beyond the ring is not frontage and never takes a section;
+                    seams close WIDEST first; no cap strands the ring; an
+                    alcove is not a breach, and a bulge skips its own alcove
    If a feature genuinely needs different behaviour, update this file in the
    same commit and say so in the commit message. */
 import { dirname, join } from 'node:path';
@@ -97,6 +102,7 @@ const out = await p.evaluate(() => {
     const line = [];
     for (let dx = -2; dx <= 2; dx++) { const x = cx + dx, y = cy - R; G.clearFootprint(x, y, 'farm'); line.push([x, y]); }
     for (let dx = -3; dx <= 3; dx++) G.clearFootprint(cx + dx, cy - R - 1, 'farm');   // bulge room
+    for (let dx = -3; dx <= 3; dx++) G.clearFootprint(cx + dx, cy - R - 2, 'farm');   // …and the approach to it: a bulge tile is laid only where somebody could step in from (§10)
     const farm = Bld.place('A', 'farm', cx, cy - R, { free: true, instant: true });
     let sides = 0;
     for (const dx of [-2, -1, 1, 2]) if (Bld.place('A', 'wall', cx + dx, cy - R, { free: true, instant: true })) sides++;
@@ -159,6 +165,7 @@ const out = await p.evaluate(() => {
     S.ai.res = { food: 900, wood: 900, stone: 900, gold: 900 };
     S.ai.acts = 99;
     for (let dx = -2; dx <= 2; dx++) G.clearFootprint(cx + dx, cy - R, 'wall');
+    for (let dx = -2; dx <= 2; dx++) G.clearFootprint(cx + dx, cy - R - 1, 'wall');   // the approach: a hole nobody could step into is an alcove, not a breach (§10)
     let laid = 0;
     for (let dx = -2; dx <= 2; dx++) if (Bld.place('A', 'wall', cx + dx, cy - R, { free: true, instant: true })) laid++;
     // raze the middle section, as a catapult would
@@ -564,6 +571,139 @@ const out = await p.evaluate(() => {
     eng.x = g.x + 2.5; eng.y = g.y + 0.5; eng.task = null;
     AI.answerTheGuns();
     ck('oneAlreadyInRangeIsLeftToShoot', !eng.task, '');
+  }
+
+  /* ---- 10. NO WALL AGAINST WATER, AND THE WIDE LANE FIRST (a real day-191
+     save, with the picture): the rival had laid six palisade sections along
+     the SOUTH SHORE OF A POND — the water lapping the far side of every one
+     of them — while the whole west side of its ring stood open and the
+     player's twenty-strong war party walked in through it. Four rules,
+     measured on CONSTRUCTED ground so no seed can flatter them:
+       a. a passable ring tile nobody can step onto from beyond the ring
+          (AI.ringExposed) is not a seam and never takes a section;
+       b. seams close WIDEST first — the big door is the one an army uses;
+       c. no cap strands the ring: a frontage wider than the retired cap
+          still closes, with a gate in its widest lane;
+       d. an unwalled alcove between two sections is not a breach, and a
+          bulge around a building skips its own alcove. ---- */
+  {
+    const cheb = (x, y, cx, cy) => Math.max(Math.abs(x - cx), Math.abs(y - cy));
+    const paint = (x, y, t) => { const i = MapGen.idx(x, y); S.map.terrain[i] = t; if (S.map.seenTerrain) S.map.seenTerrain[i] = t; if (S.map.resAmount) S.map.resAmount[i] = 0; };
+    const settle = () => { Bld._block = null; Bld.rebuildBlock(); AI._corkC = null; AI._townOutC = null; };
+    // the constructed ground: the ring itself bare grass, the band one tile
+    // beyond it WATER except for the lanes handed in ([side, from, to] in
+    // ring coordinates), the band two out grass so every lane leads somewhere
+    const carve = (seed, lanes) => {
+      const tc = setup(seed);
+      const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0, R = AI.WALL_R;
+      for (const bb of S.buildings.slice()) {          // nothing of the rival's on the ring or beyond it
+        if (bb.owner !== 'A' || bb.key === 'tc') continue;
+        const sz = Bld.size(bb); let hit = false;
+        for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) if (cheb(bb.x + dx, bb.y + dy, cx, cy) >= R) hit = true;
+        if (hit) Bld.removeToRuin(bb);
+      }
+      S.ashes = [];
+      for (let y = cy - R - 2; y <= cy + R + 2; y++) for (let x = cx - R - 2; x <= cx + R + 2; x++) {
+        if (!MapGen.onBoard(x, y)) continue;
+        const d = cheb(x, y, cx, cy);
+        if (d === R + 1) paint(x, y, T.WATER);
+        else if (!Bld.at(x, y)) paint(x, y, T.GRASS);   // the ring, the band beyond the water, and the whole inside: open ground
+      }
+      for (const [side, a, b] of lanes) for (let k = a; k <= b; k++) {
+        const [x, y] = side === 'W' ? [cx - R - 1, cy + k] : side === 'E' ? [cx + R + 1, cy + k]
+          : side === 'N' ? [cx + k, cy - R - 1] : [cx + k, cy + R + 1];
+        paint(x, y, T.GRASS);
+      }
+      settle();
+      // a calm, unhit chief with the plainest budget: 3 sections a call
+      S.ai.res = { food: 900, wood: 9000, stone: 9000, gold: 900 }; S.ai.acts = 99; S.ai.goal = null;
+      S.ai.persona = 'warlord'; S.ai.posture = 'EXPAND'; S.ai.read = {}; S.ai.memory = {};
+      return { tc, cx, cy, R };
+    };
+    const fortsOn = (pred) => Bld.forts('A').filter(b => pred(b.x, b.y));
+    const finishSites = () => { for (const w of S.buildings) if (w.owner === 'A' && AI.isFort(w) && w.construction > 0) Bld.finish(w); };
+    const closeRing = (tc, calls) => { for (let i = 0; i < calls; i++) { AI.maybeWalls(tc); finishSites(); } };
+
+    // a. + b. — a wide west lane and a narrow east one; every other ring tile backed by water
+    {
+      const { tc, cx, cy, R } = carve('wg10', [['W', -4, 3], ['E', 0, 1]]);
+      const seams = AI.perimeterGaps(cx, cy, R);
+      const shoreTiles = AI.wallRing(tc).filter(([x, y]) => !AI.ringExposed(x, y, cx, cy, R));
+      const seamHasShore = seams.some(g => g.tiles.some(([x, y]) => shoreTiles.some(([sx, sy]) => sx === x && sy === y)));
+      ck('aShoreTileIsNotASeam', seams.length === 2 && seams[0].width === 8 && seams[1].width === 2 && !seamHasShore && shoreTiles.length === 30,
+        seams.length + ' seams (' + seams.map(g => g.width).join('/') + '), ' + shoreTiles.length + ' ring tiles backed by water');
+      AI.maybeWalls(tc);
+      const first = Bld.forts('A');
+      ck('theWidestLaneClosesFirst', first.length === 3 && first.every(b => b.x === cx - R && b.y >= cy - 4 && b.y <= cy + 3),
+        first.length + ' sections laid: ' + first.map(b => b.x + ',' + b.y).join(' '));
+      closeRing(tc, 12);
+      const onShore = fortsOn((x, y) => shoreTiles.some(([sx, sy]) => sx === x && sy === y));
+      const gates = Bld.forts('A').filter(b => b.key === 'gate');
+      ck('noWallAgainstWater', onShore.length === 0 && Bld.forts('A').length === 10,
+        onShore.length + ' sections on shore tiles, ' + Bld.forts('A').length + ' sections in all (8 + 2 wanted)');
+      ck('theRingClosesWithAGateInTheWideLane', AI.perimeterGaps(cx, cy, R).length === 0 && gates.length === 1 && gates[0].x === cx - R,
+        AI.perimeterGaps(cx, cy, R).length + ' seams left, gates at ' + gates.map(b => b.x + ',' + b.y).join(' '));
+    }
+    // c. — the whole ring exposed: 40 tiles of frontage, more than twice the
+    //      retired cap's 18 for a level-1 hall, and it still closes
+    {
+      const { tc, cx, cy, R } = carve('wg11', [['W', -5, 5], ['E', -5, 5], ['N', -5, 5], ['S', -5, 5]]);
+      const exposed = AI.wallRing(tc).filter(([x, y]) => AI.ringExposed(x, y, cx, cy, R)).length;
+      closeRing(tc, 24);
+      const n = Bld.forts('A').length, gates = Bld.forts('A').filter(b => b.key === 'gate').length;
+      const left = AI.perimeterGaps(cx, cy, R).flatMap(g => g.tiles).map(([x, y]) => {
+        const u = S.units.find(u => (u.x | 0) === x && (u.y | 0) === y);
+        return x + ',' + y + ' canPlace=' + (Bld.canPlace('A', 'wall', x, y).code || 'ok') + ' seal=' + AI.wallWouldSeal(tc, x, y) +
+          ' cork=' + !!AI.corkedGround(tc, { x, y }) + ' bld=' + (Bld.at(x, y) ? Bld.at(x, y).key : '-') + ' unit=' + (u ? u.kind : '-');
+      });
+      ck('noCapStrandsTheRing', exposed === 40 && left.length === 0 && n === 40 && gates === 1,
+        exposed + ' exposed tiles, ' + n + ' sections (' + gates + ' gate), left: ' + (left.join('; ') || 'none'));
+    }
+    // d. — an alcove is not a breach, and a bulge skips its own alcove
+    {
+      const { tc, cx, cy, R } = carve('wg12', [['W', -4, 3]]);
+      for (const dx of [-1, 1]) Bld.place('A', 'wall', cx + dx, cy - R, { free: true, instant: true });
+      const audit = AI.wallAudit(tc);
+      const flagged = audit.breach.some(h => h.x === cx && h.y === cy - R);
+      const n0 = Bld.forts('A').length;
+      AI.mendWallLine(tc);
+      const laidThere = !!Bld.at(cx, cy - R);
+      ck('anAlcoveIsNotABreach', !flagged && !laidThere && audit.open === 8 && Bld.forts('A').length === n0,
+        'flagged=' + flagged + ' laid=' + laidThere + ' open=' + audit.open);
+      // a farm on the shore stretch, bulge room in front of it, water beyond
+      // that room and either side of it: the bulge would be three sections
+      // nobody could ever reach
+      for (const dx of [-1, 1]) { const w = Bld.at(cx + dx, cy - R); if (w) Bld.removeToRuin(w); }
+      S.ashes = [];
+      paint(cx, cy - R, T.GRASS);
+      const farm = Bld.place('A', 'farm', cx, cy - R, { free: true, instant: true });
+      for (const dx of [-2, 2]) Bld.place('A', 'wall', cx + dx, cy - R, { free: true, instant: true });
+      for (const dx of [-1, 0, 1]) { paint(cx + dx, cy - R - 1, T.GRASS); paint(cx + dx, cy - R - 2, T.WATER); }
+      for (const dx of [-2, 2]) paint(cx + dx, cy - R - 1, T.WATER);
+      settle();
+      const tiles = AI._detourTiles(cx, cy - R, tc);
+      const n1 = Bld.forts('A').length;
+      AI.mendWallLine(tc);
+      const bulge = [-1, 0, 1].filter(dx => { const bb = Bld.at(cx + dx, cy - R - 1); return bb && AI.isFort(bb); }).length;
+      // …and the farm really is out of reach: walk in from open ground two out
+      const reach = (() => {
+        const start = [cx - 4, cy - R - 2], seen = new Set([start.join(',')]), q = [start];
+        while (q.length && seen.size < 600) {
+          const [x, y] = q.shift();
+          for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+            const nx = x + ox, ny = y + oy, k = nx + ',' + ny;
+            if (seen.has(k) || !MapGen.onBoard(nx, ny) || cheb(nx, ny, cx, cy) < R) continue;
+            if (!Path.canStep(x, y, nx, ny, 'P')) continue;
+            seen.add(k);
+            if (cheb(nx, ny, cx, cy) > R) q.push([nx, ny]);   // a ring tile is stepped ONTO, never walked along
+          }
+        }
+        return seen;
+      })();
+      const farmReached = reach.has(cx + ',' + (cy - R)) || [-1, 0, 1].some(dx => reach.has((cx + dx) + ',' + (cy - R - 1)));
+      ck('aBulgeSkipsItsOwnAlcove', !!farm && Array.isArray(tiles) && tiles.length === 0 && bulge === 0 && Bld.forts('A').length === n1 && !farmReached,
+        'tiles=' + JSON.stringify(tiles) + ' bulge=' + bulge + ' reachedFromOutside=' + farmReached);
+    }
   }
   return { res, fails };
 });

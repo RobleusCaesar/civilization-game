@@ -180,7 +180,9 @@ itself the same day; fog-honest, since the memory is of something its own
 eyes saw. `foeSiegeKnown` also adds heavily to the tower (+40) and wall
 (+34) utilities and their upgrade twins, `wallCap` rose from `6 + lv*3` to
 `12 + lv*6` (+quarries) so a ring can actually close (a full WALL_R ring is
-40 tiles and the old cap topped out at 12-15), tower re-tiering outranks
+40 tiles and the old cap topped out at 12-15 — and it was RETIRED outright
+later, see **NO WALL AGAINST WATER** below: a cap that can leave a door
+open has no job), tower re-tiering outranks
 the war halls while urgent (an L1 tower is one catapult volley from
 rubble), a threatened chief keeps an extra engine home (engines on watch
 fire by themselves — the defensive battery), and `counterMix` answers a
@@ -235,6 +237,57 @@ include). Every destroyed rival building stamps its tile from `Bld.damage`, so
 nothing has to remember to call it; `LOST_N` (2) losses in a 3×3 and the ground
 is refused for `LOST_DAYS` (70), after which the front has moved and it is
 ordinary ground again. `ai.lostAt` rides in the save.
+**NO WALL AGAINST WATER, AND THE WIDE LANE FIRST** (`AI.ringExposed`, read by
+`perimeterGaps` / `wallAudit` / `_detourTiles` / `maybeWalls`; pinned in
+tests/wall-line.mjs §10 — from a real day-191 save, with the picture): the
+rival had laid six palisade sections at (39..44, 38) with a pond directly
+north of every one of them, while the whole west side of its radius-5 ring
+stood open and the player's twenty-strong war party walked in through it.
+Three faults in one. `perimeterGaps` counted every PASSABLE ring tile as a
+seam, so a stretch of ring along a shore read as frontage; `maybeWalls`
+closed seams NARROWEST first, so the six-tile shore stretch went up before
+the twelve-tile lane; and `wallCap` (28 at a level-2 hall with one quarry)
+was spent — 27 sections standing — before the lane was reached. The rule
+now: **a ring tile is frontage only if somebody could STEP ONTO IT from
+beyond the ring** — one of its four orthogonal neighbours outside the ring
+is passable. Orthogonal, because the pathfinder never cuts a corner
+(`Path.canStep` needs BOTH orthogonal tiles open for a diagonal), so a
+diagonal can never deliver an attacker onto the ring. A tile that fails it
+can only be entered along the ring from a neighbour that is a door in its
+own right: the water (or the wood, or the crag) IS the wall there, and no
+section is ever laid on it — not by the seam closer, not as a "breach" by
+the audit (an unwalled alcove between two sections is `edge`, sealed by
+nature), not as part of a bulge (`_detourTiles` reads the same rule one
+ring out, where the wrapped building and the bulge-mates are the inside).
+Fog-honest by construction (it is the chief's own passability) and
+self-healing: fell the wood beyond the ring or bridge the pond, and the next
+daily read finds the tile exposed and closes it. Seams close **WIDEST
+first** — the big door is the one an army walks through, and a one-tile
+seam left for last is a chokepoint the towers can hold. **And there is no
+cap on closing the ring any more**: `wallCap` is retired, because a ring a
+cap leaves open is a ring nobody should have paid for; what paces the stone
+is the wood gate, the re-tier rule, the per-call budget and `affordFort`.
+The contract measures all of it on CONSTRUCTED ground (water carved one
+tile beyond the ring except for the lanes handed in), so no seed can
+flatter it: two seams read as exactly two, the first three sections land on
+the wide lane, the ring closes with one gate in that lane and nothing on
+the thirty shore tiles, a fully exposed 40-tile ring still closes past the
+old cap's 18, and a bulge whose every tile is backed by water lays nothing
+and still leaves its farm unreachable. The §2 detour setup clears one more
+row (the approach to the bulge) for the same reason: a bulge tile is laid
+only where somebody could step in from. **And it goes down FIRST, and once**:
+the gate tile used to be re-picked every call as the middle of whatever seam
+was widest that day while the walls went down from the seam's end, so on a
+long seam the pick receded ahead of the laying front and no gate was ever
+reached (a constructed 40-tile ring closed 36 sections with none), while on
+short seams a fresh pick put a gate on every leftover (three on a ten-tile
+ring). The gate seam lays its gate first; once any gate stands, every other
+tile is a wall. Replayed on the day-191 save: main's chief laid two more
+sections, met its cap at 28 and stopped with nine west tiles open and no
+gate; the fixed chief laid the gate at (36,43) and the ten remaining west
+sections in one pass — 37 sections, no seam left, none of them on a shore
+tile.
+
 **The ring must never seal the town in** (`AI.townOut` / `wallWouldSeal` /
 `openTheGate`): a sealed ring has no seams, so `read.homeGapCount` is 0 and the
 wall utility never runs — which is why the check lives in `digAndProtect`.
