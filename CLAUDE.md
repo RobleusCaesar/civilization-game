@@ -1781,6 +1781,39 @@ since `passMs` flushes), which in-suite is also the steadier statistic:
 0.336 / 0.337 / 0.345 across three runs where the milliseconds read 0.374
 / 0.377 / 0.394. **The lesson generalises: when a perf gate starts
 flaking, check first whether the thing it measures got more honest.**
+**AND A REFERENCE MUST BE A TWIN OF THE WORK IT DIVIDES** (the same
+three gates, one day later, the first time they met a different host):
+the sandbox rebooted onto another CPU and all three ratios came back
+red on code that had not changed — proven on three commits with the
+same probe (`e2e0491` / `ac9a502` / `a898c88`: grass 1.11 / 1.12 / 1.13
+against 1.08, water 0.409 / 0.388 / 0.395 against 0.38, the shore
+straddling 5.75). The earlier host's transcript still had the numbers:
+it read the reference at 1.16-1.19ms and so did this one, while the
+grass edit went 1.09-1.13 → 1.30-1.32ms, the shore 5.92-5.99 → 6.6-6.8
+and the water pass 0.395 → 0.45-0.47. The reference had not moved
+because it did not CONTAIN what got slower. Counting what a repaint
+records (a wrapper on `CanvasRenderingContext2D.prototype`): the grass
+edit is 1,222 `fillRect` calls per tile, 82% of them 16px or smaller,
+against 2.6 `drawImage` calls and 0.52ms of memory-bound JavaScript;
+the shore edit 3,399 fills for 74% of its time; the water pass 315
+one-pixel fills and seven rotated crests with 0.014ms of JavaScript.
+The edit reference was 0.65ms of ALU hashing plus 0.49ms of sprite
+blits; the water reference was blits alone. Stubbing each family on
+both hosts, one story fits every pair: small fills about 16% dearer
+here, the repaint's JavaScript about 20%, hashing and blits unchanged.
+A reference that shares no operation family with its numerator cannot
+follow it across hardware, whatever its total happens to be. Both
+references are TWINS of their numerators' histograms now (`REF` /
+`refUnit`, `WREF` / `refPass` in tests/land.mjs: small and medium fills
+with the colour set per call, a few blits, dependent reads through a
+4MB table for the memory-bound JavaScript; one-pixel fills, rotated
+crests and a polyline for the water), and over four fresh pages the
+twin's ratios spread 1.40-1.42 / 7.17-7.35 / 0.379-0.394 where the old
+reference's spread 0.90-0.98. It is ONE host's measurement, and the
+next host is the real test: if it reads outside the band, re-examine
+the twin's COMPOSITION against a fresh histogram before touching the
+baseline. Re-baselining alone would only have handed the fault to the
+host after this one.
 
 **The boot, measured** (`tests/boot.mjs`, the retention pass): time-to-menu
 was 3.4s on a desktop and 10s on a throttled phone, and nearly none of it

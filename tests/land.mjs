@@ -1331,6 +1331,24 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       if (ok && nw > bestN) { bestN = nw; start = { x, y }; }
     }
     if (!start) return { skip: true };
+    /* WARM FIRST. This is a one-shot measurement on a page that has just
+       baked, so timed cold it includes the JIT compiling the whole repaint
+       path inside the window — and it read 105 / 143 / 117 / 143ms on one
+       quiet host, straddling the gate on the same code. Repainting a few
+       dozen inland tiles first (far from any water, so nothing traces) warms
+       the same paths the dig uses; the gate is then the sliced tail it exists
+       to pin, not the compiler. */
+    const inland = [];
+    for (let y = 3; y < H - 3 && inland.length < 40; y++) for (let x = 3; x < W - 3 && inland.length < 40; x++) {
+      if (terr[idx(x, y)] !== T.GRASS) continue;
+      let wet = false;
+      for (let oy = -4; oy <= 4 && !wet; oy++) for (let ox = -4; ox <= 4 && !wet; ox++) {
+        const t = terr[idx(x + ox, y + oy)]; if (t === T.WATER || t === T.MOAT) wet = true;
+      }
+      if (!wet) inland.push([x, y]);
+    }
+    for (let k = 0; k < 3; k++) for (const [x, y] of inland) R.drawTileAt(x, y);
+    while (R.tickRepaint && R.tickRepaint(1e9)) {}
     const t0 = performance.now();
     Terraform.dig(start.x, start.y);
     const digMs = performance.now() - t0;
@@ -1745,9 +1763,10 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
      diff teaches everyone to ignore it, which is worse than having none.
      So the gate is now a RATIO against a reference workload measured on the
      SAME page, in the same harness state, through the same clamped clock —
-     REF_BLITS sprite blits into a clipped tile-sized box plus REF_MATH
-     rounds of integer hashing, per unit, timed by the identical statistic
-     (min over 9 means of 49, two warm-ups). The reference is owned by this
+     originally 200 sprite blits into a clipped tile-sized box plus 50,000
+     rounds of integer hashing per unit, now the TWIN described at the end
+     of this block, timed by the identical statistic (min over 9 means of
+     49, two warm-ups). The reference is owned by this
      file and calls NOTHING in render.js, which is the whole point: a
      machine that is slow moves both numbers and the ratio holds, while a
      repaint that gets slower moves only the numerator and the gate trips.
@@ -1773,9 +1792,50 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
      1.46x FAIL. Shore: clean 5.09x, +10% 5.61x PASS, +19% 5.96x FAIL. A
      gate with 10% headroom passes a 10% regression and fails a 19% one,
      which is what 10% headroom means — if you want it tighter, tighten the
-     multiplier and expect the retry to earn its keep. */
-  const REF_BLITS = 200, REF_MATH = 50000;
-  const EDIT = { grassRel: 1.08, shoreRel: 5.75 };  // worst of 4 fresh pages (0.979 / 5.226) + 10%
+     multiplier and expect the retry to earn its keep.
+     AND THE REFERENCE MUST BE A TWIN OF THE WORK IT DIVIDES (2026-09-21).
+     The first different host these ratios met — the sandbox rebooted onto
+     another CPU (a virtualised Xeon @ 2.80GHz with AVX-512, the same
+     Chromium 1194 build) — read grass 1.11-1.13x and shore 5.57-5.84x on
+     code that had not changed: three commits, e2e0491 / ac9a502 / a898c88,
+     inside run noise of each other and over the 1.08 / 5.75 gates. The
+     previous host's transcript had the OLD reference at 1.16-1.19ms and
+     this host read it at 1.16-1.19ms too — while the grass edit went from
+     1.09-1.13ms to 1.30-1.32 and the shore from 5.92-5.99 to 6.6-6.8. The
+     reference had not moved because it did not CONTAIN what got slower.
+     Wrapping CanvasRenderingContext2D.prototype to count what a repaint
+     records: the grass edit is 1,222 fillRect calls per tile (82% of them
+     16px or smaller, the colour set per call), 2.6 drawImage calls and
+     0.52ms of JavaScript out of 1.32; the shore edit 3,399 fills for 74% of
+     its time. The old reference was 0.65ms of ALU hashing and 0.49ms of
+     200 sprite blits. Stubbing each family and reading both hosts: small
+     fills about +16% here, the repaint's memory-bound JavaScript about
+     +20%, hashing and blits unchanged — one story fits every measured
+     pair, and it says a reference that shares no operation family with its
+     numerator cannot follow it across hardware, whatever its total is.
+     So the reference is a TWIN of the repaint's histogram now (REF, and
+     refUnit below): small and medium fills with the colour set per call, a
+     few sprite blits, a clipped rect, DEPENDENT reads through a 4MB table
+     for the memory-bound JavaScript and a short hash loop, into a canvas
+     the size of an xlarge terrain cache. Over four fresh pages on this
+     host the ratios spread 1.40-1.42 (grass) and 7.17-7.35 (shore) —
+     tighter than the old reference's 0.90-0.98. In-suite, INTERLEAVED
+     (see refBatch below), two runs read grass 1.66 / 1.76 and shore
+     7.91 / 7.90 against references of 0.83 / 0.82ms whose own halves sat
+     0.83-0.85 and 0.82-0.90 — the shore ratio to a tenth of a percent, the
+     grass one 6% apart, and that 6% is the grass EDIT (1.39 / 1.45ms),
+     not the reference. The gate is the worst of those + 10% as before,
+     and the teeth are unchanged by construction: the twin calls nothing
+     in render.js, so a wrapped drawTileAt moves only the numerator. It is ONE host's measurement. The next host is the real
+     test, and if it reads outside the band the thing to re-examine is the
+     twin's COMPOSITION against a fresh histogram — never the baseline
+     alone. Re-baseline by running this file on a quiet machine and reading
+     the printed ratio. */
+  // the TWIN's op mix (see the block above): small and medium fills with the
+  // colour set per call, a few sprite blits, dependent table reads and a
+  // short hash loop — the repaint's own histogram, scaled
+  const REF = { fills: 1000, fillMed: 200, blits: 3, reads: 40000, hash: 6000 };
+  const EDIT = { grassRel: 1.94, shoreRel: 8.7 };  // worst of two in-suite runs (1.66/1.76, 7.91/7.90) + 10% — see the block above
   const GRASS_AT = [12, 16], SHORE_AT = [41, 8];  // the two 7x7 workloads on verify7 xlarge
   const measure = async () => {
     const p = await page();
@@ -1811,41 +1871,68 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       out.grassPatch = patch(${GRASS_AT[0]}, ${GRASS_AT[1]}); out.grassNearWater = nearWater(${GRASS_AT[0] + 3}, ${GRASS_AT[1] + 3}, 8);
       out.shorePatch = patch(${SHORE_AT[0]}, ${SHORE_AT[1]});
       const batch = (x0, y0) => { const t = performance.now(); for (let dy = 0; dy < 7; dy++) for (let dx = 0; dx < 7; dx++) R.drawTileAt(x0 + dx, y0 + dy); return (performance.now() - t) / 49; };
-      const minOfMeans = (x0, y0) => { batch(x0, y0); batch(x0, y0); let m = Infinity; for (let k = 0; k < 9; k++) m = Math.min(m, batch(x0, y0)); return m; };
-      /* THE REFERENCE the two edit gates are measured AGAINST (see the block
-         above the constants). It calls nothing in render.js on purpose, so a
-         slow machine moves it in step with the edits while a slow repaint
-         does not move it at all. Same shape of work a repaint records —
-         clipped fills and sprite blits — plus integer hashing, so the number
-         tracks the JS engine as well as the canvas. Timed by the identical
-         statistic so the clock's clamp lands the same way on both. */
+      /* THE REFERENCE the two edit gates are measured AGAINST — a TWIN of the
+         repaint's own work (see the block above the constants). REF.fills
+         small fills and REF.fillMed medium ones, the fill colour set per
+         call from a short palette as paintGround and the decals set theirs;
+         REF.blits sprite blits; a clipped rect around the lot; and for the
+         JavaScript REF.reads DEPENDENT reads through a 256KB table (the
+         terrain array, the tone lattices and the decal tables a repaint
+         reads are all small — its JavaScript is arithmetic over small tables
+         and per-cell branching, never bulk memory, and a DRAM-bound walk
+         tried first was the noisiest thing on a shared host) plus a short
+         hash loop. ONE unit per measurement, so nothing is allocated between
+         readings. It calls nothing in render.js on purpose, so a slower host
+         moves it in step with the edits while a slower repaint moves only
+         the edits. Timed by the identical statistic, and INTERLEAVED with
+         the edit batches below, so the clock's clamp and the host's drift
+         land the same way on both. */
+      const REF = ${JSON.stringify(REF)};
       const refUnit = () => {
-        const c = document.createElement('canvas'); c.width = c.height = 512;
+        const c = document.createElement('canvas'); c.width = c.height = 1024;
         const g = c.getContext('2d');
-        const sp = document.createElement('canvas'); sp.width = sp.height = 32;
+        const sp = document.createElement('canvas'); sp.width = sp.height = 96;
         const sg = sp.getContext('2d');
-        for (let i = 0; i < 32; i++) { sg.fillStyle = (i & 1) ? '#3a5a20' : '#2e4a18'; sg.fillRect(0, i, 32, 1); }
+        for (let i = 0; i < 96; i++) { sg.fillStyle = (i & 1) ? '#3a5a20' : '#2e4a18'; sg.fillRect(0, i, 96, 1); }
+        const MASK = (1 << 16) - 1, TAB = new Int32Array(1 << 16);
+        for (let i = 0; i <= MASK; i++) TAB[i] = (Math.imul(i, 2654435761) >>> 12) & MASK;
+        const cols = ['#4a6a28', '#3f5e22', '#557530', '#2e4a18', '#5a7a34', '#44642a'];
         let n = 0; out._refSink = 0;
         return () => {
-          const x = (n * 37) % 448, y = (n * 53) % 448; n++;
-          let h = (n * 374761393) | 0, acc = 0;
-          for (let k = 0; k < ${REF_MATH}; k++) { h = (h ^ (h >>> 15)) * 2246822519 | 0; h = (h ^ (h >>> 13)) * 3266489917 | 0; acc += (h & 1023) / 1024; }
+          n++;
+          let idx = (n * 7919) & MASK, acc = 0;
+          for (let k = 0; k < REF.reads; k++) { idx = (TAB[idx] + k) & MASK; acc += idx & 7; }
+          let h = (n * 374761393) | 0;
+          for (let k = 0; k < REF.hash; k++) { h = (h ^ (h >>> 15)) * 2246822519 | 0; acc += (h & 1023) / 1024; }
           out._refSink += acc;                       // a sink the optimiser cannot fold away
-          g.save(); g.beginPath(); g.rect(x, y, 48, 48); g.clip();
-          g.fillStyle = '#4a6a28'; g.fillRect(x, y, 48, 48);
-          for (let k = 0; k < ${REF_BLITS}; k++) g.drawImage(sp, x + (k % 7) - 3, y + ((k / 7) | 0) % 7 - 3);
+          const x = (n * 37 * 32) % 832, y = (n * 53 * 32) % 832;
+          g.save(); g.beginPath(); g.rect(x, y, 160, 160); g.clip();
+          for (let k = 0; k < REF.fills; k++) { g.fillStyle = cols[k % 6]; g.fillRect(x + (k % 40) * 4, y + ((k / 40) | 0) % 40 * 4, 2 + (k & 1), 2 + ((k >> 1) & 1)); }
+          for (let k = 0; k < REF.fillMed; k++) { g.fillStyle = cols[(k + 3) % 6]; g.fillRect(x + (k % 12) * 12, y + ((k / 12) | 0) % 12 * 12, 8 + (k & 3), 8 + ((k >> 2) & 3)); }
+          for (let k = 0; k < REF.blits; k++) g.drawImage(sp, x + k * 30, y + k * 20);
           g.restore();
         };
       };
-      const refStat = () => { const one = refUnit();
-        const rb = () => { const t = performance.now(); for (let i = 0; i < 49; i++) one(); return (performance.now() - t) / 49; };
-        rb(); rb(); let m = Infinity; for (let k = 0; k < 9; k++) m = Math.min(m, rb()); return m; };
-      const refBefore = refStat();
-      out.editGrass = minOfMeans(${GRASS_AT[0]}, ${GRASS_AT[1]});
-      out.editShore = minOfMeans(${SHORE_AT[0]}, ${SHORE_AT[1]});
-      const refAfter = refStat();                    // read either side: it drifts ~4% across a page's life
-      out.refMs = (refBefore + refAfter) / 2;
-      out.refPair = [refBefore, refAfter];
+      const one = refUnit();
+      const refBatch = () => { const t = performance.now(); for (let i = 0; i < 49; i++) one(); return (performance.now() - t) / 49; };
+      /* INTERLEAVED, NOT BLOCKED. Read as three blocks (reference, edits,
+         reference) the ratio moved 12% between two runs on a quiet host — a
+         drift that hit one block and not the others — because the min of a
+         series only rejects noise WITHIN its own stretch of time. Batches
+         now alternate reference / grass / shore nine times over, so whatever
+         the host does during the measurement it does to all three series
+         alike, and each series' min is read from the same seconds. Same
+         counts as before: two warm-ups each, nine measured. */
+      refBatch(); refBatch(); batch(${GRASS_AT[0]}, ${GRASS_AT[1]}); batch(${GRASS_AT[0]}, ${GRASS_AT[1]});
+      batch(${SHORE_AT[0]}, ${SHORE_AT[1]}); batch(${SHORE_AT[0]}, ${SHORE_AT[1]});
+      let mR = Infinity, mG = Infinity, mS = Infinity; const refSeries = [];
+      for (let k = 0; k < 9; k++) {
+        const r = refBatch(); refSeries.push(r); mR = Math.min(mR, r);
+        mG = Math.min(mG, batch(${GRASS_AT[0]}, ${GRASS_AT[1]}));
+        mS = Math.min(mS, batch(${SHORE_AT[0]}, ${SHORE_AT[1]}));
+      }
+      out.editGrass = mG; out.editShore = mS; out.refMs = mR;
+      out.refPair = [Math.min(...refSeries.slice(0, 5)), Math.min(...refSeries.slice(5))];   // the two halves, for the record
       out.relGrass = out.editGrass / out.refMs;
       out.relShore = out.editShore / out.refMs;
       // the world pass at default zoom, framed on the town
@@ -1878,7 +1965,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   Object.assign(res, { _perfGates: { bakeWorstMs: f1(v.bakeWorst), bakeStdMs: f1(v.bakeStd),
     editGrassMs: f1(v.editGrass), editShoreMs: f1(v.editShore), refMs: f1(v.refMs),
     editGrassRel: f1(v.relGrass), editShoreRel: f1(v.relShore), frameMedMs: f1(v.frameMed), frameP95Ms: f1(v.frameP95),
-    live: LIVE, edit: EDIT, retried: !!v.retried } });
+    live: LIVE, edit: EDIT, ref: REF, retried: !!v.retried } });
   ck('theFirstBakeStaysUnderTheCeiling', !v.thrown && v.bakeWorst < LIVE.bakeMs,
     v.thrown || (f1(v.bakeWorst) + 'ms worst map (ceiling ' + LIVE.bakeMs + 'ms), ' + f1(v.bakeStd) + 'ms standard'));
   ck('theEditWorkloadsAreWhatTheyClaim', !v.thrown && v.grassPatch && v.grassPatch.grass === 49 && !v.grassNearWater
@@ -2036,24 +2123,32 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       const flushMs = (n) => { flush(); const t = performance.now(); for (let k = 0; k < n; k++) flush(); return (performance.now() - t) / n; };
       const base = Math.min(flushMs(40), flushMs(40));
       /* THE REFERENCE this pass is gated against (the rule §18's EDIT gates
-         set out, applied to the one budget here that is a wall-clock cost).
-         It pays RASTER, exactly as passMs does — same flush, same
+         set out, applied to the one budget here that is a wall-clock cost) —
+         a TWIN of the pass's own work: WREF.fills one-pixel fills (the foam
+         line), WREF.blits rotated 84px sprite blits (the crests) and a
+         WREF.line-point polyline (the roll's guide), at the pass's own alpha,
+         and it pays RASTER exactly as passMs does — same flush, same
          subtraction — because a recording-only reference would track a
          different cost than the thing it divides into. It calls nothing in
-         render.js, so a slow machine moves both and the ratio holds while a
+         render.js, so a slower host moves both and the ratio holds while a
          slower water pass moves only the numerator. */
+      const WREF = { fills: 320, blits: 6, line: 120 };
       const refPass = (() => {
-        const sp = document.createElement('canvas'); sp.width = sp.height = 32;
+        const sp = document.createElement('canvas'); sp.width = sp.height = 84;
         const sg = sp.getContext('2d');
-        for (let i = 0; i < 32; i++) { sg.fillStyle = (i & 1) ? '#3a5a20' : '#2e4a18'; sg.fillRect(0, i, 32, 1); }
-        let n = 0; out._waterRefSink = 0;
+        for (let i = 0; i < 84; i++) { sg.fillStyle = (i & 1) ? 'rgba(235,244,248,0.6)' : 'rgba(120,170,200,0.3)'; sg.fillRect(0, i, 84, 1); }
+        let n = 0;
         const one = () => {
-          let h = (++n * 374761393) | 0, a2 = 0;
-          for (let k = 0; k < 4000; k++) { h = (h ^ (h >>> 15)) * 2246822519 | 0; a2 += (h & 1023) / 1024; }
-          out._waterRefSink += a2;
+          n++;
+          const ox = R.cam.x, oy = R.cam.y;
+          fg.fillStyle = 'rgba(235,244,248,0.55)';
+          for (let k = 0; k < WREF.fills; k++) fg.fillRect(ox + (k * 37 + n) % 380, oy + (k * 53 + n * 3) % 300, 1, 1);
           fg.save(); fg.globalAlpha = 0.5;
-          for (let k = 0; k < 120; k++) fg.drawImage(sp, R.cam.x + (k * 37) % 300, R.cam.y + (k * 53) % 200);
+          for (let k = 0; k < WREF.blits; k++) { fg.save(); fg.translate(ox + 60 + k * 50, oy + 80 + (k & 1) * 90); fg.rotate(0.3 + k * 0.7); fg.drawImage(sp, -42, -42); fg.restore(); }
           fg.restore();
+          fg.beginPath(); fg.moveTo(ox + 10, oy + 40);
+          for (let k = 1; k < WREF.line; k++) fg.lineTo(ox + 10 + k * 3, oy + 40 + ((k * 7919) % 17));
+          fg.strokeStyle = 'rgba(235,244,248,0.3)'; fg.lineWidth = 1; fg.stroke();
         };
         return (cnt) => { one(); flush(); const t = performance.now();
           for (let k = 0; k < cnt; k++) { one(); flush(); } return (performance.now() - t) / cnt - base; };
@@ -2067,9 +2162,15 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       // number must include an active roll or it is not the default's cost
       R.fishClock = LAND.WAVE_EVERY * 3 + 0.2; R._waveEpoch = -1;
       R._prof = { foam: 0, tiles: 0, scroll: 0, frames: 0 };
-      const on = Math.min(passMs(60), passMs(60)) - base;
+      // INTERLEAVED with its reference (the §18 rule): eight blocks of fifteen
+      // frames each, pass and reference alternating, each series keeping the
+      // min of its block means — the same seconds for both. 8 × 16 frames of
+      // the pass is 2.05s of wave clock, inside the 2.8s window.
+      let mOn = Infinity, mRef = Infinity;
+      for (let k = 0; k < 8; k++) { mOn = Math.min(mOn, passMs(15) - base); mRef = Math.min(mRef, refPass(15)); }
+      const on = mOn;
       const pr = R._prof; R._prof = null;
-      out.waterRefMs = Math.min(refPass(60), refPass(60));
+      out.waterRefMs = mRef;
       out.livingRel = on / out.waterRefMs;
       out.flushMs = base; out.frameOff = off; out.frameOn = on; out.newWork = on - off;
       out.foamMs = pr.foam / pr.frames; out.tilesMs = pr.tiles / pr.frames; out.scrollMs = pr.scroll / pr.frames; out.livingMs = on;
@@ -2218,7 +2319,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     return out;`));
   await p.close();
   const f2 = (n) => (n == null ? '?' : (+n).toFixed(3));
-  const WATER_REL = 0.38;   // worst in-suite ratio over three runs (0.345) + 10% — see the gate
+  const WATER_REL = 0.44;   // worst of two in-suite runs (0.402 / 0.386) + 10% — see the gate
   ck('theDepthFieldIsDistanceToLand', !v.thrown && v.bad === 0 && v.shoreN > 50 && v.shoreOk === v.shoreN && v.max <= v.cap16,
     v.thrown || (v.shoreOk + '/' + v.shoreN + ' shore tiles inside the shore steps, max ' + v.max + '/16 (cap ' + v.cap16 + '), ' + v.bad + ' bad cells'));
   ck('andAMoatIsPinnedShallow', !v.thrown && v.moatD === 16, v.thrown || ('moat depth ' + v.moatD + '/16'));
@@ -2248,7 +2349,19 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
      In-suite the ratio is also the STEADIER statistic, which is the second
      reason to gate on it: over three runs it read 0.336 / 0.337 / 0.345
      (2.7% apart) while the milliseconds it divides read 0.374 / 0.377 /
-     0.394 (5.3%) against a reference of 1.109-1.142ms. */
+     0.394 (5.3%) against a reference of 1.109-1.142ms.
+     AND THEN THE SAME FAULT A THIRD TIME (2026-09-21, the §18 story in
+     full): the blit-only reference here — its 4,000 hash rounds cost 0.03ms
+     of its 1.14 — read 1.14ms on both hosts while the pass went from
+     0.395ms to 0.45-0.47 on the new one, so the ratio read 0.388-0.409
+     against a 0.38 gate on code that had not changed. The pass is 315
+     one-pixel fills, seven rotated crests and 0.014ms of JavaScript, and a
+     sprite blit at alpha is none of those. The reference is a twin of that
+     histogram now (WREF, refPass above), flushed as the pass is, and read
+     INTERLEAVED with it (eight blocks of fifteen frames each, alternating):
+     four fresh pages on this host read 0.379-0.394, two in-suite runs
+     0.402 / 0.386 against references of 1.004 / 0.988ms. The gate is the
+     in-suite worst + 10%, as before. */
   ck('theLivingWaterFitsItsBudget', !v.thrown && v.livingRel < WATER_REL,
     v.thrown || (f2(v.livingRel) + 'x the reference (gate ' + WATER_REL + 'x); the whole living-water pass, raster included: ' + f2(v.livingMs) + 'ms on the town view at z1.5 golden hour against a ' + f2(v.waterRefMs) + 'ms reference (was ' + f2(v.frameOff) + 'ms before 1b–1d: delta ' + f2(v.newWork) + 'ms; recorded foam ' + f2(v.foamMs) + ' + tiles ' + f2(v.tilesMs) + '); ' + f2(v.waterLivingMs) + 'ms on the water view; a flush alone ' + f2(v.flushMs) + 'ms'));
   ck('aFewFishStaggeredOnTheWaterWorthFishing',
