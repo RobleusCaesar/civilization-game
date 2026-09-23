@@ -996,14 +996,33 @@ const Screens = {
       });
   },
 
-  // ONE writer for both audio rows (the hornBackLine convention), shared by
-  // the settings render and every toggle, so they cannot drift apart
+  /* ONE writer for both audio rows (the hornBackLine convention), shared by
+     the settings render, the speaker and the dial, so the three can never
+     drift apart. The speaker shows whether anything will be HEARD, which is
+     the switch and the dial together — a speaker reading "on" over a dial at
+     zero is a control that lies. A muted row keeps its number on the dial
+     (that is the level it will come back at) and says "Off" beside it. */
   paintAudioRows() {
     if (typeof Sound === 'undefined') return;
-    for (const [id, on] of [['setSfx', Sound.sfxOn()], ['setMusic', Sound.musicOn()]]) {
+    for (const [id, bus] of [['setSfx', 'sfx'], ['setMusic', 'music']]) {
       const row = this.el(id); if (!row) continue;
-      for (const b of row.querySelectorAll('.abtn'))
-        b.classList.toggle('sel', (b.dataset.v === '1') === on);
+      const on = bus === 'sfx' ? Sound.sfxOn() : Sound.musicOn();
+      const v = Sound.vol(bus);
+      const spk = row.querySelector('.spk'), sl = row.querySelector('.vol'), pct = row.querySelector('.vpct');
+      if (spk) {
+        spk.textContent = on ? '\u{1F50A}' : '\u{1F507}';
+        spk.classList.toggle('off', !on);
+        spk.setAttribute('aria-label', (on ? 'Mute ' : 'Unmute ') + (bus === 'sfx' ? 'sound effects' : 'music'));
+      }
+      // never write over a finger that is mid-drag — the dial is the input —
+      // but the FILL always follows, because the value it draws is the one
+      // the drag just set (--p, see .arow .vol in index.html)
+      if (sl) {
+        if (document.activeElement !== sl) sl.value = String(v);
+        sl.style.setProperty('--p', v + '%');
+      }
+      if (pct) pct.textContent = on ? v + '%' : 'Off';
+      row.classList.toggle('muted', !on);
     }
   },
 
@@ -1448,13 +1467,23 @@ const Screens = {
     // new-game pickers, so it reads as a game option instead of a form field
     /* AUDIO. Sound owns the state and the persistence; these rows only ask
        it and paint what it says, so there is one source of truth for "is
-       the music on" and the toggle can never disagree with the speaker. */
-    for (const [id, get] of [['setSfx', () => Sound.sfxOn()], ['setMusic', () => Sound.musicOn()]]) {
-      this.el(id).addEventListener('click', e => {
-        const b = e.target.closest('[data-v]'); if (!b) return;
-        const on = b.dataset.v === '1';
-        if (id === 'setSfx') { Sound.setSfx(on); if (on) Sound.play('tick'); }
-        else Sound.setMusic(on);
+       the music on" and the controls can never disagree with the speaker.
+       The dial plays a tick as it moves, because a level you cannot hear
+       while you set it is a level you have to set twice (Sound's own
+       per-kind throttle is what keeps a fast drag from machine-gunning). */
+    for (const [id, bus] of [['setSfx', 'sfx'], ['setMusic', 'music']]) {
+      const row = this.el(id);
+      row.addEventListener('click', e => {
+        if (!e.target.closest('.spk')) return;
+        const on = bus === 'sfx' ? Sound.sfxOn() : Sound.musicOn();
+        if (bus === 'sfx') { Sound.setSfx(!on); if (!on) Sound.play('tick'); }
+        else Sound.setMusic(!on);
+        this.paintAudioRows();
+      });
+      const sl = row.querySelector('.vol');
+      if (sl) sl.addEventListener('input', () => {
+        Sound.setVol(bus, sl.value);
+        if (bus === 'sfx') Sound.play('tick');
         this.paintAudioRows();
       });
     }

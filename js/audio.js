@@ -8,15 +8,32 @@
    the game is untouched. A 2MB music file on the boot path would undo the
    whole of the load-speed pass for a thing the player can turn off.
 
-   TWO BUSES, TWO SWITCHES. Sound effects and music are separate all the way
-   down — separate gain nodes, separate localStorage keys, separate toggles
-   in Settings — because they are separate decisions. Plenty of people play
-   with effects on and music off; nobody should have to lose the axe to lose
-   the flute.
+   TWO BUSES, TWO SWITCHES, TWO DIALS. Sound effects and music are separate
+   all the way down — separate gain nodes, separate localStorage keys,
+   separate controls in Settings — because they are separate decisions.
+   Plenty of people play with effects on and music off; nobody should have
+   to lose the axe to lose the flute.
 
-     neo-sfx     '0' silences effects      (the key UI.cue already used)
-     neo-music   '0' silences the music
-     absent      means ON, so a new player hears the game
+     neo-sfx        '0' silences effects   (the key UI.cue already used)
+     neo-music      '0' silences the music
+     neo-sfx-vol    0-100, how loud        (absent = DEFAULT_VOL)
+     neo-music-vol  0-100
+     absent         means ON, so a new player hears the game
+
+   AND IT SHIPS QUIET. The mix was set by an offline render against a -6dBFS
+   peak, which is right for a game somebody chose to listen to and wrong for
+   one that starts talking the moment a tab opens: the first report from a
+   real player was "far, far too loud" (2026-09-22). The bus gains below are
+   still the measured ceiling — they are now what the dial reads at 100 —
+   and DEFAULT_VOL starts every new player well under it. The volume is a
+   plain amplitude multiplier (0.5 on the dial is half the amplitude, about
+   -6dB), because a dial whose number means something is a dial a player can
+   set once and forget.
+
+   MUTE AND ZERO ARE THE SAME STATE, deliberately. A speaker icon that says
+   "on" over a dial sitting at zero is a control that lies, so sfxOn() asks
+   BOTH — is the switch on, and is there any volume — and setSfx(true) lifts
+   a zeroed dial back to the default rather than turning on nothing.
 
    THE BROWSER WILL NOT LET US START. Autoplay policy blocks an AudioContext
    until the user has interacted with the page, and on iOS it suspends again
@@ -57,8 +74,53 @@ const Sound = {
     try { localStorage.setItem(k, v); } catch (e) { this._mem[k] = v; }
   },
 
-  sfxOn() { return this.lsGet('neo-sfx') !== '0'; },
-  musicOn() { return this.lsGet('neo-music') !== '0'; },
+  /* THE DIALS. 0-100, stored as text next to the switches. Everything else
+     in this file reads volume through vol()/gain() so there is exactly one
+     place that knows the scale. */
+  DEFAULT_VOL: { sfx: 50, music: 40 },
+  VOL_KEY: { sfx: 'neo-sfx-vol', music: 'neo-music-vol' },
+  vol(bus) {
+    const raw = this.lsGet(this.VOL_KEY[bus]);
+    const n = raw == null ? this.DEFAULT_VOL[bus] : parseInt(raw, 10);
+    return isFinite(n) ? Math.max(0, Math.min(100, n)) : this.DEFAULT_VOL[bus];
+  },
+  // the bus's actual gain: the measured ceiling scaled by the dial
+  gainOf(bus) {
+    return (bus === 'sfx' ? this.SFX_GAIN : this.MUSIC_GAIN) * (this.vol(bus) / 100);
+  },
+  /* Set a dial. Applies LIVE — a player dragging the slider in Settings
+     hears the change while they drag, which is the only way to set a level
+     — and a drag down to zero mutes, a drag up from zero unmutes, so the
+     speaker icon and the dial can never disagree. Returns the clamped value. */
+  setVol(bus, v) {
+    v = Math.max(0, Math.min(100, Math.round(+v || 0)));
+    this.lsSet(this.VOL_KEY[bus], String(v));
+    const key = bus === 'sfx' ? 'neo-sfx' : 'neo-music';
+    if (v > 0 && this.lsGet(key) === '0') this.lsSet(key, '1');   // a lift off zero is an unmute
+    this.applyVol();
+    // …and the music has to be told, because its bus is ramped, not set
+    if (bus === 'music') { if (v > 0) this.unlock(); else this.stopMusic(); }
+    return v;
+  },
+  /* Push both dials at the live buses. Safe before there is a context (there
+     is nothing to push at yet) and safe to call as often as you like. */
+  applyVol() {
+    try {
+      if (this.sfxBus) this.sfxBus.gain.value = this.gainOf('sfx');
+      if (this.musicBus && this._music && this.ctx) {
+        const g = this.musicBus.gain, t = this.ctx.currentTime;
+        g.cancelScheduledValues(t);
+        g.setValueAtTime(Math.max(0.0001, g.value), t);
+        // a short ramp, not a jump: a step on a sustained pad is a click
+        g.linearRampToValueAtTime(Math.max(0.0001, this.gainOf('music')), t + 0.08);
+      }
+    } catch (e) { /* a dial must never cost a frame */ }
+  },
+
+  // "will anything actually be heard" — the switch AND the dial, because a
+  // speaker icon reading ON over a dial at zero is a control that lies
+  sfxOn() { return this.lsGet('neo-sfx') !== '0' && this.vol('sfx') > 0; },
+  musicOn() { return this.lsGet('neo-music') !== '0' && this.vol('music') > 0; },
 
   /* The toggles. Each returns the NEW state so a caller can paint a button
      from the return value rather than re-reading the store. Turning music
@@ -66,11 +128,15 @@ const Sound = {
      click); turning it on starts it if a context is already usable. */
   setSfx(on) {
     this.lsSet('neo-sfx', on ? '1' : '0');
+    // un-muting a dial that is at zero must produce sound, not silence
+    if (on && this.vol('sfx') === 0) this.lsSet(this.VOL_KEY.sfx, String(this.DEFAULT_VOL.sfx));
+    this.applyVol();
     if (on) this.unlock();
     return on;
   },
   setMusic(on) {
     this.lsSet('neo-music', on ? '1' : '0');
+    if (on && this.vol('music') === 0) this.lsSet(this.VOL_KEY.music, String(this.DEFAULT_VOL.music));
     // unlock() is the ONE place that knows resume() is async; setMusic used to
     // call startMusic straight after it and hit the same suspended-context race
     if (on) this.unlock(); else this.stopMusic();
@@ -86,6 +152,7 @@ const Sound = {
      hear without turning the system up and then being deafened by everything
      else. These land the mix near -6dBFS peak with the music sitting well
      under the effects. */
+  // what the dials read at 100 — the measured ceiling, not the shipping level
   SFX_GAIN: 2.2, MUSIC_GAIN: 0.85,
 
   /* Lazily built. Returns null when the browser will not give us audio at
@@ -111,7 +178,7 @@ const Sound = {
         comp.attack.value = 0.004; comp.release.value = 0.20;
         comp.connect(ctx.destination); master = comp;
       } catch (e) { /* no compressor — the buses just run into the speakers */ }
-      const sfx = ctx.createGain(); sfx.gain.value = this.SFX_GAIN; sfx.connect(master);
+      const sfx = ctx.createGain(); sfx.gain.value = this.gainOf('sfx'); sfx.connect(master);
       const mus = ctx.createGain(); mus.gain.value = 0;            // faded up by startMusic
       mus.connect(master);
       this.ctx = ctx; this.sfxBus = sfx; this.musicBus = mus; this.master = master;
@@ -408,7 +475,7 @@ const Sound = {
       const g = this.musicBus.gain;
       g.cancelScheduledValues(ctx.currentTime);
       g.setValueAtTime(Math.max(0.0001, g.value), ctx.currentTime);
-      g.exponentialRampToValueAtTime(this.MUSIC_GAIN, ctx.currentTime + 4);
+      g.exponentialRampToValueAtTime(Math.max(0.0001, this.gainOf('music')), ctx.currentTime + 4);
 
       // THE DRONE: two detuned saws through a slow lowpass, an octave apart.
       // Detuning is what stops two oscillators sounding like one thin one —

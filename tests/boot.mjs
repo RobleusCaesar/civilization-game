@@ -265,25 +265,30 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   await p.waitForSelector('#splash', { state: 'attached', timeout: 5000 });
   const first = await p.evaluate(() => {
     const sp = document.getElementById('splash');
-    /* the probe is deliberately the EARLIEST possible look, and on some
-       boots the splash completes and is torn down between the selector
-       wait and this evaluate — a finished splash WAS up first; what still
-       matters then is that no game chrome shows and the body is not in a
-       game, which the shared checks below verify the same way. */
+    /* The probe is deliberately the EARLIEST possible look, and since
+       Boot.HOLD_MS went to 0 (2026-09-20) it is a look we cannot reliably
+       win: between the selector wait and this evaluate the splash may have
+       been torn down entirely, or — the case that started failing — caught
+       part-way through its fade. Both of those are a splash that WAS up
+       first; only a splash that never showed at all would be a regression,
+       and it is indistinguishable from a completed one. So "up" accepts
+       gone and going, and the teeth of this section stay where they can
+       actually bite: no game chrome on that first look, and a body that is
+       not in a game — both asserted from this same sample below. */
     const cs = sp ? getComputedStyle(sp) : null;
     const vis = (id) => {
       const el = document.getElementById(id);
       return el ? getComputedStyle(el).display !== 'none' : false;
     };
     return {
-      up: sp ? (cs.opacity === '1' && cs.display !== 'none') : true,
+      up: sp ? (cs.display !== 'none' || +cs.opacity < 1) : true,
       covers: sp ? (sp.getBoundingClientRect().width >= innerWidth - 1 &&
               sp.getBoundingClientRect().height >= innerHeight - 1) : true,
       hud: ['topbar', 'bottombar', 'miniWrap', 'miniToggle', 'armyBar', 'toasts'].filter(vis),
       ingame: document.body.classList.contains('ingame'),
     };
   });
-  ck('theSplashIsUpOnTheFirstLook', first.up, '');
+  ck('theSplashIsUpOnTheFirstLook', first.up, 'up, or already lifting — HOLD_MS is 0');
   ck('andItCoversTheWholeViewport', first.covers, '');
   ck('noChromeRendersBeforeAGame', first.hud.length === 0,
     first.hud.length ? 'showing: ' + first.hud.join(', ') : 'HUD fully gated');

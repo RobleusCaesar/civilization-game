@@ -27,6 +27,14 @@
       when there is no recording to loop.
    9. THE WIRING IS REAL: the settings rows paint from the live state, and
       the game's own events reach the one door.
+  10. THERE IS A DIAL, AND IT SHIPS DOWN. On/Off alone shipped a game the
+      first real player called "far, far too loud", with no way down except
+      the system volume — which turns down everything else on the device
+      too. Each bus now has a 0-100 dial that persists, that moves the LIVE
+      gain, and that starts under the measured ceiling (DEFAULT_VOL).
+  11. MUTE AND ZERO ARE ONE STATE. A speaker icon reading "on" over a dial
+      at zero is a control that lies, so sfxOn() asks both — and un-muting a
+      zeroed dial lifts it, rather than turning on silence.
 
      node tests/audio.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
@@ -132,14 +140,51 @@ const out = await p.evaluate(async () => {
   Sound.setMusic(false);
 
   /* ---- 9. the settings rows paint from the live state ---- */
+  // a row reads as {speaker glyph, dial value, the label beside it}
+  const row = (id) => {
+    const el = document.getElementById(id);
+    return { spk: el.querySelector('.spk').textContent, off: el.querySelector('.spk').classList.contains('off'),
+      val: +el.querySelector('.vol').value, pct: el.querySelector('.vpct').textContent,
+      muted: el.classList.contains('muted'), fill: el.querySelector('.vol').style.getPropertyValue('--p') };
+  };
   Sound.setSfx(false); Sound.setMusic(true);
   Screens.paintAudioRows();
-  const sel = (id) => [...document.getElementById(id).querySelectorAll('.abtn')]
-    .filter(x => x.classList.contains('sel')).map(x => x.dataset.v).join(',');
-  r.rows = { sfx: sel('setSfx'), music: sel('setMusic') };
+  r.rows = { sfx: row('setSfx'), music: row('setMusic') };
   Sound.setSfx(true); Sound.setMusic(false);
   Screens.paintAudioRows();
-  r.rows2 = { sfx: sel('setSfx'), music: sel('setMusic') };
+  r.rows2 = { sfx: row('setSfx'), music: row('setMusic') };
+
+  /* ---- 10. the dial: it persists, and it moves the live gain ---- */
+  Sound.setSfx(true); Sound.setMusic(true);
+  r.dial = {};
+  r.dial.defaults = { sfx: Sound.DEFAULT_VOL.sfx, music: Sound.DEFAULT_VOL.music };
+  // it ships UNDER the measured ceiling — that is the whole point
+  r.dial.shipsQuiet = Sound.DEFAULT_VOL.sfx < 100 && Sound.DEFAULT_VOL.music < 100;
+  Sound.setVol('sfx', 100);
+  r.dial.ceiling = +Sound.sfxBus.gain.value.toFixed(4) === +Sound.SFX_GAIN.toFixed(4);
+  Sound.setVol('sfx', 25);
+  r.dial.quarter = Math.abs(Sound.sfxBus.gain.value - Sound.SFX_GAIN * 0.25) < 1e-4;
+  r.dial.stored = Sound.lsGet('neo-sfx-vol');
+  r.dial.clamped = [Sound.setVol('sfx', -10), Sound.setVol('sfx', 400)];
+  // the music bus follows its dial while it is playing
+  Sound.setVol('music', 100); await wait(140);
+  const loud = Sound.musicBus.gain.value;
+  Sound.setVol('music', 20); await wait(140);
+  r.dial.musicFollows = Sound.musicBus.gain.value < loud - 0.01;
+  Sound.setMusic(false);
+
+  /* ---- 11. mute and zero are one state ---- */
+  Sound.setSfx(true); Sound.setVol('sfx', 0);
+  r.zero = { onAtZero: Sound.sfxOn(), playsAtZero: Sound.play('done') };
+  Screens.paintAudioRows();
+  r.zero.reads = row('setSfx');
+  Sound.setSfx(true);                       // un-mute a zeroed dial
+  r.zero.lifted = Sound.vol('sfx');
+  r.zero.onAfter = Sound.sfxOn();
+  // …and lifting the dial off zero un-mutes, so the two can never disagree
+  Sound.setSfx(false); Sound.setVol('sfx', 60);
+  r.zero.dialUnmutes = Sound.sfxOn() && Sound.vol('sfx') === 60;
+  Sound.setVol('sfx', Sound.DEFAULT_VOL.sfx);
   return r;
 });
 
@@ -155,14 +200,29 @@ ck('butADifferentOneIsNot', out.throttle.other === true, '');
 ck('andTheVoiceCapIsAbsolute', out.cappedHard === true, 'a town under siege must not become white noise');
 ck('nothingReachesASave', out.notInSave === true, '');
 ck('andAFreshWorldClearsTheClocks', out.worldChangeClears === true, '');
+ck('theSettingsRowsTellTheTruth',
+  out.rows.sfx.off === true && out.rows.sfx.pct === 'Off' && out.rows.sfx.muted === true &&
+  out.rows.music.off === false && /%$/.test(out.rows.music.pct) &&
+  out.rows2.sfx.off === false && out.rows2.music.off === true,
+  JSON.stringify(out.rows) + ' then ' + JSON.stringify(out.rows2));
+ck('andAMutedRowKeepsItsLevelOnTheDial', out.rows.sfx.val > 0 && out.rows.sfx.fill === out.rows.sfx.val + '%',
+  'a mute that forgets the level makes the player set it twice — dial ' + out.rows.sfx.val + ', fill ' + out.rows.sfx.fill);
+ck('theDialShipsUnderTheCeiling', out.dial.shipsQuiet,
+  'defaults ' + JSON.stringify(out.dial.defaults) + ' — 100 is the measured ceiling, not the shipping level');
+ck('andItMovesTheLiveGain', out.dial.ceiling && out.dial.quarter && out.dial.musicFollows,
+  '100 = SFX_GAIN: ' + out.dial.ceiling + ', 25 = a quarter of it: ' + out.dial.quarter + ', music follows: ' + out.dial.musicFollows);
+ck('andItIsRememberedAndClamped', out.dial.stored === '25' && out.dial.clamped[0] === 0 && out.dial.clamped[1] === 100,
+  'stored ' + out.dial.stored + ', clamped ' + JSON.stringify(out.dial.clamped));
+ck('aDialAtZeroIsMuted', out.zero.onAtZero === false && out.zero.playsAtZero === false && out.zero.reads.off === true,
+  JSON.stringify(out.zero));
+ck('andUnMutingItLiftsTheDial', out.zero.lifted === out.dial.defaults.sfx && out.zero.onAfter === true,
+  'un-muting must produce sound, not silence — lifted to ' + out.zero.lifted);
+ck('andLiftingTheDialUnMutes', out.zero.dialUnmutes === true,
+  'the speaker and the dial can never disagree');
 ck('theMusicIsGeneratedNotLooped',
   out.music.started && out.music.i2 > out.music.i1 && out.music.aheadOfClock && out.music.drone >= 2,
   'slots ' + out.music.i1 + ' → ' + out.music.i2 + ', scheduled ahead: ' + out.music.aheadOfClock +
   ', drone voices ' + out.music.drone);
-ck('theSettingsRowsReadTheLiveState',
-  out.rows.sfx === '0' && out.rows.music === '1' && out.rows2.sfx === '1' && out.rows2.music === '0',
-  JSON.stringify(out.rows) + ' then ' + JSON.stringify(out.rows2));
-
 /* ---- 4. the memory has a fallback ---- */
 {
   const p2 = await b.newPage({ viewport: { width: 900, height: 700 } });

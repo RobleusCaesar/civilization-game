@@ -229,6 +229,18 @@ const UI = {
      are in — but for now only Calm SHOWS the button, because Calm is the mode
      that needed a way to win without a war. Flip `wonderMenu` on a mode in
      config.js and it appears there too, no other change. */
+  /* THE GOLD SAYS IT ONCE (tests/wonder.mjs). The rim, the glow and the
+     "★ Victory" ribbon exist to answer one question — what IS this card —
+     and they answered it on every frame of a three-hour game, which is how
+     a signpost becomes a distraction (operator, 2026-09-22). They now last
+     the same five real minutes G.positiveGate uses, then fade to an ordinary
+     card over a second and a half. What does NOT fade is the "% saved" line
+     underneath: that is a number that moves, and it was the whole of the
+     retention fix — the gold was only ever there to get it looked at. */
+  WONDER_SHOUT_S: 300,
+  wonderShouting() {
+    return !!(S && (S.playtime || 0) < this.WONDER_SHOUT_S);
+  },
   wonderOffered() {
     // `G` is a script-level const, not a window property — never window.G here
     const m = G && G.modeCfg ? G.modeCfg() : null;
@@ -267,6 +279,8 @@ const UI = {
           const nm = b.querySelector('.bname');
           if (nm) nm.textContent = CFG.BUILDINGS.wonder.name;
         }
+        // the gold introduces the card and then gets out of the way
+        b.classList.toggle('settled', !this.wonderShouting());
         // how far the town has saved: the scarcest resource's share of its price
         const pg = b.querySelector('.bprog');
         if (pg) {
@@ -3239,21 +3253,13 @@ const UI = {
     panel.querySelector('#panelClose').addEventListener('click', () => this.deselect());
     const helpT = panel.querySelector('#helpToggle');
     if (helpT) helpT.addEventListener('click', () => this.toggleUnitHelp());
-    // pack the grid: any button left alone in its two-column row stretches to
-    // full width — no half-empty rows, no ragged stacking
-    {
-      const kids = [...panel.querySelectorAll('.pactions > *')];
-      let col = 0;
-      kids.forEach((el, i) => {
-        const spans = c => c.classList.contains('wide') || c.classList.contains('psub');
-        if (spans(el)) { col = 0; return; }
-        if (col === 0) {
-          const next = kids[i + 1];
-          if (!next || spans(next)) el.classList.add('wide');
-          else col = 1;
-        } else col = 0;
-      });
-    }
+    /* THE GRID USED TO BE PACKED HERE, by hand: walk .pactions' children,
+       count to two, and stamp .wide on any button left alone in its row. It
+       could only ever count to two, which is why the panel could only ever
+       be two columns wide. The same rule now lives in the stylesheet as a
+       flex basis plus flex-grow, where the column count follows the
+       viewport and a lone button grows into its row on its own — so the
+       desktop can run four across (#panel .pactions, index.html). */
     panel.classList.toggle('show', !this.panelHidden);   // a tucked-away panel stays tucked
     document.getElementById('buildmenu').style.display = 'none';
     this.syncBottomToggle();   // non-villagers get a single ▾ minimize, not "🔨 Build"

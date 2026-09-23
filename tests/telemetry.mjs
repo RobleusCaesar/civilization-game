@@ -46,7 +46,9 @@ let pw;
 try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const b = await pw.chromium.launch();
+// shipped PNGs bake into canvases the terrain build reads — file:// must be
+// same-origin, or the first G.newGame throws on a tainted getImageData
+const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] });
 const res = {}, fails = [];
 const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
 
