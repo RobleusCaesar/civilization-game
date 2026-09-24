@@ -4328,8 +4328,8 @@ const R = {
          region big enough to carry a chain of massifs gets art, a boulder
          outcrop stays a boulder outcrop, and with no kit on disk nothing
          below this line has changed at all. */
-      if (!art && MTN.KIT && r.cls > 0 && typeof Assets !== 'undefined' && Assets.mtnKitReady && Assets.mtnKitReady())
-        art = this.drawMtnChained(r);
+      const kitOn = this.mtnKitOn();
+      if (!art && kitOn) art = this.drawMtnChained(r);
       /* A ONE- OR TWO-CELL OUTCROP DRAWS NOTHING. It used to wear a
          scatter of procedural boulders, and so did every cell of a range
          the kit could not dress — the referee's ruling (2026-09-05): they
@@ -4337,7 +4337,12 @@ const R = {
          crag art is drawn for them. Such a cell still blocks; it shows as
          meadow until then, and the coverage contract in tests/mountain.mjs
          counts every one of them. */
-      if (!art && r.cls > 0) art = this.drawMtnRegion(r);
+      /* THE EXTRUSION IS RETIRED WHEREVER THE KIT IS INSTALLED (the day-94
+         report: two coastal crags still wore it beside the drawn ranges).
+         It survives only as the no-art fallback — MTN.KIT off, or the kit's
+         PNGs missing — because a painter stands down for art that isn't
+         there rather than leave a range undrawn. */
+      if (!art && !kitOn && r.cls > 0) art = this.drawMtnRegion(r);
       if (!art) continue;
       this._mtnArt.push(art);
       for (const s of art.strips) this._mtnStrips.push(s);
@@ -4661,6 +4666,121 @@ const R = {
      THE WOOD IN FRONT (below) still lets real forest tiles draw over the
      rock they stand against, which is the whole effect this was imitating. */
 
+  /* ---- NO INVISIBLE WALLS: the fill pass (the day-94 report) ----------
+     The chain above composes a range the way an illustrator would, and its
+     rules refuse a piece wherever the water would cut it or a column would
+     hang over meadow. On a coast that is almost everywhere: the reported
+     save had three ranges dressed on 11 of 22, 5 of 18 and 4 of 29 of their
+     tiles, and a war party stood against rock drawn as open grass. A tile
+     that BLOCKS must LOOK like it blocks — that outranks every aesthetic
+     rule here — so after the chain has placed what it can, every mountain
+     tile still bare is dressed from the same kit, smallest piece that fits
+     first. A fill piece is scored on the bare rock it covers against what it
+     would lay over water (cut away at draw, so it is avoided) and over
+     walkable meadow (the lie in the other direction, so it is avoided too),
+     and it stands on the bare tile's own row or just below it. The scores
+     are tile-grid sums precomputed once per piece, so a fill costs a few
+     thousand additions, not a pixel walk per candidate. */
+  _mtnTileGrid(pc) {
+    if (pc._tg) return pc._tg;
+    const TL = CFG.TILE, sp = Assets.mtnPx(pc), bb = pc.bb;
+    const g = new Map();
+    const tear = Math.max(2, Math.min(Math.max(0, MTN.KIT_TEAR | 0), Math.round(Math.min(pc.w, pc.h) * 0.17)));
+    const add = (sx, sy, v) => {
+      const dc = Math.floor(sx / TL), dr = Math.floor((sy - 1 - bb.y1) / TL);
+      const key = dr * 64 + dc;
+      g.set(key, (g.get(key) || 0) + v);
+    };
+    for (let sy = bb.y0; sy <= bb.y1; sy++) for (let sx = bb.x0; sx <= bb.x1; sx++) {
+      if (sp && sp[(sy * pc.w + sx) * 4 + 3] < 128) continue;
+      // the torn flanks survive about half the time (drawMtnChained's tear)
+      add(sx, sy, Math.min(sx, pc.w - 1 - sx) < tear ? 0.5 : 1);
+    }
+    const cells = [];
+    for (const [key, v] of g) {
+      const dr = Math.round(key / 64), dc = key - dr * 64;
+      cells.push({ dr, dc, v });
+    }
+    pc._tg = { cells, span: Math.ceil((bb.x1 + 1) / TL), rows: Math.ceil((bb.y1 - bb.y0 + 1) / TL) + 1 };
+    return pc._tg;
+  },
+  mtnFillPlan(r, plan, seen) {
+    const kit = Assets.mtnKit, TL = CFG.TILE, W = CFG.W, H = CFG.H;
+    const terr = (S.map.seenTerrain || S.map.terrain);
+    const pool = [].concat(kit.peak || [], kit.hill || []).filter(p => p.bb);
+    if (!pool.length) return plan;
+    const need = TL * TL * MTN.KIT_SHOW_MIN;
+    const isMt = (x, y) => x >= 0 && y >= 0 && x < W && y < H && terr[y * W + x] === T.MOUNTAIN;
+    const wetK = new Map();
+    const wetAt = (x, y) => {
+      if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return true;   // the black beyond the board
+      const k = y * W + x;
+      let v = wetK.get(k);
+      if (v !== undefined) return v;
+      // the waterline only: a fill piece keeps its rock over the beach
+      // (drawMtnChained's wetOnly), so the beach scores as walkable ground
+      v = terr[k] === T.WATER || terr[k] === T.MOAT;
+      wetK.set(k, v);
+      return v;
+    };
+    // walkable ground the rock may legitimately rise over: rock within
+    // PAD_UP rows below it (the north lift the whole layer already allows)
+    const behind = (x, y) => { for (let k = 1; k <= MTN.PAD_UP; k++) if (isMt(x, y + k)) return true; return false; };
+    const hits = new Map();
+    const lift = q => (q.kind === 'peak' || q.kind === 'saddle') ? (MTN.KIT_HUG_DROP | 0) : 0;
+    const stamp = (pc, tx, fy, lf) => {
+      const tg = this._mtnTileGrid(pc);
+      const shift = lf ? Math.floor(lf / TL) : 0;   // a lifted piece sits a whole tile higher at worst
+      for (const c of tg.cells) {
+        const k = (fy + c.dr - shift) * W + (tx + c.dc);
+        hits.set(k, (hits.get(k) || 0) + c.v);
+      }
+    };
+    if (seen) for (const [k, n] of seen) hits.set(k, n);   // a re-pass starts from what was really drawn
+    else for (const q of plan) stamp(q.piece, q.tx, q.fy, lift(q));
+    const bare = () => r.cells.filter(k => (hits.get(k) || 0) < need);
+    const tried = new Set();
+    // small pieces first: a crag the size of the gap beats a massif over the meadow
+    const byArea = pool.slice().sort((a, b) => (a.w * a.h) - (b.w * b.h));
+    for (let guard = 0; guard < 200; guard++) {
+      const left = bare().filter(k => !tried.has(k));
+      if (!left.length) break;
+      // the frontmost bare tile first (south, then west), so the nearer rock
+      // is placed first and the ranks behind fill in over its shoulders
+      left.sort((a, b) => (((b / W) | 0) - ((a / W) | 0)) || ((a % W) - (b % W)));
+      const tk = left[0], cx = tk % W, cy = (tk / W) | 0;
+      let best = null, bestS = -Infinity;   // a bare wall is worse than any placement
+      for (const pc of byArea) {
+        const tg = this._mtnTileGrid(pc);
+        for (let fy = cy + 1; fy <= cy + 2; fy++)
+          for (let tx = cx - tg.span + 1; tx <= cx; tx++) {
+            let gain = 0, wet = 0, lie = 0, hitsTarget = 0;
+            for (const c of tg.cells) {
+              const x = tx + c.dc, y = fy + c.dr, k = y * W + x;
+              if (x < 0 || y < 0 || x >= W || y >= H) { wet += c.v; continue; }
+              if (isMt(x, y)) {
+                const h0 = hits.get(k) || 0;
+                gain += (Math.min(need, h0 + c.v) - Math.min(need, h0)) / need;
+                if (k === tk) hitsTarget += c.v;
+              } else if (wetAt(x, y)) wet += c.v;
+              else if (!behind(x, y)) lie += c.v;
+            }
+            if ((hits.get(tk) || 0) + hitsTarget < need) continue;   // must dress the tile it came for
+            // …and the tile it came for SOLIDLY — the estimate cannot see the
+            // tear or the waterline cut, so a bare pass of the threshold can
+            // land a hair short once they have taken their bite
+            const solid = Math.min(1, (hits.get(tk) || 0) / (TL * TL) + hitsTarget / (TL * TL));
+            const sc = gain + solid - 1.5 * wet / (TL * TL) - 0.8 * lie / (TL * TL) - 0.02 * (pc.w * pc.h) / (TL * TL);
+            if (sc > bestS) { bestS = sc; best = { pc, tx, fy }; }
+          }
+      }
+      if (!best) { tried.add(tk); continue; }
+      plan.push({ piece: best.pc, kind: 'fill', tx: best.tx, fy: best.fy, up: 0, front: false });
+      stamp(best.pc, best.tx, best.fy, 0);
+    }
+    return plan;
+  },
+
   /* ONE PIECE, ONE STRIP. The earlier version composited every piece into a
      region-sized canvas, masked that canvas to the footprint, then cut it
      back apart into row strips — three chances to slice a mountain on a
@@ -4669,12 +4789,32 @@ const R = {
      silhouette. Overlap is just draw order, which the strip interleave
      already gives us for free. The only pixels ever removed are the honest
      ones: over water or its beach, and off the board. */
-  drawMtnChained(r) {
+  drawMtnChained(r, planIn, pass) {
     const TL = CFG.TILE, W = CFG.W, H = CFG.H;
-    const plan = this.mtnChainPlan(r);
-    if (!plan) return null;
+    const plan = planIn || this.mtnFillPlan(r, this.mtnChainPlan(r) || []);
+    if (!plan.length) return null;
     const terrK = (S.map.seenTerrain || S.map.terrain);
     const banCache = new Map();
+    /* a FILL piece (mtnFillPlan) is dressing rock the chain could not reach,
+       and on a coast that rock runs down to the water: it keeps its pixels
+       over the beach gap and stops at the waterline itself, a sea cliff */
+    const wetOnly = (tx, ty) => {
+      if (tx < 0 || ty < 0 || tx >= W || ty >= H) return true;
+      const t0 = terrK[ty * W + tx];
+      return t0 === T.WATER || t0 === T.MOAT;
+    };
+    /* …and it never stands over walkable ground except NORTH of rock (the
+       lift every mountain has, PAD_UP rows): a fill piece is five tiles of
+       art dressing a ragged edge, and what spills sideways or south of the
+       rock is a mountain drawn over open meadow — the other lie, just as
+       bad as the invisible wall it was placed to cure */
+    const honest = (tx, ty) => {
+      if (tx < 0 || ty < 0 || tx >= W || ty >= H) return false;
+      for (let k = 0; k <= MTN.PAD_UP; k++)
+        if (ty + k < H && terrK[(ty + k) * W + tx] === T.MOUNTAIN) return true;
+      return false;
+    };
+    const fillCut = (tx, ty) => wetOnly(tx, ty) || !honest(tx, ty);
     const banned = (tx, ty) => {
       if (tx < 0 || ty < 0 || tx >= W || ty >= H) return true;
       const k = ty * W + tx;
@@ -4753,7 +4893,16 @@ const R = {
             const dd = q.p.front ? Math.min(sx, pc.w - 1 - sx, pc.h - 1 - sy) : Math.min(sx, pc.w - 1 - sx);
             if (dd < tear && this._lh(((q.x + sx) / 5) | 0, ((q.y + sy) / 5) | 0, 61) > (dd + 0.5) / tear) continue;
           }
-          if (banned(((q.x + sx) / TL) | 0, ((q.y + sy) / TL) | 0)) continue;
+          /* NO STRAIGHT LINES, AT THE BAN EITHER. Asked at the pixel's own
+             tile the cut fell exactly on the tile boundary — a ruler line
+             down the rock wherever a piece met the water. The sample point
+             is jittered in 6px blocks, so the edge tears like the flanks do. */
+          const jx = (this._lh(((q.x + sx) / 6) | 0, ((q.y + sy) / 6) | 0, 67) - 0.5) * 14;
+          const jy = (this._lh(((q.x + sx) / 6) | 0, ((q.y + sy) / 6) | 0, 71) - 0.5) * 14;
+          const bx = ((q.x + sx + jx) / TL) | 0, by = ((q.y + sy + jy) / TL) | 0;
+          const ox0 = ((q.x + sx) / TL) | 0, oy0 = ((q.y + sy) / TL) | 0;
+          if (q.p.kind === 'fill') { if (fillCut(bx, by) || fillCut(ox0, oy0)) continue; }
+          else if (banned(bx, by) || banned(ox0, oy0)) continue;
           const oo = (sy * sw + sx) * 4;
           d[oo] = sp[so]; d[oo + 1] = sp[so + 1]; d[oo + 2] = sp[so + 2]; d[oo + 3] = 255;
         }
@@ -4820,6 +4969,18 @@ const R = {
       if (oy < by0) by0 = oy; if (oy + outC.height > by1) by1 = oy + outC.height;
     }
     if (!strips.length) return null;
+    /* THE FILL'S ESTIMATE CANNOT SEE THE TEAR OR THE WATERLINE CUT, so what
+       was actually drawn is checked here: a tile still short of rock gets
+       one more fill pass seeded with the REAL counts, and the region is
+       drawn again. Twice at most — a tile the second pass cannot dress is
+       one no piece in the kit can stand on. */
+    if ((pass | 0) < 2) {
+      const showNeed = TL * TL * MTN.KIT_SHOW_MIN;
+      if (r.cells.some(k => (hits.get(k) || 0) < showNeed)) {
+        const n0 = plan.length, more = this.mtnFillPlan(r, plan.slice(), hits);
+        if (more.length > n0) return this.drawMtnChained(r, more, (pass | 0) + 1);
+      }
+    }
     { const need = TL * TL * MTN.KIT_COVER_MIN; for (const [k, n] of hits) if (n >= need) cover.add(k); }
     /* the composite below measures ROCK, and takes it from the strips as they
        stand HERE, before the sort. It was the apron's wood strips that made
@@ -4831,6 +4992,20 @@ const R = {
     const rockStrips = strips.slice();
     strips.sort((a, b) => a.row - b.row);
 
+    // the whole-region composite, which is what the contract tests measure
+    const cw = Math.max(1, bx1 - bx0), ch = Math.max(1, by1 - by0);
+    const c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    /* THE COMPOSITE IS THE ROCK. Nothing draws it — the frame draws the
+       strips — but the mountain contract measures it, and what that
+       contract is about is where the ROCK may stand. The wood at the foot
+       is ordinary vegetation on ordinary ground, so it stays out of it —
+       which is why this is built BEFORE the wood is stamped: the strips are
+       shared canvases, and composited after the stamp the contract measured
+       tree crowns south of a fill piece as rock standing on the meadow. */
+    for (const st of rockStrips) g.drawImage(st.c, st.x - bx0, st.y - by0);
     /* THE WOOD IN FRONT. Trees standing south of a piece's foot are nearer
        the camera than it is, so they draw over it; trees behind stay hidden.
        Stamped onto the piece's own strip, which is what the frame draws. */
@@ -4850,17 +5025,6 @@ const R = {
         g2.restore();
       }
     }
-    // the whole-region composite, which is what the contract tests measure
-    const cw = Math.max(1, bx1 - bx0), ch = Math.max(1, by1 - by0);
-    const c = document.createElement('canvas');
-    c.width = cw; c.height = ch;
-    const g = c.getContext('2d');
-    g.imageSmoothingEnabled = false;
-    /* THE COMPOSITE IS THE ROCK. Nothing draws it — the frame draws the
-       strips — but the mountain contract measures it, and what that
-       contract is about is where the ROCK may stand. The wood at the foot
-       is ordinary vegetation on ordinary ground, so it stays out of it. */
-    for (const st of rockStrips) g.drawImage(st.c, st.x - bx0, st.y - by0);
     return { c, x: bx0, y: by0, cover, kind: 'chain', box: r.box, strips, hits };
   },
 

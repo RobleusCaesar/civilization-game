@@ -131,7 +131,7 @@ node tests/placement.mjs       # ONE placement truth (canPlace codes); ghost+con
 node tests/boot.mjs            # frame one is the logo; no chrome before a game; the notch inset
 node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything; formation art (§17) writes no map array, packs deterministically, re-solves one region per edit
 node tests/calm-peace.mjs      # Calm starts at PEACE: nobody auto-engages until the player's first strike; the rival races for its own wonder
-node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do
+node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do; no mountain tile is an invisible wall
 node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-order tolerant, saves mid-lesson, the scout draws no RNG; auto-on for the first two games, the Calm victory modal, the Wonder card as the goal
 node tests/muster-horn.mjs   # one tap calls the workforce in, one tap sends it back to its posts
 node tests/levy.mjs          # the village under arms: derived membership, soldier's upkeep, works nothing, holds the town
@@ -3694,6 +3694,34 @@ column is smoothed across its neighbours (fracture noise that makes a fine
 skyline makes a terrible ground line) but never extended below the true mask
 bottom; and a bridged notch samples the nearest shaded rock below it, since
 it has no source pixel of its own.
+
+**NO MOUNTAIN TILE IS AN INVISIBLE WALL** (`R.mtnFillPlan`, pinned by
+`noMountainTileIsAnInvisibleWall` and
+`andTheProceduralExtrusionIsNeverDrawnBesideTheKit` in tests/mountain.mjs —
+the operator's day-94 save, with two pictures: a war party stopped by open
+meadow, and a coastal crag still wearing the old extrusion). The drawn kit's
+chain refuses a piece wherever the water would cut it or a column would hang
+over meadow, and on a coast that is nearly everywhere: that save's ranges
+were dressed on 11/22, 5/18 and 4/29 tiles, and the referee's 2026-09-05
+ruling let the rest show as grass. **A tile that blocks must look like it
+blocks, and that outranks every aesthetic rule in the kit** — the ruling is
+retired. After the chain places what it can, `mtnFillPlan` dresses every
+bare mountain tile (outcrops included) from the SAME kit, frontmost first,
+scored on bare rock covered against rock over water and rock over walkable
+meadow, off per-piece tile grids precomputed once (`_mtnTileGrid`).
+`drawMtnChained` then CHECKS what was really drawn (the estimate cannot see
+the tear or the cut) and re-runs the fill up to twice from the real counts.
+A fill piece is CUT, ragged, to honest ground — rock or the north lift over
+it, never the water — so it lies in neither direction; every ban cut is
+jittered in 6px blocks now, never a ruler line on a tile edge. **The
+extrusion (`drawMtnRegion`) is drawn only when the kit is absent** (MTN.KIT
+0 or its PNGs missing) — the no-art fallback, never beside the kit. Two
+traps this surfaced: the rock COMPOSITE the honesty pin measures must be
+built BEFORE the wood-in-front stamp, because the strips are shared canvases
+and tree crowns south of a fill piece read as stray rock; and tests/mountain
+.mjs's `page()` never waited for art, so the whole contract had measured
+whichever of the kit or the extrusion won the load race on each page — it
+waits for `Assets.allArtReady()` and `mtnKitReady()` now.
 
 **GAMEPLAY TRUTH IS TILE-BASED AND IS NOT TOUCHED.** The art sits off the
 lattice and reaches well past it northward; passability, placement, pathing,
