@@ -3949,7 +3949,15 @@ still backs the spent-quarry boulders and a ground decal). The contrast is
 still measured: ore core mean luminance 131.9 against the mountain rock's
 88 — at a glance, round-and-lighter is a resource, sharp-and-dark is a wall.
 Darken `oreD` further and `andOreOutshinesTheMountainRock` (mean ≥ 115, and
-≥ mountain + 25) says when it stops reading as a find. The GOLD SEAM wears
+≥ mountain + 15) says when it stops reading as a find. The margin was 25,
+set against the procedural extrusion's rock (~88) and never honestly met:
+the check did not wait for art, so it compared whichever ore had decoded
+(the procedural stand-in reads 121, the SHIPPED ore 115). It waits for the
+art now, and the reference is the drawn KIT's rock averaged over every
+mountain on the map (94 before the fill pass, 99 after). Against the rock
+the player actually sees the shipped ore stands 16 clear, and the operator
+chose to re-baseline to 15 rather than repaint the ore: at a glance ore is
+told from mountain mainly by FORM, brightness supporting it. The GOLD SEAM wears
 the same round language in pale quartz with nuggets and a vein in the real
 gold ramp, so ore reads as one family and gold as its rich cousin.
 **A WORKABLE TILE IS NEVER INVISIBLE**: a lone seeded hills tile reads a
