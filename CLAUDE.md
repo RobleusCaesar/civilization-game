@@ -140,7 +140,7 @@ node tests/rival-strength.mjs # the rewritten war brain: the anchor, the inner m
 node tests/train-spawn.mjs   # a trained unit stands on REALLY open ground, or waits in reserve until there is some
 node tests/homestead.mjs     # a house broadside-on to a farm bonds the two: +10% food, +1 villager, gold sparks — and it all goes away with either half
 node tests/origin-cards.mjs  # the 26-card draft: ten strategy-openers plant real buildings; every boon reads through a named hook; 64-grid motifs
-node tests/telemetry.mjs     # the board reports the SITE alone (https, shipped hosts, never ?dev=) and only a world somebody PLAYED
+node tests/telemetry.mjs     # the board reports the SITE alone (https, shipped hosts, never ?dev=) and only a world somebody PLAYED; a closed tab is one provisional abandon, the real ending wins
 node tests/desktop-layout.mjs # the world fills the window at every zoom (R.minZoom), a run opens at its own zoom, the desktop bars fill the width, the top bar is ONE row and a panel puts four actions on a row; the phone untouched
 node tests/moderate-dials.mjs # the retention pass's balance: Moderate's raid cadence / early army / harassment / first wave, a starving chief spends its gold, spare hands scale with the town, the Wonder's price, no massif at a seat's door
 node tests/island-maps.mjs   # the sea is never bulldozed: land-OR-sea reachability, dock-capable coasts on a shared ocean, the island viability floor, per-seat resources+gold
@@ -1867,6 +1867,31 @@ next host is the real test: if it reads outside the band, re-examine
 the twin's COMPOSITION against a fresh histogram before touching the
 baseline. Re-baselining alone would only have handed the fault to the
 host after this one.
+
+**THE CLOSED TAB IS AN ENDING** (`G.noteLeaving` / `Backend.logLeaving`,
+tests/telemetry.mjs §3–4, migration 0007): 22 of 24 runs used to leave no
+run_end at all, because closing a tab fires no ending — so the early funnel
+read zero while most players had left somewhere unknown. On `pagehide` AND a
+hidden `visibilitychange` (iOS often skips pagehide) a live, entered,
+non-demo run sends a PROVISIONAL run_end — outcome `abandoned`, cause
+`closed_tab`, `props.provisional`, built by `G.runReport`, the SAME builder
+`G.end` uses, so the props can never drift apart. It goes through `_emit`
+(fetch keepalive), never `sendBeacon`: a beacon cannot carry the Bearer token
+the insert policy (`auth.uid() = user_id`) demands. **One row per run per day
+reached** — the event pair collapses to one row, but a hidden tab is not
+always a closed one (a phone player checks a message and comes back), so a
+later hide on a run that has ADVANCED sends again. Counting stays exactly
+once in the DATABASE: 0007's `ends` keeps one ending per run_id — any real
+ending beats a closed_tab row (checked against the whole table, so a return
+after the date window still supersedes it), and of several closed_tab rows
+the latest wins; the run filters apply AFTER that dedupe. **`S.runId` rides in
+the save** (stamped in `_enterNow`, handed back to `Backend.runId` by
+`loadJSON`) so a CONTINUED run ends under the id it started with and its
+earlier closed_tab row is superseded; a pre-stamp save ends with run_id null,
+as before. Every existing gate still holds (site-only `_emit`, `S.played`,
+`Screens._demo`, `S.over`). The dashboard's "Where they leave" tables bucket
+every walk-away by day and by minutes, split by difficulty and device,
+closed_tab beside struck_banner.
 
 **The boot, measured** (`tests/boot.mjs`, the retention pass): time-to-menu
 was 3.4s on a desktop and 10s on a throttled phone, and nearly none of it

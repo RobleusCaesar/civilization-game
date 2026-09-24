@@ -145,6 +145,7 @@ const G = {
       day: 1, dayT: 0,
       paused: false, over: null,
       played: false,                        // has the playing screen ever shown this world (Screens.show)
+      runId: null,                          // analytics: the run_start's id, so a CONTINUED save ends the same run
       res: Object.assign({}, CFG.START_RES),
       wallLevel: 1,                         // village-wide fortification tier (all walls & gates)
       wonder: null,                         // this run's ANCIENT WONDER key (set by G.setWonder, below)
@@ -1745,32 +1746,8 @@ const G = {
          draft, a test's scripted world, a replay's re-founding — none of
          those were played, and none of them belongs on the board. */
       if (window.Backend && Backend.logRunEnd && S.played) {
-        const st = S.stats || {};
-        const tc = (typeof Bld !== 'undefined' && Bld.tcOf) ? Bld.tcOf('P') : null;
-        let seen = 0;
-        const ex = S.map && S.map.explored;
-        if (ex) { for (let i = 0; i < ex.length; i++) if (ex[i]) seen++; }
-        const card = (S.draft && S.draft.done && S.draft.hand && S.draft.pickI != null
-          && S.draft.hand[S.draft.pickI]) ? S.draft.hand[S.draft.pickI].key : null;
-        Backend.logRunEnd({
-          outcome: win ? 'win' : (cause === 'struck_banner' ? 'abandoned' : 'loss'),
-          cause: cause || (win ? 'win' : 'unknown'),
-          mode: S.mode, landform: S.map && S.map.landform, size: S.sizeKey,
-          day: S.day, seconds: Math.round(S.playtime || 0),
-          tcLevel: (tc && tc.level) || 0, peakPop: st.peakPop || 0,
-          score: (window.Score && Score.compute) ? (Score.compute(win).total || 0) : 0,
-          props: {
-            built: st.built || 0, trained: st.trained || 0, kills: st.kills || 0,
-            walls: st.walls || 0, upgrades: st.upgrades || 0, razed: st.razed || 0,
-            explored: ex && ex.length ? Math.round(100 * seen / ex.length) : 0,
-            tutorial: !!(S.tut && S.tut.on), card, origin: S.origin || null,
-            // S.wonder is the run's OFFERED wonder key, not a built flag —
-            // "did they raise it" is already carried by cause === 'wonder'
-            wonder_key: S.wonder || null,
-            // …and S.relic exists from generation; only .found means they got it
-            relic_found: !!(S.relic && S.relic.found),
-          },
-        });
+        Backend.logRunEnd(this.runReport(win ? 'win' : (cause === 'struck_banner' ? 'abandoned' : 'loss'),
+          cause || (win ? 'win' : 'unknown'), win));
       }
     } catch (e) { /* analytics may never break a finished run */ }
     S.paused = false;
@@ -1778,6 +1755,54 @@ const G = {
     // cleared — the title's Continue will not walk back into a told story
     if (window.Backend) Backend.finalizeRun();
     UI.showEnd(win, msg);
+  },
+
+  /* THE RUN, AS THE DASHBOARD READS IT — one builder shared by every ending
+     (G.end) and by the tab closing on a live run (G.noteLeaving), so a
+     closed_tab row carries exactly the props a real ending does. */
+  runReport(outcome, cause, win) {
+    const st = S.stats || {};
+    const tc = (typeof Bld !== 'undefined' && Bld.tcOf) ? Bld.tcOf('P') : null;
+    let seen = 0;
+    const ex = S.map && S.map.explored;
+    if (ex) { for (let i = 0; i < ex.length; i++) if (ex[i]) seen++; }
+    const card = (S.draft && S.draft.done && S.draft.hand && S.draft.pickI != null
+      && S.draft.hand[S.draft.pickI]) ? S.draft.hand[S.draft.pickI].key : null;
+    return {
+      outcome, cause,
+      mode: S.mode, landform: S.map && S.map.landform, size: S.sizeKey,
+      day: S.day, seconds: Math.round(S.playtime || 0),
+      tcLevel: (tc && tc.level) || 0, peakPop: st.peakPop || 0,
+      score: (window.Score && Score.compute) ? (Score.compute(!!win).total || 0) : 0,
+      props: {
+        built: st.built || 0, trained: st.trained || 0, kills: st.kills || 0,
+        walls: st.walls || 0, upgrades: st.upgrades || 0, razed: st.razed || 0,
+        explored: ex && ex.length ? Math.round(100 * seen / ex.length) : 0,
+        tutorial: !!(S.tut && S.tut.on), card, origin: S.origin || null,
+        // S.wonder is the run's OFFERED wonder key, not a built flag —
+        // "did they raise it" is already carried by cause === 'wonder'
+        wonder_key: S.wonder || null,
+        // …and S.relic exists from generation; only .found means they got it
+        relic_found: !!(S.relic && S.relic.found),
+      },
+    };
+  },
+
+  /* THE TAB CLOSED ON A LIVE RUN (tests/telemetry.mjs §3). Closing the tab
+     fires no ending, so 22 of 24 runs used to vanish with no run_end at all.
+     Called on pagehide AND a hidden visibilitychange (iOS Safari often skips
+     pagehide), it sends a PROVISIONAL ending — outcome 'abandoned', cause
+     'closed_tab' — for a run that is live, entered and not the title's demo.
+     Backend.logLeaving keeps it to one row per run per day reached, and the
+     dashboard (migration 0007) keeps ONE row per run: a real ending always
+     beats a closed_tab row, and of several closed_tab rows the latest wins. */
+  noteLeaving() {
+    try {
+      if (typeof S === 'undefined' || !S || !S.map || S.over || !S.played) return;
+      if (window.Screens && Screens._demo) return;
+      if (!window.Backend || !Backend.logLeaving) return;
+      Backend.logLeaving(this.runReport('abandoned', 'closed_tab', false));
+    } catch (e) { /* analytics may never be felt in the game */ }
   },
 
   /* ---------------- save / load ---------------- */
@@ -1998,6 +2023,11 @@ const G = {
     }
     S = data;
     Bld._block = null;
+    /* analytics: a continued save ends the SAME run it started as — so a
+       closed_tab row from the tab it was left in is superseded by the real
+       ending that comes later (migration 0007 keeps one row per run_id). A
+       pre-stamp save has none, and its ending goes up with run_id null. */
+    if (window.Backend) Backend.runId = S.runId || null;
     // a save caught mid-draft (belt and braces): the first card is kept
     if (S.draft && !S.draft.done && S.draft.hand && S.draft.hand.length && window.Cards)
       Cards.pick(0);
@@ -2198,6 +2228,10 @@ window.addEventListener('load', () => {
       if (document.hidden && window.S && !S.over &&
           !(window.Screens && Screens._demo)) Backend.autosaveNow('hide');
     });
+    // analytics: where the player LEFT (G.noteLeaving) — both events, since
+    // iOS Safari often skips pagehide; Backend.logLeaving dedupes the pair
+    document.addEventListener('visibilitychange', () => { if (document.hidden) G.noteLeaving(); });
+    window.addEventListener('pagehide', () => G.noteLeaving());
   }
   /* COMING BACK TO THE TAB IS WHEN THE GROUND IS FOUND MISSING (R.watchCache).
      iOS throws canvas pixels away while the game is in the background, so the

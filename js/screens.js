@@ -261,6 +261,7 @@ const Screens = {
           mode: S.mode, landform: S.map && S.map.landform, size: S.sizeKey,
           tutorial: !!(S.tut && S.tut.on), card, origin: S.origin || null, seed: String(S.seed || ''),
         });
+        S.runId = Backend.runId;   // rides in the save, so a Continue ends the same run
       }
     } catch (e) { /* analytics may never keep a player out of their game */ }
     S.paused = false;
