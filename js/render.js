@@ -6310,6 +6310,22 @@ const R = {
        65×65 (xlarge, CFG.SIZES) either way — 3 rounds here measured under
        0.5ms, against the 1.5s+ the player waits for a bake at that size. */
     this._boxBlurPremul(g, CFG.W, CFG.H, 3, 3);
+    /* …AND THE FEATHER RUNS OUTWARD ONLY (operator report, day 100: "the
+       area where troops or villagers are is not as bright… still a bit
+       foggy"). A blur that wide is symmetric, so it pulled the fog INTO
+       every lit pocket as far as it pushed light out — and a unit sees
+       UNIT_VISION (3) tiles, a pocket the blur swallows whole: measured, a
+       lone soldier's own tile sat under alpha 81 of the remembered fog's
+       115, and even a six-tile clearing's centre kept 27. Ground in sight is
+       never fogged, so every visible tile is cleared after the blur; the
+       soft edge survives, lying entirely in the fog beyond it (the blur
+       already lightened those tiles by averaging in the clear ones), and the
+       two bilinear upscales still ramp the last step across a tile. */
+    {
+      const W = CFG.W, n = W * CFG.H, im = g.getImageData(0, 0, W, CFG.H), d = im.data;
+      for (let i = 0; i < n; i++) if (S.map.explored[i] && G.vis && G.vis[i]) d[i * 4 + 3] = 0;
+      g.putImageData(im, 0, 0);
+    }
     const scale = 4, bw = CFG.W * scale, bh = CFG.H * scale;
     if (!this.fogBlurCv) this.fogBlurCv = document.createElement('canvas');
     if (this.fogBlurCv.width !== bw) { this.fogBlurCv.width = bw; this.fogBlurCv.height = bh; }

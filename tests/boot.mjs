@@ -554,12 +554,31 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     const a = (tx) => row[Math.round(tx * scale) * 4 + 3];
     const steps = new Set();
     for (let x = Math.round(22 * scale); x <= Math.round(30 * scale); x++) steps.add(row[x * 4 + 3]);
-    return { steps: steps.size, centre: a(30.5), far: a(18) };
+    const out = { steps: steps.size, centre: a(30.5), far: a(18) };
+    /* …AND WHERE SOMEONE STANDS IS CLEAR (operator report, day 100: "the
+       area where troops or villagers are is not as bright"). The feather
+       was symmetric, so it fogged every lit pocket from the inside — a lone
+       unit's own tile measured alpha 81 against the remembered fog's 115.
+       One unit's vision (UNIT_VISION tiles), and every tile of it read at
+       its centre, must be fully clear; the soft edge lives in the fog. */
+    const R0 = CFG.UNIT_VISION, vis1 = new Uint8Array(CFG.W * CFG.H), inside = [];
+    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++)
+      if (Math.hypot(x - 30, y - 30) <= R0) { vis1[MapGen.idx(x, y)] = 1; inside.push([x, y]); }
+    G.vis = vis1; R.fogDirty = true; R.redrawFog();
+    const d2 = R.fogBlurCv.getContext('2d').getImageData(0, 0, R.fogBlurCv.width, R.fogBlurCv.height).data;
+    const at = (x, y) => d2[(Math.round((y + 0.5) * scale) * R.fogBlurCv.width + Math.round((x + 0.5) * scale)) * 4 + 3];
+    out.unitTile = at(30, 30);
+    out.worstInside = Math.max(...inside.filter(([x, y]) => Math.hypot(x - 30, y - 30) <= R0 - 1).map(([x, y]) => at(x, y)));
+    out.outside = at(30 + R0 + 2, 30);
+    return out;
   });
   await p.close();
   ck('theFogFeatherOwesNothingToCtxFilter',
     r.steps >= 5 && r.centre < 40 && r.far > 60,
     `boundary carries ${r.steps} alpha steps (lit centre a=${r.centre}, remembered a=${r.far}) with the filter API deleted`);
+  ck('andWhereSomeoneStandsTheGroundIsClear',
+    r.unitTile === 0 && r.worstInside <= 8 && r.outside > 60,
+    `one unit's vision: its own tile a=${r.unitTile}, worst tile inside a=${r.worstInside}, two tiles past the edge a=${r.outside}`);
 }
 
 /* ---- 4. THE CHROME COMES BACK WITH A GAME, and goes when it ends ---- */

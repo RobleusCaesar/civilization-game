@@ -4292,6 +4292,17 @@ many-step gradient. Diagnosis note for the next "weird water" report: put
 the screenshot through a pale-pixel mask first — vision footprints hug the
 coast around the player's own works and stop at tile-stepped lines, which
 is the fog's geometry, not the shore layer's.
+**AND THE FEATHER RUNS OUTWARD ONLY** (`andWhereSomeoneStandsTheGroundIsClear`,
+same test — operator report, day 100: "the area where troops or villagers
+are is not as bright… still a bit foggy"). The blur (radius 3, three rounds,
+at 1px/tile) is SYMMETRIC, so it pulled the fog into every lit pocket as far
+as it pushed light out — and a unit sees `UNIT_VISION` (3) tiles, a pocket
+the blur swallows whole: a lone soldier's own tile measured alpha 81 against
+the remembered fog's 115, a six-tile clearing's centre 27. `redrawFog` now
+clears every VISIBLE tile after the blur: ground in sight is never fogged,
+and the soft edge lies entirely in the fog beyond it (those tiles were
+already lightened by averaging in the clear ones), with the bilinear
+upscales ramping the last step across a tile.
 
 **THE BEGIN PRESS ANSWERS IN THE FRAME IT HAPPENS IN** (`tests/land.mjs`
 section 13, from a report that picking difficulty/size/map type and tapping
