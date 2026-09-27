@@ -117,7 +117,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
         : 'PNG colour type ' + colour);
   }
   /* THE TAB GETS ITS OWN, SIMPLER DRAWING. A favicon is painted at 16-32px,
-     where the home-screen icon's ornate border and wheat turn to mush — two
+     where the home-screen icon's gold frame and embers turn to mush — two
      jobs, two pictures. Smallest declared first so browsers pick the fit. */
   const favs = [...html.matchAll(/rel="icon"[^>]*sizes="(\d+)x\1"[^>]*href="([^"]+)"/g)]
     .map(m => ({ px: +m[1], href: m[2] }));

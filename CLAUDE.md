@@ -3029,9 +3029,18 @@ home-screen icon and the browser-tab favicon are DIFFERENT DRAWINGS, not one
 file resized. A home-screen icon is looked at around 60px and can carry
 modelling — firelight on a wall, a ground pool, a vignette; a tab favicon is
 looked at around 16px, where every one of those details resolves into mud, so
-it wants flat facets and one silhouette. Both are supplied art (the shipped
-icons are the drawings the author made, not a crop of the promo image — a crop
-is a screenshot, and a screenshot at 60px is a texture).
+it wants flat facets and one silhouette. **The icon is the CAMPFIRE** — the
+author's 1254px pixel-art fire on its stone ring, gold-framed on dark green —
+and the home-screen files are that art downscaled (stepwise halving, then one
+resample, flattened onto the art's own green; never a crop of the promo image
+— a crop is a screenshot, and a screenshot at 60px is a texture). The frame
+sits ~7% in from the edge with its own rounded corners, which is what keeps it
+clear of the squircle mask. The favicons are a SEPARATE 16-grid campfire
+authored by hand in nine flat colours (flame, embers, logs, two greys of
+stone, the same green), drawn 1:1 at 16 and nearest-doubled at 32 — the
+supplied art's frame and embers are exactly the detail that turns to mush
+there. The render script is scratch (`icons.mjs` in the session), not a build
+step; re-rendering means supplying the master again.
 `assets/ui/icon-180.png` is the `apple-touch-icon` and `icon-192.png` the
 Android/tab size, both the DETAILED drawing; `favicon-32.png` and
 `favicon-16.png` are the LOW-POLY one. `tests/boot.mjs` pins that a small
@@ -3059,11 +3068,13 @@ sharing the file was a saving as well as a seamless lift.
 pin it. **`assets/ui/logo.*` is the PROMO POSTER and is no longer on any
 path** — the full scene with the wordmark baked in, kept for store/promo
 use, referenced by nothing; do not "restore" it to the splash.
-The icons are PALETTE PNGs (colour type 3, which is why the opacity check
-accepts 3 alongside 0 and 2) — quantizing took the icon set from 385KB to
-154KB with no visible change at the sizes they are ever seen at. There is no
-`icon-512.png`: no web manifest reads one, and it was the heaviest file in the
-set.
+The home-screen icons are OPAQUE RGB PNGs (colour type 2 — a canvas
+`toDataURL` always writes RGBA, colour type 6, which the contract refuses, so
+the pixels go through a small hand-rolled encoder) at ~60-67KB each; the
+favicons are PALETTE PNGs (colour type 3, which is why the opacity check
+accepts 3 alongside 0 and 2) of a few hundred bytes. None of it is on the boot
+path. There is no `icon-512.png`: no web manifest reads one, and it was the
+heaviest file in the set.
 
 **The title is the painted glen** (`tests/boot.mjs`, the title block): the
 menu no longer sits over the drifting demo world — it sits over SUPPLIED ART
