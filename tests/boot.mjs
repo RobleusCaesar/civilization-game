@@ -265,25 +265,30 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   await p.waitForSelector('#splash', { state: 'attached', timeout: 5000 });
   const first = await p.evaluate(() => {
     const sp = document.getElementById('splash');
-    /* the probe is deliberately the EARLIEST possible look, and on some
-       boots the splash completes and is torn down between the selector
-       wait and this evaluate — a finished splash WAS up first; what still
-       matters then is that no game chrome shows and the body is not in a
-       game, which the shared checks below verify the same way. */
+    /* The probe is deliberately the EARLIEST possible look, and since
+       Boot.HOLD_MS went to 0 (2026-09-20) it is a look we cannot reliably
+       win: between the selector wait and this evaluate the splash may have
+       been torn down entirely, or — the case that started failing — caught
+       part-way through its fade. Both of those are a splash that WAS up
+       first; only a splash that never showed at all would be a regression,
+       and it is indistinguishable from a completed one. So "up" accepts
+       gone and going, and the teeth of this section stay where they can
+       actually bite: no game chrome on that first look, and a body that is
+       not in a game — both asserted from this same sample below. */
     const cs = sp ? getComputedStyle(sp) : null;
     const vis = (id) => {
       const el = document.getElementById(id);
       return el ? getComputedStyle(el).display !== 'none' : false;
     };
     return {
-      up: sp ? (cs.opacity === '1' && cs.display !== 'none') : true,
+      up: sp ? (cs.display !== 'none' || +cs.opacity < 1) : true,
       covers: sp ? (sp.getBoundingClientRect().width >= innerWidth - 1 &&
               sp.getBoundingClientRect().height >= innerHeight - 1) : true,
       hud: ['topbar', 'bottombar', 'miniWrap', 'miniToggle', 'armyBar', 'toasts'].filter(vis),
       ingame: document.body.classList.contains('ingame'),
     };
   });
-  ck('theSplashIsUpOnTheFirstLook', first.up, '');
+  ck('theSplashIsUpOnTheFirstLook', first.up, 'up, or already lifting — HOLD_MS is 0');
   ck('andItCoversTheWholeViewport', first.covers, '');
   ck('noChromeRendersBeforeAGame', first.hud.length === 0,
     first.hud.length ? 'showing: ' + first.hud.join(', ') : 'HUD fully gated');
@@ -549,12 +554,31 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     const a = (tx) => row[Math.round(tx * scale) * 4 + 3];
     const steps = new Set();
     for (let x = Math.round(22 * scale); x <= Math.round(30 * scale); x++) steps.add(row[x * 4 + 3]);
-    return { steps: steps.size, centre: a(30.5), far: a(18) };
+    const out = { steps: steps.size, centre: a(30.5), far: a(18) };
+    /* …AND WHERE SOMEONE STANDS IS CLEAR (operator report, day 100: "the
+       area where troops or villagers are is not as bright"). The feather
+       was symmetric, so it fogged every lit pocket from the inside — a lone
+       unit's own tile measured alpha 81 against the remembered fog's 115.
+       One unit's vision (UNIT_VISION tiles), and every tile of it read at
+       its centre, must be fully clear; the soft edge lives in the fog. */
+    const R0 = CFG.UNIT_VISION, vis1 = new Uint8Array(CFG.W * CFG.H), inside = [];
+    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++)
+      if (Math.hypot(x - 30, y - 30) <= R0) { vis1[MapGen.idx(x, y)] = 1; inside.push([x, y]); }
+    G.vis = vis1; R.fogDirty = true; R.redrawFog();
+    const d2 = R.fogBlurCv.getContext('2d').getImageData(0, 0, R.fogBlurCv.width, R.fogBlurCv.height).data;
+    const at = (x, y) => d2[(Math.round((y + 0.5) * scale) * R.fogBlurCv.width + Math.round((x + 0.5) * scale)) * 4 + 3];
+    out.unitTile = at(30, 30);
+    out.worstInside = Math.max(...inside.filter(([x, y]) => Math.hypot(x - 30, y - 30) <= R0 - 1).map(([x, y]) => at(x, y)));
+    out.outside = at(30 + R0 + 2, 30);
+    return out;
   });
   await p.close();
   ck('theFogFeatherOwesNothingToCtxFilter',
     r.steps >= 5 && r.centre < 40 && r.far > 60,
     `boundary carries ${r.steps} alpha steps (lit centre a=${r.centre}, remembered a=${r.far}) with the filter API deleted`);
+  ck('andWhereSomeoneStandsTheGroundIsClear',
+    r.unitTile === 0 && r.worstInside <= 8 && r.outside > 60,
+    `one unit's vision: its own tile a=${r.unitTile}, worst tile inside a=${r.worstInside}, two tiles past the edge a=${r.outside}`);
 }
 
 /* ---- 4. THE CHROME COMES BACK WITH A GAME, and goes when it ends ---- */

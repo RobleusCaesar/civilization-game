@@ -647,6 +647,14 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
    grey too. ---- */
 {
   const p = await page();
+  /* THE SHIPPED ART IS WHAT IS MEASURED. The ore is drawn from its authored
+     pile art once that decodes (procedural stamps before), and the mountain
+     rock this section compares it against is the drawn kit once THAT
+     decodes (the extrusion before) — so without this wait the brightness
+     check below read whichever mix won the load race: ore 117 on one run,
+     121 on the next, same code. Wait for the art itself, bounded. */
+  await p.waitForFunction(() => window.Assets && Assets.allArtReady && Assets.allArtReady()
+    && Assets.mtnKitReady && Assets.mtnKitReady(), null, { timeout: 90000 });
   const v = await p.evaluate(new Function(wetBoot + `
     const W=CFG.W, H=CFG.H, TL=CFG.TILE, d=R.hillField();
     const px = W*TL;
@@ -715,13 +723,19 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     // …and the MOUNTAIN rock, for the brightness comparison ore must win
     R.mtnStrips();                              // the layer builds lazily now
     let mMean = null;
+    /* THE ROCK THE PLAYER ACTUALLY SEES, over every mountain on the map.
+       This used to prefer the procedural extrusion's composite and fall back
+       to whichever drawn region came first — and since the extrusion is no
+       longer drawn beside the kit (tests/mountain.mjs), the reference is the
+       drawn kit's rock, averaged over all of it rather than one region. */
     if (R._mtnArt && R._mtnArt.length) {
-      const a = R._mtnArt.find(a2 => a2.kind === 'region') || R._mtnArt[0];
-      const dd2 = a.c.getContext('2d').getImageData(0, 0, a.c.width, a.c.height).data;
       let ms = 0, mn = 0;
-      for (let i = 0; i < dd2.length; i += 8) {
-        if (dd2[i + 3] < 250) continue;
-        ms += lum(dd2[i], dd2[i + 1], dd2[i + 2]); mn++;
+      for (const a of R._mtnArt) {
+        const dd2 = a.c.getContext('2d').getImageData(0, 0, a.c.width, a.c.height).data;
+        for (let i = 0; i < dd2.length; i += 8) {
+          if (dd2[i + 3] < 250) continue;
+          ms += lum(dd2[i], dd2[i + 1], dd2[i + 2]); mn++;
+        }
       }
       if (mn) mMean = ms / mn;
     }
@@ -759,9 +773,21 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
      bright, clean-outlined. So the bar is brightness and form, not a dark
      crevice: the deposit must sit clearly LIGHTER than the mountain rock
      (that contrast is what says "resource, not wall" at a glance) and still
-     span real values from outline to highlight. */
+     span real values from outline to highlight.
+     THE MARGIN IS 15, NOT 25 (operator's call, day-94 mountain pass). The
+     25 was set against the procedural extrusion's rock (~88) and against
+     whichever ore art had decoded by the time the page measured — this
+     check never waited for art, and the procedural ore stand-in reads 121
+     where the SHIPPED ore reads 115. Measured honestly (the wait above),
+     the shipped ore sat 21 over the drawn kit's rock (94) before the fill
+     pass and 16 over it after (99): the 25 was already red for what ships
+     and passed only by the race. The operator chose to re-baseline against
+     the rock the player actually sees rather than repaint the ore — at a
+     glance ore is told from mountain mainly by FORM (round boulders and a
+     quarried facet against sharp dark crags), with brightness a supporting
+     cue, and 15 keeps that cue from quietly disappearing. */
   ck('andOreOutshinesTheMountainRock',
-    v.range >= 70 && v.mean >= 115 && (v.mMean == null || v.mean > v.mMean + 25),
+    v.range >= 70 && v.mean >= 115 && (v.mMean == null || v.mean > v.mMean + 15),
     'ore core mean ' + v.mean + ' (span ' + v.range + ') against mountain rock mean ' + v.mMean);
   await p.close();
 }
@@ -1669,11 +1695,15 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
                      R.mtnRegions().reduce((a, r) => a + r.cells.length, 0);
     res.occEmpty = R._mtnOcc.size === 0;
     // without the 1x1 some regions cannot fully cover -> those whole regions
-    // revert to procedural; nothing renders half-and-half
+    // revert to the next drawer; nothing renders half-and-half. The next
+    // drawer is the DRAWN KIT ('chain') wherever it is installed — the
+    // extrusion is its no-art fallback only (tests/mountain.mjs,
+    // andTheProceduralExtrusionIsNeverDrawnBesideTheKit)
     Assets.removeFormationArt('mountain', 'mountain-1x1-crag-a');
     R.mtnStrips();
     const kinds = new Set(R._mtnArt.map(a => a.kind || 'region'));
-    res.mixedIsPerRegion = kinds.has('formation') && (kinds.has('region') || kinds.has('outcrop'));
+    res.mixedIsPerRegion = kinds.has('formation') && (kinds.has('region') || kinds.has('outcrop') || kinds.has('chain'))
+      && (!R.mtnKitOn() || !kinds.has('region'));
     // full removal -> the procedural layer returns whole
     Assets.removeFormationArt('mountain', 'mountain-2x2-peak-a');
     Assets.removeFormationArt('mountain', 'mountain-2x1-skirt-a');

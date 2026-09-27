@@ -132,6 +132,11 @@
   <div class="sub">One row per ending, spread over the same day buckets as above: an average that sits in an empty bucket is two populations, not one.</div>
   <div class="card wrap"><table id="tEndDays"></table></div>
 
+  <h2>Where they leave</h2>
+  <div class="sub">Every run that walked away: <b>closed_tab</b> (the tab went away on a live run) beside <b>struck_banner</b> (quit from the pause menu). One row per run — a player who came back and finished counts as their real ending, and one who left twice counts where they left last. The <i>all</i> rows are each cause's total.</div>
+  <div class="card wrap"><table id="tLeaveDays"></table></div>
+  <div class="card wrap" style="margin-top:10px"><table id="tLeaveMins"></table></div>
+
   <h2>The opening — does it land?</h2>
   <div class="tiles" id="funnel"></div>
 
@@ -273,7 +278,9 @@ function render(d) {
     { k: 'Games played', v: num(T.runs_started), n: num(T.runs_finished) + ' reached an ending' },
     { k: 'Win rate', v: pct(R.win_pct), cls: 'g', n: num(T.wins) + ' wins' },
     { k: 'Loss rate', v: pct(R.loss_pct), cls: 'r', n: num(T.losses) + ' losses' },
-    { k: 'Abandoned', v: pct(R.abandon_pct), n: num(T.runs_abandoned) + ' never ended' },
+    { k: 'Abandoned', v: pct(R.abandon_pct), n: T.runs_closed_tab == null
+        ? num(T.runs_abandoned) + ' never ended'
+        : num(T.runs_closed_tab) + ' closed the tab · ' + num(T.runs_struck_banner) + ' struck the banner · ' + num(T.runs_silent) + ' no signal' },
     { k: 'Avg run length', v: mins(A.run_minutes), n: 'median ' + mins(A.run_minutes_median) },
     { k: 'Avg day reached', v: num(A.day_reached), n: 'median ' + num(A.day_median) },
     { k: 'Avg town level', v: num(A.tc_level), n: 'town centre' },
@@ -303,6 +310,14 @@ function render(d) {
   table($('tEndDays'), ['Outcome', 'Cause', 'Games', 'day 0-9', 'day 10-24', 'day 25-49', 'day 50-99', 'day 100-199', 'day 200-399', 'day 400+', 'Min', 'Median', 'Max'],
     (d.endings_by_bucket || []).map(r => [r.outcome, r.cause, r.n, r.d0_9, r.d10_24, r.d25_49, r.d50_99, r.d100_199, r.d200_399, r.d400p, num(r.min_day), num(r.median_day), num(r.max_day)]), 2);
   $('appErr').textContent = d.note || '';
+
+  // WHERE THEY LEAVE (migration 0007): absent on an older function, which
+  // table() reads as "No data yet" rather than a broken page
+  const WL = d.where_they_leave || {};
+  table($('tLeaveDays'), ['Cause', 'Difficulty', 'Device', 'Runs', 'day 0-4', 'day 5-9', 'day 10-24', 'day 25-49', 'day 50-99', 'day 100+', 'Median day'],
+    (WL.by_day || []).map(r => [r.cause, r.mode, r.device, r.n, r.d0_4, r.d5_9, r.d10_24, r.d25_49, r.d50_99, r.d100p, num(r.median_day)]), 3);
+  table($('tLeaveMins'), ['Cause', 'Difficulty', 'Device', 'Runs', '<2 min', '2-5 min', '5-10 min', '10-20 min', '20-45 min', '45+ min', 'Median'],
+    (WL.by_minutes || []).map(r => [r.cause, r.mode, r.device, r.n, r.m0_2, r.m2_5, r.m5_10, r.m10_20, r.m20_45, r.m45p, mins(r.median_minutes)]), 3);
 
   const F = d.early_funnel || {};
   tiles($('funnel'), [

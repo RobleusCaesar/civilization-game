@@ -115,7 +115,7 @@ node tests/buildings-block.mjs # every building is solid ground except the worke
 node tests/ore-finite.mjs      # felled woods and spent soil grow back; a quarried seam never does
 node tests/fishery.mjs         # shore shoals are half-stocked, deep water three quarters; both return in 120 days
 node tests/wild-life.mjs       # wolves stalk deer, herds bolt as one, birds scatter; banners fly in the tribe's dye
-node tests/wonder.mjs          # the second way to win: one of ten 3×3 monuments, and the rival comes running
+node tests/wonder.mjs          # the second way to win: one of ten 3×3 monuments, the rival comes running, and the card's gold says it once
 node tests/gold-mine.mjs       # gold seams are found, claimed, worked and held — and the seam outlives the mine
 node tests/raider-camps.mjs    # barbarian camps are standing, tended, burnable ground — the wild country has owners
 node tests/mortality.mjs       # a villager dies every so often, of something apt — and their post is left empty
@@ -131,7 +131,7 @@ node tests/placement.mjs       # ONE placement truth (canPlace codes); ghost+con
 node tests/boot.mjs            # frame one is the logo; no chrome before a game; the notch inset
 node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything; formation art (§17) writes no map array, packs deterministically, re-solves one region per edit
 node tests/calm-peace.mjs      # Calm starts at PEACE: nobody auto-engages until the player's first strike; the rival races for its own wonder
-node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do
+node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do; no mountain tile is an invisible wall
 node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-order tolerant, saves mid-lesson, the scout draws no RNG; auto-on for the first two games, the Calm victory modal, the Wonder card as the goal
 node tests/muster-horn.mjs   # one tap calls the workforce in, one tap sends it back to its posts
 node tests/levy.mjs          # the village under arms: derived membership, soldier's upkeep, works nothing, holds the town
@@ -140,8 +140,8 @@ node tests/rival-strength.mjs # the rewritten war brain: the anchor, the inner m
 node tests/train-spawn.mjs   # a trained unit stands on REALLY open ground, or waits in reserve until there is some
 node tests/homestead.mjs     # a house broadside-on to a farm bonds the two: +10% food, +1 villager, gold sparks — and it all goes away with either half
 node tests/origin-cards.mjs  # the 26-card draft: ten strategy-openers plant real buildings; every boon reads through a named hook; 64-grid motifs
-node tests/telemetry.mjs     # the board reports the SITE alone (https, shipped hosts, never ?dev=) and only a world somebody PLAYED
-node tests/desktop-layout.mjs # the world fills the window at every zoom (R.minZoom), a run opens at its own zoom, the desktop bars fill the width; the phone untouched
+node tests/telemetry.mjs     # the board reports the SITE alone (https, shipped hosts, never ?dev=) and only a world somebody PLAYED; a closed tab is one provisional abandon, the real ending wins
+node tests/desktop-layout.mjs # the world fills the window at every zoom (R.minZoom), a run opens at its own zoom, the desktop bars fill the width, the top bar is ONE row and a panel puts four actions on a row; the phone untouched
 node tests/moderate-dials.mjs # the retention pass's balance: Moderate's raid cadence / early army / harassment / first wave, a starving chief spends its gold, spare hands scale with the town, the Wonder's price, no massif at a seat's door
 node tests/island-maps.mjs   # the sea is never bulldozed: land-OR-sea reachability, dock-capable coasts on a shared ocean, the island viability floor, per-seat resources+gold
 node tests/amphibious.mjs    # the rival fights across the sea: the sea-only read, TIDEWRACK outranking land plans, the crossing end to end in the real sim, stranded hulls sail home, the coast answers a seen sail
@@ -150,7 +150,7 @@ node tests/relics.mjs        # the wilderness relic: tile data bit-identical on/
 node tests/variants.mjs      # 16 landform variants: classic byte-identical, every combo×size playable+symmetric, difficulty leans the size, tutorial forces Valley·Classic, saves carry the world's name
 node tests/animal-art.mjs    # character-class art path: 8-way facing from real displacement (WeakMap, never in a save), strip sheets slice+set playback, per-lookup fallback to the procedural cast
 node tests/archer-art.mjs    # archer line plumbing: military sheet keys {kind}-{p|a}-{tunic} recolored at install, no kind in the boot probe, ranged fight pose vs buildings at reach, deterministic miss overshoot, capped fire-arrow ground strikes
-node tests/audio.mjs         # the game's voice: nothing on the wire, two switches, throttled per kind, and the music is generated rather than looped
+node tests/audio.mjs         # the game's voice: nothing on the wire, two switches and two dials (mute and zero are one state), throttled per kind, and the music is generated rather than looped
 node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map arrays, kept ground DERIVED from standing buildings (grows back on raze, byte-identical), the flatten fires from Bld.finish alone, the 32px cover-art door snaps alpha binary
 ```
 
@@ -1867,6 +1867,31 @@ next host is the real test: if it reads outside the band, re-examine
 the twin's COMPOSITION against a fresh histogram before touching the
 baseline. Re-baselining alone would only have handed the fault to the
 host after this one.
+
+**THE CLOSED TAB IS AN ENDING** (`G.noteLeaving` / `Backend.logLeaving`,
+tests/telemetry.mjs §3–4, migration 0007): 22 of 24 runs used to leave no
+run_end at all, because closing a tab fires no ending — so the early funnel
+read zero while most players had left somewhere unknown. On `pagehide` AND a
+hidden `visibilitychange` (iOS often skips pagehide) a live, entered,
+non-demo run sends a PROVISIONAL run_end — outcome `abandoned`, cause
+`closed_tab`, `props.provisional`, built by `G.runReport`, the SAME builder
+`G.end` uses, so the props can never drift apart. It goes through `_emit`
+(fetch keepalive), never `sendBeacon`: a beacon cannot carry the Bearer token
+the insert policy (`auth.uid() = user_id`) demands. **One row per run per day
+reached** — the event pair collapses to one row, but a hidden tab is not
+always a closed one (a phone player checks a message and comes back), so a
+later hide on a run that has ADVANCED sends again. Counting stays exactly
+once in the DATABASE: 0007's `ends` keeps one ending per run_id — any real
+ending beats a closed_tab row (checked against the whole table, so a return
+after the date window still supersedes it), and of several closed_tab rows
+the latest wins; the run filters apply AFTER that dedupe. **`S.runId` rides in
+the save** (stamped in `_enterNow`, handed back to `Backend.runId` by
+`loadJSON`) so a CONTINUED run ends under the id it started with and its
+earlier closed_tab row is superseded; a pre-stamp save ends with run_id null,
+as before. Every existing gate still holds (site-only `_emit`, `S.played`,
+`Screens._demo`, `S.over`). The dashboard's "Where they leave" tables bucket
+every walk-away by day and by minutes, split by difficulty and device,
+closed_tab beside struck_banner.
 
 **The boot, measured** (`tests/boot.mjs`, the retention pass): time-to-menu
 was 3.4s on a desktop and 10s on a throttled phone, and nearly none of it
@@ -3681,6 +3706,34 @@ skyline makes a terrible ground line) but never extended below the true mask
 bottom; and a bridged notch samples the nearest shaded rock below it, since
 it has no source pixel of its own.
 
+**NO MOUNTAIN TILE IS AN INVISIBLE WALL** (`R.mtnFillPlan`, pinned by
+`noMountainTileIsAnInvisibleWall` and
+`andTheProceduralExtrusionIsNeverDrawnBesideTheKit` in tests/mountain.mjs —
+the operator's day-94 save, with two pictures: a war party stopped by open
+meadow, and a coastal crag still wearing the old extrusion). The drawn kit's
+chain refuses a piece wherever the water would cut it or a column would hang
+over meadow, and on a coast that is nearly everywhere: that save's ranges
+were dressed on 11/22, 5/18 and 4/29 tiles, and the referee's 2026-09-05
+ruling let the rest show as grass. **A tile that blocks must look like it
+blocks, and that outranks every aesthetic rule in the kit** — the ruling is
+retired. After the chain places what it can, `mtnFillPlan` dresses every
+bare mountain tile (outcrops included) from the SAME kit, frontmost first,
+scored on bare rock covered against rock over water and rock over walkable
+meadow, off per-piece tile grids precomputed once (`_mtnTileGrid`).
+`drawMtnChained` then CHECKS what was really drawn (the estimate cannot see
+the tear or the cut) and re-runs the fill up to twice from the real counts.
+A fill piece is CUT, ragged, to honest ground — rock or the north lift over
+it, never the water — so it lies in neither direction; every ban cut is
+jittered in 6px blocks now, never a ruler line on a tile edge. **The
+extrusion (`drawMtnRegion`) is drawn only when the kit is absent** (MTN.KIT
+0 or its PNGs missing) — the no-art fallback, never beside the kit. Two
+traps this surfaced: the rock COMPOSITE the honesty pin measures must be
+built BEFORE the wood-in-front stamp, because the strips are shared canvases
+and tree crowns south of a fill piece read as stray rock; and tests/mountain
+.mjs's `page()` never waited for art, so the whole contract had measured
+whichever of the kit or the extrusion won the load race on each page — it
+waits for `Assets.allArtReady()` and `mtnKitReady()` now.
+
 **GAMEPLAY TRUTH IS TILE-BASED AND IS NOT TOUCHED.** The art sits off the
 lattice and reaches well past it northward; passability, placement, pathing,
 projectiles, fog and the rival AI all still read `S.map.terrain` and cannot
@@ -3907,7 +3960,15 @@ still backs the spent-quarry boulders and a ground decal). The contrast is
 still measured: ore core mean luminance 131.9 against the mountain rock's
 88 — at a glance, round-and-lighter is a resource, sharp-and-dark is a wall.
 Darken `oreD` further and `andOreOutshinesTheMountainRock` (mean ≥ 115, and
-≥ mountain + 25) says when it stops reading as a find. The GOLD SEAM wears
+≥ mountain + 15) says when it stops reading as a find. The margin was 25,
+set against the procedural extrusion's rock (~88) and never honestly met:
+the check did not wait for art, so it compared whichever ore had decoded
+(the procedural stand-in reads 121, the SHIPPED ore 115). It waits for the
+art now, and the reference is the drawn KIT's rock averaged over every
+mountain on the map (94 before the fill pass, 99 after). Against the rock
+the player actually sees the shipped ore stands 16 clear, and the operator
+chose to re-baseline to 15 rather than repaint the ore: at a glance ore is
+told from mountain mainly by FORM, brightness supporting it. The GOLD SEAM wears
 the same round language in pale quartz with nuggets and a vein in the real
 gold ramp, so ore reads as one family and gold as its rich cousin.
 **A WORKABLE TILE IS NEVER INVISIBLE**: a lone seeded hills tile reads a
@@ -4250,6 +4311,17 @@ many-step gradient. Diagnosis note for the next "weird water" report: put
 the screenshot through a pale-pixel mask first — vision footprints hug the
 coast around the player's own works and stop at tile-stepped lines, which
 is the fog's geometry, not the shore layer's.
+**AND THE FEATHER RUNS OUTWARD ONLY** (`andWhereSomeoneStandsTheGroundIsClear`,
+same test — operator report, day 100: "the area where troops or villagers
+are is not as bright… still a bit foggy"). The blur (radius 3, three rounds,
+at 1px/tile) is SYMMETRIC, so it pulled the fog into every lit pocket as far
+as it pushed light out — and a unit sees `UNIT_VISION` (3) tiles, a pocket
+the blur swallows whole: a lone soldier's own tile measured alpha 81 against
+the remembered fog's 115, a six-tile clearing's centre 27. `redrawFog` now
+clears every VISIBLE tile after the blur: ground in sight is never fogged,
+and the soft edge lies entirely in the fog beyond it (those tiles were
+already lightened by averaging in the clear ones), with the bilinear
+upscales ramping the last step across a tile.
 
 **THE BEGIN PRESS ANSWERS IN THE FRAME IT HAPPENS IN** (`tests/land.mjs`
 section 13, from a report that picking difficulty/size/map type and tapping

@@ -17,6 +17,13 @@
                     to raise: over four times the level-3 Town Center. It is
                     the LAST entry in the build menu.
 
+     THE GOLD SAYS IT ONCE   The rim, the glow and the "★ Victory" ribbon
+                    introduce the card for five real minutes (UI.WONDER_SHOUT_S,
+                    the same clock G.positiveGate uses) and then settle into
+                    an ordinary card. The "% saved" line does NOT settle: a
+                    number that moves is the whole reason the card reads as a
+                    goal, and the gold was only ever there to get it looked at.
+
      WHO SEES IT    Calm alone SHOWS the button (CFG.MODES[m].wonderMenu). The
                     RULES work on every difficulty — nothing in Bld/AI/G asks
                     what mode you are in — so a save made in Calm keeps
@@ -168,6 +175,34 @@ await p.evaluate(() => {
       'the rules never ask the difficulty — only the menu does');
     ck('theFlagIsTheWholeSwitch',
       CFG.MODES.calm.wonderMenu === true && !CFG.MODES.moderate.wonderMenu && !CFG.MODES.hard.wonderMenu, '');
+  }
+
+  // ---- 3b. …and the gold introduces the card, then gets out of the way ----
+  {
+    G.newGame('shout', 'calm', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    UI.setMenuCollapsed(false);
+    const card = () => document.querySelector('.bbtn[data-key=wonder]');
+    S.playtime = 10; UI.refreshMenu();
+    const early = card().classList.contains('settled');
+    const ribbonEarly = getComputedStyle(card().querySelector('.bwin')).maxHeight;
+    const progEarly = card().querySelector('.bprog').textContent;
+    ck('theGoldIsThereAtTheStart', !early && UI.wonderShouting() && ribbonEarly !== '0px',
+      'settled=' + early + ' ribbon max-height ' + ribbonEarly);
+    S.playtime = UI.WONDER_SHOUT_S - 1; UI.refreshMenu();
+    ck('andForTheWholeFiveMinutes', !card().classList.contains('settled'),
+      'at ' + Math.round(S.playtime) + 's of ' + UI.WONDER_SHOUT_S);
+    S.playtime = UI.WONDER_SHOUT_S + 1; UI.refreshMenu();
+    ck('thenItSettles', card().classList.contains('settled') && !UI.wonderShouting(),
+      'at ' + Math.round(S.playtime) + 's');
+    // the ribbon is what goes; the number that moves is what stays
+    ck('butTheSavedLineStays',
+      card().querySelector('.bprog').textContent === progEarly && /saved|Ready/.test(progEarly),
+      JSON.stringify(progEarly));
+    ck('andTheCardIsStillOffered', card().style.display !== 'none', card().style.display);
+    // a save resumed past the five minutes opens settled — the clock is play
+    // time, not a timer started at boot, so it cannot restart on a reload
+    S.playtime = 4000; UI.refreshMenu();
+    ck('aResumedRunNeverShoutsAgain', card().classList.contains('settled'), '');
   }
 
   // ---- 4. the artwork follows THIS RUN's roll ----

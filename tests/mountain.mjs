@@ -42,6 +42,13 @@ const page = async () => {
   p.on('pageerror', e => console.log('PAGEERROR', String(e).slice(0, 300)));
   await p.goto('file://' + join(root, 'index.html'));
   await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 20000 });
+  /* THE KIT IS WHAT SHIPS, SO THE KIT IS WHAT IS MEASURED. This used to
+     return as soon as the title was up, and the drawn kit decodes after
+     that — so each check measured whichever of the kit or the no-art
+     extrusion won the race on that page. Wait for the art itself (the
+     telemetry.mjs lesson: a condition, never a timer), bounded. */
+  await p.waitForFunction(() => window.Assets && Assets.allArtReady && Assets.allArtReady()
+    && Assets.mtnKitReady && Assets.mtnKitReady(), null, { timeout: 90000 });
   return p;
 };
 /* a seed whose xlarge map actually HAS ranges — most do not, and a contract
@@ -246,12 +253,15 @@ const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' 
    from what the kit honestly reaches there: the broken regime measured
    25% on the save's world and 42% on mtn40; the repaired planner reaches
    82% and 69%, and the pieces are five tiles wide, so a narrow or
-   diagonal range keeps a share of cells no piece can stand on. The kit has nothing narrower than five tiles, so a narrow
-   tail or the stair under a piece's foot takes none — and by the
-   referee's ruling of 2026-09-05 those cells, and one- or two-cell
-   outcrops, stay BARE rather than wear procedural boulders until crag art
-   is drawn. They are counted, not hidden: the number is the size of that
-   debt. ---- */
+   diagonal range keeps a share of cells no piece can stand on.
+   …AND NOW NO CELL IS BARE AT ALL (the operator's day-94 save, which
+   retired the referee's 2026-09-05 ruling that let such cells show as
+   meadow): a coastal range there was dressed on 4 of its 29 tiles and a
+   war party stood against a wall that was not drawn. R.mtnFillPlan dresses
+   every tile the chain could not reach, from the same kit, cut ragged to
+   the rock so it lies in neither direction — so the floor below is now
+   ZERO bare tiles on every world, ranges and outcrops alike, and the
+   procedural extrusion is never drawn while the kit is installed. ---- */
 {
   const p = await page();
   const v = await p.evaluate(new Function(`
@@ -265,18 +275,23 @@ const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' 
       for (const r of R.mtnRegions()) {
         const shown = r.cells.filter(k => show && show[k]).length;
         cells += r.cells.length;
-        if (r.cls === 0) { outcrop += r.cells.length; continue; }
+        if (r.cls === 0) { outcrop += r.cells.length - shown; continue; }
         bare += r.cells.length - shown;
         if (r.cls === 3 && shown / r.cells.length < worst) worst = shown / r.cells.length;
       }
-      out[seed] = { world: S.map.worldName, cells, bare, outcrop, worst: +worst.toFixed(3) };
+      const kinds = [...new Set(R._mtnArt.map(a => a.kind))];
+      out[seed] = { world: S.map.worldName, cells, bare, outcrop, worst: +worst.toFixed(3), kinds };
     }
     return out;`));
   const FLOOR = { '591760987': 0.70, 'mtn40': 0.60 };   // scenes1/large carries no class-3 range: reported, not gated
   const bad = Object.entries(v).filter(([sd, r]) => FLOOR[sd] != null && r.worst < FLOOR[sd]);
   ck('theKitDressesTheRange', bad.length === 0 && Object.values(v).some(r => r.cells > 100),
     Object.entries(v).map(([sd, r]) => sd + ' (' + r.world + '): ' + r.cells + ' mountain cells, worst range '
-      + Math.round(r.worst * 100) + '% dressed, ' + r.bare + ' range cells bare by ruling, ' + r.outcrop + ' outcrop cells undrawn').join('; '));
+      + Math.round(r.worst * 100) + '% dressed').join('; '));
+  ck('noMountainTileIsAnInvisibleWall', Object.values(v).every(r => r.bare === 0 && r.outcrop === 0),
+    Object.entries(v).map(([sd, r]) => sd + ': ' + r.bare + ' range + ' + r.outcrop + ' outcrop tiles bare').join('; '));
+  ck('andTheProceduralExtrusionIsNeverDrawnBesideTheKit', Object.values(v).every(r => !r.kinds.includes('region')),
+    Object.entries(v).map(([sd, r]) => sd + ': ' + r.kinds.join('/')).join('; '));
   await p.close();
 }
 {

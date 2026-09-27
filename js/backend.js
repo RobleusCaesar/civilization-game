@@ -325,6 +325,45 @@ const Backend = {
     return { ok: true };
   },
 
+  /* …or where they LEFT it (G.noteLeaving, tests/telemetry.mjs §3). The tab
+     closing fires no ending, so this is sent from pagehide / a hidden
+     visibilitychange as a PROVISIONAL run_end: outcome 'abandoned', cause
+     'closed_tab', props.provisional, and every prop a real ending carries.
+
+     Why fetch keepalive (via _emit) and not navigator.sendBeacon: a beacon
+     cannot carry headers, and the telemetry insert policy is
+     auth.uid() = user_id — without the session's Bearer token the row is
+     refused. keepalive is the same survive-the-unload guarantee WITH headers.
+
+     ONE ROW PER RUN PER DAY REACHED. A single close fires both events (and
+     iOS may fire either), so the pair collapses to one row. But a hidden tab
+     is not always a closed one — a phone player checks a message on day 3,
+     comes back and plays to day 40 — so a LATER hide on a run that has
+     advanced sends again, carrying the new day. Counting stays exactly once:
+     the dashboard (migration 0007) keeps one ending per run_id, a real ending
+     over any closed_tab row, and of several closed_tab rows the latest. The
+     runId is NOT cleared: the run is still live, and its real ending (if the
+     player comes back) goes up under the same id and wins. */
+  _leftAt: null,              // { runId, day } of the last closed_tab row sent
+  logLeaving(info) {
+    info = info || {};
+    if (!this.runId) return { ok: false };
+    const day = info.day || 0;
+    const last = this._leftAt;
+    if (last && last.runId === this.runId && day <= last.day) return { ok: false };
+    this._leftAt = { runId: this.runId, day };
+    this._emit({
+      run_id: this.runId, kind: 'run_end',
+      outcome: 'abandoned', cause: 'closed_tab',
+      mode: info.mode || null, landform: info.landform || null, size: info.size || null,
+      device: this.deviceKind(),
+      day, seconds: Math.round(info.seconds || 0),
+      tc_level: info.tcLevel || 0, peak_pop: info.peakPop || 0, score: info.score || 0,
+      props: Object.assign({}, info.props || {}, { provisional: true }),
+    });
+    return { ok: true };
+  },
+
   /* TIME ON SITE. Started at boot, sent once when the tab goes away —
      'pagehide' and a hidden 'visibilitychange' both fire on iOS where
      'beforeunload' does not, and _sessionSent keeps the pair to one row. */
