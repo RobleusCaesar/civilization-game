@@ -461,6 +461,37 @@ const out = await p.evaluate(() => {
     ck('workSitesFlyNoColours', seen2.length === 0, 'no cloth over an unfinished hall');
     ck('hearthsAreKeyedForHomesAndHalls',
       ['house', 'tc', 'lodge', 'warcamp'].every(k => R.SMOKE_AT[k]), '');
+
+    /* THE RIVAL'S TOWN IS STAKED (audit BLD-02): one PNG serves both tribes,
+       so with the pip and the banners off a rival work was pixel-identical
+       to yours. Two dye-capped stakes at a rival footprint's front corners,
+       on finished works, sites and remembered ghosts; nothing on yours; and
+       a FREE-STANDING tower is staked, not pipped mid-shaft — only a tower
+       bonded into the curtain keeps the fort pip with the walls. */
+    arena('wl4b');
+    const put = (o, k, x, y, done) => { const bb = Bld.place(o, k, x, y, { free: true }); if (done) Bld.finish(bb); return bb; };
+    put('P', 'house', 20, 20, true);
+    put('A', 'house', 22, 20, true);
+    put('A', 'tower', 24, 20, true);                 // alone in the meadow
+    for (let x = 20; x <= 24; x++) if (x !== 22) put('A', 'wall', x, 24, true);
+    put('A', 'tower', 22, 24, true);                 // bonded mid-line
+    put('A', 'barracks', 26, 20, false);             // a site
+    put('P', 'barracks', 26, 23, false);
+    S.map.seenB[MapGen.idx(28, 26)] = { key: 'house', owner: 'A', level: 1, sz: 1 };
+    G.vis = new Uint8Array(CFG.W * CFG.H);           // the ghost's tile is out of sight
+    const keep = R.drawRivalStakes, staked = [];
+    R.drawRivalStakes = function (g, bx, by, bw) { staked.push(Math.round(bx / CFG.TILE) + ',' + Math.round(by / CFG.TILE)); return keep.apply(this, arguments); };
+    try { R.cam.z = 1; R.centerOn(24, 23); R.draw(0.016); } finally { R.drawRivalStakes = keep; }
+    const want = ['22,20', '24,20', '26,20', '28,26'], not = ['20,20', '22,24', '26,23'];
+    ck('theRivalTownIsStaked', R.SHOW_RIVAL_STAKES === true && want.every(k => staked.includes(k)) && not.every(k => !staked.includes(k)),
+      'staked ' + JSON.stringify(staked) + ' — want rival house, lone tower, rival site, rival ghost; never yours, never the mural tower');
+    // …and the stakes are really there in the rival's dye, on a bare canvas
+    const sc = document.createElement('canvas'); sc.width = sc.height = 32;
+    const sg = sc.getContext('2d'); R.drawRivalStakes(sg, 0, 0, 32);
+    const px = sg.getImageData(0, 0, 32, 32).data;
+    const dye = [0xc2, 0x56, 0x4a]; let dyed = 0, inked = 0;
+    for (let i = 0; i < px.length; i += 4) if (px[i + 3]) { inked++; if (px[i] === dye[0] && px[i + 1] === dye[1] && px[i + 2] === dye[2]) dyed++; }
+    ck('andTheStakesWearTheRivalsDye', dyed >= 8 && inked <= 64, dyed + ' dye pixels of ' + inked + ' drawn — two small heads, not a banner');
   }
 
   // ---- 5. the work report: what a unit does, and what it nets ----
