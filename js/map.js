@@ -544,13 +544,56 @@ const MapGen = {
       const planted = new Set();
       for (const i of skirt) if (srnd() < SKIRT_SHARE) { t[i] = T.FOREST; planted.add(i); }
       const target = bodyOf(planted);            // the map as it stood, before a tree went in
+      /* ONE LABELLING PER FELLED TREE, NOT ONE FLOOD PER CANDIDATE (audit
+         MAP-05: the old loop re-flooded the whole map for every planted tree
+         on every pass — ~1.4e8 tile visits, a 3-second frozen founding on an
+         xlarge Karst). Felling ONE tree can only merge the components that
+         touch it, so the largest body it leaves is exactly
+           max(1 + the distinct neighbouring components, the largest other one)
+         — read off a single labelling. Same candidates, same order, same
+         strict ">" tie rule: the SAME tree comes out, and every map is
+         byte-identical to what the slow loop drew. */
+      const comp = new Int32Array(W * H);
+      const label = () => {
+        comp.fill(-1);
+        const sizes = [];
+        for (let i0 = 0; i0 < W * H; i0++) {
+          if (comp[i0] >= 0 || Path.blocksLand(t[i0])) continue;
+          const c = sizes.length; let sz = 0; const q = [i0]; comp[i0] = c;
+          for (let h = 0; h < q.length; h++) {
+            const cur = q[h]; sz++;
+            const cx = cur % W, cy = (cur / W) | 0;
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+              const nx = cx + dx, ny = cy + dy;
+              if (!MapGen.inB(nx, ny)) continue;
+              const ni = id(nx, ny);
+              if (comp[ni] >= 0 || Path.blocksLand(t[ni])) continue;
+              comp[ni] = c; q.push(ni);
+            }
+          }
+          sizes.push(sz);
+        }
+        return sizes;
+      };
       for (let guard = 0; guard < 200 && planted.size; guard++) {
-        if (bodyOf(null) >= target) break;
+        const sizes = label();
+        let big = 0; for (const z of sizes) if (z > big) big = z;
+        if (big >= target) break;
+        // the five largest components: a candidate touches at most four, so
+        // the largest one it does NOT touch is always among them
+        const top = sizes.map((z, c) => [z, c]).sort((a, b2) => b2[0] - a[0]).slice(0, 5);
         let bestI = -1, bestBody = -1;
         for (const i of planted) {
-          t[i] = T.GRASS;
-          const body = bodyOf(null);
-          t[i] = T.FOREST;
+          const x = i % W, y = (i / W) | 0, near = [];
+          let merged = 1;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            if (!MapGen.inB(x + dx, y + dy)) continue;
+            const c = comp[id(x + dx, y + dy)];
+            if (c >= 0 && !near.includes(c)) { near.push(c); merged += sizes[c]; }
+          }
+          let rest = 0;
+          for (const [z, c] of top) if (!near.includes(c)) { rest = z; break; }
+          const body = Math.max(merged, rest);
           if (body > bestBody) { bestBody = body; bestI = i; }
         }
         if (bestI < 0) break;
