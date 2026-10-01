@@ -1,7 +1,8 @@
 // TAP & SELECTION CONTRACT — run this after ANY change near:
 //   ui.js      UI.handleTap / handleDoubleTap / snapNear / select / deselect
 //   units.js   assignGather / assignBuild / moveTo / setPath
-//   render.js  screenToWorld / screenToTile / unit draw offsets (CFG.SPRITE_LIFT)
+//   render.js  screenToWorld / screenToTile / unit draw offsets (CFG.SPRITE_LIFT),
+//              unitBox / unitHit (the 48px box — riders, engines, hulls)
 //   config.js  TILE / SPRITE_LIFT / GATHER
 //
 //   node tests/tap-audit.mjs        (needs Playwright + Chromium; both are
@@ -289,6 +290,146 @@ const out = await p.evaluate(() => {
   }
   return checks;
 });
+
+/* ================= THE 48 BOX (audit GAP3-01/02/03/04) =================
+   Riders, the whole siege train and the hulls draw in a 48px box (Assets.
+   UNIT_BOX) — half as big again as the 32px cast every check above uses, and
+   set higher. The hit-tests used to aim at the 32px centre for all of them,
+   so a rider's face, an engine's flag and a warship's masthead were not "on"
+   the unit: 8-23% of their drawn pixels turned a reselect into a walk order,
+   a drag into a camera pan, an attack into a stroll. And this contract could
+   not see it: its world was founded while the title demo flag was still up,
+   which skips the military strip art, so every big kind drew as the 32px
+   procedural cast. This section founds its world the way a real game does,
+   WAITS for every 48-box sheet and fails loudly if one never lands, then taps
+   EVERY opaque pixel of each kind's real frame — player and rival, facing
+   south and east — through the real handlers. The ground truth is the frame
+   itself, placed by render.js's unit box (bottom edge on u.y + 0.5 tile,
+   CFG.SPRITE_LIFT above), never the code's own hit formula. */
+const out48 = await p.evaluate(async () => {
+  const checks = [];
+  const ok = (name, pass, got) => checks.push({ name, pass: !!pass, got: String(got) });
+  const toasts = []; UI.toast = (m, bad) => toasts.push((bad ? '!' : '') + m);
+  const TL = CFG.TILE, LIFT = CFG.SPRITE_LIFT / TL;
+  const scr = (wx, wy) => [(wx * TL - R.cam.x) * R.cam.z, (wy * TL - R.cam.y) * R.cam.z];
+  const tap = (wx, wy) => UI.handleTap(...scr(wx, wy));
+  const park = (u, x, y) => { u.task = null; u.path = null; u.tUnit = 0; u.tBld = 0; u.x = x; u.y = y; u.defend = false; };
+  Boot.force(); Screens._demo = false;                 // BEFORE newGame, or the strip art is skipped
+  G.newGame('tap48', 'moderate', 'large'); Screens._demo = false;
+  G.freeVis = true; Screens.show('playing'); S.paused = true;
+  S.map.explored.fill(1); G.updateVisibility();
+  const idx = (x, y) => MapGen.idx(x, y);
+  let bx = 0, by = 0, bestD = -1;
+  for (let y = 10; y < CFG.H - 10; y += 2) for (let x = 12; x < CFG.W - 12; x += 2) {
+    let d = 1e9; for (const bd of S.buildings) d = Math.min(d, Math.hypot(bd.x - x, bd.y - y));
+    if (d > bestD) { bestD = d; bx = x; by = y; }
+  }
+  // grass above, open water below — the hulls need a sea to sit on
+  for (let dy = -7; dy <= 7; dy++) for (let dx = -9; dx <= 9; dx++) {
+    S.map.terrain[idx(bx + dx, by + dy)] = dy > 0 ? T.WATER : T.GRASS; S.map.resAmount[idx(bx + dx, by + dy)] = 0;
+  }
+  Bld._block = null; R.rebuildTerrain();
+  S.units.forEach((u, i) => park(u, 3 + (i % 5), 3 + ((i / 5) | 0)));
+  const vil = Units.spawn('villager', 'P', bx - 6.5, by - 3.5, {});
+  const spear = Units.spawn('defender', 'P', bx - 6.5, by - 1.5, {});
+  const bow = Units.spawn('archer', 'P', bx + 6.5, by - 3.5, {});
+  const KINDS = Object.keys(Assets.UNIT_BOX).filter(k => CFG.UNITS[k] && k !== 'bear');
+  const naval = k => !!CFG.UNITS[k].naval;
+  const units = {};
+  for (const k of KINDS) for (const o of ['P', 'A'])
+    units[k + o] = Units.spawn(k, o, 2 + (o === 'A' ? 4 : 0), 2, {});     // parked out of the way until their turn
+  // wait for the sheets the game itself would draw — a check that measures
+  // the 32px stand-in cast instead is the blindness this section exists for
+  const t0 = performance.now();
+  const missing = () => Object.values(units).filter(u => !R.sheetFrames(u)).map(u => u.kind + '/' + u.owner);
+  while (missing().length && performance.now() - t0 < 60000) await new Promise(r => setTimeout(r, 150));
+  const miss = missing();
+  ok('48 box: every big kind draws from its real sheet (not the 32px fallback)', !miss.length && KINDS.length >= 10,
+    miss.length ? 'never loaded: ' + miss.join(', ') : KINDS.length + ' kinds × 2 owners');
+  if (miss.length) return checks;
+  const opaque = (u) => {                                   // the frame's own opaque pixels, as world points
+    const fr = R.unitSprite(u), B = R.unitBox(u), s = B / TL;
+    const c = document.createElement('canvas'); c.width = fr.width; c.height = fr.height;
+    c.getContext('2d').drawImage(fr, 0, 0);
+    const d = c.getContext('2d').getImageData(0, 0, fr.width, fr.height).data;
+    const pts = [], step = Math.max(1, Math.round(fr.width / B));   // one sample per screen-ish pixel
+    for (let y = 0; y < fr.height; y += step) for (let x = 0; x < fr.width; x += step)
+      if (d[(y * fr.width + x) * 4 + 3] > 128)
+        pts.push([u.x - s / 2 + (x + 0.5) / fr.width * s, u.y + 0.5 - LIFT - s + (y + 0.5) / fr.height * s]);
+    return { pts, B };
+  };
+  const tally = {};
+  const bump = (name, k, good) => { const t = tally[name] || (tally[name] = { n: 0, bad: 0, worst: {} }); t.n++; if (!good) { t.bad++; t.worst[k] = (t.worst[k] || 0) + 1; } };
+  let box48 = 0;
+  for (const k of KINDS) for (const face of ['s', 'e']) {
+    const zx = bx + 0.5, zy = naval(k) ? by + 1.5 : by - 3.5;   // hulls in the first row of water, beside the shore
+    const own = units[k + 'P'], foe = units[k + 'A'];
+    for (const u of [own, foe]) park(u, 2 + (u.owner === 'A' ? 4 : 0), 2);
+    R.cam.z = 1.7;
+    // ---- own unit: reselect from a villager, arm a drag, select from nothing
+    park(own, zx, zy); R._faceMap.set(own, { x: own.x, y: own.y, dir: face }); R.centerOn(zx, zy - 0.5);
+    const O = opaque(own); if (O.B > TL) box48++;
+    for (const [wx, wy] of O.pts) {
+      park(vil, bx - 6.5, by - 3.5);
+      UI.deselect(); UI.select('unit', vil.id); tap(wx, wy);
+      const boarded = vil.task && vil.task.id === own.id;
+      bump('villager selected → tapping an own big unit reselects it (transport: boards)', k + '/' + face,
+        (UI.sel && UI.sel.type === 'unit' && UI.sel.id === own.id) || (Units.isTransport(own) && boarded));
+      UI.deselect(); tap(wx, wy);
+      bump('nothing selected → tapping an own big unit selects it', k + '/' + face, UI.sel && UI.sel.type === 'unit' && UI.sel.id === own.id);
+      UI.deselect(); UI.select('unit', own.id);
+      bump('a press on the selected big unit arms the drag (never a pan)', k + '/' + face, !!UI.dragMoveAnchor(...scr(wx, wy)));
+    }
+    park(own, 2, 2);
+    // ---- rival unit: attack it by tap and by drag-drop
+    park(foe, zx, zy); R._faceMap.set(foe, { x: foe.x, y: foe.y, dir: face });
+    const F = opaque(foe);
+    const hunter = naval(k) ? bow : spear;
+    for (const [wx, wy] of F.pts) {
+      park(hunter, hunter === bow ? bx + 6.5 : bx - 6.5, hunter === bow ? by - 3.5 : by - 1.5);
+      UI.deselect(); UI.select('unit', hunter.id); tap(wx, wy);
+      bump('own soldier selected → tapping a rival big unit attacks it', k + '/' + face, hunter.tUnit === foe.id);
+      park(hunter, hunter.x, hunter.y);
+      UI.deselect(); UI.select('unit', hunter.id); UI.commitMoveDrag(...scr(wx, wy));
+      bump('a drag dropped on a rival big unit attacks it', k + '/' + face, hunter.tUnit === foe.id);
+    }
+    park(foe, 6, 2);
+  }
+  ok('48 box: the frames really are the big box', box48 === KINDS.length * 2, box48 + ' of ' + KINDS.length * 2 + ' own frames drawn at 48');
+  for (const [name, t] of Object.entries(tally))
+    ok('48 box: ' + name, t.bad === 0, (t.n - t.bad) + '/' + t.n + (t.bad ? ' — misses by kind/facing ' + JSON.stringify(t.worst) : ''));
+  // ---- the crowd: a two-per-tile rank of riders — the rider under the finger wins
+  {
+    const rs = [];
+    for (let i = 0; i < 6; i++) { const r = Units.spawn('rider', 'P', bx - 2 + (i % 3) * 0.5 + 0.25, by - 4.5 + ((i / 3) | 0) * 0.5, {}); R._faceMap.set(r, { x: r.x, y: r.y, dir: 's' }); rs.push(r); }
+    R.centerOn(bx - 1, by - 4.5);
+    let n = 0, good = 0;
+    // the topmost drawn rider at each point (R.draw sorts by y — later is on
+    // top), read off each frame's own alpha at that point
+    const order = rs.slice().sort((a, b2) => a.y - b2.y);
+    const covers = (r) => {
+      const fr = R.unitSprite(r), s = R.unitBox(r) / TL;
+      const c = document.createElement('canvas'); c.width = fr.width; c.height = fr.height;
+      c.getContext('2d').drawImage(fr, 0, 0);
+      const d = c.getContext('2d').getImageData(0, 0, fr.width, fr.height).data;
+      return (wx, wy) => {
+        const x = Math.floor((wx - (r.x - s / 2)) / s * fr.width), y = Math.floor((wy - (r.y + 0.5 - LIFT - s)) / s * fr.height);
+        return x >= 0 && y >= 0 && x < fr.width && y < fr.height && d[(y * fr.width + x) * 4 + 3] > 128;
+      };
+    };
+    const maps = order.map(r => ({ r, on: covers(r), pts: opaque(r).pts }));
+    for (const m of maps) for (const [wx, wy] of m.pts) {
+      let top = null; for (const q of maps) if (q.on(wx, wy)) top = q.r;
+      if (!top) continue;
+      UI.deselect(); tap(wx, wy); n++;
+      if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === top.id) good++;
+    }
+    ok('48 box: in a two-per-tile rank the rider drawn on top under the finger is the one selected', good === n && n > 500, good + '/' + n);
+    rs.forEach(r => park(r, 3, 3));
+  }
+  return checks;
+});
+out.push(...out48);
 
 let fail = 0;
 for (const c of out) {

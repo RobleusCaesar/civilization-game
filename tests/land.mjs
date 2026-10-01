@@ -1212,9 +1212,8 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
    point scale, a deep offset ring FOLDS, the fold cancels the nonzero
    winding, and an unpainted radial sliver is punched through every stacked
    ribbon at once — a comb of dark hairlines fanning out from the shore.
-   The far offsets are relaxed (1-2-1, same point count) before filling;
-   this measures the RESULT: no shelf sample darker than both its
-   along-shore neighbours by more than a sliver's contrast. (The depth
+   The spokes themselves are pinned in 12b below, on the shelf's own
+   alpha and with a control that must fail. (The depth
    field is also slower and quieter over water — blobs at the land's
    frequency read as dirt smudges — but that is tuning, not a contract.) ---- */
 {
@@ -1241,36 +1240,77 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       for (let i = 0; i < d.length; i += 4)
         if (d[i] === W0[0] && d[i+1] === W0[1] && d[i+2] === W0[2]) trough++;
     }
-    // spokes: sample the shelf at half reach along the inward normal, and
-    // compare with the same sample a few points along the shore either way
-    const lum = (x, y) => { const d = g.getImageData(Math.round(x), Math.round(y), 1, 1).data;
-      return (d[0] + d[1] + d[2]) / 3; };
-    let spokes = 0, samples = 0;
-    const reach = (0.8 * (LAND.SHELF_REACH || 11) * 0.5) / 16;
-    for (const reg of R.waterRegions()) for (const loop of reg.loops) {
-      const n = loop.length;
-      if (n < 24) continue;
-      for (let i = 0; i < n; i += 2) {
-        const a = loop[(i - 1 + n) % n], b2 = loop[(i + 1) % n];
-        let dx = b2[0] - a[0], dy = b2[1] - a[1];
-        const dd = Math.hypot(dx, dy) || 1;
-        const nx = -dy / dd, ny = dx / dd;              // water on the left-hand normal
-        const at = (j) => { const q = loop[((j % n) + n) % n];
-          const qa = loop[((j - 1) % n + n) % n], qb = loop[((j + 1) % n + n) % n];
-          let ex = qb[0] - qa[0], ey = qb[1] - qa[1];
-          const ed = Math.hypot(ex, ey) || 1;
-          return lum((q[0] - ey / ed * reach) * TL, (q[1] + ex / ed * reach) * TL); };
-        const c = at(i), l = at(i - 4), r2 = at(i + 4);
-        samples++;
-        if (Math.min(l, r2) - c > 14) spokes++;
-      }
-    }
-    return { trough, deepTiles, spokes, samples };`));
+    return { trough, deepTiles };`));
   ck('openWaterCarriesNoNavyTroughs', v.deepTiles > 10 && v.trough === 0,
     v.trough + ' water[0] pixels over ' + v.deepTiles + ' deep tiles — the swell draws crests only');
-  ck('andTheShelfHasNoDarkSpokes', v.samples > 200 && v.spokes <= Math.ceil(v.samples * 0.01),
-    v.spokes + ' of ' + v.samples + ' shelf samples darker than both shore-wise neighbours' +
-    ' (the folded offset rings used to punch a comb of them)');
+  await p.close();
+}
+
+/* ---- 12b. THE SHELF HAS NO SPOKES — measured on the shelf itself, with a
+   control that must fail (audit GND-01). The pin that stood here sampled every
+   second loop point at one reach against a 14-luminance bar and PASSED with
+   the relax step deleted outright (16 of 2,752 against a limit of 28), while
+   a dark spoke ran across the shelf on about half of all shore tiles. Two
+   lessons. Measure the layer that has the fault — a sliver is a dip in the
+   SHELF's alpha, so it is read off R.shoreLayer against the same layer
+   rebuilt with the shelf switched off, which isolates exactly the shelf's
+   pixels whatever the water, decals or terrain under it do. And a pin is
+   only as good as its control: the same detector is run on the shelf as it
+   was built before the fix — deep offsets on the per-point normals of the
+   roughened curve, folds pinched onto the base — and must find the comb
+   there, or it is not looking. Three worlds; the bar is spoke TILES per
+   hundred shore tiles (a tile counts at six sliver pixels): before the fix
+   39-71 on the reference worlds, after it 0-4. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(`(() => {
+    const scan = () => {
+      R._layerKey = ''; R.buildShoreLayer();
+      const Lc = R.shoreLayer, W = Lc.width, H = Lc.height, TW = CFG.W, terr = S.map.terrain;
+      const d = Lc.getContext('2d').getImageData(0, 0, W, H).data.slice();
+      const oA = LAND.SHELF_ALPHA; LAND.SHELF_ALPHA = 0; R.buildShoreLayer();
+      const z = Lc.getContext('2d').getImageData(0, 0, W, H).data; LAND.SHELF_ALPHA = oA; R.buildShoreLayer();
+      const n0 = (x, y) => z[(y * W + x) * 4 + 3] === 0, a = (x, y) => d[(y * W + x) * 4 + 3];
+      const tl = new Map();
+      for (let y = 40; y < H - 40; y++) for (let x = 40; x < W - 40; x++) {
+        if (terr[((y / 32) | 0) * TW + ((x / 32) | 0)] !== T.WATER) continue;
+        if (!n0(x, y) || !n0(x - 3, y) || !n0(x + 3, y) || !n0(x, y - 3) || !n0(x, y + 3)) continue;
+        const c = a(x, y), lr = Math.min(a(x - 3, y), a(x + 3, y)), ud = Math.min(a(x, y - 3), a(x, y + 3));
+        if ((lr > 25 && c < lr - 12) || (ud > 25 && c < ud - 12)) { const k = ((y / 32) | 0) * TW + ((x / 32) | 0); tl.set(k, (tl.get(k) || 0) + 1); }
+      }
+      let shore = 0;
+      for (let y = 1; y < CFG.H - 1; y++) for (let x = 1; x < TW - 1; x++) if (terr[y * TW + x] === T.WATER)
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const u = terr[(y + oy) * TW + x + ox]; if (u !== T.WATER && u !== T.MOAT) { shore++; break; } }
+      return { spokes: [...tl.values()].filter(c => c >= 6).length, shore };
+    };
+    // the shelf as it was built before the fix — a control the detector must catch
+    const src = R.buildShoreLayer.toString();
+    const ctlSrc = src.replace('maxd > 0.25 ? wideNormals() : nrm', 'nrm')
+      .replace('if (!nBad || nBad === n) return o;',
+        '{ for (let i = 0; i < n; i++) if (bad[i]) o[i] = [loop[i][0] + (o[i][0] - loop[i][0]) * 0.12, loop[i][1] + (o[i][1] - loop[i][1]) * 0.12]; return o; }');
+    const shipped = R.buildShoreLayer;
+    let control = null;
+    try { if (ctlSrc !== src && ctlSrc.split('wideNormals() : nrm').length === 1) control = (0, eval)('({' + ctlSrc + '})').buildShoreLayer; } catch (e) {}
+    const out = [];
+    for (const [seed, size] of [['214351749', 'medium'], ['298195716', 'medium'], ['55', 'medium']]) {
+      Boot.force(); Screens._demo = false; G.newGame(seed, 'moderate', size);
+      Screens._demo = false; Screens.show('playing'); S.paused = true;
+      for (let i = 0; i < S.map.explored.length; i++) { S.map.explored[i] = 1; if (S.map.seenTerrain) S.map.seenTerrain[i] = S.map.terrain[i]; }
+      R.rebuildTerrain();
+      const now = scan();
+      let ctl = null;
+      if (control) { R.buildShoreLayer = control; try { ctl = scan(); } finally { R.buildShoreLayer = shipped; R._layerKey = ''; } }
+      out.push({ seed, shore: now.shore, now: +(100 * now.spokes / Math.max(1, now.shore)).toFixed(1),
+        ctl: ctl && +(100 * ctl.spokes / Math.max(1, ctl.shore)).toFixed(1) });
+    }
+    return { out, control: !!control };
+  })()`);
+  const SPOKES_MAX = 8;          // per 100 shore tiles; measured 0-4 with the fix, 39-71 without
+  ck('andTheShelfHasNoDarkSpokes', v.out.every(w => w.shore > 40 && w.now <= SPOKES_MAX),
+    v.out.map(w => w.seed + ': ' + w.now + ' per 100 shore tiles (of ' + w.shore + ')').join(', ') + ' — limit ' + SPOKES_MAX);
+  ck('andTheSpokeProbeCanSeeTheComb', v.control && v.out.every(w => w.ctl != null && w.ctl >= SPOKES_MAX * 3),
+    v.control ? 'the pre-fix shelf reads ' + v.out.map(w => w.ctl).join(' / ') + ' per 100 (must be >= ' + (SPOKES_MAX * 3) + ')'
+      : 'could not rebuild the pre-fix shelf from R.buildShoreLayer — update the control with the fix');
   await p.close();
 }
 

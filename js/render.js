@@ -174,7 +174,7 @@ const LAND = {
      coast, where the radius is many tiles. */
   SHORE_NOISE_CAP: 0.30,
   BAND_CAP: 0.55,
-  BAND_PINCH: 0.12,     // what a collapsed band keeps, so its two rings never touch
+  SHELF_NORMAL_SPAN: 0.5, // tiles of arc either side a deep offset reads its heading over (GND-01)
   WATER_DIRTY_R: 3,     // tiles of repaint around water that appeared or vanished
   /* HOW MUCH OF A WATER/HILLS REPAINT IS PAID IN THE FRAME THAT ASKED FOR IT
      (R.tickRepaint). A sapper's spadeful that joins a lake makes a NEW traced
@@ -2683,46 +2683,94 @@ const R = {
          band then bridges the pinch in a straight line, which is what a
          beach does at the head of an inlet anyway. */
       const prune = (o) => {
-        /* …and where it does, the offset point is COLLAPSED ONTO THE BASE
-           rather than dropped. A band is filled as one closed path — the base
-           forward, then the offset reversed — so the two arrays must stay
-           index-for-index aligned: dropping points slides the correspondence
-           and the closing connector becomes a long chord straight across the
-           band, which drew a dark streak at the start of every loop (visible
-           as a vertical mark at the top-left corner of every lake). Collapsed
-           to zero width the band simply pinches shut there, which is what it
-           should do at the head of an inlet anyway — and if the whole offset
-           has turned inside out the band collapses entirely and nothing is
-           drawn, with no special case needed. */
+        /* …and the swallowtail is BRIDGED, not pinched (audit GND-01). A band
+           is filled as one closed path — the base forward, then the offset
+           reversed — so the two arrays must stay index-for-index aligned:
+           dropping points slides the correspondence and the closing connector
+           becomes a chord straight across the band. So the reversed points are
+           kept, but moved: each run of them is laid along the straight line
+           between the last good offset point before it and the first one
+           after, which is where the true offset curve crosses itself at the
+           head of an inlet. They used to be COLLAPSED ONTO THE BASE instead —
+           the band pinched to a hair there, and on the shelf that pinch was a
+           dark wedge of un-shallowed water driven into every concave turn,
+           stacked eight ribbons deep. Bridged, the shelf reaches round the
+           turn at its full depth. A ring with no good point at all is left as
+           it is: the area test below throws it away. */
+        const bad = new Uint8Array(n);
+        let nBad = 0;
         for (let i = 0; i < n; i++) {
           const j = (i + 1) % n;
           const bx = loop[j][0] - loop[i][0], by = loop[j][1] - loop[i][1];
           const ox = o[j][0] - o[i][0], oy = o[j][1] - o[i][1];
-          /* …nearly onto the base, never EXACTLY onto it. Collapsed the whole
-             way the two rings TOUCH, and an even-odd fill flips wherever its
-             two boundaries meet — which punched triangular wedges of missing
-             shelf out of every small lake. Leaving a hair of offset keeps the
-             rings strictly separate, and at this width the band is invisible
-             there anyway, which is what "pinched shut" is supposed to mean. */
-          if (bx * ox + by * oy < 0)
-            o[i] = [loop[i][0] + (o[i][0] - loop[i][0]) * LAND.BAND_PINCH,
-                    loop[i][1] + (o[i][1] - loop[i][1]) * LAND.BAND_PINCH];
+          if (bx * ox + by * oy < 0) { bad[i] = 1; nBad++; }
+        }
+        if (!nBad || nBad === n) return o;
+        let s0 = 0; while (bad[s0]) s0++;          // start the walk on a good point
+        for (let k = 1; k <= n; k++) {
+          const i = (s0 + k) % n;
+          if (!bad[i]) continue;
+          let e = i, len = 0;                       // the run i .. e-1
+          while (bad[e]) { e = (e + 1) % n; len++; }
+          const A = o[(i - 1 + n) % n], B = o[e];
+          for (let t = 0; t < len; t++) {
+            const f = (t + 1) / (len + 1), q = (i + t) % n;
+            o[q] = [A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f];
+          }
+          k += len;
         }
         return o;
+      };
+      /* A DEEP OFFSET STEPS ALONG THE COAST'S DIRECTION, NOT ITS RAGGED EDGE
+         (audit GND-01: the comb of dark spokes CLAUDE.md recorded as fixed was
+         still on half the shore tiles). The roughening wobbles the curve at
+         the scale of its own point spacing, so the per-point normal swings
+         tens of degrees between neighbours; offset a whole shelf-reach along
+         those, neighbouring offset points cross, the ring throws a spike back
+         toward the shore, and the spike is an UN-PAINTED line through every
+         shelf ribbon at once — the same normals, eight times over. So the
+         deep rings take their normals from the loop low-passed over about a
+         tile of arc (SHELF_NORMAL_SPAN), which is the coast's real heading.
+         The base ring is untouched — the waterline keeps every bit of its
+         ragged edge — and the shallow bands (foam, beach, lip, shoal) keep
+         the per-point normals, since their offsets are too small to fold. */
+      let nrmW = null;
+      const wideNormals = () => {
+        if (nrmW) return nrmW;
+        let per = 0;
+        for (let i = 0; i < n; i++) { const q = loop[(i + 1) % n]; per += Math.hypot(q[0] - loop[i][0], q[1] - loop[i][1]); }
+        const K = Math.max(1, Math.min((n / 4) | 0, Math.round(LAND.SHELF_NORMAL_SPAN / Math.max(1e-6, per / n))));
+        const sm = new Array(n);
+        let sx = 0, sy = 0;
+        for (let k = -K; k <= K; k++) { const q = loop[(k + n) % n]; sx += q[0]; sy += q[1]; }
+        for (let i = 0; i < n; i++) {
+          sm[i] = [sx / (2 * K + 1), sy / (2 * K + 1)];
+          const add = loop[(i + K + 1) % n], sub = loop[(i - K + n) % n];
+          sx += add[0] - sub[0]; sy += add[1] - sub[1];
+        }
+        nrmW = new Array(n);
+        for (let i = 0; i < n; i++) {
+          const a = sm[(i - 1 + n) % n], b = sm[(i + 1) % n];
+          nrmW[i] = (a[0] === b[0] && a[1] === b[1]) ? nrm[i] : outward(sm[i], a, b);
+        }
+        return nrmW;
       };
       // an offset polyline: + is outward onto the land, - is out into the water.
       // The magnitude is CLAMPED to the loop's own radius, so a band on a small
       // pond narrows to fit instead of inverting through its centre.
       const cap = this.loopRadius(loop) * LAND.BAND_CAP * 16;
       const off = (fn) => {
-        const o = new Array(n);
+        const o = new Array(n), dd = new Float64Array(n);
         let maxd = 0;
         for (let i = 0; i < n; i++) {
-          const p = loop[i], nn = nrm[i];
           let d = fn(i);
           if (d > cap) d = cap; else if (d < -cap) d = -cap;
-          d /= 16;
+          d /= 16; dd[i] = d;
           if (Math.abs(d) > maxd) maxd = Math.abs(d);
+        }
+        const N = maxd > 0.25 ? wideNormals() : nrm;      // see wideNormals
+        for (let i = 0; i < n; i++) {
+          const p = loop[i], nn = N[i], d = dd[i];
           o[i] = [p[0] + nn[0] * d, p[1] + nn[1] * d];
         }
         /* A FAR OFFSET IS RELAXED BEFORE IT IS FILLED (a reported screenshot:
@@ -9961,6 +10009,70 @@ const R = {
   unitBox(u) {
     const b = window.Assets && Assets.UNIT_BOX && Assets.UNIT_BOX[u.kind];
     return (b && this.sheetUnit(u)) ? b : CFG.TILE;
+  },
+  /* HOW FAR A TAP AT (wx, wy) — world TILES — IS FROM UNIT u, in the units the
+     tap contract's thresholds are written in (tests/tap-audit.mjs: dead-on is
+     0.55, the reach 0.7, the drag arm 0.6). The ONE answer every unit
+     hit-test in ui.js asks (handleTap, dragMoveAnchor, commitMoveDrag,
+     handleDoubleTap), so the four can never disagree.
+
+     A 32px unit answers exactly what the hand-written check always did: the
+     distance to its sprite's centre, CFG.SPRITE_LIFT above u.y (rule 1). A
+     48px unit (Assets.UNIT_BOX — riders, engines, hulls) is drawn half as big
+     again and its box sits higher, bottom edges aligned (R.draw's unit loop),
+     so the centre moves up by the extra half box and the distance is read in
+     ITS box's units: the dead-on circle grows with the sprite. That alone was
+     not enough (audit GAP3-01: a rider's face and an engine's flag sit at the
+     corners of the box, and 8-23% of their drawn pixels were not "on" them),
+     so a finger on an opaque pixel of the frame actually being drawn counts
+     as dead-on and outranks any near-miss — and between two such frames the
+     one drawn LATER (further south, drawn on top) wins, so a tap on an overlapping rank picks
+     the rider you can see (GAP3-04). The alpha read is cached per frame
+     canvas; a frame whose pixels cannot be read (a tainted canvas) falls back
+     to the scaled circle. */
+  unitHit(u, wx, wy) {
+    const TL = CFG.TILE, lift = CFG.SPRITE_LIFT / TL;
+    const B = this.unitBox(u);
+    if (B === TL) return Math.hypot(u.x - wx, u.y - lift - wy);
+    const s = B / TL, cy = u.y - lift - (s - 1) / 2;
+    const d = Math.hypot(u.x - wx, cy - wy) / s;
+    if (d > 1.2) return d;                                  // nowhere near its box
+    const m = this._unitMask(this.unitSprite(u));
+    if (!m) return d;
+    // the frame's own pixel under the finger, in the box R.draw blits it to
+    const fx = (wx - u.x + s / 2) / s * m.w, fy = (wy - (u.y + 0.5 - lift - s)) / s * m.h;
+    const r = Math.max(1, Math.round(m.w / B * 1.5));      // ~1.5 screen-px of slack round the outline
+    const x0 = Math.floor(fx), y0 = Math.floor(fy);
+    const at = (x, y) => x >= 0 && y >= 0 && x < m.w && y < m.h && m.a[y * m.w + x];
+    /* ON the frame: ahead of every near-miss, and among frames the one R.draw
+       puts on top wins — sorted by y, ties by list order (≈ spawn order, id).
+       The pixel itself outranks the slack ring, or the rider in front would
+       claim a tap that landed on the one behind it just past its outline. */
+    const rank = -(u.y * 1e-2) - (u.id || 0) * 1e-9;
+    if (at(x0, y0)) return -2 + rank;
+    for (let y = y0 - r; y <= y0 + r; y++) for (let x = x0 - r; x <= x0 + r; x++)
+      if (at(x, y)) return -1 + rank;
+    return d;
+  },
+  _unitMasks: new WeakMap(),
+  _unitMask(img) {
+    if (!img || !img.width || !img.height) return null;
+    let m = this._unitMasks.get(img);
+    if (m !== undefined) return m;
+    m = null;
+    try {
+      let c = img;
+      if (!(img.getContext)) {                              // an <img>: read it through a scratch canvas
+        c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+        c.getContext('2d').drawImage(img, 0, 0);
+      }
+      const d = c.getContext('2d').getImageData(0, 0, img.width, img.height).data;
+      const a = new Uint8Array(img.width * img.height);
+      for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3] > 128 ? 1 : 0;   // what reads as drawn
+      m = { w: img.width, h: img.height, a };
+    } catch (e) { m = null; }
+    this._unitMasks.set(img, m);
+    return m;
   },
   // the shadow itself: a flat ellipse at the feet, in the same ink and
   // alpha the procedural beasts use, so a sheet animal and a drawn one

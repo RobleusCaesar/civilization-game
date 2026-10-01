@@ -1091,7 +1091,7 @@ const UI = {
     if (!S || S.over || !this.sel) return null;
     const w = R.screenToWorld(sx, sy), wx = w.x / CFG.TILE, wy = w.y / CFG.TILE;
     const UOFF = CFG.SPRITE_LIFT / CFG.TILE;
-    const near = u => u && u.owner === 'P' && Math.hypot(u.x - wx, u.y - UOFF - wy) <= 0.6;
+    const near = u => u && u.owner === 'P' && R.unitHit(u, wx, wy) <= 0.6;   // the drawn sprite, any box size
     if (this.sel.type === 'unit') {
       const u = Units.get(this.sel.id);
       return near(u) ? { ax: u.x, ay: u.y - UOFF } : null;
@@ -1137,11 +1137,10 @@ const UI = {
     if (!MapGen.inB(tile.x, tile.y)) return;
     const w = R.screenToWorld(sx, sy), wx = w.x / CFG.TILE, wy = w.y / CFG.TILE;
     const explored = S.map.explored[MapGen.idx(tile.x, tile.y)];
-    const UOFF = CFG.SPRITE_LIFT / CFG.TILE;
     let hitUnit = null, hd = 0.7;
     for (const u of S.units) {
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
-      const d = Math.hypot(u.x - wx, u.y - UOFF - wy);
+      const d = R.unitHit(u, wx, wy);
       if (d < hd) { hd = d; hitUnit = u; }
     }
     const hitBld = G.visibleAt(tile.x, tile.y) ? Bld.at(tile.x, tile.y) : null;
@@ -1314,18 +1313,18 @@ const UI = {
 
     const explored = S.map.explored[MapGen.idx(tile.x, tile.y)];
     // hit-test a unit near the tap point (only what we can actually see).
-    // Sprites are drawn SPRITE_LIFT px ABOVE their logical position, so the
-    // comparison point is lifted to match what the player is actually aiming at.
-    const UOFF = CFG.SPRITE_LIFT / CFG.TILE;
+    // Sprites are drawn SPRITE_LIFT px ABOVE their logical position — and a
+    // 48px unit bigger and higher still — so the distance is R.unitHit's,
+    // measured to what the player is actually aiming at.
     let hitUnit = null, hd = 0.7;
     for (const u of S.units) {
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
-      const d = Math.hypot(u.x - wx, u.y - UOFF - wy);
+      const d = R.unitHit(u, wx, wy);
       const dd = d - (u.owner === 'P' ? 0.15 : 0); // bias towards own units
       if (dd < hd) { hd = dd; hitUnit = u; }
     }
     // "dead-on" = the finger landed square on the sprite, not merely near it
-    const unitD = hitUnit ? Math.hypot(hitUnit.x - wx, hitUnit.y - UOFF - wy) : 9;
+    const unitD = hitUnit ? R.unitHit(hitUnit, wx, wy) : 9;
     const deadOn = unitD <= 0.55;
     const hitBld = G.visibleAt(tile.x, tile.y) ? Bld.at(tile.x, tile.y) : null;
     // near-miss lookup: the building a sliver away that the finger was probably
@@ -1680,7 +1679,7 @@ const UI = {
     let hit = null, hd = 0.9;
     for (const u of S.units) {
       if (u.owner !== 'P' || !G.visibleAt(u.x | 0, u.y | 0)) continue;
-      const d = Math.hypot(u.x - wx, u.y - CFG.SPRITE_LIFT / CFG.TILE - wy);   // sprites sit above their logic pos
+      const d = R.unitHit(u, wx, wy);   // the drawn sprite, lifted and boxed as R.draw puts it
       if (d < hd) { hd = d; hit = u; }
     }
     // not on one of our army/fleet units → treat it as an ordinary tap so nothing is lost

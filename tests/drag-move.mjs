@@ -54,7 +54,9 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
 
 // set a scene up in-page; returns screen coords for the gesture
 const setup = (seed, fn) => p.evaluate(({ seed, fn }) => {
-  G.newGame(seed, 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+  // _demo cleared BEFORE newGame, or the military strip art is skipped and
+  // every big unit draws as the 32px stand-in cast (audit GAP3-02)
+  Screens._demo = false; G.newGame(seed, 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
   S.res = { food: 99999, wood: 99999, stone: 99999, gold: 99999 };
   const tc = Bld.tcOf('P');
   // a clear arena around the hall and the camera square on it
@@ -245,7 +247,7 @@ const drag = async (from, to) => {
 
   // (b) deeper black clamps to the nearest pointable tile; (c) deep void refuses
   const r2 = await p.evaluate(() => {
-    G.newGame('dm8b', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    Screens._demo = false; G.newGame('dm8b', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
     const tc = Bld.tcOf('P');
     for (let dy = -2; dy <= 8; dy++) for (let dx = -2; dx <= 10; dx++)
       if (MapGen.inB(tc.x + dx, tc.y + dy) && !Bld.at(tc.x + dx, tc.y + dy))

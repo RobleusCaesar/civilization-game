@@ -23,7 +23,17 @@ The invariants it enforces (details in the test file):
 1. **Hit-tests aim at the drawn sprite, not the logical position.** Unit sprites
    render `CFG.SPRITE_LIFT` px above `u.y` — that constant is the single source
    of truth for BOTH render.js and the hit-tests in ui.js. Never hard-code the
-   lift anywhere else.
+   lift anywhere else. **Every unit hit-test asks `R.unitHit(u, wx, wy)`** —
+   handleTap, dragMoveAnchor, commitMoveDrag and handleDoubleTap alike. A 32px
+   unit answers exactly the old lifted-centre distance; a 48px unit
+   (`Assets.UNIT_BOX` — riders, the siege train, the hulls) is measured from
+   ITS box's centre in ITS box's units, and a finger on an opaque pixel of
+   the frame being drawn is dead-on, the frame drawn on top winning a crowd
+   (audit GAP3: 8-23% of a rider's or engine's pixels used to be "not on it").
+   The contract's 48-box section taps EVERY opaque pixel of every big kind
+   with the real strip art loaded — clear `Screens._demo` BEFORE
+   `G.newGame`, or the strips are skipped and the check measures the 32px
+   stand-in cast, which is how it stayed green while broken.
 2. **While a unit/party is selected, taps are orders first.** A bystander own
    unit only steals the selection when tapped dead-on (≤0.55 tiles from its
    visual center; tighter still on resource tiles). Transports stay boardable.
@@ -152,6 +162,7 @@ node tests/animal-art.mjs    # character-class art path: 8-way facing from real 
 node tests/archer-art.mjs    # archer line plumbing: military sheet keys {kind}-{p|a}-{tunic} recolored at install, no kind in the boot probe, ranged fight pose vs buildings at reach, deterministic miss overshoot, capped fire-arrow ground strikes
 node tests/audio.mjs         # the game's voice: nothing on the wire, two switches and two dials (mute and zero are one state), throttled per kind, and the music is generated rather than looped
 node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map arrays, kept ground DERIVED from standing buildings (grows back on raze, byte-identical), the flatten fires from Bld.finish alone, the 32px cover-art door snaps alpha binary
+node tests/frame-hotpath.mjs  # the late-game town costs no more per tile: Bld.at is an index (= the linear definition on every tile), the building loop culls to the camera, the cull changes no pixel
 ```
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -3392,6 +3403,27 @@ GRASS — pulled toward the wrong medium a kelp bed was a near-black smudge
 floating on the blue — and the shelf ladder is 8 × 0.055 rather than
 5 × 0.085 (the coarser steps showed as scalloped rings, exactly as the
 SHELF_STEPS note predicts).
+**AND THE COMB WAS STILL THERE** (audit GND-01, `andTheShelfHasNoDarkSpokes`
++ `andTheSpokeProbeCanSeeTheComb`): the relax above did not cure it — a
+dark spoke still crossed the shelf on 39-71 of every 100 shore tiles, and
+the pin passed with the relax deleted, because it sampled one reach of the
+composited terrain. Two causes, two fixes. The deep rings took their
+normals from the ROUGHENED curve point by point, which swing tens of
+degrees between neighbours, so a ring offset a whole shelf-reach threw a
+spike back toward the shore — an un-painted line through all eight
+ribbons at once. They now read their heading off the loop low-passed over
+`LAND.SHELF_NORMAL_SPAN` (half a tile) of arc each side (`wideNormals`);
+the waterline itself and the shallow bands keep every bit of their ragged
+edge. And `prune` used to collapse a fold's reversed points onto the BASE,
+which pinched the shelf to nothing in every concave turn — a dark wedge;
+it BRIDGES the swallowtail now, laying the reversed run along the chord
+between the good points either side, which is where the true offset
+crosses itself. Measured: 0-4 spoke tiles per 100 on five worlds. The pin
+reads the SHELF's own alpha off `R.shoreLayer` against the layer rebuilt
+with the shelf off, on three worlds, and runs the same detector on the
+pre-fix shelf (rebuilt from the shipped source with the two fixes undone)
+— which must read the comb (50-61 per 100), or the probe is not looking.
+
 **A BAND CANNOT REACH FURTHER THAN ITS LOOP'S RADIUS** (`R.loopRadius`,
 `LAND.BAND_CAP` / `SHORE_NOISE_CAP`, same test): the second, separate failure —
 a ONE-TILE POND has a radius of about 0.4 tiles and the shelf reaches 0.69, so
@@ -4379,6 +4411,30 @@ lit, against a 1,455ms frozen frame before; total main-thread work from press
 to a finished world fell from ~1.9s to ~0.9s, and the worst single hitch from
 1,455ms to ~200ms (the shore layer and the mountain strips, the two steps
 that belong to whole regions rather than rows).
+
+**A QUESTION ASKED PER TILE MAY NOT SCAN THE TOWN** (`tests/frame-hotpath.mjs`,
+audit PRF-02/03/V01 — a day-191 save: day ticks of 61ms mean / 102ms peak,
+260 / 452 at 4x throttle, and a world pass over the 1.5ms gate in 11 runs
+of 12). `Bld.at(x, y)` was a linear `find` over `S.buildings`, asked
+hundreds of times per call by the rival's floods, the wall auto-tiling,
+the gate facing and the tower bond. It is a PER-TILE INDEX now, rebuilt
+when `_blockGen`, the list's identity or its length moves (tests push and
+filter-replace the list directly), and every answer is re-checked against
+the building it names, falling back to the scan on a mismatch — so it is
+the linear definition, first-in-list included, on every tile (pinned).
+Moving a building in place still needs `Bld._block = null`, the
+convention every test already follows. And the building loop in `R.draw`
+culls to the camera BEFORE the sort (`R.viewTiles`), with a band measured
+in FOOTPRINTS — sidecar art scales to 2x and shifts down a footprint
+(the camps), roofs and smoke rise above, a drawbridge lies a tile beyond
+— because fog was its only gate and 28 of 47 blits on that save landed
+off screen. An off-screen drawbridge is SETTLED, not caught mid-swing on
+return. Measured after: ticks 8ms / 18ms (36 / 90 at 4x) with identical
+buildings, units and rival stockpiles; world pass ~0.5ms median at play
+zoom; 98 frozen-time frames byte-identical with the cull on and off. A
+tower-bond memo was measured and LEFT OUT — with O(1) lookups it no
+longer moved the frame beyond noise, and a cache keyed on fort tier is
+one more thing to go stale.
 
 **The frame must never pay for bookkeeping** (the stutter post-mortem, a real
 multi-save report): four measured taxes, each invisible in review and each a
