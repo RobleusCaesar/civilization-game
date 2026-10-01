@@ -158,7 +158,7 @@ node tests/amphibious.mjs    # the rival fights across the sea: the sea-only rea
 node tests/tribe-traits.mjs  # each people keeps its home ground (sea=coast, wolf=carved forest alcove, flint=stone, woad=meadow, broken=gold) and its one habit: wolf pack tactics, flint brutes, the Broken's deserter toll, the Woadkin painting, Sea Folk longboat sorties end to end
 node tests/relics.mjs        # the wilderness relic: tile data bit-identical on/off, seed-deterministic placement with manners, discovery grants once (gold on its own scale) and rides the save, the AI stays blind, 404 art falls back to the placeholder
 node tests/variants.mjs      # 16 landform variants: classic byte-identical, every combo×size playable+symmetric, difficulty leans the size, tutorial forces Valley·Classic, saves carry the world's name
-node tests/animal-art.mjs    # character-class art path: 8-way facing from real displacement (WeakMap, never in a save), strip sheets slice+set playback, per-lookup fallback to the procedural cast
+node tests/animal-art.mjs    # character-class art path: 8-way facing from real displacement (WeakMap, never in a save), strip sheets slice+set playback, per-lookup fallback to the procedural cast; each animal strip holds ITS OWN view (front/rear narrow, profiles wide)
 node tests/archer-art.mjs    # archer line plumbing: military sheet keys {kind}-{p|a}-{tunic} recolored at install, no kind in the boot probe, ranged fight pose vs buildings at reach, deterministic miss overshoot, capped fire-arrow ground strikes
 node tests/audio.mjs         # the game's voice: nothing on the wire, two switches and two dials (mute and zero are one state), throttled per kind, and the music is generated rather than looped
 node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map arrays, kept ground DERIVED from standing buildings (grows back on raze, byte-identical), the flatten fires from Bld.finish alone, the 32px cover-art door snaps alpha binary
@@ -1170,6 +1170,13 @@ of its own band, and a separated animal walks back (`HERD_JOIN`) instead of
 roaming for good. Grazers arrive as a BAND — `Units.spawnHerd` puts down 3–5
 head at once and `CFG.PASSIVE_MAX` is the map's whole standing stock — because
 a herd of one has nothing to breathe with.
+**A cornered bolt tries BOTH quarters** (`grazeIdle`'s flee list, same test):
+the bearings come in mirrored pairs (`0, ±0.9, ±1.8, ±2.4`). The list used to
+end on `+1.8` alone, so when that one try's random jitter landed in the trees
+the whole fright was dropped and the animal stood still for its attacker —
+about one cornering in 40, which surfaced as a flaking contract before it
+was ever a report. `aCorneredBoltTurnsAlongTheWall` runs sixteen corners at
+different clock phases and needs every one to bolt (the old list: 15/16).
 **Four frames is the floor** (same test): every beast pose — `idle`, `walk`,
 `fight` — is a 4+ frame cycle driven by a CONTINUOUS phase in `sprites.js`'s
 `beast()` (legs travel through swing and stance, the barrel bobs twice a
@@ -1205,6 +1212,17 @@ a rule about what the eye can take. A MISSING entry means "due now", never
 "last ticked at time zero", or the first tick of every worker is eaten for the
 first 20 seconds of a session. The log is render-side only (`R._workFloatAt`,
 cleared in `R.onNewGame`), never on the unit and never in a save.
+**AND EACH STRIP SHOWS THE WAY IT IS FILED** (`eachAnimalStripHoldsItsOwnView`,
+tests/animal-art.mjs — audit ANI-01): the deer, wolf, boar and cow strips
+shipped filed one octant off (file X held the view 45° on from X), so every
+one walked crabwise to its heading and a wolf attacking east showed its rump.
+The facing math was always right; nothing had checked WHICH VIEW a file
+holds. The 56 strips were re-filed by rotation (sw→s, s→se, … w→sw — art
+untouched, `CFG.ART_V` bumped) and the pin reads the art itself: the straight
+front and rear are the narrow views and the profiles the wide ones, by a
+clear margin, on every species (red on the old filing for all four). The
+BEAR is left out on purpose: two of its strips are duplicate views and it has
+no true profile, which needs new art (ANI-09), not a rename.
 **The live work line** (`Units.workReport` → `UI.workLine`, the `#pWork`
 element patched in place by `refreshPanel`): what a unit is doing and what it
 nets per day, computed from the SAME constants the gather/production code

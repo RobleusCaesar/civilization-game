@@ -243,6 +243,41 @@ const out = await p.evaluate(async () => {
         !!(Assets.unitArt.bear && Assets.unitArt.bear.dirs.s && Assets.unitArt.bear.dirs.s.fight &&
            Assets.unitArt.bear.dirs.s.fight.length >= 4 && Assets.unitArt.bear.dirs.s.fight[0].width === 96),
         'the roster\'s first real fight pose — 12 frames of rear-up-and-swipe at the 96px window');
+      /* EACH FILE HOLDS ITS OWN VIEW (audit ANI-01). The facing math above
+         is right, but the deer, wolf, boar and cow strips shipped filed one
+         octant off — file X held the view 45° on from X — so every one of
+         them walked crabwise to its heading and a wolf attacking eastward
+         showed its rump. Nothing checked WHICH VIEW a strip holds. This
+         does, from the art itself: the straight front and rear (s, n) are
+         the NARROW views and the two profiles (e, w) the wide ones, by a
+         clear margin. Measured on the re-filed strips: the wider of s/n
+         against the narrower of e/w reads deer 0.38/0.73, wolf 0.59/0.75,
+         boar 0.56/0.84, cow 0.42/0.80; on the old filing every species
+         failed (deer 0.61/0.61, wolf 0.77/0.77, boar 0.77/0.69, cow
+         0.80/0.64). Opaque bbox width as a share of the frame, walk frame 0.
+         The bear is not in this list on purpose: two of its eight strips
+         are duplicate views and it has no true profile yet (ANI-09), which
+         is a regeneration, not a re-filing. */
+      const viewW = (fr) => {
+        try {
+          const a = fr.getContext('2d').getImageData(0, 0, fr.width, fr.height).data;
+          let x0 = fr.width, x1 = -1;
+          for (let y = 0; y < fr.height; y++) for (let x = 0; x < fr.width; x++)
+            if (a[(y * fr.width + x) * 4 + 3] > 128) { if (x < x0) x0 = x; if (x > x1) x1 = x; }
+          return x1 < 0 ? null : (x1 - x0 + 1) / fr.width;
+        } catch (e) { return null; }
+      };
+      const views = {}, badView = [];
+      for (const kk of ['deer', 'wolf', 'boar', 'cow']) {
+        const dd = Assets.unitArt[kk] && Assets.unitArt[kk].dirs, w = {};
+        for (const d of ['s', 'n', 'e', 'w']) w[d] = dd && dd[d] && dd[d].walk ? viewW(dd[d].walk[0]) : null;
+        const narrow = Math.max(w.s, w.n), wide = Math.min(w.e, w.w);
+        views[kk] = (narrow != null ? narrow.toFixed(2) : '?') + '/' + (wide != null ? wide.toFixed(2) : '?');
+        if (Object.values(w).some(v => v == null) || !(narrow < wide - 0.1)) badView.push(kk);
+      }
+      ck('eachAnimalStripHoldsItsOwnView', badView.length === 0,
+        'widest front-or-rear / narrowest profile (walk f0): ' + Object.entries(views).map(([k2, v2]) => k2 + ' ' + v2).join(', ') +
+        (badView.length ? ' — filed off: ' + badView.join(', ') : ''));
     }
   }
 

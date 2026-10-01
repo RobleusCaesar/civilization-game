@@ -516,16 +516,27 @@ const out = await p.evaluate(() => {
 
     // a CORNERED bolt turns along the wall instead of cancelling: forest at
     // her back, attacker in front — dead-away is blocked, the quarter isn't
-    arena('wl6b');
-    for (let y = 0; y < CFG.H; y++) for (let x = 25; x < CFG.W; x++)
-      S.map.terrain[MapGen.idx(x, y)] = T.FOREST;                  // a wall the width of the world
-    const c2 = Units.spawn('cow', 'W', 24, 20); c2.x = 24.5; c2.y = 20.5;   // pressed against it
-    const h2 = Units.spawn('villager', 'P', 23, 20); h2.x = 23.5; h2.y = 20.5;
-    Units.damage(c2, 2, h2.id, 'P');
-    run(3);
-    ck('aCorneredBoltTurnsAlongTheWall', Math.hypot(c2.x - 24.5, c2.y - 20.5) > 2,
-      'moved to ' + (Math.round(c2.x * 10) / 10) + ',' + (Math.round(c2.y * 10) / 10) +
-      ' — the old single try died on the trees and left her standing');
+    // …EVERY time, not on a lucky roll: the flee bearings carry random
+    // jitter, and with one wide quarter missing its mirror the bolt was
+    // dropped about one cornering in 40 (a flake here before it was a bug
+    // report). Sixteen corners at different clock phases, every one bolts.
+    const mr = Math.random, corners = [];
+    for (let trial = 0; trial < 16; trial++) {
+      let sd = 1000 + trial * 7919; Math.random = () => ((sd = (sd * 1103515245 + 12345) >>> 0) / 4294967296);
+      Combat.scanT = (trial % 8) * 0.05; Units.herdClock = trial * 1.37;
+      arena('wl6b');
+      for (let y = 0; y < CFG.H; y++) for (let x = 25; x < CFG.W; x++)
+        S.map.terrain[MapGen.idx(x, y)] = T.FOREST;                // a wall the width of the world
+      const c2 = Units.spawn('cow', 'W', 24, 20); c2.x = 24.5; c2.y = 20.5;   // pressed against it
+      const h2 = Units.spawn('villager', 'P', 23, 20); h2.x = 23.5; h2.y = 20.5;
+      Units.damage(c2, 2, h2.id, 'P');
+      run(3);
+      corners.push(Math.hypot(c2.x - 24.5, c2.y - 20.5));
+    }
+    Math.random = mr;
+    ck('aCorneredBoltTurnsAlongTheWall', corners.every(d => d > 2),
+      corners.filter(d => d > 2).length + '/16 cornered bolts ran clear (shortest ' + Math.min(...corners).toFixed(1) +
+      ' tiles) — the old single try died on the trees and left her standing');
 
     // a straggler whose herd lies beyond ground she can walk grazes her own
     // pocket instead of re-aiming at the unreachable band forever

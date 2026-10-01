@@ -1987,10 +1987,14 @@ const Units = {
          away first, then quartering left and right — a cornered animal
          runs along the wall it cannot run through. The old single try
          gave up the whole fright on one bad tile, which left a cow with
-         a wood at her back standing still for a wolf (or an axe). */
+         a wood at her back standing still for a wolf (or an axe).
+         The quarters come in MIRRORED PAIRS: the list used to end on one
+         side's wide quarter (+1.8) with no -1.8 beside it, so when that
+         one try's jitter landed in the trees the whole fright was dropped
+         — measured at 1 cornering in 40 with the bolt never starting. */
       const ax = u.x - u.spookX, ay = u.y - u.spookY;
       const a0 = Math.atan2(ay, ax);
-      for (const off of [0, 0.9, -0.9, 1.8]) {
+      for (const off of [0, 0.9, -0.9, 1.8, -1.8, 2.4, -2.4]) {
         const tx = Math.round(u.x + Math.cos(a0 + off) * 6 + (Math.random() - 0.5) * 3);
         const ty = Math.round(u.y + Math.sin(a0 + off) * 6 + (Math.random() - 0.5) * 3);
         if (tx < 1 || ty < 1 || tx >= CFG.W - 1 || ty >= CFG.H - 1) continue;
