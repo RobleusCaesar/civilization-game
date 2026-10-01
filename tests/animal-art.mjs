@@ -102,6 +102,47 @@ const out = await p.evaluate(async () => {
     ck('aWholeStripOfAnyCountLands', Assets.setUnitFrames('deer', 'w', 'walk', bad) === true, '');
   }
 
+  /* ---- 2b. THE WALK IS DRIVEN BY DISTANCE (operator ruling; audit VIL-01 /
+     MIL-04 / ANI-05). The leg phase advances by the ground covered over the
+     kind's stride (R.walkStride: base speed × R.WALK_CYCLE_S), never by the
+     clock — so a held-up unit stops stepping, half speed is half cadence,
+     and at the kind's own base speed one cycle lasts WALK_CYCLE_S. Measured
+     on a synthetic 4-frame strip, every direction installed, frames told
+     apart by colour. ---- */
+  {
+    const img4 = await strip(4, 96, i => ['#ff0000', '#00ff00', '#0000ff', '#ffff00'][i]);
+    for (const d of Assets.UNIT_DIRS8) Assets.setUnitFrames('wolf', d, 'walk', img4);
+    const idx = (cv) => { const d2 = cv.getContext('2d').getImageData(0, 0, 1, 1).data;
+      return d2[0] === 255 && d2[1] === 255 ? 3 : d2[0] === 255 ? 0 : d2[1] === 255 ? 1 : d2[2] === 255 ? 2 : -1; };
+    const mk = (id) => ({ id, kind: 'wolf', owner: 'W', x: 20.5, y: 20.5, animT: 0, path: [{ x: 40, y: 20 }], pathI: 0 });
+    const sp = CFG.UNITS.wolf.speed, cyc = R.WALK_CYCLE_S, steps = 48;
+    // held up: a path in hand, no ground covered, two seconds of clock
+    const held = mk(910001); const f0 = idx(R.unitSprite(held));
+    let still = true;
+    for (let k = 0; k < 120; k++) { held.animT += 1 / 60; if (idx(R.unitSprite(held)) !== f0) still = false; }
+    ck('aHeldUpUnitStopsStepping', R.unitPose(held) === 'walk' && still,
+      'two seconds walking on the spot drew ' + (still ? 'one frame' : 'more than one frame'));
+    // full speed for one cycle: every frame shown, in order, and back to the start
+    const run1 = (speed, id) => {
+      const u = mk(id), seen = [idx(R.unitSprite(u))];
+      for (let k = 0; k < steps; k++) { u.x += speed * cyc / steps; u.animT += cyc / steps; seen.push(idx(R.unitSprite(u))); }
+      return seen;
+    };
+    const full = run1(sp, 910002);
+    const order = full.filter((v, i) => i === 0 || v !== full[i - 1]);
+    ck('oneCycleIsOneWalkCycleAtBaseSpeed', order.length === 5 && order[0] === order[4] &&
+      new Set(order.slice(0, 4)).size === 4 && order.slice(0, 4).every((v, i) => v === (order[0] + i) % 4),
+      'frames over ' + cyc + 's at ' + sp + ' tiles/s: ' + order.join('→'));
+    const half = run1(sp / 2, 910003);
+    const halfOrder = half.filter((v, i) => i === 0 || v !== half[i - 1]);
+    ck('halfSpeedIsHalfCadence', halfOrder.length === 3,
+      'the same ' + cyc + 's at half speed stepped through ' + halfOrder.join('→') + ' (half a cycle)');
+    // a garrison exit or a unit first met off screen moves the phase nothing
+    const jump = mk(910004); const j0 = idx(R.unitSprite(jump)); jump.x += 6;
+    ck('aTeleportIsNotAStride', idx(R.unitSprite(jump)) === j0, 'six tiles in one frame left the legs where they were');
+    Assets.removeUnitArt('wolf');
+  }
+
   // ---- 3. unitSprite routing + fallback ----
   {
     Screens._demo = false;

@@ -1212,6 +1212,20 @@ a rule about what the eye can take. A MISSING entry means "due now", never
 "last ticked at time zero", or the first tick of every worker is eaten for the
 first 20 seconds of a session. The log is render-side only (`R._workFloatAt`,
 cleared in `R.onNewGame`), never on the unit and never in a save.
+**THE WALK IS DRIVEN BY DISTANCE** (`R.walkPhase` / `walkStride` /
+`WALK_CYCLE_S`, tests/animal-art.mjs §2b — operator ruling on audit VIL-01 /
+MIL-04 / ANI-05, which RETIRES the 1.35s villager walk-tempo ruling): a
+clock-driven walk played one cadence whatever the body did — a unit held up
+in a crowd walked on the spot, the mound's quarter speed marched at full
+cadence, and at full pace 80-97% of every step was a skate. The leg phase
+now advances by ground covered over the kind's stride (base speed ×
+`WALK_CYCLE_S` 0.44s), so cadence follows real speed, a held-up unit stops
+stepping, and at the kind's own base speed one cycle lasts 0.44s. No
+shipped stride can plant at 2.2 tiles a second, so the residual slide is
+accepted at full pace and nowhere else. Hulls keep the clock (no feet; the
+sail and oars are their walk); idle, work and fight poses keep theirs.
+Render state only (a WeakMap keyed by unit, never in a save — the
+`_faceMap` rule); a jump of more than a tile moves the phase nothing.
 **AND EACH STRIP SHOWS THE WAY IT IS FILED** (`eachAnimalStripHoldsItsOwnView`,
 tests/animal-art.mjs — audit ANI-01): the deer, wolf, boar and cow strips
 shipped filed one octant off (file X held the view 45° on from X), so every

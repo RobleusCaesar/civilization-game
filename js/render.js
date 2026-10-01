@@ -10085,6 +10085,22 @@ const R = {
     g.fill();
   },
 
+  WALK_CYCLE_S: 0.44,
+  _walkPh: new WeakMap(),
+  // tiles of ground one full walk cycle carries a unit of this kind
+  walkStride(u) {
+    const k = CFG.UNITS[u.kind];
+    return Math.max(0.1, ((k && k.speed) || 2) * this.WALK_CYCLE_S);
+  },
+  // the walk phase in [0, 1), advanced by the ground covered since last asked
+  walkPhase(u) {
+    let m = this._walkPh.get(u);
+    if (!m) { m = { x: u.x, y: u.y, ph: ((u.id || 0) * 0.618) % 1 }; this._walkPh.set(u, m); return m.ph; }
+    const d = Math.hypot(u.x - m.x, u.y - m.y);
+    m.x = u.x; m.y = u.y;
+    if (d > 0 && d <= 1) m.ph = (m.ph + d / this.walkStride(u)) % 1;
+    return m.ph;
+  },
   unitSprite(u) {
     /* CHARACTER-CLASS PNG SHEETS (Assets.unitArt — animals first, the
        villagers later): 8 directions × real frame counts, preferred over
@@ -10127,6 +10143,27 @@ const R = {
         const w = (x) => x - Math.sin(4 * Math.PI * x) / (4 * Math.PI);
         ph = w(w(ph));
         return fr2[Math.min(fr2.length - 1, (ph * fr2.length) | 0)];
+      }
+      /* THE WALK IS DRIVEN BY DISTANCE, NOT BY THE CLOCK (operator ruling,
+         audit VIL-01 / MIL-04 / ANI-05). A clock-driven walk plays the same
+         stride whatever the body does: a villager crossing a mound at a
+         quarter speed marched at full cadence, a unit held up behind a
+         crowd walked on the spot, and at full speed 80-97% of every step
+         was a skate. The phase now advances by the ground actually covered
+         divided by the kind's STRIDE — the distance one full cycle carries
+         it — so cadence follows real speed, a held-up unit stops stepping,
+         and the mound, the Forager's quick feet and a stroll all read in
+         the legs. The stride is set so one cycle lasts R.WALK_CYCLE_S at the
+         kind's own base speed (the ruling: legs at about 0.44 s a cycle at
+         full pace — no shipped stride can plant at 2.2 tiles a second, so
+         the residual slide is accepted there and nowhere else). Hulls keep
+         the clock: a boat has no feet to plant and its "walk" is the sail
+         and the oars. Render state only (a WeakMap, never in a save), the
+         R._faceMap convention; a jump of more than a tile (a garrison exit,
+         a unit first met off screen) moves the phase nothing. */
+      if (this._sheetPose === 'walk' && !(typeof Units !== 'undefined' && Units.isNaval && Units.isNaval(u))) {
+        const n = fr2.length;
+        return fr2[Math.min(n - 1, (this.walkPhase(u) * n) | 0)];
       }
       return fr2[((u.animT * fps2) | 0) % fr2.length];
     }

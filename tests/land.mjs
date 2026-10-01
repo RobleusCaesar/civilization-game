@@ -1375,66 +1375,76 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
    ground is painted at once and the far tail drains over the following frames.
    This pins the cost, and that the tail really does finish. */
 {
-  const p2 = await b.newPage({ viewport: { width: 430, height: 880 } });
-  await classicWorlds(p2);
-  await p2.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
-  await p2.waitForTimeout(900);
-  const v = await p2.evaluate(() => {
-    G.newGame('freeze1', 'moderate', 'large');
-    Screens._demo = false; Screens.show('playing'); S.paused = true;
-    G.freeVis = true; G.updateVisibility(); R.rebuildTerrain();
-    const W = CFG.W, H = CFG.H, idx = MapGen.idx, terr = S.map.terrain;
-    // a grass tile on a big lake's shore with room to dig inland
-    let start = null, bestN = 0;
-    for (let y = 3; y < H - 8; y++) for (let x = 3; x < W - 8; x++) {
-      const i = idx(x, y); if (terr[i] !== T.GRASS) continue;
-      let nw = 0;
-      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
-        if (terr[idx(x + ox, y + oy)] === T.WATER) nw++;
-      if (!nw) continue;
-      let ok = true;
-      for (let k = 1; k <= 4; k++) if (terr[idx(x, y + k)] !== T.GRASS) { ok = false; break; }
-      if (ok && nw > bestN) { bestN = nw; start = { x, y }; }
-    }
-    if (!start) return { skip: true };
-    /* WARM FIRST. This is a one-shot measurement on a page that has just
-       baked, so timed cold it includes the JIT compiling the whole repaint
-       path inside the window — and it read 105 / 143 / 117 / 143ms on one
-       quiet host, straddling the gate on the same code. Repainting a few
-       dozen inland tiles first (far from any water, so nothing traces) warms
-       the same paths the dig uses; the gate is then the sliced tail it exists
-       to pin, not the compiler. */
-    const inland = [];
-    for (let y = 3; y < H - 3 && inland.length < 40; y++) for (let x = 3; x < W - 3 && inland.length < 40; x++) {
-      if (terr[idx(x, y)] !== T.GRASS) continue;
-      let wet = false;
-      for (let oy = -4; oy <= 4 && !wet; oy++) for (let ox = -4; ox <= 4 && !wet; ox++) {
-        const t = terr[idx(x + ox, y + oy)]; if (t === T.WATER || t === T.MOAT) wet = true;
+  const digRun = async () => {
+    const p2 = await b.newPage({ viewport: { width: 430, height: 880 } });
+    await classicWorlds(p2);
+    await p2.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+    await p2.waitForTimeout(900);
+    const v = await p2.evaluate(() => {
+      G.newGame('freeze1', 'moderate', 'large');
+      Screens._demo = false; Screens.show('playing'); S.paused = true;
+      G.freeVis = true; G.updateVisibility(); R.rebuildTerrain();
+      const W = CFG.W, H = CFG.H, idx = MapGen.idx, terr = S.map.terrain;
+      // a grass tile on a big lake's shore with room to dig inland
+      let start = null, bestN = 0;
+      for (let y = 3; y < H - 8; y++) for (let x = 3; x < W - 8; x++) {
+        const i = idx(x, y); if (terr[i] !== T.GRASS) continue;
+        let nw = 0;
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+          if (terr[idx(x + ox, y + oy)] === T.WATER) nw++;
+        if (!nw) continue;
+        let ok = true;
+        for (let k = 1; k <= 4; k++) if (terr[idx(x, y + k)] !== T.GRASS) { ok = false; break; }
+        if (ok && nw > bestN) { bestN = nw; start = { x, y }; }
       }
-      if (!wet) inland.push([x, y]);
-    }
-    for (let k = 0; k < 3; k++) for (const [x, y] of inland) R.drawTileAt(x, y);
-    while (R.tickRepaint && R.tickRepaint(1e9)) {}
-    const t0 = performance.now();
-    Terraform.dig(start.x, start.y);
-    const digMs = performance.now() - t0;
-    const queued = (R._repaintQ || []).length;
-    // the tail drains under a budget, and it ENDS
-    let slices = 0;
-    while (R.tickRepaint(4) && slices < 400) slices++;
-    return { skip: false, digMs, queued, slices, left: (R._repaintQ || []).length,
-      flooded: S.map.terrain[idx(start.x, start.y)] === T.MOAT };
-  });
+      if (!start) return { skip: true };
+      /* WARM FIRST. This is a one-shot measurement on a page that has just
+         baked, so timed cold it includes the JIT compiling the whole repaint
+         path inside the window — and it read 105 / 143 / 117 / 143ms on one
+         quiet host, straddling the gate on the same code. Repainting a few
+         dozen inland tiles first (far from any water, so nothing traces) warms
+         the same paths the dig uses; the gate is then the sliced tail it exists
+         to pin, not the compiler. */
+      const inland = [];
+      for (let y = 3; y < H - 3 && inland.length < 40; y++) for (let x = 3; x < W - 3 && inland.length < 40; x++) {
+        if (terr[idx(x, y)] !== T.GRASS) continue;
+        let wet = false;
+        for (let oy = -4; oy <= 4 && !wet; oy++) for (let ox = -4; ox <= 4 && !wet; ox++) {
+          const t = terr[idx(x + ox, y + oy)]; if (t === T.WATER || t === T.MOAT) wet = true;
+        }
+        if (!wet) inland.push([x, y]);
+      }
+      for (let k = 0; k < 3; k++) for (const [x, y] of inland) R.drawTileAt(x, y);
+      while (R.tickRepaint && R.tickRepaint(1e9)) {}
+      const t0 = performance.now();
+      Terraform.dig(start.x, start.y);
+      const digMs = performance.now() - t0;
+      const queued = (R._repaintQ || []).length;
+      // the tail drains under a budget, and it ENDS
+      let slices = 0;
+      while (R.tickRepaint(4) && slices < 400) slices++;
+      return { skip: false, digMs, queued, slices, left: (R._repaintQ || []).length,
+        flooded: S.map.terrain[idx(start.x, start.y)] === T.MOAT };
+    });
+    await p2.close();
+    return v;
+  };
+  /* ONE HONEST RETRY (§18's rule): an absolute millisecond figure on a
+     shared host reads 90-149ms across runs of identical code, against a
+     140 gate. A sliced tail that regressed reads high on BOTH pages; a page
+     that met a busy moment does not. */
+  let v = await digRun();
+  if (!v.skip && !(v.digMs < 140)) { const w = await digRun(); if (!w.skip) v = Object.assign({}, v, { digMs: Math.min(v.digMs, w.digMs), digRetried: [v.digMs, w.digMs] }); }
   if (v.skip) ck('aSpadefulDoesNotFreezeTheFrame', true, 'no lakeside dig site on this map — skipped');
   else {
     ck('aSpadefulDoesNotFreezeTheFrame', v.digMs < 140,
-      'one dug tile cost ' + v.digMs.toFixed(0) + 'ms (was ~300ms before the tail was sliced)');
+      'one dug tile cost ' + v.digMs.toFixed(0) + 'ms (was ~300ms before the tail was sliced)' +
+      (v.digRetried ? '; retried: ' + v.digRetried.map(x => x.toFixed(0)).join(' / ') : ''));
     ck('andTheFarShoreIsQueuedNotPainted', !v.flooded || v.queued > 0,
       v.queued + ' tiles queued for the following frames');
     ck('andTheTailActuallyFinishes', v.left === 0,
       v.slices + ' slices, ' + v.left + ' tiles left');
   }
-  await p2.close();
 }
 
 /* ---- 16. THE GROUND CAME BACK BLACK (R.cacheState / cacheReturned) ----
@@ -2025,7 +2035,11 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   };
   let v = await measure();
   const editsOk = (w) => !w.thrown && w.relGrass < EDIT.grassRel && w.relShore < EDIT.shoreRel;
-  if (!editsOk(v)) {                              // one honest retry against machine noise
+  /* …and the absolute frame bar earns the same retry: read in-suite it has
+     ranged 0.7-2.2ms p95 on identical code against its 1.5 ceiling (a busy
+     moment, not a slower frame). A real regression reads high on both pages. */
+  const frameOk = (w) => !w.thrown && w.frameP95 < LIVE.frameP95;
+  if (!editsOk(v) || !frameOk(v)) {               // one honest retry against machine noise
     const w = await measure();
     if (!w.thrown) v = Object.assign({}, w, { relGrass: Math.min(v.relGrass ?? Infinity, w.relGrass), relShore: Math.min(v.relShore ?? Infinity, w.relShore),
       editGrass: Math.min(v.editGrass ?? Infinity, w.editGrass), editShore: Math.min(v.editShore ?? Infinity, w.editShore),
