@@ -996,6 +996,7 @@ const CFG = {
     // the other specials: answered, dug, ENDURED — a punishment scores for
     // the village that came through it, as the kraken does (EVD-V02)
     sons: 150, cache: 150, winter: 200, plague: 200, eclipse: 150, wildfire: 150,
+    migration: 12, migrationCap: 300,   // per head the village takes from the herd, capped
     leanIn: 120,                // ORIGIN CARDS: kept the card that leans into your roll
     mult: { calm: 0.5, moderate: 1.0, hard: 1.75 },
   },
@@ -1030,6 +1031,7 @@ const CFG = {
       plague: { modes: ['moderate', 'hard'], neg: true, w: 1 },
       eclipse: { modes: ['calm', 'moderate', 'hard'], neg: true, w: 1 },
       wildfire: { modes: ['calm', 'moderate', 'hard'], neg: true, w: 1, elig: 'woodStand' },
+      migration: { modes: ['calm', 'moderate', 'hard'], w: 1, elig: 'corridor' },
     },
   },
   /* the kraken's visit: rolled DELAY days after the player first puts a
@@ -1067,6 +1069,11 @@ const CFG = {
      no dry summer. */
   WILDFIRE: { dayMin: 40, dayMax: 180, warnDays: 2, standMin: 10, clearB: 8, spreadS: 1.5, burnS: 15,
               cap: { calm: 16, moderate: 36, hard: 50 }, bldDps: 2.5, rainS: 10 },
+  /* THE GREAT MIGRATION (tests/specials.mjs): bands of grazers cross the
+     board edge to edge along a corridor clearHall+ tiles from both halls,
+     `gapS` real seconds apart, wolves trailing the last of them */
+  MIGRATION: { dayMin: 40, dayMax: 150, warnDays: 1, clearHall: 8, bands: ['deer', 'cow', 'deer'],
+               head: [6, 8], wolves: [3, 5], gapS: 5 },
   ECLIPSE: { dayMin: 30, dayMax: 200, dimS: 6, darkS: 20, backS: 6, tint: 0.55, vision: 0.5, warnDays: 3, workMult: 0.5 },
   DRAGON: { minDay: 25, foesMin: 6, radius: 9 },
 

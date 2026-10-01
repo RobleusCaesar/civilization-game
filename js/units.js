@@ -1379,7 +1379,10 @@ const Units = {
       // combat engagement (chasing/attacking) is driven by combat.js
       if (u.tUnit || u.tBld) continue;
 
-      if (this.isWild(u)) { this.wildIdle(u, dt); continue; }
+      if (this.isWild(u)) {
+        if (u.migrant) { this.migrantStep(u, dt); continue; }   // THE GREAT MIGRATION walks its road
+        this.wildIdle(u, dt); continue;
+      }
 
       // the rival's townsfolk drift between the huts when idle — a village
       // that looks lived-in, and something for raiders to menace
@@ -1960,6 +1963,19 @@ const Units = {
     }
     return false;
   },
+  /* a migrant walks the trail to its exit and leaves the board there; a
+     fight or a reshaped tile that knocks it off re-plans to the exit, and a
+     beast with no road left melts into the wilds (G.migrationTick) */
+  migrantStep(u, dt) {
+    if (this.moving(u)) { this.followPath(u, dt); return; }
+    const ex = u.migrant.x, ey = u.migrant.y;
+    if (Math.hypot(u.x - ex - 0.5, u.y - ey - 0.5) <= 1.6) { this.despawn(u); return; }
+    u.migrantRe = (u.migrantRe || 0) - dt;
+    if (u.migrantRe > 0) return;
+    u.migrantRe = 1;
+    if (!this.setPath(u, ex, ey)) this.despawn(u);
+  },
+
   wildIdle(u, dt) {
     if (this.isPassive(u)) return this.grazeIdle(u, dt);
     if (this.moving(u)) { this.followPath(u, dt); return; }
@@ -2424,6 +2440,8 @@ const Units = {
         const cut = (CFG.MEAT && CFG.MEAT[u.kind] != null) ? CFG.MEAT[u.kind] : CFG.MEAT_DROP;
         const meat = Math.round(cut *
           (window.Cards ? Cards.huntMult(owner) : 1));   // ORIGIN CARDS: Beastward hunts
+        // THE GREAT MIGRATION: every head the village takes off the trail scores
+        if (owner === 'P' && u.migrant && S.stats) S.stats.migrationTaken = (S.stats.migrationTaken || 0) + 1;
         if (owner === 'P') {
           S.res.food += meat;
           R.float(u.x, u.y - 0.5, '+' + meat + ' food', '#d8e8b0');

@@ -245,6 +245,19 @@ cause `'fire'` skips the attack alarm, `breachedP`, razed credit, the
 work-lost ledger and the chief's `noteLoss` — a summer is not a raid.
 Drawn by `R.drawWildfire` (the flame strips, a smoke column, the bolt, the
 rain); scores `wildfireEndured`.
+**THE GREAT MIGRATION** (`migration`, all modes, `CFG.MIGRATION`, specials.mjs
+§3d): eligible only where an edge-to-edge ROAD exists that keeps
+`clearHall` (8) tiles from both halls (`G.migrationRoute` — a plain BFS over
+the wild's own ground from an edge hashed off the seed string; at the roll it
+reads generation facts, on the day the towns as they have grown, and a town
+that has grown across every trail simply lets the summer pass). Warned a day
+ahead (naming the edge), then three bands (deer, cow, deer — 6..8 head each,
+rolled on `G.rand` on the day) and 3..5 trailing wolves enter `gapS` seconds
+apart and walk the road as `u.migrant` (their exit, riding in the save):
+`Units.migrantStep` replaces `wildIdle` for them, re-plans to the exit if a
+fight knocks one off the trail, and despawns it at the far edge. Every head
+the PLAYER takes off the trail counts `migrationTaken`, scored per head
+(`SCORE.migration` 12) up to `migrationCap` (300).
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
 perimeter line may only be MADE of `wall` and `gate` — it never counts an

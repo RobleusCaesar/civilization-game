@@ -189,7 +189,7 @@ const G = {
       // run stats — the raw material of the arcade score (js/score.js)
       stats: { trained: 0, razed: 0, gathered: 0, kills: 0, built: 0,
                walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0, originBonus: 0,
-               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0, eclipseEndured: 0, wildfireEndured: 0 },
+               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0, eclipseEndured: 0, wildfireEndured: 0, migrationTaken: 0 },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
       // THE CALM TRUCE (tests/calm-peace.mjs): true while neither tribe may
@@ -287,6 +287,9 @@ const G = {
     // the dry summer waits for its day, hashed off the seed string
     S.wildfire = { avail: S.special === 'wildfire', day: this.fireDayOf(seed), warned: false,
                    phase: null, burning: {}, burnt: 0, t: 0, spreadT: 0, wind: this.fireWindOf(seed), done: false };
+    // the great migration keeps its own day; the route is found on the day
+    S.migration = { avail: S.special === 'migration', day: this.migrationDayOf(seed), warned: false,
+                    phase: null, t: 0, route: null, from: '', plan: null, wolves: 0, next: 0, taken: 0, done: false };
     // the swallowed sun keeps its own day, hashed off the seed string
     S.eclipse = { avail: S.special === 'eclipse', day: this.eclipseDayOf(seed), warned: false,
                   foretold: false, cut: null, phase: null, t: 0, done: false };
@@ -733,6 +736,7 @@ const G = {
     this.specialsDaily();
     this.eclipseDaily();
     this.fireDaily();
+    this.migrationDaily();
     this.wearDaily();
 
     // the tribe endures — but only so far. If every villager is dead (none on
@@ -1055,6 +1059,101 @@ const G = {
     }
   },
 
+  /* THE GREAT MIGRATION (CFG.MIGRATION, tests/specials.mjs). The day and
+     the edge it starts from are hashed off the SEED STRING; the route is a
+     plain BFS over the wild's own ground (Path.passable 'W') that never
+     comes within clearHall of either hall — so it is ELIGIBILITY at the
+     roll (terrain and the halls as founded) and the ROAD on the day (the
+     towns as they have grown). Head counts draw G.rand on the day, like a
+     combat roll. The beasts walk it as `u.migrant` (their exit, which rides
+     in the save with them) and leave the board at the far edge. */
+  MIGR_EDGES: ['west', 'north', 'east', 'south'],
+  migrationDayOf(seed) {
+    const C = CFG.MIGRATION;
+    return C.dayMin + Math.abs(hashSeed(String(seed == null ? '' : seed) + '::migr') | 0) % (C.dayMax - C.dayMin + 1);
+  },
+  migrationRoute(seed) {
+    const C = CFG.MIGRATION, W = CFG.W, H = CFG.H;
+    const halls = ['P', 'A'].map(o => Bld.tcOf(o)).filter(Boolean);
+    const ok = (x, y) => MapGen.onBoard(x, y) && Path.passable(x, y, 'W') &&
+      halls.every(h => Math.hypot(x + 0.5 - Bld.cx(h), y + 0.5 - Bld.cy(h)) >= C.clearHall);
+    const h0 = Math.abs(hashSeed(String(seed == null ? '' : seed) + '::migr-edge') | 0) % 4;
+    for (let k = 0; k < 4; k++) {
+      const e = (h0 + k) % 4;
+      // entry line and exit line: the first and last onBoard rank of an edge
+      const line = (ed) => {
+        const out = [];
+        if (ed === 0 || ed === 2) { const x = ed === 0 ? 1 : W - 2; for (let y = 1; y < H - 1; y++) out.push([x, y]); }
+        else { const y = ed === 1 ? 1 : H - 2; for (let x = 1; x < W - 1; x++) out.push([x, y]); }
+        return out;
+      };
+      const exitEd = (e + 2) % 4;
+      const prev = new Int32Array(W * H).fill(-2), q = [];
+      for (const [x, y] of line(e)) if (ok(x, y)) { const i = y * W + x; prev[i] = -1; q.push(i); }
+      const goal = new Uint8Array(W * H);
+      for (const [x, y] of line(exitEd)) goal[y * W + x] = 1;
+      let hit = -1;
+      for (let qh = 0; qh < q.length && hit < 0; qh++) {
+        const c = q[qh], x = c % W, y = (c / W) | 0;
+        if (goal[c]) { hit = c; break; }
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx, ny = y + dy, j = ny * W + nx;
+          if (!MapGen.inB(nx, ny) || prev[j] !== -2 || !ok(nx, ny)) continue;
+          prev[j] = c; q.push(j);
+        }
+      }
+      if (hit < 0) continue;
+      const route = [];
+      for (let c = hit; c >= 0; c = prev[c]) route.push([c % W, (c / W) | 0]);
+      route.reverse();
+      return { route, from: this.MIGR_EDGES[e], to: this.MIGR_EDGES[exitEd] };
+    }
+    return null;
+  },
+  migrationDaily() {
+    const M = S.migration, C = CFG.MIGRATION;
+    if (!M || !M.avail || M.done || M.phase) return;
+    if (!M.warned && S.day >= M.day - C.warnDays) {
+      M.warned = true;
+      const r = this.migrationRoute(S.seed);
+      this.log('🦌 The earth hums at dawn — the herds are gathering beyond the ' + (r ? r.from : 'far') +
+        ' edge. Tomorrow they cross.', 'note', 6000);
+    }
+    if (S.day < M.day) return;
+    const r = this.migrationRoute(S.seed);
+    if (!r) { M.avail = false; M.done = true; return; }   // the towns grew across the trail: the herds go round
+    M.route = r.route; M.from = r.from; M.phase = 'pass'; M.t = 0; M.next = 0;
+    M.plan = C.bands.map(kind => ({ kind, n: C.head[0] + ((this.rand() * (C.head[1] - C.head[0] + 1)) | 0) }));
+    M.wolves = C.wolves[0] + ((this.rand() * (C.wolves[1] - C.wolves[0] + 1)) | 0);
+    this.specialFired();
+    this.log('🦌 THE GREAT MIGRATION — the herds pour in from the ' + r.from + ' and cross to the ' + r.to +
+      ', wolves at their heels. Hunters, to the trail!', true, 8000);
+  },
+  migrationTick(dt) {
+    const M = S.migration, C = CFG.MIGRATION;
+    if (!M || M.phase !== 'pass' || !M.route) return;
+    M.t += dt;
+    const groups = M.plan.length + 1, rt = M.route, end = rt[rt.length - 1];
+    while (M.next < groups && M.t >= M.next * C.gapS) {
+      const band = M.next < M.plan.length ? M.plan[M.next] : { kind: 'wolf', n: M.wolves };
+      const [sx, sy] = rt[0];
+      for (let i = 0; i < band.n; i++) {
+        const u = Units.spawn(band.kind, 'W', sx + 0.2 + this.rand() * 0.6, sy + 0.2 + this.rand() * 0.6);
+        if (!u) continue;
+        u.migrant = { x: end[0], y: end[1] };
+        u.speed *= 0.85 + this.rand() * 0.3;              // a column strings out on its own
+        u.path = rt.slice(1).map(([x, y]) => ({ x, y })); u.pathI = 0;
+        u.anchor = null;
+      }
+      M.next++;
+    }
+    if (M.next < groups) return;
+    if (!S.units.some(u => u.migrant)) {
+      M.phase = null; M.done = true; M.avail = false;
+      this.log('🦌 The last of the herd crosses the far edge and is gone. The plains fall quiet.', 'note', 5000);
+    }
+  },
+
   /* THE SWALLOWED SUN (CFG.ECLIPSE, tests/specials.mjs). Its day is hashed
      off the SEED STRING (never G.rand) and moved forward onto a bright day,
      clear of the 12-day cycle's dusk window — an eclipse at dusk reads as
@@ -1181,6 +1280,7 @@ const G = {
     if (!test) return true;
     if (test === 'openWater') return this.openWaterNearHome('P');
     if (test === 'woodStand') return !!this.fireSite();
+    if (test === 'corridor') return !!this.migrationRoute(S.seed);
     return true;
   },
   // open water a hull could be launched onto from home: an open-water tile
@@ -2314,6 +2414,7 @@ const G = {
     }
     if (data.plague.from === undefined) data.plague.from = CFG.PLAGUE.from;
     if (!data.wildfire) data.wildfire = { avail: false, done: true, day: 0, warned: false, phase: null, burning: {}, burnt: 0, t: 0, spreadT: 0, wind: [1, 0] };
+    if (!data.migration) data.migration = { avail: false, done: true, day: 0, warned: false, phase: null, t: 0, route: null, from: '', plan: null, wolves: 0, next: 0, taken: 0 };
     if (!data.eclipse) data.eclipse = { avail: false, done: true, day: 0, warned: false, foretold: false, cut: null, phase: null, t: 0 };
     // the day the armed event fired: a pre-stamp save reports it unknown
     if (data.specialDay === undefined) data.specialDay = 0;
@@ -2327,7 +2428,7 @@ const G = {
     if (!data.stats) data.stats = {};
     for (const k of ['trained', 'razed', 'gathered', 'kills', 'built', 'walls',
                      'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus', 'leanIn',
-                     'sonsAnswered', 'cacheDug', 'winterEndured', 'plagueEndured', 'eclipseEndured', 'wildfireEndured'])
+                     'sonsAnswered', 'cacheDug', 'winterEndured', 'plagueEndured', 'eclipseEndured', 'wildfireEndured', 'migrationTaken'])
       if (!data.stats[k]) data.stats[k] = 0;
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
@@ -2532,6 +2633,7 @@ const G = {
           G.krakenTick(sdt);
           G.eclipseTick(sdt);
           G.fireTick(sdt);
+          G.migrationTick(sdt);
           G.dragonTick(sdt);
           G.dragonT = (G.dragonT || 0) - sdt;
           if (G.dragonT <= 0) {

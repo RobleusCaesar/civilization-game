@@ -350,14 +350,84 @@ const out = await p.evaluate(() => {
         JSON.stringify({ burnt: S.wildfire.burnt, cap: C.cap.calm, hp: hb2.hp + '/' + hp2 }));
     }
 
+    // ---------------- 3d. THE GREAT MIGRATION ----------------
+    {
+      const C = CFG.MIGRATION;
+      const days = []; for (let i = 0; i < 40; i++) days.push(G.migrationDayOf('migr-' + i));
+      const pure = days.every(d => d >= C.dayMin && d <= C.dayMax) && G.migrationDayOf('migr-3') === days[3] && new Set(days).size > 20;
+      fresh('spx-migr'); flat();
+      const open = G.specialElig('migration');
+      const r1 = G.migrationRoute(S.seed), r2 = G.migrationRoute(S.seed);
+      const halls = ['P', 'A'].map(o => Bld.tcOf(o));
+      const clear = r1 && r1.route.every(([x, y]) => halls.every(h => Math.hypot(x + 0.5 - Bld.cx(h), y + 0.5 - Bld.cy(h)) >= C.clearHall));
+      const edged = r1 && (() => { const [a, b] = [r1.route[0], r1.route[r1.route.length - 1]];
+        const onEdge = ([x, y]) => x === 1 || y === 1 || x === CFG.W - 2 || y === CFG.H - 2; return onEdge(a) && onEdge(b); })();
+      // a cross of water leaves no edge-to-edge road at all: no migration
+      water((CFG.W / 2) | 0, 0, (CFG.W / 2) | 0, CFG.H - 1); water(0, (CFG.H / 2) | 0, CFG.W - 1, (CFG.H / 2) | 0);
+      const shut = !G.specialElig('migration');
+      ck('aMigrationNeedsARoadAroundBothTowns', pure && open && clear && edged && shut && JSON.stringify(r1) === JSON.stringify(r2),
+        JSON.stringify({ pure, open, clear, edged, shut, from: r1 && r1.from, len: r1 && r1.route.length }));
+
+      // the pass: warned a day ahead, bands then wolves, every head leaves at the far edge
+      fresh('spx-migr2'); flat();
+      S.special = 'migration'; S.specialDay = 0;
+      S.migration = { avail: true, day: 90, warned: false, phase: null, t: 0, route: null, from: '', plan: null, wolves: 0, next: 0, taken: 0, done: false };
+      toasts.length = 0;
+      S.day = 88; G.migrationDaily(); const early = !S.migration.warned;
+      S.day = 89; G.migrationDaily(); const warned = S.migration.warned;
+      S.day = 90; G.migrationDaily();
+      const M = S.migration;
+      const fired = M.phase === 'pass' && toasts.some(m => /GREAT MIGRATION/.test(m)) && S.specialDay === 90;
+      const want = M.plan.reduce((a, b) => a + b.n, 0) + M.wolves;
+      const planOk = M.plan.length === C.bands.length && M.plan.every(b => b.n >= C.head[0] && b.n <= C.head[1]) &&
+        M.wolves >= C.wolves[0] && M.wolves <= C.wolves[1];
+      const seen = new Set(), kinds = {}; let strayed = 0, peak = 0;
+      for (let i = 0; i < 6000 && !M.done; i++) {
+        G.migrationTick(0.1); Units.update(0.1); Combat.update(0.1);
+        let live = 0;
+        for (const u of S.units) {
+          if (!u.migrant) continue;
+          live++;
+          if (!seen.has(u.id)) { seen.add(u.id); kinds[u.kind] = (kinds[u.kind] || 0) + 1; }
+          if (u.kind !== 'wolf' && halls.length && ['P', 'A'].map(o => Bld.tcOf(o)).some(h => Math.hypot(u.x - Bld.cx(h), u.y - Bld.cy(h)) < C.clearHall - 1)) strayed++;
+        }
+        peak = Math.max(peak, live);
+      }
+      const gone = !S.units.some(u => u.migrant);
+      ck('theHerdsCrossAndLeaveAtTheFarEdge', early && warned && fired && planOk && seen.size === want && M.done && gone &&
+        (kinds.deer || 0) > 0 && (kinds.cow || 0) > 0 && (kinds.wolf || 0) === M.wolves && strayed === 0,
+        JSON.stringify({ early, warned, fired, planOk, want, spawned: seen.size, kinds, peak, done: M.done, gone, strayed }));
+
+      // what the village takes off the trail scores — a head at a time, capped
+      fresh('spx-migr3'); flat();
+      S.migration = { avail: true, day: S.day, warned: true, phase: null, t: 0, route: null, from: '', plan: null, wolves: 0, next: 0, taken: 0, done: false };
+      G.migrationDaily(); G.migrationTick(0.1);
+      const beast = S.units.find(u => u.migrant), food0 = S.res.food;
+      const hunter = Units.spawn('defender', 'P', beast.x, beast.y + 1);
+      Units.damage(beast, 9999, hunter.id, 'P');
+      const stray = Units.spawn('deer', 'W', 3, 3); Units.damage(stray, 9999, hunter.id, 'P');
+      const counted = S.stats.migrationTaken === 1 && S.res.food > food0;
+      // and a pass in flight rides the save: the herd walks on after a load
+      G.migrationTick(C.gapS + 0.1);
+      const before = S.units.filter(u => u.migrant).length;
+      G.loadJSON(G.saveJSON());
+      const after = S.units.filter(u => u.migrant).length;
+      const resumes = before > 0 && after === before && S.migration.phase === 'pass' && S.units.filter(u => u.migrant).every(u => u.migrant.x != null);
+      S.stats.migrationTaken = 40;
+      const line = Score.compute(false).lines.find(l => /migration/i.test(l.label || l.text || ''));
+      const capped = line && (line.pts === CFG.SCORE.migrationCap || line.points === CFG.SCORE.migrationCap || JSON.stringify(line).includes(String(CFG.SCORE.migrationCap)));
+      ck('theVillagesTakeScoresAndThePassRidesTheSave', counted && resumes && capped,
+        JSON.stringify({ counted, taken: S.stats.migrationTaken, before, after, line }));
+    }
+
     // ---------------- 4. SCORE AND THE RUN REPORT ----------------
     {
       fresh('spx-score');
       const st = S.stats;
-      st.sonsAnswered = st.cacheDug = st.winterEndured = st.plagueEndured = st.krakenSlain = st.dragonSeen = st.eclipseEndured = st.wildfireEndured = 1;
+      st.sonsAnswered = st.cacheDug = st.winterEndured = st.plagueEndured = st.krakenSlain = st.dragonSeen = st.eclipseEndured = st.wildfireEndured = st.migrationTaken = 1;
       const lines = Score.compute(false).lines.map(l => l.label || l.text || JSON.stringify(l)).join(' | ');
       const C = CFG.SCORE;
-      const want = [/kraken/i, /dragon/i, /sons/i, /hoard/i, /winter/i, /plague/i, /swallowed sun/i, /dry summer/i];
+      const want = [/kraken/i, /dragon/i, /sons/i, /hoard/i, /winter/i, /plague/i, /swallowed sun/i, /dry summer/i, /great migration/i];
       ck('everyEventFeedsAScoreLine', want.every(r => r.test(lines)) && [C.sons, C.cache, C.winter, C.plague].every(n => n > 0), lines);
 
       S.special = 'winter'; S.specialDay = 0;
