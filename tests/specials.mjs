@@ -83,10 +83,15 @@ const out = await p.evaluate(() => {
       const none = G.pickSpecial('moderate', CFG.SPECIALS.chance, 0.5);
       G.specialElig = el;
       const sh = k => (tally[k] || 0) / N;
+      // every share is its weight over the mode's whole pool — derived from
+      // CFG, so an event added to the pool re-measures itself here
+      const want = (mode) => { const P = CFG.SPECIALS.pool, ks = Object.keys(P).filter(k => P[k].modes.includes(mode));
+        const tot = ks.reduce((a, k) => a + (P[k].w || 1), 0); const o = {}; for (const k of ks) o[k] = (P[k].w || 1) / tot; return o; };
+      const wm = want('moderate'), wc = want('calm');
       ck('theSpectaclesCarryThreeTimesTheWeight',
-        Math.abs(sh('dragon') - 0.3) < 0.002 && Math.abs(sh('kraken') - 0.3) < 0.002 &&
-        ['sons', 'cache', 'winter', 'plague'].every(k => Math.abs(sh(k) - 0.1) < 0.002) &&
-        !calm.dragon && !calm.winter && !calm.plague && Math.abs(calm.kraken / N - 0.6) < 0.002 && none === null,
+        CFG.SPECIALS.pool.dragon.w === 3 && CFG.SPECIALS.pool.kraken.w === 3 &&
+        Object.keys(wm).every(k => Math.abs(sh(k) - wm[k]) < 0.002) && Object.keys(tally).every(k => wm[k]) &&
+        Object.keys(wc).every(k => Math.abs((calm[k] || 0) / N - wc[k]) < 0.002) && !calm.dragon && none === null,
         'moderate ' + JSON.stringify(tally) + ' calm ' + JSON.stringify(calm));
 
       // the rate, through the real newGame
@@ -237,14 +242,64 @@ const out = await p.evaluate(() => {
       } finally { Bld.popCap = cap; }
     }
 
+    // ---------------- 3b. THE SWALLOWED SUN ----------------
+    {
+      const days = []; for (let i = 0; i < 80; i++) days.push(G.eclipseDayOf('ecl-' + i));
+      const C = CFG.ECLIPSE;
+      const bright = days.every(d => d >= C.dayMin && d <= C.dayMax + 12 && (d - 1) % 12 >= 2 && (d - 1) % 12 <= 7);
+      ck('theSunIsSwallowedOnABrightDay', bright && new Set(days).size > 30 && G.eclipseDayOf('ecl-3') === days[3],
+        'days ' + Math.min(...days) + '..' + Math.max(...days) + ', ' + new Set(days).size + ' distinct, none in the dusk window');
+
+      // unforetold: the village downs tools and the toast says so
+      fresh('spx-ecl'); flat();
+      S.special = 'eclipse'; S.day = 50;
+      S.eclipse = { avail: true, day: 50, warned: false, foretold: false, cut: null, phase: null, t: 0, done: false };
+      toasts.length = 0; G.eclipseDaily();
+      const unwarned = S.eclipse.phase === 'dim' && S.eclipse.cut.P === true && S.specialDay === 50 && toasts.some(m => /eating the sun/.test(m));
+      // in the dark: sight halved (the hall keeps its own), no war band
+      const tc = Bld.tcOf('P');
+      // soldiers far out of the hall's sight, and what THEY see
+      const fx = tc.x < CFG.W / 2 ? CFG.W - 6 : 5, fy = tc.y < CFG.H / 2 ? CFG.H - 6 : 5, sx = fx > 5 ? -9 : 9;
+      const posts = []; for (let i = 0; i < 3; i++) { const x = fx + i * sx, y = fy; Units.spawn('defender', 'P', x, y); posts.push([x, y]); }
+      G.freeVis = false;
+      const seen = () => { G.updateVisibility(); let n = 0;
+        for (const [px, py] of posts) for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++)
+          if (MapGen.inB(px + dx, py + dy) && G.vis[MapGen.idx(px + dx, py + dy)]) n++;
+        return n; };
+      S.eclipse.phase = null; const lit = seen();
+      S.eclipse.phase = 'dark'; S.eclipse.t = 0; const dark = seen();
+      const hallSees = G.visibleAt(tc.x + 5, tc.y);
+      S.wave.next = S.day; const waves = S.wave.count; Combat.maybeWave();
+      const noWave = S.wave.count === waves;
+      ck('anUnwarnedVillageStaresIntoTheDark', unwarned && dark < lit * 0.4 && hallSees && noWave,
+        JSON.stringify({ unwarned, lit, dark, hallSees, noWave }));
+      // the act plays out and ends on its own
+      S.eclipse.phase = 'dim'; S.eclipse.t = 0;
+      for (let i = 0; i < 400 && S.eclipse.phase; i++) G.eclipseTick(0.1);
+      ck('andTheSunComesBack', S.eclipse.done && G.eclipseDark() === 0 && S.stats.eclipseEndured === 1,
+        JSON.stringify({ done: S.eclipse.done, dark: G.eclipseDark() }));
+
+      // foretold: a level-3 Watchtower reads the sky three days ahead and the work goes on
+      fresh('spx-ecl2'); flat();
+      const tw = Bld.place('P', 'tower', Bld.tcOf('P').x + 3, Bld.tcOf('P').y, { free: true, instant: true });
+      tw.level = 3; if (tw.construction > 0) Bld.finish(tw);
+      S.eclipse = { avail: true, day: 60, warned: false, foretold: false, cut: null, phase: null, t: 0, done: false };
+      toasts.length = 0;
+      S.day = 56; G.eclipseDaily(); const early = !S.eclipse.warned;
+      S.day = 57; G.eclipseDaily(); const warned = S.eclipse.warned && toasts.some(m => /3 days/.test(m));
+      S.day = 60; G.eclipseDaily();
+      ck('aWatchtowerForetellsIt', early && warned && S.eclipse.foretold && S.eclipse.cut.P === false && S.eclipse.cut.A === true,
+        JSON.stringify({ early, warned, cut: S.eclipse.cut }));
+    }
+
     // ---------------- 4. SCORE AND THE RUN REPORT ----------------
     {
       fresh('spx-score');
       const st = S.stats;
-      st.sonsAnswered = st.cacheDug = st.winterEndured = st.plagueEndured = st.krakenSlain = st.dragonSeen = 1;
+      st.sonsAnswered = st.cacheDug = st.winterEndured = st.plagueEndured = st.krakenSlain = st.dragonSeen = st.eclipseEndured = 1;
       const lines = Score.compute(false).lines.map(l => l.label || l.text || JSON.stringify(l)).join(' | ');
       const C = CFG.SCORE;
-      const want = [/kraken/i, /dragon/i, /sons/i, /hoard/i, /winter/i, /plague/i];
+      const want = [/kraken/i, /dragon/i, /sons/i, /hoard/i, /winter/i, /plague/i, /swallowed sun/i];
       ck('everyEventFeedsAScoreLine', want.every(r => r.test(lines)) && [C.sons, C.cache, C.winter, C.plague].every(n => n > 0), lines);
 
       S.special = 'winter'; S.specialDay = 0;

@@ -1741,9 +1741,10 @@ const AI = {
     };
     for (const b of Bld.list('A')) {
       if (b.key === 'wall' || b.key === 'gate') continue;
-      mark(Bld.cx(b) | 0, Bld.cy(b) | 0, Bld.done(b) ? (Bld.lv(b).vision || 4) : 2);
+      mark(Bld.cx(b) | 0, Bld.cy(b) | 0, Bld.done(b) ? G.sightIn(Bld.lv(b).vision || 4, b) : 2);
     }
-    for (const u of S.units) if (u.owner === 'A') mark(u.x | 0, u.y | 0, CFG.UNITS[u.kind].vision || CFG.UNIT_VISION);
+    // the swallowed sun blinds both tribes alike (G.sightIn)
+    for (const u of S.units) if (u.owner === 'A') mark(u.x | 0, u.y | 0, G.sightIn(CFG.UNITS[u.kind].vision || CFG.UNIT_VISION));
     // remember player buildings we can currently see; forget razed ones we can see are gone
     const kb = S.ai.knownB, liveTL = new Set();
     for (const b of S.buildings) {

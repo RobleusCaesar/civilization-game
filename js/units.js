@@ -1970,7 +1970,9 @@ const Units = {
       // a beast has no business IDLING in the square: standing on town
       // ground it drifts out, and its aimless wander never aims there.
       // A hunt (Combat.acquire) still takes it wherever the prey is.
-      const tb = this.townBldNear(u.x, u.y);
+      // In the swallowed sun's dark the wild forgets its manners and comes
+      // close; it still only hunts by its ordinary aggro.
+      const tb = G.eclipseDark() >= 0.5 ? null : this.townBldNear(u.x, u.y);
       if (tb) {
         const bx = Bld.cx(tb), by = Bld.cy(tb);
         const d = Math.hypot(u.x - bx, u.y - by) || 1;
@@ -1980,7 +1982,7 @@ const Units = {
       }
       const tx = (u.x | 0) + ((Math.random() * 9) | 0) - 4;
       const ty = (u.y | 0) + ((Math.random() * 9) | 0) - 4;
-      if (Path.passable(tx, ty) && !this.townBldNear(tx, ty) &&
+      if (Path.passable(tx, ty) && (G.eclipseDark() >= 0.5 || !this.townBldNear(tx, ty)) &&
           !this.wildCrowded(u, tx, ty)) this.setPath(u, tx, ty);
     }
   },

@@ -12200,6 +12200,29 @@ const R = {
       }
     }
 
+    // THE SWALLOWED SUN (G.eclipseDark): the day/night overlay ARTSTYLE
+    // rule 9 already sanctions, pushed to a deep dusk, with a sparse scatter
+    // of 1px stars fixed to the SCREEN (the sky is not on the map). No flash:
+    // it eases in over ECLIPSE.dimS and out over backS. The HUD is DOM and
+    // stays bright.
+    {
+      const ek = G.eclipseDark();
+      if (ek > 0.01) {
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.fillStyle = 'rgba(10,12,34,' + (CFG.ECLIPSE.tint * ek).toFixed(3) + ')';
+        g.fillRect(0, 0, this.cv.width, this.cv.height);
+        if (ek > 0.6) {
+          const sa = Math.min(1, (ek - 0.6) / 0.4), W = this.cv.width, H = this.cv.height, sz = Math.max(1, Math.round(W / 400));
+          g.fillStyle = 'rgba(232,236,255,' + (0.7 * sa).toFixed(3) + ')';
+          for (let i = 0; i < 70; i++) {
+            const h1 = Math.imul(i + 1, 0x9e3779b1) >>> 0, h2 = Math.imul(i + 7, 0x85ebca6b) >>> 0;
+            if ((h1 & 7) === 0 && ((performance.now() / 600 + i) | 0) % 5 === 0) continue;   // a slow twinkle
+            g.fillRect((h1 % 10007) / 10007 * W | 0, (h2 % 9973) / 9973 * H | 0, sz, sz);
+          }
+        }
+      }
+    }
+
     // the monument is finished: hold the frame on it (tests/wonder.mjs)
     this.drawMarvel(g, dt);
 

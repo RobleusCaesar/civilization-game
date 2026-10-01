@@ -1714,7 +1714,10 @@ const Bld = {
     const res = owner === 'P' ? S.res : S.ai.res;
     const tc = this.tcOf(owner);
     const tcBoost = tc && tc.level >= 3 && this.done(tc) ? 1.1 : 1;
-    const modeMult = owner === 'P' ? G.modeCfg().output : (G.modeCfg().aiOutput || 1);
+    let modeMult = owner === 'P' ? G.modeCfg().output : (G.modeCfg().aiOutput || 1);
+    // the swallowed sun: a tribe it caught unwarned downed its tools that day
+    const ec = S.eclipse && S.eclipse.cut;
+    if (ec && ec.day === S.day && ec[owner]) modeMult *= CFG.ECLIPSE.workMult;
     // THE RIVAL'S WORKFORCE IS REAL NOW: its worker buildings no longer run at
     // phantom full crew — they draw hands from its LIVING villagers, one villager
     // one crew slot. Hands are dealt round-robin, one at a time across the

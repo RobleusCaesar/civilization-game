@@ -43,6 +43,7 @@ const Score = {
     if (st.cacheDug) add('🪙', 'Dug up the old hoard', C.cache);
     if (st.winterEndured) add('❄️', 'Came through the long winter', C.winter);
     if (st.plagueEndured) add('🕊', 'Buried the plague dead and went on', C.plague);
+    if (st.eclipseEndured) add('🌑', 'Stood under the swallowed sun', C.eclipse);
     if (st.originBonus) add('⛺', 'Hard beginnings', st.originBonus);
     if (st.leanIn) add('🎲', 'Read the land — a canny Origin', C.leanIn);
 

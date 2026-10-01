@@ -212,6 +212,22 @@ stamped by `G.specialFired()` on every event's firing). The daily beats live
 in `G.specialsDaily()`. A pre-change save keeps its event: the kraken's
 per-tribe absolute days become a fresh launch clock, the plague takes the old
 day 25, `specialDay` reads unknown.
+**THE SWALLOWED SUN** (`eclipse`, all modes, `CFG.ECLIPSE`, specials.mjs §3b):
+its day is hashed off the SEED STRING into dayMin..dayMax and moved onto a
+BRIGHT day (never the 12-day cycle's dusk window — an eclipse at dusk reads as
+the dusk). A real-time act (`G.eclipseTick`: dim 6s / dark 20s / back 6s), and
+`G.eclipseDark()` (0..1) is the ONE read the tint, the vision and the waves
+share. In the dark both tribes see half as far (`G.sightIn`, floored: 3 → 1,
+6 → 3 — the hall and level-3 towers keep their sight, in `updateVisibility`
+and the rival's own vision alike), no war band musters (`Combat.maybeWave`),
+and idle predators drop their town-shyness and wander close — they still only
+hunt by their ordinary aggro, so it is a scare, and a fight only where it
+always would have been. It is FORETOLD three days ahead (a `note` toast) by
+the Star Circle, a finished level-3 Watchtower or the Seer — for the rival
+by its own level-3 tower — and a tribe it catches unwarned downs tools for
+that day (`cut`, read in `Bld.dailyProduction` × `workMult`). The tint is
+the dusk overlay pushed to deep dusk plus a sparse field of screen-fixed
+1px stars; no flash, the HUD stays bright. Scores `eclipseEndured`.
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
 perimeter line may only be MADE of `wall` and `gate` — it never counts an

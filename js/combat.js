@@ -1521,6 +1521,7 @@ const Combat = {
   /* barbarian war-band spawning, called from the day tick */
   maybeWave() {
     if (S.day < S.wave.next) return;
+    if (G.eclipseDark() > 0) return;   // no war band musters under a swallowed sun — it waits for the light
     const m = G.modeCfg();
     S.wave.count++;
     S.wave.lastDay = S.day;   // so the rival can avoid piling a raid onto a fresh wave

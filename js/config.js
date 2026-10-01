@@ -995,7 +995,7 @@ const CFG = {
     kraken: 500, dragon: 250,   // (originBonus for hard beginnings is computed at roll time)
     // the other specials: answered, dug, ENDURED — a punishment scores for
     // the village that came through it, as the kraken does (EVD-V02)
-    sons: 150, cache: 150, winter: 200, plague: 200,
+    sons: 150, cache: 150, winter: 200, plague: 200, eclipse: 150,
     leanIn: 120,                // ORIGIN CARDS: kept the card that leans into your roll
     mult: { calm: 0.5, moderate: 1.0, hard: 1.75 },
   },
@@ -1028,6 +1028,7 @@ const CFG = {
       cache:  { modes: ['calm', 'moderate', 'hard'], w: 1 },
       winter: { modes: ['moderate', 'hard'], neg: true, w: 1 },
       plague: { modes: ['moderate', 'hard'], neg: true, w: 1 },
+      eclipse: { modes: ['calm', 'moderate', 'hard'], neg: true, w: 1 },
     },
   },
   /* the kraken's visit: rolled DELAY days after the player first puts a
@@ -1047,6 +1048,14 @@ const CFG = {
      crowded-lanes gate is met by nearly every day-25 town, so a fixed day
      made it a scheduled punishment rather than an answer to a boom */
   PLAGUE: { from: 25, spread: 40 },
+  /* THE SWALLOWED SUN: a seed-hashed bright day (never in the dusk window)
+     between dayMin and dayMax; a real-time act of dimS dim / darkS dark /
+     backS return. In the dark both tribes see `vision` as far (the hall
+     and a level-3 tower excepted), no war band musters, and the wild
+     comes close. Foretold `warnDays` ahead by the Star Circle, a level-3
+     Watchtower or the Seer; a tribe it catches unwarned downs tools
+     (that day's production × workMult). */
+  ECLIPSE: { dayMin: 30, dayMax: 200, dimS: 6, darkS: 20, backS: 6, tint: 0.55, vision: 0.5, warnDays: 3, workMult: 0.5 },
   DRAGON: { minDay: 25, foesMin: 6, radius: 9 },
 
   /* Difficulty gates the rival's APPETITE and SCALE, never its decision

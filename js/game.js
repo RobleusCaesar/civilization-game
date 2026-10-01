@@ -189,7 +189,7 @@ const G = {
       // run stats — the raw material of the arcade score (js/score.js)
       stats: { trained: 0, razed: 0, gathered: 0, kills: 0, built: 0,
                walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0, originBonus: 0,
-               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0 },
+               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0, eclipseEndured: 0 },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
       // THE CALM TRUCE (tests/calm-peace.mjs): true while neither tribe may
@@ -284,6 +284,9 @@ const G = {
     S.winter = { avail: S.special === 'winter', done: false, days: 0 };
     S.plague = { avail: S.special === 'plague', done: false, until: 0, lifted: true,
                  from: this.plagueFrom(seed) };
+    // the swallowed sun keeps its own day, hashed off the seed string
+    S.eclipse = { avail: S.special === 'eclipse', day: this.eclipseDayOf(seed), warned: false,
+                  foretold: false, cut: null, phase: null, t: 0, done: false };
 
     this.freeVis = false;   // every real game starts fogged; the title demo re-enables it
     this.vis = null;
@@ -453,11 +456,11 @@ const G = {
       // finishing is the wider view). Upgrades keep their current sight.
       for (const b of S.buildings)
         if (b.owner === 'P' && Bld.done(b))
-          mark(b.x, b.y, (Bld.lv(b).vision || 4) +
+          mark(b.x, b.y, this.sightIn((Bld.lv(b).vision || 4) +
             // ORIGIN CARDS: the Warden's towers watch farther
-            (b.key === 'tower' && window.Cards ? Cards.towerSight('P') : 0));
+            (b.key === 'tower' && window.Cards ? Cards.towerSight('P') : 0), b));
       for (const u of S.units)
-        if (u.owner === 'P') mark(u.x | 0, u.y | 0, CFG.UNITS[u.kind].vision || CFG.UNIT_VISION);
+        if (u.owner === 'P') mark(u.x | 0, u.y | 0, this.sightIn(CFG.UNITS[u.kind].vision || CFG.UNIT_VISION));
       // ORIGIN CARDS: the Seer's far-seeing eye never closes
       const sn = S.boons && S.boons.P && S.boons.P.seer;
       if (sn) mark(sn.x, sn.y, 3);
@@ -725,6 +728,7 @@ const G = {
     }
 
     this.specialsDaily();
+    this.eclipseDaily();
     this.wearDaily();
 
     // the tribe endures — but only so far. If every villager is dead (none on
@@ -924,6 +928,64 @@ const G = {
           this.log('🐙 Something vast stirs beneath the water…', true);
         }
       }
+    }
+  },
+
+  /* THE SWALLOWED SUN (CFG.ECLIPSE, tests/specials.mjs). Its day is hashed
+     off the SEED STRING (never G.rand) and moved forward onto a bright day,
+     clear of the 12-day cycle's dusk window — an eclipse at dusk reads as
+     the dusk. Who saw it coming is decided by what each tribe HOLDS:
+     the Star Circle found, a finished level-3 Watchtower, or the Seer's
+     boon for the player; its own level-3 tower for the rival. */
+  eclipseDayOf(seed) {
+    const C = CFG.ECLIPSE;
+    let d = C.dayMin + Math.abs(hashSeed(String(seed == null ? '' : seed) + '::eclipse') | 0) % (C.dayMax - C.dayMin + 1);
+    while ((d - 1) % 12 < 2 || (d - 1) % 12 > 7) d++;
+    return d;
+  },
+  eclipseForetold(owner) {
+    const l3 = Bld.list(owner).some(b => b.key === 'tower' && b.level >= 3 && Bld.done(b));
+    if (owner !== 'P') return l3;
+    const star = S.relic && S.relic.found && S.relic.key === 'starcircle';
+    return l3 || !!star || !!(S.boons && S.boons.P && S.boons.P.seer);
+  },
+  // 0 (bright) … 1 (dark) — the one read for the tint, the vision and the waves
+  eclipseDark() {
+    const E = S.eclipse, C = CFG.ECLIPSE;
+    if (!E || !E.phase) return 0;
+    return E.phase === 'dim' ? Math.min(1, E.t / C.dimS) : E.phase === 'dark' ? 1 : Math.max(0, 1 - E.t / C.backS);
+  },
+  // a sighted thing in the dark sees this far (halls and level-3 towers keep their sight)
+  sightIn(r, b) {
+    if (this.eclipseDark() < 0.5) return r;
+    if (b && (b.key === 'tc' || (b.key === 'tower' && b.level >= 3))) return r;
+    return Math.max(1, Math.floor(r * CFG.ECLIPSE.vision + 0.25));   // 3 → 1, 4 → 2, 6 → 3
+  },
+  eclipseDaily() {
+    const E = S.eclipse, C = CFG.ECLIPSE;
+    if (!E || !E.avail || E.done || E.phase) return;
+    if (!E.warned && S.day >= E.day - C.warnDays && this.eclipseForetold('P')) {
+      E.warned = true; E.foretold = true;
+      this.log('🌑 The old stones agree: in ' + (E.day - S.day) + ' days the sun will be eaten at noon. Let no one fear it.', 'note', 7000);
+    }
+    if (S.day < E.day) return;
+    E.phase = 'dim'; E.t = 0;
+    // a tribe it catches unwarned downs tools for the day (Bld.dailyProduction)
+    E.cut = { day: S.day, P: !E.foretold, A: !this.eclipseForetold('A') };
+    this.specialFired();
+    if (!E.foretold) this.log('🌑 The light is going wrong — something is eating the sun! The village drops its tools and stares.', true, 7000);
+    else this.log('🌑 The sun is swallowed, as the stones foretold. The work goes on.', 'note', 6000);
+  },
+  eclipseTick(dt) {
+    const E = S.eclipse, C = CFG.ECLIPSE;
+    if (!E || !E.phase) return;
+    E.t += dt;
+    if (E.phase === 'dim' && E.t >= C.dimS) { E.phase = 'dark'; E.t = 0; if (R.startle) R.startle(); }
+    else if (E.phase === 'dark' && E.t >= C.darkS) { E.phase = 'back'; E.t = 0; }
+    else if (E.phase === 'back' && E.t >= C.backS) {
+      E.phase = null; E.done = true; E.avail = false;
+      if (S.stats) S.stats.eclipseEndured = 1;
+      this.log('☀️ The sun comes back out of the dark, a sliver at a time.', 'note', 5000);
     }
   },
 
@@ -2126,6 +2188,7 @@ const G = {
       if (data.kraken.ev && data.kraken.ev.owner !== 'P') data.kraken.ev = null;
     }
     if (data.plague.from === undefined) data.plague.from = CFG.PLAGUE.from;
+    if (!data.eclipse) data.eclipse = { avail: false, done: true, day: 0, warned: false, foretold: false, cut: null, phase: null, t: 0 };
     // the day the armed event fired: a pre-stamp save reports it unknown
     if (data.specialDay === undefined) data.specialDay = 0;
     if (!data.origin) data.origin = 'An old tribe, from before the tellers kept count.';
@@ -2138,7 +2201,7 @@ const G = {
     if (!data.stats) data.stats = {};
     for (const k of ['trained', 'razed', 'gathered', 'kills', 'built', 'walls',
                      'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus', 'leanIn',
-                     'sonsAnswered', 'cacheDug', 'winterEndured', 'plagueEndured'])
+                     'sonsAnswered', 'cacheDug', 'winterEndured', 'plagueEndured', 'eclipseEndured'])
       if (!data.stats[k]) data.stats[k] = 0;
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
@@ -2341,6 +2404,7 @@ const G = {
         G._safe(() => {
           G.dyingTick(sdt);      // the villager whose death was announced a beat ago
           G.krakenTick(sdt);
+          G.eclipseTick(sdt);
           G.dragonTick(sdt);
           G.dragonT = (G.dragonT || 0) - sdt;
           if (G.dragonT <= 0) {
