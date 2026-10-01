@@ -3928,6 +3928,46 @@ crag through its yard and its tenders could neither reach prey two tiles away
 nor be reached by the party sent to burn them out. Relaxed (2 → 1 → 0) before
 the camp count is, like the town clearance.
 
+**EACH FACE SHOWS ITS NAME** (W11, map.js; pinned by tests/variants.mjs §7,
+measured old-vs-new over 480 maps): the generator held every world PLAYABLE
+and nothing held its CHARACTER. Six rules now. **THE SEAT IS A CLEARING**
+(MAP-06): `nearStart`, the avoid rule of every painter, was a Chebyshev box,
+so lakes, woods and rock stopped on ruler-straight lines round the hall
+(825 straight 7+ tile runs on the box ring over 480 maps); it is a disc about
+the hall's centre whose radius wanders by three harmonics from a SIDE stream
+(`::seat`), floored so the clearing never shrinks below the box's 81 tiles,
+and the start-plot clear is round too (42 runs after). **THE LANE IS ROUTED,
+NOT RULED** (MAP-03/07): the clamp's carve walked a staircase clearing
+everything in its way, MOUNTAIN included, and its BFS fallback laid long
+axis-aligned corridors. One Dijkstra router (`route` / `carveRoute`) now: open
+ground cheap, a wood or field dear, a mountain dearest (45), so a range is
+crossed only where nothing goes round it and then at its NARROWEST — a pass,
+not a canyon — with a seeded low-frequency cost field (`::lane`, no rnd draws)
+bending the line and a 1-2 tile ragged brush. Water is never cut. **On ISLANDS
+the sea speaks first**: seats on different land masses carve nothing by land
+and go straight to the sea verdict — inland never, because a lake must not
+stand in for an ocean. **MOUNTAINS ON NEARLY EVERY INLAND MAP** (MAP-02): 22%
+of all maps had none (31% of inland non-Steppe). A crag is rolled at 0.94,
+sized to read as a MOUNTAIN (`cragArea`), and RE-SEATED bigger (×1.4, up to
+six times) while the largest stands under `cragMin` (22) — lakes are painted
+first and eat crags. Steppe keeps its open sky (0.35, small, no re-seat).
+After: 9% of all maps bare, 6% inland non-Steppe. **FACES** (MAP-04/09):
+Fjord's inlets refuse the causeway SPINE and the tile beside it (land-joined
+seats 40% → 100%); Great Lake is a noisy ELLIPSE of `centralLake` (0.24) of
+the board, not a 100-step walk (water 19.8% → 28.7%); Foothills is MANY low
+crags (`massifN` 7.5, no landmark); High Passes cuts `highPass` (2) routed
+passes ACROSS its landmark wall (the router with rock made cheap); Old
+Country lays 2-4 ruin SITES (a 2×2 core with ragged fall-off) instead of
+strewn single tiles, and `blendCol[T.RUIN]` is grass so no grey ring is
+dithered onto the meadow. **THE SKIRT GUARD IS ONE LABELLING PER FELLED
+TREE** (MAP-05): it re-flooded the whole board for every planted tree on
+every pass (2-3.4s frozen foundings on xlarge Karst); felling one tree only
+merges the components touching it, so the largest body it leaves is
+max(1 + its distinct neighbours, the largest other) — identical picks, 256
+maps byte-identical, the slowest 3,440ms → 44ms. Every one of these changes
+the rnd stream, so every seed's world re-deals once; the tutorial's forced
+Valley·Classic is untouched as a RULE.
+
 **HILLS ARE NOT SHADED AT ALL — A DEPOSIT LIES ON THE MEADOW** (operator
 ruling, audit ORE-01..04, pinned by `aDepositLiesOnTheMeadow` and
 `theBlockedCueRunsUnderMountainsNotOre` in tests/land.mjs §10b): HILLS was

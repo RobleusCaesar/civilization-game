@@ -108,9 +108,28 @@ const MapGen = {
       }
       if (far.length) ai = far[(rnd() * far.length) | 0];
     }
-    const nearStart = (x, y) =>
-      (Math.abs(x - player.x) < 5 && Math.abs(y - player.y) < 5) ||
-      (Math.abs(x - ai.x) < 5 && Math.abs(y - ai.y) < 5);
+    /* THE SEAT IS A CLEARING, NOT A SQUARE (audit MAP-06). This predicate
+       is the avoid rule of every painter — lakes, woods, crags, ore, ruins —
+       and it used to be a Chebyshev box, so on 80% of inland seats a lake
+       shore or a treeline stopped on a ruler-straight line round the hall
+       (7+ tiles straight on 61%). It is a disc about the HALL'S centre now,
+       its radius wandering by three seeded harmonics (a side stream, so the
+       main roll is untouched by the shape itself), floored so the clearing
+       never holds less than the box's 81 tiles. */
+    const seatShape = (() => {
+      const sr = mulberry32(hashSeed(String(seedStr) + '::seat'));
+      const mk = () => {
+        const h = [[2, 0.55 + sr() * 0.25, sr() * 6.283], [3, 0.3 + sr() * 0.25, sr() * 6.283], [5, 0.15 + sr() * 0.15, sr() * 6.283]];
+        return (x, y, cx, cy) => {
+          const dx = x - cx - 0.5, dy = y - cy - 0.5, th = Math.atan2(dy, dx);
+          let r = 5.35;
+          for (const [k, a, ph] of h) r += a * Math.sin(k * th + ph);
+          return dx * dx + dy * dy < Math.max(4.3, r) * Math.max(4.3, r);
+        };
+      };
+      return [mk(), mk()];
+    })();
+    const nearStart = (x, y) => seatShape[0](x, y, player.x, player.y) || seatShape[1](x, y, ai.x, ai.y);
 
     // every valley is short on one resource — finding it matters
     const SCARCE = [
@@ -158,7 +177,11 @@ const MapGen = {
       centralLake: 0,                       // Great Lake: one dominant body first
       // highlands: how the stone stands — count, the landmark, the rest
       massifN: 2.2, landmark: [150, 80], landmarkE: [1.6, 0.9],
-      massif: [55, 60], massifE: [1.3, 1.1], cragChance: 0.75,
+      massif: [55, 60], massifE: [1.3, 1.1],
+      // the other inland landforms' stone (audit MAP-02): a crag on nearly
+      // every map, big enough to be a MOUNTAIN, re-seated if a lake ate it
+      cragChance: 0.94, cragArea: [30, 30], cragMin: 22,
+      highPass: 0,                          // High Passes: passes cut through the wall
       // resource paints (count, sizeMin, sizeVar) + floors + the ore deposits
       forest: [7, 5, 8], forestFloor: 12, fertile: [6, 3, 5],
       oreWant: 1.3, oreFloor: 9,
@@ -168,26 +191,28 @@ const MapGen = {
       // islands: seat/central/wild isle sizes, how many wilds, the causeways
       isleSeat: 46, isleMid: 60, wildN: 2, wildSize: 46,
       joinChance: 0.55, joinAlways: 0, inletN: 0,
-      // Old Country: ancient rubble strewn where someone was before
-      ruinN: 0,
+      // Old Country: ruin SITES (count, +rnd var) where someone was before
+      ruinSites: null,
     };
     Object.assign(V, {
       // ---- valley ----
       steppe:      { forest: [2, 4, 4], forestFloor: 9, fertile: [11, 4, 7], oreWant: 0.8,
-                     cragChance: 0.35, lakeNIn: [2, 2],
+                     cragChance: 0.35, cragArea: [16, 26], cragMin: 0, lakeNIn: [2, 2],
                      nearWood: [1, 3], nearStone: [1, 3], nearFood: [4, 6] },
       greatforest: { forest: [17, 8, 12], forestFloor: 44, fertile: [5, 3, 5], nearWood: [6, 5] },
-      oldcountry:  { oreWant: 2.3, oreFloor: 16, nearStone: [3, 4], ruinN: 8 },
+      oldcountry:  { oreWant: 2.3, oreFloor: 16, nearStone: [3, 4], ruinSites: [2, 3] },
       // ---- lakeland ----
       delta:       { lakeN: [15, 6], lakeSize: 9, lakeGrow: 6, fertile: [9, 4, 6] },
-      greatlake:   { centralLake: 1, lakeN: [2, 2], lakeSize: 10, lakeGrow: 8 },
+      greatlake:   { centralLake: 0.24, lakeN: [2, 2], lakeSize: 10, lakeGrow: 8 },
       pondlands:   { lakeN: [13, 5], lakeSize: 4, lakeGrow: 4 },
       // ---- highlands ----
       karst:       { massifN: 7, landmark: null, massif: [9, 12], massifE: [1.1, 0.5] },
       highpasses:  { massifN: 1.0, landmark: [260, 120], landmarkE: [2.0, 1.0],
-                     massif: [140, 80], oreWant: 2.0, oreFloor: 14 },
-      foothills:   { massifN: 1.1, landmark: [60, 40], landmarkE: [1.3, 0.6],
-                     massif: [26, 26], oreWant: 2.2, oreFloor: 15 },
+                     massif: [140, 80], oreWant: 2.0, oreFloor: 14, highPass: 2 },
+      // FOOTHILLS (audit MAP-04): many LOW crags, not one small range —
+      // six to ten of 15-25 tiles on a medium board
+      foothills:   { massifN: 7.5, landmark: null, massif: [34, 22], massifE: [1.15, 0.6],
+                     oreWant: 2.2, oreFloor: 15 },
       // ---- islands ----
       fjord:       { joinAlways: 1, inletN: 7, wildN: 0, isleSeat: 52, isleMid: 85 },
       archipelago: { wildN: 5, wildSize: 24, isleMid: 30, joinChance: 0.15 },
@@ -217,6 +242,7 @@ const MapGen = {
       }
       for (const [lx, ly, la, lb] of lobes) {
         const rr = Math.ceil(Math.max(la, lb)) + 1;
+        // (the main lobe's geometry is handed back below for the pass cutter)
         const x0 = Math.max(1, (lx - rr) | 0), x1 = Math.min(W - 2, (lx + rr) | 0);
         const y0 = Math.max(1, (ly - rr) | 0), y1 = Math.min(H - 2, (ly + rr) | 0);
         for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
@@ -229,8 +255,30 @@ const MapGen = {
           t[id(x, y)] = T.MOUNTAIN;
         }
       }
+      return { cx, cy, ca, sa, a0, b0 };
+    };
+    // the largest 4-connected mountain region on the board, in tiles
+    const bigMountain = () => {
+      const seen = new Uint8Array(W * H); let big = 0;
+      for (let i0 = 0; i0 < W * H; i0++) {
+        if (seen[i0] || t[i0] !== T.MOUNTAIN) continue;
+        let n = 0; const q = [i0]; seen[i0] = 1;
+        for (let h = 0; h < q.length; h++) {
+          const cur = q[h], cx = cur % W, cy = (cur / W) | 0; n++;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = cx + dx, ny = cy + dy;
+            if (!MapGen.inB(nx, ny)) continue;
+            const ni = id(nx, ny);
+            if (seen[ni] || t[ni] !== T.MOUNTAIN) continue;
+            seen[ni] = 1; q.push(ni);
+          }
+        }
+        if (n > big) big = n;
+      }
+      return big;
     };
 
+    let passWall = null;   // the High Passes landmark, for the pass cutter below
     if (landform === 'islands') {
       t.fill(T.WATER);
       // land masses under both towns, a big one mid-map, plus a few wild
@@ -249,12 +297,14 @@ const MapGen = {
       massif(W / 2, H / 2, 28 + rnd() * 22 * f, 1.2 + rnd() * 0.5);
       for (const c of isles.slice(2))
         if (rnd() < 0.55) massif(c.x, c.y, 8 + rnd() * 10, 1.1 + rnd() * 0.4);
+      const spine = new Set();   // every tile a causeway laid (fjord inlets keep off it)
       const causeway = (a, b) => {
         let x = a.x, y = a.y;
         let guard = 0;
         while ((x !== b.x || y !== b.y) && guard++ < W * H) {
           for (const [ox, oy] of [[0, 0], [1, 0], [0, 1]]) {
             const nx = x + ox, ny = y + oy;
+            if (MapGen.inB(nx, ny)) spine.add(id(nx, ny));
             if (MapGen.inB(nx, ny) && t[id(nx, ny)] === T.WATER) t[id(nx, ny)] = T.GRASS;
           }
           if (x !== b.x && (y === b.y || rnd() < 0.5)) x += x < b.x ? 1 : -1;
@@ -275,10 +325,19 @@ const MapGen = {
       if (joinP) causeway(player, mid);
       if (joinA) causeway(mid, ai);
       /* FJORD COAST: the joined mass is then deeply CUT — water blobs eaten
-         back into the grass, never over a seat. Land-connected in theory;
-         walking around an inlet takes far longer than sailing across it. */
+         back into the grass, never over a seat, and NEVER OVER THE CAUSEWAY
+         SPINE or the tile beside it (audit MAP-04: the inlets used to eat
+         the causeways they were cut after, and 45 of 68 "land-connected"
+         fjords ended sea-divided). Walking round an inlet still takes far
+         longer than sailing across it. */
+      const offSpine = (x, y) => {
+        if (nearStart(x, y)) return true;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+          if (spine.has(id(x + dx, y + dy))) return true;
+        return false;
+      };
       for (let i = 0; i < V.inletN; i++)
-        blob(4 + rnd() * (W - 8) | 0, 4 + rnd() * (H - 8) | 0, (8 + rnd() * 10) | 0, T.WATER, nearStart, [T.GRASS]);
+        blob(4 + rnd() * (W - 8) | 0, 4 + rnd() * (H - 8) | 0, (8 + rnd() * 10) | 0, T.WATER, offSpine, [T.GRASS]);
     } else {
       const lakes = landform === 'lakeland'
         ? Math.round((V.lakeN[0] + rnd() * V.lakeN[1]) * f)
@@ -286,8 +345,25 @@ const MapGen = {
       const lakeSize = landform === 'lakeland' ? V.lakeSize : V.lakeSizeIn;
       // GREAT LAKE: one dominant central body laid first; the loop below only
       // adds a couple of side waters. Play happens around the rim.
-      if (V.centralLake)
-        blob(W / 2 + rnd() * 6 - 3, H / 2 + rnd() * 6 - 3, Math.round((85 + rnd() * 30) * f), T.WATER, nearStart);
+      if (V.centralLake) {
+        /* GREAT LAKE (audit MAP-04): a random walk of ~100 steps covered
+           barely more than a Valley's lakes (water median 18.6% against
+           16.7%), so the face did not show its name. The body is a noisy
+           ELLIPSE now, `centralLake` of the board, and since the seats sit
+           on the outer band its long axis can reach a seat's clearing — the
+           town on the shore is the point. */
+        const cx = W / 2 + rnd() * 6 - 3, cy = H / 2 + rnd() * 6 - 3;
+        const el = 1.3 + rnd() * 0.5, th = rnd() * Math.PI, ca = Math.cos(th), sa = Math.sin(th);
+        const lb = Math.sqrt(V.centralLake * W * H / (Math.PI * el)), la = lb * el;
+        const rr = Math.ceil(la) + 1;
+        for (let y = Math.max(1, (cy - rr) | 0); y <= Math.min(H - 2, (cy + rr) | 0); y++)
+          for (let x = Math.max(1, (cx - rr) | 0); x <= Math.min(W - 2, (cx + rr) | 0); x++) {
+            const dx = x - cx, dy = y - cy;
+            const u = (dx * ca + dy * sa) / la, v = (-dx * sa + dy * ca) / lb;
+            if (u * u + v * v + (rnd() - 0.5) * 0.3 > 1 || nearStart(x, y)) continue;
+            t[id(x, y)] = T.WATER;
+          }
+      }
       for (let i = 0; i < lakes; i++)
         blob(4 + rnd() * (W - 8) | 0, 4 + rnd() * (H - 8) | 0, (lakeSize + rnd() * V.lakeGrow) | 0, T.WATER, nearStart);
       if (landform === 'highlands') {
@@ -302,7 +378,7 @@ const MapGen = {
         const massifs = Math.max(2, Math.round(V.massifN * f));
         let r0 = 0;
         if (V.landmark) {
-          massif(6 + rnd() * (W - 12), 6 + rnd() * (H - 12),
+          passWall = massif(6 + rnd() * (W - 12), 6 + rnd() * (H - 12),
             (V.landmark[0] + rnd() * V.landmark[1]) * f / 2.6, V.landmarkE[0] + rnd() * V.landmarkE[1]);
           r0 = 1;
         }
@@ -310,14 +386,22 @@ const MapGen = {
           massif(4 + rnd() * (W - 8), 4 + rnd() * (H - 8),
             (V.massif[0] + rnd() * V.massif[1]) * f / 2.6, V.massifE[0] + rnd() * V.massifE[1]);
       } else if (rnd() < V.cragChance) {
-        /* …and the OTHER inland landforms carry a little stone too (Part B3):
-           one or two modest crags, so most maps have a mountain for the ore
-           to sit against and the highlands stay the mountainous ones by a
-           clear margin. Deliberately small, and rolled at all only three
-           times in four — a bare valley is still a valley. */
+        /* …and the OTHER inland landforms carry stone too (Part B3; audit
+           MAP-02): one or two crags, so a map has a mountain for the ore to
+           sit against and the highlands stay the mountainous ones by a clear
+           margin. They used to be small and rolled three times in four, and
+           17% of all games had no mountain on the board at all — a third of
+           Valley·Classic. Now a crag is rolled on nearly every inland map
+           (Steppe keeps its open sky), big enough to read as a MOUNTAIN, and
+           RE-SEATED (bigger) when a lake painted first swallowed it, up
+           to six times, until the biggest stands `cragMin` tiles. */
         const crags = 1 + (rnd() < 0.4 ? 1 : 0);
-        for (let r = 0; r < crags; r++)
-          massif(5 + rnd() * (W - 10), 5 + rnd() * (H - 10), (16 + rnd() * 26) * f / 2.6 + 8, 1.2 + rnd() * 0.7);
+        const crag = (grow) => massif(5 + rnd() * (W - 10), 5 + rnd() * (H - 10),
+          ((V.cragArea[0] + rnd() * V.cragArea[1]) * f / 2.6 + 8) * grow, 1.2 + rnd() * 0.7);
+        for (let r = 0; r < crags; r++) crag(1);
+        // a re-seat is a BIGGER crag: what failed was a lake eating the
+        // first, so the second must outlast the same water
+        for (let k = 0; k < 6 && V.cragMin && bigMountain() < V.cragMin; k++) crag(1.4);
       }
     }
 
@@ -635,30 +719,39 @@ const MapGen = {
       seedNear(s.x, s.y, T.HILLS, scarce.terrain === T.HILLS ? 1 : V.nearStone[0] + (rnd() * V.nearStone[1] | 0));
       seedNear(s.x, s.y, T.FERTILE, scarce.terrain === T.FERTILE ? 1 : V.nearFood[0] + (rnd() * V.nearFood[1] | 0));
     }
-    // clear the immediate start plots
+    // clear the immediate start plots — ROUND about the hall's centre (the
+    // 2x2 footprint and its whole doorstep ring), never a square (MAP-06)
     for (const s of [player, ai])
-      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++)
-        t[id(s.x + dx, s.y + dy)] = T.GRASS;
+      for (let dy = -2; dy <= 3; dy++) for (let dx = -2; dx <= 3; dx++)
+        if ((dx - 0.5) * (dx - 0.5) + (dy - 0.5) * (dy - 0.5) <= 7.5 && MapGen.inB(s.x + dx, s.y + dy))
+          t[id(s.x + dx, s.y + dy)] = T.GRASS;
 
     /* OLD COUNTRY: someone was here before. Ancient rubble — the game's own
-       T.RUIN, the razed-building scar — strewn in singles and pairs across
-       the open ground, away from both seats. Painted at generation it is
-       never put on the decay clock, so unlike a battle scar it NEVER heals:
-       the old country stays old. Walkable, buildable-over, worth nothing —
-       pure testimony. */
-    if (V.ruinN) {
-      const wantRuin = Math.round(V.ruinN * f);
-      let laid = 0, rg = 0;
-      while (laid < wantRuin && rg++ < 400) {
-        const x = 3 + rnd() * (W - 6) | 0, y = 3 + rnd() * (H - 6) | 0;
-        if (t[id(x, y)] !== T.GRASS || nearStart(x, y)) continue;
-        t[id(x, y)] = T.RUIN;
-        if (rnd() < 0.5) {
-          const nx = x + ((rnd() * 3 | 0) - 1), ny = y + ((rnd() * 3 | 0) - 1);
-          if (MapGen.inB(nx, ny) && t[id(nx, ny)] === T.GRASS && !nearStart(nx, ny))
-            t[id(nx, ny)] = T.RUIN;
+       T.RUIN, the razed-building scar — laid as SITES (audit MAP-09): two to
+       four places where something stood, each a 2x2 core with a ragged
+       fall-off of rubble round it, away from both seats. One-tile squares
+       strewn about read as dug plots or a placeholder, not as the ruins of
+       an older people. Painted at generation it is never put on the decay
+       clock, so unlike a battle scar it NEVER heals: the old country stays
+       old. Walkable, buildable-over, worth nothing — pure testimony. */
+    if (V.ruinSites) {
+      const wantSites = V.ruinSites[0] + ((rnd() * (V.ruinSites[1] + 1)) | 0);
+      const sites = [];
+      let rg = 0;
+      while (sites.length < wantSites && rg++ < 400) {
+        const x = 3 + rnd() * (W - 7) | 0, y = 3 + rnd() * (H - 7) | 0;
+        if (Math.hypot(x - player.x, y - player.y) < 9 || Math.hypot(x - ai.x, y - ai.y) < 9) continue;
+        if (sites.some(q => Math.hypot(q.x - x, q.y - y) < 8)) continue;
+        let open = 0;
+        for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) if (t[id(x + dx, y + dy)] === T.GRASS) open++;
+        if (open < 4) continue;
+        sites.push({ x, y });
+        for (let dy = -1; dy <= 2; dy++) for (let dx = -1; dx <= 2; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (!MapGen.inB(nx, ny) || t[id(nx, ny)] !== T.GRASS || nearStart(nx, ny)) continue;
+          const core = dx >= 0 && dx <= 1 && dy >= 0 && dy <= 1;
+          if (core || rnd() < 0.42) t[id(nx, ny)] = T.RUIN;
         }
-        laid++;
       }
     }
 
@@ -795,50 +888,6 @@ const MapGen = {
         }
         return seen;
       };
-      /* the shortest DRY route a→b (never through water; optionally never
-         through `preserve` either, so a lane to a scarce wood cannot be
-         forced through its own stands), or null when only the sea connects
-         them. BFS on the tile lattice, deterministic — no rnd. */
-      const dryPath = (a, b, preserve, stopAdj) => {
-        const prev = new Int32Array(W * H).fill(-1);
-        const si = id(a.x, a.y), q2 = [si];
-        prev[si] = si;
-        for (let h2 = 0; h2 < q2.length; h2++) {
-          const cur = q2[h2], cx = cur % W, cy = (cur / W) | 0;
-          if ((cx === b.x && cy === b.y) ||
-              (stopAdj && Math.abs(cx - b.x) + Math.abs(cy - b.y) <= 1)) {
-            const path = [];
-            for (let i2 = cur; i2 !== si; i2 = prev[i2]) path.push(i2);
-            path.push(si);
-            return path.reverse();
-          }
-          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-            const nx = cx + dx, ny = cy + dy;
-            if (!MapGen.inB(nx, ny)) continue;
-            const ni = id(nx, ny);
-            if (prev[ni] >= 0 || t[ni] === T.WATER) continue;
-            if (preserve != null && t[ni] === preserve) continue;
-            prev[ni] = cur; q2.push(ni);
-          }
-        }
-        return null;
-      };
-      // clear a lane along a dry route with the same 3-tile L brush the old
-      // walk used; water is never touched. False when no dry route exists.
-      const carveDry = (a, b, preserve, stopAdj) => {
-        const path = dryPath(a, b, preserve, stopAdj);
-        if (!path) return false;
-        for (const i2 of path) {
-          const cx = i2 % W, cy = (i2 / W) | 0;
-          for (const [ox, oy] of [[0, 0], [1, 0], [0, 1]]) {
-            const nx = cx + ox, ny = cy + oy;
-            if (!MapGen.inB(nx, ny)) continue;
-            const v = t[id(nx, ny)];
-            if (v !== T.WATER && BLOCKS(v) && v !== preserve) t[id(nx, ny)] = T.GRASS;
-          }
-        }
-        return true;
-      };
       /* the classic randomized walk, in two flavours. carveWalk spares
          water (the sea is a fact now) but rolls the SAME rnd sequence the
          old carve did, so a map whose lanes never crossed water generates
@@ -861,7 +910,99 @@ const MapGen = {
           else if (y !== b.y) y += y < b.y ? 1 : -1;
         }
       };
-      const carveWalk = (a, b, preserve, stopAdj) => walk(a, b, preserve, stopAdj, false);
+      /* THE LANE IS ROUTED, NOT RULED (audit MAP-03 / MAP-07). The old
+         carve walked a monotone staircase and cleared everything on it —
+         MOUNTAIN included — and its BFS fallback reconstructed long
+         axis-aligned runs: ruler-straight canyons through a quarter of an
+         island's stone, straight corridors through woods. A lane is now the
+         CHEAPEST way through what stands there (Dijkstra): open ground is
+         cheap, a wood or a field dear, a mountain dearer still, so a range
+         is crossed only where nothing goes round it and then at its
+         narrowest — a PASS, not a canyon. A seeded low-frequency cost field
+         (a side stream: no rnd draws) bends the line so it meanders, and it
+         is brushed 1-2 wide with a ragged rim. Water is never touched;
+         `preserve` is never crossed. */
+      const laneSalt = hashSeed(String(seedStr) + '::lane');
+      const lat = (ix, iy) => {
+        let k = Math.imul(ix * 374761393 + iy * 668265263, 1) ^ laneSalt;
+        k = Math.imul(k ^ (k >>> 13), 1274126177);
+        return ((k ^ (k >>> 16)) >>> 8 & 0xffff) / 65536;
+      };
+      const laneNoise = (x, y) => {
+        const P = 4.5, gx = x / P, gy = y / P, x0 = Math.floor(gx), y0 = Math.floor(gy), fx = gx - x0, fy = gy - y0;
+        const a0 = lat(x0, y0) * (1 - fx) + lat(x0 + 1, y0) * fx;
+        const a1 = lat(x0, y0 + 1) * (1 - fx) + lat(x0 + 1, y0 + 1) * fx;
+        return a0 * (1 - fy) + a1 * fy;
+      };
+      const LANE_COST = v => v === T.MOUNTAIN ? 45 : v === T.FOREST ? 6 : (v === T.HILLS || v === T.FERTILE) ? 8 : 1;
+      const route = (a, b, preserve, stopAdj, costOf) => {
+        const cost = costOf || LANE_COST;
+        const dist = new Float64Array(W * H).fill(Infinity), prev = new Int32Array(W * H).fill(-1);
+        const heap = [];   // [d, i] binary min-heap
+        const push = (d, i) => {
+          heap.push([d, i]); let k = heap.length - 1;
+          while (k > 0) { const pk = (k - 1) >> 1; if (heap[pk][0] <= heap[k][0]) break; [heap[pk], heap[k]] = [heap[k], heap[pk]]; k = pk; }
+        };
+        const pop = () => {
+          const top = heap[0], last = heap.pop();
+          if (heap.length) {
+            heap[0] = last; let k = 0;
+            for (;;) {
+              const l = 2 * k + 1, r = l + 1; let m = k;
+              if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+              if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+              if (m === k) break;
+              [heap[m], heap[k]] = [heap[k], heap[m]]; k = m;
+            }
+          }
+          return top;
+        };
+        const si = id(a.x, a.y);
+        dist[si] = 0; prev[si] = si; push(0, si);
+        while (heap.length) {
+          const [d, cur] = pop();
+          if (d > dist[cur]) continue;
+          const cx = cur % W, cy = (cur / W) | 0;
+          if ((cx === b.x && cy === b.y) || (stopAdj && Math.abs(cx - b.x) + Math.abs(cy - b.y) <= 1)) {
+            const path = [];
+            for (let i2 = cur; i2 !== si; i2 = prev[i2]) path.push(i2);
+            path.push(si);
+            return path.reverse();
+          }
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = cx + dx, ny = cy + dy;
+            if (!MapGen.onBoard(nx, ny)) continue;
+            const ni = id(nx, ny), v = t[ni];
+            if (v === T.WATER || (preserve != null && v === preserve)) continue;
+            const nd = d + cost(v) * (0.6 + laneNoise(nx, ny));
+            if (nd < dist[ni]) { dist[ni] = nd; prev[ni] = cur; push(nd, ni); }
+          }
+        }
+        return null;
+      };
+      // clear a routed lane: the path itself, and on a seeded half of its
+      // tiles the next one across the line of travel — 1-2 wide, ragged
+      const carveRoute = (a, b, preserve, stopAdj, costOf) => {
+        const path = route(a, b, preserve, stopAdj, costOf);
+        if (!path) return false;
+        const clear = (cx, cy) => {
+          if (!MapGen.onBoard(cx, cy)) return;
+          const v = t[id(cx, cy)];
+          if (v !== T.WATER && BLOCKS(v) && v !== preserve) t[id(cx, cy)] = T.GRASS;
+        };
+        for (let k = 0; k < path.length; k++) {
+          const i2 = path[k], cx = i2 % W, cy = (i2 / W) | 0;
+          clear(cx, cy);
+          const j = path[Math.min(path.length - 1, k + 1)], pj = path[Math.max(0, k - 1)];
+          const horiz = Math.abs((j % W) - (pj % W)) >= Math.abs(((j / W) | 0) - ((pj / W) | 0));
+          if (lat(cx * 7 + 3, cy * 5 + 1) < 0.5) {
+            if (horiz) clear(cx, cy + (lat(cx, cy * 3) < 0.5 ? 1 : -1));
+            else clear(cx + (lat(cx * 3, cy) < 0.5 ? 1 : -1), cy);
+          }
+        }
+        return true;
+      };
+      const carveWalk = (a, b, preserve, stopAdj) => carveRoute(a, b, preserve, stopAdj);
       const carveSea = (a, b) => walk(a, b, null, false, true);
       // connected non-water areas, labeled — which shores belong together
       const landLabel = () => {
@@ -938,15 +1079,44 @@ const MapGen = {
       //     not — same rnd stream as ever, water spared now), then a BFS dry
       //     detour the straight walk cannot find, then the sea verdict, and
       //     the causeway only when the sea fails too.
-      let reach = flood(player.x, player.y);
-      if (!reach[id(ai.x, ai.y)]) {
-        carveWalk(player, ai, scarce.terrain);
-        reach = flood(player.x, player.y);
-        if (!reach[id(ai.x, ai.y)]) { carveWalk(player, ai); reach = flood(player.x, player.y); }
+      /* HIGH PASSES (audit MAP-04): the face is named for its passes and
+         had none — only the clamp's canyons. Two are cut ACROSS the
+         landmark wall, a third of its length either side of its middle,
+         from open ground on one flank to the other: routed like any lane
+         (so they meander) but with the rock made cheap, since crossing it
+         is the whole point. */
+      if (passWall && V.highPass) {
+        const { cx, cy, ca, sa, a0, b0 } = passWall;
+        const span = b0 + 3.5;
+        const open = (x, y) => MapGen.onBoard(x, y) && !BLOCKS(t[id(x, y)]);
+        const snap = (x, y) => {
+          x = Math.max(1, Math.min(W - 2, Math.round(x))); y = Math.max(1, Math.min(H - 2, Math.round(y)));
+          for (let r = 0; r <= 3; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++)
+            if (open(x + dx, y + dy)) return { x: x + dx, y: y + dy };
+          return null;
+        };
+        for (let k = 0; k < V.highPass; k++) {
+          const at = (k / Math.max(1, V.highPass - 1) - 0.5) * 0.7 * a0;
+          const px = cx + ca * at, py = cy + sa * at;
+          const e1 = snap(px - sa * span, py + ca * span), e2 = snap(px + sa * span, py - ca * span);
+          if (e1 && e2) carveRoute(e1, e2, null, false, v => v === T.MOUNTAIN ? 1.5 : LANE_COST(v));
+        }
       }
-      if (!reach[id(ai.x, ai.y)]) {
-        if (carveDry(player, ai, scarce.terrain) || carveDry(player, ai, null))
-          reach = flood(player.x, player.y);
+      let reach = flood(player.x, player.y);
+      /* ON ISLANDS THE SEA SPEAKS FIRST (audit MAP-03): the land carve ran
+         before the sea verdict, so on 79% of island maps it sliced the
+         central isle's mountain heart for a land route the sea was about to
+         make unnecessary. When the seats stand on different land masses
+         there is nothing to carve by land; the verdict below decides.
+         Islands only — inland, a lake must never stand in for an ocean. */
+      let landJoined = true;
+      if (landform === 'islands' && !reach[id(ai.x, ai.y)]) {
+        const LM0 = landLabel();
+        landJoined = LM0.lab[id(player.x, player.y)] === LM0.lab[id(ai.x, ai.y)];
+      }
+      if (!reach[id(ai.x, ai.y)] && landJoined) {
+        carveRoute(player, ai, scarce.terrain) || carveRoute(player, ai, null);
+        reach = flood(player.x, player.y);
       }
       if (!reach[id(ai.x, ai.y)]) {
         const LM = landLabel(), WB = waterLabel();
@@ -1000,7 +1170,7 @@ const MapGen = {
               const nx = near.x + dx, ny = near.y + dy;
               if (MapGen.inB(nx, ny) && again[id(nx, ny)]) { opened = true; break; }
             }
-            if (!opened) carveDry(s, near, rt, true);
+            if (!opened) carveRoute(s, near, rt, true);
           }
         }
       }

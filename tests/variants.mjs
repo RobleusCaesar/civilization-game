@@ -19,6 +19,10 @@
       save (no such fields) still loads and shows its landform.
    6. THE AI SURVIVES THE LEAN VARIANTS: on Steppe (wood-starved) and Great
       Forest (ground-starved) the rival still grows its town in a real sim.
+   7. EACH FACE SHOWS ITS NAME (audit W11): inland worlds stand a mountain,
+      Fjord's seats stay land-joined, the Great Lake is great, Foothills is
+      many crags, Old Country's ruins are sites, the seat is a clearing and
+      not a square, and the slowest xlarge foundings stay quick.
 
    Run after touching MapGen.generate's variant block, Screens.foundRun /
    the difficulty cards, or G.newGame's map fields.
@@ -277,6 +281,112 @@ const out = await p.evaluate(() => {
       ck('theRivalGrowsInTheGreatForest', gf.rivalAlive && gf.grew >= 3 && gf.villagers >= 3,
         '+' + gf.grew + ' works by day 45, ' + gf.villagers + ' hands, wood ' + gf.wood + ' [' + gf.kinds + ']');
     }
+  }
+
+  // ---- 7. EACH FACE SHOWS ITS NAME (audit W11: MAP-02/03/04/05/06/09) ----
+  // The checks above only ever proved a variant PLAYABLE; nothing held its
+  // character, which is how Fjord drifted to 60% sea-divided seats with the
+  // suite green. Measured over the same probed seeds per face, generation
+  // only (no world built), against the bar each fix was measured at.
+  {
+    const MV = MapGen.FORCE_VARIANT;
+    CFG.W = CFG.H = CFG.SIZES.medium;
+    const W = CFG.W, H = CFG.H;
+    const byLf = { valley: [], lakeland: [], highlands: [], islands: [] };
+    for (let i = 0; i < 4000 && Object.values(byLf).some(a => a.length < 24); i++) {
+      const sd = 'face-' + i;
+      const g0 = MapGen.generate(sd, 'moderate');
+      if (byLf[g0.landform].length < 24) byLf[g0.landform].push(sd);
+    }
+    const BL = v => v === T.WATER || v === T.MOUNTAIN || v === T.FOREST || v === T.HILLS || v === T.FERTILE;
+    const regions = (t, type) => {
+      const seen = new Uint8Array(W * H), sizes = [];
+      for (let i0 = 0; i0 < W * H; i0++) {
+        if (seen[i0] || t[i0] !== type) continue;
+        let n = 0; const q = [i0]; seen[i0] = 1;
+        for (let h = 0; h < q.length; h++) { const c = q[h], x = c % W, y = (c / W) | 0; n++;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            const j = ny * W + nx; if (seen[j] || t[j] !== type) continue; seen[j] = 1; q.push(j); } }
+        sizes.push(n);
+      }
+      return sizes;
+    };
+    const landJoined = (t, a, b2) => {
+      const seen = new Uint8Array(W * H), q = [a.y * W + a.x]; seen[q[0]] = 1;
+      for (let h = 0; h < q.length; h++) { const c = q[h], x = c % W, y = (c / W) | 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const j = ny * W + nx; if (seen[j] || t[j] === T.WATER) continue; seen[j] = 1; q.push(j); } }
+      return !!seen[b2.y * W + b2.x];
+    };
+    // the seat edge: a straight run of 7+ blocked tiles exactly on the old
+    // Chebyshev-5 box side, with open ground just inside it
+    const seatRuns = (t, s) => {
+      let n = 0;
+      for (const [ox, oy] of [[0, -5], [0, 5], [-5, 0], [5, 0]]) {
+        let cur = 0, best = 0;
+        for (let k = -5; k <= 5; k++) {
+          const x = ox ? s.x + ox : s.x + k, y = oy ? s.y + oy : s.y + k;
+          const ix = ox ? x - Math.sign(ox) : x, iy = oy ? y - Math.sign(oy) : y;
+          const inb = (u, v) => u >= 0 && v >= 0 && u < W && v < H;
+          const on = inb(x, y) && BL(t[y * W + x]) && !(inb(ix, iy) && BL(t[iy * W + ix]));
+          cur = on ? cur + 1 : 0; if (cur > best) best = cur;
+        }
+        if (best >= 7) n++;
+      }
+      return n;
+    };
+    const face = {};
+    try {
+      for (const lf of Object.keys(byLf)) for (const v of MapGen.VARIANTS[lf]) {
+        MapGen.FORCE_VARIANT = v;
+        const rows = byLf[lf].map(sd => {
+          const g = MapGen.generate(sd, 'moderate'), t = g.terrain;
+          const mr = regions(t, T.MOUNTAIN), rr = regions(t, T.RUIN);
+          let water = 0; for (const x of t) if (x === T.WATER) water++;
+          return { big: mr.length ? Math.max(...mr) : 0, crags: mr.filter(z => z >= 6).length,
+            ruinSites: rr.filter(z => z >= 4).length, water: water / (W * H),
+            joined: landJoined(t, g.spawns.player, g.spawns.ai),
+            runs: seatRuns(t, g.spawns.player) + seatRuns(t, g.spawns.ai) };
+        });
+        face[lf + '·' + v] = rows;
+      }
+    } finally { MapGen.FORCE_VARIANT = MV; }
+    const share = (rows, f) => rows.filter(f).length / rows.length;
+    const med = (rows, f) => { const a = rows.map(f).sort((x, y) => x - y); return a[(a.length / 2) | 0]; };
+    // MAP-02: an inland map other than Steppe stands a MOUNTAIN (22+ tiles)
+    const inland = ['valley·classic', 'valley·greatforest', 'valley·oldcountry',
+      'lakeland·classic', 'lakeland·delta', 'lakeland·greatlake', 'lakeland·pondlands'];
+    const mtnShare = inland.map(k => [k, share(face[k], r => r.big >= 22)]);
+    ck('anInlandWorldStandsAMountain', mtnShare.every(([, z]) => z >= 0.7),
+      mtnShare.map(([k, z]) => k + ' ' + Math.round(100 * z) + '%').join(', ') + ' (was 8-54%)');
+    // MAP-04: Fjord's causeways survive its inlets
+    const fj = share(face['islands·fjord'], r => r.joined);
+    ck('aFjordsSeatsStayJoinedByLand', fj >= 0.9, Math.round(100 * fj) + '% land-joined (was 40%)');
+    // MAP-04: the Great Lake is great
+    const gl = med(face['lakeland·greatlake'], r => r.water), vc = med(face['valley·classic'], r => r.water);
+    ck('theGreatLakeIsGreat', gl >= 0.24 && gl >= vc + 0.06,
+      'water ' + (100 * gl).toFixed(1) + '% against Valley·Classic ' + (100 * vc).toFixed(1) + '% (was 19.8 / 17.0)');
+    // MAP-04: Foothills stands many low crags
+    const fh = med(face['highlands·foothills'], r => r.crags);
+    ck('foothillsAreManyCrags', fh >= 4, 'median ' + fh + ' crags of 6+ tiles (was 2)');
+    // MAP-09: Old Country's ruins stand as SITES, not strewn single tiles
+    const oc = share(face['valley·oldcountry'], r => r.ruinSites >= 2);
+    ck('oldCountryRuinsAreSites', oc >= 0.9, Math.round(100 * oc) + '% of maps carry 2+ sites of 4+ tiles');
+    // MAP-06: the seat is a clearing — no ruler-straight edge round the hall
+    const sides = Object.values(face).flat().length * 8;
+    const runs = Object.values(face).flat().reduce((a, r) => a + r.runs, 0);
+    ck('theSeatIsAClearingNotASquare', runs / sides < 0.03,
+      runs + ' straight 7+ runs on ' + sides + ' seat sides (' + (100 * runs / sides).toFixed(1) + '%; was ~21%)');
+    // MAP-05: the slowest audit foundings (xlarge Highlands Karst) stay quick
+    CFG.W = CFG.H = CFG.SIZES.xlarge;
+    let worst = 0;
+    for (const sd of ['782853044', '372416287', '994305603', '973548444']) {
+      const t0 = performance.now(); MapGen.generate(sd, 'hard'); worst = Math.max(worst, performance.now() - t0);
+    }
+    CFG.W = CFG.H = CFG.SIZES.medium;
+    ck('theSlowestFoundingsStayQuick', worst < 600, 'worst ' + Math.round(worst) + 'ms (was 2.1-3.4s)');
   }
 
   return { res, fails };

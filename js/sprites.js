@@ -1337,7 +1337,9 @@ const Sprites = {
     [T.GRASS]: AP.grass[2], [T.FOREST]: AP.grass[2], [T.HILLS]: AP.grass[2],
     [T.FERTILE]: AP.grass[2], [T.STUMPS]: AP.grass[2], [T.PEBBLES]: AP.grass[2],
     [T.MOUNTAIN]: AP.grass[2],
-    [T.BARREN]: AP.soil[3], [T.RUIN]: AP.stone[1], [T.CAMP]: AP.grass[2],   // camp ground lives on grass now — no soil fringe bleeding past the tent
+    [T.BARREN]: AP.soil[3],
+    [T.RUIN]: AP.grass[2],   // a grey ring dithered onto the meadow read as a placeholder tile (MAP-09)
+    [T.CAMP]: AP.grass[2],   // camp ground lives on grass now — no soil fringe bleeding past the tent
     [T.GOLDORE]: AP.grass[2],   // the seam stands ON grass, like the other nodes
   };
 
