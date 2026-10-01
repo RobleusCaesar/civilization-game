@@ -2413,9 +2413,19 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       S.paused = true;                         // and the scan stays inside the
       for (let e = 2; e < 26 && clampedEpochs < 6; e += 3) {   // roll's own box, so
         R.fishClock = e * LAND.WAVE_EVERY + 1.1; R._waveEpoch = -1e9;   // nothing else
-        LAND.WAVE_ALPHA = 0; R.draw(0);                                 // that animates
-        const A = R.g.getImageData(0, 0, cw, ch).data;                  // pollutes the diff
-        LAND.WAVE_ALPHA = wasWA; R._waveEpoch = -1e9; R.draw(0);
+        /* …and the WALL CLOCK stands still across the pair: smoke, critters
+           and sparkle drift on performance.now even with the sim paused, and
+           on a loaded host the gap between the two draws grew long enough
+           for a passing critter to leave a few grass-coloured pixels in the
+           diff — read as foam on dry land (8 px, once, under a full sweep) */
+        const pnow = performance.now, tFix = pnow.call(performance);
+        performance.now = () => tFix;
+        let A;
+        try {
+          LAND.WAVE_ALPHA = 0; R.draw(0);                               // that animates
+          A = R.g.getImageData(0, 0, cw, ch).data;                      // pollutes the diff
+          LAND.WAVE_ALPHA = wasWA; R._waveEpoch = -1e9; R.draw(0);
+        } finally { performance.now = pnow; LAND.WAVE_ALPHA = wasWA; }
         const wp2 = R._wavePick;
         if (!wp2) continue;
         const B = R.g.getImageData(0, 0, cw, ch).data;
