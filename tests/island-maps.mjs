@@ -50,8 +50,10 @@ const v = await p.evaluate(() => {
     // landmass labels
     const lab = new Int32Array(W * H).fill(-1);
     const areas = [];
+    // the outer ring is off-map void no unit can walk (MapGen.onBoard), so a
+    // landmass joined only along it is two landmasses
     for (let i = 0; i < W * H; i++) {
-      if (t[i] === T.WATER || lab[i] >= 0) continue;
+      if (t[i] === T.WATER || lab[i] >= 0 || !MapGen.onBoard(i % W, (i / W) | 0)) continue;
       const q = [i]; lab[i] = areas.length;
       let n = 0;
       for (let h = 0; h < q.length; h++) {
@@ -59,7 +61,7 @@ const v = await p.evaluate(() => {
         n++;
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const nx = cx + dx, ny = cy + dy;
-          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          if (!MapGen.onBoard(nx, ny)) continue;
           const ni = idx(nx, ny);
           if (lab[ni] >= 0 || t[ni] === T.WATER) continue;
           lab[ni] = lab[i]; q.push(ni);

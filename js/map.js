@@ -57,6 +57,7 @@ const MapGen = {
   },
 
   generate(seedStr, mode) {
+    const LEGACY = typeof window !== 'undefined' && !!window.__CLASSIC_WORLDS;   // tests only — see the variant roll
     const rnd = mulberry32(hashSeed(String(seedStr)));
     const W = CFG.W, H = CFG.H;
     const f = (W * H) / 1600;               // area factor vs the classic 40x40
@@ -129,7 +130,9 @@ const MapGen = {
       };
       return [mk(), mk()];
     })();
-    const nearStart = (x, y) => seatShape[0](x, y, player.x, player.y) || seatShape[1](x, y, ai.x, ai.y);
+    const nearStart = LEGACY
+      ? (x, y) => (Math.abs(x - player.x) < 5 && Math.abs(y - player.y) < 5) || (Math.abs(x - ai.x) < 5 && Math.abs(y - ai.y) < 5)
+      : (x, y) => seatShape[0](x, y, player.x, player.y) || seatShape[1](x, y, ai.x, ai.y);
 
     // every valley is short on one resource — finding it matters
     const SCARCE = [
@@ -167,6 +170,13 @@ const MapGen = {
        byte-identical to that generator, so those fixture worlds regenerate
        exactly. Never set it outside tests/; the other fifteen worlds are
        held by their own contract (tests/variants.mjs). */
+    /* …and __CLASSIC_WORLDS (TESTS ONLY) goes further: it regenerates the
+       PRE-W11 fixture worlds byte-identically too — the box seat, the old
+       crag dials, the staircase lane carve and the rim-blind reach flood.
+       The suites that set it measure the renderer and the rival on fixed
+       geometry, not the generator; the shipping generator's own guarantees
+       are held by tests/variants.mjs and tests/island-maps.mjs. (LEGACY is
+       declared at the top of generate: the seat predicate needs it first.) */
     const vrnd = mulberry32(hashSeed(String(seedStr) + '::variant'));
     const variant = MapGen.FORCE_VARIANT ||
       (typeof window !== 'undefined' && window.__CLASSIC_WORLDS ? 'classic' : null) ||
@@ -218,6 +228,7 @@ const MapGen = {
       archipelago: { wildN: 5, wildSize: 24, isleMid: 30, joinChance: 0.15 },
       greatisle:   { isleMid: 110, joinAlways: 1, wildN: 3, wildSize: 18 },
     }[variant] || {});
+    if (LEGACY) Object.assign(V, { cragChance: 0.75, cragArea: [16, 26], cragMin: 0 });
 
     /* A MASSIF, NOT A SPINE. The old mountain painter walked a ~3-wide brush
        across the map, which laid WALLS: measured over every mountain-bearing
@@ -723,7 +734,7 @@ const MapGen = {
     // 2x2 footprint and its whole doorstep ring), never a square (MAP-06)
     for (const s of [player, ai])
       for (let dy = -2; dy <= 3; dy++) for (let dx = -2; dx <= 3; dx++)
-        if ((dx - 0.5) * (dx - 0.5) + (dy - 0.5) * (dy - 0.5) <= 7.5 && MapGen.inB(s.x + dx, s.y + dy))
+        if ((LEGACY ? dx <= 2 && dy <= 2 : (dx - 0.5) * (dx - 0.5) + (dy - 0.5) * (dy - 0.5) <= 7.5) && MapGen.inB(s.x + dx, s.y + dy))
           t[id(s.x + dx, s.y + dy)] = T.GRASS;
 
     /* OLD COUNTRY: someone was here before. Ancient rubble — the game's own
@@ -873,6 +884,12 @@ const MapGen = {
     {
       const BLOCKS = v => v === T.WATER || v === T.MOUNTAIN || v === T.FOREST || v === T.HILLS || v === T.FERTILE;
       const open4 = i => !BLOCKS(t[i]);
+      /* NOTHING IS WALKED IN THE BLACK: the outer ring is off-map void that no
+         unit may stand on (MapGen.onBoard), so neither the reach flood nor the
+         landmass labels may route through it. Both used inB, which INCLUDES the
+         rim — so a pair of seats joined only along the void read as "reachable
+         by land" and nothing was carved (two Lakeland·Delta seeds in the
+         island-maps sweep: the new lane router refuses the rim and exposed it). */
       const flood = (sx, sy) => {
         const seen = new Uint8Array(W * H);
         const si = id(sx, sy); const q = [si]; seen[si] = 1; let head = 0;
@@ -880,13 +897,57 @@ const MapGen = {
           const cur = q[head++], cx = cur % W, cy = (cur / W) | 0;
           for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
             const nx = cx + dx, ny = cy + dy;
-            if (!MapGen.inB(nx, ny)) continue;
+            if (!(LEGACY ? MapGen.inB(nx, ny) : MapGen.onBoard(nx, ny))) continue;
             const ni = id(nx, ny);
             if (seen[ni] || !open4(ni)) continue;
             seen[ni] = 1; q.push(ni);
           }
         }
         return seen;
+      };
+      /* (LEGACY only — the pre-W11 lane, kept for the fixture worlds) the shortest DRY route a→b (never through water; optionally never
+         through `preserve` either, so a lane to a scarce wood cannot be
+         forced through its own stands), or null when only the sea connects
+         them. BFS on the tile lattice, deterministic — no rnd. */
+      const dryPath = (a, b, preserve, stopAdj) => {
+        const prev = new Int32Array(W * H).fill(-1);
+        const si = id(a.x, a.y), q2 = [si];
+        prev[si] = si;
+        for (let h2 = 0; h2 < q2.length; h2++) {
+          const cur = q2[h2], cx = cur % W, cy = (cur / W) | 0;
+          if ((cx === b.x && cy === b.y) ||
+              (stopAdj && Math.abs(cx - b.x) + Math.abs(cy - b.y) <= 1)) {
+            const path = [];
+            for (let i2 = cur; i2 !== si; i2 = prev[i2]) path.push(i2);
+            path.push(si);
+            return path.reverse();
+          }
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = cx + dx, ny = cy + dy;
+            if (!MapGen.inB(nx, ny)) continue;
+            const ni = id(nx, ny);
+            if (prev[ni] >= 0 || t[ni] === T.WATER) continue;
+            if (preserve != null && t[ni] === preserve) continue;
+            prev[ni] = cur; q2.push(ni);
+          }
+        }
+        return null;
+      };
+      // clear a lane along a dry route with the same 3-tile L brush the old
+      // walk used; water is never touched. False when no dry route exists.
+      const carveDry = (a, b, preserve, stopAdj) => {
+        const path = dryPath(a, b, preserve, stopAdj);
+        if (!path) return false;
+        for (const i2 of path) {
+          const cx = i2 % W, cy = (i2 / W) | 0;
+          for (const [ox, oy] of [[0, 0], [1, 0], [0, 1]]) {
+            const nx = cx + ox, ny = cy + oy;
+            if (!MapGen.inB(nx, ny)) continue;
+            const v = t[id(nx, ny)];
+            if (v !== T.WATER && BLOCKS(v) && v !== preserve) t[id(nx, ny)] = T.GRASS;
+          }
+        }
+        return true;
       };
       /* the classic randomized walk, in two flavours. carveWalk spares
          water (the sea is a fact now) but rolls the SAME rnd sequence the
@@ -1002,14 +1063,15 @@ const MapGen = {
         }
         return true;
       };
-      const carveWalk = (a, b, preserve, stopAdj) => carveRoute(a, b, preserve, stopAdj);
+      const carveWalk = LEGACY ? (a, b, preserve, stopAdj) => walk(a, b, preserve, stopAdj, false)
+        : (a, b, preserve, stopAdj) => carveRoute(a, b, preserve, stopAdj);
       const carveSea = (a, b) => walk(a, b, null, false, true);
       // connected non-water areas, labeled — which shores belong together
       const landLabel = () => {
         const lab = new Int32Array(W * H).fill(-1);
         const area = [];
         for (let i2 = 0; i2 < W * H; i2++) {
-          if (t[i2] === T.WATER || lab[i2] >= 0) continue;
+          if (t[i2] === T.WATER || lab[i2] >= 0 || (!LEGACY && !MapGen.onBoard(i2 % W, (i2 / W) | 0))) continue;
           const q2 = [i2]; lab[i2] = area.length;
           let n2 = 0;
           for (let h2 = 0; h2 < q2.length; h2++) {
@@ -1017,7 +1079,7 @@ const MapGen = {
             n2++;
             for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
               const nx = cx + dx, ny = cy + dy;
-              if (!MapGen.inB(nx, ny)) continue;
+              if (!(LEGACY ? MapGen.inB(nx, ny) : MapGen.onBoard(nx, ny))) continue;
               const ni = id(nx, ny);
               if (lab[ni] >= 0 || t[ni] === T.WATER) continue;
               lab[ni] = lab[i2]; q2.push(ni);
@@ -1110,11 +1172,21 @@ const MapGen = {
          there is nothing to carve by land; the verdict below decides.
          Islands only — inland, a lake must never stand in for an ocean. */
       let landJoined = true;
-      if (landform === 'islands' && !reach[id(ai.x, ai.y)]) {
+      if (!LEGACY && landform === 'islands' && !reach[id(ai.x, ai.y)]) {
         const LM0 = landLabel();
         landJoined = LM0.lab[id(player.x, player.y)] === LM0.lab[id(ai.x, ai.y)];
       }
-      if (!reach[id(ai.x, ai.y)] && landJoined) {
+      if (LEGACY) {
+        if (!reach[id(ai.x, ai.y)]) {
+          carveWalk(player, ai, scarce.terrain);
+          reach = flood(player.x, player.y);
+          if (!reach[id(ai.x, ai.y)]) { carveWalk(player, ai); reach = flood(player.x, player.y); }
+        }
+        if (!reach[id(ai.x, ai.y)]) {
+          if (carveDry(player, ai, scarce.terrain) || carveDry(player, ai, null))
+            reach = flood(player.x, player.y);
+        }
+      } else if (!reach[id(ai.x, ai.y)] && landJoined) {
         carveRoute(player, ai, scarce.terrain) || carveRoute(player, ai, null);
         reach = flood(player.x, player.y);
       }
@@ -1170,7 +1242,7 @@ const MapGen = {
               const nx = near.x + dx, ny = near.y + dy;
               if (MapGen.inB(nx, ny) && again[id(nx, ny)]) { opened = true; break; }
             }
-            if (!opened) carveRoute(s, near, rt, true);
+            if (!opened) (LEGACY ? carveDry : carveRoute)(s, near, rt, true);
           }
         }
       }

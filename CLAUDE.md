@@ -3967,6 +3967,19 @@ max(1 + its distinct neighbours, the largest other) — identical picks, 256
 maps byte-identical, the slowest 3,440ms → 44ms. Every one of these changes
 the rnd stream, so every seed's world re-deals once; the tutorial's forced
 Valley·Classic is untouched as a RULE.
+**NOTHING IS WALKED IN THE BLACK, HERE EITHER**: the clamp's reach flood and
+landmass labels used `inB`, which includes the off-map rim, so seats joined
+only along the void read as "reachable by land" and nothing was carved (two
+Lakeland·Delta seeds; the rim-refusing router exposed it). Both ask
+`MapGen.onBoard` now, and so does tests/island-maps.mjs's own labelling.
+**`__CLASSIC_WORLDS` keeps its promise** (`LEGACY` in `generate`, TESTS
+ONLY): the four suites that set it (land, rival-strength, wonder,
+worked-ground) measure the renderer and the rival on FIXED fixture geometry,
+so under the flag the generator keeps every pre-W11 path — box seat, old
+crag dials, staircase walk + BFS lane, rim-blind flood — and regenerates
+their worlds byte-identically (198 of 198 measured). The shipping
+generator's guarantees are held by variants.mjs and island-maps.mjs, which
+never set it.
 
 **HILLS ARE NOT SHADED AT ALL — A DEPOSIT LIES ON THE MEADOW** (operator
 ruling, audit ORE-01..04, pinned by `aDepositLiesOnTheMeadow` and
