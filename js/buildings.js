@@ -691,6 +691,12 @@ const Bld = {
     if (d.onWorked != null) {
       if (S.map.terrain[MapGen.idx(x, y)] !== d.onWorked)
         return { ok: false, why: d.whyGround || 'That ground was never worked' };
+      /* FIRE-KILLED GROUND IS NOBODY'S CLEARING (the dry summer): the worked-
+         ground rule says the resource must be TAKEN by hand, so stumps the
+         wildfire left (maker's mark 'F') carry no camp until they regrow */
+      const wb = S.map.workedBy;
+      if (wb && wb[MapGen.idx(x, y)] === 'F')
+        return { ok: false, why: 'Fire killed this stand, nobody felled it — a camp goes on a stand you cut yourself' };
     }
     if (d.onHunted && !G.huntedAt(x, y))
       return { ok: false, why: d.whyGround || 'No game has ever fallen here' };
@@ -1920,11 +1926,17 @@ const Bld = {
     return null;
   },
 
-  damage(b, amt) {
+  /* `cause` 'fire' is THE WILDS' fire (the dry summer), not an attack: it
+     burns a building down like any other, ash and all, but it rings no
+     alarm, breaches no line (S.breachedP opens the positive specials),
+     credits nobody's razed score, stamps no AI loss or barbarian-ease
+     ledger — nobody did this, and no ledger may say somebody did. */
+  damage(b, amt, cause) {
     if (!this.attackable(b)) return;   // the seam's works change hands, they never come down
+    const wild = cause === 'fire';
     b.hp -= amt;
     // ring the rival's town alarm — idle soldiers converge (see AI.daily)
-    if (b.owner === 'A' && S.ai) S.ai.alarm = { x: b.x, y: b.y, day: S.day };
+    if (b.owner === 'A' && S.ai && !wild) S.ai.alarm = { x: b.x, y: b.y, day: S.day };
     if (b.hp <= 0) {
       const name = this.def(b.key).name, owner = b.owner, key = b.key, underCon = b.construction > 0;
       // a burned-down building leaves an ASH PILE that blocks building on its
@@ -1949,6 +1961,11 @@ const Bld = {
       // broken quay washes into open water, and dust over water reads wrong.
       if (window.R && R.startDestructPoof && key !== 'dock') R.startDestructPoof(b);
       this.removeToRuin(b);
+      if (wild) {
+        if (owner === 'P' || G.visibleAt(b.x, b.y)) G.log('🔥 ' + (owner === 'P' ? 'Your ' : 'The rival\'s ') + name + ' burned down in the wildfire.', owner === 'P');
+        if (owner === 'P' && key === 'tc') G.end(false, 'Your Town Center burned down.', 'tc_destroyed');
+        return;
+      }
       /* the loss ledger the barbarian ease reads (G.noteWorkLost) — finished
          non-fortification works only: a razed wall section is not a town
          coming apart, and a burned work SITE never was a work */

@@ -8502,6 +8502,48 @@ const R = {
     }
   },
 
+  /* THE DRY SUMMER on screen (G.fireTick): every burning tree wears the
+     shipped flame strips — small as it catches, the big blaze through the
+     middle of its burn, small again as it gutters — under the burn smoke
+     column the buildings use; a jagged bolt for the strike; rain as
+     screen-space streaks. Drawn on EXPLORED ground (a forest fire is seen
+     from far off by its smoke), culled to the camera. Render-only. */
+  drawWildfire(g) {
+    const F = S.wildfire;
+    if (!F || !F.phase) return;
+    const TL = CFG.TILE, W = CFG.W, C = CFG.WILDFIRE, v = this.viewTiles();
+    const beat = (performance.now() / 120) | 0;
+    for (const k in F.burning) {
+      const i = +k, x = i % W, y = (i / W) | 0;
+      if (x < v.x0 - 1 || x > v.x1 + 1 || y < v.y0 - 1 || y > v.y1 + 2) continue;
+      if (!S.map.explored[i]) continue;
+      const f = F.burning[k] / C.burnS, big = f > 0.15 && f < 0.8;
+      const sz = TL * (big ? 0.95 : 0.55);
+      this.drawBurnSmoke(g, x * TL + TL / 2, y * TL + TL * 0.1, TL, big ? 1 : 0, (i * 0.37) % 1);
+      Assets.drawSprite(g, (big ? 'misc/flameBig/' : 'misc/flameSmall/') + ((beat + i) % 4),
+        x * TL + (TL - sz) / 2, y * TL + TL * 0.95 - sz, { w: sz, h: sz });
+    }
+    if (F.bolt && S.map.explored[F.bolt.y * W + F.bolt.x]) {
+      const bx = F.bolt.x * TL + TL / 2, by = F.bolt.y * TL + TL / 2;
+      g.strokeStyle = 'rgba(240,244,255,' + (1 - F.bolt.t / 0.5).toFixed(2) + ')'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(bx - 6, by - TL * 4);
+      for (let s = 1; s <= 6; s++) g.lineTo(bx + ((s * 37) % 11 - 5), by - TL * 4 + s * TL * 4 / 6);
+      g.stroke();
+    }
+    if (F.phase === 'rain') {
+      const a = Math.min(1, F.t / 2) * Math.min(1, (C.rainS - F.t) / 2);
+      g.save(); g.setTransform(1, 0, 0, 1, 0, 0);
+      g.strokeStyle = 'rgba(190,205,230,' + (0.35 * a).toFixed(3) + ')'; g.lineWidth = 1;
+      const Wc = this.cv.width, Hc = this.cv.height, ph = (performance.now() / 4) % Hc;
+      g.beginPath();
+      for (let n = 0; n < 90; n++) {
+        const rx = (Math.imul(n + 1, 0x9e3779b1) >>> 0) % Wc, ry = ((Math.imul(n + 5, 0x85ebca6b) >>> 0) % Hc + ph) % Hc;
+        g.moveTo(rx, ry); g.lineTo(rx - 3, ry + 9);
+      }
+      g.stroke(); g.restore();
+    }
+  },
+
   /* ============ THE STAND COMES DOWN (tests/tree-fall.mjs) ============
      Felling a wood is the most-watched work in the early game, and until now
      its payoff was a tile POPPING from canopy to stumps between two frames.
@@ -12163,6 +12205,7 @@ const R = {
       g.restore();
     }
 
+    this.drawWildfire(g);
     // buildings coming DOWN — over the units, so the dust rolls across them
     this.drawTreeFalls(g, dt);
     this.drawHorns(g, dt);

@@ -228,6 +228,23 @@ by its own level-3 tower — and a tribe it catches unwarned downs tools for
 that day (`cut`, read in `Bld.dailyProduction` × `workMult`). The tint is
 the dusk overlay pushed to deep dusk plus a sparse field of screen-fixed
 1px stars; no flash, the HUD stays bright. Scores `eclipseEndured`.
+**THE DRY SUMMER** (`wildfire`, all modes, `CFG.WILDFIRE`, specials.mjs §3c):
+eligible only on a world with a GREAT WOOD (`elig: 'woodStand'` →
+`G.fireSite`, a generation fact: the biggest forest region of `standMin`+
+tiles, lit at its tree farthest from any building and at least `clearB`
+from all of them). The day and the wind are hashed off the seed string;
+a two-day dry warning, then a lightning bolt, and the fire WALKS the wood —
+`spreadS` per step, downwind first, on `G.rand` so a seed burns the same
+way twice — capped per mode (`cap`) and put out by the rain after `rainS`.
+A burnt tile is STUMPS stamped `workedBy: 'F'` on the regrowth clock, and
+**fire-killed ground is nobody's clearing**: `Bld.stationGround` refuses
+it in its own words, because a lumber camp belongs on a stand somebody
+cut. It burns a building only where the wood touches one (`bldDps`, never
+a wall, gate or tower, never on Calm), and **it blames nobody**: damage
+cause `'fire'` skips the attack alarm, `breachedP`, razed credit, the
+work-lost ledger and the chief's `noteLoss` — a summer is not a raid.
+Drawn by `R.drawWildfire` (the flame strips, a smoke column, the bolt, the
+rain); scores `wildfireEndured`.
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
 perimeter line may only be MADE of `wall` and `gate` — it never counts an

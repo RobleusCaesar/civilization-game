@@ -97,8 +97,8 @@ const out = await p.evaluate(() => {
       // the rate, through the real newGame
       let armed = 0, spect = 0; const M = 160;
       for (let i = 0; i < M; i++) { fresh('sprate-' + i); if (S.special) { armed++; if (S.special === 'dragon' || S.special === 'kraken') spect++; } }
-      ck('aboutChanceOfRunsRollAnEvent', armed / M > 0.34 && armed / M < 0.56 && spect / Math.max(1, armed) > 0.4,
-        armed + '/' + M + ' armed (' + Math.round(100 * armed / M) + '%, chance ' + CFG.SPECIALS.chance + '), ' + spect + ' of them the dragon or the kraken');
+      ck('aboutChanceOfRunsRollAnEvent', armed / M > 0.34 && armed / M < 0.56 && spect / Math.max(1, armed) > 0.33,
+        armed + '/' + M + ' armed (' + Math.round(100 * armed / M) + '%, chance ' + CFG.SPECIALS.chance + '), ' + spect + ' of them the dragon or the kraken (weight 3 each; a uniform pick over the pool would give about a quarter)');
     }
 
     // ---------------- 1b. NO DEAD ROLLS ----------------
@@ -292,14 +292,72 @@ const out = await p.evaluate(() => {
         JSON.stringify({ early, warned, cut: S.eclipse.cut }));
     }
 
+    // ---------------- 3c. THE DRY SUMMER ----------------
+    {
+      const C = CFG.WILDFIRE;
+      const days = []; for (let i = 0; i < 40; i++) days.push(G.fireDayOf('fire-' + i));
+      const pure = days.every(d => d >= C.dayMin && d <= C.dayMax) && G.fireDayOf('fire-2') === days[2] && new Set(days).size > 20;
+      // eligibility: no wood, no summer; a wood hard by the hall cannot be the site
+      fresh('spx-fire'); flat();
+      const tc = Bld.tcOf('P'), hx = tc.x, hy = tc.y;
+      const wood = (x0, y0, w, h) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) { const i = y * CFG.W + x; S.map.terrain[i] = T.FOREST; S.map.resAmount[i] = 100; } };
+      const bare = !G.specialElig('wildfire');
+      wood(hx + 3, hy - 2, 4, 4);                         // 16 trees, all within 8 of the hall
+      const near = !G.specialElig('wildfire');
+      flat();
+      const ox = hx < CFG.W / 2 ? hx + 10 : hx - 18, oy = Math.max(2, Math.min(CFG.H - 8, hy - 2));
+      wood(ox, oy, 8, 5);                                  // the great wood (40 trees)
+      wood(ox + 9, oy, 2, 5);                              // across a one-tile firebreak
+      const ok = G.specialElig('wildfire');
+      ck('aDrySummerNeedsAGreatWood', pure && bare && near && ok, JSON.stringify({ pure, bare, near, ok }));
+
+      // the burn: a house at the wood's edge, the hall far off
+      const hb = Bld.place('P', 'house', ox - 1, oy + 2, { free: true, instant: true }); if (hb.construction > 0) Bld.finish(hb);
+      const hp0 = hb.hp, razed0 = S.stats.razed, lost0 = (S.workLost && S.workLost.P || []).length;
+      S.breachedP = false; S.special = 'wildfire'; S.day = 90;
+      S.wildfire = { avail: true, day: 90, warned: true, phase: null, burning: {}, burnt: 0, t: 0, spreadT: 0, wind: [-1, 0], done: false };   // blowing toward the house
+      toasts.length = 0; G.fireDaily();
+      const lit = S.wildfire.phase === 'burn' && toasts.some(m => /Lightning/.test(m)) && S.specialDay === 90;
+      for (let i = 0; i < 2400 && !S.wildfire.done; i++) G.fireTick(0.25);
+      const F = S.wildfire;
+      let stumps = 0, marked = 0, regrows = 0;
+      for (let y = oy; y < oy + 5; y++) for (let x = ox; x < ox + 8; x++) {
+        const i = y * CFG.W + x;
+        if (S.map.terrain[i] === T.STUMPS) { stumps++; if (S.map.workedBy[i] === 'F') marked++; if (S.map.decay && S.map.decay[i]) regrows++; }
+      }
+      let across = 0; for (let y = oy; y < oy + 5; y++) for (let x = ox + 9; x < ox + 11; x++) if (S.map.terrain[y * CFG.W + x] === T.FOREST) across++;
+      ck('theFireWalksTheWoodAndStopsAtTheBreak', lit && F.done && F.burnt <= C.cap.moderate && stumps === F.burnt && stumps >= 20 && across === 10 && S.stats.wildfireEndured === 1,
+        JSON.stringify({ lit, done: F.done, burnt: F.burnt, stumps, across, cap: C.cap.moderate }));
+      const houseHit = !S.buildings.includes(hb) || hb.hp < hp0;
+      ck('itBurnsAHouseButBlamesNobody', houseHit && S.breachedP === false && S.stats.razed === razed0 &&
+        (S.workLost && S.workLost.P || []).length === lost0,
+        JSON.stringify({ houseHit, breached: S.breachedP, razed: S.stats.razed - razed0 }));
+      let sx = -1, sy = -1;
+      for (let y = oy; y < oy + 5 && sx < 0; y++) for (let x = ox; x < ox + 8; x++) if (S.map.terrain[y * CFG.W + x] === T.STUMPS) { sx = x; sy = y; break; }
+      const camp = Bld.stationGround('lumber', sx, sy);
+      ck('andFireKilledGroundIsNobodysClearing', marked === stumps && regrows === stumps && !camp.ok && /Fire killed/.test(camp.why),
+        JSON.stringify({ marked, regrows, stumps, why: camp.why }));
+
+      // Calm burns the wood and spares the town
+      fresh('spx-fire2'); flat(); S.mode = 'calm';
+      wood(ox, oy, 8, 5);
+      const hb2 = Bld.place('P', 'house', ox - 1, oy + 2, { free: true, instant: true }); if (hb2.construction > 0) Bld.finish(hb2);
+      const hp2 = hb2.hp;
+      S.wildfire = { avail: true, day: S.day, warned: true, phase: null, burning: {}, burnt: 0, t: 0, spreadT: 0, wind: [-1, 0], done: false };
+      G.fireDaily();
+      for (let i = 0; i < 2400 && !S.wildfire.done; i++) G.fireTick(0.25);
+      ck('calmBurnsTheWoodButSparesTheTown', S.wildfire.done && S.wildfire.burnt <= C.cap.calm && hb2.hp === hp2,
+        JSON.stringify({ burnt: S.wildfire.burnt, cap: C.cap.calm, hp: hb2.hp + '/' + hp2 }));
+    }
+
     // ---------------- 4. SCORE AND THE RUN REPORT ----------------
     {
       fresh('spx-score');
       const st = S.stats;
-      st.sonsAnswered = st.cacheDug = st.winterEndured = st.plagueEndured = st.krakenSlain = st.dragonSeen = st.eclipseEndured = 1;
+      st.sonsAnswered = st.cacheDug = st.winterEndured = st.plagueEndured = st.krakenSlain = st.dragonSeen = st.eclipseEndured = st.wildfireEndured = 1;
       const lines = Score.compute(false).lines.map(l => l.label || l.text || JSON.stringify(l)).join(' | ');
       const C = CFG.SCORE;
-      const want = [/kraken/i, /dragon/i, /sons/i, /hoard/i, /winter/i, /plague/i, /swallowed sun/i];
+      const want = [/kraken/i, /dragon/i, /sons/i, /hoard/i, /winter/i, /plague/i, /swallowed sun/i, /dry summer/i];
       ck('everyEventFeedsAScoreLine', want.every(r => r.test(lines)) && [C.sons, C.cache, C.winter, C.plague].every(n => n > 0), lines);
 
       S.special = 'winter'; S.specialDay = 0;

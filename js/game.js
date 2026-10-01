@@ -189,7 +189,7 @@ const G = {
       // run stats — the raw material of the arcade score (js/score.js)
       stats: { trained: 0, razed: 0, gathered: 0, kills: 0, built: 0,
                walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0, originBonus: 0,
-               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0, eclipseEndured: 0 },
+               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0, eclipseEndured: 0, wildfireEndured: 0 },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
       // THE CALM TRUCE (tests/calm-peace.mjs): true while neither tribe may
@@ -284,6 +284,9 @@ const G = {
     S.winter = { avail: S.special === 'winter', done: false, days: 0 };
     S.plague = { avail: S.special === 'plague', done: false, until: 0, lifted: true,
                  from: this.plagueFrom(seed) };
+    // the dry summer waits for its day, hashed off the seed string
+    S.wildfire = { avail: S.special === 'wildfire', day: this.fireDayOf(seed), warned: false,
+                   phase: null, burning: {}, burnt: 0, t: 0, spreadT: 0, wind: this.fireWindOf(seed), done: false };
     // the swallowed sun keeps its own day, hashed off the seed string
     S.eclipse = { avail: S.special === 'eclipse', day: this.eclipseDayOf(seed), warned: false,
                   foretold: false, cut: null, phase: null, t: 0, done: false };
@@ -729,6 +732,7 @@ const G = {
 
     this.specialsDaily();
     this.eclipseDaily();
+    this.fireDaily();
     this.wearDaily();
 
     // the tribe endures — but only so far. If every villager is dead (none on
@@ -931,6 +935,126 @@ const G = {
     }
   },
 
+  /* THE DRY SUMMER (CFG.WILDFIRE, tests/specials.mjs). The day and the wind
+     are hashed off the SEED STRING; the spread draws G.rand (the run's own
+     seeded stream, like a combat roll). fireSite is the eligibility AND the
+     ignition: the biggest 4-connected wood of standMin+ trees, at its tree
+     farthest from any building, provided that is clearB+ tiles — asked of
+     the terrain and the buildings as they stand (at the roll, generation
+     facts; on the day, the town as it has grown). */
+  fireDayOf(seed) {
+    const C = CFG.WILDFIRE;
+    return C.dayMin + Math.abs(hashSeed(String(seed == null ? '' : seed) + '::fire') | 0) % (C.dayMax - C.dayMin + 1);
+  },
+  fireWindOf(seed) {
+    const a = (Math.abs(hashSeed(String(seed == null ? '' : seed) + '::wind') | 0) % 360) * Math.PI / 180;
+    return [Math.cos(a), Math.sin(a)];
+  },
+  fireSite() {
+    const W = CFG.W, H = CFG.H, t = S.map.terrain, C = CFG.WILDFIRE;
+    const seen = new Uint8Array(W * H);
+    let best = null;
+    for (let i0 = 0; i0 < W * H; i0++) {
+      if (seen[i0] || t[i0] !== T.FOREST) continue;
+      const cells = [i0]; seen[i0] = 1;
+      for (let h = 0; h < cells.length; h++) {
+        const c = cells[h], x = c % W, y = (c / W) | 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx, ny = y + dy;
+          if (!MapGen.onBoard(nx, ny)) continue;
+          const j = ny * W + nx;
+          if (seen[j] || t[j] !== T.FOREST) continue;
+          seen[j] = 1; cells.push(j);
+        }
+      }
+      if (cells.length < C.standMin || (best && cells.length <= best.cells.length)) continue;
+      best = { cells };
+    }
+    if (!best) return null;
+    let pick = null, far = -1;
+    for (const c of best.cells) {
+      const x = c % W, y = (c / W) | 0;
+      let d = 1e9;
+      for (const b of S.buildings) d = Math.min(d, Math.hypot(x + 0.5 - Bld.cx(b), y + 0.5 - Bld.cy(b)));
+      if (d > far) { far = d; pick = { x, y }; }
+    }
+    return far >= C.clearB ? pick : null;
+  },
+  fireDaily() {
+    const F = S.wildfire, C = CFG.WILDFIRE;
+    if (!F || !F.avail || F.done || F.phase) return;
+    if (!F.warned && S.day >= F.day - C.warnDays) {
+      F.warned = true;
+      this.log('☀️ No rain for weeks — the grass crackles underfoot and the great wood stands tinder-dry.', 'note', 6000);
+    }
+    if (S.day < F.day) return;
+    const site = this.fireSite();
+    if (!site) { F.avail = false; F.done = true; return; }   // the town grew into the wood: the summer passes
+    F.phase = 'burn'; F.t = 0; F.spreadT = C.spreadS; F.bolt = { x: site.x, y: site.y, t: 0 };
+    F.burning[site.y * CFG.W + site.x] = 0;
+    this.specialFired();
+    if (R.startle) R.startle(site.x + 0.5, site.y + 0.5, 14);
+    this.log('⚡ Lightning finds the great wood — FIRE walks the trees! Fell a firebreak, or let it burn.', true, 8000);
+  },
+  fireTick(dt) {
+    const F = S.wildfire, C = CFG.WILDFIRE, W = CFG.W;
+    if (!F || !F.phase) return;
+    F.t += dt;
+    if (F.bolt) { F.bolt.t += dt; if (F.bolt.t > 0.5) F.bolt = null; }
+    if (F.phase === 'rain') {
+      if (F.t >= C.rainS) {
+        F.phase = null; F.done = true; F.avail = false;
+        if (S.stats) S.stats.wildfireEndured = 1;
+        this.log('🌧 The rain comes at last and the fire drowns. The wood will grow back.', 'note', 5000);
+      }
+      return;
+    }
+    const calm = S.mode === 'calm', cap = C.cap[S.mode] || C.cap.moderate;
+    const keys = Object.keys(F.burning);
+    for (const k of keys) {
+      const i = +k;
+      F.burning[k] += dt;
+      const x = i % W, y = (i / W) | 0;
+      // a building beside a burning tree catches (never on Calm; stone never burns)
+      if (!calm) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const b = Bld.at(x + dx, y + dy);
+        if (b && b.key !== 'wall' && b.key !== 'gate' && b.key !== 'tower' && b.hp > 0) Bld.damage(b, C.bldDps * dt, 'fire');
+      }
+      if (F.burning[k] >= C.burnS) {
+        delete F.burning[k];
+        F.burnt++;
+        if (S.map.terrain[i] !== T.FOREST) continue;          // somebody felled it first
+        if (R.startTreeFall) R.startTreeFall(x, y, x + 0.5 - F.wind[0], y + 0.5 - F.wind[1]);
+        S.map.terrain[i] = T.STUMPS; S.map.resAmount[i] = 0;
+        (S.map.workedBy || (S.map.workedBy = {}))[i] = 'F';  // fire-killed: nobody's clearing (Bld.stationGround)
+        this.scheduleRevert(i);
+        R.updateTile(x, y);
+      }
+    }
+    F.spreadT -= dt;
+    if (F.spreadT <= 0) {
+      F.spreadT = C.spreadS;
+      const live = Object.keys(F.burning).length;
+      if (live && F.burnt + live < cap) {
+        // the fire walks to the unburned tree that lies most DOWNWIND
+        let best = -1, bs = -1e9;
+        for (const k of Object.keys(F.burning)) {
+          const i = +k, x = i % W, y = (i / W) | 0;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+            const nx = x + dx, ny = y + dy;
+            if (!MapGen.onBoard(nx, ny)) continue;
+            const j = ny * W + nx;
+            if (S.map.terrain[j] !== T.FOREST || F.burning[j] !== undefined) continue;
+            const sc = (dx * F.wind[0] + dy * F.wind[1]) / Math.hypot(dx, dy) + this.rand() * 1.2;
+            if (sc > bs) { bs = sc; best = j; }
+          }
+        }
+        if (best >= 0) F.burning[best] = 0;
+      }
+      if (!Object.keys(F.burning).length) { F.phase = 'rain'; F.t = 0; }
+    }
+  },
+
   /* THE SWALLOWED SUN (CFG.ECLIPSE, tests/specials.mjs). Its day is hashed
      off the SEED STRING (never G.rand) and moved forward onto a bright day,
      clear of the 12-day cycle's dusk window — an eclipse at dusk reads as
@@ -1056,6 +1180,7 @@ const G = {
     const test = def && def.elig;
     if (!test) return true;
     if (test === 'openWater') return this.openWaterNearHome('P');
+    if (test === 'woodStand') return !!this.fireSite();
     return true;
   },
   // open water a hull could be launched onto from home: an open-water tile
@@ -2188,6 +2313,7 @@ const G = {
       if (data.kraken.ev && data.kraken.ev.owner !== 'P') data.kraken.ev = null;
     }
     if (data.plague.from === undefined) data.plague.from = CFG.PLAGUE.from;
+    if (!data.wildfire) data.wildfire = { avail: false, done: true, day: 0, warned: false, phase: null, burning: {}, burnt: 0, t: 0, spreadT: 0, wind: [1, 0] };
     if (!data.eclipse) data.eclipse = { avail: false, done: true, day: 0, warned: false, foretold: false, cut: null, phase: null, t: 0 };
     // the day the armed event fired: a pre-stamp save reports it unknown
     if (data.specialDay === undefined) data.specialDay = 0;
@@ -2201,7 +2327,7 @@ const G = {
     if (!data.stats) data.stats = {};
     for (const k of ['trained', 'razed', 'gathered', 'kills', 'built', 'walls',
                      'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus', 'leanIn',
-                     'sonsAnswered', 'cacheDug', 'winterEndured', 'plagueEndured', 'eclipseEndured'])
+                     'sonsAnswered', 'cacheDug', 'winterEndured', 'plagueEndured', 'eclipseEndured', 'wildfireEndured'])
       if (!data.stats[k]) data.stats[k] = 0;
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
@@ -2405,6 +2531,7 @@ const G = {
           G.dyingTick(sdt);      // the villager whose death was announced a beat ago
           G.krakenTick(sdt);
           G.eclipseTick(sdt);
+          G.fireTick(sdt);
           G.dragonTick(sdt);
           G.dragonT = (G.dragonT || 0) - sdt;
           if (G.dragonT <= 0) {

@@ -995,7 +995,7 @@ const CFG = {
     kraken: 500, dragon: 250,   // (originBonus for hard beginnings is computed at roll time)
     // the other specials: answered, dug, ENDURED — a punishment scores for
     // the village that came through it, as the kraken does (EVD-V02)
-    sons: 150, cache: 150, winter: 200, plague: 200, eclipse: 150,
+    sons: 150, cache: 150, winter: 200, plague: 200, eclipse: 150, wildfire: 150,
     leanIn: 120,                // ORIGIN CARDS: kept the card that leans into your roll
     mult: { calm: 0.5, moderate: 1.0, hard: 1.75 },
   },
@@ -1029,6 +1029,7 @@ const CFG = {
       winter: { modes: ['moderate', 'hard'], neg: true, w: 1 },
       plague: { modes: ['moderate', 'hard'], neg: true, w: 1 },
       eclipse: { modes: ['calm', 'moderate', 'hard'], neg: true, w: 1 },
+      wildfire: { modes: ['calm', 'moderate', 'hard'], neg: true, w: 1, elig: 'woodStand' },
     },
   },
   /* the kraken's visit: rolled DELAY days after the player first puts a
@@ -1055,6 +1056,17 @@ const CFG = {
      comes close. Foretold `warnDays` ahead by the Star Circle, a level-3
      Watchtower or the Seer; a tribe it catches unwarned downs tools
      (that day's production × workMult). */
+  /* THE DRY SUMMER: on a seed-hashed day lightning finds the biggest wood,
+     at a tree `clearB`+ tiles from every building; fire walks tree to tree
+     (one new tree every `spreadS` real seconds, biased down a seeded wind),
+     each burns `burnS` seconds and falls to fire-killed STUMPS, until no
+     fuel is left or `cap[mode]` trees have burned; then `rainS` of rain.
+     Firebreaks are the game's own rules: only FOREST burns. A building beside
+     a burning tree takes `bldDps` hp a second (never walls, gates or towers,
+     and never on Calm). `standMin` is the eligibility: no wood that big,
+     no dry summer. */
+  WILDFIRE: { dayMin: 40, dayMax: 180, warnDays: 2, standMin: 10, clearB: 8, spreadS: 1.5, burnS: 15,
+              cap: { calm: 16, moderate: 36, hard: 50 }, bldDps: 2.5, rainS: 10 },
   ECLIPSE: { dayMin: 30, dayMax: 200, dimS: 6, darkS: 20, backS: 6, tint: 0.55, vision: 0.5, warnDays: 3, workMult: 0.5 },
   DRAGON: { minDay: 25, foesMin: 6, radius: 9 },
 
