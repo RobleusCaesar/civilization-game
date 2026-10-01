@@ -132,9 +132,14 @@ const out = await p.evaluate(() => {
     G.notePeaks(); G._easeC = {};
     S.day = m.waveFirst; S.wave.next = S.day;
     if (G.barbEase('P') || G.barbEase('A')) ck('theEaseReadsAHealthyWorld', false, 'setup left a town eased');
-    const before = S.units.filter(u => u.owner === 'R').length;
+    /* a band is its WARRIORS: one that comes by sea rides in its longboat's
+       cargo, off S.units, so counting 'R' units read a seaborne band of
+       three as the one hull carrying it (the 35% sea roll is seed luck) */
+    const warriors = () => S.units.reduce((n, u) => n + (u.owner !== 'R' ? 0
+      : Units.isNaval(u) ? ((u.cargo && u.cargo.length) || 0) : 1), 0);
+    const before = warriors();
     Combat.maybeWave();
-    const band = S.units.filter(u => u.owner === 'R').length - before;
+    const band = warriors() - before;
     ck('aCalmWaveIsABand', band >= 2, band + ' raider(s) mustered — one is invisible');
     ck('andTheNextIsWeeksAway', S.wave.next - S.day <= 40,
       'next wave in ' + (S.wave.next - S.day) + ' days');
