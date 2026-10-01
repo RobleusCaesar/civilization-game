@@ -163,6 +163,7 @@ node tests/archer-art.mjs    # archer line plumbing: military sheet keys {kind}-
 node tests/audio.mjs         # the game's voice: nothing on the wire, two switches and two dials (mute and zero are one state), throttled per kind, and the music is generated rather than looped
 node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map arrays, kept ground DERIVED from standing buildings (grows back on raze, byte-identical), the flatten fires from Bld.finish alone, the 32px cover-art door snaps alpha binary
 node tests/frame-hotpath.mjs  # the late-game town costs no more per tile: Bld.at is an index (= the linear definition on every tile), the building loop culls to the camera, the cull changes no pixel
+node tests/worn-paths.mjs     # the ground wears where WORK walks: distinct days, never a march, never in the fog; a band not a square; repaint == rebake
 node tests/specials.mjs       # the special-event roll: three draws whatever it rolls, weighted, no dead rolls; the kraken is the player's; sons/cache land where a hand can walk; every event scores and reports
 ```
 
@@ -4011,6 +4012,33 @@ wherever the kit's rock leaves a mountain tile bare (a range's ragged foot,
 audit MTN-03) the player saw meadow no unit could walk onto. Every mountain
 tile now takes `blockShade`, which thins toward open sides, and the rock
 covers it wherever it stands.
+
+**THE GROUND WEARS WHERE THE WORK WALKS** (`CFG.WEAR`, `G.noteWear` /
+`wearDaily` / `wearLevel`, `R.wearPaint`; `tests/worn-paths.mjs` — operator
+ruling 3 on W7: "wear accrues from economic trips only; military movement
+doesn't wear paths; purely visual"). The audit measured why a footstep
+counter is the wrong instrument (GRS-08/09): a posted villager barely walks,
+and ONE 20-soldier march crossed the same thirty tiles twenty times — raw
+counts pave a road for the army and nothing for the town. So a tile counts
+DISTINCT DAYS crossed by a WORK trip: a villager walking with a `gather` /
+`work` / `build` / `claim` task (`Units.update` asks `noteWear` on every tile
+change, the last tile on a WeakMap so nothing lands in a save); the
+PLAYER's always, the rival's only on ground the player can see at the time
+(a path worn in the fog would draw the rival's town onto the map); never on
+a building or off the grass. 3 / 6 / 10 days make thinned grass / trodden
+earth / bare path; an unused tile drops a level every `decay` (25) days.
+`S.map.wear` (idx → [days, last]) rides the save; `loadJSON` backfills `{}`.
+**It is drawn as SEGMENTS, not a field**: a core and a lighter margin of
+fixed half-width (`WEAR_CORE`/`WEAR_EDGE`) around the line between the
+centres of 8-neighbouring worn tiles, edges dithered by a hash, painted in
+the LAST ground pass beside the hue wash so it lies over swards (which thin
+by level) and decals (none on trodden earth). Bilinear interpolation from
+tile centres was tried first and failed both ways: a straight road filled
+the whole tile height, and narrowing it by threshold broke every diagonal
+step, since diagonal tiles meet only at a corner. A tile's look depends on
+the 3x3 around it, inside the ±2 ground reset, and level changes repaint
+through `drawTilesAt` (a few) or the sorted slice queue (many): the
+contract holds the daily repaint byte-identical to a fresh bake.
 
 **THE DECORATIVE STREAM WAS REMOVED** (pinned by
 `andTheDecorativeStreamIsGone`): creeks that wandered down off high ground to

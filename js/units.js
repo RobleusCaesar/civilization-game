@@ -1332,6 +1332,14 @@ const Units = {
       // unit's head exactly as it catches regrown forest — same wedge, same
       // cure; an own gate reads as open to its owner and needs no rescue)
       if (!this.isNaval(u)) {
+        // WORN PATHS: a work trip stamps each tile it steps onto (G.noteWear).
+        // The last tile rides a WeakMap, never the unit — nothing in a save.
+        const wp = this._wearPos || (this._wearPos = new WeakMap());
+        const wi = (u.y | 0) * CFG.W + (u.x | 0), was = wp.get(u);
+        if (was !== wi) {
+          if (was != null && u.path) G.noteWear(u, u.x | 0, u.y | 0);
+          wp.set(u, wi);
+        }
         if (!Path.passable(u.x | 0, u.y | 0, u.owner)) {
           const spot = MapGen.findNear(u.x | 0, u.y | 0, 3, (x, y) => Path.passable(x, y, u.owner) && !Bld.blockAt(x, y));
           if (spot) {

@@ -164,6 +164,7 @@ const G = {
         decay: {},                          // idx -> day the depleted/ruined tile regrows to grass
         fishBack: {},                       // idx -> day a fished-out shoal restocks (tests/fishery.mjs)
         hunted: {},                         // idx -> day an animal fell here (a lodge's ground)
+        wear: {},                           // idx -> [distinct days crossed on a work trip, last day] (worn paths)
         workedBy: {},                       // idx -> 'P'|'A' whose hands spent this tile (tests/worked-ground.mjs)
         reclaimed: {},                      // idx -> 1 where a sapper filled water into land (never counts as shore again)
         explored: new Array(CFG.W * CFG.H).fill(0),
@@ -724,6 +725,7 @@ const G = {
     }
 
     this.specialsDaily();
+    this.wearDaily();
 
     // the tribe endures — but only so far. If every villager is dead (none on
     // the map, none sheltering, none in training), two survivors step out of the
@@ -922,6 +924,53 @@ const G = {
           this.log('🐙 Something vast stirs beneath the water…', true);
         }
       }
+    }
+  },
+
+  /* WORN PATHS (CFG.WEAR, tests/worn-paths.mjs). noteWear is asked by
+     Units.update for every unit that changes tile; it keeps only a WORK
+     trip (a villager walking with one of CFG.WEAR.tasks) onto open grass,
+     the player's always and the rival's only where the player can see it
+     — a path worn in the fog would draw the rival's town onto the map. A
+     tile is stamped once per day (_wearToday, module state: a reload
+     mid-day loses at most that day's stamps), and wearDaily turns the day's
+     stamps into distinct-day counts and the counts into levels, repainting
+     only the tiles whose level moved. */
+  _wearToday: null,
+  wearLevelOf(d) { const L = CFG.WEAR.levels; return d >= L[2] ? 3 : d >= L[1] ? 2 : d >= L[0] ? 1 : 0; },
+  wearLevel(x, y) {
+    const w = S.map && S.map.wear; if (!w) return 0;
+    const e = w[y * CFG.W + x];
+    return e ? this.wearLevelOf(e[0]) : 0;
+  },
+  noteWear(u, x, y) {
+    if (!Units.isVillager(u) || !u.task || !CFG.WEAR.tasks.includes(u.task.type)) return;
+    if (u.owner !== 'P' && !(u.owner === 'A' && this.visibleAt(x, y))) return;
+    if (!MapGen.onBoard(x, y) || S.map.terrain[y * CFG.W + x] !== T.GRASS || Bld.at(x, y)) return;
+    (this._wearToday || (this._wearToday = new Set())).add(y * CFG.W + x);
+  },
+  wearDaily() {
+    const W = S.map && S.map.wear; if (!W) return;
+    const C = CFG.WEAR, moved = [];
+    const today = this._wearToday; this._wearToday = null;
+    if (today) for (const i of today) {
+      const e = W[i] || (W[i] = [0, 0]), was = this.wearLevelOf(e[0]);
+      e[0] = Math.min(C.cap, e[0] + 1); e[1] = S.day;
+      if (this.wearLevelOf(e[0]) !== was) moved.push(i);
+    }
+    // an unused tile drops a level every C.decay days: the town moved on
+    for (const k in W) {
+      const e = W[k], idle = S.day - e[1];
+      if (idle <= 0 || idle % C.decay) continue;
+      const was = this.wearLevelOf(e[0]);
+      e[0] = was <= 1 ? 0 : C.levels[was - 2];
+      if (e[0] <= 0) delete W[k];
+      if (this.wearLevelOf(e[0]) !== was) moved.push(+k);
+    }
+    if (moved.length && R.terrainCache) {
+      const list = moved.sort((a, b) => a - b).map(i => [i % CFG.W, (i / CFG.W) | 0]);
+      if (list.length <= 6) R.drawTilesAt(list);
+      else { R.pendRepaint(list); R._repaintQ.sort((a, b) => a[1] - b[1] || a[0] - b[0]); }
     }
   },
 
@@ -2132,6 +2181,7 @@ const G = {
     if (data.tut === undefined) data.tut = null;      // pre-tutorial saves: no guidance mid-run
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.hunted) data.map.hunted = {};       // pre-worked-ground saves: the record starts empty
+    if (!data.map.wear) data.map.wear = {};           // pre-path saves: the ground has not worn yet
     /* PRE-MAKER saves (tests/worked-ground.mjs): spent ground carries no
        maker's mark yet, so deal one by the only honest guess left — the
        nearer hall, within its working range. The point of the backfill is

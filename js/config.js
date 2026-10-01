@@ -1034,6 +1034,15 @@ const CFG = {
      hull on open water (edge-connected, or a body of `bodyMin`+ tiles), and
      open water must lie within `near` of the hall for the map to stage it */
   KRAKEN: { delayMin: 4, delayMax: 20, bodyMin: 60, near: 16, fleetR: 6 },
+  /* WORN PATHS (tests/worn-paths.mjs): the ground wears where the town's
+     WORK walks — a villager on its way to gather, work a plot, build or
+     claim a seam — and never where an army marches. A tile counts the
+     DISTINCT DAYS such a trip crossed it (raw footsteps would let one
+     20-soldier march pave a road while a working town paved nothing);
+     `levels` are the day counts for thinned grass / trodden earth / bare
+     path, and an unused tile drops a level every `decay` days. Purely
+     visual: nothing reads it but the ground painter. */
+  WEAR: { tasks: ['gather', 'work', 'build', 'claim'], levels: [3, 6, 10], cap: 14, decay: 25 },
   /* the plague's earliest day: `from` + a seed-hashed 0..`spread` — the
      crowded-lanes gate is met by nearly every day-25 town, so a fixed day
      made it a scheduled punishment rather than an answer to a boom */
