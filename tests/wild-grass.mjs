@@ -139,7 +139,11 @@ const out = await p.evaluate(() => {
 
   // ---- 4. THE KEPT GROUND IS DERIVED, AND GROWS BACK ----
   {
-    boot('wg-derive');
+    /* the first of these seeds with an open 5x5 meadow is the fixture —
+       a seed whose world rolled wet (a lakeland delta) has none, and the
+       taming rule needs open ground to be measured on, not a particular
+       world (deterministic: the same seed wins every run) */
+    for (const sd of ['wg-derive', 'wg-derive-b', 'wg-derive-c', 'wg-derive-d']) { boot(sd); if (openSpot(2)) break; }
     const at = openSpot(2);   // a 5x5 pure-grass core; the verge may run onto other ground
     if (!at) { ck('anOpenSeatExists', false, 'no all-grass 5x5 found'); }
     else {

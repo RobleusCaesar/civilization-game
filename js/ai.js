@@ -2257,10 +2257,28 @@ const AI = {
     if (S.units.some(u => u.owner === 'A' && u.task && u.task.type === 'raid')) return false;
     const lost = ((S.workLost && S.workLost.A) || []).filter(d => S.day - d <= 15).length;
     if (lost < 2 && !G.barbEase('A')) return false;
+    /* …and only a camp its foot can WALK to. Crow-flight nearest is not
+       the nearest fire on a map with a lake in the middle: the column was
+       sent at a camp across the water, the pathfinder handed back its
+       best-effort route (which ends on the wrong shore), and eight spears
+       stood at the player's doorstep until the raid broke off — then the
+       cooldown re-raised the same dead march. A tile beside the fire must
+       lie on the chief's own land reach. */
+    const reach = this.aiLandReach();
+    const walkable = (b) => {
+      if (!reach) return false;
+      const sz = Bld.size(b);
+      for (let dy = -1; dy <= sz; dy++) for (let dx = -1; dx <= sz; dx++) {
+        const x = b.x + dx, y = b.y + dy;
+        if (MapGen.inB(x, y) && reach[MapGen.idx(x, y)]) return true;
+      }
+      return false;
+    };
     const seen = ai.seen; let camp = null, cd = 1e9;
     for (const b of S.buildings) {
       if (b.key !== 'raidercamp' || b.owner !== 'R') continue;
       if (!seen || !seen[MapGen.idx(b.x, b.y)]) continue;
+      if (!walkable(b)) continue;
       const d = Math.hypot(Bld.cx(b) - Bld.cx(tc), Bld.cy(b) - Bld.cy(tc));
       if (d < cd) { cd = d; camp = b; }
     }

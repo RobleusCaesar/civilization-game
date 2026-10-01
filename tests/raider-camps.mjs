@@ -541,8 +541,14 @@ const out = await p.evaluate(() => {
     G.notePeaks();
     S.peakTown.P = 14; G._easeC = null;               // the player's town reads gutted
     // a campless band close to the west rim, with an eased villager at arm's length
-    const sp = MapGen.findNear(4, (CFG.H / 2) | 0, 12,
-      (x, y) => Path.passable(x, y, 'R') && !Bld.at(x, y));
+    // …and clear of every camp's ground: a tender defends its own fire
+    // whatever the ease says (butATenderStillHoldsItsOwnGround), so a world
+    // that seats a camp by the rim would kill the villager for a different,
+    // correct reason and say nothing about the band under test
+    const clearOfCamps = (x, y) => campsOf().every(c =>
+      Math.hypot(c.x - x, c.y - y) > CFG.RAIDER_CAMPS.chaseR + 4);
+    const sp = MapGen.findNear(4, (CFG.H / 2) | 0, 20,
+      (x, y) => Path.passable(x, y, 'R') && !Bld.at(x, y) && x <= 6 && clearOfCamps(x, y));
     const band = Units.spawn('raider', 'R', sp.x, sp.y);
     band.hostileTo = 'P';
     // ADJACENT, like the save (1.4 tiles): inside the leaving-probe's 2.5-tile
@@ -663,14 +669,42 @@ const out = await p.evaluate(() => {
      to the camps instead of feeding hands to them piecemeal. Fog-honest, and
      riding the ordinary raid machinery so retreat/stand-down come for free. */
   {
-    G.newGame('rc-purge', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
-    const atc = Bld.tcOf('A');
-    const camp = campsOf()[0];
-    if (!S.ai.seen) S.ai.seen = new Array(CFG.W * CFG.H).fill(0);
-    for (let i = 0; i < 7; i++) {
-      const sp = MapGen.findNear(atc.x + 2, atc.y, 9, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
-      Units.spawn('defender', 'A', sp.x, sp.y);
+    /* the scenario wants a camp the chief's foot can WALK to. Seeds are
+       tried in order and the first world that has one is the fixture; on
+       the way, any world whose camps all stand across the water pins the
+       other half of the rule — a seen fire nobody can walk to is no target.
+       Deterministic: the same seed wins every run. */
+    const prep = (sd) => {
+      G.newGame(sd, 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+      const atc = Bld.tcOf('A');
+      const reach = AI.aiLandReach();
+      const walk = c => { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+        if (reach[MapGen.idx(c.x + dx, c.y + dy)]) return true; return false; };
+      if (!S.ai.seen) S.ai.seen = new Array(CFG.W * CFG.H).fill(0);
+      for (let i = 0; i < 7; i++) {
+        const sp = MapGen.findNear(atc.x + 2, atc.y, 9, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y));
+        Units.spawn('defender', 'A', sp.x, sp.y);
+      }
+      return { camp: campsOf().find(walk), across: campsOf().find(c => !walk(c)) };
+    };
+    let camp = null, acrossDone = false, world = '';
+    for (const sd of ['rc-purge', 'rc-purge-b', 'rc-purge-c', 'rc-purge-d', 'rc-purge-e', 'rc-purge-f']) {
+      let w = prep(sd);
+      if (w.across && !acrossDone) {
+        /* a seen camp across the water is no target: the column was sent at
+           one, the pathfinder's best-effort route ended on the wrong shore,
+           and eight spears stood at the player's door until the raid broke
+           off — re-raised on every cooldown (measured on rc-purge) */
+        G.noteWorkLost('A'); G.noteWorkLost('A');
+        S.ai.seen[MapGen.idx(w.across.x, w.across.y)] = 1;
+        ck('aCampAcrossTheWaterIsNoTarget', AI.maybePurge({ underThreat: false }) === false,
+          sd + ': camp @' + w.across.x + ',' + w.across.y + ' — seen, but no foot of ours can reach its fire');
+        acrossDone = true;
+        if (w.camp) w = prep(sd);   // a clean world for the march itself
+      }
+      if (w.camp) { camp = w.camp; world = sd; break; }
     }
+    ck('aWalkableCampExists', !!camp, world);
     // no motive, no march: a chief that has lost nothing leaves the wilds be
     ck('anUnbledChiefStaysHome', AI.maybePurge({ underThreat: false }) === false, '');
     G.noteWorkLost('A'); G.noteWorkLost('A');

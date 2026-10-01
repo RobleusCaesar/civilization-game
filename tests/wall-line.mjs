@@ -294,28 +294,54 @@ const out = await p.evaluate(() => {
   // ---- 6. NO DOORS: a walled stretch with a hut in it must end up with no
   //         ring tile that is passable from OUTSIDE and INSIDE at once ----
   {
-    const tc = setup('wg6');
-    const cx = Bld.cx(tc) | 0, cy = Bld.cy(tc) | 0, R = AI.WALL_R;
-    S.ai.res = { food: 900, wood: 900, stone: 900, gold: 900 };
-    S.ai.acts = 99;
-    for (let dx = -3; dx <= 3; dx++) { G.clearFootprint(cx + dx, cy - R, 'farm'); G.clearFootprint(cx + dx, cy - R - 1, 'farm'); }
-    Bld.place('A', 'farm', cx, cy - R, { free: true, instant: true });
-    Bld.place('A', 'house', cx + 2, cy - R, { free: true, instant: true });
-    for (const dx of [-3, -2, -1, 1, 3]) Bld.place('A', 'wall', cx + dx, cy - R, { free: true, instant: true });
+    /* the scenario needs a stretch the WORLD leaves open beyond: since the
+       generator moved crags inland a seat may stand with rock right behind
+       its north row, where there is no outside for a door to open onto and
+       the check would never be provoked. Deterministic: the first seed of
+       the list whose stretch has a door before the mend is the fixture. */
+    let tc, cx, cy, R, before = 0, seed = '';
+    /* "outside" means ground somebody could actually stand on BEYOND the
+       ring — flooded from two tiles out, never through the ring itself. A
+       one-step test counted a sealed pocket as frontage: on a board where a
+       crag stands right behind the farm the bulge correctly lays nothing on
+       the tile north of it (§10 — nobody can step onto it from beyond), and
+       that dead-end tile read as a door it can never be. */
     const doors = () => {
       const pass = (x, y) => MapGen.inB(x, y) && Path.passable(x, y, 'P');
       const cheb = (x, y) => Math.max(Math.abs(x - cx), Math.abs(y - cy));
       const N = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+      const out = new Set(), q = [];
+      for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++)
+        if (cheb(x, y) >= R + 2 && pass(x, y)) { out.add(MapGen.idx(x, y)); q.push([x, y]); }
+      while (q.length) {
+        const [x, y] = q.pop();
+        for (const [a, c] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + a, ny = y + c, k = MapGen.idx(nx, ny);
+          if (cheb(nx, ny) > R && !out.has(k) && pass(nx, ny)) { out.add(k); q.push([nx, ny]); }
+        }
+      }
+      const beyond = (x, y) => cheb(x, y) > R && out.has(MapGen.idx(x, y));
       let n = 0;
       for (let dx = -3; dx <= 3; dx++) {
         const x = cx + dx, y = cy - R;
         if (!pass(x, y)) continue;
-        if (N.some(([a, c]) => cheb(x + a, y + c) > R && pass(x + a, y + c)) &&
+        if (N.some(([a, c]) => beyond(x + a, y + c)) &&
             N.some(([a, c]) => cheb(x + a, y + c) < R && pass(x + a, y + c))) n++;
       }
       return n;
     };
-    const before = doors();
+    for (const sd of ['wg6', 'wg6b', 'wg6c', 'wg6d', 'wg6e', 'wg6f']) {
+      seed = sd; tc = setup(sd);
+      cx = Bld.cx(tc) | 0; cy = Bld.cy(tc) | 0; R = AI.WALL_R;
+      S.ai.res = { food: 900, wood: 900, stone: 900, gold: 900 };
+      S.ai.acts = 99;
+      for (let dx = -3; dx <= 3; dx++) { G.clearFootprint(cx + dx, cy - R, 'farm'); G.clearFootprint(cx + dx, cy - R - 1, 'farm'); }
+      Bld.place('A', 'farm', cx, cy - R, { free: true, instant: true });
+      Bld.place('A', 'house', cx + 2, cy - R, { free: true, instant: true });
+      for (const dx of [-3, -2, -1, 1, 3]) Bld.place('A', 'wall', cx + dx, cy - R, { free: true, instant: true });
+      before = doors();
+      if (before > 0) break;
+    }
     // a handful of build cycles — each followed by its crews finishing, since
     // a section under construction stays passable (tests/work-order.mjs)
     for (let i = 0; i < 8; i++) {
@@ -323,7 +349,7 @@ const out = await p.evaluate(() => {
       for (const w of S.buildings) if (w.owner === 'A' && (w.key === 'wall' || w.key === 'gate') && w.construction > 0) Bld.finish(w);
     }
     const after = doors();
-    ck('noDoors', before > 0 && after === 0, `${before} doors -> ${after}`);
+    ck('noDoors', before > 0 && after === 0, `${seed}: ${before} doors -> ${after}`);
   }
 
   /* ---- 8. POCKET CORK: the army must be able to MARCH. townOut() polices

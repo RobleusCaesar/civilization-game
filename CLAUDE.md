@@ -2574,6 +2574,12 @@ live siege campaign, no raiders already out, `ai.purgeCd` 20 days between
 marches (in the save), and the raid cooldown is set so the war effort and the
 purge can't double-book the same host. Verified end-to-end on the day-320 save:
 seven spears out on day 337, camp burned by day 340, zero losses, walk home.
+**And only a fire its foot can WALK to** (`maybePurge`'s land-reach gate,
+same test): "nearest camp seen" was crow-flight nearest, and on a world with
+a lake in the middle the column was sent at a camp across the water — the
+pathfinder's best-effort route ended on the wrong shore, at the player's
+door, and the raid broke off only to be re-raised on every cooldown. A tile
+beside the fire must lie on `AI.aiLandReach()`.
 
 **Scaled both ways**: camp COUNT is the map's area factor × the mode's
 `campMult` (calm 0.6 / moderate 1 / hard 1.5, floored at `RAIDER_CAMPS.min`),
