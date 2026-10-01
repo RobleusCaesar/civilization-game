@@ -1878,6 +1878,16 @@ next host is the real test: if it reads outside the band, re-examine
 the twin's COMPOSITION against a fresh histogram before touching the
 baseline. Re-baselining alone would only have handed the fault to the
 host after this one.
+**AND THE WATER GATE READS PAIRS** (`theLivingWaterFitsItsBudget`, the W0
+follow-up): the twin still matched the pass, but the ratio of two series'
+MINIMUMS let one lucky reference block and one unlucky pass block move the
+answer by their whole spread, and in-suite it had crept to 0.43 against a
+0.44 gate. Each block's verdict is now the ratio of its own back-to-back
+pair, the gate reads the MEDIAN of 24, a failing reading earns one retry on
+a fresh page (the edit gates' rule), and the gate is the new statistic's
+in-suite worst + 10% (0.444 → 0.49). Sensitivity measured with a wrapper on
+the pass: ~11% more work passes at 0.483, ~35% more fails at 0.602 on both
+pages.
 
 **THE CLOSED TAB IS AN ENDING** (`G.noteLeaving` / `Backend.logLeaving`,
 tests/telemetry.mjs §3–4, migration 0007): 22 of 24 runs used to leave no

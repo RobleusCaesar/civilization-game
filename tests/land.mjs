@@ -2097,7 +2097,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
      and one synchronous evaluate can never see a decode that lands after
      it starts. */
   await p.evaluate(() => (window.Assets && Assets.whenWorldIdle) ? Assets.whenWorldIdle() : null);
-  const v = await p.evaluate(new Function(boot + `
+  const lwFn = new Function(boot + `
     const out = {};
     try {
       const W = CFG.W, H = CFG.H, TL = CFG.TILE, terr = S.map.terrain;
@@ -2232,16 +2232,30 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       // number must include an active roll or it is not the default's cost
       R.fishClock = LAND.WAVE_EVERY * 3 + 0.2; R._waveEpoch = -1;
       R._prof = { foam: 0, tiles: 0, scroll: 0, frames: 0 };
-      // INTERLEAVED with its reference (the §18 rule): eight blocks of fifteen
-      // frames each, pass and reference alternating, each series keeping the
-      // min of its block means — the same seconds for both. 8 × 16 frames of
-      // the pass is 2.05s of wave clock, inside the 2.8s window.
-      let mOn = Infinity, mRef = Infinity;
-      for (let k = 0; k < 8; k++) { mOn = Math.min(mOn, passMs(15) - base); mRef = Math.min(mRef, refPass(15)); }
+      /* PAIRED, NOT MIN-OVER-MIN (the W0 follow-up — the gate flickered red
+         on a busy machine). Each block times the pass and then its reference
+         back to back, and the block's verdict is THEIR RATIO: whatever the
+         host did in those few milliseconds it did to both halves of the
+         pair. The gate reads the MEDIAN of 24 such ratios. The old statistic
+         took the min of each series separately, so one lucky quiet block for
+         the reference and an unlucky one for the pass moved the answer by
+         the whole spread between them; a median of pairs is moved only by a
+         slowdown that persists, which is what a regression is. Each block
+         starts at its own point of the wave roll (the schedule is fixed, so
+         run-to-run the same phases are sampled) and every block stays inside
+         the 2.8s roll: start 0.2 + up to 1.98, plus 9 frames of 0.016. */
+      let mOn = Infinity, mRef = Infinity; const ratios = [];
+      for (let k = 0; k < 24; k++) {
+        R.fishClock = LAND.WAVE_EVERY * 3 + 0.2 + (k % 12) * 0.18; R._waveEpoch = -1;
+        const a = passMs(8) - base, r = refPass(8);
+        mOn = Math.min(mOn, a); mRef = Math.min(mRef, r); ratios.push(a / r);
+      }
+      ratios.sort((a, b2) => a - b2);
       const on = mOn;
       const pr = R._prof; R._prof = null;
       out.waterRefMs = mRef;
-      out.livingRel = on / out.waterRefMs;
+      out.livingRel = (ratios[11] + ratios[12]) / 2;
+      out.livingRelSpread = [ratios[2], ratios[21]];
       out.flushMs = base; out.frameOff = off; out.frameOn = on; out.newWork = on - off;
       out.foamMs = pr.foam / pr.frames; out.tilesMs = pr.tiles / pr.frames; out.scrollMs = pr.scroll / pr.frames; out.livingMs = on;
       // …and framed on the water, where the shore is dense: reported, not gated at 0.4
@@ -2386,10 +2400,28 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
       out.wavePx = wavePx; out.dryPx = dryPx; out.clampedEpochs = clampedEpochs;
       out.err = G.lastFrameError ? String(G.lastFrameError) : '';
     } catch (e) { out.thrown = String(e && e.stack || e); }
-    return out;`));
+    return out;`);
+  let v = await p.evaluate(lwFn);
   await p.close();
+  /* ONE HONEST RETRY, the edit gates' rule (§18): a reading over the gate
+     earns a second page, and the lower of the two stands. A real regression
+     reads high both times; a page that met a storm does not. */
+  /* the gate: the IN-SUITE WORST of four runs of this statistic on a quiet
+     host (0.428 / 0.441 / 0.444 / 0.428, 2026-10-01) + 10%, the edit gates'
+     rule. A real slowdown of the pass moves only the numerator and reads
+     high on BOTH pages. Measured with a wrapper adding one-pixel fills to
+     the pass: +79 fills (~11% more work) read 0.483 and passed, which is
+     what ten percent of headroom means; +240 fills (~35%) read 0.602 on
+     both pages and failed. */
+  const WATER_REL = 0.49;
+  if (!v.thrown && !(v.livingRel < WATER_REL)) {
+    const p2 = await page();
+    await p2.evaluate(() => (window.Assets && Assets.whenWorldIdle) ? Assets.whenWorldIdle() : null);
+    const w = await p2.evaluate(lwFn);
+    await p2.close();
+    if (!w.thrown) v = Object.assign({}, v, { livingRel: Math.min(v.livingRel, w.livingRel), livingRetried: [v.livingRel, w.livingRel] });
+  }
   const f2 = (n) => (n == null ? '?' : (+n).toFixed(3));
-  const WATER_REL = 0.44;   // worst of two in-suite runs (0.402 / 0.386) + 10% — see the gate
   ck('theDepthFieldIsDistanceToLand', !v.thrown && v.bad === 0 && v.shoreN > 50 && v.shoreOk === v.shoreN && v.max <= v.cap16,
     v.thrown || (v.shoreOk + '/' + v.shoreN + ' shore tiles inside the shore steps, max ' + v.max + '/16 (cap ' + v.cap16 + '), ' + v.bad + ' bad cells'));
   ck('andAMoatIsPinnedShallow', !v.thrown && v.moatD === 16, v.thrown || ('moat depth ' + v.moatD + '/16'));
@@ -2431,9 +2463,21 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
      INTERLEAVED with it (eight blocks of fifteen frames each, alternating):
      four fresh pages on this host read 0.379-0.394, two in-suite runs
      0.402 / 0.386 against references of 1.004 / 0.988ms. The gate is the
-     in-suite worst + 10%, as before. */
+     in-suite worst + 10%, as before.
+     AND THEN THE STATISTIC (the W0 follow-up, 2026-10-01): the twin still
+     matches the pass (per frame ~315 one-pixel fills, 3-6 blits, one
+     stroke against WREF's 320 / 6 / 1), but in-suite the ratio had crept to
+     0.43 against the 0.44 gate and flickered red on a busy host. The
+     min-of-each-series ratio was the weak part — one lucky block for the
+     reference and an unlucky one for the pass moved it by their whole
+     spread. Each block's verdict is now the RATIO OF ITS OWN PAIR (pass then
+     reference, back to back), the gate reads the median of 24 of them, a
+     failing reading earns one retry on a fresh page (§18's rule), and the
+     gate is the new statistic's in-suite worst + 10% (0.428 / 0.441 /
+     0.444 / 0.428 → 0.49). */
   ck('theLivingWaterFitsItsBudget', !v.thrown && v.livingRel < WATER_REL,
-    v.thrown || (f2(v.livingRel) + 'x the reference (gate ' + WATER_REL + 'x); the whole living-water pass, raster included: ' + f2(v.livingMs) + 'ms on the town view at z1.5 golden hour against a ' + f2(v.waterRefMs) + 'ms reference (was ' + f2(v.frameOff) + 'ms before 1b–1d: delta ' + f2(v.newWork) + 'ms; recorded foam ' + f2(v.foamMs) + ' + tiles ' + f2(v.tilesMs) + '); ' + f2(v.waterLivingMs) + 'ms on the water view; a flush alone ' + f2(v.flushMs) + 'ms'));
+    v.thrown || (f2(v.livingRel) + 'x the reference (gate ' + WATER_REL + 'x, median of 24 paired blocks' +
+      (v.livingRetried ? ', retried: ' + v.livingRetried.map(f2).join(' / ') : '') + '); the whole living-water pass, raster included: ' + f2(v.livingMs) + 'ms on the town view at z1.5 golden hour against a ' + f2(v.waterRefMs) + 'ms reference (was ' + f2(v.frameOff) + 'ms before 1b–1d: delta ' + f2(v.newWork) + 'ms; recorded foam ' + f2(v.foamMs) + ' + tiles ' + f2(v.tilesMs) + '); ' + f2(v.waterLivingMs) + 'ms on the water view; a flush alone ' + f2(v.flushMs) + 'ms'));
   ck('aFewFishStaggeredOnTheWaterWorthFishing',
     !v.thrown && v.noLockstep && v.spots > 1 && v.distinctPicks > 1 && v.offShoal === 0 && v.poor === 0
       && v.tooMany === 0 && v.sameFrame === 0 && !v.err,
