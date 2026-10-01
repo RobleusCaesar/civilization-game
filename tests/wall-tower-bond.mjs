@@ -433,8 +433,13 @@ const out = await p.evaluate(() => {
     const drawn = [];
     proto.drawImage = function (img) { drawn.push(img); return origDraw.apply(this, arguments); };
     try { R.draw(0.016); } finally { proto.drawImage = origDraw; G.visibleAt = vis; }
+    /* the tower's OWN sprite — a tower bonded mid-run wears the mural art
+       (R.bldSprite). This used to ask for the free-standing Watchtower, and
+       passed only because the lone tower at (40, 10) was being drawn 28
+       tiles off screen: the building loop had no camera cull (audit
+       PRF-V01). Culled, the check has to name the tower it is looking at. */
     ck('bondArtIsDrawn',
-      drawn.includes(Sprites.wallMask[1][E | W]) && drawn.includes(Sprites.building.tower[midT.level - 1]),
+      drawn.includes(Sprites.wallMask[1][E | W]) && drawn.includes(R.bldSprite(midT)),
       'the level-2 curtain stub and the tower both reached the canvas');
 
     // ---- 4. a bonded tower SEALS the line, for everyone (buildings-block) ----

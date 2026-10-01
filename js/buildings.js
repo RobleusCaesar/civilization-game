@@ -362,7 +362,48 @@ const Bld = {
     const s = this.size(b);
     return x >= b.x && x < b.x + s && y >= b.y && y < b.y + s;
   },
-  at(x, y) { return S.buildings.find(b => this.covers(b, x, y)); },
+  /* WHICH BUILDING STANDS ON THIS TILE — answered from a per-tile index, never
+     by scanning S.buildings. The rival's floods (_reachA, corkedGround,
+     maybeWalls, bestBuild) and the fort auto-tiling ask this per TILE, and the
+     old linear find paid ~85 footprint tests per question: on a real day-191
+     save that was ~80% of a 45-125ms day tick at desktop speed and 180-480ms
+     at phone speed (audit PRF-02). The answer is unchanged — the index holds
+     the FIRST building in S.buildings order covering each tile, every building
+     included (sites, walls and gates too, which rebuildBlock leaves passable).
+     It is rebuilt whenever the block grid rebuilds, and also when the list
+     itself is swapped or changes length (tests push and filter S.buildings
+     directly), so it can never vouch for a stale layout. The block grid is
+     forced current BEFORE its generation is read — the cache rule CLAUDE.md
+     records for every _blockGen reader. */
+  at(x, y) {
+    const W = CFG.W, H = CFG.H;
+    if (x < 0 || y < 0 || x >= W || y >= H || x !== (x | 0) || y !== (y | 0))
+      return S.buildings.find(b => this.covers(b, x, y));
+    if (!this._block) this.rebuildBlock();
+    const list = S.buildings;
+    if (!this._atIdx || this._atGen !== this._blockGen || this._atList !== list ||
+        this._atLen !== list.length || this._atW !== W || this._atIdx.length !== W * H) {
+      const idx = (this._atIdx && this._atIdx.length === W * H) ? this._atIdx : new Int32Array(W * H);
+      idx.fill(0);
+      for (let k = 0; k < list.length; k++) {
+        const b = list[k], s = this.size(b);
+        for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) {
+          const tx = b.x + dx, ty = b.y + dy;
+          if (tx < 0 || ty < 0 || tx >= W || ty >= H) continue;
+          const i = ty * W + tx;
+          if (!idx[i]) idx[i] = k + 1;          // first in list order wins, like find()
+        }
+      }
+      this._atIdx = idx; this._atGen = this._blockGen; this._atList = list;
+      this._atLen = list.length; this._atW = W; this._atSnap = list.slice();
+    }
+    const k = this._atIdx[y * W + x];
+    if (!k) return undefined;
+    const b = this._atSnap[k - 1];
+    // belt and braces: a building moved in place without a grid rebuild would
+    // be caught here and answered the slow, always-right way
+    return (list[k - 1] === b && this.covers(b, x, y)) ? b : S.buildings.find(o => this.covers(o, x, y));
+  },
 
   list(owner) { return S.buildings.filter(b => b.owner === owner); },
   tcOf(owner) { return S.buildings.find(b => b.owner === owner && b.key === 'tc'); },

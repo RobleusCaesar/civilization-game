@@ -6383,6 +6383,11 @@ const R = {
 
   viewW() { return this.cv.width / this.dpr; },
   viewH() { return this.cv.height / this.dpr; },
+  // the camera's band in (fractional) tiles — what the building loop culls to
+  viewTiles() {
+    const TL = CFG.TILE, x0 = this.cam.x / TL, y0 = this.cam.y / TL;
+    return { x0, y0, x1: x0 + this.viewW() / this.cam.z / TL, y1: y0 + this.viewH() / this.cam.z / TL };
+  },
 
   /* THE WORLD COVERS THE VIEWPORT (tests/desktop-layout.mjs): the zoom may
      never fall below the level at which the map is narrower or shorter than
@@ -10835,9 +10840,33 @@ const R = {
       g.drawImage(this.ashOf(a.key, a.lv), a.x * TL, a.y * TL, a.sz * TL, a.sz * TL);
     }
 
-    // buildings (sorted by footprint bottom edge)
-    const blds = S.buildings.slice().sort((a, b) =>
-      (a.y + Bld.size(a)) - (b.y + Bld.size(b)));
+    /* buildings (sorted by footprint bottom edge) — CULLED TO THE CAMERA
+       FIRST (audit PRF-V01). Fog visibility used to be the only gate, so a
+       late-game frame drew every building any unit could see ANYWHERE on the
+       map: on the day-191 save 28 of 47 blits landed off screen, the rival's
+       whole wall line among them, each asking the wall/tower bond topology.
+       The fog-ghost loop above was clipped for the same reason; this one
+       never was. The band is deliberately generous because a building's
+       picture is NOT its footprint: sidecar art scales up to 2x and shifts
+       down a footprint (the camps), tall art and the smoke over a roof rise
+       well above it, and a lowered drawbridge lies one tile beyond the gate
+       — so the box is measured in FOOTPRINTS around the footprint, plus a
+       tile. A building wholly outside it cannot put a pixel on screen.
+       Render-only: nothing the sim reads is filtered. */
+    const { x0: cvx0, y0: cvy0, x1: cvx1, y1: cvy1 } = this.viewTiles();
+    const blds = [];
+    for (const b of S.buildings) {
+      const bs = Bld.size(b);
+      if (b.x + 2.5 * bs + 1 < cvx0 || b.x - 1.5 * bs - 1 > cvx1 ||
+          b.y + 2 * bs + 1 < cvy0 || b.y - 3 * bs - 1 > cvy1) {
+        // an off-screen drawbridge has nobody watching it swing: settle it,
+        // so it is not caught mid-swing when the camera comes back
+        if (b.key === 'gate' && this._dbA[b.id] != null) this._dbA[b.id] = b.raised ? 1 : 0;
+        continue;
+      }
+      blds.push(b);
+    }
+    blds.sort((a, b) => (a.y + Bld.size(a)) - (b.y + Bld.size(b)));
     for (const b of blds) {
       const bs = Bld.size(b);
       let seen = false;
