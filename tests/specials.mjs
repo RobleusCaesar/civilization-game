@@ -420,14 +420,95 @@ const out = await p.evaluate(() => {
         JSON.stringify({ counted, taken: S.stats.migrationTaken, before, after, line }));
     }
 
+    // ---------------- 3e. STARFALL ----------------
+    {
+      const C = CFG.STARFALL;
+      const days = [], calmDays = []; for (let i = 0; i < 40; i++) { days.push(G.starfallDayOf('star-' + i, 'moderate')); calmDays.push(G.starfallDayOf('star-' + i, 'calm')); }
+      const night = d => (d - 1) % 12 >= 10;
+      const pure = days.every(d => night(d) && d >= C.dayMin && d <= C.dayMax + 11) && calmDays.every(d => night(d) && d >= C.calmMin) &&
+        G.starfallDayOf('star-5', 'moderate') === days[5] && new Set(days).size > 6;
+      fresh('spx-star'); flat();
+      // a camp planted on the best ground pushes the crater out of its yard
+      const s0 = G.starfallSite(S.seed);
+      const cmp = Bld.place('R', 'raidercamp', s0.x, s0.y, { free: true, instant: true });
+      const s1 = G.starfallSite(S.seed);
+      const yard = !!cmp && s1 && Math.hypot(s1.x + 1 - Bld.cx(cmp), s1.y + 1 - Bld.cy(cmp)) >= CFG.RAIDER_CAMPS.chaseR + 2;
+      S.buildings = S.buildings.filter(z => z !== cmp); Bld._block = null;
+      const site = G.starfallSite(S.seed), ok = G.specialElig('starfall');
+      const pt = Bld.tcOf('P'), at = Bld.tcOf('A');
+      const dP = G._walkFrom('P'), dA = G._walkFrom('A');
+      const i0 = site ? site.y * CFG.W + site.x : 0;
+      const fair = site && Math.abs(site.wp - site.wa) <= C.fair * Math.max(site.wp, site.wa) &&
+        Math.hypot(site.x + 1 - Bld.cx(pt), site.y + 1 - Bld.cy(pt)) >= C.minHall &&
+        Math.hypot(site.x + 1 - Bld.cx(at), site.y + 1 - Bld.cy(at)) >= C.minHall && dP[i0] >= 0 && dA[i0] >= 0;
+      // a hall moated in on every side: nowhere is a race both tribes can run
+      water(pt.x - 4, pt.y - 4, pt.x + 5, pt.y - 4); water(pt.x - 4, pt.y + 5, pt.x + 5, pt.y + 5);
+      water(pt.x - 4, pt.y - 4, pt.x - 4, pt.y + 5); water(pt.x + 5, pt.y - 4, pt.x + 5, pt.y + 5);
+      const moated = !G.specialElig('starfall');
+      ck('aStarFallsOnANightOnGroundBothCanRunFor', pure && ok && fair && moated && yard,
+        JSON.stringify({ pure, ok, fair, moated, yard, site }));
+
+      // the omen, the night, the fall, the crater
+      fresh('spx-star2'); flat();
+      S.special = 'starfall'; S.specialDay = 0;
+      const sday = 95;   // (95-1)%12 = 10: a night
+      S.starfall = { avail: true, day: sday, warned: false, phase: null, t: 0, x: -1, y: -1, aiSent: false, claimed: null, iron: {}, done: false };
+      toasts.length = 0;
+      S.day = sday - 2; G.starfallDaily(); const early = !S.starfall.warned;
+      S.day = sday - 1; G.starfallDaily(); const omen = S.starfall.warned;
+      S.day = sday; S.dayT = 0; G.starfallDaily(); G.starfallTick(0.1); const waits = S.starfall.phase === 'night';
+      S.dayT = CFG.DAY_MS * 0.5; G.starfallTick(0.1);
+      const F = S.starfall, falling = F.phase === 'fall' && F.x >= 0 && S.specialDay === sday;
+      for (let i = 0; i < 40 && F.phase === 'fall'; i++) G.starfallTick(0.1);
+      let gold = 0, scorch = 0, seen = 0, known = 0;
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+        const i = (F.y + dy) * CFG.W + F.x + dx;
+        if (S.map.terrain[i] === T.GOLDORE) gold++;
+        if (S.map.terrain[i] === T.RUIN && S.map.decay && S.map.decay[i]) scorch++;
+        if (S.ai.seen && S.ai.seen[i]) seen++;
+        if (S.map.explored[i]) known++;
+      }
+      ck('theStarComesDownAtNightAndLeavesTwoSeams', early && omen && waits && falling && F.phase === 'down' &&
+        gold === 2 && scorch === 2 && seen === 4 && known === 4 && toasts.some(m => /STAR FALLS/.test(m)),
+        JSON.stringify({ early, omen, waits, falling, phase: F.phase, gold, scorch, seen, known }));
+
+      // it rides the save while it lies there
+      G.loadJSON(G.saveJSON());
+      const rides = S.starfall.phase === 'down' && S.starfall.x === F.x;
+      // the first villager there takes the gold and the sky-iron for six soldiers
+      const S2 = S.starfall, gold0 = S.res.gold;
+      const v = Units.spawn('villager', 'P', S2.x + 1, S2.y + 2);
+      G.starfallTick(0.1);
+      const claimed = S2.claimed === 'P' && S2.done && S.res.gold === gold0 + C.gold && S.stats.starfallClaimed === 1;
+      const base = CFG.UNITS.defender.atk;
+      const ds = []; for (let i = 0; i < C.iron + 1; i++) ds.push(Units.spawn('defender', 'P', Bld.tcOf('P').x - 2, Bld.tcOf('P').y + 2));
+      const rv = Units.spawn('defender', 'A', Bld.tcOf('A').x - 2, Bld.tcOf('A').y + 2);
+      const iron = ds.slice(0, C.iron).every(d => d.atk === base + 1 && d.skyIron) && ds[C.iron].atk === base && rv.atk === base && !rv.skyIron;
+      ck('theFirstHandsTakeTheGoldAndTheNextSixSoldiersTheIron', rides && claimed && iron,
+        JSON.stringify({ rides, claimed, gold: S.res.gold - gold0, atks: ds.map(d => d.atk), rival: rv.atk }));
+
+      // the rival saw it fall too, and runs
+      fresh('spx-star3'); flat();
+      const ah = Bld.tcOf('A');
+      const av = Units.spawn('villager', 'A', ah.x - 1, ah.y + 2);
+      S.starfall = { avail: true, day: S.day, warned: true, phase: 'night', t: 0, x: -1, y: -1, aiSent: false, claimed: null, iron: {}, done: false };
+      S.dayT = CFG.DAY_MS * 0.6; G.starfallTick(0.1);
+      for (let i = 0; i < 40 && S.starfall.phase === 'fall'; i++) G.starfallTick(0.1);
+      const aiGold0 = S.ai.res.gold;
+      for (let i = 0; i < 4000 && !S.starfall.done; i++) { G.starfallTick(0.1); Units.update(0.1); }
+      ck('theRivalRunsForItToo', S.starfall.aiSent && S.starfall.claimed === 'A' && S.ai.res.gold === aiGold0 + C.gold &&
+        S.starfall.iron.A === C.iron && !S.stats.starfallClaimed,
+        JSON.stringify({ sent: S.starfall.aiSent, claimed: S.starfall.claimed, at: [av.x | 0, av.y | 0], site: [S.starfall.x, S.starfall.y] }));
+    }
+
     // ---------------- 4. SCORE AND THE RUN REPORT ----------------
     {
       fresh('spx-score');
       const st = S.stats;
-      st.sonsAnswered = st.cacheDug = st.winterEndured = st.plagueEndured = st.krakenSlain = st.dragonSeen = st.eclipseEndured = st.wildfireEndured = st.migrationTaken = 1;
+      st.sonsAnswered = st.cacheDug = st.winterEndured = st.plagueEndured = st.krakenSlain = st.dragonSeen = st.eclipseEndured = st.wildfireEndured = st.migrationTaken = st.starfallClaimed = 1;
       const lines = Score.compute(false).lines.map(l => l.label || l.text || JSON.stringify(l)).join(' | ');
       const C = CFG.SCORE;
-      const want = [/kraken/i, /dragon/i, /sons/i, /hoard/i, /winter/i, /plague/i, /swallowed sun/i, /dry summer/i, /great migration/i];
+      const want = [/kraken/i, /dragon/i, /sons/i, /hoard/i, /winter/i, /plague/i, /swallowed sun/i, /dry summer/i, /great migration/i, /fallen star/i];
       ck('everyEventFeedsAScoreLine', want.every(r => r.test(lines)) && [C.sons, C.cache, C.winter, C.plague].every(n => n > 0), lines);
 
       S.special = 'winter'; S.specialDay = 0;

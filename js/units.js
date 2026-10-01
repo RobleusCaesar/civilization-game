@@ -52,6 +52,7 @@ const Units = {
       u.female = Math.random() < 0.5;
     }
     if (window.Cards) Cards.onSpawn(u);   // ORIGIN CARDS: Ironhand toughness
+    if (S.starfall) G.skyIron(u);         // STARFALL: the crater's iron goes to the next soldiers raised
     S.units.push(u);
     return u;
   },

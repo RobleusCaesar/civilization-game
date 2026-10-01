@@ -189,7 +189,7 @@ const G = {
       // run stats — the raw material of the arcade score (js/score.js)
       stats: { trained: 0, razed: 0, gathered: 0, kills: 0, built: 0,
                walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0, originBonus: 0,
-               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0, eclipseEndured: 0, wildfireEndured: 0, migrationTaken: 0 },
+               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0, eclipseEndured: 0, wildfireEndured: 0, migrationTaken: 0, starfallClaimed: 0 },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
       // THE CALM TRUCE (tests/calm-peace.mjs): true while neither tribe may
@@ -290,6 +290,9 @@ const G = {
     // the great migration keeps its own day; the route is found on the day
     S.migration = { avail: S.special === 'migration', day: this.migrationDayOf(seed), warned: false,
                     phase: null, t: 0, route: null, from: '', plan: null, wolves: 0, next: 0, taken: 0, done: false };
+    // the falling star keeps its own night; the site is found on the day
+    S.starfall = { avail: S.special === 'starfall', day: this.starfallDayOf(seed, modeKey), warned: false,
+                   phase: null, t: 0, x: -1, y: -1, aiSent: false, claimed: null, iron: {}, done: false };
     // the swallowed sun keeps its own day, hashed off the seed string
     S.eclipse = { avail: S.special === 'eclipse', day: this.eclipseDayOf(seed), warned: false,
                   foretold: false, cut: null, phase: null, t: 0, done: false };
@@ -737,6 +740,7 @@ const G = {
     this.eclipseDaily();
     this.fireDaily();
     this.migrationDaily();
+    this.starfallDaily();
     this.wearDaily();
 
     // the tribe endures — but only so far. If every villager is dead (none on
@@ -1154,6 +1158,145 @@ const G = {
     }
   },
 
+  /* STARFALL (CFG.STARFALL, tests/specials.mjs). The night is hashed off the
+     SEED STRING onto the 12-day cycle's dark (days 11-12 of a cycle — a star
+     wants the night) and the omen hangs in the sky the night before. The
+     site is CONTESTED by construction: open 2x2 grass minHall+ from both
+     halls, walkable from both doorsteps, with walking distances within
+     `fair` of each other; a seed-hashed pick among them. At the roll that is
+     a generation fact; on the night, the towns as they stand. Both tribes
+     SEE it come down (the player's map is revealed there, the chief's
+     ai.seen written) and both may run for it; the rival sends one hand after
+     aiDelayS. The first VILLAGER at the crater takes the gold and the
+     sky-iron; the two gold seams stay on the map for anyone to claim. */
+  starfallDayOf(seed, mode) {
+    const C = CFG.STARFALL, calm = mode === 'calm';
+    const lo = calm ? C.calmMin : C.dayMin, hi = calm ? C.calmMax : C.dayMax;
+    let d = lo + Math.abs(hashSeed(String(seed == null ? '' : seed) + '::star') | 0) % (hi - lo + 1);
+    while ((d - 1) % 12 < 10) d++;
+    return d;
+  },
+  _walkFrom(owner) {
+    const W = CFG.W, dist = new Int32Array(W * CFG.H).fill(-1), q = [];
+    for (const i of Units.homeSteps(owner)) if (dist[i] < 0) { dist[i] = 0; q.push(i); }
+    for (let h = 0; h < q.length; h++) {
+      const c = q[h], x = c % W, y = (c / W) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (!MapGen.onBoard(nx, ny)) continue;
+        const j = ny * W + nx;
+        if (dist[j] >= 0 || !Path.passable(nx, ny, owner)) continue;
+        dist[j] = dist[c] + 1; q.push(j);
+      }
+    }
+    return dist;
+  },
+  starfallSite(seed) {
+    const C = CFG.STARFALL, W = CFG.W, H = CFG.H, t = S.map.terrain;
+    const pt = Bld.tcOf('P'), at = Bld.tcOf('A');
+    if (!pt || !at) return null;
+    const dP = this._walkFrom('P'), dA = this._walkFrom('A'), cands = [];
+    // never in a war band's yard: the race is between the TOWNS, and a
+    // crater among the tenders is a prize nobody's hand survives reaching
+    const camps = S.buildings.filter(b => b.key === 'raidercamp');
+    const campR = CFG.RAIDER_CAMPS.chaseR + 2;
+    for (let y = 1; y < H - 2; y++) for (let x = 1; x < W - 2; x++) {
+      let ok = true, wp = 1e9, wa = 1e9;
+      for (let dy = 0; dy < 2 && ok; dy++) for (let dx = 0; dx < 2; dx++) {
+        const i = (y + dy) * W + x + dx;
+        if (t[i] !== T.GRASS || !MapGen.onBoard(x + dx, y + dy) || Bld.at(x + dx, y + dy) || MapGen.mtnShadow(x + dx, y + dy, t)) { ok = false; break; }
+        if (dP[i] >= 0) wp = Math.min(wp, dP[i]);
+        if (dA[i] >= 0) wa = Math.min(wa, dA[i]);
+      }
+      if (!ok || wp >= 1e9 || wa >= 1e9) continue;
+      if (Math.hypot(x + 1 - Bld.cx(pt), y + 1 - Bld.cy(pt)) < C.minHall) continue;
+      if (Math.hypot(x + 1 - Bld.cx(at), y + 1 - Bld.cy(at)) < C.minHall) continue;
+      if (Math.abs(wp - wa) > C.fair * Math.max(wp, wa)) continue;
+      if (camps.some(c => Math.hypot(x + 1 - Bld.cx(c), y + 1 - Bld.cy(c)) < campR)) continue;
+      cands.push({ x, y, wp, wa });
+    }
+    if (!cands.length) return null;
+    return cands[Math.abs(hashSeed(String(seed == null ? '' : seed) + '::star-site') | 0) % cands.length];
+  },
+  starfallDaily() {
+    const F = S.starfall, C = CFG.STARFALL;
+    if (!F || !F.avail || F.done || F.phase) return;
+    if (!F.warned && S.day >= F.day - C.omenDays) {
+      F.warned = true;
+      this.log('☄️ A star with a burning tail hangs in the night sky. The elders say it is coming down.', 'note', 6000);
+    }
+    if (S.day >= F.day) F.phase = 'night';   // it falls once the dark is deep (starfallTick)
+  },
+  starfallTick(dt) {
+    const F = S.starfall, C = CFG.STARFALL;
+    if (!F || !F.phase) return;
+    if (F.phase === 'night') {
+      if (S.day === F.day && S.dayT < CFG.DAY_MS * 0.45) return;
+      const site = this.starfallSite(S.seed);
+      if (!site) { F.phase = null; F.avail = false; F.done = true; return; }
+      F.x = site.x; F.y = site.y; F.phase = 'fall'; F.t = 0;
+      this.specialFired();
+      return;
+    }
+    F.t += dt;
+    if (F.phase === 'fall') { if (F.t >= C.fallS) this.starfallImpact(); return; }
+    // 'down': the rival saw it fall too — one hand runs for it
+    if (!F.aiSent && F.t >= C.aiDelayS) {
+      F.aiSent = true;
+      let v = null, vd = 1e9;
+      for (const u of S.units) {
+        if (u.owner !== 'A' || u.kind !== 'villager') continue;
+        const d = Math.hypot(u.x - F.x - 1, u.y - F.y - 1);
+        if (d < vd) { vd = d; v = u; }
+      }
+      if (v) Units.moveTo(v, F.x, F.y);
+    }
+    for (const u of S.units) {
+      if (u.kind !== 'villager' || (u.owner !== 'P' && u.owner !== 'A')) continue;
+      if (Math.abs(u.x - F.x - 1) <= 1.6 && Math.abs(u.y - F.y - 1) <= 1.6) { this.starfallClaim(u.owner); return; }
+    }
+  },
+  starfallImpact() {
+    const F = S.starfall, W = CFG.W;
+    F.phase = 'down'; F.t = 0;
+    // a crater of two seams on the diagonal, the other two cells scorched (they heal)
+    const diag = (Math.abs(hashSeed(String(S.seed) + '::star-diag') | 0) & 1) === 0;
+    // the rival's memory is written as the Prospector's is: made if it is not there yet
+    if (S.ai && (!S.ai.seen || S.ai.seen.length !== W * CFG.H)) S.ai.seen = new Array(W * CFG.H).fill(0);
+    for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+      const x = F.x + dx, y = F.y + dy, i = y * W + x;
+      const gold = diag ? dx === dy : dx !== dy;
+      S.map.terrain[i] = gold ? T.GOLDORE : T.RUIN; S.map.resAmount[i] = 0;
+      if (!gold) this.scheduleRevert(i);
+      if (S.ai) S.ai.seen[i] = 1;
+      R.updateTile(x, y);
+    }
+    this.reveal(F.x + 1, F.y + 1, 2);
+    if (R.startle) R.startle(F.x + 1, F.y + 1, 16);
+    if (R.startPlacePoof) { R.startPlacePoof(F.x, F.y, 2); R.startPlacePoof(F.x, F.y, 2, { delay: 260, scale: 0.7 }); }
+    this.log('☄️ A STAR FALLS between the two towns! Sky-iron and gold lie in the crater — the first hands there take them.', true, 9000);
+  },
+  starfallClaim(owner) {
+    const F = S.starfall, C = CFG.STARFALL;
+    F.phase = null; F.done = true; F.avail = false; F.claimed = owner;
+    F.iron = { [owner]: C.iron };
+    if (owner === 'P') {
+      S.res.gold += C.gold;
+      if (S.stats) S.stats.starfallClaimed = 1;
+      R.float(F.x + 1, F.y + 0.4, '+' + C.gold + ' gold', '#ffe9a3');
+      this.log('☄️ Your people reach the crater first — ' + C.gold + ' gold, and sky-iron for the next ' + C.iron + ' soldiers you raise.', true, 7000);
+    } else {
+      S.ai.res.gold += C.gold;
+      this.log('☄️ The rival tribe reached the fallen star first — its next soldiers will carry sky-iron.', true, 7000);
+    }
+  },
+  // a fresh soldier of a tribe holding sky-iron takes one of its blades
+  skyIron(u) {
+    const F = S.starfall;
+    if (!F || !F.iron || !(F.iron[u.owner] > 0) || !Units.isMilitary(u) || Units.isNaval(u)) return;
+    F.iron[u.owner]--; u.atk += 1; u.skyIron = true;
+  },
+
   /* THE SWALLOWED SUN (CFG.ECLIPSE, tests/specials.mjs). Its day is hashed
      off the SEED STRING (never G.rand) and moved forward onto a bright day,
      clear of the 12-day cycle's dusk window — an eclipse at dusk reads as
@@ -1281,6 +1424,7 @@ const G = {
     if (test === 'openWater') return this.openWaterNearHome('P');
     if (test === 'woodStand') return !!this.fireSite();
     if (test === 'corridor') return !!this.migrationRoute(S.seed);
+    if (test === 'contested') return !!this.starfallSite(S.seed);
     return true;
   },
   // open water a hull could be launched onto from home: an open-water tile
@@ -2415,6 +2559,7 @@ const G = {
     if (data.plague.from === undefined) data.plague.from = CFG.PLAGUE.from;
     if (!data.wildfire) data.wildfire = { avail: false, done: true, day: 0, warned: false, phase: null, burning: {}, burnt: 0, t: 0, spreadT: 0, wind: [1, 0] };
     if (!data.migration) data.migration = { avail: false, done: true, day: 0, warned: false, phase: null, t: 0, route: null, from: '', plan: null, wolves: 0, next: 0, taken: 0 };
+    if (!data.starfall) data.starfall = { avail: false, done: true, day: 0, warned: false, phase: null, t: 0, x: -1, y: -1, aiSent: false, claimed: null, iron: {} };
     if (!data.eclipse) data.eclipse = { avail: false, done: true, day: 0, warned: false, foretold: false, cut: null, phase: null, t: 0 };
     // the day the armed event fired: a pre-stamp save reports it unknown
     if (data.specialDay === undefined) data.specialDay = 0;
@@ -2428,7 +2573,7 @@ const G = {
     if (!data.stats) data.stats = {};
     for (const k of ['trained', 'razed', 'gathered', 'kills', 'built', 'walls',
                      'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus', 'leanIn',
-                     'sonsAnswered', 'cacheDug', 'winterEndured', 'plagueEndured', 'eclipseEndured', 'wildfireEndured', 'migrationTaken'])
+                     'sonsAnswered', 'cacheDug', 'winterEndured', 'plagueEndured', 'eclipseEndured', 'wildfireEndured', 'migrationTaken', 'starfallClaimed'])
       if (!data.stats[k]) data.stats[k] = 0;
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
@@ -2634,6 +2779,7 @@ const G = {
           G.eclipseTick(sdt);
           G.fireTick(sdt);
           G.migrationTick(sdt);
+          G.starfallTick(sdt);
           G.dragonTick(sdt);
           G.dragonT = (G.dragonT || 0) - sdt;
           if (G.dragonT <= 0) {

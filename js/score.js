@@ -45,6 +45,7 @@ const Score = {
     if (st.plagueEndured) add('🕊', 'Buried the plague dead and went on', C.plague);
     if (st.eclipseEndured) add('🌑', 'Stood under the swallowed sun', C.eclipse);
     if (st.wildfireEndured) add('🔥', 'Came through the dry summer', C.wildfire);
+    if (st.starfallClaimed) add('☄️', 'First to the fallen star', C.starfall);
     if (st.migrationTaken) add('🦌', `Hunted the great migration × ${st.migrationTaken}`,
       Math.min(C.migrationCap, st.migrationTaken * C.migration));
     if (st.originBonus) add('⛺', 'Hard beginnings', st.originBonus);

@@ -258,6 +258,24 @@ apart and walk the road as `u.migrant` (their exit, riding in the save):
 fight knocks one off the trail, and despawns it at the far edge. Every head
 the PLAYER takes off the trail counts `migrationTaken`, scored per head
 (`SCORE.migration` 12) up to `migrationCap` (300).
+**STARFALL** (`starfall`, all modes, `CFG.STARFALL`, specials.mjs §3e): a
+RACE, contested by construction (`G.starfallSite`): open 2x2 grass `minHall`
+(12)+ from both halls, walkable from both doorsteps with WALKING distances
+(`G._walkFrom`) within `fair` (20%) of each other, never in a war band's yard
+(`chaseR + 2` of any camp), never in a mountain's shadow; a seed-hashed pick
+among those. Its night is hashed off the seed string onto the cycle's dark
+(`(day-1) % 12 >= 10`; Calm 80..220, else 60..160), a comet hangs in the sky
+(screen space) the night before, and it falls once the dark is deep
+(`dayT ≥ 0.45`). The crater is two `T.GOLDORE` seams on a diagonal and two
+scorched `T.RUIN` cells that heal. BOTH tribes see it fall — the player's
+map is revealed there, the chief's `ai.seen` written (made if absent) — and
+the rival sends its nearest villager after `aiDelayS`. The first VILLAGER at
+the crater brings home `gold` (60) and arms the next `iron` (6) soldiers its
+tribe raises with sky-iron (+1 atk, stamped once in `Units.spawn` via
+`G.skyIron` — never naval); the seams stay for anyone to claim as mines.
+Drawn by `R.drawStarfall` over the night tint (hard pixel squares: the
+comet, a tapering trail into a white-hot head, the impact ring, embers);
+scores `starfallClaimed` (300).
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
 perimeter line may only be MADE of `wall` and `gate` — it never counts an

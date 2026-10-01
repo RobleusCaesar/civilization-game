@@ -8502,6 +8502,74 @@ const R = {
     }
   },
 
+  /* STARFALL on screen (G.starfallTick): the omen is a comet fixed to the
+     SKY (screen space, upper right — the sky is not on the map) through the
+     night before and the night of; the fall is a burning head on a long
+     arc into the site with a hard-stepped trail; the impact a white ring
+     and, until somebody reaches it, an ember glow over the crater. Pixel
+     marks only, no gradients. Render-only, nothing in S beyond the event. */
+  drawStarfall(g) {
+    const F = S.starfall;
+    if (!F || F.done || !F.avail && !F.phase) return;
+    const TL = CFG.TILE, z = this.cam.z * this.dpr, now = performance.now();
+    const Wc = this.cv.width, Hc = this.cv.height, px = Math.max(1, Math.round(Wc / 300));
+    const omen = !F.phase && F.warned || F.phase === 'night';
+    if (omen) {
+      const k = Math.max(0.35, this._dusk ? this._dusk.k : 0);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      const hx = Wc * 0.78, hy = Hc * 0.12;
+      for (let s = 0; s < 22; s++) {           // the tail streams up and back
+        const a = (1 - s / 22) * 0.75 * k;
+        g.fillStyle = s < 3 ? 'rgba(255,248,220,' + a.toFixed(3) + ')' : 'rgba(170,200,255,' + (a * 0.7).toFixed(3) + ')';
+        g.fillRect((hx + s * px * 1.6) | 0, (hy - s * px * 0.7) | 0, px * (s < 4 ? 2 : 1), px);
+      }
+      g.fillStyle = 'rgba(255,252,236,' + (0.9 * k).toFixed(3) + ')';
+      g.fillRect((hx - px) | 0, (hy - px) | 0, px * 3, px * 3);
+      return;
+    }
+    if (F.x < 0) return;
+    const C = CFG.STARFALL, cx = (F.x + 1) * TL, cy = (F.y + 1) * TL;
+    g.setTransform(z, 0, 0, z, -this.cam.x * z, -this.cam.y * z);
+    if (F.phase === 'fall') {
+      const f = Math.min(1, F.t / C.fallS), e = f * f;
+      const sx = cx + TL * 9, sy = cy - TL * 16;     // it comes in from high in the east
+      const at = (q) => ({ x: sx + (cx - sx) * q, y: sy + (cy - sy) * q });
+      // the trail: a continuous taper of hard squares, smoke-red at the tail,
+      // fire through the middle, white-hot at the head
+      const N = 46;
+      for (let s = N; s >= 1; s--) {
+        const q = e - s * 0.006; if (q < 0) continue;
+        const p = at(q), k = s / N;
+        const sz = Math.max(2, Math.round(9 * (1 - k)));
+        g.fillStyle = k > 0.7 ? 'rgba(120,52,40,' + (0.55 * (1 - k) / 0.3).toFixed(3) + ')'
+          : k > 0.35 ? 'rgba(232,112,48,0.9)' : k > 0.12 ? '#ffc060' : '#fff0c0';
+        g.fillRect(Math.round(p.x - sz / 2), Math.round(p.y - sz / 2), sz, sz);
+      }
+      const h = at(e);
+      g.fillStyle = 'rgba(255,200,110,0.22)'; g.fillRect(Math.round(h.x - 16), Math.round(h.y - 16), 32, 32);
+      g.fillStyle = 'rgba(255,230,170,0.35)'; g.fillRect(Math.round(h.x - 10), Math.round(h.y - 10), 20, 20);
+      g.fillStyle = '#ffffff'; g.fillRect(Math.round(h.x - 6), Math.round(h.y - 6), 12, 12);
+      return;
+    }
+    if (F.phase === 'down') {
+      if (F.t < 0.9) {                              // the impact: a hard ring of light rolling out
+        const r = TL * (0.6 + F.t * 3.2), a = 1 - F.t / 0.9;
+        g.fillStyle = 'rgba(255,240,200,' + a.toFixed(3) + ')';
+        for (let n = 0; n < 40; n++) {
+          const ang = n / 40 * Math.PI * 2;
+          g.fillRect(Math.round(cx + Math.cos(ang) * r - 1), Math.round(cy + Math.sin(ang) * r * 0.7 - 1), 2, 2);
+        }
+      }
+      if (!S.map.explored[F.y * CFG.W + F.x]) return;
+      for (let n = 0; n < 8; n++) {                 // embers winking over the crater
+        const h = Math.imul(n + 3, 0x9e3779b1) >>> 0, ph = ((now / 260 + n * 1.7) | 0) % 4;
+        if (ph === 0) continue;
+        g.fillStyle = ph === 3 ? '#ffd27a' : '#e0703a';
+        g.fillRect(Math.round(cx - TL * 0.8 + (h % 100) / 100 * TL * 1.6), Math.round(cy - TL * 0.7 + ((h >> 8) % 100) / 100 * TL * 1.4 - (now / 90 + n * 5) % 6), 2, 2);
+      }
+    }
+  },
+
   /* THE DRY SUMMER on screen (G.fireTick): every burning tree wears the
      shipped flame strips — small as it catches, the big blaze through the
      middle of its burn, small again as it gutters — under the burn smoke
@@ -12265,6 +12333,9 @@ const R = {
         }
       }
     }
+
+    // STARFALL: drawn over the night, because it is the brightest thing in it
+    g.save(); this.drawStarfall(g); g.restore();
 
     // the monument is finished: hold the frame on it (tests/wonder.mjs)
     this.drawMarvel(g, dt);

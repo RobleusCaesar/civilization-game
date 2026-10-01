@@ -996,7 +996,7 @@ const CFG = {
     // the other specials: answered, dug, ENDURED — a punishment scores for
     // the village that came through it, as the kraken does (EVD-V02)
     sons: 150, cache: 150, winter: 200, plague: 200, eclipse: 150, wildfire: 150,
-    migration: 12, migrationCap: 300,   // per head the village takes from the herd, capped
+    migration: 12, migrationCap: 300, starfall: 300,   // per head the village takes from the herd, capped
     leanIn: 120,                // ORIGIN CARDS: kept the card that leans into your roll
     mult: { calm: 0.5, moderate: 1.0, hard: 1.75 },
   },
@@ -1032,6 +1032,7 @@ const CFG = {
       eclipse: { modes: ['calm', 'moderate', 'hard'], neg: true, w: 1 },
       wildfire: { modes: ['calm', 'moderate', 'hard'], neg: true, w: 1, elig: 'woodStand' },
       migration: { modes: ['calm', 'moderate', 'hard'], w: 1, elig: 'corridor' },
+      starfall: { modes: ['calm', 'moderate', 'hard'], w: 1, elig: 'contested' },
     },
   },
   /* the kraken's visit: rolled DELAY days after the player first puts a
@@ -1074,6 +1075,13 @@ const CFG = {
      `gapS` real seconds apart, wolves trailing the last of them */
   MIGRATION: { dayMin: 40, dayMax: 150, warnDays: 1, clearHall: 8, bands: ['deer', 'cow', 'deer'],
                head: [6, 8], wolves: [3, 5], gapS: 5 },
+  /* STARFALL (tests/specials.mjs): a star comes down on a night, on open
+     ground minHall+ from both halls whose WALKING distance from each is
+     within `fair` of the other — a race, not a gift. The crater is two gold
+     seams; the first villager to stand at it brings home `gold` and arms
+     the next `iron` soldiers that tribe raises with sky-iron (+1 atk). */
+  STARFALL: { dayMin: 60, dayMax: 160, calmMin: 80, calmMax: 220, minHall: 12, fair: 0.2,
+              omenDays: 1, fallS: 2.4, aiDelayS: 4, gold: 60, iron: 6 },
   ECLIPSE: { dayMin: 30, dayMax: 200, dimS: 6, darkS: 20, backS: 6, tint: 0.55, vision: 0.5, warnDays: 3, workMult: 0.5 },
   DRAGON: { minDay: 25, foesMin: 6, radius: 9 },
 
