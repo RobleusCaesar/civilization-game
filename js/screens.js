@@ -542,6 +542,22 @@ const Screens = {
     return this.gamesFounded() < this.TUT_AUTO_GAMES;
   },
   tutorialExplicit() { return this.lsGet('neo-tutorial-ask') === '1'; },
+  // the world foundRun forces for a lesson: the only one the lesson promises
+  teachableWorld() {
+    return !!(window.S && S.map && S.map.landform === 'valley' && S.map.variant === 'classic' && S.sizeKey === 'medium');
+  },
+  // found the run again under the tutorial's rule, the startNewGame way:
+  // say so first, do the work after the next paint, swallow a second press
+  refoundForLesson() {
+    if (this._founding) return;
+    this._founding = true;
+    const b = this.el('btnTutToggle');
+    if (b) b.classList.add('busy');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try { this.foundRun(); }
+      finally { this._founding = false; if (b) b.classList.remove('busy'); }
+    }));
+  },
 
   /* ================= TWO ROADS TO VICTORY (the Calm modal) =================
      (tests/tutorial.mjs) Nobody has ever won by the Wonder — 0 of every Calm
@@ -1406,6 +1422,16 @@ const Screens = {
       const v = this.tutorialWanted();
       this.lsSet('neo-tutorial-ask', v ? '0' : '1');
       this.syncTutToggle();
+      /* TICKING IT ON RE-FOUNDS THE WORLD (audit MAP-V01). The forcing
+         ("the tutorial never gambles": Valley · Classic · medium) is decided
+         in foundRun, which has already run by the time this checkbox is on
+         screen — so ticking it armed the lesson on whatever world had been
+         rolled: an archipelago, a karst, an xlarge fjord, 12 times in 12.
+         An UN-KEPT draft on a world the lesson cannot teach is founded again
+         under the new rule. Only this direction: unticking leaves the
+         world alone, and re-ticking on a teachable world founds nothing, so
+         the checkbox can never become a free re-deal of the cards. */
+      if (!v && window.S && S.draft && !S.draft.done && !this._demo && !this.teachableWorld()) this.refoundForLesson();
     });
     on('btnDraftHelp', () => { this.el('draftOverlay').style.display = 'flex'; });
     // back to the trial pick; the pending draft rides S and resumes intact

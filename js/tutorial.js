@@ -659,7 +659,15 @@ const Tutorial = {
     else {
       t.done[sh.id] = 1;
       const def = this._defOf();
-      if (def && def.end) t.phase = 2;   // the capstone: phase 1 is complete
+      if (def && def.end) {
+        t.phase = 2;   // the capstone: phase 1 is complete
+        /* a TICKED box is spent once the lesson is learned (audit MAP-01):
+           an explicit '1' used to force every later game onto Valley ·
+           Classic · medium and re-arm the lesson, forever, until unticked.
+           Completion hands the choice back to the count (TUT_AUTO_GAMES),
+           which by then says no; an explicit '0' is never touched. */
+        if (window.Screens && Screens.lsGet && Screens.lsGet('neo-tutorial-ask') === '1') Screens.lsDel('neo-tutorial-ask');
+      }
       while (t.step < this.STEPS.length && t.done[this.STEPS[t.step].id]) t.step++;
     }
     UI.cue('ok');

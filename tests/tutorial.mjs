@@ -790,6 +790,46 @@ const out = await p.evaluate(async () => {
       Screens.show('playing'); S.paused = true;
     }
     wipe();
+    // TICKING IT ON RE-FOUNDS AN UN-KEPT DRAFT (audit MAP-V01): the forcing
+    // is decided in foundRun, before the checkbox is ever on screen, so a
+    // tick used to arm the lesson on whatever world was already rolled.
+    // Only that direction re-founds — the checkbox is never a free re-deal.
+    {
+      const raf3 = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))));
+      Screens.lsSet('neo-games', '9');   // a veteran: the teacher is not auto-on
+      Screens.newPrefs.mode = 'moderate';
+      let tries = 0;
+      do { Screens.foundRun(); } while (Screens.teachableWorld() && ++tries < 40);
+      const rolled = S.map.landform + '·' + S.map.variant + '·' + S.sizeKey, s0 = S.seed;
+      Screens.syncTutToggle();
+      tb.click(); await raf3();
+      const ticked = Screens.teachableWorld() && S.seed !== s0 && S.draft && !S.draft.done;
+      const s1 = S.seed;
+      tb.click(); await raf3();
+      const untickKeeps = S.seed === s1;
+      tb.click(); await raf3();
+      const retickKeeps = S.seed === s1 && Screens.tutorialWanted();
+      ck('tickingTheTutorialRefoundsAnUnteachableWorld', ticked && untickKeeps && retickKeeps,
+        'rolled ' + rolled + ' -> ' + S.map.landform + '·' + S.map.variant + '·' + S.sizeKey +
+        JSON.stringify({ ticked, untickKeeps, retickKeeps }));
+      // …and a TICKED box is spent by finishing the lesson (MAP-01): an
+      // explicit '1' no longer forces every later game onto the valley
+      G.newGame('123', 'calm', 'medium'); Screens._demo = false; S.paused = true;
+      Tutorial.maybeStart();
+      const end = Tutorial.STEPS.find(z => z.end);
+      Tutorial._show = { kind: 'step', id: end.id };
+      Tutorial._completeShow();
+      const spent = S.tut.phase === 2 && Screens.lsGet('neo-tutorial-ask') == null && Screens.tutorialWanted() === false;
+      Screens.lsSet('neo-tutorial-ask', '0');
+      G.newGame('124', 'calm', 'medium'); Screens._demo = false; S.paused = true;
+      S.tut = { on: true, phase: 1, step: 0, done: {}, fired: {} };
+      Tutorial._show = { kind: 'step', id: end.id }; Tutorial._completeShow();
+      const offStays = Screens.lsGet('neo-tutorial-ask') === '0';
+      ck('andFinishingTheLessonSpendsTheTick', spent && offStays, JSON.stringify({ spent, offStays }));
+      Tutorial.skip();
+      Screens.show('playing'); S.paused = true;
+    }
+    wipe();
   }
 
   // ---- 13. two roads to victory: the Calm modal and the Wonder card ----

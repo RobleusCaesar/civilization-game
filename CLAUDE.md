@@ -4727,6 +4727,18 @@ the checkbox; a new player arriving by a shared `?seed=` link must get the
 world they were sent, so an AUTO want yields to the pin and the pinned run
 neither arms the teacher nor spends a slot — an EXPLICIT checkbox still
 wins and still forces Valley·Classic·medium.
+**TICKING THE BOX RE-FOUNDS THE WORLD; FINISHING THE LESSON SPENDS IT**
+(`Screens.teachableWorld` / `refoundForLesson`, audit MAP-V01/MAP-01, pinned
+in §12): the Valley·Classic·medium force is decided in `foundRun`, which has
+already run by the time the draft's checkbox is on screen — so ticking it
+armed the lesson on whatever world was rolled (12 of 12: archipelagos,
+karsts, xlarge fjords). Ticking it ON over an un-kept draft on an
+unteachable world founds the run again under the rule, the startNewGame way
+(two rAFs, `_founding`). Only that direction: unticking keeps the world and
+re-ticking on a teachable one founds nothing, so the box is never a free
+re-deal of the cards. And an explicit '1' is SPENT when the capstone
+completes (`lsDel`): it used to force every later game onto the valley and
+re-arm the lesson until unticked. An explicit '0' is never touched.
 **And the run_start row tells the truth now**: `_enterNow` logs
 `tutorial: !!(S.tut && S.tut.on)`, and `maybeStart` used to run AFTER
 `enterGame` — so the board's "3 tutorials in 191 games" was really the
