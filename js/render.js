@@ -457,14 +457,11 @@ const LAND = {
   RIPPLE_EVERY: 7,      // seconds between one tile's own rings
   RIPPLE_LEN: 1.5,      // seconds a ring takes to open and fade
   SPARKLE_GOLD: 1.5,    // sparkle alpha at the warm peak of the dusk cycle, × normal
-  /* --- HILLS ARE RAISED GROUND, and must stay clearly less than a mountain.
-     They are read at their EDGES: hillRelief draws the catch-light along the
-     northern rim, hillShadow the cast shadow on the ground to the south, and
-     nothing shades the middle (see hillRelief for why that was tried three
-     ways and abandoned). The shadow is the strongest cue by a distance —
-     raise HILL_SHADOW / HILL_SHADOW_MAX if hills still read flat, lower them
-     if a hill starts looking like a mountain. WOBBLE is how much both edges
-     wander; drop it to 0 and they become ruled lines. --- */
+  /* --- RETIRED: the hill rim and cast band (hillRelief / hillShadow) are
+     no longer drawn — HILLS is the ore deposit, stones lying on the meadow,
+     and those two passes made every deposit hover on a raised plinth (audit
+     ORE-01/03). The dials stay so the dev panel and old notes still resolve;
+     they change nothing. --- */
   HILL_RIM_MAX: 3,      // 1/32nds — how deep the northern catch-light reaches
   HILL_RIM: 0.11,
   HILL_SHADOW: 0.32,
@@ -921,7 +918,7 @@ const R = {
       const w = 1 + bias * ((ox === -1 && oy === -1) ? 1 : (ox === 0 && oy === 0) ? -1 : 0);
       wsum += w;
       if (v === T.FOREST) wood += w;
-      else if (v === T.HILLS || v === T.MOUNTAIN) rock++;
+      else if (v === T.MOUNTAIN) rock++;      // a deposit is stones on meadow, not a crag (audit ORE-04)
       else if (v === T.WATER || v === T.MOAT) wet++;
     }
     if (!n) return 0;
@@ -5506,8 +5503,9 @@ const R = {
       /* NO TILE SPRITE. The rock field is scattered in world space by
          R.rockMass in its own pass, because three sets picked by neighbour
          count can only ever draw a staircase of squares — see rockMass. What
-         this branch still owes the tile is its grass floor and the blocked
-         cue, which the GROUND_GRAIN branch below lays down. */
+         this branch still owes the tile is its grass floor, which the
+         GROUND_GRAIN branch below lays down — and NOT the blocked cue: the
+         stones are the cue on a deposit (audit ORE-02). */
     } else if (t !== T.MOUNTAIN) img = variants[(x * 7 + y * 13) % variants.length];
     // MOUNTAIN is drawn procedurally from a height field in the ground-layer step
     // below — the mountain strips draw the rock itself, in the frame's unit
@@ -5531,6 +5529,14 @@ const R = {
       this.paintGround(g, x, y, h);               // plain grass (reads the override itself)
     } else if (t === T.MOUNTAIN) {
       this.paintGround(g, x, y, h);                               // grass floor under the irregular rocky footprint
+      /* THE BLOCKED CUE BELONGS UNDER THE MOUNTAIN (operator ruling, audit
+         MTN-03): this branch used to paint grass alone, so wherever the kit's
+         rock does not cover a mountain tile — the ragged foot of a range,
+         about 6% of mountain tiles — the player saw plain meadow that no unit
+         could walk onto. The rock covers the cue wherever it stands, and
+         blockShade thins toward every open side, so what shows at the edge
+         is a soft darkening, never a tile-shaped slab. */
+      this.blockShade(g, x, y, terr);
       if (ovr) this.blitTile(g, ovr, x, y);
       // …and the ROCK is not drawn here at all. A mountain is one object with
       // a traced outline and a height field, drawn as row strips in the
@@ -5556,7 +5562,10 @@ const R = {
          every attempt to remove them from the art itself. With the kit
          installed the ROCK is the cue, and bare ground under it reads as
          ordinary ground, which the foothills and the wood then cover. */
-      if (!(t === T.MOUNTAIN && this.mtnKitOn())) this.blockShade(g, x, y, terr);
+      /* …and NOT under a deposit either (operator ruling, audit ORE-02): the
+         stones ARE the cue there, and a dark tile-stepped bed beneath them
+         is the second of the three passes that made ore read as raised. */
+      if (t !== T.HILLS) this.blockShade(g, x, y, terr);
       if (ovr) this.blitTile(g, ovr, x, y);       // ...then the transparent-floored resource on top
       else if (img) g.drawImage(img, x * TL, y * TL);   // (hills have no tile sprite — see rockMass)
     } else if (ovr) {
@@ -5622,13 +5631,14 @@ const R = {
       if (!mnd(at(x + 1, y))) { g.fillStyle = AP.leaf[1]; g.fillRect(bx + TL - (ri + 2) * px, by + ti * px, 2 * px, hgt); g.fillStyle = AP.ink[0]; g.fillRect(bx + TL - (ri + 1) * px, by + ti * px, px, hgt); }   // shaded right slope + dark edge
       if (!mnd(at(x, y + 1))) { g.fillStyle = AP.leaf[1]; g.fillRect(bx + li * px, by + TL - (bi + 2) * px, w, 2 * px); g.fillStyle = AP.ink[0]; g.fillRect(bx + li * px, by + TL - bi * px, w, px); }            // shaded foot
     }
-    /* ELEVATION HINTS ON HILLS. Drawn over whatever the ground layer put
-       down — procedural or a supplied override — so a dropped-in hills.png
-       is raised ground too. `t === T.HILLS` shades the hill; anything else
-       may be catching the shadow of a hill to its north. Both are pure
-       overlays: they read the terrain and write only pixels. */
-    if (t === T.HILLS) this.hillRelief(g, x, y, terr);
-    else if (!wet(t)) this.hillShadow(g, x, y, terr);
+    /* NO ELEVATION HINTS ON ORE (operator ruling, audit ORE-01/03). The
+       northern catch-light (hillRelief) and the cast band on the ground to
+       the south (hillShadow) date from when HILLS meant raised ground; the
+       same week HILLS became the ORE DEPOSIT, and a deposit is stones lying
+       on the meadow. The rim drew the top lip of a plinth and the band a
+       detached shadow under it, so every deposit read as hovering on a
+       raised bed. Both calls are gone; the two painters stay defined (the
+       land contract stubs them) but nothing draws them. */
     // IRREGULAR FRINGES at every land boundary (replaces the old 1px dithered
     // checker, which only ran between differing floor colours and was invisible)
     this.terrainEdges(g, x, y, terr);

@@ -3881,26 +3881,24 @@ crag through its yard and its tenders could neither reach prey two tiles away
 nor be reached by the party sent to burn them out. Relaxed (2 → 1 → 0) before
 the camp count is, like the town clearance.
 
-**HILLS ARE READ AT THEIR EDGES** (`R.hillHeight` / `hillRelief` / `hillShadow`,
-pinned by `hillsAreStillOrdinaryGround`): a distance transform over contiguous
-HILLS, the same one the mountains use — but unlike the mountains, hills MOVE (a
-quarry works one out to PEBBLES), so the field is keyed on a signature of where
-they are rather than computed once and quietly going stale.
-**Three passes at shading the INTERIOR were tried and all three failed**, for a
-reason that is not a bug: on these maps a hill is ONE OR TWO TILES DEEP, so the
-depth field takes two distinct values and its gradient is near-constant within a
-tile and jumps between them. Quantized steps, noise-perturbed steps and a
-dithered slope term each landed as tile-shaped rectangles. There is no interior
-to shade and pretending otherwise just draws the grid. What is left is the pair
-of EDGE cues, which is what carries height anyway — a dithered catch-light along
-the northern rim and a dithered cast shadow on the ground to the SOUTH, its
-length scaled to the depth of the hill behind it and capped below one tile so
-the whole effect stays inside the 3×3 a terrain edit already repaints.
-**The field is keyed ONCE PER REPAINT** (`R.hillField` vs `hillHeight`): the key
-hashes the whole terrain array, which is fine once and ruinous per TILE — and
-the two passes run on every tile of the map. The three entry points re-key at
-the top; everything inside reads what they settled on. Measured: 169ms of bake
-back down to 154ms.
+**HILLS ARE NOT SHADED AT ALL — A DEPOSIT LIES ON THE MEADOW** (operator
+ruling, audit ORE-01..04, pinned by `aDepositLiesOnTheMeadow` and
+`theBlockedCueRunsUnderMountainsNotOre` in tests/land.mjs §10b): HILLS was
+raised ground once and grew a northern catch-light (`hillRelief`) and a cast
+band on the ground to its south (`hillShadow`); the same week HILLS became the
+ORE DEPOSIT, and together with the blocked cue's dark bed under the stones the
+three passes made every deposit read as stones on a plinth. The calls are
+gone (the painters and `R.hillHeight` stay — the depth field still feeds the
+procedural rock fallback and the repaint rings), `blockShade` skips HILLS at
+the call site, and `cornerShade` no longer counts a deposit as rock. Measured
+as a diff against the same map with the deposits turned to grass: 14-24% of
+the ground under a deposit and 1.2-1.7% of its ring darkened before, 2.5-5.9%
+(the stones' own contact row) and 0.1-0.3% after. The cue that left the ore
+went where it was MISSING: the MOUNTAIN ground branch painted grass alone, so
+wherever the kit's rock leaves a mountain tile bare (a range's ragged foot,
+audit MTN-03) the player saw meadow no unit could walk onto. Every mountain
+tile now takes `blockShade`, which thins toward open sides, and the rock
+covers it wherever it stands.
 
 **THE DECORATIVE STREAM WAS REMOVED** (pinned by
 `andTheDecorativeStreamIsGone`): creeks that wandered down off high ground to
@@ -3934,6 +3932,9 @@ whichever sides face open ground: a flat fill over a tile-shaped footprint
 draws the tile, which is the failure this whole file keeps relearning. A tile
 whose every side is blocked takes the shade in ONE rect — no edge to fade
 toward, and in a big wood that is most of the tiles.
+**NOR DOES THE ORE DEPOSIT (HILLS)**, though it blocks: its stones are the
+cue, and the bed beneath them read as a plinth (see **HILLS ARE NOT SHADED
+AT ALL** above) — the one deliberate exception to "derived from the rule".
 **GOLD ORE DOES NOT GET IT, AND THAT IS THE POINT.** The brief listed gold
 among the impassable resources; in this game it is not — `BLOCK_TERR` is
 water, mountain, forest, hills and fertile, and a seam is deliberately walkable

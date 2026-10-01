@@ -910,6 +910,64 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   await p.close();
 }
 
+/* ---- 10b. A DEPOSIT LIES ON THE MEADOW (operator ruling, audit ORE-01..04)
+   Three passes made every ore deposit read as stones on a raised bed: the
+   blocked cue laid a dark tile-stepped slab under the stones, hillRelief a
+   pale rim across the deposit's north edge, and hillShadow a hard dark band
+   on the meadow to its south. All three date from when HILLS meant raised
+   ground; HILLS is the ore deposit now, and the stones are the cue. Measured
+   as a DIFF on the baked map: the same world baked with its deposits and
+   with those tiles turned to grass, counting GROUND pixels (green-dominant,
+   so the stones and their scree drop out) the deposit darkened by 6+
+   luminance. Before the ruling, on three worlds: 14-24% of the ground under
+   the deposits and 1.2-1.7% of the ring round them; after, 2.5-5.9% (the
+   stones' own one-row contact) and 0.1-0.3%. The blocked cue moved to the
+   MOUNTAIN branch, where kit rock that leaves a tile bare used to show plain
+   meadow on ground nobody can walk onto (audit MTN-03): pinned here as every
+   mountain tile shaded and no deposit tile shaded. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(boot + `
+    const W = CFG.W, H = CFG.H, TL = CFG.TILE, terr = S.map.terrain;
+    while (R.tickBake && R.tickBake(1e9)) {}
+    const hills = []; for (let i = 0; i < W * H; i++) if (terr[i] === T.HILLS) hills.push(i);
+    const isH = new Set(hills), ring = new Set();
+    for (const i of hills) { const x = i % W, y = (i / W) | 0;
+      for (let oy = -1; oy <= 2; oy++) for (let ox = -1; ox <= 1; ox++) { const j = (y + oy) * W + x + ox; if (!isH.has(j) && terr[j] === T.GRASS) ring.add(j); } }
+    const grab = () => R.terrainCache.getContext('2d').getImageData(0, 0, W * TL, H * TL).data;
+    // which tiles take the blocked cue, counted on the real bake
+    const bs = R.blockShade, shaded = { m: 0, h: 0 };
+    R.blockShade = function (g, x, y, tr) { const t = tr[y * W + x]; if (t === T.MOUNTAIN) shaded.m++; if (t === T.HILLS) shaded.h++; return bs.apply(this, arguments); };
+    R.rebuildTerrain(); while (R.tickBake && R.tickBake(1e9)) {}
+    R.blockShade = bs;
+    let mtn = 0; for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) if ((S.map.seenTerrain || terr)[y * W + x] === T.MOUNTAIN) mtn++;
+    const withD = grab();
+    const save = hills.map(i => terr[i]);
+    for (const i of hills) { terr[i] = T.GRASS; if (S.map.seenTerrain) S.map.seenTerrain[i] = T.GRASS; }
+    R.rebuildTerrain(); while (R.tickBake && R.tickBake(1e9)) {}
+    const noD = grab();
+    hills.forEach((i, k) => { terr[i] = save[k]; if (S.map.seenTerrain) S.map.seenTerrain[i] = save[k]; });
+    R.rebuildTerrain(); while (R.tickBake && R.tickBake(1e9)) {}
+    const count = (tiles) => { let dark = 0, n = 0;
+      for (const i of tiles) { const tx = i % W, ty = (i / W) | 0;
+        for (let py = 0; py < TL; py++) for (let px = 0; px < TL; px++) {
+          const o = ((ty * TL + py) * W * TL + tx * TL + px) * 4;
+          const r = withD[o], g = withD[o + 1], b = withD[o + 2];
+          if (!(g > r && g > b)) continue;
+          n++;
+          if ((noD[o] + noD[o + 1] + noD[o + 2]) / 3 - (r + g + b) / 3 >= 6) dark++;
+        } }
+      return dark / Math.max(1, n); };
+    return { deposits: hills.length, under: count(hills), ring: count(ring), shaded, mtn };`));
+  const pc = (x) => (100 * x).toFixed(1) + '%';
+  ck('aDepositLiesOnTheMeadow', v.deposits > 10 && v.under < 0.08 && v.ring < 0.006,
+    v.deposits + ' deposit tiles: ' + pc(v.under) + ' of the ground under them and ' + pc(v.ring) +
+    ' of the ring round them darkened by the deposit (before the ruling 14-24% and 1.2-1.7%)');
+  ck('theBlockedCueRunsUnderMountainsNotOre', v.mtn > 5 && v.shaded.m === v.mtn && v.shaded.h === 0,
+    v.shaded.m + ' of ' + v.mtn + ' mountain tiles take the cue, ' + v.shaded.h + ' deposit tiles do');
+  await p.close();
+}
+
 /* ---- 11. LEGIBILITY: BLOCKED GROUND MUST ANNOUNCE ITSELF --------------
    The governing rule of the readability pass: a player must be able to tell
    passable ground from impassable resource terrain instantly, without

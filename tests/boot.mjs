@@ -43,6 +43,21 @@ try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const url = 'file://' + join(root, 'index.html');
+/* HOLD THE TITLE'S READINESS FOR THE TEST (3b, 3c). With HOLD_MS 0 a quick
+   boot marks ready and lifts the splash before a check's own evaluate runs,
+   so a check that needs "not lifted yet" raced the machine and failed only
+   when it was FAST. This wraps Boot.markReady — the game's first frame and
+   the failsafe both come through it — behind a gate the check opens itself
+   (window.__bootGate = false). Nothing else about the boot changes. */
+const holdReady = (p) => p.addInitScript(() => {
+  let real;
+  window.__bootGate = true;
+  Object.defineProperty(window, 'Boot', { configurable: true, get() { return real; }, set(v) {
+    real = v;
+    const mr = v.markReady;
+    v.markReady = function () { if (window.__bootGate) return; return mr.apply(this, arguments); };
+  } });
+});
 const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] });  // shipped PNGs bake into canvases the checks read — file:// must be same-origin
 const res = {}, fails = [];
 const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
@@ -456,6 +471,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   // 3b. A TAP SKIPS AHEAD. The tap lands well inside the hold, and the splash
   // is gone long before the hold would have run out.
   const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+  await holdReady(p);
   await p.goto(url, { waitUntil: 'commit' });
   await p.waitForFunction(() => !!window.Boot, null, { timeout: 5000 });
   /* the preconditions are SET, not waited for: whether the title happens to
@@ -509,8 +525,13 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
 {
   /* 3c. THE TAP NEVER OUTRUNS THE TITLE. A tap before the world is drawn
      shortens the wait, it does not uncover a blank screen: the splash stays
-     until `ready`, then goes. */
+     until `ready`, then goes.
+     READINESS IS HELD BY THE TEST, NOT RACED: a quick boot used to lift the
+     splash before the evaluate below could set `ready = false`, so the
+     "not drawn yet" state is now held by holdReady (above) — a fact, not a
+     hope about timing. */
   const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+  await holdReady(p);
   await p.goto(url, { waitUntil: 'commit' });
   await p.waitForFunction(() => !!window.Boot, null, { timeout: 5000 });
   const held = await p.evaluate(() => {
@@ -520,7 +541,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   });
   ck('aTapBeforeTheTitleIsDrawnWaitsForIt', !held.done && held.up,
     'it keeps covering the gap it exists for');
-  const then = await p.evaluate(() => { Boot.markReady(); return Boot.done; });
+  const then = await p.evaluate(() => { window.__bootGate = false; Boot.markReady(); return Boot.done; });
   ck('andGoesTheInstantItIs', then, '');
   await p.close();
 }

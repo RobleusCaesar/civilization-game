@@ -1332,9 +1332,7 @@ shore patch, batch-timed), because the gate is baselined on a desktop and
 the phone's number is the truth.
 | a resource cluster shows tile-shaped patches | raise `BLOCK_FADE`, soften the density taper |
 | a tile grid is visible in flat ground | `TONE_SUB` (must stay above 1), `TONE_STEPS` |
-| hills read flat | raise `HILL_SHADOW`, `HILL_SHADOW_MAX` |
-| a hill starts looking like a mountain | lower the same two |
-| a hill's edges read as ruled lines | raise `HILL_SHADOW_WOBBLE` |
+| (retired) `HILL_RIM*` / `HILL_SHADOW*` | no longer drawn — a deposit lies flat on the meadow (audit ORE-01..03) |
 | bare grass shows through a rock core | lower `ROCK_STEP`, raise `ROCK_MIN` |
 | a rock field reads as a bead curtain | raise `ROCK_JIT` |
 | a deposit's edge is a straight line | raise `ROCK_WANDER` (keep it under 0.5) |
@@ -1376,7 +1374,9 @@ What the engine does to keep it true:
 - **Blocked ground carries a shared cue** — a darker, dithered patch beneath
   the cluster. It is derived from `Path.blocksLand`, the same predicate
   movement asks, so it can never disagree with the rules. It is drawn under
-  your art, not over it.
+  your art, not over it — including under every MOUNTAIN tile, so a range's
+  ragged foot still reads as blocked where the rock leaves meadow showing —
+  and deliberately NOT under an ore deposit, whose stones are the cue.
 - **Ground decals are muted toward the grass** at the point of drawing
   (`LAND.DECAL_MUTE`), so nothing on open ground reads as an object.
 
@@ -1453,12 +1453,12 @@ mass, not better.
 
 ### One thing on the ground that is not what it looks like
 
-**Hills are shaded only at their edges** — a catch-light on the northern rim
-and a cast shadow on the ground to the south. Nothing shades a hill's middle,
-because on these map scales a hill is one or two tiles deep and there is no
-interior to shade; every attempt at one came out as tile-shaped rectangles.
-Author a `hills.png` as flat ground with rocks on it and let the edges do the
-elevation.
+**An ore deposit (HILLS) is not shaded at all.** It used to carry a pale rim
+on its north edge, a cast band on the meadow to its south and the blocked
+cue's dark bed under the stones — three passes from when HILLS meant raised
+ground, which together made every deposit read as stones on a plinth. All
+three are gone (audit ORE-01..04): the stones lie on the meadow and are
+their own cue. Author a `hills.png` as flat meadow with stones on it.
 
 (There used to be a second entry here: decorative streams, thin creeks drawn
 over the ground with no gameplay meaning. They were removed — measured at play
