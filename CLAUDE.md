@@ -163,7 +163,54 @@ node tests/archer-art.mjs    # archer line plumbing: military sheet keys {kind}-
 node tests/audio.mjs         # the game's voice: nothing on the wire, two switches and two dials (mute and zero are one state), throttled per kind, and the music is generated rather than looped
 node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map arrays, kept ground DERIVED from standing buildings (grows back on raze, byte-identical), the flatten fires from Bld.finish alone, the 32px cover-art door snaps alpha binary
 node tests/frame-hotpath.mjs  # the late-game town costs no more per tile: Bld.at is an index (= the linear definition on every tile), the building loop culls to the camera, the cull changes no pixel
+node tests/specials.mjs       # the special-event roll: three draws whatever it rolls, weighted, no dead rolls; the kraken is the player's; sons/cache land where a hand can walk; every event scores and reports
 ```
+
+**SPECIAL EVENTS** (`tests/specials.mjs`, `CFG.SPECIALS` / `KRAKEN` /
+`PLAGUE`, all of the roll and the triggers in game.js): the audit measured
+two thirds of runs rolling nothing, the dragon and the kraken each armed in
+4–14% of games, the kraken's one visit spent on a RIVAL boat off-screen half
+the time, and the Buried Cache firing in 0 of 24 force-armed games. Five
+rules now. **ONE WEIGHTED DRAW** (`G.pickSpecial`): `chance` 0.45, each pool
+entry carries a weight `w` — the dragon and the kraken 3, everything else 1 —
+and the old pos/neg bag split (`posWeight`) is GONE, because inside a bag the
+weights barely moved the spectacles (a weighted neg bag put the dragon at
+6.75%, the same as before). **THE ROLL DRAWS THREE NUMBERS WHATEVER IT
+ROLLS** (u0 chance, u1 pick, u2 the kraken's delay): the old roll drew one
+for "nothing" and three for "something", so the cards and the start package
+re-dealt by outcome — the thing `G.rollWonder`'s comment warns against. The
+contract runs each seed at chance 0 and 1 and demands the same `S.rngState`.
+**NO DEAD ROLLS** (`G.specialElig`): an entry's `elig` names a test of
+GENERATION FACTS (terrain and the halls as founded — no G.rand, no play
+state), and an event the map can never stage is never rolled; today only the
+kraken has one (`openWater`: open water within `KRAKEN.near` of the hall with
+a shore the village can reach). **THE KRAKEN IS THE PLAYER'S**: any own HULL
+on OPEN water (`G.openWaterAt` — a body reaching the edge, or `bodyMin` 60+
+tiles: a great lake hides it, a pond never does), `delay` days (4–20, rolled
+by u2) after the first hull was put there, the softest hull taken; the boat is
+HELD for the rise (it used to sail on and be killed tiles from the monster);
+the spot is a vision source while the act plays (the boat was the only eye on
+that water); the fire warship and the bombard answer it within `fleetR`; one
+toast, the hull's own "was killed" line suppressed (`u.krakenTaken`).
+`G._waterBodies` labels every body once per day AND per map — the old edge
+cache keyed on the day alone, and every world starts on day 1. **THE HELP
+LANDS WHERE A HAND CAN WALK**: the sons' border stretch and the cache's bury
+spot are both filtered through `Path.reachFrom(Units.homeSteps('P'))` (the
+whole doorstep ring), the sons fall back to the farthest reachable ground away
+from the foe when no border joins home, and their spawn jitter stays inside
+the tile (it reached 1.1 tiles south, onto the shore it was meant to avoid).
+The cache asks for ONE empty basket (food ≤ 60 OR wood ≤ 50) on top of
+`positiveGate` — demanding both at one pulse is why it never fired. The
+plague's earliest day is `PLAGUE.from` + a SEED-HASHED 0..40 (`G.plagueFrom`),
+since nearly every day-25 town met its crowding gate. **EVERY EVENT SCORES AND
+REPORTS**: `sonsAnswered` / `cacheDug` / `winterEndured` / `plagueEndured`
+join `krakenSlain` / `dragonSeen` (stat, `CFG.SCORE` constant, `Score.compute`
+line, newGame init, loadJSON backfill — HANDOFF's rule), and `G.runReport`'s
+props carry `special` / `special_fired` / `special_day` (`S.specialDay`,
+stamped by `G.specialFired()` on every event's firing). The daily beats live
+in `G.specialsDaily()`. A pre-change save keeps its event: the kraken's
+per-tribe absolute days become a fresh launch clock, the plague takes the old
+day 25, `specialDay` reads unknown.
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
 perimeter line may only be MADE of `wall` and `gate` — it never counts an

@@ -993,6 +993,9 @@ const CFG = {
     perBuilt: 30, perWall: 4, perUpgrade: 70, perTrained: 15,
     perPeakPop: 8, perGathered: 0.15, perExploredPct: 14,
     kraken: 500, dragon: 250,   // (originBonus for hard beginnings is computed at roll time)
+    // the other specials: answered, dug, ENDURED — a punishment scores for
+    // the village that came through it, as the kraken does (EVD-V02)
+    sons: 150, cache: 150, winter: 200, plague: 200,
     leanIn: 120,                // ORIGIN CARDS: kept the card that leans into your roll
     mult: { calm: 0.5, moderate: 1.0, hard: 1.75 },
   },
@@ -1007,22 +1010,34 @@ const CFG = {
      fn from G.update, (4) give it Sprites.misc.<key> — an ARRAY of frames the
      renderer cycles (4+ frames reads smooth), drawn oversized like the
      kraken/dragon, (5) score it in CFG.SCORE if it's worth points. */
-  /* pool: modes each event may appear in, and whether it lands as a NEGATIVE
-     (punishment) — the roll leans posWeight toward the delights. The dragon
-     counts as a delight: it burns the army at YOUR gates.
-     The player-helping delights (sons, cache) additionally sit behind
-     G.positiveGate: defenses breached + zero soldiers + 5 real minutes played. */
+  /* pool: modes each event may appear in, its WEIGHT in the one weighted
+     draw (the spectacles — dragon and kraken — are the events players talk
+     about, so they carry 3 against everyone else's 1), whether it lands as a
+     punishment (`neg`, read by the score's "endured" lines), and `elig`: a
+     name in G.specialElig, a test of GENERATION FACTS ONLY (no G.rand, no
+     play state) — an event the map can never stage is never rolled, so no
+     roll is dead on arrival. The player-helping delights (sons, cache) also
+     sit behind G.positiveGate: defenses breached + zero soldiers + 5 real
+     minutes played. tests/specials.mjs pins the roll. */
   SPECIALS: {
-    chance: 0.33, posWeight: 0.6,
+    chance: 0.45,
     pool: {
-      kraken: { modes: ['calm', 'moderate', 'hard'], neg: true },
-      dragon: { modes: ['moderate', 'hard'] },
-      sons:   { modes: ['calm', 'moderate', 'hard'] },
-      cache:  { modes: ['calm', 'moderate', 'hard'] },
-      winter: { modes: ['moderate', 'hard'], neg: true },
-      plague: { modes: ['moderate', 'hard'], neg: true },
+      kraken: { modes: ['calm', 'moderate', 'hard'], neg: true, w: 3, elig: 'openWater' },
+      dragon: { modes: ['moderate', 'hard'], w: 3 },
+      sons:   { modes: ['calm', 'moderate', 'hard'], w: 1 },
+      cache:  { modes: ['calm', 'moderate', 'hard'], w: 1 },
+      winter: { modes: ['moderate', 'hard'], neg: true, w: 1 },
+      plague: { modes: ['moderate', 'hard'], neg: true, w: 1 },
     },
   },
+  /* the kraken's visit: rolled DELAY days after the player first puts a
+     hull on open water (edge-connected, or a body of `bodyMin`+ tiles), and
+     open water must lie within `near` of the hall for the map to stage it */
+  KRAKEN: { delayMin: 4, delayMax: 20, bodyMin: 60, near: 16, fleetR: 6 },
+  /* the plague's earliest day: `from` + a seed-hashed 0..`spread` — the
+     crowded-lanes gate is met by nearly every day-25 town, so a fixed day
+     made it a scheduled punishment rather than an answer to a boom */
+  PLAGUE: { from: 25, spread: 40 },
   DRAGON: { minDay: 25, foesMin: 6, radius: 9 },
 
   /* Difficulty gates the rival's APPETITE and SCALE, never its decision

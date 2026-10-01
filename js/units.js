@@ -2383,7 +2383,8 @@ const Units = {
          a hand sent every few days to die at ground no other read of the
          chief's could know was a kill zone. */
       if (u.owner === 'A' && !this.isNaval(u)) AI.noteDeath(u.x, u.y);
-      if (u.owner === 'P') G.log(`${CFG.UNITS[u.kind].name} was killed`, true);
+      // a hull the kraken took has already been announced by the deep itself
+      if (u.owner === 'P' && !u.krakenTaken) G.log(`${CFG.UNITS[u.kind].name} was killed`, true);
       if (u.owner === 'P' && this.isTransport(u) && u.cargo && u.cargo.length)
         G.log(`💀 ${u.cargo.length} soldier${u.cargo.length > 1 ? 's' : ''} lost with the hull`, true);
       // any wild animal killed by a tribe yields meat

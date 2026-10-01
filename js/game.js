@@ -187,7 +187,8 @@ const G = {
       playtime: 0,                          // unpaused seconds, for save metadata
       // run stats — the raw material of the arcade score (js/score.js)
       stats: { trained: 0, razed: 0, gathered: 0, kills: 0, built: 0,
-               walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0, originBonus: 0 },
+               walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0, originBonus: 0,
+               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0 },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
       // THE CALM TRUCE (tests/calm-peace.mjs): true while neither tribe may
@@ -251,30 +252,25 @@ const G = {
     }
     Units.spawnHerd('deer', 8);
     Units.spawnHerd('cow', 8);
-    // SPECIAL EVENTS — one roll for the whole game (see CFG.SPECIALS): at most
-    // ONE event, and only a third of games get any. The rolled event's own
-    // machinery arms; everything else stays cold. Extensible: new events join
-    // the registry pool and gate on S.special the same way.
+    /* SPECIAL EVENTS — one roll for the whole game (CFG.SPECIALS,
+       tests/specials.mjs): at most ONE event, `chance` of games get any, and
+       the pick is WEIGHTED over the events this map can actually stage
+       (G.specialElig — generation facts only, no draws). THE ROLL DRAWS THE
+       SAME THREE NUMBERS WHATEVER IT ROLLS: the old roll drew one number for
+       "nothing" and three for "something", so every later roll of the run
+       (the start package, the cards) re-dealt depending on the outcome — the
+       very thing G.rollWonder's comment warns against. The rolled event's own
+       machinery arms; everything else stays cold. New events join the pool
+       and gate on S.special the same way. */
     {
-      const SP = CFG.SPECIALS;
-      const keys = Object.keys(SP.pool).filter(k => SP.pool[k].modes.includes(mode));
-      const pos = keys.filter(k => !SP.pool[k].neg), neg = keys.filter(k => SP.pool[k].neg);
-      S.special = null;
-      if (keys.length && G.rand() < SP.chance) {
-        // lean toward the delights: posWeight of rolled events are positive
-        const bag = G.rand() < (SP.posWeight || 0.6) ? (pos.length ? pos : neg) : (neg.length ? neg : pos);
-        S.special = bag[(G.rand() * bag.length) | 0];
-      }
+      const SP = CFG.SPECIALS, KR = CFG.KRAKEN;
+      const u0 = G.rand(), u1 = G.rand(), u2 = G.rand();
+      S.special = this.pickSpecial(mode, u0, u1);
+      S.specialDay = 0;   // the day the armed event FIRED (G.specialFired) — telemetry
+      // the kraken's visit comes DELAY days after the first hull on open water
+      S.kraken = { avail: S.special === 'kraken', done: {}, ev: null, launch: 0, day: 0,
+                   delay: KR.delayMin + Math.floor(u2 * (KR.delayMax - KR.delayMin + 1)) };
     }
-    // the kraken's clock: a visit on a day rolled from an early, middle, or
-    // late band — when a fishing boat is out on water that reaches the map's
-    // edge (it comes up from the open ocean, never a landlocked lake)
-    const kd = () => {
-      const band = G.rand();
-      return Math.round(band < 0.34 ? 20 + G.rand() * 30
-        : band < 0.67 ? 60 + G.rand() * 40 : 100 + G.rand() * 50);
-    };
-    S.kraken = { avail: S.special === 'kraken', day: { P: kd(), A: kd() }, done: {}, ev: null };
     // the black dragon waits for a dark hour at the player's gates
     S.dragon = { avail: S.special === 'dragon', done: false, ev: null, ash: [], fire: [] };
     // the lost sons ride only when the village's own line has broken
@@ -282,9 +278,11 @@ const G = {
     // a buried hoard surfaces only when the larders scrape empty
     S.cache = { avail: S.special === 'cache', done: false, ev: null };
     S.trainDiscount = 0;   // fast-training charges left (the cache's work songs)
-    // the long winter waits for fat granaries; the plague for crowded lanes
+    // the long winter waits for fat granaries; the plague for crowded lanes,
+    // and never before its own seed-hashed day
     S.winter = { avail: S.special === 'winter', done: false, days: 0 };
-    S.plague = { avail: S.special === 'plague', done: false, until: 0, lifted: true };
+    S.plague = { avail: S.special === 'plague', done: false, until: 0, lifted: true,
+                 from: this.plagueFrom(seed) };
 
     this.freeVis = false;   // every real game starts fogged; the title demo re-enables it
     this.vis = null;
@@ -462,6 +460,10 @@ const G = {
       // ORIGIN CARDS: the Seer's far-seeing eye never closes
       const sn = S.boons && S.boons.P && S.boons.P.seer;
       if (sn) mark(sn.x, sn.y, 3);
+      // the kraken took the boat that was the only eye on that water: the
+      // player saw it rise, so they watch it to the end (EVT-05)
+      const kev = S.kraken && S.kraken.ev;
+      if (kev && kev.owner === 'P') mark(kev.x | 0, kev.y | 0, 3);
     }
     // sync last-seen memory on every visible tile
     const liveB = new Map();
@@ -721,35 +723,7 @@ const G = {
       if (pop > (S.stats.peakPop || 0)) S.stats.peakPop = pop;
     }
 
-    // the plague passes on its appointed day
-    if (S.plague && S.plague.until && !S.plague.lifted && S.day >= S.plague.until) {
-      S.plague.lifted = true;
-      this.log('🕊 The sickness passes — the village drums for new hands again.');
-    }
-
-    // the long winter thaws after a few days — the pall lifts
-    if (S.winter && S.winter.days > 0) {
-      S.winter.days--;
-      if (S.winter.days === 0) this.log('🌤 The wind turns at last — the thaw comes, and the valley breathes again.');
-    }
-
-    // the kraken stirs (SPECIAL EVENT): only under a boat whose OWN body of
-    // water reaches the map's edge — it rises from the open ocean, so a boat
-    // on a landlocked lake is safe forever. One visit per game, total.
-    if (S.kraken && S.kraken.avail && !S.kraken.ev) {
-      for (const ow of ['P', 'A']) {
-        if (S.kraken.done[ow] || S.day < S.kraken.day[ow]) continue;
-        // the FIRST boat sailing edge-connected water is the one the deep takes
-        const boat = S.units.find(u => u.owner === ow && u.kind === 'fishboat' &&
-          this.waterReachesEdge(u.x | 0, u.y | 0));
-        if (!boat) continue;                                  // it waits for a boat on open water
-        S.kraken.avail = false;                               // ONE visit per game — the deep is spent
-        S.kraken.done[ow] = true;
-        S.kraken.ev = { x: boat.x, y: boat.y, boatId: boat.id, owner: ow, phase: 'rise', t: 0 };
-        if (ow === 'P') this.log('🐙 Something vast stirs beneath the water…', true);
-        break;
-      }
-    }
+    this.specialsDaily();
 
     // the tribe endures — but only so far. If every villager is dead (none on
     // the map, none sheltering, none in training), two survivors step out of the
@@ -904,31 +878,147 @@ const G = {
     return val;
   },
 
-  // does this water tile's whole BODY of water touch the map's edge? A
-  // landlocked lake never reaches the rim, so nothing that lives in the deep
-  // ocean can surface there. One multi-source flood from the rim, cached and
-  // recomputed at most once per day (sappers can reshape the water).
-  waterReachesEdge(sx, sy) {
+  /* the special events' once-a-day beats: the plague passing, the thaw,
+     the kraken's launch clock and its rising (tests/specials.mjs) */
+  specialsDaily() {
+    // the plague passes on its appointed day
+    if (S.plague && S.plague.until && !S.plague.lifted && S.day >= S.plague.until) {
+      S.plague.lifted = true;
+      if (S.stats) S.stats.plagueEndured = 1;
+      this.log('🕊 The sickness passes — the village drums for new hands again.');
+    }
+
+    // the long winter thaws after a few days — the pall lifts
+    if (S.winter && S.winter.days > 0) {
+      S.winter.days--;
+      if (S.winter.days === 0 && S.stats) S.stats.winterEndured = 1;
+      if (S.winter.days === 0) this.log('🌤 The wind turns at last — the thaw comes, and the valley breathes again.');
+    }
+
+    /* the kraken stirs (SPECIAL EVENT, tests/specials.mjs): THE PLAYER'S
+       alone — it used to spend its one visit on whichever tribe's boat came
+       first, and half the time that was a rival boat off-screen. It rises
+       under any of the player's HULLS on OPEN WATER (G.openWaterAt), DELAY
+       days after the first one was put there, so the visit lands while the
+       player is still at sea rather than on an absolute day most fleets
+       never reached. One visit per game. */
+    if (S.kraken && S.kraken.avail && !S.kraken.ev) {
+      const K = S.kraken;
+      const onOpen = u => u.owner === 'P' && Units.isNaval(u) && u.hp > 0 && this.openWaterAt(u.x | 0, u.y | 0);
+      if (!K.launch) {
+        if (S.units.some(onOpen)) { K.launch = S.day; K.day = S.day + (K.delay || 12); }
+      } else if (S.day >= K.day) {
+        // the softest hull on open water is the one the deep takes
+        const soft = { fishboat: 0, transport: 1, bombard: 2, fireship: 3 };
+        const boat = S.units.filter(onOpen).sort((a, b) => (soft[a.kind] ?? 2) - (soft[b.kind] ?? 2) || a.id - b.id)[0];
+        if (boat) {
+          K.avail = false;                                    // ONE visit per game — the deep is spent
+          K.done.P = true;
+          // the boat is HELD for the rise: a hull sailing on would be taken
+          // tiles away from the monster that took it
+          boat.path = null; boat.task = null;
+          K.ev = { x: boat.x, y: boat.y, boatId: boat.id, owner: 'P', phase: 'rise', t: 0 };
+          this.specialFired();
+          this.log('🐙 Something vast stirs beneath the water…', true);
+        }
+      }
+    }
+  },
+
+  /* THE ONE WEIGHTED PICK (tests/specials.mjs). u0 decides whether the run
+     gets an event at all, u1 which — over the pool entries that this mode
+     allows AND this map can stage. Pure: same numbers, same world, same key. */
+  pickSpecial(mode, u0, u1) {
+    const SP = CFG.SPECIALS;
+    const keys = Object.keys(SP.pool).filter(k => SP.pool[k].modes.includes(mode) && this.specialElig(k));
+    if (!keys.length || u0 >= SP.chance) return null;
+    const tot = keys.reduce((a, k) => a + (SP.pool[k].w || 1), 0);
+    let r = u1 * tot;
+    for (const k of keys) { r -= (SP.pool[k].w || 1); if (r < 0) return k; }
+    return keys[keys.length - 1];
+  },
+  /* NO DEAD ROLLS: can this map ever stage the event? Asked of GENERATION
+     FACTS only — terrain and the halls as founded — never of G.rand or of
+     anything the run has done, so the pick stays a pure function of the seed. */
+  specialElig(key) {
+    const def = CFG.SPECIALS.pool[key];
+    const test = def && def.elig;
+    if (!test) return true;
+    if (test === 'openWater') return this.openWaterNearHome('P');
+    return true;
+  },
+  // open water a hull could be launched onto from home: an open-water tile
+  // (G.openWaterAt) within KRAKEN.near of the hall with walkable shore beside
+  // it that the village can actually reach
+  openWaterNearHome(owner) {
+    const tc = Bld.tcOf(owner); if (!tc) return false;
+    const home = Units.homeSteps(owner).map(i => ({ x: i % CFG.W, y: (i / CFG.W) | 0 }));
+    const reach = Path.reachFrom(home);
+    if (!reach) return false;
+    const W = CFG.W, H = CFG.H, R = CFG.KRAKEN.near, cx = Bld.cx(tc), cy = Bld.cy(tc);
+    for (let y = Math.max(0, (cy - R) | 0); y <= Math.min(H - 1, (cy + R) | 0); y++)
+      for (let x = Math.max(0, (cx - R) | 0); x <= Math.min(W - 1, (cx + R) | 0); x++) {
+        if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) > R || !this.openWaterAt(x, y)) continue;
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + ox, ny = y + oy;
+          if (MapGen.inB(nx, ny) && reach[ny * W + nx]) return true;
+        }
+      }
+    return false;
+  },
+  // the plague's earliest day, hashed off the SEED STRING (never G.rand)
+  plagueFrom(seed) {
+    const P = CFG.PLAGUE;
+    return P.from + Math.abs(hashSeed(String(seed == null ? '' : seed) + '::plague') | 0) % (P.spread + 1);
+  },
+  // the armed event has happened: remember the day (telemetry's special_day)
+  specialFired() { if (!S.specialDay) S.specialDay = S.day || 1; },
+
+  /* WATER BODIES — every WATER tile labelled with its 4-connected body, each
+     body with its size and whether it reaches the map's edge. One flood,
+     cached per day AND per map (sappers reshape the water; a new world must
+     never read the last one's labels — the old edge cache was keyed on the
+     day alone, and every world starts on day 1). */
+  _waterBodies() {
     const W = CFG.W, H = CFG.H, T_ = S.map.terrain;
-    if (sx < 0 || sy < 0 || sx >= W || sy >= H || T_[sy * W + sx] !== T.WATER) return false;
-    if (this._ewDay !== S.day || !this._ew) {
-      this._ewDay = S.day;
-      const m = this._ew = new Uint8Array(W * H), q = [];
-      const seed = i => { if (T_[i] === T.WATER && !m[i]) { m[i] = 1; q.push(i); } };
-      for (let x = 0; x < W; x++) { seed(x); seed((H - 1) * W + x); }
-      for (let y = 0; y < H; y++) { seed(y * W); seed(y * W + W - 1); }
+    const c = this._wb;
+    if (c && c.day === S.day && c.terr === T_ && c.W === W) return c;
+    const id = new Int32Array(W * H).fill(-1), size = [], edge = [], q = [];
+    for (let s0 = 0; s0 < W * H; s0++) {
+      if (T_[s0] !== T.WATER || id[s0] >= 0) continue;
+      const b = size.length; let n = 0, e = false;
+      id[s0] = b; q.length = 0; q.push(s0);
       for (let h = 0; h < q.length; h++) {
-        const i = q[h], x = i % W, y = (i / W) | 0;
+        const i = q[h], x = i % W, y = (i / W) | 0; n++;
+        if (x === 0 || y === 0 || x === W - 1 || y === H - 1) e = true;
         for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const nx = x + ox, ny = y + oy;
           if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
           const j = ny * W + nx;
-          if (m[j] || T_[j] !== T.WATER) continue;
-          m[j] = 1; q.push(j);
+          if (id[j] >= 0 || T_[j] !== T.WATER) continue;
+          id[j] = b; q.push(j);
         }
       }
+      size.push(n); edge.push(e);
     }
-    return !!this._ew[sy * W + sx];
+    return (this._wb = { day: S.day, terr: T_, W, id, size, edge });
+  },
+  // does this water tile's whole BODY of water touch the map's edge? A
+  // landlocked lake never reaches the rim.
+  waterReachesEdge(sx, sy) {
+    const W = CFG.W, H = CFG.H;
+    if (sx < 0 || sy < 0 || sx >= W || sy >= H) return false;
+    const wb = this._waterBodies(), b = wb.id[sy * W + sx];
+    return b >= 0 && wb.edge[b];
+  },
+  // OPEN WATER — where something that lives in the deep can surface: a body
+  // that reaches the map's edge, or one big enough to hide it (KRAKEN.bodyMin).
+  // A pond is never open water; a great inland lake is.
+  openWaterAt(sx, sy) {
+    const W = CFG.W, H = CFG.H;
+    if (sx < 0 || sy < 0 || sx >= W || sy >= H) return false;
+    const wb = this._waterBodies(), b = wb.id[sy * W + sx];
+    return b >= 0 && (wb.edge[b] || wb.size[b] >= CFG.KRAKEN.bodyMin);
   },
 
   // the kraken's three acts: rise under the boat, thrash (the fleet answers,
@@ -937,30 +1027,38 @@ const G = {
     const ev = S.kraken && S.kraken.ev;
     if (!ev) return;
     ev.t += dt;
+    if (ev.phase === 'rise') {
+      // held while it rises; if an order moves it anyway, the deep follows
+      const held = Units.get(ev.boatId);
+      if (held) { held.path = null; ev.x = held.x; ev.y = held.y; }
+    }
     if (ev.phase === 'rise' && ev.t > 1.6) {
       const boat = Units.get(ev.boatId);
       if (boat) {
+        const name = (CFG.UNITS[boat.kind] && CFG.UNITS[boat.kind].name) || 'boat';
+        boat.krakenTaken = true;   // its own death line would only repeat this one
         Units.damage(boat, 99999, 0, 'K');
-        if (ev.owner === 'P') this.log('🐙 A kraken drags your fishing boat under!', true);
-        else if (G.visibleAt(ev.x | 0, ev.y | 0)) this.log('🐙 A kraken takes one of the rival\'s boats!');
+        if (ev.owner === 'P') this.log('🐙 A kraken drags your ' + name.toLowerCase() + ' under!', true);
       }
       ev.phase = 'thrash'; ev.t = 0;
     } else if (ev.phase === 'thrash' && ev.t > 2.2) {
+      // the fleet that answers: the two fighting hulls, within a reach of the
+      // spot (the retired 'warship' is recrewed to fireship on load)
       const ships = S.units.filter(u => u.owner === ev.owner &&
-        (u.kind === 'warship' || u.kind === 'fireship') &&
-        Math.hypot(u.x - ev.x, u.y - ev.y) <= 4.5);
+        (u.kind === 'fireship' || u.kind === 'bombard') &&
+        Math.hypot(u.x - ev.x, u.y - ev.y) <= CFG.KRAKEN.fleetR);
       if (ships.length >= 2) {
         // two hulls together can beat it back — one barely stays afloat
         ships[0].hp = Math.max(8, Math.round(ships[0].maxhp * 0.15));
         if (ev.owner === 'P') {
-          this.log('⚔ Your warships drive the kraken back into the deep — one barely afloat!');
+          this.log('⚔ Your warships drive the kraken back into the deep — one barely afloat!', 'note', 6000);
           if (S.stats) S.stats.krakenSlain = 1;   // a tale worth 500 points
         }
       } else if (ships.length === 1) {
         Units.damage(ships[0], 99999, 0, 'K');
         if (ev.owner === 'P') this.log('🐙 The kraken wrecks your lone warship and slips beneath the waves!', true);
       } else if (ev.owner === 'P') {
-        this.log('🐙 The kraken sinks back into the deep…', true);
+        this.log('🐙 The kraken sinks back into the deep…', 'note');
       }
       ev.phase = 'sink'; ev.t = 0;
     } else if (ev.phase === 'sink' && ev.t > 1.6) {
@@ -989,6 +1087,7 @@ const G = {
       Math.hypot(u.x - cx, u.y - cy) < CFG.DRAGON.radius + 3 ? 1 : 0), 0);
     if (mine * 2 > foes.length) return;          // only when the hour is dark
     D.done = true;
+    this.specialFired();
     const mx = foes.reduce((a, u) => a + u.x, 0) / foes.length;
     const my = foes.reduce((a, u) => a + u.y, 0) / foes.length;
     const fromLeft = mx < CFG.W / 2;
@@ -1025,6 +1124,8 @@ const G = {
       Math.hypot(u.x - cx, u.y - cy) < 10);
     if (foes.length < 4) return;
     E.done = true; E.avail = false;
+    this.specialFired();
+    if (S.stats) S.stats.sonsAnswered = 1;
     // they appear at the EDGE of the map, about a fifth of the map out from
     // home, on whatever stretch of the border lies farthest from the foe
     const mx = foes.reduce((a, u) => a + u.x, 0) / foes.length;
@@ -1039,18 +1140,38 @@ const G = {
     for (let x = 1; x < CFG.W - 1; x++) { consider(x, 1); consider(x, CFG.H - 2); }
     for (let y = 2; y < CFG.H - 2; y++) { consider(1, y); consider(CFG.W - 2, y); }
     cands.sort((a, b) => a.s - b.s);
-    // the best-scoring stretch of border that actually offers open ground —
-    // a tight search (r 2) so the arrival stays pressed against the world's edge
-    let ex = cx, ey = cy;
+    // the best-scoring stretch of border that actually offers open ground
+    // THEY CAN RIDE HOME FROM (EVT-11: three arrivals in ten used to land on
+    // a shore or an island no road joins to the hall) — a tight search (r 2)
+    // so the arrival stays pressed against the world's edge
+    const home = Units.homeSteps('P').map(i => ({ x: i % CFG.W, y: (i / CFG.W) | 0 }));
+    const reach = Path.reachFrom(home);
+    const ok = (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y) && (!reach || reach[y * CFG.W + x]);
+    let ex = -1, ey = -1;
     for (const c of cands) {
-      const spot2 = MapGen.findNear(c.x, c.y, 2, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
+      const spot2 = MapGen.findNear(c.x, c.y, 2, ok);
       if (spot2) { ex = spot2.x; ey = spot2.y; break; }
     }
+    // no stretch of the border joins home: they come out of the farthest
+    // ground the village can reach on the side away from the foe
+    if (ex < 0 && reach) {
+      let best = -1;
+      for (let i = 0; i < reach.length; i++) {
+        if (!reach[i]) continue;
+        const x = i % CFG.W, y = (i / CFG.W) | 0;
+        if (Bld.at(x, y)) continue;
+        const sc = Math.hypot(x - cx, y - cy) + Math.min(16, Math.hypot(x - mx, y - my)) * 1.5;
+        if (sc > best) { best = sc; ex = x; ey = y; }
+      }
+    }
+    if (ex < 0) { ex = cx | 0; ey = cy | 0; }
     let n = 0;
     for (let i = 0; i < 5; i++) {
-      const spot = MapGen.findNear(ex, ey, 3, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
+      const spot = MapGen.findNear(ex, ey, 3, ok);
       if (!spot) continue;
-      const r = Units.spawn('rider', 'P', spot.x + (i % 2) * 0.4, spot.y + (i % 3) * 0.3);
+      // spawn() centres on the tile: the jitter stays inside it (it used to
+      // reach 1.1 tiles down, onto whatever lay south — a shore, a wall)
+      const r = Units.spawn('rider', 'P', spot.x + (i % 2) * 0.3 - 0.15, spot.y + (i % 3) * 0.25 - 0.25);
       const home = MapGen.findNear(cx | 0, (cy | 0) + 2, 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
       if (home) Units.moveTo(r, home.x, home.y);
       R.float(spot.x + 0.5, spot.y, '🐎', '#e8c15a');
@@ -1071,17 +1192,25 @@ const G = {
     if (E.ev) return this.cacheClaimCheck();   // buried and waiting for a spade
     if (!E.avail) return;
     if (S.day < 12 || !this.positiveGate()) return;
-    if (S.res.food > 60 || S.res.wood > 50) return;   // true desperation, not a dip
+    /* a basket scraped bare — food OR timber (EVT-V03). It used to demand
+       BOTH at the same pulse, on top of the breach and the lost army, and
+       in 24 force-armed games it never once came true: a dead slot. */
+    if (S.res.food > 60 && S.res.wood > 50) return;
     const tc = Bld.tcOf('P'); if (!tc) return;
     const cx = Bld.cx(tc), cy = Bld.cy(tc);
     // bury it opposite the nearest hostile (or any open side when at peace)
     const foe = Combat.nearestUnit(cx, cy, 30, o => (o.owner === 'A' || o.owner === 'R') && Units.isMilitary(o));
     const ang = foe ? Math.atan2(cy - foe.y, cx - foe.x) : G.rand() * Math.PI * 2;
+    let reach = null;
     for (let tries = 0; tries < 14; tries++) {
       const a2 = ang + (G.rand() - 0.5) * 1.2, d = 5 + G.rand() * 3;
       const x = Math.round(cx + Math.cos(a2) * d), y = Math.round(cy + Math.sin(a2) * d);
       if (!MapGen.inB(x, y) || !Path.passable(x, y, 'P') || Bld.at(x, y)) continue;
+      // a villager must be able to WALK there and dig (EVT-12)
+      if (!reach) reach = Path.reachFrom(Units.homeSteps('P').map(i => ({ x: i % CFG.W, y: (i / CFG.W) | 0 }))) || new Uint8Array(0);
+      if (!reach[y * CFG.W + x]) continue;
       E.avail = false; E.ev = { x, y, t: 0 };
+      this.specialFired();
       G.reveal(x, y, 2);
       this.log('✨ A weathered map corner pokes from the soil — a hoard lies buried just beyond the huts! Send a villager to dig it up.', true, 7000);
       return;
@@ -1095,6 +1224,7 @@ const G = {
     S.cache.ev = null; S.cache.done = true;
     S.res.food += 300; S.res.wood += 300; S.res.stone += 300;
     S.trainDiscount = 5;
+    if (S.stats) S.stats.cacheDug = 1;
     R.float(ev.x + 0.5, ev.y, '🍖 🪵 🪨 +300', '#e8c15a');   // icon-first, like every other price
     this.log('🪙 The spade rings on oak — your great-uncle\u2019s lost hoard! Food, timber, stone… and his legendary work songs (next 5 recruits train TWICE as fast).', false, 8000);
   },
@@ -1111,6 +1241,7 @@ const G = {
     if (S.day < 30) return;
     if (S.res.food < 800) return;                       // punishes the boom, never the bust
     E.done = true; E.avail = false; E.days = 3;
+    this.specialFired();
     const cull = (owner) => {
       const bag = owner === 'P' ? S.res : S.ai.res;
       bag.food = Math.round(bag.food * 0.5);
@@ -1138,12 +1269,13 @@ const G = {
   maybePlague() {
     const E = S.plague;
     if (!E || !E.avail || E.done || S.over) return;
-    if (S.day < 25) return;
+    if (S.day < (E.from || CFG.PLAGUE.from)) return;
     const vills = S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !u.dieT);
     if (vills.length < 7) return;
     if (Units.popUsed('P') < Bld.popCap('P') * 0.85) return;   // strikes the boom, not the bust
     E.done = true; E.avail = false;
     E.until = S.day + 5; E.lifted = false;
+    this.specialFired();
     for (let k = 0; k < 5 && vills.length; k++) {
       const v = vills.splice((G.rand() * vills.length) | 0, 1)[0];
       v.dieT = 2.4; v.task = null; v.tUnit = 0; v.tBld = 0; v.path = null;
@@ -1196,7 +1328,7 @@ const G = {
         }
         S.stats.dragonSeen = 1;                   // worth points — and a story
         ev.phase = 'leave'; ev.t = 0;
-        this.log('🐉 Where an army stood: piles of ash. It owes you nothing — it just likes fire.', false, 6400);
+        this.log('🐉 Where an army stood: piles of ash. It owes you nothing — it just likes fire.', 'note', 6400);
       }
     } else if (ev.phase === 'leave') {
       ev.x += ev.dir * 10 * dt;
@@ -1784,6 +1916,11 @@ const G = {
         wonder_key: S.wonder || null,
         // …and S.relic exists from generation; only .found means they got it
         relic_found: !!(S.relic && S.relic.found),
+        // the special event this run rolled, whether it happened, and when
+        // (EVD-V01) — the only way the roll's rate can be read off the board
+        special: S.special || null,
+        special_fired: !!S.specialDay,
+        special_day: S.specialDay || null,
       },
     };
   },
@@ -1933,6 +2070,15 @@ const G = {
     }
     if (data.kraken.avail === undefined)
       data.kraken.avail = data.special === 'kraken' && !data.kraken.ev;
+    // pre-launch-clock saves rolled absolute days per tribe: the visit is the
+    // player's now, DELAY days after their first hull on open water
+    if (data.kraken.delay === undefined) {
+      data.kraken.delay = 12; data.kraken.launch = 0; data.kraken.day = 0;
+      if (data.kraken.ev && data.kraken.ev.owner !== 'P') data.kraken.ev = null;
+    }
+    if (data.plague.from === undefined) data.plague.from = CFG.PLAGUE.from;
+    // the day the armed event fired: a pre-stamp save reports it unknown
+    if (data.specialDay === undefined) data.specialDay = 0;
     if (!data.origin) data.origin = 'An old tribe, from before the tellers kept count.';
     if (data.ai && !data.ai.opening) data.ai.opening = { bias: null, fired: false, until: 0 };
     if (!data.boons) data.boons = { P: {}, A: {} };   // pre-cards save: no boons in play
@@ -1942,7 +2088,8 @@ const G = {
     if (data.played === undefined) data.played = true;   // a save is a world somebody played
     if (!data.stats) data.stats = {};
     for (const k of ['trained', 'razed', 'gathered', 'kills', 'built', 'walls',
-                     'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus', 'leanIn'])
+                     'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus', 'leanIn',
+                     'sonsAnswered', 'cacheDug', 'winterEndured', 'plagueEndured'])
       if (!data.stats[k]) data.stats[k] = 0;
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
