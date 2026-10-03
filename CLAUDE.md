@@ -1423,7 +1423,7 @@ the frame's own opaque extent and, on meat, a small dark stain. A 404 keeps
 the procedural `corpseOf` carcass, which the older checks still pin.
 **AND THE WOLVES COME TO EAT** (`Units.wolfFeed`, `CFG.FEED`, same test): an
 idle wolf within `r` (7) of a carcass with meat on it — any beast's but a
-wolf's — walks to its own place round it (`crowd` 3 at a time, `slotR` (0.85) out — on the next tile, never the kill's own — in
+wolf's — walks to its own place round it (`crowd` 3 at a time, `slotR` (0.85) out, the north place pulled in to `northY` (0.3) of that — a wolf above the kill faces DOWN onto it, and at the side spacing its muzzle hung a body short of the meat (operator, W12 gate) — each on a tile of its own, in
 id order, so a pack eats in a RING and never in a stack) and eats for `eatS`
 (10s) in its `eat` pose, facing the kill (`unitPose` → 'eat', sheetFrames
 turns it to the carcass), taking `bite` (0.34) of the carcass per meal — a full pack of three strips a

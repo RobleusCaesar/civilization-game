@@ -406,13 +406,32 @@ const out = await p.evaluate(() => {
       if (eating.length > best) best = eating.length;
       if (eating.length >= 2) for (let i = 0; i < eating.length; i++) for (let j = i + 1; j < eating.length; j++)
         minGap = Math.min(minGap, Math.hypot(eating[i].x - eating[j].x, eating[i].y - eating[j].y));
-      // each at its own tile, none on the kill's: a shared tile hides the
-      // carcass and wears the stack badge
+      // each at its own tile: a shared tile hides the carcass and wears the
+      // stack badge (the north place may stand on the kill's own tile — it
+      // is the one wolf there)
       const tiles = eating.map(w => (w.x | 0) + ',' + (w.y | 0));
-      if (new Set(tiles).size < tiles.length || tiles.includes((k2.x | 0) + ',' + (k2.y | 0))) shared = true;
+      if (new Set(tiles).size < tiles.length) shared = true;
     }
     ck('aPackEatsInARing', best === CFG.FEED.crowd && minGap >= 0.4 && !shared,
       best + ' at the table at once (crowd ' + CFG.FEED.crowd + '), closest pair ' + minGap.toFixed(2) + ' tiles' + (shared ? ', TWO ON ONE TILE' : ', each on its own tile'));
+    /* …and the wolf ABOVE the kill eats AT it (W12 gate: "the wolf on the
+       top tile eating down is spaced a little too far away"). The north
+       place is set by northY and sits much tighter than the side places;
+       measured across kills whose ring puts a place due north. */
+    {
+      const north = [];
+      for (const [x, y] of [[30.5, 30.5], [30.3, 30.7], [30.7, 30.3], [31.5, 30.5]]) {
+        const off = (x * 7 + y * 13) % 6.283;
+        for (let i = 0; i < 3; i++) {
+          const a = i / 3 * Math.PI * 2 + off, sa = Math.sin(a);
+          if (sa < -0.85) north.push(-sa * CFG.FEED.slotR * CFG.FEED.northY);
+        }
+      }
+      // the side places' own vertical reach, for comparison
+      const side = CFG.FEED.slotR * 0.85;
+      ck('theWolfAboveTheKillEatsAtIt', north.length > 0 && north.every(d => d <= 0.3 && d < side * 0.5),
+        'north place ' + north.map(d => d.toFixed(2)).join('/') + ' tiles above the kill (a side place reaches ' + side.toFixed(2) + ')');
+    }
     // …and a pack strips it to the bones long before time would
     for (let t = 0; t < 120 && (k2.eaten || 0) < 1; t += 0.1) Units.update(0.1);
     ck('theWolvesStripItToBones', (k2.eaten || 0) >= 1 && R.carcassStage(k2) === 2, 'eaten ' + (k2.eaten || 0).toFixed(2));
