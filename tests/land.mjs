@@ -2948,6 +2948,76 @@ function LAND_STEPS(v) { return 16; }
     !v.thrown && v.control > 0, v.thrown || ('control run painted ' + v.control + ' px in the void'));
 }
 
+/* ---- 23b. …AND NOT A CARCASS EITHER ----
+   Seen in a recording of the Animal Strife: two wolves killed on the last
+   row of the map, their carcasses and blood hanging half a tile over the
+   black below it. A corpse lies where the beast FELL — a float anywhere in
+   its tile — and the pass drew a TL box round that point with no board
+   clip, the same geometry-drawn shape every earlier leak had. A dark pool
+   on #0d0b08 never trips the bright-pixel probe above, so this one
+   measures CHANGE instead: each edge is drawn twice at a frozen clock, with
+   its corpses and without, and any pixel of the off-board band that differs
+   is a carcass in the void. The control widens R.boardPx (the clip's own
+   source) and must see them. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(new Function(`
+    const out = { leak: -1, control: -1, onBoard: -1, thrown: '' };
+    try {
+      Boot.force(); G.newGame('void1', 'moderate', 'medium');
+      Screens._demo = false; Screens.show('playing'); S.paused = true;
+      S.day = 5; S.dayT = 0;
+      for (let i = 0; i < S.map.explored.length; i++) { S.map.explored[i] = 1; if (S.map.seenTerrain) S.map.seenTerrain[i] = S.map.terrain[i]; }
+      G.updateVisibility(); if (G.vis) G.vis.fill(1);
+      R.rebakeAll(); while (R.tickBake(1e9)) {}
+      const TL = CFG.TILE, W = CFG.W, H = CFG.H, cv = R.cv, g = R.g;
+      // two beasts per edge, each fallen at the outer lip of its own tile
+      const fallen = [];
+      for (const k of ['wolf', 'bear']) {
+        const o = k === 'wolf' ? -3 : 3;
+        fallen.push({ x: W / 2 + o, y: H - 2 + 0.97, kind: k, day: S.day },
+                    { x: W / 2 + o, y: 1.03, kind: k, day: S.day },
+                    { x: 1.03, y: H / 2 + o, kind: k, day: S.day },
+                    { x: W - 2 + 0.97, y: H / 2 + o, kind: k, day: S.day });
+      }
+      const realNow = performance.now.bind(performance), t0 = realNow();
+      const measure = () => {
+        let leak = 0, onBoard = 0;
+        const cams = [[W / 2, H - 2.5], [W / 2, 1.5], [1.5, H / 2], [W - 2.5, H / 2]];
+        for (const [cx, cy] of cams) for (const z of [1.7, 2.4]) {
+          R.cam.z = z; R.centerOn(cx, cy);
+          const Z = R.cam.z * R.dpr;
+          const bx0 = Math.floor((TL - R.cam.x) * Z) - 1, by0 = Math.floor((TL - R.cam.y) * Z) - 1;
+          const bx1 = Math.ceil(((W - 1) * TL - R.cam.x) * Z) + 1, by1 = Math.ceil(((H - 1) * TL - R.cam.y) * Z) + 1;
+          const shot = (corpses) => { S.corpses = corpses; R.draw(0); return g.getImageData(0, 0, cv.width, cv.height).data; };
+          const a = shot(fallen.map(c => Object.assign({}, c))), b = shot([]);
+          for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) {
+            const i = (y * cv.width + x) * 4;
+            if (a[i] === b[i] && a[i + 1] === b[i + 1] && a[i + 2] === b[i + 2]) continue;
+            const off = x < bx0 || x > bx1 || y < by0 || y > by1;
+            if (off) leak++; else onBoard++;
+          }
+        }
+        return { leak, onBoard };
+      };
+      performance.now = () => t0;                  // the pair is one moment
+      try {
+        const m = measure(); out.leak = m.leak; out.onBoard = m.onBoard;
+        const real = R.boardPx;
+        R.boardPx = () => ({ x0: -1e9, y0: -1e9, x1: 1e9, y1: 1e9 });
+        out.control = measure().leak;
+        R.boardPx = real;
+      } finally { performance.now = realNow; }
+    } catch (e) { out.thrown = String(e && e.stack || e).slice(0, 400); }
+    return out;`));
+  await p.close();
+  ck('noCarcassLiesInTheBlack',
+    !v.thrown && v.leak === 0 && v.onBoard > 0,
+    v.thrown || (v.leak + ' carcass px off the board, ' + v.onBoard + ' on it'));
+  ck('andTheCarcassProbeCanSeeOne',
+    !v.thrown && v.control > 0, v.thrown || ('control run left ' + v.control + ' carcass px in the void'));
+}
+
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL LAND CHECKS PASS');
 await b.close();

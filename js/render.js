@@ -12230,13 +12230,19 @@ const R = {
     // days, then bleached bones until .bone: the standing cue for where a
     // Hunter's Lodge may rise. Explored memory is enough — a landmark you
     // found is a landmark you remember, which is the feature's whole point.
-    if (S.corpses) for (const c of S.corpses) {
-      if (!S.map.explored[MapGen.idx(c.x | 0, c.y | 0)]) continue;
-      const spr = this.corpseOf(c.kind, S.day - c.day < CFG.CORPSE_DAYS.meat ? 'meat' : 'bone');
-      // the same TL×TL box a living unit draws through, so the remains are
-      // exactly the beast's own size on the ground
-      if (spr) g.drawImage(spr, c.x * TL - TL / 2, c.y * TL - TL / 2, TL, TL);
-    }
+    // CLIPPED TO THE BOARD: a corpse lies where the beast FELL, a float
+    // anywhere in its tile, so one killed at the far edge of the last row
+    // drew half a tile of carcass onto the off-map black (NOTHING IS DRAWN
+    // IN THE BLACK — the fourth geometry-drawn layer to leak)
+    if (S.corpses && S.corpses.length) this.clipBoard(g, () => {
+      for (const c of S.corpses) {
+        if (!S.map.explored[MapGen.idx(c.x | 0, c.y | 0)]) continue;
+        const spr = this.corpseOf(c.kind, S.day - c.day < CFG.CORPSE_DAYS.meat ? 'meat' : 'bone');
+        // the same TL×TL box a living unit draws through, so the remains are
+        // exactly the beast's own size on the ground
+        if (spr) g.drawImage(spr, c.x * TL - TL / 2, c.y * TL - TL / 2, TL, TL);
+      }
+    });
 
     // ash piles — what burned-down buildings left, cooling on the ground
     // (drawn under everything that walks or stands; explored memory is enough,

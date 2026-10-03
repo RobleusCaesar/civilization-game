@@ -3918,6 +3918,16 @@ runs wherever the water does and has nothing to clamp. Three were live:
 The control check is the load-bearing one: ONE monkey-patch of `R.boardPx`
 widens every guard at once and the void must light up, or a probe that
 never sees the rim reads as a pass forever.
+**A FOURTH: THE CARCASS** (`noCarcassLiesInTheBlack` /
+`andTheCarcassProbeCanSeeOne`, tests/land.mjs §23b — seen in a recording of
+the Animal Strife, two wolves killed on the last row hanging half a tile
+over the black): a corpse lies where the beast FELL, a float anywhere in its
+tile, and the pass drew a TL box round that point unclipped. It is wrapped
+in `clipBoard` now. A dark pool on `#0d0b08` never trips the bright-pixel
+probe, so §23b measures CHANGE: each edge drawn twice at a frozen clock,
+with its corpses and without, and any differing off-board pixel is a
+carcass in the void (7,866 before the clip, 0 after; the control widens
+`R.boardPx` and must see them).
 
 **A SPADEFUL DOES NOT FREEZE THE FRAME** (`R.splitGrow` / `pendRepaint` /
 `tickRepaint` / `flushRepaint`, pinned by `aSpadefulDoesNotFreezeTheFrame` in
