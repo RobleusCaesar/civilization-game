@@ -9975,6 +9975,7 @@ const R = {
   unitPose(u) {
     const vil = u.kind === 'villager';
     if (G.eclipseAwe(u)) return 'idle';      // stopped dead, staring at the swallowed sun
+    if (u.strife && u.strifePose) return u.strifePose;   // ANIMAL STRIFE: Combat.strifeStep says what the body does
     /* in a fight: villagers swing a pickaxe (guard), soldiers thrust a
        spear — but only within striking distance, the same gate the
        building branch below has always had. A unit still CLOSING on its
@@ -10120,6 +10121,7 @@ const R = {
      sheetFrames, so the sprite and the shadow gate can never disagree
      (the deer's lesson, pinned in tests/animal-art.mjs). */
   unitArtKey(u) {
+    if (u.kind === 'wolf' && u.coat === 'pale') return this.paleWolfKey();
     if (u.kind !== 'villager') {
       // the sapper tiers by its camp like the villager tiers by its hall
       if (u.kind === 'sapper')
@@ -10140,6 +10142,56 @@ const R = {
     }
     return 'villager-' + (u.owner === 'A' ? 'a' : 'p') + '-' + G.tunicOf(u.owner) +
       '-l' + this.villagerTier(u.owner) + (u.female ? '-f' : '-m');
+  },
+  /* THE PALE PACK (ANIMAL STRIFE): two packs of one kind wear two coats so
+     the eye can follow a wolf fight. The second coat is DERIVED from the
+     wolf's own frames — every grey lifted toward a silver-cream, the
+     near-black outline kept dark so the silhouette still reads — once per
+     strip, cached under its own unitArt key ('wolf-pale'), which is what
+     sheetFrames resolves for a u.coat === 'pale' wolf. Nothing is authored;
+     a strip that has not loaded yet simply falls back like any other. */
+  paleWolfKey() {
+    const src = window.Assets && Assets.unitArt && Assets.unitArt.wolf;
+    if (!src) return 'wolf';
+    const dst = Assets.unitArt['wolf-pale'] || (Assets.unitArt['wolf-pale'] = { dirs: {} });
+    for (const dir in src.dirs) for (const pose in src.dirs[dir]) {
+      const d = dst.dirs[dir] || (dst.dirs[dir] = {});
+      if (d[pose] && d[pose]._of === src.dirs[dir][pose]) continue;
+      const frames = src.dirs[dir][pose].map(fr => {
+        const c = document.createElement('canvas'); c.width = fr.width; c.height = fr.height;
+        const g = c.getContext('2d'); g.drawImage(fr, 0, 0);
+        try {
+          const im = g.getImageData(0, 0, c.width, c.height), p = im.data;
+          for (let i = 0; i < p.length; i += 4) {
+            if (!p[i + 3]) continue;
+            const L = (p[i] + p[i + 1] + p[i + 2]) / 3;
+            if (L < 18) { p[i] += 30; p[i + 1] += 28; p[i + 2] += 26; continue; }   // the outline stays dark
+            const v = Math.min(240, 78 + L * 1.35);
+            p[i] = Math.min(255, v + 10); p[i + 1] = Math.min(255, v + 4); p[i + 2] = Math.max(0, v - 8);
+          }
+          g.putImageData(im, 0, 0);
+        } catch (e) { /* a tainted strip keeps its grey: the coat is a nicety */ }
+        return c;
+      });
+      frames._of = src.dirs[dir][pose];
+      d[pose] = frames;
+    }
+    return 'wolf-pale';
+  },
+  /* A FRAME BIGGER THAN ITS KIND'S IS A BIGGER PICTURE, NOT A BIGGER ANIMAL.
+     A strike may need more canvas than the walk (a bear reared to its full
+     height, a wolf mid-leap): its strip ships square frames of its OWN size,
+     authored at the same 2:1 density, and is drawn at that density — the
+     box grows by the frame's own ratio to the kind's walk frame, bottom-
+     aligned on the same feet and centred on the same column, so the body
+     never jumps between poses. Every other frame answers B exactly. */
+  frameBox(u, img, B) {
+    if (!img || !img.width) return B;
+    const ua = window.Assets && Assets.unitArt && (Assets.unitArt[this._sheetKey] || Assets.unitArt[u.kind]);
+    const d = ua && (ua.dirs.s || ua.dirs[Object.keys(ua.dirs)[0]]);
+    const base = d && ((d.walk && d.walk[0]) || (d.idle && d.idle[0]));
+    if (!base || !base.width || base.width === img.width) return B;
+    return B * img.width / base.width;
   },
   /* WORKERS NEVER SHOW THE PLAYER THEIR BACK (operator report: a
      villager who walked NORTH to its work tile held that facing for the
@@ -10242,7 +10294,7 @@ const R = {
     if (!d) return null;
     // the sheet's own pose first; a missing pose borrows sensibly
     // (fight falls to walk — motion — and gather-ish poses to idle)
-    const fr = d[pose] || (pose === 'fight' ? d.walk : d.idle) || d.walk || d.idle || null;
+    const fr = d[pose] || ((pose === 'fight' || pose === 'charge') ? d.walk : d.idle) || d.walk || d.idle || null;
     this._sheetPose = (fr && fr === d.idle) ? 'idle' : pose;   // what actually resolved (for the idle tempo)
     this._sheetFace = face;                                      // the facing that resolved (probes, tests)
     /* A STATIONARY POSE BORROWED FROM THE WALK IS HELD, NOT PLAYED (the
@@ -10395,11 +10447,13 @@ const R = {
     const s = B / TL, cy = u.y - lift - (s - 1) / 2;
     const d = Math.hypot(u.x - wx, cy - wy) / s;
     if (d > 1.2) return d;                                  // nowhere near its box
-    const m = this._unitMask(this.unitSprite(u));
+    const img = this.unitSprite(u), m = this._unitMask(img);
     if (!m) return d;
     // the frame's own pixel under the finger, in the box R.draw blits it to
-    const fx = (wx - u.x + s / 2) / s * m.w, fy = (wy - (u.y + 0.5 - lift - s)) / s * m.h;
-    const r = Math.max(1, Math.round(m.w / B * 1.5));      // ~1.5 screen-px of slack round the outline
+    // (a frame bigger than the kind's walk frame draws in its own bigger box — R.frameBox)
+    const s2 = this.frameBox(u, img, B) / TL;
+    const fx = (wx - u.x + s2 / 2) / s2 * m.w, fy = (wy - (u.y + 0.5 - lift - s2)) / s2 * m.h;
+    const r = Math.max(1, Math.round(m.w / (s2 * TL) * 1.5));   // ~1.5 screen-px of slack round the outline
     const x0 = Math.floor(fx), y0 = Math.floor(fy);
     const at = (x, y) => x >= 0 && y >= 0 && x < m.w && y < m.h && m.a[y * m.w + x];
     /* ON the frame: ahead of every near-miss, and among frames the one R.draw
@@ -11704,7 +11758,8 @@ const R = {
         // Naval sheets bake their own WATER shadow — a ground ellipse
         // under a hull reads as a sandbar, so boats are skipped too.
         if (this.sheetUnit(u) && !Units.isNaval(u)) this.drawUnitShadow(g, u, wx, wy);
-        g.drawImage(this.unitSprite(u), ux, uy, B, B);
+        const img = this.unitSprite(u), D = this.frameBox(u, img, B);
+        g.drawImage(img, wx * TL - D / 2, wy * TL + TL / 2 - CFG.SPRITE_LIFT - D, D, D);
       }
       if (u.cargo && u.cargo.length) {                 // one pip per soldier aboard
         g.fillStyle = u.owner === 'P' ? '#c0e8ff' : '#ffb0a0';
@@ -11732,7 +11787,8 @@ const R = {
         g.beginPath(); g.ellipse(u.x * TL, u.y * TL + 10, 10, 5, 0, 0, Math.PI * 2); g.stroke();
       }
       g.globalAlpha = 0.32;
-      g.drawImage(this.unitSprite(u), ux, uy, B, B);
+      const img = this.unitSprite(u), D = this.frameBox(u, img, B);
+      g.drawImage(img, u.x * TL - D / 2, u.y * TL + TL / 2 - CFG.SPRITE_LIFT - D, D, D);
       g.globalAlpha = 1;
       if (u.hp < u.maxhp) this.bar(g, ux + (B - TL) / 2 + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');

@@ -189,7 +189,7 @@ const G = {
       // run stats — the raw material of the arcade score (js/score.js)
       stats: { trained: 0, razed: 0, gathered: 0, kills: 0, built: 0,
                walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0, originBonus: 0,
-               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0, eclipseEndured: 0, wildfireEndured: 0, migrationTaken: 0, starfallClaimed: 0 },
+               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0, eclipseEndured: 0, wildfireEndured: 0, migrationTaken: 0, starfallClaimed: 0, strifeSeen: 0 },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
       // THE CALM TRUCE (tests/calm-peace.mjs): true while neither tribe may
@@ -287,9 +287,9 @@ const G = {
     // the dry summer waits for its day, hashed off the seed string
     S.wildfire = { avail: S.special === 'wildfire', day: this.fireDayOf(seed), warned: false,
                    phase: null, burning: {}, burnt: 0, t: 0, spreadT: 0, wind: this.fireWindOf(seed), done: false };
-    // the great migration keeps its own day; the route is found on the day
-    S.migration = { avail: S.special === 'migration', day: this.migrationDayOf(seed), warned: false,
-                    phase: null, t: 0, route: null, from: '', plan: null, wolves: 0, next: 0, taken: 0, done: false };
+    // the animal strife keeps its own day; the site and the bout are found on the day
+    S.strife = { avail: S.special === 'strife', day: this.strifeDayOf(seed), warned: false,
+                 phase: null, t: 0, x: -1, y: -1, bout: null, seenT: 0, done: false };
     // the falling star keeps its own night; the site is found on the day
     S.starfall = { avail: S.special === 'starfall', day: this.starfallDayOf(seed, modeKey), warned: false,
                    phase: null, t: 0, x: -1, y: -1, aiSent: false, claimed: null, iron: {}, done: false };
@@ -479,6 +479,9 @@ const G = {
       // player saw it rise, so they watch it to the end (EVT-05)
       const kev = S.kraken && S.kraken.ev;
       if (kev && kev.owner === 'P') mark(kev.x | 0, kev.y | 0, 3);
+      // the animal strife is heard across the valley: its ground is in sight while it rages
+      const sf = S.strife;
+      if (sf && sf.phase === 'fight') mark(sf.x, sf.y, CFG.STRIFE.watchR);
     }
     // sync last-seen memory on every visible tile
     const liveB = new Map();
@@ -741,7 +744,7 @@ const G = {
     this.specialsDaily();
     this.eclipseDaily();
     this.fireDaily();
-    this.migrationDaily();
+    this.strifeDaily();
     this.starfallDaily();
     this.wearDaily();
 
@@ -1065,99 +1068,120 @@ const G = {
     }
   },
 
-  /* THE GREAT MIGRATION (CFG.MIGRATION, tests/specials.mjs). The day and
-     the edge it starts from are hashed off the SEED STRING; the route is a
-     plain BFS over the wild's own ground (Path.passable 'W') that never
-     comes within clearHall of either hall — so it is ELIGIBILITY at the
-     roll (terrain and the halls as founded) and the ROAD on the day (the
-     towns as they have grown). Head counts draw G.rand on the day, like a
-     combat roll. The beasts walk it as `u.migrant` (their exit, which rides
-     in the save with them) and leave the board at the far edge. */
-  MIGR_EDGES: ['west', 'north', 'east', 'south'],
-  migrationDayOf(seed) {
-    const C = CFG.MIGRATION;
-    return C.dayMin + Math.abs(hashSeed(String(seed == null ? '' : seed) + '::migr') | 0) % (C.dayMax - C.dayMin + 1);
+  /* ANIMAL STRIFE (CFG.STRIFE, tests/specials.mjs §3d — the operator's
+     replacement for the Great Migration). The day is hashed off the SEED
+     STRING; the SITE is the wild's own open ground, asked of the terrain and
+     the halls (at the roll, generation facts — the eligibility; on the day,
+     the towns as they have grown): every tile of an (2·area+1)² square
+     passable to a beast, clearHall+ from both halls, off a war band's yard,
+     picked by a seed hash among those. The BOUT draws G.rand on the day (a
+     combat roll, like the migration's head counts were), by weight. The two
+     sides are set down facing each other across the site and marked
+     `u.strife` 1 / 2 (riding in the save): Combat.hostileUnits makes the
+     two sides enemies — the only other case beside predator and prey where
+     the wild fights the wild — and Combat.strifeStep fights it. */
+  strifeDayOf(seed) {
+    const C = CFG.STRIFE;
+    return C.dayMin + Math.abs(hashSeed(String(seed == null ? '' : seed) + '::strife') | 0) % (C.dayMax - C.dayMin + 1);
   },
-  migrationRoute(seed) {
-    const C = CFG.MIGRATION, W = CFG.W, H = CFG.H;
+  strifeSite(seed) {
+    const C = CFG.STRIFE, W = CFG.W, H = CFG.H, A = C.area;
     const halls = ['P', 'A'].map(o => Bld.tcOf(o)).filter(Boolean);
-    const ok = (x, y) => MapGen.onBoard(x, y) && Path.passable(x, y, 'W') &&
-      halls.every(h => Math.hypot(x + 0.5 - Bld.cx(h), y + 0.5 - Bld.cy(h)) >= C.clearHall);
-    const h0 = Math.abs(hashSeed(String(seed == null ? '' : seed) + '::migr-edge') | 0) % 4;
-    for (let k = 0; k < 4; k++) {
-      const e = (h0 + k) % 4;
-      // entry line and exit line: the first and last onBoard rank of an edge
-      const line = (ed) => {
-        const out = [];
-        if (ed === 0 || ed === 2) { const x = ed === 0 ? 1 : W - 2; for (let y = 1; y < H - 1; y++) out.push([x, y]); }
-        else { const y = ed === 1 ? 1 : H - 2; for (let x = 1; x < W - 1; x++) out.push([x, y]); }
-        return out;
-      };
-      const exitEd = (e + 2) % 4;
-      const prev = new Int32Array(W * H).fill(-2), q = [];
-      for (const [x, y] of line(e)) if (ok(x, y)) { const i = y * W + x; prev[i] = -1; q.push(i); }
-      const goal = new Uint8Array(W * H);
-      for (const [x, y] of line(exitEd)) goal[y * W + x] = 1;
-      let hit = -1;
-      for (let qh = 0; qh < q.length && hit < 0; qh++) {
-        const c = q[qh], x = c % W, y = (c / W) | 0;
-        if (goal[c]) { hit = c; break; }
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const nx = x + dx, ny = y + dy, j = ny * W + nx;
-          if (!MapGen.inB(nx, ny) || prev[j] !== -2 || !ok(nx, ny)) continue;
-          prev[j] = c; q.push(j);
-        }
-      }
-      if (hit < 0) continue;
-      const route = [];
-      for (let c = hit; c >= 0; c = prev[c]) route.push([c % W, (c / W) | 0]);
-      route.reverse();
-      return { route, from: this.MIGR_EDGES[e], to: this.MIGR_EDGES[exitEd] };
+    const camps = S.buildings.filter(b => b.key === 'raidercamp' && b.hp > 0);
+    const yard = (CFG.RAIDER_CAMPS && CFG.RAIDER_CAMPS.chaseR || 6) + 2;
+    const cands = [];
+    for (let y = A + 1; y < H - A - 1; y++) for (let x = A + 1; x < W - A - 1; x++) {
+      if (halls.some(h => Math.hypot(x + 0.5 - Bld.cx(h), y + 0.5 - Bld.cy(h)) < C.clearHall)) continue;
+      if (camps.some(b => Math.hypot(x - b.x, y - b.y) < yard)) continue;
+      let open = true;
+      for (let dy = -A; dy <= A && open; dy++) for (let dx = -A; dx <= A; dx++)
+        if (!MapGen.onBoard(x + dx, y + dy) || !Path.passable(x + dx, y + dy, 'W') || Bld.at(x + dx, y + dy)) { open = false; break; }
+      if (open) cands.push(y * W + x);
     }
-    return null;
+    if (!cands.length) return null;
+    const i = cands[Math.abs(hashSeed(String(seed == null ? '' : seed) + '::strife-site') | 0) % cands.length];
+    return { x: i % W, y: (i / W) | 0 };
   },
-  migrationDaily() {
-    const M = S.migration, C = CFG.MIGRATION;
-    if (!M || !M.avail || M.done || M.phase) return;
-    if (!M.warned && S.day >= M.day - C.warnDays) {
-      M.warned = true;
-      const r = this.migrationRoute(S.seed);
-      this.log('🦌 The earth hums at dawn — the herds are gathering beyond the ' + (r ? r.from : 'far') +
-        ' edge. Tomorrow they cross.', 'note', 6000);
+  // where a spot lies from the player's hall, in the words a herdsman would use
+  compassFrom(x, y) {
+    const tc = Bld.tcOf('P'); if (!tc) return 'wild';
+    const a = Math.atan2(y + 0.5 - Bld.cy(tc), x + 0.5 - Bld.cx(tc));
+    return ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east'][((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8];
+  },
+  strifeDaily() {
+    const F = S.strife, C = CFG.STRIFE;
+    if (!F || !F.avail || F.done || F.phase) return;
+    if (!F.warned && S.day >= F.day - C.warnDays) {
+      F.warned = true;
+      const site = this.strifeSite(S.seed);
+      this.log('🐺 Howling carries in from the ' + (site ? this.compassFrom(site.x, site.y) : 'wild') +
+        ' all night — something out there is spoiling for a fight.', 'note', 6000);
     }
-    if (S.day < M.day) return;
-    const r = this.migrationRoute(S.seed);
-    if (!r) { M.avail = false; M.done = true; return; }   // the towns grew across the trail: the herds go round
-    M.route = r.route; M.from = r.from; M.phase = 'pass'; M.t = 0; M.next = 0;
-    M.plan = C.bands.map(kind => ({ kind, n: C.head[0] + ((this.rand() * (C.head[1] - C.head[0] + 1)) | 0) }));
-    M.wolves = C.wolves[0] + ((this.rand() * (C.wolves[1] - C.wolves[0] + 1)) | 0);
+    if (S.day < F.day) return;
+    const site = this.strifeSite(S.seed);
+    if (!site) { F.avail = false; F.done = true; return; }   // the towns grew over the wild ground
+    // the bout, by weight, on the run's own stream
+    const keys = Object.keys(C.bouts), tot = keys.reduce((a, k) => a + C.bouts[k].w, 0);
+    let r = this.rand() * tot, key = keys[keys.length - 1];
+    for (const k of keys) { r -= C.bouts[k].w; if (r < 0) { key = k; break; } }
+    const B = C.bouts[key], ax = this.rand() < 0.5 ? 1 : 0;   // they meet across x or across y
+    F.phase = 'fight'; F.t = 0; F.x = site.x; F.y = site.y; F.bout = key; F.seenT = 0;
+    const set = (side, [kind, lo, hi], sgn) => {
+      const n = lo + ((this.rand() * (hi - lo + 1)) | 0), out = [];
+      for (let i = 0; i < n; i++) {
+        const spread = (i - (n - 1) / 2) * 0.9;
+        const px = site.x + 0.5 + (ax ? sgn * 1.7 : spread), py = site.y + 0.5 + (ax ? spread : sgn * 1.7);
+        const u = Units.spawn(kind, 'W', px, py); if (!u) continue;
+        u.x = px; u.y = py; u.path = null; u.strife = side; u.anchor = { x: site.x + 0.5, y: site.y + 0.5 };
+        // no two beasts are the same beast: vigour, and who is quickest off the mark
+        u.hp = u.maxhp = Math.round(u.maxhp * (1 - C.vigour + this.rand() * 2 * C.vigour));
+        u.cd = this.rand();
+        // two packs of one kind wear two coats, so the eye can follow the fight
+        if (side === 2 && kind === 'wolf' && B.a[0] === 'wolf') u.coat = 'pale';
+        out.push(u);
+      }
+      return out;
+    };
+    const A1 = set(1, B.a, -1), A2 = set(2, B.b, 1);
+    for (const u of A1) { const t = A2[0]; if (t) u.tUnit = t.id; }
+    for (const u of A2) { const t = A1[0]; if (t) u.tUnit = t.id; }
     this.specialFired();
-    this.log('🦌 THE GREAT MIGRATION — the herds pour in from the ' + r.from + ' and cross to the ' + r.to +
-      ', wolves at their heels. Hunters, to the trail!', true, 8000);
+    if (R.startle) R.startle(site.x + 0.5, site.y + 0.5, 10);
+    this.log('⚔ ANIMAL STRIFE — ' + B.say + ' are tearing into each other out in the ' +
+      this.compassFrom(site.x, site.y) + '! Watch from a distance… or don\'t stumble into it.', true, 8000);
   },
-  migrationTick(dt) {
-    const M = S.migration, C = CFG.MIGRATION;
-    if (!M || M.phase !== 'pass' || !M.route) return;
-    M.t += dt;
-    const groups = M.plan.length + 1, rt = M.route, end = rt[rt.length - 1];
-    while (M.next < groups && M.t >= M.next * C.gapS) {
-      const band = M.next < M.plan.length ? M.plan[M.next] : { kind: 'wolf', n: M.wolves };
-      const [sx, sy] = rt[0];
-      for (let i = 0; i < band.n; i++) {
-        const u = Units.spawn(band.kind, 'W', sx + 0.2 + this.rand() * 0.6, sy + 0.2 + this.rand() * 0.6);
-        if (!u) continue;
-        u.migrant = { x: end[0], y: end[1] };
-        u.speed *= 0.85 + this.rand() * 0.3;              // a column strings out on its own
-        u.path = rt.slice(1).map(([x, y]) => ({ x, y })); u.pathI = 0;
-        u.anchor = null;
+  strifeTick(dt) {
+    const F = S.strife, C = CFG.STRIFE;
+    if (!F || F.phase !== 'fight') return;
+    F.t += dt;
+    if (this.visibleAt(F.x, F.y)) {
+      F.seenT += dt;
+      if (F.seenT >= C.seenS && S.stats && !S.stats.strifeSeen) S.stats.strifeSeen = 1;
+    }
+    const sides = [0, 0, 0];
+    for (const u of S.units) if (u.strife && u.hp > 0) sides[u.strife]++;
+    // the one still standing keeps the field; a stalemate breaks off at maxS
+    if (sides[1] && sides[2] && F.t < C.maxS) {
+      // anyone without a mark takes the nearest of the other side (a fresh
+      // kill frees a jaw); Combat.acquire never re-marks a strife fighter
+      for (const u of S.units) {
+        if (!u.strife || u.tUnit) continue;
+        let best = null, bd = 1e9;
+        for (const o of S.units) if (o.strife && o.strife !== u.strife && o.hp > 0) {
+          const d = Math.hypot(o.x - u.x, o.y - u.y); if (d < bd) { bd = d; best = o; }
+        }
+        if (best) u.tUnit = best.id;
       }
-      M.next++;
+      return;
     }
-    if (M.next < groups) return;
-    if (!S.units.some(u => u.migrant)) {
-      M.phase = null; M.done = true; M.avail = false;
-      this.log('🦌 The last of the herd crosses the far edge and is gone. The plains fall quiet.', 'note', 5000);
-    }
+    F.phase = null; F.done = true; F.avail = false;
+    const left = S.units.filter(u => u.strife);
+    for (const u of left) { u.strife = 0; u.tUnit = 0; u.charging = null; u.anchor = { x: u.x, y: u.y }; }
+    const kind = left.length ? CFG.UNITS[left[0].kind].name.toLowerCase() : null;
+    this.log(left.length
+      ? '🐾 The strife is over — ' + (left.length > 1 ? left.length + ' ' + kind + (kind.endsWith('f') ? 'ves' : 's') : 'one ' + kind) +
+        ' stand' + (left.length > 1 ? '' : 's') + ' over the dead, bloodied and dangerous.'
+      : '🐾 The strife is over. Nothing walked away from it.', 'note', 6000);
   },
 
   /* STARFALL (CFG.STARFALL, tests/specials.mjs). The night is hashed off the
@@ -1489,7 +1513,7 @@ const G = {
     if (!test) return true;
     if (test === 'openWater') return this.openWaterNearHome('P');
     if (test === 'woodStand') return !!this.fireSite();
-    if (test === 'corridor') return !!this.migrationRoute(S.seed);
+    if (test === 'wildGround') return !!this.strifeSite(S.seed);
     if (test === 'contested') return !!this.starfallSite(S.seed);
     return true;
   },
@@ -2624,7 +2648,16 @@ const G = {
     }
     if (data.plague.from === undefined) data.plague.from = CFG.PLAGUE.from;
     if (!data.wildfire) data.wildfire = { avail: false, done: true, day: 0, warned: false, phase: null, burning: {}, burnt: 0, t: 0, spreadT: 0, wind: [1, 0] };
-    if (!data.migration) data.migration = { avail: false, done: true, day: 0, warned: false, phase: null, t: 0, route: null, from: '', plan: null, wolves: 0, next: 0, taken: 0 };
+    /* THE MIGRATION WAS RETIRED for the animal strife (operator, on the
+       retro gate). A save that still owes the herds its day owes the strife
+       that day instead; one caught mid-crossing lets its beasts go loose. */
+    if (!data.strife) {
+      const mg = data.migration, owed = mg && mg.avail && !mg.done && !mg.phase;
+      data.strife = { avail: !!owed, day: owed ? mg.day : 0, warned: !!(mg && mg.warned), phase: null, t: 0, x: -1, y: -1, bout: null, seenT: 0, done: !owed };
+      if (owed && data.special === 'migration') data.special = 'strife';
+    }
+    delete data.migration;
+    for (const u of data.units || []) if (u.migrant) { delete u.migrant; delete u.migrantRe; }
     if (!data.starfall) data.starfall = { avail: false, done: true, day: 0, warned: false, phase: null, t: 0, x: -1, y: -1, aiSent: false, claimed: null, iron: {} };
     if (!data.eclipse) data.eclipse = { avail: false, done: true, day: 0, warned: false, foretold: false, cut: null, phase: null, t: 0 };
     // the day the armed event fired: a pre-stamp save reports it unknown
@@ -2639,7 +2672,7 @@ const G = {
     if (!data.stats) data.stats = {};
     for (const k of ['trained', 'razed', 'gathered', 'kills', 'built', 'walls',
                      'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus', 'leanIn',
-                     'sonsAnswered', 'cacheDug', 'winterEndured', 'plagueEndured', 'eclipseEndured', 'wildfireEndured', 'migrationTaken', 'starfallClaimed'])
+                     'sonsAnswered', 'cacheDug', 'winterEndured', 'plagueEndured', 'eclipseEndured', 'wildfireEndured', 'migrationTaken', 'starfallClaimed', 'strifeSeen'])
       if (!data.stats[k]) data.stats[k] = 0;
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
@@ -2846,7 +2879,7 @@ const G = {
           G.krakenTick(sdt);
           G.eclipseTick(sdt);
           G.fireTick(sdt);
-          G.migrationTick(sdt);
+          G.strifeTick(sdt);
           G.starfallTick(sdt);
           G.dragonTick(sdt);
           G.dragonT = (G.dragonT || 0) - sdt;

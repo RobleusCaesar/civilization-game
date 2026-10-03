@@ -164,7 +164,7 @@ node tests/audio.mjs         # the game's voice: nothing on the wire, two switch
 node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map arrays, kept ground DERIVED from standing buildings (grows back on raze, byte-identical), the flatten fires from Bld.finish alone, the 32px cover-art door snaps alpha binary
 node tests/frame-hotpath.mjs  # the late-game town costs no more per tile: Bld.at is an index (= the linear definition on every tile), the building loop culls to the camera, the cull changes no pixel
 node tests/worn-paths.mjs     # the ground wears where WORK walks: distinct days, never a march, never in the fog; a band not a square; repaint == rebake; few roads, worth walking (+10%), the road calls the walker
-node tests/specials.mjs       # the special-event roll: three draws whatever it rolls, weighted, no dead rolls; the kraken is the player's; sons/cache land where a hand can walk; every event scores and reports; the eclipse's moon-shadow, its stare, no stars in the black
+node tests/specials.mjs       # the special-event roll: three draws whatever it rolls, weighted, no dead rolls; the kraken is the player's; sons/cache land where a hand can walk; every event scores and reports; the eclipse's moon-shadow, its stare, no stars in the black; the animal strife is fought, wound up, balanced both ways
 ```
 
 **SPECIAL EVENTS** (`tests/specials.mjs`, `CFG.SPECIALS` / `KRAKEN` /
@@ -274,19 +274,55 @@ cause `'fire'` skips the attack alarm, `breachedP`, razed credit, the
 work-lost ledger and the chief's `noteLoss` — a summer is not a raid.
 Drawn by `R.drawWildfire` (the flame strips, a smoke column, the bolt, the
 rain); scores `wildfireEndured`.
-**THE GREAT MIGRATION** (`migration`, all modes, `CFG.MIGRATION`, specials.mjs
-§3d): eligible only where an edge-to-edge ROAD exists that keeps
-`clearHall` (8) tiles from both halls (`G.migrationRoute` — a plain BFS over
-the wild's own ground from an edge hashed off the seed string; at the roll it
-reads generation facts, on the day the towns as they have grown, and a town
-that has grown across every trail simply lets the summer pass). Warned a day
-ahead (naming the edge), then three bands (deer, cow, deer — 6..8 head each,
-rolled on `G.rand` on the day) and 3..5 trailing wolves enter `gapS` seconds
-apart and walk the road as `u.migrant` (their exit, riding in the save):
-`Units.migrantStep` replaces `wildIdle` for them, re-plans to the exit if a
-fight knocks one off the trail, and despawns it at the far edge. Every head
-the PLAYER takes off the trail counts `migrationTaken`, scored per head
-(`SCORE.migration` 12) up to `migrationCap` (300).
+**ANIMAL STRIFE** (`strife`, all modes, `CFG.STRIFE`, specials.mjs §3d —
+the operator's replacement for the Great Migration, which "doesn't really
+land": a herd walking edge to edge was a spectacle with nothing at stake).
+Eligible only where the WILD has open ground (`elig: 'wildGround'` →
+`G.strifeSite`: every tile of a 5×5 passable to a beast, `clearHall` (10)+
+from both halls, off a war band's yard, a seed-hashed pick among those —
+generation facts at the roll, the towns as grown on the day). The day is
+hashed off the seed string; a howling note a day ahead names the quarter
+(`G.compassFrom`). On the day a BOUT is drawn on `G.rand`, by weight:
+two wolf packs (2–3 a side), a bear against 4–5 wolves, two boars against
+3–4 wolves, two bears, a bear against three boars. The sides are set down
+facing each other, marked `u.strife` 1/2 (in the save), and
+`Combat.hostileUnits` makes them enemies — the one case besides predator
+and prey where the wild fights the wild, and this time BOTH ways. **It is
+fought, not resolved**: `Combat.strifeStep` drives every blow (a strife
+fighter never takes `Combat.acquire`'s marks; `G.strifeTick` re-marks a
+freed jaw) and EVERY BLOW IS WOUND UP — the strike sheet restarts
+`STRIFE_LEAD` seconds before the cooldown lands, so a swipe comes down on
+the wolf it hits rather than in the air beside it — at `tempo` 1.6× a
+raid's cadence, slow enough to watch. Wolves CIRCLE their quarry between
+bites (each its own side and radius) and hop back out after one; a boar
+drops its head and CHARGES a straight line at `chargeSpeed`× from
+`chargeMin`..`chargeMax` tiles and throws what it hits; a bear's swipe
+throws (`knock`) and its sweep catches a second (`cleave`). Wolves bite
+harder with packmates on the same quarry (`pack`, capped `packMax`), and
+no two beasts are the same beast (`vigour` ±20% hp, a random first
+cooldown) — without those the bear and the boars won EVERY bout and a
+mirror bout was a coin with two heads. **Balance is measured** (12 bouts
+each): bear vs wolves ≈ 2:1, boars vs wolves ≈ even, bear vs boars ≈
+even, and the contract demands every pairing go both ways at least twice.
+`u.strifePose` tells `R.unitPose` what the body is doing (`walk`, `charge`,
+`fight` while a strike winds up, `idle` while it recovers) because this
+steering moves units off-path, which `Units.moving` cannot see; a missing
+`charge` sheet falls back to the walk. **Two packs wear two coats**: the
+second pack is `u.coat = 'pale'`, drawn from `R.paleWolfKey()` — the
+wolf's own frames lifted to silver-cream, outline kept dark, cached under
+`Assets.unitArt['wolf-pale']` — so the eye can follow the fight. The site
+is a vision source while it rages (`watchR`, heard across the valley),
+`seenS` seconds of it in sight scores `strifeSeen` (`SCORE.strife` 150),
+the corpses it leaves are ordinary kills (killing ground for a lodge), and
+`maxS` breaks off a stalemate: the survivors go loose, bloodied and
+dangerous, to anyone who stumbles in. A save that still owed the migration
+its day owes the strife that day (`loadJSON`), one caught mid-crossing lets
+its beasts go loose, and an old run's `migrationTaken` still scores.
+**A frame bigger than its kind's is a bigger picture, not a bigger
+animal** (`R.frameBox`): a strike strip may ship square frames larger than
+the walk's (a bear reared to its full height) at the same 2:1 density; it
+draws in a box grown by the frame's own ratio, bottom-aligned on the same
+feet, and `R.unitHit` maps the finger through that same box.
 **STARFALL** (`starfall`, all modes, `CFG.STARFALL`, specials.mjs §3e): a
 RACE, contested by construction (`G.starfallSite`): open 2x2 grass `minHall`
 (12)+ from both halls, walkable from both doorsteps with WALKING distances

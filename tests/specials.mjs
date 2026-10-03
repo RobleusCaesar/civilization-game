@@ -451,74 +451,119 @@ const out = await p.evaluate(() => {
         JSON.stringify({ burnt: S.wildfire.burnt, cap: C.cap.calm, hp: hb2.hp + '/' + hp2 }));
     }
 
-    // ---------------- 3d. THE GREAT MIGRATION ----------------
+    // ---------------- 3d. ANIMAL STRIFE ----------------
     {
-      const C = CFG.MIGRATION;
-      const days = []; for (let i = 0; i < 40; i++) days.push(G.migrationDayOf('migr-' + i));
-      const pure = days.every(d => d >= C.dayMin && d <= C.dayMax) && G.migrationDayOf('migr-3') === days[3] && new Set(days).size > 20;
-      fresh('spx-migr'); flat();
-      const open = G.specialElig('migration');
-      const r1 = G.migrationRoute(S.seed), r2 = G.migrationRoute(S.seed);
+      const C = CFG.STRIFE;
+      // the day, the site, the eligibility
+      const days = []; for (let i = 0; i < 40; i++) days.push(G.strifeDayOf('strife-' + i));
+      const pure = days.every(d => d >= C.dayMin && d <= C.dayMax) && G.strifeDayOf('strife-3') === days[3] && new Set(days).size > 20;
+      fresh('spx-strife'); flat();
+      const open = G.specialElig('strife');
+      const s1 = G.strifeSite(S.seed), s2 = G.strifeSite(S.seed);
       const halls = ['P', 'A'].map(o => Bld.tcOf(o));
-      const clear = r1 && r1.route.every(([x, y]) => halls.every(h => Math.hypot(x + 0.5 - Bld.cx(h), y + 0.5 - Bld.cy(h)) >= C.clearHall));
-      const edged = r1 && (() => { const [a, b] = [r1.route[0], r1.route[r1.route.length - 1]];
-        const onEdge = ([x, y]) => x === 1 || y === 1 || x === CFG.W - 2 || y === CFG.H - 2; return onEdge(a) && onEdge(b); })();
-      // a cross of water leaves no edge-to-edge road at all: no migration
-      water((CFG.W / 2) | 0, 0, (CFG.W / 2) | 0, CFG.H - 1); water(0, (CFG.H / 2) | 0, CFG.W - 1, (CFG.H / 2) | 0);
-      const shut = !G.specialElig('migration');
-      ck('aMigrationNeedsARoadAroundBothTowns', pure && open && clear && edged && shut && JSON.stringify(r1) === JSON.stringify(r2),
-        JSON.stringify({ pure, open, clear, edged, shut, from: r1 && r1.from, len: r1 && r1.route.length }));
+      const clear = s1 && halls.every(h => Math.hypot(s1.x + 0.5 - Bld.cx(h), s1.y + 0.5 - Bld.cy(h)) >= C.clearHall);
+      let wild = !!s1;
+      if (s1) for (let dy = -C.area; dy <= C.area; dy++) for (let dx = -C.area; dx <= C.area; dx++) if (!Path.passable(s1.x + dx, s1.y + dy, 'W')) wild = false;
+      // a world with no open ground left stages no fight at all
+      for (let i = 0; i < W() * H(); i++) S.map.terrain[i] = T.FOREST;
+      for (const h of halls) for (let dy = -3; dy <= 4; dy++) for (let dx = -3; dx <= 4; dx++) if (MapGen.inB(h.x + dx, h.y + dy)) S.map.terrain[(h.y + dy) * W() + h.x + dx] = T.GRASS;
+      Bld._block = null;
+      const shut = !G.specialElig('strife');
+      const inPool = !!CFG.SPECIALS.pool.strife && !CFG.SPECIALS.pool.migration && CFG.SPECIALS.pool.strife.elig === 'wildGround';
+      ck('aStrifeNeedsWildGround', pure && open && clear && wild && shut && inPool && JSON.stringify(s1) === JSON.stringify(s2),
+        JSON.stringify({ pure, open, clear, wild, shut, inPool, site: s1 }));
 
-      // the pass: warned a day ahead, bands then wolves, every head leaves at the far edge
-      fresh('spx-migr2'); flat();
-      S.special = 'migration'; S.specialDay = 0;
-      S.migration = { avail: true, day: 90, warned: false, phase: null, t: 0, route: null, from: '', plan: null, wolves: 0, next: 0, taken: 0, done: false };
-      toasts.length = 0;
-      S.day = 88; G.migrationDaily(); const early = !S.migration.warned;
-      S.day = 89; G.migrationDaily(); const warned = S.migration.warned;
-      S.day = 90; G.migrationDaily();
-      const M = S.migration;
-      const fired = M.phase === 'pass' && toasts.some(m => /GREAT MIGRATION/.test(m)) && S.specialDay === 90;
-      const want = M.plan.reduce((a, b) => a + b.n, 0) + M.wolves;
-      const planOk = M.plan.length === C.bands.length && M.plan.every(b => b.n >= C.head[0] && b.n <= C.head[1]) &&
-        M.wolves >= C.wolves[0] && M.wolves <= C.wolves[1];
-      const seen = new Set(), kinds = {}; let strayed = 0, peak = 0;
-      for (let i = 0; i < 6000 && !M.done; i++) {
-        G.migrationTick(0.1); Units.update(0.1); Combat.update(0.1);
-        let live = 0;
-        for (const u of S.units) {
-          if (!u.migrant) continue;
-          live++;
-          if (!seen.has(u.id)) { seen.add(u.id); kinds[u.kind] = (kinds[u.kind] || 0) + 1; }
-          if (u.kind !== 'wolf' && halls.length && ['P', 'A'].map(o => Bld.tcOf(o)).some(h => Math.hypot(u.x - Bld.cx(h), u.y - Bld.cy(h)) < C.clearHall - 1)) strayed++;
+      // the fight: warned, staged, fought to a finish, seen, remembered
+      const force = (bout) => { const keep = {}; for (const k in C.bouts) { keep[k] = C.bouts[k].w; C.bouts[k].w = k === bout ? 1 : 0; }
+        return () => { for (const k in keep) C.bouts[k].w = keep[k]; }; };
+      const run = (bout, seed, watch) => {
+        fresh(seed); flat(); S.special = 'strife'; S.specialDay = 0;
+        Combat.scanT = 0; Units.herdClock = 0;
+        S.strife = { avail: true, day: S.day + 1, warned: false, phase: null, t: 0, x: -1, y: -1, bout: null, seenT: 0, done: false };
+        toasts.length = 0;
+        const undo = force(bout);
+        G.strifeDaily(); const warned = S.strife.warned && !S.strife.phase;
+        S.day++; G.strifeDaily(); undo();
+        const F = S.strife, B = C.bouts[bout];
+        const sideA = S.units.filter(u => u.strife === 1), sideB = S.units.filter(u => u.strife === 2);
+        const staged = F.phase === 'fight' && F.bout === bout && S.specialDay === S.day &&
+          sideA.length >= B.a[1] && sideA.length <= B.a[2] && sideA.every(u => u.kind === B.a[0]) &&
+          sideB.length >= B.b[1] && sideB.length <= B.b[2] && sideB.every(u => u.kind === B.b[0]) &&
+          sideA.every(u => u.tUnit && Combat.hostileUnits(u, Units.get(u.tUnit))) && toasts.some(m => /ANIMAL STRIFE/.test(m));
+        G.freeVis = false; G.updateVisibility();
+        const inSight = G.visibleAt(F.x, F.y);
+        const watch2 = { orbit: 0, charge: 0, knock: 0, maxBoar: 0 };
+        const ang = new Map(), prev = new Map();
+        let t = 0;
+        const c0 = S.corpses.length;
+        while (F.phase === 'fight' && t < C.maxS + 5) {
+          for (const u of S.units) prev.set(u.id, [u.x, u.y]);
+          Combat.update(0.05); Units.update(0.05); G.strifeTick(0.05); t += 0.05;
+          for (const u of S.units) {
+            if (!u.strife) continue;
+            const p = prev.get(u.id); if (!p) continue;
+            const mv = Math.hypot(u.x - p[0], u.y - p[1]);
+            if (u.kind === 'boar' && u.strifePose === 'charge') { watch2.charge++; watch2.maxBoar = Math.max(watch2.maxBoar, mv / 0.05 / CFG.UNITS.boar.speed); }
+            const tg = u.tUnit && Units.get(u.tUnit);
+            if (u.kind === 'wolf' && tg && u.strifePose === 'walk' && Math.hypot(u.x - tg.x, u.y - tg.y) < C.circle + 0.6) {
+              const a = Math.atan2(u.y - tg.y, u.x - tg.x), a0 = ang.get(u.id);
+              if (a0 != null) { let da = a - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI; watch2.orbit += Math.abs(da); }
+              ang.set(u.id, a);
+            } else ang.delete(u.id);
+          }
+          for (const o of S.units) { const p = prev.get(o.id); if (p && o.strife && Math.hypot(o.x - p[0], o.y - p[1]) > 0.3 + o.speed * 0.05) watch2.knock++; }
         }
-        peak = Math.max(peak, live);
-      }
-      const gone = !S.units.some(u => u.migrant);
-      ck('theHerdsCrossAndLeaveAtTheFarEdge', early && warned && fired && planOk && seen.size === want && M.done && gone &&
-        (kinds.deer || 0) > 0 && (kinds.cow || 0) > 0 && (kinds.wolf || 0) === M.wolves && strayed === 0,
-        JSON.stringify({ early, warned, fired, planOk, want, spawned: seen.size, kinds, peak, done: M.done, gone, strayed }));
+        const left = S.units.filter(u => u.strife).length;
+        return { warned, staged, inSight, done: F.done, t, left, sides: [sideA.length, sideB.length],
+          winners: [...new Set(S.units.filter(u => B.a[0] === u.kind || B.b[0] === u.kind).map(u => u.kind + (u.coat ? '-' + u.coat : '')))],
+          corpses: S.corpses.length - c0, seen: S.stats.strifeSeen, ...watch2 };
+      };
+      const bear = run('bear', 'spx-strife-bear'), boars = run('boars', 'spx-strife-boar'), packs = run('packs', 'spx-strife-packs');
+      ck('theBeastsFightItOut', [bear, boars, packs].every(r => r.warned && r.staged && r.inSight && r.done && r.left === 0 && r.corpses >= 2 && r.t < C.maxS) &&
+        bear.seen === 1,
+        JSON.stringify({ bear: { t: bear.t.toFixed(1), sides: bear.sides, won: bear.winners, corpses: bear.corpses }, boars: { t: boars.t.toFixed(1), won: boars.winners }, packs: { t: packs.t.toFixed(1), won: packs.winners } }));
+      ck('wolvesCircleBoarsChargeBearsThrow', packs.orbit > Math.PI && boars.charge > 5 && boars.maxBoar > 2 && bear.knock > 0,
+        JSON.stringify({ wolfOrbit: (packs.orbit / Math.PI).toFixed(2) + 'π', boarChargeFrames: boars.charge, boarPeak: boars.maxBoar.toFixed(2) + '× walk', bearThrows: bear.knock }));
+      // the second pack wears the pale coat; a mixed bout wears its own colours
+      fresh('spx-strife-coat'); flat();
+      { const undo = force('packs'); S.strife = { avail: true, day: S.day, warned: true, phase: null, t: 0, x: -1, y: -1, bout: null, seenT: 0, done: false }; G.strifeDaily(); undo(); }
+      const pale = S.units.filter(u => u.strife === 2).every(u => u.coat === 'pale') && S.units.filter(u => u.strife === 1).every(u => !u.coat);
+      const key = R.unitArtKey(S.units.find(u => u.coat === 'pale'));
+      ck('twoPacksWearTwoCoats', pale && (key === 'wolf-pale' || !(window.Assets && Assets.unitArt && Assets.unitArt.wolf)),
+        JSON.stringify({ pale, key }));
 
-      // what the village takes off the trail scores — a head at a time, capped
-      fresh('spx-migr3'); flat();
-      S.migration = { avail: true, day: S.day, warned: true, phase: null, t: 0, route: null, from: '', plan: null, wolves: 0, next: 0, taken: 0, done: false };
-      G.migrationDaily(); G.migrationTick(0.1);
-      const beast = S.units.find(u => u.migrant), food0 = S.res.food;
-      const hunter = Units.spawn('defender', 'P', beast.x, beast.y + 1);
-      Units.damage(beast, 9999, hunter.id, 'P');
-      const stray = Units.spawn('deer', 'W', 3, 3); Units.damage(stray, 9999, hunter.id, 'P');
-      const counted = S.stats.migrationTaken === 1 && S.res.food > food0;
-      // and a pass in flight rides the save: the herd walks on after a load
-      G.migrationTick(C.gapS + 0.1);
-      const before = S.units.filter(u => u.migrant).length;
+      // balance, measured: no bout is a foregone conclusion between different kinds
+      const tally = {};
+      for (const bout of ['bear', 'boars', 'bearboar']) {
+        const B = C.bouts[bout], w = { a: 0, b: 0 };
+        for (let i = 0; i < 12; i++) {
+          fresh('spx-bal-' + bout + '-' + i); flat(); Combat.scanT = 0;
+          const undo = force(bout);
+          S.strife = { avail: true, day: S.day, warned: true, phase: null, t: 0, x: -1, y: -1, bout: null, seenT: 0, done: false };
+          G.strifeDaily(); undo();
+          let t = 0; while (S.strife.phase === 'fight' && t < 120) { Combat.update(0.05); Units.update(0.05); G.strifeTick(0.05); t += 0.05; }
+          const alive = S.units.filter(u => u.kind === B.a[0] || u.kind === B.b[0]);
+          if (alive.some(u => u.kind === B.a[0])) w.a++; else if (alive.some(u => u.kind === B.b[0])) w.b++;
+        }
+        tally[bout] = w;
+      }
+      ck('noBoutIsAForegoneConclusion', Object.values(tally).every(w => w.a >= 2 && w.b >= 2), JSON.stringify(tally));
+
+      // a fight in flight rides the save; an old save that owed the herds owes the strife
+      fresh('spx-strife-save'); flat();
+      { const undo = force('bear'); S.strife = { avail: true, day: S.day, warned: true, phase: null, t: 0, x: -1, y: -1, bout: null, seenT: 0, done: false }; G.strifeDaily(); undo(); }
+      const nB = S.units.filter(u => u.strife).length;
       G.loadJSON(G.saveJSON());
-      const after = S.units.filter(u => u.migrant).length;
-      const resumes = before > 0 && after === before && S.migration.phase === 'pass' && S.units.filter(u => u.migrant).every(u => u.migrant.x != null);
-      S.stats.migrationTaken = 40;
-      const line = Score.compute(false).lines.find(l => /migration/i.test(l.label || l.text || ''));
-      const capped = line && (line.pts === CFG.SCORE.migrationCap || line.points === CFG.SCORE.migrationCap || JSON.stringify(line).includes(String(CFG.SCORE.migrationCap)));
-      ck('theVillagesTakeScoresAndThePassRidesTheSave', counted && resumes && capped,
-        JSON.stringify({ counted, taken: S.stats.migrationTaken, before, after, line }));
+      const rides = S.strife.phase === 'fight' && S.units.filter(u => u.strife).length === nB;
+      const old = JSON.parse(G.saveJSON());
+      delete old.strife; old.special = 'migration';
+      old.migration = { avail: true, day: 120, warned: false, phase: null, t: 0, route: null, from: '', plan: null, wolves: 0, next: 0, taken: 0, done: false };
+      old.units.push(Object.assign({}, old.units[0], { id: 99999, kind: 'deer', owner: 'W', migrant: { x: 1, y: 1 } }));
+      G.loadJSON(JSON.stringify(old));
+      const owed = S.special === 'strife' && S.strife.avail && S.strife.day === 120 && !S.migration && !S.units.some(u => u.migrant);
+      S.stats.strifeSeen = 1;
+      const line = Score.compute(false).lines.some(l => /fight it out/i.test(l.label || l.text || JSON.stringify(l)));
+      ck('theStrifeRidesTheSaveAndScores', rides && owed && line, JSON.stringify({ rides, owed, line }));
     }
 
     // ---------------- 3e. STARFALL ----------------
@@ -606,10 +651,10 @@ const out = await p.evaluate(() => {
     {
       fresh('spx-score');
       const st = S.stats;
-      st.sonsAnswered = st.cacheDug = st.winterEndured = st.plagueEndured = st.krakenSlain = st.dragonSeen = st.eclipseEndured = st.wildfireEndured = st.migrationTaken = st.starfallClaimed = 1;
+      st.sonsAnswered = st.cacheDug = st.winterEndured = st.plagueEndured = st.krakenSlain = st.dragonSeen = st.eclipseEndured = st.wildfireEndured = st.migrationTaken = st.starfallClaimed = st.strifeSeen = 1;
       const lines = Score.compute(false).lines.map(l => l.label || l.text || JSON.stringify(l)).join(' | ');
       const C = CFG.SCORE;
-      const want = [/kraken/i, /dragon/i, /sons/i, /hoard/i, /winter/i, /plague/i, /swallowed sun/i, /dry summer/i, /great migration/i, /fallen star/i];
+      const want = [/kraken/i, /dragon/i, /sons/i, /hoard/i, /winter/i, /plague/i, /swallowed sun/i, /dry summer/i, /great migration/i, /fallen star/i, /fight it out/i];
       ck('everyEventFeedsAScoreLine', want.every(r => r.test(lines)) && [C.sons, C.cache, C.winter, C.plague].every(n => n > 0), lines);
 
       S.special = 'winter'; S.specialDay = 0;

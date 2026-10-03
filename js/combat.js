@@ -101,8 +101,12 @@ const Combat = {
        family. A wolf or a bear hunts deer and wild cattle — the only case
        where same-owner units are hostile, and deliberately ONE-WAY, since
        prey never fights back; it bolts (Units.grazeIdle). */
-    if (u.owner === 'W' && o.owner === 'W')
+    if (u.owner === 'W' && o.owner === 'W') {
+      // ANIMAL STRIFE (CFG.STRIFE): the two sides of a bout are enemies — the
+      // one other case where the wild fights the wild, and this time BOTH ways
+      if (u.strife && o.strife) return u.strife !== o.strife;
       return Units.isPassive(o) && !Units.isPassive(u);
+    }
     if (u.owner === o.owner) return false;
     if (u.owner === 'R' && o.owner === 'R') return false;
     if (u.owner === 'R')
@@ -352,6 +356,7 @@ const Combat = {
   _acquireBody() {
     for (const u of S.units) {
       if (u.tUnit || u.tBld) continue;
+      if (u.strife) continue;            // a strife fighter is marked by G.strifeTick: its own war first
       const base = CFG.UNITS[u.kind];
       if (u.kind === 'wolf' && Units.isWild(u)) {
         // ORIGIN CARDS: a Beastward tribe's people are passed over
@@ -1137,6 +1142,100 @@ const Combat = {
     return true;
   },
 
+  /* ANIMAL STRIFE — how the wild fights the wild (CFG.STRIFE, tests/specials.mjs
+     §3d). Three styles, one rule that matters for the eye: every blow is
+     WOUND UP before it lands — the strike animation starts `lead` seconds
+     before the cooldown runs out (u.animT reset, so the sheet plays from its
+     first frame) and the damage lands as it ends, so a bear's swipe comes
+     down on the wolf it hits rather than in the air beside it.
+       WOLVES CIRCLE: between bites a wolf orbits its quarry at `circle`
+       tiles, each on its own side and its own radius, and darts in when its
+       jaws are ready — then hops back out.
+       A BOAR CHARGES: from `chargeMin`..`chargeMax` tiles it drops its head
+       and runs a straight line at `chargeSpeed`× (the 'charge' sheet); the
+       impact hits `chargeDmg`× and throws the target, then `chargeCd` before
+       the next; a charge that meets a tree breaks off.
+       A BEAR SWIPES: its blow throws what it hits `knock` tiles and the
+       sweep catches a second enemy beside the first for `cleave` of it.
+     u.strifePose tells the renderer what the body is doing ('walk', 'charge',
+     'fight' while a strike winds up, 'idle' while it recovers) — the steering
+     here moves units off-path, which Units.moving() cannot see. */
+  STRIFE_LEAD: { bear: 0.75, wolf: 0.3, boar: 0.35 },
+  strifeStep(u, tgt, d, dt) {
+    const C = CFG.STRIFE, reach = CFG.MELEE_RANGE, k = u.kind;
+    const go = (vx, vy, sp) => {
+      const L = Math.hypot(vx, vy) || 1, nx = u.x + vx / L * sp * dt, ny = u.y + vy / L * sp * dt;
+      if (!Path.canStep(u.x, u.y, nx, ny, 'W')) return false;
+      u.x = nx; u.y = ny; return true;
+    };
+    u.path = null;
+    if (k === 'boar') {
+      if (u.charging) {
+        const ch = u.charging; ch.t -= dt; u.strifePose = 'charge';
+        const moved = go(ch.dx, ch.dy, u.speed * C.chargeSpeed);
+        if (Math.hypot(tgt.x - u.x, tgt.y - u.y) <= reach + 0.25) {
+          this.strifeHit(u, tgt, C.chargeDmg, ch.dx, ch.dy, C.knock * 1.4);
+          u.charging = null; u.chargeCd = C.chargeCd; u.cd = CFG.ATTACK_COOLDOWN; u.swing = false;
+        } else if (!moved || ch.t <= 0) { u.charging = null; u.chargeCd = C.chargeCd * 0.5; }
+        return;
+      }
+      if (u.chargeCd > 0) u.chargeCd -= dt;
+      if (d >= C.chargeMin && d <= C.chargeMax && !(u.chargeCd > 0)) {
+        u.charging = { dx: (tgt.x - u.x) / d, dy: (tgt.y - u.y) / d, t: Math.min(2.2, d / (u.speed * C.chargeSpeed) + 0.5) };
+        u.strifePose = 'charge';
+        return;
+      }
+    }
+    const lead = this.STRIFE_LEAD[k] || 0.3;
+    const orbit = () => {
+      if (!u.orbitDir) u.orbitDir = (u.id % 2) ? 1 : -1;
+      const r = C.circle + ((u.id * 7) % 5) * 0.07, ang = Math.atan2(u.y - tgt.y, u.x - tgt.x);
+      const a2 = ang + u.orbitDir * (u.speed * dt * 1.6) / r;
+      if (!go(tgt.x + Math.cos(a2) * r - u.x, tgt.y + Math.sin(a2) * r - u.y, u.speed)) u.orbitDir = -u.orbitDir;
+      u.strifePose = 'walk';
+    };
+    if (d > reach) {
+      if (k === 'wolf' && u.cd > lead && d < C.circle + 1.5) { orbit(); return; }   // jaws not ready: keep circling
+      u.swing = false;
+      if (!go(tgt.x - u.x, tgt.y - u.y, u.speed) && this.repathOk(u)) {
+        u.repathT = 0.5; Units.setPath(u, tgt.x | 0, tgt.y | 0); Units.followPath(u, dt);
+      }
+      u.strifePose = 'walk';
+      return;
+    }
+    if (k === 'wolf' && u.cd > lead) { orbit(); return; }            // bitten once: out and round again
+    if (u.cd > lead) { u.strifePose = 'idle'; u.swing = false; return; }   // a bear or boar gathers itself
+    if (!u.swing) { u.swing = true; u.animT = 0; }                    // the wind-up: the strike sheet from its first frame
+    u.strifePose = 'fight';
+    if (u.cd > 0) return;
+    u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[k].cdMult || 1) * C.tempo + lead;
+    u.swing = false;
+    const dx = (tgt.x - u.x) / (d || 1), dy = (tgt.y - u.y) / (d || 1);
+    this.strifeHit(u, tgt, 1, dx, dy, k === 'bear' ? C.knock : k === 'boar' ? C.knock * 0.6 : 0);
+    if (k === 'bear') {                                   // the sweep catches a second
+      const o = S.units.find(o => o !== tgt && o.strife && o.strife !== u.strife && o.hp > 0 &&
+        Math.hypot(o.x - u.x, o.y - u.y) <= reach + 0.35);
+      if (o) this.strifeHit(u, o, C.cleave, (o.x - u.x) / (Math.hypot(o.x - u.x, o.y - u.y) || 1), (o.y - u.y) / (Math.hypot(o.x - u.x, o.y - u.y) || 1), C.knock * 0.6);
+    }
+    if (k === 'wolf') go(-dx, -dy, u.speed * 6);          // the bite, and a hop back out
+  },
+  strifeHit(u, tgt, mult, dx, dy, knock) {
+    let dmg = Math.max(1, Math.round((Units.effAtk(u) - Units.effDef(tgt)) * mult));
+    // PACK TACTICS: a wolf bites harder with its packmates on the same quarry
+    if (u.kind === 'wolf') {
+      let mates = 0;
+      for (const o of S.units) if (o !== u && o.kind === 'wolf' && o.strife === u.strife && o.hp > 0 &&
+        Math.hypot(o.x - tgt.x, o.y - tgt.y) <= 1.8) mates++;
+      dmg += Math.min(CFG.STRIFE.packMax, mates * CFG.STRIFE.pack);
+    }
+    if (knock > 0) {
+      const nx = tgt.x + dx * knock, ny = tgt.y + dy * knock;
+      if (Path.canStep(tgt.x, tgt.y, nx, ny, 'W')) { tgt.x = nx; tgt.y = ny; tgt.path = null; }
+    }
+    if (window.R && R.float) R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f08a7a');
+    Units.damage(tgt, dmg, u.id);
+  },
+
   update(dt) {
     this._rpBudget = this.REPATH_BUDGET;
     this.scanT -= dt;
@@ -1171,6 +1270,7 @@ const Combat = {
           continue;
         }
         const d = Math.hypot(tgt.x - u.x, tgt.y - u.y);
+        if (u.strife && tgt.strife) { this.strifeStep(u, tgt, d, dt); continue; }
         // hunting harmless game is a deliberate order — the hunter follows the prey
         if (Units.isPassive(tgt)) u.anchor = { x: u.x, y: u.y };
         // DEFEND — HOLD THE LINE. A guard never chases a foe out past its bound: it

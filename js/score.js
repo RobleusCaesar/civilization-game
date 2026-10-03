@@ -46,6 +46,8 @@ const Score = {
     if (st.eclipseEndured) add('🌑', 'Stood under the swallowed sun', C.eclipse);
     if (st.wildfireEndured) add('🔥', 'Came through the dry summer', C.wildfire);
     if (st.starfallClaimed) add('☄️', 'First to the fallen star', C.starfall);
+    if (st.strifeSeen) add('🐺', 'Watched the beasts fight it out', C.strife);
+    // an older save's herd still scores the heads it gave the village
     if (st.migrationTaken) add('🦌', `Hunted the great migration × ${st.migrationTaken}`,
       Math.min(C.migrationCap, st.migrationTaken * C.migration));
     if (st.originBonus) add('⛺', 'Hard beginnings', st.originBonus);

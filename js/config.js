@@ -996,7 +996,8 @@ const CFG = {
     // the other specials: answered, dug, ENDURED — a punishment scores for
     // the village that came through it, as the kraken does (EVD-V02)
     sons: 150, cache: 150, winter: 200, plague: 200, eclipse: 150, wildfire: 150,
-    migration: 12, migrationCap: 300, starfall: 300,   // per head the village takes from the herd, capped
+    migration: 12, migrationCap: 300, starfall: 300,   // (migration: an old save's herd, per head, capped)
+    strife: 150,                // witnessed the animal strife (seen for STRIFE.seenS while it raged)
     leanIn: 120,                // ORIGIN CARDS: kept the card that leans into your roll
     mult: { calm: 0.5, moderate: 1.0, hard: 1.75 },
   },
@@ -1031,7 +1032,7 @@ const CFG = {
       plague: { modes: ['moderate', 'hard'], neg: true, w: 1 },
       eclipse: { modes: ['calm', 'moderate', 'hard'], neg: true, w: 1 },
       wildfire: { modes: ['calm', 'moderate', 'hard'], neg: true, w: 1, elig: 'woodStand' },
-      migration: { modes: ['calm', 'moderate', 'hard'], w: 1, elig: 'corridor' },
+      strife: { modes: ['calm', 'moderate', 'hard'], w: 1, elig: 'wildGround' },
       starfall: { modes: ['calm', 'moderate', 'hard'], w: 1, elig: 'contested' },
     },
   },
@@ -1082,11 +1083,29 @@ const CFG = {
      no dry summer. */
   WILDFIRE: { dayMin: 40, dayMax: 180, warnDays: 2, standMin: 10, clearB: 8, spreadS: 1.5, burnS: 15,
               cap: { calm: 16, moderate: 36, hard: 50 }, bldDps: 2.5, rainS: 10 },
-  /* THE GREAT MIGRATION (tests/specials.mjs): bands of grazers cross the
-     board edge to edge along a corridor clearHall+ tiles from both halls,
-     `gapS` real seconds apart, wolves trailing the last of them */
-  MIGRATION: { dayMin: 40, dayMax: 150, warnDays: 1, clearHall: 8, bands: ['deer', 'cow', 'deer'],
-               head: [6, 8], wolves: [3, 5], gapS: 5 },
+  /* ANIMAL STRIFE (tests/specials.mjs §3d — the operator's replacement for
+     the Great Migration: "two wolf packs going at it, or wolves trying to
+     take down a bear… interesting to witness, or frightening to stumble
+     across"). On a seed-hashed day a BOUT is drawn (G.rand, on the day, by
+     weight) and its two sides are set down in the wild at a site clearHall+
+     tiles from both halls; they fight each other first and anyone who comes
+     close second. The site is a vision source while it rages (`watchR`),
+     `seenS` seconds of it in the player's sight scores `SCORE.strife`, and
+     `maxS` ends a stalemate (the survivors break off and roam). Each side
+     is [kind, min, max]; balance was measured, not guessed (the contract). */
+  STRIFE: { dayMin: 40, dayMax: 150, warnDays: 1, clearHall: 10, area: 2, watchR: 4, seenS: 4, maxS: 75,
+            bouts: {
+              packs:    { w: 3, a: ['wolf', 2, 3], b: ['wolf', 2, 3], say: 'two wolf packs' },
+              bear:     { w: 3, a: ['bear', 1, 1], b: ['wolf', 4, 5], say: 'a bear and a wolf pack' },
+              boars:    { w: 2, a: ['boar', 2, 2], b: ['wolf', 3, 4], say: 'boars and wolves' },
+              bears:    { w: 1, a: ['bear', 1, 1], b: ['bear', 1, 1], say: 'two great bears' },
+              bearboar: { w: 1, a: ['bear', 1, 1], b: ['boar', 3, 3], say: 'a bear and a sounder of boars' },
+            },
+            // how each fights (Combat.strifeStep): wolves circle between bites,
+            // a boar charges head-down, a bear's swipe throws what it hits
+            circle: 1.2, chargeMin: 2.2, chargeMax: 7, chargeSpeed: 2.4, chargeDmg: 1.6, chargeCd: 4,
+            knock: 0.5, cleave: 0.5, vigour: 0.2, pack: 1, packMax: 2,
+            tempo: 1.6 },               // a strife blow comes slower than a raid's: long enough to watch
   /* STARFALL (tests/specials.mjs): a star comes down on a night, on open
      ground minHall+ from both halls whose WALKING distance from each is
      within `fair` of the other — a race, not a gift. The crater is two gold
