@@ -1426,7 +1426,8 @@ idle wolf within `r` (7) of a carcass with meat on it — any beast's but a
 wolf's — walks to its own place round it (`crowd` 3 at a time, `slotR` (0.85) out — on the next tile, never the kill's own — in
 id order, so a pack eats in a RING and never in a stack) and eats for `eatS`
 (10s) in its `eat` pose, facing the kill (`unitPose` → 'eat', sheetFrames
-turns it to the carcass), taking `bite` (0.3) of the carcass per meal; then it
+turns it to the carcass), taking `bite` (0.34) of the carcass per meal — a full pack of three strips a
+kill to the bones in one sitting, a lone wolf takes three meals; then it
 wanders off sated for `rest` (45s). It is wildIdle's branch, reached only by a
 wolf with no mark, so a hunt or a fight always comes first. What the pack ate
 rides on the corpse in the save (`c.eaten`); the wolf's own feeding state is
