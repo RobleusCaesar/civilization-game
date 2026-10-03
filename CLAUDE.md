@@ -4177,20 +4177,31 @@ credits the PATH — orthogonal neighbours before diagonal ones — so the
 parallel rut a crowd of slightly different routes would wear never gets
 started; **the road calls the walker** (`Units.wearPrefer` →
 `Path.findWeighted`, an A* with octile steps whose price is the ground's,
-`CFG.WEAR.prefer` [1, 1, 0.84, 0.76] by level): a villager on a WORK trip
-bends onto worn ground, while soldiers, a plain walk and every villager in a
-world with no trodden earth (`G._wearRoads` 0, recounted daily and on
-load, never saved) keep the unweighted BFS byte for byte; **the road is
-quicker** (`Units.followPath`): a villager standing on trodden earth or
-better walks `CFG.WEAR.speed` (1.1) as fast, owner-agnostic (the rival's
-wear only exists where the player saw it, so in practice this is the
-player's town's perk); and **a path waits twice as long to fade**
+`CFG.WEAR.prefer` [1, 1, 0.84, 0.76] by level): a player's villager on a
+WORK trip bends onto worn ground, while soldiers, a plain walk and every
+villager in a world with no trodden earth (`G._wearRoads` 0, recounted daily
+and on load, never saved) keep the unweighted BFS byte for byte; **the road
+is quicker** (`Units.followPath`): a player's villager standing on trodden
+earth or better walks `CFG.WEAR.speed` (1.1) as fast; and **a path waits
+twice as long to fade**
 (`decay` 50). The painter draws no segment for a diagonal whose corner is
 worn (the L already joins them — drawing both filled every turn with a
 triangle of dirt), draws nothing for a lone worn tile, and cuts its bands
 on a 2px grid in a light dusty earth. Every test that pins the unweighted
 search still holds: the weighted one is only ever asked while a road
 exists.
+**THE ROAD IS THE PLAYER'S** (`Units.wearPrefer` / `followPath`'s owner
+gate, pinned by `theRoadCallsTheWalker` / `theRoadIsQuicker`): the rival's
+wear is recorded only where the PLAYER can see it, so a road under the
+rival's feet would make its economy hang on what the player happened to be
+looking at. The first cut was owner-agnostic on the theory that the rival's
+roads are rare in practice, and the measurement says otherwise:
+`tests/rival-strength.mjs` runs under `G.freeVis`, its rival had worn 46
+road tiles by day 175, and seed 11's first razing slid from day 134 to 192
+(bar 140)
+— bisected to the two worn-path commits, and restored to 134 exactly with
+the rule player-only. The rival's roads are still DRAWN where the player
+sees them; they are a picture, never a road.
 
 **THE DECORATIVE STREAM WAS REMOVED** (pinned by
 `andTheDecorativeStreamIsGone`): creeks that wandered down off high ground to

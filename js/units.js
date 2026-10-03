@@ -377,9 +377,12 @@ const Units = {
      few roads instead of a scribble of near-parallel ones. Everyone else
      (soldiers, a plain walk, a hull) keeps the unweighted search, and so does
      a villager while no ground anywhere is worn to trodden earth (G._wearRoads
-     — the weighted search is never paid for in a world without roads). */
+     — the weighted search is never paid for in a world without roads).
+     THE PLAYER'S HANDS ONLY: the rival's wear is recorded only where the
+     player can see it (G.noteWear), so a road under the rival's feet would
+     make its economy hang on what the player happened to be looking at. */
   wearPrefer(u) {
-    if (!G._wearRoads || !this.isVillager(u) || !u.task || !CFG.WEAR.tasks.includes(u.task.type)) return null;
+    if (!G._wearRoads || u.owner !== 'P' || !this.isVillager(u) || !u.task || !CFG.WEAR.tasks.includes(u.task.type)) return null;
     const P = CFG.WEAR.prefer;
     if (!this._wearCost) {
       this._wearCost = (x, y) => P[G.wearLevel(x, y)] || 1;
@@ -1302,10 +1305,12 @@ const Units = {
       const here = S.map.terrain[MapGen.idx(u.x | 0, u.y | 0)];
       const next = S.map.terrain[MapGen.idx(wp.x, wp.y)];
       if (here === T.MOUND || next === T.MOUND) sp *= (CFG.TERRAFORM.moundCross || 0.25);
-      // …and a WORN PATH is quicker going for the people who wore it: a
-      // villager on trodden earth or bare path walks CFG.WEAR.speed as fast
-      // (the operator's ruling — the road is worth walking)
-      else if (G._wearRoads && this.isVillager(u) && G.wearLevel(u.x | 0, u.y | 0) >= CFG.WEAR.fastLv) sp *= CFG.WEAR.speed;
+      // …and a WORN PATH is quicker going for the town that wore it: a
+      // player's villager on trodden earth or bare path walks CFG.WEAR.speed
+      // as fast (the operator's ruling — the road is worth walking). The
+      // player's alone, for wearPrefer's reason: the rival's roads exist only
+      // where the player looked, so they are a picture, never a road
+      else if (G._wearRoads && u.owner === 'P' && this.isVillager(u) && G.wearLevel(u.x | 0, u.y | 0) >= CFG.WEAR.fastLv) sp *= CFG.WEAR.speed;
     }
     const step = sp * dt;
     if (d <= step) {

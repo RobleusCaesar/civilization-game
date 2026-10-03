@@ -37,6 +37,12 @@
         roads, keep the unweighted search.
      7. THE ROAD IS QUICKER: a villager on trodden earth or better walks
         CFG.WEAR.speed (1.1) as fast; a soldier on the same road does not.
+     6 and 7 are the PLAYER'S alone: the rival's wear is recorded only where
+        the player can see it, so a road under the rival's feet would make its
+        economy hang on the player's gaze — measured, it moved the rival's
+        whole war in tests/rival-strength.mjs (seed 11 razed on day 192, not
+        134). A rival hand on the same road takes the plain search at the
+        plain pace.
         Passability is untouched, the wear rides the save, and the per-unit
         bookkeeping does not.
 
@@ -258,24 +264,29 @@ const out = await p.evaluate(() => {
     const sRoad = onRoad(s2.path || []), sPlain = JSON.stringify(s2.path) === JSON.stringify(plain);
     const w2 = at('villager'); Units.moveTo(w2, end.x, end.y);
     const wPlain = JSON.stringify(w2.path) === JSON.stringify(plain);
+    // the rival's hand on the same gather trip: its own plain search
+    const a2 = Units.spawn('villager', 'A', 8.5, 16.5); a2.x = 8.5; a2.y = 16.5;
+    a2.task = { type: 'gather', x: 22, y: 16 }; Units.setPath(a2, end.x, end.y);
+    const aPlain = JSON.stringify(a2.path) === JSON.stringify(Path.find(8, 16, end.x, end.y, 'A'));
     S.map.wear = {}; G.countWearRoads();
     const v2 = at('villager'); Units.assignGather(v2, 22, 16);
     const e2 = v2.path[v2.path.length - 1];
     const sameAsPlain = JSON.stringify(v2.path) === JSON.stringify(Path.find(8, 16, e2.x, e2.y, 'P'));
-    ck('theRoadCallsTheWalker', vRoad >= 0.6 && onRoad(plain) < 0.3 && sPlain && sRoad < 0.3 && wPlain && sameAsPlain,
+    ck('theRoadCallsTheWalker', vRoad >= 0.6 && onRoad(plain) < 0.3 && sPlain && sRoad < 0.3 && wPlain && sameAsPlain && aPlain,
       'a gatherer walks ' + Math.round(100 * vRoad) + '% of its route on the road (the plain search ' + Math.round(100 * onRoad(plain)) +
-      '%); the soldier and the stroll take the plain search: ' + sPlain + '/' + wPlain + '; with no roads the gatherer does too: ' + sameAsPlain);
+      '%); the soldier and the stroll take the plain search: ' + sPlain + '/' + wPlain + '; with no roads the gatherer does too: ' + sameAsPlain +
+      '; so does the rival\'s gatherer on the same road: ' + aPlain);
   }
 
   // ---- 7. the road is quicker ----
   {
     world('wp-7');
     // one step mid-tile, so the waypoint snap cannot quantise the answer
-    const step = (kind, worn) => {
+    const step = (kind, worn, owner) => {
       S.map.wear = {};
       if (worn) for (let x = 6; x <= 26; x++) S.map.wear[20 * CFG.W + x] = [CFG.WEAR.levels[1], S.day];
       G.countWearRoads();
-      const u = Units.spawn(kind, 'P', 8.05, 20.5); u.x = 8.05; u.y = 20.5;
+      const u = Units.spawn(kind, owner || 'P', 8.05, 20.5); u.x = 8.05; u.y = 20.5;
       u.path = [{ x: 10, y: 20 }]; u.pathI = 0;
       Units.followPath(u, 0.02);
       const d = u.x - 8.05;
@@ -283,8 +294,9 @@ const out = await p.evaluate(() => {
       return d;
     };
     const r = step('villager', true) / step('villager', false), rs = step('defender', true) / step('defender', false);
-    ck('theRoadIsQuicker', Math.abs(r - CFG.WEAR.speed) < 1e-6 && Math.abs(rs - 1) < 1e-9 && CFG.WEAR.speed === 1.1,
-      'a villager covers ×' + r.toFixed(4) + ' the ground per step on trodden earth; a soldier ×' + rs.toFixed(4));
+    const ra = step('villager', true, 'A') / step('villager', false, 'A');
+    ck('theRoadIsQuicker', Math.abs(r - CFG.WEAR.speed) < 1e-6 && Math.abs(rs - 1) < 1e-9 && Math.abs(ra - 1) < 1e-9 && CFG.WEAR.speed === 1.1,
+      'a villager covers ×' + r.toFixed(4) + ' the ground per step on trodden earth; a soldier ×' + rs.toFixed(4) + '; the rival\'s villager ×' + ra.toFixed(4));
   }
   return { res, fails };
 });
