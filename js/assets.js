@@ -1369,8 +1369,11 @@ const Assets = {
   UNIT_DIRS8: ['s', 'se', 'e', 'ne', 'n', 'nw', 'w', 'sw'],
   // kinds and the poses each may ship — probed at boot, 404s are the norm.
   // 'idle' is each species' standing life: the deer and cow graze, the boar
-  // roots, the wolf scents the air (fight borrows walk via R.sheetFrames)
-  UNIT_ART: { deer: ['walk', 'idle'], wolf: ['walk', 'idle'], boar: ['walk', 'idle'], cow: ['walk', 'idle'],
+  // roots, the wolf scents the air (a kind with no strike sheet borrows its
+  // walk via R.sheetFrames)
+  UNIT_ART: { deer: ['walk', 'idle'], cow: ['walk', 'idle'],
+              wolf: ['walk', 'idle', 'fight'],     // the lunging bite (ANIMAL STRIFE), 96px frames at 2:1
+              boar: ['walk', 'idle', 'charge'],    // head down, tusks first; a close blow borrows it too
               bear: ['walk', 'idle', 'fight'],     // the bear carries the roster's first real fight sheet
               /* the UNDYED hulls. Deliberately here and not MILITARY_ART:
                  no plank of these boats wears a village colour, so one

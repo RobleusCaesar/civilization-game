@@ -11003,8 +11003,12 @@ const R = {
      height, a wolf mid-leap): its strip ships square frames of its OWN size,
      authored at the same 2:1 density, and is drawn at that density — the
      box grows by the frame's own ratio to the kind's walk frame, bottom-
-     aligned on the same feet and centred on the same column, so the body
-     never jumps between poses. Every other frame answers B exactly. */
+     aligned on the same feet and centred on the same column (frameTop), so
+     the body never jumps between poses. That is how the strike strips are
+     built (ART_PLAN): the walk window sits bottom-centre in the bigger
+     frame, all the extra height above it for a beast to rear into, and a
+     pixel below the ground line is cropped there, where the blow lands
+     anyway. Every other frame answers B exactly. */
   frameBox(u, img, B) {
     if (!img || !img.width) return B;
     const ua = window.Assets && Assets.unitArt && (Assets.unitArt[this._sheetKey] || Assets.unitArt[u.kind]);
@@ -11013,6 +11017,10 @@ const R = {
     if (!base || !base.width || base.width === img.width) return B;
     return B * img.width / base.width;
   },
+  // the top edge of a unit's drawn frame in world px: every box, the walk's
+  // own B and an oversize strike's D alike, stands on the same feet
+  // SPRITE_LIFT above the tile's centre line (frameBox)
+  frameTop(wy, B, D) { const TL = CFG.TILE; return wy * TL + TL / 2 - CFG.SPRITE_LIFT - D; },
   /* WORKERS NEVER SHOW THE PLAYER THEIR BACK (operator report: a
      villager who walked NORTH to its work tile held that facing for the
      whole task — minutes of shoulder blades). Facing is draw-time
@@ -11114,7 +11122,10 @@ const R = {
     if (!d) return null;
     // the sheet's own pose first; a missing pose borrows sensibly
     // (fight falls to walk — motion — and gather-ish poses to idle)
-    const fr = d[pose] || ((pose === 'fight' || pose === 'charge') ? d.walk : d.idle) || d.walk || d.idle || null;
+    // (a close blow with no strike sheet of its own borrows the CHARGE first:
+    // a boar's head-down tusk thrust is the same body as its charge)
+    const fr = d[pose] || (pose === 'fight' && d.charge) ||
+      ((pose === 'fight' || pose === 'charge') ? d.walk : d.idle) || d.walk || d.idle || null;
     this._sheetPose = (fr && fr === d.idle) ? 'idle' : pose;   // what actually resolved (for the idle tempo)
     this._sheetFace = face;                                      // the facing that resolved (probes, tests)
     /* A STATIONARY POSE BORROWED FROM THE WALK IS HELD, NOT PLAYED (the
@@ -11122,7 +11133,7 @@ const R = {
        and until then a standing cow cycling her walk read as "walking
        into the shed and never turning"). Motion poses may borrow motion;
        a standing animal on borrowed legs stands still. */
-    if (fr && fr === d.walk && !d[pose] && pose !== 'fight' && pose !== 'walk')
+    if (fr && fr === d.walk && !d[pose] && pose !== 'fight' && pose !== 'charge' && pose !== 'walk')
       this._sheetHold = true;
     else this._sheetHold = false;
     return fr;
@@ -11272,7 +11283,7 @@ const R = {
     // the frame's own pixel under the finger, in the box R.draw blits it to
     // (a frame bigger than the kind's walk frame draws in its own bigger box — R.frameBox)
     const s2 = this.frameBox(u, img, B) / TL;
-    const fx = (wx - u.x + s2 / 2) / s2 * m.w, fy = (wy - (u.y + 0.5 - lift - s2)) / s2 * m.h;
+    const fx = (wx - u.x + s2 / 2) / s2 * m.w, fy = (wy - this.frameTop(u.y, B, s2 * TL) / TL) / s2 * m.h;
     const r = Math.max(1, Math.round(m.w / (s2 * TL) * 1.5));   // ~1.5 screen-px of slack round the outline
     const x0 = Math.floor(fx), y0 = Math.floor(fy);
     const at = (x, y) => x >= 0 && y >= 0 && x < m.w && y < m.h && m.a[y * m.w + x];
@@ -11349,7 +11360,13 @@ const R = {
          else at another, so a villager carries two rates and the POSE picks
          between them (Assets.FORAGE_CYCLE / VILLAGER_CYCLE). */
       const forage = (this._sheetPose === 'pick' || this._sheetPose === 'reach') && Sprites.animFpsForage;
-      const fps2 = ((forage && (Sprites.animFpsForage[this._sheetKey] || Sprites.animFpsForage[u.kind]))
+      // a WILD FIGHT's strike plays at its own tempo (Sprites.animFpsStrike):
+      // strifeStep winds it up from frame 0 a lead before the blow lands
+      const strike = u.strife && (this._sheetPose === 'fight' || this._sheetPose === 'charge') &&
+        Sprites.animFpsStrike && Sprites.animFpsStrike[u.kind];
+      // …and a strip that is one whole blow keeps a blow's pace in any fight
+      const blow = this._sheetPose === 'fight' && Sprites.animFpsFight && Sprites.animFpsFight[u.kind];
+      const fps2 = strike || blow || ((forage && (Sprites.animFpsForage[this._sheetKey] || Sprites.animFpsForage[u.kind]))
         || (Sprites.animFps && (Sprites.animFps[this._sheetKey] || Sprites.animFps[u.kind]))) || 8;
       /* THE IDLE DWELLS AND SNAPS (two operator reports, one lesson).
          First report: the walk-derived rate ran the 12-frame graze once a
@@ -12591,7 +12608,7 @@ const R = {
         // under a hull reads as a sandbar, so boats are skipped too.
         if (this.sheetUnit(u) && !Units.isNaval(u)) this.drawUnitShadow(g, u, wx, wy);
         const img = this.unitSprite(u), D = this.frameBox(u, img, B);
-        g.drawImage(img, wx * TL - D / 2, wy * TL + TL / 2 - CFG.SPRITE_LIFT - D, D, D);
+        g.drawImage(img, wx * TL - D / 2, this.frameTop(wy, B, D), D, D);
       }
       if (u.cargo && u.cargo.length) {                 // one pip per soldier aboard
         g.fillStyle = u.owner === 'P' ? '#c0e8ff' : '#ffb0a0';
@@ -12620,7 +12637,7 @@ const R = {
       }
       g.globalAlpha = 0.32;
       const img = this.unitSprite(u), D = this.frameBox(u, img, B);
-      g.drawImage(img, u.x * TL - D / 2, u.y * TL + TL / 2 - CFG.SPRITE_LIFT - D, D, D);
+      g.drawImage(img, u.x * TL - D / 2, this.frameTop(u.y, B, D), D, D);
       g.globalAlpha = 1;
       if (u.hp < u.maxhp) this.bar(g, ux + (B - TL) / 2 + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');

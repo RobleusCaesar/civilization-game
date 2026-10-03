@@ -358,10 +358,46 @@ dangerous, to anyone who stumbles in. A save that still owed the migration
 its day owes the strife that day (`loadJSON`), one caught mid-crossing lets
 its beasts go loose, and an old run's `migrationTaken` still scores.
 **A frame bigger than its kind's is a bigger picture, not a bigger
-animal** (`R.frameBox`): a strike strip may ship square frames larger than
-the walk's (a bear reared to its full height) at the same 2:1 density; it
-draws in a box grown by the frame's own ratio, bottom-aligned on the same
-feet, and `R.unitHit` maps the finger through that same box.
+animal** (`R.frameBox` / `frameTop`): a strike strip may ship square frames
+larger than the walk's (a bear reared to its full height) at the same 2:1
+density; it draws in a box grown by the frame's own ratio, bottom-aligned on
+the same feet, and `R.unitHit` maps the finger through that same box. The
+strips are BUILT that way (ART_PLAN): the walk window bottom-centred in the
+bigger frame, every extra row above it, a sub-ground pixel cropped at the
+ground line. `tests/animal-art.mjs` holds the grid (`theShippedFramesSit…`
+admits a strike window wider than 2× the box only on a 2:1 walk, margins in
+whole world px) and the feet (`aStrikeStandsOnItsWalksFeet`: frame 0's
+lowest row and mass centre within 1.5 world px of the walk's, through the
+real draw math).
+**THE WILD FIGHTS IN ITS OWN ART**: the wolf's lunging bite
+(`unit-wolf-{dir}-fight`) and the boar's head-down charge
+(`unit-boar-{dir}-charge`), all eight directions, 96px frames over the 64px
+walk; and **the bear stands up to fight** (`unit-bear-{dir}-fight`, 160px
+over its 96px walk — `theBearRearsUpToFight`): it rears onto its hind legs,
+swipes, and drops back to all fours, the operator's ask. Its old fight
+sheet stayed on all fours only because a standing bear did not fit the 96px
+window; the oversize strike window is what made room (how the art was
+made: ART_PLAN, "…AND THEN THE WINDOW GREW"). A boar's close blow with no
+strike sheet of its own borrows the charge (`R.sheetFrames`: fight → charge
+→ walk). Three lessons from making them:
+**animate the SHIPPED character** — the first charge came from the boar's
+54px re-reference, a size smaller than the shipped walk (which is pixel for
+pixel "Clanfire Boar Red", 60px), so the beast shrank as it charged;
+**register on the hooves, not the body** (`fightstrip.cjs`'s `feet`); and
+**a re-roll starts from the shipped frame** (`custom_start_frame` = the
+walk's own frame 0) — the wolf's nw bite came back from a straight-rear
+start and snapped 45° on every lunge until it was re-rolled that way.
+**The strike keeps its own tempo in a wild fight** (`Sprites.animFpsStrike`,
+read by `R.unitSprite` for a `u.strife` unit only): strifeStep winds the
+strip up from frame 0 `STRIFE_LEAD` seconds before the blow and the pose
+ends with it, so the frame on screen at the blow is floor(lead × tempo) — at
+the wolf's walk rate (8) that was frame 2 of 9, a wolf still crouching when
+its bite drew blood; at 16 it is frame 4, the jaws closing
+(`theBiteLandsLateInTheLunge`). Ordinary fights keep the kind's own rate:
+nothing there winds a blow up from frame 0 — except where the strip IS one
+whole blow (`Sprites.animFpsFight`: the bear's nine-frame rear-up played at
+its walk-set ~13fps reared and slammed every 0.7s; at 8 it is one blow a
+second).
 **STARFALL** (`starfall`, all modes, `CFG.STARFALL`, specials.mjs §3e): a
 RACE, contested by construction (`G.starfallSite`): open 2x2 grass `minHall`
 (12)+ from both halls, walkable from both doorsteps with WALKING distances

@@ -10,10 +10,16 @@
       sprite stands. The south walk strip sets the kind's playback rate so
       a full cycle takes ~0.9s at any frame count.
    3. R.unitSprite prefers installed sheets PER LOOKUP: right direction,
-      right pose, sensible pose borrowing (fight→walk, others→idle), and
-      an untouched procedural fallback for any kind/direction/pose that
-      shipped nothing. Removing the art restores the procedural cast
-      exactly.
+      right pose, sensible pose borrowing (fight→charge→walk, charge→walk,
+      others→idle), and an untouched procedural fallback for any
+      kind/direction/pose that shipped nothing. Removing the art restores
+      the procedural cast exactly.
+   4. A STRIKE MAY SHIP A BIGGER FRAME at the same 2:1 density (the wolf's
+      bite, the boar's charge: 96px frames over a 64px walk), drawn in a
+      box grown up and out from the walk's own feet (R.frameBox /
+      frameTop) — so its first frame must stand on the walk's feet, and in
+      a wild fight its tempo (Sprites.animFpsStrike) puts the blow in the
+      back half of the lunge.
 
    Run after touching Assets.setUnitFrames/_tryLoadUnit, R.unitFacing,
    R.unitSprite's sheet branch, or the assets/units/ conventions.
@@ -188,6 +194,17 @@ const out = await p.evaluate(async () => {
 
   // ---- 4b. the wild keeps its spacing (the stacked-deer report) ----
   {
+    /* SEEDED, because unseeded this read red on 7 seeds in 40 — on main
+       itself (8d5ff55), the same seven. Every one was two deer CROSSING
+       mid-bolt at the sampled instant, not a stuck stack: the wolves penned
+       9.5 tiles off sit inside the 10-tile range (aggro 4 x 2.5) that the
+       predator-and-prey rule later gave them, so the deer never stop
+       running. Math.random, Combat.scanT and Units.herdClock are the three
+       lines every suite that drives Units.update itself wants (CLAUDE.md,
+       MODULE-LEVEL CLOCKS); the scene and its bar are unchanged. */
+    let rs = 2654435761 >>> 0;
+    Math.random = () => { rs = (Math.imul(rs, 1664525) + 1013904223) >>> 0; return rs / 4294967296; };
+    Combat.scanT = 0; Units.herdClock = 0;
     Screens._demo = false;
     G.newGame('aa-stack', 'moderate', 'medium');
     S.paused = true;
@@ -274,16 +291,28 @@ const out = await p.evaluate(async () => {
         // box — the key's first dash-segment names the kind
         const box = (Assets.UNIT_BOX && Assets.UNIT_BOX[kk.split('-')[0]]) || CFG.TILE;
         const dd = Assets.unitArt[kk].dirs;
-        for (const dir in dd) for (const pose in dd[dir])
-          if (dd[dir][pose][0].width !== box * 2) { gridOk = false; offGrid.push(kk + '/' + dir + '/' + pose + '=' + dd[dir][pose][0].width); }
+        // a STRIKE strip may ship a bigger window than the walk — drawn in
+        // frameBox's grown box it keeps the walk's density exactly, so it is
+        // on the grid when the walk is and its margins are whole world px
+        const bigStrike = (dir, pose, w) => pose !== 'walk' && pose !== 'idle' && dd[dir].walk &&
+          dd[dir].walk[0].width === box * 2 && w > box * 2 && (w - box * 2) % 4 === 0;
+        for (const dir in dd) for (const pose in dd[dir]) {
+          const w = dd[dir][pose][0].width;
+          if (w !== box * 2 && !bigStrike(dir, pose, w)) { gridOk = false; offGrid.push(kk + '/' + dir + '/' + pose + '=' + w); }
+        }
       }
       ck('theShippedFramesSitOnTheNativeGrid', gridOk && Object.keys(Assets.unitArt).length >= 5,
-        gridOk ? Object.keys(Assets.unitArt).length + ' kinds, every frame exactly twice its own draw box'
+        gridOk ? Object.keys(Assets.unitArt).length + ' kinds, every walk and idle frame exactly twice its own draw box, every strike window at that density'
                : 'off-grid: ' + offGrid.slice(0, 4).join(', '));
-      ck('theBearShipsItsFightSheet',
-        !!(Assets.unitArt.bear && Assets.unitArt.bear.dirs.s && Assets.unitArt.bear.dirs.s.fight &&
-           Assets.unitArt.bear.dirs.s.fight.length >= 4 && Assets.unitArt.bear.dirs.s.fight[0].width === 96),
-        'the roster\'s first real fight pose — 12 frames of rear-up-and-swipe at the 96px window');
+      /* THE BEAR STANDS UP TO FIGHT (ANIMAL STRIFE, the operator: "bear on
+         hind legs swiping"). Its first fight sheet stayed on all fours,
+         because a bear at its full height does not fit the 96px walk window;
+         the oversize strike window (frameBox) is what makes room — 160px,
+         the walk window bottom-centre in it, every extra row above. */
+      const bf = Assets.UNIT_DIRS8.filter(dd => { const ff = Assets.unitArt.bear && Assets.unitArt.bear.dirs[dd] && Assets.unitArt.bear.dirs[dd].fight;
+        return ff && ff.length >= 8 && ff[0].width === 160; });
+      ck('theBearRearsUpToFight', bf.length === 8,
+        bf.length + ' of 8 directions carry the rear-up-and-swipe in the 160px strike window');
       /* EACH FILE HOLDS ITS OWN VIEW (audit ANI-01). The facing math above
          is right, but the deer, wolf, boar and cow strips shipped filed one
          octant off — file X held the view 45° on from X — so every one of
@@ -319,6 +348,77 @@ const out = await p.evaluate(async () => {
       ck('eachAnimalStripHoldsItsOwnView', badView.length === 0,
         'widest front-or-rear / narrowest profile (walk f0): ' + Object.entries(views).map(([k2, v2]) => k2 + ' ' + v2).join(', ') +
         (badView.length ? ' — filed off: ' + badView.join(', ') : ''));
+
+      /* THE WILD FIGHTS IN ITS OWN ART (ANIMAL STRIFE): the wolf's bite and
+         the boar's charge, every direction, in the 96px strike window. */
+      const STRIKES = [['wolf', 'fight'], ['boar', 'charge']];   // (the bear's is pinned above)
+      const missing = [];
+      for (const [kk, pose] of STRIKES) for (const dir of Assets.UNIT_DIRS8) {
+        const fr = Assets.unitArt[kk] && Assets.unitArt[kk].dirs[dir] && Assets.unitArt[kk].dirs[dir][pose];
+        if (!fr || fr.length < 6 || fr[0].width !== 96) missing.push(kk + '/' + dir + '/' + pose + (fr ? '=' + fr.length + 'x' + fr[0].width : ''));
+      }
+      ck('theWolfBitesAndTheBoarCharges', missing.length === 0,
+        missing.length ? 'missing or short: ' + missing.join(', ') : 'eight directions each, six frames or more, 96px window');
+
+      /* …STANDING ON THE WALK'S OWN FEET. A strike frame is drawn in a box
+         grown up and out from the walk box's feet, so its walk window lands
+         exactly where the walk was; what can still drift is the ART — a strike
+         generated on a different-sized character, or registered on its body
+         instead of its hooves (the boar's first charge did both: drawn a
+         size small and three pixels high). Frame 0 of each strike is the
+         pose the beast was standing in, so its lowest opaque row and its
+         mass centre must land on the walk frame 0's, through the real draw
+         math, within a world pixel and a half. */
+      const footOf = (fr) => {
+        try {
+          const a = fr.getContext('2d').getImageData(0, 0, fr.width, fr.height).data;
+          let low = -1, sx = 0, n = 0;
+          for (let y = 0; y < fr.height; y++) for (let x = 0; x < fr.width; x++)
+            if (a[(y * fr.width + x) * 4 + 3] > 128) { low = y; sx += x; n++; }
+          return n ? { low, cx: sx / n } : null;
+        } catch (e) { return null; }
+      };
+      const offFeet = [];
+      let worst = 0;
+      for (const [kk, pose] of STRIKES.concat([['bear', 'fight']])) for (const dir of Assets.UNIT_DIRS8) {
+        const d2 = Assets.unitArt[kk] && Assets.unitArt[kk].dirs[dir];
+        if (!d2 || !d2[pose] || !d2.walk) continue;
+        const B = (Assets.UNIT_BOX && Assets.UNIT_BOX[kk]) || CFG.TILE, wk = d2.walk[0], st = d2[pose][0];
+        R._sheetKey = kk;
+        const Dw = R.frameBox({ kind: kk }, wk, B), Ds = R.frameBox({ kind: kk }, st, B);
+        const fw = footOf(wk), fs = footOf(st);
+        if (!fw || !fs) { offFeet.push(kk + '/' + dir + ' unreadable'); continue; }
+        // world y of the lowest opaque row's bottom edge, and world x of the mass centre
+        const yw = R.frameTop(0, B, Dw) + (fw.low + 1) * Dw / wk.height, ys = R.frameTop(0, B, Ds) + (fs.low + 1) * Ds / st.height;
+        const xw = -Dw / 2 + fw.cx * Dw / wk.width, xs = -Ds / 2 + fs.cx * Ds / st.width;
+        const e = Math.max(Math.abs(yw - ys), Math.abs(xw - xs));
+        worst = Math.max(worst, e);
+        if (e > 1.5) offFeet.push(kk + '/' + dir + ' ' + (ys - yw).toFixed(1) + 'y ' + (xs - xw).toFixed(1) + 'x');
+      }
+      ck('aStrikeStandsOnItsWalksFeet', offFeet.length === 0,
+        offFeet.length ? 'off its feet (world px): ' + offFeet.join(', ') : 'every strike frame 0 within ' + worst.toFixed(2) + ' world px of its walk');
+
+      /* …AND IN A WILD FIGHT THE BLOW LANDS LATE IN THE LUNGE. strifeStep
+         starts the strike from frame 0 STRIFE_LEAD seconds before the damage
+         and the pose ends with the blow, so the frame on screen at the blow
+         is floor(lead × tempo): at the wolf's walk rate (8) that was frame 2
+         of 9, a wolf still crouching when its bite drew blood. */
+      const lead = Combat.STRIFE_LEAD.wolf, fpsS = Sprites.animFpsStrike && Sprites.animFpsStrike.wolf;
+      const bad = [];
+      for (const dir of Assets.UNIT_DIRS8) {
+        const fr = Assets.unitArt.wolf && Assets.unitArt.wolf.dirs[dir] && Assets.unitArt.wolf.dirs[dir].fight;
+        if (!fr) continue;
+        const at = Math.floor(lead * fpsS + 1e-9);
+        if (!(at >= fr.length * 0.4 && at < fr.length)) bad.push(dir + ' ' + at + '/' + fr.length);
+      }
+      const probe = { id: 960001, kind: 'wolf', owner: 'W', x: 30, y: 30, animT: lead - 1e-6, strife: 7, strifePose: 'fight' };
+      Assets.unitArt = bootArt;
+      R.unitFacing(probe);
+      const shown = R.unitSprite(probe), dirFr = R.sheetFrames(probe);
+      const shownAt = dirFr ? dirFr.indexOf(shown) : -1;
+      ck('theBiteLandsLateInTheLunge', !!fpsS && bad.length === 0 && shownAt === Math.floor((lead - 1e-6) * fpsS),
+        'tempo ' + fpsS + 'fps on a ' + lead + 's lead: the blow shows frame ' + Math.floor(lead * fpsS) +
+        (bad.length ? ' — too early or past the strip: ' + bad.join(', ') : '') + '; the live sprite resolved frame ' + shownAt);
     }
   }
 

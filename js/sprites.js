@@ -6222,6 +6222,20 @@ const Sprites = {
   const TAU = Math.PI * 2;
   const BEAST_POSE = { idle: 6, walk: 8, fight: 4 };
   Sprites.animFps = { wolf: 8, boar: 7, bear: 6, deer: 8, cow: 6 };
+  /* …and a STRIKE IN A WILD FIGHT keeps its own tempo (ANIMAL STRIFE,
+     read by R.unitSprite for a u.strife unit only). Combat.strifeStep starts
+     the strike strip from its first frame STRIFE_LEAD seconds before the
+     blow lands, so the rate is whatever puts the strip's PEAK on that
+     moment: the wolf's jaws close about frame 5 of 9 on a 0.3s lead (at
+     its walk rate of 8 the bite landed on frame 2, a wolf still crouching).
+     A boar's charge is a gallop — twice its walk's tempo. Ordinary fights
+     keep the kind's own rate: nothing there winds a blow up from frame 0. */
+  Sprites.animFpsStrike = { wolf: 16, boar: 14, bear: 8 };
+  /* …and a strike strip that is one whole BLOW rather than a loop plays at
+     the pace of a blow in an ordinary fight too: the bear's rear-up-and-slam
+     is nine frames, and at the rate its walk sets (~13fps) it reared and
+     slammed every 0.7s, a bear at a sewing machine. */
+  Sprites.animFpsFight = { bear: 8 };
   // ramp = [dark, mid, light]
   function beast(name, ramp, opts) {
     const w = opts.w, h = opts.h;

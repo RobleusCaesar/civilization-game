@@ -474,6 +474,31 @@ a rear-up reads poorly anyway, a grounded head-lunge strike ("does NOT
 rear up, the back stays level") holds both axes. Expect two or three
 re-rolls per problem direction; they cost 2 generations each.
 
+**…AND THEN THE WINDOW GREW, AND THE BEAR STOOD UP** (Animal Strife — the
+operator asked for a bear on its hind legs, swiping). A strike strip may now
+ship frames BIGGER than the walk's at the same 2:1 density (`R.frameBox`):
+the walk window sits bottom-centre in the bigger frame and every extra row
+is headroom above it, so the bear's fight is a 160px window over its 96px
+walk — a full rear-up, never clipped. Four rules came out of making it:
+- **Start every direction from the SHIPPED frame**: v3's
+  `custom_start_frame_url` = the walk's own frame 0, padded to 144x144 with
+  the bear at the bottom (headroom to rise into). Frame 0 then registers on
+  the walk at IoU 1.0, the view can never drift from the walk's, and the
+  character never changes size. v3 grows the canvas UPWARD to fit (144x192..
+  212 came back), so register from a bounding-box first guess.
+- **Pass the start frame by URL, never as typed base64**: two directions sent
+  inline came back from a blank or garbled frame 0 as a different, cartoon
+  bear — 7 generations lost. A temporary commit's pinned raw URL is exact.
+- **Vary the wording per direction**: two requests with the same action and
+  direction are deduplicated ("already queued") even with different start
+  frames — "seen from behind…", "facing down and to the left…".
+- **Key out the motion trails**: "no motion trails, no effects" is ignored
+  about half the time — white or pale-green slash arcs. They are near-white
+  blobs of 5+ px (every channel >= 170); the bear's own eye glints are 1-2 px.
+  Where a slash covered the body, drop the frame (sw's frame 8).
+The rear-up then reads at 8fps in any fight (`Sprites.animFpsFight`) and
+lands its swipe on the blow in a wild fight (`Sprites.animFpsStrike`).
+
 **HORIZONTAL QUADRUPEDS ROTATE FROM A 54px REFERENCE, NOT 60.** Measured,
 twice: the wolf's walk union came out 67px wide and the boar's 68 from a
 60px character — v3 animations stride a long-bodied animal ~13% wider than
