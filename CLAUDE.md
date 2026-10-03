@@ -4265,18 +4265,27 @@ triangle of dirt), draws nothing for a lone worn tile, and cuts its bands
 on a 2px grid in a light dusty earth. Every test that pins the unweighted
 search still holds: the weighted one is only ever asked while a road
 exists.
-**THE ROAD IS THE PLAYER'S** (`Units.wearPrefer` / `followPath`'s owner
-gate, pinned by `theRoadCallsTheWalker` / `theRoadIsQuicker`): the rival's
-wear is recorded only where the PLAYER can see it, so a road under the
-rival's feet would make its economy hang on what the player happened to be
-looking at. The first cut was owner-agnostic on the theory that the rival's
-roads are rare in practice, and the measurement says otherwise:
-`tests/rival-strength.mjs` runs under `G.freeVis`, its rival had worn 46
-road tiles by day 175, and seed 11's first razing slid from day 134 to 192
-(bar 140)
-— bisected to the two worn-path commits, and restored to 134 exactly with
-the rule player-only. The rival's roads are still DRAWN where the player
-sees them; they are a picture, never a road.
+**THE ROAD IS THE PLAYER'S — A GAMEPLAY RULE, NOT A WORKAROUND** (operator
+ruling on the event gate, 2026-10-03: "keep the player-only speed bonus and
+route preference"; `Units.wearPrefer` / `followPath`'s owner gate, pinned by
+`theRoadCallsTheWalker` / `theRoadIsQuicker`, whose rival villager must read
+×1 and walk the plain BFS). Roads are a reward for the PLAYER's own
+logistics: the town you laid out and the trips you keep sending wear the
+ground, and that ground pays you back. The rival walks its own roads at
+ordinary pace and routes by the plain search — by design, the same way the
+L3 Watchtower's aura and the lodge's armed villagers are player perks (see
+**Three further asymmetries**). Two reasons it stays this way, and neither
+is "until we fix it": the rival's wear is recorded only where the PLAYER can
+see it (a road worn in the fog would draw the rival's town on the map), so a
+rival bonus would make its economy hang on what the player happened to be
+looking at — fog-honesty forbids it; and the rival's clocks are tuned
+without it — an owner-agnostic first cut was measured moving
+`tests/rival-strength.mjs` seed 11's first razing from day 134 to 192 (bar
+140, `G.freeVis`, 46 rival road tiles by day 175), restored to 134 exactly
+with the rule player-only. Do not "even it up": a change that gives the
+rival road speed or road routing is a balance change and needs a ruling.
+The rival's roads are still DRAWN where the player sees them; they are a
+picture, never a road.
 
 **THE DECORATIVE STREAM WAS REMOVED** (pinned by
 `andTheDecorativeStreamIsGone`): creeks that wandered down off high ground to
