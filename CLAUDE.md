@@ -4103,7 +4103,7 @@ and the villagers get a 10% speed boost; default them to the path a little
 more; reduce the extraneous paths beside the primary one; double the time
 before a path fades"). The "purely visual" clause of ruling 3 is RETIRED by
 that ruling. Five rules, all pinned in tests/worn-paths.mjs: **the
-thresholds rose** (`levels` 5 / 10 / 16 — a route must be walked on ten
+thresholds rose** (`levels` 4 / 8 / 13 — a route must be walked on eight
 distinct days to show at all) and **thinned grass is tracked, never drawn**
 (painted, level 1 was the pale halo that doubled every road's width; the
 sward no longer thins for it either); **the road takes the step**

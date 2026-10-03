@@ -1048,7 +1048,7 @@ const CFG = {
      path, and an unused tile drops a level every `decay` days.
      THE SECOND PASS (operator ruling on the retro gate: "too messy… like a
      kid scribbling with a brown marker — fewer paths, and walking one is
-     10% faster"): the thresholds rose (a route must be walked on 10 days to
+     10% faster"): the thresholds rose (a route must be walked on 8 days to
      show as trodden earth at all — thinned grass is tracked but never
      drawn), a step beside an established path credits the PATH (`pull`:
      a neighbour `pull` days more worn takes the stamp, so a parallel rut
@@ -1058,7 +1058,7 @@ const CFG = {
      town to a few roads), a villager on trodden earth or better walks
      `speed` times as fast (`fastLv`), and a path waits twice as long
      (`decay` 50) before it starts to grow back. */
-  WEAR: { tasks: ['gather', 'work', 'build', 'claim'], levels: [5, 10, 16], cap: 24, decay: 50,
+  WEAR: { tasks: ['gather', 'work', 'build', 'claim'], levels: [4, 8, 13], cap: 20, decay: 50,
           pull: 2, prefer: [1, 1, 0.84, 0.76], fastLv: 2, speed: 1.1 },
   /* the plague's earliest day: `from` + a seed-hashed 0..`spread` — the
      crowded-lanes gate is met by nearly every day-25 town, so a fixed day

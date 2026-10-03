@@ -129,10 +129,10 @@ const out = await p.evaluate(() => {
     }
     const e = S.map.wear[10 * CFG.W + 12];
     const want = Array.from({ length: 11 }, (_, d) => G.wearLevelOf(d + 1)).join('');
-    ck('aTileCountsDaysNotSteps', e[0] === 11 && lv.join('') === want && want === '00001111122',
+    ck('aTileCountsDaysNotSteps', e[0] === 11 && lv.join('') === want && want === '00011112222',
       'levels by day ' + lv.join('') + ' (want ' + want + ' for levels ' + CFG.WEAR.levels.join('/') + '), count ' + e[0] + ' after 55 crossings over 11 days');
     for (let d = 0; d < 6; d++) { G.noteWear(v, 12, 10); G.wearDaily(); S.day++; }
-    ck('aPathTakesSixteenWorkingDays', G.wearLevel(12, 10) === 3 && CFG.WEAR.levels[2] === 16,
+    ck('aBarePathTakesThirteenWorkingDays', G.wearLevel(12, 10) === 3 && CFG.WEAR.levels[2] === 13,
       'level ' + G.wearLevel(12, 10) + ' after 17 days (bare path at ' + CFG.WEAR.levels[2] + ')');
     const C = CFG.WEAR, dec = [];
     ck('aPathWaitsTwiceAsLongToFade', C.decay === 50, 'decay ' + C.decay + ' days (the first pass faded after 25)');
@@ -169,7 +169,7 @@ const out = await p.evaluate(() => {
   // ---- 4. the drawn ground: a band, not a square; repaint == rebake ----
   {
     const { fx, fy } = world('wp-4');
-    for (let d = 0; d < 14; d++) commute(fx, fy);    // reach level 2 on the route
+    for (let d = 0; d < 11; d++) commute(fx, fy);    // reach level 2 on the route (bare at 13)
     G.updateVisibility(); R.rebuildTerrain();
     const TL = CFG.TILE, cg = R.terrainCache.getContext('2d');
     const grab = () => cg.getImageData(0, 0, R.terrainCache.width, R.terrainCache.height).data;
