@@ -4916,7 +4916,10 @@ can reach (the changed cells with their rings, every touched region with
 its ring) on `R._shoreDirty`, and `blitShore` hands it to
 `buildShoreLayer(rect)`, which redraws only the loops whose bands reach the
 rect, into a SCRATCH canvas the size of the rect at an integer translate,
-and copies that in. Never a clip on the layer itself: a rect clip
+and copies that in — unless the rect is over 40% of the board (a dig into
+a great lake touches the whole lake), where the scratch and the copy are
+pure overhead (measured ~25ms DEARER, the reason `aSpadefulDoesNotFreezeTheFrame`
+went red on the first cut) and the plain full build runs. Never a clip on the layer itself: a rect clip
 intersected with the side masks and the water outline moved the
 rasteriser onto another coverage path, and so does any change of target
 size — the same fills land up to ONE alpha step apart on a few hundred

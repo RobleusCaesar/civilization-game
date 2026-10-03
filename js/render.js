@@ -6305,8 +6305,12 @@ const R = {
     if (this._layerKey !== this.waterKey() || !this.shoreLayer) {
       // the rect waterDirty recorded, when that is the whole of what moved;
       // anything else (no record, a revive, a fresh bake) rebuilds it all
+      // …unless the rect is most of the board anyway (a dig into a great
+      // lake touches the whole lake): there the scratch and the copy are
+      // pure overhead, measured ~25ms dearer than simply building it all
       const d = this._shoreDirty;
-      this.buildShoreLayer(d && d !== 'full' ? d : null);
+      const big = d && d !== 'full' && (d.x1 - d.x0 + 1) * (d.y1 - d.y0 + 1) > 0.4 * CFG.W * CFG.H;
+      this.buildShoreLayer(d && d !== 'full' && !big ? d : null);
     }
     if (!this.shoreLayer) return;
     const TL = CFG.TILE;

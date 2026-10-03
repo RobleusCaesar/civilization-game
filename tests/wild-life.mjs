@@ -174,28 +174,41 @@ const out = await p.evaluate(() => {
      Panic deliberately still crosses kinds: a bolting herd startles the
      neighbours too. ---- */
   {
-    arena('wl2e');
-    const deer = [], cows = [];
-    for (let i = 0; i < 4; i++) {
-      deer.push(Units.spawn('deer', 'W', 30 + (i % 2) * 2, 30 + ((i / 2) | 0) * 2));
-      cows.push(Units.spawn('cow', 'W', 31 + (i % 2) * 2, 30 + ((i / 2) | 0) * 2));
-    }
-    const centroid = (band) => {
-      let cx = 0, cy = 0;
-      for (const d of band) { cx += d.x; cy += d.y; }
-      return { x: cx / band.length, y: cy / band.length };
-    };
-    const gap = () => { const a = centroid(deer), b = centroid(cows); return Math.hypot(a.x - b.x, a.y - b.y); };
-    const g0 = gap();
-    run(90);
-    const g1 = gap();
-    ck('interleavedBandsSortThemselvesApart', g1 >= Units.HERD_APART * 0.75,
-      'centroids ' + g0.toFixed(1) + ' → ' + g1.toFixed(1) + ' tiles apart (want ≥ ' + (Units.HERD_APART * 0.75).toFixed(1) + ')');
-    const c1 = centroid(deer), c2 = centroid(cows);
-    ck('eachKindStaysItsOwnHerd',
-      deer.every(d => Math.hypot(d.x - c1.x, d.y - c1.y) <= Units.HERD_R * 1.8) &&
-      cows.every(c => Math.hypot(c.x - c2.x, c.y - c2.y) <= Units.HERD_R * 1.8),
-      'every head still in its own band after 90s');
+    /* SEEDED (Math.random, Combat.scanT, Units.herdClock — CLAUDE.md's three
+       lines for a suite that drives the sim directly): unseeded, the 90s of
+       grazing read red ~6% of runs, on main as much as anywhere (5 of 80 vs
+       this branch's 3 of 80, same scene, same bar — a straggler a step past
+       the band at the instant of reading). The first three seeds, all must
+       hold; the scene and both bars are unchanged. */
+    const mr = Math.random;
+    let sepMin = 1e9, stray = 0;
+    try {
+      for (const seed of [1, 2, 3]) {
+        arena('wl2e');
+        let rs = seed * 2654435761 >>> 0;
+        Math.random = () => { rs = (Math.imul(rs, 1664525) + 1013904223) >>> 0; return rs / 4294967296; };
+        Combat.scanT = 0; Units.herdClock = 0;
+        const deer = [], cows = [];
+        for (let i = 0; i < 4; i++) {
+          deer.push(Units.spawn('deer', 'W', 30 + (i % 2) * 2, 30 + ((i / 2) | 0) * 2));
+          cows.push(Units.spawn('cow', 'W', 31 + (i % 2) * 2, 30 + ((i / 2) | 0) * 2));
+        }
+        const centroid = (band) => {
+          let cx = 0, cy = 0;
+          for (const d of band) { cx += d.x; cy += d.y; }
+          return { x: cx / band.length, y: cy / band.length };
+        };
+        run(90);
+        const c1 = centroid(deer), c2 = centroid(cows);
+        sepMin = Math.min(sepMin, Math.hypot(c1.x - c2.x, c1.y - c2.y));
+        if (!(deer.every(d => Math.hypot(d.x - c1.x, d.y - c1.y) <= Units.HERD_R * 1.8) &&
+              cows.every(c => Math.hypot(c.x - c2.x, c.y - c2.y) <= Units.HERD_R * 1.8))) stray++;
+      }
+    } finally { Math.random = mr; }
+    ck('interleavedBandsSortThemselvesApart', sepMin >= Units.HERD_APART * 0.75,
+      'centroids at least ' + sepMin.toFixed(1) + ' tiles apart over 3 seeds (want ≥ ' + (Units.HERD_APART * 0.75).toFixed(1) + ')');
+    ck('eachKindStaysItsOwnHerd', stray === 0,
+      stray ? stray + ' of 3 seeds left a head outside its band after 90s' : 'every head still in its own band after 90s, 3 seeds');
     // panic still leaps the species line — the deer that sees the soldier
     // spooks the cattle grazing beside it
     arena('wl2f');
