@@ -2064,7 +2064,9 @@ const Units = {
     const mates = this.feedersAt(c, u).concat([u]).sort((a, b) => a.id - b.id);
     const n = Math.max(3, mates.length), i = mates.indexOf(u);
     const a = i / n * Math.PI * 2 + ((c.x * 7 + c.y * 13) % 6.283);
-    let sx = c.x + Math.cos(a) * F.slotR, sy = c.y + Math.sin(a) * F.slotR * 0.7;
+    // a slot on the NEXT tile, never the kill's own: three wolves on one
+    // tile hid the carcass under them and wore the stack badge
+    let sx = c.x + Math.cos(a) * F.slotR, sy = c.y + Math.sin(a) * F.slotR * 0.85;
     if (!Path.passable(sx | 0, sy | 0)) { sx = c.x; sy = c.y; }
     const d = Math.hypot(sx - u.x, sy - u.y);
     if (d > 1.2) {

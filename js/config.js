@@ -941,7 +941,7 @@ const CFG = {
      place at it (`crowd` at a time, set round it `slotR` out) and eats for
      `eatS` seconds, taking `bite` of the carcass each meal, then wanders
      off sated for `rest`. Idle only: a hunt or a fight always comes first. */
-  FEED: { r: 7, crowd: 3, eatS: 10, bite: 0.3, rest: 45, slotR: 0.5 },
+  FEED: { r: 7, crowd: 3, eatS: 10, bite: 0.3, rest: 45, slotR: 0.85 },
   PASSIVE_MAX: 10,             // grazing animals kept on the map — two herds' worth
                                // (Units.spawnHerd puts them down 3–5 at a time)
   // full-heal cost scales with missing hp. sapper: 30 matches its food line

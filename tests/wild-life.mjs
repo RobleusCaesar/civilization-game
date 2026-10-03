@@ -399,16 +399,20 @@ const out = await p.evaluate(() => {
     const k2 = mk('cow', 30.5, 30.5, 0);
     S.corpses = [k2];
     const pack = [[27, 29], [33, 31], [30, 34], [27, 33]].map(([x, y]) => Units.spawn('wolf', 'W', x, y));
-    let best = 0, minGap = 9;
+    let best = 0, minGap = 9, shared = false;
     for (let t = 0; t < 40; t += 0.1) {
       Units.update(0.1);
       const eating = pack.filter(w => w.eating);
       if (eating.length > best) best = eating.length;
       if (eating.length >= 2) for (let i = 0; i < eating.length; i++) for (let j = i + 1; j < eating.length; j++)
         minGap = Math.min(minGap, Math.hypot(eating[i].x - eating[j].x, eating[i].y - eating[j].y));
+      // each at its own tile, none on the kill's: a shared tile hides the
+      // carcass and wears the stack badge
+      const tiles = eating.map(w => (w.x | 0) + ',' + (w.y | 0));
+      if (new Set(tiles).size < tiles.length || tiles.includes((k2.x | 0) + ',' + (k2.y | 0))) shared = true;
     }
-    ck('aPackEatsInARing', best === CFG.FEED.crowd && minGap >= 0.4,
-      best + ' at the table at once (crowd ' + CFG.FEED.crowd + '), closest pair ' + minGap.toFixed(2) + ' tiles');
+    ck('aPackEatsInARing', best === CFG.FEED.crowd && minGap >= 0.4 && !shared,
+      best + ' at the table at once (crowd ' + CFG.FEED.crowd + '), closest pair ' + minGap.toFixed(2) + ' tiles' + (shared ? ', TWO ON ONE TILE' : ', each on its own tile'));
     // …and a pack strips it to the bones long before time would
     for (let t = 0; t < 120 && (k2.eaten || 0) < 1; t += 0.1) Units.update(0.1);
     ck('theWolvesStripItToBones', (k2.eaten || 0) >= 1 && R.carcassStage(k2) === 2, 'eaten ' + (k2.eaten || 0).toFixed(2));
