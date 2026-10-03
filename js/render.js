@@ -8511,6 +8511,170 @@ const R = {
     }
   },
 
+  /* THE SWALLOWED SUN on screen (G.eclipseTick; operator, on the retro gate:
+     "indicate that it's an eclipse and show the darkness rolling in with an
+     edge that is semi-circular — the moon moving in front of the sun — as
+     opposed to just fade to dark"; "the stars should not show in the black
+     edges of the map"). Three pieces, all in SCREEN space (the sky is not on
+     the map):
+       THE SHADOW is the moon's own disc swept west to east across the view:
+       its curved leading limb rolls the dark in over ECLIPSE.dimS, the whole
+       view sits inside it through darkS (drifting on, never still), and its
+       trailing limb lets the light back across backS. Two penumbra steps run
+       ahead of the umbra. It is cut row by row at a QUARTER of the screen's
+       resolution and blown up nearest-neighbour, so its limb is a hard pixel
+       curve like everything else on screen — never a soft vector arc.
+       THE SKY says what is happening: a pixel sun under the top bar with the
+       moon sliding across it, the corona and its streamers at totality, the
+       diamond ring at second and third contact.
+       THE STARS come out only inside the umbra, only once the dark is deep,
+       and only over the board (R.onBoardPx) — never in the off-map black.
+     Render-only. G.eclipseDark() stays the one read the vision and the war
+     bands share; this is what the player sees of it. */
+  ECL: { scale: 4, drift: 0.05, cy: 0.45, bands: [[1.16, 0.12], [1.08, 0.30], [1, 0.68]] },
+  eclipseGeom() {
+    const E = S.eclipse, C = CFG.ECLIPSE, K = this.ECL;
+    if (!E || !E.phase) return null;
+    const W = this.cv.width, H = this.cv.height, cy = H * K.cy, D = W * K.drift;
+    const R = Math.hypot(W / 2 + D, Math.max(cy, H - cy)) * 1.02;
+    const out = R * K.bands[0][0];
+    const x0 = -out, x1 = W / 2 - D, x2 = W / 2 + D, x3 = W + out;
+    const f = E.phase === 'dim' ? Math.min(1, E.t / C.dimS) : E.phase === 'dark' ? Math.min(1, E.t / C.darkS) : Math.min(1, E.t / C.backS);
+    const cx = E.phase === 'dim' ? x0 + (x1 - x0) * f : E.phase === 'dark' ? x1 + (x2 - x1) * f : x2 + (x3 - x2) * f;
+    return { cx, cy, R, W, H, phase: E.phase, f };
+  },
+  _eclCv: null,
+  drawEclipse(g) {
+    const m = this.eclipseGeom();
+    if (!m) return;
+    const K = this.ECL, sc = K.scale, sw = Math.ceil(m.W / sc), sh = Math.ceil(m.H / sc);
+    let c = this._eclCv;
+    if (!c || c.width !== sw || c.height !== sh) { c = this._eclCv = document.createElement('canvas'); c.width = sw; c.height = sh; }
+    const cg = c.getContext('2d');
+    cg.clearRect(0, 0, sw, sh);
+    // three discs, outer to inner, their alphas chosen so the stack reaches
+    // each band's target darkness (1 - prod(1 - a) = the band's own value)
+    let prev = 0;
+    const ccx = m.cx / sc, ccy = m.cy / sc;
+    for (const [rf, tgt] of K.bands) {
+      const a = 1 - (1 - tgt) / (1 - prev); prev = tgt;
+      const r = m.R * rf / sc;
+      cg.fillStyle = 'rgba(10,12,34,' + a.toFixed(3) + ')';
+      const y0 = Math.max(0, Math.floor(ccy - r)), y1 = Math.min(sh - 1, Math.ceil(ccy + r));
+      for (let y = y0; y <= y1; y++) {
+        const dy = y + 0.5 - ccy; if (Math.abs(dy) > r) continue;
+        const dx = Math.sqrt(r * r - dy * dy);
+        const xa = Math.max(0, Math.round(ccx - dx)), xb = Math.min(sw, Math.round(ccx + dx));
+        if (xb > xa) cg.fillRect(xa, y, xb - xa, 1);
+      }
+    }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+    g.drawImage(c, 0, 0, sw * sc, sh * sc);
+    g.imageSmoothingEnabled = sm;
+    this.drawEclipseStars(g, m);
+    this.drawEclipseSky(g, m);
+  },
+  // the stars: inside the umbra, once the dark is deep, over the board only
+  drawEclipseStars(g, m) {
+    const ek = G.eclipseDark(), sc = this.ECL.scale;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    if (ek > 0.6) {
+      const sa = Math.min(1, (ek - 0.6) / 0.4), sz = Math.max(1, Math.round(m.W / 400));
+      const z = this.cam.z * this.dpr, TL = CFG.TILE;
+      g.fillStyle = 'rgba(232,236,255,' + (0.7 * sa).toFixed(3) + ')';
+      for (let i = 0; i < 90; i++) {
+        const h1 = Math.imul(i + 1, 0x9e3779b1) >>> 0, h2 = Math.imul(i + 7, 0x85ebca6b) >>> 0;
+        if ((h1 & 7) === 0 && ((performance.now() / 600 + i) | 0) % 5 === 0) continue;   // a slow twinkle
+        const sx = (h1 % 10007) / 10007 * m.W | 0, sy = (h2 % 9973) / 9973 * m.H | 0;
+        if (Math.hypot(sx - m.cx, sy - m.cy) > m.R - 6 * sc) continue;         // only under the umbra
+        if (!this.onBoardPx(sx / z + this.cam.x, sy / z + this.cam.y)) continue;   // never in the black
+        g.fillRect(sx, sy, sz, sz);
+      }
+    }
+  },
+  /* the sun in the sky, at 48 art px, blown up nearest-neighbour: a hard-
+     edged disc the moon slides across west-ward; at totality the black disc
+     wears the corona (a ring and seeded streamers, slowly breathing) and the
+     last and first sliver of sun flash as the diamond ring */
+  _eclSky: null,
+  drawEclipseSky(g, m) {
+    const E = S.eclipse, C = CFG.ECLIPSE, N = 48, c0 = N / 2;
+    const c = this._eclSky || (this._eclSky = Object.assign(document.createElement('canvas'), { width: N, height: N }));
+    const cg = c.getContext('2d');
+    cg.clearRect(0, 0, N, N);
+    const RS = 12, travel = 2 * RS + 4;
+    // the moon's offset from the sun's centre: in from the east, out to the west
+    const off = m.phase === 'dim' ? travel * (1 - m.f) : m.phase === 'dark' ? 0 : -travel * m.f;
+    const total = m.phase === 'dark' || Math.abs(off) < 1;
+    const disc = (cx, r, col) => {
+      cg.fillStyle = col;
+      for (let y = -r; y <= r; y++) {
+        const dx = Math.floor(Math.sqrt(r * r - y * y) + 0.35);
+        cg.fillRect(Math.round(cx - dx), c0 + y, dx * 2 + 1, 1);
+      }
+    };
+    const now = performance.now() / 1000;
+    if (!total) {
+      // the sun: rays, a warm rim, a white-hot heart
+      cg.fillStyle = '#ffd35a';
+      for (let k = 0; k < 8; k++) {
+        const a = k * Math.PI / 4 + now * 0.2, r0 = RS + 2, r1 = RS + 4 + (k % 2) * 2;
+        for (let r = r0; r <= r1; r++) cg.fillRect(Math.round(c0 + Math.cos(a) * r), Math.round(c0 + Math.sin(a) * r), 1, 1);
+      }
+      disc(c0, RS + 1, '#f0a030'); disc(c0, RS, '#ffd35a'); disc(c0, RS - 3, '#fff1b8');
+    } else {
+      // the corona: a pale ring and streamers on seeded bearings, breathing
+      const br = 0.75 + 0.25 * Math.sin(now * 1.7);
+      cg.fillStyle = 'rgba(232,240,255,' + (0.85 * br).toFixed(3) + ')';
+      for (let k = 0; k < 64; k++) {
+        const a = k / 64 * Math.PI * 2, h = Math.imul(k + 11, 0x9e3779b1) >>> 0;
+        const len = 2 + (h % 7) + ((k % 8) === 0 ? 5 : 0);
+        for (let r = RS + 1; r <= RS + len; r++) {
+          if (r > RS + 2 && ((h >> (r & 15)) & 1)) continue;          // ragged, not a clean spoke
+          cg.fillRect(Math.round(c0 + Math.cos(a) * r), Math.round(c0 + Math.sin(a) * r), 1, 1);
+        }
+      }
+      disc(c0, RS + 1, 'rgba(250,250,255,0.9)');
+    }
+    // the moon: unseen against the day sky until it BITES the sun, so it is
+    // drawn only where it covers the disc (and whole at totality, ringed)
+    const lim = total ? 99 : RS + 1;
+    for (let y = -RS; y <= RS; y++) {
+      const dx = Math.floor(Math.sqrt(RS * RS - y * y) + 0.35);
+      for (let x = Math.round(c0 + off - dx); x <= Math.round(c0 + off + dx); x++) {
+        if (Math.hypot(x - c0, y) > lim) continue;
+        cg.fillStyle = Math.hypot(x - (c0 + off), y) > RS - 1.2 ? '#15121f' : '#1d1a2b';
+        cg.fillRect(x, c0 + y, 1, 1);
+      }
+    }
+    // the diamond ring: the last sliver at second contact, the first at third
+    const ring = (m.phase === 'dim' && m.f > 0.9) || (m.phase === 'back' && m.f < 0.08);
+    if (ring) {
+      const side = m.phase === 'dim' ? -1 : 1, bx = Math.round(c0 + side * (RS + 1)), by = c0;
+      cg.fillStyle = '#ffffff';
+      for (let r = 0; r <= 4; r++) { cg.fillRect(bx - r, by, 1, 1); cg.fillRect(bx + r, by, 1, 1); cg.fillRect(bx, by - r, 1, 1); cg.fillRect(bx, by + r, 1, 1); }
+      cg.fillRect(bx - 1, by - 1, 3, 3);
+    }
+    const dpr = this.dpr || 1, k = Math.max(2, Math.round(1.5 * dpr));
+    const top = ((this.topReserve || 56) + 10) * dpr;
+    const x = Math.round(m.W / 2 - (N * k) / 2), y = Math.round(top);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+    g.drawImage(c, x, y, N * k, N * k);
+    g.imageSmoothingEnabled = sm;
+    // the name, once, as the dark closes over the land
+    if (m.phase === 'dark' && E.t < 5) {
+      const a = Math.min(1, E.t / 0.8) * Math.min(1, (5 - E.t) / 1.2);
+      g.globalAlpha = a;
+      g.font = 'bold ' + Math.round(Math.min(22, m.W / 22)) + 'px sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'top';
+      g.fillStyle = 'rgba(0,0,0,0.6)'; g.fillText('THE SUN IS SWALLOWED', m.W / 2 + 2, y + N * k + 6 + 2);
+      g.fillStyle = '#e8ecff'; g.fillText('THE SUN IS SWALLOWED', m.W / 2, y + N * k + 6);
+      g.globalAlpha = 1;
+    }
+  },
+
   /* STARFALL on screen (G.starfallTick): the omen is a comet fixed to the
      SKY (screen space, upper right — the sky is not on the map) through the
      night before and the night of; the fall is a burning head on a long
@@ -9810,6 +9974,7 @@ const R = {
 
   unitPose(u) {
     const vil = u.kind === 'villager';
+    if (G.eclipseAwe(u)) return 'idle';      // stopped dead, staring at the swallowed sun
     /* in a fight: villagers swing a pickaxe (guard), soldiers thrust a
        spear — but only within striking distance, the same gate the
        building branch below has always had. A unit still CLOSING on its
@@ -12286,28 +12451,8 @@ const R = {
       }
     }
 
-    // THE SWALLOWED SUN (G.eclipseDark): the day/night overlay ARTSTYLE
-    // rule 9 already sanctions, pushed to a deep dusk, with a sparse scatter
-    // of 1px stars fixed to the SCREEN (the sky is not on the map). No flash:
-    // it eases in over ECLIPSE.dimS and out over backS. The HUD is DOM and
-    // stays bright.
-    {
-      const ek = G.eclipseDark();
-      if (ek > 0.01) {
-        g.setTransform(1, 0, 0, 1, 0, 0);
-        g.fillStyle = 'rgba(10,12,34,' + (CFG.ECLIPSE.tint * ek).toFixed(3) + ')';
-        g.fillRect(0, 0, this.cv.width, this.cv.height);
-        if (ek > 0.6) {
-          const sa = Math.min(1, (ek - 0.6) / 0.4), W = this.cv.width, H = this.cv.height, sz = Math.max(1, Math.round(W / 400));
-          g.fillStyle = 'rgba(232,236,255,' + (0.7 * sa).toFixed(3) + ')';
-          for (let i = 0; i < 70; i++) {
-            const h1 = Math.imul(i + 1, 0x9e3779b1) >>> 0, h2 = Math.imul(i + 7, 0x85ebca6b) >>> 0;
-            if ((h1 & 7) === 0 && ((performance.now() / 600 + i) | 0) % 5 === 0) continue;   // a slow twinkle
-            g.fillRect((h1 % 10007) / 10007 * W | 0, (h2 % 9973) / 9973 * H | 0, sz, sz);
-          }
-        }
-      }
-    }
+    // THE SWALLOWED SUN: the moon's shadow, the sky and the stars (R.drawEclipse)
+    g.save(); this.drawEclipse(g); g.restore();
 
     // STARFALL: drawn over the night, because it is the brightest thing in it
     g.save(); this.drawStarfall(g); g.restore();

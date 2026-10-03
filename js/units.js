@@ -1340,6 +1340,8 @@ const Units = {
         }
         continue;
       }
+      // THE SWALLOWED SUN: an unwarned tribe stands and stares (G.eclipseAwe)
+      if (G.eclipseAwe(u)) continue;
 
       /* GROUND-TRUTH RESCUE: the world reshapes under standing feet — a logged
          stump regrows to forest, a sapper's channel floods to a moat — and a

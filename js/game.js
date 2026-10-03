@@ -301,6 +301,7 @@ const G = {
     this.vis = null;
     Units.clampToBoard();   // nobody stands on the impassable map rim
     this.countWearRoads();  // a new world has no roads (the route search's gate)
+    this._eclFree = null;   // nobody carries a broken stare into another world
     R.onNewGame();
     this.updateVisibility();
     UI.deselect();
@@ -1343,6 +1344,37 @@ const G = {
     if (!E.foretold) this.log('🌑 The light is going wrong — something is eating the sun! The village drops its tools and stares.', true, 7000);
     else this.log('🌑 The sun is swallowed, as the stones foretold. The work goes on.', 'note', 6000);
   },
+  /* …AND THE PEOPLE STOP AND STARE (operator, on the retro gate: "the enemy
+     should pause as well — I could see them still walking in the
+     background"). For the whole act — the dimming, the dark and the slow
+     return — every unit of a tribe the sky caught UNWARNED (cut[owner])
+     stands where it is and looks up: no step, no swing, no task ticks
+     (Units.update skips it; R.unitPose holds it in its idle). Three things
+     break the stare: a FIGHT (a unit holding a mark — Combat.acquire still
+     hands one to a unit the wilds come for, so nobody is cut down gawping),
+     the PLAYER'S OWN HAND (a unit the player selects is theirs to command for
+     the rest of the act — G._eclFree, a WeakSet: flow state, never in a
+     save), and a WARNING (a foretold tribe works on). The WILD stops too, and
+     so do the war bands (the operator's "enemy still walking" in the first
+     cut's video was the deer): herds stand, an idle wolf holds its ground, a
+     band on the march waits — anything already in a fight keeps fighting. */
+  _eclFree: null,
+  eclipseAwe(u) {
+    const E = S.eclipse;
+    if (!E || !E.phase || !E.cut) return false;
+    // the two tribes by their warning; the wild and the war bands have none
+    if ((u.owner === 'P' || u.owner === 'A') && !E.cut[u.owner]) return false;
+    if (u.tUnit || u.tBld) return false;
+    if (u.owner === 'P') {
+      const fr = this._eclFree || (this._eclFree = new WeakSet());
+      if (fr.has(u)) return false;
+      const sel = UI.sel;
+      if (sel && ((sel.type === 'unit' && sel.id === u.id) || (sel.type === 'group' && sel.ids && sel.ids.includes(u.id)))) {
+        fr.add(u); return false;
+      }
+    }
+    return true;
+  },
   eclipseTick(dt) {
     const E = S.eclipse, C = CFG.ECLIPSE;
     if (!E || !E.phase) return;
@@ -1350,7 +1382,7 @@ const G = {
     if (E.phase === 'dim' && E.t >= C.dimS) { E.phase = 'dark'; E.t = 0; if (R.startle) R.startle(); }
     else if (E.phase === 'dark' && E.t >= C.darkS) { E.phase = 'back'; E.t = 0; }
     else if (E.phase === 'back' && E.t >= C.backS) {
-      E.phase = null; E.done = true; E.avail = false;
+      E.phase = null; E.done = true; E.avail = false; this._eclFree = null;
       if (S.stats) S.stats.eclipseEndured = 1;
       this.log('☀️ The sun comes back out of the dark, a sliver at a time.', 'note', 5000);
     }
@@ -2738,6 +2770,7 @@ const G = {
     this.vis = null;
     Units.clampToBoard();   // pull any unit off the (now impassable) map rim — e.g. a pre-border save
     this.countWearRoads();  // the roads a save carries call its walkers from the first step
+    this._eclFree = null;   // a loaded act starts with everyone staring again
     R.onNewGame();
     this.updateVisibility();
     this.warmTribes();      // build the resident peoples' rigs here, not on first sighting

@@ -290,6 +290,107 @@ const out = await p.evaluate(() => {
       S.day = 60; G.eclipseDaily();
       ck('aWatchtowerForetellsIt', early && warned && S.eclipse.foretold && S.eclipse.cut.P === false && S.eclipse.cut.A === true,
         JSON.stringify({ early, warned, cut: S.eclipse.cut }));
+
+      // THE PEOPLE STOP AND STARE (operator: "the enemy should pause as
+      // well"): an unwarned tribe's people stand still for the whole act, the
+      // rival's as well as the player's; a fight, the player's own hand (a
+      // selected unit) and a warning are the three things that break it
+      {
+        fresh('spx-ecl3'); flat();
+        const tc = Bld.tcOf('P');
+        const mk = (owner, dx) => { const u = Units.spawn('villager', owner, tc.x + dx + 0.5, tc.y + 6.5); u.x = tc.x + dx + 0.5; u.y = tc.y + 6.5; Units.moveTo(u, tc.x + dx, tc.y + 12); return u; };
+        const rival = mk('A', -3), mine = mk('P', 0), picked = mk('P', 3);
+        const deer = Units.spawn('deer', 'W', tc.x + 6.5, tc.y + 6.5); deer.x = tc.x + 6.5; deer.y = tc.y + 6.5; Units.moveTo(deer, tc.x + 6, tc.y + 12);
+        S.eclipse = { avail: true, day: S.day, warned: false, foretold: false, cut: { day: S.day, P: true, A: true }, phase: 'dim', t: 0, done: false };
+        UI.sel = { type: 'unit', id: picked.id };
+        const y0 = [rival.y, mine.y, picked.y, deer.y];
+        for (let k = 0; k < 60; k++) { Units.update(0.05); G.eclipseTick(0.05); }
+        const moved = [rival.y - y0[0], mine.y - y0[1], picked.y - y0[2], deer.y - y0[3]];
+        UI.sel = null;
+        // a warned rival works on through it
+        S.eclipse.cut.A = false; const ry = rival.y;
+        for (let k = 0; k < 20; k++) Units.update(0.05);
+        const warnedWalks = rival.y - ry > 0.5;
+        // and when the light is back everyone walks again
+        S.eclipse.cut.A = true; S.eclipse.phase = 'back'; S.eclipse.t = CFG.ECLIPSE.backS - 0.01; G.eclipseTick(0.05);
+        const my = mine.y; for (let k = 0; k < 20; k++) Units.update(0.05);
+        const backToWork = mine.y - my > 0.5 && S.eclipse.done;
+        ck('theUnwarnedStopAndStare', moved[0] === 0 && moved[1] === 0 && moved[2] > 1 && moved[3] === 0 && warnedWalks && backToWork &&
+          R.unitPose(rival) === 'walk',
+          'over 3s of the act: rival ' + moved[0].toFixed(2) + ', unpicked player hand ' + moved[1].toFixed(2) + ', a grazing deer ' + moved[3].toFixed(2) +
+          ', the hand the player picked ' + moved[2].toFixed(2) + '; a warned rival walks ' + warnedWalks + '; all walk once the sun is back ' + backToWork);
+      }
+
+      // THE DARK ROLLS IN ON THE MOON'S LIMB, and the stars stay over the
+      // board. Measured on a clean canvas (no art on it, so its pixels can be
+      // read under file://): the shadow at mid-dim covers the west of the
+      // view and its edge is a CURVE (further east at the middle row than at
+      // the top and bottom — the moon's convex limb), the whole view is
+      // under it at totality, the light comes back from the west, and no
+      // star is ever drawn on the off-map black.
+      {
+        fresh('spx-ecl4'); S.paused = true;
+        Screens.show('playing');
+        S.eclipse = { avail: true, day: S.day, warned: false, foretold: false, cut: { day: S.day, P: true, A: true }, phase: 'dim', t: 0, done: false };
+        const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+        const g = c.getContext('2d');
+        const shade = (ph, t) => {
+          S.eclipse.phase = ph; S.eclipse.t = t;
+          g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height);
+          R.drawEclipse(g);
+          return g.getImageData(0, 0, c.width, c.height).data;
+        };
+        const edgeAt = (d, y) => { for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] < 120) return x; return c.width; };
+        const mid = shade('dim', CFG.ECLIPSE.dimS * 0.55);
+        const H = c.height, top = edgeAt(mid, Math.round(H * 0.08)), cen = edgeAt(mid, Math.round(H * 0.45)), bot = edgeAt(mid, Math.round(H * 0.92));
+        const total = shade('dark', 2), cover = (() => { let n = 0, d = 0; for (let i = 3; i < total.length; i += 4 * 97) { n++; if (total[i] > 150) d++; } return d / n; })();
+        const back = shade('back', CFG.ECLIPSE.backS * 0.5), bw = edgeAt(back, Math.round(H * 0.45));
+        const westLit = back[(Math.round(H * 0.45) * c.width + 2) * 4 + 3] < 40;
+        ck('theDarkRollsInOnTheMoonsLimb', cen > top + 8 && cen > bot + 8 && cover > 0.97 && westLit,
+          'mid-dim edge at x=' + top + '/' + cen + '/' + bot + ' (top/middle/bottom, of ' + c.width + '); umbra covers ' +
+          Math.round(cover * 100) + '% at totality; the west is lit again on the way out: ' + westLit + ' (edge at ' + bw + ')');
+
+        // the stars: put the off-map black on screen and count bright pixels there
+        R.cam.z = 0.6; R.cam.x = -R.cv.width / (R.cam.z * R.dpr) * 0.3; R.cam.y = 40;
+        const bx = R.boardPx();
+        let inVoid = 0, onBoard = 0;
+        const stars = (t) => { S.eclipse.phase = 'dark'; S.eclipse.t = t; g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height);
+          R.drawEclipseStars(g, R.eclipseGeom()); return g.getImageData(0, 0, c.width, c.height).data; };
+        for (let k = 0; k < 6; k++) {
+          const d = stars(4 + k * 0.37);
+          const z = R.cam.z * R.dpr;
+          for (let y = 0; y < c.height; y += 1) for (let x = 0; x < c.width; x += 1) {
+            const i = (y * c.width + x) * 4;
+            if (d[i + 3] < 100) continue;                          // a star is the only mark this pass makes
+            const wx = x / z + R.cam.x, wy = y / z + R.cam.y;
+            if (R.onBoardPx(wx, wy)) onBoard++; else inVoid++;
+          }
+        }
+        // …and the probe can see a leak: let the stars ignore the board and count again
+        const keepOB = R.onBoardPx; R.onBoardPx = () => true;
+        let leak = 0;
+        { const d = stars(4.2), z = R.cam.z * R.dpr;
+          for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+            const i = (y * c.width + x) * 4; if (d[i + 3] < 100) continue;
+            if (!keepOB.call(R, x / z + R.cam.x, y / z + R.cam.y)) leak++;
+          } }
+        R.onBoardPx = keepOB;
+        ck('andNoStarShinesInTheBlack', inVoid === 0 && onBoard > 0 && bx.x0 > R.cam.x && leak > 0,
+          onBoard + ' star pixels over the board, ' + inVoid + ' in the off-map black (camera showing the west rim); ' +
+          'with the board check stood down the same probe counts ' + leak + ' in the black');
+
+        // the sky says what it is: a sun the moon crosses, a corona at totality
+        const sky = (ph, t) => { S.eclipse.phase = ph; S.eclipse.t = t; g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height);
+          R.drawEclipseSky(g, R.eclipseGeom()); return g.getImageData(0, 0, c.width, c.height).data; };
+        const count = (d, pred) => { let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200 && pred(d[i], d[i + 1], d[i + 2])) n++; return n; };
+        const sun = (r, gg, bb) => r > 230 && gg > 160 && bb < 140;     // warm gold
+        const corona = (r, gg, bb) => r > 200 && gg > 200 && bb > 220;  // pale blue-white
+        const early = sky('dim', 0.2), half = sky('dim', CFG.ECLIPSE.dimS * 0.6), tot = sky('dark', 6);
+        const s0 = count(early, sun), s1 = count(half, sun), s2 = count(tot, sun), cr = count(tot, corona);
+        ck('andTheSkyShowsTheSunSwallowed', s0 > s1 && s1 > 0 && s2 === 0 && cr > 40,
+          'gold sun pixels ' + s0 + ' → ' + s1 + ' → ' + s2 + ' as the moon crosses; corona pixels at totality ' + cr);
+        S.eclipse = { avail: false, done: true, day: 0, warned: false, foretold: false, cut: null, phase: null, t: 0 };
+      }
     }
 
     // ---------------- 3c. THE DRY SUMMER ----------------

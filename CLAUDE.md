@@ -164,7 +164,7 @@ node tests/audio.mjs         # the game's voice: nothing on the wire, two switch
 node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map arrays, kept ground DERIVED from standing buildings (grows back on raze, byte-identical), the flatten fires from Bld.finish alone, the 32px cover-art door snaps alpha binary
 node tests/frame-hotpath.mjs  # the late-game town costs no more per tile: Bld.at is an index (= the linear definition on every tile), the building loop culls to the camera, the cull changes no pixel
 node tests/worn-paths.mjs     # the ground wears where WORK walks: distinct days, never a march, never in the fog; a band not a square; repaint == rebake; few roads, worth walking (+10%), the road calls the walker
-node tests/specials.mjs       # the special-event roll: three draws whatever it rolls, weighted, no dead rolls; the kraken is the player's; sons/cache land where a hand can walk; every event scores and reports
+node tests/specials.mjs       # the special-event roll: three draws whatever it rolls, weighted, no dead rolls; the kraken is the player's; sons/cache land where a hand can walk; every event scores and reports; the eclipse's moon-shadow, its stare, no stars in the black
 ```
 
 **SPECIAL EVENTS** (`tests/specials.mjs`, `CFG.SPECIALS` / `KRAKEN` /
@@ -225,9 +225,38 @@ hunt by their ordinary aggro, so it is a scare, and a fight only where it
 always would have been. It is FORETOLD three days ahead (a `note` toast) by
 the Star Circle, a finished level-3 Watchtower or the Seer — for the rival
 by its own level-3 tower — and a tribe it catches unwarned downs tools for
-that day (`cut`, read in `Bld.dailyProduction` × `workMult`). The tint is
-the dusk overlay pushed to deep dusk plus a sparse field of screen-fixed
-1px stars; no flash, the HUD stays bright. Scores `eclipseEndured`.
+that day (`cut`, read in `Bld.dailyProduction` × `workMult`). Scores
+`eclipseEndured`.
+**THE MOON'S SHADOW, NOT A FADE** (operator, on the retro gate: "indicate
+that it's an eclipse and show the darkness rolling in with an edge that is
+semi-circular… the stars should not show in the black edges of the map. The
+enemy should pause as well"; pinned in specials.mjs §3b): `R.drawEclipse`
+sweeps the moon's own disc west to east across the SCREEN — its curved
+leading limb rolls the dark in over `dimS`, the view sits inside it through
+`darkS` (drifting, never still), its trailing limb lets the light back over
+`backS` — with two penumbra steps ahead of the umbra (`R.ECL.bands`), cut
+row by row at a quarter resolution and blown up nearest-neighbour so the
+limb is a hard pixel curve, never a soft vector arc. `R.drawEclipseSky`
+puts a pixel sun under the top bar that the moon BITES (the moon is drawn
+only where it covers the sun — against a day sky it is invisible), then the
+corona and its ragged streamers at totality, the diamond ring at second and
+third contact, and "THE SUN IS SWALLOWED" as the dark closes.
+`R.drawEclipseStars` lights stars only under the umbra and only over the
+board (`R.onBoardPx` — the contract counts zero in the off-map black, and a
+control run with the board check stood down counts them, so the probe can
+see a leak). **AND THE PEOPLE STOP AND STARE** (`G.eclipseAwe`): through
+the whole act every unit of a tribe the sky caught unwarned (`cut[owner]`)
+— the rival's as well as the player's — stands where it is in its idle pose:
+`Units.update` skips it and `R.unitPose` holds it idle. A fight breaks the
+stare (a unit holding a mark — `Combat.acquire` still hands one to a unit
+the wilds come for), so does the PLAYER'S OWN HAND (a unit the player
+selects is theirs to command for the rest of the act — `G._eclFree`, a
+WeakSet, never in a save), and so does a warning (a foretold tribe works
+on). The WILD stops too, and so do the war bands — the "enemy still
+walking" in the first cut's video was the deer: herds stand, an idle wolf
+holds its ground, a band on the march waits. `G.eclipseDark()` is still
+the one read the vision and the war bands share; the sweep is what the
+player sees of it.
 **THE DRY SUMMER** (`wildfire`, all modes, `CFG.WILDFIRE`, specials.mjs §3c):
 eligible only on a world with a GREAT WOOD (`elig: 'woodStand'` →
 `G.fireSite`, a generation fact: the biggest forest region of `standMin`+
