@@ -1581,18 +1581,6 @@ all still stand, so flipping a flag restores the feature exactly. The rival's
 FORT pip is exempt and still drawn: it is the only way to tell whose stonework
 you are looking at, and it never appears on your own. Turning either flag back
 on means flipping its expectation in the same commit.
-**…SO THE RIVAL'S TOWN IS STAKED** (`R.drawRivalStakes`, `R.SHOW_RIVAL_STAKES`,
-pinned by `theRivalTownIsStaked` / `andTheStakesWearTheRivalsDye` in
-tests/wild-life.mjs — audit BLD-02): with the pip and the cloth off, every
-PNG building is ONE image shared by both tribes, so a rival War Camp at your
-gate looked exactly like your own. The cue that came back is on the GROUND,
-never on the art: two small marker stakes at the front corners of a rival
-footprint, heads in the rival's dye — on finished works, work sites and
-remembered fog ghosts alike, never on yours (unmarked is yours, the fort
-pip's own rule). Walls, gates and a tower BONDED into the curtain keep the
-fort pip; a FREE-STANDING tower is staked instead, because the pip landed
-mid-shaft on it as a red square stuck on the art. Barbarian camps need
-neither — a camp looks like nobody's town.
 
 **Burning buildings & ash** (`tests/burn-down.mjs`): a damaged building shows
 how far gone it is (`Bld.burnPhase`, keyed to hp — so the fire burns

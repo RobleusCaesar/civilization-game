@@ -9366,28 +9366,6 @@ const R = {
      your own — see the Owner tag note below). */
   SHOW_BANNERS: false,
   SHOW_OWNER_PIP: false,
-  /* THE RIVAL'S TOWN IS STAKED (audit BLD-02): every PNG building is one
-     image shared by both tribes, and with the pip and the banners off a rival
-     War Camp planted at your gate looked exactly like your own. The cue is
-     two small marker stakes at the front corners of a rival building's
-     footprint, red-capped in the rival's dye — on the GROUND, never on the
-     art, so the shipped architecture stays faction-neutral. Your own works
-     carry nothing: unmarked is yours, the rule the fort pip already keeps.
-     Drawn on sites, finished works and remembered fog ghosts alike, since a
-     friend-or-foe read matters most for what you saw once and walked away
-     from. (tests/wild-life.mjs, theRivalTownIsStaked) */
-  SHOW_RIVAL_STAKES: true,
-  RIVAL_DYE: '#c2564a',
-  drawRivalStakes(g, bx, by, bw) {
-    const foot = by + bw - 1;
-    for (const sx of [bx + 2, bx + bw - 4]) {
-      g.fillStyle = 'rgba(20,14,8,0.45)'; g.fillRect(sx - 1, foot, 4, 1);   // its own ground shadow
-      g.fillStyle = '#3b2a1a'; g.fillRect(sx, foot - 6, 2, 6);               // the stake
-      g.fillStyle = '#5a412a'; g.fillRect(sx, foot - 6, 1, 6);               // its lit side
-      g.fillStyle = this.RIVAL_DYE; g.fillRect(sx, foot - 8, 2, 3);          // the dyed head
-      g.fillStyle = '#7a2a22'; g.fillRect(sx + 1, foot - 6, 1, 1);           // its shadowed underside
-    }
-  },
 
   BANNER_AT: {
     barracks: [{ x: 4 / 32, y: 2 / 32, w: 6 / 32, h: 7 / 32, lv: 1 }],
@@ -11169,9 +11147,6 @@ const R = {
       // ghosts beside it (which already mask from live neighbours)
       if (snap.key === 'tower') this.drawTowerBond(g, { x: gx, y: gy, construction: 0 }, gx * TL, gy * TL, gs);
       this.blitBld(g, spr, gx * TL, gy * TL, gs, gs);
-      // what you saw of the rival's town stays the rival's in memory
-      if (this.SHOW_RIVAL_STAKES && snap.owner === 'A' && snap.key !== 'wall' && snap.key !== 'gate' &&
-          !(snap.key === 'tower' && this.towerLinkMask(gx, gy).mask)) this.drawRivalStakes(g, gx * TL, gy * TL, gs);
     }
 
     // fallen game (tests/wild-life.mjs) — a carcass for CORPSE_DAYS.meat
@@ -11303,7 +11278,6 @@ const R = {
         const total = up ? (b.upgTotal || Bld.def(b.key).levels[b.level].time) : Bld.def(b.key).levels[b.level - 1].time;
         this.bar(g, bx + 4, by + bw - 4, bw - 8, 3, 1 - (up ? b.upgrading : b.construction) / total, '#e8c15a');
         // still tag the owner so a work site reads as friend or foe
-        if (this.SHOW_RIVAL_STAKES && b.owner === 'A' && b.key !== 'wall' && b.key !== 'gate') this.drawRivalStakes(g, bx, by, bw);
         if (this.SHOW_OWNER_PIP) {
           g.fillStyle = b.owner === 'P' ? '#4a90c2' : '#c2564a';
           g.fillRect(bx + 1, by + 1, 4, 4);
@@ -11346,19 +11320,11 @@ const R = {
            their only owner cue. It now marks only the RIVAL's stonework, and
            sits ON it. Nobody else builds walls, so an unmarked curtain is
            yours by elimination — and your own castle reads clean. */
-        /* …and a FREE-STANDING tower is not stonework in a line: the pip
-           landed mid-shaft as a red square stuck on the art (BLD-02). Only a
-           tower bonded INTO the curtain keeps it; a lone one is staked at its
-           foot like any other building. */
-        const fort = b.key === 'wall' || b.key === 'gate' ||
-          (b.key === 'tower' && MapGen.inB(b.x, b.y) && !!this.towerLinkMask(b.x, b.y).mask);
+        const fort = b.key === 'wall' || b.key === 'gate' || b.key === 'tower';
         // barbarian works wear the band's own rust, never the rival's red —
         // a camp is nobody's tribe (tests/raider-camps.mjs)
         g.fillStyle = b.owner === 'P' ? '#4a90c2' : b.owner === 'R' ? '#6e5b40' : '#c2564a';
-        if (!fort) {
-          if (this.SHOW_OWNER_PIP) g.fillRect(bx + 1, by + 1, 4, 4);
-          if (this.SHOW_RIVAL_STAKES && b.owner === 'A') this.drawRivalStakes(g, bx, by, bw);
-        }
+        if (!fort) { if (this.SHOW_OWNER_PIP) g.fillRect(bx + 1, by + 1, 4, 4); }
         else if (b.owner !== 'P') g.fillRect(bx + bw / 2 - 1.5, by + bw / 2 - 1.5, 3, 3);
         this.drawCampfire(g, b, bx, by, bw);
       }
