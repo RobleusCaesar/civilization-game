@@ -1547,6 +1547,41 @@ const Assets = {
   unitUrl(kind, dir, pose) {
     return this.UNIT_DIR + this.unitStem(kind, dir, pose) + '.png?v=' + (CFG.ART_V || 1);
   },
+  /* ---- THE CARCASSES (W12, tests/wild-life.mjs) ----
+       assets/units/carcass-{kind}.png — one strip of SQUARE frames at the
+       kind's own walk density (64px, the bear 96px), three looks in order:
+       [fresh, picked, bones]. Each was made from the shipped walk's own
+       character (PixelLab, ART_PLAN "THE CARCASSES"), so a fallen deer is
+       the deer that was walking. Late tier with the beasts; a 404 keeps
+       the procedural carcass R.corpseOf cuts from the cast. */
+  CARCASS_KINDS: ['deer', 'cow', 'boar', 'wolf', 'bear'],
+  carcass: {},                               // kind -> [fresh, picked, bones]
+  carcassUrl(kind) { return 'assets/units/carcass-' + kind + '.png?v=' + (CFG.ART_V || 1); },
+  _tryLoadCarcass(kind) {
+    const img = new Image();
+    img.onload = () => { this.setCarcassArt(kind, img); };
+    img.onerror = () => {};
+    this._track(this._prio(img, 'low'), false, true);
+    img.src = this.carcassUrl(kind);
+  },
+  setCarcassArt(kind, img) {
+    const F = img && img.height;
+    if (!F || !img.width || img.width % F || img.width / F < 3) return false;
+    const frames = [];
+    for (let i = 0; i < 3; i++) {
+      const c = document.createElement('canvas'); c.width = c.height = F;
+      const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+      g.drawImage(img, i * F, 0, F, F, 0, 0, F, F);
+      try {
+        const d = g.getImageData(0, 0, F, F);
+        for (let k = 3; k < d.data.length; k += 4) d.data[k] = d.data[k] >= 128 ? 255 : 0;
+        g.putImageData(d, 0, 0);
+      } catch (e) { /* tainted on file:// — it still draws, unsnapped */ }
+      frames.push(c);
+    }
+    this.carcass[kind] = frames;
+    return true;
+  },
   _tryLoadUnit(kind, dir, pose) {
     const img = new Image();
     img.onload = () => { this.setUnitFrames(kind, dir, pose, img); };
@@ -2010,6 +2045,7 @@ const Assets = {
       for (const kind of Object.keys(this.UNIT_ART))
         for (const dir of this.UNIT_DIRS8)
           for (const pose of this.UNIT_ART[kind]) this._tryLoadUnit(kind, dir, pose);
+      for (const kind of this.CARCASS_KINDS) this._tryLoadCarcass(kind);
     };
     Promise.race([this.whenWorldIdle(), new Promise(r => setTimeout(r, 6000))]).then(beasts);
     if (this.pending <= 0) { this._everIdle = true; const w = this._idle; this._idle = []; for (const r of w) r(); }

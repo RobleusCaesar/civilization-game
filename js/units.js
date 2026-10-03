@@ -1993,7 +1993,10 @@ const Units = {
   },
   wildIdle(u, dt) {
     if (this.isPassive(u)) return this.grazeIdle(u, dt);
-    if (this.moving(u)) { this.followPath(u, dt); return; }
+    if (this.moving(u)) { u.eating = false; this.followPath(u, dt); return; }
+    // a wolf at a kill eats before it wanders (W12) — and its place at the
+    // table is its own, so the two-wolves-one-stand rule waits till it's done
+    if (u.kind === 'wolf' && !u.strife && this.wolfFeed(u, dt)) return;
     if (this.wildUnstack(u)) return;          // two wolves never share a stand
     u.wanderT -= dt;
     if (u.wanderT <= 0) {
@@ -2016,6 +2019,69 @@ const Units = {
       if (Path.passable(tx, ty) && (G.eclipseDark() >= 0.5 || !this.townBldNear(tx, ty)) &&
           !this.wildCrowded(u, tx, ty)) this.setPath(u, tx, ty);
     }
+  },
+  /* ---- WOLVES FEED ON THE KILL (W12, tests/wild-life.mjs) ----
+     A carcass with meat on it is food: any beast's but another wolf's.
+     An idle wolf within CFG.FEED.r walks to a place round it — up to
+     `crowd` wolves, each at its own slot `slotR` out, so a pack eats in a
+     ring and never in a stack — and eats for `eatS` seconds, every second
+     taking a share of `bite` off the carcass (c.eaten 0..1, on the corpse,
+     so it rides in the save). Half eaten reads PICKED, eaten through reads
+     BONES (R.carcassStage). Then it wanders off sated for `rest`. It is the
+     IDLE branch only: Combat.acquire's hunt and every fight come first,
+     because wildIdle is only reached by a wolf with no mark. */
+  carcassMeat(c) {
+    return c.kind !== 'wolf' && S.day - c.day < CFG.CORPSE_DAYS.meat && (c.eaten || 0) < 1;
+  },
+  feedersAt(c, but) {
+    const out = [];
+    for (const o of S.units)
+      if (o !== but && o.kind === 'wolf' && o.feed && o.feed.x === c.x && o.feed.y === c.y) out.push(o);
+    return out;
+  },
+  endFeed(u, rest) { u.feed = null; u.eating = false; u.eatT = 0; u.feedCd = rest; },
+  wolfFeed(u, dt) {
+    const F = CFG.FEED;
+    if (u.feedCd > 0) u.feedCd -= dt;
+    let c = u.feed && S.corpses ? S.corpses.find(k => k.x === u.feed.x && k.y === u.feed.y) : null;
+    if (u.feed && (!c || !this.carcassMeat(c))) { this.endFeed(u, F.rest * 0.3); c = null; }
+    if (!c) {
+      if (u.feedCd > 0 || !S.corpses || !S.corpses.length) return false;
+      u.feedScan = (u.feedScan || 0) - dt;
+      if (u.feedScan > 0) return false;
+      u.feedScan = 1 + Math.random();
+      let bd = F.r;
+      for (const k of S.corpses) {
+        if (!this.carcassMeat(k)) continue;
+        const d = Math.hypot(k.x - u.x, k.y - u.y);
+        if (d >= bd || this.feedersAt(k, u).length >= F.crowd) continue;
+        c = k; bd = d;
+      }
+      if (!c) return false;
+      u.feed = { x: c.x, y: c.y }; u.eatT = 0;
+    }
+    // my place at the table: the feeders in id order, spread round the kill
+    const mates = this.feedersAt(c, u).concat([u]).sort((a, b) => a.id - b.id);
+    const n = Math.max(3, mates.length), i = mates.indexOf(u);
+    const a = i / n * Math.PI * 2 + ((c.x * 7 + c.y * 13) % 6.283);
+    let sx = c.x + Math.cos(a) * F.slotR, sy = c.y + Math.sin(a) * F.slotR * 0.7;
+    if (!Path.passable(sx | 0, sy | 0)) { sx = c.x; sy = c.y; }
+    const d = Math.hypot(sx - u.x, sy - u.y);
+    if (d > 1.2) {
+      u.eating = false;
+      if (!this.setPath(u, sx | 0, sy | 0)) { this.endFeed(u, F.rest); return false; }
+      return true;
+    }
+    if (d > 0.05) {                          // settle into the slot
+      const st = Math.min(d, dt * 1.2);
+      u.x += (sx - u.x) / d * st; u.y += (sy - u.y) / d * st;
+      u.eating = false; return true;
+    }
+    u.eating = true;
+    u.eatT = (u.eatT || 0) + dt;
+    c.eaten = Math.min(1, (c.eaten || 0) + dt * F.bite / F.eatS);
+    if (u.eatT >= F.eatS) this.endFeed(u, F.rest);
+    return true;
   },
   grazeIdle(u, dt) {
     // already bolting — keep running until the fright wears off. The bolt

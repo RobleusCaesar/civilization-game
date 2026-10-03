@@ -364,6 +364,67 @@ const out = await p.evaluate(() => {
     ck('theBoneyardIsCapped', S.corpses.length <= 80, S.corpses.length + ' remains');
   }
 
+  /* ---- 2b⁵. THE CARCASS IN THREE LOOKS, AND THE WOLVES AT IT (W12).
+     Fresh → PICKED → bones, by age (CORPSE_DAYS.picked / .meat) or sooner
+     by what the wolves have eaten off it (c.eaten, on the corpse, so it
+     rides in the save). An idle wolf within FEED.r of a carcass with meat
+     on it — never another wolf's — walks to its own place at it, at most
+     FEED.crowd of them in a ring, and eats; then it wanders off sated. ---- */
+  {
+    arena('wl2h5');
+    const D = CFG.CORPSE_DAYS, mk = (kind, x, y, age, eaten) =>
+      ({ x, y, kind, day: S.day - age, eaten });
+    ck('theCarcassGoesInThreeLooks',
+      R.carcassStage(mk('deer', 1, 1, 0)) === 0 &&
+      R.carcassStage(mk('deer', 1, 1, D.picked)) === 1 &&
+      R.carcassStage(mk('deer', 1, 1, D.meat)) === 2 &&
+      R.carcassStage(mk('deer', 1, 1, 0, 0.5)) === 1 &&
+      R.carcassStage(mk('deer', 1, 1, 0, 1)) === 2, 'age and appetite both age it');
+    // one wolf, one fresh deer, nothing else alive near
+    const kill = mk('deer', 30.5, 30.5, 0);
+    S.corpses = [kill];
+    const w1 = Units.spawn('wolf', 'W', 26, 30);
+    let ate = false, posed = false;
+    for (let t = 0; t < 30 && !ate; t += 0.1) {
+      Units.update(0.1);
+      if (w1.eating) { ate = true; posed = R.unitPose(w1) === 'eat'; }
+    }
+    ck('aWolfComesToTheKillAndEats', ate && posed && Math.hypot(w1.x - kill.x, w1.y - kill.y) < 1,
+      'at ' + Math.hypot(w1.x - kill.x, w1.y - kill.y).toFixed(2) + ' tiles, pose ' + R.unitPose(w1));
+    const e0 = kill.eaten || 0;
+    for (let t = 0; t < 3; t += 0.1) Units.update(0.1);
+    ck('andTheMealIsTakenOffTheCarcass', (kill.eaten || 0) > e0, (kill.eaten || 0).toFixed(3));
+    // a pack eats in a ring, never in a stack, and the fourth waits its turn
+    arena('wl2h5b');
+    const k2 = mk('cow', 30.5, 30.5, 0);
+    S.corpses = [k2];
+    const pack = [[27, 29], [33, 31], [30, 34], [27, 33]].map(([x, y]) => Units.spawn('wolf', 'W', x, y));
+    let best = 0, minGap = 9;
+    for (let t = 0; t < 40; t += 0.1) {
+      Units.update(0.1);
+      const eating = pack.filter(w => w.eating);
+      if (eating.length > best) best = eating.length;
+      if (eating.length >= 2) for (let i = 0; i < eating.length; i++) for (let j = i + 1; j < eating.length; j++)
+        minGap = Math.min(minGap, Math.hypot(eating[i].x - eating[j].x, eating[i].y - eating[j].y));
+    }
+    ck('aPackEatsInARing', best === CFG.FEED.crowd && minGap >= 0.4,
+      best + ' at the table at once (crowd ' + CFG.FEED.crowd + '), closest pair ' + minGap.toFixed(2) + ' tiles');
+    // …and a pack strips it to the bones long before time would
+    for (let t = 0; t < 120 && (k2.eaten || 0) < 1; t += 0.1) Units.update(0.1);
+    ck('theWolvesStripItToBones', (k2.eaten || 0) >= 1 && R.carcassStage(k2) === 2, 'eaten ' + (k2.eaten || 0).toFixed(2));
+    // never at a wolf's own carcass, and never once the meat is gone
+    arena('wl2h5c');
+    S.corpses = [mk('wolf', 30.5, 30.5, 0), mk('deer', 34.5, 30.5, D.meat + 1)];
+    const w3 = Units.spawn('wolf', 'W', 28, 30);
+    let fed = false;
+    for (let t = 0; t < 20; t += 0.1) { Units.update(0.1); if (w3.feed || w3.eating) fed = true; }
+    ck('neverAtAWolfNorAtBones', !fed, fed ? 'it fed' : 'it wandered on');
+    // what the wolf ate rides in the save
+    S.corpses = [mk('deer', 30.5, 30.5, 0, 0.6)];
+    const data = JSON.parse(G.saveJSON());
+    ck('theMealRidesInTheSave', data.corpses && data.corpses[0] && data.corpses[0].eaten === 0.6, '');
+  }
+
   // ---- 2c. four or more frames in every animal action ----
   {
     const kinds = ['wolf', 'boar', 'bear', 'deer', 'cow'];
@@ -575,6 +636,41 @@ const out = await p.evaluate(() => {
 
   return { res, fails };
 });
+/* ---- the drawn carcass (W12): every beast ships three looks at its own
+   walk density, they land through Assets.setCarcassArt, and the draw pass
+   paints them — a different frame for each look ---- */
+{
+  const { readFileSync, existsSync } = await import('node:fs');
+  const dims = (f) => { const b2 = readFileSync(f); return { w: b2.readUInt32BE(16), h: b2.readUInt32BE(20) }; };
+  const want = { deer: 64, cow: 64, boar: 64, wolf: 64, bear: 96 }, bad = [];
+  for (const k of Object.keys(want)) {
+    const f = join(root, 'assets/units/carcass-' + k + '.png');
+    if (!existsSync(f)) { bad.push(k + ' missing'); continue; }
+    const d = dims(f);
+    if (d.h !== want[k] || d.w !== 3 * want[k]) bad.push(k + ' ' + d.w + 'x' + d.h);
+  }
+  const ok = bad.length === 0;
+  out.res.everyBeastShipsThreeLooks = (ok ? 'PASS' : 'FAIL') + ' — ' + (bad.join(', ') || 'fresh, picked, bones at the walk density');
+  if (!ok) out.fails.push('everyBeastShipsThreeLooks');
+  const v = await p.evaluate(async () => {
+    for (const k of Assets.CARCASS_KINDS) Assets._tryLoadCarcass(k);
+    for (let i = 0; i < 100 && Assets.CARCASS_KINDS.some(k => !Assets.carcass[k]); i++) await new Promise(r => setTimeout(r, 50));
+    const loaded = Assets.CARCASS_KINDS.filter(k => Assets.carcass[k] && Assets.carcass[k].length === 3).length;
+    const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+    const sig = (st) => {
+      g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 128, 128);
+      const corpse = { x: 2, y: 2, kind: 'deer', day: S.day - [0, CFG.CORPSE_DAYS.picked, CFG.CORPSE_DAYS.meat][st] };
+      R.drawCarcass(g, corpse, Assets.carcass.deer);
+      const d = g.getImageData(0, 0, 128, 128).data; let h = 0, n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3]) { n++; h = (h * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7) >>> 0; }
+      return n + ':' + h;
+    };
+    return { loaded, sigs: Assets.carcass.deer ? [0, 1, 2].map(sig) : [] };
+  });
+  const drew = v.loaded === 5 && v.sigs.length === 3 && new Set(v.sigs).size === 3 && v.sigs.every(s2 => +s2.split(':')[0] > 100);
+  out.res.andTheyAreDrawnLookByLook = (drew ? 'PASS' : 'FAIL') + ' — ' + v.loaded + ' strips landed; ' + v.sigs.join(' / ');
+  if (!drew) out.fails.push('andTheyAreDrawnLookByLook');
+}
 console.log(JSON.stringify(out.res, null, 1));
 console.log(out.fails.length ? 'FAILURES: ' + out.fails.join(', ') : 'ALL WILD-LIFE CHECKS PASS');
 console.log('errors:', errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e)));

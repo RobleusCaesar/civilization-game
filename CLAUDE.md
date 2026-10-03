@@ -1406,6 +1406,31 @@ Drawn in the ground-decal layer on EXPLORED memory (a landmark you found is
 a landmark you remember — that is the feature), at the same `TL×TL` box a
 living unit draws through. `Bld.place` clears remains under a new footprint
 — raising the lodge over the bones is the point.
+**THE CARCASS IN THREE LOOKS, DRAWN** (W12, `Assets.carcass` /
+`R.carcassStage` / `R.drawCarcass`, pinned by §2b⁵ of tests/wild-life.mjs):
+the cut-from-the-cast corpse read as bland, because it was cut from the OLD
+procedural animal while every beast on the map now wears its PixelLab art.
+Each species ships `assets/units/carcass-{kind}.png`: three square frames at
+the walk's own density (64px, the bear 96px into its 48 box) — FRESH, PICKED
+(torn open, ribs showing) and BONES (the stag keeps its antlers, the boar its
+tusks) — made from the shipped walk's own frame by Pro Flash edits, each look
+edited from the fresh one so the three share one silhouette and one footprint
+(ART_PLAN, "THE CARCASSES"). The stage is age (`CORPSE_DAYS.picked` 4 /
+`.meat` 10) or appetite, whichever comes first (`c.eaten` ≥ 0.5 picked, ≥ 1
+bones). Drawn in the kind's box on the feet a living unit stands on
+(`frameTop`), mirrored by the spot, over a HARD-pixel contact shadow cut from
+the frame's own opaque extent and, on meat, a small dark stain. A 404 keeps
+the procedural `corpseOf` carcass, which the older checks still pin.
+**AND THE WOLVES COME TO EAT** (`Units.wolfFeed`, `CFG.FEED`, same test): an
+idle wolf within `r` (7) of a carcass with meat on it — any beast's but a
+wolf's — walks to its own place round it (`crowd` 3 at a time, `slotR` out, in
+id order, so a pack eats in a RING and never in a stack) and eats for `eatS`
+(10s) in its `eat` pose, facing the kill (`unitPose` → 'eat', sheetFrames
+turns it to the carcass), taking `bite` (0.3) of the carcass per meal; then it
+wanders off sated for `rest` (45s). It is wildIdle's branch, reached only by a
+wolf with no mark, so a hunt or a fight always comes first. What the pack ate
+rides on the corpse in the save (`c.eaten`); the wolf's own feeding state is
+plain unit fields and harmless in a save.
 **And the herd BREATHES** (same test): real cattle and deer draw in close, fan
 out over the feed and gather again — they never converge on a point and never
 string out into a line. So every step is measured from the HERD'S CENTRE (never

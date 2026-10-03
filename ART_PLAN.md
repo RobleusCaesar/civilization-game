@@ -499,6 +499,25 @@ walk — a full rear-up, never clipped. Four rules came out of making it:
 The rear-up then reads at 8fps in any fight (`Sprites.animFpsFight`) and
 lands its swipe on the blow in a wild fight (`Sprites.animFpsStrike`).
 
+**THE CARCASSES** (W12 — `assets/units/carcass-{kind}.png`, three square
+frames [fresh, picked, bones] at the walk's density). Three lessons:
+- **A batched `edit_image` homogenises its frames.** Four species sent as
+  one four-frame edit came back as four DEER (the cow and the boar became
+  stags), and none of them lay down — the batch is built for one subject's
+  frames, never for different subjects. 40 generations sunk.
+- **Pro Flash text edits, one subject per call, 5 generations each**, from
+  the SHIPPED east walk frame 0 by pinned URL: "this same {animal}, now
+  dead, fallen over and lying flat on its side… same colours, outline and
+  pixel style" landed on the first try for all five, identity intact.
+- **Every later look is edited from the FRESH result** (`source_image_id`,
+  never the walk again): "the same dead {animal} in exactly the same place
+  and pose, partly eaten…" / "only the bleached skeleton… with its
+  {antlers / horns / tusks / fangs}". The three looks then share one
+  silhouette and one bounding box to the pixel, so a carcass changes look
+  without moving. Results come back as local blobs (the PixelLab download
+  host is blocked by the session proxy); `get_image` writes them at native
+  size.
+
 **HORIZONTAL QUADRUPEDS ROTATE FROM A 54px REFERENCE, NOT 60.** Measured,
 twice: the wolf's walk union came out 67px wide and the boar's 68 from a
 60px character — v3 animations stride a long-bodied animal ~13% wider than

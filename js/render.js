@@ -7416,6 +7416,63 @@ const R = {
      eroded to an outline with a rib-cage across the middle. Cached per
      (kind, phase); never in a save (S.corpses carries only x/y/kind/day). */
   _corpseC: {},
+  /* ---- THE CARCASS IN THREE LOOKS (W12, tests/wild-life.mjs) ----
+     0 FRESH, 1 PICKED (torn open, ribs showing), 2 BONES — by age
+     (CFG.CORPSE_DAYS.picked / .meat) or sooner by what the wolves have
+     eaten (c.eaten, Units.wolfFeed: half → picked, all of it → bones). */
+  carcassStage(c) {
+    const age = S.day - c.day, e = c.eaten || 0, D = CFG.CORPSE_DAYS;
+    if (age >= D.meat || e >= 1) return 2;
+    if (age >= (D.picked || D.meat) || e >= 0.5) return 1;
+    return 0;
+  },
+  /* drawn where the beast STOOD, in its own box (the bear's is 48): the same
+     feet a living unit draws on (frameTop), mirrored by the spot so a
+     killing ground is not a row of identical deer. Under it a small HARD
+     contact shadow, cut in whole world pixels from the frame's own opaque
+     extent (never a soft ellipse — every other mark on the ground is
+     drawn in hard steps), and on fresh meat a small dark stain; the bones
+     lie on bare ground. */
+  _carcassFoot: new WeakMap(),
+  carcassFoot(fr) {
+    let m = this._carcassFoot.get(fr);
+    if (m) return m;
+    const F = fr.width;
+    m = { x0: F * 0.12, x1: F * 0.88, y1: F * 0.92 };
+    try {
+      const d = fr.getContext('2d').getImageData(0, 0, F, F).data;
+      let x0 = F, x1 = -1, y1 = -1;
+      for (let y = 0; y < F; y++) for (let x = 0; x < F; x++)
+        if (d[(y * F + x) * 4 + 3] > 127) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y > y1) y1 = y; }
+      if (x1 >= 0) m = { x0, x1: x1 + 1, y1: y1 + 1 };
+    } catch (e) { /* tainted (file://): the honest default above */ }
+    this._carcassFoot.set(fr, m);
+    return m;
+  },
+  drawCarcass(g, c, art) {
+    const TL = CFG.TILE, st = this.carcassStage(c), fr = art[st];
+    if (!fr) return;
+    const B = (Assets.UNIT_BOX && Assets.UNIT_BOX[c.kind]) || TL, F = fr.width, k = B / F;
+    const x0 = Math.round(c.x * TL - B / 2), y0 = Math.round(this.frameTop(c.y, B, B));
+    const flip = ((Math.floor(c.x * 7) * 73 + Math.floor(c.y * 7) * 19) & 1) === 1;
+    const m = this.carcassFoot(fr);
+    const bl = flip ? F - m.x1 : m.x0, br = flip ? F - m.x0 : m.x1;
+    const cx = x0 + (bl + br) / 2 * k, cy = y0 + m.y1 * k - 1;
+    const rx = Math.max(3, (br - bl) * k * 0.46), ry = Math.max(1.5, B * 0.07);
+    const ell = (ex, ey, ax, ay, col) => {
+      g.fillStyle = col;
+      for (let dy = -Math.floor(ay); dy <= Math.floor(ay); dy++) {
+        const w = Math.round(ax * Math.sqrt(Math.max(0, 1 - (dy / (ay + 0.5)) ** 2)));
+        if (w > 0) g.fillRect(Math.round(ex - w), Math.round(ey + dy), 2 * w, 1);
+      }
+    };
+    if (st < 2) ell(cx + (flip ? 2 : -2), cy + 1, rx * (st ? 0.7 : 0.85), ry * 1.3, st ? 'rgba(70,16,12,0.34)' : 'rgba(92,20,14,0.36)');
+    ell(cx, cy, rx, ry, 'rgba(18,14,8,0.30)');
+    if (flip) {
+      g.save(); g.translate(x0 + B, y0); g.scale(-1, 1);
+      g.drawImage(fr, 0, 0, B, B); g.restore();
+    } else g.drawImage(fr, x0, y0, B, B);
+  },
   corpseOf(kind, phase) {
     const k = kind + '/' + phase;
     if (this._corpseC[k] !== undefined) return this._corpseC[k];
@@ -10823,6 +10880,7 @@ const R = {
     if (fb && Math.hypot(Bld.cx(fb) - u.x, Bld.cy(fb) - u.y) <
         Math.max(1.5, (CFG.UNITS[u.kind].rng || 0) + 0.3) + Bld.reach(fb)) return vil ? 'guard' : 'fight';
     if (Units.moving(u)) return 'walk';
+    if (u.eating) return 'eat';              // a wolf at the kill (Units.wolfFeed); no eat sheet → idle
     const t = u.task;
     if (t) {
       if (t.type === 'shorefish') return 'idle';                 // the rod overlay tells the story
@@ -11073,6 +11131,12 @@ const R = {
         if (fdx * fdx + fdy * fdy > 0.01)
           face = this.FACE8[((Math.round(Math.atan2(fdy, fdx) / (Math.PI / 4)) % 8) + 8) % 8];
       }
+    }
+    // …and a wolf at the kill faces the kill, whichever side of it it sits
+    if (pose === 'eat' && u.feed) {
+      const fdx = u.feed.x - u.x, fdy = u.feed.y - u.y;
+      if (fdx * fdx + fdy * fdy > 0.004)
+        face = this.FACE8[((Math.round(Math.atan2(fdy, fdx) / (Math.PI / 4)) % 8) + 8) % 8];
     }
     if (this.WORK_TURN[pose] && !afloat) {
       // a BUILDER faces his site, full stop — the operator's ruling: for
@@ -12237,7 +12301,11 @@ const R = {
     if (S.corpses && S.corpses.length) this.clipBoard(g, () => {
       for (const c of S.corpses) {
         if (!S.map.explored[MapGen.idx(c.x | 0, c.y | 0)]) continue;
-        const spr = this.corpseOf(c.kind, S.day - c.day < CFG.CORPSE_DAYS.meat ? 'meat' : 'bone');
+        // the drawn carcass (W12) when its strip has landed; the procedural
+        // one cut from the cast is the fallback
+        const art = window.Assets && Assets.carcass && Assets.carcass[c.kind];
+        if (art) { this.drawCarcass(g, c, art); continue; }
+        const spr = this.corpseOf(c.kind, this.carcassStage(c) === 2 ? 'bone' : 'meat');
         // the same TL×TL box a living unit draws through, so the remains are
         // exactly the beast's own size on the ground
         if (spr) g.drawImage(spr, c.x * TL - TL / 2, c.y * TL - TL / 2, TL, TL);

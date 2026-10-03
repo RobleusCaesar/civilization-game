@@ -16,7 +16,7 @@ const T = {
 
 const CFG = {
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 42,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 43,           // cache-buster on every art URL (?v=N) — bump when a PNG in
                        // v40: the desktop glen is the supplied painting
                        // (assets/ui/title-bg-wide.png, re-encoded to webp/jpg).
                        // THE GLEN URLS IN index.html CARRY THIS NUMBER BY HAND
@@ -931,7 +931,17 @@ const CFG = {
   // with meat still on it for `meat` days, then a bleached skeleton until
   // `bone` — the standing visual cue for where a Hunter's Lodge may rise,
   // so the player never has to carry the killing grounds in their head
-  CORPSE_DAYS: { meat: 10, bone: 50 },
+  // …and it goes in THREE looks (W12, R.carcassStage): fresh, then PICKED
+  // (torn open, ribs showing) from `picked` days or once the wolves have
+  // eaten half of it, then bones from `meat` days or once they have
+  // stripped it clean (c.eaten 1, in the save on the corpse itself)
+  CORPSE_DAYS: { picked: 4, meat: 10, bone: 50 },
+  /* WOLVES FEED ON THE KILL (W12): an idle wolf that comes within `r` of a
+     carcass with meat on it — any beast but another wolf — walks to a
+     place at it (`crowd` at a time, set round it `slotR` out) and eats for
+     `eatS` seconds, taking `bite` of the carcass each meal, then wanders
+     off sated for `rest`. Idle only: a hunt or a fight always comes first. */
+  FEED: { r: 7, crowd: 3, eatS: 10, bite: 0.3, rest: 45, slotR: 0.5 },
   PASSIVE_MAX: 10,             // grazing animals kept on the map — two herds' worth
                                // (Units.spawnHerd puts them down 3–5 at a time)
   // full-heal cost scales with missing hp. sapper: 30 matches its food line
