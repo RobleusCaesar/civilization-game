@@ -1,7 +1,11 @@
 /* WORN PATHS CONTRACT (W7, operator ruling 3: "wear accrues from economic
    trips only — gatherers to camps/TC, builders, traders; military movement
-   doesn't wear paths; purely visual"). CFG.WEAR, G.noteWear / wearDaily /
-   wearLevel, R.wearPaint.
+   doesn't wear paths"; and the retro gate's second ruling: "too messy… fewer
+   paths, but when those paths are walked the villagers get a 10% speed boost;
+   default villagers to walking the path a little more; reduce extraneous
+   paths next to the primary path; double the time before a path fades").
+   CFG.WEAR, G.noteWear / wearPull / wearDaily / wearLevel, Units.wearPrefer,
+   Path.findWeighted, Units.followPath, R.wearPaint.
 
    The audit measured the hazard that shapes the rule (GRS-08/09): a working
    town's villagers barely walk once they are posted, while ONE 20-soldier
@@ -14,16 +18,27 @@
         player can see it (a path worn in the fog would draw the rival's
         town onto the map). Never on a building or off the grass.
      2. DISTINCT DAYS, NOT STEPS: a tile counts each day it was crossed at
-        most once; 3 / 6 / 10 days make thinned grass / trodden earth / bare
-        path, and an unused tile drops a level every `decay` days.
+        most once; CFG.WEAR.levels days make thinned grass / trodden earth /
+        bare path, and an unused tile drops a level every `decay` days —
+        twice the first pass's 25.
      3. IN A REAL SIM a villager sent to the same far stand day after day
         wears its own route to bare path; a soldier marching the same route
         for as long wears nothing.
-     4. IT IS ONLY A PICTURE, AND AN HONEST ONE: the worn route changes the
-        drawn ground on its tiles as a band narrower than a tile (never a
-        tile square), passability is untouched, the incrementally repainted
-        cache equals a fresh rebake BYTE FOR BYTE (the land.mjs discipline),
-        and the wear rides the save while the per-unit bookkeeping does not.
+     4. THE PICTURE IS A FEW CLEAN ROADS: the worn route changes the drawn
+        ground on its tiles as a band narrower than a tile (never a tile
+        square), the incrementally repainted cache equals a fresh rebake BYTE
+        FOR BYTE (the land.mjs discipline), and THINNED GRASS IS NEVER DRAWN
+        (level 1 is how a route earns its way to a path; painted, it was the
+        pale halo that doubled every road's width).
+     5. THE ROAD TAKES THE STEP: a foot beside a path `pull` days more worn
+        credits the path, so a parallel rut never gets started.
+     6. THE ROAD CALLS THE WALKER: a villager on a work trip routes onto worn
+        ground (a cheaper step); a soldier, and a villager in a world with no
+        roads, keep the unweighted search.
+     7. THE ROAD IS QUICKER: a villager on trodden earth or better walks
+        CFG.WEAR.speed (1.1) as fast; a soldier on the same road does not.
+        Passability is untouched, the wear rides the save, and the per-unit
+        bookkeeping does not.
 
      node tests/worn-paths.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
@@ -113,9 +128,14 @@ const out = await p.evaluate(() => {
       G.wearDaily(); S.day++; lv.push(G.wearLevel(12, 10));
     }
     const e = S.map.wear[10 * CFG.W + 12];
-    ck('aTileCountsDaysNotSteps', e[0] === 11 && lv.join('') === '00111222233',
-      'levels by day ' + lv.join('') + ', count ' + e[0] + ' after 55 crossings over 11 days');
+    const want = Array.from({ length: 11 }, (_, d) => G.wearLevelOf(d + 1)).join('');
+    ck('aTileCountsDaysNotSteps', e[0] === 11 && lv.join('') === want && want === '00001111122',
+      'levels by day ' + lv.join('') + ' (want ' + want + ' for levels ' + CFG.WEAR.levels.join('/') + '), count ' + e[0] + ' after 55 crossings over 11 days');
+    for (let d = 0; d < 6; d++) { G.noteWear(v, 12, 10); G.wearDaily(); S.day++; }
+    ck('aPathTakesSixteenWorkingDays', G.wearLevel(12, 10) === 3 && CFG.WEAR.levels[2] === 16,
+      'level ' + G.wearLevel(12, 10) + ' after 17 days (bare path at ' + CFG.WEAR.levels[2] + ')');
     const C = CFG.WEAR, dec = [];
+    ck('aPathWaitsTwiceAsLongToFade', C.decay === 50, 'decay ' + C.decay + ' days (the first pass faded after 25)');
     for (let k = 0; k < 3; k++) { S.day += C.decay; e[1] = S.day - C.decay; G.wearDaily(); dec.push(G.wearLevel(12, 10)); }
     ck('anUnusedPathGrowsBackALevelAtATime', dec.join('') === '210' && !S.map.wear[10 * CFG.W + 12],
       'levels after each idle spell ' + dec.join(''));
@@ -125,30 +145,31 @@ const out = await p.evaluate(() => {
   let route = [];
   {
     const { fx, fy } = world('wp-3');
-    for (let d = 0; d < 11; d++) commute(fx, fy);
+    for (let d = 0; d < 18; d++) commute(fx, fy);
     route = Object.keys(S.map.wear).map(Number);
     const bare = route.filter(i => G.wearLevelOf(S.map.wear[i][0]) === 3);
     ck('aDailyCommuteWearsABarePath', bare.length >= 8,
-      bare.length + ' of ' + route.length + ' route tiles at bare path after 11 working days');
+      bare.length + ' of ' + route.length + ' route tiles at bare path after 18 working days');
     world('wp-3');
-    for (let d = 0; d < 11; d++) commute(fx, fy, 'defender');
+    for (let d = 0; d < 18; d++) commute(fx, fy, 'defender');
     ck('aMarchWearsNothing', Object.keys(S.map.wear).length === 0,
-      Object.keys(S.map.wear).length + ' tiles worn by 11 days of a soldier on the same road');
+      Object.keys(S.map.wear).length + ' tiles worn by 18 days of a soldier on the same road');
     // …and it is a picture: passability and the save
     world('wp-3');
-    for (let d = 0; d < 11; d++) commute(fx, fy);
+    for (let d = 0; d < 18; d++) commute(fx, fy);
     const before = route.every(i => Path.passable(i % CFG.W, (i / CFG.W) | 0, 'P'));
     const keep = JSON.stringify(S.map.wear);
     const json = G.saveJSON();
     G.loadJSON(json);
-    ck('itIsOnlyAPictureAndItRidesTheSave', before && JSON.stringify(S.map.wear) === keep && !/_wearPos|_wx/.test(json),
-      'passable ' + before + ', wear round-trips, no per-unit bookkeeping in the save');
+    ck('theRoadNeverBlocksAndRidesTheSave', before && JSON.stringify(S.map.wear) === keep && !/_wearPos|_wx/.test(json) &&
+      G._wearRoads > 0 && G._wearRoads === G.countWearRoads(),
+      'passable ' + before + ', wear round-trips, no per-unit bookkeeping in the save, ' + G._wearRoads + ' road tiles recounted on load');
   }
 
   // ---- 4. the drawn ground: a band, not a square; repaint == rebake ----
   {
     const { fx, fy } = world('wp-4');
-    for (let d = 0; d < 9; d++) commute(fx, fy);     // reach level 2 on the route
+    for (let d = 0; d < 14; d++) commute(fx, fy);    // reach level 2 on the route
     G.updateVisibility(); R.rebuildTerrain();
     const TL = CFG.TILE, cg = R.terrainCache.getContext('2d');
     const grab = () => cg.getImageData(0, 0, R.terrainCache.width, R.terrainCache.height).data;
@@ -184,6 +205,86 @@ const out = await p.evaluate(() => {
     ck('aWornRoadIsABandNotASquare', bare.length >= 3 && mid > 0.5 && edge < 0.35,
       bare.length + ' straight bare tiles: path ' + Math.round(100 * mid) + '% across the middle rows, ' +
       Math.round(100 * edge) + '% along the top and bottom fifths');
+  }
+
+  // ---- 4b. thinned grass is tracked, never drawn ----
+  {
+    world('wp-4b');
+    G.updateVisibility(); R.rebuildTerrain();
+    const cg = R.terrainCache.getContext('2d');
+    const grab = () => cg.getImageData(0, 0, R.terrainCache.width, R.terrainCache.height).data;
+    const none = grab();
+    for (let x = 9; x <= 20; x++) S.map.wear[16 * CFG.W + x] = [CFG.WEAR.levels[0], S.day];   // a whole run at level 1
+    G.countWearRoads(); R.rebuildTerrain();
+    const thin = grab();
+    let diff = 0; for (let i = 0; i < none.length; i++) if (none[i] !== thin[i]) diff++;
+    for (let x = 9; x <= 20; x++) S.map.wear[16 * CFG.W + x] = [CFG.WEAR.levels[1], S.day];   // …the same run trodden
+    G.countWearRoads(); R.rebuildTerrain();
+    const trod = grab();
+    let diff2 = 0; for (let i = 0; i < none.length; i++) if (none[i] !== trod[i]) diff2++;
+    ck('thinnedGrassIsNeverDrawn', diff === 0 && diff2 > 1000,
+      diff + ' bytes changed by a run of thinned grass; ' + diff2 + ' by the same run trodden');
+  }
+
+  // ---- 5. the road takes the step ----
+  {
+    world('wp-5');
+    for (let x = 9; x <= 20; x++) S.map.wear[16 * CFG.W + x] = [8, S.day];
+    S.map.wear[15 * CFG.W + 12] = [7, S.day];                   // a rut one day behind: no pull
+    const v = Units.spawn('villager', 'P', 10, 10); v.task = { type: 'gather', x: 22, y: 16 }; v.path = [{ x: 11, y: 10 }];
+    G._wearToday = null;
+    G.noteWear(v, 14, 17);          // beside the road: the road takes it
+    G.noteWear(v, 12, 15);          // the rut is only a day behind its road: it keeps its own
+    G.noteWear(v, 14, 12);          // nowhere near a road: its own tile
+    const got = [...(G._wearToday || [])].map(i => (i % CFG.W) + ',' + ((i / CFG.W) | 0)).sort();
+    ck('theRoadTakesTheStep', JSON.stringify(got) === JSON.stringify(['12,15', '14,12', '14,16']),
+      'stamped ' + JSON.stringify(got) + ' — a step at 14,17 credits the road at 14,16; a rut within ' + CFG.WEAR.pull + ' days of it keeps its own');
+  }
+
+  // ---- 6. the road calls the walker ----
+  {
+    world('wp-6');
+    // a bare road two rows NORTH of the straight line from the doorstep to the
+    // stand — a detour no shortest-steps search would take for its own sake
+    for (let x = 10; x <= 19; x++) S.map.wear[14 * CFG.W + x] = [CFG.WEAR.levels[2], S.day];
+    G.countWearRoads();
+    const onRoad = (p) => p.filter(t => G.wearLevel(t.x, t.y) >= 2).length / Math.max(1, p.length);
+    // Units.spawn eases a newcomer off a crowded tile; every walker here starts ON the doorstep
+    const at = (kind) => { const u = Units.spawn(kind, 'P', 8.5, 16.5); u.x = 8.5; u.y = 16.5; return u; };
+    const v = at('villager'); Units.assignGather(v, 22, 16);
+    const vRoad = onRoad(v.path || []), end = v.path[v.path.length - 1];
+    const plain = Path.find(8, 16, end.x, end.y, 'P');
+    const s2 = at('defender'); Units.moveTo(s2, end.x, end.y);
+    const sRoad = onRoad(s2.path || []), sPlain = JSON.stringify(s2.path) === JSON.stringify(plain);
+    const w2 = at('villager'); Units.moveTo(w2, end.x, end.y);
+    const wPlain = JSON.stringify(w2.path) === JSON.stringify(plain);
+    S.map.wear = {}; G.countWearRoads();
+    const v2 = at('villager'); Units.assignGather(v2, 22, 16);
+    const e2 = v2.path[v2.path.length - 1];
+    const sameAsPlain = JSON.stringify(v2.path) === JSON.stringify(Path.find(8, 16, e2.x, e2.y, 'P'));
+    ck('theRoadCallsTheWalker', vRoad >= 0.6 && onRoad(plain) < 0.3 && sPlain && sRoad < 0.3 && wPlain && sameAsPlain,
+      'a gatherer walks ' + Math.round(100 * vRoad) + '% of its route on the road (the plain search ' + Math.round(100 * onRoad(plain)) +
+      '%); the soldier and the stroll take the plain search: ' + sPlain + '/' + wPlain + '; with no roads the gatherer does too: ' + sameAsPlain);
+  }
+
+  // ---- 7. the road is quicker ----
+  {
+    world('wp-7');
+    // one step mid-tile, so the waypoint snap cannot quantise the answer
+    const step = (kind, worn) => {
+      S.map.wear = {};
+      if (worn) for (let x = 6; x <= 26; x++) S.map.wear[20 * CFG.W + x] = [CFG.WEAR.levels[1], S.day];
+      G.countWearRoads();
+      const u = Units.spawn(kind, 'P', 8.05, 20.5); u.x = 8.05; u.y = 20.5;
+      u.path = [{ x: 10, y: 20 }]; u.pathI = 0;
+      Units.followPath(u, 0.02);
+      const d = u.x - 8.05;
+      Units.despawn ? Units.despawn(u) : S.units.splice(S.units.indexOf(u), 1);
+      return d;
+    };
+    const r = step('villager', true) / step('villager', false), rs = step('defender', true) / step('defender', false);
+    ck('theRoadIsQuicker', Math.abs(r - CFG.WEAR.speed) < 1e-6 && Math.abs(rs - 1) < 1e-9 && CFG.WEAR.speed === 1.1,
+      'a villager covers ×' + r.toFixed(4) + ' the ground per step on trodden earth; a soldier ×' + rs.toFixed(4));
   }
   return { res, fails };
 });

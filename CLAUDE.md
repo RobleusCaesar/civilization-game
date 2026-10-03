@@ -163,7 +163,7 @@ node tests/archer-art.mjs    # archer line plumbing: military sheet keys {kind}-
 node tests/audio.mjs         # the game's voice: nothing on the wire, two switches and two dials (mute and zero are one state), throttled per kind, and the music is generated rather than looped
 node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map arrays, kept ground DERIVED from standing buildings (grows back on raze, byte-identical), the flatten fires from Bld.finish alone, the 32px cover-art door snaps alpha binary
 node tests/frame-hotpath.mjs  # the late-game town costs no more per tile: Bld.at is an index (= the linear definition on every tile), the building loop culls to the camera, the cull changes no pixel
-node tests/worn-paths.mjs     # the ground wears where WORK walks: distinct days, never a march, never in the fog; a band not a square; repaint == rebake
+node tests/worn-paths.mjs     # the ground wears where WORK walks: distinct days, never a march, never in the fog; a band not a square; repaint == rebake; few roads, worth walking (+10%), the road calls the walker
 node tests/specials.mjs       # the special-event roll: three draws whatever it rolls, weighted, no dead rolls; the kraken is the player's; sons/cache land where a hand can walk; every event scores and reports
 ```
 
@@ -4097,6 +4097,35 @@ step, since diagonal tiles meet only at a corner. A tile's look depends on
 the 3x3 around it, inside the ±2 ground reset, and level changes repaint
 through `drawTilesAt` (a few) or the sorted slice queue (many): the
 contract holds the daily repaint byte-identical to a fresh bake.
+**THE SECOND PASS — FEWER ROADS, AND WORTH WALKING** (operator, on the
+retro gate: "a kid scribbling with a brown marker… fewer paths, but walk one
+and the villagers get a 10% speed boost; default them to the path a little
+more; reduce the extraneous paths beside the primary one; double the time
+before a path fades"). The "purely visual" clause of ruling 3 is RETIRED by
+that ruling. Five rules, all pinned in tests/worn-paths.mjs: **the
+thresholds rose** (`levels` 5 / 10 / 16 — a route must be walked on ten
+distinct days to show at all) and **thinned grass is tracked, never drawn**
+(painted, level 1 was the pale halo that doubled every road's width; the
+sward no longer thins for it either); **the road takes the step**
+(`G.wearPull`, `CFG.WEAR.pull` 2): a foot beside a path two days more worn
+credits the PATH — orthogonal neighbours before diagonal ones — so the
+parallel rut a crowd of slightly different routes would wear never gets
+started; **the road calls the walker** (`Units.wearPrefer` →
+`Path.findWeighted`, an A* with octile steps whose price is the ground's,
+`CFG.WEAR.prefer` [1, 1, 0.84, 0.76] by level): a villager on a WORK trip
+bends onto worn ground, while soldiers, a plain walk and every villager in a
+world with no trodden earth (`G._wearRoads` 0, recounted daily and on
+load, never saved) keep the unweighted BFS byte for byte; **the road is
+quicker** (`Units.followPath`): a villager standing on trodden earth or
+better walks `CFG.WEAR.speed` (1.1) as fast, owner-agnostic (the rival's
+wear only exists where the player saw it, so in practice this is the
+player's town's perk); and **a path waits twice as long to fade**
+(`decay` 50). The painter draws no segment for a diagonal whose corner is
+worn (the L already joins them — drawing both filled every turn with a
+triangle of dirt), draws nothing for a lone worn tile, and cuts its bands
+on a 2px grid in a light dusty earth. Every test that pins the unweighted
+search still holds: the weighted one is only ever asked while a road
+exists.
 
 **THE DECORATIVE STREAM WAS REMOVED** (pinned by
 `andTheDecorativeStreamIsGone`): creeks that wandered down off high ground to

@@ -300,6 +300,7 @@ const G = {
     this.freeVis = false;   // every real game starts fogged; the title demo re-enables it
     this.vis = null;
     Units.clampToBoard();   // nobody stands on the impassable map rim
+    this.countWearRoads();  // a new world has no roads (the route search's gate)
     R.onNewGame();
     this.updateVisibility();
     UI.deselect();
@@ -1374,8 +1375,40 @@ const G = {
   noteWear(u, x, y) {
     if (!Units.isVillager(u) || !u.task || !CFG.WEAR.tasks.includes(u.task.type)) return;
     if (u.owner !== 'P' && !(u.owner === 'A' && this.visibleAt(x, y))) return;
-    if (!MapGen.onBoard(x, y) || S.map.terrain[y * CFG.W + x] !== T.GRASS || Bld.at(x, y)) return;
-    (this._wearToday || (this._wearToday = new Set())).add(y * CFG.W + x);
+    if (!this.wearable(x, y)) return;
+    (this._wearToday || (this._wearToday = new Set())).add(this.wearPull(x, y));
+  },
+  wearable(x, y) {
+    return MapGen.onBoard(x, y) && S.map.terrain[y * CFG.W + x] === T.GRASS && !Bld.at(x, y);
+  },
+  /* THE ROAD TAKES THE STEP (CFG.WEAR.pull). A foot that lands beside a path
+     already walked `pull` more days than its own tile credits the PATH: the
+     parallel rut a crowd of slightly different routes would wear never gets
+     started, and the road it would have shadowed gets the traffic instead.
+     The most-worn wearable neighbour wins — the four beside it before the
+     four across its corners, so a tie goes to the nearest ground and the
+     pick is deterministic; a tile that is itself the most worn keeps it. */
+  _PULL8: [[0, -1], [-1, 0], [1, 0], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]],
+  wearPull(x, y) {
+    const W = S.map.wear, i0 = y * CFG.W + x, own = W && W[i0] ? W[i0][0] : 0;
+    if (!W) return i0;
+    let best = i0, bc = own + CFG.WEAR.pull - 1;
+    for (const [dx, dy] of this._PULL8) {
+      const nx = x + dx, ny = y + dy, j = ny * CFG.W + nx, e = W[j];
+      if (!e || e[0] <= bc || !this.wearable(nx, ny)) continue;
+      best = j; bc = e[0];
+    }
+    return best;
+  },
+  /* how many tiles stand at trodden earth or better — the route search asks
+     it before paying for a weighted search (Units.wearPrefer); recounted by
+     wearDaily and on load, module state, never in a save */
+  _wearRoads: 0,
+  countWearRoads() {
+    const W = S.map && S.map.wear, L = CFG.WEAR.levels[CFG.WEAR.fastLv - 1];
+    let n = 0;
+    if (W) for (const k in W) if (W[k][0] >= L) n++;
+    return this._wearRoads = n;
   },
   wearDaily() {
     const W = S.map && S.map.wear; if (!W) return;
@@ -1395,6 +1428,7 @@ const G = {
       if (e[0] <= 0) delete W[k];
       if (this.wearLevelOf(e[0]) !== was) moved.push(+k);
     }
+    this.countWearRoads();
     if (moved.length && R.terrainCache) {
       const list = moved.sort((a, b) => a - b).map(i => [i % CFG.W, (i / CFG.W) | 0]);
       if (list.length <= 6) R.drawTilesAt(list);
@@ -2703,6 +2737,7 @@ const G = {
     this.freeVis = false;
     this.vis = null;
     Units.clampToBoard();   // pull any unit off the (now impassable) map rim — e.g. a pre-border save
+    this.countWearRoads();  // the roads a save carries call its walkers from the first step
     R.onNewGame();
     this.updateVisibility();
     this.warmTribes();      // build the resident peoples' rigs here, not on first sighting

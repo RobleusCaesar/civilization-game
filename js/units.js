@@ -366,9 +366,26 @@ const Units = {
   },
 
   setPath(u, tx, ty) {
-    const p = Path.find(u.x | 0, u.y | 0, tx, ty, u.owner, this.domain(u));
+    const p = Path.find(u.x | 0, u.y | 0, tx, ty, u.owner, this.domain(u), this.wearPrefer(u));
     if (p) { u.path = p; u.pathI = 0; }
     return !!p;
+  },
+  /* THE ROAD CALLS THE WALKER (CFG.WEAR.prefer, tests/worn-paths.mjs): a
+     villager on a WORK trip — the trips that wear paths — prices worn ground
+     cheaper, so its route bends onto the road its town already walks. The
+     same trips that make roads keep to them, which is what keeps a town to a
+     few roads instead of a scribble of near-parallel ones. Everyone else
+     (soldiers, a plain walk, a hull) keeps the unweighted search, and so does
+     a villager while no ground anywhere is worn to trodden earth (G._wearRoads
+     — the weighted search is never paid for in a world without roads). */
+  wearPrefer(u) {
+    if (!G._wearRoads || !this.isVillager(u) || !u.task || !CFG.WEAR.tasks.includes(u.task.type)) return null;
+    const P = CFG.WEAR.prefer;
+    if (!this._wearCost) {
+      this._wearCost = (x, y) => P[G.wearLevel(x, y)] || 1;
+      this._wearCost.min = Math.min(...P);
+    }
+    return this._wearCost;
   },
 
   moveTo(u, tx, ty) {
@@ -1285,6 +1302,10 @@ const Units = {
       const here = S.map.terrain[MapGen.idx(u.x | 0, u.y | 0)];
       const next = S.map.terrain[MapGen.idx(wp.x, wp.y)];
       if (here === T.MOUND || next === T.MOUND) sp *= (CFG.TERRAFORM.moundCross || 0.25);
+      // …and a WORN PATH is quicker going for the people who wore it: a
+      // villager on trodden earth or bare path walks CFG.WEAR.speed as fast
+      // (the operator's ruling — the road is worth walking)
+      else if (G._wearRoads && this.isVillager(u) && G.wearLevel(u.x | 0, u.y | 0) >= CFG.WEAR.fastLv) sp *= CFG.WEAR.speed;
     }
     const step = sp * dt;
     if (d <= step) {

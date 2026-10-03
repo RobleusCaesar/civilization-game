@@ -1653,9 +1653,10 @@ const Path = {
      search and remembered. The expansion order, the queue and the answer
      are exactly what they were; passability cannot change during a search. */
   _pfGen: 0, _pfPrev: null, _pfSeen: null, _pfPass: null, _pfPassGen: null,
-  find(sx, sy, tx, ty, owner, domain) {
+  find(sx, sy, tx, ty, owner, domain, cost) {
     sx |= 0; sy |= 0; tx |= 0; ty |= 0;
     if (!MapGen.inB(tx, ty)) return null;
+    if (cost) return this.findWeighted(sx, sy, tx, ty, owner, domain, cost);
     const W = CFG.W, H = CFG.H, id = MapGen.idx, n = W * H;
     const start = id(sx, sy), target = id(tx, ty);
     if (start === target) return [{ x: tx, y: ty }];
@@ -1690,6 +1691,96 @@ const Path = {
         if (seen[ni] === gen) continue;
         seen[ni] = gen; prev[ni] = cur;
         q.push(ni);
+        const dd = Math.hypot(nx - tx, ny - ty);
+        if (dd < bestD) { bestD = dd; best = ni; }
+      }
+    }
+    const goal = found ? target : best;
+    if (goal === start) return null;
+    const path = [];
+    let cur = goal;
+    while (cur !== start) {
+      path.push({ x: cur % W, y: (cur / W) | 0 });
+      cur = prev[cur];
+    }
+    path.reverse();
+    return path;
+  },
+
+  /* THE ROAD CALLS THE WALKER (CFG.WEAR.prefer, tests/worn-paths.mjs). The
+     same search with one difference: a step's price is the ground's — 1 for
+     open grass, less on a worn path — so a work trip bends onto the road its
+     town has already worn instead of cutting a fresh line across the
+     meadow. A* over the same neighbour rules as find() (8-way, no corner
+     squeezing, passability asked once per tile), octile step lengths, and an
+     admissible heuristic (the cheapest ground times the octile distance).
+     Unreachable goals fall back exactly as find() does: the path to the
+     reached tile nearest the target. Only Units.wearPrefer asks for it, and
+     only while some ground is worn, so a world without roads never pays. */
+  _pwG: null, _pwCl: null, _pwHeap: null,
+  findWeighted(sx, sy, tx, ty, owner, domain, cost) {
+    const W = CFG.W, H = CFG.H, n = W * H, id = MapGen.idx;
+    const start = id(sx, sy), target = id(tx, ty);
+    if (start === target) return [{ x: tx, y: ty }];
+    if (!this._pfPrev || this._pfPrev.length !== n) {
+      this._pfPrev = new Int32Array(n); this._pfSeen = new Int32Array(n);
+      this._pfPass = new Uint8Array(n); this._pfPassGen = new Int32Array(n); this._pfGen = 0;
+    }
+    if (!this._pwG || this._pwG.length !== n) {
+      this._pwG = new Float64Array(n); this._pwCl = new Int32Array(n);
+      this._pwHeap = { k: new Int32Array(n * 8), f: new Float64Array(n * 8) };
+    }
+    const gen = ++this._pfGen, prev = this._pfPrev, seen = this._pfSeen, pass = this._pfPass, passGen = this._pfPassGen;
+    const g = this._pwG, closed = this._pwCl, hk = this._pwHeap.k, hf = this._pwHeap.f;
+    const ok = (x, y) => {
+      if (x < 0 || y < 0 || x >= W || y >= H) return false;
+      const k = y * W + x;
+      if (passGen[k] !== gen) { passGen[k] = gen; pass[k] = this.passable(x, y, owner, domain) ? 1 : 0; }
+      return pass[k] === 1;
+    };
+    const hmin = cost.min || 1, R2 = Math.SQRT2 - 1;
+    const h = (x, y) => { const dx = Math.abs(x - tx), dy = Math.abs(y - ty); return (Math.max(dx, dy) + R2 * Math.min(dx, dy)) * hmin; };
+    let hn = 0;
+    const push = (k, f) => {                       // binary min-heap on f
+      let i = hn++;
+      while (i > 0) { const p = (i - 1) >> 1; if (hf[p] <= f) break; hk[i] = hk[p]; hf[i] = hf[p]; i = p; }
+      hk[i] = k; hf[i] = f;
+    };
+    const pop = () => {
+      const top = hk[0]; hn--;
+      if (hn > 0) {
+        const k = hk[hn], f = hf[hn]; let i = 0;
+        for (;;) {
+          let c = 2 * i + 1; if (c >= hn) break;
+          if (c + 1 < hn && hf[c + 1] < hf[c]) c++;
+          if (hf[c] >= f) break;
+          hk[i] = hk[c]; hf[i] = hf[c]; i = c;
+        }
+        hk[i] = k; hf[i] = f;
+      }
+      return top;
+    };
+    seen[start] = gen; prev[start] = start; g[start] = 0;
+    push(start, h(sx, sy));
+    const dirs = [1, 0, -1, 0, 0, 1, 0, -1, 1, 1, -1, -1, 1, -1, -1, 1];
+    let found = false, best = start, bestD = Math.hypot(sx - tx, sy - ty);
+    while (hn > 0 && hn < hk.length - 8) {
+      const cur = pop();
+      if (closed[cur] === gen) continue;
+      closed[cur] = gen;
+      if (cur === target) { found = true; break; }
+      const cx = cur % W, cy = (cur / W) | 0;
+      for (let d = 0; d < 8; d++) {
+        const dx = dirs[d * 2], dy = dirs[d * 2 + 1];
+        const nx = cx + dx, ny = cy + dy;
+        if (!ok(nx, ny)) continue;
+        if (dx && dy && (!ok(cx + dx, cy) || !ok(cx, cy + dy))) continue;
+        const ni = id(nx, ny);
+        if (closed[ni] === gen) continue;
+        const ng = g[cur] + (dx && dy ? Math.SQRT2 : 1) * cost(nx, ny);
+        if (seen[ni] === gen && ng >= g[ni]) continue;
+        seen[ni] = gen; prev[ni] = cur; g[ni] = ng;
+        push(ni, ng + h(nx, ny));
         const dd = Math.hypot(nx - tx, ny - ty);
         if (dd < bestD) { bestD = dd; best = ni; }
       }

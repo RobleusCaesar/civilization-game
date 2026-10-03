@@ -966,18 +966,28 @@ const R = {
   /* WORN PATHS (G.noteWear / wearDaily, tests/worn-paths.mjs): where the
      town's work walks, the ground wears. Each tile carries a LEVEL (0-3) and
      the road is drawn as SEGMENTS between the centres of 8-neighbouring worn
-     tiles, a band of fixed half-width around each (a lone worn tile is a
-     round patch): a core in the segment's own tone (thinned grass, trodden
-     earth, bare path — the lesser of its two ends) and a softer margin one
-     tone lighter, every edge dithered by a hash. Bilinear interpolation was
+     tiles, a band of fixed half-width around each: a core in the segment's
+     own tone (trodden earth, bare path — the lesser of its two ends) and a
+     soft margin, every edge dithered by a hash. Bilinear interpolation was
      tried first and is wrong twice over: a straight road filled the whole
      tile height, and narrowing it by threshold broke every diagonal step
      (two diagonal tiles meet only at a corner). Painted in the LAST ground
-     pass, beside the hue wash, so the road lies over swards and decals. A
-     tile's look depends only on the 3x3 around it, which the ±2 ground
-     reset of drawTilesAt already covers. */
-  WEAR_TONES: [null, [176, 160, 96, 0.24], [126, 100, 62, 0.5], [120, 94, 60, 0.78]],
-  WEAR_CORE: 0.16, WEAR_EDGE: 0.29,
+     pass, beside the hue wash, so the road lies over swards and decals.
+     THE SECOND PASS (operator: "a kid scribbling with a brown marker"):
+     three things drew the scribble, and each has its rule now. THINNED GRASS
+     IS NEVER DRAWN — level 1 is tracked (it is how a route earns its way to
+     a path) but painted it was a pale halo that doubled every road's width.
+     A DIAGONAL BESIDE A WORN CORNER IS NOT DRAWN — the L through the corner
+     already joins the two, and drawing both filled every turn with a
+     triangle of dirt. And a LONE worn tile is no road: a path is drawn only
+     where it runs. The bands are narrower and cut on a 2px grid (not 4px),
+     in a light dusty earth rather than dark brown. A tile's look depends
+     only on the 3x3 around it, which the ±2 ground reset of drawTilesAt
+     already covers. */
+  WEAR_TONES: [null, null, [150, 128, 86, 0.46], [166, 140, 94, 0.74]],
+  WEAR_SOFTTONES: [null, null, [146, 128, 86, 0.2], [160, 136, 92, 0.34]],
+  WEAR_HALF: [0, 0, 0.085, 0.125],    // the core's half-width, in tiles
+  WEAR_SOFT: 0.06,                     // the soft margin beyond it
   wearPaint(g, x, y, terr) {
     const w = S.map && S.map.wear;
     if (!w || !MapGen.onBoard(x, y) || terr[MapGen.idx(x, y)] !== T.GRASS) return;
@@ -986,40 +996,39 @@ const R = {
     let any = 0;
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
       const nx = x + dx, ny = y + dy;
-      const v = MapGen.onBoard(nx, ny) && terr[MapGen.idx(nx, ny)] === T.GRASS ? G.wearLevel(nx, ny) : 0;
+      let v = MapGen.onBoard(nx, ny) && terr[MapGen.idx(nx, ny)] === T.GRASS ? G.wearLevel(nx, ny) : 0;
+      if (v < 2) v = 0;                                   // thinned grass is tracked, never drawn
       L[(dy + 1) * 3 + dx + 1] = v; any |= v;
     }
     if (!any) return;
-    // the segments that can reach this tile: every worn pair inside the 3x3,
-    // 8-neighbours of each other; a worn tile with no worn neighbour is a dot
     const segs = [];
     for (let a = 0; a < 9; a++) {
       if (!L[a]) continue;
       const ax = a % 3, ay = (a / 3) | 0;
-      let joined = false;
-      for (let c = 0; c < 9; c++) {
-        if (c === a || !L[c]) continue;
+      for (let c = a + 1; c < 9; c++) {
+        if (!L[c]) continue;
         const cx = c % 3, cy = (c / 3) | 0;
         if (Math.abs(cx - ax) > 1 || Math.abs(cy - ay) > 1) continue;
-        joined = true;
-        if (c > a) segs.push([ax - 1, ay - 1, cx - 1, cy - 1, Math.min(L[a], L[c])]);
+        // a diagonal beside a worn corner: the L through the corner joins them
+        if (cx !== ax && cy !== ay && (L[ay * 3 + cx] || L[cy * 3 + ax])) continue;
+        segs.push([ax - 1, ay - 1, cx - 1, cy - 1, Math.min(L[a], L[c])]);
       }
-      if (!joined) segs.push([ax - 1, ay - 1, ax - 1, ay - 1, L[a]]);
     }
-    const TL = CFG.TILE, N = 8, cell = TL / N;
+    if (!segs.length) return;                             // a lone worn tile is no road
+    const TL = CFG.TILE, N = 16, cell = TL / N, SOFT = this.WEAR_SOFT;
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const px = (i + 0.5) / N - 0.5, py = (j + 0.5) / N - 0.5;   // relative to this tile's centre
-      const jit = (this._lh(x * N + i, y * N + j, 2711) - 0.5) * 0.09;
-      let best = 0;
+      const jit = (this._lh(x * N + i, y * N + j, 2711) - 0.5) * 0.045;
+      let best = 0, core = false;
       for (const [x1, y1, x2, y2, lv] of segs) {
         const vx = x2 - x1, vy = y2 - y1, ll = vx * vx + vy * vy;
         const t = ll ? Math.max(0, Math.min(1, ((px - x1) * vx + (py - y1) * vy) / ll)) : 0;
-        const d = Math.hypot(px - x1 - vx * t, py - y1 - vy * t) + jit;
-        const step = d < this.WEAR_CORE ? lv : d < this.WEAR_EDGE ? Math.max(1, lv - 1) : 0;
-        if (step > best) best = step;
+        const d = Math.hypot(px - x1 - vx * t, py - y1 - vy * t) + jit, hw = this.WEAR_HALF[lv];
+        if (d < hw) { if (!core || lv > best) { best = lv; core = true; } }
+        else if (!core && d < hw + SOFT && lv > best) best = lv;
       }
       if (!best) continue;
-      const c = this.WEAR_TONES[best];
+      const c = (core ? this.WEAR_TONES : this.WEAR_SOFTTONES)[best];
       g.fillStyle = 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + c[3] + ')';
       g.fillRect(x * TL + i * cell, y * TL + j * cell, cell, cell);
     }
@@ -1236,7 +1245,7 @@ const R = {
     if (wet) d *= 1.25;                                // the damp band grows thick
     if (rock >= 2) d *= 0.55;                          // thin soil below a crag
     d *= 1 - kept * (1 - LAND.KEPT_DENSITY);           // a tended verge is cropped, by degree
-    d *= [1, 0.7, 0.4, 0.15][G.wearLevel(x, y)];       // …and a worn path is walked flat
+    d *= [1, 1, 0.4, 0.15][G.wearLevel(x, y)];         // …and a worn path is walked flat (thinned grass is never drawn)
     const TL = CFG.TILE, px = TL / 32;                 // ONE authored pixel — the 32 grid
     let hh = (Math.imul(x, 0x51ed270b) ^ Math.imul(y, 0x85ebca6b) ^ this.landSeed()) >>> 0;
     const rnd = () => { hh = Math.imul(hh ^ (hh >>> 15), 0x2c1b3c6d); hh = (hh ^ (hh >>> 12)) >>> 0; return hh / 4294967295; };

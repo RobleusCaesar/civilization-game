@@ -1045,9 +1045,21 @@ const CFG = {
      DISTINCT DAYS such a trip crossed it (raw footsteps would let one
      20-soldier march pave a road while a working town paved nothing);
      `levels` are the day counts for thinned grass / trodden earth / bare
-     path, and an unused tile drops a level every `decay` days. Purely
-     visual: nothing reads it but the ground painter. */
-  WEAR: { tasks: ['gather', 'work', 'build', 'claim'], levels: [3, 6, 10], cap: 14, decay: 25 },
+     path, and an unused tile drops a level every `decay` days.
+     THE SECOND PASS (operator ruling on the retro gate: "too messy… like a
+     kid scribbling with a brown marker — fewer paths, and walking one is
+     10% faster"): the thresholds rose (a route must be walked on 10 days to
+     show as trodden earth at all — thinned grass is tracked but never
+     drawn), a step beside an established path credits the PATH (`pull`:
+     a neighbour `pull` days more worn takes the stamp, so a parallel rut
+     feeds the road instead of drawing a second one), a work trip PREFERS
+     worn ground (`prefer`, a per-level cost multiplier the villager's
+     route search pays — the road calls the walker, which is what keeps the
+     town to a few roads), a villager on trodden earth or better walks
+     `speed` times as fast (`fastLv`), and a path waits twice as long
+     (`decay` 50) before it starts to grow back. */
+  WEAR: { tasks: ['gather', 'work', 'build', 'claim'], levels: [5, 10, 16], cap: 24, decay: 50,
+          pull: 2, prefer: [1, 1, 0.84, 0.76], fastLv: 2, speed: 1.1 },
   /* the plague's earliest day: `from` + a seed-hashed 0..`spread` — the
      crowded-lanes gate is met by nearly every day-25 town, so a fixed day
      made it a scheduled punishment rather than an answer to a boom */
