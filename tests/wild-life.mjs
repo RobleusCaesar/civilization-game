@@ -653,8 +653,15 @@ const out = await p.evaluate(() => {
     const d = dims(f);
     if (d.h !== want[k] || d.w !== 3 * want[k]) bad.push(k + ' ' + d.w + 'x' + d.h);
   }
+  // …and the wolf eats in its own art, all eight ways, at the walk's density
+  for (const g of ['s', 'sw', 'w', 'nw', 'n', 'ne', 'e', 'se']) {
+    const f = join(root, 'assets/units/unit-wolf-' + g + '-eat.png');
+    if (!existsSync(f)) { bad.push('wolf eat ' + g + ' missing'); continue; }
+    const d = dims(f);
+    if (d.h !== 64 || d.w % 64 || d.w / 64 < 8) bad.push('wolf eat ' + g + ' ' + d.w + 'x' + d.h);
+  }
   const ok = bad.length === 0;
-  out.res.everyBeastShipsThreeLooks = (ok ? 'PASS' : 'FAIL') + ' — ' + (bad.join(', ') || 'fresh, picked, bones at the walk density');
+  out.res.everyBeastShipsThreeLooks = (ok ? 'PASS' : 'FAIL') + ' — ' + (bad.join(', ') || 'fresh, picked, bones at the walk density; the wolf eats all eight ways');
   if (!ok) out.fails.push('everyBeastShipsThreeLooks');
   const v = await p.evaluate(async () => {
     for (const k of Assets.CARCASS_KINDS) Assets._tryLoadCarcass(k);
