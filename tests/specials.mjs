@@ -419,25 +419,60 @@ const out = await p.evaluate(() => {
       S.wildfire = { avail: true, day: 90, warned: true, phase: null, burning: {}, burnt: 0, t: 0, spreadT: 0, wind: [-1, 0], done: false };   // blowing toward the house
       toasts.length = 0; G.fireDaily();
       const lit = S.wildfire.phase === 'burn' && toasts.some(m => /Lightning/.test(m)) && S.specialDay === 90;
+      // the stand as it stood: every tree's place, before a spark
+      const before = {};
+      for (let y = oy; y < oy + 5; y++) for (let x = ox; x < ox + 8; x++)
+        before[y * CFG.W + x] = R.forestLayoutAt(x, y, S.map.terrain).map(t => t.wx + ',' + t.wy).join(' ');
       for (let i = 0; i < 2400 && !S.wildfire.done; i++) G.fireTick(0.25);
       const F = S.wildfire;
-      let stumps = 0, marked = 0, regrows = 0;
+      let burntN = 0, stumps = 0, marked = 0, back = 0;
       for (let y = oy; y < oy + 5; y++) for (let x = ox; x < ox + 8; x++) {
         const i = y * CFG.W + x;
-        if (S.map.terrain[i] === T.STUMPS) { stumps++; if (S.map.workedBy[i] === 'F') marked++; if (S.map.decay && S.map.decay[i]) regrows++; }
+        if (S.map.terrain[i] === T.STUMPS) stumps++;
+        if (S.map.terrain[i] === T.RUIN && S.map.burnt && S.map.burnt[i] === S.day) {
+          burntN++;
+          if (S.map.workedBy && S.map.workedBy[i]) marked++;
+          if (S.map.decay && S.map.decay[i] === S.day + C.ashDays) back++;
+        }
       }
       let across = 0; for (let y = oy; y < oy + 5; y++) for (let x = ox + 9; x < ox + 11; x++) if (S.map.terrain[y * CFG.W + x] === T.FOREST) across++;
-      ck('theFireWalksTheWoodAndStopsAtTheBreak', lit && F.done && F.burnt <= C.cap.moderate && stumps === F.burnt && stumps >= 20 && across === 10 && S.stats.wildfireEndured === 1,
-        JSON.stringify({ lit, done: F.done, burnt: F.burnt, stumps, across, cap: C.cap.moderate }));
+      ck('theFireWalksTheWoodAndStopsAtTheBreak', lit && F.done && F.burnt <= C.cap.moderate && burntN === F.burnt && burntN >= 20 && across === 10 && S.stats.wildfireEndured === 1,
+        JSON.stringify({ lit, done: F.done, burnt: F.burnt, burntGround: burntN, across, cap: C.cap.moderate }));
       const houseHit = !S.buildings.includes(hb) || hb.hp < hp0;
       ck('itBurnsAHouseButBlamesNobody', houseHit && S.breachedP === false && S.stats.razed === razed0 &&
         (S.workLost && S.workLost.P || []).length === lost0,
         JSON.stringify({ houseHit, breached: S.breachedP, razed: S.stats.razed - razed0 }));
+      /* THE BURNT WOOD (operator ruling: "burned out trees should not leave
+         stumps… a new design for a burned forest tile… it can NOT be used for
+         creating a lumber mill after that… its period of being ash, and
+         eventually it returns to grass") — and its trees stand as snags in
+         exactly the places they grew */
       let sx = -1, sy = -1;
-      for (let y = oy; y < oy + 5 && sx < 0; y++) for (let x = ox; x < ox + 8; x++) if (S.map.terrain[y * CFG.W + x] === T.STUMPS) { sx = x; sy = y; break; }
+      for (let y = oy + 1; y < oy + 4 && sx < 0; y++) for (let x = ox + 1; x < ox + 7; x++) {
+        const i = y * CFG.W + x; if (S.map.burnt && S.map.burnt[i] != null && before[i]) { sx = x; sy = y; break; }
+      }
+      const si = sy * CFG.W + sx, day0 = S.day;
       const camp = Bld.stationGround('lumber', sx, sy);
-      ck('andFireKilledGroundIsNobodysClearing', marked === stumps && regrows === stumps && !camp.ok && /Fire killed/.test(camp.why),
-        JSON.stringify({ marked, regrows, stumps, why: camp.why }));
+      const hot = R.snagAt(si), smoulder = Bld.canPlace('P', 'house', sx, sy, { noCost: true, noSeal: true });
+      // every snag stands where a tree grew; a sparse field of them, never none
+      let samePlaces = 0, tiles = 0, snags = 0, grew = 0;
+      for (const k in before) { if (!before[k] || !(S.map.burnt && S.map.burnt[k] != null)) continue; tiles++;
+        const was = new Set(before[k].split(' ')), now = R.snagLayoutAt(k % CFG.W, (k / CFG.W) | 0, S.map.terrain).map(t => t.wx + ',' + t.wy);
+        snags += now.length; grew += was.size;
+        if (now.length && now.every(p => was.has(p))) samePlaces++; }
+      const same = samePlaces === tiles, share = snags / Math.max(1, grew);
+      S.day = day0 + C.smoulderDays;
+      const cold = R.snagAt(si), cooled = Bld.canPlace('P', 'house', sx, sy, { noCost: true, noSeal: true });
+      S.day = day0 + R.snagEnd(si);
+      const fallen = R.snagAt(si);
+      S.day = day0 + C.ashDays - 1; G.dayTick();
+      const grass = S.map.terrain[si] === T.GRASS && !(S.map.burnt && S.map.burnt[si] != null);
+      ck('aBurntWoodIsAshNotStumps', stumps === 0 && marked === 0 && back === burntN && !camp.ok && /Fire took this wood/.test(camp.why || '')
+          && hot === 'hot' && !smoulder.ok && smoulder.code === 'ash' && cold === 'cold' && cooled.code !== 'ash'
+          && fallen === null && grass,
+        JSON.stringify({ stumps, marked, back, burntN, why: camp.why, hot, smoulder: smoulder.code, cold, cooled: cooled.ok || cooled.code, fallen, grass }));
+      ck('andItsTreesStandWhereTheyGrew', same && tiles >= 10 && share > 0.18 && share < 0.45,
+        JSON.stringify({ samePlaces, tiles, snags, grew, share: +share.toFixed(2) }));
 
       // Calm burns the wood and spares the town
       fresh('spx-fire2'); flat(); S.mode = 'calm';

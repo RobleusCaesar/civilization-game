@@ -320,6 +320,7 @@ const G = {
     this.log(`Scouts report: ${gen.scarce} is scarce in this valley — claim it before the rival does.`, false, 6400);
     this.log('First barbarian raids expected around day ' + S.wave.next, false, 6400);
     this.warmTribes();
+    this.warmFx();
     // villager tier art for both halls, now the tunics are rolled (phase-1:
     // every probe 404s and the procedural cast stands — that is the design)
     if (window.R) { R._vTier = null; R._sTier = null; }
@@ -348,6 +349,16 @@ const G = {
      tribe; 'sea' rides along because nine longboat crews in ten are the Sea
      Folk whatever the camps rolled. A band that marches in off the map with
      a sixth look still builds lazily, exactly as before. */
+  /* the special event's own art (Assets.wantFx): asked for the day a run is
+     dealt the event, never at boot — and a crater already in the land asks
+     for its own. Never for the title's demo world (Screens.show re-asks the
+     moment a world is actually entered). */
+  warmFx() {
+    if (typeof Assets === 'undefined' || !Assets.wantFx || !S) return;
+    if (window.Screens && Screens._demo) return;
+    if (S.special) Assets.wantFx(S.special);
+    if (S.starfall && S.starfall.x >= 0) Assets.wantFx('starfall');
+  },
   warmTribes() {
     if (typeof Sprites === 'undefined' || !Sprites.barbFor) return;
     const want = new Set(['sea']);
@@ -688,6 +699,7 @@ const G = {
           regrown = true;
         } else if (t === T.RUIN) {
           S.map.terrain[i] = T.GRASS;
+          if (S.map.burnt) delete S.map.burnt[k];             // the ash is gone: plain grass again
           R.updateTile(i % CFG.W, (i / CFG.W) | 0);
         }
         if (S.map.workedBy) delete S.map.workedBy[k];   // regrown ground forgets its maker
@@ -697,6 +709,20 @@ const G = {
         S.regrowSeen = true;
         this.log('🌱 Felled woods and spent soil recover in time — but a quarried seam never does');
       }
+    }
+    // THE BURNT WOOD turns on its own days: the embers go out, the char greys
+    // to ash, and the grass comes back through it (R.burntGround reads the age)
+    if (S.map.burnt && R.repaintBurnt) {
+      const C = CFG.WILDFIRE;
+      // the snags' standing days are done: in sight, they topple into the ash
+      if (R.snagEnd && R.startTreeFall) for (const k in S.map.burnt) {
+        const i = +k;
+        if (S.day - S.map.burnt[k] === R.snagEnd(i) && S.map.terrain[i] === T.RUIN)
+          R.startTreeFall(i % CFG.W, (i / CFG.W) | 0, null, null, true);
+      }
+      R.repaintBurnt(i => { const age = S.day - S.map.burnt[i];
+        return age === C.smoulderDays || age === R.snagEnd(i) || age === C.charDays
+          || (age > C.charDays && (age - C.charDays) % 6 === 0); });
     }
     // THE SHOALS RETURN: a fished-out tile restocks after FISH_RETURN_DAYS.
     // The water itself never changed — only what swims in it — so this is its
@@ -998,6 +1024,7 @@ const G = {
     if (!F || !F.avail || F.done || F.phase) return;
     if (!F.warned && S.day >= F.day - C.warnDays) {
       F.warned = true;
+      if (typeof Assets !== 'undefined' && Assets.wantFx) Assets.wantFx('wildfire');   // its art, if not already asked
       this.log('☀️ No rain for weeks — the grass crackles underfoot and the great wood stands tinder-dry.', 'note', 6000);
     }
     if (S.day < F.day) return;
@@ -1005,6 +1032,8 @@ const G = {
     if (!site) { F.avail = false; F.done = true; return; }   // the town grew into the wood: the summer passes
     F.phase = 'burn'; F.t = 0; F.spreadT = C.spreadS; F.bolt = { x: site.x, y: site.y, t: 0 };
     F.burning[site.y * CFG.W + site.x] = 0;
+    F.struck = site.y * CFG.W + site.x;                      // the struck stand goes up at once (R.drawBurningWood)
+    if (R.drawTileAt) R.drawTileAt(site.x, site.y);           // a burning stand leaves the bake
     this.specialFired();
     if (R.startle) R.startle(site.x + 0.5, site.y + 0.5, 14);
     this.log('⚡ Lightning finds the great wood — FIRE walks the trees! Fell a firebreak, or let it burn.', true, 8000);
@@ -1013,7 +1042,7 @@ const G = {
     const F = S.wildfire, C = CFG.WILDFIRE, W = CFG.W;
     if (!F || !F.phase) return;
     F.t += dt;
-    if (F.bolt) { F.bolt.t += dt; if (F.bolt.t > 0.5) F.bolt = null; }
+    if (F.bolt) { F.bolt.t += dt; if (F.bolt.t > ((R.FIRE && R.FIRE.boltS) || 0.5)) F.bolt = null; }
     if (F.phase === 'rain') {
       if (F.t >= C.rainS) {
         F.phase = null; F.done = true; F.avail = false;
@@ -1036,12 +1065,24 @@ const G = {
       if (F.burning[k] >= C.burnS) {
         delete F.burning[k];
         F.burnt++;
-        if (S.map.terrain[i] !== T.FOREST) continue;          // somebody felled it first
-        if (R.startTreeFall) R.startTreeFall(x, y, x + 0.5 - F.wind[0], y + 0.5 - F.wind[1]);
-        S.map.terrain[i] = T.STUMPS; S.map.resAmount[i] = 0;
-        (S.map.workedBy || (S.map.workedBy = {}))[i] = 'F';  // fire-killed: nobody's clearing (Bld.stationGround)
-        this.scheduleRevert(i);
-        R.updateTile(x, y);
+        if (S.map.terrain[i] !== T.FOREST) { if (R.drawTileAt) R.drawTileAt(x, y); continue; }   // somebody felled it first
+        /* THE BURNT WOOD (operator ruling on the retro gate: "burned out trees
+           should not leave stumps… a new design for a burned forest tile,
+           almost like a burned down building… it can NOT be used for creating
+           a lumber mill after that… its period of being ash, and eventually it
+           returns to grass"). The tile is T.RUIN — the game's own scar:
+           walkable, no station's worked ground — marked on S.map.burnt with
+           the day it burnt (R.burntGround draws it from that) and put on its
+           OWN clock back to grass, never the wood's regrowth. */
+        S.map.terrain[i] = T.RUIN; S.map.resAmount[i] = 0;
+        (S.map.burnt || (S.map.burnt = {}))[i] = S.day;
+        if (S.map.workedBy) delete S.map.workedBy[i];
+        if (!S.map.decay) S.map.decay = {};
+        S.map.decay[i] = S.day + C.ashDays;
+        // seen, the burnt wood is painted (its trees still standing as snags,
+        // R.snagAt); unseen, the stand comes back into the bake as memory holds
+        // it (it left the cache while it burned)
+        if (this.visibleAt(x, y)) R.updateTile(x, y); else if (R.drawTileAt) R.drawTileAt(x, y);
       }
     }
     F.spreadT -= dt;
@@ -1062,7 +1103,7 @@ const G = {
             if (sc > bs) { bs = sc; best = j; }
           }
         }
-        if (best >= 0) F.burning[best] = 0;
+        if (best >= 0) { F.burning[best] = 0; if (R.drawTileAt) R.drawTileAt(best % W, (best / W) | 0); }   // it leaves the bake as it catches
       }
       if (!Object.keys(F.burning).length) { F.phase = 'rain'; F.t = 0; }
     }
@@ -1249,6 +1290,7 @@ const G = {
     if (!F || !F.avail || F.done || F.phase) return;
     if (!F.warned && S.day >= F.day - C.omenDays) {
       F.warned = true;
+      if (typeof Assets !== 'undefined' && Assets.wantFx) Assets.wantFx('starfall');   // its art, if not already asked
       this.log('☄️ A star with a burning tail hangs in the night sky. The elders say it is coming down.', 'note', 6000);
     }
     if (S.day >= F.day) F.phase = 'night';   // it falls once the dark is deep (starfallTick)
@@ -1298,6 +1340,8 @@ const G = {
       R.updateTile(x, y);
     }
     this.reveal(F.x + 1, F.y + 1, 2);
+    if (R.repaintCrater) R.repaintCrater();                   // the scar goes into the ground (R.craterPaint)
+    if (window.Sound && Sound.play) Sound.play('impact');
     if (R.startle) R.startle(F.x + 1, F.y + 1, 16);
     if (R.startPlacePoof) { R.startPlacePoof(F.x, F.y, 2); R.startPlacePoof(F.x, F.y, 2, { delay: 260, scale: 0.7 }); }
     this.log('☄️ A STAR FALLS between the two towns! Sky-iron and gold lie in the crater — the first hands there take them.', true, 9000);
@@ -1306,6 +1350,7 @@ const G = {
     const F = S.starfall, C = CFG.STARFALL;
     F.phase = null; F.done = true; F.avail = false; F.claimed = owner;
     F.iron = { [owner]: C.iron };
+    if (R.repaintCrater) R.repaintCrater();                   // claimed, the crater goes cold
     if (owner === 'P') {
       S.res.gold += C.gold;
       if (S.stats) S.stats.starfallClaimed = 1;
@@ -2715,6 +2760,7 @@ const G = {
     if (data.tut === undefined) data.tut = null;      // pre-tutorial saves: no guidance mid-run
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.hunted) data.map.hunted = {};       // pre-worked-ground saves: the record starts empty
+    if (!data.map.burnt) data.map.burnt = {};         // the dry summer's ash ground (pre-ash saves: none)
     if (!data.map.wear) data.map.wear = {};           // pre-path saves: the ground has not worn yet
     /* PRE-MAKER saves (tests/worked-ground.mjs): spent ground carries no
        maker's mark yet, so deal one by the only honest guess left — the
@@ -2807,6 +2853,7 @@ const G = {
     R.onNewGame();
     this.updateVisibility();
     this.warmTribes();      // build the resident peoples' rigs here, not on first sighting
+    this.warmFx();
     // tier is DERIVED, never stored: a loaded save recomputes from its
     // Town Centers (onNewGame just dropped the cache) and re-asks for art
     Assets.loadVillagerArt('P'); Assets.loadVillagerArt('A');

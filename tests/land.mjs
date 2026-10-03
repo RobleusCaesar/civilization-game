@@ -1601,6 +1601,39 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
     v2.rebakes + ' rebakes over 28s of relentless purging (was 40 un-paced)');
   ck('andTheWaitBacksOff', v2.gap > R_MIN_GUESS,
     'backoff reached ' + v2.gap + 'ms');
+
+  /* THE BURNT WOOD REPAINTS AS IT REBAKES (the dry summer, R.burntGround /
+     R.snagAt): a burning stand leaves the bake, the snags it leaves stand in
+     it, smoulder to cold, topple at their hashed days, and the ash heals —
+     and at every one of those turns the incrementally repainted cache must
+     equal a fresh rebake byte for byte. Snags overhang their tile like any
+     crown, so this is the same ±2-ring rule every other terrain change obeys. */
+  const v3 = await p3.evaluate(async () => {
+    let site = null;
+    for (let i = 0; i < 80 && !site; i++) { G.newGame('burnt-' + i, 'moderate', 'medium'); site = G.fireSite(); }
+    if (!site) return { site: null };
+    Screens._demo = false; Screens.show('playing'); S.paused = true; G.freeVis = true; G.updateVisibility();
+    Assets.wantFx('wildfire');
+    await new Promise(r => { const t0 = performance.now(); const w = () => (Assets.fxFrames('char-dome-l-a') && Assets.fxFrames('char-dome-s-a')) || performance.now() - t0 > 15000 ? r() : setTimeout(w, 100); w(); });
+    R.rebuildTerrain();
+    S.day = 70;
+    S.wildfire = { avail: true, day: 70, warned: true, phase: null, burning: {}, burnt: 0, t: 0, spreadT: 0, wind: G.fireWindOf(S.seed), done: false };
+    const snap = () => R.terrainCache.getContext('2d').getImageData(0, 0, R.terrainCache.width, R.terrainCache.height).data;
+    const diff = () => { const a = snap(); R.rebuildTerrain(); const b2 = snap(); let d = 0; for (let i = 0; i < a.length; i += 4) if (a[i] !== b2[i] || a[i + 1] !== b2[i + 1] || a[i + 2] !== b2[i + 2]) d++; return d; };
+    const res = { art: !!Assets.fxFrames('char-dome-l-a') };
+    G.fireDaily();
+    for (let i = 0; i < 40; i++) G.fireTick(0.25);
+    res.midFire = diff();
+    for (let i = 0; i < 4000 && !S.wildfire.done; i++) G.fireTick(0.25);
+    res.afterFire = diff();
+    const C = CFG.WILDFIRE, at = [C.smoulderDays, C.snagDays - 2, C.snagDays, C.snagDays + 2, C.charDays, C.charDays + 6, C.ashDays];
+    let worst = 0;
+    for (let d = 1; d <= C.ashDays; d++) { S.day = 70 + d - 1; G.dayTick(); if (at.includes(d)) worst = Math.max(worst, diff()); }
+    res.stages = worst; res.left = Object.keys(S.map.burnt || {}).length;
+    return res;
+  });
+  ck('theBurntWoodRepaintsAsItRebakes', v3.art && v3.midFire === 0 && v3.afterFire === 0 && v3.stages === 0 && v3.left === 0,
+    JSON.stringify(v3));
   await p3.close();
   await new Promise(r => srv.close(r));
 }

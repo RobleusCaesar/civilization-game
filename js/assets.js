@@ -517,6 +517,86 @@ const Assets = {
     return a.length ? a[(i >>> 0) % a.length] : null;
   },
 
+  /* ---- THE SPECIAL EVENTS' OWN ART (assets/fx/) ----------------------
+
+       starfall  meteor.png        the burning head and its near tail,
+                                   falling toward the LOWER LEFT
+                 boom.png          the impact
+                 smoke.png         one puff, billow to nothing
+                 crater-hot.png    one 4x4-tile ground decal at 1:1
+                 crater-cold.png   (128x128), the site's 2x2 its centre
+       wildfire  burn-{piece}.png  THAT tree piece ablaze, by the piece's
+                                   own name (dome-l-a … dome-s-d): a loop of
+                                   64px frames at 2:1, foot on the bottom row
+                 char-{piece}.png  the snag it leaves standing: two 32px
+                                   frames at 1:1, [cold, hot]
+                 smoke.png         (shared)
+
+     Every file is a horizontal strip of SQUARE frames (a single image is a
+     strip of one), installed with binary alpha like every sprite. Loaded
+     ON DEMAND — wantFx(special), from newGame/loadJSON — never at boot:
+     most runs never see a fire or a falling star and pay nothing for them,
+     and the requests ride the LATE tier so nobody waits on a plaque for
+     an event weeks away. Every file is optional: a 404 leaves that layer
+     to the procedural drawing (R.drawStarfall / R.drawWildfire). */
+  FX_DIR: 'assets/fx/',
+  FX_SETS: {
+    starfall: ['meteor', 'boom', 'smoke', 'crater-hot', 'crater-cold'],
+    // every tree piece burns as ITSELF: burn-{piece} (that tree, ablaze — a
+    // loop) and char-{piece} (the snag it leaves standing, [cold, hot]), one
+    // pair per piece of the forest catalog
+    // (a name ending in a digit CASCADES: -2 is asked for only once -1 has
+    // landed, and so on — none of these do, so each is one request)
+    wildfire: ['smoke'].concat(
+      ...['dome-l-a', 'dome-l-b', 'dome-l-c', 'dome-l-d', 'dome-s-a', 'dome-s-b', 'dome-s-c', 'dome-s-d']
+        .map(p => ['burn-' + p, 'char-' + p])),
+  },
+  fx: {},                         // name -> [frame canvases…]
+  _fxAsked: {},
+  fxUrl(name) { return this.FX_DIR + name + '.png?v=' + (CFG.ART_V || 1); },
+  wantFx(special) {
+    const names = this.FX_SETS[special];
+    if (names) for (const name of names) this._fxOne(name);
+  },
+  _fxOne(name) {
+    if (this._fxAsked[name]) return;
+    this._fxAsked[name] = true;
+    const img = new Image();
+    img.onload = () => {
+      this.setFxArt(name, img);
+      const m = /^(.*-)(\d)$/.exec(name);             // the cascade: -1 landed, try -2 …
+      if (m && +m[2] < 6) this._fxOne(m[1] + (+m[2] + 1));
+    };
+    img.onerror = () => { /* that layer stays procedural */ };
+    this._track(this._prio(img, 'low'), false, true);
+    img.src = this.fxUrl(name);
+  },
+  setFxArt(name, img) {
+    const F = img && img.height;
+    if (!F || !img.width || img.width % F) return false;
+    const frames = [];
+    for (let i = 0; i < img.width / F; i++) {
+      const c = document.createElement('canvas'); c.width = F; c.height = F;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.drawImage(img, i * F, 0, F, F, 0, 0, F, F);
+      try {
+        const d = g.getImageData(0, 0, F, F);
+        for (let k = 3; k < d.data.length; k += 4) d.data[k] = d.data[k] >= 128 ? 255 : 0;
+        g.putImageData(d, 0, 0);
+      } catch (e) { /* tainted on file:// — the strip still draws, unsnapped */ }
+      frames.push(c);
+    }
+    this.fx[name] = frames;
+    // the crater is part of the GROUND: art that lands after the bake asks
+    // for the crater's own tiles to be repainted, never the whole map
+    if (name.startsWith('crater') && typeof R !== 'undefined' && R.repaintCrater) R.repaintCrater();
+    // …and so is the burnt wood: the snags standing on it
+    if (name.startsWith('char-') && typeof R !== 'undefined' && R.repaintBurnt) R.repaintBurnt();
+    return true;
+  },
+  fxFrames(name) { const a = this.fx[name]; return a && a.length ? a : null; },
+
   /* ---- THE WATER'S MOTION PASS: three authored files -----------------
 
        assets/terrain/water/surface.png   a seamless grayscale texture the
@@ -813,7 +893,7 @@ const Assets = {
   _tryTreePiece(style, size, li) {
     if (li >= 18) return;                         // letters a..r, the cascade stops at the first 404
     const img = new Image();
-    img.onload = () => { this.setTreePiece(style + '-' + size, img); this._tryTreePiece(style, size, li + 1); };
+    img.onload = () => { this.setTreePiece(style + '-' + size, img, String.fromCharCode(97 + li)); this._tryTreePiece(style, size, li + 1); };
     img.onerror = () => { /* the catalog ends here — procedural fills the gaps */ };
     this._track(this._prio(img, 'high'), true);
     img.src = this.treeUrl(style, size, String.fromCharCode(97 + li));
@@ -838,10 +918,13 @@ const Assets = {
     this.trees['stone-l'] = prior || [];
     this.treesRev++; this._muteK = -1; this._slabCache = null;
   },
-  setTreePiece(key, img) {
+  setTreePiece(key, img, letter) {
     if (!img || !img.width || !img.height) return false;
     const cut = (flip) => {
       const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+      // WHICH PIECE this is and whether it is the mirror: the dry summer burns
+      // every tree as ITSELF (R.drawBurningWood reads 'burn-' + _cfName)
+      if (letter) { c._cfName = key + '-' + letter; c._cfFlip = flip; }
       const g = c.getContext('2d');
       g.imageSmoothingEnabled = false;
       if (flip) { g.translate(img.width, 0); g.scale(-1, 1); }
@@ -963,6 +1046,7 @@ const Assets = {
       if (key.startsWith('stone-')) { this._treesMuted[key] = this.trees[key].slice(); continue; }
       this._treesMuted[key] = this.trees[key].map((c, i) => {
         const m = this._muteCanvas(c, k, ramps);
+        m._cfName = c._cfName; m._cfFlip = c._cfFlip;     // the piece's name survives the mute
         // FRUIT IS FAT AND BRIGHT (the referee's live report, and the same
         // lesson the procedural orchard learned once already): the 2:1
         // downscale left one-pixel fruit and the mute sank it to the ramp's

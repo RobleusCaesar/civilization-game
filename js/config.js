@@ -16,7 +16,7 @@ const T = {
 
 const CFG = {
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 41,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 42,           // cache-buster on every art URL (?v=N) — bump when a PNG in
                        // v40: the desktop glen is the supplied painting
                        // (assets/ui/title-bg-wide.png, re-encoded to webp/jpg).
                        // THE GLEN URLS IN index.html CARRY THIS NUMBER BY HAND
@@ -1075,14 +1075,20 @@ const CFG = {
   /* THE DRY SUMMER: on a seed-hashed day lightning finds the biggest wood,
      at a tree `clearB`+ tiles from every building; fire walks tree to tree
      (one new tree every `spreadS` real seconds, biased down a seeded wind),
-     each burns `burnS` seconds and falls to fire-killed STUMPS, until no
-     fuel is left or `cap[mode]` trees have burned; then `rainS` of rain.
+     each burns `burnS` seconds and leaves BURNT WOOD (below, never stumps),
+     until no fuel is left or `cap[mode]` trees have burned; then `rainS` of rain.
      Firebreaks are the game's own rules: only FOREST burns. A building beside
      a burning tree takes `bldDps` hp a second (never walls, gates or towers,
      and never on Calm). `standMin` is the eligibility: no wood that big,
      no dry summer. */
   WILDFIRE: { dayMin: 40, dayMax: 180, warnDays: 2, standMin: 10, clearB: 8, spreadS: 1.5, burnS: 15,
-              cap: { calm: 16, moderate: 36, hard: 50 }, bldDps: 2.5, rainS: 10 },
+              cap: { calm: 16, moderate: 36, hard: 50 }, bldDps: 2.5, rainS: 10,
+              // THE BURNT WOOD: a stand the fire took is ash ground, not stumps —
+              // its trees standing as charred snags (smouldering, unbuildable, for
+              // smoulderDays; toppling into the ash at snagDays, give or take two
+              // by the tile), charred ground to charDays, ash after, and back to
+              // GRASS at ashDays (never back to forest, never a lumber camp's)
+              smoulderDays: 4, snagDays: 11, charDays: 14, ashDays: 40 },
   /* ANIMAL STRIFE (tests/specials.mjs §3d — the operator's replacement for
      the Great Migration: "two wolf packs going at it, or wolves trying to
      take down a bear… interesting to witness, or frightening to stumble
@@ -1112,7 +1118,7 @@ const CFG = {
      seams; the first villager to stand at it brings home `gold` and arms
      the next `iron` soldiers that tribe raises with sky-iron (+1 atk). */
   STARFALL: { dayMin: 60, dayMax: 160, calmMin: 80, calmMax: 220, minHall: 12, fair: 0.2,
-              omenDays: 1, fallS: 2.4, aiDelayS: 4, gold: 60, iron: 6 },
+              omenDays: 1, fallS: 3.6, aiDelayS: 4, gold: 60, iron: 6 },   // fallS: long enough to watch it cross the sky
   ECLIPSE: { dayMin: 30, dayMax: 200, dimS: 6, darkS: 20, backS: 6, tint: 0.55, vision: 0.5, warnDays: 3, workMult: 0.5 },
   DRAGON: { minDay: 25, foesMin: 6, radius: 9 },
 

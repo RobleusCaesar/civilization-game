@@ -1035,6 +1035,7 @@ const R = {
   },
   hueTint(g, x, y, terr) {
     this.wearPaint(g, x, y, terr);
+    this.craterPaint(g, x, y, false);      // the crater's ejecta, over the meadow and its paths
     if (!(LAND.HUE_AMP > 0) && !(LAND.KEPT_TINT > 0)) return;
     if (!MapGen.onBoard(x, y)) return;
     const t = terr[MapGen.idx(x, y)];
@@ -1094,6 +1095,8 @@ const R = {
      scatter is identical on every reload and through every save. */
   landDecals(g, x, y, terr) {
     if (LAND.DECAL_DENSITY <= 0) return;
+    if (this.craterPit(x, y)) return;      // nothing grows in the fallen star's pit
+    if (S.map.burnt && S.map.burnt[MapGen.idx(x, y)] != null) return;   // …nor in the ash of a burnt wood
     /* NOTHING IS WORKED IN THE BLACK. The outermost ring is off-map void —
        drawTile paints it flat black and returns — but the scatter was asking
        only what TERRAIN a tile held, and the rim's terrain is ordinary grass
@@ -1212,6 +1215,7 @@ const R = {
   grassCover(g, x, y, terr, cap) {
     if (LAND.GRASS_DENSITY <= 0) return;
     if (!MapGen.onBoard(x, y)) return;
+    if (this.craterPit(x, y)) return;      // …nor any meadow over it
     const t = terr[MapGen.idx(x, y)];
     if (t !== T.GRASS) return;
     if (typeof Bld !== 'undefined' && Bld.at && Bld.at(x, y)) return;
@@ -1941,8 +1945,8 @@ const R = {
      all call this and always agree. Foot anchors (wy is where trunk meets
      ground); pickRr carries the dense-area small-pieces rule decided at
      layout time, where the density is known. */
-  forestLayoutAt(tx, ty, terr) {
-    if (terr[MapGen.idx(tx, ty)] !== T.FOREST || this.forestRareAt(tx, ty, terr)) return [];
+  forestLayoutAt(tx, ty, terr, noRare) {
+    if (terr[MapGen.idx(tx, ty)] !== T.FOREST || (!noRare && this.forestRareAt(tx, ty, terr))) return [];
     let cnt = 0;
     for (const [ox, oy] of NEIGH8)
       if (MapGen.inB(tx + ox, ty + oy) && terr[MapGen.idx(tx + ox, ty + oy)] === T.FOREST) cnt++;
@@ -2072,6 +2076,12 @@ const R = {
       if (t.stone) { g.drawImage(t.stone, t.wx - (t.stone.width >> 1), t.wy - t.stone.height); continue; }
       const h2 = (t.wx * 73856093 ^ t.wy * 19349663) >>> 0;
       const art = Assets.treePiece(t.kind, t.pickRr, h2);
+      if (t.snag) {
+        // the burnt wood's snag: the tree's own char, where the tree stood
+        const sn = this.snagPiece(art, t.snag);
+        if (sn) g.drawImage(sn, Math.round(t.wx - (art.width >> 1) + art.width / 2 - sn.width / 2), t.wy - sn.height);
+        continue;
+      }
       if (art) g.drawImage(art, t.wx - (art.width >> 1), t.wy - art.height);
       else Sprites.drawTree(fG, t.wx, t.wy - t.rr - 3, t.rr, t.ramp, 'round');
     }
@@ -2085,7 +2095,12 @@ const R = {
     const terr = S.map.seenTerrain || S.map.terrain;
     const trees = [];
     for (let ty = a; ty < b; ty++) for (let tx = 1; tx < CFG.W - 1; tx++) {
-      if (terr[ty * CFG.W + tx] === T.FOREST) { trees.push(...this.forestLayoutAt(tx, ty, terr)); continue; }
+      if (terr[ty * CFG.W + tx] === T.FOREST) {
+        // a BURNING stand is drawn live (drawBurningWood), never baked
+        if (!this.burningAt(ty * CFG.W + tx)) trees.push(...this.forestLayoutAt(tx, ty, terr));
+        continue;
+      }
+      if (terr[ty * CFG.W + tx] === T.RUIN && this.snagAt(ty * CFG.W + tx)) { trees.push(...this.snagLayoutAt(tx, ty, terr)); continue; }
       const st = this.oreStoneAt(tx, ty, terr);
       if (st) trees.push(st);
     }
@@ -2103,7 +2118,8 @@ const R = {
         const nx = x + ox, ny = y + oy, nk = ny * W + nx;
         if (!MapGen.inB(nx, ny) || seen.has(nk)) continue;
         seen.add(nk);
-        if (terr[nk] === T.FOREST) { trees.push(...this.forestLayoutAt(nx, ny, terr)); continue; }
+        if (terr[nk] === T.FOREST) { if (!this.burningAt(nk)) trees.push(...this.forestLayoutAt(nx, ny, terr)); continue; }
+        if (terr[nk] === T.RUIN && this.snagAt(nk)) { trees.push(...this.snagLayoutAt(nx, ny, terr)); continue; }
         const st = this.oreStoneAt(nx, ny, terr);
         if (st) trees.push(st);
       }
@@ -5558,7 +5574,8 @@ const R = {
       // tile edges — this branch then owes only the ground. Rare character
       // tiles keep their whole canvas, and a supplied forest.png override
       // (checked below as ovr) still outranks everything.
-      img = this._stampMode() ? this.forestRareAt(x, y, terr) : this.forestSpriteAt(x, y, terr);
+      img = this._stampMode() ? (this.burningAt(MapGen.idx(x, y)) ? null : this.forestRareAt(x, y, terr))
+        : this.forestSpriteAt(x, y, terr);
     } else if (Sprites.terrainFull[t] && Sprites.terrainMed[t] && t !== T.HILLS) {
       /* ANY terrain that ships all three density sets takes the forest's
          gradient — sparse at the fringe, medium on the perimeter, and the
@@ -5596,6 +5613,18 @@ const R = {
        the trench clods, the fog — is untouched, so a dropped-in tile still
        gets the world's own edges drawn over it. */
     const ovr = window.Assets ? Assets.terrainImg(t, h >>> 3) : null;
+    // THE BURNT WOOD (the dry summer's ash ground — R.burntGround), never the rubble
+    if (t === T.RUIN && S.map.burnt && S.map.burnt[MapGen.idx(x, y)] != null) { this.burntGround(g, x, y, h); return; }
+    /* THE CRATER'S PIT (STARFALL — craterPaint): the fallen star's own 2x2 is
+       the crater floor and nothing of the tile's floor shows through — not
+       the rubble the blow left, not the grass that heals back over it —
+       while a seam keeps its own art ON TOP: the gold lies in the pit. */
+    if (this.craterPit(x, y)) {
+      this.paintGround(g, x, y, h);
+      this.craterPaint(g, x, y, true);
+      if (t === T.GOLDORE) { if (ovr) this.blitTile(g, ovr, x, y); else if (img) g.drawImage(img, x * TL, y * TL); }
+      return;
+    }
     if (t === T.GRASS && img && this.meadowRoll(x, y, h) && !ovr) {
       g.drawImage(img, x * TL, y * TL);           // rare flower meadow (self-contained)
     } else if (t === T.GRASS) {
@@ -6360,6 +6389,7 @@ const R = {
     this._waterMask = null;
     if (window.Formations) Formations.onNewGame();               // regions/placements are per-map
     this.placePoofs = [];                                        // no dust carried across runs (the R.collapses rule)
+    this._sky = null; this._fireFx = null; this._shake = null; this._flash = null; this._burnLayout = null; this._smoulder = null;   // the sky's acts are render state too
     this.bondSparks = [];                                        // …nor a homestead's gold
     this._repaintQ = null;                                       // …nor a half-drained repaint tail
     // pre-render the full terrain layer once — or mark it due, when the
@@ -8675,18 +8705,251 @@ const R = {
     }
   },
 
-  /* STARFALL on screen (G.starfallTick): the omen is a comet fixed to the
-     SKY (screen space, upper right — the sky is not on the map) through the
-     night before and the night of; the fall is a burning head on a long
-     arc into the site with a hard-stepped trail; the impact a white ring
-     and, until somebody reaches it, an ember glow over the crater. Pixel
-     marks only, no gradients. Render-only, nothing in S beyond the event. */
-  drawStarfall(g) {
+  /* ======================== THE SKY COMES DOWN ========================
+     STARFALL, the second pass (operator ruling on the retro gate: "more
+     dramatic… dim the light more, make sure at minimum the trail and the
+     fireball is visible to the player… a much better fireball and trail of
+     smoke and debris… a significantly better crater"). Four pieces, every
+     one of them render-side — the rules (G.starfallTick) are untouched:
+       THE DARK  the night deepens for the act (STAR.dim over the dusk tint),
+                 easing in before the fall and out after it;
+       THE FALL  drawn in SCREEN SPACE. The sky is not on the map, so the
+                 fireball crosses the player's sky WHEREVER the camera is:
+                 into the site when it is in view, across the sky toward it
+                 and out over the edge when it is not. The head is the meteor
+                 strip (assets/fx/meteor.png) turned to its heading; the
+                 trail is smoke puffs and burning debris shed along the path
+                 it really flew;
+       THE BLOW  a white flash (dimmer when it lands out of view), a shake,
+                 the impact strip and two shock rings at the site, debris
+                 thrown in arcs that land and smoulder, and a smoke column
+                 that thins over the next half minute;
+       THE SCAR  a 4x4 crater painted INTO THE GROUND (craterPaint — baked,
+                 like a worn path): its pit under the seams, its ejecta over
+                 the meadow; hot, with a glow that breathes, until a hand
+                 claims it, cold after.
+     Everything transient lives on R._sky, never in S (the R.collapses rule):
+     a save made mid-fall reloads into a sky that simply carries on. */
+  STAR: { dim: 0.46, dimIn: 2.2, dimHold: 7, dimOut: 5, head: [0.26, 0.74],
+          trailS: 0.026, shedS: 0.05, boomS: 1.2, boomTiles: 3.4,
+          flash: 0.92, flashFar: 0.5, shake: 9, shakeS: 1.1, debris: 30, smokeS: 30 },
+  _sky: null,
+  // how much deeper the night is for the act, 0..STAR.dim
+  starDim() {
+    const F = S.starfall, C = this.STAR;
+    if (!F || !F.phase) return 0;
+    if (F.phase === 'night') {
+      if (S.day !== F.day) return 0;
+      const toFall = (CFG.DAY_MS * 0.45 - S.dayT) / 1000;
+      return toFall >= C.dimIn ? 0 : C.dim * Math.min(1, 1 - toFall / C.dimIn);
+    }
+    if (F.phase === 'fall') return C.dim;
+    if (F.phase === 'down') return F.t < C.dimHold ? C.dim : C.dim * Math.max(0, 1 - (F.t - C.dimHold) / C.dimOut);
+    return 0;
+  },
+  // the site on the canvas (device px), and whether it is in view
+  starSiteScreen() {
+    const F = S.starfall, TL = CFG.TILE, z = this.cam.z * this.dpr;
+    const x = ((F.x + 1) * TL - this.cam.x) * z, y = ((F.y + 1) * TL - this.cam.y) * z;
+    const W = this.cv.width, H = this.cv.height, m = 0.04;
+    return { x, y, inView: x > W * m && x < W * (1 - m) && y > H * m && y < H * (1 - m) };
+  },
+  /* the fireball's screen path: from off the sky into the site when it is in
+     view; through the middle of the sky TOWARD it and out over the edge when
+     it is not — a falling star still falls, so a heading up the screen is
+     laid over until it descends */
+  starPath() {
+    const P = this.starSiteScreen(), W = this.cv.width, H = this.cv.height, D = Math.hypot(W, H);
+    let ux = -1, uy = 0.62, ex = P.x, ey = P.y, len = D * 0.9;
+    if (!P.inView) {
+      const cx = W / 2, cy = H * 0.42;
+      ux = P.x - cx; uy = P.y - cy;
+      const L0 = Math.hypot(ux, uy) || 1; ux /= L0; uy /= L0;
+      if (uy < 0.2) uy = 0.2 + (uy - 0.2) * 0.35;
+      const L1 = Math.hypot(ux, uy) || 1; ux /= L1; uy /= L1;
+      ex = cx + ux * D * 0.65; ey = cy + uy * D * 0.65; len = D * 1.3;
+    } else { const L = Math.hypot(ux, uy); ux /= L; uy /= L; }
+    /* it ENTERS at the edge of the screen: walking back from the end, the
+       first point outside the view (plus a sliver, so the head slides in
+       whole) is where the flight begins — most of the fall is on screen */
+    let back = 0;
+    for (let d = 0; d <= len; d += 8) {
+      const x = ex - ux * d, y = ey - uy * d;
+      back = d;
+      if (x < -D * 0.06 || y < -D * 0.06 || x > W + D * 0.06 || y > H + D * 0.06) break;
+    }
+    if (!P.inView) back = Math.max(back, D * 0.5);
+    return { sx: ex - ux * back, sy: ey - uy * back, ex, ey, ux, uy, inView: P.inView, P };
+  },
+  // a pixel disc (screen or world space): rows of hard squares, never a smooth arc
+  pxDisc(g, cx, cy, r, step, sy) {
+    const ry = r * (sy || 1);
+    for (let y = -ry; y <= ry; y += step) {
+      const w = Math.sqrt(Math.max(0, 1 - (y / ry) * (y / ry))) * r;
+      g.fillRect(Math.round((cx - w) / step) * step, Math.round((cy + y) / step) * step, Math.max(step, Math.round(w * 2 / step) * step), step);
+    }
+  },
+  // a shake for the frame: R.draw nudges the camera by it and puts it back
+  shakeAt(amp, dur) {
+    let still = false;
+    try { still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    if (still) return;
+    const s = this._shake;
+    if (!s || s.amp * (1 - s.t / s.dur) < amp) this._shake = { t: 0, dur, amp };
+  },
+  shakeOffset(dt) {
+    const s = this._shake;
+    if (!s) return null;
+    s.t += dt || 0;
+    if (s.t >= s.dur) { this._shake = null; return null; }
+    const k = (1 - s.t / s.dur), a = s.amp * k * k / Math.max(0.5, this.cam.z), w = s.t * 47;
+    return { x: Math.round((Math.sin(w * 1.7) + Math.sin(w * 3.1 + 1.3) * 0.5) * a),
+             y: Math.round((Math.cos(w * 2.3 + 0.4) + Math.sin(w * 4.1) * 0.4) * a) };
+  },
+  // a full-screen flash, eased out over its own life (drawn last, over the night)
+  flashAt(a, dur, col) {
+    if (!this._flash || this._flash.a * (1 - this._flash.t / this._flash.dur) < a) this._flash = { t: 0, a, dur, col: col || '255,250,236' };
+  },
+  drawFlash(g, dt) {
+    const f = this._flash;
+    if (!f) return;
+    f.t += dt || 0;
+    if (f.t >= f.dur) { this._flash = null; return; }
+    const k = 1 - f.t / f.dur;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = 'rgba(' + f.col + ',' + (f.a * k * k).toFixed(3) + ')';
+    g.fillRect(0, 0, this.cv.width, this.cv.height);
+  },
+  // a frame of a looping/one-shot fx strip, or null while it is procedural;
+  // a lettered variant that did not ship borrows its set's first ('-a')
+  fxFrame(name, ph, once) {
+    const F = window.Assets && Assets.fxFrames;
+    if (!F) return null;
+    const a = Assets.fxFrames(name) || (/-[b-z]$/.test(name) ? Assets.fxFrames(name.slice(0, -1) + 'a') : null);
+    if (!a) return null;
+    const i = once ? Math.min(a.length - 1, Math.floor(ph * a.length)) : Math.floor(((ph % 1) + 1) % 1 * a.length);
+    return a[Math.max(0, i)];
+  },
+
+  /* THE SCAR (STARFALL): a 4x4 crater painted into the ground around the
+     2x2 site. The PIT (the site's own four tiles) is painted in drawTile
+     UNDER the tile's art — so the seams lie in the crater, which is the
+     reward — and nothing of the tile's floor shows through (not the rubble
+     the impact left, not the grass that heals back over it). The EJECTA
+     ring is painted in the last ground pass (hueTint), OVER the meadow's
+     tufts and the worn paths and under the hue coat, and only on OPEN
+     ground: rays thrown across a lake or a stand of trees would be a lie
+     about the tile. A pure function of the starfall state and the tile, so
+     a repaint is a rebake; a run with no crater art keeps the old ground. */
+  CRATER_OVER: new Set([T.GRASS, T.RUIN, T.STUMPS, T.BARREN, T.PEBBLES, T.CAMP, T.GOLDORE]),
+  craterArt() {
     const F = S.starfall;
-    if (!F || F.done || !F.avail && !F.phase) return;
-    const TL = CFG.TILE, z = this.cam.z * this.dpr, now = performance.now();
+    if (!F || F.x < 0 || !(F.phase === 'down' || F.claimed)) return null;
+    const a = window.Assets && Assets.fxFrames && Assets.fxFrames(F.claimed ? 'crater-cold' : 'crater-hot');
+    return a ? a[0] : null;
+  },
+  craterPit(x, y) {
+    const F = S && S.starfall;
+    if (!F || F.x < 0) return false;
+    const dx = x - F.x, dy = y - F.y;
+    return dx >= 0 && dy >= 0 && dx <= 1 && dy <= 1 && !!this.craterArt();
+  },
+  craterPaint(g, x, y, pit) {
+    const F = S.starfall;
+    if (!F || F.x < 0) return;
+    const dx = x - F.x + 1, dy = y - F.y + 1;
+    if (dx < 0 || dy < 0 || dx > 3 || dy > 3) return;
+    const inner = dx >= 1 && dx <= 2 && dy >= 1 && dy <= 2;
+    if (inner !== pit) return;
+    const art = this.craterArt();
+    if (!art) return;
+    if (!inner && !this.CRATER_OVER.has((S.map.seenTerrain || S.map.terrain)[MapGen.idx(x, y)])) return;
+    const TL = CFG.TILE, sc = art.width / (4 * TL);
+    g.drawImage(art, dx * TL * sc, dy * TL * sc, TL * sc, TL * sc, x * TL, y * TL, TL, TL);
+  },
+  /* THE BURNT WOOD on the ground (the dry summer's scar: G.fireTick lays
+     T.RUIN marked on S.map.burnt — operator ruling, "a new design for a
+     burned forest tile, almost like a burned down building"). Not a razed
+     building's rubble: a SCORCH painted in world space, so a whole burnt
+     stand reads as one charred country and never as a grid of squares,
+     fraying to nothing against every neighbour that did not burn; and over
+     it the shipped burnt-floor decals (assets/fx/burnt-*.png — charred
+     stumps, a split log, ash and embers), picked and flipped by the tile's
+     own hash. Three looks by age: SMOULDERING (embers in the char, and
+     nothing may be built), CHARRED, then ASH — greying, the stumps
+     crumbling, the grass coming back through it a little more each repaint
+     — until the tile is plain grass again (WILDFIRE.ashDays). Box-exact
+     like every drawTile pass, and a pure function of the tile and its mark,
+     so a repaint is a rebake. */
+  BURNT_CHAR: ['#1b1613', '#28201b', '#372c24', '#463a2f'],
+  BURNT_ASH: ['#4b4741', '#5d5852', '#716b64', '#86807a'],
+  _burntNoise(x, y) {
+    const P = 5, x0 = Math.floor(x / P), y0 = Math.floor(y / P), fx = x / P - x0, fy = y / P - y0;
+    const a = this._lh(x0, y0, 4421), b = this._lh(x0 + 1, y0, 4421), c = this._lh(x0, y0 + 1, 4421), d = this._lh(x0 + 1, y0 + 1, 4421);
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy;
+  },
+  burntStage(i) {
+    const b = S.map.burnt && S.map.burnt[i], C = CFG.WILDFIRE;
+    if (b == null) return null;
+    const age = S.day - b;
+    return { age, hot: age < C.smoulderDays, ash: age >= C.charDays,
+             heal: age < C.charDays ? 0 : Math.min(1, (age - C.charDays) / Math.max(1, C.ashDays - C.charDays)) };
+  },
+  burntGround(g, x, y, h) {
+    const i = MapGen.idx(x, y), st = this.burntStage(i);
+    this.paintGround(g, x, y, h);
+    if (!st) return;
+    const TL = CFG.TILE, step = 2, N = TL / step;
+    const burnt = (xx, yy) => MapGen.inB(xx, yy) && S.map.burnt[MapGen.idx(xx, yy)] != null;
+    const oN = !burnt(x, y - 1), oS = !burnt(x, y + 1), oW = !burnt(x - 1, y), oE = !burnt(x + 1, y);
+    const pal = st.ash ? this.BURNT_ASH : this.BURNT_CHAR;
+    for (let cy = 0; cy < N; cy++) for (let cx = 0; cx < N; cx++) {
+      const wx = x * N + cx, wy = y * N + cy, n = this._burntNoise(wx, wy), j = this._lh(wx, wy, 991);
+      let d = 99;
+      if (oN) d = Math.min(d, cy); if (oS) d = Math.min(d, N - 1 - cy);
+      if (oW) d = Math.min(d, cx); if (oE) d = Math.min(d, N - 1 - cx);
+      const edge = d < 6 ? d / 6 : 1;                         // fray toward the ground that did not burn
+      if (edge < 1 && j > edge * 1.1 + (n - 0.5) * 0.6) continue;
+      if (st.heal > 0 && j < st.heal * 0.8 * (0.6 + n * 0.8)) continue;   // the grass coming back through the ash
+      // while it smoulders, a coal still glows here and there in the char
+      g.fillStyle = st.hot && j > 0.982 && d > 1 ? (j > 0.993 ? '#ffb35a' : '#d8562a')
+        : pal[Math.min(3, ((n * 0.75 + j * 0.25) * 4) | 0)];
+      g.fillRect(x * TL + cx * step, y * TL + cy * step, step, step);
+    }
+  },
+  // the burnt wood's tiles, repainted (its snags' art landing late, a stage turning)
+  repaintBurnt(only) {
+    if (!S || !S.map || !S.map.burnt || !this.terrainCache) return;
+    const list = [];
+    for (const k in S.map.burnt) { if (only && !only(+k)) continue; const i = +k; list.push([i % CFG.W, (i / CFG.W) | 0]); }
+    if (list.length) this.drawTilesAt(list);
+  },
+  // the crater's own tiles, repainted (impact, claim, art landing late)
+  repaintCrater() {
+    const F = S && S.starfall;
+    if (!F || F.x < 0 || !this.terrainCache) return;
+    const list = [];
+    for (let dy = -1; dy <= 2; dy++) for (let dx = -1; dx <= 2; dx++)
+      if (MapGen.onBoard(F.x + dx, F.y + dy)) list.push([F.x + dx, F.y + dy]);
+    this.drawTilesAt(list);
+  },
+
+  drawStarfall(g, dt) {
+    const F = S.starfall;
+    if (!F || F.done && !F.claimed || !F.avail && !F.phase && !F.claimed) { this._sky = null; return; }
+    const C = this.STAR, TL = CFG.TILE, z = this.cam.z * this.dpr, now = performance.now();
     const Wc = this.cv.width, Hc = this.cv.height, px = Math.max(1, Math.round(Wc / 300));
-    const omen = !F.phase && F.warned || F.phase === 'night';
+    const sky = this._sky || (this._sky = { trail: [], shed: [], debris: [], smoke: [], tT: 0, sT: 0, mT: 0, hit: false, key: '' });
+    dt = Math.min(0.05, dt || 0);
+    // THE DARK — over the dusk tint, under everything the sky throws
+    const dim = this.starDim();
+    if (dim > 0.005) {
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.fillStyle = 'rgba(4,6,20,' + dim.toFixed(3) + ')';
+      g.fillRect(0, 0, Wc, Hc);
+    }
+    const omen = !F.phase && F.warned && !F.claimed || F.phase === 'night';
     if (omen) {
       const k = Math.max(0.35, this._dusk ? this._dusk.k : 0);
       g.setTransform(1, 0, 0, 1, 0, 0);
@@ -8701,76 +8964,536 @@ const R = {
       return;
     }
     if (F.x < 0) return;
-    const C = CFG.STARFALL, cx = (F.x + 1) * TL, cy = (F.y + 1) * TL;
-    g.setTransform(z, 0, 0, z, -this.cam.x * z, -this.cam.y * z);
+    // THE FALL — screen space
     if (F.phase === 'fall') {
-      const f = Math.min(1, F.t / C.fallS), e = f * f;
-      const sx = cx + TL * 9, sy = cy - TL * 16;     // it comes in from high in the east
-      const at = (q) => ({ x: sx + (cx - sx) * q, y: sy + (cy - sy) * q });
-      // the trail: a continuous taper of hard squares, smoke-red at the tail,
-      // fire through the middle, white-hot at the head
-      const N = 46;
-      for (let s = N; s >= 1; s--) {
-        const q = e - s * 0.006; if (q < 0) continue;
-        const p = at(q), k = s / N;
-        const sz = Math.max(2, Math.round(9 * (1 - k)));
-        g.fillStyle = k > 0.7 ? 'rgba(120,52,40,' + (0.55 * (1 - k) / 0.3).toFixed(3) + ')'
-          : k > 0.35 ? 'rgba(232,112,48,0.9)' : k > 0.12 ? '#ffc060' : '#fff0c0';
-        g.fillRect(Math.round(p.x - sz / 2), Math.round(p.y - sz / 2), sz, sz);
+      const P = this.starPath(), f = Math.min(1, F.t / CFG.STARFALL.fallS), q = Math.pow(f, 1.12);
+      const hx = P.sx + (P.ex - P.sx) * q, hy = P.sy + (P.ey - P.sy) * q;
+      const sz = 64 * z * (0.8 + 0.5 * q);                  // the strip at 2:1, swelling as it nears
+      // the path it really flew, for the streak (screen space, like the sky)
+      sky.path = sky.path || [];
+      sky.path.push([hx, hy]); if (sky.path.length > 36) sky.path.shift();
+      // shed the trail along the path it really flew
+      sky.tT += dt; sky.sT += dt;
+      while (sky.tT >= C.trailS) {
+        sky.tT -= C.trailS;
+        if (sky.trail.length < 140) sky.trail.push({ x: hx - P.ux * sz * 0.2, y: hy - P.uy * sz * 0.2, t: 0,
+          life: 1.5 + Math.random() * 1.1, s: 0.55 + Math.random() * 0.5, vx: (Math.random() - 0.5) * 18, vy: -6 - Math.random() * 10,
+          f0: Math.random() });
       }
-      const h = at(e);
-      g.fillStyle = 'rgba(255,200,110,0.22)'; g.fillRect(Math.round(h.x - 16), Math.round(h.y - 16), 32, 32);
-      g.fillStyle = 'rgba(255,230,170,0.35)'; g.fillRect(Math.round(h.x - 10), Math.round(h.y - 10), 20, 20);
-      g.fillStyle = '#ffffff'; g.fillRect(Math.round(h.x - 6), Math.round(h.y - 6), 12, 12);
+      while (sky.sT >= C.shedS) {
+        sky.sT -= C.shedS;
+        for (let n = 0; n < 2 && sky.shed.length < 120; n++) {
+          const sp = 60 + Math.random() * 140;
+          sky.shed.push({ x: hx, y: hy, t: 0, life: 0.7 + Math.random() * 0.8, rock: Math.random() < 0.35,
+            vx: -P.ux * sp * 0.4 + (Math.random() - 0.5) * 90, vy: -P.uy * sp * 0.4 + (Math.random() - 0.5) * 60 - 20,
+            s: (1 + Math.random() * 2.2) * Math.max(1, z / 3) });
+        }
+      }
+      this._drawSkyTrail(g, dt, z, false);
+      // the head, turned to its heading (the strip falls toward the lower left)
+      const fr = this.fxFrame('meteor', now / 1000 * 1.25);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+      // THE STREAK: the path it flew, burning down from white to ember — the
+      // part of the fall the eye catches from anywhere on the screen
+      const st = Math.max(2, Math.round(z * 0.9)), path = sky.path;
+      for (let i = 1; i < path.length; i++) {
+        const k = i / path.length, [x1, y1] = path[i - 1], [x2, y2] = path[i];
+        const w = Math.max(st, Math.round(sz * 0.11 * k / st) * st);
+        g.fillStyle = k > 0.85 ? 'rgba(255,248,214,0.95)' : k > 0.6 ? 'rgba(255,196,96,0.85)' : k > 0.3 ? 'rgba(232,108,44,0.7)' : 'rgba(150,60,40,' + (0.55 * k / 0.3).toFixed(3) + ')';
+        const n = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / st));
+        for (let j = 0; j < n; j++) {
+          const X = x1 + (x2 - x1) * j / n, Y = y1 + (y2 - y1) * j / n;
+          g.fillRect(Math.round((X - w / 2) / st) * st, Math.round((Y - w / 2) / st) * st, w, w);
+        }
+      }
+      // a glow the night can see from anywhere, round and hard-edged
+      g.save(); g.globalCompositeOperation = 'lighter';
+      g.fillStyle = 'rgba(255,170,80,0.10)'; this.pxDisc(g, hx, hy, sz * 0.62, st);
+      g.fillStyle = 'rgba(255,210,140,0.14)'; this.pxDisc(g, hx, hy, sz * 0.36, st);
+      g.restore();
+      if (fr) {
+        const rot = Math.atan2(P.uy, P.ux) - Math.atan2(1, -1);
+        g.translate(Math.round(hx), Math.round(hy)); g.rotate(rot);
+        g.drawImage(fr, -C.head[0] * sz, -C.head[1] * sz, sz, sz);
+        g.setTransform(1, 0, 0, 1, 0, 0);
+      } else {
+        // the procedural head: a hard-stepped taper into a white-hot core
+        for (let s = 26; s >= 1; s--) {
+          const k = s / 26, d = s * sz * 0.03, w = Math.max(2, Math.round(sz * 0.16 * (1 - k)));
+          g.fillStyle = k > 0.6 ? 'rgba(232,112,48,0.85)' : k > 0.25 ? '#ffc060' : '#fff0c0';
+          g.fillRect(Math.round(hx - P.ux * d - w / 2), Math.round(hy - P.uy * d - w / 2), w, w);
+        }
+        g.fillStyle = '#ffffff'; g.fillRect(Math.round(hx - sz * 0.07), Math.round(hy - sz * 0.07), Math.round(sz * 0.14), Math.round(sz * 0.14));
+      }
+      g.imageSmoothingEnabled = sm;
+      sky.mT = 0; sky.hit = false; sky.key = F.x + ',' + F.y;
       return;
     }
+    if (F.phase !== 'down' && !F.claimed) return;
+    // THE BLOW — once, on the frame the star lands (never replayed by a load)
+    if (F.phase === 'down' && !sky.hit && F.t < 0.6) {
+      sky.hit = true;
+      const P = this.starSiteScreen();
+      this.flashAt(P.inView ? C.flash : C.flashFar, P.inView ? 0.55 : 0.4);
+      this.shakeAt(P.inView ? C.shake : C.shake * 0.4, C.shakeS);
+      sky.boomT = 0;
+      const cx = (F.x + 1) * TL, cy = (F.y + 1) * TL;
+      for (let n = 0; n < C.debris; n++) {
+        const a = Math.random() * Math.PI * 2, sp = TL * (1.6 + Math.random() * 2.6);
+        sky.debris.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.75, h: 4, vh: TL * (2 + Math.random() * 2.5),
+          s: 2 + Math.random() * 3, t: 0, glow: Math.random() < 0.6 });
+      }
+    }
+    // the trail left in the sky keeps drifting and fading after the blow
+    if (sky.trail.length || sky.shed.length) this._drawSkyTrail(g, dt, z, true);
+    if (!S.map.explored[F.y * CFG.W + F.x] && !(F.phase === 'down' && F.t < 2)) return;
+    g.setTransform(z, 0, 0, z, -this.cam.x * z, -this.cam.y * z);
+    const cx = (F.x + 1) * TL, cy = (F.y + 1) * TL;
+    // the hot pit breathes until a hand claims it
     if (F.phase === 'down') {
-      if (F.t < 0.9) {                              // the impact: a hard ring of light rolling out
-        const r = TL * (0.6 + F.t * 3.2), a = 1 - F.t / 0.9;
-        g.fillStyle = 'rgba(255,240,200,' + a.toFixed(3) + ')';
-        for (let n = 0; n < 40; n++) {
-          const ang = n / 40 * Math.PI * 2;
+      const br = 0.5 + 0.5 * Math.sin(now / 520), r = TL * (0.55 + 0.08 * br);
+      g.save(); g.globalCompositeOperation = 'lighter';
+      g.fillStyle = 'rgba(255,110,40,' + (0.10 + 0.08 * br).toFixed(3) + ')';
+      for (let k = 0; k < 3; k++) this.pxDisc(g, cx, cy, r * (1 - k * 0.3), 1, 0.8);
+      g.restore();
+      // the column of smoke off the crater, thinning over smokeS
+      sky.mT += dt;
+      const rate = F.t < C.smokeS ? 0.08 + 0.5 * (F.t / C.smokeS) : 1.2;
+      while (sky.mT >= rate) {
+        sky.mT -= rate;
+        if (sky.smoke.length < 40) sky.smoke.push({ x: cx + (Math.random() - 0.5) * TL * 0.8, y: cy - TL * 0.2, t: 0,
+          life: 3 + Math.random() * 2, s: 0.8 + Math.random() * 0.7, f0: Math.random() });
+      }
+    }
+    // the debris: thrown in arcs, landing to smoulder
+    for (let i = sky.debris.length - 1; i >= 0; i--) {
+      const d = sky.debris[i];
+      d.t += dt;
+      if (d.h > 0 || d.vh > 0) {
+        d.x += d.vx * dt; d.y += d.vy * dt; d.vh -= TL * 9 * dt; d.h = Math.max(0, d.h + d.vh * dt);
+        if (d.h === 0 && d.vh < 0) { d.vh = 0; d.vx = d.vy = 0; d.landed = d.t; }
+      }
+      const age = d.landed != null ? d.t - d.landed : 0;
+      if (age > 6) { sky.debris.splice(i, 1); continue; }
+      const s = Math.max(1, Math.round(d.s));
+      if (d.h > 0) { g.fillStyle = 'rgba(20,14,10,0.35)'; g.fillRect(Math.round(d.x - s / 2), Math.round(d.y), s, Math.max(1, s >> 1)); }
+      g.fillStyle = '#2a211c'; g.fillRect(Math.round(d.x - s / 2), Math.round(d.y - d.h - s), s, s);
+      if (d.glow && age < 4.5 && ((now / 180 + i) | 0) % 3) {
+        g.fillStyle = age < 1.5 ? '#ffb347' : '#d9612a';
+        g.fillRect(Math.round(d.x - s / 2 + (s > 2 ? 1 : 0)), Math.round(d.y - d.h - s + (s > 2 ? 1 : 0)), Math.max(1, s - 2), Math.max(1, s - 2));
+      }
+    }
+    // the impact itself and two shock rings rolling out over the land
+    if (sky.boomT != null && sky.boomT < C.boomS + 0.9) {
+      sky.boomT += dt;
+      const bt = sky.boomT;
+      for (const [d0, a0] of [[0, 1], [0.18, 0.6]]) {
+        const t2 = bt - d0; if (t2 <= 0 || t2 > 0.95) continue;
+        const r = TL * (0.6 + t2 * 4.4), a = (1 - t2 / 0.95) * a0;
+        g.fillStyle = 'rgba(255,236,200,' + a.toFixed(3) + ')';
+        const n = 56;
+        for (let k = 0; k < n; k++) {
+          const ang = k / n * Math.PI * 2;
           g.fillRect(Math.round(cx + Math.cos(ang) * r - 1), Math.round(cy + Math.sin(ang) * r * 0.7 - 1), 2, 2);
         }
       }
-      if (!S.map.explored[F.y * CFG.W + F.x]) return;
-      for (let n = 0; n < 8; n++) {                 // embers winking over the crater
-        const h = Math.imul(n + 3, 0x9e3779b1) >>> 0, ph = ((now / 260 + n * 1.7) | 0) % 4;
-        if (ph === 0) continue;
-        g.fillStyle = ph === 3 ? '#ffd27a' : '#e0703a';
-        g.fillRect(Math.round(cx - TL * 0.8 + (h % 100) / 100 * TL * 1.6), Math.round(cy - TL * 0.7 + ((h >> 8) % 100) / 100 * TL * 1.4 - (now / 90 + n * 5) % 6), 2, 2);
+      const fr = this.fxFrame('boom', bt / C.boomS, true);
+      if (fr && bt < C.boomS) {
+        const D = TL * C.boomTiles;
+        g.drawImage(fr, Math.round(cx - D / 2), Math.round(cy - D * 0.6), Math.round(D), Math.round(D));
+      } else if (!fr && bt < 0.7) {
+        const k = 1 - bt / 0.7, R0 = TL * (0.5 + bt * 2.4);
+        g.fillStyle = 'rgba(240,120,50,' + (0.6 * k).toFixed(3) + ')'; this.pxDisc(g, cx, cy, R0, 2, 0.7);
+        g.fillStyle = 'rgba(255,240,200,' + (0.85 * k).toFixed(3) + ')'; this.pxDisc(g, cx, cy, R0 * 0.5, 2, 0.7);
       }
     }
+    // the smoke column
+    this._drawPuffs(g, sky.smoke, dt, TL, (p, k) => { p.y -= TL * 0.55 * dt; p.x += TL * 0.12 * dt * (0.5 + k); });
+  },
+  // the sky's trail (screen space): smoke puffs, burning debris, sparks
+  _drawSkyTrail(g, dt, z, after) {
+    const sky = this._sky;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+    const P = 16 * z;                                       // a 32px puff at 2:1
+    for (let i = sky.trail.length - 1; i >= 0; i--) {
+      const p = sky.trail[i];
+      p.t += dt; if (p.t >= p.life) { sky.trail.splice(i, 1); continue; }
+      const k = p.t / p.life;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      const D = P * p.s * (0.7 + k * 1.6), fr = this.fxFrame('smoke', Math.min(0.99, k * 0.9 + p.f0 * 0.1), true);
+      // smoke still lit by the fire it came off: a young puff glows from inside
+      if (k < 0.4) {
+        g.save(); g.globalCompositeOperation = 'lighter';
+        g.fillStyle = 'rgba(255,140,60,' + (0.42 * (1 - k / 0.4)).toFixed(3) + ')';
+        this.pxDisc(g, p.x, p.y, D * 0.42, Math.max(2, Math.round(z * 0.9)));
+        g.restore();
+      }
+      g.globalAlpha = (after ? 0.7 : 0.85) * (1 - k * k);
+      if (fr) g.drawImage(fr, Math.round(p.x - D / 2), Math.round(p.y - D / 2), Math.round(D), Math.round(D));
+      else { g.fillStyle = k < 0.15 ? '#c0572e' : '#4a4340'; g.fillRect(Math.round(p.x - D * 0.3), Math.round(p.y - D * 0.3), Math.round(D * 0.6), Math.round(D * 0.6)); }
+    }
+    g.globalAlpha = 1;
+    for (let i = sky.shed.length - 1; i >= 0; i--) {
+      const d = sky.shed[i];
+      d.t += dt; if (d.t >= d.life) { sky.shed.splice(i, 1); continue; }
+      d.vy += 220 * dt; d.x += d.vx * dt; d.y += d.vy * dt;
+      const k = d.t / d.life, s = Math.max(1, Math.round(d.s * (1 - k * 0.5)));
+      g.fillStyle = d.rock ? (k < 0.5 ? '#3a2a22' : '#2a201b') : (k < 0.3 ? '#fff0b0' : k < 0.65 ? '#ffb347' : '#d9612a');
+      g.fillRect(Math.round(d.x), Math.round(d.y), s, s);
+      if (d.rock && k < 0.6) { g.fillStyle = '#ff9a3c'; g.fillRect(Math.round(d.x), Math.round(d.y), Math.max(1, s >> 1), Math.max(1, s >> 1)); }
+    }
+    g.imageSmoothingEnabled = sm;
+  },
+  // world-space puffs (the crater's column, the fire's smoke): age, move, draw
+  _drawPuffs(g, list, dt, TL, move, aMax) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      const p = list[i];
+      p.t += dt; if (p.t >= p.life) { list.splice(i, 1); continue; }
+      const k = p.t / p.life;
+      move(p, k);
+      const D = TL * 0.5 * p.s * (0.8 + k * 1.4), fr = this.fxFrame('smoke', Math.min(0.99, 0.15 + k * 0.84), true);
+      g.globalAlpha = (aMax || 0.78) * (1 - k) * Math.min(1, p.t / 0.4);
+      if (fr) g.drawImage(fr, Math.round(p.x - D / 2), Math.round(p.y - D / 2), Math.round(D), Math.round(D));
+      else { g.fillStyle = '#4a4340'; this.pxDisc(g, p.x, p.y, D * 0.32, 1, 0.8); }   // never a square
+    }
+    g.globalAlpha = 1;
   },
 
-  /* THE DRY SUMMER on screen (G.fireTick): every burning tree wears the
-     shipped flame strips — small as it catches, the big blaze through the
-     middle of its burn, small again as it gutters — under the burn smoke
-     column the buildings use; a jagged bolt for the strike; rain as
-     screen-space streaks. Drawn on EXPLORED ground (a forest fire is seen
-     from far off by its smoke), culled to the camera. Render-only. */
-  drawWildfire(g) {
+
+  /* ===================== THE DRY SUMMER, second pass =====================
+     Operator ruling on the retro gate: "it looks like an animation loop of
+     fire sitting on top of the trees, not an actual fire inside and
+     engulfing the trees… make higher quality fires, add a much more
+     dramatic and interesting lightning strike." So the fire is no longer an
+     overlay on the wood. It IS the wood:
+       A BURNING TILE LEAVES THE BAKE. Its trees are struck from the terrain
+       cache (forestStampBand / forestStampsNear skip it, G.fireTick repaints
+       it the moment it catches) and every tree on it is drawn here, per
+       frame, in the stand's own layout (forestLayoutAt) — first the living
+       crown with the fire taking hold INSIDE it, then the tree ENGULFED (the
+       shipped burn strips: a crown of flame with the blackened branches
+       showing through it), then the burnt-out skeleton smouldering (char-*)
+       until the stand topples as charcoal (startTreeFall's `burnt`). Each
+       tree catches on its own beat, so a stand goes up crackling rather than
+       all at once; the struck tree goes up at once.
+       THE STRIKE is a real one: a stepped leader feeling down the sky, the
+       return stroke as a branching bolt from the top of the screen to the
+       tree, two re-strikes, a white flash over the whole screen, thunder, a
+       shake, splinters and sparks off the trunk and a ring on the ground.
+       THE FIRE LIGHTS ITS COUNTRY: an orange glow pools under the burning
+       stands, embers rise off them, and the smoke rolls away downwind.
+     Render-side only: the rules (G.fireTick) are the rules they always were. */
+  FIRE: { catchS: 2.2, charS: 3.4, stagger: 0.32, fps: 9, boltS: 1.6 },
+  _fireFx: null,
+  // a tile whose trees the bake must leave out: they are burning (drawBurningWood)
+  burningAt(i) {
+    const F = S && S.wildfire;
+    return !!(F && F.phase === 'burn' && F.burning && F.burning[i] !== undefined && this._stampMode());
+  },
+  /* THE WOOD AS IT STOOD: the terrain with every burnt tile read as forest
+     again. A burning stand and the snags it leaves both lay their trees out
+     against THIS, so a tree never moves — not when its tile leaves the bake,
+     not when the fire takes the tile next door (which would otherwise change
+     this tile's density and setbacks), and not when the dying tree hands over
+     to the baked snag. A scratch copy, refilled per call: forestLayoutAt is
+     synchronous and nothing keeps the view past it. */
+  _fireTerr(src) {
+    const B = S.map && S.map.burnt;
+    if (!B) return src;
+    let any = false;
+    for (const k in B) { any = true; break; }
+    if (!any) return src;
+    let v = this._fireTerrBuf;
+    if (!v || v.length !== src.length) v = this._fireTerrBuf = new Uint8Array(src.length);
+    v.set(src);
+    for (const k in B) if (src[k] === T.RUIN) v[k] = T.FOREST;
+    return v;
+  },
+  // the day a burnt tile's snags come down: CFG.WILDFIRE.snagDays, give or take
+  // two by the tile's own hash, so a burnt wood thins over days, not all at once
+  snagEnd(i) {
+    return CFG.WILDFIRE.snagDays + (((i * 2654435761) >>> 0) % 5) - 2;
+  },
+  // a burnt tile still standing its snags: 'hot' while it smoulders, then 'cold'
+  snagAt(i) {
+    const B = S.map && S.map.burnt, d = B && B[i];
+    if (d == null) return null;
+    const age = S.day - d;
+    return age < this.snagEnd(i) ? (age < CFG.WILDFIRE.smoulderDays ? 'hot' : 'cold') : null;
+  },
+  /* not every tree stands as a snag: most of a burnt wood goes down WITH the
+     fire, and what is left standing is a sparse field of black trunks over
+     the ash — open ground that looks open. A hash keeps SNAG_KEEP of them
+     (and the stand's tallest always), the rest crumble while they die. */
+  SNAG_KEEP: 0.28,
+  snagKeep(t, L) {
+    let tall = L[0];
+    for (const u of L) if (u.pickRr > tall.pickRr || (u.pickRr === tall.pickRr && u.wy > tall.wy)) tall = u;
+    return t === tall || ((((t.wx * 2654435761) ^ (t.wy * 40503)) >>> 0) % 1000) / 1000 < this.SNAG_KEEP;
+  },
+  snagTrees(tx, ty, terr) {
+    const L = this.forestLayoutAt(tx, ty, this._fireTerr(terr), true);
+    return L.filter(t => this.snagKeep(t, L));
+  },
+  snagLayoutAt(tx, ty, terr) {
+    const mode = this.snagAt(ty * CFG.W + tx);
+    if (!mode) return [];
+    const L = this.snagTrees(tx, ty, terr);
+    for (const t of L) t.snag = mode;
+    return L;
+  },
+  // the tree's own clock: seconds since IT caught (negative: not yet) — the
+  // struck tile goes up at once, every other tree on its own hashed beat
+  _treeBurnS(t, tileS, struck) {
+    if (struck) return tileS + this.FIRE.catchS;
+    const h = ((t.wx * 2654435761) ^ (t.wy * 40503)) >>> 0;
+    return tileS - (h % 1000) / 1000 * CFG.WILDFIRE.burnS * this.FIRE.stagger;
+  },
+  /* THE BURNT-OUT TREE ITS OWN PIECE LEAVES (char-<piece>: two frames at the
+     WORLD's density, [cold, hot] — embers out, embers lit), mirrored exactly
+     as the living piece is. It is what stands on the burnt tile in the bake,
+     and the dying tree draws the SAME canvas, so the hand-over from the frame
+     to the cache moves no pixel. Shipped pre-halved (a 2x2 max-pool of the
+     2:1 edit, so the one-pixel branches survive): no pixel is read here, so
+     a tainted file:// page draws exactly what the site does. */
+  _snagCache: new WeakMap(),
+  snagPiece(art, mode) {
+    if (!(art && art._cfName && window.Assets && Assets.fxFrames)) return null;
+    const a = Assets.fxFrames('char-' + art._cfName);
+    if (!a) return null;
+    const src = a[mode === 'hot' && a[1] ? 1 : 0];
+    if (!art._cfFlip) return src;
+    let c = this._snagCache.get(src);
+    if (!c) {
+      c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+      const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+      g.translate(c.width, 0); g.scale(-1, 1); g.drawImage(src, 0, 0);
+      this._snagCache.set(src, c);
+    }
+    return c;
+  },
+  // a frame of the piece's OWN burning loop (burn-<piece>: that tree, ablaze),
+  // each tree on its own phase; null when the art is not there
+  burnFrame(piece, h2, now) {
+    const a = window.Assets && Assets.fxFrames && Assets.fxFrames('burn-' + piece);
+    if (!a) return null;
+    return a[Math.floor(((now * this.FIRE.fps / a.length + (h2 % 97) / 97) % 1) * a.length)];
+  },
+  /* the clipped draw every stage hand-over goes through: a stepped (pixel-row)
+     region, never an alpha crossfade — two half-transparent trees on top of
+     each other read as a ghost, which is what the first pass shipped */
+  _clipRows(g, rows, draw) {
+    if (!rows.length) return;
+    g.save(); g.beginPath();
+    for (const [x, y, w, h] of rows) g.rect(x, y, w, h || 1);
+    g.clip(); draw(); g.restore();
+  },
+  // the rows of a stepped disc, in world pixels
+  _discRows(cx, cy, r) {
+    const rows = [];
+    if (r <= 0) return rows;
+    for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
+      const dy = (y + 0.5 - cy) / r; if (Math.abs(dy) > 1) continue;
+      const hw = Math.sqrt(1 - dy * dy) * r;
+      rows.push([Math.round(cx - hw), y, Math.max(1, Math.round(hw * 2))]);
+    }
+    return rows;
+  },
+  /* A WOOD BURNS TREE BY TREE, AS ITSELF (the operator's ruling: "take the
+     existing trees and forest tiles and create burning versions of each of
+     those, just like a house burning down"). Every tree on a burning tile is
+     drawn here in the stand's own layout — the same trees, the same places,
+     the same mirror — through four looks of ITS OWN PIECE:
+       living   the piece as the bake drew it (the tile left the cache at once,
+                and the layout reads burnt ground as wood, so nothing moves)
+       catching the fire takes the crown from its windward shoulder: its
+                burning self (burn-<piece>, that very silhouette ablaze)
+                revealed through a growing stepped disc
+       blaze    the burning loop, each tree on its own phase
+       dying    the fire draws up and out of the crown, row by row from the
+                foot, uncovering the snag (char-<piece>) that will stand on
+                the burnt tile — the same canvas the bake draws next
+     No alpha crossfades anywhere: hand-overs are clipped, pixel-stepped. And
+     no light pooled on the ground: any warm glow added over the meadow reads
+     as a patch of sand — the fire's own art carries the light. */
+  drawBurningWood(g) {
     const F = S.wildfire;
-    if (!F || !F.phase) return;
-    const TL = CFG.TILE, W = CFG.W, C = CFG.WILDFIRE, v = this.viewTiles();
-    const beat = (performance.now() / 120) | 0;
+    if (!F || F.phase !== 'burn' || !this._stampMode()) return;
+    const TL = CFG.TILE, W = CFG.W, C = CFG.WILDFIRE, FC = this.FIRE, v = this.viewTiles();
+    const now = performance.now() / 1000, terr = S.map.terrain;
+    const struckI = F.struck != null ? F.struck : -1;
+    const wx0 = (F.wind && F.wind[0]) || 0;
+    // a stand's layout cannot change while it burns: read once per fire, not per frame
+    const lay = this._burnLayout && this._burnLayout.fire === F ? this._burnLayout : (this._burnLayout = { fire: F, m: new Map() });
+    const trees = [];
     for (const k in F.burning) {
       const i = +k, x = i % W, y = (i / W) | 0;
-      if (x < v.x0 - 1 || x > v.x1 + 1 || y < v.y0 - 1 || y > v.y1 + 2) continue;
-      if (!S.map.explored[i]) continue;
-      const f = F.burning[k] / C.burnS, big = f > 0.15 && f < 0.8;
-      const sz = TL * (big ? 0.95 : 0.55);
-      this.drawBurnSmoke(g, x * TL + TL / 2, y * TL + TL * 0.1, TL, big ? 1 : 0, (i * 0.37) % 1);
-      Assets.drawSprite(g, (big ? 'misc/flameBig/' : 'misc/flameSmall/') + ((beat + i) % 4),
-        x * TL + (TL - sz) / 2, y * TL + TL * 0.95 - sz, { w: sz, h: sz });
+      if (x < v.x0 - 2 || x > v.x1 + 2 || y < v.y0 - 2 || y > v.y1 + 3) continue;
+      if (!S.map.explored[i] || terr[i] !== T.FOREST) continue;
+      const tileS = F.burning[k];
+      let L = lay.m.get(i);
+      if (!L) { L = this.forestLayoutAt(x, y, this._fireTerr(terr), true); lay.m.set(i, L); }
+      for (const t of L) trees.push({ t, s: this._treeBurnS(t, tileS, i === struckI), tileS, keep: this.snagKeep(t, L) });
     }
-    if (F.bolt && S.map.explored[F.bolt.y * W + F.bolt.x]) {
-      const bx = F.bolt.x * TL + TL / 2, by = F.bolt.y * TL + TL / 2;
-      g.strokeStyle = 'rgba(240,244,255,' + (1 - F.bolt.t / 0.5).toFixed(2) + ')'; g.lineWidth = 2;
-      g.beginPath(); g.moveTo(bx - 6, by - TL * 4);
-      for (let s = 1; s <= 6; s++) g.lineTo(bx + ((s * 37) % 11 - 5), by - TL * 4 + s * TL * 4 / 6);
-      g.stroke();
+    if (!trees.length) return;
+    trees.sort((a, b) => (a.t.wy - b.t.wy) || (a.t.wx - b.t.wx));
+    const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+    for (const { t, s, tileS, keep } of trees) {
+      const h2 = (t.wx * 73856093 ^ t.wy * 19349663) >>> 0;
+      const art = Assets.treePiece(t.kind, t.pickRr, h2);
+      const fr = art && art._cfName ? this.burnFrame(art._cfName, h2, now) : null;
+      const ax = art ? t.wx - (art.width >> 1) + art.width / 2 : t.wx;   // the piece's own centre line
+      const living = () => { if (art) g.drawImage(art, t.wx - (art.width >> 1), t.wy - art.height); };
+      const fire = () => {                                       // the burning self, 2:1 into its world box
+        const D = fr.width / 2;
+        if (art && art._cfFlip) { g.save(); g.translate(2 * ax, 0); g.scale(-1, 1); g.drawImage(fr, ax - D / 2, t.wy - D, D, D); g.restore(); }
+        else g.drawImage(fr, ax - D / 2, t.wy - D, D, D);
+      };
+      const charT = tileS - (C.burnS - FC.charS);              // the tile's last charS: the dying
+      if (s < 0 || !fr) {
+        living();
+        if (!fr && s >= 0) this._procFlames(g, t, art, Math.min(1, s / FC.catchS), now, h2);
+        continue;
+      }
+      if (charT >= 0) {
+        const sn = this.snagPiece(art, 'hot');
+        if (sn) {
+          const sx = Math.round(ax - sn.width / 2), sy = t.wy - sn.height;
+          if (keep) g.drawImage(sn, sx, sy);
+          else {
+            // a tree that will not stand crumbles down into the fire as it dies
+            const gone = Math.min(1, charT / FC.charS), cut = Math.round(sy + sn.height * gone);
+            if (cut < t.wy) this._clipRows(g, [[sx, cut, sn.width, t.wy - cut]], () => g.drawImage(sn, sx, sy));
+          }
+        }
+        // the fire draws up out of the crown: the rows still burning are the top `left` of it
+        const left = 1 - Math.min(1, charT / (FC.charS * 0.72));
+        if (left > 0) {
+          const D = fr.width / 2, top = Math.floor(t.wy - D), cut = Math.round(t.wy - D + D * left);
+          if (cut > top) this._clipRows(g, [[Math.floor(ax - D / 2) - 1, top, D + 2, cut - top]], fire);
+        }
+        continue;
+      }
+      if (s < FC.catchS) {
+        living();
+        // the crown takes fire from its windward shoulder, outward
+        const k = s / FC.catchS, hh = art ? art.height : 16, ww = art ? art.width : 12;
+        const cx = ax - wx0 * ww * 0.3, cy = t.wy - hh * 0.7, R = Math.max(ww, hh) * 1.25 * k * (2 - k);
+        this._clipRows(g, this._discRows(cx, cy, R), fire);
+        continue;
+      }
+      fire();
     }
+    g.imageSmoothingEnabled = sm;
+  },
+  // the procedural fire inside a crown (no strip yet, and the catch's first flicker):
+  // specks of flame lit inside the silhouette, licks climbing out of its top
+  _procFlames(g, t, art, k, now, h2) {
+    if (!art || k <= 0) return;
+    const w = art.width, hh = art.height, x0 = t.wx - (w >> 1), y0 = t.wy - hh;
+    const n = Math.round(4 + k * w * 0.9), beat = (now * 10) | 0;
+    for (let i = 0; i < n; i++) {
+      const r = Math.imul(i + 1, 0x9e3779b1) ^ Math.imul(h2 + beat * 7 + i, 0x85ebca6b);
+      const px = x0 + ((r >>> 3) % w), py = y0 + ((r >>> 11) % Math.max(1, Math.round(hh * 0.75)));
+      g.fillStyle = (r & 3) === 0 ? '#fff0a8' : (r & 3) === 1 ? '#ffb347' : '#e8552a';
+      g.fillRect(px, py, 1, 1 + ((r >>> 20) & 1));
+    }
+    const licks = Math.round(k * 3);
+    for (let i = 0; i < licks; i++) {
+      const ph = (now * 2.6 + i * 0.37 + (h2 % 13) / 13) % 1;
+      const lx = x0 + Math.round(w * (0.25 + 0.25 * i)), ly = y0 + 1 - ph * hh * 0.45;
+      g.fillStyle = ph < 0.5 ? '#ffd27a' : '#e8552a';
+      g.fillRect(Math.round(lx), Math.round(ly), 1, Math.max(1, Math.round(3 * (1 - ph))));
+    }
+  },
+  /* THE BURNT WOOD SMOULDERS: for its first CFG.WILDFIRE.smoulderDays a burnt
+     tile breathes thin wisps off its hot snags — the ground is still too hot
+     to build on, and this is how the player can see it. A handful of puffs
+     at most, only from tiles in view, render state only (never in S). */
+  _smoulder: null,
+  drawSmoulder(g, dt) {
+    const B = S.map && S.map.burnt;
+    if (!B) { this._smoulder = null; return; }
+    const sm = this._smoulder || (this._smoulder = { puffs: [], t: 0 });
+    const TL = CFG.TILE, W = CFG.W, v = this.viewTiles();
+    dt = Math.min(0.05, dt || 0);
+    sm.t += dt;
+    if (sm.t >= 0.3) {
+      sm.t = 0;
+      const hot = [];
+      for (const k in B) {
+        const i = +k, x = i % W, y = (i / W) | 0;
+        if (x < v.x0 || x > v.x1 || y < v.y0 || y > v.y1 || !G.visibleAt(x, y)) continue;
+        if (S.map.terrain[i] === T.RUIN && this.snagAt(i) === 'hot') hot.push([x, y]);
+      }
+      if (hot.length && sm.puffs.length < 24) {
+        const [x, y] = hot[(Math.random() * hot.length) | 0];
+        sm.puffs.push({ x: (x + 0.2 + Math.random() * 0.6) * TL, y: (y + 0.3 + Math.random() * 0.4) * TL,
+          t: 0, life: 2.6 + Math.random() * 1.4, s: 0.45 + Math.random() * 0.3 });
+      }
+    }
+    if (!sm.puffs.length) return;
+    const wx = (S.wildfire && S.wildfire.wind && S.wildfire.wind[0]) || 0;
+    g.save(); g.globalAlpha = 1;
+    this._drawPuffs(g, sm.puffs, dt, TL, (p, k) => { p.y -= TL * 0.35 * dt; p.x += wx * TL * 0.2 * dt * (0.3 + k); }, 0.42);
+    g.restore();
+  },
+  /* the fire's air: the glow it pools on the ground, the embers it throws up,
+     the smoke rolling downwind — and the strike. Drawn over the units. */
+  drawWildfire(g, dt) {
+    const F = S.wildfire;
+    if (!F || !F.phase) { this._fireFx = null; return; }
+    const TL = CFG.TILE, W = CFG.W, C = CFG.WILDFIRE, FC = this.FIRE, v = this.viewTiles();
+    const now = performance.now() / 1000, z = this.cam.z * this.dpr;
+    dt = Math.min(0.05, dt || 0);
+    const fx = this._fireFx || (this._fireFx = { smoke: [], embers: [], sparks: [], sT: 0, eT: 0, boltKey: '', bolt: null });
+    const stamp = this._stampMode();
+    if (F.phase === 'burn') {
+      const live = [];
+      for (const k in F.burning) {
+        const i = +k, x = i % W, y = (i / W) | 0;
+        if (!S.map.explored[i]) continue;
+        const f = F.burning[k] / C.burnS;
+        live.push({ x, y, f, i });
+        if (x < v.x0 - 1 || x > v.x1 + 1 || y < v.y0 - 1 || y > v.y1 + 2) continue;
+        // a tile on the procedural wood (no catalog) keeps the old flames over it
+        if (!stamp) {
+          const big = f > 0.15 && f < 0.8, sz = TL * (big ? 0.95 : 0.55), beat = (now * 8) | 0;
+          Assets.drawSprite(g, (big ? 'misc/flameBig/' : 'misc/flameSmall/') + ((beat + i) % 4),
+            x * TL + (TL - sz) / 2, y * TL + TL * 0.95 - sz, { w: sz, h: sz });
+        }
+      }
+      // smoke and embers off the burning tiles, rolling away downwind
+      fx.sT += dt; fx.eT += dt;
+      const nLive = live.length || 1;
+      while (fx.sT >= 0.5 / nLive && live.length) {
+        fx.sT -= 0.5 / nLive;
+        const L = live[(Math.random() * live.length) | 0];
+        if (fx.smoke.length < 70 && L.f > 0.08) fx.smoke.push({ x: (L.x + 0.2 + Math.random() * 0.6) * TL, y: L.y * TL - 14 - Math.random() * 8,
+          t: 0, life: 3.2 + Math.random() * 1.6, s: 0.9 + Math.random() * 0.9 * (L.f > 0.15 && L.f < 0.8 ? 1 : 0.5), f0: Math.random() });
+      }
+      if (fx.sT > 2) fx.sT = 0;
+      while (fx.eT >= 0.06 && live.length) {
+        fx.eT -= 0.06;
+        const L = live[(Math.random() * live.length) | 0];
+        if (fx.embers.length < 90 && L.f > 0.1 && L.f < 0.9) fx.embers.push({ x: (L.x + Math.random()) * TL, y: (L.y + 0.2) * TL,
+          vx: (Math.random() - 0.5) * 8, vy: -14 - Math.random() * 18, t: 0, life: 1.1 + Math.random() * 1.2 });
+      }
+      if (fx.eT > 2) fx.eT = 0;
+    }
+    const wx = (F.wind && F.wind[0]) || 0, wy = (F.wind && F.wind[1]) || 0;
+    this._drawPuffs(g, fx.smoke, dt, TL, (p, k) => { p.y -= TL * 0.5 * dt; p.x += wx * TL * 0.35 * dt * (0.4 + k); p.y += wy * TL * 0.2 * dt * k; }, 0.5);
+    for (let i = fx.embers.length - 1; i >= 0; i--) {
+      const e = fx.embers[i];
+      e.t += dt; if (e.t >= e.life) { fx.embers.splice(i, 1); continue; }
+      e.x += (e.vx + wx * 10) * dt; e.y += e.vy * dt; e.vx += (Math.random() - 0.5) * 30 * dt;
+      if (((now * 12 + i) | 0) % 4 === 0) continue;
+      g.fillStyle = e.t / e.life < 0.4 ? '#ffd27a' : '#ff7a32';
+      g.fillRect(Math.round(e.x), Math.round(e.y), 1, 1);
+    }
+    this._drawStrike(g, dt, z);
     if (F.phase === 'rain') {
       const a = Math.min(1, F.t / 2) * Math.min(1, (C.rainS - F.t) / 2);
       g.save(); g.setTransform(1, 0, 0, 1, 0, 0);
@@ -8783,6 +9506,98 @@ const R = {
       }
       g.stroke(); g.restore();
     }
+  },
+  /* THE STRIKE (F.bolt = {x, y, t}, G.fireTick ages it): a seeded branching
+     channel from the top of the sky to the struck tree, in SCREEN space so it
+     reaches the sky's edge at any zoom; drawn in hard pixel strokes — a white
+     core, a lavender halo, a violet bloom. Its strokes and the dark between
+     them are BOLT_BEATS, read off its age. */
+  BOLT_BEATS: [[0, 0.07, 0.35], [0.07, 0.17, 1], [0.25, 0.34, 0.85], [0.42, 0.48, 0.6]],
+  _boltShape(seed) {
+    let s = seed >>> 0;
+    const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+    const main = [[0, 0]];
+    let x = 0;
+    const N = 22;
+    for (let i = 1; i <= N; i++) { x += (rnd() - 0.5) * 0.11; x *= 0.92; main.push([i === N ? 0 : x, i / N]); }
+    const branches = [];
+    for (let b = 0; b < 6; b++) {
+      const at = 2 + ((rnd() * (N - 7)) | 0), side = rnd() < 0.5 ? -1 : 1;
+      let bx = main[at][0], by = main[at][1];
+      const pts = [[bx, by]], n = 4 + ((rnd() * 6) | 0);
+      for (let i = 0; i < n; i++) { bx += side * (0.012 + rnd() * 0.03); by += 0.018 + rnd() * 0.025; pts.push([bx, by]); }
+      branches.push(pts);
+    }
+    return { main, branches };
+  },
+  _drawStrike(g, dt, z) {
+    const F = S.wildfire, fx = this._fireFx;
+    if (!F.bolt || !fx) return;
+    const B = F.bolt, TL = CFG.TILE, key = B.x + ',' + B.y;
+    // the blow lands once: flash, thunder, shake, splinters (a reload never replays it)
+    if (fx.boltKey !== key && B.t < 0.3) {
+      fx.boltKey = key;
+      fx.bolt = this._boltShape((B.x * 73856093) ^ (B.y * 19349663));
+      const tx = (B.x + 0.5) * TL, ty = (B.y + 0.5) * TL;
+      const sx = (tx - this.cam.x) * z, sy = (ty - this.cam.y) * z, inView = sx > 0 && sy > 0 && sx < this.cv.width && sy < this.cv.height;
+      this.flashAt(inView ? 0.85 : 0.45, 0.35, '235,240,255');
+      this.shakeAt(inView ? 8 : 3, 0.9);
+      if (window.Sound && Sound.play) Sound.play('thunder', { gain: inView ? 1 : 0.6 });
+      for (let n = 0; n < 26; n++) {
+        const a = Math.random() * Math.PI * 2, sp = TL * (1.2 + Math.random() * 2.4);
+        fx.sparks.push({ x: tx, y: ty - 8, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.7 - TL, t: 0, life: 0.4 + Math.random() * 0.6, wood: n % 3 === 0 });
+      }
+      fx.ring = 0;
+    }
+    // sparks and splinters off the trunk, and a ring on the ground
+    g.setTransform(z, 0, 0, z, -this.cam.x * z, -this.cam.y * z);
+    for (let i = fx.sparks.length - 1; i >= 0; i--) {
+      const p = fx.sparks[i];
+      p.t += dt; if (p.t >= p.life) { fx.sparks.splice(i, 1); continue; }
+      p.vy += TL * 6 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      g.fillStyle = p.wood ? '#c9a46a' : (p.t / p.life < 0.5 ? '#ffffff' : '#bcd6ff');
+      g.fillRect(Math.round(p.x), Math.round(p.y), p.wood ? 2 : 1, 1);
+    }
+    if (fx.ring != null && fx.ring < 0.5) {
+      fx.ring += dt;
+      const r = TL * (0.4 + fx.ring * 3.6), a = 1 - fx.ring / 0.5, tx = (B.x + 0.5) * TL, ty = (B.y + 0.8) * TL;
+      g.fillStyle = 'rgba(220,232,255,' + (0.8 * a).toFixed(3) + ')';
+      for (let k = 0; k < 40; k++) { const an = k / 40 * Math.PI * 2; g.fillRect(Math.round(tx + Math.cos(an) * r), Math.round(ty + Math.sin(an) * r * 0.6), 2, 1); }
+    }
+    // the channel itself, by its beats
+    let lit = 0, beat = -1;
+    for (let i = 0; i < this.BOLT_BEATS.length; i++) {
+      const [a, b, s] = this.BOLT_BEATS[i];
+      if (B.t >= a && B.t < b) { lit = s; beat = i; }
+    }
+    const after = B.t >= 0.48 ? Math.max(0, 1 - (B.t - 0.48) / 0.5) * 0.35 : 0;
+    if (!lit && !after) return;
+    if (beat === 1 && B.t < 0.1 || beat === 2 && B.t < 0.27) this.flashAt(beat === 1 ? 0.85 : 0.5, 0.3, '235,240,255');
+    const shape = fx.bolt || (fx.bolt = this._boltShape((B.x * 73856093) ^ (B.y * 19349663)));
+    const ex = ((B.x + 0.5) * TL - this.cam.x) * z, ey = ((B.y + 0.45) * TL - this.cam.y) * z;
+    const top = -this.cv.height * 0.05, len = ey - top, wid = Math.max(len, this.cv.height * 0.5) * 0.9;
+    const pxs = Math.max(2, Math.round(z * 0.9));
+    const reach = beat === 0 ? (B.t / 0.07) : 1;             // the leader feels its way down
+    const pt = (p) => [ex + p[0] * wid, top + p[1] * len];
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const stroke = (pts, w, col, maxY) => {
+      g.fillStyle = col;
+      for (let i = 1; i < pts.length; i++) {
+        if (pts[i - 1][1] > maxY) break;
+        const [x1, y1] = pt(pts[i - 1]), [x2, y2] = pt(pts[i]);
+        const steps = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / pxs));
+        for (let k = 0; k <= steps; k++) {
+          const q = k / steps, X = x1 + (x2 - x1) * q, Y = y1 + (y2 - y1) * q;
+          g.fillRect(Math.round((X - w / 2) / pxs) * pxs, Math.round((Y - w / 2) / pxs) * pxs, w, w);
+        }
+      }
+    };
+    const a = lit || after, core = Math.max(pxs, pxs * 2);
+    stroke(shape.main, core * 4, 'rgba(150,120,255,' + (0.16 * a).toFixed(3) + ')', reach);
+    for (const br of shape.branches) stroke(br, pxs * 3, 'rgba(150,120,255,' + (0.12 * a).toFixed(3) + ')', reach);
+    stroke(shape.main, core * 2, 'rgba(206,196,255,' + (0.7 * a).toFixed(3) + ')', reach);
+    for (const br of shape.branches) stroke(br, pxs, 'rgba(206,196,255,' + (0.55 * a).toFixed(3) + ')', reach);
+    if (lit) stroke(shape.main, core, 'rgba(255,255,255,' + Math.min(1, a).toFixed(3) + ')', reach);
   },
 
   /* ============ THE STAND COMES DOWN (tests/tree-fall.mjs) ============
@@ -8813,7 +9628,7 @@ const R = {
   TREEFALL_PAD: { w: 2.6, h: 1.75, x: 0.8, y: 0.55 },
   treefalls: [],                 // live one-shots: {x,y,spr,t,right} — never in S
 
-  startTreeFall(x, y, byX, byY) {
+  startTreeFall(x, y, byX, byY, snag) {
     if (!G.visibleAt(x, y)) return;               // timber nobody can see
     const h = (x * 73856093 ^ y * 19349663) >>> 0;
     // it goes over AWAY from whoever felled it; with nobody standing there
@@ -8829,12 +9644,17 @@ const R = {
        tile flips to stumps, so the falling trees are exactly the
        standing ones. Procedural tiles (no catalog) keep the old shear. */
     if (this._stampMode() && !(window.Assets && Assets.terrainImg(T.FOREST, h >>> 3))
-      && !this.forestRareAt(x, y, S.map.terrain)) {
-      const trees = this.forestLayoutAt(x, y, S.map.terrain);
+      && (snag || !this.forestRareAt(x, y, S.map.terrain))) {
+      /* a burnt wood's SNAGS come down the same way when their standing days
+         are done (G.dayTick, R.snagEnd): the tile is burnt ground by then, so
+         the stand is read through the wood-as-it-stood view, and each tree
+         goes over as its own cold char */
+      const trees = snag ? this.snagTrees(x, y, S.map.terrain) : this.forestLayoutAt(x, y, S.map.terrain);
       if (trees.length) {
         for (const t of trees) {
           const h2 = (t.wx * 73856093 ^ t.wy * 19349663) >>> 0;
           let spr = Assets.treePiece(t.kind, t.pickRr, h2);
+          if (snag) { spr = this.snagPiece(spr, 'cold'); if (!spr) continue; }
           if (!spr) {
             // the procedural fallback tree, rasterized once for its fall
             const w = t.rr * 2 + 10, hh2 = t.rr * 2 + 12;
@@ -11161,7 +11981,16 @@ const R = {
     g.globalAlpha = 1; g.lineWidth = lw;
   },
 
+  /* THE SHAKE (R.shakeAt — the strike, the falling star) nudges the camera
+     for the frame and ALWAYS puts it back, even when the frame throws:
+     input reads the same camera between frames that it always did. */
   draw(dt) {
+    const sh = this.shakeOffset(dt);
+    if (!sh || (!sh.x && !sh.y)) return this._draw(dt);
+    this.cam.x += sh.x; this.cam.y += sh.y;
+    try { return this._draw(dt); } finally { this.cam.x -= sh.x; this.cam.y -= sh.y; }
+  },
+  _draw(dt) {
     if (!S) return;
     /* A DUE BAKE IS PAID IN FULL BEFORE THE WORLD IS PLAYED, and only then.
        On a shell screen — the draft, which is where founding a run leaves it
@@ -11193,6 +12022,9 @@ const R = {
     this.drawTamings(g, dt);
     // …but a tower still coming down keeps the ground it stood on (startCollapse)
     if (this.collapses.length) this.drawCollapseGround(g);
+    // THE DRY SUMMER: a burning stand is struck from the bake and drawn here,
+    // where the wood it replaced lay — under every building and unit
+    this.drawBurningWood(g);
 
     // sapper bridges: faction-trimmed plank decks over water/moat (above terrain,
     // below units). Dynamic structures, so drawn per-frame, not baked into the cache.
@@ -12469,7 +13301,8 @@ const R = {
       g.restore();
     }
 
-    this.drawWildfire(g);
+    this.drawWildfire(g, dt);
+    this.drawSmoulder(g, dt);
     // buildings coming DOWN — over the units, so the dust rolls across them
     this.drawTreeFalls(g, dt);
     this.drawHorns(g, dt);
@@ -12511,7 +13344,9 @@ const R = {
     g.save(); this.drawEclipse(g); g.restore();
 
     // STARFALL: drawn over the night, because it is the brightest thing in it
-    g.save(); this.drawStarfall(g); g.restore();
+    g.save(); this.drawStarfall(g, dt); g.restore();
+    // …and the sky's flashes (the strike, the blow) over everything in the world
+    g.save(); this.drawFlash(g, dt); g.restore();
 
     // the monument is finished: hold the frame on it (tests/wonder.mjs)
     this.drawMarvel(g, dt);

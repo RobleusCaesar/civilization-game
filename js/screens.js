@@ -78,6 +78,7 @@ const Screens = {
     else if (name === 'playing') {
       if (window.S) S.paused = false;
       if (window.S && !this._demo) S.played = true;   // analytics: this world is a game somebody played
+      if (!this._demo && typeof G !== 'undefined' && G.warmFx) G.warmFx();   // the event's own art, if the run holds one
       // a real game, settled in: the endgame gallery may start loading, one
       // picture at a time, once the wire has been quiet for half a minute
       if (window.S && !this._demo && window.Assets && Assets.startEndgameArt) {

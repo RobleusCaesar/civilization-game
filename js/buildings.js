@@ -689,11 +689,17 @@ const Bld = {
     const d = this.def(key);
     if (!d) return { ok: true };
     if (d.onWorked != null) {
-      if (S.map.terrain[MapGen.idx(x, y)] !== d.onWorked)
+      /* THE BURNT WOOD (the dry summer) is ash, never a clearing: nothing
+         stands there for an axe, and the ground goes back to GRASS, not wood —
+         so no camp, ever, and the refusal says why in its own words */
+      const bi = MapGen.idx(x, y);
+      if (d.onWorked === T.STUMPS && S.map.burnt && S.map.burnt[bi] != null && S.map.terrain[bi] === T.RUIN)
+        return { ok: false, why: 'Fire took this wood and left only ash — a lumber camp goes on a stand you felled yourself' };
+      if (S.map.terrain[bi] !== d.onWorked)
         return { ok: false, why: d.whyGround || 'That ground was never worked' };
-      /* FIRE-KILLED GROUND IS NOBODY'S CLEARING (the dry summer): the worked-
-         ground rule says the resource must be TAKEN by hand, so stumps the
-         wildfire left (maker's mark 'F') carry no camp until they regrow */
+      /* FIRE-KILLED GROUND IS NOBODY'S CLEARING: stumps a pre-burnt-wood save
+         still carries from a wildfire (maker's mark 'F') carry no camp until
+         they regrow */
       const wb = S.map.workedBy;
       if (wb && wb[MapGen.idx(x, y)] === 'F')
         return { ok: false, why: 'Fire killed this stand, nobody felled it — a camp goes on a stand you cut yourself' };
@@ -1918,8 +1924,11 @@ const Bld = {
     return dmg < 1 / 3 ? 0 : 1;
   },
 
-  // is a cooling ash pile on this tile? (blocks building, never movement)
+  // is a cooling ash pile on this tile? (blocks building, never movement) —
+  // and a burnt wood still smoulders for its first days (the dry summer)
   ashAt(x, y) {
+    const bt = S.map && S.map.burnt && S.map.burnt[MapGen.idx(x, y)];
+    if (bt != null && S.day - bt < CFG.WILDFIRE.smoulderDays) return { x, y, sz: 1, burnt: true };
     if (!S.ashes || !S.ashes.length) return null;
     for (const a of S.ashes)
       if (x >= a.x && x < a.x + a.sz && y >= a.y && y < a.y + a.sz) return a;

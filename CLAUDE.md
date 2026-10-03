@@ -164,7 +164,7 @@ node tests/audio.mjs         # the game's voice: nothing on the wire, two switch
 node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map arrays, kept ground DERIVED from standing buildings (grows back on raze, byte-identical), the flatten fires from Bld.finish alone, the 32px cover-art door snaps alpha binary
 node tests/frame-hotpath.mjs  # the late-game town costs no more per tile: Bld.at is an index (= the linear definition on every tile), the building loop culls to the camera, the cull changes no pixel
 node tests/worn-paths.mjs     # the ground wears where WORK walks: distinct days, never a march, never in the fog; a band not a square; repaint == rebake; few roads, worth walking (+10%), the road calls the walker
-node tests/specials.mjs       # the special-event roll: three draws whatever it rolls, weighted, no dead rolls; the kraken is the player's; sons/cache land where a hand can walk; every event scores and reports; the eclipse's moon-shadow, its stare, no stars in the black; the animal strife is fought, wound up, balanced both ways
+node tests/specials.mjs       # the special-event roll: three draws whatever it rolls, weighted, no dead rolls; the kraken is the player's; sons/cache land where a hand can walk; every event scores and reports; the eclipse's moon-shadow, its stare, no stars in the black; the animal strife is fought, wound up, balanced both ways; the dry summer burns each tree as itself and leaves burnt wood (snags where the trees grew, ash, grass) — never stumps, never a lumber camp
 ```
 
 **SPECIAL EVENTS** (`tests/specials.mjs`, `CFG.SPECIALS` / `KRAKEN` /
@@ -265,15 +265,54 @@ from all of them). The day and the wind are hashed off the seed string;
 a two-day dry warning, then a lightning bolt, and the fire WALKS the wood —
 `spreadS` per step, downwind first, on `G.rand` so a seed burns the same
 way twice — capped per mode (`cap`) and put out by the rain after `rainS`.
-A burnt tile is STUMPS stamped `workedBy: 'F'` on the regrowth clock, and
-**fire-killed ground is nobody's clearing**: `Bld.stationGround` refuses
-it in its own words, because a lumber camp belongs on a stand somebody
-cut. It burns a building only where the wood touches one (`bldDps`, never
+It burns a building only where the wood touches one (`bldDps`, never
 a wall, gate or tower, never on Calm), and **it blames nobody**: damage
 cause `'fire'` skips the attack alarm, `breachedP`, razed credit, the
 work-lost ledger and the chief's `noteLoss` — a summer is not a raid.
-Drawn by `R.drawWildfire` (the flame strips, a smoke column, the bolt, the
-rain); scores `wildfireEndured`.
+Scores `wildfireEndured`.
+**A WOOD BURNS AS ITSELF** (operator ruling on the retro gate: "take the
+existing trees and forest tiles and create burning versions of each of
+those, just like a house burning down" — a dense wood swapped for one
+stock burning tree is the failure named). Every piece of the forest
+catalog has its own art in `assets/fx/`: `burn-{piece}` (THAT tree ablaze —
+its silhouette, its foot row, an 8-frame loop, 2:1) and `char-{piece}` (the
+snag it leaves, [cold, hot], pre-halved to the world's density by a 2x2
+max-pool so one-pixel branches survive — nothing reads pixels at runtime, so
+file:// draws what the site draws). They were made from the pieces
+themselves (PixelLab edits of the 2x tree, the burn loop animated from the
+edit with its last frame pinned to its first); the edit's dark blots read
+as a pumpkin face and were filled from the fire round them. A burning tile
+LEAVES THE BAKE (`R.burningAt`; a rare tile's canvas leaves with it) and
+`R.drawBurningWood` draws its trees in the stand's own layout, mirrored as
+the pieces are: living → catching (the burning self through a stepped disc
+growing from the windward shoulder) → blaze → dying (the fire drawn up out
+of the crown row by row over the hot snag). NO ALPHA CROSSFADES — two
+half-transparent trees read as a ghost — and NO LIGHT POOLED ON THE GROUND:
+any warm glow added over the meadow reads as sand. **The layout never
+moves**: burning and burnt tiles both lay out against `R._fireTerr` (the
+terrain with burnt tiles read as wood), so a tree stays put when its tile
+leaves the bake, when the tile next door burns out, and when the dying tree
+hands over to the baked snag.
+**THE BURNT WOOD** (`S.map.burnt`, idx → day, in every save; `R.burntGround`):
+a burnt tile is `T.RUIN` — walkable, nobody's worked ground, NEVER stumps —
+on its OWN clock back to GRASS (`ashDays`), never back to forest.
+`R.SNAG_KEEP` (0.28, the stand's tallest always) of its trees stand as
+snags in exactly the places they grew (`R.snagAt`/`snagTrees`, baked with
+the forest stamps, so they overhang and occlude like crowns); the rest
+crumble into the fire as they die. Smouldering (`smoulderDays`, `'hot'`):
+embers on the snags and coals in the char, thin wisps (`R.drawSmoulder`),
+and it refuses building (`Bld.ashAt`, code `ash`). Then cold; the snags
+topple into the ash at `R.snagEnd` (`snagDays` ±2 by the tile hash, the
+tree-fall played in sight); the char greys to ash at `charDays` and the
+grass comes back through it. **No lumber camp, ever** — `Bld.stationGround`
+says so in its own words. Pinned three ways: specials.mjs §3c
+(`aBurntWoodIsAshNotStumps`, `andItsTreesStandWhereTheyGrew`) and
+land.mjs's `theBurntWoodRepaintsAsItRebakes` (cache == rebake, mid-fire,
+after it and at every stage turn).
+The strike is drawn by `R._drawStrike` (screen-space pixel strokes from the
+top of the screen: leader, return stroke, two re-strikes, flash, shake,
+thunder); smoke is the shared `smoke` puff strip (`R._drawPuffs`, never a
+square), rain by `R.drawWildfire`.
 **ANIMAL STRIFE** (`strife`, all modes, `CFG.STRIFE`, specials.mjs §3d —
 the operator's replacement for the Great Migration, which "doesn't really
 land": a herd walking edge to edge was a spectacle with nothing at stake).

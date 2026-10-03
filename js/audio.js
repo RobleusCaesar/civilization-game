@@ -226,6 +226,7 @@ const Sound = {
     chop: 0.40, mine: 0.45, farm: 0.55, build: 0.50,
     hit: 0.11, arrow: 0.16, miss: 0.30, die: 0.35,
     raid: 6.0,          // the alarm is a warning, not a siege soundtrack
+    thunder: 1.2, impact: 2.0,   // the sky's two voices: one strike, one fall
     done: 0.30, train: 0.30, place: 0.20,
     tick: 0.05, bad: 0.25,
   },
@@ -403,6 +404,21 @@ const Sound = {
     raid(t, v) {
       this._note({ at: t, hz: 196, dur: 0.55, type: 'sawtooth', gain: 0.13 * v, lp: 620, atk: 0.05 });
       this._note({ at: t, delay: 0.30, hz: 147, dur: 0.75, type: 'sawtooth', gain: 0.14 * v, lp: 520, atk: 0.06 });
+    },
+    /* THE SKY'S TWO VOICES (the dry summer's strike, the falling star). Both
+       are made of the one noise buffer at very different bands: a THUNDER is
+       a bright crack with the strike, then a long low rumble rolling in after
+       it; a STAR's IMPACT is a deep thud under a roar that tears down through
+       the band, with the earth rattling back down for a second after. */
+    thunder(t, v) {
+      this._noise({ at: t, hz: 3200, to: 900, dur: 0.16, q: 0.6, gain: 0.26 * v });
+      this._noise({ at: t, delay: 0.06, hz: 380, to: 70, dur: 1.9, q: 0.8, gain: 0.30 * v, atk: 0.08, filter: 'lowpass', rate: 0.5 });
+      this._noise({ at: t, delay: 0.55, hz: 220, to: 60, dur: 1.4, q: 0.9, gain: 0.20 * v, atk: 0.2, filter: 'lowpass', rate: 0.4 });
+    },
+    impact(t, v) {
+      this._note({ at: t, hz: 92, to: 34, dur: 0.9, type: 'sine', gain: 0.34 * v });
+      this._noise({ at: t, hz: 1400, to: 120, dur: 1.1, q: 0.5, gain: 0.28 * v, filter: 'lowpass' });
+      this._noise({ at: t, delay: 0.25, hz: 900, to: 300, dur: 0.9, q: 1.6, gain: 0.10 * v, rate: 1.6 });
     },
     place(t, v) {
       this._noise({ at: t, hz: 700, to: 180, dur: 0.16, q: 0.9, gain: 0.15 * v });
