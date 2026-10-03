@@ -1893,7 +1893,7 @@ const Bld = {
     // the tended verge dies with its keeper — the kept-ground mask is derived
     // from the standing buildings, so this repaint is where the wild grass
     // grows back over the ground the building used to keep
-    if (window.R && R.tameDirty) R.tameDirty(b);
+    if (window.R && R.tameDirty) R.tameDirty(b, true);
   },
 
   /* ---- BURNING (tests/burn-down.mjs) — how far gone is a damaged building?

@@ -152,6 +152,82 @@ const out = await p.evaluate(async () => {
   } finally { performance.now = pn; Date.now = dn; Math.random = mr; R.viewTiles = VT; G.visibleAt = vis; }
   ck('theCullIsInvisible', differ === 0 && unstable === 0 && frames > 10,
     frames + ' frozen frames, ' + differ + ' differ with the cull on, ' + unstable + ' unstable');
+
+  /* ---- A SIEGE FRAME DOES NOT PAY FOR THE WHOLE MAP (the day-99 report:
+     "frame rate issues while I'm attacking the enemy city"). Two costs were
+     paid in the frame the player was watching, and both were whole-map or
+     whole-patch work for a one-tile change:
+       1. the rival's moat, dug in the fog, came into view a tile at a time as
+          the army moved round its walls — and every tile rebuilt the SHORE
+          LAYER for every lake on the board (150-300ms a tile). Only the
+          water that moved is redrawn now (`waterDirty` records the rect,
+          `buildShoreLayer(rect)` redraws the loops that reach it).
+       2. every razed building repainted its 9x9 verge of wild grass in the
+          frame it fell; that now goes down the sliced repaint queue.
+     Measured on constructed water so no seed can flatter it: a big lake and
+     a small pool, the pool's bank flooded the way a fog reveal syncs it. */
+  {
+    G.newGame('hotpath-shore', 'moderate', 'large'); Screens.show('playing'); S.paused = true;
+    const W = CFG.W, H = CFG.H, TL = CFG.TILE;
+    for (let i = 0; i < W * H; i++) { S.map.terrain[i] = T.GRASS; S.map.seenTerrain[i] = T.GRASS; S.map.explored[i] = 1; }
+    S.units = []; S.buildings = S.buildings.filter(z => z.key === 'tc'); Bld._block = null;
+    const wet = (x0, y0, x1, y1) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * W + x; S.map.terrain[i] = T.WATER; S.map.seenTerrain[i] = T.WATER; } };
+    const big = [4, 4, 22, 20], pool = [W - 12, H - 12, W - 9, H - 9];
+    wet(...big); wet(...pool);
+    R.rebuildTerrain(); while (R.tickBake && R.tickBake(1e9)) {} while (R.tickRepaint(1e9)) {}
+    let readable = true, before = null;
+    const grab = () => R.shoreLayer.getContext('2d').getImageData(0, 0, R.shoreLayer.width, R.shoreLayer.height).data;
+    try { before = grab(); } catch (e) { readable = false; }
+    const calls = []; const bsl = R.buildShoreLayer;
+    R.buildShoreLayer = function (rect) { calls.push(rect || null); return bsl.apply(this, arguments); };
+    const fx = pool[0] - 1, fy = pool[1] + 1, fi = fy * W + fx;
+    S.map.terrain[fi] = T.MOAT; S.map.seenTerrain[fi] = T.MOAT;
+    try { R.drawTilesAt([[fx, fy]]); while (R.tickRepaint(1e9)) {} } finally { R.buildShoreLayer = bsl; }
+    const rect = calls[0];
+    const clearOfBig = rect && (rect.x0 > big[2] + 2 || rect.y0 > big[3] + 2);
+    const share = rect ? ((rect.x1 - rect.x0 + 1) * (rect.y1 - rect.y0 + 1)) / (W * H) : 1;
+    ck('aMovedPoolRebuildsOnlyItsOwnShore', calls.length === 1 && !!rect && clearOfBig && share < 0.15,
+      calls.length + ' rebuild(s), rect ' + JSON.stringify(rect) + ' — ' + (share * 100).toFixed(1) + '% of the board' +
+      (clearOfBig ? '' : ', reaches the big lake'));
+    if (readable && rect) {
+      const after = grab(), Lw = R.shoreLayer.width;
+      const RX0 = rect.x0 * TL, RY0 = rect.y0 * TL, RX1 = (rect.x1 + 1) * TL, RY1 = (rect.y1 + 1) * TL;
+      let outside = 0;
+      for (let i = 0; i < after.length; i += 4) {
+        const px = (i >> 2) % Lw, py = ((i >> 2) / Lw) | 0;
+        if (px >= RX0 && px < RX1 && py >= RY0 && py < RY1) continue;
+        if (after[i] !== before[i] || after[i + 1] !== before[i + 1] || after[i + 2] !== before[i + 2] || after[i + 3] !== before[i + 3]) outside++;
+      }
+      ck('andTheRestOfTheShoreIsUntouched', outside === 0, outside + ' px changed outside the rect');
+      R.buildShoreLayer(); const full = grab();
+      /* inside, to the rasteriser's own rounding: the same fills on a smaller
+         target land up to one alpha step apart on a few translucent band
+         pixels (measured: never more), so the bar is "within a step,
+         premultiplied" — a missing loop or a stale band is tens of steps */
+      let far = 0, exact = 0, n = 0;
+      for (let y = RY0; y < RY1; y++) for (let x = RX0; x < RX1; x++) {
+        const i = (y * Lw + x) * 4; n++;
+        const a1 = after[i + 3], a2 = full[i + 3];
+        let worst = Math.abs(a1 - a2);
+        for (let c = 0; c < 3; c++) worst = Math.max(worst, Math.abs(after[i + c] * a1 - full[i + c] * a2) / 255);
+        if (worst === 0) exact++; else if (worst > 2) far++;
+      }
+      ck('andInsideItMatchesAFullBuildToTheStep', far === 0,
+        far + ' px off by more than a step; ' + (100 * exact / n).toFixed(2) + '% of the rect exact');
+    } else ck('andTheRestOfTheShoreIsUntouched', !!rect, readable ? 'no rebuild recorded' : 'layer unreadable here — the rect check above stands');
+    // a fallen building's verge goes down the slice queue, never all at once
+    const hx = 30, hy = 30;
+    const house = Bld.place('P', 'house', hx, hy, { free: true, instant: true });
+    while (R.tickRepaint(1e9)) {}
+    const seen = []; const dta = R.drawTilesAt;
+    R.drawTilesAt = function (list, tail) { seen.push([list.length, !!tail]); return dta.apply(this, arguments); };
+    try { if (house) Bld.removeToRuin(house); } finally { R.drawTilesAt = dta; }
+    const q = (R._repaintQ || []).length;
+    const bigNow = seen.filter(([n, tail]) => !tail && n > 9).length;
+    ck('aFallenVergeGrowsBackInSlices', !!house && q >= 49 && bigNow === 0,
+      'queued ' + q + ' tiles; ' + bigNow + ' immediate repaint(s) of more than 9 tiles');
+    while (R.tickRepaint(1e9)) {}
+  }
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

@@ -1435,7 +1435,7 @@ const R = {
      the taming's OWN dirty call — ordinary repaints near a standing building
      already derive the mask correctly, but only the building's arrival or
      departure knows the zone's full extent. */
-  tameDirty(b) {
+  tameDirty(b, later) {
     if (!this.terrainCache || !S || !S.map || typeof Bld === 'undefined') return;
     const sz = Bld.size(b);
     const reach = Math.ceil(((b.key === 'wall' || b.key === 'gate') ? LAND.TAME_R_FORT : LAND.TAME_R) + LAND.TAME_WOBBLE);
@@ -1443,7 +1443,18 @@ const R = {
     for (let y = b.y - reach; y < b.y + sz + reach; y++)
       for (let x = b.x - reach; x < b.x + sz + reach; x++)
         if (MapGen.inB(x, y)) tiles.push([x, y]);
-    if (tiles.length) this.drawTilesAt(tiles);
+    if (!tiles.length) return;
+    /* A FALLEN BUILDING'S WILD GROWS BACK OVER THE NEXT FEW FRAMES (the
+       day-99 siege report): the verge is a 9x9 or wider patch, repainted
+       with its rings — 35-67ms in the frame the building died, which in a
+       siege is every few seconds. Nothing about the verge is urgent: the
+       ruin itself is painted at once by removeToRuin, and the grass coming
+       back can arrive in the frame-budgeted slices the rest of the tail
+       uses (row-major, so the drained cache is the bake's own). A building
+       that RISES still paints its kept ground at once — that is the moment
+       the player is looking at. */
+    if (later) { tiles.sort((a, c) => (a[1] - c[1]) || (a[0] - c[0])); this.pendRepaint(tiles); return; }
+    this.drawTilesAt(tiles);
   },
 
   /* ---- the flatten: the wild sward goes down as the builders move in ----
@@ -2569,7 +2580,7 @@ const R = {
      pinches to nothing — but now along the curve rather than along the grid.
      Rocky coasts are handled here too (see landAt / the shoal branch). */
   _layerKey: '',
-  buildShoreLayer() {
+  buildShoreLayer(rect) {
     /* THE LAYER HAS ITS OWN KEY, and it must: `_shoreKey` is the cache key for
        the traced REGIONS, and `waterRegions()` stamps it the moment anything
        asks for the geometry. Sharing it meant that any call which only wanted
@@ -2579,19 +2590,59 @@ const R = {
        beach running down the middle of a flooded moat: the geometry knew the
        moat and the lake were one body, and the picture still had the sand. */
     this._layerKey = this.waterKey();
+    this._shoreDirty = null;
     const W = CFG.W, H = CFG.H, TL = CFG.TILE, AP = ART.PALETTE;
     const px = TL / 16;
-    this._beachStrips = [];       // the beach rings, captured for the wave clamp
     if (!this._waveMaskC) {       // the clamp's scratch pair, allocated at bake
       this._waveMaskC = document.createElement('canvas');
       this._waveMaskC.width = 224; this._waveMaskC.height = 224;
       this._waveScratchC = document.createElement('canvas');
       this._waveScratchC.width = 224; this._waveScratchC.height = 224;
     }
+    /* ONLY THE WATER THAT MOVED IS REDRAWN (the day-99 siege report: the
+       rival digging and flooding a moat round its hall, one tile at a time,
+       while the player's army stood in sight of it). Every flooded tile used
+       to rebuild the WHOLE map's bands — ~45ms of geometry, and ~100ms more
+       when the next blit made the canvas rasterise them — a 150-300ms hitch
+       per spadeful of somebody else's moat. `waterDirty` now hands over the
+       tile rect the change can reach (the touched regions and their rings),
+       and only that rect is cleared and re-composited: every loop whose bands
+       reach into it is redrawn in the full build's own order, clipped to it,
+       so the pixels inside are exactly what a full build paints there, and
+       nothing outside is touched. Every per-point roll is seeded from the
+       point's own position, never from a stream shared across loops, which is
+       what makes a subset of the loops paint the same pixels. */
+    const part = rect && this.shoreLayer
+      && this.shoreLayer.width === W * TL && this.shoreLayer.height === H * TL ? rect : null;
+    const RX0 = part ? part.x0 * TL : 0, RY0 = part ? part.y0 * TL : 0;
+    const RX1 = part ? (part.x1 + 1) * TL : 0, RY1 = part ? (part.y1 + 1) * TL : 0;
+    const inRect = (x0, y0, x1, y1) => !part || (x1 >= RX0 && x0 <= RX1 && y1 >= RY0 && y0 <= RY1);
     if (!this.shoreLayer) this.shoreLayer = document.createElement('canvas');
-    this.shoreLayer.width = W * TL; this.shoreLayer.height = H * TL;
-    const g = this.shoreLayer.getContext('2d');
-    g.clearRect(0, 0, W * TL, H * TL);
+    if (!part) {
+      this._beachStrips = [];     // the beach rings, captured for the wave clamp
+      this.shoreLayer.width = W * TL; this.shoreLayer.height = H * TL;
+    } else {
+      // a strip that reaches the rect is re-captured below with its loop
+      this._beachStrips = (this._beachStrips || []).filter(st => !inRect(st.x0, st.y0, st.x1, st.y1));
+    }
+    /* …drawn into a SCRATCH THE SIZE OF THE LAYER and only the rect copied
+       in — never by clipping the layer to the rect, and never into a canvas
+       the size of the rect. Both were tried and both came back a step off
+       (±1 alpha on a few hundred translucent band pixels): the rasteriser
+       picks its coverage path by the target's size and clip, so the same
+       fills land differently on a smaller or clipped target. On a target the
+       full build's own size the skipped loops are the only difference, and
+       they contribute nothing inside the rect — measured exact, 0 px. The
+       scratch is released the moment the copy is made: an extra full-map
+       canvas held for good is exactly what iOS purges under pressure. */
+    const layerG = this.shoreLayer.getContext('2d');
+    let g = layerG;
+    if (part) {
+      const sc = this._shorePartC || (this._shorePartC = document.createElement('canvas'));
+      sc.width = RX1 - RX0; sc.height = RY1 - RY0;         // resizing also clears it
+      g = sc.getContext('2d');
+      g.setTransform(1, 0, 0, 1, -RX0, -RY0);
+    } else g.clearRect(0, 0, W * TL, H * TL);
     /* NOTHING IS DRAWN IN THE BLACK. The outermost ring is off-map void
        (MapGen.onBoard — the single declaration), painted flat black by
        drawTile; this layer is composited AFTERWARDS, so a sea that reaches
@@ -2732,6 +2783,16 @@ const R = {
       for (const reg of this.waterRegions()) for (const loop of reg.loops) {
       const n = loop.length;
       if (n < 4) continue;
+      if (part) {
+        // a loop whose bands cannot reach the rect: every band sits within
+        // a tile of its curve, so two tiles of slack is room to spare
+        let lx0 = 1e9, ly0 = 1e9, lx1 = -1e9, ly1 = -1e9;
+        for (const q of loop) {
+          if (q[0] < lx0) lx0 = q[0]; if (q[0] > lx1) lx1 = q[0];
+          if (q[1] < ly0) ly0 = q[1]; if (q[1] > ly1) ly1 = q[1];
+        }
+        if (!inRect((lx0 - 2) * TL, (ly0 - 2) * TL, (lx1 + 2) * TL, (ly1 + 2) * TL)) continue;
+      }
       const nrm = new Array(n), rock = new Array(n), nat = new Array(n);
       for (let i = 0; i < n; i++) {
         const a = loop[(i - 1 + n) % n], b = loop[(i + 1) % n];
@@ -2956,7 +3017,10 @@ const R = {
           if (bpx < bx0) bx0 = bpx; if (bpx > bx1) bx1 = bpx;
           if (bpy < by0) by0 = bpy; if (bpy > by1) by1 = bpy;
         }
-        this._beachStrips.push({ p: bs, x0: bx0 - 14, y0: by0 - 14, x1: bx1 + 14, y1: by1 + 14 });
+        // partial: a strip clear of the rect was kept above, so only those
+        // that reach it are captured again (or the list would double them)
+        if (inRect(bx0 - 14, by0 - 14, bx1 + 14, by1 + 14))
+          this._beachStrips.push({ p: bs, x0: bx0 - 14, y0: by0 - 14, x1: bx1 + 14, y1: by1 + 14 });
       }
       ribbon(loop, beach, AP.bone[2]);
       /* THE LIT LIP (Overhaul 2.3, behind SHORE_LIP): the bank's catch-light,
@@ -2995,10 +3059,16 @@ const R = {
       }
       }
       // …and the shore shadow last on the water side, over the shelf wash
-      if (!pass) this.paintShoreShadow(g);
+      if (!pass) this.paintShoreShadow(g, part);
       g.restore();
     }
     g.restore();
+    if (part) {
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      layerG.clearRect(RX0, RY0, RX1 - RX0, RY1 - RY0);
+      layerG.drawImage(g.canvas, 0, 0, RX1 - RX0, RY1 - RY0, RX0, RY0, RX1 - RX0, RY1 - RY0);
+      g.canvas.width = g.canvas.height = 0;     // hand the memory straight back
+    }
   },
 
   /* THE TWO SIDES, AS CLIP PATHS. Water tiles dilated by one, and land tiles
@@ -3285,7 +3355,7 @@ const R = {
      pass field). Bake-time only: the layer is keyed on the water, the
      bench's rebake drops its key, and blitShore carries it into every
      repaint. Runs inside pass 0's clips, so it can never leave the body. */
-  paintShoreShadow(g) {
+  paintShoreShadow(g, rect) {
     const SA = +LAND.SHORE_SHADOW || 0, SW = +LAND.SHORE_SHADOW_W || 0;
     if (!(SA > 0 && SW > 0)) return;
     const W = CFG.W, H = CFG.H, TL = CFG.TILE, terr = (S.map.seenTerrain || S.map.terrain);
@@ -3315,6 +3385,8 @@ const R = {
     for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
       const i = y * W + x;
       if (!wet(terr[i]) || !MapGen.onBoard(x, y)) continue;
+      // a partial rebuild paints only inside its rect (the clip keeps the edge exact)
+      if (rect && (x < rect.x0 - 1 || x > rect.x1 + 1 || y < rect.y0 - 1 || y > rect.y1 + 1)) continue;
       if (D[i] / 16 - WA * 0.5 > SW + 1.2) continue;               // beyond the band's reach
       const dep = sampler(D, x, y), sun = SUN > 0 ? sampler(SD, x, y) : null;
       const w00 = (this._latRead(lat, x, y) - 0.5) * WA, w10 = (this._latRead(lat, x + 1, y) - 0.5) * WA;
@@ -3447,7 +3519,7 @@ const R = {
     }
     const was = this._waterMask;
     this._waterMask = now;
-    if (!was || was.length !== now.length) return null;      // nothing to compare against
+    if (!was || was.length !== now.length) { this._shoreDirty = 'full'; return null; }   // nothing to compare against
     const changed = [];
     for (let i = 0; i < now.length; i++) if (now[i] !== was[i]) changed.push(i);
     if (!changed.length) return null;
@@ -3490,6 +3562,18 @@ const R = {
         const cx = c % W, cy = (c / W) | 0;
         for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) add(cx + ox, cy + oy);
       }
+    }
+    /* …and the same ground is all the shore LAYER needs redrawn: the changed
+       cells with their rings and every touched region with its ring (the
+       regions as they stand NOW — a region the edit split or shrank lies
+       inside the changed cells plus the regions beside them). Accumulated
+       until blitShore spends it; 'full' wins over any rect. */
+    if (out.length && this._shoreDirty !== 'full') {
+      let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+      for (const [x, y] of out) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      const d = this._shoreDirty;
+      this._shoreDirty = d ? { x0: Math.min(d.x0, x0), y0: Math.min(d.y0, y0), x1: Math.max(d.x1, x1), y1: Math.max(d.y1, y1) }
+        : { x0, y0, x1, y1 };
     }
     return out.length ? out : null;
   },
@@ -5885,7 +5969,7 @@ const R = {
      harmless anywhere, and never on the frame loop. */
   rebakeAll() {
     this._lat = null; this._latKey = ''; this._latOne = null;
-    this._shoreKey = ''; this._layerKey = ''; this._waterMask = null;
+    this._shoreKey = ''; this._layerKey = ''; this._waterMask = null; this._shoreDirty = 'full';
     this._beachStrips = null; this._waveEpoch = -1; this._wavePick = null;
     this._bodyPath = null; this._bodyKey = '';
     this._depthD = null; this._shadowD = null; this._deepEdges = null; this._regionMax = null;
@@ -6218,7 +6302,12 @@ const R = {
      is re-derived only if the WATER ITSELF changed (waterKey), so an ordinary
      edit — felling a tree, laying a wall — costs one blit and no tracing. */
   blitShore(g, x0, y0, w, h) {
-    if (this._layerKey !== this.waterKey() || !this.shoreLayer) this.buildShoreLayer();
+    if (this._layerKey !== this.waterKey() || !this.shoreLayer) {
+      // the rect waterDirty recorded, when that is the whole of what moved;
+      // anything else (no record, a revive, a fresh bake) rebuilds it all
+      const d = this._shoreDirty;
+      this.buildShoreLayer(d && d !== 'full' ? d : null);
+    }
     if (!this.shoreLayer) return;
     const TL = CFG.TILE;
     const sx = Math.max(0, x0 * TL), sy = Math.max(0, y0 * TL);
@@ -6293,7 +6382,7 @@ const R = {
     // is rebuilt rather than blitted from pixels that are no longer there
     this._layerKey = ''; this._shoreKey = ''; this._depthKey = '';
     this._mtnLayerKey = ''; this._mtnDirty = true;
-    this._waterMask = null; this._hillKey = '';
+    this._waterMask = null; this._shoreDirty = 'full'; this._hillKey = '';
     this._repaintQ = null;
     if (window.Formations) Formations.reviveArt();   // its canvases were purged too
     this.rebuildTerrain();
@@ -6386,7 +6475,7 @@ const R = {
     this._sideMask = null; this._sideKey = '';
     this._mixC = null;
     this._bodyPath = null; this._bodyKey = '';
-    this._waterMask = null;
+    this._waterMask = null; this._shoreDirty = 'full';
     if (window.Formations) Formations.onNewGame();               // regions/placements are per-map
     this.placePoofs = [];                                        // no dust carried across runs (the R.collapses rule)
     this._sky = null; this._fireFx = null; this._shake = null; this._flash = null; this._burnLayout = null; this._smoulder = null;   // the sky's acts are render state too

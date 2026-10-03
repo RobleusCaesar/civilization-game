@@ -162,7 +162,7 @@ node tests/animal-art.mjs    # character-class art path: 8-way facing from real 
 node tests/archer-art.mjs    # archer line plumbing: military sheet keys {kind}-{p|a}-{tunic} recolored at install, no kind in the boot probe, ranged fight pose vs buildings at reach, deterministic miss overshoot, capped fire-arrow ground strikes
 node tests/audio.mjs         # the game's voice: nothing on the wire, two switches and two dials (mute and zero are one state), throttled per kind, and the music is generated rather than looped
 node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map arrays, kept ground DERIVED from standing buildings (grows back on raze, byte-identical), the flatten fires from Bld.finish alone, the 32px cover-art door snaps alpha binary
-node tests/frame-hotpath.mjs  # the late-game town costs no more per tile: Bld.at is an index (= the linear definition on every tile), the building loop culls to the camera, the cull changes no pixel
+node tests/frame-hotpath.mjs  # the late-game town costs no more per tile: Bld.at is an index (= the linear definition on every tile), the building loop culls to the camera, the cull changes no pixel; a siege frame redraws only the water that moved, and a fallen building's verge grows back in slices
 node tests/worn-paths.mjs     # the ground wears where WORK walks: distinct days, never a march, never in the fog; a band not a square; repaint == rebake; few roads, worth walking (+10%), the road calls the walker
 node tests/specials.mjs       # the special-event roll: three draws whatever it rolls, weighted, no dead rolls; the kraken is the player's; sons/cache land where a hand can walk; every event scores and reports; the eclipse's moon-shadow, its stare, no stars in the black; the animal strife is fought, wound up, balanced both ways; the dry summer burns each tree as itself and leaves burnt wood (snags where the trees grew, ash, grass) — never stumps, never a lumber camp
 ```
@@ -4901,6 +4901,44 @@ zoom; 98 frozen-time frames byte-identical with the cull on and off. A
 tower-bond memo was measured and LEFT OUT — with O(1) lookups it no
 longer moved the frame beyond noise, and a cache keyed on fort tier is
 one more thing to go stale.
+
+**A SIEGE FRAME PAYS ONLY FOR WHAT MOVED** (`tests/frame-hotpath.mjs`'s
+last section — the day-99 report: "glitching, frame rate issues while I'm
+attacking the enemy city"). Profiled on the save, two costs landed in the
+very frames the player was watching. **The rival's moat came into view a
+tile at a time**: it was dug in the fog, so the player's memory
+(`seenTerrain`) still held grass, and as the army moved round the walls
+each moat tile `updateVisibility` synced counted as WATER MOVING — and
+every one rebuilt the SHORE LAYER for every lake on the board (~45ms of
+band geometry, ~100ms more when the next blit made the canvas rasterise
+it: 150-300ms a tile). `waterDirty` now records the tile rect the change
+can reach (the changed cells with their rings, every touched region with
+its ring) on `R._shoreDirty`, and `blitShore` hands it to
+`buildShoreLayer(rect)`, which redraws only the loops whose bands reach the
+rect, into a SCRATCH canvas the size of the rect at an integer translate,
+and copies that in. Never a clip on the layer itself: a rect clip
+intersected with the side masks and the water outline moved the
+rasteriser onto another coverage path, and so does any change of target
+size — the same fills land up to ONE alpha step apart on a few hundred
+translucent band pixels (a full-size scratch is exact but pays for
+whole-map clip masks, which ate the saving). The contract pins the bar
+honestly: nothing outside the rect changes, and inside it every pixel is
+within a step of a full build, premultiplied. Every per-point roll in the
+build is seeded from the point's own position, never from a stream shared
+across loops, which is what lets a subset of the loops paint the same
+picture — keep it that way. Any reset that drops `_waterMask` marks the
+layer `'full'`, so a stale rect can never be spent on a purged canvas.
+Caveat, pre-existing and unchanged: a flip ANYWHERE changes the one
+combined water-outline clip path, and that alone moves rounding in far-off
+translucent pixels by one step; the old full rebuild drew those fresh, the
+partial one keeps the old step (the terrain cache already did — 8-28 bytes
+of drift there in the baseline). **And every razed building repainted its
+9x9 verge** of wild grass in the frame it fell (`tameDirty`, 35-67ms — in
+a siege, every few seconds): a FALLEN building's verge now goes down the
+sliced repaint queue (`tameDirty(b, true)` from `removeToRuin`); a RISING
+one still paints at once, since that is the moment the player is looking.
+Measured on the save: the update half of a raze frame 40-60ms → 7-13ms,
+and the shore part of a moat reveal 45-100ms → 30-40ms.
 
 **The frame must never pay for bookkeeping** (the stutter post-mortem, a real
 multi-save report): four measured taxes, each invisible in review and each a
