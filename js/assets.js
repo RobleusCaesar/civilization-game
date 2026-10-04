@@ -1770,10 +1770,9 @@ const Assets = {
      ripe corn field and the dark A-frame lodge are not the structures their
      lenders raise, so both now own upgrade-shaped sets (W2 pass two). */
   STAGE_SHARE: {
-    'range-l1': 'barracks-l1',   // the same post-and-rail square, at every level
-    'range-l2': 'barracks-l2',
-    'range-l3': 'barracks-l3',
-    'sapper-l2': 'sapper-l1',    // the same earth square around the same shaft
+    // empty: every slot that ships stages owns its own set now (W2 — the range
+    // and the sappers' camp were redrawn and raise themselves); the table stays
+    // as the extension point for a slot that genuinely shares another's look
   },
   stageOwner(id, lv) { const k = this.slotKey(id, lv); return this.STAGE_SHARE[k] || k; },
   stageName(id, lv, n) { return (String(id) + '-l' + lv + '-b' + n + '.png').toLowerCase(); },

@@ -411,7 +411,7 @@ const out = await p.evaluate(() => {
   {
     // every shipped PNG slot has anchors, resolved through the [{lv,…}] form
     const SHIPPED = [['tc', 3], ['house', 3], ['barracks', 3], ['range', 3],
-      ['farm', 1], ['sapper', 1], ['siege', 1]];
+      ['stable', 3], ['siege', 3], ['farm', 1], ['sapper', 1]];
     const probs = [];
     for (const [id, top] of SHIPPED) for (let lv = 1; lv <= top; lv++) {
       const a = R.smokeAnchor(R.FIRE_AT, id, lv);
@@ -420,15 +420,16 @@ const out = await p.evaluate(() => {
         probs.push(id + '-l' + lv + ' out of rect');
     }
     ck('everyShippedArtHasFireAnchors', probs.length === 0,
-      probs.length ? probs.slice(0, 5).join('; ') : '15 PNG slots anchored');
+      probs.length ? probs.slice(0, 5).join('; ') : '20 PNG slots anchored');
     ck('theGroundKindsAreMarked',
       R.smokeAnchor(R.FIRE_AT, 'farm', 1).ground === 1 &&
       R.smokeAnchor(R.FIRE_AT, 'sapper', 1).ground === 1 &&
-      R.smokeAnchor(R.FIRE_AT, 'siege', 1).ground === 1 &&
-      R.smokeAnchor(R.FIRE_AT, 'barracks', 1).ground === 1 &&
+      // the military yards were redrawn as roofed buildings (W2 group 2), so
+      // even their level 1 is a roof that blazes, not a yard that smoulders
+      ['barracks', 'range', 'stable', 'siege'].every(k => !R.smokeAnchor(R.FIRE_AT, k, 1).ground) &&
       !R.smokeAnchor(R.FIRE_AT, 'barracks', 3).ground &&
       !R.smokeAnchor(R.FIRE_AT, 'house', 1).ground,
-      'field, pit, open yards — a roofed hall is not among them');
+      'a field and a pit — every roofed building, the L1 yards included, blazes');
     // a level with no entry of its own resolves down (the smokeAnchor rule),
     // and a WORK SITE always burns the classic way — the anchors are for the
     // building, not for the piled materials

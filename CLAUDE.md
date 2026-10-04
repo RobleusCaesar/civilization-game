@@ -1364,7 +1364,19 @@ square its older set was fitted under, and both resample through blitBld's
 smoothing, so a downscaled stage no longer shimmers. The site's progress bar
 hangs just BELOW the footprint — across its foot it covered the piles. The
 share table lost `farm-l2` and `lodge-l3`; the contract reads the disk for
-all 42 files (twelve station slots and both farm levels) and their canvases.
+every stage file of the stations, both farm levels and the military yards,
+and their canvases.
+**AND THE MILITARY YARDS WENT THE SAME WAY** (W2 group 2): the barracks,
+range, stable, siege workshop and sappers' camp were top-down fenced squares
+whose stage sets drifted between shapes (a pen that finished as a hall), so
+all fifteen levels were redrawn in the house camera — each kind's level 1
+first, then its level 2 and 3 with that level 1 as the style master — and
+every stage edited from its own finished art, then fitted by `install5`.
+Every level is a ROOFED building now, so their `R.FIRE_AT` entries are roof
+anchors measured off each frame's silhouette (only the sappers' pit and the
+farm still burn low, pinned in tests/burn-down.mjs), and `STAGE_SHARE` is
+EMPTY — the range no longer borrows the barracks yard (that operator ask went
+with the yards), nor the L2 shaft the L1's.
 
 **The Watchtower has BESPOKE stage art** (same test): the first building with
 its own three-sprite raising — `misc/towerBuild1/2/3` at DOUBLE resolution
@@ -1813,8 +1825,9 @@ ridge — and small licks at the doorway and foot, WHICH MEANS PH1 IS NO
 LONGER BIG-ONLY (the test's ladder check was relaxed to match); guttering
 (ph2) falls back to small fires at the door/foot spots. The BLAZE stays
 phase 1's alone: ph0/ph2 never draw `flameBig`. **GROUND-LEVEL kinds burn
-low** (`ground: 1` entries — the farm, the sapper's pit, the siege yard, the
-open L1 training yards): nothing stands tall enough to blaze, so
+low** (`ground: 1` entries — the farm and the sapper's pit; the military
+yards were redrawn as roofed buildings in W2 and blaze at every level):
+nothing stands tall enough to blaze, so
 `R.drawGroundBurn` spreads smoldering scorch patches, winking embers and
 small low flames instead — never `flameBig` at any phase — and at ph2 they
 keep `darkOf` instead of `ruinOf`, because biting a "roofline" out of a

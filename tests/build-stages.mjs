@@ -163,7 +163,10 @@ const out = await p.evaluate(() => {
     ck('stageRoofKnowsTheYards',
       R.stageRoof('house', 1) === true && R.stageRoof('tc', 2) === true &&
       R.stageRoof('farm', 1) === false && R.stageRoof('lumber', 1) === false &&
-      R.stageRoof('barracks', 1) === false && R.stageRoof('barracks', 3) === true, '');
+      // the military yards are roofed buildings since W2 group 2, so the pit
+      // is the ground kind that frames flat; barracks L1 now frames roofed
+      R.stageRoof('sapper', 1) === false && R.stageRoof('barracks', 1) === true &&
+      R.stageRoof('barracks', 3) === true, '');
 
     // the partial build: top erased above the wall line, pale cut ends, stubs
     const part = R.partialOf(base);
@@ -276,9 +279,12 @@ const out = await p.evaluate(() => {
     ck('workSiteArtRoutesByShapeAndFootprint',
       R.stageShape('tc', 1) === 'Hut' && R.stageShape('tc', 2) === 'Hall' &&
       R.stageShape('house', 1) === 'Hut' && R.stageShape('house', 2) === 'Hall' &&
-      R.stageShape('barracks', 1) === 'Yard' && R.stageShape('range', 1) === 'Yard' &&
+      R.stageShape('sapper', 1) === 'Yard' && R.stageShape('barracks', 1) === 'Hall' &&
       R.stageShape('barracks', 2) === 'Hall',
-      'barracks L1 and range L1 share one frame, as the operator asked');
+      // the operator's old "barracks L1 and range L1 share one yard frame" was
+      // retired with the yards themselves: both are redrawn roofed buildings
+      // that raise out of their own finished art (W2 group 2)
+      'the pit derives a yard frame; the redrawn barracks a hall');
     WS.buildSite2 = undefined; WS.buildFrameHut2 = undefined;
     ck('theOldGenericLooksAreGone',
       !Sprites.misc.construction1 && !Sprites.misc.constructionBig && !Sprites.misc.scaffold &&
@@ -461,7 +467,8 @@ const out = await p.evaluate(() => {
 /* THE STATIONS RAISE THEMSELVES OUT OF THEIR OWN FINISHED ART (W2 — audit
    STG-03/04/08, and the operator's ruling on the first cut: "start with the
    finished product… feed that into PixelLab with every request"): every
-   lumber / quarry / mine / lodge level and the level-2 farm owns all three
+   lumber / quarry / mine / lodge level, both farm levels and (group 2) every
+   barracks / range / stable / siege / sapper level owns all three
    stages, each an edit of that slot's finished PNG, on THAT PNG'S OWN CANVAS
    (which is what routes them through the finished rect above, so the
    footprint cannot wander), and none borrows another slot's set. Read off the
@@ -473,6 +480,8 @@ const out = await p.evaluate(() => {
   const OWN = [];
   for (const k of ['lumber', 'quarry', 'mine', 'lodge']) for (const l of [1, 2, 3]) OWN.push(k + '-l' + l);
   OWN.push('farm-l1', 'farm-l2');
+  // W2 group 2: the military yards, redrawn in the house camera the same way
+  for (const k of ['barracks', 'range', 'stable', 'siege', 'sapper']) for (const l of [1, 2, 3]) OWN.push(k + '-l' + l);
   const bad = [];
   for (const s of OWN) for (const n of [1, 2, 3]) {
     const f = join(A, s + '-b' + n + '.png');

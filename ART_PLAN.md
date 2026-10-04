@@ -338,13 +338,19 @@ ladder, then one slope covered. An edit keeps the canvas, so the stages land on
 the finished art's own grid; `install5` then fits ONE frame on the finished art
 (crop/pad only) and gives all four the same frame. The first cut's masked
 inpaint kept pixels exact but kept the WRONG picture — the old yards — and was
-rejected for it.
+rejected for it. The military yards (barracks, range, stable, siege,
+sapper) took the same two steps in group 2, with house-l1 as the style master
+for each level 1. Two traps: an edit that removes a structure can blank the
+whole earth patch under a pit subject — say "keep EVERYTHING the same… the
+same whole patch of BROWN EARTH" and name the one thing that changes; and the
+candidates of one `create_image_pro` job share a blob timestamp, so pick from a
+contact sheet of the SAVED files, never from the order the tool displayed them.
 
 **SHARING IS BY SLOT, NOT BY FORM** (`Assets.STAGE_SHARE`, an approved
 list and never a heuristic). Two slots share only where the FINISHED
-buildings genuinely are the same structure: the barracks yard and the
-archery range yard, the L1 and L2 farm fields, the L2 and L3 lodge huts,
-the L1 and L2 sapper shafts. A level whose own set was never drawn gets
+buildings genuinely are the same structure — and since W2 no two do: every
+slot that ships stages owns its set, and the table is empty, kept as the
+extension point. A level whose own set was never drawn gets
 NO entry and falls to the authored shape-and-footprint work site plus the
 derived partial — which is right for it. A lumber camp grows a roof at
 level 2 and a mine grows a headframe at level 3, so level 1's stages would
