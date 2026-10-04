@@ -10585,16 +10585,18 @@ const R = {
      in flames doesn't bother — its own fire is already the story. */
   SMOKE_AT: {
     house:   { x: 21.5 / 32, y: 3 / 32 },     // the chimney pot
-    /* the hall is the one key whose roofline really CHANGES shape between
-       tiers, and it is the only one still carrying manifest art — so it alone
-       is a per-level list. Everything else here is back to procedural art and
-       keeps its single flat anchor; smokeAnchor accepts both shapes. */
+    /* a key whose roofline really CHANGES shape between tiers (the hall; the
+       trading post, which only grows a chimney at L3) is a per-level list —
+       smokeAnchor takes the highest lv at or below the building's own, and a
+       level below every entry has no hearth at all. The rest keep one flat
+       anchor; smokeAnchor accepts both shapes. */
     tc:      [{ lv: 1, x: 15.7 / 32, y: 3 / 32 },      // the L1 cone's roof-hole
               { lv: 2, x: 15.7 / 32, y: 1.4 / 32 },    // the L2 longhouse's ridge
               { lv: 3, x: 21.7 / 32, y: 3 / 32 }],     // the L3 hall's CHIMNEY top
     lodge:   { x: 12 / 32, y: 7 / 32 },       // the smoking rack's fire
-    warcamp: { x: 15.5 / 32, y: 9 / 32 },     // the campfire under the ridge pole
-    trade:   { x: 3 / 16, y: 1 / 16 },        // the trader's brazier
+    warcamp: { x: 0.47, y: 0.62 },            // the campfire out in the yard (W2 art)
+    // the trading post's tent and lodge keep no hearth; only the L3 hall has a chimney
+    trade:   [{ lv: 3, x: 0.66, y: 0.07 }],
   },
   /* AN ANCHOR THAT MAY VARY BY LEVEL. A key whose art genuinely changes shape
      between tiers (today only the hall, the one building still served by the

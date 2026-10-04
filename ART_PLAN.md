@@ -345,6 +345,20 @@ whole earth patch under a pit subject — say "keep EVERYTHING the same… the
 same whole patch of BROWN EARTH" and name the one thing that changes; and the
 candidates of one `create_image_pro` job share a blob timestamp, so pick from a
 contact sheet of the SAVED files, never from the order the tool displayed them.
+Group 3 (the trading post's three levels and the war camp) added two more.
+**An edit that keeps losing the earth is composited, not re-rolled**: the
+tent and lodge stages dropped their patch three times running, so the earth
+is lifted off the slot's own stage 1 (its dominant browns, largest region,
+prop holes filled from the nearest earth pixel) and laid UNDER the later
+stage — the ground is then identical through the whole raising by
+construction, the `graft.mjs` lesson applied to ground alone. **A level the
+style master copies instead of grows is made as an EDIT of the level below**
+("upgrade this lodge to its third tier: fieldstone walls, a chimney…"): two
+`create_image_pro` rolls of trade L3 came back as cropped close-ups and then
+as near-copies of L2, and the edit kept the camera, the place and the width
+for 6 generations. The DOCK is deliberately not in the set: one PNG overrides
+all four of its shore facings, so a drawn jetty would point the wrong way on
+three coasts — it keeps its procedural four-facing stages.
 
 **SHARING IS BY SLOT, NOT BY FORM** (`Assets.STAGE_SHARE`, an approved
 list and never a heuristic). Two slots share only where the FINISHED

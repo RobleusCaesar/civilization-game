@@ -1377,6 +1377,12 @@ anchors measured off each frame's silhouette (only the sappers' pit and the
 farm still burn low, pinned in tests/burn-down.mjs), and `STAGE_SHARE` is
 EMPTY — the range no longer borrows the barracks yard (that operator ask went
 with the yards), nor the L2 shaft the L1's.
+**AND THE TRADING POST AND THE WAR CAMP** (W2 group 3): the same two steps;
+the trading post grows tent → timber lodge → stone hall with a chimney, and
+the hearth smoke follows the art (`R.SMOKE_AT.trade` is per level — only L3
+smokes — and the war camp's anchor is its yard fire). The DOCK keeps its
+procedural four-facing stages: one PNG would override all four shore
+orientations.
 
 **The Watchtower has BESPOKE stage art** (same test): the first building with
 its own three-sprite raising — `misc/towerBuild1/2/3` at DOUBLE resolution
