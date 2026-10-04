@@ -1644,7 +1644,17 @@ timber upper storey divided by a corbelled string-course (a `tier === 2`
 branch in the tower draw, NOT `bWall`, whose tier-2 dress is a mere two-row
 footing). Both land near 50/50; L1 (palisade/wattle) and L3 (dressed stone,
 gold crest) are deliberately untouched, and each tier must remain a visible
-step. **The bond** — a tower raised IN a wall line joins it (corners,
+step. **The FREE-STANDING Watchtower left that rule** (operator ruling on the
+fortifications review: "follow the same grass, wood, and stone
+progression"): its shipped PNGs (`assets/buildings/tower-l{1,2,3}.png`,
+sidecar-scaled to about two tiles tall so a tower stands above the
+villagers) are a thatched lookout, a log BLOCKHOUSE and a stone tower on one
+shared turf mound. So the contract now pins L2 as TIMBER and reads L3 on its
+SHAFT (the mound and stair are earth and wood at every tier), and waits for
+the PNGs before measuring. The half-and-half L2 story still holds where a
+wall meets a tower: the curtain and the MURAL tower (the procedural drawing a
+bonded tower wears) are what `wallAndTowerAgreeAtL2` compares. The tower's
+build stages are still the old procedural set. **The bond** — a tower raised IN a wall line joins it (corners,
 T-junctions, mid-run), so the curtain reads unbroken like a real castle's
 mural towers; a tower merely BEHIND or IN FRONT of a line must not.
 `R.towerLinkMask` decides: link toward a neighbouring wall/gate when the run

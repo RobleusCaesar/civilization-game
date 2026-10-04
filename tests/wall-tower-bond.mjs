@@ -65,6 +65,13 @@ await p.waitForTimeout(900);
 // the title's demo world holds its bake for the art (R.holdBake); this file draws it
 await p.waitForFunction(() => window.R && window.S && S.map, null, { timeout: 20000 });
 await p.evaluate(() => { R.holdBake = false; R.ensureTerrain(); });
+/* THE TOWER'S MATERIAL IS READ OFF THE SHIPPED PNG, so wait for all three to
+   land: before they decode the slots hold the procedural towers, whose L2 is
+   the old half-stone, half-timber storey — the materials checks would then
+   pin whichever art won the race with the loader (bounded; a PNG that never
+   lands leaves the procedural tower, which those checks then fail). */
+await p.waitForFunction(() => window.Sprites && Sprites.building.tower.every(t => t && t._cfArt),
+  null, { timeout: 30000 }).catch(() => {});
 
 const out = await p.evaluate(() => {
   const res = {}, fails = [];
@@ -83,9 +90,10 @@ const out = await p.evaluate(() => {
     return k;
   };
   // warm brown = timber, neutral grey = masonry
-  const mix = (c0) => {
+  // `upTo` reads only the top fraction of the picture (the tower's shaft above its turf mound)
+  const mix = (c0, upTo) => {
     const c = canvasOf(c0);
-    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    const d = c.getContext('2d').getImageData(0, 0, c.width, Math.max(1, Math.round(c.height * (upTo || 1)))).data;
     let wood = 0, stone = 0, n = 0;
     for (let i = 0; i < d.length; i += 4) {
       if (d[i + 3] < 96) continue;
@@ -114,11 +122,22 @@ const out = await p.evaluate(() => {
     ck('wallL2IsHalfAndHalf', w2.wood > 0.3 && w2.wood < 0.7 && w2.stone > 0.3 && w2.stone < 0.7, pct(w2));
     ck('wallL3StaysStone', w3.stone > 0.85 && w3.wood < 0.15, pct(w3));
     ck('towerL1StaysTimber', t1.wood > 0.6, pct(t1));
-    ck('towerL2IsHalfAndHalf', t2.wood > 0.3 && t2.wood < 0.7 && t2.stone > 0.3 && t2.stone < 0.7, pct(t2));
-    ck('towerL3StaysStone', t3.stone > 0.85 && t3.wood < 0.15, pct(t3));
-    // the L2 pair now tell the SAME story — that was the point of the change
-    ck('wallAndTowerAgreeAtL2', Math.abs(w2.wood - t2.wood) < 0.25,
-      'wall ' + pct(w2) + ' vs tower ' + pct(t2));
+    /* THE FREE-STANDING TOWER STEPS GRASS → WOOD → STONE (operator ruling on
+       the fortifications review: "follow the same grass, wood, and stone
+       progression"): a thatched lookout, a log blockhouse, a stone tower,
+       all three on the same turf mound with a timber stair. So the L2
+       Watchtower is TIMBER now, not the half-and-half it used to be, and
+       the L3 one is read on its SHAFT — the mound and stair it shares with
+       the lower tiers are earth and wood whatever the tier. */
+    const t3s = mix(Sprites.building.tower[2], 0.6);
+    ck('towerL2IsTimber', t2.wood > 0.7 && t2.stone < 0.2, pct(t2));
+    ck('towerL3StaysStone', t3s.stone > 0.7 && t3s.wood < 0.3, 'shaft ' + pct(t3s));
+    /* the L2 pair that STANDS TOGETHER tells the same story: the curtain and
+       the tower bonded into it (the mural tower, the one a wall ever meets) —
+       the free-standing Watchtower is no longer that tower */
+    const m2w = mix(Sprites.towerMural[1]);
+    ck('wallAndTowerAgreeAtL2', Math.abs(w2.wood - m2w.wood) < 0.25,
+      'wall ' + pct(w2) + ' vs mural tower ' + pct(m2w));
     // every tier is a visible step, in both families
     ck('everyTierStepsInMaterial',
       w1.stone < w2.stone && w2.stone < w3.stone && t1.stone < t2.stone && t2.stone < t3.stone, '');

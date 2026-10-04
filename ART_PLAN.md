@@ -364,6 +364,19 @@ assets/fort/gate-l{1,2,3}-face.png       the gatehouse across an east-west line
 assets/fort/gate-l{1,2,3}-flank.png      …and along a north-south one
 ```
 
+**THE TOWER STANDS ABOVE THE VILLAGERS** (the fortifications review): the
+first tower set was drawn at the footprint's width, which left a
+watchtower about one villager across. The three towers were redrawn
+as one family on a shared stepped turf mound with a stair: a thatched lookout on posts, a
+log blockhouse with a fighting gallery, a crenellated stone tower. Each
+PNG is cropped to its opaque box, and a sidecar scales it to
+`width/128 × 2.4` tiles (`{ "scale": 1.65 }` for L1, `1.575` for L2 and L3)
+so all three share one pixel density. The art overhangs its 1×1 footprint
+by about a third of a tile each side and stands about two tiles tall. The
+tower's bespoke build stages (`misc/towerBuild1..3`) are still the old
+procedural set, and the redrawn curtain on the review sheet is NOT
+installed.
+
 The curtain and the bonded (mural) tower stay PROCEDURAL. A drawn curtain was
 built and rejected: sixteen junctions that have to butt together without a
 seam, read at a glance across a whole map, are a job the flat atlas does
