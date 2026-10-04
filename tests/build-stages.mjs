@@ -427,6 +427,26 @@ const out = await p.evaluate(() => {
       ck('aSlotWithNoEntryOwnsItself', Assets.stageOwner('stable', 2) === 'stable-l2', '');
       Assets.stages = keepStages; Assets.STAGE_SHARE = keepShare;
     }
+    /* A STAGE ON THE FINISHED CANVAS TAKES THE FINISHED RECT (audit STG-01,
+       R.blitStage): drawn on the same canvas as its finished PNG, a stage is
+       that building's own picture in progress, so it lands exactly where the
+       building will (artRect: width-fit, aspect kept, overhang up) and nothing
+       jumps on the frame it completes. A stage on any other canvas keeps the
+       footprint square its older set was fitted under. */
+    {
+      const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+      const base = mk(128, 144); base._cfArt = {};
+      const rec = []; const g = { imageSmoothingEnabled: false, drawImage(img, x, y, w, h) { rec.push([x, y, w, h]); } };
+      R.blitStage(g, mk(128, 144), base, 100, 200, 54);
+      const want = R.artRect(base, 100, 200, 54, 54);
+      ck('aStageOnTheFinishedCanvasTakesTheFinishedRect',
+        rec[0] && Math.abs(rec[0][1] - want.y) < 1e-6 && Math.abs(rec[0][3] - want.h) < 1e-6 && rec[0][3] > 54,
+        JSON.stringify(rec[0]) + ' vs ' + JSON.stringify(want));
+      R.blitStage(g, mk(140, 128), base, 100, 200, 54);
+      ck('andAnyOtherStageKeepsTheFootprintSquare',
+        rec[1] && rec[1][0] === 100 && rec[1][1] === 200 && rec[1][2] === 54 && rec[1][3] === 54, JSON.stringify(rec[1]));
+      ck('andNeitherIsStampedAsFinishedArt', !mk(1, 1)._cfArt && g.imageSmoothingEnabled === false, '');
+    }
     wsOn();
     const twFake = { id: 778, key: 'tower', owner: 'P', x: 5, y: 5, level: 1, construction: tt * 0.9, upgrading: 0 };
     ck('stageIconHonoursBespokeArt', R.stageIcon(twFake) === M.towerBuild1, '');
@@ -438,6 +458,31 @@ const out = await p.evaluate(() => {
 
   return { res, fails };
 });
+/* THE STATIONS OWN UPGRADE-SHAPED SETS (W2 pass two — audit STG-03/04/08):
+   lumber / quarry / mine at levels 2 and 3, the level-3 lodge and the level-2
+   farm each own all three stages, on THEIR FINISHED PNG'S OWN CANVAS (which is
+   what routes them through the finished rect above), and none borrows another
+   slot's set — the shared generic site and frame were the dull stages. Read
+   off the disk, so a missing file fails here rather than quietly falling back. */
+{
+  const { readFileSync, existsSync } = await import('node:fs');
+  const dim = (f) => { const d = readFileSync(f); return d.readUInt32BE(16) + 'x' + d.readUInt32BE(20); };
+  const A = join(root, 'assets', 'buildings');
+  const OWN = ['lumber-l2', 'lumber-l3', 'quarry-l2', 'quarry-l3', 'mine-l2', 'mine-l3', 'lodge-l3', 'farm-l2'];
+  const bad = [];
+  for (const s of OWN) for (const n of [1, 2, 3]) {
+    const f = join(A, s + '-b' + n + '.png');
+    if (!existsSync(f)) { bad.push(s + '-b' + n + ' missing'); continue; }
+    if (dim(f) !== dim(join(A, s + '.png'))) bad.push(s + '-b' + n + ' ' + dim(f) + ' != ' + dim(join(A, s + '.png')));
+  }
+  const ok = !bad.length;
+  out.res.theStationUpgradesOwnTheirStagesOnTheFinishedCanvas = (ok ? 'PASS' : 'FAIL') + (bad.length ? ' — ' + bad.join('; ') : '');
+  if (!ok) out.fails.push('theStationUpgradesOwnTheirStagesOnTheFinishedCanvas');
+  const shareSrc = readFileSync(join(root, 'js', 'assets.js'), 'utf8').match(/STAGE_SHARE:\s*\{([^}]*)\}/)[1];
+  const lent = OWN.filter(s => new RegExp("'" + s + "'\\s*:").test(shareSrc));
+  out.res.andNoneOfThemBorrowsASet = lent.length ? 'FAIL — ' + lent.join(', ') : 'PASS';
+  if (lent.length) out.fails.push('andNoneOfThemBorrowsASet');
+}
 console.log(JSON.stringify(out.res, null, 1));
 console.log(out.fails.length ? 'FAILURES: ' + out.fails.join(', ') : 'ALL BUILD-STAGES CHECKS PASS');
 console.log('errors:', errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e)));

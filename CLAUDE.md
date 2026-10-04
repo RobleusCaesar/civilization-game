@@ -118,7 +118,7 @@ node tests/sapper-fees.mjs     # sapper services bill per tile, dearer by tier, 
 node tests/army-groups.mjs     # dense 2-per-tile formations; three saved armies on right-rail banners
 node tests/boats-moat-scuttle.mjs # a moat is open water to hulls; Scuttle sinks a boat, frees its pop, refunds nothing
 node tests/army-strategies.mjs # the three assault doctrines (Siege/Chaos/Strike) — for the player AND the rival
-node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals — DERIVED from the target art
+node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals — DERIVED from the target art; a stage on the finished canvas takes the finished rect; the stations own upgrade-shaped sets
 node tests/burn-down.mjs       # buildings burn in thirds at their OWN anchors; the fall throws dust; 5 days of ash
 node tests/wall-tower-bond.mjs # L2 forts are half stone/half timber; an in-line tower joins the curtain
 node tests/buildings-block.mjs # every building is solid ground except the worker plots
@@ -1331,6 +1331,30 @@ has a `wonderBuild1` but no `wonderBuild3`, so the bespoke branch would hand
 back undefined); a wall/gate site's icon derives from the straight-run
 preview, never the auto-tiled mask. `tests/gold-mine.mjs`'s
 `andItRaisesItsOwnWay` now pins the mine's DERIVED raising.
+**THE STATIONS RAISE THEIR UPGRADES IN PLACE** (W2 pass two, same test —
+audit STG-01/03/04/08/12): lumber / quarry / mine at levels 2 and 3, the
+level-3 lodge and the level-2 farm own their stage sets, and every one of
+them is the slot's OWN finished PNG with work in it — made by PixelLab's
+masked INPAINT, which keeps every unmasked pixel byte for byte, so posts,
+footprint and ground cannot drift. An upgrade is shaped as one: s0 is the
+standing L(n-1) station with ONE delivered pile beside it (poles for
+timber, dressed blocks for stone), s1 the new work half up (bare rafters
+lashed with rope, two hoist poles and no crossbeam, a stone portal spanned
+by a temporary pole), s2 the last of it (one slope boarded, the crossbeam
+half lashed) — a ladder where a hand would need one, never clutter. The
+farm grows rather than builds (shoots → green corn → turning gold), and
+farm L1's middle stages are DERIVED from farm-l1.png at no cost
+(a one-off script, not a build step): ploughed row by row from the top, then the
+first-sown rows sprouting. **A stage on the same canvas as its finished PNG
+draws through the finished rect** (`R.blitStage` → `artRect`), so the
+building can only grow on the frame it completes; any other canvas keeps
+the footprint square its older set was fitted under (moving those would
+make them jump instead), and both resample through blitBld's smoothing, so
+a downscaled stage no longer shimmers. The site's progress bar hangs just
+BELOW the footprint now — across its foot it covered the piles. The share
+table lost `farm-l2` and `lodge-l3`; the contract reads the disk for all
+24 files and their canvases.
+
 **The Watchtower has BESPOKE stage art** (same test): the first building with
 its own three-sprite raising — `misc/towerBuild1/2/3` at DOUBLE resolution
 (128px on a 64-cell fine grid, vs the finished tower's 32-grid), drawn from

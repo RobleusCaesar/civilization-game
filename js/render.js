@@ -8154,6 +8154,26 @@ const R = {
     if (stage === 1) return M['buildFrame' + this.stageShape(key, lv) + sz] || null;
     return null;
   },
+  /* WHERE AN AUTHORED STAGE LANDS (audit STG-01). A stage drawn on the SAME
+     canvas as its finished PNG is the finished building's own picture in
+     progress — every post where the post will stand — so it takes the
+     finished art's rect (R.artRect: width-fit, aspect kept, overhang up) and
+     the building can only grow on the frame it completes. Any other stage
+     keeps the footprint square it was authored under (some older sets were
+     fitted to that stretch, so moving them would make them jump instead).
+     Both go through blitBld's resampling, so a downscaled stage no longer
+     shimmers as the camera pans. No mutation of the stage image: a shared
+     set may land on a slot whose finished canvas differs. */
+  blitStage(g, art, base, bx, by, bw) {
+    if (base && base._cfArt && art.width === base.width && art.height === base.height) {
+      const r = this.artRect(base, bx, by, bw, bw), down = art.width > r.w * 1.02;
+      if (down) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; }
+      g.drawImage(art, r.x, r.y, r.w, r.h);
+      if (down) g.imageSmoothingEnabled = false;
+      return;
+    }
+    this.blitBld(g, art, bx, by, bw, bw);
+  },
   /* the GROUND PLAN of a site — which shape of patch gets cleared. Derived
      from the target art: round kinds break a round plot, everything else a
      squared one as wide as its own art. lv may exceed the family (a wall
@@ -12499,7 +12519,7 @@ const R = {
             Assets.drawSprite(g, 'misc/' + b.key + (up ? 'Up' : 'Build') + (stage + 1), bx, by, { w: bw, h: bw });
           } else if (this.stageArt(b.key, up ? b.level + 1 : b.level, bs, stage)) {
             // AUTHORED site and frame, shared by shape and footprint
-            g.drawImage(this.stageArt(b.key, up ? b.level + 1 : b.level, bs, stage), bx, by, bw, bw);
+            this.blitStage(g, this.stageArt(b.key, tgt, bs, stage), this.bldSprite(b, tgt), bx, by, bw);
           } else {
             /* THE DERIVED STAGES (tests/build-stages.mjs): cleared site →
                framing → partial build, generated from the footprint, the
@@ -12520,7 +12540,9 @@ const R = {
           }
         }
         const total = up ? (b.upgTotal || Bld.def(b.key).levels[b.level].time) : Bld.def(b.key).levels[b.level - 1].time;
-        this.bar(g, bx + 4, by + bw - 4, bw - 8, 3, 1 - (up ? b.upgrading : b.construction) / total, '#e8c15a');
+        // the bar hangs just BELOW the footprint (audit STG-V02): across its
+        // foot it covered the delivered piles the stages count down
+        this.bar(g, bx + 4, by + bw + 1, bw - 8, 2, 1 - (up ? b.upgrading : b.construction) / total, '#e8c15a');
         // still tag the owner so a work site reads as friend or foe
         if (this.SHOW_OWNER_PIP) {
           g.fillStyle = b.owner === 'P' ? '#4a90c2' : '#c2564a';

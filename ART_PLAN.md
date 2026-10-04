@@ -318,6 +318,22 @@ actually is and stands it in the finished building's place. The ground is
 then identical across the set by construction and the building can only
 grow.
 
+**AN UPGRADE IS PAINTED INTO ITS OWN FINISHED ART, NOT RE-RAISED** (W2 pass
+two, the stations). Pro Flash `inpaint_image_pro_flash` on the finished PNG
+at its NATIVE density (the 2×NN masters halved, 64×72; 5 generations each,
+256 farm edits 9), with a rectangle mask over only what the stage changes —
+the roof band, the hoist, the portal, one patch of ground for the delivered
+pile. Everything outside the mask comes back byte-identical, which is the
+whole guarantee rule B1 asks for: same footprint, same posts, same ground.
+The installed stage is 2×NN onto the FINISHED canvas, so `R.blitStage` lands
+it on the finished rect. What each third says: s0 = the L(n-1) station plus
+ONE delivered pile (mask a bare patch of its ground); s1 = the target with
+the new work half up; s2 = the target with the last of it in hand. Two
+traps: a pile prompted as "split timbers" came back as a slatted crate —
+say "lying flat, lengthwise, three or four boards high" — and a block pile
+masked next to the finished art's own blocks vanished into them; give a
+delivery its own patch and a carrier (a sledge) so it reads as arrived.
+
 **SHARING IS BY SLOT, NOT BY FORM** (`Assets.STAGE_SHARE`, an approved
 list and never a heuristic). Two slots share only where the FINISHED
 buildings genuinely are the same structure: the barracks yard and the
