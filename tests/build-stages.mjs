@@ -458,17 +458,21 @@ const out = await p.evaluate(() => {
 
   return { res, fails };
 });
-/* THE STATIONS OWN UPGRADE-SHAPED SETS (W2 pass two — audit STG-03/04/08):
-   lumber / quarry / mine at levels 2 and 3, the level-3 lodge and the level-2
-   farm each own all three stages, on THEIR FINISHED PNG'S OWN CANVAS (which is
-   what routes them through the finished rect above), and none borrows another
-   slot's set — the shared generic site and frame were the dull stages. Read
-   off the disk, so a missing file fails here rather than quietly falling back. */
+/* THE STATIONS RAISE THEMSELVES OUT OF THEIR OWN FINISHED ART (W2 — audit
+   STG-03/04/08, and the operator's ruling on the first cut: "start with the
+   finished product… feed that into PixelLab with every request"): every
+   lumber / quarry / mine / lodge level and the level-2 farm owns all three
+   stages, each an edit of that slot's finished PNG, on THAT PNG'S OWN CANVAS
+   (which is what routes them through the finished rect above, so the
+   footprint cannot wander), and none borrows another slot's set. Read off the
+   disk, so a missing file fails here rather than quietly falling back. */
 {
   const { readFileSync, existsSync } = await import('node:fs');
   const dim = (f) => { const d = readFileSync(f); return d.readUInt32BE(16) + 'x' + d.readUInt32BE(20); };
   const A = join(root, 'assets', 'buildings');
-  const OWN = ['lumber-l2', 'lumber-l3', 'quarry-l2', 'quarry-l3', 'mine-l2', 'mine-l3', 'lodge-l3', 'farm-l2'];
+  const OWN = [];
+  for (const k of ['lumber', 'quarry', 'mine', 'lodge']) for (const l of [1, 2, 3]) OWN.push(k + '-l' + l);
+  OWN.push('farm-l1', 'farm-l2');
   const bad = [];
   for (const s of OWN) for (const n of [1, 2, 3]) {
     const f = join(A, s + '-b' + n + '.png');

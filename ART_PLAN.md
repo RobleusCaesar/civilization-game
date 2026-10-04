@@ -318,21 +318,27 @@ actually is and stands it in the finished building's place. The ground is
 then identical across the set by construction and the building can only
 grow.
 
-**AN UPGRADE IS PAINTED INTO ITS OWN FINISHED ART, NOT RE-RAISED** (W2 pass
-two, the stations). Pro Flash `inpaint_image_pro_flash` on the finished PNG
-at its NATIVE density (the 2×NN masters halved, 64×72; 5 generations each,
-256 farm edits 9), with a rectangle mask over only what the stage changes —
-the roof band, the hoist, the portal, one patch of ground for the delivered
-pile. Everything outside the mask comes back byte-identical, which is the
-whole guarantee rule B1 asks for: same footprint, same posts, same ground.
-The installed stage is 2×NN onto the FINISHED canvas, so `R.blitStage` lands
-it on the finished rect. What each third says: s0 = the L(n-1) station plus
-ONE delivered pile (mask a bare patch of its ground); s1 = the target with
-the new work half up; s2 = the target with the last of it in hand. Two
-traps: a pile prompted as "split timbers" came back as a slatted crate —
-say "lying flat, lengthwise, three or four boards high" — and a block pile
-masked next to the finished art's own blocks vanished into them; give a
-delivery its own patch and a carrier (a sledge) so it reads as arrived.
+**THE FINISHED ART FIRST, THEN EVERY STAGE EDITED FROM IT** (W2, the
+stations — the operator's ruling after a first cut inpainted work into the old
+three-quarter yards: "start with the finished product… front facing, high angle
+down, squared up… feed that into PixelLab with every request"). Two steps.
+(1) **The finished building, in the house camera**: `create_image_pro`, 128×128
+(4 candidates, 20 generations), three labelled references — tc-l3 as THE CAMERA,
+the station's own level 1 as THE STYLE for levels 2 and 3 (so a camp grows
+rather than changes artist), the old art as THE CONTENT only — plus the five
+clauses. A rock subject wants "a SMALL ISOLATED outcrop about half (two thirds)
+of the canvas wide… NOT a wall, NOT a cliff, NOT a backdrop, NOT a pit seen from
+inside": without it every quarry candidate came back a full-bleed wall (twice).
+A visible metal saw or hammer rules a candidate out. (2) **Each stage is
+`edit_image_pro_flash` with that finished PNG as the source** (6 generations at
+128, 5 at 64): "show this exact building at the START / HALFWAY / NEARLY
+FINISHED… keep the same camera, place, size and footprint", naming the house
+language — footings with one material stack, then the lashed frame with a
+ladder, then one slope covered. An edit keeps the canvas, so the stages land on
+the finished art's own grid; `install5` then fits ONE frame on the finished art
+(crop/pad only) and gives all four the same frame. The first cut's masked
+inpaint kept pixels exact but kept the WRONG picture — the old yards — and was
+rejected for it.
 
 **SHARING IS BY SLOT, NOT BY FORM** (`Assets.STAGE_SHARE`, an approved
 list and never a heuristic). Two slots share only where the FINISHED

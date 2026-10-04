@@ -1331,29 +1331,40 @@ has a `wonderBuild1` but no `wonderBuild3`, so the bespoke branch would hand
 back undefined); a wall/gate site's icon derives from the straight-run
 preview, never the auto-tiled mask. `tests/gold-mine.mjs`'s
 `andItRaisesItsOwnWay` now pins the mine's DERIVED raising.
-**THE STATIONS RAISE THEIR UPGRADES IN PLACE** (W2 pass two, same test —
-audit STG-01/03/04/08/12): lumber / quarry / mine at levels 2 and 3, the
-level-3 lodge and the level-2 farm own their stage sets, and every one of
-them is the slot's OWN finished PNG with work in it — made by PixelLab's
-masked INPAINT, which keeps every unmasked pixel byte for byte, so posts,
-footprint and ground cannot drift. An upgrade is shaped as one: s0 is the
-standing L(n-1) station with ONE delivered pile beside it (poles for
-timber, dressed blocks for stone), s1 the new work half up (bare rafters
-lashed with rope, two hoist poles and no crossbeam, a stone portal spanned
-by a temporary pole), s2 the last of it (one slope boarded, the crossbeam
-half lashed) — a ladder where a hand would need one, never clutter. The
-farm grows rather than builds (shoots → green corn → turning gold), and
-farm L1's middle stages are DERIVED from farm-l1.png at no cost
-(a one-off script, not a build step): ploughed row by row from the top, then the
-first-sown rows sprouting. **A stage on the same canvas as its finished PNG
-draws through the finished rect** (`R.blitStage` → `artRect`), so the
-building can only grow on the frame it completes; any other canvas keeps
-the footprint square its older set was fitted under (moving those would
-make them jump instead), and both resample through blitBld's smoothing, so
-a downscaled stage no longer shimmers. The site's progress bar hangs just
-BELOW the footprint now — across its foot it covered the piles. The share
-table lost `farm-l2` and `lodge-l3`; the contract reads the disk for all
-24 files and their canvases.
+**THE STATIONS ARE RAISED OUT OF THEIR OWN FINISHED ART** (W2, same test —
+audit STG-01/03/04/08/12, and the operator's ruling on the first cut, which
+painted upgrade work into the old three-quarter station art: "start with the
+finished product… our standard style of front facing, high angle down,
+squared up… feed that into PixelLab with every request, showing that
+building at the three stages of construction", with the house and Town
+Center sets as the model). Two steps per slot. **The finished art comes
+first, in the house camera**: the lumber camp and the quarry were
+three-quarter yards, so all six levels were redrawn square to the front
+(`create_image_pro`, the tc-l3 camera, the same station's level 1 as the
+style master for 2 and 3, the old art as content only) at 128px native, 2×NN;
+the mine and the lodge were already front-facing and keep their art.
+**Then every stage is an EDIT OF THAT FINISHED IMAGE** (`edit_image_pro_flash`
+with the finished PNG as the source, every request): footings — the posts or
+the ground plan exactly where they stand finished, one stack of the
+material beside them; the frame — bare rafters lashed with rope, a ladder;
+the envelope — one slope covered, the rest still rafters. The house
+language, the same footprint throughout, materials only accumulating. The
+quarry is cut rather than raised (staked rock → upper face cut → the last
+step), the tent wrapped (poles → half hides → laced), the mine's portal
+framed. **One frame per slot** (`install5`): each set is re-canvassed, never
+resampled, to ONE frame fitted on its finished art (content ~86% wide, the
+houses' 9% gap under the feet) and every stage takes the same frame — which
+is what lets `R.blitStage` land the stages on the finished rect, so nothing
+moves or jumps on the frame the building completes. The farm grows rather
+than builds (shoots → green corn → turning gold); farm L1's middle stages
+are cut from farm-l1.png itself (ploughed row by row, then sprouting).
+**A stage on the same canvas as its finished PNG draws through the finished
+rect** (`R.blitStage` → `artRect`); any other canvas keeps the footprint
+square its older set was fitted under, and both resample through blitBld's
+smoothing, so a downscaled stage no longer shimmers. The site's progress bar
+hangs just BELOW the footprint — across its foot it covered the piles. The
+share table lost `farm-l2` and `lodge-l3`; the contract reads the disk for
+all 42 files (twelve station slots and both farm levels) and their canvases.
 
 **The Watchtower has BESPOKE stage art** (same test): the first building with
 its own three-sprite raising — `misc/towerBuild1/2/3` at DOUBLE resolution
