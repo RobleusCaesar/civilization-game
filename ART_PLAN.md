@@ -370,9 +370,12 @@ watchtower about one villager across. The three towers were redrawn
 as one family on a shared stepped turf mound with a stair: a thatched lookout on posts, a
 log blockhouse with a fighting gallery, a crenellated stone tower. Each
 PNG is cropped to its opaque box, and a sidecar scales it to
-`width/128 × 2.4` tiles (`{ "scale": 1.65 }` for L1, `1.575` for L2 and L3)
-so all three share one pixel density. The art overhangs its 1×1 footprint
-by about a third of a tile each side and stands about two tiles tall. The
+`width/128 × 2` tiles (`{ "scale": 1.375 }` for L1, `1.3125` for L2 and L3)
+so all three share one pixel density and the whole drawing, mound included,
+fits a 2×2-tile box (operator: "too big for the game. Please shrink to
+2x2" — the first cut at `× 2.4` stood about 2.1 tiles tall). The art
+overhangs its 1×1 footprint by under a quarter tile each side and stands
+about 1.8 tiles tall. The
 tower's bespoke build stages (`misc/towerBuild1..3`) are still the old
 procedural set, and the redrawn curtain on the review sheet is NOT
 installed.

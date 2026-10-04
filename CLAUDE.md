@@ -1647,8 +1647,8 @@ gold crest) are deliberately untouched, and each tier must remain a visible
 step. **The FREE-STANDING Watchtower left that rule** (operator ruling on the
 fortifications review: "follow the same grass, wood, and stone
 progression"): its shipped PNGs (`assets/buildings/tower-l{1,2,3}.png`,
-sidecar-scaled to about two tiles tall so a tower stands above the
-villagers) are a thatched lookout, a log BLOCKHOUSE and a stone tower on one
+sidecar-scaled so the whole drawing, mound included, fits a 2×2-tile
+box and a tower stands above the villagers) are a thatched lookout, a log BLOCKHOUSE and a stone tower on one
 shared turf mound. So the contract now pins L2 as TIMBER and reads L3 on its
 SHAFT (the mound and stair are earth and wood at every tier), and waits for
 the PNGs before measuring. The half-and-half L2 story still holds where a

@@ -16,7 +16,7 @@ const T = {
 
 const CFG = {
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 49,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 50,           // cache-buster on every art URL (?v=N) — bump when a PNG in
                        // v40: the desktop glen is the supplied painting
                        // (assets/ui/title-bg-wide.png, re-encoded to webp/jpg).
                        // THE GLEN URLS IN index.html CARRY THIS NUMBER BY HAND
