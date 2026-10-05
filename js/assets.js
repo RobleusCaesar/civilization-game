@@ -1809,49 +1809,42 @@ const Assets = {
     img.src = this.stageUrl(m[1], +m[2], n);
   },
 
-  /* ---- THE DRAWN GATEHOUSE ----
+  /* ---- THE DRAWN FORTIFICATIONS (tests/wall-tower-bond.mjs) ----
 
-       assets/fort/gate-l{lv}-face.png     the gatehouse across an east-west line
-       assets/fort/gate-l{lv}-flank.png    …and along a north-south one
+       assets/fort/wall-l{lv}.png    the curtain: sixteen frames, one per
+                                     connection mask (N=1 E=2 S=4 W=8)
+       assets/fort/tower-l{lv}.png   the WALL TOWER: the body a tower wears
+                                     when it is bonded into a line
+       assets/fort/gate-l{lv}.png    the gatehouse: [east-west face,
+                                     north-south flank]
 
-     A GATE STANDS IN THE WALL, so the curtain crossing its tile has to BE the
-     wall — the same timber or stone, the same courses, at the same height.
-     The tile is therefore COMPOSED, never simply replaced: the wall atlas's
-     own straight run is stamped first and the drawn gatehouse laid over it
-     with the wall-ends the artist drew cropped away. Change the curtain and
-     every gate follows it for free, which is exactly why drawGate does the
-     same thing procedurally.
+     Every frame is the SAME canvas (FORT_GEO): the tile's own ground is the
+     box [M, M+T) x [UP, UP+T), so the art may rise UP above its tile — a
+     wall tower stands nearly two tiles tall — and reach M to either side,
+     where a gatehouse's towers stand astride the curtain next door. Wall
+     textures are anchored to WORLD coordinates when the atlas is composed
+     (scratch fort/compose2.cjs), so neighbouring sections meet seamlessly
+     whichever frame each one is.
 
-     Only the two gate views are drawn. The curtain itself stays procedural —
-     sixteen junction sprites have to butt together without a seam, and the
-     referee's verdict on a drawn one was that it read busy at play size where
-     the flat atlas reads clean. The free-standing Watchtower is drawn, but it
-     is an ordinary building and arrives by the ordinary {id}-l{level}.png
-     route; a tower bonded into a line keeps its procedural mural self, which
-     has to match the curtain it joins.
+     THE TOWER IS COMPOSED HERE, NOT BAKED. A tower's tier and its curtain's
+     tier differ (the curtain is raised village-wide from the hall, a tower
+     by itself), so the arms reaching into its tile are drawn from the WALL
+     atlas at the wall's tier, the body at the tower's own, and the curtain
+     running south out of it once more on top from its foot (FORT_WALK — the
+     strip's columns and the row it leaves the tower at). R.drawTowerBond /
+     R.drawTowerWalk do the drawing.
 
-     Both pieces are optional and 404 quietly, so a tier with no files keeps
-     the gatehouse it has always had. */
+     All three are optional and 404 quietly: a tier with no files keeps the
+     procedural atlas, mural tower and gatehouse it has always had. */
   FORT_DIR: 'assets/fort/',
-  FORT_PIECES: ['gate-face', 'gate-flank'],
+  FORT_PIECES: ['wall', 'tower', 'gate'],
   FORT_TIERS: [1, 2, 3],
-  /* How much of the drawn tile is thrown away at each side, so the line the
-     player sees at the seam is the wall atlas's and never the gate artist's
-     approximation of it.
-
-     THE TWO VIEWS NEED DIFFERENT AMOUNTS. A face is cut from its drawing by
-     the tall-structure crop before it ships, so its own curtain is already
-     gone and only a sliver is needed at the seam — and a level-3 gatehouse is
-     turret-gate-turret across the WHOLE tile, so a wide crop here shaves its
-     turrets off and the drawbridge ends up hanging over bare stonework. A
-     flank still carries the curtain the artist drew above and below the
-     block, and that is what has to go. */
-  FORT_GATE_CROP: { face: 2, flank: 12 },
+  FORT_GEO: { T: 44, M: 16, UP: 76, DOWN: 24 },
+  // the curtain leaving a tower southward: the N-S strip's columns and the
+  // row it comes out at, in FORT_GEO canvas px, per tier
+  FORT_WALK: [{ x0: 22, x1: 62, y: 108 }, { x0: 21, x1: 55, y: 106 }, { x0: 22, x1: 64, y: 108 }],
   fort: {},
-  fortName(lv, piece) {
-    const m = String(piece).match(/^([a-z]+)-(.*)$/);
-    return (m[1] + '-l' + lv + '-' + m[2] + '.png').toLowerCase();
-  },
+  fortName(lv, piece) { return (piece + '-l' + lv + '.png').toLowerCase(); },
   fortUrl(lv, piece) { return this.FORT_DIR + this.fortName(lv, piece) + '?v=' + (CFG.ART_V || 1); },
   _tryFort(lv, piece) {
     const img = new Image();
@@ -1860,52 +1853,41 @@ const Assets = {
       this.loaded['fort/' + lv + '/' + piece] = true;
       this.buildFort(lv);
     };
-    img.onerror = () => { /* no art at this tier — the procedural gate stands */ };
-    this._track(img, true);          // WORLD art: a gate can be standing in the demo town
+    img.onerror = () => { /* no art at this tier — the procedural piece stands */ };
+    this._track(img, true);          // WORLD art: a wall can be standing in the demo town
     img.src = this.fortUrl(lv, piece);
   },
-  _fortCanvas(n) {
+  // the FORT_GEO frame k of a horizontal strip, as a canvas that blitBld
+  // anchors by its tile box (scale = canvas width over the tile's width)
+  _fortFrame(img, k) {
+    const G = this.FORT_GEO, W = G.T + 2 * G.M, H = G.UP + G.T + G.DOWN;
     const c = document.createElement('canvas');
-    c.width = c.height = n;
-    c.getContext('2d').imageSmoothingEnabled = false;
+    c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, k * W, 0, W, H, 0, 0, W, H);
+    c._cfArt = { scale: W / G.T, oy: G.DOWN / G.T, fort: true };
     return c;
   },
   buildFort(lv) {
     if (typeof Sprites === 'undefined' || typeof document === 'undefined') return;
     const f = this.fort[lv]; if (!f) return;
     const li = lv - 1;
-    if (!Sprites.gateMask || !Sprites.gateMask[li] || !Sprites.wallMask || !Sprites.wallMask[li]) return;
-    const B = 64, CROP = this.FORT_GATE_CROP;
-    const crop = (vert) => (vert ? CROP.flank : CROP.face);
-    // the curtain the gate stands in: a STRAIGHT RUN of the wall atlas on the
-    // gate's own axis — east-west under a face, north-south under a flank
-    const run = (vert) => Sprites.wallMask[li][vert ? (1 | 4) : (2 | 8)];
-    const over = (base, top, vert) => {
-      const c = this._fortCanvas(B), g = c.getContext('2d');
-      if (base) g.drawImage(base, 0, 0, B, B);
-      g.save(); g.beginPath();
-      const k = crop(vert);
-      if (vert) g.rect(0, k, B, B - 2 * k); else g.rect(k, 0, B - 2 * k, B);
-      g.clip(); g.drawImage(top, 0, 0, B, B); g.restore();
-      return c;
-    };
-    if (f['gate-face']) {
-      const c = over(run(false), f['gate-face'], false);
-      Sprites.gateMask[li][0] = c;
-      if (Sprites.building && Sprites.building.gate) Sprites.building.gate[li] = c;
-      if (Sprites.buildingA && Sprites.buildingA.gate) Sprites.buildingA.gate[li] = c;
+    if (f.wall && Sprites.wallMask && Sprites.wallMask[li]) {
+      for (let m = 0; m < 16; m++) Sprites.wallMask[li][m] = this._fortFrame(f.wall, m);
+      this.fortDrawn = true;
+      // the menu and panel icon: a straight east-west run
+      if (Sprites.building && Sprites.building.wall) Sprites.building.wall[li] = Sprites.wallMask[li][10];
+      if (Sprites.buildingA && Sprites.buildingA.wall) Sprites.buildingA.wall[li] = Sprites.wallMask[li][10];
     }
-    if (f['gate-flank']) {
-      const c = over(run(true), f['gate-flank'], true);
-      /* THE WALK PASSES BEHIND THE BLOCK, not over its roof — the shadow the
-         procedural flank has always laid on the curtain's own width at the top
-         of the tile (gateSideT1), kept here so a drawn gate reads the same way
-         and tests/wall-tower-bond.mjs's seam check still measures what it was
-         written to measure. */
-      const g = c.getContext('2d');
-      g.fillStyle = 'rgba(24,18,12,0.55)';
-      g.fillRect(20, 0, 24, 4);
-      Sprites.gateMask[li][1] = c;
+    if (f.tower) (Sprites.towerArt || (Sprites.towerArt = []))[li] = this._fortFrame(f.tower, 0);
+    if (f.gate && Sprites.gateMask && Sprites.gateMask[li]) {
+      Sprites.gateMask[li][0] = this._fortFrame(f.gate, 0);
+      Sprites.gateMask[li][1] = this._fortFrame(f.gate, 1);
+      if (Sprites.building && Sprites.building.gate) Sprites.building.gate[li] = Sprites.gateMask[li][0];
+      if (Sprites.buildingA && Sprites.buildingA.gate) Sprites.buildingA.gate[li] = Sprites.gateMask[li][0];
+      // the third tier's drawbridge is re-cut to the drawn gatehouse's arch
+      if (lv === 3 && Sprites.fitDrawbridge) Sprites.fitDrawbridge();
     }
   },
 

@@ -7034,6 +7034,12 @@ const R = {
     const lk = this.towerLinkMask(b.x, b.y);
     if (!lk.mask) return;
     const fam = Sprites.wallMask[Math.min(lk.level, Sprites.wallMask.length) - 1];
+    /* THE DRAWN WALL TOWER (Assets.buildFort): the arms are the curtain's own
+       frame for this junction, at the CURTAIN's tier, drawn through the one
+       anchoring rule — the body goes over them, and the walk leaving south
+       goes over the body's foot (drawTowerWalk). No seam shadow: the drawn
+       tower is tall enough that the wall plainly passes behind it. */
+    if (this.towerArtFor(b)) { this.blitBld(g, fam[lk.mask], bx, by, bw, bw); return; }
     g.drawImage(fam[lk.mask], bx, by, bw, bw);
     /* THE SEAM. A tower is drawn as an elevation — you see its face — while the
        curtain running north of it is drawn flat, from above. Butted together
@@ -7067,11 +7073,28 @@ const R = {
      drawTowerBond), and the east/west arms already emerge at the right height
      because the wall band crosses the tower's middle. */
   TOWER_WALK: 17 / 32,
+  // the drawn wall tower for this tower's own tier, when its PNG has landed
+  towerArtFor(b) {
+    const a = Sprites.towerArt;
+    return a ? a[Math.min(b.level || 1, 3) - 1] || null : null;
+  },
   drawTowerWalk(g, b, bx, by, bw) {
     if (b.construction > 0) return;
     const lk = this.towerLinkMask(b.x, b.y);
     if (!(lk.mask & 4)) return;                          // nothing coming from the south
     const fam = Sprites.wallMask[Math.min(lk.level, Sprites.wallMask.length) - 1];
+    if (this.towerArtFor(b)) {
+      // the drawn curtain's strip, from the row it leaves the tower's foot
+      const spr = fam[lk.mask], r = this.artRect(spr, bx, by, bw, bw), k = r.w / spr.width;
+      const wk = Assets.FORT_WALK[Math.min(lk.level, 3) - 1];
+      g.save();
+      g.beginPath();
+      g.rect(r.x + wk.x0 * k, r.y + wk.y * k, (wk.x1 - wk.x0) * k, r.h - wk.y * k);
+      g.clip();
+      this.blitBld(g, spr, bx, by, bw, bw);
+      g.restore();
+      return;
+    }
     const y0 = by + bw * this.TOWER_WALK;
     g.save();
     g.beginPath();
@@ -7123,20 +7146,23 @@ const R = {
     this._dbA[b.id] = a;
     const fam = Sprites.drawbridge[away ? 2 : vert ? 1 : 0];
     const fr = Math.max(0, Math.min(fam.length - 1, Math.round(a * (fam.length - 1))));
-    // TWO tiles in the direction the deck falls — it spans a whole one
+    // TWO tiles in the direction the deck falls — it spans a whole one — plus
+    // `pad` rows above the tile for the drawn gatehouse's high winches
+    const geo = Sprites.drawbridgeGeo || {}, cpx = bw / 32, pad = (geo.pad || 0) * cpx;
     if (away) {
       // the gate's tile is the BOTTOM half of that canvas; the tile above it is
       // the ground beyond the wall
-      g.drawImage(fam[fr], bx, by - bw, bw, bw * 2);
+      g.drawImage(fam[fr], bx, by - bw - pad, bw, bw * 2 + pad);
     } else if (vert) {
-      if (dir < 0) {                          // …falling WEST: mirror about the tile
+      if (dir < 0) {                          // …falling WEST: mirror about the block's own middle
+        const mx = bx + (geo.MX != null ? geo.MX : 16) * cpx;
         g.save();
-        g.translate(bx + bw / 2, 0); g.scale(-1, 1); g.translate(-(bx + bw / 2), 0);
-        g.drawImage(fam[fr], bx, by, bw * 2, bw);
+        g.translate(mx, 0); g.scale(-1, 1); g.translate(-mx, 0);
+        g.drawImage(fam[fr], bx, by - pad, bw * 2, bw + pad);
         g.restore();
-      } else g.drawImage(fam[fr], bx, by, bw * 2, bw);
+      } else g.drawImage(fam[fr], bx, by - pad, bw * 2, bw + pad);
     } else {
-      g.drawImage(fam[fr], bx, by, bw, bw * 2);
+      g.drawImage(fam[fr], bx, by - pad, bw, bw * 2 + pad);
     }
   },
   /* ---- THE EARLY GATES WORK TOO (tests/drawbridge.mjs) ----
@@ -7156,6 +7182,65 @@ const R = {
      plank door in the world (fog-memory ghosts keep the sprite, which is
      all a memory ever holds). Outward comes from Bld.gateOutside — away
      from the hall, or from the war camp that stands nearer. */
+  /* A WALL STANDS IN FRONT OF WHOEVER IS BEHIND IT. The drawn curtain and
+     its towers rise well above their own tiles (Assets.FORT_GEO), and every
+     building is drawn before the units — so somebody walking along the INSIDE
+     of a north wall was painted over its battlements, standing on the walk.
+     After each unit, any finished drawn fortification in the two rows SOUTH
+     of it (a wall tower reaches nearly two tiles up) and the columns beside
+     it (a gatehouse's towers stand astride its neighbours) is laid over it
+     again. Purely a picture: taps still aim at the unit's own sprite
+     (R.unitHit), so a soldier behind a tower is as selectable as ever. */
+  occludeByForts(g, u) {
+    if (!Sprites.towerArt && !Assets.fortDrawn) return;            // nothing drawn tall yet
+    const tx = u.x | 0, ty = u.y | 0, TL = CFG.TILE;
+    /* Everything that can overlap him, and everything that overlaps THAT —
+       a wall tower two rows below a redrawn curtain still stands over it —
+       redrawn in the building pass's own order, or the curtain north
+       of a tower would come back over the tower's head. */
+    const list = [];
+    for (let dy = 1; dy <= 4; dy++) for (let dx = dy > 2 ? -2 : -1; dx <= (dy > 2 ? 2 : 1); dx++) {
+      const b = Bld.at(tx + dx, ty + dy);
+      if (!b || b.x !== tx + dx || b.y !== ty + dy || b.construction > 0 || b.upgrading > 0) continue;
+      if (b.key !== 'wall' && b.key !== 'gate' && b.key !== 'tower') continue;
+      if (dy > 2 && b.key === 'wall') continue;                       // only what stands over the redrawn
+      const spr0 = this.bldSprite(b);
+      if (!(spr0 && spr0._cfArt && spr0._cfArt.fort)) continue;     // the drawn art only
+      if (!G.visibleAt(b.x, b.y)) continue;
+      list.push({ b, spr0, r: b.y * 4 + (b.key === 'wall' ? 0 : 2) });
+    }
+    if (!list.some(e => e.b.y <= ty + 2)) return;
+    list.sort((p, q) => p.r - q.r);
+    for (const { b, spr0 } of list) {
+      const bph = Bld.burnPhase(b);
+      const spr = bph === 1 ? this.darkOf(spr0) : bph === 2 ? this.ruinOf(spr0) : spr0;
+      const bx = b.x * TL, by = b.y * TL;
+      if (b.key === 'tower') this.drawTowerBond(g, b, bx, by, TL);
+      this.blitBld(g, spr, bx, by, TL, TL);
+      if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, TL);
+      if (b.key === 'gate') { this.drawDrawbridge(g, b, bx, by, TL, 0, true); this.drawGateWorks(g, b, bx, by, TL, 0, true); }
+    }
+  },
+  /* WHERE EACH TIER'S DOOR IS, in the gate tile's 32-cell fine grid: the
+     face's passage (x0..x1 across, y0 lintel/arch head to y1 threshold) and
+     the flank block's outward mouths (w/e) with the rows the door fills.
+     GATE_PROC is the procedural gatehouse's; GATE_DRAWN is measured off the
+     drawn ones (assets/fort/gate-l{lv}.png) — whose doors are far taller,
+     so a redrawn gatehouse means re-measuring these. */
+  GATE_PROC: [
+    { face: { x0: 11, x1: 21, y0: 9, y1: 30 }, flank: { w: 6.5, e: 23.5, ow: 8.5, oe: 23.5, y0: 17.5, y1: 26.5, top: 4 } },
+    { face: { x0: 11, x1: 21, y0: 13, y1: 30 }, flank: { w: 5.5, e: 24.5, ow: 5.5, oe: 24.5, y0: 17, y1: 26, top: 4 } },
+  ],
+  GATE_DRAWN: [
+    { face: { x0: 1.5, x1: 31, y0: -18, y1: 23.5 }, flank: { w: -2.5, e: 36.5, ow: -0.5, oe: 36.5, y0: 11, y1: 24.5, top: -24 } },
+    { face: { x0: 6.5, x1: 26.5, y0: -13, y1: 24.5 }, flank: { w: -1.5, e: 35.5, ow: -1.5, oe: 35.5, y0: 11, y1: 24.5, top: -23 } },
+  ],
+  gateWorksGeo(b, vert) {
+    const li = Math.min(b.level, 2) - 1;
+    const spr = (Sprites.gateMask[li] || [])[vert ? 1 : 0];
+    const T = (spr && spr._cfArt && spr._cfArt.fort ? this.GATE_DRAWN : this.GATE_PROC)[li];
+    return vert ? T.flank : T.face;
+  },
   drawGateWorks(g, b, bx, by, bw, dt, front) {
     // PLAYER gates only: the rival never works a lever, and its always-open
     // state drawn literally would show the player a passage they cannot use —
@@ -7176,6 +7261,7 @@ const R = {
     const AP = ART.PALETTE, WD = AP.wood, IN = AP.ink[0], SO = AP.soil;
     const px = bw / 32;
     const cell = (cx, cy, w, h, col) => { g.fillStyle = col; g.fillRect(bx + cx * px, by + cy * px, w * px, h * px); };
+    const P = this.gateWorksGeo(b, vert);
 
     if (b.level === 2) {
       /* THE PORTCULLIS. Face: the passage is painted open behind it and the
@@ -7185,28 +7271,32 @@ const R = {
          stands proud of the coping. */
       if (!vert) {
         if (!front) return;
-        cell(12, 13, 8, 17, IN);                          // the open passage
-        cell(12, 26, 8, 4, SO[2]); cell(12, 26, 8, 1, SO[1]);   // the road through
-        const h = Math.max(4, Math.round(4 + a * 13));    // grate: 4 cells showing even fully up
-        cell(11, 13, 1, h, WD[2]); cell(20, 13, 1, h, WD[2]);   // the frame in its grooves
-        for (const gx of [13, 15, 17, 19]) cell(gx, 13, 1, h, WD[1]);   // upright bars
-        for (let gy = 13; gy < 13 + h - 1; gy += 4) { cell(11, gy, 10, 1, WD[0]); }  // iron-dark rails
-        cell(11, 13 + h - 1, 10, 1, WD[0]);               // the foot rail…
-        for (const gx of [13, 15, 17, 19]) cell(gx, 13 + h, 1, 1, IN);  // …and its spike tips
+        const W = P.x1 - P.x0, full = P.y1 - P.y0;
+        cell(P.x0 + 1, P.y0, W - 2, full, IN);                        // the open passage
+        cell(P.x0 + 1, P.y1 - 4, W - 2, 4, SO[2]); cell(P.x0 + 1, P.y1 - 4, W - 2, 1, SO[1]);   // the road through
+        const h = Math.max(4, Math.round(4 + a * (full - 4)));        // grate: 4 cells showing even fully up
+        cell(P.x0, P.y0, 1, h, WD[2]); cell(P.x1 - 1, P.y0, 1, h, WD[2]);   // the frame in its grooves
+        const bars = [];
+        for (let gx = P.x0 + 2; gx < P.x1 - 1; gx += 2) bars.push(gx);
+        for (const gx of bars) cell(gx, P.y0, 1, h, WD[1]);           // upright bars
+        for (let gy = P.y0; gy < P.y0 + h - 1; gy += 4) cell(P.x0, gy, W, 1, WD[0]);  // iron-dark rails
+        cell(P.x0, P.y0 + h - 1, W, 1, WD[0]);                         // the foot rail…
+        for (const gx of bars) cell(gx, P.y0 + h, 1, 1, IN);           // …and its spike tips
       } else {
         if (!front) return;
-        // the outward mouth: JUST PROUD of the block's edge (block G0..G1 =
-        // 7..24), so the dark grate reads against grass, not wood-on-wood
-        const mx = dir > 0 ? 24.5 : 5.5;
-        const rise = Math.round(o * 7);                   // how far the foot has climbed the slot
-        if (o > 0.4) { cell(dir > 0 ? 25 : 5, 20, 2, 4, SO[2]); }   // open: lit ground through the mouth
-        if (rise < 7) {                                   // the grate still in the slot
-          cell(mx, 17, 2, 1, WD[2]);                      // its lintel groove
-          cell(mx, 18, 2, 8 - rise, WD[0]);
-          cell(mx, 18 + (8 - rise), 2, 1, IN);            // its toothed foot
+        // the outward mouth: JUST PROUD of the block's edge, so the dark
+        // grate reads against grass, not wood-on-wood
+        const mx = dir > 0 ? P.e : P.w;
+        const slot = P.y1 - P.y0 - 1;
+        const rise = Math.round(o * (slot - 1));                       // how far the foot has climbed the slot
+        if (o > 0.4) { cell(dir > 0 ? P.e + 0.5 : P.w - 0.5, P.y0 + 3, 2, 4, SO[2]); }   // open: lit ground through the mouth
+        if (rise < slot - 1) {                                         // the grate still in the slot
+          cell(mx, P.y0, 2, 1, WD[2]);                                 // its lintel groove
+          cell(mx, P.y0 + 1, 2, slot - rise, WD[0]);
+          cell(mx, P.y0 + 1 + (slot - rise), 2, 1, IN);                // its toothed foot
         }
-        const up = Math.round(o * 6);                     // …and its edge above the coping
-        if (up > 0) { cell(mx, 4 - up, 2, up, WD[0]); cell(mx, 3 - up, 2, 1, IN); }
+        const up = Math.round(o * 6);                                  // …and its edge above the coping
+        if (up > 0) { cell(mx, P.top - up, 2, up, WD[0]); cell(mx, P.top - 1 - up, 2, 1, IN); }
       }
       return;
     }
@@ -7219,13 +7309,13 @@ const R = {
       // baked flank art has only a shadow there, and a door you can work
       // should read as a door from every side
       if (vert && front) {
-        // just proud of the block's edge (block G0..G1 = 8..23), against the
-        // grass — inside it, wood-on-wood, the door disappeared entirely
-        const mx = dir > 0 ? 23.5 : 6.5;
-        cell(mx, 17.5, 2, 9, WD[1]); cell(mx, 17.5, 2, 1, WD[3]);
-        cell(mx + 0.5, 17.5, 1, 9, WD[2]);                // the two leaves' seam line
-        cell(mx, 21.5, 2, 1, AP.thatch[1]);               // the lashing
-        cell(mx, 25.5, 2, 1, WD[0]);                      // the dark foot
+        // just proud of the block's edge, against the grass — inside it,
+        // wood-on-wood, the door disappeared entirely
+        const mx = dir > 0 ? P.e : P.w, H = P.y1 - P.y0;
+        cell(mx, P.y0, 2, H, WD[1]); cell(mx, P.y0, 2, 1, WD[3]);
+        cell(mx + 0.5, P.y0, 1, H, WD[2]);                             // the two leaves' seam line
+        cell(mx, P.y0 + 4, 2, 1, AP.thatch[1]);                        // the lashing
+        cell(mx, P.y1 - 1, 2, 1, WD[0]);                               // the dark foot
       }
       return;
     }
@@ -7233,42 +7323,50 @@ const R = {
     // column back on its hinge and the leaves vanish into slivers
     const th = Math.min(1, o * 1.15) * 1.08;
     const cs = Math.cos(th), sn = Math.sin(th);
+    const drawn = P.y0 < 0;                              // the drawn gate's tall doorway
     if (!vert) {
       const away = dir < 0;
+      const W = P.x1 - P.x0, H = P.y1 - P.y0;
       if (front) {
-        cell(11, 9, 10, 21, IN);                          // the open gap
-        cell(11, 25, 10, 5, SO[2]); cell(11, 25, 10, 1, SO[1]);   // the road through
+        cell(P.x0, P.y0, W, H, IN);                                    // the open gap
+        cell(P.x0, P.y1 - 5, W, 5, SO[2]); cell(P.x0, P.y1 - 5, W, 1, SO[1]);   // the road through
       }
-      if (!away && front) {
+      const leafW = W / 2;
+      if (front && (!away || drawn)) {
         // leaves swinging TOWARD you: honest vertical-hinge foreshortening —
         // the leaf narrows to width·cos(θ), walked over SCREEN columns so the
         // panel stays solid (source-indexed columns collide when cos is small
         // and the door dissolved into slivers), with the free edge dropping
-        // toward the camera as it comes
-        const leafW = 5, proj = Math.max(1, Math.round(leafW * cs));
-        for (const [hx, sgn] of [[11, 1], [21, -1]]) {
+        // toward the camera as it comes. A DRAWN gateway is tall enough that
+        // leaves swung AWAY still show inside it, narrowing on their hinges
+        // and darker, never dropping.
+        const fall = away ? 0 : 1;
+        const proj = Math.max(1, Math.round(leafW * cs));
+        for (const [hx, sgn] of [[P.x0, 1], [P.x1, -1]]) {
           for (let j = proj; j >= 1; j--) {
             const f = j / proj;                           // 0 hinge → 1 free edge
             const cx = hx + sgn * j;
-            const dTop = f * leafW * sn * 0.5, dBot = f * leafW * sn * 0.95;
-            const y0 = 9 + dTop, y1 = 30 + dBot;
-            cell(cx, y0, 1, y1 - y0, j % 2 ? WD[1] : WD[2]);
-            cell(cx, y0, 1, 1, WD[3]);                    // the lit top edge
+            const dTop = fall * f * leafW * sn * 0.5, dBot = fall * f * leafW * sn * 0.95;
+            const y0 = P.y0 + dTop, y1 = P.y1 + dBot;
+            cell(cx, y0, 1, y1 - y0, away ? (j % 2 ? WD[0] : WD[1]) : (j % 2 ? WD[1] : WD[2]));
+            cell(cx, y0, 1, 1, away ? WD[2] : WD[3]);     // the lit top edge
             cell(cx, y1 - 1, 1, 1, WD[0]);                // the dark foot
-            g.fillStyle = 'rgba(24,18,12,0.35)';          // its shadow on the ground
-            g.fillRect(bx + cx * px, by + (y1 + 0.4) * px, px, px);
+            if (!away) {
+              g.fillStyle = 'rgba(24,18,12,0.35)';        // its shadow on the ground
+              g.fillRect(bx + cx * px, by + (y1 + 0.4) * px, px, px);
+            }
           }
-          cell(hx + sgn * proj, 9 + leafW * sn * 0.5, 1,
-               21 + leafW * sn * 0.45, WD[0]);            // the dark free edge
-          cell(hx, 9, 1, 21, WD[0]);                      // the hinge post edge
+          cell(hx + sgn * proj, P.y0 + fall * leafW * sn * 0.5, 1,
+               H + fall * leafW * sn * 0.45, WD[0]);      // the dark free edge
+          cell(hx, P.y0, 1, H, WD[0]);                     // the hinge post edge
         }
       } else if (away && front) {
         // leaves swung AWAY: plan view on the ground beyond the wall — drawn
         // on the FRONT pass, since ground north of the band is open grass and
         // a back-pass draw hid them under the sprite entirely
-        for (const [hx, sgn] of [[11.5, 1], [20.5, -1]]) {
+        for (const [hx, sgn] of [[P.x0 + 0.5, 1], [P.x1 - 0.5, -1]]) {
           for (let s = 0; s < 6; s++) {
-            const cx = hx + sgn * s * cs - 1, cy = 10 - s * sn - 1;
+            const cx = hx + sgn * s * cs - 1, cy = P.y0 + 1 - s * sn - 1;
             cell(cx, cy, 2, 2, s % 2 ? WD[1] : WD[2]);
             cell(cx, cy + 1.4, 2, 0.6, WD[0]);            // the under-edge
           }
@@ -7278,15 +7376,15 @@ const R = {
       if (!front) return;
       // the flank: plan-view leaves at the OUTWARD mouth, sweeping east or
       // west, one from each jamb — the classic double door seen from above
-      const mx = (dir > 0 ? 23.5 : 8.5);   // the block's own face (G0..G1 = 8..23)
-      for (const [hy, sgn] of [[18.5, 1], [25.5, -1]]) {
+      const mx = dir > 0 ? P.oe : P.ow;
+      for (const [hy, sgn] of [[P.y0 + 1, 1], [P.y1 - 1, -1]]) {
         for (let s = 0; s < 4; s++) {
           const cx = mx + dir * (0.5 + s * sn) - 1, cy = hy + sgn * s * cs - 1;
           cell(cx, cy, 2, 2, s % 2 ? WD[1] : WD[2]);
           cell(cx, cy + 1.4, 2, 0.6, WD[0]);
         }
       }
-      if (o > 0.4) { cell(dir > 0 ? 22 : 8, 20, 2, 4, SO[2]); }   // lit ground through the mouth
+      if (o > 0.4) { cell(dir > 0 ? P.oe - 1.5 : P.ow - 0.5, P.y0 + 2.5, 2, 4, SO[2]); }   // lit ground through the mouth
     }
   },
   gateVerticalAt(x, y) {
@@ -8015,7 +8113,7 @@ const R = {
        sprite: what is being raised is the building, not the bond. */
     if (b.key === 'tower' && !(b.construction > 0) && Sprites.towerMural &&
         MapGen.inB(b.x, b.y) && this.towerLinkMask(b.x, b.y).mask)
-      return Sprites.towerMural[Math.min(L, Sprites.towerMural.length) - 1];
+      return this.towerArtFor({ level: L }) || Sprites.towerMural[Math.min(L, Sprites.towerMural.length) - 1];
     // a camp is the home of one of the five peoples, and looks like it
     if (b.key === 'raidercamp' && Sprites.camp && Sprites.camp[b.tribe]) return Sprites.camp[b.tribe];
     const fam = (b.owner === 'A' ? Sprites.buildingA : Sprites.building)[b.key];
@@ -12417,11 +12515,12 @@ const R = {
       const spr = snap.key === 'wall' ? Sprites.wallMask[snap.level - 1][this.wallMaskAt(gx, gy)]
         : snap.key === 'gate' ? Sprites.gateMask[snap.level - 1][this.gateVerticalAt(gx, gy) ? 1 : 0]
         : (snap.key === 'raidercamp' && Sprites.camp && Sprites.camp[snap.tribe]) ? Sprites.camp[snap.tribe]
+        : (snap.key === 'tower' && this.towerArtFor(snap) && this.towerLinkMask(gx, gy).mask) ? this.towerArtFor(snap)
         : (snap.owner === 'A' ? Sprites.buildingA : Sprites.building)[snap.key][snap.level - 1];
       const gs = Bld.size(snap) * TL;
       // a remembered tower keeps its bond to the line, same as the wall
       // ghosts beside it (which already mask from live neighbours)
-      if (snap.key === 'tower') this.drawTowerBond(g, { x: gx, y: gy, construction: 0 }, gx * TL, gy * TL, gs);
+      if (snap.key === 'tower') this.drawTowerBond(g, { x: gx, y: gy, construction: 0, level: snap.level }, gx * TL, gy * TL, gs);
       this.blitBld(g, spr, gx * TL, gy * TL, gs, gs);
     }
 
@@ -12485,7 +12584,15 @@ const R = {
       }
       blds.push(b);
     }
-    blds.sort((a, b) => (a.y + Bld.size(a)) - (b.y + Bld.size(b)));
+    /* Within one row the CURTAIN goes down first: a drawn section reaches a
+       third of a tile into its neighbours (Assets.FORT_GEO), so a straight run
+       laid after the tower or gatehouse beside it would paint over their
+       flanks. Straight runs, then junctions, then towers and gates. */
+    const fortRank = b => b.key === 'wall' ? (this.wallMaskAt(b.x, b.y) === 5 || this.wallMaskAt(b.x, b.y) === 10 ? 0 : 1)
+      : (b.key === 'tower' || b.key === 'gate') ? 2 : 1;
+    const rk = new Map();
+    for (const b of blds) rk.set(b, fortRank(b));
+    blds.sort((a, b) => ((a.y + Bld.size(a)) - (b.y + Bld.size(b))) || (rk.get(a) - rk.get(b)));
     for (const b of blds) {
       const bs = Bld.size(b);
       let seen = false;
@@ -12829,6 +12936,7 @@ const R = {
       // the bar keeps the cast's own width, centred over the kind's box
       if (u.hp < u.maxhp) this.bar(g, ux + (B - TL) / 2 + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');
+      this.occludeByForts(g, u);
     }
     msFlush(1e9);
     /* A UNIT BEHIND A MOUNTAIN IS HIDDEN, NOT LOST. Anyone standing on
@@ -13349,7 +13457,7 @@ const R = {
       // dragged wall line: oriented pieces, green when buildable+affordable
       for (const t of UI.wallGhost) {
         g.globalAlpha = 0.65;
-        g.drawImage(Sprites.wallMask[0][t.mask], t.x * TL, t.y * TL);
+        this.blitBld(g, Sprites.wallMask[0][t.mask], t.x * TL, t.y * TL, TL, TL);
         g.globalAlpha = 1;
         g.fillStyle = t.ok ? 'rgba(125,187,94,0.35)' : 'rgba(224,101,80,0.45)';
         g.fillRect(t.x * TL, t.y * TL, TL, TL);

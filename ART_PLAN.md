@@ -394,12 +394,24 @@ tower's bespoke build stages (`misc/towerBuild1..3`) are still the old
 procedural set, and the redrawn curtain on the review sheet is NOT
 installed.
 
-The curtain and the bonded (mural) tower stay PROCEDURAL. A drawn curtain was
-built and rejected: sixteen junctions that have to butt together without a
-seam, read at a glance across a whole map, are a job the flat atlas does
-better, and the drawn one came back busy where the atlas reads clean.
+**THE WALL KIT IS DRAWN** (it was once built and rejected as busy; the
+second attempt was approved on the fortifications review sheet). Made in
+scratch, never shipped as tooling: PixelLab Pro Flash EDITS of one squared
+corner per tier on a flat magenta ground (`no_background:false` — with it on,
+green turf is keyed out with the background), then E-W and N-S runs edited
+from that corner, keyed, and composed by `compose2.cjs` into sixteen frames
+whose textures repeat on WORLD x/y, so any two neighbours meet seamlessly.
+The wall TOWER is an edit of the same corner ("replace the corner post with
+a massive tower built of the same…", the tier-1 one from the straight
+rampart so it faces the camera), cropped to its body; the gatehouse faces
+are edits of the straight run with the tier's tower as a REFERENCE image,
+composed over the kit's own run; the flank is the tower body with a band of
+its middle rows cut out (a squat block) over the N-S run. The tier-2 corner
+post was cut out of its corner programmatically — the edit had left the
+tier-1 turf bastion's skirt under it, which read as a ramp. All of it lands
+by filename in `assets/fort/` (see CLAUDE.md, THE WALL KIT IS DRAWN NOW).
 
-**THE DENSITY CEILING IS THE SLOT, AND FOR A GATE IT IS 2×.** A building PNG
+**THE DENSITY CEILING IS THE SLOT, AND FOR A GATE IT WAS 2×.** (History: the drawn wall kit replaced the 64px gate slot with `Assets.FORT_GEO`'s 44px-a-tile canvas, which the anchoring rule resamples like any building PNG.) A building PNG
 goes through `R.artRect` and is resampled at every zoom, so a 4× master there
 is correct and encouraged. A gate does not: it lands in `Sprites.gateMask` as
 a **64px canvas drawn into a 32px tile**, which is `tileB`'s own "DOUBLE the

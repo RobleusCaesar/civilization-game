@@ -72,6 +72,12 @@ await p.evaluate(() => { R.holdBake = false; R.ensureTerrain(); });
    lands leaves the procedural tower, which those checks then fail). */
 await p.waitForFunction(() => window.Sprites && Sprites.building.tower.every(t => t && t._cfArt),
   null, { timeout: 30000 }).catch(() => {});
+/* …and so is the WALL KIT (assets/fort): the curtain, the wall towers and the
+   gatehouses are drawn PNGs now, composed on Assets.FORT_GEO's tall canvas,
+   and every check below reads the drawn pieces. Wait for all nine. */
+await p.waitForFunction(() => window.Sprites && Sprites.towerArt && [0, 1, 2].every(i =>
+  Sprites.towerArt[i] && Sprites.wallMask[i][10]._cfArt && Sprites.gateMask[i][0]._cfArt && Sprites.gateMask[i][0]._cfArt.fort),
+  null, { timeout: 30000 }).catch(() => {});
 
 const out = await p.evaluate(() => {
   const res = {}, fails = [];
@@ -94,10 +100,11 @@ const out = await p.evaluate(() => {
   const mix = (c0, upTo) => {
     const c = canvasOf(c0);
     const d = c.getContext('2d').getImageData(0, 0, c.width, Math.max(1, Math.round(c.height * (upTo || 1)))).data;
-    let wood = 0, stone = 0, n = 0;
+    let wood = 0, stone = 0, turf = 0, n = 0;
     for (let i = 0; i < d.length; i += 4) {
       if (d[i + 3] < 96) continue;
       const R = d[i], G2 = d[i + 1], B = d[i + 2];
+      if (G2 > R + 4 && G2 > B + 24) turf++;      // green: the rampart's living turf
       /* AN OUTLINE IS NEITHER WOOD NOR STONE. Near-black ink is desaturated
          by definition, so a drawn piece's own outlines and its deepest
          shadows were being counted as masonry — a hand-drawn palisade came
@@ -110,7 +117,7 @@ const out = await p.evaluate(() => {
       if (R - B > 26) wood++;
       else if (Math.abs(R - G2) < 22 && Math.abs(G2 - B) < 22) stone++;
     }
-    return n ? { wood: wood / n, stone: stone / n } : { wood: 0, stone: 0 };
+    return n ? { wood: wood / n, stone: stone / n, turf: turf / n } : { wood: 0, stone: 0, turf: 0 };
   };
   const pct = (m) => Math.round(m.wood * 100) + '% wood / ' + Math.round(m.stone * 100) + '% stone';
 
@@ -118,9 +125,14 @@ const out = await p.evaluate(() => {
   {
     const w1 = mix(Sprites.wallMask[0][10]), w2 = mix(Sprites.wallMask[1][10]), w3 = mix(Sprites.wallMask[2][10]);
     const t1 = mix(Sprites.building.tower[0]), t2 = mix(Sprites.building.tower[1]), t3 = mix(Sprites.building.tower[2]);
-    ck('wallL1StaysTimber', w1.wood > 0.85 && w1.stone < 0.1, pct(w1));
-    ck('wallL2IsHalfAndHalf', w2.wood > 0.3 && w2.wood < 0.7 && w2.stone > 0.3 && w2.stone < 0.7, pct(w2));
-    ck('wallL3StaysStone', w3.stone > 0.85 && w3.wood < 0.15, pct(w3));
+    /* THE CURTAIN STEPS GRASS → WOOD → STONE too (the same ruling, carried
+       to the drawn wall kit): a turf rampart under a wattle fence, an oak
+       palisade, a stone curtain. Earth and wattle both read warm, so L1 is
+       told from L2 by its living TURF. */
+    const tf = m => ' · ' + Math.round(m.turf * 100) + '% turf';
+    ck('wallL1StaysTimber', w1.wood > 0.85 && w1.stone < 0.1 && w1.turf > 0.08, pct(w1) + tf(w1));
+    ck('wallL2IsOakPalisade', w2.wood > 0.7 && w2.stone < 0.2 && w2.turf < 0.03, pct(w2) + tf(w2));
+    ck('wallL3StaysStone', w3.stone > 0.7 && w3.wood < 0.3, pct(w3));
     ck('towerL1StaysTimber', t1.wood > 0.6, pct(t1));
     /* THE FREE-STANDING TOWER STEPS GRASS → WOOD → STONE (operator ruling on
        the fortifications review: "follow the same grass, wood, and stone
@@ -135,12 +147,12 @@ const out = await p.evaluate(() => {
     /* the L2 pair that STANDS TOGETHER tells the same story: the curtain and
        the tower bonded into it (the mural tower, the one a wall ever meets) —
        the free-standing Watchtower is no longer that tower */
-    const m2w = mix(Sprites.towerMural[1]);
+    const m2w = mix(R.towerArtFor({ level: 2 }) || Sprites.towerMural[1]);
     ck('wallAndTowerAgreeAtL2', Math.abs(w2.wood - m2w.wood) < 0.25,
       'wall ' + pct(w2) + ' vs mural tower ' + pct(m2w));
     // every tier is a visible step, in both families
     ck('everyTierStepsInMaterial',
-      w1.stone < w2.stone && w2.stone < w3.stone && t1.stone < t2.stone && t2.stone < t3.stone, '');
+      w1.turf > w2.turf && w2.stone < w3.stone && w1.stone < w3.stone && t1.stone < t3.stone && t2.stone < t3.stone, '');
   }
 
   // ---- 1b. THE GATEHOUSE: it faces the way its line runs, both ways look
@@ -148,9 +160,10 @@ const out = await p.evaluate(() => {
   {
     const g1 = mix(Sprites.gateMask[0][0]), g2 = mix(Sprites.gateMask[1][0]), g3 = mix(Sprites.gateMask[2][0]);
     ck('gateL1StaysTimber', g1.wood > 0.6 && g1.stone < 0.2, pct(g1));
-    ck('gateL2IsHalfAndHalf', g2.wood > 0.25 && g2.wood < 0.7 && g2.stone > 0.3, pct(g2));
-    ck('gateL3StaysStone', g3.stone > 0.7 && g3.wood < 0.3, pct(g3));
-    ck('gateStepsInMaterialToo', g1.stone < g2.stone && g2.stone < g3.stone, '');
+    ck('gateL2IsOakTimber', g2.wood > 0.7 && g2.stone < 0.2, pct(g2));
+    // a drawn ashlar is warm grey in its shadows, so the bar is a stone MAJORITY
+    ck('gateL3StaysStone', g3.stone > 0.55 && g3.stone > g3.wood * 1.4, pct(g3));
+    ck('gateStepsInMaterialToo', g3.stone > g2.stone && g3.stone > g1.stone && g2.turf < g1.turf + 0.02, '');
     // NEITHER ORIENTATION IS THE POOR RELATION: the north-south gate used to be
     // a plain grey waist with no art in it at all. Both are now fully drawn, in
     // the same materials — and they are not the same image.
@@ -164,72 +177,33 @@ const out = await p.evaluate(() => {
     // and it tells the SAME half-and-half story as the curtain it stands in
     ck('gateAndWallAgreeAtL2', Math.abs(g2.wood - mix(Sprites.wallMask[1][10]).wood) < 0.25,
       'gate ' + pct(g2) + ' vs wall ' + pct(mix(Sprites.wallMask[1][10])));
-    /* THE CURTAIN THROUGH A GATE *IS* THE WALL. Each tier used to hand-draw
-       its own version of the band crossing the gate's tile, and they drifted:
-       the crenellation stopped dead at the gate and started again the far
-       side, and the timber walk stepped a row as it crossed. drawGate now
-       STAMPS the real wall sprite for a straight run (E|W under a face, N|S
-       under a flank) and builds the gate on top, so the match is structural.
-
-       Measured where it shows: the columns of the gate's tile that its own
-       structure does not cover must be PIXEL-IDENTICAL to the wall beside
-       it. Redraw the band by hand again and this fails immediately. */
+    /* THE GATEHOUSE IS BUILT ON THE CURTAIN. Both views are COMPOSED over the
+       wall kit's own straight run (scratch fort/gatecomp.cjs): the face's
+       gatehouse is laid on the east-west frame, the flank's squat block on
+       the north-south one. So the match is structural, and measured where it
+       shows — the face stands on the wall's own foot line (a gatehouse
+       floating a few pixels off it reads as pasted on), and below the flank's
+       block the curtain running on south IS the wall's frame, pixel for
+       pixel. */
     {
-      const upscale = (c, n) => {          // the wall atlas is 32px, the gate 64
-        const t = document.createElement('canvas'); t.width = t.height = n;
-        const g2 = t.getContext('2d'); g2.imageSmoothingEnabled = false;
-        g2.drawImage(c, 0, 0, n, n);
-        return t;
+      const data = c => { const k = canvasOf(c); return k.getContext('2d').getImageData(0, 0, k.width, k.height); };
+      const lowest = (img, x0, x1) => {
+        for (let y = img.height - 1; y >= 0; y--)
+          for (let x = x0; x < x1; x++) if (img.data[(y * img.width + x) * 4 + 3] > 96) return y;
+        return -1;
       };
-      // mean per-pixel difference over a rectangle given in FINE CELLS (of 32)
-      const rectDiff = (a, b2, x0, x1, y0, y1) => {
-        const k = a.width / 32;
-        const da = a.getContext('2d').getImageData(x0 * k, y0 * k, (x1 - x0 + 1) * k, (y1 - y0 + 1) * k).data;
-        const db = b2.getContext('2d').getImageData(x0 * k, y0 * k, (x1 - x0 + 1) * k, (y1 - y0 + 1) * k).data;
-        let sum = 0;
-        for (let i = 0; i < da.length; i += 4)
-          sum += Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) +
-                 Math.abs(da[i + 2] - db[i + 2]) + Math.abs(da[i + 3] - db[i + 3]);
-        return sum / (da.length / 4 * 4);
-      };
-      const EW = 2 | 8, NS = 1 | 4;
       for (let L = 0; L < 3; L++) {
-        const face = Sprites.gateMask[L][0], flank = Sprites.gateMask[L][1];
-        const wEW = upscale(Sprites.wallMask[L][EW], face.width);
-        const wNS = upscale(Sprites.wallMask[L][NS], flank.width);
-        /* THE SEAM ITSELF: the outermost column of the gate's tile, where it
-           butts the wall next door. The gate's own works fill the middle (an
-           L3 gatehouse is turret-gate-turret across nearly the whole tile),
-           so this is the column that has to line up, and it is the one the
-           player's eye follows along the line. */
-        const dL = rectDiff(face, wEW, 0, 0, 0, 31), dR = rectDiff(face, wEW, 31, 31, 0, 31);
-        ck('theCurtainRunsStraightThroughAGate' + (L + 1), dL === 0 && dR === 0,
-          'L' + (L + 1) + ' left ' + dL.toFixed(1) + ' · right ' + dR.toFixed(1) + ' from the wall beside it');
-        /* THE FLANK'S NORTHERN SEAM. There is very little bare curtain to
-           measure here — the block fills the tile from its head down to the
-           front edge — so measure the one strip there is, rows 0-1, which
-           carry the deliberate shadow line that reads as the walk passing
-           BEHIND the block rather than onto its roof. Compare against the
-           wall with that same shadow laid on it: this pins BOTH that the
-           curtain is the wall's own art and that the shadow is where it
-           should be. (There is no southern equivalent: the block stands on
-           the tile's front edge and lays its own contact shadow there, like
-           every other fortification in the game.) */
-        const shaded = (() => {
-          const n = flank.width, k = n / 32;
-          const t = document.createElement('canvas'); t.width = t.height = n;
-          const g2 = t.getContext('2d'); g2.imageSmoothingEnabled = false;
-          g2.drawImage(wNS, 0, 0, n, n);
-          g2.fillStyle = 'rgba(24,18,12,0.55)';
-          g2.fillRect(10 * k, 0, 12 * k, 2 * k);
-          return t;
-        })();
-        // the curtain's OWN width only (cells 10..21): at L3 the gatehouse's
-        // banner poles stand above the tile either side of it, and a pole is
-        // the gate's, not the wall's
-        const dN = rectDiff(flank, shaded, 10, 21, 0, 1);
-        ck('andStraightThroughItsFlank' + (L + 1), dN === 0,
-          'L' + (L + 1) + ' north seam ' + dN.toFixed(1));
+        const face = data(Sprites.gateMask[L][0]), wall = data(Sprites.wallMask[L][2 | 8]);
+        const fy = lowest(face, 26, 50), wy = lowest(wall, 26, 50);
+        // (the L1 gateway's road spills a few pixels of trodden earth past it)
+        ck('theGatehouseStandsOnTheCurtainsFoot' + (L + 1), fy >= 0 && Math.abs(fy - wy) <= 6,
+          'L' + (L + 1) + ' gate foot row ' + fy + ' · wall foot row ' + wy);
+        const flank = data(Sprites.gateMask[L][1]), run = data(Sprites.wallMask[L][1 | 4]);
+        let diff = 0;
+        for (let y = 120; y < flank.height; y++) for (let x = 0; x < flank.width; x++)
+          for (let k = 0; k < 4; k++) diff += Math.abs(flank.data[(y * flank.width + x) * 4 + k] - run.data[(y * run.width + x) * 4 + k]);
+        ck('andItsFlankStandsInTheRun' + (L + 1), flank.width === run.width && diff === 0,
+          'L' + (L + 1) + ' the curtain south of the block differs by ' + diff);
       }
     }
 
@@ -246,8 +220,8 @@ const out = await p.evaluate(() => {
        gateway with a TIMBER DOOR — no dark hole at all — so the old proxy
        failed on art that is perfectly correct. The rule it stood for is the
        one below.) */
-    const transposed = (c) => {
-      const n = c.width, src = c.getContext('2d').getImageData(0, 0, n, n).data;
+    const transposed = (c0) => {
+      const c = canvasOf(c0), n = Math.min(c.width, c.height), src = c.getContext('2d').getImageData(0, 0, n, n).data;
       const t = document.createElement('canvas'); t.width = t.height = n;
       const tg = t.getContext('2d'), img = tg.createImageData(n, n);
       for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
@@ -257,8 +231,8 @@ const out = await p.evaluate(() => {
       tg.putImageData(img, 0, 0);
       return t;
     };
-    const differ = (a, b2) => {   // mean per-pixel difference, 0 = identical
-      const n = a.width;
+    const differ = (a0, b2) => {   // mean per-pixel difference, 0 = identical
+      const a = canvasOf(a0), n = Math.min(a.width, a.height, b2.width);
       const da = a.getContext('2d').getImageData(0, 0, n, n).data;
       const db = b2.getContext('2d').getImageData(0, 0, n, n).data;
       let sum = 0;
@@ -277,8 +251,10 @@ const out = await p.evaluate(() => {
        gatehouse's passage is a dark arch behind a portcullis, and its flank
        shows no such thing. */
     {
-      const gateway = (c) => {
-        const d = c.getContext('2d').getImageData(22, 30, 20, 24).data;
+      // the drawn gatehouse's arch, on Assets.FORT_GEO's 76x144 canvas
+      const gateway = (c0) => {
+        const c = canvasOf(c0);
+        const d = c.getContext('2d').getImageData(28, 72, 20, 32).data;
         let n = 0, dark = 0;
         for (let i = 0; i < d.length; i += 4) {
           if (d[i + 3] < 96) continue;
@@ -294,7 +270,7 @@ const out = await p.evaluate(() => {
       // whole reason they no longer read as castles
       for (let L = 0; L < 2; L++) {
         const c = canvasOf(Sprites.gateMask[L][0]);
-        const d = c.getContext('2d').getImageData(24, 36, 16, 18).data;
+        const d = c.getContext('2d').getImageData(28, 70, 20, 30).data;
         let n = 0, wood = 0;
         for (let i = 0; i < d.length; i += 4) {
           if (d[i + 3] < 96) continue;
@@ -425,23 +401,26 @@ const out = await p.evaluate(() => {
       const lv = (b) => Math.max(1, b.level);
       ck('aLoneTowerIsAWatchtower',
         R.bldSprite(lone) === Sprites.building.tower[lv(lone) - 1], 'free-standing art in open ground');
+      // the DRAWN wall tower (assets/fort/tower-l{lv}.png) when it has landed
+      const mural = (b) => R.towerArtFor(b) || Sprites.towerMural[lv(b) - 1];
       ck('aTowerBuiltOntoAWallIsMural',
-        R.bldSprite(midT) === Sprites.towerMural[lv(midT) - 1], 'mid-run wears the curtain\'s own stone');
+        !!R.towerArtFor(midT) && R.bldSprite(midT) === mural(midT), 'mid-run wears the curtain\'s own stone');
       ck('soDoesACornerTower',
-        R.bldSprite(Bld.at(22, 30)) === Sprites.towerMural[lv(Bld.at(22, 30)) - 1], '');
+        R.bldSprite(Bld.at(22, 30)) === mural(Bld.at(22, 30)), '');
       const site2 = put('tower', 40, 14, true);
       put('wall', 41, 14);
       ck('aWorkSiteIsNeither',
         R.bldSprite(site2) === Sprites.building.tower[lv(site2) - 1], 'the raising is of a building');
       // …and the mural tower tells the tier's own material story, like everything
       // else on the wall — it is part of the curtain, so it must match it
-      const m1 = mix(Sprites.towerMural[0]), m2 = mix(Sprites.towerMural[1]), m3 = mix(Sprites.towerMural[2]);
+      const art = i => R.towerArtFor({ level: i + 1 }) || Sprites.towerMural[i];
+      const m1 = mix(art(0)), m2 = mix(art(1)), m3 = mix(art(2));
       ck('theMuralTowerStepsInMaterialToo',
-        m1.wood > 0.6 && m2.wood > 0.2 && m2.stone > 0.3 && m3.stone > 0.7 &&
-        m1.stone < m2.stone && m2.stone < m3.stone,
+        m1.wood > 0.6 && m2.wood > 0.7 && m3.stone > 0.6 &&
+        m1.stone < m3.stone && m2.stone < m3.stone,
         [m1, m2, m3].map(pct).join(' · '));
       ck('andItIsNotTheWatchtowerRedrawn',
-        canvasOf(Sprites.towerMural[1]).toDataURL() !== canvasOf(Sprites.building.tower[1]).toDataURL(), '');
+        canvasOf(art(1)).toDataURL() !== canvasOf(Sprites.building.tower[1]).toDataURL(), '');
     }
 
     // ---- 3. the bond is DRAWN: the curtain's own art, under the tower ----

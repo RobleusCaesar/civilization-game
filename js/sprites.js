@@ -1906,6 +1906,15 @@ const Sprites = {
 
      Change this and you must re-check the gateway it stands in. */
   const DB_LEN = 30;
+  /* WHERE THE DECK HANGS, in the gate tile's 32-cell fine grid. The default
+     is the procedural gatehouse's arch; Sprites.fitDrawbridge re-cuts the
+     atlas to the DRAWN level-3 gatehouse (Assets.buildFort), whose arch is
+     twice as wide and whose threshold sits on the drawn wall's foot. `pad`
+     is how many rows each canvas carries ABOVE the tile, because a drawn
+     gatehouse's winches hang far higher than the procedural turret heads;
+     R.drawDrawbridge reads it back off Sprites.drawbridgeGeo. */
+  const DB_PROC = { CX: 15.5, HALF: 5, GND: 30, WX: [8, 23], WY: 6, HX: 26, SGND: 29, SWX: 20, SWY: 6, MX: 16, pad: 0 };
+  let DB = DB_PROC;
 
   // a hanging chain: alternating dark/lit links, straight when the winch has
   // it taut, sagging a little once it has been let out
@@ -1948,7 +1957,7 @@ const Sprites = {
     const WD = AP.wood;
     // one tile of ground, one tile of height — see DB_LEN. FORE is 1: the
     // terrain is drawn top-down, so a tile of ground IS a tile of screen.
-    const GND = 30, LEN = DB_LEN, CX = 15.5, FORE = 1;
+    const GND = DB.GND, LEN = DB_LEN, CX = DB.CX, FORE = 1, HALF = DB.HALF;
     const th = t * Math.PI / 2;
     const yEnd = GND + LEN * Math.cos(th) * FORE - LEN * Math.sin(th);
     const span = Math.abs(yEnd - GND) || 0.001;
@@ -1956,7 +1965,7 @@ const Sprites = {
     const frac = y => Math.min(1, Math.abs(y - GND) / span);      // 0 at the hinge, 1 at the free end
     // lying flat the far end is NEARER, so it reads a touch wider; stood up it
     // is the same distance away as the hinge and the taper goes with it
-    const half = y => 5 + frac(y) * 0.9 * Math.cos(th);
+    const half = y => HALF + frac(y) * 0.9 * Math.cos(th);
     for (let y = y0; y <= y1; y++) {
       const h2 = half(y), x0 = Math.round(CX - h2), w = Math.max(2, Math.round(h2 * 2));
       const s = frac(y) * LEN;
@@ -1964,9 +1973,9 @@ const Sprites = {
       q(x0, y, 1, 1, WD[1]); q(x0 + w - 1, y, 1, 1, WD[1]);       // the deck's own long edges
     }
     // the iron straps running the deck's length, hinge to ring
-    for (const fx of [-3, 2]) q(Math.round(CX + fx), y0, 1, y1 - y0 + 1, IRON[1]);
+    for (const fx of [-Math.round(HALF * 0.6), Math.round(HALF * 0.4)]) q(Math.round(CX + fx), y0, 1, y1 - y0 + 1, IRON[1]);
     // the shoe at the free end and the rings the chains are shackled to
-    const eY = Math.round(yEnd), eh = 5 + 0.9 * Math.cos(th);
+    const eY = Math.round(yEnd), eh = HALF + 0.9 * Math.cos(th);
     const ex0 = Math.round(CX - eh), ew = Math.max(2, Math.round(eh * 2));
     q(ex0, eY, ew, 1, IRON[1]);
     q(ex0 - 1, eY, 1, 1, IRON[2]); q(ex0 + ew, eY, 1, 1, IRON[2]);
@@ -1974,12 +1983,12 @@ const Sprites = {
        the gallery over the arch — which a full-height deck now covers, so the
        chains would have run to a drum hidden behind their own bridge. */
     const sag = (1 - t) * 2.4;
-    chainLine(q, 8, 6, ex0 - 1, eY, sag);
-    chainLine(q, 23, 6, ex0 + ew, eY, sag);
-    winch(q, 8, 6); winch(q, 23, 6);
+    chainLine(q, DB.WX[0], DB.WY, ex0 - 1, eY, sag);
+    chainLine(q, DB.WX[1], DB.WY, ex0 + ew, eY, sag);
+    winch(q, DB.WX[0], DB.WY); winch(q, DB.WX[1], DB.WY);
     // the shadow: cast back into the passage once the deck stands over it,
     // laid on the ground in front of it while it is still down
-    if (yEnd < GND - 1) q(Math.round(CX - 5), eY, 10, 1, 'rgba(20,14,8,0.5)');
+    if (yEnd < GND - 1) q(Math.round(CX - HALF), eY, HALF * 2, 1, 'rgba(20,14,8,0.5)');
     if (yEnd > GND + 1) q(ex0 + 1, eY + 1, ew - 2, 1, ART.STYLE.SHADOW);
   }
 
@@ -1990,7 +1999,7 @@ const Sprites = {
      up it stands against the block's east face. */
   function deckSide(q, t) {
     const WD = AP.wood;
-    const HX = 26, GND = 29, LEN = DB_LEN, TH = 3;   // hinge at the block's east flank
+    const HX = DB.HX, GND = DB.SGND, LEN = DB_LEN, TH = 3;   // hinge at the block's east flank
     const th = t * Math.PI / 2;
     const ex = HX + LEN * Math.cos(th), ey = GND - LEN * Math.sin(th);
     // march the deck's length, stamping its thickness across at each step
@@ -2007,8 +2016,8 @@ const Sprites = {
     // the shoe, the ring, and the chain up to the winch on the block's head
     q(Math.round(ex), Math.round(ey), 1, 1, IRON[2]);
     q(Math.round(ex + nx * 2), Math.round(ey + ny * 2), 1, 1, IRON[1]);
-    chainLine(q, 20, 6, Math.round(ex), Math.round(ey), (1 - t) * 2.4);
-    winch(q, 20, 6);
+    chainLine(q, DB.SWX, DB.SWY, Math.round(ex), Math.round(ey), (1 - t) * 2.4);
+    winch(q, DB.SWX, DB.SWY);
     if (t < 0.6) q(HX, GND + TH + 1, Math.max(1, Math.round(ex - HX)), 1, ART.STYLE.SHADOW);
   }
   /* THE FAR SIDE. A drawbridge falls OUTWARD (Bld.gateOutside), and for a gate
@@ -2035,7 +2044,7 @@ const Sprites = {
        the gate's tile: the ground beyond the wall is the tile above. Hung any
        lower the deck lands on the gatehouse's own crown and reads as a raft
        floating over the battlements. */
-    const HINGE = TILE + 2, LEN = DB_LEN, CX = 15.5, FORE = 1;
+    const HINGE = TILE + 2, LEN = DB_LEN, CX = DB.CX, FORE = 1, HALF = DB.HALF;
     const th = t * Math.PI / 2;
     /* How much deck is still lying out there beyond the wall. Its HEIGHT is
        invisible from here (the wall is in the way), so the only thing the
@@ -2048,7 +2057,7 @@ const Sprites = {
     const yEnd = HINGE - ext;
     const y0 = Math.round(yEnd), y1 = HINGE;
     const frac = y => Math.min(1, (HINGE - y) / (ext || 0.001));
-    const half = y => 5 - frac(y) * 1.1;               // the far end recedes, so it narrows
+    const half = y => HALF - frac(y) * 1.1;            // the far end recedes, so it narrows
     for (let y = y0; y <= y1; y++) {
       const h2 = half(y), x0 = Math.round(CX - h2), w = Math.max(2, Math.round(h2 * 2));
       const s2 = frac(y) * LEN;
@@ -2059,7 +2068,7 @@ const Sprites = {
     const eh = half(y0), ex0 = Math.round(CX - eh), ew = Math.max(2, Math.round(eh * 2));
     q(ex0, y0, ew, 1, IRON[1]);
     q(ex0 - 1, y0, 1, 1, IRON[2]); q(ex0 + ew, y0, 1, 1, IRON[2]);
-    for (const fx of [-3, 2]) q(Math.round(CX + fx), y0, 1, y1 - y0 + 1, IRON[1]);
+    for (const fx of [-Math.round(HALF * 0.6), Math.round(HALF * 0.4)]) q(Math.round(CX + fx), y0, 1, y1 - y0 + 1, IRON[1]);
     // the shadow it lays on the ground beyond the wall
     if (ext > 5) q(ex0 + 1, y1 + 1, ew - 2, 1, ART.STYLE.SHADOW);
   }
@@ -2069,9 +2078,10 @@ const Sprites = {
      far-side face uses the tall canvas with the gate's tile at the BOTTOM —
      deckFaceAway offsets itself by TILE to say so. */
   function tileDB(tall, draw) {
-    const c = mk(tall ? 64 : 128, tall ? 128 : 64), g = c.getContext('2d');
+    const pad = DB.pad;
+    const c = mk(tall ? 64 : 128, (tall ? 128 : 64) + pad * 2), g = c.getContext('2d');
     g.imageSmoothingEnabled = false;
-    const q = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * 2, y * 2, (w || 1) * 2, (h || 1) * 2); };
+    const q = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * 2, (y + pad) * 2, (w || 1) * 2, (h || 1) * 2); };
     draw(q);
     return c;
   }
@@ -3864,12 +3874,25 @@ const Sprites = {
      the last is fully UP, so both directions of the action are the same strip
      read one way or the other. R.drawDrawbridge picks the frame. */
   Sprites.DRAWBRIDGE_N = DRAWBRIDGE_N;
-  Sprites.drawbridge = [
+  const buildDrawbridge = () => [
     Array.from({ length: DRAWBRIDGE_N }, (_, i) => tileDB(true, q => deckFace(q, i / (DRAWBRIDGE_N - 1)))),
     Array.from({ length: DRAWBRIDGE_N }, (_, i) => tileDB(false, q => deckSide(q, i / (DRAWBRIDGE_N - 1)))),
     // …and the FAR-SIDE face, for a gate whose outside is north (deckFaceAway)
     Array.from({ length: DRAWBRIDGE_N }, (_, i) => tileDB(true, q => deckFaceAway(q, i / (DRAWBRIDGE_N - 1)))),
   ];
+  Sprites.drawbridge = buildDrawbridge();
+  Sprites.drawbridgeGeo = DB;
+  /* THE DRAWN GATEHOUSE'S DECK (assets/fort/gate-l3.png): its arch spans
+     fine cells 6.5..26.2 with the threshold on the drawn wall's foot (24.7),
+     the chains run up to the two towers, and the flank's block stands from
+     cell 5 to its east side face at 35 — measured off the art, so a redrawn
+     gatehouse means re-measuring these. */
+  Sprites.DB_DRAWN = { CX: 16.3, HALF: 9.8, GND: 25, WX: [4, 28.5], WY: -9, HX: 35, SGND: 25, SWX: 30, SWY: -17, MX: 20, pad: 20 };
+  Sprites.fitDrawbridge = () => {
+    DB = Sprites.DB_DRAWN;
+    Sprites.drawbridge = buildDrawbridge();
+    Sprites.drawbridgeGeo = DB;
+  };
 
   /* ================= THE ANCIENT WONDERS (tests/wonder.mjs) =================
      Ten monuments, one rolled per run. Each is a 3×3 building — the biggest
