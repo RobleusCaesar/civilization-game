@@ -1674,7 +1674,14 @@ blockhouse crowned with stakes, a crenellated ashlar tower), each gatehouse
 built in it. Every frame is ONE canvas, `Assets.FORT_GEO` (58px tile — the
 operator's "walls and gates are too large, shrink by 25%": a tile's worth of
 art is drawn into 3/4 of the tile it used to fill — 10px reach either side,
-64px of height above it), drawn through `blitBld`'s
+64px of height above it) — and NOTHING IN THE LINE STANDS TALLER THAN
+THE FREE-STANDING WATCHTOWER (operator, day 161: "tower in the wall is too
+big, everything should be roughly as tall as the stand alone towers"): the
+wall towers and the tier-3 gatehouse are TRIMMED, a band of plain middle
+courses cut out so the crown drops onto the shaft (scratch `trim.cjs`), to
+~1.35-1.4 tiles foot to crown against the lookout's 1.3-1.4; the curtain
+stays ~0.85, so a wall tower still reads as the strong point of the line —
+drawn through `blitBld`'s
 `_cfArt` anchor like every other PNG — so the curtain overhangs its tile
 and a gatehouse's towers stand astride the sections next door. **Three
 rules came with the height.** (1) THE CURTAIN DRAWS FIRST IN ITS ROW (the

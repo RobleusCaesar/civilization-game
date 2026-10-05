@@ -413,6 +413,9 @@ by filename in `assets/fort/` (see CLAUDE.md, THE WALL KIT IS DRAWN NOW).
 The kit was re-composed at a 58px tile (was 44) to draw it 25% smaller, and
 `doorcut.cjs` cuts each gatehouse face's passage out into a third frame — the
 door — so an open gate is transparent; re-cut both if a face is redrawn.
+The wall towers (and the tier-3 gatehouse) are then TRIMMED by `trim.cjs` —
+plain middle courses dropped, crown slid down onto the shaft — so nothing in
+the line stands taller than the free-standing Watchtower.
 
 **THE DENSITY CEILING IS THE SLOT, AND FOR A GATE IT WAS 2×.** (History: the drawn wall kit replaced the 64px gate slot with `Assets.FORT_GEO`'s 58px-a-tile canvas (44px at first), which the anchoring rule resamples like any building PNG.) A building PNG
 goes through `R.artRect` and is resampled at every zoom, so a 4× master there
