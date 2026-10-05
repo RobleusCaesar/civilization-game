@@ -1667,12 +1667,14 @@ grass, wood, and stone progression", and a wall tower must "feel like an
 especially strong part of the wall", never the free-standing tower plopped
 on the junction): `wall-l{lv}.png` (sixteen frames, one per connection
 mask), `tower-l{lv}.png` (the WALL TOWER's body) and `gate-l{lv}.png`
-([east-west face, north-south flank]) — a turf rampart under a wattle
+([east-west face, north-south flank, door]) — a turf rampart under a wattle
 fence, an oak palisade, a stone curtain, each tower a taller, thicker piece
 of that same wall (a wattle-and-post box on a stepped rampart, a log
 blockhouse crowned with stakes, a crenellated ashlar tower), each gatehouse
-built in it. Every frame is ONE canvas, `Assets.FORT_GEO` (44px tile, 16px
-reach either side, 76px of height above the tile), drawn through `blitBld`'s
+built in it. Every frame is ONE canvas, `Assets.FORT_GEO` (58px tile — the
+operator's "walls and gates are too large, shrink by 25%": a tile's worth of
+art is drawn into 3/4 of the tile it used to fill — 10px reach either side,
+64px of height above it), drawn through `blitBld`'s
 `_cfArt` anchor like every other PNG — so the curtain overhangs its tile
 and a gatehouse's towers stand astride the sections next door. **Three
 rules came with the height.** (1) THE CURTAIN DRAWS FIRST IN ITS ROW (the
@@ -1687,17 +1689,30 @@ OF WHOEVER IS BEHIND IT (`R.occludeByForts`): buildings all draw before the
 units, so a villager walking inside a north wall used to be painted on its
 battlements; after each unit, the drawn forts in the two rows south of it
 (and any tower that stands over those) are laid over it again, in the
-building pass's own order. A picture only — `R.unitHit` is untouched. The
-drawn gatehouses' doors are taller and wider than the procedural ones, so
-the door/portcullis overlays read their geometry from `R.GATE_DRAWN` (the
-procedural numbers are `R.GATE_PROC`) and the level-3 deck is re-cut to the
+building pass's own order — and a unit standing ON a gate's own tile is
+inside the passage, so the gatehouse and the curtain either side are laid
+over him too until he steps out the far side (he used to pop in front of
+the whole gatehouse the moment he entered its row: the walk-through
+glitch). A picture only — `R.unitHit` is untouched. **AN OPEN GATE IS
+SEE-THROUGH** (operator: "make the doors transparent instead of black when
+they're open… just open or closed with an animation, keep it simple"): the
+passage (`Assets.FORT_DOOR`, per tier) is CUT OUT of the face frame and the
+door is the third frame, `Sprites.gateDoor`, laid back over the gap by
+`R.drawGateDoor` from ONE eased number (`R._dbA`, 1 = shut) — L1's two
+leaves fold back onto their posts, L2's door and L3's portcullis slide up
+into the works, clipped to the passage. Open draws nothing at all, so the
+ground and anyone walking through show in the arch; the rival's doors are
+always drawn shut. It is drawn BEFORE the drawbridge so the deck's chains
+stay in front. The flank's portcullis rod still reads its geometry from
+`R.GATE_DRAWN` (the procedural numbers are `R.GATE_PROC`) and the level-3 deck is re-cut to the
 drawn arch by `Sprites.fitDrawbridge` (`Sprites.DB_DRAWN`, with `pad` rows
 above the tile for the high winches) — **redraw a gatehouse and you must
 re-measure both**. Every piece 404s quietly to the procedural atlas, mural
 tower and gatehouse, which stay as the fallback. The contract reads the
 drawn kit: L2 is oak (no turf), L1 is told from it by its living turf,
-the gatehouse stands on the curtain's own foot line, and the curtain south
-of a flank's block IS the wall's frame, pixel for pixel. **The bond** — a tower raised IN a wall line joins it (corners,
+the gatehouse stands on the curtain's own foot line, the curtain south
+of a flank's block IS the wall's frame, pixel for pixel, and on every tier
+the face's passage is transparent while the door layer fills it. **The bond** — a tower raised IN a wall line joins it (corners,
 T-junctions, mid-run), so the curtain reads unbroken like a real castle's
 mural towers; a tower merely BEHIND or IN FRONT of a line must not.
 `R.towerLinkMask` decides: link toward a neighbouring wall/gate when the run

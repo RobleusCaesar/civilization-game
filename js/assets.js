@@ -1815,12 +1815,13 @@ const Assets = {
                                      connection mask (N=1 E=2 S=4 W=8)
        assets/fort/tower-l{lv}.png   the WALL TOWER: the body a tower wears
                                      when it is bonded into a line
-       assets/fort/gate-l{lv}.png    the gatehouse: [east-west face,
-                                     north-south flank]
+       assets/fort/gate-l{lv}.png    the gatehouse: [east-west face with
+                                     its passage cut out, north-south
+                                     flank, the door that fills the cut]
 
      Every frame is the SAME canvas (FORT_GEO): the tile's own ground is the
      box [M, M+T) x [UP, UP+T), so the art may rise UP above its tile — a
-     wall tower stands nearly two tiles tall — and reach M to either side,
+     wall tower stands about a tile and a half tall — and reach M to either side,
      where a gatehouse's towers stand astride the curtain next door. Wall
      textures are anchored to WORLD coordinates when the atlas is composed
      (scratch fort/compose2.cjs), so neighbouring sections meet seamlessly
@@ -1839,10 +1840,15 @@ const Assets = {
   FORT_DIR: 'assets/fort/',
   FORT_PIECES: ['wall', 'tower', 'gate'],
   FORT_TIERS: [1, 2, 3],
-  FORT_GEO: { T: 44, M: 16, UP: 76, DOWN: 24 },
+  FORT_GEO: { T: 58, M: 10, UP: 64, DOWN: 24 },
   // the curtain leaving a tower southward: the N-S strip's columns and the
   // row it comes out at, in FORT_GEO canvas px, per tier
-  FORT_WALK: [{ x0: 22, x1: 62, y: 108 }, { x0: 21, x1: 55, y: 106 }, { x0: 22, x1: 64, y: 108 }],
+  FORT_WALK: [{ x0: 23, x1: 63, y: 107 }, { x0: 22, x1: 56, y: 105 }, { x0: 23, x1: 65, y: 107 }],
+  /* THE DOOR, in the same canvas px: the passage is CUT OUT of the gatehouse
+     (gate frame 0), so an open gate shows the ground through it, and the
+     closed door / portcullis / dark arch is frame 2, drawn back over the
+     hole by R.drawGateWorks — swung (L1) or slid up (L2, L3) as it opens. */
+  FORT_DOOR: [{ x0: 20, x1: 60, y0: 47, y1: 109 }, { x0: 27, x1: 53, y0: 58, y1: 110 }, { x0: 28, x1: 52, y0: 60, y1: 110 }],
   fort: {},
   fortName(lv, piece) { return (piece + '-l' + lv + '.png').toLowerCase(); },
   fortUrl(lv, piece) { return this.FORT_DIR + this.fortName(lv, piece) + '?v=' + (CFG.ART_V || 1); },
@@ -1884,6 +1890,7 @@ const Assets = {
     if (f.gate && Sprites.gateMask && Sprites.gateMask[li]) {
       Sprites.gateMask[li][0] = this._fortFrame(f.gate, 0);
       Sprites.gateMask[li][1] = this._fortFrame(f.gate, 1);
+      (Sprites.gateDoor || (Sprites.gateDoor = []))[li] = this._fortFrame(f.gate, 2);
       if (Sprites.building && Sprites.building.gate) Sprites.building.gate[li] = Sprites.gateMask[li][0];
       if (Sprites.buildingA && Sprites.buildingA.gate) Sprites.buildingA.gate[li] = Sprites.gateMask[li][0];
       // the third tier's drawbridge is re-cut to the drawn gatehouse's arch

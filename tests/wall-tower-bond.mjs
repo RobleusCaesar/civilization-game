@@ -167,8 +167,17 @@ const out = await p.evaluate(() => {
     // NEITHER ORIENTATION IS THE POOR RELATION: the north-south gate used to be
     // a plain grey waist with no art in it at all. Both are now fully drawn, in
     // the same materials — and they are not the same image.
+    // the face is measured SHUT — its passage is cut out and the door is a
+    // layer of its own (Sprites.gateDoor), drawn back in by R.drawGateDoor
+    const shut = (L) => {
+      const f = canvasOf(Sprites.gateMask[L][0]), k = document.createElement('canvas');
+      k.width = f.width; k.height = f.height;
+      const g = k.getContext('2d'); g.drawImage(f, 0, 0);
+      if (Sprites.gateDoor && Sprites.gateDoor[L]) g.drawImage(canvasOf(Sprites.gateDoor[L]), 0, 0);
+      return k;
+    };
     for (let L = 0; L < 3; L++) {
-      const h = Sprites.gateMask[L][0], v = Sprites.gateMask[L][1];
+      const h = shut(L), v = Sprites.gateMask[L][1];
       const mh = mix(h), mv = mix(v);
       ck('bothGatesAreBuilt' + (L + 1),
         canvasOf(h).toDataURL() !== canvasOf(v).toDataURL() && Math.abs(mh.wood - mv.wood) < 0.12 && Math.abs(mh.stone - mv.stone) < 0.12,
@@ -247,42 +256,39 @@ const out = await p.evaluate(() => {
       ck('theFlankIsNotTheFaceOnItsSide' + (L + 1), d > 20,
         'L' + (L + 1) + ' differs from the transposed face by ' + d.toFixed(1));
     }
-    /* …and the tier that DOES stand open still reads that way: the level-3
-       gatehouse's passage is a dark arch behind a portcullis, and its flank
-       shows no such thing. */
+    /* THE OPEN GATE IS SEE-THROUGH. The passage is cut out of the face
+       (frame 0) and the door is its own layer (frame 2), so an open gate
+       shows whoever is walking through it — never a black hole — and a shut
+       one draws its door back over the gap. Measured on the door rect each
+       tier declares (Assets.FORT_DOOR): the face is transparent there, the
+       flank is not (its passage runs away from you), and the door layer
+       fills the gap — timber leaves and doors at L1/L2, the portcullis
+       grate at L3, which is iron and ink rather than timber. */
     {
-      // the drawn gatehouse's arch, on Assets.FORT_GEO's 76x144 canvas
-      const gateway = (c0) => {
+      const rectAlpha = (c0, r) => {
         const c = canvasOf(c0);
-        const d = c.getContext('2d').getImageData(28, 72, 20, 32).data;
-        let n = 0, dark = 0;
+        const d = c.getContext('2d').getImageData(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0).data;
+        let on = 0, n = 0, wood = 0, lit = 0;
         for (let i = 0; i < d.length; i += 4) {
-          if (d[i + 3] < 96) continue;
           n++;
-          if (d[i] < 62 && d[i + 1] < 62 && d[i + 2] < 62) dark++;
-        }
-        return n ? dark / n : 0;
-      };
-      const f = gateway(Sprites.gateMask[2][0]), v = gateway(Sprites.gateMask[2][1]);
-      ck('theThirdTierStandsOpen', f > 0.3 && v < 0.12,
-        'L3 face ' + Math.round(f * 100) + '% shadow · flank ' + Math.round(v * 100) + '%');
-      // …and the earlier tiers CLOSE theirs with a timber door, which is the
-      // whole reason they no longer read as castles
-      for (let L = 0; L < 2; L++) {
-        const c = canvasOf(Sprites.gateMask[L][0]);
-        const d = c.getContext('2d').getImageData(28, 70, 20, 30).data;
-        let n = 0, wood = 0;
-        for (let i = 0; i < d.length; i += 4) {
           if (d[i + 3] < 96) continue;
-          // the straps, the ring and the plank seams are IRON and INK — neither
-          // timber nor masonry, and a drawn door has far more of them than the
-          // procedural one this threshold was set against
-          if (Math.max(d[i], d[i + 1], d[i + 2]) < 62) continue;
-          n++;
+          on++;
+          if (Math.max(d[i], d[i + 1], d[i + 2]) < 62) continue;   // iron, ink, seams
+          lit++;
           if (d[i] - d[i + 2] > 26) wood++;
         }
-        ck('theEarlyTiersHangATimberDoor' + (L + 1), n > 0 && wood / n > 0.75,
-          'L' + (L + 1) + ' gateway is ' + Math.round(100 * wood / n) + '% timber');
+        return { cover: on / n, timber: lit ? wood / lit : 0 };
+      };
+      for (let L = 0; L < 3; L++) {
+        const r = Assets.FORT_DOOR[L];
+        const face = rectAlpha(Sprites.gateMask[L][0], r), flank = rectAlpha(Sprites.gateMask[L][1], r);
+        const door = Sprites.gateDoor && Sprites.gateDoor[L] ? rectAlpha(Sprites.gateDoor[L], r) : { cover: 0, timber: 0 };
+        ck('theOpenPassageIsSeeThrough' + (L + 1), face.cover < 0.25 && flank.cover > 0.6,
+          'L' + (L + 1) + ' face ' + Math.round(face.cover * 100) + '% opaque in the passage · flank ' + Math.round(flank.cover * 100) + '%');
+        ck('andTheDoorFillsIt' + (L + 1), door.cover > 0.5,
+          'L' + (L + 1) + ' door layer covers ' + Math.round(door.cover * 100) + '% of the passage');
+        if (L < 2) ck('theEarlyTiersHangATimberDoor' + (L + 1), door.timber > 0.75,
+          'L' + (L + 1) + ' door is ' + Math.round(door.timber * 100) + '% timber');
       }
     }
     ck('theGatehouseFliesAStandardEitherWay',

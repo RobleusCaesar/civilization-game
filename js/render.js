@@ -7199,7 +7199,14 @@ const R = {
        redrawn in the building pass's own order, or the curtain north
        of a tower would come back over the tower's head. */
     const list = [];
-    for (let dy = 1; dy <= 4; dy++) for (let dx = dy > 2 ? -2 : -1; dx <= (dy > 2 ? 2 : 1); dx++) {
+    /* WALKING THROUGH A GATE: a unit standing ON the gate's own tile is
+       inside the passage — the gatehouse and the curtain either side of it
+       stand in front of him until he steps out the far side. The passage is
+       cut out of the art, so he shows through the opening and only the posts,
+       the lintel and the towers cover him; without this he popped in front of
+       the whole gatehouse the moment he crossed into its row. */
+    const here = Bld.at(tx, ty), inGate = here && here.key === 'gate' && here.x === tx && here.y === ty;
+    for (let dy = inGate ? 0 : 1; dy <= 4; dy++) for (let dx = dy > 2 ? -2 : -1; dx <= (dy > 2 ? 2 : 1); dx++) {
       const b = Bld.at(tx + dx, ty + dy);
       if (!b || b.x !== tx + dx || b.y !== ty + dy || b.construction > 0 || b.upgrading > 0) continue;
       if (b.key !== 'wall' && b.key !== 'gate' && b.key !== 'tower') continue;
@@ -7218,8 +7225,55 @@ const R = {
       if (b.key === 'tower') this.drawTowerBond(g, b, bx, by, TL);
       this.blitBld(g, spr, bx, by, TL, TL);
       if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, TL);
-      if (b.key === 'gate') { this.drawDrawbridge(g, b, bx, by, TL, 0, true); this.drawGateWorks(g, b, bx, by, TL, 0, true); }
+      if (b.key === 'gate') { this.drawGateWorks(g, b, bx, by, TL, 0, true); this.drawDrawbridge(g, b, bx, by, TL, 0, true); }
     }
+  },
+  /* THE DRAWN GATEHOUSE'S DOOR (Assets.FORT_DOOR, operator: "make the doors
+     transparent instead of black when they're open… just open or closed with
+     an animation, keep it simple"). The passage is CUT OUT of the gatehouse
+     art, so an open gate shows the ground through it; the door is its own
+     frame, laid back over the hole — the two leaves swinging back onto their
+     posts at L1, the portcullis or the dark arch sliding up into the works at
+     L2 and L3. One eased number (R._dbA, 1 = shut) is the whole animation.
+     The rival never works a lever, so its doors are always drawn shut.
+     Answers true when it drew (or deliberately drew nothing), so the
+     procedural overlays below stand down. */
+  drawGateDoor(g, b, bx, by, bw, dt, front) {
+    if (this.gateVerticalAt(b.x, b.y)) return false;
+    const li = Math.min(b.level || 1, 3) - 1;
+    const face = (Sprites.gateMask[li] || [])[0];
+    const door = Sprites.gateDoor && Sprites.gateDoor[li];
+    if (!door || !face || !face._cfArt || !face._cfArt.fort) return false;
+    if (!front || b.construction > 0) return true;
+    const live = Bld.canGateToggle(b) && b.owner === 'P';
+    let a = 1;
+    if (live) {
+      const tgt = b.raised ? 1 : 0;
+      a = this._dbA[b.id];
+      if (a == null) a = tgt;
+      else if (b.level < 3 && a !== tgt) {   // the drawbridge eases its own pass at L3
+        const step = Math.max(0, Math.min(0.2, dt || 0)) * this.DB_SPEED;
+        a = tgt > a ? Math.min(tgt, a + step) : Math.max(tgt, a - step);
+      }
+      if (b.level < 3) this._dbA[b.id] = a;
+    }
+    if (a <= 0.001) return true;                       // wide open: nothing in the way
+    const D = Assets.FORT_DOOR[li], r = this.artRect(face, bx, by, bw, bw), k = r.w / face.width;
+    const dx0 = r.x + D.x0 * k, dy0 = r.y + D.y0 * k, W = (D.x1 - D.x0) * k, H = (D.y1 - D.y0) * k;
+    g.save();
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    if (b.level === 1) {
+      // two leaves, each folding back onto its own post
+      const s = 0.12 + 0.88 * a, half = (D.x1 - D.x0) / 2;
+      g.drawImage(door, D.x0, D.y0, half, D.y1 - D.y0, dx0, dy0, half * k * s, H);
+      g.drawImage(door, D.x0 + half, D.y0, half, D.y1 - D.y0, dx0 + W - half * k * s, dy0, half * k * s, H);
+    } else {
+      // the grate (or the shadowed arch) rises into the works above
+      g.beginPath(); g.rect(dx0, dy0, W, H); g.clip();
+      g.drawImage(door, D.x0, D.y0, D.x1 - D.x0, D.y1 - D.y0, dx0, dy0 - (1 - a) * H, W, H);
+    }
+    g.restore();
+    return true;
   },
   /* WHERE EACH TIER'S DOOR IS, in the gate tile's 32-cell fine grid: the
      face's passage (x0..x1 across, y0 lintel/arch head to y1 threshold) and
@@ -7232,8 +7286,8 @@ const R = {
     { face: { x0: 11, x1: 21, y0: 13, y1: 30 }, flank: { w: 5.5, e: 24.5, ow: 5.5, oe: 24.5, y0: 17, y1: 26, top: 4 } },
   ],
   GATE_DRAWN: [
-    { face: { x0: 1.5, x1: 31, y0: -18, y1: 23.5 }, flank: { w: -2.5, e: 36.5, ow: -0.5, oe: 36.5, y0: 11, y1: 24.5, top: -24 } },
-    { face: { x0: 6.5, x1: 26.5, y0: -13, y1: 24.5 }, flank: { w: -1.5, e: 35.5, ow: -1.5, oe: 35.5, y0: 11, y1: 24.5, top: -23 } },
+    { flank: { w: -0.5, e: 33, ow: 1.5, oe: 32.5, y0: 13, y1: 24.5, top: -12 } },
+    { flank: { w: 2.5, e: 31.5, ow: 2.5, oe: 31.5, y0: 13, y1: 24.5, top: -11.5 } },
   ],
   gateWorksGeo(b, vert) {
     const li = Math.min(b.level, 2) - 1;
@@ -7242,6 +7296,7 @@ const R = {
     return vert ? T.flank : T.face;
   },
   drawGateWorks(g, b, bx, by, bw, dt, front) {
+    if (this.drawGateDoor(g, b, bx, by, bw, dt, front)) return;
     // PLAYER gates only: the rival never works a lever, and its always-open
     // state drawn literally would show the player a passage they cannot use —
     // the rival's gate keeps the baked closed-door art it has always worn
@@ -12706,7 +12761,7 @@ const R = {
         if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);
         // …and one that falls toward us swings over its own archway — the
         // early tiers' doors and portcullis ride the same two passes
-        if (b.key === 'gate') { this.drawDrawbridge(g, b, bx, by, bw, dt, true); this.drawGateWorks(g, b, bx, by, bw, dt, true); }
+        if (b.key === 'gate') { this.drawGateWorks(g, b, bx, by, bw, dt, true); this.drawDrawbridge(g, b, bx, by, bw, dt, true); }
         /* Owner tag. On a FORTIFICATION the tile's top-left corner is bare
            ground — the curtain runs down the middle of the tile — so the pip
            floated out on the grass beside the wall like a UI glitch, one per

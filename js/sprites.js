@@ -3883,11 +3883,12 @@ const Sprites = {
   Sprites.drawbridge = buildDrawbridge();
   Sprites.drawbridgeGeo = DB;
   /* THE DRAWN GATEHOUSE'S DECK (assets/fort/gate-l3.png): its arch spans
-     fine cells 6.5..26.2 with the threshold on the drawn wall's foot (24.7),
-     the chains run up to the two towers, and the flank's block stands from
-     cell 5 to its east side face at 35 — measured off the art, so a redrawn
-     gatehouse means re-measuring these. */
-  Sprites.DB_DRAWN = { CX: 16.3, HALF: 9.8, GND: 25, WX: [4, 28.5], WY: -9, HX: 35, SGND: 25, SWX: 30, SWY: -17, MX: 20, pad: 20 };
+     fine cells 9.9..23.2 with the threshold on the drawn wall's foot (24.8),
+     the chains run up beside the arch head, and the flank's block stands from
+     cell 4.4 to its east side face at 30.9 — measured off the art (scratch
+     fort/doorcut.cjs prints them), so a redrawn gatehouse means re-measuring
+     these. */
+  Sprites.DB_DRAWN = { CX: 16.5, HALF: 6.4, GND: 25, WX: [9, 24], WY: -4, HX: 31, SGND: 27, SWX: 27, SWY: -6, MX: 17.7, pad: 12 };
   Sprites.fitDrawbridge = () => {
     DB = Sprites.DB_DRAWN;
     Sprites.drawbridge = buildDrawbridge();

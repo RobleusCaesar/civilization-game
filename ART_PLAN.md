@@ -410,8 +410,11 @@ its middle rows cut out (a squat block) over the N-S run. The tier-2 corner
 post was cut out of its corner programmatically — the edit had left the
 tier-1 turf bastion's skirt under it, which read as a ramp. All of it lands
 by filename in `assets/fort/` (see CLAUDE.md, THE WALL KIT IS DRAWN NOW).
+The kit was re-composed at a 58px tile (was 44) to draw it 25% smaller, and
+`doorcut.cjs` cuts each gatehouse face's passage out into a third frame — the
+door — so an open gate is transparent; re-cut both if a face is redrawn.
 
-**THE DENSITY CEILING IS THE SLOT, AND FOR A GATE IT WAS 2×.** (History: the drawn wall kit replaced the 64px gate slot with `Assets.FORT_GEO`'s 44px-a-tile canvas, which the anchoring rule resamples like any building PNG.) A building PNG
+**THE DENSITY CEILING IS THE SLOT, AND FOR A GATE IT WAS 2×.** (History: the drawn wall kit replaced the 64px gate slot with `Assets.FORT_GEO`'s 58px-a-tile canvas (44px at first), which the anchoring rule resamples like any building PNG.) A building PNG
 goes through `R.artRect` and is resampled at every zoom, so a 4× master there
 is correct and encouraged. A gate does not: it lands in `Sprites.gateMask` as
 a **64px canvas drawn into a 32px tile**, which is `tileB`'s own "DOUBLE the
