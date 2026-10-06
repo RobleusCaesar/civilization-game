@@ -1848,6 +1848,8 @@ const Assets = {
      (gate frame 0), so an open gate shows the ground through it, and the
      closed door / portcullis / dark arch is frame 2, drawn back over the
      hole by R.drawGateWorks — swung (L1) or slid up (L2, L3) as it opens. */
+  // the row where a curtain's arms meet on each tier's frame (compose2's crestY)
+  FORT_CREST: [80, 67, 64],
   FORT_DOOR: [{ x0: 20, x1: 60, y0: 47, y1: 109 }, { x0: 27, x1: 53, y0: 58, y1: 110 }, { x0: 28, x1: 52, y0: 60, y1: 110 }],
   fort: {},
   fortName(lv, piece) { return (piece + '-l' + lv + '.png').toLowerCase(); },
@@ -1875,6 +1877,22 @@ const Assets = {
     c._cfArt = { scale: W / G.T, oy: G.DOWN / G.T, fort: true };
     return c;
   },
+  /* THE WALL TOWER IS DRAWN AT ITS OWN DENSITY, in the high camera every
+     building wears (operator: "the towers are viewed directly straight, but
+     should be a high top down, like the Town Center"). Its PNG is the body
+     alone, cropped to the drawing, foot on the bottom row; it is drawn
+     FORT_TOWER.d px to a tile, its foot FORT_TOWER.lift tiles above the
+     tile's bottom edge — the curtain's own foot line. */
+  FORT_TOWER: { d: 65, lift: 0.2 },
+  _fortBody(img) {
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth || img.width; c.height = img.naturalHeight || img.height;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, 0, 0);
+    c._cfArt = { scale: c.width / this.FORT_TOWER.d, oy: -this.FORT_TOWER.lift, fort: true };
+    return c;
+  },
   buildFort(lv) {
     if (typeof Sprites === 'undefined' || typeof document === 'undefined') return;
     const f = this.fort[lv]; if (!f) return;
@@ -1886,7 +1904,7 @@ const Assets = {
       if (Sprites.building && Sprites.building.wall) Sprites.building.wall[li] = Sprites.wallMask[li][10];
       if (Sprites.buildingA && Sprites.buildingA.wall) Sprites.buildingA.wall[li] = Sprites.wallMask[li][10];
     }
-    if (f.tower) (Sprites.towerArt || (Sprites.towerArt = []))[li] = this._fortFrame(f.tower, 0);
+    if (f.tower) (Sprites.towerArt || (Sprites.towerArt = []))[li] = this._fortBody(f.tower);
     if (f.gate && Sprites.gateMask && Sprites.gateMask[li]) {
       Sprites.gateMask[li][0] = this._fortFrame(f.gate, 0);
       Sprites.gateMask[li][1] = this._fortFrame(f.gate, 1);

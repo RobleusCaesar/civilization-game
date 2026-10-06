@@ -7039,7 +7039,26 @@ const R = {
        anchoring rule — the body goes over them, and the walk leaving south
        goes over the body's foot (drawTowerWalk). No seam shadow: the drawn
        tower is tall enough that the wall plainly passes behind it. */
-    if (this.towerArtFor(b)) { this.blitBld(g, fam[lk.mask], bx, by, bw, bw); return; }
+    if (this.towerArtFor(b)) {
+      /* …but never the junction's own NODE: the corner/T frames carry a
+         bastion at the crossing, and the drawn tower is narrower than that
+         bastion, so it peeked out round the tower's foot. Each arm is cut
+         from a STRAIGHT run instead (E|W, N|S), halved at the crossing. */
+      const li = Math.min(lk.level, 3) - 1, crest = Assets.FORT_CREST[li];
+      const m = lk.mask, ew = fam[2 | 8], ns = fam[1 | 4];
+      const r = this.artRect(ew, bx, by, bw, bw), k = r.w / ew.width, cx = r.x + (Assets.FORT_GEO.M + Assets.FORT_GEO.T / 2) * k;
+      const half = (spr, x, y, w, h) => {
+        g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+        this.blitBld(g, spr, bx, by, bw, bw); g.restore();
+      };
+      if ((m & 10) === 10) this.blitBld(g, ew, bx, by, bw, bw);
+      else if (m & 8) half(ew, r.x, r.y, cx - r.x, r.h);
+      else if (m & 2) half(ew, cx, r.y, r.x + r.w - cx, r.h);
+      if ((m & 5) === 5) this.blitBld(g, ns, bx, by, bw, bw);
+      else if (m & 1) half(ns, r.x, r.y, r.w, crest * k);
+      else if (m & 4) half(ns, r.x, r.y + crest * k, r.w, r.h - crest * k);
+      return;
+    }
     g.drawImage(fam[lk.mask], bx, by, bw, bw);
     /* THE SEAM. A tower is drawn as an elevation — you see its face — while the
        curtain running north of it is drawn flat, from above. Butted together
