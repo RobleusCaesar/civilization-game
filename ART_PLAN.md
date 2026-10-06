@@ -416,6 +416,16 @@ door — so an open gate is transparent; re-cut both if a face is redrawn.
 The wall towers (and the tier-3 gatehouse) are then TRIMMED by `trim.cjs` —
 plain middle courses dropped, crown slid down onto the shaft — so nothing in
 the line stands taller than the free-standing Watchtower.
+Then the operator asked for the high camera, and the wall-tower bodies were
+remade as EDITS OF THE FREE-STANDING TOWERS (`edit_image_pro_flash` on
+`assets/buildings/tower-l{n}.png`, padded to a multiple of 4: "remove the
+mound, the stairs and the door; walls straight down to the ground"), 20
+middle rows cut, installed as the body alone at 65 px a tile. Do NOT try
+`create_image_pro` for a squared-up tower: with the Town Center as the
+camera reference it returned 3/4 corner-on towers in every one of the 36 candidates checked (of 48).
+The gatehouse faces were edited for roofs/tops with the new tower as the
+reference; the flank blocks are composed from the new bodies
+(`flankcomp.cjs`).
 
 **THE DENSITY CEILING IS THE SLOT, AND FOR A GATE IT WAS 2×.** (History: the drawn wall kit replaced the 64px gate slot with `Assets.FORT_GEO`'s 58px-a-tile canvas (44px at first), which the anchoring rule resamples like any building PNG.) A building PNG
 goes through `R.artRect` and is resampled at every zoom, so a 4× master there

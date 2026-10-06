@@ -7305,8 +7305,8 @@ const R = {
     { face: { x0: 11, x1: 21, y0: 13, y1: 30 }, flank: { w: 5.5, e: 24.5, ow: 5.5, oe: 24.5, y0: 17, y1: 26, top: 4 } },
   ],
   GATE_DRAWN: [
-    { flank: { w: -0.5, e: 33, ow: 1.5, oe: 32.5, y0: 13, y1: 24.5, top: -12 } },
-    { flank: { w: 2.5, e: 31.5, ow: 2.5, oe: 31.5, y0: 13, y1: 24.5, top: -11.5 } },
+    { flank: { w: -5, e: 35.2, ow: -3, oe: 34.7, y0: 13, y1: 24.5, top: -17.7 } },
+    { flank: { w: -1.9, e: 32.6, ow: -1.9, oe: 32.6, y0: 13, y1: 24.5, top: -16 } },
   ],
   gateWorksGeo(b, vert) {
     const li = Math.min(b.level, 2) - 1;

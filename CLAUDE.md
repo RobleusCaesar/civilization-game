@@ -1680,7 +1680,33 @@ big, everything should be roughly as tall as the stand alone towers"): the
 wall towers and the tier-3 gatehouse are TRIMMED, a band of plain middle
 courses cut out so the crown drops onto the shaft (scratch `trim.cjs`), to
 ~1.35-1.4 tiles foot to crown against the lookout's 1.3-1.4; the curtain
-stays ~0.85, so a wall tower still reads as the strong point of the line —
+stays ~0.85, so a wall tower still reads as the strong point of the line.
+**AND THE TOWERS WEAR THE HIGH CAMERA** (operator, day 20/133: "not clear
+this is a tower… the towers are viewed directly straight, but should be a
+high top down, like the Town Center"; "level 3 towers are also isometric"):
+the wall towers were edits of the straight-on curtain, so a trimmed tier-1
+tower read as a fence panel and the tier-3 one as a turned box. They are now
+edits of the FREE-STANDING Watchtowers themselves (the camera the operator
+approved — front-facing, squared up, seen from high above) with the mound,
+stairs and door taken off and the walls carried to the ground: a wattle
+lookout under a thatch hip roof on a turf rampart, an oak blockhouse under a
+gabled plank roof, an ashlar tower whose crenellated top you look DOWN into.
+Twenty plain rows were cut from each middle to keep the height.
+`assets/fort/tower-l{lv}.png` is the BODY ALONE, cropped to the drawing, and
+draws at its own density (`Assets.FORT_TOWER`: 65 px a tile, foot 0.2 tiles
+up — the curtain's foot line) through `_fortBody`, never through the
+FORT_GEO frame. Because that body is narrower than the corner/T frames'
+bastion, `drawTowerBond` cuts each arm from a STRAIGHT run halved at the
+crossing (`Assets.FORT_CREST`, the arms' meeting row per tier) instead of
+drawing the junction frame — or the bastion peeks out round the tower's
+foot. The gatehouses follow: the tier-2 gate towers carry the same plank
+roofs, the tier-3 gate towers show their platforms from above (desaturated
+toward the curtain's grey — the warm edit failed `gateL3StaysStone`), and
+the north-south FLANK block is the new tower body itself, shortened, over
+the run (scratch `flankcomp.cjs`; `GATE_DRAWN` flank numbers re-measured
+off it). Every edit started from a front-facing source: a fresh
+`create_image_pro` tower came back corner-on (3/4) every time, which reads
+as a rotated box in a squared wall —
 drawn through `blitBld`'s
 `_cfArt` anchor like every other PNG — so the curtain overhangs its tile
 and a gatehouse's towers stand astride the sections next door. **Three
