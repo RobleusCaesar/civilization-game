@@ -462,5 +462,157 @@
   "oy": 3,
   "srcW": 84,
   "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/tower3.png"
+ },
+ "w1ew-b3": {
+  "W": 128,
+  "H": 128,
+  "ox": 0,
+  "oy": 0,
+  "srcW": 128,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/t1ew-k.png"
+ },
+ "w1co-d2": {
+  "W": 128,
+  "H": 128,
+  "ox": 0,
+  "oy": 0,
+  "srcW": 128,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/t1corner-c0.png"
+ },
+ "w2ew-b3": {
+  "W": 128,
+  "H": 128,
+  "ox": 0,
+  "oy": 0,
+  "srcW": 128,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/t2ew-k.png"
+ },
+ "w2ns-b2": {
+  "W": 128,
+  "H": 128,
+  "ox": 0,
+  "oy": 0,
+  "srcW": 128,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/t2ns-k.png"
+ },
+ "w2ns-d2": {
+  "W": 128,
+  "H": 128,
+  "ox": 0,
+  "oy": 0,
+  "srcW": 128,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/t2ns-k.png"
+ },
+ "w2po-b2": {
+  "W": 128,
+  "H": 128,
+  "ox": 0,
+  "oy": 0,
+  "srcW": 128,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/t2post-k.png"
+ },
+ "w2po-d2": {
+  "W": 128,
+  "H": 128,
+  "ox": 0,
+  "oy": 0,
+  "srcW": 128,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/t2post-k.png"
+ },
+ "w3ew-b3": {
+  "W": 128,
+  "H": 128,
+  "ox": 0,
+  "oy": 0,
+  "srcW": 128,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/t3ew-k.png"
+ },
+ "w3co-b2": {
+  "W": 128,
+  "H": 128,
+  "ox": 0,
+  "oy": 0,
+  "srcW": 128,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/t3sq-k.png"
+ },
+ "w3co-d2": {
+  "W": 128,
+  "H": 128,
+  "ox": 0,
+  "oy": 0,
+  "srcW": 128,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/t3sq-k.png"
+ },
+ "g1f-b3": {
+  "W": 80,
+  "H": 148,
+  "ox": 1,
+  "oy": 2,
+  "srcW": 78,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/gface1.png"
+ },
+ "g1s-b2": {
+  "W": 80,
+  "H": 148,
+  "ox": 1,
+  "oy": 2,
+  "srcW": 78,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/gflank1.png"
+ },
+ "g2f-b3": {
+  "W": 80,
+  "H": 148,
+  "ox": 1,
+  "oy": 2,
+  "srcW": 78,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/gface2.png"
+ },
+ "g2s-b2": {
+  "W": 80,
+  "H": 148,
+  "ox": 1,
+  "oy": 2,
+  "srcW": 78,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/gflank2.png"
+ },
+ "g3f-b3": {
+  "W": 80,
+  "H": 148,
+  "ox": 1,
+  "oy": 2,
+  "srcW": 78,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/gface3.png"
+ },
+ "g3s-b2": {
+  "W": 80,
+  "H": 148,
+  "ox": 1,
+  "oy": 2,
+  "srcW": 78,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/gflank3.png"
+ },
+ "tw1-b3": {
+  "W": 88,
+  "H": 116,
+  "ox": 0,
+  "oy": 2,
+  "srcW": 88,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/tower1.png"
+ },
+ "tw2-b3": {
+  "W": 84,
+  "H": 116,
+  "ox": 0,
+  "oy": 0,
+  "srcW": 84,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/tower2.png"
+ },
+ "tw3-b2": {
+  "W": 84,
+  "H": 116,
+  "ox": 0,
+  "oy": 3,
+  "srcW": 84,
+  "src": "/tmp/claude-0/-home-user-civilization-game/c237cbc3-a3de-5825-9360-10b21a6b6a96/scratchpad/wd/base/tower3.png"
  }
 }
