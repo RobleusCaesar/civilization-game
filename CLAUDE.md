@@ -119,6 +119,7 @@ node tests/army-groups.mjs     # dense 2-per-tile formations; three saved armies
 node tests/boats-moat-scuttle.mjs # a moat is open water to hulls; Scuttle sinks a boat, frees its pop, refunds nothing
 node tests/army-strategies.mjs # the three assault doctrines (Siege/Chaos/Strike) — for the player AND the rival
 node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals — DERIVED from the target art; a stage on the finished canvas takes the finished rect; the stations own upgrade-shaped sets
+node tests/fort-states.mjs     # walls, gates and towers go up in 3 drawn stages and come down in 2 drawn damage states — each the finished piece's own canvas, at full alpha, in every pass that draws it
 node tests/burn-down.mjs       # buildings burn in thirds at their OWN anchors; the fall throws dust; 5 days of ash
 node tests/wall-tower-bond.mjs # L2 forts are half stone/half timber; an in-line tower joins the curtain
 node tests/buildings-block.mjs # every building is solid ground except the worker plots
@@ -1324,8 +1325,9 @@ extension point — but only the TOWER carries any today; the other thirteen
 bespoke sets (house/lodge/barracks/stable/range/trade/siege/sapper/warcamp/
 farm/quarry/lumber/mine, ~850 lines of sprites.js) are RETIRED. The DOCK
 keeps its four-facing jetty stages (`Sprites.dockBuildFace`), the WONDER its
-shared masons' stages (tests/wonder.mjs), and wall/gate their translucent
-oriented ghosts. The ui.js panel icon asks `R.stageIcon(b)`, which takes the
+shared masons' stages (tests/wonder.mjs), and wall/gate their DRAWN stage
+atlases (tests/fort-states.mjs — the translucent oriented ghost is only the
+fallback for a state with no art). The ui.js panel icon asks `R.stageIcon(b)`, which takes the
 SAME routing (wonder and dock checked BEFORE the bespoke branch — the wonder
 has a `wonderBuild1` but no `wonderBuild3`, so the bespoke branch would hand
 back undefined); a wall/gate site's icon derives from the straight-run
@@ -1396,6 +1398,48 @@ follows). Tower upgrade art DIVERGES on purpose — that's what the separate
 labels are for: `towerUp2/3` climb in coursed masonry with dressed quoins
 (the stone tiers an upgrade builds toward) while `towerBuild2/3` climb in
 wattle-and-daub matching the level-1 tower; `towerUp1` aliases `towerBuild1`.
+**That set is now the STAND-IN**: the Watchtower's own PNG stages
+(`assets/buildings/tower-l{n}-b{1,2,3}.png`, see **THE FORT GOING UP AND
+COMING DOWN** below) outrank it whenever they have landed (`R.ownStage`,
+asked by the work-site branch and `R.stageIcon` alike), and draw through the
+finished art's rect via `blitStage` — the bespoke branch only runs while the
+PNGs are missing.
+
+**THE FORT GOING UP AND COMING DOWN** (`tests/fort-states.mjs`, operator:
+"upgrade wall construction and destruction images… submit the image being
+edited, plus the before and after images… no isometric"). Every wall, gate
+and tower is RAISED in three drawn stages and BATTERED in two drawn damage
+states, and each is the finished piece's own picture in progress or in ruin
+— PixelLab edits OF the finished art, the image being edited sent with a
+context sheet (BEFORE on the left, AFTER on the right, and for a corner or
+a north-south piece the straight run at the same state below it to match),
+squared up and seen from high above (ART_PLAN, "THE FORT GOING UP AND
+COMING DOWN"). The files are the SAME STRIPS as the finished pieces:
+`assets/fort/wall-l{n}-{b1,b2,b3,d1,d2}.png` (sixteen masks, composed
+through the finished atlas's own pipeline with its texture windows pinned
+to the finished pieces' seams, so a stage or a scar sits on exactly the
+stone it becomes), `gate-l{n}-{…}.png` ([face, flank, door]),
+`tower-l{n}-{d1,d2}.png` (the wall tower's body — it has no stages, since a
+tower is RAISED as a Watchtower and only bonds once it stands), and
+`assets/buildings/tower-l{n}-{b1,b2,b3,d1,d2}.png` for the Watchtower on
+its finished canvas. Three rules: **a wall or gate site draws its stage at
+FULL alpha** (`R.fortStateArt`; the 55% ghost is the no-art fallback);
+**burn phase 1 wears the battered art and phase 2 the broken one**
+(`R.dmgArt`, read only through `R.wornSprite`, which the building pass AND
+`occludeByForts` both ask — two copies of the darkOf/ruinOf ladder had
+already drifted apart once), for a wall, a gate either way round, a bonded
+wall tower and a free-standing Watchtower, with darkOf/ruinOf standing in
+wherever a state has no art; and **a battered gatehouse hangs a battered
+door**: the damaged face's passage is cut by the FINISHED door's own
+outline (frame 2 is what was door there), so an open gate still shows the
+ground through it and `drawGateDoor` swings or slides the broken door
+exactly as it did the whole one. A stage gatehouse carries no door (frame 2
+is empty — `drawGateDoor` never runs on a site). A broken Watchtower
+topples broken (`startCollapse` snapshots `dmgArt(b, 2)`). Phase 0 (the
+first third lost) still shows the intact piece under small fires — the
+ruined look waits for `CFG.RUIN_AT` exactly as before. Building damage art
+is probed only for the kinds in `Assets.DMG_IDS` (the tower today);
+adding a kind is one entry and its `{id}-l{lv}-d{1,2}.png` files.
 
 **A living world** (`tests/wild-life.mjs`): four things that make the map look
 inhabited, plus the panel line that makes a unit's work legible.

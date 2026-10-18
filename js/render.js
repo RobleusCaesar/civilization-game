@@ -7097,6 +7097,50 @@ const R = {
     const a = Sprites.towerArt;
     return a ? a[Math.min(b.level || 1, 3) - 1] || null : null;
   },
+  /* THE FORT GOING UP AND COMING DOWN (Assets.FORT_STATES): the picture a
+     wall, gate or wall tower wears at a raising stage ('b1'..'b3') or a burn
+     phase ('d1', 'd2') — the same mask / face-or-flank / body pick the
+     finished piece takes — or null where that state has no art. */
+  fortStateArt(b, st) {
+    const fs = Sprites.fortStates;
+    if (!fs) return null;
+    const li = Math.min(b.level || 1, 3) - 1;
+    const tier = fs[b.key] && fs[b.key][li];
+    const set = tier && tier[st];
+    if (!set) return null;
+    if (b.key === 'wall') return set[this.wallMaskAt(b.x, b.y)] || null;
+    if (b.key === 'gate') return set[this.gateVerticalAt(b.x, b.y) ? 1 : 0] || null;
+    return b.key === 'tower' ? set : null;
+  },
+  /* A DAMAGED BUILDING'S OWN DRAWN LOOK — battered at burn phase 1, broken
+     open at phase 2 (tests/burn-down.mjs) — or null where none was drawn
+     and darkOf/ruinOf stand in. A drawn state replaces only the DRAWN piece
+     it was made from: the procedural wall masks, the procedural Watchtower
+     and a canvas the PNG does not share keep the derived look. */
+  dmgArt(b, k) {
+    const base = this.bldSprite(b);
+    if (!base || !base._cfArt) return null;
+    if (b.key === 'wall' || b.key === 'gate') return base._cfArt.fort ? this.fortStateArt(b, 'd' + k) : null;
+    // a tower bonded into a line wears the wall tower's body, and its scars
+    if (b.key === 'tower' && base === this.towerArtFor(b)) return this.fortStateArt(b, 'd' + k);
+    if (base._cfArt.fort || typeof Assets === 'undefined' || !Assets.dmgArt) return null;
+    const img = Assets.dmgArt(b.key, Math.max(1, b.level || 1), k);
+    if (!img || img.width !== base.width || img.height !== base.height) return null;
+    if (img._cfArt !== base._cfArt) img._cfArt = base._cfArt;   // it lands where the finished PNG does
+    return img;
+  },
+  /* the picture a STANDING building wears at its burn phase: untouched →
+     scorched (or battered) → broken open. A GROUND-LEVEL yard (the FIRE_AT
+     ground keys) never takes ruinOf — biting the "roofline" out of a flat
+     field just punches green holes in it; scorched-dark plus the spreading
+     char patches is its ruin. */
+  wornSprite(b) {
+    const bph = Bld.burnPhase(b), base = this.bldSprite(b);
+    if (bph >= 1) { const d = this.dmgArt(b, bph); if (d) return d; }
+    if (bph === 1) return this.darkOf(base);
+    if (bph === 2) { const bfa = this.fireAnchors(b); return (bfa && bfa.ground) ? this.darkOf(base) : this.ruinOf(base); }
+    return base;
+  },
   drawTowerWalk(g, b, bx, by, bw) {
     if (b.construction > 0) return;
     const lk = this.towerLinkMask(b.x, b.y);
@@ -7237,9 +7281,8 @@ const R = {
     }
     if (!list.some(e => e.b.y <= ty + 2)) return;
     list.sort((p, q) => p.r - q.r);
-    for (const { b, spr0 } of list) {
-      const bph = Bld.burnPhase(b);
-      const spr = bph === 1 ? this.darkOf(spr0) : bph === 2 ? this.ruinOf(spr0) : spr0;
+    for (const { b } of list) {
+      const spr = this.wornSprite(b);              // the same picture the building pass drew
       const bx = b.x * TL, by = b.y * TL;
       if (b.key === 'tower') this.drawTowerBond(g, b, bx, by, TL);
       this.blitBld(g, spr, bx, by, TL, TL);
@@ -7261,9 +7304,14 @@ const R = {
     if (this.gateVerticalAt(b.x, b.y)) return false;
     const li = Math.min(b.level || 1, 3) - 1;
     const face = (Sprites.gateMask[li] || [])[0];
-    const door = Sprites.gateDoor && Sprites.gateDoor[li];
+    let door = Sprites.gateDoor && Sprites.gateDoor[li];
     if (!door || !face || !face._cfArt || !face._cfArt.fort) return false;
     if (!front || b.construction > 0) return true;
+    // a battered gatehouse hangs a battered door (Assets.FORT_STATES: the
+    // damaged face's passage is cut by the finished door's outline)
+    const bph = Bld.burnPhase(b), fsg = Sprites.fortStates && Sprites.fortStates.gate;
+    const dset = bph >= 1 && fsg && fsg[li] && fsg[li]['d' + bph];
+    if (dset && dset[2]) door = dset[2];
     const live = Bld.canGateToggle(b) && b.owner === 'P';
     let a = 1;
     if (live) {
@@ -8312,6 +8360,11 @@ const R = {
      enough to see past left 17px of mush on a 1×1. The two stages that were
      generic are the two that took art; the one that was already specific
      keeps deriving. */
+  // the slot's OWN authored stage PNG alone (never the shared fallbacks) —
+  // what lets the tower's PNG stages outrank its bespoke procedural set
+  ownStage(key, lv, stage) {
+    return (typeof Assets !== 'undefined' && Assets.stageArt && Assets.stageArt(key, lv, stage + 1)) || null;
+  },
   stageArt(key, lv, sz, stage) {
     // the slot's OWN authored set first (Assets.stageArt, per-slot with an
     // approved share table), then whatever the older shape-and-footprint set
@@ -8705,11 +8758,16 @@ const R = {
       return stage < 2 ? Sprites.misc['wonderBuild' + (stage + 1)] : this.bldSprite(b, tgt);
     if (b.key === 'dock' && Sprites.dockBuildFace)
       return Sprites.dockBuildFace[Bld.dockShore(b)][stage];
-    if (Sprites.misc[b.key + 'Build1'])
+    if (Sprites.misc[b.key + 'Build1'] && !this.ownStage(b.key, tgt, stage))
       return Sprites.misc[b.key + (up ? 'Up' : 'Build') + (stage + 1)];
     // a fortification's bldSprite is its auto-tiled mask — the wrong picture
-    // for a panel; derive from the straight-run preview instead
+    // for a panel: its drawn stage on the straight run (the east-west run, the
+    // gatehouse's face) when there is one, else derive from the preview
     const fam = (b.key === 'wall' || b.key === 'gate') ? Sprites.building[b.key] : null;
+    if (fam && !up && Sprites.fortStates && Sprites.fortStates[b.key]) {
+      const t = Sprites.fortStates[b.key][Math.min(tgt, 3) - 1], set = t && t['b' + (stage + 1)];
+      if (set) return set[b.key === 'wall' ? 10 : 0];
+    }
     const base = fam ? fam[Math.min(tgt, fam.length) - 1] : this.bldSprite(b, tgt);
     const bs = Bld.size(b), tier = Math.min(3, tgt);
     // the authored site/frame, same routing the map draw takes. Fortifications
@@ -10300,7 +10358,8 @@ const R = {
     }
     this.collapses.push({
       x: b.x, y: b.y, sz, cfg, t: 0, key: b.key,
-      spr: this.bldSprite(b),                      // snapshot: it's about to be gone
+      // snapshot: it's about to be gone — broken open, where it has that art
+      spr: this.dmgArt(b, 2) || this.bldSprite(b),
       art: this.collapseArt(b.key, cfg.frames),    // …unless this kind draws its own
       flip: (b.id & 1) === 1,                      // half the towers fall the other way
       ground,
@@ -12679,8 +12738,13 @@ const R = {
         // wear the scaffold so it's plainly unusable until the work is done.
         const up = b.upgrading > 0;
         if (!up && (b.key === 'wall' || b.key === 'gate')) {
-          // fortifications show their oriented shape while first going up
-          g.globalAlpha = 0.55; this.blitBld(g, this.bldSprite(b), bx, by, bw, bw); g.globalAlpha = 1;
+          /* a fortification goes up in its own oriented shape: the drawn
+             stage for this mask / face (Assets.FORT_STATES — the same strip
+             as the finished piece, so the stone rises where it will stand),
+             or, with no stage art, the finished shape as a ghost */
+          const st = this.fortStateArt(b, 'b' + (Bld.stageOf(b) + 1));
+          if (st) this.blitBld(g, st, bx, by, bw, bw);
+          else { g.globalAlpha = 0.55; this.blitBld(g, this.bldSprite(b), bx, by, bw, bw); g.globalAlpha = 1; }
         } else {
           /* WORK-SITE STAGES (tests/build-stages.mjs): three looks at 1/3
              intervals — ground broken → the raising → the building standing
@@ -12715,10 +12779,11 @@ const R = {
             } else {
               this.blitBld(g, Sprites.dockBuildFace[side][stage], bx, by, bw, bw);
             }
-          } else if (Sprites.misc[b.key + 'Build1']) {
-            // BESPOKE stage art still wins the route (the tower today —
-            // tests/build-stages.mjs): its own three raising sprites for ALL
-            // three stages, no derived look
+          } else if (Sprites.misc[b.key + 'Build1'] && !this.ownStage(b.key, tgt, stage)) {
+            // BESPOKE stage art (the tower — tests/build-stages.mjs): its own
+            // three raising sprites for ALL three stages, no derived look —
+            // standing in until the slot's own PNG stages land, which take
+            // the next branch through the finished art's rect
             Assets.drawSprite(g, 'misc/' + b.key + (up ? 'Up' : 'Build') + (stage + 1), bx, by, { w: bw, h: bw });
           } else if (this.stageArt(b.key, up ? b.level + 1 : b.level, bs, stage)) {
             // AUTHORED site and frame, shared by shape and footprint
@@ -12753,15 +12818,9 @@ const R = {
         }
       } else {
         // a damaged building wears its destruction phase (tests/burn-down.mjs):
-        // untouched → scorched dark → partially destroyed (Bld.burnPhase).
-        // A GROUND-LEVEL yard (the FIRE_AT ground keys) never takes ruinOf —
-        // biting the "roofline" out of a flat field just punches green holes
-        // in it; scorched-dark plus the spreading char patches is its ruin.
-        const bph = Bld.burnPhase(b);
-        const bfa = this.fireAnchors(b);
-        const spr = bph === 1 ? this.darkOf(this.bldSprite(b))
-          : bph === 2 ? ((bfa && bfa.ground) ? this.darkOf(this.bldSprite(b)) : this.ruinOf(this.bldSprite(b)))
-          : this.bldSprite(b);
+        // untouched → scorched dark (or its own battered art) → partially
+        // destroyed (or its own broken art) — R.wornSprite, Bld.burnPhase
+        const spr = this.wornSprite(b);
         // a tower in a wall line wears the curtain's own stonework as
         // connecting stubs, under its body — one unbroken castle wall
         if (b.key === 'tower') this.drawTowerBond(g, b, bx, by, bw);

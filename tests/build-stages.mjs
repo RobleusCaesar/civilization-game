@@ -20,11 +20,14 @@
    Derivation is lazy and cached per target sprite (WeakMap), so PNG art
    that decodes late simply re-derives; the canvases carry the base's
    _cfArt so a PNG's stages land exactly where its finished art will.
-   Bespoke `misc/<key>Build1..3` art still WINS the route — the TOWER keeps
-   its authored three-sprite raising (and its Up2/3 masonry divergence), the
-   DOCK keeps its four-facing jetty stages, the WONDER its shared masons'
-   stages (tests/wonder.mjs) and wall/gate their oriented ghosts. The other
-   thirteen bespoke sets are RETIRED — the derived stages serve every one.
+   Bespoke `misc/<key>Build1..3` art still beats the DERIVED route — the
+   TOWER keeps its authored three-sprite raising (and its Up2/3 masonry
+   divergence) as the stand-in for its own PNG stages (tower-l{n}-b{k}.png,
+   which outrank it), the DOCK keeps its four-facing jetty stages, the
+   WONDER its shared masons' stages (tests/wonder.mjs) and wall/gate their
+   drawn stage atlases (tests/fort-states.mjs) or, with none, their oriented
+   ghosts. The other thirteen bespoke sets are RETIRED — the derived stages
+   serve every one.
 
    Run this after touching any of:
      buildings.js — Bld.stageOf
@@ -345,17 +348,41 @@ const out = await p.evaluate(() => {
       M.towerUp3 !== M.towerBuild3 && M.towerUp3.toDataURL() !== M.towerBuild3.toDataURL() &&
       px(M.towerUp2) > 2500 && px(M.towerUp3) > 2500,
       'towerUp2/3 are the masonry raisings');
+    /* …but the Watchtower's OWN PNG stages outrank them (assets/buildings/
+       tower-l{n}-b{k}.png — PixelLab edits of the finished art, ART_PLAN "THE
+       FORT GOING UP AND COMING DOWN"): the bespoke set is the stand-in while
+       they are missing. Both halves are proven with the per-slot set lent and
+       lifted by hand, never trusted to have loaded. */
     const tw = Bld.place('P', 'tower', tc.x - 3, tc.y, { free: true });
     G.updateVisibility();
     const tt = CFG.BUILDINGS.tower.levels[0].time;
+    const stagesKeep = Assets.stages;
+    Assets.stages = {};
     const w0 = stageCalls(() => { tw.construction = tt * 0.9; });
     const w1 = stageCalls(() => { tw.construction = tt * 0.5; });
     const w2 = stageCalls(() => { tw.construction = tt * 0.1; });
-    ck('towerRendersBespokeStages',
+    ck('towerRendersBespokeStagesWithoutItsPNGs',
       w0.keys.includes('misc/towerBuild1') && w1.keys.includes('misc/towerBuild2') &&
       w2.keys.includes('misc/towerBuild3') &&
       w0.site + w0.frame + w0.partial + w1.site + w1.frame + w1.partial + w2.site + w2.frame + w2.partial === 0,
       'towerBuild1/2/3 requested, derived generators never asked');
+    {
+      const mk = () => { const c = document.createElement('canvas'); c.width = c.height = 8; c.getContext('2d').fillRect(0, 0, 8, 8); return c; };
+      const pn = [mk(), mk(), mk()];
+      Assets.stages = { 'tower-l1': pn };
+      const seen = [], oB = R.blitStage;
+      R.blitStage = function (g, art, ...rest) { seen.push(art); return oB.call(R, g, art, ...rest); };
+      let k0, k2;
+      try { k0 = stageCalls(() => { tw.construction = tt * 0.9; }); k2 = stageCalls(() => { tw.construction = tt * 0.1; }); }
+      finally { R.blitStage = oB; }
+      ck('towerPNGStagesWinTheRoute',
+        seen.includes(pn[0]) && seen.includes(pn[2]) &&
+        ![...k0.keys, ...k2.keys].some(k => /towerBuild/.test(k)),
+        'the slot\x27s own stages through blitStage, the bespoke set never asked');
+      ck('andTheTowersPanelIconFollows',
+        R.stageIcon({ id: 781, key: 'tower', owner: 'P', x: 5, y: 5, level: 1, construction: tt * 0.9, upgrading: 0 }) === pn[0], '');
+    }
+    Assets.stages = {};
     Bld.finish(tw);
     tw.upgTotal = CFG.BUILDINGS.tower.levels[1].time;
     const tu0 = stageCalls(() => { tw.upgrading = tw.upgTotal * 0.9; });
@@ -364,6 +391,7 @@ const out = await p.evaluate(() => {
       tu0.keys.includes('misc/towerUp1') && tu2.keys.includes('misc/towerUp3') &&
       !tu0.keys.includes('misc/towerBuild1'), 'misc/towerUp1 and misc/towerUp3 requested');
     tw.upgrading = 0;
+    Assets.stages = stagesKeep;
 
     // ---- 5. the bespoke 1×1 sets are RETIRED; the derived route serves
     // every ordinary key. The dock and the tower alone keep authored stages. ----
@@ -455,7 +483,9 @@ const out = await p.evaluate(() => {
     }
     wsOn();
     const twFake = { id: 778, key: 'tower', owner: 'P', x: 5, y: 5, level: 1, construction: tt * 0.9, upgrading: 0 };
-    ck('stageIconHonoursBespokeArt', R.stageIcon(twFake) === M.towerBuild1, '');
+    { const keep = Assets.stages; Assets.stages = {};
+      ck('stageIconHonoursBespokeArt', R.stageIcon(twFake) === M.towerBuild1, 'with no PNG stages');
+      Assets.stages = keep; }
     const wlFake = { id: 779, key: 'wall', owner: 'P', x: 5, y: 5, level: 1, construction: 1, upgrading: 0 };
     const wIcon = R.stageIcon(wlFake);
     ck('aFortificationIconNeverBreaks', !!wIcon && !!wIcon.width,

@@ -489,6 +489,65 @@ canvas or image through one `canvasOf()` helper now. Expect this on any test
 calling `getContext` or `toDataURL` on `Sprites.*` the moment you ship art
 into a slot that had none.
 
+## THE FORT GOING UP AND COMING DOWN (SHIPPED)
+
+```
+assets/fort/wall-l{n}-{b1,b2,b3,d1,d2}.png       sixteen masks, like wall-l{n}.png
+assets/fort/gate-l{n}-{b1,b2,b3,d1,d2}.png       [face, flank, door], like gate-l{n}.png
+assets/fort/tower-l{n}-{d1,d2}.png               the wall tower's body
+assets/buildings/tower-l{n}-{b1,b2,b3,d1,d2}.png the Watchtower, on its finished canvas
+```
+
+Operator: "upgrade wall construction and destruction images. Make sure to
+submit the image being edited, plus the before and after images to give
+PixelLab lots of context. Remember no isometric." Nineteen finished
+pieces (three curtain runs, the L1 and L3 corners, the L2 north-south strip
+and corner post, six gate faces and flanks, three wall-tower bodies, three
+Watchtowers), 86 states, about ninety Pro Flash edits counting the redos — 552
+generations against an estimate of 560 (cap 700).
+
+**EVERY EDIT IS AN EDIT OF THE FINISHED PIECE**, never of the previous stage
+— the finished art is the designated master the doctrine below asks for,
+and the stage before is CONTEXT, not a source. Each request carries:
+
+- the image being edited: the finished piece, padded to a multiple of 4
+  with its foot kept on the bottom row (`prep.cjs`);
+- one reference, a CONTEXT SHEET: BEFORE on the left (the previous stage,
+  or the staked site `R.siteOf` draws for stage 1, or the battered state
+  for a breach), AFTER on the right (the finished piece, or the rubble tile
+  a razed fort leaves), each integer-scaled into half the canvas; and for a
+  corner, the north-south strip or a gate's flank, the STRAIGHT RUN at the
+  same state BELOW them, "match its look exactly" — without it a corner
+  went up in bare brown earth beside a run raised in green turf;
+- the same camera clause every time: "seen from the front and from high
+  above, squared up to the viewer — NOT isometric, NOT a three-quarter view,
+  NO corner turned toward you, every vertical exactly vertical";
+- prehistoric tools only (wood, antler, rope, woven baskets — no metal, no
+  sawn planks, no scaffolding towers), nobody on site, no fill, no text.
+
+**A STAGE THAT MUST LOSE HEIGHT IS PRE-CUT.** Asked to show "the first
+courses only", an edit of a finished tower kept the tower. Erasing every row
+above the build line BEFORE the edit (`cut` in the job table) leaves it
+nothing to keep; the prompt then only has to dress the stump.
+
+**COMPOSE, DON'T STRETCH.** The wall states run through the finished
+atlas's own composition (`compose3.cjs` = `compose2.cjs` with the texture
+windows pinned to the FINISHED pieces' seams, `seamFile`), so a stage or a
+scar sits on exactly the stone it becomes and neighbouring sections in the
+same state still meet seamlessly. Two pieces needed more than the edit:
+the L2 corner post's stages came back full height at stage 1, so stage 1
+and 2 were cut BY HAND from stage 2 (a stump, then one course short); and
+the L1 corner's north arm carries no breach (its scars landed on the
+bastion), so a breached north-south run is one more edit of the straight
+N-S frame itself, spliced over the middle of its own tile.
+
+**THE DAMAGED DOOR IS CUT BY THE FINISHED DOOR'S OUTLINE.** A battered
+gatehouse face goes through the same passage mask as the finished one —
+whatever is inside the finished door's alpha becomes frame 2 — so an open
+battered gate still shows the ground and the broken door still swings or
+slides exactly as the whole one did. A stage gatehouse ships an EMPTY
+frame 2.
+
 ## Reference doctrine: designated masters, never chains
 
 Two rules govern EVERY PixelLab reference, for every asset class, and

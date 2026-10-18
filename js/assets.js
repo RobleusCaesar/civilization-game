@@ -1916,6 +1916,67 @@ const Assets = {
     }
   },
 
+  /* ---- THE FORT GOING UP AND COMING DOWN (tests/wall-tower-bond.mjs) ----
+
+       assets/fort/{piece}-l{lv}-b{1,2,3}.png  the three raising stages
+       assets/fort/{piece}-l{lv}-d{1,2}.png    battered (burn phase 1) and
+                                               breached (burn phase 2)
+
+     Each file is the SAME strip as the finished piece it belongs to — the
+     wall's sixteen masks, the gatehouse's [face, flank, door], the wall
+     tower's body — so a stage or a scar lands on exactly the pixels the
+     finished stone does. They were made as PixelLab edits OF the finished
+     pieces (ART_PLAN, "THE FORT GOING UP AND COMING DOWN") and composed
+     through the same atlas as the finished curtain, its texture windows
+     pinned to the finished pieces' seams. A building stage carries no door:
+     drawGateDoor never runs on a site. A damaged gate's passage is cut by
+     the finished door's own outline, so the battered door swings and slides
+     exactly as the whole one did. The wall tower has no stages of its own —
+     a tower is RAISED as a Watchtower and only bonds once it stands — so it
+     ships its damage alone. Every file is optional and 404s quietly: a state
+     with no art keeps the ghost / darkOf / ruinOf look it always had. */
+  FORT_STATES: { wall: ['b1', 'b2', 'b3', 'd1', 'd2'], gate: ['b1', 'b2', 'b3', 'd1', 'd2'], tower: ['d1', 'd2'] },
+  _tryFortState(lv, piece, st) {
+    const img = new Image();
+    img.onload = () => {
+      const fs = Sprites.fortStates || (Sprites.fortStates = {});
+      const set = (fs[piece] || (fs[piece] = []));
+      const li = lv - 1, tier = set[li] || (set[li] = {});
+      if (piece === 'tower') tier[st] = this._fortBody(img);
+      else {
+        const n = piece === 'wall' ? 16 : 3, fr = [];
+        for (let k = 0; k < n; k++) fr.push(this._fortFrame(img, k));
+        tier[st] = fr;
+      }
+      this.loaded['fort/' + lv + '/' + piece + '-' + st] = true;
+    };
+    img.onerror = () => { /* no art for this state — the old look stands */ };
+    // NOT world art: the title's demo town stands finished and unhurt
+    this._track(img, false);
+    img.src = this.FORT_DIR + (piece + '-l' + lv + '-' + st + '.png').toLowerCase() + '?v=' + (CFG.ART_V || 1);
+  },
+  /* A BUILDING'S OWN DAMAGE, assets/buildings/{id}-l{lv}-d{1,2}.png: the
+     battered and the broken look on the finished art's canvas, replacing
+     darkOf/ruinOf for that slot. Only the kinds listed are probed — a
+     request per slot for art that does not exist would buy nothing. */
+  DMG_IDS: ['tower'],
+  dmg: {},
+  dmgArt(id, lv, k) {
+    const set = this.dmg[this.slotKey(id, lv)];
+    return (set && set[k - 1]) || null;
+  },
+  _tryDmg(id, lv, k) {
+    const img = new Image();
+    img.onload = () => {
+      const key = this.slotKey(id, lv);
+      (this.dmg[key] || (this.dmg[key] = []))[k - 1] = img;
+      this.loaded['dmg/' + key + '/' + k] = true;
+    };
+    img.onerror = () => { /* no damage art — darkOf/ruinOf stand */ };
+    this._track(img, false);
+    img.src = this.ART_DIR + (String(id) + '-l' + lv + '-d' + k + '.png').toLowerCase() + '?v=' + (CFG.ART_V || 1);
+  },
+
   artIds() { return Object.keys(CFG.BUILDINGS).filter(k => this.EXCLUDE.indexOf(k) < 0); },
   artSlots() {
     const out = [];
@@ -2036,6 +2097,10 @@ const Assets = {
     for (const s of this.artSlots()) this._tryLoad(s.id, s.lv);
     for (const o of this.stageOwners()) for (let n = 1; n <= this.STAGE_N; n++) this._tryStage(o, n);
     for (const lv of this.FORT_TIERS) for (const piece of this.FORT_PIECES) this._tryFort(lv, piece);
+    for (const lv of this.FORT_TIERS) for (const piece of Object.keys(this.FORT_STATES))
+      for (const st of this.FORT_STATES[piece]) this._tryFortState(lv, piece, st);
+    for (const id of this.DMG_IDS) if (CFG.BUILDINGS[id])
+      for (let lv = 1; lv <= CFG.BUILDINGS[id].levels.length; lv++) for (let k = 1; k <= 2; k++) this._tryDmg(id, lv, k);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key], !this.WORK_SITE_RE.test(key));
     for (const tribe of this.campTribes()) {
       this._tryLoadCamp(tribe);

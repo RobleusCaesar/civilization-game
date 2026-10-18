@@ -71,13 +71,17 @@ await p.evaluate(() => { R.holdBake = false; R.ensureTerrain(); });
    pin whichever art won the race with the loader (bounded; a PNG that never
    lands leaves the procedural tower, which those checks then fail). */
 await p.waitForFunction(() => window.Sprites && Sprites.building.tower.every(t => t && t._cfArt),
-  null, { timeout: 30000 }).catch(() => {});
+  null, { timeout: 90000 }).catch(() => {});
 /* …and so is the WALL KIT (assets/fort): the curtain, the wall towers and the
    gatehouses are drawn PNGs now, composed on Assets.FORT_GEO's tall canvas,
    and every check below reads the drawn pieces. Wait for all nine. */
 await p.waitForFunction(() => window.Sprites && Sprites.towerArt && [0, 1, 2].every(i =>
   Sprites.towerArt[i] && Sprites.wallMask[i][10]._cfArt && Sprites.gateMask[i][0]._cfArt && Sprites.gateMask[i][0]._cfArt.fort),
-  null, { timeout: 30000 }).catch(() => {});
+  null, { timeout: 90000 }).catch(() => {});
+/* (Both bounds are generous on purpose: 30s was measured running OUT under a
+   contract sweep beside another Chromium, and the L2 material check then read
+   the procedural mural tower — red on a commit that touched no wall. A bound
+   only costs time when the art genuinely never lands.) */
 
 const out = await p.evaluate(() => {
   const res = {}, fails = [];
