@@ -325,9 +325,13 @@ const out = await p.evaluate(async () => {
          boar 0.56/0.84, cow 0.42/0.80; on the old filing every species
          failed (deer 0.61/0.61, wolf 0.77/0.77, boar 0.77/0.69, cow
          0.80/0.64). Opaque bbox width as a share of the frame, walk frame 0.
-         The bear is not in this list on purpose: two of its eight strips
-         are duplicate views and it has no true profile yet (ANI-09), which
-         is a regeneration, not a re-filing. */
+         THE BEAR JOINED IT (ANI-09): it shipped with two duplicate views (s
+         held the sw view, nw the n view) and no true profile at all — its
+         character's own "east" turn is three-quarter — so the e/w strips were
+         regenerated from a true side view (a Pro Flash turn of the shipped
+         three-quarter frame, redrawn at 92% so the stride fits the 96 window,
+         every pose pinned to start and end on it) and the rest re-filed one
+         octant by view. Measured: bear 0.66/0.88 (old filing 0.93/0.90). */
       const viewW = (fr) => {
         try {
           const a = fr.getContext('2d').getImageData(0, 0, fr.width, fr.height).data;
@@ -338,7 +342,7 @@ const out = await p.evaluate(async () => {
         } catch (e) { return null; }
       };
       const views = {}, badView = [];
-      for (const kk of ['deer', 'wolf', 'boar', 'cow']) {
+      for (const kk of ['deer', 'wolf', 'boar', 'cow', 'bear']) {
         const dd = Assets.unitArt[kk] && Assets.unitArt[kk].dirs, w = {};
         for (const d of ['s', 'n', 'e', 'w']) w[d] = dd && dd[d] && dd[d].walk ? viewW(dd[d].walk[0]) : null;
         const narrow = Math.max(w.s, w.n), wide = Math.min(w.e, w.w);

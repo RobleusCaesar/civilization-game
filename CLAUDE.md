@@ -1565,9 +1565,17 @@ The facing math was always right; nothing had checked WHICH VIEW a file
 holds. The 56 strips were re-filed by rotation (sw→s, s→se, … w→sw — art
 untouched, `CFG.ART_V` bumped) and the pin reads the art itself: the straight
 front and rear are the narrow views and the profiles the wide ones, by a
-clear margin, on every species (red on the old filing for all four). The
-BEAR is left out on purpose: two of its strips are duplicate views and it has
-no true profile, which needs new art (ANI-09), not a rename.
+clear margin, on every species (red on the old filing for all four).
+**AND THE BEAR NOW HAS ITS PROFILES** (ANI-09, same pin): it shipped with two
+duplicate views (s held the sw view, nw the n view) and no true side view at
+all, because its PixelLab character's own "east" turn is three-quarter and
+every animation drifted back to it. The e/w strips are new art — a Pro Flash
+turn of the shipped three-quarter frame to a true profile (a wolf profile as
+the camera reference), redrawn crisp at 92% so the longer side-on stride fits
+the 96 window, and every pose pinned to START AND END on that frame (v3 /
+PixMiniMax end-frame interpolation; unpinned, walk and idle turned back to
+three-quarter by frame 4). The rest were re-filed by view (s←se, se←e,
+nw←w); measured 0.66/0.88 against the old filing's 0.93/0.90.
 **The live work line** (`Units.workReport` → `UI.workLine`, the `#pWork`
 element patched in place by `refreshPanel`): what a unit is doing and what it
 nets per day, computed from the SAME constants the gather/production code

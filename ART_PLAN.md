@@ -604,6 +604,28 @@ frames [fresh, picked, bones] at the walk's density). Three lessons:
   host is blocked by the session proxy); `get_image` writes them at native
   size.
 
+**THE BEAR'S PROFILES** (ANI-09 — `unit-bear-{e,w}-{walk,idle,fight}`). The
+v2 character's own east/west turns are THREE-QUARTER, so it shipped with no
+side view and two duplicate strips. Four lessons from making them:
+- **Turn the shipped frame, don't ask the character.** A Pro Flash reference
+  edit of the shipped three-quarter walk frame 0 ("turn this exact bear to a
+  pure side profile facing right") with a WOLF profile as the camera reference
+  ("copy ONLY this facing angle, never the wolf") landed on the first try,
+  identity and scale intact — 5 generations a side.
+- **A custom start frame is not enough — pin the END too.** Started from the
+  profile, every v3 walk and idle drifted back to the character's own
+  three-quarter turn by frame 4. `end_frame_url` = the same profile frame
+  holds it for the whole loop; PixMiniMax (1-2 generations) held it best and
+  walks with a real stride.
+- **A profile is longer than a three-quarter view**: at the views' own scale
+  the side-on stride reached 97-110px in a 96 window. The profile was cut to
+  92% as a GUIDE (area-averaged, snapped to its own palette) and then REDRAWN
+  crisp by a Pro Flash edit at that size, so no shipped pixel is resampled;
+  the walks then fit at 90-91px.
+- **Poses come back on different canvases** (walk 136², idle 124×128): every
+  pose's frame 0 is the shared start frame, so register each set on it
+  (IoU 1.0) into one space before composing, or the ground line jumps.
+
 **HORIZONTAL QUADRUPEDS ROTATE FROM A 54px REFERENCE, NOT 60.** Measured,
 twice: the wolf's walk union came out 67px wide and the boar's 68 from a
 60px character — v3 animations stride a long-bodied animal ~13% wider than
