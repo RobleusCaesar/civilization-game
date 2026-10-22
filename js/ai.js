@@ -3637,7 +3637,7 @@ const AI = {
     if (!el) {
       el = document.createElement('pre');
       el.id = 'aiDebug';
-      el.style.cssText = 'position:fixed;left:6px;top:calc(env(safe-area-inset-top) + 92px);z-index:40;' +
+      el.style.cssText = 'position:fixed;left:6px;top:calc(var(--safe-top) + 92px);z-index:40;' +
         'margin:0;padding:6px 8px;background:rgba(10,8,5,0.82);color:#8fe08f;font:10px/1.35 monospace;' +
         'border:1px solid #3a3324;border-radius:6px;pointer-events:none;white-space:pre;max-width:60vw;';
       document.body.appendChild(el);

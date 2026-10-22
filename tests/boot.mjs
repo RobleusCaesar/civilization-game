@@ -24,13 +24,23 @@
 
    THE NOTCH    One variable carries the top inset (--safe-top), env() with
                 its own 0px default so an unknown env can't drop the whole
-                declaration, and a --safe-min floor that boot raises on iOS
-                standalone, where black-translucent runs the page under the
-                status bar and the clock lands on the food counter.
+                declaration, a --safe-min floor and an --edge-clear step,
+                both zero unless the page runs UNDER the clock.
+
+   THE CLOCK'S BLUR  The status bar is OPAQUE (`black`): from iOS 26.1 a
+                translucent bar has a system blur and tint under it that
+                reaches ~45pt past the inset and that no page can switch
+                off, and the counters sat in it. An install made before the
+                change keeps the translucent bar until it is re-added, so
+                one that reports an inset (or is as tall as the screen)
+                steps its chrome past the band — measured here on an
+                emulated iPhone in every install mode (§5).
 
    Run this after touching any of:
      index.html — the splash block, the Boot script, the body.ingame gate,
-                  --safe-top / --safe-min, the viewport meta
+                  --safe-top / --safe-min / --edge-clear, html.ios-app /
+                  .under-bar, the page-fit script, the status-bar and
+                  viewport metas
      screens.js — show() (the ingame class, the Boot.force call)
      game.js — the load handler's first-frame markReady
 
@@ -163,9 +173,18 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       /<img[^>]+src="assets\/ui\/title-bg\.jpg(\?v=\d+)?"/.test(tag), '');
   }
   ck('theTopInsetHasADefaultAndAFloor',
-    /--safe-top:\s*max\(env\(safe-area-inset-top,\s*0px\)/.test(html) &&
-    /--safe-min:/.test(html),
+    /--safe-top:\s*calc\(max\(env\(safe-area-inset-top,\s*0px\),\s*var\(--safe-min\)\)\s*\+\s*var\(--edge-clear\)\)/.test(html) &&
+    /--safe-min:\s*0px/.test(html) && /--edge-clear:\s*0px/.test(html),
     'an unknown env() would otherwise drop the whole declaration');
+  /* THE STATUS BAR IS OPAQUE. iOS 26.1+ blurs and tints the page under a
+     translucent bar ~45pt past the inset, and the page cannot turn it off;
+     with `black` the page starts beneath the clock and nothing is under it.
+     (The behaviour on each install mode is measured in §5.) */
+  {
+    const sb = html.match(/<meta name="apple-mobile-web-app-status-bar-style" content="([^"]+)"/);
+    ck('theStatusBarIsOpaque', !!sb && sb[1] === 'black',
+      sb ? sb[1] + (sb[1] === 'black-translucent' ? ' — the page runs under the iOS 26.1 blur' : '') : 'no status-bar meta');
+  }
   ck('andTheTopBarWearsIt',
     /#topbar\s*\{[^}]*padding:\s*calc\(var\(--safe-top\)/.test(html), '');
 
@@ -649,6 +668,75 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   ck('theBootRunsClean', errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e)).length === 0,
     errs[0] || 'no page errors');
   await p.close();
+}
+
+/* ---- 5. THE CLOCK'S BLUR (a reported home-screen screenshot: the top
+   bar's first row — food, wood, stone, gold — blurred and dimmed, the second
+   row sharp). From iOS 26.1 a home-screen app whose page runs under a
+   TRANSLUCENT status bar gets a system blur and tint past the inset that no
+   page setting removes: it ended ~32pt below a 59pt inset on the reporting
+   iPhone and ~38-45pt below a 62pt one on a 16 Pro Max. The bar is opaque
+   now, so a fresh install's page starts beneath the clock; an install made
+   BEFORE the change keeps the translucent bar until it is re-added, and its
+   chrome must step past the band. Every mode is emulated at the reporting
+   iPhone's size — the screen, the page box iOS hands the app, the inset it
+   reports (CDP's safe-area override, which env() reads) and
+   navigator.standalone — and the counters' row is MEASURED where it lands,
+   with the minimap that hangs below the bar. ---- */
+{
+  const BAND = 45;                    // the deepest measured reach past the inset
+  const PHONE = { w: 393, h: 852 };   // the reporting iPhone, in CSS px
+  const mode = async ({ app, vw, vh, inset }) => {
+    const ctx = await b.newContext({ viewport: { width: vw, height: vh },
+      screen: { width: PHONE.w, height: PHONE.h }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+    if (app) await ctx.addInitScript(() => Object.defineProperty(Navigator.prototype, 'standalone',
+      { configurable: true, get: () => true }));
+    const p = await ctx.newPage();
+    const cdp = await ctx.newCDPSession(p);
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: inset, topMax: inset } });
+    await p.goto(url, { waitUntil: 'commit' });
+    await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 8000 });
+    const r = await p.evaluate(() => {
+      document.body.classList.add('ingame');   // the bar is laid out only while a game is on
+      const top = (sel) => { const e = document.querySelector(sel); return e ? e.getBoundingClientRect() : null; };
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position:fixed;padding-top:env(safe-area-inset-top, 0px)';
+      document.body.appendChild(probe);
+      const bar = top('#topbar'), row = top('#topbar .trow'), mini = top('#miniWrap');
+      return { env: parseFloat(getComputedStyle(probe).paddingTop), cls: document.documentElement.className,
+        barTop: bar.top, barBottom: bar.bottom, row: row.top, mini: mini ? mini.top : null };
+    });
+    await ctx.close();
+    return r;
+  };
+  const say = (m) => `counters at ${Math.round(m.row)}px, inset ${m.env}px, html.${m.cls || '(none)'}`;
+  // a FRESH install: the bar is opaque, the page starts beneath the clock
+  const fresh = await mode({ app: true, vw: PHONE.w, vh: PHONE.h - 59, inset: 0 });
+  ck('aFreshInstallStartsBeneathTheClock', fresh.row <= 10,
+    say(fresh) + ' — an opaque bar needs no floor and no clearance');
+  // an OLD install: translucent, the page under the clock, the inset reported
+  const old = await mode({ app: true, vw: PHONE.w, vh: PHONE.h, inset: 59 });
+  ck('anOldInstallStepsPastTheBlur', old.row >= old.env + BAND && old.env === 59,
+    say(old) + ` — the band reaches ${old.env + BAND}px`);
+  ck('andTheBandShowsTheBarsOwnWood', old.barTop === 0,
+    'the bar still starts at the top edge, so the blur shows its own wood, never the map');
+  // an old install on a build that reports NO inset: the geometry tells
+  const blind = await mode({ app: true, vw: PHONE.w, vh: PHONE.h, inset: 0 });
+  ck('evenOneThatReportsNoInset', blind.row >= 44 + BAND && blind.cls.split(' ').includes('under-bar'),
+    say(blind) + ' — clear of a 44px clock and the band below it');
+  // an iPhone on its side has no status bar at all
+  const side = await mode({ app: true, vw: PHONE.h, vh: PHONE.w, inset: 0 });
+  ck('anAppOnItsSideKeepsItsTop', side.row <= 10,
+    say(side) + ' — the old floor used to leave a 44px dead strip here');
+  // a BROWSER TAB is never stepped: it gets the real inset, nothing more
+  const tab = await mode({ app: false, vw: PHONE.w, vh: PHONE.h, inset: 59 });
+  const tab0 = await mode({ app: false, vw: PHONE.w, vh: PHONE.h - 59, inset: 0 });
+  ck('aBrowserTabKeepsTheRealInset', tab.row >= 59 && tab.row <= 59 + 10 && tab0.row <= 10,
+    `tab at inset 59: ${Math.round(tab.row)}px, at inset 0: ${Math.round(tab0.row)}px`);
+  const all = [fresh, old, blind, side, tab, tab0];
+  ck('andTheHudHangsBelowTheBarInEveryMode',
+    all.every(m => m.mini !== null && m.mini >= m.barBottom - 1),
+    all.map(m => `${Math.round(m.mini)}≥${Math.round(m.barBottom)}`).join(' '));
 }
 
 console.log(JSON.stringify(res, null, 1));

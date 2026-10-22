@@ -4,7 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- THE STATUS BAR IS OPAQUE. `black-translucent` ran the page UNDER the
+     clock, and from iOS 26.1 the system lays a progressive blur and a dark
+     tint over that strip which no page setting can turn off — and it reaches
+     ~32-45pt BELOW the inset, which put the food/wood/stone/gold counters
+     inside it (a reported home-screen screenshot: the first row of the top
+     bar blurred, the second sharp). With `black` the clock keeps its own
+     band and the page starts beneath it, so nothing of ours is ever under
+     the blur. iOS reads this tag only when the app is ADDED to the Home
+     Screen: an install made before the change keeps the translucent bar
+     until it is removed and re-added, so html.ios-app / .under-bar below
+     step its chrome past the blur instead (tests/boot.mjs §5). -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="mobile-web-app-capable" content="yes">
 <!-- THE HOME-SCREEN ICON. Art only, no wordmark: iOS draws the app's name
      under the icon itself, so lettering inside it only fights that label and
@@ -35,15 +46,21 @@
     --edge-dark: rgba(10, 8, 5, 0.85);
     --wood-tex: none;                    /* set procedurally at boot */
     /* THE SAFE AREA IS ONE VARIABLE. Every top-anchored piece of chrome reads
-       it, so the notch is handled in exactly one place. Two hardenings live
-       here rather than in each rule: env()'s own DEFAULT (0px) keeps the
-       calc() valid where env() is unknown — without it the whole padding
-       declaration is dropped and the bar loses its inset entirely — and the
-       boot block raises the floor to --safe-min on iOS standalone, where
-       `black-translucent` puts the status bar ON the page and some builds
-       still report a zero inset (the clock-over-the-food-counter bug). */
+       it, so the notch is handled in exactly one place — and it means where
+       READABLE chrome may start: below the status bar AND below anything the
+       system draws over the page beside it. Three parts live here rather
+       than in each rule: env()'s own DEFAULT (0px) keeps the calc() valid
+       where env() is unknown — without it the whole padding declaration is
+       dropped and the bar loses its inset entirely; --safe-min, a floor for
+       an install that runs the page under the clock yet reports a zero inset
+       (some builds did: the clock-over-the-food-counter bug); and
+       --edge-clear, the step past the blur iOS 26.1+ lays BELOW the inset of
+       such an install. Both start at 0 and only html.ios-app / .under-bar
+       raise them: the status bar is opaque now (the meta above), and a page
+       that starts beneath the clock needs neither. */
     --safe-min: 0px;
-    --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-min));
+    --edge-clear: 0px;
+    --safe-top: calc(max(env(safe-area-inset-top, 0px), var(--safe-min)) + var(--edge-clear));
     /* HOW FAR DOWN THE TOP BAR REACHES. Four things hang off it — the
        toasts, the minimap, its toggle and the army bar — and they were four
        copies of the same 88px, measured off a bar that stacks two rows. The
@@ -58,6 +75,20 @@
        that art, which is exactly the mismatch this replaces. */
     --menufont: 'Cinzel', 'Times New Roman', Georgia, serif;
   }
+  /* A HOME-SCREEN INSTALL THAT RUNS UNDER THE CLOCK — one added while the bar
+     was translucent; iOS keeps the style it read at install. From iOS 26.1
+     the system blurs and tints a band past its inset (it ended ~32pt below
+     a 59pt inset on the reporting iPhone, ~38-45pt below a 62pt one on a
+     16 Pro Max) and nothing the page sets removes it, so the chrome steps
+     over it. A REPORTED inset in the app means the page is under the bar,
+     so the clearance is keyed off the inset itself: an opaque-bar install
+     reports 0 and gets none, and so does an iPhone on its side, which has
+     no status bar at all. */
+  html.ios-app { --edge-clear: min(env(safe-area-inset-top, 0px) * 100, 46px); }
+  /* …and one that runs under the clock but reports NO inset. The geometry
+     says so instead (the page-fit script: upright and as tall as the screen
+     itself), so it takes the old floor, and the same step past the blur. */
+  html.ios-app.under-bar { --safe-min: 44px; --edge-clear: 46px; }
   @font-face {
     font-family: 'Pixelify Sans';
     src: url('assets/ui/pixelify.woff2') format('woff2');
@@ -1341,13 +1372,15 @@
     window.addEventListener(ev, skip, { passive: true });
   });
 
-  /* iOS STANDALONE: `black-translucent` runs the page under the status bar,
-     and some iOS builds report a zero safe-area inset there — the clock then
-     sits on top of the food counter. Raise the floor so the top bar always
-     clears it; the browser tab, where iOS keeps content below the status bar
-     itself, is left on the real env() value. */
+  /* THE iOS HOME-SCREEN APP is marked so the stylesheet can step its chrome
+     past whatever iOS draws beside the clock (html.ios-app; the page-fit
+     script below adds .under-bar from the geometry). It used to raise a
+     44px floor here on EVERY standalone launch — written for the
+     translucent bar, where some builds reported a zero inset and the clock
+     sat on the food counter — which under an opaque bar would only be a
+     44px dead strip. The browser tab is left on the real env() value. */
   if (navigator.standalone === true)
-    document.documentElement.style.setProperty('--safe-min', '44px');
+    document.documentElement.classList.add('ios-app');
 })();
 </script>
 
@@ -1374,6 +1407,15 @@
     lastH = h; lastW = w;
     document.documentElement.style.height = h + 'px';
     document.body.style.height = h + 'px';
+    /* UNDER THE CLOCK? An app page upright and as tall as the screen itself
+       is running beneath the status bar (a translucent-bar install); an
+       opaque-bar install is shorter than the screen by the bar. iOS reports
+       screen.width/height upright however the phone is held; the max()
+       holds either way. The stylesheet's html.ios-app.under-bar does the
+       rest. */
+    var tall = Math.max(screen.width || 0, screen.height || 0);
+    document.documentElement.classList.toggle('under-bar',
+      navigator.standalone === true && h > w && tall > 0 && h >= tall - 1);
     try { window.dispatchEvent(new Event('cf-fit')); } catch (e) {}
   };
   fit();
@@ -1797,31 +1839,31 @@
 
 </div>
 
-<script src="js/config.js?v=92"></script>
-<script src="js/audio.js?v=92"></script>
-<script src="js/config.supabase.js?v=92"></script>
-<script src="js/vendor/supabase.js?v=92"></script>
-<script src="js/backend.js?v=92"></script>
-<script src="js/competition.js?v=92"></script>
-<script src="js/score.js?v=92"></script>
-<script src="js/cards.js?v=92"></script>
-<script src="js/artstyle.js?v=92"></script>
-<script src="js/sprites.js?v=92"></script>
-<script src="js/formations.js?v=92"></script>
-<script src="js/relics.js?v=92"></script>
-<script src="js/assets.js?v=92"></script>
-<script src="js/dev.js?v=92"></script>
-<script src="js/map.js?v=92"></script>
-<script src="js/buildings.js?v=92"></script>
-<script src="js/units.js?v=92"></script>
-<script src="js/combat.js?v=92"></script>
-<script src="js/ai.js?v=92"></script>
-<script src="js/render.js?v=92"></script>
-<script src="js/defeatart.js?v=92"></script>
-<script src="js/victoryart.js?v=92"></script>
-<script src="js/ui.js?v=92"></script>
-<script src="js/screens.js?v=92"></script>
-<script src="js/tutorial.js?v=92"></script>
-<script src="js/game.js?v=92"></script>
+<script src="js/config.js?v=93"></script>
+<script src="js/audio.js?v=93"></script>
+<script src="js/config.supabase.js?v=93"></script>
+<script src="js/vendor/supabase.js?v=93"></script>
+<script src="js/backend.js?v=93"></script>
+<script src="js/competition.js?v=93"></script>
+<script src="js/score.js?v=93"></script>
+<script src="js/cards.js?v=93"></script>
+<script src="js/artstyle.js?v=93"></script>
+<script src="js/sprites.js?v=93"></script>
+<script src="js/formations.js?v=93"></script>
+<script src="js/relics.js?v=93"></script>
+<script src="js/assets.js?v=93"></script>
+<script src="js/dev.js?v=93"></script>
+<script src="js/map.js?v=93"></script>
+<script src="js/buildings.js?v=93"></script>
+<script src="js/units.js?v=93"></script>
+<script src="js/combat.js?v=93"></script>
+<script src="js/ai.js?v=93"></script>
+<script src="js/render.js?v=93"></script>
+<script src="js/defeatart.js?v=93"></script>
+<script src="js/victoryart.js?v=93"></script>
+<script src="js/ui.js?v=93"></script>
+<script src="js/screens.js?v=93"></script>
+<script src="js/tutorial.js?v=93"></script>
+<script src="js/game.js?v=93"></script>
 </body>
 </html>

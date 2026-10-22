@@ -3578,15 +3578,49 @@ dvh rules stay as the no-JS fallback, never removed. `R.resize` reads
 `window.innerWidth/Height` — the inner size is the very number that lied —
 and `R.init` listens for `cf-fit`, so the canvas snaps to the measured box
 the moment it settles.
-**The notch is ONE variable**: `--safe-top` = `max(env(safe-area-inset-top,
-0px), var(--safe-min))`, read by every top-anchored rule. Two hardenings live
-in it — env()'s own DEFAULT, without which an unknown `env()` invalidates the
-whole `calc()` and the bar loses its inset entirely, and the `--safe-min`
-floor, which the boot block raises to 44px on iOS **standalone**
-(`navigator.standalone`), where `black-translucent` runs the page under the
-status bar and some builds still report a zero inset — the reported
-clock-on-top-of-the-food-counter bug. The browser tab, where iOS keeps
-content below the status bar itself, stays on the real `env()` value.
+**The notch is ONE variable**: `--safe-top` = `calc(max(env(safe-area-inset-top,
+0px), var(--safe-min)) + var(--edge-clear))`, read by every top-anchored rule,
+and it means where READABLE chrome may start — below the status bar AND below
+anything the system draws beside it. env()'s own DEFAULT keeps it valid where
+`env()` is unknown (without it the whole `calc()` is dropped and the bar loses
+its inset entirely); the other two parts are 0 unless the page runs UNDER the
+clock.
+**THE STATUS BAR IS OPAQUE** (`apple-mobile-web-app-status-bar-style` =
+`black`; tests/boot.mjs §5 — a reported home-screen screenshot: the top bar's
+first row, the food/wood/stone/gold counters, blurred and dimmed, the second
+row sharp). Nothing in the game changed: iOS did. From **iOS 26.1** a
+home-screen app whose page runs under a TRANSLUCENT bar gets a system blur and
+dark tint (the document's background colour) over the status strip, reaching
+PAST the inset — ~32pt below a 59pt inset on the reporting iPhone, ~38-45pt
+below a 62pt one on a 16 Pro Max — and no page setting removes it (WebKit's
+top-edge colour extension, which hides that blur in a Safari tab when a fixed
+box spans the top, evidently does not run in the home-screen shell: this
+page's fixed full-screen body would qualify, and the blur was there anyway).
+The counters sat at inset + 5px, inside it.
+With `black` the clock keeps its own band and the page starts beneath it, so
+nothing is ever under the blur. An OPAQUE bar is what a field report verified
+sharp on a real iPhone (iOS 27, the tag removed and the app re-added) and what
+the reply on WebKit bug 317153 recommends (remove the tag); `black` is the
+opaque style that says what this dark game wants — a black band under a white
+clock — rather than one sampled from whatever art is at the top edge, and if
+a build ever ran it translucent the clearance below still holds. It also ends
+iOS 26's "one status bar short" bottom band (bug 301108). **iOS reads the tag only
+when the app is ADDED**, so an install made before the change keeps the
+translucent bar until it is removed and re-added — and is defended, not
+abandoned: `html.ios-app` (`navigator.standalone`, set in the boot block)
+gives it `--edge-clear: min(inset × 100, 46px)` — a REPORTED inset in the app
+means the page is under the bar, so an opaque-bar install (inset 0) and an
+iPhone on its side (no status bar) get none — and `html.ios-app.under-bar`
+(the page-fit script: upright and as tall as `screen` itself) gives an
+under-the-bar install that reports NO inset the old 44px `--safe-min` floor
+and the same 46px step (some builds did report zero: the
+clock-on-top-of-the-food-counter bug). The floor used to be raised on EVERY
+standalone launch, which under an opaque bar is a 44px dead strip — and was
+one in landscape all along. The browser tab stays on the real `env()` value.
+The contract emulates each mode at the reporting iPhone's size (Chromium's
+`Emulation.setSafeAreaInsetsOverride` drives `env()`) and MEASURES where the
+counters land, the minimap below them included; run on the pre-fix page it
+reproduces the report (counters at 64px under a 59px inset).
 **TWO ICONS, BECAUSE THEY ARE SEEN AT TWO SIZES** (same test): the
 home-screen icon and the browser-tab favicon are DIFFERENT DRAWINGS, not one
 file resized. A home-screen icon is looked at around 60px and can carry
