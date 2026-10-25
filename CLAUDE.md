@@ -4795,6 +4795,31 @@ wall-batterer, so the contract measures it across kinds, footprints and
 sides rather than patching the farm: nine kinds, four sides, the dock from
 the sand, and the two no-exit shapes that must answer "no lean" and never
 a wade. The ordinary lean to a wall is byte-for-byte what it was.
+**AND HE FACES THE BUILDING FROM WHERE HE IS DRAWN** (`R.faceBuilding`,
+pinned by tests/villager-tiers.mjs §5e — operator, day 13, with the
+picture: "workers should always face the building they're working on" — a
+builder hammering at open meadow with the house he was raising at his
+back, and a lumber camp's two hands chopping outward at nothing, the block
+between them). Every "face what you work" rule read the SIM position while
+the lean DRAWS the builder elsewhere — at the wall, and from inside a site
+out of whichever side is open: in the report the short way west was the
+house next door, so he was drawn out of the east side. Worse, a builder in
+the middle of a 1×1 site — where every crew paths to — sat inside the old
+0.1-tile dead zone, read no direction at all and kept the facing of his
+walk in (measured: 191 of 1,248 house-site spots and 72 of 2,256 barracks
+spots faced away or sideways as drawn). A station's own hands had no rule
+whatever. `faceBuilding` measures from the DRAWN spot: OFF the footprint,
+toward its nearest point (the wall in front of him — backs allowed, the
+operator's physics ruling for construction); ON it (a station's hands, a
+builder with nowhere to lean), across it toward its middle, so a pair
+face each other (e/w) over the block, the fire, the cut face or the adit
+every station's art lays down the middle, and a lone hand at the middle
+faces the FRONT (`s`), where that work is drawn. Builders, repairers,
+upgrade crews, station hands and melee wall-batterers all ask it, and the
+forager joins the tile-facing rule (`FACE_TILE_POSES`: a picker faces her
+bush, not her walk in). The contract runs the matrix — 1×1 and 2×2 sites,
+blocked sides, spots inside and round them, eight walk-ins — and the
+report's own setup by name; on the old code five of its six checks fail.
 
 **AN OVERLAPPING LAYER CAN ONLY BE REPAIRED INSIDE THE GROUND THAT WAS ERASED**
 (`R.clipTiles`, pinned by `andDiggingItLeavesNoStaleShore`): rocks from

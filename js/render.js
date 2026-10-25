@@ -11457,8 +11457,39 @@ const R = {
      camera while the enemy stands behind you would be worse than a
      back. */
   WORK_TURN: { gather: 1, mine: 1, farm: 1, build: 1, work: 1,
-               dig: 1, bridge: 1, clear: 1, mound: 1 },
+               dig: 1, bridge: 1, clear: 1, mound: 1, pick: 1, reach: 1 },
   AWAY_TO_FRONT: { n: 's', ne: 'e', nw: 'w' },
+  // the gather poses that face the tile they work (sheetFrames)
+  FACE_TILE_POSES: { mine: 1, gather: 1, pick: 1, reach: 1, farm: 1 },
+  /* WHICH WAY THE BUILDING LIES, FROM WHERE THE SPRITE STANDS (operator
+     report, day 13, with the picture: a builder hammering at open meadow
+     with the house he was raising at his back — and in the same frame a
+     lumber camp's two hands chopping outward at nothing, the block between
+     them). Every "face what you work" rule read the SIM position, but
+     workLean DRAWS a builder somewhere else — at the wall, and from inside
+     a site out of whichever side is open (the report: the short way west
+     was the house next door, so he was drawn out of the east side) — and a
+     builder standing in the middle of a 1×1 site, which is where every crew
+     paths to, read no direction at all and kept the facing of his walk in.
+     A station's hands had no rule whatever. So the facing is measured from
+     the DRAWN spot: OFF the footprint, toward the nearest point of it — the
+     wall in front of him; ON it (a station's hands, a builder with nowhere
+     to lean), across it toward its middle — a pair face each other over
+     the block, the fire, the cut face, the adit that every station's art
+     lays down the middle — and a lone hand at the middle faces the front,
+     where that work is drawn. Returns a FACE8 key, or null. */
+  faceBuilding(u, b) {
+    if (!b) return null;
+    const lp = this.workLean(u);
+    const px = lp ? lp.x : u.x, py = lp ? lp.y : u.y, sz = Bld.size(b);
+    const dx = Math.max(b.x, Math.min(px, b.x + sz)) - px;
+    const dy = Math.max(b.y, Math.min(py, b.y + sz)) - py;
+    if (dx * dx + dy * dy < 0.0004) {
+      const mx = Bld.cx(b) - px;
+      return Math.abs(mx) >= 0.1 ? (mx > 0 ? 'e' : 'w') : 's';
+    }
+    return this.FACE8[((Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) % 8) + 8) % 8];
+  },
   // terraform job → sheet pose (bridgeup reinforces a span: same craft)
   TERRA_POSE: { dig: 'dig', bridge: 'bridge', bridgeup: 'bridge', clear: 'clear', mound: 'mound' },
   TERRA_POSES: { dig: 1, bridge: 1, clear: 1, mound: 1 },
@@ -11484,18 +11515,20 @@ const R = {
     // a wall while looking due south). Combat facing derives from the live
     // TARGET, not from the last displacement — a duel tracks a circling
     // enemy, an archer turns with its mark, a wall-batterer squares up to
-    // the wall. Honest facing, deliberately un-clamped: backs are correct
-    // in combat when the enemy stands north.
+    // the wall (from where workLean DRAWS him, like a builder: faceBuilding).
+    // Honest facing, deliberately un-clamped: backs are correct in combat
+    // when the enemy stands north.
     if (!afloat && (pose === 'fight' || pose === 'guard')) {
-      let tx = null, ty = null;
-      if (u.tUnit) { const ft = Units.get(u.tUnit); if (ft) { tx = ft.x; ty = ft.y; } }
-      else if (u.tBld && typeof Bld !== 'undefined') {
-        const fb = Bld.get(u.tBld); if (fb) { tx = Bld.cx(fb); ty = Bld.cy(fb); }
-      }
-      if (tx != null) {
-        const fdx = tx - u.x, fdy = ty - u.y;
-        if (fdx * fdx + fdy * fdy > 0.01)
-          face = this.FACE8[((Math.round(Math.atan2(fdy, fdx) / (Math.PI / 4)) % 8) + 8) % 8];
+      if (u.tUnit) {
+        const ft = Units.get(u.tUnit);
+        if (ft) {
+          const fdx = ft.x - u.x, fdy = ft.y - u.y;
+          if (fdx * fdx + fdy * fdy > 0.01)
+            face = this.FACE8[((Math.round(Math.atan2(fdy, fdx) / (Math.PI / 4)) % 8) + 8) % 8];
+        }
+      } else if (u.tBld && typeof Bld !== 'undefined') {
+        const fb = Bld.get(u.tBld);
+        if (fb) face = this.faceBuilding(u, fb) || face;
       }
     }
     // …and a wolf at the kill faces the kill, whichever side of it it sits
@@ -11508,17 +11541,15 @@ const R = {
       // a BUILDER faces his site, full stop — the operator's ruling: for
       // construction the PHYSICS win, a back turned to the camera is fine
       // when the site stands north (a mallet pointed away from the site
-      // is what's wrong). Only siteless work keeps the no-backs clamp.
+      // is what's wrong). Only siteless work keeps the no-backs clamp. And
+      // a STATION'S OWN HANDS face their station the same way (operator,
+      // day 13: "workers should always face the building they're working
+      // on") — both read from where the sprite is DRAWN (faceBuilding).
       let sited = false;
-      if (pose === 'build' && u.task && u.task.type === 'build' && typeof Bld !== 'undefined') {
-        const wb = Bld.get(u.task.id);
-        if (wb) {
-          const bdx = Bld.cx(wb) - u.x, bdy = Bld.cy(wb) - u.y;
-          if (bdx * bdx + bdy * bdy > 0.01) {
-            face = this.FACE8[((Math.round(Math.atan2(bdy, bdx) / (Math.PI / 4)) % 8) + 8) % 8];
-            sited = true;
-          }
-        }
+      if (u.task && (u.task.type === 'build' ? pose === 'build' : u.task.type === 'work') &&
+          typeof Bld !== 'undefined') {
+        const wb = Bld.get(u.task.id), bf = wb && this.faceBuilding(u, wb);
+        if (bf) { face = bf; sited = true; }
       }
       // a SAPPER faces the tile it reshapes — same physics ruling. The sim
       // already stands it on a 4-edge neighbor leaning in, so this facing
@@ -11538,8 +11569,12 @@ const R = {
          chopping sideways at nothing (operator report). One condition, both
          poses: 'gather' is wood only here (fishing and lumber-lodge crews
          reach this pose through 'fish'/'work' task types, which this check
-         does not match, and naval units are excluded above by !afloat). */
-      if ((pose === 'mine' || pose === 'gather') && u.task && u.task.type === 'gather' && u.task.x != null) {
+         does not match, and naval units are excluded above by !afloat).
+         The FORAGER joins it (operator, day 13: "always face" what you
+         work): a villager kneeling to pick a bush or reaching into an
+         orchard tree kept the facing of her walk in, so one who came down
+         the side of a bush picked at it sideways, or with her back to it. */
+      if (this.FACE_TILE_POSES[pose] && u.task && u.task.type === 'gather' && u.task.x != null) {
         const mdx = u.task.x + 0.5 - u.x, mdy = u.task.y + 0.5 - u.y;
         if (mdx * mdx + mdy * mdy > 0.01) {
           face = this.FACE8[((Math.round(Math.atan2(mdy, mdx) / (Math.PI / 4)) % 8) + 8) % 8];
@@ -11630,7 +11665,7 @@ const R = {
       b = Bld.get(u.tBld);
     }
     if (!b) return null;
-    const sz = (Bld.def(b.key) && Bld.def(b.key).size) || 1;
+    const sz = Bld.size(b);                            // the INSTANCE's footprint (a grandfathered b.sz included)
     const pad = 0.38;                                  // sprite centre just off the wall
     const x0 = b.x - pad, y0 = b.y - pad, x1 = b.x + sz + pad, y1 = b.y + sz + pad;
     let lx = Math.max(x0, Math.min(u.x, x1));

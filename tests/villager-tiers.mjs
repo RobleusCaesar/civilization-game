@@ -293,7 +293,7 @@ const out = await p.evaluate(() => {
   /* ---- 5c. BUILDERS LEAN TO THE WALL (operator report, day 120): a unit
      playing the build pose DRAWS at the nearest point just outside its
      site's footprint — capped, sim position untouched — and FACES the
-     site (front-clamped, the standing no-backs rule). ---- */
+     site from that drawn spot (pinned in 5e). ---- */
   {
     const u = Units.spawn('villager', 'P', 10, 10);
     const tc = Bld.tcOf('P');           // any real building works as the site
@@ -429,6 +429,174 @@ const out = await p.evaluate(() => {
     }
     for (let i = 0; i < saved.length; i++) terr[i] = saved[i];   // a plain array, not a typed one
     Bld._block = null;
+  }
+
+  /* ---- 5e. A WORKER FACES THE BUILDING HE WORKS, AS DRAWN (operator report,
+     day 13, with the picture: a builder hammering at open meadow with the
+     house he was raising at his back, and a lumber camp's two hands chopping
+     outward at nothing, the block between them). Every facing rule read the
+     SIM position while workLean DRAWS a builder elsewhere — at the wall, and
+     from inside a site out of whichever side is open — and a builder in the
+     middle of a 1x1 site (where every crew paths to) read no direction at
+     all. Measured on the resolved facing (R._sheetFace) against the drawn
+     spot, across footprints, blocked sides, standing spots inside and round
+     the site, and all eight walk-in facings: the building must lie within
+     67.5 degrees of where he looks. The report's own setup is pinned by name,
+     and it must draw him on the FAR side — or the matrix never reached the
+     push-out that was wrong. ---- */
+  {
+    const W = CFG.W, terr = S.map.terrain, tc = Bld.tcOf('P');
+    tc.level = 2; R._vTier = null;
+    const probe = Units.spawn('villager', 'P', tc.x + 3, tc.y + 3); probe.female = false;
+    const key = R.unitArtKey(probe);
+    S.units = S.units.filter(z => z !== probe);
+    const mk = () => { const c = document.createElement('canvas'); c.width = 96 * 4; c.height = 96; c.getContext('2d').fillRect(0, 0, 4, 4); return c; };
+    for (const dir of R.FACE8) for (const pose of ['walk', 'idle', 'build', 'mine', 'farm', 'gather', 'pick', 'reach', 'guard', 'fight'])
+      Assets.setUnitFrames(key, dir, pose, mk());
+    // an origin whose whole working area is on the board and clear of
+    // buildings (a lean off the board's rim has nowhere to land)
+    let ox = -1, oy = -1;
+    for (let y = 6; y < CFG.H - 10 && ox < 0; y++) for (let x = 6; x < W - 10 && ox < 0; x++) {
+      let free = true;
+      for (let yy = y - 5; yy <= y + 7 && free; yy++) for (let xx = x - 5; xx <= x + 7; xx++)
+        if (!MapGen.onBoard(xx, yy) || Bld.at(xx, yy)) { free = false; break; }
+      if (free) { ox = x; oy = y; }
+    }
+    const saved = terr.slice();
+    const VEC = { e: [1, 0], se: [1, 1], s: [0, 1], sw: [-1, 1], w: [-1, 0], nw: [-1, -1], n: [0, -1], ne: [1, -1] };
+    const clear = (sz) => { for (let y = oy - 4; y <= oy + sz + 4; y++) for (let x = ox - 4; x <= ox + sz + 4; x++) terr[y * W + x] = T.GRASS; Bld._block = null; };
+    const spawnAt = (x, y, walk) => {
+      const u = Units.spawn('villager', 'P', x | 0, y | 0); u.female = false;
+      u.x = x; u.y = y; u.path = null;
+      R._faceMap.set(u, { x: u.x, y: u.y, dir: walk });
+      return u;
+    };
+    const facing = (u) => { R.sheetFrames(u); return R._sheetFace; };
+    // does he look at the building from where he is DRAWN? Off the footprint
+    // that is physics: the nearest point of it lies within 67.5 degrees of
+    // his facing. Drawn ON it (nowhere to lean) the building is all round
+    // him, and the rule is the station's: toward its middle across the plot,
+    // the front when he stands at the middle.
+    const looksAt = (u, b, face) => {
+      const sz = Bld.size(b), lean = R.workLean(u);
+      const px = lean ? lean.x : u.x, py = lean ? lean.y : u.y;
+      const dx = Math.max(b.x, Math.min(px, b.x + sz)) - px, dy = Math.max(b.y, Math.min(py, b.y + sz)) - py;
+      const dl = Math.hypot(dx, dy);
+      if (dl < 0.02) { const mx = Bld.cx(b) - px; return face === (Math.abs(mx) >= 0.1 ? (mx > 0 ? 'e' : 'w') : 's'); }
+      const v = VEC[face], vl = Math.hypot(v[0], v[1]);
+      return (v[0] * dx + v[1] * dy) / (vl * dl) >= Math.cos(67.5 * Math.PI / 180);
+    };
+    const drop = (list) => { S.units = S.units.filter(z => !list.includes(z)); S.buildings = S.buildings.filter(z => !list.includes(z)); Bld._block = null; };
+    let cases = 0, leaned = 0; const bad = [];
+    const runSite = (bkey, blockSets) => {
+      const sz = Bld.def(bkey).size || 1;
+      for (const blocks of blockSets) {
+        clear(sz);
+        const extra = blocks.map(([bx, by]) => Bld.place('P', 'house', ox + bx, oy + by, { free: true, instant: true })).filter(Boolean);
+        const site = Bld.place('P', bkey, ox, oy, { free: true });
+        if (!site) { bad.push(bkey + ' not placed'); drop(extra); continue; }
+        const spots = [];
+        for (const fx of [0.25, 0.5, 0.75]) for (const fy of [0.3, 0.55, 0.8])
+          for (let ix = 0; ix < sz; ix++) for (let iy = 0; iy < sz; iy++) spots.push([ox + ix + fx, oy + iy + fy]);
+        for (let ty = oy - 1; ty <= oy + sz; ty++) for (let tx = ox - 1; tx <= ox + sz; tx++) {
+          if (tx >= ox && tx < ox + sz && ty >= oy && ty < oy + sz) continue;
+          if (Path.passable(tx, ty, 'P', 'land')) spots.push([tx + 0.5, ty + 0.5]);
+        }
+        for (const [sx, sy] of spots) for (const walk of R.FACE8) {
+          const u = spawnAt(sx, sy, walk);
+          u.task = { type: 'build', id: site.id };
+          if (R.unitPose(u) === 'build') {
+            cases++;
+            if (R.workLean(u)) leaned++;
+            const f = facing(u);
+            if (!looksAt(u, site, f) && bad.length < 4)
+              bad.push(bkey + ' blocks ' + JSON.stringify(blocks) + ' at ' + (sx - ox).toFixed(2) + ',' + (sy - oy).toFixed(2) + ' walked ' + walk + ' → ' + f);
+          }
+          drop([u]);
+        }
+        drop([site, ...extra]);
+      }
+    };
+    runSite('house', [[], [[-1, 0]], [[1, 0]], [[0, -1]], [[0, 1]], [[-1, 0], [0, 1]], [[-1, 0], [0, -1]], [[-1, 0], [1, 0]], [[0, -1], [0, 1]]]);
+    runSite('barracks', [[], [[-1, 0]], [[2, 0]], [[0, -1]], [[0, 2]], [[-1, 0], [-1, 1]]]);
+    ck('aBuilderFacesHisSiteFromWhereHeIsDrawn', ox > 0 && cases > 2500 && leaned > cases / 2 && bad.length === 0,
+      bad.join('; ') || cases + ' builders (' + leaned + ' drawn leaned to a wall), 1x1 and 2x2, blocked sides, eight walk-ins — every one looks at the works');
+    // the report itself: the house next door to the west, the builder in the
+    // middle of the site having walked in heading east
+    {
+      clear(1);
+      const nextDoor = Bld.place('P', 'house', ox - 1, oy, { free: true, instant: true });
+      const site = Bld.place('P', 'house', ox, oy, { free: true });
+      const u = spawnAt(ox + 0.5, oy + 0.5, 'e');
+      u.task = { type: 'build', id: site.id };
+      const lean = R.workLean(u), f = facing(u);
+      ck('theReportsBuilderIsDrawnOnTheFarSideAndFacesBack',
+        !!lean && lean.x > ox + 1 && f === 'w',
+        'drawn at ' + (lean ? (lean.x - ox).toFixed(2) + ',' + (lean.y - oy).toFixed(2) : 'the sim spot') + ', facing ' + f + ' (was e: the meadow)');
+      drop([u, site, nextDoor]);
+    }
+    // nowhere to lean (water three sides, a house the fourth): he works the
+    // site from where he stands, facing its front — never his walk-in back
+    {
+      clear(1);
+      terr[(oy + 1) * W + ox] = T.WATER; terr[oy * W + ox - 1] = T.WATER; terr[oy * W + ox + 1] = T.WATER; Bld._block = null;
+      const wall = Bld.place('P', 'house', ox, oy - 1, { free: true, instant: true });
+      const site = Bld.place('P', 'house', ox, oy, { free: true });
+      const u = spawnAt(ox + 0.5, oy + 0.55, 'n');
+      u.task = { type: 'build', id: site.id };
+      const lean = R.workLean(u), f = facing(u);
+      ck('aHemmedInBuilderWorksTheSiteFromItsFront', lean === null && f === 's',
+        (lean ? 'leaned' : 'no lean') + ', walked in heading north, facing ' + f);
+      drop([u, site, wall]);
+    }
+    // a station's own hands: a pair face each other over the plot's middle,
+    // a lone hand faces the front, where every station's art lays its work
+    {
+      const st = [];
+      for (const skey of ['lumber', 'quarry', 'mine', 'lodge', 'farm']) {
+        clear(1);
+        const bb = Bld.place('P', skey, ox, oy, { free: true, instant: true });
+        const a = spawnAt(ox + 0.25, oy + 0.62, 'w'), c = spawnAt(ox + 0.75, oy + 0.62, 'e');
+        a.task = { type: 'work', id: bb.id }; c.task = { type: 'work', id: bb.id };
+        const fa = facing(a), fc = facing(c);
+        const lone = spawnAt(ox + 0.5, oy + 0.62, 'w'); lone.task = { type: 'work', id: bb.id };
+        const fl = facing(lone);
+        if (fa !== 'e' || fc !== 'w' || fl !== 's') st.push(skey + ' ' + fa + '/' + fc + '/' + fl);
+        drop([a, c, lone, bb]);
+      }
+      ck('aStationsHandsFaceTheirStation', st.length === 0,
+        st.join('; ') || 'five stations: the pair face each other (e/w) over the middle, a lone hand faces the front (s), whatever way they walked in');
+    }
+    // a melee batterer on an enemy plot, drawn out of its open side, faces it
+    // (a villager swinging at it — the lean and the facing are one routine for
+    // every melee kind, and the villager's frames are the ones installed here)
+    {
+      clear(1);
+      const nextDoor = Bld.place('P', 'house', ox - 1, oy, { free: true, instant: true });
+      const plot = Bld.place('A', 'farm', ox, oy, { free: true, instant: true });
+      const u = spawnAt(ox + 0.5, oy + 0.5, 'e');
+      u.tBld = plot.id;
+      const lean = R.workLean(u), f = facing(u);
+      ck('aWallBattererFacesTheWallHeIsDrawnAt',
+        R.unitPose(u) === 'guard' && !!lean && lean.x > ox + 1 && looksAt(u, plot, f),
+        'pose ' + R.unitPose(u) + ', drawn at ' + (lean ? (lean.x - ox).toFixed(2) + ',' + (lean.y - oy).toFixed(2) : 'the sim spot') + ', facing ' + f);
+      drop([u, plot, nextDoor]);
+    }
+    // a forager faces the bush she picks, not the way she walked in
+    {
+      clear(1);
+      terr[oy * W + ox] = T.FERTILE; S.map.resAmount[oy * W + ox] = 200; Bld._block = null;
+      const u = spawnAt(ox + 0.5, oy + 1.5, 's');
+      u.task = { type: 'gather', res: 'food', x: ox, y: oy };
+      const pose = R.unitPose(u), f = facing(u);
+      ck('andAForagerFacesHerBush', (pose === 'pick' || pose === 'reach') && f === 'n',
+        pose + ' south of the bush, walked in heading south, facing ' + f);
+      drop([u]);
+    }
+    for (let i = 0; i < saved.length; i++) terr[i] = saved[i];
+    Bld._block = null;
+    Assets.removeUnitArt(key);
+    tc.level = 1; R._vTier = null;
   }
 
   /* ---- 6. fps rides the VARIANT key — the procedural cast keeps its 4fps ---- */
