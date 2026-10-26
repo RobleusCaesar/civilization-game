@@ -604,7 +604,7 @@ const Deck = {
   font-size: max(calc(var(--u) * 9.5), 7.5px); letter-spacing: calc(var(--u) * .5); color: #f3e2b4; text-shadow: 0 calc(var(--u) * 1) 0 #000; }
 .ccard .cc-paper { left: calc(var(--u) * 12); top: calc(var(--u) * 12); width: calc(var(--u) * 152); height: calc(var(--u) * 168);
   background: radial-gradient(ellipse at 50% 30%, #2c2318, #17110b 85%); }
-.ccard .cc-txt { position: absolute; left: calc(var(--u) * 18); top: calc(var(--u) * 37); width: calc(var(--u) * 140); height: calc(var(--u) * 139);
+.ccard .cc-txt { position: absolute; left: calc(var(--u) * 22); top: calc(var(--u) * 37); width: calc(var(--u) * 130); height: calc(var(--u) * 139);
   display: flex; flex-direction: column; gap: calc(var(--u) * 3.5); overflow: hidden; color: #efe4cd; text-align: center;
   font-size: calc(var(--u) * 7.2); line-height: 1.28; }
 .ccard .cc-txt p { margin: 0; }
