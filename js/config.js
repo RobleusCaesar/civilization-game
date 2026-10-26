@@ -1301,4 +1301,34 @@ const CFG = {
     hold: 3,
     leash: 5,
   },
+
+  /* THE CARD SYSTEM (js/deck.js, tests/deck-*.mjs) — collect, keep, play.
+     Every finished game grants a card; a card is kept until it is played and
+     then it is gone. The catalog itself lives in js/deck.js; the numbers that
+     decide who earns what live here.
+     ON is THE KILL SWITCH: false means no button, no screen and no write
+     anywhere — the end screens stay exactly as they were. `?cards=1` on the
+     URL (remembered on the device; `?cards=0` forgets it) turns it on for one
+     tester without turning it on for everyone. */
+  CARDS: {
+    ON: false,
+    // the competition's own gates (js/competition.js): ten real minutes and
+    // 500 score BEFORE the difficulty multiplier, so the effort is the same
+    // on every difficulty. Striking the banner or closing the tab earns nothing.
+    MIN_SECONDS: 600,
+    MIN_SCORE: 500,
+    // [stone, bronze, iron, imperial, enlight] percentages, approved at Gate 1
+    DROPS: {
+      loss:     [85, 15, 0, 0, 0],
+      calm:     [40, 40, 17, 3, 0],
+      moderate: [0, 35, 40, 20, 5],
+      hard:     [0, 0, 30, 45, 25],
+    },
+    // a win before this day is a GREAT victory (+1 card). The server computes
+    // the live medians from real wins; these are the offline fallback.
+    MEDIAN_DAY: { calm: 160, moderate: 120, hard: 120 },
+    PITY: 15,             // wins without an Enlightenment card before one is guaranteed
+    STARTER: ['forager_cache', 'fallen_timber', 'willing_hands'],
+    QUEUE_MAX: 200,       // offline writes waiting for the cloud
+  },
 };

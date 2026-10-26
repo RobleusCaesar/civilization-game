@@ -200,6 +200,7 @@ const G = {
       eased: { P: false, A: false },             // biggest each town ever stood (G.barbEase)
       ai: null,
       boons: { P: {}, A: {} },   // ORIGIN CARDS: each side's kept-card modifiers
+      deck: { played: [], fx: [], charges: {} },   // THE CARD SYSTEM (js/deck.js): cards played this run, live timers, charges
       tut: null,                 // THE TUTORIAL (js/tutorial.js): armed only by the draft screen's checkbox
       log: [],
     };
@@ -2481,7 +2482,8 @@ const G = {
 
   end(win, msg, cause) {
     if (S.over) return;
-    S.over = { win, msg };
+    // the cause rides along: the card grant tells a struck banner from a real ending (js/deck.js)
+    S.over = { win, msg, cause: cause || null };
     // the title screen's demo world ends quietly — the shell rolls a new one
     if (window.Screens && Screens._demo) return;
     /* ANALYTICS (Backend.logRunEnd, /analytics.html): how this run ended, how
@@ -2531,6 +2533,9 @@ const G = {
         wonder_key: S.wonder || null,
         // …and S.relic exists from generation; only .found means they got it
         relic_found: !!(S.relic && S.relic.found),
+        // THE CARD SYSTEM: what this run played (the dashboard splits every win rate on it)
+        cards_played: (S.deck && S.deck.played && S.deck.played.length) || 0,
+        cards: (S.deck && S.deck.played) ? S.deck.played.map(p => p.id) : [],
         // the special event this run rolled, whether it happened, and when
         // (EVD-V01) — the only way the roll's rate can be read off the board
         special: S.special || null,
@@ -2710,6 +2715,7 @@ const G = {
     if (!data.origin) data.origin = 'An old tribe, from before the tellers kept count.';
     if (data.ai && !data.ai.opening) data.ai.opening = { bias: null, fired: false, until: 0 };
     if (!data.boons) data.boons = { P: {}, A: {} };   // pre-cards save: no boons in play
+    if (!data.deck || typeof data.deck !== 'object') data.deck = { played: [], fx: [], charges: {} };   // pre-deck save: nothing played
     if (!data.draft)                                   // pre-cards save: the draft is history
       data.draft = { hand: [], leanKeys: [], rival: { hand: [], pick: null }, intel: 'none', done: true, pickI: null };
     if (!data.playtime) data.playtime = 0;
@@ -2929,6 +2935,8 @@ const G = {
           G.strifeTick(sdt);
           G.starfallTick(sdt);
           G.dragonTick(sdt);
+          // the cards' timed effects run on game days, so a pause freezes them (js/deck.js)
+          if (S.deck && S.deck.fx && S.deck.fx.length && window.Deck) Deck.tick();
           G.dragonT = (G.dragonT || 0) - sdt;
           if (G.dragonT <= 0) {
             G.dragonT = 1.3;   // the special-event pulse: each maybe* self-gates on its armed state
