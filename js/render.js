@@ -6500,6 +6500,8 @@ const R = {
     this.tamings = [];         // …and the swards going down before the builders
     this._tameKey = ''; this._tameMask = null;   // the kept-ground mask is the old run's
     this.horns = [];           // …and the horn's rings…
+    this.summons = [];         // …and a card's riders arriving in their flash…
+    this._cardSky = null;      // …and a card's star still settling
     this.deaths = [];          // …so are villagers going over…
     this.marvel = null;        // …and so is the wonder's held frame
     this._dbA = {};            // …and each gate's drawbridge swing (reused ids
@@ -9147,10 +9149,14 @@ const R = {
     if (F.phase === 'down') return F.t < C.dimHold ? C.dim : C.dim * Math.max(0, 1 - (F.t - C.dimHold) / C.dimOut);
     return 0;
   },
-  // the site on the canvas (device px), and whether it is in view
-  starSiteScreen() {
-    const F = S.starfall, TL = CFG.TILE, z = this.cam.z * this.dpr;
-    const x = ((F.x + 1) * TL - this.cam.x) * z, y = ((F.y + 1) * TL - this.cam.y) * z;
+  /* the site on the canvas (device px), and whether it is in view. (cx, cy)
+     is the point the star comes down on, in tiles — the rolled event's is the
+     middle of its 2x2 site, a STARFALL CARD's the ground the player chose
+     (js/deckfx.js) — so one fall serves both */
+  starSiteScreen(cx, cy) {
+    if (cx == null) { const F = S.starfall; cx = F.x + 1; cy = F.y + 1; }
+    const TL = CFG.TILE, z = this.cam.z * this.dpr;
+    const x = (cx * TL - this.cam.x) * z, y = (cy * TL - this.cam.y) * z;
     const W = this.cv.width, H = this.cv.height, m = 0.04;
     return { x, y, inView: x > W * m && x < W * (1 - m) && y > H * m && y < H * (1 - m) };
   },
@@ -9158,8 +9164,8 @@ const R = {
      view; through the middle of the sky TOWARD it and out over the edge when
      it is not — a falling star still falls, so a heading up the screen is
      laid over until it descends */
-  starPath() {
-    const P = this.starSiteScreen(), W = this.cv.width, H = this.cv.height, D = Math.hypot(W, H);
+  starPath(cx, cy) {
+    const P = this.starSiteScreen(cx, cy), W = this.cv.width, H = this.cv.height, D = Math.hypot(W, H);
     let ux = -1, uy = 0.62, ex = P.x, ey = P.y, len = D * 0.9;
     if (!P.inView) {
       const cx = W / 2, cy = H * 0.42;
@@ -9335,20 +9341,23 @@ const R = {
     this.drawTilesAt(list);
   },
 
-  drawStarfall(g, dt) {
-    const F = S.starfall;
-    if (!F || F.done && !F.claimed || !F.avail && !F.phase && !F.claimed) { this._sky = null; return; }
-    const C = this.STAR, TL = CFG.TILE, z = this.cam.z * this.dpr, now = performance.now();
-    const Wc = this.cv.width, Hc = this.cv.height, px = Math.max(1, Math.round(Wc / 300));
-    const sky = this._sky || (this._sky = { trail: [], shed: [], debris: [], smoke: [], tT: 0, sT: 0, mT: 0, hit: false, key: '' });
-    dt = Math.min(0.05, dt || 0);
-    // THE DARK — over the dusk tint, under everything the sky throws
-    const dim = this.starDim();
+  skyFresh() { return { trail: [], shed: [], debris: [], smoke: [], tT: 0, sT: 0, mT: 0, hit: false, key: '' }; },
+  // THE DARK — over the dusk tint, under everything the sky throws
+  starDark(g, dim) {
     if (dim > 0.005) {
       g.setTransform(1, 0, 0, 1, 0, 0);
       g.fillStyle = 'rgba(4,6,20,' + dim.toFixed(3) + ')';
-      g.fillRect(0, 0, Wc, Hc);
+      g.fillRect(0, 0, this.cv.width, this.cv.height);
     }
+  },
+  drawStarfall(g, dt) {
+    const F = S.starfall;
+    if (!F || F.done && !F.claimed || !F.avail && !F.phase && !F.claimed) { this._sky = null; return; }
+    const C = this.STAR, now = performance.now();
+    const Wc = this.cv.width, Hc = this.cv.height, px = Math.max(1, Math.round(Wc / 300));
+    const sky = this._sky || (this._sky = this.skyFresh());
+    dt = Math.min(0.05, dt || 0);
+    this.starDark(g, this.starDim());
     const omen = !F.phase && F.warned && !F.claimed || F.phase === 'night';
     if (omen) {
       const k = Math.max(0.35, this._dusk ? this._dusk.k : 0);
@@ -9364,9 +9373,30 @@ const R = {
       return;
     }
     if (F.x < 0) return;
+    this.starAct(g, dt, sky, {
+      cx: F.x + 1, cy: F.y + 1, phase: F.phase, t: F.t, fallS: CFG.STARFALL.fallS, now, key: F.x + ',' + F.y,
+      // a claimed crater's sky still drains (the debris settles, the smoke thins)
+      after: !!F.claimed,
+      seen: !!S.map.explored[F.y * CFG.W + F.x] || (F.phase === 'down' && F.t < 2),
+      hot: 1,                                                   // the pit breathes until a hand claims it
+      smoke: F.t < C.smokeS ? 0.08 + 0.5 * (F.t / C.smokeS) : 1.2,
+    });
+  },
+  /* ONE FALL, WHOEVER THROWS IT. The act below is the rolled event's own fall,
+     blow and settling, moved out of drawStarfall so a STARFALL CARD
+     (js/deckfx.js, drawCardStrike) comes down through exactly the same code —
+     but on its OWN state and its OWN sky, so the run's rolled star is never
+     touched (the two may even share the sky). `sky` is the act's transient
+     render state; `act` describes it: where it lands (cx, cy, tiles), its
+     phase and clock, how long its fall takes, whether its pools are only
+     draining now (`after`), whether its ground is seen, how hot its pit
+     glows (0..1), how often its smoke column puffs, and whether its debris
+     can fall in water (`wet`). */
+  starAct(g, dt, sky, act) {
+    const C = this.STAR, TL = CFG.TILE, z = this.cam.z * this.dpr, now = act.now;
     // THE FALL — screen space
-    if (F.phase === 'fall') {
-      const P = this.starPath(), f = Math.min(1, F.t / CFG.STARFALL.fallS), q = Math.pow(f, 1.12);
+    if (act.phase === 'fall') {
+      const P = this.starPath(act.cx, act.cy), f = Math.min(1, act.t / act.fallS), q = Math.pow(f, 1.12);
       const hx = P.sx + (P.ex - P.sx) * q, hy = P.sy + (P.ey - P.sy) * q;
       const sz = 64 * z * (0.8 + 0.5 * q);                  // the strip at 2:1, swelling as it nears
       // the path it really flew, for the streak (screen space, like the sky)
@@ -9389,7 +9419,7 @@ const R = {
             s: (1 + Math.random() * 2.2) * Math.max(1, z / 3) });
         }
       }
-      this._drawSkyTrail(g, dt, z, false);
+      this._drawSkyTrail(g, dt, z, false, sky);
       // the head, turned to its heading (the strip falls toward the lower left)
       const fr = this.fxFrame('meteor', now / 1000 * 1.25);
       g.setTransform(1, 0, 0, 1, 0, 0);
@@ -9427,18 +9457,18 @@ const R = {
         g.fillStyle = '#ffffff'; g.fillRect(Math.round(hx - sz * 0.07), Math.round(hy - sz * 0.07), Math.round(sz * 0.14), Math.round(sz * 0.14));
       }
       g.imageSmoothingEnabled = sm;
-      sky.mT = 0; sky.hit = false; sky.key = F.x + ',' + F.y;
+      sky.mT = 0; sky.hit = false; sky.key = act.key;
       return;
     }
-    if (F.phase !== 'down' && !F.claimed) return;
+    if (act.phase !== 'down' && !act.after) return;
     // THE BLOW — once, on the frame the star lands (never replayed by a load)
-    if (F.phase === 'down' && !sky.hit && F.t < 0.6) {
+    if (act.phase === 'down' && !sky.hit && act.t < 0.6) {
       sky.hit = true;
-      const P = this.starSiteScreen();
+      const P = this.starSiteScreen(act.cx, act.cy);
       this.flashAt(P.inView ? C.flash : C.flashFar, P.inView ? 0.55 : 0.4);
       this.shakeAt(P.inView ? C.shake : C.shake * 0.4, C.shakeS);
       sky.boomT = 0;
-      const cx = (F.x + 1) * TL, cy = (F.y + 1) * TL;
+      const cx = act.cx * TL, cy = act.cy * TL;
       for (let n = 0; n < C.debris; n++) {
         const a = Math.random() * Math.PI * 2, sp = TL * (1.6 + Math.random() * 2.6);
         sky.debris.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.75, h: 4, vh: TL * (2 + Math.random() * 2.5),
@@ -9446,20 +9476,22 @@ const R = {
       }
     }
     // the trail left in the sky keeps drifting and fading after the blow
-    if (sky.trail.length || sky.shed.length) this._drawSkyTrail(g, dt, z, true);
-    if (!S.map.explored[F.y * CFG.W + F.x] && !(F.phase === 'down' && F.t < 2)) return;
+    if (sky.trail.length || sky.shed.length) this._drawSkyTrail(g, dt, z, true, sky);
+    if (!act.seen) return;
     g.setTransform(z, 0, 0, z, -this.cam.x * z, -this.cam.y * z);
-    const cx = (F.x + 1) * TL, cy = (F.y + 1) * TL;
-    // the hot pit breathes until a hand claims it
-    if (F.phase === 'down') {
-      const br = 0.5 + 0.5 * Math.sin(now / 520), r = TL * (0.55 + 0.08 * br);
-      g.save(); g.globalCompositeOperation = 'lighter';
-      g.fillStyle = 'rgba(255,110,40,' + (0.10 + 0.08 * br).toFixed(3) + ')';
-      for (let k = 0; k < 3; k++) this.pxDisc(g, cx, cy, r * (1 - k * 0.3), 1, 0.8);
-      g.restore();
-      // the column of smoke off the crater, thinning over smokeS
+    const cx = act.cx * TL, cy = act.cy * TL;
+    if (act.phase === 'down') {
+      // the hot pit breathes (the event's until a hand claims it; a card's cools)
+      if (act.hot > 0) {
+        const br = 0.5 + 0.5 * Math.sin(now / 520), r = TL * (0.55 + 0.08 * br);
+        g.save(); g.globalCompositeOperation = 'lighter';
+        g.fillStyle = 'rgba(255,110,40,' + ((0.10 + 0.08 * br) * act.hot).toFixed(3) + ')';
+        for (let k = 0; k < 3; k++) this.pxDisc(g, cx, cy, r * (1 - k * 0.3), 1, 0.8);
+        g.restore();
+      }
+      // the column of smoke off the crater (the event's thins over smokeS)
       sky.mT += dt;
-      const rate = F.t < C.smokeS ? 0.08 + 0.5 * (F.t / C.smokeS) : 1.2;
+      const rate = act.smoke;
       while (sky.mT >= rate) {
         sky.mT -= rate;
         if (sky.smoke.length < 40) sky.smoke.push({ x: cx + (Math.random() - 0.5) * TL * 0.8, y: cy - TL * 0.2, t: 0,
@@ -9472,7 +9504,13 @@ const R = {
       d.t += dt;
       if (d.h > 0 || d.vh > 0) {
         d.x += d.vx * dt; d.y += d.vy * dt; d.vh -= TL * 9 * dt; d.h = Math.max(0, d.h + d.vh * dt);
-        if (d.h === 0 && d.vh < 0) { d.vh = 0; d.vx = d.vy = 0; d.landed = d.t; }
+        if (d.h === 0 && d.vh < 0) {
+          d.vh = 0; d.vx = d.vy = 0; d.landed = d.t;
+          // a card's star may come down by a shore: a stone that lands in the
+          // water sinks rather than smouldering on the waves (the event's
+          // crater is always open grass, so its act never asks)
+          if (act.wet && G.wetAt(d.x / TL, d.y / TL)) { sky.debris.splice(i, 1); continue; }
+        }
       }
       const age = d.landed != null ? d.t - d.landed : 0;
       if (age > 6) { sky.debris.splice(i, 1); continue; }
@@ -9511,9 +9549,46 @@ const R = {
     // the smoke column
     this._drawPuffs(g, sky.smoke, dt, TL, (p, k) => { p.y -= TL * 0.55 * dt; p.x += TL * 0.12 * dt * (0.5 + k); });
   },
+  /* A STARFALL CARD (js/deckfx.js) comes down through the same act, on its
+     own state (S.deck.strike) and its own sky (R._cardSky). Three things set
+     it apart from the event: its fall is SHORT — it lands as the play
+     animation ends, not after an omen and a slow descent; its dark eases in
+     with the fall and out with the strike's last beat, never held for half a
+     minute; and it leaves NO crater in the ground — no seams, no claim race,
+     the bombard's scorch and whatever it broke are the scar. Its sky outlives
+     the state by a few seconds, so the debris settles and the smoke thins on
+     its own after the strike has ended. Render state only (the R.collapses
+     rule): cleared in onNewGame, never in a save. */
+  _cardSky: null,
+  cardStarDim(st) {
+    const C = this.STAR, D = window.Deck && Deck.FX.starfall;
+    if (!st || !D) return 0;
+    if (st.phase === 'fall') return C.dim * Math.min(1, st.t / D.DIM_IN);
+    if (st.phase === 'down') return C.dim * Math.max(0, Math.min(1, 1 - (st.t - D.DIM_HOLD) / (D.DOWN_S - D.DIM_HOLD)));
+    return 0;
+  },
+  drawCardStrike(g, dt) {
+    const st = S.deck && S.deck.strike, D = window.Deck && Deck.FX.starfall;
+    const live = !!(st && st.id === 'starfall' && D);
+    if (!live && !this._cardSky) return;
+    // a new strike gets a fresh sky; a finished one keeps its own until it drains
+    if (live && (!this._cardSky || this._cardSky.sid !== st.n)) this._cardSky = Object.assign(this.skyFresh(), { sid: st.n, cx: st.x, cy: st.y });
+    const sky = this._cardSky, C = this.STAR;
+    dt = Math.min(0.05, dt || 0);
+    if (live) this.starDark(g, this.cardStarDim(st));
+    this.starAct(g, dt, sky, {
+      cx: sky.cx, cy: sky.cy, now: performance.now(), key: 'card:' + sky.sid,
+      phase: live ? st.phase : null, t: live ? st.t : 0, fallS: D ? D.FALL_S : 1,
+      after: true, seen: true, wet: true,
+      hot: live && st.phase === 'down' ? Math.max(0, 1 - st.t / D.DOWN_S) : 0,
+      smoke: D ? D.SMOKE : 1,
+    });
+    if (!live && !sky.trail.length && !sky.shed.length && !sky.debris.length && !sky.smoke.length &&
+        !(sky.boomT != null && sky.boomT < C.boomS + 0.9)) this._cardSky = null;
+  },
   // the sky's trail (screen space): smoke puffs, burning debris, sparks
-  _drawSkyTrail(g, dt, z, after) {
-    const sky = this._sky;
+  _drawSkyTrail(g, dt, z, after, sky) {
+    sky = sky || this._sky;
     g.setTransform(1, 0, 0, 1, 0, 0);
     const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
     const P = 16 * z;                                       // a 32px puff at 2:1
@@ -10266,6 +10341,101 @@ const R = {
           const th = sIdx / n * Math.PI * 2;
           g.fillRect(Math.round((cx + Math.cos(th) * rad) / px) * px,
             Math.round((cy + Math.sin(th) * rad) / px) * px, px, px);
+        }
+      }
+    }
+  },
+
+  /* ============ THE CARD SYSTEM IN THE WORLD (js/deckfx.js) ============
+     What a played card looks like on the map, beyond its own act (the star,
+     the dragon). Two cues, both render state only — never in S, cleared in
+     onNewGame — and both drawn only while a card is actually in play, so a
+     run without cards pays one length check a frame:
+       THE SUMMONING  units a card brings out of the Town Center arrive in a
+                      flash: a pool and a shaft of light ADDED to the scene on
+                      the spot (so the rider shows through it as it breaks
+                      out), and rings of hard gold dots rolling out along the
+                      ground (the horn's language, quicker) — a rider appears
+                      rather than pops.
+       THE MOTES      while a card makes the town's work richer (any timed
+                      card that declares `motes` — the Harvest Festival) every
+                      hand at work wears it: a few motes of gold rising off
+                      the shoulders. Positions are a function of the clock and
+                      the unit's id, culled to the camera; nothing is kept
+                      between frames and nothing is ever filtered (ctx.filter
+                      costs hundreds of ms and iOS ignores it). */
+  SUMMON: { ms: 640, dots: 18 },
+  summons: [],
+  startSummon(x, y) {
+    if (this.summons.length > 12) this.summons.shift();
+    this.summons.push({ x, y, t: 0 });
+  },
+  drawCardWorld(g, dt) {
+    if (this.summons.length) this.drawSummons(g, dt);
+    if (window.Deck && Deck.cue && Deck.cue('motes')) this.drawMotes(g);
+  },
+  drawSummons(g, dt) {
+    const TL = CFG.TILE, cfg = this.SUMMON, px = 2;
+    const snap = v => Math.round(v / px) * px;
+    g.save(); g.globalCompositeOperation = 'lighter';    // light ADDED to the scene: the riders show through it
+    for (let i = this.summons.length - 1; i >= 0; i--) {
+      const s = this.summons[i];
+      s.t += dt;
+      const p = s.t / (cfg.ms / 1000);
+      if (p >= 1) { this.summons.splice(i, 1); continue; }
+      const cx = s.x * TL, cy = s.y * TL + TL * 0.3, a = 1 - p;   // cy: the feet
+      // a pool of light on the ground, bright on the first beat
+      if (p < 0.45) {
+        g.fillStyle = 'rgba(255,214,120,' + (0.5 * (1 - p / 0.45)).toFixed(3) + ')';
+        this.pxDisc(g, cx, cy, TL * (0.45 + p), px, 0.5);
+      }
+      // the shaft: up in the first beat, held full while the rider breaks out
+      // of it, then narrowing to a thread and gone
+      const h = TL * 2.1 * Math.min(1, p * 6), k = p < 0.4 ? 1 : 1 - (p - 0.4) / 0.6;
+      for (const [wf, al] of [[0.7, 0.28], [0.38, 0.45]]) {
+        const w = Math.max(px, snap(TL * wf * k));
+        g.fillStyle = 'rgba(255,220,130,' + (al * a).toFixed(3) + ')';
+        g.fillRect(snap(cx - w / 2), snap(cy - h), w, snap(h));
+      }
+      g.fillStyle = 'rgba(255,252,236,' + (0.9 * a).toFixed(3) + ')';
+      g.fillRect(snap(cx - px / 2), snap(cy - h), px, snap(h));
+      // two rings of dots rolling out along the ground plane
+      for (const [d0, r0] of [[0, 1.25], [0.16, 0.8]]) {
+        const q = (p - d0) / (1 - d0);
+        if (q <= 0) continue;
+        const rad = TL * (0.2 + r0 * Math.pow(q, 0.55));
+        g.fillStyle = 'rgba(255,214,110,' + (0.85 * (1 - q)).toFixed(3) + ')';
+        for (let n = 0; n < cfg.dots; n++) {
+          const th = n / cfg.dots * Math.PI * 2;
+          g.fillRect(snap(cx + Math.cos(th) * rad), snap(cy + Math.sin(th) * rad * 0.5), px, px);
+        }
+      }
+    }
+    g.restore();
+  },
+  MOTE_TASKS: { gather: 1, work: 1, fish: 1, shorefish: 1 },
+  drawMotes(g) {
+    const TL = CFG.TILE, v = this.viewTiles(), now = performance.now() / 1000;
+    for (const u of S.units) {
+      if (u.owner !== 'P' || !u.task || !this.MOTE_TASKS[u.task.type] || Units.moving(u)) continue;
+      if (u.x < v.x0 - 1 || u.x > v.x1 + 1 || u.y < v.y0 - 1 || u.y > v.y1 + 2) continue;
+      for (let k = 0; k < 4; k++) {
+        // each mote on its own slow loop, offset by the hand's id so a row of
+        // reapers never pulses in step; it fades in, rises a tile and goes
+        const ph = (now * 0.45 + k / 4 + (u.id * 0.618) % 1) % 1;
+        const a = ph < 0.2 ? ph / 0.2 : (1 - ph) / 0.8;
+        const mx = Math.round(u.x * TL + (k - 1.5) * 4 + Math.sin(ph * 6.28 + u.id + k * 2.1) * 3);
+        const my = Math.round(u.y * TL - TL * 0.2 - ph * TL * 1.05);
+        // a gold grain, its dark underside giving it an edge against the grass
+        g.fillStyle = 'rgba(122,74,10,' + (0.55 * a).toFixed(3) + ')';
+        g.fillRect(mx, my + 2, 2, 1);
+        g.fillStyle = 'rgba(255,204,64,' + a.toFixed(3) + ')';
+        g.fillRect(mx, my, 2, 2);
+        // …and at its brightest it glints: a pale cross, one pixel each way
+        if (a > 0.75) {
+          g.fillStyle = 'rgba(255,248,214,' + a.toFixed(3) + ')';
+          g.fillRect(mx - 1, my, 1, 1); g.fillRect(mx + 2, my + 1, 1, 1);
+          g.fillRect(mx + 1, my - 1, 1, 1); g.fillRect(mx, my + 2, 1, 1);
         }
       }
     }
@@ -13778,6 +13948,9 @@ const R = {
       const ev = S.dragon.ev;
       const dx2 = ev.x * TL, dy2 = ev.y * TL;
       const spr = Sprites.misc.dragon[((ev.t * 6) | 0) % 4];   // four-beat wing cycle
+      // a CARD's dragon (js/deckfx.js) is called in close, not from the
+      // world's edge, so it comes out of the sky: faded in over its first beat
+      if (ev.card && ev.phase === 'fly' && ev.t < 0.35) g.globalAlpha = ev.t / 0.35;
       // its shadow races along the ground below
       g.fillStyle = 'rgba(10,8,5,0.30)';
       g.beginPath(); g.ellipse(dx2, dy2 + 8, 32, 9, 0, 0, Math.PI * 2); g.fill();
@@ -13803,6 +13976,7 @@ const R = {
       if (ev.dir < 0) g.scale(-1, 1);
       g.drawImage(spr, -96, -48);
       g.restore();
+      g.globalAlpha = 1;
     }
 
     this.drawWildfire(g, dt);
@@ -13810,6 +13984,8 @@ const R = {
     // buildings coming DOWN — over the units, so the dust rolls across them
     this.drawTreeFalls(g, dt);
     this.drawHorns(g, dt);
+    // THE CARD SYSTEM's world cues (js/deckfx.js) — nothing while no card is in play
+    if (this.summons.length || (S.deck && S.deck.fx && S.deck.fx.length)) this.drawCardWorld(g, dt);
     this.drawCollapses(g, dt);
     this.drawDeaths(g, dt);     // …and villagers keeling over where they stood
 
@@ -13849,6 +14025,8 @@ const R = {
 
     // STARFALL: drawn over the night, because it is the brightest thing in it
     g.save(); this.drawStarfall(g, dt); g.restore();
+    // …and a STARFALL CARD's own star (js/deckfx.js), through the same fall
+    if ((S.deck && S.deck.strike) || this._cardSky) { g.save(); this.drawCardStrike(g, dt); g.restore(); }
     // …and the sky's flashes (the strike, the blow) over everything in the world
     g.save(); this.drawFlash(g, dt); g.restore();
 
