@@ -585,7 +585,12 @@ const Screens = {
      Tutorial.SLOW — a first-time player reading two paragraphs on day one
      should not hand the rival a day and a half for free) */
   _modalUp: false,
-  modalUp() { return this._modalUp && !!document.getElementById('victoryModal'); },
+  // …and so does the in-game deck while its sheet, aim or flight is up
+  // (js/deckui.js) — a lesson note under a card is two things to read at once
+  modalUp() {
+    return (this._modalUp && !!document.getElementById('victoryModal')) ||
+      !!(window.DeckUI && DeckUI.hasFloor());
+  },
   hideVictoryPaths() {
     const el = document.getElementById('victoryModal');
     if (el) el.remove();
