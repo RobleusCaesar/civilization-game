@@ -323,7 +323,9 @@ const Deck = {
   report(win, cause) {
     let sub = 0;
     try { sub = Score.compute(!!win).subtotal || 0; } catch (e) {}
-    const runId = (window.Backend && (Backend.lastRunId || Backend.runId)) || S.runId || null;
+    // the run's OWN id first: it rides the save and outlives the end, while
+    // Backend.lastRunId can be stale (a pre-stamp save, a logRunEnd that threw)
+    const runId = S.runId || (window.Backend && (Backend.lastRunId || Backend.runId)) || null;
     return {
       win: !!win, cause: cause || (win ? 'win' : 'unknown'),
       mode: S.mode, day: S.day, seconds: Math.round(S.playtime || 0), subtotal: sub,
