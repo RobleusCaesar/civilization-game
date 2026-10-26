@@ -601,12 +601,12 @@ const Deck = {
 .ccard .cc-nm { position: absolute; left: calc(var(--u) * 16); top: calc(var(--u) * 184); width: calc(var(--u) * 144); height: calc(var(--u) * 42);
   display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 calc(var(--u) * 6); box-sizing: border-box;
   font-family: var(--menufont, 'Cinzel', Georgia, serif); font-weight: 700; text-transform: uppercase; line-height: 1.1;
-  font-size: calc(var(--u) * 9.5); letter-spacing: calc(var(--u) * .5); color: #f3e2b4; text-shadow: 0 calc(var(--u) * 1) 0 #000; }
+  font-size: max(calc(var(--u) * 9.5), 7.5px); letter-spacing: calc(var(--u) * .5); color: #f3e2b4; text-shadow: 0 calc(var(--u) * 1) 0 #000; }
 .ccard .cc-paper { left: calc(var(--u) * 12); top: calc(var(--u) * 12); width: calc(var(--u) * 152); height: calc(var(--u) * 168);
   background: radial-gradient(ellipse at 50% 30%, #2c2318, #17110b 85%); }
-.ccard .cc-txt { position: absolute; left: calc(var(--u) * 20); top: calc(var(--u) * 20); width: calc(var(--u) * 136); height: calc(var(--u) * 154);
-  display: flex; flex-direction: column; gap: calc(var(--u) * 4); overflow: hidden; color: #efe4cd; text-align: center;
-  font-size: calc(var(--u) * 7.6); line-height: 1.32; }
+.ccard .cc-txt { position: absolute; left: calc(var(--u) * 18); top: calc(var(--u) * 37); width: calc(var(--u) * 140); height: calc(var(--u) * 139);
+  display: flex; flex-direction: column; gap: calc(var(--u) * 3.5); overflow: hidden; color: #efe4cd; text-align: center;
+  font-size: calc(var(--u) * 7.2); line-height: 1.28; }
 .ccard .cc-txt p { margin: 0; }
 .ccard .cc-tier { color: var(--tc); font-size: calc(var(--u) * 6); letter-spacing: calc(var(--u) * .6); text-transform: uppercase; }
 .ccard .cc-bn { font-family: var(--menufont, 'Cinzel', Georgia, serif); color: #f3e2b4; font-size: calc(var(--u) * 9); text-transform: uppercase; letter-spacing: calc(var(--u) * .4); }
