@@ -62,7 +62,7 @@ const Deck = {
       when: "Always." },
     { id: "willing_hands", tier: "stone", cat: "army", target: "none",
       name: "Willing Hands",
-      text: "+3 villagers at your Town Center. They may take you over the population cap; training waits until houses catch up.",
+      text: "+3 villagers at your Town Center. They may take you over the population cap; training waits until there is room again.",
       flavor: "Strangers at the fire, asking for a roof and a job. In that order.",
       when: "Your Town Center stands and there is open ground beside it." },
     { id: "scouts_fire", tier: "stone", cat: "intel", target: "any",
