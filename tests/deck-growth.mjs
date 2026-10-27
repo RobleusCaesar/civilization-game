@@ -722,6 +722,19 @@ await p.evaluate(() => {
     out.wBack = {}; for (const k in r1) out.wBack[k] = S.res[k] - r1[k];
     out.wPaid = paidW;
     out.wState = { wallLevel: S.wallLevel, wallUp: w2.P.wallUp, tc: w2.P.level, walls: Bld.forts('P').map(z => z.level) };
+    // …and with every section razed since the masons were paid: paid back
+    // ONCE, the works finished to the tier they were paid for and no further
+    // (no wall stands to raise), nothing left ticking to land the tier again
+    __g.fresh('growth-enl-razed'); const w4 = __g.flat();
+    S.res = { food: 5000, wood: 5000, stone: 5000, gold: 5000 };
+    __g.bld('P', 'wall', w4.P.x, w4.P.y + 8);
+    w4.P.level = 2;
+    const q0 = Object.assign({}, S.res);
+    Bld.upgradeWalls();
+    S.buildings = S.buildings.filter(z => z.key !== 'wall'); Bld._block = null;
+    out.razed = Deck.play('enlightenment');
+    for (let i = 0; i < 600; i++) Bld.update(0.01);
+    out.razedState = { wallUp: w4.P.wallUp, wallLevel: S.wallLevel, net: ['food', 'wood', 'stone', 'gold'].map(k => S.res[k] - q0[k]) };
     __g.fresh('growth-enl-nowalls'); const w3 = __g.flat();
     out.nw = Deck.play('enlightenment');
     out.nwWall = S.wallLevel;
@@ -749,6 +762,8 @@ await p.evaluate(() => {
   ck('everythingAtItsHeightIsRefused', !r.d.ok && r.d.why === 'Everything stands at its height' && r.dKept && r.dCan.why === 'Everything stands at its height', r.d.why);
   ck('theMasonsWorksAreFinishedAndPaidBack', r.wallsUp && r.w.ok && r.wState.wallLevel === 3 && r.wState.wallUp === 0 && r.wState.walls.every(l => l === 3) &&
     ['food', 'wood', 'stone', 'gold'].every(k => (r.wBack[k] || 0) === (r.wPaid[k] || 0)), `${JSON.stringify(r.wState)}; back ${JSON.stringify(r.wBack)} for ${JSON.stringify(r.wPaid)}`);
+  ck('worksWhoseWallsAreGoneAreFinishedOnce', r.razed.ok && r.razedState.wallUp === 0 && r.razedState.wallLevel === 2 && r.razedState.net.every(n => n === 0),
+    JSON.stringify(r.razedState));
   ck('withNoWallsTheWallTierStays', r.nw.ok && r.nwWall === 1, `tier ${r.nwWall}`);
   ck('noHallNoEnlightenment', !r.noHall.ok && r.noHall.why === 'Your Town Center must stand.', r.noHall.why);
   ck('andEnlightenmentDrawsNoRng', r.aRng);

@@ -861,7 +861,12 @@ Object.assign(Deck.FX, {
         if (b.level < top) items.push({ b, to: top });
       }
       const wl = S.wallLevel || 1, forts = Bld.forts('P');
-      const walls = forts.length && wl < target ? target : 0;
+      // masons' works already under way are finished even if every section
+      // they were raising has since been knocked down — the card pays them
+      // back, so it must finish them, or they would tick on and land a tier
+      // the player was just refunded for — but only to the tier they were
+      // paid for: with no wall standing, a card prices no palisade in stone
+      const walls = wl >= target ? 0 : forts.length ? target : tc.wallUp > 0 ? Math.min(target, tc.wallUpTarget || wl + 1) : 0;
       const steps = (rise ? 1 : 0) + items.reduce((n, it) => n + it.to - it.b.level, 0) + (walls ? walls - wl : 0);
       return { tc, target, rise, items, walls, forts: forts.length, steps };
     },
@@ -904,7 +909,7 @@ Object.assign(Deck.FX, {
       const s = n => n === 1 ? '' : 's';
       Deck.say('✨ Enlightenment: your Town Center stands at Lv ' + tc.level +
         (raised ? ', and ' + raised + ' building' + s(raised) + ' rose to meet it' : '') +
-        (pl.walls ? '; every wall and gate stands at Lv ' + S.wallLevel : '') +
+        (pl.walls && pl.forts ? '; every wall and gate stands at Lv ' + S.wallLevel : '') +
         (resolved ? '. ' + resolved + ' work' + s(resolved) + ' already under way ' + (resolved === 1 ? 'was' : 'were') +
           ' finished, and ' + Bld.costStr(back) + ' paid for ' + (resolved === 1 ? 'it' : 'them') + ' comes back' : '') + '.');
       return { ok: true, x: cx, y: cy, fly: back };
