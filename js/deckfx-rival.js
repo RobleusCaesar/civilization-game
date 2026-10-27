@@ -600,11 +600,28 @@
           g.fillStyle = '#9a7646'; g.fillRect(rx + k, y0 - k * 2, k, dh + k * 4);
           g.fillStyle = '#3a2814'; g.fillRect(rx + k * 3, y0 - k * 2, k, dh + k * 4);
         }
-        // the relic struck with an X in red ochre
-        const r = S.relic;
+        // a compass rose in the corner, inked as the drawing reaches it
+        if (dr > s.aw * 0.8) {
+          const qx = x0 + (s.aw - 14) * k, qy = y0 + 13 * k;
+          g.fillStyle = '#2a2016';
+          for (let d = -5; d <= 5; d++) { g.fillRect(qx + d * k, qy, k, k); g.fillRect(qx, qy + d * k, k, k); }
+          for (let d = -2; d <= 2; d++) { g.fillRect(qx + d * k, qy + d * k, k, k); g.fillRect(qx + d * k, qy - d * k, k, k); }
+          g.fillStyle = '#8e2e1e'; g.fillRect(qx - k, qy - 6 * k, k * 3, k * 2);   // north, in ochre
+        }
+        // the relic struck with an X in red ochre, and the walk to it dotted from home
+        const r = S.relic, home = Bld.tcOf('P');
         if (s.relic && r && p > 0.54) {
           const pop = 1 + 1.4 * (1 - ease((p - 0.54) / 0.08));
           const cx = x0 + (s.M + (r.x + r.w / 2) * 2) * k, cy = y0 + (s.M + (r.y + r.h / 2) * 2) * k, arm = Math.round(4 * pop) * k;
+          if (home) {
+            const hx = x0 + (s.M + Bld.cx(home) * 2) * k, hy = y0 + (s.M + Bld.cy(home) * 2) * k;
+            const L = Math.hypot(cx - hx, cy - hy), n = Math.max(2, Math.floor(L / (k * 3))), upto = Math.round(n * Math.min(1, (p - 0.56) / 0.08));
+            g.fillStyle = '#8e2e1e';
+            for (let i = 1; i < upto; i++) {
+              const q = i / n, wob = Math.sin(q * 9) * k * 2;
+              g.fillRect(Math.round((hx + (cx - hx) * q - (cy - hy) / L * wob) / k) * k, Math.round((hy + (cy - hy) * q + (cx - hx) / L * wob) / k) * k, k, k);
+            }
+          }
           g.fillStyle = '#8e2e1e';
           for (let d = -arm; d <= arm; d += k) { g.fillRect(cx + d - k, cy + d - k, k * 2, k * 2); g.fillRect(cx + d - k, cy - d - k, k * 2, k * 2); }
         }
