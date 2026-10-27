@@ -52,6 +52,13 @@
       150 still names it, a skip still teaches it (one note, nothing to
       skip on it). With the cards OFF the note never fires and the lesson
       goes cold exactly as before, waiting for nothing.
+  15. A CARD HAS THE FLOOR (the five-player playtest): a card played under
+      a note — the test link's deck stands during the lesson — runs its act
+      at full speed with nothing of the lesson on screen, for as long as
+      Deck.acting() (the deck's ONE predicate) says it runs; the same note
+      comes back after a breath, once the act's own toast is read (bounded),
+      slowing the world again. The note's card is opaque: a toast under it
+      never reads through.
 
    Run this after touching any of:
      tutorial.js — everything
@@ -1027,6 +1034,130 @@ const out = await p.evaluate(async () => {
     } finally {
       CFG.CARDS.ON = was;
       if (DeckUI.built) DeckUI._stand(false);
+    }
+  }
+
+  // ---- 15. a card has the floor (the five-player playtest, the operator's path) ----
+  // A fresh device arms the lesson by itself and ?cards=all's deck stands
+  // during it. A card played under a note used to get the note straight back
+  // 0.2–1 s after the landing — its dim over the act, its card over the result
+  // toast, and its ×0.2 slow motion running the WHOLE act (the dragon's 3 s
+  // took 15). Played through the real deck UI on the real frame loop: while
+  // Deck.acting() the world runs at full speed and nothing of the lesson is on
+  // screen; the note comes back — the same note, slowing the world again —
+  // only after a breath and once the act's own toast has been read.
+  {
+    const was = CFG.CARDS.ON;
+    CFG.CARDS.ON = true;
+    const frame = () => new Promise(r => requestAnimationFrame(r));
+    // ON SCREEN, measured as the browser sees it (display AND visibility)
+    const onScreen = (id) => { const el = document.getElementById(id); if (!el) return false;
+      const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden'; };
+    const lessonUp = () => onScreen('tutUI') || onScreen('tutDim');
+    // the act, read from the things that ARE it (the flight, a card's show,
+    // its dragon, star or kraken) — never through the predicate under test
+    const toastUp = () => [...document.querySelectorAll('#toasts .toast')].some(el => el.style.opacity !== '0');
+    const CAP = Tutorial.ACT_TOAST_S || 6;
+    const actNow = () => !!DeckUI.playing || R.cardShows.length > 0 || R.summons.length > 0 || !!R._cardSky ||
+      !!(S.dragon && S.dragon.ev && S.dragon.ev.card) || !!(S.deck && (S.deck.strike || S.deck.kraken));
+    try {
+      Deck._col = null; Deck.dealAll();                  // the test link's deck: it stands during the lesson
+      fresh('150', 'moderate', true);
+      S.paused = false;
+      let t0 = performance.now();
+      while (!(Tutorial._show && onScreen('tutUI') && DeckUI.built) && performance.now() - t0 < 6000) await frame();
+      const note0 = Tutorial._show && Tutorial._show.id;
+      ck('aNoteIsUpOverAStandingDeck', !!note0 && Tutorial.simScale === Tutorial.SLOW && DeckUI.built && !Deck.lessonHolds(),
+        JSON.stringify({ note0, scale: Tutorial.simScale, built: DeckUI.built }));
+      const playUnder = async (id, tgt) => {
+        UI._toastAt = {};
+        const st = { slow: 0, seen: 0, acted: 0, evFrom: 0, evTo: 0, actEnd: 0, back: 0, toastAtBack: null, earlyBack: false };
+        const start = performance.now();
+        DeckUI._run(id, tgt || null, null, false);
+        while (performance.now() - start < 25000) {
+          await frame();
+          const now = performance.now(), acting = actNow();
+          if (S.dragon && S.dragon.ev && S.dragon.ev.card) { if (!st.evFrom) st.evFrom = now; }
+          else if (st.evFrom && !st.evTo) st.evTo = now;
+          if (acting) {
+            st.acted++; st.actEnd = 0;
+            if (!S.paused && Tutorial.simScale !== 1) st.slow++;   // the act at the lesson's slow motion
+            if (lessonUp()) st.seen++;                              // the lesson over the act
+          } else {
+            if (!st.actEnd) st.actEnd = now;
+            if (onScreen('tutUI')) {
+              st.back = now; st.toastAtBack = toastUp();
+              // the breath is counted in frames from the first quiet one: a
+              // frame's worth of slack (the dt clamp's 0.1 s and a little)
+              st.earlyBack = now - st.actEnd < Tutorial.BREATH * 1000 - 250;
+              break;
+            }
+          }
+        }
+        st.show = Tutorial._show && Tutorial._show.id;
+        st.scaleBack = Tutorial.simScale;
+        st.tail = st.back ? Math.round(st.back - st.actEnd) : -1;
+        st.ms = Math.round((st.back || performance.now()) - start);
+        return st;
+      };
+      // a card with no show of its own (its act is the flight): the note
+      // waits out the breath AND the landing's toast
+      const f = await playUnder('forager_cache');
+      ck('aCardPlayedUnderTheLessonPlaysAtFullSpeed', f.acted > 5 && f.slow === 0, JSON.stringify(f));
+      ck('andNothingOfTheLessonIsOnScreenOverIt', f.acted > 5 && f.seen === 0, JSON.stringify(f));
+      ck('theNoteComesBackAfterABreathAndTheToast', f.back > 0 && !f.earlyBack && f.show === note0 && f.scaleBack === Tutorial.SLOW &&
+        (f.toastAtBack === false || f.tail >= (CAP - 0.2) * 1000),
+        `back ${f.tail}ms after the act, toast still up ${f.toastAtBack}, note ${f.show}, scale ${f.scaleBack}`);
+      // a card whose act runs on SIM time: the dragon (3 s at full speed; 15 at ×0.2)
+      const tc = Bld.tcOf('P');
+      let tgt = null;
+      for (let r = 3; r <= 8 && !tgt; r++) for (let dy = -r; dy <= r && !tgt; dy++) for (let dx = -r; dx <= r && !tgt; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = tc.x + 1 + dx + 0.5, y = tc.y + 1 + dy + 0.5;
+        if (Deck.validTarget('dragonfire', x, y)) tgt = { x, y };
+      }
+      const d = await playUnder('dragonfire', tgt);
+      const flight = d.evTo && d.evFrom ? Math.round(d.evTo - d.evFrom) : -1;
+      ck('theDragonsActTakesItsOwnTime', !!tgt && flight > 0 && flight < 6500 && d.slow === 0 && d.seen === 0,
+        `the card's dragon on the wing ${flight}ms of real time (×0.2 reads ~15000); ${JSON.stringify(d)}`);
+      ck('andTheSameNoteReturnsAfterIt', d.back > 0 && !d.earlyBack && d.show === note0 && d.scaleBack === Tutorial.SLOW,
+        `back ${d.tail}ms after the act (${d.ms}ms after the play), note ${d.show}, scale ${d.scaleBack}`);
+      /* …and the act's own toast is left to be READ: a headless page's frame
+         rate decides whether the landing toast is still up when a flight
+         ends, so the rule is measured on its own — an act ends (Deck.acting
+         held, then let go) with a 2.5 s toast just raised: the note waits
+         the toast out, never the whole ACT_TOAST_S cap, and never for ever */
+      {
+        const real = Deck.acting;
+        let on = true;
+        Deck.acting = () => on;
+        try {
+          let t1 = performance.now();
+          while (performance.now() - t1 < 400) await frame();           // the lesson stands aside
+          const asideWhile = !lessonUp() && Tutorial.simScale === 1;
+          on = false;
+          UI._toastAt = {};
+          UI.toast('The act says what it did.', 'note', 2500);
+          const t2 = performance.now();
+          let back = 0, toastAt = null;
+          while (performance.now() - t2 < 12000) {
+            await frame();
+            if (onScreen('tutUI')) { back = performance.now() - t2; toastAt = toastUp(); break; }
+          }
+          ck('andWaitsForTheActsToastToBeRead', asideWhile && back >= 2400 && back < CAP * 1000 && toastAt === false,
+            `aside ${asideWhile}; back ${Math.round(back)}ms after the act (toast 2500ms, cap ${CAP}s), toast up then ${toastAt}`);
+        } finally { Deck.acting = real; }
+      }
+      // THE CARD IS OPAQUE: a toast under it never reads through it
+      const bg = getComputedStyle(document.getElementById('tutPanel')).backgroundColor;
+      const al = /rgba\([^)]*,\s*([\d.]+)\)/.exec(bg);
+      ck('noToastShowsThroughTheNote', !al || +al[1] >= 1, bg);
+      ck('theOnePredicateIsTheDecks', typeof Deck.acting === 'function' && !!Tutorial._cardActing && /Deck\.acting/.test(Tutorial._cardActing.toString()), '');
+    } finally {
+      S.paused = true;
+      CFG.CARDS.ON = was;
+      if (DeckUI.built) DeckUI._stand(false);
+      Deck._del(Deck.KEY); Deck._del(Deck.REAL_KEY); Deck._col = null;
     }
   }
 

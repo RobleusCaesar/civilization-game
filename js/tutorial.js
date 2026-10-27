@@ -16,6 +16,10 @@
      because a frozen world reads as a broken game on a phone — and a touch
      on the canvas 800ms after the note appears releases full speed (the
      player is playing; don't fight them).
+   - A CARD HAS THE FLOOR. While Deck.acting() says a card is being played
+     or its act is running, the lesson takes its dim, ring and card down,
+     presents nothing and never slows the world; the note on show comes
+     back after a breath, once the act's toast is read (_cardHolds).
    - OUT-OF-ORDER TOLERANCE. Every later step's advance condition is scanned
      in the background; do a thing before you're told and the telling is
      skipped. Conditions are therefore STATELESS reads of S, never counters
@@ -51,6 +55,10 @@ const Tutorial = {
   _scrolledFor: '',   // the menu card this presentation already scrolled to
   _lastEvAt: -1e9,    // real-time spacing between contextual notes — NEVER 0,
                       // or the gate blocks the first 25s of every page load
+  _actGap: 0,         // a card's act is over: the breath left before the note returns
+  _actTail: 0,        // …and the longest it will wait on the act's toast after that
+  _actHeld: false,    // the lesson is standing aside for a card (_cardHolds)
+  ACT_TOAST_S: 6,     // the bound on that wait — a toast is 3–5s, never a reason to vanish
 
   /* ======================= COPY — edit it HERE ======================
      One entry per step/event id. ≤2 short sentences, the game's own voice.
@@ -119,6 +127,10 @@ const Tutorial = {
   _cardsOn() { return !!(window.Deck && Deck.on && Deck.on()); },
   // the deck lesson is still owed this run
   _deckOwed() { return this._cardsOn() && !!S.tut && !(S.tut.fired && S.tut.fired.deck); },
+  // a card is being played, or its act is still running (Deck.acting — the
+  // one predicate; guarded on the method it calls, so a cached older deck.js
+  // beside this file stands down rather than throwing)
+  _cardActing() { return !!(window.Deck && Deck.acting && Deck.acting()); },
   _stationKeys: { farm: 1, lumber: 1, quarry: 1, lodge: 1, mine: 1 },
   _gatherOn(terr) {
     return S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'gather' &&
@@ -493,6 +505,7 @@ const Tutorial = {
     this._stuckSince = 0;
     this._advT = this._evT = this._gapT = 0; this._skipArm = 0; this._lastEvAt = -1e9;
     this._scrolledFor = '';
+    this._actGap = this._actTail = 0; this._actHeld = false;
     this._removeDom();
   },
 
@@ -537,6 +550,13 @@ const Tutorial = {
     if (S.over) { this.simScale = 1; this._hideAll(); return; }
     this._scoutTick(dt);
     if (this._gapT > 0) this._gapT -= dt;   // the breath between notes
+    // A CARD HAS THE FLOOR: the lesson stands aside, full speed, until the
+    // act is over — the spine still books what the player does meanwhile
+    if (this._cardHolds(dt)) {
+      this._advT -= dt;
+      if (this._advT <= 0) { this._advT = 0.15; this._scanSteps(); }
+      return;
+    }
     this._advT -= dt;
     if (this._advT <= 0) { this._advT = 0.15; this._scanSteps(); }
     // THE SPINE HAS RIGHT OF WAY: contextual notes fill the quiet stretches
@@ -549,6 +569,45 @@ const Tutorial = {
     // SLOW, never stopped: ×0.2 while a note is up, full speed once it is
     // answered or the player touches the world 800ms+ after it appeared
     this.simScale = (this._show && !this._released) ? this.SLOW : 1;
+  },
+
+  /* A CARD HAS THE FLOOR (tests/tutorial.mjs §15 — the five-player
+     playtest, on the operator's own path: a fresh device arms the lesson by
+     itself, ?cards=all's deck stands during it, and every card played under
+     a note was smothered by it). The deck already held NEW notes back while
+     its sheet, aim or flight was up — but a note already on show only stepped
+     aside for those (a CSS rule), so it came straight back 0.2–1 s after the
+     landing: its dim and spotlight over the act, its card over the result
+     toast, and its ×0.2 slow motion running the WHOLE ACT (the dragon's 3 s
+     took 15). So for as long as Deck.acting() says a card is being played or
+     its act is running — the sheet, the aim, the flight, a card's show, its
+     star, kraken or dragon — the lesson takes its dim, ring and card down,
+     presents nothing and never slows the world. Its state is untouched: the
+     note on show is still on show. Once the act is over it waits a BREATH,
+     and then for the act's own toast to be read (bounded by ACT_TOAST_S), and
+     comes back exactly where it was. Answers true while it is standing aside. */
+  _cardHolds(dt) {
+    if (this._cardActing()) { this._actGap = this.BREATH; this._actTail = this.ACT_TOAST_S; }
+    else if (this._actHeld) {
+      this._actGap -= dt; this._actTail -= dt;
+      if (this._actGap <= 0 && (this._actTail <= 0 || !this._toastUp())) {
+        this._actHeld = false;
+        // it appears again: the 800ms before a touch releases full speed starts afresh
+        if (this._show) this._shownAt = performance.now();
+        return false;
+      }
+    } else return false;
+    if (!this._actHeld) { this._actHeld = true; this._pan = null; }   // the act has the camera
+    this._hideAll();
+    this.simScale = 1;
+    return true;
+  },
+  // a toast still being read (UI.toast fades one out by setting its opacity 0)
+  _toastUp() {
+    const box = document.getElementById('toasts');
+    if (!box) return false;
+    for (const el of box.children) if (el.style.opacity !== '0') return true;
+    return false;
   },
 
   /* ---- the ordered spine: background satisfaction + the pointer ---- */
@@ -816,6 +875,11 @@ const Tutorial = {
       '<div id="tutPanel"><div id="tutTxt"></div>' +
       '<div id="tutRow"><button class="abtn" id="tutNext">Got it</button>' +
       '<span id="tutNum"></span><button id="tutSkip">Skip tutorial</button></div></div>';
+    /* THE CARD IS OPAQUE (tests/tutorial.mjs §15): it rides over the toasts
+       (z15 over z9), and at the stylesheet's 95% the toast underneath read
+       straight through it — a line of somebody else's text ghosting through
+       the lesson. Whatever the note covers, it covers. */
+    ui.querySelector('#tutPanel').style.background = 'rgb(28,20,11)';
     document.body.appendChild(dim);
     document.body.appendChild(ui);
     this._el = {

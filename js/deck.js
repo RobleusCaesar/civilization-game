@@ -551,6 +551,40 @@ const Deck = {
        it once the spine is done. */
     return typeof S !== 'undefined' && !!S && !!S.tut && !!S.tut.on && S.tut.phase === 1 && !this.isTest();
   },
+  /* A CARD HAS THE FLOOR (tests/tutorial.mjs §15 — the five-player
+     playtest, on the operator's own path: a fresh device arms the tutorial by
+     itself, and its held note came back 0.2–1 s after every landing, dimming
+     the act under its spotlight, sitting over the result toast and running
+     the WHOLE ACT at its ×0.2 slow motion — the dragon's 3 s took 15). The
+     deck only had the floor while its sheet, aim or flight was up, and the
+     acts run for seconds after that. ONE predicate for "a card is being
+     played, or its act is still running", so the tutorial — and anything
+     else that would talk over a card — asks the same question:
+       the deck's own floor  the sheet, the aim, the flight (DeckUI.hasFloor)
+       a card's moment       R.cardShows (every show is a few seconds), a
+                             summons' light (R.summons) and a fallen star's
+                             sky still settling (R._cardSky)
+       the acts on SIM time  a strike in the sky (S.deck.strike), the kraken
+                             risen (S.deck.kraken), the card's dragon on the
+                             wing (S.dragon.ev.card) and the view it borrowed,
+                             until that view is handed back
+     A read and nothing else: no RNG, nothing written. The world's OWN dragon
+     or kraken (rolled, not played) is no card's act and holds nothing here.
+     Guarded throughout — a page without the renderer or the deck UI simply
+     answers from what it has. */
+  acting() {
+    try {
+      if (window.DeckUI && DeckUI.hasFloor && DeckUI.hasFloor()) return true;
+      const Rr = window.R;
+      if (Rr && ((Rr.cardShows && Rr.cardShows.length) || (Rr.summons && Rr.summons.length) || Rr._cardSky)) return true;
+      if (typeof S === 'undefined' || !S) return false;
+      const d = S.deck;
+      if (d && (d.strike || d.kraken)) return true;
+      if (S.dragon && S.dragon.ev && S.dragon.ev.card) return true;
+      const DF = this.FX && this.FX.dragonfire, cam = DF && DF._cam;
+      return !!(cam && cam.map === S.map);
+    } catch (e) { return false; }
+  },
   canPlay(id) {
     if (!this.on()) return { ok: false, why: 'Cards are not available.' };
     const c = this.card(id);
