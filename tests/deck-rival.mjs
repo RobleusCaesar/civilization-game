@@ -849,16 +849,62 @@ await p.evaluate(() => {
     Combat.maybeWave();
     const band = S.units.filter(u => !ids3.has(u.id));
     out.peaceBand = band.length;
-    __rv.step(25, 0.1);
+    /* (read every second of the 25, not only at the end: the band musters on
+       the rival's side now — Combat.pactMuster — so it is at their houses in
+       seconds and may have burned them and gone before the 25 are up) */
+    const tcA = Bld.tcOf('A'), tcP = Bld.tcOf('P'), aB0 = S.buildings.filter(z => z.owner === 'A').length;
+    out.hunt = [];
+    for (let s = 1; s <= 250; s++) {
+      __rv.step(0.1, 0.1);
+      if (s % 10) continue;
+      for (const u of band) {
+        if (!S.units.includes(u) || u.hp <= 0) continue;
+        const toA = Math.hypot(u.x - Bld.cx(tcA), u.y - Bld.cy(tcA)), toP = Math.hypot(u.x - Bld.cx(tcP), u.y - Bld.cy(tcP));
+        const tb = u.tBld && Bld.get(u.tBld), tu = u.tUnit && Units.get(u.tUnit);
+        out.hunt.push({ toA: +toA.toFixed(1), toP: +toP.toFixed(1), at: tb ? tb.owner : tu ? tu.owner : '-' });
+      }
+    }
     out.peace = S.peace === true;
-    const tcA = Bld.tcOf('A'), tcP = Bld.tcOf('P');
-    out.hunt = band.filter(u => S.units.includes(u)).map(u => {
-      const toA = Math.hypot(u.x - Bld.cx(tcA), u.y - Bld.cy(tcA)), toP = Math.hypot(u.x - Bld.cx(tcP), u.y - Bld.cy(tcP));
-      const tb = u.tBld && Bld.get(u.tBld), tu = u.tUnit && Units.get(u.tUnit);
-      return { toA: +toA.toFixed(1), toP: +toP.toFixed(1), at: tb ? tb.owner : tu ? tu.owner : '-' };
-    });
-    out.rivalHurt = S.buildings.filter(z => z.owner === 'A').some(z => z.hp < z.maxhp) || S.units.some(u => u.owner === 'A' && u.hp < u.maxhp);
+    out.rivalHurt = S.buildings.filter(z => z.owner === 'A').some(z => z.hp < z.maxhp) || S.buildings.filter(z => z.owner === 'A').length < aB0 ||
+      S.units.some(u => u.owner === 'A' && u.hp < u.maxhp);
     out.playerSafe = S.buildings.filter(z => z.owner === 'P').every(z => z.hp >= z.maxhp);
+    /* AND IT MARCHES IN FROM THE RIVAL'S SIDE (the five-player playtest: on 2
+       of 3 maps a turned band, mustered on a random edge or at a camp,
+       marched on the rival straight past the player's own hall — nothing
+       fought, but it read as the pact turning on you). Eight bands on a flat
+       world, the halls in opposite corners, each mustered for real and walked
+       40 sim seconds at their town: every one musters nearer the rival's hall
+       than the player's (Combat.pactMuster), none comes within 6 tiles of the
+       player's hall, and the muster's rolls are drawn all the same */
+    {
+      __rv.fresh('rv-pact3', 'hard'); const f3 = __rv.flat(false);
+      __rv.bld('A', 'house', f3.A.x - 3, f3.A.y); __rv.bld('A', 'house', f3.A.x, f3.A.y - 3);
+      const mr = Math.random; let sd = 4242;
+      Math.random = () => ((sd = (sd * 1103515245 + 12345) >>> 0) / 4294967296);
+      Combat.scanT = 0; Units.herdClock = 0;
+      const tcP = Bld.tcOf('P'), tcA = Bld.tcOf('A'), szP = Bld.size(tcP);
+      const dHall = (x, y) => Math.max(Math.max(tcP.x - x, 0, x - (tcP.x + szP)), Math.max(tcP.y - y, 0, y - (tcP.y + szP)));
+      out.walks = [];
+      try {
+        for (let k = 0; k < 8; k++) {
+          // a town to march on for every band (the last one may have burned it)
+          for (const [dx, dy] of [[-3, 0], [0, -3]]) if (!Bld.at(f3.A.x + dx, f3.A.y + dy)) __rv.bld('A', 'house', f3.A.x + dx, f3.A.y + dy);
+          S.deck.charges.pact = 1; S.wave.next = S.day;
+          const ids0 = new Set(S.units.map(u => u.id));
+          Combat.maybeWave();
+          const nu = S.units.filter(u => !ids0.has(u.id)), m = nu[0];
+          const w = { n: nu.length, turned: S.deck.charges.pact === 0, close: 1e9,
+            nearA: !!m && Math.hypot(m.x - Bld.cx(tcA), m.y - Bld.cy(tcA)) < Math.hypot(m.x - Bld.cx(tcP), m.y - Bld.cy(tcP)) };
+          for (let t = 0; t < 40 && nu.some(u => u.hp > 0 && S.units.includes(u)); t += 0.1) {
+            Units.update(0.1); Combat.update(0.1);
+            for (const u of nu) if (u.hp > 0 && S.units.includes(u)) w.close = Math.min(w.close, dHall(u.x, u.y));
+          }
+          w.close = +w.close.toFixed(1);
+          out.walks.push(w);
+          S.units = S.units.filter(u => ids0.has(u.id));
+        }
+      } finally { Math.random = mr; }
+    }
     return out;
   });
   ck('thePactHoldsThreeBands', r.play.ok && r.c.target === 'none' && r.n === 3 && r.n2 === 6 && r.rng, `${r.n} charges, a second pact ${r.n2}; no draw ${r.rng}`);
@@ -876,8 +922,11 @@ await p.evaluate(() => {
     `spawned ${r.walled.spawned}, charges ${r.walled.kept}, the wave spent ${r.walled.waved}, said ${r.walled.said}; the last spent ${r.lastSpent}, the next wave raises ${r.after}`);
   ck('theChargesRideTheSave', r.saved);
   ck('thePactIsDeniable', r.peace && r.peaceBand > 0, `peace holds while the band marches: ${r.peace}`);
-  ck('andTheBandGoesForTheirTown', r.hunt.length > 0 && r.hunt.every(h => h.toA < h.toP && h.at !== 'P') && r.playerSafe,
-    JSON.stringify(r.hunt) + ` rival hurt ${r.rivalHurt}`);
+  ck('andTheBandGoesForTheirTown', r.hunt.length > 0 && r.hunt.every(h => h.toA < h.toP && h.at !== 'P') && r.playerSafe && r.rivalHurt,
+    `${r.hunt.length} looks over 25 s, every one nearer their hall and at nothing of yours: ${r.hunt.every(h => h.toA < h.toP && h.at !== 'P')}` +
+    ` (first ${JSON.stringify(r.hunt[0] || null)}); rival hurt ${r.rivalHurt}, you untouched ${r.playerSafe}`);
+  ck('andMarchesInFromTheRivalsSide', r.walks.length === 8 && r.walks.every(w => w.n > 0 && w.turned && w.nearA && w.close >= 6 && w.close < 1e9),
+    r.walks.map(w => `${w.n}${w.nearA ? '' : ' MUSTERED ON YOUR SIDE'} closest ${w.close}`).join('; ') + ' (tiles from your hall; bar 6)');
 }
 
 // ---------------- 6. THE SWALLOWED SUN ----------------

@@ -1690,6 +1690,26 @@ const Combat = {
     return landing;
   },
 
+  /* THE PACT'S BAND MARCHES IN FROM THE RIVAL'S SIDE (the five-player
+     playtest: on 2 of 3 maps a turned band, mustered on a random edge or at
+     a camp, marched on the rival straight past the player's own hall —
+     nothing fought, but a war band walking through your town reads as the
+     pact turning on you). The band the player bought musters at the edge of
+     the world nearest the RIVAL's hall and farthest from their own — a
+     longboat on the water nearest the rival — so its road to the rival is
+     short and runs nowhere near the player's town. Of the candidate points
+     `pts`, the one nearest the rival's hall, pulled away from the player's. */
+  pactMuster(pts, atc, ptc) {
+    if (!pts || !pts.length || !atc) return null;
+    const ax = Bld.cx(atc), ay = Bld.cy(atc), px = ptc ? Bld.cx(ptc) : null, py = ptc ? Bld.cy(ptc) : null;
+    let best = null, bs = Infinity;
+    for (const q of pts) {
+      const sc = Math.hypot(q.x - ax, q.y - ay) - (ptc ? 0.6 * Math.hypot(q.x - px, q.y - py) : 0);
+      if (sc < bs) { bs = sc; best = q; }
+    }
+    return best;
+  },
+
   /* barbarian war-band spawning, called from the day tick */
   maybeWave() {
     if (S.day < S.wave.next) return;
@@ -1767,7 +1787,8 @@ const Combat = {
       const ptc = Bld.tcOf('P'), atc = Bld.tcOf('A');
       const tgt = disp === 'P' ? ptc : disp === 'A' ? atc : (G.rand() < 0.5 && atc ? atc : ptc) || atc;
       if (edges.length && tgt) {
-        const start = edges[(G.rand() * edges.length) | 0];
+        let start = edges[(G.rand() * edges.length) | 0];
+        if (pact) start = this.pactMuster(edges, atc, ptc) || start;   // the draw is made all the same
         const route = Path.find(start.x, start.y, tgt.x, tgt.y, 'R', 'water') || [];
         const landing = this.pickLanding([{ x: start.x, y: start.y }].concat(route), tgt, open);
         if (landing) {
@@ -1809,6 +1830,14 @@ const Combat = {
       const side = (G.rand() * 4) | 0;
       sx = side === 0 ? 0 : side === 1 ? CFG.W - 1 : (G.rand() * CFG.W) | 0;
       sy = side === 2 ? 0 : side === 3 ? CFG.H - 1 : (G.rand() * CFG.H) | 0;
+    }
+    // a pact band musters on the RIVAL's side of the world (the rolls above
+    // are drawn all the same, so a seed's stream never moves for it)
+    if (pact) {
+      const atc = Bld.tcOf('A'), ptc = Bld.tcOf('P');
+      const e = atc && this.pactMuster([{ x: Bld.cx(atc) | 0, y: 0 }, { x: Bld.cx(atc) | 0, y: CFG.H - 1 },
+        { x: 0, y: Bld.cy(atc) | 0 }, { x: CFG.W - 1, y: Bld.cy(atc) | 0 }], atc, ptc);
+      if (e) { sx = e.x; sy = e.y; }
     }
     // War parties march in — they never materialize on the player's doorstep.
     // Spawn tiles must be (a) in the open wilderness network: reachable from the
