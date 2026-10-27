@@ -9231,9 +9231,9 @@ const R = {
              y: Math.round((Math.cos(w * 2.3 + 0.4) + Math.sin(w * 4.1) * 0.4) * a) };
   },
   // a full-screen flash, eased out over its own life (drawn last, over the night)
-  // `gold`: a card's warm flash, turned to amber first (drawFlash)
-  flashAt(a, dur, col, gold) {
-    if (!this._flash || this._flash.a * (1 - this._flash.t / this._flash.dur) < a) this._flash = { t: 0, a, dur, col: col || '255,250,236', gold: !!gold };
+  // — never in a card's gold: gold over a meadow flashes yellow-green or sepia
+  flashAt(a, dur, col) {
+    if (!this._flash || this._flash.a * (1 - this._flash.t / this._flash.dur) < a) this._flash = { t: 0, a, dur, col: col || '255,250,236' };
   },
   drawFlash(g, dt) {
     const f = this._flash;
@@ -9242,9 +9242,6 @@ const R = {
     if (f.t >= f.dur) { this._flash = null; return; }
     const k = 1 - f.t / f.dur;
     g.setTransform(1, 0, 0, 1, 0, 0);
-    // a card's GOLD flash turns the frame toward amber first, or pale gold
-    // laid over a meadow flashes yellow-green (CARD LIGHT IS GOLD, NOT LIME)
-    if (f.gold) this.goldWash(g, Math.min(1, f.a * k * k * 1.6));
     g.fillStyle = 'rgba(' + f.col + ',' + (f.a * k * k).toFixed(3) + ')';
     g.fillRect(0, 0, this.cv.width, this.cv.height);
   },
@@ -10442,9 +10439,11 @@ const R = {
      pixel or two wide. Small marks — a ring's dots, a glint, a mote — are
      not bodies of light: they are drawn opaque in the ramp's own colours
      (goldInk), fading DOWN the ramp, never through alpha (a translucent
-     gold dot on grass is the same lime). There is no whole-frame gold fill:
-     over a meadow no wash reads as anything but olive, so the washes are
-     gone and a warm flash is a hue grade (goldWash) for a beat. NO LIGHT
+     gold dot on grass is the same lime). There is no whole-frame gold fill
+     and no gold flash: over a meadow no wash reads as anything but olive or
+     sepia, so the washes and the flashes are gone and the light is carried
+     by what it falls on (goldWash, the hue pass alone, is left for the
+     marble's pale flare, a grade toward stone-white). NO LIGHT
      POOLS ON THE GROUND (a warm patch on the meadow reads as sand): a light
      lands in a ring of dots. A browser that does not know 'color' keeps the
      lift alone. Render-only, no state, no RNG; the tones are data. */
@@ -10526,22 +10525,19 @@ const R = {
     if (typeof col !== 'string' || col[0] !== '#' || col.length < 7) return col;
     return [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16)).join(',');
   },
-  /* a whole-frame warm grade at strength s: the hue pass alone at a low
-     step, so the meadow warms toward amber rather than being painted over
-     (a fill of gold over a frame of green is the yellow-green wash this
-     replaces); the rect defaults to the whole canvas in device px */
+  /* a grade of a rect (the whole canvas in device px by default) toward a
+     tone at strength s in eighths: the hue pass alone, so what is under it
+     keeps its own light and is never painted over */
   goldWash(g, s, x, y, w, h, tone) {
-    this.goldHue(g, s, () => g.fillRect(x || 0, y || 0, w == null ? this.cv.width : w, h == null ? this.cv.height : h), tone);
-  },
-  // the hue pass alone over a shape (fill(col) lays it), at alpha s in eighths:
-  // a warm TINT inside a ward, never a fill of colour over it
-  goldHue(g, s, fill, tone) {
     const a = Math.round(Math.max(0, Math.min(1, s || 0)) * 8) / 8;
     if (!a) return;
     const T = this.LIGHT.TONE[tone] || this.LIGHT.TONE.gold;
     g.save();
     g.globalCompositeOperation = 'color';
-    if (g.globalCompositeOperation === 'color') { g.globalAlpha = a; g.fillStyle = T.hue; fill(T.hue); }
+    if (g.globalCompositeOperation === 'color') {
+      g.globalAlpha = a; g.fillStyle = T.hue;
+      g.fillRect(x || 0, y || 0, w == null ? this.cv.width : w, h == null ? this.cv.height : h);
+    }
     g.restore();
   },
   /* is an "r,g,b" colour a warm LIGHT (a gold, an amber, a cream — bright,

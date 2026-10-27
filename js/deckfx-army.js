@@ -977,7 +977,8 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         // the panel names a kind it no longer has (panelSig does not carry it)
         if (UI.sel) UI.renderPanel();
         sound('cardRanks');
-        if (window.R && R.flashAt) R.flashAt(0.22, 0.5, '255,226,140', true);
+        // (no whole-frame flash: gold laid over the meadow is a yellow-green
+        // frame — the pillars are the light)
         show('veterans', { x: hx, y: hy, lit });
         const n = ranks + vets;
         Deck.say('🎖️ ' + n + ' soldier' + (n > 1 ? 's' : '') + ' rise a rank' +

@@ -622,7 +622,8 @@ Object.assign(Deck.FX, {
         if (d <= this.REACH) far = Math.max(far, d);
       }
       GrowFX.show('golden_age', { x: c.x, y: c.y, reach: Math.max(6, far + 2) });
-      if (window.R && R.flashAt) R.flashAt(0.3, 0.8, '255,224,150', true);
+      // (no whole-frame flash: a fill of gold over the meadow, however brief,
+      // is a yellow-green or a sepia frame — the dawn's light is the sun's)
       GrowFX.sfx('goldenage');
       return { ok: true, x: c.x, y: c.y, until: e.until };
     },
@@ -1191,7 +1192,8 @@ Object.assign(Deck.FX, {
         if (p >= 0.1 && !s.boom) {
           s.boom = 1;
           if (R.shakeAt) R.shakeAt(8, 1.0);
-          if (R.flashAt) R.flashAt(0.55, 0.7, '255,236,170', true);
+          // (no whole-frame flash: gold over the meadow is a sepia frame —
+          // the pillar landing, the shake and its rings are the blow)
         }
         // THE PILLAR
         const up = Math.min(1, p / 0.1), thin = p < 0.72 ? 1 : Math.max(0, 1 - (p - 0.72) / 0.2);
@@ -1548,7 +1550,8 @@ Object.assign(Deck.FX, {
             F.ring(g, cx, mid, TL * (1 + q * 4), 'gold', (1 - q) * 0.9 * pl, 2, 0.6, F.viewPx(2));
           }
         }
-        if (p >= 0.32 && !s.boom) { s.boom = 1; if (R.flashAt) R.flashAt(0.5, 0.7, '255,236,170', true); }
+        // (the pillar's landing is the blow: no whole-frame flash, which over
+        // the meadow is a sepia frame)
         // 4. gold rising off the settled stones
         if (p > 0.55) for (let m = 0; m < 14; m++) {
           const h = F.hash(m, 77), k = ((p - 0.55) / 0.45 + h) % 1;

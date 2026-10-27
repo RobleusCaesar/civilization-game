@@ -1377,7 +1377,10 @@
           if (!s.boom && p >= imp) {
             s.boom = true;
             if (R.shakeAt) R.shakeAt(7, 0.8);
-            if (R.flashAt) R.flashAt(0.36, 0.8, '255,198,98', true);     // gold, never milk — nor lime (the gold flash turns the frame amber first)
+            // (no whole-frame flash: gold laid over the meadow was the sepia
+            // wash, milk would be a pale green one — the pillar landing in
+            // the darkened sky, the shake, the rings and the halo of dots
+            // bursting across the screen are the blow)
             if (R.startle) R.startle(Bld.cx(tc), Bld.cy(tc), 14);
             TX.sound('cardHall');
           }
