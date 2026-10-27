@@ -464,6 +464,79 @@ ck('aTcCardBurstsOnTheTownCenter', tc.spent && tc.dest && Math.hypot(tc.dest.x -
 ck('theSpectacleScalesWithTheTier', tc.spectacle.legend > tc.spectacle.iron && tc.spectacle.legend > tc.spectacle.stone,
   JSON.stringify(tc.spectacle));
 
+/* THE CARD LEAVES IN HARD PIXELS (playtest judges g1/g2): the old exit faded
+   the card out as a ghost with the world showing through it, over a soft
+   radial halo, and the comet's tail drew a "+" across its name plate mid-
+   flight. A whole play of the highest tier (its every light) to a point on
+   the ground, its clock HELD at chosen moments (so a starved machine reads
+   the same as a phone): the card is never translucent; it is the TOP layer
+   (nothing of the light is ever laid over it); its rim flashes in two short
+   frames; it leaves by the dither — 25/50/75% of its cells, in that order,
+   then gone; and nothing in the layer is a radial gradient or a blurred glow.
+   The lifted card's own halo likewise. */
+const hp5 = await p.evaluate(async () => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const raf2 = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const id = '__legendPt';
+  if (!Deck.card(id)) Deck.CATALOG.push({ id, tier: 'enlight', cat: 'strike', target: 'none', name: 'Test ' + id, text: 'A light on the hall.', flavor: 'f', when: 'w' });
+  Deck._byId = null;
+  Deck.FX[id] = { at: 'tc', apply: () => ({ ok: true }) };
+  Deck.col().counts[id] = 1; Deck.saveCol();
+  document.getElementById('deckBtn').click(); await wait(400);
+  document.querySelector(`#dkSheet .dkCell[data-card="${id}"]`).click(); await wait(300);
+  const halo = document.querySelector('#dkInsp .dkHalo');
+  const out = { haloSoft: !halo || /radial-gradient/.test(getComputedStyle(halo).backgroundImage) || halo.tagName !== 'CANVAS',
+    looks: [], translucent: 0, notTop: 0, soft: new Set() };
+  // the LIGHT is what is judged — the face itself (its art's placeholder
+  // ground, its paper) is the card's own and pinned elsewhere
+  const soft = el => {
+    if (el.closest('.ccard')) return null;
+    const cs = getComputedStyle(el);
+    if (/radial-gradient/.test(cs.backgroundImage) || /radial-gradient/.test(cs.webkitMaskImage || cs.maskImage || '')) return 'radial ' + el.className;
+    // a box-shadow is "color x y blur spread": any blur at all is a soft glow
+    for (const sh of (cs.boxShadow === 'none' ? [] : cs.boxShadow.replace(/rgba?\([^)]*\)/g, '').split(','))) {
+      const n = (sh.match(/-?[\d.]+px/g) || []).map(parseFloat);
+      if (n[2] > 0) return 'blur ' + el.className;
+    }
+    return null;
+  };
+  // the play's landing failsafe (a timer of real time) is held off while its
+  // clock is held still: on a starved machine it would land mid-reading
+  const realAfter = DeckUI._after;
+  DeckUI._after = function (ms, fn) { if (!window.__holdLand) return realAfter.call(this, ms, fn); };
+  window.__holdLand = true;
+  document.querySelector('#dkInsp .dkPlay').click();
+  window.__holdLand = false;
+  DeckUI._after = realAfter;
+  await raf2();
+  const L = document.getElementById('dkFly'), card = L.querySelector('.dkFCard');
+  const anims = L.getAnimations({ subtree: true });
+  for (const a of anims) a.pause();
+  const ex = DeckUI.FLY_MS + DeckUI.FLARE_MS, B = DeckUI.BURST_MS;
+  // the rim's two frames, then the burst's quarters
+  const moments = [['fly', 120], ['rim1', ex - 63], ['rim2', ex - 21], ['q1', ex + B * 0.3], ['q2', ex + B * 0.55], ['q3', ex + B * 0.8], ['end', ex + B - 1]];
+  for (const [name, t] of moments) {
+    for (const a of anims) a.currentTime = t;
+    await raf2(); await raf2();
+    const rims = [...L.querySelectorAll('.dkRim')].map(r => getComputedStyle(r).opacity);
+    const k = /dz(\d)/.exec(card.className);
+    out.looks.push(`${name}:${k ? k[1] : 0}${rims.map(o => o === '1' ? '+' : '.').join('')}`);
+    if (getComputedStyle(card).visibility !== 'hidden' && +getComputedStyle(card).opacity < 1) out.translucent++;
+    if (L.lastElementChild !== card) out.notTop++;
+    for (const el of L.querySelectorAll('*')) { const s = soft(el); if (s) out.soft.add(s); }
+  }
+  // the dissolve's three masks: a quarter, a half, three quarters of the cells gone
+  out.masks = [1, 2, 3].map(s => (decodeURIComponent(L.style.getPropertyValue('--dz' + s)).match(/<rect/g) || []).length);
+  for (const a of anims) a.play();
+  await __idle();
+  out.soft = [...out.soft];
+  return out;
+});
+ck('theCardLeavesInHardPixels', hp5.translucent === 0 && hp5.notTop === 0 && !hp5.soft.length && !hp5.haloSoft &&
+  hp5.looks.join(' ') === 'fly:0.. rim1:0+. rim2:0.+ q1:1.. q2:2.. q3:3.. end:3..' && String(hp5.masks) === '12,8,4',
+  `${hp5.looks.join(' ')} (dither step, rim frames); cells kept ${hp5.masks}/16; translucent ${hp5.translucent}, light over the card ${hp5.notTop}, ` +
+  `soft ${hp5.soft.join('|') || 'none'}, inspector halo ${hp5.haloSoft ? 'SOFT' : 'pixels'}`);
+
 /* ================= 6. A REFUSAL KEEPS THE CARD ================= */
 const rf = await p.evaluate(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms));
