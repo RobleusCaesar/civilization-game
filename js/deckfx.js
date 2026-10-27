@@ -130,7 +130,10 @@ Object.assign(Deck, {
         // take the rest of the frame's world block down with it
         try { fx.impact(st); } catch (e) { console.error('card strike', st.id, e); }
       }
-    } else if (st.t >= fx.DOWN_S) S.deck.strike = null;
+    } else if (st.t >= fx.DOWN_S) {
+      S.deck.strike = null;
+      if (fx.landed) { try { fx.landed(st); } catch (e) { console.error('card strike', st.id, e); } }
+    }
   },
   // the ground a card's act keeps in sight while it plays (G.updateVisibility
   // lights only tiles already explored — a card never charts the map)
@@ -429,6 +432,7 @@ Object.assign(Deck.FX, {
         Units.damage(u, this.UNIT, 0, 'P');
         if (u.hp <= 0) slain++;
       }
+      this.scar(st);
       // the blow on the ground: the bombard's own scorch and dust, the
       // event's dust ring, the birds; the flash and the shake are the sky's
       // (R.starAct, the frame it lands)
@@ -443,6 +447,37 @@ Object.assign(Deck.FX, {
           (razed + slain ? ' — ' + (razed ? razed + ' building' + (razed > 1 ? 's' : '') + ' down' : '') +
             (razed && slain ? ', ' : '') + (slain ? slain + ' slain' : '') : '') + '.'
         : '☄️ The star strikes — and finds nothing of theirs there.', 'note', 6000);   // the player's blow: never the alarm
+    },
+    /* THE CRATER IT LEAVES (the playtest: "the aftermath leaves only ordinary
+       building rubble, with no crater"). The tile it struck becomes the
+       game's own scar — T.RUIN, on Bld.removeToRuin's RUIN_FADE_DAYS clock
+       (G.scheduleRevert) — and S.deck.craters remembers that a star made it,
+       so the ground there wears the star's own crater art (R.cardCraterPaint)
+       for as long as the rubble lasts: it heals with it, a building raised
+       on it clears it, and it rides the save. Only open ground takes it
+       (grass, or rubble already there): never a tile something stands on,
+       never water, a wood or worked ground. No RNG; at most CRATERS kept. */
+    CRATERS: 6,
+    scar(st) {
+      const x = Math.floor(st.x), y = Math.floor(st.y);
+      if (!MapGen.onBoard(x, y) || Bld.at(x, y)) return;
+      const i = MapGen.idx(x, y), t = S.map.terrain[i];
+      if (t !== T.GRASS && t !== T.RUIN) return;
+      S.map.terrain[i] = T.RUIN;
+      if (S.map.resAmount) S.map.resAmount[i] = 0;
+      G.scheduleRevert(i);
+      const run = Deck.run(), L = (run.craters || []).filter(c => c.x !== x || c.y !== y)
+        .filter(c => MapGen.inB(c.x, c.y) && S.map.terrain[MapGen.idx(c.x, c.y)] === T.RUIN);
+      L.push({ x, y, n: st.n, hot: true });
+      run.craters = L.slice(-this.CRATERS);
+      if (window.R && R.updateTile) R.updateTile(x, y);
+    },
+    // the strike's last beat: its crater cools (repainted — its art turns cold)
+    landed(st) {
+      const L = S.deck && S.deck.craters, c = L && L.find(k => k.n === st.n && k.hot);
+      if (!c) return;
+      c.hot = false;
+      if (window.R && R.drawTileAt && R.terrainCache) R.drawTileAt(c.x, c.y);
     },
   },
 

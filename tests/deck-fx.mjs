@@ -32,7 +32,11 @@
                        and the hall clamp holds even under 'fire', which would
                        take a hall off the board with no ending; the run's
                        rolled star untouched; refused while a star is falling
-                       or a strike is landing
+                       or a strike is landing. It DROPS — from above the
+                       screen, steep, big, a column of hard pixels behind it —
+                       flashes in hard steps (no wash, no 'lighter' light, no
+                       radial gradient) and leaves a crater in the ground that
+                       is a rebake byte for byte and heals with its rubble
      DRAGONFIRE        flies in fast, burns every enemy within 3 to ash as
                        KILLS, 1,200 to buildings within 2.5 (the rival's hall
                        at most half), the fire line runs through the ground
@@ -446,6 +450,119 @@ await p.evaluate(() => {
   ck('notWhileTheRunsStarFalls', !r.event.ok && r.eventKept, r.event.why);
   ck('notWhileAStrikeIsLanding', !r.busy.ok && r.busyKept, r.busy.why);
   ck('onlyOnExploredGround', !r.dark.ok && r.darkKept && !r.edge, r.dark.why);
+}
+
+// …and it falls LIKE A STAR (the playtest: "about 1 tile, almost flat from
+// the right edge — a thrown fireball, not a falling star", a soft lit disc
+// round it, an 80% beige whiteout, and nothing left on the ground but the
+// ordinary rubble). Played and drawn frame by frame through the real R.draw:
+//   THE DROP      the head comes in from ABOVE the screen's top, steep (no
+//                 more than ~0.45 across for every 1 down), twice the world's
+//                 density or more, and by the blow its trail is a column of
+//                 hard pixels half the screen's height and more
+//   THE FLASH     the blow flashes in at most three hard full-screen steps,
+//                 none of them warm — never the eased wash (flashAt) — and
+//                 nothing in the whole act is 'lighter' light or a radial
+//                 gradient
+//   THE CRATER    the struck tile is the game's own scar (T.RUIN, on its own
+//                 clock) and the star's crater art is in the ground round it,
+//                 hot through the strike and cold after; the cache is a
+//                 rebake byte for byte, and when the rubble heals the crater
+//                 is gone from the ground with it
+{
+  await p.evaluate(() => { Assets.wantFx('starfall', { prio: 'high' }); });
+  await p.waitForFunction(() => ['meteor', 'crater-hot', 'crater-cold', 'boom'].every(n => Assets.fxFrames(n)), null, { timeout: 60000 }).catch(() => {});
+  const r = await p.evaluate(() => {
+    const out = {};
+    __fx.fresh('fx-star-look'); __fx.flat();
+    Screens.show('playing');
+    G.freeVis = true; G.updateVisibility();
+    const T0 = { x: 18.5, y: 18.5 };
+    __fx.bld('A', 'house', 20, 18, 5000);
+    R.cam.z = 1.7; R.centerOn(T0.x, T0.y); R.clampCam();
+    R.rebuildTerrain();
+    const g = R.cv.getContext('2d'), CW = R.cv.width, CH = R.cv.height, z = R.cam.z * R.dpr;
+    const met = new Set(Assets.fxFrames('meteor') || []);
+    const heads = [], fills = [], flashes = [];
+    let lighter = 0, radial = 0, phase = null;
+    const di = g.drawImage, fr = g.fillRect, crg = g.createRadialGradient, fa = R.flashAt;
+    g.drawImage = function (img, ...a) {
+      if (met.has(img) && phase === 'fall') { const T = this.getTransform(); heads.push({ x: T.e, y: T.f, k: Math.hypot(T.a, T.b) * (a.length === 4 ? a[2] / img.width : 1) }); }
+      if (phase && this.globalCompositeOperation === 'lighter') lighter++;
+      return di.call(this, img, ...a);
+    };
+    g.fillRect = function (x, y, w, h) {
+      if (phase) {
+        if (this.globalCompositeOperation === 'lighter') lighter++;
+        const T = this.getTransform();
+        if (T.a === 1 && T.d === 1 && T.e === 0 && T.f === 0) {
+          if (w >= CW && h >= CH) flashes.push(String(this.fillStyle));   // (the dark of the night is the dim, not a flash: sorted below)
+          else if (phase === 'fall') fills.push(y);
+        }
+      }
+      return fr.call(this, x, y, w, h);
+    };
+    g.createRadialGradient = function () { if (phase) radial++; return crg.apply(this, arguments); };
+    let eased = 0;
+    R.flashAt = function () { if (phase) eased++; return fa.apply(this, arguments); };
+    const flashSeen = new Set();
+    let trailTop = 1e9, trailBot = -1e9;
+    try {
+      out.play = Deck.play('starfall', T0);
+      for (let i = 0; i < 260 && (S.deck.strike || R._cardSky); i++) {
+        const st = S.deck.strike;
+        phase = st ? st.phase : 'after';
+        fills.length = 0; flashes.length = 0;
+        R.draw(1 / 30);
+        if (phase === 'fall' && fills.length) { trailTop = Math.min(trailTop, Math.min(...fills)); trailBot = Math.max(trailBot, Math.max(...fills)); }
+        G.updateVisibility();
+        for (const f of flashes) flashSeen.add(f);
+        Deck.strikeTick(1 / 30);
+      }
+    } finally { g.drawImage = di; g.fillRect = fr; g.createRadialGradient = crg; R.flashAt = fa; phase = null; }
+    const h0 = heads[0], h1 = heads[heads.length - 1];
+    out.drop = h0 && h1 ? { y0: Math.round(h0.y), lean: +(Math.abs(h1.x - h0.x) / Math.max(1, h1.y - h0.y)).toFixed(2),
+      scale: +(h0.k / (z / 2)).toFixed(2), top: +(trailTop / CH).toFixed(2), span: +((trailBot - trailTop) / CH).toFixed(2), n: heads.length } : null;
+    const steps = [...flashSeen].map(c => { const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/.exec(c); return m ? { r: +m[1], g: +m[2], b: +m[3], a: m[4] == null ? 1 : +m[4] } : null; })
+      .filter(c => c && c.r + c.g + c.b > 450);
+    out.flash = { steps: steps.length, warm: steps.filter(s => s.r > s.b + 4).length, eased, lighter, radial };
+    // THE CRATER
+    const tx = Math.floor(T0.x), ty = Math.floor(T0.y), C = S.deck.craters || [];
+    out.crater = { list: C.length, ruin: S.map.terrain[MapGen.idx(tx, ty)] === T.RUIN, cold: C.length === 1 && C[0].hot === false };
+    const TL = CFG.TILE, box = () => R.terrainCache.getContext('2d').getImageData((tx - 2) * TL, (ty - 2) * TL, 5 * TL, 5 * TL).data;
+    const diff = (a, b) => { let n = 0; for (let i = 0; i < a.length; i += 4) if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) n++; return n; };
+    const cache = box();
+    R.rebuildTerrain();
+    const rebake = box();
+    const keep = S.deck.craters; S.deck.craters = [];
+    R.rebuildTerrain();
+    const bare = box();
+    S.deck.craters = keep; R.rebuildTerrain();
+    out.crater.parity = diff(cache, rebake);
+    out.crater.drawn = diff(rebake, bare);
+    // …and it heals with the rubble
+    const d0 = S.map.decay && S.map.decay[MapGen.idx(tx, ty)];
+    out.crater.clock = d0 != null ? d0 - S.day : null;
+    if (d0 != null) { S.day = d0; G.dayTick(); }
+    const healed = box();
+    R.rebuildTerrain();
+    out.crater.healed = { grass: S.map.terrain[MapGen.idx(tx, ty)] === T.GRASS, parity: diff(healed, box()) };
+    S.deck.craters = []; R.rebuildTerrain();
+    out.crater.healed.gone = diff(healed, box());
+    G.freeVis = false;
+    return out;
+  });
+  const d = r.drop, f = r.flash, c = r.crater;
+  ck('theStarDropsSteepFromAboveTheScreen', r.play.ok && d && d.y0 < 0 && d.lean <= 0.45 && d.scale >= 2,
+    d ? `head first seen at y ${d.y0}px, ${d.lean} across per 1 down, at ${d.scale}x the world's density` : 'no head drawn');
+  ck('andDragsAColumnOfHardPixelsDownTheSky', d && d.top <= 0.02 && d.span >= 0.4,
+    d ? `the trail reaches ${d.top} of the way down from the screen's top and spans ${d.span} of its height` : 'no trail');
+  ck('itsBlowFlashesInHardStepsNeverAWash', f.steps >= 2 && f.steps <= 3 && f.warm === 0 && f.eased === 0 && f.lighter === 0 && f.radial === 0,
+    `${f.steps} flash steps (${f.warm} warm), ${f.eased} eased washes, ${f.lighter} 'lighter' draws, ${f.radial} radial gradients`);
+  ck('itLeavesACraterInTheGround', c.list === 1 && c.ruin && c.cold && c.drawn > 2000 && c.parity === 0,
+    `craters ${c.list}, the struck tile rubble ${c.ruin}, cooled ${c.cold}; ${c.drawn} px of crater in the ground, cache vs rebake ${c.parity}`);
+  ck('andItHealsWithTheRubble', c.clock > 0 && c.healed.grass && c.healed.parity === 0 && c.healed.gone === 0,
+    `on a ${c.clock}-day clock; healed to grass ${c.healed.grass}, cache vs rebake ${c.healed.parity}, crater left ${c.healed.gone} px`);
 }
 
 // ---------------- 5. DRAGONFIRE ----------------

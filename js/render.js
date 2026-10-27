@@ -9275,11 +9275,60 @@ const R = {
   },
   craterPit(x, y) {
     const F = S && S.starfall;
+    if (S && S.deck && S.deck.craters && this.cardCraterAt(x, y, true)) return true;
     if (!F || F.x < 0) return false;
     const dx = x - F.x, dy = y - F.y;
     return dx >= 0 && dy >= 0 && dx <= 1 && dy <= 1 && !!this.craterArt();
   },
+  /* A STARFALL CARD'S CRATER (js/deckfx.js, starfall.impact): the star's own
+     crater art (crater-hot while its strike is landing, crater-cold after),
+     4 tiles across at the art's own density, centred on the tile it struck —
+     that tile is its PIT (painted in drawTile under nothing, like the event's)
+     and the rest is EJECTA, painted in the last ground pass on open ground
+     only. It lives exactly as long as its pit is rubble on the player's map:
+     the blow lays T.RUIN there (Bld.removeToRuin's own scar, on its own
+     RUIN_FADE_DAYS clock), so the ground heals and the crater goes with it,
+     a building raised on it clears it, and the fog keeps the remembered one.
+     A pure function of S.deck.craters and the (remembered) terrain, so a
+     repaint is a rebake; every tile it touches is inside its pit's ±2
+     ground reset, so the pit's own repaint paints it and wipes it. */
+  cardCraterAt(x, y, pit) {
+    const L = S.deck && S.deck.craters;
+    if (!L || !L.length) return null;
+    const terr = S.map.seenTerrain || S.map.terrain;
+    for (let i = L.length - 1; i >= 0; i--) {
+      const c = L[i];
+      if (pit ? (c.x !== x || c.y !== y) : (Math.abs(x - c.x) > 2 || Math.abs(y - c.y) > 2)) continue;
+      if (!MapGen.inB(c.x, c.y) || terr[MapGen.idx(c.x, c.y)] !== T.RUIN) continue;
+      if (!this.cardCraterArt(c)) continue;
+      return c;
+    }
+    return null;
+  },
+  cardCraterArt(c) {
+    const a = window.Assets && Assets.fxFrames && Assets.fxFrames(c.hot ? 'crater-hot' : 'crater-cold');
+    // (a save that carries one asks for the art; its landing repaints it — repaintCrater)
+    if (!a && window.Assets && Assets.wantFx) Assets.wantFx('starfall');
+    return a ? a[0] : null;
+  },
+  cardCraterPaint(g, x, y, pit) {
+    const L = S.deck && S.deck.craters;
+    if (!L || !L.length) return;
+    const TL = CFG.TILE, terr = S.map.seenTerrain || S.map.terrain;
+    if (!pit && (this.cardCraterAt(x, y, true) || !this.CRATER_OVER.has(terr[MapGen.idx(x, y)]))) return;
+    for (const c of L) {
+      if (pit ? (c.x !== x || c.y !== y) : (Math.abs(x - c.x) > 2 || Math.abs(y - c.y) > 2 || (c.x === x && c.y === y))) continue;
+      if (!MapGen.inB(c.x, c.y) || terr[MapGen.idx(c.x, c.y)] !== T.RUIN) continue;
+      const art = this.cardCraterArt(c);
+      if (!art) continue;
+      const sc = art.width / (4 * TL), ox = (c.x + 0.5) * TL - 2 * TL, oy = (c.y + 0.5) * TL - 2 * TL;
+      const x0 = Math.max(x * TL, ox), y0 = Math.max(y * TL, oy), x1 = Math.min((x + 1) * TL, ox + 4 * TL), y1 = Math.min((y + 1) * TL, oy + 4 * TL);
+      if (x1 <= x0 || y1 <= y0) continue;
+      g.drawImage(art, (x0 - ox) * sc, (y0 - oy) * sc, (x1 - x0) * sc, (y1 - y0) * sc, x0, y0, x1 - x0, y1 - y0);
+    }
+  },
   craterPaint(g, x, y, pit) {
+    if (S.deck && S.deck.craters) this.cardCraterPaint(g, x, y, pit);
     const F = S.starfall;
     if (!F || F.x < 0) return;
     const dx = x - F.x + 1, dy = y - F.y + 1;
@@ -9353,6 +9402,9 @@ const R = {
   // the crater's own tiles, repainted (impact, claim, art landing late)
   repaintCrater() {
     const F = S && S.starfall;
+    // …and a starfall card's craters (cardCraterPaint): each pit's repaint is its whole crater
+    const L = S && S.deck && S.deck.craters;
+    if (L && L.length && this.terrainCache) for (const c of L) if (MapGen.onBoard(c.x, c.y)) this.drawTileAt(c.x, c.y);
     if (!F || F.x < 0 || !this.terrainCache) return;
     const list = [];
     for (let dy = -1; dy <= 2; dy++) for (let dx = -1; dx <= 2; dx++)
@@ -9413,7 +9465,8 @@ const R = {
      can fall in water (`wet`). */
   starAct(g, dt, sky, act) {
     const C = this.STAR, TL = CFG.TILE, z = this.cam.z * this.dpr, now = act.now;
-    // THE FALL — screen space
+    // THE FALL — screen space (a card's star DROPS: cardStarFall)
+    if (act.phase === 'fall' && act.card) { this.cardStarFall(g, dt, sky, act, 0); sky.mT = 0; sky.hit = false; sky.key = act.key; return; }
     if (act.phase === 'fall') {
       const P = this.starPath(act.cx, act.cy), f = Math.min(1, act.t / act.fallS), q = Math.pow(f, 1.12);
       const hx = P.sx + (P.ex - P.sx) * q, hy = P.sy + (P.ey - P.sy) * q;
@@ -9484,8 +9537,10 @@ const R = {
     if (act.phase === 'down' && !sky.hit && act.t < 0.6) {
       sky.hit = true;
       const P = this.starSiteScreen(act.cx, act.cy);
-      this.flashAt(P.inView ? C.flash : C.flashFar, P.inView ? 0.55 : 0.4);
-      this.shakeAt(P.inView ? C.shake : C.shake * 0.4, C.shakeS);
+      // a card's blow flashes in hard STEPS (cardStarFlash), never the eased wash
+      if (act.card) sky.flashT = 0;
+      else this.flashAt(P.inView ? C.flash : C.flashFar, P.inView ? 0.55 : 0.4);
+      this.shakeAt(P.inView ? (act.card ? this.CARD_STAR.shake : C.shake) : C.shake * 0.4, C.shakeS);
       sky.boomT = 0;
       const cx = act.cx * TL, cy = act.cy * TL;
       for (let n = 0; n < C.debris; n++) {
@@ -9496,12 +9551,15 @@ const R = {
     }
     // the trail left in the sky keeps drifting and fading after the blow
     if (sky.trail.length || sky.shed.length) this._drawSkyTrail(g, dt, z, true, sky);
+    // …a card's long trail burns out after it, top down, in dithered steps
+    if (act.card && sky.burnT != null && sky.burnT < this.CARD_STAR.burnS) { sky.burnT += dt; this.cardStarFall(g, dt, sky, act, Math.min(1, sky.burnT / this.CARD_STAR.burnS)); }
     if (!act.seen) return;
     g.setTransform(z, 0, 0, z, -this.cam.x * z, -this.cam.y * z);
     const cx = act.cx * TL, cy = act.cy * TL;
     if (act.phase === 'down') {
-      // the hot pit breathes (the event's until a hand claims it; a card's cools)
-      if (act.hot > 0) {
+      // the hot pit breathes (the event's until a hand claims it; a card's
+      // glows in its own crater's art instead — no light pooled on the ground)
+      if (act.hot > 0 && !act.card) {
         const br = 0.5 + 0.5 * Math.sin(now / 520), r = TL * (0.55 + 0.08 * br);
         g.save(); g.globalCompositeOperation = 'lighter';
         g.fillStyle = 'rgba(255,110,40,' + ((0.10 + 0.08 * br) * act.hot).toFixed(3) + ')';
@@ -9559,6 +9617,11 @@ const R = {
       if (fr && bt < C.boomS) {
         const D = TL * C.boomTiles;
         g.drawImage(fr, Math.round(cx - D / 2), Math.round(cy - D * 0.6), Math.round(D), Math.round(D));
+      } else if (!fr && bt < 0.7 && act.card) {
+        // (a card's stand-in burst: opaque fire in hard steps, cooling as it spreads)
+        const R0 = TL * (0.5 + bt * 2.4), F = ART.PALETTE.fire;
+        g.fillStyle = bt < 0.25 ? F[1] : F[0]; this.pxDisc(g, cx, cy, R0, 2, 0.7);
+        if (bt < 0.45) { g.fillStyle = bt < 0.2 ? F[3] : F[2]; this.pxDisc(g, cx, cy, R0 * 0.5, 2, 0.7); }
       } else if (!fr && bt < 0.7) {
         const k = 1 - bt / 0.7, R0 = TL * (0.5 + bt * 2.4);
         g.fillStyle = 'rgba(240,120,50,' + (0.6 * k).toFixed(3) + ')'; this.pxDisc(g, cx, cy, R0, 2, 0.7);
@@ -9569,15 +9632,116 @@ const R = {
     this._drawPuffs(g, sky.smoke, dt, TL, (p, k) => { p.y -= TL * 0.55 * dt; p.x += TL * 0.12 * dt * (0.5 + k); });
   },
   /* A STARFALL CARD (js/deckfx.js) comes down through the same act, on its
-     own state (S.deck.strike) and its own sky (R._cardSky). Three things set
-     it apart from the event: its fall is SHORT — it lands as the play
-     animation ends, not after an omen and a slow descent; its dark eases in
-     with the fall and out with the strike's last beat, never held for half a
-     minute; and it leaves NO crater in the ground — no seams, no claim race,
-     the bombard's scorch and whatever it broke are the scar. Its sky outlives
+     own state (S.deck.strike) and its own sky (R._cardSky). What sets it
+     apart from the event: its fall is SHORT — it lands as the play animation
+     ends, not after an omen and a slow descent; it DROPS, steep, from above
+     the top of the screen with a long trail of hard pixels (cardStarFall);
+     its blow flashes in hard steps (cardStarFlash), never the eased wash;
+     its dark eases in with the fall and out with the strike's last beat,
+     never held for half a minute; and its scar is a CRATER of its own
+     (craterPaint's card craters — no seams, no claim race). Its sky outlives
      the state by a few seconds, so the debris settles and the smoke thins on
      its own after the strike has ended. Render state only (the R.collapses
      rule): cleared in onNewGame, never in a save. */
+  /* THE DROP (the playtest: "about 1 tile, almost flat from the right edge —
+     a thrown fireball, not a falling star"; a soft lit disc round it; an 80%
+     beige whiteout). From above the top of the screen, steep (`slope` across
+     for every 1 down, leaning in from the side nearer the middle so the whole
+     fall is on screen), accelerating (`accel`), the meteor's own art at
+     `headK` x the world's density, dragging a LONG trail of hard pixels the
+     whole height it fell: white behind the head, then the fire ramp — pale
+     gold, gold, orange, ember — and last a smoke that DITHERS to nothing,
+     its edges crackling, sparks peeling off it. Nothing soft: no glow disc,
+     no gradient, no alpha. `burn` (0..1) is the beat after the blow: the
+     trail cools and dithers away. Screen space (device px). */
+  CARD_STAR: { slope: 0.36, accel: 1.7, headK: 1.1, burnS: 0.9, top: 0.1, shake: 13,
+               // the blow's flash: until t (s), this colour at this strength — three hard steps
+               flash: [[0.06, '255,255,255', 0.62], [0.14, '226,236,255', 0.36], [0.24, '226,236,255', 0.14]] },
+  cardStarPath(act) {
+    const P = this.starSiteScreen(act.cx, act.cy), W = this.cv.width, H = this.cv.height, C = this.CARD_STAR;
+    let ux = (P.x > W / 2 ? 1 : -1) * C.slope, uy = 1;
+    const L0 = Math.hypot(ux, uy); ux /= L0; uy /= L0;
+    const L = Math.max(H * 0.5, (P.y + H * C.top) / uy);
+    return { sx: P.x - ux * L, sy: P.y - uy * L, ex: P.x, ey: P.y, ux, uy, L };
+  },
+  cardStarFall(g, dt, sky, act, burn) {
+    const C = this.CARD_STAR, z = this.cam.z * this.dpr, F = ART.PALETTE.fire, now = act.now;
+    const P = this.cardStarPath(act);
+    const f = burn ? 1 : Math.min(1, act.t / act.fallS), q = Math.pow(f, C.accel);
+    const hx = P.sx + (P.ex - P.sx) * q, hy = P.sy + (P.ey - P.sy) * q, Lt = q * P.L;
+    const st = Math.max(2, Math.round(z * 0.75)), s = Math.max(2, Math.round(z * C.headK));
+    const fr = burn ? null : this.fxFrame('meteor', now / 1000 * 1.25), D = (fr ? fr.width : 128) * s;
+    const wH = Math.max(st * 3, Math.round(D * 0.15 / st) * st), tick = (now / 70) | 0;
+    const hsh = (a, b) => { let h = Math.imul((a | 0) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b | 0, 0xc2b2ae35); h ^= h >>> 13; return (Math.imul(h, 0x27d4eb2f) >>> 0) / 4294967296; };
+    const cs = v => Math.round(v / st) * st;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+    // THE TRAIL, head first: a column of hard cells the whole way it fell
+    const n = Math.max(1, Math.floor(Lt / st));
+    for (let i = 0; i <= n; i++) {
+      const d = i * st, k = Math.min(1, d / Math.max(1, Lt)), kc = burn ? Math.min(1, k * (1 - burn) + burn * 0.75) : k;
+      if (burn && hsh(i, 7) < burn * (0.6 + k)) continue;          // cooling: the cells go out, top first
+      const X = hx - P.ux * d, Y = hy - P.uy * d;
+      if (Y < -st * 4) break;
+      const w = Math.max(st, cs((wH * Math.pow(1 - k, 0.55) + st)));
+      let col;
+      if (kc < 0.05) col = '#ffffff';
+      else if (kc < 0.16) col = F[3];
+      else if (kc < 0.32) col = F[2];
+      else if (kc < 0.5) col = F[1];
+      else if (kc < 0.68) col = F[0];
+      else {
+        // the smoke it leaves: dithered to nothing up the sky
+        if (hsh(i, 3) < (kc - 0.68) / 0.32 * 1.15) continue;
+        col = (i & 1) ? '#3a302d' : '#2a2320';
+      }
+      g.fillStyle = col;
+      const x0 = cs(X - w / 2), y0 = cs(Y);
+      // the ragged edge crackles: an edge cell is out now and then
+      const cut = kc < 0.68 && w > st * 2;
+      const l = cut && hsh(i * 3 + tick, 1) < 0.35 ? st : 0, r = cut && hsh(i * 3 + tick, 2) < 0.35 ? st : 0;
+      g.fillRect(x0 + l, y0, w - l - r, st);
+      // a white-hot core down the first stretch
+      if (kc < 0.36 && w >= st * 3) {
+        g.fillStyle = kc < 0.16 ? '#ffffff' : F[3];
+        const cw = Math.max(st, cs(w * 0.4));
+        g.fillRect(cs(X - cw / 2), y0, cw, st);
+      }
+      // sparks peeling off it
+      if (!burn && kc < 0.6 && hsh(i, 11) < 0.07 && (tick + i) % 3) {
+        const side = hsh(i, 13) < 0.5 ? -1 : 1, off = w / 2 + st * (1 + ((hsh(i, 17) * 5) | 0)) + k * st * 6;
+        g.fillStyle = hsh(i, 19) < 0.5 ? '#ffffff' : F[3];
+        g.fillRect(cs(X + side * off), cs(Y + k * st * 4), st, st);
+      }
+    }
+    // THE HEAD: the meteor's own art, turned to its heading (the strip falls toward the lower left)
+    if (!burn) {
+      const Cs = this.STAR;
+      if (fr) {
+        const rot = Math.atan2(P.uy, P.ux) - Math.atan2(1, -1);
+        g.translate(Math.round(hx), Math.round(hy)); g.rotate(rot);
+        g.drawImage(fr, -Cs.head[0] * D, -Cs.head[1] * D, D, D);
+        g.setTransform(1, 0, 0, 1, 0, 0);
+      } else {
+        const r = Math.max(st * 2, cs(wH * 0.8));
+        g.fillStyle = F[1]; this.pxDisc(g, hx, hy, r, st);
+        g.fillStyle = F[3]; this.pxDisc(g, hx, hy, r * 0.62, st);
+        g.fillStyle = '#ffffff'; this.pxDisc(g, hx, hy, r * 0.32, st);
+      }
+    }
+    g.imageSmoothingEnabled = sm;
+    if (!burn) sky.burnT = 0;   // the fall was seen: after the blow its trail burns out
+  },
+  // the blow's flash: full screen, in the CARD_STAR.flash steps — never eased, never beige
+  cardStarFlash(g, dt, sky) {
+    if (sky.flashT == null) return;
+    sky.flashT += dt;
+    const step = this.CARD_STAR.flash.find(s => sky.flashT < s[0]);
+    if (!step) { sky.flashT = null; return; }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = 'rgba(' + step[1] + ',' + step[2] + ')';
+    g.fillRect(0, 0, this.cv.width, this.cv.height);
+  },
   _cardSky: null,
   cardStarDim(st) {
     const C = this.STAR, D = window.Deck && Deck.FX.starfall;
@@ -9598,11 +9762,13 @@ const R = {
     this.starAct(g, dt, sky, {
       cx: sky.cx, cy: sky.cy, now: performance.now(), key: 'card:' + sky.sid,
       phase: live ? st.phase : null, t: live ? st.t : 0, fallS: D ? D.FALL_S : 1,
-      after: true, seen: true, wet: true,
+      after: true, seen: true, wet: true, card: true,
       hot: live && st.phase === 'down' ? Math.max(0, 1 - st.t / D.DOWN_S) : 0,
       smoke: D ? D.SMOKE : 1,
     });
-    if (!live && !sky.trail.length && !sky.shed.length && !sky.debris.length && !sky.smoke.length &&
+    this.cardStarFlash(g, dt, sky);
+    if (!live && !sky.trail.length && !sky.shed.length && !sky.debris.length && !sky.smoke.length && sky.flashT == null &&
+        !(sky.burnT != null && sky.burnT < this.CARD_STAR.burnS) &&
         !(sky.boomT != null && sky.boomT < C.boomS + 0.9)) this._cardSky = null;
   },
   // the sky's trail (screen space): smoke puffs, burning debris, sparks
