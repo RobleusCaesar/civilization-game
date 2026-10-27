@@ -320,6 +320,32 @@ const open = async (opts) => {
   await ctx.close();
 }
 
+/* …and ticking the lesson on HERE never arms it on a world it cannot teach:
+   a pending draft on an archipelago is founded again when it shows (the
+   draft toggle's own MAP-V01 rule, reached from Settings) */
+{
+  const { ctx, p } = await open({ q: '?cards=1', tag: 'lesson' });
+  const r = await p.evaluate(async () => {
+    const frames = (n) => new Promise(res => { const f = () => (n-- <= 0 ? res() : requestAnimationFrame(f)); f(); });
+    Screens.lsSet('neo-tutorial-ask', '0');
+    Screens.newPrefs.mode = 'moderate';
+    let tries = 0;
+    do { Screens.foundRun(); tries++; } while (Screens.teachableWorld() && tries < 12);
+    const before = { teachable: Screens.teachableWorld(), seed: S.seed, pending: !!(S.draft && !S.draft.done) };
+    Screens.show('title');
+    Screens.backTo = 'title'; Screens.show('settings'); SettingsPage.open('general');
+    document.querySelector('#scrSetx [data-act="tut"]').click();
+    const wanted = Screens.tutorialWanted();
+    document.querySelector('#scrSetx .sxBack').click();
+    Screens.show('newgame'); Screens.startNewGame();          // the same trial: the pending draft resumes…
+    for (let i = 0; i < 40 && Screens.teachableWorld() === false; i++) await frames(2);
+    return { before, wanted, after: { teachable: Screens.teachableWorld(), seed: S.seed, cur: Screens.current } };
+  });
+  ck('aLessonTickedHereIsNeverArmedOnAnUnteachableWorld', !r.before.teachable && r.before.pending && r.wanted && r.after.teachable && r.after.seed !== r.before.seed && r.after.cur === 'draft',
+    JSON.stringify(r));
+  await ctx.close();
+}
+
 /* ---- 4, 5. the form, the outbox, the ring ---- */
 {
   const { ctx, p, reqs } = await open({ q: '?cards=1', mock: true, tag: 'form', expectErrors: true });
