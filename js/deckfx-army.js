@@ -202,29 +202,85 @@ Object.assign(Deck, {
       }
     }
   },
-  // the host's ghost: the champion's own frame at a low hard-stepped alpha
-  // with its pale-blue silhouette ADDED over it, shimmering slowly; while its
-  // beat in the rising has not come it is still under the ground, and as it
-  // comes it climbs up out of it, the feet line cutting it off below
-  GHOST: '#bfe2ff',
+  /* THE HOST'S GHOST IS COLD FIRST. The first cut drew the champion's own
+     frame at a low alpha with a pale tint ADDED over it, which read as a
+     faded colour soldier — a red tunic under a blue wash — and put the
+     Enlightenment card's people below the Imperial ones in the eye. A ghost
+     is now its OWN picture, composed once per frame (cached, like R.tintOf):
+     a one-world-pixel rim of pale cyan round the outline, the body in the
+     cold of the dead with the frame's own light and shade carried into it
+     (the 'luminosity' blend: the sprite's values, the ghost's hue — so the
+     helm, the shield and the stride all still read), lifted toward the pale.
+     Drawn at a hard-stepped alpha that shimmers slowly, with its light
+     ADDED; while its beat in the rising has not come it is still under the
+     ground, and as it comes it climbs up out of it, the feet line cutting it
+     off below. A frame whose blend the browser does not know keeps a faint
+     trace of the sprite's detail instead — never its colours. */
+  GHOST: '#bfe2ff', GHOST_RIM: '#7fe8ff', GHOST_BODY: '#7fa8d8',
+  _ghostC: new WeakMap(),
+  ghostOf(img, D) {
+    const r = Math.max(1, Math.round(img.width / Math.max(1, D)));   // one world pixel, in the frame's own pixels
+    let e = this._ghostC.get(img);
+    if (!e) { e = {}; this._ghostC.set(img, e); }
+    if (e[r]) return e[r];
+    const c = document.createElement('canvas'); c.width = img.width + 2 * r; c.height = img.height + 2 * r;
+    const q = c.getContext('2d');
+    q.imageSmoothingEnabled = false;
+    const rim = R.tintOf(img, this.GHOST_RIM);
+    for (const [dx, dy] of [[-r, 0], [r, 0], [0, -r], [0, r]]) q.drawImage(rim, r + dx, r + dy);
+    q.drawImage(R.tintOf(img, this.GHOST_BODY), r, r);
+    q.globalCompositeOperation = 'luminosity';
+    if (q.globalCompositeOperation === 'luminosity') q.drawImage(img, r, r);
+    else { q.globalCompositeOperation = 'source-atop'; q.globalAlpha = 0.2; q.drawImage(img, r, r); q.globalAlpha = 1; }
+    q.globalCompositeOperation = 'screen'; q.globalAlpha = 0.5;
+    q.drawImage(R.tintOf(img, this.GHOST), r, r);
+    q.globalAlpha = 1; q.globalCompositeOperation = 'source-over';
+    c._r = r;
+    return (e[r] = c);
+  },
   drawGhost(g, u, img, x, y, D) {
     const q = this.riseOf(u);
     if (q <= 0) return;
     const now = performance.now() / 1000, ph = now * 1.6 + u.id * 0.77;
     const left = this.hostLeft();
     const flick = left < 0.6 && ((now * 7 + u.id) % 1) < 0.18;   // the last of its days: it gutters
-    const step = flick ? 0 : Math.min(2, (((Math.sin(ph) + 1) / 2) * 3) | 0);
-    const a = [0.22, 0.32, 0.42][step];
-    const off = q < 1 ? Math.round((1 - q) * D * 0.85 / 2) * 2 : 0;
-    const bob = q >= 1 ? Math.round(Math.sin(ph * 0.5)) : 0;
+    const step = flick ? 0 : 1 + Math.min(2, (((Math.sin(ph) + 1) / 2) * 3) | 0);
+    const a = [1 / 3, 2 / 3, 3 / 4, 5 / 6][step];
+    const lift = this.ghostLift(u, D, q, ph);
+    const comp = this.ghostOf(img, D), rw = comp._r * D / img.width;
     g.save();
     try {
       if (q < 1) { g.beginPath(); g.rect(x - D, y - D, D * 3, D * 2); g.clip(); }
       g.globalAlpha = a;
-      g.drawImage(img, x, y + off + bob, D, D);
+      g.drawImage(comp, x - rw, y + lift - rw, D + 2 * rw, D + 2 * rw);
+      // its own light: a spirit glows a little, more as the shimmer swells
       g.globalCompositeOperation = 'lighter';
-      g.globalAlpha = flick ? 0.18 : 0.38 + step * 0.06;
-      g.drawImage(R.tintOf(img, this.GHOST), x, y + off + bob, D, D);
+      g.globalAlpha = flick ? 1 / 6 : step / 12;
+      g.drawImage(R.tintOf(img, this.GHOST), x, y + lift, D, D);
+    } finally { g.restore(); }
+  },
+  // how far below its standing place a ghost is drawn: still climbing out
+  // of the ground, or (risen) bobbing a pixel on its slow breath
+  ghostLift(u, D, q, ph) {
+    if (q < 1) return Math.round((1 - q) * D * 0.85 / 2) * 2;
+    return Math.round(Math.sin((ph != null ? ph : performance.now() / 1000 * 1.6 + u.id * 0.77) * 0.5));
+  },
+  /* THE GHOST'S OWN LIGHT, laid over the host's darkened sky: the sky layer
+     is drawn after the world, so its dark would dim the very ghosts it is
+     there to set off — the show adds their cold picture back over it, light
+     added, on exactly the frame the unit pass drew (the climb cut at the
+     feet line included). */
+  ghostGlow(g, u, a) {
+    const q = this.riseOf(u);
+    if (q <= 0 || a <= 0.02) return;
+    const TL = CFG.TILE, img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
+    const x = u.x * TL - D / 2, y = R.frameTop(u.y, B, D), lift = this.ghostLift(u, D, q);
+    const comp = this.ghostOf(img, D), rw = comp._r * D / img.width;
+    g.save();
+    try {
+      if (q < 1) { g.beginPath(); g.rect(x - D, y - D, D * 3, D * 2); g.clip(); }
+      g.globalCompositeOperation = 'lighter'; g.globalAlpha = a;
+      g.drawImage(comp, x - rw, y + lift - rw, D + 2 * rw, D + 2 * rw);
     } finally { g.restore(); }
   },
   // how far a ghost has climbed out of the ground (1: risen, or never rising)
@@ -277,6 +333,25 @@ Deck.armyFx = {
     g.fillStyle = this.rgba('255,252,240', 0.85 * a);
     g.fillRect(this.snap(cx - 1), this.snap(foot - h), 2, this.snap(h));
   },
+  /* a beam rising OUT of the ground: brightest at the foot, stepping down
+     as it climbs (three hard bands), a white thread up its middle — light
+     coming up from below, where the shaft above is light standing on the
+     ground, and narrow enough that what stands behind it still reads */
+  beam(g, cx, foot, h, w, col, a) {
+    if (a <= 0.02 || h < 2) return;
+    const H = this.snap(h);
+    for (const [y0, y1, k] of [[0, 0.4, 1], [0.4, 0.72, 0.62], [0.72, 1, 0.3]]) {
+      const top = this.snap(foot - H * y1), bot = this.snap(foot - H * y0);
+      if (bot <= top) continue;
+      for (const [wf, al] of [[1, 0.2], [0.5, 0.36]]) {
+        const ww = Math.max(2, this.snap(w * wf));
+        g.fillStyle = this.rgba(col, al * a * k);
+        g.fillRect(this.snap(cx - ww / 2), top, ww, bot - top);
+      }
+      g.fillStyle = this.rgba('255,255,255', 0.8 * a * k);
+      g.fillRect(this.snap(cx - 1), top, 2, bot - top);
+    }
+  },
   pool(g, cx, cy, r, col, a) {
     if (a <= 0.02) return;
     g.fillStyle = this.rgba(col, a);
@@ -305,6 +380,16 @@ Deck.armyFx = {
   scr(wx, wy) {
     const z = R.cam.z * R.dpr, TL = CFG.TILE;
     return { x: (wx * TL - R.cam.x) * z, y: (wy * TL - R.cam.y) * z, z };
+  },
+  /* NOTHING IS DRAWN IN THE BLACK, the sky layer included: the board's own
+     rectangle on the screen (R.boardPx through the camera), the clip a sky
+     effect lays its light inside — the eclipse's stars ask R.onBoardPx for
+     the same reason. The letterbox is the one thing drawn outside it: it is
+     a frame on the glass, not light in the world. */
+  skyClip(g) {
+    const b = R.boardPx(), z = R.cam.z * R.dpr;
+    const x0 = Math.round((b.x0 - R.cam.x) * z), y0 = Math.round((b.y0 - R.cam.y) * z);
+    g.beginPath(); g.rect(x0, y0, Math.round((b.x1 - R.cam.x) * z) - x0, Math.round((b.y1 - R.cam.y) * z) - y0); g.clip();
   },
   // the screen's grain in the sky layer: one world pixel pair at this zoom
   grain() { return Math.max(2, Math.round(2 * R.cam.z * R.dpr)); },
@@ -847,8 +932,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             // down on the hall, then the march lets it go
             const hold = p < 0.08 ? p / 0.08 : p < 0.55 ? 1 : Math.max(0, 1 - (p - 0.55) / 0.3);
             const h = A.scr(s.x, s.y);
+            g.save(); A.skyClip(g);
             A.rays(g, h.x, h.y, 11, s.t * 0.6, '255,222,140', 0.7 * hold);
             A.dust(g, h.x, h.y, s.t, 30, '255,240,190', 0.9 * hold);
+            g.restore();
             A.edges(g, hold);   // last: the bars are clean black over the light
             return;
           }
@@ -886,8 +973,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           if (layer === 'sky') {
             const hold = p < 0.1 ? p / 0.1 : p < 0.5 ? 1 : Math.max(0, 1 - (p - 0.5) / 0.3);
             const h = A.scr(s.x, s.y);
+            g.save(); A.skyClip(g);
             A.rays(g, h.x, h.y, 9, s.t * 0.5, '255,214,150', 0.65 * hold);
             A.dust(g, h.x, h.y, s.t, 24, '255,232,190', 0.85 * hold);
+            g.restore();
             A.edges(g, hold);
             return;
           }
@@ -923,7 +1012,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         const e = Deck.addTimed('ancestors_host', days);
         sound('cardHost');
         if (window.R) {
-          if (R.shakeAt) R.shakeAt(6, 0.9);
+          // the first beat is the hardest blow any army card strikes: the
+          // ground itself giving the host up
+          if (R.shakeAt) R.shakeAt(10, 1.2);
           if (R.flashAt) R.flashAt(0.32, 0.7, '210,232,255');
           if (R.startle) R.startle(r.x, r.y, 18);
         }
@@ -960,43 +1051,43 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         G.log('👻 The Ancestors’ Host fades — your ancestors go back to the earth.', false, 6000);
         return below;
       },
+      /* THE HOST RISES. The sky goes dark and cold and the northern light
+         comes out over the hall; the ground shakes once, hard; pale lights
+         fall out of the dark and spiral in to the doorstep, where a narrow
+         beam stands up out of the ground. Then, one after another, each
+         ghost's own ground CRACKS — a jagged seam of light with the glow
+         leaking up through it, a ring of motes drawn in to it — and breaks
+         open in a hard white burst as the ghost comes up through it, a thin
+         thread of light climbing with it and a ring going out when it
+         stands. The first cut's column was a flat pale slab 2.2 tiles wide
+         over the hall, and its rising ghost a white rectangle. */
       show: {
         ms: 6400, layers: ['world', 'sky'],
         draw(g, s, p, dt, layer) {
           if (s.mode === 'fade') return drawFade(g, s, p, layer);
-          const TL = CFG.TILE;
-          if (layer === 'sky') {
-            // the sky goes dark and cold, the northern light comes out over
-            // it, and holds while the host rises; then the day comes back
-            const dk = p < 0.06 ? p / 0.06 : p < 0.78 ? 1 : Math.max(0, 1 - (p - 0.78) / 0.22);
-            A.dim(g, [0, 0.2, 0.34, 0.46][Math.min(3, Math.ceil(dk * 3))], '6,10,28');
-            const h = A.scr(s.mx, s.my);
-            A.rays(g, h.x, h.y, 5, s.t * 0.3, '190,220,255', 0.7 * dk, 0.12);
-            A.spirits(g, h.x, h.y - 10 * h.z, s.t, 26, '215,235,255', dk * (p < 0.7 ? 1 : 0.5));
-            A.edges(g, dk, '4,6,20', '190,220,255');
+          if (layer !== 'sky') {
+            // the first beat is the apply's own blow (R.shakeAt in apply);
+            // then the ground answers as the host comes up through it
+            A.beats(s, p, [0.03, 0.2, 0.4, 0.6], [0, 2, 2.5, 3], 0.3, ['cardDrum']);
             return;
           }
-          A.beats(s, p, [0.03, 0.2, 0.4, 0.6], 2, 0.3, ['cardDrum']);
-          const fx = s.mx * TL, fy = s.my * TL + 6;
-          const k = p < 0.05 ? p / 0.05 : p < 0.8 ? 1 : Math.max(0, 1 - (p - 0.8) / 0.2);
-          g.save(); g.globalCompositeOperation = 'lighter';
-          // the column of pale light the host comes up through
-          A.pool(g, fx, fy, TL * 1.6, '170,210,255', 0.3 * k);
-          A.shaft(g, fx, fy, TL * 6 * Math.min(1, p * 10), TL * 2.2, '180,215,255', 0.75 * k);
-          for (let r = 0; r < 3; r++) {
-            const q = ((s.t * 0.55 + r / 3) % 1);
-            A.ring(g, fx, fy, TL * (0.8 + q * 3.6), 30, '200,228,255', 0.7 * (1 - q) * k);
-          }
-          A.motes(g, fx, fy, 12, s.t, 7, '220,238,255', k, TL * 0.7, TL * 4);
-          // each ghost: a thread of light at its spot as it climbs, a ring as it stands
-          for (const m of s.units) {
-            const q = (s.t - m.d) / Deck.RISE_S;
-            if (q <= -0.15 || q >= 1.8) continue;
-            const u = live(m.id), x = (u ? u.x : m.x) * TL, y = (u ? u.y : m.y) * TL + TL * 0.3;
-            if (q < 1) A.shaft(g, x, y, TL * 1.8 * Math.max(0.1, q + 0.15), TL * 0.55, '200,228,255', 0.8);
-            else A.ring(g, x, y, TL * (0.3 + (q - 1) * 1.2), 14, '200,228,255', 0.8 * (1.8 - q) / 0.8);
-          }
+          const dk = p < 0.06 ? p / 0.06 : p < 0.78 ? 1 : Math.max(0, 1 - (p - 0.78) / 0.22);
+          const h = A.scr(s.mx, s.my);
+          g.save(); A.skyClip(g);
+          A.dim(g, [0, 0.25, 0.42, 0.58][Math.min(3, Math.ceil(dk * 3))], '6,10,28');   // the day goes out
+          /* THE LIGHT IS LAID OVER THE DARK: the sky layer comes after the
+             world, so the beam, the cracks, the bursts and the ghosts' own
+             glow are drawn here, in the world's own coordinates (the camera,
+             shake and all), on top of the dimmed day — drawn in the world
+             layer, the dark put out every light it was there to set off */
+          const z = R.cam.z * R.dpr;
+          g.setTransform(z, 0, 0, z, -R.cam.x * z, -R.cam.y * z);
+          hostLight(g, s, p, dk);
+          g.setTransform(1, 0, 0, 1, 0, 0);
+          A.rays(g, h.x, h.y, 5, s.t * 0.3, '170,235,255', 0.75 * dk, 0.1);
+          A.spirits(g, h.x, h.y - 10 * h.z, s.t, 26, '215,240,255', dk * (p < 0.7 ? 1 : 0.5));
           g.restore();
+          A.edges(g, dk, '4,6,20', '160,225,255');
         },
       },
       /* WHILE THE HOST WALKS: pale motes rising off every ghost and a ring of
@@ -1036,6 +1127,89 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
     g.restore();
   }
 
+  /* the host's light, in world space over the darkened sky (see the show) */
+  function hostLight(g, s, p, dk) {
+    const TL = CFG.TILE, fx = s.mx * TL, fy = s.my * TL + 6, v = R.viewTiles();
+    const k = p < 0.05 ? p / 0.05 : p < 0.8 ? 1 : Math.max(0, 1 - (p - 0.8) / 0.2);
+    // every ghost standing in sight shines through the dark it rose into
+    let n = 0;
+    for (const m of s.units) {
+      const u = live(m.id);
+      if (!u || n > 30 || !A.near(v, u.x, u.y, 2) || !G.visibleAt(u.x | 0, u.y | 0)) continue;
+      n++;
+      Deck.ghostGlow(g, u, (1 / 3) * dk);
+    }
+    g.save(); g.globalCompositeOperation = 'lighter';
+    // the beam the host comes up through: under a tile wide, rising out of
+    // the ground and thinning as it climbs, so the hall still reads behind it
+    A.beam(g, fx, fy, TL * 4.2 * Math.min(1, p * 10), TL * 0.9, '170,225,255', 0.85 * k);
+    A.ring(g, fx, fy, TL * 0.62, 16, '210,240,255', 0.85 * k);
+    for (let r = 0; r < 3; r++) {
+      const q = ((s.t * 0.55 + r / 3) % 1);
+      A.ring(g, fx, fy, TL * (0.8 + q * 3.6), 30, '190,232,255', 0.7 * (1 - q) * k);
+    }
+    A.motes(g, fx, fy, 10, s.t, 7, '220,242,255', k, TL * 0.35, TL * 3.6);
+    for (const m of s.units) {
+      const q = (s.t - m.d) / Deck.RISE_S;
+      if (q <= -0.75 || q >= 1.8) continue;
+      const u = live(m.id), x = (u ? u.x : m.x) * TL, y = (u ? u.y : m.y) * TL + TL * 0.3;
+      if (q < 0) groundCrack(g, x, y, (q + 0.75) / 0.75, m.id);
+      else if (q < 1) {
+        if (q < 0.1) burst(g, x, y);
+        A.beam(g, x, y, TL * 1.7 * Math.min(1, q * 3 + 0.25), TL * 0.34, '200,238,255', 0.9 * (1 - q * 0.5));
+      } else A.ring(g, x, y, TL * (0.3 + (q - 1) * 1.2), 14, '200,236,255', 0.85 * (1.8 - q) / 0.8);
+    }
+    g.restore();
+  }
+
+  /* A GHOST'S GROUND CRACKS before it rises (c: 0 → 1 as its beat comes):
+     a jagged seam of light across its tile, hashed off its id so every
+     crack is its own, the glow leaking up through it in short hard bars,
+     and a ring of motes drawing IN to it — the eye is called to the spot a
+     moment before the ghost comes up there. Light, added. */
+  function groundCrack(g, x, y, c, id) {
+    const TL = CFG.TILE, n = 7, len = TL * (0.25 + c * 0.6);
+    let h = (Math.imul(id + 13, 0x9e3779b1) >>> 0);
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const jy = ((h >>> (i * 3)) & 3) - 1.5;
+      pts.push([x + (i / (n - 1) - 0.5) * len, y + jy * 1.4]);
+    }
+    const a = c < 0.34 ? 0.5 : c < 0.67 ? 0.67 : 1;
+    g.fillStyle = A.rgba('235,250,255', a);
+    for (let i = 0; i < n - 1; i++) {
+      // the seam is CONTINUOUS: a 2px step every 2px between two points
+      const [x1, y1] = pts[i], [x2, y2] = pts[i + 1], st = Math.max(1, Math.ceil(Math.abs(x2 - x1) / 2));
+      for (let j = 0; j <= st; j++) g.fillRect(A.snap(x1 + (x2 - x1) * j / st), A.snap(y1 + (y2 - y1) * j / st), 2, 2);
+    }
+    // the glow spilling up out of it: a low band over the seam, and a few
+    // short sparks of it standing proud — never tall, or the crack reads as
+    // a fence
+    g.fillStyle = A.rgba('170,230,255', a * 0.34);
+    g.fillRect(A.snap(pts[0][0]), A.snap(y - 4), A.snap(len), 4);
+    g.fillStyle = A.rgba('200,240,255', a * 0.67);
+    for (let i = 1; i < n - 1; i++) {
+      if (((h >>> (i * 2 + 1)) & 3) === 0) continue;
+      const bh = A.snap(2 + c * 2 + ((h >>> (i * 2)) & 1) * 2);
+      g.fillRect(A.snap(pts[i][0]), A.snap(pts[i][1] - bh), 2, bh);
+    }
+    A.ring(g, x, y, TL * (0.75 - 0.5 * c), 10, '200,238,255', 0.67 * c, 0.45);
+  }
+  /* …and BREAKS OPEN: one hard white burst as the ghost comes up through
+     its ground — a solid white disc, a four-point star and a spray of
+     sparks flung clear — over a frame or two; nothing soft about it */
+  function burst(g, x, y) {
+    const TL = CFG.TILE;
+    g.fillStyle = 'rgb(255,255,255)';
+    R.pxDisc(g, x, y - TL * 0.25, TL * 0.42, 2, 0.75);
+    A.glint(g, x, y - TL * 0.4, 5, '255,255,255', 1);
+    g.fillStyle = A.rgba('200,240,255', 1);
+    for (let k = 0; k < 10; k++) {
+      const th = k / 10 * 6.283;
+      g.fillRect(A.snap(x + Math.cos(th) * TL * 0.75), A.snap(y - TL * 0.25 + Math.sin(th) * TL * 0.45), 2, 2);
+    }
+  }
+
   /* THE MARCH STAMPS: on each drum of the march a ring of dust goes out
      along the ground round the marching column (its live middle — the
      column moves), the dust the feet throw up in step */
@@ -1057,7 +1231,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
      wisp — its frame drawn taller and thinner as it climbs, in hard alpha
      steps, shedding motes — under a brief cold light */
   function drawFade(g, s, p, layer) {
-    if (layer === 'sky') { A.dim(g, p < 0.15 ? 0.12 : p < 0.7 ? 0.18 : 0.18 * (1 - (p - 0.7) / 0.3), '10,16,34'); return; }
+    if (layer === 'sky') { g.save(); A.skyClip(g); A.dim(g, p < 0.15 ? 0.12 : p < 0.7 ? 0.18 : 0.18 * (1 - (p - 0.7) / 0.3), '10,16,34'); g.restore(); return; }
     const TL = CFG.TILE;
     g.save();
     for (const w of s.ghosts) {
@@ -1069,7 +1243,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       const dw = w.D * squeeze, dh = w.D * stretch;
       g.globalCompositeOperation = 'source-over';
       g.globalAlpha = a;
-      g.drawImage(w.img, cx - dw / 2, foot - dh - lift, dw, dh);
+      // the ghost's own cold picture (Deck.ghostOf), its rim scaled with it
+      const comp = Deck.ghostOf(w.img, w.D), rx = comp._r * dw / w.img.width, ry = comp._r * dh / w.img.height;
+      g.drawImage(comp, cx - dw / 2 - rx, foot - dh - lift - ry, dw + 2 * rx, dh + 2 * ry);
       g.globalCompositeOperation = 'lighter';
       g.globalAlpha = a * 1.2;
       g.drawImage(R.tintOf(w.img, Deck.GHOST), cx - dw / 2, foot - dh - lift, dw, dh);
