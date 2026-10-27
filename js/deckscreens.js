@@ -517,8 +517,11 @@ const DeckScreens = {
     if (this._flying) return;
     if (act === 'deck') {
       this._skip();
-      const v = this._view, last = v && (v.cards[Math.max(0, v.shown - 1)] || v.cards[0]);
-      return this.openCollection('endgame', last ? last.tier : null);
+      // the cards this run granted are the ones the player is looking for:
+      // the collection opens on their tier, brought into view and marked NEW
+      const v = this._view, ids = v ? v.cards.map(c => c.id) : [];
+      const best = ids.map(id => Deck.card(id)).filter(Boolean).sort((a, b) => Deck.tier(b.tier).rank - Deck.tier(a.tier).rank)[0];
+      return this.openCollection('endgame', best ? best.tier : null, ids);
     }
     if (act === 'board') { this._skip(); Screens.backTo = 'endgame'; Screens.show('leaders'); return; }
     // REPLAY and MENU leave through Screens' own door, which posts the
@@ -879,11 +882,23 @@ const DeckScreens = {
   _colFrom: 'title',
   _colTier: null,
   _zoomed: false,
-  openCollection(from, tier) {
+  /* THE NEW CARDS ARE FOUND FOR YOU (playtest earn, b-win-05): opened from
+     the reward screen the collection used to land on the right tier but
+     scrolled to its top in catalog order, the new card half off the screen
+     behind a row of "?"s and nothing to say which one was new. `fresh` is the
+     run's granted cards: each wears a NEW tag, its tier's tab a gold mark,
+     and the first of them in the tier shown is brought into the middle of
+     the view when the collection opens. Opened from the title, nothing is new. */
+  _new: null,
+  _scrollNew: false,
+  openCollection(from, tier, fresh) {
     if (!window.Deck || !Deck.on()) return;
     this._css();
     this._listen();
     this._colFrom = from === 'endgame' ? 'endgame' : 'title';
+    if (Array.isArray(fresh)) this._new = new Set(fresh.filter(id => Deck.card(id)));
+    else if (this._colFrom !== 'endgame') this._new = null;
+    this._scrollNew = !!(this._new && this._new.size);
     this._colScreen();
     if (tier && Deck.TIERS.some(t => t.k === tier)) this._colTier = tier;
     else if (!this._colTier) this._colTier = this._latestTier();
@@ -972,8 +987,9 @@ const DeckScreens = {
     }
     scr.querySelector('.clTabs').innerHTML = Deck.TIERS.map(t => {
       const all = Deck.ofTier(t.k), held = all.reduce((n, c) => n + Deck.count(c.id), 0), seen = all.filter(c => Deck.seen(c.id)).length;
-      return `<button class="clTab${t.k === sel ? ' sel' : ''}" type="button" role="tab" data-tier="${t.k}" aria-selected="${t.k === sel}" ` +
-        `aria-label="${this.esc(t.name)}: ${held} held, ${seen} of ${all.length} discovered" style="--tc:${t.col};--tg:${t.glow}">` +
+      const fresh = this._new && all.some(c => this._new.has(c.id));
+      return `<button class="clTab${t.k === sel ? ' sel' : ''}${fresh ? ' clFresh' : ''}" type="button" role="tab" data-tier="${t.k}" aria-selected="${t.k === sel}" ` +
+        `aria-label="${this.esc(t.name)}: ${held} held, ${seen} of ${all.length} discovered${fresh ? ', new cards' : ''}" style="--tc:${t.col};--tg:${t.glow}">` +
         `<i class="clGem${seen ? '' : ' dim'}"></i><span class="clTabNm">${this.esc(t.name)}</span><span class="clTabAb" aria-hidden="true">${['I', 'II', 'III', 'IV', 'V'][t.rank]}</span><b class="clTabN">${held}</b></button>`;
     }).join('');
     const t = Deck.tier(sel), cards = Deck.ofTier(sel);
@@ -996,8 +1012,15 @@ const DeckScreens = {
       if (Deck.seen(c.id)) {
         cell.dataset.card = c.id;
         cell.setAttribute('role', 'button');
-        cell.setAttribute('aria-label', c.name + (n ? ', ' + n + ' held' : ', none held'));
+        cell.setAttribute('aria-label', c.name + (n ? ', ' + n + ' held' : ', none held') + (this._new && this._new.has(c.id) ? ', new' : ''));
         cell.appendChild(Deck.face(c.id, { w: gs.w, n, off: !n }));
+        if (this._new && this._new.has(c.id)) {
+          cell.classList.add('clNew');
+          const tag = document.createElement('b');
+          tag.className = 'clNewTag';
+          tag.textContent = 'New';
+          cell.appendChild(tag);
+        }
       } else {
         cell.dataset.unknown = c.tier;   // the tier only: nothing in the page names the card
         cell.setAttribute('role', 'button');
@@ -1005,6 +1028,17 @@ const DeckScreens = {
         cell.appendChild(this._silhouette(c.id, gs.w));
       }
       grid.appendChild(cell);
+    }
+    // the first new card of this tier, brought to the middle of the view —
+    // once, as the collection opens (a repaint of the counts never moves it)
+    const first = this._scrollNew && grid.querySelector('.clCell.clNew');
+    if (first) {
+      this._scrollNew = false;
+      const body = scr.querySelector('.clBody'), br = body.getBoundingClientRect(), cr = first.getBoundingClientRect();
+      body.scrollTop = Math.max(0, body.scrollTop + cr.top - br.top - Math.max(0, (br.height - cr.height) / 2));
+    } else if (this._scrollNew) {
+      this._scrollNew = false;
+      scr.querySelector('.clBody').scrollTop = 0;
     }
   },
   /* AN UNDISCOVERED CARD GIVES NOTHING AWAY. Deck.face(unknown) blanks the
@@ -1408,6 +1442,14 @@ DeckScreens.CSS = `
 #scrCards .clBar > i { display: block; height: 100%; background: var(--tc); transform-origin: 0 50%; }
 #scrCards .clGrid { display: grid; grid-template-columns: repeat(var(--cols), var(--cell)); gap: 14px var(--gap); justify-content: center; }
 #scrCards .clCell { cursor: pointer; position: relative; }
+/* NEW: the run's own cards wear a gold tag over their top edge, and their
+   tier's tab a gold notch — hard pixels, no glow */
+#scrCards .clNewTag { position: absolute; left: 50%; top: -7px; transform: translateX(-50%); z-index: 2; pointer-events: none;
+  padding: 3px 7px 2px; background: #ffd45e; color: #2a1a06; border: 2px solid #2a1a06; box-shadow: 0 2px 0 #2a1a06;
+  font: 700 10px/1 var(--menufont); letter-spacing: 1.2px; text-transform: uppercase; white-space: nowrap; }
+#scrCards .clTab.clFresh { position: relative; }
+#scrCards .clTab.clFresh::after { content: ''; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; background: #ffd45e;
+  box-shadow: 0 0 0 1px #2a1a06; }
 #scrCards .clZoom { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 14px; padding: calc(var(--safe-top) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px); background: rgba(6,5,3,0.88); }
 #scrCards .clZoom[hidden] { display: none; }

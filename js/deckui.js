@@ -122,6 +122,7 @@ const DeckUI = {
      without being "given back" into a game it never paused. */
   onWorldChange() {
     this._waited = false;
+    this._cells = {};   // a new run's cards are asked afresh what they can do
     if (!this.built) return;
     this.reset();
     if (this._shy) this._stand(true);   // a new world starts with the deck in it
@@ -138,7 +139,7 @@ const DeckUI = {
     if (!on) this.reset();
     this.el.btn.style.display = on ? '' : 'none';
     this.el.timers.style.display = on ? '' : 'none';
-    if (on) { this.syncBadge(true); this._fitChips(); }
+    if (on) { this.syncBadge(true); this._fitChips(); this._warm(); }
   },
   /* coming in mid-run, the deck ARRIVES: the button drops into the bar with
      a pop, so the eye has found it before the tutorial's note names it */
@@ -245,6 +246,7 @@ const DeckUI = {
     this.syncBadge(true);
     // the monsters' art for every card the player HOLDS, at the front of the wire
     if (Deck.wantArt) Deck.wantArt();
+    this._warm();   // the faces, built ahead in idle time
   },
 
   /* A PIXEL CARD STACK, not an emoji (the title menu's rule, boot.mjs
@@ -292,6 +294,7 @@ const DeckUI = {
     // the collection moved under an open sheet (a sync, a grant): show it,
     // unless a card is held up — re-rendering would pull the row from under it
     if (this.open && !this.lifted) this.render();
+    else if (!this.open) this._warm();
   },
 
   _key(e) {
@@ -346,6 +349,9 @@ const DeckUI = {
     const c = document.body.classList;
     c.toggle('dk-floor', this.hasFloor());
     c.toggle('dk-aiming', !!this.aim);
+    // …but a LIFTED card has the screen: the toasts step back under the
+    // inspector rather than over the card's corner and text (playtest g2)
+    c.toggle('dk-lifted', !!this.lifted);
   },
 
   /* ---------------- THE SHEET ---------------- */
@@ -364,8 +370,11 @@ const DeckUI = {
     const s = this.sheet;
     this.render();
     if (Deck.wantArt) Deck.wantArt();   // a held monster's art, if it is not in yet
-    s.root.classList.add('on');
+    // a closing slide still running is cancelled BEFORE the sheet is shown:
+    // asked of a shown sheet, getAnimations() forces the whole row's style
+    // in the tap (measured 44ms of a first open)
     for (const a of s.root.getAnimations({ subtree: true })) a.cancel();
+    s.root.classList.add('on');
     if (this._calm()) {
       s.back.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160 });
       s.panel.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160 });
@@ -420,6 +429,7 @@ const DeckUI = {
       '<div class="dkPanel">' +
         '<div class="dkGrab"><i class="dkGrip"></i>' +
           '<div class="dkHead"><b class="dkTitle">Your Cards</b><span class="dkCount"></span>' +
+          '<div class="dkTiers" role="tablist" aria-label="Jump to a tier"></div>' +
           '<button type="button" class="iconbtn dkClose" aria-label="Close">✕</button></div>' +
         '</div>' +
         '<div class="dkRow"></div>' +
@@ -427,14 +437,23 @@ const DeckUI = {
       '</div>';
     document.body.appendChild(root);
     const q = s => root.querySelector(s);
-    this.sheet = { root, back: q('.dkBack'), panel: q('.dkPanel'), row: q('.dkRow'), count: q('.dkCount'), hint: q('.dkHint'), grab: q('.dkGrab') };
+    this.sheet = { root, back: q('.dkBack'), panel: q('.dkPanel'), row: q('.dkRow'), count: q('.dkCount'), hint: q('.dkHint'), grab: q('.dkGrab'),
+      tiers: q('.dkTiers') };
     q('.dkBack').addEventListener('click', () => this.closeSheet());
     q('.dkClose').addEventListener('click', () => this.closeSheet());
+    // a tier's gem jumps the row to that tier's cards
+    this.sheet.tiers.addEventListener('click', e => {
+      const b = e.target.closest('.dkTier');
+      if (b) this.jumpTier(b.dataset.tier);
+    });
     // a mouse wheel scrolls the row sideways — a desktop has no thumb to swipe it
     const row = this.sheet.row;
     row.addEventListener('wheel', e => {
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { row.scrollLeft += e.deltaY; e.preventDefault(); }
     }, { passive: false });
+    // the gem of the tier in view is lit as the row moves (one read a frame at most)
+    let raf = 0;
+    row.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; this._litTier(); }); }, { passive: true });
     this._dragToClose(this.sheet.grab, this.sheet.panel);
   },
 
@@ -487,12 +506,25 @@ const DeckUI = {
   /* GROUPED BY TIER, HIGHEST FIRST: the rarest cards are the first thing
      the sheet shows, and a tier's name sits over its own cards in its own
      colour. A card that cannot be played now is greyed, with the reason
-     under it — the same words a PLAY tap would answer with. */
+     under it — the same words a PLAY tap would answer with.
+
+     A FULL DECK IS 36 CARDS IN ONE ROW (playtest g2: about nine swipes on a
+     390px phone to reach the bronze ones), so the sheet's head carries the
+     tiers as gems — one per tier held, in the row's order, with its count —
+     and a tap on one jumps the row to that tier (jumpTier); the gem of the
+     tier in view is lit as the row moves (_litTier).
+
+     AND A FACE IS BUILT ONCE (playtest g3: every open rebuilt all 36 faces
+     synchronously, 55-120ms on a desktop): each cell is kept under the card
+     it shows and handed back as long as nothing it shows has changed — its
+     width, its count, its playability and its reason (_cells). A cell is
+     rebuilt only when one of those moves. */
   render() {
     const s = this.sheet, owned = Deck.owned();
     const n = owned.reduce((a, o) => a + o.n, 0);
     s.count.textContent = n ? n + (n === 1 ? ' card' : ' cards') : '';
     s.row.textContent = '';
+    s.tiers.textContent = '';
     if (!n) {
       // THE EARN RULE in the player's words (Deck.eligible): a win always
       // earns; a defeat earns for a real fight, counted in deeds — and the
@@ -511,6 +543,7 @@ const DeckUI = {
     }
     const w = this._rowW();
     const tiers = Deck.TIERS.slice().sort((a, b) => b.rank - a.rank);
+    const keep = {};
     for (const t of tiers) {
       const mine = owned.filter(o => o.card.tier === t.k);
       if (!mine.length) continue;
@@ -518,16 +551,84 @@ const DeckUI = {
       g.className = 'dkGroup';
       g.dataset.tier = t.k;
       g.style.setProperty('--tc', t.col);
-      g.style.setProperty('--tg', t.glow);
       g.innerHTML = `<b class="dkGroupHd">${t.name}</b><div class="dkCards"></div>`;
       const cards = g.querySelector('.dkCards');
-      for (const o of mine) cards.appendChild(this._cell(o, w));
+      for (const o of mine) { cards.appendChild(this._cell(o, w)); keep[o.card.id] = 1; }
       s.row.appendChild(g);
+      // the tier's gem in the head, with how many of the tier are held
+      const held = mine.reduce((a, o) => a + o.n, 0);
+      const tb = document.createElement('button');
+      tb.type = 'button';
+      tb.className = 'dkTier';
+      tb.dataset.tier = t.k;
+      tb.setAttribute('role', 'tab');
+      tb.setAttribute('aria-label', `${t.name}: ${held} ${held === 1 ? 'card' : 'cards'}`);
+      tb.style.setProperty('--tc', t.col);
+      tb.innerHTML = `${this.GEM_SVG}<b>${held}</b>`;
+      s.tiers.appendChild(tb);
     }
+    // a card no longer held lets its cell go
+    for (const id in this._cells) if (!keep[id]) delete this._cells[id];
     s.hint.textContent = 'Tap a card to look closer';
+    // read on the next frame: a layout forced here would be paid in the tap
+    requestAnimationFrame(() => this._litTier());
   },
+  // a tier's gem: a hard-pixel diamond in the tier's colour (currentColor)
+  GEM_SVG: '<svg class="dkGem" viewBox="0 0 7 7" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 0h1v1h1v1h1v1h1v1h-1v1h-1v1h-1v1h-1v-1h-1v-1h-1v-1h-1v-1h1v-1h1v-1h1z" fill="currentColor"/>' +
+    '<path d="M3 1h1v1h-1zM2 2h1v1h-1z" fill="#fff6d8" opacity=".85"/></svg>',
+  // the row brought round to a tier: its name at the row's left edge
+  jumpTier(k) {
+    const s = this.sheet, g = s && s.row.querySelector(`.dkGroup[data-tier="${k}"]`);
+    if (!g) return;
+    const pad = parseFloat(getComputedStyle(s.row).paddingLeft) || 0;
+    const left = g.getBoundingClientRect().left - s.row.getBoundingClientRect().left + s.row.scrollLeft - pad;
+    s.row.scrollTo({ left: Math.max(0, left), behavior: this._calm() ? 'auto' : 'smooth' });
+    this._lit = k;
+    for (const b of s.tiers.querySelectorAll('.dkTier')) b.classList.toggle('on', b.dataset.tier === k);
+    UI.cue('ok');
+  },
+  // the gem of the tier whose cards are at the row's left edge is lit
+  _litTier() {
+    const s = this.sheet;
+    if (!s) return;
+    const r0 = s.row.getBoundingClientRect().left + (parseFloat(getComputedStyle(s.row).paddingLeft) || 0) + 24;
+    let k = null;
+    for (const g of s.row.querySelectorAll('.dkGroup')) if (g.getBoundingClientRect().left <= r0 || !k) k = g.dataset.tier;
+    // at the row's end a tier asked for by its gem may never reach the edge
+    // (there is nothing left to scroll): the gem asked for stays lit
+    const atEnd = s.row.scrollLeft + s.row.clientWidth >= s.row.scrollWidth - 2;
+    const asked = this._lit && s.row.querySelector(`.dkGroup[data-tier="${this._lit}"]`);
+    if (atEnd && asked && asked.getBoundingClientRect().left > r0) k = this._lit;
+    for (const b of s.tiers.querySelectorAll('.dkTier')) b.classList.toggle('on', b.dataset.tier === k);
+  },
+  /* …and built AHEAD, in the page's idle time, a few faces a slice, so even
+     the first open of a full deck is cheap: the cells are ready under their
+     cards, and render() only checks they still say the right thing */
+  _warm() {
+    if (this._warming || !this.built || this.open) return;
+    const ric = window.requestIdleCallback || (f => setTimeout(() => f({ timeRemaining: () => 6 }), 80));
+    let list = null, i = 0, w = 0;
+    this._warming = true;
+    const step = (dl) => {
+      if (this.open || this._shy || !this.built) { this._warming = false; return; }
+      // a world still being entered (the art plaque): try again in a moment
+      if (!this.live()) { ric(step, { timeout: 1000 }); return; }
+      if (!list) { list = Deck.owned(); w = this._rowW(); }
+      // two faces a slice at least (a page that is never idle still gets
+      // there), more while the idle time lasts
+      let n = 0;
+      while (i < list.length && (n < 2 || dl.timeRemaining() > 3)) { this._cell(list[i++], w); n++; }
+      if (i < list.length) ric(step, { timeout: 250 }); else this._warming = false;
+    };
+    ric(step, { timeout: 250 });
+  },
+  _cells: {},             // card id -> {key, el}: the faces already built (render)
   _cell(o, w) {
     const c = o.card, can = Deck.canPlay(c.id);
+    const dpr = (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1;
+    const key = [w, o.n, can.ok ? 1 : 0, can.ok ? '' : can.why, dpr].join('|');
+    const had = this._cells[c.id];
+    if (had && had.key === key) { had.el.classList.remove('dkOut'); return had.el; }
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'dkCell';
@@ -540,6 +641,7 @@ const DeckUI = {
     cap.textContent = can.ok ? this._kindLine(c) : can.why;
     b.appendChild(cap);
     b.addEventListener('click', () => this.lift(c.id, b));
+    this._cells[c.id] = { key, el: b };
     return b;
   },
   _kindLine(c) {
@@ -567,7 +669,7 @@ const DeckUI = {
     L.style.setProperty('--tg', t.glow);
     L.innerHTML =
       '<div class="dkIBack"></div>' +
-      '<div class="dkIStage"><div class="dkISlot"><i class="dkHalo"></i></div>' +
+      '<div class="dkIStage"><div class="dkISlot"></div>' +
         '<div class="dkIAct plaques"><b class="dkWhy"></b>' +
         `<button type="button" class="abtn big gold dkPlay"><span class="blab">Play</span><small></small></button>` +
         '<span class="dkTip">Tap the card to turn it over</span></div>' +
@@ -575,10 +677,18 @@ const DeckUI = {
       '<button type="button" class="iconbtn dkIClose" aria-label="Put it back">✕</button>';
     document.body.appendChild(L);
     const slot = L.querySelector('.dkISlot'), play = L.querySelector('.dkPlay'), why = L.querySelector('.dkWhy');
+    /* the light behind the lifted card: the tier's pixels, sparse and
+       dithered (a quieter halo than the play's), never a radial glow */
+    { const m = Math.min(document.documentElement.clientWidth, document.documentElement.clientHeight);
+      this._px(slot, 'halo', t.col, Math.round(Math.min(m * 1.2, 640)), 4, 0.45).classList.add('dkHalo'); }
     // the room the stage leaves the card: one layout read, at a tap
     const room = slot.getBoundingClientRect();
     const w = Math.max(120, Math.min(360, room.width, room.height * Deck.W / Deck.H));
-    const big = Deck.face(id, { w: this._faceW(w, false), n: Deck.count(id), off: !can.ok, why: can.ok ? '' : can.why });
+    /* A REFUSAL IS SAID ONCE, ON THE LINE ABOVE PLAY (playtest g1/g2/g4): the
+       face is greyed, but no banner is laid across its art — the reason over
+       the picture, above PLAY and in a toast was the same words three times
+       on one screen, and the banner hid the art the player lifted it to see */
+    const big = Deck.face(id, { w: this._faceW(w, false), n: Deck.count(id), off: !can.ok });
     slot.appendChild(big);
     play.querySelector('small').textContent = c.target === 'none' ? this._kindLine(c) : 'Then choose where';
     play.classList.toggle('cant', !can.ok);
@@ -586,6 +696,7 @@ const DeckUI = {
     this.lifted = { id, cell, layer: L, big, why, play };
     cell.classList.add('dkOut');
     this.sheet.root.classList.add('dkLifted');   // the row's own hint steps back under the card's
+    this._floor();
     big.addEventListener('click', () => {
       big.classList.toggle('flip');
       UI.cue('ok');
@@ -602,8 +713,8 @@ const DeckUI = {
       const s = from.width / Math.max(1, to.width);
       big.animate([{ transform: `translate(${from.left - to.left}px,${from.top - to.top}px) scale(${s})` }, { transform: 'none' }],
         { duration: this.LIFT_MS, easing: this.SPRING });
-      L.querySelector('.dkHalo').animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'none' }],
-        { duration: 260, easing: 'ease-out' });
+      L.querySelector('.dkHalo').animate([{ transform: 'scale(.6)' }, { transform: 'none' }],
+        { duration: 240, easing: 'steps(3, end)' });
     }
     L.querySelector('.dkIBack').animate([{ opacity: 0 }, { opacity: 1 }], { duration: this.LIFT_MS });
     UI.cue('ok');
@@ -616,6 +727,7 @@ const DeckUI = {
     const lf = this.lifted;
     if (!lf) return;
     this.lifted = null;
+    this._floor();
     const done = () => {
       lf.layer.remove();
       if (lf.cell) lf.cell.classList.remove('dkOut');
@@ -648,11 +760,11 @@ const DeckUI = {
       if (!A || A.id !== id || performance.now() - A.at > 8000) {
         this._armed = { id, at: performance.now() };
         if (this.lifted) {
-          this.lifted.why.textContent = warn + ' Tap Play again to confirm.';
+          this.lifted.why.textContent = this._sentence(warn) + ' Tap Play again to confirm.';
           const lb = this.lifted.play.querySelector('.blab');
           if (lb) lb.textContent = 'Confirm';
         }
-        this._say(warn, true);
+        this._say(this._sentence(warn), 'note');
         UI.cue('bad');
         return;
       }
@@ -669,10 +781,21 @@ const DeckUI = {
     if (UI._toastAt) delete UI._toastAt[String(msg).replace(/\d+/g, '#')];
     UI.toast(msg, kind, ms);
   },
-  // a play that cannot happen says why, out loud — on the toast AND on the
-  // card's own line — and the button shakes its head
+  /* A WARNING IS A SENTENCE, and the ask comes after it as another one: the
+     truce's own words end in a full stop ("…from today the rival fights
+     back."), and the old join hung " — tap ✓ again to confirm." off it —
+     "fights back. — tap ✓". One full stop, whatever the effect's text ends
+     with, then the ask (playtest g4, nit 8). */
+  _sentence(s) {
+    const t = String(s || '').trim().replace(/[\s—–-]+$/, '');
+    return /[.!?]$/.test(t) ? t : t + '.';
+  },
+  /* a play that cannot happen says why — on the card's own line above PLAY,
+     and the button shakes its head. The toast is the NOTE, never the red
+     alarm: red is the town under attack (CLAUDE.md's foe-notes rule), and a
+     card that cannot be played now is not an emergency (playtest nit 9) */
   _refuse(why, shakeEl) {
-    this._say(why || 'Not now.', true);
+    this._say(why || 'Not now.', 'note');
     UI.cue('bad');
     if (this.lifted) this.lifted.why.textContent = why || '';
     if (shakeEl && !this._calm())
@@ -681,14 +804,29 @@ const DeckUI = {
   },
 
   /* THE PLAY SEQUENCE. The card flies to the middle of the screen, flares in
-     its tier's colour — a clean flare for Stone, radiance, rays and embers
-     for Enlightenment — then BURSTS toward what it changes: the Town Center,
-     the resource bar or the chosen ground. Deck.play is called the moment
-     the burst lands, so the effect begins exactly there, and a refusal at
-     that moment keeps the card. The world is held still until then and let
-     go as the effect begins. Every scrap of it is transform and opacity
-     (Web Animations, on the compositor); the layer eats taps for its
-     second, so nothing can be ordered from under it. */
+     its tier's colour — a clean flare for Stone, a ring, rays and embers up
+     the tiers — then BURSTS toward what it changes: the Town Center, the
+     resource bar or the chosen ground. Deck.play is called the moment the
+     burst lands, so the effect begins exactly there, and a refusal at that
+     moment keeps the card. The world is held still until then and let go as
+     the effect begins. The layer eats taps for its second, so nothing can be
+     ordered from under it.
+
+     IN THE HOUSE'S PIXELS, NOT IN SOFT LIGHT (playtest judges g1/g2): the old
+     exit faded the card out as a ghost with the world showing through it,
+     over a radial halo, and the comet's tail drew a "+" across its name
+     plate mid-flight. Now:
+       · THE CARD IS THE TOP LAYER and stays OPAQUE — every scrap of light
+         (halo, ring, rays, flash, sparks, tail, goods) is laid BEHIND it, so
+         nothing is ever drawn over the card
+       · it LEAVES in hard pixels: a two-frame rim flash in the tier's colour,
+         then a three-step ordered dither dissolve (25/50/75% of its cells
+         gone, then nothing) across the burst — stepped by the flight's own
+         clock, never an alpha fade
+       · every light is drawn in solid pixels on canvases (an ordered dither
+         is the falloff), shown and hidden by hard switches (an animation's
+         active interval with fill 'none') and moved in steps() — no radial
+         gradient, no glow, no crossfade */
   _run(id, tgt, fromEl, showingBack) {
     const c = Deck.card(id), t = Deck.tier(c.tier), fx = Deck.FX[id] || {};
     const world = S, calm = this._calm(), rank = t.rank;
@@ -705,7 +843,6 @@ const DeckUI = {
     const L = document.createElement('div');
     L.id = 'dkFly';
     L.style.setProperty('--tc', t.col);
-    L.style.setProperty('--tg', t.glow);
     document.body.appendChild(L);
     const P = this.playing = { id, world, layer: L, dest, landed: false };
     this._floor();
@@ -719,57 +856,79 @@ const DeckUI = {
     const cx = vw / 2, cy = vh * 0.44;
     L.style.setProperty('--cx', cx + 'px');
     L.style.setProperty('--cy', cy + 'px');
-    const glow = this._bit(L, 'dkGlow'), fwPx = parseFloat(card.style.getPropertyValue('--w')), fhPx = parseFloat(card.style.getPropertyValue('--h'));
+    const fwPx = parseFloat(card.style.getPropertyValue('--w')), fhPx = parseFloat(card.style.getPropertyValue('--h'));
     hold.style.left = (cx - fwPx / 2) + 'px';
     hold.style.top = (cy - fhPx / 2) + 'px';
-    L.appendChild(hold);
+    // the dissolve's cells are two of the card's own art pixels a side
+    this._dzMasks(L, 2 * fwPx / Deck.W);
+    L.appendChild(hold);   // THE TOP LAYER: every light below goes in under it (_bit)
+    // the light the card brings with it: a dithered halo of the tier's pixels
+    const glow = this._px(L, 'halo', t.col, Math.round(Math.min(vw, vh, 520) * 0.92), 4);
     // a card shown by its back turns face-up as it flies
     if (showingBack) requestAnimationFrame(() => card.classList.remove('flip'));
     const s0 = r0.width / fwPx;
     const dx0 = r0.left + r0.width / 2 - cx, dy0 = r0.top + r0.height / 2 - cy;
-    let land, flight;
+    // the exit: where the burst begins, and how long it lasts
+    let land, flight, exitAt, exitDur;
+    const show = (el, from, dur, kf, timing) => el.animate(kf || [{ opacity: 1 }, { opacity: 1 }],
+      Object.assign({ delay: Math.max(0, from), duration: Math.max(1, dur), fill: 'none' }, timing || {}));
     if (calm) {
       const K = this.CALM;
       land = K.in + K.flare + K.out;
-      flight = hold.animate([{ opacity: 0 }, { opacity: 1, offset: K.in / land }, { opacity: 1, offset: (K.in + K.flare) / land }, { opacity: 0 }],
-        { duration: land, fill: 'forwards' });
-      glow.animate([{ opacity: 0 }, { opacity: 0.9, offset: (K.in + K.flare * 0.5) / land }, { opacity: 0 }], { duration: land, fill: 'forwards' });
+      exitAt = K.in + K.flare; exitDur = K.out;
+      // no travel: the card is simply there, then leaves by the same dither
+      flight = hold.animate([{ opacity: 1 }, { opacity: 1 }], { duration: land, fill: 'forwards' });
+      show(glow, K.in * 0.5, exitAt - K.in * 0.5);
     } else {
       const F = this.FLY_MS, X = this.FLARE_MS, B = this.BURST_MS;
       land = F + X + B;
+      exitAt = F + X; exitDur = B;
       const o1 = F / land, o2 = (F + X * 0.45) / land, o3 = (F + X) / land;
       const toD = dest.kind === 'point';
       const ddx = dest.x - cx, ddy = dest.y - cy;
       flight = hold.animate([
-        { transform: `translate(${dx0}px,${dy0}px) scale(${s0})`, opacity: 1, easing: this.SPRING },
-        { transform: 'translate(0,0) scale(1) rotate(-3deg)', opacity: 1, offset: o1, easing: 'ease-in-out' },
-        { transform: 'translate(0,-6px) scale(1.09) rotate(0deg)', opacity: 1, offset: o2, easing: 'ease-in-out' },
-        { transform: 'translate(0,0) scale(1)', opacity: 1, offset: o3, easing: toD ? this.OUT : 'ease-out' },
+        { transform: `translate(${dx0}px,${dy0}px) scale(${s0})`, easing: this.SPRING },
+        { transform: 'translate(0,0) scale(1) rotate(-3deg)', offset: o1, easing: 'ease-in-out' },
+        { transform: 'translate(0,-6px) scale(1.09) rotate(0deg)', offset: o2, easing: 'ease-in-out' },
+        { transform: 'translate(0,0) scale(1)', offset: o3, easing: toD ? this.OUT : 'ease-out' },
         ...(toD
-          ? [{ transform: `translate(${ddx * 0.5}px,${ddy * 0.5 - 60}px) scale(.45) rotate(8deg)`, opacity: 1, offset: o3 + (1 - o3) * 0.55, easing: 'ease-in' },
-             { transform: `translate(${ddx}px,${ddy}px) scale(.08) rotate(14deg)`, opacity: 0 }]
-          : [{ transform: 'scale(1.32)', opacity: 0, offset: Math.min(0.99, o3 + 0.16) },
-             { transform: 'scale(1.32)', opacity: 0 }]),
+          ? [{ transform: `translate(${ddx * 0.5}px,${ddy * 0.5 - 60}px) scale(.45) rotate(8deg)`, offset: o3 + (1 - o3) * 0.55, easing: 'ease-in' },
+             { transform: `translate(${ddx}px,${ddy}px) scale(.12) rotate(14deg)` }]
+          : [{ transform: 'scale(1.1)' }]),
       ], { duration: land, fill: 'forwards' });
-      // the light the card brings with it, and the light it flares
+      // the halo comes with the card and flares in hard steps with it
       const flareAt = F + X * 0.45;
-      glow.animate([{ opacity: 0, transform: 'scale(.4)' }, { opacity: 0.55, transform: 'scale(.8)', offset: F / land },
-        { opacity: 1, transform: 'scale(1.45)', offset: flareAt / land }, { opacity: 0, transform: 'scale(1.2)' }],
-        { duration: land, fill: 'forwards', easing: 'ease-out' });
-      const lite = this._bit(hold, 'dkLite');
-      lite.style.width = fwPx + 'px'; lite.style.height = fhPx + 'px';
-      lite.animate([{ opacity: 0 }, { opacity: 0, offset: F / land }, { opacity: 0.85, offset: flareAt / land }, { opacity: 0, offset: o3 }, { opacity: 0 }],
-        { duration: land, fill: 'forwards' });
+      show(glow, F * 0.5, exitAt + B * 0.5 - F * 0.5, [{ opacity: 1, transform: 'scale(.72)' }, { opacity: 1, transform: 'scale(1.18)' }],
+        { easing: 'steps(4, end)' });
       this._spectacle(L, rank, cx, cy, flareAt, land);
       if (toD) this._trail(L, rank, cx, cy, dest, F + X, B);
       else this._spray(L, dest, cx, cy, F + X, B, rank);
     }
+    // the rim flash: two frames in the tier's colour, the instant before it goes
+    const rimA = this._bit(hold, 'dkRim'), rimB = this._bit(hold, 'dkRim b');
+    show(rimA, exitAt - 84, 42);
+    show(rimB, exitAt - 42, 42);
+    // the dissolve, stepped by the flight's own clock (a phone late with its
+    // frames is late with its dissolve, never out of step with its card):
+    // whole for the burst's first quarter, then 25/50/75% of its cells gone,
+    // then nothing as it lands
+    const dz = (k) => { if (hold._dz === k) return; hold._dz = k; hold.className = 'dkFCard' + (k ? ' dz' + k : ''); };
+    const step = () => {
+      if (this.playing !== P) return;
+      const ct = flight.currentTime;
+      // one step a frame at most: a phone slow with its frames still draws
+      // every one of the three before the card is gone
+      if (ct != null) dz(Math.min((hold._dz | 0) + 1, ct < exitAt + exitDur / 4 ? 0 : Math.min(4, Math.floor((ct - exitAt) / (exitDur / 4)))));
+      if (P.landed || (ct != null && ct >= land)) { dz(4); return; }
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
     /* THE LANDING IS THE FLIGHT'S OWN END, not a timer beside it: an
        animation starts on the next frame it is drawn, so on a phone late
        with its frames a clock started now would land the effect while the
        goods are still in the air. The timeout is only the failsafe for a
        flight that never finishes (a hidden tab draws no frames). */
-    const land2 = () => { if (this.playing === P && !P.landed) { P.landed = true; this._land(P, tgt, calm); } };
+    const land2 = () => { if (this.playing === P && !P.landed) { P.landed = true; dz(4); this._land(P, tgt, calm); } };
     const go = () => {
       if (this.playing !== P || P.landed || P.waiting) return;
       const A = window.Assets, set = fx.art;
@@ -791,33 +950,110 @@ const DeckUI = {
     this._later.push(id);
   },
 
+  // a bit of the play's light. In the flight layer every bit goes in UNDER
+  // the card (the layer's .dkFCard): nothing of the light is drawn over it
   _bit(parent, cls) {
     const i = document.createElement('i');
     i.className = cls;
-    parent.appendChild(i);
+    parent.insertBefore(i, parent.querySelector(':scope > .dkFCard'));
     return i;
   },
 
-  /* THE SPECTACLE SCALES WITH THE TIER: Stone gets a clean flare and nothing
-     else; every tier above adds something — sparks, a ring of light, rays,
-     and for Enlightenment a radiance that floods the screen and embers
-     rising off the card. The sparks are hard squares, the house's pixels. */
+  /* THE DISSOLVE'S THREE MASKS: a 4x4 ordered (Bayer) dither, each step
+     taking a further quarter of the cells — set on the layer as custom
+     properties, the cell `cell` CSS px (two of the card's art pixels) */
+  _BAYER: [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5],
+  _dzMasks(L, cell) {
+    for (let s = 1; s <= 3; s++) {
+      let r = '';
+      for (let i = 0; i < 16; i++) if (this._BAYER[i] >= s * 4) r += `<rect x='${i % 4}' y='${i >> 2}' width='1' height='1'/>`;
+      L.style.setProperty('--dz' + s, `url("data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4' shape-rendering='crispEdges'>${r}</svg>`)}")`);
+    }
+    L.style.setProperty('--dzs', (cell * 4).toFixed(3) + 'px');
+  },
+
+  /* THE LIGHT, IN PIXELS: a canvas of solid cells (`cell` CSS px each, drawn
+     pixelated) centred on the flight's middle, or wherever it is put. The
+     falloff is an ordered dither — the cells thin out, they never fade.
+       halo  a disc, thick at its heart, thinning in three bands
+       ring  a ring of separate cells
+       rays  twelve wedges, thinning outward
+       hit   the landing: a ring and eight spokes, a pale core
+     `thin` scales the density (the inspector's halo is a quieter one). */
+  _px(parent, kind, col, sizeCss, cell, thin) {
+    const n = Math.max(8, Math.round(sizeCss / cell)), cv = document.createElement('canvas');
+    cv.width = cv.height = n;
+    cv.className = 'dkPx dk-' + kind;
+    const css = n * cell;
+    cv.style.width = cv.style.height = css + 'px';
+    cv.style.margin = (-css / 2) + 'px 0 0 ' + (-css / 2) + 'px';
+    const g = cv.getContext('2d'), R = n / 2, B = this._BAYER, k = thin || 1;
+    // drawn once per look and copied after: a play or a lift pays a blit,
+    // never the cell loop (a lifted card's halo is ~17,000 cells)
+    const ck = kind + '|' + col + '|' + n + '|' + k, hit = this._pxCache[ck];
+    if (hit) {
+      g.drawImage(hit, 0, 0);
+      parent.insertBefore(cv, parent.querySelector(':scope > .dkFCard'));
+      return cv;
+    }
+    const on = (x, y, dens) => B[(y & 3) * 4 + (x & 3)] < dens * k * 16;
+    const PALE = '#fff6d8';
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const dx = x + 0.5 - R, dy = y + 0.5 - R, d = Math.hypot(dx, dy) / R;
+      let fill = null;
+      if (kind === 'halo') {
+        const dens = d < 0.3 ? 0.75 : d < 0.55 ? 0.5 : d < 0.8 ? 0.25 : 0;
+        if (dens && on(x, y, dens)) fill = col;
+      } else if (kind === 'rays') {
+        if (d < 0.14 || d > 0.95) continue;
+        const a = (Math.atan2(dy, dx) + Math.PI * 2) % (Math.PI / 6);
+        if (a > Math.PI / 6 * 0.34) continue;
+        const dens = d < 0.4 ? 0.75 : d < 0.68 ? 0.5 : 0.25;
+        if (on(x, y, dens)) fill = col;
+      } else if (kind === 'ring') {
+        if (Math.abs(d - 0.82) * R < 0.75 && ((x + y) & 1) === 0) fill = col;
+      } else if (kind === 'hit') {
+        const a = Math.atan2(dy, dx), spoke = Math.abs(((a / (Math.PI / 4)) % 1 + 1) % 1 - 0.5) > 0.42;
+        if (Math.abs(d - 0.78) * R < 0.75) fill = (x + y) & 1 ? col : null;
+        else if (spoke && d > 0.22 && d < 0.55) fill = PALE;
+        else if (d < 0.14) fill = PALE;
+      }
+      if (fill) { g.fillStyle = fill; g.fillRect(x, y, 1, 1); }
+    }
+    const keep = document.createElement('canvas');
+    keep.width = keep.height = n;
+    keep.getContext('2d').drawImage(cv, 0, 0);
+    this._pxCache[ck] = keep;
+    parent.insertBefore(cv, parent.querySelector(':scope > .dkFCard'));
+    return cv;
+  },
+  _pxCache: {},
+
+  /* THE SPECTACLE SCALES WITH THE TIER: Stone gets its halo and its rim and
+     nothing else; every tier above adds something — sparks, a ring, rays,
+     and for Enlightenment a second fan of rays, a two-frame dithered flash
+     and embers rising off the card. All of it hard pixels, all of it under
+     the card. */
   _spectacle(L, rank, cx, cy, flareAt, land) {
+    const show = (el, from, dur, kf, timing) => el.animate(kf || [{ opacity: 1 }, { opacity: 1 }],
+      Object.assign({ delay: Math.max(0, from), duration: Math.max(1, dur), fill: 'none' }, timing || {}));
+    const col = L.style.getPropertyValue('--tc') || '#e8c15a';
+    const m = Math.min(document.documentElement.clientWidth, document.documentElement.clientHeight);
     if (rank >= 2) {
-      const ring = this._bit(L, 'dkRing');
-      ring.animate([{ opacity: 0, transform: 'scale(.25)' }, { opacity: 1, transform: 'scale(.4)', offset: 0.05 }, { opacity: 0, transform: 'scale(2.1)' }],
-        { duration: 420, delay: flareAt, easing: 'cubic-bezier(.1,.7,.3,1)', fill: 'both' });
+      const ring = this._px(L, 'ring', col, 160, 2);
+      show(ring, flareAt, 420, [{ opacity: 1, transform: 'scale(.3)' }, { opacity: 1, transform: 'scale(2.1)' }], { easing: 'steps(6, end)' });
     }
     if (rank >= 3) {
-      const rays = this._bit(L, 'dkRays');
-      rays.animate([{ opacity: 0, transform: 'rotate(0deg) scale(.6)' }, { opacity: rank >= 4 ? 0.95 : 0.7, transform: 'rotate(14deg) scale(1)', offset: 0.45 },
-        { opacity: 0, transform: 'rotate(34deg) scale(1.1)' }], { duration: land - this.FLY_MS * 0.6, delay: this.FLY_MS * 0.6, fill: 'both' });
+      const rays = this._px(L, 'rays', col, Math.round(Math.min(m * 1.2, 640)), 4);
+      show(rays, this.FLY_MS * 0.6, land - this.FLY_MS * 0.6, [{ opacity: 1, transform: 'rotate(0deg) scale(.7)' }, { opacity: 1, transform: 'rotate(30deg) scale(1.1)' }],
+        { easing: 'steps(5, end)' });
       if (rank >= 4) {
-        const rays2 = this._bit(L, 'dkRays dkRays2');
-        rays2.animate([{ opacity: 0, transform: 'rotate(10deg) scale(.7)' }, { opacity: 0.7, transform: 'rotate(-8deg) scale(1.05)', offset: 0.5 },
-          { opacity: 0, transform: 'rotate(-26deg) scale(1.15)' }], { duration: land - this.FLY_MS * 0.6, delay: this.FLY_MS * 0.6, fill: 'both' });
+        const rays2 = this._px(L, 'rays', '#fff6d8', Math.round(Math.min(m * 1.05, 560)), 4, 0.6);
+        show(rays2, this.FLY_MS * 0.6, land - this.FLY_MS * 0.6, [{ opacity: 1, transform: 'rotate(15deg) scale(.8)' }, { opacity: 1, transform: 'rotate(-12deg) scale(1.15)' }],
+          { easing: 'steps(5, end)' });
+        // the flash: a quarter of the screen's cells lit pale, for two frames
         const flash = this._bit(L, 'dkFlash');
-        flash.animate([{ opacity: 0 }, { opacity: 0.5, offset: 0.35 }, { opacity: 0 }], { duration: 520, delay: flareAt - 140, fill: 'both' });
+        show(flash, flareAt - 20, 36);
       }
     }
     const n = [0, 8, 12, 16, 26][rank] || 0;
@@ -826,31 +1062,33 @@ const DeckUI = {
       const a = (i / n) * Math.PI * 2 + Math.random() * 0.5;
       const ember = rank >= 4 && i % 2;
       const d = 70 + Math.random() * (60 + rank * 22);
-      const ex = Math.cos(a) * d, ey = Math.sin(a) * d - (ember ? 80 + Math.random() * 90 : 0);
+      const ex = Math.round(Math.cos(a) * d / 2) * 2, ey = Math.round((Math.sin(a) * d - (ember ? 80 + Math.random() * 90 : 0)) / 2) * 2;
       p.style.left = cx + 'px'; p.style.top = cy + 'px';
       if (ember) p.classList.add('ember');
-      p.animate([{ transform: 'translate(0,0) scale(1)', opacity: 1 }, { transform: `translate(${ex}px,${ey}px) scale(.5)`, opacity: 0 }],
-        { duration: 420 + Math.random() * 220, delay: flareAt - 30 + Math.random() * 60, easing: 'cubic-bezier(.15,.8,.4,1)', fill: 'both' });
+      show(p, flareAt - 30 + Math.random() * 60, 420 + Math.random() * 220,
+        [{ transform: 'translate(0,0)', opacity: 1 }, { transform: `translate(${ex}px,${ey}px)`, opacity: 1 }],
+        { easing: 'steps(7, end)' });
     }
   },
 
-  // the burst toward a point: a comet's tail of the tier's light behind the card
+  // the burst toward a point: a tail of the tier's pixels behind the card —
+  // UNDER it, so it can never cross its name plate
   _trail(L, rank, cx, cy, dest, start, dur) {
     const n = 5 + rank * 2;
     for (let i = 0; i < n; i++) {
       const p = this._bit(L, 'dkSpark trail');
       p.style.left = cx + 'px'; p.style.top = cy + 'px';
-      const lag = 18 + i * 12, jx = (Math.random() - 0.5) * 18, jy = (Math.random() - 0.5) * 18;
-      p.animate([{ transform: 'translate(0,0)', opacity: 0 }, { transform: `translate(${jx}px,${jy}px)`, opacity: 1, offset: 0.15 },
-        { transform: `translate(${(dest.x - cx) * 0.5 + jx}px,${(dest.y - cy) * 0.5 - 60 + jy}px)`, opacity: 0.9, offset: 0.6 },
-        { transform: `translate(${dest.x - cx}px,${dest.y - cy}px) scale(.4)`, opacity: 0 }],
-        { duration: Math.max(80, dur - lag + 40), delay: start + lag, easing: 'ease-in', fill: 'both' });
+      const lag = 18 + i * 12, jx = Math.round((Math.random() - 0.5) * 9) * 2, jy = Math.round((Math.random() - 0.5) * 9) * 2;
+      p.animate([{ transform: `translate(${jx}px,${jy}px)`, opacity: 1 },
+        { transform: `translate(${(dest.x - cx) * 0.5 + jx}px,${(dest.y - cy) * 0.5 - 60 + jy}px)`, opacity: 1, offset: 0.55 },
+        { transform: `translate(${dest.x - cx}px,${dest.y - cy}px)`, opacity: 1 }],
+        { duration: Math.max(80, dur - lag + 40), delay: start + lag, easing: 'ease-in', fill: 'none' });
     }
   },
 
   // the burst toward the bar: the card breaks into its goods, and they fly
   // into the chips they are going to fill — or, with no goods to show, into
-  // the bar as the tier's own light
+  // the bar as the tier's own pixels
   _spray(L, dest, cx, cy, start, dur, rank) {
     const per = Math.min(10, 4 + rank * 2);
     for (const ch of dest.chips) {
@@ -862,16 +1100,15 @@ const DeckUI = {
           cv.className = 'dkGood';
           cv.width = cv.height = 16;
           cv.getContext('2d').drawImage(ic, 0, 0, 16, 16);
-          L.appendChild(cv);
+          L.insertBefore(cv, L.querySelector(':scope > .dkFCard'));
         } else cv = this._bit(L, 'dkSpark trail');
         cv.style.left = cx + 'px'; cv.style.top = cy + 'px';
         const lag = i * 22, a = (i / per - 0.5) * 2.2;
         const mx = Math.sin(a) * 70, my = -40 - Math.cos(a) * 34;
-        cv.animate([{ transform: 'translate(0,0) scale(.5)', opacity: 0 },
+        cv.animate([{ transform: 'translate(0,0) scale(.5)', opacity: 1 },
           { transform: `translate(${mx}px,${my}px) scale(1.15)`, opacity: 1, offset: 0.35 },
-          { transform: `translate(${ch.x - cx}px,${ch.y - cy}px) scale(.8)`, opacity: 1, offset: 0.92 },
-          { transform: `translate(${ch.x - cx}px,${ch.y - cy}px) scale(.6)`, opacity: 0 }],
-          { duration: dur - lag, delay: start + lag, easing: 'cubic-bezier(.35,0,.6,1)', fill: 'both' });
+          { transform: `translate(${ch.x - cx}px,${ch.y - cy}px) scale(.8)`, opacity: 1 }],
+          { duration: dur - lag, delay: start + lag, easing: 'cubic-bezier(.35,0,.6,1)', fill: 'none' });
       }
     }
   },
@@ -956,7 +1193,7 @@ const DeckUI = {
     this._release();
     const L = P.layer;
     if (!r.ok) {
-      this._say(r.why || 'The card could not take hold — it is still yours.', true);
+      this._say(r.why || 'The card could not take hold — it is still yours.', 'note');
       UI.cue('bad');
     } else {
       // the effect itself writes the event log (Deck.say); the landing only
@@ -988,16 +1225,14 @@ const DeckUI = {
     return m ? m[0].replace(/:$/, '.') : text;
   },
 
-  // the light hits the ground: a ring of the tier's pixels and a flash
+  // the light hits the ground: a ring of the tier's pixels and eight pale
+  // spokes, thrown out in hard steps and gone at once (never a fading disc)
   _impact(L, dest, rank, calm) {
-    const fl = this._bit(L, 'dkHit');
-    fl.style.left = dest.x + 'px'; fl.style.top = dest.y + 'px';
-    if (calm) { fl.animate([{ opacity: 0.9 }, { opacity: 0 }], { duration: 240, fill: 'forwards' }); return; }
-    fl.animate([{ opacity: 1, transform: 'scale(.3)' }, { opacity: 0, transform: 'scale(1.6)' }], { duration: 300, easing: 'ease-out', fill: 'forwards' });
-    const ring = this._bit(L, 'dkRing dkRingHit');
-    ring.style.left = dest.x + 'px'; ring.style.top = dest.y + 'px';
-    ring.animate([{ opacity: 1, transform: 'scale(.2)' }, { opacity: 0, transform: `scale(${1.1 + rank * 0.25})` }],
-      { duration: 300, easing: 'cubic-bezier(.1,.7,.3,1)', fill: 'forwards' });
+    const hit = this._px(L, 'hit', L.style.getPropertyValue('--tc') || '#e8c15a', 112 + rank * 16, 4);
+    hit.style.left = dest.x + 'px'; hit.style.top = dest.y + 'px';
+    if (calm) { hit.animate([{ opacity: 1 }, { opacity: 1 }], { duration: 240, fill: 'none' }); return; }
+    hit.animate([{ opacity: 1, transform: 'scale(.4)' }, { opacity: 1, transform: `scale(${1.15 + rank * 0.2})` }],
+      { duration: 300, easing: 'steps(4, end)', fill: 'none' });
   },
 
   /* THE BAR NUMBER TICKS: every resource the card filled counts up from what
@@ -1024,12 +1259,13 @@ const DeckUI = {
       if (!chip) continue;
       if (!calm) chip.animate([{ transform: 'none' }, { transform: 'scale(1.12)', offset: 0.35 }, { transform: 'none' }],
         { duration: 340, easing: this.SPRING });
-      // the chip lights in the card's colour: a glow laid over it, faded by
-      // opacity (an animated box-shadow would repaint the bar every frame)
+      // the chip blinks a hard rim in the card's colour, twice — switched on
+      // and off, never faded (and never a soft glow)
       const r = chip.getBoundingClientRect(), gl = this._bit(L, 'dkChipGlow');
       gl.style.left = r.left + 'px'; gl.style.top = r.top + 'px';
       gl.style.width = r.width + 'px'; gl.style.height = r.height + 'px';
-      gl.animate([{ opacity: 0 }, { opacity: 1, offset: 0.3 }, { opacity: 0 }], { duration: this.AFTER_MS, fill: 'forwards' });
+      gl.animate([{ opacity: 1 }, { opacity: 1 }], { duration: 70, fill: 'none' });
+      gl.animate([{ opacity: 1 }, { opacity: 1 }], { delay: 140, duration: 70, fill: 'none' });
     }
   },
   _tickNumbers() {
@@ -1168,12 +1404,17 @@ const DeckUI = {
     A.warn = warn;
     if (!warn) A.armed = false;
     A.stat.textContent = !A.ok ? this._badGround(A)
-      : warn ? (A.armed ? warn + ' — tap ✓ again to confirm.' : warn + '.').replace(/\.\./g, '.')
+      : warn ? this._sentence(warn) + (A.armed ? ' Tap ✓ again to confirm.' : '')
       : (A.set ? (c.target === 'explored' ? 'Strike here? Or pick other ground.' : 'Here? Or pick another point.')
                : 'Tap the ground, or drag the mark.');
     A.bar.classList.toggle('bad', !A.ok);
     A.bar.classList.toggle('warn', !!warn);
-    const pick = A.hover && !A.set;   // a mouse that has only hovered has chosen nothing yet
+    /* a mouse that has only hovered has chosen nothing yet. BOOLEANS, always:
+       a finger never hovers, so A.hover is undefined on touch, and
+       classList.toggle(cls, undefined) FLIPS the class instead of setting it —
+       every sync turned a good ✓ grey and back again (playtest g1: after a
+       normal tap the button read disabled, the same tile tapped twice lit it) */
+    const pick = !!A.hover && !A.set;
     A.go.classList.toggle('off', !A.ok || pick);
     A.go.textContent = pick ? 'Click the ground' : A.armed ? '✓ Confirm' : '✓ Here';
     const key = (A.ok ? (warn ? 'w' : 'v') : 'x') + A.radius;
@@ -1442,6 +1683,56 @@ const DeckUI = {
     if (days >= 1) return words ? `${d} day${d === 1 ? '' : 's'}` : d + 'd';
     return s + 's';
   },
+  /* EACH RUNNING CARD WEARS ITS OWN GLYPH, AND SAYS ITSELF IN ONE LINE
+     (playtest g1/g2): every chip on the strip wore its category's glyph —
+     four buff cards, four identical little suns — and a tap printed the
+     card's whole rules text, five or six lines over the map. A chip names
+     its card in pixels (a hammer for the builders, a sheaf for the harvest,
+     a flame for the watchfires, a shield, a skull, a keep, a ghost, a wolf…;
+     a card with none here wears its category's, as before — the eye for the
+     spy, the crescent for the swallowed sun), and a tap answers with the
+     name, the time left and this one short line. 12 x 10 cells, like
+     Deck.GLYPHS. */
+  CHIP: {
+    quick_hands:        { g: 'hammer', line: 'Building and upgrades go twice as fast.' },
+    master_builders:    { g: 'house',  line: 'Your next buildings stand complete at once.' },
+    harvest_festival:   { g: 'sheaf',  line: 'All gathering and work comes in 40% richer.' },
+    bountiful_land:     { g: 'leaf',   line: 'Near your hall, everything comes in 50% richer.' },
+    golden_age:         {              line: 'Everything 50% richer, built 50% faster.' },
+    watchfires:         { g: 'flame',  line: 'Your towers hit harder and reach farther.' },
+    stone_skin:         { g: 'shield', line: 'Your buildings take half damage.' },
+    unbreakable_hall:   { g: 'keep',   line: 'Your Town Center cannot fall.' },
+    ancestors_host:     { g: 'ghost',  line: 'The host fights beside you, then fades.' },
+    scouts_fire:        { g: 'fire',   line: 'Your fire keeps watch over the far ground.' },
+    spy_hall:           {              line: 'You see their people wherever they go.' },
+    blight:             { g: 'skull',  line: 'Their gathering and work fall by 40%.' },
+    swallowed_sun:      {              line: 'Their sun is dark: they see less and strike softer.' },
+    barbarian_pact:     { g: 'wolf',   line: 'War bands march on the rival instead of you.' },
+    wonders_foundation: {              line: 'It waits for your Wonder to be laid.' },
+  },
+  CHIP_GLYPHS: {
+    hammer: ['..######....', '.#########..', '.##########.', '..######....', '....##......', '....##......', '....##......', '....##......', '....##......', '....##......'],
+    house:  ['.....##.....', '....####....', '...######...', '..########..', '.##########.', '..########..', '..###..###..', '..###..###..', '..###..###..', '..###..###..'],
+    sheaf:  ['.##..##..##.', '.##..##..##.', '.##..##..##.', '..#..##..#..', '...#.##.#...', '....####....', '...#.##.#...', '..#..##..#..', '.#...##...#.', '.#...##...#.'],
+    leaf:   ['........###.', '......#####.', '....#######.', '...########.', '..########..', '..#######...', '..#.####....', '.#..##......', '.#..........', '#...........'],
+    flame:  ['.....#......', '....##......', '....###.....', '...####.#...', '...######...', '..#######...', '..###.###...', '..##...##...', '...##.##....', '....###.....'],
+    shield: ['.##########.', '.#........#.', '.#.######.#.', '.#.######.#.', '.#.######.#.', '..#.####.#..', '..#.####.#..', '...#.##.#...', '....#..#....', '.....##.....'],
+    keep:   ['.##.##.##.##', '.##########.', '.##########.', '..########..', '..###..###..', '..###..###..', '..##....##..', '..##....##..', '.##########.', '............'],
+    ghost:  ['...######...', '..########..', '.##########.', '.##..##..##.', '.##..##..##.', '.##########.', '.##########.', '.##########.', '.##.##.##.##', '.#..#..#..#.'],
+    fire:   ['.....#......', '.....##.....', '....###.....', '....####....', '...######...', '...##.###...', '....####....', '.##......##.', '...######...', '.##......##.'],
+    skull:  ['...######...', '..########..', '.##########.', '.##..##..##.', '.##..##..##.', '.##########.', '..###..###..', '...######...', '...#.##.#...', '............'],
+    wolf:   ['.#........#.', '.##......##.', '.###....###.', '.##########.', '.##.####.##.', '.##########.', '..########..', '...######...', '....####....', '.....##.....'],
+  },
+  chipGlyph(id) {
+    const k = this.CHIP[id] && this.CHIP[id].g, c = Deck.card(id);
+    return (k && this.CHIP_GLYPHS[k]) || Deck.GLYPHS[c && c.cat] || Deck.GLYPHS.econ;
+  },
+  // the chip's one line: its own, else the card text's first sentence
+  chipLine(id) {
+    const e = this.CHIP[id];
+    return e && e.line ? e.line : this._line(Deck.card(id).text);
+  },
+  RING_PX: 26,            // the chip's ring, in CSS px: 13 cells of 2
   _chip(id) {
     const c = Deck.card(id), t = Deck.tier(c.tier);
     const el = document.createElement('button');
@@ -1450,7 +1741,7 @@ const DeckUI = {
     el.dataset.id = id;
     el.style.setProperty('--tc', t.col);
     const cv = document.createElement('canvas');
-    cv.width = cv.height = 28;
+    cv.width = cv.height = this.RING_PX;
     const lab = document.createElement('b');
     el.append(cv, lab);
     el.setAttribute('aria-label', c.name);
@@ -1458,23 +1749,24 @@ const DeckUI = {
       const ch = this._chips[id], span = ch && ch.charge ? ch.charge.words : this._left(ch ? ch.left : 0, true);
       // the chip wearing the "+k" names the cards folded behind it too
       const also = this._badgeOn === id ? ' ' + this._alsoRunning() : '';
-      this._say(`${c.name} — ${span} left. ${c.text}${also}`, 'note', 4200);
+      this._say(`${c.name} — ${span} left. ${this.chipLine(id)}${also}`, 'note', 4200);
       UI.cue('ok');
     });
     this.el.timers.insertBefore(el, this._more && this._more.parentNode === this.el.timers ? this._more : null);   // "+k" stays last
     if (!this._calm()) el.animate([{ opacity: 0, transform: 'scale(.5)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: this.SPRING });
-    const ch = { el, cv, lab, n: -1, left: 0, col: t.col, cat: c.cat };
+    const ch = { el, cv, lab, n: -1, left: 0, col: t.col, cat: c.cat, glyph: this.chipGlyph(id) };
     this._chips[id] = ch;
     return ch;
   },
   // the ring, redrawn only when a cell of it actually changes
   _RING: null,
   _ringDraw(ch, frac) {
+    const P = this.RING_PX, C = P / 2, N = P / 2;   // N cells of 2px a side
     if (!this._RING) {
       const cells = [];
-      for (let gy = 0; gy < 14; gy++) for (let gx = 0; gx < 14; gx++) {
-        const dx = gx * 2 + 1 - 14, dy = gy * 2 + 1 - 14, d = Math.hypot(dx, dy);
-        if (d >= 10.4 && d <= 13.4) {
+      for (let gy = 0; gy < N; gy++) for (let gx = 0; gx < N; gx++) {
+        const dx = gx * 2 + 1 - C, dy = gy * 2 + 1 - C, d = Math.hypot(dx, dy);
+        if (d >= C - 3.6 && d <= C - 0.6) {
           let a = Math.atan2(dx, -dy);
           if (a < 0) a += Math.PI * 2;
           cells.push({ x: gx * 2, y: gy * 2, a });
@@ -1487,13 +1779,13 @@ const DeckUI = {
     if (n === ch.n) return;
     ch.n = n;
     const g = ch.cv.getContext('2d');
-    g.clearRect(0, 0, 28, 28);
+    g.clearRect(0, 0, P, P);
     g.fillStyle = 'rgba(10,7,4,0.72)';
-    R.pxDisc(g, 14, 14, 11, 2);
+    R.pxDisc(g, C, C, C - 3, 2);
     cells.forEach((p, i) => { g.fillStyle = i < n ? ch.col : '#3b2f1f'; g.fillRect(p.x, p.y, 2, 2); });
-    const gl = Deck.GLYPHS[ch.cat] || Deck.GLYPHS.econ;
+    const gl = ch.glyph || Deck.GLYPHS[ch.cat] || Deck.GLYPHS.econ;
     g.fillStyle = '#f3e2b4';
-    for (let y = 0; y < 10; y++) for (let x = 0; x < 12; x++) if (gl[y][x] === '#') g.fillRect(8 + x, 9 + y, 1, 1);
+    for (let y = 0; y < 10; y++) for (let x = 0; x < 12; x++) if (gl[y][x] === '#') g.fillRect(C - 6 + x, C - 5 + y, 1, 1);
   },
 
   /* ---------------- the stylesheet (injected only when the deck is built) ---------------- */
@@ -1505,6 +1797,11 @@ const DeckUI = {
 body:not(.ingame) #dkSheet, body:not(.ingame) #dkInsp, body:not(.ingame) #dkAim,
 body:not(.ingame) #dkAimBar, body:not(.ingame) #dkFly { display: none !important; }
 body.dk-floor #toasts { z-index: 27; }
+/* …except over a LIFTED card: the inspector is the player's to read, and a
+   toast over its corner covered the tier badge and the card's own text
+   (playtest g2). Under it while it is up — the refusal is said on the card's
+   own line — and back over the sheet the moment it is put back */
+body.dk-floor.dk-lifted #toasts { z-index: 23; }
 /* a tutorial note already on screen steps aside while the deck has the floor
    (its dim sits over the reticle otherwise); it is back the moment the deck
    lets go, its state untouched */
@@ -1520,14 +1817,24 @@ body.dk-aiming #bottombar { visibility: hidden; }
 .dkArrive { position: fixed; width: 0; height: 0; z-index: 12; pointer-events: none; }
 .dkArrive i { position: absolute; left: 0; top: 0; box-shadow: 0 2px 0 #5c3a1c; image-rendering: pixelated; }
 #deckBtn.empty .dkIco { opacity: .55; }
-#dkTimers { display: flex; gap: 4px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
+/* THE STRIP IS FITTED, AND ITS "+k" IS WHOLE (playtest g1/g2). Two running
+   cards with two-digit days needed 124px where a 390px phone's row leaves
+   ~103-117, so the second always folded into "+1" with ~60px seemingly free.
+   A chip is now its ring and its count and nothing else (no box: the ring's
+   own dark disc is the container) — 48px, so two fit beside a "6/13" tribe
+   and a "Day 12". The badge rides the last chip's corner, 5px proud of it:
+   the strip's padding makes room for it INSIDE the clip (overflow: hidden
+   cut its top half off), and an equal negative margin keeps the row's
+   layout exactly as it was. */
+#dkTimers { display: flex; gap: 3px; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 6px 6px 0 0; margin: -6px -6px 0 0; }
 #dkTimers:empty { display: none; }
-.dkT { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; height: 32px; padding: 0 6px 0 2px;
-  border: 1px solid rgba(10,8,5,.6); border-radius: 8px; background: rgba(0,0,0,.3); color: var(--tc);
-  box-shadow: inset 0 1px 0 rgba(0,0,0,.4), 0 1px 0 var(--edge); font: 800 11px/1 -apple-system, "Segoe UI", Roboto, sans-serif; }
+.dkT { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; height: 32px; padding: 0;
+  border: 0; border-radius: 0; background: none; color: #f3e2b4; text-shadow: 0 1px 0 #000;
+  font: 800 11.5px/1 -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: 0; }
 .dkT::after { content: ''; position: absolute; left: 0; right: 0; top: -6px; bottom: -6px; }
-.dkT canvas { width: 28px; height: 28px; image-rendering: pixelated; }
-.dkT.dkMore { padding: 0 7px; min-width: 30px; justify-content: center; color: #f3e2b4; }
+.dkT canvas { width: 26px; height: 26px; image-rendering: pixelated; }
+.dkT.dkMore { padding: 0 7px; min-width: 30px; justify-content: center; color: #f3e2b4;
+  border: 1px solid rgba(10,8,5,.6); border-radius: 8px; background: rgba(0,0,0,.3); }
 .dkT .dkMoreB { position: absolute; top: -5px; right: -5px; min-width: 16px; height: 15px; padding: 0 3px; box-sizing: border-box;
   border-radius: 8px; background: #1c140c; border: 1.5px solid var(--tc); color: #f3e2b4; pointer-events: none; font-style: normal;
   font: 800 9.5px/12px -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,.6); }
@@ -1546,14 +1853,27 @@ body.dk-aiming #bottombar { visibility: hidden; }
 #dkSheet .dkTitle { font-family: var(--menufont); font-weight: 700; font-size: 17px; letter-spacing: 1.6px; text-transform: uppercase;
   color: #f2e6cd; text-shadow: 0 2px 0 rgba(20,12,4,.85); }
 #dkSheet .dkCount { color: var(--dim); font-size: 12px; font-weight: 700; }
-#dkSheet .dkClose { margin-left: auto; width: 46px; height: 46px; font-size: 16px; }
+#dkSheet .dkClose { margin-left: 0; width: 46px; height: 46px; font-size: 16px; flex: 0 0 auto; }
+/* the tiers as gems: a tap jumps the row to that tier (DeckUI.jumpTier) */
+#dkSheet .dkTitle { white-space: nowrap; flex: 0 0 auto; }
+#dkSheet .dkTiers { margin-left: auto; display: flex; gap: 1px; flex: 0 1 auto; min-width: 0; }
+#dkSheet .dkTier { position: relative; display: inline-flex; align-items: center; gap: 3px; height: 34px; min-width: 0; padding: 0 4px;
+  border: 0; border-radius: 6px; background: none; color: var(--tc); cursor: pointer;
+  font: 800 11.5px/1 -apple-system, "Segoe UI", Roboto, sans-serif; }
+#dkSheet .dkTier::after { content: ''; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }
+#dkSheet .dkTier b { color: #f3e2b4; text-shadow: 0 1px 0 #000; }
+#dkSheet .dkTier.on { background: rgba(0,0,0,.38); box-shadow: inset 0 -2px 0 var(--tc); }
+#dkSheet .dkGem { width: 14px; height: 14px; display: block; flex: 0 0 auto; }
+@media (max-width: 430px) { #dkSheet .dkCount { display: none; } #dkSheet .dkTitle { font-size: 15px; letter-spacing: 1.1px; } }
+/* the narrowest phones give the head to the gems: the sheet is the deck either way */
+@media (max-width: 359px) { #dkSheet .dkTitle { display: none; } }
 #dkSheet .dkRow { display: flex; gap: 22px; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch; padding: 2px 16px 4px; scroll-padding: 0 16px; scroll-snap-type: x proximity; scrollbar-width: thin; }
 #dkSheet .dkRow::before, #dkSheet .dkRow::after { content: ''; margin: auto; }
 #dkSheet .dkGroup { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; }
 #dkSheet .dkGroupHd { display: flex; align-items: center; gap: 7px; height: 18px; color: var(--tc);
   font: 700 11px var(--menufont); letter-spacing: 1.4px; text-transform: uppercase; text-shadow: 0 1px 0 #000; }
-#dkSheet .dkGroupHd::before { content: ''; width: 7px; height: 7px; background: var(--tc); transform: rotate(45deg); box-shadow: 0 0 6px var(--tg); }
+#dkSheet .dkGroupHd::before { content: ''; width: 7px; height: 7px; background: var(--tc); transform: rotate(45deg); }
 #dkSheet .dkCards { display: flex; gap: 10px; }
 #dkSheet .dkCell { flex: 0 0 auto; width: var(--cw); display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 10px 0 0; border: 0; background: none; color: inherit; scroll-snap-align: start; cursor: pointer; }
@@ -1566,7 +1886,12 @@ body.dk-aiming #bottombar { visibility: hidden; }
 /* a refusal says WHY, and the why is longer than a kind line: it may take a
    third line before the ellipsis (a 320px phone's 88px card held two) */
 #dkSheet .dkCap.no { color: #f0c48a; -webkit-line-clamp: 3; }
-#dkSheet.dkLifted .dkHint { visibility: hidden; }
+/* A LIFTED CARD HAS THE SCREEN: the sheet under the inspector's dim stands
+   down entirely — its captions and name plates showed through the backdrop and
+   ran into the card's own line ("QUICK HANDS" into "Nothing needs mending.",
+   playtest g1/g2). Hidden, not removed: the cell keeps its box, so the card
+   still flies back into its own slot, and the row is back the moment it lands */
+#dkSheet.dkLifted .dkPanel > * { visibility: hidden; }
 #dkSheet .dkHint { text-align: center; color: var(--dim); font-size: 11px; margin: 4px 16px 0; min-height: 14px; }
 #dkSheet .dkEmpty { margin: 6px auto 10px; max-width: 360px; display: flex; flex-direction: column; align-items: center; gap: 8px;
   text-align: center; color: var(--dim); font-size: 13px; line-height: 1.45; padding: 0 8px; }
@@ -1579,11 +1904,21 @@ body.dk-aiming #bottombar { visibility: hidden; }
   padding: calc(var(--safe-top) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 18px); }
 #dkInsp .dkISlot { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
 #dkInsp .dkISlot .ccard { pointer-events: auto; cursor: pointer; filter: drop-shadow(0 10px 18px rgba(0,0,0,.6)); }
-#dkInsp .dkHalo { position: absolute; left: 50%; top: 50%; width: min(120vmin, 640px); height: min(120vmin, 640px);
-  margin: calc(min(120vmin, 640px) / -2) 0 0 calc(min(120vmin, 640px) / -2); pointer-events: none;
-  background: radial-gradient(circle, var(--tg) 0%, transparent 58%); opacity: .9; }
+/* the halo behind a lifted card: a canvas of the tier's pixels (DeckUI._px),
+   sized and centred by its own inline style — never a radial glow */
+#dkInsp .dkHalo { position: absolute; left: 50%; top: 50%; pointer-events: none; image-rendering: pixelated; }
 #dkInsp .dkIAct { flex: 0 0 auto; width: min(320px, 88vw); display: flex; flex-direction: column; align-items: center; gap: 7px; pointer-events: auto; }
 #dkInsp .dkPlay { width: 100%; }
+/* A PLAY THAT CANNOT BE PRESSED LOOKS IT: the plaques' disabled wash left the
+   green banner a lit sage slab (playtest g2). Here it is an unlit plank —
+   cold dark wood, dim rim, dim studs, grey lettering — sitting flush */
+#dkInsp .dkPlay.cant { filter: none; cursor: default; }
+#dkInsp .dkPlay.cant::before { filter: none; background: #26221c;
+  box-shadow: inset 0 0 0 2px #110d08, inset 0 0 0 4px #4b4539, inset 0 0 0 6px #332e26, inset 0 0 0 7px #110d08,
+    inset 0 9px 0 rgba(0,0,0,.32); }
+#dkInsp .dkPlay.cant::after { opacity: .3; }
+#dkInsp .dkPlay.cant .blab { color: #8a8273; text-shadow: none; }
+#dkInsp .dkPlay.cant small { color: #6e675a; }
 #dkInsp .dkWhy { min-height: 0; color: #f0c48a; font-size: 13px; line-height: 1.35; text-align: center; text-shadow: 0 1px 0 #000; }
 #dkInsp .dkWhy:empty { display: none; }
 #dkInsp .dkTip { color: var(--dim); font-size: 11px; }
@@ -1615,29 +1950,28 @@ body.dk-aiming #bottombar { visibility: hidden; }
 #dkAimBar.warn .dkAStat { color: #f4c470; font-weight: 700; }
 
 #dkFly { position: fixed; inset: 0; z-index: 26; overflow: hidden; }
-#dkFly i, #dkFly .dkGood { position: absolute; display: block; pointer-events: none; }
-#dkFly .dkFCard { position: absolute; transform-origin: 50% 50%; will-change: transform, opacity; }
-#dkFly .dkLite { left: 0; top: 0; background: radial-gradient(ellipse at 50% 45%, rgba(255,250,230,.95), var(--tc) 55%, transparent 80%);
-  mix-blend-mode: screen; opacity: 0; }
-#dkFly .dkGlow { left: var(--cx); top: var(--cy); width: min(100vmin, 520px); height: min(100vmin, 520px);
-  margin: calc(min(100vmin, 520px) / -2) 0 0 calc(min(100vmin, 520px) / -2);
-  background: radial-gradient(circle, var(--tg) 0%, var(--tg) 12%, transparent 60%); opacity: 0; }
-#dkFly .dkRays { left: var(--cx); top: var(--cy); width: min(120vmin, 640px); height: min(120vmin, 640px);
-  margin: calc(min(120vmin, 640px) / -2) 0 0 calc(min(120vmin, 640px) / -2); opacity: 0;
-  background: repeating-conic-gradient(from 0deg, var(--tg) 0deg 4deg, transparent 4deg 20deg);
-  -webkit-mask-image: radial-gradient(circle, #000 6%, rgba(0,0,0,.55) 30%, transparent 64%);
-  mask-image: radial-gradient(circle, #000 6%, rgba(0,0,0,.55) 30%, transparent 64%); }
-#dkFly .dkRays2 { background: repeating-conic-gradient(from 10deg, rgba(255,246,210,.6) 0deg 2deg, transparent 2deg 30deg); }
-#dkFly .dkFlash { inset: 0; background: radial-gradient(circle at var(--cx) var(--cy), rgba(255,236,170,.95), rgba(255,214,94,.45) 45%, transparent 85%); opacity: 0; }
-#dkFly .dkRing, #dkFly .dkHit { left: var(--cx); top: var(--cy); width: 160px; height: 160px; margin: -80px 0 0 -80px; opacity: 0; }
-#dkFly .dkRing { border-radius: 50%; border: 3px dotted var(--tc); box-shadow: 0 0 14px var(--tg), inset 0 0 14px var(--tg); }
-#dkFly .dkHit { border-radius: 50%; background: radial-gradient(circle, rgba(255,250,230,.95), var(--tg) 35%, transparent 68%); }
-#dkFly .dkSpark { width: 4px; height: 4px; margin: -2px 0 0 -2px; background: var(--tc); box-shadow: 0 0 4px var(--tg); opacity: 0; }
-#dkFly .dkSpark.ember { width: 3px; height: 3px; background: #ffe7a0; }
-#dkFly .dkSpark.trail { width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; }
-#dkFly .dkChipGlow { border-radius: 8px; opacity: 0; box-shadow: 0 0 14px 3px var(--tg), inset 0 0 10px var(--tg); }
+#dkFly i, #dkFly canvas { position: absolute; display: block; pointer-events: none; }
+/* the card: the top layer, opaque, leaving by the dither (DeckUI._run) */
+#dkFly .dkFCard { position: absolute; transform-origin: 50% 50%; will-change: transform; }
+#dkFly .dkFCard.dz1, #dkFly .dkFCard.dz2, #dkFly .dkFCard.dz3 { -webkit-mask-repeat: repeat; mask-repeat: repeat;
+  -webkit-mask-size: var(--dzs) var(--dzs); mask-size: var(--dzs) var(--dzs); -webkit-mask-position: 0 0; mask-position: 0 0; }
+#dkFly .dkFCard.dz1 { -webkit-mask-image: var(--dz1); mask-image: var(--dz1); }
+#dkFly .dkFCard.dz2 { -webkit-mask-image: var(--dz2); mask-image: var(--dz2); }
+#dkFly .dkFCard.dz3 { -webkit-mask-image: var(--dz3); mask-image: var(--dz3); }
+#dkFly .dkFCard.dz4 { visibility: hidden; }
+/* the two-frame rim flash: hard borders, switched on and off */
+#dkFly .dkRim { left: -4px; top: -4px; right: -4px; bottom: -4px; border: 4px solid var(--tc); opacity: 0; }
+#dkFly .dkRim.b { left: -6px; top: -6px; right: -6px; bottom: -6px; border: 3px solid #fff6d8; box-shadow: 0 0 0 3px var(--tc); }
+/* every light below the card is solid pixels, hidden but for its moment */
+#dkFly .dkPx { left: var(--cx); top: var(--cy); image-rendering: pixelated; opacity: 0; }
+#dkFly .dkFlash { inset: 0; opacity: 0; image-rendering: pixelated;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect width='2' height='2' fill='%23fff3c4'/></svg>") 0 0 / 4px 4px repeat; }
+#dkFly .dkSpark { width: 4px; height: 4px; margin: -2px 0 0 -2px; background: var(--tc); opacity: 0; }
+#dkFly .dkSpark.ember { background: #ffe7a0; }
+#dkFly .dkSpark.trail { width: 6px; height: 6px; margin: -3px 0 0 -3px; }
+#dkFly .dkChipGlow { border-radius: 8px; opacity: 0; box-shadow: 0 0 0 2px var(--tc), 0 0 0 4px rgba(10,7,3,.85); }
 #dkFly .dkGood { width: 22px; height: 22px; margin: -11px 0 0 -11px; image-rendering: pixelated; opacity: 0;
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,.7)); }
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,.8)); }
 @media (prefers-reduced-motion: reduce) {
   #dkAim .dkRet { animation: none; }
   #dkSheet .dkCell .ccard { transition: none; }

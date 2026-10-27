@@ -820,8 +820,11 @@ const UI = {
        one screen where the choice is still yours to move. */
     else if (v && v.ok && this.placeWouldBond(g)) msg = '🌾 Homestead — beside the field';
     // …and a Master Builders charge about to be spent says so (js/deckfx-town.js)
+    // — short enough for the chip's 260px on a 320px phone: the long form
+    // read "⚒ Master Builders: stands compl…" and lost both the point and
+    // the count (playtest g2)
     else if (v && v.ok && window.Deck && Deck.masterHand && Deck.masterHand('P', this.placing))
-      msg = '⚒ Master Builders: stands complete at once (' + Deck.masterHand('P', this.placing) + ' in hand)';
+      msg = '⚒ Stands at once · ' + Deck.masterHand('P', this.placing) + ' left';
     if (msg) {
       why.style.display = 'block';
       if (why.textContent !== msg) why.textContent = msg;

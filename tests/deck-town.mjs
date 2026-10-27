@@ -365,6 +365,8 @@ await p.evaluate(({ TOWN }) => {
       UI.placing = 'house'; UI.placeGhost = { x: tc.x + 4, y: tc.y + 6, set: true };
       UI._placeCheck(); UI._placeDomSync();
       const el = document.querySelector('#placeWhy'), t = el && el.style.display !== 'none' ? el.textContent : '';
+      // the chip's 260px is its width on every phone: cut text is a lost count
+      if (t) out.ghostClipped = el.scrollWidth > el.clientWidth + 1;
       UI.exitPlacement();
       return t;
     };
@@ -427,8 +429,9 @@ await p.evaluate(({ TOWN }) => {
   });
   ck('masterBuildersHoldsThreeChargesAndASecondCardAddsThree', r.three && r.six && r.rng, `3 ${r.three}, then 6 ${r.six}, no RNG ${r.rng}`);
   ck('theChargesWearAChipOnTheStrip', r.chip && r.chipGone, `×3 with its words ${r.chip}; gone with the last ${r.chipGone}`);
-  ck('andTheGhostSaysAChargeIsAboutToBeSpent', /Master Builders.*3 in hand/.test(r.ghostChip) && !/Master Builders/.test(r.ghostBare),
-    `“${r.ghostChip}”; with none in hand “${r.ghostBare}”`);
+  // whole, never "⚒ Master Builders: stands compl…" (playtest g2)
+  ck('andTheGhostSaysAChargeIsAboutToBeSpent', /Stands at once · 3 left/.test(r.ghostChip) && !r.ghostClipped && !/Stands at once/.test(r.ghostBare),
+    `“${r.ghostChip}”${r.ghostClipped ? ' CLIPPED' : ''}; with none in hand “${r.ghostBare}”`);
   ck('aConfirmedBuildingStandsCompleteAtFullStrengthAndPaid', r.house && r.paid && r.two && r.mbShow,
     `complete & full ${r.house}, paid ${r.paid}, one charge spent ${r.two}, its moment ${r.mbShow}`);
   ck('noBuilderWalksToASiteAlreadyStanding', r.noBuilder, 'the idle villager stays idle; no build task names the house');

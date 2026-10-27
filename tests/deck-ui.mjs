@@ -120,7 +120,7 @@ const fixtures = () => {
   add('__tc', 'iron', 'none', 'Riders ride out of your Town Center.', { at: 'tc', apply: () => { window.__tcDest = Object.assign({}, DeckUI.playing.dest); return { ok: true }; } });
   add('__aim', 'imperial', 'explored', 'A star falls on the chosen ground.', {
     at: 'target', valid: () => true,
-    warn: (t) => (t && window.__warnX === t.x) ? 'This ends the truce' : null,
+    warn: (t) => (t && window.__warnX === t.x) ? (window.__warnTxt || 'This ends the truce') : null,
     apply: (t) => { window.__got.push(t); return { ok: true }; } });
   add('__no', 'bronze', 'none', 'Strangers at the fire.', { at: 'tc', apply: () => ({ ok: false, why: 'No room by the fire' }) });
   add('__cant', 'bronze', 'none', 'Mend everything.', { can: () => ({ ok: false, why: 'Nothing needs mending' }), apply: () => ({ ok: true }) });
@@ -330,6 +330,58 @@ ck('anEmptyDeckSaysHowToEarnOne', /win a game/i.test(sh.empty) && /lose/i.test(s
   /this run: \d+ of \d+ deeds, \d+ of 6 days/.test(sh.empty) && !/minutes/.test(sh.empty) && sh.emptyBadge,
   sh.empty.slice(0, 160));
 
+/* A FULL DECK JUMPS BY TIER, AND ITS FACES ARE BUILT ONCE (playtest g2/g3):
+   36 cards in one row took about nine swipes on a 390px phone to reach the
+   bronze ones, and every open rebuilt all 36 faces in the tap (55-120ms).
+   The head carries the tiers held as gems, highest first; a tap on one
+   brings that tier's name to the row's left edge and lights its gem. A
+   second open hands back the very faces the first built; a card whose
+   count changes is the one face rebuilt. */
+const sj = await p.evaluate(async () => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const out = {};
+  const c = Deck.col(), keep = Object.assign({}, c.counts);
+  c.counts = {};
+  for (const card of Deck.CATALOG) if (!card.id.startsWith('__')) c.counts[card.id] = 1;
+  Deck.saveCol();
+  document.getElementById('deckBtn').click(); await wait(450);
+  const tabs = [...document.querySelectorAll('#dkSheet .dkTier')];
+  out.tabs = tabs.map(t => t.dataset.tier).join(',');
+  out.counts = tabs.map(t => t.textContent).join(',');
+  const row = document.querySelector('#dkSheet .dkRow'), gem = document.querySelector('#dkSheet .dkTier[data-tier="bronze"]');
+  if (gem) gem.click();
+  // the row glides there: read once it has come to rest
+  let last = -1, rest = 0;
+  for (const t0 = performance.now(); performance.now() - t0 < 4000;) {
+    await wait(50);
+    if (row.scrollLeft > 0 && Math.abs(row.scrollLeft - last) < 0.5) { if (++rest >= 4) break; } else rest = 0;
+    last = row.scrollLeft;
+  }
+  const g = document.querySelector('#dkSheet .dkGroup[data-tier="bronze"]');
+  out.edge = Math.round(g.getBoundingClientRect().left - row.getBoundingClientRect().left - (parseFloat(getComputedStyle(row).paddingLeft) || 0));
+  out.lit = (document.querySelector('#dkSheet .dkTier.on') || {}).dataset;
+  out.lit = out.lit && out.lit.tier;
+  // the faces of this open, marked
+  for (const f of document.querySelectorAll('#dkSheet .dkCell .ccard')) f.__mark = 1;
+  document.querySelector('#dkSheet .dkClose').click(); await wait(350);
+  document.getElementById('deckBtn').click(); await wait(450);
+  const faces = [...document.querySelectorAll('#dkSheet .dkCell .ccard')];
+  out.n = faces.length;
+  out.reused = faces.filter(f => f.__mark).length;
+  // one card changes: that face alone is made again
+  Deck._add('harvest_festival', 1); Deck.saveCol();
+  await wait(100);
+  const after = [...document.querySelectorAll('#dkSheet .dkCell .ccard')];
+  out.rebuilt = after.filter(f => !f.__mark).map(f => f.dataset.card).join(',');
+  document.querySelector('#dkSheet .dkClose').click(); await wait(350);
+  c.counts = keep; Deck.saveCol();
+  return out;
+});
+ck('aFullDeckJumpsByTier', sj.tabs === 'enlight,imperial,iron,bronze,stone' && /^\d+(,\d+){4}$/.test(sj.counts) && Math.abs(sj.edge) <= 2 && sj.lit === 'bronze',
+  `gems ${sj.tabs} (${sj.counts}); bronze jumped to ${sj.edge}px from the edge, lit ${sj.lit}`);
+ck('andItsFacesAreBuiltOnce', sj.n === 36 && sj.reused === 36 && sj.rebuilt === 'harvest_festival',
+  `${sj.reused} of ${sj.n} faces handed back on the second open; rebuilt after a change: ${sj.rebuilt || 'none'}`);
+
 /* ================= 5. LIFT, FLIP, PLAY ================= */
 const playBar = (pg) => pg.evaluate(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -464,6 +516,79 @@ ck('aTcCardBurstsOnTheTownCenter', tc.spent && tc.dest && Math.hypot(tc.dest.x -
 ck('theSpectacleScalesWithTheTier', tc.spectacle.legend > tc.spectacle.iron && tc.spectacle.legend > tc.spectacle.stone,
   JSON.stringify(tc.spectacle));
 
+/* THE CARD LEAVES IN HARD PIXELS (playtest judges g1/g2): the old exit faded
+   the card out as a ghost with the world showing through it, over a soft
+   radial halo, and the comet's tail drew a "+" across its name plate mid-
+   flight. A whole play of the highest tier (its every light) to a point on
+   the ground, its clock HELD at chosen moments (so a starved machine reads
+   the same as a phone): the card is never translucent; it is the TOP layer
+   (nothing of the light is ever laid over it); its rim flashes in two short
+   frames; it leaves by the dither — 25/50/75% of its cells, in that order,
+   then gone; and nothing in the layer is a radial gradient or a blurred glow.
+   The lifted card's own halo likewise. */
+const hp5 = await p.evaluate(async () => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const raf2 = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const id = '__legendPt';
+  if (!Deck.card(id)) Deck.CATALOG.push({ id, tier: 'enlight', cat: 'strike', target: 'none', name: 'Test ' + id, text: 'A light on the hall.', flavor: 'f', when: 'w' });
+  Deck._byId = null;
+  Deck.FX[id] = { at: 'tc', apply: () => ({ ok: true }) };
+  Deck.col().counts[id] = 1; Deck.saveCol();
+  document.getElementById('deckBtn').click(); await wait(400);
+  document.querySelector(`#dkSheet .dkCell[data-card="${id}"]`).click(); await wait(300);
+  const halo = document.querySelector('#dkInsp .dkHalo');
+  const out = { haloSoft: !halo || /radial-gradient/.test(getComputedStyle(halo).backgroundImage) || halo.tagName !== 'CANVAS',
+    looks: [], translucent: 0, notTop: 0, soft: new Set() };
+  // the LIGHT is what is judged — the face itself (its art's placeholder
+  // ground, its paper) is the card's own and pinned elsewhere
+  const soft = el => {
+    if (el.closest('.ccard')) return null;
+    const cs = getComputedStyle(el);
+    if (/radial-gradient/.test(cs.backgroundImage) || /radial-gradient/.test(cs.webkitMaskImage || cs.maskImage || '')) return 'radial ' + el.className;
+    // a box-shadow is "color x y blur spread": any blur at all is a soft glow
+    for (const sh of (cs.boxShadow === 'none' ? [] : cs.boxShadow.replace(/rgba?\([^)]*\)/g, '').split(','))) {
+      const n = (sh.match(/-?[\d.]+px/g) || []).map(parseFloat);
+      if (n[2] > 0) return 'blur ' + el.className;
+    }
+    return null;
+  };
+  // the play's landing failsafe (a timer of real time) is held off while its
+  // clock is held still: on a starved machine it would land mid-reading
+  const realAfter = DeckUI._after;
+  DeckUI._after = function (ms, fn) { if (!window.__holdLand) return realAfter.call(this, ms, fn); };
+  window.__holdLand = true;
+  document.querySelector('#dkInsp .dkPlay').click();
+  window.__holdLand = false;
+  DeckUI._after = realAfter;
+  await raf2();
+  const L = document.getElementById('dkFly'), card = L.querySelector('.dkFCard');
+  const anims = L.getAnimations({ subtree: true });
+  for (const a of anims) a.pause();
+  const ex = DeckUI.FLY_MS + DeckUI.FLARE_MS, B = DeckUI.BURST_MS;
+  // the rim's two frames, then the burst's quarters
+  const moments = [['fly', 120], ['rim1', ex - 63], ['rim2', ex - 21], ['q1', ex + B * 0.3], ['q2', ex + B * 0.55], ['q3', ex + B * 0.8], ['end', ex + B - 1]];
+  for (const [name, t] of moments) {
+    for (const a of anims) a.currentTime = t;
+    await raf2(); await raf2();
+    const rims = [...L.querySelectorAll('.dkRim')].map(r => getComputedStyle(r).opacity);
+    const k = /dz(\d)/.exec(card.className);
+    out.looks.push(`${name}:${k ? k[1] : 0}${rims.map(o => o === '1' ? '+' : '.').join('')}`);
+    if (getComputedStyle(card).visibility !== 'hidden' && +getComputedStyle(card).opacity < 1) out.translucent++;
+    if (L.lastElementChild !== card) out.notTop++;
+    for (const el of L.querySelectorAll('*')) { const s = soft(el); if (s) out.soft.add(s); }
+  }
+  // the dissolve's three masks: a quarter, a half, three quarters of the cells gone
+  out.masks = [1, 2, 3].map(s => (decodeURIComponent(L.style.getPropertyValue('--dz' + s)).match(/<rect/g) || []).length);
+  for (const a of anims) a.play();
+  await __idle();
+  out.soft = [...out.soft];
+  return out;
+});
+ck('theCardLeavesInHardPixels', hp5.translucent === 0 && hp5.notTop === 0 && !hp5.soft.length && !hp5.haloSoft &&
+  hp5.looks.join(' ') === 'fly:0.. rim1:0+. rim2:0.+ q1:1.. q2:2.. q3:3.. end:3..' && String(hp5.masks) === '12,8,4',
+  `${hp5.looks.join(' ')} (dither step, rim frames); cells kept ${hp5.masks}/16; translucent ${hp5.translucent}, light over the card ${hp5.notTop}, ` +
+  `soft ${hp5.soft.join('|') || 'none'}, inspector halo ${hp5.haloSoft ? 'SOFT' : 'pixels'}`);
+
 /* ================= 6. A REFUSAL KEEPS THE CARD ================= */
 const rf = await p.evaluate(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -478,19 +603,27 @@ const rf = await p.evaluate(async () => {
   document.querySelector('#dkInsp .dkPlay').click();
   await __idle();
   out.noKept = Deck.count('__no') === 1;
-  out.noToast = [...document.querySelectorAll('#toasts .toast.warn')].some(t => t.textContent === 'No room by the fire');
+  // said in the NOTE style: the red alarm is the town under attack, never a card
+  out.noToast = [...document.querySelectorAll('#toasts .toast:not(.warn)')].some(t => t.textContent === 'No room by the fire') &&
+    ![...document.querySelectorAll('#toasts .toast.warn')].some(t => t.textContent === 'No room by the fire');
   out.noResumed = S.paused === false;
   out.consumes = c.queue.filter(x => x.op === 'consume').length - q0;
   // at PLAY: the card cannot be played now
   document.getElementById('deckBtn').click(); await wait(400);
   document.querySelector('#dkSheet .dkCell[data-card="__cant"]').click(); await wait(250);
   out.cantGreyed = document.querySelector('#dkInsp .dkPlay').classList.contains('cant') && document.querySelector('#dkInsp .ccard').classList.contains('off');
+  // the reason is on the line above PLAY — and NOT also laid across the art
+  out.banner = !!document.querySelector('#dkInsp .cc-why');
+  out.lineFirst = document.querySelector('#dkInsp .dkWhy').textContent;
+  window.__anims.length = 0;
   document.querySelector('#dkInsp .dkPlay').click();
   await wait(100);
+  out.shook = window.__anims.some(k => /translateX/.test(k));
   out.cantFlew = !!DeckUI.playing;
   out.cantKept = Deck.count('__cant') === 1;
   out.cantWhy = document.querySelector('#dkInsp .dkWhy').textContent;
-  out.cantToast = [...document.querySelectorAll('#toasts .toast.warn')].some(t => t.textContent === 'Nothing needs mending');
+  out.cantToast = [...document.querySelectorAll('#toasts .toast:not(.warn)')].some(t => t.textContent === 'Nothing needs mending') &&
+    ![...document.querySelectorAll('#toasts .toast.warn')].some(t => t.textContent === 'Nothing needs mending');
   document.querySelector('#dkInsp .dkIClose').click(); await wait(250);
   out.putBack = !document.getElementById('dkInsp') && DeckUI.open;
   document.querySelector('#dkSheet .dkClose').click(); await wait(350);
@@ -498,6 +631,79 @@ const rf = await p.evaluate(async () => {
 });
 ck('aRefusalAtTheLandingKeepsTheCard', rf.noKept && rf.noToast && rf.noResumed && rf.consumes === 0, JSON.stringify(rf));
 ck('aCardThatCannotBePlayedSaysWhy', rf.cantGreyed && !rf.cantFlew && rf.cantKept && rf.cantWhy === 'Nothing needs mending' && rf.cantToast && rf.putBack);
+/* SAID ONCE, ON THE CARD (playtest g1/g2/g4): a banner across the art, the
+   line above PLAY and a red toast were the same words three times on one
+   screen. The line stays (and the button shakes its head); the banner goes;
+   the toast is a note. */
+ck('aRefusalIsSaidOnceOnTheCard', !rf.banner && rf.lineFirst === 'Nothing needs mending' && rf.shook,
+  `banner over the art: ${rf.banner}; line "${rf.lineFirst}"; shook ${rf.shook}`);
+/* …AND THE SCREEN AROUND IT AGREES. The disabled PLAY must read disabled
+   (it was a lit sage slab), and the sheet under the inspector must never
+   show through it ("QUICK HANDS" ran into "Nothing needs mending."). Read
+   off the real pixels: the sheet's panel shot with the lifted card up,
+   then again with every caption, header and face in the sheet hidden —
+   nothing of the sheet may change the picture. */
+const pxOf = (pg, buf) => pg.evaluate(async (b64) => {
+  const im = new Image(); im.src = 'data:image/png;base64,' + b64; await im.decode();
+  const c = document.createElement('canvas'); c.width = im.width; c.height = im.height;
+  const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data;
+  let L = 0, Sa = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) { const r = d[i], gg = d[i + 1], bb = d[i + 2]; L += 0.299 * r + 0.587 * gg + 0.114 * bb; Sa += Math.max(r, gg, bb) - Math.min(r, gg, bb); n++; }
+  return { luma: L / n, sat: Sa / n, data: [...d] };
+}, buf.toString('base64'));
+const liftIt = async (id) => {
+  await p.evaluate(async (id) => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    if (Deck.count(id) < 1) { Deck.col().counts[id] = 1; Deck.saveCol(); }
+    if (!DeckUI.open) { document.getElementById('deckBtn').click(); await wait(400); }
+    document.querySelector(`#dkSheet .dkCell[data-card="${id}"]`).click(); await wait(400);
+  }, id);
+};
+await liftIt('__cant');
+const offPlay = await pxOf(p, await p.locator('#dkInsp .dkPlay').screenshot());
+const panelR = await p.evaluate(() => { const r = document.querySelector('#dkSheet .dkPanel').getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.bottom - r.top) }; });
+const withSheet = await pxOf(p, await p.screenshot({ clip: panelR }));
+await p.evaluate(() => {
+  const st = document.createElement('style'); st.id = '__noSheet';
+  st.textContent = '#dkSheet .dkCap, #dkSheet .dkGroupHd, #dkSheet .ccard, #dkSheet .dkHead, #dkSheet .dkGrip, #dkSheet .dkHint { visibility: hidden !important; }';
+  document.head.appendChild(st);
+});
+const noSheet = await pxOf(p, await p.screenshot({ clip: panelR }));
+await p.evaluate(async () => { document.getElementById('__noSheet').remove(); DeckUI.putBack(true); });
+await liftIt('__bar');
+const onPlay = await pxOf(p, await p.locator('#dkInsp .dkPlay').screenshot());
+await p.evaluate(async () => { DeckUI.closeSheet(); await new Promise(r => setTimeout(r, 350)); });
+let through = 0;
+for (let i = 0; i < withSheet.data.length; i += 4)
+  if (Math.abs(withSheet.data[i] - noSheet.data[i]) + Math.abs(withSheet.data[i + 1] - noSheet.data[i + 1]) + Math.abs(withSheet.data[i + 2] - noSheet.data[i + 2]) > 6) through++;
+ck('aDisabledPlayLooksDisabled', offPlay.luma < onPlay.luma * 0.6 && offPlay.sat < 18,
+  `disabled luma ${offPlay.luma.toFixed(0)} sat ${offPlay.sat.toFixed(0)}; playable luma ${onPlay.luma.toFixed(0)} sat ${onPlay.sat.toFixed(0)}`);
+ck('theSheetNeverShowsThroughTheLiftedCard', through === 0, `${through} px of the sheet show through the inspector`);
+/* A TOAST NEVER LIES OVER THE LIFTED CARD (playtest g2: the rival-origin and
+   scout toasts covered the card's corner and tier badge, and on its back ran
+   over its text). While a card is lifted the toasts sit UNDER the inspector;
+   with the card put back they ride over the sheet again. Asked of the
+   stacking itself — the toast column and the inspector share the root
+   stacking context, so their z-indices are the order they paint in. */
+const tz = await p.evaluate(async () => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  UI._toastAt = {};
+  UI.toast('A toast about the rival', 'note', 6000);
+  if (Deck.count('__bar') < 1) { Deck.col().counts.__bar = 1; Deck.saveCol(); }
+  document.getElementById('deckBtn').click(); await wait(400);
+  const z = id => +getComputedStyle(document.getElementById(id)).zIndex || 0;
+  const toastOverSheet0 = z('toasts') > z('dkSheet');
+  document.querySelector('#dkSheet .dkCell[data-card="__bar"]').click(); await wait(300);
+  const toast = document.querySelector('#toasts .toast').getBoundingClientRect(), card = document.querySelector('#dkInsp .ccard').getBoundingClientRect();
+  const lifted = { toast: z('toasts'), insp: z('dkInsp'), overlap: toast.right > card.left && toast.left < card.right && toast.bottom > card.top && toast.top < card.bottom };
+  document.querySelector('#dkInsp .dkIClose').click(); await wait(250);
+  const toastOverSheet1 = z('toasts') > z('dkSheet');
+  document.querySelector('#dkSheet .dkClose').click(); await wait(350);
+  return { lifted, toastOverSheet0, toastOverSheet1 };
+});
+ck('aToastNeverLiesOverTheLiftedCard', tz.lifted.toast < tz.lifted.insp && tz.toastOverSheet0 && tz.toastOverSheet1,
+  `lifted: toasts z ${tz.lifted.toast} vs inspector ${tz.lifted.insp} (rects overlap: ${tz.lifted.overlap}); over the sheet before ${tz.toastOverSheet0}, after ${tz.toastOverSheet1}`);
 
 /* ================= 7. TARGETING ================= */
 // spies: the world's own tap handlers and the canvas itself
@@ -593,6 +799,24 @@ const wr = await p.evaluate(async () => {
 ck('aWarningIsShownBeforeConfirming', a2.aim && /This ends the truce/.test(wr.stat) && wr.warnCls, wr.stat);
 ck('andItAsksTwice', !wr.first.flew && wr.first.kept && /Confirm/.test(wr.first.label) && /again/.test(wr.first.stat) && wr.second && wr.spent === 1,
   JSON.stringify(wr.first));
+/* THE WARNING READS AS SENTENCES (playtest g4, nit 8): the real truce
+   warning ends in a full stop, and the ask used to hang off it as
+   "…fights back. — tap ✓ again to confirm." One stop, then the ask. */
+await aimOpen();
+const wp = await p.evaluate(() => {
+  const A = DeckUI.aim, out = {};
+  window.__warnX = A.x + 0.5; window.__warnTxt = Deck.TRUCE; A.armed = false;
+  DeckUI._aimSync();
+  out.first = document.querySelector('#dkAimBar .dkAStat').textContent;
+  document.querySelector('#dkAimBar .dkAGo').click();
+  out.armed = document.querySelector('#dkAimBar .dkAStat').textContent;
+  out.truce = Deck.TRUCE;
+  window.__warnX = null; window.__warnTxt = null;
+  document.querySelector('#dkAimBar .dkANo').click();
+  return out;
+});
+ck('theWarningReadsAsSentences', wp.first === wp.truce && wp.armed === wp.truce + ' Tap ✓ again to confirm.' &&
+  !/[.!?]\s*[—–]/.test(wp.armed) && !/\.\./.test(wp.armed), `"${wp.armed}"`);
 // unexplored ground is refused, and the aim waits
 await aimOpen();
 const ux = await p.evaluate(async () => {
@@ -607,7 +831,9 @@ const ux = await p.evaluate(async () => {
   document.querySelector('#dkAimBar .dkAGo').click();
   await wait(60);
   out.flew = !!DeckUI.playing; out.kept = Deck.count('__aim') === n0; out.still = !!DeckUI.aim;
-  out.toast = [...document.querySelectorAll('#toasts .toast.warn')].some(t => /explored/.test(t.textContent));
+  // a refusal is a NOTE, never the red alarm
+  out.toast = [...document.querySelectorAll('#toasts .toast:not(.warn)')].some(t => /explored/.test(t.textContent)) &&
+    ![...document.querySelectorAll('#toasts .toast.warn')].some(t => /explored/.test(t.textContent));
   S.map.explored[A.y * CFG.W + A.x] = 1;
   // ✕ puts the card back, untouched, and gives the pause back
   document.querySelector('#dkAimBar .dkANo').click();
@@ -660,6 +886,49 @@ ck('aMouseHoverIsAPreviewNotAChoice', /Click the ground/.test(hv1.label) && hv2.
 ck('andAClickChoosesTheGround', hv3.x === hv.t.x && hv3.y === hv.t.y && /Here/.test(hv3.label) && hv4.got &&
   hv4.got.x === hv.t.x + 0.5 && hv4.got.y === hv.t.y + 0.5,
   `clicked ${hv.t.x},${hv.t.y}; played at ${JSON.stringify(hv4.got)} after sweeping the cursor down to ✓`);
+/* A FINGER CHOOSES BY TAPPING, and ✓ LIGHTS AT ONCE (playtest g1, MAJOR):
+   a finger never hovers, so the hover flag was undefined on a phone and
+   classList.toggle('off', undefined) FLIPPED the class on every sync — after
+   an ordinary tap on the ground ✓ read grey and disabled, and only tapping
+   the same tile again lit it. A real touch context, real taps: ✓ is lit on
+   the seeded mark, after a tap, after another, after the same tile again —
+   and it plays where the finger chose. */
+const { ctx: hctx, p: hp } = await page({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+await hp.evaluate(({ enter, fx }) => {
+  CFG.CARDS.ON = true;
+  Deck._col = null; Deck._del(Deck.KEY);
+  eval('(' + fx + ')')();
+  eval('(' + enter + ')')('dk-touch');
+}, { enter: enterGame.toString(), fx: fixtures.toString() });
+await hp.evaluate(async () => { await __until(() => DeckUI.built); Deck.col().counts.__aim = 2; Deck.saveCol(); S.paused = false; });
+await hp.tap('#deckBtn'); await hp.waitForTimeout(450);
+await hp.tap('#dkSheet .dkCell[data-card="__aim"]'); await hp.waitForTimeout(300);
+await hp.tap('#dkInsp .dkPlay'); await hp.waitForTimeout(350);
+const goState = () => hp.evaluate(() => {
+  const g = document.querySelector('#dkAimBar .dkAGo');
+  return { off: g.classList.contains('off'), label: g.textContent, x: DeckUI.aim.x, y: DeckUI.aim.y, set: DeckUI.aim.set };
+});
+const touchSeq = [Object.assign({ at: 'seeded' }, await goState())];
+const tt = await hp.evaluate(() => {
+  R.centerOn(CFG.W / 2, CFG.H / 2);
+  const TL = CFG.TILE, z = R.cam.z, vx = R.viewW() / 2, vy = R.viewH() / 2;
+  const at = (dx, dy) => { const x = Math.round(vx + dx * TL * z), y = Math.round(vy + dy * TL * z); return { x, y, t: R.screenToTile(x, y) }; };
+  return [at(1.5, -1.5), at(-2.5, 0.5)];
+});
+for (const [i, q] of [tt[0], tt[1], tt[1]].entries()) {
+  await hp.touchscreen.tap(q.x, q.y);
+  await hp.waitForTimeout(120);
+  touchSeq.push(Object.assign({ at: ['a tap', 'another tile', 'the same tile again'][i], want: q.t }, await goState()));
+}
+await hp.evaluate(() => { window.__got.length = 0; });
+await hp.tap('#dkAimBar .dkAGo');
+await hp.evaluate(() => __idle());
+const touchGot = await hp.evaluate(() => window.__got[0] || null);
+await hctx.close();
+ck('aFingerTapLightsTheGoButton', touchSeq.every(s => !s.off && /✓ Here/.test(s.label)) &&
+  touchSeq.slice(1).every(s => s.set && s.x === s.want.x && s.y === s.want.y) &&
+  !!touchGot && touchGot.x === tt[1].t.x + 0.5 && touchGot.y === tt[1].t.y + 0.5,
+  touchSeq.map(s => `${s.at}: ${s.off ? 'GREY' : 'lit'} "${s.label}"`).join('; ') + ` → played at ${JSON.stringify(touchGot)}`);
 // a tutorial note already on screen steps aside while the deck has the floor
 await aimOpen();
 const tut = await p.evaluate(async () => {
@@ -765,6 +1034,72 @@ for (const w of [320, 360, 375, 390, 430]) {
     return out;
   }, w));
 }
+/* THE STRIP IS FITTED TO WHAT A PHONE REALLY HOLDS (playtest g1/g2): two
+   cards with two-digit days beside a "6/13" tribe and a "Day 12" — the row
+   a 390px phone shows a few minutes in — must both be whole, never one and
+   a "+1" with room going spare; with four, the "+k" badge must be whole
+   (the strip's clip cut its top half off); every card wears its OWN glyph
+   (three bronze buffs were three identical suns); the time reads as bright
+   as the HUD's own numbers; and a tap answers in one short line, never the
+   card's whole rules text. */
+await p.setViewportSize({ width: 390, height: 844 });
+await p.waitForTimeout(200);
+const strip = await p.evaluate(async () => {
+  const out = {};
+  const refresh = UI.refresh;
+  UI.refresh = () => {};   // the HUD's numbers held where the test puts them
+  try {
+    S.deck.fx = []; DeckUI._t = 0;
+    await __until(() => !document.querySelector('#dkTimers .dkT'));
+    Deck.addTimed('harvest_festival', 12); Deck.addTimed('bountiful_land', 20);
+    DeckUI._t = 0;
+    await __until(() => document.querySelectorAll('#dkTimers .dkT').length >= 1);
+    await new Promise(r => setTimeout(r, 300));
+    document.getElementById('rPop').textContent = '6/13';
+    document.getElementById('rDay').textContent = 'Day 12';
+    DeckUI._fitChips();
+    const shown = () => [...document.querySelectorAll('#dkTimers .dkT')].filter(e => getComputedStyle(e).display !== 'none');
+    const sr = () => document.getElementById('dkTimers').getBoundingClientRect();
+    const whole = el => { const r = el.getBoundingClientRect(), s = sr(); return r.left >= s.left - 0.5 && r.right <= s.right + 0.5 && r.top >= s.top - 0.5 && r.bottom <= s.bottom + 0.5; };
+    out.two = shown().filter(e => !e.classList.contains('dkMore')).map(e => e.dataset.id);
+    out.twoK = !!document.querySelector('#dkTimers .dkMore, #dkTimers .dkMoreB');
+    out.twoWhole = shown().every(whole);
+    // the time reads like the HUD's numbers (relative luminance of the label)
+    const lum = el => { const m = getComputedStyle(el).color.match(/\d+(\.\d+)?/g).map(Number).slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2]; };
+    // three bronze buffs and a stone one, all fresh: four different glyphs
+    S.deck.fx = []; DeckUI._t = 0;
+    await __until(() => !document.querySelector('#dkTimers .dkT'));
+    const ids = ['harvest_festival', 'bountiful_land', 'watchfires', 'quick_hands'];
+    for (const id of ids) Deck.addTimed(id, 6);
+    DeckUI._t = 0;
+    await __until(() => ids.every(id => DeckUI._chips[id] && DeckUI._chips[id].n > 0));
+    // a new chip pops in (scale .5 → 1): measured once it has landed, or the
+    // shrunken badge reads as inside the strip whatever the clip does
+    await new Promise(r => setTimeout(r, 320));
+    const pics = ids.map(id => DeckUI._chips[id].cv.toDataURL());
+    out.distinct = new Set(pics).size;
+    out.lum = lum(DeckUI._chips.quick_hands.lab);
+    DeckUI._fitChips();
+    const badge = document.querySelector('#dkTimers .dkMoreB');
+    out.badge = !!badge; out.badgeWhole = !!badge && whole(badge);
+    // a tap is the name, the time left and ONE short line
+    UI._toastAt = {}; document.getElementById('toasts').innerHTML = '';
+    DeckUI._chips.harvest_festival.el.click();
+    const t = [...document.querySelectorAll('#toasts .toast')].map(e => e.textContent).find(s => /Harvest Festival/.test(s)) || '';
+    out.tap = t.replace(/ Also running:.*$/, '');
+    out.fullText = t.includes(Deck.card('harvest_festival').text);
+    S.deck.fx = []; DeckUI._t = 0;
+    await __until(() => !document.querySelector('#dkTimers .dkT'));
+  } finally { UI.refresh = refresh; }
+  return out;
+});
+ck('twoRunningCardsFitAPhonesRow', strip.two.length === 2 && !strip.twoK && strip.twoWhole,
+  `390px, "6/13", "Day 12": ${strip.two.join(' + ') || 'none'} shown${strip.twoK ? ' and a +k' : ''}`);
+ck('andTheBadgeIsWhole', strip.badge && strip.badgeWhole, `badge ${strip.badge ? (strip.badgeWhole ? 'whole' : 'CLIPPED') : 'missing'}`);
+ck('eachRunningCardWearsItsOwnGlyph', strip.distinct === 4, `${strip.distinct} different chips for 4 cards (3 bronze buffs, 1 stone)`);
+ck('theTimeReadsAsBrightAsTheHud', strip.lum >= 0.5, `label luminance ${strip.lum.toFixed(2)} on a stone card`);
+ck('aChipTapIsOneShortLine', /^Harvest Festival — \d+ days? left\. [^.]+\.$/.test(strip.tap) && strip.tap.length <= 100 && !strip.fullText,
+  `"${strip.tap}"`);
 await p.setViewportSize({ width: 430, height: 880 });
 await p.waitForTimeout(200);
 ck('everyRunningCardIsSeenOrCounted', fit.every(f => f.whole && f.shown >= 1 && f.shown + f.k === 4 && f.named),
@@ -930,6 +1265,116 @@ ck('everyNameFitsItsPlate', plates.every(pl => pl.n === 36 && !pl.bad.length) &&
 ck('aRefusalTakesAThirdLineNeverAnEllipsis', !!wonderCap && wonderCap.n === 3 && wonderCap.whole && wonderCap.why === 'The Wonder rises only in Calm worlds.' &&
   plates.every(pl => pl.caps.every(c => c.whole)),
   plates.map(pl => `${pl.w}: ` + pl.caps.map(c => `${c.id} ${c.n}${c.whole ? '' : ' CLIPPED'}`).join(', ')).join(' / '));
+
+/* ================= 13. THE FRAMES CARRY NO STRAY PIXELS =================
+   assets/cards/frame-*.png are drawn over every face at whole multiples, so
+   a stray pixel in one is on every card of its tier. The Stone frame shipped
+   with a white L in its bottom-right corner, a pale dash in its bottom
+   outline and a lone pixel off its bottom-left corner (playtest judge g1,
+   seen on every Stone card in the inspector). Read off the files themselves:
+   no frame has an opaque speck (≤ 3 px) cut off from its body, and the Stone
+   frame's bottom outline and its bottom-right corner are its own dark. */
+{
+  const { readFileSync } = await import('node:fs');
+  const { inflateSync } = await import('node:zlib');
+  const png = f => {
+    const b = readFileSync(f);
+    let p = 8, ih = null; const idat = [];
+    while (p < b.length) {
+      const len = b.readUInt32BE(p), type = b.toString('ascii', p + 4, p + 8), d = b.subarray(p + 8, p + 8 + len);
+      if (type === 'IHDR') ih = d; else if (type === 'IDAT') idat.push(d);
+      p += 12 + len;
+    }
+    const W = ih.readUInt32BE(0), H = ih.readUInt32BE(4);
+    if (ih[8] !== 8 || ih[9] !== 6) throw new Error(f + ': expected 8-bit RGBA');
+    const raw = inflateSync(Buffer.concat(idat)), st = W * 4, px = Buffer.alloc(H * st);
+    for (let y = 0; y < H; y++) {
+      const ft = raw[y * (st + 1)];
+      for (let x = 0; x < st; x++) {
+        const a = x >= 4 ? px[y * st + x - 4] : 0, u = y ? px[(y - 1) * st + x] : 0, c = x >= 4 && y ? px[(y - 1) * st + x - 4] : 0;
+        let v = raw[y * (st + 1) + 1 + x];
+        if (ft === 1) v += a; else if (ft === 2) v += u; else if (ft === 3) v += (a + u) >> 1;
+        else if (ft === 4) { const q = a + u - c, pa = Math.abs(q - a), pb = Math.abs(q - u), pc = Math.abs(q - c); v += pa <= pb && pa <= pc ? a : pb <= pc ? u : c; }
+        px[y * st + x] = v & 255;
+      }
+    }
+    return { W, H, px };
+  };
+  const specks = {}, rim = [];
+  for (const t of ['stone', 'bronze', 'iron', 'imperial', 'enlight']) {
+    const { W, H, px } = png(join(root, 'assets/cards/frame-' + t + '.png'));
+    const A = (x, y) => px[(y * W + x) * 4 + 3];
+    const seen = new Uint8Array(W * H);
+    specks[t] = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (seen[y * W + x] || !A(x, y)) continue;
+      const stack = [[x, y]], pts = []; seen[y * W + x] = 1;
+      while (stack.length) {
+        const [cx, cy] = stack.pop(); pts.push(cx + ',' + cy);
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H || seen[ny * W + nx] || !A(nx, ny)) continue;
+          seen[ny * W + nx] = 1; stack.push([nx, ny]);
+        }
+      }
+      if (pts.length <= 3) specks[t].push(pts.join(' '));
+    }
+    if (t === 'stone') {
+      const luma = (x, y) => { const i = (y * W + x) * 4; return 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]; };
+      for (let x = 0; x < W; x++) if (A(x, H - 1) && luma(x, H - 1) > 80) rim.push(`${x},${H - 1}`);
+      for (let y = H - 5; y < H - 1; y++) for (let x = W - 4; x < W; x++) if (A(x, y) && luma(x, y) > 80) rim.push(`${x},${y}`);
+    }
+  }
+  const specky = Object.entries(specks).filter(([, s]) => s.length);
+  ck('theFramesCarryNoStrayPixels', !specky.length && !rim.length,
+    (specky.map(([t, s]) => `${t}: speck at ${s.join(' / ')}`).join('; ') || 'no specks') + (rim.length ? `; stone rim lit at ${rim.join(' ')}` : '; the stone rim is its outline'));
+}
+
+/* ================= 14. THE FOIL NEVER CROSSES THE NAME PLATE =================
+   The Enlightenment foil's sheen ran over the dark name plate too, and inside
+   the mask's isolated group its overlay blend had nothing to blend with — a
+   hard-edged grey slab across the plate every 3.2 s (playtest earn, f-sheen-
+   11/12). The sheen is held at every point of its sweep and the plate is
+   read off the screen with the foil and without it: the plate must not
+   change, while the gold frame beside it still shines. */
+{
+  const { ctx: fctx, p: fp } = await page({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const box = await fp.evaluate(async () => {
+    const f = Deck.face('dragonfire', { w: 264 });
+    f.id = '__foil';
+    f.style.position = 'fixed'; f.style.left = '20px'; f.style.top = '20px'; f.style.zIndex = 99999;
+    document.body.appendChild(f);
+    await new Promise(r => setTimeout(r, 900));
+    const r = f.getBoundingClientRect(), u = r.width / Deck.W, P = Deck.PLATE;
+    window.__sheen = document.getAnimations().filter(a => a.animationName === 'ccSheen' && a.effect && a.effect.target === f.querySelector('.cc-foil'));
+    for (const a of window.__sheen) a.pause();
+    // the plate's interior (inset two art pixels) and a strip of the gold frame beside it
+    return { plate: { x: r.left + (P.x + 2) * u, y: r.top + (P.y + 2) * u, width: (P.w - 4) * u, height: (P.h - 4) * u },
+      gold: { x: r.left + 2 * u, y: r.top + 60 * u, width: 8 * u, height: 100 * u }, n: window.__sheen.length };
+  });
+  const grab = async (clip) => (await fp.screenshot({ clip })).toString('base64');
+  const diff = (a, b) => fp.evaluate(async ([a, b]) => {
+    const dec = async s => { const im = new Image(); im.src = 'data:image/png;base64,' + s; await im.decode(); const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0); return g.getImageData(0, 0, c.width, c.height).data; };
+    const A = await dec(a), B = await dec(b);
+    let n = 0;
+    for (let i = 0; i < A.length; i += 4) if (Math.abs(A[i] - B[i]) + Math.abs(A[i + 1] - B[i + 1]) + Math.abs(A[i + 2] - B[i + 2]) > 9) n++;
+    return n;
+  }, [a, b]);
+  let plateHit = 0, goldShone = 0;
+  for (let t = 0; t <= 2000; t += 100) {
+    await fp.evaluate((t) => { for (const a of window.__sheen) a.currentTime = t; document.querySelector('#__foil .cc-foil').style.display = ''; }, t);
+    await fp.waitForTimeout(40);
+    const withP = await grab(box.plate), withG = await grab(box.gold);
+    await fp.evaluate(() => { document.querySelector('#__foil .cc-foil').style.display = 'none'; });
+    await fp.waitForTimeout(40);
+    const noP = await grab(box.plate), noG = await grab(box.gold);
+    plateHit = Math.max(plateHit, await diff(withP, noP));
+    goldShone = Math.max(goldShone, await diff(withG, noG));
+  }
+  await fctx.close();
+  ck('theFoilNeverCrossesTheNamePlate', box.n > 0 && plateHit === 0 && goldShone > 0,
+    `${box.n} sheen held through its sweep: plate pixels changed ${plateHit}; the gold frame still shines (${goldShone} px)`);
+}
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 const pageErrs = errs.filter(e => !/ERR_FILE_NOT_FOUND/.test(e));

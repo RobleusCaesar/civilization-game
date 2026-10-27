@@ -663,6 +663,51 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   await p.close();
 }
 
+/* ================= 5b. THE NEW CARD IS FOUND FOR YOU =================
+   Opened from the reward screen the collection landed on the right tier but
+   scrolled to its top, in catalog order: the new Kraken's Call half off the
+   screen behind a row of "?"s, Barbarian Pact below the fold, and nothing to
+   say which was new (playtest earn, b-win-05). On a short phone with every
+   face drawn: the run's card wears NEW, its tier's tab is marked, and it is
+   in view when the collection opens — and from the title nothing is new. */
+{
+  const p = await page({ h: 600, reduce: true });
+  await p.evaluate(SETUP);
+  const a = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const out = {};
+    CFG.CARDS.ON = true;
+    __fresh();
+    Deck.ensureStarter();
+    const c = Deck.col();
+    for (const card of Deck.CATALOG) if (!c.seen[card.id]) c.seen[card.id] = 1;   // every face drawn: the new one has company
+    Deck.saveCol();
+    window.__run({ seed: 'ds-new', win: true, cards: [['imperial', 'barbarian_pact']] });
+    await wait(300);
+    document.querySelector('#cardEnd [data-act="deck"]').click();
+    await wait(300);
+    const scr = document.getElementById('scrCards'), body = scr.querySelector('.clBody');
+    out.cur = Screens.current;
+    out.tab = (scr.querySelector('.clTab.sel') || {}).dataset;
+    out.tab = out.tab && out.tab.tier;
+    const cell = scr.querySelector('.clCell[data-card="barbarian_pact"]');
+    out.tag = !!cell && cell.classList.contains('clNew') ? ((cell.querySelector('.clNewTag') || {}).textContent || '') : '';
+    const br = body.getBoundingClientRect(), cr = cell ? cell.getBoundingClientRect() : { top: 1e9, bottom: 1e9 };
+    out.inView = cr.top >= br.top - 1 && cr.bottom <= br.bottom + 1;
+    out.scrolled = Math.round(body.scrollTop);
+    out.marked = [...scr.querySelectorAll('.clCell.clNew')].map(e => e.dataset.card).join(',');
+    out.fresh = [...scr.querySelectorAll('.clTab.clFresh')].map(e => e.dataset.tier).join(',');
+    document.querySelector('#scrCards [data-act="back"]').click();
+    DeckScreens.openCollection('title', 'imperial');
+    out.titleNew = document.querySelectorAll('#scrCards .clCell.clNew').length;
+    return out;
+  });
+  ck('theCollectionOpensOnTheNewCard', a.cur === 'cards' && a.tab === 'imperial' && /^new$/i.test(a.tag) && a.inView && a.scrolled > 0 &&
+    a.marked === 'barbarian_pact' && a.fresh === 'imperial' && a.titleNew === 0,
+    `tab ${a.tab}; tag "${a.tag}"; in view ${a.inView} (scrolled ${a.scrolled}px); NEW on ${a.marked || 'nothing'}; tab marked ${a.fresh || 'none'}; from the title ${a.titleNew} new`);
+  await p.close();
+}
+
 /* ================= 6. THE FIT ================= */
 {
   const fit = [], tight = [];
