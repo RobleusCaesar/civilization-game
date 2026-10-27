@@ -317,7 +317,7 @@ const Units = {
   gatherYield(owner, ctx) {
     return window.Deck && Deck.mult ? Deck.mult('gather', owner, ctx) : 1;
   },
-  /* THE WORK TICK IS FOG-HONEST (tests/wild-life.mjs §5 — found by the
+  /* THE WORK TICK IS FOG-HONEST (tests/wild-life.mjs §7 — found by the
      five-player playtest with no card running: the rival's gatherers floated
      "+wood"/"+food" out of the unexplored dark, five in 25 seconds). The
      floats are drawn AFTER the fog, and the gather tick was owner-blind (the
