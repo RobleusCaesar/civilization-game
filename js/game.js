@@ -189,7 +189,13 @@ const G = {
       // run stats — the raw material of the arcade score (js/score.js)
       stats: { trained: 0, razed: 0, gathered: 0, kills: 0, built: 0,
                walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0, originBonus: 0,
-               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0, eclipseEndured: 0, wildfireEndured: 0, migrationTaken: 0, starfallClaimed: 0, strifeSeen: 0 },
+               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0, eclipseEndured: 0, wildfireEndured: 0, migrationTaken: 0, starfallClaimed: 0, strifeSeen: 0,
+               // THE DEEDS (Deck.deeds — a defeat earns a card for a real fight):
+               // what the PLAYER'S OWN HAND did, where the score's tallies credit
+               // the world too — a villager's hand-gathering (never a boat an
+               // origin card set fishing) and the enemy works the player's own
+               // soldiers pulled down (never a camp the rival burned)
+               handGathered: 0, handRazed: 0 },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
       // THE CALM TRUCE (tests/calm-peace.mjs): true while neither tribe may
@@ -2582,6 +2588,12 @@ const G = {
         // THE CARD SYSTEM: what this run played (the dashboard splits every win rate on it)
         cards_played: (S.deck && S.deck.played && S.deck.played.length) || 0,
         cards: (S.deck && S.deck.played) ? S.deck.played.map(p => p.id) : [],
+        // …and the DEEDS a defeat is judged on (Deck.deeds), with the two
+        // hand-only tallies beside the score's own, so the server can re-run
+        // the earn rule from the row alone. Guarded on the method it calls:
+        // a cached older deck.js beside this file must stand down, not throw
+        deeds: (window.Deck && Deck.deeds) ? Deck.deeds().n : 0,
+        hand_gathered: Math.round(st.handGathered || 0), hand_razed: st.handRazed || 0,
         // the special event this run rolled, whether it happened, and when
         // (EVD-V01) — the only way the roll's rate can be read off the board
         special: S.special || null,
@@ -2771,6 +2783,10 @@ const G = {
                      'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus', 'leanIn',
                      'sonsAnswered', 'cacheDug', 'winterEndured', 'plagueEndured', 'eclipseEndured', 'wildfireEndured', 'migrationTaken', 'starfallClaimed', 'strifeSeen'])
       if (!data.stats[k]) data.stats[k] = 0;
+    // a save from before the deeds could not tell whose hand it was: the run
+    // somebody saved gets the benefit of the doubt (Deck.deeds)
+    if (data.stats.handGathered == null) data.stats.handGathered = data.stats.gathered || 0;
+    if (data.stats.handRazed == null) data.stats.handRazed = data.stats.razed || 0;
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};

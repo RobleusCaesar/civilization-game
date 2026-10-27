@@ -230,22 +230,28 @@ const Deck = {
   ofTier(k) { return this.CATALOG.filter(c => c.tier === k); },
 
   /* ---------------- the kill switch ---------------- */
-  on() { return !!(typeof CFG !== 'undefined' && CFG.CARDS && CFG.CARDS.ON) || this.devOn(); },
+  // the link is read FIRST, whatever the switch says: with CFG.CARDS.ON
+  // thrown, ?cards=all must still deal its test deck (a short-circuit here
+  // would never read the address at all once the cards ship)
+  on() { const dev = this.devOn(); return !!(typeof CFG !== 'undefined' && CFG.CARDS && CFG.CARDS.ON) || dev; },
   devOn() {
     if (this._dev == null) {
       let q = '';
       try { q = String(location.search || ''); } catch (e) {}
-      if (/[?&]cards=(1|slice)\b/.test(q)) this._set('neo-cards-dev', '1');
+      if (/[?&]cards=(1|all)\b/.test(q)) this._set('neo-cards-dev', '1');
       if (/[?&]cards=0\b/.test(q)) this._del('neo-cards-dev');
-      // GATE REVIEW ONLY (delete at launch): ?cards=slice also tops the hand
-      // up to one of each card whose effect is built, so the slice can be
-      // played on a phone without first earning it (ensureStarter deals it)
-      this._slice = /[?&]cards=slice\b/.test(q);
+      /* THE TEST LINK: ?cards=all turns the deck on for the device AND, on
+         every load that carries it, deals a fresh TEST deck — one of every
+         card in the catalog (ensureStarter, the door every screen passes) —
+         so all 36 can be played on a phone over the live site without first
+         being earned. */
+      this._all = /[?&]cards=all\b/.test(q);
       this._dev = this._get('neo-cards-dev') === '1';
     }
     return this._dev;
   },
   _dev: null,
+  _all: false,
 
   /* ---------------- device storage (iOS "Block All Cookies" throws) ---------------- */
   _mem: {},
@@ -306,19 +312,14 @@ const Deck = {
   _subs: [],
   onChange(fn) { this._subs.push(fn); },
   _changed() { for (const f of this._subs) { try { f(); } catch (e) {} } },
-  _queue(op) { this.col().queue.push(Object.assign({ at: Date.now() }, op)); },
+  _queue(op) { const c = this.col(); if (c.test) return; c.queue.push(Object.assign({ at: Date.now() }, op)); },
 
   /* THE STARTER HAND: every player without a collection gets three Stone
      cards once — including today's players, the day the switch is thrown. */
   ensureStarter() {
     if (!this.on()) return false;
+    if (this._all) { this._all = false; this.dealAll(); }
     const c = this.col();
-    if (this._slice) {
-      this._slice = false;
-      let dealt = 0;
-      for (const id of Object.keys(this.FX)) if (this.card(id) && this.count(id) < 1) { this._add(id, 1); dealt++; }
-      if (dealt) this.saveCol();
-    }
     if (c.starter) return false;
     c.starter = Date.now();
     for (const id of CFG.CARDS.STARTER) if (this.card(id)) this._add(id, 1);
@@ -327,9 +328,60 @@ const Deck = {
     return true;
   },
 
+  /* THE TEST DECK (?cards=all): the collection RESET — counts, the run
+     ledger, the pity count and the cloud queue cleared, the starter hand
+     marked as given so it adds no three more — then one of every card in the
+     catalog. It is marked `test`: a test deck is the tester's toy, never the
+     player's record, so nothing it grants or plays is queued for the cloud
+     or reported as telemetry (_queue, track), and the cloud must never
+     overwrite it either (Deck.sync reads the mark). */
+  dealAll() {
+    const c = this.col();
+    c.counts = {}; c.seen = {}; c.runs = {}; c.queue = []; c.pity = 0;
+    c.starter = c.starter || Date.now();
+    c.test = Date.now();
+    for (const card of this.CATALOG) this._add(card.id, 1);
+    this.saveCol();
+    return this.total();
+  },
+  isTest() { return !!this.col().test; },
+
   /* ---------------- who EARNS a card ---------------- */
+  /* THE DEEDS (the earn rule, operator: "if they lose, we need something
+     better than time — not a card for doing nothing, but a player decimated
+     on Hard in five minutes should still get one"). A deed is something
+     ONLY THE PLAYER'S OWN HAND STARTS: a building they raised that stood
+     finished, a unit they trained, an upgrade, an enemy work their own
+     soldiers pulled down, and — capped — the hand-gathering of their
+     villagers (one deed per CFG.CARDS.DEED_GATHER, at most DEED_GATHER_CAP).
+     Measured, every one of them reads ZERO for a player who touches nothing
+     on Hard, origin card, start package and all. What is NOT a deed, and why:
+       kills      towers, the hall's own arrows and a Defend stance score kills
+                  for a player who never gives an order
+       S.stats.razed     counts every rival work that falls — a barbarian's
+                  torch, and a camp the RIVAL burned — so it read up to 15 on
+                  passive Hard runs; handRazed is the player's soldiers alone
+       S.stats.gathered  counts a fishing boat's nets, and the Mariner origin
+                  puts boats out unasked (up to 1,537 food on a passive run)
+       walls      one drag lays ten sections; a gesture is not ten deeds
+       a card     no card buys a card (its effects add none of the above)
+     Read off S.stats (or a stats object handed in). */
+  deeds(st) {
+    st = st || (typeof S !== 'undefined' && S && S.stats) || {};
+    const D = CFG.CARDS;
+    const parts = {
+      built: Math.max(0, st.built | 0),
+      trained: Math.max(0, st.trained | 0),
+      upgrades: Math.max(0, st.upgrades | 0),
+      razed: Math.max(0, st.handRazed | 0),
+      gathered: Math.min(D.DEED_GATHER_CAP, Math.max(0, Math.floor((+st.handGathered || 0) / D.DEED_GATHER))),
+    };
+    let n = 0;
+    for (const k in parts) n += parts[k];
+    return { n, parts };
+  },
   /* The finished run, read off S at the end screen. `subtotal` is the score
-     BEFORE the difficulty multiplier (the competition's gate). */
+     BEFORE the difficulty multiplier; `deeds` what a defeat is judged on. */
   report(win, cause) {
     let sub = 0;
     try { sub = Score.compute(!!win).subtotal || 0; } catch (e) {}
@@ -339,22 +391,21 @@ const Deck = {
     return {
       win: !!win, cause: cause || (win ? 'win' : 'unknown'),
       mode: S.mode, day: S.day, seconds: Math.round(S.playtime || 0), subtotal: sub,
+      deeds: this.deeds().n,
       runId, key: runId || ('seed:' + S.seed + ':' + S.day + ':' + (win ? 'w' : 'l')),
     };
   },
-  /* who earns: a FINISHED game — won, or lost to the world — after ten real
-     minutes and 500 score before the multiplier. A struck banner or a closed
-     tab is not a finish. */
+  /* WHO EARNS: a WIN, always — however long it took, whatever it scored. A
+     DEFEAT at the world's hands, when the player fought it: CFG.CARDS.
+     LOSS_DEEDS deeds or more. A struck banner or a closed tab is not a
+     finish. A defeat that falls short says so kindly, with the count. */
   eligible(rep) {
     if (!rep) return { ok: false, why: 'No game to reward.' };
     if (rep.cause === 'struck_banner' || rep.cause === 'closed_tab') return { ok: false, why: 'A banner struck earns no card.' };
-    if (rep.seconds < CFG.CARDS.MIN_SECONDS) return { ok: false, why: `Play ${Math.round(CFG.CARDS.MIN_SECONDS / 60)} minutes to earn a card.` };
-    const need = CFG.CARDS.MIN_SCORE;
-    if (rep.subtotal < need) {
-      const mult = (CFG.SCORE.mult && CFG.SCORE.mult[rep.mode]) || 1;
-      return { ok: false, why: `Score ${Math.round(need * mult).toLocaleString()} to earn a card.` };
-    }
-    return { ok: true };
+    if (rep.win) return { ok: true };
+    const need = CFG.CARDS.LOSS_DEEDS, have = Math.max(0, rep.deeds | 0);
+    if (have >= need) return { ok: true };
+    return { ok: false, short: true, why: `Build, train, upgrade or raze to earn a card from a defeat — ${have} of ${need} deeds.` };
   },
   table(rep) { return CFG.CARDS.DROPS[rep.win ? rep.mode : 'loss'] || CFG.CARDS.DROPS.loss; },
   medianDay(mode) {
@@ -511,6 +562,7 @@ const Deck = {
   track(kind, props) {
     try {
       if (!window.Backend || !Backend._emit) return;
+      if (this.isTest()) return;   // a test deck's plays are nobody's analytics
       Backend._emit({ run_id: props.run || null, kind, mode: (typeof S !== 'undefined' && S && S.mode) || null,
         day: (typeof S !== 'undefined' && S && S.day) || 0, props });
     } catch (e) { /* analytics may never be felt in the game */ }

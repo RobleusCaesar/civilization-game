@@ -45,6 +45,13 @@
       when it is dismissed; leaving the game removes it. And the Wonder's
       build card is dressed as the goal: gold rim, a victory ribbon, a live
       "% saved" line, never ghosted like an unaffordable hut.
+  14. THE DECK, TAUGHT LAST (operator ruling 12): with the cards on, the
+      deck is kept out of the game while the spine runs (the starter hand
+      still lands), walks in the moment the capstone is answered or the
+      lesson skipped, and one last note rings it — a slow lesson past day
+      150 still names it, a skip still teaches it (one note, nothing to
+      skip on it). With the cards OFF the note never fires and the lesson
+      goes cold exactly as before, waiting for nothing.
 
    Run this after touching any of:
      tutorial.js — everything
@@ -913,6 +920,95 @@ const out = await p.evaluate(async () => {
       ck('andRaisedOnceItStands', !!site && prog() === 'Raised', prog());
     }
     wipeSeen();
+  }
+
+  // ---- 14. the deck, taught last (operator ruling 12) ----
+  // The card deck is kept OUT of the game while the spine runs and walks in
+  // the moment it is done — the capstone answered, or the lesson skipped —
+  // and one last note rings it. With the cards switched off none of it
+  // exists: the note never fires and is never waited for.
+  {
+    const deckBtn = () => document.getElementById('deckBtn');
+    const btnUp = () => { const el = deckBtn(); return !!el && el.offsetParent !== null; };
+    const toCapstone = (day) => {
+      for (const st of Tutorial.STEPS) if (!st.end) S.tut.done[st.id] = 1;
+      S.buildings.find(o => o.owner === 'P' && o.key === 'tc').level = 2;
+      if (day) S.day = day;
+      Tutorial._show = null; tick(3, 0.3);
+    };
+    // OFF: the lesson goes cold exactly as before — it waits for no deck
+    {
+      fresh('140', 'calm', true);
+      toCapstone();
+      for (const e of Tutorial.EVENTS) if (e.id !== 'deck') S.tut.fired[e.id] = 1;
+      const capUp = Tutorial._show && Tutorial._show.id === 'capstone';
+      clickNext();
+      ck('offTheDeckNoteIsNeverWaitedFor', capUp && S.tut.on === false && S.tut.completed === true && !S.tut.fired.deck && !btnUp(),
+        JSON.stringify({ capUp, on: S.tut.on, completed: S.tut.completed, deck: S.tut.fired.deck }));
+      fresh('140b', 'calm', true);
+      S.tut.phase = 2; S.tut.step = Tutorial.STEPS.length;
+      for (const e of Tutorial.EVENTS) if (e.id !== 'deck' && e.id !== 'trade') S.tut.fired[e.id] = 1;
+      Tutorial._lastEvAt = -1e9; tick(3, 0.6);
+      ck('andNeverShown', !(Tutorial._show && Tutorial._show.id === 'deck'), JSON.stringify(Tutorial._show));
+    }
+    // ON: hidden for the spine, the starter hand landed all the same
+    const was = CFG.CARDS.ON;
+    CFG.CARDS.ON = true;
+    try {
+      Deck._col = null; Deck._del(Deck.KEY);
+      fresh('141', 'calm', true);
+      DeckUI.frame(0.1); tick(2, 0.3); DeckUI.frame(0.1);
+      ck('theDeckIsHiddenWhileTheSpineRuns', !btnUp() && DeckUI.tutHides(),
+        'button up ' + btnUp() + ', built ' + DeckUI.built);
+      ck('andTheStarterHandStillLands', !!Deck.col().starter && Deck.total() >= 3, 'starter ' + Deck.col().starter + ', ' + Deck.total() + ' cards');
+      toCapstone();
+      for (const e of Tutorial.EVENTS) if (e.id !== 'deck') S.tut.fired[e.id] = 1;
+      clickNext();                                       // the capstone answered
+      DeckUI.frame(0.1);
+      ck('itWalksInTheMomentTheSpineIsDone', S.tut.phase === 2 && btnUp() && DeckUI.arrivedAt > 0 && S.tut.on === true,
+        `phase ${S.tut.phase}, button ${btnUp()}, on ${S.tut.on}`);
+      Tutorial._lastEvAt = -1e9; tick(6, 0.3);
+      const a = Tutorial._anchor();
+      ck('andTheLastNoteRingsIt', Tutorial._show && Tutorial._show.id === 'deck' && a && a.sel === '#deckBtn' &&
+        /kept until you play it/.test(txtOf('tutTxt')) && /gone for good/.test(txtOf('tutTxt')),
+        JSON.stringify(Tutorial._show) + ' ' + txtOf('tutTxt'));
+      ck('inTwoSentences', (Tutorial.TEXT.deck.replace(/<[^>]+>/g, '').match(/[.!?](\s|$)/g) || []).length <= 2, Tutorial.TEXT.deck);
+      clickNext();
+      ck('answeredItPutsTheLessonAway', S.tut.fired.deck === 1 && S.tut.on === false && btnUp(), JSON.stringify(S.tut.fired.deck) + ' on ' + S.tut.on);
+      // a SLOW lesson (its capstone past day 150) still names the deck before going cold
+      fresh('142', 'calm', true);
+      DeckUI.frame(0.1);
+      toCapstone(160);
+      for (const e of Tutorial.EVENTS) if (e.id !== 'deck') S.tut.fired[e.id] = 1;
+      clickNext();
+      DeckUI.frame(0.1);
+      const held = S.tut.on === true;
+      Tutorial._lastEvAt = -1e9; tick(6, 0.3);
+      ck('aSlowLessonStillNamesTheDeck', held && Tutorial._show && Tutorial._show.id === 'deck', 'held ' + held + ' ' + JSON.stringify(Tutorial._show));
+      clickNext();
+      // A SKIP mid-spine: the deck walks in and is still taught — one note,
+      // nothing to skip on it, and answering it ends the lesson for good
+      fresh('143', 'calm', true);
+      DeckUI.frame(0.1); tick(2, 0.3);
+      const hiddenFirst = !btnUp();
+      Tutorial.skip();
+      DeckUI.frame(0.1);
+      Tutorial._lastEvAt = -1e9; tick(6, 0.3);
+      const skipEl = document.getElementById('tutSkip');
+      ck('aSkipStillTeachesTheDeck', hiddenFirst && btnUp() && S.tut.skipped === true && Tutorial._show && Tutorial._show.id === 'deck' &&
+        !!skipEl && skipEl.style.display === 'none' && localStorage.getItem('neo-tutorial-ask') === '0',
+        JSON.stringify({ hiddenFirst, up: btnUp(), skipped: S.tut.skipped, show: Tutorial._show }));
+      clickNext();
+      ck('andThenItIsGone', S.tut.on === false && S.tut.fired.deck === 1 && !document.getElementById('tutUI'), 'on ' + S.tut.on);
+      // a skip once the deck was told is an ordinary skip
+      fresh('144', 'calm', true);
+      S.tut.fired.deck = 1;
+      Tutorial.skip();
+      ck('aSkipAfterTheDeckWasToldIsJustASkip', S.tut.on === false && !S.tut.deckOnly, JSON.stringify(S.tut));
+    } finally {
+      CFG.CARDS.ON = was;
+      if (DeckUI.built) DeckUI._stand(false);
+    }
   }
 
   try { localStorage.setItem('neo-tutorial-ask', '0'); } catch (e) {}

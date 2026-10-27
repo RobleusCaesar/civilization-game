@@ -1539,6 +1539,8 @@ const Units = {
             (window.Cards ? Cards.gatherMult(u.owner, g.res) : 1));   // ORIGIN CARDS pace
           store[g.res] += take;
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
+          // a villager's OWN hand at work — the deeds' gathering allowance (Deck.deeds)
+          if (u.owner === 'P' && S.stats) S.stats.handGathered = (S.stats.handGathered || 0) + take;
           S.map.resAmount[idx] -= take;
           /* A DEPOSIT SHOWS THE WORK. Stone cracks open in thirds as it is
              mined (R.oreWear), so the tile has to be repainted when it
@@ -1714,6 +1716,9 @@ const Units = {
             (window.Cards ? Cards.fishMult(u.owner) : 1));   // ORIGIN CARDS: Riverborn lines
           bag.food += take;
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
+          // a line cast by hand is the villager's own work (Deck.deeds); a
+          // boat's nets are not — an origin card can put one out unasked
+          if (u.owner === 'P' && S.stats) S.stats.handGathered = (S.stats.handGathered || 0) + take;
           S.map.resAmount[idx] -= take;
           if (u.owner === 'P' && (before | 0) !== (bag.food | 0)) R.workFloat(u, '+food');
           if (S.map.resAmount[idx] <= 0.001) {

@@ -67,6 +67,20 @@ const DeckUI = {
     try { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
   },
 
+  /* THE TUTORIAL HAS THE FLOOR (operator ruling 12): while the lesson's
+     spine is still running (S.tut on, phase 1) the deck is not in the game —
+     no button, no timers, no sheet — because a first game already has more
+     to read than it can hold. The starter hand still lands (ensureStarter,
+     the title already dealt it). The moment the spine is done — the capstone
+     answered, or the lesson skipped — the deck walks in, in that same run,
+     and the tutorial's last note rings it (Tutorial.EVENTS 'deck'). */
+  tutHides() {
+    return typeof S !== 'undefined' && !!S && !!S.tut && !!S.tut.on && S.tut.phase === 1;
+  },
+  _shy: false,             // the chrome is built but stood down for the lesson
+  _waited: false,          // this world kept the deck back: it ARRIVES when the lesson lets go
+  _starter: false,         // the starter hand has been asked for this session
+
   /* called from G.frame, only while Deck.on() */
   frame(dt) {
     if (!this.live()) {
@@ -75,7 +89,15 @@ const DeckUI = {
       if (this.hasFloor() || this._ticks.length) this.reset();
       return;
     }
+    if (this.tutHides()) {
+      if (!this._starter) { this._starter = true; Deck.ensureStarter(); }
+      if (this.built && !this._shy) this._stand(false);
+      this._waited = true;
+      return;
+    }
     if (!this.built) this.build();
+    if (this._shy) this._stand(true);
+    if (this._waited) { this._waited = false; this._arrive(); }
     if (this.aim) this._aimPlace();
     if (this._ticks.length) this._tickNumbers();
     if ((this._t -= dt) > 0) return;
@@ -87,12 +109,34 @@ const DeckUI = {
      The world change sets its own pause, so the deck's hold is dropped
      without being "given back" into a game it never paused. */
   onWorldChange() {
+    this._waited = false;
     if (!this.built) return;
     this.reset();
+    if (this._shy) this._stand(true);   // a new world starts with the deck in it
     for (const id in this._chips) this._chips[id].el.remove();
     this._chips = {};
     this._fitChips();
     this.syncBadge();
+  },
+
+  // stand the chrome down for the lesson, or bring it back
+  _stand(on) {
+    if (!this.el) return;
+    this._shy = !on;
+    if (!on) this.reset();
+    this.el.btn.style.display = on ? '' : 'none';
+    this.el.timers.style.display = on ? '' : 'none';
+    if (on) { this.syncBadge(true); this._fitChips(); }
+  },
+  /* coming in mid-run, the deck ARRIVES: the button drops into the bar with
+     a pop, so the eye has found it before the tutorial's note names it */
+  _arrive() {
+    if (!this.el) return;
+    this.arrivedAt = performance.now();
+    if (!this._calm() && this.el.btn.animate)
+      this.el.btn.animate([{ transform: 'translateY(-14px) scale(.4)', opacity: 0 }, { transform: 'translateY(2px) scale(1.18)', opacity: 1, offset: 0.6 },
+        { transform: 'none', opacity: 1 }], { duration: 420, easing: this.SPRING });
+    UI.cue('ok');
   },
 
   reset() {
@@ -119,6 +163,7 @@ const DeckUI = {
   build() {
     this.built = true;
     this.css();
+    this._starter = true;
     Deck.ensureStarter();   // the three Stone cards every new collection starts with (once, ever)
     /* THE BUTTON SITS IN THE TOP BAR'S SECOND ROW, before ⏸ — the one slot
        that fits every phone and the desktop's single-row bar without moving
@@ -398,14 +443,15 @@ const DeckUI = {
     s.count.textContent = n ? n + (n === 1 ? ' card' : ' cards') : '';
     s.row.textContent = '';
     if (!n) {
-      const mins = Math.round(CFG.CARDS.MIN_SECONDS / 60);
-      // the gate is 500 BEFORE the multiplier; the player reads the score after it
-      const score = Math.round(CFG.CARDS.MIN_SCORE * ((CFG.SCORE.mult && CFG.SCORE.mult[S.mode]) || 1));
+      // THE EARN RULE in the player's words (Deck.eligible): a win always
+      // earns; a defeat earns for a real fight, counted in deeds — and the
+      // count so far this run, so the number to beat is never a mystery
+      const need = CFG.CARDS.LOSS_DEEDS, have = Math.min(need, Deck.deeds().n);
       const e = document.createElement('div');
       e.className = 'dkEmpty';
       e.innerHTML = `<i class="dkEmptyIco">${this.STACK_SVG}</i><b>No cards in your deck yet</b>` +
-        `<span>Finish a game — win or lose — and a card is yours to keep. ` +
-        `Play at least ${mins} minutes and score ${score.toLocaleString()} to earn one.</span>`;
+        `<span>Win a game and a card is yours to keep. Lose one, and it still is — if you put up a fight: ` +
+        `${need} deeds of building, training, upgrading or razing (this run: ${have} of ${need}).</span>`;
       s.row.appendChild(e);
       s.hint.textContent = '';
       return;

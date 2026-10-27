@@ -28,7 +28,7 @@ const Combat = {
     const t = p.tgt, flame = p.kind === 'flame';
     if (t.kind === 'bld') {
       const b = Bld.get(t.id);
-      if (b) this.hitBuilding(b, t.dmg, flame);
+      if (b) this.hitBuilding(b, t.dmg, flame, p.owner);
     } else {
       const tu = Units.get(t.id);
       if (tu) { R.float(tu.x, tu.y - 0.4, '-' + t.dmg, '#f08a7a'); Units.damage(tu, t.dmg, t.srcId || 0, p.owner); }
@@ -52,8 +52,14 @@ const Combat = {
   },
   // apply damage to a building + show it landing (shared by instant melee hits
   // and projectile impacts, so buildings always read the hit)
-  hitBuilding(b, dmg, flame) {
+  // `by` is the striker's owner: a building the PLAYER'S OWN soldiers bring
+  // down is a deed (S.stats.handRazed, Deck.deeds) — the score's `razed`
+  // counts every rival work that falls, a barbarian's torch included
+  hitBuilding(b, dmg, flame, by) {
+    const was = b.hp;
     Bld.damage(b, dmg);
+    if (by === 'P' && b.owner !== 'P' && was > 0 && b.hp <= 0 && S.stats)
+      S.stats.handRazed = (S.stats.handRazed || 0) + 1;
     R.float(Bld.cx(b), b.y - 0.15, '-' + dmg, flame ? '#f2963a' : '#e8d2a0');
     if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
       G.log(`${Bld.def(b.key).name} under attack!`, true);
@@ -1499,7 +1505,7 @@ const Combat = {
               if (sh) this.overshoot(sh);
               R.float(Bld.cx(b), b.y - 0.15, 'Miss!', '#cfcfcf');
             } else {
-              this.hitBuilding(b, dmg, !!CFG.UNITS[u.kind].fire);
+              this.hitBuilding(b, dmg, !!CFG.UNITS[u.kind].fire, u.owner);
             }
           }
         }

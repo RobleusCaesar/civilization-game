@@ -8,11 +8,24 @@
                      and a targeting rule — exactly the Gate 1 catalog
      THE SWITCH      CFG.CARDS.ON ships false: off, nothing is granted, no
                      starter hand is dealt and nothing can be played
-     THE DROPS       the approved tables, each summing to 100; the gates
-                     (a struck banner, under ten minutes, under 500 before
-                     the multiplier) earn nothing; a great victory earns a
-                     second card; 15 wins without a legend guarantee one;
-                     a measured roll lands on the table it was asked for
+     THE DROPS       the approved tables, each summing to 100; a great
+                     victory earns a second card; 15 wins without a legend
+                     guarantee one; a measured roll lands on the table it
+                     was asked for
+     THE EARN RULE   a WIN always earns — a day-31 win at five minutes
+                     included; a DEFEAT earns for a real fight, counted in
+                     DEEDS (CFG.CARDS.LOSS_DEEDS): a passive Hard run, end to
+                     end in the real sim, reads 0 and earns nothing (origin
+                     prebuilds, the start package, the tutorial and its
+                     larder add nothing); a token effort (one house, one
+                     villager) reads 2 and is told how far it got; a
+                     scripted player who builds and trains for five minutes
+                     on Hard and is razed earns. The two traps the naive
+                     tally falls into are pinned on constructed ground: a
+                     rival work a barbarian burns, or a camp the RIVAL
+                     burns, is no deed of the player's; a fishing boat's
+                     nets are no hand-gathering. A struck banner earns
+                     nothing; the deeds ride the run report and a save
      ONCE PER RUN    settling the same run twice pays once
      THE COLLECTION  survives a reload, takes the starter hand once,
                      queues every write for the cloud
@@ -24,7 +37,16 @@
      NO RNG          nothing here draws from the run's seeded stream
      THE FACE        every card face is a whole multiple of device pixels
 
-   Run after touching: js/deck.js, CFG.CARDS, S.deck in game.js.
+     THE TEST LINK   ?cards=all turns the deck on for the device and, on
+                     every load carrying it, resets the collection and deals
+                     one of every card — the starter marked as given; a
+                     test deck writes nothing for the cloud; the link is
+                     read with the switch thrown on too
+
+   Run after touching: js/deck.js, CFG.CARDS, S.deck in game.js, and the
+   deeds' tallies — S.stats.handGathered (units.js: the gather and shore-fish
+   tasks), S.stats.handRazed (combat.js: Combat.hitBuilding and its two
+   callers), G.runReport's deeds props.
 
      node tests/deck-core.mjs      # exits non-zero on any regression */
 
@@ -86,12 +108,20 @@ const c = await p.evaluate(() => {
   CFG.CARDS.ON = true;
   Deck._col = null; Deck._del(Deck.KEY);
   const rng = mulberry32(1234);
-  const rep = (o) => Object.assign({ win: true, cause: 'razed_rival_tc', mode: 'moderate', day: 400, seconds: 900, subtotal: 4000, runId: null }, o);
+  const rep = (o) => Object.assign({ win: true, cause: 'razed_rival_tc', mode: 'moderate', day: 400, seconds: 900, subtotal: 4000, deeds: 20, runId: null }, o);
   // gates
   out.banner = Deck.settle(rep({ win: false, cause: 'struck_banner', key: 'g1' }), rng).ok;
-  out.short = Deck.settle(rep({ seconds: 599, key: 'g2' }), rng).ok;
-  out.low = Deck.settle(rep({ subtotal: 499, key: 'g3' }), rng);
+  out.bannerDeeds = Deck.settle(rep({ win: false, cause: 'struck_banner', deeds: 99, key: 'g1b' }), rng).ok;
+  // THE EARN RULE: a day-31 Moderate win at five real minutes, scoring next
+  // to nothing and having raised nothing — the old ten-minute/500 gate refused it
+  out.quickWin = Deck.settle(rep({ day: 31, seconds: 300, subtotal: 120, deeds: 0, key: 'g2' }), rng);
   out.lossOk = Deck.settle(rep({ win: false, cause: 'tc_destroyed', key: 'g4' }), rng);
+  const need = CFG.CARDS.LOSS_DEEDS;
+  out.need = need;
+  out.under = Deck.settle(rep({ win: false, cause: 'tc_destroyed', deeds: need - 1, key: 'g5' }), rng);
+  out.at = Deck.settle(rep({ win: false, cause: 'tc_destroyed', deeds: need, seconds: 60, subtotal: 0, key: 'g6' }), rng).ok;
+  out.why2 = Deck.eligible(rep({ win: false, cause: 'tc_destroyed', deeds: 2 })).why;
+  out.gatesGone = !('MIN_SECONDS' in CFG.CARDS) && !('MIN_SCORE' in CFG.CARDS);
   // the measured roll: 20,000 tier rolls per table against the approved weights
   const tiers = Deck.TIERS.map(t => t.k);
   out.dev = {};
@@ -128,10 +158,14 @@ const c = await p.evaluate(() => {
   out.counts = JSON.stringify(Deck.col().counts);
   return out;
 });
-ck('aStruckBannerEarnsNothing', c.banner === false);
-ck('tenMinutesAreRequired', c.short === false);
-ck('fiveHundredBeforeTheMultiplier', c.low.ok === false && /Score 500/.test(c.low.why), c.low.why);
+ck('aStruckBannerEarnsNothing', c.banner === false && c.bannerDeeds === false, `deeds or none, a struck banner: ${c.banner}/${c.bannerDeeds}`);
+ck('aWinAlwaysEarnsEvenAtFiveMinutes', c.quickWin.ok && c.quickWin.cards.length >= 1 && c.gatesGone,
+  `day-31 win at 300s, score 120, 0 deeds: ${c.quickWin.ok} ${c.quickWin.why || ''}; old gates gone ${c.gatesGone}`);
 ck('aLossEarnsACard', c.lossOk.ok && c.lossOk.cards.length === 1 && ['stone', 'bronze'].includes(c.lossOk.cards[0].tier), JSON.stringify(c.lossOk.cards));
+ck('aDefeatIsJudgedOnDeedsNotTime', c.need === 5 && !c.under.ok && c.at,
+  `bar ${c.need}: ${c.need - 1} deeds ${c.under.ok}, ${c.need} deeds at one minute and score 0 ${c.at}`);
+ck('andAShortDefeatIsToldHowFarItGot', c.under.why === 'Build, train, upgrade or raze to earn a card from a defeat — 4 of 5 deeds.' &&
+  c.why2 === 'Build, train, upgrade or raze to earn a card from a defeat — 2 of 5 deeds.', `"${c.under.why}" / "${c.why2}"`);
 ck('theRollLandsOnItsTable', Object.keys(c.dev).filter(k => !k.endsWith('Zero')).every(k => +c.dev[k] < 1.2) &&
   Object.keys(c.dev).filter(k => k.endsWith('Zero')).every(k => c.dev[k]), JSON.stringify(c.dev));
 ck('aGreatVictoryEarnsASecondCard', c.wonder === 2 && c.hard === 2 && c.fast === 2 && c.slow === 1 && c.lossNoBonus === 1,
@@ -222,24 +256,261 @@ ck('everyFaceIsAWholeMultiple', d.faces.every(k => Number.isInteger(k) && k >= 1
   `dpr ${d.dpr}: ${d.faces.join(', ')}; drawn ${d.faceW}`);
 ck('aDuplicateWearsItsCount', d.badge === '×3', String(d.badge));
 
-/* THE REVIEW LINK (gate review only — delete with the param at launch):
-   ?cards=slice turns the deck on for the device and tops the hand up to one
-   of each card whose effect is BUILT, never a card that would only refuse */
+/* THE DEEDS, end to end. Every world here is stepped exactly as G.frame
+   steps it, seeded (Math.random + the module clocks), with no input but the
+   bot's own — so the counts are the game's, not a test's arithmetic. */
+const SIM = `window.__sim = (o) => {
+  let rs = o.rs || 1;
+  Math.random = () => { rs = (rs * 16807) % 2147483647; return (rs - 1) / 2147483646; };
+  Screens._demo = false;
+  try { localStorage.setItem('neo-tutorial-ask', o.tut ? '1' : '0'); } catch (e) {}
+  G.newGame(o.seed, o.mode || 'hard', 'medium');
+  S.draft.hand = [{ key: o.origin, roll: Cards.DEFS[o.origin].roll() }];
+  Cards.pick(0);
+  Screens.show('playing'); S.paused = false;
+  Combat.scanT = 0; Units.herdClock = 0;
+  if (o.tut) Tutorial.maybeStart();
+  const tc0 = Bld.tcOf('P');
+  const vills = () => S.units.filter(u => u.owner === 'P' && Units.isVillager(u));
+  const spot = (key) => MapGen.findNear(tc0.x + 1, tc0.y + 1, 9, (x, y) => Bld.canPlace('P', key, x, y).ok);
+  const lay = (key) => {
+    const s = spot(key); if (!s) return null;
+    const b = Bld.place('P', key, s.x, s.y); if (!b) return null;
+    for (const v of vills().filter(v => !(v.task && v.task.type === 'build')).slice(0, 2)) Units.assignBuild(v, b);
+    return b;
+  };
+  const near = (terrs, r) => MapGen.findNear(tc0.x + 1, tc0.y + 1, r, (x, y) => {
+    const i = MapGen.idx(x, y);
+    return terrs.includes(S.map.terrain[i]) && S.map.resAmount[i] > 0 && S.map.explored[i];
+  });
+  let house = false, villager = false;
+  const act = () => {
+    const tc = Bld.tcOf('P'); if (!tc) return;
+    if (o.bot === 'token') {
+      if (!house && Bld.canAfford(Bld.effCost('P', 'house'), S.res) && lay('house')) house = true;
+      if (!villager && Bld.train(tc, 'villager')) villager = true;
+      return;
+    }
+    let j = 0;
+    for (const v of vills()) {
+      if (v.task) continue;
+      const t = near([[T.FOREST], [T.FERTILE], [T.HILLS]][j++ % 3], 16) || near([T.FOREST, T.FERTILE, T.HILLS], 20);
+      if (t) Units.assignGather(v, t.x, t.y);
+    }
+    if (tc.queue.length < 1) Bld.train(tc, 'villager');
+    if (S.buildings.filter(b => b.owner === 'P' && b.construction > 0).length < 2) {
+      if (Bld.popCap('P') - Units.popUsed('P') < 3 && Bld.canAfford(Bld.effCost('P', 'house'), S.res)) lay('house');
+      else if (S.day > 4 && !S.buildings.some(b => b.owner === 'P' && b.key === 'barracks') && Bld.canAfford(Bld.effCost('P', 'barracks'), S.res)) lay('barracks');
+      else if (S.day > 10 && Bld.canAfford(Bld.effCost('P', 'tower'), S.res) && S.buildings.filter(b => b.owner === 'P' && b.key === 'tower').length < 2) lay('tower');
+    }
+    const bk = S.buildings.find(b => b.owner === 'P' && b.key === 'barracks' && !b.construction);
+    if (bk && bk.queue.length < 1) Bld.train(bk, 'defender');
+    for (const st of S.buildings.filter(b => b.owner === 'P' && b.construction > 0))
+      if (!S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'build' && u.task.id === st.id)) {
+        const v = vills()[0]; if (v) Units.assignBuild(v, st);
+      }
+  };
+  const dt = 0.25;
+  let actT = 0, steps = 0;
+  while (!S.over && S.day < (o.cap || 260) && steps++ < 300000) {
+    if (o.bot && S.day < (o.act || 30)) { actT -= dt; if (actT <= 0) { actT = 2; act(); } }
+    if (o.bot && S.day >= (o.act || 30) && o.raze) break;
+    const dtDays = dt * 1000 / CFG.DAY_MS;
+    S.playtime += dt; S.dayT += dt * 1000;
+    while (S.dayT >= CFG.DAY_MS) { S.dayT -= CFG.DAY_MS; G.dayTick(); if (S.over) break; }
+    if (S.over) break;
+    Bld.update(dtDays); Units.update(dt); Combat.update(dt);
+    G.dyingTick(dt); G.krakenTick(dt); G.eclipseTick(dt); G.fireTick(dt); G.strifeTick(dt); G.starfallTick(dt); G.dragonTick(dt);
+    G.dragonT = (G.dragonT || 0) - dt;
+    if (G.dragonT <= 0) { G.dragonT = 1.3; G.maybeDragon(); G.maybeSons(); G.maybeCache(); G.maybeWinter(); G.maybePlague(); }
+    G.visT -= dt; if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
+    if (S.tut && S.tut.on) Tutorial.tick(dt);
+  }
+  // the hall falls to the world — through the real door, so the end screen settles it
+  if (!S.over) { const tc = Bld.tcOf('P'); if (tc) Bld.damage(tc, 1e7); }
+  const st = S.stats, d = Deck.deeds(), rep = Deck.report(false, 'tc_destroyed');
+  return { day: S.day, cause: S.over && S.over.cause, win: !!(S.over && S.over.win), deeds: d.n, parts: d.parts,
+    razed: st.razed, gathered: Math.round(st.gathered), built: st.built, trained: st.trained, secs: Math.round(S.playtime),
+    granted: !!Deck.col().runs[rep.key], why: (DeckScreens._view && DeckScreens._view.why) || '',
+    tut: !!(S.tut && S.tut.on), report: G.runReport('loss', 'tc_destroyed', false).props };
+};`;
+const e = await p.evaluate(async (SIM) => {
+  eval(SIM);
+  const out = {};
+  CFG.CARDS.ON = true;
+  Deck._col = null; Deck._del(Deck.KEY);
+  Deck.ensureStarter();
+  const N = (o) => Object.assign({ mode: 'hard', cap: 260 }, o);
+  /* A PASSIVE HARD RUN: no input at all, the world razes the hall. Six
+     origins, among them every kind that plants a building or a hand on day
+     one (Delver's camp, Bowyer's range, the Mariner's boats, the Hunt's
+     lodge, the Timberwright's camp) and the two seeds that measured the
+     naive tally's worst: the Mariner's nets (1,537 food by day 73) and a
+     Grainkeeper whose rival lost 7 works to the wilds */
+  out.passive = [];
+  for (const [seed, origin] of [['passive-marinerb', 'mariner'], ['passive-grainkeepera', 'grainkeeper'], ['passive-delvera', 'delver'],
+    ['passive-bowyera', 'bowyer'], ['passive-huntlorda', 'huntlord'], ['passive-timberwrighta', 'timberwright']])
+    out.passive.push(Object.assign({ origin }, __sim(N({ seed, origin }))));
+  // …and the same with the tutorial on: its larder, its scout, its free house
+  // (which needs a site the player laid) add nothing either
+  out.tutPassive = __sim(N({ seed: 'passive-tut', origin: 'forager', tut: true }));
+  // A TOKEN EFFORT: one house and one villager, then hands off
+  out.token = __sim(N({ seed: 'active-token-0', origin: 'homesteader', bot: 'token', act: 400, rs: 7 }));
+  // FIVE MINUTES ON HARD: a player who builds, trains and gathers for 30
+  // game days (five real minutes) and is then razed
+  out.active = __sim(N({ seed: 'active-active-0', origin: 'homesteader', bot: 'active', act: 30, raze: true, rs: 7 }));
+  out.active2 = __sim(N({ seed: 'active-active-2', origin: 'refugeehost', bot: 'active', act: 30, raze: true, rs: 9 }));
+  return out;
+}, SIM);
+const pv = e.passive;
+ck('aPassiveHardDefeatEarnsNothing', pv.every(r => !r.win && r.deeds === 0 && !r.granted) && e.tutPassive.deeds === 0 && !e.tutPassive.granted,
+  pv.map(r => `${r.origin} d${r.day} ${r.deeds} deeds (razed ${r.razed}, gathered ${r.gathered})`).join('; ') + `; tutorial d${e.tutPassive.day} ${e.tutPassive.deeds}`);
+ck('aTokenEffortIsToldHowFarItGot', e.token.deeds === 2 && !e.token.granted &&
+  e.token.why === 'Build, train, upgrade or raze to earn a card from a defeat — 2 of 5 deeds.',
+  `${e.token.deeds} deeds (${JSON.stringify(e.token.parts)}), granted ${e.token.granted}, "${e.token.why}"`);
+ck('fiveMinutesOfRealPlayOnHardEarns', [e.active, e.active2].every(r => !r.win && r.cause === 'tc_destroyed' && r.deeds >= 7 && r.granted && r.secs <= 320),
+  [e.active, e.active2].map(r => `${r.deeds} deeds ${JSON.stringify(r.parts)} at ${r.secs}s, granted ${r.granted}`).join('; '));
+ck('theDeedsRideTheRunReport', [e.active, e.token, ...pv].every(r => r.report.deeds === r.deeds &&
+  r.report.hand_razed === r.parts.razed && Number.isFinite(r.report.hand_gathered)),
+  `active report deeds ${e.active.report.deeds}, hand_gathered ${e.active.report.hand_gathered}`);
+
+/* THE TWO TRAPS, on constructed ground (deterministic whatever the AI does
+   next year): whose torch razed it, and whose hands gathered it. The score's
+   own tallies (S.stats.razed / gathered) are what a naive earn rule would
+   read — they move here, and the deeds must not. */
+const t = await p.evaluate(() => {
+  const out = {};
+  Screens._demo = false;
+  G.newGame('deeds-traps', 'moderate', 'medium');
+  Screens.show('playing'); S.paused = true;
+  Combat.scanT = 0; Units.herdClock = 0;
+  const atc = Bld.tcOf('A');
+  const mk = (owner, key, x, y) => Bld.place(owner, key, x, y, { free: true, instant: true, noAutoAssign: true });
+  const free = (x0, y0, r) => MapGen.findNear(x0, y0, r, (x, y) => !Bld.at(x, y) && Bld.tileFree(x, y) && Path.passable(x, y, 'A'));
+  const house = () => { const h = free(atc.x + 1, atc.y + 1, 10); return mk('A', 'house', h.x, h.y); };
+  const s0 = { razed: S.stats.razed, hand: S.stats.handRazed };
+  // a barbarian's torch, and a bare Bld.damage (no striker at all)
+  Combat.hitBuilding(house(), 1e6, false, 'R');
+  Bld.damage(house(), 1e6);
+  // a barbarian camp the RIVAL burns
+  const cp = free(atc.x + 1, atc.y + 1, 14);
+  const camp = mk('R', 'raidercamp', cp.x, cp.y);
+  Combat.hitBuilding(camp, 1e6, false, 'A');
+  out.notMine = { razed: S.stats.razed - s0.razed, hand: S.stats.handRazed - s0.hand };
+  // the player's own: a direct hit, a soldier's blow in the real combat loop,
+  // and an engine's boulder landing
+  Combat.hitBuilding(house(), 1e6, false, 'P');
+  const h2 = house();
+  const sp = MapGen.findNear(h2.x, h2.y, 3, (x, y) => Path.passable(x, y, 'P') && Math.max(Math.abs(x - h2.x), Math.abs(y - h2.y)) === 1);
+  const sol = Units.spawn('axeman', 'P', sp.x + 0.5, sp.y + 0.5);
+  sol.atk = 9999;
+  sol.tBld = h2.id; sol.task = { type: 'attackBld', id: h2.id };
+  for (let i = 0; i < 4000 && Bld.get(h2.id); i++) Combat.update(0.05);
+  const h3 = house();
+  const cat = Units.spawn('catapult', 'P', h3.x + 3.5, h3.y + 0.5);
+  Combat.launch(cat, Bld.cx(h3), Bld.cy(h3), { kind: 'bld', id: h3.id, dmg: 1e6 });
+  for (let i = 0; i < 200 && Combat.projectiles.length; i++) Combat.update(0.05);
+  out.mine = S.stats.handRazed - s0.hand - out.notMine.hand;
+  out.blowLanded = !Bld.get(h2.id) && !Bld.get(h3.id);
+  // whose hands: a fishing boat's nets, then a villager's own
+  const ptc = Bld.tcOf('P');
+  const w = MapGen.findNear(ptc.x + 1, ptc.y + 1, 40, (x, y) => Units.canFish(x, y));
+  const g0 = { all: S.stats.gathered, hand: S.stats.handGathered };
+  out.water = !!w;
+  if (w) {
+    const boat = Units.spawn('fishboat', 'P', w.x + 0.5, w.y + 0.5);
+    Units.assignFish(boat, w.x, w.y);
+    for (let i = 0; i < 1600; i++) Units.update(0.25);
+    Units.despawn(boat);
+  }
+  out.boat = { all: Math.round(S.stats.gathered - g0.all), hand: Math.round(S.stats.handGathered - g0.hand) };
+  const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u));
+  const f = MapGen.findNear(Math.round(v.x), Math.round(v.y), 20, (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.FOREST && S.map.resAmount[MapGen.idx(x, y)] > 0);
+  Units.assignGather(v, f.x, f.y);
+  const g1 = S.stats.handGathered;
+  for (let i = 0; i < 1200; i++) Units.update(0.25);
+  out.hand = Math.round(S.stats.handGathered - g1);
+  // the allowance: one deed per 300, capped at three
+  out.allow = [0, 299, 300, 899, 900, 5000].map(n => Deck.deeds({ handGathered: n }).parts.gathered);
+  out.naiveBoatDeeds = Math.min(3, Math.floor(out.boat.all / 300));
+  // the tallies ride a save, and a pre-deeds save gives the benefit of the doubt
+  S.stats.handGathered = 640; S.stats.handRazed = 3;
+  const json = G.saveJSON();
+  G.loadJSON(json);
+  out.rides = S.stats.handGathered === 640 && S.stats.handRazed === 3;
+  const old = JSON.parse(json); delete old.stats.handGathered; delete old.stats.handRazed; old.stats.gathered = 900; old.stats.razed = 2;
+  G.loadJSON(JSON.stringify(old));
+  out.backfill = S.stats.handGathered === 900 && S.stats.handRazed === 2;
+  return out;
+});
+ck('aWorkTheWildsOrTheRivalBurnedIsNoDeed', t.notMine.razed === 3 && t.notMine.hand === 0,
+  `the score's razed +${t.notMine.razed} (what a naive rule would pay), the player's hand +${t.notMine.hand}`);
+ck('butWhatTheirOwnSoldiersPullDownIs', t.mine === 3 && t.blowLanded, `a direct hit, a soldier's blow, an engine's boulder: +${t.mine}`);
+ck('aBoatsNetsAreNoHandGathering', t.water && t.boat.all >= 300 && t.boat.hand === 0 && t.naiveBoatDeeds >= 1,
+  t.water ? `boat: +${t.boat.all} gathered (${t.naiveBoatDeeds} deeds to a naive rule), +${t.boat.hand} by hand` : 'no water near the seat');
+ck('aVillagersOwnHandsAre', t.hand > 0, `+${t.hand} by hand`);
+ck('theGatheringAllowanceIsCapped', JSON.stringify(t.allow) === '[0,0,1,2,3,3]', JSON.stringify(t.allow));
+ck('theTalliesRideASave', t.rides && t.backfill, `rides ${t.rides}, backfill ${t.backfill}`);
+
+/* THE TEST LINK: ?cards=all turns the deck on for the device and, on EVERY
+   load carrying it, resets the collection and deals one of every card in
+   the catalog — the starter hand marked as given, so it adds no three more.
+   A test deck queues nothing for the cloud and reports nothing. */
 {
   const ctx2 = await b.newContext({ viewport: { width: 430, height: 880 } });
   const p2 = await ctx2.newPage();
   p2.on('pageerror', e => errs.push(String(e)));
-  await p2.goto(url + '?cards=slice', { waitUntil: 'domcontentloaded' });
+  // a device with a real collection first: two Swift Raiders and a run ledger
+  await p2.goto(url, { waitUntil: 'domcontentloaded' });
   await p2.waitForFunction(() => window.Deck && window.Screens && Screens.current, null, { timeout: 15000 });
-  const sl = await p2.evaluate(() => {
-    Deck.ensureStarter();
-    const built = Object.keys(Deck.FX).filter(id => Deck.card(id)).sort();
-    return { on: Deck.on(), built: built.join(','), held: built.every(id => Deck.count(id) >= 1),
-      unbuilt: Deck.CATALOG.filter(c => !Deck.FX[c.id] && Deck.count(c.id) > 0 && !CFG.CARDS.STARTER.includes(c.id)).map(c => c.id) };
+  await p2.evaluate(() => {
+    Deck._set(Deck.KEY, JSON.stringify({ v: 1, counts: { swift_raiders: 2, gold_nugget: 1 }, seen: { swift_raiders: 1 }, pity: 9,
+      starter: 0, runs: { k1: [{ id: 'swift_raiders', tier: 'iron' }] }, queue: [{ op: 'grant' }], medians: {} }));
   });
-  ck('theReviewLinkDealsTheBuiltCards', sl.on && sl.held && sl.unbuilt.length === 0 &&
-    sl.built === 'dragonfire,forager_cache,harvest_festival,starfall,swift_raiders',
-    `on ${sl.on}; dealt ${sl.built}; unbuilt dealt ${sl.unbuilt.join(',') || 'none'}`);
+  const load = async (q) => {
+    await p2.goto(url + q, { waitUntil: 'domcontentloaded' });
+    await p2.waitForFunction(() => window.Deck && window.Screens && Screens.current, null, { timeout: 15000 });
+  };
+  await load('?cards=all');
+  const a1 = await p2.evaluate(() => {
+    Deck.ensureStarter();
+    const c = Deck.col();
+    const all = Deck.CATALOG.every(x => Deck.count(x.id) === 1);
+    const o = { on: Deck.on(), dev: Deck._get('neo-cards-dev'), total: Deck.total(), all, runs: Object.keys(c.runs).length,
+      queue: c.queue.length, pity: c.pity, starter: !!c.starter, test: !!c.test, again: Deck.ensureStarter() };
+    // a card played and a grant settled in a test deck write nothing for the cloud
+    Screens._demo = false;
+    G.newGame('cards-all', 'moderate', 'medium');
+    Screens.show('playing'); S.paused = true;
+    const r = Deck.play('forager_cache');
+    const g = Deck.settle(Object.assign(Deck.report(true, 'razed_rival_tc'), { key: 'cards-all-win' }));
+    o.played = r.ok; o.granted = g.ok; o.queued = Deck.col().queue.length;
+    return o;
+  });
+  ck('theTestLinkDealsTheWholeCatalog', a1.on && a1.dev === '1' && a1.total === 36 && a1.all && a1.test,
+    `on ${a1.on}, device ${a1.dev}, ${a1.total} cards, one of each ${a1.all}`);
+  ck('andResetsTheCollectionFirst', a1.runs === 0 && a1.pity === 0 && a1.queue === 0 && a1.starter && a1.again === false,
+    `ledger ${a1.runs}, pity ${a1.pity}, queue ${a1.queue}, starter marked ${a1.starter} (a second ask deals ${a1.again})`);
+  ck('aTestDeckWritesNothingForTheCloud', a1.played && a1.granted && a1.queued === 0, `played ${a1.played}, granted ${a1.granted}, queued ${a1.queued}`);
+  // every load carrying it deals afresh — and the switch thrown at launch must
+  // not stop the link being read (an on() that asked the switch first never
+  // read the address at all)
+  await load('?cards=all');
+  const a2 = await p2.evaluate(() => {
+    const o = { reloaded: (Deck.ensureStarter(), Deck.total()) };
+    Deck._add('gold_nugget', -1); Deck.saveCol();
+    o.spent = Deck.total();
+    Deck._dev = null; Deck._all = false; CFG.CARDS.ON = true;
+    Deck.on(); Deck.ensureStarter();
+    o.switchOn = Deck.total();
+    return o;
+  });
+  ck('everyLoadOfTheLinkDealsAfresh', a2.reloaded === 36, `${a2.reloaded} after a reload`);
+  ck('andTheLinkIsReadWithTheSwitchOn', a2.spent === 35 && a2.switchOn === 36, `${a2.spent} → ${a2.switchOn} with CFG.CARDS.ON`);
+  // a load WITHOUT it keeps the deck it dealt and the device's switch
+  await load('');
+  const a3 = await p2.evaluate(() => { Deck.ensureStarter(); return { on: Deck.on(), total: Deck.total() }; });
+  ck('andAPlainLoadKeepsIt', a3.on && a3.total === 36, `on ${a3.on}, ${a3.total}`);
   await ctx2.close();
 }
 

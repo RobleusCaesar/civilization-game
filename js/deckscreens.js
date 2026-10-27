@@ -178,7 +178,9 @@ const DeckScreens = {
      captured NOW, because a post can outlive this screen. */
   _armBoard(win, sc, msg) {
     Screens._score = win ? sc : null;
-    Screens._entry = win ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed } : null;
+    // `cards`: how many this run played — a card-assisted run is marked on the
+    // board (the server's submit_score carries it once its column exists)
+    Screens._entry = win ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed, cards: this._playedN() } : null;
     Screens._submitted = false;
     Screens._leaveWarned = false;
     if (win) Screens._winMsg = msg || '';
@@ -267,7 +269,12 @@ const DeckScreens = {
           '<div class="ceInfo">' +
             '<div class="cePlate" style="--i:0"><small></small><b></b></div>' +
             '<div class="ceScore" style="--i:1"><small>Final score</small><b class="ceScoreN">0</b>' +
-              `<p class="ceMeta">Day ${S.day}${mode ? ' · ' + this.esc(mode) : ''}</p><div class="ceRank"></div><div class="ceBoard"></div></div>` +
+              `<p class="ceMeta">Day ${S.day}${mode ? ' · ' + this.esc(mode) : ''}</p>` +
+              /* A CARD-ASSISTED RUN SAYS SO (approved at Gate 1: marked on the
+                 end screen, in telemetry and on the board), in the score's own
+                 box — the one block the board's name box never hides */
+              (this._playedN() ? `<p class="ceAssist">${this.DECK_SVG}<span>Card-assisted</span></p>` : '') +
+              '<div class="ceRank"></div><div class="ceBoard"></div></div>' +
             `<p class="cePlayed" style="--i:2"><small>Cards played this run</small><span>${this.esc(this._playedLine())}</span></p>` +
             `<div class="ceTile" style="--i:3">${this.DECK_SVG}<b class="ceTileN"></b><small>Cards in<br>your deck</small></div>` +
             '<div class="ceBtns" style="--i:4">' +
@@ -426,6 +433,7 @@ const DeckScreens = {
     }
   },
 
+  _playedN() { return (S.deck && Array.isArray(S.deck.played)) ? S.deck.played.filter(x => x && Deck.card(x.id)).length : 0; },
   _playedLine() {
     const p = (S.deck && Array.isArray(S.deck.played)) ? S.deck.played : [];
     if (!p.length) return 'None';
@@ -1227,6 +1235,9 @@ DeckScreens.CSS = `
   filter: drop-shadow(0 2px 0 rgba(0,0,0,0.75)); }
 #cardEnd.ceLoss .ceScoreN { background: linear-gradient(#f3efe2, #cfc6ad 52%, #9b917a); -webkit-background-clip: text; background-clip: text; }
 #cardEnd .ceMeta { margin: 1px 0 0; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: #b5a888; }
+#cardEnd .ceAssist { margin: 4px 0 0; display: flex; align-items: center; justify-content: center; gap: 5px;
+  font: 700 10.5px/1 var(--menufont, Georgia, serif); letter-spacing: 1.6px; text-transform: uppercase; color: #e8c15a; }
+#cardEnd .ceAssist svg { width: 14px; height: 14px; flex: 0 0 auto; image-rendering: pixelated; filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6)); }
 #cardEnd .ceRank:empty { display: none; }
 #cardEnd #vicRank { margin: 5px auto 0; font-size: 12px; }
 #cardEnd .ceBoard { width: 100%; display: flex; flex-direction: column; align-items: center; }

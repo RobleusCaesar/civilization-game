@@ -109,10 +109,16 @@ const Tutorial = {
     winNudgeWar: 'Your war camp is strong. When you march, bring <b>engines</b> for their walls and spears to screen them — and strike the hall, not the stones.',
     winNudgeWonder: 'Your town is rich and the land is quiet. The <b>Ancient Wonder</b> waits in your build menu — raise it and win without a war.',
     mortality: 'A villager has died — age, mischance, the usual ways of the world. Their <b>post stands empty</b>; send another pair of hands.',
+    deck: 'This is your <b>deck</b>: every game you win, or lose fighting, adds a card to it — a cache of grain, a war band, a falling star. A card is kept until you play it, and once played it is gone for good.',
   },
 
   /* ---- small shared reads ---- */
   _tc() { return S.buildings.find(b => b.owner === 'P' && b.key === 'tc'); },
+  // the card system is in this game (guarded on the method it calls: a cached
+  // older deck.js beside this file must stand down, never throw)
+  _cardsOn() { return !!(window.Deck && Deck.on && Deck.on()); },
+  // the deck lesson is still owed this run
+  _deckOwed() { return this._cardsOn() && !!S.tut && !(S.tut.fired && S.tut.fired.deck); },
   _stationKeys: { farm: 1, lumber: 1, quarry: 1, lodge: 1, mine: 1 },
   _gatherOn(terr) {
     return S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'gather' &&
@@ -301,6 +307,21 @@ const Tutorial = {
       },
       adv: () => S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'build') ||
         !S.buildings.some(b => b.owner === 'P' && (b.construction > 0 || b.upgrading > 0)) },
+    /* THE DECK, TAUGHT LAST (operator ruling 12): the card deck is kept out
+       of the game while the spine runs (DeckUI.tutHides) and walks in the
+       moment it is done — the capstone answered, or the lesson skipped — and
+       this note rings it: what a card is, that it is kept until played and
+       gone once it is. Only where the cards are on: with the switch off it
+       never fires and is never waited for (`off`), so the tutorial is
+       exactly what it was. */
+    { id: 'deck',
+      off: () => !Tutorial._cardsOn(),
+      when() {
+        if (!Tutorial._cardsOn() || S.tut.phase !== 2) return false;
+        const b = document.getElementById('deckBtn');
+        return !!b && b.offsetParent !== null;
+      },
+      anchor: () => ({ sel: '#deckBtn' }) },
     { id: 'workedGround',
       // an ACTION, not a lecture (playtest): guide the whole chain to a real
       // Lumber Camp on the player's own stumps — and only once it is payable
@@ -483,6 +504,7 @@ const Tutorial = {
 
   skip() {
     if (!window.S || !S.tut) return;
+    const owed = this._deckOwed() && !S.tut.deckOnly;
     S.tut.on = false; S.tut.skipped = true;
     // a skip is the player's answer for good: the auto-on for the first two
     // games (Screens.tutorialWanted) must not re-arm a lesson twice refused
@@ -490,6 +512,19 @@ const Tutorial = {
     else { try { localStorage.setItem('neo-tutorial-ask', '0'); } catch (e) {} }
     this._killScout();
     this.onWorldChange();   // removes the DOM, restores full speed
+    /* …but the DECK is still owed its one note (operator ruling 12: "taught
+       once it is finished OR skipped") — it walks into the game the moment
+       the lesson ends, and a card nobody explained is a button nobody
+       trusts. So a skip with the cards on keeps the teacher for that single
+       note and nothing else: every other note is booked as told, the spine
+       is closed, and answering it puts the lesson away for good (the cold
+       rule in _completeShow). Skipping again from it ends it at once. */
+    if (owed) {
+      const t = S.tut;
+      t.on = true; t.deckOnly = 1; t.phase = 2; t.step = this.STEPS.length;
+      for (const e of this.EVENTS) if (e.id !== 'deck') t.fired[e.id] = 1;
+      this._gapT = this.BREATH;   // a beat after the old note leaves
+    }
   },
 
   /* ======================= the frame tick =======================
@@ -607,6 +642,9 @@ const Tutorial = {
     const info = !(def && def.adv);
     this._el.next.style.display = info ? '' : 'none';
     this._el.next.textContent = id === 'capstone' ? 'Onward' : 'Got it';
+    // a lesson already skipped keeps the teacher for the deck's note alone:
+    // there is nothing left to skip, so it offers only the answer
+    if (S.tut.deckOnly) this._el.skip.style.display = 'none';
     if (kind === 'step' && S.tut.phase === 1) {
       const n = this.STEPS.findIndex(s => s.id === id);
       this._el.num.textContent = (n + 1) + '/' + this.STEPS.length;
@@ -680,8 +718,13 @@ const Tutorial = {
       this._zRestore = 0;
     }
     this._hideAll();
-    // guidance has run its course → go fully cold (zero further cost)
-    if (t.phase === 2 && (S.day > 150 || this.EVENTS.every(e => t.fired[e.id]))) {
+    // guidance has run its course → go fully cold (zero further cost). A
+    // note that does not apply to this game (`off` — the deck, with the
+    // cards switched off) is never waited for; one still OWED (the deck,
+    // with them on) holds the cold even past day 150, or a slow lesson's
+    // capstone would put the teacher away before it named the deck
+    if (t.phase === 2 && ((S.day > 150 && !this._deckOwed()) ||
+        this.EVENTS.every(e => t.fired[e.id] || (e.off && e.off())))) {
       t.on = false; t.completed = true;
       this.onWorldChange();
     }
