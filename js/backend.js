@@ -317,12 +317,13 @@ const Backend = {
        row nobody could ever match, and a card the server could never check
        against it, so the grant was given up and the card left the collection
        at the next reconcile. The ending is still ONE row; it is simply a row
-       with a name. S.runId takes it too, so the end screen's grant asks for
-       the run the row was sent under. */
-    if (!this.runId) {
-      this.runId = this.newRunId();
-      try { if (typeof S !== 'undefined' && S && !S.runId) S.runId = this.runId; } catch (e) {}
-    }
+       with a name, and lastRunId hands it to the end screen's grant (Deck.
+       report reads it when S.runId is empty). It is NOT written into S: a
+       snapshot of the finished state would carry it, and loadJSON hands a
+       save's id back to Backend.runId — so the next run that ends without
+       being entered through _enterNow (a test's scripted world) would end
+       under the old run's name and its grant would read as already paid. */
+    if (!this.runId) this.runId = this.newRunId();
     this._emitEnd({
       run_id: this.runId, kind: 'run_end',
       outcome: info.outcome || null, cause: info.cause || null,

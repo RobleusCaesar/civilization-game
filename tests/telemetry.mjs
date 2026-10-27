@@ -387,7 +387,7 @@ const MOCK = `
     await tick();
     const idl = calls().filter(c => c.path === '/telemetry' && c.body && c.body[0] && c.body[0].kind === 'run_end').slice(-1)[0];
     const rowId = idl && idl.body[0].run_id;
-    out.idless = { rowId: !!rowId, stamped: S.runId === rowId, last: Backend.lastRunId === rowId, cleared: Backend.runId === null,
+    out.idless = { rowId: !!rowId, unsaved: S.runId === null, last: Backend.lastRunId === rowId, cleared: Backend.runId === null,
       report: (window.Deck && Deck.report) ? Deck.report(false, 'tc_destroyed').runId === rowId : true,
       rows: calls().filter(c => c.path === '/telemetry' && c.body && c.body[0] && c.body[0].kind === 'run_end' && c.body[0].run_id === rowId).length };
 
@@ -419,7 +419,7 @@ const MOCK = `
     JSON.stringify(r.died));
   ck('anEndingThatLandedKeepsNothing', r.landed.raw === 1 && r.landed.reports === 0 && r.landed.kept === 0, JSON.stringify(r.landed));
   ck('offTheSiteNothingIsKept', r.offSite === 0, 'kept ' + r.offSite);
-  ck('aRunWithNoIdEndsUnderAFreshOne', r.idless.rowId && r.idless.stamped && r.idless.last && r.idless.cleared && r.idless.report && r.idless.rows === 1,
+  ck('aRunWithNoIdEndsUnderAFreshOne', r.idless.rowId && r.idless.unsaved && r.idless.last && r.idless.cleared && r.idless.report && r.idless.rows === 1,
     JSON.stringify(r.idless));
   ck('theDecksRowsGoOutUnderTheirOwnKinds', r.deckRows.length === 2 && r.deckRows[0].kind === 'card_granted' && r.deckRows[1].kind === 'card_played' &&
     r.deckRows.every(x => x.run && x.user && x.modeOk && x.dayOk), JSON.stringify(r.deckRows));
