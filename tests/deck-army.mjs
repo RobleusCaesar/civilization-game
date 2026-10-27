@@ -399,19 +399,49 @@ await p.evaluate(({ ARMY }) => {
 {
   // the approved texts, word for word — a wording change is a ruling, reported
   const r = await p.evaluate(({ ARMY }) => Object.fromEntries(ARMY.map(id => [id, Deck.card(id).text])), { ARMY });
+  /* THE PRICE IS ON THE CARD (playtest g2 #4, g3 #5): every card that brings
+     soldiers who count and eat says so in as many words — the Iron Legion on
+     day one took a town from 3/5 and −3 food a day to 9/5 and −12, the Legion
+     to 16/5 and −25 with desertions by day 19, and not one word on the card
+     had warned of it. The wolves and the ghosts already say they eat nothing. */
+  const EATS = ' They eat like soldiers and count against your population.', CREWS = ' Their crews eat like soldiers and count against your population.';
   const want = {
     willing_hands: '+3 villagers at your Town Center. They may take you over the population cap; training waits until there is room again.',
-    war_band: 'Five soldiers of your best infantry rank march out of your Town Center: Defenders, Axemen or Bronze Champions, by your best finished Barracks (Defenders with none).',
+    war_band: 'Five soldiers of your best infantry rank march out of your Town Center: Defenders, Axemen or Bronze Champions, by your best finished Barracks (Defenders with none).' + EATS,
     hunters_pack: 'Three war-wolves join you at your Town Center: 70 health, 10 attack, fast. They fight beside you, stay near home, need no roof and eat nothing.',
-    iron_legion: 'Six Bronze Champions march out of your Town Center.',
-    siege_train: 'A Catapult and a Ballista roll out of your Town Center.',
+    iron_legion: 'Six Bronze Champions march out of your Town Center.' + EATS,
+    siege_train: 'A Catapult and a Ballista roll out of your Town Center.' + CREWS,
     veterans: 'Every land soldier you have rises one rank. Base and second-rank soldiers become their hall’s champion (Bronze Champion, Fire Archer, Lancer; a Catapult becomes a Trebuchet). Champions and other engines become veterans: +25% health and attack.',
-    legion_marches: 'Twelve elite soldiers march out of your Town Center: 5 Bronze Champions, 4 Fire Archers and 3 Lancers.',
-    trebuchet_battery: 'Two Trebuchets and a Siege Tower roll out of your Town Center.',
+    legion_marches: 'Twelve elite soldiers march out of your Town Center: 5 Bronze Champions, 4 Fire Archers and 3 Lancers.' + EATS,
+    trebuchet_battery: 'Two Trebuchets and a Siege Tower roll out of your Town Center.' + CREWS,
     ancestors_host: 'Fifteen spectral Bronze Champions rise at your Town Center and fight for you for 6 days, then fade. They eat nothing and need no roof.',
   };
   const bad = Object.keys(want).filter(k => r[k] !== want[k]);
   ck('everyCardsTextIsTheApprovedText', !bad.length, bad.length ? 'changed: ' + bad.join(', ') : 'nine texts, word for word');
+  const raiders = await p.evaluate(() => Deck.card('swift_raiders').text);
+  const eaters = { war_band: r.war_band, iron_legion: r.iron_legion, siege_train: r.siege_train, legion_marches: r.legion_marches, trebuchet_battery: r.trebuchet_battery, swift_raiders: raiders };
+  const silent = Object.keys(eaters).filter(k => !/\beat\b/.test(eaters[k]) || !/population/.test(eaters[k]));
+  ck('everySoldierCardSaysTheyEatAndCount', !silent.length,
+    silent.length ? 'silent on the larder and the cap: ' + silent.join(', ') : 'six cards that bring soldiers who eat and count say so; the wolves and the ghosts say they eat nothing');
+  /* …and the whole text still fits the card's back, at the sheet's smallest
+     face (88px, a 320px phone) up to the inspector's: the box clips what
+     overflows (overflow: hidden), so an added sentence that pushed the flavor
+     line out would fail no other check */
+  const fit = await p.evaluate(async () => {
+    if (document.fonts) { try { await document.fonts.load('700 10px Cinzel'); await document.fonts.ready; } catch (e) {} }
+    const host = document.createElement('div'); host.style.cssText = 'position:fixed;left:0;top:0;display:flex;flex-wrap:wrap';
+    document.body.appendChild(host);
+    const bad = [];
+    for (const fw of [88, 120, 176, 220]) for (const id of ['war_band', 'swift_raiders', 'iron_legion', 'siege_train', 'legion_marches', 'trebuchet_battery', 'hunters_pack', 'veterans', 'ancestors_host']) {
+      const el = Deck.face(id, { w: fw, back: true });
+      host.appendChild(el);
+      const tx = el.querySelector('.cc-txt');
+      if (tx.scrollHeight > tx.clientHeight + 1) bad.push(id + '@' + fw + ' +' + (tx.scrollHeight - tx.clientHeight) + 'px');
+    }
+    host.remove();
+    return bad;
+  });
+  ck('andEveryArmyCardsTextFitsItsBack', !fit.length, fit.length ? 'clipped: ' + fit.join(', ') : 'nine backs, 88 to 220px wide, every word inside the box');
 }
 
 // ---------------- 3. POPULATION AND FOOD ----------------
