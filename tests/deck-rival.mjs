@@ -35,7 +35,9 @@
                        seated on the nearest open tile, never on a roof
      PATHFINDER'S MAP  every tile but the relic's footprint; the relic marked
                        (map and minimap) and unfound; nothing standing shown;
-                       its "when", in words
+                       its "when", in words — decided on the player's own map,
+                       never on whether a relic exists (an all-charted world
+                       is refused in the same words with one or without)
      SPY IN THE HALL   every rival building ghosted for good, through two
                        vision passes; the origin card named (and a true line
                        for a save with none); 10 days of their people seen —
@@ -630,6 +632,16 @@ await p.evaluate(() => {
     S.relic = { key: 'aqueduct', x: 18, y: 24, w: 4, h: 2, found: 0, amount: 0 };
     for (let y = 24; y < 26; y++) for (let x = 18; x < 22; x++) S.map.explored[MapGen.idx(x, y)] = 0;
     out.markOnly = Deck.canPlay('pathfinders_map').ok && Deck.play('pathfinders_map').ok && S.deck.relicMark === true && !S.relic.found;
+    /* WHETHER IT PLAYS NEVER SAYS A RELIC IS THERE: a world whose map is all
+       charted — not one tile dark — is refused in the SAME words whether a
+       relic lies unfound under it (its footprint charted, the find not yet
+       made) or there is none at all. Asked of S.relic, the first played. */
+    __rv.fresh('rv-map3'); __rv.flat(true); G.updateVisibility();
+    S.relic = { key: 'aqueduct', x: 18, y: 24, w: 4, h: 2, found: 0, amount: 0 };
+    const withRelic = Deck.canPlay('pathfinders_map');
+    S.relic = null;
+    const without = Deck.canPlay('pathfinders_map');
+    out.blind = { withRelic, without };
     return out;
   });
   ck('everyTileButTheRelicIsCharted', r.play.ok && r.c.target === 'none' && r.dark === 8 && r.darkRelic === 8,
@@ -640,6 +652,9 @@ await p.evaluate(() => {
   ck('itsWhenIsKeptInWords', !r.again.ok && /already on your map, and the relic is marked/.test(r.again.why) &&
     r.dug && !r.again2.ok && /already on your map\.$/.test(r.again2.why) && r.markOnly,
     `"${r.again.why}" / dug: mark retired ${r.dug} / "${r.again2.why}" / mark only ${r.markOnly}`);
+  ck('whetherItPlaysNeverSaysARelicIsThere', !r.blind.withRelic.ok && !r.blind.without.ok && r.blind.withRelic.why === r.blind.without.why &&
+    r.blind.without.why === 'The whole world is already on your map.',
+    `all charted, a relic unfound under it: ${JSON.stringify(r.blind.withRelic)}; none at all: ${JSON.stringify(r.blind.without)}`);
 }
 
 // ---------------- 4. SPY IN THE HALL ----------------

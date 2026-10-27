@@ -509,7 +509,9 @@
        The relic's footprint is left DARK (charting it would be finding it)
        and the relic is MARKED instead, on the map and the minimap, until a
        hand walks there and digs. Nothing standing on the land is shown.
-       Refused (kept) when it would chart nothing and mark nothing. */
+       Refused (kept) when none of the player's map is still dark — a
+       marked relic's footprint aside — decided without ever asking whether
+       a relic exists (can). */
     pathfinders_map: {
       at: 'focus',
       focus() { return null; },   // no camera move — the map unrolls over the whole screen
@@ -523,10 +525,24 @@
         }
         return { tiles, mark: !!(r && !r.found && !(S.deck && S.deck.relicMark)) };
       },
+      /* WHETHER IT PLAYS IS DECIDED ON THE PLAYER'S OWN MAP — is any of it
+         still dark? — and never on whether a relic lies somewhere. An unfound
+         relic's footprint IS dark ground the player can see (the card marks
+         it rather than charting it), so it counts like any other; a footprint
+         already MARKED is ground the player knows, the X their own card put
+         there, and does not. Asked of S.relic instead ("anything to chart, or
+         a relic to mark?"), a land fully charted answered "play" with a relic
+         lying unfound and "refused" with none: the card's playability alone
+         said a relic was there. The words are the same either way. */
       can() {
-        const t = this._todo();
-        if (t.tiles.length || t.mark) return { ok: true };
-        return { ok: false, why: 'The whole world is already on your map' + (S.relic && !S.relic.found ? ', and the relic is marked on it' : '') + '.' };
+        const ex = S.map.explored, W = CFG.W, H = CFG.H, r = S.relic;
+        const marked = !!(S.deck && S.deck.relicMark && r && !r.found);
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          if (ex[y * W + x] || !MapGen.onBoard(x, y)) continue;
+          if (marked && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) continue;
+          return { ok: true };
+        }
+        return { ok: false, why: 'The whole world is already on your map' + (marked ? ', and the relic is marked on it' : '') + '.' };
       },
       apply() {
         const ok = this.can();
