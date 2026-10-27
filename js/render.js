@@ -13580,8 +13580,8 @@ const R = {
       } else if (u.burnT > 0) {
         // DEATH BY DRAGONFIRE — a last animation before the ash lands:
         // soldiers topple sideways ablaze; siege engines char, sag and
-        // collapse where they stand. Both are wreathed in half-transparent
-        // fire and fade out just before they vanish into ash.
+        // collapse where they stand. Both are wreathed in fire and fade out
+        // just before they vanish into ash.
         const p = Math.min(1, Math.max(0, 1 - u.burnT / 1.6));       // 0 -> 1 across the burn
         const fade = p > 0.72 ? Math.max(0, (1 - p) / 0.28) : 1;
         const cx2 = u.x * TL, cy2 = u.y * TL;
@@ -13600,8 +13600,9 @@ const R = {
         }
         g.restore();
         // the body ablaze in the burning-town flames themselves (a dragon's
-        // fire line wears them) — the half-transparent wash and tongues of
-        // squares below are only the stand-in while the sprites are missing
+        // fire line wears them) — the stepped tongues of squares below are
+        // only the stand-in while the sprites are missing, and never a
+        // translucent box laid over the body (it read as a lit window)
         if (window.Assets && Assets.resolve && Assets.resolve('misc/flameSmall/0')) {
           const beat = ((u.animT * 10) | 0) + u.id, s1 = Math.round(TL * 0.95), s2 = Math.round(TL * 0.62);
           g.globalAlpha = fade;
@@ -13610,10 +13611,8 @@ const R = {
           g.globalAlpha = 1;
         } else {
           const lk = Math.sin(u.animT * 13 + u.id) * 0.5 + 0.5, ph = ((u.animT * 9) | 0) % 2;
-          g.globalAlpha = fade * 0.5;
-          g.fillStyle = F[1]; g.fillRect(cx2 - 8, cy2 - 12 + p * 6, 16, 14);
-          g.globalAlpha = fade * 0.9;
-          const hh = 8 + lk * 5;
+          g.globalAlpha = fade;
+          const hh = 8 + Math.round(lk * 3) * 2;
           g.fillStyle = F[1]; g.fillRect(cx2 - 5, cy2 - 4 - hh + p * 5, 4, hh);
           g.fillStyle = F[2]; g.fillRect(cx2 + 1 - ph, cy2 - 2 - hh * 0.8 + p * 5, 3, hh * 0.8);
           g.fillStyle = F[3] || '#ffd28a'; g.fillRect(cx2 - 1, cy2 - hh * 0.5 + p * 5, 2, hh * 0.5);

@@ -21,6 +21,8 @@
                        shore it reaches across, and within a tentacle's reach
                        of its prey
      THEY ARE HEARD    a roar, a breath, the deep's groan and the slam
+     ITS VICTIMS BURN  in the burning-town flame sprites; the stand-in is
+                       stepped tongues, never a translucent box on the body
      THE ART IS THERE  on a phone's wire with a cold cache, a run founded
                        through the real entry holding both beast cards plays
                        them a beat after entering and both acts open on the
@@ -235,6 +237,43 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
     tick();
   }));
   ck('aLiveDragonFliesItsActInTheRealFrame', seen === 'fly,burn,leave' && errs.length === 0, 'phases ' + seen + ', errors ' + errs.slice(0, 3).join(' | '));
+}
+
+// ---------------- 6b. a victim burns in the town's own flames ----------------
+/* A unit the dragon's breath caught topples ablaze in the burning-town flame
+   sprites (misc/flameSmall, the set R.drawFireTongue and a burning house
+   wear) — and the stand-in for a world without them is stepped tongues of
+   squares, never the translucent 16x14 orange box laid over the body that
+   it used to be (it read as a lit window, not a fire). Both drawn in the
+   real frame, each fill and sprite caught as it lands. */
+{
+  const r = await p.evaluate(() => {
+    G.newGame('beasts-burn', 'moderate', 'medium'); Screens.show('playing'); S.paused = true;
+    G.freeVis = true; G.updateVisibility();
+    const tc = Bld.tcOf('A'), TL = CFG.TILE;
+    const u = Units.spawn('axeman', 'A', tc.x + 3, tc.y + 3); u.burnT = 0.8;
+    R.cam.z = 1.7; R.centerOn(u.x, u.y);
+    const g = R.cv.getContext('2d'), probe = document.createElement('canvas').getContext('2d');
+    probe.fillStyle = ART.PALETTE.fire[1]; const orange = probe.fillStyle;
+    const near = (x, y) => x >= u.x * TL - 12 && x <= u.x * TL + 12 && y >= u.y * TL - 24 && y <= u.y * TL + 10;
+    const frame = (noSprites) => {
+      const out = { flames: 0, washes: 0, tongues: 0 };
+      const ds = Assets.drawSprite, rs = Assets.resolve, fr = g.fillRect;
+      Assets.drawSprite = function (gg, key) { if (/^misc\/flameSmall\//.test(key)) out.flames++; return ds.apply(this, arguments); };
+      if (noSprites) Assets.resolve = function (key) { return /^misc\/flame/.test(key) ? null : rs.apply(this, arguments); };
+      g.fillRect = function (x, y, w, h) {
+        if (near(x, y) && g.fillStyle === orange) { if (g.globalAlpha < 0.99) out.washes++; else out.tongues++; }
+        return fr.apply(this, arguments);
+      };
+      try { R.draw(0); } finally { Assets.drawSprite = ds; Assets.resolve = rs; g.fillRect = fr; }
+      return out;
+    };
+    const res = { sprites: frame(false), standIn: frame(true) };
+    S.units = S.units.filter(o => o !== u); G.freeVis = false;
+    return res;
+  });
+  ck('aDragonsVictimBurnsInTheTownsOwnFlames', r.sprites.flames >= 2 && r.sprites.washes === 0, JSON.stringify(r.sprites));
+  ck('andItsStandInIsTonguesNeverATranslucentBox', r.standIn.washes === 0 && r.standIn.tongues > 0, JSON.stringify(r.standIn));
 }
 
 /* ---------------- 7. the art is there before the act ----------------
