@@ -262,7 +262,14 @@
     BRONZE_LIGHT: '255,186,112',   // …and the Bronze tier's warm one
     sound(kind) { if (typeof Sound !== 'undefined' && Sound.play) Sound.play(kind); },
     show(id, data) { return (typeof R !== 'undefined' && R.startCardShow) ? R.startCardShow(id, data) : null; },
-    float(x, y, txt) { if (typeof R !== 'undefined' && R.float) R.float(x, y, txt, '#ffd45e'); },
+    // the count over the goods, in gold — held a beat longer than a hit's
+    // float (`hold` seconds), since it is the number the card was played for
+    float(x, y, txt, hold) {
+      if (typeof R === 'undefined' || !R.float) return;
+      R.float(x, y, txt, '#ffd45e');
+      const f = R.floats && R.floats[R.floats.length - 1];
+      if (hold && f && f.txt === txt) f.t = hold;
+    },
   };
 
   /* ---------------- the goods, falling onto a pile at the hall's door ---------------- */
@@ -276,11 +283,17 @@
       return;
     }
     if (pose === 1) {
-      for (let k = 0; k < 3; k++) {
-        g.fillStyle = W[1]; g.fillRect(sn(x - 6 + k * 4), sn(y - 6 - k * 4), 6, 6);
-        g.fillStyle = W[3]; g.fillRect(sn(x - 6 + k * 4), sn(y - 6 - k * 4), 4, 2);
+      // half over: one slanted trunk — rows stepped a cell at a time, its lit
+      // edge up-left and its shade down-right, so it reads as ONE log at a
+      // slant rather than three blocks on a stair
+      for (let r = 0; r < 6; r++) {
+        const xx = sn(x - 10 + r * 2), yy = sn(y - 2 - r * 2);
+        g.fillStyle = W[1]; g.fillRect(xx, yy, 8, 2);
+        g.fillStyle = W[3]; g.fillRect(xx, yy, 2, 2);
+        g.fillStyle = W[0]; g.fillRect(xx + 6, yy, 2, 2);
       }
-      g.fillStyle = '#c8a978'; g.fillRect(sn(x + 4), sn(y - 14), 4, 4);
+      g.fillStyle = '#c8a978'; g.fillRect(sn(x), sn(y - 14), 4, 4);       // the cut end, pale heartwood
+      g.fillStyle = '#8a6a3a'; g.fillRect(sn(x + 2), sn(y - 12), 2, 2);
       return;
     }
     g.fillStyle = W[1]; g.fillRect(sn(x - 8), sn(y - 6), 16, 6);
@@ -360,45 +373,106 @@
   const fade = (g, p, from) => { g.globalAlpha = p > from ? stp(1 - (p - from) / (1 - from), 3) : 1; };
 
   /* ---------------- the caravan ---------------- */
-  // an ox and its laden cart, the cart's middle on the ground at (x, y), heading dir (±1);
+  /* A picture drawn from rows of letters, one letter a 2px cell ('.' is
+     bare): how the ox and its drover are built, so their silhouettes are
+     drawn rather than assembled from boxes — a brown box with a stub of a
+     head was what the first cut's ox read as at play zoom. Facing +x;
+     (x, y) is the top-left; `pal` maps a letter to its colour. */
+  function cells(g, rows, pal, x, y) {
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      for (let k = 0; k < row.length; k++) {
+        const ch = row[k];
+        if (ch === '.') continue;
+        g.fillStyle = pal[ch]; g.fillRect(x + k * PX, y + r * PX, PX, PX);
+      }
+    }
+  }
+  /* THE OX: a draft ox under the yoke — the hump high at the withers, the
+     back falling to the rump, the head carried LOW and forward with a pale
+     crescent of horn above it, the far legs a shade darker than the near.
+     Two strides; 22 × 13 cells. */
+  const OX_BODY = [
+    '......................',
+    '...........LLL........',
+    '..LLLLLLLLLBBBL.......',
+    '.tMBBBBBBBBBBBBBL.h...',
+    '.tMBBBBBBBBBBBBBBMhh.h',
+    '.tMMBBBBBBBBBBBBBMLBhH',
+    '.t.MMBBBBBBBBBBBBMBBeB',
+    '.t.DMMMMMMMMMMMMMMBBBB',
+    'tt..DDDMMMMMDDDDMDBBnn',
+  ];
+  const OX_LEGS = [
+    ['....DM.MM....DM.MM.Mnn', '....DM.MM....DM.MM....', '....DM.MM....DM.MM....', '....oo.oo....oo.oo....'],
+    ['...DM..MM...DM...MMMnn', '..DM....MM.DM.....MM..', '..DM....MM.DM.....MM..', '..oo....oo.oo.....oo..'],
+  ];
+  /* THE DROVER leading it by a rope, a goad over his shoulder: a pale wool
+     tunic against the grass and the brown beast, so the eye finds a PERSON
+     at the head of the cart — the one cue that says "a caravan came" rather
+     than "an animal wandered by". 8 × 14 cells, two strides. */
+  const DROVER = [
+    '..aaa...',
+    '.aasS..g',
+    '..ssS.g.',
+    '..WWW.g.',
+    '.WwwwWg.',
+    '.SwwwW..',
+    '..www...',
+    '..kkk...',
+    '..wwW...',
+    '..wWW...',
+  ];
+  const DROVER_LEGS = [
+    ['..l.l...', '..l.l...', '..l.l...', '.ff.ff..'],
+    ['.l...l..', '.l...l..', 'l.....l.', 'ff....ff'],
+  ];
+  // an ox and its laden cart and its drover, the cart's bed front on the ground at (x, y), heading dir (±1);
   // roll is ground covered in px (it turns the wheel and walks the legs); `aboard` the load still on it
   function caravan(g, x, y, dir, roll, aboard) {
-    const W = AP().wood, HI = AP().hide, B = AP().bone, INK = AP().ink;
+    const P = AP(), W = P.wood, HI = P.hide, B = P.bone, INK = P.ink, SK = P.skin, HR = P.hair;
     g.save();
     g.translate(sn(x), sn(y));
     if (dir < 0) g.scale(-1, 1);
-    // the ox: four legs walking, a barrel, a lit back, a horned head
-    const st2 = (Math.floor(roll / 5) % 2) * 2;
-    g.fillStyle = HI[0];
-    g.fillRect(8, -8, 2, 6 - st2); g.fillRect(12, -8, 2, 4 + st2); g.fillRect(20, -8, 2, 6 - st2); g.fillRect(24, -8, 2, 4 + st2);
-    g.fillStyle = HI[2]; g.fillRect(6, -16, 20, 8);
-    g.fillStyle = HI[3]; g.fillRect(8, -16, 16, 2);
-    g.fillStyle = HI[1]; g.fillRect(6, -10, 20, 2); g.fillRect(4, -16, 2, 6);
-    g.fillStyle = HI[2]; g.fillRect(26, -18, 6, 6);
-    g.fillStyle = HI[3]; g.fillRect(30, -14, 2, 2);
-    g.fillStyle = B[2]; g.fillRect(24, -20, 2, 2); g.fillRect(32, -20, 2, 2);
-    g.fillStyle = INK[0]; g.fillRect(28, -16, 2, 2);
-    // the shafts, the yoke
-    g.fillStyle = W[0]; g.fillRect(-2, -12, 10, 2); g.fillRect(24, -18, 2, 6);
-    // the bed
-    g.fillStyle = W[2]; g.fillRect(-26, -16, 26, 8);
-    g.fillStyle = W[3]; g.fillRect(-26, -16, 26, 2);
-    g.fillStyle = W[1]; for (let k = -22; k < 0; k += 6) g.fillRect(k, -14, 2, 6);
-    g.fillStyle = W[0]; g.fillRect(-26, -10, 26, 2);
-    // the load: two sacks of grain, a bundle of logs, the strongbox
-    if (aboard[0]) sack(g, -20, -16);
-    if (aboard[1]) sack(g, -12, -16);
-    if (aboard[2]) { log(g, -4, -16, 0); log(g, -6, -22, 0); }
-    if (aboard[3]) chest(g, -18, -24);
-    // the wheel: a rim of hard pixels, two spokes turning
-    const wx = -13, wy = -5, a = roll / 6;
+    const step = (Math.floor(roll / 6) % 2);
+    // the shafts, behind the beast: bed front to the yoke at its withers
+    g.fillStyle = W[0]; g.fillRect(0, -14, 40, PX);
+    // the ox (feet on the ground line)
+    const oxPal = { L: HI[3], B: HI[2], M: HI[1], D: HI[0], h: B[2], H: B[1], e: INK[0], n: INK[2], o: INK[0], t: INK[1] };
+    cells(g, OX_BODY, oxPal, 6, -26);
+    cells(g, OX_LEGS[step], oxPal, 6, -8);
+    // the yoke across its withers
+    g.fillStyle = W[1]; g.fillRect(36, -28, 4, 10); g.fillStyle = W[3]; g.fillRect(36, -28, 4, 2);
+    // the rope from the drover's fist to the ox's nose
+    g.fillStyle = W[3];
+    for (let k = 0; k < 4; k++) g.fillRect(50 + k * 2, -10 - k * 2, PX, PX);
+    // the drover, walking ahead
+    const dPal = { a: HR[1], s: SK[2], S: SK[1], W: B[1], w: B[2], k: INK[1], g: W[3], l: SK[1], f: INK[0] };
+    cells(g, DROVER, dPal, 56, -28);
+    cells(g, DROVER_LEGS[step], dPal, 56, -8);
+    // the bed: a plank box on its axle, rails, a darker floor line
+    g.fillStyle = W[2]; g.fillRect(-34, -22, 34, 10);
+    g.fillStyle = W[3]; g.fillRect(-34, -22, 34, 2);
+    g.fillStyle = W[1]; for (let k = -30; k < 0; k += 8) g.fillRect(k, -20, 2, 8);
+    g.fillStyle = W[0]; g.fillRect(-34, -14, 34, 2); g.fillRect(-36, -24, 2, 12); g.fillRect(-2, -24, 2, 12);
+    // the load piled high: three sacks of grain, two bundles of logs, the strongbox on top
+    if (aboard[0]) sack(g, -28, -22);
+    if (aboard[1]) sack(g, -20, -22);
+    if (aboard[2]) sack(g, -24, -30);
+    if (aboard[3]) { log(g, -8, -22, 0); log(g, -10, -28, 0); }
+    if (aboard[4]) log(g, -14, -30, 0);
+    if (aboard[5]) chest(g, -28, -30);
+    // the wheel: a rim of hard cells, four spokes turning, the hub
+    const wx = -18, wy = -8, a = roll / 8;
     g.fillStyle = W[0];
-    for (let k = 0; k < 12; k++) { const th = k / 12 * Math.PI * 2; g.fillRect(sn(wx + Math.cos(th) * 5) - 1, sn(wy + Math.sin(th) * 5) - 1, 2, 2); }
+    for (let k = 0; k < 20; k++) { const th = k / 20 * Math.PI * 2; g.fillRect(sn(wx + Math.cos(th) * 8) - 1, sn(wy + Math.sin(th) * 8) - 1, PX, PX); }
     g.fillStyle = W[2];
-    for (const th of [a, a + Math.PI / 2]) for (const r of [-3, 3]) g.fillRect(sn(wx + Math.cos(th) * r) - 1, sn(wy + Math.sin(th) * r) - 1, 2, 2);
-    g.fillStyle = W[3]; g.fillRect(wx - 1, wy - 1, 2, 2);
+    for (let q = 0; q < 4; q++) { const th = a + q * Math.PI / 2; for (const r of [3, 5]) g.fillRect(sn(wx + Math.cos(th) * r) - 1, sn(wy + Math.sin(th) * r) - 1, PX, PX); }
+    g.fillStyle = W[3]; g.fillRect(wx - 1, wy - 1, PX, PX);
     g.restore();
   }
+  // the caravan's reach from its bed front, in px: what the ROAD must carry
+  const CART_BACK = 38, CART_FRONT = 74;
 
   /* ---------------- the hooks' engine (asked from Bld.damage and the placement confirm) ---------------- */
   Object.assign(Deck, {
@@ -480,7 +554,7 @@
           g.fillRect(sn(x), sn(y), PX, PX);
         }
         g.globalAlpha = 1;
-        if (!s.floated && s.t > 0.05 + 5 * 0.11 + 0.4) { s.floated = true; TX.float(sp.x, sp.y - 0.9, '+200 wood'); }
+        if (!s.floated && s.t > 0.05 + 5 * 0.11 + 0.4) { s.floated = true; TX.float(sp.x, sp.y - 0.9, '+200 wood', 1.9); }
       },
     }),
 
@@ -507,10 +581,47 @@
             gg.drawImage(st, sn(x - st._ox), sn(y - st._oy - rr));
           } : (gg, x, y) => block(gg, x, y, rr * 2, rr + 2, i) }));
         fallPile(g, s, items, px, py, TL * 2.2, AP().stone[3], !!stamps);
+        /* what makes it a DELIVERY and not a deposit: every block lands
+           throwing chips of itself, and once the pile is down its fresh-cut
+           faces wink in the card's pale light — a natural knot of ore has
+           neither, and at rest the first cut read exactly like one */
+        const O = AP().oreD;
+        this.show.BLOCKS.forEach(([dx, dy, rr], i) => {
+          const age = s.t - (0.05 + i * 0.16) - 0.26;
+          if (age < 0 || age > 0.42) return;
+          const q = age / 0.42;
+          g.globalAlpha = stp(1 - q * q, 3);
+          for (let k = 0; k < 7; k++) {
+            const a = -Math.PI * (0.08 + 0.84 * hs(i * 7 + k, 17)), v = 18 + hs(k, i + 31) * 26;
+            const cx = px + dx + Math.cos(a) * v * age * 1.6, cy = py + dy - rr - Math.sin(a) * v * age * 1.6 + 60 * age * age;
+            g.fillStyle = k % 3 === 0 ? O[5] : k % 3 === 1 ? O[3] : O[1];
+            g.fillRect(sn(cx), sn(Math.min(py, cy)), PX, PX);
+          }
+        });
+        g.globalAlpha = 1;
+        const settled = s.t - (0.05 + 4 * 0.16 + 0.26);
+        if (settled > 0) {
+          g.save(); g.globalCompositeOperation = 'lighter';
+          // the pale ring the last block lands in
+          if (settled < 0.6) {
+            const q = settled / 0.6;
+            g.globalAlpha = stp(0.8 * (1 - q), 4); g.fillStyle = 'rgb(' + TX.STONE_LIGHT + ')';
+            TX.ring(g, px, py - 2, 10 + eo(q) * 34, 0.5);
+          }
+          // and the fresh faces catch the light, one after another
+          this.show.BLOCKS.forEach(([dx, dy, rr], i) => {
+            const ph = (settled * 1.6 + i * 0.37) % 1;
+            if (ph > 0.4) return;
+            const k = Math.sin(ph / 0.4 * Math.PI);
+            g.globalAlpha = stp(k * (p < 0.82 ? 1 : 1 - (p - 0.82) / 0.18), 3);
+            TX.star(g, px + dx - rr * 0.35, py + dy - rr * 1.25, k > 0.6 ? 2 : 1, '#e6e2d6', '#ffffff');
+          });
+          g.restore();
+        }
         // the biggest block lands with a jolt
         if (!s.jolt && s.t > 0.05 + 0.16 + 0.26) { s.jolt = true; if (R.shakeAt) R.shakeAt(1.6, 0.16); }
         g.globalAlpha = 1;
-        if (!s.floated && s.t > 0.05 + 4 * 0.16 + 0.36) { s.floated = true; TX.float(sp.x, sp.y - 0.9, '+150 stone'); }
+        if (!s.floated && s.t > 0.05 + 4 * 0.16 + 0.36) { s.floated = true; TX.float(sp.x, sp.y - 0.9, '+150 stone', 1.9); }
       },
     }),
 
@@ -553,19 +664,21 @@
           g.fillRect(sn(px + (hs(k, 9) - 0.5) * 16), sn(py - 6 - tl * 30), PX, PX);
         }
         g.globalAlpha = 1;
-        if (!s.floated && t > land + 0.5) { s.floated = true; TX.float(sp.x, sp.y - 0.9, '+60 gold'); }
+        if (!s.floated && t > land + 0.5) { s.floated = true; TX.float(sp.x, sp.y - 0.9, '+60 gold', 1.9); }
       },
     }),
 
     /* BRONZE — Trade Caravan: +250 food, +250 wood and +100 gold. A laden ox
-       cart rolls in from the open country along the road in front of the
-       hall, stops with its bed beside the yard, and unloads — two sacks of
-       grain, a bundle of logs, a strongbox that bursts and spills its coin —
-       onto a pile at the door, each landing in a puff of dust; the chest
-       lands in a ring of the Bronze tier's warm light; then the cart rolls on
-       past the hall and is gone. The pile sits on open ground nobody stands
-       on and the cart's road runs a tile in front of it, so the load never
-       hides the goods (the first cut stopped the cart ON its own pile). */
+       cart, its drover leading it by a rope, rolls in along a ROAD THE MAP
+       CAN CARRY (TX.road: land tiles, no building, and the row with the
+       fewest people on it — the first cut drove a fixed row through a
+       villager and, by a coast, across the sea), stops with the ox in front
+       of the yard, and unloads — three sacks of grain, logs, a strongbox
+       that bursts and spills its coin — onto a pile at the door, each
+       landing in a puff of dust; the chest lands in a ring of the Bronze
+       tier's warm light; then the cart rolls on and is gone. A short road
+       is shortened, never extended over what it cannot cross, and with no
+       road at all the load comes down in the card's own light instead. */
     trade_caravan: {
       at: 'bar', showAtHall: true, FOOD: 250, WOOD: 250, GOLD: 100,
       can() { return { ok: true }; },
@@ -577,74 +690,115 @@
         TX.sound('cardCaravan');
         return { ok: true, fly: { food: this.FOOD, wood: this.WOOD, gold: this.GOLD } };
       },
+      /* THE ROAD (a picture's footing, never a rule): for each way in (from
+         the hall's open side first) and each of the three rows in front of the
+         pile, the stop must sit on land whole — the cart from its tailboard to
+         its drover — and the road runs back up to 7 tiles and on up to 5,
+         each step land whole too, stopping short of the first water or wall.
+         Scored by length, against anyone standing on it and against a row
+         farther off. Null when no row can even hold the stop. */
+      road(sp, side) {
+        const TL = TLs(), px = sp.x * TL, py0 = Math.floor(sp.y);
+        const land = (x, y) => MapGen.onBoard(x, y) && Path.passable(x, y, 'P') && !Bld.at(x, y);
+        const span = (cx, dir) => dir > 0 ? [cx - CART_BACK, cx + CART_FRONT] : [cx - CART_FRONT, cx + CART_BACK];
+        const ok = (ty, sp2) => {
+          for (let tx = Math.floor(sp2[0] / TL); tx <= Math.floor((sp2[1] - 1) / TL); tx++) if (!land(tx, ty)) return false;
+          return true;
+        };
+        let best = null;
+        for (const dir of [-side, side]) for (let ty = py0 + 1; ty <= py0 + 3; ty++) {
+          const stop = px - dir * 3;                     // the pile above the shafts: bed behind it, the ox and drover toward the hall
+          if (!ok(ty, span(stop, dir))) continue;
+          let inN = 0, outN = 0;
+          while (inN < 7 && ok(ty, span(stop - dir * (inN + 1) * TL, dir))) inN++;
+          while (outN < 5 && ok(ty, span(stop + dir * (outN + 1) * TL, dir))) outN++;
+          const a0 = span(stop - dir * inN * TL, dir), a1 = span(stop + dir * outN * TL, dir);
+          const lo = Math.min(a0[0], a1[0]) / TL, hi = Math.max(a0[1], a1[1]) / TL;
+          const crowd = S.units.filter(u => !Units.isNaval(u) && Math.abs(u.y - (ty + 0.6)) < 0.8 && u.x >= lo && u.x <= hi).length;
+          const sc = inN + outN - crowd * 8 - (ty - py0 - 1) * 1.5 + (dir === -side ? 1 : 0);
+          if (!best || sc > best.sc) best = { sc, dir, ty, stop, inN, outN };
+        }
+        return best;
+      },
       show: {
-        ms: 3600, layer: 'world',
-        IN: 0.36, UNLOAD: [0.42, 0.5, 0.58, 0.66], ON: 0.78,
+        ms: 3800, layer: 'world',
+        IN: 0.34, UNLOAD: [0.38, 0.43, 0.48, 0.53, 0.58, 0.64], ON: 0.8,
+        // the pile at the door: [dx, dy, draw] — three sacks, logs, the strongbox on top
+        PILE: [[-12, 0, sack], [-3, 0, sack], [-8, -7, sack],
+          [10, 0, (gg, x, y) => { log(gg, x, y, 0); log(gg, x - 2, y - 6, 0); }], [8, -12, (gg, x, y) => log(gg, x, y, 0)], [-1, -12, chest]],
         draw(g, s, p) {
           const tc = Bld.get(s.tc); if (!tc) return;
-          const TL = TLs(), K = this.show, side = s.side || 1, dir = -side;   // it rolls in TOWARD the hall
+          const TL = TLs(), K = this.show, side = s.side || 1;
           const sp = s.at || (s.at = TX.spot(tc, side));
-          const pile = { x: sp.x * TL, y: sp.y * TL };
-          const rowY = pile.y + TL * 1.25, stopX = pile.x + dir * 7;          // its bed beside the pile
-          if (!TX.near(stopX - 9 * TL, pile.y - 2 * TL, stopX + 9 * TL, rowY + TL)) return;
-          const from = stopX - dir * 7 * TL, onTo = stopX + dir * 5 * TL;
+          if (s.road === undefined) s.road = this.road(sp, side);
+          const rd = s.road, pile = { x: sp.x * TL, y: sp.y * TL };
+          const dir = rd ? rd.dir : -side, rowY = rd ? (rd.ty + 0.8) * TL : pile.y;
+          const stopX = rd ? rd.stop : pile.x;
+          if (!TX.near(Math.min(pile.x, stopX) - 9 * TL, pile.y - 3 * TL, Math.max(pile.x, stopX) + 9 * TL, rowY + TL)) return;
+          const from = stopX - dir * (rd ? rd.inN : 0) * TL, onTo = stopX + dir * (rd ? rd.outN : 0) * TL;
           let cx;
           if (p < K.IN) cx = from + (stopX - from) * eo(p / K.IN);
           else if (p < K.ON) cx = stopX;
           else cx = stopX + (onTo - stopX) * Math.pow((p - K.ON) / (1 - K.ON), 1.6);
           const rolled = Math.abs(cx - from);
+          // no road at all: the load comes down in the card's own light
+          if (!rd) TX.arrive(g, pile.x, pile.y, s.t - K.UNLOAD[0] * s.ms / 1000 + 0.1, TX.BRONZE_LIGHT, TL * 2.8);
           // the dust it raises while it moves, and the card's warm motes in its wake
-          const moving = p < K.IN || p > K.ON;
-          if (moving) {
+          const moving = rd && (p < K.IN || p > K.ON);
+          const vis = rd ? Math.min(stp(p / 0.08, 4), p > 0.9 ? stp(1 - (p - 0.9) / 0.1, 3) : 1) : 0;
+          if (moving && vis > 0) {
             g.fillStyle = AP().soil[3];
-            for (let k = 0; k < 6; k++) {
-              const ph = (rolled / 9 + k / 6) % 1;
-              g.globalAlpha = stp(0.8 * (1 - ph), 3);
-              g.fillRect(sn(cx - dir * (30 + ph * 20)), sn(rowY - 2 - ph * 8 - (k % 2) * 2), PX + (k % 2) * PX, PX);
+            for (let k = 0; k < 8; k++) {
+              const ph = (rolled / 9 + k / 8) % 1;
+              g.globalAlpha = stp(0.8 * (1 - ph) * vis, 3);
+              g.fillRect(sn(cx - dir * (CART_BACK + ph * 22)), sn(rowY - 2 - ph * 8 - (k % 2) * 2), PX + (k % 2) * PX, PX);
             }
             g.save(); g.globalCompositeOperation = 'lighter';
-            for (let k = 0; k < 6; k++) {
-              const ph = (rolled / 14 + k / 6) % 1;
-              g.globalAlpha = stp(0.9 * (1 - ph), 3); g.fillStyle = k % 2 ? '#ffd45e' : '#ffb870';
-              g.fillRect(sn(cx - dir * (20 + ph * 26)), sn(rowY - 22 - ph * 16 + (k % 3) * 3), PX, PX);
+            for (let k = 0; k < 8; k++) {
+              const ph = (rolled / 14 + k / 8) % 1;
+              g.globalAlpha = stp(0.9 * (1 - ph) * vis, 3); g.fillStyle = k % 2 ? '#ffd45e' : '#ffb870';
+              g.fillRect(sn(cx - dir * (24 + ph * 30)), sn(rowY - 30 - ph * 18 + (k % 3) * 3), PX, PX);
             }
             g.restore();
             g.globalAlpha = 1;
           }
           // the goods: off the bed, through the air, onto the pile at the door
-          const t = p * s.ms / 1000, U = K.UNLOAD.map(u => u * s.ms / 1000), hop = 0.32;
-          const PILE = [[-9, 0, sack], [1, 0, sack], [11, 0, (gg, x, y) => { log(gg, x, y, 0); log(gg, x - 2, y - 6, 0); }], [-4, -8, chest]];
+          const t = p * s.ms / 1000, U = K.UNLOAD.map(u => u * s.ms / 1000), hop = 0.34, PILE = K.PILE;
           const aboard = PILE.map((_, k) => t < U[k]);
-          const bedX = stopX - dir * 13, bedY = rowY - 18;
-          fade(g, p, 0.9);
-          if (!aboard[0]) { g.fillStyle = 'rgba(20,14,8,0.3)'; g.fillRect(sn(pile.x - 16), sn(pile.y - 1), 34, PX); }
-          TX.inked(g, Math.min(pile.x, bedX) - 40, pile.y - 50, Math.abs(pile.x - bedX) + 80, rowY - pile.y + 56, gg => {
-            for (let k = 0; k < 4; k++) {
+          const bedX = stopX - dir * 18, bedY = rd ? rowY - 26 : pile.y - TL * 2.6;
+          fade(g, p, 0.92);
+          const down = PILE.filter((it, k) => t - U[k] >= hop && !it[1]);
+          if (down.length) {
+            const x0 = Math.min(...down.map(it => it[0])) - 8, x1 = Math.max(...down.map(it => it[0])) + 10;
+            g.fillStyle = 'rgba(20,14,8,0.3)'; g.fillRect(sn(pile.x + x0), sn(pile.y - 1), sn(x1 - x0), PX);
+          }
+          TX.inked(g, Math.min(pile.x, bedX) - 40, Math.min(pile.y, bedY) - 60, Math.abs(pile.x - bedX) + 80, Math.abs(rowY - pile.y) + 80, gg => {
+            for (let k = 0; k < PILE.length; k++) {
               const tl = t - U[k], [dx, dy, fn] = PILE[k];
               if (tl < 0) continue;
               const ex = pile.x + dx, ey = pile.y + dy;
               if (tl < hop) {
-                const f = tl / hop, sx = bedX + (k - 1.5) * 4;
-                fn(gg, sx + (ex - sx) * f, bedY + (ey - bedY) * f - Math.sin(f * Math.PI) * 22);
+                const f = tl / hop, sx = bedX + (k - 2.5) * 3;
+                fn(gg, sx + (ex - sx) * f, bedY + (ey - bedY) * f - (rd ? Math.sin(f * Math.PI) * 26 : 0));
               } else fn(gg, ex, ey);
             }
           });
-          for (let k = 0; k < 4; k++) dust(g, pile.x + PILE[k][0], pile.y, t - U[k] - hop, 4, AP().soil[3], 22);
+          for (let k = 0; k < PILE.length; k++) dust(g, pile.x + PILE[k][0], pile.y, t - U[k] - hop, 4, AP().soil[3], 22);
           // the strongbox lands in the tier's light and spills: coins leap and land round the pile, glinting
-          const ct = t - U[3] - hop;
+          const ct = t - U[PILE.length - 1] - hop;
           if (ct > 0) {
-            if (ct < 0.6) {
+            if (ct < 0.7) {
               g.save(); g.globalCompositeOperation = 'lighter';
-              const q = ct / 0.6;
+              const q = ct / 0.7;
               g.globalAlpha = stp(0.9 * (1 - q), 4); g.fillStyle = 'rgb(' + TX.BRONZE_LIGHT + ')';
-              TX.ring(g, pile.x, pile.y - 2, 8 + eo(q) * 40, 0.5);
-              g.globalAlpha = stp(0.6 * (1 - q), 4); g.fillStyle = '#ffd45e';
-              TX.ring(g, pile.x, pile.y - 2, 4 + eo(q) * 24, 0.5);
+              TX.ring(g, pile.x, pile.y - 2, 10 + eo(q) * 46, 0.5);
+              g.globalAlpha = stp(0.7 * (1 - q), 4); g.fillStyle = '#ffd45e';
+              TX.ring(g, pile.x, pile.y - 2, 6 + eo(q) * 28, 0.5);
               g.restore();
             }
-            for (let k = 0; k < 9; k++) {
-              const ang = -Math.PI * (0.1 + 0.8 * hs(k, 11)), sp2 = 16 + hs(k, 13) * 18, f = Math.min(1, ct / 0.3);
-              const x = pile.x - 4 + Math.cos(ang) * sp2 * f, y = pile.y - 4 + (f * 6) - Math.sin(f * Math.PI) * 14;
+            for (let k = 0; k < 14; k++) {
+              const ang = -Math.PI * (0.06 + 0.88 * hs(k, 11)), sp2 = 14 + hs(k, 13) * 22, f = Math.min(1, ct / 0.32);
+              const x = pile.x - 1 + Math.cos(ang) * sp2 * f, y = pile.y - 14 + (f * 14) - Math.sin(f * Math.PI) * 16;
               g.fillStyle = k % 2 ? '#ffd45e' : AP().gold[1]; g.fillRect(sn(x), sn(y), PX, PX);
               if (f >= 1 && ((ct * 6 + k) % 3) < 0.5) {
                 g.save(); g.globalCompositeOperation = 'lighter'; TX.star(g, x, y, 1, '#fff2c0'); g.restore();
@@ -652,12 +806,15 @@
             }
           }
           g.globalAlpha = 1;
-          // the cart itself, fading as it leaves
-          if (p > 0.9) g.globalAlpha = stp(1 - (p - 0.9) / 0.1, 3);
-          g.fillStyle = 'rgba(20,14,8,0.35)'; g.fillRect(sn(cx - (dir > 0 ? 26 : 34)), sn(rowY - 2), 60, 4);   // one hard shadow under the lot
-          TX.inked(g, cx - 40, rowY - 34, 80, 38, gg => caravan(gg, cx, rowY, dir, rolled, aboard));
-          g.globalAlpha = 1;
-          if (!s.floated && t > U[3] + hop + 0.2) { s.floated = true; TX.float(sp.x, sp.y - 0.9, '+250 food  +250 wood  +100 gold'); }
+          // the cart itself, fading in at the end of its road and out as it leaves
+          if (rd && vis > 0) {
+            g.globalAlpha = vis;
+            const x0 = dir > 0 ? cx - CART_BACK : cx - CART_FRONT;
+            g.fillStyle = 'rgba(20,14,8,0.35)'; g.fillRect(sn(x0 + 4), sn(rowY - 2), sn(CART_BACK + CART_FRONT - 8), 4);   // one hard shadow under the lot
+            TX.inked(g, x0 - 4, rowY - 46, CART_BACK + CART_FRONT + 8, 50, gg => caravan(gg, cx, rowY, dir, rolled, aboard));
+            g.globalAlpha = 1;
+          }
+          if (!s.floated && t > U[PILE.length - 1] + hop + 0.2) { s.floated = true; TX.float(sp.x, sp.y - 1.1, '+250 food  +250 wood  +100 gold', 2.2); }
         },
       },
     },
@@ -1092,6 +1249,36 @@
         const cx = Bld.cx(tc) * TL, gy = (tc.y + sz) * TL - 4, rx = (sz / 2 + 0.6) * TL;
         return { cx, gy, rx, ry: rx * 0.42, hd: Math.max(rx * 0.9, gy - c.y + TL * 0.35) };
       },
+      /* ONE RAY OF THE SKY, in hard pixels (device px, the sky layer): the
+         wedge between angles a±wa from (ax, ay), cut into px-wide columns —
+         or rows, for a ray nearer the vertical — each column the wedge's own
+         span snapped to the px grid. A stepped band of light in the dome's
+         language; a vector wedge was the one soft edge in the show. */
+      ray(g, ax, ay, a, wa, px, W, H) {
+        const c = Math.cos(a), s0 = Math.sin(a), t0 = Math.tan(a - wa), t1 = Math.tan(a + wa);
+        const snap = v => Math.round(v / px) * px;
+        if (Math.abs(c) >= Math.abs(s0)) {
+          const sg = c > 0 ? 1 : -1;
+          for (let k = 0; ; k++) {
+            const x = ax + sg * k * px;
+            if (x < -px || x > W + px) break;
+            const dx = x - ax, y0 = ay + dx * t0, y1 = ay + dx * t1;
+            const lo = snap(Math.min(y0, y1)), hi = snap(Math.max(y0, y1));
+            if (hi < 0 || lo > H) continue;              // off the screen here: the ray may still come on
+            g.fillRect(snap(x), lo, px, Math.max(px, hi - lo));
+          }
+        } else {
+          const sg = s0 > 0 ? 1 : -1, c0 = 1 / t0, c1 = 1 / t1;
+          for (let k = 0; ; k++) {
+            const y = ay + sg * k * px;
+            if (y < -px || y > H + px) break;
+            const dy = y - ay, x0 = ax + dy * c0, x1 = ax + dy * c1;
+            const lo = snap(Math.min(x0, x1)), hi = snap(Math.max(x0, x1));
+            if (hi < 0 || lo > W) continue;
+            g.fillRect(lo, snap(y), Math.max(px, hi - lo), px);
+          }
+        }
+      },
       dome(g, D, rise, boost, now) {
         const { cx, gy, rx, ry } = D, hd = D.hd * rise;
         if (hd < 2) return;
@@ -1177,7 +1364,7 @@
           if (!s.boom && p >= imp) {
             s.boom = true;
             if (R.shakeAt) R.shakeAt(7, 0.8);
-            if (R.flashAt) R.flashAt(0.55, 0.8, '255,236,170');
+            if (R.flashAt) R.flashAt(0.5, 0.8, '255,198,98');     // gold, never milk
             if (R.startle) R.startle(Bld.cx(tc), Bld.cy(tc), 14);
             TX.sound('cardHall');
           }
@@ -1200,14 +1387,8 @@
           if (p > imp && p < 0.9) {
             const k = p < 0.35 ? cl((p - imp) / 0.15) : 1 - cl((p - 0.6) / 0.3);
             g.fillStyle = 'rgba(255,214,94,' + stp(0.16 * k, 8) + ')';
-            const L = Math.hypot(W, H), rot = s.t * 0.12;
-            for (let i = 0; i < 14; i++) {
-              const a = rot + i / 14 * Math.PI * 2, wa = 0.035 + (i % 2) * 0.02;
-              g.beginPath(); g.moveTo(apex.x, apex.y);
-              g.lineTo(apex.x + Math.cos(a - wa) * L, apex.y + Math.sin(a - wa) * L);
-              g.lineTo(apex.x + Math.cos(a + wa) * L, apex.y + Math.sin(a + wa) * L);
-              g.closePath(); g.fill();
-            }
+            const rot = s.t * 0.12, px = Math.max(2, Math.round(A.z * 2));
+            for (let i = 0; i < 14; i++) U.ray(g, apex.x, apex.y, rot + i / 14 * Math.PI * 2, 0.035 + (i % 2) * 0.02, px, W, H);
           }
           // a halo of hard dots bursting out across the whole screen at the blow
           if (p > imp && p < imp + 0.35) {
