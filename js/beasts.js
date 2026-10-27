@@ -325,9 +325,11 @@ Object.assign(R, {
      (2.2s — the whole beast heaving, tentacles lashing), SINK (1.6s). The
      body rises out of its own ring of foam a little way out from its prey,
      toward the open water; the sea round it darkens and rings of foam roll
-     out. Drawn only where the player can see (the event is fog-honest). */
-  drawKrakenAct(g, dt) {
-    const ev = S.kraken && S.kraken.ev;
+     out. Drawn only where the player can see (the event is fog-honest).
+     `ev` is any act of that shape ({phase, t, x, y} — the event's own, or one
+     of Kraken's Call's risings); with none given it is the event's. */
+  drawKrakenAct(g, dt, ev) {
+    ev = ev || (S.kraken && S.kraken.ev);
     if (!ev) return;
     if (!G.visibleAt(ev.x | 0, ev.y | 0)) return;
     if (!Beasts.ready('kraken')) { Beasts.want('kraken'); this.drawKrakenOld(g, ev); return; }
