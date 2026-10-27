@@ -1217,9 +1217,12 @@ await p.evaluate(() => {
       try { R.g.save(); Deck.FX[id].drawLive(R.g, e, 1 / 30); R.g.restore(); lives[id] = 'ok'; } catch (err) { lives[id] = String(err); }
     }
     out.lives = lives;
-    // R.drawKraken is THE kraken: the card's act and the world's event both go through it
-    let dk = 0; const dkF = R.drawKraken;
+    // ONE kraken drawing: the card's act and the world's event both go through
+    // it — R.drawKrakenAct where the beast art (js/beasts.js) has landed, else
+    // R.drawKraken; either answers, so the pin survives the art landing
+    let dk = 0; const dkF = R.drawKraken, dkA = R.drawKrakenAct;
     R.drawKraken = function () { dk++; return dkF.apply(this, arguments); };
+    if (dkA) R.drawKrakenAct = function () { dk++; return dkA.apply(this, arguments); };
     try {
       const K = S.deck.kraken;
       if (K && K.acts[0]) { K.acts[0].phase = 'thrash'; K.acts[0].t = 0.2; G.vis[MapGen.idx(K.acts[0].x | 0, K.acts[0].y | 0)] = 1; }
@@ -1230,7 +1233,7 @@ await p.evaluate(() => {
       R.draw(1 / 30);
       out.drawKraken = { card: viaCard, world: dk - viaCard };
       S.kraken.ev = null;
-    } finally { R.drawKraken = dkF; }
+    } finally { R.drawKraken = dkF; if (dkA) R.drawKrakenAct = dkA; }
     // ONE BEAST TO A CLUSTER: two hulls side by side are one beast and an
     // arm (the naive draw raised a body per act — two half-stacked beasts)
     {
@@ -1238,10 +1241,11 @@ await p.evaluate(() => {
       const mk = (id, x, y) => ({ id, x, y, at: 0, phase: 'thrash', t: 0.3 });
       const K = { t: 3, n: 1, hit: true, took: 0, struck: 0, razed: 0, acts: [mk(9001, 14.5, 31.5), mk(9002, 16, 31.5), mk(9003, 26.5, 31.5)], coast: [] };
       for (const a of K.acts) G.vis[MapGen.idx(a.x | 0, a.y | 0)] = 1;
-      let body = 0, arm = 0; const dkF2 = R.drawKraken, gr = fx.grab;
+      let body = 0, arm = 0; const dkF2 = R.drawKraken, dkA2 = R.drawKrakenAct, gr = fx.grab;
       R.drawKraken = function () { body++; return dkF2.apply(this, arguments); };
+      if (dkA2) R.drawKrakenAct = function () { body++; return dkA2.apply(this, arguments); };
       fx.grab = function () { arm++; return gr.apply(this, arguments); };
-      try { R.g.save(); fx.draw(R.g, 1 / 30, K); R.g.restore(); } finally { R.drawKraken = dkF2; fx.grab = gr; }
+      try { R.g.save(); fx.draw(R.g, 1 / 30, K); R.g.restore(); } finally { R.drawKraken = dkF2; if (dkA2) R.drawKrakenAct = dkA2; fx.grab = gr; }
       // …and the beast art's own act drawing is asked first where it has landed
       let viaAct = 0; const had = R.drawKrakenAct;
       R.drawKrakenAct = function () { viaAct++; };
