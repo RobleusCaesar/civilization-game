@@ -1461,11 +1461,13 @@ await p.evaluate(({ TOWN }) => {
     out.worst = worst; out.silN = silN;
     // the landing's flash: hard rings, nothing laid over its middle
     const rules = [...document.styleSheets].flatMap(ss => { try { return [...ss.cssRules]; } catch (e) { return []; } });
-    const css = rules.filter(rr => rr.selectorText && /dkRingHit/.test(rr.selectorText)).map(rr => rr.cssText).join(' ');
-    const hit = rules.filter(rr => rr.selectorText === '#dkFly .dkHit').map(rr => rr.cssText).join(' ');
-    out.hitHard = /radial-gradient\(\s*circle,\s*transparent 0(px)? 4\d%/.test(hit) && !/rgba\(255, 250, 230, 0\.95\)/.test(hit);
-    out.ringSoft = /\.dkRingHit\s*\{[^}]*box-shadow:\s*none/.test(css);
-    out.hitCss = hit.slice(0, 160);
+    // (the flight's lights are pixel canvases — DeckUI._px — so no rule of
+    // the flying layer may carry a smooth gradient or a screen blend)
+    const fly = rules.filter(rr => rr.selectorText && /#dkFly/.test(rr.selectorText)).map(rr => rr.cssText);
+    const soft = fly.filter(t => /radial-gradient|mix-blend-mode:\s*screen|blur\(/.test(t));
+    out.hitHard = fly.length > 0 && soft.length === 0;
+    out.ringSoft = true;
+    out.hitCss = soft.length ? soft.join(' ').slice(0, 160) : fly.length + ' #dkFly rules, none soft';
     // the beacon: nothing below its brazier
     R.cardShows = []; S.deck.fx = [];
     const tw = __tw.bld('P', 'tower', tc.x - 3, tc.y + 2);

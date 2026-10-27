@@ -562,6 +562,9 @@ const Tutorial = {
     if (this._cardHolds(dt)) {
       this._advT -= dt;
       if (this._advT <= 0) { this._advT = 0.15; this._scanSteps(); }
+      // a note whose subject is gone retires even while it stands aside —
+      // the last card's own act is exactly when the deck empties
+      this._retireShown();
       return;
     }
     this._advT -= dt;
