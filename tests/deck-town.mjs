@@ -458,7 +458,7 @@ await p.evaluate(({ TOWN }) => {
     /* what one of the player's forts does to a foe standing `dist` from it
        for four seconds, with or without the card: the foe is held on its
        spot (whatever it wants to do about the tower) so only the arrows move */
-    const shoot = (key, lvl, owner, foeOwner, dist, card, sec) => {
+    const shoot = (key, lvl, owner, foeOwner, dist, card, sec, hide) => {
       __tw.fresh('town-wf-shoot');
       __tw.flat();
       if (owner !== 'P' || card) __tw.bld('P', 'tower', 3, 28);   // a fort of the player's own, to play it with
@@ -466,6 +466,9 @@ await p.evaluate(({ TOWN }) => {
       if (card) Deck.play('watchfires');
       const fx = t.x + 0.5 + dist, fy = t.y + 0.5;
       const foe = __tw.unit('defender', foeOwner, fx, fy, 1000);
+      // the player's sight as it stands; `hide` puts the foe's ground in the fog
+      G.updateVisibility();
+      if (hide) G.vis[MapGen.idx(fx | 0, fy | 0)] = 0;
       const rng0 = S.rngState;
       const floats = __tw.floatsDuring(() => {
         for (let i = 0; i < (sec || 4) * 20; i++) {
@@ -485,6 +488,13 @@ await p.evaluate(({ TOWN }) => {
     // …and not past it
     const past = shoot('tower', 2, 'P', 'A', L2.range * 1.55, true);
     out.notPast = past.lost === 0;
+    /* …and the farther band only takes what the watch can SEE: the same foe
+       with its ground in the fog draws no arrow (an engine never shells
+       ground it can't watch), while inside the old range the fog changes
+       nothing — that is the tower's own reach, as it always was */
+    const fog = shoot('tower', 2, 'P', 'A', L2.range * 1.3, true, 4, true);
+    const fogNear = shoot('tower', 2, 'P', 'A', 3, true, 4, true);
+    out.fog = fog.lost === 0 && fog.floats.length === 0 && fogNear.lost > 0;
     // the arrows: inside the old range, 50% harder
     const near0 = shoot('tower', 2, 'P', 'A', 3, false), near1 = shoot('tower', 2, 'P', 'A', 3, true);
     out.harder = near0.lost > 0 && near0.lost % (L2.atk - def) === 0 && near1.lost % per === 0 &&
@@ -530,6 +540,7 @@ await p.evaluate(({ TOWN }) => {
   ck('watchfiresRefusedWithNoFinishedFort', r.refused, 'no fort, a tower site, the rival\'s tower: refused “You need a finished tower or War Camp.”, kept');
   ck('watchfiresReachHalfAgainAsFar', r.reach && r.notPast, `a foe at 1.3× the old range takes ${r.far1} (shots of ${r.per}); at 1.55× nothing ${r.notPast}`);
   ck('andHitHalfAgainAsHard', r.harder, `inside the old range: ${r.near[0]} → ${r.near[1]}`);
+  ck('theFartherReachTakesOnlyWhatTheWatchCanSee', r.fog, 'a foe in the fog past the old range draws no arrow and no float; inside it the tower shoots as ever');
   ck('aWarCampBurnsToo', r.camp);
   ck('theRivalsTowersNever', r.rival);
   ck('theLevelOneFumbleDrawsAsItAlwaysDid', r.fumble, `misses (M) and hits (H) without / with: ${r.fumbleSeq}`);

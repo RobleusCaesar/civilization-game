@@ -1541,10 +1541,16 @@ const Combat = {
       /* WATCHFIRES (js/deckfx-town.js): a card may lengthen the reach and
          weight the arrows of the PLAYER's towers and camps — Deck.mult's
          numbers answer 1 for the rival and with no card running. The L1
-         fumble below draws exactly as it always did. */
+         fumble below draws exactly as it always did. The longer reach only
+         takes what the watch can SEE: a tower's own range always sat inside
+         its sight, and the farther band can poke past it, so a mark out
+         there must be on ground in view — an arrow (and its float) never
+         lands on a soldier hidden in the fog (the trebuchet's rule: an
+         engine never shells ground it can't watch). Base range: untouched. */
       const wfR = window.Deck && Deck.mult ? Deck.mult('towerRange', b.owner, b) : 1;
       const tgt = this.nearestUnit(cx, cy, lv.range * wfR,
-        o => this.hostileToBld(b, o) && !Units.isPassive(o) && o.kind !== 'siegetower');
+        o => this.hostileToBld(b, o) && !Units.isPassive(o) && o.kind !== 'siegetower' &&
+          (wfR === 1 || Math.hypot(o.x - cx, o.y - cy) <= lv.range || G.visibleAt(o.x | 0, o.y | 0)));
       if (tgt) {
         b.cd = 1.4;
         const wfA = window.Deck && Deck.mult ? Deck.mult('towerAtk', b.owner, b) : 1;

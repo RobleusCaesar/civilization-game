@@ -22,8 +22,10 @@
       through the one subtraction); the tower fire asks Deck.mult for
       'towerRange' and 'towerAtk' (Watchfires, the player's own only —
       Deck.mult's numbers are the player's by construction — and the L1
-      fumble's G.rand draw stays exactly where it was); the placement
-      confirm asks Deck.masterHand and hands a charge to Deck.masterRaise.
+      fumble's G.rand draw stays exactly where it was; the farther band
+      only takes a mark on ground the player can see, since it can poke
+      past the tower's own sight); the placement confirm asks
+      Deck.masterHand and hands a charge to Deck.masterRaise.
    3. THE NUMBER SHOWN IS THE NUMBER TAKEN. Bld.damage now returns what the
       building actually lost, and Combat.hitBuilding floats THAT — a halved
       blow reads as half, and a blow the ward swallows whole reads "Held!".
