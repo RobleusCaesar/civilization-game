@@ -74,6 +74,8 @@
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
 let pw;
 try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
@@ -503,6 +505,30 @@ await p.evaluate(() => {
   ck('quickHandsAndGoldenAgeMultiply', near(r.both, 3, 1e-12), 'x' + r.both);
 }
 
+// ---------------- 3–4b. A SPAN RAISED IS CONSTRUCTION; THE EARTHWORKS ARE NOT ----------------
+{
+  const r = await p.evaluate(() => {
+    const measure = (card) => {
+      __g.fresh('growth-span-' + (card || 'none')); const { P } = __g.flat();
+      const sc = __g.bld('P', 'sapper', P.x + 6, P.y + 2); sc.level = 3;
+      for (let y = 10; y < 16; y++) __g.terr(20, y, T.WATER, 0);   // a channel to throw a span over
+      const sap = __g.unit('sapper', 'P', 18.5, 12.5), dig = __g.unit('sapper', 'P', 10.5, 20.5);
+      Units.assignTerraform(sap, 20, 12, 'bridge'); Units.assignTerraform(dig, 11, 20, 'dig');
+      for (let i = 0; i < 30; i++) Units.update(0.1);
+      if (card) Deck.play(card);
+      const jobs = [sap.task && sap.task.job, dig.task && dig.task.job];
+      if (sap.task) sap.task.t = 1000; if (dig.task) dig.task.t = 1000;
+      for (let i = 0; i < 20; i++) Units.update(0.1);
+      return { jobs, d: [1000 - (sap.task ? sap.task.t : 1000), 1000 - (dig.task ? dig.task.t : 1000)] };
+    };
+    return { none: measure(null), quick: measure('quick_hands'), golden: measure('golden_age') };
+  });
+  const q = r.quick.d.map((v, i) => v / r.none.d[i]), g = r.golden.d.map((v, i) => v / r.none.d[i]);
+  ck('aSpanIsRaisedAtTheCardsPaceTheEarthworksAtTheirOwn', r.none.jobs.join() === 'bridge,dig' && r.none.d[0] > 1 &&
+    near(q[0], 2, 1e-6) && near(g[0], 1.5, 1e-6) && near(q[1], 1, 1e-9) && near(g[1], 1, 1e-9),
+    `a span raised x${q[0].toFixed(4)} under Quick Hands, x${g[0].toFixed(4)} under the Golden Age; a trench x${q[1].toFixed(4)} / x${g[1].toFixed(4)}`);
+}
+
 // ---------------- 5. BLIGHT ----------------
 {
   const r = await p.evaluate(() => {
@@ -735,6 +761,31 @@ await p.evaluate(() => {
     out.razed = Deck.play('enlightenment');
     for (let i = 0; i < 600; i++) Bld.update(0.01);
     out.razedState = { wallUp: w4.P.wallUp, wallLevel: S.wallLevel, net: ['food', 'wood', 'stone', 'gold'].map(k => S.res[k] - q0[k]) };
+    // A SAVE FROM BEFORE THE MASONS KEPT THEIR BILL (no tc.wallUpPaid): the
+    // works in flight pay back the honest list price of the tier they were
+    // raising for the walls standing now — and a run whose walls are all gone
+    // has nothing to hand back, and never says "free paid for it comes back"
+    __g.fresh('growth-enl-legacy'); const w5 = __g.flat();
+    S.res = { food: 5000, wood: 5000, stone: 5000, gold: 5000 };
+    __g.bld('P', 'wall', w5.P.x, w5.P.y + 8); __g.bld('P', 'gate', w5.P.x + 1, w5.P.y + 8);
+    w5.P.level = 2;
+    const lw0 = Object.assign({}, S.res);
+    Bld.upgradeWalls(); delete w5.P.wallUpPaid;
+    out.legacyPaid = {}; for (const k in lw0) out.legacyPaid[k] = lw0[k] - S.res[k];
+    const lw1 = Object.assign({}, S.res);
+    out.legacy = Deck.play('enlightenment');
+    out.legacyBack = {}; for (const k in lw1) out.legacyBack[k] = S.res[k] - lw1[k];
+    out.legacyLog = S.log[0].msg;
+    __g.fresh('growth-enl-legacy-razed'); const w6 = __g.flat();
+    S.res = { food: 5000, wood: 5000, stone: 5000, gold: 5000 };
+    __g.bld('P', 'wall', w6.P.x, w6.P.y + 8);
+    w6.P.level = 2;
+    Bld.upgradeWalls(); delete w6.P.wallUpPaid;
+    S.buildings = S.buildings.filter(z => z.key !== 'wall'); Bld._block = null;
+    const lw2 = JSON.stringify(S.res);
+    out.legacyRazed = Deck.play('enlightenment');
+    out.legacyRazedSame = JSON.stringify(S.res) === lw2;
+    out.legacyRazedLog = S.log[0].msg;
     __g.fresh('growth-enl-nowalls'); const w3 = __g.flat();
     out.nw = Deck.play('enlightenment');
     out.nwWall = S.wallLevel;
@@ -764,6 +815,10 @@ await p.evaluate(() => {
     ['food', 'wood', 'stone', 'gold'].every(k => (r.wBack[k] || 0) === (r.wPaid[k] || 0)), `${JSON.stringify(r.wState)}; back ${JSON.stringify(r.wBack)} for ${JSON.stringify(r.wPaid)}`);
   ck('worksWhoseWallsAreGoneAreFinishedOnce', r.razed.ok && r.razedState.wallUp === 0 && r.razedState.wallLevel === 2 && r.razedState.net.every(n => n === 0),
     JSON.stringify(r.razedState));
+  ck('aSaveWithoutTheMasonsBillIsPaidTheHonestPrice', r.legacy.ok && ['food', 'wood', 'stone', 'gold'].every(k => (r.legacyBack[k] || 0) === (r.legacyPaid[k] || 0)) &&
+    /comes back/.test(r.legacyLog) && !/free/.test(r.legacyLog), `back ${JSON.stringify(r.legacyBack)} for ${JSON.stringify(r.legacyPaid)} — "${r.legacyLog}"`);
+  ck('andNothingToHandBackIsNeverCalledFree', r.legacyRazed.ok && r.legacyRazedSame && /already under way was finished\.$/.test(r.legacyRazedLog) && !/free|comes back/.test(r.legacyRazedLog),
+    r.legacyRazedLog);
   ck('withNoWallsTheWallTierStays', r.nw.ok && r.nwWall === 1, `tier ${r.nwWall}`);
   ck('noHallNoEnlightenment', !r.noHall.ok && r.noHall.why === 'Your Town Center must stand.', r.noHall.why);
   ck('andEnlightenmentDrawsNoRng', r.aRng);
@@ -802,6 +857,14 @@ await p.evaluate(() => {
     __g.builder(w);
     const fast = __g.dayOff(() => w.construction);
     out.nobody = nobody; out.fast = fast;
+    // …and ONLY the player's Wonder: a house site of theirs and the rival's own
+    // monument rise at the ordinary pace under one builder each
+    const hs = __g.site('P', 'house', P.x + 2, P.y + 14, 30); __g.builder(hs);
+    out.house = __g.dayOff(() => hs.construction);
+    const ra = Bld.tcOf('A');
+    const rwon = Bld.place('A', 'wonder', ra.x - 7, ra.y - 7, { free: true, noAutoAssign: true }); Bld._block = null;
+    __g.builder(rwon, 'A');
+    out.rivalW = __g.dayOff(() => rwon.construction);
     out.rising = UI.wonderSavedLine(); out.left = w.construction;
     out.again = Deck.play('age_of_marble');
     // it rides the save
@@ -823,6 +886,20 @@ await p.evaluate(() => {
     out.rest = {}; for (const k in s2) out.rest[k] = S.res[k] - s2[k];
     out.total = {}; for (const k in paid2) out.total[k] = out.back[k] + out.rest[k];
     out.paid2 = paid2;
+    // THE CARD LANDS ON THE WORKS: with a site standing off screen the play
+    // sequence carries the card to the Wonder (its dest), and the play itself
+    // never cuts the camera away from where the light came down
+    __g.fresh('growth-marble-dest', 'calm'); const dz = __g.flat();
+    Screens.show('playing');
+    out.destNone = Deck.FX.age_of_marble.dest ? Deck.FX.age_of_marble.dest() : 'no dest';
+    const wd = Bld.place('P', 'wonder', dz.P.x + 20, dz.P.y + 20, { free: true, noAutoAssign: true }); Bld._block = null;
+    R.cam.z = 2; R.centerOn(Bld.cx(dz.P), Bld.cy(dz.P));
+    const pt = DeckUI._dest('tc', 'age_of_marble'), cam = [R.cam.x, R.cam.y];
+    out.destPlay = Deck.play('age_of_marble');
+    out.camStill = R.cam.x === cam[0] && R.cam.y === cam[1];
+    const TLd = CFG.TILE;
+    out.destErr = Math.hypot((Bld.cx(wd) * TLd - R.cam.x) * R.cam.z - pt.x, (Bld.cy(wd) * TLd - R.cam.y) * R.cam.z - pt.y);
+    out.destBurst = out.destPlay.x === Bld.cx(wd) && out.destPlay.y === Bld.cy(wd);
     // a FREE site (paid nothing) is handed nothing back
     __g.fresh('growth-marble-free', 'calm'); const f = __g.flat();
     const w3 = Bld.place('P', 'wonder', f.P.x + 6, f.P.y + 6, { free: true, noAutoAssign: true }); Bld._block = null;
@@ -838,6 +915,10 @@ await p.evaluate(() => {
     ['food', 'wood', 'stone', 'gold'].every(k => r.paid[k] === r.want[k] && r.wPaid[k] === r.want[k]) && r.saved === 'Ready to raise',
     `${JSON.stringify(r.cost)}; paid ${JSON.stringify(r.paid)}; with exactly that saved: "${r.saved}"`);
   ck('andTheRivalsIsNot', r.rival[0] === r.rival[1], r.rival[1]);
+  ck('andOnlyYourWonderRisesFaster', near(r.house, 1, 1e-6) && near(r.rivalW, 1, 1e-6),
+    `your house site x${r.house.toFixed(4)}, the rival's monument x${r.rivalW.toFixed(4)} under one builder each`);
+  ck('theCardLandsOnTheWorksAndStaysThere', r.destNone === null && r.destPlay.ok && r.camStill && r.destErr < 1 && r.destBurst,
+    `no site: ${JSON.stringify(r.destNone)}; landed ${r.destErr.toFixed(2)}px from the works; the camera kept still ${r.camStill}`);
   ck('itRisesTwiceAsFastUnderItsBuilders', r.nobody === 0 && near(r.fast, 2, 1e-6) && r.rising === 'Rising — ' + Math.ceil(r.left / 2) + ' days' && r.over === null,
     `nobody at it: ${r.nobody}; one builder: ${r.fast.toFixed(4)} days of work a day; "${r.rising}" for ${r.left.toFixed(2)} days of work`);
   ck('laidAlreadyAQuarterOfWhatWasPaidComesBack', r.laid.ok && ['food', 'wood', 'stone', 'gold'].every(k => r.back[k] === r.backWant[k] && r.total[k] === r.paid2[k]), `back ${JSON.stringify(r.back)}; called off later ${JSON.stringify(r.rest)}; together ${JSON.stringify(r.total)} = paid`);
@@ -887,6 +968,24 @@ await p.evaluate(() => {
     out.laidLeft = laid.construction; out.chargeGone = !S.deck.charges.foundation;
     out.laidPaid = laid.paid;
     out.show = R.cardShows.some(s => s.id === 'wonders_foundation');
+    // the card lands on a standing site and keeps the camera where it landed;
+    // a foundation laid by the GROUND BREAKING brings the works on screen
+    __g.fresh('growth-found-dest', 'calm'); const fz = __g.flat();
+    Screens.show('playing');
+    const fw = Bld.place('P', 'wonder', fz.P.x + 20, fz.P.y + 20, { free: true, noAutoAssign: true }); Bld._block = null;
+    R.cam.z = 2; R.centerOn(Bld.cx(fz.P), Bld.cy(fz.P));
+    const fd = Deck.FX.wonders_foundation.dest ? Deck.FX.wonders_foundation.dest() : null;
+    out.fDest = fd && fd.x === Bld.cx(fw) && fd.y === Bld.cy(fw);
+    DeckUI._dest('tc', 'wonders_foundation');
+    const fcam = [R.cam.x, R.cam.y];
+    out.fPlay = Deck.play('wonders_foundation');
+    out.fCamStill = R.cam.x === fcam[0] && R.cam.y === fcam[1];
+    __g.fresh('growth-found-break', 'calm'); const fb = __g.flat();
+    Screens.show('playing');
+    Deck.play('wonders_foundation');
+    R.cam.z = 2; R.centerOn(Bld.cx(fb.P), Bld.cy(fb.P));
+    const bw = Bld.place('P', 'wonder', fb.P.x + 20, fb.P.y + 20, { free: true, noAutoAssign: true }); Bld._block = null;
+    out.fBreakLook = R.onScreen(Bld.cx(bw), Bld.cy(bw));
     out.raised = raised.length; out.fin = fin.length;
     G.wonderRaised = wr; Bld.finish = bf;
     return out;
@@ -902,6 +1001,8 @@ await p.evaluate(() => {
   ck('aWaitingFoundationRidesTheSave', r.chargeSaved);
   ck('andIsLaidWithTheGround', near(r.laidLeft, T45 * 0.65, 1e-9) && r.chargeGone && r.show,
     `laid at ${r.laidLeft} days of work, the charge spent ${r.chargeGone}, paid ${JSON.stringify(r.laidPaid)}`);
+  ck('theFoundationLandsOnTheWorksAndTheGroundBreakingLooks', r.fDest && r.fPlay.ok && r.fCamStill && r.fBreakLook,
+    `dest on the works ${r.fDest}, the camera kept still at the play ${r.fCamStill}, the works brought on screen when the ground breaks ${r.fBreakLook}`);
   ck('andFoundationDrawsNoRng', r.rng);
 }
 
@@ -1053,6 +1154,41 @@ await p.evaluate(() => {
     `painted ${r.first} on the first frame, ${r.steady} over the next 60, ${r.afterEdit} when the ground under it changed`);
 }
 
+// ---------------- 10c. THE LUSH GROUND IS ASKED OF WHAT YOU KNOW ----------------
+{
+  const r = await p.evaluate(() => {
+    __g.fresh('growth-lush-fog', 'calm'); const { P } = __g.flat();
+    Screens.show('playing');
+    const d = Deck.FX.bountiful_land;
+    // a stand the player knows, inside the ring
+    const fx = P.x + 7, fy = P.y + 1;
+    __g.terr(fx, fy, T.FOREST, 200);
+    Deck.play('bountiful_land'); R.cardShows.length = 0;
+    const c = d.centre(), W = CFG.W;
+    // the layer's own pixels (its canvases only ever take fills, so they read back from file://)
+    const pix = () => {
+      d._layer = null;
+      const L = d.layer(c);
+      return L.g.map((g, i) => Array.from(g.getImageData(0, 0, L.cv[i].width, L.cv[i].height).data).join(','));
+    };
+    G.vis = new Uint8Array(W * CFG.H);             // the ring known, none of it in sight now
+    const before = pix();
+    // OUT OF SIGHT: the rival raises a barracks inside the ring (a War Camp would
+    // be revealed by its own rule), and the stand is felled
+    const camp = __g.bld('A', 'barracks', P.x + 6, P.y + 4);
+    const i = MapGen.idx(fx, fy); S.map.terrain[i] = T.STUMPS;   // the truth only — the memory still holds the wood
+    const hidden = pix();
+    // IN SIGHT: now the player sees both, and the ground answers
+    for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) G.vis[MapGen.idx(camp.x + x, camp.y + y)] = 1;
+    G.vis[i] = 1;
+    const seen = pix();
+    return { same: hidden[0] === before[0] && hidden[1] === before[1], moved: seen[0] !== before[0], beats: before[0] !== before[1] };
+  });
+  ck('theLushGroundIsDrawnFromWhatYouKnow', r.same && r.moved,
+    `a rival barracks raised and a stand felled out of sight change the lush ground: ${!r.same}; once they are in sight: ${r.moved}`);
+  ck('andItSwaysOnTwoBeats', r.beats, 'the breeze\'s two beats are two different pictures');
+}
+
 // ---------------- 11. NOTHING IS DRAWN IN THE BLACK ----------------
 {
   const r = await p.evaluate(() => {
@@ -1094,6 +1230,111 @@ await p.evaluate(() => {
     return { inBlack, control };
   });
   ck('nothingIsDrawnInTheBlack', r.inBlack === 0 && r.control > 1000, `${r.inBlack} lit pixels on the off-map rim; with the board widened ${r.control}`);
+}
+
+// ---------------- 12. WHAT BELONGS TO THE LAND IS DRAWN WITH THE LAND ----------------
+/* Served over HTTP: under file:// a canvas a PNG has touched cannot be read
+   back, and these checks read the real frame. The lush ground and the
+   withered fields must lie UNDER the people standing on them — a unit's own
+   opaque pixels byte-identical with the card running and not — and the lush
+   ground on remembered ground must be dimmed by the fog like the land under
+   it (the change it makes there a fraction of the change it makes in sight;
+   drawn over the fog, it is all of it and more). */
+{
+  const types = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png',
+    '.webp': 'image/webp', '.jpg': 'image/jpeg', '.css': 'text/css', '.json': 'application/json',
+    '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
+  const srv = createServer(async (rq, rs) => {
+    try {
+      const u = decodeURIComponent(rq.url.split('?')[0]);
+      const f = join(root, u === '/' ? 'index.html' : u.replace(/^\/+/, ''));
+      if (!f.startsWith(root)) { rs.writeHead(403); rs.end(); return; }
+      const body = await readFile(f);
+      rs.writeHead(200, { 'content-type': types[f.slice(f.lastIndexOf('.'))] || 'application/octet-stream' });
+      rs.end(body);
+    } catch (e) { rs.writeHead(404); rs.end(); }
+  });
+  await new Promise(r => srv.listen(0, '127.0.0.1', r));
+  const p2 = await ctx.newPage();
+  p2.on('pageerror', e => errs.push('http page: ' + String(e)));
+  await p2.goto('http://127.0.0.1:' + srv.address().port + '/index.html', { waitUntil: 'domcontentloaded' });
+  await p2.waitForFunction(() => window.Deck && window.Screens && Screens.current === 'title', null, { timeout: 120000 });
+  const r = await p2.evaluate(() => {
+    const out = {};
+    Boot.force(); Screens._demo = false; CFG.CARDS.ON = true;
+    G.newGame('growth-layers', 'calm', 'medium'); S.paused = true;
+    const W = CFG.W;
+    for (let i = 0; i < W * CFG.H; i++) { S.map.terrain[i] = T.GRASS; S.map.explored[i] = 1; S.map.resAmount[i] = 0; S.map.seenTerrain[i] = T.GRASS; }
+    S.units = []; S.buildings = S.buildings.filter(z => z.key === 'tc');
+    const P = Bld.tcOf('P'), A = Bld.tcOf('A');
+    P.x = 20; P.y = 20; A.x = W - 7; A.y = CFG.H - 7;
+    const fi = MapGen.idx(26, 22); S.map.terrain[fi] = S.map.seenTerrain[fi] = T.BARREN;
+    Bld._block = null;
+    const farm = Bld.place('A', 'farm', 26, 22, { free: true, instant: true }); Bld._block = null;
+    R.rebuildTerrain();
+    Screens.show('playing');
+    Deck._col = null; Deck._del(Deck.KEY); Deck._add('bountiful_land', 3); Deck._add('blight', 3);
+    // eight of yours on open grass inside the ring; two of theirs at work on their own farm
+    for (let k = 0; k < 8; k++) { const u = Units.spawn('villager', 'P', 22 + k % 4, 24 + (k >> 2)); u.x = 22.5 + k % 4; u.y = 24.5 + (k >> 2); }
+    for (let k = 0; k < 2; k++) { const u = Units.spawn('villager', 'A', 26, 22); u.x = 26.3 + k * 0.4; u.y = 22.6; u.task = { type: 'work', id: farm.id }; }
+    R.cam.z = 2; R.centerOn(24.5, 23);
+    G.updateVisibility();
+    out.farmSeen = Deck.FX.blight.inSight(farm);
+    const g = R.cv.getContext('2d'), frozen = performance.now(), pn = performance.now;
+    performance.now = () => frozen;
+    const grab = () => { R.ambient = []; R.ambientT = 1e9; R._flash = null; R._shake = null; R.draw(0); return g.getImageData(0, 0, R.cv.width, R.cv.height).data; };
+    const same = (a, b, i) => a[i] === b[i] && a[i + 1] === b[i + 1] && a[i + 2] === b[i + 2];
+    try {
+      // a unit's OPAQUE pixels: what it changes in the frame, and what does not
+      // change when the ground and the buildings under it are swapped out
+      const withU = grab();
+      const keep = S.units; S.units = []; const noU = grab(); S.units = keep;
+      const tc0 = R.terrainCache, alt = document.createElement('canvas');
+      alt.width = tc0.width; alt.height = tc0.height;
+      const ag = alt.getContext('2d'); ag.fillStyle = '#ff00ff'; ag.fillRect(0, 0, alt.width, alt.height);
+      const bb = R.blitBld;
+      R.blitBld = function (gg, spr, x, y, w, h) { gg.fillStyle = '#00ffff'; gg.fillRect(x, y, w, h); };
+      R.terrainCache = alt; const altU = grab(); R.terrainCache = tc0; R.blitBld = bb;
+      const opaque = [];
+      for (let i = 0; i < withU.length; i += 4) if (!same(withU, noU, i) && same(withU, altU, i)) opaque.push(i);
+      out.opaque = opaque.length;
+      const count = (fr, ref) => { let n = 0; for (let i = 0; i < fr.length; i += 4) if (!same(fr, ref, i)) n++; return n; };
+      // BOUNTIFUL LAND, its wave over: the meadow grows round the people's feet
+      Deck.play('bountiful_land'); R.cardShows.length = 0;
+      const lush = grab();
+      out.lushPainted = count(lush, withU);
+      out.lushOnUnits = opaque.filter(i => !same(lush, withU, i)).length;
+      // THE BLIGHT on its own: their farm withers under the hands working it
+      S.deck.fx = [];
+      Deck.play('blight'); R.cardShows.length = 0;
+      const bl = grab();
+      out.blightPainted = count(bl, withU);
+      out.blightOnUnits = opaque.filter(i => !same(bl, withU, i)).length;
+      // THE FOG: the change the lush ground makes on remembered ground, against
+      // the change it makes in sight (the people stood out of it — this is the ground)
+      S.deck.fx = []; Deck.play('bountiful_land'); R.cardShows.length = 0;
+      S.units = [];
+      const fxs = S.deck.fx;
+      const visLive = grab(); S.deck.fx = []; const visNo = grab(); S.deck.fx = fxs;
+      const vis0 = G.vis; G.vis = new Uint8Array(W * CFG.H); R.fogDirty = true;
+      const fogLive = grab(); S.deck.fx = []; const fogNo = grab(); S.deck.fx = fxs;
+      G.vis = vis0; R.fogDirty = true; S.units = keep;
+      let dv = 0, df = 0;
+      for (let i = 0; i < visLive.length; i += 4) for (let c = 0; c < 3; c++) {
+        dv += Math.abs(visLive[i + c] - visNo[i + c]); df += Math.abs(fogLive[i + c] - fogNo[i + c]);
+      }
+      out.dv = dv; out.fogRatio = dv ? df / dv : 1;
+    } finally { performance.now = pn; }
+    return out;
+  });
+  await p2.close();
+  srv.close();
+  ck('theLushGroundLiesUnderThePeopleOnIt', r.opaque > 500 && r.lushPainted > 2000 && r.lushOnUnits === 0,
+    `${r.lushOnUnits} of ${r.opaque} opaque unit pixels touched; the meadow changed ${r.lushPainted} pixels of the frame`);
+  ck('theWitheredFieldLiesUnderTheHandsWorkingIt', r.farmSeen && r.blightPainted > 200 && r.blightOnUnits === 0,
+    `${r.blightOnUnits} of ${r.opaque} opaque unit pixels touched; the blight changed ${r.blightPainted} pixels of the frame (their farm in sight ${r.farmSeen})`);
+  ck('andOnRememberedGroundTheFogDimsIt', r.dv > 10000 && r.fogRatio < 0.8,
+    `the lush ground's change under the fog is ${(r.fogRatio * 100).toFixed(1)}% of its change in sight`);
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
