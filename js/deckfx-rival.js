@@ -407,7 +407,10 @@
         // the watch begins NOW, though the sheet holds the world still
         G.updateVisibility();
         Deck.say('🔥 A signal fire burns on the far hill: the land within ' + this.R + ' tiles of it is on your map for good, and your scouts keep watch there for ' + this.DAYS + ' days.');
-        return { ok: true, x: tgt.x, y: tgt.y, until };
+        // the landing's toast says what the fire DID (the card's own first sentence was "Choose any point.")
+        const fed = until > now + this.DAYS + 1e-9;
+        return { ok: true, x: tgt.x, y: tgt.y, until, msg: fed ? 'The signal fire burns on — ' + this.DAYS + ' more days of watch.'
+          : 'A signal fire burns — ' + this.R + ' tiles charted, watched for ' + this.DAYS + ' days.' };
       },
       end() { G.log('🔥 The signal fire has burned out — the scouts come down off the hill.', 'note', 5000); },
       /* THE MOMENT: a pillar of fire springs up, sparks fly, and the fog rolls
@@ -597,7 +600,8 @@
         sfx('cardUnroll');
         Deck.say('🗺 A pathfinder’s map, drawn in charcoal on a hide: ' + (fresh.length ? 'the whole world is on your map now' : 'your map was already whole') +
           (t.mark ? ', and the lost relic is marked on it — someone still has to walk there and dig.' : '.'));
-        return { ok: true };
+        return { ok: true, msg: 'Pathfinder’s Map: ' + (fresh.length ? fresh.length + ' tiles charted' : 'your map was already whole') +
+          (t.mark ? ', and the lost relic marked with an X — someone must walk there and dig.' : '.') };
       },
       /* THE BEATS OF THE MOMENT (seconds into the show): the hide unrolls and
          the charcoal draws the world, the X is struck and HELD, the hide ROLLS

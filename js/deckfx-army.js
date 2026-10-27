@@ -745,6 +745,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           return summonCard('willing_hands', [{ kind: this.KIND, n: this.N }], {
             stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHands'], tone: 'pale',
             log: () => '👥 Three strangers walk up to your Town Center, asking for a roof and a job. They are yours now.',
+            msg: () => 'Willing Hands: three strangers at your door, asking for a roof and a job — +3 villagers.',
           });
         }
         // in a short file along the way in, the leader nearest the town
@@ -773,7 +774,11 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         show('willing_hands', { x: hx, y: hy, mx: m.x + 0.5, my: m.y + 0.5, fx: from.x + 0.5, fy: from.y + 0.5, walk: true,
           units: units.map((u, i) => ({ id: u.id, x: u.x, y: u.y, d: 0.25 + i * this.GAP })), joined: {} });
         Deck.say('👥 Three strangers walk up to your Town Center, asking for a roof and a job. They are yours now.');
-        return { ok: true, x: hx, y: hy, units: units.map(u => u.id) };
+        let wood = false;
+        for (let dy = -1; dy <= 1 && !wood; dy++) for (let dx2 = -1; dx2 <= 1; dx2++)
+          if (MapGen.inB(from.x + dx2, from.y + dy) && S.map.terrain[(from.y + dy) * CFG.W + from.x + dx2] === T.FOREST) { wood = true; break; }
+        return { ok: true, x: hx, y: hy, units: units.map(u => u.id),
+          msg: 'Willing Hands: three strangers walk up out of the ' + (wood ? 'trees' : 'fields') + ', asking for a roof and a job — +3 villagers.' };
       },
       // the bundle on a stranger's back, 7×7, at the cast's own density (one world pixel a cell)
       packArt() {

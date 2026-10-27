@@ -1010,6 +1010,70 @@ await p.evaluate(() => {
     `${r.packs} pack draws on the walk; ${r.joined} joined at the door with ${r.bursts} burst marks; home at ${r.home && r.home.join('/')} tiles`);
 }
 
+// ---------------- 12. EVERY PLAY SAYS WHAT IT DID ----------------
+/* The playtest's critics: with no line of its own, the landing toast falls
+   back to the card's first sentence — Scout's Fire said "Choose any point."
+   after the point was chosen, a second Harvest Festival repeated "…for 12
+   days." while its chip read 24, and Mending said "3 buildings made whole"
+   beside a work site still on fire. Every Stone and Bronze card of this
+   slice now returns a line of what it DID (r.msg — DeckUI._land shows it),
+   never its rule sentence. */
+{
+  const r = await p.evaluate(() => {
+    const out = { msgs: {}, rule: {} };
+    __fx.fresh('fx-results'); __fx.flat();
+    Screens.show('playing'); S.paused = true;
+    const P = Bld.tcOf('P');
+    const IDS = ['forager_cache', 'fallen_timber', 'loose_stone', 'gold_nugget', 'willing_hands', 'scouts_fire', 'quick_hands', 'mending',
+      'trade_caravan', 'harvest_festival', 'watchfires', 'master_builders', 'pathfinders_map', 'bountiful_land'];
+    for (const id of IDS) Deck._add(id, 3);
+    // something to mend, a tower to light, a site burning beside them, ground still dark
+    const hut = __fx.bld('P', 'house', P.x + 4, P.y + 1); hut.hp = Math.round(hut.maxhp / 3);
+    __fx.bld('P', 'tower', P.x + 1, P.y + 5);
+    const site = Bld.place('P', 'house', P.x + 6, P.y + 4, { free: true, noAutoAssign: true }); Bld._block = null;
+    site.hp = 1;
+    for (let i = 0; i < CFG.W * CFG.H; i++) { const x = i % CFG.W, y = (i / CFG.W) | 0; if (Math.hypot(x - P.x, y - P.y) > 12) S.map.explored[i] = 0; }
+    G.updateVisibility();
+    out.burning = Bld.burnPhase(site) >= 0;
+    const line = t => { const m = /^[^.!?]*[.!?]/.exec(t); return m ? m[0] : t; };
+    for (const id of IDS) {
+      const c = Deck.card(id);
+      const tgt = c.target === 'none' ? undefined : { x: P.x + 20.5, y: P.y + 18.5 };
+      const res = Deck.play(id, tgt);
+      out.msgs[id] = res.ok ? res.msg || null : 'REFUSED ' + res.why;
+      out.rule[id] = line(c.text); out.name = out.name || {}; out.name[id] = c.name;
+    }
+    // a second copy of each timed card RUNS ON in its toast
+    out.again = {
+      harvest_festival: Deck.play('harvest_festival').msg,
+      quick_hands: Deck.play('quick_hands').msg,
+      watchfires: Deck.play('watchfires').msg,
+      bountiful_land: Deck.play('bountiful_land').msg,
+      scouts_fire: Deck.play('scouts_fire', { x: P.x + 20.5, y: P.y + 18.5 }).msg,
+    };
+    // Mending passes over the burning works, and a puff of smoke goes up off them
+    const ms = R.cardShows.find(z => z.id === 'mending');
+    out.left = !!ms && (ms.left || []).some(h => h.id === site.id);
+    if (ms) {
+      const g = R.cv.getContext('2d');
+      for (let t = 0; t < 1.4; t += 0.1) { ms.t = t; g.save(); Deck.FX.mending.show.draw.call(Deck.FX.mending, g, ms, t / (ms.ms / 1000), 0.1, 'world'); g.restore(); }
+      out.smoke = (ms.left || []).some(h => h.puffed);
+    }
+    R.cardShows = [];
+    return out;
+  });
+  // (the fallback the toast falls to with no line: '<name>: <the rule's first sentence>')
+  const bare = Object.keys(r.msgs).filter(k => !r.msgs[k] || /^REFUSED/.test(r.msgs[k]) || r.msgs[k] === r.rule[k] || r.msgs[k] === r.name[k] + ': ' + r.rule[k]);
+  ck('everyPlayOfTheSliceSaysWhatItDid', !bare.length,
+    bare.length ? bare.map(k => k + ': ' + r.msgs[k]).join(' | ') : Object.keys(r.msgs).length + ' cards, each its own line');
+  ck('scoutsFireSaysItsFireBurns', r.msgs.scouts_fire === 'A signal fire burns — 9 tiles charted, watched for 3 days.' && /burns on — 3 more days/.test(r.again.scouts_fire || ''),
+    `"${r.msgs.scouts_fire}"; fed again "${r.again.scouts_fire}"`);
+  ck('aSecondCopyRunsOnInItsToast', Object.values(r.again).every(m => /runs on|keeps up|burn on|stays|more days/.test(m || '')),
+    JSON.stringify(r.again));
+  ck('mendingSaysTheWorksStillSmoulder', r.burning && /\(the works still smoulder\)/.test(r.msgs.mending || '') && r.left && r.smoke,
+    `"${r.msgs.mending}"; the burning site passed over ${r.left}, its smoke up ${r.smoke}`);
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 4));
 await b.close();

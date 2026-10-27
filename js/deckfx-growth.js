@@ -360,7 +360,9 @@ Object.assign(Deck.FX, {
       GrowFX.show('harvest_festival', { spots: this.spots(), fresh: !was });
       GrowFX._festNoted = new WeakSet();   // every hand's next float carries the bonus
       GrowFX.sfx('festival');
-      return { ok: true, until: e.until };
+      // the landing's toast: a second copy RUNS ON (the card's own rule line said "for 12 days" again)
+      return { ok: true, until: e.until, msg: was ? 'The Harvest Festival runs on — ' + days + ' more days of work 40% richer.'
+        : 'The Harvest Festival begins: for ' + days + ' days every load and every harvest comes in 40% richer.' };
     },
     end() { G.log('🌾 The Harvest Festival is over — the work comes in at its ordinary yield again.'); },
     // where the town's work is going on, on screen now: the hands at it and
@@ -545,7 +547,8 @@ Object.assign(Deck.FX, {
       GrowFX.show('bountiful_land', { x: c.x, y: c.y });
       if (window.R && R.startle) R.startle(c.x, c.y, 9);
       GrowFX.sfx('bloom');
-      return { ok: true, x: c.x, y: c.y, until: e.until };
+      return { ok: true, x: c.x, y: c.y, until: e.until, msg: was ? 'The land near the fire stays bountiful — ' + days + ' more days.'
+        : 'The land within ' + this.R + ' tiles of your hall turns bountiful: 50% richer for ' + days + ' days.' };
     },
     end() { G.log('🌱 The bounty near the fire fades — the land gives its ordinary yield again.'); },
     // ground a sprig may stand on: open meadow, spent soil, a felled stand

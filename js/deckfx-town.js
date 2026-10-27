@@ -912,7 +912,8 @@
       if (tc) { const side = TX.openSide(tc); TX.show(id, { tc: tc.id, side, at: TX.spot(tc, side, true) }); }
       TX.sound(show.sound);
       // the number on the bar is held until the goods land (TX.settle)
-      return { ok: true, fly: { [res]: n }, pay: tc ? { ms: TX.PAY_MS } : undefined };
+      return { ok: true, fly: { [res]: n }, pay: tc ? { ms: TX.PAY_MS } : undefined,
+        msg: line + ': +' + n + ' ' + res + (tc ? ', set down at your door.' : '.') };
     },
     show,
   });
@@ -1114,7 +1115,8 @@
         const tc = TX.tc();
         if (tc) TX.show('trade_caravan', { tc: tc.id, side: TX.openSide(tc) });
         TX.sound('cardCaravan');
-        return { ok: true, fly: { food: this.FOOD, wood: this.WOOD, gold: this.GOLD }, pay: tc ? { ms: TX.PAY_MS } : undefined };
+        return { ok: true, fly: { food: this.FOOD, wood: this.WOOD, gold: this.GOLD }, pay: tc ? { ms: TX.PAY_MS } : undefined,
+          msg: 'A trade caravan came over the pass: +' + this.FOOD + ' food, +' + this.WOOD + ' wood and +' + this.GOLD + ' gold, unloaded crate by crate.' };
       },
       /* THE ROAD (a picture's footing, never a rule): for each way in (from
          the hall's open side first) and each of the three rows in front of the
@@ -1268,6 +1270,9 @@
         const list = this.hurt();
         if (!list.length) return this.can();
         const fires = list.filter(b => Bld.burnPhase(b) >= 0).length;
+        // the works still burning are left as they are (Rule 5) — and SAID to be,
+        // or "made whole" beside a site on fire reads as the card having failed
+        const smoulder = S.buildings.filter(b => b.owner === 'P' && b.construction > 0 && Bld.burnPhase(b) >= 0);
         for (const b of list) b.hp = b.maxhp;
         const n = list.length, tc = TX.tc();
         Deck.say('🧵 Mending: ' + n + ' building' + (n > 1 ? 's' : '') + ' made whole' +
@@ -1275,14 +1280,32 @@
         const c = tc ? { x: Bld.cx(tc), y: Bld.cy(tc) } : { x: Bld.cx(list[0]), y: Bld.cy(list[0]) };
         const hit = list.map(b => ({ id: b.id, d: Math.hypot(Bld.cx(b) - c.x, Bld.cy(b) - c.y) })).sort((a, b) => a.d - b.d);
         const far = hit[hit.length - 1].d, speed = Math.max(14, far / 1.1);
-        TX.show('mending', { cx: c.x, cy: c.y, hit, speed, ms: Math.min(3200, (far / speed + 1.0) * 1000) });
+        const left = smoulder.map(b => ({ id: b.id, d: Math.hypot(Bld.cx(b) - c.x, Bld.cy(b) - c.y) }));
+        TX.show('mending', { cx: c.x, cy: c.y, hit, speed, left, puffs: [], ms: Math.min(3200, (far / speed + 1.0) * 1000) });
         TX.sound('cardMend');
-        return { ok: true, msg: 'Mending: ' + n + ' building' + (n > 1 ? 's' : '') + ' made whole.' };
+        return { ok: true, msg: 'Mending: ' + n + ' building' + (n > 1 ? 's' : '') + ' made whole' + (fires ? ', the fires out' : '') +
+          (left.length ? ' (the works still smoulder).' : '.') };
       },
       show: {
         ms: 1800, layer: 'world',
-        draw(g, s, p) {
+        draw(g, s, p, dt) {
           const TL = TLs(), r = s.t * s.speed, far = s.hit[s.hit.length - 1].d + 1;
+          /* a work site still burning is passed over (Rule 5): as the wave
+             reaches it, a puff of the game's own smoke goes up off it — the
+             works smoulder on, plainly, rather than the card seeming to fail */
+          for (const h of s.left || []) {
+            if (h.puffed || r < h.d) continue;
+            h.puffed = true;
+            const b = Bld.get(h.id);
+            if (!b) continue;
+            const a = TX.art(b), x = a.rc.x + (a.box.l + a.box.r) / 2 * a.rc.w, y = a.rc.y + a.box.t * a.rc.h;
+            for (let k = 0; k < 3; k++) s.puffs.push({ x: x + (k - 1) * 5, y: y + 4 - k * 3, t: k * 0.08, life: 1.3, s: 0.9 + k * 0.2 });
+          }
+          if (s.puffs && s.puffs.length && R._drawPuffs) {
+            g.save();
+            R._drawPuffs(g, s.puffs, dt || 0, TL, (q, k) => { q.y -= TL * 0.45 * (dt || 0); q.x += TL * 0.1 * (dt || 0) * (0.4 + k); }, 0.6);
+            g.restore();
+          }
           // the wave: a ring of warm dots rolling out over the town, and a
           // fainter one behind it — gold ink, laid opaque (a lime-green ring
           // ADDED over the meadow was the colour of nothing this card does)
@@ -1538,7 +1561,10 @@
         const far = Math.max(0, ...list.map(f => f.d));
         TX.show('watchfires', { list, fresh: !was, ms: Math.min(3600, (far / this.IGNITE + 2.2) * 1000) });
         TX.sound('cardFire');
-        return { ok: true, until: e.until };
+        const nt = forts.filter(f => f.key === 'tower').length, nc = forts.length - nt;
+        const what = [nt ? nt + (nt === 1 ? ' tower' : ' towers') : '', nc ? nc + (nc === 1 ? ' War Camp' : ' War Camps') : ''].filter(Boolean).join(' and ');
+        return { ok: true, until: e.until, msg: was ? 'The watchfires burn on — ' + days + ' more days.'
+          : 'Watchfires blaze on ' + what + ': half again as hard and as far for ' + days + ' days.' };
       },
       end() { G.log('🔥 The watchfires burn down — your towers shoot as they did before.'); },
       /* THE BEACON ON ONE TOWER: an iron brazier and a big flame in the burning
