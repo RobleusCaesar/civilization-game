@@ -162,6 +162,32 @@
       const sb = S.map.seenB && S.map.seenB[i];
       return !!(sb && sb.key === b.key && sb.owner === b.owner);
     },
+    /* ON THE MAP BUT NEVER SEEN: a card charted it, and nobody of the
+       player's has looked at it since (and nobody is looking now). The land
+       there is drawn from the memory of the world as it was made; what
+       STANDS there is not the player's to know — so placement refuses it
+       (Bld.canPlace, the placement grid, the wall and trench ghosts) and the
+       live layers that gate on explored ground (bridges, ash, corpses, the
+       burning wood — R.rememberedAt) draw nothing over it. False everywhere
+       with no card ever played. */
+    blindIdx(i) {
+      const m = this.litMask();
+      return !!(m && m[i] && !(G.vis && G.vis[i]));
+    },
+    blindAt(x, y) { return MapGen.inB(x, y) && this.blindIdx(MapGen.idx(x, y)); },
+    /* THE WORLD TELLS THEM (G.reveal — a finished building's view opening, a
+       starfall seen across the valley, the buried hoard's map corner): that
+       ground is the tribe's own knowledge, as it always was, so a card's
+       mark under it is lifted — it scores as exploration again and its live
+       layers draw. */
+    eyesGive(idxs) {
+      const m = this.litMask();
+      if (!m) return;
+      let ch = false;
+      for (const i of idxs) if (m[i]) { m[i] = 0; ch = true; }
+      if (ch) this._litPut(m);
+    },
+    EYES_BUILD: 'Your people have not seen this ground — a card’s map is not their eyes.',
 
     /* the rival's people, seen through a spy in their hall */
     spySees(u) { return u.owner === 'A' && !!this.timed('spy_hall'); },
@@ -171,6 +197,20 @@
     pactPending() {
       const c = typeof S !== 'undefined' && S && S.deck && S.deck.charges;
       return !!(c && c.pact > 0);
+    },
+    /* a band due while the wilds are sparing a beaten rival WAITS — for at
+       most PACT_WAIT days past its day (Combat.maybeWave); after that the
+       wave runs its ordinary course and the charge is kept */
+    PACT_WAIT: 10,
+    PACT_WAITED: '🥁 The rival lies beaten and the wilds spare it — the pact’s bands wait for it to stand again, and this one goes its own way.',
+    pactHold(overdue) { return overdue < this.PACT_WAIT; },
+    // a band the pact bought found no road to the rival: one of the three, spent
+    pactLost() {
+      const c = this.run().charges;
+      c.pact = Math.max(0, (c.pact || 0) - 1);
+      const left = c.pact;
+      G.log('🥁 A war band the pact bought found no road to the rival and scattered into the wilds' +
+        (left ? ' — ' + left + ' more to come.' : ' — the last the pact bought.'), 'note', 6400);
     },
     pactTurned(tribe, n) {
       const c = this.run().charges;
@@ -306,10 +346,20 @@
           else if (!(G.vis && G.vis[i])) dim.push(i);
         }
         Deck.light(ring9, true);   // a relic inside the ring is found, legitimately
-        const now = Deck.now(), until = now + this.DAYS, pt = { x: cx, y: cy, until };
+        const now = Deck.now();
+        let until = now + this.DAYS;
         const live = Deck.timed('scouts_fire');
-        if (live) { live.pts = (live.pts || []).filter(p => p.until > now); live.pts.push(pt); live.until = Math.max(live.until, until); }
-        else Deck.addTimed('scouts_fire', this.DAYS, { pts: [pt] });
+        if (live) {
+          live.pts = (live.pts || []).filter(p => p.until > now);
+          /* the SAME fire fed again (a play within half its ring of a hill
+             still burning) burns 3 MORE days — the lead's "the same card
+             played again extends its duration"; a fire on another hill is a
+             watch of its own */
+          const same = live.pts.find(p => Math.hypot(p.x - cx, p.y - cy) <= this.R / 2);
+          if (same) { same.until += this.DAYS; until = same.until; }
+          else live.pts.push({ x: cx, y: cy, until });
+          live.until = Math.max(live.until, until);
+        } else Deck.addTimed('scouts_fire', this.DAYS, { pts: [{ x: cx, y: cy, until }] });
         if (window.R) {
           if (R.startCardShow) R.startCardShow('scouts_fire', { x: tgt.x, y: tgt.y, dark, dim });
           if (R.startle) R.startle(tgt.x, tgt.y, 10);
@@ -654,10 +704,17 @@
         return { x: bs.reduce((a, b) => a + Bld.cx(b), 0) / bs.length, y: bs.reduce((a, b) => a + Bld.cy(b), 0) / bs.length };
       },
       can() { return { ok: true }; },
+      /* the card they drafted, in THEIR voice: an origin's headline is written
+         to the player who drafts it ("your folk walk 12% faster"), so the
+         spy turns it round — it is their folk, their stores */
       origin() {
         const pk = S.draft && S.draft.rival && S.draft.rival.pick;
         const cd = pk && window.Cards && Cards.DEFS && Cards.DEFS[pk.key];
-        return cd ? { name: cd.name, text: cd.text(pk.roll) } : null;
+        if (!cd) return null;
+        let text = String(cd.text(pk.roll));
+        text = text.replace(/\byours\b/g, 'theirs').replace(/\byour\b/g, 'their').replace(/\bYour\b/g, 'Their')
+          .replace(/\byou\b/g, 'they').replace(/\bYou\b/g, 'They');
+        return { name: cd.name, text };
       },
       apply() {
         const foot = [], marks = [];
@@ -830,8 +887,12 @@
        its fight net reaches the rival's town, or by longboat to its shore.
        It NEVER turns a band onto the player: while the wilds are sparing a
        beaten rival (G.barbEase('A')) the bands WAIT — no muster that day, not
-       one draw, the charge kept — and a band that cannot reach the rival at
-       all disperses with its charge kept. Each band that turns is told at
+       one draw, the charge kept — but only for Deck.PACT_WAIT days past the
+       wave's day: then that wave runs its ordinary course (the charge still
+       kept, the log saying why), so a pact is three bands and never a shield
+       held open for as long as the rival stays down. A band that cannot
+       reach the rival at all scatters into the wilds — one of the three,
+       spent and said (Deck.pactLost). Each band that turns is told at
        every difficulty (a war drum and a log line), because the player
        bought it; the muster's whereabouts are never said. */
     barbarian_pact: {
@@ -1340,11 +1401,33 @@
         }
         return false;
       },
-      // will the deep come up for anything? At peace, only for what the player knows of
+      /* will the deep come up at all? ASKED OF WHAT THE PLAYER KNOWS, at war
+         as at peace: a card handed back whenever the hidden sea happened to be
+         empty would be a free, repeatable probe of what the fog hides. Knowing
+         of nothing, the card stays in the hand; knowing of something, it is
+         played — and takes whatever is really there, hidden or not (the war
+         is on), and may come up empty if what they knew is gone. */
       plan() {
-        if (S.peace && !this.knows()) return null;
-        const t = this.targets();
-        return (t.ships.length || t.coast.length) ? t : null;
+        if (!this.knows()) return null;
+        return this.targets();
+      },
+      // the first thing of theirs the player KNOWS the deep will reach, for
+      // the burst to land on — never a hull or shore the fog hides
+      knownFocus() {
+        const ships = S.units.filter(u => u.owner === 'A' && Units.isNaval(u) && u.hp > 0 && G.openWaterAt(u.x | 0, u.y | 0) &&
+          (G.visibleAt(u.x | 0, u.y | 0) || Deck.spySees(u)))
+          .sort((a, b) => (this.SOFT[a.kind] ?? 2) - (this.SOFT[b.kind] ?? 2) || a.id - b.id);
+        if (ships.length) return { x: ships[0].x, y: ships[0].y };
+        const seen = S.map.seenB, W = CFG.W;
+        let best = null;
+        if (seen) for (const k in seen) {
+          const m = seen[k];
+          if (!m || m.owner !== 'A' || m.key === 'mine') continue;
+          const x = k % W, y = (k / W) | 0, s = Bld.size(m.key);
+          if (!this.shoreOf(x, y, s)) continue;
+          if (!best || +k < best.k) best = { k: +k, x: x + s / 2, y: y + s / 2 };
+        }
+        return best ? { x: best.x, y: best.y } : null;
       },
       can() {
         if (!this.openSea()) return { ok: false, why: 'Needs open water' };
@@ -1355,18 +1438,16 @@
       warn() { return S.peace && this.knows() ? Deck.TRUCE : null; },
       focus() {
         if (!this.can().ok) return null;
-        const t = this.plan();
-        if (!t) return null;
-        if (t.ships.length) return { x: t.ships[0].x, y: t.ships[0].y };
-        return { x: Bld.cx(t.coast[0].b), y: Bld.cy(t.coast[0].b) };
+        return this.knownFocus();
       },
       apply() {
         const ok = this.can();
         if (!ok.ok) return ok;
         const t = this.plan();
+        // in words that say nothing about what the fog may hold
         if (!t) return { ok: false, why: S.peace
           ? 'The truce holds, and you know of nothing of theirs on the open sea or beside it — the deep would take nothing.'
-          : 'Nothing of theirs rides the open sea or stands beside it — the deep would come up empty.' };
+          : 'You know of nothing of theirs on the open sea or beside it — the deep would not know where to rise.' };
         // the player knows what it reaches (plan): an attack order's terms
         if (S.peace) G.breakPeace();
         const K = {

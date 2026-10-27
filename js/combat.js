@@ -1637,9 +1637,15 @@ const Combat = {
        holds a charge, the band that musters marches on the RIVAL. It never
        turns on the player for it — and the wilds still never finish a town
        they are sparing: with the rival eased the band WAITS (no muster, not
-       one draw, the charge kept) and is asked again tomorrow. */
-    const pact = !!(window.Deck && Deck.pactPending && Deck.pactPending());
-    if (pact && G.barbEase('A')) return;
+       one draw, the charge kept) and is asked again tomorrow. But NEVER FOR
+       LONG (Deck.pactHold): a pact is three bands, not a shield — a wave
+       that has waited its days runs its ordinary course, the charge kept for
+       a rival back on its feet, and the log says why. */
+    let pact = !!(window.Deck && Deck.pactPending && Deck.pactPending()), pactWaited = false;
+    if (pact && G.barbEase('A')) {
+      if (Deck.pactHold ? Deck.pactHold(S.day - S.wave.next) : true) return;
+      pact = false; pactWaited = true;
+    }
     const m = G.modeCfg();
     S.wave.count++;
     S.wave.lastDay = S.day;   // so the rival can avoid piling a raid onto a fresh wave
@@ -1718,7 +1724,7 @@ const Combat = {
           }
           Units.orderUnload(tr, landing.x, landing.y);
           if (pact) Deck.pactTurned(bandTribe, aboard);   // the player bought this band: told at every difficulty
-          else G.foeNote('⛵ Sails on the horizon — a longboat of ' + G.tribeName(bandTribe) + ' makes for the shore!');
+          else G.foeNote((pactWaited ? Deck.PACT_WAITED + ' ' : '') + '⛵ Sails on the horizon — a longboat of ' + G.tribeName(bandTribe) + ' makes for the shore!');
           return;
         }
       }
@@ -1789,16 +1795,18 @@ const Combat = {
     const spot = MapGen.findNear(sx, sy, 6, farOk) || MapGen.findNear(sx, sy, max, farOk) ||
                  MapGen.findNear(sx, sy, max, inNet) ||
                  MapGen.findNear(sx, sy, max, (x, y) => Path.passable(x, y));
+    /* a pact band with no ground that reaches the rival's town musters
+       nowhere: it scatters into the wilds — and it was one of the three the
+       pact bought (Deck.pactLost spends the charge and says so), or a world
+       with no road to the rival would make the pact a shield for ever */
+    if (pact && (!spot || !fight || !inNet(spot.x, spot.y))) { if (Deck.pactLost) Deck.pactLost(); return; }
     if (!spot) return;
-    // a pact band with no ground that reaches the rival's town musters nowhere:
-    // it disperses, and the pact keeps its charge for the next one
-    if (pact && (!fight || !inNet(spot.x, spot.y))) return;
     for (let i = 0; i < n; i++) {
       const p = MapGen.findNear(spot.x, spot.y, 4, farOk) ||
                 MapGen.findNear(spot.x, spot.y, 4, inNet) || spot;
       Units.spawn(brute(i), 'R', p.x, p.y, { scale, tribe: bandTribe }).hostileTo = disp;
     }
     if (pact) Deck.pactTurned(bandTribe, n);   // the player bought this band: told at every difficulty
-    else G.foeNote(`⚔ A war band of ${G.tribeName(bandTribe)} is on the move (${n})!`);
+    else G.foeNote((pactWaited ? Deck.PACT_WAITED + ' ' : '') + `⚔ A war band of ${G.tribeName(bandTribe)} is on the move (${n})!`);
   },
 };

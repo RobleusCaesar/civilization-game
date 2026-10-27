@@ -457,6 +457,7 @@ const DeckUI = {
      over; PLAY plays it; anywhere else puts it back. */
   lift(id, cell) {
     if (this.playing || this.lifted || !this.open) return;
+    this._armed = null;   // a fresh lift is a fresh first tap
     const c = Deck.card(id);
     if (!c || Deck.count(id) < 1) return;
     const can = Deck.canPlay(id), t = Deck.tier(c.tier);
@@ -509,6 +510,9 @@ const DeckUI = {
   },
 
   putBack(instant) {
+    // a confirm the player walked away from is no confirm: a card put back
+    // (or the sheet closed under it) asks twice again the next time
+    this._armed = null;
     const lf = this.lifted;
     if (!lf) return;
     this.lifted = null;
