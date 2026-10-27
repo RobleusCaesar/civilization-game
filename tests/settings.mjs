@@ -28,8 +28,14 @@
    5. THE ERROR RING: script errors, rejected promises and the frame loop's
       recovered faults are kept (last 20) and ride in a Bug or Crash report;
       an Idea carries no technical details unless asked.
-   6. IT FITS at 390x844, 430x932, 768x1024 and 1440x900: no sideways
-      scroll, no clipped tab label, the frame inside the window.
+   6. IT FITS at 390x844, 430x932, 768x1024, 1440x900, 1920x1080 and a
+      phone on its side (844x390): no sideways scroll, no clipped tab label,
+      the frame inside the window and every rail plaque inside the frame.
+   7. CHROME IS DRAWN AT THE DEVICE'S OWN RESOLUTION (the operator's ruling
+      on UI chrome): measured in the live page at eight sizes, every raster
+      the page draws is shown at or below its own pixels on a 3x screen
+      (CSS size × 3 ≤ natural size); the frame's corners are vectors; the
+      patch-notes painting, a scene, is never stretched past 2x on a desktop.
 
      node tests/settings.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
@@ -59,35 +65,32 @@ const html = readFileSync(join(root, 'index.html'), 'utf8');
     'SettingsPage.live(): PUBLIC || Deck.devOn() — flip PUBLIC to go public');
 }
 
-/* ---- 0. the art (PixelLab, assets/ui/settings/) — drawn at device
-   resolution: every icon is shown SMALLER than its file on a 3x phone, never
-   blown up nearest-neighbour; the icons are true alpha (they sit on wood);
-   the painting carries a real pixel count ---- */
+/* ---- 0. the art (PixelLab, assets/ui/settings/) — square, true alpha (the
+   icons sit on wood), and big enough for where they are drawn: the tab icons
+   are 128px, the report-kind icons were RE-MADE at a finer native size (the
+   64px set was shown at 28 CSS px on a wide window — 1.31x its pixels at 3x),
+   and the frame's corner is a vector now, so no corner picture ships at all.
+   Whether each is drawn within its pixels is MEASURED, in §7; the painting
+   carries a real pixel count; nothing asks for nearest-neighbour ---- */
 {
   const png = (f) => {
     const buf = readFileSync(join(root, 'assets/ui/settings', f));
     return { sig: buf.slice(1, 4).toString(), w: buf.readUInt32BE(16), h: buf.readUInt32BE(20), type: buf[25] };
   };
   const bad = [];
-  const want = { 'corner.png': 128, 'tab-general.png': 128, 'tab-audio.png': 128, 'tab-saves.png': 128, 'tab-feedback.png': 128, 'tab-notes.png': 128,
-    'kind-bug.png': 64, 'kind-idea.png': 64, 'kind-crash.png': 64, 'kind-other.png': 64 };
+  const want = { 'tab-general.png': 128, 'tab-audio.png': 128, 'tab-saves.png': 128, 'tab-feedback.png': 128, 'tab-notes.png': 128,
+    'kind-bug.png': 96, 'kind-idea.png': 96, 'kind-crash.png': 96, 'kind-other.png': 96 };   // at least
   for (const [f, n] of Object.entries(want)) {
     let p; try { p = png(f); } catch (e) { bad.push(f + ' missing'); continue; }
-    if (p.sig !== 'PNG' || p.w !== n || p.h !== n) bad.push(f + ' ' + p.w + 'x' + p.h);
+    if (p.sig !== 'PNG' || p.w < n || p.h !== p.w) bad.push(f + ' ' + p.w + 'x' + p.h);
     if (p.type !== 6) bad.push(f + ' not true alpha (type ' + p.type + ')');
   }
+  let gone = true; try { png('corner.png'); gone = false; } catch (e) {}
+  if (!gone) bad.push('corner.png still ships (the corner is drawn as a vector)');
   let art; try { art = png('notes-art.png'); } catch (e) { art = null; }
   if (!art || art.w < 640 || art.w / art.h < 1.8) bad.push('notes-art ' + (art ? art.w + 'x' + art.h : 'missing'));
-  ck('theArtShipsAtItsSizes', bad.length === 0, bad.join('; ') || 'ten icons and a ' + art.w + 'x' + art.h + ' painting');
-  // shown sizes, from the stylesheet: no picture is drawn bigger than its
-  // file on a 3x phone (the desktop's larger rail and kind icons are 1x/2x
-  // sizes), and nothing asks for nearest-neighbour
-  const css = readFileSync(join(root, 'js/settings.js'), 'utf8');
-  const px = (re) => +((css.match(re) || [])[1] || 0);
-  const tabPhone = px(/#scrSetx \.sxTab img \{ width: (\d+)px/), gear = px(/#scrSetx \.sxGear \{ width: (\d+)px/),
-    kind = px(/#scrSetx \.sxKind img \{ width: (\d+)px/), corner = px(/#scrSetx \.sxC \{[^}]*width: (\d+)px/);
-  ck('andNoIconIsBlownUpOnAPhone', tabPhone * 3 <= 128 && gear * 3 <= 128 && corner * 3 <= 128 && kind * 3 <= 64 && !/pixelated/.test(css),
-    'tab ' + tabPhone + 'px, gear ' + gear + 'px, corner ' + corner + 'px, kind ' + kind + 'px (at 3x)');
+  ck('theArtShipsAtItsSizes', bad.length === 0, bad.join('; ') || 'nine icons and a ' + art.w + 'x' + art.h + ' painting');
+  ck('andNothingAsksForNearestNeighbour', !/pixelated|crisp-edges/.test(readFileSync(join(root, 'js/settings.js'), 'utf8')), '');
 }
 
 const MOCK = `
@@ -497,8 +500,82 @@ const open = async (opts) => {
   await ctx.close();
 }
 
-/* ---- 6. it fits, every tab, at the four sizes ---- */
-for (const [w, h] of [[390, 844], [430, 932], [768, 1024], [1440, 900]]) {
+/* ---- 7. CHROME IS DRAWN AT THE DEVICE'S OWN RESOLUTION (the operator's
+   standing ruling: the world's art stays pixel art, but UI CHROME — frames,
+   corner ornaments, icons, buttons, dots — is high quality at the device's
+   pixels, never a small picture blown up). Measured in the live page, every
+   tab, at every size the page lays out for — a phone ON ITS SIDE included,
+   which is 3x AND takes the wide window's rail, the case the phone-only
+   source check missed: every raster the page draws (an <img>, or a CSS
+   background url() on any element or pseudo-element) is shown at or below
+   its own pixel count on a 3x screen — CSS size × 3 ≤ natural size. A vector
+   (inline SVG, a gradient, a border) passes by being one. The patch-notes
+   painting is a SCENE and keeps its pixel art, so it is exempt from the 3x
+   rule — but on a desktop window it is never stretched past twice its
+   pixels on a 2x screen. The probe is shown it can see a blow-up: one icon
+   pushed to 60px must be named. ---- */
+{
+  const probe = async (p) => p.evaluate(async () => {
+    const out = [], nat = {};
+    const natOf = u => nat[u] || (nat[u] = new Promise(res => { const i = new Image(); i.onload = () => res([i.naturalWidth, i.naturalHeight]); i.onerror = () => res(null); i.src = u; }));
+    for (const t of SettingsPage.TABS) {
+      SettingsPage.open(t.k);
+      const root = document.getElementById('scrSetx');
+      const imgs = Array.from(root.querySelectorAll('img'));
+      await Promise.all(imgs.map(i => i.complete ? 0 : new Promise(r => { i.addEventListener('load', r); i.addEventListener('error', r); })));
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      for (const i of root.querySelectorAll('img')) {
+        const cs = getComputedStyle(i), rc = i.getBoundingClientRect();
+        if (!rc.width || cs.display === 'none' || cs.visibility === 'hidden' || !i.naturalWidth) continue;
+        out.push({ tab: t.k, name: i.src.split('/').pop().split('?')[0], scene: !!i.closest('.sxHero'), w: rc.width, h: rc.height, nw: i.naturalWidth, nh: i.naturalHeight });
+      }
+      for (const el of root.querySelectorAll('*')) {
+        for (const pse of [null, '::before', '::after']) {
+          const bi = getComputedStyle(el, pse).backgroundImage;
+          const m = bi && /url\("?([^")]+)"?\)/.exec(bi);
+          if (!m || /\.svg(\?|$)|^data:image\/svg/.test(m[1])) continue;
+          const n = await natOf(m[1]), rc = el.getBoundingClientRect();
+          if (n) out.push({ tab: t.k, name: 'bg ' + m[1].split('/').pop().split('?')[0], scene: false, w: rc.width, h: rc.height, nw: n[0], nh: n[1] });
+        }
+      }
+    }
+    return { out, vectors: document.querySelectorAll('#scrSetx .sxC svg').length };
+  });
+  const over = [], seen = new Set(), scenes = [];
+  let vectors = 0;
+  for (const [w, h] of [[320, 568], [390, 844], [430, 932], [844, 390], [768, 1024], [1024, 768], [1440, 900], [1920, 1080]]) {
+    const { ctx, p } = await open({ q: '?cards=1', vp: { width: w, height: h }, tag: 'chrome' + w });
+    await p.evaluate(() => { Screens.backTo = 'title'; Screens.show('settings'); });
+    const r = await probe(p);
+    vectors = Math.max(vectors, r.vectors);
+    for (const x of r.out) {
+      seen.add(x.name);
+      if (x.scene) {
+        if (w >= 1024 && x.w * 2 > 2 * x.nw) scenes.push(x.name + ' ' + x.w.toFixed(0) + 'px wide at ' + w + 'x' + h + ' (' + (x.w * 2 / x.nw).toFixed(2) + 'x its pixels at 2x)');
+        continue;
+      }
+      const k = Math.max(x.w * 3 / x.nw, x.h * 3 / x.nh);
+      if (k > 1.001) over.push(x.name + ' ' + x.w.toFixed(0) + 'px at ' + w + 'x' + h + ' (' + k.toFixed(2) + 'x its ' + x.nw + 'px at 3x)');
+    }
+    if (w === 844) {  // the control: a blow-up the probe must name
+      await p.evaluate(() => { const s = document.createElement('style'); s.id = 'ctlBlow'; s.textContent = '#scrSetx .sxTab img { width: 60px !important; height: 60px !important; }'; document.head.appendChild(s); });
+      const c = await probe(p);
+      const named = c.out.some(x => !x.scene && /^tab-/.test(x.name) && x.w * 3 > x.nw);
+      ck('andTheChromeProbeCanSeeABlowUp', named, named ? 'a 60px tab icon is named' : 'the probe missed a 60px tab icon');
+    }
+    await ctx.close();
+  }
+  const worst = {};
+  for (const o of over) { const k = o.split(' ')[0], r = +/\((\d+\.\d+)x/.exec(o)[1]; if (!worst[k] || r > worst[k].r) worst[k] = { r, o }; }
+  const pieces = Object.values(worst).sort((a, b) => b.r - a.r).map(w => w.o);
+  ck('noChromeIsShownPastItsPixelsAt3x', over.length === 0 && seen.size >= 10,
+    over.length ? pieces.length + ' piece(s): ' + pieces.join('; ') : seen.size + ' rasters measured on 8 sizes × 5 tabs, all at or under their pixels at 3x');
+  ck('theFrameCornersAreVectors', vectors === 4 && !seen.has('corner.png'), vectors + ' vector corners');
+  ck('andThePaintingIsNeverStretchedOnADesktop', scenes.length === 0 && seen.has('notes-art.png'), scenes[0] || 'the patch-notes painting stays within 2x its pixels at 2x');
+}
+
+/* ---- 6. it fits, every tab, at six sizes — a phone on its side among them ---- */
+for (const [w, h] of [[390, 844], [430, 932], [768, 1024], [1440, 900], [1920, 1080], [844, 390]]) {
   const { ctx, p } = await open({ q: '?cards=1', vp: { width: w, height: h }, tag: 'fit' + w });
   const r = await p.evaluate(async () => {
     Screens.backTo = 'title'; Screens.show('settings');
@@ -513,6 +590,8 @@ for (const [w, h] of [[390, 844], [430, 932], [768, 1024], [1440, 900]]) {
       for (const tab of el.querySelectorAll('.sxTab')) {
         const lab = Array.from(tab.querySelectorAll('.sxTn, .sxTs')).find(x => getComputedStyle(x).display !== 'none');
         const tr = tab.getBoundingClientRect(), lr = lab.getBoundingClientRect();
+        // a rail plaque stays inside the frame (a phone on its side ran the fifth one out through its foot)
+        if (tr.bottom > fr.bottom - 2 || tr.right > fr.right - 2) bad.push(t.k + ': tab "' + lab.textContent + '" spills out of the frame ' + (tr.bottom - fr.bottom).toFixed(1));
         if (lr.left < tr.left + 4 || lr.right > tr.right - 4) bad.push(t.k + ': label "' + lab.textContent + '" crowds its tab ' + [lr.left - tr.left, tr.right - lr.right].map(v => v.toFixed(1)).join('/'));  // a clear 4px each side, or it reads as touching the plaque's rim
       }
       for (const x of pane.querySelectorAll('.sxCard, .sxSeg, .sxSend, .sxKinds')) {

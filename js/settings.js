@@ -22,10 +22,15 @@
    Five tabs: General · Audio · Saves · Feedback · Patch Notes. A side rail on
    anything 720px and wider, a tab strip across the top on a phone. The look
    is the reward screen's (js/deckscreens.js): Cinzel caps, chamfered plaques
-   with gold rims, dark carved wood — with PixelLab's corner ornaments, tab
-   icons and the patch-notes painting (assets/ui/settings/), drawn at device
-   resolution (never nearest-neighbour blown up: the operator's ruling on UI
-   chrome). A missing picture falls back to the plain CSS frame. */
+   with gold rims, dark carved wood — with PixelLab's tab and report-kind
+   icons and the patch-notes painting (assets/ui/settings/), and a vector
+   corner ornament (cornerSvg). UI CHROME IS DRAWN AT THE DEVICE'S OWN
+   RESOLUTION (the operator's ruling): every picture here is shown at or
+   below its own pixels on a 3x screen — CSS size × 3 ≤ the file's size, a
+   phone on its side (3x, and the wide rail) included — so a new icon or a
+   bigger CSS size must bring a bigger file (tests/settings.mjs §7 measures
+   it). The painting is a scene and keeps its pixel art. A missing picture
+   falls back to the plain CSS frame. */
 const SettingsPage = {
   PUBLIC: false,          // ← THE ONE-LINE FLIP: true shows this page to every player
   live() {
@@ -796,7 +801,7 @@ SettingsPage.CSS = `
 @media (min-width: 720px) {
   #scrSetx .sxHead { padding: calc(var(--safe-top) + 18px) 18px 14px; }
   #scrSetx .sxHead h2 { font-size: 34px; }
-  #scrSetx .sxGear { width: 46px; height: 46px; }
+  #scrSetx .sxGear { width: 42px; height: 42px; }   /* its 128px file at 3x — no bigger */
   #scrSetx .sxFrame { flex-direction: row; width: calc(100% - 48px); margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); max-height: 760px; }
   #scrSetx .sxC { width: 58px; height: 58px; left: auto; top: auto; }
   #scrSetx .sxC.tl { left: -8px; top: -8px; } #scrSetx .sxC.tr { right: -8px; top: -8px; }
