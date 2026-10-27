@@ -145,8 +145,8 @@ const DeckUI = {
   /* …AND IT IS EARNED, NOT JUST THERE: as the button lands, a ring of hard
      gold pixels bursts off it — the play sequence's own flare, in the deck's
      gold, for one beat — and its icon flashes white-gold. Squares, never a
-     soft glow; opacity in hard steps (steps()), never a fade. Lives on the
-     body for 900ms, then is gone: nothing here outlasts the beat. */
+     soft glow; motion and opacity in hard steps (steps()), never a fade.
+     Lives on the body for a second, then is gone: nothing outlasts the beat. */
   _arriveFlare() {
     const r = this.el.btn.getBoundingClientRect();
     if (!r.width) return;
@@ -163,16 +163,18 @@ const DeckUI = {
       sq.style.background = PAL[i % PAL.length];
       sq.style.margin = (-sz / 2) + 'px 0 0 ' + (-sz / 2) + 'px';
       host.appendChild(sq);
-      const dx = Math.round(Math.cos(a) * d / 2) * 2, dy = Math.round(Math.sin(a) * d / 2) * 2;
-      sq.animate([{ transform: 'translate(0,0)', opacity: 1 }, { transform: `translate(${dx}px,${dy}px)`, opacity: 1, offset: 0.55 },
-        { transform: `translate(${Math.round(dx * 1.25)}px,${Math.round(dy * 1.25)}px)`, opacity: 0 }],
-        { duration: 760, delay: 180, easing: 'steps(9, end)', fill: 'both' });
+      // every position on the 2px grid; the ring is born OUTSIDE the button
+      // (a spark over the gold icon is gold on gold) and thrown clear of it
+      const at = (r) => `translate(${Math.round(Math.cos(a) * r / 2) * 2}px,${Math.round(Math.sin(a) * r / 2) * 2}px)`;
+      sq.animate([{ transform: at(16), opacity: 1 }, { transform: at(d), opacity: 1, offset: 0.6 },
+        { transform: at(d * 1.3), opacity: 0 }],
+        { duration: 640, delay: 200, easing: 'steps(8, end)', fill: 'both' });
     }
     document.body.appendChild(host);
     const ico = this.el.btn.querySelector('.dkIco');
     if (ico && ico.animate) ico.animate([{ filter: 'none' }, { filter: 'brightness(1.9) sepia(.6)', offset: 0.3 }, { filter: 'none' }],
       { duration: 520, delay: 160, easing: 'steps(4, end)' });
-    setTimeout(() => host.remove(), 1000);
+    setTimeout(() => host.remove(), 1100);
   },
 
   reset() {

@@ -192,7 +192,7 @@ const DeckScreens = {
        so the missing name box is never a mystery. */
     const played = this._playedN();
     const hold = !win ? '' : (played && Deck.isTest()) ? 'Test-deck run — not posted to the world board.'
-      : (played && !(window.Backend && Backend.BOARD_MARKS_CARDS)) ? 'Card-assisted — kept off the world board until it can wear the mark.' : '';
+      : (played && !(window.Backend && Backend.BOARD_MARKS_CARDS)) ? 'Not posted to the world board — it cannot wear the card mark yet.' : '';
     Screens._entry = win && !hold ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: played } : null;
     Screens._submitted = false;
     Screens._leaveWarned = false;

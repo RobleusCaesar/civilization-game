@@ -360,7 +360,7 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   });
   ck('aShortWinStillEarns', q.card && !q.why && q.gained >= 1, `card ${q.card}, why shown ${q.why}, gained ${q.gained}`);
   ck('aCardAssistedWinNeverStandsUnmarkedOnTheBoard', q.held && !q.nameBox && q.assist &&
-    q.heldNote === 'Card-assisted — kept off the world board until it can wear the mark.',
+    q.heldNote === 'Not posted to the world board — it cannot wear the card mark yet.',
     `entry held ${q.held}, name box ${q.nameBox}, mark ${q.assist}, note "${q.heldNote}"`);
   ck('andOnceTheBoardCanMarkItTheEntryCarriesItsCount', q.cards === 1 && q.markedNote === '', `entry cards ${q.cards}, note "${q.markedNote}"`);
   ck('aTestDecksAssistedWinIsNeverPosted', q.testHeld && q.testNote === 'Test-deck run — not posted to the world board.' && q.testUnassisted,
