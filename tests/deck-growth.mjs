@@ -86,7 +86,9 @@
    the sapper's span,
    the meat in Units.damage, Units.workReport), Bld.dailyProduction,
    Bld.effCost / place / finishUpgrade / finishWallUpgrade / update (the wall
-   works), AI.daily's hall trickle, UI.panelSub / wonderSavedLine.
+   works), AI.daily's hall trickle, UI.panelSub / wonderSavedLine,
+   R.drawCardGround / cardBldLooks / drawCardBld (the ground pass and the
+   building loop's card hooks) and DeckUI._dest (an effect's own dest).
 
      node tests/deck-growth.mjs      # exits non-zero on any regression */
 
