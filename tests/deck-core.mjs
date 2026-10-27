@@ -238,7 +238,9 @@ ck('aDuplicateWearsItsCount', d.badge === '×3', String(d.badge));
       unbuilt: Deck.CATALOG.filter(c => !Deck.FX[c.id] && Deck.count(c.id) > 0 && !CFG.CARDS.STARTER.includes(c.id)).map(c => c.id) };
   });
   ck('theReviewLinkDealsTheBuiltCards', sl.on && sl.held && sl.unbuilt.length === 0 &&
-    sl.built === 'dragonfire,forager_cache,harvest_festival,starfall,swift_raiders',
+    // the gate-2 five, and the growth group's seven (js/deckfx-growth.js)
+    sl.built === 'age_of_marble,blight,bountiful_land,dragonfire,enlightenment,forager_cache,golden_age,harvest_festival,' +
+      'quick_hands,starfall,swift_raiders,wonders_foundation',
     `on ${sl.on}; dealt ${sl.built}; unbuilt dealt ${sl.unbuilt.join(',') || 'none'}`);
   await ctx2.close();
 }
