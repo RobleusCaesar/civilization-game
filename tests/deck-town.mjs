@@ -938,7 +938,8 @@ await p.evaluate(({ TOWN }) => {
     }
     out.caught = caught.filter(m => /card show|card look/.test(m));
     // every voice is synthesized, gapped, and plays without a fault
-    const V = ['cardWood', 'cardStone', 'cardGold', 'cardCaravan', 'cardMend', 'cardBuild', 'cardFire', 'cardSkin', 'cardGlance', 'cardRise', 'cardHall', 'cardWard'];
+    const V = ['cardWood', 'cardStone', 'cardGold', 'cardCaravan', 'cardMend', 'cardBuild', 'cardFire', 'cardSkin', 'cardGlance', 'cardRise', 'cardHall', 'cardWard',
+      'cardThud', 'cardThunk', 'cardCoin'];
     out.voices = V.every(k => typeof Sound._VOICES[k] === 'function' && Sound.GAP[k] > 0);
     let vthrew = null;
     try { for (const k of V) Sound.play(k); } catch (e) { vthrew = String(e); }
@@ -954,7 +955,7 @@ await p.evaluate(({ TOWN }) => {
     JSON.stringify(r.live) + `; a blow glances and the ward flares ${r.struck}`);
   ck('aFrameWithNoCardInPlayPaysNothing', r.idleCalls === 0, `${r.idleCalls} card-world passes over six frames (three with a charge in hand)`);
   ck('theShowsAreRenderStateAndDrainAway', r.drained && !r.inS);
-  ck('everyVoiceIsSynthesized', r.voices && !r.vthrew, r.vthrew || 'twelve voices, each with its gap');
+  ck('everyVoiceIsSynthesized', r.voices && !r.vthrew, r.vthrew || 'fifteen voices (a landing\'s thud, a block\'s thunk, a coin\'s clink among them), each with its gap');
 }
 
 // ---------------- 10. WHAT THE PICTURE STANDS ON ----------------
@@ -1010,16 +1011,23 @@ await p.evaluate(({ TOWN }) => {
     R.cardShows = []; S.deck.fx = [];
     /* (c) THE GOODS BRING THE HALL ON SCREEN: their moment lands at its door,
        so a goods card played with the camera elsewhere brings it into view
-       first, as a 'tc' card does — and a card with no moment there (Master
-       Builders, also at the bar) leaves the camera alone */
+       first, as a 'tc' card does — and so does Master Builders now that its
+       play marks the hall; the CONTROL is the same card with its showAtHall
+       taken away, which must leave the camera alone */
     const door = () => R.onScreen(Bld.cx(tc), Bld.cy(tc) + Bld.size(tc) / 2);
     R.centerOn(CFG.W - 5, CFG.H - 5);
     const away = !door();
     DeckUI._dest('bar', 'fallen_timber');
     const brought = door();
     R.centerOn(CFG.W - 5, CFG.H - 5);
+    const MBh = Deck.FX.master_builders, keepH = MBh.showAtHall;
+    delete MBh.showAtHall;
     DeckUI._dest('bar', 'master_builders');
-    out.camera = away && brought && !door() &&
+    const stayed = !door();
+    MBh.showAtHall = keepH;
+    R.centerOn(CFG.W - 5, CFG.H - 5);
+    DeckUI._dest('bar', 'master_builders');
+    out.camera = away && brought && stayed && door() &&
       ['fallen_timber', 'loose_stone', 'gold_nugget', 'trade_caravan'].every(id => Deck.FX[id].showAtHall);
     R.centerOn(Bld.cx(tc), Bld.cy(tc) + 0.5);
     /* (d) THE CARAVAN'S ROAD IS ONE THE MAP CAN CARRY: every tile the cart
@@ -1104,11 +1112,483 @@ await p.evaluate(({ TOWN }) => {
   ck('aBurnedBuildingWearsItsOwnPictureUnderTheCardsLight', r.worn, 'the overlay and the crown are cut from R.wornSprite, not the intact roof');
   ck('oneWorldSizedCopyPerSpriteWhateverTheColours', r.onePer && r.sized,
     `${r.made} canvases for ${r.K} sprites under four colours (at most two each); every copy the size of its art rect ${r.sized}`);
-  ck('theGoodsBringTheHallOnScreen', r.camera, 'a goods card brings the hall into view; Master Builders leaves the camera alone');
+  ck('theGoodsBringTheHallOnScreen', r.camera, 'a goods card brings the hall into view, and Master Builders\' mark on it; without showAtHall the camera stays');
   ck('theCaravansRoadIsOneTheMapCanCarry', r.open && r.wet && r.crowd,
     `open ground: the full road ${r.open}; a channel across it cuts it short, never crossed ${r.wet} (${r.wetN}); a row of people: the next row ${r.crowd}`);
   ck('andWithNoRoadTheLoadStillComes', r.none && r.noneDraws, r.threw || `no row can carry the cart: the load comes down in the card's light, a pile of ${r.pilePx} solid px`);
   ck('aChargeKeptUnderAnotherKeyIsStillSeen', r.pact && r.pactGone, `the pact's bands under 'pact' wear the card's chip ${r.pact}; gone with the charge ${r.pactGone}`);
+}
+
+// ---------------- 11. THE GOODS COME DOWN WHERE THEY CAN BE SEEN ----------------
+/* The playtest's phone (390×844, the operator's own path): the pile spot
+   was pushed EAST off the villagers' feet and the camera only re-centred
+   when the hall itself was off screen, so with the hall on the right of the
+   view the logs, the stone and the nugget landed at the screen's edge and
+   their counts were cut ("+200 woo", "+100 gol"); the caravan's one-line
+   count lay across the hall's straw roof. The rule: the pile, the count
+   over it and every number the goods raise lie INSIDE THE SAFE VIEW — below
+   the top bar, the minimap and the toast column, above the bottom bar, a
+   tile in from either side, measured here off the DOM on our own — and the
+   caravan's three counts stack, none of them over the hall's roof. */
+{
+  const r = await p.evaluate(() => {
+    const out = { cards: {} }, TL = CFG.TILE, TX = Deck._townTX;
+    const vw0 = innerWidth;
+    for (const id of ['fallen_timber', 'loose_stone', 'gold_nugget', 'trade_caravan']) {
+      __tw.fresh('town-safe-' + id);
+      Screens.show('playing'); S.paused = true;
+      const tc = __tw.flat();
+      R.cam.z = 1.7;
+      // the hall on the RIGHT of the view, wholly on screen: the old spot
+      // pushed east of the door ran off the edge
+      const z = R.cam.z, de = document.documentElement;
+      R.cam.x = (tc.x + 3.4) * TL - de.clientWidth / z;
+      R.cam.y = Bld.cy(tc) * TL - de.clientHeight / z / 2;
+      // villagers on the doorstep, as at a run's start
+      for (let k = 0; k < 4; k++) __tw.unit('villager', 'P', tc.x + 0.5 + k, tc.y + 2.6);
+      for (let i = 0; i < 3; i++) R.draw(0);
+      // the safe view, read off the page by the test itself
+      const rect = id => { const el = document.getElementById(id); if (!el || getComputedStyle(el).display === 'none') return null; const q = el.getBoundingClientRect(); return q.width > 0 ? q : null; };
+      let top = 0, bot = de.clientHeight;
+      const tb = rect('topbar'), mm = rect('miniWrap'), bb = rect('bottombar'), ts = rect('toasts');
+      if (tb && tb.height) top = Math.max(top, tb.bottom);
+      if (mm && mm.height) top = Math.max(top, mm.bottom);
+      if (ts) top = Math.max(top, ts.top + 60);
+      if (bb && bb.height) bot = Math.min(bot, bb.top);
+      const toScr = (wx, wy) => ({ x: (wx - R.cam.x) * R.cam.z, y: (wy - R.cam.y) * R.cam.z });
+      const inside = (wx0, wy0, wx1, wy1) => {
+        const a = toScr(wx0, wy0), b2 = toScr(wx1, wy1);
+        return a.x >= TL * z - 1 && b2.x <= de.clientWidth - TL * z + 1 && a.y >= top - 1 && b2.y <= bot + 1;
+      };
+      const before = R.floats.length;
+      const rr = Deck.play(id);
+      const sh = R.cardShows.find(s => s.id === id);
+      // run the show to its end, keeping every number it raised
+      const nums = [];
+      for (let k = 0; k <= 60 && sh && R.cardShows.indexOf(sh) >= 0; k++) {
+        R.draw(sh.ms / 1000 / 60);
+        if (sh.lab) for (const key in sh.lab) nums.push(Object.assign({ key }, sh.lab[key]));
+      }
+      const fl = R.floats.slice(before).filter(f => /^\+\d/.test(f.txt));
+      const sp = sh && sh.at;
+      const g = R.cv.getContext('2d'); g.font = 'bold 9px sans-serif';
+      const W = t => g.measureText(t).width + 4;
+      const want = { fallen_timber: ['+200 wood'], loose_stone: ['+150 stone'], gold_nugget: ['+60 gold'], trade_caravan: ['+250 food', '+250 wood', '+100 gold'] }[id];
+      const wmax = Math.max(...want.map(W)), lines = want.length;
+      const a = TX.art(tc), roof = { x0: a.rc.x + a.box.l * a.rc.w, x1: a.rc.x + a.box.r * a.rc.w, y0: a.rc.y + a.box.t * a.rc.h, y1: a.foot };
+      const last = nums[nums.length - 1];
+      out.cards[id] = {
+        ok: rr.ok,
+        pile: !!sp && inside((sp.x - 1) * TL, (sp.y - 1.6) * TL, (sp.x + 1) * TL, (sp.y + 0.3) * TL),
+        nearHall: !!sp && Math.hypot(sp.x - Bld.cx(tc), sp.y - Bld.cy(tc)) <= 5,
+        oldFloats: fl.map(f => f.txt),
+        counted: !!last && fl.length === 0,
+        countIn: !!last && inside(last.x - wmax / 2, last.y - TX.RISE, last.x + wmax / 2, last.y + lines * 11),
+        clearOfRoof: !!last && (last.x + wmax / 2 <= roof.x0 || last.x - wmax / 2 >= roof.x1 || last.y + lines * 11 <= roof.y0 || last.y - TX.RISE >= roof.y1),
+        at: sp && [+sp.x.toFixed(2), +sp.y.toFixed(2)], tc: [tc.x, tc.y],
+      };
+    }
+    S.units = []; R.cardShows = [];
+    return out;
+  });
+  const C = r.cards;
+  ck('theGoodsComeDownInsideTheSafeView', Object.values(C).every(c => c.ok && c.pile && c.nearHall),
+    Object.entries(C).map(([id, c]) => `${id} at ${JSON.stringify(c.at)} (hall ${c.tc}) inside ${c.pile}`).join('; '));
+  ck('andEveryCountIsFittedToIt', Object.values(C).every(c => c.counted && c.countIn),
+    Object.entries(C).map(([id, c]) => `${id} ${c.countIn}${c.oldFloats.length ? ' (a bare float: ' + c.oldFloats.join('|') + ')' : ''}`).join('; '));
+  ck('theCaravansCountsStackClearOfTheRoof', C.trade_caravan.counted && C.trade_caravan.clearOfRoof && Object.values(C).every(c => c.clearOfRoof),
+    Object.entries(C).map(([id, c]) => `${id} clear ${c.clearOfRoof}`).join('; '));
+}
+
+// ---------------- 12. PAID ON IMPACT ----------------
+/* The playtest: the wood read 447 while the logs were still in the air, and
+   the caravan's numbers ran 2.5 s ahead of its goods. S.res is credited at
+   the play — the truth, for saves and every rule — but the NUMBER ON THE BAR
+   is held until the goods land and steps up as each piece does. Driven
+   through the real landing (DeckUI._land, the line that hands the effect's
+   {pay} to the bar), with real time let pass first so an ordinary count-up
+   would already have finished: the old bar read the full total before a
+   single log was down. Culled (the camera elsewhere) the pieces still pay;
+   and whatever happens, the bar ends on the stockpile. */
+{
+  const r = await p.evaluate(async () => {
+    const out = {}, wait = ms => new Promise(res2 => setTimeout(res2, ms));
+    const EL = { food: 'rFood', wood: 'rWood', stone: 'rStone', gold: 'rGold' };
+    for (const id of ['fallen_timber', 'loose_stone', 'gold_nugget', 'trade_caravan']) {
+      for (const away of [false, true]) {
+        __tw.fresh('town-pay-' + id);
+        Screens.show('playing'); S.paused = true;
+        const tc = __tw.flat();
+        R.cam.z = 1.7;
+        if (away) R.centerOn(CFG.W - 6, CFG.H - 6); else R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1);
+        const before = Object.assign({}, S.res);
+        DeckUI.reset();
+        const L = document.createElement('div'); document.body.appendChild(L);
+        const P = DeckUI.playing = { id, world: S, layer: L, dest: { kind: 'bar', chips: [] }, landed: true };
+        DeckUI._land(P, null, false);
+        const gained = Object.keys(EL).filter(k => S.res[k] > before[k]);
+        const read = k => +String(document.getElementById(EL[k]).textContent).replace(/[^\d]/g, '');
+        await wait(420);                         // longer than any count-up: the old bar is done
+        DeckUI._tickNumbers();
+        const sh = R.cardShows.find(s => s.id === id);
+        const list = Deck._townTX.pays ? Deck._townTX.pays(id, sh) : [[0.3]];
+        const first = Math.min(...list.map(e => e[0]));
+        // the show, up to just before its first piece lands — driven through
+        // the shows' own pass (a whole frame of the world sixty times a second
+        // on a loaded machine outran the bar's own failsafe, real time)
+        const g0 = R.cv.getContext('2d'), step = () => { g0.save(); R.drawCardShows(g0, 1 / 60, 'world'); g0.restore(); };
+        while (sh.t + 1 / 60 < first) { step(); DeckUI._tickNumbers(); }
+        const held = gained.every(k => read(k) === before[k]);
+        // …then through to its end, every number read as it steps
+        const seen = {}; gained.forEach(k => seen[k] = new Set([read(k)]));
+        for (let i = 0; i < 600 && R.cardShows.indexOf(sh) >= 0; i++) {
+          step(); DeckUI._tickNumbers();
+          gained.forEach(k => seen[k].add(read(k)));
+        }
+        // a piece that flies to the bar (the nugget's coins) pays when it arrives:
+        // waited for by its result, never a fixed timer (bounded by the failsafe)
+        for (let i = 0; i < 160 && DeckUI._ticks.length; i++) { await wait(40); DeckUI._tickNumbers(); gained.forEach(k => seen[k].add(read(k))); }
+        const end = gained.every(k => read(k) === S.res[k]);
+        // a step is a held number moving between two pieces: more than one value short of the total
+        // (asked only of a resource that lands in two or more pieces)
+        const steps = gained.map(k => list.filter(e => e[1] === k).length < 2 ? 1 : [...seen[k]].filter(v => v > before[k] && v < S.res[k]).length);
+        out[id + (away ? '@away' : '')] = { held, end, steps, pieces: list.length, gained, before: gained.map(k => before[k]), now: gained.map(k => S.res[k]) };
+        L.remove(); DeckUI.reset();
+      }
+    }
+    R.cardShows = [];
+    return out;
+  });
+  const E = Object.entries(r);
+  ck('theBarWaitsForTheGoodsToLand', E.every(([, x]) => x.held),
+    E.map(([id, x]) => `${id}: held ${x.held} (${x.before} → ${x.now})`).join('; '));
+  ck('andStepsUpAsEachPieceLands', E.every(([, x]) => x.pieces < 2 || x.steps.every(n => n >= 1)), E.map(([id, x]) => `${id} ${x.steps} over ${x.pieces} pieces`).join('; '));
+  ck('andAlwaysEndsOnTheStockpile', E.every(([, x]) => x.end), E.map(([id, x]) => `${id} ${x.end}`).join('; '));
+}
+
+// ---------------- 13. THE LIGHT FROM THE SKY, AND THE WEIGHT OF WHAT LANDS ----------------
+/* The critics: the goods' beam was "a hard cream RECTANGLE with a flat
+   bottom and a flat top cut ~250 px above the ground — a stray UI bar, and
+   over grass it reads olive"; the pieces landed with no weight. Measured on
+   the show itself, drawn over flat meadow at the moment every piece is
+   down and the light still held: the shaft runs to the TOP of the view, it
+   TAPERS (narrower up there than at the ground), and every pixel it changes
+   is one of the tier's own ink colours laid opaque — not one blend of light
+   over grass. Each piece lands with its own dust (a place-poof), Loose
+   Stone's biggest with a jolt, the nugget's coins fly to the gold chip; and
+   the pile goes in hard steps, never at an alpha. */
+{
+  const r = await p.evaluate(() => {
+    const out = {}, TL = CFG.TILE, TX = Deck._townTX;
+    const GRASS = [91, 132, 57];
+    for (const id of ['fallen_timber', 'loose_stone', 'gold_nugget']) {
+      __tw.fresh('town-shaft-' + id);
+      Screens.show('playing'); S.paused = true;
+      const tc = __tw.flat();
+      R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1);
+      R.placePoofs = []; R.cardShows = [];
+      let shakes = 0, flown = 0;
+      const sk = R.shakeAt, fl = TX && TX.flyToBar;
+      R.shakeAt = function () { shakes++; return sk.apply(this, arguments); };
+      if (fl) TX.flyToBar = function () { flown++; };
+      try {
+        Deck.play(id);
+        const sh = R.cardShows.find(s => s.id === id);
+        const K = Deck.FX[id].show;
+        // walk the show through to the moment the last piece is down
+        const lastDown = K.land ? K.land((K.LOGS || K.BLOCKS).length - 1) + 0.05 : (K.LAND + K.B1 + K.B2 + 0.02);
+        while (sh.t < lastDown) R.drawCardShows(R.cv.getContext('2d'), 1 / 60, 'world');
+        const poofs = R.placePoofs.length;
+        // the show alone, over flat meadow, in a world-px canvas covering the view
+        const vw = Math.ceil(R.viewW() / R.cam.z), vh = Math.ceil(R.viewH() / R.cam.z);
+        const cv = document.createElement('canvas'); cv.width = vw; cv.height = vh;
+        const cg = cv.getContext('2d');
+        cg.fillStyle = 'rgb(' + GRASS + ')'; cg.fillRect(0, 0, vw, vh);
+        cg.setTransform(1, 0, 0, 1, -Math.round(R.cam.x), -Math.round(R.cam.y));
+        R.drawCardShows(cg, 0, 'world');
+        const sp = sh.at, px = Math.round(sp.x * TL - R.cam.x), py = Math.round(sp.y * TL - R.cam.y);
+        const d = cg.getImageData(0, 0, vw, vh).data;
+        const tone = R.LIGHT.TONE[id === 'gold_nugget' ? 'gold' : TX.STONE_LIGHT];
+        // the light's own ink; the timber's leaves drift down it in their own colours
+        const ok = new Set([tone.hot, ...tone.ramp, ...(id === 'fallen_timber' ? [...ART.PALETTE.leaf, ...ART.PALETTE.thatch] : [])].map(h => h.toLowerCase()));
+        const hex = i => '#' + [d[i], d[i + 1], d[i + 2]].map(v => v.toString(16).padStart(2, '0')).join('');
+        let blend = 0, lit = 0, topLit = 0;
+        const rowW = y => { let n = 0; for (let x = px - 30; x <= px + 30; x++) { const i = (y * vw + x) * 4; if (d[i] !== GRASS[0] || d[i + 1] !== GRASS[1] || d[i + 2] !== GRASS[2]) n++; } return n; };
+        const yTop = 0, yBot = Math.max(1, py - Math.round(TL * 2.4));
+        for (let y = yTop; y < yBot; y++) for (let x = px - 30; x <= px + 30; x++) {
+          if (x < 0 || x >= vw) continue;
+          const i = (y * vw + x) * 4;
+          if (d[i] === GRASS[0] && d[i + 1] === GRASS[1] && d[i + 2] === GRASS[2]) continue;
+          lit++;
+          if (y < 24) topLit++;
+          if (!ok.has(hex(i))) blend++;
+        }
+        let wTop = 0, wBot = 0;
+        for (let y = 0; y < 24; y++) wTop = Math.max(wTop, rowW(y));
+        for (let y = yBot - 24; y < yBot; y++) wBot = Math.max(wBot, rowW(y));
+        // the pile goes in hard steps: drawn late in its dissolve, nothing translucent above its shadow line
+        sh.t = 0.93 * sh.ms / 1000;
+        const cv2 = document.createElement('canvas'); cv2.width = vw; cv2.height = vh;
+        const c2 = cv2.getContext('2d');
+        c2.setTransform(1, 0, 0, 1, -Math.round(R.cam.x), -Math.round(R.cam.y));
+        if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+        const lab = TX.label; TX.label = () => {};   // the count is type, anti-aliased by the browser: not the pile
+        try { R.drawCardShows(c2, 0, 'world'); } finally { TX.label = lab; }
+        const d2 = c2.getImageData(px - 34, py - 40, 68, 37).data;
+        let soft = 0;
+        for (let i = 3; i < d2.length; i += 4) if (d2[i] > 0 && d2[i] < 250) soft++;
+        out[id] = { lit, topLit, blend, wTop, wBot, poofs, shakes, flown, soft };
+      } finally { R.shakeAt = sk; if (fl) TX.flyToBar = fl; }
+    }
+    R.cardShows = []; R.placePoofs = [];
+    return out;
+  });
+  const E = Object.entries(r);
+  ck('theLightRunsDownFromTheTopOfTheView', E.every(([, x]) => x.topLit > 0 && x.lit > 200),
+    E.map(([id, x]) => `${id}: ${x.lit} lit px above the pile, ${x.topLit} in the view's top rows`).join('; '));
+  ck('andTapersToTheSky', E.every(([, x]) => x.wTop > 0 && x.wTop < x.wBot), E.map(([id, x]) => `${id} ${x.wTop} px wide up top, ${x.wBot} at the ground`).join('; '));
+  ck('everyCellOfItIsInkNeverABlend', E.every(([, x]) => x.lit > 0 && x.blend === 0), E.map(([id, x]) => `${id} ${x.blend} blended of ${x.lit}`).join('; '));
+  ck('eachPieceLandsInItsOwnDust', r.fallen_timber.poofs >= 4 && r.loose_stone.poofs >= 4 && r.gold_nugget.poofs >= 1,
+    E.map(([id, x]) => `${id} ${x.poofs} poofs`).join('; '));
+  ck('theStoneJoltsAndTheNuggetsCoinsFly', r.loose_stone.shakes >= 1 && r.gold_nugget.flown >= 3 && r.gold_nugget.flown <= 5,
+    `stone shakes ${r.loose_stone.shakes}, coins flown ${r.gold_nugget.flown}`);
+  ck('thePileGoesInHardStepsNeverAnAlpha', E.every(([, x]) => x.soft === 0), E.map(([id, x]) => `${id} ${x.soft} translucent px`).join('; '));
+}
+
+// ---------------- 14. THE CARAVAN IS THE GAME'S OWN CAST ----------------
+/* The critics: the ox, drover and cart were drawn in 2px blocks four times
+   coarser than the units, oversized (an ox ~1.5 tiles long), and read as
+   placeholder art. The ox is the map's own cattle and the drover a villager
+   of the tribe — both drawn through R.unitSprite, the renderer's own unit
+   art — and the cart and its load at one world pixel a cell. Measured on the
+   caravan alone, stopped at the door before a crate is set down: the cast
+   was asked for (a cow and a villager), the picture is NOT confined to the
+   2px grid (a share of its edges fall on odd world pixels, where a 2px
+   drawing has none), and the whole of it is under 2.75 tiles long. */
+{
+  const r = await p.evaluate(() => {
+    const out = {}, TL = CFG.TILE;
+    __tw.fresh('town-cast');
+    Screens.show('playing'); S.paused = true;
+    const tc = __tw.flat();
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1.5);
+    const asked = {}, us = R.unitSprite;
+    R.unitSprite = function (u) { if (u && !S.units.includes(u)) asked[u.kind] = (asked[u.kind] || 0) + 1; return us.apply(this, arguments); };
+    try {
+      Deck.play('trade_caravan');
+      const sh = R.cardShows.find(s => s.id === 'trade_caravan');
+      const K = Deck.FX.trade_caravan.show;
+      const g0 = R.cv.getContext('2d');
+      for (const q of [0.05, 0.15, 0.25, K.IN + 0.02]) { sh.t = q * sh.ms / 1000; g0.save(); R.drawCardShows(g0, 0, 'world'); g0.restore(); }
+      const rd = sh.road;
+      out.road = !!rd;
+      if (rd) {
+        const rowY = (rd.ty + 0.8) * TL, X0 = Math.round((rd.stop - 200) / 2) * 2, Y0 = Math.round((rowY - 100) / 2) * 2;
+        const cv = document.createElement('canvas'); cv.width = 400; cv.height = 160;
+        const cg = cv.getContext('2d');
+        cg.setTransform(1, 0, 0, 1, -X0, -Y0);
+        sh.t = (K.IN + 0.02) * sh.ms / 1000;
+        if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+        R.drawCardShows(cg, 0, 'world');
+        const d = cg.getImageData(0, 0, 400, 160).data;
+        let minX = 1e9, maxX = -1, odd = 0, all = 0;
+        for (let y = 0; y < 160; y++) {
+          let prev = null;
+          for (let x = 0; x < 400; x++) {
+            const i = (y * 400 + x) * 4, on = d[i + 3] === 255;
+            if (on) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); }
+            const key = on ? d[i] + ',' + d[i + 1] + ',' + d[i + 2] : '';
+            if (prev !== null && key !== prev) { all++; if (x % 2) odd++; }
+            prev = key;
+          }
+        }
+        out.len = maxX - minX + 1; out.oddShare = all ? odd / all : 0;
+      }
+    } finally { R.unitSprite = us; }
+    out.asked = asked; out.TL = TL;
+    R.cardShows = [];
+    return out;
+  });
+  ck('theOxIsTheMapsCattleAndTheDroverAVillager', (r.asked.cow || 0) > 0 && (r.asked.villager || 0) > 0, JSON.stringify(r.asked));
+  ck('andTheCaravanIsDrawnAtTheCastsDensity', r.road && r.oddShare > 0.3, `${(100 * r.oddShare).toFixed(0)}% of its edges on odd world pixels (the 2px drawing: 15%, its wheel's off-grid rim alone)`);
+  ck('andItIsNoLongerOversized', r.road && r.len > 0 && r.len <= r.TL * 2.75, `${r.len} world px end to end (${(r.len / r.TL).toFixed(2)} tiles)`);
+}
+
+// ---------------- 15. THE HOUSE STYLE: MENDING AND THE WATCHFIRES ----------------
+/* The critics: Mending washed the hall out with a smooth white radial disc
+   and flashed every damaged building as a flat cream SILHOUETTE ("art that
+   failed to load"), the hall tinted solid yellow; the Watchfires kept a
+   large flat translucent orange disc round every tower top for six days,
+   its lower half over the meadow, and the longer reach was never seen
+   again after the play. Now a building being mended is SCANNED by a band
+   of gold pixels running down it — at no beat does the light cover more
+   than a band of its silhouette; the landing's flash is hard rings with
+   nothing over the middle; a beacon lights nothing below its brazier; and a
+   tower the player selects while the fires burn shows its longer reach. */
+{
+  const r = await p.evaluate(() => {
+    const out = {}, TL = CFG.TILE, TX = Deck._townTX;
+    __tw.fresh('town-style');
+    Screens.show('playing'); S.paused = true;
+    const tc = __tw.flat();
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1);
+    const house = __tw.bld('P', 'house', tc.x + 3, tc.y + 3);
+    house.hp = Math.round(house.maxhp * 0.3);
+    R.cardShows = [];
+    Deck.play('mending');
+    const sh = R.cardShows.find(s => s.id === 'mending');
+    const a = TX.art(house), X0 = Math.floor(a.rc.x) - 4, Y0 = Math.floor(a.rc.y) - 4, Wd = Math.ceil(a.rc.w) + 8, Ht = Math.ceil(a.rc.h) + 8;
+    // the silhouette, in its own canvas: what the light may at most cover
+    const sil = document.createElement('canvas'); sil.width = Wd; sil.height = Ht;
+    const sg = sil.getContext('2d'); sg.translate(-X0, -Y0); TX.paint(sg, a, '#ff00ff', 0, 1);
+    const sd = sg.getImageData(0, 0, Wd, Ht).data;
+    let silN = 0; for (let i = 3; i < sd.length; i += 4) if (sd[i] > 128) silN++;
+    // the mending's light over the house at every beat it plays there
+    const h = sh.hit.find(e => e.id === house.id);
+    let worst = 0;
+    for (let k = 0; k <= 10; k++) {
+      const age = k / 10 * 0.6;
+      sh.t = (h.d + age * sh.speed) / sh.speed;
+      const cv = document.createElement('canvas'); cv.width = Wd; cv.height = Ht;
+      const cg = cv.getContext('2d'); cg.translate(-X0, -Y0);
+      if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+      R.drawCardShows(cg, 0, 'world');
+      const d = cg.getImageData(0, 0, Wd, Ht).data;
+      let on = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 0 && sd[i] > 128) on++;
+      worst = Math.max(worst, on / Math.max(1, silN));
+    }
+    out.worst = worst; out.silN = silN;
+    // the landing's flash: hard rings, nothing laid over its middle
+    const rules = [...document.styleSheets].flatMap(ss => { try { return [...ss.cssRules]; } catch (e) { return []; } });
+    const css = rules.filter(rr => rr.selectorText && /dkRingHit/.test(rr.selectorText)).map(rr => rr.cssText).join(' ');
+    const hit = rules.filter(rr => rr.selectorText === '#dkFly .dkHit').map(rr => rr.cssText).join(' ');
+    out.hitHard = /radial-gradient\(\s*circle,\s*transparent 0(px)? 4\d%/.test(hit) && !/rgba\(255, 250, 230, 0\.95\)/.test(hit);
+    out.ringSoft = /\.dkRingHit\s*\{[^}]*box-shadow:\s*none/.test(css);
+    out.hitCss = hit.slice(0, 160);
+    // the beacon: nothing below its brazier
+    R.cardShows = []; S.deck.fx = [];
+    const tw = __tw.bld('P', 'tower', tc.x - 3, tc.y + 2);
+    Deck.play('watchfires'); R.cardShows = [];
+    const e = Deck.timed('watchfires'), WF = Deck.FX.watchfires, c = TX.crown(tw);
+    const cv = document.createElement('canvas'); cv.width = 160; cv.height = 160;
+    const cg = cv.getContext('2d'); cg.translate(-(Math.round(c.x) - 80), -(Math.round(c.y) - 80));
+    UI.sel = null;
+    WF.drawLive(cg, e);
+    const d = cg.getImageData(0, 0, 160, 160).data;
+    let above = 0, below = 0;
+    for (let y = 0; y < 160; y++) for (let x = 0; x < 160; x++) { if (!d[(y * 160 + x) * 4 + 3]) continue; if (y > 80 + 6) below++; else above++; }
+    out.above = above; out.below = below;
+    // …and selected, it shows its reach: dots on the ring at range × 1.5
+    const big = document.createElement('canvas'), R1 = Bld.lv(tw).range * WF.mult.towerRange * TL, S2 = Math.ceil(R1 * 2 + 40);
+    big.width = big.height = S2;
+    const bg = big.getContext('2d'); bg.translate(-(Bld.cx(tw) * TL - S2 / 2), -(Bld.cy(tw) * TL - S2 / 2));
+    const reach = () => { bg.clearRect(-1e5, -1e5, 2e5, 2e5); WF.drawLive(bg, e); const dd = bg.getImageData(0, 0, S2, S2).data; let n = 0;
+      for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++) { if (!dd[(y * S2 + x) * 4 + 3]) continue; if (Math.abs(Math.hypot(x - S2 / 2, y - S2 / 2) - R1) < 3) n++; } return n; };
+    UI.sel = null; out.ringOff = reach();
+    UI.sel = { type: 'bld', id: tw.id }; out.ringOn = reach();
+    UI.sel = null;
+    S.deck.fx = []; R.cardShows = [];
+    return out;
+  });
+  ck('mendingScansTheBuildingNeverFlashesItsSilhouette', r.silN > 100 && r.worst > 0 && r.worst <= 0.6,
+    `at its height the light covers ${(100 * r.worst).toFixed(0)}% of the house's ${r.silN} silhouette pixels (a flat flash: all of them)`);
+  ck('theLandingFlashIsHardRingsNotADisc', r.hitHard && r.ringSoft, r.hitCss);
+  ck('aBeaconLightsNothingBelowItsBrazier', r.above > 30 && r.below === 0, `${r.above} px of flame and embers above, ${r.below} below the brazier`);
+  ck('andASelectedTowerShowsItsLongerReach', r.ringOff === 0 && r.ringOn > 40, `ring dots at range × 1.5: ${r.ringOff} unselected, ${r.ringOn} selected`);
+}
+
+// ---------------- 16. MASTER BUILDERS: THE MARK, AND A BUILD RATHER THAN A SWAP ----------------
+/* The playtest's critics: playing the card "does nothing on the map, only a
+   toast and the ×3 chip"; on placement "the beam is a solid gold rectangle
+   that hides the building completely", a bronze card wearing a GOLD beam, and
+   the "2 left" float olive on grass and illegible. Now: the play marks the
+   hall (three hammers and a '⚒×3') and the Build tab ('⚒×3' while charges
+   last); a placement plays the building's own three raising stages in its
+   place (R.cardVeil) under a BRONZE column no wider than half the footprint,
+   and the count left floats cream on a hard dark rim (TX.label). */
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    __tw.fresh('town-mb-look');
+    Screens.show('playing'); S.paused = true;
+    const tc = __tw.flat(), TL = CFG.TILE, MB = Deck.FX.master_builders;
+    S.res.food = S.res.wood = S.res.stone = S.res.gold = 5000;
+    R.cam.z = 2; R.centerOn(Bld.cx(tc) + 2, Bld.cy(tc) + 2);
+    R.cardShows = [];
+    // THE PLAY: a show at the hall, and the tab's badge
+    Deck.play('master_builders');
+    const sp = R.cardShows.find(z => z.id === 'master_builders' && z.play);
+    out.playShow = !!sp && sp.hall === tc.id;
+    const tab = document.getElementById('bmToggle');
+    out.badge = tab ? tab.getAttribute('data-mb') : null;
+    out.badgeRule = !!document.getElementById('dkMBcss');
+    // the play draws its hammers ON the hall (inked, so counted as draws over the roof)
+    let hamDraws = 0;
+    const g = R.cv.getContext('2d'), inked = Deck._townTX.inked;
+    Deck._townTX.inked = function () { hamDraws++; return inked.apply(this, arguments); };
+    try { if (sp) for (const pp of [0.3, 0.5, 0.7]) { sp.t = pp * sp.ms / 1000; g.save(); MB.show.draw.call(MB, g, sp, pp); g.restore(); } }
+    finally { Deck._townTX.inked = inked; }
+    out.hamDraws = hamDraws;
+    // A PLACEMENT: the stages in its place, under a bronze column
+    R.cardShows = [];
+    const house = __tw.confirm('barracks', tc.x + 4, tc.y + 4);
+    const s = R.cardShows.find(z => z.id === 'master_builders' && z.bid === (house && house.id));
+    out.raised = !!house && house.construction === 0 && !!s;
+    if (s) {
+      const veils = [], drawn = [];
+      const di = CanvasRenderingContext2D.prototype.drawImage;
+      CanvasRenderingContext2D.prototype.drawImage = function (img) { drawn.push(img); return di.apply(this, arguments); };
+      try {
+        for (const pp of [0.05, 0.17, 0.29, 0.5]) {
+          drawn.length = 0;
+          const bx = house.x * TL, by = house.y * TL, bw = Bld.size(house) * TL;
+          s.t = pp * s.ms / 1000;
+          const v = R.cardVeil ? R.cardVeil(g, house, bx, by, bw) : false;
+          veils.push({ p: pp, v, src: drawn[drawn.length - 1] || null });
+        }
+      } finally { CanvasRenderingContext2D.prototype.drawImage = di; }
+      out.veils = veils.map(x => x.v);
+      out.stagesDiffer = new Set(veils.slice(0, 3).map(x => x.src)).size === 3 && veils.slice(0, 3).every(x => x.src && x.src !== R.bldSprite(house));
+      // …and the building loop really asks it: the finished picture stands down under the stages
+      const cv = R.cardVeil || (() => false); let asked = 0, took = 0;
+      R.cardVeil = function (gg, b) { const v = cv.apply(this, arguments); if (b === house) { asked++; if (v) took++; } return v; };
+      try { G.updateVisibility(); s.t = 0.1 * s.ms / 1000; R.draw(0); } finally { R.cardVeil = cv; }
+      out.loop = { asked, took };
+      // THE COLUMN: the bronze, and no wider than half the footprint
+      const glow = R.glow, tones = new Set(); let widest = 0;
+      const fr = CanvasRenderingContext2D.prototype.fillRect;
+      R.glow = function (gg, a, fill, tone) {
+        tones.add(tone || 'gold');
+        CanvasRenderingContext2D.prototype.fillRect = function (x, y, w) { widest = Math.max(widest, w); return fr.apply(this, arguments); };
+        try { return glow.apply(this, arguments); } finally { CanvasRenderingContext2D.prototype.fillRect = fr; }
+      };
+      try { for (const pp of [0.03, 0.15, 0.3, 0.45]) { s.t = pp * s.ms / 1000; g.save(); MB.show.draw.call(MB, g, s, pp); g.restore(); } }
+      finally { R.glow = glow; }
+      out.tones = [...tones]; out.widest = widest; out.half = Bld.size(house) * TL / 2;
+      // THE COUNT: cream on a dark rim (TX.label), never a gold R.float
+      const lab = Deck._townTX.label, fl = R.float, said = [];
+      Deck._townTX.label = function (gg, ss, key, x, y, lines) { said.push(lines.map(l => l.t + '|' + l.col).join(',')); return lab.apply(this, arguments); };
+      R.float = function (x, y, txt, col) { said.push('float:' + txt + '|' + col); return fl.apply(this, arguments); };
+      try { for (const pp of [0.55, 0.7]) { s.t = pp * s.ms / 1000; g.save(); MB.show.draw.call(MB, g, s, pp); g.restore(); } }
+      finally { Deck._townTX.label = lab; R.float = fl; }
+      out.said = said;
+    }
+    // the badge comes down with the last charge, and is never there with none
+    S.deck.charges.master_builders = 1;
+    const last = __tw.confirm('house', tc.x - 3, tc.y + 4);
+    out.badgeGone = !!last && last.construction === 0 && !tab.hasAttribute('data-mb');
+    R.cardShows = [];
+    return out;
+  });
+  ck('thePlayMarksTheHallAndTheBuildTab', r.playShow && r.badge === '⚒×3' && r.badgeRule && r.hamDraws >= 6 && r.badgeGone,
+    `a show at the hall ${r.playShow} (${r.hamDraws} hammer draws); the tab says "${r.badge}"; gone with the last charge ${r.badgeGone}`);
+  ck('aPlacementPlaysItsThreeStagesInItsPlace', r.raised && JSON.stringify(r.veils) === '[true,true,true,false]' && r.stagesDiffer && r.loop && r.loop.asked > 0 && r.loop.took > 0,
+    `stand-in at p .05/.17/.29/.5: ${JSON.stringify(r.veils)}; three different pictures ${r.stagesDiffer}; the loop asked ${r.loop && r.loop.asked}, took ${r.loop && r.loop.took}`);
+  ck('underABronzeColumnHalfTheFootprintWide', r.tones && r.tones.length === 1 && r.tones[0] === 'bronze' && r.widest > 0 && r.widest <= r.half,
+    `tones ${JSON.stringify(r.tones)}; widest ${r.widest}px against half the footprint ${r.half}px`);
+  ck('andTheCountFloatsCreamOnADarkRim', r.said && r.said.length && r.said.every(t => /\|#f2e6cd$/.test(t)) && r.said.some(t => /2 left/.test(t)),
+    JSON.stringify(r.said && r.said.slice(0, 3)));
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);

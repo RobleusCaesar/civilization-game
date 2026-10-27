@@ -1042,7 +1042,8 @@ await p.evaluate(({ ARMY }) => {
     // the muster's waiting unit
     R.cardShows = []; R.summons = []; R._unborn = null;
     for (const u of host) Units.despawn(u);
-    const { units: hands } = __ar.play('willing_hands');
+    // (a staggered muster: the War Band's — Willing Hands' strangers walk up from the trees, seen all the way)
+    const { units: hands } = __ar.play('war_band');
     const last = hands[hands.length - 1];
     out.unborn = { waiting: !!(R._unborn && R._unborn.has(last.id)), hit: R.unitHit(last, last.x, last.y - lift), stolen: tapAt(last) };
     R.summons = []; R._unborn = null;

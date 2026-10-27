@@ -699,28 +699,155 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
        take the town over its population cap (Units.spawn never checks it);
        training waits until there is room again — the card's own words, true
        at the hall's ceiling (CFG.TC_POP_CAP) too, which "until houses catch
-       up" was not. They step out one after another into the doorstep's warm
-       light and walk a few paces out, ready for work. */
+       up" was not.
+
+       THEY WALK UP, AS THE CARD SAYS (the playtest's critics: "the card's
+       flavour text says strangers walk up; the play shows them
+       materialising" — out of the same cream bars as the goods, two of the
+       three walking off overlapped into one sprite). They come out of the
+       treeline (or in from the edge of the view) on ground the player knows
+       and can walk from (arrival — never across water from the door), in
+       single file half a tile apart, packs on their backs, along a short
+       dotted path; and each joins with a small hard-pixel burst of gold at
+       the door. With nowhere for them to come from (a hall boxed in), they
+       step out of the doorstep as before (summonCard). */
     willing_hands: {
       at: 'tc', KIND: 'villager', N: 3, STAGGER: 170, HOLD: 0.4,
+      GAP: 0.24,             // seconds between one stranger setting off and the next (≈ half a tile at their pace)
+      FROM: [4.5, 9],        // how far from the hall's middle they come from (tiles)
       can() { return Deck.summonCan(this.KIND); },
-      apply() {
-        return summonCard('willing_hands', [{ kind: this.KIND, n: this.N }], {
-          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHands'], tone: 'pale',   // the Stone tier's pale light
-          log: () => '👥 Three strangers walk up to your Town Center, asking for a roof and a job. They are yours now.',
-        });
+      /* where they come from: open ground the player has explored, that the
+         door can be walked to from, FROM tiles out — the edge of a wood first
+         (out of the trees), then ground on screen, nearest the middle of the
+         band; a hash of the tile breaks ties (no RNG is drawn) */
+      arrival(tc, door) {
+        const W = CFG.W, reach = Path.reachFrom([door]);
+        const hx = Bld.cx(tc), hy = Bld.cy(tc), v = R.viewTiles ? R.viewTiles() : null, [d0, d1] = this.FROM;
+        let best = null, bs = Infinity;
+        for (let y = Math.floor(hy - d1); y <= hy + d1; y++) for (let x = Math.floor(hx - d1); x <= hx + d1; x++) {
+          if (!MapGen.onBoard(x, y)) continue;
+          const i = y * W + x, d = Math.hypot(x + 0.5 - hx, y + 0.5 - hy);
+          if (d < d0 || d > d1 || !reach || !reach[i] || !S.map.explored[i] || !Bld.spawnRoom('P', 'land', x, y)) continue;
+          let tree = false;
+          for (let dy = -1; dy <= 1 && !tree; dy++) for (let dx = -1; dx <= 1; dx++)
+            if (MapGen.inB(x + dx, y + dy) && S.map.terrain[(y + dy) * W + x + dx] === T.FOREST) { tree = true; break; }
+          const onS = v && x >= v.x0 + 0.5 && x <= v.x1 - 1.5 && y >= v.y0 + 1.5 && y <= v.y1 - 2;
+          const sc = (tree ? 0 : 3) + (onS ? 0 : 5) + Math.abs(d - (d0 + d1) / 2) * 0.5 + ((Math.imul(x + 1, 73856093) ^ Math.imul(y + 1, 19349663)) >>> 0) / 4294967296 * 0.4;
+          if (sc < bs) { bs = sc; best = { x, y }; }
+        }
+        return best;
       },
-      // a modest moment: the hearth's warm ring once round the door, a little
-      // smoke-gold rising off it, and a glint as each one steps into the light
+      apply() {
+        const d = Deck.summonDoor(this.KIND);
+        if (d.why) return { ok: false, why: d.why };
+        const { tc, first } = d, from = this.arrival(tc, first);
+        if (!from) {
+          return summonCard('willing_hands', [{ kind: this.KIND, n: this.N }], {
+            stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHands'], tone: 'pale',
+            log: () => '👥 Three strangers walk up to your Town Center, asking for a roof and a job. They are yours now.',
+            msg: () => 'Willing Hands: three strangers at your door, asking for a roof and a job — +3 villagers.',
+          });
+        }
+        // in a short file along the way in, the leader nearest the town
+        const hx = Bld.cx(tc), hy = Bld.cy(tc);
+        let dx = from.x + 0.5 - hx, dy = from.y + 0.5 - hy;
+        const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+        const units = [];
+        for (let i = 0; i < this.N; i++) {
+          const u = Units.spawn(this.KIND, 'P', from.x, from.y, { card: true });
+          const px = from.x + 0.5 + dx * i * 0.3, py = from.y + 0.5 + dy * i * 0.3;
+          if (Path.passable(Math.floor(px), Math.floor(py), 'P')) { u.x = px; u.y = py; }
+          units.push(u);
+        }
+        // they stop on their own side of the door, never walked round the hall
+        const reach = Path.reachFrom([first]);
+        const m = MapGen.findNear(Math.round(first.x + dx * 1.5), Math.round(first.y + dy * 1.5), 3,
+          (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y) && !!reach && !!reach[y * CFG.W + x]) || first;
+        Units.formationMove(units, m.x, m.y, 'land');
+        units.forEach((u, i) => {
+          const t = u.task;
+          if (!t || t.type !== 'move') return;
+          u.task = { type: 'muster', x: t.x, y: t.y, wait: 0.25 + i * this.GAP };
+          u.path = null; u.pathI = 0;
+        });
+        sound('cardHands');
+        show('willing_hands', { x: hx, y: hy, mx: m.x + 0.5, my: m.y + 0.5, fx: from.x + 0.5, fy: from.y + 0.5, walk: true,
+          units: units.map((u, i) => ({ id: u.id, x: u.x, y: u.y, d: 0.25 + i * this.GAP })), joined: {} });
+        Deck.say('👥 Three strangers walk up to your Town Center, asking for a roof and a job. They are yours now.');
+        let wood = false;
+        for (let dy = -1; dy <= 1 && !wood; dy++) for (let dx2 = -1; dx2 <= 1; dx2++)
+          if (MapGen.inB(from.x + dx2, from.y + dy) && S.map.terrain[(from.y + dy) * CFG.W + from.x + dx2] === T.FOREST) { wood = true; break; }
+        return { ok: true, x: hx, y: hy, units: units.map(u => u.id),
+          msg: 'Willing Hands: three strangers walk up out of the ' + (wood ? 'trees' : 'fields') + ', asking for a roof and a job — +3 villagers.' };
+      },
+      // the bundle on a stranger's back, 7×7, at the cast's own density (one world pixel a cell)
+      packArt() {
+        if (this._pack) return this._pack;
+        const c = document.createElement('canvas'); c.width = 7; c.height = 7;
+        const x = c.getContext('2d');
+        ['..ooo..', '.oHHMo.', 'oHMMMSo', 'oMMMMSo', 'oSSSSSo', 'oMMMMSo', '.ooooo.'].forEach((row, j) => {
+          for (let i = 0; i < 7; i++) {
+            const col = { o: '#2a1a0c', H: '#c49a62', M: '#8a6236', S: '#5e4020' }[row[i]];
+            if (col) { x.fillStyle = col; x.fillRect(i, j, 1, 1); }
+          }
+        });
+        return (this._pack = c);
+      },
       show: {
-        ms: 1800, layer: 'world',
+        ms: 6500, layer: 'world',
         draw(g, s, p) {
-          const TL = CFG.TILE;
-          // the Stone tier's pale light, the hearth's warmth in the motes —
-          // in ink (added, it was lime), and no pool on the doorstep (a warm
-          // patch on the meadow reads as sand)
-          muster(g, s, p, 'pale', 1, true);
-          A.motes(g, s.mx * TL, s.my * TL, 6, s.t, 3, 'bronze', 1 - p, 10, TL * 1.2);
+          const TL = CFG.TILE, snapPx = v => Math.round(v / 2) * 2;
+          if (!s.walk) {
+            // (no way in: they step out of the doorstep's light, as before)
+            muster(g, s, p, 'pale', 1, true);
+            A.motes(g, s.mx * TL, s.my * TL, 6, s.t, 3, 'bronze', 1 - p, 10, TL * 1.2);
+            return;
+          }
+          // the short dotted path they take, from the trees to the door, there while they are on it
+          const lead = s.units.length ? live(s.units[0].id) : null;
+          if (s.t < 3.2) {
+            const fade = s.t < 2.4 ? 1 : 1 - (s.t - 2.4) / 0.8;
+            const pts = (lead && lead.path && lead.path.length) ? [{ x: s.fx, y: s.fy }].concat(lead.path.map(q => ({ x: (q.x != null ? q.x : q[0]) + 0.5, y: (q.y != null ? q.y : q[1]) + 0.5 }))) : [{ x: s.fx, y: s.fy }, { x: s.mx, y: s.my }];
+            if (R.inkOn(g, 0.8 * Math.max(0, fade), 'pale')) {
+              let acc = 0;
+              for (let k = 1; k < pts.length; k++) {
+                const a = pts[k - 1], b = pts[k], seg = Math.hypot(b.x - a.x, b.y - a.y) * TL;
+                for (let u = 0; u < seg; u += 2) {
+                  if ((acc + u) % 7 < 2) g.fillRect(snapPx(a.x * TL + (b.x - a.x) * TL * u / seg), snapPx(a.y * TL + (b.y - a.y) * TL * u / seg + TL * 0.25), 2, 2);
+                }
+                acc += seg;
+              }
+            }
+          }
+          const pack = this.packArt();
+          for (const m of s.units) {
+            const u = live(m.id);
+            if (!u) continue;
+            const joined = s.joined[m.id];
+            // at the door they join: the pack is set down, a small hard burst of gold
+            if (joined == null && Math.hypot(u.x - s.mx, u.y - s.my) < 1.4 && !Units.moving(u)) s.joined[m.id] = s.t;
+            const lean = R.workLean ? R.workLean(u) : null, wx = (lean ? lean.x : u.x) * TL, foot = (lean ? lean.y : u.y) * TL + TL / 2 - CFG.SPRITE_LIFT;
+            if (s.joined[m.id] == null) {
+              // the pack rides on the back — behind the way they walk, at the shoulder
+              const prev = s['p' + m.id] || { x: u.x, y: u.y }, mx2 = u.x - prev.x, my2 = u.y - prev.y;
+              s['p' + m.id] = { x: u.x, y: u.y };
+              const side = Math.abs(mx2) > Math.abs(my2) * 0.6 ? -Math.sign(mx2) : 0, toward = my2 > Math.abs(mx2) * 0.6;
+              if (toward) {
+                // walking at us the pack is behind them: only its top shows, over a shoulder
+                const sx = (m.id % 2 ? 1 : -1);
+                g.drawImage(pack, 0, 0, 7, 3, Math.round(wx + sx * 4 - 3.5), Math.round(foot - 27), 7, 3);
+              } else g.drawImage(pack, Math.round(wx + side * 5 - 3.5), Math.round(foot - 19));
+            } else {
+              const q = (s.t - s.joined[m.id]) / 0.4;
+              if (q >= 0 && q < 1 && R.inkOn(g, 1 - q, 'gold')) {
+                for (let k = 0; k < 8; k++) {
+                  const th = k / 8 * Math.PI * 2, r1 = 4 + q * 12;
+                  g.fillRect(snapPx(wx + Math.cos(th) * r1), snapPx(foot - 6 + Math.sin(th) * r1 * 0.7), 2, 2);
+                }
+                g.fillRect(snapPx(wx) - 2, snapPx(foot - 6) - 2, 4, 4);
+              }
+            }
+          }
         },
       },
     },

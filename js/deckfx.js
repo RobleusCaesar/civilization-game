@@ -343,14 +343,25 @@ Object.assign(Deck, {
 
 /* ---------------- THE CARDS ---------------- */
 Object.assign(Deck.FX, {
-  /* STONE — Forager's Cache: +250 food, flown into the bar. */
+  /* STONE — Forager's Cache: +250 food, flown into the bar — and, like its
+     three Stone siblings, set down at the hall's door (the playtest: it was
+     the one starter card with no moment in the world and no voice of its
+     own). A woven basket comes down the pale light, lands in its dust and
+     tips, and the food spills out round it — berries, a loaf, a fish —
+     each piece stepping the food count as it lands (the moment, its pieces
+     and its voice are the goods' own pictures, js/deckfx-town.js
+     Deck.goodsShow; guarded on the method, so without that file the card
+     is still +250 food at the bar). */
   forager_cache: {
-    at: 'bar', FOOD: 250,
+    at: 'bar', showAtHall: true, FOOD: 250,
     can() { return { ok: true }; },
     apply() {
       S.res.food += this.FOOD;
       Deck.say('🧺 A forager’s cache: +' + this.FOOD + ' food.');
-      return { ok: true, fly: { food: this.FOOD } };
+      const shown = Deck.goodsShow ? Deck.goodsShow('forager_cache') : null;
+      if (typeof Sound !== 'undefined' && Sound.play) Sound.play('cardBasket');
+      return { ok: true, fly: { food: this.FOOD }, pay: shown ? { ms: 6000 } : undefined,
+        msg: 'Forager’s Cache: a basket of berries, bread and fish — +' + this.FOOD + ' food.' };
     },
   },
 

@@ -141,6 +141,21 @@ const GrowFX = {
     g.fillRect(sx, sy - px, px, px); g.fillRect(sx, sy + px, px, px);
     g.globalAlpha = 1;
   },
+  /* a word in the world (a card's '×2'): cream on a hard one-pixel dark rim,
+     alpha in steps — the float's legibility over any ground */
+  tag(g, x, y, txt, a, col) {
+    a = this.step(a);
+    if (a <= 0) return;
+    g.save();
+    g.font = 'bold 9px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.globalAlpha = a;
+    const tx = Math.round(x), ty = Math.round(y);
+    g.fillStyle = '#0d0b08';
+    for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) g.fillText(txt, tx + ox, ty + oy);
+    g.fillStyle = col || '#f2e6cd';
+    g.fillText(txt, tx, ty);
+    g.restore();
+  },
   /* a column of light standing on (x, foot): three stepped widths of the
      card's light (R.glow — whatever stands in it turns gold, then bright),
      strongest in the middle, a white-hot thread up its heart. `tone`:
@@ -289,6 +304,13 @@ Object.assign(Deck, {
       r *= this.FX.age_of_marble.RATE;
     return r;
   },
+  /* THE FESTIVAL'S WORD ON A WORK FLOAT (R.workFloat asks, guarded on this
+     method): a hand's next '+wood' after a festival is played reads
+     '+wood ×1.4' — '' for anyone else, and always with no festival running */
+  floatTag(u) {
+    const f = this.FX.harvest_festival;
+    return f && f.floatTag ? f.floatTag(u) : '';
+  },
   // the player's Wonder under the Age of Marble (Bld.effCost — the one cost point)
   wonderCost(cost) {
     if (!S || !S.deck || !S.deck.charges || !S.deck.charges.marble || !cost) return cost;
@@ -315,9 +337,19 @@ Object.assign(Deck.FX, {
      the catalog's number, never a second copy of it). Hand gathering, both
      kinds of fishing, the meat of a hunt — a YIELD on the credit, the
      ground stripped at its own pace (rule 1) — and every station and the
-     hall's own gold, with the panel's work line; the rival's work never. */
+     hall's own gold, with the panel's work line; the rival's work never.
+
+     A FESTIVAL THE TOWN CAN SEE (the playtest's critics: "a few dotted rings
+     and grain specks", then nothing on the map but the chip). The play
+     brings the hall on screen (showAtHall), its hearth FLARES and the
+     bunting strings out from it to the nearest houses — in the tribe's own
+     dye, the banner cloth's (Sprites.tunicCol) — and stays up for the twelve
+     days, the fire flaring now and then; every hand's NEXT work float after
+     a play carries the bonus ('+wood ×1.4', R.workFloat → Deck.floatTag).
+     All of it render state: the bunting is read off the town each frame,
+     never stored. */
   harvest_festival: {
-    at: 'bar', cue: 'motes',
+    at: 'bar', cue: 'motes', showAtHall: true,
     mult: { gather: 1.4, produce: 1.4 },
     can() { return { ok: true }; },
     apply() {
@@ -325,9 +357,12 @@ Object.assign(Deck.FX, {
       const e = Deck.addTimed('harvest_festival', days);
       Deck.say(was ? '🌾 The Harvest Festival runs on — ' + days + ' more days of richer work.'
         : '🌾 The Harvest Festival begins: everything your people gather or produce comes in 40% richer for ' + days + ' days.');
-      GrowFX.show('harvest_festival', { spots: this.spots() });
+      GrowFX.show('harvest_festival', { spots: this.spots(), fresh: !was });
+      GrowFX._festNoted = new WeakSet();   // every hand's next float carries the bonus
       GrowFX.sfx('festival');
-      return { ok: true, until: e.until };
+      // the landing's toast: a second copy RUNS ON (the card's own rule line said "for 12 days" again)
+      return { ok: true, until: e.until, msg: was ? 'The Harvest Festival runs on — ' + days + ' more days of work 40% richer.'
+        : 'The Harvest Festival begins: for ' + days + ' days every load and every harvest comes in 40% richer.' };
     },
     end() { G.log('🌾 The Harvest Festival is over — the work comes in at its ordinary yield again.'); },
     // where the town's work is going on, on screen now: the hands at it and
@@ -346,6 +381,104 @@ Object.assign(Deck.FX, {
         out.push({ x: Bld.cx(b), y: b.y + sz - 0.1, sz });
       }
       return out;
+    },
+    /* THE NEXT FLOAT CARRIES THE BONUS (R.workFloat asks): once per hand
+       after a play, while the festival runs — the one float that says why
+       this load came in richer. Render state (a WeakSet the play resets). */
+    TAG: ' ×1.4',
+    floatTag(u) {
+      if (!u || u.owner !== 'P' || !Deck.timed('harvest_festival')) return '';
+      const n = GrowFX._festNoted || (GrowFX._festNoted = new WeakSet());
+      if (n.has(u)) return '';
+      n.add(u);
+      return this.TAG;
+    },
+    /* THE BUNTING: from the hall to the nearest finished buildings of the
+       town (BUNT_N within BUNT_R tiles) — never a wall, a gate or a field,
+       which have no eave to tie it to */
+    BUNT_N: 3, BUNT_R: 8,
+    NO_BUNT: { wall: 1, gate: 1, farm: 1, dock: 1, mine: 1, wonder: 1, tc: 1 },
+    buntTo() {
+      const tc = Bld.tcOf('P');
+      if (!tc || !Bld.done(tc)) return { tc: null, list: [] };
+      const hx = Bld.cx(tc), hy = Bld.cy(tc), list = [];
+      for (const b of S.buildings) {
+        if (b.owner !== 'P' || this.NO_BUNT[b.key] || !Bld.done(b)) continue;
+        const d = Math.hypot(Bld.cx(b) - hx, Bld.cy(b) - hy);
+        if (d <= this.BUNT_R) list.push({ b, d });
+      }
+      list.sort((a, c) => a.d - c.d || a.b.id - c.b.id);
+      return { tc, list: list.slice(0, this.BUNT_N).map(o => o.b) };
+    },
+    // where a string is tied: under the eave on the side facing the other end
+    eave(b, toward) {
+      const TL = CFG.TILE, sz = Bld.size(b), bx = b.x * TL, by = b.y * TL, bw = sz * TL;
+      const spr = R.wornSprite ? R.wornSprite(b) : R.bldSprite(b);
+      const rc = spr && spr._cfArt ? R.artRect(spr, bx, by, bw, bw) : { x: bx, y: by, w: bw, h: bw };
+      const box = spr && R._artBox ? R._artBox(spr) : { l: 0.1, r: 0.9, t: 0.1, b: 0.94 };
+      const x0 = rc.x + box.l * rc.w, x1 = rc.x + box.r * rc.w, top = rc.y + box.t * rc.h, bot = rc.y + box.b * rc.h;
+      const cx = (x0 + x1) / 2, sx = Math.sign(toward - cx) || 1;
+      return { x: Math.round(cx + sx * (x1 - x0) * 0.3), y: Math.round(top + (bot - top) * 0.3) };
+    },
+    // one string: a sagging cord, its pennants hung every 7 px in the dye, cream and the dye's shade
+    string(g, a, b, k, seed, now, dye) {
+      const L = Math.hypot(b.x - a.x, b.y - a.y);
+      if (L < 6 || k <= 0) return;
+      const sag = Math.min(14, 4 + L * 0.12), n = Math.ceil(L), upto = Math.floor(n * Math.min(1, k));
+      const at = t => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t + sag * 4 * t * (1 - t) });
+      g.fillStyle = '#4a3420';
+      for (let i = 0; i <= upto; i++) { const q = at(i / n); g.fillRect(Math.round(q.x), Math.round(q.y), 1, 1); }
+      const COL = [dye.body, '#f2e6cd', dye.accent];
+      for (let j = 1, i = 5; i < upto - 3; i += 9, j++) {
+        const q = at(i / n), fl = Math.sin(now * 5 + j * 1.3 + seed) > 0.35 ? 1 : 0;   // a flutter of one pixel, in steps
+        const x = Math.round(q.x), y = Math.round(q.y) + 1;
+        g.fillStyle = COL[j % 3];
+        g.fillRect(x - 3, y, 7, 2); g.fillRect(x - 2 + fl, y + 2, 5, 1); g.fillRect(x - 1 + fl, y + 3, 3, 1); g.fillRect(x + fl, y + 4, 1, 1);
+        g.fillStyle = '#2a1e12'; g.fillRect(x - 3, y, 1, 2);   // the fold where it hangs on the cord
+      }
+    },
+    // the hall's hearth (the dooryard fire at L1, the roof's hearth above it): a flare of hard-pixel fire
+    hearth(tc) {
+      const TL = CFG.TILE, sz = Bld.size(tc), bx = tc.x * TL, by = tc.y * TL, bw = sz * TL;
+      const a = R.smokeAnchor(R.CAMPFIRE_AT || {}, 'tc', tc.level) || R.smokeAnchor(R.SMOKE_AT, 'tc', tc.level);
+      return a ? { x: bx + a.x * bw, y: by + a.y * bw } : { x: bx + bw / 2, y: by + bw * 0.9 };
+    },
+    flare(g, h, s, beat, embers, now) {
+      const TX = Deck._townTX;
+      if (TX && TX.flame) TX.flame(g, h.x, h.y, s, beat);
+      const F = ['#a33f1c', '#e88a3a', '#f2c14a', '#ffe9a0'];
+      for (let i = 0; i < embers; i++) {
+        const ph = (now * 0.9 + i / embers) % 1;
+        g.fillStyle = F[ph < 0.3 ? 3 : ph < 0.6 ? 2 : 1];
+        g.fillRect(GrowFX.snap(h.x + Math.sin(ph * 7 + i * 2.3) * 4), GrowFX.snap(h.y - s * 0.8 - ph * s * 1.6), 2, 2);
+      }
+    },
+    drawLive(g, e) {
+      const TL = CFG.TILE, now = performance.now() / 1000, v = GrowFX.viewPx(2);
+      const { tc, list } = this.buntTo();
+      if (!tc) return;
+      const p = GrowFX.liveP('harvest_festival'), fade = GrowFX.tail(e);
+      const dye = (Sprites.tunicCol || {})[G.tunicOf('P')] || { body: '#3f6d99', accent: '#2c4e70' };
+      const hx = Bld.cx(tc) * TL;
+      list.forEach((b, j) => {
+        const a = this.eave(tc, Bld.cx(b) * TL), c = this.eave(b, hx);
+        if (Math.max(a.x, c.x) < v.x0 || Math.min(a.x, c.x) > v.x1 || Math.max(a.y, c.y) + 20 < v.y0 || Math.min(a.y, c.y) > v.y1) return;
+        // strung out from the hall on a fresh play, one string after another
+        const k = p >= 0 ? Math.max(0, Math.min(1, (p - 0.12 - j * 0.1) / 0.3)) : 1;
+        if (fade < 1 && GrowFX.step(fade) <= 0) return;
+        this.string(g, a, c, k, b.id, now, dye);
+      });
+      // the hearth flares on the play, and now and then for the twelve days
+      const h = this.hearth(tc);
+      if (h.x < v.x0 || h.x > v.x1 || h.y < v.y0 || h.y > v.y1 + TL) return;
+      const beat = (now * 7.7) | 0;
+      if (p >= 0 && p < 1) {
+        const k = p < 0.12 ? p / 0.12 : p < 0.6 ? 1 : (1 - p) / 0.4;
+        if (k > 0.05) this.flare(g, h, TL * (0.25 + 0.3 * GrowFX.step(k)), beat, 5, now);
+      } else {
+        const ph = (now / 4.5 + tc.id * 0.31) % 1;
+        if (ph < 0.16) this.flare(g, h, TL * (ph < 0.04 || ph > 0.12 ? 0.22 : 0.32), beat, 2, now);
+      }
     },
     /* the harvest bursts: from every hand at work and every working field in
        view, a fountain of golden grain thrown up and falling back, inside a
@@ -367,6 +500,17 @@ Object.assign(Deck.FX, {
             F.mote(g, x, y, k % 3 ? '#ffcc40' : '#fff1b8', '#7a4a0a', q < 0.7 ? 1 : (1 - q) / 0.3);
           }
           if (q > 0.08 && q < 0.4) F.glint(g, cx, foot - TL * (0.5 + sp.sz * 0.5), '#fff8d6', 1 - Math.abs(q - 0.24) / 0.16);
+        }
+        // the hearth's flare throws a fountain of sparks up over the hall
+        const tc = Bld.tcOf('P');
+        if (tc && Bld.done(tc) && p < 0.7) {
+          const h = this.hearth(tc), q = p / 0.7;
+          for (let k = 0; k < 14; k++) {
+            const h1 = F.hash(k, 91), h2 = F.hash(k * 7, 92);
+            const a = -Math.PI / 2 + (h1 - 0.5) * 1.3, v = TL * (2.6 + h2 * 1.6);
+            F.mote(g, h.x + Math.cos(a) * v * q, h.y - TL * 0.3 + Math.sin(a) * v * q + 0.5 * TL * 4 * q * q,
+              k % 3 ? '#f2c14a' : '#ffe9a0', '#7a2a0a', q < 0.6 ? 1 : (1 - q) / 0.4);
+          }
         }
       },
     },
@@ -403,12 +547,17 @@ Object.assign(Deck.FX, {
       GrowFX.show('bountiful_land', { x: c.x, y: c.y });
       if (window.R && R.startle) R.startle(c.x, c.y, 9);
       GrowFX.sfx('bloom');
-      return { ok: true, x: c.x, y: c.y, until: e.until };
+      return { ok: true, x: c.x, y: c.y, until: e.until, msg: was ? 'The land near the fire stays bountiful — ' + days + ' more days.'
+        : 'The land within ' + this.R + ' tiles of your hall turns bountiful: 50% richer for ' + days + ' days.' };
     },
     end() { G.log('🌱 The bounty near the fire fades — the land gives its ordinary yield again.'); },
     // ground a sprig may stand on: open meadow, spent soil, a felled stand
     OPEN: (() => { const o = {}; o[T.GRASS] = 1; o[T.BARREN] = 1; o[T.STUMPS] = 1; return o; })(),
     BLOOM: ['#f4efe0', '#dcc4ec', '#f2c8d0'],
+    /* the new growth's greens: the meadow's own leaf ramp a step up, foot to
+       tip — never the lime the first cut drew its tufts in (the playtest's
+       critics: "the banned upright tufts, in the banned lime") */
+    GREEN: ['#2e4a1e', '#3c6f2d', '#4d8a3a', '#5a9640'],
     /* MAY A SPRIG GROW HERE — asked of what the PLAYER knows. A tile in sight
        now reads the live ground and whatever stands on it; a tile the fog
        holds reads the player's MEMORY (S.map.seenTerrain, and S.map.seenB's
@@ -451,35 +600,35 @@ Object.assign(Deck.FX, {
       const F = GrowFX, sx = F.snap(x), sy = F.snap(y), kind = (h * 7.3) % 1;
       const lean = ((((h * 977) | 0) + f) & 1) ? 2 : 0;
       g.globalAlpha = F.step(Math.min(1, k * 1.5));
-      g.fillStyle = '#2e4a1e'; g.fillRect(sx - 2, sy, 6, 2);   // its foot in the ground
+      g.fillStyle = this.GREEN[0]; g.fillRect(sx - 2, sy, 6, 2);   // its foot in the ground
       if (kind < 0.55) {
         // the tuft: three blades, the middle tallest, the tips leaning with the wind
         const hh = Math.max(2, F.snap((4 + ((h * 97) % 1) * 5) * k));
-        g.fillStyle = '#4f8a32';
+        g.fillStyle = this.GREEN[1];
         g.fillRect(sx - 2, sy - F.snap(hh * 0.6), 2, F.snap(hh * 0.6));
         g.fillRect(sx + 2, sy - F.snap(hh * 0.7), 2, F.snap(hh * 0.7));
-        g.fillStyle = '#6fbc42'; g.fillRect(sx, sy - hh + 2, 2, hh - 2);
+        g.fillStyle = this.GREEN[2]; g.fillRect(sx, sy - hh + 2, 2, hh - 2);
         g.fillRect(sx + lean, sy - hh, 2, 2);   // the tip, bent with the breeze or upright
-        if (k > 0.5) { g.fillStyle = '#b4ea78'; g.fillRect(sx + lean, sy - hh - 2, 2, 2); }
+        if (k > 0.5) { g.fillStyle = this.GREEN[3]; g.fillRect(sx + lean, sy - hh - 2, 2, 2); }
       } else if (kind < 0.85) {
         const hh = Math.max(2, F.snap((5 + ((h * 97) % 1) * 6) * k));
-        g.fillStyle = '#4f8a32'; g.fillRect(sx, sy - hh, 2, hh);
+        g.fillStyle = this.GREEN[1]; g.fillRect(sx, sy - hh, 2, hh);
         if (k > 0.45) {
-          g.fillStyle = '#86d052';
+          g.fillStyle = this.GREEN[2];
           g.fillRect(sx - 2, sy - F.snap(hh * 0.55) + (lean ? 2 : 0), 2, 2);
           g.fillRect(sx + 2, sy - F.snap(hh * 0.8) + (lean ? 0 : 2), 2, 2);
-          g.fillStyle = '#b4ea78'; g.fillRect(sx - 4 + lean, sy - F.snap(hh * 0.55) - 2, 2, 2);
+          g.fillStyle = this.GREEN[3]; g.fillRect(sx - 4 + lean, sy - F.snap(hh * 0.55) - 2, 2, 2);
         }
       } else {
         // the flower: a stem, then the petals open once it has grown; it nods with the breeze
         const hh = Math.max(2, F.snap(6 * k)), fx = sx + (lean ? 2 : 0);
-        g.fillStyle = '#4f8a32'; g.fillRect(sx, sy - hh, 2, hh);
+        g.fillStyle = this.GREEN[1]; g.fillRect(sx, sy - hh, 2, hh);
         if (k > 0.75) {
           const col = F.hash((h * 1e4) | 0, f + 3) > 0.92 ? '#ffffff' : this.BLOOM[(((h * 53) % 1) * 3) | 0];
+          // three petals round the stem's tip, never a cross with an eye in it
+          // (a '+' of pale cells read as a dead pixel — the playtest's critics)
           g.fillStyle = col;
-          g.fillRect(fx - 2, sy - hh - 2, 2, 2); g.fillRect(fx + 2, sy - hh - 2, 2, 2);
-          g.fillRect(fx, sy - hh - 4, 2, 2); g.fillRect(fx, sy - hh, 2, 2);
-          g.fillStyle = '#fbf6e2'; g.fillRect(fx, sy - hh - 2, 2, 2);
+          g.fillRect(fx - 2, sy - hh - 2, 2, 2); g.fillRect(fx + 2, sy - hh - 2, 2, 2); g.fillRect(fx, sy - hh - 4, 2, 2);
         }
       }
       g.globalAlpha = 1;
@@ -507,24 +656,25 @@ Object.assign(Deck.FX, {
             if (!MapGen.onBoard(tx | 0, ty | 0) || !G.visibleAt(tx | 0, ty | 0)) continue;
             const x = tx * TL + Math.sin(q * 6 + k) * 4, y = ty * TL - q * TL * (1.2 + F.hash(k, 53));
             if (x < vp.x0 || x > vp.x1 || y < vp.y0 || y > vp.y1) continue;
-            F.mote(g, x, y, k % 3 ? '#e8f4b8' : '#fff8d6', null, q < 0.3 ? 1 : (1 - q) / 0.7);
+            F.mote(g, x, y, k % 3 ? '#f4efe0' : '#fff8d6', null, q < 0.3 ? 1 : (1 - q) / 0.7);
           }
           return;
         }
-        g.save(); g.globalCompositeOperation = 'lighter';
+        g.save();
+        // the wave of new green: opaque cells of the growth's own greens, laid
+        // ON the meadow (never light ADDED to it, which was the lime), thinning
+        // out behind the front by hash, never by alpha
         if (p < 0.66) {
-          F.ring(g, cx, cy, rad, '#b8f080', 0.95, 2, 1, vp);
-          F.ring(g, cx, cy, Math.max(0, rad - 6), '#5fa83a', 0.7, 2, 1, vp);
+          F.ring(g, cx, cy, rad, this.GREEN[3], 1, 2, 1, vp);
+          F.ring(g, cx, cy, Math.max(0, rad - 6), this.GREEN[2], 1, 2, 1, vp);
           for (let k = 0; k < 160; k++) {
             const th = F.hash(k, 11) * Math.PI * 2, rr = rad - TL * (0.15 + F.hash(k, 23) * 1.3);
-            if (rr <= 0) continue;
+            if (rr <= 0 || F.hash(k, 29) > 1 - (rad - rr) / (TL * 1.5)) continue;
             const x = cx + Math.cos(th) * rr, y = cy + Math.sin(th) * rr;
             if (x < vp.x0 || x > vp.x1 || y < vp.y0 || y > vp.y1) continue;
-            g.globalAlpha = F.step(0.6 * (1 - (rad - rr) / (TL * 1.5)));
-            g.fillStyle = k % 3 ? '#7cc850' : '#d8f0a0';
+            g.fillStyle = this.GREEN[k % 3 ? 2 : 3];
             g.fillRect(F.snap(x), F.snap(y), 2, 2);
           }
-          g.globalAlpha = 1;
         }
         if (p > 0.5) {
           const k = (p - 0.5) / 0.5;
@@ -536,41 +686,73 @@ Object.assign(Deck.FX, {
         g.restore();
       },
     },
-    /* the ground within the ring visibly lush while the card runs: sprigs and
-       blossoms on open ground the player knows, a faint gold ring of dots at
-       the edge — drawn in the GROUND pass (R.drawCardGround), under the town,
-       its people and the fog. TWENTY DAYS IS A LONG TIME TO PAY FOR A
-       PICTURE: drawn sprig by sprig it measured ~12ms a frame on a desktop's
-       software canvas (a few hundred sprigs, a handful of fills each), so
-       once the land has woken it is painted ONCE into a layer — two frames
-       of it, the breeze's two beats, so the meadow still sways — and blitted,
-       one drawImage a frame. It is painted again only when the ground under
-       it changes as the player knows it (a hall moved, a tree felled in
-       sight, a hut raised: a checksum of the ring's own `grows` answers says
-       so). Only while the show's wave is still rolling out are the sprigs
-       drawn live, growing in behind its front. */
+    /* WHAT THE LAND WEARS FOR ITS TWENTY DAYS (the playtest's critics: the
+       first cut held hundreds of upright tufts in lime and white '+' crosses
+       over the whole 8-tile radius for all twenty days — a texture glitch,
+       not lush ground). The sprouting is the PLAY's: the sprigs grow in
+       behind the wave and, once it has reached the edge, crumble back into
+       the meadow in hard steps by the show's end. Then the zone is marked
+       with what the house allows and the eye can find: a few CLOVER AND
+       FLOWER patches at its heart round the fire (the ground decals'
+       language — low, flat, no lime), and the edge itself as a ring of
+       muted-gold dots ONLY while the hall is selected — the panel the
+       player opens to ask what the hall is doing. Drawn in the GROUND pass
+       (R.drawCardGround), under the town, its people and the fog, on ground
+       the player knows (grows). */
+    CORE_R: 2.6,          // tiles from the fire the lasting patches lie within
+    CORE_N: 12,           // …and how many of them, at most
     drawGround(g, e) {
       const c = this.centre();
       if (!c) return;
       const TL = CFG.TILE, F = GrowFX, Rr = this.R, fade = F.tail(e), t = performance.now() / 1000;
       const beat = ((t / this.BEAT) | 0) & 1;
       const p = F.liveP('bountiful_land');
-      if (p >= 0 && p <= 0.62) this.sprigs([g], c, Rr * F.ease(p / 0.62), fade, beat, F.view(1));
-      else {
-        const L = this.layer(c);
-        if (L.any) {
-          g.save();
-          g.imageSmoothingEnabled = false;
-          g.globalAlpha = F.step(fade);
-          g.drawImage(L.cv[beat], L.x0 * TL, L.y0 * TL);
-          g.restore();
+      // the play: sprigs grow in behind the front, then go back into the meadow
+      if (p >= 0 && p < 1) {
+        const crumble = p < 0.7 ? 0 : (p - 0.7) / 0.3;
+        this.sprigs([g], c, Rr * F.ease(p / 0.62), fade, beat, F.view(1), crumble);
+      }
+      // the twenty days: the patches at the heart, from the moment the wave has passed them
+      if (p < 0 || p > 0.3) this.core(g, c, fade);
+      // …and the edge, while the hall is selected
+      const tc = Bld.tcOf('P');
+      if (tc && typeof UI !== 'undefined' && UI.sel && UI.sel.type === 'bld' && UI.sel.id === tc.id)
+        F.ring(g, c.x * TL, c.y * TL, Rr * TL, '#b8923a', fade, 2, 1, F.viewPx(1), t * 0.6);
+    },
+    /* the clover and flowers at the heart: a dozen small flat patches on the
+       open ground the player knows within CORE_R of the fire, each where its
+       tile's hash puts it (the same patch every frame, no RNG) */
+    core(g, c, fade) {
+      if (fade <= 0) return;
+      const TL = CFG.TILE, F = GrowFX, r0 = Math.ceil(this.CORE_R);
+      let n = 0;
+      for (let dy = -r0; dy <= r0 && n < this.CORE_N; dy++) for (let dx = -r0; dx <= r0 && n < this.CORE_N; dx++) {
+        const x = Math.floor(c.x) + dx, y = Math.floor(c.y) + dy;
+        if (!MapGen.onBoard(x, y) || Math.hypot(x + 0.5 - c.x, y + 0.5 - c.y) > this.CORE_R) continue;
+        const h = F.hash(x * 31 + 7, y * 17 + 3);
+        if (h > 0.42 || !this.grows(x, y)) continue;
+        n++;
+        const px = F.snap((x + 0.2 + F.hash(x, y + 9) * 0.6) * TL), py = F.snap((y + 0.35 + F.hash(y, x + 5) * 0.5) * TL);
+        // a clump, never a lone cross: a low spread of leaves with, on half
+        // of them, a few blossoms of clover or meadow flower among them
+        const L2 = [[-4, 2], [-2, 0], [0, 2], [2, 0], [4, 2], [0, -2]];
+        g.fillStyle = this.GREEN[0]; g.fillRect(px - 4, py + 4, 10, 2);       // its shade on the ground
+        for (let k = 0; k < L2.length; k++) {
+          if (F.hash(x * 13 + k, y * 7) < 0.25) continue;
+          g.fillStyle = this.GREEN[k % 2 ? 2 : 3]; g.fillRect(px + L2[k][0], py + L2[k][1], 2, 2);
+        }
+        if (h >= 0.18) {
+          const col = h < 0.3 ? '#f4efe0' : this.BLOOM[1 + (((h * 97) | 0) % 2)];   // white clover, or pink and lilac
+          g.fillStyle = col;
+          g.fillRect(px - 2, py - 2, 2, 2); g.fillRect(px + 2, py - 4, 2, 2);
+          if (h > 0.24) g.fillRect(px + 4, py, 2, 2);
         }
       }
-      F.ring(g, c.x * TL, c.y * TL, Rr * TL, 'gold', 0.4 * fade, 2, 1, F.viewPx(1), t * 0.6);
     },
     // every sprig on the ring's open ground out to `grow` (within `v`, the tiles
-    // in view), into each target in turn on its own beat (f0, f0 + 1, …)
-    sprigs(gs, c, grow, fade, f0, v) {
+    // in view), into each target in turn on its own beat (f0, f0 + 1, …) —
+    // `crumble` 0..1 of them gone back into the meadow, each on its own hash
+    sprigs(gs, c, grow, fade, f0, v, crumble) {
       const TL = CFG.TILE, F = GrowFX, Rr = this.R;
       const x0 = Math.max(Math.floor(c.x - Rr), Math.floor(v.x0)), x1 = Math.min(Math.ceil(c.x + Rr), Math.ceil(v.x1));
       const y0 = Math.max(Math.floor(c.y - Rr), Math.floor(v.y0)), y1 = Math.min(Math.ceil(c.y + Rr), Math.ceil(v.y1));
@@ -582,40 +764,13 @@ Object.assign(Deck.FX, {
         const k = Math.min(1, (grow - d) / 1.2) * fade;
         for (let j = 0; j < 3; j++) {
           const h = F.hash(x * 7 + j, y * 13 + 5);
-          if (h > 0.46) continue;
+          if (h > 0.46 || (crumble > 0 && F.hash(x * 5 + j, y * 11 + 2) < crumble)) continue;
           const sx = (x + 0.15 + F.hash(x, y * 3 + j) * 0.7) * TL, sy = (y + 0.3 + F.hash(y, x * 5 + j) * 0.6) * TL;
           for (let m = 0; m < gs.length; m++) this.sprig(gs[m], sx, sy, h / 0.46, k, (f0 + m) & 1);
           any = true;
         }
       }
       return any;
-    },
-    // the grown land, painted once — both beats (render state, never in S)
-    _layer: null,
-    layer(c) {
-      const TL = CFG.TILE, Rr = this.R, x0 = Math.floor(c.x - Rr) - 1, y0 = Math.floor(c.y - Rr) - 1, n = Math.ceil(Rr * 2) + 3;
-      // the ring's own ground, summed: where a sprig may grow, as the player knows it
-      let sum = x0 * 7919 + y0 * 104729;
-      for (let y = y0; y < y0 + n; y++) for (let x = x0; x < x0 + n; x++) {
-        if (!MapGen.onBoard(x, y)) continue;
-        sum = (Math.imul(sum, 31) + (this.grows(x, y) ? 3 : 5)) | 0;
-      }
-      let L = this._layer;
-      if (L && L.sum === sum && L.x0 === x0 && L.y0 === y0) return L;
-      if (!L) {
-        const cv = [document.createElement('canvas'), document.createElement('canvas')];
-        L = this._layer = { cv, g: cv.map(k => k.getContext('2d')) };
-      }
-      for (let m = 0; m < 2; m++) {
-        const cv = L.cv[m], g = L.g[m];
-        if (cv.width !== n * TL) { cv.width = n * TL; cv.height = n * TL; }
-        g.setTransform(1, 0, 0, 1, 0, 0);
-        g.clearRect(0, 0, cv.width, cv.height);
-        g.translate(-x0 * TL, -y0 * TL);
-      }
-      L.any = this.sprigs(L.g, c, Rr, 1, 0, { x0: x0, y0: y0, x1: x0 + n, y1: y0 + n });
-      L.sum = sum; L.x0 = x0; L.y0 = y0;
-      return L;
     },
   },
 
@@ -759,7 +914,17 @@ Object.assign(Deck.FX, {
   /* STONE — Quick Hands: construction and upgrades go twice as fast for 6
      days (rule 3: sites, upgrades, the masons' wall works, a span raised
      and reinforced; never repair, never a sapper's earthworks). Still the
-     builders' own work — a site with nobody at it rises no faster. */
+     builders' own work — a site with nobody at it rises no faster.
+
+     ITS MOMENT IS AT THE WORKS, NEVER AT THE HALL (the playtest's critics:
+     "two dotted white ellipses and a few specks" on the hall, then six days
+     with nothing in the world showing it). The card lands on the works
+     nearest the view (dest), and every works and every builder's hammer in
+     sight throws hard-pixel gold sparks and a '×2'; with nothing being built
+     anywhere, the '×2' bursts off the Build tab — the next works laid are the
+     ones it quickens. While it runs, each works wears a small gold hammer and
+     its builders throw a spark on every swing — on the strike frame of their
+     own hammer, not a clock of the card's. */
   quick_hands: {
     at: 'tc',
     mult: { build: 2 },
@@ -767,80 +932,217 @@ Object.assign(Deck.FX, {
     apply() {
       const days = Deck.card('quick_hands').days, was = !!Deck.timed('quick_hands');
       const e = Deck.addTimed('quick_hands', days);
-      Deck.say(was ? '🔨 Quick Hands keeps up the pace — ' + days + ' more days.'
-        : '🔨 Quick Hands: construction and upgrades go twice as fast for ' + days + ' days.');
-      GrowFX.show('quick_hands', { spots: this.works() });
+      const msg = was ? '🔨 Quick Hands keeps up the pace — ' + days + ' more days.'
+        : '🔨 Quick Hands: construction and upgrades go twice as fast for ' + days + ' days.';
+      Deck.say(msg);
+      const spots = this.works(), hands = this.hands();
+      GrowFX.show('quick_hands', { spots, hands, tab: !spots.length && !hands.length });
       GrowFX.sfx('quickhands');
-      return { ok: true, until: e.until };
+      return { ok: true, until: e.until, msg: this.result(was, days) };
+    },
+    // the landing's one toast: what the card did, in the world's words (Deck.say keeps the log line)
+    result(was, days) {
+      if (was) return 'Quick Hands keeps up the pace — ' + days + ' more days of building at twice the speed.';
+      const n = this.all().length;
+      return n ? 'Quick Hands: ' + n + (n === 1 ? ' works rises' : ' works rise') + ' twice as fast for ' + days + ' days.'
+        : 'Quick Hands: whatever you lay in the next ' + days + ' days rises twice as fast.';
     },
     end() { G.log('🔨 Quick Hands is spent — the works go at their ordinary pace again.'); },
-    // the works the quicker hands reach, on screen now — or the hall
-    works() {
-      const v = GrowFX.view(1), out = [];
-      for (const b of S.buildings) {
-        if (out.length >= 24) break;
-        if (b.owner !== 'P' || !(b.construction > 0 || b.upgrading > 0 || b.wallUp > 0)) continue;
-        if (!GrowFX.inV(v, Bld.cx(b), Bld.cy(b))) continue;
-        out.push({ x: Bld.cx(b), y: b.y + Bld.size(b), sz: Bld.size(b) });
-      }
+    // every works the quicker hands reach, anywhere: a site, an upgrade, the
+    // masons' wall works, a span being reinforced
+    rising(b) { return b.owner === 'P' && (b.construction > 0 || b.upgrading > 0 || b.wallUp > 0); },
+    all() {
+      const out = [];
+      for (const b of S.buildings) if (this.rising(b)) out.push({ x: Bld.cx(b), y: b.y + Bld.size(b), sz: Bld.size(b), id: b.id });
       for (const br of (S.bridges || []))
-        if (out.length < 28 && br.owner === 'P' && br.upgrading > 0 && GrowFX.inV(v, br.x + 0.5, br.y + 0.5))
-          out.push({ x: br.x + 0.5, y: br.y + 1, sz: 1 });
-      if (!out.length) {
-        const tc = Bld.tcOf('P');
-        if (tc) out.push({ x: Bld.cx(tc), y: tc.y + Bld.size(tc), sz: Bld.size(tc) });
+        if (br.owner === 'P' && br.upgrading > 0) out.push({ x: br.x + 0.5, y: br.y + 1, sz: 1, br: 1 });
+      return out;
+    },
+    // the works in view now (plain numbers — a show never holds the world)
+    works() {
+      const v = GrowFX.view(1);
+      return this.all().filter(w => GrowFX.inV(v, w.x, w.y - w.sz / 2)).slice(0, 28);
+    },
+    // the builders at them in view, and where each one's hammer falls
+    hands() {
+      const v = GrowFX.view(1), out = [];
+      for (const u of S.units) {
+        if (out.length >= 24) break;
+        if (!this.hammering(u) || !GrowFX.inV(v, u.x, u.y)) continue;
+        const h = this.head(u);
+        if (h) out.push({ id: u.id, hx: h.x, hy: h.y });
       }
       return out;
     },
+    /* WHERE THE CARD LANDS: the works nearest the middle of the view, if any
+       is on screen; else the one nearest the hall (the view goes to it); with
+       nothing rising anywhere, the hall — and the show bursts off the Build tab */
+    dest() {
+      const all = this.all();
+      if (!all.length) {
+        // nothing rising anywhere: the card goes to where the next works are laid
+        const t = this.tabPt();
+        return t ? { x: (t.x / R.cam.z + R.cam.x) / CFG.TILE, y: (t.y / R.cam.z + R.cam.y) / CFG.TILE } : null;
+      }
+      const v = GrowFX.view(0), m = GrowFX.mid(), tc = Bld.tcOf('P');
+      const seen = all.filter(w => GrowFX.inV(v, w.x, w.y - w.sz / 2));
+      const from = seen.length ? m : tc ? { x: Bld.cx(tc), y: Bld.cy(tc) } : m;
+      const pool = seen.length ? seen : all;
+      let best = pool[0], bd = Infinity;
+      for (const w of pool) { const d = Math.hypot(w.x - from.x, w.y - w.sz / 2 - from.y); if (d < bd) { bd = d; best = w; } }
+      return { x: best.x, y: best.y - best.sz / 2 };
+    },
+    /* the Build menu's middle when it is open, else the Build tab — in CSS px
+       (null with neither on the page) */
+    tabPt() {
+      if (typeof document === 'undefined') return null;
+      const m = document.getElementById('buildmenu'), t = document.getElementById('bmToggle');
+      const mr = m && m.offsetParent !== null && getComputedStyle(m).display !== 'none' ? m.getBoundingClientRect() : null;
+      if (mr && mr.width > 0 && mr.height > 0) return { x: mr.left + mr.width / 2, y: mr.top + 6 };
+      const tr = t && t.offsetParent !== null ? t.getBoundingClientRect() : null;
+      return tr && tr.width > 0 ? { x: tr.left + tr.width / 2, y: tr.top } : null;
+    },
+    // a builder swinging at a works the card quickens
+    hammering(u) {
+      if (u.owner !== 'P' || !u.task || Units.moving(u)) return false;
+      const tk = u.task;
+      if (tk.type === 'build') { const b = Bld.get(tk.id); return !!(b && (b.construction > 0 || b.upgrading > 0)); }
+      return tk.type === 'terraform' && tk.job === 'bridgeup';
+    },
+    /* where the hammer's head comes down, in world px: in front of the body
+       the way it faces the works (R.faceBuilding, from where the lean draws
+       him), at chest height above the drawn feet */
+    head(u) {
+      const TL = CFG.TILE, lean = R.workLean ? R.workLean(u) : null;
+      const wx = lean ? lean.x : u.x, wy = lean ? lean.y : u.y;
+      const b = u.task && u.task.type === 'build' ? Bld.get(u.task.id) : null;
+      const dir = (b && R.faceBuilding ? R.faceBuilding(u, b) : null) || 's';
+      const sx = /e/.test(dir) ? 1 : /w/.test(dir) ? -1 : 0, sy = /^s/.test(dir) ? 1 : /^n/.test(dir) ? -1 : 0;
+      const foot = wy * TL + TL / 2 - CFG.SPRITE_LIFT;
+      return { x: wx * TL + sx * 8, y: foot - 12 + sy * 2 };
+    },
+    /* THE SWING'S STRIKE: the build strip's own cycle (R.unitSprite reads
+       u.animT at the sheet's own rate), the head coming down over its last
+       third — so the spark is the blow, frame for frame. 0..1 inside the
+       strike, -1 between blows. */
+    STRIKE: [0.6, 0.84],
+    strike(u) {
+      const n = 8, key = R.unitArtKey ? R.unitArtKey(u) : u.kind;
+      const fps = (Sprites.animFps && (Sprites.animFps[key] || Sprites.animFps[u.kind])) || 9;
+      const ph = ((u.animT || 0) * fps / n) % 1, [a, b] = this.STRIKE;
+      return ph >= a && ph < b ? (ph - a) / (b - a) : -1;
+    },
+    // the top of a works as it is drawn now: its stage's art, or the footprint
+    top(w) {
+      const TL = CFG.TILE;
+      if (w.br) return (w.y - 1) * TL;
+      const b = Bld.get(w.id);
+      if (!b) return (w.y - w.sz) * TL;
+      const sz = Bld.size(b), bx = b.x * TL, by = b.y * TL, bw = sz * TL;
+      const spr = b.construction > 0 || b.upgrading > 0 ? (R.stageIcon ? R.stageIcon(b) : null) : R.bldSprite(b);
+      if (spr && spr._cfArt && R._artBox) { const rc = R.artRect(spr, bx, by, bw, bw), bx2 = R._artBox(spr); return Math.min(by, rc.y + bx2.t * rc.h); }
+      return by;
+    },
     CHIP: ['#f0dcae', '#d2a868', '#a0703a'],
-    // a burst of sawdust and hammer sparks off every works in view (Stone: modest, crisp)
+    // a small gold hammer, 8×8 cells, outlined: the works' own pip
+    HAMMER: ['.oooooo.', 'oHHHHHHo', 'oSSSSSSo', '.oooHoo.', '...oHo..', '...oHo..', '...oSo..', '...ooo..'],
+    hammer(g, x, y, a) {
+      a = GrowFX.step(a);
+      if (a <= 0) return;
+      const C = { o: '#3a2410', H: '#ffd45e', S: '#d8902a' }, x0 = Math.round(x) - 4, y0 = Math.round(y) - 8;
+      g.globalAlpha = a;
+      this.HAMMER.forEach((row, j) => { for (let i = 0; i < 8; i++) { const c = C[row[i]]; if (c) { g.fillStyle = c; g.fillRect(x0 + i, y0 + j, 1, 1); } } });
+      g.globalAlpha = 1;
+    },
+    // sparks thrown off one blow: hot gold grains up and out, falling back
+    sparks(g, x, y, q, seed, n, v) {
+      const F = GrowFX, TL = CFG.TILE;
+      for (let k = 0; k < n; k++) {
+        const h1 = F.hash(seed * 17 + k, 5), h2 = F.hash(k * 3, seed + 11);
+        const a = -Math.PI / 2 + (h1 - 0.5) * 2.6, sp = TL * (v || 1) * (1.6 + h2 * 1.6);
+        const px = x + Math.cos(a) * sp * q, py = y + Math.sin(a) * sp * q + 0.5 * TL * 6 * q * q;
+        F.mote(g, px, py, k % 3 ? '#ffcc40' : '#fff6c8', '#7a4a0a', q < 0.6 ? 1 : (1 - q) / 0.4);
+      }
+    },
+    // the '×2': cream, a hard dark rim, popped up in steps and held, then gone
+    pip(g, x, y, q) {
+      if (q <= 0 || q >= 1) return;
+      const rise = Math.round(Math.min(1, q / 0.18) * 3) * 3, a = q < 0.75 ? 1 : (1 - q) / 0.25;
+      GrowFX.tag(g, x, y - rise, '×2', a, '#f2e6cd');
+      if (q < 0.3) {   // the burst it pops out of: eight hard dots running out
+        const k = q / 0.3, r = 4 + k * 10;
+        for (let i = 0; i < 8; i++) {
+          const th = i / 8 * Math.PI * 2;
+          GrowFX.mote(g, x + Math.cos(th) * r, y - rise + Math.sin(th) * r * 0.8, '#ffcc40', null, 1 - k);
+        }
+      }
+    },
     show: {
-      ms: 1500, layer: 'world',
-      draw(g, s, p) {
+      ms: 1700, layers: ['world', 'sky'],
+      draw(g, s, p, dt, layer) {
         const TL = CFG.TILE, F = GrowFX, vp = F.viewPx(1);
+        if (layer === 'sky') {
+          if (!s.tab) return;
+          // nothing being built: the '×2' bursts off the Build menu (or its
+          // tab), where the next works are laid — at the world's own scale
+          const t = s.at || (s.at = this.tabPt());
+          if (!t) return;
+          const d = R.dpr || 1, sc = Math.max(2, Math.round(R.cam.z * d * 1.25));
+          g.save(); g.translate(Math.round(t.x * d), Math.round(t.y * d)); g.scale(sc, sc);
+          this.sparks(g, 0, -4, Math.min(1, p / 0.7), 7, 16, 0.8);
+          this.pip(g, 0, -12, p);
+          g.restore();
+          return;
+        }
+        // each works: its sparks and its '×2', a beat apart down the list
         for (let i = 0; i < s.spots.length; i++) {
           const sp = s.spots[i], d0 = (i % 8) * 0.04, q = (p - d0) / (1 - d0);
           if (q <= 0 || q >= 1) continue;
-          const cx = sp.x * TL, foot = sp.y * TL - 2;
-          if (cx < vp.x0 || cx > vp.x1 || foot < vp.y0 || foot > vp.y1 + TL) continue;
-          // the Stone tier's pale light: the ring in pale stone's ink
-          F.ring(g, cx, foot, TL * (0.3 + sp.sz * 0.7 * F.ease(q / 0.6)), 'pale', (1 - q) * 0.85, 2, 0.5);
-          const t = q * 1.0, top = foot - TL * 0.35 * sp.sz;
-          for (let k = 0; k < 14; k++) {
-            const h1 = F.hash(i * 17 + k, 5), h2 = F.hash(k * 3, i + 11);
-            const a = -Math.PI / 2 + (h1 - 0.5) * 2.4, v = TL * (2.4 + h2 * 2);
-            const x = cx + Math.cos(a) * v * t, y = top + Math.sin(a) * v * t + 0.5 * TL * 7 * t * t;
-            const al = F.step(q < 0.75 ? 1 : (1 - q) / 0.25);
+          const cx = sp.x * TL, top = s.tops ? s.tops[i] : this.top(sp);
+          if (cx < vp.x0 || cx > vp.x1 || top > vp.y1 + TL || sp.y * TL < vp.y0) continue;
+          // sawdust thrown off the works' foot
+          const foot = sp.y * TL - 2;
+          for (let k = 0; k < 10; k++) {
+            const h1 = F.hash(i * 17 + k, 9), h2 = F.hash(k * 3, i + 21), t = Math.min(1, q * 1.3);
+            const a = -Math.PI / 2 + (h1 - 0.5) * 2.4, v = TL * (1.6 + h2 * 1.4);
+            const x = cx + Math.cos(a) * v * t, y = foot - TL * 0.2 + Math.sin(a) * v * t + 0.5 * TL * 7 * t * t;
+            const al = F.step(t < 0.75 ? 1 : (1 - t) / 0.25);
             if (al <= 0) continue;
-            g.globalAlpha = al * 0.6; g.fillStyle = '#5e3e1e';
-            g.fillRect(F.snap(x), F.snap(y) + 2, k % 4 ? 2 : 4, 1);
             g.globalAlpha = al; g.fillStyle = this.CHIP[k % 3];
             g.fillRect(F.snap(x), F.snap(y), k % 4 ? 2 : 4, 2);
           }
           g.globalAlpha = 1;
-          for (let k = 0; k < 4; k++) {
-            const h = F.hash(i, k + 70);
-            F.mote(g, cx + (h - 0.5) * TL * sp.sz * 0.8, top - q * TL * (1.4 + h * 1.2), k % 2 ? '#ffcc40' : '#fff6c8', null, 1 - q * 1.5);
-          }
+          this.sparks(g, cx, top + 4, Math.min(1, q / 0.8), i + 1, 12, 1);
+          this.pip(g, cx, top - 6, q);
+        }
+        // every builder's hammer in sight: a fountain of sparks off the blow and a '×2'
+        for (let i = 0; i < s.hands.length; i++) {
+          const hd = s.hands[i], u = Units.get(hd.id), d0 = 0.08 + (i % 6) * 0.05, q = (p - d0) / (1 - d0);
+          if (q <= 0 || q >= 1) continue;
+          const h = u ? this.head(u) : { x: hd.hx, y: hd.hy };
+          this.sparks(g, h.x, h.y, Math.min(1, q / 0.7), 40 + i, 8, 0.8);
+          this.pip(g, h.x, h.y - 14, q);
         }
       },
     },
-    // while it lasts, the hammers at every works on screen throw sparks twice as often
+    // while it lasts: a gold hammer over every works in sight, and a spark off every blow
     drawLive(g) {
-      const TL = CFG.TILE, F = GrowFX, v = F.view(1), t = performance.now() / 1000;
+      const TL = CFG.TILE, F = GrowFX, v = F.view(1), now = performance.now() / 1000;
+      const fresh = F.liveP('quick_hands'), k0 = fresh >= 0 ? Math.min(1, fresh / 0.6) : 1;
+      for (const w of this.all()) {
+        if (!F.inV(v, w.x, w.y - w.sz / 2)) continue;
+        if (!w.br && !G.visibleAt(Math.floor(w.x), Math.floor(w.y - 0.5))) continue;
+        const bob = ((now * 2 + (w.id || 0) * 0.37) % 2) < 1 ? 0 : 1;   // a one-pixel bob, in steps
+        this.hammer(g, w.x * TL, this.top(w) - 3 - bob, k0);
+      }
       for (const u of S.units) {
-        if (u.owner !== 'P' || !u.task || !F.inV(v, u.x, u.y) || Units.moving(u)) continue;
-        const tk = u.task;
-        if (tk.type === 'build') {
-          const b = Bld.get(tk.id);
-          if (!b || !(b.construction > 0 || b.upgrading > 0)) continue;
-        } else if (!(tk.type === 'terraform' && tk.job === 'bridgeup')) continue;
-        const beat = t * 3.2 + (u.id * 0.37) % 1, ph = beat % 1;
-        if (ph > 0.35) continue;
-        const k = ph / 0.35, hx = u.x * TL + (u.id % 2 ? 5 : -5), hy = u.y * TL - CFG.SPRITE_LIFT - 2;
+        if (!this.hammering(u) || !F.inV(v, u.x, u.y)) continue;
+        const k = this.strike(u);
+        if (k < 0) continue;
+        const h = this.head(u);
         for (let m = 0; m < 3; m++) {
-          const a = -Math.PI / 2 + (F.hash(u.id + m, Math.floor(beat)) - 0.5) * 2.4;
-          F.mote(g, hx + Math.cos(a) * k * 9, hy + Math.sin(a) * k * 9, m ? '#ffcc40' : '#fff6c8', null, 1 - k);
+          const a = -Math.PI / 2 + (F.hash(u.id + m, Math.floor((u.animT || 0) * 2)) - 0.5) * 2.4;
+          F.mote(g, h.x + Math.cos(a) * k * 9, h.y + Math.sin(a) * k * 9, m ? '#ffcc40' : '#fff6c8', null, 1 - k);
         }
       }
     },

@@ -619,6 +619,9 @@ await p.evaluate(() => {
     out.log = S.log[0].msg;
     // the mark: drawn on the minimap (gold) and on the map, with no throw
     const calls = []; const g = { fillRect: (...a) => calls.push(a), set fillStyle(v) { calls.push(v); } };
+    // (once the map's own show is over: until the charcoal strikes the X, and
+    // the fog steps back, the minimap keeps both dark — tests/deck-fx.mjs §10)
+    R.cardShows = R.cardShows.filter(z => z.id !== 'pathfinders_map');
     Deck.drawMini(g);
     out.mini = calls.filter(c => typeof c === 'string' && /ffd45e|c99b32/.test(c)).length > 0 && calls.filter(Array.isArray).length >= 14;
     // its "when": nothing left to chart and the relic marked → kept, in words

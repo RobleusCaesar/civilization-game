@@ -6775,7 +6775,10 @@ const R = {
     // somebody a job.
     if (last != null && now - last < gap) return false;
     this._workFloatAt[u.id] = now;
-    this.float(u.x, u.y - 0.5, txt, '#d8e8b0');
+    // a card that makes the work richer may say so on the hand's next float
+    // (js/deckfx-growth.js — the festival's '×1.4'; guarded on the method)
+    const tag = window.Deck && Deck.floatTag ? Deck.floatTag(u) : '';
+    this.float(u.x, u.y - 0.5, tag ? txt + tag : txt, '#d8e8b0');
     /* AND THE WORK IS HEARD WHERE IT IS SEEN. The village's working sounds
        ride this tick rather than the gather step, which is the whole reason
        they are bearable: the step fires several times a second per worker
@@ -10648,6 +10651,24 @@ const R = {
     }
     return out;
   },
+  /* A CARD SHOW MAY STAND IN FOR A FINISHED BUILDING'S PICTURE for a beat:
+     show.veil(g, b, s, p, bx, by, bw) answers true while it draws in the
+     building's place (Master Builders plays the three raising stages of a
+     building it has already finished, js/deckfx-town.js). Asked by the
+     building loop only while a show runs, and only of a show naming that
+     building (s.bid). A veil that throws stands down, never the frame. */
+  cardVeil(g, b, bx, by, bw) {
+    for (const s of this.cardShows) {
+      if (s.bid !== b.id) continue;
+      const d = window.Deck && Deck.FX[s.id], sh = d && d.show;
+      if (!sh || !sh.veil) continue;
+      const p = s.t / (s.ms / 1000);
+      if (p >= 1) continue;
+      try { if (sh.veil.call(d, g, b, s, p, bx, by, bw)) return true; }
+      catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card veil', s.id, err); } }
+    }
+    return false;
+  },
   drawCardBld(g, b, list) {
     for (const it of list) {
       const id = it.e ? it.e.id : it.s.id, d = Deck.FX[id];
@@ -13366,6 +13387,9 @@ const R = {
           g.fillRect(bx + 1, by + 1, 4, 4);
         }
       } else {
+        // a card raising it in a heartbeat draws its stages in its place for
+        // that beat (Master Builders — R.cardVeil; nothing with no show running)
+        if (this.cardShows.length && this.cardVeil(g, b, bx, by, bw)) continue;
         // a damaged building wears its destruction phase (tests/burn-down.mjs):
         // untouched → scorched dark (or its own battered art) → partially
         // destroyed (or its own broken art) — R.wornSprite, Bld.burnPhase

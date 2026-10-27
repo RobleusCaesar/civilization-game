@@ -178,6 +178,50 @@ await p.evaluate(() => {
     `+${r.food} food, ${r.used} card spent, fly ${JSON.stringify(r.fly)} at '${r.at}'`);
   ck('andTheCacheDrawsNoRng', r.rng);
 }
+/* …AND IT HAS A MOMENT AT THE HALL'S DOOR (the playtest: the one starter
+   card with no moment in the world and no voice of its own, while its three
+   Stone siblings each drop goods at the door). A woven basket comes down,
+   lands in its dust and spills its food — each piece a step of the food
+   count (its pays) adding to the 250 — in the card's own voice; and every
+   beat of it draws, laying a picture worth the name. */
+{
+  const r = await p.evaluate(() => {
+    __fx.fresh('fx-cache-moment');
+    Screens.show('playing'); S.paused = true;
+    R.cardShows = []; R.placePoofs = [];
+    const tc = Bld.tcOf('P');
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1);
+    const heard = [], sp0 = Sound.play;
+    Sound.play = function (k) { heard.push(k); return sp0.apply(this, arguments); };
+    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect, di = P2.drawImage;
+    let marks = 0, peak = 0, threw = null;
+    try {
+      const out = Deck.play('forager_cache');
+      const sh = R.cardShows.find(s => s.id === 'forager_cache');
+      const d = Deck.FX.forager_cache;
+      const pays = sh && d.show && d.show.pays ? d.show.pays.call(d, sh) : [];
+      const sum = pays.reduce((a, e) => a + (e[2] || 0), 0);
+      P2.fillRect = function () { marks++; return fr.apply(this, arguments); };
+      P2.drawImage = function () { marks++; return di.apply(this, arguments); };
+      const g = R.cv.getContext('2d');
+      if (sh) for (let k = 1; k <= 30; k++) {
+        sh.t = k / 30 * sh.ms / 1000 * 0.97; marks = 0;
+        if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+        g.save();
+        try { R.drawCardShows(g, 0, 'world'); } catch (e) { threw = String(e); }
+        g.restore();
+        peak = Math.max(peak, marks);
+      }
+      return { show: !!sh && sh.tc === tc.id && !!sh.at, pay: !!(out.pay && out.pay.ms > 0), pieces: pays.length,
+        rest: pays.length > 0 && !pays[pays.length - 1][2] && sum < 250, voice: heard.includes('cardBasket') && typeof Sound._VOICES.cardBasket === 'function',
+        poofs: R.placePoofs.length, peak, threw };
+    } finally { P2.fillRect = fr; P2.drawImage = di; Sound.play = sp0; R.cardShows = []; }
+  });
+  ck('aForagersCacheIsSetDownAtTheHallsDoor', r.show && r.pay && r.pieces >= 4 && r.rest,
+    `a show at the door ${r.show}, the bar held for its pieces ${r.pay}, ${r.pieces} pieces (the last the rest ${r.rest})`);
+  ck('inItsOwnVoiceAndItsOwnDust', r.voice && r.poofs >= 1, `the basket's voice ${r.voice}, ${r.poofs} puffs of dust`);
+  ck('andEveryBeatOfItDraws', !r.threw && r.peak >= 40, r.threw || `${r.peak} marks at its height`);
+}
 
 // ---------------- 2. HARVEST FESTIVAL ----------------
 {
@@ -725,6 +769,375 @@ await p.evaluate(() => {
   });
   ck('theCardsStarAndTheRunsShareTheSky', !r.threw && r.twoSkies, r.threw || 'two skies, drawn together');
   ck('andTheCardsSkyDrainsAway', r.drained && !r.threw2, r.threw2 || 'gone once its smoke has thinned');
+}
+
+// ---------------- 9. SCOUT'S FIRE: THE FIRE LIGHTS ITSELF, THE DARK IS WHOLE ----------------
+/* The playtest's critics on Scout's Fire (a Stone card whose effect lives in
+   js/deckfx-rival.js): at the catch a FLAT ORANGE DISC two and a half tiles
+   across lay on the ground with a soft white glow at its base — warm light
+   pooled on the meadow, the house style's one forbidden thing — and while
+   the fog rolled back a faint TILE GRID showed across the unexplored black
+   (every tile of it a rect of its own, each edge anti-aliased on its own at
+   the play zoom, the ground showing through every seam). Measured on the
+   show: round the fire's foot, out past its own flame, the ground is left
+   alone; and the black it draws over the dark is one unbroken black at a
+   fractional zoom. */
+{
+  const r = await p.evaluate(() => {
+    const out = {}, TL = CFG.TILE;
+    __fx.fresh('fx-scoutfire'); __fx.flat();
+    Screens.show('playing'); S.paused = true;
+    Deck._add('scouts_fire', 2);
+    const P = Bld.tcOf('P'), ax = P.x + 12, ay = P.y + 10;
+    // the far ground unexplored, the fire's own few tiles known
+    for (let y = ay - 9; y <= ay + 9; y++) for (let x = ax - 9; x <= ax + 9; x++) if (MapGen.inB(x, y)) S.map.explored[MapGen.idx(x, y)] = 0;
+    for (let y = ay - 1; y <= ay + 1; y++) for (let x = ax - 1; x <= ax + 1; x++) S.map.explored[MapGen.idx(x, y)] = 1;
+    R.cardShows = [];
+    const play = Deck.play('scouts_fire', { x: ax + 0.5, y: ay + 0.5 });
+    const sh = R.cardShows.find(s => s.id === 'scouts_fire');
+    out.play = play.ok && !!sh;
+    if (!sh) return out;
+    // (a) the catch, on flat meadow at world scale: the annulus round the fire's
+    // foot, outside its flame's own column, left as it was
+    const GR = [91, 132, 57], fx = sh.x * TL, fy = sh.y * TL + TL * 0.25;
+    const cv = document.createElement('canvas'); cv.width = 200; cv.height = 200;
+    const cg = cv.getContext('2d');
+    sh.dark = []; sh.dim = [];          // the fog-back is (b)'s question
+    let worst = 0;
+    for (const t of [0.02, 0.06, 0.1, 0.16, 0.22]) {
+      cg.setTransform(1, 0, 0, 1, 0, 0); cg.fillStyle = 'rgb(' + GR + ')'; cg.fillRect(0, 0, 200, 200);
+      cg.setTransform(1, 0, 0, 1, 100 - fx, 100 - fy);
+      sh.t = t; if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+      R.drawCardShows(cg, 0, 'world');
+      const d = cg.getImageData(0, 0, 200, 200).data;
+      let n = 0, m = 0;
+      for (let y = 0; y < 200; y++) for (let x = 0; x < 200; x++) {
+        const dx = x - 100, dy = y - (100 - TL * 0.4), rr = Math.hypot(dx, dy);
+        if (rr < TL * 0.75 || rr > TL * 1.1 || Math.abs(dx) < TL * 0.55) continue;
+        m++;
+        const i = (y * 200 + x) * 4;
+        if (d[i] !== GR[0] || d[i + 1] !== GR[1] || d[i + 2] !== GR[2]) n++;
+      }
+      worst = Math.max(worst, n / Math.max(1, m));
+    }
+    out.disc = worst;
+    // (b) the fog rolling back: the black over a block of dark tiles four to
+    // seven tiles off, at the play zoom on a phone (a fractional device scale)
+    const blk = [];
+    for (let y = ay - 2; y <= ay + 2; y++) for (let x = ax + 4; x <= ax + 7; x++) blk.push(MapGen.idx(x, y));
+    sh.dark = blk; sh.t = 0.05;
+    const Z = 3.4, bx = (ax + 4) * TL, by = (ay - 2) * TL, W2 = Math.ceil(4 * TL * Z), H2 = Math.ceil(5 * TL * Z);
+    const c2 = document.createElement('canvas'); c2.width = W2; c2.height = H2;
+    const g2 = c2.getContext('2d');
+    g2.fillStyle = '#ffffff'; g2.fillRect(0, 0, W2, H2);
+    g2.setTransform(Z, 0, 0, Z, -bx * Z + 0.37, -by * Z + 0.61);
+    const vt = R.viewTiles; R.viewTiles = () => ({ x0: -2, y0: -2, x1: CFG.W + 2, y1: CFG.H + 2 });
+    try { if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh); R.drawCardShows(g2, 0, 'world'); } finally { R.viewTiles = vt; }
+    const d2 = g2.getImageData(0, 0, W2, H2).data;
+    let seams = 0;
+    for (let y = 4; y < H2 - 4; y++) for (let x = 4; x < W2 - 4; x++) {
+      const i = (y * W2 + x) * 4;
+      if (d2[i] !== 13 || d2[i + 1] !== 11 || d2[i + 2] !== 8) seams++;
+    }
+    out.seams = seams;
+    R.cardShows = [];
+    return out;
+  });
+  ck('scoutsFireLightsOnlyItselfNoPoolOnTheGround', r.play && r.disc < 0.12, `at most ${(100 * (r.disc || 0)).toFixed(0)}% of the ground round its foot touched (the old catch: a disc over all of it)`);
+  ck('andTheDarkItDrawsIsWholeNoTileGrid', r.play && r.seams === 0, `${r.seams} pixels of seam inside a block of dark tiles at a fractional zoom`);
+}
+
+// ---------------- 10. PATHFINDER'S MAP GIVES NOTHING AWAY, AND THE FOG IS SEEN TO GO ----------------
+/* The playtest's critics (a Bronze card whose effect lives in
+   js/deckfx-rival.js): the minimap showed the whole world and the relic's X
+   on the LANDING frame while the hide was still blank; the hide left as "a
+   big translucent rectangle smeared over the town"; the land was hatched
+   and the water left blank, so it did not read as the blue-heavy minimap;
+   and the fog peeling back happened off camera. Now: the minimap holds the
+   world dark until the fog's own rings reach it, the X waits for the
+   charcoal to strike it, the hide rolls back up (no alpha), the sea is
+   washed and inked in wave dashes, and after the view goes to the X the fog
+   steps back from the hall outward — drawn as one path. */
+{
+  const r = await p.evaluate(() => {
+    const out = {}, TL = CFG.TILE, W = CFG.W;
+    __fx.fresh('fx-pathfinder'); __fx.flat();
+    Screens.show('playing'); S.paused = true;
+    Deck._add('pathfinders_map', 2);
+    const P = Bld.tcOf('P');
+    // a sea to the east, the far half of the world dark, a relic in it
+    for (let y = 0; y < CFG.H; y++) for (let x = 24; x < 34; x++) if (MapGen.inB(x, y)) { const i = MapGen.idx(x, y); S.map.terrain[i] = T.WATER; if (S.map.seenTerrain) S.map.seenTerrain[i] = T.WATER; }
+    for (let i = 0; i < W * CFG.H; i++) { const x = i % W, y = (i / W) | 0; if (Math.hypot(x - P.x, y - P.y) > 9) S.map.explored[i] = 0; }
+    S.relic = { key: 'aqueduct', x: 18, y: 18, w: 2, h: 2, found: 0, amount: 0 };
+    G.updateVisibility();
+    R.cam.z = 1.7; R.centerOn(Bld.cx(P), Bld.cy(P));
+    R.cardShows = [];
+    const PF = Deck.FX.pathfinders_map;
+    const play = Deck.play('pathfinders_map');
+    const s = R.cardShows.find(z => z.id === 'pathfinders_map');
+    out.play = play.ok && !!s;
+    if (!s) return out;
+    const B = PF.BEAT || { LIFT: 3.1, ROLL: 0.6, PAN0: 3.45, PAN: 0.7, FOG0: 4.25, FOG: 0.8 };
+    // THE MINIMAP on the landing frame: a far charted tile still dark, the relic's X not there yet
+    const far = MapGen.idx(30, 30), farTile = { x: 30, y: 30 };
+    const mini = (x, y) => { R.drawMini(); const d = R.mg.getImageData(x * 2, y * 2, 1, 1).data; return [d[0], d[1], d[2]]; };
+    s.t = 0;
+    out.miniLanding = mini(farTile.x, farTile.y).join(',');
+    out.xLanding = mini(19, 19).join(',');
+    s.t = (B.FOG0 || 4.25) + (B.FOG || 0.8) + 0.05;
+    out.miniAfter = mini(farTile.x, farTile.y).join(',');
+    out.xAfter = mini(19, 19).join(',');
+    out.far = !!s.mask && s.mask[far] === 1;
+    // THE HIDE leaves by rolling up: never drawn through an alpha, and narrower as it goes
+    const cv = document.createElement('canvas'); cv.width = R.cv.width; cv.height = R.cv.height;
+    const g = cv.getContext('2d');
+    const di = CanvasRenderingContext2D.prototype.drawImage, art = [];
+    CanvasRenderingContext2D.prototype.drawImage = function (img, sx, sy, sw, sh, dx, dy, dw) { if (this === g && img === s.art) art.push({ a: this.globalAlpha, w: dw }); return di.apply(this, arguments); };
+    try {
+      for (const t of [B.LIFT - 0.2, B.LIFT + B.ROLL * 0.3, B.LIFT + B.ROLL * 0.7]) { s.t = t; g.save(); PF.show.draw.call(PF, g, s, t / (s.ms / 1000), 0, 'sky'); g.restore(); }
+    } finally { CanvasRenderingContext2D.prototype.drawImage = di; }
+    out.hide = art.map(a => a.a.toFixed(2) + '@' + Math.round(a.w)).join(' ');
+    out.noAlpha = art.length === 3 && art.every(a => a.a === 1);
+    out.rolls = art.length === 3 && art[0].w > art[1].w && art[1].w > art[2].w;
+    // THE SEA on the hide: washed, and inked in wave dashes
+    const ink = s.ink.getContext('2d').getImageData(0, 0, s.aw, s.ah).data, hide = s.art.getContext('2d').getImageData(0, 0, s.aw, s.ah).data;
+    let waves = 0, wash = 0;
+    for (let y = 0; y < CFG.H; y++) for (let x = 25; x < 33; x++) for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+      const i = ((s.M + y * 2 + dy) * s.aw + s.M + x * 2 + dx) * 4;
+      if (ink[i + 3] && ink[i + 2] > ink[i] && ink[i + 2] > ink[i + 1] - 4) waves++;   // a cool ink on the water
+      if (hide[i] === 168 && hide[i + 1] === 156 && hide[i + 2] === 126) wash++;
+    }
+    out.waves = waves; out.wash = wash;
+    // THE VIEW GOES TO THE X, then the fog steps back from the hall outward
+    R.centerOn(Bld.cx(P), Bld.cy(P));
+    s.pan = null; s.panDone = false;
+    for (let t = (B.PAN0 || 3.45) - 0.05; t <= (B.PAN0 || 3.45) + (B.PAN || 0.7) + 0.05; t += 0.05) { s.t = t; g.save(); PF.show.draw.call(PF, g, s, t / (s.ms / 1000), 0, 'world'); g.restore(); }
+    out.atX = R.onScreen(19, 19);
+    const near = MapGen.idx(P.x + 11, P.y + 1);
+    const held = (t, i) => { s.t = t; return PF.held ? PF.held(s, i) : true; };
+    out.steps = {
+      before: held((B.FOG0 || 4.25) - 0.01, near) && held((B.FOG0 || 4.25) - 0.01, far),
+      mid: !held((B.FOG0 || 4.25) + (B.FOG || 0.8) * 0.5, near) && held((B.FOG0 || 4.25) + (B.FOG || 0.8) * 0.5, far),
+      end: !held((B.FOG0 || 4.25) + (B.FOG || 0.8), far),
+    };
+    const radii = new Set();
+    if (PF.released) for (let t = (B.FOG0 || 4.25); t <= (B.FOG0 || 4.25) + (B.FOG || 0.8); t += 0.02) { s.t = t; radii.add(PF.released(s).toFixed(3)); }
+    out.radii = radii.size;
+    // the dark it draws over the charted ground is ONE path, never a rect per run
+    let rects = 0, fills = 0;
+    const fr = CanvasRenderingContext2D.prototype.fillRect, fl = CanvasRenderingContext2D.prototype.fill;
+    CanvasRenderingContext2D.prototype.fillRect = function () { if (this === g) rects++; return fr.apply(this, arguments); };
+    CanvasRenderingContext2D.prototype.fill = function () { if (this === g) fills++; return fl.apply(this, arguments); };
+    try { s.t = 1; g.save(); PF.show.draw.call(PF, g, s, 1 / (s.ms / 1000), 0, 'world'); g.restore(); }
+    finally { CanvasRenderingContext2D.prototype.fillRect = fr; CanvasRenderingContext2D.prototype.fill = fl; }
+    out.paths = { rects, fills };
+    R.cardShows = [];
+    return out;
+  });
+  const dark = c => c && c.split(',').every(v => +v < 16);
+  ck('theMinimapGivesNothingAwayOnTheLandingFrame', r.play && r.far && dark(r.miniLanding) && !dark(r.miniAfter) && dark(r.xLanding) && !dark(r.xAfter),
+    `a far charted tile: ${r.miniLanding} landing, ${r.miniAfter} once the fog is back; the relic's middle ${r.xLanding} → ${r.xAfter}`);
+  ck('theHideRollsBackUpNeverFades', r.noAlpha && r.rolls, r.hide);
+  ck('theSeaIsWashedAndInkedInWaves', r.waves > 40 && r.wash > 200, `${r.waves} wave pixels, ${r.wash} washed`);
+  ck('theViewGoesToTheXAndTheFogStepsBackFromTheHall', r.atX && r.steps && r.steps.before && r.steps.mid && r.steps.end && r.radii >= 5 && r.radii <= 8,
+    `the X on screen after the pan ${r.atX}; held before ${r.steps && r.steps.before}, near released / far held mid-way ${r.steps && r.steps.mid}, all released at the end ${r.steps && r.steps.end}; ${r.radii} hard rings`);
+  ck('andTheDarkOverTheChartedGroundIsOnePath', r.paths && r.paths.rects === 0 && r.paths.fills === 1, JSON.stringify(r.paths));
+}
+
+// ---------------- 11. WILLING HANDS WALK UP, AS THE CARD SAYS ----------------
+/* The playtest's critics (a Stone card whose effect lives in
+   js/deckfx-army.js): "the card's flavour text says strangers walk up; the
+   play shows them materialising", out of the goods' cream bars, two of the
+   three walking off overlapped into one sprite. Now they come out of the
+   treeline (or in from the edge of the view) on ground the player knows and
+   the door can be walked to from, in single file half a tile apart, packs on
+   their backs, and each joins with a hard-pixel burst at the door. */
+{
+  const r = await p.evaluate(() => {
+    const out = {}, TL = CFG.TILE, W = CFG.W;
+    __fx.fresh('fx-hands'); __fx.flat();
+    Screens.show('playing'); S.paused = true;
+    Deck._add('willing_hands', 2);
+    const P = Bld.tcOf('P'); P.x = 12; P.y = 12; Bld._block = null;
+    // a wood to the north-west, a lake to the east the door cannot be walked across to
+    for (let y = 4; y <= 7; y++) for (let x = 6; x <= 10; x++) S.map.terrain[MapGen.idx(x, y)] = T.FOREST;
+    for (let y = 6; y <= 20; y++) for (let x = 18; x <= 21; x++) S.map.terrain[MapGen.idx(x, y)] = T.WATER;
+    Bld._block = null;
+    G.updateVisibility();
+    R.cam.z = 1.7; R.centerOn(Bld.cx(P), Bld.cy(P));
+    R.cardShows = [];
+    const ids0 = new Set(S.units.map(u => u.id));
+    const play = Deck.play('willing_hands');
+    const hands = S.units.filter(u => !ids0.has(u.id));
+    out.play = play.ok && hands.length === 3;
+    const hx = Bld.cx(P), hy = Bld.cy(P);
+    const reach = Path.reachFrom([Deck.summonDoor('villager').first]);
+    out.from = hands.map(u => +Math.hypot(u.x - hx, u.y - hy).toFixed(2));
+    out.known = hands.every(u => S.map.explored[MapGen.idx(u.x | 0, u.y | 0)] && reach[MapGen.idx(u.x | 0, u.y | 0)]);
+    out.treeline = hands.some(u => { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (S.map.terrain[MapGen.idx((u.x | 0) + dx, (u.y | 0) + dy)] === T.FOREST) return true; return false; });
+    // single file: each sets off on its own beat, never two together
+    const waits = hands.map(u => u.task && u.task.type === 'muster' ? +u.task.wait.toFixed(2) : null);
+    out.waits = waits;
+    // walked in: every few tenths of a second, the strangers never stacked, the show drawn
+    const s = R.cardShows.find(z => z.id === 'willing_hands'), WH = Deck.FX.willing_hands;
+    let minGap = 9, packs = 0, bursts = 0;
+    const cv = document.createElement('canvas'); cv.width = cv.height = 1;
+    const g = cv.getContext('2d'), di = CanvasRenderingContext2D.prototype.drawImage, fr = CanvasRenderingContext2D.prototype.fillRect;
+    CanvasRenderingContext2D.prototype.drawImage = function (img) { if (this === g && WH._pack && img === WH._pack) packs++; return di.apply(this, arguments); };
+    CanvasRenderingContext2D.prototype.fillRect = function (x, y, w, h) { if (this === g && w === 4 && h === 4) bursts++; return fr.apply(this, arguments); };
+    try {
+      for (let t = 0; t < 7; t += 0.1) {
+        Units.update(0.1);
+        if (s) { s.t = t; WH.show.draw.call(WH, g, s, t / (s.ms / 1000), 0.1, 'world'); }
+        const moving = hands.filter(u => Units.moving(u));
+        for (let i = 0; i < hands.length; i++) for (let j = i + 1; j < hands.length; j++)
+          if (Units.moving(hands[i]) && Units.moving(hands[j])) minGap = Math.min(minGap, Math.hypot(hands[i].x - hands[j].x, hands[i].y - hands[j].y));
+        void moving;
+      }
+    } finally { CanvasRenderingContext2D.prototype.drawImage = di; CanvasRenderingContext2D.prototype.fillRect = fr; }
+    out.minGap = +minGap.toFixed(2);
+    out.packs = packs; out.bursts = bursts;
+    out.joined = s ? Object.keys(s.joined || {}).length : 0;
+    out.home = hands.map(u => +Math.hypot(u.x - hx, u.y - hy).toFixed(2));
+    R.cardShows = [];
+    return out;
+  });
+  ck('willingHandsWalkUpFromTheTreelineOnKnownGround', r.play && r.from.every(d => d >= 4.4) && r.known && r.treeline,
+    `three set out ${r.from && r.from.join('/')} tiles from the hall, on known walkable ground ${r.known}, at the wood's edge ${r.treeline}`);
+  ck('inSingleFileHalfATileApart', r.waits && new Set(r.waits).size === 3 && r.waits.every(w => w != null) && r.minGap >= 0.4,
+    `they set off at ${r.waits && r.waits.join('/')} s; never closer than ${r.minGap} tiles while walking`);
+  ck('withPacksOnTheirBacksAndABurstAtTheDoor', r.packs > 20 && r.joined === 3 && r.bursts >= 3 && r.home.every(d => d < 4),
+    `${r.packs} pack draws on the walk; ${r.joined} joined at the door with ${r.bursts} burst marks; home at ${r.home && r.home.join('/')} tiles`);
+}
+
+// ---------------- 12. EVERY PLAY SAYS WHAT IT DID ----------------
+/* The playtest's critics: with no line of its own, the landing toast falls
+   back to the card's first sentence — Scout's Fire said "Choose any point."
+   after the point was chosen, a second Harvest Festival repeated "…for 12
+   days." while its chip read 24, and Mending said "3 buildings made whole"
+   beside a work site still on fire. Every Stone and Bronze card of this
+   slice now returns a line of what it DID (r.msg — DeckUI._land shows it),
+   never its rule sentence. */
+{
+  const r = await p.evaluate(() => {
+    const out = { msgs: {}, rule: {} };
+    __fx.fresh('fx-results'); __fx.flat();
+    Screens.show('playing'); S.paused = true;
+    const P = Bld.tcOf('P');
+    const IDS = ['forager_cache', 'fallen_timber', 'loose_stone', 'gold_nugget', 'willing_hands', 'scouts_fire', 'quick_hands', 'mending',
+      'trade_caravan', 'harvest_festival', 'watchfires', 'master_builders', 'pathfinders_map', 'bountiful_land'];
+    for (const id of IDS) Deck._add(id, 3);
+    // something to mend, a tower to light, a site burning beside them, ground still dark
+    const hut = __fx.bld('P', 'house', P.x + 4, P.y + 1); hut.hp = Math.round(hut.maxhp / 3);
+    __fx.bld('P', 'tower', P.x + 1, P.y + 5);
+    const site = Bld.place('P', 'house', P.x + 6, P.y + 4, { free: true, noAutoAssign: true }); Bld._block = null;
+    site.hp = 1;
+    for (let i = 0; i < CFG.W * CFG.H; i++) { const x = i % CFG.W, y = (i / CFG.W) | 0; if (Math.hypot(x - P.x, y - P.y) > 12) S.map.explored[i] = 0; }
+    G.updateVisibility();
+    out.burning = Bld.burnPhase(site) >= 0;
+    const line = t => { const m = /^[^.!?]*[.!?]/.exec(t); return m ? m[0] : t; };
+    for (const id of IDS) {
+      const c = Deck.card(id);
+      const tgt = c.target === 'none' ? undefined : { x: P.x + 20.5, y: P.y + 18.5 };
+      const res = Deck.play(id, tgt);
+      out.msgs[id] = res.ok ? res.msg || null : 'REFUSED ' + res.why;
+      out.rule[id] = line(c.text); out.name = out.name || {}; out.name[id] = c.name;
+    }
+    // a second copy of each timed card RUNS ON in its toast
+    out.again = {
+      harvest_festival: Deck.play('harvest_festival').msg,
+      quick_hands: Deck.play('quick_hands').msg,
+      watchfires: Deck.play('watchfires').msg,
+      bountiful_land: Deck.play('bountiful_land').msg,
+      scouts_fire: Deck.play('scouts_fire', { x: P.x + 20.5, y: P.y + 18.5 }).msg,
+    };
+    // Mending passes over the burning works, and a puff of smoke goes up off them
+    const ms = R.cardShows.find(z => z.id === 'mending');
+    out.left = !!ms && (ms.left || []).some(h => h.id === site.id);
+    if (ms) {
+      const g = R.cv.getContext('2d');
+      for (let t = 0; t < 1.4; t += 0.1) { ms.t = t; g.save(); Deck.FX.mending.show.draw.call(Deck.FX.mending, g, ms, t / (ms.ms / 1000), 0.1, 'world'); g.restore(); }
+      out.smoke = (ms.left || []).some(h => h.puffed);
+    }
+    R.cardShows = [];
+    return out;
+  });
+  // (the fallback the toast falls to with no line: '<name>: <the rule's first sentence>')
+  const bare = Object.keys(r.msgs).filter(k => !r.msgs[k] || /^REFUSED/.test(r.msgs[k]) || r.msgs[k] === r.rule[k] || r.msgs[k] === r.name[k] + ': ' + r.rule[k]);
+  ck('everyPlayOfTheSliceSaysWhatItDid', !bare.length,
+    bare.length ? bare.map(k => k + ': ' + r.msgs[k]).join(' | ') : Object.keys(r.msgs).length + ' cards, each its own line');
+  ck('scoutsFireSaysItsFireBurns', r.msgs.scouts_fire === 'A signal fire burns — 9 tiles charted, watched for 3 days.' && /burns on — 3 more days/.test(r.again.scouts_fire || ''),
+    `"${r.msgs.scouts_fire}"; fed again "${r.again.scouts_fire}"`);
+  ck('aSecondCopyRunsOnInItsToast', Object.values(r.again).every(m => /runs on|keeps up|burn on|stays|more days/.test(m || '')),
+    JSON.stringify(r.again));
+  ck('mendingSaysTheWorksStillSmoulder', r.burning && /\(the works still smoulder\)/.test(r.msgs.mending || '') && r.left && r.smoke,
+    `"${r.msgs.mending}"; the burning site passed over ${r.left}, its smoke up ${r.smoke}`);
+}
+
+// ---------------- 13. SCOUT'S FIRE: THE REACH ON SCREEN, THE FIND AFTER THE FOG ----------------
+/* The playtest's critics: the 9-tile reach ring was 490 px wide on a 390 px
+   phone, so aiming showed "only a reticle over black"; and a relic the fire
+   found floated its "+75 stone" in the black before the fog rolled back
+   off it. Now aiming steps the view back until the ring fits (fx.aimFit —
+   DeckUI._aimFit), a cancel gives the zoom straight back and a play has the
+   fire's own moment hand it back; and the find is shown as the fog's front
+   passes the relic. */
+{
+  const r = await p.evaluate(() => {
+    const out = {}, TL = CFG.TILE;
+    __fx.fresh('fx-scout-aim'); __fx.flat();
+    Screens.show('playing'); S.paused = false;
+    Deck._add('scouts_fire', 4);
+    DeckUI._t = 0; DeckUI.frame(1);
+    const P = Bld.tcOf('P');
+    R.cam.z = 1.7; R.centerOn(Bld.cx(P) + 4, Bld.cy(P) + 4);
+    const vw = document.documentElement.clientWidth, z0 = R.cam.z;
+    // AIMING: the whole ring on screen, and a cancel hands the zoom back
+    DeckUI.startAim('scouts_fire');
+    const A = DeckUI.aim;
+    out.ring = A ? 2 * A.radius * TL * R.cam.z : -1;
+    out.vw = vw;
+    DeckUI.endAim();
+    out.back = +R.cam.z.toFixed(4) === +z0.toFixed(4);
+    // A PLAY: the zoom rides to the card's moment, which gives it back as it ends
+    DeckUI.startAim('scouts_fire');
+    const zFit = R.cam.z;
+    DeckUI.endAim(true, true);
+    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) if (Math.hypot(x - (P.x + 14), y - (P.y + 12)) < 11) S.map.explored[MapGen.idx(x, y)] = 0;
+    S.relic = { key: 'aqueduct', x: P.x + 18, y: P.y + 13, w: 2, h: 2, found: 0, amount: 0 };
+    const floats = [], fl = R.float;
+    R.float = function (x, y, txt) { floats.push({ x, y, txt, at: 'play' }); return fl.apply(this, arguments); };
+    R.cardShows = [];
+    let play;
+    try { play = Deck.play('scouts_fire', { x: P.x + 14.5, y: P.y + 12.5 }); } finally { R.float = fl; }
+    const sh = R.cardShows.find(z => z.id === 'scouts_fire');
+    out.play = !!play && play.ok && !!sh;
+    out.found = !!S.relic.found;
+    out.atPlay = floats.length;
+    out.zoomCarried = !!(sh && sh.zoom) && Math.abs(zFit - z0) > 0.05;
+    // the show, beat by beat: the find appears once the front has passed it
+    const seen = [];
+    R.float = function (x, y, txt) { seen.push({ x, y, txt }); return fl.apply(this, arguments); };
+    const g = R.cv.getContext('2d');
+    let firstAt = -1;
+    try {
+      if (sh) for (let pp = 0.02; pp < 1; pp += 0.02) {
+        sh.t = pp * sh.ms / 1000;
+        g.save(); Deck.FX.scouts_fire.show.draw.call(Deck.FX.scouts_fire, g, sh, pp, 0.02, 'world'); g.restore();
+        if (seen.length && firstAt < 0) firstAt = pp;
+      }
+    } finally { R.float = fl; }
+    out.firstAt = +firstAt.toFixed(2);
+    out.seenAt = seen.length ? [seen[0].x - (S.relic.x + 1), seen[0].y - (S.relic.y + 1)] : null;
+    out.zEnd = +R.cam.z.toFixed(4); out.z0 = +z0.toFixed(4);
+    R.cardShows = [];
+    return out;
+  });
+  ck('scoutsFiresAimShowsItsWholeReach', r.ring > 0 && r.ring <= r.vw && r.back,
+    `the ring ${Math.round(r.ring)} px across on a ${r.vw} px screen; a cancel gives the zoom back ${r.back}`);
+  ck('andAPlayHandsTheViewBackAfterItsMoment', r.play && r.zoomCarried && r.zEnd === r.z0, `zoom ${r.z0} → aimed → ${r.zEnd} once the fire has burned up`);
+  ck('aRelicTheFireFindsIsShownOnlyAfterTheFog', r.play && r.found && r.atPlay === 0 && r.firstAt > 0.05 && r.seenAt && Math.abs(r.seenAt[0]) < 1 && Math.abs(r.seenAt[1]) < 1.2,
+    `found ${r.found}; ${r.atPlay} floats at the play; the find shown at p ${r.firstAt}, at the relic ${JSON.stringify(r.seenAt)}`);
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);

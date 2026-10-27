@@ -43,6 +43,7 @@ const DeckUI = {
      (Deck.wantArt), so the wait is a backstop that almost never runs. */
   ART_WAIT_MS: 600,
   TICK_MS: 320,           // a resource number counting up to its new value
+  PAY_MS: 6000,           // a held number's failsafe: the bar catches up if the goods never land
   SPRING: 'cubic-bezier(.2,1.35,.4,1)',   // springy, with overshoot
   OUT: 'cubic-bezier(.55,0,.85,.35)',     // a launch: slow, then gone
 
@@ -834,7 +835,7 @@ const DeckUI = {
     const r0 = fromEl ? fromEl.getBoundingClientRect() : { left: vw / 2 - 40, top: vh - 140, width: 80, height: 111 };
     this.putBack(true);
     if (this.open) this.closeSheet(true);
-    if (this.aim) this.endAim(true);
+    if (this.aim) this.endAim(true, true);
     this._hold();
     // where the burst lands (the world is still: a hall or a target off the
     // screen is brought into view first)
@@ -1190,6 +1191,8 @@ const DeckUI = {
     const before = {};
     for (const k of this.RES) before[k] = S.res[k] || 0;
     const r = Deck.play(id, tgt);
+    // a view stepped back for the aim that the card did not take to hand back itself (refused): back now
+    if (Deck._aimZoom) { const f = Deck._aimZoom; Deck._aimZoom = null; this._aimUnfit({ fit: f }); }
     this._release();
     const L = P.layer;
     if (!r.ok) {
@@ -1204,7 +1207,7 @@ const DeckUI = {
       if (!fx.narrates) this._say(typeof r.msg === 'string' && r.msg ? r.msg : `${c.name}: ${this._line(c.text)}`, 'note', 4200);
       UI.cue(t.rank >= 2 ? 'bond' : 'done');
       if (dest.kind === 'point') this._impact(L, dest, t.rank, calm);
-      this._count(before, r.fly, calm, L);
+      this._count(before, r.fly, calm, L, r.pay);
       this._t = 0;   // a timed card's countdown pops in on the very next frame
     }
     const after = calm ? this.CALM.after : this.AFTER_MS;
@@ -1240,7 +1243,16 @@ const DeckUI = {
      effect SAYS it gave (FX apply's {fly}: {food: 250} or [{res, n}]) and,
      failing that, what the stockpile actually gained. UI.refresh writes the
      bar every quarter second; frame() runs after it and holds the count. */
-  _count(before, fly, calm, L) {
+  /* PAID ON IMPACT (the playtest: the wood read 447 while the logs were
+     still in the air, the caravan's numbers 2.5 s before its goods came
+     down). A card whose goods ARRIVE in the world says so (apply's
+     {pay: {ms}}): S.res is credited at the play — that is the truth, for
+     saves, the rules and the tests — and only the NUMBER on the bar is
+     held where it was, stepped by the show as each piece lands
+     (DeckUI.pay). Whatever the show has not paid by `ms` the bar simply
+     catches up, so a show culled, dropped or never drawn can never leave a
+     wrong number standing. */
+  _count(before, fly, calm, L, pay) {
     const gained = {};
     if (fly && typeof fly === 'object') {
       if (Array.isArray(fly)) { for (const f of fly) if (f && f.res) gained[f.res] = (gained[f.res] || 0) + (+f.n || +f.amount || 0); }
@@ -1251,26 +1263,63 @@ const DeckUI = {
     for (const k in gained) {
       const el = document.getElementById('r' + k[0].toUpperCase() + k.slice(1));
       if (!el || !(gained[k] > 0)) continue;
-      const to = S.res[k] || 0;
+      const to = S.res[k] || 0, from = Math.max(0, to - gained[k]);
       this._ticks = this._ticks.filter(x => x.res !== k);
-      this._ticks.push({ res: k, el, from: Math.max(0, to - gained[k]), to, t0: now, dur: this.TICK_MS });
-      el.textContent = UI.fmtRes(Math.max(0, to - gained[k]));
-      const chip = el.closest('.res');
-      if (!chip) continue;
-      if (!calm) chip.animate([{ transform: 'none' }, { transform: 'scale(1.12)', offset: 0.35 }, { transform: 'none' }],
-        { duration: 340, easing: this.SPRING });
-      // the chip blinks a hard rim in the card's colour, twice — switched on
-      // and off, never faded (and never a soft glow)
-      const r = chip.getBoundingClientRect(), gl = this._bit(L, 'dkChipGlow');
-      gl.style.left = r.left + 'px'; gl.style.top = r.top + 'px';
-      gl.style.width = r.width + 'px'; gl.style.height = r.height + 'px';
-      gl.animate([{ opacity: 1 }, { opacity: 1 }], { duration: 70, fill: 'none' });
-      gl.animate([{ opacity: 1 }, { opacity: 1 }], { delay: 140, duration: 70, fill: 'none' });
+      el.textContent = UI.fmtRes(from);
+      if (pay) {
+        // held: the show steps it as the goods land (pay); the chip pulses then
+        this._ticks.push({ res: k, el, from, to, t0: now, dur: this.TICK_MS, held: true, paid: from,
+          a: from, b: from, ts: now, until: now + (+pay.ms > 0 ? +pay.ms : this.PAY_MS) });
+        continue;
+      }
+      this._ticks.push({ res: k, el, from, to, t0: now, dur: this.TICK_MS });
+      this._pulse(el, calm, L);
     }
+  },
+  // a chip answers its number: a springy pulse and a hard rim in the card's
+  // colour blinked twice — switched on and off, never faded, never a soft glow
+  _pulse(el, calm, L) {
+    const chip = el && el.closest('.res');
+    if (!chip) return;
+    if (!calm) chip.animate([{ transform: 'none' }, { transform: 'scale(1.12)', offset: 0.35 }, { transform: 'none' }],
+      { duration: 340, easing: this.SPRING });
+    const r = chip.getBoundingClientRect(), host = L && L.isConnected ? L : document.body, gl = this._bit(host, 'dkChipGlow');
+    gl.style.left = r.left + 'px'; gl.style.top = r.top + 'px';
+    gl.style.width = r.width + 'px'; gl.style.height = r.height + 'px';
+    // the play's layer is gone by the time the goods land: the rim wears its own look
+    if (host === document.body) Object.assign(gl.style, { position: 'fixed', display: 'block', zIndex: 26, pointerEvents: 'none', opacity: 0,
+      borderRadius: '8px', boxShadow: '0 0 0 2px #e8c15a, 0 0 0 4px rgba(10,7,3,.85)' });
+    gl.animate([{ opacity: 1 }, { opacity: 1 }], { duration: 70, fill: 'none' });
+    const an = gl.animate([{ opacity: 1 }, { opacity: 1 }], { delay: 140, duration: 70, fill: 'none' });
+    if (host === document.body) an.finished.then(() => gl.remove(), () => gl.remove());
+  },
+  /* THE SHOW PAYS (a goods card's moment, js/deckfx-town.js): `n` more of
+     `res` reaches the bar as a piece lands — the number steps up to it and
+     the chip pulses; with no `n`, the rest. True when a held number took it
+     (a play straight through Deck.play, as the contracts make, holds none). */
+  pay(res, n) {
+    const x = this._ticks.find(t => t.res === res && t.held);
+    if (!x) return false;
+    const now = performance.now(), cur = this._shown(x, now);
+    x.paid = Math.min(x.to, n > 0 ? x.paid + n : x.to);
+    x.a = cur; x.b = x.paid; x.ts = now;
+    // the last piece hands the number back to an ordinary count-up to the stockpile
+    if (x.paid >= x.to) { x.held = false; x.from = cur; x.t0 = now; }
+    this._pulse(x.el, this._calm(), this.playing && this.playing.layer);
+    return true;
+  },
+  // what a held number reads now: its last step, eased
+  _shown(x, now) {
+    const k = Math.min(1, (now - x.ts) / x.dur), e = 1 - (1 - k) * (1 - k);
+    return x.a + (x.b - x.a) * e;
   },
   _tickNumbers() {
     const now = performance.now();
     for (const x of this._ticks) {
+      if (x.held) {
+        if (now < x.until) { x.el.textContent = UI.fmtRes(this._shown(x, now)); continue; }
+        x.held = false; x.from = this._shown(x, now); x.t0 = now;   // the failsafe: the bar catches up
+      }
       const k = Math.min(1, (now - x.t0) / x.dur), e = 1 - (1 - k) * (1 - k);
       x.el.textContent = UI.fmtRes(k >= 1 ? (S.res[x.res] || 0) : x.from + (x.to - x.from) * e);
       x.done = k >= 1;
@@ -1305,6 +1354,8 @@ const DeckUI = {
       // a strike that reaches buildings less far than people (Starfall 2 of
       // 3, Dragonfire 2.5) draws that reach as a second, fainter ring
       inner: +fx.inner > 0 && +fx.inner < (+fx.radius || 3) ? +fx.inner : 0 };
+    // a reach wider than the screen is drawn in full: the view steps back to fit it (fx.aimFit)
+    if (fx.aimFit) this._aimFit(A);
     const layer = document.createElement('div');
     layer.id = 'dkAim';
     const ret = document.createElement('canvas');
@@ -1352,15 +1403,39 @@ const DeckUI = {
   },
 
   // cancelled: the card was never touched. keep: the world stays paused
-  // (the deck reopens over it, or the card is on its way to land)
-  endAim(keep) {
+  // (the deck reopens over it, or the card is on its way to land). played:
+  // the card is on its way — a view stepped back to fit its reach is handed
+  // back by the card's own moment (Deck._aimZoom), not snapped back here
+  endAim(keep, played) {
     const A = this.aim;
     if (!A) return;
     this.aim = null;
     A.layer.remove();
     A.bar.remove();
+    if (A.fit) { if (played) Deck._aimZoom = A.fit; else this._aimUnfit(A); }
     if (!keep) this._release();
     this._floor();
+  },
+  /* THE REACH ON SCREEN (the playtest: Scout's Fire's 9-tile ring was 490 px
+     wide on a 390 px phone, so aiming showed a reticle over black). A card
+     that asks (fx.aimFit) has the view step back until its ring fits the
+     open band, never past the world's own floor (R.minZoom); the zoom it
+     came from rides on the aim and is given back — at once on a cancel, by
+     the card's moment after a play — unless the player set one of their own. */
+  _aimFit(A) {
+    const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+    const top = R.topReserve || 0, bot = (R.bottomReserve || 0) + 90;   // the aim bar
+    const room = Math.min(vw, vh - top - bot), z0 = R.cam.z;
+    const want = room * 0.92 / (2 * (A.radius + 0.5) * CFG.TILE);
+    const z1 = Math.max(R.minZoom ? R.minZoom() : 0.5, Math.min(z0, want));
+    if (!(z1 < z0 - 1e-4)) return;
+    UI.zoomAt(vw / 2, (top + vh - bot) / 2, z1 / z0);
+    A.fit = { z0, z1: R.cam.z };
+  },
+  _aimUnfit(A) {
+    if (Math.abs(R.cam.z - A.fit.z1) > 1e-4) return;   // the player's own pinch stands
+    const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+    UI.zoomAt(vw / 2, ((R.topReserve || 0) + vh - (R.bottomReserve || 0)) / 2, A.fit.z0 / R.cam.z);
   },
 
   confirmAim() {
