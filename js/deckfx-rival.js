@@ -933,27 +933,83 @@
         const dpr = R.dpr || 1, k = Math.max(2, Math.round(1.2 * dpr));
         return { k, x: Math.round(R.cv.width / 2 - 24 * k), y: Math.round(((R.topReserve || 56) + 12) * dpr) };
       },
-      /* THE MOMENT: the sun stands huge in the sky, the moon bites it from the
-         east, and at totality the world HOLDS — a dark flash, a shake, the
-         drone's floor dropping out — while the corona blazes and the words go
-         up; then the black sun climbs to its place over the bar, where it
-         hangs for the four days. */
+      /* THE MOMENT, in the eclipse's own drawing language (R.drawEclipse):
+         the sun stands huge in the sky and the MOON'S SHADOW rolls in across
+         the screen from the west — its curved leading limb, two penumbra
+         steps ahead of the umbra, cut at a quarter of the screen's
+         resolution and blown up nearest-neighbour, so the dark comes in as a
+         hard pixel curve and never as a fade — while the moon bites the sun
+         from the east. The diamond ring flashes; at totality the world HOLDS
+         (a shake, the drone's floor dropping out, the birds thrown up), a
+         ring of light bursts off the black disc, the corona blazes, the
+         stars come out under the umbra (over the board only — never in the
+         off-map black, the eclipse's rule) and the words go up. Then the
+         trailing limb lets the light back and the black sun climbs to its
+         place over the bar, where it hangs for the four days. */
+      SWEEP: { in0: 0.3, in1: 2.0, out0: 4.2, out1: 5.4, bands: [[1.16, 0.10], [1.08, 0.26], [1, 0.62]] },
+      _shade: null,
+      shadow(g, cx, cy, Rr, W, H) {
+        const sc = 4, sw = Math.ceil(W / sc), sh = Math.ceil(H / sc);
+        let c = this._shade;
+        if (!c || c.width !== sw || c.height !== sh) c = this._shade = Object.assign(document.createElement('canvas'), { width: sw, height: sh });
+        const cg = c.getContext('2d');
+        cg.clearRect(0, 0, sw, sh);
+        let prev = 0;
+        const ccx = cx / sc, ccy = cy / sc;
+        for (const [rf, tgt] of this.SWEEP.bands) {
+          const a = 1 - (1 - tgt) / (1 - prev); prev = tgt;
+          const r = Rr * rf / sc;
+          cg.fillStyle = 'rgba(8,10,32,' + a.toFixed(3) + ')';
+          const y0 = Math.max(0, Math.floor(ccy - r)), y1 = Math.min(sh - 1, Math.ceil(ccy + r));
+          for (let y = y0; y <= y1; y++) {
+            const dy = y + 0.5 - ccy; if (Math.abs(dy) > r) continue;
+            const dx = Math.sqrt(r * r - dy * dy);
+            const xa = Math.max(0, Math.round(ccx - dx)), xb = Math.min(sw, Math.round(ccx + dx));
+            if (xb > xa) cg.fillRect(xa, y, xb - xa, 1);
+          }
+        }
+        const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+        g.drawImage(c, 0, 0, sw * sc, sh * sc);
+        g.imageSmoothingEnabled = sm;
+      },
       show: {
         ms: 5600, layer: 'sky',
         draw(g, s, p) {
-          const T = s.t, W = R.cv.width, H = R.cv.height, now = performance.now() / 1000;
+          const T = s.t, W = R.cv.width, H = R.cv.height, now = performance.now() / 1000, SW = this.SWEEP;
           const travel = 28, tot = 2.0;
           const total = T >= tot, f = ease((T - 0.4) / 1.6);
           const off = total ? 0 : travel * (1 - f);
+          if (T > 1.86 && !s.ring) { s.ring = 1; if (R.flashAt) R.flashAt(0.5, 0.35, '255,250,236'); }   // the diamond ring
           if (total && !s.beat) {
             s.beat = 1;
-            if (R.flashAt) R.flashAt(0.62, 1.8, '4,6,20');
-            if (R.shakeAt) R.shakeAt(9, 1.1);
+            if (R.shakeAt) R.shakeAt(10, 1.2);
             if (R.startle) R.startle(R.cam.x / CFG.TILE + R.viewW() / R.cam.z / CFG.TILE / 2, R.cam.y / CFG.TILE + R.viewH() / R.cam.z / CFG.TILE / 2, 30);
           }
-          // the held beat's dusk over the whole sky, in hard steps
-          const dusk = T < 1.4 ? 0 : T < tot ? (T - 1.4) / 0.6 : T < 4.2 ? 1 : 1 - ease((T - 4.2) / 1.2);
-          if (dusk > 0) { g.fillStyle = 'rgba(6,8,24,' + qa(0.38 * dusk, 8) + ')'; g.fillRect(0, 0, W, H); }
+          // THE SHADOW: in from the west, held (drifting, never still), out to the east
+          const cy = H * 0.45, D = W * 0.05, Rr = Math.hypot(W / 2 + D, Math.max(cy, H - cy)) * 1.02, outR = Rr * SW.bands[0][0];
+          let scx = null;
+          if (T >= SW.in0 && T < SW.out1) {
+            // smoothstep, never an ease-out: the limb must be SEEN crossing the screen
+            const sst = q => { q = c01(q); return q * q * (3 - 2 * q); };
+            if (T < SW.in1) scx = -outR + (W / 2 - D + outR) * sst((T - SW.in0) / (SW.in1 - SW.in0));
+            else if (T < SW.out0) scx = (W / 2 - D) + 2 * D * ((T - SW.in1) / (SW.out0 - SW.in1));
+            else scx = (W / 2 + D) + (W + outR - (W / 2 + D)) * sst((T - SW.out0) / (SW.out1 - SW.out0));
+            this.shadow(g, scx, cy, Rr, W, H);
+          }
+          // THE STARS: under the umbra, once it is deep, over the board only
+          const deep = T < tot ? 0 : T < SW.out0 ? Math.min(1, (T - tot) / 0.6) : 1 - (T - SW.out0) / 0.5;
+          if (deep > 0 && scx != null) {
+            const z = R.cam.z * (R.dpr || 1), sz = Math.max(2, Math.round(W / 300));
+            for (let i = 0; i < 110; i++) {
+              const h1 = Math.imul(i + 3, 0x9e3779b1) >>> 0, h2 = Math.imul(i + 9, 0x85ebca6b) >>> 0;
+              if ((h1 & 7) === 0 && ((now / 0.5 + i) | 0) % 4 === 0) continue;   // a slow twinkle
+              const sx = (h1 % 10007) / 10007 * W | 0, sy = (h2 % 9973) / 9973 * H | 0;
+              if (Math.hypot(sx - scx, sy - cy) > Rr - 24) continue;
+              if (!R.onBoardPx(sx / z + R.cam.x, sy / z + R.cam.y)) continue;
+              g.fillStyle = (h1 & 3) === 0 ? 'rgba(255,233,160,' + qa(0.9 * deep, 4) + ')' : 'rgba(232,236,255,' + qa(0.75 * deep, 4) + ')';
+              g.fillRect(snap(sx), snap(sy), (h2 & 7) === 0 ? sz * 2 : sz, (h2 & 7) === 0 ? sz * 2 : sz);
+            }
+          }
           const blaze = total ? Math.max(0, 1 - Math.abs(T - 2.6) / 1.6) : 0;
           const art = this.sunArt(off, total, !total && T > 1.85, blaze, now);
           // big, then climbing to its place
@@ -961,7 +1017,19 @@
           const m = ease((T - 4.2) / 1.2), k = Math.round(big + (sp.k - big) * m);
           const bx = W / 2 - 24 * big, by = H * 0.18 - 24 * big;
           const x = Math.round(bx + (sp.x - bx) * m), y = Math.round(by + (sp.y - by) * m);
+          const ccx = x + 24 * k, ccy = y + 24 * k;
           const fin = T < 0.5 ? qa(T / 0.5, 4) : 1;
+          // THE BURST at totality: two rings of light, made of dots, thrown off the black disc
+          if (total && T < tot + 1.1) {
+            g.save(); g.globalCompositeOperation = 'lighter';
+            for (const [d0, n, col] of [[0, 56, '255,233,160'], [0.18, 40, '232,240,255']]) {
+              const q = (T - tot - d0) / 0.9;
+              if (q <= 0 || q >= 1) continue;
+              g.fillStyle = 'rgba(' + col + ',' + qa(0.95 * (1 - q), 4) + ')';
+              ring(g, ccx, ccy, 13 * k + Math.max(W, H) * 0.55 * ease(q), n, 1, Math.max(2, snap(k * 1.5)));
+            }
+            g.restore();
+          }
           const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
           g.globalAlpha = fin;
           g.drawImage(art, x, y, 48 * k, 48 * k);
@@ -974,13 +1042,17 @@
           g.globalAlpha = 1;
           g.imageSmoothingEnabled = sm;
           if (total && T < 4.4) {
-            const a = qa(Math.min(1, (T - tot) / 0.5) * Math.min(1, (4.4 - T) / 0.6), 6);
+            const a = qa(Math.min(1, (T - tot) / 0.4) * Math.min(1, (4.4 - T) / 0.6), 6);
+            const fs = Math.round(Math.min(40, W / 13));
             g.globalAlpha = a;
-            g.font = 'bold ' + Math.round(Math.min(26, W / 18)) + 'px sans-serif';
+            g.font = 'bold ' + fs + 'px sans-serif';
             g.textAlign = 'center'; g.textBaseline = 'top';
-            const ty = y + 48 * k + 10;
-            g.fillStyle = 'rgba(0,0,0,0.6)'; g.fillText('THEIR SUN IS SWALLOWED', W / 2 + 2, ty + 2);
-            g.fillStyle = '#ffe9a0'; g.fillText('THEIR SUN IS SWALLOWED', W / 2, ty);
+            const ty = y + 48 * k + Math.round(fs * 0.4), sh2 = Math.max(2, Math.round(fs / 10));
+            g.fillStyle = 'rgba(0,0,0,0.75)'; g.fillText('THEIR SUN IS SWALLOWED', W / 2 + sh2, ty + sh2);
+            g.fillStyle = '#ffd45e'; g.fillText('THEIR SUN IS SWALLOWED', W / 2, ty);
+            g.font = Math.round(fs * 0.45) + 'px sans-serif';
+            g.fillStyle = 'rgba(232,236,255,0.9)';
+            g.fillText('Four days of dark over the rival', W / 2, ty + Math.round(fs * 1.25));
             g.globalAlpha = 1;
           }
         },
