@@ -1467,6 +1467,56 @@ const DeckUI = {
     if (days >= 1) return words ? `${d} day${d === 1 ? '' : 's'}` : d + 'd';
     return s + 's';
   },
+  /* EACH RUNNING CARD WEARS ITS OWN GLYPH, AND SAYS ITSELF IN ONE LINE
+     (playtest g1/g2): every chip on the strip wore its category's glyph —
+     four buff cards, four identical little suns — and a tap printed the
+     card's whole rules text, five or six lines over the map. A chip names
+     its card in pixels (a hammer for the builders, a sheaf for the harvest,
+     a flame for the watchfires, a shield, a skull, a keep, a ghost, a wolf…;
+     a card with none here wears its category's, as before — the eye for the
+     spy, the crescent for the swallowed sun), and a tap answers with the
+     name, the time left and this one short line. 12 x 10 cells, like
+     Deck.GLYPHS. */
+  CHIP: {
+    quick_hands:        { g: 'hammer', line: 'Building and upgrades go twice as fast.' },
+    master_builders:    { g: 'house',  line: 'Your next buildings stand complete at once.' },
+    harvest_festival:   { g: 'sheaf',  line: 'All gathering and work comes in 40% richer.' },
+    bountiful_land:     { g: 'leaf',   line: 'Near your hall, everything comes in 50% richer.' },
+    golden_age:         {              line: 'Everything 50% richer, built 50% faster.' },
+    watchfires:         { g: 'flame',  line: 'Your towers hit harder and reach farther.' },
+    stone_skin:         { g: 'shield', line: 'Your buildings take half damage.' },
+    unbreakable_hall:   { g: 'keep',   line: 'Your Town Center cannot fall.' },
+    ancestors_host:     { g: 'ghost',  line: 'The host fights beside you, then fades.' },
+    scouts_fire:        { g: 'fire',   line: 'Your fire keeps watch over the far ground.' },
+    spy_hall:           {              line: 'You see their people wherever they go.' },
+    blight:             { g: 'skull',  line: 'Their gathering and work fall by 40%.' },
+    swallowed_sun:      {              line: 'Their sun is dark: they see less and strike softer.' },
+    barbarian_pact:     { g: 'wolf',   line: 'War bands march on the rival instead of you.' },
+    wonders_foundation: {              line: 'It waits for your Wonder to be laid.' },
+  },
+  CHIP_GLYPHS: {
+    hammer: ['..######....', '.#########..', '.##########.', '..######....', '....##......', '....##......', '....##......', '....##......', '....##......', '....##......'],
+    house:  ['.....##.....', '....####....', '...######...', '..########..', '.##########.', '..########..', '..###..###..', '..###..###..', '..###..###..', '..###..###..'],
+    sheaf:  ['.##..##..##.', '.##..##..##.', '.##..##..##.', '..#..##..#..', '...#.##.#...', '....####....', '...#.##.#...', '..#..##..#..', '.#...##...#.', '.#...##...#.'],
+    leaf:   ['........###.', '......#####.', '....#######.', '...########.', '..########..', '..#######...', '..#.####....', '.#..##......', '.#..........', '#...........'],
+    flame:  ['.....#......', '....##......', '....###.....', '...####.#...', '...######...', '..#######...', '..###.###...', '..##...##...', '...##.##....', '....###.....'],
+    shield: ['.##########.', '.#........#.', '.#.######.#.', '.#.######.#.', '.#.######.#.', '..#.####.#..', '..#.####.#..', '...#.##.#...', '....#..#....', '.....##.....'],
+    keep:   ['.##.##.##.##', '.##########.', '.##########.', '..########..', '..###..###..', '..###..###..', '..##....##..', '..##....##..', '.##########.', '............'],
+    ghost:  ['...######...', '..########..', '.##########.', '.##..##..##.', '.##..##..##.', '.##########.', '.##########.', '.##########.', '.##.##.##.##', '.#..#..#..#.'],
+    fire:   ['.....#......', '.....##.....', '....###.....', '....####....', '...######...', '...##.###...', '....####....', '.##......##.', '...######...', '.##......##.'],
+    skull:  ['...######...', '..########..', '.##########.', '.##..##..##.', '.##..##..##.', '.##########.', '..###..###..', '...######...', '...#.##.#...', '............'],
+    wolf:   ['.#........#.', '.##......##.', '.###....###.', '.##########.', '.##.####.##.', '.##########.', '..########..', '...######...', '....####....', '.....##.....'],
+  },
+  chipGlyph(id) {
+    const k = this.CHIP[id] && this.CHIP[id].g, c = Deck.card(id);
+    return (k && this.CHIP_GLYPHS[k]) || Deck.GLYPHS[c && c.cat] || Deck.GLYPHS.econ;
+  },
+  // the chip's one line: its own, else the card text's first sentence
+  chipLine(id) {
+    const e = this.CHIP[id];
+    return e && e.line ? e.line : this._line(Deck.card(id).text);
+  },
+  RING_PX: 26,            // the chip's ring, in CSS px: 13 cells of 2
   _chip(id) {
     const c = Deck.card(id), t = Deck.tier(c.tier);
     const el = document.createElement('button');
@@ -1475,7 +1525,7 @@ const DeckUI = {
     el.dataset.id = id;
     el.style.setProperty('--tc', t.col);
     const cv = document.createElement('canvas');
-    cv.width = cv.height = 28;
+    cv.width = cv.height = this.RING_PX;
     const lab = document.createElement('b');
     el.append(cv, lab);
     el.setAttribute('aria-label', c.name);
@@ -1483,23 +1533,24 @@ const DeckUI = {
       const ch = this._chips[id], span = ch && ch.charge ? ch.charge.words : this._left(ch ? ch.left : 0, true);
       // the chip wearing the "+k" names the cards folded behind it too
       const also = this._badgeOn === id ? ' ' + this._alsoRunning() : '';
-      this._say(`${c.name} — ${span} left. ${c.text}${also}`, 'note', 4200);
+      this._say(`${c.name} — ${span} left. ${this.chipLine(id)}${also}`, 'note', 4200);
       UI.cue('ok');
     });
     this.el.timers.insertBefore(el, this._more && this._more.parentNode === this.el.timers ? this._more : null);   // "+k" stays last
     if (!this._calm()) el.animate([{ opacity: 0, transform: 'scale(.5)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: this.SPRING });
-    const ch = { el, cv, lab, n: -1, left: 0, col: t.col, cat: c.cat };
+    const ch = { el, cv, lab, n: -1, left: 0, col: t.col, cat: c.cat, glyph: this.chipGlyph(id) };
     this._chips[id] = ch;
     return ch;
   },
   // the ring, redrawn only when a cell of it actually changes
   _RING: null,
   _ringDraw(ch, frac) {
+    const P = this.RING_PX, C = P / 2, N = P / 2;   // N cells of 2px a side
     if (!this._RING) {
       const cells = [];
-      for (let gy = 0; gy < 14; gy++) for (let gx = 0; gx < 14; gx++) {
-        const dx = gx * 2 + 1 - 14, dy = gy * 2 + 1 - 14, d = Math.hypot(dx, dy);
-        if (d >= 10.4 && d <= 13.4) {
+      for (let gy = 0; gy < N; gy++) for (let gx = 0; gx < N; gx++) {
+        const dx = gx * 2 + 1 - C, dy = gy * 2 + 1 - C, d = Math.hypot(dx, dy);
+        if (d >= C - 3.6 && d <= C - 0.6) {
           let a = Math.atan2(dx, -dy);
           if (a < 0) a += Math.PI * 2;
           cells.push({ x: gx * 2, y: gy * 2, a });
@@ -1512,13 +1563,13 @@ const DeckUI = {
     if (n === ch.n) return;
     ch.n = n;
     const g = ch.cv.getContext('2d');
-    g.clearRect(0, 0, 28, 28);
+    g.clearRect(0, 0, P, P);
     g.fillStyle = 'rgba(10,7,4,0.72)';
-    R.pxDisc(g, 14, 14, 11, 2);
+    R.pxDisc(g, C, C, C - 3, 2);
     cells.forEach((p, i) => { g.fillStyle = i < n ? ch.col : '#3b2f1f'; g.fillRect(p.x, p.y, 2, 2); });
-    const gl = Deck.GLYPHS[ch.cat] || Deck.GLYPHS.econ;
+    const gl = ch.glyph || Deck.GLYPHS[ch.cat] || Deck.GLYPHS.econ;
     g.fillStyle = '#f3e2b4';
-    for (let y = 0; y < 10; y++) for (let x = 0; x < 12; x++) if (gl[y][x] === '#') g.fillRect(8 + x, 9 + y, 1, 1);
+    for (let y = 0; y < 10; y++) for (let x = 0; x < 12; x++) if (gl[y][x] === '#') g.fillRect(C - 6 + x, C - 5 + y, 1, 1);
   },
 
   /* ---------------- the stylesheet (injected only when the deck is built) ---------------- */
@@ -1550,14 +1601,24 @@ body.dk-aiming #bottombar { visibility: hidden; }
 .dkArrive { position: fixed; width: 0; height: 0; z-index: 12; pointer-events: none; }
 .dkArrive i { position: absolute; left: 0; top: 0; box-shadow: 0 2px 0 #5c3a1c; image-rendering: pixelated; }
 #deckBtn.empty .dkIco { opacity: .55; }
-#dkTimers { display: flex; gap: 4px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
+/* THE STRIP IS FITTED, AND ITS "+k" IS WHOLE (playtest g1/g2). Two running
+   cards with two-digit days needed 124px where a 390px phone's row leaves
+   ~103-117, so the second always folded into "+1" with ~60px seemingly free.
+   A chip is now its ring and its count and nothing else (no box: the ring's
+   own dark disc is the container) — 48px, so two fit beside a "6/13" tribe
+   and a "Day 12". The badge rides the last chip's corner, 5px proud of it:
+   the strip's padding makes room for it INSIDE the clip (overflow: hidden
+   cut its top half off), and an equal negative margin keeps the row's
+   layout exactly as it was. */
+#dkTimers { display: flex; gap: 3px; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 6px 6px 0 0; margin: -6px -6px 0 0; }
 #dkTimers:empty { display: none; }
-.dkT { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; height: 32px; padding: 0 6px 0 2px;
-  border: 1px solid rgba(10,8,5,.6); border-radius: 8px; background: rgba(0,0,0,.3); color: var(--tc);
-  box-shadow: inset 0 1px 0 rgba(0,0,0,.4), 0 1px 0 var(--edge); font: 800 11px/1 -apple-system, "Segoe UI", Roboto, sans-serif; }
+.dkT { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; height: 32px; padding: 0;
+  border: 0; border-radius: 0; background: none; color: #f3e2b4; text-shadow: 0 1px 0 #000;
+  font: 800 11.5px/1 -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: 0; }
 .dkT::after { content: ''; position: absolute; left: 0; right: 0; top: -6px; bottom: -6px; }
-.dkT canvas { width: 28px; height: 28px; image-rendering: pixelated; }
-.dkT.dkMore { padding: 0 7px; min-width: 30px; justify-content: center; color: #f3e2b4; }
+.dkT canvas { width: 26px; height: 26px; image-rendering: pixelated; }
+.dkT.dkMore { padding: 0 7px; min-width: 30px; justify-content: center; color: #f3e2b4;
+  border: 1px solid rgba(10,8,5,.6); border-radius: 8px; background: rgba(0,0,0,.3); }
 .dkT .dkMoreB { position: absolute; top: -5px; right: -5px; min-width: 16px; height: 15px; padding: 0 3px; box-sizing: border-box;
   border-radius: 8px; background: #1c140c; border: 1.5px solid var(--tc); color: #f3e2b4; pointer-events: none; font-style: normal;
   font: 800 9.5px/12px -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,.6); }

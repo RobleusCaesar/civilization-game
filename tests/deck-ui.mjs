@@ -909,6 +909,72 @@ for (const w of [320, 360, 375, 390, 430]) {
     return out;
   }, w));
 }
+/* THE STRIP IS FITTED TO WHAT A PHONE REALLY HOLDS (playtest g1/g2): two
+   cards with two-digit days beside a "6/13" tribe and a "Day 12" — the row
+   a 390px phone shows a few minutes in — must both be whole, never one and
+   a "+1" with room going spare; with four, the "+k" badge must be whole
+   (the strip's clip cut its top half off); every card wears its OWN glyph
+   (three bronze buffs were three identical suns); the time reads as bright
+   as the HUD's own numbers; and a tap answers in one short line, never the
+   card's whole rules text. */
+await p.setViewportSize({ width: 390, height: 844 });
+await p.waitForTimeout(200);
+const strip = await p.evaluate(async () => {
+  const out = {};
+  const refresh = UI.refresh;
+  UI.refresh = () => {};   // the HUD's numbers held where the test puts them
+  try {
+    S.deck.fx = []; DeckUI._t = 0;
+    await __until(() => !document.querySelector('#dkTimers .dkT'));
+    Deck.addTimed('harvest_festival', 12); Deck.addTimed('bountiful_land', 20);
+    DeckUI._t = 0;
+    await __until(() => document.querySelectorAll('#dkTimers .dkT').length >= 1);
+    await new Promise(r => setTimeout(r, 300));
+    document.getElementById('rPop').textContent = '6/13';
+    document.getElementById('rDay').textContent = 'Day 12';
+    DeckUI._fitChips();
+    const shown = () => [...document.querySelectorAll('#dkTimers .dkT')].filter(e => getComputedStyle(e).display !== 'none');
+    const sr = () => document.getElementById('dkTimers').getBoundingClientRect();
+    const whole = el => { const r = el.getBoundingClientRect(), s = sr(); return r.left >= s.left - 0.5 && r.right <= s.right + 0.5 && r.top >= s.top - 0.5 && r.bottom <= s.bottom + 0.5; };
+    out.two = shown().filter(e => !e.classList.contains('dkMore')).map(e => e.dataset.id);
+    out.twoK = !!document.querySelector('#dkTimers .dkMore, #dkTimers .dkMoreB');
+    out.twoWhole = shown().every(whole);
+    // the time reads like the HUD's numbers (relative luminance of the label)
+    const lum = el => { const m = getComputedStyle(el).color.match(/\d+(\.\d+)?/g).map(Number).slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2]; };
+    // three bronze buffs and a stone one, all fresh: four different glyphs
+    S.deck.fx = []; DeckUI._t = 0;
+    await __until(() => !document.querySelector('#dkTimers .dkT'));
+    const ids = ['harvest_festival', 'bountiful_land', 'watchfires', 'quick_hands'];
+    for (const id of ids) Deck.addTimed(id, 6);
+    DeckUI._t = 0;
+    await __until(() => ids.every(id => DeckUI._chips[id] && DeckUI._chips[id].n > 0));
+    // a new chip pops in (scale .5 → 1): measured once it has landed, or the
+    // shrunken badge reads as inside the strip whatever the clip does
+    await new Promise(r => setTimeout(r, 320));
+    const pics = ids.map(id => DeckUI._chips[id].cv.toDataURL());
+    out.distinct = new Set(pics).size;
+    out.lum = lum(DeckUI._chips.quick_hands.lab);
+    DeckUI._fitChips();
+    const badge = document.querySelector('#dkTimers .dkMoreB');
+    out.badge = !!badge; out.badgeWhole = !!badge && whole(badge);
+    // a tap is the name, the time left and ONE short line
+    UI._toastAt = {}; document.getElementById('toasts').innerHTML = '';
+    DeckUI._chips.harvest_festival.el.click();
+    const t = [...document.querySelectorAll('#toasts .toast')].map(e => e.textContent).find(s => /Harvest Festival/.test(s)) || '';
+    out.tap = t.replace(/ Also running:.*$/, '');
+    out.fullText = t.includes(Deck.card('harvest_festival').text);
+    S.deck.fx = []; DeckUI._t = 0;
+    await __until(() => !document.querySelector('#dkTimers .dkT'));
+  } finally { UI.refresh = refresh; }
+  return out;
+});
+ck('twoRunningCardsFitAPhonesRow', strip.two.length === 2 && !strip.twoK && strip.twoWhole,
+  `390px, "6/13", "Day 12": ${strip.two.join(' + ') || 'none'} shown${strip.twoK ? ' and a +k' : ''}`);
+ck('andTheBadgeIsWhole', strip.badge && strip.badgeWhole, `badge ${strip.badge ? (strip.badgeWhole ? 'whole' : 'CLIPPED') : 'missing'}`);
+ck('eachRunningCardWearsItsOwnGlyph', strip.distinct === 4, `${strip.distinct} different chips for 4 cards (3 bronze buffs, 1 stone)`);
+ck('theTimeReadsAsBrightAsTheHud', strip.lum >= 0.5, `label luminance ${strip.lum.toFixed(2)} on a stone card`);
+ck('aChipTapIsOneShortLine', /^Harvest Festival — \d+ days? left\. [^.]+\.$/.test(strip.tap) && strip.tap.length <= 100 && !strip.fullText,
+  `"${strip.tap}"`);
 await p.setViewportSize({ width: 430, height: 880 });
 await p.waitForTimeout(200);
 ck('everyRunningCardIsSeenOrCounted', fit.every(f => f.whole && f.shown >= 1 && f.shown + f.k === 4 && f.named),
