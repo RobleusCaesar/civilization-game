@@ -1251,6 +1251,9 @@ Object.assign(Deck.FX, {
       const pl = this.plan(), tc = pl.tc, back = {};
       const refund = c => { for (const k in c) if (c[k] > 0) back[k] = (back[k] || 0) + c[k]; };
       let resolved = 0, raised = 0;
+      // what each one wore BEFORE: the act holds that look until its own beam
+      // lands (show.held → R.wornSprite) — render data, never in S
+      const tcFrom = tc.level, wallFrom = S.wallLevel || 1, from = new Map(pl.items.map(it => [it.b.id, it.b.level]));
       // the hall: an upgrade under way is this same rise — its price comes back
       if (tc.upgrading > 0) { refund(Bld.cancelRefund(tc)); tc.upgrading = 0; tc.upgTotal = 0; resolved++; }
       if (pl.rise) Bld.finishUpgrade(tc, true);
@@ -1267,35 +1270,59 @@ Object.assign(Deck.FX, {
         raised++;
       }
       for (const k in back) S.res[k] = (S.res[k] || 0) + back[k];
-      // the light runs out to every building raised (walls included), nearest first
+      // the light runs out to every building raised (walls included), nearest
+      // first, and each rises in its own beat — IN TURN, by rank, never two at
+      // once (by distance alone a ring of houses all rose in the same frame)
       const cx = Bld.cx(tc), cy = Bld.cy(tc);
       const lit = pl.items.map(it => it.b).concat(pl.walls ? Bld.forts('P').filter(f => !(f.construction > 0)) : []);
-      for (const b of lit) items.push({ id: b.id, x: Bld.cx(b), y: Bld.cy(b), sz: Bld.size(b), d: Math.hypot(Bld.cx(b) - cx, Bld.cy(b) - cy) });
+      for (const b of lit) {
+        const was = from.has(b.id) ? from.get(b.id) : (b.key === 'wall' || b.key === 'gate') ? wallFrom : 0;
+        items.push({ id: b.id, x: Bld.cx(b), y: Bld.cy(b), sz: Bld.size(b), d: Math.hypot(Bld.cx(b) - cx, Bld.cy(b) - cy), from: was !== b.level ? was : 0 });
+      }
       items.sort((a, z) => a.d - z.d);
       if (items.length > 64) items.length = 64;
+      const n = items.length;
+      items.forEach((it, i) => { it.a0 = this.BEAT0 + this.BEATS * (n > 1 ? i / (n - 1) : 0); });
       const maxD = items.reduce((m, it) => Math.max(m, it.d), 1);
-      GrowFX.show('enlightenment', { x: cx, y: cy, foot: tc.y + Bld.size(tc), tc: tc.id, items, maxD });
+      GrowFX.show('enlightenment', { x: cx, y: cy, foot: tc.y + Bld.size(tc), tc: tc.id, tcFrom: pl.rise ? tcFrom : 0, items, maxD });
       GrowFX.sfx('enlighten');
-      const s = n => n === 1 ? '' : 's';
+      const s = k => k === 1 ? '' : 's';
       Deck.say('✨ Enlightenment: your Town Center stands at Lv ' + tc.level +
         (raised ? ', and ' + raised + ' building' + s(raised) + ' rose to meet it' : '') +
         (pl.walls && pl.forts ? '; every wall and gate stands at Lv ' + S.wallLevel : '') +
         (resolved ? '. ' + resolved + ' work' + s(resolved) + ' already under way ' + (resolved === 1 ? 'was' : 'were') + ' finished' +
           // (nothing to hand back — never "free paid for it comes back")
           (Object.keys(back).length ? ', and ' + Bld.costStr(back) + ' paid for ' + (resolved === 1 ? 'it' : 'them') + ' comes back' : '') : '') + '.');
-      return { ok: true, x: cx, y: cy, fly: back };
+      // the landing toast says what happened, not the rule
+      const walled = pl.walls && pl.forts ? (raised ? ', and the walls' : ' — and the walls rose with it') : '';
+      const msg = '✨ ' + (pl.rise ? 'Town Center Lv ' + tc.level + (raised ? ' — ' + raised + ' building' + s(raised) + ' rose with it' : '') + walled
+        : raised + ' building' + s(raised) + ' rose to Lv ' + tc.level + ' to meet your Town Center' + (pl.walls && pl.forts ? ', and the walls' : ''))
+        + (Object.keys(back).length ? '; ' + Bld.costStr(back) + ' paid for works under way comes back' : '') + '.';
+      return { ok: true, x: cx, y: cy, fly: back, msg };
     },
+    /* the beats: the first building's light leaves the hall at BEAT0 and the
+       last at BEAT0 + BEATS; each takes RUN to reach its building, its beam
+       DROP to come down on it (the moment it rises), and FLASH after */
+    BEAT0: 0.18, BEATS: 0.48, RUN: 0.05, DROP: 0.03, FLASH: 0.2,
     /* THE TOWN WAKES KNOWING HOW. A pillar of golden light stands up out of
-       the hall into a sky that brightens in stepped bands, rays of dots
-       fanning from where it meets the top of the world; the ground shakes as
-       it lands; it holds; then the light runs out along the ground to every
-       building — nearest first — and each rises in its own flash (its own
-       silhouette lit gold, a column, a ring of dots, sparks), each with its
-       own small bell; and the pillar is drawn down to a thread. */
+       the hall into a sky with a sun burst at the top of the world, rays of
+       short dashes fanning from it; the ground shakes as it lands and the
+       hall rises in it; then the light runs out along the ground to every
+       building — nearest first, ONE AT A TIME — and on each a small beam
+       comes down out of the sky, and the building rises in it: its own new
+       art, flashed gold, a ring of dots, sparks, its own small bell. Until
+       its beam lands each wears the look it had before (show.held). */
     show: {
       ms: 5800, layers: ['world', 'sky'],
+      // the buildings still waiting for their beam, at the level they wore
+      held(s, p) {
+        const m = new Map(), E = Deck.FX.enlightenment;
+        if (s.tcFrom && p < 0.12) m.set(s.tc, s.tcFrom);
+        for (const it of s.items) if (it.from && p < it.a0 + E.RUN + E.DROP) m.set(it.id, it.from);
+        return m;
+      },
       draw(g, s, p, dt, layer) {
-        const F = GrowFX;
+        const F = GrowFX, E = Deck.FX.enlightenment;
         if (layer === 'sky') {
           const e = F.env(p, 0.02, 0.14, 0.7, 0.98);
           if (e <= 0) return;
@@ -1303,12 +1330,14 @@ Object.assign(Deck.FX, {
           const ox = Math.max(0, Math.min(W, sc.x)), px = Math.max(2, Math.round(4 * dpr));
           // where the pillar meets the top of the world: a burst of the card's
           // light in three stepped discs — a halo of gold dots round a gold
-          // disc round a cream heart
-          F.ring(g, ox, 0, H * 0.24, 'gold', 0.8 * e, px, 1);
-          F.ring(g, ox, 0, H * 0.2, 'gold', 0.45 * e, px, 1, null, 0.5);
+          // disc round a cream heart. It comes and goes by SIZE at full
+          // strength: faded through its faint steps the gold went olive
+          const k = F.step(e);
+          F.ring(g, ox, 0, H * 0.24 * k, 'gold', 0.8, px, 1);
+          F.ring(g, ox, 0, H * 0.2 * k, 'gold', 0.45, px, 1, null, 0.5);
           for (const [r, a] of [[0.15, 0.62], [0.075, 1]])
-            R.glow(g, a * e, () => R.pxDisc(g, ox, 0, H * r, px, 1));
-          R.glowHot(g, 0.75 * e, () => R.pxDisc(g, ox, 0, H * 0.035, px, 1));
+            R.glow(g, a, () => R.pxDisc(g, ox, 0, H * r * k, px, 1));
+          R.glowHot(g, 0.75, () => R.pxDisc(g, ox, 0, H * 0.035 * k, px, 1));
           F.rays(g, ox, -H * 0.04, 15, 0.2, 'gold', 0.9 * e, s.t, 0.29);
           F.glitter(g, 56, 'gold', e, s.t);
           return;
@@ -1320,8 +1349,9 @@ Object.assign(Deck.FX, {
           // (no whole-frame flash: gold over the meadow is a sepia frame —
           // the pillar landing, the shake and its rings are the blow)
         }
-        // THE PILLAR
-        const up = Math.min(1, p / 0.1), thin = p < 0.72 ? 1 : Math.max(0, 1 - (p - 0.72) / 0.2);
+        // THE PILLAR: full width while the hall rises in it, then drawn down
+        // to a thread so each building's own beam can be seen beside it
+        const up = Math.min(1, p / 0.1), thin = p < 0.2 ? 1 : p < 0.72 ? Math.max(0.3, 1 - (p - 0.2) / 0.12) : Math.max(0, 0.3 * (1 - (p - 0.72) / 0.2));
         if (thin > 0) {
           // it stands up out of the hall's middle, so the hall's own face shows lit beneath it
           const base = s.y * TL, topY = R.cam.y - 60 / R.cam.z, h = (base - topY) * F.ease(up), w = TL * (1.7 + Math.sin(s.t * 9) * 0.12) * thin;
@@ -1343,14 +1373,15 @@ Object.assign(Deck.FX, {
             F.ring(g, cx, foot, TL * (0.8 + q * 4.6), 'gold', (1 - q) * 0.95 * thin, 2, 0.5, vp);
           }
         }
-        // THE LIGHT RUNS OUT TO EVERY BUILDING (each rises in its own light in
-        // the building pass — show.drawBld below)
+        // THE LIGHT RUNS OUT TO EVERY BUILDING, one at a time, and a small
+        // beam comes down on each (it rises in its own light in the building
+        // pass — show.drawBld below)
         for (const it of s.items) {
-          const a0 = 0.2 + 0.46 * (it.d / s.maxD), land = a0 + 0.07;
+          const a0 = it.a0, land = a0 + E.RUN;
           if (p < a0) continue;
           const bx = it.x * TL, by = it.y * TL;
           if (p < land) {
-            const k = (p - a0) / 0.07;
+            const k = (p - a0) / E.RUN;
             // the runner: a cream head and a gold trail fading down the ramp
             g.save();
             for (let m = 5; m >= 0; m--) {
@@ -1363,27 +1394,33 @@ Object.assign(Deck.FX, {
             g.restore();
             continue;
           }
-          const k = (p - land) / 0.2;
-          if (k >= 1 || bx < vp.x0 || bx > vp.x1 || by < vp.y0 || by > vp.y1 + TL) continue;
-          if (!it.rung) { it.rung = 1; F.sfx('rise'); }
-          const bf = by + it.sz * TL * 0.5;
-          F.column(g, bx, bf, bf - TL * (1.4 + it.sz * 0.7) * F.ease(k * 2.5), TL * 0.75 * it.sz * (1 - k), 1 - k);
-          F.ring(g, bx, bf - 2, TL * (0.4 + it.sz * 0.9 * F.ease(k)), 'gold', (1 - k) * 0.95, 2, 0.5, vp);
+          const k = (p - land) / E.FLASH, kd = E.DROP / E.FLASH;
+          if (k >= 1 || bx < vp.x0 || bx > vp.x1 || by < vp.y0 - TL * 3 || by > vp.y1 + TL) continue;
+          // its own beam: it comes DOWN out of the sky onto the roof, holds,
+          // and thins away — narrow, tapering in three stepped widths
+          const bf = by + it.sz * TL * 0.5, top = Math.min(bf - TL * 2, R.cam.y - 60 / R.cam.z);
+          const drop = F.ease(Math.min(1, k / kd)), fade = k < 0.45 ? 1 : 1 - (k - 0.45) / 0.55;
+          F.column(g, bx, top + (bf - top) * drop, top, TL * (0.3 + it.sz * 0.22) * fade, fade);
+          if (k < kd) continue;
+          if (!it.rung) { it.rung = 1; F.sfx('rise'); if (R.shakeAt && it.sz > 1) R.shakeAt(2, 0.25); }
+          const kk = (k - kd) / (1 - kd);
+          F.ring(g, bx, bf - 2, TL * (0.4 + it.sz * 0.9 * F.ease(kk)), 'gold', (1 - kk) * 0.95, 2, 0.5, vp);
           for (let m = 0; m < 6; m++) {
             const h = F.hash(it.id, m + 3);
-            F.mote(g, bx + (h - 0.5) * TL * it.sz, bf - TL * 0.4 - k * TL * (0.8 + h), m % 2 ? '#fff1b8' : '#ffd45e', '#7a4a0a', 1 - k);
+            F.mote(g, bx + (h - 0.5) * TL * it.sz, bf - TL * 0.4 - kk * TL * (0.8 + h), m % 2 ? '#fff1b8' : '#ffd45e', '#7a4a0a', 1 - kk);
           }
         }
       },
-      /* the hall, then every building, RISES IN ITS OWN LIGHT — its silhouette
-         flashed gold on its own art in the building pass (R.drawCardBld), so
-         whoever is at work on it stands in front of the light */
+      /* the hall, then every building, RISES IN ITS OWN LIGHT — its new
+         silhouette flashed gold on its own art in the building pass
+         (R.drawCardBld), the moment its beam lands, so whoever is at work on
+         it stands in front of the light */
       drawBld(g, b, s, p) {
-        const F = GrowFX;
-        if (b.id === s.tc) { if (p > 0.06 && p < 0.5) F.flashBld(g, b, 0.9 * F.env(p, 0.06, 0.12, 0.3, 0.5)); return; }
+        const F = GrowFX, E = Deck.FX.enlightenment;
+        if (b.id === s.tc) { if (p > 0.1 && p < 0.5) F.flashBld(g, b, 0.9 * F.env(p, 0.1, 0.13, 0.3, 0.5)); return; }
         const it = (s._byId || (s._byId = new Map(s.items.map(z => [z.id, z])))).get(b.id);
         if (!it) return;
-        const k = (p - (0.2 + 0.46 * (it.d / s.maxD) + 0.07)) / 0.2;
+        const k = (p - (it.a0 + E.RUN + E.DROP)) / (E.FLASH - E.DROP);
         if (k > 0 && k < 1) F.flashBld(g, b, 0.95 * (1 - k));
       },
     },

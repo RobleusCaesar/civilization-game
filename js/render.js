@@ -7148,8 +7148,16 @@ const R = {
      scorched (or battered) → broken open. A GROUND-LEVEL yard (the FIRE_AT
      ground keys) never takes ruinOf — biting the "roofline" out of a flat
      field just punches green holes in it; scorched-dark plus the spreading
-     char patches is its ruin. */
+     char patches is its ruin.
+     A card's act may HOLD a building at the level it wore before the card
+     raised it (`_cardHeld`, id → level, re-asked every frame in the building
+     pass from the running shows — R.cardHeldLevels): Enlightenment raises the
+     whole town in one stroke of state, and each building then rises in its
+     own beam, in turn. Only the picture waits (the R.collapses rule); the
+     building pass and the fort occlusion both ask here, so they agree. */
   wornSprite(b) {
+    const held = this._cardHeld && this._cardHeld.get(b.id);
+    if (held) return this.bldSprite(b, held);
     const bph = Bld.burnPhase(b), base = this.bldSprite(b);
     if (bph >= 1) { const d = this.dmgArt(b, bph); if (d) return d; }
     if (bph === 1) return this.darkOf(base);
@@ -10648,6 +10656,20 @@ const R = {
     }
     return out;
   },
+  /* the buildings a running card act holds at an earlier level (id → level):
+     a show's `held(s, p)` answers a Map, or nothing. Null when none hold. */
+  cardHeldLevels(list) {
+    let out = null;
+    for (const it of list) {
+      if (!it.s) continue;
+      const d = Deck.FX[it.s.id], h = d && d.show && d.show.held;
+      if (!h) continue;
+      let m = null;
+      try { m = h.call(d, it.s, it.p); } catch (err) { m = null; }
+      if (m && m.size) { if (!out) out = new Map(); for (const [id, lv] of m) if (!out.has(id)) out.set(id, lv); }
+    }
+    return out;
+  },
   drawCardBld(g, b, list) {
     for (const it of list) {
       const id = it.e ? it.e.id : it.s.id, d = Deck.FX[id];
@@ -13275,6 +13297,7 @@ const R = {
     // a running card that wears a look ON a building (the Blight's withered
     // fields) — laid over that building's own art, so under whoever stands on it
     const cardBld = (S.deck && S.deck.fx && S.deck.fx.length) || this.cardShows.length ? this.cardBldLooks() : null;
+    this._cardHeld = cardBld ? this.cardHeldLevels(cardBld) : null;
     for (const b of blds) {
       const bs = Bld.size(b);
       let seen = false;

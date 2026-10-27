@@ -1607,6 +1607,72 @@ await p.evaluate(() => {
     `the works land at ${r.framedX} across, ${r.framedY} down the open view`);
 }
 
+// ---------------- 13d. ENLIGHTENMENT RAISES THE TOWN ONE BUILDING AT A TIME ----------------
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    __g.fresh('growth-enl-style'); const { P: tc } = __g.flat();
+    Screens.show('playing'); S.paused = true;
+    const town = [[8, 4], [4, 8], [8, 8], [11, 5], [6, 11], [11, 10]].map(([x, y]) => __g.bld('P', 'house', x, y));
+    R.cam.z = 1.2; R.centerOn(Bld.cx(tc) + 3, Bld.cy(tc) + 3);
+    G.updateVisibility();
+    R.cardShows = [];
+    const TL = CFG.TILE, all = [tc].concat(town);
+    // the art each one wore before the card: what the act must hold until its beam lands
+    const was = new Map(all.map(b => [b.id, R.bldSprite(b, 1)]));
+    const play = Deck.play('enlightenment');
+    out.msg = play.ok ? play.msg || null : 'refused: ' + play.why;
+    out.levels = all.map(b => b.level).join('');
+    const s = R.cardShows.find(z => z.id === 'enlightenment');
+    /* (a) THE STATE CHANGES AT ONCE, THE PICTURE IN TURN: through the real
+       building pass, each building is drawn in its OLD art until its own
+       beam comes down on it — and they rise one at a time (the first cut
+       swapped the whole town's art the frame the card landed, under one
+       pillar, and the run of the light to each building lit art that had
+       already changed) */
+    const bb = R.blitBld;
+    let drawn = null;
+    R.blitBld = function (g, spr, x, y) { if (drawn) drawn.push([spr, x, y]); return bb.apply(this, arguments); };
+    const counts = [];
+    try {
+      for (let k = 0; k < 100; k++) {
+        const pp = k / 100; s.t = pp * s.ms / 1000;
+        drawn = [];
+        R.draw(0);
+        counts.push(all.filter(b => drawn.some(d => d[0] === was.get(b.id) && d[1] === b.x * TL && d[2] === b.y * TL)).length);
+      }
+    } finally { R.blitBld = bb; drawn = null; }
+    out.first = counts[2]; out.last = counts[99];
+    let worst = 0, up = 0;
+    for (let k = 1; k < counts.length; k++) { worst = Math.max(worst, counts[k - 1] - counts[k]); if (counts[k] > counts[k - 1]) up++; }
+    out.worstDrop = worst; out.rises = up;
+    out.counts = counts.filter((c, k) => k % 10 === 0).join(',');
+    /* (b) THE SUN AT THE TOP OF THE WORLD COMES AND GOES BY SIZE: its gold
+       discs keep their strength as it leaves (faded through the faint steps
+       the gold went olive) and grow smaller instead */
+    const ED = Deck.FX.enlightenment, gl = R.glow, pd = R.pxDisc, discs = [];
+    let a = null;
+    R.glow = function (g, s0) { const was0 = a; a = s0; try { return gl.apply(this, arguments); } finally { a = was0; } };
+    R.pxDisc = function (g, x, y, rr) { if (a != null) discs.push([rr, a]); return pd.apply(this, arguments); };
+    try {
+      const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+      const g = c.getContext('2d');
+      for (const pp of [0.4, 0.95]) {
+        discs.length = 0;
+        const s2 = { id: 'enlightenment', x: Bld.cx(tc), y: Bld.cy(tc), foot: tc.y + 2, tc: tc.id, items: [], maxD: 1, ms: ED.show.ms, t: pp * ED.show.ms / 1000 };
+        ED.show.draw.call(ED, g, s2, pp, 1 / 30, 'sky');
+        out['sun' + pp] = { r: discs.length ? Math.max(...discs.map(d => d[0])) : 0, a: discs.length ? Math.min(...discs.map(d => d[1])) : 0 };
+      }
+    } finally { R.glow = gl; R.pxDisc = pd; }
+    return out;
+  });
+  ck('eachBuildingRisesInItsOwnBeamOneAtATime', r.levels === '2222222' && r.first === 7 && r.last === 0 && r.worstDrop === 1 && r.rises === 0,
+    `levels ${r.levels} at once; drawn in their old art (every tenth of the act): ${r.counts}; most to rise in one step ${r.worstDrop}`);
+  ck('itsToastSaysWhatRose', /^✨ Town Center Lv 2 — 6 buildings rose with it/.test(r.msg || ''), `"${r.msg}"`);
+  ck('itsSunLeavesBySizeNotByFading', r['sun0.4'].a >= 0.6 && r['sun0.95'].a >= 0.6 && r['sun0.95'].r > 0 && r['sun0.95'].r < r['sun0.4'].r,
+    `the sun at 0.4: ${JSON.stringify(r['sun0.4'])}; leaving at 0.95: ${JSON.stringify(r['sun0.95'])}`);
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 6));
 await b.close();
