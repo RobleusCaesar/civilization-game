@@ -409,26 +409,26 @@ await p.evaluate(() => {
       const z = R.cam.z * (R.dpr || 1), g = R.cv.getContext('2d');
       // the whole tile, in device pixels (an ash heap lies low in its tile)
       const px = Math.round((tx * TL - R.cam.x) * z), py = Math.round((ty * TL - R.cam.y) * z), sz = Math.max(4, Math.round(TL * z));
-      const d = g.getImageData(px, py, sz, sz).data;
-      let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2];
-      return Math.round(s / (d.length / 4));
+      return g.getImageData(px, py, sz, sz).data;
     };
     const with3 = () => ({ bridge: lum(bx, by), ash: lum(A.x - 6, A.y + 1), corpse: lum(A.x - 8, A.y - 3) });
     const hold = { b: S.bridges.slice(), a: S.ashes.slice(), c: S.corpses.slice() };
     const without = () => { S.bridges = []; S.ashes = []; S.corpses = []; const o = with3(); S.bridges = hold.b; S.ashes = hold.a; S.corpses = hold.c; return o; };
+    // the pixels of the tile that change when the thing is there
+    const diff = (on, off) => { const o = {}; for (const k in on) { let n = 0; for (let i = 0; i < on[k].length; i += 4) if (Math.abs(on[k][i] - off[k][i]) + Math.abs(on[k][i + 1] - off[k][i + 1]) + Math.abs(on[k][i + 2] - off[k][i + 2]) > 12) n++; o[k] = n; } return o; };
     const out = { lit: Deck.litAt(bx, by) && !G.visibleAt(bx, by) };
-    out.eyes = { on: with3(), off: without() };
+    out.eyes = diff(with3(), without());
     const bi = Deck.blindIdx; Deck.blindIdx = () => false;
-    out.naive = { on: with3(), off: without() };
+    out.naive = diff(with3(), without());
     Deck.blindIdx = bi;
     out.remembered = R.rememberedAt(MapGen.idx(bx, by));
     S.paused = true;
     return out;
   });
-  const same = k => r.eyes.on[k] === r.eyes.off[k], seen = k => r.naive.on[k] !== r.naive.off[k];
-  ck('aChartShowsTheLandNotWhatStandsOnIt', r.lit && !r.remembered && same('bridge') && same('ash') && same('corpse') && seen('bridge') && seen('ash') && seen('corpse'),
-    `luminance with/without — bridge ${r.eyes.on.bridge}/${r.eyes.off.bridge}, ash ${r.eyes.on.ash}/${r.eyes.off.ash}, corpse ${r.eyes.on.corpse}/${r.eyes.off.corpse}; ` +
-    `the naive gate draws them: ${r.naive.on.bridge}/${r.naive.off.bridge}, ${r.naive.on.ash}/${r.naive.off.ash}, ${r.naive.on.corpse}/${r.naive.off.corpse}`);
+  ck('aChartShowsTheLandNotWhatStandsOnIt', r.lit && !r.remembered && r.eyes.bridge === 0 && r.eyes.ash === 0 && r.eyes.corpse === 0 &&
+    r.naive.bridge > 20 && r.naive.ash > 20 && r.naive.corpse > 20,
+    `device pixels changed by the bridge / ash / carcass on charted ground: ${r.eyes.bridge}/${r.eyes.ash}/${r.eyes.corpse}; ` +
+    `the naive gate draws them: ${r.naive.bridge}/${r.naive.ash}/${r.naive.corpse}`);
 }
 
 // ---------------- 2. SCOUT'S FIRE ----------------
