@@ -46,7 +46,8 @@
                        flip would send it at the player; a band with no road
                        to the rival scatters, the charge spent and said; the
                        wait is capped (a wave PACT_WAIT days late runs its
-                       ordinary course, charge kept); deniable at peace
+                       ordinary course, charge kept); deniable at peace;
+                       the bands owed wear the card's chip on the strip
      THE SWALLOWED SUN 4 days: the rival sees half as far (its own vision),
                        strikes 30% softer (unit blows AND the engines' bldAtk
                        AND the towers' arrows — the two bypasses), musters no
@@ -692,6 +693,14 @@ await p.evaluate(() => {
     out.rng = S.rngState === rng;
     Deck.play('barbarian_pact');
     out.n2 = S.deck.charges.pact;
+    /* EVERY RUNNING CARD IS SEEN, OR COUNTED: the bands still owed wear the
+       card's chip on the strip — the count, in words when tapped — and it
+       goes with the last of them */
+    Screens.show('playing'); S.paused = true;
+    const chipNow = () => { DeckUI._t = 0; DeckUI.frame(1); const ch = DeckUI._chips.barbarian_pact; return ch ? ch.lab.textContent + '|' + ch.charge.words : null; };
+    out.chip = [chipNow()];
+    S.deck.charges.pact = 1; out.chip.push(chipNow());
+    delete S.deck.charges.pact; out.chip.push(chipNow());
     S.deck.charges.pact = 3;
     // three bands muster: every one marches on the rival, and is told
     const bands = [];
@@ -790,6 +799,8 @@ await p.evaluate(() => {
     return out;
   });
   ck('thePactHoldsThreeBands', r.play.ok && r.c.target === 'none' && r.n === 3 && r.n2 === 6 && r.rng, `${r.n} charges, a second pact ${r.n2}; no draw ${r.rng}`);
+  ck('theBandsOwedWearAChip', r.chip[0] === '×6|6 war bands' && r.chip[1] === '×1|1 war band' && r.chip[2] === null,
+    `strip chip: ${r.chip.map(String).join(' → ')}`);
   ck('eachBandMarchesOnTheRival', r.bands.every((bd, i) => bd.n > 0 && bd.aim === 'A' && bd.left === 2 - i) && r.spent,
     r.bands.map(bd => `${bd.n}→${bd.aim} (${bd.left} left)`).join(', '));
   ck('andIsToldAtEveryDifficulty', r.noteChance === 0 && r.bands.every(bd => bd.told), `on Hard (foe notes ${r.noteChance}) every band logged`);

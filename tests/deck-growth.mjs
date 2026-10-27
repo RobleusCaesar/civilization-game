@@ -61,8 +61,9 @@
                        card LANDS on the works (its dest) and the play never
                        cuts the camera away from them
      WONDER'S FOUNDATION  +35% of the works now, or the moment the Wonder is
-                       laid (the charge waits, rides the save, and the
-                       rival's monument never takes it) — and never past 95%:
+                       laid (the charge waits, wears its chip on the strip,
+                       rides the save, and the rival's monument never takes
+                       it) — and never past 95%:
                        no card lays the last stone; it lands on a standing
                        site, and brings the works on screen only when the
                        ground breaking lays it
@@ -975,6 +976,11 @@ await p.evaluate(() => {
     out.wait = Deck.play('wonders_foundation');
     out.charge = !!S.deck.charges.foundation;
     out.twice = Deck.play('wonders_foundation');
+    /* EVERY RUNNING CARD IS SEEN, OR COUNTED: the waiting foundation wears
+       the card's chip on the strip, and it goes when the ground is broken */
+    Screens.show('playing'); S.paused = true;
+    const chipNow = () => { DeckUI._t = 0; DeckUI.frame(1); const ch = DeckUI._chips.wonders_foundation; return ch ? ch.lab.textContent + '|' + ch.charge.words : null; };
+    out.chip = [chipNow()];
     // the rival's monument never takes it
     const rw = __g.site('A', 'wonder', q.A.x - 8, q.A.y - 8);
     out.rivalLeft = rw.construction; out.chargeAfterRival = !!S.deck.charges.foundation;
@@ -986,6 +992,7 @@ await p.evaluate(() => {
     S.res = { food: 9000, wood: 9000, stone: 9000, gold: 9000 };
     const laid = Bld.place('P', 'wonder', q.P.x + 6, q.P.y + 6, { noAutoAssign: true }); Bld._block = null;
     out.laidLeft = laid.construction; out.chargeGone = !S.deck.charges.foundation;
+    out.chip.push(chipNow());
     out.laidPaid = laid.paid;
     out.show = R.cardShows.some(s => s.id === 'wonders_foundation');
     // the card lands on a standing site and keeps the camera where it landed;
@@ -1017,6 +1024,7 @@ await p.evaluate(() => {
     `a site 80% raised stops at ${r.capped} days left; still a site ${r.stillSite}; the Wonder raised by a card ${r.raised}, finished ${r.fin}`);
   ck('at95ItIsRefused', !r.at95.ok && /95%/.test(r.at95.why), r.at95.why);
   ck('notLaidYetTheFoundationWaits', r.wait.ok && r.charge && !r.twice.ok && r.twice.why === 'A foundation already waits for your Wonder.', r.twice.why);
+  ck('aWaitingFoundationWearsAChip', r.chip[0] === '×1|1 foundation' && r.chip[1] === null, `strip chip: ${r.chip.map(String).join(' → ')} (laid)`);
   ck('theRivalsMonumentNeverTakesIt', r.rivalLeft === T45 && r.chargeAfterRival, `the rival's site ${r.rivalLeft} days, the charge kept ${r.chargeAfterRival}`);
   ck('aWaitingFoundationRidesTheSave', r.chargeSaved);
   ck('andIsLaidWithTheGround', near(r.laidLeft, T45 * 0.65, 1e-9) && r.chargeGone && r.show,

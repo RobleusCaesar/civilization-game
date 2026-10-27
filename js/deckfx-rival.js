@@ -920,6 +920,15 @@
        bought it; the muster's whereabouts are never said. */
     barbarian_pact: {
       at: 'tc', N: 3,
+      /* the bands still owed are a running card: they wear a chip on the
+         strip (DeckUI._timers) — the count where a timer's days would be,
+         the ring a card's worth — kept under 'pact', which the strip maps
+         back to this card. Without it three charges ran unseen and uncounted. */
+      chargeKey: 'pact',
+      chip(n) {
+        n = n | 0;
+        return n > 0 ? { label: '×' + n, frac: Math.min(1, n / this.N), words: n + (n === 1 ? ' war band' : ' war bands') } : null;
+      },
       can() { return { ok: true }; },
       apply() {
         const c = Deck.run().charges, again = (c.pact || 0) > 0;

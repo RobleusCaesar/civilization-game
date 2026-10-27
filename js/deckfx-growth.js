@@ -1395,6 +1395,15 @@ Object.assign(Deck.FX, {
      foundation may wait for a Wonder not yet laid, never two. */
   wonders_foundation: {
     at: 'tc', GAIN: 0.35, CAP: 0.95,
+    /* a foundation WAITING for a Wonder not yet laid is a running card: it
+       wears a chip on the strip (DeckUI._timers) until the ground is broken
+       and it is laid — kept under 'foundation', which the strip maps back to
+       this card. Without it the charge ran unseen and uncounted. */
+    chargeKey: 'foundation',
+    chip(n) {
+      n = n | 0;
+      return n > 0 ? { label: '×' + n, frac: 1, words: n + (n === 1 ? ' foundation' : ' foundations') } : null;
+    },
     // the card lands ON the works when they stand (DeckUI._dest), else on the hall
     dest() { return GrowFX.wonderSite(); },
     work() { return CFG.BUILDINGS.wonder.levels[0].time; },
