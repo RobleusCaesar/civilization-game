@@ -28,12 +28,18 @@
      A LOST ANSWER IS NOT A LOST ROW   The server refusing a duplicate means
                        the row is already up: that counts as posted.
 
+     A CARD-ASSISTED WIN IS HELD   A run that played cards stays off the
+                       board until the board can wear the card mark
+                       (Screens.boardHold) — the old victory scene too, when
+                       the switch is off at the end of such a run — and says
+                       so on the scene; once it can, the row carries the count.
+
      NOTHING FROM DISK   A page opened from file:// never signs in and never
                        sends telemetry — the suite must not mint players or
                        phantom wins in the live project.
 
    Run this after touching any of:
-     screens.js — onEndgame (victory), _offerSubmit, _promptName, _note,
+     screens.js — onEndgame (victory), boardHold, _offerSubmit, _promptName, _note,
                   _postBeforeLeaving, submitScore, leaveEnd, the pagehide hook
      backend.js — _init's file: guard, _signIn, reconnect, submitScore's
                   remember/keepalive options, _emit
@@ -304,6 +310,50 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     return { posts: __MOCK.calls.filter(c => c.path.startsWith('/rpc/submit_score')).length, screen: Screens.current };
   });
   ck('aDefeatPostsNothing', r.posts === 0 && r.screen === 'title', JSON.stringify(r));
+  await p.close();
+}
+
+// ---- 10. a card-assisted win is held off the board, whatever the switch says ----
+/* The card system's reward screen holds an assisted win off the board until
+   the board can wear the card mark (Screens.boardHold). With the switch OFF
+   at the end of a run that DID play cards (?cards=0 since, an older save),
+   the old victory scene draws the end — and it must hold the run by the same
+   rule: the cards were played, that is a fact of the run. A known chief, so
+   an unheld run would post on its own; the control is the same run with the
+   board able to wear the mark, which posts once carrying the count. */
+{
+  const p = await boot(MOCK + `__MOCK.profile.arcade_name = 'DEED';`);
+  await p.waitForFunction(() => Backend.isReady(), null, { timeout: 5000 });
+  const r = await p.evaluate(async () => {
+    const vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
+    const posts = () => __MOCK.calls.filter(c => c.path.startsWith('/rpc/submit_score'));
+    const run = async (seed, marks, mode) => {
+      const was = Backend.BOARD_MARKS_CARDS;
+      Backend.BOARD_MARKS_CARDS = marks;
+      G.newGame(seed, mode, 'large'); Screens._demo = false; Screens.show('playing');
+      S.deck = S.deck || {};
+      S.deck.played = [{ id: 'forager_cache', day: 1 }, { id: 'master_builders', day: 3 }];
+      const off = !(window.Deck && Deck.on && Deck.on());
+      const n0 = posts().length;
+      G.end(true, 'test');
+      await new Promise(r => setTimeout(r, 300));
+      const o = { off, scene: vis('victoryScene'), posts: posts().length - n0, entry: Screens._entry, row: vis('nameRow'),
+        note: document.getElementById('savedNote').textContent, noteShown: vis('savedNote') };
+      // leaving does not post it either (REPLAY/MENU and the page closing all ask _entry)
+      document.getElementById('btnVicTitle').click();
+      await new Promise(r => setTimeout(r, 300));
+      o.leftPosts = posts().length - n0;
+      Backend.BOARD_MARKS_CARDS = was;
+      return o;
+    };
+    // (the control on another difficulty: the board's own duplicate check
+    // must never be what keeps a second run of the same score off it)
+    return { held: await run('assisted', false, 'moderate'), marked: await run('assisted2', true, 'hard') };
+  });
+  ck('aCardAssistedWinIsHeldWithTheSwitchOff', r.held.off && r.held.scene && r.held.posts === 0 && r.held.leftPosts === 0 && r.held.entry === null &&
+    !r.held.row && r.held.noteShown && /cannot wear the card mark/.test(r.held.note), JSON.stringify(r.held));
+  ck('andGoesUpCountedOnceTheBoardCanMarkIt', r.marked.off && r.marked.posts === 1 && r.marked.entry && r.marked.entry.cards_played === 2,
+    JSON.stringify({ posts: r.marked.posts, entry: r.marked.entry }));
   await p.close();
 }
 

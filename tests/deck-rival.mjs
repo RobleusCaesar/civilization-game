@@ -27,12 +27,17 @@
                        3-day watch that is real sight from the play on (the
                        sheet holds the world still, so the card runs the
                        vision pass itself); a relic in the ring is found, one
-                       outside is not; a second fire lights a second hill,
+                       outside is not — and the card's find rolls its reward
+                       off the run's RNG (the same relic found on foot draws
+                       it, the control); a second fire lights a second hill,
                        the same fire fed again burns 3 more days; never the
-                       rim
+                       rim; aimed at a building, the fire and its watch are
+                       seated on the nearest open tile, never on a roof
      PATHFINDER'S MAP  every tile but the relic's footprint; the relic marked
                        (map and minimap) and unfound; nothing standing shown;
-                       its "when", in words
+                       its "when", in words — decided on the player's own map,
+                       never on whether a relic exists (an all-charted world
+                       is refused in the same words with one or without)
      SPY IN THE HALL   every rival building ghosted for good, through two
                        vision passes; the origin card named (and a true line
                        for a save with none); 10 days of their people seen —
@@ -46,7 +51,8 @@
                        flip would send it at the player; a band with no road
                        to the rival scatters, the charge spent and said; the
                        wait is capped (a wave PACT_WAIT days late runs its
-                       ordinary course, charge kept); deniable at peace
+                       ordinary course, charge kept); deniable at peace;
+                       the bands owed wear the card's chip on the strip
      THE SWALLOWED SUN 4 days: the rival sees half as far (its own vision),
                        strikes 30% softer (unit blows AND the engines' bldAtk
                        AND the towers' arrows — the two bypasses), musters no
@@ -498,9 +504,22 @@ await p.evaluate(() => {
     // A RELIC IN THE RING IS FOUND — legitimately, its own roll and all
     __rv.fresh('rv-scout2'); __rv.flat(false); G.updateVisibility();
     S.relic = { key: 'aqueduct', x: 20, y: 20, w: 4, h: 2, found: 0, amount: 0 };
-    const s0 = S.res.stone;
+    const s0 = S.res.stone, rngR = S.rngState;
     Deck.play('scouts_fire', { x: 22.5, y: 24.5 });
     out.found = S.relic.found > 0 && S.res.stone > s0;
+    // …and its reward is the CARD's find: no draw at the play, nor through
+    // the watch's vision passes after it (a card never draws the run's RNG)
+    out.foundRng = S.rngState === rngR;
+    G.updateVisibility(); G.updateVisibility();
+    out.foundRngAfter = S.rngState === rngR;
+    // the CONTROL: the same relic found by a hand that walked there rolls
+    // its reward on the run's RNG, as it always has — the probe can see a draw
+    __rv.fresh('rv-scout2w'); __rv.flat(false); G.updateVisibility();
+    S.relic = { key: 'aqueduct', x: 20, y: 20, w: 4, h: 2, found: 0, amount: 0 };
+    __rv.unit('rider', 'P', 21.5, 21.5);
+    const rngW = S.rngState;
+    G.updateVisibility();
+    out.walkDraws = S.relic.found > 0 && S.rngState !== rngW;
     // …one outside it is not, and nothing draws
     __rv.fresh('rv-scout3'); __rv.flat(false); G.updateVisibility();
     S.relic = { key: 'aqueduct', x: 30, y: 30, w: 4, h: 2, found: 0, amount: 0 };
@@ -526,10 +545,37 @@ await p.evaluate(() => {
     Deck.play('scouts_fire', { x: 22.5, y: 21.5 });
     const e4 = Deck.timed('scouts_fire');
     out.fed = { pts: e4.pts.length, until: +(e4.pts[0].until - d0).toFixed(6), chip: +(e4.until - d0).toFixed(6) };
+    /* THE FIRE IS SEATED ON OPEN GROUND: aimed at a building — a rival hut,
+       their 2x2 hall at its heart — the fire, its pillar and its watch stand
+       on the nearest open tile beside it, never on a roof (a building ablaze
+       is the game's one unprompted alarm); the chart is still the ring round
+       the point aimed. Aimed at open ground (the fires above) it burns
+       exactly where it was aimed. */
+    __rv.fresh('rv-scout5'); const f5 = __rv.flat(false); G.updateVisibility();
+    __rv.bld('A', 'house', 20, 20);
+    R.cardShows = [];
+    Deck.play('scouts_fire', { x: 20.5, y: 20.5 });
+    const hall = { x: f5.A.x + 1, y: f5.A.y + 1 };
+    Deck.play('scouts_fire', hall);
+    const e5 = Deck.timed('scouts_fire'), shows = R.cardShows.filter(s => s.id === 'scouts_fire');
+    out.seats = e5.pts.map((pt, i) => ({ at: pt.x + ',' + pt.y, roof: !!Bld.at(pt.x, pt.y), open: Path.passable(pt.x, pt.y),
+      d: +Math.hypot(pt.x + 0.5 - (i ? hall.x : 20.5), pt.y + 0.5 - (i ? hall.y : 20.5)).toFixed(2),
+      pillar: !!shows[i] && shows[i].x === pt.x + 0.5 && shows[i].y === pt.y + 0.5 }));
+    G.updateVisibility();
+    out.seatWatched = G.visibleAt(e5.pts[0].x, e5.pts[0].y) && G.visibleAt(20, 20);
+    out.seatCharted = S.map.explored[MapGen.idx(29, 20)] === 1 && S.map.explored[MapGen.idx(11, 20)] === 1;
+    // …and on open ground it is exactly where it was aimed
+    __rv.fresh('rv-scout6'); __rv.flat(false); G.updateVisibility();
+    Deck.play('scouts_fire', { x: 20.5, y: 20.5 });
+    const p6 = Deck.timed('scouts_fire').pts[0];
+    out.openAt = p6.x === 20 && p6.y === 20;
     return out;
   });
   ck('theSameFireFedAgainBurnsThreeMoreDays', r.fed.pts === 1 && r.fed.until === 6 && r.fed.chip === 6,
     `${r.fed.pts} hill, burning ${r.fed.until} days from the first play (chip ${r.fed.chip})`);
+  ck('theFireIsSeatedOnOpenGroundNeverOnARoof', r.seats.length === 2 && r.seats.every(s => !s.roof && s.open && s.pillar && s.d <= 2) &&
+    r.seatWatched && r.seatCharted && r.openAt,
+    `aimed at a hut, then at their hall: ${JSON.stringify(r.seats)}; watched ${r.seatWatched}, the aimed ring charted ${r.seatCharted}; open ground kept as aimed ${r.openAt}`);
   ck('theFireIsAnyPoint', r.c.target === 'any' && r.at === 'target' && r.anyUnexplored && r.offBoard,
     `target '${r.c.target}', unexplored ground takes it ${r.anyUnexplored}, off the board refused ${r.offBoard}`);
   ck('nineTilesChartedForGood', r.play.ok && r.ring.explored === r.ring.n && r.ring.lit > 200 && r.pts[0] === r.pts[1],
@@ -541,6 +587,8 @@ await p.evaluate(() => {
   ck('theWatchEndsTheChartStays', r.over && r.endLog);
   ck('theWatchesRideTheSave', r.saved);
   ck('aRelicInTheRingIsFound', r.found && r.notFound, `inside found ${r.found}; outside untouched and no draw ${r.notFound}`);
+  ck('andTheFindDrawsNoRng', r.foundRng && r.foundRngAfter && r.walkDraws,
+    `the card's find: no draw at the play ${r.foundRng}, nor after its watch ${r.foundRngAfter}; the same relic found on foot draws ${r.walkDraws}`);
   ck('theFireNeverChartsTheRim', r.rim === 0 && r.naiveRim > 0, `${r.rim} rim tiles (an inB disc would chart ${r.naiveRim})`);
   ck('andTheFireDrawsNoRng', r.rng && r.logged);
 }
@@ -584,6 +632,16 @@ await p.evaluate(() => {
     S.relic = { key: 'aqueduct', x: 18, y: 24, w: 4, h: 2, found: 0, amount: 0 };
     for (let y = 24; y < 26; y++) for (let x = 18; x < 22; x++) S.map.explored[MapGen.idx(x, y)] = 0;
     out.markOnly = Deck.canPlay('pathfinders_map').ok && Deck.play('pathfinders_map').ok && S.deck.relicMark === true && !S.relic.found;
+    /* WHETHER IT PLAYS NEVER SAYS A RELIC IS THERE: a world whose map is all
+       charted — not one tile dark — is refused in the SAME words whether a
+       relic lies unfound under it (its footprint charted, the find not yet
+       made) or there is none at all. Asked of S.relic, the first played. */
+    __rv.fresh('rv-map3'); __rv.flat(true); G.updateVisibility();
+    S.relic = { key: 'aqueduct', x: 18, y: 24, w: 4, h: 2, found: 0, amount: 0 };
+    const withRelic = Deck.canPlay('pathfinders_map');
+    S.relic = null;
+    const without = Deck.canPlay('pathfinders_map');
+    out.blind = { withRelic, without };
     return out;
   });
   ck('everyTileButTheRelicIsCharted', r.play.ok && r.c.target === 'none' && r.dark === 8 && r.darkRelic === 8,
@@ -594,6 +652,9 @@ await p.evaluate(() => {
   ck('itsWhenIsKeptInWords', !r.again.ok && /already on your map, and the relic is marked/.test(r.again.why) &&
     r.dug && !r.again2.ok && /already on your map\.$/.test(r.again2.why) && r.markOnly,
     `"${r.again.why}" / dug: mark retired ${r.dug} / "${r.again2.why}" / mark only ${r.markOnly}`);
+  ck('whetherItPlaysNeverSaysARelicIsThere', !r.blind.withRelic.ok && !r.blind.without.ok && r.blind.withRelic.why === r.blind.without.why &&
+    r.blind.without.why === 'The whole world is already on your map.',
+    `all charted, a relic unfound under it: ${JSON.stringify(r.blind.withRelic)}; none at all: ${JSON.stringify(r.blind.without)}`);
 }
 
 // ---------------- 4. SPY IN THE HALL ----------------
@@ -692,6 +753,14 @@ await p.evaluate(() => {
     out.rng = S.rngState === rng;
     Deck.play('barbarian_pact');
     out.n2 = S.deck.charges.pact;
+    /* EVERY RUNNING CARD IS SEEN, OR COUNTED: the bands still owed wear the
+       card's chip on the strip — the count, in words when tapped — and it
+       goes with the last of them */
+    Screens.show('playing'); S.paused = true;
+    const chipNow = () => { DeckUI._t = 0; DeckUI.frame(1); const ch = DeckUI._chips.barbarian_pact; return ch ? ch.lab.textContent + '|' + ch.charge.words : null; };
+    out.chip = [chipNow()];
+    S.deck.charges.pact = 1; out.chip.push(chipNow());
+    delete S.deck.charges.pact; out.chip.push(chipNow());
     S.deck.charges.pact = 3;
     // three bands muster: every one marches on the rival, and is told
     const bands = [];
@@ -790,6 +859,8 @@ await p.evaluate(() => {
     return out;
   });
   ck('thePactHoldsThreeBands', r.play.ok && r.c.target === 'none' && r.n === 3 && r.n2 === 6 && r.rng, `${r.n} charges, a second pact ${r.n2}; no draw ${r.rng}`);
+  ck('theBandsOwedWearAChip', r.chip[0] === '×6|6 war bands' && r.chip[1] === '×1|1 war band' && r.chip[2] === null,
+    `strip chip: ${r.chip.map(String).join(' → ')}`);
   ck('eachBandMarchesOnTheRival', r.bands.every((bd, i) => bd.n > 0 && bd.aim === 'A' && bd.left === 2 - i) && r.spent,
     r.bands.map(bd => `${bd.n}→${bd.aim} (${bd.left} left)`).join(', '));
   ck('andIsToldAtEveryDifficulty', r.noteChance === 0 && r.bands.every(bd => bd.told), `on Hard (foe notes ${r.noteChance}) every band logged`);

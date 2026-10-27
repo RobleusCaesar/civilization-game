@@ -329,7 +329,12 @@ Object.assign(Deck, {
   /* What a card did goes in the event log, never in a toast: the play
      animation IS the announcement (js/deckui.js), and a toast over it would
      say it twice. The narration of an act still unfolding — the star
-     landing, the dragon breathing — toasts, as the world's own events do. */
+     landing, the dragon's ash — toasts, as the world's own events do, but
+     in the NOTE style: the red alarm is for being attacked, never for the
+     player's own blow. A strike whose act narrates itself says so
+     (`narrates`) and its landing toast stands down (DeckUI._land): the
+     card's name, the act's line and a second line stacked three deep over
+     the world on a phone. One play, one toast — the result. */
   say(msg) {
     S.log.unshift({ day: S.day, msg });
     if (S.log.length > 60) S.log.pop();
@@ -384,6 +389,7 @@ Object.assign(Deck.FX, {
      star is falling, or another strike is still landing, it waits (kept). */
   starfall: {
     at: 'target', radius: 3, inner: 2,   // the aim's rings: the units' reach and the buildings'
+    narrates: true,       // its blow says what it did (impact): no landing toast (Deck.say)
     FALL_S: 1.3,          // the meteor's streak, sky to ground (the event's takes CFG.STARFALL.fallS 3.6)
     DOWN_S: 3,            // the beat after the blow: the dark lifts, the ground stays in sight
     DIM_IN: 0.35, DIM_HOLD: 0.8,   // the night deepens with the fall and lifts after the blow (R.cardStarDim)
@@ -436,7 +442,7 @@ Object.assign(Deck.FX, {
       G.log(n ? '☄️ The star strikes! ' + n + ' of theirs caught in the blast' +
           (razed + slain ? ' — ' + (razed ? razed + ' building' + (razed > 1 ? 's' : '') + ' down' : '') +
             (razed && slain ? ', ' : '') + (slain ? slain + ' slain' : '') : '') + '.'
-        : '☄️ The star strikes — and finds nothing of theirs there.', true, 6000);
+        : '☄️ The star strikes — and finds nothing of theirs there.', 'note', 6000);   // the player's blow: never the alarm
     },
   },
 
@@ -455,6 +461,7 @@ Object.assign(Deck.FX, {
      wing the card waits (kept). */
   dragonfire: {
     at: 'target', radius: 3, inner: 2.5,
+    narrates: true,       // its ash says what it did (G.dragonTick): no landing toast (Deck.say)
     FLY_S: 1.2,           // the fly-in: G.dragonTick flies 9 tiles/s and breathes 2.5 short of its mark
     UNIT_R: 3, BLD_R: 2.5, BLD: 1200, TC_CAP: 0.5, SIGHT: 4,
     // the strafe lays its fire from 0.4 tiles short of its mark to ~5 past it

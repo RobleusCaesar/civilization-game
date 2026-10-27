@@ -36,6 +36,13 @@
                        and the information (toast, count) is all there
      THE WORLD CHANGES a new game or a load drops the deck where it stands;
                        a screen that takes over owns the pause from then on
+     A STRIKE SAYS IT ONCE  Starfall and Dragonfire narrate their own act:
+                       no landing toast, one toast at a time on a 390px
+                       phone, never the red alarm (the real effects, played
+                       through the real sequence)
+     THE PLATES        every card's name (and tier, on the back) inside its
+                       plate in at most two lines at 320 and 390 (Deck.nmFit);
+                       a refusal may take a third line, never an ellipsis
 
    Run after touching: js/deckui.js, Deck.face in js/deck.js, the DeckUI
    hooks in js/game.js (frame, newGame, loadJSON), Screens.modalUp.
@@ -834,6 +841,95 @@ const rm = await rp.evaluate(async () => {
 ck('reducedMotionMovesNothing', rm.anims > 0 && rm.moving === 0, `${rm.anims} animations, ${rm.moving} with a transform`);
 ck('butTheInformationIsAllThere', rm.spent && rm.food === 250 && rm.rFood && rm.toast && rm.aim && rm.total <= 1200, `${rm.total}ms`);
 await rctx.close();
+
+/* ================= 11. A STRIKE SAYS IT ONCE, AND NEVER AS AN ALARM =================
+   Starfall and Dragonfire narrate their own act (the star's blow, the
+   dragon's ash), so the landing's toast stands down (`narrates`) and the
+   act's line wears the NOTE style — the red alarm is for being attacked,
+   never for the player's own blow. Played through the real sequence with
+   the real effects on a 390px phone and watched for the whole act: one toast
+   on screen at a time, none of them an alarm, and the result is said.
+   (The old code stacked three — the card's name, the breath in red, the ash.) */
+const { ctx: sctx, p: sp } = await page({ viewport: { width: 390, height: 844 } });
+const strikes = await sp.evaluate(async (enter) => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  CFG.CARDS.ON = true;
+  const out = {};
+  for (const id of ['starfall', 'dragonfire']) {
+    eval('(' + enter + ')')('dk-narrate-' + id);
+    Deck._col = null; Deck._del(Deck.KEY); Deck._add(id, 1);
+    // something of theirs in the open, in sight, to strike
+    const tc = Bld.tcOf('P');
+    const spot = MapGen.findNear(tc.x + 9, tc.y + 2, 8, (x, y) => Path.passable(x, y) && !Bld.at(x, y) && !Bld.at(x + 1, y + 1));
+    Bld.place('A', 'house', spot.x, spot.y, { free: true, instant: true }); Bld._block = null;
+    G.updateVisibility();
+    UI._toastAt = {}; document.getElementById('toasts').innerHTML = '';
+    S.paused = false;
+    DeckUI._run(id, { x: spot.x + 0.5, y: spot.y + 0.5 }, null, false);
+    const t0 = performance.now(), said = new Set();
+    let max = 0, alarms = 0;
+    while (performance.now() - t0 < 7000) {
+      const ts = [...document.querySelectorAll('#toasts .toast')].filter(t => getComputedStyle(t).opacity !== '0');
+      max = Math.max(max, ts.length);
+      for (const t of ts) { if (t.classList.contains('warn')) alarms++; said.add(t.textContent); }
+      await wait(50);
+    }
+    out[id] = { played: Deck.count(id) === 0, max, alarms, said: [...said] };
+  }
+  return out;
+}, enterGame.toString());
+ck('aStrikeSaysItOnceNeverAsAnAlarm', ['starfall', 'dragonfire'].every(id => strikes[id].played && strikes[id].max === 1 && strikes[id].alarms === 0) &&
+  strikes.starfall.said.some(t => /star strikes/.test(t)) && strikes.dragonfire.said.some(t => /Ash where they stood/.test(t)),
+  ['starfall', 'dragonfire'].map(id => `${id}: ${strikes[id].max} at once, ${strikes[id].alarms} alarm samples — ${strikes[id].said.map(t => t.slice(0, 40)).join(' | ')}`).join('; '));
+await sctx.close();
+
+/* ================= 12. EVERY NAME FITS ITS PLATE, EVERY REFUSAL ITS CAPTION =================
+   The sheet's smallest face is 88px wide (a 320px phone at 2x): there the
+   plate's 7.5px floor broke THE SWALLOWED SUN into three lines over the
+   plate's rim and ran ENLIGHTENMENT past both its ends. Every card's name —
+   and every tier's, on the back — must sit inside its plate in at most two
+   lines (Deck.nmFit steps the size down), at 320 and at 390; and a refusal
+   may take a third line, so "The Wonder rises only in Calm worlds." is read
+   whole (with its period), never cut off in an ellipsis. */
+const plates = [];
+for (const [w, h, dpr] of [[320, 568, 2], [390, 844, 3]]) {
+  const { ctx: pctx, p: pp } = await page({ viewport: { width: w, height: h }, deviceScaleFactor: dpr });
+  plates.push(await pp.evaluate(async ({ enter, w }) => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    CFG.CARDS.ON = true;
+    eval('(' + enter + ')')('dk-plates');
+    Deck._col = null; Deck._del(Deck.KEY);
+    for (const c of Deck.CATALOG) Deck._add(c.id, 1);
+    if (document.fonts) { await document.fonts.load('700 10px Cinzel'); await document.fonts.ready; }
+    DeckUI.openSheet(); await wait(500);
+    const lines = el => { const r = document.createRange(); r.selectNodeContents(el); return new Set([...r.getClientRects()].map(q => Math.round(q.top))).size; };
+    const inside = el => {
+      const box = el.getBoundingClientRect(), r = document.createRange(); r.selectNodeContents(el);
+      const tb = r.getBoundingClientRect(), padX = parseFloat(getComputedStyle(el).paddingLeft) || 0;
+      return tb.top >= box.top - 0.5 && tb.bottom <= box.bottom + 0.5 && tb.left >= box.left + padX - 1 && tb.right <= box.right - padX + 1;
+    };
+    const bad = [], cells = [...document.querySelectorAll('#dkSheet .dkCell')];
+    for (const cell of cells) for (const nm of cell.querySelectorAll('.cc-nm')) {
+      // (the back plate is measured where it stands, turned away: a half
+      // turn about the card's axis mirrors its box, which the test is blind to)
+      const back = !!nm.closest('.cc-b');
+      const n = lines(nm), ok = n <= 2 && inside(nm);
+      if (!ok) bad.push(`${cell.dataset.card}${back ? ' (back)' : ''}: ${n} lines, ${getComputedStyle(nm).fontSize}`);
+    }
+    const caps = cells.filter(c => c.querySelector('.dkCap.no')).map(c => {
+      const cap = c.querySelector('.dkCap');
+      return { id: c.dataset.card, why: cap.textContent, n: lines(cap), whole: cap.scrollHeight <= cap.clientHeight + 1 };
+    });
+    return { w, cardW: Math.round(cells[0].getBoundingClientRect().width), n: cells.length, bad, caps };
+  }, { enter: enterGame.toString(), w }));
+  await pctx.close();
+}
+const wonderCap = plates[0].caps.find(c => c.id === 'age_of_marble');
+ck('everyNameFitsItsPlate', plates.every(pl => pl.n === 36 && !pl.bad.length) && plates[0].cardW <= 90,
+  plates.map(pl => `${pl.w}px (${pl.cardW}px cards): ${pl.bad.length ? pl.bad.join('; ') : 'all 36 inside, both sides'}`).join(' / '));
+ck('aRefusalTakesAThirdLineNeverAnEllipsis', !!wonderCap && wonderCap.n === 3 && wonderCap.whole && wonderCap.why === 'The Wonder rises only in Calm worlds.' &&
+  plates.every(pl => pl.caps.every(c => c.whole)),
+  plates.map(pl => `${pl.w}: ` + pl.caps.map(c => `${c.id} ${c.n}${c.whole ? '' : ' CLIPPED'}`).join(', ')).join(' / '));
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 const pageErrs = errs.filter(e => !/ERR_FILE_NOT_FOUND/.test(e));

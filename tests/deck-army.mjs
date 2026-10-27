@@ -788,6 +788,32 @@ await p.evaluate(({ ARMY }) => {
   ck('andVeteransDrawNoRng', r.rng && /rise a rank/.test(r.msg), r.msg);
 }
 {
+  /* THE HOST AND THE PACK ARE NOT THE ARMY: the Ancestors' Host's ghosts
+     are Bronze Champions by kind — military to every Units.isMilitary pass —
+     and a war-wolf is the player's own; Veterans raises neither, and the
+     count it reports is the soldiers it really raised. A host alone is no
+     army to raise, so the card is kept. */
+  const r = await p.evaluate(() => {
+    const out = {};
+    __ar.fresh('army-vet-host'); __ar.flat();
+    const host = __ar.play('ancestors_host').units, pack = __ar.play('hunters_pack').units;
+    out.hostN = host.length; out.packN = pack.length;
+    const hp0 = host.map(u => u.maxhp), atk0 = host.map(u => u.atk), wolf0 = pack.map(u => [u.kind, u.maxhp, u.atk]);
+    out.alone = Deck.play('veterans');
+    const d = __ar.unit('defender', 'P', 4.5, 16.5);
+    const play = Deck.play('veterans');
+    out.play = play.ok; out.msg = play.msg;
+    out.d = d.kind;
+    out.ghosts = host.every((u, i) => u.spectral && u.kind === 'elite' && !u.vet && !u.ranked && u.maxhp === hp0[i] && u.atk === atk0[i]);
+    out.wolves = pack.every((u, i) => u.warWolf && JSON.stringify([u.kind, u.maxhp, u.atk]) === JSON.stringify(wolf0[i]) && !u.vet && !u.ranked);
+    out.lit = (R.cardShows.find(s => s.id === 'veterans') || { lit: [] }).lit.length;
+    return out;
+  });
+  ck('theHostAndThePackAreNotRaised', r.hostN === 15 && r.packN > 0 && r.ghosts && r.wolves && r.d === 'elite' &&
+    r.msg === 'Veterans: 1 soldier rise a rank.' && r.lit === 1 && !r.alone.ok && r.alone.why === 'You have no land soldier to raise.',
+    `${r.hostN} ghosts untouched ${r.ghosts}, ${r.packN} war-wolves untouched ${r.wolves}; "${r.msg}" (${r.lit} lit); a host alone: "${r.alone.why}"`);
+}
+{
   const r = await p.evaluate(() => {
     const out = {};
     __ar.fresh('army-vet2'); __ar.flat();

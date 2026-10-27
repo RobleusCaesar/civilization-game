@@ -1299,7 +1299,7 @@ Object.assign(Deck.FX, {
     // the card lands ON the works when they stand (DeckUI._dest), else on the hall
     dest() { return GrowFX.wonderSite(); },
     can() {
-      if (!UI.wonderOffered()) return { ok: false, why: 'The Wonder rises only in Calm worlds' };
+      if (!UI.wonderOffered()) return { ok: false, why: 'The Wonder rises only in Calm worlds.' };
       const w = Deck.wonderOf('P');
       if (w && !(w.construction > 0)) return { ok: false, why: 'Your Wonder already stands.' };
       if (S.deck && S.deck.charges && S.deck.charges.marble) return { ok: false, why: 'The Age of Marble has already come.' };
@@ -1395,6 +1395,15 @@ Object.assign(Deck.FX, {
      foundation may wait for a Wonder not yet laid, never two. */
   wonders_foundation: {
     at: 'tc', GAIN: 0.35, CAP: 0.95,
+    /* a foundation WAITING for a Wonder not yet laid is a running card: it
+       wears a chip on the strip (DeckUI._timers) until the ground is broken
+       and it is laid — kept under 'foundation', which the strip maps back to
+       this card. Without it the charge ran unseen and uncounted. */
+    chargeKey: 'foundation',
+    chip(n) {
+      n = n | 0;
+      return n > 0 ? { label: '×' + n, frac: 1, words: n + (n === 1 ? ' foundation' : ' foundations') } : null;
+    },
     // the card lands ON the works when they stand (DeckUI._dest), else on the hall
     dest() { return GrowFX.wonderSite(); },
     work() { return CFG.BUILDINGS.wonder.levels[0].time; },
@@ -1414,7 +1423,7 @@ Object.assign(Deck.FX, {
       return before - w.construction;
     },
     can() {
-      if (!UI.wonderOffered()) return { ok: false, why: 'The Wonder rises only in Calm worlds' };
+      if (!UI.wonderOffered()) return { ok: false, why: 'The Wonder rises only in Calm worlds.' };
       const w = Deck.wonderOf('P'), ch = S.deck && S.deck.charges;
       if (w && !(w.construction > 0)) return { ok: false, why: 'Your Wonder already stands.' };
       if (w && w.construction <= this.floor() + 1e-9) return { ok: false, why: 'The works already stand at 95% — the last stones are yours to lay.' };

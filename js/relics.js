@@ -169,8 +169,14 @@ const Relics = {
     return s;
   },
 
-  /* ---------------- discovery (G.updateVisibility) ---------------- */
-  checkDiscovery() {
+  /* ---------------- discovery (G.updateVisibility) ----------------
+     The reward is rolled on the run's RNG (G.rand) — the find of a hand
+     that walked there. `roll` is for the one other door: a CARD's light
+     (Scout's Fire charting a ring the relic lies in, js/deckfx-rival.js)
+     finds it at the play and passes Math.random — NO CARD DRAWS THE RUN'S
+     RNG, or the play would re-deal every roll after it (the card dragon's
+     flames follow the same rule). The find itself is the same find. */
+  checkDiscovery(roll) {
     const r = S.relic;
     if (!r || r.found || this.MAX_PER_MAP < 1) return;
     if (window.Screens && Screens._demo) return;      // the title demo does not go treasure-hunting
@@ -182,7 +188,7 @@ const Relics = {
     if (!seen) return;
     const def = this.DEFS[r.key] || {};
     const range = this.REWARD[def.res] || [50, 150];
-    const amt = range[0] + Math.floor(G.rand() * (range[1] - range[0] + 1));
+    const amt = range[0] + Math.floor((roll ? roll() : G.rand()) * (range[1] - range[0] + 1));
     S.res[def.res] = (S.res[def.res] || 0) + amt;
     r.found = S.day || 1; r.amount = amt;
     if (window.R && R.startBondSpark) {

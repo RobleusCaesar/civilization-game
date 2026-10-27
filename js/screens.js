@@ -1198,8 +1198,11 @@ const Screens = {
     /* THE RUN'S ENTRY, TAKEN NOW. A post can outlive this screen (REPLAY
        fires one on the way out and the next world is founded a beat later),
        so the board's row is captured here, not read off S when the network
-       finally answers. */
-    this._entry = { score: this._score.total, mode: S.mode, day: S.day, seed: S.seed };
+       finally answers. A card-assisted run is HELD off the board exactly as
+       the card system's reward screen holds it (boardHold) — whatever the
+       switch says now: the cards were played, and that is a fact of the run. */
+    const bh = this.boardHold(true);
+    this._entry = bh.hold ? null : { score: this._score.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: bh.played };
     this._submitted = false;
     this._leaveWarned = false;
     this._winMsg = opts.msg || '';
@@ -1227,6 +1230,7 @@ const Screens = {
     this.el('nameRow').style.display = 'none';
     this.el('savedNote').style.display = 'none';
     this.el('savedNote').textContent = '';   // never let a prior run's note linger
+    if (bh.hold) this._note(bh.hold, 'var(--dim)');   // the missing name box is never a mystery
     this.el('endBoard').innerHTML = '';
     vs.style.animation = 'none'; void vs.offsetWidth; vs.style.animation = 'defeatIn 1.2s ease-out both';
     if (window.VictoryArt) VictoryArt.start();
@@ -1306,6 +1310,27 @@ const Screens = {
       if (saved) { if (!inp.value) inp.value = saved; await this.submitScore(saved); }
       else this._promptName('Name your chief to put this score on the board');
     } finally { this._offering = false; }
+  },
+
+  /* WHETHER A WIN MAY GO ON THE WORLD BOARD — the ONE rule, asked by the old
+     victory scene above and by the card system's reward screen
+     (DeckScreens._armBoard) alike. A card-assisted run is MARKED on the
+     board (approved at Gate 1), and two wins never go up at all: a TEST
+     deck's (?cards=all — every card dealt free is nobody's record), and any
+     card-assisted win while the board cannot wear the mark —
+     Backend.submitScore sends named parameters only, and until submit_score
+     learns p_cards_played (Backend.BOARD_MARKS_CARDS) an assisted score
+     would stand UNMARKED beside real players'. Read off S.deck.played, never
+     off the switch: a run that played cards and ended with the switch off
+     (?cards=0, an older save) was still assisted. → { hold, played }: hold is
+     the line the score box says instead of offering a name ('' = post). */
+  boardHold(win) {
+    const P = typeof S !== 'undefined' && S && S.deck && Array.isArray(S.deck.played) ? S.deck.played : [];
+    const played = P.filter(x => x && (!window.Deck || !Deck.card || Deck.card(x.id))).length;
+    if (!win || !played) return { hold: '', played };
+    const hold = window.Deck && Deck.isTest && Deck.isTest() ? 'Test-deck run — not posted to the world board.'
+      : !(window.Backend && Backend.BOARD_MARKS_CARDS) ? 'Not posted to the world board — it cannot wear the card mark yet.' : '';
+    return { hold, played };
   },
 
   // the one line under the name box
