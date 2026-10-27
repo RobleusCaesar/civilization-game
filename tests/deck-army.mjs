@@ -1471,10 +1471,10 @@ await p.evaluate(({ ARMY }) => {
     }
     out.figure = { soft, ink: inkN, body: +(body / (16 * 26)).toFixed(2) };
     // THE FADE IS SAID: the days run out
-    const n0 = document.querySelectorAll('#toasts .toast').length;
+    document.getElementById('toasts').innerHTML = '';
     UI._toastAt = {};
     Deck.FX.ancestors_host.end();
-    out.toast = [...document.querySelectorAll('#toasts .toast')].slice(n0).some(t => /fades/.test(t.textContent) && !t.classList.contains('warn'));
+    out.toast = [...document.querySelectorAll('#toasts .toast')].some(t => /fades/.test(t.textContent) && !t.classList.contains('warn'));
     return out;
   });
   ck('theHostKeepsItsGround', r.posts && r.bandLeft === 0 && r.worst <= 1.5,
@@ -1840,7 +1840,8 @@ await p.evaluate(({ ARMY }) => {
       drawAt(s, sh, fx, g, T, ['ground']);
       const top = Math.ceil(R.viewTiles().y0 * TL) + 1, row = g.getImageData(0, top, cv.width, 1).data;
       let runs = 0, inRun = false;
-      for (let x = 0; x < cv.width; x++) { const on = row[x * 4 + 3] > 0; if (on && !inRun) runs++; inRun = on; }
+      const spans = [];
+      for (let x = 0; x < cv.width; x++) { const on = row[x * 4 + 3] > 0; if (on && !inRun) { runs++; spans.push([x, x]); } if (on) spans[spans.length - 1][1] = x; inRun = on; }
       // the units whose beams are up, gathered into columns a beam's top could
       // merge across (under 0.75 tile apart): each column its own run of light
       const upU = units.filter(m => T - m.d >= 0 && T - m.d < (Deck.armyFx.BEAM_T || { life: 0.5 }).life);
@@ -1848,6 +1849,9 @@ await p.evaluate(({ ARMY }) => {
       let up = 0;
       for (let i = 0; i < xsU.length; i++) if (!i || xsU[i] - xsU[i - 1] >= 0.4) up++;
       const overUnits = upU.every(m => { const x = Math.round(m.x * TL); return row[x * 4 + 3] > 0 || row[(x - 1) * 4 + 3] > 0; });
+      // …and no beam stands over nobody (a narrowing column may split two
+      // men's shared top into two runs, never more runs than men)
+      const orphans = spans.filter(([a0, a1]) => !upU.some(m => m.x * TL >= a0 - 2 && m.x * TL <= a1 + 2)).length;
       // every pixel the beams laid: opaque, of the tier's own light
       const all = g.getImageData(0, 0, cv.width, cv.height).data, cols = new Set();
       let px = 0, soft = 0, alien = 0;
@@ -1880,13 +1884,13 @@ await p.evaluate(({ ARMY }) => {
       const cd = gc.getImageData(0, 0, cc.width, cc.height).data;
       let left = 0;
       for (let i = 3; i < cd.length; i += 4) if (cd[i]) left++;
-      out.tiers[id] = { tone, runs, up, overUnits, px, soft, alien, tall, left, cols: [...cols].sort().join(' ') };
+      out.tiers[id] = { tone, runs, up, n: upU.length, orphans, overUnits, px, soft, alien, tall, left, cols: [...cols].sort().join(' ') };
     }
     return out;
   });
   const T = r.tiers, ids = Object.keys(T);
-  ck('oneBeamPerUnitRunningTheFullHeight', ids.every(k => T[k].runs === T[k].up && T[k].overUnits && T[k].up >= 3),
-    ids.map(k => `${k}: ${T[k].runs} beams on the view's top row for ${T[k].up} columns of men whose beams are up, over every one ${T[k].overUnits}`).join('; '));
+  ck('oneBeamPerUnitRunningTheFullHeight', ids.every(k => T[k].runs >= T[k].up && T[k].runs <= T[k].n && !T[k].orphans && T[k].overUnits && T[k].up >= 3),
+    ids.map(k => `${k}: ${T[k].runs} beams on the view's top row for ${T[k].up}..${T[k].n} columns of men whose beams are up (${T[k].orphans} over nobody), over every one ${T[k].overUnits}`).join('; '));
   ck('theBeamsAreOpaqueInTheTiersOwnLight', ids.every(k => T[k].px > 0 && T[k].soft === 0 && T[k].alien === 0) &&
     T.war_band.cols !== T.iron_legion.cols && T.iron_legion.cols !== T.legion_marches.cols && T.war_band.cols !== T.legion_marches.cols,
     ids.map(k => `${k} (${T[k].tone}): ${T[k].px} px, ${T[k].soft} translucent, ${T[k].alien} off the tier's light`).join('; '));

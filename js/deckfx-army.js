@@ -1202,7 +1202,9 @@ Deck.armyFx = {
      `wide` multiplies the width (an engine is a broad thing to set down). */
   arrive(g, s, layer, tone, wide, opts) {
     const TL = CFG.TILE, P = this.BEAM[tone] || this.BEAM.gold, T = this.BEAM_T;
-    const top = R.viewTiles().y0 * TL - TL;
+    // (the view's top a tile up, on the world's own grain: a column whose
+    // top edge fell between two pixels laid a half-there row along it)
+    const top = this.snap(R.viewTiles().y0 * TL - TL);
     s.fl = s.fl || {};
     if (layer === 'world') {
       // the frame it lands: a white burst over the feet (one frame, by the
