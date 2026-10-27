@@ -399,7 +399,10 @@ const DeckScreens = {
     } else if (v.cards.length) {
       plate.style.removeProperty('--tc');
       kick.textContent = 'Added to your deck';
-      name.textContent = v.cards.map(x => Deck.card(x.id).name).join(' & ');
+      // the same card twice reads "Harvest Festival ×2", never "… & Harvest Festival"
+      const n = {};
+      for (const x of v.cards) n[x.id] = (n[x.id] || 0) + 1;
+      name.textContent = Object.keys(n).map(id => Deck.card(id).name + (n[id] > 1 ? ' ×' + n[id] : '')).join(' & ');
     } else {
       plate.style.removeProperty('--tc');
       kick.textContent = 'Reward card';
