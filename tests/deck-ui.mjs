@@ -555,6 +555,30 @@ for (let i = 0; i < withSheet.data.length; i += 4)
 ck('aDisabledPlayLooksDisabled', offPlay.luma < onPlay.luma * 0.6 && offPlay.sat < 18,
   `disabled luma ${offPlay.luma.toFixed(0)} sat ${offPlay.sat.toFixed(0)}; playable luma ${onPlay.luma.toFixed(0)} sat ${onPlay.sat.toFixed(0)}`);
 ck('theSheetNeverShowsThroughTheLiftedCard', through === 0, `${through} px of the sheet show through the inspector`);
+/* A TOAST NEVER LIES OVER THE LIFTED CARD (playtest g2: the rival-origin and
+   scout toasts covered the card's corner and tier badge, and on its back ran
+   over its text). While a card is lifted the toasts sit UNDER the inspector;
+   with the card put back they ride over the sheet again. Asked of the
+   stacking itself — the toast column and the inspector share the root
+   stacking context, so their z-indices are the order they paint in. */
+const tz = await p.evaluate(async () => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  UI._toastAt = {};
+  UI.toast('A toast about the rival', 'note', 6000);
+  if (Deck.count('__bar') < 1) { Deck.col().counts.__bar = 1; Deck.saveCol(); }
+  document.getElementById('deckBtn').click(); await wait(400);
+  const z = id => +getComputedStyle(document.getElementById(id)).zIndex || 0;
+  const toastOverSheet0 = z('toasts') > z('dkSheet');
+  document.querySelector('#dkSheet .dkCell[data-card="__bar"]').click(); await wait(300);
+  const toast = document.querySelector('#toasts .toast').getBoundingClientRect(), card = document.querySelector('#dkInsp .ccard').getBoundingClientRect();
+  const lifted = { toast: z('toasts'), insp: z('dkInsp'), overlap: toast.right > card.left && toast.left < card.right && toast.bottom > card.top && toast.top < card.bottom };
+  document.querySelector('#dkInsp .dkIClose').click(); await wait(250);
+  const toastOverSheet1 = z('toasts') > z('dkSheet');
+  document.querySelector('#dkSheet .dkClose').click(); await wait(350);
+  return { lifted, toastOverSheet0, toastOverSheet1 };
+});
+ck('aToastNeverLiesOverTheLiftedCard', tz.lifted.toast < tz.lifted.insp && tz.toastOverSheet0 && tz.toastOverSheet1,
+  `lifted: toasts z ${tz.lifted.toast} vs inspector ${tz.lifted.insp} (rects overlap: ${tz.lifted.overlap}); over the sheet before ${tz.toastOverSheet0}, after ${tz.toastOverSheet1}`);
 
 /* ================= 7. TARGETING ================= */
 // spies: the world's own tap handlers and the canvas itself

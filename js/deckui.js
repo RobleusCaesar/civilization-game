@@ -346,6 +346,9 @@ const DeckUI = {
     const c = document.body.classList;
     c.toggle('dk-floor', this.hasFloor());
     c.toggle('dk-aiming', !!this.aim);
+    // …but a LIFTED card has the screen: the toasts step back under the
+    // inspector rather than over the card's corner and text (playtest g2)
+    c.toggle('dk-lifted', !!this.lifted);
   },
 
   /* ---------------- THE SHEET ---------------- */
@@ -590,6 +593,7 @@ const DeckUI = {
     this.lifted = { id, cell, layer: L, big, why, play };
     cell.classList.add('dkOut');
     this.sheet.root.classList.add('dkLifted');   // the row's own hint steps back under the card's
+    this._floor();
     big.addEventListener('click', () => {
       big.classList.toggle('flip');
       UI.cue('ok');
@@ -620,6 +624,7 @@ const DeckUI = {
     const lf = this.lifted;
     if (!lf) return;
     this.lifted = null;
+    this._floor();
     const done = () => {
       lf.layer.remove();
       if (lf.cell) lf.cell.classList.remove('dkOut');
@@ -1525,6 +1530,11 @@ const DeckUI = {
 body:not(.ingame) #dkSheet, body:not(.ingame) #dkInsp, body:not(.ingame) #dkAim,
 body:not(.ingame) #dkAimBar, body:not(.ingame) #dkFly { display: none !important; }
 body.dk-floor #toasts { z-index: 27; }
+/* …except over a LIFTED card: the inspector is the player's to read, and a
+   toast over its corner covered the tier badge and the card's own text
+   (playtest g2). Under it while it is up — the refusal is said on the card's
+   own line — and back over the sheet the moment it is put back */
+body.dk-floor.dk-lifted #toasts { z-index: 23; }
 /* a tutorial note already on screen steps aside while the deck has the floor
    (its dim sits over the reticle otherwise); it is back the moment the deck
    lets go, its state untouched */
