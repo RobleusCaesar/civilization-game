@@ -112,7 +112,7 @@
     arrive(g, x, y, t, tone, H) {
       if (t < 0 || t > 0.6) return;
       const k = t < 0.07 ? 1 : 1 - (t - 0.07) / 0.53, h = H * Math.min(1, t / 0.07 + 0.2);
-      for (const [w, sv] of [[26, 0.27], [14, 0.47], [4, 1]]) {
+      for (const [w, sv] of [[26, 0.45], [14, 0.7], [4, 1]]) {
         const ww = Math.max(PX, sn(w * k));
         R.glow(g, sv * k, () => g.fillRect(sn(x - ww / 2), sn(y - h), ww, sn(h)), tone);
       }
@@ -958,7 +958,7 @@
           const up = cl(p / 0.08), down = p < 0.5 ? 1 : 1 - cl((p - 0.5) / 0.3);
           if (down > 0) {
             const colTop = top - TL * 3, h = (foot - colTop) * up;
-            for (const [wf, sv] of [[1.15, 0.27], [0.6, 0.45], [0.18, 0.85]]) {
+            for (const [wf, sv] of [[1.15, 0.5], [0.6, 0.7], [0.18, 0.9]]) {
               const ww = Math.max(PX, sn(w * wf * down));
               R.glow(g, sv, () => g.fillRect(sn((x0 + x1) / 2 - ww / 2), sn(colTop), ww, sn(h)));
             }
@@ -1291,19 +1291,19 @@
       dome(g, D, rise, boost, now) {
         const { cx, gy, rx, ry } = D, hd = D.hd * rise;
         if (hd < 2) return;
-        /* the light inside it: two hard bands, stepped, never a gradient — a
-           warm TINT of the hall and its ground (the hue pass alone, R.goldHue),
-           and the card's full light only while a blow is swallowed; a dome of
-           gold ADDED stood over the town for twelve days as a lime blister */
-        for (const [k, al] of [[1, 0.25], [0.62, 0.25]]) {
-          const fill = () => {
+        /* the light inside it: two hard bands, stepped, never a gradient —
+           and only while it is LIT (rising, or a blow being swallowed): a
+           dome of gold ADDED stood over the town for twelve days as a lime
+           blister, and any standing tint of the meadow under it reads olive.
+           Lit, it is the card's light at its faint steps (R.glow: the hall in
+           it turns gold and its thatch still shows through) */
+        if (boost > 0) for (const [k, sv] of [[1, 0.35], [0.62, 0.55]]) {
+          R.glow(g, boost * sv, () => {
             for (let y = 0; y < hd * k; y += PX) {
               const w = Math.sqrt(Math.max(0, 1 - (y / (hd * k)) * (y / (hd * k)))) * rx * k;
               g.fillRect(sn(cx - w), sn(gy - y), Math.max(PX, sn(w * 2)), PX);
             }
-          };
-          R.goldHue(g, al, fill);
-          if (boost > 0) R.glow(g, boost * (k < 1 ? 0.7 : 0.45), fill);
+          });
         }
         g.save();
         // its ribs: the outline, two meridians and a girdle, made of dots, a
@@ -1392,20 +1392,21 @@
           const down = cl((p - 0.03) / (imp - 0.03)), narrow = p < 0.62 ? 1 : 1 - cl((p - 0.62) / 0.26);
           if (down > 0 && narrow > 0) {
             const bottom = A.y * eo(down), wide = D.rx * 2 * A.z;
-            for (const [wf, sv] of [[1.25, 0.3], [0.7, 0.5], [0.3, 0.85], [0.08, 1]]) {
+            for (const [wf, sv] of [[1.25, 0.5], [0.7, 0.7], [0.3, 0.9], [0.08, 1]]) {
               const ww = Math.max(2, Math.round(wide * wf * narrow / 2) * 2);
               R.glow(g, sv, () => g.fillRect(Math.round(A.x - ww / 2), 0, ww, Math.round(bottom)));
             }
             const hw = Math.max(2, Math.round(wide * 0.03 * narrow / 2) * 2);
             R.glowHot(g, 0.75, () => g.fillRect(Math.round(A.x - hw / 2), 0, hw, Math.round(bottom)));
           }
-          // rays from the dome's crown, turning slowly, while it rises and holds
-          // (each a faint band of the card's light — added, they were lime)
+          // rays from the dome's crown, turning slowly, while it rises and
+          // holds — NARROW bands of the card's light (added, they were lime;
+          // laid solid at their old width across the meadow, orange slabs)
           if (p > imp && p < 0.9) {
             const k = p < 0.35 ? cl((p - imp) / 0.15) : 1 - cl((p - 0.6) / 0.3);
             const rot = s.t * 0.12, px = Math.max(2, Math.round(A.z * 2));
             for (let i = 0; i < 14; i++)
-              R.glow(g, (i % 2 ? 0.1 : 0.16) * k, () => U.ray(g, apex.x, apex.y, rot + i / 14 * Math.PI * 2, 0.035 + (i % 2) * 0.02, px, W, H));
+              R.glow(g, (i % 2 ? 0.4 : 0.6) * k, () => U.ray(g, apex.x, apex.y, rot + i / 14 * Math.PI * 2, 0.012 + (i % 2) * 0.006, px, W, H));
           }
           // a halo of hard dots bursting out across the whole screen at the blow
           if (p > imp && p < imp + 0.35) {

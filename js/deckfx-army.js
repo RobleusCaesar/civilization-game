@@ -355,9 +355,9 @@ Deck.armyFx = {
   shaft(g, cx, foot, h, w, col, a) {
     if (a <= 0.02 || h < 2) return;
     const tone = R.isTone(col), y0 = this.snap(foot - h), hh = this.snap(h);
-    for (const [wf, al] of [[1, 0.26], [0.55, 0.42], [0.25, 0.6]]) {
+    for (const [wf, al, sv] of [[1, 0.26, 0.6], [0.55, 0.42, 0.8], [0.25, 0.6, 1]]) {
       const ww = Math.max(2, this.snap(w * wf)), x0 = this.snap(cx - ww / 2);
-      if (tone) { R.glow(g, al * a / 0.6, () => g.fillRect(x0, y0, ww, hh), col); continue; }
+      if (tone) { R.glow(g, sv * a, () => g.fillRect(x0, y0, ww, hh), col); continue; }
       g.fillStyle = this.rgba(col, al * a);
       g.fillRect(x0, y0, ww, hh);
     }
@@ -384,10 +384,11 @@ Deck.armyFx = {
       g.fillRect(this.snap(cx - 1), top, 2, bot - top);
     }
   },
-  // a pool of light on the ground (a tone's is an R.glow: the ground under it turned gold)
+  /* a pool of light on the ground — in a colour only: the card's own light
+     never pools on the meadow (a warm patch there reads as sand); it lands in
+     a ring of dots */
   pool(g, cx, cy, r, col, a) {
-    if (a <= 0.02) return;
-    if (R.isTone(col)) { R.glow(g, a / 0.6, () => R.pxDisc(g, cx, cy, r, 2, 0.5), col); return; }
+    if (a <= 0.02 || R.isTone(col)) return;
     g.fillStyle = this.rgba(col, a);
     R.pxDisc(g, cx, cy, r, 2, 0.5);
   },
@@ -482,7 +483,9 @@ Deck.armyFx = {
     const H = R.cv.height, gr = this.grain(), oy = -H * 0.3, sp = spread || 0.21, tone = R.isTone(col);
     g.save(); g.globalCompositeOperation = 'lighter';
     for (let k = 0; k < n; k++) {
-      const th = (-1 + (2 * k + 1) / n) * sp + Math.sin(spin + k * 1.7) * 0.02, w = 0.016 + (k % 3) * 0.008;
+      // a tone's shaft is NARROW (under half the width): laid solid across the
+      // meadow at the old width it was a slab, and spread thin it is olive
+      const th = (-1 + (2 * k + 1) / n) * sp + Math.sin(spin + k * 1.7) * 0.02, w = (0.016 + (k % 3) * 0.008) * (tone ? 0.42 : 1);
       const t1 = Math.tan(th - w), t2 = Math.tan(th + w);
       const cut = () => {
         for (let y = 0; y < sy; y += gr) {
@@ -491,7 +494,7 @@ Deck.armyFx = {
           if (X2 > X1) g.fillRect(X1, y, X2 - X1, gr);
         }
       };
-      if (tone) { R.glow(g, a * (k % 2 ? 0.3 : 0.55), cut, col); continue; }
+      if (tone) { R.glow(g, a * (k % 2 ? 0.45 : 0.7), cut, col); continue; }
       g.fillStyle = this.rgba(col, a * (k % 2 ? 0.17 : 0.3));
       cut();
     }
@@ -708,9 +711,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         ms: 1800, layer: 'world',
         draw(g, s, p) {
           const TL = CFG.TILE;
-          // the hearth's own light: bronze (R.glow / its ink — added, it was lime)
+          // the hearth's own light: bronze ink (added, it was lime) — and no
+          // pool on the doorstep (a warm patch on the meadow reads as sand)
           muster(g, s, p, 'bronze', 1, true);
-          A.pool(g, s.mx * TL, s.my * TL + 4, TL * 0.9, 'bronze', 0.22 * (1 - p));
           A.motes(g, s.mx * TL, s.my * TL, 6, s.t, 3, 'bronze', 1 - p, 10, TL * 1.2);
         },
       },
@@ -1002,7 +1005,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             const u = live(l.hull || l.id);
             if (!u || !A.near(v, u.x, u.y, 2) || !G.visibleAt(u.x | 0, u.y | 0)) continue;
             const cx = u.x * TL, foot = u.y * TL + TL * 0.3, a = q < 0.2 ? 1 : 1 - (q - 0.2) / 0.8;
-            A.pool(g, cx, foot, TL * 0.5, 'gold', 0.4 * a);
+            A.ring(g, cx, foot, TL * (0.4 + q * 0.5), 14, 'gold', 0.9 * a, 0.45);   // the light lands in a ring, never a pool
             A.shaft(g, cx, foot, TL * 2.6 * Math.min(1, q * 6), TL * 0.8 * (1 - q * 0.6), 'gold', a);
             const ry = u.y * TL - TL * (0.8 + q * 0.7), n = u.vet ? 2 : 1;   // the rank it now wears
             if (A.mark(g, 'gold', a)) for (let c = 0; c < n; c++) for (const [dx, dy] of [[-4, 0], [-2, -2], [0, -4], [2, -2], [4, 0]])

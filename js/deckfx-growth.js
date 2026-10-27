@@ -150,7 +150,7 @@ const GrowFX = {
     if (a <= 0 || foot - top < 2 || w < 2) return;
     tone = tone || 'gold';
     const h = this.snap(foot - top), y0 = this.snap(top);
-    for (const [wf, sv] of [[1, 0.4], [0.55, 0.67], [0.18, 1]]) {
+    for (const [wf, sv] of [[1, 0.6], [0.55, 0.8], [0.18, 1]]) {
       const ww = Math.max(2, this.snap(w * wf));
       R.glow(g, sv * a, () => g.fillRect(this.snap(x - ww / 2), y0, ww, h), tone);
     }
@@ -177,20 +177,12 @@ const GrowFX = {
     const TL = CFG.TILE, z = R.cam.z * (R.dpr || 1);
     return { x: (wx * TL - R.cam.x) * z, y: (wy * TL - R.cam.y) * z };
   },
-  /* the sky lit from above: n flat bands, each a little fainter — never a
-     gradient. A day seen from above has no sky, only the meadow, and gold
-     ADDED over the meadow was the acid-green band this replaces: each band
-     is a warm GRADE now (R.goldWash, the hue pass alone at a low step), so
-     the top of the world warms toward amber while the sun, its rays and the
-     town catching the light carry the brightness. `tone` names the light. */
-  skyBands(g, tone, a0, n, frac) {
-    const W = R.cv.width, H = R.cv.height, bh = Math.max(2, Math.round(H * frac / n));
-    for (let i = 0; i < n; i++) {
-      const a = a0 * (1 - i / n);
-      if (a <= 0.004) continue;
-      R.goldWash(g, a, 0, i * bh, W, bh, tone);
-    }
-  },
+  /* (THE SKY BANDS ARE GONE: flat bands of light down the top of the screen
+     were gold ADDED over the meadow — the acid yellow-green of the first
+     cut — and a day seen from above has no sky to light, only grass, over
+     which a warm grade reads olive and a warm paint sand. The sun or the
+     burst at the top of the world, its rays of dots and its glitter carry
+     the light there now.) */
   /* rays of light as rows of dots fanning down from (ox, oy), device px —
      each dot laid opaque in the tone's ink, the ray fading down the ramp as
      it reaches out (R.goldInk) */
@@ -651,22 +643,23 @@ Object.assign(Deck.FX, {
         const F = GrowFX;
         if (layer === 'sky') {
           const W = R.cv.width, H = R.cv.height, dpr = R.dpr || 1;
-          // the wash: the whole world warmed toward amber in one flat step for
-          // a breath (a hue GRADE — a fill of orange over the meadow was lime)
-          const wash = F.step(F.env(p, 0, 0.03, 0.14, 0.28));
-          if (wash > 0) R.goldWash(g, 0.32 * wash);
+          // (the breath of warm light over the whole world is the play's gold
+          // flash, R.flashAt's amber grade: a fill of orange over the meadow
+          // was lime, and any wash over it reads olive)
           const e = F.env(p, 0, 0.14, 0.7, 1);
           if (e <= 0) return;
-          F.skyBands(g, 'gold', 0.3 * e, 7, 0.55);
           // the sun, rising over the hall into the top of the world — below the
           // top bar, which is measured once (R.topReserve is learned lazily
           // and reads 0 early in a session: the marvel caption's lesson)
           if (s.topPx == null) { const tb = document.getElementById('topbar'); s.topPx = tb ? Math.max(0, tb.getBoundingClientRect().bottom) * dpr : 0; }
           const sc = F.toScreen(s.x, s.y), ox = Math.max(W * 0.15, Math.min(W * 0.85, sc.x));
           const oy = s.topPx - H * 0.1 + H * 0.17 * F.ease(p / 0.3), px = Math.max(2, Math.round(4 * dpr));
-          // three stepped discs of the card's own light: amber round a gold
-          // round a cream heart, the meadow under them turned gold, not lime
-          for (const [r, a] of [[0.2, 0.3], [0.13, 0.62], [0.065, 1]])
+          // three stepped discs of the card's own light: a halo of gold dots
+          // round a gold disc round a cream heart (a great disc of light laid
+          // solid over the meadow read as a pumpkin, added as lime)
+          F.ring(g, ox, oy, H * 0.2, 'gold', 0.8 * e, px, 1);
+          F.ring(g, ox, oy, H * 0.17, 'gold', 0.45 * e, px, 1, null, 0.5);
+          for (const [r, a] of [[0.13, 0.62], [0.065, 1]])
             R.glow(g, a * e, () => R.pxDisc(g, ox, oy, H * r, px, 1));
           R.glowHot(g, 0.75 * e, () => R.pxDisc(g, ox, oy, H * 0.03, px, 1));
           F.rays(g, ox, oy, 15, 0.17, 'gold', 0.9 * e, s.t);
@@ -681,7 +674,8 @@ Object.assign(Deck.FX, {
         if (pl > 0) {
           const topY = R.cam.y - 60 / R.cam.z, h = (cy - topY) * F.ease(p / 0.08);
           F.column(g, cx, cy, cy - h, TL * (1.5 + Math.sin(s.t * 8) * 0.1) * pl, pl);
-          R.glow(g, 0.34 * pl, () => R.pxDisc(g, cx, cy + TL * 0.4, TL * 1.1, 2, 0.5));
+          // it lands in a ring of dots, never a pool (a warm patch reads as sand)
+          F.ring(g, cx, cy + TL * 0.4, TL * 1.1, 'gold', 0.9 * pl, 2, 0.5);
         }
         for (let k = 0; k < 3; k++) {
           const q = (p - 0.08 - k * 0.07) / 0.7;
@@ -1179,12 +1173,14 @@ Object.assign(Deck.FX, {
         if (layer === 'sky') {
           const e = F.env(p, 0.02, 0.14, 0.7, 0.98);
           if (e <= 0) return;
-          F.skyBands(g, 'gold', 0.34 * e, 8, 0.65);
           const sc = F.toScreen(s.x, s.foot), W = R.cv.width, H = R.cv.height, dpr = R.dpr || 1;
           const ox = Math.max(0, Math.min(W, sc.x)), px = Math.max(2, Math.round(4 * dpr));
           // where the pillar meets the top of the world: a burst of the card's
-          // light in three stepped discs, amber round gold round cream
-          for (const [r, a] of [[0.24, 0.3], [0.15, 0.62], [0.075, 1]])
+          // light in three stepped discs — a halo of gold dots round a gold
+          // disc round a cream heart
+          F.ring(g, ox, 0, H * 0.24, 'gold', 0.8 * e, px, 1);
+          F.ring(g, ox, 0, H * 0.2, 'gold', 0.45 * e, px, 1, null, 0.5);
+          for (const [r, a] of [[0.15, 0.62], [0.075, 1]])
             R.glow(g, a * e, () => R.pxDisc(g, ox, 0, H * r, px, 1));
           R.glowHot(g, 0.75 * e, () => R.pxDisc(g, ox, 0, H * 0.035, px, 1));
           F.rays(g, ox, -H * 0.04, 15, 0.2, 'gold', 0.9 * e, s.t);
@@ -1202,10 +1198,11 @@ Object.assign(Deck.FX, {
         if (thin > 0) {
           // it stands up out of the hall's middle, so the hall's own face shows lit beneath it
           const base = s.y * TL, topY = R.cam.y - 60 / R.cam.z, h = (base - topY) * F.ease(up), w = TL * (1.7 + Math.sin(s.t * 9) * 0.12) * thin;
-          // the pool of light at its foot is GOLD, not a pale wash: the ground
-          // under it turned gold in its own light and shade, two stepped discs
-          R.glow(g, 0.5 * thin, () => R.pxDisc(g, cx, foot, TL * (0.85 + up * 0.45), 2, 0.5));
-          R.glow(g, 0.8 * thin, () => R.pxDisc(g, cx, foot, TL * (0.5 + up * 0.3), 2, 0.5));
+          // NO POOL at its foot (a warm patch on the meadow reads as sand, a
+          // pale one added over it as lime): it lands in two rings of dots and
+          // the three that keep rolling out below
+          F.ring(g, cx, foot, TL * (0.85 + up * 0.45), 'gold', 0.95 * thin, 2, 0.5);
+          F.ring(g, cx, foot, TL * (0.5 + up * 0.3), 'gold', thin, 2, 0.5, null, 0.5);
           F.column(g, cx, base, base - h, w, 1);
           // the light climbing it: hot bars running up the cream heart
           R.glowHot(g, 0.5 * thin, () => {
@@ -1323,7 +1320,7 @@ Object.assign(Deck.FX, {
           // marble light is PALE, not lime: the frame graded toward stone-white
           // (R.goldWash in the pale tone) — a pale fill added over the meadow went green
           if (fl > 0) R.goldWash(g, 0.3 * fl, 0, 0, null, null, 'pale');
-          F.skyBands(g, 'pale', 0.3 * e, 7, 0.5);
+
           const sc = F.toScreen(s.x, s.foot);
           F.rays(g, Math.max(0, Math.min(R.cv.width, sc.x)), -R.cv.height * 0.05, 9, 0.16, 'pale', 0.7 * e, s.t);
           F.glitter(g, 36, 'pale', e * 0.85, s.t);
@@ -1428,7 +1425,6 @@ Object.assign(Deck.FX, {
           if (s.pending) return;
           const e = F.env(p, 0.2, 0.32, 0.62, 0.95);
           if (e <= 0) return;
-          F.skyBands(g, 'gold', 0.3 * e, 7, 0.55);
           const sc = F.toScreen(s.x, s.foot);
           F.rays(g, Math.max(0, Math.min(R.cv.width, sc.x)), -R.cv.height * 0.04, 13, 0.18, 'gold', 0.75 * e, s.t);
           F.glitter(g, 40, 'gold', e, s.t);

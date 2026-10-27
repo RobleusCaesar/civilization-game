@@ -10425,31 +10425,40 @@ const R = {
           keeps the luminosity of what is under it — grass, water, a thatched
           roof, a soldier's tunic all turn gold in their own light and shade,
           so the light still reads as light ON things, never a sticker;
-       2  THE LIFT (source-over, at a hard alpha step): a colour of the ramp —
-          amber, gold, cream — laid over that. Source-over CONVERGES on the
-          ramp colour however many bands stack; an additive lift overshoots
-          through lemon to white.
+       2  THE LIFT, at a hard alpha step, in a colour of the ramp — amber,
+          gold, cream. The faint steps ADD it ('lighter'): over a base that
+          is already gold, added light can only climb toward gold and white,
+          and it keeps the soldier's outline and the roof's thatch showing
+          through, as light does. The strong steps lay it SOURCE-OVER, which
+          CONVERGES on the ramp colour however many bands stack — added all
+          the way, a stacked core overshoots through lemon.
      Strength runs 0..1 in sixths (LIGHT.STEP): the faintest step is a half-
      strength hue in a redder gold (half green and half red-gold lands on
-     bronze, never olive) under a thin bronze; the strongest a cream core.
-     A thin white-hot thread may still be ADDED (glowHot) — the one additive
-     light left, kept to a stroke a world pixel or two wide. Small marks — a
-     ring's dots, a glint, a mote — are not bodies of light: they are drawn
-     opaque in the ramp's own colours (goldInk), fading DOWN the ramp, never
-     through alpha (a translucent gold dot on grass is the same lime). A
-     whole-frame wash (goldWash) is a hue grade toward amber at a low step,
-     never a fill. A browser that does not know 'color' keeps the lift alone.
-     Render-only, no state, no RNG; the tones are data. */
+     bronze, never olive); the strongest a cream core. A light spread over a
+     great width — rays across the sky, a halo — is drawn NARROW or as dots,
+     never thin and wide: a faint fill of it over the meadow is the same
+     olive, and a dithered one reads as the missing-texture checker. A thin
+     white-hot thread may still be ADDED (glowHot), kept to a stroke a world
+     pixel or two wide. Small marks — a ring's dots, a glint, a mote — are
+     not bodies of light: they are drawn opaque in the ramp's own colours
+     (goldInk), fading DOWN the ramp, never through alpha (a translucent
+     gold dot on grass is the same lime). There is no whole-frame gold fill:
+     over a meadow no wash reads as anything but olive, so the washes are
+     gone and a warm flash is a hue grade (goldWash) for a beat. NO LIGHT
+     POOLS ON THE GROUND (a warm patch on the meadow reads as sand): a light
+     lands in a ring of dots. A browser that does not know 'color' keeps the
+     lift alone. Render-only, no state, no RNG; the tones are data. */
   LIGHT: {
     STEPS: 6,
-    // per step 1..6: [hue pass alpha, ramp index, lift alpha]
-    STEP: [null, [0.5, 0, 0.25], [1, 1, 0.3], [1, 1, 0.5], [1, 2, 0.6], [1, 2, 0.8], [1, 3, 0.85]],
+    // per step 1..6: [hue pass alpha, the lift's composite, ramp index, lift alpha]
+    STEP: [null, [0.5, 'lighter', 1, 0.12], [1, 'lighter', 1, 0.22], [1, 'lighter', 2, 0.3],
+      [1, 'lighter', 2, 0.42], [1, 'source-over', 2, 0.75], [1, 'source-over', 3, 0.85]],
     /* the tones — the TIER'S light escalates through them: the Stone tier's
        pale stone-white, the Bronze tier's (and a fire's) copper, gold above.
        `hue` is the hue pass's colour, `faint` its redder half-strength
        twin, `ramp` the lift's colours dark to light, `hot` the thread. */
     TONE: {
-      gold: { hue: '#e3a03c', faint: '#d4702c', ramp: ['#c9822a', '#f2b04a', '#ffd98a', '#fff3cf'], hot: '#fff8e8' },
+      gold: { hue: '#e6ac44', faint: '#d8843a', ramp: ['#c9822a', '#f2b04a', '#ffd98a', '#fff3cf'], hot: '#fff8e8' },
       bronze: { hue: '#d27a3c', faint: '#b85a2c', ramp: ['#a85a2a', '#dc8a4c', '#f4b47c', '#ffe2c2'], hot: '#fff4ea' },
       pale: { hue: '#b4a68c', faint: '#a89478', ramp: ['#9c9180', '#c8bfae', '#e6dfd0', '#f8f5ec'], hot: '#ffffff' },
     },
@@ -10473,8 +10482,8 @@ const R = {
       g.globalAlpha = st[0]; g.fillStyle = st[0] < 1 ? T.faint : T.hue;
       fill(g.fillStyle);
     }
-    g.globalCompositeOperation = 'source-over';
-    g.globalAlpha = st[2]; g.fillStyle = T.ramp[st[1]];
+    g.globalCompositeOperation = st[1];
+    g.globalAlpha = st[3]; g.fillStyle = T.ramp[st[2]];
     fill(g.fillStyle);
     g.restore();
   },
@@ -10708,12 +10717,12 @@ const R = {
       const p = s.t / (cfg.ms / 1000);
       if (p >= 1) { this.summons.splice(i, 1); continue; }
       const cx = s.x * TL, cy = s.y * TL + TL * 0.3, a = 1 - p;   // cy: the feet
-      // a pool of light on the ground, bright on the first beat
-      if (p < 0.45) this.glow(g, 0.7 * (1 - p / 0.45), () => this.pxDisc(g, cx, cy, TL * (0.45 + p), px, 0.5));
+      // (no pool of light on the ground: a warm patch on the meadow reads as
+      // sand — the light lands in the two rings of dots below)
       // the shaft: up in the first beat, held full while the rider breaks out
       // of it, then narrowing to a thread and gone
       const h = TL * 2.1 * Math.min(1, p * 6), k = p < 0.4 ? 1 : 1 - (p - 0.4) / 0.6;
-      for (const [wf, sv] of [[0.7, 0.47], [0.38, 0.75]]) {
+      for (const [wf, sv] of [[0.7, 0.6], [0.38, 0.85]]) {
         const w = Math.max(px, snap(TL * wf * k));
         this.glow(g, sv * a, () => g.fillRect(snap(cx - w / 2), snap(cy - h), w, snap(h)));
       }
