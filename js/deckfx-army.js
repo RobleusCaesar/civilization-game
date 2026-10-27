@@ -898,92 +898,58 @@ Object.assign(Deck, {
    its own additive look, in the caller's composite, as before. */
 Deck.armyFx = {
   snap(v) { return Math.round(v / 2) * 2; },
-  // every alpha in hard steps of a sixth — a fade the eye reads in steps,
-  // never a smooth ramp beside the hard-pixel art
-  rgba(col, a) { return 'rgba(' + col + ',' + (Math.round(Math.max(0, Math.min(1, a)) * 6) / 6).toFixed(3) + ')'; },
-  // set g for marks in `col` at `a`: a tone's ink (opaque, source-over) or
-  // the colour itself; false when there is nothing to draw. The caller hands
-  // back the composite and alpha it held (a tone's ink changes both)
+  /* (THE PIXEL STEPS ARE GONE — the operator's ruling, 2026-10-27: "When
+     characters slam down, that feels cool, but the rays are pixelated
+     again, let's increase the quality of that as well. higher pixel
+     count." Every light in this toolkit is now drawn by the shared
+     device-resolution helpers in js/render.js — R.fxBeam / fxRing / fxGlow
+     / fxRays / fxSpark / fxDot — at FRACTIONAL coordinates, never snapped to
+     the art's 2px grain, its alpha continuous. A TONE ('gold', 'bronze',
+     'steel', 'white', 'pale') is the card's light, its hue tied to its
+     light so the meadow under it turns gold or steel and never lime; any
+     other colour ("r,g,b") is that colour's own light the same way.) */
+  rgba(col, a) { return 'rgba(' + col + ',' + Math.max(0, Math.min(1, a)).toFixed(3) + ')'; },
+  // set g for small marks in `col` at `a` (a tone's ink or the colour itself);
+  // false when there is nothing to draw. The caller restores what it held
   mark(g, col, a) {
     if (R.isTone(col)) return R.inkOn(g, a, col);
     g.fillStyle = this.rgba(col, a);
     return true;
   },
+  // a ring of light at radius `rad`, squashed by `sy` (0.5) to lie on the ground
   ring(g, cx, cy, rad, n, col, a, sy) {
     if (a <= 0.02 || rad < 1) return;
-    const op = g.globalCompositeOperation, ga = g.globalAlpha;
-    if (this.mark(g, col, a)) for (let k = 0; k < n; k++) {
-      const th = k / n * Math.PI * 2;
-      g.fillRect(this.snap(cx + Math.cos(th) * rad), this.snap(cy + Math.sin(th) * rad * (sy || 0.5)), 2, 2);
-    }
-    g.globalCompositeOperation = op; g.globalAlpha = ga;
+    R.fxRing(g, cx, cy, rad, Math.min(1, a), col, { squash: sy || 0.5, css: 1.8 });
   },
-  /* a column of light standing on the ground at (cx, foot): stepped bands,
-     a white thread. In a tone, the bands are the card's light (R.glow,
-     strongest at the heart) and the thread its white-hot core */
+  /* a column of light standing on the ground at (cx, foot), `w` wide: the
+     card's light as a smooth beam (R.fxBeam), its top faded */
   shaft(g, cx, foot, h, w, col, a) {
     if (a <= 0.02 || h < 2) return;
-    const tone = R.isTone(col), y0 = this.snap(foot - h), hh = this.snap(h);
-    for (const [wf, al, sv] of [[1, 0.26, 0.6], [0.55, 0.42, 0.8], [0.25, 0.6, 1]]) {
-      const ww = Math.max(2, this.snap(w * wf)), x0 = this.snap(cx - ww / 2);
-      if (tone) { R.glow(g, sv * a, () => g.fillRect(x0, y0, ww, hh), col); continue; }
-      g.fillStyle = this.rgba(col, al * a);
-      g.fillRect(x0, y0, ww, hh);
-    }
-    if (tone) { R.glowHot(g, 0.85 * a, () => g.fillRect(this.snap(cx - 1), y0, 2, hh), col); return; }
-    g.fillStyle = this.rgba('255,252,240', 0.85 * a);
-    g.fillRect(this.snap(cx - 1), y0, 2, hh);
+    R.fxBeam(g, cx, foot, foot - h, w, Math.min(1, a), col, { core: 1.2, fade: 0.2 });
   },
-  /* a beam rising OUT of the ground: brightest at the foot, stepping down
-     as it climbs (three hard bands), a white thread up its middle — light
-     coming up from below, where the shaft above is light standing on the
-     ground, and narrow enough that what stands behind it still reads */
+  /* a beam rising OUT of the ground: brightest at the foot, fading as it
+     climbs (its top half faded), narrow enough that what stands behind it
+     still reads — light coming up from below */
   beam(g, cx, foot, h, w, col, a) {
     if (a <= 0.02 || h < 2) return;
-    const H = this.snap(h);
-    for (const [y0, y1, k] of [[0, 0.4, 1], [0.4, 0.72, 0.62], [0.72, 1, 0.3]]) {
-      const top = this.snap(foot - H * y1), bot = this.snap(foot - H * y0);
-      if (bot <= top) continue;
-      for (const [wf, al] of [[1, 0.2], [0.5, 0.36]]) {
-        const ww = Math.max(2, this.snap(w * wf));
-        g.fillStyle = this.rgba(col, al * a * k);
-        g.fillRect(this.snap(cx - ww / 2), top, ww, bot - top);
-      }
-      g.fillStyle = this.rgba('255,255,255', 0.8 * a * k);
-      g.fillRect(this.snap(cx - 1), top, 2, bot - top);
-    }
+    R.fxBeam(g, cx, foot, foot - h, w, Math.min(1, a), col, { core: 1, fade: 0.6, foot: 0.35 });
   },
   /* a pool of light on the ground — in a colour only: the card's own light
      never pools on the meadow (a warm patch there reads as sand); it lands in
-     a ring of dots */
+     a ring */
   pool(g, cx, cy, r, col, a) {
     if (a <= 0.02 || R.isTone(col)) return;
-    g.fillStyle = this.rgba(col, a);
-    R.pxDisc(g, cx, cy, r, 2, 0.5);
+    R.fxGlow(g, cx, cy, r, Math.min(1, a), col, { squash: 0.5, soft: 1.4 });
   },
-  // a four-point glint
+  // a four-point glint, its arms `s` world cells long (2px each, as before)
   glint(g, x, y, s, col, a) {
     if (a <= 0.02) return;
-    const op = g.globalCompositeOperation, ga = g.globalAlpha;
-    if (this.mark(g, col, a)) {
-      const X = this.snap(x), Y = this.snap(y);
-      g.fillRect(X, Y - s * 2, 2, s * 4 + 2); g.fillRect(X - s * 2, Y, s * 4 + 2, 2);
-    }
-    g.globalCompositeOperation = op; g.globalAlpha = ga;
+    R.fxSpark(g, x, y, Math.max(2.5, (s * 2 + 1) / R.fxPx(g)), Math.min(1, a), col);
   },
   // motes rising off a point: n of them, each on its own loop by its seed
   motes(g, cx, cy, n, t, seed, col, a, spread, rise) {
     if (a <= 0.02) return;
-    const op = g.globalCompositeOperation, ga = g.globalAlpha;
-    for (let k = 0; k < n; k++) {
-      const ph = (t * 0.6 + k / n + ((seed * 0.618 + k * 0.37) % 1)) % 1;
-      const ma = (ph < 0.2 ? ph / 0.2 : (1 - ph) / 0.8) * a;
-      if (ma <= 0.05) continue;
-      if (!this.mark(g, col, ma > 0.6 ? 0.9 : ma > 0.3 ? 0.6 : 0.32)) continue;
-      const mx = cx + Math.sin(ph * 6.28 + seed + k * 2.1) * spread + (k - n / 2) * 2;
-      g.fillRect(this.snap(mx), this.snap(cy - ph * rise), 2, 2);
-    }
-    g.globalCompositeOperation = op; g.globalAlpha = ga;
+    R.fxMotes(g, cx, cy, { n, t, seed, rise, spread: spread * 2, a: Math.min(1, a), tone: col, speed: 0.6, size: 1.15 });
   },
   // the world point (tiles) on the screen (device px), for the sky layer
   scr(wx, wy) {
@@ -997,8 +963,8 @@ Deck.armyFx = {
      a frame on the glass, not light in the world. */
   skyClip(g) {
     const b = R.boardPx(), z = R.cam.z * R.dpr;
-    const x0 = Math.round((b.x0 - R.cam.x) * z), y0 = Math.round((b.y0 - R.cam.y) * z);
-    g.beginPath(); g.rect(x0, y0, Math.round((b.x1 - R.cam.x) * z) - x0, Math.round((b.y1 - R.cam.y) * z) - y0); g.clip();
+    const x0 = (b.x0 - R.cam.x) * z, y0 = (b.y0 - R.cam.y) * z;
+    g.beginPath(); g.rect(x0, y0, (b.x1 - R.cam.x) * z - x0, (b.y1 - R.cam.y) * z - y0); g.clip();
   },
   // the screen's grain in the sky layer: one world pixel pair at this zoom
   grain() { return Math.max(2, Math.round(2 * R.cam.z * R.dpr)); },
@@ -1076,75 +1042,65 @@ Deck.armyFx = {
     try { document.body.style.setProperty('--dk-cine', v + 'px'); } catch (err) { /* no document: nothing to move */ }
   },
   /* light coming down out of the sky onto a point on the screen: a cone of
-     shafts from high above it, cut in scanlines the height of the world's
-     grain so every edge is a hard pixel step (a filled polygon's edge is
-     antialiased — the soft line this file never draws), two strengths of
-     shaft. `spread` is the cone's half-angle in radians. In a tone each
-     shaft is the card's light (R.glow: the meadow under it turned gold, then
-     brightened); any other colour is added, as before. */
+     smooth shafts from a point high above it (R.fxRays pointed straight
+     down, device px), brightest where they come into the top of the view and
+     gone by the ground, cut off at the point itself. `spread` is the cone's
+     half-angle in radians. A tone is the card's light, its hue tied to it;
+     any other colour ("r,g,b") is that colour's own light the same way. */
   rays(g, sx, sy, n, spin, col, a, spread) {
     if (a <= 0.02 || sy < 0) return;
-    // cut on the world's own 2px grain: coarser steps read as a glitch
-    const H = R.cv.height, gr = this.grain(), oy = -H * 0.3, sp = spread || 0.21, tone = R.isTone(col);
-    g.save(); g.globalCompositeOperation = 'lighter';
-    for (let k = 0; k < n; k++) {
-      // a tone's shaft is NARROW (under half the width): laid solid across the
-      // meadow at the old width it was a slab, and spread thin it is olive
-      const th = (-1 + (2 * k + 1) / n) * sp + Math.sin(spin + k * 1.7) * 0.02, w = (0.016 + (k % 3) * 0.008) * (tone ? 0.42 : 1);
-      const t1 = Math.tan(th - w), t2 = Math.tan(th + w);
-      const cut = () => {
-        for (let y = 0; y < sy; y += gr) {
-          const dy = y + gr / 2 - oy;
-          const X1 = Math.round((sx + t1 * dy) / gr) * gr, X2 = Math.round((sx + t2 * dy) / gr) * gr;
-          if (X2 > X1) g.fillRect(X1, y, X2 - X1, gr);
-        }
-      };
-      if (tone) { R.glow(g, a * (k % 2 ? 0.45 : 0.7), cut, col); continue; }
-      g.fillStyle = this.rgba(col, a * (k % 2 ? 0.17 : 0.3));
-      cut();
-    }
+    const H = R.cv.height, oy = -H * 0.3, sp = spread || 0.21, len = sy - oy;
+    g.save();
+    g.beginPath(); g.rect(0, 0, R.cv.width, sy); g.clip();
+    R.fxRays(g, sx, oy, { n, r0: len * 0.28, r1: len * 1.02, a: Math.min(1, a), tone: col, dir: Math.PI / 2,
+      spread: sp * 2 * (n - 1) / Math.max(1, n), w0: len * 0.008, w1: len * 0.024, t: spin, seed: 5, vary: 0.12 });
     g.restore();
   },
   /* dust hanging in the light: motes drifting slowly down inside the cone
-     the rays cut (the same geometry), each a hard square, a fixed number,
-     positions a pure function of the clock — what makes a shaft of light
-     read as air rather than as paint */
+     the rays cut (the same geometry), each a soft bead at the device's own
+     resolution, a fixed number, positions a pure function of the clock —
+     what makes a shaft of light read as air rather than as paint */
   dust(g, sx, sy, t, n, col, a, spread) {
     if (a <= 0.02 || sy < 0) return;
-    const H = R.cv.height, gr = this.grain(), oy = -H * 0.3, sp = spread || 0.21;
-    g.save(); g.globalCompositeOperation = 'lighter';
+    const H = R.cv.height, oy = -H * 0.3, sp = spread || 0.21, gr = this.grain();
     for (let k = 0; k < n; k++) {
       const h = (k * 0.618034) % 1, h2 = (k * 0.381966 + 0.5) % 1;
       const ph = (t * (0.05 + h2 * 0.06) + h) % 1;
       const y = ph * sy, th = (h2 * 2 - 1) * sp * 0.9 + Math.sin(t * 0.7 + k) * 0.01;
       const x = sx + Math.tan(th) * (y - oy) + Math.sin(t * 1.3 + k * 2.3) * gr;
-      const tw = ((t * 2.1 + k * 0.37) % 1) < 0.5 ? 1 : 0.55;
-      if (!this.mark(g, col, a * tw * (ph < 0.1 ? ph / 0.1 : ph > 0.9 ? (1 - ph) / 0.1 : 1))) continue;   // a tone's mote: opaque ink
-      g.fillRect(Math.round(x / gr) * gr, Math.round(y / gr) * gr, gr, gr);
+      const tw = 0.6 + 0.4 * Math.sin(t * 5.2 + k * 2.37);
+      R.fxDot(g, x, y, 1.1 + (k % 3) * 0.35, a * tw * (ph < 0.1 ? ph / 0.1 : ph > 0.9 ? (1 - ph) / 0.1 : 1), col);
     }
-    g.restore();
   },
   /* the ancestors coming home: pale lights falling out of the dark from all
-     over the sky and spiralling in to one point, each a hard square with a
-     two-step trail (a fixed number, positions a pure function of the clock) */
+     over the sky and spiralling in to one point, each a soft bead with a
+     fine fading trail (a fixed number, positions a pure function of the
+     clock) — at the device's own resolution */
   spirits(g, sx, sy, t, n, col, a) {
     if (a <= 0.02) return;
-    const W = R.cv.width, H = R.cv.height, gr = this.grain();
-    g.save(); g.globalCompositeOperation = 'lighter';
+    const W = R.cv.width, H = R.cv.height, dpr = R.dpr || 1, rgb = R._fxRgb(col).join(',');
+    g.save();
+    g.globalCompositeOperation = 'screen';
     for (let k = 0; k < n; k++) {
       const h = ((k * 0.618034) % 1), life = 1.6 + h * 1.4;
       const ph = ((t + h * 9) / life) % 1;
       const x0 = sx + (h - 0.5) * W * 1.3, y0 = -H * 0.05 - h * H * 0.2;
-      for (let tr = 2; tr >= 0; tr--) {
-        const q = Math.max(0, ph - tr * 0.035), e = q * q;
-        const x = x0 + (sx - x0) * e + Math.sin(q * 9 + k) * W * 0.04 * (1 - q);
-        const y = y0 + (sy - y0) * e;
-        g.fillStyle = this.rgba(col, a * [0.9, 0.45, 0.2][tr] * (ph > 0.92 ? (1 - ph) / 0.08 : 1));
-        const z = tr || k % 4 ? gr : gr * 2;   // a few bright heads among many small lights
-        g.fillRect(Math.round(x / gr) * gr, Math.round(y / gr) * gr, z, z);
-      }
+      const at = q => { const e = q * q; return [x0 + (sx - x0) * e + Math.sin(q * 9 + k) * W * 0.04 * (1 - q), y0 + (sy - y0) * e]; };
+      const fa = a * (ph > 0.92 ? (1 - ph) / 0.08 : 1);
+      const [hx, hy] = at(ph), [tx, ty] = at(Math.max(0, ph - 0.09));
+      const tr = g.createLinearGradient(tx, ty, hx, hy);
+      tr.addColorStop(0, 'rgba(' + rgb + ',0)'); tr.addColorStop(1, 'rgba(' + rgb + ',' + (0.55 * fa).toFixed(3) + ')');
+      g.strokeStyle = tr; g.lineWidth = (k % 4 ? 1.4 : 2.4) * dpr; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(tx, ty); g.lineTo(hx, hy); g.stroke();
     }
     g.restore();
+    for (let k = 0; k < n; k++) {
+      const h = ((k * 0.618034) % 1), life = 1.6 + h * 1.4;
+      const ph = ((t + h * 9) / life) % 1, e = ph * ph;
+      const x0 = sx + (h - 0.5) * W * 1.3, y0 = -H * 0.05 - h * H * 0.2;
+      const x = x0 + (sx - x0) * e + Math.sin(ph * 9 + k) * W * 0.04 * (1 - ph), y = y0 + (sy - y0) * e;
+      R.fxDot(g, x, y, k % 4 ? 1.3 : 2.4, a * (ph > 0.92 ? (1 - ph) / 0.08 : 1), col);
+    }
   },
   /* the march shakes the ground: a shake (amp, one number or one per beat;
      0 is a beat felt only in the ears) and a voice (one key, or one per beat,
@@ -1176,15 +1132,17 @@ Deck.armyFx = {
        ONE BEAM PER UNIT, on its own beat, running the FULL HEIGHT of the
          view down onto the slot (so it has no top to see), clipped to the
          board like every geometry pass;
-       TAPERED IN HARD STEPS (beamTaper: the foot widest, three narrower
-         courses as it climbs), its body OPAQUE stepped bands of the tier's
-         own ramp — never alpha over grass — and it narrows away band by band
-         (outer, middle, core, then the white thread) in about half a second;
+       SMOOTH LIGHT AT THE DEVICE'S OWN RESOLUTION (the operator's ruling,
+         2026-10-27: "the rays are pixelated again… higher pixel count" — it
+         replaced the beams' opaque stepped bands): a soft column of the
+         tier's light with a white-hot thread up its heart, its hue tied to
+         its light so the meadow in it turns the tier's colour and never
+         lime (R.fxBeam), narrowing away in about half a second;
        IT DROPS, then STRIKES: the leading edge falls from the top of the view
-         in BEAM_T.drop, and the frame it lands is one white frame — the
-         column and a burst at the feet — then a hard-pixel SHOCK RING runs
-         out along the ground and a few clods are thrown, all gone within
-         BEAM_T.ring (no confetti left on the grass after half a second);
+         in BEAM_T.drop, and the frame it lands is one white-hot frame — the
+         column and a flare at the feet — then a smooth SHOCK RING runs out
+         along the ground (R.fxRing) and a few clods are thrown, all gone
+         within BEAM_T.ring (no confetti left on the grass after half a second);
        DRAWN IN THE GROUND PASS (a show's 'ground' layer), under every
          building and unit: the hall stands OVER the light, the soldier
          stands in front of his own, and only the foot burst is laid over
@@ -1199,39 +1157,42 @@ Deck.armyFx = {
     white:  { ramp: ['#e0c88a', '#f8ecc4', '#fffbf2'], hot: '#ffffff', ring: ['#ead8a4', '#fffbf2'] },
   },
   BEAM_T: { drop: 0.08, life: 0.5, ring: 0.34 },
-  // the beam's width at h tiles above the feet, in hard steps
-  beamTaper(h) { return h < 1.1 ? 1 : h < 2.4 ? 0.78 : h < 4.4 ? 0.58 : 0.42; },
-  // one tapered column from `top` (world px) down to `foot`, `w` wide at the foot
-  beamColumn(g, cx, foot, top, w) {
-    const TL = CFG.TILE, steps = [[0, 1.1], [1.1, 2.4], [2.4, 4.4], [4.4, 1e4]];
-    for (const [h0, h1] of steps) {
-      const yb = this.snap(foot - h0 * TL), yt = Math.max(top, this.snap(foot - h1 * TL));
-      if (yb <= yt) continue;
-      const ww = Math.max(2, this.snap(w * this.beamTaper(h0)));
-      g.fillRect(this.snap(cx - ww / 2), yt, ww, yb - yt);
-    }
-  },
+  // a beam's width at its foot, in tiles (a broad engine wider) — narrow
+  // enough that two men side by side keep two beams
+  BEAM_W: 0.42,
   /* the arrivals of a show's units (s.units: {id, x, y, d — the beat it
      lands}) in `layer`: 'ground' the columns, the shock rings and the clods;
-     'world' the one-frame burst at the feet. `tone` names a BEAM ramp;
-     `wide` multiplies the width (an engine is a broad thing to set down). */
+     'world' the one-frame burst at the feet. `tone` names a BEAM tier (and
+     R.LIGHT.TONE's light of the same name); `wide` multiplies the width (an
+     engine is a broad thing to set down).
+     THE SLAM IS DRAWN AT THE DEVICE'S OWN RESOLUTION (the operator: "When
+     characters slam down, that feels cool, but the rays are pixelated
+     again… higher pixel count"): each beam a smooth column of the tier's
+     light (R.fxBeam — soft across, a white-hot thread up its heart, its hue
+     tied to its light so the meadow under it turns the tier's colour and
+     never lime), falling out of the top of the view as a bright streak,
+     striking white-hot on its first frame, then narrowing away; the shock a
+     smooth ring of the same light running out along the ground (R.fxRing)
+     with its trailing twin; the clods round crumbs of the earth's own
+     browns, thrown at fractional positions. Nothing snapped to the 2px
+     grain; the beam still runs the full height of the view (no top to see),
+     still lies in the GROUND pass under the hall and the men, and still
+     leaves nothing on the grass half a second after it lands. */
   arrive(g, s, layer, tone, wide, opts) {
-    const TL = CFG.TILE, P = this.BEAM[tone] || this.BEAM.gold, T = this.BEAM_T;
-    // (the view's top a tile up, on the world's own grain: a column whose
-    // top edge fell between two pixels laid a half-there row along it)
-    const top = this.snap(R.viewTiles().y0 * TL - TL);
+    const TL = CFG.TILE, T = this.BEAM_T;
+    const top = R.viewTiles().y0 * TL - TL;
     s.fl = s.fl || {};
     if (layer === 'world') {
-      // the frame it lands: a white burst over the feet (one frame, by the
-      // ground pass's own stamp — the same frame the column went white);
-      // a man already standing there (Veterans) is his own flash instead
+      // the frame it lands: a white-hot flare over the feet (one frame, by
+      // the ground pass's own stamp — the same frame the column went white),
+      // a star of light above; a man already standing there (Veterans) is his
+      // own flash instead
       if (opts && opts.burst === false) return;
       for (const m of s.units || []) {
         if (s.fl[m.id] !== s.t) continue;
         const u = Units.get(m.id), x = (u ? u.x : m.x) * TL, y = (u ? u.y : m.y) * TL + TL * 0.3, k = this.engine(u) ? 1.5 : 1;
-        g.fillStyle = P.hot; R.pxDisc(g, x, y - TL * 0.2, TL * 0.42 * k, 2, 0.8);
-        g.fillStyle = '#ffffff'; R.pxDisc(g, x, y - TL * 0.2, TL * 0.24 * k, 2, 0.8);
-        this.glint(g, x, y - TL * 0.55 * k, 4, '255,255,255', 1);
+        R.fxGlow(g, x, y - TL * 0.2, TL * 0.62 * k, 1, 'white', { core: 0.45, soft: 1.5 });
+        R.fxSpark(g, x, y - TL * 0.55 * k, 8, 1, 'white', { diag: true });
       }
       return;
     }
@@ -1242,50 +1203,54 @@ Deck.armyFx = {
         if (t < -T.drop || t > T.life + 0.1) continue;
         const u = Units.get(m.id), eng = this.engine(u) || (wide && wide > 1);
         const x = (u ? u.x : m.x) * TL, foot = (u ? u.y : m.y) * TL + TL * 0.3;
-        const w = TL * 0.78 * (eng ? 1.6 : 1) * (wide || 1);
+        const w = TL * this.BEAM_W * (eng ? 1.6 : 1) * (wide || 1);
         if (t < 0) {
-          // THE DROP: the leading edge falls out of the top of the view
+          // THE DROP: a bright streak falls out of the top of the view, its
+          // head a white-hot point
           const bot = top + (foot - top) * (1 + t / T.drop);
-          g.fillStyle = P.ramp[2]; g.fillRect(this.snap(x - w * 0.15), this.snap(top), Math.max(2, this.snap(w * 0.3)), Math.max(2, this.snap(bot - top)));
-          g.fillStyle = P.hot; g.fillRect(this.snap(x - w * 0.15), this.snap(bot - 6), Math.max(2, this.snap(w * 0.3)), 6);
+          R.fxBeam(g, x, bot, top, w * 0.5, 1, tone, { core: 1.6 });
+          R.fxGlow(g, x, bot, w * 0.9, 1, 'white', { core: 0.5, soft: 1.6 });
           continue;
         }
-        // THE STRIKE: its first frame is white, then the bands go out in turn
+        // THE STRIKE: its first frame white-hot and broad, then it narrows away
         if (s.fl[m.id] == null) s.fl[m.id] = s.t;
-        const first = s.fl[m.id] === s.t;
-        const ph = first ? -1 : Math.floor(t / (T.life / 4));
-        if (ph < 4) {
-          const bands = first ? [[1.15, P.hot], [0.5, '#ffffff']] : [[1, P.ramp[0]], [0.62, P.ramp[1]], [0.34, P.ramp[2]]].slice(Math.max(0, ph));
-          for (const [f, c] of bands) { g.fillStyle = c; this.beamColumn(g, x, foot, top, w * f); }
-          g.fillStyle = P.hot; this.beamColumn(g, x, foot, top, 2 / this.beamTaper(0));
+        const first = s.fl[m.id] === s.t, q = t / T.life;
+        if (q < 1) {
+          const k = 1 - q;
+          R.fxBeam(g, x, foot, top, first ? w * 1.3 : w * (0.15 + 0.85 * k * k), first ? 1 : Math.min(1, 0.45 + 0.6 * k), first ? 'white' : tone,
+            { core: first ? 2.6 : 0.6 + 1.2 * k, foot: first ? 1 : 0.8 * k });
         }
         // the shock ring along the ground, and its trailing twin
-        for (const [lag, c, sp] of [[0, P.ring[1], 1], [0.06, P.ring[0], 0.7]]) {
-          const q = (t - lag) / T.ring;
-          if (q < 0 || q >= 1) continue;
-          const rx = TL * (0.3 + Math.pow(q, 0.6) * 1.15 * sp) * (eng ? 1.4 : 1);
-          g.fillStyle = c; this.ellipseDots(g, x, foot, rx, rx * 0.42);
+        for (const [lag, sp, aa] of [[0, 1, 1], [0.06, 0.7, 0.75]]) {
+          const qq = (t - lag) / T.ring;
+          if (qq < 0 || qq >= 1) continue;
+          const rx = TL * (0.3 + Math.pow(qq, 0.6) * 1.15 * sp) * (eng ? 1.4 : 1);
+          R.fxRing(g, x, foot, rx, aa * (1 - qq * qq), tone, { squash: 0.42, css: 2.8 * (1 - qq * 0.55) });
         }
-        // a few clods thrown off the ground, up and back down
-        const q = t / T.ring;
-        if (q < 1 && !(opts && opts.clods === false)) for (let k = 0; k < 7; k++) {
-          const th = k * 0.897 + m.id * 1.3, dd = TL * (0.3 + q * (0.8 + (k % 3) * 0.2)) * (eng ? 1.3 : 1);
-          g.fillStyle = k % 2 ? '#6b5236' : '#8a6c48';
-          g.fillRect(this.snap(x + Math.cos(th) * dd), this.snap(foot + Math.sin(th) * dd * 0.42 - Math.sin(q * Math.PI) * 10), 2, 2);
+        // a few clods thrown off the ground, up and back down: crumbs of the
+        // earth's own browns at their true positions
+        const qc = t / T.ring;
+        if (qc < 1 && !(opts && opts.clods === false)) {
+          for (let k = 0; k < 7; k++) {
+            const th = k * 0.897 + m.id * 1.3, dd = TL * (0.3 + qc * (0.8 + (k % 3) * 0.2)) * (eng ? 1.3 : 1);
+            g.fillStyle = k % 2 ? '#6b5236' : '#8a6c48';
+            g.beginPath();
+            g.arc(x + Math.cos(th) * dd, foot + Math.sin(th) * dd * 0.42 - Math.sin(qc * Math.PI) * 10, 1.05 + (k % 3) * 0.3, 0, Math.PI * 2);
+            g.fill();
+          }
         }
       }
     });
   },
   engine(u) { return !!u && Deck.fanClass(u.kind) === 'engine'; },
-  // an ellipse's outline in touching 2px squares — a ring, never a dotted one
+  /* an ellipse's outline as a fine antialiased line in the caller's
+     g.fillStyle (the name is the old one: it was a ring of touching 2px
+     squares) */
   ellipseDots(g, cx, cy, rx, ry) {
-    const n = Math.max(16, Math.ceil(Math.PI * (rx + ry) / 2));
-    let px = null, py = null;
-    for (let k = 0; k < n; k++) {
-      const th = k / n * Math.PI * 2, x = this.snap(cx + Math.cos(th) * rx), y = this.snap(cy + Math.sin(th) * ry);
-      if (x === px && y === py) continue;
-      g.fillRect(x, y, 2, 2); px = x; py = y;
-    }
+    const st = g.strokeStyle, lw = g.lineWidth;
+    g.strokeStyle = g.fillStyle; g.lineWidth = 1.6 * R.fxPx(g);
+    g.beginPath(); g.ellipse(cx, cy, Math.max(0.5, rx), Math.max(0.5, ry), 0, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = st; g.lineWidth = lw;
   },
 };
 

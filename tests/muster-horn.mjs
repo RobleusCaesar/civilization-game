@@ -283,6 +283,39 @@ const out = await p.evaluate(() => {
     ck('andTheHornStillWorksInIt', Units.soundHorn('P') > 0, '');
   }
 
+  /* ---- THE HORN'S RINGS ARE SMOOTH LIGHT, AND NEVER IN THE BLACK (the
+     operator's ruling on the effects, 2026-10-27: rings at the device's own
+     resolution — it replaced "rings of hard pixel dots"; and a ring rolling
+     twelve tiles out from a hall near the edge laid its dots in the off-map
+     black) ----
+     A horn blown from a hall two tiles from the board's corner, drawn at
+     three beats onto a clean canvas through the world's transform: not one
+     rect on the grain, and not one pixel outside the board (R.boardPx). */
+  {
+    const TL = CFG.TILE, Z = 2.5, b0 = R.boardPx();
+    const c = document.createElement('canvas'); c.width = 30 * TL * Z; c.height = 30 * TL * Z;
+    const g = c.getContext('2d');
+    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect;
+    let rects = 0;
+    P2.fillRect = function () { if (this === g) rects++; return fr.apply(this, arguments); };
+    const keep = R.horns;
+    try {
+      R.horns = [{ x: 2.5, y: 2.5, t: 0 }];
+      for (const t of [0.35, 0.4, 0.4]) { g.setTransform(Z, 0, 0, Z, 0, 0); R.drawHorns(g, t); }
+    } finally { P2.fillRect = fr; R.horns = keep; }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height).data;
+    let lit = 0, black = 0;
+    for (let i = 3; i < d.length; i += 4) {
+      if (!d[i]) continue;
+      lit++;
+      const p = (i - 3) / 4, x = (p % c.width) / Z, y = Math.floor(p / c.width) / Z;
+      if (x < b0.x0 - 0.5 || y < b0.y0 - 0.5) black++;
+    }
+    ck('theHornsRingsAreSmoothLightNeverInTheBlack', rects === 0 && lit > 500 && black === 0,
+      `${rects} rects on the grain, ${lit} px lit, ${black} of them in the off-map black`);
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

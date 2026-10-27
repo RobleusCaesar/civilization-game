@@ -1823,9 +1823,17 @@ await p.evaluate(({ ARMY }) => {
      world px 1:1, nothing else drawn on it):
        ONE BEAM PER UNIT, FULL HEIGHT — on the view's top row, one run of the
          tier's light over every unit whose beam is up, and none elsewhere;
-       OPAQUE, IN THE TIER'S OWN LIGHT — every pixel the beams lay is fully
-         opaque and one of its tier's own colours (or the earth's clods), and
-         the four tiers' lights are four different sets;
+       SMOOTH LIGHT IN THE TIER'S OWN HUE (the operator's ruling, 2026-10-27:
+         "When characters slam down, that feels cool, but the rays are
+         pixelated again… higher pixel count" — it replaced "OPAQUE, IN THE
+         TIER'S OWN LIGHT", which pinned opaque stepped bands of the tier's
+         ramp): drawn over the meadow's own green, the beams, the shock rings
+         and the clods lay no rect on any grid, a good share of what they
+         touch is part-lit (a soft column, never hard bands), at most 2% of
+         what they brighten turns olive or lime (the landing's own measure —
+         the very fault the opaque rule was written against), and the tiers
+         stay apart in the light itself: bronze tints the meadow reddest,
+         gold a yellower warm, steel cool (mean red-over-green, 10 apart);
        UNDER THE HALL — the column is laid in the GROUND pass, which every
          building and unit is drawn over: the world pass lays nothing above
          a man's knees once his landing frame has passed;
@@ -1901,16 +1909,43 @@ await p.evaluate(({ ARMY }) => {
       const cd = gc.getImageData(0, 0, cc.width, cc.height).data;
       let left = 0;
       for (let i = 3; i < cd.length; i += 4) if (cd[i]) left++;
-      out.tiers[id] = { tone, runs, up, n: upU.length, orphans, overUnits, px, soft, alien, tall, left, cols: [...cols].sort().join(' ') };
+      // …and over the meadow (75,129,51): the frame before, then the frame
+      // itself on fresh grass, counting the rects the frame lays
+      const cm = canvas(), gm = cm.getContext('2d'), BG = [75, 129, 51];
+      s.t = T - 0.01; gm.save(); sh.draw.call(fx, gm, s, 0.5, 0, 'ground'); gm.restore();
+      gm.clearRect(0, 0, cm.width, cm.height); gm.fillStyle = `rgb(${BG})`; gm.fillRect(0, 0, cm.width, cm.height);
+      const P2 = CanvasRenderingContext2D.prototype, fr0 = P2.fillRect;
+      let rects = 0;
+      P2.fillRect = function () { if (this === gm) rects++; return fr0.apply(this, arguments); };
+      try { s.t = T; gm.save(); sh.draw.call(fx, gm, s, 0.5, 0, 'ground'); gm.restore(); } finally { P2.fillRect = fr0; }
+      const md = gm.getImageData(0, 0, cm.width, cm.height).data, lum = (a, b2, c) => 0.299 * a + 0.587 * b2 + 0.114 * c, L0 = lum(...BG);
+      let mLit = 0, mBr = 0, mOl = 0, mPart = 0, warm = 0, red = 0;
+      for (let i = 0; i < md.length; i += 4) {
+        if (md[i] === BG[0] && md[i + 1] === BG[1] && md[i + 2] === BG[2]) continue;
+        mLit++;
+        const L = lum(md[i], md[i + 1], md[i + 2]);
+        if (L < L0 + 25) mPart++;
+        if (L <= L0 + 0.5) continue;
+        mBr++; warm += md[i] - md[i + 2]; red += md[i] - md[i + 1];
+        const mx = Math.max(md[i], md[i + 1], md[i + 2]), mn = Math.min(md[i], md[i + 1], md[i + 2]), q = mx - mn;
+        if (L - L0 >= 10 && mx && q && q / mx >= 0.2) {
+          let h = mx === md[i] ? ((md[i + 1] - md[i + 2]) / q) % 6 : mx === md[i + 1] ? (md[i + 2] - md[i]) / q + 2 : (md[i] - md[i + 1]) / q + 4;
+          h *= 60; if (h < 0) h += 360;
+          if (h >= 48 && h <= 115) mOl++;
+        }
+      }
+      const meadow = { rects, lit: mLit, part: mLit ? mPart / mLit : 0, olive: mBr ? mOl / mBr : 1, warm: mBr ? warm / mBr : 0, red: mBr ? red / mBr : 0 };
+      out.tiers[id] = { tone, runs, up, n: upU.length, orphans, overUnits, px, soft, alien, tall, left, cols: [...cols].sort().join(' '), meadow };
     }
     return out;
   });
   const T = r.tiers, ids = Object.keys(T);
   ck('oneBeamPerUnitRunningTheFullHeight', ids.every(k => T[k].runs >= T[k].up && T[k].runs <= T[k].n && !T[k].orphans && T[k].overUnits && T[k].up >= 3),
     ids.map(k => `${k}: ${T[k].runs} beams on the view's top row for ${T[k].up}..${T[k].n} columns of men whose beams are up (${T[k].orphans} over nobody), over every one ${T[k].overUnits}`).join('; '));
-  ck('theBeamsAreOpaqueInTheTiersOwnLight', ids.every(k => T[k].px > 0 && T[k].soft === 0 && T[k].alien === 0) &&
-    T.war_band.cols !== T.iron_legion.cols && T.iron_legion.cols !== T.legion_marches.cols && T.war_band.cols !== T.legion_marches.cols,
-    ids.map(k => `${k} (${T[k].tone}): ${T[k].px} px, ${T[k].soft} translucent, ${T[k].alien} off the tier's light`).join('; '));
+  const M = k => T[k].meadow || { rects: -1, lit: 0, part: 0, olive: 1, warm: 0, red: 0 }, apart = (a, b2) => Math.abs(M(a).red - M(b2).red) > 10;
+  ck('theBeamsAreSmoothLightInTheTiersOwnHue', ids.every(k => M(k).rects === 0 && M(k).lit > 2000 && M(k).part > 0.25 && M(k).olive <= 0.02) &&
+    apart('war_band', 'iron_legion') && apart('iron_legion', 'legion_marches') && apart('war_band', 'legion_marches'),
+    ids.map(k => `${k} (${T[k].tone}): ${M(k).rects} rects, ${M(k).lit} px (${(100 * M(k).part).toFixed(0)}% part-lit), ${(100 * M(k).olive).toFixed(2)}% olive, warmth ${M(k).warm.toFixed(0)}, red ${M(k).red.toFixed(0)}`).join('; '));
   ck('theHallStandsOverTheLight', ids.every(k => T[k].tall === 0), ids.map(k => `${k}: ${T[k].tall} px laid above a man's knees in the world pass`).join('; '));
   ck('andNoConfettiOutlivesHalfASecond', ids.every(k => T[k].left === 0), ids.map(k => `${k}: ${T[k].left} px left 0.55s after the last landing`).join('; '));
 }

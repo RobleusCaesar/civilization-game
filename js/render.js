@@ -10513,10 +10513,14 @@ const R = {
 
   /* ============ THE MUSTER HORN (tests/muster-horn.mjs) ============
      What a horn looks like from above: rings of sound going out over the
-     village, and every bird in the valley leaving. Three waves of hard pixel
-     dots (never a smooth stroked circle — the ground beneath them is drawn in
-     hard steps and a soft ring reads as UI laid over the scene), fading as
-     they widen. Render state only, like every other one-shot here. */
+     village, and every bird in the valley leaving. Three waves of light
+     rolling out and thinning as they widen — SMOOTH RINGS AT THE DEVICE'S
+     OWN RESOLUTION (R.fxRing; the operator's ruling on the effects,
+     2026-10-27, replaced the rings of hard pixel dots), their hue tied to
+     their light so the meadow under a ring turns gold, never lime — and
+     clipped to the board: a ring rolling twelve tiles out from a hall near
+     the edge laid its dots in the off-map black. Render state only, like
+     every other one-shot here. */
   HORN: { ms: 1600, rings: 3, reach: 12 },
   horns: [],
   startHorn(x, y) {
@@ -10526,28 +10530,23 @@ const R = {
   },
   drawHorns(g, dt) {
     if (!this.horns.length) return;
-    const TL = CFG.TILE, cfg = this.HORN, px = Math.max(2, Math.round(TL / 8));
-    for (let i = this.horns.length - 1; i >= 0; i--) {
-      const hn = this.horns[i];
-      hn.t += dt;
-      const p = hn.t / (cfg.ms / 1000);
-      if (p >= 1) { this.horns.splice(i, 1); continue; }
-      const cx = hn.x * TL, cy = hn.y * TL;
-      for (let k = 0; k < cfg.rings; k++) {
-        const q = (p - k * 0.17) / (1 - k * 0.17);
-        if (q <= 0 || q >= 1) continue;
-        const rad = cfg.reach * TL * Math.pow(q, 0.6);
-        const a = (1 - q) * 0.6;
-        if (a <= 0.03 || rad < px) continue;
-        g.fillStyle = 'rgba(240,212,126,' + a.toFixed(2) + ')';
-        const n = Math.max(16, Math.round(rad / px * 1.7));
-        for (let sIdx = 0; sIdx < n; sIdx++) {
-          const th = sIdx / n * Math.PI * 2;
-          g.fillRect(Math.round((cx + Math.cos(th) * rad) / px) * px,
-            Math.round((cy + Math.sin(th) * rad) / px) * px, px, px);
+    const TL = CFG.TILE, cfg = this.HORN;
+    this.clipBoard(g, () => {
+      for (let i = this.horns.length - 1; i >= 0; i--) {
+        const hn = this.horns[i];
+        hn.t += dt;
+        const p = hn.t / (cfg.ms / 1000);
+        if (p >= 1) { this.horns.splice(i, 1); continue; }
+        const cx = hn.x * TL, cy = hn.y * TL;
+        for (let k = 0; k < cfg.rings; k++) {
+          const q = (p - k * 0.17) / (1 - k * 0.17);
+          if (q <= 0 || q >= 1) continue;
+          const rad = cfg.reach * TL * Math.pow(q, 0.6);
+          if (rad < 2) continue;
+          this.fxRing(g, cx, cy, rad, 0.85 * (1 - q), 'gold', { css: 2.6 * (1 - q * 0.6) });
         }
       }
-    }
+    });
   },
 
   /* ============ THE CARD SYSTEM IN THE WORLD (js/deckfx.js) ============
@@ -11022,18 +11021,19 @@ const R = {
      hue the body's own extent (FX_TIE); o.fade (0..1) fades its top share
      (0 for a beam that runs past the view and so has no top to see); o.foot
      (0..1) flares it where it meets the ground (a light standing ON the
-     ground, never a pool across it). */
+     ground, never a pool across it).
+     THE HUE GOES ON LAST, here alone: a column is a stack of screens, and a
+     pale yellow SCREENED over the meadow drifts toward lemon (the green's
+     own channel rides up with it — a gold body measured 48-50 degrees, the
+     landing's olive band, on its bright middle). Laid after the lift, the
+     'color' pass keeps each pixel's brightness and gives it the tone's hue,
+     and a pixel near white stays near white, so the thread is still hot. */
   fxBeam(g, x, foot, top, w, a, tone, o) {
     o = o || {};
     if (!(a > 0.003) || !(w > 0) || !(foot - top > 0.5)) return;
     const T = this.fxTone(tone), A = this.fxA(a), h = foot - top, f = o.fade || 0, cp = this.fxPx(g);
     g.save();
     g.imageSmoothingEnabled = true;
-    g.globalCompositeOperation = 'color';
-    if (g.globalCompositeOperation === 'color') {
-      g.globalAlpha = Math.min(1, this.FX_TIE * A.l * 0.8);
-      g.drawImage(this._fxBeamSpr(T.hue, 0.1, f, this.FX_TIE), x - w / 2, top, w, h);
-    }
     g.globalCompositeOperation = 'screen';
     g.globalAlpha = A.l * 0.8;
     g.drawImage(this._fxBeamSpr(T.ramp[2], 0.1, f), x - w / 2, top, w, h);
@@ -11042,6 +11042,11 @@ const R = {
     if (o.core !== 0) {
       const cw = Math.min(w * 0.1, (o.core || 1.4) * cp);
       g.drawImage(this._fxBeamSpr(T.hot, 0.45, f), x - cw, top, cw * 2, h);
+    }
+    g.globalCompositeOperation = 'color';
+    if (g.globalCompositeOperation === 'color') {
+      g.globalAlpha = Math.min(1, this.FX_TIE * A.l * 0.8);
+      g.drawImage(this._fxBeamSpr(T.hue, 0.1, f, this.FX_TIE), x - w / 2, top, w, h);
     }
     g.restore();
     if (o.foot) this.fxGlow(g, x, foot, w * (0.55 + 0.6 * o.foot), a, T, { squash: 0.36, core: 0.22, soft: 2.2 });
