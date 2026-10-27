@@ -1227,7 +1227,7 @@ await p.evaluate(() => {
         if (dO) R.drawOrbit = function () { const v = dO.apply(this, arguments); if (v) { ops.orbits++; ops.maxSpan = Math.max(ops.maxSpan, v.span); ops.head = v.head; } return v; };
         G.rand = function () { rand++; return gr.apply(this, arguments); };
         const sBefore = JSON.stringify(S);
-        let worstArc = 0, worstW = 0, lit = 0, off = 0;
+        let worstArc = 0, worstW = 0, lit = 0, off = 0, near = 0, far = 0;
         try {
           for (let f = 0; f < 6; f++) {
             const t = 1000 + f * 1700;
@@ -1239,7 +1239,7 @@ await p.evaluate(() => {
             g.restore();
             const px = g.getImageData(0, 0, S2, S2).data;
             // where the lit pixels lie: their angle round the centre, and how thick the thread is
-            const bins = new Uint8Array(360), band = {};
+            const bins = new Uint8Array(360), cnt = new Uint32Array(360), band = {};
             for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++) {
               const a = px[(y * S2 + x) * 4 + 3];
               if (a < 24) continue;
@@ -1247,13 +1247,20 @@ await p.evaluate(() => {
               const dx = x + 0.5 - S2 / 2, dy = y + 0.5 - S2 / 2, dd = Math.hypot(dx, dy);
               if (Math.abs(dd - rr) > 3.2 * 2 * R.dpr + 2) { off++; continue; }   // nothing but the circle
               const b = ((Math.round(Math.atan2(dy, dx) * 180 / Math.PI) % 360) + 360) % 360;
-              bins[b] = 1;
+              bins[b] = 1; cnt[b]++;
               if (a >= 128) (band[b] || (band[b] = [])).push(dd);   // the thread at half coverage and more
             }
             let arc = 0; for (const v of bins) arc += v;
             worstArc = Math.max(worstArc, arc);
             // the thread's thickness, measured across it where the bead is not (≥ 8° behind it)
             const head = ops.head * 180 / Math.PI;
+            // IT FADES BEHIND THE BEAD: the ink a degree of the circle carries just
+            // behind the bead (12°..40°) against half way round (150°..200°) —
+            // with no bead to measure from (no orbit at all), the whole circle's
+            // brightest stretch against its faintest, which an even ring fails too
+            const run = (a0, a1, from) => { let n = 0, k = 0; for (let d = a0; d <= a1; d++) { n += cnt[(((Math.round(from - d)) % 360) + 360) % 360]; k++; } return n / k; };
+            if (ops.orbits) { near += run(12, 40, head); far += run(150, 200, head); }
+            else { let hi = 0, lo = Infinity; for (let b = 0; b < 360; b += 30) { const v = run(0, 29, b + 29); hi = Math.max(hi, v); lo = Math.min(lo, v); } near += hi; far += lo; }
             for (const bs in band) {
               const behind = ((head - +bs) % 360 + 360) % 360;
               if (behind < 8 || behind > 300) continue;
@@ -1264,7 +1271,8 @@ await p.evaluate(() => {
           C2.fillRect = fr; C2.fill = fi; C2.stroke = st; R.drawOrbit = dO; G.rand = gr; performance.now = pn;
         }
         o['z' + z] = { orbits: ops.orbits, rects: ops.rects, lighter: ops.lighter, gco: [...ops.gco].join('/'), span: +(ops.maxSpan * 180 / Math.PI).toFixed(1),
-          arc: worstArc, width: worstW, artPx: 2 * k, lit, off, rand, sKept: JSON.stringify(S) === sBefore };
+          arc: worstArc, width: worstW, artPx: 2 * k, lit, off, rand, sKept: JSON.stringify(S) === sBefore,
+          near: +(near / 6).toFixed(1), far: +(far / 6).toFixed(1) };
       }
     }
     UI.sel = null;
@@ -1281,15 +1289,16 @@ await p.evaluate(() => {
   });
   const z = (id, k) => r.cards[id] && r.cards[id][k];
   const per = id => ['z1.7', 'z1'].map(k => z(id, k)).filter(Boolean);
-  const orbitOk = id => r.ok && per(id).length === 2 && per(id).every(o => o.orbits >= 6 && o.rects <= 6 * 2 && o.lighter === 0 && o.off === 0 && o.arc >= 60 && o.arc <= 276 && o.span <= 270.01);
+  const orbitOk = id => r.ok && per(id).length === 2 && per(id).every(o => o.orbits >= 6 && o.rects <= 6 * 2 && o.lighter === 0 && o.off === 0 && o.arc >= 60 && o.arc <= 276 && o.span <= 270.01
+    && o.near > 0 && o.far * 2 < o.near);   // a FADING arc: half way round carries under half the ink just behind the bead
   const fine = id => r.ok && per(id).every(o => o.width > 0 && o.width < o.artPx);
   const clean = id => per(id).every(o => o.sKept && o.rand === 0);
-  const say = id => per(id).map(o => `${o.orbits} orbits, ${o.rects} rects, arc ${o.arc}°/${o.span}°, thread ${o.width}px < art px ${o.artPx}, ${o.off} px off the circle, gco ${o.gco}`).join(' | ');
-  ck('bountifulLandWearsTheOrbitAndNothingElse', orbitOk('bountiful_land'), r.ok ? say('bountiful_land') : 'no R.drawOrbit');
-  ck('andTheWatchfiresReachIsTheOrbit', orbitOk('watchfires') && r.wfUnselected === 0,
-    r.ok ? say('watchfires') + `; unselected: ${r.wfUnselected} orbits` : 'no R.drawOrbit');
+  const say = id => per(id).map(o => `${o.orbits} orbits, ${o.rects} rects, arc ${o.arc}°/${o.span}°, ink ${o.near} px/° behind the bead → ${o.far} half way round, thread ${o.width}px < art px ${o.artPx}, ${o.off} px off the circle, gco ${o.gco}`).join(' | ')
+    + (r.ok ? '' : ' (no R.drawOrbit)');
+  ck('bountifulLandWearsTheOrbitAndNothingElse', orbitOk('bountiful_land'), say('bountiful_land'));
+  ck('andTheWatchfiresReachIsTheOrbit', orbitOk('watchfires') && r.wfUnselected === 0, say('watchfires') + `; unselected: ${r.wfUnselected} orbits`);
   ck('theOrbitIsFinerThanTheWorldsPixelArt', fine('bountiful_land') && fine('watchfires'),
-    r.ok ? ['bountiful_land', 'watchfires'].map(id => id + ' ' + per(id).map(o => o.width + '/' + o.artPx).join(', ')).join('; ') : 'no R.drawOrbit');
+    ['bountiful_land', 'watchfires'].map(id => id + ' ' + per(id).map(o => o.width + '/' + o.artPx).join(', ')).join('; ') + (r.ok ? '' : ' (no R.drawOrbit)'));
   ck('andIsRenderStateOnly', r.ok && clean('bountiful_land') && clean('watchfires'),
     ['bountiful_land', 'watchfires'].map(id => id + ' ' + per(id).map(o => `S kept ${o.sKept}, ${o.rand} G.rand`).join(', ')).join('; '));
 }
