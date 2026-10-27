@@ -182,8 +182,8 @@
        laid in hard alpha steps. `lines` stack downward from (x, y), the
        block's middle at x; the block is FITTED to the safe view once
        (s.lab, so it never creeps) and rises `rise` world px as it goes.
-       `avoid` (a world-px rect: the hall's roof) pushes the block sideways
-       clear of it, toward the side with room. `k` 0..1 is how far it has
+       `avoid` (a world-px rect or a list: the hall's roof, the pile) moves
+       the block to the nearest place clear of them all. `k` 0..1 is how far it has
        risen (RISE world px at the most — the fit allows for all of it). */
     RISE: 14,
     label(g, s, key, x, y, lines, a, k, avoid) {
@@ -198,12 +198,15 @@
         const sr = this.safeRect(0.25), R0 = this.RISE;
         // fitted to the safe view; the block's whole climb is what must clear the roof
         const fit = (cx, ty) => ({ x: Math.max(sr.x0 + w / 2, Math.min(sr.x1 - w / 2, cx)), y: Math.max(sr.y0 + R0, Math.min(sr.y1 - h, ty)) });
-        const hits = q => avoid && q.x + w / 2 > avoid.x0 && q.x - w / 2 < avoid.x1 && q.y + h > avoid.y0 && q.y - R0 < avoid.y1;
-        const near = x >= (avoid ? (avoid.x0 + avoid.x1) / 2 : x);
-        const tries = [fit(x, y - h)];
-        if (avoid) tries.push(fit(near ? avoid.x1 + w / 2 + 2 : avoid.x0 - w / 2 - 2, y - h),
-          fit(near ? avoid.x0 - w / 2 - 2 : avoid.x1 + w / 2 + 2, y - h), fit(x, avoid.y1 + R0 + 2));
-        b = L[key] = tries.find(q => !hits(q)) || tries[0];
+        const boxes = avoid ? [].concat(avoid) : [];
+        const hits = q => boxes.some(a => q.x + w / 2 > a.x0 && q.x - w / 2 < a.x1 && q.y + h > a.y0 && q.y - R0 < a.y1);
+        avoid = boxes[0];
+        // of the places that clear the roof, the one nearest where it wants to be
+        // (over its pile): beside the roof, or tucked just under its foot
+        const ideal = fit(x, y - h), tries = [ideal];
+        if (avoid) tries.push(fit(avoid.x1 + w / 2 + 2, y - h), fit(avoid.x0 - w / 2 - 2, y - h), fit(x, avoid.y1 + R0 + 2));
+        const clear = tries.filter(q => !hits(q));
+        b = L[key] = clear.sort((a, c) => Math.hypot(a.x - ideal.x, a.y - ideal.y) - Math.hypot(c.x - ideal.x, c.y - ideal.y))[0] || ideal;
       }
       g.textAlign = 'center'; g.textBaseline = 'top';
       g.globalAlpha = stp(a, 3);
@@ -393,7 +396,9 @@
       if (tl < 0 || tl > dur) return;
       const q = tl / dur, TL = TLs(), tc = Bld.get(s.tc);
       const roof = tc ? (() => { const a = this.art(tc); return { x0: a.rc.x + a.box.l * a.rc.w, x1: a.rc.x + a.box.r * a.rc.w, y0: a.rc.y + a.box.t * a.rc.h, y1: a.foot }; })() : null;
-      this.label(g, s, 'count', sp.x * TL, (sp.y - 0.95) * TL, lines, q < 0.75 ? 1 : (1 - q) / 0.25, eo(Math.min(1, q * 1.6)), roof);
+      // …and never over the pile it counts
+      const pile = { x0: (sp.x - 1) * TL, x1: (sp.x + 1) * TL, y0: (sp.y - 0.7) * TL, y1: (sp.y + 0.2) * TL };
+      this.label(g, s, 'count', sp.x * TL, (sp.y - 0.95) * TL, lines, q < 0.75 ? 1 : (1 - q) / 0.25, eo(Math.min(1, q * 1.6)), roof ? [roof, pile] : [pile]);
     },
     /* PAID ON IMPACT: each piece of the goods steps the bar's held number as
        it LANDS (DeckUI.pay — js/deckui.js; S.res was credited at the play,
@@ -844,6 +849,16 @@
     },
     // …and the raising: one charge, the building finished at full strength
     masterRaise(b, builderId) { return this.FX.master_builders.raise(b, builderId); },
+    /* A GOODS CARD'S MOMENT AT THE HALL'S DOOR, for a card that lives in
+       another file (Forager's Cache, js/deckfx.js): seated as the goods'
+       own (TX.spot — inside the safe view), its show this file's. The show
+       or null (no hall, or no show to play). */
+    goodsShow(id) {
+      const tc = TX.tc(), d = this.FX[id];
+      if (!tc || !d || !d.show) return null;
+      const side = TX.openSide(tc);
+      return TX.show(id, { tc: tc.id, side, at: TX.spot(tc, side, true) });
+    },
   });
 
   /* ---------------- THE CARDS ---------------- */
@@ -1795,11 +1810,74 @@
     },
   });
 
+  /* ---------------- STONE — Forager's Cache's moment (the card itself is js/deckfx.js's) ---------------- */
+  // the basket and what spills out of it, one world pixel a cell
+  GA.basket = () => rowsArt([
+    '....aaaaaa....', '...a......a...', '..a........a..', '.bbbbbbbbbbbb.', 'bcdcdcdcdcdcdb', 'bdcdcdcdcdcdcb',
+    'bcdcdcdcdcdcdb', '.bdcdcdcdcdcb.', '.bcdcdcdcdcdb.', '..bdcdcdcdcb..', '...bbbbbbbb...'],
+    { a: '#6e5024', b: '#5c421f', c: '#c9a84c', d: '#ab8c38' });
+  GA.berries = () => rowsArt(['.ab.', 'abca', 'bcab', '.bb.'], { a: '#c01f3a', b: '#6a1030', c: '#e8657a' });
+  GA.plums = () => rowsArt(['.ab.', 'abca', 'bcab', '.bb.'], { a: '#7a3a9e', b: '#4a1f66', c: '#b48ad0' });
+  GA.loaf = () => rowsArt(['..aaaa..', '.abccba.', 'abccccba', 'bbbbbbbb', '.bbbbbb.'], { a: '#7a4a20', b: '#a8743a', c: '#d4a060' });
+  GA.fish = () => rowsArt(['..aaaa..b', '.accccaab', 'acdcccccb', '.aaaaaa.b'], { a: '#4a5a66', b: '#6a7a86', c: '#c8d4dc', d: '#14100a' });
+  GA.apple = () => rowsArt(['.c.', 'aba', 'aaa'], { a: '#c01f3a', b: '#e8657a', c: '#3c6f2d' });
+  if (Deck.FX.forager_cache) Object.assign(Deck.FX.forager_cache, {
+    /* a woven basket comes down the pale light to the hall's door, lands in
+       its dust and tips over: the food spills out round it, piece by piece,
+       each stepping the food count as it lands; then the lot is gone in
+       hard steps */
+    show: {
+      ms: 3400, layer: 'world',
+      T0: 0.12, FALL: 0.32, TIP: 0.56, SPILL: 0.62, STEP: 0.07, HOP: 0.28,
+      // [dx, dy, piece, how high it is thrown]
+      FOOD: [[-12, 1, 'berries', 12], [12, 0, 'loaf', 16], [-5, 3, 'apple', 9], [17, 3, 'fish', 11], [-17, 3, 'plums', 14], [5, 4, 'berries', 8]],
+      pays() { const K = this.show; return K.FOOD.map((_, i) => [K.SPILL + i * K.STEP + K.HOP, 'food', i < K.FOOD.length - 1 ? 40 : 0]); },
+      draw(g, s, p) {
+        TX.settle(s, TX.pays('forager_cache', s));
+        const tc = Bld.get(s.tc); if (!tc) return;
+        const K = this.show, TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL, t = s.t;
+        const land = K.T0 + K.FALL;
+        if (!s.down && t >= land) { s.down = 1; TX.thud(px, py, 0.5, 'cardThud'); }
+        K.FOOD.forEach((f, i) => { if (t >= K.SPILL + i * K.STEP + K.HOP && !(s.plop || (s.plop = {}))[i]) { s.plop[i] = 1; TX.sound('cardPlop'); } });
+        if (!TX.near(px - TL, py - 3 * TL, px + TL, py + TL)) return;
+        TX.shaft(g, px, py, t, TX.STONE_LIGHT, TL * 1.25, K.SPILL + K.FOOD.length * K.STEP + K.HOP);
+        const dis = cl((p - 0.86) / 0.14);
+        if (t >= land && dis < 0.5) { g.fillStyle = 'rgba(20,14,8,0.32)'; g.fillRect(sn(px - 10), sn(py - 1), 20, PX); }
+        const bk = GA.get('basket');
+        TX.inked(g, px - 40, py - TL * 3.4, 80, TL * 3.4 + 6, gg => {
+          // the basket: falling, landing with a squash, then tipped onto its side toward the food
+          let by = py, tip = 0;
+          if (t < K.T0) return;
+          if (t < land) { const q = (t - K.T0) / K.FALL; by = py - TL * 3 * (1 - q * q); }
+          else if (t < land + 0.08) by = py + 1;
+          if (t >= K.TIP) tip = Math.min(1, (t - K.TIP) / 0.1);
+          gg.save();
+          gg.translate(Math.round(px), Math.round(by));
+          gg.rotate(tip * 0.42);
+          gg.drawImage(bk, -7, -11);
+          gg.restore();
+          // the food thrown out of its mouth, landing round it
+          for (let i = 0; i < K.FOOD.length; i++) {
+            const tl = t - (K.SPILL + i * K.STEP);
+            if (tl < 0) continue;
+            const [dx, dy, key, hgt] = K.FOOD[i], pic = GA.get(key), q = Math.min(1, tl / K.HOP);
+            const x = px + 4 + (dx - 4) * q, y = py - 6 + (dy + 6) * q - Math.sin(q * Math.PI) * hgt;
+            gg.drawImage(pic, Math.round(x - pic.width / 2), Math.round(y - pic.height));
+          }
+        }, dis);
+        // the dust where the basket lands and where each piece rolls to a stop
+        dust(g, px, py, t - land, 6, AP().soil[3], 30);
+        K.FOOD.forEach(([dx, dy], i) => dust(g, px + dx, py + dy, t - (K.SPILL + i * K.STEP + K.HOP), 2, AP().soil[3], 16));
+        TX.count(g, s, sp, [{ t: '+250 food' }], K.SPILL + K.FOOD.length * K.STEP + K.HOP + 0.05, 1.8);
+      },
+    },
+  });
+
   /* ---------------- the voices (js/audio.js: synthesized, never a file) ---------------- */
   if (typeof Sound !== 'undefined' && Sound._VOICES && Sound.GAP) {
     Object.assign(Sound.GAP, {
       cardWood: 0.4, cardStone: 0.4, cardGold: 0.4, cardCaravan: 0.8, cardMend: 0.4, cardBuild: 0.25,
-      cardThud: 0.06, cardThunk: 0.08, cardCoin: 0.05,
+      cardThud: 0.06, cardThunk: 0.08, cardCoin: 0.05, cardBasket: 0.6, cardPlop: 0.05,
       cardFire: 0.4, cardSkin: 0.6, cardGlance: 0.6, cardRise: 0.6, cardHall: 1.6, cardWard: 0.9,
     });
     Object.assign(Sound._VOICES, {
@@ -1829,6 +1907,19 @@
         this._noise({ at: t, hz: 220, to: 60, dur: 0.24, q: 0.8, gain: 0.26 * v, filter: 'lowpass' });
         this._note({ at: t, hz: 82, to: 42, dur: 0.22, type: 'sine', gain: 0.18 * v });
         this._noise({ at: t, delay: 0.02, hz: 1600, to: 700, dur: 0.07, q: 2, gain: 0.05 * v });
+      },
+      /* Forager's Cache: the pale light coming down, the wicker's creak as the
+         basket lands (0.44 s, its own beat — TX.thud knocks it too) and a
+         little woodland tune over the spill */
+      cardBasket(t, v) {
+        this._noise({ at: t, hz: 900, to: 2600, dur: 0.35, q: 0.6, gain: 0.06 * v, atk: 0.08, filter: 'highpass' });
+        for (let i = 0; i < 3; i++) this._noise({ at: t, delay: 0.46 + i * 0.05, hz: 1800 - i * 300, to: 900, dur: 0.05, q: 3, gain: 0.05 * v });
+        [523, 659, 784, 1047].forEach((hz, i) => this._note({ at: t, delay: 0.62 + i * 0.09, hz, dur: 0.3, type: 'triangle', gain: 0.05 * v, lp: 2400 }));
+      },
+      // a piece of food dropping onto the grass
+      cardPlop(t, v) {
+        this._note({ at: t, hz: 420, to: 260, dur: 0.07, type: 'sine', gain: 0.08 * v });
+        this._noise({ at: t, hz: 900, to: 400, dur: 0.05, q: 1.2, gain: 0.04 * v });
       },
       // a coin's clink
       cardCoin(t, v) {

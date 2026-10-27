@@ -178,6 +178,50 @@ await p.evaluate(() => {
     `+${r.food} food, ${r.used} card spent, fly ${JSON.stringify(r.fly)} at '${r.at}'`);
   ck('andTheCacheDrawsNoRng', r.rng);
 }
+/* …AND IT HAS A MOMENT AT THE HALL'S DOOR (the playtest: the one starter
+   card with no moment in the world and no voice of its own, while its three
+   Stone siblings each drop goods at the door). A woven basket comes down,
+   lands in its dust and spills its food — each piece a step of the food
+   count (its pays) adding to the 250 — in the card's own voice; and every
+   beat of it draws, laying a picture worth the name. */
+{
+  const r = await p.evaluate(() => {
+    __fx.fresh('fx-cache-moment');
+    Screens.show('playing'); S.paused = true;
+    R.cardShows = []; R.placePoofs = [];
+    const tc = Bld.tcOf('P');
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1);
+    const heard = [], sp0 = Sound.play;
+    Sound.play = function (k) { heard.push(k); return sp0.apply(this, arguments); };
+    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect, di = P2.drawImage;
+    let marks = 0, peak = 0, threw = null;
+    try {
+      const out = Deck.play('forager_cache');
+      const sh = R.cardShows.find(s => s.id === 'forager_cache');
+      const d = Deck.FX.forager_cache;
+      const pays = sh && d.show && d.show.pays ? d.show.pays.call(d, sh) : [];
+      const sum = pays.reduce((a, e) => a + (e[2] || 0), 0);
+      P2.fillRect = function () { marks++; return fr.apply(this, arguments); };
+      P2.drawImage = function () { marks++; return di.apply(this, arguments); };
+      const g = R.cv.getContext('2d');
+      if (sh) for (let k = 1; k <= 30; k++) {
+        sh.t = k / 30 * sh.ms / 1000 * 0.97; marks = 0;
+        if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+        g.save();
+        try { R.drawCardShows(g, 0, 'world'); } catch (e) { threw = String(e); }
+        g.restore();
+        peak = Math.max(peak, marks);
+      }
+      return { show: !!sh && sh.tc === tc.id && !!sh.at, pay: !!(out.pay && out.pay.ms > 0), pieces: pays.length,
+        rest: pays.length > 0 && !pays[pays.length - 1][2] && sum < 250, voice: heard.includes('cardBasket') && typeof Sound._VOICES.cardBasket === 'function',
+        poofs: R.placePoofs.length, peak, threw };
+    } finally { P2.fillRect = fr; P2.drawImage = di; Sound.play = sp0; R.cardShows = []; }
+  });
+  ck('aForagersCacheIsSetDownAtTheHallsDoor', r.show && r.pay && r.pieces >= 4 && r.rest,
+    `a show at the door ${r.show}, the bar held for its pieces ${r.pay}, ${r.pieces} pieces (the last the rest ${r.rest})`);
+  ck('inItsOwnVoiceAndItsOwnDust', r.voice && r.poofs >= 1, `the basket's voice ${r.voice}, ${r.poofs} puffs of dust`);
+  ck('andEveryBeatOfItDraws', !r.threw && r.peak >= 40, r.threw || `${r.peak} marks at its height`);
+}
 
 // ---------------- 2. HARVEST FESTIVAL ----------------
 {
