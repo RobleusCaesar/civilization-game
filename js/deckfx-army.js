@@ -676,7 +676,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
   /* the army cards share ONE apply: summon the list, stamp what the card
      stamps, start the show, sound the voice, say it plainly in the log */
   const summonCard = (id, list, o) => {
-    const r = Deck.summon(list, { stagger: o.stagger, hold: o.hold, together: o.together, flash: o.flash, dust: o.dust, stamp: o.stamp });
+    const r = Deck.summon(list, { stagger: o.stagger, hold: o.hold, together: o.together, flash: o.flash, dust: o.dust, stamp: o.stamp, tone: o.tone });
     if (!r.ok) return r;
     if (o.after) o.after(r);
     for (const k of o.voices || []) sound(k);
@@ -701,7 +701,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       can() { return Deck.summonCan(this.KIND); },
       apply() {
         return summonCard('willing_hands', [{ kind: this.KIND, n: this.N }], {
-          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHands'],
+          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHands'], tone: 'pale',   // the Stone tier's pale light
           log: () => '👥 Three strangers walk up to your Town Center, asking for a roof and a job. They are yours now.',
         });
       },
@@ -711,9 +711,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         ms: 1800, layer: 'world',
         draw(g, s, p) {
           const TL = CFG.TILE;
-          // the hearth's own light: bronze ink (added, it was lime) — and no
-          // pool on the doorstep (a warm patch on the meadow reads as sand)
-          muster(g, s, p, 'bronze', 1, true);
+          // the Stone tier's pale light, the hearth's warmth in the motes —
+          // in ink (added, it was lime), and no pool on the doorstep (a warm
+          // patch on the meadow reads as sand)
+          muster(g, s, p, 'pale', 1, true);
           A.motes(g, s.mx * TL, s.my * TL, 6, s.t, 3, 'bronze', 1 - p, 10, TL * 1.2);
         },
       },
@@ -734,7 +735,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       apply() {
         const k = this.kind();
         return summonCard('war_band', [{ kind: k, n: this.N }], {
-          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardWarHorn'], horn: true,
+          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardWarHorn'], horn: true, tone: 'bronze',   // the Bronze tier's light
           log: () => '⚔️ The war band: five ' + PLURAL[k] + ' march out of your Town Center.',
           msg: () => 'War Band: five ' + PLURAL[k] + ' march out of your Town Center.',
         });
@@ -766,7 +767,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       apply() {
         const P = Deck.PACK;
         return summonCard('hunters_pack', [{ kind: this.KIND, n: this.N }], {
-          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHowl'], startle: 12, dust: false,
+          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHowl'], startle: 12, dust: false, tone: 'bronze',
           stamp(u) { u.warWolf = true; u.hp = u.maxhp = P.hp; u.atk = P.atk; u.speed = P.speed; },
           after: r => Deck.FX.hunters_pack.dens(r),
           log: () => '🐺 Three war-wolves join you at your Town Center. They keep the ground round the hall.',

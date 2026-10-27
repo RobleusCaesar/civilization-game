@@ -10552,10 +10552,12 @@ const R = {
   /* `delay` (ms) staggers a muster's flashes one after another, and `id`
      names the unit the flash brings: until its beat comes that unit is not
      drawn at all (_unborn), so it steps out of its own light rather than
-     standing beside it waiting (js/deckfx.js Deck.summon) */
-  startSummon(x, y, delay, id) {
+     standing beside it waiting (js/deckfx.js Deck.summon). `tone` is the
+     tier's light (R.LIGHT.TONE — the Stone tier's pale, the Bronze tier's
+     bronze; gold unless named), so the shafts escalate with the card */
+  startSummon(x, y, delay, id, tone) {
     if (this.summons.length > 32) this.summons.shift();
-    this.summons.push({ x, y, t: -(delay || 0) / 1000, id: id || 0 });
+    this.summons.push({ x, y, t: -(delay || 0) / 1000, id: id || 0, tone: tone || 'gold' });
     // hidden from the very next frame (drawSummons rebuilds the set after the unit pass)
     if (delay > 0 && id) (this._unborn || (this._unborn = new Set())).add(id);
   },
@@ -10720,14 +10722,14 @@ const R = {
       const h = TL * 2.1 * Math.min(1, p * 6), k = p < 0.4 ? 1 : 1 - (p - 0.4) / 0.6;
       for (const [wf, sv] of [[0.7, 0.6], [0.38, 0.85]]) {
         const w = Math.max(px, snap(TL * wf * k));
-        this.glow(g, sv * a, () => g.fillRect(snap(cx - w / 2), snap(cy - h), w, snap(h)));
+        this.glow(g, sv * a, () => g.fillRect(snap(cx - w / 2), snap(cy - h), w, snap(h)), s.tone);
       }
-      this.glowHot(g, 0.9 * a, () => g.fillRect(snap(cx - px / 2), snap(cy - h), px, snap(h)));
+      this.glowHot(g, 0.9 * a, () => g.fillRect(snap(cx - px / 2), snap(cy - h), px, snap(h)), s.tone);
       // two rings of dots rolling out along the ground plane, fading down the ramp
       for (const [d0, r0] of [[0, 1.25], [0.16, 0.8]]) {
         const q = (p - d0) / (1 - d0);
         if (q <= 0) continue;
-        const ink = this.goldInk(1.4 * (1 - q));
+        const ink = this.goldInk(1.4 * (1 - q), s.tone);
         if (!ink) continue;
         const rad = TL * (0.2 + r0 * Math.pow(q, 0.55));
         g.fillStyle = ink;
