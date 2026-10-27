@@ -103,6 +103,22 @@ const DeckScreens = {
       row.classList.add('clFour');
     }
     this._paintCounts();
+    this._preload();
+  },
+  /* the reward screen's pictures are fetched while the player is still on
+     the title, in idle time — a few hundred KB — so a run's end never waits
+     on the network for its valley (a late one still fades in over the
+     painting; this only makes that rare) */
+  _preload() {
+    if (this._preloaded) return;
+    this._preloaded = true;
+    const go = () => {
+      const vp = this._vp(), o = vp.w / vp.h < 0.9 ? '-tall' : '-wide', none = () => {};
+      this._want('win' + o, this.ART_EXT.bg, none);
+      this._want('loss' + o, this.ART_EXT.bg, none);
+      this._want('pedestal', this.ART_EXT.pedestal, none);
+    };
+    if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 8000 }); else setTimeout(go, 3000);
   },
 
   /* ================= THE END SCREEN ================= */
@@ -214,9 +230,9 @@ const DeckScreens = {
   _cardW() {
     const { w, h } = this._vp();
     // the column's fixed rows (eyebrow, banner, the gap under it, the edges)
-    // take 152px; the rest is the card and the altar below its foot
+    // take 146px; the rest is the card and the altar below its foot
     const P = this.PLINTH, per = Deck.H + P.h - P.ty;
-    if (w >= 900 && w / h >= 1.25) return Deck.fit(Math.min(352, (h - 152) / per * Deck.W)).w;
+    if (w >= 900 && w / h >= 1.25) return Deck.fit(Math.min(352, (h - 146) / per * Deck.W)).w;
     const f = Deck.fit(h >= 720 ? 176 : 132);
     return f.w >= 110 ? f.w : Deck.fit(176).w;
   },
@@ -657,8 +673,16 @@ const DeckScreens = {
     if (!e) {
       e = this._art[name] = { ok: null, img: null, cbs: [], url: '' };
       const v = (typeof CFG !== 'undefined' && CFG.ART_V) ? '?v=' + CFG.ART_V : '';
+      let tries = 0;
       const next = i => {
-        if (i >= exts.length) { e.ok = false; e.cbs = []; return; }
+        if (i >= exts.length) {
+          /* a failure can be the network's, not the file's (a boot still
+             probing a thousand pictures can refuse a request outright): the
+             names are asked once more a moment later before the painting is
+             kept for the session */
+          if (++tries < 2) { setTimeout(() => next(0), 1500); return; }
+          e.ok = false; e.cbs = []; return;
+        }
         const im = new Image();
         im.decoding = 'async';
         im.onload = () => {
@@ -856,7 +880,7 @@ const DeckScreens = {
      phone the card's plate stands in front of the altar's lowest `foot`
      rows, the way a name plaque is set against a plinth's base — the height
      a taller altar would otherwise cost the screen. */
-  PLINTH: { w: 240, h: 102, ty: 24, foot: 18 },
+  PLINTH: { w: 240, h: 102, ty: 26, foot: 22 },
   /* THE DRUM, the procedural fallback: a round drum of dressed stone, mossy
      on a win and cold on a loss, with a slit across its top the card rises
      out of. 232 x 70 art pixels, its top surface centred 18 pixels down. */
@@ -1431,7 +1455,7 @@ DeckScreens.CSS = `
 #cardEnd .cePips i { width: 10px; height: 10px; background: rgba(140,156,178,0.16); box-shadow: inset 0 0 0 2px rgba(140,156,178,0.45); }
 #cardEnd .cePips i.on { background: #e8c15a; box-shadow: inset 0 -2px 0 #9a6e1c, inset 0 2px 0 #fff0b0; }
 
-#cardEnd .ceInfo { width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; gap: 7px;
+#cardEnd .ceInfo { width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; gap: 6px;
   position: relative; z-index: 1; }
 #cardEnd .cePlate { position: relative; margin-top: calc(-4px - var(--u) * var(--pfoot)); min-width: min(300px, 94%); padding: 8px 22px 9px; text-align: center;
   clip-path: var(--chamfer); background: linear-gradient(#2e2216, #1c140b);
@@ -1503,13 +1527,15 @@ DeckScreens.CSS = `
 #cardEnd .ceBtn:active { transform: translateY(2px); filter: brightness(0.88); }
 #cardEnd .ceDia { width: 7px; height: 7px; background: currentColor; opacity: 0.75; transform: rotate(45deg); }
 
+/* a tall phone or a tablet has height to spare: the card stands further off the banner */
+@media (min-height: 900px) { #cardEnd { --gap: 24px; } }
 /* a wide window: banner across the top, the card on the left, the run on the right */
 @media (min-width: 900px) and (min-aspect-ratio: 5/4) {
   #cardEnd { --gap: 30px; }
   #cardEnd .ceMain { flex-direction: row; justify-content: center; align-items: center; gap: 64px; }
   #cardEnd .ceInfo { width: 360px; flex: 0 0 auto; }
   #cardEnd .cePlate { margin-top: 0; }
-  #cardEnd .ceEye { font-size: 15px; width: min(420px, calc(100% - 120px)); height: 36px; }
+  #cardEnd .ceEye { font-size: 15px; width: min(420px, calc(100% - 120px)); height: 30px; }
   #cardEnd .ceRib { height: 64px; min-width: 330px; }
   #cardEnd .ceRib b { font-size: 40px; }
   #cardEnd .ceTail { top: 22px; height: 48px; }
