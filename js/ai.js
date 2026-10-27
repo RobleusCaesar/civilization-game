@@ -1741,10 +1741,11 @@ const AI = {
     };
     for (const b of Bld.list('A')) {
       if (b.key === 'wall' || b.key === 'gate') continue;
-      mark(Bld.cx(b) | 0, Bld.cy(b) | 0, Bld.done(b) ? G.sightIn(Bld.lv(b).vision || 4, b) : 2);
+      mark(Bld.cx(b) | 0, Bld.cy(b) | 0, Bld.done(b) ? G.sightIn(Bld.lv(b).vision || 4, b, 'A') : 2);
     }
-    // the swallowed sun blinds both tribes alike (G.sightIn)
-    for (const u of S.units) if (u.owner === 'A') mark(u.x | 0, u.y | 0, G.sightIn(CFG.UNITS[u.kind].vision || CFG.UNIT_VISION));
+    // the swallowed sun blinds both tribes alike (G.sightIn) — and a card's
+    // sun (js/deckfx-rival.js) blinds this tribe alone, hence the owner
+    for (const u of S.units) if (u.owner === 'A') mark(u.x | 0, u.y | 0, G.sightIn(CFG.UNITS[u.kind].vision || CFG.UNIT_VISION, null, 'A'));
     // remember player buildings we can currently see; forget razed ones we can see are gone
     const kb = S.ai.knownB, liveTL = new Set();
     for (const b of S.buildings) {
@@ -1836,6 +1837,8 @@ const AI = {
      The site is never a secret (Bld.place reveals it to both sides the day the
      ground is broken), so this is fog-honest by construction — the chief is
      not reading hidden state, it is reacting to something it was shown. */
+  // the card's swallowed sun is over this tribe: no war band musters (AI.daily)
+  sunHush() { return !!(window.Deck && Deck.sunOver && Deck.sunOver('A')); },
   wonderWatch() {
     const ai = S.ai; if (!ai) return false;
     const al = ai.wonderAlarm; if (!al) return false;
@@ -4776,7 +4779,7 @@ const AI = {
     // AN ANCIENT WONDER GOING UP OUTRANKS THE WHOLE PLAN (tests/wonder.mjs) —
     // run before the day's spending, so the alarm cannot be crowded out by a
     // macro-action budget that has already been used on huts.
-    this.wonderWatch();
+    if (!this.sunHush()) this.wonderWatch();   // …no war band musters under a card's swallowed sun (sunHush)
     // maybeWonder moved BELOW the acts refill (tests/calm-peace.mjs): laying
     // the site spends a macro action (Bld.place → aiAct), and here it was
     // asking with YESTERDAY'S leftover budget — usually zero, so the day-350
@@ -5408,7 +5411,13 @@ const AI = {
        hall, ahead of the campaign and the raid cadence both, and it is re-issued
        every day so the ordinary break-off timers can't call the host home
        halfway through. This is what turns a twenty-day chip-down into an end. */
-    const storming = this.foeSpent() && this.stormTheHall(read.knownTC) > 0;
+    /* NO WAR BAND MUSTERS UNDER A SWALLOWED SUN (the card, js/deckfx-rival.js):
+       while the dark is over this tribe every road to a fight stays shut —
+       the storm, the campaign and its second front, the ordinary raid, the
+       purge, the hunt and the harass sorties. A party already in the field
+       is not called home; it stands and stares with everyone else. */
+    const hushed = this.sunHush();
+    const storming = !hushed && this.foeSpent() && this.stormTheHall(read.knownTC) > 0;
     if (storming) {
       if (!ai.finishLogged) {
         ai.finishLogged = true;
@@ -5418,9 +5427,9 @@ const AI = {
     // `storming` short-circuits the campaign (nothing left to plan around) and,
     // as an owner of the attack, stands the ordinary raid block down — but the
     // rest of the day still runs, so nothing else the chief does is skipped.
-    const campOwns = storming || this.campaignLaunch(read, m);
+    const campOwns = storming || hushed || this.campaignLaunch(read, m);
     // …and while that plan grinds at the ditch, the reserve can go by sea
-    this.secondFront(read);
+    if (!hushed) this.secondFront(read);
     /* ---- COASTAL WATCH. A player sail has been seen (read.navalThreat, the
        GUN_MEMORY-remembered fog-honest sighting): idle fighting hulls take
        the Defend stance and hold the water off the dock — the same
@@ -5565,12 +5574,12 @@ const AI = {
     // bands while the player is quiet takes the war to the camps instead of
     // feeding hands to them piecemeal (tests/raider-camps.mjs). A launched
     // purge occupies the raid roster, so the hunt below waits its turn.
-    this.maybePurge(read);
+    if (!hushed) this.maybePurge(read);
     // NOT gated on being unthreatened any more: a strong tribe that has never
     // found its enemy must go and look precisely BECAUSE someone is hitting it
     // — but never at PEACE (tests/calm-peace.mjs): a column with no war to
     // hunt for walked into the player's fields on Calm and started one
-    if (!S.peace && !read.anchor && ai.raidCd <= 0 && !raiders.length &&
+    if (!hushed && !S.peace && !read.anchor && ai.raidCd <= 0 && !raiders.length &&
         S.day >= Math.max(20, (m.aiRaidDay || 40) - 8)) {
       const host = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
         !Units.isNaval(u) && u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
@@ -5622,7 +5631,7 @@ const AI = {
     // aiHarassLead: how many days BEFORE the raid floor the riders start (16
     // by default; Moderate's is 0 — the sorties bled a new town's gatherers
     // from 11 hands to 3 before its first raid had even arrived)
-    if (m.aiHarass && !S.peace && read.anchor && ai.harassCd <= 0 && !read.underThreat &&
+    if (!hushed && m.aiHarass && !S.peace && read.anchor && ai.harassCd <= 0 && !read.underThreat &&
         ai.posture !== 'DEFEND' && ai.posture !== 'REBUILD' &&
         S.day >= Math.max(16, (m.aiRaidDay || 40) - (m.aiHarassLead != null ? m.aiHarassLead : 16))) {
       const targets = (read.exposed || []);

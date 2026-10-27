@@ -33,7 +33,10 @@ const Score = {
     add('🌾', `Resources gathered — ${Math.round(st.gathered || 0)}`, (st.gathered || 0) * C.perGathered);
     {
       let seen = 0;
-      for (let i = 0; i < S.map.explored.length; i++) if (S.map.explored[i]) seen++;
+      // ground a CARD put on the map is not ground the tribe explored
+      // (ruling 6; the card-lit mask, js/deckfx-rival.js) — null with none
+      const lit = window.Deck && Deck.litMask ? Deck.litMask() : null;
+      for (let i = 0; i < S.map.explored.length; i++) if (S.map.explored[i] && !(lit && lit[i])) seen++;
       const pct = Math.round(100 * seen / S.map.explored.length);
       add('🗺', `Map explored — ${pct}%`, pct * C.perExploredPct);
     }

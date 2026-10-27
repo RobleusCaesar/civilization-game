@@ -740,7 +740,10 @@ const Bld = {
     for (const b of S.buildings) {
       if (b.key !== 'tc' || b.owner === owner) continue;
       if (owner === 'A') { if (!AI.knownPlayerTC()) continue; }
-      else if (!S.map.explored || !S.map.explored[MapGen.idx(b.x, b.y)]) continue;
+      // the player knows the hall: explored (the old read, exactly, with no card
+      // ever played) — but a card's map is not the player's own eyes
+      // (Deck.eyesKnow, js/deckfx-rival.js: Pathfinder's Map charts every tile)
+      else if (window.Deck && Deck.eyesKnow ? !Deck.eyesKnow(b) : (!S.map.explored || !S.map.explored[MapGen.idx(b.x, b.y)])) continue;
       if (Math.hypot(x - this.cx(b), y - this.cy(b)) <= this.HOME_GROUND_R) return true;
     }
     return false;

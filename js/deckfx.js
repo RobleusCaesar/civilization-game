@@ -184,6 +184,8 @@ Object.assign(Deck, {
     for (const u of S.units) {
       if (u.owner !== 'A' || Math.hypot(u.x - tgt.x, u.y - tgt.y) > ur) continue;
       if (G.visibleAt(Math.floor(u.x), Math.floor(u.y))) return true;
+      // …or one the player sees through a SPY in their hall (js/deckfx-rival.js)
+      if (this.spySees && this.spySees(u)) return true;
     }
     const seen = S.map && S.map.seenB, W = CFG.W;
     if (seen) for (const k in seen) {
@@ -196,10 +198,11 @@ Object.assign(Deck, {
   },
   truceWarn(tgt, ur, br) { return S.peace && tgt && this.reachesRival(tgt, ur, br) ? this.TRUCE : null; },
   truce(tgt, ur, br) { if (S.peace && this.reachesRival(tgt, ur, br)) G.breakPeace(); },
-  // an aimed strike lands on the board, on ground the player has seen
+  // an aimed strike lands on the board, on ground the player has seen — with
+  // their own people's eyes, never a card's map (Deck.eyesAt, js/deckfx-rival.js)
   ground(x, y) {
     const tx = Math.floor(x), ty = Math.floor(y);
-    return MapGen.onBoard(tx, ty) && !!S.map.explored[MapGen.idx(tx, ty)];
+    return MapGen.onBoard(tx, ty) && (this.eyesAt ? this.eyesAt(tx, ty) : !!S.map.explored[MapGen.idx(tx, ty)]);
   },
   /* What a card did goes in the event log, never in a toast: the play
      animation IS the announcement (js/deckui.js), and a toast over it would

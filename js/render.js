@@ -10365,6 +10365,31 @@ const R = {
                       the unit's id, culled to the camera; nothing is kept
                       between frames and nothing is ever filtered (ctx.filter
                       costs hundreds of ms and iOS ignores it). */
+  /* THE KRAKEN, drawn: ONE function for the world's own kraken (S.kraken.ev,
+     the special event) and a card's (Kraken's Call, js/deckfx-rival.js), so
+     the beast's look can be redrawn in one place. `ev` is { x, y, phase:
+     'rise' | 'thrash' | 'sink', t } in tiles and seconds; the caller decides
+     whether the spot is in sight. */
+  drawKraken(g, ev) {
+    const TL = CFG.TILE;
+    const k = ev.phase === 'rise' ? Math.min(1, ev.t / 1.0)
+      : ev.phase === 'sink' ? Math.max(0, 1 - ev.t / 1.2) : 1;
+    const fr = Sprites.misc.kraken[((ev.t * 5) | 0) % 4];
+    const size = TL * 3;                                   // 96px native — pixel-perfect at zoom 1
+    g.globalAlpha = k;
+    g.drawImage(fr, ev.x * TL - size / 2, ev.y * TL - size / 2 - k * 6, size, size);
+    g.globalAlpha = 1;
+    g.strokeStyle = 'rgba(235,244,248,' + (0.4 * k).toFixed(2) + ')';
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.ellipse(ev.x * TL, ev.y * TL + 12, 24 + Math.sin(ev.t * 5) * 5, 9, 0, 0, Math.PI * 2);
+    g.stroke();
+    g.beginPath();                                          // a second, wider churn ring
+    g.globalAlpha = 0.5 * k;
+    g.ellipse(ev.x * TL, ev.y * TL + 12, 34 + Math.sin(ev.t * 4 + 1.5) * 6, 12, 0, 0, Math.PI * 2);
+    g.stroke();
+    g.globalAlpha = 1;
+  },
   SUMMON: { ms: 640, dots: 18 },
   summons: [],
   startSummon(x, y) {
@@ -10386,6 +10411,13 @@ const R = {
         try { d.drawLive(g, e, dt); } catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card look', e.id, err); } }
         g.restore();
       }
+    }
+    // …and what a card left on the world that is no timer: a kraken mid-act,
+    // the lost relic marked on the map (js/deckfx-rival.js)
+    if (S.deck && (S.deck.kraken || S.deck.relicMark) && window.Deck && Deck.drawRivalWorld) {
+      g.save();
+      try { Deck.drawRivalWorld(g, dt); } catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card world', err); } }
+      g.restore();
     }
   },
   /* A CARD'S OWN MOMENT (js/deckfx-*.js). The play sequence (js/deckui.js)
@@ -13416,25 +13448,7 @@ const R = {
     // the kraken: a once-a-game terror breaking the surface
     if (S.kraken && S.kraken.ev) {
       const ev = S.kraken.ev;
-      if (G.visibleAt(ev.x | 0, ev.y | 0)) {
-        const k = ev.phase === 'rise' ? Math.min(1, ev.t / 1.0)
-          : ev.phase === 'sink' ? Math.max(0, 1 - ev.t / 1.2) : 1;
-        const fr = Sprites.misc.kraken[((ev.t * 5) | 0) % 4];
-        const size = TL * 3;                                   // 96px native — pixel-perfect at zoom 1
-        g.globalAlpha = k;
-        g.drawImage(fr, ev.x * TL - size / 2, ev.y * TL - size / 2 - k * 6, size, size);
-        g.globalAlpha = 1;
-        g.strokeStyle = 'rgba(235,244,248,' + (0.4 * k).toFixed(2) + ')';
-        g.lineWidth = 1.5;
-        g.beginPath();
-        g.ellipse(ev.x * TL, ev.y * TL + 12, 24 + Math.sin(ev.t * 5) * 5, 9, 0, 0, Math.PI * 2);
-        g.stroke();
-        g.beginPath();                                          // a second, wider churn ring
-        g.globalAlpha = 0.5 * k;
-        g.ellipse(ev.x * TL, ev.y * TL + 12, 34 + Math.sin(ev.t * 4 + 1.5) * 6, 12, 0, 0, Math.PI * 2);
-        g.stroke();
-        g.globalAlpha = 1;
-      }
+      if (G.visibleAt(ev.x | 0, ev.y | 0)) this.drawKraken(g, ev);
     }
 
     // hearth smoke drifting from settled buildings, embers over camp fires —
@@ -14042,7 +14056,8 @@ const R = {
     this.drawTreeFalls(g, dt);
     this.drawHorns(g, dt);
     // THE CARD SYSTEM's world cues (js/deckfx.js) — nothing while no card is in play
-    if (this.summons.length || this.cardShows.length || (S.deck && S.deck.fx && S.deck.fx.length)) this.drawCardWorld(g, dt);
+    if (this.summons.length || this.cardShows.length ||
+        (S.deck && ((S.deck.fx && S.deck.fx.length) || S.deck.kraken || S.deck.relicMark))) this.drawCardWorld(g, dt);
     this.drawCollapses(g, dt);
     this.drawDeaths(g, dt);     // …and villagers keeling over where they stood
 
@@ -14159,6 +14174,9 @@ const R = {
     }
     // a DISCOVERED wilderness relic is a landmark worth finding again
     if (window.Relics) Relics.drawMini(g);
+    // …and what a card put on the map: a relic marked, the rival's people seen
+    // through a spy in their hall (js/deckfx-rival.js) — nothing with none
+    if (window.Deck && Deck.drawMini && S.deck) Deck.drawMini(g);
     // camera rect
     const TL = CFG.TILE;
     g.strokeStyle = '#f0e6d0'; g.lineWidth = 1;
