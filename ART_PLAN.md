@@ -1180,14 +1180,15 @@ The dusk valley took the title glen (`assets/ui/title-bg-wide`) as its
 style reference, never its daylight; it is scaled to cover the panel and
 darkened by a gradient laid over it, drawn smooth, since a soft backdrop
 reads as depth behind sharp cards. The card faces are `Deck.face` (the real
-catalog paintings and frames) and the beasts the shipped
-`assets/fx/dragon-fly` and `kraken-thrash` strips (world art, not chrome).
+catalog paintings and frames) — on the prizes screen too: the Kraken's
+Call and Dragonfire paintings already show their beasts, so nothing is
+drawn over or behind those two cards but their tier's light.
 
 **THE CHROME IS DRAWN, NOT BLOWN UP** (operator ruling: the world's art —
 terrain, buildings, units, the painted backdrops, the card paintings — is
 pixel art; UI chrome is never chunky). The ribbon, the gold corners, the
-laurels, the victory and defeat emblems, the deck and the deck-to-hand
-trail are SVG built in `CardIntro.SVG` and handed to CSS as
+laurels, the victory and defeat emblems, the deck, the tier gems and the
+deck-to-hand trail are SVG built in `CardIntro.SVG` and handed to CSS as
 data URIs, so each is drawn at the device's own resolution at whatever
 size the layout asks for. They replaced five PixelLab PNGs (`corner`,
 `ribbon`, `laurel`, `win`, `fight`, 64–160px) that were drawn up to 4.4×
@@ -1196,7 +1197,8 @@ vectors: burnished gold banded like struck metal (`SVG.gold`, the light
 from the top left) over a dark bed line and under a hair of light — the
 engraver's line; leaves lit along one half and shaded along the other with
 a cut midrib; navy cloth with gentle folds, a crisp gold rim and stitching
-on the ribbon. The lettering (CARDS, the headings, the copy, the ribbon's words)
+on the ribbon; tier gems cut in four facets and a table from the tier's own
+colour. The lettering (CARDS, the headings, the copy, the ribbon's words)
 is the menu face, Cinzel, in CSS — crisp at any size, never a picture of
 words. **The rule is measured** (`theChromeIsDrawnAtTheDevicesResolution`):
 a raster piece of chrome must hold 3 image pixels per CSS pixel, a vector

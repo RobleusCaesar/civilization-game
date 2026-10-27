@@ -36,9 +36,16 @@
                        shows the same screens with nothing animated
      THE COLLECTION    "How cards work" reopens it there, and closing it (or
                        Escape) leaves the collection standing
+     THE LADDER        five identical tier gems on one shared line (a row on a
+                       phone, an evenly spaced column on a wide panel), each
+                       name on one line and its rarity beneath, nothing
+                       colliding, 'Enlightenment' fitted at 320 to 1920px
      THE CHROME        every ornament that is not a card face or the painted
                        backdrop is a vector, or a raster holding 3 image
                        pixels per CSS pixel; nothing is drawn pixelated
+     THE PRIZES        the prizes screen draws no beast of its own — no
+                       picture over or behind the Kraken's Call and
+                       Dragonfire cards but light
 
    Run after touching: js/cardintro.js, the CardIntro hooks in js/screens.js
    (show) and js/deckscreens.js (onTitle, the collection's "How cards work"),
@@ -375,8 +382,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     out.fanTiers = fan.map(f => Deck.card(f.dataset.card).tier);
     out.mid = (root.querySelector('.ciFan .ciSlot.mid .ccard') || {}).dataset;
     out.mid = out.mid && Deck.card(out.mid.card).tier;
-    out.beasts = [...root.querySelectorAll('.ciBeast .ccard')].map(f => f.dataset.card);
-    out.strips = [...root.querySelectorAll('.ciMonster')].map(m => m.style.backgroundImage);
+    out.beasts = [...root.querySelectorAll('.ciPrize .ccard')].map(f => f.dataset.card);
     // THE WORDS, read off the page
     const txt = sel => [...root.querySelectorAll(sel)].map(e => e.textContent.replace(/\s+/g, ' ').trim()).join(' | ');
     out.sub1 = txt('.ciP-hello .ciSub');
@@ -420,8 +426,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
   ck('atWholeDevicePixels', a.blurry.length === 0, a.blurry.join(',') || 'every face a whole multiple');
   ck('theFanIsOneOfEachTierLegendaryCentred', a.fanTiers.slice().sort().join() === ['bronze', 'enlight', 'imperial', 'iron', 'stone'].sort().join() && a.mid === 'enlight',
     `${a.fanTiers.join(',')}, middle ${a.mid}`);
-  ck('thePrizesAreTheDragonAndTheKraken', a.beasts.includes('dragonfire') && a.beasts.includes('krakens_call') &&
-    a.strips.some(s => /dragon-fly\.png/.test(s)) && a.strips.some(s => /kraken-thrash\.png/.test(s)), `${a.beasts.join(',')}; ${a.strips.length} strips`);
+  ck('thePrizesAreTheDragonAndTheKraken', a.beasts.length === 2 && a.beasts.includes('dragonfire') && a.beasts.includes('krakens_call'), a.beasts.join(','));
   ck('theFirstScreenSaysWhatTheOperatorSaid', a.sub1 === 'Win or lose, you’ll earn cards to use in future games.', a.sub1);
   ck('theEarnNumbersAreTheRulesOwn', a.earn.includes(a.C.deeds + ' deeds') && a.earn.includes(a.C.days + ' days') && a.pips === a.C.deeds && a.days === a.C.days,
     `"${a.C.deeds} deeds" ${a.earn.includes(a.C.deeds + ' deeds')}, "${a.C.days} days" ${a.earn.includes(a.C.days + ' days')}, pips ${a.pips}, day marks ${a.days}`);
@@ -583,14 +588,88 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
   await ctx.close();
 }
 
+/* ================= 11. THE LADDER (operator: "the diamonds for the
+   different rarity of card are not level and some of the text is jumbled
+   and not on the same line") =================
+   Five IDENTICAL gems on one shared line: one y for every gem in a phone's
+   row, one x for every gem in a wide panel's column with its rows evenly
+   spaced. Every tier's name on one line, its rarity on one line beneath,
+   nothing running into anything, and the whole ladder inside the panel —
+   'Enlightenment' included, at 320px. */
+{
+  const bad = [], fonts = [];
+  for (const [w, h, dpr] of [[320, 568, 2], [390, 844, 3], [430, 932, 3], [768, 1024, 2], [1440, 900, 1], [1920, 1080, 1]]) {
+    const ctx = await context({ w, h, dpr, reduce: true });
+    const p = await page(ctx, '?cards=all&cardsintro=1');
+    await opened(p, 15000);
+    const r = await p.evaluate(() => {
+      CardIntro.go(3);
+      const root = document.getElementById('cardIntro'), out = { bad: [] };
+      const narrow = out.narrow = root.classList.contains('ciNarrow');
+      const ol = root.querySelector('.ciPage.on .ciTiers');
+      const lis = ol ? [...ol.querySelectorAll('li')] : [];
+      if (lis.length !== 5) { out.bad.push(`${lis.length} rungs`); return out; }
+      const R = e => e.getBoundingClientRect();
+      const gems = lis.map(li => R(li.querySelector('.ciGem'))), names = lis.map(li => li.querySelector('b')), rars = lis.map(li => li.querySelector('small'));
+      const cx = q => q.left + q.width / 2, cy = q => q.top + q.height / 2, spread = a => Math.max(...a) - Math.min(...a), fx = a => a.map(v => v.toFixed(1)).join('/');
+      if (spread(gems.map(q => q.width)) > 0.5 || spread(gems.map(q => q.height)) > 0.5)
+        out.bad.push('gems differ in size ' + fx(gems.map(q => q.width)));
+      if (narrow) {
+        if (spread(gems.map(cy)) > 0.5) out.bad.push('gem centres off one line ' + fx(gems.map(cy)));
+        if (spread(names.map(e => R(e).bottom)) > 0.5) out.bad.push('names off one line ' + fx(names.map(e => R(e).bottom)));
+        if (spread(rars.map(e => R(e).bottom)) > 0.5) out.bad.push('rarities off one line ' + fx(rars.map(e => R(e).bottom)));
+        // each name centred over its own gem: a column, not a staircase
+        lis.forEach((li, i) => { if (Math.abs(cx(R(names[i])) - cx(gems[i])) > 0.75) out.bad.push(`${names[i].textContent} off its gem`); });
+      } else {
+        if (spread(gems.map(cx)) > 0.5) out.bad.push('gem centres off one column ' + fx(gems.map(cx)));
+        const ys = gems.map(cy), steps = ys.slice(1).map((y, i) => y - ys[i]);
+        if (spread(steps) > 0.5) out.bad.push('rows unevenly spaced ' + fx(steps));
+        if (spread(names.map(e => R(e).left)) > 0.5) out.bad.push('names not in one column ' + fx(names.map(e => R(e).left)));
+        lis.forEach((li, i) => { if (Math.abs(cy(R(names[i])) / 2 + cy(R(rars[i])) / 2 - cy(gems[i])) > 3) out.bad.push(`${names[i].textContent} off its gem`); });
+      }
+      // one line each, the rarity beneath its name, nothing on anything else
+      const boxes = [];
+      lis.forEach((li, i) => {
+        for (const e of [names[i], rars[i]]) {
+          const cs = getComputedStyle(e), lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.3;
+          if (e.getClientRects().length !== 1 || R(e).height > lh * 1.5) out.bad.push(`"${e.textContent}" wraps`);
+          boxes.push({ t: e.textContent, q: R(e) });
+        }
+        boxes.push({ t: names[i].textContent + "'s gem", q: gems[i] });
+        if (R(rars[i]).top < R(names[i]).bottom - 1) out.bad.push(`"${rars[i].textContent}" not beneath "${names[i].textContent}"`);
+      });
+      for (let a = 0; a < boxes.length; a++) for (let c = a + 1; c < boxes.length; c++) {
+        const A = boxes[a].q, B = boxes[c].q;
+        const ix = Math.min(A.right, B.right) - Math.max(A.left, B.left), iy = Math.min(A.bottom, B.bottom) - Math.max(A.top, B.top);
+        if (ix > 0.5 && iy > 0.5) out.bad.push(`"${boxes[a].t}" runs into "${boxes[c].t}"`);
+      }
+      // inside the panel, and the row itself never overflows its room
+      const panel = R(root.querySelector('.ciPanel'));
+      for (const x of boxes) if (x.q.left < panel.left + 4 || x.q.right > panel.right - 4) out.bad.push(`"${x.t}" past the panel`);
+      if (ol.scrollWidth > ol.clientWidth + 0.5) out.bad.push(`the ladder overflows (${ol.scrollWidth} > ${ol.clientWidth})`);
+      // and the two prizes' captions stand whole beside each other (at 320 they used to be cut by the panel)
+      const caps = [...root.querySelectorAll('.ciPage.on .ciPrize figcaption b')].map(e => ({ t: e.textContent, q: R(e) }));
+      for (const c of caps) if (c.q.left < panel.left + 4 || c.q.right > panel.right - 4) out.bad.push(`"${c.t}" past the panel`);
+      if (caps.length === 2 && Math.min(caps[0].q.right, caps[1].q.right) - Math.max(caps[0].q.left, caps[1].q.left) > 0.5 &&
+        Math.min(caps[0].q.bottom, caps[1].q.bottom) - Math.max(caps[0].q.top, caps[1].q.top) > 0.5) out.bad.push('the prizes\' captions run into each other');
+      out.font = parseFloat(getComputedStyle(names[names.length - 1]).fontSize);
+      return out;
+    });
+    for (const x of r.bad) bad.push(`${w}x${h}: ${x}`);
+    if (!(r.font >= 8)) bad.push(`${w}x${h}: the names set at ${r.font}px`);
+    fonts.push(`${w}:${r.font}px`);
+    await ctx.close();
+  }
+  ck('theTierGemsAreLevelAndTheWordsInLine', bad.length === 0, bad.slice(0, 6).join(' | ') || 'six windows, one line each; names ' + fonts.join(' '));
+}
+
 /* ================= 12. THE CHROME IS DRAWN AT THE DEVICE'S RESOLUTION
    (operator ruling: the world's art stays pixel art, but UI chrome —
    ribbons, frames, corner ornaments, laurels, icons, buttons, arrows,
    dividers, badges — is never chunky, never a small pixel-art PNG blown
    up) =================
-   Every picture the announcement draws that is not a card face (Deck.face),
-   the painted backdrop (.ciDusk) or a beast's own strip (.ciMonster, world
-   art) is chrome. A raster piece of chrome
+   Every picture the announcement draws that is not a card face (Deck.face)
+   or the painted backdrop (.ciDusk) is chrome. A raster piece of chrome
    must hold at least 3 image pixels per CSS pixel (sharp on a 3x phone);
    a vector passes; and nothing of it is drawn pixelated or crisp-edged. */
 {
@@ -613,7 +692,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
       for (let pg = 0; pg < 4; pg++) {
         CardIntro.go(pg);
         for (const el of [root, ...root.querySelectorAll('*')]) {
-          if (el.closest('.ccard') || el.closest('.ciDusk') || el.closest('.ciMonster') || !el.getClientRects().length) continue;
+          if (el.closest('.ccard') || el.closest('.ciDusk') || !el.getClientRects().length) continue;
           const name = (el.getAttribute('class') || el.tagName).toString().split(' ')[0];
           const box = el.getBoundingClientRect();
           const own = getComputedStyle(el);
@@ -646,6 +725,40 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     await ctx.close();
   }
   ck('theChromeIsDrawnAtTheDevicesResolution', bad.length === 0, [...new Set(bad)].slice(0, 6).join(' | ') || 'every ornament a vector or 3x its CSS size; nothing pixelated');
+}
+
+/* ================= 13. THE PRIZES WEAR NO BEAST (operator: "you placed
+   the kraken and dragon cards but also the kraken behind the card and a
+   second dragon on top of the card") =================
+   The Kraken's Call and Dragonfire paintings already show the beast. The
+   prizes screen draws no picture of its own — no strip, no image, nothing
+   behind or over a card but light — and the two cards stand whole. */
+{
+  const ctx = await context({ w: 1440, h: 900, dpr: 1, reduce: true });
+  const p = await page(ctx, '?cards=all&cardsintro=1');
+  await opened(p, 15000);
+  const a = await p.evaluate(() => {
+    CardIntro.go(3);
+    const URL_RE = /url\(\s*"((?:[^"\\]|\\.)*)"\s*\)|url\(\s*([^"\s)][^)]*)\)/g;
+    const pg = document.querySelector('#cardIntro .ciPage.on'), out = { pics: [], faces: [] };
+    for (const el of [pg, ...pg.querySelectorAll('*')]) {
+      if (el.closest('.ccard')) continue;
+      if (/^(IMG|CANVAS|VIDEO)$/.test(el.tagName)) out.pics.push(el.tagName);
+      for (const pseudo of [null, '::before', '::after']) {
+        const cs = getComputedStyle(el, pseudo);
+        for (const m of String(cs.backgroundImage + ' ' + cs.maskImage).matchAll(URL_RE)) {
+          const u = m[1] != null ? m[1] : m[2];
+          if (!/^data:image\/svg\+xml/i.test(u)) out.pics.push(((el.getAttribute('class') || el.tagName) + (pseudo || '')) + ' ' + u.split('/').pop().split('?')[0]);
+        }
+      }
+    }
+    out.faces = [...pg.querySelectorAll('.ccard')].map(f => f.dataset.card);
+    out.strips = typeof CardIntro.BEASTS !== 'undefined';
+    return out;
+  });
+  ck('thePrizesWearNoBeast', a.pics.length === 0 && !a.strips && a.faces.sort().join() === 'dragonfire,krakens_call',
+    a.pics.slice(0, 4).join(', ') || `only the two faces (${a.faces.join(',')})`);
+  await ctx.close();
 }
 
 /* ================= THE ERRORS ================= */

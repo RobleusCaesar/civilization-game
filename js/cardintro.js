@@ -29,9 +29,8 @@
    THE PICTURES are the card faces (Deck.face, the real catalog paintings
    and frames) and one painted backdrop, the dusk valley (assets/cards/
    intro/dusk.webp, PixelLab, ART_PLAN.md "The card announcement"), fetched
-   only when the announcement opens (the prizes screen also shows the
-   beasts' own shipped strips, assets/fx/). Everything else it wears — the ribbon,
-   the gold corners, the laurels, the emblems, the deck — is CHROME, drawn
+   only when the announcement opens. Everything else it wears — the ribbon,
+   the gold corners, the laurels, the emblems, the gems — is CHROME, drawn
    as vectors at the device's own resolution (CardIntro.SVG, below), and
    the lettering is the menu face (Cinzel), crisp at any size. */
 
@@ -48,9 +47,13 @@ const CardIntro = {
     { id: 'harvest_festival', cap: 'Harvests' },
     { id: 'starfall', cap: 'Fire from the sky' },
   ],
-  BEASTS: [
-    { id: 'krakens_call', strip: 'assets/fx/kraken-thrash.png', fw: 224, n: 8, cap: 'Summon the Kraken' },
-    { id: 'dragonfire', strip: 'assets/fx/dragon-fly.png', fw: 256, n: 8, cap: 'Unleash the Dragon' },
+  /* the two prizes. Their paintings already show the beast, so nothing is
+     drawn over or behind a card: the glory is the tier's own light (a slow
+     burst and an aura behind the card), a glint running round its rim and
+     motes rising beside it — never across the art */
+  PRIZES: [
+    { id: 'krakens_call', cap: 'Summon the Kraken' },
+    { id: 'dragonfire', cap: 'Unleash the Dragon' },
   ],
 
   open: false,
@@ -310,7 +313,7 @@ const CardIntro = {
     const stack = narrow || 3 * trioW + 40 + 230 > avail;
     if (stack && !narrow) trioW = fit(Math.min(200, (avail - 40) / 3), (heroH - 110) / 1.02);
     root.classList.toggle('ciStack', stack);
-    const beastW = fit(narrow ? avail / 2.4 : 200, (heroH - (narrow ? 90 : 60)) / 1.32);
+    const beastW = fit(narrow ? avail / 2.4 : 200, (heroH - (narrow ? 150 : 70)) / 1.06);
     const key = [cw, sw, trioW, beastW, narrow, stack, Math.round(avail)].join(':');
     if (this._sizes !== key) {
       this._sizes = key;
@@ -329,6 +332,7 @@ const CardIntro = {
     const pg = this._root && this._root.querySelector('.ciPage.on');
     if (!pg) return;
     pg.classList.remove('tight', 'scroll');
+    this._fitLadder();
     const spills = () => {
       const hero = pg.querySelector('.ciHero');
       let need = 0;
@@ -389,49 +393,94 @@ const CardIntro = {
     });
   },
   _legends(cw, narrow) {
-    const f = this.facts();
+    const f = this.facts(), V = this.SVG;
     const ol = this._root.querySelector('.ciTiers');
-    // the ladder climbs: Legendary at the top of the column on a wide panel
-    const tiers = narrow ? f.tiers : f.tiers.slice().reverse();
-    ol.innerHTML = tiers.map(t => {
-      const i = f.tiers.indexOf(t);
-      return `<li style="--tc:${t.col};--tg:${t.glow};--n:${i}"><i class="ciGem"></i><span><b>${this.esc(t.name)}</b><small>${this.esc(t.rarity)}</small></span></li>`;
-    }).join('');
+    /* THE LADDER: five identical gems on one line (a row on a phone, a
+       column on a wide panel), each tier's name on one line and its rarity
+       on the line beneath. Built through the DOM: a gem is a data URI, and
+       a url("…") inside a quoted style attribute ends the attribute. The
+       type is fitted to the room by measurement (_fitLadder) */
+    const tiers = narrow ? f.tiers : f.tiers.slice().reverse();   // Legendary at the top of a column
+    ol.innerHTML = '';
+    tiers.forEach(t => {
+      const li = document.createElement('li');
+      li.style.setProperty('--tc', t.col);
+      li.style.setProperty('--tg', t.glow);
+      li.style.setProperty('--n', f.tiers.indexOf(t));
+      const gem = document.createElement('i');
+      gem.className = 'ciGem';
+      gem.style.backgroundImage = V.uri(V.gem(t.col));
+      const tx = document.createElement('span');
+      tx.innerHTML = `<b>${this.esc(t.name)}</b><small>${this.esc(t.rarity)}</small>`;
+      li.appendChild(gem);
+      li.appendChild(tx);
+      ol.appendChild(li);
+    });
     const host = this._root.querySelector('.ciBeasts');
     host.innerHTML = '';
     host.style.setProperty('--cw', cw + 'px');
-    const dpr = this._dpr(), v = (typeof CFG !== 'undefined' && CFG.ART_V) || 1;
-    this.BEASTS.forEach((b, n) => {
+    host.style.setProperty('--ch', cw * Deck.H / Deck.W + 'px');
+    this.PRIZES.forEach((b, n) => {
       const fig = document.createElement('figure');
-      fig.className = 'ciBeast ' + (n ? 'dragon' : 'kraken');
+      fig.className = 'ciPrize ' + (n ? 'dragon' : 'kraken');
       fig.style.setProperty('--n', n);
       const t = Deck.tier(Deck.card(b.id).tier);
       fig.style.setProperty('--tc', t.col);
-      // the beast's own strip, stepped: a smooth downscale of a detailed sprite
-      // (pixelated only where it is drawn larger than its own pixels)
-      const bw = Math.round(cw * (n ? 1.3 : 1.12));
-      const beast = document.createElement('i');
-      beast.className = 'ciMonster';
-      beast.style.width = bw + 'px';
-      beast.style.height = bw + 'px';
-      beast.style.backgroundImage = `url("${b.strip}?v=${v}")`;
-      beast.style.backgroundSize = `${bw * b.n}px ${bw}px`;
-      beast.style.setProperty('--strip', -bw * b.n + 'px');
-      beast.style.setProperty('--bw', bw + 'px');
-      beast.style.imageRendering = bw * dpr > b.fw ? 'pixelated' : 'auto';
+      fig.style.setProperty('--tg', t.glow);
       const stage = document.createElement('div');
       stage.className = 'ciStage';
-      stage.appendChild(beast);
+      // behind the card: the tier's light, a slow burst and a breathing aura
+      stage.innerHTML = '<i class="ciBurst"></i><i class="ciAura"></i>';
       stage.appendChild(Deck.face(b.id, { w: cw }));
+      // round it: a glint running the rim, and motes rising beside it (outside the face, never across the art)
+      let motes = '';
+      for (let i = 0; i < 8; i++) {
+        const side = i % 2 ? 1 : -1, x = side < 0 ? -6 - (i * 7 % 12) : 106 + (i * 5 % 12);
+        motes += `<i style="--x:${x}%;--y:${40 + (i * 23 % 55)}%;--dl:-${(i * 0.61 % 3).toFixed(2)}s;--du:${(2.6 + (i * 0.37 % 1.4)).toFixed(2)}s;--dx:${side * (2 + i % 3)}px"></i>`;
+      }
+      stage.insertAdjacentHTML('beforeend', `<i class="ciRim"></i><span class="ciMotes" aria-hidden="true">${motes}</span>`);
       fig.appendChild(stage);
       const cap = document.createElement('figcaption');
       cap.innerHTML = `<b>${this.esc(b.cap)}</b><small>${this.esc(t.rarity)}</small>`;
       fig.appendChild(cap);
       host.appendChild(fig);
     });
-    // the ladder stands between the two prizes on a wide panel
+    // the ladder stands between the two prizes on a wide panel, above them on a phone
     if (!narrow) host.insertBefore(ol, host.children[1]);
     else host.parentNode.insertBefore(ol, host);
+  },
+  /* THE LADDER'S TYPE FITS ITS ROOM, BY MEASUREMENT: 'Enlightenment' is the
+     longest word on the screen, and on a 320px phone five tiers share one
+     row. Set at the largest size, measured, and stepped down until no name
+     overflows its row — never wrapped, never run into its neighbour. Only a
+     ladder on show can be measured, so go() asks again each time the
+     screen comes round. */
+  _fitLadder() {
+    const ol = this._root && this._root.querySelector('.ciTiers');
+    if (!ol || !ol.getClientRects().length) return;
+    const narrow = this._root.classList.contains('ciNarrow');
+    const max = narrow ? 14 : 16, min = 7;
+    const room = () => {
+      if (narrow) return ol.parentNode.clientWidth - 6;
+      // between the prizes: the hero less the two cards and the gaps round them
+      const host = ol.parentNode, cs = getComputedStyle(host), gap = parseFloat(cs.columnGap) || 0;
+      let used = 0;
+      for (const c of host.children) if (c !== ol) used += c.getBoundingClientRect().width;
+      return host.parentNode.clientWidth - used - gap * (host.children.length - 1) - 6;
+    };
+    const need = () => narrow ? ol.scrollWidth : Math.max(...[...ol.children].map(li => li.scrollWidth));
+    let fz = max;
+    ol.style.setProperty('--tierF', fz + 'px');
+    for (let i = 0; i < 3; i++) {
+      const r = room(), n = need();
+      if (n <= r) break;
+      fz = Math.max(min, Math.floor(fz * r / n * 4) / 4);
+      ol.style.setProperty('--tierF', fz + 'px');
+    }
+    for (let i = 0; i < 24 && fz > min && need() > room(); i++) {
+      fz -= 0.25;
+      ol.style.setProperty('--tierF', fz + 'px');
+    }
   },
   _sparks() {
     const host = this._root.querySelector('.ciSparks');
@@ -570,12 +619,11 @@ const CardIntro = {
   _preload(n) {
     const urls = [];
     const add = u => { if (u && !this._pre[u]) urls.push(u); };
-    const v = (typeof CFG !== 'undefined' && CFG.ART_V) || 1;
     if (n === 0) {
       add(this.art('dusk'));
       for (const id of this.FAN) { add(Deck.artUrl(id)); add(Deck.frameUrl(Deck.card(id).tier)); }
     } else if (n === 2) for (const p of this.PLAY) { add(Deck.artUrl(p.id)); add(Deck.frameUrl(Deck.card(p.id).tier)); }
-    else if (n === 3) for (const b of this.BEASTS) { add(Deck.artUrl(b.id)); add(Deck.frameUrl(Deck.card(b.id).tier)); add(b.strip + '?v=' + v); }
+    else if (n === 3) for (const b of this.PRIZES) { add(Deck.artUrl(b.id)); add(Deck.frameUrl(Deck.card(b.id).tier)); }
     const all = urls.map(u => (this._pre[u] = new Promise(res => {
       const img = new Image();
       img.onload = img.onerror = () => res();
@@ -617,7 +665,7 @@ const CardIntro = {
    terrain, buildings, units, the painted backdrops, the card paintings — is
    pixel art; the UI's chrome is never chunky). Every ornament the
    announcement wears — the ribbon, the gold corners, the laurels, the two
-   emblems, the deck, the trail — is an SVG built here and
+   emblems, the deck, the tier gems, the trail — is an SVG built here and
    handed to CSS as a data URI, so the browser draws it at the device's own
    resolution at whatever size the layout asks for. The contract measures it
    (tests/card-intro.mjs, theChromeIsDrawnAtTheDevicesResolution): a raster
@@ -861,6 +909,24 @@ CardIntro.SVG = {
     return this.doc(48, 48, body);
   },
 
+  /* A TIER'S GEM: a faceted diamond cut in the tier's own colour */
+  gem(col) {
+    const m = (c, t) => this.mix(col, c, t);
+    const T = '12,1.4', R = '22.6,12', B = '12,22.6', L = '1.4,12', t = '12,7', r = '17,12', b = '12,17', l = '7,12';
+    const body =
+      `<defs><linearGradient id='tb' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='${m('#ffffff', .7)}'/><stop offset='1' stop-color='${m('#ffffff', .15)}'/></linearGradient></defs>` +
+      `<path d='M${T} L${R} L${B} L${L} Z' fill='${col}' stroke='#0d0804' stroke-width='1.3' stroke-linejoin='round'/>` +
+      `<path d='M${L} L${T} L${t} L${l} Z' fill='${m('#ffffff', .55)}'/>` +
+      `<path d='M${T} L${R} L${r} L${t} Z' fill='${m('#ffffff', .18)}'/>` +
+      `<path d='M${R} L${B} L${b} L${r} Z' fill='${m('#000000', .5)}'/>` +
+      `<path d='M${B} L${L} L${l} L${b} Z' fill='${m('#000000', .25)}'/>` +
+      `<path d='M${t} L${r} L${b} L${l} Z' fill='url(#tb)'/>` +
+      `<path d='M${T} L${t} M${R} L${r} M${B} L${b} M${L} L${l} M${t} L${r} L${b} L${l} Z' fill='none' stroke='#000' stroke-opacity='.22' stroke-width='.5'/>` +
+      `<path d='M${T} L${R} L${B} L${L} Z' fill='none' stroke='#0d0804' stroke-width='1.3' stroke-linejoin='round'/>` +
+      `<path d='M8.2,4.6 L8.8,6.4 L10.6,7 L8.8,7.6 L8.2,9.4 L7.6,7.6 L5.8,7 L7.6,6.4 Z' fill='#ffffff'/>`;
+    return this.doc(24, 24, body);
+  },
+
   /* the way from the deck to the hand: three chevrons, brightening */
   trail() {
     const ch = (x, o) => `<path d='M${x},3.5 L${x + 6},8 L${x},12.5' fill='none' stroke='#1c0f03' stroke-width='4.4' stroke-linecap='round' stroke-linejoin='round' stroke-opacity='${o}'/>` +
@@ -1081,36 +1147,74 @@ CardIntro.CSS = `
 #cardIntro .ciPage.enter .ciDeck { animation: ciRise .5s cubic-bezier(.2,1.1,.4,1) both; }
 @keyframes ciLift { from { opacity: 0; transform: translateY(40px) scale(.88) } }
 
-/* ---- page 4: the tiers and the beasts ---- */
-#cardIntro .ciLegends { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 100%; }
-#cardIntro .ciTiers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; justify-content: center; gap: 10px; align-self: center; }
-#cardIntro .ciTiers li { display: flex; align-items: center; gap: 10px; text-align: left; }
-#cardIntro .ciTiers li span { display: flex; flex-direction: column; gap: 1px; }
-#cardIntro .ciGem { flex: 0 0 auto; width: calc(12px + var(--n) * 2px); height: calc(12px + var(--n) * 2px); transform: rotate(45deg); margin: 4px;
-  background: linear-gradient(135deg, #fff, var(--tc) 45%, rgba(0,0,0,.55) 120%); box-shadow: 0 0 0 1px #000, 0 0 calc(4px + var(--n) * 3px) var(--tg); }
-#cardIntro .ciTiers b { font-weight: 800; text-transform: uppercase; letter-spacing: .05em; font-size: clamp(9px, 2.5vw, 15px); color: var(--tc); text-shadow: 0 1px 0 #000; white-space: nowrap; }
-#cardIntro .ciTiers small { font-family: Georgia, serif; font-size: clamp(9px, 2.3vw, 12.5px); color: #bfae8c; white-space: nowrap; }
-#cardIntro .ciBeasts { position: relative; display: flex; justify-content: center; align-items: flex-end; gap: clamp(14px, 4vw, 44px); }
-#cardIntro .ciBeast { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; }
-#cardIntro .ciStage { position: relative; padding-top: calc(var(--cw) * .42); }
-#cardIntro .ciStage .ccard { position: relative; z-index: 2; }
-#cardIntro .ciBeast.kraken .ccard { box-shadow: 0 0 22px 3px rgba(170,150,255,.5), 0 8px 14px rgba(0,0,0,.6); }
-#cardIntro .ciBeast.dragon .ccard { box-shadow: 0 0 26px 4px rgba(255,150,60,.65), 0 8px 14px rgba(0,0,0,.6); }
-#cardIntro .ciMonster { position: absolute; left: 50%; pointer-events: none; transform: translateX(-50%);
-  background-repeat: no-repeat; background-position: 0 0; animation: ciStrip .9s steps(8) infinite, ciHover 3.4s ease-in-out infinite;
-  filter: drop-shadow(0 6px 6px rgba(0,0,0,.55)); }
-/* the kraken rises BEHIND its card, its arms over the frame */
-#cardIntro .ciBeast.kraken .ciMonster { top: 0; z-index: 1; animation-duration: 1.1s, 4.2s; }
-/* the dragon flies over its own, wings spread across the top */
-#cardIntro .ciBeast.dragon .ciMonster { top: calc(var(--bw) * -.12); z-index: 3; }
-@keyframes ciStrip { to { background-position-x: var(--strip) } }
-@keyframes ciHover { 50% { transform: translateX(-50%) translateY(-6px) } }
-#cardIntro .ciBeast figcaption { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-#cardIntro .ciBeast figcaption b { font-weight: 800; text-transform: uppercase; letter-spacing: .06em; font-size: clamp(11px, 3vw, 15px); color: #ffe39a; text-shadow: 0 2px 0 #000; white-space: nowrap; }
-#cardIntro .ciBeast figcaption small { font-weight: 700; font-size: clamp(9px, 2.4vw, 11.5px); color: var(--tc);
+/* ---- page 4: the ladder and the two prizes ---- */
+#cardIntro .ciLegends { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; width: 100%; height: 100%; }
+/* THE LADDER: five identical gems on one shared line, each name on one line,
+   its rarity beneath. A column on a wide panel (one x for every gem, rows
+   evenly spaced), a row on a phone (one line for every gem); the type is
+   fitted by measurement (_fitLadder sets --tierF) */
+#cardIntro .ciTiers { --gemS: 22px; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; justify-content: center;
+  gap: 16px; align-self: center; flex: 0 0 auto; }
+#cardIntro:not(.ciNarrow) .ciTiers { padding: 18px 26px; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(14,10,6,.78), rgba(14,10,6,.5) 62%, rgba(14,10,6,0)); }
+#cardIntro .ciTiers li { display: grid; grid-template-columns: var(--gemS) max-content; column-gap: 12px; align-items: center; text-align: left; }
+#cardIntro .ciTiers li span { display: flex; flex-direction: column; gap: 2px; }
+#cardIntro .ciGem { width: var(--gemS); height: var(--gemS); background: 0 0 / 100% 100% no-repeat;
+  filter: drop-shadow(0 0 5px var(--tg)) drop-shadow(0 1px 1px rgba(0,0,0,.7)); }
+#cardIntro .ciTiers b { display: block; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; line-height: 1.15;
+  font-size: var(--tierF, 15px); color: var(--tc); text-shadow: 0 1px 0 #000, 0 0 8px rgba(0,0,0,.6); white-space: nowrap; }
+#cardIntro .ciTiers small { display: block; font-family: Georgia, serif; line-height: 1.15; font-size: max(9px, calc(var(--tierF, 15px) * .8));
+  color: #c7b692; white-space: nowrap; text-shadow: 0 1px 0 #000; }
+#cardIntro.ciNarrow .ciTiers { --gemS: 18px; flex-direction: row; align-items: flex-start; justify-content: center; gap: 0 clamp(6px, 2.6vw, 14px); }
+#cardIntro.ciNarrow .ciTiers li { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+#cardIntro.ciNarrow .ciTiers li span { align-items: center; }
+#cardIntro.ciNarrow .ciTiers b { letter-spacing: .03em; }
+
+/* THE PRIZES: the card's painting already shows its beast, so nothing is
+   drawn over it or behind it but the tier's own light */
+#cardIntro .ciBeasts { position: relative; display: flex; justify-content: center; align-items: center; gap: clamp(18px, 4.4vw, 48px); }
+#cardIntro .ciPrize { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+#cardIntro .ciStage { position: relative; width: var(--cw); height: var(--ch); }
+#cardIntro .ciStage .ccard { position: relative; z-index: 2;
+  box-shadow: 0 0 0 1px rgba(255,244,214,.4), 0 0 calc(var(--cw) * .1) calc(var(--cw) * .015) var(--tg), 0 10px 18px rgba(0,0,0,.6); }
+/* a slow burst of the tier's light behind the card, and a breathing aura */
+#cardIntro .ciBurst { position: absolute; left: 50%; top: 50%; width: calc(var(--cw) * 2.5); aspect-ratio: 1; z-index: 0; pointer-events: none;
+  transform: translate(-50%, -50%);
+  background: repeating-conic-gradient(from 0deg, var(--tg) 0deg 3deg, transparent 3deg 12deg);
+  -webkit-mask-image: radial-gradient(circle, rgba(0,0,0,.9) 18%, rgba(0,0,0,.35) 34%, transparent 56%);
+  mask-image: radial-gradient(circle, rgba(0,0,0,.9) 18%, rgba(0,0,0,.35) 34%, transparent 56%);
+  opacity: .55; animation: ciSpin 80s linear infinite; will-change: transform; }
+#cardIntro .ciPrize.dragon .ciBurst { opacity: .75; animation-duration: 60s; }
+#cardIntro .ciAura { position: absolute; inset: -16% -32%; z-index: 1; pointer-events: none;
+  background: radial-gradient(ellipse closest-side, var(--tg), transparent); opacity: .5; animation: ciBreath 3.4s ease-in-out infinite; }
+#cardIntro .ciPrize.dragon .ciAura { opacity: .65; animation-delay: -1.2s; }
+@keyframes ciBreath { 50% { opacity: .22; transform: scale(.95) } }
+/* a glint running round the rim, a hair OUTSIDE the face (it never crosses the art) */
+@property --ciAng { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+#cardIntro .ciRim { position: absolute; inset: -5px; z-index: 3; pointer-events: none; border-radius: 4px; padding: 3px;
+  background: conic-gradient(from var(--ciAng), transparent 0deg 250deg, var(--tg) 305deg, #fff6d6 338deg, #ffffff 350deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: ciRimRun 5.2s linear infinite; }
+#cardIntro .ciPrize.dragon .ciRim { animation-duration: 4.2s; animation-delay: -2s; }
+@keyframes ciRimRun { to { --ciAng: 360deg } }
+/* motes of the tier's light rising beside the card */
+#cardIntro .ciMotes { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+#cardIntro .ciMotes i { position: absolute; left: var(--x); top: var(--y); width: 3px; height: 3px; border-radius: 50%;
+  background: #fffbe8; box-shadow: 0 0 5px 1px var(--tg), 0 0 12px 3px var(--tg);
+  animation: ciRiseMote var(--du) linear var(--dl) infinite both; }
+@keyframes ciRiseMote { 0% { opacity: 0; transform: translate(0, 0) } 18% { opacity: 1 } 75% { opacity: .8 }
+  100% { opacity: 0; transform: translate(var(--dx), calc(var(--ch) * -.5)) } }
+#cardIntro .ciPrize figcaption { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+/* a phone's two prizes share the row: a caption takes at most its half of
+   the panel (container units) and only then breaks, balanced, onto a second line */
+#cardIntro.ciNarrow .ciPrize figcaption { max-width: calc((100cqw - 24px - clamp(18px, 4.4vw, 48px)) / 2); }
+#cardIntro.ciNarrow .ciPrize figcaption b { white-space: normal; text-wrap: balance; line-height: 1.2; text-align: center; }
+#cardIntro .ciPrize figcaption b { font-weight: 800; text-transform: uppercase; letter-spacing: .06em; font-size: clamp(11px, 3vw, 15px); color: #ffe39a; text-shadow: 0 2px 0 #000; white-space: nowrap; }
+#cardIntro .ciPrize figcaption small { font-weight: 700; font-size: clamp(9px, 2.4vw, 11.5px); color: var(--tc);
   letter-spacing: .1em; text-transform: uppercase; text-shadow: 0 1px 0 #000; white-space: nowrap; }
 #cardIntro .ciPage.enter .ciTiers li { animation: ciRise .4s cubic-bezier(.2,1.1,.4,1) both; animation-delay: calc(var(--n) * 70ms); }
-#cardIntro .ciPage.enter .ciBeast { animation: ciRise .6s cubic-bezier(.2,1.1,.4,1) both; animation-delay: calc(.3s + var(--n) * .15s); }
+#cardIntro .ciPage.enter .ciPrize { animation: ciRise .6s cubic-bezier(.2,1.1,.4,1) both; animation-delay: calc(.3s + var(--n) * .15s); }
 
 /* ---- the screen's entrance (the head, then the hero) ---- */
 #cardIntro .ciPage.enter .ciHead { animation: ciSlide .42s cubic-bezier(.2,1,.4,1) both; }
@@ -1121,7 +1225,8 @@ CardIntro.CSS = `
 @keyframes ciFade { from { opacity: 0 } }
 
 /* ---- the sparks: small gold motes rising through the light ---- */
-#cardIntro .ciSparks { position: absolute; left: 10%; right: 10%; top: 24%; bottom: 20%; z-index: 2; pointer-events: none; overflow: hidden; }
+/* behind the screens (z -1, over the dusk and the light): a mote never crosses a card's painting */
+#cardIntro .ciSparks { position: absolute; left: 10%; right: 10%; top: 24%; bottom: 20%; z-index: -1; pointer-events: none; overflow: hidden; }
 #cardIntro .ciSparks i { position: absolute; left: var(--x); top: calc(40% + var(--y)); width: var(--s); height: var(--s); border-radius: 1px;
   background: #fff1b8; box-shadow: 0 0 6px 1px rgba(255,200,80,.9), 0 0 14px 3px rgba(255,170,50,.35);
   animation: ciMote var(--du) linear var(--dl) infinite both; }
@@ -1179,9 +1284,6 @@ CardIntro.CSS = `
 #cardIntro.ciNarrow .ciCard { margin: 0 calc(var(--cw) * -0.035); }
 #cardIntro.ciNarrow .ciCard figcaption { width: calc(100% - 14px); margin-top: calc(6px + var(--n) * var(--n) * 10px); }
 
-#cardIntro.ciNarrow .ciTiers { flex-direction: row; gap: 6px; }
-#cardIntro.ciNarrow .ciTiers li { flex-direction: column; text-align: center; gap: 2px; }
-#cardIntro.ciNarrow .ciTiers li span { align-items: center; }
 #cardIntro.ciNarrow .ciNext { width: min(60%, 250px); font-size: 17px; }
 #cardIntro.ciNarrow .ciBack, #cardIntro.ciNarrow .ciNavPad { width: 66px; font-size: 12px; }
 #cardIntro.ciNarrow .ciNav { padding: 6px 8px 0; gap: 4px; }
@@ -1203,7 +1305,10 @@ CardIntro.CSS = `
 #cardIntro .ciPages .ciPage.tight .ciRoad .ciNote { font-size: 11px; }
 #cardIntro .ciPages .ciPage.tight .ciFoot { font-size: 12px; }
 /* …and if it still spills, its hero scrolls inside the panel */
-#cardIntro .ciPages .ciPage.scroll .ciHero { overflow-y: auto; align-items: flex-start; overscroll-behavior: contain; padding: 4px 0;
+/* (a column centred in a box it overflows spills UPWARD, where no scroll
+   can reach: a scrolling screen's column starts at the top instead) */
+#cardIntro .ciPages .ciPage.scroll .ciLegends { height: auto; min-height: 100%; justify-content: flex-start; padding: 6px 0 4px; }
+#cardIntro .ciPages .ciPage.scroll .ciHero { overflow-y: auto; overflow-x: hidden; align-items: flex-start; overscroll-behavior: contain; padding: 4px 0;
   scrollbar-width: thin; scrollbar-color: #8a6a2e transparent; }
 
 /* ---- less motion: the same screens, arrived at without movement ---- */
