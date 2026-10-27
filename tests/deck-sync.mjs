@@ -70,10 +70,22 @@ const bail = async (why) => {
 const MOCK = `
   window.__MOCK = (() => {
     const st = { uid: 'uid-A', calls: [], rows: [], down: false, missing: {}, garbage: {}, refuse: {},
-                 pity: 0, medians: {}, onMyCards: null, telemetryFails: false, emits: 0 };
+                 pity: 0, medians: {}, onMyCards: null, telemetryFails: false, emits: 0, httpFor: null, onCall: null };
     const db = {};
-    const rec = uid => db[uid] || (db[uid] = { counts: {}, seen: {}, starter: 0, grants: {}, plays: {}, ends: {} });
+    // ends[run] is the latest ending's outcome (what most checks write); every
+    // ending a run has had is endsAll[run], its mode modes[run]; the grants
+    // ledger, in order, is what the pity count is derived from (0008's
+    // card_pity_of)
+    const rec = uid => db[uid] || (db[uid] = { counts: {}, seen: {}, starter: 0, grants: {}, plays: {}, ends: {}, endsAll: {}, modes: {}, ledger: [] });
     const add = (m, k, n) => { m.counts[k] = (m.counts[k] || 0) + n; if (!m.seen[k]) m.seen[k] = 1000; };
+    const outcomes = (m, run) => [].concat(m.endsAll[run] || [], m.ends[run] ? [m.ends[run]] : []);
+    const ENLIGHT = ['dragonfire', 'swallowed_sun', 'enlightenment', 'unbreakable_hall', 'wonders_foundation', 'ancestors_host'];
+    const pityOf = m => { let n = 0; for (const g of m.ledger) { if (g.legend) n = 0; else if (g.win) n++; } return n; };
+    const ended = (m, run, outcome, mode) => {
+      (m.endsAll[run] = m.endsAll[run] || []).push(outcome);
+      m.ends[run] = outcome;
+      if (mode) m.modes[run] = mode;
+    };
     const session = () => ({ access_token: 't-' + st.uid, refresh_token: 'r', user: { id: st.uid } });
     const auth = {
       async getSession() { return { data: { session: null }, error: null }; },
@@ -91,10 +103,18 @@ const MOCK = `
       grant_card(a) {
         const m = rec(st.uid);
         if (m.grants[a.p_run_id]) return { ok: true, already: true, cards: m.grants[a.p_run_id] };
-        if (!m.ends[a.p_run_id]) return { ok: false, reason: 'no_run' };
-        if (m.ends[a.p_run_id] !== a.p_outcome) return { ok: false, reason: 'outcome_mismatch' };
+        const outs = outcomes(m, a.p_run_id);
+        if (!outs.length) return { ok: false, reason: 'no_run' };
+        // the ending whose outcome is the grant's, first (0008: order by
+        // outcome = p_outcome desc) — a mismatch only when no ending matches
+        if (outs.indexOf(a.p_outcome) < 0) return { ok: false, reason: 'outcome_mismatch' };
         if (st.refuse[a.p_run_id]) return { ok: false, reason: st.refuse[a.p_run_id] };
+        const legend = a.p_cards.some(k => ENLIGHT.includes(k));
+        // the pity card on a table that cannot roll it (a Calm win): only when
+        // the ledger's own pity count says it is due (card_pity_wins() - 1)
+        if (legend && m.modes[a.p_run_id] === 'calm' && pityOf(m) < 14) return { ok: false, reason: 'bad_cards' };
         m.grants[a.p_run_id] = a.p_cards.slice();
+        m.ledger.push({ run: a.p_run_id, win: a.p_outcome === 'win', legend });
         for (const k of a.p_cards) add(m, k, 1);
         return { ok: true, cards: a.p_cards };
       },
@@ -117,8 +137,10 @@ const MOCK = `
       report_run_end(a) {
         const m = rec(st.uid), r = a.p_row || {};
         if (!r.run_id || r.cause === 'closed_tab') return { ok: false, reason: 'bad_input' };
-        if (m.ends[r.run_id]) return { ok: true, already: true };
-        m.ends[r.run_id] = r.outcome;
+        // a resend never makes a second ending: an ending of this run with
+        // THIS outcome already there is this row, landed
+        if (outcomes(m, r.run_id).includes(r.outcome)) return { ok: true, already: true };
+        ended(m, r.run_id, r.outcome, r.mode);
         return { ok: true };
       },
     };
@@ -134,20 +156,24 @@ const MOCK = `
         for (const row of body || []) {
           st.rows.push(row);
           if (!st.telemetryFails && row.kind === 'run_end' && row.run_id && row.cause !== 'closed_tab')
-            rec(row.user_id).ends[row.run_id] = row.outcome;
+            ended(rec(row.user_id), row.run_id, row.outcome, row.mode);
         }
         return st.telemetryFails ? { error: { status: 503, message: 'down' } } : null;
       }
       if (path.startsWith('/rpc/')) {
         const name = path.slice(5);
+        if (st.onCall) st.onCall(name, body || {});
         if (st.missing[name]) return { error: { status: 404, code: 404, message: 'Could not find the function' } };
+        // an HTTP refusal of the op's SHAPE (a 400 type error, a 409 unique violation)
+        const http = st.httpFor && st.httpFor(name, body || {});
+        if (http) return { error: { status: http, code: http, message: 'refused ' + http } };
         if (name in st.garbage) return st.garbage[name];
         return doors[name] ? doors[name](body || {}) : null;
       }
       if (path.startsWith('/profiles') && method === 'GET') return [{ id: st.uid }];
       return method === 'GET' ? [] : null;
     };
-    return { st, db, rec, auth, rest };
+    return { st, db, rec, auth, rest, pityOf, ended };
   })();
   window.__NEO_BACKEND_MOCK = { auth: window.__MOCK.auth, rest: window.__MOCK.rest };
 `;
@@ -309,7 +335,7 @@ await p.evaluate(() => {
     rpcs(since) { return __MOCK.st.calls.slice(since).filter(c => c.path.startsWith('/rpc/')); },
     mark() { return __MOCK.st.calls.length; },
     // a run that ended for real: its run_end row lands the way the game sends it
-    ended(run, outcome) { __MOCK.rec(__MOCK.st.uid).ends[run] = outcome; },
+    ended(run, outcome, mode) { __MOCK.ended(__MOCK.rec(__MOCK.st.uid), run, outcome, mode || 'moderate'); },
     // the device's side of a grant / a play, through the deck's own primitives
     grant(run, cards, outcome) { for (const k of cards) Deck._add(k, 1); Deck._queue({ op: 'grant', run, key: run, outcome: outcome || 'win', mode: 'moderate', cards }); },
     play(card, play) { Deck._add(card, -1); Deck._queue({ op: 'consume', card, play, run: 'r-play', day: 7 }); },
@@ -467,6 +493,9 @@ await p.evaluate(() => {
     const ref = await Deck.sync('refused');
     out.ref = { dropped: ref.dropped, reconciled: ref.reconciled, after: Deck.count('loose_stone'),
       note: (Deck.col().refused || []).slice(-1)[0] };
+    // both cards the ceremony granted and the record took back are written
+    // down to be SAID (not in a game here: they wait for the collection)
+    out.lost = Deck.lostNotes().map(x => x.card + ':' + x.outcome + ':' + x.why);
     return out;
   });
   ck('aGrantWithNoEvidenceIsGivenUpOnlyAfterDaysAndTries',
@@ -475,6 +504,8 @@ await p.evaluate(() => {
   ck('aRefusalIsDroppedAndTheRecordTakesTheCardBack',
     r.heldBefore === 1 && r.ref.dropped === 1 && r.ref.reconciled && r.ref.after === 0 && r.ref.note && r.ref.note.why === 'not_earned',
     `held ${r.heldBefore} → ${r.ref.after}; refusal noted ${JSON.stringify(r.ref.note)}`);
+  ck('andEveryCardItTookBackIsWrittenDownToBeSaid',
+    JSON.stringify(r.lost) === JSON.stringify(['mending:win:no_run_expired', 'loose_stone:loss:not_earned']), JSON.stringify(r.lost));
 }
 
 /* ---- 8. THE RECORD: the cloud's counts replace the device's ---- */
@@ -628,6 +659,237 @@ function CFG_HARD_FALLBACK() { return 120; }
   });
   ck('anAnswerThatIsNotOursKeepsTheOp', r.every(x => !x.threw && x.why === 'no_answer' && x.kept === 1),
     r.map(x => `${x.g} → ${x.why}/${x.kept}`).join('; '));
+}
+
+/* ---- 10b. SLOW_DOWN is "not yet", never "no": the hourly cap keeps the op and stops the drain ---- */
+{
+  const r = await p.evaluate(async () => {
+    __t.ended('r-slow', 'win'); __t.ended('r-behind', 'win');
+    __MOCK.st.refuse['r-slow'] = 'slow_down';
+    __t.grant('r-slow', ['war_band']);
+    __t.grant('r-behind', ['watchfires']);
+    const held = Deck.count('war_band');
+    const c0 = [__MOCK.rec('uid-A').counts.war_band || 0, __MOCK.rec('uid-A').counts.watchfires || 0];
+    const m0 = __t.mark();
+    const s1 = await Deck.sync('slow');
+    const out = { why: s1.why, kept: s1.kept, dropped: s1.dropped, asked: __t.rpcs(m0).map(c => __t.tag(c)),
+      left: Deck.col().queue.map(o => __t.optag(o)), still: Deck.count('war_band') === held, timer: !!(Deck._sy && Deck._sy.timer) };
+    __t.quiet();
+    delete __MOCK.st.refuse['r-slow'];
+    const s2 = await Deck.sync('slow-over');
+    out.after = { ok: s2.ok, done: s2.done, cloud: [(__MOCK.rec('uid-A').counts.war_band || 0) - c0[0], (__MOCK.rec('uid-A').counts.watchfires || 0) - c0[1]] };
+    return out;
+  });
+  ck('slowDownKeepsTheGrantAndStopsTheDrain',
+    r.why === 'slow_down' && r.kept === 2 && r.dropped === 0 && JSON.stringify(r.asked) === JSON.stringify(['grant_card:r-slow']) &&
+    JSON.stringify(r.left) === JSON.stringify(['grant:r-slow:slow_down', 'grant:r-behind:']) && r.still && r.timer &&
+    r.after.ok && r.after.done === 2 && r.after.cloud.every(n => n === 1),
+    `why ${r.why}, kept ${r.kept}, asked ${r.asked.join(',')}, left ${r.left.join(',')}; then ${JSON.stringify(r.after)}`);
+}
+
+/* ---- 10c. A GRANT WITH NO RUN can never be checked: dropped as no_run_id, and the record's answer is SAID ---- */
+{
+  const r = await p.evaluate(async () => {
+    const out = {};
+    Deck.tellLost();                         // §7's two, told (they are pinned there)
+    Deck._add('mending', 1);
+    Deck._queue({ op: 'grant', run: null, key: 'seed:x:40:w', outcome: 'win', mode: 'moderate', cards: ['mending'] });
+    const m0 = __t.mark();
+    const s = await Deck.sync('no-run-id');
+    out.s = { dropped: s.dropped, reconciled: s.reconciled };
+    out.asked = __t.rpcs(m0).filter(c => c.path === '/rpc/grant_card').length;
+    out.note = (Deck.col().refused || []).slice(-1)[0];
+    out.held = Deck.count('mending');
+    // NOT IN A GAME: the line waits for the collection screen, told there once
+    out.waiting = Deck.lostNotes().map(x => Deck.lostLine(x));
+    DeckScreens.openCollection('title', 'stone');
+    const shown = [...document.querySelectorAll('#scrCards .clLost')].map(e => e.textContent);
+    out.shown = shown;
+    out.after = Deck.lostNotes().length;
+    DeckScreens.closeCollection();
+    DeckScreens.openCollection('title', 'stone');
+    out.again = document.querySelectorAll('#scrCards .clLost').length;
+    DeckScreens.closeCollection();
+    return out;
+  });
+  ck('aGrantWithNoRunIsDroppedAsNoRunId', r.s.dropped === 1 && r.asked === 0 && r.note && r.note.why === 'no_run_id' && r.held === 0 && r.s.reconciled,
+    `dropped ${r.s.dropped}, asked ${r.asked}, note ${JSON.stringify(r.note)}, held ${r.held}`);
+  ck('aCardTheRecordTookBackIsSaidOnTheCollectionOnce',
+    r.waiting.length === 1 && /^The record does not hold your Mending from that victory — its ending never reached the record\.$/.test(r.waiting[0]) &&
+    r.shown.length === 1 && r.shown[0] === r.waiting[0] && r.after === 0 && r.again === 0,
+    `waiting ${JSON.stringify(r.waiting)}; shown ${JSON.stringify(r.shown)}; then ${r.after} waiting, ${r.again} on reopening`);
+}
+
+/* ---- 10d. A POISONED OP (a 4xx of its own shape) never walls the queue — and a refusal of EVERYTHING gives nothing up ---- */
+{
+  const r = await p.evaluate(async () => {
+    const out = {};
+    __t.ended('r-409', 'win'); __t.ended('r-past', 'win');
+    __MOCK.st.httpFor = (name, a) => (name === 'grant_card' && a.p_run_id === 'r-409') ? 409 : 0;
+    __t.grant('r-409', ['spy_hall']);
+    __t.play('spy_hall', 'p-409');            // a play of the poisoned grant's card: held behind it
+    __t.grant('r-past', ['hunters_pack']);    // behind it in the queue: must still go
+    const m0 = __t.mark();
+    const s1 = await Deck.sync('poison');
+    out.s1 = { why: s1.why, done: s1.done, kept: s1.kept };
+    out.asked1 = __t.rpcs(m0).map(c => __t.tag(c));
+    const op = Deck.col().queue.find(o => o.run === 'r-409');
+    out.op = { why: op && op.why, n: op && op.n, bad: !!(op && op.bad) };
+    __t.quiet();
+    // young: eight tries but not a day old — kept
+    op.n = 8; op.bad = Date.now() - 0.5 * 864e5;
+    const s2 = await Deck.sync('poison-young');
+    out.young = Deck.col().queue.filter(o => o.run === 'r-409').length;
+    __t.quiet();
+    // A REFUSAL OF EVERYTHING (the record too) is the server's fault: an old
+    // poisoned op is NOT given up while nothing else is answered
+    const op2 = Deck.col().queue.find(o => o.run === 'r-409');
+    op2.bad = Date.now() - 2 * 864e5;
+    __MOCK.st.httpFor = () => 403;
+    const s3 = await Deck.sync('all-refused');
+    out.systemic = { kept: Deck.col().queue.filter(o => o.run === 'r-409').length, dropped: s3.dropped };
+    __t.quiet();
+    // the server answers again (the record does): the old poisoned op is given up
+    __MOCK.st.httpFor = (name, a) => (name === 'grant_card' && a.p_run_id === 'r-409') ? 409 : 0;
+    const m3 = __t.mark();
+    const s4 = await Deck.sync('poison-old');
+    out.old = { dropped: s4.dropped, left: Deck.col().queue.map(o => __t.optag(o)), note: (Deck.col().refused || []).slice(-1)[0],
+      asked: __t.rpcs(m3).map(c => c.path.slice(5)) };
+    __t.quiet();
+    // the play it held goes next (the record holds no such card: refused, and nothing lost to tell)
+    const s5 = await Deck.sync('poison-after');
+    out.after = { ok: s5.ok, reconciled: s5.reconciled, lost: Deck.lostNotes().length };
+    __MOCK.st.httpFor = null;
+    return out;
+  });
+  ck('aPoisonedOpIsSteppedPastNeverAWall',
+    r.s1.why === 'held' && r.s1.done === 1 && JSON.stringify(r.asked1) === JSON.stringify(['grant_card:r-409', 'grant_card:r-past']) &&
+    r.op.why === 'http_409' && r.op.bad,
+    `why ${r.s1.why}, done ${r.s1.done}; asked ${r.asked1.join(', ')}; op ${JSON.stringify(r.op)}`);
+  ck('andIsGivenUpOnlyOldAndWhileTheServerAnswers',
+    r.young === 1 && r.systemic.kept === 1 && r.systemic.dropped === 0 &&
+    r.old.dropped === 1 && r.old.note && r.old.note.why === 'http_409' && r.old.asked.includes('my_cards') &&
+    JSON.stringify(r.old.left) === JSON.stringify(['consume:p-409:']) && r.after.ok && r.after.reconciled,
+    `young kept ${r.young}; everything refused: kept ${r.systemic.kept}; old: dropped ${r.old.dropped} (${r.old.note && r.old.note.why}) after ${r.old.asked.join(' → ')}; left ${r.old.left.join(',')}`);
+}
+
+/* ---- 10e. THE EVIDENCE ON THE DEVICE: kept for its own player, aged out, capped, stepped past ---- */
+{
+  const r = await p.evaluate(async () => {
+    const out = {};
+    const tok = 'NEO1.' + btoa(JSON.stringify({ rt: 'r' }));
+    const row = (id, extra) => Object.assign({ run_id: id, kind: 'run_end', outcome: 'win', cause: 'razed_rival_tc', mode: 'moderate', day: 50, seconds: 1200, props: {} }, extra || {});
+    localStorage.setItem(Backend.END_KEY, JSON.stringify([
+      { at: Date.now(), uid: 'uid-B', row: row('e-of-b') },                    // B's, waiting on this device
+      { at: Date.now() - 31 * 864e5, uid: null, row: row('e-stale') },        // a month old: aged out unsent
+      { at: Date.now(), uid: null, row: row('e-shape') },                     // refused by its shape (a 400)
+      { at: Date.now(), uid: null, row: row('e-fine') },                      // behind it: must still go
+    ]));
+    __MOCK.st.httpFor = (name, a) => (name === 'report_run_end' && a.p_row && a.p_row.run_id === 'e-shape') ? 400 : 0;
+    const m0 = __t.mark();
+    await Backend.flushEnds();
+    out.asA = __t.rpcs(m0).filter(c => c.path === '/rpc/report_run_end').map(c => c.body.p_row.run_id + '@' + c.uid);
+    out.leftA = Backend.pendingEnds().map(x => x.row.run_id);
+    __MOCK.st.httpFor = null;
+    // B signs in on this device: their kept ending goes up under their name
+    __MOCK.rec('uid-B');
+    __MOCK.st.uid = 'uid-B';
+    const m1 = __t.mark();
+    await Backend.importIdentity(tok);
+    await Backend.flushEnds();
+    out.asB = __t.rpcs(m1).filter(c => c.path === '/rpc/report_run_end').map(c => c.body.p_row.run_id + '@' + c.uid);
+    out.bHas = __MOCK.rec('uid-B').ends['e-of-b'] === 'win';
+    __MOCK.st.uid = 'uid-A';
+    await Backend.importIdentity(tok);
+    await Deck.sync('back-to-a');
+    __t.quiet();
+    // THE CAP: at most END_KEEP runs wait; the oldest goes first
+    localStorage.removeItem(Backend.END_KEY);
+    for (let i = 1; i <= Backend.END_KEEP + 1; i++) Backend._keepEnd(row('cap-' + i), null);
+    out.cap = Backend.pendingEnds().map(x => x.row.run_id);
+    localStorage.removeItem(Backend.END_KEY);
+    out.numbers = { keep: Backend.END_KEEP, days: Backend.END_DAYS };
+    return out;
+  });
+  ck('anotherPlayersKeptEndingWaitsForThem',
+    !r.asA.some(x => x.startsWith('e-of-b')) && r.leftA.includes('e-of-b') && r.asB.includes('e-of-b@uid-B') && r.bHas,
+    `as A: ${r.asA.join(', ')} (left ${r.leftA.join(',')}); as B: ${r.asB.join(', ')}`);
+  ck('aKeptEndingAgesOutAndARefusedOneIsSteppedPast',
+    !r.asA.some(x => x.startsWith('e-stale')) && !r.leftA.includes('e-stale') && r.asA.includes('e-fine@uid-A') &&
+    r.asA.indexOf('e-shape@uid-A') >= 0 && r.leftA.includes('e-shape') && !r.leftA.includes('e-fine') && r.numbers.days === 30,
+    `sent ${r.asA.join(', ')}; kept ${r.leftA.join(', ')}; END_DAYS ${r.numbers.days}`);
+  ck('atMostSixRunsWaitTheOldestGoesFirst', r.numbers.keep === 6 && r.cap.length === 6 && r.cap[0] === 'cap-2' && r.cap[5] === 'cap-7',
+    r.cap.join(', '));
+}
+
+/* ---- 10f. THE PITY CARD on a Calm win: only when the ledger says it is due ---- */
+{
+  const r = await p.evaluate(async () => {
+    const out = {};
+    const m = __MOCK.rec('uid-A');
+    m.ledger.push({ run: 'a-legend', win: true, legend: true });   // the count starts from a legend
+    __t.ended('calm-early', 'win', 'calm');
+    __t.grant('calm-early', ['dragonfire']);
+    const s1 = await Deck.sync('pity-early');
+    out.early = { dropped: s1.dropped, why: ((Deck.col().refused || []).slice(-1)[0] || {}).why, held: Deck.count('dragonfire'), cloud: m.counts.dragonfire || 0 };
+    // fourteen wins on the record since the last legend
+    for (let i = 0; i < 14; i++) m.ledger.push({ run: 'pw' + i, win: true, legend: false });
+    __t.ended('calm-due', 'win', 'calm');
+    __t.grant('calm-due', ['dragonfire']);
+    const s2 = await Deck.sync('pity-due');
+    out.due = { done: s2.done, cloud: m.counts.dragonfire || 0, pity: __MOCK.pityOf(m) };
+    return out;
+  });
+  ck('aCalmLegendNeedsThePityTheLedgerHolds',
+    r.early.dropped === 1 && r.early.why === 'bad_cards' && r.early.held === 0 && r.early.cloud === 0 && r.due.done === 1 && r.due.cloud === 1 && r.due.pity === 0,
+    `at pity 0: ${JSON.stringify(r.early)}; at 14: ${JSON.stringify(r.due)}`);
+}
+
+/* ---- 10g. A WIN EARNED OFFLINE, its run lost online from an earlier save, is still a win on the record ---- */
+{
+  const r = await p.evaluate(async () => {
+    const out = {};
+    // the win's ending was KEPT on the device (offline at the moment of victory)
+    localStorage.setItem(Backend.END_KEY, JSON.stringify([{ at: Date.now(), uid: 'uid-A',
+      row: { run_id: 'r-twice', kind: 'run_end', outcome: 'win', cause: 'razed_rival_tc', mode: 'moderate', day: 80, seconds: 1500, props: {} } }]));
+    __t.grant('r-twice', ['legion_marches']);
+    // …then an earlier save of the same run was loaded and LOST online: that
+    // ending landed first (the device's ledger grants a run once — no op)
+    __t.ended('r-twice', 'loss');
+    const m0 = __t.mark();
+    const s = await Deck.sync('twice');
+    out.s = { ok: s.ok, done: s.done, dropped: s.dropped };
+    out.sent = __t.rpcs(m0).map(c => c.path.slice(5) + (c.body && c.body.p_row ? ':' + c.body.p_row.outcome : ''));
+    out.endings = __MOCK.rec('uid-A').endsAll['r-twice'];
+    out.cloud = __MOCK.rec('uid-A').counts.legion_marches || 0;
+    // and a resend of the same ending is still exactly one
+    const again = await Backend.rpc('report_run_end', { p_row: { run_id: 'r-twice', outcome: 'win', cause: 'razed_rival_tc', mode: 'moderate' } });
+    out.again = again.data && again.data.already === true;
+    out.endings2 = __MOCK.rec('uid-A').endsAll['r-twice'].length;
+    return out;
+  });
+  ck('aWinEarnedOfflineIsStillAWinAfterAnOnlineLoss',
+    r.s.ok && r.s.done === 1 && r.s.dropped === 0 && r.cloud === 1 && r.sent[0] === 'report_run_end:win' &&
+    JSON.stringify(r.endings) === JSON.stringify(['loss', 'win']) && r.again && r.endings2 === 2,
+    `${r.sent.join(' → ')}; endings ${JSON.stringify(r.endings)}; cloud ${r.cloud}; resend already ${r.again}`);
+}
+
+/* ---- 10h. A LOST CARD IN A LIVE GAME: the event log says it at once ---- */
+{
+  const r = await p.evaluate(async () => {
+    Screens._demo = false;
+    G.newGame('sync-lost', 'moderate', 'medium');
+    Screens.show('playing'); S.paused = true;
+    __t.ended('r-told', 'loss');
+    __MOCK.st.refuse['r-told'] = 'not_earned';
+    __t.grant('r-told', ['scouts_fire'], 'loss');
+    const s = await Deck.sync('told');
+    const line = S.log.find(e => /^📜 The record does not hold your Scout's Fire from that defeat — it never counted\.$/.test(e.msg));
+    const out = { reconciled: s.reconciled, line: !!line, waiting: Deck.lostNotes().length, log: S.log.slice(0, 2).map(e => e.msg) };
+    Screens.show('title');
+    return out;
+  });
+  ck('aCardTheRecordTookBackMidGameIsSaidInTheLog', r.reconciled && r.line && r.waiting === 0, JSON.stringify(r));
 }
 
 /* ---- 11. a real grant and a real play, through the deck's own doors ---- */
