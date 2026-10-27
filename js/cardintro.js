@@ -26,11 +26,14 @@
    the words against the same constants. The faces are Deck.face — the real
    catalog cards, at whole device pixels.
 
-   THE ART (assets/cards/intro/, PixelLab, ART_PLAN.md "The card
-   announcement") is fetched only when the announcement opens: the gold
-   corner, the ribbon, the laurel, the two emblems and the dusk valley. The
-   dragon and the kraken are the beasts' own shipped strips (assets/fx/).
-   Lettering is the menu face (Cinzel), so it is crisp at any size. */
+   THE PICTURES are the card faces (Deck.face, the real catalog paintings
+   and frames) and one painted backdrop, the dusk valley (assets/cards/
+   intro/dusk.webp, PixelLab, ART_PLAN.md "The card announcement"), fetched
+   only when the announcement opens (the prizes screen also shows the
+   beasts' own shipped strips, assets/fx/). Everything else it wears — the ribbon,
+   the gold corners, the laurels, the emblems, the deck — is CHROME, drawn
+   as vectors at the device's own resolution (CardIntro.SVG, below), and
+   the lettering is the menu face (Cinzel), crisp at any size. */
 
 const CardIntro = {
   KEY: 'neo-cards-intro',
@@ -224,16 +227,16 @@ const CardIntro = {
     const E = c.earn;
     const earn =
       `<div class="ciRoads">` +
-        `<div class="ciRoad win"><i class="ciEmb" data-art="win"></i><div class="ciRoadTx"><h3>${esc(E.win.h)}</h3><p>${esc(E.win.p)}</p>` +
+        `<div class="ciRoad win"><i class="ciEmb" data-svg="win"></i><div class="ciRoadTx"><h3>${esc(E.win.h)}</h3><p>${esc(E.win.p)}</p>` +
           `<p class="ciGain"><span class="ciCardPip"></span><b>+1 card</b><span class="ciOr">or</span><span class="ciCardPip"></span><span class="ciCardPip two"></span><b>+2</b></p>` +
           `<p class="ciNote">${esc(E.win.note)}</p></div></div>` +
-        `<div class="ciRoad loss"><i class="ciEmb" data-art="fight"></i><div class="ciRoadTx"><h3>${esc(E.loss.h)}</h3><p>${esc(E.loss.p)}</p>` +
+        `<div class="ciRoad loss"><i class="ciEmb" data-svg="fight"></i><div class="ciRoadTx"><h3>${esc(E.loss.h)}</h3><p>${esc(E.loss.p)}</p>` +
           `<p class="ciMeter"><span class="ciPips">${'<i></i>'.repeat(f.deeds)}</span><b>${esc(E.deeds)}</b></p>` +
           `<p class="ciMeter"><span class="ciDays">${'<i></i>'.repeat(f.days)}</span><b>${esc(E.days)}</b></p>` +
           `<p class="ciNote">${esc(E.loss.note)}</p></div></div>` +
       `</div>`;
     const play =
-      `<div class="ciPlay"><figure class="ciDeck"><div class="ciDeckBtn" aria-hidden="true">${this._stackSvg()}<i class="ciTap"></i></div>` +
+      `<div class="ciPlay"><figure class="ciDeck"><div class="ciDeckBtn" aria-hidden="true"><i class="ciDeckIco" data-svg="deck"></i><i class="ciTap"></i></div>` +
         `<figcaption><b>${esc(c.play.deck)}</b>${c.play.held ? `<small>${esc(c.play.held)}</small>` : ''}</figcaption></figure>` +
       `<i class="ciArrow" aria-hidden="true"></i><div class="ciTrio"></div></div>`;
     const legends = `<div class="ciLegends"><ol class="ciTiers"></ol><div class="ciBeasts"></div></div>`;
@@ -259,15 +262,18 @@ const CardIntro = {
       `</div>`;
     document.body.appendChild(root);
     this._root = root;
-    // the pixel art pieces: one URL each, set once
-    for (const el of root.querySelectorAll('[data-art]')) el.style.backgroundImage = `url("${this.art(el.dataset.art)}")`;
-    root.style.setProperty('--corner', `url("${this.art('corner')}")`);
-    root.style.setProperty('--ribbon', `url("${this.art('ribbon')}")`);
-    root.style.setProperty('--laurel', `url("${this.art('laurel')}")`);
+    // the chrome: drawn once per opening, handed to CSS as vectors
+    const V = this.SVG;
+    for (const el of root.querySelectorAll('[data-svg]')) el.style.backgroundImage = V.uri(V[el.dataset.svg]());
+    root.style.setProperty('--corner', V.uri(V.corner()));
+    root.style.setProperty('--ribbon', V.uri(V.ribbon()));
+    root.style.setProperty('--laurel', V.uri(V.laurel()));
+    root.style.setProperty('--trail', V.uri(V.trail()));
+    // …and the one painted picture behind it all
     root.style.setProperty('--dusk', `url("${this.art('dusk')}")`);
     this._sparks();
   },
-  ART: { corner: 'corner.png', ribbon: 'ribbon.png', laurel: 'laurel.png', dusk: 'dusk.webp', win: 'win.png', fight: 'fight.png' },
+  ART: { dusk: 'dusk.webp' },
   art(k) { return this.DIR + this.ART[k] + '?v=' + ((typeof CFG !== 'undefined' && CFG.ART_V) || 1); },
 
   /* THE ROOM EACH SCREEN HAS. The faces come in whole-pixel steps (Deck.fit:
@@ -278,14 +284,15 @@ const CardIntro = {
     const root = this._root;
     if (!root) return;
     const vp = this._vp(), dpr = this._dpr();
-    const whole = (art, target) => art * Math.max(1, Math.round(target * dpr / art)) / dpr;
     const narrow = vp.w < 600;
     root.classList.toggle('ciNarrow', narrow);
-    // the ribbon first: the panel's top gives way to its overhang
-    root.style.setProperty('--ribW', whole(160, narrow ? Math.min(240, vp.w * 0.62) : 300) + 'px');
-    root.style.setProperty('--cornerW', whole(64, narrow ? 44 : 64) + 'px');
-    root.style.setProperty('--laurelH', whole(128, narrow ? 64 : 112) + 'px');
-    root.style.setProperty('--embW', whole(64, narrow ? 64 : 120) + 'px');
+    /* the chrome is vector, so it takes any size: the ribbon first (the
+       panel's top gives way to its overhang), then the ornaments */
+    root.style.setProperty('--ribW', Math.round(narrow ? Math.min(268, vp.w * 0.69) : 330) + 'px');
+    root.style.setProperty('--cornerW', (narrow ? 50 : 72) + 'px');
+    root.style.setProperty('--laurelH', (narrow ? 84 : 124) + 'px');
+    root.style.setProperty('--embW', (narrow ? 70 : 124) + 'px');
+    void dpr;
     const panel = root.querySelector('.ciPanel');
     const pw = panel.clientWidth || Math.min(vp.w - 24, 880);
     const ph = panel.clientHeight || vp.h - 60;
@@ -565,10 +572,9 @@ const CardIntro = {
     const add = u => { if (u && !this._pre[u]) urls.push(u); };
     const v = (typeof CFG !== 'undefined' && CFG.ART_V) || 1;
     if (n === 0) {
-      for (const k of ['corner', 'ribbon', 'laurel', 'dusk']) add(this.art(k));
+      add(this.art('dusk'));
       for (const id of this.FAN) { add(Deck.artUrl(id)); add(Deck.frameUrl(Deck.card(id).tier)); }
-    } else if (n === 1) { add(this.art('win')); add(this.art('fight')); }
-    else if (n === 2) for (const p of this.PLAY) { add(Deck.artUrl(p.id)); add(Deck.frameUrl(Deck.card(p.id).tier)); }
+    } else if (n === 2) for (const p of this.PLAY) { add(Deck.artUrl(p.id)); add(Deck.frameUrl(Deck.card(p.id).tier)); }
     else if (n === 3) for (const b of this.BEASTS) { add(Deck.artUrl(b.id)); add(Deck.frameUrl(Deck.card(b.id).tier)); add(b.strip + '?v=' + v); }
     const all = urls.map(u => (this._pre[u] = new Promise(res => {
       const img = new Image();
@@ -591,11 +597,6 @@ const CardIntro = {
   // bare UI, never window.UI: it is a script-level const (the window.G trap)
   _cue(kind) { try { if (typeof UI !== 'undefined' && UI.cue) UI.cue(kind); } catch (e) {} },
   esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); },
-  // the deck button's own pixel stack (js/deckui.js), so the picture IS the button
-  _stackSvg() {
-    if (window.DeckUI && DeckUI.STACK_SVG) return DeckUI.STACK_SVG;
-    return '<svg class="dkIco" viewBox="0 0 12 12"></svg>';
-  },
   // drawn at the device's own resolution (operator ruling: UI chrome is never chunky)
   CLOSE_SVG: '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">' +
     '<path d="M3.5 3.5 L12.5 12.5 M12.5 3.5 L3.5 12.5"/></svg>',
@@ -609,6 +610,262 @@ const CardIntro = {
     st.id = 'cardIntroCss';
     st.textContent = this.CSS;
     document.head.appendChild(st);
+  },
+};
+
+/* THE CHROME IS DRAWN, NOT BLOWN UP (operator ruling: the world's art —
+   terrain, buildings, units, the painted backdrops, the card paintings — is
+   pixel art; the UI's chrome is never chunky). Every ornament the
+   announcement wears — the ribbon, the gold corners, the laurels, the two
+   emblems, the deck, the trail — is an SVG built here and
+   handed to CSS as a data URI, so the browser draws it at the device's own
+   resolution at whatever size the layout asks for. The contract measures it
+   (tests/card-intro.mjs, theChromeIsDrawnAtTheDevicesResolution): a raster
+   piece of chrome must hold at least 3 device pixels per CSS pixel, and
+   nothing here may be drawn pixelated. One gold, one navy, the palette of
+   the faces' frames; pure functions, no state, nothing fetched. */
+CardIntro.SVG = {
+  uri(s) { return 'url("data:image/svg+xml;utf8,' + encodeURIComponent(s) + '")'; },
+  doc(w, h, body, vb) { return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='${vb || '0 0 ' + w + ' ' + h}' width='${w}' height='${h}'>${body}</svg>`; },
+  rgb(c) { const n = parseInt(c.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; },
+  mix(a, b, t) {
+    const A = this.rgb(a), B = this.rgb(b);
+    return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join('');
+  },
+  f(n) { return Math.round(n * 100) / 100; },
+  /* burnished gold, banded like struck metal, the light from the top left */
+  gold(id, x1, y1, x2, y2) {
+    return `<linearGradient id='${id}' gradientUnits='userSpaceOnUse' x1='${x1}' y1='${y1}' x2='${x2}' y2='${y2}'>` +
+      `<stop offset='0' stop-color='#fff4c9'/><stop offset='.22' stop-color='#f6d074'/><stop offset='.44' stop-color='#d9a03a'/>` +
+      `<stop offset='.6' stop-color='#a8691a'/><stop offset='.78' stop-color='#e7b955'/><stop offset='1' stop-color='#87500f'/></linearGradient>`;
+  },
+  /* one engraved line: a dark bed, the gold, a hair of light along it */
+  line(d, w, gid, hi) {
+    return `<path d='${d}' fill='none' stroke='#1c0f03' stroke-width='${w + 2}' stroke-linecap='round' stroke-linejoin='round'/>` +
+      `<path d='${d}' fill='none' stroke='url(#${gid})' stroke-width='${w}' stroke-linecap='round' stroke-linejoin='round'/>` +
+      (hi ? `<path d='${d}' fill='none' stroke='#fff6d6' stroke-opacity='.55' stroke-width='${Math.max(.35, w * .22)}' stroke-linecap='round' transform='translate(-.35 -.35)'/>` : '');
+  },
+  // the same path with x and y exchanged: a corner's second arm is its first, mirrored on the diagonal
+  swap(d) { return d.replace(/(-?[\d.]+),(-?[\d.]+)/g, '$2,$1'); },
+  /* a leaf of beaten gold: lit along one half, shaded along the other, a
+     cut midrib between (the engraver's line) */
+  leaf(x, y, deg, L, gid) {
+    const w = L * 0.25, f = n => this.f(n);
+    return `<g transform='translate(${f(x)} ${f(y)}) rotate(${f(deg)})'>` +
+      `<path d='M0,0 C${f(L * .28)},${f(-w)} ${f(L * .7)},${f(-w * .95)} ${f(L)},0 C${f(L * .7)},${f(w * .95)} ${f(L * .28)},${f(w)} 0,0 Z' fill='url(#${gid})' stroke='#2e1803' stroke-width='.75' stroke-linejoin='round'/>` +
+      `<path d='M${f(L * .1)},0 Q${f(L * .5)},${f(-w * .12)} ${f(L * .86)},0' fill='none' stroke='#6e3f0c' stroke-width='.5' stroke-linecap='round'/></g>`;
+  },
+  leafGrad(id) {
+    return `<linearGradient id='${id}' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#fff6cf'/><stop offset='.3' stop-color='#f5cf6a'/>` +
+      `<stop offset='.5' stop-color='#d89c34'/><stop offset='.52' stop-color='#a86a1c'/><stop offset='1' stop-color='#6f400c'/></linearGradient>`;
+  },
+  /* a branch along a curve: pt(t) and tan(t) say where and which way it
+     runs; leaves go out in pairs, shortening toward the tip */
+  branch(pt, tan, o) {
+    let s = '';
+    const n = o.n, deg = r => r * 180 / Math.PI;
+    for (let i = 0; i < n; i++) {
+      const t = o.t0 + (o.t1 - o.t0) * i / (n - 1);
+      for (const side of [1, -1]) {
+        const tt = Math.min(o.t1, t + (side < 0 ? o.stagger : 0));
+        const p = pt(tt), d = tan(tt), len = Math.hypot(d[0], d[1]) || 1, T = [d[0] / len, d[1] / len], N = [-T[1], T[0]];
+        const a = Math.atan2(T[1], T[0]) + side * o.spread;
+        const L = o.L0 + (o.L1 - o.L0) * tt;
+        s += this.leaf(p[0] + N[0] * side * .9, p[1] + N[1] * side * .9, deg(a), L, o.gid);
+      }
+    }
+    const e = pt(o.t1 + .015), d = tan(o.t1);
+    s += this.leaf(e[0], e[1], deg(Math.atan2(d[1], d[0])), o.L1 * 1.05, o.gid);
+    return s;
+  },
+
+  /* THE RIBBON: a navy banner with gentle folds, a crisp gold rim and
+     swallow-tailed ends folded behind it. The lettering is CSS on its band
+     (the top 57%), never baked into the picture. */
+  ribbon() {
+    const tail = 'M76,29 L7,47 L28,66 L10,93 L86,72 L86,40 Z';
+    const fold = 'M58,55.6 L86,54.6 L86,72 Z';
+    const band = 'M58,7 Q200,1 342,7 L342,56 Q200,50 58,56 Z';
+    const mirror = d => d.replace(/(-?[\d.]+),(-?[\d.]+)/g, (m, x, y) => (400 - +x) + ',' + y);
+    const shade = (id, dir) => `<linearGradient id='${id}' x1='${dir < 0 ? 0 : 1}' y1='0' x2='${dir < 0 ? 1 : 0}' y2='0'>` +
+      `<stop offset='0' stop-color='#000' stop-opacity='0'/><stop offset='.62' stop-color='#000' stop-opacity='.06'/><stop offset='1' stop-color='#000' stop-opacity='.5'/></linearGradient>`;
+    const tails = [[tail, fold, 'sl'], [mirror(tail), mirror(fold), 'sr']].map(([t, fo, sh]) =>
+      `<path d='${t}' fill='none' stroke='#0b0703' stroke-width='5' stroke-linejoin='round'/>` +
+      `<path d='${t}' fill='url(#tl)'/><path d='${t}' fill='url(#${sh})'/>` +
+      `<path d='${t}' fill='none' stroke='url(#gr)' stroke-width='2.2' stroke-linejoin='round'/>` +
+      `<path d='${fo}' fill='#081129' stroke='#05080f' stroke-width='1.6' stroke-linejoin='round'/>`).join('');
+    const cloth = [[0, .38], [.07, 0], [.2, -.1], [.34, .12], [.5, -.12], [.66, .12], [.8, -.1], [.93, 0], [1, .38]]
+      .map(([o, a]) => `<stop offset='${o}' stop-color='${a > 0 ? '#000814' : '#9fbaff'}' stop-opacity='${Math.abs(a)}'/>`).join('');
+    const body =
+      `<defs>${this.gold('gr', 0, 0, 0, 62)}` +
+      `<linearGradient id='bd' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#4870c2'/><stop offset='.18' stop-color='#2f55a6'/>` +
+        `<stop offset='.55' stop-color='#1d397c'/><stop offset='.86' stop-color='#142b63'/><stop offset='1' stop-color='#0e1f4d'/></linearGradient>` +
+      `<linearGradient id='tl' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#2c4d98'/><stop offset='.5' stop-color='#1a3373'/><stop offset='1' stop-color='#0c1b45'/></linearGradient>` +
+      `<linearGradient id='cl' x1='0' y1='0' x2='1' y2='0'>${cloth}</linearGradient>${shade('sl', -1)}${shade('sr', 1)}</defs>` +
+      tails +
+      `<path d='${band}' fill='none' stroke='#0b0703' stroke-width='6' stroke-linejoin='round'/>` +
+      `<path d='${band}' fill='url(#bd)'/><path d='${band}' fill='url(#cl)'/>` +
+      `<path d='M63,11.6 Q200,5.8 337,11.6' fill='none' stroke='#b9cdff' stroke-opacity='.32' stroke-width='1.3'/>` +
+      `<path d='M64,13.2 Q200,7.4 336,13.2 M64,50.2 Q200,44.4 336,50.2' fill='none' stroke='#e9c063' stroke-opacity='.62' stroke-width='.9' stroke-dasharray='2.6 2'/>` +
+      `<path d='${band}' fill='none' stroke='url(#gr)' stroke-width='3.2' stroke-linejoin='round'/>` +
+      `<path d='M59.5,8.4 Q200,2.4 340.5,8.4' fill='none' stroke='#fff6d6' stroke-opacity='.7' stroke-width='.7'/>`;
+    return this.doc(400, 100, body);
+  },
+
+  /* THE CORNER: a bracket of engraved gold laid along the panel's rim (its
+     edge sits at 9 units in, the rim's gold just outside it), curling into
+     volutes at both ends, a short inner bracket on the hairline, an acanthus
+     leaf into the panel and a jewel on the point. Drawn for the TOP LEFT;
+     CSS mirrors it into the other three. */
+  corner() {
+    const arm = 'M7,56 L7,14 Q7,7 14,7 L56,7';
+    const vol = 'M56,7 C61.5,7 63.2,11.6 60.8,14.4 C58.6,16.9 54.6,15.8 55.2,13.1 C55.6,11.4 57.6,11.3 58,12.7';
+    const inner = 'M18,38 L18,21 Q18,18 21,18 L38,18';
+    const curl = 'M38,18 C42.2,18 43.6,14.6 41.6,13 C40,11.8 38.2,13 39,14.6';
+    const acan = 'M11.5,11.5 C17,12.5 23,16.5 27.5,27.5 C20,24.5 13.5,19 11.5,11.5 Z';
+    const side = 'M13,13 C17.5,9.5 22,10.2 24.2,12.6 C21,12.4 17.6,12.8 13,13 Z';
+    const body =
+      `<defs>${this.gold('g', 0, 0, 40, 40)}${this.leafGrad('lf')}</defs>` +
+      this.line(arm, 2.6, 'g', true) + this.line(vol, 2, 'g', true) + this.line(this.swap(vol), 2, 'g', true) +
+      `<path d='M10.5,52 L10.5,15 Q10.5,10.5 15,10.5 L52,10.5' fill='none' stroke='#2a1604' stroke-opacity='.75' stroke-width='.6'/>` +
+      this.line(inner, 1.3, 'g') + this.line(curl, 1.1, 'g') + this.line(this.swap(curl), 1.1, 'g') +
+      `<path d='${side}' fill='url(#lf)' stroke='#2e1803' stroke-width='.7'/><path d='${this.swap(side)}' fill='url(#lf)' stroke='#2e1803' stroke-width='.7'/>` +
+      `<path d='${acan}' fill='url(#lf)' stroke='#2e1803' stroke-width='.8' stroke-linejoin='round'/>` +
+      `<path d='M13.5,13.5 C18,16.5 22,20.5 25,25.5' fill='none' stroke='#6e3f0c' stroke-width='.55' stroke-linecap='round'/>` +
+      [[30, 7], [7, 30], [42, 7], [7, 42]].map(([x, y]) => `<circle cx='${x}' cy='${y}' r='1.15' fill='#fff1c0' stroke='#3a2006' stroke-width='.5'/>`).join('') +
+      `<path d='M7,0.8 L13.2,7 L7,13.2 L0.8,7 Z' fill='url(#g)' stroke='#1c0f03' stroke-width='1.1' stroke-linejoin='round'/>` +
+      `<path d='M7,3.4 L10.6,7 L7,10.6 L3.4,7 Z' fill='none' stroke='#7a4a10' stroke-width='.5'/>` +
+      `<circle cx='7' cy='7' r='1.9' fill='#fff7da' stroke='#8a5414' stroke-width='.5'/>`;
+    return this.doc(64, 64, body);
+  },
+
+  /* THE LAUREL: one branch of beaten gold, convex to the right — the RIGHT
+     laurel; the left is its mirror */
+  laurel() {
+    const P = [[13, 117], [46, 99], [51, 38], [25, 5]];
+    const pt = t => { const u = 1 - t; return [0, 1].map(k => u * u * u * P[0][k] + 3 * u * u * t * P[1][k] + 3 * u * t * t * P[2][k] + t * t * t * P[3][k]); };
+    const tan = t => { const u = 1 - t; return [0, 1].map(k => 3 * u * u * (P[1][k] - P[0][k]) + 6 * u * t * (P[2][k] - P[1][k]) + 3 * t * t * (P[3][k] - P[2][k])); };
+    const stem = `M${P[0]} C${P[1]} ${P[2]} ${P[3]}`;
+    let berries = '';
+    for (const t of [.3, .55, .78]) {
+      const p = pt(t), d = tan(t), l = Math.hypot(d[0], d[1]), N = [-d[1] / l, d[0] / l];
+      berries += `<circle cx='${this.f(p[0] - N[0] * 5.4)}' cy='${this.f(p[1] - N[1] * 5.4)}' r='2.1' fill='url(#bb)' stroke='#2e1803' stroke-width='.6'/>`;
+    }
+    const body =
+      `<defs>${this.gold('g', 0, 0, 60, 120)}${this.leafGrad('lf')}` +
+      `<radialGradient id='bb' cx='.35' cy='.3' r='.75'><stop offset='0' stop-color='#fffbe6'/><stop offset='.45' stop-color='#f0c457'/><stop offset='1' stop-color='#8a5414'/></radialGradient></defs>` +
+      this.line(stem, 1.9, 'g', true) + berries +
+      this.branch(pt, tan, { n: 9, t0: .05, t1: .93, stagger: .04, spread: .64, L0: 19, L1: 10.5, gid: 'lf' });
+    return this.doc(60, 120, body);
+  },
+
+  /* VICTORY: a crown in a gold wreath, tied with crimson */
+  win() {
+    const C = [60, 64], R = 40, rad = d => d * Math.PI / 180;
+    const arc = (a0, a1) => ({
+      pt: t => { const a = rad(a0 + (a1 - a0) * t); return [C[0] + R * Math.cos(a), C[1] + R * Math.sin(a)]; },
+      tan: t => { const a = rad(a0 + (a1 - a0) * t), s = Math.sign(a1 - a0); return [-Math.sin(a) * s, Math.cos(a) * s]; },
+    });
+    const L = arc(108, 243), Rr = arc(72, -63);
+    const stem = (a0, a1) => {
+      const s = [C[0] + R * Math.cos(rad(a0)), C[1] + R * Math.sin(rad(a0))], e = [C[0] + R * Math.cos(rad(a1)), C[1] + R * Math.sin(rad(a1))];
+      return `M${this.f(s[0])},${this.f(s[1])} A${R},${R} 0 0 ${a1 > a0 ? 1 : 0} ${this.f(e[0])},${this.f(e[1])}`;
+    };
+    const o = { n: 8, t0: .04, t1: .95, stagger: .045, spread: .6, L0: 15.5, L1: 10, gid: 'lf' };
+    const star = (x, y, s) => `<path d='M${x},${y - s} Q${x + s * .18},${y - s * .18} ${x + s},${y} Q${x + s * .18},${y + s * .18} ${x},${y + s} Q${x - s * .18},${y + s * .18} ${x - s},${y} Q${x - s * .18},${y - s * .18} ${x},${y - s} Z' fill='#fffbe8'/>`;
+    const crown = 'M40,68 L36.5,45 L48.5,56.5 L60,37.5 L71.5,56.5 L83.5,45 L80,68 Z';
+    const body =
+      `<defs>${this.gold('g', 30, 30, 90, 100)}${this.gold('cg', 0, 36, 0, 80)}${this.leafGrad('lf')}` +
+      `<radialGradient id='pr' cx='.35' cy='.3' r='.8'><stop offset='0' stop-color='#ffffff'/><stop offset='.5' stop-color='#f3e3b8'/><stop offset='1' stop-color='#9a7a40'/></radialGradient>` +
+      `<radialGradient id='rb' cx='.35' cy='.3' r='.8'><stop offset='0' stop-color='#ffb3b8'/><stop offset='.4' stop-color='#d81e3a'/><stop offset='1' stop-color='#5a0614'/></radialGradient>` +
+      `<radialGradient id='sp' cx='.35' cy='.3' r='.8'><stop offset='0' stop-color='#cfe6ff'/><stop offset='.45' stop-color='#3a78d8'/><stop offset='1' stop-color='#0c2460'/></radialGradient></defs>` +
+      this.line(stem(108, 243), 1.7, 'g') + this.line(stem(72, -63), 1.7, 'g') +
+      this.branch(L.pt, L.tan, o) + this.branch(Rr.pt, Rr.tan, o) +
+      // the tie: two crimson tails and a knot
+      `<path d='M57,103 L47,116 L52,115 L54,119 L60,105 Z M63,103 L73,116 L68,115 L66,119 L60,105 Z' fill='#a81830' stroke='#3a0610' stroke-width='1' stroke-linejoin='round'/>` +
+      `<ellipse cx='60' cy='103.5' rx='5' ry='3.6' fill='url(#rb)' stroke='#3a0610' stroke-width='1'/>` +
+      // the crown
+      `<path d='${crown}' fill='url(#cg)' stroke='#2a1603' stroke-width='1.6' stroke-linejoin='round'/>` +
+      `<path d='M40.4,66 L37.9,48.4 M60,40.5 L49.6,57.4 M80.6,48 L72.6,57' fill='none' stroke='#fff6d6' stroke-opacity='.6' stroke-width='.8' stroke-linecap='round'/>` +
+      `<rect x='38.5' y='65.5' width='43' height='11.5' rx='2.2' fill='url(#cg)' stroke='#2a1603' stroke-width='1.6'/>` +
+      `<path d='M40.5,68.4 L79.5,68.4' stroke='#fff6d6' stroke-opacity='.55' stroke-width='.8'/>` +
+      `<ellipse cx='60' cy='71.3' rx='3.6' ry='3.2' fill='url(#rb)' stroke='#2a1603' stroke-width='.8'/>` +
+      `<circle cx='48' cy='71.3' r='2.4' fill='url(#sp)' stroke='#2a1603' stroke-width='.7'/><circle cx='72' cy='71.3' r='2.4' fill='url(#sp)' stroke='#2a1603' stroke-width='.7'/>` +
+      `<path d='M60,48 L62.4,52.4 L60,56.8 L57.6,52.4 Z' fill='url(#rb)' stroke='#2a1603' stroke-width='.7'/>` +
+      `<circle cx='36.5' cy='44' r='2.8' fill='url(#pr)' stroke='#2a1603' stroke-width='.8'/><circle cx='83.5' cy='44' r='2.8' fill='url(#pr)' stroke='#2a1603' stroke-width='.8'/>` +
+      `<circle cx='60' cy='36' r='3.2' fill='url(#pr)' stroke='#2a1603' stroke-width='.8'/>` +
+      star(33, 31, 4.2) + star(88, 34, 3.2) + star(75, 25, 2.6);
+    return this.doc(120, 120, body, '7 13 106 106');
+  },
+
+  /* A HARD-FOUGHT DEFEAT: a gashed round shield, a spear behind it, embers */
+  fight() {
+    const ang = Math.atan2(22 - 104, 100 - 24) * 180 / Math.PI;
+    const body =
+      `<defs>` +
+      `<linearGradient id='st' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#f1f4f7'/><stop offset='.45' stop-color='#9aa6b3'/><stop offset='1' stop-color='#3c4652'/></linearGradient>` +
+      `<linearGradient id='rim' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#dfe5ea'/><stop offset='.35' stop-color='#8d98a5'/><stop offset='.7' stop-color='#4a5461'/><stop offset='1' stop-color='#262c35'/></linearGradient>` +
+      `<linearGradient id='wd' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#9a6a3c'/><stop offset='.5' stop-color='#7a4c27'/><stop offset='1' stop-color='#4e2c13'/></linearGradient>` +
+      `<linearGradient id='sh' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='#5a3418'/><stop offset='.45' stop-color='#a0703f'/><stop offset='1' stop-color='#4a2a12'/></linearGradient>` +
+      `<radialGradient id='bs' cx='.38' cy='.32' r='.75'><stop offset='0' stop-color='#ffffff'/><stop offset='.4' stop-color='#aab4bf'/><stop offset='1' stop-color='#323a44'/></radialGradient>` +
+      `<radialGradient id='lt' cx='.32' cy='.25' r='.8'><stop offset='0' stop-color='#fff' stop-opacity='.22'/><stop offset='.6' stop-color='#fff' stop-opacity='0'/><stop offset='1' stop-color='#000' stop-opacity='.35'/></radialGradient>` +
+      `<radialGradient id='em' cx='.5' cy='.5' r='.5'><stop offset='0' stop-color='#fff6c0'/><stop offset='.35' stop-color='#ffb24a'/><stop offset='.7' stop-color='#ff6a1a' stop-opacity='.55'/><stop offset='1' stop-color='#ff4a00' stop-opacity='0'/></radialGradient>` +
+      `<clipPath id='face'><circle cx='56' cy='66' r='27.5'/></clipPath></defs>` +
+      // the spear, behind
+      `<path d='M24,104 L94,29' stroke='#1a0e05' stroke-width='6' stroke-linecap='round'/>` +
+      `<path d='M24,104 L94,29' stroke='url(#sh)' stroke-width='3.6' stroke-linecap='round'/>` +
+      `<path d='M25,102.4 L93,29.6' stroke='#d4a06a' stroke-opacity='.55' stroke-width='.8' stroke-linecap='round'/>` +
+      `<g transform='translate(92 31) rotate(${this.f(ang)})'>` +
+        `<path d='M-2,-2.6 L4,-2.6 L4,2.6 L-2,2.6 Z' fill='#2a2f36' stroke='#0d0f12' stroke-width='.8'/>` +
+        `<path d='M3,0 C8,-6.5 17,-6 28,0 C17,6 8,6.5 3,0 Z' fill='url(#st)' stroke='#14181d' stroke-width='1.2' stroke-linejoin='round'/>` +
+        `<path d='M5,0 L26,0' stroke='#ffffff' stroke-opacity='.55' stroke-width='.7'/></g>` +
+      // the shield: iron rim, planks, a gash, the boss
+      `<circle cx='56' cy='66' r='35.5' fill='#120c07'/>` +
+      `<circle cx='56' cy='66' r='34' fill='url(#rim)'/>` +
+      `<circle cx='56' cy='66' r='28.6' fill='#1a0f06'/>` +
+      `<g clip-path='url(#face)'><rect x='26' y='36' width='60' height='60' fill='url(#wd)'/>` +
+        [38, 47, 56, 65, 74].map((x, i) => `<rect x='${x - 9}' y='36' width='9' height='60' fill='#000' fill-opacity='${[.12, 0, .08, 0, .14][i]}'/>` +
+          `<path d='M${x},36 L${x},96' stroke='#2a1608' stroke-width='1.1'/>`).join('') +
+        `<path d='M30,52 Q36,50 40,54 M60,80 Q66,78 70,82 M44,86 Q50,84 52,88 M66,44 Q71,42 74,46' fill='none' stroke='#3a2210' stroke-opacity='.55' stroke-width='.6'/>` +
+        `<rect x='26' y='36' width='60' height='60' fill='url(#lt)'/></g>` +
+      `<path d='M40.5,41 L46.5,51 L41.5,58.5 L48,66.5 L43,75.5 L49,90 L45.2,76 L50.6,66.4 L44.6,58.4 L49.8,50.6 Z' fill='#140a03' stroke='#c58a52' stroke-opacity='.65' stroke-width='.7' stroke-linejoin='round'/>` +
+      [0, 45, 90, 135, 180, 225, 270, 315].map(a => { const r = a * Math.PI / 180, x = this.f(56 + Math.cos(r) * 31.3), y = this.f(66 + Math.sin(r) * 31.3);
+        return `<circle cx='${x}' cy='${y}' r='1.7' fill='url(#bs)' stroke='#14181d' stroke-width='.6'/>`; }).join('') +
+      `<circle cx='56' cy='66' r='9' fill='#14181d'/><circle cx='56' cy='66' r='8' fill='url(#bs)'/>` +
+      `<path d='M51,61.6 A6.4,6.4 0 0 1 58.2,59.8' fill='none' stroke='#fff' stroke-opacity='.75' stroke-width='1.1' stroke-linecap='round'/>` +
+      // embers, rising
+      [[87, 42, 2.8], [97, 54, 2.1], [103, 36, 1.6], [22, 79, 2.4], [16, 66, 1.8]].map(([x, y, r]) =>
+        `<circle cx='${x}' cy='${y}' r='${r * 1.7}' fill='url(#em)'/><circle cx='${x}' cy='${y}' r='${r * .42}' fill='#fff2b0'/>`).join('');
+    // framed on the shield and the spear, not the empty corners of the grid
+    return this.doc(120, 120, body, '10 14 100 100');
+  },
+
+  /* YOUR DECK: the HUD button's own picture (a bronze card behind a gold
+     one, sky and sun and hill in its window), drawn smooth */
+  deck() {
+    const body =
+      `<defs>${this.gold('g', 14, 10, 42, 46)}` +
+      `<linearGradient id='bz' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#f0b27a'/><stop offset='.45' stop-color='#c98446'/><stop offset='1' stop-color='#6e4019'/></linearGradient>` +
+      `<linearGradient id='sk' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#5f8fd0'/><stop offset='1' stop-color='#a9cdf0'/></linearGradient>` +
+      `<radialGradient id='sn' cx='.5' cy='.5' r='.5'><stop offset='0' stop-color='#fff8d0'/><stop offset='.45' stop-color='#ffd45e'/><stop offset='1' stop-color='#ffd45e' stop-opacity='0'/></radialGradient></defs>` +
+      `<g transform='rotate(-11 20 24)'><rect x='6' y='6' width='25' height='34' rx='2.6' fill='url(#bz)' stroke='#140d06' stroke-width='1.4'/>` +
+        `<rect x='9' y='9' width='19' height='28' rx='1.4' fill='#5c3a1c' stroke='#2a1a0a' stroke-width='.7'/></g>` +
+      `<rect x='15' y='10.5' width='26' height='35' rx='2.6' fill='url(#g)' stroke='#140d06' stroke-width='1.4'/>` +
+      `<path d='M17,12.6 L39,12.6' stroke='#fff6d6' stroke-opacity='.7' stroke-width='.8'/>` +
+      `<rect x='18' y='13.5' width='20' height='18' rx='1' fill='url(#sk)' stroke='#2c2318' stroke-width='.8'/>` +
+      `<circle cx='32' cy='19' r='5.5' fill='url(#sn)'/><circle cx='32' cy='19' r='2.4' fill='#ffe58a'/>` +
+      `<path d='M18.4,31.1 L18.4,26 Q24,21.5 29.5,25.4 Q33.5,23 37.6,26.6 L37.6,31.1 Z' fill='#5c7a3a'/>` +
+      `<path d='M18.4,26 Q24,21.5 29.5,25.4 Q33.5,23 37.6,26.6' fill='none' stroke='#9cc06a' stroke-width='.8'/>` +
+      `<rect x='18' y='34' width='20' height='8.4' rx='1' fill='#2c2318' stroke='#120a04' stroke-width='.6'/>` +
+      `<path d='M21,38.2 L35,38.2' stroke='#e8c15a' stroke-opacity='.75' stroke-width='1.1' stroke-linecap='round'/>`;
+    return this.doc(48, 48, body);
+  },
+
+  /* the way from the deck to the hand: three chevrons, brightening */
+  trail() {
+    const ch = (x, o) => `<path d='M${x},3.5 L${x + 6},8 L${x},12.5' fill='none' stroke='#1c0f03' stroke-width='4.4' stroke-linecap='round' stroke-linejoin='round' stroke-opacity='${o}'/>` +
+      `<path d='M${x},3.5 L${x + 6},8 L${x},12.5' fill='none' stroke='url(#g)' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round' stroke-opacity='${o}'/>`;
+    return this.doc(42, 16, `<defs>${this.gold('g', 0, 2, 0, 14)}</defs>` + ch(5, .4) + ch(17, .7) + ch(29, 1));
   },
 };
 
@@ -666,13 +923,15 @@ CardIntro.CSS = `
   background: radial-gradient(ellipse at center, rgba(255,200,90,.32), rgba(255,170,60,.12) 38%, transparent 68%); transition: opacity .5s; }
 #cardIntro[data-page="earn"] .ciRays { opacity: .3; }
 #cardIntro[data-page="earn"] .ciGlow { opacity: .5; }
-/* the gold corners: one drawing, mirrored, laid over the rim */
-#cardIntro .ciCorner { position: absolute; width: var(--cornerW, 64px); height: var(--cornerW, 64px); z-index: 4; pointer-events: none;
-  background: var(--corner) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; filter: drop-shadow(0 2px 2px rgba(0,0,0,.7)); }
-#cardIntro .ciCorner.tl { left: -9px; top: -9px; }
-#cardIntro .ciCorner.tr { right: -9px; top: -9px; transform: scaleX(-1); }
-#cardIntro .ciCorner.bl { left: -9px; bottom: -9px; transform: scaleY(-1); }
-#cardIntro .ciCorner.br { right: -9px; bottom: -9px; transform: scale(-1, -1); }
+/* the gold corners: one engraved drawing (vector), mirrored, laid over the
+   rim — its 9th unit is the panel's edge, so the bracket rides the rim's gold */
+#cardIntro .ciCorner { position: absolute; width: var(--cornerW, 72px); height: var(--cornerW, 72px); z-index: 4; pointer-events: none;
+  --o: calc(var(--cornerW, 72px) * -9 / 64);
+  background: var(--corner) 0 0 / 100% 100% no-repeat; filter: drop-shadow(0 2px 2px rgba(0,0,0,.7)); }
+#cardIntro .ciCorner.tl { left: var(--o); top: var(--o); }
+#cardIntro .ciCorner.tr { right: var(--o); top: var(--o); transform: scaleX(-1); }
+#cardIntro .ciCorner.bl { left: var(--o); bottom: var(--o); transform: scaleY(-1); }
+#cardIntro .ciCorner.br { right: var(--o); bottom: var(--o); transform: scale(-1, -1); }
 
 /* ---- the close X: 44px to touch, a dark disc with a gold cross to see ---- */
 #cardIntro .ciX { position: absolute; right: 16px; top: 16px; z-index: 6; width: 44px; height: 44px; padding: 0; border: 0; background: none;
@@ -691,13 +950,13 @@ CardIntro.CSS = `
 #cardIntro .ciPage.on { display: flex; }
 #cardIntro .ciHead { position: relative; flex: 0 0 auto; width: 100%; display: flex; flex-direction: column; align-items: center; }
 #cardIntro .ciRibbon { position: relative; margin-top: calc(var(--ribW, 300px) * -.13); width: var(--ribW, 300px); aspect-ratio: 4 / 1; z-index: 5; }
-#cardIntro .ciRib { position: absolute; inset: 0; background: var(--ribbon) 0 0 / 100% 100% no-repeat; image-rendering: pixelated;
-  filter: drop-shadow(0 3px 3px rgba(0,0,0,.6)); }
+#cardIntro .ciRib { position: absolute; inset: 0; background: var(--ribbon) 0 0 / 100% 100% no-repeat;
+  filter: drop-shadow(0 3px 4px rgba(0,0,0,.6)); }
 /* the lettering sits on the band, which is the ribbon's top 57% (its tails
    hang below it) */
 #cardIntro .ciRibbon span { position: absolute; left: 0; right: 0; top: 0; height: 57%; display: flex; align-items: center; justify-content: center;
   font-weight: 700; text-transform: uppercase; color: #f4e6c2;
-  font-size: calc(var(--ribW, 300px) * .064); letter-spacing: .12em; white-space: nowrap; text-shadow: 0 1px 0 #061229, 0 0 6px rgba(4,10,30,.8); }
+  font-size: calc(var(--ribW, 300px) * .06); letter-spacing: .12em; white-space: nowrap; text-shadow: 0 1px 0 #061229, 0 0 6px rgba(4,10,30,.8); }
 #cardIntro .ciRibbon span::before, #cardIntro .ciRibbon span::after { content: '\\25C6'; color: #f2cd62; font-size: .7em; margin: 0 .6em; }
 #cardIntro .ciTitle { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; line-height: 1; }
 #cardIntro .ciWord { font-weight: 900; text-transform: uppercase; letter-spacing: .04em; text-align: center;
@@ -715,7 +974,7 @@ CardIntro.CSS = `
 #cardIntro:not(.ciNarrow) .ciP-earn .ciWord, #cardIntro:not(.ciNarrow) .ciP-play .ciWord { font-size: clamp(34px, min(8.6cqw, 8.4vh), 84px); }
 #cardIntro:not(.ciNarrow) .ciP-legends .ciWord { font-size: clamp(30px, min(7.4cqw, 7.4vh), 70px); }
 #cardIntro .ciLaurel { flex: 0 0 auto; width: calc(var(--laurelH, 112px) / 2); height: var(--laurelH, 112px);
-  background: var(--laurel) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)); }
+  background: var(--laurel) 0 0 / 100% 100% no-repeat; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)) drop-shadow(0 0 10px rgba(255,190,70,.25)); }
 #cardIntro .ciLaurel.l { transform: scaleX(-1); }
 #cardIntro .ciRule { width: min(70%, 420px); height: 9px; margin: 2px 0 2px; flex: 0 0 auto;
   background: linear-gradient(90deg, transparent, #c99a40 25%, #f6d27a 50%, #c99a40 75%, transparent) center / 100% 1px no-repeat; position: relative; }
@@ -757,7 +1016,7 @@ CardIntro.CSS = `
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.7), inset 0 0 0 2px rgba(140,152,170,.55), 0 10px 24px rgba(0,0,0,.45); }
 #cardIntro .ciRoadTx { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 #cardIntro .ciEmb { flex: 0 0 auto; width: var(--embW, 120px); height: var(--embW, 120px); background: 0 0 / 100% 100% no-repeat;
-  image-rendering: pixelated; filter: drop-shadow(0 4px 4px rgba(0,0,0,.6)); }
+  filter: drop-shadow(0 4px 4px rgba(0,0,0,.6)); }
 #cardIntro .ciRoad.win .ciEmb { filter: drop-shadow(0 0 16px rgba(255,200,80,.6)) drop-shadow(0 4px 4px rgba(0,0,0,.6)); }
 #cardIntro .ciRoad.loss .ciEmb { filter: drop-shadow(0 0 14px rgba(255,120,40,.3)) drop-shadow(0 4px 4px rgba(0,0,0,.6)); }
 #cardIntro .ciRoad h3 { margin: 0; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; font-size: clamp(16px, 4.4vw, 23px); line-height: 1.15;
@@ -803,15 +1062,13 @@ CardIntro.CSS = `
 #cardIntro .ciDeckBtn { position: relative; width: 84px; height: 70px; display: flex; align-items: center; justify-content: center;
   border-radius: 6px; background: linear-gradient(180deg, #4a3520, #2b1d10);
   box-shadow: inset 0 0 0 1px #0d0804, inset 0 0 0 2px #a8782f, inset 0 3px 0 2px rgba(255,220,150,.08), 0 6px 16px rgba(0,0,0,.6); }
-#cardIntro .ciDeckBtn svg { width: 48px; height: 48px; image-rendering: pixelated; filter: drop-shadow(0 2px 0 rgba(0,0,0,.6)); }
+#cardIntro .ciDeckIco { width: 50px; height: 50px; background: 0 0 / 100% 100% no-repeat; filter: drop-shadow(0 2px 1px rgba(0,0,0,.6)); }
 #cardIntro .ciTap { position: absolute; inset: -6px; border-radius: 10px; border: 2px solid rgba(255,214,110,.85); pointer-events: none;
   animation: ciTap 1.6s ease-out infinite; }
 @keyframes ciTap { 0% { opacity: .9; transform: scale(.94) } 80%, 100% { opacity: 0; transform: scale(1.16) } }
-/* a pixel chevron trail from the button to the hand */
-#cardIntro .ciArrow { flex: 0 0 auto; width: 42px; height: 14px;
-  background: repeating-linear-gradient(90deg, #f2cd62 0 6px, transparent 6px 12px) 0 50% / 30px 4px no-repeat;
-  position: relative; filter: drop-shadow(0 0 6px rgba(255,200,80,.6)); }
-#cardIntro .ciArrow::after { content: ''; position: absolute; right: 0; top: 0; border-left: 10px solid #f2cd62; border-top: 7px solid transparent; border-bottom: 7px solid transparent; }
+/* the way from the button to the hand: three gold chevrons (vector) */
+#cardIntro .ciArrow { flex: 0 0 auto; width: 42px; height: 16px; background: var(--trail) 0 0 / 100% 100% no-repeat;
+  filter: drop-shadow(0 0 6px rgba(255,200,80,.5)); }
 #cardIntro .ciTrio { position: relative; display: flex; align-items: flex-start; justify-content: center; gap: clamp(10px, 2vw, 22px); }
 #cardIntro .ciCard { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; width: var(--cw); }
 #cardIntro .ciTilt { transform: rotate(calc(var(--n) * 4deg)) translateY(calc(var(--n) * var(--n) * 10px)); transform-origin: 50% 100%; }
@@ -934,13 +1191,13 @@ CardIntro.CSS = `
 @media (max-width: 359px) { #cardIntro .ciNext { font-size: 15px; letter-spacing: .1em; } }
 /* a screen measured too tall for its panel (_fitPage): tightened first… */
 #cardIntro .ciPages .ciPage.tight .ciWord { font-size: clamp(26px, min(9.4vw, 5.8vh), 56px); }
-#cardIntro .ciPages .ciPage.tight .ciLaurel { width: 24px; height: 48px; image-rendering: auto; }
+#cardIntro .ciPages .ciPage.tight .ciLaurel { width: 26px; height: 52px; }
 #cardIntro .ciPages .ciPage.tight .ciSub { font-size: 14px; margin-top: 4px; }
 #cardIntro .ciPages .ciPage.tight .ciRule { margin: 0; }
 #cardIntro .ciPages .ciPage.tight .ciRoads { gap: 8px; }
 #cardIntro .ciPages .ciPage.tight .ciRoad { padding: 10px 12px; gap: 10px; }
 #cardIntro .ciPages .ciPage.tight .ciRoadTx { gap: 3px; }
-#cardIntro .ciPages .ciPage.tight .ciEmb { width: 52px; height: 52px; image-rendering: auto; }
+#cardIntro .ciPages .ciPage.tight .ciEmb { width: 56px; height: 56px; }
 #cardIntro .ciPages .ciPage.tight .ciRoad h3 { font-size: 15px; }
 #cardIntro .ciPages .ciPage.tight .ciRoad p:not(.ciNote) { font-size: 13.5px; }
 #cardIntro .ciPages .ciPage.tight .ciRoad .ciNote { font-size: 11px; }

@@ -36,6 +36,9 @@
                        shows the same screens with nothing animated
      THE COLLECTION    "How cards work" reopens it there, and closing it (or
                        Escape) leaves the collection standing
+     THE CHROME        every ornament that is not a card face or the painted
+                       backdrop is a vector, or a raster holding 3 image
+                       pixels per CSS pixel; nothing is drawn pixelated
 
    Run after touching: js/cardintro.js, the CardIntro hooks in js/screens.js
    (show) and js/deckscreens.js (onTitle, the collection's "How cards work"),
@@ -578,6 +581,71 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
   ck('closingItLeavesTheCollection', !a.after.open && a.after.screen === 'cards', JSON.stringify(a.after));
   ck('escapeClosesOnlyTheAnnouncement', !esc.open && esc.screen === 'cards', JSON.stringify(esc));
   await ctx.close();
+}
+
+/* ================= 12. THE CHROME IS DRAWN AT THE DEVICE'S RESOLUTION
+   (operator ruling: the world's art stays pixel art, but UI chrome —
+   ribbons, frames, corner ornaments, laurels, icons, buttons, arrows,
+   dividers, badges — is never chunky, never a small pixel-art PNG blown
+   up) =================
+   Every picture the announcement draws that is not a card face (Deck.face),
+   the painted backdrop (.ciDusk) or a beast's own strip (.ciMonster, world
+   art) is chrome. A raster piece of chrome
+   must hold at least 3 image pixels per CSS pixel (sharp on a 3x phone);
+   a vector passes; and nothing of it is drawn pixelated or crisp-edged. */
+{
+  const bad = [];
+  for (const [w, h, dpr] of [[390, 844, 3], [1440, 900, 1]]) {
+    const ctx = await context({ w, h, dpr, reduce: true });
+    const p = await page(ctx, '?cards=all&cardsintro=1');
+    await opened(p, 15000);
+    const r = await p.evaluate(async () => {
+      // a computed url() is always quoted, and a vector's data URI carries its own url(#…) INSIDE the quotes
+      const URL_RE = /url\(\s*"((?:[^"\\]|\\.)*)"\s*\)|url\(\s*([^"\s)][^)]*)\)/g;
+      const root = document.getElementById('cardIntro'), out = [], seen = new Map();
+      const natural = u => seen.get(u) || seen.set(u, new Promise(res => {
+        const im = new Image();
+        im.onload = () => res([im.naturalWidth, im.naturalHeight]);
+        im.onerror = () => res(null);
+        im.src = u;
+      })).get(u);
+      const vector = u => /^data:image\/svg\+xml/i.test(u) || /\.svg(\?|#|$)/i.test(u);
+      for (let pg = 0; pg < 4; pg++) {
+        CardIntro.go(pg);
+        for (const el of [root, ...root.querySelectorAll('*')]) {
+          if (el.closest('.ccard') || el.closest('.ciDusk') || el.closest('.ciMonster') || !el.getClientRects().length) continue;
+          const name = (el.getAttribute('class') || el.tagName).toString().split(' ')[0];
+          const box = el.getBoundingClientRect();
+          const own = getComputedStyle(el);
+          if (/pixelated|crisp-edges|optimizespeed/i.test(own.imageRendering)) out.push(`screen ${pg + 1}: ${name} is drawn ${own.imageRendering}`);
+          if (el instanceof SVGElement && /crispedges|optimizespeed/i.test(el.getAttribute('shape-rendering') || own.shapeRendering || '')) out.push(`screen ${pg + 1}: ${name} is drawn crisp-edged`);
+          if (/^(IMG|CANVAS|VIDEO)$/.test(el.tagName)) out.push(`screen ${pg + 1}: a ${el.tagName} in the chrome`);
+          for (const pseudo of [null, '::before', '::after']) {
+            const cs = pseudo ? getComputedStyle(el, pseudo) : own;
+            if (pseudo && (cs.content === 'none' || cs.content === 'normal')) continue;
+            const urls = [];
+            for (const prop of ['backgroundImage', 'maskImage', 'webkitMaskImage', 'borderImageSource', 'listStyleImage'])
+              for (const m of String(cs[prop] || '').matchAll(URL_RE)) urls.push(m[1] != null ? m[1] : m[2]);
+            for (const u of urls) {
+              if (vector(u)) continue;
+              const nat = await natural(u);
+              if (!nat) { out.push(`screen ${pg + 1}: ${name}${pseudo || ''} draws an image that never loads`); continue; }
+              let dw = pseudo ? parseFloat(cs.width) || box.width : box.width, dh = pseudo ? parseFloat(cs.height) || box.height : box.height;
+              const bs = String(cs.backgroundSize || '').split(',')[0].trim().split(/\s+/);
+              if (/px$/.test(bs[0])) dw = parseFloat(bs[0]);
+              if (/px$/.test(bs[1] || '')) dh = parseFloat(bs[1]);
+              if (nat[0] < dw * 3 - 0.5 || nat[1] < dh * 3 - 0.5)
+                out.push(`screen ${pg + 1}: ${name}${pseudo || ''} ${u.split('/').pop().split('?')[0]} is ${nat[0]}x${nat[1]} drawn at ${dw.toFixed(0)}x${dh.toFixed(0)} CSS px (needs ${Math.ceil(dw * 3)}x${Math.ceil(dh * 3)})`);
+            }
+          }
+        }
+      }
+      return out;
+    });
+    for (const x of r) bad.push(`${w}x${h} ${x}`);
+    await ctx.close();
+  }
+  ck('theChromeIsDrawnAtTheDevicesResolution', bad.length === 0, [...new Set(bad)].slice(0, 6).join(' | ') || 'every ornament a vector or 3x its CSS size; nothing pixelated');
 }
 
 /* ================= THE ERRORS ================= */

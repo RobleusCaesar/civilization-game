@@ -1169,34 +1169,40 @@ endgame picture by dropping the file into `assets/endgame/…/` and reloading.
 ## The card announcement (assets/cards/intro/)
 
 The four screens `js/cardintro.js` shows the first time a device opens the
-game with the deck on (tests/card-intro.mjs). Six PixelLab pieces, ~70KB in
-all, fetched only when the announcement opens:
+game with the deck on (tests/card-intro.mjs). ONE picture ships for it,
+fetched only when the announcement opens:
 
 | File          | Native  | What                                                    |
 | ------------- | ------- | ------------------------------------------------------- |
-| `corner.png`  | 64×64   | the gold corner bracket — ONE drawing, mirrored by CSS for the other three corners |
-| `ribbon.png`  | 160×40  | the navy heading ribbon; the lettering is CSS on its band (the top 57%), never baked |
-| `laurel.png`  | 64×128  | one laurel branch, convex to the right — the RIGHT laurel; the left is its mirror |
-| `win.png`     | 64×64   | the victory emblem (crown in a gold wreath)              |
-| `fight.png`   | 64×64   | the hard-fought defeat emblem (gashed shield, spear, embers) |
 | `dusk.webp`   | 688×384 | the valley at dusk with its campfire, behind the panel's own dark (master: `assets/masters/cards/intro-dusk.png`) |
 
-**One style master for the gold**: every gold piece (corner, ribbon,
-emblems) was made with `assets/cards/frame-enlight.png` — the Legendary
-frame — as its labelled style reference, so the announcement's gold IS the
-cards' gold; the dusk valley took the title glen (`assets/ui/title-bg-wide`)
-as its style reference, never its daylight. Reference by public URL
-(`https://clanfire.online/…`): the sandbox cannot upload to PixelLab.
+The dusk valley took the title glen (`assets/ui/title-bg-wide`) as its
+style reference, never its daylight; it is scaled to cover the panel and
+darkened by a gradient laid over it, drawn smooth, since a soft backdrop
+reads as depth behind sharp cards. The card faces are `Deck.face` (the real
+catalog paintings and frames) and the beasts the shipped
+`assets/fx/dragon-fly` and `kraken-thrash` strips (world art, not chrome).
 
-**Drawn at whole device pixels**: each piece is sized in `_layout` to a
-whole multiple of its native pixels for the device's ratio, and drawn
-`image-rendering: pixelated`; the dusk is the one exception — scaled to
-cover the panel and darkened by a gradient laid over it, drawn smooth, since
-a soft backdrop reads as depth behind sharp cards. The lettering (CARDS, the
-headings, the copy) is the menu face, Cinzel, in CSS — crisp at any size,
-and never a picture of words. The card faces are `Deck.face` (the real
-catalog art and frames) and the beasts the shipped `assets/fx/dragon-fly`
-and `kraken-thrash` strips, stepped.
+**THE CHROME IS DRAWN, NOT BLOWN UP** (operator ruling: the world's art —
+terrain, buildings, units, the painted backdrops, the card paintings — is
+pixel art; UI chrome is never chunky). The ribbon, the gold corners, the
+laurels, the victory and defeat emblems, the deck and the deck-to-hand
+trail are SVG built in `CardIntro.SVG` and handed to CSS as
+data URIs, so each is drawn at the device's own resolution at whatever
+size the layout asks for. They replaced five PixelLab PNGs (`corner`,
+`ribbon`, `laurel`, `win`, `fight`, 64–160px) that were drawn up to 4.4×
+their pixels and read as chunky on a 3× phone. The house look of the
+vectors: burnished gold banded like struck metal (`SVG.gold`, the light
+from the top left) over a dark bed line and under a hair of light — the
+engraver's line; leaves lit along one half and shaded along the other with
+a cut midrib; navy cloth with gentle folds, a crisp gold rim and stitching
+on the ribbon. The lettering (CARDS, the headings, the copy, the ribbon's words)
+is the menu face, Cinzel, in CSS — crisp at any size, never a picture of
+words. **The rule is measured** (`theChromeIsDrawnAtTheDevicesResolution`):
+a raster piece of chrome must hold 3 image pixels per CSS pixel, a vector
+passes, and nothing is drawn `pixelated` or crisp-edged — so new chrome
+art for this screen is either a vector or a PixelLab image at 3× its CSS
+size, looked at full size before it lands.
 
 ## Formation art: multi-tile pieces over terrain REGIONS
 
