@@ -868,7 +868,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       can() { return Deck.summonCan('catapult'); },
       apply() {
         return summonCard('siege_train', this.LIST, {
-          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardRumble'],
+          // the show lays its own (smaller) dust under each engine: the
+          // doorstep's boot-dust on top of it buried them
+          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardRumble'], dust: false,
           log: () => '🪨 A Catapult and a Ballista roll out of your Town Center.',
         });
       },
