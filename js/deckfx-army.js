@@ -290,7 +290,7 @@ Object.assign(Deck, {
     g.save();
     try {
       if (q < 1) { g.beginPath(); g.rect(x - D, y - D, D * 3, D * 2); g.clip(); }
-      g.globalCompositeOperation = 'lighter'; g.globalAlpha = a;
+      g.globalCompositeOperation = 'lighter'; g.globalAlpha = Math.round(a * 6) / 6;   // in hard steps, as every light here
       g.drawImage(comp, x - rw, y + lift - rw, D + 2 * rw, D + 2 * rw);
     } finally { g.restore(); }
   },
