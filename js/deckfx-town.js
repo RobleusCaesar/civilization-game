@@ -118,10 +118,15 @@
       return e >= w ? 1 : -1;
     },
     // where a building's picture lands, in world px: the art rect, and the
-    // opaque box inside it (fractions of the sprite) — R's own geometry
+    // opaque box inside it (fractions of the sprite) — R's own geometry. The
+    // picture is the one the building pass DREW (R.wornSprite): a burned
+    // building wears its scorched or broken self, crown bitten out, and an
+    // overlay cut from the intact sprite would lay the lost roof back over
+    // it as a ghost — on exactly the town a ward is played over mid-siege.
+    // The worn variants carry the base's _cfArt, so the rect is the same.
     art(b) {
       const TL = TLs(), bs = Bld.size(b), bx = b.x * TL, by = b.y * TL, bw = bs * TL;
-      const spr = R.bldSprite(b);
+      const spr = R.wornSprite ? R.wornSprite(b) : R.bldSprite(b);
       const rc = spr && spr._cfArt ? R.artRect(spr, bx, by, bw, bw) : { x: bx, y: by, w: bw, h: bw };
       const box = spr && R._artBox ? R._artBox(spr) : { l: 0.1, r: 0.9, t: 0.1, b: 0.94 };
       return { spr, rc, box, foot: by + bw };
@@ -130,27 +135,67 @@
       const a = this.art(b);
       return { x: a.rc.x + (a.box.l + a.box.r) / 2 * a.rc.w, y: a.rc.y + a.box.t * a.rc.h, a };
     },
-    // a sprite's shape in one flat colour, cached per sprite (no pixel reads:
-    // a tainted PNG draws into it as happily as a procedural canvas)
-    _sil: new WeakMap(),
-    sil(spr, col) {
-      if (!spr) return null;
-      let m = this._sil.get(spr);
-      if (!m) { m = {}; this._sil.set(spr, m); }
-      if (m[col]) return m[col];
+    /* A SPRITE'S SHAPE IN ONE FLAT COLOUR, at WORLD-PIXEL size: each sprite
+       keeps ONE copy of itself the size of its art rect (32-128 px — the
+       world transform scales it up nearest-neighbour like everything else,
+       so the silhouette's edge is the same hard pixel as the art's), and the
+       colour is laid on at draw time through one shared scratch canvas. A
+       copy per colour at the PNG's own 256 px was a quarter of a megabyte a
+       building a colour, held for the session — and canvas memory is what
+       iOS purges the terrain cache to win back (CLAUDE.md, THE GROUND CAME
+       BACK BLACK), on the very frames a ward is played mid-fight. No pixel
+       reads: a tainted PNG draws into it as happily as a procedural canvas. */
+    _mask: new WeakMap(),
+    mask(spr, w, h) {
+      const k = w + 'x' + h, m = this._mask.get(spr);
+      if (m && m.k === k) return m;
       const c = document.createElement('canvas');
-      c.width = spr.width; c.height = spr.height;
+      c.width = w; c.height = h;
       const x = c.getContext('2d');
-      x.drawImage(spr, 0, 0);
-      x.globalCompositeOperation = 'source-in';
-      x.fillStyle = col; x.fillRect(0, 0, c.width, c.height);
-      return (m[col] = c);
+      x.imageSmoothingEnabled = false;
+      x.drawImage(spr, 0, 0, w, h);
+      const out = { k, c, w, h, rim: null };
+      this._mask.set(spr, out);
+      return out;
     },
-    // rows f0..f1 (fractions from the top) of a shape, laid over its art rect
-    rows(g, spr, rc, f0, f1) {
-      const h = spr.height, s0 = Math.max(0, Math.floor(cl(f0) * h)), s1 = Math.min(h, Math.ceil(cl(f1) * h));
+    _tint: null,
+    // the colour laid over a mask, in the shared scratch (its 0..w × 0..h corner)
+    tinted(src, w, h, col) {
+      let t = this._tint;
+      if (!t) t = this._tint = document.createElement('canvas');
+      if (t.width < w || t.height < h) { t.width = Math.max(t.width, w); t.height = Math.max(t.height, h); }
+      const x = t.getContext('2d');
+      x.globalCompositeOperation = 'copy'; x.drawImage(src, 0, 0);
+      x.globalCompositeOperation = 'source-in'; x.fillStyle = col; x.fillRect(0, 0, w, h);
+      x.globalCompositeOperation = 'source-over';
+      return t;
+    },
+    // rows f0..f1 (fractions from the top) of a building's shape in `col`, laid over its art rect
+    paint(g, a, col, f0, f1) {
+      if (!a.spr) return;
+      const w = Math.max(1, Math.round(a.rc.w)), h = Math.max(1, Math.round(a.rc.h));
+      const s0 = Math.max(0, Math.floor(cl(f0) * h)), s1 = Math.min(h, Math.ceil(cl(f1) * h));
       if (s1 <= s0) return;
-      g.drawImage(spr, 0, s0, spr.width, s1 - s0, rc.x, rc.y + s0 / h * rc.h, rc.w, (s1 - s0) / h * rc.h);
+      const t = this.tinted(this.mask(a.spr, w, h).c, w, h, col);
+      g.drawImage(t, 0, s0, w, s1 - s0, a.rc.x, a.rc.y + s0 / h * a.rc.h, a.rc.w, (s1 - s0) / h * a.rc.h);
+    },
+    /* the building's EDGE, two world pixels proud of its roof and walls and
+       never along its foot (the ground line is not an edge anyone sees): the
+       shape stepped left, right and up, less the shape itself — cached with
+       the mask, coloured at draw time */
+    rim(g, a, col) {
+      if (!a.spr) return;
+      const w = Math.max(1, Math.round(a.rc.w)), h = Math.max(1, Math.round(a.rc.h)), m = this.mask(a.spr, w, h);
+      if (!m.rim) {
+        const c = document.createElement('canvas');
+        c.width = w + 2 * PX; c.height = h + PX;
+        const x = c.getContext('2d');
+        for (const [dx, dy] of [[0, PX], [2 * PX, PX], [PX, 0]]) x.drawImage(m.c, dx, dy);
+        x.globalCompositeOperation = 'destination-out'; x.drawImage(m.c, PX, PX);
+        m.rim = c;
+      }
+      const sx = a.rc.w / w, sy = a.rc.h / h, t = this.tinted(m.rim, w + 2 * PX, h + PX, col);
+      g.drawImage(t, 0, 0, w + 2 * PX, h + PX, a.rc.x - PX * sx, a.rc.y - PX * sy, (w + 2 * PX) * sx, (h + PX) * sy);
     },
     // a ring of hard dots on the ground plane (sy squashes it into perspective)
     ring(g, cx, cy, r, sy, n, gap) {
@@ -662,9 +707,9 @@
             if (age < 0 || age > 0.9) continue;
             const b = Bld.get(h.id);
             if (!b || !TX.bNear(b)) continue;
-            const a = TX.art(b), sil = TX.sil(a.spr, '#fff0b0');
+            const a = TX.art(b);
             g.save(); g.globalCompositeOperation = 'lighter';
-            if (sil && age < 0.6) { g.globalAlpha = stp(0.6 * (1 - age / 0.6), 4); TX.rows(g, sil, a.rc, 0, 1); }
+            if (age < 0.6) { g.globalAlpha = stp(0.6 * (1 - age / 0.6), 4); TX.paint(g, a, '#fff0b0', 0, 1); }
             g.globalAlpha = 1;
             // the sparks of a town patched up: crosses rising off the roof, a mending + above it
             for (let k = 0; k < 6; k++) {
@@ -747,12 +792,11 @@
             }
           }
           // the building fills with light from its foot to its crown, then lets it go
-          const fill = TX.sil(a.spr, '#ffd45e'), edge = TX.sil(a.spr, '#fff6d0');
-          if (fill) {
+          if (a.spr) {
             const rise = cl((p - 0.06) / 0.42), fy = a.box.b - (a.box.b - a.box.t) * eo(rise);
             g.globalAlpha = p < 0.55 ? 0.75 : stp(0.75 * (1 - (p - 0.55) / 0.3), 4);
-            if (g.globalAlpha > 0) TX.rows(g, fill, rc, fy, 1);
-            if (rise > 0 && rise < 1) { g.globalAlpha = 1; TX.rows(g, edge, rc, fy, fy + 2 / rc.h); }
+            if (g.globalAlpha > 0) TX.paint(g, a, '#ffd45e', fy, 1);
+            if (rise > 0 && rise < 1) { g.globalAlpha = 1; TX.paint(g, a, '#fff6d0', fy, fy + 2 / rc.h); }
           }
           g.globalAlpha = 1;
           // sparks off the scaffold that was never needed
@@ -923,21 +967,29 @@
       },
       drawLive(g, e) {
         const now = performance.now() / 1000;
+        // the whole town breathes together, slow and cold — one phase for every
+        // building, so the skin reads as one ward and never as a flicker
+        const breath = stp(0.5 + 0.12 * Math.sin(now * 1.9), 10);
         let n = 0;
         g.save(); g.globalCompositeOperation = 'lighter';
         for (const b of S.buildings) {
           if (b.owner !== 'P' || b.construction > 0 || !TX.bNear(b)) continue;
           if (++n > 60) break;
+          const a = TX.art(b);
+          if (!a.spr) continue;
+          /* THE SKIN ITSELF, for all eight days: a cold rim of stone-light
+             round every roof and wall. Without it a warded town read as an
+             ordinary one — a sheen on each building a quarter of the time,
+             faint, was 48 marks over six frames for a whole town. */
+          g.globalAlpha = breath; TX.rim(g, a, '#7fa6d2');
           // the sheen climbs each building in its own turn, every few seconds
           const ph = (now / 3.4 + (b.id * 0.618) % 1) % 1;
-          if (ph > 0.24) continue;
-          const a = TX.art(b), sil = TX.sil(a.spr, '#d8e8f8');
-          if (!sil) continue;
-          const k = ph / 0.24, f = a.box.b - (a.box.b - a.box.t) * k;
-          g.globalAlpha = 0.32; TX.rows(g, sil, a.rc, f - 0.07, f);
+          if (ph > 0.3) continue;
+          const k = ph / 0.3, f = a.box.b - (a.box.b - a.box.t) * k;
+          g.globalAlpha = 0.4; TX.paint(g, a, '#d8e8f8', f - 0.1, f);
           // and a rune shows on its face for a moment
           if (k > 0.3 && k < 0.8) {
-            g.globalAlpha = stp(0.7 * Math.sin((k - 0.3) / 0.5 * Math.PI), 3); g.fillStyle = '#e6f2ff';
+            g.globalAlpha = stp(0.8 * Math.sin((k - 0.3) / 0.5 * Math.PI), 3); g.fillStyle = '#e6f2ff';
             this.rune(g, a.rc.x + (a.box.l + (a.box.r - a.box.l) * hs(b.id, 3)) * a.rc.w - 3,
               a.rc.y + (a.box.t + (a.box.b - a.box.t) * (0.3 + 0.4 * hs(3, b.id))) * a.rc.h, b.id);
           }
@@ -989,12 +1041,12 @@
             if (age < 0 || age > 1.0) continue;
             const b = Bld.get(h.id);
             if (!b || !TX.bNear(b)) continue;
-            const a = TX.art(b), grey = TX.sil(a.spr, '#8ea2b6'), lit = TX.sil(a.spr, '#eef6ff');
-            if (!grey) continue;
+            const a = TX.art(b);
+            if (!a.spr) continue;
             const up = cl(age / 0.22), f = a.box.b - (a.box.b - a.box.t) * eo(up);
             g.globalAlpha = age < 0.4 ? 0.6 : stp(0.6 * (1 - (age - 0.4) / 0.6), 4);
-            if (g.globalAlpha > 0) TX.rows(g, grey, a.rc, f, 1);
-            if (up < 1) { g.globalAlpha = 1; g.save(); g.globalCompositeOperation = 'lighter'; TX.rows(g, lit, a.rc, f, f + 2 / a.rc.h); g.restore(); }
+            if (g.globalAlpha > 0) TX.paint(g, a, '#8ea2b6', f, 1);
+            if (up < 1) { g.globalAlpha = 1; g.save(); g.globalCompositeOperation = 'lighter'; TX.paint(g, a, '#eef6ff', f, f + 2 / a.rc.h); g.restore(); }
             g.globalAlpha = 1;
           }
         },
