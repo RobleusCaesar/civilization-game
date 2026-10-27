@@ -6501,6 +6501,7 @@ const R = {
     this._tameKey = ''; this._tameMask = null;   // the kept-ground mask is the old run's
     this.horns = [];           // …and the horn's rings…
     this.summons = [];         // …and a card's riders arriving in their flash…
+    this.cardShows = [];       // …and every card's own moment in the world…
     this._cardSky = null;      // …and a card's star still settling
     this.deaths = [];          // …so are villagers going over…
     this.marvel = null;        // …and so is the wonder's held frame
@@ -10373,6 +10374,58 @@ const R = {
   drawCardWorld(g, dt) {
     if (this.summons.length) this.drawSummons(g, dt);
     if (window.Deck && Deck.cue && Deck.cue('motes')) this.drawMotes(g);
+    if (this.cardShows.length) this.drawCardShows(g, dt, 'world');
+    // a running card that wears a look of its own while it lasts (drawLive)
+    const fx = S.deck && S.deck.fx;
+    if (fx && fx.length && window.Deck) {
+      const now = Deck.now();
+      for (const e of fx) {
+        const d = Deck.FX[e.id];
+        if (!(e.until > now) || !d || !d.drawLive) continue;
+        g.save();
+        try { d.drawLive(g, e, dt); } catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card look', e.id, err); } }
+        g.restore();
+      }
+    }
+  },
+  /* A CARD'S OWN MOMENT (js/deckfx-*.js). The play sequence (js/deckui.js)
+     carries every card to the spot it changes; what the card then DOES on
+     the map is its own: an entry in Deck.FX may carry
+       show: { ms, layer, draw(g, s, p, dt) }
+     and its apply() calls R.startCardShow(id, data) — `data` (a world point,
+     the units summoned, the buildings mended…) is copied onto the show, and
+     draw() is called every frame with p running 0 → 1 over `ms`. Layer
+     'world' draws in world space after the units (x/y in tiles × CFG.TILE);
+     'sky' draws in SCREEN space (device pixels) over the night tint, for
+     what happens in the air: a flash, a darkened sky, a comet. A show may
+     carry both (`layers: ['world', 'sky']`, with draw(g, s, p, dt, layer)).
+     Render state only — never in S, cleared in onNewGame, capped — so a
+     save taken mid-show simply loads without it. A draw that throws is
+     dropped, never the frame. */
+  cardShows: [],
+  startCardShow(id, data) {
+    const d = window.Deck && Deck.FX[id];
+    if (!d || !d.show) return null;
+    if (this.cardShows.length > 24) this.cardShows.shift();
+    const s = Object.assign({ id, t: 0, ms: d.show.ms || 1200 }, data || {});
+    this.cardShows.push(s);
+    return s;
+  },
+  drawCardShows(g, dt, layer) {
+    for (let i = this.cardShows.length - 1; i >= 0; i--) {
+      const s = this.cardShows[i], d = window.Deck && Deck.FX[s.id], sh = d && d.show;
+      if (!sh) { this.cardShows.splice(i, 1); continue; }
+      const layers = sh.layers || [sh.layer || 'world'];
+      // the clock advances once a frame, on the first layer the show draws in
+      if (layer === layers[0]) s.t += dt;
+      const p = s.t / (s.ms / 1000);
+      if (p >= 1) { if (layer === layers[layers.length - 1]) this.cardShows.splice(i, 1); continue; }
+      if (layers.indexOf(layer) < 0) continue;
+      g.save();
+      try { sh.draw.call(d, g, s, p, dt, layer); }
+      catch (err) { console.error('card show', s.id, err); this.cardShows.splice(i, 1); }
+      g.restore();
+    }
   },
   drawSummons(g, dt) {
     const TL = CFG.TILE, cfg = this.SUMMON, px = 2;
@@ -13989,7 +14042,7 @@ const R = {
     this.drawTreeFalls(g, dt);
     this.drawHorns(g, dt);
     // THE CARD SYSTEM's world cues (js/deckfx.js) — nothing while no card is in play
-    if (this.summons.length || (S.deck && S.deck.fx && S.deck.fx.length)) this.drawCardWorld(g, dt);
+    if (this.summons.length || this.cardShows.length || (S.deck && S.deck.fx && S.deck.fx.length)) this.drawCardWorld(g, dt);
     this.drawCollapses(g, dt);
     this.drawDeaths(g, dt);     // …and villagers keeling over where they stood
 
@@ -14031,6 +14084,8 @@ const R = {
     g.save(); this.drawStarfall(g, dt); g.restore();
     // …and a STARFALL CARD's own star (js/deckfx.js), through the same fall
     if ((S.deck && S.deck.strike) || this._cardSky) { g.save(); this.drawCardStrike(g, dt); g.restore(); }
+    // …and any card's own moment in the air (R.startCardShow, layer 'sky')
+    if (this.cardShows.length) { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); this.drawCardShows(g, dt, 'sky'); g.restore(); }
     // …and the sky's flashes (the strike, the blow) over everything in the world
     g.save(); this.drawFlash(g, dt); g.restore();
 
