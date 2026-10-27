@@ -1141,6 +1141,70 @@ ck('aRefusalTakesAThirdLineNeverAnEllipsis', !!wonderCap && wonderCap.n === 3 &&
   plates.every(pl => pl.caps.every(c => c.whole)),
   plates.map(pl => `${pl.w}: ` + pl.caps.map(c => `${c.id} ${c.n}${c.whole ? '' : ' CLIPPED'}`).join(', ')).join(' / '));
 
+/* ================= 13. THE FRAMES CARRY NO STRAY PIXELS =================
+   assets/cards/frame-*.png are drawn over every face at whole multiples, so
+   a stray pixel in one is on every card of its tier. The Stone frame shipped
+   with a white L in its bottom-right corner, a pale dash in its bottom
+   outline and a lone pixel off its bottom-left corner (playtest judge g1,
+   seen on every Stone card in the inspector). Read off the files themselves:
+   no frame has an opaque speck (≤ 3 px) cut off from its body, and the Stone
+   frame's bottom outline and its bottom-right corner are its own dark. */
+{
+  const { readFileSync } = await import('node:fs');
+  const { inflateSync } = await import('node:zlib');
+  const png = f => {
+    const b = readFileSync(f);
+    let p = 8, ih = null; const idat = [];
+    while (p < b.length) {
+      const len = b.readUInt32BE(p), type = b.toString('ascii', p + 4, p + 8), d = b.subarray(p + 8, p + 8 + len);
+      if (type === 'IHDR') ih = d; else if (type === 'IDAT') idat.push(d);
+      p += 12 + len;
+    }
+    const W = ih.readUInt32BE(0), H = ih.readUInt32BE(4);
+    if (ih[8] !== 8 || ih[9] !== 6) throw new Error(f + ': expected 8-bit RGBA');
+    const raw = inflateSync(Buffer.concat(idat)), st = W * 4, px = Buffer.alloc(H * st);
+    for (let y = 0; y < H; y++) {
+      const ft = raw[y * (st + 1)];
+      for (let x = 0; x < st; x++) {
+        const a = x >= 4 ? px[y * st + x - 4] : 0, u = y ? px[(y - 1) * st + x] : 0, c = x >= 4 && y ? px[(y - 1) * st + x - 4] : 0;
+        let v = raw[y * (st + 1) + 1 + x];
+        if (ft === 1) v += a; else if (ft === 2) v += u; else if (ft === 3) v += (a + u) >> 1;
+        else if (ft === 4) { const q = a + u - c, pa = Math.abs(q - a), pb = Math.abs(q - u), pc = Math.abs(q - c); v += pa <= pb && pa <= pc ? a : pb <= pc ? u : c; }
+        px[y * st + x] = v & 255;
+      }
+    }
+    return { W, H, px };
+  };
+  const specks = {}, rim = [];
+  for (const t of ['stone', 'bronze', 'iron', 'imperial', 'enlight']) {
+    const { W, H, px } = png(join(root, 'assets/cards/frame-' + t + '.png'));
+    const A = (x, y) => px[(y * W + x) * 4 + 3];
+    const seen = new Uint8Array(W * H);
+    specks[t] = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (seen[y * W + x] || !A(x, y)) continue;
+      const stack = [[x, y]], pts = []; seen[y * W + x] = 1;
+      while (stack.length) {
+        const [cx, cy] = stack.pop(); pts.push(cx + ',' + cy);
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H || seen[ny * W + nx] || !A(nx, ny)) continue;
+          seen[ny * W + nx] = 1; stack.push([nx, ny]);
+        }
+      }
+      if (pts.length <= 3) specks[t].push(pts.join(' '));
+    }
+    if (t === 'stone') {
+      const luma = (x, y) => { const i = (y * W + x) * 4; return 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]; };
+      for (let x = 0; x < W; x++) if (A(x, H - 1) && luma(x, H - 1) > 80) rim.push(`${x},${H - 1}`);
+      for (let y = H - 5; y < H - 1; y++) for (let x = W - 4; x < W; x++) if (A(x, y) && luma(x, y) > 80) rim.push(`${x},${y}`);
+    }
+  }
+  const specky = Object.entries(specks).filter(([, s]) => s.length);
+  ck('theFramesCarryNoStrayPixels', !specky.length && !rim.length,
+    (specky.map(([t, s]) => `${t}: speck at ${s.join(' / ')}`).join('; ') || 'no specks') + (rim.length ? `; stone rim lit at ${rim.join(' ')}` : '; the stone rim is its outline'));
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 const pageErrs = errs.filter(e => !/ERR_FILE_NOT_FOUND/.test(e));
 if (pageErrs.length) console.log('PAGE ERRORS:', pageErrs.slice(0, 4));
