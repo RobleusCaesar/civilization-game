@@ -101,6 +101,10 @@ async function page(ctx, q, o) {
   await p.waitForFunction(() => document.fonts.status === 'loaded', null, { timeout: 15000 }).catch(() => {});
   return p;
 }
+/* the close is measured by the condition itself, never a fixed beat: the
+   fade-out is a timer, and a loaded machine stretches every timer */
+const closed = (p, ms) => p.waitForFunction(() => !CardIntro.open && !document.getElementById('cardIntro'), null, { timeout: ms || 5000 })
+  .then(() => true, () => false);
 const opened = (p, ms) => p.waitForFunction(() => window.CardIntro && CardIntro.open && document.getElementById('cardIntro'), null, { timeout: ms || 15000 })
   .then(() => true, () => false);
 // the announcement opened on purpose (as the collection and ?cardsintro=1 do)
@@ -157,9 +161,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
   ck('onlyAfterTheSplashHasLifted', !!a.at && a.at.done && !a.at.splash && a.at.screen === 'title', JSON.stringify(a.at));
   ck('itIsStampedSeenWhenShown', a.stored === '1', String(a.stored));
   await p.click('#cardIntro .ciX');
-  await sleep(400);
-  const gone = await p.evaluate(() => !CardIntro.open && !document.getElementById('cardIntro'));
-  ck('theXClosesIt', gone);
+  ck('theXClosesIt', await closed(p));
   await p.close();
   // the same device, a fresh load: never again
   const q = await page(ctx, '?cards=1');
@@ -246,15 +248,14 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
   await p.mouse.click(720, 300);
   const inside = await p.evaluate(() => CardIntro.open);
   await p.mouse.click(30, 450);
-  await sleep(350);
-  const veil = await p.evaluate(() => !CardIntro.open);
+  const veil = await closed(p);
   ck('aTapInsideThePanelIsNotAClose', inside);
   ck('theBackdropClosesIt', veil);
   // Escape
   await p.evaluate(() => { document.getElementById('btnTitleCards') && document.getElementById('btnTitleCards').focus(); CardIntro.show('title'); });
   await sleep(300);
   await p.keyboard.press('Escape');
-  await sleep(350);
+  await closed(p);
   const esc = await p.evaluate(() => ({ closed: !CardIntro.open, focus: document.activeElement && document.activeElement.id, title: Screens.current }));
   ck('escapeClosesIt', esc.closed && esc.title === 'title', JSON.stringify(esc));
   ck('andTheFocusComesHome', esc.focus === 'btnTitleCards', String(esc.focus));
@@ -570,7 +571,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     return out;
   });
   await p.keyboard.press('Escape');
-  await sleep(400);
+  await closed(p);
   const esc = await p.evaluate(() => ({ open: CardIntro.open, screen: Screens.current }));
   ck('theCollectionCanBringItBack', a.how === 'How cards work' && a.open && a.screen === 'cards', `${a.how}, open ${a.open}, on ${a.screen}`);
   ck('andItsButtonIs44pxToTouch', a.hit);
