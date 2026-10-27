@@ -2203,7 +2203,7 @@ const UI = {
       stack = S.units.filter(o => o.owner !== 'P' && !Units.isPassive(o) &&
         (o.x | 0) === (u.x | 0) && (o.y | 0) === (u.y | 0)).length;
     const sig = ['u', u.id, u.hp < u.maxhp, stack, u.cargo ? u.cargo.length : 0,
-      !!CFG.HEAL_FOOD[u.kind] && S.res.food >= this.healCost(u), Bld.inHealZone(u), this.healThrottled(u),
+      !!CFG.HEAL_FOOD[u.kind] && !u.spectral && S.res.food >= this.healCost(u), Bld.inHealZone(u), this.healThrottled(u),
       Units.canDefend(u) && (u.defend || Units.inDefendBounds(u)),   // Defend button follows the bounds
       u.owner === 'P' && !Units.isVillager(u) && this.unitBusy(u),   // Stop renders only while there is anything to stop
       this.groupmatesNear(u),                // …and Group only while there is anyone to band with
@@ -2967,9 +2967,11 @@ const UI = {
     } else {
       const u = Units.get(this.sel.id);
       if (!u) { this.deselect(); return; }
-      const nm = CFG.UNITS[u.kind].name;
+      // a card's own people go by their own names (js/deckfx-army.js:
+      // a War-wolf, a Spectral Champion, a Veteran Lancer)
+      const nm = (window.Deck && Deck.unitName && Deck.unitName(u)) || CFG.UNITS[u.kind].name;
       const own = u.owner === 'P';
-      let hint = !own ? (
+      let hint = (own && window.Deck && Deck.unitHint && Deck.unitHint(u)) || (!own ? (
           Units.isPassive(u) ? `Wild game — send a villager or defender to hunt it (+${(CFG.MEAT && CFG.MEAT[u.kind]) || CFG.MEAT_DROP} food).`
           : u.owner === 'W' ? `Wild beast — dangerous, but worth +${(CFG.MEAT && CFG.MEAT[u.kind]) || CFG.MEAT_DROP} food.`
           // barbarian tempers stay hidden — you find out who they're after
@@ -2988,7 +2990,7 @@ const UI = {
         : u.kind === 'siegetower' ? 'Roll it flush against an enemy wall — nearby soldiers climb over, one per second. Only melee and marksmen can harm it.'
         : Units.isTransport(u) ? `Select soldiers or villagers and tap this hull to board — it carries ${CFG.UNITS[u.kind].cap}. Tap a shore tile to land them, or water to row.`
         : Units.isNaval(u) ? 'Tap an enemy or rival building near the shore to attack, or water to sail.'
-        : 'Tap a tile to move, or an enemy to attack.';
+        : 'Tap a tile to move, or an enemy to attack.');
       if (!own && !Units.isPassive(u)) {
         const stack = S.units.filter(o => o.owner !== 'P' && !Units.isPassive(o) &&
           (o.x | 0) === (u.x | 0) && (o.y | 0) === (u.y | 0));
@@ -3008,7 +3010,9 @@ const UI = {
         <div class="pwork" id="pWork">${own ? this.workLine(u) : ''}</div></div>
         ${helpBtn}<button class="abtn" id="panelClose">✕</button></div>
         <div class="pactions">${own && this.helpHidden ? '' : `<span class="psub">${hint}</span>`}`;
-      if (own && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind]) {
+      // (a spectral champion is never mended — a spirit eats nothing, and the
+      // heal is paid in food: js/deckfx-army.js)
+      if (own && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind] && !u.spectral) {
         const hc = this.healCost(u);
         const inZone = Bld.inHealZone(u);
         const throttled = this.healThrottled(u);

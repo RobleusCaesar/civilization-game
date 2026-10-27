@@ -6501,6 +6501,7 @@ const R = {
     this._tameKey = ''; this._tameMask = null;   // the kept-ground mask is the old run's
     this.horns = [];           // …and the horn's rings…
     this.summons = [];         // …and a card's riders arriving in their flash…
+    this._unborn = null;       // …(and the units still waiting for theirs)…
     this.cardShows = [];       // …and every card's own moment in the world…
     this._cardSky = null;      // …and a card's star still settling
     this.deaths = [];          // …so are villagers going over…
@@ -10367,10 +10368,17 @@ const R = {
                       costs hundreds of ms and iOS ignores it). */
   SUMMON: { ms: 640, dots: 18 },
   summons: [],
-  startSummon(x, y) {
-    if (this.summons.length > 12) this.summons.shift();
-    this.summons.push({ x, y, t: 0 });
+  /* `delay` (ms) staggers a muster's flashes one after another, and `id`
+     names the unit the flash brings: until its beat comes that unit is not
+     drawn at all (_unborn), so it steps out of its own light rather than
+     standing beside it waiting (js/deckfx.js Deck.summon) */
+  startSummon(x, y, delay, id) {
+    if (this.summons.length > 32) this.summons.shift();
+    this.summons.push({ x, y, t: -(delay || 0) / 1000, id: id || 0 });
+    // hidden from the very next frame (drawSummons rebuilds the set after the unit pass)
+    if (delay > 0 && id) (this._unborn || (this._unborn = new Set())).add(id);
   },
+  _unborn: null,
   drawCardWorld(g, dt) {
     if (this.summons.length) this.drawSummons(g, dt);
     if (window.Deck && Deck.cue && Deck.cue('motes')) this.drawMotes(g);
@@ -10430,10 +10438,12 @@ const R = {
   drawSummons(g, dt) {
     const TL = CFG.TILE, cfg = this.SUMMON, px = 2;
     const snap = v => Math.round(v / px) * px;
+    let unborn = null;
     g.save(); g.globalCompositeOperation = 'lighter';    // light ADDED to the scene: the riders show through it
     for (let i = this.summons.length - 1; i >= 0; i--) {
       const s = this.summons[i];
       s.t += dt;
+      if (s.t < 0) { if (s.id) (unborn || (unborn = new Set())).add(s.id); continue; }   // still waiting its beat
       const p = s.t / (cfg.ms / 1000);
       if (p >= 1) { this.summons.splice(i, 1); continue; }
       const cx = s.x * TL, cy = s.y * TL + TL * 0.3, a = 1 - p;   // cy: the feet
@@ -10465,6 +10475,7 @@ const R = {
       }
     }
     g.restore();
+    this._unborn = unborn;
   },
   MOTE_TASKS: { gather: 1, work: 1, fish: 1, shorefish: 1 },
   drawMotes(g) {
@@ -13203,13 +13214,13 @@ const R = {
       : UI.sel.type === 'group' ? new Set(UI.sel.ids) : null;
     // heal-zone ring: when a hurt, healable friendly unit is selected, show where
     // it can be healed — the town-center grounds for land units, a dock for ships
-    if (selIds && [...selIds].some(id => { const u = Units.get(id); return u && u.owner === 'P' && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind]; })) {
+    if (selIds && [...selIds].some(id => { const u = Units.get(id); return u && u.owner === 'P' && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind] && !u.spectral; })) {
       const seen = new Set();
       g.save();
       g.strokeStyle = 'rgba(138,224,138,0.45)'; g.lineWidth = 1.5; g.setLineDash([6, 5]);
       for (const id of selIds) {
         const u = Units.get(id);
-        if (!u || u.owner !== 'P' || u.hp >= u.maxhp || !CFG.HEAL_FOOD[u.kind]) continue;
+        if (!u || u.owner !== 'P' || u.hp >= u.maxhp || !CFG.HEAL_FOOD[u.kind] || u.spectral) continue;
         const z = Bld.healZoneFor(u);
         if (!z) continue;
         const k = z.x + ',' + z.y + ',' + z.r;
@@ -13247,9 +13258,11 @@ const R = {
       }
     };
     const units = S.units.slice().sort((a, b) => a.y - b.y);
+    const unborn = this.summons.length && this._unborn;   // a card's muster: not out of its light yet
     for (const u of units) {
       msFlush(u.y);
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
+      if (unborn && unborn.has(u.id)) continue;
       // B: the kind's draw box (unitBox). Bottom edges align across sizes —
       // for B === TILE these are exactly the coordinates they always were.
       const B = this.unitBox(u);
@@ -13319,9 +13332,18 @@ const R = {
         // its own baked in and must never receive a second (sheetUnit).
         // Naval sheets bake their own WATER shadow — a ground ellipse
         // under a hull reads as a sandbar, so boats are skipped too.
-        if (this.sheetUnit(u) && !Units.isNaval(u)) this.drawUnitShadow(g, u, wx, wy);
+        if (this.sheetUnit(u) && !Units.isNaval(u) && !u.spectral) this.drawUnitShadow(g, u, wx, wy);
         const img = this.unitSprite(u), D = this.frameBox(u, img, B);
-        g.drawImage(img, wx * TL - D / 2, this.frameTop(wy, B, D), D, D);
+        const dx0 = wx * TL - D / 2, dy0 = this.frameTop(wy, B, D);
+        /* A CARD'S OWN PEOPLE wear their own look (js/deckfx-army.js): the
+           spectral host translucent and shimmering, a war-wolf's collar in the
+           tribe's dye, a veteran's rank. Draw time only — the frame tapped
+           (R.unitHit) is the same frame, untouched — and a look that throws
+           falls back to the plain sprite, never takes the frame down. */
+        if ((u.spectral || u.warWolf || u.vet) && window.Deck && Deck.drawUnit) {
+          try { Deck.drawUnit(g, u, img, dx0, dy0, D); }
+          catch (err) { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.drawImage(img, dx0, dy0, D, D); }
+        } else g.drawImage(img, dx0, dy0, D, D);
       }
       if (u.cargo && u.cargo.length) {                 // one pip per soldier aboard
         g.fillStyle = u.owner === 'P' ? '#c0e8ff' : '#ffb0a0';

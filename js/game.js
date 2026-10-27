@@ -773,9 +773,13 @@ const G = {
     this.applyFoodUpkeep('P');
     this.applyFoodUpkeep('A');
     this.checkDoom();
-    // arcade tally: the tribe at its greatest
+    /* arcade tally: the tribe at its greatest — its POPULATION, counted the
+       one way the game counts it (Units.popUsed: villagers, soldiers, hulls,
+       the souls below deck and in the hall). Every P unit used to count, so a
+       card's war-wolves and spectral host scored as if the tribe had grown
+       (js/deckfx-army.js) — and so did a sapper, who takes no place either. */
     if (S.stats) {
-      const pop = S.units.reduce((n, u) => n + (u.owner === 'P' ? 1 : 0), 0) + S.garrison.length;
+      const pop = Units.popUsed('P');
       if (pop > (S.stats.peakPop || 0)) S.stats.peakPop = pop;
     }
 
