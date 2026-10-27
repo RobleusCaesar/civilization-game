@@ -439,8 +439,10 @@
 
   /* ---------------- THE CARDS ---------------- */
   // a goods card: the stockpile, the log, the moment at the hall's door
+  // (showAtHall: the play brings the hall on screen before the goods land —
+  // js/deckui.js _dest — so the moment is never culled off camera)
   const goods = (id, res, n, icon, line, show) => ({
-    at: 'bar', [res.toUpperCase()]: n,
+    at: 'bar', showAtHall: true, [res.toUpperCase()]: n,
     can() { return { ok: true }; },
     apply() {
       S.res[res] += n;
@@ -565,7 +567,7 @@
        on and the cart's road runs a tile in front of it, so the load never
        hides the goods (the first cut stopped the cart ON its own pile). */
     trade_caravan: {
-      at: 'bar', FOOD: 250, WOOD: 250, GOLD: 100,
+      at: 'bar', showAtHall: true, FOOD: 250, WOOD: 250, GOLD: 100,
       can() { return { ok: true }; },
       apply() {
         S.res.food += this.FOOD; S.res.wood += this.WOOD; S.res.gold += this.GOLD;
