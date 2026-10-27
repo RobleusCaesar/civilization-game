@@ -166,6 +166,10 @@ node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map
 node tests/frame-hotpath.mjs  # the late-game town costs no more per tile: Bld.at is an index (= the linear definition on every tile), the building loop culls to the camera, the cull changes no pixel; a siege frame redraws only the water that moved, and a fallen building's verge grows back in slices
 node tests/worn-paths.mjs     # the ground wears where WORK walks: distinct days, never a march, never in the fog; a band not a square; repaint == rebake; few roads, worth walking (+10%), the road calls the walker
 node tests/specials.mjs       # the special-event roll: three draws whatever it rolls, weighted, no dead rolls; the kraken is the player's; sons/cache land where a hand can walk; every event scores and reports; the eclipse's moon-shadow, its stare, no stars in the black; the animal strife is fought, wound up, balanced both ways; the dry summer burns each tree as itself and leaves burnt wood (snags where the trees grew, ash, grass) — never stumps, never a lumber camp
+node tests/deck-core.mjs     # the card system's core: the 36 cards as approved, the drop tables and their gates, one grant per run, the collection on the device (never in S), the one door, the kill switch
+node tests/deck-fx.mjs       # the card effects: off changes nothing; every number of every card; a strike never razes a hall; a strike at the rival in the truce warns and ends it, asked of what the PLAYER knows; no card draws the run's RNG
+node tests/deck-ui.mjs       # the in-game deck: off builds nothing; the sheet pauses; the blow lands on the reticle's cross; a mouse hover only previews; a play is over inside 1.2 s; every running card is seen or counted
+node tests/deck-screens.mjs  # the reward screen and the collection: off is today's end scenes; the grant happens once, on open; the ceremony; an undiscovered card leaks nothing
 ```
 
 **SPECIAL EVENTS** (`tests/specials.mjs`, `CFG.SPECIALS` / `KRAKEN` /
@@ -417,6 +421,57 @@ tribe raises with sky-iron (+1 atk, stamped once in `Units.spawn` via
 Drawn by `R.drawStarfall` over the night tint (hard pixel squares: the
 comet, a tapering trail into a white-hot head, the impact ring, embers);
 scores `starfallClaimed` (300).
+
+**THE CARD SYSTEM** (`tests/deck-core.mjs`, `deck-fx.mjs`, `deck-ui.mjs`,
+`deck-screens.mjs`; the global is `Deck`, because `Cards` is the origin
+draft): win or lose, a finished game grants a card, kept until it is played
+and then gone for good. Four files — `js/deck.js` (what a card IS: the
+catalog, the drops, the collection, the one door), `js/deckfx.js` (what each
+card DOES, and the engine under them), `js/deckui.js` (the deck in a run: the
+HUD button, the sheet, the aim, the play, the timer chips) and
+`js/deckscreens.js` (the reward screen and the collection). Rules:
+- **THE SWITCH SHIPS OFF** (`CFG.CARDS.ON` false; `?cards=1` turns it on for
+  one device, remembered in `neo-cards-dev`, `?cards=0` forgets it). Off, no
+  element, stylesheet, listener or write exists, the end of a run is today's
+  victory and defeat scenes, and every game hook answers exactly what the
+  game answered before cards existed — all four contracts pin their half.
+- **THE COLLECTION IS THE PLAYER'S, NEVER THE RUN'S**: it lives in
+  `localStorage` `neo-deck` (and, from Gate 4, the cloud) and never in `S`.
+  What a RUN remembers rides in `S.deck` (`played`, the live timers `fx`,
+  `charges`, the one `strike` in the sky) in every save; `loadJSON` backfills.
+- **ONE DOOR**: `Deck.play(id, tgt)` asks the effect first and takes the
+  card only on `{ok: true}` — a refusal hands it back with the reason.
+- **NO CARD DRAWS THE RUN'S RNG**: drops roll `Math.random`, and a card's
+  dragon draws its flames' jitter from `Math.random` too (the rolled dragon
+  keeps its `G.rand` draws). Timers run on fractional game days (`Deck.now()`).
+- **A CARD IS THE PLAYER'S ACT**: its kills are kills and its razes are razes,
+  but nothing it summons scores as the world's gift (`dragonSeen`,
+  `specialFired`). **NO ONE-CARD WINS**: `Deck.hitBld` clamps the rival's hall
+  BEFORE `Bld.damage` is asked anything, whatever the cause. **The rival
+  never plays cards.**
+- **THE TRUCE IS ASKED OF WHAT THE PLAYER KNOWS** (`Deck.reachesRival`): a
+  rival unit on ground in sight, a rival building in `S.map.seenB`. The
+  warning is re-asked on every move of the mark, so a read of `S` would sweep
+  the fog like a lamp, and the truce's END asks the same question, so the
+  peace never breaks over a soldier nobody saw. A hidden rival thing is
+  spared anyway while the peace holds (`Deck.foe` asks `Combat.hostile`).
+- **AN AIMED CARD'S TARGET IS A WORLD POINT** — the middle of the marked
+  tile, exactly where the reticle's cross is drawn (deck-ui measures the
+  cross off the screen). A mouse hover only previews; a click or Enter
+  chooses, because the way to ✓ crosses the ground.
+- **EVERY HOOK GUARDS ON THE METHOD IT CALLS** (`window.Deck && Deck.mult ?
+  … : 1`), never on `Deck` alone: `deck.js` always defines `Deck`, and a
+  cached older `deckfx.js` beside a fresh `units.js` must stand down rather
+  than throw on every gatherer every frame (the shared-`?v=` lesson).
+- **A CARD FACE IS WHOLE DEVICE PIXELS** (`Deck.face` at 176×244, scaled by
+  `Deck.fit`); its art lands by FILENAME (`assets/cards/art/{id}.png`, the
+  tier's `assets/cards/frame-{tier}.png`) over a procedural placeholder. Its
+  inline styles go through `attr()` — a raw `url("…")` ended `style="…"` at
+  its first quote and no art ever drew.
+- **EVERY RUNNING CARD IS SEEN, OR COUNTED** (`DeckUI._fitChips`): chips that
+  fit are whole, the rest a `+k` badge whose tap names them. A play is over
+  inside 1.2 s (880 ms by design). The reward is GRANTED when the screen
+  opens (idempotent per run); CLAIM only flies it to the deck.
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
 perimeter line may only be MADE of `wall` and `gate` — it never counts an
