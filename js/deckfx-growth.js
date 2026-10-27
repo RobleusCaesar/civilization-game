@@ -59,11 +59,16 @@
    flies (rings in the air, pollen, spores, the sky) stays over the scene.
 
    Every show is render state (R.cardShows, never in S); a run with no card
-   in play pays nothing for any of it (R.draw's length checks). The looks
-   speak the house style: hard pixels on a 2px grid, alpha in hard steps,
-   rings made of dots — and THE LIGHT IS GOLD, NOT LIME (R.glow, render.js):
-   a body of light turns what it falls on gold, then brightens it, and a
-   gold mark is laid opaque in the ramp's ink, never added over the grass. */
+   in play pays nothing for any of it (R.draw's length checks). THE LIGHT IS
+   DRAWN AT THE DEVICE'S OWN RESOLUTION (operator ruling, 2026-10-27 — it
+   supersedes the hard-pixel house style for effects; the world's art stays
+   pixel art): the toolkit below lays its rings, beads, glints, columns,
+   rays and glitter through the shared helpers in js/render.js (R.fxRing,
+   fxDot, fxSpark, fxBeam, fxRays), smooth and antialiased, never snapped to
+   the art's 2px grain — and THE LIGHT IS STILL GOLD, NOT LIME: a body of
+   light turns what it falls on gold, then brightens it, its hue tied to its
+   light (R.FX_TIE), never gold added over the grass. A show not yet
+   converted (its own fillRects on the grain) is the next pass's work. */
 
 /* ---------------- the pixel toolkit the growth cards draw with ---------------- */
 const GrowFX = {
@@ -96,51 +101,37 @@ const GrowFX = {
   view(pad) { const v = R.viewTiles(); pad = pad || 0; return { x0: v.x0 - pad, y0: v.y0 - pad, x1: v.x1 + pad, y1: v.y1 + pad }; },
   viewPx(pad) { const v = this.view(pad), TL = CFG.TILE; return { x0: v.x0 * TL, y0: v.y0 * TL, x1: v.x1 * TL, y1: v.y1 * TL }; },
   inV(v, x, y) { return x >= v.x0 && x <= v.x1 && y >= v.y0 && y <= v.y1; },
-  /* a ring made OF dots (never a stroked arc), culled to `vp`; squash < 1
-     lays it on the ground. `col` a TONE ('gold', 'pale', 'bronze') is light:
-     its dots are laid opaque in the tone's ink, fading down the ramp
-     (R.goldInk) whatever composite the caller holds; any other colour (the
-     land's green) keeps its own look */
+  /* a ring rolling out at radius `rad` (squash < 1 lays it on the ground).
+     `col` a TONE ('gold', 'pale', 'bronze') is LIGHT: a smooth band of the
+     card's light at the device's own resolution (R.fxRing — its hue tied to
+     its light, so it is gold and never lime); any other colour (the land's
+     green) is a fine antialiased line in that colour. `px` sets its weight
+     (the old dot's size: 2 in the world, a few device px in the sky);
+     `vp` and `spin` are kept for their callers and no longer needed — a
+     path costs the same on screen or off. */
   ring(g, cx, cy, rad, col, a, px, squash, vp, spin) {
-    const tone = R.isTone(col);
-    if (!tone) a = this.step(a);
-    if (a <= 0 || rad < 1) return;
+    if (!(a > 0.01) || rad < 1) return;
     px = px || 2; squash = squash || 1;
-    const n = Math.max(12, Math.min(360, Math.round(rad * 2 * Math.PI / (px * 3))));
-    const op = g.globalCompositeOperation;
-    if (tone) { if (!R.inkOn(g, a, col)) return; }
-    else { g.fillStyle = col; g.globalAlpha = a; }
-    for (let i = 0; i < n; i++) {
-      const th = (i + (spin || 0)) / n * Math.PI * 2, x = cx + Math.cos(th) * rad, y = cy + Math.sin(th) * rad * squash;
-      if (vp && (x < vp.x0 || x > vp.x1 || y < vp.y0 || y > vp.y1)) continue;
-      g.fillRect(this.snap(x, px), this.snap(y, px), px, px);
-    }
-    g.globalAlpha = 1; g.globalCompositeOperation = op;
+    if (R.isTone(col)) { R.fxRing(g, cx, cy, rad, Math.min(1, a), col, { squash, w: px * 0.7 }); return; }
+    g.save();
+    g.globalAlpha = Math.min(1, a); g.strokeStyle = col; g.lineWidth = px * 0.55;
+    g.beginPath(); g.ellipse(cx, cy, rad, rad * squash, 0, 0, Math.PI * 2); g.stroke();
+    g.restore();
   },
-  /* a lit grain with a dark underside (the motes' language: it reads on
-     grass). A GOLD grain fades down the ramp, opaque (R.inkFade) — at half
-     alpha over the meadow it was a lime speck */
+  /* a grain of light rising (the motes' language): a soft bead at the
+     device's own resolution, its cream heart over a halo of its own hue
+     (R.fxDot) — gold ADDED over the meadow was lime, a 2px gold square at
+     half alpha olive. `dark` (the old grain's underside) is no longer
+     needed: a bead of light reads on grass by its own glow. */
   mote(g, x, y, col, dark, a) {
-    a = this.step(a);
-    if (a <= 0) return;
-    const sx = this.snap(x), sy = this.snap(y), [c, ca] = R.inkFade(col, a);
-    if (ca <= 0) return;
-    if (dark) { g.globalAlpha = a * 0.6; g.fillStyle = dark; g.fillRect(sx, sy + 2, 2, 1); }
-    g.globalAlpha = ca; g.fillStyle = c; g.fillRect(sx, sy, 2, 2);
-    g.globalAlpha = 1;
+    if (!(a > 0.01)) return;
+    R.fxDot(g, x, y, 1.25, Math.min(1, a), col);
   },
-  // a pale cross, one cell each way: something catching the light (a gold one in the ramp's ink)
+  // a four-point glint — something catching the light: hair-thin tapering arms at the device's own resolution (R.fxSpark)
   glint(g, x, y, col, a, px, tone) {
-    a = this.step(a);
-    if (a <= 0) return;
+    if (!(a > 0.01)) return;
     px = px || 2;
-    const sx = this.snap(x, px), sy = this.snap(y, px), [c, ca] = R.inkFade(col, a, tone);
-    if (ca <= 0) return;
-    g.globalAlpha = ca; g.fillStyle = c;
-    g.fillRect(sx, sy, px, px);
-    g.fillRect(sx - px, sy, px, px); g.fillRect(sx + px, sy, px, px);
-    g.fillRect(sx, sy - px, px, px); g.fillRect(sx, sy + px, px, px);
-    g.globalAlpha = 1;
+    R.fxSpark(g, x, y, Math.max(2.5, 1.8 * px / R.fxPx(g)), Math.min(1, a), tone || col);
   },
   /* a word in the world (a card's '×2'): cream on a hard one-pixel dark rim,
      alpha in steps — the float's legibility over any ground */
@@ -157,20 +148,14 @@ const GrowFX = {
     g.fillText(txt, tx, ty);
     g.restore();
   },
-  /* a column of light standing on (x, foot): three stepped widths of the
-     card's light (R.glow — whatever stands in it turns gold, then bright),
-     strongest in the middle, a white-hot thread up its heart. `tone`:
-     'gold' (the default), 'bronze' (the amber of a dawn), 'pale' (marble). */
+  /* a column of light standing on (x, foot): the card's light as a smooth
+     beam at the device's own resolution (R.fxBeam — soft across its width,
+     a white-hot thread up its heart, its hue tied to its light so whatever
+     stands in it turns gold, never lime), its top faded. `tone`: 'gold'
+     (the default), 'bronze' (the amber of a dawn), 'pale' (marble). */
   column(g, x, foot, top, w, a, tone) {
-    a = this.step(a);
-    if (a <= 0 || foot - top < 2 || w < 2) return;
-    tone = tone || 'gold';
-    const h = this.snap(foot - top), y0 = this.snap(top);
-    for (const [wf, sv] of [[1, 0.6], [0.55, 0.8], [0.18, 1]]) {
-      const ww = Math.max(2, this.snap(w * wf));
-      R.glow(g, sv * a, () => g.fillRect(this.snap(x - ww / 2), y0, ww, h), tone);
-    }
-    R.glowHot(g, 0.6 * a, () => g.fillRect(this.snap(x - 1), y0, 2, h), tone);
+    if (!(a > 0.01) || foot - top < 2 || w < 1) return;
+    R.fxBeam(g, x, foot, top, w, Math.min(1, a), tone || 'gold', { core: 1.3, fade: 0.18 });
   },
   /* a building's own silhouette flashed in the card's light (R.glow over its
      tinted picture): the building turns gold in its own light and shade and
@@ -199,48 +184,30 @@ const GrowFX = {
      which a warm grade reads olive and a warm paint sand. The sun or the
      burst at the top of the world, its rays of dots and its glitter carry
      the light there now.) */
-  /* rays of light fanning down from (ox, oy), device px: SHORT STEPPED
-     DASHES of the tone's ink close round the source — never wedges run down
-     the whole screen. Laid as wedges of the card's light (R.glow) they read
-     as orange road lines painted on the meadow, and where a wedge's faint
-     edge crossed the grass it sampled olive-mustard; laid wide they were a
-     slab, added they were lime. Each ray is a run of dashes two cells long,
-     the gaps opening as it reaches, stepping DOWN the ramp outward (cream,
-     gold, amber, gone) with a shimmer marching out along it — opaque ink, so
-     the grass beside a dash is never tinted at all — and it reaches about a
-     sixth of the screen from `from` (a fraction of the screen's height: the
-     edge of the sun or the burst it breaks from), so the light belongs to
-     what shines it. */
-  rays(g, ox, oy, n, spread, tone, a, t, from) {
-    const H = R.cv.height, gr = Math.max(2, Math.round(2 * R.cam.z * (R.dpr || 1)));
-    const r0 = H * (from == null ? 0.05 : from), reach = H * 0.17;
-    g.save();
-    for (let r = 0; r < n; r++) {
-      const th = (r - (n - 1) / 2) * spread + Math.sin(t * 0.8 + r * 1.7) * 0.012;   // from the vertical
-      const sx = Math.sin(th), cy = Math.cos(th), ar = a * (r % 2 ? 0.6 : 1), len = reach * (r % 2 ? 0.6 : 1);
-      const run = (t * 0.9 + this.hash(r, 9)) % 1;
-      // the dashes SHORTEN as the ray reaches (four cells at the source, then
-      // three, two, one) and the gaps open: a burst, not a scatter of specks
-      for (let d = r0, k = 0; d < r0 + len; k++) {
-        const q = (d - r0) / len, cells = Math.max(1, 4 - k);
-        if (R.inkOn(g, ar * (1 - q * 0.8) * (0.75 + 0.25 * Math.cos((q - run) * Math.PI * 2)), tone))
-          for (let u = 0; u < cells; u++)
-            g.fillRect(Math.round((ox + sx * (d + u * gr)) / gr) * gr, Math.round((oy + cy * (d + u * gr)) / gr) * gr, gr, gr);
-        d += gr * (cells + 2 + k * 0.5);
-      }
-    }
-    g.restore();
+  /* rays of light fanning down from (ox, oy), device px — SMOOTH now (the
+     operator's ruling on the effects, 2026-10-27: "the rays are pixelated…
+     higher pixel count"): slender wedges of the card's light at the
+     device's own resolution (R.fxRays), white-hot at the source and gone at
+     the tip, their hue tied to their light so the meadow under a ray turns
+     gold and never lime; n of them across spread × (n − 1) radians about
+     straight down, reaching `reach` (0.3) of the screen past `from` (a
+     fraction of the screen's height: the edge of the sun or the burst they
+     break from) — the light belongs to what shines it. (They were short
+     stepped dashes of ink a cell wide; before that, wedges laid as the
+     card's stepped light read as orange road lines on the meadow.) */
+  rays(g, ox, oy, n, spread, tone, a, t, from, reach) {
+    const H = R.cv.height, dpr = R.dpr || 1, r0 = H * (from == null ? 0.05 : from);
+    R.fxRays(g, ox, oy, { n, r0, r1: r0 + H * (reach || 0.3), a: Math.min(1, a), tone, dir: Math.PI / 2, spread: spread * (n - 1),
+      w0: 1.1 * dpr, w1: Math.max(2.5 * dpr, H * 0.007), t, seed: 3 });
   },
-  // stars of light twinkling across the upper sky (device px), in the tone's ink
+  // stars of light twinkling across the upper sky (device px): hair-thin four-point glints (R.fxSpark)
   glitter(g, n, tone, a, t) {
-    const W = R.cv.width, H = R.cv.height, px = Math.max(2, Math.round(2 * (R.dpr || 1)));
-    g.save();
+    const W = R.cv.width, H = R.cv.height;
     for (let i = 0; i < n; i++) {
       const tw = (Math.sin(t * (2 + this.hash(i, 5) * 3) + i * 2.3) + 1) / 2;
       if (tw < 0.55) continue;
-      this.glint(g, this.hash(i, 1) * W, this.hash(i, 2) * H * 0.62, R.LIGHT.TONE[tone].ramp[3], a * (tw - 0.45) * 1.8, px, tone);
+      R.fxSpark(g, this.hash(i, 1) * W, this.hash(i, 2) * H * 0.62, 3 + 4 * this.hash(i, 3), Math.min(1, a * (tw - 0.45) * 1.8), tone, { diag: i % 3 === 0 });
     }
-    g.restore();
   },
   sfx(kind) { if (typeof Sound !== 'undefined' && Sound.play) Sound.play(kind); },
   show(id, data) { return window.R && R.startCardShow ? R.startCardShow(id, data) : null; },
@@ -673,16 +640,19 @@ Object.assign(Deck.FX, {
       return { ok: true, x: c.x, y: c.y, until: e.until };
     },
     end() { G.log('☀️ The Golden Age passes — work and building go at their ordinary pace again.'); },
-    /* A GOLDEN DAWN OVER THE TOWN (Imperial: big). The light comes first —
-       the whole sky washed warm in one flat step for a breath, then a sun
-       rising into the top of the world, three stepped discs of it, held,
-       with rays of dots fanning down from it and stars of light glittering
-       across the sky. An amber pillar stands up out of the hall to meet it
-       and the ground gives a small shake. Then three rings of gold roll out
-       from the hall across the town, and every building the light reaches
-       catches it — its own silhouette flashing gold, motes lifting off the
-       roof, a ring of dots at its foot — and KEEPS a gold sheen until the
-       dawn passes, so the town visibly stands bathed in it. */
+    /* A GOLDEN DAWN OVER THE TOWN (Imperial: big). A sun rises into the top
+       of the world — a white-hot disc in a great soft glow, a fine corona,
+       rays fanning out of it and turning slowly, stars of light glittering
+       across the sky — held, then shrinking away. A pillar of light stands
+       up out of the hall to meet it and the ground gives a small shake. Then
+       three rings of light roll out from the hall across the town, and every
+       building the light reaches catches it — its own silhouette flashing
+       gold, beads of light lifting off the roof, a ring at its foot — and
+       KEEPS a gold sheen until the dawn passes, so the town visibly stands
+       bathed in it. ALL OF IT AT THE DEVICE'S OWN RESOLUTION (the operator's
+       ruling, on this very sun: "looks pixelated… higher pixel count"):
+       smooth light from the shared helpers, never discs and dots on the 2px
+       grain; the buildings' own art stays pixel art. */
     show: {
       ms: 4600, layers: ['world', 'sky'],
       draw(g, s, p, dt, layer) {
@@ -699,23 +669,24 @@ Object.assign(Deck.FX, {
           // and reads 0 early in a session: the marvel caption's lesson)
           if (s.topPx == null) { const tb = document.getElementById('topbar'); s.topPx = tb ? Math.max(0, tb.getBoundingClientRect().bottom) * dpr : 0; }
           const sc = F.toScreen(s.x, s.y), ox = Math.max(W * 0.15, Math.min(W * 0.85, sc.x));
-          const oy = s.topPx - H * 0.1 + H * 0.17 * F.ease(p / 0.3), px = Math.max(2, Math.round(4 * dpr));
-          // three stepped discs of the card's own light: a halo of gold dots
-          // round a gold disc round a cream heart (a great disc of light laid
-          // solid over the meadow read as a pumpkin, added as lime)
-          F.ring(g, ox, oy, H * 0.2, 'gold', 0.8 * e, px, 1);
-          F.ring(g, ox, oy, H * 0.17, 'gold', 0.45 * e, px, 1, null, 0.5);
-          // the discs keep their strength and SHRINK as the sun goes: faded
-          // through the light's faint steps, a disc of it over the meadow and
-          // the water passed through olive and mud brown
-          const se = F.step(e);
-          if (se > 0) {
-            for (const [r, a] of [[0.13, 0.62], [0.065, 1]])
-              R.glow(g, a, () => R.pxDisc(g, ox, oy, H * r * se, px, 1));
-            R.glowHot(g, 0.75, () => R.pxDisc(g, ox, oy, H * 0.03 * se, px, 1));
-          }
-          F.rays(g, ox, oy, 15, 0.17, 'gold', 0.9 * e, s.t, 0.215);
-          F.glitter(g, 48, 'gold', e, s.t);
+          const oy = s.topPx - H * 0.1 + H * 0.17 * F.ease(p / 0.3);
+          /* THE SUN IS DRAWN AT THE DEVICE'S OWN RESOLUTION (the operator,
+             on this very sun: "This one for example looks pixelated…
+             higher pixel count"): a great soft glow of gold round a white-
+             hot disc and a fine corona, rays fanning out of it and stars of
+             light glittering across the sky — every one of them smooth
+             light (R.fxGlow / fxRays / fxRing / fxSpark), its hue tied to
+             its light, so the meadow under the sun turns gold and never
+             lime. It keeps its strength and SHRINKS as it goes (a disc faded
+             through its light's faint steps passed through olive and mud
+             brown); its rays turn slowly with it. */
+          const se = 0.25 + 0.75 * F.ease(e), R0 = H * 0.085 * se;
+          R.fxGlow(g, ox, oy, H * 0.2 * se, 0.62, 'gold', { soft: 1.35 });
+          R.fxRays(g, ox, oy, { n: 26, r0: R0 * 0.7, r1: H * 0.44 * se, a: 0.9 * e, tone: 'gold', spread: Math.PI * 2, dir: s.t * 0.05,
+            w0: 1.0 * dpr, w1: Math.max(2 * dpr, H * 0.0055), t: s.t, seed: 11, vary: 0.45, fall: 1.1 });
+          R.fxGlow(g, ox, oy, R0 * 1.6, 1, 'gold', { soft: 1.25, core: 0.42 });
+          R.fxRing(g, ox, oy, R0 * 1.05, 0.55 * e, 'gold', { css: 1.4 });
+          F.glitter(g, 44, 'gold', e, s.t);
           return;
         }
         const TL = CFG.TILE, cx = s.x * TL, cy = s.y * TL, vp = F.viewPx(2), v = F.view(2), reach = s.reach || this.REACH;
@@ -771,13 +742,14 @@ Object.assign(Deck.FX, {
       return (front - Math.hypot(Bld.cx(b) - s.x, Bld.cy(b) - s.y)) / 1.8;
     },
     /* WHILE THE AGE LASTS — all twenty days — the town is seen to stand in
-       it: every roof catches the sun in turn, a hard four-point glint
-       twinkling up off its crown and going out in steps, and gold motes lift
-       off it, each a lit grain over a dark one, laid opaque in the gold's
-       ink (never gold added over the grass). The first cut's two faint
-       specks a roof left the aftermath with nothing but the 20d chip to say
-       a Golden Age was on. (Every hand at work wears the motes too — cue
-       'motes', the festival's look.) */
+       it: every roof catches the sun in turn, a four-point glint opening off
+       its crown and closing again, and beads of gold lift off it — each
+       drawn at the device's own resolution (R.fxSpark / fxDot: hair-thin
+       tapering arms, a soft bead with a cream heart over its own gold), never
+       gold added over the grass. The first cut's two faint specks a roof
+       left the aftermath with nothing but the 20d chip to say a Golden Age
+       was on. (Every hand at work wears the motes too — cue 'motes', the
+       festival's look.) */
     GLINT_S: 2.2,
     drawLive(g, e) {
       const TL = CFG.TILE, F = GrowFX, v = F.view(1), fade = F.tail(e), t = performance.now() / 1000;
@@ -787,30 +759,22 @@ Object.assign(Deck.FX, {
         if (!F.inV(v, Bld.cx(b), Bld.cy(b))) continue;
         const box = F.artBox(b), spr = R.bldSprite(b), ob = spr && R._artBox ? R._artBox(spr) : { l: 0.1, r: 0.9, t: 0.1, b: 0.94 };
         const top = box.y + ob.t * box.h, L = box.x + ob.l * box.w, Wd = (ob.r - ob.l) * box.w;
-        // the motes: three grains a roof, lifting off it in turn
+        // the motes: three beads a roof, lifting off it in turn
         for (let m = 0; m < 3; m++) {
           const ph = (t * 0.32 + F.hash(b.id, m)) % 1;
           if (ph > 0.7) continue;
           const k = ph / 0.7, a = (k < 0.2 ? 0.7 + k * 1.5 : 1 - (k - 0.2) / 0.8) * fade;
           F.mote(g, L + Wd * (0.2 + F.hash(m, b.id) * 0.6), top + box.h * 0.12 - k * TL * 1.1 + Math.sin(t * 2 + m * 2.1) * 2,
-            m % 2 ? '#fff1b8' : '#ffd45e', '#7a4a0a', a);
+            m % 2 ? '#fff1b8' : '#ffd45e', null, a);
         }
         // the glint off its crown: once a turn, a few beats long — a gold
-        // four-point star opening out (the long arms gold, their inner cells
-        // pale gold, a white-hot heart, the short diagonals at its height)
-        // and closing again, in hard beats
+        // four-point star opening out to its height (the short diagonals at
+        // its peak) and closing again, smoothly, with a white-hot heart
         const q = ((t / this.GLINT_S + F.hash(b.id, 17)) % 1) / 0.22;
         if (q < 1 && fade > 0.3) {
-          const x = F.snap(L + Wd * (0.3 + F.hash(b.id, 5) * 0.4)), y = F.snap(top + box.h * (0.04 + F.hash(5, b.id) * 0.12));
-          const arm = q < 0.15 ? 1 : q < 0.35 ? 2 : q < 0.65 ? 3 : q < 0.85 ? 2 : 1, T = R.LIGHT.TONE.gold;
-          g.globalAlpha = 1;
-          for (let s = 1; s <= arm; s++) {
-            g.fillStyle = s === 1 ? T.ramp[2] : T.ramp[1];
-            g.fillRect(x + s * 2, y, 2, 2); g.fillRect(x - s * 2, y, 2, 2);
-            g.fillRect(x, y + s * 2, 2, 2); g.fillRect(x, y - s * 2, 2, 2);
-          }
-          if (arm === 3) { g.fillStyle = T.ramp[1]; for (const [dx, dy] of [[2, 2], [-2, 2], [2, -2], [-2, -2]]) g.fillRect(x + dx, y + dy, 2, 2); }
-          g.fillStyle = T.hot; g.fillRect(x, y, 2, 2);
+          const x = L + Wd * (0.3 + F.hash(b.id, 5) * 0.4), y = top + box.h * (0.04 + F.hash(5, b.id) * 0.12);
+          const k = Math.sin(q * Math.PI);
+          R.fxSpark(g, x, y, 3 + 6 * k, Math.min(1, 0.35 + k) * fade, 'gold', { diag: k > 0.55 });
         }
       }
       g.restore();

@@ -1621,7 +1621,10 @@ await p.evaluate(() => {
       // a spark on the blow, and none between blows (the builder's OWN strip)
       const key = R.unitArtKey(v), fps = (Sprites.animFps && (Sprites.animFps[key] || Sprites.animFps[v.kind])) || 9;
       const at = ph => ph * 8 / fps;
-      const sparks = () => capture(() => QH.drawLive(g, e)).filter(k => k.w === 2 && k.h === 2).length;
+      // (a spark is a bead of light at the device's own resolution now —
+      // R.fxDot, the operator's ruling on the effects — not a 2x2 rect)
+      const sparks = () => { let n = 0; const fd = R.fxDot; if (fd) R.fxDot = function () { n++; return fd.apply(this, arguments); };
+        try { capture(() => QH.drawLive(g, e)); } finally { if (fd) R.fxDot = fd; } return n; };
       const ST = QH.STRIKE || [0.6, 0.84], sk = u => QH.strike ? QH.strike(u) : 0;
       v.animT = at(ST[0] + 0.05); out.onBlow = sparks(); out.onBlowK = sk(v);
       v.animT = at(0.2); out.offBlow = sparks(); out.offBlowK = sk(v);
@@ -1702,20 +1705,86 @@ await p.evaluate(() => {
     let rec = null;
     P2.fillRect = function (x, y, w, h) { if (rec && (!rec.cv || this.canvas === rec.cv)) rec.push([x, y, w, h, this.globalCompositeOperation, this.globalAlpha, String(this.fillStyle)]); return fr.apply(this, arguments); };
     try {
-      /* (a) THE DAWN'S RAYS ARE SHORT DASHES OF INK NEAR THE SUN: every mark
-         opaque and source-over (a wedge of the card's light run down the
-         whole screen read as an orange road line, and its faint edge over
-         the grass sampled olive-mustard), every mark one cell, and none
-         farther from the sun than its halo and a sixth of the screen */
+      /* (a) THE DAWN'S RAYS ARE SMOOTH LIGHT, NEVER OLIVE (the operator's
+         ruling on the effects, 2026-10-27: "the rays are pixelated… higher
+         pixel count" — it replaced "short dashes of ink near the sun", which
+         pinned the hard-pixel look). Drawn over a screen of the meadow's own
+         green: no rect is laid on any grid (slender wedges, antialiased —
+         many part-lit pixels), what the rays brighten is gold, never olive or
+         lime (the landing's measure: at most 2% of it ten levels brighter
+         AND yellow-green — the faint edge of the first cut's wedges sampled
+         olive-mustard), and the light belongs to the sun: none of it farther
+         than its halo and its reach (0.215 + 0.3 of the screen) */
       const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
-      const g = c.getContext('2d'), ox = c.width / 2, oy = 300, H = c.height;
+      const g = c.getContext('2d'), ox = c.width / 2, oy = 300, H = c.height, BG = [75, 129, 51];
+      g.fillStyle = `rgb(${BG})`; g.fillRect(0, 0, c.width, c.height);
       rec = []; rec.cv = c;
       GrowFX.rays(g, ox, oy, 15, 0.17, 'gold', 0.9, 1.0, 0.215);
-      const gr = Math.max(2, Math.round(2 * R.cam.z * (R.dpr || 1)));
-      out.rayMarks = rec.length;
-      out.rayLight = rec.filter(m => m[4] !== 'source-over' || m[5] < 1).length;
-      out.rayBig = rec.filter(m => m[2] > gr || m[3] > gr).length;
-      out.rayReach = +(rec.reduce((mx, m) => Math.max(mx, Math.hypot(m[0] + m[2] / 2 - ox, m[1] + m[3] / 2 - oy)), 0) / H).toFixed(3);
+      out.rayRects = rec.length;
+      const d = g.getImageData(0, 0, c.width, c.height).data, lum = (a, b, e) => 0.299 * a + 0.587 * b + 0.114 * e, L0 = lum(...BG);
+      let lit = 0, brighter = 0, olive = 0, part = 0, far = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i] === BG[0] && d[i + 1] === BG[1] && d[i + 2] === BG[2]) continue;
+        lit++;
+        const p = i / 4, x = p % c.width, y = (p / c.width) | 0;
+        far = Math.max(far, Math.hypot(x - ox, y - oy));
+        const L = lum(d[i], d[i + 1], d[i + 2]);
+        if (L > L0 + 0.5) brighter++;
+        if (L < L0 + 25) part++;
+        const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]), dd = mx - mn;
+        if (L - L0 >= 10 && mx && dd && dd / mx >= 0.2) {
+          let h = mx === d[i] ? ((d[i + 1] - d[i + 2]) / dd) % 6 : mx === d[i + 1] ? (d[i + 2] - d[i]) / dd + 2 : (d[i] - d[i + 1]) / dd + 4;
+          h *= 60; if (h < 0) h += 360;
+          if (h >= 48 && h <= 115) olive++;
+        }
+      }
+      out.rayLit = lit; out.rayOlive = brighter ? olive / brighter : 1; out.rayPart = lit ? part / lit : 0;
+      out.rayReach = +(far / H).toFixed(3);
+      /* (a2) THE GOLDEN SUN ITSELF (the operator's own example: "This one
+         for example looks pixelated"): the whole act — its sky (the sun, its
+         rays, its corona, the glitter) and its world (the pillar out of the
+         hall, the rings rolling over the town, the beads off the roofs) —
+         drawn over the meadow at six beats lays no rect on any grid, its
+         light is soft (a large share of what it touches part-lit), and it
+         never turns what it brightens olive */
+      {
+        const GA = Deck.FX.golden_age, sh = GA.show;
+        Deck.addTimed('golden_age', 20);
+        const s = R.startCardShow('golden_age', { x: Bld.cx(tc), y: Bld.cy(tc), reach: 9 });
+        const cs = document.createElement('canvas'); cs.width = R.cv.width; cs.height = R.cv.height;
+        const gs = cs.getContext('2d');
+        let rects = 0, lit2 = 0, br2 = 0, ol2 = 0, part2 = 0;
+        const z = R.cam.z * (R.dpr || 1);
+        for (const pp of [0.12, 0.2, 0.3, 0.45, 0.6, 0.7]) {
+          gs.setTransform(1, 0, 0, 1, 0, 0); gs.fillStyle = `rgb(${BG})`; gs.fillRect(0, 0, cs.width, cs.height);
+          s.t = pp * s.ms / 1000;
+          rec = []; rec.cv = cs;
+          for (const L of ['world', 'sky']) {
+            gs.save();
+            if (L === 'world') gs.setTransform(z, 0, 0, z, -R.cam.x * z, -R.cam.y * z); else gs.setTransform(1, 0, 0, 1, 0, 0);
+            sh.draw.call(GA, gs, s, pp, 0, L);
+            gs.restore();
+          }
+          rects += rec.length;
+          const dd = gs.getImageData(0, 0, cs.width, cs.height).data;
+          for (let i = 0; i < dd.length; i += 4) {
+            if (dd[i] === BG[0] && dd[i + 1] === BG[1] && dd[i + 2] === BG[2]) continue;
+            lit2++;
+            const L = lum(dd[i], dd[i + 1], dd[i + 2]);
+            if (L > L0 + 0.5) br2++;
+            if (L < L0 + 25) part2++;
+            const mx = Math.max(dd[i], dd[i + 1], dd[i + 2]), mn = Math.min(dd[i], dd[i + 1], dd[i + 2]), q = mx - mn;
+            if (L - L0 >= 10 && mx && q && q / mx >= 0.2) {
+              let h = mx === dd[i] ? ((dd[i + 1] - dd[i + 2]) / q) % 6 : mx === dd[i + 1] ? (dd[i + 2] - dd[i]) / q + 2 : (dd[i] - dd[i + 1]) / q + 4;
+              h *= 60; if (h < 0) h += 360;
+              if (h >= 48 && h <= 115) ol2++;
+            }
+          }
+        }
+        rec = [];
+        R.cardShows.length = 0;
+        out.sun = { rects, lit: lit2, olive: br2 ? ol2 / br2 : 1, part: lit2 ? part2 / lit2 : 0 };
+      }
       /* (b) THE GOLDEN AGE IS SEEN FOR ALL TWENTY DAYS: with the age running
          (its play long over), every roof in view glints in its turn — a gold
          star with a white-hot heart — and sheds gold, over three seconds;
@@ -1729,9 +1798,13 @@ await p.evaluate(() => {
       const pn = performance.now;
       rec = []; rec.cv = R.cv;
       const live = [];
+      // (a glint and a bead are smooth paths at the device's own resolution
+      // now — the operator's ruling on the effects — so fills count with rects)
+      const fi = P2.fill;
       P2.fillRect = function (x, y, w, h) { if (depth && this.canvas === R.cv) live.push(String(this.fillStyle).toLowerCase()); return fr.apply(this, arguments); };
+      P2.fill = function () { if (depth && this.canvas === R.cv) live.push(String(this.fillStyle).toLowerCase()); return fi.apply(this, arguments); };
       try { for (let k = 0; k < 30; k++) { performance.now = () => 5000 + k * 100; R.draw(0.1); } }
-      finally { performance.now = pn; GA.drawLive = dl; }
+      finally { performance.now = pn; GA.drawLive = dl; P2.fill = fi; }
       const inView = S.buildings.filter(z => z.owner === 'P' && R.onScreen(Bld.cx(z), Bld.cy(z))).length;
       out.inView = inView;
       out.liveMarks = live.length;
@@ -1740,8 +1813,11 @@ await p.evaluate(() => {
     } finally { P2.fillRect = fr; }
     return out;
   });
-  ck('theDawnsRaysAreShortDashesOfInk', r.rayMarks > 30 && r.rayLight === 0 && r.rayBig === 0 && r.rayReach <= 0.215 + 0.17 + 0.02,
-    `${r.rayMarks} marks, ${r.rayLight} added or translucent, ${r.rayBig} bigger than a cell, the farthest ${r.rayReach} of the screen from the sun`);
+  ck('theDawnsRaysAreSmoothLightNeverOlive', r.rayRects === 0 && r.rayLit > 2000 && r.rayPart > 0.15 && r.rayOlive <= 0.02 && r.rayReach <= 0.215 + 0.3 + 0.02,
+    `${r.rayRects} rects on a grid, ${r.rayLit} px lit (${(100 * r.rayPart).toFixed(0)}% of them a soft part-lit edge or tail), ` +
+    `${(100 * r.rayOlive).toFixed(2)}% of what they brighten olive, the farthest ${r.rayReach} of the screen from the sun`);
+  ck('theGoldenSunIsDrawnAtTheDevicesOwnResolution', r.sun.rects === 0 && r.sun.lit > 20000 && r.sun.part > 0.2 && r.sun.olive <= 0.02,
+    `six beats of the act: ${r.sun.rects} rects on a grid, ${r.sun.lit} px lit (${(100 * r.sun.part).toFixed(0)}% part-lit), ${(100 * r.sun.olive).toFixed(2)}% of what it brightens olive`);
   ck('theGoldenAgeIsSeenForAllTwentyDays', r.inView >= 3 && r.glintHearts >= r.inView && r.liveMarks >= 12 * r.inView,
     `${r.inView} buildings in view: ${r.glintHearts} glints, ${r.liveMarks} marks over three seconds`);
 }

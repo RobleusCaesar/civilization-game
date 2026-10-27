@@ -10941,7 +10941,8 @@ const R = {
      radians — Math.PI / 2 is straight down the screen), spread (its whole
      angle; 2π for a full sun), w0, w1 (a ray's half-width at its foot and at
      its tip), t (render time: a slow shimmer), seed, vary (0..1: how much
-     the lengths differ ray to ray, 0.35) }. Each ray is a slender wedge,
+     the lengths differ ray to ray, 0.35), fall (the light's falloff along
+     a ray, 1.6: lower holds it brighter further out) }. Each ray is a slender wedge,
      smooth along its length — white-hot at the source, down the ramp to
      nothing at its tip — a brighter inner half laid inside a fainter whole,
      its hue tied to that light (FX_TIE). */
@@ -10968,7 +10969,7 @@ const R = {
       g.lineTo(bx - nx * q, by - ny * q); g.lineTo(ax - nx * p, ay - ny * p); g.closePath();
       return g.createLinearGradient(ax, ay, bx, by);
     };
-    const lift = (r, s) => A.l * r.sh * Math.pow(Math.max(0, 1 - s), 1.6);
+    const lift = (r, s) => A.l * r.sh * Math.pow(Math.max(0, 1 - s), o.fall || 1.6);
     g.save();
     g.globalCompositeOperation = 'color';
     // (the hue reaches a device pixel past the light's own edge: an
