@@ -7,9 +7,10 @@
    when you play those cards… should feel epic and earned."
 
    THE ART is drawn, not built: PixelLab strips in assets/fx/, fetched ON
-   DEMAND (Assets.FX_SETS.dragon / .kraken — the rolled event asks for its
-   own set at newGame/loadJSON, a card asks the moment it is aimed or
-   played), square frames, the house's binary alpha:
+   DEMAND and at HIGH priority (Assets.FX_SETS.dragon / .kraken — the rolled
+   event asks for its own set at newGame/loadJSON, a card the moment the
+   player HOLDS it, Deck.wantArt; the play's landing waits a beat for it,
+   DeckUI.ART_WAIT_MS), square frames, the house's binary alpha:
      dragon-fly      8 x 256px  one full wing beat, facing EAST, looping
      dragon-breath   9 x 256px  0 the glide, 2-5 rearing back, 6-8 the jaws
                                 open on the flame (looped while it breathes)
@@ -64,7 +65,8 @@ const Beasts = {
     if (kind === 'dragon') { const f = Assets.fxFrames('dragon-fly'); return f && f.length >= 8 ? f : null; }
     const k = Assets.fxFrames('kraken-thrash'); return k && k.length >= 8 ? k : null;
   },
-  want(kind) { if (typeof Assets !== 'undefined' && Assets.wantFx) Assets.wantFx(kind); },
+  // the act is on screen and the art is not: it is wanted NOW (Assets.wantFx's high road)
+  want(kind) { if (typeof Assets !== 'undefined' && Assets.wantFx) Assets.wantFx(kind, { prio: 'high' }); },
   /* A TENTACLE'S STRIKE, frame by frame on the kraken-tentacle strip, `t`
      seconds from the moment it breaks the surface, the blow landing at
      `hit`: up out of its own splash (8→12), rearing (0→6), the PLUNGE (7)

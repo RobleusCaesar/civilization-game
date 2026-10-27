@@ -36,6 +36,12 @@ const DeckUI = {
   // a player who asks for less motion keeps every piece of information —
   // the card shown, its glow, the toast, the number ticking — and no travel
   CALM: { in: 140, flare: 200, out: 110, after: 220 },
+  /* a card whose act draws a MONSTER (its `art`, js/deckfx*.js) lands only
+     once the monster's strips are in — up to this long past the flight's
+     end, so an act whose art is merely LATE never opens on the procedural
+     stand-in. The strips were asked for, high, the moment the card was held
+     (Deck.wantArt), so the wait is a backstop that almost never runs. */
+  ART_WAIT_MS: 600,
   TICK_MS: 320,           // a resource number counting up to its new value
   SPRING: 'cubic-bezier(.2,1.35,.4,1)',   // springy, with overshoot
   OUT: 'cubic-bezier(.55,0,.85,.35)',     // a launch: slow, then gone
@@ -237,6 +243,8 @@ const DeckUI = {
     // installed ONCE and gated on state, like placement's own keys
     document.addEventListener('keydown', e => this._key(e));
     this.syncBadge(true);
+    // the monsters' art for every card the player HOLDS, at the front of the wire
+    if (Deck.wantArt) Deck.wantArt();
   },
 
   /* A PIXEL CARD STACK, not an emoji (the title menu's rule, boot.mjs
@@ -355,6 +363,7 @@ const DeckUI = {
     if (!this.sheet) this._buildSheet();
     const s = this.sheet;
     this.render();
+    if (Deck.wantArt) Deck.wantArt();   // a held monster's art, if it is not in yet
     s.root.classList.add('on');
     for (const a of s.root.getAnimations({ subtree: true })) a.cancel();
     if (this._calm()) {
@@ -550,6 +559,7 @@ const DeckUI = {
     this._armed = null;   // a fresh lift is a fresh first tap
     const c = Deck.card(id);
     if (!c || Deck.count(id) < 1) return;
+    if (Deck.wantArt) Deck.wantArt(id);   // in the hand: its monster is wanted now
     const can = Deck.canPlay(id), t = Deck.tier(c.tier);
     const L = document.createElement('div');
     L.id = 'dkInsp';
@@ -759,7 +769,18 @@ const DeckUI = {
        with its frames a clock started now would land the effect while the
        goods are still in the air. The timeout is only the failsafe for a
        flight that never finishes (a hidden tab draws no frames). */
-    const go = () => { if (this.playing === P && !P.landed) { P.landed = true; this._land(P, tgt, calm); } };
+    const land2 = () => { if (this.playing === P && !P.landed) { P.landed = true; this._land(P, tgt, calm); } };
+    const go = () => {
+      if (this.playing !== P || P.landed || P.waiting) return;
+      const A = window.Assets, set = fx.art;
+      if (set && A && A.fxSetDone && A.whenFx && !A.fxSetDone(set)) {
+        P.waiting = true;
+        A.wantFx(set, { prio: 'high' });
+        A.whenFx(set, this.ART_WAIT_MS).then(() => { P.waiting = false; land2(); });
+        return;
+      }
+      land2();
+    };
     flight.finished.then(go, () => {});
     this._after(land + 400, go);
   },

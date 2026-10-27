@@ -86,6 +86,21 @@ Object.assign(Deck, {
     }
     return m;
   },
+  /* THE ART A HELD CARD WILL NEED. A card whose act draws a monster names
+     its art set (`art`, an Assets.FX_SETS key — 'dragon', 'kraken'), and the
+     set is asked for at HIGH priority the moment the player HOLDS the card:
+     the deck built or opened (DeckUI), the card lifted, a run founded or
+     loaded with it in the collection (G.warmFx). Asked at the aim or the
+     play, on a phone's cold cache it queued behind the whole boot and the
+     act opened on the procedural stand-in. `id` narrows it to one card;
+     a card not held asks nothing. Draws no RNG, writes nothing to S. */
+  wantArt(id) {
+    if (typeof Assets === 'undefined' || !Assets.wantFx) return;
+    for (const k of id ? [id] : Object.keys(this.FX)) {
+      const fx = this.FX[k];
+      if (fx && fx.art && this.count(k) > 0) Assets.wantFx(fx.art, { prio: 'high' });
+    }
+  },
   // a live timed card that asks for a world cue by name (R.drawCardWorld)
   cue(name) {
     const fx = typeof S !== 'undefined' && S && S.deck && S.deck.fx;
@@ -448,9 +463,10 @@ Object.assign(Deck.FX, {
       if (S.dragon && S.dragon.ev) return { ok: false, why: 'The dragon is already on the wing.' };
       return { ok: true };
     },
-    // the beast's own art (js/beasts.js) is fetched on demand: aiming is the
-    // moment to ask, a beat before it flies
-    prepare() { if (window.Assets && Assets.wantFx) Assets.wantFx('dragon'); },
+    // the beast's own art (js/beasts.js): asked the moment the card is HELD
+    // (Deck.wantArt), and again — high, a no-op once asked — at the aim
+    art: 'dragon',
+    prepare() { if (window.Assets && Assets.wantFx) Assets.wantFx('dragon', { prio: 'high' }); },
     valid(x, y) { this.prepare(); return Deck.ground(x, y); },
     warn(tgt) { return Deck.truceWarn(tgt, this.UNIT_R, this.BLD_R); },
     apply(tgt) {

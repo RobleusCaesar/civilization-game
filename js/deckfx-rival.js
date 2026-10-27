@@ -1548,10 +1548,11 @@
         }
         return best ? { x: best.x, y: best.y } : null;
       },
-      // the beast's strips (js/beasts.js) are fetched on demand: the deck
-      // asking whether the card can be played is the moment to ask, well
-      // before the deep has to answer (idempotent — one request per strip)
-      prepare() { if (window.Assets && Assets.wantFx) Assets.wantFx('kraken'); },
+      // the beast's strips (js/beasts.js): asked at HIGH priority the moment
+      // the card is HELD (Deck.wantArt), and again here — the deck asking
+      // whether it can be played (idempotent — one request per strip)
+      art: 'kraken',
+      prepare() { if (window.Assets && Assets.wantFx) Assets.wantFx('kraken', { prio: 'high' }); },
       can() {
         this.prepare();
         if (!this.openSea()) return { ok: false, why: 'Needs open water' };
@@ -1584,8 +1585,8 @@
         for (const c of K.coast) for (const i of disc(c.x | 0, c.y | 0, this.COAST_SIGHT)) lit.push(i);
         Deck.light(lit);
         Deck.run().kraken = K;
-        // the beast's art is fetched on demand (Assets.FX_SETS — nothing with no set)
-        if (window.Assets && Assets.wantFx) Assets.wantFx('kraken');
+        // the beast's art (Assets.FX_SETS) — long since asked, high, if it was held
+        this.prepare();
         if (window.R) {
           if (R.startCardShow) R.startCardShow('krakens_call', {});
           if (R.flashAt) R.flashAt(0.4, 1.4, '2,10,22');

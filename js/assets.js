@@ -547,8 +547,8 @@ const Assets = {
     // pair per piece of the forest catalog
     // (a name ending in a digit CASCADES: -2 is asked for only once -1 has
     // landed, and so on — none of these do, so each is one request)
-    // THE MONSTERS (js/beasts.js): the rolled event asks at newGame/loadJSON,
-    // a card the moment it is aimed or played
+    // THE MONSTERS (js/beasts.js): asked at HIGH priority — the rolled event
+    // at newGame/loadJSON, a card the moment the player HOLDS it (Deck.wantArt)
     dragon: ['dragon-fly', 'dragon-breath'],
     kraken: ['kraken-thrash', 'kraken-tentacle'],
     wildfire: ['smoke'].concat(
@@ -556,24 +556,65 @@ const Assets = {
         .map(p => ['burn-' + p, 'char-' + p])),
   },
   fx: {},                         // name -> [frame canvases…]
-  _fxAsked: {},
+  _fxAsked: {},                   // name -> the priority it was asked at (truthy once asked)
+  _fxDone: {},                    // name -> true once it has landed OR failed (fxSetDone)
+  _fxWait: [],                    // [{special, fn}] — whenFx's waiters
   fxUrl(name) { return this.FX_DIR + name + '.png?v=' + (CFG.ART_V || 1); },
-  wantFx(special) {
+  /* `opts.prio` 'high' puts the request at the FRONT of the wire. The late
+     tier's 'low' is right for an event weeks away and wrong for art the
+     player is about to SEE: on a phone's cold cache a low request queues
+     behind the whole boot (~1,200 images) and the monsters' act opened on
+     the old procedural creatures for most of a minute (the review measured
+     51.7s at the phone wire). A HELD beast card and the rolled beast event
+     ask high (Deck.wantArt, G.warmFx); everything else keeps the late tier.
+     Asking high for a name already waiting at low sends it again at high —
+     the same URL, so the browser serves whichever lands first and the
+     second is a cache hit; the install is once. */
+  wantFx(special, opts) {
     const names = this.FX_SETS[special];
-    if (names) for (const name of names) this._fxOne(name);
+    const prio = opts && opts.prio === 'high' ? 'high' : 'low';
+    if (names) for (const name of names) this._fxOne(name, prio);
   },
-  _fxOne(name) {
-    if (this._fxAsked[name]) return;
-    this._fxAsked[name] = true;
+  _fxOne(name, prio) {
+    const was = this._fxAsked[name];
+    if (was && (prio !== 'high' || was === 'high' || this._fxDone[name])) return;
+    this._fxAsked[name] = prio === 'high' ? 'high' : 'low';
+    const first = !was;
     const img = new Image();
     img.onload = () => {
-      this.setFxArt(name, img);
+      if (!this.fx[name]) this.setFxArt(name, img);
+      this._fxLanded(name);
       const m = /^(.*-)(\d)$/.exec(name);             // the cascade: -1 landed, try -2 …
-      if (m && +m[2] < 6) this._fxOne(m[1] + (+m[2] + 1));
+      if (first && m && +m[2] < 6) this._fxOne(m[1] + (+m[2] + 1), prio);
     };
-    img.onerror = () => { /* that layer stays procedural */ };
-    this._track(this._prio(img, 'low'), false, true);
+    img.onerror = () => { this._fxLanded(name); /* that layer stays procedural */ };
+    this._track(this._prio(img, prio === 'high' ? 'high' : 'low'), false, true);
     img.src = this.fxUrl(name);
+  },
+  _fxLanded(name) {
+    this._fxDone[name] = true;
+    if (!this._fxWait.length) return;
+    const left = [];
+    for (const w of this._fxWait) { if (this.fxSetDone(w.special)) w.fn(true); else left.push(w); }
+    this._fxWait = left;
+  },
+  // every strip of a set has landed or failed — nothing more is coming, so
+  // whatever is drawn now (the art, or the procedural stand-in) is final
+  fxSetDone(special) {
+    const names = this.FX_SETS[special];
+    return !names || names.every(n => this._fxDone[n] || this.fx[n]);
+  },
+  /* a promise that resolves true when the set is in (fxSetDone), or false
+     after `ms` — the play's landing waits on this so an act never OPENS on
+     the stand-in when the art is merely late (DeckUI._run) */
+  whenFx(special, ms) {
+    if (this.fxSetDone(special)) return Promise.resolve(true);
+    return new Promise(res => {
+      let done = false;
+      const fin = v => { if (!done) { done = true; res(v); } };
+      this._fxWait.push({ special, fn: fin });
+      setTimeout(() => { this._fxWait = this._fxWait.filter(w => w.fn !== fin); fin(this.fxSetDone(special)); }, Math.max(0, ms || 0));
+    });
   },
   setFxArt(name, img) {
     const F = img && img.height;

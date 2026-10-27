@@ -18,14 +18,24 @@
                        shore it reaches across, and within a tentacle's reach
                        of its prey
      THEY ARE HEARD    a roar, a breath, the deep's groan and the slam
+     THE ART IS THERE  on a phone's wire with a cold cache, a run founded
+                       through the real entry holding both beast cards plays
+                       them a beat after entering and both acts open on the
+                       DRAWN beasts — never the procedural stand-in. The held
+                       cards ask at HIGH priority (Deck.wantArt, G.warmFx),
+                       and the play's landing waits for strips that are
+                       merely late (DeckUI.ART_WAIT_MS), never longer
 
    Run after touching: js/beasts.js, the dragon/kraken blocks of R.draw,
-   Assets.FX_SETS, G.dragonTick / G.krakenTick's phases.
+   Assets.FX_SETS / wantFx / whenFx, Deck.wantArt, DeckUI._run's landing,
+   G.warmFx, G.dragonTick / G.krakenTick's phases.
 
      node tests/beasts.mjs      # exits non-zero on any regression */
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
 import fs from 'node:fs';
 let pw;
 try { pw = (await import('playwright')).default; }
@@ -170,6 +180,157 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
     tick();
   }));
   ck('aLiveDragonFliesItsActInTheRealFrame', seen === 'fly,burn,leave' && errs.length === 0, 'phases ' + seen + ', errors ' + errs.slice(0, 3).join(' | '));
+}
+
+/* ---------------- 7. the art is there before the act ----------------
+   The review measured it: asked at the aim or the play, at the late tier's
+   LOW priority, the strips queued behind the whole boot on a phone's cold
+   cache and both cards' acts opened on the procedural stand-ins (51.7s for
+   the art to arrive). Served over HTTP — a file:// page has no wire to
+   throttle — on a FRESH context (a cold cache) at the boot measurements'
+   phone wire (~1.6 Mbps, 150 ms), a run is founded through the real entry
+   (G.newGame, then Screens.enterGame and its art plaque) with both beast
+   cards in hand (?cards=all), and each is played a beat after entering,
+   the way a player would: Kraken's Call off the sheet, Dragonfire aimed. */
+{
+  const types = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png',
+    '.webp': 'image/webp', '.jpg': 'image/jpeg', '.css': 'text/css', '.json': 'application/json',
+    '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
+  const srv = createServer(async (rq, rs) => {
+    try {
+      const u = decodeURIComponent(rq.url.split('?')[0]);
+      const f = join(root, u === '/' ? 'index.html' : u.replace(/^\/+/, ''));
+      if (!f.startsWith(root)) { rs.writeHead(403); rs.end(); return; }
+      const body = await readFile(f);
+      rs.writeHead(200, { 'content-type': types[f.slice(f.lastIndexOf('.'))] || 'application/octet-stream' });
+      rs.end(body);
+    } catch (e) { rs.writeHead(404); rs.end(); }
+  });
+  await new Promise(r => srv.listen(0, '127.0.0.1', r));
+  const cx2 = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  const q = await cx2.newPage();
+  const qerr = [];
+  q.on('pageerror', e => qerr.push(String(e)));
+  const cdp = await cx2.newCDPSession(q);
+  await cdp.send('Network.enable');
+  // the priority each beast strip went out at, as the browser saw it
+  const prio = {};
+  cdp.on('Network.requestWillBeSent', e => { const m = /fx\/((?:dragon|kraken)-[a-z]+)\.png/.exec(e.request.url); if (m && !prio[m[1]]) prio[m[1]] = e.request.initialPriority; });
+  await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 150, downloadThroughput: 1.6e6 / 8, uploadThroughput: 0.75e6 / 8 });
+  let r7 = null;
+  try {
+    await q.goto('http://127.0.0.1:' + srv.address().port + '/index.html?cards=all', { waitUntil: 'domcontentloaded' });
+    await q.waitForFunction(() => window.Deck && window.DeckUI && window.Screens && Screens.current === 'title', null, { timeout: 240000 });
+    await q.evaluate(() => {
+      // the stand-ins, counted every time one is drawn
+      window.__fall = { kraken: 0, dragon: 0, sky: 0 };
+      const KC = Deck.FX.krakens_call, so = KC.skyOld, ok = R.drawKrakenOld, od = R.drawDragonOld;
+      KC.skyOld = function () { window.__fall.sky++; return so.apply(this, arguments); };
+      R.drawKrakenOld = function () { window.__fall.kraken++; return ok.apply(this, arguments); };
+      R.drawDragonOld = function () { window.__fall.dragon++; return od.apply(this, arguments); };
+      // what was in at the very moment each act began (the landing's Deck.play)
+      window.__atPlay = {};
+      for (const [id, kind] of [['krakens_call', 'kraken'], ['dragonfire', 'dragon']]) {
+        const fx = Deck.FX[id], ap = fx.apply;
+        fx.apply = function () {
+          const at = window.__atPlay[id] = { art: !!Beasts.ready(kind), second: kind === 'kraken' ? !!Beasts.tentReady() : !!Assets.fxFrames('dragon-breath'), t: performance.now() };
+          const r = ap.apply(this, arguments);
+          at.ok = !!(r && r.ok);
+          return r;
+        };
+      }
+      Boot.force(); Screens._demo = false;
+      G.newGame('beasts-cold', 'moderate', 'medium');
+      Screens.enterGame();
+    });
+    await q.waitForFunction(() => Screens.current === 'playing', null, { timeout: 240000 });
+    const asked = await q.evaluate(() => ['dragon-fly', 'dragon-breath', 'kraken-thrash', 'kraken-tentacle'].map(n => Assets._fxAsked[n]).join(','));
+    // a sea along the far edge with two of the rival's hulls on it, in sight
+    await q.evaluate(() => {
+      const W = CFG.W, H = CFG.H, tcP = Bld.tcOf('P');
+      const southFar = tcP.y < H / 2;
+      const rows = southFar ? [H - 2, H - 3, H - 4, H - 5, H - 6] : [1, 2, 3, 4, 5];
+      for (const y of rows) for (let x = 1; x < W - 1; x++) { if (Bld.at(x, y)) continue; const i = y * W + x; S.map.terrain[i] = T.WATER; S.map.resAmount[i] = 0; }
+      S.units = S.units.filter(u => S.map.terrain[Math.floor(u.y) * W + Math.floor(u.x)] !== T.WATER);
+      Bld._block = null; G._wb = null; R.rebuildTerrain();
+      G.reveal(Math.floor(W / 2), Math.floor(H / 2), W);
+      const seaY = rows[2];
+      for (const [k, x] of [['fireship', 10.5], ['bombard', 13.5]]) { const u = Units.spawn(k, 'A', Math.floor(x), seaY); u.x = x; u.y = seaY + 0.5; }
+      Units.spawn('defender', 'P', 12, southFar ? rows[rows.length - 1] - 1 : rows[rows.length - 1] + 1);   // eyes on the water
+      G.updateVisibility();
+      R.cam.z = 1.7; R.centerOn(12, seaY);
+    });
+    await q.waitForTimeout(1500);                      // the player opens the deck…
+    await q.evaluate(() => { DeckUI.openSheet(); DeckUI.lift('krakens_call', document.querySelector('#dkSheet .dkCell[data-card="krakens_call"]')); });
+    await q.waitForTimeout(500);                       // …reads the card, and plays it
+    await q.evaluate(() => DeckUI.play('krakens_call'));
+    await q.waitForFunction(() => window.__atPlay.krakens_call && !S.deck.kraken, null, { timeout: 30000 }).catch(() => {});
+    await q.evaluate(() => { const tcA = Bld.tcOf('A'); R.centerOn(tcA.x + 1, tcA.y + 2); DeckUI.startAim('dragonfire'); });
+    await q.waitForTimeout(500);
+    await q.evaluate(() => { const tcA = Bld.tcOf('A'), A = DeckUI.aim; A.x = tcA.x + 1; A.y = tcA.y + 3; A.set = true; DeckUI._aimSync(); DeckUI.confirmAim(); });
+    await q.waitForFunction(() => window.__atPlay.dragonfire && !(S.dragon && S.dragon.ev), null, { timeout: 30000 }).catch(() => {});
+    r7 = await q.evaluate(() => ({ at: window.__atPlay, fall: window.__fall }));
+    r7.asked = asked;
+    ck('theHeldBeastsAreAskedForAtHighPriority', asked === 'high,high,high,high' &&
+      ['dragon-fly', 'dragon-breath', 'kraken-thrash', 'kraken-tentacle'].every(n => prio[n] === 'High'),
+      'asked ' + asked + ', on the wire ' + JSON.stringify(prio));
+    const ac = r7.at;
+    ck('andOnAPhonesColdCacheBothActsOpenOnTheDrawnBeasts',
+      !!(ac.krakens_call && ac.krakens_call.ok && ac.krakens_call.art && ac.krakens_call.second &&
+         ac.dragonfire && ac.dragonfire.ok && ac.dragonfire.art && ac.dragonfire.second) &&
+      r7.fall.kraken === 0 && r7.fall.dragon === 0 && r7.fall.sky === 0, JSON.stringify(r7));
+
+    /* THE BACKSTOP: art that is merely LATE holds the landing — the card's
+       flight ends, the act waits for the strip, and opens on it the moment
+       it lands; art that never comes holds it no longer than ART_WAIT_MS.
+       (The wire is free again: the strips are set aside by hand.) */
+    await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+    const late = await q.evaluate(async () => {
+      if (!Assets._fxDone || !Assets._fxLanded || !Assets.whenFx) return { missing: 'Assets has no whenFx/_fxDone — nothing can wait for the art' };
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const W = CFG.W, sea = S.map.terrain.findIndex((t, i) => t === T.WATER && G.openWaterAt(i % W, (i / W) | 0) && !S.units.some(u => (u.x | 0) === i % W && (u.y | 0) === ((i / W) | 0)));
+      const out = {};
+      for (const arrive of [true, false]) {
+        const u = Units.spawn('transport', 'A', sea % W, (sea / W) | 0); u.x = sea % W + 0.5; u.y = ((sea / W) | 0) + 0.5;
+        G.updateVisibility();
+        Deck._add('krakens_call', 1);
+        const kept = Assets.fx['kraken-thrash'];
+        delete Assets.fx['kraken-thrash']; delete Assets._fxDone['kraken-thrash'];
+        window.__atPlay.krakens_call = null;
+        let flown = 0;
+        DeckUI.play('krakens_call');
+        const flight = document.querySelector('#dkFly .dkFCard');
+        const anim = flight && flight.getAnimations()[0];
+        if (anim) await anim.finished.catch(() => {}); else await wait(700);
+        flown = performance.now();
+        await wait(250);
+        const heldAt250 = !window.__atPlay.krakens_call;
+        let landedIn = -1;
+        if (arrive) {
+          Assets.fx['kraken-thrash'] = kept; Assets._fxLanded('kraken-thrash');
+          const t = performance.now();
+          while (!window.__atPlay.krakens_call && performance.now() - t < 2000) await wait(10);
+          if (window.__atPlay.krakens_call) landedIn = Math.round(window.__atPlay.krakens_call.t - t);
+        } else {
+          while (!window.__atPlay.krakens_call && performance.now() - flown < 3000) await wait(10);
+          if (window.__atPlay.krakens_call) landedIn = Math.round(window.__atPlay.krakens_call.t - flown);
+          Assets.fx['kraken-thrash'] = kept; Assets._fxLanded('kraken-thrash');
+        }
+        out[arrive ? 'arrives' : 'never'] = { heldAt250, landedIn, art: window.__atPlay.krakens_call && window.__atPlay.krakens_call.art };
+        while (S.deck.kraken) await wait(50);
+        await wait(400);
+      }
+      return out;
+    });
+    ck('theLandingWaitsForArtThatIsMerelyLate', late.arrives && late.arrives.heldAt250 && late.arrives.landedIn >= 0 && late.arrives.landedIn < 60 && late.arrives.art === true,
+      JSON.stringify(late.missing || late.arrives));
+    ck('butNeverLongerThanItsBackstop', late.never && late.never.heldAt250 && late.never.landedIn >= 500 && late.never.landedIn <= 1200,
+      JSON.stringify(late.missing || late.never));
+  } finally {
+    await cx2.close();
+    srv.close();
+  }
+  if (qerr.length) errs.push(...qerr.map(e => 'http page: ' + e));
 }
 
 await b.close();

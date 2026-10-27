@@ -368,11 +368,17 @@ const G = {
      dealt the event, never at boot — and a crater already in the land asks
      for its own. Never for the title's demo world (Screens.show re-asks the
      moment a world is actually entered). */
+  /* The MONSTERS ask at the front of the wire (Assets.wantFx's 'high'): the
+     rolled dragon or kraken, and the beast of any card the player holds
+     (Deck.wantArt — only while the cards are on). At the late tier's 'low'
+     a phone's cold cache served them behind the whole boot and the act
+     opened on the procedural stand-in. */
   warmFx() {
     if (typeof Assets === 'undefined' || !Assets.wantFx || !S) return;
     if (window.Screens && Screens._demo) return;
-    if (S.special) Assets.wantFx(S.special);
+    if (S.special) Assets.wantFx(S.special, (S.special === 'dragon' || S.special === 'kraken') ? { prio: 'high' } : undefined);
     if (S.starfall && S.starfall.x >= 0) Assets.wantFx('starfall');
+    if (window.Deck && Deck.on && Deck.wantArt && Deck.on()) Deck.wantArt();
   },
   warmTribes() {
     if (typeof Sprites === 'undefined' || !Sprites.barbFor) return;
