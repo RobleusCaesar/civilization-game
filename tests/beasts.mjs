@@ -25,6 +25,10 @@
                        cards ask at HIGH priority (Deck.wantArt, G.warmFx),
                        and the play's landing waits for strips that are
                        merely late (DeckUI.ART_WAIT_MS), never longer
+     NOT IN THE BLACK  by a sea that runs into the board's edge the kraken
+                       comes up with ALL of its drawn body on the board, and
+                       neither the world's act nor the card's writes a pixel
+                       off it (a control that widens R.boardPx must see some)
 
    Run after touching: js/beasts.js, the dragon/kraken blocks of R.draw,
    Assets.FX_SETS / wantFx / whenFx, Deck.wantArt, DeckUI._run's landing,
@@ -326,6 +330,96 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
       JSON.stringify(late.missing || late.arrives));
     ck('butNeverLongerThanItsBackstop', late.never && late.never.heldAt250 && late.never.landedIn >= 500 && late.never.landedIn <= 1200,
       JSON.stringify(late.missing || late.never));
+
+    /* ---------------- 8. nothing of the kraken in the black ----------------
+       (the same served page — a file:// canvas is tainted and cannot be read)
+       A sea that runs into the board's edge — the rim row too, as an island
+       map's ocean does — with the prey on the last playable row. The body
+       comes up where ALL of it is drawn on the board (R.krakenBodyAt scores
+       its wet ground through MapGen.onBoard, never G.wetAt's inB, which
+       counts the rim), and every pixel the world's act and the card's act
+       write lands on the board: each draw call is diffed against the canvas
+       it was handed, its changed pixels mapped back through the call's own
+       transform. The control widens R.boardPx — one patch opens every clip
+       at once — and the same probe must then see the kraken out there, or a
+       probe that never looks at the rim would read as a pass forever. */
+    const void8 = await q.evaluate(() => {
+      G.newGame('beasts-void', 'moderate', 'medium');
+      Screens.show('playing'); S.paused = true;
+      const W = CFG.W, H = CFG.H, tcP = Bld.tcOf('P');
+      const south = tcP.y < H / 2;
+      const rows = south ? [H - 1, H - 2, H - 3, H - 4, H - 5, H - 6] : [0, 1, 2, 3, 4, 5];
+      for (const y of rows) for (let x = 0; x < W; x++) { if (Bld.at(x, y)) continue; const i = y * W + x; S.map.terrain[i] = T.WATER; S.map.resAmount[i] = 0; }
+      S.units = S.units.filter(u => S.map.terrain[Math.floor(u.y) * W + Math.floor(u.x)] !== T.WATER);
+      Bld._block = null; G._wb = null; R.rebuildTerrain();
+      G.reveal(Math.floor(W / 2), Math.floor(H / 2), W);
+      const edge = south ? H - 2 : 1, prey = { x: 15.5, y: edge + 0.5 };
+      // where the body comes up, and whether all of it is on the board
+      const C = Beasts.KRAKEN, half = (C.frame || 224) * C.scale / 2 / CFG.TILE;
+      const at = R.krakenBodyAt(prey.x, prey.y);
+      const body = { at, half, onBoard: at.x - half >= 1 && at.x + half <= W - 1 && at.y - half >= 1 && at.y + half <= H - 1,
+        reach: Math.hypot(at.x - prey.x, at.y - prey.y) };
+      G.freeVis = true;   // the whole sea in sight: the act is drawn only where the player can see
+      const hull = Units.spawn('fireship', 'A', 15, edge); hull.x = prey.x; hull.y = prey.y;
+      G.updateVisibility();
+      R.cam.z = 1.7; R.centerOn(prey.x, edge); if (R.clampCam) R.clampCam();
+      const real = R.boardPx(), cx = R.cv.getContext('2d');
+      // the changed pixels of one draw call that lie off the board (by more
+      // than the clip's own antialiased edge pixel)
+      const probe = (owner, key) => {
+        const f = owner[key]; let off = 0, on = 0;
+        owner[key] = function (g) {
+          const T0 = g.getTransform(), a = cx.getImageData(0, 0, R.cv.width, R.cv.height).data;
+          const ret = f.apply(this, arguments);
+          const z = cx.getImageData(0, 0, R.cv.width, R.cv.height).data, cw = R.cv.width;
+          const det = T0.a * T0.d - T0.b * T0.c, m = 1 / Math.abs(T0.a);
+          for (let i = 0; i < z.length; i += 4) {
+            if (z[i] === a[i] && z[i + 1] === a[i + 1] && z[i + 2] === a[i + 2] && z[i + 3] === a[i + 3]) continue;
+            const px = (i >> 2) % cw + 0.5 - T0.e, py = ((i >> 2) / cw | 0) + 0.5 - T0.f;
+            const wx = (T0.d * px - T0.c * py) / det, wy = (-T0.b * px + T0.a * py) / det;
+            if (wx < real.x0 - m || wx >= real.x1 + m || wy < real.y0 - m || wy >= real.y1 + m) off++; else on++;
+          }
+          return ret;
+        };
+        return { done: () => { owner[key] = f; return { off, on }; } };
+      };
+      const out = { body };
+      for (const wide of [false, true]) {
+        const bp = R.boardPx;
+        if (wide) R.boardPx = function () { const b = bp.call(this), p = 6 * CFG.TILE; return { x0: b.x0 - p, y0: b.y0 - p, x1: b.x1 + p, y1: b.y1 + p }; };
+        try {
+          // THE WORLD'S KRAKEN, mid-thrash over its boat at the edge
+          S.kraken = S.kraken || {};
+          S.kraken.ev = { phase: 'thrash', t: 0.4, x: prey.x, y: prey.y, boatId: -1, owner: 'P' };
+          let pr = probe(R, 'drawKrakenAct');
+          R.draw(0);
+          const world = pr.done();
+          S.kraken.ev = null;
+          // THE CARD'S, played on the hull at the edge and run into its thrash
+          Deck._add('krakens_call', 1);
+          const play = Deck.play('krakens_call');
+          for (let i = 0; i < 160 && S.deck.kraken && !S.deck.kraken.acts.some(a => a.phase === 'thrash'); i++) Deck.krakenTick(0.05);
+          G.updateVisibility();
+          pr = probe(Deck.FX.krakens_call, 'draw');
+          R.draw(0);
+          const card = pr.done();
+          out[wide ? 'control' : 'clipped'] = { world, card, play: !!play.ok, act: S.deck.kraken ? S.deck.kraken.acts.map(a => a.phase).join(',') : '-' };
+          S.deck.kraken = null;
+          const u2 = Units.spawn('fireship', 'A', 15, edge); u2.x = prey.x; u2.y = prey.y;
+          G.updateVisibility();
+        } finally { R.boardPx = bp; }
+      }
+      return out;
+    });
+    {
+      const v = void8, B = v.body;
+      ck('theKrakenComesUpWhollyOnTheBoard', B.onBoard && B.reach <= 3.05, JSON.stringify(B));
+      ck('andNothingOfItIsDrawnInTheBlack', v.clipped && v.clipped.play && /thrash/.test(v.clipped.act) &&
+        v.clipped.world.on > 0 && v.clipped.world.off === 0 && v.clipped.card.on > 0 && v.clipped.card.off === 0,
+        JSON.stringify(v.clipped));
+      ck('andTheVoidProbeCanSeeTheKraken', v.control && v.control.world.off > 0 && v.control.card.off > 0,
+        'with the board widened: ' + JSON.stringify(v.control));
+    }
   } finally {
     await cx2.close();
     srv.close();

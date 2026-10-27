@@ -50,6 +50,7 @@ const Beasts = {
     scale: 0.78,          // the body (224px art) on the board
     tentScale: 0.95,      // a tentacle (160px art)
     tentBase: [80, 132],  // where a tentacle leaves the water, in its frame
+    frame: 224,           // the kraken-thrash frame (px), foam ring and all — the body's drawn box is frame × scale
     fps: 9,
     offset: 1.7,          // tiles from its prey to the body's middle, out toward open water
   },
@@ -407,12 +408,23 @@ Object.assign(R, {
     }
   },
   // where the body comes up: a little way out from its prey, toward the
-  // most open water — never on the shore it is reaching across
+  // most open water — never on the shore it is reaching across, and never
+  // hanging off the edge of the world
   krakenBodyAt(x, y) {
     /* the most open water in reach of its prey: every candidate middle
        within 3 tiles scored by the wet tiles under the body's ring (radius
        2), less a little for distance — a river or a narrow bay puts it
-       square over the channel, open sea puts it a stride out */
+       square over the channel, open sea puts it a stride out.
+       THE WHOLE DRAWN BODY STANDS ON THE BOARD: water is counted only on
+       the board (MapGen.onBoard — G.wetAt asks inB, which counts the rim,
+       and an island map's ocean runs right into it), and a candidate whose
+       drawn box (KRAKEN.frame × scale) would hang past the board's edge
+       ranks below every one that does not. Only where no middle in reach
+       keeps all of it on the board (a hull in a corner) does the least
+       overhang win, and R.clipBoard keeps that overhang out of the black. */
+    const C = Beasts.KRAKEN, W = CFG.W, H = CFG.H;
+    const half = (C.frame || 224) * C.scale / 2 / CFG.TILE;
+    const wet = (wx, wy) => MapGen.onBoard(Math.floor(wx), Math.floor(wy)) && G.wetAt(wx, wy);
     let best = null;
     for (let dy = -3; dy <= 3; dy += 0.5) for (let dx = -3; dx <= 3; dx += 0.5) {
       const d = Math.hypot(dx, dy);
@@ -421,9 +433,12 @@ Object.assign(R, {
       let n = 0, m = 0;
       for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) {
         if (ox * ox + oy * oy > 4.5) continue;
-        m++; if (G.wetAt(cx + ox, cy + oy)) n++;
+        m++; if (wet(cx + ox, cy + oy)) n++;
       }
-      const sc = n / m - d * 0.04;
+      // the board is tiles 1..W-1 (the rim is off-map void)
+      const over = Math.max(0, 1 - (cx - half)) + Math.max(0, cx + half - (W - 1)) +
+                   Math.max(0, 1 - (cy - half)) + Math.max(0, cy + half - (H - 1));
+      const sc = n / m - d * 0.04 - (over > 0 ? 2 + over : 0);
       if (!best || sc > best.sc) best = { x: cx, y: cy, sc };
     }
     return best ? { x: best.x, y: best.y } : { x, y };
