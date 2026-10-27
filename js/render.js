@@ -10808,6 +10808,138 @@ const R = {
       g.restore();
     }
   },
+  /* THE ORBIT — AN AREA'S REMINDER (operator ruling, on their phone, of
+     Bountiful Land's ring of gold dots: "a little pixelated and low
+     quality. For these type of area of effect cards, let's do something
+     subtler, and higher pixel count… a small glittering gold orb that
+     travels along that circle with a trail behind it. Very faint and
+     subtle, it fades behind it, after 3/4 of the circle it's gone. It
+     rotates in a circle for the duration"). Every card that marks a RADIUS
+     for as long as it runs wears this, and only this: ONE bead of gold
+     going round the circle at a slow lap (ORBIT.period, each card on its own
+     phase), a thread of gold behind it that tapers to nothing and is gone by
+     three quarters of the way round — so the circle is always told, never
+     drawn.
+     IT IS DRAWN AT DEVICE RESOLUTION, FINER THAN THE WORLD'S PIXEL ART —
+     the second half of the same ruling, and the one place the house's 2px
+     world grid is deliberately left: the caller's world transform is READ
+     (shake and all) to place it, then dropped, and every width here is in
+     CSS px times R.dpr — the trail ~1.6 css px at the orb, the bead ~2.3 —
+     antialiased arcs, never 2px squares.
+     THE GOLD IS NEVER ADDED OVER THE GRASS, AND NEVER LAID THIN OVER IT
+     EITHER (the lime / olive rule, R.LIGHT): the thread is the card light's
+     two passes over one tapered sliver — its HUE ('color': the ground keeps
+     its own luminance and takes the gold's hue, so the thread is as faint as
+     a line of the same brightness can be) and a thinner LIFT of cream laid
+     source-over at a low alpha on that gold. The trail fades by TAPERING,
+     not by alpha: a hue pass thinned with alpha is half green and half
+     gold, olive — narrowed to nothing it simply ends. The bead is small
+     marks in the ramp's ink, opaque; now and then it twinkles, a one-pixel
+     cross in the hot white. Source-over and 'color' only — never 'lighter'.
+     Drawn wherever the caller draws (a card's drawGround, under the town
+     and the fog, so the fog dims and hides it like the land it marks); it
+     clips itself to the board, culls a circle that misses the canvas, and
+     costs one sliver fill per pass and a few discs. `t` is render time (the
+     caller's performance.now) — no G.rand, nothing in S.
+       opts.phase   0..1, this circle's own place on the lap
+       opts.fade    0..1, a card's last half day: everything narrows with it
+       opts.open    0..1, the opening (0: a whole even ring, 1: the orb and
+                    its fading trail; the circle unwinds between)
+       opts.grow    0..1, the ring's radius as it sweeps out (the opening)
+       opts.tone    a R.LIGHT tone, 'gold' unless named
+     Answers what it drew ({ x, y, r, head, span, w } in device px), or null. */
+  ORBIT: {
+    period: 10.5,      // seconds a lap
+    sweep: 0.75,       // the share of the circle the thread can reach: gone by three quarters
+    trail: 1.4,        // CSS px — the thread's width at the orb
+    taper: 2.2,        // its fall-off along the trail (width ∝ (1 - s)^taper): most of it gone by half way
+    lift: 0.34,        // the cream over the thread's gold, at the orb (source-over)
+    liftW: 0.5,        // …and its share of the thread's width
+    core: 0.95,        // CSS px — the bead's cream core, radius
+    rim: 1.3,          // CSS px — its gold rim, radius
+    halo: 2.8,         // CSS px — the ground round the bead turned gold (hue only)
+    glint: 3.1,        // seconds between the bead's twinkles
+    glintS: 0.32,      // …and how long one lasts
+  },
+  drawOrbit(g, cx, cy, rTiles, t, opts) {
+    opts = opts || {};
+    const O = this.ORBIT, TL = CFG.TILE, cl = v => v < 0 ? 0 : v > 1 ? 1 : v;
+    const fade = cl(opts.fade == null ? 1 : opts.fade), open = cl(opts.open == null ? 1 : opts.open);
+    const grow = cl(opts.grow == null ? 1 : opts.grow);
+    if (!g || !g.getTransform || fade <= 0 || !(rTiles > 0)) return null;
+    const m = g.getTransform(), wx = cx * TL, wy = cy * TL;
+    const sx = m.a * wx + m.c * wy + m.e, sy = m.b * wx + m.d * wy + m.f;
+    const k = Math.hypot(m.a, m.b) || 1, rr = rTiles * TL * k * grow, u = this.dpr || 1;
+    if (rr < 2 * u) return null;
+    const W = g.canvas ? g.canvas.width : Infinity, H = g.canvas ? g.canvas.height : Infinity, pad = 8 * u;
+    if (sx + rr + pad < 0 || sx - rr - pad > W || sy + rr + pad < 0 || sy - rr - pad > H) return null;
+    const T = this.LIGHT.TONE[opts.tone] || this.LIGHT.TONE.gold, TAU = Math.PI * 2;
+    const head = (((t / (opts.period || O.period) + (opts.phase || 0)) % 1) + 1) % 1 * TAU;
+    const span = TAU * (1 - (1 - O.sweep) * open);              // a whole ring → three quarters
+    const w0 = O.trail * u * fade;
+    // the thread's width a share `s` of the way back from the orb (0 at the orb)
+    const wid = s => w0 * ((1 - open) + open * Math.pow(Math.max(0, 1 - s), O.taper));
+    const n = Math.max(32, Math.min(180, Math.ceil(span * rr / (12 * u))));
+    const sliver = share => {
+      g.beginPath();
+      for (let i = 0; i <= n; i++) {
+        const s = i / n, a = head - s * span, h = wid(s) * share / 2;
+        g.lineTo(sx + Math.cos(a) * (rr + h), sy + Math.sin(a) * (rr + h));
+      }
+      for (let i = n; i >= 0; i--) {
+        const s = i / n, a = head - s * span, h = wid(s) * share / 2;
+        g.lineTo(sx + Math.cos(a) * (rr - h), sy + Math.sin(a) * (rr - h));
+      }
+      g.closePath();
+    };
+    const disc = (x, y, r) => { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); };
+    g.save();
+    // NOTHING IS DRAWN IN THE BLACK: the board, laid in the world's own
+    // coordinates before the transform is dropped (a clip outlives it)
+    if (this.boardPx) { const b = this.boardPx(); g.beginPath(); g.rect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); g.clip(); }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = 1;
+    // 1 THE HUE: the ground under the thread takes the gold's hue in its own light
+    g.globalCompositeOperation = 'color';
+    const hue = g.globalCompositeOperation === 'color';
+    if (hue) { g.fillStyle = T.hue; sliver(1); g.fill(); }
+    // 2 THE LIFT: a thinner thread of cream on that gold (alone, where 'color' is unknown)
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = O.lift * fade * (hue ? 1 : 0.6); g.fillStyle = T.ramp[3];
+    sliver(O.liftW); g.fill();
+    // 3 THE BEAD, as the trail opens out of the ring
+    const ok = open * fade;
+    if (ok > 0) {
+      const hx = sx + Math.cos(head) * rr, hy = sy + Math.sin(head) * rr;
+      g.globalAlpha = 1;
+      // the ground round it turned gold in its own light, then a soft cream
+      // lift over that gold — brightest at the bead, still a step up at its
+      // edge, so the halo reads as light and never as a brown ring
+      const hr = O.halo * u * ok;
+      if (hue) {
+        g.globalCompositeOperation = 'color'; g.fillStyle = T.hue; disc(hx, hy, hr);
+        g.globalCompositeOperation = 'source-over';
+        const gr = g.createRadialGradient(hx, hy, 0, hx, hy, hr);
+        gr.addColorStop(0, 'rgba(' + this.rgbOf(T.ramp[3]) + ',0.6)');
+        gr.addColorStop(0.55, 'rgba(' + this.rgbOf(T.ramp[2]) + ',0.32)');
+        gr.addColorStop(1, 'rgba(' + this.rgbOf(T.ramp[2]) + ',0.2)');
+        g.fillStyle = gr; disc(hx, hy, hr);
+      }
+      g.globalAlpha = 1;
+      g.fillStyle = T.ramp[1]; disc(hx, hy, O.rim * u * ok);
+      g.fillStyle = T.ramp[3]; disc(hx, hy, O.core * u * ok);
+      // …and now and then it twinkles: a one-pixel cross in the hot white, on device pixels
+      const tw = (((t + (opts.phase || 0) * 7.3) / O.glint) % 1 + 1) % 1, gl = O.glintS / O.glint;
+      if (tw < gl) {
+        const q = Math.sin(tw / gl * Math.PI) * ok, L = Math.round((1 + 2.6 * q) * u), p = Math.max(1, Math.round(u));
+        const X = Math.round(hx - p / 2), Y = Math.round(hy - p / 2);
+        g.fillStyle = T.hot;
+        g.fillRect(X - L, Y, 2 * L + p, p); g.fillRect(X, Y - L, p, 2 * L + p);
+      }
+    }
+    g.restore();
+    return { x: sx, y: sy, r: rr, head, span, w: w0 };
+  },
   cardBldLooks() {
     if (!window.Deck) return null;
     let out = null;
