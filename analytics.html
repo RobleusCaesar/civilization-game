@@ -146,6 +146,26 @@
   <h2>How they play</h2>
   <div class="tiles" id="style"></div>
 
+  <!-- ============ CARDS (migration 0008) ============
+       The collectible deck, read from the server's own ledgers (what was
+       really granted and really spent), through analytics_cards() — its own
+       function, so 0007's analytics_summary is untouched. Until 0008 is
+       applied the call is a 404 and this block says so instead. -->
+  <h2>Cards</h2>
+  <div class="sub" id="cardsNote">Granted and played are the server's ledgers; "the game reported" is what the deck sent as telemetry — a gap between the two is cards the server has not been handed yet, or turned away.</div>
+  <div class="tiles" id="kCards"></div>
+  <h2>Cards granted — by tier and ending</h2>
+  <div class="card wrap"><table id="tCardTiers"></table></div>
+  <h2>Cards played — by card</h2>
+  <div class="sub">Win rate is how the runs it was played in ended (one ending per run, the same rules as above).</div>
+  <div class="card wrap"><table id="tCardPlays"></table></div>
+  <h2>Card-assisted win rate</h2>
+  <div class="sub">Every ending, split by whether a card was played in it — and, for the rest, whether that player held a deck at all.</div>
+  <div class="card wrap"><table id="tCardAssist"></table></div>
+  <h2>Cards — what the server turned away</h2>
+  <div class="card wrap"><table id="tCardRefused"></table></div>
+  <!-- ============ END CARDS ============ -->
+
   <!-- ============ COMPETITION PANEL ============
        The prize draw's read-only view. Removing the competition is three
        steps in the game (js/competition.js, its script tag, its call line)
@@ -236,6 +256,36 @@ async function callRpc(token, filters) {
   const d = await res.json();
   if (d && typeof d === 'object' && note) d.note = note;
   return d;
+}
+
+/* THE CARDS SECTION (migration 0008): its own function, analytics_cards, with
+   analytics_summary's filters. The function is new in 0008, so until that
+   file is applied the call is a 404 (300 if a stray overload ever existed) —
+   the section then says what to apply instead of breaking the page. The run
+   filter is sent only when set, the convention the summary call keeps. */
+async function callCards(token, filters) {
+  const body = {
+    p_token: token,
+    p_from: filters.from || null, p_to: filters.to || null,
+    p_mode: filters.mode || null, p_landform: filters.landform || null,
+    p_device: filters.device || null, p_version: filters.version || null,
+  };
+  if (filters.minSeconds > 0) body.p_min_seconds = filters.minSeconds;
+  const res = await fetch(SUPA_CFG.url + '/rest/v1/rpc/analytics_cards', {
+    method: 'POST',
+    headers: { apikey: SUPA_CFG.anonKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 404 || res.status === 300)
+    return { missing: true, note: 'The Cards section needs migration 0008 (supabase/migrations/0008_cards.sql) applied in the SQL editor.' };
+  if (!res.ok) throw new Error('Cards request failed (' + res.status + ')');
+  return res.json();
+}
+async function loadCards() {
+  let c;
+  try { c = await callCards(TOKEN, filters()); }
+  catch (e) { c = { missing: true, note: (e && e.message) || 'Could not reach the database for the cards.' }; }
+  renderCards(c);
 }
 
 /* ----------------------------------------------------------- rendering */
@@ -400,6 +450,33 @@ function renderCompetition(c) {
   }
 }
 
+// CARDS (0008): absent or refused, every table reads "No data yet" and the
+// note says why — the rest of the page never depends on this section
+function renderCards(c) {
+  c = c || {};
+  const note = $('cardsNote');
+  if (!note.dataset.base) note.dataset.base = note.textContent;
+  note.textContent = c.missing ? c.note : (c.error ? 'Cards: ' + c.error : note.dataset.base);
+  const T = c.totals || {};
+  tiles($('kCards'), c.missing || c.error ? [] : [
+    { k: 'Cards granted', v: num(T.cards_granted), cls: 'y', n: num(T.runs_granted) + ' runs · ' + num(T.great_victories) + ' second cards' },
+    { k: 'Cards played', v: num(T.cards_played), n: num(T.players_played) + ' players' },
+    { k: 'Players granted', v: num(T.players_granted) },
+    { k: 'Starter hands', v: num(T.starters_claimed), n: 'claimed' },
+    { k: 'Held right now', v: num(T.cards_held_now), n: 'every player, unfiltered' },
+    { k: 'Turned away', v: num(T.refusals), cls: T.refusals > 0 ? 'r' : '', n: 'by the server' },
+    { k: 'The game reported', v: num(T.client_granted), n: num(T.client_played) + ' plays · telemetry' },
+  ]);
+  table($('tCardTiers'), ['Tier', 'From wins', 'From losses', 'Granted', 'Players'],
+    (c.granted_by_tier || []).map(r => [r.tier, r.wins, r.losses, r.n, r.players]), 3);
+  table($('tCardPlays'), ['Card', 'Tier', 'Plays', 'Players', 'Runs', 'Win rate'],
+    (c.played_by_card || []).map(r => [r.card, r.tier, r.plays, r.players, r.runs, pct(r.win_pct)]), 2);
+  table($('tCardAssist'), ['Endings', 'Runs', 'Wins', 'Losses', 'Win rate'],
+    (c.assisted || []).map(r => [r.group, r.runs, r.wins, r.losses, pct(r.win_pct)]), 1);
+  table($('tCardRefused'), ['Door', 'Reason', 'Times', 'Players'],
+    (c.refused || []).map(r => [r.op, r.reason, r.n, r.players]), 2);
+}
+
 function fillSelect(sel, values) {
   const keep = sel.value;
   const list = (values || []).filter(v => v != null).map(String).sort();
@@ -432,7 +509,7 @@ async function load() {
       }
       $('appErr').textContent = 'Error: ' + d.error; return;
     }
-    render(d);
+    render(d); loadCards();
   } catch (e) {
     $('appErr').textContent = (e && e.message) || 'Could not reach the database.';
   }
@@ -459,7 +536,7 @@ $('go').onclick = async () => {
   if (d && d.error) { lock(d.error === 'bad_token' ? 'That passphrase was not accepted.' : ('Error: ' + d.error)); return; }
   // the tab remembers, the browser does not: sessionStorage dies with the tab
   try { sessionStorage.setItem(KEY, TOKEN); } catch (e) {}
-  show('app'); render(d);
+  show('app'); render(d); loadCards();
 };
 $('pass').addEventListener('keydown', e => { if (e.key === 'Enter') $('go').click(); });
 $('apply').onclick = load;
@@ -479,7 +556,7 @@ $('out').onclick = () => lock('');
   TOKEN = saved;
   const d = await callRpc(TOKEN, filters()).catch(() => ({ error: 'network' }));
   if (d && d.error) { lock(''); return; }
-  show('app'); render(d);
+  show('app'); render(d); loadCards();
 })();
 </script>
 </body>

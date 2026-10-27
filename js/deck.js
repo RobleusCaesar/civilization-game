@@ -650,3 +650,270 @@ const Deck = {
   },
 };
 window.Deck = Deck;
+
+/* ================= THE CLOUD: Deck.sync (tests/deck-sync.mjs) =================
+   The collection lives on the device so it reads at once and plays offline;
+   the cloud is the RECORD once it answers. Every change the device makes is
+   queued (starter / grant / consume, above) and this block delivers the
+   queue through the doors of supabase/migrations/0008_cards.sql, then
+   reconciles the mirror against my_cards(). Five rules:
+
+   THE SWITCH    off (CFG.CARDS.ON false, no ?cards=1), sync does NOTHING —
+                 no listener, no read, no request.
+   THE SITE      only the shipped site talks to the cloud (Backend's own
+                 telemetryAllowed gate; the test mock is exempt). A page from
+                 disk, a local server, ?dev= and a review deal (?cards=slice |
+                 all, whose cards were never earned) stay on the device.
+   IN ORDER, AND ONLY WHAT WAS ANSWERED LEAVES THE QUEUE. Answered ok — or
+                 ok + already, a DUPLICATE (an answer lost on the way back) —
+                 the op is done. Refused for good (not earned, not a card that
+                 ending can roll, none left) it is dropped, and the reconcile
+                 shows what the server holds. Not REACHED (offline, a 5xx, the
+                 migration not yet applied, signed out, the hourly cap) it is
+                 kept and the drain stops there, to try again with backoff.
+                 'no_run' — the run_end row is still in flight, or was lost and
+                 is being resent (Backend.flushEnds) — keeps the grant and
+                 holds back only the plays of ITS cards; everything else goes.
+                 A grant that has said no_run for NO_RUN_DAYS and NO_RUN_TRIES
+                 is given up: its evidence is never coming.
+   THE RECORD    with the queue empty, my_cards() REPLACES the device's counts
+                 (and merges what was seen, the pity count, the winning
+                 medians). An answer that comes back after anything was queued,
+                 or for a player no longer signed in, is thrown away.
+   ONE MIRROR PER PLAYER  neo-deck carries the uid it belongs to (an unowned
+                 mirror is the first signed-in player's). A different player
+                 signing in on this device parks it under neo-deck@<uid> and
+                 brings back theirs — or nothing: nobody inherits a collection.
+   It never blocks the game and never throws: everything is async, nothing
+   awaits it, and every failure is an op kept for later. It reads nothing
+   about the run (no S at all). */
+Object.assign(Deck, {
+  SYNC: {
+    WAIT_MS: [5000, 15000, 45000, 135000, 600000],   // the retry after a drain that kept something
+    NO_RUN_DAYS: 7,                                   // a grant whose evidence never lands…
+    NO_RUN_TRIES: 8,                                  // …is given up after this long AND this many asks
+  },
+  _sy: null,
+  _syncState() {
+    return this._sy || (this._sy = { busy: null, again: false, timer: 0, nudge: 0, fails: 0, armed: false, last: null });
+  },
+  /* the listeners, installed once and only while the switch is on: a new op
+     queued (a grant, a play, the starter hand), the network coming back, and
+     a player signing in (Backend's own status event) */
+  syncArm() {
+    const st = this._syncState();
+    if (st.armed || !this.on()) return false;
+    st.armed = true;
+    try {
+      this.onChange(() => this._syncNudge());
+      window.addEventListener('online', () => this.sync('online'));
+      window.addEventListener('backend-status', e => { if (e && e.detail && e.detail.uid) this.sync('signin'); });
+    } catch (e) { /* headless */ }
+    return true;
+  },
+  // only a NEW op asks for a delivery: the sync's own saves (an op's try
+  // count) must never re-trigger it, or an offline device spins
+  _syncNudge() {
+    try {
+      const st = this._syncState();
+      // mid-drain, the drain itself looks for new ops when it finishes
+      if (st.busy || st.nudge) return;
+      if (!this.col().queue.some(op => !op.q)) return;
+      st.nudge = setTimeout(() => { st.nudge = 0; this.sync('change'); }, 40);
+    } catch (e) {}
+  },
+  _reviewDeal() {
+    let q = '';
+    try { q = String(location.search || ''); } catch (e) {}
+    return /[?&]cards=(slice|all)\b/.test(q);
+  },
+  // '' when this device may talk to the cloud now, else the reason it may not
+  _syncGate() {
+    if (!this.on()) return 'off';
+    const B = window.Backend;
+    if (!B || !B.rpc) return 'no_backend';
+    if (this._reviewDeal()) return 'review';
+    if (!B.configured) return 'not_configured';
+    if (!B.mock && !(B.telemetryAllowed && B.telemetryAllowed())) return 'not_site';
+    if (!B.isReady() || !B.uid) return 'not_ready';
+    return '';
+  },
+  /* THE ONE ENTRY: deliver what is queued, then reconcile. Resolves to
+     { ok, why, sent, done, dropped, kept, reconciled }; a call while one is
+     in flight joins it and runs once more after. */
+  sync(why) {
+    try {
+      if (!this.on()) return Promise.resolve({ ok: false, why: 'off' });
+      this.syncArm();
+      const st = this._syncState();
+      if (st.busy) { st.again = true; return st.busy; }
+      st.busy = this._syncRun(why)
+        .catch(() => ({ ok: false, why: 'error' }))
+        .then(r => {
+          st.busy = null; st.last = r;
+          if (st.again) { st.again = false; return this.sync('again'); }
+          return r;
+        });
+      return st.busy;
+    } catch (e) { return Promise.resolve({ ok: false, why: 'error' }); }
+  },
+  async _syncRun(why) {
+    const out = { ok: false, why: '', sent: 0, done: 0, dropped: 0, kept: 0, reconciled: false };
+    out.why = this._syncGate();
+    if (out.why) return out;          // not_ready: the sign-in's status event brings us back
+    const B = window.Backend, uid = B.uid;
+    this._syncAdopt(uid);
+    // the EVIDENCE first: a run_end the game could not send goes up before
+    // the grant that waits on it
+    if (B.flushEnds) { try { await B.flushEnds(); } catch (e) {} }
+    const c = this.col();
+    const mine = () => this._col === c && B.uid === uid;
+    if (!mine()) { out.why = 'switched'; return out; }
+    for (const op of c.queue) op.q = 1;
+    const held = {};   // card id → its adding op is waiting on its run_end
+    let stop = '';
+    for (const op of c.queue.slice()) {
+      if (op.op === 'consume' && held[op.card]) continue;
+      const v = await this._syncDeliver(op);
+      if (!mine()) { stop = 'switched'; break; }
+      if (v.asked) out.sent++;
+      op.n = (op.n || 0) + 1;
+      op.why = v.why;
+      if (v.verdict === 'wait' && op.op === 'grant') {
+        op.wait = op.wait || Date.now();
+        if (op.n >= this.SYNC.NO_RUN_TRIES && Date.now() - op.wait > this.SYNC.NO_RUN_DAYS * 864e5) {
+          v.verdict = 'drop';
+          v.why = op.why = 'no_run_expired';
+        }
+      }
+      if (v.verdict === 'done' || v.verdict === 'drop') {
+        const i = c.queue.indexOf(op);
+        if (i >= 0) c.queue.splice(i, 1);
+        if (v.verdict === 'done') out.done++;
+        else { out.dropped++; this._syncNote(op, v.why); }
+      } else if (v.verdict === 'wait') {
+        for (const id of (op.cards || [])) held[id] = 1;
+      } else { stop = v.why || 'network'; break; }
+    }
+    out.kept = c.queue.length;
+    if (mine()) this._syncSave(c);
+    if (!stop && !c.queue.length && mine()) out.reconciled = await this._syncReconcile(c, uid);
+    out.ok = !stop && !c.queue.length;
+    out.why = stop || (c.queue.length ? 'held' : '');
+    if (stop !== 'switched') this._syncLater(c.queue.length > 0);
+    // an op queued while this drain was in flight goes out right behind it
+    if (mine() && c.queue.some(op => !op.q)) this._syncState().again = true;
+    return out;
+  },
+  /* one op through its door. 'done' (answered ok, or a duplicate), 'drop'
+     (refused for good), 'wait' (no_run: ask again later, hold its cards'
+     plays), 'stop' (not reached — keep it and everything behind it) */
+  async _syncDeliver(op) {
+    const B = window.Backend;
+    let name, args;
+    if (op.op === 'starter') { name = 'claim_starter_hand'; args = {}; }
+    else if (op.op === 'grant') {
+      // a run with no id (a save from before the run id rode in it) can
+      // never be checked against its ending, so it can never be granted
+      if (!op.run) return { verdict: 'drop', why: 'no_run_id' };
+      name = 'grant_card';
+      args = { p_run_id: String(op.run), p_cards: (op.cards || []).slice(0, 2), p_outcome: op.outcome || null };
+    } else if (op.op === 'consume') {
+      name = 'consume_card';
+      args = { p_card_key: op.card, p_play_id: op.play, p_run_id: op.run || null,
+        p_day: Math.max(0, Math.min(100000, op.day | 0)) };
+    } else return { verdict: 'drop', why: 'unknown_op' };
+    let r;
+    try { r = await B.rpc(name, args); } catch (e) { r = null; }
+    const v = this._syncVerdict(r);
+    v.asked = true;
+    return v;
+  },
+  _syncVerdict(r) {
+    // not reached: offline, a 5xx, a 404 (0008 not applied yet), signed out
+    if (!r || !r.ok) return { verdict: 'stop', why: String((r && r.error && r.error.code) || 'network') };
+    const d = r.data;
+    // an answer that is not one of ours is no answer (an unmocked RPC reads
+    // { ok:true, data:null } in a test — a silent pass, if it were believed)
+    if (!d || typeof d !== 'object' || typeof d.ok !== 'boolean') return { verdict: 'stop', why: 'no_answer' };
+    if (d.ok) return { verdict: 'done', why: d.already ? 'duplicate' : 'ok' };
+    const why = String(d.reason || 'refused');
+    if (why === 'no_run') return { verdict: 'wait', why };
+    if (why === 'not_authenticated' || why === 'slow_down') return { verdict: 'stop', why };
+    if (why === 'duplicate' || why === 'already') return { verdict: 'done', why: 'duplicate' };
+    return { verdict: 'drop', why };
+  },
+  // the refusals, kept short on the mirror for whoever comes looking
+  _syncNote(op, why) {
+    try {
+      const c = this.col();
+      if (!Array.isArray(c.refused)) c.refused = [];
+      c.refused.push({ at: Date.now(), op: op.op, card: op.card || (op.cards || []).join(','), run: op.run || null, why });
+      if (c.refused.length > 20) c.refused.splice(0, c.refused.length - 20);
+    } catch (e) {}
+  },
+  /* ONE MIRROR PER PLAYER: an unowned mirror is adopted by the first player
+     to sign in on this device; a mirror owned by someone else is parked under
+     its owner's uid and the newcomer's own (or a bare one) comes back */
+  _syncAdopt(uid) {
+    if (!uid) return '';
+    const c = this.col();
+    if (!c.uid) { c.uid = uid; this._syncSave(c); return 'adopted'; }
+    if (c.uid === uid) return '';
+    try {
+      this._set(this.KEY + '@' + c.uid, JSON.stringify(c));
+      const theirs = this._get(this.KEY + '@' + uid);
+      this._del(this.KEY + '@' + uid);
+      this._set(this.KEY, theirs || JSON.stringify({ uid }));
+    } catch (e) {}
+    this._col = null;
+    const n = this.col();
+    n.uid = uid;
+    this._syncSave(n);    // the badge and the collection repaint for the player now signed in
+    return 'switched';
+  },
+  /* THE RECORD: my_cards() replaces the counts once nothing is waiting */
+  async _syncReconcile(c, uid) {
+    let r;
+    try { r = await window.Backend.rpc('my_cards', {}); } catch (e) { return false; }
+    if (!r || !r.ok || !r.data || r.data.ok !== true) return false;
+    const d = r.data;
+    // still about THIS mirror: the same player, and nothing queued meanwhile
+    // (a card played while the answer was in flight would come back to life)
+    if (this._col !== c || window.Backend.uid !== uid || (d.uid && d.uid !== uid) || c.queue.length) return false;
+    const counts = {};
+    const src = (d.counts && typeof d.counts === 'object') ? d.counts : {};
+    for (const id of Object.keys(src)) {
+      const n = Math.min(999, Math.floor(+src[id] || 0));
+      if (this.card(id) && n > 0) counts[id] = n;
+    }
+    c.counts = counts;
+    const seen = (d.seen && typeof d.seen === 'object') ? d.seen : {};
+    for (const id of Object.keys(seen)) if (this.card(id) && !c.seen[id]) c.seen[id] = +seen[id] || Date.now();
+    for (const id of Object.keys(counts)) if (!c.seen[id]) c.seen[id] = Date.now();
+    if (d.starter) c.starter = c.starter || +d.starter_at || Date.now();
+    if (d.pity >= 0) c.pity = Math.floor(+d.pity);
+    if (d.medians && typeof d.medians === 'object') {
+      const m = { at: Date.now() };
+      for (const k of ['calm', 'moderate', 'hard']) if (+d.medians[k] > 0) m[k] = Math.round(+d.medians[k]);
+      c.medians = m;
+    }
+    c.synced = Date.now();
+    this._syncSave(c);
+    return true;
+  },
+  _syncSave(c) { if (this._col === c) this.saveCol(); },
+  // the retry, backing off while ops are kept; nothing pending, no timer
+  _syncLater(kept) {
+    const st = this._syncState();
+    if (st.timer) { clearTimeout(st.timer); st.timer = 0; }
+    if (!kept) { st.fails = 0; return; }
+    const W = this.SYNC.WAIT_MS;
+    const ms = W[Math.min(st.fails, W.length - 1)];
+    st.fails++;
+    st.timer = setTimeout(() => { st.timer = 0; this.sync('retry'); }, ms);
+  },
+});
+// at boot the deck asks for a delivery and arms its listeners; with the
+// switch off this does nothing at all
+try { window.addEventListener('load', () => { if (Deck.on()) Deck.sync('boot'); }); } catch (e) {}
