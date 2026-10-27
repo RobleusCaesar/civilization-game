@@ -20,24 +20,42 @@
       together are 1.4 × 1.5 = 2.1; a second festival lengthens the first
       and never stacks its strength (Deck.addTimed).
    3. QUICKER HANDS ARE FOR WHAT RISES (Deck.buildRate): a work site, an
-      upgrade, the masons' village-wide wall works (tc.wallUp) and a span's
-      reinforcing (br.upgrading) — every clock the game calls an upgrade.
-      Never repair (mending is not building), never a sapper's earthworks,
-      never the training yards. And still only the builders' own work: no
-      card finishes anything by itself.
+      upgrade, the masons' village-wide wall works (tc.wallUp), a sapper
+      raising a span and a span's reinforcing (br.upgrading) — everything
+      the game builds or upgrades. Never repair (mending is not building),
+      never a sapper's earthworks (dig, clear, mound), never the training
+      yards. And still only the builders' own work: no card finishes
+      anything by itself.
    4. NO CARD LAYS THE LAST STONE. Finishing the Wonder is the run's ending
       (Bld.finish → G.wonderRaised); Wonder's Foundation stops at 95% and
       the Age of Marble only speeds the hands that raise it.
    5. A CARD'S GIFT SCORES NOTHING: Enlightenment's levels are raised with
-      Bld.finishUpgrade's `byCard` (no "upgrade finished", no reveal of its
-      own — the taller building's sight opens the ground as any building's
-      does), the festival's extra wood is not "gathered".
+      Bld.finishUpgrade's `byCard` (no "upgrade finished" scored, no line
+      per building), the festival's extra wood is not "gathered". What a
+      card-raised building then SEES is a building's sight like any other:
+      the next visibility pass charts the wider ring and it counts toward
+      exploration as building a taller tower would (skipping the level's
+      own G.reveal only spares a duplicate of that pass — it is not what
+      keeps exploration honest, and nothing needs to).
    6. BLIGHT IS DENIABLE AND FOG-HONEST. It deals no blow, so it leaves the
       Calm truce standing and asks nothing of Combat.hostile; its look is
       drawn ONLY on the rival's works the player can see right now
       (G.visibleAt), and its pall rolls toward the rival as the player knows
       them — their hall if it is remembered, else the far side of the world
       from the player's own seat — so the card is never a lamp in the fog.
+      The lush ground of Bountiful Land is asked of the player's memory the
+      same way (bountiful_land.grows).
+
+   WHAT BELONGS TO THE LAND IS DRAWN WITH THE LAND. R.drawCardWorld runs
+   after the units and over the fog — right for light in the air, wrong for
+   the ground: Bountiful Land's sprigs grew through the villagers' bodies
+   and stood lit on remembered ground the fog dims, and the Blight's grey
+   wash was laid over the rival's hands on their own fields. So the grown
+   meadow and the wave that wakes it draw in the GROUND pass
+   (drawGround / a show's 'ground' layer — R.drawCardGround, under bridges,
+   buildings, units and the fog), and the withered fields ON their building
+   (drawBld — R.drawCardBld, right after its own art). Only light and what
+   flies (rings in the air, pollen, spores, the sky) stays over the scene.
 
    Every show is render state (R.cardShows, never in S); a run with no card
    in play pays nothing for any of it (R.draw's length checks). The looks
@@ -199,8 +217,14 @@ const GrowFX = {
   // the middle of the screen, in tiles
   mid() { const v = R.viewTiles(); return { x: (v.x0 + v.x1) / 2, y: (v.y0 + v.y1) / 2 }; },
   // brings a world point on screen if it is off it (the play sequence does
-  // this for the hall; a card whose work is elsewhere does it for that work)
+  // this for where a card lands; the Foundation laid by the ground breaking
+  // does it for the works)
   look(x, y) { if (window.R && R.onScreen && !R.onScreen(x, y)) R.centerOn(x, y); },
+  // the player's Wonder works, if a site stands: where the two Wonder cards land
+  wonderSite() {
+    const w = Deck.wonderOf('P');
+    return w && w.construction > 0 ? { x: Bld.cx(w), y: Bld.cy(w) } : null;
+  },
   /* NOTHING IS DRAWN IN THE BLACK (CLAUDE.md, R.boardPx): the off-map rim is
      void, and light ADDED over black shows as a brown smear — the sky's bands
      and its glitter are exactly the eclipse's stars-in-the-black fault. Every
@@ -251,7 +275,7 @@ Object.assign(Deck, {
     const F = this.FX.wonders_foundation;
     if (!(b.construction > F.floor())) return;   // nothing to lay on (an instant site); the charge waits
     delete ch.foundation;
-    F.lay(b);
+    F.lay(b, true);
   },
   wonderOf(owner) { return S.buildings.find(b => b.owner === owner && b.key === 'wonder') || null; },
 });
@@ -359,18 +383,47 @@ Object.assign(Deck.FX, {
     // ground a sprig may stand on: open meadow, spent soil, a felled stand
     OPEN: (() => { const o = {}; o[T.GRASS] = 1; o[T.BARREN] = 1; o[T.STUMPS] = 1; return o; })(),
     BLOOM: ['#f4efe0', '#dcc4ec', '#f2c8d0'],
-    // one sprig at its foot (world px), grown `k` of the way: a dark foot so
-    // it stands ON the ground, a stem, two leaves, and now and then a blossom
-    // (never gold, fire or berry — the ground may not speak the resource language)
-    /* three kinds of new growth, chosen by the spot's own hash: a TUFT of
-       young blades (the most of it, swaying in the breeze), a leafy SPRIG,
-       and now and then a FLOWER — a cross of petals round a pale eye. The
-       greens are a step brighter and more saturated than the meadow's, so
-       the ring reads as lusher ground, not as more of the same grass. */
-    sprig(g, x, y, h, k, t) {
+    /* MAY A SPRIG GROW HERE — asked of what the PLAYER knows. A tile in sight
+       now reads the live ground and whatever stands on it; a tile the fog
+       holds reads the player's MEMORY (S.map.seenTerrain, and S.map.seenB's
+       ghosts for what stood there) plus the player's own works, which they
+       always know. Read from the truth, the lush ground was a lamp in the fog:
+       a rival War Camp raised out of sight inside the ring left a sprig-less
+       hole in its own footprint's shape, and a stand felled out of sight
+       sprouted. */
+    grows(x, y) {
+      const i = MapGen.idx(x, y);
+      if (!S.map.explored[i]) return false;
+      if (G.visibleAt(x, y)) return !!this.OPEN[S.map.terrain[i]] && !Bld.at(x, y);
+      if (!this.OPEN[(S.map.seenTerrain || S.map.terrain)[i]]) return false;
+      const b = Bld.at(x, y);
+      if (b && b.owner === 'P') return false;
+      return !this.ghostAt(x, y);
+    },
+    // a remembered building's footprint covers (x, y) — seenB is keyed by its top-left tile
+    ghostAt(x, y) {
+      const seen = S.map.seenB;
+      if (!seen) return false;
+      for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) {
+        if (!MapGen.inB(x - dx, y - dy)) continue;
+        const m = seen[MapGen.idx(x - dx, y - dy)];
+        if (m) { const s = Bld.size(m); if (s > dx && s > dy) return true; }
+      }
+      return false;
+    },
+    /* one sprig at its foot (world px), grown `k` of the way: a dark foot so
+       it stands ON the ground, then one of three kinds of new growth, chosen
+       by the spot's own hash: a TUFT of young blades (the most of it), a
+       leafy SPRIG, and now and then a FLOWER — a cross of petals round a pale
+       eye (never gold, fire or berry: the ground may not speak the resource
+       language). The greens are a step brighter and more saturated than the
+       meadow's, so the ring reads as lusher ground, not as more of the same
+       grass. `f` (0 or 1) is the breeze's beat: each sprig leans one way on
+       one beat and the other on the next, half of them out of step. */
+    sprig(g, x, y, h, k, f) {
       if (k <= 0.05) return;
       const F = GrowFX, sx = F.snap(x), sy = F.snap(y), kind = (h * 7.3) % 1;
-      const sway = Math.sin(t * 1.6 + h * 40) > 0.4 ? 2 : 0;
+      const lean = ((((h * 977) | 0) + f) & 1) ? 2 : 0;
       g.globalAlpha = F.step(Math.min(1, k * 1.5));
       g.fillStyle = '#2e4a1e'; g.fillRect(sx - 2, sy, 6, 2);   // its foot in the ground
       if (kind < 0.55) {
@@ -379,45 +432,64 @@ Object.assign(Deck.FX, {
         g.fillStyle = '#4f8a32';
         g.fillRect(sx - 2, sy - F.snap(hh * 0.6), 2, F.snap(hh * 0.6));
         g.fillRect(sx + 2, sy - F.snap(hh * 0.7), 2, F.snap(hh * 0.7));
-        g.fillStyle = '#6fbc42'; g.fillRect(sx, sy - hh, 2, hh);
-        if (k > 0.5) { g.fillStyle = '#b4ea78'; g.fillRect(sx + sway, sy - hh - 2, 2, 2); }
+        g.fillStyle = '#6fbc42'; g.fillRect(sx, sy - hh + 2, 2, hh - 2);
+        g.fillRect(sx + lean, sy - hh, 2, 2);   // the tip, bent with the breeze or upright
+        if (k > 0.5) { g.fillStyle = '#b4ea78'; g.fillRect(sx + lean, sy - hh - 2, 2, 2); }
       } else if (kind < 0.85) {
         const hh = Math.max(2, F.snap((5 + ((h * 97) % 1) * 6) * k));
         g.fillStyle = '#4f8a32'; g.fillRect(sx, sy - hh, 2, hh);
         if (k > 0.45) {
           g.fillStyle = '#86d052';
-          g.fillRect(sx - 2, sy - F.snap(hh * 0.55), 2, 2);
-          g.fillRect(sx + 2, sy - F.snap(hh * 0.8), 2, 2);
-          g.fillStyle = '#b4ea78'; g.fillRect(sx - 4, sy - F.snap(hh * 0.55) - 2, 2, 2);
+          g.fillRect(sx - 2, sy - F.snap(hh * 0.55) + (lean ? 2 : 0), 2, 2);
+          g.fillRect(sx + 2, sy - F.snap(hh * 0.8) + (lean ? 0 : 2), 2, 2);
+          g.fillStyle = '#b4ea78'; g.fillRect(sx - 4 + lean, sy - F.snap(hh * 0.55) - 2, 2, 2);
         }
       } else {
-        // the flower: a stem, then the petals open once it has grown
-        const hh = Math.max(2, F.snap(6 * k));
+        // the flower: a stem, then the petals open once it has grown; it nods with the breeze
+        const hh = Math.max(2, F.snap(6 * k)), fx = sx + (lean ? 2 : 0);
         g.fillStyle = '#4f8a32'; g.fillRect(sx, sy - hh, 2, hh);
         if (k > 0.75) {
-          const col = Math.sin(t * 2.1 + h * 60) > 0.95 ? '#ffffff' : this.BLOOM[(((h * 53) % 1) * 3) | 0];
+          const col = F.hash((h * 1e4) | 0, f + 3) > 0.92 ? '#ffffff' : this.BLOOM[(((h * 53) % 1) * 3) | 0];
           g.fillStyle = col;
-          g.fillRect(sx - 2, sy - hh - 2, 2, 2); g.fillRect(sx + 2, sy - hh - 2, 2, 2);
-          g.fillRect(sx, sy - hh - 4, 2, 2); g.fillRect(sx, sy - hh, 2, 2);
-          g.fillStyle = '#fbf6e2'; g.fillRect(sx, sy - hh - 2, 2, 2);
+          g.fillRect(fx - 2, sy - hh - 2, 2, 2); g.fillRect(fx + 2, sy - hh - 2, 2, 2);
+          g.fillRect(fx, sy - hh - 4, 2, 2); g.fillRect(fx, sy - hh, 2, 2);
+          g.fillStyle = '#fbf6e2'; g.fillRect(fx, sy - hh - 2, 2, 2);
         }
       }
       g.globalAlpha = 1;
     },
-    /* the land wakes: a wave of green rolls out from the fire to the ring's
-       edge with fresh shoots breaking out behind it (drawLive grows the
-       sprigs in behind the front), and the edge flares gold and settles to
-       the faint ring the card wears while it lasts */
+    BEAT: 0.7,   // seconds between the breeze's two beats
+    /* the land wakes: a wave of green rolls out from the fire along the
+       ground to the ring's edge, fresh shoots breaking out behind it
+       (drawGround grows the sprigs in behind the front), and the edge flares
+       gold and settles to the faint ring the card wears while it lasts. The
+       WAVE IS GROUND LIGHT, drawn in the ground pass under the town and the
+       fog; only the pollen the land breathes out rises into the air over the
+       people — and only off ground the player can see now. */
     show: {
-      ms: 2600, layer: 'world',
-      draw(g, s, p) {
+      ms: 2600, layers: ['ground', 'world'],
+      draw(g, s, p, dt, layer) {
         const TL = CFG.TILE, F = GrowFX, cx = s.x * TL, cy = s.y * TL, Rp = this.R * TL, vp = F.viewPx(1);
         const rad = Rp * F.ease(p / 0.62);
+        if (layer === 'world') {
+          // pollen and seed-fluff lifted off the new growth behind the front
+          for (let k = 0; k < 90; k++) {
+            const born = 0.05 + F.hash(k, 41) * 0.6, q = (p - born) / 0.4;
+            if (q <= 0 || q >= 1) continue;
+            const th = F.hash(k, 43) * Math.PI * 2, rr = this.R * F.ease(born / 0.62) * (0.35 + F.hash(k, 47) * 0.6);
+            const tx = s.x + Math.cos(th) * rr, ty = s.y + Math.sin(th) * rr;
+            if (!MapGen.onBoard(tx | 0, ty | 0) || !G.visibleAt(tx | 0, ty | 0)) continue;
+            const x = tx * TL + Math.sin(q * 6 + k) * 4, y = ty * TL - q * TL * (1.2 + F.hash(k, 53));
+            if (x < vp.x0 || x > vp.x1 || y < vp.y0 || y > vp.y1) continue;
+            F.mote(g, x, y, k % 3 ? '#e8f4b8' : '#fff8d6', null, q < 0.3 ? 1 : (1 - q) / 0.7);
+          }
+          return;
+        }
         g.save(); g.globalCompositeOperation = 'lighter';
         if (p < 0.66) {
           F.ring(g, cx, cy, rad, '#b8f080', 0.95, 2, 1, vp);
           F.ring(g, cx, cy, Math.max(0, rad - 6), '#5fa83a', 0.7, 2, 1, vp);
-          for (let k = 0; k < 120; k++) {
+          for (let k = 0; k < 160; k++) {
             const th = F.hash(k, 11) * Math.PI * 2, rr = rad - TL * (0.15 + F.hash(k, 23) * 1.3);
             if (rr <= 0) continue;
             const x = cx + Math.cos(th) * rr, y = cy + Math.sin(th) * rr;
@@ -432,38 +504,46 @@ Object.assign(Deck.FX, {
           const k = (p - 0.5) / 0.5;
           F.ring(g, cx, cy, Rp, '#ffd45e', 0.95 - k * 0.6, 2, 1, vp);
           F.ring(g, cx, cy, Rp + 4, '#fff1b8', (1 - k) * 0.7, 2, 1, vp);
+          F.ring(g, cx, cy, Rp - 4, '#ffcc40', (1 - k) * 0.5, 2, 1, vp, 0.5);
         }
         g.restore();
       },
     },
     /* the ground within the ring visibly lush while the card runs: sprigs and
-       blossoms on open ground the player has seen, a faint gold ring of dots
-       at the edge. TWENTY DAYS IS A LONG TIME TO PAY FOR A PICTURE: drawn
-       sprig by sprig it measured ~12ms a frame on a desktop's software canvas
-       (a few hundred sprigs, a handful of fills each), so once the land has
-       woken it is painted ONCE into a layer and blitted — one drawImage a
-       frame — and painted again only when the ground under it changes (a
-       hall moved, a tree felled, a hut raised: a checksum of the ring's own
-       tiles says so). Only while the show's wave is still rolling out are the
-       sprigs drawn live, growing in behind its front. */
-    drawLive(g, e) {
+       blossoms on open ground the player knows, a faint gold ring of dots at
+       the edge — drawn in the GROUND pass (R.drawCardGround), under the town,
+       its people and the fog. TWENTY DAYS IS A LONG TIME TO PAY FOR A
+       PICTURE: drawn sprig by sprig it measured ~12ms a frame on a desktop's
+       software canvas (a few hundred sprigs, a handful of fills each), so
+       once the land has woken it is painted ONCE into a layer — two frames
+       of it, the breeze's two beats, so the meadow still sways — and blitted,
+       one drawImage a frame. It is painted again only when the ground under
+       it changes as the player knows it (a hall moved, a tree felled in
+       sight, a hut raised: a checksum of the ring's own `grows` answers says
+       so). Only while the show's wave is still rolling out are the sprigs
+       drawn live, growing in behind its front. */
+    drawGround(g, e) {
       const c = this.centre();
       if (!c) return;
       const TL = CFG.TILE, F = GrowFX, Rr = this.R, fade = F.tail(e), t = performance.now() / 1000;
+      const beat = ((t / this.BEAT) | 0) & 1;
       const p = F.liveP('bountiful_land');
-      if (p >= 0 && p <= 0.62) { this.sprigs(g, c, Rr * F.ease(p / 0.62), fade, t, F.view(1)); return; }
-      const L = this.layer(c, t);
-      if (L.any) {
-        g.save();
-        g.imageSmoothingEnabled = false;
-        g.globalAlpha = F.step(fade);
-        g.drawImage(L.cv, L.x0 * TL, L.y0 * TL);
-        g.restore();
+      if (p >= 0 && p <= 0.62) this.sprigs([g], c, Rr * F.ease(p / 0.62), fade, beat, F.view(1));
+      else {
+        const L = this.layer(c);
+        if (L.any) {
+          g.save();
+          g.imageSmoothingEnabled = false;
+          g.globalAlpha = F.step(fade);
+          g.drawImage(L.cv[beat], L.x0 * TL, L.y0 * TL);
+          g.restore();
+        }
       }
       F.ring(g, c.x * TL, c.y * TL, Rr * TL, '#ffd45e', 0.4 * fade, 2, 1, F.viewPx(1), t * 0.6);
     },
-    // every sprig on the ring's open ground out to `grow` (within `v`, the tiles in view)
-    sprigs(g, c, grow, fade, t, v) {
+    // every sprig on the ring's open ground out to `grow` (within `v`, the tiles
+    // in view), into each target in turn on its own beat (f0, f0 + 1, …)
+    sprigs(gs, c, grow, fade, f0, v) {
       const TL = CFG.TILE, F = GrowFX, Rr = this.R;
       const x0 = Math.max(Math.floor(c.x - Rr), Math.floor(v.x0)), x1 = Math.min(Math.ceil(c.x + Rr), Math.ceil(v.x1));
       const y0 = Math.max(Math.floor(c.y - Rr), Math.floor(v.y0)), y1 = Math.min(Math.ceil(c.y + Rr), Math.ceil(v.y1));
@@ -471,38 +551,42 @@ Object.assign(Deck.FX, {
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
         if (!MapGen.onBoard(x, y)) continue;
         const d = Math.hypot(x + 0.5 - c.x, y + 0.5 - c.y);
-        if (d > Rr || d > grow) continue;
-        const i = MapGen.idx(x, y);
-        if (!S.map.explored[i] || !this.OPEN[S.map.terrain[i]] || Bld.at(x, y)) continue;
+        if (d > Rr || d > grow || !this.grows(x, y)) continue;
         const k = Math.min(1, (grow - d) / 1.2) * fade;
         for (let j = 0; j < 3; j++) {
           const h = F.hash(x * 7 + j, y * 13 + 5);
           if (h > 0.46) continue;
-          this.sprig(g, (x + 0.15 + F.hash(x, y * 3 + j) * 0.7) * TL, (y + 0.3 + F.hash(y, x * 5 + j) * 0.6) * TL, h / 0.46, k, t);
+          const sx = (x + 0.15 + F.hash(x, y * 3 + j) * 0.7) * TL, sy = (y + 0.3 + F.hash(y, x * 5 + j) * 0.6) * TL;
+          for (let m = 0; m < gs.length; m++) this.sprig(gs[m], sx, sy, h / 0.46, k, (f0 + m) & 1);
           any = true;
         }
       }
       return any;
     },
-    // the grown land, painted once (render state — never in S)
+    // the grown land, painted once — both beats (render state, never in S)
     _layer: null,
-    layer(c, t) {
+    layer(c) {
       const TL = CFG.TILE, Rr = this.R, x0 = Math.floor(c.x - Rr) - 1, y0 = Math.floor(c.y - Rr) - 1, n = Math.ceil(Rr * 2) + 3;
-      // the ring's own ground, summed: what the sprigs stand on, and whether it is known
+      // the ring's own ground, summed: where a sprig may grow, as the player knows it
       let sum = x0 * 7919 + y0 * 104729;
       for (let y = y0; y < y0 + n; y++) for (let x = x0; x < x0 + n; x++) {
         if (!MapGen.onBoard(x, y)) continue;
-        const i = MapGen.idx(x, y);
-        sum = (Math.imul(sum, 31) + (S.map.terrain[i] + 1) * (S.map.explored[i] ? 3 : 5) + (Bld.at(x, y) ? 977 : 0)) | 0;
+        sum = (Math.imul(sum, 31) + (this.grows(x, y) ? 3 : 5)) | 0;
       }
       let L = this._layer;
       if (L && L.sum === sum && L.x0 === x0 && L.y0 === y0) return L;
-      if (!L) { const cv = document.createElement('canvas'); L = this._layer = { cv, g: cv.getContext('2d') }; }
-      if (L.cv.width !== n * TL) { L.cv.width = n * TL; L.cv.height = n * TL; }
-      L.g.setTransform(1, 0, 0, 1, 0, 0);
-      L.g.clearRect(0, 0, L.cv.width, L.cv.height);
-      L.g.translate(-x0 * TL, -y0 * TL);
-      L.any = this.sprigs(L.g, c, Rr, 1, t, { x0: x0, y0: y0, x1: x0 + n, y1: y0 + n });
+      if (!L) {
+        const cv = [document.createElement('canvas'), document.createElement('canvas')];
+        L = this._layer = { cv, g: cv.map(k => k.getContext('2d')) };
+      }
+      for (let m = 0; m < 2; m++) {
+        const cv = L.cv[m], g = L.g[m];
+        if (cv.width !== n * TL) { cv.width = n * TL; cv.height = n * TL; }
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, cv.width, cv.height);
+        g.translate(-x0 * TL, -y0 * TL);
+      }
+      L.any = this.sprigs(L.g, c, Rr, 1, 0, { x0: x0, y0: y0, x1: x0 + n, y1: y0 + n });
       L.sum = sum; L.x0 = x0; L.y0 = y0;
       return L;
     },
@@ -511,8 +595,8 @@ Object.assign(Deck.FX, {
   /* IMPERIAL — Golden Age: for 20 days everything the player's people
      gather or produce comes in 50% richer (rule 1, as the festival) and
      everything they build rises 50% faster — construction AND upgrades,
-     the masons' walls and a span's reinforcing (rule 3), the Wonder's works
-     among them; never repair. Two cards multiply (rule 2). */
+     the masons' walls, a span raised and reinforced (rule 3), the Wonder's
+     works among them; never repair. Two cards multiply (rule 2). */
   golden_age: {
     at: 'tc', cue: 'motes', REACH: 16,
     mult: { gather: 1.5, produce: 1.5, build: 1.5 },
@@ -602,8 +686,8 @@ Object.assign(Deck.FX, {
   },
 
   /* STONE — Quick Hands: construction and upgrades go twice as fast for 6
-     days (rule 3: sites, upgrades, the masons' wall works, a span's
-     reinforcing; never repair, never a sapper's earthworks). Still the
+     days (rule 3: sites, upgrades, the masons' wall works, a span raised
+     and reinforced; never repair, never a sapper's earthworks). Still the
      builders' own work — a site with nobody at it rises no faster. */
   quick_hands: {
     at: 'tc',
@@ -746,7 +830,9 @@ Object.assign(Deck.FX, {
     frontAt(s, p) {
       const Wd = R.cv.width, Hd = R.cv.height, ux = s.dx, uy = s.dy;
       const pr = [0, ux * Wd, uy * Hd, ux * Wd + uy * Hd];
-      const lo = Math.min.apply(null, pr), hi = Math.max.apply(null, pr), span = hi - lo, band = span * 0.8;
+      // the murk is a FRONT about half a screen deep — weather passing over, with
+      // a thin haze where it has been — never a sheet over the whole frame
+      const lo = Math.min.apply(null, pr), hi = Math.max.apply(null, pr), span = hi - lo, band = span * 0.5;
       return { front: lo - band * 0.05 + (span + band * 1.1) * Math.min(1, p / 0.86), band, span, ux, uy };
     },
     /* the pall: a sickly green-grey murk rolling across the screen toward
@@ -785,24 +871,45 @@ Object.assign(Deck.FX, {
            woods and water alike. Ahead of the edge only the highest of the
            field shows, as wisps; and where it has passed a grey haze hangs
            over the land until the end. */
-        const Wd = R.cv.width, Hd = R.cv.height, dpr = R.dpr || 1, cell = Math.max(4, Math.round(10 * dpr));
+        /* THE CELL IS THE ART'S OWN PIXEL — 2 world px at the camera's zoom,
+           in device px. A fixed 10 css px made cells five or six times the
+           art's pixel on a phone, and laid over the whole screen the pall read
+           as a censor's mosaic over the town, not as weather. The lumps keep
+           their size on screen (`sc` maps a cell back to the old lattice). */
+        const Wd = R.cv.width, Hd = R.cv.height, dpr = R.dpr || 1;
+        const cell = Math.max(4, Math.round(2 * R.cam.z * dpr)), sc = cell / (10 * dpr);
         const haze = F.step(0.2 * fade), T = s.t, M = this.murkRGB();
         /* ONE PIXEL A CELL: the murk is written into a small buffer, a pixel
            per cell, and laid over the frame in one blit scaled up with
-           smoothing off — the same hard cells, without a few thousand fills
-           (measured ~15ms a frame drawn cell by cell on a software canvas) */
+           smoothing off — the same hard cells, without tens of thousands of
+           fills (measured ~15ms a frame drawn cell by cell on a software
+           canvas) */
         const cw = Math.ceil(Wd / cell), ch = Math.ceil(Hd / cell), buf = this.murkBuf(cw, ch), px = buf.img.data;
         px.fill(0);
         const put = (gx, gy, rgb, a) => { const o = (gy * cw + gx) * 4; px[o] = rgb[0]; px[o + 1] = rgb[1]; px[o + 2] = rgb[2]; px[o + 3] = Math.round(a * 255); };
+        const depthOf = (gx, gy) => (fr.front - ((gx + 0.5) * cell * fr.ux + (gy + 0.5) * cell * fr.uy)) / fr.band;
+        /* the churning field on EVERY OTHER cell, eased between: it is smooth
+           value noise, so halving its samples each way moves nothing the eye
+           can see, and the cells stay hard where the threshold cuts them.
+           Sampled only near the front (past it there is haze or nothing). */
+        const qw = (cw >> 1) + 2, qh = (ch >> 1) + 2, fld = this.murkField(qw * qh);
+        const marg = 2 * cell * (Math.abs(fr.ux) + Math.abs(fr.uy)) / fr.band;
+        for (let qy = 0; qy < qh; qy++) for (let qx = 0; qx < qw; qx++) {
+          const gx = qx * 2, gy = qy * 2, d = depthOf(gx, gy);
+          fld[qy * qw + qx] = d < -0.14 - marg || d > 1.04 + marg ? 0
+            : F.blob(gx * sc, gy * sc, 6, T * 0.5) * 0.65 + F.blob(gx * sc + 57, gy * sc + 31, 2.5, T * 0.9) * 0.35;
+        }
         for (let gy = 0; gy < ch; gy++) for (let gx = 0; gx < cw; gx++) {
-          const depth = (fr.front - ((gx + 0.5) * cell * fr.ux + (gy + 0.5) * cell * fr.uy)) / fr.band;
+          const depth = depthOf(gx, gy);
           if (depth < -0.14) continue;
           if (depth > 1.04) {
             if (haze <= 0 || (depth < 1.16 && F.hash(gx * 7 + 3, gy * 11 + 1) > 0.5)) continue;
             put(gx, gy, M[3], haze);
             continue;
           }
-          const n = F.blob(gx, gy, 6, T * 0.5) * 0.65 + F.blob(gx + 57, gy + 31, 2.5, T * 0.9) * 0.35;
+          const q = (gy >> 1) * qw + (gx >> 1), ex = (gx & 1) * 0.5, ey = (gy & 1) * 0.5;
+          const top = fld[q] + (fld[q + 1] - fld[q]) * ex, bot = fld[q + qw] + (fld[q + qw + 1] - fld[q + qw]) * ex;
+          const n = top + (bot - top) * ey;
           const thr = depth < 0 ? 0.6 - depth * 2.4 : 0.26 + depth * 0.42;
           const e = n - thr;
           if (e <= 0) continue;
@@ -815,7 +922,7 @@ Object.assign(Deck.FX, {
         g.globalAlpha = 1;
         // spores riding the murk, swirling up as it rolls, a dark underside
         // to each so they read against bright grass and dark woods alike
-        const sp = Math.max(2, Math.round(3 * dpr));
+        const sp = Math.max(2, Math.round(2 * R.cam.z * dpr));   // the art's pixel, as the murk's
         for (let k = 0; k < 170; k++) {
           const along = fr.front - fr.band * F.hash(k, 1) * 1.05, perp = (F.hash(k, 2) - 0.5) * fr.span * 1.4;
           const sw = Math.sin(s.t * (1.5 + F.hash(k, 4) * 2) + k) * 14 * dpr;
@@ -848,7 +955,9 @@ Object.assign(Deck.FX, {
     // the murk's tones: underside, body, crown — and the haze it leaves
     MURK: ['#3c4430', '#77805f', '#aab28a', '#6f7658'],
     murkRGB() { return this._rgb || (this._rgb = this.MURK.map(h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)))); },
-    // the murk's one-pixel-a-cell buffer (render state — never in S)
+    // the murk's one-pixel-a-cell buffer and its half-resolution field (render state — never in S)
+    _fld: null,
+    murkField(n) { if (!this._fld || this._fld.length < n) this._fld = new Float32Array(n); return this._fld; },
     _buf: null,
     murkBuf(w, h) {
       let B = this._buf;
@@ -862,35 +971,37 @@ Object.assign(Deck.FX, {
     SPORE: ['#b6bba2', '#9aa27a', '#d4d8bf'],
     /* while it lasts, every rival field and station IN SIGHT stands greyed
        and withered — its own silhouette washed a dead grey-green, dull specks
-       over the plot, grey spores drifting off it. Nothing the fog hides is
-       drawn, ever: the card is not a lamp. */
-    drawLive(g, e) {
-      const TL = CFG.TILE, F = GrowFX, v = F.view(1), t = performance.now() / 1000;
-      const fade = F.tail(e), sp = F.liveP('blight'), live = sp >= 0 && sp < 1 ? R.cardShows.find(z => z.id === 'blight') : null;
-      const fr = live ? this.frontAt(live, sp) : null;
-      for (const b of S.buildings) {
-        if (b.owner !== 'A' || !Bld.done(b) || !Bld.def(b.key).needsWorker) continue;
-        const sz = Bld.size(b);
-        if (b.x + sz < v.x0 || b.x > v.x1 || b.y + sz < v.y0 || b.y > v.y1) continue;
-        if (!this.inSight(b)) continue;
-        let k = fade;
+       over the plot, grey spores drifting off it. Drawn ON THE BUILDING
+       (R.drawCardBld, right after its own art in the building loop), so the
+       rival's hands standing on their own field are drawn over it, never
+       washed with it — and only for what the frame draws at all, which is
+       what the player can see: nothing the fog hides is drawn, ever (the
+       card is not a lamp; inSight asks again, for a caller that is not the
+       frame). As the pall rolls in, each field withers as its edge passes. */
+    drawBld(g, b, e) {
+      if (b.owner !== 'A' || !Bld.done(b) || !Bld.def(b.key).needsWorker || !this.inSight(b)) return;
+      const TL = CFG.TILE, F = GrowFX, t = performance.now() / 1000, sz = Bld.size(b);
+      let k = F.tail(e);
+      const sp = F.liveP('blight');
+      if (sp >= 0 && sp < 1) {
+        const live = R.cardShows.find(z => z.id === 'blight'), fr = live && this.frontAt(live, sp);
         if (fr) { const sc = F.toScreen(Bld.cx(b), Bld.cy(b)); k *= Math.max(0, Math.min(1, (fr.front - (sc.x * fr.ux + sc.y * fr.uy)) / (fr.band * 0.35))); }
-        if (k <= 0.05) continue;
-        const spr = R.bldSprite(b);
-        if (spr && spr.width > 0) {
-          g.globalAlpha = F.step(0.55 * k);
-          R.blitBld(g, R.tintOf(spr, '#575e45'), b.x * TL, b.y * TL, sz * TL, sz * TL);
-        }
-        g.globalAlpha = F.step(0.75 * k);
-        for (let m = 0; m < 8 * sz * sz; m++) {
-          g.fillStyle = m % 3 ? '#6e6248' : '#8d8f7c';
-          g.fillRect(F.snap((b.x + F.hash(m, b.id) * sz) * TL), F.snap((b.y + 0.2 + F.hash(b.id, m * 3) * (sz - 0.2)) * TL), 2, 2);
-        }
-        for (let m = 0; m < 4; m++) {
-          const ph = (t * 0.22 + F.hash(b.id, m + 9)) % 1;
-          F.mote(g, (b.x + 0.15 + F.hash(m, b.id + 4) * (sz - 0.3)) * TL + Math.sin(t * 1.3 + m * 2) * 3,
-            (b.y + sz * 0.6) * TL - ph * TL * 1.4, '#b6bba2', '#3d4232', k * (ph < 0.2 ? ph / 0.2 : (1 - ph) / 0.8));
-        }
+      }
+      if (k <= 0.05) return;
+      const spr = R.wornSprite ? R.wornSprite(b) : R.bldSprite(b);
+      if (spr && spr.width > 0) {
+        g.globalAlpha = F.step(0.55 * k);
+        R.blitBld(g, R.tintOf(spr, '#575e45'), b.x * TL, b.y * TL, sz * TL, sz * TL);
+      }
+      g.globalAlpha = F.step(0.75 * k);
+      for (let m = 0; m < 8 * sz * sz; m++) {
+        g.fillStyle = m % 3 ? '#6e6248' : '#8d8f7c';
+        g.fillRect(F.snap((b.x + F.hash(m, b.id) * sz) * TL), F.snap((b.y + 0.2 + F.hash(b.id, m * 3) * (sz - 0.2)) * TL), 2, 2);
+      }
+      for (let m = 0; m < 4; m++) {
+        const ph = (t * 0.22 + F.hash(b.id, m + 9)) % 1;
+        F.mote(g, (b.x + 0.15 + F.hash(m, b.id + 4) * (sz - 0.3)) * TL + Math.sin(t * 1.3 + m * 2) * 3,
+          (b.y + sz * 0.6) * TL - ph * TL * 1.4, '#b6bba2', '#3d4232', k * (ph < 0.2 ? ph / 0.2 : (1 - ph) / 0.8));
       }
       g.globalAlpha = 1;
     },
@@ -934,6 +1045,19 @@ Object.assign(Deck.FX, {
       const steps = (rise ? 1 : 0) + items.reduce((n, it) => n + it.to - it.b.level, 0) + (walls ? walls - wl : 0);
       return { tc, target, rise, items, walls, forts: forts.length, steps };
     },
+    /* what the masons were paid for the works in flight, rebuilt for a save
+       written before they kept the bill (tc.wallUpPaid): the list price of the
+       tier they were raising, for every wall and gate standing now — what
+       Bld.wallUpgradeCost charged when the order was given, as near as the
+       board still says */
+    masonsBill(tc) {
+      const i = (tc.wallUpTarget || (S.wallLevel || 1) + 1) - 1, out = {};
+      for (const f of Bld.forts('P')) {
+        const lv = CFG.BUILDINGS[f.key].levels[i], cost = lv && lv.cost;
+        if (cost) for (const k in cost) out[k] = (out[k] || 0) + cost[k];
+      }
+      return out;
+    },
     can() {
       const pl = this.plan();
       if (!pl) return { ok: false, why: 'Your Town Center must stand.' };
@@ -949,8 +1073,9 @@ Object.assign(Deck.FX, {
       // the hall: an upgrade under way is this same rise — its price comes back
       if (tc.upgrading > 0) { refund(Bld.cancelRefund(tc)); tc.upgrading = 0; tc.upgTotal = 0; resolved++; }
       if (pl.rise) Bld.finishUpgrade(tc, true);
-      // the walls and gates, through the village-wide tier
-      if (tc.wallUp > 0) { refund(tc.wallUpPaid || {}); resolved++; }
+      // the walls and gates, through the village-wide tier (a save from before
+      // the masons kept their bill pays back the honest price of the works)
+      if (tc.wallUp > 0) { refund(tc.wallUpPaid || this.masonsBill(tc)); resolved++; }
       if (pl.walls) { tc.wallUpTarget = pl.walls; Bld.finishWallUpgrade(tc, true); }
       // every other building, step by step to the hall's level
       const items = [];
@@ -974,8 +1099,9 @@ Object.assign(Deck.FX, {
       Deck.say('✨ Enlightenment: your Town Center stands at Lv ' + tc.level +
         (raised ? ', and ' + raised + ' building' + s(raised) + ' rose to meet it' : '') +
         (pl.walls && pl.forts ? '; every wall and gate stands at Lv ' + S.wallLevel : '') +
-        (resolved ? '. ' + resolved + ' work' + s(resolved) + ' already under way ' + (resolved === 1 ? 'was' : 'were') +
-          ' finished, and ' + Bld.costStr(back) + ' paid for ' + (resolved === 1 ? 'it' : 'them') + ' comes back' : '') + '.');
+        (resolved ? '. ' + resolved + ' work' + s(resolved) + ' already under way ' + (resolved === 1 ? 'was' : 'were') + ' finished' +
+          // (nothing to hand back — never "free paid for it comes back")
+          (Object.keys(back).length ? ', and ' + Bld.costStr(back) + ' paid for ' + (resolved === 1 ? 'it' : 'them') + ' comes back' : '') : '') + '.');
       return { ok: true, x: cx, y: cy, fly: back };
     },
     /* THE TOWN WAKES KNOWING HOW. A pillar of golden light stands up out of
@@ -1081,6 +1207,8 @@ Object.assign(Deck.FX, {
      Wonder rises only where the mode offers it (UI.wonderOffered — Calm). */
   age_of_marble: {
     at: 'tc', CUT: 0.25, RATE: 2,
+    // the card lands ON the works when they stand (DeckUI._dest), else on the hall
+    dest() { return GrowFX.wonderSite(); },
     can() {
       if (!UI.wonderOffered()) return { ok: false, why: 'The Wonder rises only in Calm worlds' };
       const w = Deck.wonderOf('P');
@@ -1101,7 +1229,6 @@ Object.assign(Deck.FX, {
       const at = w ? { x: Bld.cx(w), y: Bld.cy(w), foot: w.y + Bld.size(w), sz: Bld.size(w), site: 1, bx: w.x, by: w.y }
         : tc ? { x: Bld.cx(tc), y: Bld.cy(tc), foot: tc.y + Bld.size(tc), sz: Bld.size(tc), site: 0 }
         : Object.assign(GrowFX.mid(), { foot: GrowFX.mid().y + 1, sz: 2, site: 0 });
-      if (w) GrowFX.look(at.x, at.y);
       GrowFX.show('age_of_marble', at);
       if (window.R && R.flashAt) R.flashAt(0.32, 0.6, '245,240,228');
       GrowFX.sfx('marble');
@@ -1175,13 +1302,17 @@ Object.assign(Deck.FX, {
      foundation may wait for a Wonder not yet laid, never two. */
   wonders_foundation: {
     at: 'tc', GAIN: 0.35, CAP: 0.95,
+    // the card lands ON the works when they stand (DeckUI._dest), else on the hall
+    dest() { return GrowFX.wonderSite(); },
     work() { return CFG.BUILDINGS.wonder.levels[0].time; },
     floor() { return (1 - this.CAP) * this.work(); },
-    lay(w) {
+    // `look`: laid by the ground breaking (Bld.place), not by a card the play
+    // sequence already carried to the works — bring them on screen
+    lay(w, look) {
       const before = w.construction;
       w.construction = Math.max(Math.min(before, this.floor()), before - this.GAIN * this.work());
       const at = { x: Bld.cx(w), y: Bld.cy(w), foot: w.y + Bld.size(w), sz: Bld.size(w), bx: w.x, by: w.y };
-      GrowFX.look(at.x, at.y);
+      if (look) GrowFX.look(at.x, at.y);
       GrowFX.show('wonders_foundation', at);
       if (window.R && R.shakeAt) R.shakeAt(6, 1.6);
       GrowFX.sfx('foundation');
@@ -1341,6 +1472,14 @@ for (const id of ['harvest_festival', 'bountiful_land', 'golden_age', 'quick_han
   if (d.drawLive) {
     const live = d.drawLive;
     d.drawLive = function (g, e, dt) { return GrowFX.clipped(g, 'world', () => live.call(this, g, e, dt)); };
+  }
+  if (d.drawGround) {
+    const gr = d.drawGround;
+    d.drawGround = function (g, e, dt) { return GrowFX.clipped(g, 'world', () => gr.call(this, g, e, dt)); };
+  }
+  if (d.drawBld) {
+    const on = d.drawBld;
+    d.drawBld = function (g, b, e) { return GrowFX.clipped(g, 'world', () => on.call(this, g, b, e)); };
   }
 }
 

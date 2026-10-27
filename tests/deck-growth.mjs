@@ -606,7 +606,7 @@ await p.evaluate(() => {
       let n = 0; const bb = R.blitBld, fr = CanvasRenderingContext2D.prototype.fillRect;
       R.blitBld = function () { n++; return bb.apply(this, arguments); };
       CanvasRenderingContext2D.prototype.fillRect = function () { n++; return fr.apply(this, arguments); };
-      try { Deck.FX.blight.drawLive(R.ctx || R.cv.getContext('2d'), e, 1 / 30); } finally { R.blitBld = bb; CanvasRenderingContext2D.prototype.fillRect = fr; }
+      try { Deck.FX.blight.drawBld(R.ctx || R.cv.getContext('2d'), farm, e); } finally { R.blitBld = bb; CanvasRenderingContext2D.prototype.fillRect = fr; }
       return n;
     };
     const W = CFG.W;
@@ -971,7 +971,11 @@ await p.evaluate(() => {
       }
       out.painted[id] = n;
       const e = Deck.timed(id);
-      if (e && d.drawLive) {
+      // a running card's look, wherever the frame draws it: in the air
+      // (drawLive), on the ground (drawGround) or on a building (drawBld)
+      const looks = [d.drawLive && (gg => d.drawLive(gg, e, 1 / 30)), d.drawGround && (gg => d.drawGround(gg, e, 1 / 30)),
+        d.drawBld && (gg => d.drawBld(gg, farmA, e))].filter(Boolean);
+      if (e && looks.length) {
         R.cardShows.length = 0;   // the look as it stands once the show has played
         // the rival's farm in sight; the clock walked through a second, so a
         // look that beats (the hammers' sparks) is caught on and off the beat
@@ -983,7 +987,8 @@ await p.evaluate(() => {
             performance.now = () => k * 50;
             n += count(() => {
               g.save(); const z = R.cam.z * R.dpr; g.setTransform(z, 0, 0, z, -R.cam.x * z, -R.cam.y * z);
-              d.drawLive(g, e, 1 / 30); g.restore();
+              for (const f of looks) f(g);
+              g.restore();
             });
           }
           out.live[id] = n;
@@ -1003,11 +1008,15 @@ await p.evaluate(() => {
     for (const id of __g.GROWTH) {
       const d = Deck.FX[id];
       if (d.show) { const f = d.show.draw; wrapped.push([d.show, 'draw', f]); d.show.draw = function () { calls++; return f.apply(this, arguments); }; }
-      if (d.drawLive) { const f = d.drawLive; wrapped.push([d, 'drawLive', f]); d.drawLive = function () { calls++; return f.apply(this, arguments); }; }
+      for (const k of ['drawLive', 'drawGround', 'drawBld'])
+        if (d[k]) { const f = d[k]; wrapped.push([d, k, f]); d[k] = function () { calls++; return f.apply(this, arguments); }; }
     }
-    let worldCalls = 0; const dcw = R.drawCardWorld; R.drawCardWorld = function () { worldCalls++; return dcw.apply(this, arguments); };
+    let worldCalls = 0; const dcw = R.drawCardWorld, dcg = R.drawCardGround, dcb = R.cardBldLooks;
+    R.drawCardWorld = function () { worldCalls++; return dcw.apply(this, arguments); };
+    R.drawCardGround = function () { worldCalls++; return dcg.apply(this, arguments); };
+    R.cardBldLooks = function () { worldCalls++; return dcb.apply(this, arguments); };
     for (let i = 0; i < 20; i++) R.draw(1 / 30);
-    R.drawCardWorld = dcw;
+    R.drawCardWorld = dcw; R.drawCardGround = dcg; R.cardBldLooks = dcb;
     for (const [o, k, f] of wrapped) o[k] = f;
     out.idleCalls = calls; out.idleWorld = worldCalls;
     return out;
@@ -1018,7 +1027,7 @@ await p.evaluate(() => {
   ck('everyRunningLookPaints', ['bountiful_land', 'golden_age', 'quick_hands', 'blight'].every(id => r.live[id] > 0),
     Object.entries(r.live).map(([k, n]) => k + ' ' + n).join(', '));
   ck('theShowsAreRenderStateOnly', r.renderOnly);
-  ck('andCostNothingWithNoCardInPlay', r.idleCalls === 0 && r.idleWorld === 0, `${r.idleCalls} show/look calls, ${r.idleWorld} card-world passes in 20 frames`);
+  ck('andCostNothingWithNoCardInPlay', r.idleCalls === 0 && r.idleWorld === 0, `${r.idleCalls} show/look calls, ${r.idleWorld} card ground/building/world passes in 20 frames`);
 }
 
 // ---------------- 10b. TWENTY DAYS IS A LONG TIME TO PAY FOR A PICTURE ----------------
@@ -1027,13 +1036,14 @@ await p.evaluate(() => {
     __g.fresh('growth-lush', 'calm'); const { P } = __g.flat();
     Screens.show('playing');
     R.cam.z = 1.5; R.centerOn(Bld.cx(P), Bld.cy(P));
+    __g.terr(P.x + 5, P.y + 1, T.FOREST, 200);   // a stand in the ring, to be felled
     Deck.play('bountiful_land'); R.cardShows.length = 0;
     const d = Deck.FX.bountiful_land, e = Deck.timed('bountiful_land'), g = R.cv.getContext('2d');
     let paints = 0; const sp = d.sprigs; d.sprigs = function () { paints++; return sp.apply(this, arguments); };
-    const frames = n => { for (let i = 0; i < n; i++) { g.save(); d.drawLive(g, e, 1 / 60); g.restore(); } };
+    const frames = n => { for (let i = 0; i < n; i++) { g.save(); d.drawGround(g, e, 1 / 60); g.restore(); } };
     frames(1); const first = paints;
     frames(60); const steady = paints - first;
-    // a tree in the ring felled to stumps (open ground a sprig may take)
+    // the tree in the ring felled to stumps (open ground a sprig may take)
     __g.terr(P.x + 5, P.y + 1, T.STUMPS);
     frames(30); const afterEdit = paints - first - steady;
     d.sprigs = sp;

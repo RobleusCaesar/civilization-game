@@ -1631,7 +1631,10 @@ const Units = {
             if (br.upgrading <= 0) { Bld.finishBridgeUpgrade(br); this.startNextTerraform(u); }
             continue;
           }
-          t.t -= dt;
+          // RAISING A SPAN is construction — a structure its tribe owns and
+          // reinforces — so a card's quicker hands raise it faster too, as they
+          // do its reinforcing; the earthworks (dig, clear, mound) are not
+          t.t -= t.job === 'bridge' ? dt * this.buildRate({ owner: u.owner, key: 'bridge' }) : dt;
           if (Math.random() < 0.16) R.float(u.x + (Math.random() - 0.5), u.y - 0.4, '·', '#cdbb90');   // spadefuls of earth
           if (t.t <= 0) {
             let done = false, moat = false, berm = false, cost = false;
