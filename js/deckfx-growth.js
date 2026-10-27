@@ -620,47 +620,81 @@ Object.assign(Deck.FX, {
       return { ok: true, x: c.x, y: c.y, until: e.until };
     },
     end() { G.log('☀️ The Golden Age passes — work and building go at their ordinary pace again.'); },
-    /* a golden dawn: the sky lit from above in stepped bands with rays of
-       dots, and over the town three rings of gold rolling out from the hall
-       — every building the light reaches catches it, its own silhouette
-       flashing gold with motes lifting off the roof (Imperial: big) */
+    /* A GOLDEN DAWN OVER THE TOWN (Imperial: big). The light comes first —
+       the whole sky washed warm in one flat step for a breath, then a sun
+       rising into the top of the world, three stepped discs of it, held,
+       with rays of dots fanning down from it and stars of light glittering
+       across the sky. An amber pillar stands up out of the hall to meet it
+       and the ground gives a small shake. Then three rings of gold roll out
+       from the hall across the town, and every building the light reaches
+       catches it — its own silhouette flashing gold, motes lifting off the
+       roof, a ring of dots at its foot — and KEEPS a gold sheen until the
+       dawn passes, so the town visibly stands bathed in it. */
     show: {
-      ms: 3800, layers: ['world', 'sky'],
+      ms: 4600, layers: ['world', 'sky'],
       draw(g, s, p, dt, layer) {
         const F = GrowFX;
         if (layer === 'sky') {
-          const e = F.env(p, 0, 0.18, 0.62, 1);
+          const W = R.cv.width, H = R.cv.height, dpr = R.dpr || 1;
+          // the wash: the whole sky warm in one flat step for a breath
+          const wash = F.step(F.env(p, 0, 0.03, 0.14, 0.28));
+          if (wash > 0) {
+            g.save(); g.globalCompositeOperation = 'lighter';
+            g.fillStyle = 'rgba(255,170,60,' + (0.2 * wash).toFixed(3) + ')';
+            g.fillRect(0, 0, W, H);
+            g.restore();
+          }
+          const e = F.env(p, 0, 0.14, 0.7, 1);
           if (e <= 0) return;
-          F.skyBands(g, '255,206,96', 0.24 * e, 6, 0.5);
-          F.rays(g, R.cv.width / 2, -R.cv.height * 0.12, 11, 0.14, '#ffe08a', 0.45 * e, s.t);
-          F.glitter(g, 36, '#fff4c8', e, s.t);
+          F.skyBands(g, '255,196,80', 0.3 * e, 7, 0.55);
+          // the sun, rising into the top of the world over the hall, then held
+          const sc = F.toScreen(s.x, s.y), ox = Math.max(W * 0.15, Math.min(W * 0.85, sc.x));
+          const oy = -H * 0.12 + H * 0.12 * F.ease(p / 0.3), px = Math.max(2, Math.round(4 * dpr));
+          g.save(); g.globalCompositeOperation = 'lighter';
+          for (const [r, a, c] of [[0.26, 0.12, '255,170,60'], [0.17, 0.2, '255,206,110'], [0.09, 0.38, '255,244,206']]) {
+            g.fillStyle = 'rgba(' + c + ',' + (a * e).toFixed(3) + ')';
+            R.pxDisc(g, ox, oy, H * r, px, 1);
+          }
+          g.restore();
+          F.rays(g, ox, oy, 15, 0.17, '#ffd877', 0.6 * e, s.t);
+          F.glitter(g, 48, '#fff4c8', e, s.t);
           return;
         }
         const TL = CFG.TILE, cx = s.x * TL, cy = s.y * TL, vp = F.viewPx(2), v = F.view(2), reach = s.reach || this.REACH;
+        if (p >= 0.05 && !s.boom) { s.boom = 1; if (R.shakeAt) R.shakeAt(3, 0.6); }
         const run = q => Math.pow(Math.max(0, Math.min(1, q)), 0.85);   // the light keeps its pace across the town
         g.save(); g.globalCompositeOperation = 'lighter';
-        for (let k = 0; k < 3; k++) {
-          const q = (p - 0.04 - k * 0.08) / 0.76;
-          if (q <= 0 || q >= 1) continue;
-          F.ring(g, cx, cy, reach * TL * run(q), k ? '#ffcc40' : '#fff1b8', (1 - q * 0.7) * (k ? 0.65 : 1), 2, 1, vp);
+        // the amber pillar out of the hall, up to the top of the world
+        const pl = F.env(p, 0, 0.06, 0.36, 0.56);
+        if (pl > 0) {
+          const topY = R.cam.y - 60 / R.cam.z, h = (cy - topY) * F.ease(p / 0.08);
+          F.column(g, cx, cy, cy - h, TL * (1.5 + Math.sin(s.t * 8) * 0.1) * pl, pl, ['255,140,30', '255,190,80', '255,238,176']);
+          g.fillStyle = 'rgba(255,150,40,' + (0.4 * pl).toFixed(2) + ')';
+          R.pxDisc(g, cx, cy + TL * 0.4, TL * 1.1, 2, 0.5);
         }
-        if (p < 0.3) {
-          const k = p / 0.3;
-          F.column(g, cx, cy, cy - TL * 5 * Math.min(1, k * 3), TL * 1.5 * (1 - k * 0.7), 1 - k);
+        for (let k = 0; k < 3; k++) {
+          const q = (p - 0.08 - k * 0.07) / 0.7;
+          if (q <= 0 || q >= 1) continue;
+          F.ring(g, cx, cy, reach * TL * run(q), k ? '#ffcc40' : '#fff1b8', (1 - q * 0.7) * (k ? 0.7 : 1), 2, 1, vp);
         }
         g.restore();
-        const front = reach * run((p - 0.04) / 0.76);
+        const front = reach * run((p - 0.08) / 0.7), held = F.env(p, 0.1, 0.2, 0.78, 1);
         for (const b of S.buildings) {
           if (b.owner !== 'P' || !Bld.done(b)) continue;
           const bx = Bld.cx(b), by = Bld.cy(b);
           if (!F.inV(v, bx, by)) continue;
           const k = (front - Math.hypot(bx - s.x, by - s.y)) / 1.8;
-          if (k <= 0 || k >= 1.6) continue;
-          F.flashBld(g, b, '#ffe9a0', k < 1 ? 0.7 * (1 - k * 0.5) : 0.35 * (1.6 - k) / 0.6);
-          const box = F.artBox(b);
-          for (let m = 0; m < 6; m++) {
+          if (k <= 0) continue;
+          // the flash as the light arrives, then the sheen it leaves
+          F.flashBld(g, b, '#ffe9a0', k < 1 ? 0.85 * (1 - k * 0.45) : Math.max(0.24 * held, k < 1.6 ? 0.45 * (1.6 - k) / 0.6 : 0));
+          if (k >= 1.6) continue;
+          const box = F.artBox(b), foot = (b.y + Bld.size(b)) * TL;
+          g.save(); g.globalCompositeOperation = 'lighter';
+          F.ring(g, bx * TL, foot - 2, TL * (0.4 + Bld.size(b) * 0.6 * F.ease(k / 1.6)), '#ffd45e', 1 - k / 1.6, 2, 0.5, vp);
+          g.restore();
+          for (let m = 0; m < 8; m++) {
             const h = F.hash(b.id * 7 + m, 3);
-            F.mote(g, box.x + box.w * (0.2 + h * 0.6), box.y + box.h * 0.25 - k * TL * (0.6 + h * 0.8),
+            F.mote(g, box.x + box.w * (0.15 + h * 0.7), box.y + box.h * 0.25 - k * TL * (0.6 + h * 0.9),
               m % 2 ? '#ffd45e' : '#fff1b8', '#7a4a0a', 1 - k / 1.6);
           }
         }
@@ -1149,8 +1183,12 @@ Object.assign(Deck.FX, {
             const yy = base - ((s.t * 240 + k * 64) % h);
             g.fillRect(F.snap(cx - w * 0.28), F.snap(yy), Math.max(2, F.snap(w * 0.56)), 2);
           }
-          g.fillStyle = 'rgba(255,214,120,' + (0.45 * thin).toFixed(2) + ')';
-          R.pxDisc(g, cx, foot, TL * (1.2 + up * 0.7), 2, 0.5);
+          // the pool of light at its foot is GOLD, not a pale wash (added over
+          // grass a pale yellow comes out green): red-heavy, two stepped discs
+          g.fillStyle = 'rgba(255,150,40,' + (0.34 * thin).toFixed(2) + ')';
+          R.pxDisc(g, cx, foot, TL * (0.85 + up * 0.45), 2, 0.5);
+          g.fillStyle = 'rgba(255,206,110,' + (0.3 * thin).toFixed(2) + ')';
+          R.pxDisc(g, cx, foot, TL * (0.5 + up * 0.3), 2, 0.5);
           for (let k = 0; k < 3; k++) {
             const q = (p * 2.2 + k / 3) % 1;
             F.ring(g, cx, foot, TL * (0.8 + q * 4.6), '#ffd45e', (1 - q) * 0.85 * thin, 2, 0.5, vp);
@@ -1246,10 +1284,20 @@ Object.assign(Deck.FX, {
       draw(g, s, p, dt, layer) {
         const F = GrowFX;
         if (layer === 'sky') {
-          const e = F.env(p, 0, 0.12, 0.45, 0.9);
+          // the marble-white flare HELD through the courses, then let go
+          const e = F.env(p, 0, 0.08, 0.66, 0.96);
           if (e <= 0) return;
-          F.skyBands(g, '236,232,222', 0.2 * e, 6, 0.45);
-          F.glitter(g, 30, '#ffffff', e * 0.8, s.t);
+          const fl = F.step(F.env(p, 0, 0.03, 0.1, 0.22));
+          if (fl > 0) {
+            g.save(); g.globalCompositeOperation = 'lighter';
+            g.fillStyle = 'rgba(240,236,226,' + (0.22 * fl).toFixed(3) + ')';
+            g.fillRect(0, 0, R.cv.width, R.cv.height);
+            g.restore();
+          }
+          F.skyBands(g, '236,232,222', 0.3 * e, 7, 0.5);
+          const sc = F.toScreen(s.x, s.foot);
+          F.rays(g, Math.max(0, Math.min(R.cv.width, sc.x)), -R.cv.height * 0.05, 9, 0.16, '#f6f2e8', 0.4 * e, s.t);
+          F.glitter(g, 36, '#ffffff', e * 0.85, s.t);
           return;
         }
         const TL = CFG.TILE, cx = s.x * TL, foot = s.foot * TL, half = s.sz * TL / 2, M = this.MARBLE;
@@ -1433,6 +1481,39 @@ Object.assign(Deck.FX, {
           g.fillStyle = '#5f7a3a';
           for (let m = 0; m < 4; m++) g.fillRect(F.snap(L + F.hash(tx * 3 + m, ty) * (bw - 2)), F.snap(gy - 4 - F.hash(ty, m + tx) * (gy - top) * 0.45), 2, 2);
           g.fillStyle = '#9fb06a'; g.fillRect(F.snap(L + 2 + hw * (bw - 6)), F.snap(top + (gy - top) * 0.3), 2, 2);
+          // the lit edge where the face turns to the light, and the crown's lip
+          g.fillStyle = '#b8ad95'; g.fillRect(L, top + 6, 2, F.snap((gy - top - 6) * 0.7));
+          g.fillStyle = '#ddd2b8'; g.fillRect(L + lean + 2, top, 2, 2);
+          /* A CUP-AND-RING carved in the face — the old people's sign, cut
+             dark with a lit lower lip: a cup and a ring of dots round it (two
+             rings on the biggest stones). While the pillar stands, gold light
+             wells up out of the carving: these were waiting for this. */
+          const fh = gy - top - 6;
+          if (fh >= 14 && bw >= 12) {
+            const mx = F.snap(L + bw * 0.46), my = F.snap(top + 6 + fh * 0.4);
+            const rings = bw >= 18 && fh >= 24 ? [4, 8] : [4];
+            const cut = [[mx, my]];
+            for (const rr of rings) {
+              const nd = rr > 4 ? 14 : 8;
+              for (let k = 0; k < nd; k++) {
+                const th = k / nd * Math.PI * 2;
+                cut.push([F.snap(mx + Math.cos(th) * rr), F.snap(my + Math.sin(th) * rr * 0.9)]);
+              }
+            }
+            g.fillStyle = '#3a3429';
+            for (const [x, y] of cut) g.fillRect(x, y, 2, 2);
+            g.fillStyle = '#a99d85';
+            for (const [x, y] of cut) g.fillRect(x, y + 2, 2, 1);
+            const glow = F.step(F.env(p, 0.3, 0.38, 0.74, 0.92) * q * a);
+            if (glow > 0) {
+              g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = glow;
+              g.fillStyle = '#ffb030';
+              for (const [x, y] of cut) g.fillRect(x, y, 2, 2);
+              g.fillStyle = '#fff1b8'; g.fillRect(mx, my, 2, 2);
+              g.restore();
+              g.globalAlpha = a;
+            }
+          }
           g.globalAlpha = 1;
           if (q < 1) for (let m = 0; m < 4; m++)   // earth falling off the rising stone
             F.mote(g, gx + (F.hash(m, tx + ty * 5) - 0.5) * bw, top + q * 10 * (m + 1), m % 2 ? '#6e5638' : '#8a6e46', null, (1 - q) * a);
@@ -1507,6 +1588,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
     },
     // a major chord swelling up like a sunrise, a shimmer of high notes over it
     goldenage(t, v) {
+      // a low root under it all — the dawn is Imperial, it should be felt
+      this._note({ at: t, hz: 65.4, dur: 2.8, type: 'sine', gain: 0.14 * v, atk: 0.35, lp: 900 });
+      this._note({ at: t, delay: 0.04, hz: 98, dur: 2.6, type: 'triangle', gain: 0.06 * v, atk: 0.4, lp: 1200 });
       [262, 330, 392, 523].forEach((hz, i) => this._note({ at: t, delay: i * 0.05, hz, dur: 2.2, type: 'sine', gain: 0.085 * v, atk: 0.45 }));
       [1047, 1319, 1568, 2093].forEach((hz, i) => this._note({ at: t, delay: 0.5 + i * 0.11, hz, dur: 0.7, type: 'triangle', gain: 0.035 * v }));
     },
