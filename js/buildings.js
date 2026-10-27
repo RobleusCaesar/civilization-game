@@ -444,6 +444,7 @@ const Bld = {
     this.pay(next.cost, S.res);            // player-only (UI); the AI doesn't upgrade spans
     br.upTo = br.level + 1;
     br.upgrading = br.upTotal = next.time || 2;
+    G.noteAct();
     // …and the nearest free sapper walks out to it, the way a laid building
     // site pulls the nearest idle villager (Bld.place)
     const s = Units.nearestIdleSapper(br.x, br.y, 'P');
@@ -1060,6 +1061,9 @@ const Bld = {
       paid: paid || {},
     };
     S.buildings.push(b);
+    // a site the PLAYER chose and paid for is an order given today (G.noteAct —
+    // a free or instant placement is a start package, an origin card or a card)
+    if (owner === 'P' && !opts.free) G.noteAct();
     if (key === 'warcamp') this._revealCampToFoe(b);   // a forward camp shows on the enemy's map
     /* AN ANCIENT WONDER CANNOT BE BUILT IN SECRET (tests/wonder.mjs). Raising
        one is visible for a day's ride: it shows up on the other side's map
@@ -1269,6 +1273,7 @@ const Bld = {
     b.upgrading = this.upgradeTime(b);
     b.upgTotal = b.upgrading;   // remembered so the progress bar knows the full span
     if (b.owner === 'P') {
+      G.noteAct();   // the player's own order (only the panel upgrades for 'P')
       /* EVERY HAND ON THE SCAFFOLD. Upgrades need a villager on site, same as
          construction — and a station's OWN crew are the obvious hands, since
          production is paused for the whole upgrade anyway (`dailyProduction`
@@ -1384,6 +1389,7 @@ const Bld = {
       if (S.trainDiscount === 0) G.log('🎶 The last work song fades — training returns to its usual pace.');
     }
     b.queue.push({ unit: unitKey, t: time });
+    if (b.owner === 'P') G.noteAct();   // only the player's own tap trains for 'P'
     return true;
   },
 
@@ -2150,6 +2156,7 @@ const Bld = {
     tc.wallUp = days;
     tc.wallUpTotal = days;                       // progress bar span
     tc.wallUpTarget = (S.wallLevel || 1) + 1;    // the level being built toward
+    G.noteAct();                                 // player-only: the hall's own panel
     G.log(`⚒ Masons set to work — every wall & gate reinforcing to Lv ${tc.wallUpTarget}. The Town Center is busy (${Math.ceil(days)}d).`);
     return true;
   },

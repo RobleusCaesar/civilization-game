@@ -99,6 +99,18 @@ const UI = {
         this.confirmPlacement(); e.preventDefault();
       }
     });
+    /* A PANEL BUTTON THAT ACTS IS AN ORDER GIVEN TODAY (G.noteAct): Stop,
+       Defend, the horn, the levy, a doctrine, a gate, a trade… One listener
+       on the panel itself (it outlives every re-render), in the capture
+       phase so it hears the tap whatever the button's own handler does.
+       Buttons that only turn the page are not orders: the trade's first
+       step and its way back, the Tactics expander, the build-menu door and
+       the banner bookkeeping. */
+    const panelEl = document.getElementById('panel');
+    if (panelEl) panelEl.addEventListener('click', e => {
+      const b = e.target && e.target.closest && e.target.closest('[data-act]');
+      if (b && !this.VIEW_ACTS[b.dataset.act] && !b.classList.contains('cant')) G.noteAct();
+    }, true);
     // remembered preference: once the player knows the ropes they can tuck the
     // unit help-text away (− button); ℹ️ brings it back. Persists across games.
     try { this.helpHidden = localStorage.getItem('neo-unit-help') === '1'; } catch (e) { this.helpHidden = false; }
@@ -398,6 +410,10 @@ const UI = {
     });
     const up = e => {
       this.pointers.delete(e.pointerId);
+      // what the player's people were doing before the gesture: a gesture that
+      // changes it is an ORDER given today (G.noteAct — a defeat's card asks
+      // on how many days the player played, never how many things got done)
+      const was = this._orderSnap();
       if (this.placeDragging) {
         // release parks the ghost where it sits and offers ✓/✗
         this.placeDragging = false;
@@ -423,6 +439,7 @@ const UI = {
         if (dbl) this.handleDoubleTap(e.clientX, e.clientY);
         else this.handleTap(e.clientX, e.clientY);
       }
+      if (was && this._orderMoved(was)) G.noteAct();
       if (this.pointers.size < 2) this.pinchD = 0;
       if (this.pointers.size === 0) { this.downAt = null; this.moveDragArm = null; }
     };
@@ -1173,7 +1190,8 @@ const UI = {
         for (const id of ids) {
           const u = Units.get(id);
           if (Units.isTransport(u)) continue;
-          u.task = { type: 'attack' }; u.tUnit = hitUnit.id; u.tBld = 0;
+          // `on` names the foe the PLAYER sent them at (Deck.deeds' ordered kills)
+          u.task = { type: 'attack', on: hitUnit.id }; u.tUnit = hitUnit.id; u.tBld = 0;
           u.anchor = { x: hitUnit.x, y: hitUnit.y };
           u.defend = false; u.assault = !anyStrike && u.strat !== 'strike';
         }
@@ -1218,7 +1236,7 @@ const UI = {
     if (!sel || sel.owner !== 'P') return;
     if (hitUnit && hitUnit.owner !== 'P' && Combat.canEngage(sel, hitUnit)) {
       if (hitUnit.owner === 'A') G.breakPeace();   // the first strike ends the calm truce
-      sel.task = { type: 'attack' }; sel.tUnit = hitUnit.id; sel.tBld = 0;
+      sel.task = { type: 'attack', on: hitUnit.id }; sel.tUnit = hitUnit.id; sel.tBld = 0;
       sel.anchor = { x: hitUnit.x, y: hitUnit.y };
       sel.defend = false; sel.assault = true;
       this.toast('Attack!');
@@ -1365,7 +1383,7 @@ const UI = {
           const u = Units.get(id);
           if (Units.isTransport(u)) continue;   // troop hulls hold back — they don't charge with their cargo aboard
           // an explicit attack order: no guard leash yanking stragglers home mid-charge
-          u.task = { type: 'attack' }; u.tUnit = tapUnit.id; u.tBld = 0;
+          u.task = { type: 'attack', on: tapUnit.id }; u.tUnit = tapUnit.id; u.tBld = 0;
           u.anchor = { x: tapUnit.x, y: tapUnit.y };
           u.defend = false;   // direct command ends the guard stance
           u.assault = true;   // and commits them to press on once this target drops
@@ -1419,7 +1437,7 @@ const UI = {
       const tapUnit = (hitUnit && hitUnit.owner === 'P' && !steal && !Units.isTransport(hitUnit)) ? null : hitUnit;
       if (tapUnit && tapUnit.owner !== 'P') {
         if (tapUnit.owner === 'A') G.breakPeace();   // the first strike ends the calm truce
-        sel.task = { type: 'attack' }; sel.tUnit = tapUnit.id; sel.tBld = 0;
+        sel.task = { type: 'attack', on: tapUnit.id }; sel.tUnit = tapUnit.id; sel.tBld = 0;
         sel.anchor = { x: tapUnit.x, y: tapUnit.y };
         sel.defend = false;   // taking direct control ends the guard stance
         sel.assault = true;   // press on to the next mark once this one falls
@@ -1762,6 +1780,26 @@ const UI = {
     this.deselect();
     this.setMenuCollapsed(true, true);
   },
+
+  /* WHAT THE PLAYER'S PEOPLE ARE DOING, as references — the order a tap or a
+     drag could give each of them (task, path, mark, doctrine, stance), read
+     before and after a gesture: one that changed means the gesture was an
+     ORDER (G.noteAct), never a mere selection or a pan. Taps are rare, so
+     the O(units) read costs nothing; null outside a live run. */
+  _orderSnap() {
+    if (typeof S === 'undefined' || !S || !S.units || S.over || (window.Screens && Screens._demo)) return null;
+    const a = [S.units.length];
+    for (const u of S.units) if (u.owner === 'P') a.push(u, u.task, u.path, u.tUnit, u.tBld, u.tBridge, u.strat, u.defend);
+    return a;
+  },
+  _orderMoved(a) {
+    const b = this._orderSnap();
+    if (!b || b.length !== a.length) return !!b;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return true;
+    return false;
+  },
+  // panel buttons that only turn the page — never an order (UI.init's listener)
+  VIEW_ACTS: { tradeneed: 1, tradeback: 1, gtactics: 1, gobuild: 1, garmysave: 1, garmyremove: 1, armyremove: 1 },
 
   // the − / ℹ️ button on unit panels: tuck the how-to text away (or bring it
   // back), and remember the choice on this device across games

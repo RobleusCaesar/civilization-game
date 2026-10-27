@@ -109,7 +109,7 @@ const Tutorial = {
     winNudgeWar: 'Your war camp is strong. When you march, bring <b>engines</b> for their walls and spears to screen them — and strike the hall, not the stones.',
     winNudgeWonder: 'Your town is rich and the land is quiet. The <b>Ancient Wonder</b> waits in your build menu — raise it and win without a war.',
     mortality: 'A villager has died — age, mischance, the usual ways of the world. Their <b>post stands empty</b>; send another pair of hands.',
-    deck: 'This is your <b>deck</b>: every game you win, or lose fighting, adds a card to it — a cache of grain, a war band, a falling star. A card is kept until you play it, and once played it is gone for good.',
+    deck: 'This is your <b>deck</b>: tap it and play a card for a burst of help — grain, a war band, a falling star. Win, or lose fighting, to earn more; a card is kept until played, then gone for good.',
   },
 
   /* ---- small shared reads ---- */
@@ -504,6 +504,9 @@ const Tutorial = {
 
   skip() {
     if (!window.S || !S.tut) return;
+    // a skip made ON the deck's own note is the player's answer to it: it
+    // has been heard, and must not come back a beat later with no Skip on it
+    if (this._show && this._show.id === 'deck') (S.tut.fired || (S.tut.fired = {})).deck = 1;
     const owed = this._deckOwed() && !S.tut.deckOnly;
     S.tut.on = false; S.tut.skipped = true;
     // a skip is the player's answer for good: the auto-on for the first two

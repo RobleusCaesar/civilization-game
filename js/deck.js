@@ -244,10 +244,19 @@ const Deck = {
         /* …and forgets the TEST deck with it: ?cards=all's toy collection
            queues nothing for the cloud and reports nothing (the `test` mark),
            so a device left holding one would never sync again. Leaving the
-           test link leaves its toys; a real collection is never touched. */
+           test link leaves its toys and gives back the REAL collection the
+           link put aside (dealAll's REAL_KEY — its cards, its run ledger and
+           the cloud ops still waiting in its queue), exactly as it was; a
+           device that had none starts afresh. A real collection standing in
+           the slot is never touched. */
         let c = null;
         try { c = JSON.parse(this._get(this.KEY) || 'null'); } catch (e) { c = null; }
-        if (c && c.test) { this._del(this.KEY); this._col = null; }
+        if (c && c.test) {
+          const real = this._get(this.REAL_KEY);
+          if (real) this._set(this.KEY, real); else this._del(this.KEY);
+          this._del(this.REAL_KEY);
+          this._col = null;
+        }
       }
       /* THE TEST LINK: ?cards=all turns the deck on for the device AND, on
          every load that carries it, deals a fresh TEST deck — one of every
@@ -344,10 +353,20 @@ const Deck = {
      player's record, so nothing it grants or plays is queued for the cloud
      or reported as telemetry (_queue, track) — and the cloud must neither
      overwrite it nor be written from it (Deck.sync asks Deck.isTest()).
-     ?cards=0 forgets it (devOn), so a tester's device goes back to a real
-     collection with a fresh starter hand. */
+     A REAL collection is never thrown away to make room: a deal over it
+     puts it aside, exactly as stored (its queue of unsynced ops included),
+     under REAL_KEY, and ?cards=0 gives it back (devOn); a later deal over a
+     test deck leaves the stash alone. A device that had no collection gets
+     a fresh starter hand after ?cards=0. */
+  REAL_KEY: 'neo-deck-real',
   dealAll() {
     const c = this.col();
+    if (!c.test) {
+      // the slot holds the device's real collection (or nothing at all — then
+      // there is nothing to give back, and no older stash may come back either)
+      const raw = this._get(this.KEY);
+      if (raw) this._set(this.REAL_KEY, raw); else this._del(this.REAL_KEY);
+    }
     c.counts = {}; c.seen = {}; c.runs = {}; c.queue = []; c.pity = 0;
     c.starter = c.starter || Date.now();
     c.test = Date.now();
@@ -364,11 +383,14 @@ const Deck = {
      ONLY THE PLAYER'S OWN HAND STARTS: a building they raised that stood
      finished, a unit they trained, an upgrade, an enemy work their own
      soldiers pulled down, and — capped — the hand-gathering of their
-     villagers (one deed per CFG.CARDS.DEED_GATHER, at most DEED_GATHER_CAP).
-     Measured, every one of them reads ZERO for a player who touches nothing
-     on Hard, origin card, start package and all. What is NOT a deed, and why:
-       kills      towers, the hall's own arrows and a Defend stance score kills
-                  for a player who never gives an order
+     villagers (one deed per CFG.CARDS.DEED_GATHER, at most DEED_GATHER_CAP)
+     and the kills their EXPLICIT attack orders made (one per DEED_KILLS, at
+     most DEED_KILL_CAP: a player who only fights has fought). Measured,
+     every one of them reads ZERO for a player who touches nothing on Hard,
+     origin card, start package and all. What is NOT a deed, and why:
+       other kills  towers, the hall's own arrows, a Defend stance and an
+                  assault's next mark score kills for a player who never gives
+                  an order — only the foe the player SENT a soldier at counts
        S.stats.razed     counts every rival work that falls — a barbarian's
                   torch, and a camp the RIVAL burned — so it read up to 15 on
                   passive Hard runs; handRazed is the player's soldiers alone
@@ -386,6 +408,7 @@ const Deck = {
       upgrades: Math.max(0, st.upgrades | 0),
       razed: Math.max(0, st.handRazed | 0),
       gathered: Math.min(D.DEED_GATHER_CAP, Math.max(0, Math.floor((+st.handGathered || 0) / D.DEED_GATHER))),
+      fought: Math.min(D.DEED_KILL_CAP, Math.max(0, Math.floor((st.handKills | 0) / D.DEED_KILLS))),
     };
     let n = 0;
     for (const k in parts) n += parts[k];
@@ -402,21 +425,34 @@ const Deck = {
     return {
       win: !!win, cause: cause || (win ? 'win' : 'unknown'),
       mode: S.mode, day: S.day, seconds: Math.round(S.playtime || 0), subtotal: sub,
-      deeds: this.deeds().n,
+      deeds: this.deeds().n, actDays: Math.max(0, (S.stats && S.stats.actDays) | 0),
       runId, key: runId || ('seed:' + S.seed + ':' + S.day + ':' + (win ? 'w' : 'l')),
     };
   },
   /* WHO EARNS: a WIN, always — however long it took, whatever it scored. A
      DEFEAT at the world's hands, when the player fought it: CFG.CARDS.
-     LOSS_DEEDS deeds or more. A struck banner or a closed tab is not a
-     finish. A defeat that falls short says so kindly, with the count. */
+     LOSS_DEEDS deeds or more, given across LOSS_DAYS game days or more
+     (G.noteAct — a burst in the first twenty seconds and then nothing is not
+     a fight). A struck banner or a closed tab is not a finish; the "No way
+     back" offer's own Resign IS one ('doomed' — the village was already
+     lost, and accepting the truth must not cost the card). A defeat that
+     falls short says so kindly, with the count of whatever is missing. */
   eligible(rep) {
     if (!rep) return { ok: false, why: 'No game to reward.' };
     if (rep.cause === 'struck_banner' || rep.cause === 'closed_tab') return { ok: false, why: 'A banner struck earns no card.' };
     if (rep.win) return { ok: true };
-    const need = CFG.CARDS.LOSS_DEEDS, have = Math.max(0, rep.deeds | 0);
-    if (have >= need) return { ok: true };
-    return { ok: false, short: true, why: `Build, train, upgrade or raze to earn a card from a defeat — ${have} of ${need} deeds.` };
+    const C = CFG.CARDS, need = C.LOSS_DEEDS, have = Math.max(0, rep.deeds | 0);
+    const needD = C.LOSS_DAYS, days = Math.max(0, rep.actDays | 0);
+    const dShort = have < need, tShort = days < needD;
+    if (!dShort && !tShort) return { ok: true };
+    const out = { ok: false, short: true, deeds: have, need, days, needDays: needD,
+      // the row of pips counts whatever is missing — the deeds first
+      pips: dShort ? { n: have, of: need } : { n: days, of: needD } };
+    out.why = dShort
+      ? `Build, train, gather, upgrade or raze to earn a card from a defeat — ${have} of ${need} deeds` +
+        (tShort ? `, orders given on ${days} of ${needD} days.` : '.')
+      : `Keep up the fight across the days to earn a card from a defeat — orders given on ${days} of ${needD} days.`;
+    return out;
   },
   table(rep) { return CFG.CARDS.DROPS[rep.win ? rep.mode : 'loss'] || CFG.CARDS.DROPS.loss; },
   medianDay(mode) {
@@ -466,7 +502,7 @@ const Deck = {
     // the cause and the deeds ride the op, so the server can re-run the earn
     // rule (Deck.eligible) on the grant itself as well as on the run's row
     this._queue({ op: 'grant', run: rep.runId, key: rep.key, outcome: rep.win ? 'win' : 'loss', mode: rep.mode,
-      cause: rep.cause, deeds: rep.deeds | 0, cards: cards.map(c => c.id), great, pity: forced });
+      cause: rep.cause, deeds: rep.deeds | 0, act_days: rep.actDays | 0, cards: cards.map(c => c.id), great, pity: forced });
     this.saveCol();
     for (const c of cards) this.track('card_granted', { card: c.id, tier: c.tier, outcome: rep.win ? 'win' : 'loss', difficulty: rep.mode, bonus: c.bonus, run: rep.runId });
     return { ok: true, cards, great, pity: forced };
@@ -497,7 +533,12 @@ const Deck = {
      refuses as a backstop. The moment the spine is done (the capstone
      answered, or the lesson skipped) the deck walks in, in the same run. */
   lessonHolds() {
-    return typeof S !== 'undefined' && !!S && !!S.tut && !!S.tut.on && S.tut.phase === 1;
+    /* …except for a TEST deck (?cards=all): a tester on a fresh device or a
+       private tab gets the lesson switched on by itself for the first two
+       games, and a test link whose deck then hides for the whole spine reads
+       as broken. Theirs stands from the first morning; the note still rings
+       it once the spine is done. */
+    return typeof S !== 'undefined' && !!S && !!S.tut && !!S.tut.on && S.tut.phase === 1 && !this.isTest();
   },
   canPlay(id) {
     if (!this.on()) return { ok: false, why: 'Cards are not available.' };

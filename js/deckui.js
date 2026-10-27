@@ -135,10 +135,44 @@ const DeckUI = {
   _arrive() {
     if (!this.el) return;
     this.arrivedAt = performance.now();
-    if (!this._calm() && this.el.btn.animate)
+    if (!this._calm() && this.el.btn.animate) {
       this.el.btn.animate([{ transform: 'translateY(-14px) scale(.4)', opacity: 0 }, { transform: 'translateY(2px) scale(1.18)', opacity: 1, offset: 0.6 },
         { transform: 'none', opacity: 1 }], { duration: 420, easing: this.SPRING });
+      this._arriveFlare();
+    }
     UI.cue('ok');
+  },
+  /* …AND IT IS EARNED, NOT JUST THERE: as the button lands, a ring of hard
+     gold pixels bursts off it — the play sequence's own flare, in the deck's
+     gold, for one beat — and its icon flashes white-gold. Squares, never a
+     soft glow; opacity in hard steps (steps()), never a fade. Lives on the
+     body for 900ms, then is gone: nothing here outlasts the beat. */
+  _arriveFlare() {
+    const r = this.el.btn.getBoundingClientRect();
+    if (!r.width) return;
+    const cx = Math.round(r.left + r.width / 2), cy = Math.round(r.top + r.height / 2);
+    const host = document.createElement('i');
+    host.className = 'dkArrive';
+    host.style.left = cx + 'px'; host.style.top = cy + 'px';
+    const N = 14, PAL = ['#ffd45e', '#fff0b0', '#e8c15a', '#c98446'];
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2 + (i & 1 ? 0.12 : 0), big = !(i % 3);
+      const d = 26 + (i % 4) * 7, sz = big ? 6 : 4;
+      const sq = document.createElement('i');
+      sq.style.width = sq.style.height = sz + 'px';
+      sq.style.background = PAL[i % PAL.length];
+      sq.style.margin = (-sz / 2) + 'px 0 0 ' + (-sz / 2) + 'px';
+      host.appendChild(sq);
+      const dx = Math.round(Math.cos(a) * d / 2) * 2, dy = Math.round(Math.sin(a) * d / 2) * 2;
+      sq.animate([{ transform: 'translate(0,0)', opacity: 1 }, { transform: `translate(${dx}px,${dy}px)`, opacity: 1, offset: 0.55 },
+        { transform: `translate(${Math.round(dx * 1.25)}px,${Math.round(dy * 1.25)}px)`, opacity: 0 }],
+        { duration: 760, delay: 180, easing: 'steps(9, end)', fill: 'both' });
+    }
+    document.body.appendChild(host);
+    const ico = this.el.btn.querySelector('.dkIco');
+    if (ico && ico.animate) ico.animate([{ filter: 'none' }, { filter: 'brightness(1.9) sepia(.6)', offset: 0.3 }, { filter: 'none' }],
+      { duration: 520, delay: 160, easing: 'steps(4, end)' });
+    setTimeout(() => host.remove(), 1000);
   },
 
   reset() {
@@ -448,12 +482,14 @@ const DeckUI = {
       // THE EARN RULE in the player's words (Deck.eligible): a win always
       // earns; a defeat earns for a real fight, counted in deeds — and the
       // count so far this run, so the number to beat is never a mystery
-      const need = CFG.CARDS.LOSS_DEEDS, have = Math.min(need, Deck.deeds().n);
+      const C = CFG.CARDS, need = C.LOSS_DEEDS, have = Math.min(need, Deck.deeds().n);
+      const needD = C.LOSS_DAYS, days = Math.min(needD, (S.stats && S.stats.actDays) | 0);
       const e = document.createElement('div');
       e.className = 'dkEmpty';
       e.innerHTML = `<i class="dkEmptyIco">${this.STACK_SVG}</i><b>No cards in your deck yet</b>` +
         `<span>Win a game and a card is yours to keep. Lose one, and it still is — if you put up a fight: ` +
-        `${need} deeds of building, training, upgrading or razing (this run: ${have} of ${need}).</span>`;
+        `${need} deeds of building, training, gathering, upgrading or razing, with orders given on ${needD} different days ` +
+        `(this run: ${have} of ${need} deeds, ${days} of ${needD} days).</span>`;
       s.row.appendChild(e);
       s.hint.textContent = '';
       return;
@@ -1382,6 +1418,8 @@ body.dk-aiming #bottombar { visibility: hidden; }
   border-radius: 9px; background: #1c140c; border: 1.5px solid var(--gold); color: #f3e2b4; pointer-events: none;
   font: 800 11px/15px -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.6); }
 #deckBtn.empty .dkBadge { display: none; }
+.dkArrive { position: fixed; width: 0; height: 0; z-index: 12; pointer-events: none; }
+.dkArrive i { position: absolute; left: 0; top: 0; box-shadow: 0 2px 0 #5c3a1c; image-rendering: pixelated; }
 #deckBtn.empty .dkIco { opacity: .55; }
 #dkTimers { display: flex; gap: 4px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
 #dkTimers:empty { display: none; }

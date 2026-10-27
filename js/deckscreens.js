@@ -132,8 +132,9 @@ const DeckScreens = {
     this._view = {
       key: rep.key, win, cause: rep.cause, cards, claimed, shown: claimed,
       ok: !!res.ok, why: res.why || '', score: sc.total, cw: this._cardW(),
-      // a defeat that fell short of its deeds shows how far it got (Deck.eligible)
-      short: !res.ok && !!Deck.eligible(rep).short, deeds: Math.max(0, rep.deeds | 0), need: CFG.CARDS.LOSS_DEEDS,
+      // a defeat that fell short shows how far it got (Deck.eligible): the
+      // row of pips counts whatever is missing — the deeds, else the days
+      pips: (!res.ok && Deck.eligible(rep).pips) || null,
     };
     // a fresh run plays its reveal; a resumed or already-told one just stands there
     const fresh = prior == null && !res.again, play = fresh && !this.reduced();
@@ -180,11 +181,19 @@ const DeckScreens = {
      captured NOW, because a post can outlive this screen. */
   _armBoard(win, sc, msg) {
     Screens._score = win ? sc : null;
-    // `cards_played`: how many this run played — a card-assisted run is marked
-    // on the board. Backend.submitScore sends named parameters only, so this
-    // rides the entry harmlessly until submit_score learns p_cards_played
-    // (sending an unknown parameter name is a PostgREST 404)
-    Screens._entry = win ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: this._playedN() } : null;
+    /* `cards_played`: how many this run played — a card-assisted run is
+       MARKED on the board (approved at Gate 1). Two wins never go up at all:
+       a TEST deck's (?cards=all — every card in the catalog, dealt free, is
+       nobody's record), and any card-assisted win while the board cannot
+       wear the mark: Backend.submitScore sends named parameters only, and
+       until submit_score learns p_cards_played (Backend.BOARD_MARKS_CARDS)
+       an assisted score would stand UNMARKED beside real players' — the one
+       thing the mark exists to prevent. Said in the score box's note line,
+       so the missing name box is never a mystery. */
+    const played = this._playedN();
+    const hold = !win ? '' : (played && Deck.isTest()) ? 'Test-deck run — not posted to the world board.'
+      : (played && !(window.Backend && Backend.BOARD_MARKS_CARDS)) ? 'Card-assisted — kept off the world board until it can wear the mark.' : '';
+    Screens._entry = win && !hold ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: played } : null;
     Screens._submitted = false;
     Screens._leaveWarned = false;
     if (win) Screens._winMsg = msg || '';
@@ -194,6 +203,7 @@ const DeckScreens = {
     }
     const note = document.getElementById('savedNote');
     if (note) note.textContent = '';   // never let a prior run's note linger
+    if (hold && note) { note.textContent = hold; note.style.color = 'var(--dim)'; note.style.display = 'block'; }
     const board = document.getElementById('endBoard');
     if (board) board.innerHTML = '';
   },
@@ -360,9 +370,9 @@ const DeckScreens = {
        count, the row lets the eye take it in before the words are read */
     const pips = why.querySelector('.cePips');
     pips.textContent = '';
-    if (v.short) for (let i = 0; i < v.need; i++) {
+    if (v.pips) for (let i = 0; i < v.pips.of; i++) {
       const e = document.createElement('i');
-      if (i < Math.min(v.deeds, v.need)) e.className = 'on';
+      if (i < Math.min(v.pips.n, v.pips.of)) e.className = 'on';
       pips.appendChild(e);
     }
     this._plate(c);

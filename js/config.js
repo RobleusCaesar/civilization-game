@@ -1329,6 +1329,24 @@ const CFG = {
     LOSS_DEEDS: 5,
     DEED_GATHER: 300,
     DEED_GATHER_CAP: 3,
+    /* …and ordered kills: the foe the player SENT a soldier at, falling to it
+       (Units.damage; never a tower's or a Defend stance's kill) — one deed
+       per DEED_KILLS, at most DEED_KILL_CAP, so a player who only fought has
+       fought, and a passive run still reads 0. */
+    DEED_KILLS: 3,
+    DEED_KILL_CAP: 2,
+    /* AND THE FIGHT HAS TO LAST (G.noteAct): deeds count completions, and a
+       burst in the first twenty seconds — houses until the wood ran out,
+       villagers until the food did — read 5–10 deeds on 10 of 12 Hard runs
+       that then gave no order at all. So a defeat also asks on how many
+       DISTINCT GAME DAYS the player gave an order of their own. MEASURED on
+       Hard, six origins each: that burst reads 1 day on all 12 runs, razed
+       on day 28–228; the scripted player (its builds, its training and its
+       taps on the ground) reads 6–7 after 8 game days — seventy real
+       seconds — 9–14 after 15 and 17–29 after 30, the operator's five
+       minutes. 6 is six times the burst and at or under the shortest real
+       fight measured. */
+    LOSS_DAYS: 6,
     // [stone, bronze, iron, imperial, enlight] percentages, approved at Gate 1
     DROPS: {
       loss:     [85, 15, 0, 0, 0],

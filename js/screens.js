@@ -1089,7 +1089,18 @@ const Screens = {
       'no one left to gather, nothing to train a new hand with, and no Trading Post ' +
       'to buy a meal. The Town Center will fall in its own time.';
   },
-  doomResign() { this.resign(true); },
+  /* Resign HERE is not a struck banner: the offer only comes to a village
+     that is already lost (G.checkDoom measured it), and its own words say
+     the hall "will fall in its own time". Accepting that is the honest
+     answer and must never cost what waiting would have earned — so it ends
+     the run as the defeat it is ('doomed': logged a loss, never abandoned,
+     and a card is judged on the deeds like any defeat), not 'struck_banner'. */
+  doomResign() {
+    if (!window.S || S.over) return;
+    this._confirmResign = false;
+    S.resigned = true;
+    G.end(false, 'The granary was empty and no one was left to fill it. You let the last fire go out.', 'doomed');
+  },
   doomStay() {
     if (window.UI) UI.toast('So be it. The fire burns low.', true);
     this.show('playing');
